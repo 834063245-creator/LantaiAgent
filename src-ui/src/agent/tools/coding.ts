@@ -13,16 +13,36 @@
 
 import { z } from 'zod';
 import { activeFsProviders, type FsAction } from '../../composition/fs-service';
+import { seamScopeOf } from '../../composition/seam-scope';
 import { activeShellProviders, type ShellAction } from '../../composition/shell-service';
 import { parseGitLogCommits, parseGitStatusPorcelain } from '../git-porcelain';
 import { stickyCwdOf } from '../session-context';
 import type { Tool, ToolExecutor } from '../tool';
 import { defineTool, toInputJsonSchema } from './define-tool';
 
+/** 发起方身份 = executor 注入的 `_owner_id`（bus id），缺失回退 `_agent_id`
+ *  （fork 子 Agent 的隔离开关）。与 withStickyCwd / domains.ts 同一把钥匙。 */
+function ownerIdOf(args: Record<string, unknown>): string | undefined {
+  return typeof args._owner_id === 'string'
+    ? args._owner_id
+    : typeof args._agent_id === 'string'
+      ? args._agent_id
+      : undefined;
+}
+
+/** 本调用所属 Agent 的组合裁剪面（S6 P2a）——装配期登记、请求期查表
+ *  （composition/seam-scope.ts）。未登记（无组合上下文/UI 直调/单测）= undefined
+ *  ⇒ 消费点落全局当前选择（P2 前语义，零漂移）。 */
+function ownerSeamView(args: Record<string, unknown>) {
+  return seamScopeOf(ownerIdOf(args));
+}
+
 /** fs 域消费面（平台化 Phase 2 · D11，2026-08-27）：经 ctx.fs 注册表解析 provider
  *  （后注册胜取默认），默认 builtin/rust-fs 借注入的 dispatch 腰转发既有 Rust 命令。
  *  替代 provider（JS 内存 / MCP / 远程）实现同一 FsProvider 接口即插即用；
- *  强制层 gate（plan/权限/审计）在 executor 管道层、先于本调用——换 provider 不豁免。 */
+ *  强制层 gate（plan/权限/审计）在 executor 管道层、先于本调用——换 provider 不豁免。
+ *  S6 P2a：provider 视图按**本调用所属 Agent 的组合**裁剪（同一次工具实例、两卷
+ *  可落不同 provider——裁剪面取值见 ownerSeamView）。 */
 export function fsExecute(
   action: FsAction,
   args: Record<string, unknown>,
@@ -30,7 +50,7 @@ export function fsExecute(
   onProgress?: (chunk: string) => void,
   signal?: AbortSignal,
 ): Promise<string> {
-  const providers = activeFsProviders();
+  const providers = activeFsProviders(ownerSeamView(args));
   const provider = providers[providers.length - 1];
   if (!provider) {
     return Promise.reject(
@@ -42,7 +62,8 @@ export function fsExecute(
 
 /** shell 域消费面（平台化 Phase 2 · D11 施工⑤）：经 ctx.shell 注册表解析 provider
  *  （后注册胜；subprocess 并入本 seam——spawn/stdio/进程树即后台任务族，见计划
- *  D11 修订注记）。强制层 gate 在 executor 管道层、先于本调用——换 provider 不豁免。 */
+ *  D11 修订注记）。强制层 gate 在 executor 管道层、先于本调用——换 provider 不豁免。
+ *  S6 P2a：同 fsExecute，provider 视图按本调用所属 Agent 的组合裁剪。 */
 export function shellExecute(
   action: ShellAction,
   args: Record<string, unknown>,
@@ -50,7 +71,7 @@ export function shellExecute(
   onProgress?: (chunk: string) => void,
   signal?: AbortSignal,
 ): Promise<string> {
-  const providers = activeShellProviders();
+  const providers = activeShellProviders(ownerSeamView(args));
   const provider = providers[providers.length - 1];
   if (!provider) {
     return Promise.reject(
@@ -426,13 +447,7 @@ const SHELL_CAP_READONLY: Record<ShellAction, boolean> = {
  *  per-owner 注册表 session-context，产物自包含的 provider 不持宿主实例）。
  *  owner = executor 注入的 _owner_id（bus id），缺失回退 _agent_id。 */
 function withStickyCwd(args: Record<string, unknown>): Record<string, unknown> {
-  const owner =
-    typeof args._owner_id === 'string'
-      ? args._owner_id
-      : typeof args._agent_id === 'string'
-        ? args._agent_id
-        : undefined;
-  const sticky = stickyCwdOf(owner);
+  const sticky = stickyCwdOf(ownerIdOf(args));
   return sticky ? { ...args, stickyCwd: sticky } : args;
 }
 

@@ -4,6 +4,7 @@
 // Agent 循环 — Run() → stream() → StreamingToolExecutor → 循环直到模型给出最终答案
 
 import { currentPresetId } from '../composition/preset-assembly';
+import { registerSeamScope } from '../composition/seam-scope';
 import { activeSubagentProviders } from '../composition/subagent-service';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-stream';
 import type { StoredThinking } from '../provider/thinking';
@@ -509,6 +510,11 @@ export class Agent {
     this.goalManager = ctx.get('goalManager') ?? null;
     this._subAgentPool = ctx.get('subAgentPool') ?? null;
     this._composition = ctx.get('composition') ?? null;
+    // S6 P2a：本 Agent 的组合裁剪面灌进自己的 loop 事件总线——emit 调用点
+    // （default-loop 7 处 + spawnSubAgent 3 处）零改动，总线自己回答「本组合
+    // 禁了哪些观测事件」。无组合产物（未接线的 ctx / 单测）= null ⇒ 读全局
+    // 当前选择（P2 前语义）。
+    this._loopEvents.setSeamView(this._composition?.seamDisabled ?? null);
 
     this.sessionId = opts.sessionId || `session-${Date.now()}`;
     this._onSessionPersisted = opts.onSessionPersisted;
@@ -538,6 +544,16 @@ export class Agent {
     // → 子 Agent 自动注册；对称清理归 ctx 所有权（bus-unregister 同款纪律）。
     if (ctx.projectPath) {
       ctx.effect(() => registerOwnerContext(this.id, ctx.projectPath), 'session-context');
+    }
+    // S6 P2a：装配期登记本 Agent 的组合裁剪面（键 = owner id = 上面同一个
+    // this.id）——工具族在请求期按 executor 注入的 _owner_id 查表取「本卷的
+    // seam 视图」（composition/seam-scope.ts；携带路径的裁定与证据见该文件头注）。
+    // 对称清理归 ctx 所有权（session-context 同款）；无组合产物 = 不登记 ⇒
+    // 消费点落全局当前选择（零漂移）。与 projectPath 判面无关：零目录工作区
+    // 同样按本卷组合裁剪。
+    const composition = this._composition;
+    if (composition) {
+      ctx.effect(() => registerSeamScope(this.id, composition.seamDisabled), 'seam-scope');
     }
   }
 
@@ -1841,7 +1857,7 @@ export class Agent {
     agentIdOverride?: string,
     outputSchema?: Record<string, unknown> | null,
   ): Promise<{ text: string; err?: string }> {
-    const providers = activeSubagentProviders();
+    const providers = activeSubagentProviders(this._composition?.seamDisabled);
     const provider = providers[providers.length - 1];
     if (!provider) {
       throw new Error(

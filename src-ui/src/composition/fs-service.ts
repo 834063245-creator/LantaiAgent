@@ -18,7 +18,7 @@
 import type { ToolExecutor } from '../agent/tool';
 import { type Context, Service } from '../cordis';
 import { ContributionChannel } from './contribution-channel';
-import { seamDisabled } from './seam-resolution';
+import { type SeamDisabledMap, seamDisabled } from './seam-resolution';
 
 /** fs 域动作（与 domains.ts fs 域动作枚举对齐——消费面形状的唯一事实）。
  *  （constraints/write_constraints 两动作随图谱全量退役移除，2026-09-09。） */
@@ -80,9 +80,11 @@ export function registeredFsProviders(): FsProvider[] {
 }
 
 /** 当前 fs provider 贡献（无服务/无注册 = 空集——工具消费面的「后注册胜」扫描源）。
- *  裁剪面（平台化 Phase 3）：组合 `seam/fs` 域禁用的 provider id 从视图剔除。 */
-export function activeFsProviders(): FsProvider[] {
-  const disabled = seamDisabled('fs');
+ *  裁剪面（平台化 Phase 3）：组合 `seam/fs` 域禁用的 provider id 从视图剔除。
+ *  view（S6 P2a）= 调用方所属组合的裁剪面（工具层按 owner 查得）；**缺省 = 全局
+ *  当前选择**（无组合上下文的旧路径零漂移）。晚注册 provider 仍可见（语义不变）。 */
+export function activeFsProviders(view?: SeamDisabledMap | null): FsProvider[] {
+  const disabled = seamDisabled('fs', view);
   return registeredFsProviders().filter((p) => !disabled.has(p.id));
 }
 

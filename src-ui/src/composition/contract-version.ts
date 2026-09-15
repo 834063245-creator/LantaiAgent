@@ -22,9 +22,21 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 35;
+export const OPEN_SURFACE_CONTRACT_VERSION = 36;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v36（2026-09-15）S6 P2a seam 裁剪面**装配期值注入**：`seamDisabled(domain, view?)`
+ *  新增可选 view —— **缺省 = 全局当前选择**（无组合上下文的旧路径逐字保持 P2 前
+ *  语义）；`activeFsProviders` / `activeShellProviders` / `activeSubagentProviders`
+ *  同款收可选 view；`AgentEventBus` 新增 `setSeamView()`（每 Agent 一条总线，
+ *  emitLoopEvent 读本总线视图——emit 调用点零改动）。**对外可感知**：seam provider
+ *  的可见面从此可按 Agent 的不同（两份裁剪面并存互不串味）；未传 view 的旧调用面
+ *  （UI 直调 / 无 agent 工具路径 / 第三方 provider 自测）行为逐字不变 ⇒ convergence
+ *  双轨快照零漂移（出厂 standard/minimal 的 seamDisabled 构造性为空）。新增携带层
+ *  `composition/seam-scope.ts` 是**键控叶模块**，不入本清单（非三方面；叶性由
+ *  tests/composition-import-cycle.test.ts 钉住） | S6-per-agent-composition.md P2a
+ *  （施工单 WO-S6P2 §2/§7-A 用户裁定：携带路径取 owner 键控表而非 rowCtx 扩字段
+ *  ——fs/shell 族实例经 familyContributions 锁存首次装配 rowCtx，扩字段结构性无效）
  *  v35（2026-09-15）	ool/call 前移到分发时落（触发点 B 收官，用户已批准
  *  phase-5 基线变更）：默认 loop 注入的检查点钩子现在**先 append 	ool/call、
  *  再 lushPersistence()**，让「模型宣布了什么」在副作用发生前就落盘；default-loop

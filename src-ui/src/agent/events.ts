@@ -27,7 +27,7 @@
 //   - preflight / around 的静默降级由适配层（attach*）负责，与旧 executor 相同；
 //   - emit 不吞异常（观察者抛错是 bug，暴露优于掩盖）。
 
-import { seamDisabled } from '../composition/seam-resolution';
+import { type SeamDisabledMap, seamDisabled } from '../composition/seam-resolution';
 import type { ToolPipelineContext } from './agent-types';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import type { Disposer } from './lifecycle';
@@ -171,6 +171,16 @@ interface Entry {
 export class AgentEventBus {
   private listeners = new Map<AgentEventName, Entry[]>();
   private seq = 0;
+  /** 本总线的组合裁剪面（S6 P2a）——每 Agent 一条总线（agent.ts 构造期灌入
+   *  该 Agent 组合的 seamDisabled）；null = 未灌入 ⇒ emitLoopEvent 读**全局
+   *  当前选择**（无 agent 上下文的总线 / 单测，零漂移）。 */
+  private _seamView: SeamDisabledMap | null = null;
+
+  /** 装配期灌入本总线的组合裁剪面（S6 P2a；emit 调用点零改动——发射点不必
+   *  知道自己的组合，总线自己回答）。 */
+  setSeamView(view: SeamDisabledMap | null | undefined): void {
+    this._seamView = view ?? null;
+  }
 
   /** 注册监听并返回 disposer（Phase 1 契约）。 */
   on(event: AgentEventName, fn: AnyListener, opts: ListenerOptions = {}): Disposer {
@@ -243,13 +253,15 @@ export class AgentEventBus {
    *  JS 调用方守卫——错误不静默宪法）。
    *  事件面开关（平台化 Phase 3）：组合 `seam/loopEvents` 域禁用的事件
    *  不广播（观测面裁剪——R1 语义不变：事件非模型可见、不进 session log，
-   *  禁用仅影响监听方观测，不影响 loop 执行本身）。 */
+   *  禁用仅影响监听方观测，不影响 loop 执行本身）。
+   *  裁剪面取值（S6 P2a）：本总线所属 Agent 的组合（setSeamView 灌入）；
+   *  未灌入 = 全局当前选择（旧路径零漂移）。 */
   emitLoopEvent<E extends LoopEventName>(event: E, payload: LoopEventPayload[E]): void {
     const mode = AGENT_EVENT_MAP[event]?.mode;
     if (mode !== 'emit') {
       throw new Error(`[events] ${event} 非 emit 域事件（mode=${String(mode)}）——请走专用 runner`);
     }
-    if (seamDisabled('loopEvents').has(event)) return;
+    if (seamDisabled('loopEvents', this._seamView).has(event)) return;
     for (const e of this.ordered(event)) {
       (e.fn as (payload: LoopEventPayload[E]) => void)(payload);
     }

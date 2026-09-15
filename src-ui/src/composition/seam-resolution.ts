@@ -9,7 +9,13 @@
 //     （active*Providers / activeLlmAdapters）；
 //   - **组合 = 裁剪真源**（谁生效）：roster 解析产物 per-seam 禁用集——
 //     composition-store 的三个写入口（setResolved / setError / resetToFactory）
-//     是唯一灌入点（applySeamDisabled）。
+//     写**全局当前选择**（applySeamDisabled）。
+//
+// 裁剪面的两级取值（S6 P2a，2026-09-15——此前只有全局一级）：
+//   - **有组合上下文的路径**：传该组合的 seamDisabled 作 view 实参（装配期取值，
+//     键 = Agent bus id，携带层见 composition/seam-scope.ts）；
+//   - **无组合上下文的旧路径**（无 agent 的工具直调 / UI 直调 / 单测）：
+//     view 缺省 ⇒ 读上面的全局当前选择 —— **缺省语义 = P2 前的行为，零漂移**。
 //
 // 消费视图 = 活动注册表 − 禁用集。**晚注册可见**：组合解析后新注册的
 // provider / 动态事件（不在解析时点快照里）不被误裁——除非显式出现在禁用集。
@@ -44,7 +50,8 @@ export const EMPTY_SEAM_DISABLED: SeamDisabledMap = {
 
 let current: SeamDisabledMap = EMPTY_SEAM_DISABLED;
 
-/** 组合写入口灌入（composition-store 三 setter 唯一调用；resolved.seamDisabled）。
+/** 全局当前选择灌入（composition-store 三 setter 唯一调用；resolved.seamDisabled）。
+ *  P2a 起它是**兜底面**：只被「没有组合上下文」的消费路径读到。
  *  undefined/缺域 = 该域无裁剪（容错——解析产物形状演进期不炸消费面）。 */
 export function applySeamDisabled(map: SeamDisabledMap | null | undefined): void {
   if (!map) {
@@ -54,12 +61,15 @@ export function applySeamDisabled(map: SeamDisabledMap | null | undefined): void
   current = { ...EMPTY_SEAM_DISABLED, ...map };
 }
 
-/** 指定域的当前禁用 id 集（消费单点的过滤源；每次返回新 Set——调用方不得持有缓存）。 */
-export function seamDisabled(domain: SeamDomain): ReadonlySet<string> {
-  return new Set(current[domain] ?? []);
+/** 指定域的禁用 id 集（消费单点的过滤源；每次返回新 Set——调用方不得持有缓存）。
+ *  view = 调用方所属组合的裁剪面（装配期取值）；**缺省/null = 全局当前选择**
+ *  ——无组合上下文的旧路径因此逐字保持 P2 前语义。 */
+export function seamDisabled(domain: SeamDomain, view?: SeamDisabledMap | null): ReadonlySet<string> {
+  const map = view ?? current;
+  return new Set(map[domain] ?? []);
 }
 
-/** 当前裁剪面只读快照（诊断/测试面）。 */
+/** 全局当前选择只读快照（诊断/测试面；P2a 起仅是无组合上下文的兜底面）。 */
 export function currentSeamDisabled(): SeamDisabledMap {
   return current;
 }

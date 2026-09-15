@@ -67,7 +67,7 @@ prompt:
 
 完整 id 清单以各真源文件为准——它们是唯一权威源。
 
-## seam 裁剪域（七——平台化 Phase 3）
+## seam 裁剪域（七——平台化 Phase 3；S6 P2a 起**按 Agent 取值**）
 
 Phase 1/2 开放的全部 swappable seam 并进组合解析域：每个 seam provider
 （或 D4 事件）是一条可寻址行，域键 = `seam/<ctx 键名>`（`seam/` 前缀与四个
@@ -88,15 +88,28 @@ Phase 1/2 开放的全部 swappable seam 并进组合解析域：每个 seam pro
 - 禁用某行 = 从对应 seam 的「后注册胜」消费视图剔除该 provider；**替换
   默认 provider** = 插件/动态贡献一个替代 provider（后注册即胜）+（需要时）
   禁用默认行。全部禁用 = 消费面响亮报错（`FS_PROVIDER` / `PROVIDER_DIALECT` /
-  `SUBAGENT_PROVIDER` / `SESSION_PERSISTENCE_PROVIDER` / `GRAPH_PROVIDER`
+  `SUBAGENT_PROVIDER` / `SESSION_PERSISTENCE_PROVIDER`
   / `SHELL_PROVIDER`——显式降级非静默）。
 - **晚注册可见**：解析之后新注册的 provider 不被误裁（除非其 id 显式在
   禁用集）——组合表达「裁剪谁」，不表达「冻结清单」。
 - `seam/loopEvents` 禁用事件 = 该事件不再广播（观测面裁剪；事件非模型可见、
   不进 session log，禁用不影响 loop 执行本身）。
-- **生效时机 = 调用期**：seam 消费面按当前组合的禁用集在每次调用时过滤
-  （与 Phase 2 调用期扫描语义一致）；会话级 compositionOverride 的 seam 面
-  不穿线（裁剪是全局组合语义）。
+- **生效时机 = 调用期**：seam 消费面按**本 Agent 组合**的禁用集在每次调用时
+  过滤（与 Phase 2 调用期扫描语义一致）。
+- **裁剪面按 Agent 取值（S6 P2a，2026-09-15；此前是全局一份）**：
+  - **有组合上下文的路径**：fs/shell 工具族按 executor 注入的 `_owner_id`
+    （= Agent bus id）查装配期登记的裁剪面（`composition/seam-scope.ts`，Agent
+    构造期 `ctx.effect` 登记、拆卸即清）；`ctx.subagents` 消费点直接用本 Agent
+    的组合；`emitLoopEvent` 读**本 Agent 那条总线**上灌入的视图（`setSeamView`，
+    emit 调用点零改动）。
+  - **无组合上下文的旧路径**（UI 直调 / 无 agent 的工具路径 / 第三方 provider
+    自测）：读 `composition-store` 灌入的**全局当前选择**——语义 = P2 前行为，
+    逐字零漂移。
+  - 因此**同一份注册表、同一个工具实例**，两卷可各走各的 provider（A 卷裁掉
+    替换实现即走 builtin 本地实现，B 卷裁掉默认实现即走替换实现，互不串味）。
+  - **`seam/sessionPersistence` 例外（如实声明）**：该 seam 的消费面是会话
+    存储基础设施（读盘在装配之前），本轮仍只读全局当前选择——per-volume
+    后端要「读也按该卷组合」，需要另立「卷 → 组合」外部索引，属独立批次。
 - 权限咽喉 / plan gate / 审计在 executor 管道层与 RPC 平台面——**换
   provider、禁 provider 均不豁免强制层**（P2-C3 守卫测试钉死）。
 

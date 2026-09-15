@@ -14,16 +14,25 @@
 //   ⑧ composition-store 写入口灌入裁剪面（setResolved/setError/resetToFactory）
 // 2026-09-09 图谱退役：`seam/graph` 域随 graph-service 整删移除（SEAM_DOMAINS
 // 六域——llm/subagents/fs/shell/sessionPersistence/loopEvents）。
+// S6 P2a（2026-09-15）追加 ⑨-⑫：**装配期值注入**——seam 裁剪面从「全局一份」
+// 推进到「每 Agent 一份」（携带层 composition/seam-scope.ts，键 = Agent bus id）。
+// ⑨ = 设计件 §2 序列 D 的验收（同一 fs 工具实例、两卷落不同 provider 且互不串味）；
+// ⑩⑪ = subagents / loopEvents 两消费单点；⑫ = 生命周期（dispose 清行）+ 哨兵
+// （无 owner 的直调仍读全局当前选择 ⇒ 旧路径零漂移）。①-⑧ 一行未改。
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { Agent } from '../src/agent/agent';
+import { AgentContext } from '../src/agent/context';
 import { AgentEventBus } from '../src/agent/events';
-import type { ToolExecutor } from '../src/agent/tool';
+import type { SubAgentSpawnHost } from '../src/agent/subagent-spawn';
+import type { ToolExecutor, ToolRegistry } from '../src/agent/tool';
 import { createFsTools, fsExecute } from '../src/agent/tools/coding';
 import type { FsProvider } from '../src/composition/fs-service';
 import { activeFsProviders, registeredFsProviders } from '../src/composition/fs-service';
-import type { CompositionPatch } from '../src/composition/roster';
+import type { CompositionPatch, ResolvedComposition } from '../src/composition/roster';
 import { CompositionPatchError, factoryComposition, resolveRoster } from '../src/composition/roster';
 import { resetSeamDisabled } from '../src/composition/seam-resolution';
+import { clearSeamScopesForTest } from '../src/composition/seam-scope';
 import type { LlmAdapterContribution } from '../src/composition/services';
 import { activeLlmAdapters, registeredLlmAdapters } from '../src/composition/services';
 import {
@@ -31,6 +40,7 @@ import {
   registeredSessionPersistenceProviders,
 } from '../src/composition/session-persistence-service';
 import { activeShellProviders } from '../src/composition/shell-service';
+import type { SubagentProvider } from '../src/composition/subagent-service';
 import { activeSubagentProviders, registeredSubagentProviders } from '../src/composition/subagent-service';
 import { createProvider } from '../src/provider/index';
 import type { Provider } from '../src/provider/types';
@@ -39,6 +49,8 @@ import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 afterEach(() => {
   resetSeamDisabled();
+  // 装配期 seam 作用域随 ctx.dispose 自清；本行兜住「断言失败提前退出」的残留。
+  clearSeamScopesForTest();
 });
 
 const stubExec: ToolExecutor = async () => 'stub';
@@ -66,6 +78,36 @@ function stubProvider(tag: string): Provider {
 /** 经 composition-store 灌入 patch（运行时唯一灌入点）。 */
 function applyPatch(patch: CompositionPatch): void {
   useCompositionStore.getState().setResolved(resolveRoster(factoryComposition(), [patch]), 'test');
+}
+
+/** 组合产物夹具（P2a）：直接给 Agent 的 ctx 挂一份解析产物——不起 runtime/壳。 */
+function compositionWith(patch: CompositionPatch): ResolvedComposition {
+  return resolveRoster(factoryComposition(), [patch]);
+}
+
+function stubRegistry(): ToolRegistry {
+  return { get: () => undefined } as unknown as ToolRegistry;
+}
+
+/** 真实 Agent 夹具（P2a）——构造期跑**装配期登记/灌入**：seam 作用域（键 = bus id）
+ *  + loop 事件总线视图。这是「值注入」的装配侧唯一入口，测试不绕开它。 */
+function assembleAgent(agentId: string, composition: ResolvedComposition): { ctx: AgentContext; agent: Agent } {
+  const ctx = new AgentContext(
+    { agentId, parentId: null, subagentDepth: 0 },
+    { provider: stubProvider('probe-provider'), tools: stubRegistry(), eventSink: () => {} },
+  );
+  ctx.set('composition', composition);
+  return { ctx, agent: new Agent(ctx, 'test') };
+}
+
+/** 假子代理 provider（P2a 夹具；记 id 便于分辨「哪一卷走了哪一个」）。 */
+function fakeSubagents(id: string): SubagentProvider {
+  return {
+    id,
+    async spawn(_host: SubAgentSpawnHost, args: { description: string }) {
+      return { text: `(${id}) ${args.description}` };
+    },
+  };
 }
 
 describe('seam 裁剪域（组合解析 × ctx seam 消费视图）', () => {
@@ -196,5 +238,103 @@ describe('seam 裁剪域（组合解析 × ctx seam 消费视图）', () => {
 
     useCompositionStore.getState().resetToFactory();
     expect(activeShellProviders().map((p) => p.id)).toContain('builtin/rust-shell');
+  });
+
+  // ── S6 P2a：装配期值注入（per-composition 裁剪面）──────────────────────────
+
+  it('⑨ 序列 D：同一个 fs 工具实例，两卷落不同 provider（A=本地实现 / B=替换实现）', async () => {
+    const root = await ensureProductionChannelsBooted();
+    const calls: string[] = [];
+    const disposeMem = root.fs.register(memoryFsProvider(calls));
+    // A 卷裁掉替换实现 ⇒ 落 builtin/rust-fs（dispatch 腰 = 本测试的 stubExec）
+    const a = assembleAgent('p2a-fs-A', compositionWith({ 'seam/fs': [{ id: 'test/late-fs', disabled: true }] }));
+    // B 卷裁掉默认实现 ⇒ 落替换实现（沙箱/远端同款语义）
+    const b = assembleAgent('p2a-fs-B', compositionWith({ 'seam/fs': [{ id: 'builtin/rust-fs', disabled: true }] }));
+
+    // 同一个工具实例（装配面共享——正是「族实例跨装配复用」的现实）
+    const tool = createFsTools(stubExec).find((t) => t.name() === 'read_file_content');
+    expect(tool).toBeDefined();
+
+    expect(await tool!.execute({ filePath: '/local/a.ts', _owner_id: a.agent.id })).toBe('stub');
+    expect(await tool!.execute({ filePath: '/sandbox/a.ts', _owner_id: b.agent.id })).toBe('(late-fs) read');
+    // 互不串味：A 卷再调仍走本地实现，替换实现的调用计数不因 A 增长
+    expect(await tool!.execute({ filePath: '/local/b.ts', _owner_id: a.agent.id })).toBe('stub');
+    expect(calls).toEqual(['read']);
+
+    // 视图层同证：同一时刻两份裁剪面各自成立
+    expect(activeFsProviders(a.agent.composition?.seamDisabled).map((p) => p.id)).toEqual(['builtin/rust-fs']);
+    expect(activeFsProviders(b.agent.composition?.seamDisabled).map((p) => p.id)).toEqual(['test/late-fs']);
+
+    await a.ctx.dispose();
+    await b.ctx.dispose();
+    disposeMem();
+  });
+
+  it('⑩ subagents 消费点按本 Agent 的组合裁剪（两卷各落各的 provider）', async () => {
+    const root = await ensureProductionChannelsBooted();
+    const disposeA = root.subagents.register(fakeSubagents('test/sub-a'));
+    const disposeB = root.subagents.register(fakeSubagents('test/sub-b'));
+    // 全局后注册胜 = test/sub-b；两卷各裁掉对方 ⇒ 视图各自只剩自己那一支
+    const a = assembleAgent('p2a-sub-A', compositionWith({ 'seam/subagents': [{ id: 'test/sub-b', disabled: true }] }));
+    const b = assembleAgent('p2a-sub-B', compositionWith({ 'seam/subagents': [{ id: 'test/sub-a', disabled: true }] }));
+
+    expect((await a.agent.spawnSubAgent('t', 'p')).text).toBe('(test/sub-a) t');
+    expect((await b.agent.spawnSubAgent('t', 'p')).text).toBe('(test/sub-b) t');
+
+    await a.ctx.dispose();
+    await b.ctx.dispose();
+    disposeB();
+    disposeA();
+  });
+
+  it('⑪ loopEvents 观测面按本 Agent 的组合裁剪（同一次 spawn，两卷观测面不同）', async () => {
+    const root = await ensureProductionChannelsBooted();
+    const dispose = root.subagents.register(fakeSubagents('test/sub-events'));
+    const a = assembleAgent(
+      'p2a-ev-A',
+      compositionWith({ 'seam/loopEvents': [{ id: 'subagent/spawn', disabled: true }] }),
+    );
+    const b = assembleAgent('p2a-ev-B', compositionWith({}));
+
+    const seenA: string[] = [];
+    const seenB: string[] = [];
+    a.agent.onLoopEvent('subagent/spawn', () => seenA.push('spawn'));
+    a.agent.onLoopEvent('subagent/done', () => seenA.push('done'));
+    b.agent.onLoopEvent('subagent/spawn', () => seenB.push('spawn'));
+    b.agent.onLoopEvent('subagent/done', () => seenB.push('done'));
+
+    // 同一个发射路径（Agent.spawnSubAgent 的三处 emit 调用点零改动）
+    await a.agent.spawnSubAgent('t', 'p');
+    await b.agent.spawnSubAgent('t', 'p');
+
+    expect(seenA).toEqual(['done']); // A 卷裁掉 spawn，done 照常
+    expect(seenB).toEqual(['spawn', 'done']);
+
+    await a.ctx.dispose();
+    await b.ctx.dispose();
+    dispose();
+  });
+
+  it('⑫ 生命周期与哨兵：dispose 后回落全局；无 owner 的直调读全局当前选择', async () => {
+    const root = await ensureProductionChannelsBooted();
+    resetSeamDisabled(); // 前提显式化：全局当前选择 = 未裁剪
+    const calls: string[] = [];
+    const disposeMem = root.fs.register(memoryFsProvider(calls));
+    const { ctx, agent } = assembleAgent(
+      'p2a-life',
+      compositionWith({ 'seam/fs': [{ id: 'test/late-fs', disabled: true }] }),
+    );
+    const tool = createFsTools(stubExec).find((t) => t.name() === 'read_file_content');
+
+    // 卷级：本卷裁掉替换实现 ⇒ 本地实现
+    expect(await tool!.execute({ filePath: '/x', _owner_id: agent.id })).toBe('stub');
+    // 哨兵：无 owner（无组合上下文的旧路径 / UI 直调）⇒ 全局当前选择（未裁剪 ⇒ 后注册胜）
+    expect(await tool!.execute({ filePath: '/x' })).toBe('(late-fs) read');
+    // 拆卷：作用域随 ctx.dispose 清行 ⇒ 同一 owner 回落全局
+    await ctx.dispose();
+    expect(await tool!.execute({ filePath: '/x', _owner_id: agent.id })).toBe('(late-fs) read');
+    expect(calls).toEqual(['read', 'read']);
+
+    disposeMem();
   });
 });

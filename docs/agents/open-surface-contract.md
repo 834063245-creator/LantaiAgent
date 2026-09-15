@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：35
+当前版本：36
 
-<!-- contract-fingerprint: 2d67ca89fe0deaa7aa8cb4c2f69f92b2ca1c596f6df1d8161174ce356596cf88 -->
+<!-- contract-fingerprint: 0c9d40e8c2a4c7f0bb48d0237714ba4e22918f9bc023c792f79d50b5605d5915 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -23,7 +23,7 @@
 | `src/composition/shell-service.ts` | `ctx.shell`（`ShellProvider` / `ShellAction` 四动作；subprocess 并入） |
 | `src/composition/session-persistence-service.ts` | `ctx.sessionPersistence`（`SessionPersistenceProvider` 四动词 read_volume/list_volumes/save_volume/delete_volume + `sessionExecute` 消费单点 + Service.execute） |
 | `src/composition/subagent-service.ts` | `ctx.subagents`（`SubagentProvider` / `SubAgentSpawnArgs·Outcome`） |
-| `src/composition/seam-resolution.ts` | seam 裁剪面（`SEAM_DOMAINS` 六域 / `SeamDisabledMap` / patch `seam/<域>` 域契约） |
+| `src/composition/seam-resolution.ts` | seam 裁剪面（`SEAM_DOMAINS` 六域 / `SeamDisabledMap` / patch `seam/<域>` 域契约 / **v36 起 `seamDisabled(domain, view?)` 的可选 view**——缺省 = 全局当前选择） |
 | src/agent/events.ts | D4 事件面（AGENT_EVENT_MAP mode 表 / LoopEventPayload 载荷形状 / 监听契约） |
 | src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
 | src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
@@ -78,6 +78,8 @@
 | 34 | 2026-09-15 | **工具副作用前检查点（换轨触发点 B）**：默认 loop 构造执行器时注入 host.sessionLog.flushPersistence() 作为 await 钩子——args 解析完成、闸/预检之前把「此刻已知的会话事实」推到盘上（增量写，通常几 KB append），失败 fail-open + executor 内 warn 可见（设计件 §3.3 的裁决）。**契约形状零变更**（AgentLoopHost 成员未动；第三方 loop 自管工具执行不受影响）。同版 SessionLog 增 setPersistenceSink/lushPersistence（日志自己回答「我落盘了吗」，避免 agent→app 反向依赖）。**未做（需审批）**：	ool/call 审计事件提前到分发时落——兰台执行器在流期间就跑工具，改顺序会漂移 phase-5 事件序列基线，须走 baseline-change-request | DSH session-checkpoint-policy 的 	ools/execute 前置 flush（packages/session/session-checkpoint-policy/src/index.ts:70-75） |
 
 | 35 | 2026-09-15 | **	ool/call 前移到分发时落（触发点 B 收官）**：默认 loop 注入的检查点钩子先 append 	ool/call 再 lushPersistence()——「模型宣布了什么」在副作用发生前落盘（兰台执行器在流期间就跑工具，此前流收尾才记，崩溃后恢复链看不到痕迹）；default-loop 两处流收尾的重复追加删除（单一写入点）。**契约形状零变更**、**模型可见面零变化**（	ool/call 无消息投影，deriveMessages/前缀缓存不受影响）；事件**序列**变化 ⇒ phase-5 事件序列基线**两轨重录**（已批准：docs/archive/agent-core-convergence/baseline-change-request.md「tool/call 前移」条目） | DSH session-checkpoint-policy 的 	ools/execute 前置 flush（packages/session/session-checkpoint-policy/src/index.ts:70-75）+ 用户 2026-09-15 批准 |
+
+| 36 | 2026-09-15 | **S6 P2a seam 裁剪面装配期值注入（per-Agent 裁剪面）**：`seamDisabled(domain, view?)` 新增可选 `view`——**缺省 = 全局当前选择**（`composition-store` 三 setter 灌入的模块态降级为**无组合上下文的兜底面**）；`activeFsProviders` / `activeShellProviders` / `activeSubagentProviders` 同款收可选 `view`；`AgentEventBus` 新增 `setSeamView()`——每 Agent 一条总线，`emitLoopEvent` 读本总线视图（**emit 调用点零改动**：`default-loop` 7 处 + `Agent.spawnSubAgent` 3 处一字未动）。**对外可感知**：同一份 seam 注册表 + 一次工具实例，两卷可按各自组合走不同 provider（fs/shell 按 executor 注入的 `_owner_id` 查装配期登记的裁剪面——携带层 `composition/seam-scope.ts`）；**未传 view 的旧调用面（UI 直调 / 无 agent 的工具路径 / 第三方 provider 自测）行为逐字不变** ⇒ convergence 双轨快照零漂移（出厂 standard/minimal 的 `seamDisabled` 构造性为空，证明是构造性的而非事后观察）。`sessionPersistence` 单点**本版不动**（per-volume 后端要读也按该卷组合，而读盘时点组合尚未解析 ⇒ 需「卷→组合」外部索引，另立批次）。新增携带层是**键控叶模块**（零项目内运行时依赖；叶性由 `tests/composition-import-cycle.test.ts` 钉住），不入本清单 | S6-per-agent-composition.md P2a（施工单 `WO-S6P2-seam-value-injection.md` §7 用户逐项裁定：A 携带路径取 owner 键控表——fs/shell 族实例经 `familyContributions` 锁存首次装配 rowCtx，扩字段对这两族结构性无效；B 不新增 convergence 快照；D sessionPersistence 本批不做） |
 
 ## 变更流程（guard 红 → 修复四步）
 

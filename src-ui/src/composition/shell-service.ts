@@ -18,7 +18,7 @@
 import type { ToolExecutor } from '../agent/tool';
 import { type Context, Service } from '../cordis';
 import { ContributionChannel } from './contribution-channel';
-import { seamDisabled } from './seam-resolution';
+import { type SeamDisabledMap, seamDisabled } from './seam-resolution';
 
 /** shell 域动作（执行 + 后台任务族三动词）。 */
 export type ShellAction = 'run' | 'output' | 'kill' | 'wait';
@@ -74,9 +74,10 @@ export function registeredShellProviders(): ShellProvider[] {
 }
 
 /** 当前 shell provider 贡献（无服务/无注册 = 空集——工具消费面的「后注册胜」扫描源）。
- *  裁剪面（平台化 Phase 3）：组合 `seam/shell` 域禁用的 provider id 从视图剔除。 */
-export function activeShellProviders(): ShellProvider[] {
-  const disabled = seamDisabled('shell');
+ *  裁剪面（平台化 Phase 3）：组合 `seam/shell` 域禁用的 provider id 从视图剔除。
+ *  view（S6 P2a）= 调用方所属组合的裁剪面；**缺省 = 全局当前选择**（旧路径零漂移）。 */
+export function activeShellProviders(view?: SeamDisabledMap | null): ShellProvider[] {
+  const disabled = seamDisabled('shell', view);
   return registeredShellProviders().filter((p) => !disabled.has(p.id));
 }
 
