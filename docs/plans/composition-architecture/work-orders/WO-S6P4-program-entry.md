@@ -1,13 +1,14 @@
 # WO-S6P4 — 程序入口（按组合起卷 · 拒绝语义 · 评测自举定位）
 
-> **状态：草案待裁定（§7 十道判断题；裁定后开工）。本单只立施工面，未动一行代码。**
+> **状态：✅ 十道判断题已于 2026-09-16 全部裁定（用户原话「全部按推荐施工」——逐条裁定见 §7 末尾裁定记录）；
+> 执行中：P4a 入口 + 拒绝语义 → P4b 收官写回 → 附笔「`tests/ab` 化石整删」。**
 > 上级设计件：[`designs/S6-per-agent-composition.md`](../designs/S6-per-agent-composition.md)
 > §2 序列 C（程序指定组合）+ §3.3（优先级链：显式参数 > 卷级 > 全局默认）+ §4 P4 行 + §6 R7（鉴权论证）。
-> 前置批次：P-1 / P0.5 / P0 / P1(a-e) / P2(a/b) / P3(a-d) 全部落地（HEAD `0eab879e`；
+> 前置批次：P-1 / P0.5 / P0 / P1(a-e) / P2(a/b) / P3(a-d) 全部落地（开工时 HEAD `77ad6fe7`；
 > P3 施工实测环境事实见设计件 §8.3，P4 会踩到其中第 1/3/4/6 条）。
 > 规则优先级：`docs/adr/project-constitution.md` > `INVARIANTS.md` > `CONVENTIONS.md` > `AGENTS.md` > 本单。
 >
-> **本单先给结论、再给施工；末尾 §7 是十道需要用户裁定的判断题。**
+> **本单先给结论、再给施工；§7 的十道判断题已裁定。**
 > **动手前先读 §1.6（实测缺陷）与 §1.3（三条硬约束）——它们决定本题能不能按设计件的字面做。**
 
 ---
@@ -292,6 +293,21 @@ export async function createSessionWithPreset(
 
 > **若第 1 题不选形态甲**：请同时裁定「契约升级到 v40」的落点（形态乙：`gen:catalogs:service` + 开放面契约四步流程；
 > 形态丙：`frontend-rpc-contract.md` + `SECTIONS` 表 + 可能的 `platform_boundary_test` 基线 + commit 标注「强制层改动 + 宪法审查」）。
+
+### 裁定记录（2026-09-16，用户原话「我大概看了一下，全部按推荐施工，开工吧」）
+
+| # | 裁定 | 落地含义 |
+|---|---|---|
+| 1 | **形态甲** | 入口 = `app/chat/session-composition.ts` 的 `createSessionWithPreset`；**不新增 Rust 命令、不新增 ctx 键、不动开放面契约（仍 v39）** |
+| 2 | **单次装配** | `ui/chat-session.ts` `createNewSession` 加可选 `{ presetId }`（发号后、调工厂前登记）+ 返回值改 `number \| null`——**冻结文件改动已获用户点头** |
+| 3 | **只收 `presetId`（id）** | 不接受内联组合；程序自带组合的唯一通道 = 先落 preset 到用户目录再按 id 起卷 |
+| 4 | **落卷** | 显式参数在创建瞬间写入卷级登记，成为该卷记录（单一真源） |
+| 5 | **严一档 + 拒绝即不建卷** | 用 `sessionSelectionError`；不可解析/无工作区 = 拒绝 + 具名原因，**零副作用**，不静默回退 |
+| 6 | **不加模型可见工具参数** | 不碰 `model-tool-contract.md` / convergence 快照 / 子 Agent 父子同面契约 |
+| 7 | **本批不接外部协议** | ACP / 兰台作 MCP server 整条留独立批次；连 `session/new` 的 `preset` 参数也不预留（不造空栏化石） |
+| 8 | **① 评测自举拆独立批次；② `tests/ab` 化石顺带整删** | ② 落为独立一笔（先于 P4a），不混进产品面 commit |
+| 9 | **鉴权不联动** | 不新增权限语义分支；组合面只在已登记面内裁剪/回开 |
+| 10 | **进程内行为测试** | 本批不加真机 cdp e2e；真机验收随 P5（卷头 chip）交用户 |
 
 ---
 
