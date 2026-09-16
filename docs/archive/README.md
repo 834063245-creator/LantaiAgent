@@ -35,6 +35,10 @@
     `tool-ergonomics-notes.md` + `tool-ergonomics/`（design-1-context-waist · design-2-session-focus；工具层人体工学 T-1/T-2）。
   - 各件顶部已加「已归档（2026-09-16 · 文档面重构）」横幅 + 现状指针；引用面同步到 `docs/archive/…`
     （含 `INVARIANTS.md` / `docs/adr/` / `docs/agents/open-surface-contract.md` / 计划索引与施工史）。
+- **2026-09-16 归档（dsh-bundle 3D 视图拆除）**：`dsh-viewer-phase2-design.md`（阶段 2 设计定稿：复用兰台渲染内核
+  只换数据源）、`dsh-viewer-phase2-integration.md`（client-plugin 集成规格 + `/hologram` 自托管形态）——
+  该视图随主仓图谱渲染内核退役（2026-08-19 → 09-09 三步）从 `dsh-bundle` 拆除，包自此只发「引擎 + MCP 工具面」；
+  两份顶部均已加归档横幅，其中 client-plugin 机制一节仍是可复用的机制事实。
 
 ## 使用规则
 

@@ -66,7 +66,7 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', 'target', '.workbuddy', '.cod
 /** 树内 README（各源码目录下的目录契约文件）：**报道不上牙**的作用域。
  *  理由：它们同样会漂（实测先例 = src-ui/src/ui/README.md 自称 16 文件、引用已删模块），
  *  但把它们纳入硬门禁会让「改代码」的 commit 被文档债拦住 ⇒ 先做可见性，不动交付节奏。 */
-const ADVISORY_ROOTS = ['src-ui/src', 'src-ui/tests', 'src-tauri/src', 'engine/src', 'hologram-graph/src', 'hologram-storage/src', 'hologram-vector/src', 'dsh-bundle/viewer', 'examples'];
+const ADVISORY_ROOTS = ['src-ui/src', 'src-ui/tests', 'src-tauri/src', 'engine/src', 'hologram-graph/src', 'hologram-storage/src', 'hologram-vector/src', 'examples'];
 
 function listAdvisoryReadmes() {
   const out = [];

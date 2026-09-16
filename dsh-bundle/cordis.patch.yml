@@ -1,8 +1,9 @@
 # hologram-dsh — HoloGram as a DeepSeek Harness bundle.
 #
-# Phase 1: wire the HoloGram engine as an MCP server so its 33 code-graph
-# analysis tools become available to the DSH agent under the `hologram__*`
-# namespace.
+# Wire the HoloGram engine as an MCP server so its code-graph analysis tools
+# become available to the DSH agent under the `mcp__hologram__*` namespace
+# (DSH derives the prefix from `serverName` below). Tool面清单以生成物
+# docs/agents/engine-plugin-contract.md 为准——此处不复述数量。
 #
 # The `hologram-engine` row is this bundle's node-half glue plugin. It
 # resolves the bundled engine binary path (an install-time fact of THIS
@@ -30,7 +31,7 @@
       config:
         transport: stdio
         serverName: hologram
-        command: !!js ctx.lantaiEngine.bin
-        args: !!js ctx.lantaiEngine.serveArgs
-        env: !!js Object.assign({}, ctx.lantaiEngine.env)
+        command: !!js ctx.hologramEngine.bin
+        args: !!js ctx.hologramEngine.serveArgs
+        env: !!js Object.assign({}, ctx.hologramEngine.env)
         failOnStartupError: false

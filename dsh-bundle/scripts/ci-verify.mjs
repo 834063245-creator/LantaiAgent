@@ -1,7 +1,10 @@
 // ci-verify.mjs — dsh-bundle push CI 的包完整性校验。
 // 不随 npm 包发布（package.json files 白名单不含本文件），只在 CI 使用。
+//
+// 2026-09-16：3D 视图（viewer + client 半）随图谱渲染内核退役拆除——本包只发
+// 引擎 + MCP 工具面，校验项同步去掉 lib/client.js 与 viewer/dist。
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
@@ -10,9 +13,6 @@ const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
 
 const required = [
   'lib/index.mjs',
-  'lib/client.js',
-  'lib/client.js.map',
-  'viewer/dist/index.html',
   'cordis.patch.yml',
   'scripts/install.mjs',
   'README.md',
@@ -25,8 +25,6 @@ const check = (cond, msg) => { if (!cond) failures.push(msg) }
 for (const f of required) {
   check(existsSync(join(ROOT, f)), `missing build artifact: ${f}`)
 }
-const assets = join(ROOT, 'viewer', 'dist', 'assets')
-check(existsSync(assets) && readdirSync(assets).some(f => f.endsWith('.js')), 'viewer dist/assets must contain at least one JS chunk')
 
 // Windows 本机 npm 是 npm.cmd，不走 shell 会 spawnSync ENOENT（CI 的 ubuntu 不受影响）。
 // 参数全是固定字面量，无注入面；开 shell 让本机也能直接把本脚本当本地门禁跑。
@@ -39,9 +37,6 @@ const [pack] = JSON.parse(packJson)
 const packed = new Set(pack.files.map(f => f.path))
 for (const f of required) {
   check(packed.has(f), `npm pack is missing expected file: ${f}`)
-}
-for (const f of ['lib/client.js', 'lib/client.js.map']) {
-  check(!f.includes('..'), 'unexpected path')
 }
 
 // 2. 壳包必须保持轻量（引擎二进制/大样例不进 npm 包）
@@ -67,11 +62,14 @@ for (const [spec, target] of Object.entries(pkg.exports ?? {})) {
   }
 }
 
-// 5. client 入口仍保持 DSH __ModuleLoader__ 闭包契约
-const client = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8')
+// 5. bundle 契约：cordis.patch.yml 必须存在且仍注入 hologram-mcp 行
+const patch = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8')
+check(patch.includes('@deepseek-ai/dsh-mcp-client'), 'cordis.patch.yml no longer wires the MCP client row')
+// 服务名必须与 src/index.ts 的 provide(SERVICE) 一致——曾因改名机械替换漂成 lantaiEngine，
+// 导致 MCP 行拿不到二进制路径、引擎静默不拉起（2026-09-16 修）。
 check(
-  client.includes('window.__ModuleLoader__.load({') && client.includes('id: "hologram-dsh"'),
-  'client.js lost __ModuleLoader__ wrapper contract',
+  patch.includes('ctx.hologramEngine.') && !patch.includes('ctx.lantaiEngine.'),
+  'cordis.patch.yml must reference ctx.hologramEngine.* (the service name src/index.ts provides)',
 )
 
 if (failures.length > 0) {

@@ -156,7 +156,7 @@
 
 | # | 位置 | 雷 | 触发 → 后果 | 状态 |
 |---|------|----|------------|------|
-| B3 | `.github/workflows/release.yml` 的 5 处 `cp release-bin/...`（L54/55/63/64/65） | B2 的**反向形态**：这次是「资产删了、引用没删」。`release-bin/`（`hologram` wrapper + `install.sh` + `install.cmd`）已在 `5741e457`（engine-plugin-extraction §8 旧时代残留清理）物理删除，而 release 工作流仍在从它拷贝 | release 的 staging 步骤按现状会失败（`cp` 源不存在）⇒ 发布在打包前就断；同时 README 旧文还在教用户「双击 `install.cmd` / `./install.sh --user`」（已随本次文档面重构删除） | ⏸ **待用户拍板**（对外发布面 = §0.5 三类保留问题之一）：发布包还要不要 `hologram` CLI wrapper 与安装脚本？**要** ⇒ 重建 `release-bin/`（或改从构建产物取引擎 + 重写脚本）并同批校对 release.yml；**不要** ⇒ 删这 5 行 + 收口发布说明。README 已先按「不要」写（只留 MSI/NSIS 安装 + 引擎 CLI 起法），拍板后与之对齐 |
+| B3 | `.github/workflows/release.yml` 的 5 处 `cp release-bin/...`（L54/55/63/64/65） | B2 的**反向形态**：这次是「资产删了、引用没删」。`release-bin/`（`hologram` wrapper + `install.sh` + `install.cmd`）已在 `5741e457`（engine-plugin-extraction §8 旧时代残留清理）物理删除，而 release 工作流仍在从它拷贝 | release 的 staging 步骤按现状会失败（`cp` 源不存在）⇒ 发布在打包前就断；同时 README 旧文还在教用户「双击 `install.cmd` / `./install.sh --user`」（已随本次文档面重构删除） | ✅ **已收口（2026-09-16，用户拍板「不要」）**：删掉那 5 行——引擎包只发裸二进制（`hologram-engine` / `.exe`），wrapper 与安装脚本不再重建（它们发的是已退役的 `hologram` 旧 CLI 名，且与 dsh-bundle 的 `install.mjs` 职责重叠）。发布说明与 README「引擎 CLI」一致 |
 
 **家族纪律（B1 + B2 合并）**：**退役一个随包资产 = 三面一起过**——
 ① 消费侧接线（删/改代码）；② 分发侧打包（`tauri.conf.json` resources + 构建链）；
@@ -309,7 +309,7 @@ UI 投影缓存（陈旧即重建）**。计划与施工记录见 `docs/plans/se
 |---|---|---|---|
 | 1 | `src-ui/src/ui/README.md` | 自称「现 16 文件」（实测 **14**：13 ts + README）；且三处引用**已删模块**——「星图类型变更走 `src/scene/graph-types.ts`」、文件簇表里「位置兼容 shim `graph.ts`」、依赖方向图里的 `scene/`。`src/scene/` 目录与 `graph-types.ts`、`ui/graph.ts` 均已随图谱多轮 sweep 整删 | ✅ 本批改：计数改实测值、删 shim 行、依赖方向去掉 `scene/`，并加一条硬约束「不要再新增星图类型或 shim」 |
 
-### 待立批（证据齐，需用户拍产品面去留）
+### 已裁定（2026-09-16 · 用户拍板 A「拆掉」）
 
 **`dsh-bundle/viewer` 的构建链已断**——它是 HoloGram 的 DSH 侧 3D 视图，**不维护内核副本**而是直接构建 src-ui 的 graph 模块：
 
@@ -317,7 +317,16 @@ UI 投影缓存（陈旧即重建）**。计划与施工记录见 `docs/plans/se
 - `viewer/vite.config.ts:19` 把 `@hologram-kernel/*` alias 到 `../../src-ui/src/ui`；
 - 而 `src-ui/src/ui/` 现仅 14 个文件（chat 编排 + 旧层基础设施），**无 `graph.ts` / `graph-types.ts` / 任何渲染子模块**（C13 sweep 删渲染面、`51047f99` 图谱全量退役删 `scene/`）；
 - ⇒ 该 viewer **构建必失败**；而 CI 的 `dsh-bundle` job 里有 `Build viewer (src-ui graph kernel, no vendored copy)` 步骤（`.github/workflows/ci.yml`），release 工作流也带 `dsh-bundle`。
-- **待裁定（用户）**：DSH 插件（`@a834063245/hologram-dsh`）还在不在产品面上？在 ⇒ 要给 viewer 换内核（引擎图数据经 MCP 取，自己只留渲染）或恢复最小渲染面；不在 ⇒ 连同 npm 包与 CI job 一起退役（本仓对「已在产品面消失的能力」的既定处置就是拆干净）。
+
+**裁定与收口（2026-09-16）**：DSH 插件留在产品面，**3D 视图整量拆除**——
+删 `dsh-bundle/viewer/`（vite 应用 + stubs + fixture）、`src/client/index.tsx`（侧栏入口半）、`tsdown.client.config.ts`、
+`scripts/dump-graph.mjs`（viewer fixture 导出）；host 半（`src/index.ts`）去掉 `/hologram` 静态托管 + `/hologram/api/graph`
++ 9777 TCP 数据面（`serve` 只留 stdio MCP）；`package.json` 去掉 `./client` 导出、viewer 产物与 `three`/`vite` 依赖；
+CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**——原先 viewer 构建排在 `npm publish` 之前，任务必红）；
+两份阶段 2 施工记录归档到 `docs/archive/dsh-viewer-phase2-*.md`。
+本包自此只发「引擎 + MCP 工具面」；将来要 3D 星图 = 新立项（自包含渲染，不 alias 已删模块）。
+同批修复：`cordis.patch.yml` 的服务名错配（`ctx.lantaiEngine.*` → `ctx.hologramEngine.*`，`3e18cce3` 改名时机械替换引入；
+该错配使 MCP 行拿不到二进制路径、引擎静默不拉起），并给 `scripts/ci-verify.mjs` 加一条对拍断言防复发。
 
 ### 待核实（证据不足，勿按化石删）
 

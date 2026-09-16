@@ -46,13 +46,13 @@ jobs:
         run: cargo build --release
         working-directory: engine
 
+      # 2026-09-16：release-bin/（`hologram` wrapper + install.cmd/install.sh）已删除——
+      # 引擎包只发裸二进制，用法见 README「引擎 CLI」。B3 收口，见 docs/landmine-map.md。
       - name: Stage artifacts (Linux)
         if: runner.os == 'Linux'
         run: |
           mkdir -p staging
           cp engine/target/release/hologram-engine staging/
-          cp release-bin/hologram staging/
-          cp release-bin/install.sh staging/
           tar -czf ${{ matrix.artifact }}.tar.gz -C staging .
       - name: Stage artifacts (Windows)
         if: runner.os == 'Windows'
@@ -60,9 +60,6 @@ jobs:
         run: |
           mkdir -p staging
           cp engine/target/release/hologram-engine.exe staging/
-          cp release-bin/hologram.cmd staging/
-          cp release-bin/hologram staging/
-          cp release-bin/install.cmd staging/
           cd staging && 7z a -tzip ../${{ matrix.artifact }}.zip .
 
       - name: Generate changelog
@@ -121,19 +118,6 @@ jobs:
       - name: Build host plugin
         working-directory: dsh-bundle
         run: npx tsdown --config tsdown.config.ts
-
-      - name: Build client plugin
-        working-directory: dsh-bundle
-        run: npx tsdown --config tsdown.client.config.ts
-
-      - name: Install viewer build deps (src-ui)
-        working-directory: src-ui
-        run: npm ci || npm install --no-audit --no-fund
-
-      - name: Build viewer
-        shell: bash
-        working-directory: dsh-bundle/viewer
-        run: node ../../src-ui/node_modules/vite/bin/vite.js build
 
       - name: Align package version to tag
         shell: bash

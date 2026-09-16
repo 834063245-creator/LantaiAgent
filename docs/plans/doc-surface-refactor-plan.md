@@ -85,7 +85,7 @@
 - 复核纠正一处子代理结论：权限裁决是**四态**（`PermissionResult` = Allow / Deny / Ask / Passthrough，
   真源 `src-tauri/src/permissions/mod.rs:111`），README 已按四态写。
 - `docs/landmine-map.md` 第八批审计：`src-ui/src/ui/README.md` 陈旧计数与死引用已修；`dsh-bundle/viewer`
-  构建链已断（待用户拍产品面去留）；根 `.lantai/` 残留目录待取证。
+  构建链已断（**2026-09-16 收口：整量拆除，见下 §4.6**）；根 `.lantai/` 残留目录待取证。
 - **豁免账：P2 类目清零**（facts-arch-31 / facts-readme-domains / size-current-layer / links-landmine /
   facts-plugins-29 / orphans-top / size-design-spec / size-landmine / size-open-surface 全部清偿）。
 
@@ -175,8 +175,10 @@ archive 查只看计划头部 15 行的「已竣工/已归档」**字面量**，
 
 4. **机器可读状态行**：给 `plans/` 每个计划定一行 `> 状态：在办 | 在产设计件 | 搁置 | 竣工（日期）`，
    doc-check 按它判归档（取代现在的散文分类）——这是把第 1 条的「兜底网」升级成「完备判定」的正路。
-5. **对外发布面两处待用户拍板**（记 `docs/landmine-map.md` 第八批）：`release-bin/` 缺失致 release staging
-   断链（B3）· `dsh-bundle/viewer` 构建链已断。
+5. ✅ **对外发布面两处待用户拍板 → 2026-09-16 全部收口**（记 `docs/landmine-map.md` 第八批）：`release-bin/`
+   缺失致 release staging 断链（B3，裁定「不要」⇒ 删那 5 行，引擎包只发裸二进制）· `dsh-bundle/viewer`
+   构建链已断（裁定「拆掉」⇒ viewer + client 半 + `/hologram` 路由 + 9777 数据面整量拆除，npm 发布链随之解堵；
+   同批修掉 `cordis.patch.yml` 的服务名错配）。详见 `docs/landmine-map.md` B3 与「已裁定」节。
 6. **树内 README 顾问查**：13 份 `src/**/README.md` 走「报道不上牙」通道（改代码的 commit 不该被文档债
    拦住），现为 0 问题；是否上牙待定。
 

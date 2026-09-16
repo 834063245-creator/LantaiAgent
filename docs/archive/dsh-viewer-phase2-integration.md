@@ -1,6 +1,10 @@
 # 阶段2 · 3D 视图接进 DSH web —— client-plugin 集成规格（唯一事实来源）
 
-> 状态：渲染 + 实时数据链 + 侧边栏入口全部跑通并内嵌 DSH（/hologram 同源自托管）。
+> **已归档（2026-09-16）**：3D 视图（viewer + client 半 + `/hologram` 同源路由 + 9777 数据面）已随主仓图谱
+> 渲染内核退役从 dsh-bundle 拆除，本文是当时的集成记录，**不是现状**；其中「DSH client-plugin 机制」一节
+> 仍是可复用的机制事实（closure-factory 契约 / 槽位研究）。现状见 `docs/landmine-map.md`。
+>
+> 状态（当时）：渲染 + 实时数据链 + 侧边栏入口全部跑通并内嵌 DSH（/hologram 同源自托管）。
 > 本文件是机制事实来源与恢复步骤。
 
 ## DSH client-plugin 机制（已验证的事实）
