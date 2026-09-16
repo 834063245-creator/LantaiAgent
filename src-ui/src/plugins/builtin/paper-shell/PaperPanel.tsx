@@ -175,7 +175,7 @@ const BlockView = memo(function BlockView({
   block: SourcedBlock;
   /** 文类签机读序号（卷内流水号，三位补零） */
   seq: string;
-  /** 消息操作（hover 浮现）——user 块编辑/重发，assistant 块重试，全部可抄录（施工单 #5） */
+  /** 消息操作（hover 浮现）——user 块编辑/重发，全部可抄录（施工单 #5） */
   ops: BlockOp[];
   /** 有效折叠态（壳层：用户覆盖 ?? paper/fold 默认规则）——夹注/脚注/程文消费 */
   folded: boolean;

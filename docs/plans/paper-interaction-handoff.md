@@ -45,7 +45,7 @@ PaperPanel 书眉承接设置），但清单不全：**Agent 工作流刚需的�
 | 2 | plan-approval-ui | 审批按钮 | 卡片只有展示无交互 | PlanBody 渲染 批准/修改/拒绝 + 方案选择，点击调 callback | ✅ |
 | 3 | plan-exit-timeout | exit_plan_mode Promise | 审批 UI 丢失/损坏即永久死锁 | 加超时/兜底 resolve（参考 PromptShelf CARD_TIMEOUT_MS），别无限期挂起 | ✅ |
 | 4 | stop-button | chat-core.abort() | Agent 跑飞无法硬停；plan 卡死时无暴力兜底 | 纸壳 composer/书眉接入停止按钮（exec.isRunning 驱动） | ⬜ |
-| 5 | message-ops | edit/resend/retry/copy 回调 | 打错字没法改，答废没法重试 | 纸块加消息操作入口（user 块可编辑/重发，assistant 块可重试） | ⬜ |
+| 5 | message-ops | edit/resend/copy 回调 | 打错字没法改，答废没法重发 | 纸块加消息操作入口（user 块可编辑/重发）。答块原带「重试」——与来文块「重发」同轨冗余，2026-09-16 用户裁定删除（`retryAssistant`/`canRetryAssistant` 同批拆干净） | ⬜ |
 | 6 | dataflow-display | bumpDataflowSaved 信号 | 面板拆了，信号白发 | 决定：纸面块展示 or 信号退役（二选一，不养死信号） | ⬜ |
 | 7 | slash-at-composer | SlashPanel/AtAutocomplete 注册槽 | 拆除承诺"待纸壳复用"未兑现，裸 textarea | composer 接入斜杠命令 + @提及（复用 chat-core 解析） | ⬜ |
 | 8 | plan-mode-ui-switch | "界面直接切换到执行模式"文案 | 虚承诺：无此入口 | 实现书眉 plan 模式切换，或改文案删承诺（二选一） | ⬜ |

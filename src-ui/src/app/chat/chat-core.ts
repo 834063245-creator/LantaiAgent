@@ -44,7 +44,7 @@ import {
 } from '../../ui/chat-store';
 import * as Stream from '../../ui/chat-stream';
 import { type CommandDef, CommandRegistry, DEFAULT_COMMANDS } from '../../ui/command-registry';
-import { type AssistantMessage, type ChatMessage, resetMsgIdCounter, type UserMessage } from '../../ui/message-model';
+import { type ChatMessage, resetMsgIdCounter, type UserMessage } from '../../ui/message-model';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
 import {
   admitImageBlob,
@@ -933,10 +933,6 @@ export class ChatCore {
     const sid = this.activeSessionId;
     return sid != null && Session.canRetraceUserTurn(this.panelId, sid, msg._id);
   }
-  canRetryAssistant(assistant: AssistantMessage): boolean {
-    const userMsg = this.messages.find((m): m is UserMessage => m.role === 'user' && m._id === assistant.respondingTo);
-    return userMsg != null && this.canRetraceUserMessage(userMsg);
-  }
 
   private async exportSession(): Promise<void> {
     return Session.exportSession(this._sessionCtx());
@@ -1627,7 +1623,7 @@ export class ChatCore {
     this._composer?.focus();
     this._composer?.selectEnd();
   }
-  /** 「重发」：撤旧轮（含其回复）+ 原文本立即新发。「重试」同轨。 */
+  /** 「重发」：撤旧轮（含其回复）+ 原文本立即新发。 */
   resendUserMessage(msg: UserMessage): void {
     if (this._activeExec().isRunning) {
       showToast('Agent 正在运行，请先停止再重发', 'warn');
@@ -1639,16 +1635,6 @@ export class ChatCore {
     }
     getChatStore(this.panelId).input.getState().setInputText(msg.text);
     this.sendMessage();
-  }
-  /** 「重试」：撤旧轮 + 原文本重发——与重发同轨（旧实现不撤轮直接叠一轮）。 */
-  retryAssistant(assistant: AssistantMessage): void {
-    if (this._activeExec().isRunning) {
-      showToast('Agent 正在运行，请先停止再重试', 'warn');
-      return;
-    }
-    const userMsg = this.messages.find((m): m is UserMessage => m.role === 'user' && m._id === assistant.respondingTo);
-    if (!userMsg) return;
-    this.resendUserMessage(userMsg);
   }
 
   // ── @ file reference autocomplete（视图注册控制器，core 转发）──

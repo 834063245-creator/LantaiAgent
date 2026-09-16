@@ -461,7 +461,7 @@ describe('撤回/重发 ID 直达（2026-09-01 重发锚点工程）', () => {
   });
 });
 
-describe('改/重发/重试三操作语义（ChatCore 级，2026-09-01 重发锚点工程）', () => {
+describe('改/重发两操作语义（ChatCore 级，2026-09-01 重发锚点工程）', () => {
   let panel: ChatCore;
 
   beforeEach(() => {
@@ -554,17 +554,6 @@ describe('改/重发/重试三操作语义（ChatCore 级，2026-09-01 重发锚
     const after = uiMsgs(p);
     expect(after.some((m) => m.role === 'user' && m._id !== 'm1')).toBe(true);
     expect(after.some((m) => m._id === 'm1' || m._id === 'a1')).toBe(false);
-  });
-
-  it('重试：与重发同轨（撤旧轮 + 原文本重发）', async () => {
-    const { p, run } = seedLive();
-
-    const a1 = uiMsgs(p).find((m) => m.role === 'assistant') as any;
-    p.retryAssistant(a1);
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(run).toHaveBeenCalledWith(expect.anything(), '第一问', undefined);
-    expect(uiMsgs(p).some((m) => m._id === 'a1')).toBe(false);
   });
 
   it('运行中拦截：不撤回、不发送、不抄文本', async () => {

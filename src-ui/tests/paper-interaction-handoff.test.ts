@@ -120,9 +120,9 @@ const PROBES: DeadLinkProbe[] = [
   },
   {
     id: 'message-ops',
-    note: '#5 消息操作（复制/编辑/重发/重试）回调在 chat-core 活着，纸壳无入口',
+    note: '#5 消息操作（复制/编辑/重发）回调在 chat-core 活着，纸壳无入口',
     isDead: () =>
-      !/editUserMessage|resendUserMessage|retryAssistant|copyText/.test(
+      !/editUserMessage|resendUserMessage|copyText/.test(
         readAllTs(APP, ['chat-core.ts']) +
           readAllTs(join(BUILTIN, 'paper-shell')) +
           readAllTs(join(BUILTIN, 'compose-dock')) +
