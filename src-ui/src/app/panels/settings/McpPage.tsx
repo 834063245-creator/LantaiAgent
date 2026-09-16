@@ -26,6 +26,7 @@ import {
 import { type McpServerDecl, McpServerDeclSchema } from '../../../plugins/types';
 import { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../../plugins/user-mcp';
 import { kernelReadFile, kernelWriteFile } from '../../../rpc-contract';
+import { describeReceipt, useBundledEngineStore } from '../../../state/bundled-engine-store';
 
 /** 展示用标签（人看的写法）。**实际读写一律用 `resolveUserMcpJsonPath()` 的绝对路径**：
  *  字面量 `~` 曾因 fs 层不展开波浪号而让本页读写全链路静默失败（2026-09-13 修，见
@@ -221,12 +222,20 @@ function NewMcpServerForm({ onSaved, onError }: { onSaved: () => void; onError: 
 
 /** 随包图谱引擎（engine-bundled-mcp-distribution，2026-09-16）——方案乙：
  *  引擎随安装包分发，但**默认不接**（尊重 2026-09-09 图谱工具面退役决策）。
- *  本区块让「随包」可见：显示探测到的引擎路径 + 一键启用（生效时机 = 下次
- *  打开工作区，工具行注册在 boot 后的工作区激活点）。 */
+ *
+ *  本区块是**三态同屏**（2026-09-16 用户实机报「说是默认关，但开关在哪呢」后改）：
+ *    ① 探测态——引擎二进制在不在（显示实路径）；未探测到也**保留开关**（置灰 +
+ *       写明它该在哪），不让开关凭空消失；
+ *    ② 开关态——启用 / 未启用 + 生效时机。开关原先排在本页最底部（用户级 server
+ *       列表与新建表单之后），从页首扫下去看不见 ⇒ 已整体置顶（见 McpPage）；
+ *    ③ 回执态——本工作区**实际**接线结果（读 `state/bundled-engine-store`）。
+ *       拨了开关必须看得见结果：此前 wiring 结果只进 console，用户侧无从查证。 */
 function BundledEngineSection() {
   const [info, setInfo] = useState<BundledEngineInfo | null>(null);
   const [enabled, setEnabled] = useState(isBundledEngineEnabled());
   const [probing, setProbing] = useState(true);
+  /** 接线回执（workspace.ts 写；本区块只读）——见 state/bundled-engine-store。 */
+  const receipt = useBundledEngineStore();
 
   useEffect(() => {
     let alive = true;
@@ -252,37 +261,46 @@ function BundledEngineSection() {
         兰台安装包内含 <code>hologram-engine.exe</code>（代码依赖图分析，MCP server 形态）。 启用后打开工作区，Agent
         工具面会出现图谱相关工具（图查询 / 影响面 / LSP 解析等）。
       </div>
+      {/* ① 探测 */}
       {probing ? (
         <div className="sp-hint">探测中…</div>
       ) : info?.available ? (
-        <>
-          <div className="sp-field">
-            <div className="sp-hint-sub" style={{ wordBreak: 'break-all' }}>
-              已检测到：<code>{info.path}</code>
-            </div>
+        <div className="sp-field">
+          <div className="sp-hint-sub" style={{ wordBreak: 'break-all' }}>
+            已检测到：<code>{info.path}</code>
           </div>
-          <label className="sp-hint-sub" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(e) => {
-                setBundledEngineEnabled(e.target.checked);
-                setEnabled(e.target.checked);
-              }}
-            />
-            <span>启用随包图谱引擎</span>
-          </label>
-          <div className="sp-hint-sub" style={{ marginTop: 6 }}>
-            生效时机：下次打开工作区（每个工作区按各自的根启动一个引擎进程；离开工作区即停）。
-            {enabled && ' 引擎首次分析较慢，可用引擎自带的状态查询看进度。'}
-          </div>
-        </>
+        </div>
       ) : (
         <div className="sp-hint-sub">
-          未检测到随包引擎二进制（开发态可先 <code>cargo build -p hologram-engine --release</code>）。 也可在下方「新建
-          server」里手动指向任意位置的引擎。
+          未检测到引擎二进制——它须与 <code>lantai.exe</code> 同目录（开发态可先{' '}
+          <code>cargo build -p hologram-engine --release</code>，或用环境变量 <code>LANTAI_ENGINE_EXE</code>
+          指定）。也可在下方「新建 server」里手动指向任意位置的引擎。
         </div>
       )}
+
+      {/* ② 开关（未探测到时置灰但仍在场——不让开关凭空消失） */}
+      <label className="sp-hint-sub" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={!info?.available}
+          onChange={(e) => {
+            setBundledEngineEnabled(e.target.checked);
+            setEnabled(e.target.checked);
+          }}
+        />
+        <span>启用随包图谱引擎</span>
+      </label>
+
+      {/* ③ 回执：本工作区实际接上了没有（拨了开关必须看得见结果） */}
+      <div className="sp-hint-sub" style={{ marginTop: 6 }}>
+        接线回执：{describeReceipt(receipt, enabled)}
+      </div>
+
+      <div className="sp-hint-sub" style={{ marginTop: 6 }}>
+        生效时机：下次打开工作区（每个工作区按各自的根启动一个引擎进程；离开工作区即停）。
+        {enabled && ' 引擎首次分析较慢，可用引擎自带的状态查询看进度。'}
+      </div>
     </div>
   );
 }
@@ -370,6 +388,11 @@ export function McpPage() {
 
   return (
     <>
+      {/* 随包图谱引擎区块**置顶**（2026-09-16 用户实机报缺陷后改）：它原先排在
+          用户级 server 列表与新建表单之后，从页首扫下去看不见——用户直接问
+          「说是默认关，但开关在哪呢」。随包引擎是宿主自有能力，排在本页首位。 */}
+      <BundledEngineSection />
+
       <div className="sp-section">
         <div className="sp-section-title">用户级 MCP server（{servers.length}）</div>
         <div className="sp-hint" style={{ marginBottom: 10 }}>
@@ -421,8 +444,6 @@ export function McpPage() {
         }}
         onError={(text) => setMessage({ kind: 'err', text })}
       />
-
-      <BundledEngineSection />
     </>
   );
 }

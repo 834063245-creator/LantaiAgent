@@ -1,6 +1,7 @@
 # src/state — zustand 状态层
 
-> 2026-08-19 总线归零（P1 创建本目录）+ ui/ 拆分（P2 迁入 11 领域 store）后的状态层新家，17 文件。
+> 2026-08-19 总线归零（P1 创建本目录）+ ui/ 拆分（P2 迁入 11 领域 store）后的状态层新家，
+> **27 个 `.ts` 文件（2026-09-16 实测；下表是按簇举例，完整清单以目录为准，新增 store 请同步本表）**。
 
 ## 分簇
 
@@ -8,7 +9,7 @@
 |---|---|
 | 注册表原语 | `scoped-store.ts`（`createScopedStore`——面板级 store 都经它建注册表） |
 | 领域 store（面板级，scoped） | `messages-store.ts` `session-store.ts` `panel-store.ts` `input-store.ts`（聚合入口 `ui/chat-store.ts`） |
-| app 级单例 | `dock-store.ts`（面板开合/简报）`timeline-store.ts` `agent-config-store.ts` `update-store.ts`（应用更新检测/角标） |
+| app 级单例 | `dock-store.ts`（面板开合/简报）`timeline-store.ts` `agent-config-store.ts` `update-store.ts`（应用更新检测/角标）`bundled-engine-store.ts`（随包图谱引擎接线回执） |
 | 信号 store（总线退役产物，P1） | `turn-done-store.ts` `goal-store.ts` `ask-store.ts` `workspace-switch-store.ts` |
 
 > 2026-08-27 死码清扫：`overlay-store.ts`（portal 宿主随 UI 大清扫失消费者）、

@@ -26,6 +26,7 @@ import {
   resetBundledEngineForTests,
   setBundledEngineEnabled,
 } from '../src/plugins/bundled-engine';
+import { describeReceipt, useBundledEngineStore } from '../src/state/bundled-engine-store';
 
 /** 直接构造一个「已探测」的 info（测试内不触发真 RPC）。 */
 const EXE = 'C:/Program Files/Lantai/hologram-engine.exe';
@@ -173,5 +174,55 @@ describe('③ pluginDir 锚点（绕开 plugin_dir RPC 对非插件名报错）'
     expect(res.wired).toBe(false);
     expect(seen).toEqual([]);
     // 破测：把探测挪到 IO 使用之后 → seen 非空 → 本用例红
+  });
+});
+
+describe('⑦ 接线回执（2026-09-16 用户实机报「找不到开关 / 拨了没回执」后补）', () => {
+  afterEach(() => {
+    useBundledEngineStore.getState().reset();
+  });
+
+  it('初始为 idle（本进程未打开过工作区）', () => {
+    useBundledEngineStore.getState().reset();
+    const s = useBundledEngineStore.getState();
+    expect(s.status).toBe('idle');
+    expect(s.workspacePath).toBeNull();
+    expect(s.at).toBeNull();
+    // 破测：把 INITIAL 的 idle 改成 off → 本条红（会把"还没开工作区"说成"开关关着"）
+  });
+
+  it('report 写入三态并带时间戳；reason 只在 failed 时有值', () => {
+    const { report } = useBundledEngineStore.getState();
+    report({ status: 'wired', workspacePath: 'D:/proj' });
+    expect(useBundledEngineStore.getState().status).toBe('wired');
+    expect(useBundledEngineStore.getState().reason).toBeNull();
+    expect(useBundledEngineStore.getState().at).toBeTypeOf('number');
+
+    report({ status: 'off', workspacePath: 'D:/proj' });
+    expect(useBundledEngineStore.getState().status).toBe('off');
+
+    report({ status: 'failed', workspacePath: 'D:/proj', reason: '未找到随包引擎二进制' });
+    expect(useBundledEngineStore.getState().reason).toBe('未找到随包引擎二进制');
+    // 破测：report 不写 at → 时间戳断言红（设置面板要靠它区分"本次会话"）
+  });
+
+  it('describeReceipt 区分「开关关着」与「开关已拨但本工作区还没重开」', () => {
+    const { report } = useBundledEngineStore.getState();
+    report({ status: 'off', workspacePath: 'D:/proj' });
+    const off = useBundledEngineStore.getState();
+    // 同一个 off 回执 × 两种开关态 → 两句不同的话：后者才是"看起来没生效"的真因
+    expect(describeReceipt(off, false)).toContain('开关未启用');
+    expect(describeReceipt(off, true)).toContain('重开工作区');
+    // 破测：把 enabled 参数忽略掉（两态同句）→ 本条红
+  });
+
+  it('failed / wired / idle 各有具名回执（不静默）', () => {
+    const { report } = useBundledEngineStore.getState();
+    report({ status: 'failed', workspacePath: 'D:/proj', reason: '接线失败：EOF' });
+    expect(describeReceipt(useBundledEngineStore.getState(), true)).toContain('接线失败：EOF');
+    report({ status: 'wired', workspacePath: 'D:/proj' });
+    expect(describeReceipt(useBundledEngineStore.getState(), true)).toContain('D:/proj');
+    useBundledEngineStore.getState().reset();
+    expect(describeReceipt(useBundledEngineStore.getState(), true)).toContain('尚未打开过工作区');
   });
 });

@@ -31,6 +31,7 @@ import { TaskManager } from './agent/task';
 import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
 import { readAttachmentBase64 } from './app/chat/image-intake';
+import { useShellStore } from './app/shell-store';
 import {
   compositionIdentity,
   effectiveComposition,
@@ -58,6 +59,7 @@ import {
   type ProviderSettings,
 } from './settings';
 import type { AgentConfigChangeReason } from './state/agent-config-store';
+import { useBundledEngineStore } from './state/bundled-engine-store';
 import { getComposeStore, resolveComposeEffective } from './state/compose-store';
 import { useCompositionStore } from './state/composition-store';
 import { broadcastGoalRecord } from './state/goal-store';
@@ -765,17 +767,33 @@ export class Workspace {
     // 进程 + 新 fiber 按新 root 重注册（= engine_init 说的「换整个实例」）。
     //
     // 默认关（方案乙）：未启用时立即返回，零行为变更。
+    //
+    // 回执（2026-09-16 用户实机报缺陷后补）：结果写 `state/bundled-engine-store`
+    // （设置面板「随包图谱引擎」区块读）+ 状态栏一行——此前只进 console，用户侧
+    // 「引擎到底挂上没有」无从查证（实测：打包 app 里开关从未被拨过，因为找不到
+    // 且拨了没回执）。失败必须可见（错误不静默纪律）。
     try {
       const wiring = await registerBundledEngineTools(this._fiber.ctx, this.path);
+      const report = useBundledEngineStore.getState().report;
       if (wiring.wired) {
+        report({ status: 'wired', workspacePath: this.path });
         console.log('[Workspace] 随包图谱引擎已接线:', this.path);
+        useShellStore.getState().pushStatus('随包图谱引擎已接线');
       } else if (wiring.reason) {
         // 启用了但接不上 = 可见降级（不静默——错误不静默纪律）
+        report({ status: 'failed', workspacePath: this.path, reason: wiring.reason });
         console.warn('[Workspace] 随包图谱引擎未接线:', wiring.reason);
+        useShellStore.getState().pushStatus(`⚠️ 随包图谱引擎未接线：${wiring.reason}`);
+      } else {
+        // 开关未启用 = 用户意图（不打扰；回执留给设置面板显示）
+        report({ status: 'off', workspacePath: this.path });
       }
     } catch (e) {
       // 接线失败不得阻断工作区打开（引擎工具面是增强，非核心路径）
+      const reason = e instanceof Error ? e.message : String(e);
+      useBundledEngineStore.getState().report({ status: 'failed', workspacePath: this.path, reason });
       console.warn('[Workspace] 随包图谱引擎接线失败:', e);
+      useShellStore.getState().pushStatus(`⚠️ 随包图谱引擎接线失败：${reason}`);
     }
 
     const registry = await this._buildRegistryLocked(composition);
