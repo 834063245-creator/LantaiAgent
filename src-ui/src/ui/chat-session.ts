@@ -588,7 +588,7 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
     agentSessionState.setExec(ctx.storeId, id, createExecState());
   }
   getChatStore(ctx.storeId).sess.setState((s) => ({
-    sessions: [...s.sessions, { id, label: `案卷 ${s.sessions.length + 1}` }],
+    sessions: [...s.sessions, { id, label: `案卷 ${s.sessions.length + 1}`, createdAt: new Date().toISOString() }],
     activeIdx: s.sessions.length,
   }));
   // ponytail: 创建会话级消息 store — 唯一数据源
@@ -625,6 +625,9 @@ export interface StoredSession {
   id: number;
   label?: string;
   savedAt?: string;
+  /** 立卷时刻（ISO）——**不落快照**，读面每次取自卷日志头行（`SessionLogHeader.createdAt`，
+   *  卷本体真源）。列在此处仅供 `readVolumeData` 的返回值携带（2026-09-16 卷首档行）。 */
+  createdAt?: string;
   messages?: Message[];
   /** UI 消息副本（WO-7）：含 BlockPart 资产块；旧存档无此字段 = 仅 provider 消息。 */
   uiMessages?: ChatMessage[];
@@ -1078,6 +1081,7 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
     id,
     label: cache?.label || logRead.header.label || `案卷 ${id}`,
     savedAt: cache?.savedAt ?? '',
+    createdAt: logRead.header.createdAt,
     messages: logRead.messages,
     uiMessages: fresh ? cache?.uiMessages : undefined,
     tokensUsed: cache?.tokensUsed,
@@ -1244,7 +1248,7 @@ export async function loadSessionFromDisk(
     agentSessionState.setExec(ctx.storeId, sid, createExecState());
   }
   getChatStore(ctx.storeId).sess.setState((s) => ({
-    sessions: [...s.sessions, { id: sid, label }],
+    sessions: [...s.sessions, { id: sid, label, createdAt: data.createdAt }],
     activeIdx: s.sessions.length,
     // 发号下限（F5）：续开大号卷后，另起一卷不得发出 ≤ 已存在档号的号
     nextSessionId: Math.max(s.nextSessionId, sid + 1),
@@ -1377,8 +1381,8 @@ export async function batchRestoreSessions(
   getChatStore(ctx.storeId).sess.setState((s) => {
     const sessions = [...s.sessions];
     let nextSessionId = s.nextSessionId;
-    for (const { sid: id, label } of labeled) {
-      sessions.push({ id, label });
+    for (const { sid: id, label, data } of labeled) {
+      sessions.push({ id, label, createdAt: data.createdAt });
       nextSessionId = Math.max(nextSessionId, id + 1);
     }
     return { sessions, activeIdx: s.activeIdx, nextSessionId };

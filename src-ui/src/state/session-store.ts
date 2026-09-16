@@ -10,6 +10,10 @@ import { createScopedStore } from './scoped-store';
 export interface ChatSessionMeta {
   id: number;
   label: string;
+  /** 立卷时刻（ISO）——卷首档行「日期」的唯一真源（2026-09-16 卷首重排 B 案）。
+   *  起卷 = 当场时刻；摊开磁盘卷 = 卷日志头行的 createdAt（卷本体真源，
+   *  与投影缓存 savedAt「最后落盘」是两回事，不混用）。旧卷无此字段 = 档行不显日期。 */
+  createdAt?: string;
 }
 
 interface SessionStore {

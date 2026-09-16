@@ -34,6 +34,7 @@
 
 import { type CSSProperties, Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FolioCompositionChip } from './FolioCompositionChip';
+import { formatCNDate } from './folio-date';
 import type { RegionView, SourcedBlock } from './host';
 import {
   ANCHOR,
@@ -305,6 +306,16 @@ const BlockView = memo(function BlockView({
 
 /** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
 const EMPTY_OPS: BlockOp[] = [];
+
+/** 卷首档行（2026-09-16 版心天头重排）：`立卷日 · N 块`。
+ *  立卷日取自卷级 createdAt（真源 = 卷日志头行，见 state/session-store
+ *  ChatSessionMeta.createdAt）；**旧卷无此字段 = 只显块数**，不编造日期。
+ *  重排前档行是「案卷 #N · M 块」——卷号与眉行重复，且原型原有的日期在移植时
+ *  丢了（当时 RegionView 根本拿不到时间字段）。 */
+function folioSubLine(r: RegionView): string {
+  const date = formatCNDate(r.createdAt);
+  return date ? `${date} · ${r.blocks.length} 块` : `${r.blocks.length} 块`;
+}
 
 /* ── 案头签条架（创作坞 v2 2026-08-31）──
  * 空态三件套之一：最近三卷「续写」签条（手迹位批注字，hover 朱砂——样式见
@@ -782,27 +793,37 @@ export function PaperPanel() {
                       if (e.target === e.currentTarget) activateRegion(r.sessionId);
                     }}
                   >
-                    {/* 卷首（folio-head，2026-08-30 自 prototype/lantai.html .folio-head 转录）：
-                     * 玉徽（亭台线稿）居中钤印 + 机读眉行 + 宋体题字 + 机读档行，
-                     * 底部硬规线 + 左缘朱砂版口钮。框体向上扩展包住卷首（界栏护持）。
+                    {/* 卷首（folio-head，2026-08-30 自 prototype/lantai.html .folio-head 转录；
+                     * 2026-09-16「版心天头」重排，用户拍板 B 案）：玉徽（亭台线稿）居中钤印
+                     * 于**版心** + 机读眉行（卷次）+ 题字 + 机读档行（立卷日 · 块数），四行
+                     * 同轴居中，底部硬规线 + 左缘朱砂版口钮只画版心宽。
+                     * 重排前的病灶：玉徽居中于整张纸（1440 流区中轴）、眉行/题字/档行却左齐
+                     * 于纸缘内距 16px，而正文块居中于 720 版心——题字比正文左缘还左 344px
+                     * （实测见 prototype/folio-head-ab.html 读数栏）。
+                     * 版心盒 = 内层 div（width min(720, 100%)），测高镜像见 measure.ts
+                     * folioHeadWidthFor。框体向上扩展包住卷首（界栏护持）。
                      * pointer-events none——点击穿透流区背景，激活语义不变；
                      * 原浮动标签带退役（卷首即卷名，不重复播报）。
                      * 远档（P4c 三档）退场：缩糊的 DOM 卷首不如无——卷名由
                      * InkLayer 地志标签接管（地图标签逻辑，字号有下限）。 */}
                     {!lodFar && (
                       <div className="pp-folio-head">
-                        <span className="pp-yuwei">
-                          <Icon name="lantai" size={24} />
-                        </span>
-                        <p className="pp-folio-eyebrow">兰台 · 案卷 Nº {r.sessionNum}</p>
-                        <h2 className="pp-folio-title">{r.label || `案卷 ${r.sessionNum}`}</h2>
-                        <p className="pp-folio-sub">
-                          案卷 #{r.sessionNum} · {r.blocks.length} 块
-                        </p>
-                        {/* 组合芯片（S6 P5a）：**本卷**的组合身份与（空白卷的）拨动入口——
-                            绝对定位覆盖在卷首右上角、不进高度流水（见 FolioCompositionChip 头注）。
-                            作用对象 = 本 region 的卷（r.sessionId），不是"当前活跃卷"。 */}
-                        <FolioCompositionChip core={core} sessionId={r.sessionId} />
+                        <div className="pp-folio-inner">
+                          <span className="pp-yuwei">
+                            <Icon name="lantai" size={26} />
+                          </span>
+                          {/* 卷号**恰出现一次**：有名卷 → 眉行（题字只放卷名）；无名卷 →
+                           * 题字落「案卷 N」fallback，眉行退为「兰台 · 案卷」文类行。
+                           * 重排前眉行 + 题字 fallback + 档行三处都报卷号（同义反复）。 */}
+                          <p className="pp-folio-eyebrow">{r.label ? `案卷 Nº ${r.sessionNum}` : '兰台 · 案卷'}</p>
+                          <h2 className="pp-folio-title">{r.label || `案卷 ${r.sessionNum}`}</h2>
+                          <p className="pp-folio-sub">{folioSubLine(r)}</p>
+                          {/* 组合芯片（S6 P5a）：**本卷**的组合身份与（空白卷的）拨动入口——
+                              绝对定位覆盖在版心右上、与眉行同行、不进高度流水
+                              （见 FolioCompositionChip 头注）。作用对象 = 本 region 的卷
+                              （r.sessionId），不是"当前活跃卷"。 */}
+                          <FolioCompositionChip core={core} sessionId={r.sessionId} />
+                        </div>
                       </div>
                     )}
                     {/* 空卷题字：零块流区的版心竖排占位（pointer-events none——

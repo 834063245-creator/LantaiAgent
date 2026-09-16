@@ -21,6 +21,10 @@ export interface RegionView {
   sessionId: string;
   sessionNum: number;
   label: string;
+  /** 立卷时刻（ISO）——卷首档行的「日期」。真源 = 卷日志头行（起卷当场 / 摊开磁盘卷），
+   *  见 state/session-store 的 ChatSessionMeta.createdAt。旧卷缺席 = 档行不显日期
+   *  （不编造）。 */
+  createdAt?: string;
   anchor: StreamRegionState;
   blocks: SourcedBlock[];
   layout: Map<string, { x: number; y: number }>;

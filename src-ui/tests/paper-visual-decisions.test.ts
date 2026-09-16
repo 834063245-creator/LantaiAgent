@@ -273,18 +273,36 @@ describe('钉住与纸条换装（pin-strip-rework，2026-09-05——松手定�
   });
 });
 
-describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.html .folio-head 族）', () => {
-  it('卷首结构：玉徽居中钤印 + 硬规线底 + 朱砂版口钮（2026-09-02 改档：只挂活跃卷）；浮动标签带退役', () => {
+describe('卷首 folio-head 钉值（2026-08-30 原型转录 → 2026-09-16「版心天头」重排 B 案）', () => {
+  // ⚠ 本 describe 于 2026-09-16 随卷首重排**整体改写**——故意规格变更，显式声明
+  // （用户拍板 B 案，原型台 prototype/folio-head-ab.html + 读数栏为证）。
+  // 旧形态的病灶（实测）：玉徽居中于**整张纸**（默认 1440 宽流区的中轴 x=720），
+  // 眉行/题字/档行却左齐于纸缘内距 16px，正文块居中于 720 版心（左缘 x=360）
+  // ——题字比正文左缘还左 344px、组合芯片比版心右缘还右 326px：一块卷首三个轴。
+  // 新形态：卷首收进版心内层，四行同轴居中，硬规线与版口钮一并锁版心宽。
+  it('卷首结构：版心内层（四行同轴）+ 硬规线锁版心 + 朱砂版口钮挂规线左端', () => {
     const head = ruleBody(PANEL_CSS, '.pp-folio-head {');
-    expect(head).toContain('border-bottom: var(--rule-hard)');
+    // 硬规线已移出版心内层之外的外盒（随之上移到 .pp-folio-inner）——外盒只剩内距
+    expect(head).not.toContain('border-bottom');
+    expect(head).toContain('padding: 24px 16px 0');
     // pointer-events none：点击穿透流区背景，激活语义不变
     expect(head).toContain('pointer-events: none');
+    // 版心内层：宽 min(720, 100%) 居中 + 硬规线 + 居中排印（= 与正文块同轴同宽）
+    const inner = ruleBody(PANEL_CSS, '.pp-folio-inner {');
+    expect(inner).toContain('width: min(720px, 100%)');
+    expect(inner).toContain('margin: 0 auto');
+    expect(inner).toContain('border-bottom: var(--rule-hard)');
+    expect(inner).toContain('text-align: center');
+    expect(inner).toContain('padding-bottom: 22px');
+    // 玉徽居中于**版心**（不再居中于整张纸）
     const yuwei = ruleBody(PANEL_CSS, '.pp-yuwei');
-    expect(yuwei).toContain('margin: 0 auto 12px');
-    expect(yuwei).toContain('width: 24px');
+    expect(yuwei).toContain('margin: 0 auto 14px');
+    expect(yuwei).toContain('width: 26px');
     // 版口钮 2026-09-02 改档：只挂活跃卷（.pp-region-active 前缀）——整屏至多一处红，
-    // 红在哪卷即活卷（对原型 .folio-head 的主动偏离：原型卷卷都挂，先于一纸多卷定案）
-    const tab = ruleBody(PANEL_CSS, '.pp-region-active .pp-folio-head::after');
+    // 红在哪卷即活卷（对原型 .folio-head 的主动偏离：原型卷卷都挂，先于一纸多卷定案）。
+    // 2026-09-16：钮随硬规线移进版心内层，left: 0 = 版心左缘（不再飘在纸缘）。
+    const tab = ruleBody(PANEL_CSS, '.pp-region-active .pp-folio-inner::after');
+    expect(tab).toContain('left: 0');
     expect(tab).toContain('width: 56px');
     expect(tab).toContain('height: 3px');
     // 版口钮是朱砂——卷首钤印语义（朱砂=人/仪式），非状态色挪用
@@ -301,48 +319,82 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.
     // 标签带退役（卷首即卷名，不重复播报）
     expect(PANEL_CSS).not.toContain('.pp-region-label');
     expect(PANEL_TSX).toContain('pp-folio-head');
+    expect(PANEL_TSX).toContain('pp-folio-inner');
     expect(PANEL_TSX).not.toContain('pp-region-label');
   });
 
-  it('卷首排印：眉行/题字/档行字号字距（原型逐字转录）', () => {
+  it('卷首排印：眉行/题字/档行（2026-09-16 单族重校——三体换代后层级只剩字号/字重/字距）', () => {
+    // 10px 的 MiSans 压纸纹太弱 → 机读两行升 11px；居中天头要更松的机读感 → 眉行字距加宽
     const eyebrow = ruleBody(PANEL_CSS, '.pp-folio-eyebrow');
-    expect(eyebrow).toContain('font-size: 10px');
-    expect(eyebrow).toContain('letter-spacing: 0.26em');
+    expect(eyebrow).toContain('font-size: 11px');
+    expect(eyebrow).toContain('letter-spacing: 0.34em');
+    // 末字后的字距会把整行视觉左推 → 补同值缩进（居中是真空）
+    expect(eyebrow).toContain('text-indent: 0.34em');
     expect(eyebrow).toContain('var(--ink-3)');
     const title = ruleBody(PANEL_CSS, '.pp-folio-title');
-    expect(title).toContain('font-size: 32px');
-    expect(title).toContain('line-height: 1.2');
+    expect(title).toContain('font-size: 36px');
+    expect(title).toContain('line-height: 1.22');
     expect(title).toContain('var(--f-song)');
     const sub = ruleBody(PANEL_CSS, '.pp-folio-sub');
-    expect(sub).toContain('letter-spacing: 0.14em');
+    expect(sub).toContain('letter-spacing: 0.18em');
     expect(sub).toContain('font-variant-numeric: tabular-nums');
   });
 
   it('卷首组合芯片（S6 P5a）：覆盖式落位（不进高度流水）+ 只放开本子树事件 + 卷首本体仍穿透', () => {
-    // 覆盖式落位：绝对定位在卷首右上角——**不进高度流水** ⇒ 卷首高度镜像
-    // （FOLIO_TOKENS → measureFolioHeadHeight → 卷级几何）与既有画布零改动
+    // 覆盖式落位：绝对定位在**版心右上**、与眉行同行——**不进高度流水** ⇒ 卷首高度镜像
+    // （FOLIO_TOKENS → measureFolioHeadHeight → 卷级几何）仍不被控件牵动。
+    // 2026-09-16 改锚点：原为纸缘右上（top 16 / right 18），离版心右缘 +326px 孤悬，
+    // 与居中的玉徽成对角；现以版心为参照系。
     const comp = ruleBody(PANEL_CSS, '.pp-folio-comp {');
     expect(comp).toContain('position: absolute');
-    expect(comp).toContain('top: 16px');
-    expect(comp).toContain('right: 18px');
+    expect(comp).toContain('top: 1px');
+    expect(comp).toContain('right: 0');
     // 卷首本体是 pointer-events:none（点击穿透流区背景）——芯片是**唯一例外**，
     // 只放开本子树（改掉下面这条 none = 卷首整块变成点击热区，激活语义被破坏）
     expect(comp).toContain('pointer-events: auto');
     expect(ruleBody(PANEL_CSS, '.pp-folio-head {')).toContain('pointer-events: none');
     // 菜单向下开（卷首在卷顶，下方是流区）
     expect(ruleBody(PANEL_CSS, '.pp-folio-comp-menu {')).toContain('top: calc(100% + 4px)');
-    // 挂载点：芯片在卷首内，作用对象 = **本 region 的卷**（不是"当前活跃卷"）
+    // 挂载点：芯片在版心内层里，作用对象 = **本 region 的卷**（不是"当前活跃卷"）
     expect(PANEL_TSX).toContain('<FolioCompositionChip core={core} sessionId={r.sessionId} />');
   });
 
-  it('测量镜像：type-tokens.ts 卷首真源与 CSS 逐字对映 + 亭徽图标在册', () => {
-    // token 化后单一真源 = type-tokens.ts（measure 派生自它，CSS 走 --pp-* 注入）
-    expect(TYPE_TOKENS_TS).toContain('titleSize: 32');
-    expect(TYPE_TOKENS_TS).toContain('titleLh: 1.2');
+  it('测量镜像：type-tokens.ts 卷首真源与 CSS **逐项**对映（改一处必改多处）+ 亭徽图标在册', () => {
+    // token 化后单一真源 = type-tokens.ts（measure 派生自它，CSS 逐字对映它——
+    // 2026-09-16 前只有 4 项被钉，其余 6 项改了没人拦：本测补齐为**全项对映**）
+    expect(TYPE_TOKENS_TS).toContain('titleSize: 36');
+    expect(TYPE_TOKENS_TS).toContain('titleLh: 1.22');
+    expect(TYPE_TOKENS_TS).toContain('eyebrowH: 15');
+    expect(TYPE_TOKENS_TS).toContain('subH: 15');
     expect(TYPE_TOKENS_TS).toContain('padTop: 24');
+    expect(TYPE_TOKENS_TS).toContain('padBottom: 24');
+    expect(TYPE_TOKENS_TS).toContain('yuweiH: 40');
+    expect(TYPE_TOKENS_TS).toContain('titleMarginTop: 14');
+    expect(TYPE_TOKENS_TS).toContain('subMarginTop: 14');
     expect(TYPE_TOKENS_TS).toContain('headGap: 28');
+    expect(TYPE_TOKENS_TS).toContain('colW: 720');
+    // ── CSS ↔ token 逐项对映（每项都要在对应规则体内找到字面量）──
+    const head = ruleBody(PANEL_CSS, '.pp-folio-head {');
+    const inner = ruleBody(PANEL_CSS, '.pp-folio-inner {');
+    const yuwei = ruleBody(PANEL_CSS, '.pp-yuwei');
+    const eyebrow = ruleBody(PANEL_CSS, '.pp-folio-eyebrow');
+    const title = ruleBody(PANEL_CSS, '.pp-folio-title');
+    const sub = ruleBody(PANEL_CSS, '.pp-folio-sub');
+    expect(head).toContain('padding: 24px 16px 0'); // padTop 24 + 左右内距 16×2
+    expect(inner).toContain('padding-bottom: 22px'); // padBottom 24 = 22 + rule-hard 2
+    expect(inner).toContain('width: min(720px, 100%)'); // colW 720
+    expect(yuwei).toContain('width: 26px'); // yuweiH 40 = 26 + margin 14
+    expect(yuwei).toContain('margin: 0 auto 14px');
+    expect(eyebrow).toContain('line-height: 15px'); // eyebrowH 15
+    expect(sub).toContain('line-height: 15px'); // subH 15
+    expect(title).toContain('margin-top: 14px'); // titleMarginTop 14
+    expect(sub).toContain('margin-top: 14px'); // subMarginTop 14
+    // 测高侧：入参 = **流区宽**，版心封顶在函数内算清（调用点不再手写 −32）
     expect(MEASURE_TS).toContain('FOLIO_TOKENS.titleSize');
-    expect(MEASURE_TS).toContain('export function measureFolioHeadHeight');
+    expect(MEASURE_TS).toContain('export const FOLIO_COL_W = FOLIO_TOKENS.colW');
+    expect(MEASURE_TS).toContain('export function measureFolioHeadHeight(title: string, regionWidth: number)');
+    expect(MEASURE_TS).toContain('Math.min(FOLIO_COL_W, regionWidth - 32)');
+    // 行为面（版心封顶真的生效、换行真的计入高度）见 tests/paper-folio-height.test.ts
     expect(ICONS_TS).toContain('lantai: {');
     expect(ICONS_TS).toContain('M4 9.2 L12 3.4 L20 9.2');
   });

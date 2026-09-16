@@ -58,14 +58,14 @@ const EMPTY_CANVAS: CanvasStore = {
 export function usePaperSessions(core: PaperCore | null) {
   /* ── 会话集（一纸多卷：全部摊开会话 = 全部流区）──
    * sess store 订阅：列表 + 活跃 idx（活跃流区单一权威 = sess activeIdx） */
-  const [sessions, setSessions] = useState<Array<{ id: number; label: string }>>([]);
+  const [sessions, setSessions] = useState<Array<{ id: number; label: string; createdAt?: string }>>([]);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   useEffect(() => {
     if (!core) return;
     const sess = getChatStore(core.panelId).sess;
     const sync = () => {
       const st = sess.getState();
-      setSessions(st.sessions.map((s) => ({ id: s.id, label: s.label })));
+      setSessions(st.sessions.map((s) => ({ id: s.id, label: s.label, createdAt: s.createdAt })));
       const active = st.sessions[st.activeIdx];
       setActiveSessionId(active ? active.id : null);
     };

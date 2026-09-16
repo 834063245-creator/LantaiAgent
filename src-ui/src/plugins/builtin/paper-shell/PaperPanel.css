@@ -375,28 +375,55 @@
   background-repeat: repeat;
   background-blend-mode: normal, multiply, multiply, multiply;
 }
-/* ── 卷首（folio-head，2026-08-30 自 prototype/lantai.html .folio-head 族转录）──
- * 玉徽（亭台线稿 icon-lantai）居中钤印 + 机读眉行 + 宋体题字 + 机读档行，
- * 底部硬规线 + 左缘朱砂版口钮（原型 ::after 56×3）。结构常量的测高镜像在
- * paper/measure.ts measureFolioHeadHeight（逐字对映，改一处必改两处）。
- * 原浮动标签带（pp-region-label）退役：卷首即卷名。 */
+/* ── 卷首（folio-head）──
+ * 2026-08-30 自 prototype/lantai.html .folio-head 族转录；**2026-09-16「版心天头」
+ * 重排（用户拍板 B 案）**：卷首收进 720 版心（.pp-folio-inner）与正文块同轴居中。
+ *
+ * 重排前的病灶（实测，见 prototype/folio-head-ab.html 读数栏）：玉徽居中于
+ * **整张纸**（默认 1440 宽流区 → 中轴 x=720），眉行/题字/档行却左齐于纸缘内距
+ * 16px，而正文块居中于 720 版心（左缘 x=360）——题字比正文左缘还左 344px、
+ * 组合芯片比版心右缘还右 326px。一块卷首三个轴（原型里 .folio 整个就是一根
+ * 560px 窄栏，居中钤印与左齐文字只差 250px 故读作手势；搬进宽流区后无人重建
+ * 版心，就散架了）。
+ *
+ * 现在的构图 = 原型的「钤印居中于天头」手势，但居中于**版心**：玉徽 / 眉行 /
+ * 题字 / 档行四行同轴居中，底部硬规线也只画版心宽（不再横贯整纸）。
+ * 结构常量的测高镜像在 paper/measure.ts（FOLIO_TOKENS 为单一真源——改一处必改多处，
+ * 见 measure.ts folioHeadWidthFor 的版心封顶说明）。
+ *
+ * pointer-events none——点击穿透流区背景，激活语义不变；组合芯片单独放开本子树。
+ * 原浮动标签带退役：卷首即卷名。 */
 .pp-folio-head {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  padding: 24px 16px 22px;
-  border-bottom: var(--rule-hard);
+  /* 左右内距 16 是测高镜像的一端（measure.ts folioHeadWidthFor 里的 −32）；
+     下内距 0——底距由版心内层的 padding-bottom 承担（规线随之内缩） */
+  padding: 24px 16px 0;
   pointer-events: none;
   user-select: none;
+}
+/* 版心内层（2026-09-16 新增）：卷首四行 + 硬规线 + 版口钮的**唯一版心盒**。
+ * width = min(720px, 100%)（100% 已扣掉外层左右内距）——宽流区封顶 720 与正文
+ * 块同宽同轴，窄流区自动收为「流区宽 − 32」。测高镜像取 measure.ts
+ * folioHeadWidthFor(regionWidth)（同一式子，勿在此手改数值）。 */
+.pp-folio-inner {
+  position: relative;
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding-bottom: 22px;
+  border-bottom: var(--rule-hard);
+  text-align: center;
 }
 /* 活跃卷版口钮（2026-09-02 视觉迭代）：朱砂条从「卷卷都挂」改「只挂活跃卷」——
  * 整屏至多一处红（浸墨法则 3），红在哪卷即活卷；对原型 .folio-head 的主动偏离
  * （原型先于真纸材质批与一纸多卷定案）。
+ * 2026-09-16 随硬规线一起移进版心内层：钮挂规线左端（版心左缘），不再飘到纸缘。
  * 朱笔划界（2026-09-10 拍板「拿纸 + 朱笔划界」）：激活瞬间红条从 0 划到 56px
  * ——落笔划界的书写感，与拿纸影动效同一时刻。宽度动画不走 transform（块级
  * transform 事故立法同源）；缓动/时长同 pp-enter 家风。 */
-.pp-region-active .pp-folio-head::after {
+.pp-region-active .pp-folio-inner::after {
   content: "";
   position: absolute;
   left: 0;
@@ -414,28 +441,36 @@
     width: 56px;
   }
 }
+/* 玉徽（亭台线稿）：居中钤印于版心（2026-09-16 起居中于版心而非整纸——同轴）。 */
 .pp-yuwei {
   display: block;
-  width: 24px;
-  height: 24px;
-  margin: 0 auto 12px;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 14px;
   color: var(--ink-1);
   /* 2026-08-31 浸墨化：印章图标加 0.35px 微模糊——印泥盖纸的渗开感 */
   filter: blur(0.35px);
 }
+/* 机读眉行（卷次）与档行（立卷日 + 块数）：单族之下层级只剩字号/字重/字距
+ * ——2026-09-16 随三体换代重校：10px→11px（10px 的 MiSans 压纸纹太弱），
+ * 眉行字距 0.26em→0.34em（居中天头要比左齐需要更松的机读感；字距为等宽拉丁
+ * 混排量，换代后收窄会与题字挤在一起，故此处反是加宽），档行 0.14em→0.18em。
+ * 墨阶沿用 ink-3（注记档），line-height 15px（整数——测高镜像不引小数）。 */
 .pp-folio-eyebrow {
   font-family: var(--f-mono);
-  font-size: 10px;
-  line-height: 1.4;
-  letter-spacing: 0.26em;
+  font-size: 11px;
+  line-height: 15px;
+  letter-spacing: 0.34em;
+  /* 末字后的字距会把整行视觉左推 → 补同值缩进，居中是真空 */
+  text-indent: 0.34em;
   color: var(--ink-3);
 }
 .pp-folio-title {
   font-family: var(--f-song);
   font-weight: 700; /* 浸墨：卷首档（拍板 B 四级：900/700/600/400） */
-  font-size: 32px;
-  line-height: 1.2;
-  margin-top: 12px;
+  font-size: 36px;
+  line-height: 1.22;
+  margin-top: 14px;
   color: var(--ink-1);
   /* 2026-08-31 浸墨化：大字加 0.4px 渗缘（墨缘毛细扩散模拟，同 alpha 墨第 2 层手法）
      弱 alpha 残影，正文小字不加——面积大可读性不受损 */
@@ -443,26 +478,28 @@
 }
 .pp-folio-sub {
   font-family: var(--f-mono);
-  font-size: 10px;
-  line-height: 1.4;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  line-height: 15px;
+  letter-spacing: 0.18em;
   color: var(--ink-3);
   margin-top: 14px;
   font-variant-numeric: tabular-nums;
 }
 /* ── 卷首组合芯片（S6 P5a）────────────────────────────────────────────
- * **绝对定位覆盖**在卷首右上角、刻意**不进高度流水**：卷首高度是几何契约
- * （FOLIO_TOKENS → paper/measure.ts measureFolioHeadHeight → 卷级布局），
+ * **绝对定位覆盖**在版心右上、与眉行同行、刻意**不进高度流水**：卷首高度是几何
+ * 契约（FOLIO_TOKENS → paper/measure.ts measureFolioHeadHeight → 卷级布局），
  * 本控件参与进去会牵动所有既有画布的流区几何；覆盖式落位把「一次规格变更」
  * 降为「一处新增」（WO-S6P5 §7 裁定 3）。
+ * 2026-09-16 随版心重排改锚点：top/right 以**版心**为参照系（原以纸缘为参照系，
+ * 离版心右缘 +326px，孤悬右上角与居中的玉徽成对角）。仍不进流水、不改契约。
  * 卷首本体是 pointer-events:none（点击穿透流区背景，激活语义不变），
  * 本子树单独放开 auto。
  * 与创作坞芯片（compose-dock 的 .pp-comp-*）**同语言不同宿主**——那族规则被
  * .pp-composer-settings 祖先限定，卷首不能靠 class 复用（WO-S6P5 §1.3）。 */
 .pp-folio-comp {
   position: absolute;
-  top: 16px;
-  right: 18px;
+  top: 1px;
+  right: 0;
   pointer-events: auto;
 }
 .pp-folio-comp-pill {

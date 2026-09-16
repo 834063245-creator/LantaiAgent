@@ -131,7 +131,7 @@ export function sameKey(a: readonly unknown[], b: readonly unknown[]): boolean {
  *  那个恒空——真机症状即此，已根治）。 */
 export function usePaperRegions(params: {
   regionsRef: MutableRefObject<RegionView[]>;
-  sessions: Array<{ id: number; label: string }>;
+  sessions: Array<{ id: number; label: string; createdAt?: string }>;
   regionMsgs: Record<string, { messages: readonly ChatMessage[]; tick: number }>;
   paperTick: number;
   measureTick: number;
@@ -294,12 +294,17 @@ export function usePaperRegions(params: {
           sessionId: sid,
           sessionNum: s.id,
           label: s.label,
+          createdAt: s.createdAt,
           anchor,
           ...STUB_EMPTIES,
           regionTop: known.extent.y0,
           regionBottom: anchor.anchorY,
           regionHeight: Math.max(0, anchor.anchorY - known.extent.y0) + 72,
-          folioH: 72,
+          // 卷首高用真测高（2026-09-16 连带清理：原为魔数 72——卷首实测约 190，
+          // 缩到视口外的卷回场时纸的上缘会跳一下，且远档地志标签的锚点
+          // （InkLayer 的 regionTop − folioH）在 stub 与非 stub 卷之间不一致。
+          // label 与 width 都在手，测高无额外依赖）
+          folioH: measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width),
           stubbed: true,
           extent: known.extent,
           lastBlockIds: known.blockIds,
@@ -384,8 +389,10 @@ export function usePaperRegions(params: {
         // 2026-09-10 用户两问之二）。
         if (!Number.isFinite(top)) top = anchor.anchorY - EMPTY_REGION_CONTENT_H;
         const regionTop = top;
-        // 卷首头高度：标题按流区可用宽实测（folio 头左右内距 16×2，镜像 .pp-folio-head padding）
-        const folioH = measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width - 32);
+        // 卷首头高度：题字按**流区宽**实测（左右内距 16×2 与 720 版心封顶都在
+        // measureFolioHeadHeight 内一次算清——2026-09-16 前此处手写 `anchor.width - 32`，
+        // 宽流区下漏掉版心封顶，实测值与渲染的换行不符）
+        const folioH = measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width);
         // P2-2：全量构建后登记包围盒/块 id 集——stub 判定与 stub 消费面的
         // 最近已知值真源。空卷（无块）用锚点框兜底（stub 判定不至于盲区）。
         if (blocks.length > 0) {
@@ -468,6 +475,7 @@ export function usePaperRegions(params: {
         sessionId: sid,
         sessionNum: s.id,
         label: s.label,
+        createdAt: s.createdAt,
         anchor,
         blocks: c.blocks,
         layout: c.layout,

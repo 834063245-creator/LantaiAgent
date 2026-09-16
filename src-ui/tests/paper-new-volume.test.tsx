@@ -230,7 +230,9 @@ describe('新建卷：落位几何 + 视角导航', () => {
     //    才跳回锚点，量级 = 锚点距原点）
     const el = container.querySelector('.pp-region[data-session-id="3"]') as HTMLElement | null;
     expect(el).not.toBeNull();
-    const folioH = measureFolioHeadHeight('案卷 3', placed!.width - 32);
+    // 入参 = **流区宽**（2026-09-16：左右内距与 720 版心封顶都在 measureFolioHeadHeight
+    // 内算清——原测试与调用点各自手写 `width - 32`，宽流区下双双漏掉版心封顶）
+    const folioH = measureFolioHeadHeight('案卷 3', placed!.width);
     const top = Number.parseFloat(el!.style.top);
     const height = Number.parseFloat(el!.style.height);
     expect(top).toBeCloseTo(placed!.anchorY - EMPTY_REGION_CONTENT_H - folioH, 0);

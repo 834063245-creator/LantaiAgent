@@ -444,23 +444,33 @@ export function measureTextHeight(
 }
 
 /* ── 卷首（folio-head，2026-08-30 原型转录；token 化：单一真源 = type-tokens.ts）──
- * 结构常量逐字镜像 PaperPanel.css .pp-folio-head 族
+ * 结构常量逐字镜像 PaperPanel.css 卷首族规则
  * （源规格：prototype/lantai.html .folio-head / .yuwei / .folio-eyebrow / .folio-title / .folio-sub）。
- * 标题随换行实测（measureTextHeight），其余为固定结构高度。 */
-export const FOLIO_TITLE_FONT = `600 ${FOLIO_TOKENS.titleSize}px ${SONG_STACK}`;
-export const FOLIO_TITLE_LINE_HEIGHT = FOLIO_TOKENS.titleSize * FOLIO_TOKENS.titleLh; // .pp-folio-title line-height
+ * 标题随换行实测（measureTextHeight），其余为固定结构高度。
+ * 2026-09-16「版心天头」重排：卷首收进 colW 版心居中，题字可用宽由
+ * folioHeadWidthFor 单点派生（别再在调用点手算 −32）。 */
+export const FOLIO_TITLE_FONT = `700 ${FOLIO_TOKENS.titleSize}px ${SONG_STACK}`;
+export const FOLIO_TITLE_LINE_HEIGHT = FOLIO_TOKENS.titleSize * FOLIO_TOKENS.titleLh; // 题字 line-height
 
-export const FOLIO_EYEBROW_H = FOLIO_TOKENS.eyebrowH; // mono 10px × line-height 1.4
-export const FOLIO_SUB_H = FOLIO_TOKENS.subH; // mono 10px × line-height 1.4
-export const FOLIO_PAD_TOP = FOLIO_TOKENS.padTop; // .pp-folio-head padding-top
-export const FOLIO_PAD_BOTTOM = FOLIO_TOKENS.padBottom; // padding-bottom 22 + rule-hard 2
-export const FOLIO_YUWEI_H = FOLIO_TOKENS.yuweiH; // 24px 玉徽 + margin-bottom 12
+export const FOLIO_EYEBROW_H = FOLIO_TOKENS.eyebrowH; // 眉行 11px × line-height 15px
+export const FOLIO_SUB_H = FOLIO_TOKENS.subH; // 档行 11px × line-height 15px
+export const FOLIO_PAD_TOP = FOLIO_TOKENS.padTop; // 卷首 padding-top
+export const FOLIO_PAD_BOTTOM = FOLIO_TOKENS.padBottom; // inner padding-bottom 22 + rule-hard 2
+export const FOLIO_YUWEI_H = FOLIO_TOKENS.yuweiH; // 26px 玉徽 + margin-bottom 14
 export const FOLIO_TITLE_MARGIN_TOP = FOLIO_TOKENS.titleMarginTop;
 export const FOLIO_SUB_MARGIN_TOP = FOLIO_TOKENS.subMarginTop;
 /** 卷头与首块的呼吸距（原型 .folio-head margin-bottom 28） */
 export const FOLIO_HEAD_GAP = FOLIO_TOKENS.headGap;
-/** 卷首头整体高度（世界单位）：标题按可用宽实测行数，其余固定。 */
-export function measureFolioHeadHeight(title: string, availWidth: number): number {
+/** 卷首版心宽（**唯一真源** = FOLIO_TOKENS.colW）。CSS 端有两条镜像：
+ *  内层盒 `width: min(720px, 100%)` 与卷首左右内距 16×2——改一处必改三处。 */
+export const FOLIO_COL_W = FOLIO_TOKENS.colW;
+/** 卷首头整体高度（世界单位）：题字按可用宽实测行数，其余固定。
+ *  入参 = **流区宽**（不是题字可用宽）：左右内距 16×2 与版心封顶 720 都在本函数内
+ *  一次算清。2026-09-16 前由调用点手写 `regionWidth - 32`，宽流区下漏掉版心封顶
+ *  ——默认 1440 宽流区实得「可用宽 1408」，长题字永不换行、卷首高度恒等于一行
+ *  （题字实际按 720 版心换行 → 实测值与渲染值不符，卷级几何偏矮）。本次收口。 */
+export function measureFolioHeadHeight(title: string, regionWidth: number): number {
+  const availWidth = Math.min(FOLIO_COL_W, regionWidth - 32);
   const titleH = measureTextHeight(title, availWidth, FOLIO_TITLE_FONT, FOLIO_TITLE_LINE_HEIGHT);
   return (
     FOLIO_PAD_TOP +

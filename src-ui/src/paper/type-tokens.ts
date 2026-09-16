@@ -556,18 +556,28 @@ export const LIMIT_TOKENS = {
   outMaxH: 160,
 } as const;
 
-/* ── 卷首（folio-head）── */
+/* ── 卷首（folio-head）──
+ * 2026-09-16「版心天头」重排（用户拍板 B 案）：卷首收进 720 版心与正文同轴——
+ * 原先玉徽居中于**整张纸**（1440 宽流区的中轴）、眉行/题字/档行却左齐于纸缘内距
+ * 16px，与居中的 720 版心错开 344px（实测），一块卷首三个轴。现在四行全部居中
+ * 于版心，硬规线也只画版心宽。
+ * 字号随族换代重校（2026-09-10 三体换代后 song/kai/mono 同值 = MiSans 单族，
+ * 原型的「等宽小字 vs 宋体大字」族对比消失，层级只剩字号/字重/字距）：
+ * 眉行/档行 10→11px、字距收窄，题字 32→36px。 */
 export const FOLIO_TOKENS = {
-  titleSize: 32,
-  titleLh: 1.2,
-  eyebrowH: 14, // mono 10px × lh 1.4
-  subH: 14,
+  titleSize: 36,
+  titleLh: 1.22,
+  eyebrowH: 15, // 机读眉行 11px × line-height 15px
+  subH: 15, // 机读档行 11px × line-height 15px
   padTop: 24,
-  padBottom: 24, // 22 + rule-hard 2
-  yuweiH: 36, // 24px 玉徽 + margin-bottom 12
-  titleMarginTop: 12,
+  padBottom: 24, // inner padding-bottom 22 + rule-hard 2
+  yuweiH: 40, // 26px 玉徽 + margin-bottom 14
+  titleMarginTop: 14,
   subMarginTop: 14,
   headGap: 28, // 卷头与首块呼吸距
+  /** 卷首版心宽（与正文块同轴同宽——正文版心上限见 use-paper-regions 的 720）。
+   *  窄流区下版心自动收为「流区宽 − 左右内距 32」，见 measure.ts folioHeadWidthFor。 */
+  colW: 720,
 } as const;
 
 /* ── CSS 变量注入（必须带单位：字号/间距/上限 px，行高系数无单位）── */
