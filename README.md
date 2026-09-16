@@ -1,257 +1,209 @@
 <p align="center">
-  <img src="assets/banner.png" alt="兰台 Lantai" />
+  <img src="assets/app-icon-1024.png" width="88" alt="兰台" />
 </p>
 
 <p align="center">
-  <strong>兰台（Lantai）— 一张纸上的 Agent 工作台</strong><br />
-  界面不是聊天窗，而是一部正在被编纂的案卷：人在纸边批注、AI 居中撰文、机器贴底注记。
+  <strong>兰台（Lantai）— 桌面 Agent 工作台</strong><br />
+  主界面不是聊天窗，而是一部正在被编纂的案卷：人来文、AI 正文、思考夹注、工具脚注、代码抄录。
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" /></a>
-  <a href="https://whyihaveyou.github.io/dsh-suite/"><img src="https://img.shields.io/badge/featured%20on-dsh--suite-4d6bfe" /></a>
-  <a href="https://github.com/834063245-creator/Lantai/releases"><img src="https://img.shields.io/github/v/release/834063245-creator/Lantai" /></a>
-  <a href="https://github.com/834063245-creator/Lantai/actions"><img src="https://img.shields.io/github/actions/workflow/status/834063245-creator/Lantai/ci.yml" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT" /></a>
+  <a href="https://github.com/834063245-creator/LantaiAgent/releases"><img src="https://img.shields.io/github/v/release/834063245-creator/LantaiAgent" alt="release" /></a>
+  <a href="https://github.com/834063245-creator/LantaiAgent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/834063245-creator/LantaiAgent/ci.yml" alt="CI" /></a>
+  <a href="https://whyihaveyou.github.io/dsh-suite/"><img src="https://img.shields.io/badge/featured%20on-dsh--suite-4d6bfe" alt="dsh-suite" /></a>
 </p>
 
 ---
 
-## 定位
+## 这是什么
 
-**兰台是桌面 Agent 工作台**，主界面是「纸壳 · 注疏案卷」——把「等权消息流」换成注疏层级：
-人的问话是来文、AI 的答是正文、思考是夹注、工具是脚注、代码是抄录，全部落在一张会生长的纸上。
-会话即案卷，多卷并行摊开，摊开的工作集重启即恢复。
-工作台内部是完整的多 Agent 运行时：领域工具面、子 Agent 协作、Plan / Goal、记忆与技能、多厂商模型体系、
-事件溯源会话与 token 治理——**这一切完全插件化**：面板 / 命令 / 工具 / 块渲染器 / prompt 段 / 管道钩子 /
-capability 全部经插件通道贡献，出厂态零硬编码特权行。
-配套的 **HoloGram 代码图谱引擎**是**独立进程**（Rust 单二进制）：把代码库静态解析成确定性依赖图，对外是
-一个稳定的 MCP 工具面。它是随包配套件，不是应用内的主叙事——兰台默认不挂任何图工具，需要时按工作区启用
-（见 [配套引擎 HoloGram](#配套引擎-hologram)）。
+**兰台是 Windows 桌面 Agent 工作台**（Tauri 2 壳 + TypeScript / React 19 前端）：一套完整的多 Agent 运行时。
 
----
+| | |
+|---|---|
+| **一部案卷，不是聊天窗** | 主界面 =「纸壳 · 注疏案卷」：按文类分注、无尽画布、多卷摊在同一张纸上 |
+| **多 Agent 运行时** | 域工具面 · 子 Agent 池（git worktree 隔离）· Plan / Goal · 记忆与技能 · 多厂商 Provider · token 治理 |
+| **一切皆是插件** | 面板 / 命令 / 工具 / 渲染器 / prompt 段 / 钩子 / capability / 可换后端全经贡献通道装配，出厂态零特权行 |
+| **护栏在壳层，不在提示词里** | 权限引擎 · 危险命令拦截 · 三层沙箱 · 加密凭据 · 权限闸审计 |
+| **随包配套 HoloGram 引擎** | 代码图谱引擎是独立进程（Rust 单二进制），默认关、按工作区启用；也是可独立消费的 MCP server |
+
+仓库里住着两个产品面：工作台（`src-ui/` + `src-tauri/`）与引擎（`engine/` 及 `hologram-*` crate）。
 
 ## 快速开始
 
-### 桌面应用（推荐）
+**1. 装（Windows）**：[Releases](https://github.com/834063245-creator/LantaiAgent/releases) 下载安装包
+（`.msi` / `.exe`）→ 启动。从源码：仓库根 `build.cmd`（会先跑前端构建）。
 
-[Releases](https://github.com/834063245-creator/Lantai/releases) → 下载 Windows 安装包（MSI / NSIS）→ 启动 → 选工作区 → 打开案卷。
-从源码：仓库根 `build.cmd`，或 `cd src-tauri && cargo tauri build`。
+**2. 进工作区**：首次启动落在**案卷首页**——新建工作区（默认建在 `~/Documents/兰台/<名字>`），或指定一个
+已有目录：一个工作区就是一张纸。
 
-### 启用随包图谱引擎（可选，默认关）
+**3. 落笔**：
 
-安装包自带引擎（`bundle.resources`：exe + grammars + onnxruntime + 模型）：
-**设置 → MCP → 「随包图谱引擎」→ 勾选 → 下次打开工作区生效**（引擎按该工作区根启动）。
-**默认关是刻意的**：不启用则工具面零变化；懒启动 + 崩溃自愈重启 + 空闲回收，**离开工作区即停**。引擎数据落
-工作区根的 `.hologram/`，与兰台自管的 `.lantai/` 分居；接别的实例见
-[`docs/engine-as-external-mcp.md`](docs/engine-as-external-mcp.md)。
+- 输入框写下你要它做的事，回车即成第一卷（输入 `/` 出案卷命令）。
+- **侧边栏「案卷」**管本工作区的卷：＋另起一卷 · `F2` 改名 · `C` 合卷（收起，数据保留）· 删除。
+- **左缘书脊**列出摊开的卷：点击定位、拖动落位、hover 合卷。书脊与侧边栏**互斥两态**（侧栏展开时书脊退场）。
+- 权限卡在危险动作前弹出；Ask（默认）/ Auto（仅编辑类）/ Yolo 三档随时可切（详见[护栏](#内置-agent-工作台)）。
 
-### 引擎 CLI（从源码构建）
-
-```bash
-cd engine && cargo build --release
-
-hologram-engine run --list                          # 列出全部工具
-hologram-engine run <工具> <项目根> [--key value]    # 一次性执行（结构化 JSON 出参）
-hologram-engine serve --project-root <项目根>        # MCP stdio 服务
-hologram-engine serve --project-root <项目根> --tcp  # 另开 TCP 数据面（供外部客户端）
-```
-
-工具清单以生成物 [`docs/agents/engine-plugin-contract.md`](docs/agents/engine-plugin-contract.md) 为准。
-
-### 接入任意 MCP 客户端
-
-引擎就是一个标准 stdio MCP server。**Claude Code** — `~/.claude/mcp.json`：
-
-```json
-{
-  "mcpServers": {
-    "hologram-myproject": {
-      "command": "hologram-engine",
-      "args": ["serve", "--project-root", "D:/work/myproject"]
-    }
-  }
-}
-```
-
-Cursor 同理；多项目配多条 server，或用插件 manifest 的 `mcpServers` 声明式挂接。
-
-### DeepSeek Harness 插件（`@a834063245/hologram-dsh`）
-
-引擎与 MCP 图工具打包为 DSH bundle 插件（**薄发布适配层**，引擎二进制来自主仓构建产物），装完即进 agent
-工具箱（`mcp__hologram__*`）：
-
-```sh
-dsh plugin --profile web add @a834063245/hologram-dsh
-dsh web
-```
-
-安装与数据模型见 [`dsh-bundle/README.md`](dsh-bundle/README.md)。
-
-> ⚠ **包内 3D 星图 viewer 的重建路径已断**：viewer 直接构建应用侧的 StarGraph 渲染内核，而该内核已随
-> 「图谱内置接线全量退役」删除（2026-09-09，`src-ui/src/ui/graph*` 与 `src-ui/src/scene/` 均已不存在）。
-> 以引擎 + MCP 工具面为准；viewer 需专门批次重做（未实跑 vite 构建复验）。
-
----
+> **想用图谱引擎**：设置 → MCP →「随包图谱引擎」→ 勾选「启用随包图谱引擎」→ **下次打开工作区**生效
+> （每工作区按各自的根起一个引擎进程，离开工作区即停）。
 
 ## 主界面：纸壳 · 注疏案卷
 
-> 兰台＝汉代皇家档案典籍库。产品不是聊天窗，而是**一部正在被编纂的案卷**。
+| 文类 | 是什么 |
+|---|---|
+| 来文 · 正文 · 夹注 | 你的问话（手迹位 · 朱砂）· AI 的答（居中主角）· 思考（可折叠） |
+| 脚注 · 抄录 · 程文 | 工具调用 · diff 与改动 · 程序执行卡（`code_execution` 程序体） |
+| 拟策 · 工具组 · 子代理 | 方案审批卡 · 一次工作单元成组 · 子 Agent 的动静 |
+| 贴黄 · 错因 | 系统通知与会话事件 · 回合错误（回合尾墓碑 + 提示） |
 
-**注疏层级**：来文（人的问话，手迹位 + 朱砂深）· 正文（AI 的答，居中主角）· 夹注（思考）· 脚注（工具调用）·
-抄录（代码与 diff）· 拟策（方案审批）· 贴黄（系统通知与回合错误）。块类型是**开放面**（内置 + Agent 资产
-kind + 插件贡献），完整版式契约见 [`docs/design/lantai-design-spec.md`](docs/design/lantai-design-spec.md)。
+块类型是**开放面**（内置 + Agent 资产 kind + 插件贡献），版式契约见
+[`docs/design/lantai-design-spec.md`](docs/design/lantai-design-spec.md)。
 
-**墨色与字体**：朱砂 = 人，石青 = 机，石墨 = 草稿，墨 = 正文；MiSans 单文件可变字体自托管（原宋 / 楷 /
-等宽三体已退役，文类语义位保留）。视觉决定账本见
+**墨色与字体**：朱砂 = 人（来文 / 圈点）· 石青 = 机（脚注 / 程文 / 抄录 / 拟策）· 赭石 = 夹注（兼 diff
+删除）· 墨 = 正文（`--ink-1` 是唯一墨源）。字体为自托管 **MiSans 可变字体**单文件（100–900 全字重；原宋 /
+楷 / 等宽三体已退役，文类语义位保留）。视觉账本见
 [`docs/plans/paper-shell/taste-ledger.md`](docs/plans/paper-shell/taste-ledger.md)。
 
-**画布与多卷**：无限画布 + 纸条钉住 / 收回 + 小地图 + 拖拽落点分区；左缘书脊列管理多卷（恒显 / 卷首名
-双击改名 / 合卷自动存）。流式渲染按**工作单元**成组（读 / 写 / 验证包），长回合是几个工作单元加换气，
-而不是等距瀑布。
-
----
+**画布与多卷**：平移无边界、缩放 0.35–2.4 档，远档自动转行影（LOD）；任意块可**钉成纸条**（收回即回流水）
+并拖到流区 / 纸条区分区落位，右缘**小地图**（第一方插件贡献）一览全部摊开卷；流式渲染按
+**读包 / 写包 / 验证包 / 提交**成族——长回合是几个工作单元加换气，不是等距瀑布。摊开集、纸条、落位都落盘
+（`.lantai/canvas*.json`），重启回到案头原样。
 
 ## 内置 Agent 工作台
 
-**工具面**是**域工具面**：每个域工具内部是 `action` 判别联合（`fs(read|write|edit|…)`、
-`shell(run|output|wait|kill)`、`git(status|diff|commit|…)`…），会话级另有 `Skill` / plan / 通信族 /
-`code_execution` 执行原语（程序体在 Web Worker 沙箱里跑，可嵌套调用全部可见工具）。事实源是生成物
-[`docs/agents/model-tool-contract.md`](docs/agents/model-tool-contract.md)，域计数等标量见
-[`docs/facts.generated.md`](docs/facts.generated.md)。
+**工具面**：模型只见一批高内聚域工具，每个域以 `action` 作首参——`fs(read|write|edit|…)`、
+`shell(run|output|wait|kill)`、`git(status|diff|commit|…)`……；会话级另有 `Skill`、plan、通信族、
+`code_execution` 执行原语（程序体在 Web Worker 沙箱里跑，可嵌套调用全部可见工具）。旧细粒度工具名已
+淘汰，误调会被拦成「[已淘汰] → 域动作」。事实源 = 生成物
+[`docs/agents/model-tool-contract.md`](docs/agents/model-tool-contract.md)；**跨文档标量（字段数 / 域数 /
+契约版本等）见 [`docs/facts.generated.md`](docs/facts.generated.md)**，本文不复述。
 
-**运行时内核**：工具行 / prompt 段 / capability 三类装配面全经插件通道贡献，**三层表序是字节契约**（禁重排）；
-会话变异只走 `_appendMessage` / `_replaceSession` / `_retractSessionRange` 三个入口（`SessionLog` 支撑差分
-对拍、回放与审计）；vendored cordis 承载资源生命周期；流式执行 tool_use 完成即 dispatch、同轮只读工具并发；
-工具结果滚动折叠 + 成本驱动的 auto-compact（压缩只作用于发送载荷）。契约由 `npm run verify:convergence` 钉死。
+**运行时**：工具行 / prompt 段 / capability 三层装配面的**表序是字节契约**，由
+`npm run verify:convergence` 双轨钉死；会话变异只走 `_appendMessage` / `_replaceSession` /
+`_retractSessionRange` 三个入口（`SessionLog` 支撑差分对拍、回放与审计）。规则见 [`CLAUDE.md`](CLAUDE.md) ·
+[`CONVENTIONS.md`](CONVENTIONS.md) · [`INVARIANTS.md`](INVARIANTS.md)。
 
-**多 Agent**：子 Agent 池（`fork` / `fresh` 两种启动）+ 有界 inbox 通信层 + 按会话隔离的 TaskBoard /
-DiscoveryBoard + **git worktree 隔离执行**。见 [`docs/MULTI_AGENT_ROADMAP.md`](docs/MULTI_AGENT_ROADMAP.md)。
+**多 Agent**：子 Agent 池（`fork` 继承上下文 / `fresh` 干净启动）+ 有界 inbox + 按会话隔离的 TaskBoard /
+DiscoveryBoard + **git worktree 隔离执行**（`git worktree add --detach`，cherry-pick 串行合并、孤儿收养、
+TTL 清理）。
 
-**Plan / Goal**：Plan 模式只读探索 + 写计划文件，交用户审批后离开，写约束在执行层由 `planGate` 拦截；
-Goal 模式持久化目标状态、跨会话恢复。
+**Plan / Goal**：Plan 模式只读探索 + 写计划文件，交你审批后离开，写约束由 `planGateCheck` 在执行层拦截；
+Goal 模式把目标状态持久化在 `.lantai/goals/{id}/`，跨会话恢复。
 
-**记忆与 Provider**：事件溯源会话记忆 · 项目记忆（`.lantai/memory/*.md`）· Memory Bundle · 技能
-（`.lantai/skills/<name>/SKILL.md` 热加载）；模型侧多家厂商 + 运行时动态模型清单 + 本地反向代理 +
-系统级加密凭据。见 [`docs/design/provider-system-spec.md`](docs/design/provider-system-spec.md)。
+**记忆与 Provider**：事件溯源会话记忆 · 项目记忆（`.lantai/memory/*.md`）· 技能
+（`.lantai/skills/<name>/SKILL.md`，装完即用不必重启）；多厂商 Provider（Anthropic / OpenAI 兼容 /
+DeepSeek 等，清单可运行时拉取）+ loopback 反向代理（绕开 WebView 跨域）+ 系统级加密凭据（Windows DPAPI /
+macOS Keychain / Linux Secret Service）。
 
----
+**护栏**：权限引擎合流系统 / 项目 / 会话规则，裁决 `Allow` / `Deny` / `Ask` / `Passthrough`（后者 = 该工具
+自检无意见，中央闸按规则面放行、不弹窗），**Yolo 不旁路 Deny**；危险命令表拦 `rm -rf /`、`curl | sh`、
+`eval` / `source`、`sudo`、`git push --force main` 等并对 PowerShell 特判；三层沙箱（OS 层 Windows Job
+Object / macOS `sandbox-exec` / Linux `bubblewrap`——发布主力是 Windows，另两者依赖系统自带沙箱程序；shell
+默认走捆绑 MSYS2 bash · 路径层越界升 Ask · I/O 层读写上限、超时、重试、原子写）；**经权限闸的调用**落
+`.lantai/audit.jsonl`（pty / lsp 等无闸能力口不在其中，`code_execution` 嵌套调用落 session-log）。
 
 ## 插件系统
 
-出厂态零硬编码特权行；**全部贡献行（含第一方）都可被 roster patch / preset 禁用、覆盖、锚定**。贡献面覆盖
-工具 / prompt 段 / capability / 管道钩子 / 块渲染器 / 面板 / 命令 / overlay / llm 等（**通道与服务清单以
-生成物 [`docs/agents/service-catalog.md`](docs/agents/service-catalog.md) 为准**），另有
-`manifest.mcpServers`（外部 MCP server 桥接）与 `manifest.activation`（声明式惰性激活：登记 ≠ 激活，
-按引用计数）。
+出厂态**没有任何一行硬编码特权**：全部贡献行（含第一方）都可被 roster patch / preset 禁用、覆盖、锚定；
+另有 `manifest.mcpServers`（挂外部 MCP server，零插件代码）与 `manifest.activation`（惰性激活：登记 ≠
+激活，按引用计数起停）。**贡献通道与可换后端清单以生成物
+[`docs/agents/service-catalog.md`](docs/agents/service-catalog.md) 为准**。
 
-- **最短路径**：一个 `manifest.json` + 一个自包含 ESM 模块（webview 动态 import 装载，无包管理器、无
-  import map）。最小示例 [`examples/plugins/hello/`](examples/plugins/hello/README.md)。
-- **权限三层**：manifest 声明 → `plugins.json` 授予门禁（装载期一票否决）→ Rust 命令咽喉逐调用强制。
-  **信任模型（如实声明）**：插件是本机全信任代码——不做签名、不做沙箱。
-- **完整契约**：[`docs/plugins/README.md`](docs/plugins/README.md)；用户向指南 [`PLUGINS.md`](PLUGINS.md)；
-  组合层与 preset 见 [`docs/composition/README.md`](docs/composition/README.md)。
-
----
-
-## Harness Engineering
-
-**权限引擎**：规则分层合并（系统 / 项目 / 会话），裁决四态 `Allow` / `Deny` / `Ask` / `Passthrough`（`Passthrough` = 本层不裁、真权在能力口内的业务自检与路径级授权；危险动作走红卡），
-模式 Ask（默认）/ Auto（白名单常规编辑自动批准）/ Yolo（全部自动批准，不旁路 Deny）。**危险命令引擎**维护
-危险模式表（`rm -rf /`、`curl | sh`、`eval` / `source`、`sudo`、`git push -f main` 等）并对 PowerShell 特判；
-路径规则对 worktree 自动反映射回主仓库逻辑路径。**沙箱三层**：OS 层（Windows Job Object / Linux bubblewrap /
-macOS sandbox-exec，shell 默认走捆绑 bash）· 路径层（边界外升级为 Ask）· I/O 层（读写上限、超时、瞬态重试、
-原子写）。**审计**：全部工具调用落 `.lantai/audit.jsonl`。
-
----
+- **最短路径**：一个 `manifest.json` + 一个自包含 ESM 模块（动态 import 装载，无包管理器、无 import map）
+  → [`PLUGINS.md`](PLUGINS.md) 照着写，最快 15 分钟跑通；最小示例
+  [`examples/plugins/hello/`](examples/plugins/hello/README.md)。
+- **权限与信任（如实声明）**：manifest 声明 → 装载期授予门禁（一票否决）→ Rust 命令咽喉逐调用强制；
+  **插件是本机全信任代码——不签名、不沙箱。**
+- **契约**：[`docs/plugins/README.md`](docs/plugins/README.md) · 组合层与 preset
+  [`docs/composition/README.md`](docs/composition/README.md) · 三方发布
+  [`docs/user/develop/publishing-plugins.md`](docs/user/develop/publishing-plugins.md)。
 
 ## 配套引擎 HoloGram
 
-### 它与兰台的关系
+**与兰台的关系**：引擎是**独立进程**（Rust 单二进制 `hologram-engine`）。壳只做二进制位置的**只读探测**
+（`engine_assets.rs`；`LANTAI_ENGINE_EXE` 可覆盖），不链接任何引擎 crate；启用后由前端经受治进程通道拉起
+（`bundled-engine.ts` → `mcp-bridge.ts` 的 ServerGovernor：懒启动 / 崩溃退避重启 / 空闲回收 / 进程树终止
+→ Rust `protocol_bridge.rs` stdio）。**一进程一根**（同根幂等、异根拒绝）、**离开工作区即停**；引擎数据落
+工作区根 `.hologram/`，与兰台的 `.lantai/` 分居。手动接法见
+[`docs/engine-as-external-mcp.md`](docs/engine-as-external-mcp.md)。
 
-引擎是**独立进程**（**默认不启用**，开关在 设置 → MCP）。壳只做**二进制位置的只读探测**
-（`engine_assets.rs` + `engine_bundled_info` RPC，可用环境变量 `LANTAI_ENGINE_EXE` 覆盖），**不 spawn、
-不链接任何引擎 crate**；启用后由前端经既有的 **MCP 受治进程通道**拉起（`plugins/bundled-engine.ts` →
-`mcp-bridge.ts` 的 ServerGovernor：生命周期 / 崩溃退避重启 / 空闲回收 / 进程树终止 → Rust
-`protocol_bridge.rs` stdio）→ `hologram-engine serve --project-root <工作区根>`。**一进程一根**（同根幂等、
-异根拒绝），**离开工作区即停**；引擎数据落工作区根的 `.hologram/`，与兰台自管的 `.lantai/` 分居。手动接法
-（用户级 `mcp.json`、插件 `mcpServers`）见 [`docs/engine-as-external-mcp.md`](docs/engine-as-external-mcp.md)。
-
-### 引擎做什么
-
-把代码库静态解析成依赖图（节点 = 符号 / 函数 / 类 / 模块…，边 = 调用 / 继承 / 读写 / 时序…），让
-「改 A 会炸什么」变成**确定性的图查询**，而不是让模型逐文件读源码去猜：tree-sitter 语法静态链接 + 运行时
-动态加载（`.dll` / `.so`）；按需拉起原生 LSP + SCIP 索引导入；并行分批解析 → 跨文件引用解析 → 耦合 / 循环 /
-脆弱模块 / 架构盲点 → 执行流与语法级数据流 → 社区检测 → 落库（内存 CSR + SQLite / FTS5 + 语义向量）；
-watcher 增量合图、失败回退全量。**诚实标记**：eval / 动态代码标为不可达、动态 import 标为动态站点。细节见
-[`ARCHITECTURE.md`](ARCHITECTURE.md) 的引擎章节与
+**它能做什么**：把代码库静态解析成依赖图（节点 = 符号 / 函数 / 类 / 模块…，边 = 调用 / 继承 / 读写 /
+时序…），让「改 A 会炸什么」变成**确定性图查询**，而不是让模型逐文件读源码去猜：tree-sitter 语法静态链接
++ 运行时 `.dll` / `.so` 动态加载；分批并行解析 → 跨文件引用解析 → L1–L4 耦合 → 框架路由 → 动态分发与合成
+边 → 社区检测（Leiden / Louvain）→ 落库（内存 CSR + SQLite / FTS5 + 语义向量，向量后端不可用时降级
+n-gram）。分析后按项目语言**异步预热**原生 LSP，查询按需调用（调用解析 / 类型推断 / 实现 / 引用）；可
+**导入** SCIP 索引（只消费 `index.scip`，不代跑索引器）；watcher 增量合图、失败回退全量。循环 / 脆弱模块 /
+架构盲点 / 执行流 / 数据流均为**查询期**能力（不随建图预计算）。**诚实标记**：eval 与动态代码标为不可达、
+动态 import 标为动态站点；结果引用了索引后又被改过的文件时带新鲜度横幅。能力面与工具清单见
+[`ARCHITECTURE.md`](ARCHITECTURE.md) §5–§6 与生成物
 [`docs/agents/engine-plugin-contract.md`](docs/agents/engine-plugin-contract.md)。
 
-### 免编译扩展面
+**三种消费形态**：① 桌面应用内——设置 → MCP →「随包图谱引擎」（默认关）；② 任意 MCP 客户端——引擎就是
+标准 stdio MCP server，复制仓库根 [`.mcp.json.example`](.mcp.json.example) 为项目级 `.mcp.json`（用户级用
+`claude mcp add --scope user`）；③ DSH 插件包 [`@a834063245/hologram-dsh`](dsh-bundle/README.md)——薄发布
+适配层（不自带产品资产），Windows x64，装后重启 `dsh web`（当前包内接线有断点，见下）。
 
-**不改 Rust 也能扩展**：在扩展目录（环境变量 `HOLOGRAM_PLUGIN_DIR`，缺省 `<项目根>/plugins`）放 manifest
-即可声明新语言（扩展名表 + 查询式）、新框架（路由候选模式）、新工具（schema + 复用既有 handler）；装载
-情况经 `engine_status.extensions` 可见，单个 manifest 失败不阻断启动。见
-[`examples/engine-plugins/`](examples/engine-plugins/README.md)。
+> ⚠ **插件包内两处已知断链**：3D 星图 viewer 的构建链已断（它直接构建应用侧渲染内核，而该内核在
+> 2026-08-19 → 09-09 的主仓重构中分三步退役；已构建的 `viewer/dist` 仍能跑但不再可再生，`dsh-bundle`
+> 发布任务卡在这一步）；包内引擎接线还有一处服务名错配，DSH 侧未做端到端复验。**以引擎 + MCP 工具面
+> 为准**，细节见 [`dsh-bundle/README.md`](dsh-bundle/README.md)。
 
----
-
-## 架构
-
-```
-src-ui/    (TypeScript)  React 19 · 注疏案卷纸壳 · Agent 运行时 · 组合层 · Provider 体系
-src-tauri/ (Rust)        Tauri 2 壳 · 权限引擎 · 沙箱 · worktree 隔离 · 审计 · 凭证 · MCP 受治进程
-engine/    (Rust)        独立二进制：解析 → 图构建 → 分析 → 存储 → stdio MCP / CLI / TCP
-```
-
-前端与壳走单一契约的 typed RPC（见生成物
-[`docs/agents/frontend-rpc-contract.md`](docs/agents/frontend-rpc-contract.md)）；壳与引擎**无进程内依赖**。
-分层、技术栈与关键设计决策见 [`ARCHITECTURE.md`](ARCHITECTURE.md)；四条最高架构约定见
-[`docs/adr/project-constitution.md`](docs/adr/project-constitution.md)。
-
----
-
-## 工程事实
-
-- **数字只有一个真源**：[`docs/facts.generated.md`](docs/facts.generated.md)；另有
-  `cd src-ui && npm run doc-check` 六查兜底。**自举**：兰台可用配套引擎分析自身代码库。
-- 规则与雷区 [`CONVENTIONS.md`](CONVENTIONS.md) · [`INVARIANTS.md`](INVARIANTS.md)；现状与计划
-  [`docs/plans/README.md`](docs/plans/README.md)；技术债 [`docs/landmine-map.md`](docs/landmine-map.md)；
-  词汇 [`CONTEXT.md`](CONTEXT.md)；总索引 [`docs/README.md`](docs/README.md)（`docs/archive/` 是历史）。
-
----
-
-## 从源码构建
+**引擎 CLI（从源码构建，Linux / Windows 均可）**：
 
 ```bash
-# 引擎（独立二进制；Linux / Windows 均可）
 cd engine && cargo build --release
 
-# 桌面应用（Windows；会先跑前端构建）
-cd src-tauri && cargo tauri build     # 或仓库根 build.cmd
-
-# DSH 插件包（本地开发用，细节见 dsh-bundle/README.md）
-cd dsh-bundle && npm install --ignore-scripts && npm run pack:bin && npm run build && npm run build:client
+hologram-engine run --list                          # 列出全部工具（两列文本）
+hologram-engine run <工具> [项目根] [--key value]     # 一次性执行：结构化 JSON 出参，退出码表达结果
+hologram-engine serve --project-root <项目根>         # MCP stdio 服务（加 --tcp 同时开 TCP 数据面）
 ```
 
-## 开发
+**免编译扩展（不改 Rust）**：扩展目录（`HOLOGRAM_PLUGIN_DIR`，缺省 `<项目根>/plugins`）放 manifest 即可
+声明**新语言**（扩展名表 + 查询式）、**新框架**（路由候选）、**新工具**（schema + 复用既有 handler）；
+装载情况经 `engine_status.extensions` 可见，单个 manifest 失败不阻断启动。示例见
+[`examples/engine-plugins/`](examples/engine-plugins/README.md)。
+
+## 架构与目录
+
+```
+src-ui/     (TypeScript)  React 19 · 注疏案卷纸壳 · Agent 运行时 · 组合层 · Provider 体系
+src-tauri/  (Rust)        Tauri 2 壳 · 权限引擎 · 沙箱 · worktree 隔离 · 审计 · 凭据 · 受治进程
+engine/     (Rust)        独立二进制：解析 → 图构建 → 分析 → 存储 → stdio MCP / CLI / TCP
+```
+
+前端与壳走单一契约的 typed RPC（生成物
+[`docs/agents/frontend-rpc-contract.md`](docs/agents/frontend-rpc-contract.md)）；壳与引擎**无进程内依赖**。
+分层、数据流与关键决策见 [`ARCHITECTURE.md`](ARCHITECTURE.md)；四条最高架构约定见
+[`docs/adr/project-constitution.md`](docs/adr/project-constitution.md)。
+
+## 文档地图
+
+| 我想…… | 去哪 |
+|---|---|
+| 知道「现在做到哪、还剩什么」 | [`docs/plans/README.md`](docs/plans/README.md)（时间轴 [`HISTORY.md`](docs/plans/HISTORY.md)） |
+| 写插件 / 换后端 | [`PLUGINS.md`](PLUGINS.md) → [`docs/plugins/README.md`](docs/plugins/README.md) → [`docs/cookbook/`](docs/cookbook/README.md) |
+| 查数字真源 / 模型可见工具面 | [`docs/facts.generated.md`](docs/facts.generated.md) · [`docs/agents/model-tool-contract.md`](docs/agents/model-tool-contract.md) |
+| 改代码前看规则 / 雷区 | [`CLAUDE.md`](CLAUDE.md) · [`CONVENTIONS.md`](CONVENTIONS.md) · [`INVARIANTS.md`](INVARIANTS.md) · [`docs/landmine-map.md`](docs/landmine-map.md) |
+| 全部文档索引（按任务 / 按角色） | [`docs/README.md`](docs/README.md)（`docs/archive/` 是历史，不是现状） |
+
+## 开发与门禁
 
 ```bash
-cd engine && cargo test        # 引擎用例
-cd src-tauri && cargo test     # 壳用例（权限 / 生命周期 / 隔离）
-cd src-ui && npx vitest run    # 前端用例
-cd src-ui && npm run build     # tsc --noEmit + vite build
-cd src-ui && npm run verify:convergence   # Agent 运行时契约门禁（T0 + baseline 双轨）
-cd src-ui && npm run doc-check            # 文档面门禁（六查）
+dev.cmd                                  # 开发窗：Vite HMR @127.0.0.1:1420，改前端保存即生效
+build.cmd                                # 桌面安装包（等价 cd src-tauri && cargo tauri build）
+
+cd engine && cargo test                  # 引擎用例
+cd src-tauri && cargo test               # 壳用例（权限 / 生命周期 / 隔离）
+cd src-ui && npx vitest run              # 前端用例（本机跑前先 $env:NODE_ENV='test'）
+cd src-ui && npm run build               # tsc --noEmit + vite build
+cd src-ui && npm run verify:convergence  # Agent 运行时契约门禁（standard + minimal 双轨）
+cd src-ui && npm run doc-check           # 文档面门禁（六查）
 ```
 
-实测基线与运行纪律（含本机 `NODE_ENV` / `cargo` 假挂等实测坑）见 [`CONVENTIONS.md`](CONVENTIONS.md) §3
-——**数字会漂移，以重新实测为准**。
-
-**写插件**：契约 [`docs/plugins/README.md`](docs/plugins/README.md)，最小示例
-[`examples/plugins/hello/`](examples/plugins/hello/README.md)。开工纪律见 [`CLAUDE.md`](CLAUDE.md)
-（唯一权威规则文件）与 [`AGENTS.md`](AGENTS.md)；提交流程 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
-
----
+**门禁不过不 commit。** 基线数字会漂移，以重新实测为准（基线值与运行纪律见
+[`CONVENTIONS.md`](CONVENTIONS.md) §3）。提交流程见 [`CONTRIBUTING.md`](CONTRIBUTING.md)；开工前必读
+[`CLAUDE.md`](CLAUDE.md)（唯一权威规则文件）与 [`AGENTS.md`](AGENTS.md)（薄指针）。
 
 ## 许可
 
