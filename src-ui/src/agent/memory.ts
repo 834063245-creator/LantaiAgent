@@ -328,7 +328,9 @@ export class MemoryManager {
   // ── 写入 ──
 
   /** 保存记忆（创建或更新）。同时更新 MEMORY.md 索引。
-   *  更新时保留已有的 hit_count。置信度默认为 'reference'。 */
+   *  更新时保留已有的 hit_count。置信度默认为 'reference'。
+   *  返回值 = 给回执用的派生读数（新建还是更新 / 正文字符数 / 落点路径，2026-09-16
+   *  反馈回路审计：回执此前只有"已保存"+名称回显，模型无法核对入库结果）。 */
   async save(
     name: string,
     description: string,
@@ -336,12 +338,13 @@ export class MemoryManager {
     content: string,
     confidence: Confidence = 'reference',
     scope: 'project' | 'global' = 'project',
-  ): Promise<void> {
+  ): Promise<{ created: boolean; bytes: number; path: string }> {
     let hitCount = 0;
     const existing = await this.read(name, scope);
     if (existing) {
       hitCount = existing.hit_count || 0;
     }
+    const created = !existing;
 
     const mf: MemoryFile = {
       name,
@@ -360,6 +363,7 @@ export class MemoryManager {
     await this.upsertIndex(title, name + '.md', description, scope);
 
     this._promptSectionCache = null;
+    return { created, bytes: content.length, path: this.filePath(name, scope) };
   }
 
   /** 按名称删除记忆。删除成功返回 true，未找到返回 false。 */
@@ -620,7 +624,7 @@ export function createMemoryTools(mm: MemoryManager): Tool[] {
           }
         }
         const scope = args.scope || 'project';
-        await mm.save(args.name, args.description, args.type, args.content, confidence, scope);
+        const saved = await mm.save(args.name, args.description, args.type, args.content, confidence, scope);
         // H1: 通知 workspace 以扇出（UI 总线 + 活跃 Agent 注入）
         mm.onSaved?.({
           name: args.name,
@@ -630,7 +634,11 @@ export function createMemoryTools(mm: MemoryManager): Tool[] {
         });
         const downgradeNote = factDowngraded ? ' (注意: fact 级别需用户授权，已自动降为 reference)' : '';
         const scopeNote = scope === 'global' ? ' [全局]' : '';
-        return `已保存记忆 "${args.name}" (${confidence})${scopeNote}。${downgradeNote}`;
+        const kindNote = saved.created ? '新建' : '更新（保留原 hit_count）';
+        return (
+          `已保存记忆 "${args.name}" (${confidence})${scopeNote}：${kindNote}，正文 ${saved.bytes} 字符 → ${saved.path}。${downgradeNote}` +
+          '要核对/回读用 memory(list)（看 confidence/hit）或 memory(read)（读正文）。'
+        );
       },
     }),
     defineTool({

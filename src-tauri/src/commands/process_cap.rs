@@ -210,7 +210,7 @@ async fn office_exec(
     // "already exists"（模型看得懂、能处理）而不是误导性的锁错误。
     let pre_close = pre_close_target(parsed.argv[0].as_str(), &targets).map(|s| s.to_string());
     let command = build_office_command(&parsed.argv, pre_close.as_deref());
-    exec_command(
+    let out = exec_command(
         command,
         cwd,
         None,
@@ -226,7 +226,29 @@ async fn office_exec(
         app,
         true, // pre_gated：门禁已在上面按 OfficeTool 过完，不再走 bash::check
     )
-    .await
+    .await?;
+    Ok(office_result_with_exit_code(out))
+}
+
+/// office 结果的退出码归一（2026-09-16 修 landmine O3 回归）。
+///
+/// 背景：`exec_command` 的返回是**成功无前缀 / 失败 `[exit code: N]`**；而 shell 域
+/// 之所以读得到 `[exit N]`，是因为 TS 侧的流式 seam（`queued-shell.ts`）在返回给模型
+/// 前**统一加**了那个前缀。office 域**不经 seam**（本口直呼），TS 侧的
+/// `office.ts::parseShellExit` 却一直按 seam 形态解析 ⇒ 成功与失败都读成 `null` ⇒
+/// 每个写动作都回「结果未知，不要当成功继续」、多批 batch 第 1 批假失败。
+///
+/// 本函数把三态在**唯一消费者**这一层补齐，不动 `exec_command`（shell 路径与它的
+/// 字节契约因此零漂移）：
+///   - 成功（无前缀）→ 前置 `[exit code: 0]`；
+///   - 失败/超时（已有 `[exit code: N]`）→ 原样透传（不叠加）；
+///   - spawn 异常走 `Err`，由 `?` 上抛 —— 调用方按失败处理，不会伪装成成功。
+fn office_result_with_exit_code(out: String) -> String {
+    if out.trim_start().starts_with("[exit code:") {
+        out
+    } else {
+        format!("[exit code: 0]\n{out}")
+    }
 }
 
 /// process_cap 能力口分派。action ∈ 退役前 builtin.shell 7 工具名。
@@ -973,6 +995,26 @@ mod tests {
             assert!(!OFFICE_VERBS.contains(&v), "{v} 是 CLI 逃生舱/生命周期动作，不得进本口");
         }
         assert_eq!(OFFICE_VERBS.len(), 11);
+    }
+
+    /// 退出码归一：成功补 `[exit code: 0]`；已有 `[exit code: N]` 原样（不叠加）。
+    /// 守护的是 landmine O3 的回归——TS 侧 `parseShellExit` 曾因本口成功无前缀而
+    /// 恒判「结果未知」，多批 batch 第 1 批假失败。
+    #[test]
+    fn office_result_carries_exit_code_in_all_three_states() {
+        assert_eq!(
+            office_result_with_exit_code("Batch complete: 3 succeeded".to_string()),
+            "[exit code: 0]\nBatch complete: 3 succeeded"
+        );
+        let failed = "[exit code: 1]\ncurrently opened by a resident process".to_string();
+        assert_eq!(office_result_with_exit_code(failed.clone()), failed, "失败前缀原样");
+        assert!(
+            office_result_with_exit_code("[exit code: -1] 命令超时 (120000ms)".to_string())
+                .starts_with("[exit code: -1]"),
+            "超时前缀原样（不叠加第二个前缀）"
+        );
+        // 空输出也算成功（无 stdout 的成功动作，如 set 后无回显）
+        assert_eq!(office_result_with_exit_code(String::new()), "[exit code: 0]\n");
     }
 
     /// 命令拼装：环境钉扎 + POSIX 单引号（空格 / 方括号 / 单引号）；且**不得再出现

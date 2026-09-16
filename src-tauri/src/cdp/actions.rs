@@ -1646,6 +1646,7 @@ pub(crate) async fn cdp_press(
 ) -> Result<String, String> {
     let mods = parse_modifiers(modifiers)?;
     let (port, tid) = require_target(agent_id)?;
+    let before = world_snapshot(agent_id).await?;
     let (key_name, code, vk, text): (&str, String, u32, Option<String>) =
         match key.to_lowercase().as_str() {
             "enter" => ("Enter", "Enter".into(), 13, None),
@@ -1734,8 +1735,25 @@ pub(crate) async fn cdp_press(
             key_name
         )
     };
-    audit_log(agent_id, "press", &label, "ok");
-    Ok(json!({ "pressed": label }).to_string())
+    // 世界反馈（与 click 同款，2026-09-16 反馈回路审计）：按键是"看不见结果"的动作，
+    // 回执只回 `{pressed: label}` = 只说"我按了"，不说"按出了什么"——模型的怀疑无处
+    // 落地，只能重复按（Enter 常带提交语义，重发是有副作用的）。
+    tokio::time::sleep(POST_ACTION_SETTLE).await;
+    wait_nav_settle(&before, agent_id).await;
+    let after = world_snapshot(agent_id).await?;
+    let change = world_diff(&before, &after).unwrap_or_else(|| "无显著变化".into());
+    audit_log(agent_id, "press", &label, &change);
+    Ok(json!({ "pressed": label, "change": change }).to_string())
+}
+
+/// 页面当前纵向滚动位置（滚动的**派生读数**）。
+///
+/// 为什么单读 scrollY：滚动不改变 URL、也不改变 DOM 大小，`world_diff` 对它恒报
+/// "无显著变化"——那正是"滚了没有"无法自证的原因。读数失败返回 None（不阻断滚动，
+/// 也不拿 0 冒充"没动"）。
+async fn scroll_y(agent_id: Option<&str>) -> Result<f64, String> {
+    let val = runtime_evaluate("window.scrollY", agent_id).await?;
+    Ok(val.as_f64().unwrap_or(0.0))
 }
 
 /// 滚动：有 selector → 滚到元素可见；否则页面滚动 direction（down/up/top）。
@@ -1745,6 +1763,7 @@ pub(crate) async fn cdp_scroll(
     agent_id: Option<&str>,
 ) -> Result<String, String> {
     let (port, tid) = require_target(agent_id)?;
+    let y0 = scroll_y(agent_id).await.ok();
     if let Some(sel) = selector {
         if !sel.trim().is_empty() {
             let sel = ref_to_selector(&sel);
@@ -1759,8 +1778,27 @@ pub(crate) async fn cdp_scroll(
                     format!("scroll: 目标不存在或已失效: {sel}（请重新 browser(snapshot)）"),
                 ));
             }
-            audit_log(agent_id, "scroll", &sel, "element");
-            return Ok(json!({ "scrolled": "element", "selector": sel }).to_string());
+            // smooth 是动画：等一拍再读，读数才反映已发生的位移
+            tokio::time::sleep(POST_ACTION_SETTLE).await;
+            let y1 = scroll_y(agent_id).await.ok();
+            let moved = match (y0, y1) {
+                (Some(a), Some(b)) => Some((b - a).round()),
+                _ => None,
+            };
+            audit_log(
+                agent_id,
+                "scroll",
+                &sel,
+                &moved.map_or_else(|| "element".into(), |m| format!("element; moved {m:+.0}px")),
+            );
+            return Ok(json!({
+                "scrolled": "element",
+                "selector": sel,
+                "scrollYBefore": y0,
+                "scrollYAfter": y1,
+                "moved": moved,
+            })
+            .to_string());
         }
     }
     let dir = direction.unwrap_or("down".into());
@@ -1776,8 +1814,26 @@ pub(crate) async fn cdp_scroll(
         json!({ "type": "mouseWheel", "x": 400, "y": 400, "deltaX": 0, "deltaY": delta_y }),
     )
     .await?;
-    audit_log(agent_id, "scroll", &dir, "page");
-    Ok(json!({ "scrolled": "page", "direction": dir }).to_string())
+    tokio::time::sleep(POST_ACTION_SETTLE).await;
+    let y1 = scroll_y(agent_id).await.ok();
+    let moved = match (y0, y1) {
+        (Some(a), Some(b)) => Some((b - a).round()),
+        _ => None,
+    };
+    audit_log(
+        agent_id,
+        "scroll",
+        &dir,
+        &moved.map_or_else(|| "page".into(), |m| format!("page; moved {m:+.0}px")),
+    );
+    Ok(json!({
+        "scrolled": "page",
+        "direction": dir,
+        "scrollYBefore": y0,
+        "scrollYAfter": y1,
+        "moved": moved,
+    })
+    .to_string())
 }
 
 /// 显式等待（B3）：selector 出现且可见，或固定 ms 休眠。

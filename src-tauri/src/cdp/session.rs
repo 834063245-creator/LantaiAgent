@@ -1256,10 +1256,16 @@ pub(crate) async fn cdp_launch(
             let bypass_matches = proxy_bypass.is_none() || sess.proxy_bypass == proxy_bypass;
             if port_matches && headless_matches && size_matches && proxy_matches && bypass_matches {
                 set_active_slot(agent_id, &slot);
+                // 复用分支**不导航**（只有 spawn 分支把 url 塞进 Chrome 的 argv）。此前
+                // 这里回显入参 `url` = 断言一个从未建立的页面状态——回执不可信比回执空洞
+                // 更坏（2026-09-16 反馈回路审计）。如实报：navigated=false，你要求的是
+                // requestedUrl，当前真实页用 browser(targets) 查。
                 return Ok(json!({
                     "status": "reused",
                     "port": sess.port,
-                    "url": url,
+                    "navigated": false,
+                    "url": null,
+                    "requestedUrl": url,
                     "slot": sess.slot,
                     "profile": profile,
                     "headless": sess.headless.unwrap_or(false),

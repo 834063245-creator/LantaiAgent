@@ -111,8 +111,24 @@ export const builtinFsProvider: FsProvider = {
       }
       return raw;
     }
-    // 其余动作直通（list/glob 的 JSON 字符串、写类回执；write 的展示文案在
-    // fs_cap 侧由 TS 组装——见 R3-b 注记；暂返回 {path} 结构化透传）。
+    // write：补回执读数（2026-09-16 反馈回路审计）。本文件头 72-74 行早就写明
+    // 「write 回执含预览」，但实现只 `{path}` 结构化透传 = 零信息：模型写完看不到
+    // "写进去的是什么"，只能靠重复写来确认（而重复写是幂等的，所以危害是空转而非
+    // 破坏）。这里给的是**入参侧**读数（行数/字符数）——不是盘上真相，回执里点名
+    // 回读入口，别让它被当成盘上证据。
+    if (action === 'write') {
+      const content = typeof args.content === 'string' ? args.content : '';
+      const lines = content === '' ? 0 : content.split('\n').length;
+      try {
+        const parsed = JSON.parse(raw) as { path?: unknown };
+        if (typeof parsed.path === 'string') {
+          return `${raw}\n[fs] 本次入参 ${lines} 行 / ${content.length} 字符 → ${parsed.path}（入参读数，非盘上核对）。要确认盘上内容用 fs(read)。`;
+        }
+      } catch {
+        // 非 JSON（异常文本）——直通
+      }
+    }
+    // 其余动作直通（list/glob 的 JSON 字符串；write 已在上方补读数）。
     return raw;
   },
 };

@@ -670,13 +670,23 @@ function toGitCapArgs(action: string, args: Record<string, unknown>): Record<str
   return out;
 }
 
+/** 成功时 git 不打印任何输出的动作——空回执不是错误，但也不该是零信息：模型据此
+ *  无法自证"到底做没做"。补一句派生口径 + 回读入口（2026-09-16 反馈回路审计）。 */
+const SILENT_GIT_RECEIPTS: Record<string, string> = {
+  git_stage:
+    '[git] add 完成（git 对成功不打印输出）：暂存区已按 files 更新。要核对用 git(status) 或 git(diff, staged:true)。',
+  git_discard: '[git] 工作区改动已丢弃（git 对成功不打印输出）。要核对用 git(status)。',
+};
+
 /** git_cap stdout → 模型面输出形状（退役前插件原形状——行为零漂移）：
  *  git_status → JSON {branch,ahead,behind,files}（porcelain 解析，git-porcelain.ts）；
  *  git_log → commits JSON 数组（\x00 split）；其余动作 stdout 直通（diff/blame
- *  的 32K 截断已在能力口内）。 */
+ *  的 32K 截断已在能力口内）。唯一增量：零输出动作补可导航回执（见上表）。 */
 function shapeGitCapOutput(action: string, raw: string): string {
   if (action === 'git_status') return JSON.stringify(parseGitStatusPorcelain(raw));
   if (action === 'git_log') return JSON.stringify(parseGitLogCommits(raw));
+  const silent = SILENT_GIT_RECEIPTS[action];
+  if (silent && raw.trim() === '') return silent;
   return raw;
 }
 
@@ -708,7 +718,10 @@ async function stageFilesViaCap(
   signal?: AbortSignal,
 ): Promise<string> {
   if (files === '.' || files === 'all') {
-    return exec('git_cap', toGitCapArgs('git_stage_all', { path }), onProgress, signal);
+    return shapeGitCapOutput(
+      'git_stage',
+      await exec('git_cap', toGitCapArgs('git_stage_all', { path }), onProgress, signal),
+    );
   }
   const fileList = files
     .split(',')
@@ -722,7 +735,9 @@ async function stageFilesViaCap(
     const r = await exec('git_cap', toGitCapArgs('git_stage', { path, files: [f] }), onProgress, signal);
     results.push(r);
   }
-  return results.join('\n');
+  // 空回执归一放在**合并后**：逐文件都成功无输出 → 只出一次可导航回执；
+  // 任一文件有输出则整体原样直通（不逐条包话术）。
+  return shapeGitCapOutput('git_stage', results.join('\n'));
 }
 
 /** git 域工具族（S1-2 从 createCodingTools 迁出；P2-3 起 manifest 驱动 →

@@ -266,9 +266,17 @@ export function cleanShellOutput(raw: string): string {
   return withoutCwd;
 }
 
-/** shell 层结果里的退出码（`[exit N]` 前缀）。读不到 = null —— **绝不把未知当成功**。 */
+/** 结果里的退出码。两种形态都认：
+ *   - `[exit N]`：流式 shell seam（`runtime/queued-shell.ts`）给 shell 域加的前缀；
+ *   - `[exit code: N]`：能力口原文——office 域**不经 seam**（直呼
+ *     `process_cap::office_exec`），Rust 侧成功补 `[exit code: 0]`、失败/超时带
+ *     `[exit code: N]`。
+ *  2026-09-16 反馈回路审计：此前只认第一种 ⇒ office 的成功与失败都读成 null
+ *  （landmine O3 的三态逻辑被 R3 重构静默放回：写动作恒报"结果未知"、多批 batch
+ *  第 1 批假失败）。负数也认（超时是 `[exit -1]`，旧正则同样漏了）。
+ *  读不到 = null —— **绝不把未知当成功**。 */
 export function parseShellExit(raw: string): number | null {
-  const m = raw.match(/^\s*\[exit\s+(\d+)\]/i);
+  const m = raw.match(/^\s*\[exit(?:\s+code:)?\s+(-?\d+)\]/i);
   return m?.[1] !== undefined ? Number(m[1]) : null;
 }
 
@@ -442,6 +450,7 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
             `[office] batch 共 ${a.items.length} 项 → 分 ${chunks.length} 批执行（每批自身原子回滚；**批与批之间不原子**，已成功的批次不回退）。`,
           ];
           let failedAt = 0;
+          let failedUnknown = false;
           let lastText = '';
           for (let i = 0; i < chunks.length; i++) {
             const argv = buildOfficeArgv({ ...a, items: chunks[i] }, resolve);
@@ -451,13 +460,16 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
             lines.push(`── 批 ${i + 1}/${chunks.length}（${chunks[i]?.length ?? 0} 项）──\n${clipBatchOutput(r.text)}`);
             if (r.exit !== 0) {
               failedAt = i + 1;
+              failedUnknown = r.exit === null;
               break;
             }
           }
           lines.push(
             failedAt === 0
               ? `[office] ${chunks.length} 批全部成功，共 ${a.items.length} 项。${flushTail(0, lastText)}`
-              : `[office] ⚠️ 第 ${failedAt}/${chunks.length} 批失败并已停下：前 ${failedAt - 1} 批已落盘、第 ${failedAt} 批起**未执行**。修好该批的报错后**只补做第 ${failedAt} 批起的数据**，不要整表重来。`,
+              : failedUnknown
+                ? `[office] ⚠️ 第 ${failedAt}/${chunks.length} 批**结果未知**（没拿到退出码）并已停下：前 ${failedAt - 1} 批已落盘。先 office(view) 核对目标文件判断第 ${failedAt} 批是否已生效，再决定要不要补做——**不要整表重来**。`
+                : `[office] ⚠️ 第 ${failedAt}/${chunks.length} 批失败并已停下：前 ${failedAt - 1} 批已落盘、第 ${failedAt} 批起**未执行**。修好该批的报错后**只补做第 ${failedAt} 批起的数据**，不要整表重来。`,
           );
           return lines.join('\n');
         }

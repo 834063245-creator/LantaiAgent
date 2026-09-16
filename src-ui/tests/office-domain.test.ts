@@ -161,12 +161,22 @@ describe('office 域：纯函数（argv / 目标声明 / 退出码 / 切块）',
     ).toContain('install-officecli.ps1');
   });
 
-  it('parseShellExit：只认行首 `[exit N]`；读不到 = null（未知不许当成功）', () => {
+  it('parseShellExit：两种形态都认（seam 的 `[exit N]` 与能力口原文的 `[exit code: N]`）；读不到 = null', () => {
+    // ① 流式 shell seam（runtime/queued-shell.ts）形态——shell 域走这条
     expect(parseShellExit('[exit 0] ok')).toBe(0);
     expect(parseShellExit('[exit 127] bash: officecli: command not found')).toBe(127);
     expect(parseShellExit('\n[exit 1] boom')).toBe(1);
+    // ② 能力口原文形态——office 域直呼 process_cap::office_exec，生产只产这一种
+    //    （2026-09-16 审计：此前只认 ① ⇒ 成功与失败都读成 null ⇒ 写动作恒报"结果未知"、
+    //    多批 batch 第 1 批假失败——landmine O3 的三态逻辑被 R3 重构静默放回）
+    expect(parseShellExit('[exit code: 0]\nrecorded')).toBe(0);
+    expect(parseShellExit('[exit code: 1]\n[1] ERROR: Sheet not found')).toBe(1);
+    expect(parseShellExit('[exit code: -1] 命令超时 (120000ms)')).toBe(-1);
+    expect(parseShellExit('  [exit code: 127] x')).toBe(127);
+    // 未知不许当成功（也不许当失败——批量分支按"结果未知"单独报账）
     expect(parseShellExit('ok without marker')).toBeNull();
     expect(parseShellExit('')).toBeNull();
+    expect(parseShellExit('[exit code: abc]')).toBeNull();
   });
 
   it('splitOfficeBatchItems：条数上限与字节上限双约束，超大单项独占一块', () => {
@@ -220,8 +230,9 @@ describe('office 域：工具形状与 plan 分档', () => {
 describe('office 域：执行面（经 process_cap office_exec 派发）', () => {
   const captured: Array<{ name: string; args: Record<string, unknown> }> = [];
   let tool: Tool;
-  /** 下一次能力口回执（各用例按需改写——退出码语义靠它驱动）。 */
-  let nextResult = '[exit 0] recorded';
+  /** 下一次能力口回执（各用例按需改写——退出码语义靠它驱动）。
+   *  形态取**生产真形**：office 走 process_cap::office_exec，成功 = `[exit code: 0]`。 */
+  let nextResult = '[exit code: 0]\nrecorded';
   /** 按调用序号出队的回执脚本（空则用 nextResult）——多批场景靠它逐步改判。 */
   let scripted: string[] = [];
 
@@ -277,7 +288,7 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
 
     // playbook 无文件目标（不审路径）
     captured.length = 0;
-    nextResult = '[exit 0] Loaded skill';
+    nextResult = '[exit code: 0]\nLoaded skill';
     await tool.execute({ action: 'playbook', playbook: 'excel', _owner_id: 'owner-1' });
     expect(officeOf().targets).toEqual([]);
     expect(officeOf().argv).toEqual(['load_skill', 'excel']);
@@ -291,7 +302,7 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
 
   it('落盘脚注只认退出码：成功才声明，失败/未知一律不声明（2026-09-15 假成功事故）', async () => {
     captured.length = 0;
-    nextResult = '[exit 0] recorded\n[cwd: /d/ws]';
+    nextResult = '[exit code: 0]\nrecorded\n[cwd: /d/ws]';
     const write = await tool.execute({
       action: 'set',
       file: 'D:/ws/a.docx',
@@ -301,7 +312,7 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
     expect(write).toContain('改动已落盘');
 
     // 失败：officecli 报错 + 非零退出码 → 不得出现"已落盘/已提交"这类成功话术
-    nextResult = '[exit 1]\n[1] ERROR: Sheet not found: "参数表"\nBatch complete: 0 succeeded, 3 failed';
+    nextResult = '[exit code: 1]\n[1] ERROR: Sheet not found: "参数表"\nBatch complete: 0 succeeded, 3 failed';
     const failed = await tool.execute({
       action: 'set',
       file: 'D:/ws/a.docx',
@@ -323,7 +334,7 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
     expect(unknown).not.toContain('改动已落盘');
 
     // 只读动作任何情况下都不带脚注
-    nextResult = '[exit 0] recorded\n[cwd: /d/ws]';
+    nextResult = '[exit code: 0]\nrecorded\n[cwd: /d/ws]';
     const read = await tool.execute({ action: 'validate', file: 'D:/ws/a.docx' });
     expect(read).not.toContain('改动已落盘');
     expect(read).not.toContain('未成功');
@@ -331,7 +342,7 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
 
   it('create 关掉外部常驻进程时明说（用户的 watch 需重起）', async () => {
     captured.length = 0;
-    nextResult = '[exit 0] Resident closed for a.xlsx\nCreated: D:/ws/a.xlsx';
+    nextResult = '[exit code: 0]\nResident closed for a.xlsx\nCreated: D:/ws/a.xlsx';
     const out = await tool.execute({ action: 'create', file: 'D:/ws/a.xlsx' });
     expect(out).toContain('外部');
     expect(out).toContain('watch');
@@ -340,7 +351,7 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
 
   it('batch 超限自动切块：顺序执行、逐批报账（2026-09-15 静默丢行事故）', async () => {
     captured.length = 0;
-    nextResult = '[exit 0] Batch complete: ok';
+    nextResult = '[exit code: 0]\nBatch complete: ok';
     const items = Array.from({ length: 250 }, (_, i) => ({
       command: 'set',
       path: `/Sheet1/A${i + 1}`,
@@ -362,7 +373,10 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
 
   it('batch 中途失败：停在原地并说清哪几批已落盘（不回退、不重来）', async () => {
     captured.length = 0;
-    scripted = ['[exit 0] Batch complete: 100 succeeded', '[exit 1] Batch complete: 100 failed, 100 total'];
+    scripted = [
+      '[exit code: 0]\nBatch complete: 100 succeeded',
+      '[exit code: 1]\nBatch complete: 100 failed, 100 total',
+    ];
     const out = await tool.execute({
       action: 'batch',
       file: 'D:/ws/a.xlsx',
@@ -374,9 +388,27 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
     expect(out).toContain('前 1 批已落盘');
   });
 
+  it('batch 第 N 批结果未知（无退出码）：单独报"未知"，不许当失败、更不许整表重来', async () => {
+    captured.length = 0;
+    scripted = ['[exit code: 0]\nBatch complete: 100 succeeded', 'output without exit marker'];
+    const out = await tool.execute({
+      action: 'batch',
+      file: 'D:/ws/a.xlsx',
+      items: Array.from({ length: 250 }, (_, i) => ({ command: 'set', path: `/Sheet1/A${i + 1}` })),
+    });
+    scripted = [];
+    expect(captured).toHaveLength(2);
+    // 未知 ≠ 失败：话术分开（此前 null !== 0 一律按"失败"报，把可能已生效的批次说成失败）
+    expect(out).toContain('第 2/3 批**结果未知**');
+    expect(out).not.toContain('第 2/3 批失败并已停下');
+    // 出路是"先核对再决定补做"，而不是重跑整表（add/batch 是追加型，重来 = 内容重复）
+    expect(out).toContain('office(view)');
+    expect(out).toContain('不要整表重来');
+  });
+
   it('playbook 结果前置环境护栏（正文是命令行指南，本环境跑不了）', async () => {
     captured.length = 0;
-    nextResult = '[exit 0] # OfficeCLI XLSX Skill\n\n## Help-First Rule\n\n```bash\nofficecli help xlsx\n```';
+    nextResult = '[exit code: 0]\n# OfficeCLI XLSX Skill\n\n## Help-First Rule\n\n```bash\nofficecli help xlsx\n```';
     const out = await tool.execute({ action: 'playbook', playbook: 'excel', _owner_id: 'owner-1' });
     expect(out).toContain('在本环境不可执行');
     expect(out).toContain('不在 shell 的 PATH 里');

@@ -99,7 +99,16 @@ export function createTaskTools(mgr: TaskManager): Tool[] {
       }),
       execute: async (args) => {
         const t = mgr.create(args.title, args.detail);
-        return JSON.stringify({ id: t.id, title: t.title, status: t.status, detail: t.detail });
+        // 回执补派生读数（2026-09-16 反馈回路审计）：`count` = 库里现有任务总数——
+        // task_create 每次都给新 id（无幂等），重发一次同名任务会立刻在计数上显形；
+        // 要核对全表用 task(list)。
+        return JSON.stringify({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+          detail: t.detail,
+          count: mgr.list().length,
+        });
       },
     }),
     defineTool({
