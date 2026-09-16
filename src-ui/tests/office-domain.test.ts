@@ -20,11 +20,14 @@ import {
   cleanShellOutput,
   createOfficeTools,
   OFFICE_ACTIONS,
+  OFFICE_ARGV_MAX_CHARS,
   OFFICE_BATCH_MAX_ITEMS,
   OFFICE_READONLY_ACTIONS,
+  officeArgvOversize,
   officeTargets,
   parseShellExit,
   splitOfficeBatchItems,
+  validateOfficeBatchItems,
 } from '../src/agent/tools/office';
 
 const identity = (p: string) => p.replace(/\\/g, '/');
@@ -404,6 +407,91 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
     // 出路是"先核对再决定补做"，而不是重跑整表（add/batch 是追加型，重来 = 内容重复）
     expect(out).toContain('office(view)');
     expect(out).toContain('不要整表重来');
+  });
+
+  it('batch 项形状预检：派发前拦下（键名猜错 / command 成命令行串 / 缺必需字段）', async () => {
+    captured.length = 0;
+    nextResult = '[exit code: 0]\nBatch complete: ok';
+
+    // ① 键名猜错——O5 的典型形态：形状只活在技能文档里，模型拿不到就会把动作名塞到别的键上
+    const wrongKey = await tool.execute({
+      action: 'batch',
+      file: 'D:/ws/a.xlsx',
+      items: [{ op: 'set', path: '/Sheet1/A1', props: { value: 'x' } }],
+    });
+    expect(wrongKey).toContain('第 1 项缺 command');
+    expect(wrongKey).toContain('op');
+    // ② command 塞成命令行串（要的是裸动词，参数同级）
+    const cmdline = await tool.execute({
+      action: 'batch',
+      file: 'D:/ws/a.xlsx',
+      items: [{ command: 'officecli set --path /Sheet1/A1' }],
+    });
+    expect(cmdline).toContain('命令行串');
+    // ③ 已知动词缺必需字段
+    const missingField = await tool.execute({
+      action: 'batch',
+      file: 'D:/ws/a.xlsx',
+      items: [{ command: 'add', parent: '/body' }],
+    });
+    expect(missingField).toContain('command="add" 缺 type');
+    // ④ 报错点名技能章节 + 明说"未执行任何一项"，且**一次都没派发**（无部分落盘）
+    expect(missingField).toContain('officecli 技能 §5.1');
+    expect(missingField).toContain('未执行任何一项');
+    expect(captured).toHaveLength(0);
+  });
+
+  it('batch 合法项照常放行（宁窄勿宽：不查 props 内部键，未知裸动词也放行）', async () => {
+    captured.length = 0;
+    nextResult = '[exit code: 0]\nBatch complete: ok';
+    const ok = await tool.execute({
+      action: 'batch',
+      file: 'D:/ws/a.xlsx',
+      items: [
+        { command: 'set', path: '/Sheet1/A1', props: { value: '标题', 未知键: 'y' } },
+        { command: 'move', selector: 'row[2]', to: '/Sheet1/A5' },
+        { command: 'clear', path: '/Sheet1/B2' }, // 未知裸动词：交给 officecli 判，不误拒
+      ],
+    });
+    expect(ok).toContain('Batch complete: ok');
+    expect(captured).toHaveLength(1);
+  });
+
+  it('尺寸闸：非 batch 写动作的超长载荷在派发前被拦（静默截断的另一入口）', async () => {
+    captured.length = 0;
+    const out = await tool.execute({
+      action: 'add',
+      file: 'D:/ws/a.docx',
+      parent: '/body',
+      type: 'paragraph',
+      props: { text: 'x'.repeat(OFFICE_ARGV_MAX_CHARS + 100) },
+    });
+    expect(out).toContain('add 无法单次送达');
+    expect(out).toContain('静默截断');
+    expect(out).toContain('拆成多次调用');
+    expect(captured).toHaveLength(0); // 未派发 ⇒ 不会"回执说成功而字节没进去"
+  });
+
+  it('尺寸闸：batch 单块超限（切不开的单项）同样拦在派发前', async () => {
+    captured.length = 0;
+    const out = await tool.execute({
+      action: 'batch',
+      file: 'D:/ws/a.xlsx',
+      items: [{ command: 'set', path: '/Sheet1/A1', props: { value: 'y'.repeat(OFFICE_ARGV_MAX_CHARS + 100) } }],
+    });
+    expect(out).toContain('第 1/1 块');
+    expect(out).toContain('静默截断');
+    expect(captured).toHaveLength(0);
+  });
+
+  it('纯函数面：validateOfficeBatchItems / officeArgvOversize 的边界', () => {
+    expect(validateOfficeBatchItems([{ command: 'set', path: '/a', props: { v: '1' } }])).toBeNull();
+    expect(validateOfficeBatchItems([{ command: 'remove', path: '/a' }])).toBeNull();
+    expect(validateOfficeBatchItems([null])).toContain('不是对象');
+    expect(validateOfficeBatchItems([{ command: 'set', props: { v: '1' } }])).toContain('缺 path');
+    // 尺寸：正好等于上限放行，超一个字符就拦
+    expect(officeArgvOversize('x'.repeat(OFFICE_ARGV_MAX_CHARS))).toBeNull();
+    expect(officeArgvOversize('x'.repeat(OFFICE_ARGV_MAX_CHARS + 1))).toContain('单次上限');
   });
 
   it('playbook 结果前置环境护栏（正文是命令行指南，本环境跑不了）', async () => {

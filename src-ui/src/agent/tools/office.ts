@@ -311,6 +311,82 @@ export function splitOfficeBatchItems(
   return chunks;
 }
 
+/** batch 项内的裸动词面（权威形状见 buildOfficeArgv 的 batch 缺参报错 + officecli 技能 §5.1）。
+ *  注意：这是**项内**动词，与 CLI 顶层动词表（Rust `OFFICE_VERBS`，11 个）不是同一张表
+ *  ——项内动词由 officecli 的 batch 解析器消费，本仓此前两侧都不校验。 */
+const OFFICE_ITEM_REQUIRED: Record<string, readonly string[]> = {
+  // props 不列入必需：本仓权威形状文本（buildOfficeArgv 的 batch 缺参报错）把 props 标为
+  // `props?`，且无 props 的 set 在 officecli 侧是否报错本仓无证据 ⇒ 不误拒（宁窄勿宽）。
+  set: ['path'],
+  remove: ['path'],
+  add: ['type'],
+};
+
+/** batch 项形状预检（返回错误文案；null = 通过）。
+ *
+ *  Why（landmine O5 + 2026-09-16 审计）：`items` 是模型可见 schema 里**唯一既无形状
+ *  描述、也不指向技能章节**的参数（兄弟参数都有），而 batch 恰是动作面里最复杂的那个
+ *  ——模型只能猜。猜错的两种典型形态在这里给**字段级带窗报错**（此前只等 officecli
+ *  的批次原始报错）：
+ *    ① 键名猜错（`{op:…}`）或 command 缺失 → 报"缺 command + 收到哪些键"；
+ *    ② command 塞成**命令行串**（`"officecli set --path …"`）或含空格 → 报"要裸动词"。
+ *  只查两层（command 形态 + 已知动词的必需字段），**不查 props 内部键**——宁可放过
+ *  让 officecli 判，也不要误拒合法项（宁窄勿宽）。预检在**任何派发之前**跑，
+ *  所以形状错不会留下"前几批已落盘"。 */
+export function validateOfficeBatchItems(items: readonly unknown[]): string | null {
+  const problems: string[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it === null || typeof it !== 'object' || Array.isArray(it)) {
+      problems.push(`第 ${i + 1} 项不是对象（收到 ${Array.isArray(it) ? '数组' : typeof it}）`);
+      continue;
+    }
+    const rec = it as Record<string, unknown>;
+    const cmd = rec.command;
+    if (typeof cmd !== 'string' || cmd.trim() === '') {
+      problems.push(`第 ${i + 1} 项缺 command（收到的键：${Object.keys(rec).join('/') || '（无）'}）`);
+      continue;
+    }
+    const verb = cmd.trim();
+    if (!/^[a-z][a-z-]*$/i.test(verb)) {
+      problems.push(`第 ${i + 1} 项的 command 是命令行串（"${verb.slice(0, 40)}"）——要的是**裸动词**`);
+      continue;
+    }
+    const required = OFFICE_ITEM_REQUIRED[verb.toLowerCase()];
+    if (required) {
+      const missing = required.filter((k) => rec[k] === undefined || rec[k] === null || rec[k] === '');
+      if (missing.length > 0) problems.push(`第 ${i + 1} 项 command="${verb}" 缺 ${missing.join('/')}`);
+    }
+  }
+  if (problems.length === 0) return null;
+  return (
+    `batch 项形状不对（${problems.length}/${items.length} 项）：\n  · ${problems.slice(0, 8).join('\n  · ')}\n` +
+    '每项形状：{command:"set"|"add"|"remove"|"move"|"swap", path?, parent?, type?, props?, selector?, to?, after?, before?}——' +
+    'command 是**裸动词**，动词的参数是**同级字段**。例：' +
+    '[{command:"set",path:"/Sheet1/A1",props:{value:"标题"}},{command:"add",parent:"/Sheet1",type:"row",props:{}}]。' +
+    '形状与逐格式示例见 officecli 技能 §5.1。**本次未执行任何一项**（预检在派发前）。'
+  );
+}
+
+/** 单次 CLI 调用载荷上限（保守值）。
+ *
+ *  真源 = Windows CreateProcess 命令行 32767 字符：命令由 Rust 侧拼成一条 `bash -c`
+ *  串（`OFFICECLI_*` 环境钉扎 ~75 字符 + 二进制定位 + 每 token POSIX 单引号），因此按
+ *  argv 的 **JSON 长度**估——JSON 还会多转义换行/引号，是偏保守的上界；24 000 与
+ *  32767 之间留的余量覆盖固定开销与框架串。
+ *  超限 = **静默截断**（landmine O3② 的机理：回执说零失败而字节没全进去），
+ *  所以必须在派发前拦。 */
+export const OFFICE_ARGV_MAX_CHARS = 24_000;
+
+/** 尺寸体检（返回错误文案；null = 通过）。`payload` 传 argv 的 JSON（非 batch）或单块 items 的 JSON。 */
+export function officeArgvOversize(payload: string, max: number = OFFICE_ARGV_MAX_CHARS): string | null {
+  if (payload.length <= max) return null;
+  return (
+    `本次载荷 ${payload.length} 字符 > 单次上限 ${max}（Windows 命令行 32767 字符，超限**静默截断**——回执可能说成功而字节没全进去）。` +
+    '修法：把大内容拆成多次调用（长正文分几段 add）；≥3 处改动一律用 batch（它会自动分批）。**不要**原样重发。'
+  );
+}
+
 /** 分批执行时单批输出的展示上限（防 20+ 批把工具结果撑爆）。 */
 function clipBatchOutput(text: string, max = 2000): string {
   if (text.length <= max) return text;
@@ -441,10 +517,20 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
         return `\n[office] ⚠️ 本次改动**未成功**（退出码 ${exit}）：上面的报错才是真相，按它修参数后重试，不要当成功继续。`;
       };
 
-      // batch：超大 items 必须切块执行（见 OFFICE_BATCH_MAX_*）——一次 CLI 调用装不下，
-      // 而且超限是**静默**的。批间不原子，所以失败要停在原地并说清哪几批已落盘。
+      // batch：项形状预检 + 超大载荷切块（见 OFFICE_BATCH_MAX_*）。
+      // 两条闸都在**任何派发之前**（fail fast，杜绝"前几批已落盘"才发现形状错）。
       if (a.action === 'batch' && Array.isArray(a.items) && a.items.length > 0) {
+        const badItems = validateOfficeBatchItems(a.items);
+        if (badItems) return `[office] ${badItems}`;
         const chunks = splitOfficeBatchItems(a.items);
+        // 单块超限（例如**单项**就很大，切不开）：这也是静默截断的入口，必须拦在派发前
+        // ——此前只有 chunks.length > 1 才走护栏，单块直接落回普通路径无检查（2026-09-16）。
+        for (let i = 0; i < chunks.length; i++) {
+          const oversize = officeArgvOversize(JSON.stringify(chunks[i] ?? []));
+          if (oversize) {
+            return `[office] batch 第 ${i + 1}/${chunks.length} 块（${chunks[i]?.length ?? 0} 项）无法单次送达：${oversize}`;
+          }
+        }
         if (chunks.length > 1) {
           const lines: string[] = [
             `[office] batch 共 ${a.items.length} 项 → 分 ${chunks.length} 批执行（每批自身原子回滚；**批与批之间不原子**，已成功的批次不回退）。`,
@@ -477,6 +563,10 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
 
       const argv = buildOfficeArgv(a, resolve);
       if (typeof argv === 'string') return `[office] ${argv}`;
+      // 非 batch 写动作同样要过尺寸闸（长 props / 大 data 一样会撞 Windows 命令行上限，
+      // 此前只有多块 batch 有护栏）。
+      const oversize = officeArgvOversize(JSON.stringify(argv));
+      if (oversize) return `[office] ${a.action} 无法单次送达：${oversize}`;
       const r = await runOne(argv);
       const body = a.action === 'playbook' ? `${PLAYBOOK_GUARD_HEADER}\n\n────────────\n\n${r.text}` : r.text;
       return `${body}${flushTail(r.exit, r.text)}`;
