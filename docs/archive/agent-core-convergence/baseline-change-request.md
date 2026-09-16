@@ -344,3 +344,67 @@
 3. ✅ 差分用例钉新序 + 显式声明；恢复链补「宣布补落」；
 4. ✅ 本文件登记 + 授权依据（用户「通过」）；
 5. ✅ `record:convergence` 两轨重录 + 门禁四连（vitest / build / biome ci / verify:convergence）。
+
+---
+
+# Baseline 变更申请 — phase-0/hook-pipeline.trace.json（工具参数 JSON 解析失败的报错带窗）
+
+> 申请日期：2026-09-16 · 申请人：编码助手（资产工具反馈回路修复批）
+> 状态：**已批准** —— 用户在对话中就本申请明确回应「放行（推荐）」。
+> 授权依据：本条只改一条错误文本（tool/result 内容），工具 schema 与事件顺序零变更。
+> 模型可见表面：**工具 schema 零变更**（`tool-schemas.*.json` 不动，前缀缓存不受影响）；
+> 变更的是**一条错误文本**——这正是本申请的对象。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-0/hook-pipeline.trace.json` 第 71 行（`bad-json` fixture 的 pipeline 输出）
+- `src-ui/tests/convergence/baseline/preset-minimal/phase-0/hook-pipeline.trace.json` 同名行（两轨同源）
+
+  ```
+  旧： "output": "error: invalid JSON arguments: {invalid",
+  新： "output": "error: invalid JSON arguments: Expected property name or '}' in JSON at position 1
+       (line 1 column 2)\n  解析在偏移 1 处失败（原文 8 字符），该偏移附近：\n  …{invalid\n
+       常见成因：少/多一个 } 或 ]、字符串引号未闭合、尾随逗号。补齐后用合法 JSON 重发本次调用。",
+  ```
+
+  同 fixture 的 `call` / `err` / `truncated` 三字段逐字节不变；事件顺序不变。
+
+## 2. 为什么必须变
+
+真机事故（2026-09-16，练手卷 `D:\练手\.lantai\sessions\1.json`）：
+
+- 原报错是**裸回显**（`error: invalid JSON arguments: <原文>`）：模型看不到"哪里坏、
+  坏成什么样"，只看得到自己那一长串原文，因而无法自纠。
+- 事故调用的形状与之**同型**：模型把 `title` 塞进 `payload` 里、外层对象少一个 `}`
+  （`{"kind": "table", "payload": {…, "title": "z_axis_breakdown"}`）→ 报错只说
+  invalid JSON → 它的诊断是「**我没给 payload**」（该轮推理原文），真病灶没被纠正。
+- 后果链可查：此后同卷它 8 次喊「payload 传坏了 / 表格被截断」（**真事故 1 次、
+  臆断 7 次**——第 7 次起连引用的损坏片段都不存在），全部以「重发」收场，留下
+  7 张重复卡；末段是同一张表连发 4 次（4 次全部成功入库）后它弃用 `table` kind。
+- 报错带窗是本仓库既有纪律（协议 §2.7「错误即导航」；`show_asset` 自己的
+  kind/presentation 报错就是这么写的）——**参数解析这一处是唯一的裸回显关门点**。
+  本条是把该纪律补齐，属一致性修复，不是新增行为面。
+
+## 3. 证据
+
+- `src-ui/tests/asset-tools.test.ts` 新增 `describe('工具参数 JSON 坏 — 报错带窗…')`（2 例）：
+  坏参数经 executor 的报错含解析位置/尾部窗口 + 常见成因 + 原文尾部可辨；
+  `invalidArgsErrorText` 纯函数面的偏移窗口语义。
+- `src-ui/tests/plan-gate.test.ts:203` 的 `toContain('invalid JSON arguments')` 仍绿（前缀未变）。
+- 全量 `npx vitest run`：**3238 passed / 3 failed**，三个失败**全部**是本条 baseline 漂移
+  （两轨 `hook-pipeline.trace.json` + phase-2 对拍），无其他行为面失败。
+- 同批的 ①②③（资产回执派生读数 / `list_block_kinds` 回读面 / `show_asset` 幂等）
+  **零 baseline 漂移**——它们只加返回 JSON 的附加键与工具输出文本，不碰 schema。
+
+## 4. 拟议变更（record 待授权后生成）
+
+采纳 record 快照：两轨各 1 行输出文本变更；**事件顺序 / 字段形状 / 工具 schema 零漂移**
+（无消息投影变化——报错文本进 tool/result 内容，不进 schema 面）。
+
+## 5. 落地步骤
+
+1. ✅ `invalidArgsErrorText`（`src/agent/streaming-executor.ts`）+ 调用点替换；
+2. ✅ 回归用例（`tests/asset-tools.test.ts`）；
+3. ✅ 本文件登记 + 授权依据（用户「放行」）；
+4. ✅ `record:convergence` 两轨重录（写面实测 = 恰好两个 baseline 文件各 1 行，`git diff -U0` 已核）
+   + 门禁四连（vitest / build / biome ci / verify:convergence）。

@@ -29,6 +29,33 @@ export interface ExecutorToolCall {
   tool: Tool;
 }
 
+/** 参数 JSON 解析失败的带窗报错（§2.7「错误即导航」在**工具参数**这一环的补齐）。
+ *
+ *  Why（2026-09-16 真机事故）：此处原先是裸回显 `error: invalid JSON arguments: <原文>`——
+ *  模型看不到"哪里坏、坏成什么样"，只看得到自己那一长串原文。它当时的诊断是
+ *  「我没给 payload」（误诊），而真实病灶是它把 title 塞进 payload 里、外层对象
+ *  少一个 `}`。误诊没被纠正 → 它此后养成「我的 payload 会坏」的迷信，一路重发。
+ *  报错要能自纠：给解析偏移 + 该偏移附近的原文窗口 + 常见成因。 */
+export function invalidArgsErrorText(raw: string, err: unknown): string {
+  const detail = err instanceof Error ? err.message : String(err);
+  const m = /position (\d+)/.exec(detail);
+  const pos = m ? Number(m[1]) : null;
+  const at =
+    pos !== null && Number.isFinite(pos)
+      ? `解析在偏移 ${pos} 处失败（原文 ${raw.length} 字符），该偏移附近：`
+      : `解析失败（原文 ${raw.length} 字符），尾部：`;
+  const window =
+    pos !== null && Number.isFinite(pos)
+      ? raw.slice(Math.max(0, pos - 60), Math.min(raw.length, pos + 20))
+      : raw.slice(-80);
+  return [
+    `error: invalid JSON arguments: ${detail}`,
+    `  ${at}`,
+    `  …${window}`,
+    '  常见成因：少/多一个 } 或 ]、字符串引号未闭合、尾随逗号。补齐后用合法 JSON 重发本次调用。',
+  ].join('\n');
+}
+
 interface PendingResult {
   call: ToolCall;
   output: string;
@@ -348,10 +375,10 @@ export class StreamingToolExecutor {
     let args: Record<string, unknown>;
     try {
       args = JSON.parse(call.arguments || '{}');
-    } catch {
+    } catch (e) {
       const result: PendingResult = {
         call,
-        output: `error: invalid JSON arguments: ${call.arguments}`,
+        output: invalidArgsErrorText(call.arguments, e),
         err: 'invalid JSON arguments',
         truncated: false,
       };

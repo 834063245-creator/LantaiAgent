@@ -68,7 +68,7 @@
           "err": "invalid JSON arguments",
           "id": "c1",
           "name": "graph_summary",
-          "output": "error: invalid JSON arguments: {invalid",
+          "output": "error: invalid JSON arguments: Expected property name or '}' in JSON at position 1 (line 1 column 2)\n  解析在偏移 1 处失败（原文 8 字符），该偏移附近：\n  …{invalid\n  常见成因：少/多一个 } 或 ]、字符串引号未闭合、尾随逗号。补齐后用合法 JSON 重发本次调用。",
           "truncated": false
         }
       ]

@@ -12,26 +12,64 @@
 //     Agent 从错误里自纠，绝不静默降级（协议 §2.7）。
 
 import { z } from 'zod';
-import { assetKinds, generateAssetId, requireKind, requirePresentation, validatePayload } from '../asset-kinds';
-import { type AssetRecord, getAsset, listAssets, upsertAsset } from '../asset-store';
+import {
+  assetDigest,
+  assetKinds,
+  generateAssetId,
+  requireKind,
+  requirePresentation,
+  validatePayload,
+} from '../asset-kinds';
+import { type AssetRecord, findAssetByContent, getAsset, listAssets, upsertAsset } from '../asset-store';
 import { waitForConfirm } from '../confirm-registry';
 import type { Tool } from '../tool';
 import { defineTool } from './define-tool';
 
 const ASSET_CHUNK = 64;
 
+/** list_block_kinds 的已有资产清单上限（防长会话把发现面撑成 token 炸弹）。 */
+const ASSET_LIST_CAP = 20;
+
 /** 工具执行作用域（executor 注入的 _owner_id；缺省 '' 兜底单槽） */
 function scopeOf(args: Record<string, unknown>): string {
   return typeof args._owner_id === 'string' ? args._owner_id : '';
 }
 
-/** 资产终值 JSON（executor 解析为 Asset 事件）；结构化 key 与协议 §2.3 AssetEventData 对齐 */
+/** title 规整（空串 = 未给——身份判据与回执共用同一口径） */
+function titleOf(args: Record<string, unknown>): string | undefined {
+  return typeof args.title === 'string' && args.title.length > 0 ? args.title : undefined;
+}
+
+/** 资产终值 JSON（executor 解析为 Asset 事件）；结构化 key 与协议 §2.3 AssetEventData 对齐。
+ *  receipt 是**附加键**（回执面，不参与资产事件形状）：parseAssetEventOutput /
+ *  会话重建 / asset-store 只认前五个键，多出的键被忽略（兼容面零漂移）。 */
 interface AssetToolOutput {
   assetId: string;
   kind: string;
   presentation: string;
   title?: string;
   payload: unknown;
+  receipt: AssetReceipt;
+}
+
+/** 成功面回执（§2.7「报错即导航」的对偶——成功也要带窗，2026-09-16 真机事故后立）。 */
+interface AssetReceipt {
+  /** 派生读数（列数/行数/行宽是否一致/顶层键/字符数）——模型没说过的数字 */
+  summary: string;
+  /** true = 复用既有资产（原位替换，未新建块） */
+  reused: boolean;
+  /** 一句话语义（教它别用重发当验证手段） */
+  note: string;
+}
+
+function makeReceipt(kind: string, payload: unknown, reused: boolean): AssetReceipt {
+  return {
+    summary: assetDigest(kind, payload),
+    reused,
+    note: reused
+      ? '已存在同 kind + title 的块：本次为原位替换（未新建资产、未新增卡片）。要另建一个请换 title；同 id 改内容用 update_asset。'
+      : '本次新建块。summary 是已入库内容的派生读数，可直接与你的入参核对；要回读本会话已有资产用 list_block_kinds。',
+  };
 }
 
 /** 资产工具族（无状态——只依赖模块级 kind 注册表与 args meta）。 */
@@ -74,13 +112,21 @@ export function createShowAssetTool(): Tool {
       }
       // meta key（executor 注入）不在 schema 类型内——经 passthrough 透传，断言读取
       const injectedAssetId = (args as { _asset_id?: string })._asset_id;
+      // 幂等（2026-09-16 真机事故）：同 kind + title 的块已存在 = 模型在重发同一张
+      // 资产（「怀疑就重发」是它的默认验证手段）。复用既有 assetId —— UI 侧
+      // _applyAssetBroadcast 按 assetId 命中判定走**原位替换**，聊天里不再堆重复卡。
+      // 流式暂态不参与（delta 已按预生成的 _asset_id 建了占位 part，复用别的 id 会
+      // 留下永不 finalised 的孤儿块）；confirm 在 store 侧排除（活回调语义）。
+      const title = titleOf(args);
+      const reuse = streamingText ? undefined : findAssetByContent(scopeOf(args), def.id, title, args.payload);
       const assetId =
-        typeof injectedAssetId === 'string' && injectedAssetId.length > 0 ? injectedAssetId : generateAssetId();
+        reuse?.assetId ??
+        (typeof injectedAssetId === 'string' && injectedAssetId.length > 0 ? injectedAssetId : generateAssetId());
       const record: AssetRecord = {
         assetId,
         kind: def.id,
         presentation,
-        ...(typeof args.title === 'string' && args.title.length > 0 ? { title: args.title } : {}),
+        ...(title !== undefined ? { title } : {}),
         payload: args.payload,
         ts: Date.now(),
       };
@@ -97,6 +143,7 @@ export function createShowAssetTool(): Tool {
           presentation,
           ...(record.title ? { title: record.title } : {}),
           payload: args.payload,
+          receipt: makeReceipt(def.id, args.payload, false),
           confirmResponse: response,
         };
         return JSON.stringify(out);
@@ -117,6 +164,7 @@ export function createShowAssetTool(): Tool {
         presentation,
         ...(record.title ? { title: record.title } : {}),
         payload: args.payload,
+        receipt: makeReceipt(def.id, args.payload, reuse !== undefined),
       };
       return JSON.stringify(out);
     },
@@ -184,6 +232,11 @@ export function createUpdateAssetTool(): Tool {
         presentation,
         ...(record.title ? { title: record.title } : {}),
         payload: record.payload,
+        receipt: {
+          summary: assetDigest(record.kind, record.payload),
+          reused: true,
+          note: '原位替换完成（assetId 与卡片位置均不变）。',
+        },
       };
       return JSON.stringify(out);
     },
@@ -199,7 +252,7 @@ export function createListBlockKindsTool(): Tool {
       'be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically).',
     schema: z.object({}),
     readOnly: true,
-    execute: async () => {
+    execute: async (args) => {
       const kinds = assetKinds.list();
       if (kinds.length === 0) return '当前没有任何可用资产 kind。';
       const lines = kinds.map((k) => {
@@ -210,12 +263,31 @@ export function createListBlockKindsTool(): Tool {
           `    schema: ${JSON.stringify(k.schema)}\n`
         );
       });
+      // 已有资产回读面（2026-09-16 真机事故）：模型对"我发的东西存成什么样"原先
+      // 零信息可查（发现面只列 kind，回执只是入参回放）——于是它靠重发来验证。
+      // 这段给的就是**已入库内容的派生读数**，是那条迷信的终结面。
+      const mine = listAssets(scopeOf(args));
+      const shown = mine.slice(0, ASSET_LIST_CAP);
+      const inventory =
+        mine.length === 0
+          ? '本会话暂无资产（show_asset 建的第一个会出现在这里）。'
+          : `本会话已有资产（${mine.length} 个${mine.length > shown.length ? `，只列前 ${shown.length}` : ''}）` +
+            `——已入库内容的派生读数，要核对/回读看这里：\n` +
+            shown
+              .map(
+                (a) => `- ${a.assetId} ${a.kind}${a.title ? ` 「${a.title}」` : ''}：${assetDigest(a.kind, a.payload)}`,
+              )
+              .join('\n');
       return (
         '可用资产 kind（' +
         kinds.length +
         ' 个）：\n' +
         lines.join('\n') +
-        '\n规则：kind 决定语义（update 不可换 kind）；presentation 决定画法（kind 白名单内可选，缺省用默认）。'
+        '\n' +
+        inventory +
+        '\n规则：kind 决定语义（update 不可换 kind）；presentation 决定画法（kind 白名单内可选，缺省用默认）。' +
+        '\n回执语义：show_asset 的 receipt.summary 是**已入库内容**的派生读数（可直接与你的入参核对）——' +
+        '不要用重发同一条来验证；同 kind + title 的重发是原位替换（不新增卡片），改已有块内容用 update_asset。'
       );
     },
   });

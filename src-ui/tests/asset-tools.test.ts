@@ -185,6 +185,196 @@ describe('资产工具三件套 — show_asset / update_asset / list_block_kinds
   });
 });
 
+describe('资产回执与幂等 — 2026-09-16 真机事故回归（"怀疑就重发"链）', () => {
+  let createAssetTools: ShowAssetModule['createAssetTools'];
+  let getAsset: StoreModule['getAsset'];
+  let listAssets: StoreModule['listAssets'];
+  let clearAssetTablesForTests: StoreModule['clearAssetTablesForTests'];
+  let tools: ReturnType<ShowAssetModule['createAssetTools']>;
+  const SCOPE = 'owner-receipt';
+
+  beforeEach(async () => {
+    const sa = await import('../src/agent/tools/show-asset');
+    createAssetTools = sa.createAssetTools;
+    const st = await import('../src/agent/asset-store');
+    getAsset = st.getAsset;
+    listAssets = st.listAssets;
+    clearAssetTablesForTests = st.clearAssetTablesForTests;
+    const cr = await import('../src/agent/confirm-registry');
+    cr.clearConfirmRegistryForTests();
+    tools = createAssetTools();
+    clearAssetTablesForTests();
+  });
+
+  function toolByName(name: string) {
+    const t = tools.find((x) => x.name() === name);
+    if (!t) throw new Error('tool not found: ' + name);
+    return t;
+  }
+
+  async function run(toolName: string, args: Record<string, unknown>, onProgress?: (c: string) => void) {
+    return toolByName(toolName).execute({ _owner_id: SCOPE, ...args }, onProgress);
+  }
+
+  const TABLE = {
+    caption: '能白拿的东西',
+    columns: ['项', '有吗', '在哪'],
+    rows: [
+      ['引擎', '有', 'Godot'],
+      ['美术', '有', 'Kenney'],
+      ['手感', '没有', '自己出'],
+    ],
+  };
+
+  it('回执带派生读数：列/行/顶层键/字符数 + 新建标记 + 回读指路', async () => {
+    const parsed = JSON.parse(await run('show_asset', { kind: 'table', title: 'inv', payload: TABLE })) as {
+      receipt: { summary: string; reused: boolean; note: string };
+    };
+    expect(parsed.receipt.reused).toBe(false);
+    expect(parsed.receipt.summary).toContain('3 列 × 3 行');
+    expect(parsed.receipt.summary).toContain('顶层键 caption/columns/rows');
+    expect(parsed.receipt.summary).toMatch(/\d+ 字符/);
+    expect(parsed.receipt.note).toContain('list_block_kinds');
+  });
+
+  it('行宽不一：摘要点破（同一张表列数不齐是渲染事故的常见形态）', async () => {
+    const parsed = JSON.parse(
+      await run('show_asset', {
+        kind: 'table',
+        payload: { columns: ['a', 'b'], rows: [['1', '2'], ['3']] },
+      }),
+    ) as { receipt: { summary: string } };
+    expect(parsed.receipt.summary).toContain('2 列 × 2 行（行宽不一：2/1）');
+  });
+
+  it('同 kind + title 重发（内容已改）：复用既有 assetId —— 原位替换、不新增卡片', async () => {
+    const first = JSON.parse(await run('show_asset', { kind: 'table', title: 'inv', payload: TABLE })) as {
+      assetId: string;
+    };
+    // 事故形态：模型"修"好 payload 再发一次（内容确实变了——旧实现在聊天里多一张卡）
+    const second = JSON.parse(
+      await run('show_asset', { kind: 'table', title: 'inv', payload: { ...TABLE, caption: '改好了' } }),
+    ) as { assetId: string; receipt: { reused: boolean } };
+    expect(second.assetId).toBe(first.assetId);
+    expect(second.receipt.reused).toBe(true);
+    expect(listAssets(SCOPE)).toHaveLength(1);
+    const rec = getAsset(SCOPE, first.assetId)?.payload as { caption: string };
+    expect(rec.caption).toBe('改好了');
+  });
+
+  it('无 title：按内容判等（键序无关）——同内容复用、异内容新建', async () => {
+    const a = JSON.parse(
+      await run('show_asset', { kind: 'metric', payload: { items: [{ label: 'x', value: 1 }] } }),
+    ) as { assetId: string };
+    const reordered = JSON.parse(
+      await run('show_asset', { kind: 'metric', payload: { items: [{ value: 1, label: 'x' }] } }),
+    ) as { assetId: string };
+    expect(reordered.assetId).toBe(a.assetId);
+    const b = JSON.parse(
+      await run('show_asset', { kind: 'metric', payload: { items: [{ label: 'x', value: 2 }] } }),
+    ) as { assetId: string };
+    expect(b.assetId).not.toBe(a.assetId);
+    expect(listAssets(SCOPE)).toHaveLength(2);
+  });
+
+  it('kind 不同但 title 相同：不误判为同一资产', async () => {
+    const t = JSON.parse(await run('show_asset', { kind: 'table', title: 'same', payload: TABLE })) as {
+      assetId: string;
+    };
+    const m = JSON.parse(await run('show_asset', { kind: 'metric', title: 'same', payload: { items: [] } })) as {
+      assetId: string;
+    };
+    expect(m.assetId).not.toBe(t.assetId);
+    expect(listAssets(SCOPE)).toHaveLength(2);
+  });
+
+  it('confirm 永不幂等（活回调绑在既有卡上：复用 = 第二次表决空等到超时）', async () => {
+    const a = JSON.parse(await run('show_asset', { kind: 'confirm', title: 'ok', payload: { title: '继续？' } })) as {
+      assetId: string;
+    };
+    const b = JSON.parse(await run('show_asset', { kind: 'confirm', title: 'ok', payload: { title: '继续？' } })) as {
+      assetId: string;
+    };
+    expect(b.assetId).not.toBe(a.assetId);
+  });
+
+  it('流式暂态（append + stream + 字符串 payload）不参与幂等：delta 占位块按预生成 id 建', async () => {
+    const chunks: string[] = [];
+    const a = JSON.parse(
+      await run('show_asset', { kind: 'table', title: 'stream', payload: 'x'.repeat(200), stream: true }, (c) =>
+        chunks.push(c),
+      ),
+    ) as { assetId: string };
+    const b = JSON.parse(
+      await run('show_asset', { kind: 'table', title: 'stream', payload: 'x'.repeat(200), stream: true }, (c) =>
+        chunks.push(c),
+      ),
+    ) as { assetId: string };
+    expect(b.assetId).not.toBe(a.assetId);
+    expect(chunks.length).toBeGreaterThan(1);
+  });
+
+  it('回读面：list_block_kinds 列出本会话已有资产 + 派生读数 + 回执语义', async () => {
+    const t = JSON.parse(await run('show_asset', { kind: 'table', title: 'inv', payload: TABLE })) as {
+      assetId: string;
+    };
+    const out = await run('list_block_kinds', {});
+    expect(out).toContain('本会话已有资产（1 个');
+    expect(out).toContain(t.assetId);
+    expect(out).toContain('「inv」');
+    expect(out).toContain('3 列 × 3 行');
+    expect(out).toContain('回执语义');
+    // 既有规则面不许丢（重发/换 skin 的规矩仍在同一段里）
+    expect(out).toContain('update 不可换 kind');
+  });
+
+  it('空会话：回读面显式说"暂无"，不留空白', async () => {
+    expect(await run('list_block_kinds', {})).toContain('本会话暂无资产');
+  });
+});
+
+describe('工具参数 JSON 坏 — 报错带窗（§2.7 成功面对偶；事故种子回归）', () => {
+  it('缺括号：报错给解析位置/尾部窗口 + 常见成因（不让模型对着裸回显误诊）', async () => {
+    const ex = await import('../src/agent/streaming-executor');
+    const tl = await import('../src/agent/tool');
+    const sa = await import('../src/agent/tools/show-asset');
+    const registry = new tl.ToolRegistry();
+    for (const t of sa.createAssetTools()) registry.register(t);
+    const events: AgentEvent[] = [];
+    const executor = new ex.StreamingToolExecutor(registry, (ev) => events.push(ev), null, null, null, 'owner-badjson');
+    // 事故原文形态：title 塞进 payload、外层少一个 }
+    executor.addTool({
+      id: 'badjson',
+      name: 'show_asset',
+      arguments: '{"kind": "table", "payload": {"rows": [[1]], "title": "x"}',
+    });
+    const results = await executor.awaitRemaining();
+    expect(results).toHaveLength(1);
+    expect(results[0].err).toBe('invalid JSON arguments');
+    expect(results[0].output).toContain('invalid JSON arguments');
+    expect(results[0].output).toContain('常见成因');
+    expect(results[0].output).toContain('少/多一个');
+    // 原文尾部可辨（不是只有一句"坏了"）
+    expect(results[0].output).toContain('"title": "x"}');
+  });
+
+  it('invalidArgsErrorText：给窗口与修法（有解析位置时指出偏移）', async () => {
+    const { invalidArgsErrorText } = await import('../src/agent/streaming-executor');
+    const raw = '{"a": 1, }';
+    let err: unknown = null;
+    try {
+      JSON.parse(raw);
+    } catch (e) {
+      err = e;
+    }
+    const text = invalidArgsErrorText(raw, err);
+    expect(text).toContain('invalid JSON arguments');
+    expect(text).toMatch(/偏移|尾部/);
+    expect(text).toContain('常见成因');
+    expect(text).toContain('…');
+  });
+});
+
 describe('executor 资产通道 — assetChannel 工具的事件路由', () => {
   let StreamingToolExecutor: ExecutorModule['StreamingToolExecutor'];
   let ToolRegistry: ToolModule['ToolRegistry'];

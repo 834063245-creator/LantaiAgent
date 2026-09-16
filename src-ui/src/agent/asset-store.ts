@@ -52,6 +52,51 @@ export function listAssets(scope: string): AssetRecord[] {
   return table ? [...table.values()] : [];
 }
 
+/** 键序无关的规范化序列化（内容比较用——模型重发同一 payload 时键序可能不同）。 */
+function canonicalJson(v: unknown): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
+  if (Array.isArray(v)) return `[${v.map(canonicalJson).join(',')}]`;
+  const o = v as Record<string, unknown>;
+  return `{${Object.keys(o)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`)
+    .join(',')}}`;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/** 内容寻址查找（show_asset 幂等面，2026-09-16 真机事故后立）。
+ *
+ *  身份判据：kind 相同 + title 相同（两者都给了 title 才算同一逻辑资产）；
+ *  无 title 时退回 payload 深等（键序无关）。presentation **不入身份**——
+ *  同资产换皮肤属 update 语义（协议 §2.6）。
+ *
+ *  排除 confirm：交互卡的活回调绑在既有 part 上，复用旧 assetId 会让第二次
+ *  等待挂在一个已决议的回调上（空等到超时）——confirm 永不幂等。
+ *
+ *  返回既有记录（未命中 undefined）；命中时调用方复用其 assetId，
+ *  经 _applyAssetBroadcast 的 assetId 命中判定走**原位替换**、不新增块。 */
+export function findAssetByContent(
+  scope: string,
+  kind: string,
+  title: string | undefined,
+  payload: unknown,
+): AssetRecord | undefined {
+  if (kind === 'confirm') return undefined;
+  const mine = canonicalJson(payload);
+  for (const rec of listAssets(scope)) {
+    if (rec.kind !== kind) continue;
+    if (title !== undefined && title.length > 0) {
+      if (rec.title === title) return rec;
+      continue;
+    }
+    if (isPlainObject(payload) && canonicalJson(rec.payload) === mine) return rec;
+  }
+  return undefined;
+}
+
 /** 删除单条资产（预留——WO-5 生命周期挂接用）。 */
 export function removeAsset(scope: string, assetId: string): void {
   tableOf(scope, false)?.delete(assetId);

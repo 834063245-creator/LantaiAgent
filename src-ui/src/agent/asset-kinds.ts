@@ -481,6 +481,40 @@ export function kindListSummary(): string {
     .join('、');
 }
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/** 资产内容摘要（模型可见的「派生读数」——§2.7 报错带窗的成功面对偶）。
+ *
+ *  Why（2026-09-16 真机事故）：show_asset 的成功回执此前是**入参的原样回放**，
+ *  零新增信息——模型据此无法核对「我发的东西存成了什么」，于是把「怀疑 → 重发」
+ *  当验证手段（同一张表连发 4 次，4 次全成功、聊天里 4 张重复卡，最后弃用该 kind）。
+ *  摘要给的是**模型没说过的数字**（列数/行数/行宽是否一致/顶层键/字符数）——
+ *  这才是能反驳「payload 没送全 / 被弄脏」的证据。
+ *
+ *  单一权威源：全部由 payload 派生，不存第二份真相（只读、无状态）。 */
+export function assetDigest(kind: string, payload: unknown): string {
+  const bits: string[] = [];
+  if (kind === 'table' && isPlainObject(payload)) {
+    const rows = Array.isArray(payload.rows) ? payload.rows : null;
+    const cols = Array.isArray(payload.columns) ? payload.columns.length : null;
+    if (rows) {
+      const widths = [...new Set(rows.map((r) => (Array.isArray(r) ? r.length : 0)))];
+      const ragged = widths.length > 1 ? `（行宽不一：${widths.join('/')}）` : '';
+      bits.push(cols !== null ? `${cols} 列 × ${rows.length} 行${ragged}` : `未给 columns；${rows.length} 行${ragged}`);
+    }
+  }
+  if (isPlainObject(payload)) {
+    const keys = Object.keys(payload);
+    if (keys.length > 0) bits.push(`顶层键 ${keys.slice(0, 8).join('/')}${keys.length > 8 ? '/…' : ''}`);
+  } else if (Array.isArray(payload)) {
+    bits.push(`数组 ${payload.length} 项`);
+  }
+  bits.push(`${JSON.stringify(payload ?? null).length} 字符`);
+  return bits.join('；');
+}
+
 /** 取 kind 并带窗校验（未知 → throw） */
 export function requireKind(kind: string): AssetKindDef {
   const def = assetKinds.get(kind);
