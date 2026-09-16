@@ -67,7 +67,7 @@
 - **回合有呼吸**：流式输出按**读包 / 写包 / 验证包 / 提交**成族，不是等距瀑布；零摊开卷时是**案头**——
   退匣直书 + 最近几卷的签条架，落笔即另起一卷。
 
-纸底 + 矿物墨色（朱砂＝人 / 石青＝机 / 墨＝正文），自托管 MiSans 可变字体单文件；版式契约见
+纸底 + 矿物墨色（朱砂＝人 / 石青＝机 / 石墨＝夹注 / 墨＝正文），自托管 MiSans 可变字体单文件；版式契约见
 [`docs/design/lantai-design-spec.md`](docs/design/lantai-design-spec.md)，视觉决定账本见
 [`docs/plans/paper-shell/taste-ledger.md`](docs/plans/paper-shell/taste-ledger.md)。
 

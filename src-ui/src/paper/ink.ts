@@ -95,7 +95,7 @@ export const LOD_TEXT_MIN_PX = 5.5;
 
 /* ── 墨色板（镜像 tokens.css L17-27——canvas 读不了 CSS 变量，字面量进镜像纪律，
  * tests/paper-ink.test.ts 钉死字面量；改 token 两处同步）──
- * 正文=墨 --ink-1 / 来文=朱砂 --seal / 夹注=赭石 --graphite / 脚注·程文·抄录·
+ * 正文=墨 --ink-1 / 来文=朱砂 --seal / 夹注=石墨 --graphite / 脚注·程文·抄录·
  * 拟策=石青 --indigo / 贴黄=次级 --ink-2 / 资产与未知=三级 --ink-3
  * 2026-08-31 浸墨化 v2：墨色改 ink-1 alpha 稀释（正文 .94 / 次级 .7 / 三级 .48），
  * 镜像是同一瓶墨兑水（rgba）——canvas 叠透明层上再罩纸面，与 DOM 墨同行为。 */

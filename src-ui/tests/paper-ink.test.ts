@@ -118,7 +118,7 @@ describe('paper/ink INK_BAR_COLORS 行影档镜像（P4c）', () => {
 /* ═══ 墨色板（tokens.css 字面量镜像钉死——改 token 两处同步）═══ */
 
 describe('paper/ink INK_COLORS 镜像', () => {
-  it('文类→墨色铁律：正文=墨 / 来文=朱砂 / 夹注=赭石 / 脚注族=石青 / 贴黄=次级', () => {
+  it('文类→墨色铁律：正文=墨 / 来文=朱砂 / 夹注=石墨 / 脚注族=石青 / 贴黄=次级', () => {
     expect(INK_COLORS.markdown).toBe('rgba(38, 34, 28, 0.94)'); // --ink-1 alpha 墨（2026-08-31 浸墨化 v2）
     expect(INK_COLORS.user).toBe('#a63a2e'); // --seal
     expect(INK_COLORS.reasoning).toBe('#6f6e68'); // --graphite

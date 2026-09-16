@@ -60,7 +60,7 @@ rAF 直读 canvas-view-store 不进 React 渲染帧——「分层渲染」支�
 - `measure.inkSourcesFor`：墨迹文类分派单一真源（与测高同一份 payload 语义；
   markdown 走 parseMarkdown 同源走查；tool/code/diff 封顶行数镜像 cappedH 语义）。
 - `paper/ink.ts`：`walkLineRanges` 无字符串分配路径；`InkCache`（签名+宽 key）；
-  `INK_COLORS` 字面量镜像 tokens.css L17-27（正文=墨/来文=朱砂/夹注=赭石/脚注族=
+  `INK_COLORS` 字面量镜像 tokens.css L17-27（正文=墨/来文=朱砂/夹注=石墨/脚注族=
   石青/贴黄=次级/资产=三级）——canvas 读不了 CSS 变量，字面量测试钉死
   （paper-ink.test.ts，因 paper-visual-decisions.test.ts 当窗被并行在途编辑未加）。
 - P4b 小地图真墨：活跃流区行条投影进 minimap（>50 块密度档每块首行）。
