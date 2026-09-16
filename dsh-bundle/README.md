@@ -65,7 +65,7 @@ dsh-bundle 是 HoloGram 的**薄发布适配层**，不拥有产品资产：
 
 1. 本地构建：`cd engine && cargo build --release` → `cd ../dsh-bundle && npm install --ignore-scripts && npm run pack:bin && npm run build`
 2. 打 tag `v<version>` 并 push → GitHub Actions `dsh-bundle` job 构建引擎二进制并传到 Release 附件 `hologram-engine-win32-x64.exe`
-3. `npm publish`（壳包 ~几十 KB；postinstall 按版本号从 Release 下载二进制）
+3. `npm publish`（壳包只含 glue 代码与安装脚本，引擎二进制走 Release 附件；postinstall 按版本号下载）
 
 npm 包：`@a834063245/hologram-dsh`（公开）
 二进制：GitHub Release 附件（`https://github.com/834063245-creator/LantaiAgent/releases/download/v<version>/hologram-engine-win32-x64.exe`）

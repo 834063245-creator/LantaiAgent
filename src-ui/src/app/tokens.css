@@ -127,7 +127,7 @@
    * 全局浮层：500（牒卡——最紧急交互，必须盖过一切面板）；
    * 命令面板：510。新浮层一律在此取值，禁散写 magic number。 */
   --z-paper-base: 280; /* 纸壳 */
-  --z-paper-rack: 281; /* 书脊架——恒显纸壳左缘 */
+  --z-paper-rack: 281; /* 书脊架——侧栏收起态的左缘卷列（与 --z-paper-sidebar 互斥两态） */
   --z-paper-sidebar: 282; /* 案卷侧栏 */
   --z-panel-veil: 400; /* settings 遮罩 */
   --z-panel: 401; /* settings 面板体 */

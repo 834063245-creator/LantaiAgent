@@ -142,12 +142,8 @@ n-gram）。分析后按项目语言**异步预热**原生 LSP，查询按需调
 **三种消费形态**：① 桌面应用内——设置 → MCP →「随包图谱引擎」（默认关）；② 任意 MCP 客户端——引擎就是
 标准 stdio MCP server，复制仓库根 [`.mcp.json.example`](.mcp.json.example) 为项目级 `.mcp.json`（用户级用
 `claude mcp add --scope user`）；③ DSH 插件包 [`@a834063245/hologram-dsh`](dsh-bundle/README.md)——薄发布
-适配层（不自带产品资产），Windows x64，装后重启 `dsh web`（当前包内接线有断点，见下）。
-
-> ⚠ **插件包内两处已知断链**：3D 星图 viewer 的构建链已断（它直接构建应用侧渲染内核，而该内核在
-> 2026-08-19 → 09-09 的主仓重构中分三步退役；已构建的 `viewer/dist` 仍能跑但不再可再生，`dsh-bundle`
-> 发布任务卡在这一步）；包内引擎接线还有一处服务名错配，DSH 侧未做端到端复验。**以引擎 + MCP 工具面
-> 为准**，细节见 [`dsh-bundle/README.md`](dsh-bundle/README.md)。
+适配层（不自带产品资产），Windows x64，装后重启 `dsh web`，图查询工具进 agent 工具箱
+（`mcp__hologram__*`）。原先随包的 3D 星图已随主仓图谱渲染内核退役拆除，**包内只发引擎 + MCP 工具面**。
 
 **引擎 CLI（从源码构建，Linux / Windows 均可）**：
 

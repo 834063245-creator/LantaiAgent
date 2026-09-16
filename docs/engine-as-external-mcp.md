@@ -46,7 +46,8 @@
 }
 ```
 
-保存后新会话的 Agent 工具面即出现引擎的 36+ 图谱工具（graph/ops/lsp 族）。
+保存后新会话的 Agent 工具面即出现引擎的图查询工具（清单以生成物
+[`agents/engine-plugin-contract.md`](agents/engine-plugin-contract.md) 为准）。
 
 ## 接入方式二：插件 manifest mcpServers
 
@@ -75,5 +76,6 @@
 
 ## 验证
 
-1. 兰台打开任一会话，工具面应出现 `hologram_call` 等引擎工具（或经域工具 `graph(...)` 寻址，取决于引擎 schema）。
+1. 兰台打开任一会话，工具面应出现引擎的图查询工具（名字由引擎 schema 决定；接进 DSH 时前缀为
+   `mcp__hologram__*`）。注意兰台**内置**的 `graph` / `ops` / `lsp` 域工具已随图谱内置接线退役（2026-09-09）。
 2. 引擎侧：`engine serve --project-root <root>` 单独启动，用任意 MCP 客户端连接可列 schema——回归纯 MCP 形态验证即此。

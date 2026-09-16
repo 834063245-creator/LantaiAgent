@@ -14,7 +14,7 @@
 
 ### 报告 Bug
 
-1. 在 [Issues](https://github.com/834063245-creator/HoloGram/issues) 搜索是否已有相同报告
+1. 在 [Issues](https://github.com/834063245-creator/LantaiAgent/issues) 搜索是否已有相同报告
 2. 使用 Bug Report 模板
 3. 提供：
    - 操作系统和版本
@@ -113,7 +113,7 @@ docs/            文档（入口 docs/README.md；`archive/` 是历史勿作现�
 - 阅读 [README](README.md)
 - 文档总索引：[docs/README.md](docs/README.md)
 - 插件开发契约：[docs/plugins/README.md](docs/plugins/README.md)（含从零到跑通的最小示例）
-- 查看 [GitHub Discussions](https://github.com/834063245-creator/HoloGram/discussions)
+- 查看 [GitHub Discussions](https://github.com/834063245-creator/LantaiAgent/discussions)
 - `docs/MULTI_AGENT_ROADMAP.md` 与 `docs/plans/` 是当前工作台
 
 ---
