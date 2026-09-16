@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/app-icon-1024.png" width="88" alt="兰台" />
+  <img src="assets/seals/seal-zhuwen-orchis.png" width="112" alt="兰台印章" />
 </p>
 
 <p align="center">
