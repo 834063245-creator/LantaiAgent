@@ -23,8 +23,13 @@
 ## 拍板决定的映射
 
 - D-R1-2 默认 flow → `createBlock` 缺省 `state: 'flow'`
-- D-R1-3 流锚甲 → `canvas-math.ts` `layoutFlow`（自锚点向上生长）+ `viewForAnchor`（锚点对视口下缘）
-- D-R1-1 无限画布+方位感 → `zoomAt`/`panBy` 无边界 + `ORIGIN_CROSS` 原点十字 + **V3a** Home 回原点快捷键 + 小地图（壳层）
+- D-R1-3 流锚甲 → `canvas-math.ts` `layoutFlow`（自锚点向上生长）+ **落位/回锚算式**
+  （2026-09-17 起在产地域 `plugins/builtin/paper-shell/landing.ts::panForAnchor`——壳域那份
+  `viewForAnchor` 已作为死抽象删除：它只收视口宽高、只会按**世界原点**落锚，而卷锚
+  （最新块底边）随内容向上漂 ⇒ 按原点落锚会把视口停在卷外（用户报「按回锚就空白」））
+- D-R1-1 无限画布+方位感 → `zoomAt`/`panBy` 无边界 + `ORIGIN_CROSS` 原点十字 + 小地图（壳层）；
+  **Home 已改档**（2026-09-17）：由「回世界原点」改为「**回活跃卷**」（最新块贴视口下缘上方
+  margin）——原点不再是快捷键目标，方位感靠平移/小地图获得
 - D-R2-1 钉住=拖出+动手权 → `pinBlock`（**V3a 手势分工**：块头手柄=整块拖出；文本区=原生选择——抽纸条前提）
 - D-R2-3 活引用 → `SourcedBlock.source` 挂消息/part 引用，重转译按稳定 id 续命钉住态；**纸条例外**：拷贝语义（待定 #10 拍板——活引用仅块级）
 - D-R2-4 世界坐标唯一真相 → pinned 块 x/y 是唯一真相；flow 块坐标是布局复算值

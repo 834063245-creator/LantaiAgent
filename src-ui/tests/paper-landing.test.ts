@@ -7,24 +7,25 @@
 // 病灶：落位一律按**世界原点**算，而卷锚（= 该卷最新块底边，流向上长）随内容往上
 // 漂——用户三卷实测锚点都在 -28,700 上下，于是 Home/首屏把视口停在卷外 28,700px 的
 // 空白桌面上（CDP 实测：Home 之后视口世界区间 [-2045, 151]、可见块 0）。
-// 修法：落位认**卷锚**。算式刻意落在插件域（`landing.ts`，壳域 canvas-math 改动
-// 必须重建 exe），故此处做**跨域对拍**：锚在原点这一档必须与
-// `canvas-math.viewForAnchor` 逐值一致——两处漂了就红。
+// 修法：落位认**卷锚**。算式落插件域（`landing.ts`）——同批把壳域那份
+// `canvas-math.viewForAnchor`（只收视口宽高、只会按世界原点落锚）**作为死抽象删除**：
+// 它已无生产调用者，留着就是「同一套落位语义两份实现」。故本文件按**字面期望**钉住
+// 落位语义（屏幕锚位 = w/2、h − ANCHOR.screenBottomMargin；pan = 屏幕锚位 − 锚点×zoom）。
 
 import { describe, expect, it } from 'vitest';
-import { ANCHOR, viewForAnchor, worldToScreen } from '../src/paper/canvas-math';
+import { ANCHOR, worldToScreen } from '../src/paper/canvas-math';
 import { panForAnchor } from '../src/plugins/builtin/paper-shell/landing';
 
 const MARGIN = ANCHOR.screenBottomMargin;
 
 describe('落位 / 回锚：panForAnchor（认卷锚）', () => {
-  it('锚在原点时与壳域 viewForAnchor 逐值一致（跨域对拍，漂了就红）', () => {
+  it('锚在原点（旧口径那一档）：世界 (0,0) 落在屏幕 (w/2, h − margin)', () => {
     for (const [w, h] of [
       [1000, 800],
       [2560, 1400],
       [720, 480],
     ] as const) {
-      expect(panForAnchor({ w, h }, 1, { x: 0, y: 0 }, MARGIN)).toEqual(viewForAnchor(w, h));
+      expect(panForAnchor({ w, h }, 1, { x: 0, y: 0 }, MARGIN)).toEqual({ panX: w / 2, panY: h - MARGIN });
     }
   });
 

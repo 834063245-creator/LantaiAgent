@@ -48,7 +48,6 @@ export {
   panBy,
   screenToWorld,
   viewFocusRegion,
-  viewForAnchor,
   viewportCenterWorld,
   wheelFactor,
   worldToScreen,

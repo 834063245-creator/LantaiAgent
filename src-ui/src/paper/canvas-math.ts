@@ -236,19 +236,16 @@ export function layoutRegion(
 /** 原点十字方位感（D-R1-1：无限画布 + 方位感——原点标记）。 */
 export const ORIGIN_CROSS = { halfLen: 24, gap: 6 } as const;
 
-/** 把流锚点对到屏幕位置：返回应设的 pan（pan = anchorScreen - world(0,0)*zoom）。
- *  输入条固定视口底部（D-R1-3），锚点在输入条上方 margin 处、水平居中。 */
-export function viewForAnchor(viewportWidth: number, viewportHeight: number): { panX: number; panY: number } {
-  const ax = viewportWidth / 2;
-  const ay = viewportHeight - ANCHOR.screenBottomMargin;
-  return { panX: ax, panY: ay };
-}
-
 /** 定位器视口（Stage-3 书脊 / Stage-4 目次带共用）。
  *  rework P1-2（2026-08-26 实机）：把目标锚点对到**视口中心**（原实现沿用
- *  viewForAnchor 的「底部上方 margin」公式——锚点一跳落在屏高 35% 处，
- *  不符合「跳到目标轮次」的直觉）。水平居中 + 垂直中心，保持 zoom 不变。
- *  纯函数便于测试。 */
+ *  「底部上方 margin」的落位公式——锚点一跳落在屏高 35% 处，不符合「跳到目标轮次」
+ *  的直觉）。水平居中 + 垂直中心，保持 zoom 不变。纯函数便于测试。
+ *
+ *  ⚠ 落位/回锚（D-R1-3 流锚甲，锚点对视口下缘上方 margin）**不在这里**——
+ *  2026-09-17 起归产地域 `plugins/builtin/paper-shell/landing.ts::panForAnchor`。
+ *  旧的 `viewForAnchor(w,h)`（只收视口宽高、把**世界原点**当锚）已随该批**删除**：
+ *  卷锚 = 最新块底边、随内容向上漂，按原点落锚会把视口停在卷外（用户实机报了
+ *  「按回锚就空白」）。 */
 export function viewFocusRegion(
   v: Viewport,
   viewportWidth: number,

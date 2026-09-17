@@ -23,7 +23,6 @@ import {
   nextZoomStep,
   panBy,
   screenToWorld,
-  viewForAnchor,
   wheelFactor,
   worldToScreen,
   ZOOM_MAX,
@@ -260,14 +259,6 @@ describe('paper/canvas-math', () => {
     ]);
     expect(laid.get('a')?.x).toBe(-360); // 默认宽 720
     expect(laid.get('b')?.x).toBe(-360);
-  });
-
-  it('viewForAnchor：锚点位于视口下缘上方、水平居中', () => {
-    const { panX, panY } = viewForAnchor(1000, 800);
-    // 世界 (0,0) 应映射到屏幕 (500, 800-96)
-    const s = worldToScreen({ panX, panY, zoom: 1 }, 0, 0);
-    expect(s.x).toBe(500);
-    expect(s.y).toBe(800 - ANCHOR.screenBottomMargin);
   });
 });
 

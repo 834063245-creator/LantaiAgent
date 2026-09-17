@@ -24,7 +24,7 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 }));
 
 import { createBlock, DEFAULT_BLOCK_WIDTH, resetBlockIdCounterForTests } from '../src/paper/block-model';
-import { layoutFlow, panBy, viewForAnchor, zoomAt } from '../src/paper/canvas-math';
+import { layoutFlow, panBy, zoomAt } from '../src/paper/canvas-math';
 import { composerSubmitOnKey } from '../src/paper/ime';
 import {
   CIRCLE_EXTRA,
@@ -284,9 +284,10 @@ describe('paper/virtualize', () => {
   });
 
   it('平移/缩放组合下窗口跟随（真实视口变换全链路）', () => {
-    // 初始视口（锚点几何）：1000×800，锚点 (500, 704)，zoom 1
-    const { panX, panY } = viewForAnchor(1000, 800);
-    let v = { panX, panY, zoom: 1 };
+    // 初始视口（落位几何：1000×800，最新块底边贴下缘上方 96px → 锚点屏幕 (500, 704)、zoom 1）
+    // 注：落位算式自 2026-09-17 归产地域（`plugins/builtin/paper-shell/landing.ts`），
+    //     本用例只借它当夹具，故直接写字面值，不跨域取函数。
+    let v = { panX: 500, panY: 800 - 96, zoom: 1 };
     // 视口世界 y ∈ [-704, 96] → 可见块：底边 ≥ -704 的第一个 = 块 2（-800..-700）
     let w = visibleFlowWindow(flow, viewportWorldRect(v, 1000, 800));
     expect(w.first).toBe(2);

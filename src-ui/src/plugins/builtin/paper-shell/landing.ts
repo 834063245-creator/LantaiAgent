@@ -5,9 +5,9 @@
 //
 // **为什么算式落在插件域而不是 paper/canvas-math**：`canvas-math` 属**壳域**
 // （产物域经宿主桥 `mods.faceDeps` 取它），改它必须重建 exe；本批要能「只换产物
-// 热更」（同日交付路径的两个坑见 docs/landmine-map.md 第九批 H1/H2）。故算式落在
-// 产地域，并与壳域同式——`tests/paper-landing.test.ts` 把「锚在原点」这一档与
-// `canvas-math.viewForAnchor` **逐值对拍**：两处一旦漂移即红。
+// 热更」（同日交付路径的两个坑见 docs/landmine-map.md 第九批 H1/H2）。壳域那份旧
+// `viewForAnchor(w,h)`（只收视口宽高、只会按世界原点落锚）已随本批**作为死抽象删除**：
+// 落位语义此后只在**这里**一处实现，`tests/paper-landing.test.ts` 按字面期望钉住它。
 //
 // 语义（D-R1-3 流锚甲）：屏幕锚位 = 视口水平居中 + 下缘上方 margin；
 // `pan = 屏幕锚位 − 锚点 × zoom`。

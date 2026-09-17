@@ -42,7 +42,6 @@ export const nextZoomStep = impl.nextZoomStep;
 export const panBy = impl.panBy;
 export const screenToWorld = impl.screenToWorld;
 export const viewFocusRegion = impl.viewFocusRegion;
-export const viewForAnchor = impl.viewForAnchor;
 export const wheelFactor = impl.wheelFactor;
 export const worldToScreen = impl.worldToScreen;
 export const zoomAt = impl.zoomAt;

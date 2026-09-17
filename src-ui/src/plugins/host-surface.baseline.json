@@ -1,5 +1,5 @@
 {
-  "fingerprint": "592c75f8",
+  "fingerprint": "dcf4060e",
   "keys": [
     "ANCHOR",
     "CORDIS_TOOL_NAMES",
@@ -183,7 +183,6 @@
     "useShellStore",
     "useUpdateStore",
     "viewFocusRegion",
-    "viewForAnchor",
     "viewportCenterWorld",
     "viewportMarker",
     "viewportWorldRect",
