@@ -73,32 +73,47 @@ describe('边缘滚动·策略读面', () => {
     expect(clampSensitivity(undefined)).toBe(EDGE_SCROLL.sensDefault);
   });
 
-  /* 悬停可滚判据（纯函数）：三处刻意约束 + 交互面豁免，含 2026-09-17 实机取证修正的
-   * 「目次带不整条豁免」——整条豁免会封死右缘（实机：canvas 宽 2560，右带 2524–2560，
-   * 目次带 2496–2560 整条压住）。 */
+  /* 悬停可滚判据（纯函数）：三处刻意约束 + 交互面豁免 + **贴边浮件（目次带）视为画布**
+   * ——2026-09-17 两轮实机取证：① canvas 宽 2560 / 右带 2524–2560 / 目次带 2496–2560 整条
+   * 压住 ⇒ 右缘本无可用带；② 目次带是 `.pp-canvas` 的**兄弟**（覆盖件，不属画布 DOM），
+   * 故「指针须落在画布内」这条硬判据才是真病灶（贴屏最右命中的是 nav.pp-toc 本身）。 */
   describe('hoverEdgeEligible 判据', () => {
     const RECT = { left: 0, top: 56, width: 2560, height: 1344 };
     const tuningOn = { enabled: true, hover: true, band: 36, maxSpeed: 26 };
-    const build = (): { canvas: HTMLElement; block: HTMLElement; toc: HTMLElement; tocCard: HTMLElement } => {
+    const build = (): {
+      canvas: HTMLElement;
+      block: HTMLElement;
+      toc: HTMLElement;
+      tocCard: HTMLElement;
+      veil: HTMLElement;
+    } => {
       document.body.innerHTML = '';
+      const root = document.createElement('div');
+      root.className = 'pp-root';
       const canvas = document.createElement('div');
       canvas.className = 'pp-canvas';
       const region = document.createElement('div');
       region.className = 'pp-region';
       const block = document.createElement('div'); // 正文：不豁免（纸面即地图）
       block.className = 'pp-block';
-      const toc = document.createElement('div'); // 目次带容器：不豁免（右缘要能滚）
+      const toc = document.createElement('div'); // 目次带：**覆盖件，画布之外**（真机结构）
       toc.className = 'pp-toc';
       const tocCard = document.createElement('button'); // 卡片：按钮 → 豁免
       const strip = document.createElement('div'); // 纸条：物理件 → 豁免
       strip.className = 'pp-strip';
+      const veil = document.createElement('div'); // 弹层宿主（设置面板类）：非贴边浮件
+      veil.id = 'settings-panel-overlay';
       toc.appendChild(tocCard);
       region.appendChild(block);
       region.appendChild(strip);
       canvas.appendChild(region);
-      canvas.appendChild(toc);
-      document.body.appendChild(canvas);
-      return { canvas, block, toc, tocCard };
+      // ⚠ 目次带与弹层是 `.pp-canvas` 的**兄弟**（真机即此结构）——旧测试把它们塞进画布里，
+      //   于是漏掉「画布外覆盖件」这条真病灶（右缘贴屏不滚）。
+      root.appendChild(canvas);
+      root.appendChild(toc);
+      root.appendChild(veil);
+      document.body.appendChild(root);
+      return { canvas, block, toc, tocCard, veil };
     };
     const at = (target: Element | null, x: number, y: number, tuning = tuningOn, buttons = 0): boolean =>
       hoverEdgeEligible({
@@ -111,13 +126,14 @@ describe('边缘滚动·策略读面', () => {
         rect: RECT,
       });
 
-    it('正文/桌面在画布内 → 可滚；画布外 → 不可滚（不做跟随相机）；目次带容器可滚而卡片豁免', () => {
+    it('正文/画布可滚；画布外不滚；**贴边浮件（目次带）可滚而其卡片豁免**；弹层宿主不滚', () => {
       const s = build();
       expect(at(s.block, 1266, 1390)).toBe(true); // 底带内（画布底 1400，带 36）
       expect(at(s.canvas, 1266, 1390)).toBe(true);
       expect(at(s.block, 1266, 1450)).toBe(false); // 画布下缘外：越出画布不追
-      expect(at(s.toc, 2540, 700)).toBe(true); // 右缘不再被目次带整条封死
-      expect(at(s.tocCard, 2540, 700)).toBe(false); // 卡片按钮豁免（瞄准卡片时不滚）
+      expect(at(s.toc, 2555, 700)).toBe(true); // 贴屏最右（目次带本体）→ 滚（真机 x=2555 命中 nav）
+      expect(at(s.tocCard, 2520, 700)).toBe(false); // 卡片按钮豁免（瞄准卡片时不滚）
+      expect(at(s.veil, 1266, 700)).toBe(false); // 弹层宿主（画布外、非贴边浮件）不滚
       expect(at(document.querySelector('.pp-strip'), 600, 700)).toBe(false); // 纸条豁免
     });
 

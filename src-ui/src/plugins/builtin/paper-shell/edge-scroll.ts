@@ -170,11 +170,9 @@ export function useEdgeAutoScroll(canvasRef: MutableRefObject<HTMLElement | null
  *    刻就是「我在操作内容」而不是「我在挪镜头」。
  * ③ **指针悬在交互面上不滚**（按钮/输入件/创作坞/小地图/纸条/文类签/宽度柄/角柄）——
  *    否则想点按钮、想在输入框打字，画布会自己跑掉；画布上的正文（.pp-block）**不豁免**：
- *    RTS 的镜头就是贴地图边缘走，纸面即地图。
- *    **目次带不整条豁免**（2026-09-17 实测修正）：它是右缘 64px 一条、整条压住右缘感应带，
- *    整条豁免等于右缘永远不滚（实机取证：canvas 宽 2560，右带 = 2524–2560，目次带 = 2496–2560）；
- *    现在只豁免它上面的**卡片按钮**（button 已在列），带上的墨迹/缝则照滚——「贴右缘滚一眼标记
- *    往哪走」正是导航带该有的用法，而瞄准卡片时不会滚（卡片即按钮）。
+ *    RTS 的镜头就是贴地图边缘走，纸面即地图。**贴边浮件（目次带）视为画布本体**
+ *    （见 HOVER_ALLOW_DOCKS 注：它不属画布 DOM 却压在右缘感应带上，不认它 = 右缘没有
+ *    边缘滚动）。
  *
  * 另加一段**入带驻留**（HOVER_DWELL_MS）：路过边缘（例如去点创作坞）不触发，只有
  * 真的把指针停在带上才起滚——抵消悬停族没有「按住」这个显式意图的代价。 */
@@ -183,9 +181,8 @@ export function useEdgeAutoScroll(canvasRef: MutableRefObject<HTMLElement | null
 export const HOVER_DWELL_MS = 120;
 
 /** 悬停不滚的交互面（选择器；`.pp-block` 刻意不在列——纸面即地图）。
- *  ⚠ `.pp-toc` 刻意不在列（见上注 ③：整条豁免会封死右缘）；`.pp-composer` / `.pp-minimap`
- *  是「瞄准面」（前者含输入件、后者点击即跳转），整块豁免——实测二者都不压任何感应带
- *  （创作坞坐在底带之上 96px，小地图亦在带上），故零代价。 */
+ *  ⚠ 只列**交互件与物理件**，不列容器（见下方 HOVER_ALLOW_DOCKS 的缘由）；
+ *  `.pp-composer` / `.pp-minimap` 是「瞄准面」（前者含输入件、后者点击即跳转）整块豁免。 */
 const HOVER_EXCLUDE = [
   'button',
   'input',
@@ -202,9 +199,18 @@ const HOVER_EXCLUDE = [
   '.pp-region-corner',
 ].join(',');
 
+/** 贴边浮件 = **画布的一部分**（覆盖件宿主不属画布 DOM，但压在画布边缘上）：
+ *  目次带是全高 64px、贴在画布最右侧——正盖住右缘那条 36px 感应带（实机：画布
+ *  2560 宽、右带 2524–2560、目次带 2496–2560）。若不认它，用户把鼠标贴到屏幕最右
+ *  （真机此处命中的是 `nav.pp-toc` 本身，不是卡片）会被判「不在画布上」⇒ 右缘在
+ *  用户视角里**根本没有边缘滚动**（2026-09-17 实机报「右缘不生效」即此）。
+ *  故：贴边浮件上的悬停**照滚**，只豁免它上面的交互件——卡片是 `button`（已在
+ *  HOVER_EXCLUDE），瞄准卡片时不滚（卡片随世界滚动，一滚就点不中）。 */
+const HOVER_ALLOW_DOCKS = '.pp-toc';
+
 /** 悬停此刻是否**该滚**（纯判据，供 hook 与考官共用）：
- *  开关+悬停档都开着、没按键、指针落在画布内、且不在交互面上。
- *  带宽判据不在此（交给循环里的 autoPanVector——同一把尺子）。 */
+ *  开关+悬停档都开着、没按键、指针落在画布上（画布本体**或**贴边浮件；贴边浮件见
+ *  HOVER_ALLOW_DOCKS 注）、且不在交互面上。带宽判据不在此（交给循环里的 autoPanVector）。 */
 export function hoverEdgeEligible(args: {
   target: Element | null;
   canvas: Element | null;
@@ -218,8 +224,10 @@ export function hoverEdgeEligible(args: {
   const { target, canvas, clientX, clientY, buttons, tuning, rect } = args;
   if (!tuning.enabled || !tuning.hover) return false;
   if (buttons !== 0) return false; // 拖拽手势在途 → 让位（避免两套同时滚）
-  if (!canvas || !target || !canvas.contains(target)) return false;
+  if (!canvas || !target) return false;
   if (target.closest(HOVER_EXCLUDE)) return false;
+  // 在画布上（本体或贴边浮件）——**不含**画布外的宿主/弹层（设置面板、递牒卡等）
+  if (!canvas.contains(target) && !target.closest(HOVER_ALLOW_DOCKS)) return false;
   if (!rect) return false;
   const ix = clientX - rect.left;
   const iy = clientY - rect.top;
