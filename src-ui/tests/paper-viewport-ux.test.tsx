@@ -13,6 +13,9 @@
 //   ④ 缩放舒适度：书眉 −/+ 阶梯迈步（ZOOM_STEPS）+ 点读数回 100%；键盘
 //      +/=/−/0（输入框门控）；设置「滚轮行为=缩放画布」时 plain wheel
 //      直接缩放（Miro 派 ↔ Whimsical 派互切）。
+//   ⑤ 拖块边缘自动滚屏（2026-09-17 手感批）：指针贴视口四缘 → 视口持续滚屏
+//      （指针静止也滚、回带内停摆）+ 块影钉回指针下（松手落点 = 块影所在）——
+//      一次手势把块送到任意远处，病灶「拖一下→滚→再拖」。
 // harness 时序纪律同 paper-lod-tiers（RO 0×0 直写覆盖 + restoreView 预置掐
 // 挂载期视角飞行）。
 
@@ -505,5 +508,122 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     expect(v.zoom).toBeCloseTo(wheelFactor(120), 10); // 缩放路径（平移路径 zoom 不动）
     // 锚光标守恒：屏幕 (600,400) 下的世界点缩放前后不动（zoom 路径特征）
     expect((400 - v.panY) / v.zoom).toBeCloseTo(-200, 6);
+  }, 30_000);
+
+  /* ── ⑤ 拖块边缘自动滚屏（2026-09-17 手感批，用户「拖一下→滚→再拖」病灶）──
+   * 指针贴视口四缘即持续自动滚屏（RTS 缘滚同族，曲线 = autoPanVector 单一
+   * 真源），块影每帧钉回指针下——一次手势可把块送到画布任意远处。 */
+
+  /** jsdom 无布局引擎（rect 恒 0×0 → 边缘带判定失义）：画布 rect 按挂载口径
+   *  直写（1200×800 原点左上，与 store 的屏幕坐标同一参照系）。 */
+  function stubCanvasRect(el: HTMLElement): void {
+    el.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: 1200,
+        bottom: 800,
+        width: 1200,
+        height: 800,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+  }
+
+  /** 拖拽块影世界位（渲染面 transform 解析——「块影跟手」的观测口）。 */
+  function previewXY(): { x: number; y: number } {
+    const el = container?.querySelector<HTMLElement>('.pp-block.pp-dragging') ?? null;
+    const m = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(el?.style.transform ?? '');
+    if (!m) throw new Error(`拖拽块影缺席或 transform 不识别：${el?.style.transform}`);
+    return { x: Number(m[1]), y: Number(m[2]) };
+  }
+
+  /** 等滚屏攒够位移（rAF 帧数随机器负载浮动——用**等待**代替对速率的断言），
+   *  返回 [起值, 现值]。永不达标（没滚）也返回：由调用方的断言判死。 */
+  async function scrollUntil(minDelta: number): Promise<[number, number]> {
+    const start = useCanvasViewStore.getState().view.panY;
+    for (let i = 0; i < 60; i++) {
+      if (Math.abs(useCanvasViewStore.getState().view.panY - start) >= minDelta) break;
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 25));
+      });
+    }
+    return [start, useCanvasViewStore.getState().view.panY];
+  }
+
+  it('拖块贴画布下缘：视口持续自动滚屏（指针静止也滚 / 横轴未入带不动），松手钉落在块影处', async () => {
+    const canvas = await mountCanvas(); // 出发视口 pan(600,600) / zoom 1
+    stubCanvasRect(canvas);
+    const block = container?.querySelector<HTMLElement>('.pp-block') ?? null;
+    const handle = block?.querySelector('.pp-kind') ?? null;
+    const blockId = block?.getAttribute('data-block-id') ?? '';
+    expect(handle).not.toBeNull();
+
+    await act(async () => {
+      fire(handle as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+    });
+    // 指针移到下缘带内（x = 250 不入左右带），此后**不再移动指针**——滚动
+    // 全靠 rAF 循环（「指针静止在带内也滚」= 本用例的考点）
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 250, clientY: 780 });
+    });
+    const [panY0, panY1] = await scrollUntil(60);
+    expect(panY0 - panY1).toBeGreaterThan(60); // 贴下缘 → 视口向下追内容（持续滚，非一次性）
+    expect(useCanvasViewStore.getState().view.panX).toBe(600); // 横轴未入带：不动
+
+    // 松手仍在带内（指针全程未再移动）：落点与块影同一把尺子 → 钉落在块影处。
+    // 容差 30 = 至多两帧滚屏量（滚动中块影 DOM 提交滞后 rAF 帧一帧 ≈11.5px）；
+    // 判别力由上一步保证：本轮滚屏 > 60，「块影脱手」病灶的偏差 ≥ 这个量。
+    const p = previewXY();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 250, clientY: 780 });
+    });
+    const pin = getCanvasStore(panel.panelId).getState().pins[blockId];
+    expect(pin).toBeTruthy();
+    expect(Math.abs(pin.x - p.x)).toBeLessThan(30);
+    expect(Math.abs(pin.y - p.y)).toBeLessThan(30);
+    // 钉在画布上：钉块本体在场 + 流内留「已移出」占位
+    expect(container?.querySelector('.pp-block.pp-pinned')).not.toBeNull();
+    expect(container?.querySelector('.pp-ghost')).not.toBeNull();
+  }, 30_000);
+
+  it('已钉块拖到画布上缘：视口向上滚屏，一次手势把钉挪到很上方（落点 = 块影）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const flowBlock = container?.querySelector<HTMLElement>('.pp-block') ?? null;
+    const blockId = flowBlock?.getAttribute('data-block-id') ?? '';
+    // ① 先把块拖出钉住（横向出带 → 落钉；指针不在带内 = 不滚）
+    await act(async () => {
+      fire(flowBlock?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 250, clientY: 700 });
+    });
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 250, clientY: 700 });
+    });
+    const pinnedEl = container?.querySelector<HTMLElement>('.pp-block.pp-pinned') ?? null;
+    expect(pinnedEl).not.toBeNull();
+    const pinY0 = getCanvasStore(panel.panelId).getState().pins[blockId]?.y ?? 0;
+
+    // ② 拖已钉块贴上缘带内：视口向上追内容（panY 增）+ 块影世界 y 一路减小
+    await act(async () => {
+      fire(pinnedEl?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 300, clientY: 560 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 700, clientY: 20 }); // 上缘带内（20 < 36）
+    });
+    const [panY0, panY1] = await scrollUntil(150);
+    expect(panY1 - panY0).toBeGreaterThan(150);
+    const p = previewXY();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 700, clientY: 20 });
+    });
+    const pin = getCanvasStore(panel.panelId).getState().pins[blockId];
+    expect(pin).toBeTruthy();
+    expect(Math.abs(pin.x - p.x)).toBeLessThan(30);
+    expect(Math.abs(pin.y - p.y)).toBeLessThan(30);
+    expect(pin.y).toBeLessThan(pinY0 - 100); // 挪到「很上方」（世界 y 明显更小）
   }, 30_000);
 });

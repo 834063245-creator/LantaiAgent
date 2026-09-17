@@ -56,6 +56,7 @@ import {
   resolveRenderer,
   sheetCharacter,
   subscribeOverlayContributions,
+  useCanvasViewStore,
   useCoreStore,
   useDockStore,
   useShellStore,
@@ -498,15 +499,27 @@ export function PaperPanel() {
     focusFlightRef,
   });
 
+  /* 手动接管视口（拖块用）：取消在途定位飞行 + 清挂起定位——与滚轮/拖画布/
+   *  缩放同纪律（use-paper-viewport 内联同款三行）。拖块时指针贴缘自动滚屏，
+   *  在途飞行会跟手抢 pan → 块影与落点漂移。 */
+  const takeOverViewport = useCallback(() => {
+    if (focusRafRef.current) {
+      cancelAnimationFrame(focusRafRef.current);
+      focusRafRef.current = 0;
+      focusFlightRef.current.end();
+    }
+    useCanvasViewStore.getState().requestFocus(null);
+  }, [focusRafRef, focusFlightRef]);
+
   const { dragRef, onBlockMouseDown, onUnpin, onGhostClick, onSidecarRestore, onSidecarPinMouseDown, pinHint } =
     usePaperDrag({
       core,
-      view,
       canvasRef,
       viewRef,
       regionsRef,
       blockSessionRef,
       sessionsCount: sessions.length,
+      takeOverViewport,
       draggingId,
       setDraggingId,
       setDragPos,
