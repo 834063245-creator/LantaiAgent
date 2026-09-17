@@ -133,13 +133,20 @@
 
 ## 6. 下一批的机械根因（2026-09-17 实测，不需等语汇拍板）
 
-### 6.0 B 图版签落地的进度账（box 定比例：12 原语逐个过）
+### 6.0 B 图版签落地的进度账（box 定比例 + 题签 + 信息面）
 
-| 原语 | 状态 | 关键改动 |
+| 原语 / 面 | 状态 | 关键改动（commit） |
 |---|---|---|
-| chart | ✅ 2026-09-17（d6c28d80） | viewBox 宽 = 版心宽（用户单位 == CSS px）；高按类目数三档；柱宽由槽宽反推（条数少 → 柱更宽铺满）；散点独立坐标系退役；4 个死 token 清除 |
-| graph / tree | ✅ 2026-09-17 | viewBox 宽 = 版心宽；列宽由版心反推（层数少 → 列更宽）；**节点框宽由标签实测宽定**（长标签截断 + 全名进 `<title>`）；图高只随行数；graph 组 5 个死 token 清除 |
-| grid / metric / board / timeline / citation / chem / media / form / html | ⬜ 待做 | 共用图版语汇（题签行 / 极弱规线 / 墨阶分层）尚未落地 |
+| chart 盒定比例 | ✅ | viewBox 宽 = 版心宽（用户单位 == CSS px）；高按类目数三档；柱宽由槽宽反推；散点独立坐标系退役；4 个死 token 清除（`d6c28d80`） |
+| graph / tree | ✅ | viewBox 宽 = 版心宽；列宽由版心反推；**节点框宽由标签实测宽定**（截断 + 全名进 `<title>`）；图高只随行数；graph 组 5 个死 token 清除（`ae83ca53`） |
+| 图版题签行 | ✅ | `plateSignOf(kind)` 物类签 + `PlateHead`；接入 grid 两表体与 metric；签走 mono + 极弱线框 + 石青；规线走 `--rule-soft-ink` 颜色位（有测试钉住不得回退成拼坏的简写）（`789043fd`） |
+| 题签恒在 | ✅ | 无题名也出签；题签行**严格高度中性**（下内距 = captionMarginB − 规线 − gapBelow ⇒ 文本下总间距不变，修正上一批 1px 漂移）；`ASSET_DERIVED.plateHeadH` 承载测高；两个死 caption 常量删除（`114c1e87`） |
+| chart 信息面 | ✅ | schema 增可选 `unit` / `source`；渲染挂在既有类型行内（零测高改动）；口径用石青；旧 payload markup 零漂移（`67f2dbc1`） |
+| metric 信息面（compare / target） | ⬜ 下一批 | 同 chart 做法：可选字段 + 挂既有行内 ⇒ 零测高；「单值没有比较对象只能当装饰」的对策 |
+| grid 信息面（emphasis / 合计） | ⬜ | 「几百行就是一面墙」的对策 |
+| board / timeline / citation / chem / media / html 题签 | ⬜ | 接入同一套物类签语汇（板 / 序 / 引 / 式 / 图 / 页） |
+| D 墨阶分层 | ⬜ | 重墨-中墨-淡墨三级主次（弱数据卡的轻/重问题） |
+| P0b（BCR 批） | ⬜ | 只拆 `browser_screenshot` 的 `inline` data-URL 上下文炸弹（3MB base64 ≈ 百万 token）；元素级截图与描述改写**冻结**（无视觉模型买了没用）。资产 kind 的 payload 扩展**不经 BCR**（运行时经 list_block_kinds 暴露，不动 tool-schemas 基线——`67f2dbc1` 已证） |
 
 **资产段落设计的规线一条都没画出来**：`tokens.css:57` 的 `--rule-soft` 是**整条 border 简写**
 （`1px solid var(--ink-4)`），而 PaperPanel.css 有 17 处把它当**颜色**再拼一次
