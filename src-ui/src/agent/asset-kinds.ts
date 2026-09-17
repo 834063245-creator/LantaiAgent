@@ -227,6 +227,13 @@ export function registerBuiltinAssetKinds(): void {
             value: { type: ['string', 'number'] },
             unit: { type: 'string' },
             tone: { type: 'string', enum: ['accent', 'green', 'danger', 'muted'] },
+            // 信息面（2026-09-17「让卡片说人话」批第二刀）：单值没有比较对象就只能当
+            // 装饰。一个字符串承载「与谁比、目标多少」（如「上期 88，+12%」「目标 100」），
+            // 渲染在数值同行右侧（石青小字）⇒ 零测高改动、旧 payload 逐字有效。
+            compare: {
+              type: 'string',
+              description: '比较对象/口径（如「上期 88」「目标 100」「阈值 5」）——读者据此判断这个数是好是坏',
+            },
           }),
         },
         caption: { type: 'string' },

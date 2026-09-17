@@ -455,3 +455,51 @@ describe('chart 信息面 — 单位与口径', () => {
     expect(validatePayload(def, { type: 'bar', data: [1], source: ['a'] })).toContain('source');
   });
 });
+
+// ── 信息面第二刀：metric 的 compare（2026-09-17）──
+//
+// 单值没有比较对象就只能当装饰（「上期 88」「目标 100」「阈值 5」）。
+// 渲染在数值同行右侧 ⇒ 零测高；旧 payload 不带它时 markup 逐字不变。
+
+describe('metric 信息面 — 比较对象', () => {
+  async function renderMetric(payload: unknown): Promise<string> {
+    const ctx = new Context();
+    const f1 = ctx.plugin(compositionServicesPlugin);
+    await f1;
+    const f2 = ctx.plugin(rendererServicePlugin);
+    await f2;
+    const f3 = ctx.plugin(builtinRenderersPlugin);
+    await f3;
+    try {
+      const Comp = resolveAssetBlock('metric', 'metric');
+      if (!Comp) throw new Error('metric 表现组件未解析');
+      const block: SourcedBlock = {
+        ...createBlock('metric', payload as never, { messageId: 'm1', part: null }),
+        id: 'pb:m1:0',
+        asset: { assetId: 'as_1', presentation: 'metric', title: 't', finalised: true },
+      } as SourcedBlock;
+      return renderToStaticMarkup(createElement(Comp, { block }));
+    } finally {
+      await f3.dispose();
+      await f2.dispose();
+      await f1.dispose();
+    }
+  }
+
+  it('compare 渲染在数值同行（读者知道这个数是好是坏）', async () => {
+    const html = await renderMetric({ items: [{ label: '覆盖率', value: 82, unit: '%', compare: '目标 90' }] });
+    expect(html).toContain('pp-metric-compare');
+    expect(html).toContain('目标 90');
+  });
+
+  it('不带 compare → markup 里没有该元素（零漂移）', async () => {
+    const html = await renderMetric({ items: [{ label: '覆盖率', value: 82, unit: '%' }] });
+    expect(html).not.toContain('pp-metric-compare');
+  });
+
+  it('schema 接受 compare（可选），非法类型仍被拒', () => {
+    const def = assetKinds.get('metric')!;
+    expect(validatePayload(def, { items: [{ label: 'x', value: 1, compare: '上期 88' }] })).toBeNull();
+    expect(validatePayload(def, { items: [{ label: 'x', value: 1, compare: 88 }] })).toContain('compare');
+  });
+});

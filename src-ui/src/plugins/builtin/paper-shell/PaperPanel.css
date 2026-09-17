@@ -4511,6 +4511,8 @@ html.pp-composer-dragging {
   border: var(--pp-asset-metric-cardBorder) solid var(--rule-soft-ink);
   background: color-mix(in oklch, var(--paper-deep) 40%, transparent);
   padding: 8px 10px;
+  /* 信息面的比较对象是自由文本 ⇒ 卡片裁切，防长文本溢到邻卡（零测高） */
+  overflow: hidden;
 }
 .pp-metric-label {
   font-family: var(--f-song);
@@ -4522,6 +4524,14 @@ html.pp-composer-dragging {
   font-size: var(--pp-asset-metric-cardValueSize);
   line-height: var(--pp-asset-metric-cardValueLh);
   color: var(--ink-1);
+}
+/* 信息面（2026-09-17）：比较对象/口径——单值没有它就只能当装饰。
+   石青（机器的声音）小字同行显示；nowrap 防它把数值挤成两行（零测高） */
+.pp-metric-compare {
+  font-size: var(--pp-asset-metric-cardLabelSize);
+  color: var(--indigo);
+  margin-left: 6px;
+  white-space: nowrap;
 }
 .pp-metric-unit {
   font-size: var(--pp-asset-metric-cardLabelSize);

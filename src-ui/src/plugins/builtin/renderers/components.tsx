@@ -707,7 +707,7 @@ function PlateHead({ kind, title, titleClass }: { kind: string; title?: string; 
 
 function MetricBody({ block }: BlockRendererProps) {
   const p = block.payload as {
-    items?: Array<{ label?: string; value?: unknown; unit?: string; tone?: string }>;
+    items?: Array<{ label?: string; value?: unknown; unit?: string; tone?: string; compare?: string }>;
     caption?: string;
   };
   const items = Array.isArray(p.items) ? p.items : [];
@@ -722,6 +722,8 @@ function MetricBody({ block }: BlockRendererProps) {
             <div className="pp-metric-value">
               {String(it.value ?? '')}
               {it.unit && <span className="pp-metric-unit">{it.unit}</span>}
+              {/* 信息面：比较对象/口径（单值没有比较对象只能当装饰） */}
+              {it.compare && <span className="pp-metric-compare">{it.compare}</span>}
             </div>
           </div>
         ))}
