@@ -228,20 +228,25 @@
 
 **来由**：坞自 2026-09-01 起就是浮在纸上的绝对定位层（不占布局流），但位置由 CSS 钉死（版心居中 + 坐底抬高 96）——坞压住要看的内容时，用户只能挪内容，不能挪坞。
 
-**定案**：
+**定案（同日二批修订见下）**：
 - **抓手** = 坞的书眉行（卷名/空白处按住即拖；翰/律/停止钮/输入件自己接手势）；
 - **拖动** = 自由到画布任意处（夹在书眉之下、屏缘之内），全程**磁吸**四枚锚位（左右缘 / 版心中轴 / 经典底带 96 / 最底缘）；
 - **双击坞头** = 复位到出厂位（撤覆盖、不写死坐标——窗口再变仍居中）；
 - **坞位记忆** = localStorage `lantai.composer.pos`（视图偏好，同 `lantai.minimap.pref` 族）；只点不拖不落盘；
-- **让位带 `--composer-band`** = 视口底 → 坞顶线（默认位 = 抬高 96 + 坞实测高，与旧 `--composer-h-live` 配对式**零漂移**）。四家消费面按它重算：目次带映射区/可见域（封顶 3/4 可视高）、小地图默认位（只影响未摆过的默认，用户摆过即尊重）、递牒卡宿主 `.psh-host`、插件 dock `.pw-dock`（后两家经 CSS 吃 `min(--composer-band, --composer-band-cap = 55vh)`）。
+- **让位带 `--composer-band`** = 视口底 → 坞顶线（默认位 = 抬高 96 + 坞实测高，与旧 `--composer-h-live` 配对式**零漂移**）。消费面按它重算：小地图默认位（只影响未摆过的默认，用户摆过即尊重）、递牒卡宿主 `.psh-host`、插件 dock `.pw-dock`（后两家经 CSS 吃 `min(--composer-band, --composer-band-cap = 55vh)`）。
 
-**归属**：坞位/几何/手势全归**槽主人** paper-shell（`composer-float.ts` 纯函数 + `use-composer-float.ts` 机制域）；坞本体（compose-dock）**一字不知**——不给 `PaperDockContext` 加回调、不动宿主面 faceDeps 基线（事件从坞冒泡到槽，槽主人接手势）。旧 `--composer-h-live`（坞自报坞高）随之拆除：让位带是槽主人的几何，一处权威源，浮动态也正确。
+**2026-09-17 二批（用户三条实机反馈，逐条改）**：
+1. **目次带不让位**（用户裁定「目次带似乎没必要做让位」）：目次带映射区/可见域**只按出厂底带**（`96 + 坞实测高`）算，坞被拖到哪都不压缩导航带——坞是用户自己摆的浮窗，导航带不该跟着缩；「内容尾不藏进坞后」那条 2026-09-01 整改在坞处出厂位时口径未变，照旧成立。消费面**口径分家**：`composerDock: { bottom, height }` 原样下发，让位带 = `bottom + height`（小地图/CSS 让位件），出厂底带 = `96 + height`（目次带）。
+2. **拖动与划词打架**：坞上按下会带出**原生选区**，纸上挂着 document 级 `selectionchange`（`use-paper-strips` 的选中浮钮）→ 拖动坞 = 纸上划词 + 浮钮乱冒。修法两层：**锁定态**坞是普通 DOM（根本不接手势，冲突不可能发生）+ **解锁拖动期**在 `<html>` 挂 `pp-composer-dragging` 全页禁选并清掉既有选区（松手即撤）。
+3. **拖动锁（用户方案，桌面歌词式）**：坞顶外缘一枚 hover 浮现的小钮（`.pp-composer-lock`，文案 = 点下去会发生什么：`移` ↔ `锁`，同「拟文/停」单钮语言）——**默认锁定**，坞对鼠标零响应（不改光标、不接管手势、划词照旧；这同时根治了「谁都不知道这东西能拖动」与误拖）；点它解锁后**整坞**（除交互件）成为抓手、全坞抓手光标、锁钮常显。锁态落 localStorage `lantai.composer.unlocked`。坞顶之上为锁钮预留 26px（上夹紧按 `COMPOSER_PILL_H` 算），免得坞拖到最上时小钮压进书眉（那是窗口拖动热区）。
 
-**边界（刻意不做）**：让位件之间互不躲让，坞也不自动躲让位件——坞停在上半屏时让位件停在半屏（坞自己负责不遮）；坞不做边框吸附动画；拖动期**不** `preventDefault`（取消 pointerdown 会连带影响 dblclick 跨引擎互操作，复位手势优先），防误选由坞头 `user-select: none` 承担。
+**归属**：坞位/几何/手势/拖动锁全归**槽主人** paper-shell（`composer-float.ts` 纯函数 + `use-composer-float.ts` 机制域）；坞本体（compose-dock）**一字不知**——不给 `PaperDockContext` 加回调、不动宿主面 faceDeps 基线（事件从坞冒泡到槽，槽主人接手势）。旧 `--composer-h-live`（坞自报坞高）随之拆除：让位带是槽主人的几何，一处权威源，浮动态也正确。
+
+**边界（刻意不做）**：让位件之间互不躲让，坞也不自动躲让位件——坞停在上半屏时让位件停在半屏（坞自己负责不遮）；坞不做边框吸附动画；拖动期**不** `preventDefault`（取消 pointerdown 会连带影响 dblclick 跨引擎互操作，复位手势优先）——防误选改由「拖动锁 + 拖动期全页禁选」两层承担。
 
 **过渡期（产物 vs exe 偏斜，2026-09-17 立）**：外壳 CSS（`shell.css` 的 `.psh-host` / `plugin-windows.css` 的 `.pw-dock`）**内嵌在 exe 里、不能随产物热更**，故在「只换产物不重编 exe」的部署窗口内，旧 token `--composer-h-live` 由槽主人 `use-composer-float` 代发一版（新旧两代消费面同时正确）。**拆除条件 = 下一次 `cargo tauri build`**（内嵌 CSS 换成本仓库新式后），届时删该 effect 与 tokens.css 的过渡注。一般形态的教训：**删一个跨层 token 必须与消费它的那一层同批落地**。
 
-**证据**：`tests/composer-float.test.ts`（几何/吸附/命中/记忆纯函数）+ `tests/paper-composer-float.test.tsx`（挂真实 PaperPanel 穿全层：默认位 → 拖动 → 让位带重算并下发覆盖层消费面 → 松手落盘 → 双击复位 → 交互件不起拖）。
+**证据**：`tests/composer-float.test.ts`（几何/吸附/拖动面判据/锁记忆纯函数）+ `tests/paper-composer-float.test.tsx`（挂真实 PaperPanel 穿全层：默认锁定 → 点锁钮解锁 → 坞体任意处拖动 → 拖动期全页禁选 → 让位带重算并下发覆盖层消费面 → 松手落盘 → 双击复位 → 交互件不起拖）+ `tests/stage4-toc-titlebar-band.test.tsx`（**坞浮起不让位**：坞位从出厂位挪到半屏，刻痕落点逐字不变；坞高变了才动）。
 
 ---
 

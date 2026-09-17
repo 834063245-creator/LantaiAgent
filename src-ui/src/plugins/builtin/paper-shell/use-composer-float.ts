@@ -2,51 +2,58 @@
 // SPDX-License-Identifier: MIT
 
 // use-composer-float — 创作坞浮动化的纸壳侧机制域（paper-panel-split 同族的
-// use-*.ts 落位）：坞位 state + 实测尺寸 + 拖动手势 + 让位带下发。
+// use-*.ts 落位）：坞位 state + 实测尺寸 + 拖动锁 + 手势力矩 + 几何下发。
 //
 // 分工（单一权威源）：
 //   - 坞位真源 = 本 hook 的 `pos`（null = 无覆盖 = CSS 默认居中坐底），落
-//     localStorage（composer-float.ts 的 load/save）；
-//   - 几何/吸附/命中判据 = composer-float.ts 纯函数（可单测）；
+//     localStorage（composer-float.ts 的 load/save）；拖动锁同族落盘；
+//   - 几何/吸附/拖动面判据 = composer-float.ts 纯函数（可单测）；
 //   - 让位带 --composer-band 由本 hook 写 :root（旧 --composer-h-live 由坞自己
 //     上报「坞高」，浮动态失效——让位带是槽主人的几何，收归一处）。**过渡期**由
 //     本 hook 代发旧 token 一版：运行中 exe 内嵌的外壳 CSS 仍读它，只换产物不重编
 //     exe 时那两处消费面要它续命（拆除条件见下方 effect 注释）；
-//   - 坞本体（compose-dock 插件）**一字不知**：抓手判据基于坞书眉行的 DOM 命中
+//   - 坞本体（compose-dock 插件）**一字不知**：拖动面判据基于坞 DOM 命中
 //     （事件从坞冒泡到槽，槽主人接手势），不给 PaperDockContext 加回调、不动
 //     宿主面（faceDeps）基线。
 //
-// 手感（2026-09-17 拍板）：坞书眉行空白处/卷名按住即拖（无阈值——坞头点击本身
-// 无其它语义）；拖动全程磁吸（左右缘/版心中轴/底带/最底缘）；双击坞头复位；
-// 松手才落盘。**刻意不 preventDefault**：取消 pointerdown 会连带影响 dblclick
-// 的跨引擎互操作（Chromium 曾按此对齐），复位手势优先；防误选由 CSS 的
-// user-select:none（.pp-composer-header）承担——按下点不可选即不起选区。
+// 手感（2026-09-17 两批）：**默认锁定**（桌面歌词式拖动锁，用户方案）——锁定态坞
+// 对鼠标零响应（不改光标、不接管手势、划词照旧）；解锁后**整坞**除交互件皆是抓手，
+// 拖动全程磁吸（左右缘/版心中轴/底带/最底缘），双击坞体复位，松手落盘。
+// 拖动期在 `html` 上挂 `pp-composer-dragging` 全页禁选（见下）——**刻意不
+// preventDefault** pointerdown：取消它会连带影响 dblclick 的跨引擎互操作，复位
+// 手势优先；防误选改由「拖动锁 + 拖动期禁选」两层承担。
 
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ComposerBox, ComposerPos, ComposerViewport } from './composer-float';
+import type { ComposerBox, ComposerDockGeom, ComposerPos, ComposerViewport } from './composer-float';
 import {
   clampComposerPos,
-  composerBandOf,
-  isComposerHandle,
+  composerGeomOf,
+  isComposerDragSurface,
   loadComposerPos,
+  loadComposerUnlocked,
   saveComposerPos,
+  saveComposerUnlocked,
   snapComposerPos,
 } from './composer-float';
 
 /** 坞浮动域对 PaperPanel 的公开面。 */
 export interface ComposerFloat {
-  /** 槽元素 callback ref（React 19 清理式：量实测宽高，供夹紧/让位带用）。 */
+  /** 槽元素 callback ref（React 19 清理式：量实测宽高，供夹紧/几何用）。 */
   slotRef: (el: HTMLDivElement | null) => (() => void) | undefined;
   /** 槽内联位置（undefined = 无覆盖，走 CSS 默认位）。 */
   style: CSSProperties | undefined;
   /** 拖动中（CSS 抓手手感：grabbing）。 */
   dragging: boolean;
-  /** 让位带 = 视口底 → 坞顶线（px）——覆盖层消费面按它重算。 */
-  band: number;
-  /** 槽 pointerdown（坞头命中判据在内）。 */
+  /** 拖动锁是否已解锁（解锁 = 坞对鼠标有响应）。 */
+  unlocked: boolean;
+  /** 锁钮（桌面歌词式小钮）：锁定 ↔ 解锁，落盘记忆。 */
+  toggleUnlocked: () => void;
+  /** 坞几何（bottom = 视口底 → 坞下边；height = 坞实测高）——覆盖层消费面按各自规矩派生。 */
+  dock: ComposerDockGeom;
+  /** 槽 pointerdown（锁定态直接放行；解锁态按拖动面判据）。 */
   onPointerDown: (e: React.PointerEvent) => void;
-  /** 槽 dblclick（坞头双击 = 复位到版心居中坐底）。 */
+  /** 槽 dblclick（解锁态双击坞体 = 复位到版心居中坐底）。 */
   onDoubleClick: (e: React.MouseEvent) => void;
 }
 
@@ -59,9 +66,16 @@ export function useComposerFloat(): ComposerFloat {
     h: window.innerHeight,
   }));
   const [dragging, setDragging] = useState(false);
+  /* 拖动锁（默认锁定）：锁定态坞是普通 DOM——这条同时根治「拖动与划词打架」
+   * （2026-09-17 用户报：坞头按下会带出纸上选区，document 级 selectionchange
+   * 把选中浮钮一并唤醒）。 */
+  const [unlocked, setUnlocked] = useState(loadComposerUnlocked);
   const slotEl = useRef<HTMLDivElement | null>(null);
   /** 松手落盘要读最新值（拖动期逐帧 setPos，闭包拿不到当帧值）。 */
   const posRef = useRef<ComposerPos | null>(pos);
+  /** 起拖判据要在 window 监听器闭包里读最新锁定态。 */
+  const unlockedRef = useRef(unlocked);
+  unlockedRef.current = unlocked;
 
   /* 视口尺寸（拖拽夹紧 + 存量坞位的读侧夹紧都按它算）。 */
   useEffect(() => {
@@ -97,7 +111,10 @@ export function useComposerFloat(): ComposerFloat {
     return clampComposerPos(pos, vp, box);
   }, [pos, vp, box]);
 
-  const band = composerBandOf(effective, box.h);
+  /* 坞几何引用稳定（P2-3 纪律）：PaperPanel 平移/缩放帧都会重渲，若此处每帧换新对象，
+   * 覆盖层 context 跟着变 → 目次带/小地图每帧重渲。依赖只有坞位与坞高，平移帧不变。 */
+  const dock = useMemo(() => composerGeomOf(effective, box.h), [effective, box.h]);
+  const band = dock.bottom + dock.height;
 
   /* 让位带下发 :root（CSS 消费面：递牒卡宿主 / 插件 dock）。 */
   useEffect(() => {
@@ -131,7 +148,7 @@ export function useComposerFloat(): ComposerFloat {
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    if (!isComposerHandle(e.target)) return;
+    if (!isComposerDragSurface(e.target, unlockedRef.current)) return;
     const el = slotEl.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
@@ -143,6 +160,13 @@ export function useComposerFloat(): ComposerFloat {
     const boxNow = { w: r.width, h: r.height };
     let moved = false;
     setDragging(true);
+    /* 拖动期全页禁选（html 上挂类，规则在 PaperPanel.css）：坞上按下会带出原生选区，
+     * 而纸上挂着 document 级 selectionchange（use-paper-strips 的选中浮钮）——
+     * 不禁选就是「拖动坞 = 纸上划词」（2026-09-17 用户报的第一条冲突）。
+     * 既有选区也一并清掉：抓坞等同点了别处，选区该散。 */
+    const rootEl = document.documentElement;
+    rootEl.classList.add('pp-composer-dragging');
+    window.getSelection()?.removeAllRanges();
     const onMove = (ev: PointerEvent) => {
       moved = true;
       const raw = {
@@ -157,8 +181,9 @@ export function useComposerFloat(): ComposerFloat {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onEnd);
       window.removeEventListener('pointercancel', onEnd);
+      rootEl.classList.remove('pp-composer-dragging');
       setDragging(false);
-      /* 只点不拖（moved=false）= 坞位原样（不落盘）——否则单击坞头会把已存的
+      /* 只点不拖（moved=false）= 坞位原样（不落盘）——否则单击坞体会把已存的
        * 坞位当「无覆盖」清掉，坞无故跳回底部。 */
       if (moved) saveComposerPos(posRef.current);
     };
@@ -168,11 +193,19 @@ export function useComposerFloat(): ComposerFloat {
   }, []);
 
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
-    if (!isComposerHandle(e.target)) return;
+    if (!isComposerDragSurface(e.target, unlockedRef.current)) return;
     posRef.current = null;
     setPos(null);
     saveComposerPos(null);
   }, []);
 
-  return { slotRef, style, dragging, band, onPointerDown, onDoubleClick };
+  const toggleUnlocked = useCallback(() => {
+    setUnlocked((prev) => {
+      const next = !prev;
+      saveComposerUnlocked(next);
+      return next;
+    });
+  }, []);
+
+  return { slotRef, style, dragging, unlocked, toggleUnlocked, dock, onPointerDown, onDoubleClick };
 }

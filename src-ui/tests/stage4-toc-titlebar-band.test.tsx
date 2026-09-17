@@ -100,16 +100,16 @@ function fakeRegion(): RegionView {
  *  不借拖拽路径（点带即跳已由 stage4-toc 纯几何覆盖）。 */
 const VIEW_RECT = { x0: -4000, y0: -4000, x1: 4000, y1: 0 };
 const CANVAS_SIZE = { w: 1200, h: 1000 };
-/** 创作坞**让位带**（2026-09-17 浮动化：视口底 → 坞顶线）= 抬高 96 + 坞高 130
- *  ——默认位口径，与组件内 composerBand 同义（数值与浮动化前逐字相同：
- *  旧式 canvas.h − 96 − 坞高 ≡ 新式 canvas.h − 带）。 */
-const COMPOSER_BAND = 96 + 130;
+/** 创作坞几何（2026-09-17）：bottom = 坞位（视口底 → 坞下边；默认位 = 出厂抬高 96），
+ *  height = 坞实测高。**目次带只读 height**（用户 2026-09-17 裁定：目次带不随坞浮动
+ *  让位），故映射区底 = 画布高 − 96 − 坞高——与浮动化前逐字同值。 */
+const COMPOSER_DOCK = { bottom: 96, height: 130 };
 /** 书眉下缘（页面坐标）= tokens.css --bar-h 字面量镜像——jsdom 不加载 tokens.css，
  *  测试侧按字面钉死（CSS 契约断言 + 带体起点语义的基准，不许跟着实现漂）。 */
 const BAR_H = 56;
-/** 映射区底（**带体坐标**）= 画布区高 − 让位带（带体已从书眉下缘起，
+/** 映射区底（**带体坐标**）= 画布区高 − 出厂底带（带体已从书眉下缘起，
  *  故不再 + 书眉高；与组件内同式）。 */
-const MAPPED_BOTTOM = CANVAS_SIZE.h - COMPOSER_BAND;
+const MAPPED_BOTTOM = CANVAS_SIZE.h - 96 - COMPOSER_DOCK.height;
 /** 纸壳样式（.pp-toc 规则所在）：CSS 契约断言用（同 paper-visual-decisions 口径）。 */
 const PANEL_CSS = readFileSync(
   join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
@@ -121,13 +121,13 @@ function ruleBody(css: string, selector: string): string {
   return css.slice(i, css.indexOf('}', i));
 }
 
-function regionContext(): PaperRegionContextValue {
+function regionContext(dock: { bottom: number; height: number } = COMPOSER_DOCK): PaperRegionContextValue {
   return {
     regions: [fakeRegion()],
     activeSessionId: '1',
     viewRect: VIEW_RECT,
     canvasSize: CANVAS_SIZE,
-    composerBand: COMPOSER_BAND,
+    composerDock: dock,
     foldedOf: () => false,
     minimap: { content: { x0: -720, y0: -2000, x1: 720, y1: 0 }, geo: [] },
     inkCache: createInkCache(),
@@ -157,8 +157,8 @@ describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () 
     container = null;
   });
 
-  async function mount(): Promise<void> {
-    const ctx = regionContext();
+  async function mount(dock: { bottom: number; height: number } = COMPOSER_DOCK): Promise<void> {
+    const ctx = regionContext(dock);
     await act(async () => {
       root?.render(
         createElement(
@@ -241,5 +241,31 @@ describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () 
     // 带内：点带即跳照旧生效（断言不为空转）
     pointerDown(nav, STRIP_TOP + 300);
     expect(useCanvasViewStore.getState().view.panY).not.toBe(before);
+  });
+
+  /* 2026-09-17 用户裁定「目次带似乎没必要做让位」——坞被拖到哪都不该压缩导航带，
+   * 只有坞**高**变了才动（那才是可见域的诚实变化）。本用例是这条裁定的考官：
+   * 同一份流区内容，坞位从出厂位挪到半屏，刻痕/滑块落点必须逐字不变。 */
+  it('坞浮起不让位（用户 2026-09-17 裁定）：坞位变了映射区不动，坞高变了才动', async () => {
+    const marksAt = (): number[] =>
+      ([...container!.querySelectorAll('.pp-toc-mark')] as HTMLElement[]).map((m) => Number.parseFloat(m.style.top));
+
+    await mount({ bottom: 96, height: 130 }); // 出厂位
+    const atHome = marksAt();
+    const nav = container!.querySelector('.pp-toc') as HTMLElement;
+    pointerDown(nav, MAPPED_BOTTOM + 40); // 映射区底之下 = 坞顶线以下（默认位口径）
+    const panAfterBelow = useCanvasViewStore.getState().view.panY;
+
+    await mount({ bottom: 400, height: 130 }); // 坞被拖到半屏（坞位变、坞高不变）
+    expect(marksAt()).toEqual(atHome); // 映射区逐字不动 ⇒ 目次带没让位
+    // 「坞顶线以下不响应」这条判据也随出厂位口径（坞浮起来不改变导航带的可点范围）
+    pointerDown(nav, MAPPED_BOTTOM + 40);
+    expect(useCanvasViewStore.getState().view.panY).toBe(panAfterBelow);
+    pointerDown(nav, STRIP_TOP + 300);
+    expect(useCanvasViewStore.getState().view.panY).not.toBe(panAfterBelow);
+
+    // 坞高变了（思考展开/附件）→ 才动：映射区底随坞高下移
+    await mount({ bottom: 96, height: 300 });
+    expect(marksAt()).not.toEqual(atHome);
   });
 });

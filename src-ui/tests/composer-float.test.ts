@@ -14,14 +14,18 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   COMPOSER_BAR_H,
   COMPOSER_EDGE,
+  COMPOSER_PILL_H,
   COMPOSER_POS_KEY,
   COMPOSER_RISE,
   COMPOSER_SNAP,
+  COMPOSER_UNLOCK_KEY,
   clampComposerPos,
-  composerBandOf,
-  isComposerHandle,
+  composerGeomOf,
+  isComposerDragSurface,
   loadComposerPos,
+  loadComposerUnlocked,
   saveComposerPos,
+  saveComposerUnlocked,
   snapComposerPos,
 } from '../src/plugins/builtin/paper-shell/composer-float';
 
@@ -29,15 +33,15 @@ const VP = { w: 1200, h: 800 };
 const BOX = { w: 880, h: 110 };
 
 describe('创作坞浮动化 · 几何（夹紧）', () => {
-  it('坞整体留在视口内：左/右/下留屏缘，上不越书眉（坞顶 ≥ 书眉高 + 屏缘）', () => {
+  it('坞整体留在视口内：左/右/下留屏缘，上不越书眉（并给拖动锁小钮留位）', () => {
     const far = clampComposerPos({ left: -500, bottom: -500 }, VP, BOX);
     expect(far).toEqual({ left: COMPOSER_EDGE, bottom: COMPOSER_EDGE });
 
     const beyond = clampComposerPos({ left: 9999, bottom: 9999 }, VP, BOX);
     expect(beyond.left).toBe(VP.w - BOX.w - COMPOSER_EDGE);
-    // 上界 = 视口高 − 书眉高 − 坞高 − 屏缘（坞顶恰好落在书眉下缘 + 屏缘）
-    expect(beyond.bottom).toBe(VP.h - COMPOSER_BAR_H - BOX.h - COMPOSER_EDGE);
-    expect(VP.h - beyond.bottom - BOX.h).toBe(COMPOSER_BAR_H + COMPOSER_EDGE);
+    // 上界 = 视口高 − 书眉高 − 锁钮占位 − 坞高 − 屏缘（坞顶落在「书眉下缘 + 锁钮 + 屏缘」）
+    expect(beyond.bottom).toBe(VP.h - COMPOSER_BAR_H - COMPOSER_PILL_H - BOX.h - COMPOSER_EDGE);
+    expect(VP.h - beyond.bottom - BOX.h).toBe(COMPOSER_BAR_H + COMPOSER_PILL_H + COMPOSER_EDGE);
   });
 
   it('坞比视口还宽（窄窗口）：不产生负上界（退回屏缘，不炸布局）', () => {
@@ -70,56 +74,62 @@ describe('创作坞浮动化 · 吸附边缘', () => {
   });
 });
 
-describe('创作坞浮动化 · 让位带', () => {
-  it('无覆盖（默认位）= 抬高 + 坞高——与浮动化前的 --composer-h-live 配对式同值', () => {
-    expect(composerBandOf(null, 110)).toBe(COMPOSER_RISE + 110);
+describe('创作坞浮动化 · 坞几何下发（两种口径由消费面各自派生）', () => {
+  it('无覆盖（默认位）：bottom = 出厂抬高——让位带 = 抬高 + 坞高（与浮动化前同值）', () => {
+    expect(composerGeomOf(null, 110)).toEqual({ bottom: COMPOSER_RISE, height: 110 });
   });
 
-  it('浮动态 = 坞的实际位置（bottom + 坞高）：坞越往上，让位带越大', () => {
-    expect(composerBandOf({ left: 40, bottom: 300 }, 110)).toBe(410);
-    expect(composerBandOf({ left: 40, bottom: 96 }, 110)).toBe(206);
+  it('浮动态：bottom = 坞的实际位置（让位带 = bottom + 坞高，坞越往上越大）', () => {
+    expect(composerGeomOf({ left: 40, bottom: 300 }, 110)).toEqual({ bottom: 300, height: 110 });
+    expect(composerGeomOf({ left: 40, bottom: 96 }, 110).bottom).toBe(96);
   });
 
-  it('坞高变了带跟着变（思考展开/附件/墨量册——同一条式子）', () => {
-    expect(composerBandOf(null, 300)).toBe(396);
+  it('坞高变了 height 跟着变（思考展开/附件/墨量册——同一条式子）', () => {
+    expect(composerGeomOf(null, 300).height).toBe(300);
   });
 });
 
-describe('创作坞浮动化 · 坞头命中判据', () => {
+describe('创作坞浮动化 · 拖动面命中判据（默认锁定）', () => {
   function markup(html: string): HTMLElement {
     const slot = document.createElement('div');
     slot.className = 'pp-composer-slot';
     slot.innerHTML = `<div class="pp-composer">${html}</div>`;
     return slot;
   }
-
-  it('坞书眉行的空白处/卷名 = 抓手', () => {
-    const slot = markup(
-      '<div class="pp-composer-header"><span class="pp-composer-target">卷一</span>' +
-        '<div class="pp-composer-settings-spacer"></div></div>',
-    );
-    expect(isComposerHandle(slot.querySelector('.pp-composer-target'))).toBe(true);
-    expect(isComposerHandle(slot.querySelector('.pp-composer-settings-spacer'))).toBe(true);
-    expect(isComposerHandle(slot.querySelector('.pp-composer-header'))).toBe(true);
-  });
-
-  it('书眉行内的交互件不承载拖坞手势（自己接手势）', () => {
-    const slot = markup(
-      '<div class="pp-composer-header"><button type="button" class="pp-tool-btn">翰</button>' +
-        '<span class="pp-bg-running">⟳ 后台 1 卷运行中<button type="button" class="pp-bg-stop">停止</button></span></div>',
-    );
-    expect(isComposerHandle(slot.querySelector('.pp-tool-btn'))).toBe(false);
-    expect(isComposerHandle(slot.querySelector('.pp-bg-stop'))).toBe(false);
-  });
-
-  it('书眉行之外不承载拖坞手势（输入行/设置行：打字与控件都不该挪坞）', () => {
-    const slot = markup(
+  const body = markup(
+    '<div class="pp-composer-header"><span class="pp-composer-target">卷一</span>' +
+      '<button type="button" class="pp-tool-btn">翰</button></div>' +
       '<div class="pp-composer-row"><textarea></textarea></div>' +
-        '<div class="pp-composer-settings"><div class="pp-comp-sel">组合</div></div>',
-    );
-    expect(isComposerHandle(slot.querySelector('textarea'))).toBe(false);
-    expect(isComposerHandle(slot.querySelector('.pp-comp-sel'))).toBe(false);
-    expect(isComposerHandle(null)).toBe(false);
+      '<div class="pp-composer-settings"><div class="pp-comp-sel">组合</div></div>',
+  );
+
+  it('**锁定态（默认）：一律不是拖动面**——坞是普通 DOM，划词/点选照旧（用户报的冲突即由此根治）', () => {
+    for (const sel of ['.pp-composer-target', '.pp-composer-header', '.pp-composer', '.pp-composer-settings']) {
+      expect(isComposerDragSurface(body.querySelector(sel), false)).toBe(false);
+    }
+  });
+
+  it('解锁态：整坞皆是拖动面（书眉行 / 输入行空白 / 设置行空白都算）', () => {
+    expect(isComposerDragSurface(body.querySelector('.pp-composer-target'), true)).toBe(true);
+    expect(isComposerDragSurface(body.querySelector('.pp-composer-header'), true)).toBe(true);
+    expect(isComposerDragSurface(body.querySelector('.pp-composer'), true)).toBe(true);
+    expect(isComposerDragSurface(body.querySelector('.pp-composer-settings'), true)).toBe(true);
+  });
+
+  it('解锁态：交互件仍不承载拖坞手势（翰钮/输入框/组合控件自己接手势）', () => {
+    expect(isComposerDragSurface(body.querySelector('.pp-tool-btn'), true)).toBe(false);
+    expect(isComposerDragSurface(body.querySelector('textarea'), true)).toBe(false);
+    /* 坞内**纯包裹层**（组合芯片外框这类无 role 的 div）仍算坞体 ⇒ 拖动面：
+     * 真坞里可点的是它里面的 button（已被 blockers 拦下），外框留白拖坞无妨。 */
+    expect(isComposerDragSurface(body.querySelector('.pp-comp-sel'), true)).toBe(true);
+    expect(isComposerDragSurface(null, true)).toBe(false);
+  });
+
+  it('解锁态：坞之外（槽里的签条架/锁钮等）不是拖动面', () => {
+    const outside = document.createElement('button');
+    outside.className = 'pp-composer-lock';
+    body.appendChild(outside);
+    expect(isComposerDragSurface(outside, true)).toBe(false);
   });
 });
 
@@ -151,5 +161,29 @@ describe('创作坞浮动化 · 坞位记忆（localStorage）', () => {
     expect(loadComposerPos()).toBeNull();
     localStorage.setItem(COMPOSER_POS_KEY, '{"left":null,"bottom":"96"}');
     expect(loadComposerPos()).toBeNull();
+  });
+});
+
+describe('创作坞浮动化 · 拖动锁记忆（默认锁定）', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('默认锁定（键缺席 = false）——用户方案：「点击解锁之后坞才对鼠标有响应」', () => {
+    expect(loadComposerUnlocked()).toBe(false);
+  });
+
+  it('解锁 → 落盘 → 读回 true；再锁 → 键移除', () => {
+    saveComposerUnlocked(true);
+    expect(localStorage.getItem(COMPOSER_UNLOCK_KEY)).toBe('1');
+    expect(loadComposerUnlocked()).toBe(true);
+    saveComposerUnlocked(false);
+    expect(localStorage.getItem(COMPOSER_UNLOCK_KEY)).toBeNull();
+    expect(loadComposerUnlocked()).toBe(false);
+  });
+
+  it('毒化值一律当锁定（读侧容忍，不炸）', () => {
+    localStorage.setItem(COMPOSER_UNLOCK_KEY, 'yes');
+    expect(loadComposerUnlocked()).toBe(false);
   });
 });

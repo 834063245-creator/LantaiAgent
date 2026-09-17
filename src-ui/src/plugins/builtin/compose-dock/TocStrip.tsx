@@ -79,9 +79,13 @@ export const STRIP_TOP = MARK_HALF;
 export const TOC_CARD_FLIP_Y = 40;
 /** 翻转态卡片与红线的间隙（px）。 */
 const TOC_CARD_GAP = 12;
-/** 让位带封顶比（2026-09-17 浮动化）：坞拖到上半屏时映射区最多让到 3/4 可视高
- *  ——导航带不能塌成一条线（与 CSS 侧 --composer-band-cap 同精神，各自算各自的域）。 */
-const BAND_CAP_RATIO = 0.75;
+/** 创作坞槽的坐底抬高（.pp-composer-slot bottom:var(--composer-rise)=96px——
+ *  坞**出厂位**顶线 = 页底 −96 −坞高；2026-09-02 拍板 C：两态同位，固定值不随窗口高浮动，
+ *  与 tokens.css --composer-rise 同源镜像）。
+ *  **2026-09-17 用户裁定：目次带不随坞浮动让位**——坞被拖到哪是用户自己摆的浮窗，
+ *  目次带只按出厂底带（本条 + 坞实测高）算映射区/可见域，坞浮起来时不压缩导航带
+ *  （「内容尾不藏进坞后」那条 2026-09-01 实机整改照旧成立——坞在底带时口径未变）。 */
+const COMPOSER_RISE = 96;
 /** 错桶短规宽（带内 px）——错是语义状态，不走族色深浅（最响的一档）。 */
 const INK_FAIL_RULE_W = 4;
 /** 阶段锚命中盒高（px）= CSS .pp-toc-anchor 的 height（单一真源：热区 ≥24px
@@ -156,7 +160,7 @@ interface HoverBlock {
 }
 
 export const TocStrip = memo(function TocStrip() {
-  const { regions, activeSessionId, viewRect, canvasSize, composerBand, foldedOf } = usePaperRegion();
+  const { regions, activeSessionId, viewRect, canvasSize, composerDock, foldedOf } = usePaperRegion();
   const { flyToPoint } = usePaperDock();
   const core = useCoreStore((s) => s.core);
   const zoom = useCanvasViewStore((s) => s.view.zoom);
@@ -167,12 +171,11 @@ export const TocStrip = memo(function TocStrip() {
   );
 
   /* 带体通栏（top:0/bottom:0），映射区 = [书眉下缘 + 刻痕半高, 坞上缘]
-   * ——**带体坐标**（= 页面坐标 − TOC_TOP）。坞顶线 = 画布区底 − 让位带。
-   * 2026-09-17 浮动化：让位带由 composerBand（视口底 → 坞顶，坞的实际位置）给，
-   * 不再自算「抬高 + 坞高」——坞被拖离底带时映射区随它让；封顶 3/4 可视高，
-   * 免得坞停在上半屏时导航带塌成一条线。默认位时带 = 抬高 + 坞高 ⇒ 零漂移。 */
-  const band = Math.min(composerBand, canvasSize.h * BAND_CAP_RATIO);
-  const mappedBottom = Math.max(STRIP_TOP + 1, canvasSize.h - band);
+   * （元素坐标 = 页面坐标）。底 = 坞顶线（画布区底 − 出厂底带），不随顶内缩。 */
+  /* 带体从书眉下缘起（CSS top: var(--bar-h)），映射区 = [刻痕半高, 坞顶线]
+   * ——**带体坐标**（= 页面坐标 − TOC_TOP）。坞顶线 = 画布区底 − 出厂底带
+   *（抬高 96 + 坞实测高；**不读坞的实际位置**——2026-09-17 用户裁定见上）。 */
+  const mappedBottom = Math.max(STRIP_TOP + 1, canvasSize.h - COMPOSER_RISE - composerDock.height);
   /* ── 标记/锚点派生（几何槽位回填 worldY/worldH；一次建索引防 O(n²)）──
    * P2-3（2026-09-02 拖动卡顿专项）：依赖收窄到内容侧原语/稳定内层引用——
    * 原实现挂 activeRegion 对象引用，regions memo 每 pan 帧换引用 → 全部
@@ -244,10 +247,10 @@ export const TocStrip = memo(function TocStrip() {
   );
 
   /* ── 滑块（可见视口 → 带上区间；VSCode 语义）──
-   * 可见视口 = 书眉下缘 → 坞上缘：visY0 = 画布区顶，visY1 = 画布区底 − 让位带
-   *（与映射区同一把尺子——两处都用封顶后的 band，免得坞贴顶时可见域归零）。 */
+   * 可见视口 = 书眉下缘 → 坞上缘：visY0 = 画布区顶，visY1 = 画布区底 − 出厂底带
+   *（与映射区同一把尺子：都只认出厂位，不随坞浮动而变）。 */
   const visY0 = viewRect.y0;
-  const visY1 = viewRect.y1 - band / Math.max(0.05, zoom);
+  const visY1 = viewRect.y1 - (COMPOSER_RISE + composerDock.height) / Math.max(0.05, zoom);
   const visH = visY1 - visY0;
   const slider = useMemo(() => (range ? computeSlider(range, visY0, visY1) : null), [range, visY0, visY1]);
 

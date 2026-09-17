@@ -39,11 +39,14 @@ export interface PaperRegionContextValue {
   activeSessionId: string | null;
   viewRect: WorldRect;
   canvasSize: { w: number; h: number };
-  /** 创作坞**让位带**（2026-09-17 浮动化）：视口底 → 坞顶线的距离（px）。
-   *  取代旧的 `composerHeight`（坞实测高）——坞可被拖离底带，让位件要按坞的
-   *  实际位置算：默认位时 = `--composer-rise + 坞实测高`（旧口径零漂移），
-   *  浮动态 = 坞的实际位置。真源 = PaperPanel 的 useComposerFloat。 */
-  composerBand: number;
+  /** 创作坞**几何**（2026-09-17）：`bottom` = 视口底 → 坞下边（无覆盖时 = 出厂抬高
+   *  96），`height` = 坞实测高。**不代算**，由两家消费面各按自己的规矩派生：
+   *   - **让位带** = `bottom + height`（坞的**实际位置**）——会被坞当场压住的贴底件
+   *     （小地图默认位；CSS 侧的递牒卡宿主 / 插件 dock 走 `--composer-band`）；
+   *   - **出厂底带** = `96 + height`——**目次带专用**（用户 2026-09-17 裁定：
+   *     目次带不随坞浮动而压缩，只按出厂位让位，护住「内容尾不藏进坞后」那条
+   *     2026-09-01 实机整改）。取代旧的 `composerHeight`（坞实测高单值）。 */
+  composerDock: { bottom: number; height: number };
   /** 有效折叠态（2026-09-01 目次带 minimap 化：内容指纹与主渲染同一折叠
    *  真源——用户覆盖表 + defaultFolded 规则态，PaperPanel 原样下发）。 */
   foldedOf: (b: SourcedBlock) => boolean;

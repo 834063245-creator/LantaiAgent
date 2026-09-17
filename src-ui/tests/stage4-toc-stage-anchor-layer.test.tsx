@@ -125,9 +125,9 @@ function fakeRegion(): { region: RegionView; anchorWorldY: number[] } {
 
 const VIEW_RECT = { x0: -4000, y0: -4000, x1: 4000, y1: 0 };
 const CANVAS_SIZE = { w: 1200, h: 1000 };
-/** 创作坞让位带（2026-09-17 浮动化：视口底 → 坞顶线）= 抬高 96 + 坞高 130
- *  ——默认位口径；几何数值与浮动化前逐字相同（旧式 96 + 坞高 ≡ 新式带）。 */
-const COMPOSER_BAND = 96 + 130;
+/** 创作坞几何（2026-09-17）：目次带只读 height（**出厂底带口径，不随坞浮动让位**——
+ *  用户 2026-09-17 裁定），几何数值与浮动化前逐字相同。 */
+const COMPOSER_DOCK = { bottom: 96, height: 130 };
 
 describe('目次带 v3 — 阶段锚可点 / 装饰刻痕不参与命中', () => {
   let container: HTMLDivElement | null = null;
@@ -156,7 +156,7 @@ describe('目次带 v3 — 阶段锚可点 / 装饰刻痕不参与命中', () =>
       activeSessionId: '1',
       viewRect: VIEW_RECT,
       canvasSize: CANVAS_SIZE,
-      composerBand: COMPOSER_BAND,
+      composerDock: COMPOSER_DOCK,
       foldedOf: () => false,
       minimap: { content: { x0: -720, y0: -2000, x1: 720, y1: 0 }, geo: [] },
       inkCache: createInkCache(),

@@ -45,11 +45,14 @@ function defaultMinimapPref(band: number, mmH: number): { right: number; bottom:
 
 export const MinimapView = memo(function MinimapView() {
   /* 数据面：覆盖层上下文（PaperPanel provider）——P2-3 缓存原样下发 */
-  const { regions, activeSessionId, viewRect, composerBand, foldedOf, minimap, inkCache } = usePaperRegion();
+  const { regions, activeSessionId, viewRect, composerDock, foldedOf, minimap, inkCache } = usePaperRegion();
   const { glideTo } = usePaperDock();
   const content = minimap.content;
   const inkRegions = minimap.geo;
   const viewport = viewRect;
+  /* 让位带 = 坞的**实际**占带（坞位 + 坞高）。小地图与目次带口径不同：它自己会被坞
+   * 当场压住，故跟着坞走（用户 2026-09-17 只裁定「目次带不随坞浮动让位」）。 */
+  const composerBand = composerDock.bottom + composerDock.height;
 
   /* R3.5 浮动化（2026-09-05）：可拖动 + 可缩放 + localStorage 记忆。
    * 默认右下角（bottom 随创作坞让位带），拖动改 right/bottom 偏移，

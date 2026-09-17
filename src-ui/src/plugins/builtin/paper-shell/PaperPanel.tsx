@@ -574,13 +574,13 @@ export function PaperPanel() {
   const totalPinned = Object.keys(canvasState.pins).length;
   const totalStrips = canvasState.strips.length;
 
-  /* rework P3-1 → 2026-09-17 浮动化：创作坞让位带（--composer-band = 视口底 →
-   * 坞顶线的距离）驱动目次带夹紧域/小地图默认位/递牒卡宿主/插件 dock 的让位。
-   * 坞位与实测尺寸归 useComposerFloat（槽主人持有；坞本体一字不知）。
-   * 默认位时带 = --composer-rise + 坞实测高（旧 --composer-h-live 配对式，
-   * 零漂移）；坞被拖离底带时带 = 坞的实际位置。 */
+  /* rework P3-1 → 2026-09-17 浮动化：创作坞几何（坞位 + 坞实测高）驱动让位件重算
+   * （口径分家：目次带只按出厂底带；小地图与 CSS 让位件按坞的实际位置——见
+   * paper/overlay-context.ts 的 composerDock 注释）。坞位/拖动锁/实测尺寸全归
+   * useComposerFloat（槽主人持有；坞本体一字不知）。 */
   const composer = useComposerFloat();
-  const composerBand = composer.band;
+  /** 坞几何（引用稳定，见 use-composer-float）——下发给覆盖层消费面。 */
+  const composerDock = composer.dock;
 
   /* ── 覆盖层上下文（Stage-4）：创作坞消费低频（动作/活跃），
    * 目次带消费高频（流区几何）。拆两 context 避免创作坞随平移重渲。
@@ -600,12 +600,12 @@ export function PaperPanel() {
       activeSessionId: activeSessionKey,
       viewRect,
       canvasSize,
-      composerBand,
+      composerDock: composerDock,
       foldedOf,
       minimap: { content: minimapContent, geo: minimapGeo },
       inkCache: inkCache.current,
     }),
-    [regions, activeSessionKey, viewRect, canvasSize, composerBand, foldedOf, minimapContent, minimapGeo, inkCache],
+    [regions, activeSessionKey, viewRect, canvasSize, composerDock, foldedOf, minimapContent, minimapGeo, inkCache],
   );
 
   /* 拖拽回流判据（渲染面）：来源流区中轴——dragPos 悬回带内且 wasFlow = 松手取消 */
@@ -1091,11 +1091,14 @@ export function PaperPanel() {
               ⚠ 形态类刻意叫 pp-at-desk 不叫 pp-desk——与世界层桌垫 .pp-desk
               同名会撞车（桌垫 top/height ±200000 接管槽，坞射出屏外，CSS 注释有案）。
               2026-09-17 浮动化：坞位 state 归 useComposerFloat（style 为 undefined
-              = 无覆盖 = CSS 默认居中坐底）；抓手 = 坞书眉行（手势判据在
-              composer-float.ts 的 isComposerHandle），双击坞头复位。 */}
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: 坞槽承载拖坞手势（坞头命中判据在 composer-float.ts 的 isComposerHandle——非交互件才起拖） */}
+              = 无覆盖 = CSS 默认居中坐底）；**默认锁定**——点坞顶浮现的锁钮（移/锁，
+              桌面歌词式）解锁后整坞才是抓手，双击坞体复位（判据在 composer-float.ts
+              的 isComposerDragSurface）。 */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: 坞槽承载拖坞手势（拖动面判据在 composer-float.ts 的 isComposerDragSurface——锁定态一律放行） */}
           <div
-            className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}${composer.dragging ? ' pp-composer-dragging' : ''}`}
+            className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}${
+              composer.dragging ? ' pp-composer-dragging' : ''
+            }${composer.unlocked ? ' pp-composer-unlocked' : ''}`}
             ref={composer.slotRef}
             style={composer.style}
             onPointerDown={composer.onPointerDown}
@@ -1108,6 +1111,23 @@ export function PaperPanel() {
               </PluginBoundary>
             ))}
             {desk && <DeskShelf core={core} />}
+            {/* 拖动锁（2026-09-17 用户方案，桌面歌词式）：hover 浮现、浮在坞顶外缘。
+                **默认锁定 = 坞对鼠标零响应**（谁都不会误拖，也与划词天然不打架）；
+                点它解锁后整坞（除交互件）成为抓手 + 全坞变抓手光标，再点回锁定。
+                文案 = 点下去会发生什么（同「拟文/停」单钮三态语言）。 */}
+            <button
+              type="button"
+              className="pp-composer-lock"
+              aria-pressed={composer.unlocked}
+              title={
+                composer.unlocked
+                  ? '拖动模式：已解锁——按住坞体任意空白处拖动，双击坞体复位；点此重新锁定'
+                  : '创作坞可拖动：点此解锁后可按住坞体拖动（双击复位）'
+              }
+              onClick={composer.toggleUnlocked}
+            >
+              {composer.unlocked ? '锁' : '移'}
+            </button>
           </div>
           {edgeOverlays.map((def) => (
             <PluginBoundary key={def.id} label={`边缘层 ${def.id}`}>
