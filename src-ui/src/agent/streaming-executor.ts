@@ -14,13 +14,14 @@
 //
 // CC 参考：StreamingToolExecutor, query.ts:1366-1408
 
-import type { ToolCall } from '../provider/types';
+import type { ChatImageRef, ToolCall } from '../provider/types';
 import { type AgentEvent, EventKind, type ToolPipelineContext } from './agent-types';
 import { generateAssetId, parseAssetEventOutput } from './asset-kinds';
 import { markConfirmEmitted, resolveConfirm } from './confirm-registry';
 import type { AgentEventBus } from './events';
 import { log } from './logger';
 import type { Tool, ToolRegistry } from './tool';
+import { parseToolImageOutput } from './tool-images';
 import { resolveGuardToolName, retireRedirect } from './tools/domains';
 import { truncateToolOutput } from './truncate';
 
@@ -61,6 +62,9 @@ interface PendingResult {
   output: string;
   err?: string;
   truncated: boolean;
+  /** 工具附图引用（imageChannel 工具；P0a 工具附图通道）——default-loop 把它挂到
+   *  该次 tool/result 消息上；请求期才解析成 wire（INVARIANTS #14：卷里只有引用）。 */
+  images?: ChatImageRef[];
 }
 
 /**
@@ -529,10 +533,19 @@ export class StreamingToolExecutor {
       // ── 截断输出以限制 token 消耗（50KB / 2000 行）──
       const trunc = truncateToolOutput(guardName, output);
 
+      // ── 工具附图通道（P0a）：从**未截断**输出取引用 ──
+      // 取截断前原文：截断可能切掉 JSON 尾部（引用描述在文末时），而附图引用本就
+      // 是几十字节的元数据、不进模型可见文本的量级；引用挂消息、字节在盘上（#14）。
+      // 能力位解析走 guardName：模型调的是域门面（browser(action:"screenshot")），
+      // 真正执行的是 legacy 工具（browser_screenshot）——旗标归实现工具。
+      const imageCapable = tool.imageChannel === true || this.tools.get(guardName)?.imageChannel === true;
+      const images = imageCapable ? parseToolImageOutput(output) : [];
+
       const result: PendingResult = {
         call,
         output: trunc.content,
         truncated: trunc.truncated,
+        ...(images.length > 0 ? { images } : {}),
       };
       this.emitPipelineResult(call, tool, result, guardName, false, args);
       return result;

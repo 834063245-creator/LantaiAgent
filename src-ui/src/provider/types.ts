@@ -46,7 +46,10 @@ export interface ChatImageRef {
 export interface Message {
   role: Role;
   content: string;
-  /** 用户消息附图引用（multimodal-image-plan D-1；仅 user 角色携带）。
+  /** 消息附图引用（multimodal-image-plan D-1；**user 与 tool 两类角色**可携带——
+   *  tool 侧 = 工具附图通道 P0a，docs/plans/tool-image-context-plan.md：工具产出的
+   *  截图由此进模型上下文，替代「把 PNG 路径交给用户求人看图」）。
+   *  字节永不进卷（INVARIANTS #14）：卷里只有内容寻址引用，请求期才解析成 wire。
    *  content 保持 string——纯文本 wire 纪律（D-6）：无图消息形态字节不变；
    *  有图消息在适配器层才展开 content parts（openai）/ image blocks
    *  （anthropic）/ input_image（responses）。 */

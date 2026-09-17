@@ -937,6 +937,12 @@ pub(super) const AUDIT_FILE_PREFIX: &str = "hologram-browser-audit";
 /// 截图目录/文件名前缀。
 pub(super) const SHOT_DIR_NAME: &str = "hologram-browser-shots";
 pub(super) const SHOT_FILE_PREFIX: &str = "shot-";
+
+/// 截图目录（临时目录下，与 desktop_screenshot 共用）。
+/// 单一真源：cdp_screenshot 写它、browser_cap 转存工作区附件前校验来源在它内。
+pub(crate) fn shot_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join(SHOT_DIR_NAME)
+}
 /// HAR 导出目录/文件名前缀。
 pub(super) const HAR_DIR_NAME: &str = "hologram-browser-har";
 pub(super) const HAR_FILE_PREFIX: &str = "hologram-";

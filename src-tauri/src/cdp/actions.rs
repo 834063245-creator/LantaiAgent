@@ -16,7 +16,7 @@ use super::session::{
     active_session_key, audit_log, cleanup_old_files_by_age, ensure_observer_started,
     har_retain_days, is_self, lock_sessions, session_mut, shot_retain_days, truncate_str,
     Observer, ACTIONABILITY_TIMEOUT, EVAL_TIMEOUT_MS, HAR_DIR_NAME, HAR_FILE_PREFIX,
-    NETWORK_BUF_MAX, POST_ACTION_SETTLE, SELF_AGENT_ID, SHOT_DIR_NAME, SHOT_FILE_PREFIX,
+    NETWORK_BUF_MAX, POST_ACTION_SETTLE, SELF_AGENT_ID, SHOT_FILE_PREFIX,
     WEBVIEW_DEBUG_PORT,
 };
 use super::transport::{list_targets_raw, ws_command, ws_command_seq};
@@ -1988,7 +1988,7 @@ pub(crate) async fn cdp_screenshot(
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data)
         .map_err(|e| format!("截图 base64 解码失败: {e}"))?;
-    let dir = std::env::temp_dir().join(SHOT_DIR_NAME);
+    let dir = super::shot_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建截图目录失败: {e}"))?;
     cleanup_old_files_by_age(
         &dir,

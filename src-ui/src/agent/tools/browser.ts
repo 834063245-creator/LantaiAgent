@@ -400,6 +400,10 @@ function browserCapTool(action: BrowserCapAction): Tool {
     description: () => BROWSER_CAP_DESCRIPTION[action],
     parameters: () => parameters,
     readOnly: () => BROWSER_CAP_READONLY[action] ?? false,
+    // 截图族带附图（P0a 工具附图通道）：Rust 侧把 PNG 转存成工作区内容寻址附件
+    // 并在输出里带 image 引用，executor 据此把图挂进模型上下文（视觉模型可见）。
+    // 其余动作输出里没有 image 键，解析恒为空——同一旗标对全族无害。
+    ...(action === 'browser_screenshot' ? { imageChannel: true } : {}),
     execute: (args) => runBrowserAction(action, args),
   };
 }

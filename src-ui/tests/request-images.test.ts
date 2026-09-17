@@ -43,13 +43,23 @@ const R3 = ref('r3', 3000, 'c.png');
 // ── 收集 ──
 
 describe('collectImageRefs', () => {
-  it('只收 user 消息，按消息序×消息内序（最旧在前）', () => {
+  // 规格变更（P0a 工具附图通道，2026-09-17 明文声明）：
+  // 旧规格 = 只收 user 消息的图（assistant 上挂 images 属越界，被忽略）；
+  // 新规格 = user 与 tool 两类角色都收（工具产出的截图由此进上下文），
+  // assistant 仍不携带附图。依据 docs/plans/tool-image-context-plan.md 裁定 3/6。
+  it('收 user 与 tool 两类角色，按消息序×消息内序（最旧在前）；assistant 不携带', () => {
     const msgs: Message[] = [
       userMsg('1', [R1]),
       { role: 'assistant', content: 'x', images: [R2] } as unknown as Message,
+      { role: 'tool', content: 'shot', tool_call_id: 'c1', images: [R2] } as unknown as Message,
       userMsg('2', [R2, R3]),
     ];
-    expect(collectImageRefs(msgs)).toEqual([R1, R2, R3]);
+    // assistant 上的 R2 不参与；tool 上的 R2 参与 → 结果 [R1, R2, R2, R3]
+    expect(collectImageRefs(msgs)).toEqual([R1, R2, R2, R3]);
+  });
+
+  it('无图载荷 → 空表（纯文本路径零开销）', () => {
+    expect(collectImageRefs([userMsg('hi'), { role: 'assistant', content: 'ok' }])).toEqual([]);
   });
 });
 

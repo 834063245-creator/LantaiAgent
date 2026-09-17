@@ -31,13 +31,20 @@ export function textModelImagePlaceholder(ref: ChatImageRef): string {
   return `[图片：${ref.name ?? ref.id.slice(0, 12)}（${ref.width}×${ref.height}）——当前模型不支持图片输入，图已省略。]`;
 }
 
-/** 收集载荷里的全部附图引用（user 消息序——最旧在前）。 */
+/** 可携带附图的角色（契约 v40：语言面 = user + tool；assistant 不带图，见
+ *  provider/types.ts 的 Message.images 注与 open-surface-contract 变更记录）。
+ *  三个纯函数共用同一判据——收集/预算/投影口径不分开，避免三处各判一套。 */
+function carriedImages(m: Message): ChatImageRef[] | undefined {
+  return m.role === 'user' || m.role === 'tool' ? m.images : undefined;
+}
+
+/** 收集载荷里的全部附图引用（消息序——最旧在前）。
+ *  user 与 tool 两类角色都可携带（tool 侧 = 工具附图通道 P0a）：预算与投影
+ *  共用同一份收集口径，工具附图不另开预算面。 */
 export function collectImageRefs(messages: readonly Message[]): ChatImageRef[] {
   const refs: ChatImageRef[] = [];
   for (const m of messages) {
-    if (m.role === 'user') {
-      for (const ref of m.images ?? []) refs.push(ref);
-    }
+    for (const ref of carriedImages(m) ?? []) refs.push(ref);
   }
   return refs;
 }
@@ -82,7 +89,7 @@ export function applyImageBudget(
 
   const out: Message[] = [];
   for (const m of messages) {
-    const images = m.role === 'user' ? m.images : undefined;
+    const images = carriedImages(m);
     if (images === undefined || images.length === 0) {
       out.push(m);
       continue;
@@ -111,7 +118,7 @@ export function applyImageBudget(
 export function projectImagesForTextModel(messages: readonly Message[]): Message[] {
   if (!messages.some((m) => (m.images?.length ?? 0) > 0)) return [...messages];
   return messages.map((m) => {
-    const images = m.role === 'user' ? m.images : undefined;
+    const images = carriedImages(m);
     if (images === undefined || images.length === 0) return m;
     const placeholder = images.map(textModelImagePlaceholder).join('\n');
     const { images: _drop, ...rest } = m;

@@ -181,7 +181,10 @@ interface ContentBlock {
   name?: string;
   input?: unknown;
   tool_use_id?: string;
-  content?: string;
+  /** tool_result 载荷：纯文本（无图常态，形态字节不变）或内容块数组
+   *  （工具附图通道 P0a：`[{type:'text'},{type:'image'}]`——该协议原生支持
+   *  tool_result 内放图块，模型因此能「看见」工具产出的截图）。 */
+  content?: string | ContentBlock[];
   /** image 块（B3 multimodal-image-plan）：base64 源。 */
   source?: { type: 'base64'; media_type: string; data: string };
   cache_control?: CacheControl;
@@ -274,6 +277,21 @@ export function buildRequest(
         break;
       case 'tool': {
         const content = m.content || '(no output)';
+        // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：图随 tool_result
+        // 的 content 数组进上下文（文本在前，图按引用序 join；读失败图自然跳过）。
+        // 无图 tool 消息仍是纯字符串 content —— wire 形态逐字节不变（D-6）。
+        if (m.images !== undefined && m.images.length > 0 && imageData !== undefined) {
+          const blocks: ContentBlock[] = [{ type: 'text', text: content }];
+          for (const ref of m.images) {
+            const hit = imageData[ref.id];
+            if (hit === undefined) continue;
+            blocks.push({ type: 'image', source: { type: 'base64', media_type: hit.mediaType, data: hit.data } });
+          }
+          if (blocks.length > 1) {
+            appendBlocks('user', [{ type: 'tool_result', tool_use_id: m.tool_call_id, content: blocks }]);
+            break;
+          }
+        }
         appendBlocks('user', [{ type: 'tool_result', tool_use_id: m.tool_call_id, content }]);
         break;
       }

@@ -32,7 +32,7 @@ mod errors;
 
 pub(crate) use session::{
     cdp_audit, cdp_browser_activity, cdp_close_tab, cdp_connect, cdp_discover, cdp_kill,
-    cdp_launch, cdp_new_tab, cdp_sessions, cdp_switch_session, is_self, SELF_AGENT_ID,
+    cdp_launch, cdp_new_tab, cdp_sessions, cdp_switch_session, is_self, shot_dir, SELF_AGENT_ID,
 };
 pub(crate) use actions::{
     cdp_attach, cdp_back, cdp_click, cdp_console, cdp_content, cdp_cookies, cdp_dialogs, cdp_eval,

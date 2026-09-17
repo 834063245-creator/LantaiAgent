@@ -22,9 +22,17 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 39;
+export const OPEN_SURFACE_CONTRACT_VERSION = 40;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v40（2026-09-17）工具附图通道 P0a（agent 眼睛环）：`Message.images` 合法角色
+ *  从「仅 user」扩到「user + tool」——工具产出的截图（browser screenshot）由此
+ *  进模型上下文（此前模型只能拿到 PNG 路径，自立看不见自己的产出）。两协议走
+ *  原生形态（anthropic tool_result.content 数组 / responses function_call_output
+ *  .output 数组），OpenAI 兼容 chat 在 tool 组尾补合成 user 消息；**无图路径三
+ *  协议 wire 形态逐字节不变**（D-6），`tool/result` 事件形状零变更（data 本就是
+ *  整个 Message）⇒ convergence 双轨零漂移。default-loop 两处写入点挂引用。
+ *  依据 docs/plans/tool-image-context-plan.md（裁定 3/4）。
  *  v39（2026-09-15）S6 P3b 组合**依赖与独占**声明：`CompositionPatchSchema` 新增
  *  两个可选顶层键——`requires: [插件名]`（该组合依赖的插件；缺任一 ⇒ 组合不可用，
  *  原因**具名**：「组合 X 需要插件 Y，但它未装载」——比行 id 写错的报错可读）

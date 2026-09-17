@@ -281,8 +281,99 @@ async fn browser_screenshot(gate: &BrowserGate<'_>, args: &Value) -> Result<Stri
     gate.check("screenshot", agent_id.as_deref()).await?;
     let full_page = args.get("full_page").and_then(|v| v.as_bool()).unwrap_or(false);
     let inline = args.get("inline").and_then(|v| v.as_bool()).unwrap_or(false);
-    crate::cdp::cdp_screenshot(full_page, inline, agent_id.as_deref()).await
+    let out = crate::cdp::cdp_screenshot(full_page, inline, agent_id.as_deref()).await?;
+    // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：把截图转存成工作区
+    // 内容寻址附件，并在输出里附 image 引用 —— 模型侧 parseToolImageOutput 据此把图
+    // 挂进上下文（INVARIANTS #14：消息只存引用，字节在 {ws}/.lantai/attachments/）。
+    Ok(attach_screenshot_ref(gate, out))
 }
+
+/// 截图目录下文件的大小上限（8MiB，与 fs_cap 读字节上限同档）——超过则只回路径，
+/// 不把巨图灌进用户项目目录。
+const SHOT_ATTACH_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+/// 把 cdp 截图转存为工作区附件并加 `image` 引用（纯增益：任何一步不成 → 原输出原样返回）。
+///
+/// 为何在 Rust 侧写而不是 TS 侧搬运：截图落在系统临时目录（工作区外），Agent 通道读
+/// 会撞权限闸；本口已持 WorkspaceState（gate.state），直接写 attachments 零摩擦。
+/// 命名与 #14 同义：{id}.png，id = 字节 sha256（content-addressed，同图天然去重）。
+fn attach_screenshot_ref(gate: &BrowserGate<'_>, output: String) -> String {
+    use sha2::{Digest, Sha256};
+
+    let Ok(mut val) = serde_json::from_str::<Value>(&output) else {
+        return output;
+    };
+    let Some(src) = val.get("path").and_then(|v| v.as_str()) else {
+        return output;
+    };
+    // 只认本套件自己产的截图（防任何形态的路径注入）
+    let src_path = std::path::Path::new(src);
+    if src_path.parent() != Some(crate::cdp::shot_dir().as_path()) {
+        return output;
+    }
+    let Ok(bytes) = std::fs::read(src_path) else {
+        return output;
+    };
+    if bytes.len() > SHOT_ATTACH_MAX_BYTES {
+        return output;
+    }
+    // PNG 尺寸：IHDR（偏移 16/20，大端）——渲染侧展示与预算判据都要
+    let (Some(w), Some(h)) = (png_dim(&bytes, 16), png_dim(&bytes, 20)) else {
+        return output;
+    };
+    // 无工作区（未打开项目）→ 不落附件，只回路径（截图本身仍成功）
+    let Ok(ws) = crate::utils::workspace_path(gate.state) else {
+        return output;
+    };
+    let id = format!("{:x}", Sha256::digest(&bytes));
+    let dir = std::path::Path::new(&ws).join(".lantai").join("attachments");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return output;
+    }
+    let dst = dir.join(format!("{id}.png"));
+    if !dst.exists() && std::fs::write(&dst, &bytes).is_err() {
+        return output;
+    }
+    let name = src_path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| format!("{id}.png"));
+    if let Some(obj) = val.as_object_mut() {
+        obj.insert(
+            "image".to_string(),
+            serde_json::json!({
+                "id": id,
+                "mediaType": "image/png",
+                "bytes": bytes.len(),
+                "width": w,
+                "height": h,
+                "name": name,
+            }),
+        );
+        obj.insert(
+            "attachment".to_string(),
+            serde_json::json!(dst.to_string_lossy()),
+        );
+        obj.insert(
+            "imageNote".to_string(),
+            serde_json::json!(
+                "本图已作为附图进入上下文：视觉模型可直接观察（纯文本模型只看到本占位说明）。"
+            ),
+        );
+    }
+    val.to_string()
+}
+
+/// 从 PNG 头部读一个 4 字节大端整数（偏移 16=宽 / 20=高）；非 PNG 或越界 → None。
+fn png_dim(bytes: &[u8], at: usize) -> Option<u32> {
+    if bytes.len() < at + 4 || bytes.get(12..16) != Some(b"IHDR") {
+        return None;
+    }
+    let mut buf = [0u8; 4];
+    buf.copy_from_slice(&bytes[at..at + 4]);
+    Some(u32::from_be_bytes(buf))
+}
+
 
 async fn browser_viewport(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = self_or_agent(gate, args);
@@ -634,6 +725,48 @@ mod tests {
         let known: std::collections::HashSet<&str> = ACTIONS.iter().copied().collect();
         for a in ["browser_frobnicate", "launch", "browser_", ""] {
             assert!(!known.contains(a), "{a} 不应在 37 动作表内");
+        }
+    }
+
+    // ── 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）──
+
+    /// 最小合法 PNG 头（签名 + IHDR 宽高）——只够 png_dim 读尺寸。
+    fn png_head(w: u32, h: u32) -> Vec<u8> {
+        let mut v = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        v.extend_from_slice(&13u32.to_be_bytes());
+        v.extend_from_slice(b"IHDR");
+        v.extend_from_slice(&w.to_be_bytes());
+        v.extend_from_slice(&h.to_be_bytes());
+        v
+    }
+
+    #[test]
+    fn png_dim_reads_ihdr_width_height() {
+        let head = png_head(720, 240);
+        assert_eq!(super::png_dim(&head, 16), Some(720));
+        assert_eq!(super::png_dim(&head, 20), Some(240));
+    }
+
+    #[test]
+    fn png_dim_rejects_non_png_and_short_input() {
+        // 非 PNG（JPEG 头）——不得把任意二进制当图读尺寸
+        let jpeg = vec![0xff, 0xd8, 0xff, 0xe0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        assert_eq!(super::png_dim(&jpeg, 16), None);
+        // 越界读（不足 at+4）
+        assert_eq!(super::png_dim(&png_head(1, 1)[..14], 16), None);
+        assert_eq!(super::png_dim(&[], 20), None);
+    }
+
+    /// 截图目录判据：非本套件产的路径一律不转存（防路径注入）。
+    #[test]
+    fn shot_source_guard_only_accepts_shot_dir() {
+        let dir = crate::cdp::shot_dir();
+        assert_eq!(
+            std::path::Path::new(&dir.join("shot-1.png")).parent(),
+            Some(dir.as_path())
+        );
+        for bad in ["C:\\Windows\\Temp\\evil.png", "D:\\proj\\.lantai\\attachments\\x.png"] {
+            assert_ne!(std::path::Path::new(bad).parent(), Some(dir.as_path()));
         }
     }
 }

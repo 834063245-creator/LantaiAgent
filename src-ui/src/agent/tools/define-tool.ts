@@ -56,6 +56,9 @@ export interface DefineToolOpts<S extends z.ZodObject<z.ZodRawShape>> {
   readOnlyActions?: readonly string[];
   /** 资产通道标记——透传到 Tool.assetChannel（executor 据此前路由 Asset 事件） */
   assetChannel?: boolean;
+  /** 工具附图通道标记——透传到 Tool.imageChannel（executor 据此前把输出里的
+   *  image 引用挂到工具结果消息上；docs/plans/tool-image-context-plan.md） */
+  imageChannel?: boolean;
   /** 接收 parse 后的类型化参数(default 已注入, 校验失败会抛错而非静默兜底)。
    *  meta key(_callId/_agent_id/_forceGate) 不在类型内 — 需要时用 (args as { _callId?: string })._callId。
    *  signal 是可选中止信号 — 目前仅 shell 链路消费。 */
@@ -65,6 +68,7 @@ export interface DefineToolOpts<S extends z.ZodObject<z.ZodRawShape>> {
 /** 创建 Tool。返回的 Tool 与旧手写对象形状完全一致, 消费方(ToolRegistry/executor/plan/mock)零感知。 */
 export function defineTool<S extends z.ZodObject<z.ZodRawShape>>(opts: DefineToolOpts<S>): Tool {
   const { name, description, schema, readOnly = false, assetChannel = false, execute } = opts;
+  const imageChannel = opts.imageChannel === true;
   const domain = opts.domain;
   const actions = opts.actions;
   const readOnlyActions = opts.readOnlyActions;
@@ -79,6 +83,7 @@ export function defineTool<S extends z.ZodObject<z.ZodRawShape>>(opts: DefineToo
     ...(actions ? { actions: () => [...actions] } : {}),
     ...(readOnlyActions ? { readOnlyActions: () => [...readOnlyActions] } : {}),
     ...(assetChannel ? { assetChannel: true } : {}),
+    ...(imageChannel ? { imageChannel: true } : {}),
     execute: async (args, onProgress, signal) => {
       let parsed: z.output<S>;
       try {

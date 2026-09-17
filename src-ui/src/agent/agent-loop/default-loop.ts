@@ -266,6 +266,7 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
               content,
               tool_call_id: call.id,
               name: call.name,
+              ...(r?.images && r.images.length > 0 ? { images: r.images } : {}),
             });
           }
         }
@@ -402,6 +403,8 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
           content,
           tool_call_id: call.id,
           name: call.name,
+          // 工具附图（P0a）：引用随消息入卷，字节在盘上（INVARIANTS #14）
+          ...(r?.images && r.images.length > 0 ? { images: r.images } : {}),
         });
         // 通知面板自动刷新（workspace 注入的端口）
         host.ui.toolDone?.(

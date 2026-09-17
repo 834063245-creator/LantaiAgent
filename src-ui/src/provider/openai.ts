@@ -18,6 +18,7 @@ import {
 } from './thinking';
 import {
   ApiError,
+  type ChatImageRef,
   type Chunk,
   ChunkType,
   classifyStreamError,
@@ -260,7 +261,30 @@ export function buildChatRequest(
   }
   const chatMsgs: ChatMessage[] = [];
 
+  // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：OpenAI 兼容 chat 的
+  // tool role 不接收图片 → 把工具附图汇成该轮 tool 组**之后**的一条合成 user 消息
+  // （组尾最稳：不在 tool 序列中间插 user，兼容性最好）。无图时一行都不产生
+  // （D-6：无图路径 wire 形态逐字节不变）。
+  let pendingToolImages: ChatImageRef[] = [];
+  let pendingToolName = '';
+  const flushToolImages = () => {
+    if (pendingToolImages.length === 0) return;
+    const refs = pendingToolImages;
+    const name = pendingToolName;
+    pendingToolImages = [];
+    pendingToolName = '';
+    const parts: ChatContentPart[] = [{ type: 'text', text: `（工具附图：${name || 'tool'} —— 图像见下）` }];
+    for (const ref of refs) {
+      const hit = imageData?.[ref.id];
+      if (hit === undefined) continue; // 读失败/超预算图——wire 缺图不炸
+      parts.push({ type: 'image_url', image_url: { url: `data:${hit.mediaType};base64,${hit.data}` } });
+    }
+    if (parts.length > 1) chatMsgs.push({ role: 'user', content: parts });
+  };
+
   for (const m of msgs) {
+    // tool 组的连续段结束 → 先补上工具附图（组尾语义）
+    if (m.role !== 'tool') flushToolImages();
     switch (m.role as Role) {
       case 'system':
       case 'user':
@@ -292,6 +316,11 @@ export function buildChatRequest(
           tool_call_id: m.tool_call_id,
           name: m.name,
         });
+        // 工具附图（P0a）：本协议 tool role 不收图，攒到组尾合成 user 消息里发
+        if (m.images !== undefined && m.images.length > 0 && imageData !== undefined) {
+          pendingToolImages.push(...m.images);
+          pendingToolName = m.name ?? pendingToolName;
+        }
         break;
       case 'assistant': {
         const cm: ChatMessage = { role: 'assistant', content: m.content || null };
@@ -312,6 +341,8 @@ export function buildChatRequest(
       }
     }
   }
+  // 载荷以 tool 组收尾时，附图消息在此补上
+  flushToolImages();
 
   // OpenAI 兼容协议没有 cache_control 字段 — 每个 provider
   // 自行做服务端前缀缓存（DeepSeek 自动，官方 OpenAI 用 prompt_cache_key）。

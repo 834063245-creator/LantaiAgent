@@ -183,8 +183,18 @@ interface ResponsesInputItem {
   type?: 'message' | 'function_call_output';
   role?: 'user' | 'assistant' | 'developer' | 'system';
   content?: Array<{ type: string; text?: string; output?: string; image_url?: string }>;
-  /** message item 的 assistant 工具输出子项（function_call 数组） */
-  output?: Array<{ id?: string; type: 'function_call'; name?: string; arguments?: string; call_id?: string }>;
+  /** message item 的 assistant 工具输出子项（function_call 数组）；
+   *  function_call_output item 的**内容项数组**（带图时用它取代 output_text——
+   *  工具附图通道 P0a：`[{type:'input_text'},{type:'input_image'}]`）。 */
+  output?: Array<{
+    id?: string;
+    type: 'function_call' | 'input_text' | 'input_image';
+    name?: string;
+    arguments?: string;
+    call_id?: string;
+    text?: string;
+    image_url?: string;
+  }>;
   /** function_call_output item：关联的 function_call id */
   call_id?: string;
   output_text?: string;
@@ -233,11 +243,27 @@ export function buildResponsesRequest(
   for (const m of msgs) {
     if (m.role === 'system') continue;
     if (m.role === 'tool') {
-      input.push({
-        type: 'function_call_output',
-        call_id: m.tool_call_id,
-        output_text: m.content || '(no output)',
-      });
+      // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：本协议
+      // function_call_output 支持内容项数组 → 图随工具结果进上下文。
+      // 无图 tool 仍是 output_text 纯文本（wire 形态逐字节不变，D-6）。
+      const parts: Array<{ type: 'input_text' | 'input_image'; text?: string; image_url?: string }> = [];
+      if (m.images !== undefined && m.images.length > 0 && imageData !== undefined) {
+        parts.push({ type: 'input_text', text: m.content || '(no output)' });
+        for (const ref of m.images) {
+          const hit = imageData[ref.id];
+          if (hit === undefined) continue; // 读失败/超预算图——wire 缺图不炸
+          parts.push({ type: 'input_image', image_url: `data:${hit.mediaType};base64,${hit.data}` });
+        }
+      }
+      if (parts.length > 1) {
+        input.push({ type: 'function_call_output', call_id: m.tool_call_id, output: parts });
+      } else {
+        input.push({
+          type: 'function_call_output',
+          call_id: m.tool_call_id,
+          output_text: m.content || '(no output)',
+        });
+      }
       continue;
     }
     // user / assistant

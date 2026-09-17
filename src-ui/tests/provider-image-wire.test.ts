@@ -116,3 +116,109 @@ describe('responses buildResponsesRequest — input_image（B3）', () => {
     expect(userItem?.content).toEqual([{ type: 'input_text', text: 'hi' }]);
   });
 });
+
+// ── 工具附图（P0a 工具附图通道，docs/plans/tool-image-context-plan.md）──
+//
+// 三协议各自的「工具结果带图」合法形态 + 无图路径字节不变。
+// 由来：工具产出的截图此前永远进不了模型上下文（附图只挂 user 消息），
+// 于是「模型自查自己的渲染结果」这条环断在这里。
+
+/** 一轮：用户提问 → assistant 调 browser_screenshot → tool 结果带图 */
+function sessionWithToolImage(): Message[] {
+  return [
+    { role: 'user', content: '截图看看那张卡' },
+    {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id: 'call-1', name: 'browser_screenshot', arguments: '{}' }],
+    },
+    {
+      role: 'tool',
+      content: '{"path":"shot-1.png","bytes":1234}',
+      tool_call_id: 'call-1',
+      name: 'browser_screenshot',
+      images: [IMG_A],
+    },
+  ];
+}
+
+describe('anthropic buildRequest — tool_result 内容块数组（P0a）', () => {
+  it('tool 带图 → tool_result.content 为 [text, image] 数组（该协议原生形态）', () => {
+    const body = buildAnthropicRequest(sessionWithToolImage(), [], 'claude-x', '', 100, undefined, imageDataTable);
+    const flat = body.messages.flatMap((m) => m.content);
+    const tr = flat.find((b) => b.type === 'tool_result');
+    const blocks = tr?.content as Array<{ type: string; text?: string; source?: { data: string } }>;
+    expect(Array.isArray(blocks)).toBe(true);
+    expect(blocks[0].type).toBe('text');
+    expect(blocks[0].text).toBe('{"path":"shot-1.png","bytes":1234}');
+    expect(blocks[1]).toEqual({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/png', data: 'QUJD' },
+    });
+  });
+
+  it('tool 无图 → content 仍是字符串（D-6 字节不变）', () => {
+    const msgs = sessionWithToolImage().map((m) => (m.role === 'tool' ? { ...m, images: undefined } : m));
+    const body = buildAnthropicRequest(msgs, [], 'claude-x', '', 100, undefined, imageDataTable);
+    const tr = body.messages.flatMap((m) => m.content).find((b) => b.type === 'tool_result');
+    expect(typeof tr?.content).toBe('string');
+  });
+
+  it('解析表缺该图 → 退回字符串形态（wire 缺图不炸）', () => {
+    const body = buildAnthropicRequest(sessionWithToolImage(), [], 'claude-x', '', 100, undefined, {});
+    const tr = body.messages.flatMap((m) => m.content).find((b) => b.type === 'tool_result');
+    expect(typeof tr?.content).toBe('string');
+  });
+});
+
+describe('openai buildChatRequest — 工具附图合成 user 消息（P0a）', () => {
+  it('tool 带图 → tool 组之后补一条 user 消息带 image_url（tool role 不收图）', () => {
+    const body = buildChatRequest(sessionWithToolImage(), [], 'gpt-5.4', 100, undefined, undefined, imageDataTable);
+    const roles = body.messages.map((m) => m.role);
+    expect(roles).toEqual(['user', 'assistant', 'tool', 'user']);
+    const last = body.messages[3].content as Array<{ type: string; text?: string; image_url?: { url: string } }>;
+    expect(Array.isArray(last)).toBe(true);
+    expect(last[0].type).toBe('text');
+    expect(last[0].text).toContain('browser_screenshot');
+    expect(last[1]).toEqual({ type: 'image_url', image_url: { url: 'data:image/png;base64,QUJD' } });
+  });
+
+  it('tool 无图 → 消息数不变（D-6 字节不变）', () => {
+    const msgs = sessionWithToolImage().map((m) => (m.role === 'tool' ? { ...m, images: undefined } : m));
+    const body = buildChatRequest(msgs, [], 'gpt-5.4', 100, undefined, undefined, imageDataTable);
+    expect(body.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
+  });
+
+  it('载荷以 tool 组收尾 → 附图消息在循环后补上（组尾 flush）', () => {
+    const msgs = sessionWithToolImage().slice(1); // assistant + tool
+    const body = buildChatRequest(msgs, [], 'gpt-5.4', 100, undefined, undefined, imageDataTable);
+    expect(body.messages.map((m) => m.role)).toEqual(['assistant', 'tool', 'user']);
+  });
+});
+
+describe('responses buildResponsesRequest — function_call_output 内容项（P0a）', () => {
+  it('tool 带图 → output 数组 [input_text, input_image]', () => {
+    const body = buildResponsesRequest(
+      sessionWithToolImage(),
+      [],
+      'gpt-5.4',
+      100,
+      undefined,
+      undefined,
+      imageDataTable,
+    );
+    const item = body.input.find((i) => i.type === 'function_call_output');
+    const out = item?.output as Array<{ type: string; text?: string; image_url?: string }>;
+    expect(item?.output_text).toBeUndefined();
+    expect(out[0]).toEqual({ type: 'input_text', text: '{"path":"shot-1.png","bytes":1234}' });
+    expect(out[1]).toEqual({ type: 'input_image', image_url: 'data:image/png;base64,QUJD' });
+  });
+
+  it('tool 无图 → 仍是 output_text 纯文本（D-6 字节不变）', () => {
+    const msgs = sessionWithToolImage().map((m) => (m.role === 'tool' ? { ...m, images: undefined } : m));
+    const body = buildResponsesRequest(msgs, [], 'gpt-5.4', 100, undefined, undefined, imageDataTable);
+    const item = body.input.find((i) => i.type === 'function_call_output');
+    expect(item?.output_text).toBe('{"path":"shot-1.png","bytes":1234}');
+    expect(item?.output).toBeUndefined();
+  });
+});
