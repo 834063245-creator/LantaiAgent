@@ -2342,52 +2342,14 @@
 html.pp-composer-dragging {
   user-select: none;
 }
-/* 拖动锁（2026-09-17 用户方案）：浮在坞顶外缘的小钮（.pp-composer-lock，纸Panel
- * React 侧渲染于槽内）——**hover 浮现**，解锁态常显。锁定 = 坞对鼠标零响应。 */
-.pp-composer-lock {
-  position: absolute;
-  /* 浮在坞顶外缘上方 26px（= composer-float.ts 的 COMPOSER_PILL_H——上夹紧按它预留，
-   * 免得坞拖到最上时小钮压进书眉；数值两处同改）。手抄不引 token：本规则在产物域
-   * （可热更），token 在 exe 内嵌的 tokens.css（重编才换），两者同批会打架。 */
-  top: -26px;
-  right: 0;
-  z-index: 7;
-  font-family: var(--f-song);
-  font-size: calc(11px * var(--font-scale));
-  line-height: 1;
-  letter-spacing: 0.06em;
-  padding: 4px 9px;
-  color: var(--ink-3);
-  background: var(--paper);
-  border: 1px solid var(--rule-soft);
-  border-radius: 0;
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none; /* 隐藏态不抢命中：hover 坞体即浮现，之后才可点 */
-  transition:
-    opacity var(--snap),
-    color var(--snap),
-    border-color var(--snap);
-}
-.pp-composer-slot:hover .pp-composer-lock,
-.pp-composer-lock:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-.pp-composer-lock:hover {
-  color: var(--seal-deep);
-  border-color: var(--seal);
-}
-.pp-composer-lock:active {
-  transform: translateY(1px);
-}
-/* 解锁态：锁钮常显 + 明示「坞此刻可拖」（同 .pp-tool-btn.open 的选中语言） */
-.pp-composer-slot.pp-composer-unlocked .pp-composer-lock {
-  opacity: 1;
-  pointer-events: auto;
-  color: var(--seal-deep);
-  border-color: var(--seal);
-}
+/* 拖动锁（2026-09-17 用户方案）：**按钮本体不在此**——它归坞的书眉工具行
+ * （`.pp-dock-tools` 里的第三枚 `.pp-tool-btn`：`移` ↔ `锁`，与 翰/律 同排同语言），
+ * 由坞本体经 `PaperDockContext.composerLock` 能力位渲染（锁态与写面在槽主人）。
+ * 二版尸体记档：一版是「槽里浮一枚 hover 小钮」——浮在坞外 ⇒ 与坞之间有缝 ⇒
+ * 悬停链一断就再也点不到（用户「还没挪过去就消失了」），且外观不合坞的语言
+ *（用户「太难看了」）。**教训：控件的悬停区必须与它的可见区同盒**，
+ * 否则「揭示」与「命中」互为前提，必死锁。 */
+
 /* 解锁态 = 整坞是抓手：坞体一律抓手光标 + 坞内文字禁选（拖动不拖出选区；**锁定态
  * 不设**——锁定就是普通 DOM，文字照常可选）。子选择器一律裹 :where() 归零基数：
  * 本族须压过 .pp-composer 那条 (0,3,0) 的继承规则，但不能把文件后面那些

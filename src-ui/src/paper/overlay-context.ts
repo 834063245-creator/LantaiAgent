@@ -31,6 +31,11 @@ export interface PaperDockContextValue {
   flyToPoint: (sessionId: string, worldY: number) => void;
   /** 无目标卷视口飞行（小地图点击跳转——视口中心滑到该世界点，保 zoom）。 */
   glideTo: (worldX: number, worldY: number) => void;
+  /** **创作坞拖动锁能力位**（2026-09-17 用户方案）：纸壳（槽主人）持锁态与写面，
+   *  坞只在书眉工具行渲染那枚单字工具（`移` ↔ `锁`）。按能力位纪律（同 token 账本
+   *  「不实现 = 无读数，不炸链路」）：**宿主不给 = 坞不渲染该工具**，其余照旧
+   *  ——「只重载单个产物」的版本偏斜窗口里不会炸。 */
+  composerLock?: { unlocked: boolean; toggle: () => void };
 }
 
 /** 目次带消费的高频上下文（流区派生几何）。 */

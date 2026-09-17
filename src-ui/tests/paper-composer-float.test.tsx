@@ -95,7 +95,7 @@ import { useCoreStore } from '../src/app/chat/core-instance';
 import { useShellStore } from '../src/app/shell-store';
 import { overlayServicePlugin } from '../src/composition/overlay-service';
 import { Context } from '../src/cordis';
-import { usePaperRegion } from '../src/paper/overlay-context';
+import { usePaperDock, usePaperRegion } from '../src/paper/overlay-context';
 import { COMPOSER_POS_KEY } from '../src/plugins/builtin/paper-shell/composer-float';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { getCanvasStore } from '../src/state/canvas-store';
@@ -109,15 +109,30 @@ function userMsg(id: string, text: string): UserMessage {
 }
 
 /** 假创作坞：结构照真坞（书眉行 + 输入行），只求占住 composer 槽与抓手命中面。 */
+/** 假创作坞：结构照真坞（书眉行 + 输入行）+ **照能力位渲染拖动锁工具**
+ *（真坞在 `.pp-dock-tools` 里渲染同一枚——锁态与写面在槽主人，坞只读能力位）。 */
 function FakeDock() {
+  const { composerLock } = usePaperDock();
   return (
     <div className="pp-composer">
       <div className="pp-composer-header">
         <span className="pp-composer-target">卷一</span>
         <div className="pp-composer-settings-spacer" />
-        <button type="button" className="pp-tool-btn">
-          翰
-        </button>
+        <div className="pp-dock-tools">
+          {composerLock && (
+            <button
+              type="button"
+              className={`pp-tool-btn${composerLock.unlocked ? ' open' : ''}`}
+              aria-pressed={composerLock.unlocked}
+              onClick={composerLock.toggle}
+            >
+              {composerLock.unlocked ? '锁' : '移'}
+            </button>
+          )}
+          <button type="button" className="pp-tool-btn">
+            翰
+          </button>
+        </div>
       </div>
       <div className="pp-composer-row">
         <textarea aria-label="输入" />
@@ -246,9 +261,10 @@ describe('创作坞浮动化（槽主人链路：坞位 + 让位带 + 手势）'
     fire(window, 'pointermove', { clientX: to.x, clientY: to.y });
     fire(window, 'pointerup', { clientX: to.x, clientY: to.y });
   }
-  /** 锁钮 = 桌面歌词式拖动锁（用户 2026-09-17 方案）：默认锁定，点它才解锁。 */
+  /** 拖动锁工具（坞书眉工具行里的第三枚单字钮：`移` ↔ `锁`）：
+   *  常显可点，不做悬停浮现——悬停浮现会因「揭示与命中互为前提」死锁（用户实机报）。 */
   function lockBtn(slot: HTMLDivElement): HTMLButtonElement {
-    return slot.querySelector('.pp-composer-lock') as HTMLButtonElement;
+    return slot.querySelector('.pp-dock-tools .pp-tool-btn') as HTMLButtonElement;
   }
   function unlock(slot: HTMLDivElement): void {
     fire(lockBtn(slot), 'click', { button: 0 });
@@ -327,10 +343,10 @@ describe('创作坞浮动化（槽主人链路：坞位 + 让位带 + 手势）'
     expect(slot.style.left).toBe('8px');
     drag(head, { x: 8, y: 660 }, { x: 4000, y: 660 });
     expect(slot.style.left).toBe('136px');
-    // 上夹紧：书眉 56 + 锁钮占位 26 + 屏缘 8 —— 坞顶不得挤进书眉带（锁钮不许压进标题栏）
+    // 上夹紧：书眉 56 + 屏缘 8 —— 坞顶不得挤进书眉带（那一段是窗口拖动热区）
     drag(head, { x: 300, y: 400 }, { x: 300, y: -5000 });
     const topPx = VH - Number.parseFloat(slot.style.bottom) - DOCK_H;
-    expect(topPx).toBe(56 + 26 + 8);
+    expect(topPx).toBe(56 + 8);
   });
 
   it('双击坞体 = 复位：撤内联坞位 + 清记忆 + 让位带回默认位', async () => {

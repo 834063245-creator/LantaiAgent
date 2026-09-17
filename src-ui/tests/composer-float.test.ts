@@ -14,7 +14,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   COMPOSER_BAR_H,
   COMPOSER_EDGE,
-  COMPOSER_PILL_H,
   COMPOSER_POS_KEY,
   COMPOSER_RISE,
   COMPOSER_SNAP,
@@ -33,15 +32,15 @@ const VP = { w: 1200, h: 800 };
 const BOX = { w: 880, h: 110 };
 
 describe('创作坞浮动化 · 几何（夹紧）', () => {
-  it('坞整体留在视口内：左/右/下留屏缘，上不越书眉（并给拖动锁小钮留位）', () => {
+  it('坞整体留在视口内：左/右/下留屏缘，上不越书眉（坞顶 ≥ 书眉高 + 屏缘）', () => {
     const far = clampComposerPos({ left: -500, bottom: -500 }, VP, BOX);
     expect(far).toEqual({ left: COMPOSER_EDGE, bottom: COMPOSER_EDGE });
 
     const beyond = clampComposerPos({ left: 9999, bottom: 9999 }, VP, BOX);
     expect(beyond.left).toBe(VP.w - BOX.w - COMPOSER_EDGE);
-    // 上界 = 视口高 − 书眉高 − 锁钮占位 − 坞高 − 屏缘（坞顶落在「书眉下缘 + 锁钮 + 屏缘」）
-    expect(beyond.bottom).toBe(VP.h - COMPOSER_BAR_H - COMPOSER_PILL_H - BOX.h - COMPOSER_EDGE);
-    expect(VP.h - beyond.bottom - BOX.h).toBe(COMPOSER_BAR_H + COMPOSER_PILL_H + COMPOSER_EDGE);
+    // 上界 = 视口高 − 书眉高 − 坞高 − 屏缘（坞顶恰好落在书眉下缘 + 屏缘）
+    expect(beyond.bottom).toBe(VP.h - COMPOSER_BAR_H - BOX.h - COMPOSER_EDGE);
+    expect(VP.h - beyond.bottom - BOX.h).toBe(COMPOSER_BAR_H + COMPOSER_EDGE);
   });
 
   it('坞比视口还宽（窄窗口）：不产生负上界（退回屏缘，不炸布局）', () => {

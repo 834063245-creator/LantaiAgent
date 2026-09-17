@@ -594,6 +594,12 @@ export function PaperPanel() {
   const composer = useComposerFloat();
   /** 坞几何（引用稳定，见 use-composer-float）——下发给覆盖层消费面。 */
   const composerDock = composer.dock;
+  /** 拖动锁能力位：坞在书眉工具行渲染那枚单字工具（移/锁）。引用必须稳定——
+   *  dockContext 一变，坞就随平移帧重渲（低频 context 纪律）。 */
+  const composerLock = useMemo(
+    () => ({ unlocked: composer.unlocked, toggle: composer.toggleUnlocked }),
+    [composer.unlocked, composer.toggleUnlocked],
+  );
 
   /* ── 覆盖层上下文（Stage-4）：创作坞消费低频（动作/活跃），
    * 目次带消费高频（流区几何）。拆两 context 避免创作坞随平移重渲。
@@ -604,8 +610,9 @@ export function PaperPanel() {
       activeSessionId: activeSessionKey,
       flyToPoint,
       glideTo: glideViewTo,
+      composerLock,
     }),
-    [activeSessionKey, flyToPoint, glideViewTo],
+    [activeSessionKey, flyToPoint, glideViewTo, composerLock],
   );
   const regionContext = useMemo(
     () => ({
@@ -1124,23 +1131,11 @@ export function PaperPanel() {
               </PluginBoundary>
             ))}
             {desk && <DeskShelf core={core} />}
-            {/* 拖动锁（2026-09-17 用户方案，桌面歌词式）：hover 浮现、浮在坞顶外缘。
-                **默认锁定 = 坞对鼠标零响应**（谁都不会误拖，也与划词天然不打架）；
-                点它解锁后整坞（除交互件）成为抓手 + 全坞变抓手光标，再点回锁定。
-                文案 = 点下去会发生什么（同「拟文/停」单钮三态语言）。 */}
-            <button
-              type="button"
-              className="pp-composer-lock"
-              aria-pressed={composer.unlocked}
-              title={
-                composer.unlocked
-                  ? '拖动模式：已解锁——按住坞体任意空白处拖动，双击坞体复位；点此重新锁定'
-                  : '创作坞可拖动：点此解锁后可按住坞体拖动（双击复位）'
-              }
-              onClick={composer.toggleUnlocked}
-            >
-              {composer.unlocked ? '锁' : '移'}
-            </button>
+            {/* 拖动锁按钮**不在这里**（2026-09-17 二版）：它归坞的书眉工具行，
+                由坞本体渲染（`PaperDockContext.composerLock` 能力位——锁态与写面在
+                本槽主人手里）。曾试过「槽里浮一枚 hover 小钮」，两个病灶：浮在坞外
+                与坞之间有缝、悬停链被掐断（用户「还没挪过去就消失了」），且外观
+                与坞的语言不合（用户「太难看了」）。 */}
           </div>
           {edgeOverlays.map((def) => (
             <PluginBoundary key={def.id} label={`边缘层 ${def.id}`}>

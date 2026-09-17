@@ -202,7 +202,7 @@ const THINKING_SAFE_FALLBACK: readonly { value: ThinkingMode; label: string }[] 
 
 export const ComposerDock = memo(function ComposerDock() {
   const core = useCoreStore((s) => s.core);
-  const { activeSessionId } = usePaperDock();
+  const { activeSessionId, composerLock } = usePaperDock();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -800,8 +800,27 @@ export const ComposerDock = memo(function ComposerDock() {
         </span>
         <div className="pp-composer-settings-spacer" />
         {/* v2（2026-08-31）：翰（命令面板入口——/ 的可发现性）+ 律（快捷键总览）。
-            渐进披露：占位符只留一句，键位收进律册在此翻。 */}
+            渐进披露：占位符只留一句，键位收进律册在此翻。
+            2026-09-17 续：**移/锁**（创作坞拖动锁，用户方案「桌面歌词式」）也落这一排
+            ——锁态与写面在槽主人（纸壳）手里，坞只渲染这枚单字工具（能力位：
+            宿主不给 composerLock = 整枚不出现）。常显可点、不做悬停浮现：
+            前者是用户报的「不知道能拖」，后者是用户报的「还没挪过去就消失了」。 */}
         <div className="pp-dock-tools">
+          {composerLock && (
+            <button
+              type="button"
+              className={`pp-tool-btn${composerLock.unlocked ? ' open' : ''}`}
+              aria-pressed={composerLock.unlocked}
+              title={
+                composerLock.unlocked
+                  ? '移·已解锁——按住坞体任意空白处拖动，双击坞体复位；点此重新锁定'
+                  : '移·创作坞可拖动：点此解锁后可按住坞体拖动（双击复位）'
+              }
+              onClick={composerLock.toggle}
+            >
+              {composerLock.unlocked ? '锁' : '移'}
+            </button>
+          )}
           <button
             type="button"
             className={`pp-tool-btn${menuOpen ? ' open' : ''}`}

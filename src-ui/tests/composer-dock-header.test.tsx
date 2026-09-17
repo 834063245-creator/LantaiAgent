@@ -48,7 +48,7 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     root = null;
   });
 
-  const mountDock = async (panelId: string) => {
+  const mountDock = async (panelId: string, value: PaperDockContextValue = DOCK_CONTEXT) => {
     useCoreStore.getState().setChatCore(fakeCore(panelId));
     getChatStore(panelId).sess.setState({
       sessions: [{ id: 1, label: '案卷一' }],
@@ -59,7 +59,7 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     getChatStore(panelId).input.getState().setInputText('');
     act(() => {
       root = createRoot(container);
-      root.render(createElement(PaperDockContext.Provider, { value: DOCK_CONTEXT }, createElement(ComposerDock)));
+      root.render(createElement(PaperDockContext.Provider, { value }, createElement(ComposerDock)));
     });
     await act(async () => {});
   };
@@ -102,5 +102,33 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     await act(async () => {});
     const sheet = header.querySelector('.pp-help-sheet');
     expect(sheet).not.toBeNull(); // 律册锚在书眉行内的工具对上
+  });
+
+  /* 2026-09-17 二版：拖动锁那枚单字工具（`移` ↔ `锁`）落**坞自己的工具行**——
+   * 与 翰/律 同排同语言、常显可点。一版曾试「槽里浮一枚 hover 小钮」：浮在坞外，
+   * 揭示靠悬停、命中又要靠揭示（互为前提）⇒ 用户「还没挪过去就消失了」；
+   * 且外观不合坞的语言 ⇒ 用户「太难看了」。**位置与外观都归坞本体**。 */
+  it('拖动锁工具：宿主给能力位才渲染（能力位纪律），默认锁定显「移」、点它回调写面', async () => {
+    const toggle = vi.fn();
+    await mountDock('header-lock', { ...DOCK_CONTEXT, composerLock: { unlocked: false, toggle } });
+    const tools = [...container.querySelectorAll('.pp-dock-tools .pp-tool-btn')] as HTMLButtonElement[];
+    // 锁钮居工具对之首（翰/律 这一对内容入口保持相邻），三枚同排
+    expect(tools.map((b) => b.textContent)).toEqual(['移', '翰', '律']);
+    expect(tools[0].getAttribute('aria-pressed')).toBe('false');
+    expect(tools[0].title).toContain('点此解锁');
+    act(() => tools[0].click());
+    expect(toggle).toHaveBeenCalledTimes(1); // 写面在槽主人手里，坞只回调
+
+    await mountDock('header-lock-on', { ...DOCK_CONTEXT, composerLock: { unlocked: true, toggle } });
+    const on = [...container.querySelectorAll('.pp-dock-tools .pp-tool-btn')] as HTMLButtonElement[];
+    expect(on[0].textContent).toBe('锁');
+    expect(on[0].getAttribute('aria-pressed')).toBe('true');
+    expect(on[0].className).toContain('open'); // 选中语言与翰/律 的 .open 同款
+  });
+
+  it('拖动锁能力位缺失（宿主不给）：整枚不出现——旧宿主/只重载坞的版本偏斜窗口不炸', async () => {
+    await mountDock('header-no-lock'); // DOCK_CONTEXT 无 composerLock
+    const tools = [...container.querySelectorAll('.pp-dock-tools .pp-tool-btn')] as HTMLButtonElement[];
+    expect(tools.map((b) => b.textContent)).toEqual(['翰', '律']);
   });
 });

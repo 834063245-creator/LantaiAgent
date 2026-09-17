@@ -20,9 +20,12 @@
 // 纪律）：让位带 = bottom + height（坞的实际位置），出厂底带 = RISE + height。
 //
 // **拖动锁（2026-09-17 用户方案，桌面歌词式）**：默认**锁定**——坞对鼠标零响应
-// （不接管手势、不改光标、划词照旧）；点坞顶浮现的小钮解锁后，**整坞**（除交互件）
-// 才是抓手。锁定态即「普通 DOM」，拖动与划词不可能打架；解锁态只在拖动期内全页
-// 禁选（见 use-composer-float），因为坞头按下会带出原生选区。
+// （不接管手势、不改光标、划词照旧）；纸壳通过 `PaperDockContext.composerLock`
+// 把锁态与写面交给坞，**坞在书眉工具行渲染那枚单字工具**（`移` ↔ `锁`，与 翰/律
+// 同排同语言——常显可点，不做悬停浮现：悬停浮现的控件一旦脱出宿主盒子，悬停链
+// 会被缝隙掐断，用户「还没挪过去就消失了」）。解锁后**整坞**（除交互件）才是抓手。
+// 锁定态即「普通 DOM」，拖动与划词不可能打架；解锁态只在拖动期内全页禁选
+// （见 use-composer-float）。
 
 /** 坞位记忆键（视图偏好，全局非工作区数据——与 lantai.minimap.pref 同族）。 */
 export const COMPOSER_POS_KEY = 'lantai.composer.pos';
@@ -33,9 +36,6 @@ export const COMPOSER_UNLOCK_KEY = 'lantai.composer.unlocked';
 export const COMPOSER_RISE = 96;
 /** 书眉高（tokens.css --bar-h 的 TS 镜像——坞顶不得进书眉：那一段是窗口拖动热区）。 */
 export const COMPOSER_BAR_H = 56;
-/** 拖动锁小钮占位（px）——坞顶之上要留出它（`.pp-composer-lock` 浮在坞顶外缘），
- *  上夹紧按它预留，免得坞拖到最上时小钮压进书眉（那一段是窗口拖动热区）。 */
-export const COMPOSER_PILL_H = 26;
 /** 屏缘留白（坞不得贴死窗口边）。 */
 export const COMPOSER_EDGE = 8;
 /** 吸附阈（px）——拖到目标位 24px 内即吸附（左右缘/版心中轴/底带/最底缘）。 */
@@ -66,14 +66,13 @@ export interface ComposerDockGeom {
 }
 
 /**
- * 夹紧：坞整体留在视口内（左/右/下留 COMPOSER_EDGE，上不越书眉、并给拖动锁小钮
- * 留出 COMPOSER_PILL_H）。
+ * 夹紧：坞整体留在视口内（左/右/下留 COMPOSER_EDGE，上不越书眉）。
  * 窗口缩小后对已存坞位也生效（读侧夹紧——存量值不因窗口变化被改写，
  * 窗口涨回去坞回到用户摆的那一处）。
  */
 export function clampComposerPos(pos: ComposerPos, vp: ComposerViewport, box: ComposerBox): ComposerPos {
   const maxLeft = Math.max(COMPOSER_EDGE, vp.w - box.w - COMPOSER_EDGE);
-  const maxBottom = Math.max(COMPOSER_EDGE, vp.h - COMPOSER_BAR_H - COMPOSER_PILL_H - box.h - COMPOSER_EDGE);
+  const maxBottom = Math.max(COMPOSER_EDGE, vp.h - COMPOSER_BAR_H - box.h - COMPOSER_EDGE);
   return {
     left: Math.min(Math.max(pos.left, COMPOSER_EDGE), maxLeft),
     bottom: Math.min(Math.max(pos.bottom, COMPOSER_EDGE), maxBottom),
