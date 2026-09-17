@@ -425,7 +425,7 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 | 改了什么 | 必须过 | 实测基线 |
 |---|---|---|
 | 前端 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
-| 前端逻辑 | `cd src-ui && npx vitest run` | 203 文件 1895 passed / 4 skipped（跑前清 `NODE_ENV=production`，否则 specs 收集报 `No such built-in module: node:`） |
+| 前端逻辑 | `cd src-ui && npx vitest run` | 330 文件 3362 passed / 3 skipped（2026-09-17 实测；**空载墙钟 132s**，机器被占满时 340-370s。跑前清 `NODE_ENV=production`，否则 specs 收集报 `No such built-in module: node:`。**默认环境 = node**——碰 DOM/localStorage/canvas 的 81 个文件自带 `// @vitest-environment jsdom` 头，缺头会红，不静默） |
 | `src-ui/src/agent/**` | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline；record 永不上 CI，baseline 变更走 change request 审批） |
 | 前端格式 | `npx biome check --write <改动文件>` | 全仓 `npx biome ci .` 0 errors / 0 warnings（2026-08-24 清零，保持归零）；行尾 = LF（根 `.gitattributes`） |
 | 引擎 | `cd engine && cargo test` | lib 592 + bin 0 + doc 0（bin 测试 27 个已随 Phase 3 TCP 拆除；storage/vector/graph 测试已随 L5b crate 拆出） |
@@ -437,6 +437,8 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 - 修 INVARIANTS/landmine-map 里的雷，必须配回归测试，一颗雷一个 commit。
 - **convergence 双轨纪律**：`npm run verify:convergence` 连跑 standard + minimal（单轨仍可用 `:standard` / `:minimal`）；只有 CI 的 `convergence.yml` 跑单轨 standard。**新增/改基线时两轨一起验**——教训：第二条轨不在默认门禁里就会静默腐烂（2026-09-14 审计发现的 minimal 漏录即此因）。
 - **本机 `NODE_ENV=production` 注入的两刀（2026-08-29 实测）**：Cowork/codely 进程链给子 shell 注入 `NODE_ENV=production`——① vitest jsdom UI 测试大面积假红（`act is not a function` + `No such built-in module: node:`）；② **`npm install` / `npm uninstall` 同样中招：剥掉 devDependencies**（`Cannot find package 'vitest'`，`node_modules/.bin` shim 一并丢失）。恢复 = 清变量 → `npm install` → 必要时 `npm rebuild`。**纪律：本机凡 npm/vitest 命令一律先清该变量。**
+- **测试环境的开销结构（2026-09-17 实测，回答「跑测试电脑要死」）**：① **jsdom 是最大单项**——vitest 自报同一批 60 个纯逻辑文件 jsdom `environment 180.6s` / 墙钟 61-100s，换 node 后 `environment 0.011s` / 墙钟 18.7s（断言本身只占 0.44-0.59s）；全量改默认 node 后剩下的 81 个 jsdom 文件仍占 `environment 176 CPU-s`（约占 worker CPU 三成）。② **待机红线是超时不是逻辑**——`asset-tools` / `paper-v3b` 两个用例隔离跑 2.7-2.8s（默认 `testTimeout` 5s），机器被占满时稳定报 `Test timed out in 5000ms / 15000ms`（复现方式：另开 6 个 CPU 燃烧进程再跑这两个文件；不加负载则全绿）。同理跑测试时**核对别的工作树没在跑门禁**：实测本机同时存在另一个 worktree 的 `tsc --noEmit` + scoped vitest，而测试进程只占 6 核里的 ~2.3 核。③ 本机只有 6 线程（i5-9400F 无超线程），`os.availableParallelism()-1 = 5` 个 fork worker 会和 Chrome/游戏/微信/Defender 实时扫描抢核；要让机器喘气跑 `npx vitest run --maxWorkers=2`（实测全量慢 ~40%，但整机不再满）。
+- **`window` 不得当全局注册表用（2026-09-17 修）**：`src/state/scoped-store.ts` 原以 `window[key]` 存 store Map，而该文件经 `canvas-store.ts` → `app/chat/chat-core.ts` 在**模块装配期**求值——`window` 在 node 下未定义，一个词把 136 个测试文件连带绑死在 jsdom 上。已改 `globalThis`（浏览器/jsdom 下 `window === globalThis`，vitest jsdom 环境源码里就是 `global.window = global`，语义恒等）。新增全局注册表一律 `globalThis`。
 - **测试运行纪律（2026-08-29 立规，实测踩坑 2 小时；2026-09-16 自 AGENTS.md §10 迁入）**：cargo 测试一律 `--no-run` 先链接 → 前台直跑测试二进制 → 输出直写文件；**禁止 `| tail` / `Select-String` 挂在长 cargo 命令尾部**（管道缓冲全程无输出 + 收尾假挂，会把「冷链接 2-10 分钟」误判成 hang）。最可靠姿势 = `Start-Process -RedirectStandardOutput log -NoNewWindow` + 独立命令轮询日志；小输出直接由工具捕获，大输出走 `cmd /c "exe > log 2>&1"`（PowerShell `>` 对原生命令另有「收尾假挂」变体）。**`hologram-engine.exe` 是用户 DSH 应用的子进程，绝不能 taskkill**（崩溃自动重启，杀了只会误导排障）。另三条续窗实测：① cdp e2e 报「端口 Ns 内未就绪」先清 `D:\tmp\hologram-browser-profile*` 僵尸 chrome + 残留 profile（失败 panic 不清浏览器树，自续污染后续每一轮）；② vitest 全量报 1 error（Worker exited unexpectedly / heap OOM）但计数全过 = 有测试文件在用例体内自旋，**别调大堆**，用文件列表二分（列表必须落盘后 `(Get-Content 列表)` 传参）；③ 构建报 os error 32（文件被占用）先查 IDE rust-analyzer 残留句柄（`handle.exe`）——它是语言服务器，杀进程会被 IDE 立刻重启并重新锁上，用 `handle.exe -c <句柄号> -p <pid> -y` 关句柄。
 
 ## 4. 文档维护
