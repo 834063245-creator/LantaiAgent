@@ -147,7 +147,7 @@
 | board / timeline 题签 | ✅ | 签「板」/「序」，题名可选（schema 各增可选 caption）；测高 +plateHeadH（fba6b4d） |
 | citation / chem / media / html 题签 | ⬜ | 接入同一套物类签语汇（引 / 式 / 图 / 页） |
 | D 墨阶分层 | ⬜ | 重墨-中墨-淡墨三级主次（弱数据卡的轻/重问题） |
-| P0b（BCR 批） | ⬜ | 只拆 `browser_screenshot` 的 `inline` data-URL 上下文炸弹（3MB base64 ≈ 百万 token）；元素级截图与描述改写**冻结**（无视觉模型买了没用）。资产 kind 的 payload 扩展**不经 BCR**（运行时经 list_block_kinds 暴露，不动 tool-schemas 基线——`67f2dbc1` 已证） |
+| P0b（BCR 批） | 📋 **申请书已提交待放行** | 只拆 `browser_screenshot` 的 `inline` data-URL 上下文炸弹（3MB base64 ≈ 百万 token）；元素级截图与描述改写**冻结**（无视觉模型买了没用）。资产 kind 的 payload 扩展**不经 BCR**（运行时经 list_block_kinds 暴露，不动 tool-schemas 基线——`67f2dbc1` 已证） |
 
 **资产段落设计的规线一条都没画出来**：`tokens.css:57` 的 `--rule-soft` 是**整条 border 简写**
 （`1px solid var(--ink-4)`），而 PaperPanel.css 有 17 处把它当**颜色**再拼一次
