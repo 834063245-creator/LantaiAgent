@@ -558,16 +558,15 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     expect(useCanvasViewStore.getState().view.panY).toBe(settled);
   }, 30_000);
 
-  it('悬停即滚：缺省关（未开此档时同一姿态不滚）', async () => {
+  it('悬停即滚：缺省即生效（不需要任何设置——2026-09-17 翻案：首版缺省关，实测发现不了功能）', async () => {
     const canvas = await mountCanvas();
     stubCanvasRect(canvas);
+    // 不写任何设置：缺省口径 = 总开关开 + 悬停开 + 基准灵敏度
     await act(async () => {
       fire(canvas, 'mousemove', { clientX: 600, clientY: 780 });
     });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 250));
-    });
-    expect(useCanvasViewStore.getState().view.panY).toBe(600);
+    const [, panY1] = await scrollUntil(40);
+    expect(600 - panY1).toBeGreaterThan(40);
   }, 30_000);
 
   it('悬停即滚：交互面（纸条）之上不滚，空白/纸面上滚（同一姿态 A/B）', async () => {

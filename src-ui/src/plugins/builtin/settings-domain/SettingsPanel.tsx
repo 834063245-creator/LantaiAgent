@@ -388,7 +388,7 @@ const SettingsPanelApp: React.FC<{
       ? Math.min(2, Math.max(0.5, edgeScrollSensRaw))
       : 1;
   const edgeScrollOn = settings.canvas?.edgeScroll?.enabled !== false;
-  const edgeScrollHover = settings.canvas?.edgeScroll?.hover === true;
+  const edgeScrollHover = settings.canvas?.edgeScroll?.hover !== false;
   const setEdgeScroll = (next: { enabled: boolean; sensitivity: number; hover: boolean }): void => {
     // 展开既有 canvas（勿整体替换——会冲掉同节其他字段，见下方滚轮行为同款收口）
     commit({ ...settings, canvas: { ...settings.canvas, wheelMode: canvasWheelMode(settings), edgeScroll: next } });
@@ -722,8 +722,8 @@ const SettingsPanelApp: React.FC<{
                   </label>
                   <div className="sp-hint-sub">
                     RTS 式相机：什么都不用抓，鼠标停在画布边缘（约 0.1 秒）视口自己滚。光标停在正文上同样起滚
-                    ——画布即地图；创作坞 / 目次带 / 小地图 / 按钮等交互面之上不滚，按下鼠标键也让位给拖拽。
-                    默认关（画布铺满正文，读的时候鼠标停在屏底会让内容跑掉）。
+                    ——画布即地图；创作坞 / 小地图 / 按钮 / 输入框之上不滚（目次带只豁免卡片按钮，右缘贴带仍可
+                    滚），按下鼠标键让位给拖拽。不想要就取消勾选。
                   </div>
                 </div>
               )}

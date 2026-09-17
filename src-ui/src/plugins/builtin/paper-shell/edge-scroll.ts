@@ -55,8 +55,10 @@ const NO_PAN: EdgePan = { dx: 0, dy: 0 };
 export interface EdgeScrollTuning {
   enabled: boolean;
   /** **悬停即滚**（2026-09-17 用户「为什么不支持直接滚动视口」）：指针停在画布边缘就
-   *  滚，不必先按住东西（RTS 相机标准形态）。**默认关**——画布上铺满正文，读的时候
-   *  把鼠标停在屏底是很常见的姿态，默认开会让内容自己跑掉；开关交给用户。 */
+   *  滚，不必先按住东西（RTS 相机标准形态）。**缺省开**——同日首版判为缺省关，理由是
+   *  「画布铺满正文，读的时候鼠标停在屏底会让内容跑掉」；实测反馈是**根本发现不了这个
+   *  功能**（用户「好像没生效」），且本档的误触面早被三处约束压住（画布外不滚 / 按键
+   *  让位 / 交互件当悬停面 + 入带驻留 120ms）——故翻案为缺省开，不想要的人关掉即可。 */
   hover: boolean;
   band: number;
   maxSpeed: number;
@@ -67,7 +69,7 @@ export function clampSensitivity(v: unknown): number {
   return Math.min(EDGE_SCROLL.sensMax, Math.max(EDGE_SCROLL.sensMin, n));
 }
 
-/** 设置 → 调参（缺省容错：旧存储无此字段 = 开 + 基准灵敏度 + 悬停关；毒化值一律夹取）。
+/** 设置 → 调参（缺省容错：旧存储无此字段 = 全开 + 基准灵敏度；毒化值一律夹取）。
  *  灵敏度 = **一个滑杆的整体强弱**：滚速线性跟手（× sens），感应带宽温和同向放大
  *  （× √sens）——「越灵敏 = 起滚越早 + 滚得越快」，避免单改一项造成手感错位。 */
 export function edgeScrollTuning(s: AppSettings): EdgeScrollTuning {
@@ -75,7 +77,7 @@ export function edgeScrollTuning(s: AppSettings): EdgeScrollTuning {
   const sens = clampSensitivity(raw?.sensitivity);
   return {
     enabled: raw?.enabled !== false,
-    hover: raw?.hover === true,
+    hover: raw?.hover !== false,
     band: Math.round(EDGE_SCROLL.band * Math.sqrt(sens)),
     maxSpeed: EDGE_SCROLL.maxSpeed * sens,
   };
@@ -166,9 +168,13 @@ export function useEdgeAutoScroll(canvasRef: MutableRefObject<HTMLElement | null
  *    东西带出可视区」；悬停族若照办，指针挪去侧栏/书眉就永远滚不停（跟随相机）。
  * ② **任一鼠标键按下即让位**。拖拽手势自带循环，两套同时跑 = 双倍速；且按下键的那一
  *    刻就是「我在操作内容」而不是「我在挪镜头」。
- * ③ **指针悬在交互面上不滚**（创作坞/目次带/小地图/按钮/输入件/纸条/宽度柄/角柄）——
+ * ③ **指针悬在交互面上不滚**（按钮/输入件/创作坞/小地图/纸条/文类签/宽度柄/角柄）——
  *    否则想点按钮、想在输入框打字，画布会自己跑掉；画布上的正文（.pp-block）**不豁免**：
  *    RTS 的镜头就是贴地图边缘走，纸面即地图。
+ *    **目次带不整条豁免**（2026-09-17 实测修正）：它是右缘 64px 一条、整条压住右缘感应带，
+ *    整条豁免等于右缘永远不滚（实机取证：canvas 宽 2560，右带 = 2524–2560，目次带 = 2496–2560）；
+ *    现在只豁免它上面的**卡片按钮**（button 已在列），带上的墨迹/缝则照滚——「贴右缘滚一眼标记
+ *    往哪走」正是导航带该有的用法，而瞄准卡片时不会滚（卡片即按钮）。
  *
  * 另加一段**入带驻留**（HOVER_DWELL_MS）：路过边缘（例如去点创作坞）不触发，只有
  * 真的把指针停在带上才起滚——抵消悬停族没有「按住」这个显式意图的代价。 */
@@ -176,7 +182,10 @@ export function useEdgeAutoScroll(canvasRef: MutableRefObject<HTMLElement | null
 /** 入带驻留（ms）：指针在带内停够这么久才起滚（路过不算）。 */
 export const HOVER_DWELL_MS = 120;
 
-/** 悬停不滚的交互面（选择器；`.pp-block` 刻意不在列——纸面即地图）。 */
+/** 悬停不滚的交互面（选择器；`.pp-block` 刻意不在列——纸面即地图）。
+ *  ⚠ `.pp-toc` 刻意不在列（见上注 ③：整条豁免会封死右缘）；`.pp-composer` / `.pp-minimap`
+ *  是「瞄准面」（前者含输入件、后者点击即跳转），整块豁免——实测二者都不压任何感应带
+ *  （创作坞坐在底带之上 96px，小地图亦在带上），故零代价。 */
 const HOVER_EXCLUDE = [
   'button',
   'input',
@@ -185,15 +194,38 @@ const HOVER_EXCLUDE = [
   'a',
   '[contenteditable="true"]',
   '.pp-composer',
-  '.pp-toc',
   '.pp-minimap',
   '.pp-strip',
   '.pp-kind',
   '.pp-resize',
   '.pp-region-edge',
   '.pp-region-corner',
-  '.pp-ghost',
 ].join(',');
+
+/** 悬停此刻是否**该滚**（纯判据，供 hook 与考官共用）：
+ *  开关+悬停档都开着、没按键、指针落在画布内、且不在交互面上。
+ *  带宽判据不在此（交给循环里的 autoPanVector——同一把尺子）。 */
+export function hoverEdgeEligible(args: {
+  target: Element | null;
+  canvas: Element | null;
+  clientX: number;
+  clientY: number;
+  buttons: number;
+  tuning: EdgeScrollTuning;
+  /** 画布 rect（调用方给，避免纯判据自己碰布局） */
+  rect: { left: number; top: number; width: number; height: number } | null;
+}): boolean {
+  const { target, canvas, clientX, clientY, buttons, tuning, rect } = args;
+  if (!tuning.enabled || !tuning.hover) return false;
+  if (buttons !== 0) return false; // 拖拽手势在途 → 让位（避免两套同时滚）
+  if (!canvas || !target || !canvas.contains(target)) return false;
+  if (target.closest(HOVER_EXCLUDE)) return false;
+  if (!rect) return false;
+  const ix = clientX - rect.left;
+  const iy = clientY - rect.top;
+  // ① 画布内（带内带外交给 autoPanVector 判；此处只排除画布外——见本段注 ①）
+  return ix >= 0 && iy >= 0 && ix <= rect.width && iy <= rect.height;
+}
 
 /** 悬停即滚（相机自主滚动）：常驻监听指针，满足条件即起循环；不满足即停。
  *  挂载点 = 视口域（use-paper-viewport——摄像机的家）。 */
@@ -215,23 +247,17 @@ export function useHoverEdgeScroll(canvasRef: MutableRefObject<HTMLElement | nul
       stop();
     };
 
-    /** 指针此刻是否**可滚**：开关+悬停档都开着、键没按下、落在画布内、
-     *  且不在交互面上。带宽判据交给循环里的 autoPanVector（同一把尺子）。 */
-    const eligible = (e: MouseEvent): boolean => {
-      const t = tuningRef.current;
-      if (!t.enabled || !t.hover) return false;
-      if (e.buttons !== 0) return false; // 拖拽手势在途 → 让位（避免两套同时滚）
-      const canvas = canvasRef.current;
-      const el = e.target instanceof Element ? e.target : null;
-      if (!canvas || !el || !canvas.contains(el)) return false;
-      if (el.closest(HOVER_EXCLUDE)) return false;
-      const rect = canvas.getBoundingClientRect();
-      const ix = e.clientX - rect.left;
-      const iy = e.clientY - rect.top;
-      // ① 画布内（含边缘带外也行——带本身由 autoPanVector 判；此处只排除画布外）
-      if (ix < 0 || iy < 0 || ix > rect.width || iy > rect.height) return false;
-      return true;
-    };
+    /** 指针此刻是否**可滚**（判据 = hoverEdgeEligible，与考官共用同一函数）。 */
+    const eligible = (e: MouseEvent): boolean =>
+      hoverEdgeEligible({
+        target: e.target instanceof Element ? e.target : null,
+        canvas: canvasRef.current,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        buttons: e.buttons,
+        tuning: tuningRef.current,
+        rect: canvasRef.current?.getBoundingClientRect() ?? null,
+      });
 
     const arm = (): void => {
       if (armedRef.current) return;
