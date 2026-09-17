@@ -36,6 +36,7 @@ import {
   reportObservedBlockHeight,
   subscribeObservedBlockHeights,
 } from '../src/paper/measure';
+import { ASSET_DERIVED } from '../src/paper/type-tokens';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object): SourcedBlock {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });
@@ -92,22 +93,24 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
         { label: '乙', value: 2 },
       ],
     });
-    // D8/D9（2026-09-16）：分类标签移入 SVG 内（与柱体同坐标系），不再产生
-    // 盒外标签行——故此处只有 pad + type 行 + svg（w=720、vbW=30+2×40+10=120
-    // → 720×180/120=1080 → 封顶 240）
-    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + 240);
+    // D8/D9（2026-09-16）：分类标签移入 SVG 内（与柱体同坐标系），不再产生盒外标签行。
+    // 规格变更（2026-09-17 盒定比例批）：SVG 高不再由「版心宽 × vbH ÷ 坐标系宽」封顶，
+    // 改为按类目数分档（≤4 类 180 / ≤10 类 210 / 更多 240）——2 类柱图因此是 180 行高，
+    // 不再被拉到 240（旧模型下 3 类柱图还会被 meet 缩成 213px 宽居中）。真源见
+    // ASSET_DERIVED.chartSvgH / docs/plans/tool-image-context-plan.md §5.0。
+    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('bar', 2));
   });
 
   it('chart 纯数值 data：无标签条（标签进 SVG 后纯数值同样无盒外行）', () => {
     const b = assetBlock('chart', { type: 'line', data: [1, 2, 3] });
-    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + 240);
+    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('line', 3));
   });
 
   it('chart config.title / 轴名各占一行（D4/D9 新增，旧实现完全忽略 config）', () => {
     const withTitle = assetBlock('chart', { type: 'bar', data: [1, 2], config: { title: '论文量' } });
-    expect(measureBlockHeight(withTitle)).toBe(8 + (9 * 1.8 + 4) + (11 * 1.8 + 6) + 240);
+    expect(measureBlockHeight(withTitle)).toBe(8 + (9 * 1.8 + 4) + (11 * 1.8 + 6) + ASSET_DERIVED.chartSvgH('bar', 2));
     const withAxis = assetBlock('chart', { type: 'bar', data: [1, 2], config: { xName: '月份' } });
-    expect(measureBlockHeight(withAxis)).toBe(8 + (9 * 1.8 + 4) + 240 + (8 * 1.8 + 2));
+    expect(measureBlockHeight(withAxis)).toBe(8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('bar', 2) + (8 * 1.8 + 2));
   });
 
   it('metric：auto-fill 列数（minmax(120,1fr)+gap8）→ 行数 × 卡高', () => {

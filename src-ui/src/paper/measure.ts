@@ -287,8 +287,6 @@ const MEDIA_ROW_H = ASSET_DERIVED.mediaRowSize * 1.8; // .pp-media-file 行（�
 
 const CHART_PAD_V = ASSET_DERIVED.chartPadV; // .pp-chart padding 4×2
 const CHART_TYPE_H = ASSET_DERIVED.chartTypeH; // .pp-chart-type + margin-bottom 4
-const CHART_SVG_MAX_H = ASSET_DERIVED.chartSvgMaxH; // .pp-chart-svg max-height
-const CHART_PIE_H = ASSET_DERIVED.chartPieH; // .pp-chart-pie height
 const CHART_LABEL_GAP = ASSET_DERIVED.chartLabelGap; // .pp-chart-labels margin-top
 const CHART_LABEL_LINE = ASSET_DERIVED.chartLabelSize * 1.8;
 const CHART_LABEL_FONT = `${ASSET_DERIVED.chartLabelSize}px ${MONO_STACK}`;
@@ -297,11 +295,6 @@ const CHART_INTERACTIVE_BOX_H = ASSET_DERIVED.chartInteractiveBoxH; // .pp-chart
 // tests/chart-geometry.test.ts 钉住；token 真源 = ASSET_TOKENS.chart）
 const CHART_TITLE_H = ASSET_DERIVED.chartTitleH;
 const CHART_AXIS_NAMES_H = ASSET_DERIVED.chartAxisNamesH;
-const CHART_VB_H = ASSET_DERIVED.chartVbH;
-const CHART_LEFT_PAD = ASSET_DERIVED.chartLeftPad;
-const CHART_RIGHT_PAD = ASSET_DERIVED.chartRightPad;
-const CHART_BAR_SLOT = ASSET_DERIVED.chartBarSlot;
-const CHART_SCATTER_VBW = ASSET_DERIVED.chartScatterVbW;
 
 const METRIC_PAD_V = ASSET_DERIVED.metricPadV; // .pp-metric padding 2×2
 const METRIC_CAPTION_H = ASSET_DERIVED.metricCaptionH; // .pp-metric-caption + margin-bottom 6
@@ -570,17 +563,10 @@ function chartBodyH(p: { type?: unknown; data?: unknown; config?: unknown }, w: 
   const labels = raw.map((d) => (d && typeof d === 'object' ? String((d as { label?: unknown }).label ?? '') : ''));
   const anyLabelText = labels.some((l) => l.length > 0);
 
-  const svgH =
-    type === 'pie'
-      ? CHART_PIE_H
-      : Math.min(
-          (w * CHART_VB_H) /
-            Math.max(
-              GRAPH_MIN_W,
-              type === 'scatter' ? CHART_SCATTER_VBW : CHART_LEFT_PAD + n * CHART_BAR_SLOT + CHART_RIGHT_PAD,
-            ),
-          CHART_SVG_MAX_H,
-        );
+  // 盒定比例（2026-09-17 P1）：SVG 高按类目数分档，与坐标系宽度解耦——
+  // 旧模型 min(w·vbH/viewBoxW, maxH) 会把「条数少」翻译成「图更小」，实测 3 根柱
+  // 只占 213px 居中、两侧各空 253px；现模型见 ASSET_DERIVED.chartSvgH。
+  const svgH = ASSET_DERIVED.chartSvgH(type, n);
 
   // 分类标签（D8 起进 SVG，占 SVG 高度的一部分，不再单独占盒外行）；饼图仍走盒外图例行
   const pieLegendH =

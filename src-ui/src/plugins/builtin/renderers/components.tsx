@@ -191,16 +191,70 @@ function VirtualGridBody({ rows, cols, caption }: { rows: unknown[][]; cols: str
  * 「测高与渲染对不上」正是漂移产物）。 */
 
 const CHART_GEO = {
-  vbH: 180,
+  // 视角三档高度（镜像 ASSET_TOKENS.chart.svgHByCount / countTiers——插件产物域
+  // 不 import paper 层，一致性由 tests/chart-geometry.test.ts 对拍钉住）
+  svgHByCount: [180, 210, 240] as const,
+  countTiers: [4, 10] as const,
   leftPad: 30,
   rightPad: 10,
   topPad: 14,
   bottomPad: 20,
-  barSlot: 40,
-  barW: 22,
-  scatterVbW: 400,
+  barFillRatio: 0.56,
   valueMaxItems: 20,
 } as const;
+
+/** 类目数 → SVG 盒高（盒定比例：与坐标系宽度解耦，字号因此不再被 viewBox 缩放）。
+ *  导出 = 测试直呼面（pieSlices 先例）。 */
+export function chartSvgHeight(type: string, count: number): number {
+  if (type === 'pie') return 180; // = ASSET_TOKENS.chart.pieH
+  const [t1, t2] = CHART_GEO.countTiers;
+  const [h1, h2, h3] = CHART_GEO.svgHByCount;
+  if (count <= t1) return h1;
+  if (count <= t2) return h2;
+  return h3;
+}
+
+/** 静态图布局（**单一几何真源**，2026-09-17 盒定比例批）：
+ *  - viewW == 卡片内容宽 ⇒ SVG 用户单位 == CSS px ⇒ 任何文字都不被缩放（旧模型下
+ *    同一 kind 只换条数，8px 字会被缩到 6.5px 或涨到 10.7px）；
+ *  - viewH 由类目数分档（chartSvgHeight）⇒ 图高与条数解耦；
+ *  - barSlot 由「绘图宽 ÷ 条数」反推 ⇒ **条数少时柱更宽，而不是图更小**
+ *    （旧模型下 3 根柱只占卡片左侧约 213px，两侧各空 253px）。
+ *  导出 = 测试直呼面（pieSlices 先例）。 */
+export function chartLayout(opts: { type: string; count: number; boxW: number }): {
+  viewW: number;
+  viewH: number;
+  leftPad: number;
+  rightPad: number;
+  topPad: number;
+  bottomPad: number;
+  baseY: number;
+  plotW: number;
+  barSlot: number;
+  barW: number;
+} {
+  const n = Math.max(opts.count, 1);
+  const { leftPad, rightPad, topPad, bottomPad } = CHART_GEO;
+  const viewW = Math.max(leftPad + rightPad + 40, Math.round(opts.boxW));
+  const viewH = chartSvgHeight(opts.type, opts.count);
+  const plotW = Math.max(24, viewW - leftPad - rightPad);
+  const barSlot = plotW / n;
+  // 柱宽 = 槽宽 × 占位比，并**永不超过槽宽 − 2px**（极端类目数下不许互相压叠；
+  // 条数极少时柱随之变宽铺满绘图区，而不是把整张图缩小——这是本次修的核心观感）
+  const barW = Math.max(1, Math.min(barSlot * CHART_GEO.barFillRatio, barSlot - 2));
+  return {
+    viewW,
+    viewH,
+    leftPad,
+    rightPad,
+    topPad,
+    bottomPad,
+    baseY: viewH - bottomPad,
+    plotW,
+    barSlot,
+    barW,
+  };
+}
 
 /** chart 数据归一（单一真源——渲染与 measure 共用同一套语义）。
  *  返回 {values, labels}；形状非法返回 null（渲染层落「数据不可用」占位）。
@@ -313,9 +367,23 @@ function ChartBody({ block }: BlockRendererProps) {
   const showLabels = hasRealLabels(labels);
   const showValues = values.length <= CHART_GEO.valueMaxItems;
 
-  const { vbH, leftPad, topPad, bottomPad, barSlot, barW, scatterVbW } = CHART_GEO;
-  const plotW = n * barSlot;
-  const vbW = type === 'scatter' ? scatterVbW : leftPad + plotW + CHART_GEO.rightPad;
+  // 盒定比例（2026-09-17）：宽 = 卡片内容宽（block.w），高按类目数分档，
+  // 柱槽由绘图宽反推。viewBox 与元素同尺度 ⇒ 文字不再被缩放（旧模型的
+  // 「3 根柱缩成 213px 居中 + 字号随条数 6.5↔10.7px 漂」由此消失）。
+  const boxW = typeof (block as { w?: number }).w === 'number' ? (block as { w: number }).w : 720;
+  const {
+    viewW: vbW,
+    viewH: vbH,
+    leftPad,
+    topPad,
+    bottomPad,
+    barSlot,
+    barW,
+  } = chartLayout({
+    type,
+    count: values.length,
+    boxW,
+  });
   const baseY = vbH - bottomPad;
 
   // 柱：等高线映射 + 数值标注（D7）
@@ -323,6 +391,8 @@ function ChartBody({ block }: BlockRendererProps) {
     <svg
       className="pp-chart-svg"
       viewBox={`0 0 ${vbW} ${vbH}`}
+      width={vbW}
+      height={vbH}
       role="img"
       aria-label="bar chart"
       preserveAspectRatio="xMidYMid meet"
@@ -357,6 +427,8 @@ function ChartBody({ block }: BlockRendererProps) {
     <svg
       className="pp-chart-svg"
       viewBox={`0 0 ${vbW} ${vbH}`}
+      width={vbW}
+      height={vbH}
       role="img"
       aria-label="line chart"
       preserveAspectRatio="xMidYMid meet"
@@ -410,19 +482,22 @@ function ChartBody({ block }: BlockRendererProps) {
     </svg>
   );
 
-  // 散点：x = 真实序列位置（D6）——旧实现 cx 是 (i*37)%380 的伪随机数，与数据无关
+  // 散点：x = 真实序列位置（D6）——旧实现 cx 是 (i*37)%380 的伪随机数，与数据无关。
+  // 盒定比例（2026-09-17）：绘图宽随卡片走（不再有独立 scatterVbW 坐标系）。
   const scatter = (
     <svg
       className="pp-chart-svg"
-      viewBox={`0 0 ${scatterVbW} ${vbH}`}
+      viewBox={`0 0 ${vbW} ${vbH}`}
+      width={vbW}
+      height={vbH}
       role="img"
       aria-label="scatter chart"
       preserveAspectRatio="xMidYMid meet"
     >
-      <line className="pp-chart-axis" x1={leftPad} y1={baseY} x2={scatterVbW - CHART_GEO.rightPad} y2={baseY} />
+      <line className="pp-chart-axis" x1={leftPad} y1={baseY} x2={vbW - CHART_GEO.rightPad} y2={baseY} />
       <line className="pp-chart-axis" x1={leftPad} y1={topPad} x2={leftPad} y2={baseY} />
       {values.map((v, i) => {
-        const cx = leftPad + (i / Math.max(1, n - 1)) * (scatterVbW - leftPad - CHART_GEO.rightPad);
+        const cx = leftPad + (i / Math.max(1, n - 1)) * (vbW - leftPad - CHART_GEO.rightPad);
         const cy = baseY - (v / max) * (baseY - topPad);
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: 散点图按数据序渲染（同图表族约定）

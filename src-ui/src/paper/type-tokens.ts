@@ -235,7 +235,6 @@ export const ASSET_TOKENS = {
     padV: 4,
     typeSize: 9,
     typeMarginB: 4,
-    svgMaxH: 240,
     pieH: 180,
     labelMarginTop: 6,
     labelSize: 9,
@@ -243,15 +242,24 @@ export const ASSET_TOKENS = {
     // titleSize/titleMarginB：config.title 行（静态版此前完全忽略 config）
     titleSize: 11,
     titleMarginB: 6,
-    // SVG 坐标系（viewBox 单位）
-    vbH: 180,
+    // ── 盒定比例（2026-09-17 P1「图版语汇」批，替代原「比例由数据条数决定」）──
+    // 旧模型：viewBox 宽 = 30 + 柱数×40 + 10、高恒 180，CSS width:100%/height:auto
+    // ⇒ 3 根柱的图在 720 版心里被 meet 缩成约 213×240 居中、两侧各空 253px；20 根柱
+    // 又是另一比例、8px 字被缩到 6.5px（同一 kind 只换条数，字号差 39%）。实测读数见
+    // docs/plans/tool-image-context-plan.md §6 与 prototype/asset-cards-ab.NOTES.md。
+    // 新模型：**宽高都由版心定**——SVG 的 viewBox 宽 = 卡片内容宽（用户单位 == CSS px，
+    // 故任何文字都不再被缩放），高按类目数分三档（少/中/多），柱槽宽由「版心宽 ÷ 条数」
+    // 反推（条数少则柱更宽，而不是图更小）。
+    /** 三档高度：≤4 类 / ≤10 类 / 更多（宽高皆版心定，与条数解耦）。
+     *  渲染器镜像同一组数值（components.tsx CHART_GEO），对拍在 chart-geometry 测试。 */
+    svgHByCount: [180, 210, 240] as const,
+    /** 档位分界（类目数），与 svgHByCount 一一对应 */
+    countTiers: [4, 10] as const,
+    // SVG 坐标系内距（用户单位 = CSS px）
     leftPad: 30,
     rightPad: 10,
     topPad: 14,
     bottomPad: 20,
-    barSlot: 40,
-    barW: 22,
-    scatterVbW: 400,
     axisSize: 8,
     valueSize: 8,
     /** 数值标注上限（超过则省略，防重叠——纯性能/可读性语义常量） */
@@ -418,21 +426,26 @@ export const ASSET_DERIVED = {
 
   chartPadV: ASSET_TOKENS.chart.padV * 2, // .pp-chart padding 4×2
   chartTypeH: ASSET_TOKENS.chart.typeSize * 1.8 + ASSET_TOKENS.chart.typeMarginB,
-  chartSvgMaxH: ASSET_TOKENS.chart.svgMaxH,
   chartPieH: ASSET_TOKENS.chart.pieH,
   chartLabelGap: ASSET_TOKENS.chart.labelMarginTop,
   chartLabelSize: ASSET_TOKENS.chart.labelSize,
   chartInteractiveBoxH: ASSET_TOKENS.chart.interactiveBoxH, // .pp-chart-interactive-box 固定盒高（#16）
-  // chart 静态图几何（D4-D9，2026-09-16）——measure 与渲染组件共用同一套坐标系；
-  // 渲染侧因插件产物域不 import paper 层而镜像同一组数值（components.tsx CHART_GEO），
-  // 一致性由 tests/chart-geometry.test.ts 钉住。
+  // chart 静态图几何（D4-D9，2026-09-16；2026-09-17 改盒定比例）——measure 与渲染
+  // 组件共用同一套坐标系；渲染侧因插件产物域不 import paper 层而镜像同一组数值
+  // （components.tsx CHART_GEO），一致性由 tests/chart-geometry.test.ts 钉住。
   chartTitleH: ASSET_TOKENS.chart.titleSize * 1.8 + ASSET_TOKENS.chart.titleMarginB, // .pp-chart-title + margin
   chartAxisNamesH: ASSET_TOKENS.chart.axisSize * 1.8 + 2, // .pp-chart-axis-names + margin-top 2
-  chartVbH: ASSET_TOKENS.chart.vbH,
   chartLeftPad: ASSET_TOKENS.chart.leftPad,
   chartRightPad: ASSET_TOKENS.chart.rightPad,
-  chartBarSlot: ASSET_TOKENS.chart.barSlot,
-  chartScatterVbW: ASSET_TOKENS.chart.scatterVbW,
+  /** 类目数 → SVG 盒高（盒定比例：宽高皆由版心/档位定，与坐标系宽度解耦）。 */
+  chartSvgH: (type: string, count: number): number => {
+    if (type === 'pie') return ASSET_TOKENS.chart.pieH;
+    const [t1, t2] = ASSET_TOKENS.chart.countTiers;
+    const [h1, h2, h3] = ASSET_TOKENS.chart.svgHByCount;
+    if (count <= t1) return h1;
+    if (count <= t2) return h2;
+    return h3;
+  },
 
   metricPadV: ASSET_TOKENS.metric.padV * 2, // .pp-metric padding 2×2
   metricCaptionH: ASSET_TOKENS.metric.captionSize * 1.8 + ASSET_TOKENS.metric.captionMarginB,

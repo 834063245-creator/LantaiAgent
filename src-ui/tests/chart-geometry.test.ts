@@ -17,8 +17,9 @@ import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/ren
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
+import { ASSET_DERIVED, ASSET_TOKENS } from '../src/paper/type-tokens';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
-import { pieSlices } from '../src/plugins/builtin/renderers/components';
+import { chartLayout, chartSvgHeight, pieSlices } from '../src/plugins/builtin/renderers/components';
 
 type Ctx = Awaited<ReturnType<typeof makeCtx>>;
 
@@ -146,7 +147,8 @@ describe('chart 散点几何 — x 是真实序列位置（旧实现必然证伪
 describe('chart 柱线几何 — 数值标注与轴（旧实现无轴无数值）', () => {
   it('柱高与数值成正比', async () => {
     const html = await renderChart({ type: 'bar', data: [10, 20] });
-    const heights = [...html.matchAll(/height="([\d.]+)"/g)].map((m) => Number(m[1]));
+    // 只取柱体矩形的 height（2026-09-17 起 SVG 元素自身也带盒尺寸属性——几何自描述）
+    const heights = [...html.matchAll(/<rect[^>]*height="([\d.]+)"/g)].map((m) => Number(m[1]));
     expect(heights.length).toBe(2);
     // 20 的柱高约为 10 的两倍
     expect(heights[1] / heights[0]).toBeCloseTo(2, 1);
@@ -353,5 +355,70 @@ describe('chart 契约校验 — 写入门禁（此前 payload 无校验）', ()
       if (!def) continue; // 未注册的 kind 跳过（插件面可增删）
       expect(validatePayload(def, payload), `${id} 不应被误拒`).toBeNull();
     }
+  });
+});
+
+// ── 盒定比例（2026-09-17 P1「图版语汇」批）──
+//
+// 旧模型的可证伪事实（实测读数：prototype/asset-cards-ab.NOTES.md +
+// docs/plans/tool-image-context-plan.md §6）：viewBox 宽 = 30 + 柱数×40 + 10、
+// 高恒 180，CSS width:100% / height:auto / max-height:240 ⇒ 3 根柱被 meet 缩成
+// 约 213×240 居中、两侧各空 253px；20 根柱时 8px 字被缩到 6.5px（同一 kind 只换
+// 条数，字号差 39%）。本组断言在旧实现下全部为假。
+
+describe('chart 盒定比例 — 宽高由版心定，不由数据条数定', () => {
+  const BOX = 720;
+
+  it('viewBox 宽 == 卡片内容宽（用户单位 == CSS px ⇒ 文字不被缩放）', () => {
+    for (const n of [3, 8, 20]) {
+      expect(chartLayout({ type: 'bar', count: n, boxW: BOX }).viewW).toBe(BOX);
+    }
+    expect(chartLayout({ type: 'scatter', count: 5, boxW: BOX }).viewW).toBe(BOX);
+  });
+
+  it('高度按类目数分三档（与坐标系宽度解耦），且与 token 档位同值', () => {
+    const [t1, t2] = ASSET_TOKENS.chart.countTiers;
+    const [h1, h2, h3] = ASSET_TOKENS.chart.svgHByCount;
+    expect(chartSvgHeight('bar', t1)).toBe(h1);
+    expect(chartSvgHeight('bar', t1 + 1)).toBe(h2);
+    expect(chartSvgHeight('bar', t2)).toBe(h2);
+    expect(chartSvgHeight('bar', t2 + 1)).toBe(h3);
+    expect(chartSvgHeight('pie', 20)).toBe(ASSET_TOKENS.chart.pieH);
+    // measure 侧派生与渲染器同源（两侧同值 ⇒ 测高不再漂）
+    for (const [t, n] of [
+      ['bar', 3],
+      ['bar', 20],
+      ['line', 7],
+      ['pie', 6],
+    ] as const) {
+      expect(ASSET_DERIVED.chartSvgH(t, n)).toBe(chartSvgHeight(t, n));
+    }
+  });
+
+  it('条数少 → 柱更宽（而不是图更小），且铺满绘图区', () => {
+    const few = chartLayout({ type: 'bar', count: 3, boxW: BOX });
+    const many = chartLayout({ type: 'bar', count: 20, boxW: BOX });
+    expect(few.barW).toBeGreaterThan(many.barW);
+    expect(few.barW).toBeGreaterThan(22); // 旧实现的固定柱宽
+    const firstLeft = few.leftPad + (few.barSlot - few.barW) / 2;
+    const lastRight = few.leftPad + 2 * few.barSlot + (few.barSlot - few.barW) / 2 + few.barW;
+    expect(lastRight - firstLeft).toBeGreaterThan(few.plotW * 0.8);
+  });
+
+  it('柱宽夹在「不重叠」与「不空档」之间：极端类目数下也不互相压叠', () => {
+    const dense = chartLayout({ type: 'bar', count: 200, boxW: BOX });
+    expect(dense.barW).toBeGreaterThan(0);
+    expect(dense.barW).toBeLessThanOrEqual(dense.barSlot - 2 + 1e-9);
+    const single = chartLayout({ type: 'bar', count: 1, boxW: BOX });
+    expect(single.barW).toBeLessThanOrEqual(single.barSlot);
+  });
+
+  it('镜像对拍：渲染侧内距 == token 真源（防两侧漂移）', () => {
+    const L = chartLayout({ type: 'bar', count: 1, boxW: BOX });
+    expect(L.leftPad).toBe(ASSET_TOKENS.chart.leftPad);
+    expect(L.rightPad).toBe(ASSET_TOKENS.chart.rightPad);
+    expect(L.topPad).toBe(ASSET_TOKENS.chart.topPad);
+    expect(L.bottomPad).toBe(ASSET_TOKENS.chart.bottomPad);
+    expect(L.baseY).toBe(chartSvgHeight('bar', 1) - ASSET_TOKENS.chart.bottomPad);
   });
 });

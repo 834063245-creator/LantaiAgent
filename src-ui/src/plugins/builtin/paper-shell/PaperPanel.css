@@ -4367,9 +4367,11 @@ html.pp-composer-dragging {
   word-break: break-word;
 }
 .pp-chart-svg {
+  display: block;
   width: 100%;
+  /* 高由几何真源定（chartLayout：viewBox 高 = 版心档位高）；旧实现 height:auto +
+     max-height 会把「条数少」变成 meet 后的 letterbox（实测 3 根柱只占 213px 居中） */
   height: auto;
-  max-height: var(--pp-asset-chart-svgMaxH);
 }
 /* 坐标轴（D7）：基线 + 纵轴，与纸面墨色同族（不引入新色值） */
 .pp-chart-axis {
