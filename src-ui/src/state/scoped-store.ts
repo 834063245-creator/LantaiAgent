@@ -8,7 +8,10 @@
 // 本文件收口为泛型工具，四个 store 只保留领域定义。
 //
 // 设计要点：
-//   - store Map 存 window（Vite HMR 不会清除模块级变量，避免热重载破坏 React 订阅）
+//   - store Map 存 globalThis（Vite HMR 不会清除模块级变量，避免热重载破坏 React 订阅；
+//     globalThis 而非 window：浏览器/jsdom 下 `window === globalThis` 等价，而 node 环境下
+//     `window` 未定义——本文件在模块装配期就被 src/state/canvas-store.ts → src/app/chat/chat-core.ts
+//     链上求值，用 window 会把 136 个测试文件连带绑死在 jsdom 环境上，2026-09-17 实测）
 //   - getStore(storeId?) 惰性创建，默认实例 id 为 '__default__'
 //   - disposeStore 精确移除；disposeStoresByPrefix 按前缀批量移除（含精确匹配）
 //   - getState(storeId?) 非响应式读取（组件外消费路径）
@@ -33,7 +36,7 @@ export interface ScopedStore<T extends { getState(): unknown }> {
 }
 
 export function createScopedStore<T extends { getState(): unknown }>(key: string, createImpl: () => T): ScopedStore<T> {
-  const w = window as unknown as Record<string, unknown>;
+  const w = globalThis as unknown as Record<string, unknown>;
   if (!w[key]) {
     const m = new Map<string, T>();
     m.set(DEFAULT_ID, createImpl());

@@ -105,7 +105,7 @@ export function rebuildAssetTableFromMessages(storeId: string, sessionId: number
 
 /** 测试复位（生产不调用）。 */
 export function resetAssetTablesForTests(): void {
-  const w = window as unknown as Record<string, unknown>;
+  const w = globalThis as unknown as Record<string, unknown>;
   const stores = w.__lantai_asset_tables__ as Map<string, ReturnType<typeof createAssetTableImpl>> | undefined;
   if (stores) {
     for (const store of stores.values()) store.getState().clear();

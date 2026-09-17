@@ -177,7 +177,7 @@ export function disposeComposeStore(storeId: string): void {
 /** 测试套件：复位全部实例。 */
 export function resetComposeStoresForTests(): void {
   const key = '__lantai_compose_stores__';
-  const w = window as unknown as Record<string, unknown>;
+  const w = globalThis as unknown as Record<string, unknown>;
   const stores = w[key] as Map<string, { setState: (s: Partial<ComposeStore>) => void }> | undefined;
   if (stores) {
     for (const store of stores.values()) {
