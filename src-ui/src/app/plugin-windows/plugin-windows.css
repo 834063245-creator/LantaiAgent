@@ -117,12 +117,17 @@
   background: var(--paper);
 }
 
-/* dock 停靠栏：右侧竖栏（画布右缘），底带让位创作坞（composer 常驻带） */
+/* dock 停靠栏：右侧竖栏（画布右缘），底带让位创作坞（读让位带
+ * --composer-band = 视口底 → 坞顶线，2026-09-17 浮动化后随坞的实际位置；
+ * 封顶 --composer-band-cap；未上报时回退静态 token 算式） */
 .pw-dock {
   position: fixed;
   top: 12px;
   right: 12px;
-  bottom: calc(12px + var(--composer-rise) + var(--composer-h-live, var(--composer-h)));
+  bottom: calc(
+    12px +
+    min(var(--composer-band, calc(var(--composer-rise) + var(--composer-h, 66px))), var(--composer-band-cap, 55vh))
+  );
   width: 400px;
   display: flex;
   flex-direction: column;

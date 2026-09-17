@@ -733,31 +733,19 @@ export const ComposerDock = memo(function ComposerDock() {
     [core, activeSessionId],
   );
 
-  /* ── 实测高上报（--composer-h-live）：composer 是两段式（设置行+输入行，
-   *  textarea 还会自动长高），静态 token --composer-h: 66px 早已 stale
-   *  （实高 ~114px）——fixed 侧栏/书脊/小地图/牒卡宿主按 token 贴底会压住
-   *  设置行。此处观察根元素实测高写入全局 var，卸载时撤除（消费面以
-   *  var(--composer-h-live, var(--composer-h)) 回退静态 token）。 ── */
-  const dockRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = dockRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return; // jsdom 无 RO——单测环境跳过上报
-    const root = document.documentElement;
-    const report = () =>
-      root.style.setProperty('--composer-h-live', `${Math.round(el.getBoundingClientRect().height)}px`);
-    report();
-    const ro = new ResizeObserver(report);
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      root.style.removeProperty('--composer-h-live');
-    };
-  }, []);
+  /* ── 让位带上报（旧 --composer-h-live）已于 2026-09-17 拆除 ──
+   * 坞可被拖离底带（自由浮动 + 吸附 + 双击复位），「坞高」不再是让位件的尺子
+   * ——让位带（视口底 → 坞顶线）是**槽主人 paper-shell 的几何**，现由
+   * use-composer-float 写 :root 的 --composer-band（消费面：递牒卡宿主 /
+   * 插件 dock）。坞本体不再自报尺寸：一处权威源，浮动态也正确。
+   * 注：旧 token --composer-h-live 在**过渡期**由槽主人代发一版（运行中 exe 内嵌
+   * 的外壳 CSS 仍读它）——见 use-composer-float.ts 的「过渡期旧 token 代发」。 ── */
 
   /* ── 拖文件入卷（v2 2026-08-31）：Tauri onDragDropEvent 原生通道——
    *    T2 WebView dragDropEnabled 默认接管，HTML5 drop 永不触发（C10 尸检）。
    *    界栏 = 拖拽悬停坞体时高亮；松手命中坞体才入卷（落画布其它处不抢）。
    *    mock 模式（浏览器 dev / vitest）watch 内部 no-op。 ── */
+  const dockRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!core) return;
     let alive = true;

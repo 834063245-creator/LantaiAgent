@@ -68,6 +68,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | **内核能力口收口 R3+R4 真机四项** | 代码十一插件全退役 + 十一能力口在产（2026-09-05）：① browser 全链路（含 sensitive 二次 Ask 与 audit）；② desktop 全链路（不抢焦点 / input lease 串行 / INVARIANTS #13 链路不变）；③ shell 粘性 cwd + bg 三件；④ 编辑（edit_file diff 快照与权限 Ask）——~~约束读写~~（**作废 2026-09-09**：constraints_cap 随图谱整口删除）——owner：用户 |
 | **多模态图片线真机验收六项** | 代码 B1-B5 全落地（2026-09-09，门禁全绿）：① vision 模型贴截图 → 模型描述内容；② 非 vision 模型入口隐藏 + 强行含图不炸；③ 三入口齐验（粘贴/拖放/夹选）；④ 重启后缩略仍显示；⑤ 多图大图预算降级；⑥ 远端图回渲染 + 非白名单降级 alt——见 [`../archive/multimodal-image-plan.md`](../archive/multimodal-image-plan.md) §5——owner：用户 |
 | **随包图谱引擎端到端** | 代码已落地（`engine-bundled-mcp-distribution`，2026-09-16）；**「拨开关 → 引擎真拉起 → 工具面出现图查询工具」从未在真机跑通过**。已实机取证的部分：打包 app 里 `engine_bundled_info` 返回 `available: true`（引擎在 `lantai.exe` 同级）、开关从未被拨（`lantai.bundledEngine.enabled` 为 null）——即**探测链路通、接线链路未验**。欠：① 拨开关 → 重开工作区 → 看状态栏回执与设置面板「接线回执」；② 无回执时报文可读；③ 引擎进程真起（任务管理器见 `hologram-engine.exe` 挂在兰台下）+ 工具面出现 `mcp__hologram__*`；④ 离开工作区进程真停（一进程一根 + 离开即停）——owner：用户（2026-09-16 用户报「开关在哪」缺陷后新立） |
+| **创作坞浮动化手感** | 代码已落地（2026-09-17，门禁全绿，见 [`../design/lantai-design-spec.md`](../design/lantai-design-spec.md) §9.2）；jsdom 测不到的手感欠四项：① 按住坞书眉行拖动是否跟手（拖动期 PaperPanel 每帧重渲，真机帧率未测）；② 磁吸四锚位（左右缘 / 版心中轴 / 底带 / 最底缘）的吸附距离 24px 是否顺手；③ **双击坞头复位**在 WebView2 真触发（刻意没 `preventDefault` pointerdown，正为它让路）；④ 坞拖离底带后让位件（目次带映射区 / 小地图默认位 / 递牒卡 / 插件 dock）的视觉是否合意——owner：用户 |
 
 ## 已完成并归档（点名即可，详情勿读）
 

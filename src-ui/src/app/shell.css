@@ -43,12 +43,16 @@
  *    浮于一切之上；卡片本体样式在 prompt-shelf.css） ───────────
  *    2026-08 UI 大清扫：z 300 → 500（settings 面板 400 之上——Agent 递牒
  *    请示是全应用最紧急交互，任何面板开着都必须可见；bottom 对齐
- *    composer 上缘（2026-09-02 拍板 C 后坞恒抬高：var(--composer-rise) +
- *    实测高 --composer-h-live + 30px 呼吸，回退 66px token）。 */
+ *    composer 上缘（2026-09-02 拍板 C 后坞恒抬高；**2026-09-17 浮动化**：
+ *    改读让位带 --composer-band（视口底 → 坞顶线，坞拖到哪跟到哪，封顶
+ *    --composer-band-cap = 半屏），+ 30px 呼吸；未上报时回退静态 token 算式）。 */
 .psh-host {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--composer-rise) + var(--composer-h-live, var(--composer-h, 66px)) + 30px);
+  bottom: calc(
+    min(var(--composer-band, calc(var(--composer-rise) + var(--composer-h, 66px))), var(--composer-band-cap, 55vh)) +
+    30px
+  );
   width: min(680px, 92vw);
   transform: translateX(-50%);
   z-index: var(--z-shelf, 500);

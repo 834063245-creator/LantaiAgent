@@ -68,6 +68,7 @@ import { ToastHost } from './ToastHost';
 import { useBlockMeasure } from './use-block-measure';
 import type { BlockOp } from './use-block-ops';
 import { useBlockOps } from './use-block-ops';
+import { useComposerFloat } from './use-composer-float';
 import { useFoldState } from './use-fold-state';
 import { useJumpKeys } from './use-jump-keys';
 import { useMinimapBounds } from './use-minimap-bounds';
@@ -573,18 +574,13 @@ export function PaperPanel() {
   const totalPinned = Object.keys(canvasState.pins).length;
   const totalStrips = canvasState.strips.length;
 
-  /* rework P3-1：创作坞实际高度（动态——思考展开/附件/yolo 都会变高）驱动
-   * 目次带/小地图的底部定位，避免硬编码 gap 导致重叠。
-   * 用 callback ref（React 19 支持清理）替代 effect+dep，避免 lint 对
-   * composerOverlays.length 依赖的误报，同时正确响应槽挂载/卸载。 */
-  const [composerHeight, setComposerHeight] = useState(96);
-  const composerSlotRef = useCallback((el: HTMLDivElement | null) => {
-    if (!el) return;
-    const ro = new ResizeObserver(() => setComposerHeight(el.getBoundingClientRect().height));
-    ro.observe(el);
-    setComposerHeight(el.getBoundingClientRect().height);
-    return () => ro.disconnect();
-  }, []);
+  /* rework P3-1 → 2026-09-17 浮动化：创作坞让位带（--composer-band = 视口底 →
+   * 坞顶线的距离）驱动目次带夹紧域/小地图默认位/递牒卡宿主/插件 dock 的让位。
+   * 坞位与实测尺寸归 useComposerFloat（槽主人持有；坞本体一字不知）。
+   * 默认位时带 = --composer-rise + 坞实测高（旧 --composer-h-live 配对式，
+   * 零漂移）；坞被拖离底带时带 = 坞的实际位置。 */
+  const composer = useComposerFloat();
+  const composerBand = composer.band;
 
   /* ── 覆盖层上下文（Stage-4）：创作坞消费低频（动作/活跃），
    * 目次带消费高频（流区几何）。拆两 context 避免创作坞随平移重渲。
@@ -604,12 +600,12 @@ export function PaperPanel() {
       activeSessionId: activeSessionKey,
       viewRect,
       canvasSize,
-      composerHeight,
+      composerBand,
       foldedOf,
       minimap: { content: minimapContent, geo: minimapGeo },
       inkCache: inkCache.current,
     }),
-    [regions, activeSessionKey, viewRect, canvasSize, composerHeight, foldedOf, minimapContent, minimapGeo, inkCache],
+    [regions, activeSessionKey, viewRect, canvasSize, composerBand, foldedOf, minimapContent, minimapGeo, inkCache],
   );
 
   /* 拖拽回流判据（渲染面）：来源流区中轴——dragPos 悬回带内且 wasFlow = 松手取消 */
@@ -1093,8 +1089,18 @@ export function PaperPanel() {
               案头态（v2 + 2026-09-02 拍板 C）：位置两态恒同，只换形态（退匣直书）；
               坞下方出流悬挂签条架（最近三卷续写——出没不推坞位）。
               ⚠ 形态类刻意叫 pp-at-desk 不叫 pp-desk——与世界层桌垫 .pp-desk
-              同名会撞车（桌垫 top/height ±200000 接管槽，坞射出屏外，CSS 注释有案）。 */}
-          <div className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}`} ref={composerSlotRef}>
+              同名会撞车（桌垫 top/height ±200000 接管槽，坞射出屏外，CSS 注释有案）。
+              2026-09-17 浮动化：坞位 state 归 useComposerFloat（style 为 undefined
+              = 无覆盖 = CSS 默认居中坐底）；抓手 = 坞书眉行（手势判据在
+              composer-float.ts 的 isComposerHandle），双击坞头复位。 */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: 坞槽承载拖坞手势（坞头命中判据在 composer-float.ts 的 isComposerHandle——非交互件才起拖） */}
+          <div
+            className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}${composer.dragging ? ' pp-composer-dragging' : ''}`}
+            ref={composer.slotRef}
+            style={composer.style}
+            onPointerDown={composer.onPointerDown}
+            onDoubleClick={composer.onDoubleClick}
+          >
             {composerOverlays.map((def) => (
               /* 保险丝 b：覆盖层贡献行（插件面）包边界——创作坞崩溃不卸整树 */
               <PluginBoundary key={def.id} label={`覆盖层 ${def.id}`}>

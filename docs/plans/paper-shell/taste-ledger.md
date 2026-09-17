@@ -188,3 +188,11 @@
   ② **几何契约的镜像若由调用点手写派生式（`width - 32`），必然漂移**——收进被测函数内部才是单一权威源；③ 「源文本钉值」只能证字面量没被偷改，证不了行为——配一条行为测才闭环。 ·
   一次性原型台留在 `prototype/folio-head-ab.html` + 读数栏 + `folio-head-ab.NOTES.md`（prototype/ 已 gitignore，不入库） ·
   门禁：tsc 0 / biome ci 0/0 / 全量 vitest **3230 passed 3 skipped** / vite build 通过
+- 2026-09-17 · 坞位 · 用户提问「创作坞能不能做成可以拖动的」→ 四问自裁（坞位归属槽主人 / 让位带取代坞高上报 / 抓手 = 书眉行 / 自由浮动 + 吸附 + 双击复位）·
+  **选**：坞位成视图偏好（`localStorage lantai.composer.pos`，null = 无覆盖 = CSS 版心居中坐底）、坞书眉行为抓手（交互件自己接手势）、拖动全程磁吸四锚位（左右缘 / 版心中轴 / 经典底带 96 / 最底缘）、双击坞头复位、让位带 `--composer-band`（视口底 → 坞顶线）驱动四家消费面重算；
+  **弃**：坞位入工作区画布状态（视图偏好不是工作区数据，同小地图 pref 族）；给 PaperDockContext 加回调让坞自报坞位（坞本体该一字不知——事件冒泡到槽、槽主人接手势，宿主面 faceDeps 基线零动，产物仍可只换产物）；拖动期 `preventDefault`（会连带影响 dblclick 跨引擎互操作，复位手势优先；防误选交 `user-select:none`）。 ·
+  **拆账**：旧 `--composer-h-live`（坞自报坞高：ComposerDock 的 ResizeObserver + 两处 CSS 消费）整条拆除——让位带是槽主人的几何，一处权威源，浮动态才正确；**但外壳 CSS 内嵌在 exe 里不能热更**（`shell.css`/`plugin-windows.css` 仍读旧 token），故过渡期由槽主人代发旧 token 一版，**拆除条件 = 下一次整包重编**（一般教训：删跨层 token 必须与消费它的那一层同批落地）。 ·
+  **零漂移证据**：默认位带 = `--composer-rise + 坞实测高`（与旧配对式逐字同值 ⇒ 目次带映射区/可见域、小地图默认位、递牒卡、插件 dock 四处默认外观零改动）；两个 toc 测试只改字段名 + 数值表达式，**断言数字逐字未动**。 ·
+  **边界（刻意不做）**：让位件之间互不躲让、坞不自动躲让位件（坞拖到上半屏时让位件停在半屏 = 让位带上限 55vh / 目次带封顶 3/4 可视高）；坞不做边框吸附动画；坞头不加一次性眉批提示（grab 光标 + 用户已知）。 ·
+  **交付形态**：只打三个产物热更（compose-dock / paper-shell / paper-minimap → `target/release/_up_/src-ui/dist-plugins/builtin/hologram/`），不重编 exe（app 在跑）。 ·
+  门禁：tsc 0 / biome ci 0/0 / 全量 vitest **3275 passed 3 skipped** / build（含 30 产物）/ doc-check 全绿

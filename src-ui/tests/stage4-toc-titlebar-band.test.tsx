@@ -100,13 +100,16 @@ function fakeRegion(): RegionView {
  *  不借拖拽路径（点带即跳已由 stage4-toc 纯几何覆盖）。 */
 const VIEW_RECT = { x0: -4000, y0: -4000, x1: 4000, y1: 0 };
 const CANVAS_SIZE = { w: 1200, h: 1000 };
-const COMPOSER_HEIGHT = 130;
+/** 创作坞**让位带**（2026-09-17 浮动化：视口底 → 坞顶线）= 抬高 96 + 坞高 130
+ *  ——默认位口径，与组件内 composerBand 同义（数值与浮动化前逐字相同：
+ *  旧式 canvas.h − 96 − 坞高 ≡ 新式 canvas.h − 带）。 */
+const COMPOSER_BAND = 96 + 130;
 /** 书眉下缘（页面坐标）= tokens.css --bar-h 字面量镜像——jsdom 不加载 tokens.css，
  *  测试侧按字面钉死（CSS 契约断言 + 带体起点语义的基准，不许跟着实现漂）。 */
 const BAR_H = 56;
-/** 映射区底（**带体坐标**）= 画布区高 − 坞抬高 − 坞高（带体已从书眉下缘起，
+/** 映射区底（**带体坐标**）= 画布区高 − 让位带（带体已从书眉下缘起，
  *  故不再 + 书眉高；与组件内同式）。 */
-const MAPPED_BOTTOM = CANVAS_SIZE.h - 96 - COMPOSER_HEIGHT;
+const MAPPED_BOTTOM = CANVAS_SIZE.h - COMPOSER_BAND;
 /** 纸壳样式（.pp-toc 规则所在）：CSS 契约断言用（同 paper-visual-decisions 口径）。 */
 const PANEL_CSS = readFileSync(
   join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
@@ -124,7 +127,7 @@ function regionContext(): PaperRegionContextValue {
     activeSessionId: '1',
     viewRect: VIEW_RECT,
     canvasSize: CANVAS_SIZE,
-    composerHeight: COMPOSER_HEIGHT,
+    composerBand: COMPOSER_BAND,
     foldedOf: () => false,
     minimap: { content: { x0: -720, y0: -2000, x1: 720, y1: 0 }, geo: [] },
     inkCache: createInkCache(),

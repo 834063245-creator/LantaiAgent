@@ -25,31 +25,45 @@ import {
 } from './host';
 import './minimap.css';
 
-/** 创作坞坐底抬高（--composer-rise token 的 TS 侧镜像——坞顶线 = 页底 −
- *  抬高 − 坞高。2026-09-02 拍板 C：两态同位，固定值不随窗口高度浮动）。 */
-const COMPOSER_RISE = 96;
+/** 书眉高（tokens.css --bar-h 的 TS 侧镜像）——小地图默认位不得爬进书眉带
+ *  （那一段是窗口拖动热区，压上去会把设置/窗口钮挡掉）。 */
+const TITLE_BAR_H = 56;
 /** 拖动阈值（px）：超过即视为拖块（区分点击） */
 const DRAG_THRESHOLD = 6;
 
+/** 小地图默认位（右下角）：bottom = 创作坞让位带 + 18 呼吸（2026-09-17 浮动化：
+ *  带 = 视口底 → 坞顶线，坞拖到哪跟到哪）。坞在上半屏时带会很大——夹在「书眉
+ *  之下」：默认位可以跟随，但不能被送出屏外。纯函数（模块级：不进 effect 依赖）。 */
+function defaultMinimapPref(band: number, mmH: number): { right: number; bottom: number; w: number; h: number } {
+  return {
+    right: 18,
+    bottom: Math.max(18, Math.min(band + 18, window.innerHeight - TITLE_BAR_H - mmH - 18)),
+    w: 156,
+    h: 116,
+  };
+}
+
 export const MinimapView = memo(function MinimapView() {
   /* 数据面：覆盖层上下文（PaperPanel provider）——P2-3 缓存原样下发 */
-  const { regions, activeSessionId, viewRect, composerHeight, foldedOf, minimap, inkCache } = usePaperRegion();
+  const { regions, activeSessionId, viewRect, composerBand, foldedOf, minimap, inkCache } = usePaperRegion();
   const { glideTo } = usePaperDock();
   const content = minimap.content;
   const inkRegions = minimap.geo;
   const viewport = viewRect;
 
   /* R3.5 浮动化（2026-09-05）：可拖动 + 可缩放 + localStorage 记忆。
-   * 默认右下角（bottom 随创作坞高），拖动改 right/bottom 偏移，
-   * 滚轮改尺寸；偏好存 localStorage（组件级，非工作区数据）。 */
+   * 默认右下角（bottom 随创作坞让位带），拖动改 right/bottom 偏移，
+   * 滚轮改尺寸；偏好存 localStorage（组件级，非工作区数据）。
+   * 2026-09-17 创作坞浮动化：默认位改读 composerBand（默认位时 = 抬高 + 坞高
+   * ⇒ 与旧口径零漂移）——**只在用户没摆过小地图时生效**：用户摆过就尊重用户的
+   * 位置（拖动创作坞不去推已放置的小地图）。 */
   const MM_PREF_KEY = 'lantai.minimap.pref';
-  const defaultPref = (b: number) => ({ right: 18, bottom: Math.max(18, b + COMPOSER_RISE + 18), w: 156, h: 116 });
   const [pref, setPref] = useState(() => {
     try {
       const raw = localStorage.getItem(MM_PREF_KEY);
       if (raw) {
         const p = JSON.parse(raw) as { right?: number; bottom?: number; w?: number; h?: number };
-        const base = defaultPref(composerHeight);
+        const base = defaultMinimapPref(composerBand, 116);
         return {
           right: typeof p.right === 'number' ? p.right : base.right,
           bottom: typeof p.bottom === 'number' ? p.bottom : base.bottom,
@@ -57,9 +71,9 @@ export const MinimapView = memo(function MinimapView() {
           h: typeof p.h === 'number' ? Math.min(220, Math.max(90, p.h)) : base.h,
         };
       }
-      return defaultPref(composerHeight);
+      return defaultMinimapPref(composerBand, 116);
     } catch {
-      return defaultPref(composerHeight);
+      return defaultMinimapPref(composerBand, 116);
     }
   });
   const persistPref = useCallback((next: typeof pref) => {
@@ -70,16 +84,16 @@ export const MinimapView = memo(function MinimapView() {
       /* localStorage 不可用（隐私模式等）——不持久化，不影响使用 */
     }
   }, []);
-  /* 首帧校正：挂载时 composerHeight 可能尚未实测（0）——若用户未曾持久化过，
+  /* 首帧校正：挂载时让位带可能尚未实测（坞高 0）——若用户未曾持久化过，
    * 用真实 bottom 把默认位置补正（只跑一次；didInitRef 保证幂等）。 */
   const didInitRef = useRef(false);
   useEffect(() => {
     if (didInitRef.current) return;
     didInitRef.current = true;
     if (!localStorage.getItem(MM_PREF_KEY)) {
-      persistPref({ ...pref, bottom: Math.max(18, composerHeight + COMPOSER_RISE + 18) });
+      persistPref({ ...pref, bottom: defaultMinimapPref(composerBand, pref.h).bottom });
     }
-  }, [composerHeight, persistPref, pref]);
+  }, [composerBand, persistPref, pref]);
 
   const W = pref.w;
   const H = pref.h;

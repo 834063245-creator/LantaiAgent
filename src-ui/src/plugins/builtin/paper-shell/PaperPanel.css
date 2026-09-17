@@ -2314,13 +2314,16 @@
   min-height: 34px;
   flex-wrap: wrap; /* rework P3-1：窄窗口下附件条可换行，不溢出 */
 }
-/* rework P3-1：创作坞槽容器（ResizeObserver 量高锚点）不参与 flex 压缩
+/* rework P3-1：创作坞槽容器（ResizeObserver 量宽高锚点）不参与 flex 压缩
  * 2026-09-01 用户拍板：全宽布局行判死——槽原是 flex 列里的普通行，占一条
  * 全宽死区（纸到槽顶被切断，屏幕底部横一条「遮挡」）。两态统一改浮层落座：
  * 纸铺满到屏底，坞浮在纸上。
  * 2026-09-02 拍板 C：两态同位——常驻/案头同坐 var(--composer-rise) 固定
  * 抬高（12vh 退役：坞位不随窗口大小变）；签条架出流悬挂（见 .pp-desk-shelf），
- * 架出没不推坞位。 */
+ * 架出没不推坞位。
+ * **2026-09-17 浮动化**：本规则 = **默认位**（版心居中 + 坐底抬高）。坞被拖动
+ * 后由 use-composer-float 写内联 style（left/bottom + transform:none）接管，
+ * 双击坞头复位 = 撤内联回到本规则（不写死坐标，窗口再变仍居中）。 */
 .pp-composer-slot {
   position: absolute;
   left: 50%;
@@ -2330,6 +2333,12 @@
   display: flex;
   flex-direction: column;
   z-index: 6;
+}
+/* 坞浮动（2026-09-17）：拖动中不给纸面划词抢手——按下点不可选即不起选区
+ *（手势力矩判据见 composer-float.ts 的 isComposerHandle；刻意不 preventDefault：
+ *  取消 pointerdown 会连带影响 dblclick 互操作，复位手势优先）。 */
+.pp-composer-slot.pp-composer-dragging {
+  user-select: none;
 }
 /* ── 案头（创作坞 v2 2026-08-31）：无摊开卷时坞的形态面──
  * 空态死白的解法：直书于纸 + 签条架陪衬（位置两态恒同，2026-09-02 拍板 C；
@@ -2394,7 +2403,10 @@
   transform: rotate(0.4deg);
 }
 /* ── 书眉行（2026-09-06 续批：三行制之顶行）——卷名左端 + 翰/律/后台卷指示
- *    右端；坞的顶行恒是书眉，三控件（模型/权限/思考）归设置行垫底。 ── */
+ *    右端；坞的顶行恒是书眉，三控件（模型/权限/思考）归设置行垫底。
+ *    2026-09-17 浮动化：本行兼**坞的抓手**（空白处/卷名按住即拖坞；交互件
+ *    自己接手势——判据 isComposerHandle）——grab 手感 + user-select:none
+ *    （按下点不可选 = 拖动不起选区）+ touch-action:none（触控拖动不被滚屏吞）。── */
 .pp-composer-header {
   display: flex;
   align-items: center;
@@ -2402,6 +2414,13 @@
   row-gap: 6px;
   min-height: 30px;
   flex-wrap: wrap; /* 窄窗口同设置行纪律：换行不溢出 */
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+/* 拖动中（槽带 .pp-composer-dragging）——抓手反馈收紧 */
+.pp-composer-slot.pp-composer-dragging .pp-composer-header {
+  cursor: grabbing;
 }
 .pp-composer-header > * {
   min-width: 0;
