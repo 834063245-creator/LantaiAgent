@@ -17,7 +17,8 @@ import { INK_FAIL, inkBarColorOf } from '../src/paper/ink';
 import type { TocRange } from '../src/paper/toc';
 import { buildTocInkBuckets, TOC_INK_ALPHA_FLOOR, TOC_INK_BUCKET, type TocInkLine } from '../src/paper/toc-ink';
 
-/** 映射区（带高 528px）——stripTop 取真机值（书眉下缘 + 刻痕半高 = 60）。 */
+/** 映射区（带高 528px）——夹具沿用 2026-09-14 的实机带（stripTop = 带体顶 +
+ *  刻痕半高）；算法与刻位的绝对值无关，故本批（标题栏拆除、带体回屏顶）不改夹具数。 */
 const RANGE: TocRange = { regionTop: 0, regionBottom: 4000, stripTop: 60, stripBottom: 588 };
 const BAND = RANGE.stripBottom - RANGE.stripTop;
 

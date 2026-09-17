@@ -26,6 +26,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | LSP 舰队共享化 | [`lsp-fleet-daemon-plan.md`](lsp-fleet-daemon-plan.md) | 开工（2026-09-09） | 每根目录一套 LSP（hologram-lspd）——16GB 机器内存耗尽的**结构性根治**（当日已落三闸止血） |
 | 软件级插件（app shell） | [`app-shell-software-plugin-plan.md`](app-shell-software-plugin-plan.md) | S0-S6 竣工；**余管理 UI 面 + 用户真机验收** | 数据目录 / 受治进程治理 / 窗口原语 / 后台唤醒四件套 + 范本 `examples/plugins/notes-app/` |
 | 纸壳交互承接 | [`paper-interaction-handoff.md`](paper-interaction-handoff.md) | 审计完成，逐条修复中 | 守护 `src-ui/tests/paper-interaction-handoff.test.ts`（KNOWN_DEAD 收敛机制——只减不增） |
+| **工具附图通道（agent 眼睛环）** | [`tool-image-context-plan.md`](tool-image-context-plan.md) | **P0a 代码已落地 2026-09-17；余真机验收** | 工具产出的截图进模型可见通道（此前只挂 user 消息 ⇒ 模型看不见自己的产出，靠用户眼睛逐轮喂）；P0b（元素级截图 + 描述改写 + 拆 `inline`）需 BCR 放行 |
 
 ## 待执行但已立项（按成本排）
 
@@ -69,6 +70,8 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | **多模态图片线真机验收六项** | 代码 B1-B5 全落地（2026-09-09，门禁全绿）：① vision 模型贴截图 → 模型描述内容；② 非 vision 模型入口隐藏 + 强行含图不炸；③ 三入口齐验（粘贴/拖放/夹选）；④ 重启后缩略仍显示；⑤ 多图大图预算降级；⑥ 远端图回渲染 + 非白名单降级 alt——见 [`../archive/multimodal-image-plan.md`](../archive/multimodal-image-plan.md) §5——owner：用户 |
 | **随包图谱引擎端到端** | 代码已落地（`engine-bundled-mcp-distribution`，2026-09-16）；**「拨开关 → 引擎真拉起 → 工具面出现图查询工具」从未在真机跑通过**。已实机取证的部分：打包 app 里 `engine_bundled_info` 返回 `available: true`（引擎在 `lantai.exe` 同级）、开关从未被拨（`lantai.bundledEngine.enabled` 为 null）——即**探测链路通、接线链路未验**。欠：① 拨开关 → 重开工作区 → 看状态栏回执与设置面板「接线回执」；② 无回执时报文可读；③ 引擎进程真起（任务管理器见 `hologram-engine.exe` 挂在兰台下）+ 工具面出现 `mcp__hologram__*`；④ 离开工作区进程真停（一进程一根 + 离开即停）——owner：用户（2026-09-16 用户报「开关在哪」缺陷后新立） |
 | **创作坞浮动化手感** | 代码已落地（2026-09-17，门禁全绿，见 [`../design/lantai-design-spec.md`](../design/lantai-design-spec.md) §9.2）；jsdom 测不到的手感欠四项：① 按住坞书眉行拖动是否跟手（拖动期 PaperPanel 每帧重渲，真机帧率未测）；② 磁吸四锚位（左右缘 / 版心中轴 / 底带 / 最底缘）的吸附距离 24px 是否顺手；③ **双击坞头复位**在 WebView2 真触发（刻意没 `preventDefault` pointerdown，正为它让路）；④ 坞拖离底带后让位件（目次带映射区 / 小地图默认位 / 递牒卡 / 插件 dock）的视觉是否合意——owner：用户 |
+| **顶部浮件（标题栏拆除）手感** | 代码已落地（2026-09-17，门禁全绿，见 [`../design/lantai-design-spec.md`](../design/lantai-design-spec.md) §14）；jsdom 测不到的手感欠四项：① **上缘边缘滚动**在真机是否终于顺手（指针甩到屏顶即滚）；② 浮件落位/宽度（右上、右距 80=目次带宽+16、宽约 470）在正文之上是否碍眼、是否压到你想看的内容；③ 浮件本体那段 x 区间**不滚**（它是「别的面」）能否接受——不爽可改「背后照滚」（`.pp-chrome` 进 `HOVER_ALLOW_DOCKS`）；④ 窗口拖动只剩浮件抓手（`画布` 二字 + 件间空白）是否够用——owner：用户 |
+| **边缘滚动的两条边界（待你拍）** | 2026-09-17「回锚认卷」批顺手查出、**刻意未做**（都属产品取舍，见 [`paper-shell/taste-ledger.md`](paper-shell/taste-ledger.md) 同日条 + [`../landmine-map.md`](../landmine-map.md) 第十批 V3/V4）：① **悬停档没有尽头**——指针停在屏顶/屏底带内会以实测 **1,444 px/s** 一路滚出卷外（即使 mouseup 没丢也如此）；要不要做成「滚到内容边界即停」（RTS 相机不飞出地图；用「内容范围 ∪ 一屏呼吸」保住「拖块远钉」）？② **野视口会被持久化**——跑飞后的位置原样写进 `.lantai/canvas.json`，下次进工作区直接落在空白（恢复优先于落位）；要不要加「恢复的视角若不含任何卷 → 视为无效，回落到回锚」？——owner：用户 |
 
 ## 已完成并归档（点名即可，详情勿读）
 

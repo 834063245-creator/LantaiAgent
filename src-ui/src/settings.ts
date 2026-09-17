@@ -204,7 +204,7 @@ export interface UpdateSettings {
 
 /** 画布设置（可选——旧存储无此节 = 平滚，canvasWheelMode 容错读取）。
  *  2026-09-08 缩放舒适度拍板：滚轮裸操作给「平滚视角」或「缩放画布」二选一
- *  （Miro 派 vs Whimsical 派），另一操作恒有 Ctrl+滚轮 + 书眉缩放控件兜底。
+ *  （Miro 派 vs Whimsical 派），另一操作恒有 Ctrl+滚轮 + 顶部浮件缩放控件兜底。
  *  2026-09-17 边缘滚动立为原生功能：拖拽手势贴视口四缘自动滚屏的开关 + 灵敏度。
  *  **行为真源在插件域**（`plugins/builtin/paper-shell/edge-scroll.ts`——基准带宽/限速、
  *  灵敏度映射、缺省容错都在那里；本字段只是持久化载体）。故此处不设缺省值：旧存储

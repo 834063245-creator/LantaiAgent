@@ -9,15 +9,18 @@
 // 永不重算**——启动落在首页就按首页 `.sh-head`（~88px 高）算，进了画布视图于是：
 //   ① 多出一条 88px「幽灵标题栏」压在画布顶缘与目次带最上方 → 在那段里拖内容＝挪窗口
 //      （用户三报，并直接点出「问题是出在标题栏的触发范围上」）；
-//   ② 书眉里应用自绘的按钮（缩放/设置/回放/窗口钮）按**首页布局**被 caption 吃掉
+//   ② 浮件里应用自绘的按钮（缩放/设置/回放/窗口钮）按**首页布局**被 caption 吃掉
 //      （实机：真点缩放钮无任何反应）。
 // 页面侧的 `no-drag` 挖除只对拖动元素的后代生效（窗口钮正是如此），对兄弟元素无效；
-// 给书眉以下各面加 no-drag 挖不动那条带，删掉 app-region 又会让窗口钮一起被吃掉。
+// 给浮件以下各面加 no-drag 挖不动那条带，删掉 app-region 又会让窗口钮一起被吃掉。
 //
 // **修法**：页面**不再声明任何 app-region**（首页 + 画布两处都不声明 → 根本不产生行窗），
-// 标题栏交互改由应用自己判定：书眉/首页顶栏接 pointerdown → Tauri 原生
+// 标题栏交互改由应用自己判定：画布顶部浮件/首页顶栏接 pointerdown → Tauri 原生
 // `plugin:window|start_dragging`（命中面恰好是该元素），双击 → `toggle_maximize`。
 // 壳层另有兜底（`src-tauri/src/window_drag_band.rs`：万一出现 caption，一律降为 client）。
+// **2026-09-17 标题栏拆除批**：画布视图的书眉布局行退役 ⇒ 画布铺满整窗（顶缘 = 屏缘，
+// 边缘滚动的「指针甩到屏顶」才成立）；窗口拖动热区 = 顶部浮件本身（其非交互件：
+// `画布` 二字与件间空白），画布视图不再留整条拖动带。
 
 interface TauriInternals {
   metadata?: { currentWindow?: { label?: string } };
@@ -57,7 +60,7 @@ export function toggleWindowMaximize(): void {
   });
 }
 
-/** 标题栏 pointerdown 处理器（书眉/首页顶栏共用）：交互件除外 → 原生拖拽。 */
+/** 标题栏 pointerdown 处理器（画布顶部浮件/首页顶栏共用）：交互件除外 → 原生拖拽。 */
 export function onTopbarPointerDown(e: { target: EventTarget | null }): void {
   if (isTopbarInteractiveTarget(e.target)) return;
   startWindowDrag();

@@ -51,44 +51,57 @@
   background: var(--paper);
 }
 
-/* ── 卷首行（书眉）──
- * V5 拆除后：书眉兼任窗口标题栏；关卷 = 回案卷首页。
- * **2026-09-14 app-region 全面退役**：书眉不再声明 -webkit-app-region——Windows 下
- * WebView2 把拖动区光栅化成一叠子窗且**只在启动那一刻按当时页面算一次**（启动落在
- * 首页 → 按首页 ~88px 的 .sh-head 算）→ 进画布后多出一条 88px 幽灵标题栏（拖目次带/
- * 画布顶缘＝挪窗口）并吃掉书眉按钮。现在拖动/双击最大化由组件接 pointerdown 走 Tauri
- * 原生通道（app/window-drag.ts 单一真源），命中面恰好是本元素。 */
-.pp-topbar {
+/* ── 顶部浮件（2026-09-17 标题栏拆除批）──
+ * **书眉整条退役**（旧 `.pp-topbar`：56px 布局行，flex 列的第一行）。病灶不是
+ * 「不好看」而是**结构性挡路**：画布被这条行从窗口顶推开 56px ⇒ 边缘滚动最自然的
+ * 动作（把指针甩到屏顶）永远落在书眉上（不在画布内 ⇒ 悬停档判据直接否掉），
+ * 上缘在用户视角里等于没有边缘滚动；拖块贴顶同此（越出画布只到 56 就到底）。
+ * 现在控制件改成右上**一枚浮件**：覆盖件（`.pp-canvas` 的**兄弟**，不属画布 DOM
+ * ——悬停判据据「画布本体」量，故浮件之上不滚，与目次带同族）、不进布局流
+ * （画布顶缘 = 屏缘）、**常显**（不做悬停揭示：揭示区与命中区一分开就互为前提，
+ * 见 taste-ledger 拖动锁二版教训），且**兼任窗口拖动热区**（decorations:false 的
+ * 标题栏职责，走 app/window-drag.ts 原生通道——`画布` 二字即抓手，带 tooltip）。
+ * 让位：目次带在右缘占 64px（`.pp-toc` 的 width，同在本文件），浮件右距 = 带宽 + 16
+ * （不压导航带、不越出屏）。
+ * 视觉：纸底 + 弱线 + `--elev-raise` 浮起（HUD 化但**不透明**——半透明会让画布
+ * 正文与浮件文字互相糊字，见 taste-ledger「坞底 / HUD 化」条的病根）。
+ *
+ * **几何真源就在下面这几行**（带高 = 屏缘 8 + 浮件 40 + 呼吸 8 = **56**）：
+ * 它与两处 TS 镜像同值——`composer-float.COMPOSER_CHROME_H`（坞上夹紧）、
+ * `MinimapView.TOP_CHROME_H`（小地图默认位）；`right` 让位量 = 目次带宽
+ * （.pp-toc 的 width，同在本文件）。测试 `stage4-toc-top-band` 四值一起钉死。
+ * ⚠ 刻意不落 tokens.css：那是**壳域**（main.ts 打进 bundle），改它必须重建 exe；
+ * 几何留在产地域，本批才能「只换产物热更」（docs/dev-workflow.md）。 */
+.pp-chrome {
+  position: absolute;
+  top: 8px;
+  right: 80px; /* = 目次带宽 64 + 16 呼吸（不压导航带、不越出屏） */
+  height: 40px; /* = 带高 56 − 上下呼吸 8×2 */
   display: flex;
   align-items: center;
-  gap: 14px;
-  height: var(--bar-h);
-  padding: 0 24px;
+  gap: 10px;
+  padding: 0 10px;
   background: var(--paper);
-  border-bottom: var(--rule-hard); /* 浸墨：书眉底线升硬线（屏级分区） */
-  flex-shrink: 0;
-  position: relative;
-  z-index: 30;
+  border: var(--rule-soft);
+  box-shadow: var(--elev-raise);
+  z-index: 30; /* 原书眉同档：纸内覆盖件之上、全局面板之下 */
 }
 
-.pp-topbar .pp-title {
+/* 浮件首件 = 「画布」二字（**抓手**：按住拖窗口 / 双击最大化）。浮件上只有它是
+ * 非交互件，故它就是窗口拖动热区的可见落点；窗口另有系统级移动通道
+ * （任务栏 / Win+方向键 / Alt+Space），画布视图不再留整条拖动带。 */
+.pp-chrome .pp-title {
   font-family: var(--f-song);
-  font-size: calc(16px * var(--font-scale));
+  font-size: calc(15px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 0.02em;
+  padding: 2px 4px;
 }
-.pp-topbar .pp-tag {
-  font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
-  letter-spacing: 0.24em;
-  color: var(--ink-3);
-  text-transform: uppercase;
-}
+
 /* ── 缩放控件（2026-09-08 缩放舒适度拍板）：−/+ 阶梯步进 + 点读数回 100%。
  * 沿用旧 .pp-zoom 读数的 mono 墨语言；三键裸面无边框，hover 提墨一档
  * （ink-3 → ink-2），读数恒 tabular 不跳宽。 */
-.pp-topbar .pp-zoom-ctl {
-  margin-left: auto;
+.pp-zoom-ctl {
   display: flex;
   align-items: center;
   font-family: var(--f-mono);
@@ -141,7 +154,7 @@
   background: var(--paper-deep);
 }
 
-/* 设置入口（书眉——Agent 产品域唯一常驻面板的开关） */
+/* 设置入口（顶部浮件——Agent 产品域唯一常驻面板的开关） */
 .pp-settings {
   font-family: var(--f-song);
   font-size: calc(12px * var(--font-scale));
@@ -3237,11 +3250,12 @@ html.pp-composer-dragging {
   pointer-events: none;
 }
 /* 钉住可发现性一次性眉批（2026-09-05）：.pp-eyebrow-hint 族的画布落位
- * ——书眉下方左缘（文类签列所在侧，提示长在功能所在处）。 */
+ * ——左缘上角（文类签列所在侧，提示长在功能所在处）。2026-09-17 标题栏拆除批：
+ * 书眉退役 ⇒ 落位从「书眉下缘 + 20」上提到「屏顶 + 20」（浮件在右上，不撞）。 */
 .pp-hint-canvas {
   position: absolute;
   left: 28px;
-  top: 76px;
+  top: 20px;
   z-index: 65;
 }
 @keyframes pp-hint-fade {
@@ -3886,20 +3900,19 @@ html.pp-composer-dragging {
  * 三层：canvas 内容指纹（.pp-toc-ink）/ 滑块与未读区（视口投影）/ 语义刻痕
  * （user=朱砂横杠 / tool=石青 / plan=石墨 / error=--fail 实心短刻——
  * 墨色语义铁律朱砂=人不可挪用，报错走语义状态 --fail）。
- * 2026-09-14（用户二报「标题栏还是和目次带打架」→ 带体整体下移）：`top: var(--bar-h)`
- * ——带体**从书眉（＝窗口标题栏，见 app/window-drag.ts）下缘起**，与标题栏
- * 不共享一个像素（旧版 top:0 通栏：命中虽一律归书眉，但刻痕盒/墨迹/hover 卡
- * 都可能越进那一带，且"归属"只靠 z 序遮盖，边界含糊）。映射区顶再内缩刻痕
- * 半高（组件 STRIP_TOP）→ 带内一切元素恒 top ≥ 0，不越出带体。 */
+ * 2026-09-14（用户二报「标题栏还是和目次带打架」→ 带体整体下移 top: var(--bar-h)）
+ * → **2026-09-17 标题栏拆除批：书眉退役，那 56px 下移取消**——带体回到 `top: 0`，
+ * 从屏顶起（带体坐标与页面坐标自此重合）。映射区顶仍是刻痕半高（组件 STRIP_TOP）
+ * → 带内一切元素恒 top ≥ 0（本批不再为「书眉带」让位，那 4px 归带体自身留白）。 */
 .pp-toc {
   position: fixed;
   right: 0;
-  top: var(--bar-h); /* 书眉下缘——不与标题栏共享像素（2026-09-14 整体下移） */
+  top: 0; /* 屏顶——书眉已退役（2026-09-17），带体通栏 */
   bottom: 0;
-  width: 64px;
+  width: 64px; /* 浮件右距按此值让位（.pp-chrome 的 right = 本值 + 16） */
   border-left: var(--rule-soft);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
-  z-index: 5; /* 居画布之上、坞槽(z-6)之下；书眉不再与之重叠（带体已下移） */
+  z-index: 5; /* 居画布之上、坞槽(z-6)之下；顶部浮件(z-30)居其上并已按带宽让位 */
   user-select: none;
   touch-action: none;
   cursor: pointer;

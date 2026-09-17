@@ -3,8 +3,9 @@
 
 // WinControls — 自定义窗口控制（decorations:false）。
 // V5 拆除（2026-08-22）：自 CommandBar 抽出——CommandBar 随旧观测台 chrome
-// 退役，窗口控制在纸壳书眉（PaperPanel）与案卷首页（SessionsHome）继续
-// 承载。沿用 __TAURI_INTERNALS__ 直调 IPC（不引 @tauri-apps/api 依赖面）。
+// 退役，窗口控制在纸壳顶部浮件（PaperPanel，2026-09-17 前为书眉）与案卷
+// 首页（SessionsHome）继续承载。沿用 __TAURI_INTERNALS__ 直调 IPC
+//（不引 @tauri-apps/api 依赖面）。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 

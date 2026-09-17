@@ -1035,4 +1035,170 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     expect(container?.querySelector('.pp-block.pp-pinned')).toBeNull();
     expect(container?.querySelector('.pp-block.pp-dragging')).toBeNull();
   }, 30_000);
+
+  /* ── ⑧ 顶部浮件（2026-09-17 标题栏拆除批）──
+   * 病灶：旧书眉 `.pp-topbar` 是 **56px 布局行**，把画布顶缘从窗口顶推开 ⇒
+   * 边缘滚动最自然的动作（指针甩到屏顶）永远落在书眉上，悬停判据（须落在画布内）
+   * 直接否掉——上缘在用户视角里等于没有边缘滚动。修法：书眉整条退役，控制件落成
+   * 右上**一枚覆盖件浮件**（`.pp-canvas` 的兄弟、不进布局流），画布铺满整窗。
+   * 本段考三件：① 结构（浮件在画布之外、书眉不存）；② 行为（屏顶那 36px 落在
+   * 画布上 = 滚；浮件之上 = 不滚）；③ 控制件没丢（缩放/设置/回首页/窗口钮全在
+   * 浮件里，且浮件的非交互件仍是窗口拖动热区）。 */
+
+  it('结构：书眉布局行退役，画布铺满整窗，浮件是画布的兄弟（覆盖件）', async () => {
+    const canvas = await mountCanvas();
+    expect(container?.querySelector('.pp-topbar')).toBeNull();
+    const chrome = container?.querySelector<HTMLElement>('.pp-chrome') ?? null;
+    expect(chrome).not.toBeNull();
+    // ⚠ 悬停判据据「画布本体」量（canvas.contains(target)）：浮件必须不在画布 DOM 内
+    expect(canvas.contains(chrome)).toBe(false);
+    // 控制件一件不少（书眉退役 = 搬家，不是删除）
+    expect(chrome?.querySelector('.pp-zoom-ctl')).not.toBeNull();
+    expect(chrome?.querySelector('.pp-settings')).not.toBeNull();
+    expect(chrome?.querySelector('.pp-close')).not.toBeNull();
+    expect(chrome?.querySelector('.wc-btns')).not.toBeNull();
+    expect(chrome?.textContent).toContain('回首页');
+  }, 30_000);
+
+  it('上缘：指针甩到屏顶（画布顶缘 = 屏缘）→ 视口自己滚；同一姿态落在浮件上不滚', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas); // rect top 0 = 画布铺满整窗（本批口径）
+    await saveEdgeScroll(true, 1, true);
+    const chrome = container?.querySelector<HTMLElement>('.pp-chrome') ?? null;
+    // ① 浮件之上（右上那枚覆盖件）：不滚——它是「别的面」，不是画布本体
+    await act(async () => {
+      fire(chrome as Element, 'mousemove', { clientX: 900, clientY: 20, bubbles: true });
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 250)); // 驻留期满仍不该起滚
+    });
+    expect(useCanvasViewStore.getState().view.panY).toBe(600);
+    // ② 同一 Y 落在画布上（屏顶带内）：起滚（旧书眉时这一点在书眉 DOM 里，永不生效）
+    await act(async () => {
+      fire(canvas, 'mousemove', { clientX: 600, clientY: 20 });
+    });
+    const [start, panY1] = await scrollUntil(30);
+    expect(panY1 - start).toBeGreaterThan(30); // 上缘滚 = 内容向下让出（panY 增）
+  }, 30_000);
+
+  it('浮件的非交互件（`画布` 二字）是窗口拖动热区；交互件（按钮）不吃拖窗口', async () => {
+    await mountCanvas();
+    const invoke = vi.fn(async () => null);
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: 'main' } },
+      invoke,
+    };
+    try {
+      const title = container?.querySelector('.pp-chrome .pp-title') ?? null;
+      const settings = container?.querySelector('.pp-chrome .pp-settings') ?? null;
+      expect(title).not.toBeNull();
+      await act(async () => {
+        fire(title as Element, 'pointerdown', { bubbles: true, button: 0 });
+      });
+      expect(invoke).toHaveBeenCalledWith('plugin:window|start_dragging', { label: 'main' });
+      invoke.mockClear();
+      await act(async () => {
+        fire(settings as Element, 'pointerdown', { bubbles: true, button: 0 });
+      });
+      expect(invoke).not.toHaveBeenCalled(); // 交互件自己接手势（窗口拖拽热区豁免）
+      // 双击抓手 = 最大化/还原
+      await act(async () => {
+        fire(title as Element, 'dblclick', { bubbles: true });
+      });
+      expect(invoke).toHaveBeenCalledWith('plugin:window|toggle_maximize', { label: 'main' });
+    } finally {
+      delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    }
+  }, 30_000);
+
+  /* ── ⑨ 回锚认卷（2026-09-17 用户报「点开工作区/按回锚就空白，啥也不渲染」）──
+   * 病灶：`viewForAnchor(w,h)` 把**世界原点 (0,0)** 对到屏幕锚位；而卷锚
+   * （= 该卷最新块底边，流向上长）会随内容向上漂——用户三卷的锚点实测都在
+   * -28,700 上下 ⇒ 按原点落锚 = 视口落在卷外 28,700px 的空白桌面
+   * （CDP 实测：Home 之后视口世界区间 [-2045, 151]，卷内容在 ≤ -28,630）。
+   * 本段考：落位/回锚必须认**活跃卷**，而卷远在原点之外时仍看得见卷。 */
+
+  /** 键（Home 等）——与 ④ 段同款：window 级 keydown，cancelable 让处理器能 preventDefault。 */
+  const keyOf = (k: string, init: KeyboardEventInit = {}): void => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: k, cancelable: true, bubbles: true, ...init }));
+  };
+  /** 视口世界区间 + 视口内可见块数（用户的症状判据：卷在不在眼前）。 */
+  function viewportWorldAndVisibleBlocks(): { y0: number; y1: number; visible: number } {
+    const v = useCanvasViewStore.getState().view;
+    const y0 = (0 - v.panY) / v.zoom;
+    const y1 = (800 - v.panY) / v.zoom; // stubCanvasRect 的 800 高
+    const visible = [...(container?.querySelectorAll('.pp-block') ?? [])].filter((e) => {
+      const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec((e as HTMLElement).style.transform || '');
+      if (!m) return false;
+      const y = Number(m[2]);
+      return y > y0 && y < y1;
+    }).length;
+    return { y0, y1, visible };
+  }
+
+  it('回锚：卷锚远离原点时（记 -28700），Home 之后仍必须看得见活跃卷', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    // 复现用户现场：活跃卷的锚点在离原点 28,700 的世界坐标（内容向上长）
+    await act(async () => {
+      getCanvasStore(panel.panelId).getState().setRegion('1', { anchorX: 0, anchorY: -28700, width: 720 });
+    });
+    await act(async () => {
+      keyOf('Home');
+    });
+    const { y0, y1, visible } = viewportWorldAndVisibleBlocks();
+    expect(
+      visible,
+      `回锚后视口世界区间 [${Math.round(y0)}, ${Math.round(y1)}] 内一块都没有 = 用户看到的空白`,
+    ).toBeGreaterThan(0);
+    // 卷锚（最新块底边）应落在视口内：D-R1-3「最新块贴视口下缘」
+    expect(-28700).toBeGreaterThanOrEqual(y0);
+    expect(-28700).toBeLessThanOrEqual(y1);
+  }, 30_000);
+
+  it('回锚：卷锚就在原点时，落位与旧口径一致（世界原点对到屏幕锚位）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    await act(async () => {
+      getCanvasStore(panel.panelId).getState().setRegion('1', { anchorX: 0, anchorY: 0, width: 720 });
+    });
+    await act(async () => {
+      keyOf('Home');
+    });
+    const v = useCanvasViewStore.getState().view;
+    expect(v.panX).toBe(600); // 视口宽 1200 / 2
+    expect(v.panY).toBe(800 - 96); // 视口高 − 锚点 margin（ANCHOR.screenBottomMargin）
+  }, 30_000);
+
+  /* ── ⑩ 失控滚屏的兜底（2026-09-17 与回锚同批查出的第二条病灶）──
+   * 四个手势族（拖块 / 拖纸条 / 抽纸条 / 拖选）的帧循环**只认 mouseup**：窗口失焦、
+   * 在窗外松手、切走应用都会让 mouseup 永远不来 ⇒ 循环带着最后一个指针位置无限滚
+   * （CDP 实测：悬停档 1,444 px/s 线性无衰减，拖拽族同理）。悬停档早已在
+   * blur / mouseleave 收手，拖拽族没有——本用例钉住「失焦即收」。 */
+  it('拖块手势在窗口失焦（mouseup 丢失）后必须停滚，不得自己一直滚', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    await saveEdgeScroll(true, 1);
+    const block = container?.querySelector<HTMLElement>('.pp-block') ?? null;
+    const handle = block?.querySelector('.pp-kind') ?? null;
+    expect(handle).not.toBeNull();
+    await act(async () => {
+      fire(handle as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+    });
+    // 指针推进下缘带 → 起滚（此后不再移动指针，也不会有 mouseup）
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 600, clientY: 780 });
+    });
+    const [, panMoving] = await scrollUntil(40);
+    expect(600 - panMoving).toBeGreaterThan(40); // 确实在滚（断言不为空转）
+    // 窗口失焦 = mouseup 永远不来的那条路
+    await act(async () => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    const settled = useCanvasViewStore.getState().view.panY;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    expect(useCanvasViewStore.getState().view.panY).toBe(settled); // 停了
+  }, 30_000);
 });

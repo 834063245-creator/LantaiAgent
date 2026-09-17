@@ -65,9 +65,11 @@ function formatSessionDate(iso: string | null | undefined): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/* 顶栏拖拽/双击最大化：实现收在 app/window-drag.ts（单一真源，书眉与首页共用）。
- * 2026-09-14 app-region 全面退役——页面两处标题栏都不再声明 app-region，
- * 命中范围由元素自己判定（见该文件头注：WebView2 行窗只在启动时算一次）。 */
+/* 顶栏拖拽/双击最大化：实现收在 app/window-drag.ts（单一真源，画布顶部浮件
+ * 与首页顶栏共用）。2026-09-14 app-region 全面退役——页面两处标题栏都不再
+ * 声明 app-region，命中范围由元素自己判定（见该文件头注：WebView2 行窗只在
+ * 启动时算一次）。首页顶栏（.sh-head）**保留**：首页不是画布，没有「顶缘即
+ * 屏缘」的诉求，那条带仍是拖窗口最顺手的落点。 */
 
 export function SessionsHome() {
   const openPanel = useDockStore((s) => s.openPanel);

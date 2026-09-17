@@ -3,7 +3,7 @@
 
 // 视口域（paper-panel-split C2）——PaperPanel 的摄像机：view/canvasSize 订阅、
 // 平移（rAF 帧合并）、滚轮平滚（plain = 平移 / ctrl = 缩放 / 设置可切回
-// 滚轮=缩放）、缩放步进（书眉 −/+ 与键盘 +/−/0）、拖选自动滚屏、Home 回锚、
+// 滚轮=缩放）、缩放步进（顶部浮件 −/+ 与键盘 +/−/0）、拖选自动滚屏、Home 回锚、
 // LOD 缩远、重栅格化锐化、视口持久化、尺寸 RO、世界点守恒、重挂清除。
 // 焦点飞行（flyTo 族）在 use-paper-focus——本域只产出飞行抢占所需的
 // focusRafRef/focusFlightRef 载体。
@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEdgeAutoScroll, useHoverEdgeScroll } from './edge-scroll';
 import {
+  ANCHOR,
   canvasWheelMode,
   createFocusFlightScheduler,
   getCanvasStore,
@@ -24,11 +25,11 @@ import {
   scheduleCanvasSave,
   useCanvasViewStore,
   useShellStore,
-  viewForAnchor,
   viewportWorldRect,
   wheelFactor,
   zoomAt,
 } from './host';
+import { panForAnchor } from './landing';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 拖选自动滚屏的手势态（选区域产出，激活/布局核心两域穿参消费）：
@@ -172,6 +173,22 @@ export function usePaperViewport(core: PaperCore | null) {
    * 当用户平移补偿回去 → 首次进画布 pan=(864,722) 偏移，重进（store 尺寸已
    * 持久）反而正常——间歇性病灶的来源）。 */
   const prevCanvasSizeRef = useRef<{ w: number; h: number } | null>(null);
+  /* ── 回锚 / 首屏落位（2026-09-17 修：认**卷锚**，不再按世界原点）──
+   * 卷锚 = 活跃卷最新块底边（`RegionAnchor`，流向上长），随内容往上漂：用户三卷
+   * 实测都已漂到 -28,700 上下，而旧实现一律按世界原点落锚 ⇒ 视口停在卷外 28,700px
+   * 的空白桌面（用户报「点开工作区/按回锚就空白，啥也不渲染」；CDP 实测 Home 之后
+   * 视口世界区间 [-2045, 151]）。裁决序：活跃卷 → 首个摊开卷 → 世界原点（旧口径）。
+   * 引用稳定化：返回值只在用点现算，不入依赖表。 */
+  const landingAnchor = useCallback((): { x: number; y: number } => {
+    if (core) {
+      const c = getCanvasStore(core.panelId).getState();
+      const sid = c.activeSessionId && c.spread[c.activeSessionId] ? c.activeSessionId : Object.keys(c.spread)[0];
+      const r = sid ? c.spread[sid] : null;
+      if (r) return { x: r.anchorX, y: r.anchorY };
+    }
+    return { x: 0, y: 0 };
+  }, [core]);
+
   useEffect(() => {
     const cur = { w: canvasSize.w, h: canvasSize.h };
     const prev = prevCanvasSizeRef.current;
@@ -179,21 +196,29 @@ export function usePaperViewport(core: PaperCore | null) {
     if (!prev) {
       // R2 冷启动聚焦（2026-09-05）：恢复过视口（canvas.json view 字段 →
       // loadCanvasFromDisk 已 restoreView 写进 store）→ 用恢复值，不落默认锚
-      //（restoredView 非空 = 本次恢复的视图尚未被用户动过）；否则照旧落锚。
+      //（restoredView 非空 = 本次恢复的视图尚未被用户动过）；否则落**卷锚**。
       const restored = useCanvasViewStore.getState().restoredView;
       if (!restored) {
-        const { panX, panY } = viewForAnchor(cur.w, cur.h);
+        const v0 = useCanvasViewStore.getState().view;
+        const { panX, panY } = panForAnchor(
+          { w: cur.w, h: cur.h },
+          v0.zoom,
+          landingAnchor(),
+          ANCHOR.screenBottomMargin,
+        );
         setView((v) => ({ ...v, panX, panY }));
       }
       return;
     }
     if (prev.w === cur.w && prev.h === cur.h) return;
+    /* 视口尺寸变化守恒：把「屏幕锚位下那个世界点」搬到新的屏幕锚位。
+     * 这里用的是**屏幕锚位**（视口宽/2，视口高 − ANCHOR margin），与世界锚无关。 */
     const v = useCanvasViewStore.getState().view;
-    const a0 = { x: prev.w / 2, y: viewForAnchor(prev.w, prev.h).panY };
+    const a0 = { x: prev.w / 2, y: prev.h - ANCHOR.screenBottomMargin };
     const world = { x: (a0.x - v.panX) / v.zoom, y: (a0.y - v.panY) / v.zoom };
-    const a1 = { x: cur.w / 2, y: viewForAnchor(cur.w, cur.h).panY };
+    const a1 = { x: cur.w / 2, y: cur.h - ANCHOR.screenBottomMargin };
     setView((old) => ({ ...old, panX: a1.x - world.x * old.zoom, panY: a1.y - world.y * old.zoom }));
-  }, [canvasSize.w, canvasSize.h, setView]);
+  }, [canvasSize.w, canvasSize.h, setView, landingAnchor]);
 
   /* 画布重挂 = 干净的定位面：清掉上一轮残留定位请求（2026-09-02 修复：原版
    * 还在此处 setView 回锚——与上方守恒 effect 首测分支职责重复，且用 live
@@ -303,7 +328,7 @@ export function usePaperViewport(core: PaperCore | null) {
     return () => el.removeEventListener('wheel', onWheelNative);
   }, [setView]);
 
-  /* ── 缩放步进 / 回 100%（2026-09-08 缩放舒适度拍板）──书眉 −/+ 控件与键盘
+  /* ── 缩放步进 / 回 100%（2026-09-08 缩放舒适度拍板）──顶部浮件 −/+ 控件与键盘
    * +/−/0 的语义端：阶梯档位（ZOOM_STEPS）迈步、锚视口中心；手动接管视口
    *（取消在途定位动画 + 清 pendingFocus），与滚轮同纪律。 */
   const stepZoom = useCallback(
@@ -356,19 +381,29 @@ export function usePaperViewport(core: PaperCore | null) {
     return () => window.removeEventListener('keydown', onKey);
   }, [stepZoom, resetZoom]);
 
-  /* 回原点快捷键（D-R1-1 方位感）：Home → 视口回锚点几何 */
+  /* 回锚快捷键（D-R1-3 流锚甲 / 2026-09-17 修）：Home → **回到活跃卷**
+   *（最新块贴视口下缘上方 margin）。旧实现按世界原点落锚，卷锚漂到 -28,700 之后
+   * Home 落在空白桌面上（用户报「按回锚就空白」）。与滚轮/缩放/拖拽同纪律：
+   * 手动接管视口先取消在途定位飞行 + 清挂起定位，否则飞行会把回锚覆盖掉。 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Home' || e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       e.preventDefault();
-      const { panX, panY } = viewForAnchor(canvasSize.w, canvasSize.h);
+      if (focusRafRef.current) {
+        cancelAnimationFrame(focusRafRef.current);
+        focusRafRef.current = 0;
+        focusFlightRef.current.end();
+      }
+      useCanvasViewStore.getState().requestFocus(null);
+      const { view: cur, canvasSize: cs } = useCanvasViewStore.getState();
+      const { panX, panY } = panForAnchor({ w: cs.w, h: cs.h }, cur.zoom, landingAnchor(), ANCHOR.screenBottomMargin);
       setView((v) => ({ ...v, panX, panY }));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [canvasSize.w, canvasSize.h, setView]);
+  }, [setView, landingAnchor]);
 
   const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;

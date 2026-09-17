@@ -43,7 +43,7 @@ export interface TocInkLine {
 
 /** 带内墨桶（绘制面：TocStrip 逐条 fillRect + 错桶另立 fail 短规）。 */
 export interface TocInkBucket {
-  /** 桶顶（页面坐标 = range.stripTop + k × bucket）——恒 ≥ stripTop（不越界进书眉带） */
+  /** 桶顶（页面坐标 = range.stripTop + k × bucket）——恒 ≥ stripTop（不越出带体顶） */
   top: number;
   /** 桶高（末桶夹到带底；恒 ≤ bucket） */
   height: number;

@@ -1,17 +1,16 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 目次带 × 书眉（＝窗口标题栏）几何守护 —— 2026-09-14 用户报「标题栏的操作
-// 范围和目次带的鼠标操作范围打架了」。
-//
-// 现场（实机量测）：书眉 .pp-topbar 占 y ∈ [0, 56) 且 -webkit-app-region:
-// drag（整条是窗口拖动带，命中一律归它）；目次带 .pp-toc 是通栏 fixed
-// （top:0/bottom:0），映射区顶原为书眉下缘 56——而刻痕盒 top = stripY − 4
-// （盒高 8、刻位居中），于是最上一枚刻痕有 4px 越过书眉下缘：那 4px 点下去
-// 不是跳刻痕而是拖窗口，视觉上还被书眉压住半截。
-// 修法（单一几何真源）：映射区顶 = 书眉下缘 + 刻痕半高；带内一切（墨迹
-// canvas / 刻痕 / 滑块 / 未读区 / hover 索引）共用它——无一元素越界。
-// 另：带外按下不再响应（此前坞下装饰带一点就把视口拽走）。
+// 目次带 × 屏顶 几何守护 —— 2026-09-14 用户报「标题栏的操作范围和目次带的
+// 鼠标操作范围打架了」（当时修法 = 带体整体下移到书眉下缘）；**2026-09-17
+// 标题栏拆除批**：书眉整条退役，那 56px 下移随之取消——带体回到屏顶 top: 0，
+// 带体坐标 = 页面坐标。本文件守护的几何不变量（不随书眉在否而变）：
+//   ① 映射区顶 = 带体顶 + 刻痕半高（刻痕盒 top = stripY − 4 不越出带体）；
+//   ② 带内一切（刻痕盒 / 阶段锚盒 / 滑块 / hover 卡）恒 top ≥ 0；
+//   ③ 映射区外（带顶半高留白 / 坞下装饰带）按下不响应。
+// 病史（2026-09-14 实机量测）：带体曾是通栏 fixed（top:0/bottom:0），最上一枚
+// 刻痕盒那 4px 落在当时的书眉（-webkit-app-region: drag）拖动带里——点刻痕
+// 变成拖窗口，视觉上还被书眉压住半截。
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -61,7 +60,7 @@ import {
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 
 /** 流区夹具：2000 世界高、三枚 user 刻痕——最旧块顶 = regionTop，于是最上
- *  一枚刻痕正好落在映射区顶（「刻痕顶到书眉」的边界现场）。 */
+ *  一枚刻痕正好落在映射区顶（「刻痕顶到带体顶」的边界现场）。 */
 function fakeRegion(): RegionView {
   const blocks: SourcedBlock[] = [];
   const flowGeom: RegionView['flowGeom'] = [];
@@ -104,11 +103,14 @@ const CANVAS_SIZE = { w: 1200, h: 1000 };
  *  height = 坞实测高。**目次带只读 height**（用户 2026-09-17 裁定：目次带不随坞浮动
  *  让位），故映射区底 = 画布高 − 96 − 坞高——与浮动化前逐字同值。 */
 const COMPOSER_DOCK = { bottom: 96, height: 130 };
-/** 书眉下缘（页面坐标）= tokens.css --bar-h 字面量镜像——jsdom 不加载 tokens.css，
- *  测试侧按字面钉死（CSS 契约断言 + 带体起点语义的基准，不许跟着实现漂）。 */
-const BAR_H = 56;
-/** 映射区底（**带体坐标**）= 画布区高 − 出厂底带（带体已从书眉下缘起，
- *  故不再 + 书眉高；与组件内同式）。 */
+/** 带体起点（页面坐标）= **屏顶 0**——2026-09-17 标题栏拆除批：书眉退役，
+ *  tokens.css 里那条 `--bar-h` 一并删除（本文件按 0 钉死 = 组件 TOC_TOP 的基准）。 */
+const TOC_TOP_PX = 0;
+/** 顶部浮件带高（= 屏缘 8 + 浮件 40 + 呼吸 8）——CSS 真源在 .pp-chrome，
+ *  两处 TS 镜像（COMPOSER_CHROME_H / TOP_CHROME_H）逐字对拍（见下方用例）。 */
+const TOP_CHROME_BAND = 56;
+/** 映射区底（**带体坐标**）= 画布区高 − 出厂底带（带体已从屏顶起，
+ *  故不再 + 带体起点；与组件内同式）。 */
 const MAPPED_BOTTOM = CANVAS_SIZE.h - 96 - COMPOSER_DOCK.height;
 /** 纸壳样式（.pp-toc 规则所在）：CSS 契约断言用（同 paper-visual-decisions 口径）。 */
 const PANEL_CSS = readFileSync(
@@ -140,7 +142,7 @@ const DOCK_CONTEXT: PaperDockContextValue = {
   glideTo: vi.fn(),
 };
 
-describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () => {
+describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -178,22 +180,48 @@ describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () 
     });
   }
 
-  it('带体整体下移：CSS top = var(--bar-h)（与标题栏零像素重叠）', () => {
+  it('带体从屏顶起：CSS top: 0 且不再为书眉留位（--bar-h 已随标题栏拆除删除）', () => {
     const rule = ruleBody(PANEL_CSS, '.pp-toc {');
-    expect(rule).toContain('top: var(--bar-h)');
-    expect(rule).not.toContain('top: 0');
-    // 书眉高三处同源：tokens.css 真源 = 组件字面量镜像 = 本文件基准（改一处必红）
+    expect(rule).toContain('top: 0');
+    expect(rule).not.toContain('--bar-h');
+    expect(rule).toContain('width: 64px'); // 浮件让位量按此值算（.pp-chrome right）
+    // 带体起点三处同源：组件 TOC_TOP = CSS top = 本文件基准（改一处必红）
+    expect(TOC_TOP).toBe(TOC_TOP_PX);
     const tokens = readFileSync(join(__dirname, '..', 'src', 'app', 'tokens.css'), 'utf8');
-    expect(tokens).toContain(`--bar-h: ${BAR_H}px`);
-    expect(TOC_TOP).toBe(BAR_H);
+    expect(tokens).not.toContain('--bar-h:'); // 注释里的历史沿革不算声明
   });
 
-  it('刻痕与滑块整枚落在带体内（top ≥ 0）——最上一枚刻痕不得越出带体顶', async () => {
+  /* 顶部浮件几何（2026-09-17 标题栏拆除批）四处同源：CSS 真源（.pp-chrome 的
+   * top/height/right）+ 两处 TS 镜像（坞上夹紧 / 小地图默认位）+ 本文件基准。
+   * ⚠ 刻意不落 tokens.css（壳域，改它必须重建 exe）——故由本用例代行「改一处必红」。 */
+  it('顶部浮件带几何同源：浮件 8+40，让位目次带宽 +16，带高 56 = 两处 TS 镜像', () => {
+    const chrome = ruleBody(PANEL_CSS, '.pp-chrome {');
+    expect(chrome).toContain('top: 8px');
+    expect(chrome).toContain('height: 40px');
+    expect(chrome).toContain('right: 80px');
+    expect(ruleBody(PANEL_CSS, '.pp-toc {')).toContain('width: 64px');
+    // 算术同源：让位 = 带宽 64 + 16；带高 = 8 + 40 + 8
+    expect(64 + 16).toBe(80);
+    expect(8 + 40 + 8).toBe(TOP_CHROME_BAND);
+    // TS 侧两处镜像（各自产物域，不可 import —— 只能逐字对拍）
+    const composerFloat = readFileSync(
+      join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'composer-float.ts'),
+      'utf8',
+    );
+    expect(composerFloat).toContain(`COMPOSER_CHROME_H = ${TOP_CHROME_BAND}`);
+    const minimap = readFileSync(
+      join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-minimap', 'MinimapView.tsx'),
+      'utf8',
+    );
+    expect(minimap).toContain(`TOP_CHROME_H = ${TOP_CHROME_BAND}`);
+  });
+
+  it('刻痕与滑块整枚落在映射区内（top ≥ 0）——最上一枚刻痕不得越出带体顶', async () => {
     await mount();
     const marks = [...container!.querySelectorAll('.pp-toc-mark')] as HTMLElement[];
     expect(marks).toHaveLength(3);
     const tops = marks.map((m) => Number.parseFloat(m.style.top));
-    // 带体坐标：带体本身从书眉下缘起，故「不越进书眉带」= 带内一切 top ≥ 0。
+    // 带体坐标：带体从屏顶起（两坐标重合），「不越出带体」= 带内一切 top ≥ 0。
     // 最上一枚刻痕盒顶 = STRIP_TOP − MARK_HALF = 0（旧旧实现 = 页面 52 < 56：
     // 那 4px 命中归书眉＝拖窗口，点刻痕点不中）
     expect(Math.min(...tops)).toBeGreaterThanOrEqual(0);
@@ -205,7 +233,7 @@ describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () 
 
   it('带内所有子元素 top ≥ 0（刻痕/锚/滑块一律不越出带体顶）', async () => {
     await mount();
-    // 实机验收曾当场量到最上一枚阶段锚盒顶越出（页面 47 < 书眉 56）——本用例把它钉住
+    // 实机验收曾当场量到最上一枚阶段锚盒顶越出（页面 47 < 当时的书眉 56）——本用例把它钉住
     expect(anchorBoxTop(5)).toBe(0); // 贴顶夹紧
     expect(anchorBoxTop(100)).toBe(86); // 常态：盒以刻位为中心
     const kids = [...container!.querySelectorAll('.pp-toc-mark, .pp-toc-anchor, .pp-toc-slider')] as HTMLElement[];
@@ -214,7 +242,7 @@ describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () 
     expect(Math.min(...tops)).toBeGreaterThanOrEqual(0);
   });
 
-  it('hover 卡不越出带体顶：贴顶时翻转到红线下方（压不住标题栏按钮区）', () => {
+  it('hover 卡不越出带体顶：贴顶时翻转到红线下方（卡片不飘到画布上）', () => {
     // 居中态：卡片半高（≤4 行 ≈36px）小于翻转阈 → 上缘恒 ≥ 0
     expect(TOC_CARD_FLIP_Y).toBeGreaterThanOrEqual(36);
     expect(cardAnchorFor(TOC_CARD_FLIP_Y)).toEqual({ top: TOC_CARD_FLIP_Y, transform: 'translateY(-50%)' });
@@ -225,12 +253,12 @@ describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () 
     expect(cardAnchorFor(0).top).toBeGreaterThanOrEqual(0);
   });
 
-  it('带内按下 = 跳视口；带体顶（y < 映射区顶）与坞下装饰带按下一律不响应', async () => {
+  it('带内按下 = 跳视口；映射区顶那半高留白与坞下装饰带按下一律不响应', async () => {
     await mount();
     const nav = container!.querySelector('.pp-toc') as HTMLElement;
     const before = useCanvasViewStore.getState().view.panY;
 
-    // 带体顶之上（带体坐标 y = 0 即书眉下缘；书眉带归标题栏拖动/窗口钮）
+    // 带体顶半高留白（带体坐标 y = 0 < 映射区顶 = 刻痕半高）：无刻位语义，不响应
     pointerDown(nav, 0);
     expect(useCanvasViewStore.getState().view.panY).toBe(before);
 

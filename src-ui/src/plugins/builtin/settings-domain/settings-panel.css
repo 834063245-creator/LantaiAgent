@@ -8,8 +8,8 @@
 #settings-panel-overlay {
   position: fixed;
   inset: 0;
-  /* V5 拆除（2026-08-22）：设置面板的浮层层级必须盖过纸壳书眉
-     （--z-paper-base）——settings 从书眉/命令面板唤起，纸在底下。 */
+  /* V5 拆除（2026-08-22）：设置面板的浮层层级必须盖过纸壳
+     （--z-paper-base）——settings 从纸壳顶部浮件/命令面板唤起，纸在底下。 */
   z-index: var(--z-panel-veil);
   /* 印刷品方向：平色暗化，无玻璃模糊 */
   background: var(--veil);

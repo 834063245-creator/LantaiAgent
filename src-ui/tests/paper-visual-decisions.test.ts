@@ -411,11 +411,14 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(FONTS_CSS).toContain('font-weight: 100 900');
   });
 
-  it('墨阶锚点：书眉/列顶/脚线/坞顶升硬线，主钮投影', () => {
+  it('墨阶锚点：首页书眉/列顶/脚线 + 坞顶升硬线，主钮投影（画布书眉底线已随标题栏退役）', () => {
     expect(ruleBody(HOME_CSS, '.sh-head {')).toContain('border-bottom: var(--rule-hard)');
     expect(ruleBody(HOME_CSS, '.sh-workspaces {')).toContain('border-top: var(--rule-hard)');
     expect(ruleBody(HOME_CSS, '.sh-foot {')).toContain('border-top: var(--rule-hard)');
-    expect(ruleBody(PANEL_CSS, '.pp-topbar {')).toContain('border-bottom: var(--rule-hard)');
+    // 画布视图的屏级顶线（旧 .pp-topbar 的书眉底线）随 2026-09-17 标题栏拆除退役：
+    // 画布铺满整窗，顶部控制件改为**覆盖件浮件**（弱线 + 浮起，不是分区硬线）——
+    // 该视图的屏级分区线只剩坞顶线
+    expect(ruleBody(PANEL_CSS, '.pp-chrome {')).toContain('border: var(--rule-soft)');
     expect(ruleBody(PANEL_CSS, '.pp-composer {')).toContain('border-top: var(--rule-hard)');
     const send = ruleBody(PANEL_CSS, '.pp-composer .pp-send');
     expect(send).toContain('box-shadow: var(--shadow-anchor)');

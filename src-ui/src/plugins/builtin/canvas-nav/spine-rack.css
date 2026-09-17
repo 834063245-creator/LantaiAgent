@@ -8,7 +8,7 @@
 .sr-rack {
   position: fixed;
   left: 0;
-  top: var(--bar-h);
+  top: 0; /* 屏顶——书眉已退役（2026-09-17 标题栏拆除批），不再让出 56px */
   bottom: 0; /* 拉通屏幕底（2026-09-02 用户拍板：与侧栏一致，不再给清坞顶线让位） */
   width: 44px;
   display: flex;

@@ -20,7 +20,9 @@
 // 流锚甲（D-R1-3）：流自视口下缘向上生长，输入条固定底部，最新块贴下缘。
 // 钉住（D-R2-1）：按住块拖出流外松手即钉；按钮收回（D-R2-2）。
 //
-// 书眉：卷名 + 缩放读数 + 设置入口 + 关卷（回案卷首页）+ 窗口控制。
+// 顶部浮件（2026-09-17 标题栏拆除批）：缩放读数 + 状态字 + 设置入口 + 回首页
+// （关卷）+ 窗口控制——书眉布局行退役，画布铺满整窗（顶缘 = 屏缘），浮件是
+// 覆盖件并兼任窗口拖动热区。见 .pp-chrome 头注。
 // 输入条：写 input-store（真相源），提交走 core.sendMessage()。
 //
 // ── 2026-09-06 paper-panel-split：本文件瘦身为装配根 ──
@@ -634,66 +636,6 @@ export function PaperPanel() {
     <PaperDockContext.Provider value={dockContext}>
       <PaperRegionContext.Provider value={regionContext}>
         <div className="pp-root" ref={paperRootRef}>
-          {/* 书眉 = 窗口标题栏（2026-09-14 app-region 退役）：拖动/双击最大化由本元素
-              自己接 pointerdown 走 Tauri 原生通道——触发范围恰好是本元素；WebView2 的
-              app-region 行窗只在启动那一刻按当时页面算一次（首页 ~88px），进画布后会
-              多出一条幽灵标题栏并吃掉书眉按钮（详见 app/window-drag.ts 头注）。 */}
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏） */}
-          <div className="pp-topbar" onPointerDown={onTopbarPointerDown} onDoubleClick={onTopbarDoubleClick}>
-            <span className="pp-title">画布</span>
-            <span className="pp-tag">兰台 · CANVAS</span>
-            {/* 缩放控件（2026-09-08 缩放舒适度拍板）：−/+ 阶梯步进（ZOOM_STEPS
-                常用档）、点读数回 100%——滚轮平滚模式下缩放的零修饰键落点。
-                读数 hover 提示保留画布统计；键盘 +/−/0 同语义。 */}
-            <div
-              className="pp-zoom-ctl"
-              title={`画布读数：${totalBlocks} 块 · 已钉 ${totalPinned} · 纸条 ${totalStrips} · 滚轮平滚 / Ctrl+滚轮缩放`}
-            >
-              <button
-                type="button"
-                className="pp-zoom-btn"
-                aria-label="缩小一档"
-                title="缩小一档（键盘 −）"
-                onClick={() => stepZoom(-1)}
-              >
-                −
-              </button>
-              <button
-                type="button"
-                className="pp-zoom-val"
-                aria-label="缩放回到 100%"
-                title="回到 100%（键盘 0）"
-                onClick={resetZoom}
-              >
-                {zoomLabel}
-              </button>
-              <button
-                type="button"
-                className="pp-zoom-btn"
-                aria-label="放大一档"
-                title="放大一档（键盘 +）"
-                onClick={() => stepZoom(1)}
-              >
-                ＋
-              </button>
-            </div>
-            <StatusLine running={activeRunning} />
-            <button
-              type="button"
-              className={`pp-settings${updateAvailable ? ' has-update' : ''}`}
-              title={
-                updateAvailable && updateVersion ? `设置 (Ctrl+,) · 新版本 ${updateVersion} 可用` : '设置 (Ctrl+,)'
-              }
-              onClick={() => useDockStore.getState().togglePanel('settings')}
-            >
-              设置
-            </button>
-            <button type="button" className="pp-close" onClick={() => setLeaveConfirm(true)}>
-              回首页
-            </button>
-            <WinControls />
-          </div>
-
           {/* 钉住可发现性（一次性眉批）：提示长在功能所在处——左缘即文类签列。
            * 视觉走 .pp-eyebrow-hint 族（6s 淡出自散动画）+ .pp-hint-canvas 落位。 */}
           {pinHint && <div className="pp-eyebrow-hint pp-hint-canvas">按住块左侧文类签，可把任意块拖出钉在案上</div>}
@@ -1095,6 +1037,72 @@ export function PaperPanel() {
                 只接管流块墨迹——钉住块/纸条/孤儿钉 DOM 恒在场（2026-09-07 用户
                 拍板：LOD 不再隐藏钉在画布上的卡片），本层不画它们（不叠墨）。 */}
             {lod && <InkLayer regionsRef={regionsRef} foldedOf={foldedOf} inkCache={inkCache.current} />}
+          </div>
+
+          {/* ── 顶部浮件（2026-09-17 标题栏拆除批）──
+              旧书眉（.pp-topbar）是 56px **布局行**，把画布顶缘从窗口顶推开 ⇒
+              边缘滚动最自然的动作（指针甩到屏顶）永远落在书眉上（不在画布内，
+              悬停档判据直接否掉）——上缘在用户视角里等于没有边缘滚动。现在
+              控制件落成右上一枚**覆盖件**（`.pp-canvas` 的兄弟：不属画布 DOM，
+              故悬停其上不滚，与目次带同族），画布铺满整窗、顶缘 = 屏缘。
+              浮件兼任窗口拖动热区（decorations:false 的标题栏职责）——
+              `画布` 二字是浮件上唯一的非交互件，即抓手（另有系统级移动通道）。
+              常显、无悬停揭示（见 CSS 头注与 taste-ledger 拖动锁二版教训）。 */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏） */}
+          <div className="pp-chrome" onPointerDown={onTopbarPointerDown} onDoubleClick={onTopbarDoubleClick}>
+            <span className="pp-title" title="按住拖动窗口（双击最大化）">
+              画布
+            </span>
+            {/* 缩放控件（2026-09-08 缩放舒适度拍板）：−/+ 阶梯步进（ZOOM_STEPS
+                常用档）、点读数回 100%——滚轮平滚模式下缩放的零修饰键落点。
+                读数 hover 提示保留画布统计；键盘 +/−/0 同语义。 */}
+            <div
+              className="pp-zoom-ctl"
+              title={`画布读数：${totalBlocks} 块 · 已钉 ${totalPinned} · 纸条 ${totalStrips} · 滚轮平滚 / Ctrl+滚轮缩放`}
+            >
+              <button
+                type="button"
+                className="pp-zoom-btn"
+                aria-label="缩小一档"
+                title="缩小一档（键盘 −）"
+                onClick={() => stepZoom(-1)}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="pp-zoom-val"
+                aria-label="缩放回到 100%"
+                title="回到 100%（键盘 0）"
+                onClick={resetZoom}
+              >
+                {zoomLabel}
+              </button>
+              <button
+                type="button"
+                className="pp-zoom-btn"
+                aria-label="放大一档"
+                title="放大一档（键盘 +）"
+                onClick={() => stepZoom(1)}
+              >
+                ＋
+              </button>
+            </div>
+            <StatusLine running={activeRunning} />
+            <button
+              type="button"
+              className={`pp-settings${updateAvailable ? ' has-update' : ''}`}
+              title={
+                updateAvailable && updateVersion ? `设置 (Ctrl+,) · 新版本 ${updateVersion} 可用` : '设置 (Ctrl+,)'
+              }
+              onClick={() => useDockStore.getState().togglePanel('settings')}
+            >
+              设置
+            </button>
+            <button type="button" className="pp-close" onClick={() => setLeaveConfirm(true)}>
+              回首页
+            </button>
+            <WinControls />
           </div>
 
           {/* 小地图已插件化（2026-09-05）：paper-minimap 插件经 overlays right-edge 槽贡献，

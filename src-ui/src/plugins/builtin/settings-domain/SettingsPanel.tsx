@@ -660,7 +660,7 @@ const SettingsPanelApp: React.FC<{
             <div className="sp-hint">缩放所有界面文字。更改后保存即生效（Terminal / 编辑器需重新打开文件）。</div>
             {/* 画布滚轮行为（2026-09-08 缩放舒适度拍板）：Miro 派（滚轮平滚视角）
                 vs Whimsical 派（滚轮缩放画布）二选一——另一操作恒有
-                Ctrl+滚轮 / 书眉缩放控件 / 键盘 +−0 兜底。保存后即时生效
+                Ctrl+滚轮 / 右上浮件缩放控件 / 键盘 +−0 兜底。保存后即时生效
                （视口域订阅保存广播）。 */}
             <div className="sp-section" style={{ marginTop: 18 }}>
               <div className="sp-section-title">画布 / Canvas</div>
@@ -685,7 +685,7 @@ const SettingsPanelApp: React.FC<{
                   <option value="zoom">缩放画布（Ctrl+滚轮同样缩放）</option>
                 </select>
                 <div className="sp-hint-sub">
-                  平滚视角：滚轮滚动浏览会话流，缩放走 Ctrl+滚轮 / 书眉 −+ 控件 / 键盘 + − 0。
+                  平滚视角：滚轮滚动浏览会话流，缩放走 Ctrl+滚轮 / 右上浮件 −+ 控件 / 键盘 + − 0。
                   缩放画布：滚轮直接缩放，平移靠拖拽空白或流区纸面。保存后即时生效。
                 </div>
               </div>

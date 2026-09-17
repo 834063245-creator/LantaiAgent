@@ -436,7 +436,7 @@ const faceDeps = {
   createWaitTool,
   createCordisTools,
   CORDIS_TOOL_NAMES,
-  // 标题栏交互（2026-09-14 app-region 退役）：书眉拖拽/双击最大化的原生实现
+  // 标题栏交互（2026-09-14 app-region 退役）：顶部浮件拖拽/双击最大化的原生实现
   onTopbarPointerDown,
   onTopbarDoubleClick,
   createAssetTools,

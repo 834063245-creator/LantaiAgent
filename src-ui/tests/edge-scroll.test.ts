@@ -78,13 +78,18 @@ describe('边缘滚动·策略读面', () => {
    * 压住 ⇒ 右缘本无可用带；② 目次带是 `.pp-canvas` 的**兄弟**（覆盖件，不属画布 DOM），
    * 故「指针须落在画布内」这条硬判据才是真病灶（贴屏最右命中的是 nav.pp-toc 本身）。 */
   describe('hoverEdgeEligible 判据', () => {
-    const RECT = { left: 0, top: 56, width: 2560, height: 1344 };
+    /* 画布 rect：**top 0**——2026-09-17 标题栏拆除批后画布铺满整窗（顶缘 = 屏缘）。
+     * 正是这一条让「指针甩到屏顶」落进上缘感应带（旧书眉 56px 布局行时，屏顶
+     * 那 56px 是书眉 DOM，判据一律否掉 ⇒ 上缘在用户视角里等于没有边缘滚动）。 */
+    const RECT = { left: 0, top: 0, width: 2560, height: 1400 };
     const tuningOn = { enabled: true, hover: true, band: 36, maxSpeed: 26 };
     const build = (): {
       canvas: HTMLElement;
       block: HTMLElement;
       toc: HTMLElement;
       tocCard: HTMLElement;
+      chrome: HTMLElement;
+      chromeBtn: HTMLElement;
       veil: HTMLElement;
     } => {
       document.body.innerHTML = '';
@@ -101,19 +106,24 @@ describe('边缘滚动·策略读面', () => {
       const tocCard = document.createElement('button'); // 卡片：按钮 → 豁免
       const strip = document.createElement('div'); // 纸条：物理件 → 豁免
       strip.className = 'pp-strip';
+      const chrome = document.createElement('div'); // 顶部浮件（原书眉）：覆盖件 + 窗口拖动热区
+      chrome.className = 'pp-chrome';
+      const chromeBtn = document.createElement('button'); // 浮件里的设置/窗口钮 → 豁免
       const veil = document.createElement('div'); // 弹层宿主（设置面板类）：非贴边浮件
       veil.id = 'settings-panel-overlay';
       toc.appendChild(tocCard);
+      chrome.appendChild(chromeBtn);
       region.appendChild(block);
       region.appendChild(strip);
       canvas.appendChild(region);
-      // ⚠ 目次带与弹层是 `.pp-canvas` 的**兄弟**（真机即此结构）——旧测试把它们塞进画布里，
-      //   于是漏掉「画布外覆盖件」这条真病灶（右缘贴屏不滚）。
+      // ⚠ 目次带/浮件/弹层都是 `.pp-canvas` 的**兄弟**（真机即此结构）——旧测试把
+      //   它们塞进画布里，于是漏掉「画布外覆盖件」这条真病灶（右缘贴屏不滚）。
       root.appendChild(canvas);
       root.appendChild(toc);
+      root.appendChild(chrome);
       root.appendChild(veil);
       document.body.appendChild(root);
-      return { canvas, block, toc, tocCard, veil };
+      return { canvas, block, toc, tocCard, chrome, chromeBtn, veil };
     };
     const at = (target: Element | null, x: number, y: number, tuning = tuningOn, buttons = 0): boolean =>
       hoverEdgeEligible({
@@ -135,6 +145,18 @@ describe('边缘滚动·策略读面', () => {
       expect(at(s.tocCard, 2520, 700)).toBe(false); // 卡片按钮豁免（瞄准卡片时不滚）
       expect(at(s.veil, 1266, 700)).toBe(false); // 弹层宿主（画布外、非贴边浮件）不滚
       expect(at(document.querySelector('.pp-strip'), 600, 700)).toBe(false); // 纸条豁免
+    });
+
+    /* 顶部浮件（2026-09-17 标题栏拆除批）：画布顶缘 = 屏缘 ⇒ **上缘感应带在
+     * 屏顶那 36px 里**，指针甩到屏顶即滚——这是本批要买的行为。浮件本体是
+     * 覆盖件（右上角一枚），其上的悬停不滚（同弹层口径：浮件是「别的面」，
+     * 不是画布本体；同族的目次带另有 HOVER_ALLOW_DOCKS 兜着）。 */
+    it('上缘感应带：屏顶那 36px 落在画布上可滚；浮件本体不滚（其为覆盖件）', () => {
+      const s = build();
+      expect(at(s.block, 1266, 30)).toBe(true); // 屏顶 30px：画布上缘带内（旧书眉时此点必 false）
+      expect(at(s.canvas, 1266, 2)).toBe(true); // 贴死屏顶
+      expect(at(s.chrome, 2300, 30)).toBe(false); // 浮件本体（覆盖件）不滚
+      expect(at(s.chromeBtn, 2300, 30)).toBe(false); // 浮件里的窗口钮/设置钮（按钮）不滚
     });
 
     it('开关 / 悬停档 / 按键三处约束：任一不满足即不可滚', () => {

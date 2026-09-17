@@ -343,7 +343,8 @@ describe('创作坞浮动化（槽主人链路：坞位 + 让位带 + 手势）'
     expect(slot.style.left).toBe('8px');
     drag(head, { x: 8, y: 660 }, { x: 4000, y: 660 });
     expect(slot.style.left).toBe('136px');
-    // 上夹紧：书眉 56 + 屏缘 8 —— 坞顶不得挤进书眉带（那一段是窗口拖动热区）
+    // 上夹紧：顶部浮件带 56 + 屏缘 8 —— 坞顶不得挤进浮件带（浮件在右上，
+    // 压上去会把设置/回首页/窗口钮盖死——窗口钮是唯一的关闭入口）
     drag(head, { x: 300, y: 400 }, { x: 300, y: -5000 });
     const topPx = VH - Number.parseFloat(slot.style.bottom) - DOCK_H;
     expect(topPx).toBe(56 + 8);

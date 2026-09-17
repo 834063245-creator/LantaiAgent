@@ -25,19 +25,20 @@ import {
 } from './host';
 import './minimap.css';
 
-/** 书眉高（tokens.css --bar-h 的 TS 侧镜像）——小地图默认位不得爬进书眉带
- *  （那一段是窗口拖动热区，压上去会把设置/窗口钮挡掉）。 */
-const TITLE_BAR_H = 56;
+/** 顶部浮件带高（= 屏缘 8 + 浮件 40 + 呼吸 8；几何真源 = paper-shell 的
+ *  `.pp-chrome`，本常量是它的 TS 镜像——同步由 tests/stage4-toc-top-band 钉住）
+ *  ——小地图默认位不得爬进浮件带（浮件在右上，压上去会把设置/窗口钮挡掉）。 */
+const TOP_CHROME_H = 56;
 /** 拖动阈值（px）：超过即视为拖块（区分点击） */
 const DRAG_THRESHOLD = 6;
 
 /** 小地图默认位（右下角）：bottom = 创作坞让位带 + 18 呼吸（2026-09-17 浮动化：
- *  带 = 视口底 → 坞顶线，坞拖到哪跟到哪）。坞在上半屏时带会很大——夹在「书眉
- *  之下」：默认位可以跟随，但不能被送出屏外。纯函数（模块级：不进 effect 依赖）。 */
+ *  带 = 视口底 → 坞顶线，坞拖到哪跟到哪）。坞在上半屏时带会很大——夹在「浮件
+ *  带之下」：默认位可以跟随，但不能被送出屏外。纯函数（模块级：不进 effect 依赖）。 */
 function defaultMinimapPref(band: number, mmH: number): { right: number; bottom: number; w: number; h: number } {
   return {
     right: 18,
-    bottom: Math.max(18, Math.min(band + 18, window.innerHeight - TITLE_BAR_H - mmH - 18)),
+    bottom: Math.max(18, Math.min(band + 18, window.innerHeight - TOP_CHROME_H - mmH - 18)),
     w: 156,
     h: 116,
   };

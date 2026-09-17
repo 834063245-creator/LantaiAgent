@@ -34,8 +34,11 @@ export const COMPOSER_UNLOCK_KEY = 'lantai.composer.unlocked';
 
 /** 坞坐底抬高（tokens.css --composer-rise 的 TS 镜像——吸附目标之一：经典底带）。 */
 export const COMPOSER_RISE = 96;
-/** 书眉高（tokens.css --bar-h 的 TS 镜像——坞顶不得进书眉：那一段是窗口拖动热区）。 */
-export const COMPOSER_BAR_H = 56;
+/** 顶部浮件带高（= 屏缘 8 + 浮件 40 + 呼吸 8；几何真源 = PaperPanel.css 的
+ *  `.pp-chrome`，本常量是它的 TS 镜像——同步由 tests/stage4-toc-top-band 钉住）
+ *  ——坞顶不得进浮件带：浮件在右上，坞（最宽 880、可拖到右缘）压上去会把
+ *  设置/回首页/窗口钮盖死，而窗口钮是 decorations:false 下**唯一**的关闭入口。 */
+export const COMPOSER_CHROME_H = 56;
 /** 屏缘留白（坞不得贴死窗口边）。 */
 export const COMPOSER_EDGE = 8;
 /** 吸附阈（px）——拖到目标位 24px 内即吸附（左右缘/版心中轴/底带/最底缘）。 */
@@ -66,13 +69,13 @@ export interface ComposerDockGeom {
 }
 
 /**
- * 夹紧：坞整体留在视口内（左/右/下留 COMPOSER_EDGE，上不越书眉）。
+ * 夹紧：坞整体留在视口内（左/右/下留 COMPOSER_EDGE，上不越顶部浮件带）。
  * 窗口缩小后对已存坞位也生效（读侧夹紧——存量值不因窗口变化被改写，
  * 窗口涨回去坞回到用户摆的那一处）。
  */
 export function clampComposerPos(pos: ComposerPos, vp: ComposerViewport, box: ComposerBox): ComposerPos {
   const maxLeft = Math.max(COMPOSER_EDGE, vp.w - box.w - COMPOSER_EDGE);
-  const maxBottom = Math.max(COMPOSER_EDGE, vp.h - COMPOSER_BAR_H - box.h - COMPOSER_EDGE);
+  const maxBottom = Math.max(COMPOSER_EDGE, vp.h - COMPOSER_CHROME_H - box.h - COMPOSER_EDGE);
   return {
     left: Math.min(Math.max(pos.left, COMPOSER_EDGE), maxLeft),
     bottom: Math.min(Math.max(pos.bottom, COMPOSER_EDGE), maxBottom),

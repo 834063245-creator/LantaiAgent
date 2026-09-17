@@ -73,10 +73,25 @@ settings-domain / compose-dock 等、工具域、prompt/capability 段贡献、�
 **内置插件产物**：
 
 ```
-1. 改插件源码（src-ui/src/plugins/builtin/<dir>/…，面组件 + CSS 在此）
+1. 改插件源码（src-ui/src/plugins/builtin/<dir>/…）
 2. cd src-ui && npm run build:builtin-plugins   ← esbuild 秒级出产物到 dist-plugins/builtin/hologram/<dir>/
-3. 应用内：设置 → 插件 → 对应插件「重新加载」    ← 产物通道重激活，不重启
+3. **拷入 exe 侧资源根**（运行中的 exe 只认这一份，见 landmine H1）：
+   把改动的文件从 src-ui/dist-plugins/builtin/hologram/<dir>/ 拷到
+   target/<profile>/_up_/src-ui/dist-plugins/builtin/hologram/<dir>/（release 态 profile=release）
+   对拍口径：逐个文件比 SHA256，**不许靠时间戳判断**
+4. 应用内：设置 → 插件 → 对应插件「重新加载」    ← 产物通道重激活，不重启
 ```
+
+⚠ **两条硬边界（2026-09-17 实机撞上并记档 landmine H2/H3）**：
+
+- **产物里的 CSS 从不生效**：`face-css.ts` 的产物域判定（`__LANTAI_FACE_ARTIFACT__`）因 esbuild define
+  未命中而恒早退 ⇒ 插件 CSS 实际只经 vite 打进**壳 bundle（嵌在 exe 里）**。
+  *2026-09-17 实机取证*：页面 `document.styleSheets` 只有壳那两张、`link[id^="lantai-plugin-css"]` 计数 0。
+  ⇒ **改了任何 CSS（`tokens.css` / 壳 CSS / 插件 `.css`）都必须重建 exe**：
+  `cd src-tauri && cargo tauri build --no-bundle`（先关掉正在跑的兰台——exe 被占用会 os error 32）。
+- **壳域文件**（`src-ui/src/app/**`、`src/plugins/loader.ts` 等打进 bundle 的东西）同理，只能重建 exe。
+
+> 一句话记忆：**只改插件 JS = 三步热更；碰了 CSS 或壳域文件 = `cargo tauri build --no-bundle`。**
 
 - 生效语义：面板/命令即时生效；工具/prompt/capability 贡献在**下次 Agent
   装配**生效（已开会话的注册表是装配期快照，不被中断——特性非缺陷）。

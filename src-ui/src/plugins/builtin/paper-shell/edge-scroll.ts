@@ -157,6 +157,28 @@ export function useEdgeAutoScroll(canvasRef: MutableRefObject<HTMLElement | null
   /* 卸载即撤（挂载期手势跨卸载 = 循环永久跟着跑）。 */
   useEffect(() => stop, [stop]);
 
+  /* **失联即收**（2026-09-17 与「回锚空白」同批查出）：拖拽族的手势循环只认
+   * mouseup——窗口失焦、在窗外松手、切走应用都会让 mouseup 永远不来，循环便带着
+   * 最后一个指针位置**无限滚下去**（实测该速率线性无衰减，几十秒就能把视口送出全部
+   * 内容 = 屏幕上啥也没有）；而失焦之后用户根本不在看，这种「自己滚」纯属失控。
+   * 悬停档本来就有 blur/mouseleave 收手（见下）；此处把同一条纪律提到**四个手势族
+   * 共用的这一层**：窗口失焦 / 页面隐藏 / 指针离开文档 ⇒ 立刻停帧循环。
+   * （手势态本身不在此清理——拖块/拖纸条各自的 mouseup 仍会正常收尾；只是不再滚。） */
+  useEffect(() => {
+    const hold = (): void => stop();
+    const onVis = (): void => {
+      if (document.visibilityState === 'hidden') hold();
+    };
+    window.addEventListener('blur', hold);
+    document.addEventListener('visibilitychange', onVis);
+    document.addEventListener('mouseleave', hold);
+    return () => {
+      window.removeEventListener('blur', hold);
+      document.removeEventListener('visibilitychange', onVis);
+      document.removeEventListener('mouseleave', hold);
+    };
+  }, [stop]);
+
   return { start, stop };
 }
 
@@ -165,7 +187,7 @@ export function useEdgeAutoScroll(canvasRef: MutableRefObject<HTMLElement | null
  * 但有三处刻意不同（都不是疏漏，是两类场景的差别）：
  *
  * ① **只在指针画布内时滚**。拖拽族允许越出画布继续追（封顶 1.5×）——那是「把手里的
- *    东西带出可视区」；悬停族若照办，指针挪去侧栏/书眉就永远滚不停（跟随相机）。
+ *    东西带出可视区」；悬停族若照办，指针挪去侧栏/顶部浮件就永远滚不停（跟随相机）。
  * ② **任一鼠标键按下即让位**。拖拽手势自带循环，两套同时跑 = 双倍速；且按下键的那一
  *    刻就是「我在操作内容」而不是「我在挪镜头」。
  * ③ **指针悬在交互面上不滚**（按钮/输入件/创作坞/小地图/纸条/文类签/宽度柄/角柄）——

@@ -7,7 +7,7 @@
    z-index 约定：浮层 300（命令面板/提示卡）。
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── 窗口控制（SessionsHome 顶栏 / PaperPanel 书眉共用） ────── */
+/* ── 窗口控制（SessionsHome 顶栏 / PaperPanel 顶部浮件共用） ────── */
 .wc-btns {
   display: inline-flex;
   align-items: center;

@@ -18,10 +18,15 @@
 //
 // 修法（本文件钉住的契约）：
 //   - **页面不再声明任何 app-region**（首页 + 画布都不声明 → 根本不产生行窗）；
-//   - 标题栏交互由元素自己判定：`src/app/window-drag.ts`（单一真源，书眉与首页共用）
-//     接 pointerdown → Tauri 原生 `start_dragging` / 双击 → `toggle_maximize`；
+//   - 标题栏交互由元素自己判定：`src/app/window-drag.ts`（单一真源，画布顶部浮件
+//     与首页顶栏共用）接 pointerdown → Tauri 原生 `start_dragging` / 双击 →
+//     `toggle_maximize`；
 //   - 壳层兜底：`src-tauri/src/window_drag_band.rs` 把万一出现的 `HTCAPTION` 一律
 //     降为 `HTCLIENT`（其纯函数 `clamp_caption_hit` 带 Rust 用例）。
+//
+// 2026-09-17 标题栏拆除批：画布视图的书眉布局行退役（画布铺满整窗，顶缘 = 屏缘），
+// 窗口拖动热区从「整条 56px 书眉」收成**顶部浮件本身**（.pp-chrome，非交互件 =
+// `画布` 二字与件间空白）；首页顶栏（.sh-head）保留。
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -54,7 +59,7 @@ describe('标题栏触发范围：页面不声明 app-region，命中范围由�
     }
   });
 
-  it('两个标题栏（画布书眉 + 首页顶栏）都接共享实现', () => {
+  it('两个标题栏（画布顶部浮件 + 首页顶栏）都接共享实现', () => {
     const panel = read(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx');
     const home = read(SRC, 'app', 'SessionsHome.tsx');
     expect(panel).toContain('onPointerDown={onTopbarPointerDown}');
@@ -63,6 +68,22 @@ describe('标题栏触发范围：页面不声明 app-region，命中范围由�
     expect(home).toContain('onDoubleClick={onTopbarDoubleClick}');
     // 旧实现（Linux-only 兜底 + 手写 IPC）已收编，不得两处各写一份
     expect(home).not.toContain('plugin:window|start_dragging');
+  });
+
+  it('画布视图的书眉布局行已退役：画布铺满整窗（顶缘 = 屏缘），热区收进顶部浮件', () => {
+    const panel = read(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx');
+    const css = read(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css');
+    // 书眉 = 56px 布局行 ⇒ 画布顶缘被推离窗口顶，边缘滚动的「指针甩到屏顶」落空
+    expect(panel).not.toContain('"pp-topbar"'); // 注释里的历史沿革不算声明
+    expect(declarations(css)).not.toContain('pp-topbar');
+    // 浮件是覆盖件（.pp-canvas 的兄弟）——悬停判据据「画布本体」量，故不滚：
+    // 结构上必须仍是 .pp-root 的直接子元素，而不是塞进 .pp-canvas 里
+    const chromeAt = panel.indexOf('className="pp-chrome"');
+    expect(chromeAt).toBeGreaterThan(-1);
+    const canvasAt = panel.indexOf('className={`pp-canvas');
+    expect(canvasAt).toBeGreaterThan(-1);
+    expect(canvasAt).toBeLessThan(chromeAt); // 浮件渲染在画布之后（同级、覆盖其上）
+    expect(panel.slice(canvasAt, chromeAt)).not.toContain('pp-chrome');
   });
 
   it('共享实现走 Tauri 原生通道，且交互件豁免', () => {
