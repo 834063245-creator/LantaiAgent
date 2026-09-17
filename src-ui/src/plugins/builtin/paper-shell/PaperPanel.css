@@ -526,7 +526,7 @@
   letter-spacing: 0.14em;
   color: var(--ink-3);
   background: transparent;
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   border-radius: 0;
   cursor: pointer;
   white-space: nowrap;
@@ -559,7 +559,7 @@
   max-height: 280px;
   overflow-y: auto;
   background: var(--paper);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--rule-strong-ink);
   box-shadow: var(--elev-menu);
   animation: pop-down 0.14s cubic-bezier(0.23, 1, 0.32, 1);
   transform-origin: top right;
@@ -572,7 +572,7 @@
   width: 100%;
   padding: 6px 10px;
   border: none;
-  border-bottom: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft-ink);
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
@@ -603,7 +603,7 @@
 /* 说明行（来源/锁定原因/装载失败）——不可点，不参与选中语义 */
 .pp-folio-comp-note {
   padding: 6px 10px;
-  border-top: 1px solid var(--rule-soft);
+  border-top: 1px solid var(--rule-soft-ink);
   color: var(--ink-3);
   font-family: var(--f-mono);
   font-size: 10px;
@@ -617,7 +617,7 @@
   max-width: 260px;
   padding: 6px 10px;
   background: var(--paper);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--rule-strong-ink);
   box-shadow: var(--elev-menu);
   color: var(--ink-2);
   font-family: var(--f-mono);
@@ -1196,7 +1196,7 @@
 /* 分隔线 */
 .pp-md-hr {
   border: none;
-  border-top: var(--pp-md-hrBorder) solid var(--rule-soft);
+  border-top: var(--pp-md-hrBorder) solid var(--rule-soft-ink);
   margin: var(--pp-md-hrMargin) 0;
 }
 
@@ -1215,7 +1215,7 @@
   font-weight: 600;
   color: var(--ink-2);
   padding: var(--pp-md-tableCellPadV) var(--pp-md-tableCellPadH);
-  border-bottom: var(--pp-md-tableRowBorder) solid var(--rule-soft);
+  border-bottom: var(--pp-md-tableRowBorder) solid var(--rule-soft-ink);
 }
 .pp-md-table td {
   padding: var(--pp-md-tableCellPadV) var(--pp-md-tableCellPadH);
@@ -1237,7 +1237,7 @@
   font-family: var(--f-mono);
   font-size: 0.82em;
   padding: 1px var(--pp-md-ciPadH);
-  border: var(--pp-md-ciBorder) solid var(--rule-soft);
+  border: var(--pp-md-ciBorder) solid var(--rule-soft-ink);
   background: color-mix(in oklch, var(--paper-deep) 65%, transparent);
 }
 .pp-md-a,
@@ -1308,7 +1308,7 @@
   justify-content: center;
   height: var(--pp-md-imgBoxH);
   margin: 0 0 var(--pp-md-imgGap);
-  border: var(--pp-md-imgBorder) solid var(--rule-soft);
+  border: var(--pp-md-imgBorder) solid var(--rule-soft-ink);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
   overflow: hidden;
 }
@@ -1419,7 +1419,7 @@
 .pp-sec-head::after {
   content: "";
   flex: 1;
-  border-top: 1px solid var(--rule-soft);
+  border-top: 1px solid var(--rule-soft-ink);
 }
 .pp-sec--gap {
   margin-top: var(--pp-ch-secHead-marginTop);
@@ -1573,8 +1573,8 @@
 .pp-block.pp-diff pre {
   margin: 0;
   border-left: var(--pp-ch-diff-preBorderL) solid var(--ink-1);
-  border-top: var(--pp-ch-diff-preBorderTb) solid var(--rule-soft);
-  border-bottom: var(--pp-ch-diff-preBorderTb) solid var(--rule-soft);
+  border-top: var(--pp-ch-diff-preBorderTb) solid var(--rule-soft-ink);
+  border-bottom: var(--pp-ch-diff-preBorderTb) solid var(--rule-soft-ink);
   padding: var(--pp-ch-diff-prePadV) 0 var(--pp-ch-diff-prePadV) var(--pp-ch-diff-prePadL);
   background: color-mix(in oklch, var(--paper-deep) 55%, transparent);
   font-family: var(--f-mono);
@@ -1792,7 +1792,7 @@
   line-height: 1.8;
   color: var(--ink-1);
   background: transparent;
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   border-radius: 0;
   resize: vertical;
 }
@@ -1812,7 +1812,7 @@
 /* ── 贴黄（notice）：系统通知作土黄纸条 ── */
 .pp-block.pp-notice {
   background: color-mix(in oklch, var(--warn) 10%, var(--paper));
-  border-bottom: var(--pp-ch-notice-borderBottom) solid var(--rule-soft);
+  border-bottom: var(--pp-ch-notice-borderBottom) solid var(--rule-soft-ink);
   padding: var(--pp-ch-notice-padV) var(--pp-ch-notice-padH);
 }
 .pp-block.pp-notice .pp-body {
@@ -1825,7 +1825,7 @@
  * 朱砂淡底 + 弱规线——与贴黄（赭黄纸条）区分：这是回合的死亡原因。 */
 .pp-block.pp-turn-error {
   background: color-mix(in oklch, var(--seal) 7%, var(--paper));
-  border-bottom: var(--pp-ch-notice-borderBottom) solid var(--rule-soft);
+  border-bottom: var(--pp-ch-notice-borderBottom) solid var(--rule-soft-ink);
   padding: var(--pp-ch-notice-padV) var(--pp-ch-notice-padH);
 }
 .pp-block.pp-turn-error .pp-body {
@@ -2062,7 +2062,7 @@
 .pp-user-files {
   margin-top: 8px;
   padding-top: 0;
-  border-top: 1px solid var(--rule-soft);
+  border-top: 1px solid var(--rule-soft-ink);
 }
 .pp-user-file {
   font-family: var(--f-mono);
@@ -2418,7 +2418,7 @@ html.pp-composer-dragging {
   letter-spacing: 0.04em;
   color: var(--ink-2);
   background: var(--paper);
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   border-radius: 0;
   padding: 6px 16px;
   cursor: pointer;
@@ -2553,7 +2553,7 @@ html.pp-composer-dragging {
   max-height: min(70vh, 520px);
   overflow-y: auto;
   background: var(--paper);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--rule-strong-ink);
   box-shadow: var(--elev-menu);
   padding: 10px 12px;
   display: flex;
@@ -2596,7 +2596,7 @@ html.pp-composer-dragging {
   display: flex;
   height: 6px;
   background: var(--paper-deep);
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   overflow: hidden;
 }
 .pp-ink-seg {
@@ -2693,7 +2693,7 @@ html.pp-composer-dragging {
   gap: 7px;
   margin-top: 4px;
   padding-top: 8px;
-  border-top: 1px solid var(--rule-soft);
+  border-top: 1px solid var(--rule-soft-ink);
 }
 .pp-ink-section-mark {
   width: 8px;
@@ -2741,7 +2741,7 @@ html.pp-composer-dragging {
 .pp-ink-line.strong {
   margin-top: 2px;
   padding-top: 5px;
-  border-top: 1px solid var(--rule-soft);
+  border-top: 1px solid var(--rule-soft-ink);
 }
 .pp-ink-line.strong > dt {
   color: var(--ink-1);
@@ -2844,7 +2844,7 @@ html.pp-composer-dragging {
   min-width: 320px;
   max-width: 420px;
   background: var(--paper);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--rule-strong-ink);
   box-shadow: var(--elev-raise);
   padding: 18px 20px;
   color: var(--ink-1);
@@ -2872,7 +2872,7 @@ html.pp-composer-dragging {
   font-size: 13px;
   letter-spacing: 0.08em;
   padding: 5px 16px;
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--rule-strong-ink);
   background: transparent;
   color: var(--ink-1);
   cursor: pointer;
@@ -2953,7 +2953,7 @@ html.pp-composer-dragging {
   max-height: 280px;
   overflow-y: auto;
   background: var(--paper);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--rule-strong-ink);
   box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
   animation: pop-up 0.14s cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -2965,7 +2965,7 @@ html.pp-composer-dragging {
   width: 100%;
   padding: 6px 10px;
   border: none;
-  border-bottom: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft-ink);
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
@@ -3099,7 +3099,7 @@ html.pp-composer-dragging {
   z-index: 90;
   min-width: 250px;
   background: var(--paper);
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
   padding: 10px 14px;
   display: flex;
@@ -3113,7 +3113,7 @@ html.pp-composer-dragging {
   letter-spacing: 0.2em;
   color: var(--ink-3);
   padding-bottom: 6px;
-  border-bottom: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft-ink);
   margin-bottom: 2px;
 }
 .pp-help-row {
@@ -3143,7 +3143,7 @@ html.pp-composer-dragging {
   width: 440px;
   max-width: calc(100vw - 96px);
   background: var(--paper);
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档（raise 硬偏移太弱，浮层弹不起来） */
   z-index: 45;
   display: flex;
@@ -3152,7 +3152,7 @@ html.pp-composer-dragging {
 }
 .pp-yin-panel > input {
   border: none;
-  border-bottom: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft-ink);
   border-radius: 0;
   background: transparent;
   font-family: var(--f-song);
@@ -3362,7 +3362,7 @@ html.pp-composer-dragging {
   max-height: 240px;
   overflow-y: auto;
   background: var(--paper);
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
   z-index: 40;
   padding: 6px 0;
@@ -3413,7 +3413,7 @@ html.pp-composer-dragging {
   white-space: nowrap;
 }
 .pp-bg-stop {
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   background: none;
   font-family: var(--f-song);
   font-size: 11px;
@@ -4260,7 +4260,7 @@ html.pp-composer-dragging {
   text-align: left;
   font-weight: 400;
   color: var(--ink-3);
-  border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft);
+  border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft-ink);
   padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
 }
 .pp-grid-table td {
@@ -4288,7 +4288,7 @@ html.pp-composer-dragging {
   text-align: left;
   font-weight: 400;
   color: var(--ink-3);
-  border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft);
+  border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft-ink);
   padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
   white-space: nowrap;
   overflow: hidden;
@@ -4465,7 +4465,7 @@ html.pp-composer-dragging {
   gap: var(--pp-asset-metric-gap);
 }
 .pp-metric-card {
-  border: var(--pp-asset-metric-cardBorder) solid var(--rule-soft);
+  border: var(--pp-asset-metric-cardBorder) solid var(--rule-soft-ink);
   background: color-mix(in oklch, var(--paper-deep) 40%, transparent);
   padding: 8px 10px;
 }
@@ -4628,7 +4628,7 @@ html.pp-composer-dragging {
   margin-bottom: var(--pp-asset-form-sectionGap);
 }
 .pp-form-option {
-  border: var(--pp-asset-form-optBorder) solid var(--rule-soft);
+  border: var(--pp-asset-form-optBorder) solid var(--rule-soft-ink);
   padding: var(--pp-asset-form-optPadV) 10px;
   display: flex;
   flex-direction: column;
@@ -4692,7 +4692,7 @@ button.pp-form-option:disabled {
 .pp-board-col {
   flex: 1 1 0;
   min-width: var(--pp-asset-board-colMinW);
-  border-top: var(--pp-asset-board-colRule) solid var(--rule-soft);
+  border-top: var(--pp-asset-board-colRule) solid var(--rule-soft-ink);
   padding-top: 6px;
 }
 .pp-board-col-title {
@@ -4702,7 +4702,7 @@ button.pp-form-option:disabled {
   margin-bottom: var(--pp-asset-board-colTitleMarginB);
 }
 .pp-board-card {
-  border: var(--pp-asset-board-cardBorder) solid var(--rule-soft);
+  border: var(--pp-asset-board-cardBorder) solid var(--rule-soft-ink);
   background: color-mix(in oklch, var(--paper-deep) 40%, transparent);
   padding: var(--pp-asset-board-cardPadV) 10px;
   margin-bottom: var(--pp-asset-board-cardGap);
@@ -4757,7 +4757,7 @@ button.pp-form-option:disabled {
   left: var(--pp-asset-timeline-railMid);
   top: 8px;
   bottom: calc(-1 * var(--pp-asset-timeline-itemGap));
-  border-left: var(--pp-asset-timeline-ruleW) solid var(--rule-soft);
+  border-left: var(--pp-asset-timeline-ruleW) solid var(--rule-soft-ink);
 }
 .pp-timeline-item:last-child::before {
   display: none;
@@ -4852,7 +4852,7 @@ button.pp-form-option:disabled {
 }
 .pp-citation-bib {
   margin-top: var(--pp-asset-citation-bibMarginTop);
-  border-top: var(--pp-asset-citation-bibBorderTop) solid var(--rule-soft);
+  border-top: var(--pp-asset-citation-bibBorderTop) solid var(--rule-soft-ink);
   padding-top: var(--pp-asset-citation-bibPadTop);
 }
 .pp-citation-bib summary {
@@ -4910,7 +4910,7 @@ button.pp-form-option:disabled {
   /* box-sizing: border-box → 盒高恒 boxH（含 border），与 measure 预算一致 */
   box-sizing: border-box;
   height: var(--pp-asset-chem-boxH);
-  border: var(--pp-asset-chem-boxBorder) solid var(--rule-soft);
+  border: var(--pp-asset-chem-boxBorder) solid var(--rule-soft-ink);
   background: color-mix(in oklch, var(--paper-deep) 30%, transparent);
   margin-bottom: var(--pp-asset-chem-boxMarginB);
   /* 内边距避免分子贴框（smiles-drawer 自带 padding 8，此处置零防双 padding） */

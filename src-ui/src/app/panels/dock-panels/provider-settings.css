@@ -484,7 +484,7 @@
   padding: 2px 6px 2px 8px;
   font-size: calc(10px * var(--font-scale));
   color: var(--ink-2);
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   background: var(--paper);
 }
 .pp-model-chip-name {
@@ -545,7 +545,7 @@
   line-height: 1.45;
   margin: 4px 0 2px;
   padding: 4px 8px;
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   background: var(--paper-deep);
   overflow-wrap: anywhere;
 }
@@ -570,7 +570,7 @@
 /* per-model 参数展开（上下文窗口 / 最大输出，P14 覆盖） */
 .pp-model-chip-param {
   flex: 0 0 auto;
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   background: transparent;
   color: var(--ink-3);
   font-size: calc(9px * var(--font-scale));
@@ -591,7 +591,7 @@
   flex-wrap: wrap;
   gap: 10px;
   padding: 6px 8px;
-  border: 1px dashed var(--rule-soft);
+  border: 1px dashed var(--rule-soft-ink);
   background: var(--paper-deep);
 }
 .pp-model-param {
@@ -1004,7 +1004,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  border: 1px solid var(--rule-soft);
+  border: 1px solid var(--rule-soft-ink);
   border-radius: 0;
   background: var(--paper);
   color: var(--ink-2);

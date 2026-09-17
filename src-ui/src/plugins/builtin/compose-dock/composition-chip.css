@@ -67,7 +67,7 @@
   max-height: 280px;
   overflow-y: auto;
   background: var(--paper);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--rule-strong-ink);
   box-shadow: var(--elev-menu);
   animation: pop-up 0.14s cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -80,7 +80,7 @@
   width: 100%;
   padding: 6px 10px;
   border: none;
-  border-bottom: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft-ink);
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
@@ -112,7 +112,7 @@
 /* 说明行（来源/锁定原因/装载失败）——不可点，不参与选中语义 */
 .pp-composer-settings .pp-comp-note {
   padding: 6px 10px;
-  border-top: 1px solid var(--rule-soft);
+  border-top: 1px solid var(--rule-soft-ink);
   color: var(--ink-3);
   font-size: 11px;
   letter-spacing: 0.02em;

@@ -18,7 +18,7 @@
 
 .pp-toast {
   background: var(--paper);
-  border: 0.5px solid var(--rule-soft);
+  border: 0.5px solid var(--rule-soft-ink);
   border-bottom: 1.5px solid var(--ink-3);
   padding: 8px 14px;
   font-family: var(--f-song);

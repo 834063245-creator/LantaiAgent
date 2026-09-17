@@ -671,7 +671,10 @@ describe('工具卡载荷可读性定稿（2026-09-14——「展开乱得像乱
     const head = ruleBody(PANEL_CSS, '.pp-sec-head {');
     expect(head).toContain('font-size: var(--pp-ch-secHead-size)');
     expect(head).toContain('line-height: var(--pp-ch-secHead-lh)');
-    expect(ruleBody(PANEL_CSS, '.pp-sec-head::after')).toContain('border-top: 1px solid var(--rule-soft)');
+    // 规格变更（2026-09-17 规线简写修复）：此处原钉 `1px solid var(--rule-soft)` ——
+    // 那是**非法声明**（--rule-soft 是整条简写，拼起来展开成 `1px solid 1px solid …`
+    // 被 CSS 丢弃 ⇒ 这条线从未画出来）。改为颜色位；依据 docs/plans/tool-image-context-plan.md §6。
+    expect(ruleBody(PANEL_CSS, '.pp-sec-head::after')).toContain('border-top: 1px solid var(--rule-soft-ink)');
     expect(ruleBody(PANEL_CSS, '.pp-sec--gap')).toContain('margin-top: var(--pp-ch-secHead-marginTop)');
     // 语义色：入=石青（机器的输入）/ 出=中性注记墨（缺省）/ 错误=--fail
     expect(ruleBody(PANEL_CSS, '.pp-sec--args .pp-sec-label')).toContain('var(--indigo)');
@@ -819,7 +822,7 @@ describe('B4 多模态附图渲染面（multimodal-image-plan D-9，2026-09）',
     const box = ruleBody(PANEL_CSS, '.pp-md-imgbox');
     expect(box).toContain('height: var(--pp-md-imgBoxH)');
     expect(box).toContain('margin: 0 0 var(--pp-md-imgGap)');
-    expect(box).toContain('border: var(--pp-md-imgBorder) solid var(--rule-soft)');
+    expect(box).toContain('border: var(--pp-md-imgBorder) solid var(--rule-soft-ink)');
     expect(box).toContain('overflow: hidden');
     expect(TYPE_TOKENS_TS).toContain('imgBoxH: 160'); // D-9 裁定钉值
     expect(TYPE_TOKENS_TS).toContain('imgGap: 12');

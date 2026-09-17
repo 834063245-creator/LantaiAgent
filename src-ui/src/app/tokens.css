@@ -50,12 +50,22 @@
   --f-kai: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif; /* 手迹位（原楷书，只给人的来文） */
   --f-mono: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif; /* 机读位（原等宽——非等宽对齐为拍板接受的代价） */
 
-  /* ── 规线三式（圆角恒 0，印刷品无圆角）── */
-  --rule-hard: 2px solid var(--ink-1); /* 硬线：卷首下划线 / 代码左线 / 计划顶线 */
-  --rule-strong: 1px solid var(--ink-2); /* 强线：界栏 / 分隔 */
+  /* ── 规线三式（圆角恒 0，印刷品无圆角）──
+   * 注意：三式是**整条 border 简写**（宽度+样式+颜色），只能**单独**赋给 border 系属性
+   * （如 border: var(--rule-soft)）。要配局部宽度时必须用 -ink 颜色位，写成
+   * 「宽度 token + solid + var(--rule-soft-ink)」——2026-09-17 实测：把整条简写再拼
+   * 一次会展开成「2px solid 1px solid …」= 非法声明被 CSS 丢弃（该属性回落初始值
+   * = 不画线），全仓曾有 49 处如此、规线一条都没画出来（像素对照：合法 484 边像素 /
+   * 病灶 0）。颜色位是真源，简写由它派生。 */
+  --rule-hard-ink: var(--ink-1);
+  --rule-strong-ink: var(--ink-2);
+  --rule-soft-ink: var(--ink-4);
+  --rule-dashed-ink: var(--ink-4);
+  --rule-hard: 2px solid var(--rule-hard-ink); /* 硬线：卷首下划线 / 代码左线 / 计划顶线 */
+  --rule-strong: 1px solid var(--rule-strong-ink); /* 强线：界栏 / 分隔 */
   --rule-head: 2px solid var(--ink-2); /* 头线：浮层菜单书眉顶缘（ms-dropdown / sl-log） */
-  --rule-soft: 1px solid var(--ink-4); /* 弱线：细分隔 */
-  --rule-dashed: 1px dashed var(--ink-4); /* 虚线：草稿勾边 / 占位 */
+  --rule-soft: 1px solid var(--rule-soft-ink); /* 弱线：细分隔 */
+  --rule-dashed: 1px dashed var(--rule-dashed-ink); /* 虚线：草稿勾边 / 占位 */
 
   /* ── 浸墨法则（2026-08-31 全局视觉立宪，细则见规格书 §10）──
    * 重墨锚点全产品只许三处，余处禁 2px 硬线：
