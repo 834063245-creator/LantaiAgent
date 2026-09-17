@@ -1375,6 +1375,7 @@ function FormBody({ block }: BlockRendererProps) {
 function BoardBody({ block }: BlockRendererProps) {
   const p = block.payload as {
     columns?: Array<{ title?: string; cards?: Array<{ label?: string; body?: string; tone?: string }> }>;
+    caption?: string;
   };
   const columns = Array.isArray(p.columns) ? p.columns : [];
   if (columns.length === 0) {
@@ -1382,6 +1383,7 @@ function BoardBody({ block }: BlockRendererProps) {
   }
   return (
     <div className="pp-board">
+      <PlateHead kind="board" title={p.caption} titleClass="pp-plate-title" />
       {columns.map((col, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: 看板列按数据序渲染，列序即身份
         <div key={i} className="pp-board-col">
@@ -1402,13 +1404,14 @@ function BoardBody({ block }: BlockRendererProps) {
 /* ── timeline（时间轴——事件流，§2.9 原语补齐）── */
 
 function TimelineBody({ block }: BlockRendererProps) {
-  const p = block.payload as { items?: Array<{ ts?: string; title?: string; body?: string }> };
+  const p = block.payload as { items?: Array<{ ts?: string; title?: string; body?: string }>; caption?: string };
   const items = Array.isArray(p.items) ? p.items : [];
   if (items.length === 0) {
     return <div className="pp-timeline pp-timeline-empty">数据不可用 · 期望 items: [{`{ts, title, body?}`}] 形状</div>;
   }
   return (
     <div className="pp-timeline">
+      <PlateHead kind="timeline" title={p.caption} titleClass="pp-plate-title" />
       {items.map((it, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: 时间轴按事件序渲染，序即身份
         <div key={i} className="pp-timeline-item">

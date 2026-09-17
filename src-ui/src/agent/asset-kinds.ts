@@ -362,6 +362,8 @@ export function registerBuiltinAssetKinds(): void {
           }),
           description: '看板列',
         },
+        // 题签行（B 图版签，2026-09-17）：看板也有题名，签为「板」（题签恒在，题名可空）
+        caption: { type: 'string', description: '看板题名（可空）' },
       },
       ['columns'],
     ),
@@ -384,6 +386,8 @@ export function registerBuiltinAssetKinds(): void {
           }),
           description: '事件序列（按时间序）',
         },
+        // 题签行同上：时间轴题名，签为「序」
+        caption: { type: 'string', description: '时间轴题名（可空）' },
       },
       ['items'],
     ),

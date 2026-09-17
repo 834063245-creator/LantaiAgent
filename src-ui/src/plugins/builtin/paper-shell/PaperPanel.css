@@ -4498,6 +4498,11 @@ html.pp-composer-dragging {
 }
 
 /* 题签行内的题名不再自带下距（下距归 .pp-plate 的规线，高度中性见 .pp-plate 注） */
+.pp-plate-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-grid-captionSize);
+  color: var(--ink-2);
+}
 .pp-plate .pp-grid-caption,
 .pp-plate .pp-metric-caption {
   margin-bottom: 0;

@@ -183,11 +183,12 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     });
     // 卡体文本 mock 36：带 body 卡 +38；列高 = 规线 2 + padding-top 6 + 列题 29.4 + 卡 42.4
     const colMax = 2 + 6 + (13 * 1.8 + 6) + (1 + 12 + 13 * 1.8 + 6) + 36 + 2;
-    expect(measureBlockHeight(b)).toBe(4 + colMax);
+    // 题签恒在（2026-09-17）：看板体高含题签行（签「板」）
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + colMax);
   });
 
-  it('board 空数据：占位单行', () => {
-    expect(measureBlockHeight(assetBlock('board', {}))).toBe(4 + 30);
+  it('board 空数据：占位单行（题签行仍在）', () => {
+    expect(measureBlockHeight(assetBlock('board', {}))).toBe(4 + ASSET_DERIVED.plateHeadH + 30);
   });
 
   it('timeline：逐项 max(标题/时标行) + 正文实测 + 行距', () => {
@@ -204,11 +205,12 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     const headMax = Math.max(Math.max(titleLineH, tsTwoLines), nodeH); // 46.8
     const item1 = headMax + 36 + 2; // 正文实测 36 + 2
     const item2 = headMax; // 无正文
-    expect(measureBlockHeight(b)).toBe(4 + item1 + 10 + item2);
+    // 题签恒在同上：时间轴体高含题签行（签「序」）
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + item1 + 10 + item2);
   });
 
-  it('timeline 空数据：占位单行', () => {
-    expect(measureBlockHeight(assetBlock('timeline', { items: [] }))).toBe(4 + 30);
+  it('timeline 空数据：占位单行（题签行仍在）', () => {
+    expect(measureBlockHeight(assetBlock('timeline', { items: [] }))).toBe(4 + ASSET_DERIVED.plateHeadH + 30);
   });
 
   it('html：内距 4 + iframe 初始 240（上报后由实测回写抬到实际上报值）', () => {

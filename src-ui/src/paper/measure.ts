@@ -745,7 +745,7 @@ function boardBodyH(p: { columns?: unknown }, w: number): number {
   const columns = Array.isArray(p.columns)
     ? p.columns.filter((c): c is Record<string, unknown> => c != null && typeof c === 'object')
     : [];
-  if (columns.length === 0) return BOARD_PAD_V + 30;
+  if (columns.length === 0) return BOARD_PAD_V + PLATE_HEAD_H + 30;
   const colGapTotal = (columns.length - 1) * ASSET_TOKENS.board.colGap;
   const cardW = Math.max(60, (w - colGapTotal) / columns.length - 20); // -20 = 卡内 padding 10×2
   let maxColH = 0;
@@ -763,7 +763,8 @@ function boardBodyH(p: { columns?: unknown }, w: number): number {
     }
     maxColH = Math.max(maxColH, h);
   }
-  return BOARD_PAD_V + maxColH;
+  // 题签恒在（2026-09-17）：看板体高含题签行（签「板」）
+  return BOARD_PAD_V + PLATE_HEAD_H + maxColH;
 }
 
 /** timeline 体高：逐项时标/标题/正文实测行数 + 行距（正文宽 = w - 轨/时标 inset）。 */
@@ -771,9 +772,10 @@ function timelineBodyH(p: { items?: unknown }, w: number): number {
   const items = Array.isArray(p.items)
     ? p.items.filter((c): c is Record<string, unknown> => c != null && typeof c === 'object')
     : [];
-  if (items.length === 0) return TIMELINE_PAD_V + 30;
+  if (items.length === 0) return TIMELINE_PAD_V + PLATE_HEAD_H + 30;
   const mainW = Math.max(80, w - TIMELINE_INSET);
-  let h = TIMELINE_PAD_V;
+  // 题签恒在（2026-09-17）：时间轴体高含题签行
+  let h = TIMELINE_PAD_V + PLATE_HEAD_H;
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     const ts = typeof it.ts === 'string' ? it.ts : '';

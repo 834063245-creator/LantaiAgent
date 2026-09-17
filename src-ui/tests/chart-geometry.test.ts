@@ -561,3 +561,37 @@ describe('grid 信息面 — 重点行', () => {
     expect(validatePayload(def, { columns: ['a'], rows: [[1]], emphasis: { rows: ['x'] } })).toContain('emphasis');
   });
 });
+
+describe('题签行铺到 board / timeline（2026-09-17）', () => {
+  it('看板：题签行在场，签为「板」，题名可空', async () => {
+    const withTitle = await renderAsset('board', 'board', {
+      caption: '发布流程',
+      columns: [{ title: '待办', cards: [{ label: 'a' }] }],
+    });
+    expect(withTitle).toContain('pp-plate');
+    expect(withTitle).toContain('>板<');
+    expect(withTitle).toContain('发布流程');
+    const noTitle = await renderAsset('board', 'board', { columns: [{ title: '待办', cards: [] }] });
+    expect(noTitle).toContain('>板<'); // 题签恒在
+  });
+
+  it('时间轴：题签行在场，签为「序」', async () => {
+    const html = await renderAsset('timeline', 'timeline', {
+      caption: '版本演进',
+      items: [{ ts: 'v1', title: 't' }],
+    });
+    expect(html).toContain('pp-plate');
+    expect(html).toContain('>序<');
+    expect(html).toContain('版本演进');
+  });
+
+  it('两 kind 的 caption 为可选（schema 接受缺省与字符串，拒非字符串）', () => {
+    const board = assetKinds.get('board')!;
+    expect(validatePayload(board, { columns: [{ title: 'a', cards: [] }] })).toBeNull();
+    expect(validatePayload(board, { columns: [], caption: 'x' })).toBeNull();
+    expect(validatePayload(board, { columns: [], caption: 5 })).toContain('caption');
+    const tl = assetKinds.get('timeline')!;
+    expect(validatePayload(tl, { items: [], caption: 'x' })).toBeNull();
+    expect(validatePayload(tl, { items: [], caption: [] })).toContain('caption');
+  });
+});
