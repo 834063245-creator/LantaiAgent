@@ -4252,8 +4252,12 @@ html.pp-composer-dragging {
   align-items: baseline;
   gap: var(--pp-asset-plate-gap);
   border-bottom: var(--pp-asset-plate-ruleW) solid var(--rule-soft-ink);
-  padding-bottom: calc(var(--pp-asset-grid-captionMarginB) - var(--pp-asset-plate-ruleW));
-  margin-bottom: var(--pp-asset-plate-ruleW);
+  padding-bottom: calc(
+    var(--pp-asset-grid-captionMarginB) -
+    var(--pp-asset-plate-ruleW) -
+    var(--pp-asset-plate-gapBelow)
+  );
+  margin-bottom: var(--pp-asset-plate-gapBelow);
 }
 .pp-plate-sign {
   font-family: var(--f-mono);

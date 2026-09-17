@@ -297,13 +297,12 @@ const CHART_TITLE_H = ASSET_DERIVED.chartTitleH;
 const CHART_AXIS_NAMES_H = ASSET_DERIVED.chartAxisNamesH;
 
 const METRIC_PAD_V = ASSET_DERIVED.metricPadV; // .pp-metric padding 2×2
-const METRIC_CAPTION_H = ASSET_DERIVED.metricCaptionH; // .pp-metric-caption + margin-bottom 6
 const METRIC_CARD_H = ASSET_DERIVED.metricCardH; // border + padding + label + value
 const METRIC_GAP = ASSET_DERIVED.metricGap; // .pp-metric-grid gap
 const METRIC_MIN_COL = ASSET_DERIVED.metricMinCol; // minmax(120px, 1fr)
 
 const GRID_PAD_V = ASSET_DERIVED.gridPadV; // .pp-grid padding 2×2
-const GRID_CAPTION_H = ASSET_DERIVED.gridCaptionH;
+const PLATE_HEAD_H = ASSET_DERIVED.plateHeadH; // 图版题签行总高（恒在）
 const GRID_CELL_PAD_V = ASSET_DERIVED.gridCellPadV; // th/td padding 4×2
 const GRID_ROW_LINE = ASSET_DERIVED.gridRowLine; // .pp-grid-table 11px（行距继承 1.8）
 const GRID_HEAD_BORDER = ASSET_DERIVED.gridHeadBorder; // th border-bottom
@@ -590,7 +589,8 @@ function metricBodyH(p: { items?: unknown; caption?: unknown }, w: number): numb
   const items = Array.isArray(p.items) ? p.items : [];
   const cols = Math.max(1, Math.floor((w + METRIC_GAP) / (METRIC_MIN_COL + METRIC_GAP)));
   const rows = Math.max(1, Math.ceil(items.length / cols));
-  return METRIC_PAD_V + (p.caption ? METRIC_CAPTION_H : 0) + rows * METRIC_CARD_H + (rows - 1) * METRIC_GAP;
+  // 题签恒在同上
+  return METRIC_PAD_V + PLATE_HEAD_H + rows * METRIC_CARD_H + (rows - 1) * METRIC_GAP;
 }
 
 /** grid 表格体高：caption + 逐行文字测量（前 50 行精测、其余单行估——表格列宽
@@ -606,7 +606,8 @@ function gridBodyH(p: { columns?: unknown; rows?: unknown; caption?: unknown }, 
   const rows = Array.isArray(p.rows) ? p.rows : [];
   const first = rows[0];
   const colCount = Array.isArray(p.columns) ? p.columns.length : Array.isArray(first) ? first.length : 0;
-  const head = GRID_PAD_V + (p.caption ? GRID_CAPTION_H : 0);
+  // 题签恒在（2026-09-17）：题签行总高恒计入（有题名/无题名同高）
+  const head = GRID_PAD_V + PLATE_HEAD_H;
   if (colCount === 0) return head;
   // 大表虚拟滚动（>1000 行）：表头行（th padding 上下合计 + 行高 1.8）+ 固定可视区
   if (rows.length > GRID_VIRTUAL_THRESHOLD_MEASURE) {

@@ -136,7 +136,8 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     const line = 11 * 1.8;
     const headRow = 2 * line + 8 + 1; // 表头两列各一行 + padding + border-bottom
     const bodyRow = 2 * line + 8 + 0.5; // 单元格 mock 36 → ceil(36/19.8)=2 行
-    expect(measureBlockHeight(b)).toBe(4 + headRow + 2 * bodyRow);
+    // 题签恒在（2026-09-17 第二批）：无题名的表也出题签行 ⇒ 其总高恒计入
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + headRow + 2 * bodyRow);
   });
 
   it('graph 分层布局（A5 二期）：层宽×最宽层行高公式同 GraphLayeredBody', () => {

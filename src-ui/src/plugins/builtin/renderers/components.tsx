@@ -667,15 +667,16 @@ export function plateSignOf(kind: string): string {
   return PLATE_SIGNS[kind] ?? '录';
 }
 
-/** 题签行：物类签 + 题名（题名为空则不渲染整行——高度中性见上注）。 */
+/** 题签行：物类签 + 题名。**题签恒在**（2026-09-17 第二批）——无题名的图版也出签，
+ *  否则「有时有签、有时没签」读起来仍是不成族；行高严格等于原题注行（见 tokens.plateHeadH），
+ *  故有题名/无题名两种情形的测高都由同一常数承载。 */
 function PlateHead({ kind, title, titleClass }: { kind: string; title?: string; titleClass: string }) {
-  if (!title) return null;
   return (
     <div className="pp-plate">
       <span className="pp-plate-sign" aria-hidden="true">
         {plateSignOf(kind)}
       </span>
-      <span className={titleClass}>{title}</span>
+      {title ? <span className={titleClass}>{title}</span> : null}
     </div>
   );
 }

@@ -458,13 +458,14 @@ describe('图版题签行', () => {
     });
   });
 
-  it('无题名：不出题签行（保持高度不变——「题签恒在」随下一批测高一起落地）', async () => {
+  it('题签恒在：无题名的表也出签（否则「有时有签有时没签」仍是不成族）', async () => {
     await withRenderers(() => {
       const Comp = resolveAssetBlock('table', 'grid')!;
       const html = renderToStaticMarkup(
         createElement(Comp, { block: assetBlock('table', 'grid', { columns: ['a'], rows: [['1']] }) }),
       );
-      expect(html).not.toContain('pp-plate');
+      expect(html).toContain('pp-plate');
+      expect(html).toContain('>表<');
     });
   });
 
