@@ -7,7 +7,14 @@ import { clampMaxTokens, getModel } from './catalog';
 import { classifyProviderError } from './error-catalog';
 import { type ModelMeta, modelEntries, parseModelEntry } from './model-meta';
 import { sendWithRetry } from './retry';
-import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
+import {
+  extractWritePreview,
+  fetchJsonWithTimeout,
+  mergeHeaders,
+  prewarmEndpoint,
+  type SseEvent,
+  sseEvents,
+} from './shared';
 import { assertEffortDeclared, type StoredThinking, THINKING_EFFORT_BUDGETS, thinkingCapability } from './thinking';
 import {
   ApiError,
@@ -64,6 +71,9 @@ interface AnthropicConfig {
   /** provider 作用域描述符解析（provider-model-meta）：携带本提供方拉取到的
    *  元数据与用户覆盖；缺省 = 全局目录（getModel）。 */
   describeModel?: (model: string) => ModelDescriptor | undefined;
+  /** 自定义请求头（settings.headers）：连接怪癖的用户可编辑面。合并序
+   *  「自定义头在前、内核必需头与凭据头在后」——x-api-key 恒归凭据权威。 */
+  headers?: Record<string, string>;
 }
 
 export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
@@ -73,6 +83,9 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
   let thinking: StoredThinking | undefined = cfg.thinking; // setThinking 运行时更新
   // provider 作用域描述符；缺省回落全局目录（测试直呼面零改动）
   const describe = (m: string): ModelDescriptor | undefined => cfg.describeModel?.(m) ?? getModel(m);
+  // 自定义请求头（连接怪癖用户可编辑面）：三处请求一并携带；内核必需头与凭据头
+  // 在后覆盖（合并序见 AnthropicConfig.headers）。
+  const customHeaders = cfg.headers ?? {};
   let fetchedMeta: Record<string, ModelMeta> = {};
 
   return {
@@ -103,12 +116,12 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
       );
       const response = await sendWithRetry({
         url: `${baseUrl}/v1/messages`,
-        headers: {
+        headers: mergeHeaders(customHeaders, {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
           'x-api-key': apiKey,
           'anthropic-version': ANTHROPIC_VERSION,
-        },
+        }),
         body: JSON.stringify(body),
         signal,
         name,
@@ -120,19 +133,22 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
     },
 
     prewarm(): void {
-      prewarmEndpoint(`${baseUrl}/v1/models`, {
-        'x-api-key': apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
-      });
+      prewarmEndpoint(
+        `${baseUrl}/v1/models`,
+        mergeHeaders(customHeaders, {
+          'x-api-key': apiKey,
+          'anthropic-version': ANTHROPIC_VERSION,
+        }),
+      );
     },
 
     async fetchModels(): Promise<ModelDescriptor[]> {
       const json = await fetchJsonWithTimeout(
         `${baseUrl}/v1/models`,
-        {
+        mergeHeaders(customHeaders, {
           'x-api-key': apiKey,
           'anthropic-version': ANTHROPIC_VERSION,
-        },
+        }),
         10000,
       );
       // C5（2026-08-27）：目录失败面——同 openai.ts，失败不再伪装成「无模型」，

@@ -18,6 +18,7 @@ import {
   type ProbeOutcome,
   type ProviderSettings,
 } from '../../../settings';
+import { ProviderAdvanced } from './ProviderAdvanced';
 import { protocolLabel } from './protocol';
 import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
 
@@ -87,6 +88,8 @@ export interface ProviderDetailActions {
   onModelOverride: (modelId: string, field: 'contextWindow' | 'maxTokens', value: number) => void;
   /** 视觉声明覆盖（B5 · D-8①）：on = ['text','image'] 强制开；off = 清覆盖回落目录。 */
   onModelVisionToggle: (modelId: string, on: boolean) => void;
+  /** 高级连接配置（2026-09-17）：请求头编辑 / 配方导入的整行回填（名字与密钥保持本行）。 */
+  onAdvancedChange: (next: ProviderSettings) => void;
   onTest: () => void;
   onClearKey: () => void;
   onResetBaseUrl: () => void;
@@ -115,6 +118,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     onRemoveModel,
     onModelOverride,
     onModelVisionToggle,
+    onAdvancedChange,
     onTest,
     onClearKey,
     onResetBaseUrl,
@@ -509,6 +513,10 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
           </div>
         )}
       </div>
+
+      {/* 高级连接配置（2026-09-17）：请求头 + 配方导入/导出——网关怪癖的用户
+          可编辑面（key 化 provider 名以在切行时重置编辑态） */}
+      <ProviderAdvanced key={provider.name} provider={provider} onChange={onAdvancedChange} />
 
       <div className="pp-card">
         <div className="pp-card-hd">

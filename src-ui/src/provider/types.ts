@@ -184,6 +184,10 @@ export interface ProviderRuntimeArgs {
    *  自己的窗口与档位声明。缺省 = 回落全局 getModel（未接线方言零改动）。 */
   describeModel?: (model: string) => ModelDescriptor | undefined;
   oauthHeaders?: Record<string, string>;
+  /** 自定义请求头（settings.headers，2026-09-17 连接怪癖用户可编辑面）。
+   *  三方言在 stream / prewarm / fetchModels 一并携带；合并序「自定义头在前、
+   *  内核必需头与凭据头在后」——Authorization / x-api-key 归凭据库权威，不可覆写。 */
+  headers?: Record<string, string>;
 }
 
 // ---- 模型目录 ----

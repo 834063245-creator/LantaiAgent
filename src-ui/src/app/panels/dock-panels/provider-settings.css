@@ -1091,3 +1091,20 @@
   letter-spacing: 0.02em;
   color: var(--ink-3);
 }
+
+/* 2026-09-17 高级连接配置（请求头 + 配方）：text area 沿用输入框语言，等机读位字体 */
+.pp-headers-text,
+.pp-recipe-text {
+  width: 100%;
+  min-height: 48px;
+  resize: vertical;
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  line-height: 1.6;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+.pp-recipe-text {
+  margin-top: 4px;
+}

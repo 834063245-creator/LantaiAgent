@@ -91,6 +91,21 @@ interface ProviderSettings {
 1. `apiKey` **永不落 localStorage**（settings.ts saveSettings 抹空）——权威在 `persistSecrets` 写入的系统加密凭据
 2. `name` 全局唯一——它是 provider 身份、credential 键、动态模型合并键的三合一
 
+### ProviderSettings.headers 与配方（2026-09-17）
+
+网关怪癖（如 OpenCode GO 强制的 `x-opencode-session`）此前只能改代码发版——
+本版做成用户可编辑数据：
+
+- `ProviderSettings.headers?: Record<string, string>`：写入边界严格校验、加载边界
+  容忍毒化（`provider/custom-headers.ts`；同 INVARIANTS #11）。三方言请求
+  （stream / prewarm / fetchModels）一并携带；**合并序「自定义头在前、内核必需头与
+  凭据头在后」且按键（小写）去重**——HTTP 头名大小写不敏感，同名不同大小写会被
+  Fetch 合并成 `"a, b"` 污染凭据头（实测钉住），故自定义头不能覆写
+  `Authorization` / `x-api-key`。
+- 设置页「高级」面：请求头文本编辑（每行 `Name: Value`，注释行忽略）+ 该行
+  **配方**导入/导出（`provider-recipe.ts`：format/version 校验、白名单字段、
+  密钥剥除与整单拒绝；套用时名字与 API Key 保持本行——身份与凭据键不随配方走）。
+
 ### ModelDescriptor（types.ts）
 
 ```ts

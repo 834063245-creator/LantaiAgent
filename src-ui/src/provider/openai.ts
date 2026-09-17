@@ -8,7 +8,14 @@ import { clampMaxTokens, getModel } from './catalog';
 import { classifyProviderError } from './error-catalog';
 import { type ModelMeta, modelEntries, parseModelEntry } from './model-meta';
 import { sendWithRetry } from './retry';
-import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
+import {
+  extractWritePreview,
+  fetchJsonWithTimeout,
+  mergeHeaders,
+  prewarmEndpoint,
+  type SseEvent,
+  sseEvents,
+} from './shared';
 import {
   assertEffortDeclared,
   isThinkingMode,
@@ -72,6 +79,9 @@ interface OpenAIConfig {
   /** provider 作用域描述符解析（provider-model-meta）：携带本提供方拉取到的
    *  元数据与用户覆盖；缺省 = 全局目录（getModel）。 */
   describeModel?: (model: string) => ModelDescriptor | undefined;
+  /** 自定义请求头（settings.headers）：连接怪癖的用户可编辑面。合并序
+   *  「自定义头在前、内核必需头与凭据头在后」——Authorization 恒归凭据权威。 */
+  headers?: Record<string, string>;
 }
 
 /** 动态模型 reasoning 启发式已迁入 provider/model-meta.ts（三方言共用的
@@ -85,6 +95,9 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
   // provider 作用域描述符（拉取元数据 + 用户覆盖 + 静态 seed 合并）；
   // 缺省回落全局目录——测试直呼面与未接线方言零改动。
   const describe = (m: string): ModelDescriptor | undefined => cfg.describeModel?.(m) ?? getModel(m);
+  // 自定义请求头（连接怪癖用户可编辑面）：三处请求（stream/prewarm/fetchModels）
+  // 一并携带；内核必需头与 Authorization 在后覆盖（合并序见 OpenAIConfig.headers）。
+  const customHeaders = cfg.headers ?? {};
   // 最近一次 fetchModels 解析出的元数据（落盘面经 Provider.lastModelMeta 取）
   let fetchedMeta: Record<string, ModelMeta> = {};
 
@@ -115,11 +128,11 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
       );
       const response = await sendWithRetry({
         url: `${baseUrl}/chat/completions`,
-        headers: {
+        headers: mergeHeaders(customHeaders, {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
           Authorization: `Bearer ${apiKey}`,
-        },
+        }),
         body: JSON.stringify(body),
         signal,
         name,
@@ -131,17 +144,13 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
     },
 
     prewarm(): void {
-      prewarmEndpoint(`${baseUrl}/models`, {
-        Authorization: `Bearer ${apiKey}`,
-      });
+      prewarmEndpoint(`${baseUrl}/models`, mergeHeaders(customHeaders, { Authorization: `Bearer ${apiKey}` }));
     },
 
     async fetchModels(): Promise<ModelDescriptor[]> {
       const json = await fetchJsonWithTimeout(
         `${baseUrl}/models`,
-        {
-          Authorization: `Bearer ${apiKey}`,
-        },
+        mergeHeaders(customHeaders, { Authorization: `Bearer ${apiKey}` }),
         10000,
       );
       // C5（2026-08-27）：目录失败面——fetchJsonWithTimeout 对非 ok/网络/超时

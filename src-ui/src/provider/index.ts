@@ -100,6 +100,9 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
       maxTokensFor,
       describeModel,
       oauthHeaders: options?.oauthHeaders,
+      // 自定义请求头（settings → 高级）：连接怪癖的用户可编辑面，三方言请求携带；
+      // 缺省 = 无附加头（老行零迁移）。
+      headers: settings.headers,
     },
     options?.seamView,
   );

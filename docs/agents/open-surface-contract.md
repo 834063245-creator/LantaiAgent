@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：40
+当前版本：41
 
-<!-- contract-fingerprint: 91fee1d2dbefbf6865a4975942c70fed1bff1beea555ba939709ca30e3287078 -->
+<!-- contract-fingerprint: d502b767c2076d676e8571200672108e23dd3ad1979a6823ffac48efe64eb637 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -18,7 +18,7 @@
 |---|---|
 | `src/composition/contribution-channel.ts` | **贡献通道内核**（M1 收口：九通道 + 五 seam 的唯一注册表实现——`ContributionChannel` / `ContributionTiming` / `ContributionChannelOptions`。类名经宿主桥 `faceDeps` 与 `host.aliased.ts` 暴露给产物插件，形状即对外契约） |
 | `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`；**v37 起 `activeLlmAdapters(view?)` 的可选 view**——缺省 = 全局当前选择）+ panels/commands/tools 通道 def 形状（M1 起注册表内核移出本文件） |
-| `src/provider/types.ts` | `ctx.llm` seam 的**实现面形状真源**（`Provider` / `Chunk` / `Request`——v25 补登记：`LlmAdapterContribution.create` 返回的 Provider 形状即契约面，此前未入册） |
+| `src/provider/types.ts` | `ctx.llm` seam 的**实现面形状真源**（`Provider` / `Chunk` / `Request`——v25 补登记：`LlmAdapterContribution.create` 返回的 Provider 形状即契约面，此前未入册。**v41 起 `ProviderRuntimeArgs` 增加可选 `headers`**——自定义请求头，三方言请求携带且凭据/协议头恒胜） |
 | `src/composition/fs-service.ts` | `ctx.fs`（`FsProvider` / `FsAction` 动作 / `FsCallOptions` dispatch 腰） |
 | `src/composition/shell-service.ts` | `ctx.shell`（`ShellProvider` / `ShellAction` 四动作；subprocess 并入） |
 | `src/composition/session-persistence-service.ts` | `ctx.sessionPersistence`（`SessionPersistenceProvider` 四动词 read_volume/list_volumes/save_volume/delete_volume + `sessionExecute` 消费单点 + Service.execute） |
@@ -91,6 +91,8 @@
 | 39 | 2026-09-15 | **S6 P3b 组合依赖（`requires`）与独占（`exclusive`）声明**：`CompositionPatchSchema`（用户 preset 写法）新增两个可选顶层键——`requires: [插件名]`（缺任一 ⇒ 组合不可用：选择期**拒**并给**具名**原因「组合「review」需要插件 hologram/review-domain，但它未装载」；解析期捕获网照旧回退用户层 + 原因可见，不抛）与 `exclusive: [资源实例名]`（`port:9310` / `stdio` / `listener:<名>`）。`ActivationSpec.exclusive` 与组合层声明同等参与**装配期冲突检测**：同一资源被两个插件声明且都在位 ⇒ 后装配者被拒（fail loud、原因含双方 id），且**拒绝后装配者不留账**（本次已 retain 的部分整体回滚）；先装配者不受影响，释放后资源回到自由态。诊断面增**第四栏**「被跳过」（`activationSkipped`：激活失败的插件 + 原因）与冲突回看（`activationConflict`），经设置面板「组合」节呈现——「某行不见了」从此四种原因可分（未选中 / 被禁用 / seam 裁剪 / 被跳过）。**对外可感知**：用户 preset 能声明依赖与独占，失败面从「未知行 id: plugin/X/y」变为「缺插件 X」；**缺省 = 不写两键 ⇒ 现语义逐字节不变**（出厂两轨零声明 ⇒ 判据在 `requires` 为空时直接返回，热路径零新增开销 ⇒ conv 双轨零漂移是构造性结论） | S6-per-agent-composition.md P3b（施工单 `WO-S6P3-plugin-activation.md` §2.4-§2.6；用户裁定 B 闭集 / C 两段式 / D 一栏带原因） |
 
 | 40 | 2026-09-17 | **工具附图通道（agent 眼睛环 P0a）**：`Message.images` 的合法角色从「**仅 user**」扩到「**user + tool**」——工具产出的截图（`browser(action:"screenshot")`）从此能进模型上下文，而不是把 PNG 路径交给用户求人看图（该断点由 `taste-ledger` 2026-08-22 点名为结构性瓶颈：agent 看不见自己的产出，眼判类细化只能靠用户眼睛逐轮喂）。**wire 面**：两协议用各自原生形态（anthropic `tool_result.content` 数组 `[text,image]`、responses `function_call_output.output` 数组 `[input_text,input_image]`），OpenAI 兼容 chat 的 tool role 不收图 ⇒ 在**该轮 tool 组尾**补一条合成 user 消息携带图。**缺省 = 无图消息 ⇒ 三协议 wire 形态逐字节不变**（D-6 纪律，实测钉住）；`tool/result` 事件形状零变更（事件 data 本就是整个 Message，新字段可选）⇒ convergence 双轨零漂移。`default-loop` 两处 `tool/result` 写入点把 executor 产出的引用挂到消息上（单一写入点纪律不变） | `docs/plans/tool-image-context-plan.md`（P0a 落地清单 §0；裁定 3 = 角色扩档、裁定 4 = 三协议不统一抽象、裁定 5 = 本批不动工具 schema/描述故免 BCR） |
+
+| 41 | 2026-09-17 | **ctx.llm seam：连接怪癖的用户可编辑面（自定义请求头 + 配方）**。`ProviderRuntimeArgs` 新增可选 `headers`（持久化在 `ProviderSettings.headers`），三方言（openai/anthropic/responses）的 stream / prewarm / fetchModels 一并携带；合并序「自定义头在前、内核必需头与凭据头在后」，且按键（小写）剔除冲突——HTTP 头名大小写不敏感，大小写不同的同名会被 Fetch 合并成 `"a, b"` 污染凭据头（实测钉住）。动机：OpenCode GO 强制 `x-opencode-session` 一类网关怪癖此前只能改代码发版，exe 用户无路可走。**缺省 = 未配置 headers ⇒ 请求头逐字节不变**（老行零迁移，第三方 adapter 不读该字段即可）；同批设置页新增「高级」面（请求头编辑 + 该行配方 JSON 导出/导入——密钥剥除、整单校验） | provider-system-spec.md（本批新增「自定义请求头与配方」节） |
 
 ## 变更流程（guard 红 → 修复四步）
 

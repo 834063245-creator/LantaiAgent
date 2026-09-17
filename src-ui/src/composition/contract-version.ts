@@ -22,9 +22,17 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 40;
+export const OPEN_SURFACE_CONTRACT_VERSION = 41;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v41（2026-09-17）ctx.llm seam：连接怪癖的**用户可编辑面**——`ProviderRuntimeArgs`
+ *  新增可选 `headers`（自定义请求头，源头 = `ProviderSettings.headers`）：三方言
+ *  stream/prewarm/fetchModels 一并携带，合并序「自定义头在前、内核必需头与凭据头
+ *  在后」且按键（小写）剔除冲突（HTTP 头名大小写不敏感，大小写不同的同名会被
+ *  Fetch 合并成 "a, b" 污染凭据头——实测钉住）。动机：OpenCode GO 强制
+ *  `x-opencode-session` 一类网关怪癖此前只能改代码发版，exe 用户无路可走。
+ *  **缺省 = 未配置 ⇒ 请求头逐字节不变**（老行零迁移；第三方 adapter 不读即可）。
+ *  同批设置页新增「高级」面：请求头编辑 + 该行配方（非敏感 JSON，密钥剥除）。
  *  v40（2026-09-17）工具附图通道 P0a（agent 眼睛环）：`Message.images` 合法角色
  *  从「仅 user」扩到「user + tool」——工具产出的截图（browser screenshot）由此
  *  进模型上下文（此前模型只能拿到 PNG 路径，自立看不见自己的产出）。两协议走
