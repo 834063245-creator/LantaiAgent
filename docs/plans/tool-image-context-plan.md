@@ -118,7 +118,28 @@
 2. 同一会话把模型临时标成纯文本（设置里去掉 image 声明）→ 工具结果落占位文本、请求不炸；
 3. 截一张 3 类柱图的卡 → 模型能否指出「图只占了卡片左边一小块」（即它能自查出 P1 要修的缺陷）。
 
-## 6. 风险与前置条件
+## 6. 下一批的机械根因（2026-09-17 实测，不需等语汇拍板）
+
+**资产段落设计的规线一条都没画出来**：`tokens.css:57` 的 `--rule-soft` 是**整条 border 简写**
+（`1px solid var(--ink-4)`），而 PaperPanel.css 有 17 处把它当**颜色**再拼一次
+（`border-top: var(--pp-asset-board-colRule) solid var(--rule-soft)`）⇒ 值替换后成为
+`2px solid 1px solid var(--ink-4)` = 非法 ⇒ 整条声明被 CSS 丢弃（含 var() 的声明在
+computed-value 阶段失效即回落初始值 = 不画线）。
+
+- 资产段落 9 处：grid 表头线 `4263`/`4291`、metric 卡框 `4468`、form 选项框 `4631`、
+  board 列顶线 `4695`、board 卡框 `4705`、timeline 节点轨 `4760`、citation BibTeX 上规线 `4855`、
+  chem 结构式外框 `4913`；
+- 同族另 8 处在正文/夹注族：md hr `1199`、md 表行线 `1218`、md 行内码 `1240`、md 图框 `1311`、
+  diff 上下规线 `1576`/`1577`、notice 上下缘 `1815`/`1828`——**正文族也中招**（用户当年判
+  「正文块有层级语言」的那部分墨，有一部分其实没落地）；
+- 修法（一次治一片）：tokens.css 加颜色位 `--rule-soft-c: var(--ink-4)`，17 处
+  `solid var(--rule-soft)` → `solid var(--rule-soft-c)`；
+  `tests/paper-visual-decisions.test.ts:822` 现钉着**带病灶的字面串**（`border: var(--pp-md-imgBorder)
+  solid var(--rule-soft)`）⇒ 属本批规格变更，须同批改写（禁「改造后放回原位」）。
+- 注意：`PaperPanel.css` / `tokens.css` / `paper-visual-decisions.test.ts` 三档当时**有他窗在途
+  未提交改动**，动它们前先确认该窗已收工（避免互相覆盖）。
+
+## 7. 风险与前置条件
 
 - **前置条件（硬）**：真机验收 1 需要用户环境里有声明 `image` 输入的模型。设置面板「输入模态覆盖」
   （`settings.ts:75-78`）可手动补声明（GLM-4V / Qwen-VL 等目录外模型正为此留口）。
