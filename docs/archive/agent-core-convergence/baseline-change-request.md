@@ -408,3 +408,64 @@
 3. ✅ 本文件登记 + 授权依据（用户「放行」）；
 4. ✅ `record:convergence` 两轨重录（写面实测 = 恰好两个 baseline 文件各 1 行，`git diff -U0` 已核）
    + 门禁四连（vitest / build / biome ci / verify:convergence）。
+
+
+---
+
+# Baseline 变更申请 — phase-0/tool-schemas.full.json + phase-0/tool-schemas.plan.json（拆掉 browser_screenshot 的 inline 上下文炸弹）
+
+> 申请日期：2026-09-17 · 申请人：编码助手（资产卡图版语汇线 P0b 收缩版）
+> 状态：**待批准** —— 需用户回「放行」或「只拆炸弹」两类裁定之一（见 §5）。
+> 模型可见表面：**有变更**（`browser_screenshot` 少一个参数 `inline`）——这正是本申请的对象。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.full.json`（`browser_screenshot` 条目）
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.plan.json`（同条目）
+- 变更内容：`browser_screenshot` 删去参数 `inline`（boolean，原义「≤3MB 时直接回 base64 data URL」），
+  其余条目与顺序逐字节不变；工具名、描述、其余参数不动。
+
+## 2. 为什么必须变（客观危害，不是审美）
+
+- 该参数打开后，工具结果里会塞进一个 **PNG data URL**：上限 3MiB 字节 ⇒ base64 约 4MB 字符
+  ⇒ 进会话与请求载荷（≈ 百万 token 量级）。这是**上下文炸弹**：一次误用就足以打爆上下文预算，
+  且它以「工具输出文本」形态落进卷（违反「字节永不进卷」的精神面——data URL 就是字节的另一种写法）。
+- 它对模型**没有用处**：data URL 是文本，纯文本模型读不出图；视觉模型也不需要它
+  （2026-09-17 落地的工具附图通道 P0a 已把截图作为**引用**送进上下文，字节在盘上）。
+- 真正需要「把图交给用户」的场景，用现成的附件路径即可（P0a 的输出里已带 `attachment` 绝对路径）。
+
+## 3. 证据
+
+- 现状代码：`src-tauri/src/cdp/actions.rs` 的 `cdp_screenshot`（`inline` 分支拼 `dataUrl` 字段）；
+  `src-ui/src/agent/tools/browser.ts` 的 `browser_screenshot` schema（`inline` 描述为「Return a
+  base64 data URL directly when <= 3MB」）。
+- P0a 已交付替代物：`docs/plans/tool-image-context-plan.md` §0（输出新增 `image` 引用 + `attachment`，
+  模型侧 `parseToolImageOutput` 挂进上下文；无视觉模型时自动降级为占位文本）。
+- 基线冻结面：`tool-schemas.full.json` / `.plan.json` 含 `browser*` 条目（各 12 处命中），
+  故删参数必然漂移两轨快照。
+
+## 4. 拟议变更（record 待授权后生成）
+
+采纳 record 快照：两轨各 1 条 schema 条目去掉 `inline` 参数；**工具名/描述/其余参数零漂移**，
+事件面与投影面零漂移（不涉消息形状）。
+
+## 5. 落地步骤与请裁定项
+
+请用户在两类里择一（**「放行」= 按本申请全做；「只拆炸弹」= 只做第 2 步**）：
+
+1. （可选，**需要单独一句话**）顺带改写 `browser_screenshot` 的描述：现有描述写「With a text-only
+   model the image content is not visible; hand the path to the user for confirmation」——
+   P0a 之后这句已不准确（有无视觉模型都走引用通道）。**不包含在本次申请里**，除非你一并授权。
+2. **拆除 `inline` 参数**（本申请主体）：删参数 + 删 Rust 分支 + 同步 `docs/agents/model-tool-contract.md`
+   重生成；回归用例钉「该参数不再存在」。
+3. 本文件登记授权依据 + `record:convergence` 两轨重录（写面实测 = 恰好两个 baseline 文件各 1 条条目变化）
+   + 门禁四连（vitest / build / biome ci / verify:convergence）。
+
+**元素级截图（`selector` 参数）与描述改写有意不做**：兰台不跑视觉模型（用户 2026-09-17 明确），
+截图进上下文当前无人消费；加参数只会增加模型可见面与基线漂移，没有收益。
+
+## 6. 风险与回滚
+
+- 风险面极小：`inline` 是一个**从未被默认打开**的参数；唯一消费者是模型自己（描述里教它用）。
+  删除后模型若仍传 `inline`，zod schema 是 `.passthrough()` ⇒ 参数被忽略而非报错（**不炸链路**）。
+- 回滚 = 还原两个 baseline 文件 + 恢复参数（本变更不涉数据/存储，无迁移）。
