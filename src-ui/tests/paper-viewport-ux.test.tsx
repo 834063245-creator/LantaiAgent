@@ -521,14 +521,125 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
    * 开关即时生效（保存广播）、灵敏度改感应带宽、纸条与抽纸条两族手势也接同一套。 */
 
   /** 把边缘滚动设置写进盘面并广播（= 设置面板保存的效果；面板写面另有考官）。 */
-  const saveEdgeScroll = async (enabled: boolean, sensitivity = 1): Promise<void> => {
+  const saveEdgeScroll = async (enabled: boolean, sensitivity = 1, hover = false): Promise<void> => {
     const cur = loadSettings();
     saveSettings({
       ...cur,
-      canvas: { ...cur.canvas, wheelMode: cur.canvas?.wheelMode ?? 'pan', edgeScroll: { enabled, sensitivity } },
+      canvas: {
+        ...cur.canvas,
+        wheelMode: cur.canvas?.wheelMode ?? 'pan',
+        edgeScroll: { enabled, sensitivity, hover },
+      },
     });
     await act(async () => {});
   };
+
+  /* 悬停即滚（RTS 相机形态，缺省关）：指针停在画布边缘就滚，不必按住任何东西。
+   * 与拖拽族三处刻意差异（画布外不滚 / 按键让位 / 交互面豁免）都有考官。 */
+
+  it('悬停即滚：开机后指针停在画布下缘（无按键）→ 视口自己滚；离开边缘即停', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    await saveEdgeScroll(true, 1, true);
+    // 无任何 mousedown：只在画布上停一下指针
+    await act(async () => {
+      fire(canvas, 'mousemove', { clientX: 600, clientY: 780 });
+    });
+    const [, panY1] = await scrollUntil(40);
+    expect(600 - panY1).toBeGreaterThan(40); // 视口自己滚（相机自主）
+    // 指针回到画布中部 → 停摆（且不再爬行）
+    await act(async () => {
+      fire(canvas, 'mousemove', { clientX: 600, clientY: 400 });
+    });
+    const settled = useCanvasViewStore.getState().view.panY;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 150));
+    });
+    expect(useCanvasViewStore.getState().view.panY).toBe(settled);
+  }, 30_000);
+
+  it('悬停即滚：缺省关（未开此档时同一姿态不滚）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    await act(async () => {
+      fire(canvas, 'mousemove', { clientX: 600, clientY: 780 });
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 250));
+    });
+    expect(useCanvasViewStore.getState().view.panY).toBe(600);
+  }, 30_000);
+
+  it('悬停即滚：交互面（纸条）之上不滚，空白/纸面上滚（同一姿态 A/B）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    await saveEdgeScroll(true, 1, true);
+    // 纸条放在下缘带内（世界 y=180 → 屏幕 780），指针停它身上 = 想操作纸条，不该滚
+    getCanvasStore(panel.panelId)
+      .getState()
+      .addStrip(makeStrip('纸条', 100, 180, 480));
+    await act(async () => {});
+    const stripEl = container?.querySelector<HTMLElement>('.pp-strip') ?? null;
+    expect(stripEl).not.toBeNull();
+    await act(async () => {
+      fire(stripEl as Element, 'mousemove', { clientX: 700, clientY: 780, bubbles: true });
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 250));
+    });
+    expect(useCanvasViewStore.getState().view.panY).toBe(600); // 交互面豁免
+    // 同一姿态改落在画布本身（纸面/桌面）→ 滚
+    await act(async () => {
+      fire(canvas, 'mousemove', { clientX: 600, clientY: 780 });
+    });
+    const [, panY1] = await scrollUntil(30);
+    expect(600 - panY1).toBeGreaterThan(30);
+  }, 30_000);
+
+  it('悬停即滚：按住鼠标键时让位（不接管，避免与拖拽循环双倍滚）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    await saveEdgeScroll(true, 1, true);
+    // buttons=1 的 mousemove（真机按住键时的形态）：悬停档必须先让位
+    await act(async () => {
+      fire(canvas, 'mousemove', { clientX: 600, clientY: 780, buttons: 1 });
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 250));
+    });
+    expect(useCanvasViewStore.getState().view.panY).toBe(600);
+  }, 30_000);
+
+  it('拖拽中直接用滚轮滚视口：能滚，且块影不脱手（松手落点 = 块影处）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const block = container?.querySelector<HTMLElement>('.pp-block') ?? null;
+    const blockId = block?.getAttribute('data-block-id') ?? '';
+    await act(async () => {
+      fire(block?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 1100, clientY: 400 }); // 带外：本身不滚
+    });
+    expect(useCanvasViewStore.getState().view.panY).toBe(600);
+    // 拖拽途中滚轮平滚（真机常态：一只手拖、一只手腕滚）
+    await act(async () => {
+      canvas.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 240, clientX: 1100, clientY: 400, bubbles: true, cancelable: true }),
+      );
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 60)); // 让帧循环把块影复位
+    });
+    expect(useCanvasViewStore.getState().view.panY).toBe(360); // 滚轮直接滚了视口
+    const p = previewXY();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 1100, clientY: 400 });
+    });
+    const pin = getCanvasStore(panel.panelId).getState().pins[blockId];
+    expect(pin).toBeTruthy();
+    expect(Math.abs(pin.y - p.y)).toBeLessThan(30); // 块影跟手（滚轮滚过也不脱手）
+  }, 30_000);
 
   it('开关关掉（挂载后保存）：拖块贴缘不滚，松手仍按判据落钉', async () => {
     const canvas = await mountCanvas();

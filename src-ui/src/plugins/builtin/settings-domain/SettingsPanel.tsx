@@ -388,7 +388,8 @@ const SettingsPanelApp: React.FC<{
       ? Math.min(2, Math.max(0.5, edgeScrollSensRaw))
       : 1;
   const edgeScrollOn = settings.canvas?.edgeScroll?.enabled !== false;
-  const setEdgeScroll = (next: { enabled: boolean; sensitivity: number }): void => {
+  const edgeScrollHover = settings.canvas?.edgeScroll?.hover === true;
+  const setEdgeScroll = (next: { enabled: boolean; sensitivity: number; hover: boolean }): void => {
     // 展开既有 canvas（勿整体替换——会冲掉同节其他字段，见下方滚轮行为同款收口）
     commit({ ...settings, canvas: { ...settings.canvas, wheelMode: canvasWheelMode(settings), edgeScroll: next } });
   };
@@ -696,7 +697,9 @@ const SettingsPanelApp: React.FC<{
                   <input
                     type="checkbox"
                     checked={edgeScrollOn}
-                    onChange={(e) => setEdgeScroll({ enabled: e.target.checked, sensitivity: edgeScrollSens })}
+                    onChange={(e) =>
+                      setEdgeScroll({ enabled: e.target.checked, sensitivity: edgeScrollSens, hover: edgeScrollHover })
+                    }
                   />
                   拖拽到边缘时自动滚屏
                 </label>
@@ -705,6 +708,25 @@ const SettingsPanelApp: React.FC<{
                   任意远处，不必「拖一下、滚一段、再拖一下」。关闭后用滚轮或拖空白处挪视口。
                 </div>
               </div>
+              {edgeScrollOn && (
+                <div className="sp-field" style={{ marginTop: 12 }}>
+                  <label className="sp-label sp-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={edgeScrollHover}
+                      onChange={(e) =>
+                        setEdgeScroll({ enabled: true, sensitivity: edgeScrollSens, hover: e.target.checked })
+                      }
+                    />
+                    指针停在边缘也滚（无需按住）
+                  </label>
+                  <div className="sp-hint-sub">
+                    RTS 式相机：什么都不用抓，鼠标停在画布边缘（约 0.1 秒）视口自己滚。光标停在正文上同样起滚
+                    ——画布即地图；创作坞 / 目次带 / 小地图 / 按钮等交互面之上不滚，按下鼠标键也让位给拖拽。
+                    默认关（画布铺满正文，读的时候鼠标停在屏底会让内容跑掉）。
+                  </div>
+                </div>
+              )}
               {edgeScrollOn && (
                 <div className="sp-slider-row">
                   <input
@@ -717,7 +739,9 @@ const SettingsPanelApp: React.FC<{
                     value={edgeScrollSens}
                     aria-label="边缘滚动灵敏度"
                     style={{ '--pct': `${((edgeScrollSens - 0.5) / 1.5) * 100}%` } as React.CSSProperties}
-                    onChange={(e) => setEdgeScroll({ enabled: true, sensitivity: parseFloat(e.target.value) })}
+                    onChange={(e) =>
+                      setEdgeScroll({ enabled: true, sensitivity: parseFloat(e.target.value), hover: edgeScrollHover })
+                    }
                   />
                   <span className="sp-slider-end">{edgeScrollSens.toFixed(1)}x</span>
                 </div>

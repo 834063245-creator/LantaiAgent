@@ -41,6 +41,17 @@ describe('边缘滚动·策略读面', () => {
     ).toBe(true);
   });
 
+  it('悬停即滚档：缺省关（画布铺满正文——读的时候鼠标停在屏底不该让内容跑掉），显式 true 才开', () => {
+    const hoverOf = (canvas: AppSettings['canvas']): boolean => edgeScrollTuning(settingsWith(canvas)).hover;
+    expect(hoverOf({ wheelMode: 'pan' })).toBe(false);
+    expect(hoverOf({ wheelMode: 'pan', edgeScroll: { enabled: true, sensitivity: 1 } })).toBe(false);
+    expect(hoverOf({ wheelMode: 'pan', edgeScroll: { enabled: true, sensitivity: 1, hover: true } })).toBe(true);
+    // 毒化值（非 true）不静默开启
+    expect(
+      hoverOf({ wheelMode: 'pan', edgeScroll: { enabled: true, sensitivity: 1, hover: 'yes' as unknown as boolean } }),
+    ).toBe(false);
+  });
+
   it('灵敏度映射：滚速线性、带宽温和同向（√），两端夹取', () => {
     const t = (sensitivity: number): { band: number; maxSpeed: number } => {
       const r = edgeScrollTuning(settingsWith({ wheelMode: 'pan', edgeScroll: { enabled: true, sensitivity } }));

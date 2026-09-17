@@ -54,6 +54,10 @@ const NO_PAN: EdgePan = { dx: 0, dy: 0 };
 /** 生效调参（读侧产出：曲线直接吃这三个数）。 */
 export interface EdgeScrollTuning {
   enabled: boolean;
+  /** **悬停即滚**（2026-09-17 用户「为什么不支持直接滚动视口」）：指针停在画布边缘就
+   *  滚，不必先按住东西（RTS 相机标准形态）。**默认关**——画布上铺满正文，读的时候
+   *  把鼠标停在屏底是很常见的姿态，默认开会让内容自己跑掉；开关交给用户。 */
+  hover: boolean;
   band: number;
   maxSpeed: number;
 }
@@ -63,7 +67,7 @@ export function clampSensitivity(v: unknown): number {
   return Math.min(EDGE_SCROLL.sensMax, Math.max(EDGE_SCROLL.sensMin, n));
 }
 
-/** 设置 → 调参（缺省容错：旧存储无此字段 = 开 + 基准灵敏度；毒化值一律夹clamp）。
+/** 设置 → 调参（缺省容错：旧存储无此字段 = 开 + 基准灵敏度 + 悬停关；毒化值一律夹取）。
  *  灵敏度 = **一个滑杆的整体强弱**：滚速线性跟手（× sens），感应带宽温和同向放大
  *  （× √sens）——「越灵敏 = 起滚越早 + 滚得越快」，避免单改一项造成手感错位。 */
 export function edgeScrollTuning(s: AppSettings): EdgeScrollTuning {
@@ -71,6 +75,7 @@ export function edgeScrollTuning(s: AppSettings): EdgeScrollTuning {
   const sens = clampSensitivity(raw?.sensitivity);
   return {
     enabled: raw?.enabled !== false,
+    hover: raw?.hover === true,
     band: Math.round(EDGE_SCROLL.band * Math.sqrt(sens)),
     maxSpeed: EDGE_SCROLL.maxSpeed * sens,
   };
@@ -151,4 +156,134 @@ export function useEdgeAutoScroll(canvasRef: MutableRefObject<HTMLElement | null
   useEffect(() => stop, [stop]);
 
   return { start, stop };
+}
+
+/* ── 悬停边缘滚动（RTS 相机标准形态，2026-09-17 用户「为什么不支持直接滚动视口」）──
+ * 指针停在画布边缘就滚，不必先按住东西。与拖拽族**共用**同一策略/曲线/帧循环，
+ * 但有三处刻意不同（都不是疏漏，是两类场景的差别）：
+ *
+ * ① **只在指针画布内时滚**。拖拽族允许越出画布继续追（封顶 1.5×）——那是「把手里的
+ *    东西带出可视区」；悬停族若照办，指针挪去侧栏/书眉就永远滚不停（跟随相机）。
+ * ② **任一鼠标键按下即让位**。拖拽手势自带循环，两套同时跑 = 双倍速；且按下键的那一
+ *    刻就是「我在操作内容」而不是「我在挪镜头」。
+ * ③ **指针悬在交互面上不滚**（创作坞/目次带/小地图/按钮/输入件/纸条/宽度柄/角柄）——
+ *    否则想点按钮、想在输入框打字，画布会自己跑掉；画布上的正文（.pp-block）**不豁免**：
+ *    RTS 的镜头就是贴地图边缘走，纸面即地图。
+ *
+ * 另加一段**入带驻留**（HOVER_DWELL_MS）：路过边缘（例如去点创作坞）不触发，只有
+ * 真的把指针停在带上才起滚——抵消悬停族没有「按住」这个显式意图的代价。 */
+
+/** 入带驻留（ms）：指针在带内停够这么久才起滚（路过不算）。 */
+export const HOVER_DWELL_MS = 120;
+
+/** 悬停不滚的交互面（选择器；`.pp-block` 刻意不在列——纸面即地图）。 */
+const HOVER_EXCLUDE = [
+  'button',
+  'input',
+  'textarea',
+  'select',
+  'a',
+  '[contenteditable="true"]',
+  '.pp-composer',
+  '.pp-toc',
+  '.pp-minimap',
+  '.pp-strip',
+  '.pp-kind',
+  '.pp-resize',
+  '.pp-region-edge',
+  '.pp-region-corner',
+  '.pp-ghost',
+].join(',');
+
+/** 悬停即滚（相机自主滚动）：常驻监听指针，满足条件即起循环；不满足即停。
+ *  挂载点 = 视口域（use-paper-viewport——摄像机的家）。 */
+export function useHoverEdgeScroll(canvasRef: MutableRefObject<HTMLElement | null>): void {
+  const tuningRef = useEdgeScrollTuning();
+  const { start, stop } = useEdgeAutoScroll(canvasRef);
+  /** 指针最新位（client）+ 是否暖机完成（驻留期满） */
+  const ptrRef = useRef<{ x: number; y: number } | null>(null);
+  const dwellTimerRef = useRef(0);
+  const armedRef = useRef(false);
+
+  useEffect(() => {
+    const disarm = (): void => {
+      if (dwellTimerRef.current) {
+        window.clearTimeout(dwellTimerRef.current);
+        dwellTimerRef.current = 0;
+      }
+      armedRef.current = false;
+      stop();
+    };
+
+    /** 指针此刻是否**可滚**：开关+悬停档都开着、键没按下、落在画布内、
+     *  且不在交互面上。带宽判据交给循环里的 autoPanVector（同一把尺子）。 */
+    const eligible = (e: MouseEvent): boolean => {
+      const t = tuningRef.current;
+      if (!t.enabled || !t.hover) return false;
+      if (e.buttons !== 0) return false; // 拖拽手势在途 → 让位（避免两套同时滚）
+      const canvas = canvasRef.current;
+      const el = e.target instanceof Element ? e.target : null;
+      if (!canvas || !el || !canvas.contains(el)) return false;
+      if (el.closest(HOVER_EXCLUDE)) return false;
+      const rect = canvas.getBoundingClientRect();
+      const ix = e.clientX - rect.left;
+      const iy = e.clientY - rect.top;
+      // ① 画布内（含边缘带外也行——带本身由 autoPanVector 判；此处只排除画布外）
+      if (ix < 0 || iy < 0 || ix > rect.width || iy > rect.height) return false;
+      return true;
+    };
+
+    const arm = (): void => {
+      if (armedRef.current) return;
+      armedRef.current = true;
+      start(() => {
+        const p = ptrRef.current;
+        const canvas = canvasRef.current;
+        if (!p || !canvas) return null;
+        return { x: p.x, y: p.y };
+      });
+    };
+
+    const move = (e: MouseEvent): void => {
+      if (!eligible(e)) {
+        ptrRef.current = null;
+        disarm();
+        return;
+      }
+      ptrRef.current = { x: e.clientX, y: e.clientY };
+      if (armedRef.current) return; // 循环在跑：位置已更新，驻留不必重来
+      // ② 入带驻留：进带计时，出带清零（路过不算，停够才滚）
+      if (dwellTimerRef.current) return;
+      const canvas = canvasRef.current as HTMLElement;
+      const rect = canvas.getBoundingClientRect();
+      const t = tuningRef.current;
+      const nearEdge =
+        e.clientX - rect.left <= t.band ||
+        rect.right - e.clientX <= t.band ||
+        e.clientY - rect.top <= t.band ||
+        rect.bottom - e.clientY <= t.band;
+      if (!nearEdge) return;
+      dwellTimerRef.current = window.setTimeout(() => {
+        dwellTimerRef.current = 0;
+        arm();
+      }, HOVER_DWELL_MS);
+    };
+
+    /* 按下键 / 指针离开文档 / 窗口失焦：立即收（③ 让位拖拽族；④ 不给「跟随相机」）。
+     * mousedown 走捕获面：先于拖拽域的 window 监听跑到，绝不多滚一帧。 */
+    const down = (): void => disarm();
+    const leave = (): void => disarm();
+
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mousedown', down, true);
+    document.addEventListener('mouseleave', leave);
+    window.addEventListener('blur', leave);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mousedown', down, true);
+      document.removeEventListener('mouseleave', leave);
+      window.removeEventListener('blur', leave);
+      disarm();
+    };
+  }, [canvasRef, start, stop, tuningRef]);
 }

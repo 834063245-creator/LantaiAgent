@@ -212,9 +212,10 @@ export interface UpdateSettings {
 export interface CanvasSettings {
   /** 滚轮行为：'pan' = 平滚视角（默认）；'zoom' = 缩放画布。 */
   wheelMode: 'pan' | 'zoom';
-  /** 边缘滚动（拖拽手势贴边自动平移视口）：enabled = 开关，sensitivity = 灵敏度倍率。
-   *  缺省 = 开 + 1.0（读侧容错，见上注）。 */
-  edgeScroll?: { enabled: boolean; sensitivity: number };
+  /** 边缘滚动（拖拽手势贴边自动平移视口）：enabled = 总开关，sensitivity = 灵敏度倍率，
+   *  hover = 悬停即滚（指针停在边缘就滚，不必先按住东西；缺省关——见 edge-scroll.ts 注）。
+   *  缺省 = 开 + 1.0 + 悬停关（读侧容错，见上注）。 */
+  edgeScroll?: { enabled: boolean; sensitivity: number; hover?: boolean };
 }
 
 /** 读取画布滚轮行为（缺省容错：旧存储无此节/未知值 = 平滚视角）。 */

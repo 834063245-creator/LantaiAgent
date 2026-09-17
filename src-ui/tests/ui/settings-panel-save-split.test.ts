@@ -167,11 +167,14 @@ describe('SettingsPanel — 保存拆域', () => {
    * 行为真源在 paper-shell 插件域（策略读面见 tests/edge-scroll.test.ts）；
    * 本用例只考「面板写出的字段 = 读侧认得的字段」，含同节字段互不冲掉的回归。 */
 
-  /** 画布区的边缘滚动开关（按所在 .sp-section 文案定位——面板里 checkbox 不止一枚）。 */
-  const edgeToggle = (): HTMLInputElement =>
+  /** 画布区两枚开关（按**标签文本**定位——同节两枚 checkbox，按 section 文本会串台）。 */
+  const toggleByLabel = (text: string): HTMLInputElement | null =>
     [...document.querySelectorAll<HTMLInputElement>('.sp-checkbox-label input')].find((i) =>
-      i.closest('.sp-section')?.textContent?.includes('拖拽到边缘时自动滚屏'),
-    )!;
+      i.closest('label')?.textContent?.includes(text),
+    ) ?? null;
+  const edgeToggle = (): HTMLInputElement => toggleByLabel('拖拽到边缘时自动滚屏')!;
+  /** 悬停即滚档（总开关开着才出现）。 */
+  const hoverToggle = (): HTMLInputElement | null => toggleByLabel('指针停在边缘也滚');
   const edgeRange = (): HTMLInputElement | null =>
     document.querySelector<HTMLInputElement>('input[name="edgeScrollSensitivity"]');
   const edgeReadout = (): string | undefined =>
@@ -181,31 +184,37 @@ describe('SettingsPanel — 保存拆域', () => {
     setter.call(el, value);
     el.dispatchEvent(new Event('change', { bubbles: true }));
   };
-  const storedCanvas = (): { wheelMode?: string; edgeScroll?: { enabled: boolean; sensitivity: number } } =>
-    JSON.parse(localStorage.getItem(STORAGE_KEY)!).canvas;
+  const storedCanvas = (): {
+    wheelMode?: string;
+    edgeScroll?: { enabled: boolean; sensitivity: number; hover?: boolean };
+  } => JSON.parse(localStorage.getItem(STORAGE_KEY)!).canvas;
 
-  it('画布·边缘滚动：缺省开 + 基准 1.0x；调灵敏度与开关写进 canvas.edgeScroll', async () => {
+  it('画布·边缘滚动：缺省开 + 基准 1.0x + 悬停关；调灵敏度/悬停/开关都写进 canvas.edgeScroll', async () => {
     clickTab('显示');
     await tick();
     expect(edgeToggle().checked).toBe(true); // 旧存储无此字段 = 开（读侧容错口径）
     expect(edgeRange()).not.toBeNull();
     expect(edgeReadout()).toBe('1.0x');
+    expect(hoverToggle()?.checked).toBe(false); // 悬停即滚缺省关（画布铺满正文，见 edge-scroll.ts 注）
 
     setInputValue(edgeRange()!, '1.6');
     await tick();
     expect(edgeReadout()).toBe('1.6x');
+    hoverToggle()!.click();
+    await tick();
 
     document.querySelector<HTMLButtonElement>('.sp-footer .sp-btn-save')!.click();
     await tick();
-    expect(storedCanvas().edgeScroll).toEqual({ enabled: true, sensitivity: 1.6 });
+    expect(storedCanvas().edgeScroll).toEqual({ enabled: true, sensitivity: 1.6, hover: true });
 
-    // 关掉：滑杆与说明退场（开关本身仍在，供再次打开）
+    // 关掉总开关：滑杆、悬停档与说明一并退场（开关本身仍在，供再次打开）
     edgeToggle().click();
     await tick();
     expect(edgeRange()).toBeNull();
+    expect(hoverToggle()).toBeNull();
     document.querySelector<HTMLButtonElement>('.sp-footer .sp-btn-save')!.click();
     await tick();
-    expect(storedCanvas().edgeScroll).toEqual({ enabled: false, sensitivity: 1.6 });
+    expect(storedCanvas().edgeScroll).toEqual({ enabled: false, sensitivity: 1.6, hover: true });
   });
 
   it('画布·同节字段互不冲掉：改滚轮行为后 edgeScroll 仍在（展开 canvas 的连带修复）', async () => {
@@ -217,7 +226,7 @@ describe('SettingsPanel — 保存拆域', () => {
     await tick();
     document.querySelector<HTMLButtonElement>('.sp-footer .sp-btn-save')!.click();
     await tick();
-    expect(storedCanvas().edgeScroll).toEqual({ enabled: true, sensitivity: 1.5 });
+    expect(storedCanvas().edgeScroll).toEqual({ enabled: true, sensitivity: 1.5, hover: false });
 
     setSelectValue(document.querySelector<HTMLSelectElement>('#sp-canvas-wheel')!, 'zoom');
     await tick();
@@ -225,7 +234,7 @@ describe('SettingsPanel — 保存拆域', () => {
     await tick();
     // 旧行为：滚轮行为整体替换 canvas → 刚存的 edgeScroll 被抹掉
     expect(storedCanvas().wheelMode).toBe('zoom');
-    expect(storedCanvas().edgeScroll).toEqual({ enabled: true, sensitivity: 1.5 });
+    expect(storedCanvas().edgeScroll).toEqual({ enabled: true, sensitivity: 1.5, hover: false });
     expect(edgeReadout()).toBe('1.5x');
   });
 });

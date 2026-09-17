@@ -9,7 +9,7 @@
 // focusRafRef/focusFlightRef 载体。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useEdgeAutoScroll } from './edge-scroll';
+import { useEdgeAutoScroll, useHoverEdgeScroll } from './edge-scroll';
 import {
   canvasWheelMode,
   createFocusFlightScheduler,
@@ -244,6 +244,10 @@ export function usePaperViewport(core: PaperCore | null) {
    * 已提交布局，与旧 tick 同序，勿调）。 */
   const selDragRef = useRef<SelectionDragState | null>(null);
   const { start: startEdgeScroll, stop: stopEdgeScroll } = useEdgeAutoScroll(canvasRef);
+
+  /* 悬停即滚（RTS 相机标准形态，缺省关——设置里开）：指针停在画布边缘就滚，
+   * 不必先按住东西。同一子系统（策略/曲线/灵敏度共用），差异见 edge-scroll.ts 注。 */
+  useHoverEdgeScroll(canvasRef);
 
   /* 缩放/平滚：原生非被动监听（React 合成 wheel 是 passive，preventDefault 无效）。
    * 2026-09-07 UX 批：滚轮语义改「平滚视角」——plain wheel = 平移（纵向随
