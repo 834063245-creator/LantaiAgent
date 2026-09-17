@@ -4571,9 +4571,11 @@ html.pp-composer-dragging {
   padding: var(--pp-asset-graph-padV) 0;
 }
 .pp-graph-svg {
+  display: block;
   width: 100%;
+  /* 高由几何真源定（graphLayout：viewBox 高 = 行数×行高 + 内距，viewBox 宽 = 版心宽）；
+     旧实现 height:auto + max-height 会把「层数少」变成 meet 后的 letterbox + 文字缩放 */
   height: auto;
-  max-height: var(--pp-asset-graph-svgMaxH);
 }
 .pp-graph-edge {
   stroke: var(--ink-3);

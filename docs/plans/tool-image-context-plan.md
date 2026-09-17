@@ -132,6 +132,15 @@
 3. 截一张 3 类柱图的卡 → 模型能否指出「图只占了卡片左边一小块」（即它能自查出 P1 要修的缺陷）。
 
 ## 6. 下一批的机械根因（2026-09-17 实测，不需等语汇拍板）
+
+### 6.0 B 图版签落地的进度账（box 定比例：12 原语逐个过）
+
+| 原语 | 状态 | 关键改动 |
+|---|---|---|
+| chart | ✅ 2026-09-17（d6c28d80） | viewBox 宽 = 版心宽（用户单位 == CSS px）；高按类目数三档；柱宽由槽宽反推（条数少 → 柱更宽铺满）；散点独立坐标系退役；4 个死 token 清除 |
+| graph / tree | ✅ 2026-09-17 | viewBox 宽 = 版心宽；列宽由版心反推（层数少 → 列更宽）；**节点框宽由标签实测宽定**（长标签截断 + 全名进 `<title>`）；图高只随行数；graph 组 5 个死 token 清除 |
+| grid / metric / board / timeline / citation / chem / media / form / html | ⬜ 待做 | 共用图版语汇（题签行 / 极弱规线 / 墨阶分层）尚未落地 |
+
 **资产段落设计的规线一条都没画出来**：`tokens.css:57` 的 `--rule-soft` 是**整条 border 简写**
 （`1px solid var(--ink-4)`），而 PaperPanel.css 有 17 处把它当**颜色**再拼一次
 （`border-top: var(--pp-asset-board-colRule) solid var(--rule-soft)`）⇒ 值替换后成为

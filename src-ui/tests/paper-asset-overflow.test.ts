@@ -147,12 +147,12 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
         { from: 'r', to: 'b' },
       ],
     });
-    // 分层：r 层 0，{a,b} 层 1 → W = 2×160+40 = 360；最宽层 2 行 → H = 2×52+30 = 134
-    // → 720×134/360 = 268（360 封顶未触）
-    expect(measureBlockHeight(b)).toBe(8 + 268);
+    // 规格变更（2026-09-17 盒定比例批）：图高不再由「版心宽 × 层宽×行高 ÷ 坐标系宽」
+    // 换算封顶（旧式 720×134/360 = 268），改为**只随行数**（最宽层 2 行 → 2×52+16 = 120）。
+    expect(measureBlockHeight(b)).toBe(8 + ASSET_DERIVED.graphViewH(2));
   });
 
-  it('tree 表现保留深度列树公式：全节点行高 + 360 封顶', () => {
+  it('tree 表现：全节点行高（3 节点 → 3 行；与列数无关）', () => {
     const b = assetBlock(
       'deps_impact',
       {
@@ -164,8 +164,8 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
       },
       'tree',
     );
-    // 深度 1 → W = 2×160+40 = 360；H = 3×52+30 = 186 → 720×186/360=372 → 封顶 360
-    expect(measureBlockHeight(b)).toBe(8 + 360);
+    // 规格变更同上一例：tree 走的是「全节点行数」（3 行）而非最宽层
+    expect(measureBlockHeight(b)).toBe(8 + ASSET_DERIVED.graphViewH(3));
   });
 
   it('graph 查询式/空数据：占位单行（不再按 SVG 计高）', () => {

@@ -259,12 +259,23 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
       // 4 节点 3 边全渲染
       expect(h1.match(/pp-graph-node-box/g)?.length).toBe(4);
       expect(h1.match(/class="pp-graph-edge"/g)?.length).toBe(3);
-      // 分层几何：A 第 0 层、B/D 第 1 层、C 第 2 层——translate x 断言层号
-      // （x = 层号×160+40；同层 B/D x 相同、y 不同）
-      expect(h1).toContain('translate(40, 26)'); // A：层 0 行 0
-      expect(h1).toContain('translate(200, 26)'); // B：层 1 行 0（表序先于 D）
-      expect(h1).toContain('translate(200, 78)'); // D：层 1 行 1
-      expect(h1).toContain('translate(360, 26)'); // C：层 2 行 0
+      // 分层几何：A 第 0 层、B/D 第 1 层、C 第 2 层——translate 断言层号/行号。
+      // 规格变更（2026-09-17 盒定比例批）：坐标不再由固定常量（层号×160+40）算出，
+      // 而是**由版心宽反推列宽**（graphLayout：colW = (版心 − 原点) ÷ 层数）；同层
+      // 节点 x 相同、y 相差一个行高 52。断言改为「同层 x 相同 + 逐层递增 + 行距」，
+      // 与几何真源解耦（改版心宽不该改测试）。
+      const xs = [...h1.matchAll(/translate\(([\d.]+), ([\d.]+)\)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+      expect(xs.length).toBe(4);
+      // 顺序 = payload 节点序 a,b,c,d ⇒ 层号 0,1,2,1
+      const [ax, ay] = xs[0]; // A 层 0 行 0
+      const [bx, by] = xs[1]; // B 层 1 行 0
+      const [cx] = xs[2]; // C 层 2 行 0
+      const [dx, dy] = xs[3]; // D 层 1 行 1
+      expect(ax).toBeLessThan(bx);
+      expect(bx).toBeLessThan(cx); // 逐层右移
+      expect(bx).toBe(dx); // 同层（B/D）x 相同
+      expect(dy - by).toBeCloseTo(52, 5); // 行距 = GRAPH_GEO.rowH
+      expect(ay).toBe(by); // 各层第 0 行同 y
     });
   });
 

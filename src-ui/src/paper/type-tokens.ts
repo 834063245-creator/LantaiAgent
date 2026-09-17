@@ -294,7 +294,9 @@ export const ASSET_TOKENS = {
     virtualRowH: 29,
     virtualViewportH: 240,
   },
-  graph: { padV: 4, svgMaxH: 360, colW: 160, rowH: 52, origin: 40, minW: 320, minH: 80 },
+  // graph（2026-09-17 盒定比例）：列宽/原点/最小尺寸/svg 封顶随「宽高由版心定」整批退役——
+  // 渲染侧的框宽改由标签实测宽定（components.tsx GRAPH_GEO），图高只随行数变。
+  graph: { padV: 4, rowH: 52 },
   html: { padV: 2, frameDefaultH: 240 },
   form: {
     padV: 2,
@@ -437,6 +439,9 @@ export const ASSET_DERIVED = {
   chartAxisNamesH: ASSET_TOKENS.chart.axisSize * 1.8 + 2, // .pp-chart-axis-names + margin-top 2
   chartLeftPad: ASSET_TOKENS.chart.leftPad,
   chartRightPad: ASSET_TOKENS.chart.rightPad,
+  /** 行数 → graph SVG 盒高（盒定比例：行高 52 + 上下各 8 内距，与列数解耦）。
+   *  渲染侧镜像同一组数值（components.tsx GRAPH_GEO），对拍钉在几何测试里。 */
+  graphViewH: (rows: number): number => Math.max(44, Math.max(1, rows) * ASSET_TOKENS.graph.rowH + 16),
   /** 类目数 → SVG 盒高（盒定比例：宽高皆由版心/档位定，与坐标系宽度解耦）。 */
   chartSvgH: (type: string, count: number): number => {
     if (type === 'pie') return ASSET_TOKENS.chart.pieH;
@@ -469,12 +474,7 @@ export const ASSET_DERIVED = {
   gridSize: ASSET_TOKENS.grid.rowSize,
 
   graphPadV: ASSET_TOKENS.graph.padV * 2, // .pp-graph padding 4×2
-  graphSvgMaxH: ASSET_TOKENS.graph.svgMaxH,
-  graphColW: ASSET_TOKENS.graph.colW,
   graphRowH: ASSET_TOKENS.graph.rowH,
-  graphOrigin: ASSET_TOKENS.graph.origin,
-  graphMinW: ASSET_TOKENS.graph.minW,
-  graphMinH: ASSET_TOKENS.graph.minH,
 
   htmlPadV: ASSET_TOKENS.html.padV * 2, // .pp-html padding 2×2
   htmlFrameDefaultH: ASSET_TOKENS.html.frameDefaultH,

@@ -817,12 +817,6 @@ function normalizeGraph(payload: unknown): { nodes: GraphNode[]; edges: GraphEdg
   return { nodes, edges };
 }
 
-/** 几何常量（镜像 ASSET_TOKENS.graph：colW/rowH/origin——measure.ts 同源取数） */
-const GRAPH_COL_W = 160;
-const GRAPH_ROW_H = 52;
-const GRAPH_ORIGIN_X = 40;
-const GRAPH_ROW_Y = 26;
-
 /** 空数据占位（错误不静默——查询式 {nodeId, depth} 无直通数据/空 nodes 不画空白 SVG） */
 function graphEmptyPlaceholder(): ReactNode {
   return (
@@ -832,52 +826,156 @@ function graphEmptyPlaceholder(): ReactNode {
   );
 }
 
-/** 共享 SVG 视图：pos 以「列号/行号」为单位的网格坐标，此处乘几何常量落位。 */
+/** graph 几何（2026-09-17 盒定比例批，与 chart 同治法）：
+ *  - viewW == 卡片内容宽 ⇒ SVG 用户单位 == CSS px，**文字不再被 viewBox 缩放**
+ *    （旧实现下同一张图 2 层 3 行时 10px 字被放大到约 19px）；
+ *  - 列宽由「版心宽 ÷ 层数」反推（旧实现列宽恒 160，2 层图只占 360px 后居中缩放）；
+ *  - 节点框宽由**标签实测宽**定（旧实现恒 72×28，长标签 293.6px 直接压出框外叠邻块，
+ *    实测溢出 291px），超出则截断 + 全名进 <title>；
+ *  - 行高固定 52 ⇒ 图高只随行数变，与列数无关。 */
+const GRAPH_GEO = {
+  rowH: 52,
+  originX: 40,
+  boxH: 28,
+  padX: 10,
+  minBoxW: 72,
+  colGap: 12,
+  fontPx: 10,
+  /** 字宽估算（--f-mono 栈非等宽，按字类近似：ASCII 0.58em / CJK 1em）；
+   *  框宽与截断共用同一把尺 ⇒ **框与文由构造保证不溢出**（保守方向：估高不估低）。 */
+  asciiW: 0.58,
+  cjkW: 1,
+} as const;
+
+/** 标签估宽（px）——ASCII 0.58em / 其余（CJK 等全角）1em。 */
+export function graphLabelPx(text: string): number {
+  let w = 0;
+  for (const ch of text) w += (ch.codePointAt(0) ?? 0) < 0x2e80 ? GRAPH_GEO.asciiW : GRAPH_GEO.cjkW;
+  return w * GRAPH_GEO.fontPx;
+}
+
+/** 按可用宽度截断标签（超宽加省略号）；返回截断后的文本与是否截断。
+ *  导出 = 测试直呼面（pieSlices/chartLayout 先例）。 */
+export function fitGraphLabel(text: string, maxPx: number): { text: string; truncated: boolean } {
+  if (graphLabelPx(text) <= maxPx) return { text, truncated: false };
+  const ellipsis = '…';
+  const budget = maxPx - graphLabelPx(ellipsis);
+  let out = '';
+  let w = 0;
+  for (const ch of text) {
+    const cw = ((ch.codePointAt(0) ?? 0) < 0x2e80 ? GRAPH_GEO.asciiW : GRAPH_GEO.cjkW) * GRAPH_GEO.fontPx;
+    if (w + cw > budget) break;
+    out += ch;
+    w += cw;
+  }
+  return { text: out + ellipsis, truncated: true };
+}
+
+/** graph 布局（单一几何真源）：网格坐标 → 像素坐标 + 节点框几何。
+ *  导出 = 测试直呼面。 */
+export function graphLayout(opts: {
+  pos: Map<string, { x: number; y: number }>;
+  cols: number;
+  rows: number;
+  labels: string[];
+  boxW: number;
+}): {
+  viewW: number;
+  viewH: number;
+  colW: number;
+  rowH: number;
+  boxW: number;
+  boxH: number;
+  at: (x: number, y: number) => { cx: number; cy: number };
+} {
+  const viewW = Math.max(240, Math.round(opts.boxW));
+  const cols = Math.max(1, opts.cols);
+  const rows = Math.max(1, opts.rows);
+  const colW = Math.max(GRAPH_GEO.minBoxW + GRAPH_GEO.colGap, (viewW - GRAPH_GEO.originX) / cols);
+  const rowH = GRAPH_GEO.rowH;
+  const widest = opts.labels.reduce((m, l) => Math.max(m, graphLabelPx(l)), 0);
+  const boxW = Math.max(
+    GRAPH_GEO.minBoxW,
+    Math.min(widest + GRAPH_GEO.padX * 2, colW - GRAPH_GEO.colGap, viewW - GRAPH_GEO.originX - 8),
+  );
+  const viewH = Math.max(GRAPH_GEO.boxH + 16, rows * rowH + 16);
+  return {
+    viewW,
+    viewH,
+    colW,
+    rowH,
+    boxW,
+    boxH: GRAPH_GEO.boxH,
+    at: (x: number, y: number) => ({
+      cx: GRAPH_GEO.originX + x * colW + colW / 2,
+      cy: 8 + y * rowH + rowH / 2,
+    }),
+  };
+}
+
+/** 共享 SVG 视图：pos 以「列号/行号」为单位的网格坐标，布局交给 graphLayout。 */
 function GraphBodySvg({
   nodes,
   edges,
   pos,
   cols,
   rows,
+  boxW,
 }: {
   nodes: GraphNode[];
   edges: GraphEdge[];
   pos: Map<string, { x: number; y: number }>;
   cols: number;
   rows: number;
+  boxW: number;
 }) {
-  const W = Math.max(320, cols * GRAPH_COL_W + GRAPH_ORIGIN_X);
-  const H = Math.max(80, rows * GRAPH_ROW_H + 30);
+  const L = graphLayout({
+    pos,
+    cols,
+    rows,
+    labels: nodes.map((n) => n.label ?? n.id),
+    boxW,
+  });
   return (
     <div className="pp-graph">
-      <svg className="pp-graph-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="graph">
+      <svg
+        className="pp-graph-svg"
+        viewBox={`0 0 ${L.viewW} ${L.viewH}`}
+        width={L.viewW}
+        height={L.viewH}
+        role="img"
+        aria-label="graph"
+      >
         {edges.map((e) => {
           const a = pos.get(e.from);
           const b = pos.get(e.to);
           if (!a || !b) return null;
+          const p1 = L.at(a.x, a.y);
+          const p2 = L.at(b.x, b.y);
           return (
-            <line
-              key={`${e.from}->${e.to}`}
-              x1={a.x * GRAPH_COL_W + GRAPH_ORIGIN_X}
-              y1={a.y * GRAPH_ROW_H + GRAPH_ROW_Y}
-              x2={b.x * GRAPH_COL_W + GRAPH_ORIGIN_X}
-              y2={b.y * GRAPH_ROW_H + GRAPH_ROW_Y}
-              className="pp-graph-edge"
-            />
+            <line key={`${e.from}->${e.to}`} x1={p1.cx} y1={p1.cy} x2={p2.cx} y2={p2.cy} className="pp-graph-edge" />
           );
         })}
         {nodes.map((n) => {
           const p = pos.get(n.id);
           if (!p) return null;
+          const full = n.label ?? n.id;
+          const fitted = fitGraphLabel(full, L.boxW - GRAPH_GEO.padX * 2);
+          const c = L.at(p.x, p.y);
           return (
-            <g
-              key={n.id}
-              transform={`translate(${p.x * GRAPH_COL_W + GRAPH_ORIGIN_X}, ${p.y * GRAPH_ROW_H + GRAPH_ROW_Y})`}
-              className="pp-graph-node"
-            >
-              <rect x={-36} y={-14} width={72} height={28} rx={0} className="pp-graph-node-box" />
+            <g key={n.id} transform={`translate(${c.cx}, ${c.cy})`} className="pp-graph-node">
+              <rect
+                x={-L.boxW / 2}
+                y={-L.boxH / 2}
+                width={L.boxW}
+                height={L.boxH}
+                rx={0}
+                className="pp-graph-node-box"
+              />
+              {/* 截断后全名进 <title>（悬停可见）——截断不丢信息 */}
+              <title>{full}</title>
               <text textAnchor="middle" dominantBaseline="middle" className="pp-graph-node-text">
-                {n.label ?? n.id}
+                {fitted.text}
               </text>
             </g>
           );
@@ -891,6 +989,7 @@ function GraphBodySvg({
 function GraphTreeBody({ block }: BlockRendererProps) {
   const { nodes, edges } = normalizeGraph(block.payload);
   if (nodes.length === 0) return graphEmptyPlaceholder();
+  const blockW = typeof (block as { w?: number }).w === 'number' ? (block as { w: number }).w : 720;
   const children = new Map<string, string[]>();
   const hasParent = new Set<string>();
   for (const e of edges) {
@@ -911,7 +1010,7 @@ function GraphTreeBody({ block }: BlockRendererProps) {
   if (roots.length === 0) for (const n of nodes) place(n.id, 0);
   else for (const r of roots) place(r.id, 0);
   const maxDepth = Math.max(0, ...nodes.map((n) => pos.get(n.id)?.x ?? 0));
-  return <GraphBodySvg nodes={nodes} edges={edges} pos={pos} cols={maxDepth + 1} rows={nodes.length} />;
+  return <GraphBodySvg nodes={nodes} edges={edges} pos={pos} cols={maxDepth + 1} rows={nodes.length} boxW={blockW} />;
 }
 
 /** graph 表现：确定性分层布局（A5 二期）——最长路径分层（无入边 = 第 0 层），
@@ -920,6 +1019,7 @@ function GraphTreeBody({ block }: BlockRendererProps) {
 function GraphLayeredBody({ block }: BlockRendererProps) {
   const { nodes, edges } = normalizeGraph(block.payload);
   if (nodes.length === 0) return graphEmptyPlaceholder();
+  const blockW = typeof (block as { w?: number }).w === 'number' ? (block as { w: number }).w : 720;
   // 层号松弛：layer(n) = 0（无入边）| max(layer(parent)+1)，迭代至稳定
   const layer = new Map<string, number>();
   for (const n of nodes) layer.set(n.id, 0);
@@ -955,7 +1055,7 @@ function GraphLayeredBody({ block }: BlockRendererProps) {
       pos.set(id, { x: l, y: i });
     });
   }
-  return <GraphBodySvg nodes={nodes} edges={edges} pos={pos} cols={maxLayer + 1} rows={maxRows} />;
+  return <GraphBodySvg nodes={nodes} edges={edges} pos={pos} cols={maxLayer + 1} rows={maxRows} boxW={blockW} />;
 }
 
 /* ── html 沙箱（WO-8）── */

@@ -313,12 +313,7 @@ const GRID_VIRTUAL_VIEWPORT_H = ASSET_DERIVED.gridVirtualViewportH; // .pp-grid-
 const GRID_FONT = `${ASSET_DERIVED.gridSize}px ${MONO_STACK}`;
 
 const GRAPH_PAD_V = ASSET_DERIVED.graphPadV; // .pp-graph padding 4×2
-const GRAPH_SVG_MAX_H = ASSET_DERIVED.graphSvgMaxH; // .pp-graph-svg max-height
-const GRAPH_COL_W = ASSET_DERIVED.graphColW; // 深度列宽
-const GRAPH_ROW_H = ASSET_DERIVED.graphRowH;
-const GRAPH_ORIGIN = ASSET_DERIVED.graphOrigin;
-const GRAPH_MIN_W = ASSET_DERIVED.graphMinW;
-const GRAPH_MIN_H = ASSET_DERIVED.graphMinH;
+const _GRAPH_ROW_H = ASSET_DERIVED.graphRowH;
 
 const HTML_BODY_PAD_V = ASSET_DERIVED.htmlPadV; // .pp-html padding 2×2
 const HTML_FRAME_DEFAULT_H = ASSET_DERIVED.htmlFrameDefaultH; // .pp-html-frame 初始高
@@ -635,7 +630,7 @@ function gridBodyH(p: { columns?: unknown; rows?: unknown; caption?: unknown }, 
 }
 
 /** tree 体高：确定性树布局几何镜像（GraphTreeBody 同款深度/规模公式）。 */
-function graphBodyH(payload: unknown, w: number): number {
+function graphBodyH(payload: unknown, _w: number): number {
   const p = payload as {
     nodes?: Array<{ id?: unknown; children?: Array<{ id?: unknown }> }>;
     edges?: Array<{ from: unknown; to: unknown }>;
@@ -676,9 +671,8 @@ function graphBodyH(payload: unknown, w: number): number {
     for (const n of nodes)
       if (typeof n?.id === 'string') walk(n.id, 0);
       else for (const r of roots) walk(r, 0);
-  const W = Math.max(GRAPH_MIN_W, (maxDepth + 1) * GRAPH_COL_W + GRAPH_ORIGIN);
-  const H = Math.max(GRAPH_MIN_H, nodes.length * GRAPH_ROW_H + 30);
-  return GRAPH_PAD_V + Math.min((w * H) / W, GRAPH_SVG_MAX_H);
+  // 盒定比例（2026-09-17）：图高由行数定（与列数解耦）——旧模型 min(w·H/W, maxH) 同 chart 病灶
+  return GRAPH_PAD_V + ASSET_DERIVED.graphViewH(nodes.length);
 }
 
 /** form 体高：题/文/选项列（desc 文本实测）/操作行。 */
@@ -714,7 +708,7 @@ function assetPresentationOf(b: SourcedBlock): string | undefined {
 
 /** graph 分层布局体高（GraphLayeredBody 同款几何镜像）：最长路径分层，
  *  行高 = 最宽层的节点数。空 nodes（查询式/空数据）= 「数据不可用」单行占位。 */
-function graphLayeredBodyH(payload: unknown, w: number): number {
+function graphLayeredBodyH(payload: unknown, _w: number): number {
   const p = payload as { nodes?: Array<{ id?: unknown }>; edges?: Array<{ from?: unknown; to?: unknown }> };
   const nodes = Array.isArray(p.nodes) ? p.nodes.filter((n) => typeof n?.id === 'string') : [];
   if (nodes.length === 0) return GRAPH_PAD_V + 30;
@@ -739,11 +733,10 @@ function graphLayeredBodyH(payload: unknown, w: number): number {
   }
   const rowsInLayer = new Map<number, number>();
   for (const l of layer.values()) rowsInLayer.set(l, (rowsInLayer.get(l) ?? 0) + 1);
-  const maxLayer = Math.max(...rowsInLayer.keys());
   const maxRows = Math.max(...rowsInLayer.values());
-  const W = Math.max(GRAPH_MIN_W, (maxLayer + 1) * GRAPH_COL_W + GRAPH_ORIGIN);
-  const H = Math.max(GRAPH_MIN_H, maxRows * GRAPH_ROW_H + 30);
-  return GRAPH_PAD_V + Math.min((w * H) / W, GRAPH_SVG_MAX_H);
+  // 盒定比例（2026-09-17）：图高由行数定（与列数解耦）——旧模型 min(w·H/W, maxH) 会把
+  // 「层数少」翻译成「图更小并居中缩放」（同 chart 病灶；文字被 viewBox 缩放）。
+  return GRAPH_PAD_V + ASSET_DERIVED.graphViewH(maxRows);
 }
 
 /** board 体高：横排等高列（flex 行）——列高 = 列题 + Σ 卡高，取最大列。 */
