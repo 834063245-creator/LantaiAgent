@@ -352,11 +352,20 @@ export function pieSlices(values: number[]): Array<{ d: string; start: number; e
 }
 
 function ChartBody({ block }: BlockRendererProps) {
-  const p = block.payload as { type?: string; data?: unknown; config?: Record<string, unknown> };
+  const p = block.payload as {
+    type?: string;
+    data?: unknown;
+    config?: Record<string, unknown>;
+    /** 信息面（2026-09-17）：口径与单位——读者判断「这图能不能信」靠的是它们 */
+    unit?: string;
+    source?: string;
+  };
   const type = typeof p.type === 'string' ? p.type : 'bar';
   const norm = normalizeChartData(p.data);
   const cfg = p.config ?? {};
   const title = typeof cfg.title === 'string' ? cfg.title : '';
+  const unit = typeof p.unit === 'string' ? p.unit : '';
+  const source = typeof p.source === 'string' ? p.source : '';
   if (!norm || norm.values.length === 0) {
     // 错误不静默：数据形状不符/为空时渲染占位，不画空白 SVG
     return <div className="pp-chart pp-chart-empty">数据不可用 · 期望数组或 {`{labels, values}`} 形状</div>;
@@ -520,7 +529,13 @@ function ChartBody({ block }: BlockRendererProps) {
 
   return (
     <div className="pp-chart">
-      <div className="pp-chart-type">{type}</div>
+      {/* 类型行承载信息面（零测高改动：行高已由 --pp-asset-chart-typeSize 定死）：
+          unit/source 让读者知道「251 是什么、从哪来」——此前只有一个裸数字 */}
+      <div className="pp-chart-type">
+        {type}
+        {unit && <span className="pp-chart-unit"> · 单位 {unit}</span>}
+        {source && <span className="pp-chart-source"> · 来源 {source}</span>}
+      </div>
       {title && <div className="pp-chart-title">{title}</div>}
       {type === 'line' ? line : type === 'pie' ? pie : type === 'scatter' ? scatter : bar}
       {showLabels && type === 'pie' && (
@@ -603,7 +618,14 @@ export function buildEchartsOption(
 }
 
 function InteractiveChartBody({ block }: BlockRendererProps) {
-  const p = block.payload as { type?: string; data?: unknown; config?: Record<string, unknown> };
+  const p = block.payload as {
+    type?: string;
+    data?: unknown;
+    config?: Record<string, unknown>;
+    /** 信息面（2026-09-17）：口径与单位——读者判断「这图能不能信」靠的是它们 */
+    unit?: string;
+    source?: string;
+  };
   const type = typeof p.type === 'string' ? p.type : 'bar';
   const domRef = useRef<HTMLDivElement | null>(null);
   const [err, setErr] = useState<string | null>(null);

@@ -4366,6 +4366,16 @@ html.pp-composer-dragging {
   color: var(--ink-3);
   margin-bottom: var(--pp-asset-chart-typeMarginB);
 }
+/* 信息面（2026-09-17）：单位与口径挂在类型行里——读者判断「这图能不能信」靠它们；
+   零测高改动（行高已由 typeSize 定死）。口径用石青（机器的声音），不另起一行 */
+.pp-chart-unit,
+.pp-chart-source {
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.pp-chart-source {
+  color: var(--indigo);
+}
 .pp-chart-empty {
   font-family: var(--f-song);
   font-size: 0.92rem;

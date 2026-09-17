@@ -181,6 +181,17 @@ export function registerBuiltinAssetKinds(): void {
           type: 'object',
           description: '可选配置：title（字符串，不是 {text} 对象）、xName、yName、palette（颜色数组）',
         },
+        // ── 信息面（2026-09-17「让卡片说人话」批，全部可选 ⇒ 旧 payload 逐字有效）──
+        // 读者判断一张图能不能信，靠的不是柱子多高，而是「这些数字是什么口径」。
+        // 此前 schema 只有 type/data/config ⇒ 图上只有一个裸数字（251 是次数还是毫秒？）。
+        unit: {
+          type: 'string',
+          description: '数值单位（如「次」「毫秒」「%」）——渲染在类型行里，读者不用猜 251 是什么',
+        },
+        source: {
+          type: 'string',
+          description: '数据来源/口径（如「git log 近 30 天」「本会话统计」）——渲染在类型行末尾',
+        },
       },
       ['type', 'data'],
     ),
@@ -188,7 +199,7 @@ export function registerBuiltinAssetKinds(): void {
     defaultPresentation: 'chart',
     streamable: 'atomic',
     payloadExample:
-      '{type:"bar", data:{labels:["feat","fix","docs"], values:[251,88,36]}, config:{title:"提交类型分布", yName:"次数"}}',
+      '{type:"bar", data:{labels:["feat","fix","docs"], values:[251,88,36]}, unit:"次", source:"git log 近 30 天", config:{title:"提交类型分布", yName:"次数"}}',
     // labels/values 必须等长（受限子集无「两数组等长」关键字——运行时补）。
     // 注意取 payload.data（data 是 payload 的嵌套字段，不是 payload 本身）。
     payloadCheck: (payload) => {

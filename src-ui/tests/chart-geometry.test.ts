@@ -422,3 +422,36 @@ describe('chart 盒定比例 — 宽高由版心定，不由数据条数定', ()
     expect(L.baseY).toBe(chartSvgHeight('bar', 1) - ASSET_TOKENS.chart.bottomPad);
   });
 });
+
+// ── 信息面：unit / source（2026-09-17「让卡片说人话」批第一刀）──
+//
+// 此前 schema 只有 type/data/config ⇒ 图上只有一个裸数字（251 是次数还是毫秒？）。
+// 两个字段共用既有类型行（零测高改动），旧 payload 不带它们时 wire/markup 逐字不变。
+
+describe('chart 信息面 — 单位与口径', () => {
+  it('unit / source 渲染在类型行里（读者不用猜数字是什么）', async () => {
+    const html = await renderChart({
+      type: 'bar',
+      data: [1, 2],
+      unit: '次',
+      source: 'git log 近 30 天',
+    });
+    expect(html).toContain('pp-chart-unit');
+    expect(html).toContain('单位 次');
+    expect(html).toContain('pp-chart-source');
+    expect(html).toContain('来源 git log 近 30 天');
+  });
+
+  it('不带这两字段 → 类型行 markup 与旧版一致（零漂移）', async () => {
+    const html = await renderChart({ type: 'bar', data: [1, 2] });
+    expect(html).toContain('<div class="pp-chart-type">bar</div>');
+    expect(html).not.toContain('pp-chart-unit');
+  });
+
+  it('schema 接受两字段（可选），非法类型仍被拒（不静默）', () => {
+    const def = assetKinds.get('chart')!;
+    expect(validatePayload(def, { type: 'bar', data: [1], unit: '次', source: 'x' })).toBeNull();
+    expect(validatePayload(def, { type: 'bar', data: [1], unit: 5 })).toContain('unit');
+    expect(validatePayload(def, { type: 'bar', data: [1], source: ['a'] })).toContain('source');
+  });
+});
