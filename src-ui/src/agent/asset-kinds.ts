@@ -126,6 +126,16 @@ export function registerBuiltinAssetKinds(): void {
           description: '行数据——每行是一个单元格数组（按 columns 顺序），如 [["feat",251],["docs",218]]',
         },
         caption: { type: 'string', description: '表题（可空）' },
+        // 信息面（2026-09-17「让卡片说人话」批第三刀）：「几百行就是一面墙」——模型
+        // 知道哪几行是重点，读者不知道。emphasis.rows = 0-based 行下标（对应 rows 数组），
+        // 渲染为石青左条 + 洗底；纯样式，不改行高、不动测高，旧 payload 逐字有效。
+        emphasis: {
+          type: 'object',
+          description: '重点行（0-based 行下标，对应 rows 数组第几行）——让读者一眼看到结论所在的行',
+          properties: {
+            rows: { type: 'array', items: { type: 'number' }, description: '重点行下标，如 [0,3]' },
+          },
+        },
       },
       ['rows'],
     ),

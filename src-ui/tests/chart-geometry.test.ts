@@ -63,6 +63,22 @@ async function renderChart(payload: unknown): Promise<string> {
   return html;
 }
 
+/** 通用资产渲染助手（grid 信息面批新增）：chart 专用 renderChart 之外的 kind 用它。 */
+async function renderAsset(kind: string, presentation: string, payload: unknown): Promise<string> {
+  let html = '';
+  await withRenderers(() => {
+    const Comp = resolveAssetBlock(kind, presentation);
+    if (!Comp) throw new Error(`${kind}/${presentation} 表现组件未解析`);
+    const block: SourcedBlock = {
+      ...createBlock(kind as never, payload as never, { messageId: 'm1', part: null }),
+      id: 'pb:m1:0',
+      asset: { assetId: 'as_1', presentation, title: 't', finalised: true },
+    };
+    html = renderToStaticMarkup(createElement(Comp, { block }));
+  });
+  return html;
+}
+
 /* ═══ 1. 饼图真扇区（D5）═══
  * 旧实现：.pp-chart-pie-seg 是 display:block 空 span（flex 中宽 0），
  * 且每片各自画完整 conic-gradient → 渲染成空圈，几何上不是饼图。
@@ -501,5 +517,47 @@ describe('metric 信息面 — 比较对象', () => {
     const def = assetKinds.get('metric')!;
     expect(validatePayload(def, { items: [{ label: 'x', value: 1, compare: '上期 88' }] })).toBeNull();
     expect(validatePayload(def, { items: [{ label: 'x', value: 1, compare: 88 }] })).toContain('compare');
+  });
+});
+
+// ── 信息面第三刀：grid 的 emphasis（2026-09-17）──
+//
+// 「几百行就是一面墙」：模型知道哪几行是重点，读者不知道。emphasis.rows 让结论行
+// 自己浮出来；纯样式（不加行、不改行高）⇒ 测高零改动。
+
+describe('grid 信息面 — 重点行', () => {
+  it('被标记的行带 pp-grid-row-emphasis（其余行不带）', async () => {
+    const html = await renderAsset('table', 'grid', {
+      columns: ['a', 'b'],
+      rows: [
+        [1, 2],
+        [3, 4],
+        [5, 6],
+      ],
+      emphasis: { rows: [1] },
+    });
+    expect((html.match(/pp-grid-row-emphasis/g) ?? []).length).toBe(1);
+    // 第 2 行（下标 1）带类，第 1/3 行不带：定位到带类的那个 <tr>
+    expect(html).toMatch(/<tr class="pp-grid-row-emphasis">/);
+  });
+
+  it('不带 emphasis → 一个重点行都没有（零漂移）', async () => {
+    const html = await renderAsset('table', 'grid', { columns: ['a'], rows: [[1]] });
+    expect(html).not.toContain('pp-grid-row-emphasis');
+  });
+
+  it('畸形 emphasis（非对象/非数组/含非整数）→ 空集，不炸也不误标', async () => {
+    for (const bad of [{ emphasis: 'x' }, { emphasis: { rows: 'x' } }, { emphasis: { rows: [-1, 1.5, 'a'] } }]) {
+      const html = await renderAsset('table', 'grid', { columns: ['a'], rows: [[1], [2]], ...bad });
+      expect(html).not.toContain('pp-grid-row-emphasis');
+    }
+    const ok = await renderAsset('table', 'grid', { columns: ['a'], rows: [[1], [2]], emphasis: { rows: [1] } });
+    expect(ok).toContain('pp-grid-row-emphasis');
+  });
+
+  it('schema 接受 emphasis（可选），坏形状被拒', () => {
+    const def = assetKinds.get('table')!;
+    expect(validatePayload(def, { columns: ['a'], rows: [[1]], emphasis: { rows: [0] } })).toBeNull();
+    expect(validatePayload(def, { columns: ['a'], rows: [[1]], emphasis: { rows: ['x'] } })).toContain('emphasis');
   });
 });

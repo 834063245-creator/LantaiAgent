@@ -86,14 +86,36 @@ function cellText(v: unknown): string {
   return typeof v === 'object' ? JSON.stringify(v) : String(v);
 }
 
+/** 重点行解析（grid 信息面，2026-09-17）：`payload.emphasis.rows`（0-based 行下标）→ Set。
+ *  形状不符 → 空集（标重点失败不该让整张表不渲染；错误不静默由 schema 校验层负责）。 */
+function emphasisRowsOf(payload: unknown): Set<number> {
+  const e = (payload as { emphasis?: { rows?: unknown } })?.emphasis;
+  const rows = e && typeof e === 'object' ? e.rows : undefined;
+  if (!Array.isArray(rows)) return new Set<number>();
+  return new Set(rows.filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0));
+}
+
 function GridBody({ block }: BlockRendererProps) {
-  const p = block.payload as { columns?: unknown[]; rows?: unknown[][]; caption?: string };
+  const p = block.payload as {
+    columns?: unknown[];
+    rows?: unknown[][];
+    caption?: string;
+    emphasis?: { rows?: number[] };
+  };
+  const emphasised = emphasisRowsOf(block.payload);
   const rows = Array.isArray(p.rows) ? p.rows : [];
   const first = rows[0];
   const cols = Array.isArray(p.columns) ? p.columns.map(String) : first ? first.map((_, i) => `#${i + 1}`) : [];
   // 大表（>1000 行）转虚拟滚动（hooks 不能条件调——独立组件 VirtualGridBody）
   if (rows.length > GRID_VIRTUAL_THRESHOLD) {
-    return <VirtualGridBody rows={rows} cols={cols} caption={typeof p.caption === 'string' ? p.caption : ''} />;
+    return (
+      <VirtualGridBody
+        rows={rows}
+        cols={cols}
+        caption={typeof p.caption === 'string' ? p.caption : ''}
+        emphasised={emphasised}
+      />
+    );
   }
   return (
     <div className="pp-grid">
@@ -111,7 +133,7 @@ function GridBody({ block }: BlockRendererProps) {
         <tbody>
           {rows.map((row, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: 表格行按位置渲染，行序即身份
-            <tr key={i}>
+            <tr key={i} className={emphasised.has(i) ? 'pp-grid-row-emphasis' : undefined}>
               {row.map((cell, j) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: 单元格按行列位置渲染
                 <td key={j}>{cellText(cell)}</td>
@@ -133,7 +155,17 @@ function GridBody({ block }: BlockRendererProps) {
  * "卷内长物"，滚动浏览）。SSR/无布局期 getVirtualItems 空 → 只出总高容器，
  * 挂载后 effect 填充可视行（虚拟列表标准行为）。 */
 
-function VirtualGridBody({ rows, cols, caption }: { rows: unknown[][]; cols: string[]; caption: string }) {
+function VirtualGridBody({
+  rows,
+  cols,
+  caption,
+  emphasised,
+}: {
+  rows: unknown[][];
+  cols: string[];
+  caption: string;
+  emphasised: Set<number>;
+}) {
   const scrollRef = useRef<HTMLTableSectionElement | null>(null);
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -167,7 +199,11 @@ function VirtualGridBody({ rows, cols, caption }: { rows: unknown[][]; cols: str
             {items.map((vi) => {
               const row = rows[vi.index];
               return (
-                <tr key={vi.key} className="pp-grid-virtual-row" style={{ transform: `translateY(${vi.start}px)` }}>
+                <tr
+                  key={vi.key}
+                  className={`pp-grid-virtual-row${emphasised.has(vi.index) ? ' pp-grid-row-emphasis' : ''}`}
+                  style={{ transform: `translateY(${vi.start}px)` }}
+                >
                   {Array.isArray(row)
                     ? row.map((cell, j) => (
                         // biome-ignore lint/suspicious/noArrayIndexKey: 单元格按列位置渲染

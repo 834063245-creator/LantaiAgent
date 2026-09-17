@@ -5144,3 +5144,16 @@ button.pp-form-option:disabled {
 .pp-root .cd-actions .sp-btn-cancel:hover {
   color: var(--seal-deep);
 }
+
+/* 重点行（grid 信息面，2026-09-17）：石青左条 + 极淡洗底——「几百行一面墙」里
+   让读者一眼看到结论所在的行。纯样式（不改行高、不加行）⇒ 测高零改动。
+   左条走颜色位 --indigo（石青 = 机器的声音），不用朱砂（那是人的批注）。
+   放在文件末尾：本族选择器特异性较高（0,3,1），置尾可避免 noDescendingSpecificity。 */
+.pp-grid-virtual-row.pp-grid-row-emphasis > td,
+.pp-grid-table tr.pp-grid-row-emphasis > td {
+  background: color-mix(in oklch, var(--indigo) 8%, transparent);
+}
+.pp-grid-virtual-row.pp-grid-row-emphasis > td:first-child,
+.pp-grid-table tr.pp-grid-row-emphasis > td:first-child {
+  box-shadow: inset 2px 0 0 var(--indigo);
+}
