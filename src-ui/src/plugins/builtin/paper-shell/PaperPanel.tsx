@@ -37,7 +37,6 @@ import { FolioCompositionChip } from './FolioCompositionChip';
 import { formatCNDate } from './folio-date';
 import type { RegionView, SourcedBlock } from './host';
 import {
-  ANCHOR,
   activeOverlayContributions,
   activeSpace,
   blockFromSnapshot,
@@ -73,7 +72,7 @@ import { useComposerFloat } from './use-composer-float';
 import { useFoldState } from './use-fold-state';
 import { useJumpKeys } from './use-jump-keys';
 import { useMinimapBounds } from './use-minimap-bounds';
-import { usePaperDrag } from './use-paper-drag';
+import { blockReturnsToFlow, usePaperDrag } from './use-paper-drag';
 import { usePaperFocus } from './use-paper-focus';
 import { GHOST_H, usePaperRegions } from './use-paper-regions';
 import type { PaperCore } from './use-paper-sessions';
@@ -628,11 +627,8 @@ export function PaperPanel() {
     [regions, activeSessionKey, viewRect, canvasSize, composerDock, foldedOf, minimapContent, minimapGeo, inkCache],
   );
 
-  /* 拖拽回流判据（渲染面）：来源流区中轴——dragPos 悬回带内且 wasFlow = 松手取消 */
-  const dragBandCenter =
-    dragSource?.sessionId != null
-      ? (regions.find((r) => r.sessionId === dragSource.sessionId)?.anchor.anchorX ?? null)
-      : null;
+  /* 拖拽回流判据（渲染面）：与松手定夺共用 `blockReturnsToFlow`（据来源原位量）
+   * ——视觉与规则同一把尺子：预览说「回槽」就必须真的回槽（2026-09-17 修正） */
 
   return (
     <PaperDockContext.Provider value={dockContext}>
@@ -992,8 +988,7 @@ export function PaperPanel() {
                     const inBand =
                       isDragged &&
                       dragSource?.wasFlow === true &&
-                      dragBandCenter != null &&
-                      Math.abs(dragX - dragBandCenter) <= ANCHOR.bandHalfWidth;
+                      blockReturnsToFlow({ x: dragX, y: dragY, w: b.w }, slot);
                     return (
                       // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
                       <div

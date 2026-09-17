@@ -28,6 +28,35 @@ import type { PaperCore } from './use-paper-sessions';
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击）——纸条拖拽同款（本域导出）。 */
 export const DRAG_THRESHOLD = 6;
+
+/** 回槽判据的纵向容差（px）：落点与来源原位的纵向偏移在此内 = 仍是「放回原处」。
+ *  取 2 个块距档——够容忍手抖的回放，又不至于把「搬到别处」误判成回槽。 */
+const RETURN_SLACK_Y = ANCHOR.blockGap * 2;
+
+/** 松手定夺·回槽判据（2026-09-05 立；2026-09-17 重写）：
+ *  「回槽」的语义 = **放回原来那一格**，故判据据**来源原位**量，不据「带」量：
+ *  - 横向：落点与来源原位的偏移 ≤ 自身半宽（仍在自己那一列）；
+ *  - 纵向：偏移 ≤ 2 个块距档（手抖的回放，而非「搬到别处」）。
+ *
+ *  旧判据（`|落点左缘 − 流区中轴| ≤ 400`，纵向无界）两处病灶——都被边缘自动滚屏
+ *  放大成必现：
+ *  ① **横向不对称**：720 宽的块，左缘要在中轴 ±400 内 ⇒ 块中心向右得跑 760px 才算
+ *     带外，而向左只需 40px。往右拖到纸外的桌面上松手仍判「回槽」而**静默取消**
+ *     （用户 2026-09-17 报的「拖出来→挪视口→松手，块没钉上」正命中此路）。
+ *  ② **纵向无界**：横向在带内时纵向往哪拖都算回槽——沿同列滚到纸外松手也被取消。
+ *
+ *  据原位量另解一桩：眉批撕出族（`instant`）的原位在正文右缘**外**的眉批栏
+ *  （世界 x ≈ 384，本就在流带外），据「带」判会让「拖回眉批栏 = 取消」失效。
+ *
+ *  ⚠ 判据与渲染面的 `pp-drag-returning`（回槽预览态）**共用本函数**——视觉与规则
+ *  必须同一把尺子，否则又会出现「预览说回槽、松手却落钉」这类各说各话。 */
+export function blockReturnsToFlow(
+  drop: { x: number; y: number; w: number },
+  origin: { x: number; y: number },
+): boolean {
+  return Math.abs(drop.x - origin.x) <= drop.w / 2 && Math.abs(drop.y - origin.y) <= RETURN_SLACK_Y;
+}
+
 /** 眉批快照钉宽（P5：独立夹注快照落纸宽度） */
 const SIDECAR_PIN_W = 320;
 /** 钉住可发现性一次性眉批的 localStorage 旗标（毒化容忍——读写全包 try，
@@ -85,6 +114,9 @@ export function usePaperDrag(params: {
      *  手势期间指针可静止，只有移动事件到不了帧里。 */
     lastX: number;
     lastY: number;
+    /** 来源原位（世界坐标）：回槽判据的参照——slot 位（眉批 = 眉批栏位）。 */
+    ox: number;
+    oy: number;
     /** 上次落下的预览位（世界坐标）：同值短路，静止帧不产生重渲染。 */
     lastPos: { x: number; y: number } | null;
     block: SourcedBlock | null;
@@ -117,6 +149,8 @@ export function usePaperDrag(params: {
         offY: w.y - ry,
         lastX: e.clientX,
         lastY: e.clientY,
+        ox: rx,
+        oy: ry,
         lastPos: null,
         block,
       };
@@ -239,12 +273,12 @@ export function usePaperDrag(params: {
       const fx = w.x - d.offX;
       const fy = w.y - d.offY;
       const region = d.sessionId ? regionsRef.current.find((r) => r.sessionId === d.sessionId) : undefined;
-      const bandCenter = region?.anchor.anchorX ?? 0;
-      // 松手定夺（2026-09-05）：带外落钉（新钉 = 快照 + 活引用源；已钉 =
-      // 移位置）；带内且原为 flow → 取消回槽——非 instant 族纯预览结束，无
-      // 状态变更（不建钉、不挖洞、流布局全程未动）；instant 族（眉批）首动
-      // 已建钉，取消端 = 拔钉还原占位。孤儿钉无来源带，恒落钉。
-      if (d.wasFlow && d.sessionId && Math.abs(fx - bandCenter) <= ANCHOR.bandHalfWidth) {
+      // 松手定夺（2026-09-05 立，2026-09-17 判据重写见 blockReturnsToFlow）：回槽 =
+      // 放回来源原位那一格（非 instant 族纯预览结束，无状态变更；instant 族眉批首动
+      // 已建钉，取消端 = 拔钉还原占位）；别处落钉（新钉 = 快照 + 活引用源；已钉 =
+      // 移位置）。**来源卷找不到（region 缺）时不判回槽**——判据立不住就别静默吞掉
+      // 用户的落点，落钉可见可收回（错误不静默）。
+      if (d.wasFlow && d.sessionId && region && blockReturnsToFlow({ x: fx, y: fy, w: d.bw }, { x: d.ox, y: d.oy })) {
         if (d.instant) commitPinned(d.sessionId, d.id, null);
         return;
       }
@@ -328,6 +362,8 @@ export function usePaperDrag(params: {
         offY: grab.y - anchor.y,
         lastX: e.clientX,
         lastY: e.clientY,
+        ox: anchor.x,
+        oy: anchor.y,
         lastPos: null,
         block: {
           id: `${block.id}:sc`,

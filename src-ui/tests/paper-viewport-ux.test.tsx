@@ -90,6 +90,7 @@ import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { wheelFactor } from '../src/paper/canvas-math';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
+import { blockReturnsToFlow } from '../src/plugins/builtin/paper-shell/use-paper-drag';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import { loadSettings, saveSettings } from '../src/settings';
 import { getCanvasStore } from '../src/state/canvas-store';
@@ -563,10 +564,10 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     await act(async () => {
       fire(handle as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
     });
-    // 指针移到下缘带内（x = 250 不入左右带），此后**不再移动指针**——滚动
-    // 全靠 rAF 循环（「指针静止在带内也滚」= 本用例的考点）
+    // 指针移到下缘带内 + 横向拖出流带（x = 1100：块中心跑到中轴 +500 ⇒ 带外落钉，
+    // 见 ⑥ 判据；右缘带自 1164 起，故横轴不入带、不滚），此后**不再移动指针**
     await act(async () => {
-      fire(window, 'mousemove', { clientX: 250, clientY: 780 });
+      fire(window, 'mousemove', { clientX: 1100, clientY: 780 });
     });
     const [panY0, panY1] = await scrollUntil(60);
     expect(panY0 - panY1).toBeGreaterThan(60); // 贴下缘 → 视口向下追内容（持续滚，非一次性）
@@ -577,7 +578,7 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     // 判别力由上一步保证：本轮滚屏 > 60，「块影脱手」病灶的偏差 ≥ 这个量。
     const p = previewXY();
     await act(async () => {
-      fire(window, 'mouseup', { clientX: 250, clientY: 780 });
+      fire(window, 'mouseup', { clientX: 1100, clientY: 780 });
     });
     const pin = getCanvasStore(panel.panelId).getState().pins[blockId];
     expect(pin).toBeTruthy();
@@ -593,15 +594,15 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     stubCanvasRect(canvas);
     const flowBlock = container?.querySelector<HTMLElement>('.pp-block') ?? null;
     const blockId = flowBlock?.getAttribute('data-block-id') ?? '';
-    // ① 先把块拖出钉住（横向出带 → 落钉；指针不在带内 = 不滚）
+    // ① 先把块拖出钉住（横向出带 + 指针不在边缘带内 = 不滚；块中心 +500 ⇒ 落钉）
     await act(async () => {
       fire(flowBlock?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
     });
     await act(async () => {
-      fire(window, 'mousemove', { clientX: 250, clientY: 700 });
+      fire(window, 'mousemove', { clientX: 1100, clientY: 700 });
     });
     await act(async () => {
-      fire(window, 'mouseup', { clientX: 250, clientY: 700 });
+      fire(window, 'mouseup', { clientX: 1100, clientY: 700 });
     });
     const pinnedEl = container?.querySelector<HTMLElement>('.pp-block.pp-pinned') ?? null;
     expect(pinnedEl).not.toBeNull();
@@ -625,5 +626,144 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     expect(Math.abs(pin.x - p.x)).toBeLessThan(30);
     expect(Math.abs(pin.y - p.y)).toBeLessThan(30);
     expect(pin.y).toBeLessThan(pinY0 - 100); // 挪到「很上方」（世界 y 明显更小）
+  }, 30_000);
+
+  /* ── ⑥ 松手定夺·判据重写（2026-09-17 用户报「拖出来→挪视口→松手，块没钉上」）──
+   * 回槽的语义是「**放回原来那一格**」，旧判据却拿「带」量（`|落点左缘 − 流区中轴|
+   * ≤ 400`，纵向无界）——两处病灶都被边缘自动滚屏放大成必现：
+   *   ① 横向不对称：720 宽的块，左缘要在中轴 ±400 内 ⇒ 块中心向右得跑 760px 才算
+   *      带外（向左只需 40px）——往右拖到桌面上松手仍判「回槽」，静默取消；
+   *   ② 纵向无界：横向在带内时纵向往哪拖都算回槽，沿同列滚到纸外松手也被取消。
+   * 现判据（`blockReturnsToFlow`）= 横向偏移 ≤ 自身半宽 且 纵向偏移 ≤ 2 块距档，
+   * 与渲染面回槽预览态（pp-drag-returning）共用同一函数。 */
+
+  it('回槽判据纯函数（据来源原位量）：小幅回放 = 回槽；搬出半宽/两格之外 = 落钉', () => {
+    const flow = { x: -360, y: -600, w: 720 };
+    expect(blockReturnsToFlow({ x: -360 + 100, y: -600 + 40, w: 720 }, flow)).toBe(true);
+    // 旧判据在此判回槽（块左缘 +140 仍在中轴 ±400 内）——用户病灶
+    expect(blockReturnsToFlow({ x: -360 + 500, y: -600, w: 720 }, flow)).toBe(false);
+    expect(blockReturnsToFlow({ x: -360, y: -600 + 200, w: 720 }, flow)).toBe(false);
+    // 眉批撕出族原位在正文右缘外的眉批栏（世界 x≈384）——据「带」判会误判，据原位判正确
+    const sidecar = { x: 384, y: -600, w: 320 };
+    expect(blockReturnsToFlow({ x: 384, y: -600, w: 320 }, sidecar)).toBe(true);
+    expect(blockReturnsToFlow({ x: 384, y: 100, w: 320 }, sidecar)).toBe(false);
+  });
+
+  it('拖块向右出纸（同一列滚屏）+ 松手：落钉在块影处（不再被误判回槽静默取消）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const block = container?.querySelector<HTMLElement>('.pp-block') ?? null;
+    const blockId = block?.getAttribute('data-block-id') ?? '';
+    await act(async () => {
+      fire(block?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+    });
+    // 向右搬出半宽以外（偏 +500）→ 顺手下缘入带滚屏
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 1100, clientY: 780 });
+    });
+    const [, panY1] = await scrollUntil(60);
+    const p = previewXY();
+    // 预览态不得谎报「回槽」（与松手判据同一函数）
+    expect(container?.querySelector('.pp-dragging.pp-drag-returning')).toBeNull();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 1100, clientY: 780 });
+    });
+    const pin = getCanvasStore(panel.panelId).getState().pins[blockId];
+    expect(pin).toBeTruthy(); // 旧判据：块左缘 +140 仍在中轴 ±400 内 → 静默取消，此断言红
+    expect(Math.abs(pin.x - p.x)).toBeLessThan(30);
+    expect(Math.abs(pin.y - p.y)).toBeLessThan(30);
+    expect(pin.y + 0).toBeLessThan(600 - 60); // 钉在滚屏后的世界位（并非回到原槽）
+    expect(panY1).toBeLessThan(600);
+    expect(container?.querySelector('.pp-block.pp-pinned')).not.toBeNull();
+  }, 30_000);
+
+  it('拖块沿同列纵向搬离原位 + 滚屏 + 松手：落钉（旧判据纵向无界 → 误判回槽）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    // 取最新块（贴近纸下缘，滚一段即离原位）
+    const blocks = container?.querySelectorAll<HTMLElement>('.pp-block') ?? [];
+    const last = blocks[blocks.length - 1] ?? null;
+    const blockId = last?.getAttribute('data-block-id') ?? '';
+    await act(async () => {
+      fire(last?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 600, clientY: 560 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 600, clientY: 780 }); // 同列向下 + 下缘入带
+    });
+    const [, panY1] = await scrollUntil(200);
+    const p = previewXY();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 600, clientY: 780 });
+    });
+    const pin = getCanvasStore(panel.panelId).getState().pins[blockId];
+    expect(pin).toBeTruthy();
+    expect(Math.abs(pin.x - p.x)).toBeLessThan(30);
+    expect(Math.abs(pin.y - p.y)).toBeLessThan(30);
+    expect(panY1).toBeLessThan(600 - 200);
+  }, 30_000);
+
+  it('眉批撕出（原位在正文右缘外的眉批栏）：拖回原位 = 取消拔钉；搬远 = 落钉', async () => {
+    await withRenderers(async () => {
+      const canvas = await mountCanvas();
+      stubCanvasRect(canvas);
+      /** 眉批手柄（每段现取：手势后重渲染会换节点，旧引用派发不进 React 根）。 */
+      const handle = (): HTMLElement | null => container?.querySelector<HTMLElement>('.pp-marginalia-pin') ?? null;
+      const hostBlock = handle()?.closest<HTMLElement>('.pp-block') ?? null;
+      const scKey = `${hostBlock?.getAttribute('data-block-id') ?? ''}:sc`;
+      const pinsOf = (): Record<string, unknown> => getCanvasStore(panel.panelId).getState().pins;
+      expect(handle()).not.toBeNull();
+      // ① 拖出一点点就松手（仍在原位上下的容差内）→ 取消：首动建的 `:sc` 快照钉被拔掉
+      await act(async () => {
+        fire(handle() as Element, 'mousedown', { button: 0, clientX: 900, clientY: 300 });
+      });
+      await act(async () => {
+        fire(window, 'mousemove', { clientX: 940, clientY: 320 });
+      });
+      expect(pinsOf()[scKey]).toBeTruthy(); // instant 族：首动即建钉（跟手预览就是它）
+      await act(async () => {
+        fire(window, 'mouseup', { clientX: 940, clientY: 320 });
+      });
+      expect(pinsOf()[scKey]).toBeUndefined(); // 回到原位 = 拔钉还原（旧判据以「带」量时此处误判）
+      expect(container?.querySelector('.pp-marginalia-out')).toBeNull();
+      // ② 搬远（纵向 300px > 2 块距档）→ 落钉：快照钉留在画布上
+      expect(handle()).not.toBeNull();
+      await act(async () => {
+        fire(handle() as Element, 'mousedown', { button: 0, clientX: 900, clientY: 300 });
+      });
+      await act(async () => {
+        fire(window, 'mousemove', { clientX: 900, clientY: 600 });
+      });
+      await act(async () => {
+        fire(window, 'mouseup', { clientX: 900, clientY: 600 });
+      });
+      expect(pinsOf()[scKey]).toBeTruthy();
+    });
+  }, 30_000);
+
+  it('拖块回纸内松手：回槽取消（判据修正不得把「放回原处」一起拆掉）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const block = container?.querySelector<HTMLElement>('.pp-block') ?? null;
+    const blockId = block?.getAttribute('data-block-id') ?? '';
+    await act(async () => {
+      fire(block?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+    });
+    // 先拖出纸外（不回槽态），再拖回纸内（回槽态亮起）
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 1100, clientY: 300 });
+    });
+    expect(container?.querySelector('.pp-dragging.pp-drag-returning')).toBeNull();
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 600, clientY: 300 });
+    });
+    expect(container?.querySelector('.pp-dragging.pp-drag-returning')).not.toBeNull();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 600, clientY: 300 });
+    });
+    // 回槽：无钉、无 ghost、块仍在流里
+    expect(getCanvasStore(panel.panelId).getState().pins[blockId]).toBeUndefined();
+    expect(container?.querySelector('.pp-ghost')).toBeNull();
+    expect(container?.querySelector('.pp-block.pp-pinned')).toBeNull();
+    expect(container?.querySelector('.pp-block.pp-dragging')).toBeNull();
   }, 30_000);
 });
