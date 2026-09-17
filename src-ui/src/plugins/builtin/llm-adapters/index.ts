@@ -34,6 +34,8 @@ export const llmAdaptersPlugin = {
               maxTokensFor: rt.maxTokensFor,
               // provider 作用域描述符（拉取元数据 + 覆盖 + seed）——方言请求期读它
               describeModel: rt.describeModel,
+              // 自定义请求头（settings → 高级，连接怪癖用户可编辑面）
+              headers: rt.headers,
             }),
         }),
       'llm-adapter-anthropic',
@@ -53,6 +55,7 @@ export const llmAdaptersPlugin = {
               thinking: rt.thinking,
               maxTokensFor: rt.maxTokensFor,
               describeModel: rt.describeModel,
+              headers: rt.headers,
             }),
         }),
       'llm-adapter-openai',
@@ -74,6 +77,7 @@ export const llmAdaptersPlugin = {
               describeModel: rt.describeModel,
               // Phase 3D：authMode='oauth' 的 Codex 订阅注入头（live 层装配）
               extraHeaders: rt.oauthHeaders,
+              headers: rt.headers,
             }),
         }),
       'llm-adapter-responses',

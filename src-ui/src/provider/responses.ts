@@ -26,7 +26,14 @@ import { getModel } from './catalog';
 import { classifyProviderError } from './error-catalog';
 import { type ModelMeta, modelEntries, parseModelEntry } from './model-meta';
 import { sendWithRetry } from './retry';
-import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
+import {
+  extractWritePreview,
+  fetchJsonWithTimeout,
+  mergeHeaders,
+  prewarmEndpoint,
+  type SseEvent,
+  sseEvents,
+} from './shared';
 import { assertEffortDeclared, type StoredThinking, thinkingCapability } from './thinking';
 import {
   ApiError,
@@ -85,6 +92,9 @@ interface ResponsesConfig {
   /** provider 作用域描述符解析（provider-model-meta）：携带本提供方拉取到的
    *  元数据与用户覆盖；缺省 = 全局目录（getModel）。 */
   describeModel?: (model: string) => ModelDescriptor | undefined;
+  /** 自定义请求头（settings.headers）：连接怪癖的用户可编辑面。合并序
+   *  「自定义头在前、内核必需头与 OAuth/凭据头在后」——Authorization 归凭据权威。 */
+  headers?: Record<string, string>;
 }
 
 export function createResponsesProvider(cfg: ResponsesConfig): Provider {
@@ -93,6 +103,9 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
   const { model, apiKey } = cfg;
   let thinking: StoredThinking | undefined = cfg.thinking; // setThinking 运行时更新
   const extraHeaders = cfg.extraHeaders ?? {};
+  // 自定义请求头（连接怪癖用户可编辑面）：垫在 OAuth 注入头与内核必需头之下
+  // （合并序见 ResponsesConfig.headers）——订阅协议的身份头不可被覆写。
+  const customHeaders = cfg.headers ?? {};
   // provider 作用域描述符；缺省回落全局目录（测试直呼面零改动）
   const describe = (m: string): ModelDescriptor | undefined => cfg.describeModel?.(m) ?? getModel(m);
   let fetchedMeta: Record<string, ModelMeta> = {};
@@ -121,13 +134,13 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
         req.imageData,
         describe(model),
       );
-      const headers: Record<string, string> = {
+      const headers = mergeHeaders(customHeaders, {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
         ...extraHeaders,
-      };
-      // apiKey 空 = oauth 注入路径（extraHeaders 已带 Authorization）——不发空 Bearer
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+        // apiKey 空 = oauth 注入路径（extraHeaders 已带 Authorization）——不发空 Bearer
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      });
       const response = await sendWithRetry({
         url: `${baseUrl}/responses`,
         headers,
@@ -142,16 +155,19 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
     },
 
     prewarm(): void {
-      const headers: Record<string, string> = { ...extraHeaders };
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-      prewarmEndpoint(`${baseUrl}/models`, headers);
+      prewarmEndpoint(
+        `${baseUrl}/models`,
+        mergeHeaders(customHeaders, { ...extraHeaders, ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) }),
+      );
     },
 
     async fetchModels(): Promise<ModelDescriptor[]> {
       // Responses 端点可能无公开 /models（chatgpt.com/backend-api）；官方平台
       // /v1/models 同 openai.ts。失败上抛——调用面可见（错误不静默）。
-      const headers: Record<string, string> = { ...extraHeaders };
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+      const headers = mergeHeaders(customHeaders, {
+        ...extraHeaders,
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      });
       const json = await fetchJsonWithTimeout(`${baseUrl}/models`, headers, 10000);
       if (!json) throw new Error(`${name}: 模型目录获取失败（网络错误或端点无响应）`);
       // 宽容解析（provider-model-meta）：官方 Responses 端点不披露窗口/模态时保持

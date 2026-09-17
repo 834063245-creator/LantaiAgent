@@ -6,6 +6,7 @@
 
 import { ANTHROPIC_DEFAULT_BASE_URL } from './provider/anthropic';
 import { getCatalogVendors, getDefaultModel, getModel } from './provider/catalog';
+import { sanitizeProviderHeaders } from './provider/custom-headers';
 import type { ModelMeta } from './provider/model-meta';
 import type { StoredThinking, ThinkingEffort } from './provider/thinking';
 import type { CoreProtocol, ModelDescriptor, Protocol } from './provider/types';
@@ -64,6 +65,12 @@ export interface ProviderSettings {
    *  留下 id 列表，元数据（上下文窗口/视觉/推理）随进程消失——99% 的模型只能
    *  吃「目录无值」的 200K 假默认。键 = 模型 id。 */
   modelMeta?: Record<string, ModelMeta>;
+  /** 自定义请求头（2026-09-17）：网关怪癖的用户可编辑面——如 OpenCode GO 强制
+   *  的 `x-opencode-session`。三方言（openai/anthropic/responses）请求一律携带；
+   *  合并序固定「自定义头在前、内核必需头与凭据头在后」，故自定义头不能覆写
+   *  Authorization / x-api-key（单一权威源 = 凭据库）。校验与清洗见
+   *  provider/custom-headers.ts（写入边界严格、加载边界容忍毒化）。 */
+  headers?: Record<string, string>;
 }
 
 /** 单模型的 P14 覆盖：目录数据 stale / 目录外自定义模型时的纠正。 */
@@ -340,6 +347,11 @@ export function loadSettings(): AppSettings {
             if (p && typeof p === 'object') {
               delete (p as { contextWindow?: unknown }).contextWindow;
               delete (p as { maxTokens?: unknown }).maxTokens;
+              // 自定义请求头（2026-09-17）：毒化条目丢弃 + warn（INVARIANTS #11
+              // 读取容忍毒化数据）；全坏 = 字段清除，与「未配置」同语义。
+              const headers = sanitizeProviderHeaders((p as { headers?: unknown }).headers, String(p.name));
+              if (headers) (p as { headers?: Record<string, string> }).headers = headers;
+              else delete (p as { headers?: unknown }).headers;
             }
           }
         }

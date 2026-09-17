@@ -5,6 +5,27 @@
 
 import { proxyFetch } from './transport';
 
+/** 合并自定义请求头与内核必需头（2026-09-17）。
+ *
+ *  HTTP 头名大小写不敏感——若自定义头与必需头同名但大小写不同（`authorization`
+ *  vs `Authorization`），Fetch 会把两条值合并成 `"a, b"` 送出，凭据头被污染。
+ *  故按键（小写）剔除自定义侧的冲突项，而不是依赖对象展开的覆盖序。
+ *  @param custom - 用户在设置里配置的请求头（可缺省）。
+ *  @param required - 内核必需头 + 凭据头（协议与凭据权威，恒胜）。
+ *  @returns 可直接送 fetch 的头表。
+ */
+export function mergeHeaders(
+  custom: Readonly<Record<string, string>> | undefined,
+  required: Record<string, string>,
+): Record<string, string> {
+  const reserved = new Set(Object.keys(required).map((name) => name.toLowerCase()));
+  const merged: Record<string, string> = {};
+  for (const [name, value] of Object.entries(custom ?? {})) {
+    if (!reserved.has(name.toLowerCase())) merged[name] = value;
+  }
+  return { ...merged, ...required };
+}
+
 /** 从流式 JSON 参数中提取 write/edit 工具的部分内容。
  *  处理不完整的 JSON — content 字符串可能尚未闭合。
  *  工具收敛后模型调用领域工具 fs(action=write/edit)：从部分参数中正则提取 action。 */

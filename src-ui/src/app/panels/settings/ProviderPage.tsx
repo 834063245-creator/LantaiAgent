@@ -166,6 +166,15 @@ export function ProviderPage({
     [settings, onCommitProvider],
   );
 
+  /** 高级连接配置（2026-09-17）：请求头编辑 / 配方导入的整行回填——名字与密钥
+   *  由 ProviderAdvanced 保持本行值；此处按既有 onChange 即时落盘惯例提交。 */
+  const handleAdvancedChange = useCallback(
+    (name: string, next: ProviderSettings) => {
+      onCommitProvider(updateProvider(settings, name, next));
+    },
+    [settings, onCommitProvider],
+  );
+
   const handleRefreshModels = useCallback(async (): Promise<number> => {
     const p = selectedProvider;
     // oauth 订阅（Codex）：无 API Key——必须已登录（live provider 注入 grant）才能拉。
@@ -519,6 +528,7 @@ export function ProviderPage({
             onModelOverride: (modelId, field, value) =>
               handleModelOverride(selectedProvider.name, modelId, field, value),
             onModelVisionToggle: (modelId, on) => handleModelVisionToggle(selectedProvider.name, modelId, on),
+            onAdvancedChange: (next) => handleAdvancedChange(selectedProvider.name, next),
             onTest: handleTest,
             onClearKey: () => setClearTarget(selectedProvider.name),
             onResetBaseUrl: () =>
