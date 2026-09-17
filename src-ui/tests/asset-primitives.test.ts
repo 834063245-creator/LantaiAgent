@@ -6,6 +6,8 @@
 //   kind → presentation 白名单回落正确；未知 kind 仍走 JSON 兜底。
 // 协议：docs/archive/agent-asset-blocks.md §2.9/§2.11/§3（WO-6）。
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -14,7 +16,7 @@ import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
-import { buildHtmlCardDocument } from '../src/plugins/builtin/renderers/components';
+import { buildHtmlCardDocument, plateSignOf } from '../src/plugins/builtin/renderers/components';
 
 async function withRenderers(fn: () => void | Promise<void>): Promise<void> {
   const ctx = new Context();
@@ -407,5 +409,72 @@ describe('html 沙箱文档（WO-8）', () => {
   it('超过 512KB 的 code 被截断（防滥用）', () => {
     const html = buildHtmlCardDocument('x'.repeat(600 * 1024));
     expect(html.length).toBeLessThan(600 * 1024);
+  });
+});
+
+// ── 图版题签行（B 图版签主干，2026-09-17）──
+//
+// 资产 = 案卷里的一张图版：物类签（汉字）+ 题名同行，其下一条极弱规线。
+// 这是「十二原语不成族」那条判词的对策；高度中性（吃掉原题注行的下距换规线）。
+
+describe('图版题签行', () => {
+  it('物类签映射：内置 kind 各有汉字签，未知 kind 回落「录」（不空着）', () => {
+    expect(plateSignOf('table')).toBe('表');
+    expect(plateSignOf('chart')).toBe('图');
+    expect(plateSignOf('metric')).toBe('卡');
+    expect(plateSignOf('board')).toBe('板');
+    expect(plateSignOf('timeline')).toBe('序');
+    expect(plateSignOf('citation')).toBe('引');
+    expect(plateSignOf('chem')).toBe('式');
+    expect(plateSignOf('deps_impact')).toBe('谱');
+    expect(plateSignOf('acme/custom-kind')).toBe('录');
+  });
+
+  it('有题名的表：题签行在场（签 + 题名），题名文本不丢', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('table', 'grid')!;
+      const html = renderToStaticMarkup(
+        createElement(Comp, {
+          block: assetBlock('table', 'grid', { caption: '实验批次', columns: ['a'], rows: [['1']] }),
+        }),
+      );
+      expect(html).toContain('pp-plate');
+      expect(html).toContain('pp-plate-sign');
+      expect(html).toContain('>表<');
+      expect(html).toContain('实验批次');
+    });
+  });
+
+  it('有题名的指标卡组：签为「卡」', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('metric', 'metric')!;
+      const html = renderToStaticMarkup(
+        createElement(Comp, {
+          block: assetBlock('metric', 'metric', { caption: 'KPI', items: [{ label: 'x', value: 1 }] }),
+        }),
+      );
+      expect(html).toContain('>卡<');
+      expect(html).toContain('KPI');
+    });
+  });
+
+  it('无题名：不出题签行（保持高度不变——「题签恒在」随下一批测高一起落地）', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('table', 'grid')!;
+      const html = renderToStaticMarkup(
+        createElement(Comp, { block: assetBlock('table', 'grid', { columns: ['a'], rows: [['1']] }) }),
+      );
+      expect(html).not.toContain('pp-plate');
+    });
+  });
+
+  it('题签规线走颜色位（不是拼坏的整条简写——2026-09-17 的 49 处病灶不得复活）', () => {
+    const css = readFileSync(
+      join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
+      'utf8',
+    );
+    const plate = css.slice(css.indexOf('.pp-plate {'), css.indexOf('.pp-plate-sign'));
+    expect(plate).toContain('var(--rule-soft-ink)');
+    expect(plate).not.toContain('solid var(--rule-soft)');
   });
 });

@@ -294,6 +294,11 @@ export const ASSET_TOKENS = {
     virtualRowH: 29,
     virtualViewportH: 240,
   },
+  // ── 图版题签（B 图版签主干，2026-09-17）──
+  // 物类签（汉字）+ 题名同行，其下极弱规线。**高度中性**：题签行吃掉原题注行的
+  // captionMarginB（6px = 5px 下距 + 1px 规线）⇒ measure 两侧镜像零改动。
+  // 签尺寸与题注字号解耦（签是机器语汇的边注，比题名小一档）。
+  plate: { signSize: 9, signBorder: 1, signPadH: 4, signPadV: 1, gap: 6, ruleW: 1 },
   // graph（2026-09-17 盒定比例）：列宽/原点/最小尺寸/svg 封顶随「宽高由版心定」整批退役——
   // 渲染侧的框宽改由标签实测宽定（components.tsx GRAPH_GEO），图高只随行数变。
   graph: { padV: 4, rowH: 52 },

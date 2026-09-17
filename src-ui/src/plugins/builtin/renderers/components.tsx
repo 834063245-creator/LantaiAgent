@@ -97,7 +97,7 @@ function GridBody({ block }: BlockRendererProps) {
   }
   return (
     <div className="pp-grid">
-      {p.caption && <div className="pp-grid-caption">{p.caption}</div>}
+      <PlateHead kind="table" title={p.caption} titleClass="pp-grid-caption" />
       <table className="pp-grid-table">
         {cols.length > 0 && (
           <thead>
@@ -144,7 +144,7 @@ function VirtualGridBody({ rows, cols, caption }: { rows: unknown[][]; cols: str
   const items = virtualizer.getVirtualItems();
   return (
     <div className="pp-grid pp-grid-virtual">
-      {caption && <div className="pp-grid-caption">{caption}</div>}
+      <PlateHead kind="table" title={caption} titleClass="pp-grid-caption" />
       <table className="pp-grid-virtual-table">
         {cols.length > 0 && (
           <thead>
@@ -637,6 +637,49 @@ function InteractiveChartBody({ block }: BlockRendererProps) {
   );
 }
 
+/* ── 图版题签（B 图版签主干，2026-09-17）──
+ * 资产 = 案卷里的一张图版：每张图版有一枚**物类签**（汉字，机器语汇）+ 题名，
+ * 签与题名同行、其下一条极弱规线把题名行与图版身分开。这是「十二原语不成族」
+ * 那条判词的对策——四张卡并排时，读者先看到同一套题签语汇，再读内容。
+ *
+ * 高度中性（刻意）：题签行吃掉原题注行的 6px 下距、换成 1px 规线 + 5px 下距，
+ * 行高不变 ⇒ measure 两侧镜像零改动（测高不因换装而漂）。
+ * 无题名的图版暂不出题签行（下一批连同「题签恒在」的测高一起补）。 */
+
+/** 物类签：kind → 汉字（机器语汇，与既有文类签共用边缘字号制度的方向）。 */
+const PLATE_SIGNS: Record<string, string> = {
+  table: '表',
+  chart: '图',
+  metric: '卡',
+  board: '板',
+  timeline: '序',
+  citation: '引',
+  chem: '式',
+  media: '图',
+  file: '件',
+  deps_impact: '谱',
+  html: '页',
+  confirm: '问',
+};
+
+/** 取 kind 的物类签（未知 kind 回落「录」——开放 kind 也有签，不空着）。 */
+export function plateSignOf(kind: string): string {
+  return PLATE_SIGNS[kind] ?? '录';
+}
+
+/** 题签行：物类签 + 题名（题名为空则不渲染整行——高度中性见上注）。 */
+function PlateHead({ kind, title, titleClass }: { kind: string; title?: string; titleClass: string }) {
+  if (!title) return null;
+  return (
+    <div className="pp-plate">
+      <span className="pp-plate-sign" aria-hidden="true">
+        {plateSignOf(kind)}
+      </span>
+      <span className={titleClass}>{title}</span>
+    </div>
+  );
+}
+
 /* ── metric ── */
 
 function MetricBody({ block }: BlockRendererProps) {
@@ -647,7 +690,7 @@ function MetricBody({ block }: BlockRendererProps) {
   const items = Array.isArray(p.items) ? p.items : [];
   return (
     <div className="pp-metric">
-      {p.caption && <div className="pp-metric-caption">{p.caption}</div>}
+      <PlateHead kind="metric" title={p.caption} titleClass="pp-metric-caption" />
       <div className="pp-metric-grid">
         {items.map((it, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: 指标卡按数据序渲染
