@@ -9,7 +9,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderAdvanced } from '../src/app/panels/settings/ProviderAdvanced';
 import { exportProviderRecipe } from '../src/provider/provider-recipe';
-import { providerId, type ProviderSettings } from '../src/settings';
+import { type ProviderSettings, providerId } from '../src/settings';
 
 function row(overrides: Partial<ProviderSettings> = {}): ProviderSettings {
   return {
@@ -68,9 +68,7 @@ describe('ProviderAdvanced（请求头 + 配方）', () => {
     expect(onChange).not.toHaveBeenCalled();
     act(() => setTextarea(ta, '# 注释\nx-opencode-session: sess-1'));
     act(() => buttonByText('保存').click());
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ headers: { 'x-opencode-session': 'sess-1' } }),
-    );
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ headers: { 'x-opencode-session': 'sess-1' } }));
   });
 
   it('导出：生成配方文本（不含密钥）并提示落文本框', async () => {
