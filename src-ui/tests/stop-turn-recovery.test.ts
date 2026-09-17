@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 // 停止链路回归（2026-09-03「停止后会话坏掉」诊断）：
 //   ① abort() 的 3s 安全网定时器不得误杀停止后新发起的轮次
 //      （旧缺陷：stop() 同步置 idle 后才注册 onChange 订阅 → 订阅永不在意

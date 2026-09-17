@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/ui/graph', () => ({ StarGraph: class {} }));
