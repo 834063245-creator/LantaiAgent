@@ -628,16 +628,15 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
         .expect("读 dialog 完成标记");
     assert_eq!(dialog_done.as_bool(), Some(true), "alert 处理完后页面脚本应继续");
 
-    // screenshot：fullPage + inline data URL。
-    let shot = cdp_screenshot(true, true, Some(agent))
-        .await
-        .expect("screenshot 应成功");
+    // screenshot：fullPage 落盘（P0b 起不再有 inline data URL——那是上下文炸弹）。
+    let shot = cdp_screenshot(true, Some(agent)).await.expect("screenshot 应成功");
     let vshot: Value = serde_json::from_str(&shot).expect("screenshot 返回应可解析");
     assert_eq!(vshot["fullPage"].as_bool(), Some(true));
-    assert_eq!(vshot["inline"].as_bool(), Some(true));
+    assert!(vshot["bytes"].as_u64().unwrap_or(0) > 0, "截图应有字节读数: {shot}");
+    assert!(vshot["dataUrl"].is_null(), "P0b 起不得再回 data URL: {shot}");
     assert!(
-        vshot["dataUrl"].as_str().unwrap_or("").starts_with("data:image/png;base64,"),
-        "inline 截图应返回 data URL: {shot}"
+        vshot["path"].as_str().unwrap_or("").ends_with(".png"),
+        "截图应落盘为 PNG: {shot}"
     );
 
     // navigate：跨页导航必须带世界变化反馈。

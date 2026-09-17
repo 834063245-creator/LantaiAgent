@@ -280,8 +280,7 @@ async fn browser_screenshot(gate: &BrowserGate<'_>, args: &Value) -> Result<Stri
     let agent_id = self_or_agent(gate, args);
     gate.check("screenshot", agent_id.as_deref()).await?;
     let full_page = args.get("full_page").and_then(|v| v.as_bool()).unwrap_or(false);
-    let inline = args.get("inline").and_then(|v| v.as_bool()).unwrap_or(false);
-    let out = crate::cdp::cdp_screenshot(full_page, inline, agent_id.as_deref()).await?;
+    let out = crate::cdp::cdp_screenshot(full_page, agent_id.as_deref()).await?;
     // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：把截图转存成工作区
     // 内容寻址附件，并在输出里附 image 引用 —— 模型侧 parseToolImageOutput 据此把图
     // 挂进上下文（INVARIANTS #14：消息只存引用，字节在 {ws}/.lantai/attachments/）。

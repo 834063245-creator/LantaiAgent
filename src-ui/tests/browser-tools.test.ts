@@ -287,7 +287,7 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     await t.execute({ action: 'dialog', accept: true, promptText: 'ok' });
     await t.execute({ action: 'upload', files: ['C:/tmp/a.txt'], selector: '#file' });
     await t.execute({ action: 'press', key: 'a', modifiers: ['ctrl'] });
-    await t.execute({ action: 'screenshot', fullPage: true, inline: true });
+    await t.execute({ action: 'screenshot', fullPage: true });
     expect(rpcMock).toHaveBeenCalledWith(
       'browser_cap',
       expect.objectContaining({ action: 'browser_new_tab', url: 'https://example.com' }),
@@ -314,7 +314,7 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     );
     expect(rpcMock).toHaveBeenCalledWith(
       'browser_cap',
-      expect.objectContaining({ action: 'browser_screenshot', full_page: true, inline: true }),
+      expect.objectContaining({ action: 'browser_screenshot', full_page: true }),
     );
   });
 });

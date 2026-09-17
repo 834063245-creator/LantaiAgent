@@ -197,7 +197,6 @@ const BROWSER_CAP_SCHEMA = {
   }),
   browser_screenshot: z.object({
     fullPage: z.boolean().optional().describe('Capture beyond the viewport (full scrollable page, default false)'),
-    inline: z.boolean().optional().describe('Return a base64 data URL directly when <= 3MB (default false)'),
     target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
   }),
   browser_viewport: z.object({

@@ -1966,13 +1966,10 @@ pub(crate) async fn cdp_set_viewport(
 
 // ═══════════════════════════════════════════════════════════
 // 截图（P2）— Page.captureScreenshot 落盘
+// P0b（2026-09-17）：`inline` 参数与 data URL 分支已拆除——见函数尾注。
 // ═══════════════════════════════════════════════════════════
 
-pub(crate) async fn cdp_screenshot(
-    full_page: bool,
-    inline: bool,
-    agent_id: Option<&str>,
-) -> Result<String, String> {
+pub(crate) async fn cdp_screenshot(full_page: bool, agent_id: Option<&str>) -> Result<String, String> {
     let (port, tid) = require_target(agent_id)?;
     let resp = ws_command(
         port,
@@ -2004,30 +2001,16 @@ pub(crate) async fn cdp_screenshot(
     std::fs::write(&path, bytes).map_err(|e| format!("写截图文件失败: {e}"))?;
     audit_log(agent_id, "screenshot", &tid, "ok");
 
-    // inline 上限保护：3MB 内直接回 data URL；更大的图只回路径，避免 IPC/上下文爆炸。
-    const MAX_INLINE_SHOT_BYTES: usize = 3 * 1024 * 1024;
+    // 输出只回路径与字节读数（P0b，2026-09-17）：此前的 `inline` 分支会把 ≤3MB 的图
+    // 拼成 base64 data URL 塞进工具结果（≈4MB 字符 ≈ 百万 token 的上下文炸弹，且等于
+    // 把字节的另一种写法落进会话）。图另有正路：browser_cap 把它转存成工作区内容寻址
+    // 附件并在输出里带 `image` 引用（工具附图通道 P0a），模型侧按引用消费。
     let byte_len = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-    if inline && byte_len <= MAX_INLINE_SHOT_BYTES as u64 {
-        return Ok(json!({
-            "path": path.to_string_lossy(),
-            "bytes": byte_len,
-            "fullPage": full_page,
-            "inline": true,
-            "dataUrl": format!("data:image/png;base64,{data}"),
-            "note": "dataUrl 为 PNG data URL，可直接作为图片内容消费",
-        })
-        .to_string());
-    }
     Ok(json!({
         "path": path.to_string_lossy(),
         "bytes": byte_len,
         "fullPage": full_page,
-        "inline": false,
-        "note": if inline {
-            "截图超过 3MB 内联上限，已落盘（可用 read_file_base64 读取）"
-        } else {
-            "截图已落盘（纯文本模型看不到内容，可交给用户确认；vision 模型可读路径）"
-        },
+        "note": "截图已落盘；模型侧经工具附图通道按引用消费（无视觉模型时自动降级为占位文本）",
     })
     .to_string())
 }
