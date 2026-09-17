@@ -595,3 +595,19 @@ describe('题签行铺到 board / timeline（2026-09-17）', () => {
     expect(validatePayload(tl, { items: [], caption: [] })).toContain('caption');
   });
 });
+
+describe('题签行铺满十二原语（2026-09-17 收尾）', () => {
+  it('citation / chem / media / html 都出题签（引 / 式 / 图 / 页）', async () => {
+    const cases: Array<[string, string, unknown, string]> = [
+      ['citation', 'citation', { title: '论文', doi: '10.1/x' }, '引'],
+      ['chem', 'chem', { name: '乙醇', formula: 'C2H6O' }, '式'],
+      ['file', 'media', { filePath: 'C:/a/b.png', ext: 'png' }, '图'],
+      ['html', 'html', { code: '<b>hi</b>' }, '页'],
+    ];
+    for (const [kind, pres, payload, sign] of cases) {
+      const html = await renderAsset(kind, pres, payload);
+      expect(html, `${kind} 应出题签行`).toContain('pp-plate');
+      expect(html, `${kind} 的签应为「${sign}」`).toContain(`>${sign}<`);
+    }
+  });
+});

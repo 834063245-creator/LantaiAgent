@@ -865,6 +865,7 @@ function MediaBody({ block }: BlockRendererProps) {
   const Overlay = rendererOverlay;
   return (
     <div className="pp-media">
+      <PlateHead kind="media" titleClass="pp-plate-title" />
       <div className="pp-media-label">{label}</div>
       {isImage && p.filePath ? (
         src ? (
@@ -1236,6 +1237,7 @@ function HtmlBody({ block }: BlockRendererProps) {
 
   return (
     <div className="pp-html">
+      <PlateHead kind="html" titleClass="pp-plate-title" />
       <iframe
         ref={iframeRef}
         className="pp-html-frame"
@@ -1466,6 +1468,7 @@ function CitationBody({ block }: BlockRendererProps) {
   const venueLine = venue || year ? `${venue}${venue && year ? ' · ' : ''}${year}` : '';
   return (
     <div className="pp-citation">
+      <PlateHead kind="citation" titleClass="pp-plate-title" />
       {title && <div className="pp-citation-title">{title}</div>}
       {authors.length > 0 && (
         <div className="pp-citation-authors">
@@ -1566,6 +1569,7 @@ function ChemBody({ block }: BlockRendererProps) {
   }
   return (
     <div className="pp-chem">
+      <PlateHead kind="chem" titleClass="pp-plate-title" />
       {name && <div className="pp-chem-name">{name}</div>}
       {smiles && (
         <div className="pp-chem-box">

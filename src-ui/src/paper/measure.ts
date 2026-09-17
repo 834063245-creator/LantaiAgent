@@ -529,7 +529,8 @@ function jsonViewH(payload: unknown, w: number): number {
 function mediaBodyH(p: { ext?: unknown; filePath?: unknown }): number {
   const ext = typeof p.ext === 'string' ? p.ext.toLowerCase() : '';
   const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext) && typeof p.filePath === 'string';
-  return MEDIA_PAD_V + MEDIA_LABEL_H + (isImage ? 2 + MEDIA_IMG_MAX_H : MEDIA_ROW_H);
+  // 题签恒在（2026-09-17）：媒体块也带题签行（签「图」）
+  return MEDIA_PAD_V + PLATE_HEAD_H + MEDIA_LABEL_H + (isImage ? 2 + MEDIA_IMG_MAX_H : MEDIA_ROW_H);
 }
 
 /** chart 体高（D9，2026-09-16 重写）：type 行 +（可选）title 行 + svg +（可选）标签行/轴名行。
@@ -830,9 +831,9 @@ function citationBodyH(p: Record<string, unknown>, w: number): number {
   const hasIds = ['doi', 'pmid', 'arxiv', 'url'].some((k) => typeof p[k] === 'string' && !!p[k]);
   const bibtex = typeof p.bibtex === 'string' ? p.bibtex : '';
   const empty = !title && authors.length === 0 && !hasIds && !bibtex;
-  if (empty) return CITATION_PAD_V + 30; // 「数据不可用」占位单行
+  if (empty) return CITATION_PAD_V + PLATE_HEAD_H + 30; // 「数据不可用」占位单行（题签恒在）
 
-  let h = CITATION_PAD_V;
+  let h = CITATION_PAD_V + PLATE_HEAD_H; // 题签恒在（2026-09-17）
   if (title)
     h +=
       Math.max(
@@ -900,9 +901,9 @@ function chemBodyH(p: Record<string, unknown>, w: number): number {
   const formula = typeof p.formula === 'string' ? p.formula : '';
   const smiles = typeof p.smiles === 'string' ? p.smiles : '';
   const empty = !name && !formula && !smiles;
-  if (empty) return CHEM_PAD_V + 30; // 「数据不可用」占位单行
+  if (empty) return CHEM_PAD_V + PLATE_HEAD_H + 30; // 「数据不可用」占位单行（题签恒在）
 
-  let h = CHEM_PAD_V;
+  let h = CHEM_PAD_V + PLATE_HEAD_H; // 题签恒在（2026-09-17）
   const hasName = name.length > 0;
   const hasBox = smiles.length > 0;
   const hasFormula = formula.length > 0;
@@ -952,7 +953,7 @@ function measureAssetBlockHeight(b: SourcedBlock): number {
     case 'timeline':
       return timelineBodyH(p as { items?: unknown }, b.w);
     case 'html':
-      return HTML_BODY_PAD_V + HTML_FRAME_DEFAULT_H;
+      return HTML_BODY_PAD_V + PLATE_HEAD_H + HTML_FRAME_DEFAULT_H; // 题签恒在（2026-09-17）
     case 'form':
       return formBodyH(p as { title?: unknown; body?: unknown; options?: unknown }, b.w);
     case 'citation':

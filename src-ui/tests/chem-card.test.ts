@@ -44,6 +44,7 @@ import {
   measureSignature,
   needsObservedHeight,
 } from '../src/paper/measure';
+import { ASSET_DERIVED } from '../src/paper/type-tokens';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 
 async function withRenderers(fn: () => void | Promise<void>): Promise<void> {
@@ -248,26 +249,26 @@ describe('paper/measure — chem 块测高', () => {
     const name = Math.ceil(36 / 20) * 20 + 6; // mock layout 36 / nameLine 20 → 2 行 40 + nameMarginB 6
     const box = 180 + 6; // boxH 180（含 border）+ boxMarginB 6
     const meta = Math.ceil(36 / 17) * 17; // mock 36 / metaLine 17 → 2 行 34
-    expect(h).toBeCloseTo(4 + name + box + meta, 1); // chemPadV 2×2
+    expect(h).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + name + box + meta, 1); // chemPadV 2×2
   });
 
   it('smiles-only：pad + 结构固定盒（末元素无下距）', () => {
     const h = measureBlockHeight(assetBlock('chem', { smiles: 'CCO' }, 'chem'));
-    expect(h).toBeCloseTo(4 + 180, 1);
+    expect(h).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + 180, 1);
   });
 
   it('formula-only：pad + formula 行（实测，mock 36→2 行高 34）', () => {
     const h = measureBlockHeight(assetBlock('chem', { formula: 'H2O' }, 'chem'));
-    expect(h).toBeCloseTo(4 + Math.ceil(36 / 17) * 17, 1);
+    expect(h).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + Math.ceil(36 / 17) * 17, 1);
   });
 
   it('name-only：pad + name 行（实测折行，mock 36→2 行高 40；末元素无下距）', () => {
     const h = measureBlockHeight(assetBlock('chem', { name: '乙醇' }, 'chem'));
-    expect(h).toBeCloseTo(4 + Math.ceil(36 / 20) * 20, 1);
+    expect(h).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + Math.ceil(36 / 20) * 20, 1);
   });
 
   it('空 payload：占位单行（pad + 30）', () => {
-    expect(measureBlockHeight(assetBlock('chem', {}, 'chem'))).toBe(4 + 30);
+    expect(measureBlockHeight(assetBlock('chem', {}, 'chem'))).toBe(4 + ASSET_DERIVED.plateHeadH + 30);
   });
 
   it('chem 属资产族 → needsObservedHeight 恒 true（挂载后 RO 实测兜底）', () => {
@@ -282,10 +283,10 @@ describe('paper/measure — chem 块测高', () => {
   });
 
   it('畸形 payload 不崩：name 非字符串按空处理（唯一字段丢 → 占位）', () => {
-    expect(measureBlockHeight(assetBlock('chem', { name: 42 }, 'chem'))).toBe(4 + 30);
+    expect(measureBlockHeight(assetBlock('chem', { name: 42 }, 'chem'))).toBe(4 + ASSET_DERIVED.plateHeadH + 30);
     // 畸形 name + 合法 formula：name 丢但 formula 行保留（错误不静默——信息面不整块消失）
     expect(measureBlockHeight(assetBlock('chem', { name: 42, formula: 'H2O' }, 'chem'))).toBe(
-      4 + Math.ceil(36 / 17) * 17,
+      ASSET_DERIVED.plateHeadH + 4 + Math.ceil(36 / 17) * 17,
     );
   });
 });

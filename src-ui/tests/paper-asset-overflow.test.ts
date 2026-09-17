@@ -77,12 +77,13 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
 
   it('media 图：label 行 + 320 上限 + 边框（保守占满，加载后实测收敛）', () => {
     const b = assetBlock('file', { ext: 'png', filePath: 'x.png' });
-    expect(measureBlockHeight(b)).toBe(4 + (13 * 1.8 + 4) + 2 + 320);
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + 2 + 320);
   });
 
   it('media 文件行：非图扩展走单行文件行', () => {
     const b = assetBlock('file', { ext: 'pdf', filePath: 'x.pdf' });
-    expect(measureBlockHeight(b)).toBe(4 + (13 * 1.8 + 4) + 11 * 1.8);
+    // 题签恒在（2026-09-17 收尾）：媒体块也带题签行（签「图」）
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + 11 * 1.8);
   });
 
   it('chart 柱状：type 行 + svg 封顶 240（标签已进 SVG，不占盒外行）', () => {
@@ -215,7 +216,8 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
 
   it('html：内距 4 + iframe 初始 240（上报后由实测回写抬到实际上报值）', () => {
     const b = assetBlock('html', { code: '<p>x</p>' });
-    expect(measureBlockHeight(b)).toBe(4 + 240);
+    // 题签恒在同前（签「页」）
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + 240);
   });
 
   it('form：题/文/选项列（desc 实测）/操作行（钤印钮面同拟策：13px 宋体 + margin-top 14）', () => {
@@ -289,7 +291,7 @@ describe('实测回写桥（动态高兜底）', () => {
     const b = assetBlock('html', { code: 'x' });
     reportObservedBlockHeight(b.id, 640, 800);
     expect(observedBlockHeightOf(b.id, b.w)).toBeUndefined();
-    expect(measureBlockHeightCached(b, cache)).toBe(4 + 240);
+    expect(measureBlockHeightCached(b, cache)).toBe(4 + ASSET_DERIVED.plateHeadH + 240);
   });
 
   it('记录变化 → 签名变化 → 缓存重测采用新实测（反馈框展开/iframe 上报路径）', () => {
