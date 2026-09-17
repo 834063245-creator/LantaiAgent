@@ -9,8 +9,8 @@
 // focusRafRef/focusFlightRef 载体。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEdgeAutoScroll } from './edge-scroll';
 import {
-  autoPanVector,
   canvasWheelMode,
   createFocusFlightScheduler,
   getCanvasStore,
@@ -231,16 +231,19 @@ export function usePaperViewport(core: PaperCore | null) {
   const focusRafRef = useRef(0);
   const focusFlightRef = useRef(createFocusFlightScheduler());
 
-  /* ── 拖选自动滚屏（2026-09-07 UX 批）──
+  /* ── 拖选自动滚屏（2026-09-07 UX 批；2026-09-17 接入边缘滚动子系统）──
    * 拖选文字贴到画布边缘 → 视口按入带深度自动平移 + 把原生选区延伸到指针下
    * 的新内容。两个关键点：
    *  - 浏览器只在指针物理移动时扩选——内容在指针下移动（我们平移的）不会
    *    自行扩选，须每帧 caretRangeFromPoint → Selection.extend 手动追；
    *  - 虚拟化会卸载滑出窗口的块——锚点块一卸，原生选区从顶部被截。锚点块
    *    经 keepAlive 保活（regions stub 豁免 + visibleIds 强制在册），到手势
-   *    松开为止。 */
+   *    松开为止。
+   * 帧循环与策略（开关/灵敏度/带宽/限速）归 `edge-scroll.ts`（与拖块同一套）：
+   * 本域只提供「取指针 + 先延后滚」——延伸必须发生在 pan **之前**（延伸读的是
+   * 已提交布局，与旧 tick 同序，勿调）。 */
   const selDragRef = useRef<SelectionDragState | null>(null);
-  const selPanRafRef = useRef(0);
+  const { start: startEdgeScroll, stop: stopEdgeScroll } = useEdgeAutoScroll(canvasRef);
 
   /* 缩放/平滚：原生非被动监听（React 合成 wheel 是 passive，preventDefault 无效）。
    * 2026-09-07 UX 批：滚轮语义改「平滚视角」——plain wheel = 平移（纵向随
@@ -466,30 +469,24 @@ export function usePaperViewport(core: PaperCore | null) {
       sel.extend(node, caret.startOffset);
     };
 
-    const tick = (): void => {
-      selPanRafRef.current = 0;
-      const g = selDragRef.current;
-      if (!g) return; // 手势已收
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
-        // 选区未成（按下未拖开）——待命，不滚
-        selPanRafRef.current = requestAnimationFrame(tick);
-        return;
-      }
-      if (!g.keepAlive) g.keepAlive = keepAliveOf();
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const { canvasSize } = useCanvasViewStore.getState();
-      const v = autoPanVector(g.x - rect.left, g.y - rect.top, canvasSize.w, canvasSize.h);
-      if (v.dx === 0 && v.dy === 0) return; // 指针回带内——停摆（mousemove 再入带重启）
-      // 先延后滚：延伸反映上一帧 pan 后的已提交布局（React 提交滞后一帧），
-      // 本帧滚出的位移由下一帧的延伸追上——选区焦点恒差一帧，不可见。
-      extendToCaret(g.x, g.y);
-      useCanvasViewStore.getState().setView((cur) => panBy(cur, v.dx, v.dy));
-      selPanRafRef.current = requestAnimationFrame(tick);
-    };
     const startLoop = (): void => {
-      if (!selPanRafRef.current) selPanRafRef.current = requestAnimationFrame(tick);
+      startEdgeScroll(() => {
+        const g = selDragRef.current;
+        if (!g) return null; // 手势已收
+        const sel = window.getSelection();
+        // 选区未成（按下未拖开）——不滚；下一次 mousemove 会重新起循环
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+        if (!g.keepAlive) g.keepAlive = keepAliveOf();
+        return {
+          x: g.x,
+          y: g.y,
+          // 先延后滚：延伸反映上一帧 pan 后的已提交布局（React 提交滞后一帧），
+          // 本帧滚出的位移由下一帧的延伸追上——选区焦点恒差一帧，不可见。
+          beforePan: (pan) => {
+            if (pan.dx !== 0 || pan.dy !== 0) extendToCaret(g.x, g.y);
+          },
+        };
+      });
     };
 
     const down = (e: MouseEvent): void => {
@@ -514,10 +511,7 @@ export function usePaperViewport(core: PaperCore | null) {
     const up = (): void => {
       if (!selDragRef.current) return;
       selDragRef.current = null;
-      if (selPanRafRef.current) {
-        cancelAnimationFrame(selPanRafRef.current);
-        selPanRafRef.current = 0;
-      }
+      stopEdgeScroll();
     };
     window.addEventListener('mousedown', down, true);
     window.addEventListener('mousemove', move);
@@ -526,9 +520,9 @@ export function usePaperViewport(core: PaperCore | null) {
       window.removeEventListener('mousedown', down, true);
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
-      if (selPanRafRef.current) cancelAnimationFrame(selPanRafRef.current);
+      stopEdgeScroll();
     };
-  }, []);
+  }, [startEdgeScroll, stopEdgeScroll]);
 
   /* 稳定引用（性能专项第二刀）：平移/缩放每帧 view 变——回调读 ref 而非依赖
    * view/layout，拖拽/移位回调才可零依赖稳定（memo 友好，不逐帧重建闭包）。 */

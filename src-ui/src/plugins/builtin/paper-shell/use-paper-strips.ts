@@ -8,6 +8,7 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEdgeAutoScroll } from './edge-scroll';
 import type { MaskRect, PaperStrip, RegionView, SourcedBlock } from './host';
 import {
   ANCHOR,
@@ -20,6 +21,7 @@ import {
   selInkPaths,
   selSeedOf,
   stashStripPositionAt,
+  useCanvasViewStore,
 } from './host';
 import { DRAG_THRESHOLD } from './use-paper-drag';
 import type { PaperCore } from './use-paper-sessions';
@@ -74,6 +76,10 @@ export function usePaperStrips(params: {
     resizeRef,
   } = params;
 
+  /* 边缘滚动子系统（开关/灵敏度/曲线/帧循环全在 edge-scroll.ts）：抽纸条（lift）
+   * 与拖纸条两族手势共用同一实例——同一时刻只有一个手势在途。 */
+  const { start: startEdgeScroll, stop: stopEdgeScroll } = useEdgeAutoScroll(canvasRef);
+
   const stripDragRef = useRef<{
     id: string;
     sx: number;
@@ -81,12 +87,18 @@ export function usePaperStrips(params: {
     moved: boolean;
     offX: number;
     offY: number;
+    /** 指针最新位（client）：边缘滚动帧据此复位纸条影（指针静止时也要跟手） */
+    lastX: number;
+    lastY: number;
   } | null>(null);
   const liftRef = useRef<{
     text: string;
     messageId: string | undefined;
     sessionId: string | undefined;
     rect: DOMRect | null;
+    /** 指针最新位（client）：边缘滚动帧据此重算 ghost（指针静止时也要跟手） */
+    lastX: number;
+    lastY: number;
   } | null>(null);
   const [ghost, setGhost] = useState<{ x: number; y: number; zone: 'flow' | 'strip' } | null>(null);
 
@@ -130,9 +142,12 @@ export function usePaperStrips(params: {
       const sx = clientX - rect.left;
       const sy = clientY - rect.top;
       if (sx < 0 || sy < 0 || sx > rect.width || sy > rect.height) return null;
-      return screenToWorld(view, sx, sy);
+      /* ⚠ 读 **store 现值** view：本手势与边缘滚动同场（滚屏每帧改 pan），用闭包
+       *  旧 view 会算出虚构世界点——ghost 脱手、松手成条位置错位（同族病灶见
+       *  use-paper-drag 的 syncPreview 注）。 */
+      return screenToWorld(useCanvasViewStore.getState().view, sx, sy);
     },
-    [view, canvasRef],
+    [canvasRef],
   );
 
   /** 选区快照（块内才认）：{ 文本, 来源块 messageId, 来源流区 sessionId } | null。 */
@@ -194,6 +209,20 @@ export function usePaperStrips(params: {
    * 只做选择（划大段字复制绝无误触）；抽纸条唯二入口 = 按住已有选区拖出
    *（本路径）+ 选中浮钮（B 段）。拖选幽灵同步效果一并退役（它只服务路径 B）。 */
   useEffect(() => {
+    /** ghost 跟手一帧（mousemove 与边缘滚动帧共用）：按最新指针 + store 现值 view
+     *  重算落点/带判据——滚屏期间指针静止也要复位，否则 ghost 脱手。 */
+    const syncGhost = (clientX: number, clientY: number): void => {
+      const lift = liftRef.current;
+      const w = toWorldInCanvas(clientX, clientY);
+      if (!w || !lift) {
+        setGhost(null);
+        return;
+      }
+      const center = bandCenterOf(lift.sessionId);
+      const zone = classifyDropZone(w.x - center, ANCHOR.bandHalfWidth);
+      setGhost({ x: w.x, y: w.y, zone });
+    };
+
     const down = (e: MouseEvent) => {
       if (e.button !== 0) return;
       if (dragRef.current || stripDragRef.current || resizeRef.current) {
@@ -216,25 +245,31 @@ export function usePaperStrips(params: {
         messageId: snap.messageId,
         sessionId: snap.sessionId,
         rect: range.getBoundingClientRect(),
+        lastX: e.clientX,
+        lastY: e.clientY,
       };
       if (worldRects.length > 0) showLiftMask(worldRects);
       setBandSessionId(snap.sessionId ?? null); // 带显形：揭起即亮来源流区
       sel.removeAllRanges();
       e.preventDefault();
+      // 揭起即成手势：指针贴缘 → 视口自动滚屏，ghost 同帧复位（拖到很远也跟手）
+      startEdgeScroll(() => {
+        const cur = liftRef.current;
+        if (!cur) return null; // 手势已收
+        return { x: cur.lastX, y: cur.lastY, afterPan: () => syncGhost(cur.lastX, cur.lastY) };
+      });
     };
 
     const move = (e: MouseEvent) => {
-      const w = toWorldInCanvas(e.clientX, e.clientY);
-      if (!w || !liftRef.current) {
-        setGhost(null);
-        return;
-      }
-      const center = bandCenterOf(liftRef.current.sessionId);
-      const zone = classifyDropZone(w.x - center, ANCHOR.bandHalfWidth);
-      setGhost({ x: w.x, y: w.y, zone });
+      const lift = liftRef.current;
+      if (!lift) return; // 非 lift 手势（本通道只服务 A 路）
+      lift.lastX = e.clientX;
+      lift.lastY = e.clientY;
+      syncGhost(e.clientX, e.clientY);
     };
 
     const up = (e: MouseEvent) => {
+      stopEdgeScroll();
       setGhost(null);
       setBandSessionId(null);
       const lift = liftRef.current;
@@ -258,6 +293,7 @@ export function usePaperStrips(params: {
       window.removeEventListener('mousedown', down);
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      stopEdgeScroll();
     };
   }, [
     spawnStrip,
@@ -268,6 +304,8 @@ export function usePaperStrips(params: {
     showLiftMask,
     completeLiftMask,
     clearLiftMask,
+    startEdgeScroll,
+    stopEdgeScroll,
     dragRef,
     resizeRef,
     canvasRef,
@@ -340,7 +378,8 @@ export function usePaperStrips(params: {
     setSelAnchor(null);
   }, [selAnchor, view, spawnStrip, canvasStrips, canvasRef, regionsRef]);
 
-  /* 拖纸条：与拖块同款阈值手势——超阈才跟动，松手一次性写 canvas-store */
+  /* 拖纸条：与拖块同款阈值手势——超阈才跟动，松手一次性写 canvas-store；
+   * 边缘滚动同款（拖到很远也跟手，循环归 edge-scroll.ts）。 */
   const [dragStripId, setDragStripId] = useState<string | null>(null);
   const [stripDragPos, setStripDragPos] = useState<{ x: number; y: number } | null>(null);
   const onStripMouseDown = useCallback(
@@ -349,41 +388,56 @@ export function usePaperStrips(params: {
       e.stopPropagation();
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
+      const w = screenToWorld(useCanvasViewStore.getState().view, e.clientX - rect.left, e.clientY - rect.top);
       stripDragRef.current = {
         id: s.id,
         sx: e.clientX,
         sy: e.clientY,
         moved: false,
+        lastX: e.clientX,
+        lastY: e.clientY,
         offX: w.x - s.x,
         offY: w.y - s.y,
       };
     },
-    [view, canvasRef],
+    [canvasRef],
   );
   useEffect(() => {
+    /** 跟手一帧（mousemove 与边缘滚动帧共用；读 store 现值 view，滚屏不脱手）。 */
+    const syncPreview = (d: NonNullable<typeof stripDragRef.current>): void => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const w = screenToWorld(useCanvasViewStore.getState().view, d.lastX - rect.left, d.lastY - rect.top);
+      setStripDragPos({ x: w.x - d.offX, y: w.y - d.offY });
+    };
     const move = (e: MouseEvent) => {
       const d = stripDragRef.current;
       if (!d) return;
+      d.lastX = e.clientX;
+      d.lastY = e.clientY;
       if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_THRESHOLD) return;
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
       if (!d.moved) {
         d.moved = true;
         setDragStripId(d.id);
+        startEdgeScroll(() => {
+          const cur = stripDragRef.current;
+          if (!cur?.moved) return null; // 手势已收
+          return { x: cur.lastX, y: cur.lastY, afterPan: () => syncPreview(cur) };
+        });
       }
-      setStripDragPos({ x: w.x - d.offX, y: w.y - d.offY });
+      syncPreview(d);
     };
     const up = (e: MouseEvent) => {
       const d = stripDragRef.current;
       stripDragRef.current = null;
+      stopEdgeScroll();
       setDragStripId(null);
       setStripDragPos(null);
       if (!d?.moved || !core) return;
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
+      // 落点读 store 现值 view：与块影/纸条影同一把尺子（见 syncPreview 注）
+      const w = screenToWorld(useCanvasViewStore.getState().view, e.clientX - rect.left, e.clientY - rect.top);
       getCanvasStore(core.panelId)
         .getState()
         .moveStrip(d.id, w.x - d.offX, w.y - d.offY);
@@ -393,8 +447,9 @@ export function usePaperStrips(params: {
     return () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      stopEdgeScroll();
     };
-  }, [view, core, canvasRef]);
+  }, [core, canvasRef, startEdgeScroll, stopEdgeScroll]);
 
   /* 纸条销毁两击确认（2026-09-05，plan §1.2）：快照语义删了即没了——首击
    * 进确认态（按钮变「确认？」），3s 超时回退，再击才真删。 */

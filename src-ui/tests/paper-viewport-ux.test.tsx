@@ -89,6 +89,7 @@ import { rendererServicePlugin } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { wheelFactor } from '../src/paper/canvas-math';
+import { makeStrip } from '../src/paper/selection';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { blockReturnsToFlow } from '../src/plugins/builtin/paper-shell/use-paper-drag';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
@@ -340,8 +341,13 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
   /* ── ③ 拖选自动滚屏 ── */
 
   /** 假选区（jsdom 无原生拖选模拟）：真 Range 锚在块文本 + 可数 extend +
-   *  注入 caretRangeFromPoint（Chromium 面——jsdom 缺席，延伸链路要它）。 */
-  function installFakeSelection(collapsed: boolean): { extend: ReturnType<typeof vi.fn> } {
+   *  注入 caretRangeFromPoint（Chromium 面——jsdom 缺席，延伸链路要它）。
+   *  `rects` 非空时供抽纸条 A 路的落点探针（pointInSelectionRects）用：
+   *  传了 = 指针「落在选区内」，可考 lift 手势。 */
+  function installFakeSelection(
+    collapsed: boolean,
+    rects: Array<{ left: number; top: number; right: number; bottom: number }> = [],
+  ): { extend: ReturnType<typeof vi.fn> } {
     const block = container?.querySelector('.pp-block') ?? null;
     if (!block) throw new Error('pp-block 未挂载');
     const textNode = (() => {
@@ -353,9 +359,20 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     const range = document.createRange();
     range.selectNodeContents(textNode);
     // jsdom 的 Range 无 getClientRects（无布局引擎）——抽纸条 A 路的 mousedown
-    // 探针（pointInSelectionRects）会炸成未处理错误。补空实现：空矩形集 =
-    // 指针不在选区内 → A 路短路（本测试只考自动滚屏，不混 lift 手势）。
-    (range as Range & { getClientRects?: () => DOMRectList }).getClientRects = () => [] as unknown as DOMRectList;
+    // 探针（pointInSelectionRects）会炸成未处理错误。默认补空实现：空矩形集 =
+    // 指针不在选区内 → A 路短路（不混 lift 手势）；传 rects 则进 A 路。
+    (range as Range & { getClientRects?: () => DOMRectList }).getClientRects = () =>
+      rects.map(
+        (r) =>
+          ({
+            ...r,
+            x: r.left,
+            y: r.top,
+            width: r.right - r.left,
+            height: r.bottom - r.top,
+            toJSON: () => ({}),
+          }) as unknown as DOMRect,
+      ) as unknown as DOMRectList;
     (range as Range & { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect = () =>
       ({ x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON: () => ({}) }) as DOMRect;
     const extend = vi.fn();
@@ -366,7 +383,12 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
       anchorOffset: 0,
       getRangeAt: () => range,
       extend,
-      removeAllRanges: () => {},
+      // 忠实行为：清空选区后 rangeCount/isCollapsed 必须真的变（真机 lift 揭起即清
+      // 选区——拖选自动滚屏据此自动解除武装；空实现会让两条路径同时滚）
+      removeAllRanges: () => {
+        fake.isCollapsed = true;
+        fake.rangeCount = 0;
+      },
       toString: () => '选中文字',
     };
     selSpy = vi.spyOn(window, 'getSelection').mockReturnValue(fake as unknown as Selection);
@@ -492,6 +514,143 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     });
     expect(useCanvasViewStore.getState().view.zoom).toBe(1);
     ta.remove();
+  }, 30_000);
+
+  /* ── ⑦ 边缘滚动 = 原生功能（2026-09-17 立）：设置开关 + 灵敏度 + 三族手势 ──
+   * 帧循环与策略单点在 paper-shell/edge-scroll.ts；本段考行为面：
+   * 开关即时生效（保存广播）、灵敏度改感应带宽、纸条与抽纸条两族手势也接同一套。 */
+
+  /** 把边缘滚动设置写进盘面并广播（= 设置面板保存的效果；面板写面另有考官）。 */
+  const saveEdgeScroll = async (enabled: boolean, sensitivity = 1): Promise<void> => {
+    const cur = loadSettings();
+    saveSettings({
+      ...cur,
+      canvas: { ...cur.canvas, wheelMode: cur.canvas?.wheelMode ?? 'pan', edgeScroll: { enabled, sensitivity } },
+    });
+    await act(async () => {});
+  };
+
+  it('开关关掉（挂载后保存）：拖块贴缘不滚，松手仍按判据落钉', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    await saveEdgeScroll(false);
+    const block = container?.querySelector<HTMLElement>('.pp-block') ?? null;
+    const blockId = block?.getAttribute('data-block-id') ?? '';
+    await act(async () => {
+      fire(block?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 1100, clientY: 780 }); // 下缘带内 + 横向出原位
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 200)); // 开着的实现此间会滚几十像素
+    });
+    expect(useCanvasViewStore.getState().view.panY).toBe(600); // 关了 = 视口不动
+    const p = previewXY();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 1100, clientY: 780 });
+    });
+    const pin = getCanvasStore(panel.panelId).getState().pins[blockId];
+    expect(pin).toBeTruthy(); // 落钉判据不受开关影响（只是不滚）
+    expect(Math.abs(pin.x - p.x)).toBeLessThan(30);
+    expect(Math.abs(pin.y - p.y)).toBeLessThan(30);
+  }, 30_000);
+
+  it('灵敏度改感应带宽（行为面）：同一入带深度，0.5x 不起滚、2.0x 起滚', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas); // 1200×800 ⇒ 下缘带 = 800−band 起
+    const edgeY = 770; // 距下缘 30px：基准带 36 刚进带；0.5x 带宽 ≈25 进不去；2.0x ≈51 进得去
+    const drag = async (): Promise<void> => {
+      // 现取块（上一相落钉后 React 重建节点，旧引用派发不进 React 根）
+      const el = container?.querySelector<HTMLElement>('.pp-block') ?? null;
+      await act(async () => {
+        fire(el?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+      });
+      await act(async () => {
+        fire(window, 'mousemove', { clientX: 600, clientY: edgeY });
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 150));
+      });
+    };
+    const release = async (): Promise<void> => {
+      await act(async () => {
+        fire(window, 'mouseup', { clientX: 600, clientY: edgeY });
+      });
+    };
+
+    await saveEdgeScroll(true, 0.5);
+    await drag();
+    expect(useCanvasViewStore.getState().view.panY).toBe(600); // 弱档：带收窄 → 此深度不起滚
+    await release();
+
+    await saveEdgeScroll(true, 2);
+    await drag();
+    expect(useCanvasViewStore.getState().view.panY).toBeLessThan(600); // 强档：带放大 → 同深度起滚
+    await release();
+  }, 30_000);
+
+  it('拖纸条：贴缘滚屏 + 纸条影跟手，松手写回滚动后的世界位', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const strip = makeStrip('纸条正文——拖到画布很远处', 200, 200, 480);
+    getCanvasStore(panel.panelId).getState().addStrip(strip);
+    await act(async () => {});
+    const el = () => container?.querySelector<HTMLElement>('.pp-strip') ?? null;
+    expect(el()).not.toBeNull();
+    await act(async () => {
+      fire(el() as Element, 'mousedown', { button: 0, clientX: 300, clientY: 300 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 1100, clientY: 780 }); // 上缘横向 + 下缘入带
+    });
+    const [, panY1] = await scrollUntil(60);
+    expect(600 - panY1).toBeGreaterThan(60); // 滚了
+    const dragged = () => container?.querySelector<HTMLElement>('.pp-strip.pp-dragging') ?? el();
+    const preview = {
+      x: Number.parseFloat(dragged()?.style.left ?? ''),
+      y: Number.parseFloat(dragged()?.style.top ?? ''),
+    };
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 1100, clientY: 780 });
+    });
+    const after = getCanvasStore(panel.panelId)
+      .getState()
+      .strips.find((s) => s.id === strip.id)!;
+    expect(Math.abs(after.x - preview.x)).toBeLessThan(30); // 落点 = 纸条影所在（滚屏后不跳位）
+    expect(Math.abs(after.y - preview.y)).toBeLessThan(30);
+  }, 30_000);
+
+  it('抽纸条（lift）拖出：贴缘滚屏 + ghost 跟手，松手在滚动后的世界位成条', async () => {
+    await mountCanvas();
+    const canvas = container?.querySelector<HTMLDivElement>('.pp-canvas');
+    if (!canvas) throw new Error('pp-canvas 未挂载');
+    stubCanvasRect(canvas);
+    const block = container?.querySelector<HTMLElement>('.pp-block') as HTMLElement;
+    // 假选区落在指针下（A 路 mousedown 探针要求指针在选区内）——原地即揭起
+    installFakeSelection(false, [{ left: 860, top: 280, right: 940, bottom: 320 }]);
+    await act(async () => {
+      fire(block, 'mousedown', { button: 0, clientX: 900, clientY: 300 });
+    });
+    // 揭起手势立即在途：指针移到下缘带内 + 横向出带（成条区）→ 视口自动滚屏
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 1100, clientY: 780 });
+    });
+    const [, panY1] = await scrollUntil(60);
+    expect(600 - panY1).toBeGreaterThan(60);
+    const ghostOf = (): { x: number; y: number } | null => {
+      const g = container?.querySelector<HTMLElement>('.pp-strip-ghost') ?? null;
+      if (!g) return null;
+      return { x: Number.parseFloat(g.style.left) - 12, y: Number.parseFloat(g.style.top) - 12 };
+    };
+    const g = ghostOf();
+    expect(g).not.toBeNull(); // ghost 随滚滚出的位置复位（不脱手）
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 1100, clientY: 780 });
+    });
+    const strips = getCanvasStore(panel.panelId).getState().strips;
+    expect(strips.length).toBe(1); // 成条（zone = strip：横向出带）
+    expect(Math.abs(strips[0].x - (g as { x: number }).x)).toBeLessThan(30);
   }, 30_000);
 
   it('滚轮行为=缩放画布（设置切换）：plain wheel 直接缩放、不再平移', async () => {

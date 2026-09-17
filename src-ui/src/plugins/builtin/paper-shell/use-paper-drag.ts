@@ -7,23 +7,17 @@
 // dragPos/dragSource/bandSessionId/settleId）是 regions memo 与拖拽/纸条两域
 // 的共读输入，由装配根持有穿参进来。
 //
-// 边缘自动滚屏（2026-09-17 手感批，用户「拖一下→滚→再拖」病灶）：拖块时指针
-// 贴视口四缘 → 视口持续自动滚动（RTS 缘滚同族：入带起滚、越深越快、越出画布
-// 封顶），块影每帧钉回指针下——一次手势即可把块送到画布任意远处。曲线复用
-// canvas-math 的 autoPanVector（拖选自动滚屏同一真源，禁另立参数）。
+// 边缘自动滚屏（2026-09-17 手感批，用户「拖一下→滚→再拖」病灶；同日立为**原生
+// 功能**）：拖块时指针贴视口四缘 → 视口持续自动滚动（RTS 缘滚同族：入带起滚、
+// 越深越快、越出画布封顶），块影每帧钉回指针下——一次手势即可把块送到画布任意
+// 远处。帧循环与策略（开关/灵敏度/带宽/限速）全在 `edge-scroll.ts` 子系统里，
+// 本域只提供「取指针 + 跟手回调」；曲线仍是 canvas-math 的 autoPanVector。
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEdgeAutoScroll } from './edge-scroll';
 import type { RegionView, SourcedBlock } from './host';
-import {
-  ANCHOR,
-  autoPanVector,
-  getCanvasStore,
-  panBy,
-  screenToWorld,
-  snapshotFromBlock,
-  useCanvasViewStore,
-} from './host';
+import { ANCHOR, getCanvasStore, screenToWorld, snapshotFromBlock, useCanvasViewStore } from './host';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击）——纸条拖拽同款（本域导出）。 */
@@ -190,8 +184,9 @@ export function usePaperDrag(params: {
     [core],
   );
 
-  /* 边缘自动滚屏的帧载体（拖块手势期常驻 rAF；松手/卸载即撤）。 */
-  const panRafRef = useRef(0);
+  /* 边缘滚动子系统（开关/灵敏度/曲线/帧循环全在 edge-scroll.ts）：手势期起循环，
+   *  块影同帧钉回指针下；松手即撤。 */
+  const { start: startEdgeScroll, stop: stopEdgeScroll } = useEdgeAutoScroll(canvasRef);
 
   useEffect(() => {
     /* ── 跟手一帧（mousemove 与滚屏帧共用）──
@@ -207,25 +202,6 @@ export function usePaperDrag(params: {
       if (d.lastPos && d.lastPos.x === nx && d.lastPos.y === ny) return;
       d.lastPos = { x: nx, y: ny };
       setDragPos({ x: nx, y: ny });
-    };
-
-    /* ── 边缘自动滚屏帧（RTS 缘滚同族）──
-     * 指针在视口四缘的感应带内（含越出画布：autoPanVector 封顶 1.5×）→ 每帧
-     * 推一记 panBy，块影同帧钉回指针下。指针静止在带内也持续滚（mousemove 到
-     * 不了帧里的那一路靠常驻循环），回带内自然停摆。 */
-    const tick = (): void => {
-      panRafRef.current = 0;
-      const d = dragRef.current;
-      if (!d?.moved) return; // 手势已收
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        const v = autoPanVector(d.lastX - rect.left, d.lastY - rect.top, rect.width, rect.height);
-        if (v.dx !== 0 || v.dy !== 0) {
-          useCanvasViewStore.getState().setView((cur) => panBy(cur, v.dx, v.dy));
-        }
-        syncPreview(d);
-      }
-      panRafRef.current = requestAnimationFrame(tick);
     };
 
     const move = (e: MouseEvent) => {
@@ -249,17 +225,19 @@ export function usePaperDrag(params: {
             commitPinned(d.sessionId, d.id, { x: w.x - d.offX, y: w.y - d.offY }, d.block);
           }
         }
-        panRafRef.current = requestAnimationFrame(tick);
+        // 指针贴四缘 → 视口每帧自动平移（指针静止在带内也滚）；平移后同帧复位块影
+        startEdgeScroll(() => {
+          const cur = dragRef.current;
+          if (!cur?.moved) return null; // 手势已收 → 循环自然停摆
+          return { x: cur.lastX, y: cur.lastY, afterPan: () => syncPreview(cur) };
+        });
       }
       syncPreview(d);
     };
     const up = (e: MouseEvent) => {
       const d = dragRef.current;
       dragRef.current = null;
-      if (panRafRef.current) {
-        cancelAnimationFrame(panRafRef.current);
-        panRafRef.current = 0;
-      }
+      stopEdgeScroll(); // 收手势：撤边缘滚动帧循环
       setDraggingId(null);
       setDragSource(null);
       setBandSessionId(null);
@@ -293,7 +271,7 @@ export function usePaperDrag(params: {
     return () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
-      if (panRafRef.current) cancelAnimationFrame(panRafRef.current);
+      stopEdgeScroll();
     };
     /* ⚠ 依赖表刻意不含 view：平移每帧换值 → 每帧重建 effect（监听器拆装 +
      *  滚屏循环被 cleanup 掐断）。本域一律读 store 现值 view（见 syncPreview
@@ -303,6 +281,8 @@ export function usePaperDrag(params: {
     canvasRef,
     regionsRef,
     takeOverViewport,
+    startEdgeScroll,
+    stopEdgeScroll,
     setDraggingId,
     setDragPos,
     setDragSource,

@@ -377,6 +377,22 @@ const SettingsPanelApp: React.FC<{
         ? '有未保存的设置更改，关闭后将丢失。确定关闭？'
         : '有未保存的提供方更改，关闭后将丢失。确定关闭？';
 
+  /* 边缘滚动读面（2026-09-17 立为原生功能）：**行为真源在 paper-shell 插件域**
+   *（`plugins/builtin/paper-shell/edge-scroll.ts`——基准带宽/限速、灵敏度映射、
+   * 缺省与夹取都在那里）。本面板只读写持久化字段 `canvas.edgeScroll`：此处两个
+   * 数字是**展示区间**（滑杆 min/max 与缺省显示），越界值由读侧夹取，两处同改
+   *（跨插件不可 import——插件自包含契约，见 docs/plugins/README.md）。 */
+  const edgeScrollSensRaw = settings.canvas?.edgeScroll?.sensitivity;
+  const edgeScrollSens =
+    typeof edgeScrollSensRaw === 'number' && Number.isFinite(edgeScrollSensRaw)
+      ? Math.min(2, Math.max(0.5, edgeScrollSensRaw))
+      : 1;
+  const edgeScrollOn = settings.canvas?.edgeScroll?.enabled !== false;
+  const setEdgeScroll = (next: { enabled: boolean; sensitivity: number }): void => {
+    // 展开既有 canvas（勿整体替换——会冲掉同节其他字段，见下方滚轮行为同款收口）
+    commit({ ...settings, canvas: { ...settings.canvas, wheelMode: canvasWheelMode(settings), edgeScroll: next } });
+  };
+
   // ── 渲染 ──
 
   return (
@@ -656,7 +672,12 @@ const SettingsPanelApp: React.FC<{
                   className="sp-input"
                   value={canvasWheelMode(settings)}
                   onChange={(e) => {
-                    commit({ ...settings, canvas: { wheelMode: e.target.value as 'pan' | 'zoom' } });
+                    // ⚠ 展开既有 canvas：整体替换会冲掉同节其他字段（2026-09-17 边缘滚动
+                    // 加入同节时暴露——滚轮行为一改，用户刚存的 edgeScroll 就被抹掉）
+                    commit({
+                      ...settings,
+                      canvas: { ...settings.canvas, wheelMode: e.target.value as 'pan' | 'zoom' },
+                    });
                   }}
                 >
                   <option value="pan">平滚视角（Ctrl+滚轮缩放）</option>
@@ -667,6 +688,45 @@ const SettingsPanelApp: React.FC<{
                   缩放画布：滚轮直接缩放，平移靠拖拽空白或流区纸面。保存后即时生效。
                 </div>
               </div>
+              {/* 边缘滚动（2026-09-17 立为原生功能）：RTS 缘滚同族——拖拽手势的指针
+                  进入画布四缘感应带即持续平移视口（越靠边越快、指针停住也滚、越出
+                  画布再快一档），拖块/拖选文字/拖纸条三族手势共用同一套。 */}
+              <div className="sp-field" style={{ marginTop: 12 }}>
+                <label className="sp-label sp-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={edgeScrollOn}
+                    onChange={(e) => setEdgeScroll({ enabled: e.target.checked, sensitivity: edgeScrollSens })}
+                  />
+                  拖拽到边缘时自动滚屏
+                </label>
+                <div className="sp-hint-sub">
+                  拖块 / 拖选文字 / 拖纸条时，指针贴到画布四缘就持续平移视口——一次手势即可把内容送到画布
+                  任意远处，不必「拖一下、滚一段、再拖一下」。关闭后用滚轮或拖空白处挪视口。
+                </div>
+              </div>
+              {edgeScrollOn && (
+                <div className="sp-slider-row">
+                  <input
+                    type="range"
+                    name="edgeScrollSensitivity"
+                    className="sp-range"
+                    min={0.5}
+                    max={2}
+                    step={0.1}
+                    value={edgeScrollSens}
+                    aria-label="边缘滚动灵敏度"
+                    style={{ '--pct': `${((edgeScrollSens - 0.5) / 1.5) * 100}%` } as React.CSSProperties}
+                    onChange={(e) => setEdgeScroll({ enabled: true, sensitivity: parseFloat(e.target.value) })}
+                  />
+                  <span className="sp-slider-end">{edgeScrollSens.toFixed(1)}x</span>
+                </div>
+              )}
+              {edgeScrollOn && (
+                <div className="sp-hint-sub">
+                  灵敏度：整体强弱——起滚距离与滚动速度同向变化（1.0x = 基准）。保存后即时生效。
+                </div>
+              )}
             </div>
           </div>
 
