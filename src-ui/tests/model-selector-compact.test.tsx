@@ -490,7 +490,37 @@ describe('ModelSelector 键盘导航（react-aria useComboBox，档位 C）', ()
   const key = (el: Element, k: string) =>
     el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
 
+  /** 显式种子（勿依赖出厂 DEFAULTS——它会随官方目录刷新而变；本组只考键盘导航）。 */
+  const seedTwoProviders = () => {
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'deepseek',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'deepseek',
+            apiKey: '',
+            baseUrl: 'https://api.deepseek.com/v1',
+            model: 'deepseek-v4-pro',
+          },
+          {
+            kind: 'anthropic',
+            name: 'anthropic',
+            apiKey: '',
+            baseUrl: 'https://api.anthropic.com',
+            model: 'claude-sonnet-4-6',
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+  };
+
   it('↑↓ 移动 aria-activedescendant 聚焦项（react-aria 接管键盘导航）', async () => {
+    seedTwoProviders();
     act(() => {
       root?.render(
         createElement(ModelSelector, {
@@ -527,6 +557,7 @@ describe('ModelSelector 键盘导航（react-aria useComboBox，档位 C）', ()
   });
 
   it('Enter 选中聚焦项 → onChange（无需鼠标）', async () => {
+    seedTwoProviders();
     const onChange = vi.fn();
     act(() => {
       root?.render(

@@ -254,7 +254,9 @@ export function parseModelEntry(
 export function guessReasoningFromId(id: string, kind: Protocol): boolean {
   if (kind === 'responses') return true;
   if (kind === 'anthropic') return /sonnet|opus|haiku/i.test(id);
-  return /think|reason|r1|deepseek-v[34]|kimi-k2-thinking/i.test(id);
+  // deepseek：v3/v4 系 + flash 系（2026-09-18 官方改名 deepseek-flash = V4.1 Flash，
+  // 思考模式默认开）都算推理模型；其余按关键词表。
+  return /think|reason|r1|deepseek-(v[34]|flash)|kimi-k2-thinking/i.test(id);
 }
 
 /** 从 /models 响应体里抽出条目数组（data[] 为主，兼容 models[] / 裸数组）。 */

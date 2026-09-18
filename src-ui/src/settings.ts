@@ -293,7 +293,10 @@ const DEFAULTS: AppSettings = {
       name: providerId('deepseek'),
       apiKey: '',
       baseUrl: defaultBaseUrl('deepseek', 'openai') ?? 'https://api.deepseek.com/v1',
-      model: 'deepseek-v4-pro',
+      // 出厂默认模型（2026-09-18 随官方改名刷新）：deepseek-flash = 现役
+      // DeepSeek V4.1 Flash（原生多模态，官方推荐款）；旧名 deepseek-v4-pro
+      // 仍在目录中可选用。
+      model: 'deepseek-flash',
     },
     {
       kind: 'anthropic',

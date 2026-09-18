@@ -155,7 +155,7 @@ describe('catalog', () => {
     }
   });
 
-  it('vision 声明面（B5 · D-8①）：已知 vision 款声明 image，deepseek 主线保持纯文本', () => {
+  it('vision 声明面（B5 · D-8① + 2026-09-18 目录刷新）：DeepSeek V4.1 线全模态，仅 V4 Pro 纯文本', () => {
     // anthropic：Claude 3+ 全系 vision——4 款全声明
     for (const m of findModels('anthropic')) {
       expect(m.input, `${m.id}`).toContain('image');
@@ -164,16 +164,23 @@ describe('catalog', () => {
     for (const m of findModels('openai')) {
       expect(m.input, `${m.id}`).toContain('image');
     }
-    // deepseek：主线 v4 flash/pro（含 Beta）纯文本（DSH 权威——vision 是独立款）
-    const deepseek = findModels('deepseek');
-    for (const m of deepseek) {
-      if (m.id === 'deepseek-v4-flash-vision-exp') continue;
-      expect(m.input.includes('image'), `${m.id} 不得声明 image`).toBe(false);
+    // deepseek（2026-09-18 按官方文档刷新）：deepseek-flash（V4.1）原生多模态；
+    // 旧名 v4-flash / v4-flash-vision-exp / v4-flash-beta 官方路由到 V4.1 Flash
+    // （同收图）；deepseek-v4-pro（含 Beta）官方「图像理解 不支持」= 纯文本。
+    const textOnly = new Set(['deepseek-v4-pro', 'deepseek-v4-pro-beta']);
+    for (const m of findModels('deepseek')) {
+      expect(m.input.includes('image'), `${m.id} 图像声明与官方文档不符`).toBe(!textOnly.has(m.id));
     }
-    // vision 款 = flash-vision-exp（DSH 默认目录同款）
-    const vision = getModel('deepseek-v4-flash-vision-exp');
-    expect(vision?.input).toEqual(['text', 'image']);
-    expect(vision?.contextWindow).toBe(1000000);
+    expect(getModel('deepseek-flash')?.input).toEqual(['text', 'image']);
+    expect(getModel('deepseek-flash')?.contextWindow).toBe(1000000);
+    expect(getModel('deepseek-v4-pro')?.input).toEqual(['text']);
+  });
+
+  it('getDefaultModel(deepseek) = deepseek-flash（2026-09-18：出厂默认随官方改名刷新）', () => {
+    const model = getDefaultModel('deepseek');
+    expect(model?.id).toBe('deepseek-flash');
+    expect(model?.vendor).toBe('deepseek');
+    expect(model?.baseUrl).toBe('https://api.deepseek.com/v1');
   });
 
   it('mergeDynamicModels adds out-of-catalog ids, skips existing ones', () => {
@@ -276,6 +283,9 @@ describe('catalog', () => {
     // openai 兼容：id 关键词表（原 openai.guessReasoning 行为逐条不变）
     expect(guessReasoningFromId('deepseek-v4-pro', 'openai')).toBe(true);
     expect(guessReasoningFromId('deepseek-reasoner', 'openai')).toBe(true);
+    // 2026-09-18：官方改名后的 deepseek-flash（V4.1）也是推理模型（思考模式默认开）
+    expect(guessReasoningFromId('deepseek-flash', 'openai')).toBe(true);
+    expect(guessReasoningFromId('deepseek-v4.1-flash', 'openai')).toBe(true);
     expect(guessReasoningFromId('kimi-k2-thinking', 'openai')).toBe(true);
     expect(guessReasoningFromId('gpt-4o', 'openai')).toBe(false);
     expect(guessReasoningFromId('claude-3-5-sonnet', 'openai')).toBe(false);

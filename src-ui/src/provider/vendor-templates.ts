@@ -64,7 +64,7 @@ export const VENDOR_TEMPLATES: readonly VendorTemplate[] = [
     vendor: 'deepseek',
     kind: 'openai',
     baseUrl: 'https://api.deepseek.com/v1',
-    defaultModel: 'deepseek-v4-pro',
+    defaultModel: 'deepseek-flash',
   },
   {
     vendor: 'glm',

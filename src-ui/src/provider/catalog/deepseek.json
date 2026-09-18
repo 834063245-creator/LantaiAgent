@@ -1,12 +1,26 @@
 {
-  "deepseek-v4-flash": {
-    "id": "deepseek-v4-flash",
-    "name": "DeepSeek V4 Flash",
+  "deepseek-flash": {
+    "id": "deepseek-flash",
+    "name": "DeepSeek V4.1 Flash",
     "kind": "openai",
     "vendor": "deepseek",
     "baseUrl": "https://api.deepseek.com/v1",
     "reasoning": true,
-    "input": ["text"],
+    "input": ["text", "image"],
+    "contextWindow": 1000000,
+    "maxTokens": 384000,
+    "thinkingEfforts": ["low", "high", "max"],
+    "thinkingOff": true,
+    "deepseekThinking": true
+  },
+  "deepseek-v4-flash": {
+    "id": "deepseek-v4-flash",
+    "name": "DeepSeek V4.1 Flash (legacy v4-flash)",
+    "kind": "openai",
+    "vendor": "deepseek",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "reasoning": true,
+    "input": ["text", "image"],
     "contextWindow": 1000000,
     "maxTokens": 384000,
     "thinkingEfforts": ["low", "high", "max"],
@@ -15,14 +29,17 @@
   },
   "deepseek-v4-flash-vision-exp": {
     "id": "deepseek-v4-flash-vision-exp",
-    "name": "DeepSeek V4 Flash Vision (Exp)",
+    "name": "DeepSeek V4.1 Flash (legacy v4-flash-vision-exp)",
     "kind": "openai",
     "vendor": "deepseek",
     "baseUrl": "https://api.deepseek.com/v1",
-    "reasoning": false,
+    "reasoning": true,
     "input": ["text", "image"],
     "contextWindow": 1000000,
-    "maxTokens": 384000
+    "maxTokens": 384000,
+    "thinkingEfforts": ["low", "high", "max"],
+    "thinkingOff": true,
+    "deepseekThinking": true
   },
   "deepseek-v4-pro": {
     "id": "deepseek-v4-pro",
@@ -38,14 +55,14 @@
     "thinkingOff": true,
     "deepseekThinking": true
   },
-  "deepseek-v4-pro-beta": {
-    "id": "deepseek-v4-pro-beta",
-    "name": "DeepSeek V4 Pro (Beta API)",
+  "deepseek-flash-beta": {
+    "id": "deepseek-flash-beta",
+    "name": "DeepSeek V4.1 Flash (Beta API)",
     "kind": "anthropic",
     "vendor": "deepseek",
     "baseUrl": "https://api.deepseek.com/anthropic",
     "reasoning": true,
-    "input": ["text"],
+    "input": ["text", "image"],
     "contextWindow": 1000000,
     "maxTokens": 384000,
     "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],
@@ -53,7 +70,20 @@
   },
   "deepseek-v4-flash-beta": {
     "id": "deepseek-v4-flash-beta",
-    "name": "DeepSeek V4 Flash (Beta API)",
+    "name": "DeepSeek V4.1 Flash (Beta API, legacy id)",
+    "kind": "anthropic",
+    "vendor": "deepseek",
+    "baseUrl": "https://api.deepseek.com/anthropic",
+    "reasoning": true,
+    "input": ["text", "image"],
+    "contextWindow": 1000000,
+    "maxTokens": 384000,
+    "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],
+    "thinkingOff": true
+  },
+  "deepseek-v4-pro-beta": {
+    "id": "deepseek-v4-pro-beta",
+    "name": "DeepSeek V4 Pro (Beta API)",
     "kind": "anthropic",
     "vendor": "deepseek",
     "baseUrl": "https://api.deepseek.com/anthropic",
