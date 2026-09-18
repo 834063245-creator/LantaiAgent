@@ -210,7 +210,8 @@ io: 'input' 视图必须保留：让 defaulted 字段不进 required，
 
 ## 11. IPC 响应必须设尺寸护栏；用户级数据文件是排查盲区
 
-**文件**: `src-tauri/src/credential.rs`（凭据读写）、`src-tauri/src/commands/graph.rs` / `hologram.rs`（大响应命令）、`src-ui/src/settings.ts`（restoreSecrets）、`src-tauri/src/utils.rs`（guard_ipc_size）
+**文件**: `src-tauri/src/credential.rs`（凭据读写）、`src-ui/src/settings.ts`（restoreSecrets）、`src-tauri/src/utils.rs`（`guard_ipc_size` / `truncate_output`）
+（历史例证：`commands/graph.rs` / `commands/hologram.rs` 两个大响应命令已随图谱全量退役删除（2026-09-09）——护栏本体在 `utils.rs`，与具体命令无关。）
 
 ```
 ⚠️ 1. 任何经 IPC 的命令响应必须有尺寸护栏（guard_ipc_size 128MB / truncate_output 32K），

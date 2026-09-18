@@ -3,6 +3,7 @@
 > 生成物（勿手改）。真源：`engine/src/contract.rs`（版本 + 壳专属方法清单）、`engine/src/tools/mod.rs`（域表 + 可寻址工具面）。
 > 重新生成：`node scripts/gen-engine-plugin-contract.cjs`（根目录薄壳）或 `npm run gen:engine-contract`（src-ui）。
 > 契约面文件变更 → 必须升 `ENGINE_CONTRACT_VERSION` + 重新生成本文档 + 同步 `src-ui/tests/engine-contract.test.ts` 的 `EXPECTED_SHELL_METHODS`，同 commit。
+> **机械拦截**：`engine/src/contract.rs` 的 `contract_face_fingerprint_matches` 对拍 `CONTRACT_FACE_FINGERPRINT`（`ENGINE_CONTRACT_FILES` 逐文件哈希 + 版本）——改了契约面而不更新指纹 = `cargo test` 红。
 
 ## 契约版本
 

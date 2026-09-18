@@ -179,10 +179,10 @@ React 靠引用比较观察变化。store 是唯一提交口：
    composition/first-party-tools.ts 清单单一真源（loader 表尾装载 + 测试/文档
    生成经 withFirstPartyToolChannel 复现生产装配）。**缓存分家**：无状态族
    （只依赖 codingExec）走默认实例缓存；装配期真值族（wait 的 subAgentPool /
-   ask 的 ui 回调 / hologram 的 graphData 开关与动态 schema 面）声明贡献
-   noCache（①c 路线一，2026-08-23 拍板 #2）——pluginToolRows 每装配重调
-   factory，装配期真值直收 rowCtx，无跨装配串扰；hologram 是整组形态贡献
-   （一行承载动态名面，S4-4 乙的 Tool[] factory 形态）
+   ask 的 ui 回调 / task 的 taskManager）声明贡献 noCache（①c 路线一，
+   2026-08-23 拍板 #2）——pluginToolRows 每装配重调 factory，装配期真值直收
+   rowCtx，无跨装配串扰；Tool[] factory 是整组形态贡献（一行承载该族全部工具，
+   S4-4 乙形态）。（应用内 hologram 动态名族已随图谱内置接线退役，2026-09-09。）
 ✅ system-prompt 段落（persona/规则/记忆/运行环境）：在
    composition/prompt-sections.ts 段清单加一段（id + applicable + render；
    render 产出含自身前导分隔符的完整文本——\n/\n\n 混用是现行拼装的机械事实，

@@ -129,6 +129,9 @@ function main(): void {
   md.push(
     '> 契约面文件变更 → 必须升 `ENGINE_CONTRACT_VERSION` + 重新生成本文档 + 同步 `src-ui/tests/engine-contract.test.ts` 的 `EXPECTED_SHELL_METHODS`，同 commit。',
   );
+  md.push(
+    '> **机械拦截**：`engine/src/contract.rs` 的 `contract_face_fingerprint_matches` 对拍 `CONTRACT_FACE_FINGERPRINT`（`ENGINE_CONTRACT_FILES` 逐文件哈希 + 版本）——改了契约面而不更新指纹 = `cargo test` 红。',
+  );
   md.push('');
   md.push('## 契约版本');
   md.push('');

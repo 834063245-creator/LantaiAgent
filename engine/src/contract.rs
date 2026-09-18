@@ -5,8 +5,9 @@
 //!
 //! 机制三件（镜像 TS 组合层 `OPEN_SURFACE_CONTRACT_VERSION` 的纪律）：
 //!   1. `ENGINE_CONTRACT_VERSION` —— 契约当前版本（整数递增，变更即 +1）；
-//!   2. `ENGINE_CONTRACT_FILES` —— 契约面物理载体清单（指纹 guard 消费，
-//!      文件变更未升版/未更新指纹 = 红）；
+//!   2. `ENGINE_CONTRACT_FILES` —— 契约面物理载体清单（指纹 guard 消费：
+//!      `contract_face_fingerprint_matches` 对拍 `CONTRACT_FACE_FINGERPRINT`，
+//!      文件内容变更而指纹未更新 = `cargo test` 红）；
 //!   3. `SHELL_METHODS` —— **壳专属方法清单**（host API，永不进模型
 //!      `tools/list`；模型工具面真源 = `tools/mod.rs` 的 `DOMAIN_SPECS`
 //!      （可见面，契约 v5 域折叠）+ `DEFAULT_MCP_TOOLS`（可寻址面））。
@@ -73,7 +74,9 @@
 ///      也不许把完整说明书抄回常驻上下文）。
 pub const ENGINE_CONTRACT_VERSION: u32 = 6;
 
-/// 契约面物理载体（相对仓库根）。指纹 guard 对拍：文件变更未升版 = 红。
+/// 契约面物理载体（相对仓库根）。指纹 guard（本文件的
+/// `contract_face_fingerprint_matches`）对拍 `CONTRACT_FACE_FINGERPRINT`：
+/// 任一文件内容变更而指纹未更新 = `cargo test` 红，强制显式升版 + 记录。
 pub const ENGINE_CONTRACT_FILES: &[&str] = &[
     "engine/src/contract.rs",
     "engine/src/tools/mod.rs",
@@ -84,6 +87,17 @@ pub const ENGINE_CONTRACT_FILES: &[&str] = &[
     "engine/src/plugins/mod.rs",
     "engine/src/engine/grammar.rs",
 ];
+
+/// 契约面指纹：`ENGINE_CONTRACT_FILES` 逐文件内容（FNV-1a 64）+ 契约版本的复合。
+///
+/// 纪律（与组合层 `OPEN_SURFACE_CONTRACT_FILES` 的 sha256 指纹同款）：
+/// **改契约面 → 升 `ENGINE_CONTRACT_VERSION` → 更新本常量**，三件事同一 commit。
+/// 忘了更新 = `cargo test` 红（`contract_face_fingerprint_matches` 会打印新指纹）。
+///
+/// 实现细节：换行归一（CRLF→LF）——工作树 EOL 因 `.gitattributes` 归一而可能
+/// 与索引不同，指纹必须跟着**仓库内容**走；contract.rs 自身在哈希前剔除本行
+/// （自指），其余内容照常参与。
+pub const CONTRACT_FACE_FINGERPRINT: &str = "b635cb28e4c477e0";
 
 /// 壳专属方法参数（最小形状；Phase 1 接线时并入 dispatch）。
 pub struct ShellParam {
@@ -201,6 +215,50 @@ pub fn shell_method_names() -> Vec<&'static str> {
     SHELL_METHODS.iter().map(|m| m.name).collect()
 }
 
+// ── 契约面指纹（guard）────────────────────────────────────────────────
+
+/// FNV-1a 64 位（变更检测够用；不引入新依赖）。
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+/// 计算当前契约面指纹（与 `CONTRACT_FACE_FINGERPRINT` 对拍）。
+///
+/// 仓库根 = `CARGO_MANIFEST_DIR`（engine/）的父目录；定位不到或文件缺失即
+/// Err——guard 失败关闭，不静默跳过（这正是一条「说了没做」的防线）。
+pub fn contract_face_fingerprint() -> Result<String, String> {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest
+        .parent()
+        .ok_or_else(|| format!("定位仓库根失败：{}", manifest.display()))?;
+
+    let mut composite = format!("version:{}\n", ENGINE_CONTRACT_VERSION);
+    for rel in ENGINE_CONTRACT_FILES {
+        let path = root.join(rel);
+        let raw = std::fs::read_to_string(&path)
+            .map_err(|e| format!("契约面文件读不到 {}: {e}", path.display()))?;
+        // 换行归一：指纹跟仓库内容走，不跟工作树 EOL 走。
+        let normalized = raw.replace("\r\n", "\n");
+        // 自指剔除：contract.rs 里的指纹常量行不参与哈希。
+        let content = if *rel == "engine/src/contract.rs" {
+            normalized
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("pub const CONTRACT_FACE_FINGERPRINT"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            normalized
+        };
+        composite.push_str(&format!("{rel}:{:016x}\n", fnv1a64(content.as_bytes())));
+    }
+    Ok(format!("{:016x}", fnv1a64(composite.as_bytes())))
+}
+
 /// 引擎 status 的契约摘要（engine_status 暴露，宿主可探测契约版本）。
 pub fn engine_contract_info() -> serde_json::Value {
     let domains: Vec<serde_json::Value> = crate::tools::DOMAIN_SPECS
@@ -238,6 +296,27 @@ mod tests {
     #[test]
     fn contract_version_is_set() {
         assert!(ENGINE_CONTRACT_VERSION > 0, "契约版本必须为正整数");
+    }
+
+    /// 契约面指纹对拍：改了契约面文件却没升版/没更新指纹 = 红。
+    ///
+    /// 这是「契约面变更必须显式登记」的机械防线——契约面文件的注释、
+    /// schema、壳方法清单、开关语义全在哈希覆盖面内。
+    #[test]
+    fn contract_face_fingerprint_matches() {
+        let actual = contract_face_fingerprint().expect("契约面指纹可算");
+        assert_eq!(
+            actual.len(),
+            16,
+            "指纹形态应为 16 位十六进制（FNV-1a 64）"
+        );
+        assert_eq!(
+            actual, CONTRACT_FACE_FINGERPRINT,
+            "契约面文件已变更——按契约纪律同 commit 完成三件事：\
+             ① 升 ENGINE_CONTRACT_VERSION；② 在本文件 vN 沿革块记录变更；\
+             ③ 把本测试断言的 left（实际指纹）抄进 CONTRACT_FACE_FINGERPRINT，\
+             再跑 npm run gen:engine-contract 同步生成物文档"
+        );
     }
 
     #[test]
