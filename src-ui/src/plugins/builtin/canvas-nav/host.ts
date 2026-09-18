@@ -22,4 +22,5 @@ export { pickDropAnchor } from '../../../paper/space';
 export { useAskStore } from '../../../state/ask-store';
 export { useCanvasViewStore } from '../../../state/canvas-view-store';
 export { useDockStore } from '../../../state/dock-store';
+export { useSessionVolumesStore } from '../../../state/session-volumes-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';

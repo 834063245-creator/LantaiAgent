@@ -190,6 +190,7 @@ import { useCompositionStore } from '../../state/composition-store';
 import { useDockStore } from '../../state/dock-store';
 import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../state/mode-store';
 import { usePresetStore } from '../../state/preset-store';
+import { useSessionVolumesStore } from '../../state/session-volumes-store';
 import { useUpdateStore } from '../../state/update-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 import { CommandRegistry } from '../../ui/command-registry';
@@ -348,6 +349,9 @@ const faceDeps = {
   useAskStore,
   useBgAlertStore,
   useUpdateStore,
+  /* 卷清单变更信号（2026-09-18 侧栏载入批）：canvas-nav 侧栏/书脊订阅——卷文件
+   * 落定写入后重读清单投影（写代缓存已就地更行，重读零 I/O）。 */
+  useSessionVolumesStore,
   notifyAgentConfigChanged,
   getChatStore,
   msgStoreFor,

@@ -47,6 +47,7 @@ import {
   useCanvasViewStore,
   useCoreStore,
   useDockStore,
+  useSessionVolumesStore,
   useShellStore,
 } from './host';
 import {
@@ -147,6 +148,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [localNotice, setLocalNotice] = useState<string | null>(null);
+  /** 磁盘清单读取失败（读面可见化：旧实现失败即空集 → 侧栏显示「本工作区暂无案卷」）。 */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   /** 键盘游标（roving tabindex）：可见行中当前聚焦的卷 id。 */
   const [cursorId, setCursorId] = useState<number | null>(null);
@@ -176,16 +179,24 @@ export const SessionSidebar = memo(function SessionSidebar() {
   }, [renamingId]);
 
   const refreshSeqRef = useRef(0);
-  const refresh = useCallback(() => {
+  /** 磁盘清单在途 / 待重扫（single-flight：并发 store 事件合并为一次重扫）。 */
+  const sweepingRef = useRef(false);
+  const sweepPendingRef = useRef(false);
+
+  /* ── 刷新分频（2026-09-18 载入成本批：本栏「半天加载不出来」的根治）──
+   * 内存源（摊开集/活跃卷/提问态）= 廉价，任何 store 事件都同步；
+   * 磁盘源（listSavedSessions：读**全部卷体**——实测 32 MB 目录 → 21 MB / 240 ms）
+   * 只在「磁盘清单可能变了」时才拉。
+   * 病史：旧实现把两者塞进同一个 refresh，且订阅了**每卷消息 store**——流式追加
+   * 逐块触发全量重扫（50 块消息 = 51 次读盘，守护 tests/session-sidebar-load.test.tsx），
+   * 并发重扫还能把 10s 超时压爆（超时旧实现 resolve([]) → 侧栏显示「本工作区暂无案卷」）。 */
+  const syncMemory = useCallback(() => {
     if (!core) return;
     const pid = core.panelId;
-    const pp = useShellStore.getState().projectPath;
     const st = getChatStore(pid).sess.getState();
-    const active = st.sessions[st.activeIdx]?.id ?? null;
-    setActiveSid(active);
+    setActiveSid(st.sessions[st.activeIdx]?.id ?? null);
     // 并发会话：任一卷有在途提问即标记活跃卷 pending（提问卡本身带卷徽标）
-    const askPending = useAskStore.getState().pendingBySession.size > 0;
-    setAskPending(askPending);
+    setAskPending(useAskStore.getState().pendingBySession.size > 0);
     setOpenRows(
       st.sessions.map((s) => ({
         id: s.id,
@@ -193,20 +204,47 @@ export const SessionSidebar = memo(function SessionSidebar() {
         msgCount: msgStoreFor(pid, s.id).getState().messages.length,
       })),
     );
-    /* 磁盘清单：请求序号防竞态——只认最新一次请求的应答（旧应答丢弃，不得把
-     * 已合卷的卷回灌成「摊开中」）。 */
-    const seq = ++refreshSeqRef.current;
-    void core
-      .listSavedSessions(pp)
-      .then((saved) => {
-        if (seq !== refreshSeqRef.current) return;
-        setSavedRows(saved);
-      })
-      .catch(() => {
-        if (seq !== refreshSeqRef.current) return;
-        setSavedRows([]);
-      });
   }, [core]);
+
+  /** 磁盘清单拉取（单飞 + 请求序号防竞态）。失败**保留上次结果**并明示——
+   *  读面失败不得伪装成「本工作区暂无案卷」。 */
+  const sweepDisk = useCallback(() => {
+    if (!core) return;
+    if (sweepingRef.current) {
+      sweepPendingRef.current = true;
+      return;
+    }
+    sweepingRef.current = true;
+    const run = () => {
+      const pp = useShellStore.getState().projectPath;
+      const seq = ++refreshSeqRef.current;
+      void core
+        .listSavedSessions(pp)
+        .then((saved) => {
+          if (seq !== refreshSeqRef.current) return;
+          setLoadError(null);
+          setSavedRows(saved);
+        })
+        .catch((e) => {
+          if (seq !== refreshSeqRef.current) return;
+          console.error('[sidebar] 案卷清单读取失败（保留上次结果）:', e);
+          setLoadError(e instanceof Error ? e.message : String(e));
+        })
+        .finally(() => {
+          sweepingRef.current = false;
+          if (sweepPendingRef.current) {
+            sweepPendingRef.current = false;
+            run();
+          }
+        });
+    };
+    run();
+  }, [core]);
+
+  const refresh = useCallback(() => {
+    syncMemory();
+    sweepDisk();
+  }, [syncMemory, sweepDisk]);
 
   useEffect(() => {
     if (!core) return;
@@ -215,21 +253,28 @@ export const SessionSidebar = memo(function SessionSidebar() {
     // 每卷消息 store 订阅（2026-09-01 面审）：行注记「N 块」数的是消息条数，
     // 此前只订 sess/ask/agent/space——流式追加/回填后块数恒陈旧（种子注入后
     // 侧边栏恒「0 块」实锤）。会话集变化时重挂订阅。
+    // 2026-09-18：这里只接**内存源**——它正是流式追加逐块触发的那条路。
     let unMsgs: Array<() => void> = [];
     const syncMsgSubs = () => {
       for (const u of unMsgs) u();
       unMsgs = [];
       const st = getChatStore(panelId).sess.getState();
-      for (const s of st.sessions) unMsgs.push(msgStoreFor(panelId, s.id).subscribe(refresh));
+      for (const s of st.sessions) unMsgs.push(msgStoreFor(panelId, s.id).subscribe(syncMemory));
     };
     syncMsgSubs();
+    // 摊开集变化 = 卷的开合/改名/新建/删除 → 磁盘清单可能变了（拉）
     const unSess = getChatStore(panelId).sess.subscribe(() => {
       syncMsgSubs();
       refresh();
     });
-    const unAgents = agentSessionState.subscribe(refresh);
-    const unAsk = useAskStore.subscribe(refresh);
-    const unSpace = activeSpace()?.subscribe(refresh);
+    // 运行态/提问态/空间事件：只影响行状态点与游标，不碰磁盘（内存源同步）
+    const unAgents = agentSessionState.subscribe(syncMemory);
+    const unAsk = useAskStore.subscribe(syncMemory);
+    const unSpace = activeSpace()?.subscribe(syncMemory);
+    // 卷文件落定写入（保存/改名/合卷/删除）→ 重读清单投影（写代缓存已就地更行，
+    // 这次重读零 I/O）。必须挂信号而非只挂摊开集：落盘**晚于**摊开集变化，
+    // 新卷首存之后更是再无摊开集事件（否则行注记恒「未存」——假信号）。
+    const unVolumes = useSessionVolumesStore.subscribe(refresh);
     // rework P4-1：工作区路径变化（进工作区/切换）必须重拉 listSavedSessions——
     // 首拉若早于 projectPath 落定（Workspace.open 之后才写 shell-store），
     // 会拉到空集且再无重试点。
@@ -242,9 +287,10 @@ export const SessionSidebar = memo(function SessionSidebar() {
       unAgents();
       unAsk();
       unSpace?.();
+      unVolumes();
       unShell();
     };
-  }, [core, refresh]);
+  }, [core, refresh, syncMemory]);
 
   /* 多选集随行集收敛（删除/过滤后已选卷可能不在场）。 */
   useEffect(() => {
@@ -405,9 +451,11 @@ export const SessionSidebar = memo(function SessionSidebar() {
     [core, disarmAll, toggleSelect],
   );
 
-  /* ── 行操作：改名 / 合卷（收起）/ 删除 ── */
+  /* ── 行操作：改名 / 合卷（收起）/ 删除 ──
+   * 磁盘写**先落定再重读**（2026-09-18）：卷清单走写代投影缓存（chat-session
+   * 「卷清单投影缓存」头注），写未落定就重读会读到写前状态并被缓存下来。 */
   const commitRename = useCallback(
-    (id: number, label: string) => {
+    async (id: number, label: string) => {
       if (!core) return;
       const next = label.trim();
       if (!next) {
@@ -417,7 +465,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
       const st = getChatStore(core.panelId).sess.getState();
       const open = st.sessions.some((s) => s.id === id);
       if (open) core.renameSession(id, next);
-      else void core.renameSavedSession(id, next);
+      else await core.renameSavedSession(id, next);
       setRenamingId(null);
       refresh();
     },
@@ -441,7 +489,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
   );
 
   const onDelete = useCallback(
-    (id: number) => {
+    async (id: number) => {
       if (!core) return;
       if (agentSessionState.getExec(core.panelId, id)?.isRunning) {
         setLocalNotice('运行中的卷不能删除——先停止再移除');
@@ -457,14 +505,14 @@ export const SessionSidebar = memo(function SessionSidebar() {
       confirmingDeleteIdRef.current = null;
       setConfirmingDeleteId(null);
       const pp = useShellStore.getState().projectPath;
-      void core.deleteSessionFile(pp, id);
+      await core.deleteSessionFile(pp, id); // 写完再重读（见 commitRename 注）
       refresh();
     },
     [core, refresh],
   );
 
   /* ── 批量删除（两击确认同款）：运行中卷跳过并报数。 ── */
-  const onBatchDelete = useCallback(() => {
+  const onBatchDelete = useCallback(async () => {
     if (!core || selectedIds.size === 0) return;
     if (!batchArmed) {
       setBatchArmed(true);
@@ -474,14 +522,16 @@ export const SessionSidebar = memo(function SessionSidebar() {
     const pp = useShellStore.getState().projectPath;
     let skipped = 0;
     let done = 0;
+    const writes: Promise<void>[] = [];
     for (const id of selectedIds) {
       if (agentSessionState.getExec(core.panelId, id)?.isRunning) {
         skipped++;
         continue;
       }
-      void core.deleteSessionFile(pp, id);
+      writes.push(core.deleteSessionFile(pp, id));
       done++;
     }
+    await Promise.allSettled(writes); // 写完再重读（见 commitRename 注）
     setSelectedIds(new Set());
     setLocalNotice(`已删 ${done} 卷${skipped > 0 ? `（${skipped} 卷运行中已跳过）` : ''}`);
     refresh();
@@ -609,7 +659,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         return;
       } else if (e.key === 'Delete' && idx >= 0) {
         e.preventDefault();
-        onDelete(flat[idx].id);
+        void onDelete(flat[idx].id);
         return;
       } else {
         return;
@@ -692,14 +742,14 @@ export const SessionSidebar = memo(function SessionSidebar() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
-                commitRename(r.id, draftLabel);
+                void commitRename(r.id, draftLabel);
               } else if (e.key === 'Escape') {
                 e.preventDefault();
                 setRenamingId(null);
               }
               e.stopPropagation();
             }}
-            onBlur={() => commitRename(r.id, draftLabel)}
+            onBlur={() => void commitRename(r.id, draftLabel)}
           />
         ) : (
           <div className="ss-row-main">
@@ -741,7 +791,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
                 title="再点一次确认删除（不可撤销）；点其它处取消"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete(r.id);
+                  void onDelete(r.id);
                 }}
               >
                 确删?
@@ -752,7 +802,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
                 title="彻底删除（点两次确认）"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete(r.id);
+                  void onDelete(r.id);
                 }}
               >
                 删
@@ -829,10 +879,16 @@ export const SessionSidebar = memo(function SessionSidebar() {
         </button>
       </div>
 
-      {localNotice && (
+      {(localNotice || loadError) && (
         <div className="ss-notice">
-          {localNotice}
-          <button type="button" onClick={() => setLocalNotice(null)}>
+          {localNotice ?? `案卷清单读取失败：${loadError}——已保留上次结果，重开侧栏可重试`}
+          <button
+            type="button"
+            onClick={() => {
+              setLocalNotice(null);
+              setLoadError(null);
+            }}
+          >
             知道了
           </button>
         </div>

@@ -236,7 +236,8 @@
 | S3 | `ui/chat-session.ts::writeSessionSnapshot` + `src-tauri/src/confined_fs.rs::write_atomic` | 同卷多写者（防抖/后台卷/改名/合卷/失活/退出 `Promise.all`）**无串行化**，而 `write_atomic` 不是临界区（对照 `editor_cap.rs:72` 有进程级锁） | 迟到的旧快照覆盖新快照 = 静默回滚；撤掉写链实测复现「v1 覆盖 v2」（`src-ui/tests/session-exit-flush.test.ts` 真变红） | ✅ 已拆（本批）：每卷写链（键 = 目标路径）+ `drainVolumeWrites()` 退出前 drain |
 | S4 | `src-tauri/src/confined_fs.rs:129-142` + `plugins/builtin/sessions-builtin/index.ts:36-43` | `write_atomic` = `target→.bak` → `tmp→target` → 删 `.bak`：两次 rename 之间进程死 ⇒ 卷文件**整体消失**（内容只在 `.bak`/`.tmp.N`）；读面只认 `{id}.json`（无回退）、`list_volumes` 只列 `.json`，`restoreCanvasSpread` 还会把它从 `canvas.json` 剪掉；无 fsync | 崩溃/强杀撞上写窗口 = 卷「消失」，用户视角像永久删除（本机 22 卷暂无 `.bak`/`.tmp` 残留 ⇒ 目前是风险不是已发生事故） | ⏳ 未拆（P1，用户已批「`.bak` 只读回退」）：先决 = 把该决策写回 `session-checkpoint-design.md` §6.6/§9.3（原文裁定「不做卷版本化/.bak 多副本」） |
 | S5 | `ui/chat-session.ts::saveActiveSession` / `saveSessionById`（旧 `if (!agent) return`） | 句柄缺席（未水合卷 / 工厂失败 / 切 preset 拆句柄）时**静默跳过**落盘：无日志无提示；`saveAllSessions` 又只遍历案头摊开的卷 | 「卷还在、内容旧」——退出即丢该卷内存里的全部内容，用户零信号 | ✅ 已拆（本批）：`SessionSaveOutcome` 五态 + 一次性 warn + `flushSessionsForExit` 逐卷汇总（退出路径可见报异常卷） |
-| S6 | `ui/chat-session.ts::workspaceSessionsDir` + `listSavedSessions` | `projectPath=''` 时拼出 `/.lantai/sessions`（相对进程 CWD 解析，`ui.log` 实证落到 `D:\.lantai\sessions` 被安全闸拒绝）；读面单卷失败/10s 总超时**静默少一卷**（只 console） | 启动早期读写全废；侧栏「卷不见了」（同族已在画布面修过 `51758e94`，卷列表面未修） | 路径守卫 ✅ 已拆（本批：空路径响亮报错，消费方降级为空集）；⏳ 读面可见化未拆（P1） |
+| S6 | `ui/chat-session.ts::workspaceSessionsDir` + `listSavedSessions` | `projectPath=''` 时拼出 `/.lantai/sessions`（相对进程 CWD 解析，`ui.log` 实证落到 `D:\.lantai\sessions` 被安全闸拒绝）；读面单卷失败/10s 总超时**静默少一卷**（只 console） | 启动早期读写全废；侧栏「卷不见了」（同族已在画布面修过 `51758e94`，卷列表面未修） | 路径守卫 ✅ 已拆（P0 批：空路径响亮报错，消费方降级为空集）；**读面可见化 ✅ 已拆（2026-09-18 侧栏载入批）**：目录枚举失败与 10s 超时一律**上抛**（不再 `resolve([])` 伪装成「本工作区暂无案卷」），消费面保留上次结果 + 侧栏明示；单卷读失败仍跳过但逐卷 console。守护 `tests/chat-session.test.ts`（三态）+ `tests/session-sidebar-load.test.tsx`（失败不清空） |
+| S8 | `ui/chat-session.ts::listSavedSessions` × 消费面订阅（`canvas-nav` 侧栏/书脊 · `paper-shell` 案头签条） | 一次清点 = 读**全部卷体**（每卷日志逐行 parse + 重放 + 重建消息 + 整份投影缓存），而消费面把它挂在**每条 store 事件**上——消息流式追加逐块触发（实测 50 块消息 = 51 次全量重扫；本机 32 MB 会话目录 → 单次读 21.22 MB / 14 次文件读 / 240 ms），并发重扫又把 10s 超时压爆 → 超时即空清单 | 侧栏「半天加载不出来东西」/流式期间整机发滞；同族病灶 `51758e94`（画布面列表超时）。**触发条件 = 卷数 × 卷体大小**，卷越多越必现 | ✅ 已拆（2026-09-18 侧栏载入批）：① 刷新分频——消息/运行态/空间事件只同步内存源，磁盘清单只在摊开集·工作区路径·行操作变化时拉；② 单飞 + 尾随补拉（并发事件合并）；③ 卷清单投影缓存（写代 + 写面就地更行：写完即知该行真值，重复清点零 I/O；实测 240 ms → 0 ms / 21 MB → 0 B）。守护 `tests/session-sidebar-load.test.tsx` + `tests/chat-session.test.ts` 投影缓存例。**残留（未拆）**：进程内首次清点仍是 O(全部卷体)——要根治需卷级元数据面（目录条目 size/mtime + 头行读数），见 [`plans/README.md`](plans/README.md) 真机欠账表 |
 | S7 | 测试面（`src-ui/tests/`） | 六项保证零覆盖：退出 flush / 同卷并发写顺序 / 在途轮次 / 原子写崩溃窗口 / 无句柄卷语义 / 退出时防抖 | 改这块代码没有任何测试会变红（既有 108 用例只钉「落盘目标路径 + 快照字段 + 空卷跳过 + 墓碑形状 + seam 四动作 + 防抖 per-panel」） | 四项已补（本批 `tests/session-exit-flush.test.ts` 8 例，含撤掉修复即真变红的负向验证）；⏳ 真实崩溃注入（kill 在两次 rename 之间）与大卷写放大实测仍缺 |
 
 
@@ -256,7 +257,8 @@
 - **S5（无句柄静默）**：P0 已做可见化；换轨后「句柄在场」不再是落盘前提（内容真源 = 日志）。
 - **S6（路径与读面）**：路径守卫已拆（P0）；**卷集改按 `.ndjson` 认卷**（列表/发号/剪枝/删除），
   墓碑语义退役（新增 seam 动作 `delete_log`，`delete_volume` 下架——契约 v33）。
-  读面失败仍只进 console（可见化未接线）。
+  读面可见化**已于 2026-09-18 接线**（目录枚举失败/整体超时上抛，消费面保留上次结果）——
+  该遗留项转移到新立的 **S8**（成本与频率）同批处置，见上表。
 - **S7（测试面）**：六项空洞里「退出 flush / 并发写顺序 / 在途轮次 / 无句柄语义」已补；
   新增日志写面（含断尾修复与悬空工具调用配平）与采用原语的专项测试；
   **仍缺**：真实崩溃注入（kill 在写盘瞬间）、日志压实与大卷写放大实测。

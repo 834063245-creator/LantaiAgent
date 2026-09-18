@@ -273,7 +273,10 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     act(() => checks[2].click()); // 闲的盘卷甲
     const del = container.querySelector('.ss-batch-del') as HTMLButtonElement;
     act(() => del.click()); // 武装
-    act(() => del.click()); // 执行
+    // 执行：删除写完才重读清单 + 报数（2026-09-18 起写先落定，见 commitRename 注）
+    await act(async () => {
+      del.click();
+    });
     expect(deleteSessionFile).toHaveBeenCalledTimes(1);
     expect(deleteSessionFile).toHaveBeenCalledWith('', 2); // 只删闲卷
     expect(container.querySelector('.ss-notice')?.textContent).toContain('1 卷运行中已跳过');

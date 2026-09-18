@@ -1,5 +1,5 @@
 {
-  "fingerprint": "dcf4060e",
+  "fingerprint": "d2447ad4",
   "keys": [
     "ANCHOR",
     "CORDIS_TOOL_NAMES",
@@ -180,6 +180,7 @@
     "usePaperDock",
     "usePaperRegion",
     "usePresetStore",
+    "useSessionVolumesStore",
     "useShellStore",
     "useUpdateStore",
     "viewFocusRegion",

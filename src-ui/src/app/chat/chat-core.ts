@@ -777,9 +777,7 @@ export class ChatCore {
   async autoRestoreLastSession(projectPath: string): Promise<void> {
     return Session.autoRestoreLastSession(this._sessionCtx(), projectPath);
   }
-  async listSavedSessions(
-    projectPath: string,
-  ): Promise<Array<{ id: number; label: string; msgCount: number; savedAt: string }>> {
+  async listSavedSessions(projectPath: string): Promise<Session.SavedSessionRow[]> {
     return Session.listSavedSessions(this._sessionCtx(), projectPath);
   }
   /** 单卷续开（返回「是否已在案头摊开」——space-service.expand 依此决定定位）。 */

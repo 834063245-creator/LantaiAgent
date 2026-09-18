@@ -97,6 +97,7 @@ import {
   snapshotFromBlock,
 } from '../src/state/canvas-store';
 import { getMessagesStore } from '../src/state/messages-store';
+import { useSessionVolumesStore } from '../src/state/session-volumes-store';
 import * as Session from '../src/ui/chat-session';
 import { scanMaxSessionId } from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
@@ -152,6 +153,9 @@ describe('ChatPanel session persistence', () => {
   beforeEach(() => {
     // Clean localStorage between tests
     localStorage.clear();
+    // 卷清单投影缓存（模块级态，2026-09-18）：跨用例清空——否则同一 root 的
+    // 前序用例清单会被复用，mock 盘形同虚设
+    Session.resetSessionListCacheForTests();
     // Reset mock between tests
     mockInvoke.mockReset();
     // Default: all invoke calls resolve with empty
@@ -239,20 +243,27 @@ describe('ChatPanel session persistence', () => {
   // ═══════════════════════════════════════════════════════════════
 
   describe('listSavedSessions', () => {
-    it('returns empty array when list_directory rejects', async () => {
+    // 2026-09-18 载入审计：读面失败**不再伪装成空集**（旧实现 resolve([]) →
+    // 侧栏把「读不出来」显示成「本工作区暂无案卷」）。目录枚举失败/返回非数组/
+    // 整体超时一律上抛，消费面保留上次结果并明示（守护 tests/session-sidebar-load.test.tsx）。
+    it('throws when list_directory rejects（读面失败不伪装成空集）', async () => {
       panel = createChatPanel();
       mockInvoke.mockRejectedValue(new Error('dir not found'));
 
-      const result = await panel.listSavedSessions('D:/test');
-      expect(result).toEqual([]);
+      await expect(panel.listSavedSessions('D:/test')).rejects.toThrow(/案卷目录枚举失败/);
     });
 
-    it('returns empty array when list_directory returns non-array', async () => {
+    it('throws when list_directory returns non-array（形状契约在 helper 层就拒收）', async () => {
       panel = createChatPanel();
       mockInvoke.mockResolvedValue('not an array');
 
-      const result = await panel.listSavedSessions('D:/test');
-      expect(result).toEqual([]);
+      await expect(panel.listSavedSessions('D:/test')).rejects.toThrow(/案卷目录枚举失败/);
+    });
+
+    it('无工作区（空路径）返回空集——合法空态不是失败', async () => {
+      panel = createChatPanel();
+      await expect(panel.listSavedSessions('')).resolves.toEqual([]);
+      expect(mockInvoke).not.toHaveBeenCalled();
     });
 
     it('filters out _active.json and deleted sessions', async () => {
@@ -445,13 +456,70 @@ describe('ChatPanel session persistence', () => {
 
       vi.useFakeTimers();
       const promise = panel.listSavedSessions('D:/test');
+      const assertion = expect(promise).rejects.toThrow(/读取超时/);
 
       // Advance past the 10s timeout
       await vi.advanceTimersByTimeAsync(10_001);
-      const result = await promise;
+      await assertion;
       vi.useRealTimers();
+    });
 
-      expect(result).toEqual([]);
+    it('卷清单投影缓存：同代内重复调用零 I/O；写入后就地更行（不重扫）', async () => {
+      panel = createChatPanel();
+      const P = 'D:/cache-proj';
+      const files: Record<string, string> = {
+        [`${P}/.lantai/sessions/1.ndjson`]: logText(1, [{ role: 'user', content: 'hi' }]),
+        [`${P}/.lantai/sessions/1.json`]: cacheText(1, {
+          label: '甲',
+          savedAt: '2026-09-01T00:00:00.000Z',
+          uiMessages: [{ id: 'm1' }],
+        }),
+      };
+      let reads = 0;
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation(
+        fsCapAware((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'read_file_content') {
+            reads += 1;
+            const fp = params.file_path as string;
+            return fp in files ? Promise.resolve(files[fp]) : Promise.reject(new Error('文件不存在'));
+          }
+          if (method === 'write_file_content') {
+            files[params.file_path as string] = params.content as string;
+            return Promise.resolve('ok');
+          }
+          if (method === 'list_directory') {
+            const dir = params.path as string;
+            const entries = Object.keys(files)
+              .filter((p) => p.startsWith(`${dir}/`) && !p.slice(dir.length + 1).includes('/'))
+              .map((p) => ({ name: p.split('/').pop(), path: p, is_dir: false, children: null }));
+            return Promise.resolve(JSON.stringify(entries));
+          }
+          return Promise.resolve(null);
+        }),
+      );
+
+      const first = await panel.listSavedSessions(P);
+      expect(first.map((r) => r.id)).toEqual([1]);
+      expect(first[0].label).toBe('甲');
+      const readsAfterFirst = reads;
+      expect(readsAfterFirst).toBeGreaterThan(0);
+
+      // 无写入 → 复用投影（一个后端读都不发——这是「流式追加不再读全量卷体」的地基）
+      const second = await panel.listSavedSessions(P);
+      expect(second).toEqual(first);
+      expect(reads).toBe(readsAfterFirst);
+
+      // 改名（真实写路：read_volume → writeSessionSnapshot → 写面就地更行）
+      const tickBefore = useSessionVolumesStore.getState().volumesTick;
+      await Session.renameSessionFile(P, 1, '乙');
+      // 写落定后广播（顺序契约：先更行再 bump——订阅者读到的是写后状态）
+      expect(useSessionVolumesStore.getState().volumesTick).toBe(tickBefore + 1);
+      const readsAfterWrite = reads;
+      const third = await panel.listSavedSessions(P);
+      expect(third[0].label).toBe('乙');
+      expect(reads).toBe(readsAfterWrite); // 就地更行 = 明面不重扫
     });
 
     it('still returns readable sessions when one file fails', async () => {

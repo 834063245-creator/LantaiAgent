@@ -192,11 +192,13 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
   });
 
   it('合卷应答竞态：在途旧应答迟到——被合卷的卷不得闪回书脊（2026-09-14 实机）', async () => {
-    // 合卷一瞬会连发数次 listSavedSessions（exec/agent/space/sess 四条订阅各
-    // 触发一次 resync），而 listSavedSessions 内部是「list_volumes + 每卷并行
-    // 读文件」的多跳异步——先发的应答完全可能后到。旧实现把合流结果直接写进
-    // sessions，且异步续体里用的是**发起那一刻捕获的摊开集**：迟到的旧应答
-    // 把「还没合卷」的清单写回 → 被合卷的书脊闪回一下（用户实机所见）。
+    // 合卷一瞬会连发数次磁盘清单拉取（exec/agent/space/sess 四条订阅各触发一次
+    // resync），而 listSavedSessions 内部是「list_volumes + 每卷并行读文件」的多跳
+    // 异步——先发的应答完全可能后到。旧实现把合流结果直接写进 sessions，且异步续体
+    // 里用的是**发起那一刻捕获的摊开集**：迟到的旧应答把「还没合卷」的清单写回 →
+    // 被合卷的书脊闪回一下（用户实机所见）。
+    // 2026-09-18 起拉取另加单飞（并发事件合并为一次，尾随补一次）——本用例同时钉
+    // 两件事：①迟到旧应答不得回灌；②被合并掉的那次触发有尾随补拉（清单终会收敛）。
     const core = makeCore('sr-race');
     type Saved = { id: number; label: string; msgCount: number; savedAt: string };
     const pending: Array<(rows: Saved[]) => void> = [];
@@ -228,7 +230,8 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
       seedSessions('sr-race', [{ id: 2, label: '乙' }], 0);
     });
     expect(container!.querySelectorAll('.sr-spine')).toHaveLength(1);
-    expect(pending).toHaveLength(2);
+    // 单飞：在途期间的触发不另发请求（旧实现这里会连发第二次）
+    expect(pending).toHaveLength(1);
 
     // 先发的旧应答（含被合卷的甲）迟到落地 → 书脊不得把甲写回来
     await act(async () => {
@@ -240,7 +243,11 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     });
     expect([...container!.querySelectorAll('.sr-label')].map((e) => e.textContent)).toEqual(['乙']);
 
-    // 最新应答（乙仍摊开）落地：行集不变（序号收敛不误杀最新一次）
+    // 尾随补拉：被合并的那次触发在首拉 settle 后补齐（清单收敛，不靠下一次用户动作）
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(pending).toHaveLength(2);
     await act(async () => {
       pending[1]([{ id: 2, label: '乙', msgCount: 4, savedAt: '2026-09-13T02:00:00.000Z' }]);
       await Promise.resolve();

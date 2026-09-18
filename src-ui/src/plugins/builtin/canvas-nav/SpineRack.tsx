@@ -36,6 +36,7 @@ import {
   useCanvasViewStore,
   useCoreStore,
   useDockStore,
+  useSessionVolumesStore,
   useShellStore,
 } from './host';
 import { mergeSessionRows } from './session-sidebar-model';
@@ -81,25 +82,47 @@ export const SpineRack = memo(function SpineRack() {
 
   /* ── 磁盘卷清单：请求序号防竞态（只认最新一次请求的应答）──
    * 缓存留在 state（resync 不清空）——resync 高频触发（运行态跳变即触发），
-   * 每次先回内存数组序再等磁盘应答会让卷序肉眼可见地抖动。 */
+   * 每次先回内存数组序再等磁盘应答会让卷序肉眼可见地抖动。
+   * 2026-09-18 载入成本批（与 SessionSidebar 同批）：单飞 + 只在**磁盘清单可能变了**
+   * 的事件上拉（listSavedSessions 读全部卷体——实测 32 MB 目录 → 21 MB / 240 ms），
+   * 运行态/空间事件走内存源。 */
   const savedSeqRef = useRef(0);
+  const sweepingRef = useRef(false);
+  const sweepPendingRef = useRef(false);
   const refreshSaved = useCallback(() => {
     if (!core) return;
-    const seq = ++savedSeqRef.current;
-    // 同 SessionSidebar 的 P4-1 教训：工作区路径变化必须重拉 listSavedSessions
-    const pp = useShellStore.getState().projectPath;
-    void core
-      .listSavedSessions(pp)
-      .then((saved) => {
-        if (seq !== savedSeqRef.current) return; // 在途旧应答：丢弃（不得回灌已合卷的卷）
-        setSavedRows(saved);
-      })
-      .catch(() => {});
+    if (sweepingRef.current) {
+      sweepPendingRef.current = true;
+      return;
+    }
+    sweepingRef.current = true;
+    const run = () => {
+      const seq = ++savedSeqRef.current;
+      // 同 SessionSidebar 的 P4-1 教训：工作区路径变化必须重拉 listSavedSessions
+      const pp = useShellStore.getState().projectPath;
+      void core
+        .listSavedSessions(pp)
+        .then((saved) => {
+          if (seq !== savedSeqRef.current) return; // 在途旧应答：丢弃（不得回灌已合卷的卷）
+          setSavedRows(saved);
+        })
+        .catch((e) => {
+          // 读面失败：保留上次清单（不得把已知卷序抹空）——可见化在控制台
+          console.error('[spine] 案卷清单读取失败（保留上次结果）:', e);
+        })
+        .finally(() => {
+          sweepingRef.current = false;
+          if (sweepPendingRef.current) {
+            sweepPendingRef.current = false;
+            run();
+          }
+        });
+    };
+    run();
   }, [core]);
 
-  /* 内存侧重读：sess store 订阅 + agentSessionState 版本订阅 + ctx.space 订阅
-   * （流区位置/活跃变化）+ 工作区路径变化 → 全量重读。 */
-  const resync = useCallback(() => {
+  /* 内存侧重读（**廉价**——运行态/空间事件走这条）：摊开集 + 活跃卷 + 运行态。 */
+  const resyncMemory = useCallback(() => {
     if (!core) return;
     const st = getChatStore(core.panelId).sess.getState();
     setOpenRows(st.sessions.map((s) => ({ id: s.id, label: s.label, msgCount: 0 })));
@@ -110,15 +133,25 @@ export const SpineRack = memo(function SpineRack() {
       if (readRunning(core.panelId, s.id)) running.add(s.id);
     }
     setRunningIds(running);
+  }, [core]);
+
+  /* 全量重读（摊开集变化 = 卷开合/改名/新建/删除 → 磁盘清单可能变了）。 */
+  const resync = useCallback(() => {
+    resyncMemory();
     refreshSaved();
-  }, [core, refreshSaved]);
+  }, [resyncMemory, refreshSaved]);
 
   useEffect(() => {
     if (!core) return;
     resync();
+    // 摊开集：磁盘清单可能变了 → 全量
     const unSess = getChatStore(core.panelId).sess.subscribe(resync);
-    const unAgents = agentSessionState.subscribe(resync);
-    const unSpace = activeSpace()?.subscribe(resync);
+    // 运行态 / 空间：只影响脊面点位与呼吸点 → 内存源
+    const unAgents = agentSessionState.subscribe(resyncMemory);
+    const unSpace = activeSpace()?.subscribe(resyncMemory);
+    // 卷文件落定写入（保存/改名/合卷/删除）→ 全量（写代缓存重读零 I/O）——
+    // 卷序按 savedAt，落盘晚于摊开集变化，只挂摊开集会读到写前状态
+    const unVolumes = useSessionVolumesStore.subscribe(resync);
     const unShell = useShellStore.subscribe((s, prev) => {
       if (s.projectPath !== prev.projectPath) resync();
     });
@@ -126,9 +159,10 @@ export const SpineRack = memo(function SpineRack() {
       unSess();
       unAgents();
       unSpace?.();
+      unVolumes();
       unShell();
     };
-  }, [core, resync]);
+  }, [core, resync, resyncMemory]);
 
   /* exec isRunning 变化：对每个会话的 exec 挂 onChange（列表变化时重挂）。 */
   useEffect(() => {
@@ -136,12 +170,12 @@ export const SpineRack = memo(function SpineRack() {
     const unsubs: Array<() => void> = [];
     for (const s of sessions) {
       const exec: ExecStateInstance | null = agentSessionState.getExec(core.panelId, s.id);
-      if (exec) unsubs.push(exec.onChange(() => resync()));
+      if (exec) unsubs.push(exec.onChange(() => resyncMemory()));
     }
     return () => {
       for (const u of unsubs) u();
     };
-  }, [core, sessions, resync]);
+  }, [core, sessions, resyncMemory]);
 
   /* ── 手势 1：左键定位器 ── */
   const onLocate = useCallback(
