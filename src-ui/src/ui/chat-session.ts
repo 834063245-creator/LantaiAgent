@@ -449,6 +449,14 @@ export function closeSession(ctx: SessionContext, idx: number): void {
         messages,
         uiMessages: uiMessages.length > 0 ? uiMessages : undefined,
         tokensUsed,
+        // token 账本 + 投影新鲜度随卷落盘（2026-09-18 修）：本条此前只写 tokensUsed
+        // ——合卷后重开该卷，`tokens` 字段缺席 ⇒ 墨量册四桶全 0、缓存命中显示「—」，
+        // 而合计走 tokensUsed 兜底（真机实测：合计 3,950,056 配四桶 0，看着像命中率坏了）。
+        // 另两条落盘路径（saveActiveSession / saveSessionById）一直带着这三个字段
+        // ——同一份卷快照形状，三条写路不许漂移。
+        tokens: agent.snapshotTokenLedger?.() ?? undefined,
+        seq: agent.sessionLog?.lastSeq ?? 0,
+        ver: SESSION_CACHE_VERSION,
         compose,
       }).catch(() => showToast(`合卷落盘失败：${s.label}`, 'error', TOAST_LONG_HOLD_MS));
     }
@@ -1110,7 +1118,11 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
     messages: logRead.messages,
     uiMessages: fresh ? cache?.uiMessages : undefined,
     tokensUsed: cache?.tokensUsed,
-    tokens: fresh ? cache?.tokens : undefined,
+    // 账本不受新鲜度门管（2026-09-18 修）：`tokens` 是**累计账**不是投影——陈旧
+    // 快照只会「落后」（少记末尾几百 token），不会「说错」；而丢掉它才是错的
+    // （重开卷账本从零起 = 历史读数凭空消失）。DSH 同判：possibly stale but never wrong。
+    // uiMessages 仍按新鲜度取舍——那是内容投影，陈旧会如实说错。
+    tokens: cache?.tokens,
     compose: cache?.compose,
     presetId: cache?.presetId ?? logRead.header.presetId,
     seq: logRead.lastSeq,

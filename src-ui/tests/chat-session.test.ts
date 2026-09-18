@@ -784,6 +784,51 @@ describe('ChatPanel session persistence', () => {
       const parsed = JSON.parse(write!.content);
       expect(parsed.messages.some((m: any) => m.content === '最后一卷的内容')).toBe(true);
     });
+
+    it('合卷落盘带 token 账本（2026-09-18 修：重开该卷账本不再归零）', async () => {
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      const writes: Array<{ file_path: string; content: string }> = [];
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation(
+        fsCapAware((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'write_file_content') {
+            writes.push({ file_path: params.file_path as string, content: params.content as string });
+          }
+          return Promise.resolve('ok');
+        }),
+      );
+      const ledger = {
+        version: 1,
+        totals: { uncachedInputTokens: 120, cacheReadTokens: 880, cacheWriteTokens: 0, outputTokens: 40 },
+        attempts: 2,
+        turns: [],
+      };
+      const agent = {
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '账本卷的内容' },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+        snapshotTokenLedger: () => ledger,
+        sessionLog: { lastSeq: 42 },
+      };
+      panel.setAgentFactory(async () => agent as any);
+      await panel.createNewSession();
+
+      panel.closeSession(0); // 合卷 = 该卷最后一次落盘（此前这条路径不写 tokens/seq/ver）
+
+      await new Promise((r) => setTimeout(r, 0));
+      const write = writes.find((w) => w.file_path.endsWith('/1.json'));
+      expect(write).toBeTruthy();
+      const parsed = JSON.parse(write!.content);
+      expect(parsed.tokens).toEqual(ledger); // 旧行为：字段缺席 → 重开卷四桶全 0、缓存命中「—」
+      expect(parsed.seq).toBe(42);
+      expect(typeof parsed.ver).toBe('number');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -1469,6 +1514,32 @@ describe('ChatPanel session persistence', () => {
       expect(parsed.tokens).toEqual({ total: 42 }); // 旧行为：改名把它静默抹掉
       expect(parsed.compose).toEqual({ provider: 'p', model: 'm' });
       expect(parsed.presetId).toBe('minimal');
+    });
+
+    it('陈旧投影缓存不丢账本（fresh 门只管 uiMessages；账本是累计账，落后 ≠ 说错）', async () => {
+      const ledger = {
+        version: 1,
+        totals: { uncachedInputTokens: 30, cacheReadTokens: 970, cacheWriteTokens: 0, outputTokens: 10 },
+        attempts: 1,
+        turns: [],
+      };
+      mockDualDirDisk({
+        [`${PROJ}/.lantai/sessions/9.ndjson`]: logText(9, [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '历史内容' },
+        ]),
+        // 投影缓存落后于日志（seq 1 < 日志末序号 2）——旧行为：账本随 uiMessages 一起丢
+        [`${PROJ}/.lantai/sessions/9.json`]: cacheText(9, {
+          seq: 1,
+          uiMessages: [{ id: 'stale' }],
+          tokens: ledger,
+        }),
+      });
+
+      const data = await Session.readVolumeData(PROJ, 9);
+
+      expect(data?.tokens).toEqual(ledger);
+      expect(data?.uiMessages).toBeUndefined(); // 内容投影仍按新鲜度取舍（陈旧即不采信）
     });
 
     /** 工厂桩：setSession 真正落进闭包（loadSessionFromDisk 重建消息依赖 agent 持有会话）。 */

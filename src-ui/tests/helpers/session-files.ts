@@ -41,7 +41,15 @@ export function logText(
 /** 造一份投影缓存文本（`{root}/{id}.json` 的内容）——`seq` 必须 ≥ 日志末序号才算新鲜。 */
 export function cacheText(
   id: number,
-  opts: { label?: string; savedAt?: string; seq?: number; uiMessages?: unknown[]; tokensUsed?: number } = {},
+  opts: {
+    label?: string;
+    savedAt?: string;
+    seq?: number;
+    uiMessages?: unknown[];
+    tokensUsed?: number;
+    /** token 账本快照（`tokens` 字段）——累计账，不受新鲜度门管。 */
+    tokens?: unknown;
+  } = {},
 ): string {
   return JSON.stringify({
     id,
@@ -51,5 +59,6 @@ export function cacheText(
     seq: opts.seq ?? 999, // 缺省给足（新鲜）
     ver: 1,
     ...(opts.uiMessages ? { uiMessages: opts.uiMessages } : {}),
+    ...(opts.tokens ? { tokens: opts.tokens } : {}),
   });
 }
