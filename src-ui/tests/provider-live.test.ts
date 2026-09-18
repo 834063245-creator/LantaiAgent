@@ -32,6 +32,7 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
+import { ToolRegistry } from '../src/agent/tool';
 import {
   _resetCredentialCacheForTests,
   invalidateCredentialCache,
@@ -40,8 +41,9 @@ import {
 } from '../src/provider/credentials';
 import { createLiveProvider } from '../src/provider/live';
 import { resetProxyPort } from '../src/provider/transport';
-import { ChunkType, type Request } from '../src/provider/types';
+import { type ChatImageRef, ChunkType, type Request } from '../src/provider/types';
 import { type AppSettings, providerId } from '../src/settings';
+import { createTestAgent } from './helpers/agent';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 // ── 生产装配复现（平台化 Phase 1 · D2 修订版）：createProvider 经 ctx.llm 解析
@@ -247,5 +249,85 @@ describe('createLiveProvider — 配置在使用点解析', () => {
     prov.prewarm?.();
     await new Promise((r) => setTimeout(r, 20));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── 附图能力戳 / 请求期图投影（2026-09-18 真机事故 → 实测定位）──────────
+// 事故：用户配了声明视觉的模型（deepseek-v4.1-flash + 覆盖声明 image），贴图 /
+// 工具截图仍被判「当前模型不支持图片输入，图已省略」——图到不了模型。
+// 根因：能力戳只打在内层实例（createProvider），而 Agent 持的是 live 外壳
+// （内层随 stream() 用完即弃）⇒ 壳层 inputModalities 恒 undefined ⇒ 一切模型
+// 被判纯文本、附图全被请求期投影静默丢弃。测试盲区：既有用例全在测内层
+// createProvider（provider-factory / provider-model-meta）——绿灯常亮，生产恒断。
+// 本组钉两端：① 壳层能力戳活读设置（视觉声明可见 + 覆盖优先 + 无需换引用）；
+// ② Agent + live 壳真跑：声明视觉 → wire 真带图；未声明 → 占位降级零回归。
+describe('createLiveProvider — 附图能力戳（请求期图投影的读面）', () => {
+  const IMG: ChatImageRef = {
+    id: 'img-live-1',
+    mediaType: 'image/jpeg',
+    bytes: 3,
+    width: 8,
+    height: 8,
+    name: '图.jpeg',
+  };
+
+  function seedWithKey(): void {
+    mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
+      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-1'));
+      return Promise.resolve(null);
+    });
+  }
+
+  it('壳层 inputModalities 活读设置：声明可见 / 未声明回落 / 会话覆盖优先（同一实例）', () => {
+    seedSettings({ model: 'vm1', modelOverrides: { vm1: { input: ['text', 'image'] } } });
+    const prov = createLiveProvider('p1');
+    expect(prov.inputModalities).toEqual(['text', 'image']);
+
+    // 活读：同一实例，设置改回未声明 → 即刻回落（无需换引用，与 stream 同哲学）
+    seedSettings({ model: 'vm1' });
+    expect(prov.inputModalities).toEqual(['text']);
+
+    // 会话覆盖模型优先于行值（与 model() 同序）
+    seedSettings({ model: 'vm1', modelOverrides: { vm2: { input: ['text', 'image'] } } });
+    const overridden = createLiveProvider('p1', {}, { model: 'vm2' });
+    expect(overridden.inputModalities).toEqual(['text', 'image']);
+  });
+
+  it('Agent + live 壳：声明视觉 → 请求 wire 真带图（reader 读盘 → image_url data URI）', async () => {
+    seedSettings({ model: 'vm1', modelOverrides: { vm1: { input: ['text', 'image'] } } });
+    seedWithKey();
+    const reader = vi.fn(async () => 'QUJD');
+    const agent = createTestAgent(createLiveProvider('p1'), new ToolRegistry(), 'sys', {
+      eventSink: () => {},
+      contextWindow: 0,
+      imageReader: reader,
+    });
+
+    await agent.run(new AbortController().signal, '看这张图', [IMG]);
+
+    expect(reader).toHaveBeenCalledTimes(1);
+    const body = fetchCalls[0]?.body as { messages: Array<{ role: string; content: unknown }> };
+    const userMsg = body.messages.find((m) => m.role === 'user');
+    const parts = userMsg?.content as Array<{ type: string; image_url?: { url: string } }>;
+    expect(Array.isArray(parts)).toBe(true);
+    expect(parts.some((p) => p.type === 'image_url' && p.image_url?.url === 'data:image/jpeg;base64,QUJD')).toBe(true);
+  });
+
+  it('Agent + live 壳：未声明视觉 → 占位降级零回归（不炸、不读盘、无图）', async () => {
+    seedSettings({ model: 'vm1' });
+    seedWithKey();
+    const reader = vi.fn(async () => 'QUJD');
+    const agent = createTestAgent(createLiveProvider('p1'), new ToolRegistry(), 'sys', {
+      eventSink: () => {},
+      contextWindow: 0,
+      imageReader: reader,
+    });
+
+    await agent.run(new AbortController().signal, '看这张图', [IMG]);
+
+    expect(reader).not.toHaveBeenCalled();
+    const body = fetchCalls[0]?.body as { messages: Array<{ role: string; content: unknown }> };
+    const userMsg = body.messages.find((m) => m.role === 'user');
+    expect(String(userMsg?.content)).toContain('图已省略');
   });
 });
