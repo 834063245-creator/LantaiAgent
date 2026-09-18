@@ -46,6 +46,7 @@ mod composition_watcher;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::Manager;
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 // 重新导出 WorkspaceState，使命令可以以 crate::WorkspaceState 引用
 pub(crate) type WorkspaceState = Arc<Mutex<Option<workspace::WorkspaceHandle>>>;
@@ -72,8 +73,24 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .manage(workspace_state)
         .manage(app_contexts)
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
+        .on_window_event(|window, event| match event {
+            // 窗口状态落盘（2026-09-18 事故立法）：`tauri-plugin-window-state` 全仓
+            // **唯一**的落盘点在 `RunEvent::Exit`，而本壳在 `Destroyed` 里
+            // `std::process::exit(0)`（下面那条，防僵尸子进程的既定设计）抢在事件
+            // 循环收尾之前 ⇒ 正常关窗永不落盘。实测物证：`.window-state.json` 只
+            // 在「应用还在运行时被系统关机」那两次的同一秒被写（09-15 04:12:24 /
+            // 09-16 18:34:49），中间十余次应用自身退出一次都没写 ⇒ 用户感知
+            // 「不记住窗口是否最大化」。
+            // `CloseRequested` 是唯一一个「窗口还活着、几何与最大化态都读得到」的
+            // 时刻，且三条关窗路径（窗口钮 / 前端 watchWindowClose 拦截后 destroy /
+            // 系统关窗）都先经过它。写失败必须可见，不得静默。
+            // flags 用 `all()`：与插件注册时的缺省 StateFlags 一致（`Builder::new()`）。
+            tauri::WindowEvent::CloseRequested { .. } => {
+                if let Err(e) = window.app_handle().save_window_state(StateFlags::all()) {
+                    tracing::warn!("[window] 窗口状态落盘失败: {e}");
+                }
+            }
+            tauri::WindowEvent::Destroyed => {
                 // Phase 1: Drain — 后台线程执行，3s 超时保护避免 shutdown 阻塞导致僵尸进程
                 let app = window.app_handle();
                 let (tx, rx) = std::sync::mpsc::channel();
@@ -93,6 +110,7 @@ fn main() {
                 // Phase 2: Purge — 强制退出确保无僵尸进程
                 std::process::exit(0);
             }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             rpc::rpc,

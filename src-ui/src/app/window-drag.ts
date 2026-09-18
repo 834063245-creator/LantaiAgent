@@ -21,11 +21,42 @@
 // **2026-09-17 标题栏拆除批**：画布视图的书眉布局行退役 ⇒ 画布铺满整窗（顶缘 = 屏缘，
 // 边缘滚动的「指针甩到屏顶」才成立）；窗口拖动热区 = 顶部浮件本身（其非交互件：
 // `画布` 二字与件间空白），画布视图不再留整条拖动带。
+//
+// **2026-09-18 双击回归根治**：09-14 那批把「双击最大化」建在 DOM `dblclick` 上，
+// 实机不成立——`pointerdown` 一响就把窗口交给 **OS 模态移动循环**
+// （tao `drag_window`：`ReleaseCapture()` + `PostMessage(WM_NCLBUTTONDOWN, HTCAPTION)`），
+// 这一次点击的 mouseup 再也不进页面（旁证：tao 自己在 `WM_EXITSIZEMOVE` 里补发一枚
+// 合成 `WM_LBUTTONUP`）。两次点击各开一次循环、两枚 mouseup 全被吃掉 ⇒ Blink 永远
+// 凑不齐一次完整 click ⇒ **`dblclick` 一次都不产生**（09-14 验收清单逐条都是拖动，
+// 唯独没有双击——回归因此潜伏四天）。
+// 现在的判据：**双击由 pointerdown 自己数**（同点位 + 双击窗口内的第二下 = 双击），
+// 且第二下**不再进 OS 拖动循环**（否则拖动会与最大化互相打架）；`onTopbarDoubleClick`
+// 保留为「页面收得到 dblclick 的平台」的同一对点击去重兜底——两条路只算一次。
 
 interface TauriInternals {
   metadata?: { currentWindow?: { label?: string } };
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 }
+
+/** 标题栏手势事件的最小形状（React 的 PointerEvent / MouseEvent 都满足）。 */
+export interface TitlebarGestureEvent {
+  target: EventTarget | null;
+  clientX: number;
+  clientY: number;
+}
+
+/** 双击窗口（ms）——与 OS 默认 500ms 同量级；慢于此 = 两次独立单击。 */
+const DOUBLE_CLICK_MS = 450;
+
+/** 双击容差（px）——两次按下之间允许的手抖位移；超过即视为「点一下、再点别处」。
+ *  与 OS 判双击用的 `SM_CXDOUBLECLK`（默认 4px）同量级。 */
+const DOUBLE_CLICK_SLOP_PX = 6;
+
+/** 最近一次标题栏按下 + 最近一次「已由 pointerdown 判为双击」的时刻。
+ *  **进程级单例（CONVENTIONS §1.10 第 3 类）**：单窗口单一指针的手势瞬态，
+ *  既非业务状态也无跨面板消费者，故不进 store。 */
+let lastDown: { at: number; x: number; y: number } | null = null;
+let lastPointerDownDoubleClickAt = Number.NEGATIVE_INFINITY;
 
 function tauri(): TauriInternals | undefined {
   return (window as unknown as { __TAURI_INTERNALS__?: TauriInternals }).__TAURI_INTERNALS__;
@@ -60,14 +91,31 @@ export function toggleWindowMaximize(): void {
   });
 }
 
-/** 标题栏 pointerdown 处理器（画布顶部浮件/首页顶栏共用）：交互件除外 → 原生拖拽。 */
-export function onTopbarPointerDown(e: { target: EventTarget | null }): void {
+/** 标题栏 pointerdown 处理器（画布顶部浮件/首页顶栏共用）：交互件除外；
+ *  **同一位置、双击窗口内的第二次按下 = 双击 → 最大化/还原**（第二下不进 OS
+ *  拖动循环）；其余情况交原生拖拽。 */
+export function onTopbarPointerDown(e: TitlebarGestureEvent): void {
   if (isTopbarInteractiveTarget(e.target)) return;
-  startWindowDrag();
+  const now = Date.now();
+  const doubled =
+    lastDown !== null &&
+    now - lastDown.at <= DOUBLE_CLICK_MS &&
+    Math.abs(e.clientX - lastDown.x) <= DOUBLE_CLICK_SLOP_PX &&
+    Math.abs(e.clientY - lastDown.y) <= DOUBLE_CLICK_SLOP_PX;
+  // 判据是「一对点击」：判为双击即消费掉，三击的第三下重新从「第一下」起算
+  lastDown = doubled ? null : { at: now, x: e.clientX, y: e.clientY };
+  if (!doubled) {
+    startWindowDrag();
+    return;
+  }
+  lastPointerDownDoubleClickAt = now;
+  toggleWindowMaximize();
 }
 
-/** 标题栏双击处理器（同上）：交互件除外 → 最大化/还原。 */
-export function onTopbarDoubleClick(e: { target: EventTarget | null }): void {
+/** 标题栏双击处理器（同一热区共用）：页面收得到 `dblclick` 的平台走这条；
+ *  pointerdown 已判过同一对点击时让路（两条路只算一次，否则最大化后立刻还原）。 */
+export function onTopbarDoubleClick(e: TitlebarGestureEvent): void {
   if (isTopbarInteractiveTarget(e.target)) return;
+  if (Date.now() - lastPointerDownDoubleClickAt <= DOUBLE_CLICK_MS) return;
   toggleWindowMaximize();
 }

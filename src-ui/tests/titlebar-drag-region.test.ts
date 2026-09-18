@@ -27,6 +27,12 @@
 // 2026-09-17 标题栏拆除批：画布视图的书眉布局行退役（画布铺满整窗，顶缘 = 屏缘），
 // 窗口拖动热区从「整条 56px 书眉」收成**顶部浮件本身**（.pp-chrome，非交互件 =
 // `画布` 二字与件间空白）；首页顶栏（.sh-head）保留。
+//
+// 2026-09-18 双击回归根治：双击判据从 DOM `dblclick` 移进 `pointerdown` 自数
+// （同点位 + 450ms 窗口内的第二下）——`pointerdown` 一响就把窗口交给 OS 模态
+// 移动循环，mouseup 不再进页面，`dblclick` 在 WebView2 上一次都不产生。
+// `onDoubleClick` 保留为「页面收得到 dblclick 的平台」的去重兜底，故两个标题栏
+// **两条接线都仍在册**（见下用例）。行为考：`tests/titlebar-gesture.test.ts`。
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -93,6 +99,10 @@ describe('标题栏触发范围：页面不声明 app-region，命中范围由�
     expect(helper).toContain("closest('button, input, kbd, a, select, textarea");
     expect(helper).toContain('.wc-btns');
     expect(helper).toContain('.sl-root');
+    // 双击判据在 pointerdown 里自数（2026-09-18）——只认 dblclick 的写法在 WebView2
+    // 上一次都不响（OS 模态拖动循环吃掉 mouseup），行为考见 titlebar-gesture.test.ts
+    expect(helper).toContain('DOUBLE_CLICK_MS');
+    expect(helper).toContain('lastPointerDownDoubleClickAt');
     // 画布书眉是产物域 → 经宿主桥（三处同步：host.ts / host.aliased.ts / host-modules faceDeps）
     expect(read(SRC, 'plugins', 'builtin', 'paper-shell', 'host.ts')).toContain('onTopbarPointerDown');
     expect(read(SRC, 'plugins', 'builtin', 'paper-shell', 'host.aliased.ts')).toContain(
