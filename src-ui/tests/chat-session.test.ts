@@ -239,127 +239,267 @@ describe('ChatPanel session persistence', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // listSavedSessions — filters, parses, sorts
+  // listSavedSessions — 卷目录（清单投影持久化）+ 对账 + 补建
   // ═══════════════════════════════════════════════════════════════
 
-  describe('listSavedSessions', () => {
-    // 2026-09-18 载入审计：读面失败**不再伪装成空集**（旧实现 resolve([]) →
-    // 侧栏把「读不出来」显示成「本工作区暂无案卷」）。目录枚举失败/返回非数组/
-    // 整体超时一律上抛，消费面保留上次结果并明示（守护 tests/session-sidebar-load.test.tsx）。
-    it('throws when list_directory rejects（读面失败不伪装成空集）', async () => {
+  describe('listSavedSessions（卷目录）', () => {
+    const P = 'D:/cat-proj';
+    const ROOT = `${P}/.lantai/sessions`;
+
+    /** 实现式会话盘 mock：**按路径路由**（目录/日志/投影缓存/卷目录一套盘）。
+     *  替代旧「按调用次序出队」的队列 mock——清点链新增目录文件读写后，
+     *  调用次序成了实现细节，钉次序 = 钉死实现（换实现即假红）。 */
+    function mockSessionDisk(
+      files: Record<string, string>,
+      o?: { failRead?: (path: string) => boolean; hangRead?: (path: string) => boolean },
+    ) {
+      const reads: string[] = [];
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation(
+        fsCapAware((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'read_file_content') {
+            const fp = String(params.file_path ?? '');
+            if (o?.hangRead?.(fp)) return new Promise(() => {});
+            if (o?.failRead?.(fp)) return Promise.reject(new Error('读取失败（测试注入）'));
+            reads.push(fp);
+            return fp in files ? Promise.resolve(files[fp]) : Promise.reject(new Error('文件不存在'));
+          }
+          if (method === 'write_file_content') {
+            files[String(params.file_path)] = String(params.content);
+            return Promise.resolve('ok');
+          }
+          if (method === 'delete_file_or_dir') {
+            delete files[String(params.path)];
+            return Promise.resolve('ok');
+          }
+          if (method === 'list_directory') {
+            const dir = String(params.path);
+            const entries = Object.keys(files)
+              .filter((p) => p.startsWith(`${dir}/`) && !p.slice(dir.length + 1).includes('/'))
+              .map((p) => ({ name: p.split('/').pop(), path: p, is_dir: false, children: null }));
+            return Promise.resolve(JSON.stringify(entries));
+          }
+          return Promise.resolve('ok');
+        }),
+      );
+      /** 卷体读（日志 + 投影缓存）——目录文件与目录枚举不算。 */
+      const volumeReads = () => reads.filter((p) => /\/\d+\.(ndjson|json)$/.test(p.replace(/\\/g, '/')));
+      return { files, reads, volumeReads };
+    }
+
+    /** 一卷的盘上形态：事件日志（卷本体）+ 投影缓存（label/savedAt）。 */
+    function seedVolume(
+      files: Record<string, string>,
+      id: number,
+      opts: { label?: string; savedAt?: string; msgs?: Array<{ role: string; content?: string }> } = {},
+    ): void {
+      const msgs = opts.msgs ?? [{ role: 'user', content: `内容 ${id}` }];
+      files[`${ROOT}/${id}.ndjson`] = logText(id, msgs, opts.label, opts.savedAt);
+      files[`${ROOT}/${id}.json`] = cacheText(id, {
+        label: opts.label ?? `案卷 ${id}`,
+        savedAt: opts.savedAt ?? '2026-01-01T00:00:00Z',
+      });
+    }
+
+    function catalogOfDisk(files: Record<string, string>): { ver: number; rows: Record<string, unknown> } {
+      const raw = files[`${ROOT}/_index.json`];
+      expect(raw, '卷目录文件应已落盘（_index.json）').toBeTruthy();
+      return JSON.parse(raw);
+    }
+
+    // 2026-09-18 二批：清点 = 目录枚举 + 一份小 JSON（**不读卷体**）；缺失行由目录
+    // 对账发现并补建（首次阻塞至预算，其余后台）。见 chat-session「卷目录」头注。
+
+    it('首次清点：补建全部卷 + 落盘 _index.json', async () => {
       panel = createChatPanel();
+      const files: Record<string, string> = {};
+      seedVolume(files, 1, { label: '甲', savedAt: '2026-01-01T00:00:00Z' });
+      seedVolume(files, 2, { label: '乙', savedAt: '2026-06-30T00:00:00Z' });
+      mockSessionDisk(files);
+
+      const result = await panel.listSavedSessions(P);
+      expect(result.map((r) => r.id)).toEqual([2, 1]); // savedAt 倒序
+      expect(result[0]).toEqual({
+        id: 2,
+        label: '乙',
+        msgCount: 1,
+        savedAt: '2026-06-30T00:00:00Z',
+      });
+      // 目录已落盘（下次清点直接用它）
+      const cat = catalogOfDisk(files);
+      expect(cat.ver).toBe(1);
+      expect(Object.keys(cat.rows).sort()).toEqual(['1', '2']);
+    });
+
+    it('稳态清点零卷体读（几百卷也只是一份小 JSON）；跨「重启」仍不读卷体', async () => {
+      panel = createChatPanel();
+      const files: Record<string, string> = {};
+      for (const id of [1, 2, 3, 4, 5]) seedVolume(files, id, { label: `卷${id}` });
+      const disk = mockSessionDisk(files);
+
+      await panel.listSavedSessions(P);
+      const afterFirst = disk.volumeReads().length;
+      expect(afterFirst).toBeGreaterThan(0); // 首次必须真读（补建）
+
+      const second = await panel.listSavedSessions(P);
+      expect(second).toHaveLength(5);
+      expect(disk.volumeReads().length).toBe(afterFirst); // 稳态：一卷体都不读
+
+      // 模拟重启（进程内态清空）→ 从 _index.json 重建，仍不读卷体
+      Session.resetSessionListCacheForTests();
+      const third = await panel.listSavedSessions(P);
+      expect(third).toHaveLength(5);
+      expect(third.map((r) => r.label)).toEqual(['卷1', '卷2', '卷3', '卷4', '卷5'].sort());
+      expect(disk.volumeReads().length).toBe(afterFirst);
+    });
+
+    it('对账：盘上新出现的卷补建、盘上没了的卷从清单消失', async () => {
+      panel = createChatPanel();
+      const files: Record<string, string> = {};
+      seedVolume(files, 1, { label: '甲' });
+      const disk = mockSessionDisk(files);
+      await panel.listSavedSessions(P);
+
+      // 外部新增一卷（本进程没写过它）→ 对账发现 → 补建
+      seedVolume(files, 7, { label: '新卷', savedAt: '2026-09-01T00:00:00Z' });
+      const withNew = await panel.listSavedSessions(P);
+      expect(withNew.map((r) => r.id)).toEqual([7, 1]);
+      expect(disk.volumeReads().some((p) => p.endsWith('/7.ndjson'))).toBe(true);
+
+      // 外部删除一卷 → 对账摘掉（不读盘）
+      delete files[`${ROOT}/1.ndjson`];
+      delete files[`${ROOT}/1.json`];
+      const before = disk.volumeReads().length;
+      const afterDelete = await panel.listSavedSessions(P);
+      expect(afterDelete.map((r) => r.id)).toEqual([7]);
+      expect(disk.volumeReads().length).toBe(before);
+      expect(Object.keys(catalogOfDisk(files).rows)).toEqual(['7']); // 摘行也落盘
+    });
+
+    it('卷目录坏档/版本不认 → 自愈重建（按空目录补建并覆写）', async () => {
+      panel = createChatPanel();
+      const files: Record<string, string> = {};
+      seedVolume(files, 3, { label: '丙' });
+      files[`${ROOT}/_index.json`] = '{"ver":999,"rows":{"3":{"label":"坏","savedAt":"","msgCount":0}}}';
+      mockSessionDisk(files);
+
+      const result = await panel.listSavedSessions(P);
+      expect(result.map((r) => r.id)).toEqual([3]);
+      expect(result[0].label).toBe('丙'); // 真值来自卷体，不采信不认版本的目录
+      expect(catalogOfDisk(files).ver).toBe(1);
+    });
+
+    it('非卷文件与保留名不进清单（_active.json / _index.json / 非 .ndjson）', async () => {
+      panel = createChatPanel();
+      const files: Record<string, string> = {};
+      seedVolume(files, 1, { label: '甲' });
+      files[`${ROOT}/_active.json`] = '{}';
+      files[`${ROOT}/readme.md`] = '# nope';
+      files[`${ROOT}/12.json`] = cacheText(12, { label: '旧投影缓存（无日志 = 无卷）' });
+      mockSessionDisk(files);
+
+      const result = await panel.listSavedSessions(P);
+      expect(result.map((r) => r.id)).toEqual([1]);
+      expect(result[0].msgCount).toBe(1); // 只数非 system 消息
+    });
+
+    it('单卷读失败不影响其余卷（该卷本轮不重试，错误可见）', async () => {
+      panel = createChatPanel();
+      const files: Record<string, string> = {};
+      seedVolume(files, 1, { label: '甲' });
+      seedVolume(files, 2, { label: '乙' });
+      const disk = mockSessionDisk(files, { failRead: (p) => p.replace(/\\/g, '/').endsWith('/1.ndjson') });
+
+      const result = await panel.listSavedSessions(P);
+      expect(result.map((r) => r.id)).toEqual([2]);
+      const reads = disk.volumeReads().length;
+      await panel.listSavedSessions(P); // 失败卷不反复重试
+      expect(disk.volumeReads().length).toBe(reads);
+    });
+
+    it('挂死的卷读不吊死清点（预算护栏 + 后台补建）', async () => {
+      panel = createChatPanel();
+      const files: Record<string, string> = {};
+      seedVolume(files, 1, { label: '甲' });
+      seedVolume(files, 2, { label: '乙' });
+      mockSessionDisk(files, { hangRead: (p) => p.replace(/\\/g, '/').endsWith('/1.ndjson') });
+
+      const started = Date.now();
+      const result = await panel.listSavedSessions(P);
+      expect(Date.now() - started).toBeLessThan(6000); // 首屏不被挂死卷吊住
+      expect(result.map((r) => r.id)).toEqual([2]); // 可读的卷照常出
+    });
+
+    it('读面失败不伪装成空集：目录枚举失败上抛；空工作区返回 []', async () => {
+      panel = createChatPanel();
+      mockInvoke.mockReset();
       mockInvoke.mockRejectedValue(new Error('dir not found'));
+      await expect(panel.listSavedSessions(P)).rejects.toThrow(/案卷目录枚举失败/);
 
-      await expect(panel.listSavedSessions('D:/test')).rejects.toThrow(/案卷目录枚举失败/);
-    });
-
-    it('throws when list_directory returns non-array（形状契约在 helper 层就拒收）', async () => {
-      panel = createChatPanel();
+      mockInvoke.mockReset();
       mockInvoke.mockResolvedValue('not an array');
+      await expect(panel.listSavedSessions(P)).rejects.toThrow(/案卷目录枚举失败/);
 
-      await expect(panel.listSavedSessions('D:/test')).rejects.toThrow(/案卷目录枚举失败/);
-    });
-
-    it('无工作区（空路径）返回空集——合法空态不是失败', async () => {
-      panel = createChatPanel();
+      mockInvoke.mockReset();
       await expect(panel.listSavedSessions('')).resolves.toEqual([]);
       expect(mockInvoke).not.toHaveBeenCalled();
     });
 
-    it('filters out _active.json and deleted sessions', async () => {
+    it('几百卷规模：补建一次之后，清点成本与历史体量**无关**（零卷体读）', async () => {
       panel = createChatPanel();
-      // U1：listSavedSessions 先扫全局位（listing + 文件读），再扫项目旧目录
-      // （第二次 list_directory）——空列表响应在文件读之后
-      mockInvoke
-        .mockResolvedValueOnce(
-          JSON.stringify([
-            { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
-            { name: '_active.json', path: '/s/_active.json', is_dir: false, children: null },
-            { name: '40.ndjson', path: '/s/40.ndjson', is_dir: false, children: null },
-          ]),
-        )
-        // read_file_content for 1.json
-        .mockResolvedValueOnce(
-          logText(1, [
-            { role: 'system', content: 'prompt' },
-            { role: 'user', content: 'hello' },
-          ]),
-        )
-        // read_file_content for 40.json (deleted marker)
-        .mockResolvedValueOnce(JSON.stringify({ id: 40, deleted: true }));
+      const files: Record<string, string> = {};
+      const N = 300;
+      for (let id = 1; id <= N; id++) {
+        seedVolume(files, id, {
+          label: `卷${id}`,
+          savedAt: `2026-01-${String((id % 28) + 1).padStart(2, '0')}T00:00:00Z`,
+        });
+      }
+      const disk = mockSessionDisk(files);
 
-      const result = await panel.listSavedSessions('D:/test');
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe(1);
-      expect(result[0].msgCount).toBe(1); // only user message counts
+      const first = await panel.listSavedSessions(P);
+      expect(first).toHaveLength(N);
+      expect(Object.keys(catalogOfDisk(files).rows)).toHaveLength(N); // 一次补建，全量落盘
+      const readsAfterFirst = disk.volumeReads().length;
+      expect(readsAfterFirst).toBeGreaterThanOrEqual(N); // 首次确实逐卷读过
+
+      // 稳态：无论 300 卷还是 3 卷，都是一次目录枚举 + 一份小 JSON
+      const t0 = Date.now();
+      const second = await panel.listSavedSessions(P);
+      const elapsed = Date.now() - t0;
+      expect(second).toHaveLength(N);
+      expect(disk.volumeReads().length).toBe(readsAfterFirst);
+      expect(elapsed).toBeLessThan(150);
+
+      // 模拟重启：从盘上的目录重建，仍不读卷体
+      Session.resetSessionListCacheForTests();
+      expect(await panel.listSavedSessions(P)).toHaveLength(N);
+      expect(disk.volumeReads().length).toBe(readsAfterFirst);
     });
 
-    it('returns sessions sorted by savedAt descending', async () => {
+    it('写面就地更行 + 落盘：改名/删除不必重扫卷体，且广播卷清单变更', async () => {
       panel = createChatPanel();
-      // Phase 3b：卷集 = 日志（`.ndjson`，卷本体）；label/savedAt 取投影缓存。
-      // 读面顺序：listing → 各卷日志（并行发起）→ 各卷缓存（日志读完后）。
-      mockInvoke
-        .mockResolvedValueOnce(
-          JSON.stringify([
-            { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
-            { name: '2.ndjson', path: '/s/2.ndjson', is_dir: false, children: null },
-          ]),
-        )
-        .mockResolvedValueOnce(logText(1, [{ role: 'user', content: 'old' }], 'Old', '2026-01-01T00:00:00Z'))
-        .mockResolvedValueOnce(logText(2, [{ role: 'user', content: 'new' }], 'New', '2026-06-30T00:00:00Z'))
-        .mockResolvedValueOnce(cacheText(1, { label: 'Old', savedAt: '2026-01-01T00:00:00Z' }))
-        .mockResolvedValueOnce(cacheText(2, { label: 'New', savedAt: '2026-06-30T00:00:00Z' }));
+      const files: Record<string, string> = {};
+      seedVolume(files, 1, { label: '旧名', savedAt: '2026-01-01T00:00:00Z' });
+      const disk = mockSessionDisk(files);
+      await panel.listSavedSessions(P);
 
-      const result = await panel.listSavedSessions('D:/test');
-      expect(result).toHaveLength(2);
-      expect(result[0].id).toBe(2); // newest first
-      expect(result[1].id).toBe(1);
-    });
+      const tickBefore = useSessionVolumesStore.getState().volumesTick;
+      const readsBefore = disk.volumeReads().length;
+      await Session.renameSessionFile(P, 1, '新名'); // 真实写路 → 写面就地更行
+      expect(useSessionVolumesStore.getState().volumesTick).toBe(tickBefore + 1);
 
-    it('reads raw session files (fs(read) raw-default contract)', async () => {
-      panel = createChatPanel();
-      const rawJSON = logText(
-        46,
-        [
-          { role: 'system', content: 'sys' },
-          { role: 'user', content: 'real conversation' },
-        ],
-        '有对话',
-        '2026-06-30T12:00:00Z',
-      );
+      const renamed = await panel.listSavedSessions(P);
+      expect(renamed[0].label).toBe('新名');
+      // 改名自身读了卷体（读-改-写），但清点没有再读
+      const afterRename = disk.volumeReads().length;
+      expect(afterRename).toBe(readsBefore + 1);
+      expect(Object.values(catalogOfDisk(files).rows)[0]).toMatchObject({ label: '新名' });
 
-      mockInvoke
-        .mockResolvedValueOnce(
-          JSON.stringify([{ name: '46.ndjson', path: '/s/46.ndjson', is_dir: false, children: null }]),
-        )
-        // 2026-09 fs(read) 行号默认翻转后：kernelReadFile 缺省原文（P1-3 的
-        // raw 模式升格为默认契约），无剥行号路径——mock 直返原文。
-        .mockResolvedValueOnce(rawJSON);
-
-      const result = await panel.listSavedSessions('D:/test');
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe(46);
-      expect(result[0].label).toBe('有对话');
-      expect(result[0].msgCount).toBe(1);
-    });
-
-    it('skips entries with unreadable session files', async () => {
-      panel = createChatPanel();
-      mockInvoke
-        .mockResolvedValueOnce(
-          JSON.stringify([
-            { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
-            { name: '2.ndjson', path: '/s/2.ndjson', is_dir: false, children: null },
-          ]),
-        )
-        // First read fails
-        .mockRejectedValueOnce(new Error('permission denied'))
-        // Second succeeds
-        .mockResolvedValueOnce(logText(2, [{ role: 'user', content: 'ok' }]));
-
-      const result = await panel.listSavedSessions('D:/test');
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe(2);
+      await panel.deleteSessionFile(P, 1);
+      await expect(panel.listSavedSessions(P)).resolves.toEqual([]);
+      expect(disk.volumeReads().length).toBe(afterRename); // 删除 + 清点零卷体读
     });
   });
 
@@ -414,134 +554,53 @@ describe('ChatPanel session persistence', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // listSavedSessions — parallel read + timeout (regression fix)
+  // listSavedSessions — 补建并发（老「parallel + timeout」批的承继面）
   // ═══════════════════════════════════════════════════════════════
 
-  describe('listSavedSessions — parallel + timeout', () => {
-    it('reads all session files in parallel (not serial)', async () => {
+  describe('listSavedSessions — 补建并发', () => {
+    it('首次补建并发读（不是串行）', async () => {
       panel = createChatPanel();
-      // 5 session files — if serial, this takes 5x as long
-      const files = [1, 2, 3, 4, 5].map((id) => ({
-        name: `${id}.ndjson`,
-        path: `/s/${id}.json`,
-        is_dir: false,
-        children: null,
-      }));
-      mockInvoke.mockResolvedValueOnce(JSON.stringify(files));
+      const P = 'D:/par-proj';
+      const files: Record<string, string> = {};
       for (const id of [1, 2, 3, 4, 5]) {
-        mockInvoke.mockResolvedValueOnce(logText(id, [{ role: 'user', content: `msg-${id}` }]));
+        files[`${P}/.lantai/sessions/${id}.ndjson`] = logText(id, [{ role: 'user', content: `msg-${id}` }]);
+        files[`${P}/.lantai/sessions/${id}.json`] = cacheText(id, { label: `卷${id}` });
       }
-
-      const start = Date.now();
-      const result = await panel.listSavedSessions('D:/test');
-      const elapsed = Date.now() - start;
-
-      expect(result).toHaveLength(5);
-      // Parallel reads should complete quickly (< 100ms for mocked calls)
-      // Serial would be at least 5 * async overhead
-      expect(elapsed).toBeLessThan(500);
-    });
-
-    it('returns empty after 10s timeout if a session read hangs', async () => {
-      panel = createChatPanel();
-      mockInvoke.mockResolvedValueOnce(
-        JSON.stringify([
-          { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
-          { name: '2.ndjson', path: '/s/2.ndjson', is_dir: false, children: null },
-        ]),
-      );
-      // First file hangs forever, second resolves
-      mockInvoke.mockReturnValueOnce(new Promise(() => {})); // never resolves
-      mockInvoke.mockResolvedValueOnce(logText(2, [{ role: 'user', content: 'ok' }]));
-
-      vi.useFakeTimers();
-      const promise = panel.listSavedSessions('D:/test');
-      const assertion = expect(promise).rejects.toThrow(/读取超时/);
-
-      // Advance past the 10s timeout
-      await vi.advanceTimersByTimeAsync(10_001);
-      await assertion;
-      vi.useRealTimers();
-    });
-
-    it('卷清单投影缓存：同代内重复调用零 I/O；写入后就地更行（不重扫）', async () => {
-      panel = createChatPanel();
-      const P = 'D:/cache-proj';
-      const files: Record<string, string> = {
-        [`${P}/.lantai/sessions/1.ndjson`]: logText(1, [{ role: 'user', content: 'hi' }]),
-        [`${P}/.lantai/sessions/1.json`]: cacheText(1, {
-          label: '甲',
-          savedAt: '2026-09-01T00:00:00.000Z',
-          uiMessages: [{ id: 'm1' }],
-        }),
-      };
-      let reads = 0;
+      // 并发度用**在途计数**钉（不用墙钟——机器被占满时绝对耗时断言必假红，
+      // 见 CONVENTIONS §3「待机红线是超时不是逻辑」）
+      let inFlight = 0;
+      let maxInFlight = 0;
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
         fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'read_file_content') {
-            reads += 1;
-            const fp = params.file_path as string;
-            return fp in files ? Promise.resolve(files[fp]) : Promise.reject(new Error('文件不存在'));
-          }
-          if (method === 'write_file_content') {
-            files[params.file_path as string] = params.content as string;
-            return Promise.resolve('ok');
+            const fp = String(params.file_path);
+            inFlight += 1;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            return new Promise((resolve, reject) =>
+              setTimeout(() => {
+                inFlight -= 1;
+                if (fp in files) resolve(files[fp]);
+                else reject(new Error('文件不存在'));
+              }, 10),
+            );
           }
           if (method === 'list_directory') {
-            const dir = params.path as string;
+            const dir = String(params.path);
             const entries = Object.keys(files)
               .filter((p) => p.startsWith(`${dir}/`) && !p.slice(dir.length + 1).includes('/'))
               .map((p) => ({ name: p.split('/').pop(), path: p, is_dir: false, children: null }));
             return Promise.resolve(JSON.stringify(entries));
           }
-          return Promise.resolve(null);
+          return Promise.resolve('ok');
         }),
       );
 
-      const first = await panel.listSavedSessions(P);
-      expect(first.map((r) => r.id)).toEqual([1]);
-      expect(first[0].label).toBe('甲');
-      const readsAfterFirst = reads;
-      expect(readsAfterFirst).toBeGreaterThan(0);
+      const result = await panel.listSavedSessions(P);
 
-      // 无写入 → 复用投影（一个后端读都不发——这是「流式追加不再读全量卷体」的地基）
-      const second = await panel.listSavedSessions(P);
-      expect(second).toEqual(first);
-      expect(reads).toBe(readsAfterFirst);
-
-      // 改名（真实写路：read_volume → writeSessionSnapshot → 写面就地更行）
-      const tickBefore = useSessionVolumesStore.getState().volumesTick;
-      await Session.renameSessionFile(P, 1, '乙');
-      // 写落定后广播（顺序契约：先更行再 bump——订阅者读到的是写后状态）
-      expect(useSessionVolumesStore.getState().volumesTick).toBe(tickBefore + 1);
-      const readsAfterWrite = reads;
-      const third = await panel.listSavedSessions(P);
-      expect(third[0].label).toBe('乙');
-      expect(reads).toBe(readsAfterWrite); // 就地更行 = 明面不重扫
-    });
-
-    it('still returns readable sessions when one file fails', async () => {
-      panel = createChatPanel();
-      mockInvoke.mockResolvedValueOnce(
-        JSON.stringify([
-          { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
-          { name: '2.ndjson', path: '/s/2.ndjson', is_dir: false, children: null },
-          { name: '3.ndjson', path: '/s/3.ndjson', is_dir: false, children: null },
-        ]),
-      );
-      // File 1: success
-      mockInvoke.mockResolvedValueOnce(logText(1, [{ role: 'user', content: 'hello' }]));
-      // File 2: error
-      mockInvoke.mockRejectedValueOnce(new Error('corrupt file'));
-      // File 3: success
-      mockInvoke.mockResolvedValueOnce(logText(3, [{ role: 'user', content: 'world' }]));
-
-      const result = await panel.listSavedSessions('D:/test');
-
-      expect(result).toHaveLength(2);
-      expect(result.map((r) => r.id).sort()).toEqual([1, 3]);
+      expect(result).toHaveLength(5);
+      expect(maxInFlight).toBeGreaterThan(1); // 串行实现恒 = 1
     });
   });
 

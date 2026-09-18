@@ -810,22 +810,34 @@ function enqueueVolumeWrite<T>(key: string, task: () => Promise<T>): Promise<T> 
   return next;
 }
 
-// ── 卷清单投影缓存（P0·2026-09-18 侧栏载入审计）──────────────────────
+// ── 卷目录：清单投影（持久化）──────────────────────────────────────
 //
-// 病灶：listSavedSessions 一次调用 = 读**全部卷体**（每卷：事件日志 + 投影缓存，
-// 逐行 JSON.parse + 重放 + 重建消息），只为取 label / savedAt / 块数三字段。
-// 实测本机 32 MB 会话目录 → 读 21.22 MB / 14 次文件读 / 240 ms（纯 JS，不含 IPC），
-// 出 7 行；而消费面（案卷侧栏 · 书脊 · 案头签条）此前被**流式追加逐块触发**——
-// 50 块消息 = 51 次全量重扫（守护 tests/session-sidebar-load.test.tsx）。
+// 病灶（P0·2026-09-18 侧栏载入审计，两批）：listSavedSessions 一次清点 = 读**全部
+// 卷体**（每卷：事件日志逐行 JSON.parse + 重放 + 重建消息 + 整份投影缓存），只为取
+// label / savedAt / 块数三字段。实测本机 32 MB 目录 → 读 21.22 MB / 14 次文件读 /
+// 240 ms（纯 JS，不含 IPC）出 7 行——**成本正比于历史总体量**：几百卷 = 几百 MB，
+// 每次清点都是十几秒，10s 超时必爆（用户 2026-09-18：「几百条会话历史很正常」）。
 //
-// 解法：卷文件的写入面全部在本模块内（writeSessionSnapshot / deleteSessionFile /
-// 事件日志 append），写面自己知道磁盘变成了什么 —— 于是失效面可以精确到「哪一行」：
-//   · 写一卷（自动存 / 合卷 / 改名）：就地更该行（O(1)，不重扫）；
-//   · 删一卷：就地摘该行；
-//   · 事件日志 append（只发生在**已摊开**的卷上，其行由内存投影供数）：不在失效面；
-//   · 其余无法就地表达的写入：invalidateVolumeList()（写代自增 → 下次调用重扫）。
+// 解法：把清单投影**持久化**成 `{root}/_index.json`（走既有 seam 动作
+// read_volume / save_volume，id = `_index`——**零契约变更、零 Rust 变更**；provider
+// 只认「root + id → 不透明 JSON」，换 SQLite/远端 provider 同样成立）。此后每次
+// 清点 = 目录枚举 + 一份小 JSON（几百卷 ≈ 20 KB），**一卷体都不读**。
+//
+// 失效面（谁能改变清单）：
+//   · 本进程写面（自动存 / 改名 / 合卷 / 删除）→ 就地更该行 + 落盘（写面自己知道真值）；
+//   · 目录枚举逐次对账（**文件不在 = 卷不存在**）：目录里多出来的卷补建、少掉的摘掉；
+//   · 事件日志 append（只发生在**已摊开**的卷上，其行由内存投影供数）：不在失效面。
+// 补建（读该卷日志 + 投影缓存——老实现的全量读）**每卷一生只发生一次**：首次调用
+// 阻塞到 CATALOG_BLOCK_BUDGET_MS 为止，其余转后台（并发 4）分批落盘，每批完成即广播
+// （消费面自动刷新）；落盘是增量合并的，进程半途退出不丢已建部分。
+//
+// 边界（刻意不做，见 landmine-map S8 残留栏）：目录条目不带 size/mtime，故**外部**
+// 对已知卷的内容改写（换机器拷回、另开一个应用实例并发写同一工作区）不被察觉——
+// 本目录与每卷写链 / canvas.json 同款前提：由本进程独占写入。要真门禁需 Rust
+// DirEntry 补 size/mtime + seam 新动作，属独立批次。
+//
 // 键 = 会话根（工作区各归各，切换天然隔离）。模块级可变态归属 CONVENTIONS §1.10
-// 第 3 类（键控自清理：键 = 会话根，值 = 一次扫的纯投影，不持工作区资源所有权）。
+// 第 3 类（键控自清理：键 = 会话根，值 = 该根的投影 + 落盘状态，不持工作区资源所有权）。
 
 /** 会话清单行（侧栏/书脊/签条共用形状——磁盘投影三字段 + 身份）。 */
 export interface SavedSessionRow {
@@ -835,36 +847,225 @@ export interface SavedSessionRow {
   savedAt: string;
 }
 
-/** 写代：无法就地维护的写入把它自增，使全部缓存条目失效。 */
-let _volumeListEpoch = 0;
-const _volumeListCache = new Map<string, { epoch: number; rows: SavedSessionRow[] }>();
+/** 目录文件 id（`{root}/_index.json`——下划线保留名，各消费方的卷集过滤天然跳过）。 */
+const CATALOG_ID = '_index';
+/** 目录文件版本（结构变更即 +1；版本不认 = 视为无目录重建）。 */
+const CATALOG_VERSION = 1;
+/** 首次补建的**阻塞**预算（ms）：预算内补齐多少算多少，其余转后台（不吊死首屏）。 */
+const CATALOG_BLOCK_BUDGET_MS = 2500;
+/** 补建并发（每卷 = 日志 + 投影缓存两跳读；并发过高只是把 IPC 挤满）。 */
+const CATALOG_BUILD_CONCURRENCY = 4;
 
-/** 写面失效（全量作废——不能就地表达为「某一行变成什么」的写入才用它）。 */
-function invalidateVolumeList(): void {
-  _volumeListEpoch += 1;
+interface VolumeCatalog {
+  /** 已知行（内存真源：写面就地更行 + 补建填入 + 文件载入）。 */
+  rows: Map<number, SavedSessionRow>;
+  /** 目录文件是否已读入（每根每进程一次）。 */
+  loaded: boolean;
+  loading: Promise<void> | null;
+  /** 补建在途的卷（防并发清点重复读同一卷）。 */
+  hydrating: Set<number>;
+  /** 本次运行内判过读失败的卷（不反复重试——下个运行周期再试）。 */
+  failed: Set<number>;
+  /** 首扫阻塞补建中（防重入——期间的并发清点直接返回已知行，不重复补建）。 */
+  blocking: boolean;
+  /** 后台补建中（防重入）。 */
+  building: boolean;
+  /** 落盘在途 / 待落盘（合并：一个在途 + dirty 标记，避免逐行写风暴）。 */
+  flushing: boolean;
+  dirty: boolean;
 }
 
-/** 写面就地更行：写完 = 该卷磁盘状态已知。无缓存条目/条目已过期 = 不动
- *  （下次扫自然带上真值——不猜）。 */
-function upsertVolumeListRow(root: string, row: SavedSessionRow): void {
-  const entry = _volumeListCache.get(root);
-  if (!entry || entry.epoch !== _volumeListEpoch) return;
-  const rows = entry.rows.filter((r) => r.id !== row.id);
-  rows.push(row);
-  rows.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
-  entry.rows = rows;
+const _volumeCatalogs = new Map<string, VolumeCatalog>();
+
+function catalogOf(root: string): VolumeCatalog {
+  let cat = _volumeCatalogs.get(root);
+  if (!cat) {
+    cat = {
+      rows: new Map(),
+      loaded: false,
+      loading: null,
+      hydrating: new Set(),
+      failed: new Set(),
+      blocking: false,
+      building: false,
+      flushing: false,
+      dirty: false,
+    };
+    _volumeCatalogs.set(root, cat);
+  }
+  return cat;
 }
 
-/** 写面就地摘行（真删——「文件不在 = 卷不存在」）。 */
-function dropVolumeListRow(root: string, id: number): void {
-  const entry = _volumeListCache.get(root);
-  if (!entry || entry.epoch !== _volumeListEpoch) return;
-  entry.rows = entry.rows.filter((r) => r.id !== id);
+function catalogPath(root: string): string {
+  return `${root}/${CATALOG_ID}.json`;
 }
 
-/** 卷清单行由快照派生（写面就地更行的唯一形状来源——与扫面同口径：
+/** 目录文件落盘（构造读-改-写不需要：内存就是全量真源；写失败可见但不阻断——
+ *  最坏结果是下次运行重读几卷补建，不是数据错）。 */
+function flushCatalog(cat: VolumeCatalog, root: string): void {
+  cat.dirty = true;
+  if (cat.flushing) return;
+  cat.flushing = true;
+  const pump = (): void => {
+    if (!cat.dirty) {
+      cat.flushing = false;
+      return;
+    }
+    cat.dirty = false;
+    const rows: Record<string, { label: string; savedAt: string; msgCount: number }> = {};
+    for (const [id, r] of cat.rows) rows[String(id)] = { label: r.label, savedAt: r.savedAt, msgCount: r.msgCount };
+    const data = JSON.stringify({ ver: CATALOG_VERSION, rows });
+    void enqueueVolumeWrite(catalogPath(root), () => sessionExecute('save_volume', { root, id: CATALOG_ID, data }))
+      .catch((e) => {
+        // 落盘失败可见（不静默）——后果仅限「下次运行重读几卷补建」
+        console.warn('[chat] 卷目录落盘失败（下次运行补建）:', e);
+      })
+      .finally(pump);
+  };
+  pump();
+}
+
+/** 目录文件载入（每根每进程一次）。坏档/版本不认 = 空目录 + 全量补建（自愈，可见）。 */
+function loadCatalog(cat: VolumeCatalog, root: string): Promise<void> {
+  if (cat.loaded) return Promise.resolve();
+  if (cat.loading) return cat.loading;
+  cat.loading = (async () => {
+    try {
+      const raw = await sessionExecute('read_volume', { root, id: CATALOG_ID });
+      if (raw !== 'null') {
+        const parsed = JSON.parse(raw) as { ver?: unknown; rows?: unknown };
+        if (parsed?.ver !== CATALOG_VERSION) {
+          console.warn(`[chat] 卷目录版本不认（${String(parsed?.ver)}）——按空目录重建`);
+        } else if (parsed.rows && typeof parsed.rows === 'object') {
+          for (const [key, v] of Object.entries(parsed.rows as Record<string, unknown>)) {
+            const id = Number(key);
+            const row = v as { label?: unknown; savedAt?: unknown; msgCount?: unknown };
+            if (!Number.isFinite(id) || typeof row?.label !== 'string') continue;
+            // 本地写入优先（载入不得覆盖本次运行已更的行）
+            if (cat.rows.has(id)) continue;
+            cat.rows.set(id, {
+              id,
+              label: row.label,
+              savedAt: typeof row.savedAt === 'string' ? row.savedAt : '',
+              msgCount: typeof row.msgCount === 'number' ? row.msgCount : 0,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // 缺失是首启常态（provider 返 'null'）；这里只接坏 JSON/读失败——自愈重建，可见
+      console.warn('[chat] 卷目录读取失败（按空目录重建）:', e);
+    } finally {
+      cat.loaded = true;
+      cat.loading = null;
+    }
+  })();
+  return cat.loading;
+}
+
+/** 单卷补建：读该卷日志 + 投影缓存（老实现的全量读，**每卷一生一次**）。 */
+async function hydrateVolumeRow(projectPath: string, id: number): Promise<SavedSessionRow | null> {
+  const data = await readVolumeData(projectPath, id);
+  if (!data) return null;
+  return {
+    id: data.id || id,
+    label: data.label || `案卷 ${id}`,
+    msgCount: (data.messages ?? []).filter((m) => m.role !== 'system').length,
+    savedAt: data.savedAt || '',
+  };
+}
+
+/** 补建一批（并发 CATALOG_BUILD_CONCURRENCY）：返回是否全部成功填入。 */
+async function hydrateBatch(cat: VolumeCatalog, root: string, projectPath: string, ids: number[]): Promise<void> {
+  await Promise.all(
+    ids.map(async (id) => {
+      if (cat.hydrating.has(id)) return;
+      cat.hydrating.add(id);
+      try {
+        const row = await hydrateVolumeRow(projectPath, id);
+        if (row) cat.rows.set(row.id, row);
+        else cat.failed.add(id); // 空卷/真删——不再重试
+      } catch (err) {
+        // 读面失败必须可见（M9：此前静默少一卷）
+        console.error(`[chat] 卷目录补建: 卷 ${id} 读取失败（本轮不再重试）`, err);
+        cat.failed.add(id);
+      } finally {
+        cat.hydrating.delete(id);
+      }
+    }),
+  );
+  flushCatalog(cat, root);
+}
+
+/** 补齐缺失行：预算内**阻塞**（首屏尽量给全），其余转后台分批补 + 每批广播。 */
+async function buildMissingRows(
+  cat: VolumeCatalog,
+  root: string,
+  projectPath: string,
+  missing: number[],
+): Promise<void> {
+  const deadline = Date.now() + CATALOG_BLOCK_BUDGET_MS;
+  const queue = [...missing];
+  cat.blocking = true;
+  try {
+    while (queue.length > 0) {
+      if (Date.now() >= deadline) break;
+      const batch = queue.splice(0, CATALOG_BUILD_CONCURRENCY);
+      // 单批护栏：读盘卡死也不吊死首屏（超时后这批的续体仍会自行落账——hydrateBatch
+      // 内部逐卷 try/catch，不会 reject；护栏计时器必须清掉，否则每批留一根悬空 timer）
+      let guard: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        hydrateBatch(cat, root, projectPath, batch),
+        new Promise<void>((resolve) => {
+          guard = setTimeout(resolve, CATALOG_BLOCK_BUDGET_MS);
+        }),
+      ]);
+      if (guard) clearTimeout(guard);
+      // 每批广播：消费面立即重读（并发清点因 blocking 旗标直接返回已知行）——
+      // 首扫期间列表就渐进成形，不是「空等到补完」
+      bumpSessionVolumes();
+    }
+  } finally {
+    cat.blocking = false;
+  }
+  const complete = queue.length === 0;
+  bumpSessionVolumes();
+  if (complete || cat.building) return;
+  cat.building = true;
+  void (async () => {
+    try {
+      while (queue.length > 0) {
+        const batch = queue.splice(0, CATALOG_BUILD_CONCURRENCY);
+        await hydrateBatch(cat, root, projectPath, batch);
+        // 每批广播：消费面重读清单（写面已更行，重读零卷体 I/O）——列表渐进成形
+        bumpSessionVolumes();
+      }
+    } finally {
+      cat.building = false;
+      flushCatalog(cat, root);
+      bumpSessionVolumes();
+    }
+  })();
+}
+
+/** 写面就地更行（写完 = 该卷磁盘状态已知）+ 落盘。 */
+function upsertCatalogRow(root: string, row: SavedSessionRow): void {
+  const cat = catalogOf(root);
+  cat.rows.set(row.id, row);
+  cat.failed.delete(row.id);
+  flushCatalog(cat, root);
+}
+
+/** 写面就地摘行（真删 / 写失败后状态未知——下次清点按需补建）。 */
+function dropCatalogRow(root: string, id: number): void {
+  const cat = catalogOf(root);
+  if (!cat.rows.delete(id)) return;
+  flushCatalog(cat, root);
+}
+
+/** 卷清单行由快照派生（写面就地更行的唯一形状来源——与补建同口径：
  *  块数 = 非 system 消息数）。快照无 messages（只改元数据的写）= 无行可更
- *  （调用方退回全量失效——不猜块数）。 */
+ *  （调用方退回摘行——下次清点补建，不猜块数）。 */
 function rowFromSnapshot(data: {
   id: number;
   label: string;
@@ -880,10 +1081,10 @@ function rowFromSnapshot(data: {
   };
 }
 
-/** 清空卷清单投影缓存（跨用例隔离——模块级态不做测试间泄漏）。 */
+/** 清空卷目录内存态（跨用例隔离——模块级态不做测试间泄漏；磁盘上的目录文件
+ *  由各用例的 mock 盘自理）。 */
 export function resetSessionListCacheForTests(): void {
-  _volumeListEpoch += 1;
-  _volumeListCache.clear();
+  _volumeCatalogs.clear();
 }
 
 /** 等在途卷写全部 settle（退出 flush 的 drain 点——保证「退出快照」最后落盘）。 */
@@ -950,18 +1151,18 @@ async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotDa
       }),
     );
   } catch (e) {
-    // 写失败：磁盘状态未知 → 清单投影全量作废（下次调用重扫，不猜）
-    invalidateVolumeList();
+    // 写失败：该卷磁盘状态未知 → 摘掉它的目录行（下次清点按需补建，不猜）
+    dropCatalogRow(root, data.id);
     console.error('[chat] 会话落盘失败:', e);
     throw e;
   }
-  // 写成功：该卷磁盘状态已知 → 就地更行（清单消费面无需重扫——见投影缓存头注）；
-  // 快照无 messages（只改元数据）时无处更行 → 退回全量失效。
-  // 最后广播「卷清单已变更」——消费面（侧栏/书脊）据此重读（零 I/O 的投影取回）；
+  // 写成功：该卷磁盘状态已知 → 就地更行 + 落盘（清单消费面无需重扫——见「卷目录」头注）；
+  // 快照无 messages（只改元数据的写）时无处更行 → 摘行（下次清点补建，不猜块数）。
+  // 最后广播「卷清单已变更」——消费面（侧栏/书脊）据此重读（零卷体 I/O 的投影取回）；
   // 顺序要紧：先更行再广播，订阅者读到的就是写后状态。
   const row = rowFromSnapshot(data);
-  if (row) upsertVolumeListRow(root, row);
-  else invalidateVolumeList();
+  if (row) upsertCatalogRow(root, row);
+  else dropCatalogRow(root, data.id);
   bumpSessionVolumes();
 }
 
@@ -1223,65 +1424,52 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
  *  msgCount 由事件日志派生（内容真源）——缓存缺失/陈旧不影响「卷存不存在」。
  *  读取失败的卷**可见化**（console.error + 明示原因），不再静默从列表消失。
  *
- *  成本与失效（P0·2026-09-18 侧栏载入审计）：一次扫读全部卷体（本机 32 MB 目录 →
- *  21 MB / 240 ms），故结果按**写代**缓存——同一代内重复调用零 I/O 复用（见
- *  「卷清单投影缓存」头注）。读盘**失败**不再伪装成空集：目录枚举失败与整体超时
- *  一律上抛（调用方保留上次结果并明示），「工作区为空」才返回 []。 */
+ *  成本与失效（P0·2026-09-18 侧栏载入审计）：清单投影**持久化**在 `{root}/_index.json`
+ *  ——一次清点 = 目录枚举 + 一份小 JSON（几百卷 ≈ 20 KB），**不读任何卷体**；缺失行由
+ *  目录对账发现并补建（首次调用阻塞至预算，其余后台分批 + 每批广播）。见「卷目录」头注。
+ *  读盘**失败**不再伪装成空集：目录枚举失败一律上抛（调用方保留上次结果并明示），
+ *  「工作区为空」才返回 []。 */
 export async function listSavedSessions(_ctx: SessionContext, projectPath: string): Promise<SavedSessionRow[]> {
   // 无工作区 = 无卷（合法空态，不是失败——不抛）
   if (!projectPath) return [];
   const root = workspaceSessionsDir(projectPath);
-  const cached = _volumeListCache.get(root);
-  if (cached && cached.epoch === _volumeListEpoch) return [...cached.rows];
-
-  const epoch = _volumeListEpoch;
   const names = await listVolumeNames(root);
   // 卷集 = .ndjson（跳过下划线开头的保留名；provider 已滤目录）
-  const targets = names
-    .filter((name) => name.endsWith('.ndjson') && !name.startsWith('_'))
-    .map((name) => {
-      const sid = parseInt(name.replace('.ndjson', ''), 10);
-      return { name, sid: Number.isNaN(sid) ? null : sid };
-    })
-    .filter((t): t is { name: string; sid: number } => t.sid !== null);
-
-  const TIMEOUT_MS = 10_000;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const readPromises: Promise<SavedSessionRow | null>[] = targets.map(async ({ name, sid }) => {
-    try {
-      const data = await readVolumeData(projectPath, sid);
-      if (!data) return null;
-      return {
-        id: data.id || sid,
-        label: data.label || `案卷 ${sid}`,
-        msgCount: (data.messages ?? []).filter((m) => m.role !== 'system').length,
-        savedAt: data.savedAt || '',
-      };
-    } catch (err) {
-      // 读取失败必须可见（M9：此前静默少一卷）——侧栏表现为条目标红由 UI 面决定
-      console.error(`[chat] listSavedSessions: 卷 ${name} 读取失败（已跳过）`, err);
-      return null;
-    }
-  });
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      console.warn('[chat] listSavedSessions: timed out after 10s');
-      reject(new Error(`案卷清单读取超时（${TIMEOUT_MS / 1000}s，共 ${targets.length} 卷）`));
-    }, TIMEOUT_MS);
-  });
-  let settled: Array<SavedSessionRow | null>;
-  try {
-    settled = await Promise.race([Promise.all(readPromises), timeout]);
-  } finally {
-    // 超时不再伪装成「工作区里没有卷」：读面失败一律上抛（旧实现 resolve([])
-    // → 侧栏把「读不出来」显示成「本工作区暂无案卷」——「半天加载不出来东西」的根因之一）
-    if (timer) clearTimeout(timer);
+  const ids: number[] = [];
+  for (const name of names) {
+    if (!name.endsWith('.ndjson') || name.startsWith('_')) continue;
+    const sid = parseInt(name.replace(/\.ndjson$/, ''), 10);
+    if (!Number.isNaN(sid)) ids.push(sid);
   }
-  const result = settled.filter((r): r is SavedSessionRow => r !== null);
-  result.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
-  // 扫期间若有写入（写代变了），本次结果可能已过期——不缓存（下次调用重扫）
-  if (epoch === _volumeListEpoch) _volumeListCache.set(root, { epoch, rows: result });
-  return [...result];
+
+  const cat = catalogOf(root);
+  await loadCatalog(cat, root);
+
+  // 目录对账（**文件不在 = 卷不存在**）：目录里没有的条目摘掉（外部删除可见化）
+  const present = new Set(ids);
+  let pruned = false;
+  for (const id of [...cat.rows.keys()]) {
+    if (!present.has(id)) {
+      cat.rows.delete(id);
+      pruned = true;
+    }
+  }
+  if (pruned) flushCatalog(cat, root);
+
+  // 目录里有、目录里没有 = 待补建（本轮失败的卷不反复重试；补建在途时并发清点
+  // 直接返回已知行——不重复读盘）
+  const missing = ids.filter((id) => !cat.rows.has(id) && !cat.failed.has(id));
+  if (missing.length > 0 && !cat.building && !cat.blocking) {
+    await buildMissingRows(cat, root, projectPath, missing);
+  }
+
+  const rows: SavedSessionRow[] = [];
+  for (const id of ids) {
+    const row = cat.rows.get(id);
+    if (row) rows.push(row);
+  }
+  rows.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+  return rows;
 }
 
 /** 目录枚举（list_volumes）——失败**上抛**（旧实现返回空集，把「目录读不出来」
@@ -1585,8 +1773,8 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
     showToast('删除案卷文件失败', 'error');
     return; // 写入失败则不关闭标签页
   }
-  // 真删成功：清单投影就地摘行（「文件不在 = 卷不存在」——消费面无需重扫）+ 广播
-  dropVolumeListRow(root, sessionId);
+  // 真删成功：目录就地摘行（「文件不在 = 卷不存在」——消费面无需重扫）+ 广播
+  dropCatalogRow(root, sessionId);
   bumpSessionVolumes();
   // 标记源会话已删（2026-08-28 会话管理专项）：其孤儿钉的「收回」语义失效——
   // 画布上该钉的按钮应显示「删除」。切工作区随画布整表重置。
