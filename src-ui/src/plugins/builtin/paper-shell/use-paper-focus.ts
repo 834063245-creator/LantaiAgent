@@ -15,6 +15,22 @@ import type { PaperCore } from './use-paper-sessions';
 /** 焦点飞行域（paper-panel-split C2，自 PaperPanel 1476-1590 域内原样搬入）。
  *  挂载序约束：必须晚于 use-paper-regions 调用——补飞 effect 依赖 regions
  *  值（regions 引用变化 = 触发重判）。 */
+
+/** 飞行动画归一化进度（两族 fly 共用）。
+ *
+ *  ⚠ **不混钟 + 夹零**（2026-09-18 出处引导批实测立案）：旧实现以
+ *  `t0 = performance.now()` 起算、`now` 取 rAF 回调时间戳——两把钟不同源时
+ *  `now < t0` ⇒ `t` 为负 ⇒ `ease` 为负且越走越负，而 `t < 1` 恒真 ⇒
+ *  **rAF 循环永不终止、视口一带一路飞出内容之外**（jsdom 实测：now 4968 vs
+ *  t0 6268 ⇒ t = −5.4、单帧 panY 位移 −17 万 px，四帧内 panY 到 −16.7 万）。
+ *  真机 Chromium 两钟同源（都是 time origin 起算的 DOMHighResTimeStamp）故不
+ *  触发，但「循环靠两把钟恰好对齐才终止」不该是契约。现行两条：
+ *  ① 起点 = **首帧的 rAF 时间戳**（同一把钟，环境无关，动画当场起跑）；
+ *  ② 进度夹 [0,1]（单调不减 ⇒ 到 1 即 else 分支收尾，循环必然终止）。 */
+function progressOf(now: number, t0: number, duration: number): number {
+  return Math.min(1, Math.max(0, (now - t0) / duration));
+}
+
 export function usePaperFocus(params: {
   core: PaperCore | null;
   canvasSize: { w: number; h: number };
@@ -38,9 +54,10 @@ export function usePaperFocus(params: {
       const target = viewFocusRegion(start, canvasSize.w, canvasSize.h, { x, y: worldY });
       if (focusRafRef.current) cancelAnimationFrame(focusRafRef.current);
       const DURATION = 240;
-      const t0 = performance.now();
+      let t0: number | null = null; // 首帧 rAF 时间戳（同一把钟，见 progressOf）
       const tick = (now: number) => {
-        const t = Math.min(1, (now - t0) / DURATION);
+        if (t0 === null) t0 = now;
+        const t = progressOf(now, t0, DURATION);
         const ease = 1 - (1 - t) ** 3;
         useCanvasViewStore.getState().setView({
           zoom: start.zoom,
@@ -92,9 +109,10 @@ export function usePaperFocus(params: {
       };
       if (focusRafRef.current) cancelAnimationFrame(focusRafRef.current);
       const DURATION = 240;
-      const t0 = performance.now();
+      let t0: number | null = null; // 同 flyToPoint：起点取首帧 rAF 时间戳（不混钟）
       const tick = (now: number) => {
-        const t = Math.min(1, (now - t0) / DURATION);
+        if (t0 === null) t0 = now;
+        const t = progressOf(now, t0, DURATION);
         const ease = 1 - (1 - t) ** 3;
         useCanvasViewStore.getState().setView({
           zoom: start.zoom,

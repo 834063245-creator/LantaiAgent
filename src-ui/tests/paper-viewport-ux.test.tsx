@@ -1303,4 +1303,104 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     });
     expect(useCanvasViewStore.getState().view.panY).toBe(settled); // 停了
   }, 30_000);
+
+  /* ── ⑪ 出处引导（2026-09-18 出处引导批）──
+   * 病灶（用户报）：「块从会话里拖出钉在画布上之后，完全不知道这东西从哪来；会话流
+   * 中的占位不在视口里，根本起不到任何引导作用」。机理：钉块与源块之间只剩流内占位
+   * （.pp-ghost）一个**视口内**的记号，而流自锚点向上生长（最新块贴锚点、旧块一路
+   * 向上漂）——洞随新墨越漂越远，视口一离开线索归零。
+   * 两条腿：① 页边注出处行（常显，不依赖视口内任何目标）；② hover 引线（世界坐标
+   * 直线，**洞离屏时线照样出屏** = 方向即来路）+ 点行溯源（飞到洞 + 洞点名一拍）。 */
+
+  /** 拖块出流带松手 = 落钉（⑤⑥ 段同款手势序列），返回钉块 DOM 与钉 id。 */
+  async function pinFirstBlock(): Promise<{ el: HTMLElement; id: string }> {
+    const block = container?.querySelector<HTMLElement>('.pp-block') ?? null;
+    await act(async () => {
+      fire(block?.querySelector('.pp-kind') as Element, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 1100, clientY: 700 });
+    });
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 1100, clientY: 700 });
+    });
+    const el = container?.querySelector<HTMLElement>('.pp-block.pp-pinned') ?? null;
+    if (!el) throw new Error('落钉失败——钉块不在场');
+    return { el, id: el.getAttribute('data-block-id') ?? '' };
+  }
+
+  /** 源洞的世界几何（.pp-ghost 内联 left/top/width/height = 洞的落位真值）。 */
+  function ghostGeom(): { x: number; y: number; w: number; h: number } {
+    const g = container?.querySelector<HTMLElement>('.pp-ghost') ?? null;
+    if (!g) throw new Error('源洞不在场');
+    return {
+      x: Number.parseFloat(g.style.left),
+      y: Number.parseFloat(g.style.top),
+      w: Number.parseFloat(g.style.width),
+      h: Number.parseFloat(g.style.height),
+    };
+  }
+
+  it('出处行常显：钉住块的页边注写「摘自 卷名」，不依赖视口内任何目标', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const { el } = await pinFirstBlock();
+    const prov = el.querySelector<HTMLElement>('.pp-prov');
+    expect(prov?.textContent).toBe('摘自 卷一');
+    // 出处行在**页边注（文类签）内**——不新立浮件（层次法：签条族住纸内件档）
+    expect(el.querySelector('.pp-kind .pp-prov')).not.toBeNull();
+    // 源卷在世 = 可点（不可点态只发生在源卷已删）
+    expect(prov?.className).toContain('pp-prov--trace');
+    expect(prov?.title).toContain('回到出处');
+  }, 30_000);
+
+  it('引线：hover 钉块才画线（一屏一线），端点 = 钉缘/洞缘世界坐标；移出即撤', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const { el, id } = await pinFirstBlock();
+    const hole = ghostGeom();
+    const pin = getCanvasStore(panel.panelId).getState().pins[id];
+    expect(pin).toBeTruthy();
+    // 不 hover 不画线（防面条：钉多起来时全画线就是一团乱麻）
+    expect(container?.querySelector('.pp-tether')).toBeNull();
+    await act(async () => {
+      fire(el, 'mouseover', { relatedTarget: null });
+    });
+    const line = container?.querySelector('.pp-tether');
+    expect(line).not.toBeNull();
+    // 洞全在钉左（落钉位 260 起，洞 −240..240）→ 钉左缘 → 洞右缘
+    expect(Number(line?.getAttribute('x1'))).toBe(pin.x);
+    expect(Number(line?.getAttribute('x2'))).toBe(hole.x + hole.w);
+    expect(Number(line?.getAttribute('y1'))).toBe(pin.y + 12);
+    expect(Number(line?.getAttribute('y2'))).toBe(hole.y + hole.h / 2);
+    await act(async () => {
+      fire(el, 'mouseout', { relatedTarget: null });
+    });
+    expect(container?.querySelector('.pp-tether')).toBeNull();
+  }, 30_000);
+
+  it('溯源：点出处行 → 飞到源洞（洞落视口中心）+ 洞点名一拍', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const { el } = await pinFirstBlock();
+    const hole = ghostGeom();
+    const midY = hole.y + hole.h / 2;
+    // 起步不在洞上（否则飞行断言是空转）
+    expect(Math.abs(useCanvasViewStore.getState().view.panY - (400 - midY))).toBeGreaterThan(1);
+    expect(container?.querySelector('.pp-ghost--traced')).toBeNull();
+    await act(async () => {
+      fire(el.querySelector('.pp-prov') as Element, 'click');
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400)); // 飞行 240ms
+    });
+    const v = useCanvasViewStore.getState().view;
+    // ⚠ 本断言同时是**飞行动画时钟修复**的回归考官（use-paper-focus.progressOf）：
+    // 旧实现以 performance.now() 起算、拿 rAF 时间戳当 elapsed——两钟不同源时 t 为负、
+    // ease 越走越负、`t < 1` 恒真 ⇒ 循环永不终止、视口飞出去 16 万 px（实测 1204 → −167062）。
+    expect(v.panY).toBeCloseTo(400 - midY, 3); // viewFocusRegion：目标对到视口中心
+    expect(v.panX).toBeCloseTo(600, 3); // 流区中轴 0 → 视口宽 1200 的中心
+    // 洞点名一拍（1.6s 由壳层摘类；此处刚落点，仍在点名窗口内）
+    expect(container?.querySelector('.pp-ghost--traced')).not.toBeNull();
+  }, 30_000);
 });

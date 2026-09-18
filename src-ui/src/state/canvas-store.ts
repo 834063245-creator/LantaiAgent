@@ -49,8 +49,12 @@ export interface WorkspacePin {
   x: number;
   y: number;
   w: number;
-  /** 活引用源（源会话摊开时优先渲染活块）；无源 = 纯公共物快照 */
-  source?: { sessionId: number; blockId: string };
+  /** 活引用源（源会话摊开时优先渲染活块）；无源 = 纯公共物快照。
+   *  label（2026-09-18 出处引导批）：**建钉时刻冻结的卷名**——源卷未摊开时
+   *  渲染面拿不到活卷名（卷首/流区都不在场），出处行就没得可写。与 snapshot
+   *  同一条「公共物不连坐」的冻结语义：活卷摊开时读活卷名（权威），未摊开
+   *  回落本字段；旧 canvas-pins.json 无此字段 = 出处行回落到档号（案卷 N）。 */
+  source?: { sessionId: number; blockId: string; label?: string };
   snapshot: PinSnapshot;
 }
 

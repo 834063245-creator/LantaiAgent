@@ -173,15 +173,22 @@ export function usePaperDrag(params: {
         return;
       }
       if (!block) return;
+      /* 出处行（2026-09-18）：建钉时刻冻结卷名——源卷退场后出处行仍写得出
+       * 「摘自 卷名」（活卷摊开时渲染面改用活卷名，此字段是孤儿钉的兜底）。
+       * 读 regionsRef 现值：钉必定来自当场渲染过的流区（stub 卷不参与拖拽），
+       * 取不到 = 出处行回落档号，不编造。 */
+      const srcLabel = sessionId ? regionsRef.current.find((r) => r.sessionId === sessionId)?.label : undefined;
       canvas.setPin(blockId, {
         x: pos.x,
         y: pos.y,
         w: block.w,
-        source: sessionId ? { sessionId: Number(sessionId), blockId } : undefined,
+        source: sessionId
+          ? { sessionId: Number(sessionId), blockId, ...(srcLabel != null ? { label: srcLabel } : {}) }
+          : undefined,
         snapshot: snapshotFromBlock(block),
       });
     },
-    [core],
+    [core, regionsRef],
   );
 
   /* 边缘滚动子系统（开关/灵敏度/曲线/帧循环全在 edge-scroll.ts）：手势期起循环，

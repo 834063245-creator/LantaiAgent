@@ -849,6 +849,35 @@
   cursor: grabbing;
 }
 
+/* 出处行（2026-09-18 出处引导批）：钉住块的来路——页边注第三行，**常显**。
+ * 病灶：钉块与源块之间只剩流内占位一个**视口内**的记号——流自锚点向上生长，
+ * 洞随新墨越漂越远，视口一离开线索归零（用户报「不知道这东西从哪来的」）。
+ * 出处是页边注的本职（这条注疏对着哪段正文），故不新立浮件、不占版心；常显
+ * 即不依赖任何视口内目标。超长卷名向左出栏（nowrap + 栏右对齐 = 向左溢），
+ * 一行读完，不压正文——卷名截断在纯层（provenanceText）。 */
+.pp-prov {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  white-space: nowrap;
+  cursor: default;
+  transition: color var(--snap);
+}
+/* 可点（源卷在世）= 指针 + hover 朱砂深——与文类签 hover 同族（页边注一族的
+ * 朱砂信号只活在 hover 瞬时态，不占「每屏至多一处红」的常驻名额）。 */
+.pp-prov--trace {
+  cursor: pointer;
+}
+.pp-prov--trace:hover {
+  color: var(--seal-deep);
+}
+
 /* 状态签（tool 行内） */
 .pp-status {
   font-family: var(--f-mono);
@@ -2027,6 +2056,45 @@
 .pp-ghost:hover {
   border-color: var(--seal);
   color: var(--seal-deep);
+}
+/* 洞点名（出处引导 2026-09-18）：溯源飞行落点——洞位点一拍即散（1.6s 由壳层
+ * 摘类）。只动颜色/不透明度：线级语言不变（不新增框），虚线语义保留。 */
+.pp-ghost--traced {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+  animation: pp-trace-pulse 0.7s ease-in-out 2;
+}
+@keyframes pp-trace-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ── 引线层（2026-09-18 出处引导）：hover/溯源中的钉 → 其源洞 ──
+ * 世界坐标一条发丝直线——**洞离屏时线照样出屏，方向即来路**（这正是「占位不在
+ * 视口里就起不到引导作用」的答案）。一屏一线（防面条：钉多起来时全画就是一团
+ * 乱麻），hover 期瞬时存在。朱砂 = 人（钉住是用户的动作），瞬时态不占常驻名额。
+ * non-scaling-stroke：发丝恒 1 **屏**像素——世界 1px 在 zoom .3 下 = .3px，
+ * 等于没画（引线是导航信号，缩远了更要看得见）。 */
+.pp-tether-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* svg 默认 hidden——世界坐标线要出 1×1 盒（线可以横跨十万世界 px） */
+  overflow: visible;
+  pointer-events: none;
+  /* 流区(z1) 之上（DOM 后置胜平局）、块(z2) 之下：引线不穿字 */
+  z-index: 1;
+}
+.pp-tether {
+  stroke: var(--seal);
+  stroke-width: 1;
+  fill: none;
+  vector-effect: non-scaling-stroke;
 }
 
 /* 冷启动本地提示（无会话发送防护——UI 层直示，不入消息 store）；贴黄同族 */

@@ -35,6 +35,14 @@
 // 行为考官 = tests/perf-paper-pan.test.tsx（挂真实组件穿全层）。
 
 import { type CSSProperties, Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ProvenanceState,
+  provenanceText,
+  provenanceTitle,
+  provenanceTraceable,
+  sourceBlockIdOf,
+  tetherLine,
+} from '../../../paper/provenance';
 import { volumeDisplayName } from '../../../state/volume-name';
 import { FolioCompositionChip } from './FolioCompositionChip';
 import { formatCNDate } from './folio-date';
@@ -45,6 +53,7 @@ import {
   blockFromSnapshot,
   ConfirmDialog,
   foldLabel,
+  getCanvasStore,
   Icon,
   isFoldable,
   leaveToHome,
@@ -175,6 +184,10 @@ const BlockView = memo(function BlockView({
   onUnpin,
   onDragHandleMouseDown,
   unpinLabel = '收回',
+  prov,
+  provTitle,
+  provTraceable = false,
+  onProvClick,
 }: {
   block: SourcedBlock;
   /** 文类签机读序号（卷内流水号，三位补零） */
@@ -200,6 +213,17 @@ const BlockView = memo(function BlockView({
   onDragHandleMouseDown: (e: React.MouseEvent, block: SourcedBlock) => void;
   /** 孤儿钉按钮文案（2026-08-28 会话管理专项）：源卷已删 = 「删除」，否则「收回」 */
   unpinLabel?: string;
+  /** 出处行文本（**仅钉住块**，paper/provenance.provenanceText 产出）——页边注
+   *  第三行：常显的「从哪来」，不依赖任何视口内目标（引线是 hover 期的空间面）。 */
+  prov?: string;
+  /** 出处行 hover 说明（provenanceTitle 产出）。 */
+  provTitle?: string;
+  /** 出处行可点（未删卷）；false = 只读注记（已删卷不发起必落空的定位）。 */
+  provTraceable?: boolean;
+  /** 出处行点击（A 溯源手势）：参数 = 本块 id（钉 id 与块 id 同空间）。
+   *  **传稳定回调 + 由本组件回传 id**——调用点若传内联箭头会击穿 memo
+   *  （平移/流式帧全块重渲，§1.9 性能纪律）。 */
+  onProvClick?: (id: string) => void;
 }) {
   const p = block.payload;
   const Body = block.asset
@@ -233,6 +257,25 @@ const BlockView = memo(function BlockView({
             status={(p as { status: string }).status}
             startedAt={(p as { startedAt?: number }).startedAt}
           />
+        )}
+        {/* 出处行（2026-09-18 出处引导批）：页边注第三行——「摘自 卷名」常显，
+            点行溯源。mousedown 停传：页边注是拖拽把手（整块拖出），而出处行是
+            行内的点击件——不停传则「点一下」变成「起拖」（松手无位移才回到
+            点击，手感与语义都不对）。 */}
+        {prov !== undefined && (
+          <button
+            type="button"
+            className={`pp-prov${provTraceable ? ' pp-prov--trace' : ''}`}
+            title={provTitle}
+            aria-disabled={!provTraceable}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (provTraceable) onProvClick?.(block.id);
+            }}
+          >
+            {prov}
+          </button>
         )}
       </div>
       {foldable && (
@@ -443,6 +486,17 @@ export function PaperPanel() {
   /* 落定 settle 标记（手感批）：commit 后一帧挂 pp-settle 播放「按下/放下」 */
   const [settleId, setSettleId] = useState<string | null>(null);
 
+  /* ── 出处引导（2026-09-18）──
+   * 病灶：钉块与源块之间只剩流内占位一个**视口内**的记号——流自锚点向上生长，
+   * 洞随新墨越漂越远，视口一离开线索归零（用户报「不知道这东西从哪来的」）。
+   * tetherPinId = hover 中的钉：世界层引线（钉缘 → 洞缘）只为它亮起（一屏一线，
+   *   防面条；洞离屏时线照样出屏 = 方向即来路）；
+   * tracedPinId = 刚溯源过的钉：飞到洞后洞点名一拍（1.6s 自散），且飞行途中引线
+   *   继续在场（镜头一动指针就离开钉，hover 态守不住）。
+   * 常显那条腿在页边注（.pp-prov 出处行）——不依赖任何视口内目标。 */
+  const [tetherPinId, setTetherPinId] = useState<string | null>(null);
+  const [tracedPinId, setTracedPinId] = useState<string | null>(null);
+
   /* ── 流式生命感（2026-08-30）──
    * seenBlocks：已渲染过的块 id 集——pp-enter 入场类只发首见（无 StrictMode，
    * 渲染期标记安全），虚拟化平移重挂不重放动画。
@@ -500,6 +554,55 @@ export function PaperPanel() {
     focusRafRef,
     focusFlightRef,
   });
+
+  /* 溯源（出处行点击）：飞到源洞；源卷摊开而源块不在流内 → 飞到该卷；源卷未
+   * 摊开 → expand（**自带定位**，先例 = 案头签条架「续写」；已删卷不给点，
+   * 见 provenanceTraceable——不发起必然落空的请求）。 */
+  const onProvTrace = useCallback(
+    (blockId: string) => {
+      if (!core) return;
+      const pin = getCanvasStore(core.panelId).getState().getPin(blockId);
+      const source = pin?.source;
+      if (!source) return;
+      const sid = String(source.sessionId);
+      const region = regionsRef.current.find((r) => r.sessionId === sid);
+      const hole = region?.flowGeom.find((g) => g.id === sourceBlockIdOf(source.blockId));
+      if (region && hole) {
+        setTracedPinId(blockId);
+        flyToPoint(sid, hole.y + hole.h / 2, region.anchor.anchorX);
+        return;
+      }
+      if (region) {
+        flyToRegion(sid);
+        return;
+      }
+      activeSpace()?.expand(sid);
+    },
+    [core, flyToPoint, flyToRegion],
+  );
+
+  /* 洞点名自散：溯源后洞位闪一拍即收（常显会变成一个持续的信号源）。 */
+  useEffect(() => {
+    if (tracedPinId === null) return;
+    const t = window.setTimeout(() => setTracedPinId(null), 1600);
+    return () => window.clearTimeout(t);
+  }, [tracedPinId]);
+
+  /* 引线几何（世界坐标）：hover 中的钉（或刚溯源过的钉）→ 其源洞。
+   * 拖动中读跟手位（线随块走——拖回洞位的手感依据）；源卷未摊开/源块不在流内
+   * = 无洞可指，引线不画（出处行仍在，那是常显那条腿）。 */
+  const tether = useMemo(() => {
+    const id = tetherPinId ?? tracedPinId;
+    if (id === null) return null;
+    const pin = canvasState.pins[id];
+    const source = pin?.source;
+    if (!pin || !source) return null;
+    const region = regions.find((r) => r.sessionId === String(source.sessionId));
+    const hole = region?.flowGeom.find((g) => g.id === sourceBlockIdOf(source.blockId));
+    if (!hole) return null;
+    const at = draggingId === id && dragPos ? dragPos : { x: pin.x, y: pin.y };
+    return { id, ...tetherLine({ x: at.x, y: at.y, w: pin.w }, hole) };
+  }, [tetherPinId, tracedPinId, canvasState.pins, regions, draggingId, dragPos]);
 
   /* 手动接管视口（拖块用）：取消在途定位飞行 + 清挂起定位——与滚轮/拖画布/
    *  缩放同纪律（use-paper-viewport 内联同款三行）。拖块时指针贴缘自动滚屏，
@@ -824,6 +927,15 @@ export function PaperPanel() {
                 );
               })}
 
+              {/* 引线层（2026-09-18 出处引导）：hover/溯源中的钉 → 其源洞，世界
+                  坐标一条发丝直线——**洞离屏时线照样出屏**，方向即来路（这正是
+                  「占位不在视口里就起不到引导作用」的答案）。
+                  z 序：流区(z1) 之上（DOM 后置胜平局）、块(z2) 之下——引线不穿字。
+                  overflow: visible 必留（svg 默认裁切，1×1 盒装不下世界坐标线）。 */}
+              <svg className="pp-tether-layer" width="1" height="1" aria-hidden="true">
+                {tether && <line className="pp-tether" x1={tether.x1} y1={tether.y1} x2={tether.x2} y2={tether.y2} />}
+              </svg>
+
               {/* 纸条（V3a：拷贝语义快照，可拖动、可销毁；工作区级公共物 Stage-5）。
                   LOD 不退场（2026-09-07 用户拍板：LOD 不再隐藏钉在画布上的卡片
                   ——纸条同属钉在纸面的公共物，远缩仍是真纸片，InkLayer 不接管）。 */}
@@ -870,6 +982,20 @@ export function PaperPanel() {
                 const snapshotBlock = blockFromSnapshot(pinId, pin);
                 const isDragged = draggingId === pinId;
                 const pos = isDragged && dragPos ? dragPos : { x: pin.x, y: pin.y };
+                /* 出处行状态（2026-09-18）：孤儿钉 = 源未在场——已删 / 卷摊开而
+                 * 源块不在流内（撤回、压缩）/ 卷未摊开。卷名活卷优先（权威）、
+                 * 冻结卷名兜底（pin.source.label，旧存档无此字段 → 档号兜底）。 */
+                const source = pin.source;
+                const liveSession = source
+                  ? sessions.find((s) => String(s.id) === String(source.sessionId))
+                  : undefined;
+                const provState: ProvenanceState = !source
+                  ? 'unspread'
+                  : deadOrphanPinIds.has(pinId)
+                    ? 'deleted'
+                    : liveSession
+                      ? 'absent'
+                      : 'unspread';
                 return (
                   // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
                   <div
@@ -886,6 +1012,8 @@ export function PaperPanel() {
                     }}
                     data-block-id={pinId}
                     onDragStart={(e) => e.preventDefault()}
+                    onMouseEnter={() => setTetherPinId(pinId)}
+                    onMouseLeave={() => setTetherPinId((cur) => (cur === pinId ? null : cur))}
                   >
                     <BlockView
                       block={snapshotBlock}
@@ -899,6 +1027,17 @@ export function PaperPanel() {
                       onUnpin={onUnpin}
                       onDragHandleMouseDown={onBlockMouseDown}
                       unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
+                      prov={
+                        source
+                          ? provenanceText(
+                              volumeDisplayName(liveSession?.label ?? source.label, source.sessionId),
+                              provState,
+                            )
+                          : undefined
+                      }
+                      provTitle={provenanceTitle(provState)}
+                      provTraceable={source != null && provenanceTraceable(provState)}
+                      onProvClick={onProvTrace}
                     />
                     {/* P2b 宽度手调面（右缘拖拽） */}
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
@@ -986,7 +1125,7 @@ export function PaperPanel() {
                       {!lod && (
                         <button
                           type="button"
-                          className="pp-ghost"
+                          className={`pp-ghost${tracedPinId === b.id ? ' pp-ghost--traced' : ''}`}
                           style={{ left: slot.x, top: slot.y, width: b.w, height: GHOST_H }}
                           onClick={() => onGhostClick(b.id)}
                         >
@@ -1009,6 +1148,8 @@ export function PaperPanel() {
                         }
                         ref={blockRootRef}
                         onDragStart={(e) => e.preventDefault()}
+                        onMouseEnter={() => setTetherPinId(b.id)}
+                        onMouseLeave={() => setTetherPinId((cur) => (cur === b.id ? null : cur))}
                       >
                         <BlockView
                           block={b}
@@ -1023,6 +1164,10 @@ export function PaperPanel() {
                           onSidecarRestore={onSidecarRestore}
                           onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
+                          prov={provenanceText(volumeDisplayName(r.label, r.sessionNum), 'live')}
+                          provTitle={provenanceTitle('live')}
+                          provTraceable
+                          onProvClick={onProvTrace}
                         />
                         {/* P2b 宽度手调面（右缘拖拽） */}
                         {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
