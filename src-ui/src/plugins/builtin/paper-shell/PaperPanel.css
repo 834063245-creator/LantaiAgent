@@ -2075,26 +2075,48 @@
 }
 
 /* ── 引线层（2026-09-18 出处引导）：hover/溯源中的钉 → 其源洞 ──
- * 世界坐标一条发丝直线——**洞离屏时线照样出屏，方向即来路**（这正是「占位不在
- * 视口里就起不到引导作用」的答案）。一屏一线（防面条：钉多起来时全画就是一团
- * 乱麻），hover 期瞬时存在。朱砂 = 人（钉住是用户的动作），瞬时态不占常驻名额。
- * non-scaling-stroke：发丝恒 1 **屏**像素——世界 1px 在 zoom .3 下 = .3px，
- * 等于没画（引线是导航信号，缩远了更要看得见）。 */
+ * 世界坐标一条发丝——**洞离屏时线照样出屏，方向即来路**（这正是「占位不在视口里
+ * 就起不到引导作用」的答案）。一屏一线（防面条：钉多起来时全画就是一团乱麻），
+ * hover 期瞬时存在。
+ *
+ * **2026-09-18 重做**（用户判「一根直线直连虽然没啥问题，就是感觉有点劣质」）：
+ * 笔墨语法整支改抄**划词朱线**（.pp-sel-ink / paper/sel-ink.ts）——同一支笔的两种
+ * 落墨：逐点正弦微伏 + 定种子相位 + 手绘平滑 + **恒定墨宽**（该判例的明文字律：
+ * **手感来自微伏不来自粗细变化**）。劣质感不在粗细，在「贴死两个盒子 + 一笔到底
+ * 的直线」；故另补四点（几何见 paper/provenance.ts 头注）：① 层改**屏幕坐标**
+ * （墨宽不随缩放变——世界 1px 在 zoom .3 下 = .3px，等于没画）；② 微伏走弦的法向；
+ * ③ 叠一层垂（只吃横向跨度，纯纵向的丝不垂）；④ 起笔留白 6px + 收笔朱点。
+ * 朱砂 = 人（钉住是用户的动作），瞬时态不占「每屏至多一处红」的常驻名额；
+ * 双笔 echo 不抄——划词是短线语汇，长引线上会读成双线/毛边。 */
 .pp-tether-layer {
   position: absolute;
-  left: 0;
-  top: 0;
-  /* svg 默认 hidden——世界坐标线要出 1×1 盒（线可以横跨十万世界 px） */
+  inset: 0;
+  width: 100%;
+  height: 100%;
   overflow: visible;
   pointer-events: none;
-  /* 流区(z1) 之上（DOM 后置胜平局）、块(z2) 之下：引线不穿字 */
-  z-index: 1;
+  /* 纸与块之上、坞（5）与一切浮件之下——引线不盖家具 */
+  z-index: 4;
 }
 .pp-tether {
-  stroke: var(--seal);
-  stroke-width: 1;
   fill: none;
-  vector-effect: non-scaling-stroke;
+  stroke: var(--seal);
+  /* 比划词朱线（1.7）细半档：引线是「丝」不是「着重」 */
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  opacity: 0.8;
+  /* 出现 = 一笔落下（--snap 档；只动不透明度——世界坐标层禁 transform 的先例） */
+  animation: pp-tether-in var(--snap) ease-out both;
+}
+.pp-tether-bead {
+  fill: var(--seal);
+  opacity: 0.8;
+  animation: pp-tether-in var(--snap) ease-out both;
+}
+@keyframes pp-tether-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* 冷启动本地提示（无会话发送防护——UI 层直示，不入消息 store）；贴黄同族 */

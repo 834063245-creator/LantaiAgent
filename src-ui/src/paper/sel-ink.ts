@@ -121,8 +121,10 @@ export function selInkPaths(lines: SelInkLine[], seed: number): SelInkArt {
   return { mains, echoes };
 }
 
-/** 折线 → 平滑 path（相邻点中点为二次贝塞尔端点，控制点取原点——经典手绘平滑） */
-function smoothPath(pts: Array<[number, number]>): string {
+/** 折线 → 平滑 path（相邻点中点为二次贝塞尔端点，控制点取原点——经典手绘平滑）。
+ *  2026-09-18 出处引导批起**对外共用**：引线笔道（provenance.tetherPath）与划词
+ *  朱线同一手绘平滑——同一支笔的两种落墨，不各写一份。 */
+export function smoothPath(pts: Array<[number, number]>): string {
   if (pts.length === 0) return '';
   const r1 = (v: number): number => Math.round(v * 10) / 10;
   let d = `M ${r1(pts[0][0])} ${r1(pts[0][1])}`;

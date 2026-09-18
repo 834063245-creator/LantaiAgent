@@ -90,7 +90,8 @@ import { useShellStore } from '../src/app/shell-store';
 import { rendererServicePlugin } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
-import { wheelFactor } from '../src/paper/canvas-math';
+import { wheelFactor, worldToScreen } from '../src/paper/canvas-math';
+import { tetherAnchors } from '../src/paper/provenance';
 import { makeStrip } from '../src/paper/selection';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { blockReturnsToFlow } from '../src/plugins/builtin/paper-shell/use-paper-drag';
@@ -1354,25 +1355,32 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     expect(prov?.title).toContain('回到出处');
   }, 30_000);
 
-  it('引线：hover 钉块才画线（一屏一线），端点 = 钉缘/洞缘世界坐标；移出即撤', async () => {
+  it('引线：hover 钉块才落笔（一屏一线），笔道与朱点投在正确的屏上位置；移出即撤', async () => {
     const canvas = await mountCanvas();
     stubCanvasRect(canvas);
     const { el, id } = await pinFirstBlock();
     const hole = ghostGeom();
     const pin = getCanvasStore(panel.panelId).getState().pins[id];
     expect(pin).toBeTruthy();
-    // 不 hover 不画线（防面条：钉多起来时全画线就是一团乱麻）
+    // 不 hover 不落笔（防面条：钉多起来时全画线就是一团乱麻）
     expect(container?.querySelector('.pp-tether')).toBeNull();
     await act(async () => {
       fire(el, 'mouseover', { relatedTarget: null });
     });
-    const line = container?.querySelector('.pp-tether');
-    expect(line).not.toBeNull();
-    // 洞全在钉左（落钉位 260 起，洞 −240..240）→ 钉左缘 → 洞右缘
-    expect(Number(line?.getAttribute('x1'))).toBe(pin.x);
-    expect(Number(line?.getAttribute('x2'))).toBe(hole.x + hole.w);
-    expect(Number(line?.getAttribute('y1'))).toBe(pin.y + 12);
-    expect(Number(line?.getAttribute('y2'))).toBe(hole.y + hole.h / 2);
+    const v = useCanvasViewStore.getState().view; // pan(600,600) / zoom 1
+    const path = container?.querySelector('.pp-tether');
+    expect(path).not.toBeNull();
+    // 笔道是手绘 path（不是 <line>）：起笔落在**钉锚点投影**附近（留白 6px + 取整到 0.1）
+    const m = /^M (-?[\d.]+) (-?[\d.]+)/.exec(path?.getAttribute('d') ?? '');
+    expect(m).not.toBeNull();
+    const fromWorld = tetherAnchors({ x: pin.x, y: pin.y, w: pin.w }, hole).from;
+    expect(Number(m?.[1])).toBeCloseTo(worldToScreen(v, fromWorld.x, fromWorld.y).x, 0);
+    expect(Number(m?.[2])).toBeCloseTo(worldToScreen(v, fromWorld.x, fromWorld.y).y, 0);
+    // 收笔朱点 = 洞缘落点的投影（洞全在钉左 → 洞右缘中线）
+    const bead = container?.querySelector('.pp-tether-bead');
+    expect(bead).not.toBeNull();
+    expect(Number(bead?.getAttribute('cx'))).toBeCloseTo(worldToScreen(v, hole.x + hole.w, hole.y + hole.h / 2).x, 6);
+    expect(Number(bead?.getAttribute('cy'))).toBeCloseTo(worldToScreen(v, hole.x + hole.w, hole.y + hole.h / 2).y, 6);
     await act(async () => {
       fire(el, 'mouseout', { relatedTarget: null });
     });

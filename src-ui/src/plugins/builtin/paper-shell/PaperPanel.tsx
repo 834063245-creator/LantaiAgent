@@ -41,7 +41,8 @@ import {
   provenanceTitle,
   provenanceTraceable,
   sourceBlockIdOf,
-  tetherLine,
+  tetherAnchors,
+  tetherPath,
 } from '../../../paper/provenance';
 import { volumeDisplayName } from '../../../state/volume-name';
 import { FolioCompositionChip } from './FolioCompositionChip';
@@ -65,6 +66,7 @@ import {
   PluginBoundary,
   resolveAssetBlock,
   resolveRenderer,
+  selSeedOf,
   sheetCharacter,
   subscribeOverlayContributions,
   useCanvasViewStore,
@@ -73,6 +75,7 @@ import {
   useShellStore,
   useUpdateStore,
   WinControls,
+  worldToScreen,
 } from './host';
 import { InkLayer } from './InkLayer';
 import { StatusLine } from './StatusLine';
@@ -588,9 +591,12 @@ export function PaperPanel() {
     return () => window.clearTimeout(t);
   }, [tracedPinId]);
 
-  /* 引线几何（世界坐标）：hover 中的钉（或刚溯源过的钉）→ 其源洞。
+  /* 引线几何：hover 中的钉（或刚溯源过的钉）→ 其源洞。
    * 拖动中读跟手位（线随块走——拖回洞位的手感依据）；源卷未摊开/源块不在流内
-   * = 无洞可指，引线不画（出处行仍在，那是常显那条腿）。 */
+   * = 无洞可指，引线不画（出处行仍在，那是常显那条腿）。
+   * 层 = **屏幕坐标**（同 .pp-sel-ink）：锚点在世界里定，投到屏上落墨——墨宽不随
+   * 缩放变（世界 1px 在 zoom .3 下 = .3px，等于没画）。种子取钉 id：**同钉恒同线**，
+   * 平移/重渲染不闪（划词朱线的 selSeedOf 同款纪律）。 */
   const tether = useMemo(() => {
     const id = tetherPinId ?? tracedPinId;
     if (id === null) return null;
@@ -601,8 +607,13 @@ export function PaperPanel() {
     const hole = region?.flowGeom.find((g) => g.id === sourceBlockIdOf(source.blockId));
     if (!hole) return null;
     const at = draggingId === id && dragPos ? dragPos : { x: pin.x, y: pin.y };
-    return { id, ...tetherLine({ x: at.x, y: at.y, w: pin.w }, hole) };
-  }, [tetherPinId, tracedPinId, canvasState.pins, regions, draggingId, dragPos]);
+    const world = tetherAnchors({ x: at.x, y: at.y, w: pin.w }, hole);
+    return tetherPath(
+      worldToScreen(view, world.from.x, world.from.y),
+      worldToScreen(view, world.to.x, world.to.y),
+      selSeedOf(id),
+    );
+  }, [tetherPinId, tracedPinId, canvasState.pins, regions, draggingId, dragPos, view]);
 
   /* 手动接管视口（拖块用）：取消在途定位飞行 + 清挂起定位——与滚轮/拖画布/
    *  缩放同纪律（use-paper-viewport 内联同款三行）。拖块时指针贴缘自动滚屏，
@@ -927,15 +938,6 @@ export function PaperPanel() {
                 );
               })}
 
-              {/* 引线层（2026-09-18 出处引导）：hover/溯源中的钉 → 其源洞，世界
-                  坐标一条发丝直线——**洞离屏时线照样出屏**，方向即来路（这正是
-                  「占位不在视口里就起不到引导作用」的答案）。
-                  z 序：流区(z1) 之上（DOM 后置胜平局）、块(z2) 之下——引线不穿字。
-                  overflow: visible 必留（svg 默认裁切，1×1 盒装不下世界坐标线）。 */}
-              <svg className="pp-tether-layer" width="1" height="1" aria-hidden="true">
-                {tether && <line className="pp-tether" x1={tether.x1} y1={tether.y1} x2={tether.x2} y2={tether.y2} />}
-              </svg>
-
               {/* 纸条（V3a：拷贝语义快照，可拖动、可销毁；工作区级公共物 Stage-5）。
                   LOD 不退场（2026-09-07 用户拍板：LOD 不再隐藏钉在画布上的卡片
                   ——纸条同属钉在纸面的公共物，远缩仍是真纸片，InkLayer 不接管）。 */}
@@ -1184,6 +1186,20 @@ export function PaperPanel() {
                 拍板：LOD 不再隐藏钉在画布上的卡片），本层不画它们（不叠墨）。 */}
             {lod && <InkLayer regionsRef={regionsRef} foldedOf={foldedOf} inkCache={inkCache.current} />}
           </div>
+
+          {/* 引线层（2026-09-18 出处引导，同批按用户判「直线直连有点劣质」重做）：
+              hover/溯源中的钉 → 其源洞的一丝朱笔——**洞离屏时线照样出屏**，方向即
+              来路（这正是「占位不在视口里就起不到引导作用」的答案）。
+              层位 = **屏幕坐标**（同 .pp-sel-ink 那一族）：画布内绝对层，锚点在世界
+              里定、投到屏上落墨 ⇒ 墨宽不随缩放变（世界 1px 在 zoom .3 下 = .3px，
+              等于没画）。z 4：纸与块之上、坞（5）与一切浮件之下——引线不盖家具。 */}
+          {tether && (
+            <svg className="pp-tether-layer" aria-hidden="true">
+              <path className="pp-tether" d={tether.d} />
+              {/* 落点朱点（句读点朱遗意）：线是引，点是落 */}
+              <circle className="pp-tether-bead" cx={tether.bead.x} cy={tether.bead.y} r={2.2} />
+            </svg>
+          )}
 
           {/* ── 顶部浮件（2026-09-17 标题栏拆除批）──
               旧书眉（.pp-topbar）是 56px **布局行**，把画布顶缘从窗口顶推开 ⇒

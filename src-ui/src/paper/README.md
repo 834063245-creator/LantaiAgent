@@ -17,7 +17,7 @@
 | `virtualize.ts` | **V3a** 视口虚拟化：视口→世界矩形、flow 窗口二分（O(log n)）、pinned 矩形相交——数据全量、渲染窗口化；**Stage-2** 加跨流区窗口 `visibleRegionWindows`（一纸多卷） |
 | `space.ts` | **Stage-2** 画布空间纯函数 + 常量：流区宽 1440 / 间距 720 / 吸附网格 2160 / 边缘宽 6px / 线性排比默认落位 / X 吸附 |
 | `selection.ts` | **V3a** 抽纸条（待定 #10）：`PaperStrip` 用户层物件——拷贝语义快照 + 世界坐标 + source 溯源元信息（收尾 2026-08-24 接入持久化；**Stage-5 起随工作区画布状态文件**落盘，不随会话快照） |
-| `provenance.ts` | **2026-09-18** 出处引导：钉住块的**来路**派生面——出处行文本（`摘自 卷名 · 状态字`，四态 + 纯层截断）+ hover 引线端点几何（钉缘接洞缘，净空优先选边）+ 眉批钉 `:sc` 源块剥离。零依赖（同 `selection.ts` 纪律：不 import canvas-math / state），字号墨阶等**渲染决定不入本层**；守护 `tests/paper-provenance.test.ts` |
+| `provenance.ts` | **2026-09-18** 出处引导：钉住块的**来路**派生面——出处行文本（`摘自 卷名 · 状态字`，四态 + 纯层截断）+ 引线（`tetherAnchors` 世界锚点选边/起笔留白 + `tetherPath` 屏幕坐标笔道：**划词朱线同族**——微伏/定种子/手绘平滑/恒定墨宽 + 重力垂 + 收笔朱点）+ 眉批钉 `:sc` 源块剥离。零依赖（同 `selection.ts` 纪律；唯一进口 = `sel-ink.smoothPath`，同一支笔共用），字号墨阶/层序等**渲染决定不入本层**；守护 `tests/paper-provenance.test.ts` |
 | `ime.ts` | **V3a** IME 安全谓词：输入条提交守卫（合成中 Enter 不发送）；2026-08-29 R5 D4 收档：编辑宿主 = composer（世界层外），块内编辑候选窗错位风险结构性不成立 |
 | `paper-plugin.ts` | **V3b** 壳装配：纸面板经 PanelsService 贡献挂载（第一方插件行——面板贡献走组合层通道，不自建旁路）；块体渲染器消费第五通道（`composition/renderer-service.tsx` 的 `resolveRenderer`） |
 

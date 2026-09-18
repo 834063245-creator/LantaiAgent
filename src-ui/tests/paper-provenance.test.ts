@@ -25,8 +25,13 @@ import {
   provenanceTitle,
   provenanceTraceable,
   sourceBlockIdOf,
+  TETHER_GAP,
   TETHER_PIN_DY,
-  tetherLine,
+  TETHER_SAG_MAX,
+  TETHER_WOBBLE,
+  tetherAnchors,
+  tetherPath,
+  tetherPoints,
 } from '../src/paper/provenance';
 
 const SRC = join(__dirname, '..', 'src');
@@ -34,6 +39,8 @@ const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'P
 const PANEL_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');
 const DRAG_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'use-paper-drag.ts'), 'utf8');
 const CANVAS_STORE_TS = readFileSync(join(SRC, 'state', 'canvas-store.ts'), 'utf8');
+const PROVENANCE_TS = readFileSync(join(SRC, 'paper', 'provenance.ts'), 'utf8');
+const SEL_INK_TS = readFileSync(join(SRC, 'paper', 'sel-ink.ts'), 'utf8');
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——纸壳 CSS 规则无嵌套，同
  *  paper-visual-decisions 的既有范式）。 */
@@ -75,30 +82,73 @@ describe('出处行（常显那条腿）', () => {
   });
 });
 
-describe('引线端点（hover 那条腿）', () => {
+describe('引线（划词朱线同族的手绘墨迹，2026-09-18 重做）', () => {
   const pin = { x: 260, y: 100, w: 480 };
+  const hole = { x: -240, y: -600, w: 480, h: 32 };
 
-  it('洞全在钉左（有净空）：钉左缘 → 洞右缘——最近对最近，不横穿钉身', () => {
-    const line = tetherLine(pin, { x: -240, y: -600, w: 480, h: 32 });
-    expect(line).toEqual({ x1: 260, y1: 100 + TETHER_PIN_DY, x2: 240, y2: -600 + 16 });
+  it('锚点选边（世界坐标）：净空优先（左/右）；横向相叠取左缘（不横穿钉身）', () => {
+    // 洞全在钉左：钉左缘 → 洞右缘；落点 = 洞中线
+    expect(tetherAnchors(pin, hole).to).toEqual({ x: 240, y: -584 });
+    // 洞全在钉右：钉右缘 → 洞左缘
+    expect(tetherAnchors(pin, { x: 900, y: -600, w: 480, h: 32 }).to).toEqual({ x: 900, y: -584 });
+    // 横向相叠（钉压着洞的一截）：两侧都取左缘
+    expect(tetherAnchors({ x: 200, y: 100, w: 480 }, hole).to).toEqual({ x: -240, y: -584 });
   });
 
-  it('洞全在钉右：钉右缘 → 洞左缘', () => {
-    const line = tetherLine(pin, { x: 900, y: -600, w: 480, h: 32 });
-    expect(line).toEqual({ x1: 740, y1: 100 + TETHER_PIN_DY, x2: 900, y2: -584 });
+  it('起笔留白：线不贴死钉缘——沿弦内缩 TETHER_GAP（收笔端不缩，朱点压在洞缘上）', () => {
+    const a = tetherAnchors(pin, hole);
+    const y0 = pin.y + TETHER_PIN_DY;
+    expect(Math.hypot(a.from.x - pin.x, a.from.y - y0)).toBeCloseTo(TETHER_GAP, 6);
+    expect(a.from.y).toBeLessThan(y0); // 缩向洞（向上）
   });
 
-  it('横向相叠（钉压着洞的一截）：两侧都取左缘——线往左出去，不横穿钉身', () => {
-    // 钉左缘 260 落在洞内（洞 -240..240）右侧的相邻区：相叠
-    const line = tetherLine({ x: 200, y: 100, w: 480 }, { x: -240, y: -600, w: 480, h: 32 });
-    expect(line).toEqual({ x1: 200, y1: 100 + TETHER_PIN_DY, x2: -240, y2: -584 });
+  it('笔道：两端微伏收零（起笔/收笔干净），点数随长度、上下有界', () => {
+    const from = { x: 100, y: 500 };
+    const to = { x: 100, y: -300 };
+    const pts = tetherPoints(from, to, 7);
+    expect(pts[0]).toEqual([from.x, from.y]); // 起笔 = 锚点（微伏包络为零）
+    expect(pts[pts.length - 1]).toEqual([to.x, to.y]); // 收笔 = 落点（微伏包络为零）
+    expect(pts.length).toBe(Math.max(6, Math.min(28, Math.round(800 / 46))) + 1);
+    // 纯纵向：**不垂**（两端同轴没有可垂的余量）——纵坐标逐点仍在弦上，
+    // 偏离只发生在横轴（微伏走弦的法向）
+    const step = (to.y - from.y) / (pts.length - 1);
+    for (let k = 0; k < pts.length; k++) {
+      expect(pts[k][1]).toBeCloseTo(from.y + step * k, 6);
+      expect(Math.abs(pts[k][0] - from.x)).toBeLessThanOrEqual(TETHER_WOBBLE);
+    }
+    // 中段抖得最开、两端归零
+    const midK = Math.floor(pts.length / 2);
+    expect(Math.abs(pts[midK][0] - from.x)).toBeGreaterThan(0.3);
+    expect(pts[0][0]).toBe(from.x);
+    expect(pts[pts.length - 1][0]).toBe(to.x);
   });
 
-  it('纵取钉挂点高（与文类签 hairline 同高地）/ 洞中线；洞在下方照样连（方向随几何）', () => {
-    const line = tetherLine(pin, { x: -240, y: 900, w: 480, h: 32 });
-    expect(line.y1).toBe(100 + TETHER_PIN_DY);
-    expect(line.y2).toBe(916);
-    expect(line.y2).toBeGreaterThan(line.y1);
+  it('垂（重力）：只吃横向跨度——横丝中段下垂 ≈ 上限，纵丝不垂', () => {
+    const flat = tetherPoints({ x: 0, y: 0 }, { x: 400, y: 0 }, 11);
+    const midFlat = flat[Math.floor(flat.length / 2)];
+    expect(midFlat[1]).toBeGreaterThan(10); // 垂下来（+y = 屏下）
+    expect(midFlat[1]).toBeLessThanOrEqual(TETHER_SAG_MAX + TETHER_WOBBLE);
+    // 陡丝（横向跨度小）垂度按比例收
+    const steep = tetherPoints({ x: 0, y: 0 }, { x: 60, y: -800 }, 11);
+    const midSteep = steep[Math.floor(steep.length / 2)];
+    const straightY = -400;
+    expect(midSteep[1] - straightY).toBeLessThan(midFlat[1] / 2);
+  });
+
+  it('定种子相位：同钉恒同线（重渲染/平移不闪），异钉异线', () => {
+    const from = { x: 0, y: 0 };
+    const to = { x: 300, y: -500 };
+    expect(tetherPoints(from, to, 42)).toEqual(tetherPoints(from, to, 42));
+    expect(tetherPoints(from, to, 42)).not.toEqual(tetherPoints(from, to, 43));
+    // 种子取钉 id（selSeedOf）——同钉同线是壳层接线，见「接线与样式钉值」
+    const art = tetherPath(from, to, 42);
+    expect(art.d.startsWith('M ')).toBe(true);
+    expect(art.d).toBe(tetherPath(from, to, 42).d);
+  });
+
+  it('收笔朱点（句读点朱）：点 = 落点，不抖（线是引，点是落）', () => {
+    const art = tetherPath({ x: 0, y: 0 }, { x: 300, y: -500 }, 42);
+    expect(art.bead).toEqual({ x: 300, y: -500 });
   });
 });
 
@@ -128,18 +178,29 @@ describe('接线与样式钉值（防回漂）', () => {
     expect(PANEL_TSX).toContain('aria-disabled={!provTraceable}');
   });
 
-  it('引线层：svg 出盒（世界坐标线可横跨十万 px）+ 不挡指针 + z 序在流区之上、块之下', () => {
+  it('引线层：划词朱线同族的墨迹（恒定墨宽 + 圆头 + 手绘平滑），屏幕坐标层', () => {
     const layer = ruleBody(PANEL_CSS, '.pp-tether-layer {');
     expect(layer).toContain('position: absolute');
-    expect(layer).toContain('overflow: visible');
     expect(layer).toContain('pointer-events: none');
-    expect(layer).toContain('z-index: 1');
+    // 屏幕坐标层（墨宽不随缩放变）+ z4：纸与块之上、坞（5）与浮件之下
+    expect(layer).toContain('inset: 0');
+    expect(layer).toContain('z-index: 4');
     const line = ruleBody(PANEL_CSS, '.pp-tether {');
-    expect(line).toContain('var(--seal)');
-    expect(line).toContain('non-scaling-stroke');
-    // 块 z2 之上无引线（线不穿字）——z 序两处对拍
-    expect(ruleBody(PANEL_CSS, '.pp-block {')).toContain('z-index: 2');
-    expect(PANEL_TSX).toContain('<svg className="pp-tether-layer"');
+    expect(line).toContain('fill: none'); // 描边不是填充——手感来自微伏不来自粗细变化
+    expect(line).toContain('stroke: var(--seal)');
+    expect(line).toContain('stroke-width: 1.4'); // 比划词朱线（1.7）细半档：丝不是着重
+    expect(line).toContain('stroke-linecap: round');
+    expect(line).not.toContain('non-scaling-stroke'); // 屏幕坐标层不需要它（曾是世界层）
+    // 收笔朱点 + 出现一笔落下（只动不透明度）
+    expect(ruleBody(PANEL_CSS, '.pp-tether-bead {')).toContain('var(--seal)');
+    expect(ruleBody(PANEL_CSS, '@keyframes pp-tether-in {')).toContain('opacity: 0');
+    // JSX：笔道 + 朱点；种子取钉 id（同钉恒同线）
+    expect(PANEL_TSX).toContain('<path className="pp-tether" d={tether.d} />');
+    expect(PANEL_TSX).toContain('className="pp-tether-bead"');
+    expect(PANEL_TSX).toContain('selSeedOf(id)');
+    // 手绘平滑与他人共用（同一支笔）——不各写一份
+    expect(SEL_INK_TS).toContain('export function smoothPath');
+    expect(PROVENANCE_TS).toContain("import { smoothPath } from './sel-ink'");
   });
 
   it('一屏一线（防面条）：引线只在 hover/溯源期存在，不是常显装饰', () => {
