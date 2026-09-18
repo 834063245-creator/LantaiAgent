@@ -17,7 +17,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 
 | 线 | 文档 | 状态 | 一句话 |
 |---|---|---|---|
-| **文档面重构** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0-P4 已落**（P3 补批 = 11 件竣工件归档，本页所在批） | 四层形态 + 批序 + 豁免账见施工单；门禁 `npm run doc-check`（六查），真源 `scripts/doc-facts.cjs` |
+| **文档面重构** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0-P4 已落**（P3 补批 = 11 件竣工件归档，本页所在批） | 四层形态 + 批序 + 豁免账见施工单；门禁 `npm run doc-check`（七查），真源 `scripts/doc-facts.cjs` |
 | **paper-shell（R5 打磨环）** | [`paper-shell/README.md`](paper-shell/README.md) | **收尾中** | 剩余工作逐项清单 = [`r5-polish-backlog.md`](paper-shell/r5-polish-backlog.md)（最常看）；视觉决定账本 [`taste-ledger.md`](paper-shell/taste-ledger.md)；管线史 [`HISTORY.md`](paper-shell/HISTORY.md)；走查 [`walkthrough.md`](paper-shell/walkthrough.md)；表面覆盖地图 [`v2-surface-inventory.md`](paper-shell/v2-surface-inventory.md)；访谈 [`interviews/R1-2026-08-20.md`](paper-shell/interviews/R1-2026-08-20.md) |
 | **画布空间模型** | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **Stage-6 进行中**（UI/UX 专项） | 一纸多卷 / 有界流区 / 宿主模型 / 三层导航；阶段件与返工清单见笔记「展开」段；provider+创作坞联合体检 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md) |
 | 会话归属反转 | [`workspace-session-ownership-rework.md`](workspace-session-ownership-rework.md) | P1-P4 代码全量落地；P5 实机验收在办 | 会话**物理归属工作区**（`{ws}/.lantai/sessions/` 唯一存储位，焦点/绑定/全局列表全退役）；旧 session-unify 方向已归档（[`../archive/session-unify-plan.md`](../archive/session-unify-plan.md)） |

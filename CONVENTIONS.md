@@ -442,6 +442,7 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 | 生成物文档 | `cd src-ui && npm run doc-sync` | 五生成器全对拍（工具契约 / service·event 目录 / 开放面指纹 / 引擎契约 v6） |
 
 - CI（`.github/workflows/ci.yml`）只做编译 + 测试。**不要修改 CI。**
+- **中文文本批量改文件：禁用 PowerShell `Get-Content`/`Set-Content`（2026-09-18 实测事故）**：本机 `Get-Content -Raw` + `Set-Content -NoNewline` 往返会把全角左括号 `（`（U+FF08）写成 `六`（U+516D）——一次"批量改几处数字"把 8 份文档 591 行写坏（**识别指纹：`git diff --numstat` 增删行数 1:1 且文件几乎每行都变** = 编码事故，不是内容改动）。改文本一律走 Node（`fs.readFileSync(p,'utf8')` + `writeFileSync(p,txt,'utf8')`），并**逐条校验替换命中数**（未命中即报错退出，不静默）；改完第一眼看 `git diff --stat` 规模是否符合预期。修复 = `git checkout -- <文件>` 回已提交态重做（前提：先确认那些文件里没有他窗在途改动）。
 - 修 INVARIANTS/landmine-map 里的雷，必须配回归测试，一颗雷一个 commit。
 - **convergence 双轨纪律**：`npm run verify:convergence` 连跑 standard + minimal（单轨仍可用 `:standard` / `:minimal`）；只有 CI 的 `convergence.yml` 跑单轨 standard。**新增/改基线时两轨一起验**——教训：第二条轨不在默认门禁里就会静默腐烂（2026-09-14 审计发现的 minimal 漏录即此因）。
 - **本机 `NODE_ENV=production` 注入的两刀（2026-08-29 实测）**：Cowork/codely 进程链给子 shell 注入 `NODE_ENV=production`——① vitest jsdom UI 测试大面积假红（`act is not a function` + `No such built-in module: node:`）；② **`npm install` / `npm uninstall` 同样中招：剥掉 devDependencies**（`Cannot find package 'vitest'`，`node_modules/.bin` shim 一并丢失）。恢复 = 清变量 → `npm install` → 必要时 `npm rebuild`。**纪律：本机凡 npm/vitest 命令一律先清该变量。**
@@ -461,7 +462,7 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 - **跨文档数字只准来自 `docs/facts.generated.md` 或写指针**：改真源 → `npm run gen:doc-facts` 重生成 → 同 commit。
   新增事实 = `scripts/doc-facts.cjs` 的 `FACTS` 表加解析器 + `scripts/doc-check.cjs` 的 `CLAIMS` 加断言
   （**宁窄勿宽**：误报会把门禁变噪声；先靠 `--report` 的「未登记候选」栏人工归并）。
-- **文档面门禁**：`cd src-ui && npm run doc-check`（六查 = 事实对拍 / 断链 / 体量 / 孤儿 / 归档纪律 / 注入预算）。
+- **文档面门禁**：`cd src-ui && npm run doc-check`（七查 = 事实对拍 / 断链 / 权威文件引用 / 体量 / 孤儿 / 归档纪律 / 注入预算）。
   在册豁免记在 `scripts/doc-check-exemptions.json`，每条必须写 `reason` + `payoff` 批次——**豁免是账，不是免罪符**，
   对应批次落地时同步删条目。
 

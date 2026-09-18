@@ -8,13 +8,14 @@
 // ARCHITECTURE×2 与根 README 仍是 31）；入口文档在讲已退役的世界（graph/ops/lsp
 // 域早已不存在）；CONVENTIONS §4 的体量纪律写了但没人执行（单行 4979 字符）。
 //
-// 五查（全部静态、秒级）：
+// 七查（全部静态、秒级）：
 //   1. facts   —— 文档里的数字断言与代码真源对拍（真源 = scripts/doc-facts.cjs）
 //   2. links   —— 相对链接必须存在
-//   3. size    —— 单行 ≤1000 字符；索引表格单元格 ≤500 字符（CONVENTIONS §4）
-//   4. orphans —— docs/ 下每份 md 必须被别的文档引用（治「有正文没入口」）
-//   5. archive —— plans/ 下挂着竣工/归档横幅的文档应移入 archive/（CONVENTIONS §4）
-//   6. budget  —— L0 注入层字节预算（手册必须真的进得去上下文）
+//   3. authority-refs —— 权威文档 `**文件**:` 行引用的路径必须存在（退役/历史语境的行走豁免）
+//   4. size    —— 单行 ≤1000 字符；索引表格单元格 ≤500 字符（CONVENTIONS §4）
+//   5. orphans —— docs/ 下每份 md 必须被别的文档引用（治「有正文没入口」）
+//   6. archive —— plans/ 下挂着竣工/归档横幅的文档应移入 archive/（CONVENTIONS §4）
+//   7. budget  —— L0 注入层字节预算（手册必须真的进得去上下文）
 //
 // 作用域分层（与目标形态一致）：L4 过程层（archive/research/plans 正文）是历史，
 // **默认豁免事实对拍**；只看现在时口吻的层（根规则文档 / docs 顶层 / adr / agents /
@@ -326,6 +327,74 @@ function checkLinks(files) {
   return { violations, skipped: [] };
 }
 
+/** 权威文档的 `**文件**:` 行 = 「现状」声明（INVARIANTS 每条雷的文件载体）。
+ *  行内反引号路径必须真的存在——历史/退役语境的行走豁免（那里记录的正是
+ *  「当时在哪」，改它 = 篡改记录）。全仓唯一同名可解（文档惯用短写路径）。
+ *
+ *  为什么单列这条：这类「声称某文件承载某机制」的引用烂掉时，读者会去找一个
+ *  不存在的文件，而既有各查（断链只查 markdown 链接 / 孤儿 / 体量…）都不覆盖
+ *  反引号里的路径。 */
+const FILE_LINE = /^\s*\*\*文件\*\*\s*[:：]/;
+const FILE_LINE_HISTORY = /退役|已删|删除|归档|历史|旧|moved|renamed|拆除|下架|不再|曾/;
+const REF_PREFIXES = ['', 'src-ui/', 'engine/', 'src-tauri/', 'scripts/', 'src-ui/src/', 'src-ui/tests/'];
+const REF_WALK_SKIP = new Set(['.git', 'node_modules', 'target', 'dist', 'dist-plugins', '.hologram', '.lantai']);
+
+function repoFilesForRefs() {
+  const out = [];
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        if (!REF_WALK_SKIP.has(e.name)) walk(path.join(dir, e.name));
+      } else {
+        out.push(path.relative(ROOT, path.join(dir, e.name)).replace(/\\/g, '/'));
+      }
+    }
+  };
+  walk(ROOT);
+  return out;
+}
+
+function checkAuthorityFileRefs(files) {
+  const violations = [];
+  const all = repoFilesForRefs();
+  const byBase = new Map();
+  for (const f of all) {
+    const b = path.basename(f);
+    if (!byBase.has(b)) byBase.set(b, []);
+    byBase.get(b).push(f);
+  }
+  for (const rel of files) {
+    // 冻结层（归档 + 证据）不查：那里记录的是历史现场，路径烂掉是记录的一部分。
+    if (rel.startsWith('docs/archive/') || rel.startsWith('docs/research/')) continue;
+    readText(rel)
+      .split('\n')
+      .forEach((line, idx) => {
+        if (!FILE_LINE.test(line)) return;
+        if (FILE_LINE_HISTORY.test(line)) return; // 历史/退役语境：记录当时，不改
+        for (const m of line.matchAll(/`([A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:ts|tsx|rs|mjs|cjs|md|json|scm))`/g)) {
+          const ref = m[1];
+          if (REF_PREFIXES.some((p) => all.includes(p + ref))) continue;
+          const cands = byBase.get(path.basename(ref)) ?? [];
+          if (cands.some((c) => c === ref || c.endsWith('/' + ref))) continue;
+          violations.push({
+            check: 'authority-refs',
+            file: rel,
+            line: idx + 1,
+            text: ref,
+            message: `**文件** 行引用的路径不存在：${ref}——修路径，或把该行标成历史语境（退役/已删）`,
+          });
+        }
+      });
+  }
+  return { violations, skipped: [] };
+}
+
 function checkSize(files) {
   const violations = [];
   for (const rel of files) {
@@ -530,6 +599,7 @@ function main() {
     checkBudget(),
     checkFacts(files, facts),
     checkLinks(files),
+    checkAuthorityFileRefs(files),
     checkSize(files),
     checkOrphans(files),
     checkArchive(files),

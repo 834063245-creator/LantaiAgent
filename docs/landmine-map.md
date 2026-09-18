@@ -348,7 +348,7 @@ CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**—
 **最危险的文档漂移是「机制级事实」的漂移，因为没人会去读代码验证它。** 本批实测两例：
 ① 文档（ARCHITECTURE / CLAUDE / AGENTS）一致写着「壳经 `engine_transport` 每工作区 spawn 一个 `engine serve` 子进程」，而 `src-tauri/src/engine_transport.rs` **2026-09-09 已随图谱退役删除**、壳内零 spawn 引擎代码（现状：壳只做二进制位置只读探测 `engine_assets.rs`，拉起由前端 `plugins/bundled-engine.ts` → MCP 受治进程通道 `plugins/mcp-bridge.ts` → Rust `commands/protocol_bridge.rs` stdio）；
 ② `AgentConfig` 字段数 28 在 AGENTS/CLAUDE 已更正、ARCHITECTURE 两处与根 README 仍写 31。
-⇒ 这正是 `npm run doc-check`（事实对拍 + 六查）与 `docs/facts.generated.md`（单一真源）要解决的问题：
+⇒ 这正是 `npm run doc-check`（事实对拍 + 七查）与 `docs/facts.generated.md`（单一真源）要解决的问题：
 **规则写在文档里靠自觉会漂，必须由门禁兜底。**
 
 ## 第九批审计（2026-09-17）— 产物热更交付面（用户「热重载根本没生效」当场取证）

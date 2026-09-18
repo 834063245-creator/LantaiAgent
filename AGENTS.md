@@ -28,7 +28,7 @@
 | 前端格式 | `cd src-ui && npx biome ci .`（0/0 保持） |
 | 引擎 / 壳 | `cd engine && cargo test` / `cd src-tauri && cargo test` |
 | 生成物文档 | `cd src-ui && npm run doc-sync` |
-| 文档面 | `cd src-ui && npm run doc-check`（六查：事实对拍 / 断链 / 体量 / 孤儿 / 归档 / 注入预算） |
+| 文档面 | `cd src-ui && npm run doc-check`（七查：事实对拍 / 断链 / 权威文件引用 / 体量 / 孤儿 / 归档 / 注入预算） |
 
 > 基线数字与测试运行纪律（含 `cargo` 假挂、`hologram-engine.exe` 禁杀等本机实测）见
 > `CONVENTIONS.md` §3；数字会漂移，以重新实测为准。
