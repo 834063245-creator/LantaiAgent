@@ -127,7 +127,14 @@ export function resolveAssetBlock(
   const def = assetKinds.get(kind);
   if (!def) return resolveRenderer('*')?.component;
   const resolved = presentation && def.presentations.includes(presentation) ? presentation : def.defaultPresentation;
-  return resolveRenderer(resolved as BlockKind)?.component;
+  // 降级链（2026-09-18 真机取证）：白名单可能与注册面脱钩（deps_impact 曾声明无实现的
+  // 'table' ⇒ 静默落 '*' JSON，用户看到一张 JSON 卡）。故：请求的表现无渲染器 → 退该 kind
+  // 的默认表现 → 再退 '*'。**注册面缺失不再等价于「给你看 JSON」**。
+  return (
+    resolveRenderer(resolved as BlockKind)?.component ??
+    resolveRenderer(def.defaultPresentation as BlockKind)?.component ??
+    resolveRenderer('*')?.component
+  );
 }
 
 // ── 挂载插件（对齐 compositionServicesPlugin；装载期在四 service 之后，

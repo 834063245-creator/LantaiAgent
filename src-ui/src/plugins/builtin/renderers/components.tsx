@@ -102,6 +102,17 @@ function GridBody({ block }: BlockRendererProps) {
     caption?: string;
     emphasis?: { rows?: number[] };
   };
+  // 载荷形状守卫（2026-09-18 真机取证）：append 型 kind 允许 `stream:true` + 字符串载荷，
+  // 而字符串**跳过结构校验**、终值也可能仍是字符串 ⇒ 这里读 p.rows 得到 undefined，
+  // 旧实现静默渲染成一个空表框（信息全丢）。改为可见占位——错误不静默。
+  if (p == null || typeof p !== 'object') {
+    return (
+      <div className="pp-grid pp-grid-empty">
+        数据不可用 · 表格载荷必须是 {'{columns, rows}'} 对象（收到 {typeof p === 'string' ? '字符串' : typeof p}
+        ）；流式表格的**终值**也须给结构化载荷
+      </div>
+    );
+  }
   const emphasised = emphasisRowsOf(block.payload);
   const rows = Array.isArray(p.rows) ? p.rows : [];
   const first = rows[0];

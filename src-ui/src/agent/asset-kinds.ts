@@ -299,7 +299,10 @@ export function registerBuiltinAssetKinds(): void {
       },
       [],
     ),
-    presentations: ['graph', 'tree', 'table'],
+    // 2026-09-18 真机取证：'table' 曾被列进白名单但**没有任何渲染器注册该原语** ⇒
+    // 模型按白名单选它是「合法」的，渲染侧却静默落 '*' JSON 兜底（用户看到一张 JSON 卡）。
+    // 白名单只能声明注册面真实存在的原语；要有依赖表形态就单独实现渲染器再加回来。
+    presentations: ['graph', 'tree'],
     defaultPresentation: 'graph',
     streamable: 'atomic',
   });

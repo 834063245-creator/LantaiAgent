@@ -12,7 +12,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { assetKinds, validatePayload } from '../src/agent/asset-kinds';
+import { assetKinds, requirePresentation, validatePayload } from '../src/agent/asset-kinds';
 import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
@@ -609,5 +609,54 @@ describe('题签行铺满十二原语（2026-09-17 收尾）', () => {
       expect(html, `${kind} 应出题签行`).toContain('pp-plate');
       expect(html, `${kind} 的签应为「${sign}」`).toContain(`>${sign}<`);
     }
+  });
+});
+
+// ── 白名单 ↔ 注册面对拍 + 两张真机事故的回归（2026-09-18 取证）──
+//
+// 事故一：deps_impact 白名单声明 `presentation:"table"`，而注册面**没有** 'table' 原语
+//   ⇒ 模型按白名单选值是「合法」的、渲染侧静默落 '*' JsonBody ⇒ 用户看到一张 JSON 卡。
+// 事故二：append 型 kind 允许 stream:true + 字符串载荷（跳过结构校验），终值仍是字符串
+//   ⇒ GridBody 读 p.rows 得 undefined ⇒ 旧实现渲染成**空表框**（信息全丢）。
+
+describe('资产表现白名单 ↔ 注册面对拍（防「合法却无实现」）', () => {
+  it('每个 kind 的每个白名单表现，都能解析到真实渲染器（不是 JSON 兜底）', async () => {
+    const ctx = new Context();
+    const f1 = ctx.plugin(compositionServicesPlugin);
+    await f1;
+    const f2 = ctx.plugin(rendererServicePlugin);
+    await f2;
+    const f3 = ctx.plugin(builtinRenderersPlugin);
+    await f3;
+    try {
+      const bad: string[] = [];
+      for (const def of assetKinds.list()) {
+        for (const pres of def.presentations) {
+          const Comp = resolveAssetBlock(def.id, pres);
+          // JsonBody 是 '*' 兜底（JSON 卡）——白名单里的表现落到它就是声明与注册面脱钩
+          if (!Comp || Comp.name === 'JsonBody') bad.push(`${def.id}/${pres} → ${Comp?.name ?? 'undefined'}`);
+        }
+      }
+      expect(bad, `白名单声明了无实现的表现在（会静默落 JSON 兜底）：\n${bad.join('\n')}`).toEqual([]);
+    } finally {
+      await f3.dispose();
+      await f2.dispose();
+      await f1.dispose();
+    }
+  });
+
+  it('deps_impact 的 table 已从白名单收口（模型会收到带窗报错，而不是无声 JSON）', () => {
+    const def = assetKinds.get('deps_impact')!;
+    expect(def.presentations).toEqual(['graph', 'tree']);
+    expect(validatePayload(def, { nodes: [{ id: 'a' }], edges: [] })).toBeNull();
+    // 越界表现是**报错带窗**（错误即导航：报该 kind 的白名单），不是静默回落
+    expect(() => requirePresentation(def, 'table')).toThrow(/table/);
+    expect(requirePresentation(def, 'graph')).toBe('graph');
+  });
+
+  it('表格载荷是字符串（流式残留）→ 可见占位，不再渲染空框（信息不静默丢）', async () => {
+    const html = await renderAsset('table', 'grid', '1｜内核重构｜完成\n2｜插件化｜完成');
+    expect(html).toContain('pp-grid-empty');
+    expect(html).toContain('数据不可用');
   });
 });

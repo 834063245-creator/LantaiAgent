@@ -70,9 +70,14 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     expect(measureBlockHeight(b)).toBe(12 + (10 * 1.8 + 6) + 20 + 340);
   });
 
-  it('presentation 白名单外（deps_impact+table 无渲染器）回落 JSON 兜底视图', () => {
+  // 规格变更（2026-09-18 真机取证）：旧规格 = 越界表现回落 JSON 兜底视图（那条测试把病灶
+  // 钉成了规格：模型按白名单选 'table' 是合法的，渲染侧却无声给一张 JSON 卡）。
+  // 新规格 = 越界表现回落**该 kind 的默认表现**（deps_impact → graph），测高与渲染器同源；
+  // 只有**未知 kind** 才走 '*' JSON 兜底（上面 future_custom 一例仍钉着该契约）。
+  it('presentation 白名单外 → 回落该 kind 的默认表现（deps_impact+table → graph）', () => {
     const b = assetBlock('deps_impact', { nodes: [{ id: 'r' }] }, 'table');
-    expect(measureBlockHeight(b)).toBe(12 + (10 * 1.8 + 6) + 20 + 36);
+    const asGraph = assetBlock('deps_impact', { nodes: [{ id: 'r' }] }, 'graph');
+    expect(measureBlockHeight(b)).toBe(measureBlockHeight(asGraph));
   });
 
   it('media 图：label 行 + 320 上限 + 边框（保守占满，加载后实测收敛）', () => {

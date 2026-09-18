@@ -80,7 +80,7 @@ describe('资产工具三件套 — show_asset / update_asset / list_block_kinds
       /不支持表现 'nope'/,
     );
     await expect(run('show_asset', { kind: 'deps_impact', presentation: 'nope', payload: {} })).rejects.toThrow(
-      /graph\s*\/\s*tree\s*\/\s*table/,
+      /graph\s*\/\s*tree/,
     );
     await expect(run('show_asset', { kind: 'deps_impact', presentation: 'nope', payload: {} })).rejects.toThrow(
       /默认 graph/,
@@ -164,7 +164,7 @@ describe('资产工具三件套 — show_asset / update_asset / list_block_kinds
     expect(out).toContain('table [append]');
     expect(out).toContain('chart [atomic]');
     expect(out).toContain('deps_impact');
-    expect(out).toContain('graph / tree / table');
+    expect(out).toContain('graph / tree'); // 2026-09-18：'table' 无实现已从白名单收口（曾致静默 JSON 卡）
     expect(out).toContain('默认 graph');
     expect(out).toContain('schema:');
     expect(out).toContain('update 不可换 kind');
