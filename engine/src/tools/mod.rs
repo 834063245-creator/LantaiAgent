@@ -99,70 +99,76 @@ pub struct DomainSpec {
     pub actions: &'static [DomainAction],
 }
 
-/// 出厂域表：域 ∪ 未折叠的默认工具 = tools/list 默认返回面。
+/// 每个域自带 `action=help`：回该域**全部动作的完整说明书**（动作名、原名、
+/// 完整 description、参数表、required）。折叠因此是**无损**的——原文只是从
+/// 常驻上下文挪到按需一问，不是因为放不下而删掉。
+pub const HELP_ACTION: &str = "help";
+
+/// 出厂域表：域 ∪ 未折叠的默认工具 = tools/list 默认返回面（契约 v6 起恒定）。
 ///
 /// guard（测试）钉住：默认面里每个只读工具恰好是一个域动作、写工具必须留在顶层、
-/// 域内同名参数类型一致（域 schema 不许对模型说谎）。
+/// 域内同名参数类型一致（域 schema 不许对模型说谎）、hint 有下限（不许退化成一个词）
+/// 与上限（不许把完整说明书抄回来——那正是折叠要解决的问题）。
 pub const DOMAIN_SPECS: &[DomainSpec] = &[
     DomainSpec {
         name: "graph",
-        description: "Code knowledge-graph queries (27 languages, AST + symbol-level edges). Pick the action matching your question — symbol lookup, dependency direction, blast radius, architecture shape. **改代码前先问图**: grep sees text, the graph sees structure. All actions read-only. Raw per-tool names (search_symbols / trace_impact / ...) stay callable via tools/call.",
+        description: "Code knowledge-graph queries (27 languages, AST + symbol-level edges). Pick the action matching your question — symbol lookup, dependency direction, blast radius, architecture shape. **改代码前先问图**: grep sees text, the graph sees structure. All actions read-only; action=help returns the full manual (every action's complete description and params). Raw per-tool names (search_symbols / trace_impact / ...) stay callable via tools/call.",
         read_only: true,
         actions: &[
-            DomainAction { action: "explore", tool: "explore_deps", hint: "natural-language dependency exploration (flow + blast radius + source); START HERE when unsure which action to use" },
-            DomainAction { action: "symbols", tool: "search_symbols", hint: "find symbols by name substring → node IDs (知道名字、不知道 ID 时的第一步)" },
-            DomainAction { action: "semantic", tool: "semantic_search", hint: "meaning-based search over the embedding index (按语义找，不知道确切名字)" },
-            DomainAction { action: "neighbors", tool: "get_neighbors", hint: "1-hop in/out edges of a node (这个模块被谁依赖？)" },
-            DomainAction { action: "impact", tool: "trace_impact", hint: "downstream blast radius layered by distance (改这个会炸多少地方？)" },
-            DomainAction { action: "path", tool: "find_dep_path", hint: "dependency chain from A to B with hop count (A 是怎么依赖到 B 的？)" },
-            DomainAction { action: "inspect", tool: "inspect_symbol", hint: "everything about one symbol: identity, community, all edges grouped by kind" },
-            DomainAction { action: "community", tool: "get_community", hint: "which Leiden cluster a node belongs to (+ siblings)" },
-            DomainAction { action: "clusters", tool: "cluster_report", hint: "global community map sorted by size (high-level architecture)" },
-            DomainAction { action: "summary", tool: "graph_summary", hint: "graph stats: nodes/edges/resolution rate/SCIP freshness" },
+            DomainAction { action: "explore", tool: "explore_deps", hint: "NL dependency exploration in one call (flow + blast radius + relationships + source + alerts) — START HERE when unsure which action fits; it auto-disambiguates" },
+            DomainAction { action: "symbols", tool: "search_symbols", hint: "fuzzy name → matching nodes with IDs/types/locations — your FIRST step when you know the name but not the node ID; then graph(neighbors) or graph(inspect)" },
+            DomainAction { action: "semantic", tool: "semantic_search", hint: "meaning-based search over the embedding index — use when you don't know the exact name; the index is built during analyze, so if it returns nothing check ops(status) (vector_index)" },
+            DomainAction { action: "neighbors", tool: "get_neighbors", hint: "1-hop who-depends-on-whom of a node — call after graph(symbols) to see immediate coupling (这个模块被谁依赖？)" },
+            DomainAction { action: "impact", tool: "trace_impact", hint: "downstream blast radius layered by distance — run BEFORE editing any high-fan-in symbol (改这个会炸多少地方？)" },
+            DomainAction { action: "path", tool: "find_dep_path", hint: "every dependency route from A to B with hop count and edge types — when you need to know HOW two modules are connected (A 是怎么依赖到 B 的？)" },
+            DomainAction { action: "inspect", tool: "inspect_symbol", hint: "one symbol's full picture: identity/degree/community + ALL in/out edges grouped by kind — supersedes symbol_history; use after graph(symbols)" },
+            DomainAction { action: "community", tool: "get_community", hint: "which Leiden cluster a node belongs to (+ parent community, sibling nodes) — for the global map use graph(clusters)" },
+            DomainAction { action: "clusters", tool: "cluster_report", hint: "global community map sorted by size with member lists — high-level architecture read; for a single node use graph(community)" },
+            DomainAction { action: "summary", tool: "graph_summary", hint: "graph stats: nodes/edges, language breakdown, density, top modules, resolution rate — start a session here, then drill in with the other actions" },
         ],
     },
     DomainSpec {
         name: "analysis",
-        description: "Whole-graph architecture and health analysis: cycles, coupling, fragility, blind spots, concurrency conflicts, boundary rules, dead code, execution flows, async/temporal edges, syntax-level dataflow, audit timeline, gRPC contracts, and pre-change preflight. All actions read-only; run action=preflight before editing files.",
+        description: "Whole-graph architecture and health analysis: cycles, coupling, fragility, blind spots, concurrency conflicts, boundary rules, dead code, execution flows, async/temporal edges, syntax-level dataflow, audit timeline, gRPC contracts, and pre-change preflight. All actions read-only; action=help returns the full manual. Run action=preflight before editing files.",
         read_only: true,
         actions: &[
-            DomainAction { action: "cycles", tool: "detect_cycles", hint: "circular dependencies, filter all/data/llm (有没有循环依赖？)" },
-            DomainAction { action: "coupling", tool: "coupling_report", hint: "one module's L1-L4 coupling profile (needs module)" },
-            DomainAction { action: "fragile", tool: "fragile_modules", hint: "top-N most coupled modules (structural hub ranking)" },
-            DomainAction { action: "blindspots", tool: "arch_blindspots", hint: "aggregated architecture blind spots (cycles + conflicts + L4)" },
-            DomainAction { action: "conflicts", tool: "thread_conflicts", hint: "thread × shared-resource conflict matrix (并发问题，可给 nodeId 收窄)" },
-            DomainAction { action: "boundaries", tool: "check_boundaries", hint: "boundary/policy rule violations (自定义 rules 或约束文件)" },
-            DomainAction { action: "unused", tool: "find_unused", hint: "dead-code candidates (无入边符号，kind_filter 可筛)" },
-            DomainAction { action: "timeline", tool: "project_timeline", hint: "audit timeline of past analyses/changes (since/limit 可筛)" },
-            DomainAction { action: "grpc", tool: "grpc_services", hint: "gRPC service map from .proto: implementation status + call sites" },
-            DomainAction { action: "flows", tool: "list_flows", hint: "list execution flows (entry point → critical path)" },
-            DomainAction { action: "flow", tool: "get_flow", hint: "one execution flow by id or name" },
-            DomainAction { action: "affected_flows", tool: "get_affected_flows", hint: "flows touched by changed files/nodes" },
-            DomainAction { action: "async", tool: "async_edges", hint: "async/temporal edges (triggers/awaits) — computed on demand, not stored" },
-            DomainAction { action: "dataflow", tool: "trace_dataflow", hint: "syntax-level read/write/share stats for files (非污点分析)" },
-            DomainAction { action: "preflight", tool: "preflight_check", hint: "pre-change preflight: impact + flows + boundaries in one call (改文件前必须)" },
+            DomainAction { action: "cycles", tool: "detect_cycles", hint: "circular dependencies, mode all/data/llm — pure_code cycles are natural, ignore them; run before large refactors to see what can't be untangled (有没有循环依赖？)" },
+            DomainAction { action: "coupling", tool: "coupling_report", hint: "one module's L1(imports)→L4(temporal) coupling breakdown + fan-in/out + cycle participation — needs module (auth 模块耦合有多深？)" },
+            DomainAction { action: "fragile", tool: "fragile_modules", hint: "top-N most coupled modules by structural fan-in/out × coupling depth — well-designed hubs rank high too; for dataflow/temporal coupling use analysis(dataflow|async)" },
+            DomainAction { action: "blindspots", tool: "arch_blindspots", hint: "architecture linter: L4 encapsulation violations, unlocked concurrency, LLM feedback loops — filter all/L4/thread/cycle (项目有什么隐藏的架构问题？); lighter than ops(validate)" },
+            DomainAction { action: "conflicts", tool: "thread_conflicts", hint: "thread × shared-resource conflict matrix (shared vars with multiple writers) — omit nodeId for the global map (哪些地方有并发问题？)" },
+            DomainAction { action: "boundaries", tool: "check_boundaries", hint: "boundary rule enforcer: source/target patterns (glob|regex) + edge kinds → violations — run before AND after a refactor to prove no new violations" },
+            DomainAction { action: "unused", tool: "find_unused", hint: "dead-code candidates (zero non-defines in-edges) — ALWAYS review before deleting: non_defines_in_degree>0 means real callers, and entry points/tests are intentional" },
+            DomainAction { action: "timeline", tool: "project_timeline", hint: "chronological project audit log (analysis runs, commits, violations, constraint checks) — since/limit to window it (最近项目发生了什么变化？)" },
+            DomainAction { action: "grpc", tool: "grpc_services", hint: "gRPC map from .proto files: per-method implementation status (implemented/missing) + client call-site count — for one method's callers use graph(inspect|impact)" },
+            DomainAction { action: "flows", tool: "list_flows", hint: "execution flows sorted by criticality (entry point → full call chain) — then analysis(flow) to drill into one (核心业务流程是什么？)" },
+            DomainAction { action: "flow", tool: "get_flow", hint: "one flow's full call path (function name, file, line, entry → deepest callee) — pass the id or name from analysis(flows)" },
+            DomainAction { action: "affected_flows", tool: "get_affected_flows", hint: "execution flows passing through changed files — maps a change to the business paths it impacts; run before merging (改了 auth.js 会影响哪些流程？)" },
+            DomainAction { action: "async", tool: "async_edges", hint: "all async/temporal edges: triggers, awaits/callbacks, scheduled tasks, sequenced calls — for async coupling, race conditions, temporal chains (有哪些异步依赖？)" },
+            DomainAction { action: "dataflow", tool: "trace_dataflow", hint: "syntax-level identifier read/write census per function scope — HEURISTIC, not semantic dataflow (no interprocedural, aliasing or taint); pass the file paths; for precise per-call answers use lsp(resolve)" },
+            DomainAction { action: "preflight", tool: "preflight_check", hint: "change rehearsal: blast radius + risk level (low→critical) + shared-variable impacts + temporal signals — ALWAYS call before editing high-fan-in files (这个改动安全吗？)" },
         ],
     },
     DomainSpec {
         name: "lsp",
-        description: "Language-server resolution (server started on demand): compiler-accurate answers when the graph's heuristic edges are not enough — resolve a call site, infer a type, list implementations, list references. Slower than graph actions (spawns a language server); try graph(symbols|neighbors|impact) first.",
+        description: "Language-server resolution (server started on demand): compiler-accurate answers when the graph's heuristic edges are not enough — resolve a call site, infer a type, list implementations, list references. Slower than graph actions (spawns a language server); try graph(symbols|neighbors|impact) first. action=help returns the full manual.",
         read_only: true,
         actions: &[
-            DomainAction { action: "resolve", tool: "resolve_call", hint: "resolve a call site to its real definition (function name, or file+line+column)" },
-            DomainAction { action: "infer_type", tool: "infer_type", hint: "infer the type of the symbol at a position (file+line+column)" },
-            DomainAction { action: "implementations", tool: "find_implementations", hint: "find implementations of an interface/abstract symbol" },
-            DomainAction { action: "references", tool: "find_references", hint: "find all references to a symbol (includeDeclaration optional)" },
+            DomainAction { action: "resolve", tool: "resolve_call", hint: "resolve a call to its concrete definition(s) via native LSP (polymorphic dispatch, struct methods, inheritance) — when the graph shows do_thing() and you need to know WHICH do_thing" },
+            DomainAction { action: "infer_type", tool: "infer_type", hint: "type of an expression/field/variable/return via LSP hover — falls back to call-target inference when no LSP is available (这个变量是什么类型？)" },
+            DomainAction { action: "implementations", tool: "find_implementations", hint: "all implementations of an interface/trait/abstract class (full implementation tree) — click the definition, then call this (谁实现了这个 trait？)" },
+            DomainAction { action: "references", tool: "find_references", hint: "every reference to a symbol across the codebase — includeDeclaration=true adds the definition; high count → run graph(impact) before changing it" },
         ],
     },
     DomainSpec {
         name: "ops",
-        description: "Project-level READ-ONLY state: constraint validation, health snapshot, engine status (contract / tool-call counts / vector index / LSP / watcher), and graph diff against a baseline. Write operations stay top-level tools: analyze_project, import_scip, rename_symbol.",
+        description: "Project-level READ-ONLY state: constraint validation, health snapshot, engine status (contract / tool-call counts / vector index / LSP / watcher), and graph diff against a baseline. action=help returns the full manual. Write operations stay top-level tools: analyze_project, import_scip, rename_symbol.",
         read_only: true,
         actions: &[
-            DomainAction { action: "validate", tool: "validate_project", hint: "run all constraint checks (path optional; defaults to the bound root)" },
-            DomainAction { action: "health", tool: "project_health", hint: "project health snapshot over N days" },
-            DomainAction { action: "status", tool: "engine_status", hint: "engine status + contract + per-tool call counts + index/LSP state" },
-            DomainAction { action: "diff", tool: "graph_diff", hint: "diff current graph against a baseline graph (beforePath)" },
+            DomainAction { action: "validate", tool: "validate_project", hint: "full constraint validation: re-analyze + baseline diff + every structural check → violations AND passing rules (全面检查/有没有违规？); for a lighter first pass use analysis(blindspots)" },
+            DomainAction { action: "health", tool: "project_health", hint: "health snapshot: coupling density 0-100, recent trends, top-changed files, most-interconnected modules — the score is coupling density, not code quality (项目最近怎么样？)" },
+            DomainAction { action: "status", tool: "engine_status", hint: "engine status: loading phase, node/edge counts, storage, uptime, contract version, per-tool call counts — call this when tools return empty or before trusting the graph (引擎就绪了吗？)" },
+            DomainAction { action: "diff", tool: "graph_diff", hint: "diff the current graph against a baseline JSON snapshot (added/removed/modified nodes, edge-count deltas) — NOT a git diff; for file-level changes use the git tool" },
         ],
     },
 ];
@@ -186,7 +192,43 @@ pub fn domain_of_tool(tool: &str) -> Option<&'static DomainSpec> {
 
 /// 域动作清单文本（引导语 / 错误信息共用）。
 fn action_list(spec: &DomainSpec) -> String {
-    spec.actions.iter().map(|a| a.action).collect::<Vec<_>>().join(", ")
+    let mut names: Vec<&str> = spec.actions.iter().map(|a| a.action).collect();
+    names.push(HELP_ACTION);
+    names.join(", ")
+}
+
+/// 域说明书（`action=help` 的载荷）：无损回放每个动作的完整 schema 文档。
+///
+/// 折叠把 36 份说明书从常驻上下文挪走——这里保证它们仍可取回，
+/// 且取自同一处真源（`ToolSchema`），不另存副本。
+fn domain_help(spec: &DomainSpec) -> ToolResponse {
+    let actions: Vec<Value> = spec
+        .actions
+        .iter()
+        .map(|a| {
+            let schema = find_schema(a.tool);
+            json!({
+                "action": a.action,
+                "tool": a.tool,
+                "hint": a.hint,
+                "read_only": schema.map(|s| s.read_only).unwrap_or(spec.read_only),
+                "description": schema.map(|s| s.description).unwrap_or(""),
+                "required": schema.map(|s| s.required.to_vec()).unwrap_or_default(),
+                "params": schema.map(|s| s.params.iter().map(|p| json!({
+                    "name": p.name,
+                    "type": p.ptype,
+                    "description": p.description,
+                    "enum": p.enum_values,
+                })).collect::<Vec<_>>()).unwrap_or_default(),
+            })
+        })
+        .collect();
+    ToolResponse::Success(json!({
+        "domain": spec.name,
+        "read_only": spec.read_only,
+        "description": spec.description,
+        "actions": actions,
+    }))
 }
 
 /// 域调用路由：域名 + args → (目标工具名, 剥掉 action 的 args)。
@@ -257,13 +299,16 @@ impl DomainSpec {
         for a in self.actions {
             action_doc.push_str(&format!("\n- {}: {}", a.action, a.hint));
         }
+        action_doc.push_str(&format!(
+            "\n- {}: full manual — every action's complete description, params and required fields (折叠无损：说明书按需取)",
+            HELP_ACTION
+        ));
         let mut action_prop = serde_json::Map::new();
         action_prop.insert("type".to_string(), json!("string"));
         action_prop.insert("description".to_string(), json!(action_doc));
-        action_prop.insert(
-            "enum".to_string(),
-            json!(self.actions.iter().map(|a| a.action).collect::<Vec<_>>()),
-        );
+        let mut action_enum: Vec<&str> = self.actions.iter().map(|a| a.action).collect();
+        action_enum.push(HELP_ACTION);
+        action_prop.insert("enum".to_string(), json!(action_enum));
 
         let mut properties = serde_json::Map::new();
         properties.insert("action".to_string(), Value::Object(action_prop));
@@ -297,16 +342,6 @@ impl DomainSpec {
             }
         })
     }
-}
-
-/// 模型可见面的构成方式（契约 v5；`HOLOGRAM_MCP_TOOLS` 解析产物）。
-pub enum SurfaceMode {
-    /// 缺省：折叠面（域 + 未折叠的默认工具 + manifest 工具）。
-    Folded,
-    /// `*`：全量原名（壳专属方法除外）+ manifest 工具。
-    AllRaw,
-    /// 显式名单：严格按名单（条目可为原名，也可为域名 = 整域）。
-    Explicit(Vec<String>),
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -362,104 +397,51 @@ impl ToolRegistry {
         "import_scip",
     ];
 
-    /// 模型可见面的三档语义（HOLOGRAM_MCP_TOOLS）——契约 v5。
+    /// 模型可见面（契约 v6：**恒定折叠面**，不再有环境变量档位）。
     ///
-    /// | 环境变量 | 面 |
-    /// |---|---|
-    /// | 未设 / 空串 | **折叠面**：域（graph/analysis/lsp/ops）+ 未折叠的默认工具（写工具）+ manifest 工具 |
-    /// | `*` | **全量原名**：全部 schema（壳专属方法除外）+ manifest 工具 |
-    /// | 显式名单 | **严格名单**：条目可为原名，也可为域名（`graph` = 整域） |
+    /// 曾经的 `HOLOGRAM_MCP_TOOLS` 三档（缺省/`*`/名单）是给 36 个扁平工具做
+    /// 白名单裁剪的：折叠成 7 个之后该用途消失，而全仓没有任何宿主能设它
+    /// （插件 manifest 与用户 mcp.json 的 schema 都没有 env 字段）——留下只会是
+    /// 一个只有系统环境变量能碰、界面不可见的隐形开关。故整机制删除；
+    /// 要不要给模型看某个工具，是宿主组合层的事（行表/patch 可逐行禁用）。
     ///
-    /// 解析是纯函数（测试不碰进程环境）：两侧空白容忍——实测 `set VAR=* && …`
-    /// 在 cmd 下会带尾随空格，严格等于 `"*"` 会把全量面静默解析成空集。
-    fn parse_surface_mode(raw: Option<&str>) -> SurfaceMode {
-        let val = raw.unwrap_or("").trim();
-        if val.is_empty() {
-            return SurfaceMode::Folded;
-        }
-        if val == "*" {
-            return SurfaceMode::AllRaw;
-        }
-        SurfaceMode::Explicit(
-            val.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect(),
-        )
-    }
-
-    fn surface_mode() -> SurfaceMode {
-        let raw = std::env::var("HOLOGRAM_MCP_TOOLS").ok();
-        Self::parse_surface_mode(raw.as_deref())
-    }
-
-    /// 可见面组装（tools_list 的行为本体；测试直接喂 mode，不碰进程环境）。
-    fn tools_list_with(mode: &SurfaceMode) -> Vec<Value> {
+    /// 原名可达性不受影响：`tools/call` 仍按原名直达（壳与外部客户端零破坏）。
+    fn folded_face() -> Vec<Value> {
         let mut list: Vec<Value> = Vec::new();
-        match mode {
-            SurfaceMode::Folded => {
-                for d in DOMAIN_SPECS {
-                    list.push(d.mcp_value());
-                }
-                for s in all_schemas() {
-                    // 壳专属方法（host API）永不进模型面
-                    if s.category == "shell" {
-                        continue;
-                    }
-                    // 默认面里未折叠的工具（= 写工具）以原名出现；已折叠的由域承载。
-                    if ToolRegistry::DEFAULT_MCP_TOOLS.contains(&s.name)
-                        && domain_of_tool(s.name).is_none()
-                    {
-                        list.push(s.mcp_value());
-                    }
-                }
-                // manifest 工具装了即见（免编译扩展面 Phase 4）
-                list.extend(crate::plugins::plugin_tool_values());
+        for d in DOMAIN_SPECS {
+            list.push(d.mcp_value());
+        }
+        for s in all_schemas() {
+            // 壳专属方法（host API）永不进模型面
+            if s.category == "shell" {
+                continue;
             }
-            SurfaceMode::AllRaw => {
-                for s in all_schemas() {
-                    if s.category == "shell" {
-                        continue;
-                    }
-                    list.push(s.mcp_value());
-                }
-                list.extend(crate::plugins::plugin_tool_values());
+            // 默认面里未折叠的工具（= 写工具）以原名出现；已折叠的由域承载。
+            if ToolRegistry::DEFAULT_MCP_TOOLS.contains(&s.name) && domain_of_tool(s.name).is_none() {
+                list.push(s.mcp_value());
             }
-            SurfaceMode::Explicit(names) => {
-                let want: HashSet<&str> = names.iter().map(|s| s.as_str()).collect();
-                for d in DOMAIN_SPECS {
-                    if want.contains(d.name) {
-                        list.push(d.mcp_value());
-                    }
-                }
-                for s in all_schemas() {
-                    if s.category == "shell" {
-                        continue;
-                    }
-                    if want.contains(s.name) {
-                        list.push(s.mcp_value());
-                    }
-                }
-                list.extend(
-                    crate::plugins::plugin_tool_values()
-                        .into_iter()
-                        .filter(|v| want.contains(v["name"].as_str().unwrap_or(""))),
+        }
+        // manifest 工具装了即见（免编译扩展面 Phase 4）
+        list.extend(crate::plugins::plugin_tool_values());
+        list
+    }
+
+    /// 退役开关的留痕：设了也不再生效，必须说出来而不是静默忽略（错误不静默）。
+    fn warn_retired_env_once() {
+        static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+        WARNED.get_or_init(|| {
+            if std::env::var_os("HOLOGRAM_MCP_TOOLS").is_some() {
+                tracing::warn!(
+                    "HOLOGRAM_MCP_TOOLS 已随引擎契约 v6 退役——可见面恒为折叠面（域 + 未折叠工具）；\
+                     按原名 tools/call 直达仍然有效，无需白名单"
                 );
             }
-        }
-        list
+        });
     }
 
     pub fn tools_list(&self) -> Vec<Value> {
-        let list = Self::tools_list_with(&Self::surface_mode());
-        if list.is_empty() {
-            // 空面是坏故障（模型看得见零工具），必须留痕而不是静默返回空数组。
-            tracing::warn!(
-                env = ?std::env::var("HOLOGRAM_MCP_TOOLS").ok(),
-                "tools/list 解析为空——HOLOGRAM_MCP_TOOLS 名单没有命中任何工具或域"
-            );
-        }
-        list
+        Self::warn_retired_env_once();
+        Self::folded_face()
     }
 
     pub fn get_schema(&self, name: &str) -> Option<&'static ToolSchema> {
@@ -490,6 +472,11 @@ impl ToolRegistry {
         let mut effective = name;
         let mut call_args: std::borrow::Cow<'_, Value> = std::borrow::Cow::Borrowed(args);
         if let Some(spec) = domain_of(name) {
+            // `help` 是域自带的保留动作（契约 v6）：回完整说明书，不路由到任何工具。
+            if args.get("action").and_then(|v| v.as_str()) == Some(HELP_ACTION) {
+                Self::count_call(name);
+                return domain_help(spec).to_mcp_value(id);
+            }
             match route_domain(spec, args) {
                 Ok((tool, stripped)) => {
                     effective = tool;
@@ -1755,63 +1742,147 @@ mod tests {
         }
     }
 
-    /// 三档可见面语义（直接喂 mode，不碰进程环境）。
+    /// 可见面恒定（契约 v6）：域 + 未折叠默认工具；无环境变量档位。
     #[test]
-    fn test_surface_modes() {
-        let folded = ToolRegistry::tools_list_with(&SurfaceMode::Folded);
-        let folded_names: Vec<&str> = folded.iter().filter_map(|t| t["name"].as_str()).collect();
-        assert_eq!(folded_names.len(), DOMAIN_SPECS.len() + 3);
-
-        let all = ToolRegistry::tools_list_with(&SurfaceMode::AllRaw);
-        let all_names: Vec<&str> = all.iter().filter_map(|t| t["name"].as_str()).collect();
-        // 全量面 = 全部非壳 schema（36 默认 + legacy symbol_history = 37）
-        let non_shell = all_schemas()
-            .iter()
-            .filter(|s| s.category != "shell")
-            .count();
-        assert_eq!(all_names.len(), non_shell, "全量面 = 全部非壳 schema");
-        assert_eq!(non_shell, 37);
-        assert!(all_names.contains(&"search_symbols"));
-
-        let explicit = ToolRegistry::tools_list_with(&SurfaceMode::Explicit(vec![
-            "graph".into(),
-            "engine_status".into(),
-        ]));
-        let explicit_names: Vec<&str> =
-            explicit.iter().filter_map(|t| t["name"].as_str()).collect();
-        assert_eq!(explicit_names.len(), 2, "严格名单：域名整域出，原名单出");
-        assert!(explicit_names.contains(&"graph"));
-        assert!(explicit_names.contains(&"engine_status"));
+    fn test_tools_list_is_folded_face() {
+        let list = ToolRegistry::global().tools_list();
+        let names: Vec<&str> = list.iter().filter_map(|t| t["name"].as_str()).collect();
+        assert_eq!(names, default_visible_names());
+        assert_eq!(names.len(), DOMAIN_SPECS.len() + 3);
+        assert!(!names.contains(&"search_symbols"), "折叠后不再单列原名");
+        // 壳专属方法绝不出现（无论哪条路径组装）
+        for shell in crate::contract::shell_method_names() {
+            assert!(!names.contains(&shell), "tools/list 泄漏壳专属方法 {shell}");
+        }
     }
 
-    /// `HOLOGRAM_MCP_TOOLS` 解析：空白容忍 + 空值回落折叠面（不静默空面）。
+    /// hint 是「迷你说明书」：有下限（说清干什么）也有上限（不许把说明书抄回来）。
     #[test]
-    fn test_parse_surface_mode() {
-        assert!(matches!(
-            ToolRegistry::parse_surface_mode(None),
-            SurfaceMode::Folded
-        ));
-        assert!(
-            matches!(ToolRegistry::parse_surface_mode(Some("")), SurfaceMode::Folded),
-            "空值 = 未设（回落折叠面，不许解析成空面）"
-        );
-        assert!(matches!(
-            ToolRegistry::parse_surface_mode(Some("   ")),
-            SurfaceMode::Folded
-        ));
-        assert!(
-            matches!(ToolRegistry::parse_surface_mode(Some("*")), SurfaceMode::AllRaw),
-            "全量面"
-        );
-        // 实测坑：cmd 的 `set VAR=* && …` 会带尾随空格——必须仍是全量面
-        assert!(
-            matches!(ToolRegistry::parse_surface_mode(Some("* ")), SurfaceMode::AllRaw),
-            "尾随空白不得把全量面解析成空集"
-        );
-        match ToolRegistry::parse_surface_mode(Some(" graph , engine_status ")) {
-            SurfaceMode::Explicit(names) => assert_eq!(names, vec!["graph", "engine_status"]),
-            _ => panic!("显式名单应解析为 Explicit"),
+    fn test_hint_budget() {
+        for d in DOMAIN_SPECS {
+            for a in d.actions {
+                let n = a.hint.chars().count();
+                assert!(n >= 40, "域 {}.{} 的 hint 太短（{n} 字），模型无法据此选动作", d.name, a.action);
+                assert!(
+                    n <= 240,
+                    "域 {}.{} 的 hint 过长（{n} 字）——完整说明书归 action=help，不常驻上下文",
+                    d.name,
+                    a.action
+                );
+            }
         }
+    }
+
+    /// 折叠面预算：可见面体量必须留在折叠的意义上（折叠前 36 工具实测
+    /// 20,412 B——上限取八成，v6 实测 14,712 B，留 ~11% 余量）。
+    #[test]
+    fn test_folded_face_budget() {
+        const PRE_FOLD_BYTES: usize = 20_412;
+        let ceiling = PRE_FOLD_BYTES * 4 / 5;
+        let list = ToolRegistry::global().tools_list();
+        let bytes = serde_json::to_string(&list).map(|s| s.len()).unwrap_or(0);
+        assert!(bytes > 4_000, "可见面过小（{bytes} B）——域表可能没组装全");
+        assert!(
+            bytes <= ceiling,
+            "折叠面 {bytes} B 超预算（上限 {ceiling} B = 折叠前的八成）——\
+             要么 hint 抄回了说明书（完整说明书归 action=help），要么该拆动作了"
+        );
+    }
+
+    /// `help` 是保留动作：回完整说明书（无损回放），且不进任何域的声明动作表。
+    #[test]
+    fn test_domain_help_is_lossless() {
+        for d in DOMAIN_SPECS {
+            assert!(
+                !d.actions.iter().any(|a| a.action == HELP_ACTION),
+                "域 {} 声明了保留动作名 {HELP_ACTION}",
+                d.name
+            );
+        }
+        // schema 里 help 必须在枚举内（模型看得见）
+        let value = domain_of("graph").expect("graph 域").mcp_value();
+        let actions = value["inputSchema"]["properties"]["action"]["enum"]
+            .as_array()
+            .expect("action 枚举");
+        assert_eq!(actions.len(), 11, "graph = 10 声明动作 + help");
+        assert_eq!(actions.last().and_then(|v| v.as_str()), Some(HELP_ACTION));
+
+        // help 载荷：逐域回放 ToolSchema 的完整文档（与真源逐字节一致）
+        let mut seen = 0;
+        for d in DOMAIN_SPECS {
+            let result =
+                ToolRegistry::dispatch(d.name, &json!({"action": HELP_ACTION}), &json!(1));
+            let text = result["result"]["content"][0]["text"].as_str().unwrap_or("");
+            let payload: Value = serde_json::from_str(text).expect("help 是 JSON");
+            let entries = payload["actions"].as_array().expect("actions 数组");
+            assert_eq!(entries.len(), d.actions.len(), "域 {} 说明书动作数不符", d.name);
+            for entry in entries {
+                let tool = entry["tool"].as_str().expect("tool 名");
+                let schema = find_schema(tool).expect("target resolves");
+                assert_eq!(
+                    entry["description"].as_str(),
+                    Some(schema.description),
+                    "{tool} 的完整说明书必须取自 ToolSchema（不许另存副本）"
+                );
+                assert_eq!(
+                    entry["params"].as_array().map(|a| a.len()),
+                    Some(schema.params.len()),
+                    "{tool} 参数表回放不全"
+                );
+                assert_eq!(
+                    entry["required"].as_array().map(|a| a.len()),
+                    Some(schema.required.len())
+                );
+                seen += 1;
+            }
+        }
+        assert_eq!(seen, 33, "说明书必须覆盖全部折叠动作");
+        // hint 之外的信息确实在 help 里（抽查一条只存在于说明书里的纪律）
+        let analysis = ToolRegistry::dispatch("analysis", &json!({"action": HELP_ACTION}), &json!(2));
+        let text = analysis["result"]["content"][0]["text"].as_str().unwrap_or("");
+        let payload: Value = serde_json::from_str(text).expect("help 是 JSON");
+        let refs = payload["actions"]
+            .as_array()
+            .and_then(|entries| entries.iter().find(|e| e["tool"] == "find_unused"))
+            .and_then(|e| e["description"].as_str())
+            .unwrap_or("");
+        assert!(refs.contains("non_defines_in_degree"), "help 应带回原文细节: {refs}");
+    }
+
+    /// hint 补前置纪律：抽查几条关键「时机/前置」必须留在可见面（不是藏在 help 里）。
+    #[test]
+    fn test_hints_carry_prerequisites() {
+        let hint = |domain: &str, action: &str| -> String {
+            domain_of(domain)
+                .expect("域存在")
+                .actions
+                .iter()
+                .find(|a| a.action == action)
+                .expect("动作存在")
+                .hint
+                .to_string()
+        };
+        assert!(hint("graph", "impact").contains("BEFORE"), "impact 必须写明改前先跑");
+        assert!(
+            hint("analysis", "preflight").contains("ALWAYS"),
+            "preflight 必须写明改文件前必跑"
+        );
+        assert!(
+            hint("analysis", "unused").contains("review"),
+            "unused 必须写明删前先复核"
+        );
+        assert!(
+            hint("graph", "semantic").contains("ops(status)"),
+            "semantic 必须指向索引可用性检查"
+        );
+        assert!(
+            hint("analysis", "dataflow").contains("HEURISTIC"),
+            "dataflow 必须写明是启发式不是语义数据流"
+        );
+        assert!(
+            hint("lsp", "references").contains("graph(impact)"),
+            "references 必须给出高引用数后的下一步"
+        );
     }
 
     /// 域 schema 形状：action 枚举 + 成员参数并集 + 只读注解。
@@ -1826,7 +1897,7 @@ mod tests {
             .expect("action 说明")
             .contains("impact"));
         let actions = props["action"]["enum"].as_array().expect("action 枚举");
-        assert_eq!(actions.len(), 10);
+        assert_eq!(actions.len(), 11, "10 个声明动作 + help");
         // 参数文档派生自成员 schema（抽一个验证透传）
         assert_eq!(props["nodeId"]["type"], "string");
         assert!(props["nodeId"]["description"].as_str().is_some());

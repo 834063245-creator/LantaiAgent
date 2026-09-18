@@ -56,7 +56,7 @@ function parseModelDefaults(src: string): string[] {
 interface ParsedDomain {
   name: string;
   readOnly: boolean;
-  actions: Array<{ action: string; tool: string }>;
+  actions: Array<{ action: string; tool: string; hint: string }>;
 }
 
 /** 解析出厂域表（契约 v5：DOMAIN_SPECS = 模型可见面的折叠单元）。 */
@@ -70,10 +70,13 @@ function parseDomains(src: string): ParsedDomain[] {
     const name = part.match(/^\s*name: "([a-z_]+)",/m)?.[1];
     if (!name) continue;
     const readOnly = /read_only: (true|false)/.exec(part)?.[1] === 'true';
-    const actions = [...part.matchAll(/DomainAction \{ action: "([a-z_]+)", tool: "([a-z_]+)"/g)].map((m) => ({
-      action: m[1],
-      tool: m[2],
-    }));
+    const actions = [...part.matchAll(/DomainAction \{ action: "([a-z_]+)", tool: "([a-z_]+)", hint: "([^"]*)"/g)].map(
+      (m) => ({
+        action: m[1],
+        tool: m[2],
+        hint: m[3],
+      }),
+    );
     out.push({ name, readOnly, actions });
   }
   return out;
@@ -149,9 +152,9 @@ function main(): void {
       ' |',
   );
   md.push('');
-  md.push('## 模型可见默认工具面（tools/list 默认返回）');
+  md.push('## 模型可见默认工具面（tools/list 默认返回，契约 v6 起恒定）');
   md.push('');
-  md.push('### 域工具（契约 v5：只读工具折叠为 `域 + action` 调用面）');
+  md.push('### 域工具（只读工具折叠为 `域 + action` 调用面）');
   md.push('');
   md.push('| 域 | 只读 | 动作 → 原名 |');
   md.push('|---|---|---|');
@@ -161,7 +164,20 @@ function main(): void {
   }
   md.push('');
   md.push('调用形态：`tools/call {"name":"graph","arguments":{"action":"impact","nodeId":"…"}}`。');
+  md.push('每个域另带保留动作 `action:"help"` —— 回该域全部动作的完整说明书');
+  md.push('（完整 description / 参数表 / required，取自 `ToolSchema` 单一真源）。');
+  md.push('折叠**无损**：原文只是从常驻上下文挪到按需一问。');
   md.push('');
+  md.push('### 动作路由提示（模型实际看到的迷你说明书）');
+  md.push('');
+  for (const d of domains) {
+    md.push('**`' + d.name + '`**');
+    md.push('');
+    for (const a of d.actions) {
+      md.push('- `' + a.action + '`（`' + a.tool + '`）：' + esc(a.hint));
+    }
+    md.push('');
+  }
   md.push('### 未折叠工具（写操作留在顶层）');
   md.push('');
   md.push(standalone.map((t) => '`' + t + '`').join(' · '));
@@ -172,15 +188,9 @@ function main(): void {
   md.push('');
   md.push(modelTools.map((t) => '`' + t + '`').join(' · '));
   md.push('');
-  md.push('### `HOLOGRAM_MCP_TOOLS` 三档语义');
-  md.push('');
-  md.push('| 取值 | `tools/list` 返回面 |');
-  md.push('|---|---|');
-  md.push(
-    '| 未设（缺省） | 折叠面：' + domains.length + ' 域 + ' + standalone.length + ' 未折叠工具 + manifest 工具 |',
-  );
-  md.push('| `*` | 全量原名（壳专属方法除外）+ manifest 工具 |');
-  md.push('| 逗号名单 | 严格名单——条目可为原名，也可为域名（`graph` = 整域） |');
+  md.push('> 可见面**无档位开关**：`HOLOGRAM_MCP_TOOLS` 已随契约 v6 退役（它当初用于裁剪 36 个');
+  md.push('> 扁平工具的可见面，折叠后用途消失，且没有任何宿主通道能设它）。设了不再生效，');
+  md.push('> 引擎只在日志留一条 warn。');
   md.push('');
   md.push('## 壳专属方法（host API，永不进模型 tools/list）');
   md.push('');

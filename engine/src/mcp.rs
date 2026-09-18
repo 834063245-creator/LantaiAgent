@@ -8,8 +8,9 @@
 //! 协议：从 stdin 逐行读取 JSON-RPC 请求，向 stdout 逐行写入 JSON-RPC 响应。
 //! 支持 `tools/list`、`tools/call`、`ping`、`prompts/list`、`prompts/get`，
 //! 处理 `notifications/initialized` 与 `notifications/cancelled`，
-//! 长任务发出 `notifications/progress`。通过 ToolRegistry 暴露全部 35 个
-//! hologram_* 工具（默认激活 34 个；`symbol_history` 经 HOLOGRAM_MCP_TOOLS=* 放开）。
+//! 长任务发出 `notifications/progress`。`tools/list` 返回契约 v6 的折叠面
+//! （4 个只读域 + 3 个写工具；`action=help` 按需取完整说明书）——被折叠的
+//! 原名仍可 `tools/call` 直达（壳与外部客户端零破坏）。
 //!
 //! MCP 1.0 错误语义：未知工具返回规范 JSON-RPC 错误（-32000），不再用
 //! `_isDegraded` 假冒成功；工具执行失败在 tools/call 结果里用 `isError`

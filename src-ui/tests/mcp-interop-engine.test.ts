@@ -25,22 +25,9 @@ const engineExe = candidates.find((p) => fs.existsSync(p)) ?? candidates[0];
 
 const hasEngine = () => fs.existsSync(engineExe);
 
-/** 引擎契约 v5 的域面（真源 engine/src/tools/mod.rs DOMAIN_SPECS）。 */
+/** 引擎契约 v6 的域面（真源 engine/src/tools/mod.rs DOMAIN_SPECS）。 */
 const DOMAINS = ['graph', 'analysis', 'lsp', 'ops'];
 const STANDALONE_WRITES = ['analyze_project', 'import_scip', 'rename_symbol'];
-const SHELL_METHODS = [
-  'graph_snapshot',
-  'file_nodes',
-  'analyze_with_progress',
-  'save',
-  'fts_search',
-  'timeline_record',
-  'diff',
-  'ensure_ready',
-  'cache_stale',
-  'watcher_subscribe',
-  'run_check',
-];
 
 describe('MCP interop with real Rust engine (.exe serve)', () => {
   const run = async (fn: (client: McpClient) => Promise<void>, env?: Record<string, string>) => {
@@ -120,16 +107,28 @@ describe('MCP interop with real Rust engine (.exe serve)', () => {
     });
   });
 
-  it('HOLOGRAM_MCP_TOOLS=* 回全量原名，且不泄漏壳专属方法', { skip: !hasEngine() }, async () => {
+  it('域自带的 help 动作取回完整说明书（折叠无损）', { skip: !hasEngine() }, async () => {
+    await run(async (client) => {
+      const res = await client.callTool('analysis', { action: 'help' });
+      expect(res.isError).toBe(false);
+      const payload = JSON.parse(res.text) as {
+        domain: string;
+        actions: Array<{ action: string; tool: string; description: string; required: unknown[] }>;
+      };
+      expect(payload.domain).toBe('analysis');
+      expect(payload.actions.length).toBe(15);
+      const preflight = payload.actions.find((a) => a.action === 'preflight');
+      // 完整说明书（不是迷你 hint）——原文里独有的措辞必须在
+      expect(preflight?.description).toContain('Change-impact rehearsal');
+      expect(preflight?.required).toContain('path');
+    });
+  });
+
+  it('退役开关不再影响可见面（设了也还是折叠面）', { skip: !hasEngine() }, async () => {
     await run(
       async (client) => {
         const tools = client.listRemoteTools().map((t) => t.name);
-        expect(tools).toContain('get_neighbors');
-        expect(tools).toContain('analyze_project');
-        expect(tools.length).toBeGreaterThanOrEqual(36);
-        for (const shell of SHELL_METHODS) {
-          expect(tools, `tools/list 泄漏壳专属方法 ${shell}`).not.toContain(shell);
-        }
+        expect(tools).toEqual([...DOMAINS, ...STANDALONE_WRITES]);
       },
       { HOLOGRAM_MCP_TOOLS: '*' },
     );
