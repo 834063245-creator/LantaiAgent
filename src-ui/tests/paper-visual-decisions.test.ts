@@ -181,46 +181,95 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
   });
 });
 
-describe('钉住与纸条换装（pin-strip-rework，2026-09-05——松手定夺 + 盖章剪报）', () => {
-  it('钉住块 = 盖章剪报：outline 画框退役 → 物理包边轻量档 + 纸材（流区判例延伸）', () => {
+describe('钉住与纸条（09-05 松手定夺批 → 09-19 便条批 · 用户拍板「甲+丙」）', () => {
+  it('钉住块 = 便条：纸内白边 + 实色深纸无纹 + 贴平无落影（§11 纸内件无投影）', () => {
     const pin = ruleBody(PANEL_CSS, '.pp-block.pp-pinned {');
-    // 画框语言退役（09-02 真纸化批判例延伸——框是画在纸上的线，真纸的缘是材料）
-    expect(pin).not.toContain('outline');
-    expect(pin).not.toContain('border');
-    // 物理包边轻量档：受光缘/背光缘/裱边带 + 接触落影，全走 token
+    // 甲·留白：墨不再贴纸缘（流内 720 墨借 1440 纸的白边，钉住后必须自付）
+    expect(pin).toContain('var(--pp-ch-pin-padTop)');
+    expect(pin).toContain('var(--pp-ch-pin-padH)');
+    expect(pin).toContain('var(--pp-ch-pin-padBottom)');
+    // 丙·便条：实色深纸（桌面有纹 / 流区有纹 / 便条素纸——三分材质）
+    expect(pin).toContain('background-color: var(--paper-deep)');
+    expect(pin).not.toContain('paper-sheet.jpg');
+    // 贴平：纸内件无投影（规格书 §11 层次法原表列，09-05 批曾越）；接触落影族
+    // 自此只归流区（那张「纸」）
+    expect(pin).not.toContain('var(--shadow-sheet');
+    expect(pin).not.toContain('var(--sheet-band)');
     expect(pin).toContain('var(--sheet-lit)');
-    expect(pin).toContain('var(--sheet-shade)');
-    expect(pin).toContain('var(--sheet-band)');
-    expect(pin).toContain('var(--shadow-sheet)');
-    // 材料与流区同源（paper-sheet 纹理——从同一张纸上剪下来的）
-    expect(pin).toContain('paper-sheet.jpg');
-    // hover = 落影提一档（变色/描边判死——09-02 同判例）
-    const hover = ruleBody(PANEL_CSS, '.pp-block.pp-pinned:hover {');
-    expect(hover).toContain('var(--shadow-sheet-active)');
-    expect(hover).not.toContain('var(--seal)');
+    expect(pin).not.toContain('outline');
+    expect(pin).not.toContain('border:');
+    // hover 不再提落影（无影可提）——hover 信号在收回钮与文类签（各自规则）
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-pinned:hover {')).toBe('');
   });
 
-  it('竖排「钉住」身份签（原型 .pin-hint 补抄——此前漏抄）：右缘竖排朱砂深 + hover 显形', () => {
-    const hint = ruleBody(PANEL_CSS, '.pp-pin-hint {');
-    expect(hint).toContain('writing-mode: vertical-rl');
-    expect(hint).toContain('right: -36px');
-    expect(hint).toContain('color: var(--seal-deep)');
-    expect(hint).toContain('font-family: var(--f-mono)');
-    expect(ruleBody(PANEL_CSS, '.pp-block.pp-pinned:hover .pp-pin-hint')).toContain('opacity: 1');
-    // JSX 接线（BlockView 钉住态）
-    expect(PANEL_TSX).toContain('className="pp-pin-hint"');
+  it('纸内报头：文类签从纸外页边注收进纸内成单行（方墨点 + 文类 + 出处），测高镜像在册', () => {
+    const head = ruleBody(PANEL_CSS, '.pp-block.pp-pinned .pp-kind {');
+    expect(head).toContain('position: static'); // 不再挂纸外 -128px
+    expect(head).toContain('flex-direction: row');
+    expect(head).toContain('var(--pp-ch-pin-headGap)');
+    expect(head).toContain('var(--pp-ch-pin-headRuleGap)');
+    expect(head).toContain('var(--rule-soft)');
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-pinned .pp-kind::after')).toContain('display: none');
+    // 方墨点身份（D2 方点语言，常显、不占朱砂）替 hover 才显形的竖排「钉住」签
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-pinned .pp-kind .pp-zh::before')).toContain('var(--pp-ch-pin-dot)');
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-pinned .pp-kind .pp-prov')).toContain('margin-left: auto');
+    // 竖排签退役（CSS + JSX 双面）
+    expect(PANEL_CSS).not.toContain('.pp-pin-hint');
+    expect(PANEL_TSX).not.toContain('pp-pin-hint');
+    // 报头高进测高镜像：token 组 + 派生 + measure 的钉住态分支三处齐全
+    expect(TYPE_TOKENS_TS).toContain('pinHeadH:');
+    expect(TYPE_TOKENS_TS).toContain('pinChromeH:');
+    expect(TYPE_TOKENS_TS).toContain('pinTextInset:');
+    expect(MEASURE_TS).toContain("if (b.state === 'pinned')");
+    expect(MEASURE_TS).toContain('CHROME_DERIVED.pinChromeH');
+    expect(MEASURE_TS).toContain('CHROME_DERIVED.pinTextInset');
   });
 
-  it('纸条 = 桌面纸片：虚线框退役（虚线 = 草稿/占位语义，真实物件不穿草稿的衣服）→ 物理缘轻档', () => {
+  it('纸条 = 便条族同纸：纸内白边 18/20 + 实色深纸无纹 + 贴平；题签墨阶 + 方点（不占常驻朱砂）', () => {
     const strip = ruleBody(PANEL_CSS, '.pp-strip {');
     expect(strip).not.toContain('border:');
+    expect(strip).toContain('background: var(--paper-deep)');
+    expect(strip).toContain('padding: var(--pp-ch-strip-padV) var(--pp-ch-strip-padH)');
     expect(strip).toContain('var(--sheet-lit)');
-    expect(strip).toContain('var(--shadow-sheet)');
-    // 两击销毁确认态：楷体（mono 栈无中文字形——P4 教训）+ 常显 + 朱砂深
+    expect(strip).not.toContain('var(--shadow-sheet');
+    expect(strip).not.toContain('var(--sheet-band)');
+    // 内距定档走 token（真源 CHROME_TOKENS.strip）：10/12 → 18/20
+    expect(TYPE_TOKENS_TS).toContain('strip: { size: 12.5, lh: 1.7, padV: 18, padH: 20 }');
+    // 题签：方墨点 + ink 阶（旧案 seal-deep 常显 = 每屏多处红，违 §10 法则 3）
+    const tag = ruleBody(PANEL_CSS, '.pp-strip-tag {');
+    expect(tag).toContain('color: var(--ink-3)');
+    expect(tag).not.toContain('seal');
+    expect(ruleBody(PANEL_CSS, '.pp-strip-tag::before')).toContain('var(--ink-2)');
+    // 两击销毁确认态：楷体（mono 栈无中文字形——P4 教训）+ 常显 + 朱砂深（人的动作）
     const confirm = ruleBody(PANEL_CSS, '.pp-strip-remove--confirm');
     expect(confirm).toContain('opacity: 1');
     expect(confirm).toContain('var(--f-kai)');
     expect(confirm).toContain('var(--seal-deep)');
+  });
+
+  it('纸条报头来源行：source.label 快照（拷贝语义）＋旧存档无字段不渲染', () => {
+    expect(ruleBody(PANEL_CSS, '.pp-strip-src {')).toContain('var(--rule-soft)');
+    expect(PANEL_TSX).toContain('className="pp-strip-src"');
+    expect(PANEL_TSX).toContain('s.source?.label');
+    // 快照取自流区显示名（唯一派生口 volumeDisplayName，禁调用点散写 label || …）
+    expect(PANEL_TSX).toContain('volumeDisplayName(region.label, region.sessionNum)');
+    const sel = readFileSync(join(SRC, 'paper', 'selection.ts'), 'utf8');
+    expect(sel).toContain('label?: string');
+  });
+
+  it('拖拽携带态 = 纸片件压印族（§11），且几何一律不动（不碰 padding/left/top/width）', () => {
+    const drag = ruleBody(PANEL_CSS, '.pp-block.pp-dragging {');
+    expect(drag).toContain('var(--elev-raise)');
+    expect(drag).not.toContain('var(--shadow-sheet');
+    expect(drag).not.toContain('paper-sheet.jpg');
+    expect(drag).not.toContain('padding');
+    // 落定 keyframes 只声明 translate（跨族影列形状不同，CSS 不插值）
+    const settlePin = keyframesBody(PANEL_CSS, 'pp-settle-pin');
+    expect(settlePin).toContain('translate: 0 -3px');
+    expect(settlePin).not.toContain('box-shadow');
+    const settleDrop = keyframesBody(PANEL_CSS, 'pp-settle-drop');
+    expect(settleDrop).toContain('translate: 0 -2px');
+    expect(settleDrop).not.toContain('box-shadow');
   });
 
   it('洞弱化一档：虚线语义保留（占位铁律），墨量收一档让位正文', () => {

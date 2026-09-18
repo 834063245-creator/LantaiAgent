@@ -159,7 +159,26 @@ export const CHROME_TOKENS = {
   codeSrc: { borderL: 3, padL: 14, padV: 10, maxH: 320 },
   codeOut: { maxH: 200 },
   marginalia: { offset: 24, width: 240, borderL: 2, padL: 10 },
-  strip: { size: 12.5, lh: 1.7, padV: 10, padH: 12 },
+  /* 便条（纸内件，2026-09-19 钉纸条便条批）：钉住块与纸条共用一族纸面几何——
+   * 纸内白边（墨不再贴纸缘：流内 720 墨借 1440 纸的白边，钉到桌面后那份白边
+   * 不存在了，必须由纸自己付）+ 纸内报头（文类签/序号/出处行从纸外 -128px 的
+   * 页边注收进纸内，成为剪报的报头）+ 身份方点（D2 方点语言，替 hover 才显形的
+   * 竖排签）。数值是测高镜像的一端：钉住块几何高 = padTop + 报头 + 正文
+   * （按收窄后的测宽）+ padBottom，见 measure.ts measurePinnedBlockHeightCached
+   * 与 CHROME_DERIVED.pinHeadH。 */
+  pin: {
+    padTop: 34,
+    padBottom: 38,
+    padH: 44,
+    headSize: 13,
+    headLh: 1,
+    headRule: 1,
+    headRuleGap: 10,
+    headGap: 16,
+    dot: 6,
+    dotGap: 8,
+  },
+  strip: { size: 12.5, lh: 1.7, padV: 18, padH: 20 },
 } as const;
 
 /* ── 组合 chrome 常量（measure 用；CSS 引用 CHROME_TOKENS 原始值）── */
@@ -204,6 +223,15 @@ export const CHROME_DERIVED = {
   codeOutMaxH: CHROME_TOKENS.codeOut.maxH,
   marginaliaW: CHROME_TOKENS.marginalia.width,
   marginaliaInset: CHROME_TOKENS.marginalia.borderL + CHROME_TOKENS.marginalia.padL,
+  /* 钉住块（便条）几何：报头行高（单行 = 字号 × 行高系数）+ 规线间隙 + 规线 +
+   * 报头下距；纸内白边 = 上下内距之和；正文测宽要收 padH × 2。 */
+  pinHeadH:
+    CHROME_TOKENS.pin.headSize * CHROME_TOKENS.pin.headLh +
+    CHROME_TOKENS.pin.headRuleGap +
+    CHROME_TOKENS.pin.headRule +
+    CHROME_TOKENS.pin.headGap,
+  pinChromeH: CHROME_TOKENS.pin.padTop + CHROME_TOKENS.pin.padBottom,
+  pinTextInset: CHROME_TOKENS.pin.padH * 2,
 } as const;
 
 /* ── 资产款（CSS 侧 .pp-json / .pp-media / .pp-chart 等镜像）── */

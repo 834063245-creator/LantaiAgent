@@ -331,11 +331,6 @@ const BlockView = memo(function BlockView({
         </div>
       )}
       {block.state === 'pinned' && (
-        <span className="pp-pin-hint" aria-hidden="true">
-          钉住
-        </span>
-      )}
-      {block.state === 'pinned' && (
         <button
           type="button"
           className="pp-unpin"
@@ -970,6 +965,10 @@ export function PaperPanel() {
                       </button>
                     </div>
                     <div className="pp-strip-body">{s.text}</div>
+                    {/* 来源行（2026-09-19 便条批）：纸条的报头——抽取那一刻的
+                        卷名快照（拷贝语义：源卷改名不追改；旧存档无此字段整行
+                        不渲染，不编造来路）。 */}
+                    {s.source?.label && <div className="pp-strip-src">摘自 {s.source.label}</div>}
                     {/* P2b 宽度手调面（右缘拖拽） */}
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
                     <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, s.id, 'strip', s.w)} />

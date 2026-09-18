@@ -27,6 +27,11 @@ export interface PaperStripSource {
   /** 选区在该块文本中的起止偏移 */
   startOffset?: number;
   endOffset?: number;
+  /** 抽取那一刻的源卷显示名快照（2026-09-19 便条批：纸条报头「摘自 卷名」）。
+   *  **快照不是活引用**——拷贝语义：剪下来的纸片上印着原纸当时的名字，源卷
+   *  改名不追改（与块级钉的活卷名出处行是两套语义）。旧存档无此字段 ⇒ 报头
+   *  行不渲染。 */
+  label?: string;
 }
 
 /** 纸条物件（用户层——与块级 SourcedBlock 区分：无 source，拷贝语义） */
@@ -117,8 +122,11 @@ export function classifyDropZone(worldX: number, bandHalfWidth: number): StripDr
 export const STRIP_STASH_GAP = 48;
 export const STRIP_STACK_GAP = 24;
 /** 纸条渲染高的近似值（浮钮叠放探测用——真高度由 CSS 内容决定，
- *  这里取结构高度近似，叠放宁可多留空不重叠）。 */
-export const STRIP_H_APPROX = 120;
+ *  这里取结构高度近似，叠放宁可多留空不重叠）。
+ *  2026-09-19 便条批：纸条纸内白边 10/12 → 18/20 并添报头来源行（.pp-strip-src），
+ *  结构高从 ~120 抬到 ~150（18×2 内距 + 题签行 + 两三行正文 + 来源行），
+ *  近似值同步抬一档——宁可多留空。 */
+export const STRIP_H_APPROX = 150;
 
 export function stashStripPosition(
   selectionMidY: number,

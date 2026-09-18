@@ -8,6 +8,7 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { volumeDisplayName } from '../../../state/volume-name';
 import { useEdgeAutoScroll } from './edge-scroll';
 import type { MaskRect, PaperStrip, RegionView, SourcedBlock } from './host';
 import {
@@ -164,13 +165,22 @@ export function usePaperStrips(params: {
     (sessionId: string, text: string, messageId: string | undefined, x: number, y: number) => {
       const trimmed = text.trim();
       if (!trimmed || !core) return;
-      void sessionId; // 纸条 = 工作区级公共物（Stage-5），源会话只作溯源展示
-      const strip = makeStrip(trimmed, x, y, 480, messageId ? { messageId } : undefined);
+      /* 纸条 = 工作区级公共物（Stage-5），源会话只作溯源展示：报头的卷名在此
+       * **拍快照**（拷贝语义——源卷改名不追改；取自流区显示名，无名卷走
+       * volumeDisplayName 的档号兜底，禁在调用点散写 label || …）。 */
+      const region = regionsRef.current.find((r) => r.sessionId === sessionId);
+      const source = messageId
+        ? {
+            messageId,
+            ...(region ? { label: volumeDisplayName(region.label, region.sessionNum) } : {}),
+          }
+        : undefined;
+      const strip = makeStrip(trimmed, x, y, 480, source);
       getCanvasStore(core.panelId).getState().addStrip(strip);
       setSettleId(strip.id); // 成条落定「放下」手感（刀3）
       window.setTimeout(() => setSettleId((cur) => (cur === strip.id ? null : cur)), 400);
     },
-    [core, setSettleId],
+    [core, regionsRef, setSettleId],
   );
 
   const toWorldInCanvas = useCallback(

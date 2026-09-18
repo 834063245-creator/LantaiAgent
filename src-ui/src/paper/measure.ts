@@ -1621,6 +1621,10 @@ export function measureBlockHeightCached(
   sidecarFolded = false,
   sidecarOut = false,
 ): number {
+  /* 钉住态 = 另一种纸面（便条批 2026-09-19）：纸内白边 + 纸内报头都是**钉住态
+   * 独有**的竖直增量，签名里必须带 state——否则同一块在流/钉两态之间共用一条
+   * 缓存，拔钉/钉住后高度照旧（虚拟化剔除矩形错、洞位错）。 */
+  if (b.state === 'pinned') return pinnedBlockHeightCached(b, cache, folded, sidecarFolded, sidecarOut);
   const obs = needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
     ? observedBlockHeightOf(b.id, b.w)
     : undefined;
@@ -1647,6 +1651,44 @@ export function measureBlockHeightCached(
   cache.byId.set(b.id, { sig, h });
   return h;
 }
+
+/** 钉住块（便条）几何高：纸内白边 + 纸内报头 + 正文（按收窄后的测宽）。
+ *
+ *  2026-09-19「便条批」：钉住块不再是流内块的透明重绘——纸面加了纸内白边
+ *  （.pp-block.pp-pinned 的 padding）与纸内报头（.pp-kind 从纸外页边注 -128px
+ *  收进纸内成单行）。两者都由本函数镜像：否则 virtualize 的剔除矩形
+ *  （PinnedGeom.h）比真身矮，块尾滑到视口边会被整块卸掉，小地图框也偏小。
+ *
+ *  实测优先（同主函数纪律）：资产/开放/拟策族挂 RO 实测，而实测读的是**钉住
+ *  DOM 的 border-box**——白边与报头已含在内，直接采用。静态镜像族
+ *  （markdown/工具/程文…）按收窄测宽重算：cache 键加 `#pin` 后缀与流内条目
+ *  分家（同块在流/钉两态各持一份，互不冲刷；主函数的签名也带 state）。 */
+function pinnedBlockHeightCached(
+  b: SourcedBlock,
+  cache: BlockMeasureCache,
+  folded = false,
+  sidecarFolded = false,
+  sidecarOut = false,
+): number {
+  const obs = needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
+    ? observedBlockHeightOf(b.id, b.w)
+    : undefined;
+  if (obs != null) return obs;
+  const inner: SourcedBlock = {
+    ...b,
+    id: `${b.id}#pin`,
+    w: Math.max(PIN_MIN_TEXT_W, b.w - CHROME_DERIVED.pinTextInset),
+    state: 'flow',
+  };
+  return (
+    CHROME_DERIVED.pinChromeH +
+    CHROME_DERIVED.pinHeadH +
+    measureBlockHeightCached(inner, cache, folded, sidecarFolded, sidecarOut)
+  );
+}
+
+/** 便条正文最小测宽（窄钉极端：纸内白边吃掉整宽时的兜底，防负宽测量）。 */
+const PIN_MIN_TEXT_W = 80;
 
 /* ── 缓存管理 ── */
 

@@ -22,7 +22,7 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
   measureRichInlineStats: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
 }));
 
-import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
+import { createBlock, pinBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { defaultFolded, foldLabel, foldPreviewLine, isFoldable } from '../src/paper/fold';
 import {
   type MdBlock,
@@ -43,6 +43,7 @@ import {
   SEC_HEAD_GAP,
   SEC_HEAD_H,
 } from '../src/paper/measure';
+import { CHROME_DERIVED } from '../src/paper/type-tokens';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });
@@ -289,5 +290,42 @@ describe('paper/measure — markdown 计高（mock 36/段）', () => {
 
   it('空 markdown = 0（零成本路径）', () => {
     expect(measureBlockHeight(block('markdown', { text: '' }))).toBe(0);
+  });
+});
+
+/* ═══ 钉住块（便条）几何高镜像（2026-09-19 便条批）═══
+ * 用户序列：把块拖出流带钉在案上 → 纸面长出纸内白边与纸内报头 → 块比流内时高。
+ * 虚拟化剔除矩形（PinnedGeom.h）与画布渲染读的是同一次测高，镜像漏了就会
+ * 「块尾滑到视口边整块消失」。 */
+
+describe('paper/measure — 钉住块（便条）几何高镜像', () => {
+  const md = () => block('markdown', { text: '单段' });
+
+  it('钉住态 = 纸内白边 + 纸内报头 + 正文（白边是钉住态独有的竖直增量）', () => {
+    const cache = createBlockMeasureCache();
+    const b = md();
+    const flowH = measureBlockHeightCached(b, cache);
+    const pinnedH = measureBlockHeightCached(pinBlock(b, 0, 0), cache);
+    expect(pinnedH).toBe(flowH + CHROME_DERIVED.pinChromeH + CHROME_DERIVED.pinHeadH);
+    expect(CHROME_DERIVED.pinChromeH).toBeGreaterThan(0);
+    expect(CHROME_DERIVED.pinHeadH).toBeGreaterThan(0);
+  });
+
+  it('正文按收窄后的测宽测（纸内白边吃掉 padH×2）', () => {
+    const cache = createBlockMeasureCache();
+    const b = md();
+    layoutMock.mockClear();
+    measureBlockHeightCached(pinBlock(b, 0, 0), cache);
+    expect(layoutMock.mock.calls.at(-1)?.[1]).toBeCloseTo(b.w - CHROME_DERIVED.pinTextInset, 5);
+  });
+
+  it('流/钉两态各持一条缓存：拔钉回流后读到的是流内高，不是钉住高', () => {
+    const cache = createBlockMeasureCache();
+    const b = md();
+    const flowH = measureBlockHeightCached(b, cache);
+    const pinnedH = measureBlockHeightCached(pinBlock(b, 0, 0), cache);
+    expect(pinnedH).not.toBe(flowH);
+    expect(measureBlockHeightCached(b, cache)).toBe(flowH);
+    expect(measureBlockHeightCached(pinBlock(b, 0, 0), cache)).toBe(pinnedH);
   });
 });

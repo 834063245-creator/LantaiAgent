@@ -789,7 +789,7 @@
  * 枚举外），现按「块内一切交互件」一次收口——正文（.pp-body / .pp-md-* /
  * .pp-code-src…）不在列，照旧可选。
  * `:where()` 归零基数：本族靠「直陈声明胜过继承」成立，不靠特异性压人。 */
-.pp-block :where(button, summary, .pp-kind, .pp-status, .pp-unpin, .pp-pin-hint, .pp-fold, .pp-msg-ops, .pp-resize) {
+.pp-block :where(button, summary, .pp-kind, .pp-status, .pp-unpin, .pp-fold, .pp-msg-ops, .pp-resize) {
   user-select: none;
 }
 
@@ -1866,52 +1866,77 @@
   white-space: pre-line;
 }
 
-/* 钉住块 = 盖章剪报（2026-09-05 换装，plan：pin-strip-rework）：桌面纸制品
- * ——outline 画框（14px 悬空细框）随流区界栏同理由退役（「框是画在纸上的
- * 线，真纸的缘是材料」——09-02 真纸化批的判例延伸，产品曾漏扫）。物理包边
- * 轻量档：流区四层配方的缩放版（受光缘/背光缘收半档 + 裱边带 4px + 接触
- * 落影），材料与流区同源（paper-sheet 纹理——从同一张纸上剪下来的）。
- * 剂量 D2 待真机 A/B 微调（plan §4）。 */
+/* 便条（2026-09-19 钉纸条便条批 · 用户拍板「甲+丙」）：钉住块的纸面语言从
+ * 09-05 的「流区四层包边的缩水版」翻案为**便条纸**。三条病灶与三条治法：
+ *   ① 墨占 100%（流内 720 墨借 1440 纸的左右各 360 白边；钉到桌面上之后那份
+ *      白边不存在了，只剩 4px 裱边带顶着字）→ **纸内白边**
+ *      （--pp-ch-pin-padTop/padH/padBottom；测高镜像见 measure.ts
+ *      pinnedBlockHeightCached——白边是钉住态独有的竖直增量）。
+ *   ② 材料与桌面、流区同族（同 paper-sheet 纹理，只差 11 阶色）→ **实色深纸无纹**
+ *      （--paper-deep）：桌面（有纹）/ 流区（有纹的纸）/ 便条（素纸）三分材质，
+ *      层级靠纸色与白边读。
+ *   ③ 纸内件配了流区同款接触落影（09-05 批）——规格书 §11 层次法原文是「纸内件
+ *      （块/纸条/签）：无投影，靠遮挡 + 界栏线 + 选中线表达」→ **贴平无落影**；
+ *      「拿起」的影只出现在拖拽携带态（--elev-raise 压印族 = 纸片件离桌在手）。
+ *   ④ 纸外挂着四个零件（文类签 -128px / 出处行 / 竖排「钉住」签 +36px / 收回钮
+ *      -30px）→ 前两者收进纸内成**报头**（见 .pp-block.pp-pinned .pp-kind），
+ *      竖排签退役（身份改常显方墨点），收回钮留纸外（hover 瞬态，不占构图）。 */
 .pp-block.pp-pinned {
-  background-color: var(--paper);
-  background-image: url("../../../assets/paper/paper-sheet.jpg");
-  background-size: 1200px;
-  background-repeat: repeat;
-  background-blend-mode: multiply;
-  box-shadow:
-    inset 2px 2px 3px var(--sheet-lit),
-    inset -1px -2px 4px var(--sheet-shade),
-    inset 0 0 0 4px var(--sheet-band),
-    var(--shadow-sheet);
+  padding: var(--pp-ch-pin-padTop) var(--pp-ch-pin-padH) var(--pp-ch-pin-padBottom);
+  background-color: var(--paper-deep);
+  box-shadow: inset 0 1px 0 var(--sheet-lit);
   z-index: 30;
 }
-/* hover = 落影提一档（手里拿起端详）——变色/描边判死（09-02 同判例），
- * 朱砂信号让位给竖排身份签与收回钮。 */
-.pp-block.pp-pinned:hover {
-  box-shadow:
-    inset 2px 2px 3px var(--sheet-lit),
-    inset -1px -2px 4px var(--sheet-shade),
-    inset 0 0 0 4px var(--sheet-band),
-    var(--shadow-sheet-active);
+
+/* 纸内报头（便条批）：文类签从纸外页边注（left: -128px）收进纸内成单行——
+ * 钉到桌面上之后「页边」不存在了，签、连线、出处行只能悬在桌面上。剪报的
+ * 身份本来就该印在报头上：方墨点 + 文类 + 序号 ……… 出处。
+ * 行高 = headSize × headLh（13 × 1），整块报头高 = 行 + 规线间隙 + 规线 +
+ * 下距 —— 测高镜像 CHROME_DERIVED.pinHeadH（改这里必改 type-tokens 的 pin 组）。 */
+.pp-block.pp-pinned .pp-kind {
+  position: static;
+  width: auto;
+  margin: 0 0 var(--pp-ch-pin-headGap);
+  padding: 0 0 var(--pp-ch-pin-headRuleGap);
+  border-bottom: var(--rule-soft);
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  /* 行高系数走 token（镜像的一端）：报头恒一行，不吃子件字号 */
+  line-height: var(--pp-ch-pin-headLh);
 }
-/* 拖拽携带态（松手定夺 2026-09-05）：拿起 = 揭起成纸片——flow 块拖动中
- * 仍在流分支（透明底），携带态补钉住材料与松手后的钉住态无缝衔接；
- * 微抬 2px + 落影提至 lift 档（手里正拿着）。opacity .92 退役（半透明
- * 假海拔）；translate 独立属性与 transform 合成（pp-enter 先例——不占
- * 内联 translate(x,y) 槽位）。 */
+.pp-block.pp-pinned .pp-kind::after {
+  display: none; /* 页边注的 hairline 连线随「页边」一起退役 */
+}
+.pp-block.pp-pinned .pp-kind .pp-zh {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pp-ch-pin-dotGap);
+  font-size: var(--pp-ch-pin-headSize);
+}
+/* 身份方墨点（D2 方点语言）：替 hover 才显形的竖排「钉住」签——钉住是常驻
+ * 状态，身份就该常显；朱砂不占（每屏至多一处红，钉住是状态不是人的动作）。 */
+.pp-block.pp-pinned .pp-kind .pp-zh::before {
+  content: "";
+  width: var(--pp-ch-pin-dot);
+  height: var(--pp-ch-pin-dot);
+  background: var(--ink-2);
+}
+.pp-block.pp-pinned .pp-kind .pp-prov {
+  margin-left: auto;
+}
+
+/* 拖拽携带态（2026-09-19 便条批改）：拿起 = 便条离桌在手——纸色不变（--paper-deep
+ * 与贴平态同源，落定无换色），只挂压印族落影（§11：纸片件/拖拽幽灵用 --elev-raise）
+ * 与微抬 2px。**几何一律不动**（不碰 padding/left/top/width）：钉住块拖自己时
+ * 纸面几何照旧（.pp-pinned 的 padding 仍在），流内块拖出时也不在拾起瞬间重排
+ * ——纸内白边与报头是落定那一刻长出来的（settle 一拍盖住）。
+ * opacity .92 已于 09-05 退役（半透明假海拔）。translate 独立属性与 transform 合成。 */
 .pp-block.pp-dragging {
   cursor: grabbing;
   translate: 0 -2px;
-  background-color: var(--paper);
-  background-image: url("../../../assets/paper/paper-sheet.jpg");
-  background-size: 1200px;
-  background-repeat: repeat;
-  background-blend-mode: multiply;
-  box-shadow:
-    inset 2px 2px 3px var(--sheet-lit),
-    inset -1px -2px 4px var(--sheet-shade),
-    inset 0 0 0 4px var(--sheet-band),
-    var(--shadow-sheet-lift);
+  background-color: var(--paper-deep);
+  box-shadow: var(--elev-raise);
   z-index: 50;
 }
 /* 回流预览（松手定夺 2026-09-05）：拖动中块影悬回来源带内——松手即取消
@@ -1932,17 +1957,14 @@
   white-space: nowrap;
   pointer-events: none;
 }
-/* 落定 settle（手感批 2026-09-05）：松手定夺的「按下」一拍——块从提起
- * 位压落（translate 从 -3px 归 0，落影从 lift 档塌回 sheet 档）；from-only
- * keyframes（to 缺省回落元素计算值——钉住/纸条各自的静息落影）。 */
+/* 落定 settle（手感批 2026-09-05；2026-09-19 便条批改）：松手定夺的「按下」
+ * 一拍——便条从提起位压落（translate 从 -3px 归 0），手里那张影就地塌掉
+ * （拿起档是压印族单条，贴平档是 inset 受光缘一线——两族影列形状不同，CSS
+ * 无法插值，故本 keyframes 只声明 translate；影的切换由类变更即时而落，
+ * 正是「按到桌面上」该有的一瞬）。from-only：to 缺省回落元素计算值。 */
 @keyframes pp-settle-pin {
   from {
     translate: 0 -3px;
-    box-shadow:
-      inset 2px 2px 3px var(--sheet-lit),
-      inset -1px -2px 4px var(--sheet-shade),
-      inset 0 0 0 4px var(--sheet-band),
-      var(--shadow-sheet-lift);
   }
 }
 .pp-block.pp-settle {
@@ -1981,7 +2003,8 @@
   }
 }
 
-/* 收回按钮（D-R2-2：按钮 + 确认） */
+/* 收回按钮（D-R2-2：按钮 + 确认）。便条批（2026-09-19）：hover 才显形，
+ * 故留在纸外不占构图（常驻件才收进纸内——报头与方点）。底色随便条纸同族。 */
 .pp-unpin {
   position: absolute;
   top: -30px;
@@ -1990,7 +2013,7 @@
   font-size: 9px;
   letter-spacing: 0.12em;
   color: var(--ink-3);
-  background: var(--paper);
+  background: var(--paper-deep);
   border: var(--rule-soft);
   border-radius: 0;
   padding: 4px 8px;
@@ -2008,27 +2031,9 @@
   color: var(--seal-deep);
   border-color: var(--seal);
 }
-/* 竖排「钉住」身份签（2026-09-05 补抄原型 lantai.html .pin-hint——盖章剪报
- * 隐喻的落地件；产品此前漏抄，钉住态没有「我已被钉住」的身份标记）。右缘
- * 竖排、朱砂深（钉住是用户的动作——人语汇）、hover 显形与收回钮同族。 */
-.pp-pin-hint {
-  position: absolute;
-  top: 0;
-  right: -36px;
-  font-family: var(--f-mono);
-  font-size: 9px;
-  letter-spacing: 0.24em;
-  color: var(--seal-deep);
-  background: var(--paper);
-  writing-mode: vertical-rl;
-  padding: 8px 2px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--snap);
-}
-.pp-block.pp-pinned:hover .pp-pin-hint {
-  opacity: 1;
-}
+/* 竖排「钉住」签（09-05 补抄）已随便条批**退役**（2026-09-19）：它是 hover 才
+ * 显形的纸外挂件，而钉住是常驻状态——身份改由纸内报头的方墨点常显承担，
+ * 且朱砂不占（每屏至多一处红）。旧规则与 JSX 一并删除，不留注释尸体。 */
 
 /* 流内占位（块被拖出后流里留洞——原生 button，点击恢复手势）。2026-09-05
  * 弱化一档：洞是流内的疤不是主角——虚线语义保留（占位/草稿铁律），墨量
@@ -3747,17 +3752,19 @@
 }
 
 /* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件；收尾 2026-08-24 完整化）── */
-/* 纸条 = 桌面纸片（2026-09-05 换装，plan：pin-strip-rework）：虚线框退役
- * ——线级语义里虚线 = 草稿/占位，纸条是真实物件（快照已落盘）穿草稿的衣服
- * 是语义错位；且纸条样式从未过审美账本（原型无此物件，产品自创）。物理缘
- * 比钉住块再收半档（更小更薄的纸片）+ 接触落影。
+/* 纸条 = 便条族（2026-09-19 便条批 · 与钉住块同一张纸，用户拍板「甲+丙」）：
+ * 09-05 的「虚线退役换物理缘 + 接触落影」翻案——纸条与钉住块是同一种东西
+ * （从纸上摘下来的纸片），必须同族：实色深纸无纹（--paper-deep）+ 纸内白边
+ * （--pp-ch-strip-padV/padH 由 10/12 提到 18/20：墨占从 95% 收到 92%）+ 贴平
+ * 无落影（§11：纸内件无投影）+ 方墨点身份 + 来源行（.pp-strip-src，取自
+ * source.label 快照——拷贝语义的报头）。
  * 纸条文本**刻意不放开可选**（2026-09-17 选区政策全局化时复核过）：整张纸条是
  * 拖拽把手（grab，按住即拖走），放开可选 = 在纸条上按下变成扫选、拖不动纸条
  * （与「纸面正文可选」不是同一回事：正文不是把手）。要抄纸条文字请用块级「抄」钮
  * （use-block-ops）——同一条通道，不靠划选。 */
 .pp-strip {
   position: absolute;
-  background: var(--paper);
+  background: var(--paper-deep);
   border-radius: 0;
   padding: var(--pp-ch-strip-padV) var(--pp-ch-strip-padH);
   color: var(--ink-2);
@@ -3765,31 +3772,19 @@
   line-height: var(--pp-ch-strip-lh);
   cursor: grab;
   z-index: 40;
-  box-shadow:
-    inset 1px 1px 2px var(--sheet-lit),
-    inset -1px -1px 3px var(--sheet-shade),
-    inset 0 0 0 3px var(--sheet-band),
-    var(--shadow-sheet);
+  box-shadow: inset 0 1px 0 var(--sheet-lit);
 }
 .pp-strip.pp-dragging {
   cursor: grabbing;
   translate: 0 -2px;
-  box-shadow:
-    inset 1px 1px 2px var(--sheet-lit),
-    inset -1px -1px 3px var(--sheet-shade),
-    inset 0 0 0 3px var(--sheet-band),
-    var(--shadow-sheet-lift);
+  box-shadow: var(--elev-raise);
   z-index: 50;
 }
-/* 落定 settle（放下）：轻落归位（手感批——纸条成条/移位的「放下」一拍）。 */
+/* 落定 settle（放下）：轻落归位（手感批——纸条成条/移位的「放下」一拍）。
+ * 与 pp-settle-pin 同判：影列形状跨族不插值，只声明 translate。 */
 @keyframes pp-settle-drop {
   from {
     translate: 0 -2px;
-    box-shadow:
-      inset 1px 1px 2px var(--sheet-lit),
-      inset -1px -1px 3px var(--sheet-shade),
-      inset 0 0 0 3px var(--sheet-band),
-      var(--shadow-sheet-lift);
   }
 }
 .pp-strip.pp-settle {
@@ -3804,18 +3799,31 @@
   font-size: 10px;
   color: var(--seal-deep);
 }
-/* 头部：题签 + 销毁钮（两端对齐——销毁钮只在 hover 时显形，不搅纸面） */
+/* 头部：题签 + 销毁钮（两端对齐——销毁钮只在 hover 时显形，不搅纸面）。
+ * 题签 2026-09-19 便条批：方墨点身份（D2 方点语言，与钉住块报头同族）+
+ * 墨阶回落 ink-3——旧案的 seal-deep 是**常显朱砂**，每多一张纸条就多一处
+ * 常驻红，与规格书 §10 法则 3「每屏至多一处红」相抵（人的动作才用朱砂：
+ * 销毁确认态仍走 seal-deep）。 */
 .pp-strip-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
 }
 .pp-strip-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-family: var(--f-mono);
   font-size: 9px;
   letter-spacing: 0.24em;
-  color: var(--seal-deep);
+  color: var(--ink-3);
+}
+.pp-strip-tag::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  background: var(--ink-2);
 }
 .pp-strip-remove {
   font-family: var(--f-mono);
@@ -3841,6 +3849,22 @@
 .pp-strip-body {
   white-space: pre-wrap;
   word-break: break-word;
+}
+/* 来源行（2026-09-19 便条批）：纸条的报头——「摘自 卷名」，取自抽取那一刻的
+ * source.label 快照（拷贝语义：剪下来的纸片上印着原纸当时的名字，源卷改名不
+ * 追改；块级钉是活引用，出处行走活卷名优先——两者是两套语义，不是两套待遇）。
+ * 旧存档纸条无 label ⇒ 整行不渲染，不编造来路。 */
+.pp-strip-src {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: var(--rule-soft);
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── 小地图样式已迁出（2026-09-05 插件化）：.pp-minimap 家族 → 
