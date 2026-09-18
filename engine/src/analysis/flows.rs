@@ -347,7 +347,7 @@ mod tests {
 
     fn make_calls_edge(graph: &mut Graph, src: &str, tgt: &str) {
         let id = format!("{}::{}::calls", src, tgt);
-        graph.add_edge(Edge::new(id, src, tgt, EdgeKind::Calls));
+        graph.add_edge(Edge::new(id, src, tgt, EdgeKind::Calls)).unwrap();
     }
 
     #[test]
@@ -498,7 +498,7 @@ mod tests {
         make_calls_edge(&mut graph, "a", "b");
         make_calls_edge(&mut graph, "a", "c");
         // 非 CALLS 边应被排除
-        graph.add_edge(Edge::new("a::b::imports", "a", "b", EdgeKind::Imports));
+        graph.add_edge(Edge::new("a::b::imports", "a", "b", EdgeKind::Imports)).unwrap();
 
         let adj = build_calls_adjacency(&graph.edges);
         let a_out = adj.get("a").unwrap();
