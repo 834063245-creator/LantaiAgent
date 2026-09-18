@@ -28,7 +28,7 @@ import { AgentBlueprint, type BlueprintScope } from '../blueprint';
 import { AgentContext } from '../context';
 import { DiscoveryBoard, DiscoveryBoardProxy } from '../discovery-board';
 import type { ListenerOptions, LoopEventName, LoopEventPayload } from '../events';
-import { createExecState } from '../execution-state';
+import { createExecState, type ExecStateInstance } from '../execution-state';
 import { HookRegistry, PreflightHookRegistry } from '../hooks';
 import { enqueueIsolationOp } from '../isolation-queue';
 import type { Disposer } from '../lifecycle';
@@ -186,6 +186,13 @@ class AgentHandleImpl implements AgentHandle {
   /** 绑定到指定会话的 board — 会话 id 在创建后才分配，由会话层在登记句柄时调用 */
   bindSession(sessionId: string): void {
     this._runtime._bindAgentSession(this._agent.id, sessionId);
+  }
+
+  /** 装配收尾回填本卷 exec 账本 — 转发到 Agent.setExecState（运行态单一权威源）。
+   *  少接这一跳 = 句柄自起的轮次（总线唤醒/后台任务）记在构造期那本孤儿账上，
+   *  UI 全域（读注册表实例）认为空闲——呼吸线不亮、停止钮拉不动。 */
+  setExecState(exec: ExecStateInstance): void {
+    this._agent.setExecState(exec);
   }
 
   /** 销毁此 Agent — 句柄即所有权，幂等（重复调用为 no-op） */

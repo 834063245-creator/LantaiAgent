@@ -125,6 +125,31 @@ export function removeSessionExecState(storeId: string, sessionId: number): void
   agentSessionState.removeExec(storeId, sessionId);
 }
 
+/** 装配收尾：给本卷装一本**新** exec 账，并把**同一实例**交给句柄——运行态
+ *  单一权威源（2026-09-17「偶发：会话在跑而运行态丢失」根治）。
+ *
+ *  两个读账方必须是同一个对象：
+ *  - UI 全域读注册表实例（chat-core._activeExec / useRunningSessions /
+ *    ComposerDock / TocStrip）；
+ *  - Agent 自起的轮次（`_onMessageDelivered`：异步子 Agent 回件 / 后台任务 bg /
+ *    通信族消息）走句柄内部账本 `agent._execState`。
+ *
+ *  此前三条装配路径（createNewSession / ensureSessionAgent / loadSessionFromDisk）
+ *  都在**工厂返回之后**才往注册表塞新实例，而工厂（workspace.ts:920
+ *  `getSessionExecState`）早已把**旧实例**交给了 Agent ⇒ 同卷两本账。后果只落在
+ *  Agent 自起的轮次上：卷里事件照流、模型照跑，UI 却认为空闲（呼吸线不亮、书眉无
+ *  「行卷中」、停止钮按不动——chat-core.abort() 读注册表实例，`!isRunning` 直接
+ *  return）；UI 发起的轮次反而看不出问题，所以病象是「偶发」。
+ *
+ *  装账 + 交账同处发生、紧邻 setAgent：并发装配竞态下「最后注册的句柄」与
+ *  「最后装的账」仍是同一对（拆开就会在竞态里重新错位）。
+ *  句柄无 `setExecState` 能力位（旧实现/测试桩）= 只有注册表一本账，降级不炸。 */
+function bindSessionExec(ctx: SessionContext, sid: number, agent: OwnedAgentHandle): void {
+  const exec = createExecState();
+  agentSessionState.setExec(ctx.storeId, sid, exec);
+  agent.setExecState?.(exec);
+}
+
 /** 拆除面板全部 Agent 句柄与 exec 状态（dispose）— ChatCore.setAgent(null) 用，
  *  API Key 清空后旧 provider/工厂不得继续服务会话。 */
 export function clearPanelAgents(storeId: string): void {
@@ -391,7 +416,7 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
   }
   agentSessionState.setAgent(ctx.storeId, sid, agent);
   agent.bindSession?.(String(sid));
-  agentSessionState.setExec(ctx.storeId, sid, createExecState());
+  bindSessionExec(ctx, sid, agent);
   // turnPairs 与 UI 消息已由 restoreFromLedger 的 rebuildMessagesFromMessages
   // 预填——无需重建（惰性卷内容层恢复时已做）。
   return true;
@@ -585,7 +610,7 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
     agentSessionState.setAgent(ctx.storeId, id, newAgent);
     // 静态绑定该 Agent 的 board 到新会话（id 在 factory 之后才确定）
     newAgent.bindSession?.(String(id));
-    agentSessionState.setExec(ctx.storeId, id, createExecState());
+    bindSessionExec(ctx, id, newAgent);
   }
   getChatStore(ctx.storeId).sess.setState((s) => ({
     sessions: [...s.sessions, { id, label: `案卷 ${s.sessions.length + 1}`, createdAt: new Date().toISOString() }],
@@ -1245,7 +1270,7 @@ export async function loadSessionFromDisk(
     agentSessionState.setAgent(ctx.storeId, sid, newAgent);
     // 静态绑定该 Agent 的 board 到加载的会话
     newAgent.bindSession?.(String(sid));
-    agentSessionState.setExec(ctx.storeId, sid, createExecState());
+    bindSessionExec(ctx, sid, newAgent);
   }
   getChatStore(ctx.storeId).sess.setState((s) => ({
     sessions: [...s.sessions, { id: sid, label, createdAt: data.createdAt }],

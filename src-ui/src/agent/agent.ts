@@ -657,6 +657,16 @@ export class Agent {
     this._uiSessionId = sid;
   }
 
+  /** 会话层装配收尾回填本卷 exec 账本（`chat-session.bindSessionExec`）——运行态
+   *  单一权威源（2026-09-17「会话在跑而运行态丢失」根治）。构造期经
+   *  `opts.execState` 拿到的那本账可能已被会话层换掉（每卷装配收尾装一本新账）；
+   *  不回填 = Agent 自起的轮次（`_onMessageDelivered`：总线唤醒 / 异步子 Agent
+   *  回件 / 后台任务 bg）记在孤儿账上——卷里事件照流、模型照跑，UI 全域（读注册表
+   *  实例）却认为空闲：呼吸线不亮、书眉无「行卷中」、停止钮拉不动。 */
+  setExecState(exec: ExecStateInstance): void {
+    this._execState = exec;
+  }
+
   // ---- 公共 API ----
 
   getSession(): Message[] {

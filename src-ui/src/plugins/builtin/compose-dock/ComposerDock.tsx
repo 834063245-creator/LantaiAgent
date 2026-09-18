@@ -863,7 +863,14 @@ export const ComposerDock = memo(function ComposerDock() {
               title={`停止后台卷：${bgRunning.map((s) => s.label).join('、')}`}
               onClick={() => {
                 if (!core) return;
-                for (const s of bgRunning) agentSessionState.removeExec(core.panelId, s.id);
+                // 停账 + 级联（同 chat-core.abort 语义）——**不得**注销账本条目：
+                // 句柄仍在册，注销 = 该卷之后自起的轮次（总线唤醒/子 Agent 回件）
+                // 记在不在册的实例上，UI 全域看不见、停止钮空按（2026-09-17 运行态
+                // 丢失的第二个触发面）。条目由句柄消亡（removeAgent）接管清理。
+                for (const s of bgRunning) {
+                  agentSessionState.getExec(core.panelId, s.id)?.stop();
+                  agentSessionState.getAgent(core.panelId, s.id)?.cascadeAbort();
+                }
               }}
             >
               停止

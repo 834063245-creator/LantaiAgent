@@ -74,7 +74,9 @@ export interface AgentSessionStateApi {
   setExec(storeId: string, sessionId: number, exec: ExecStateInstance): void;
   getExec(storeId: string, sessionId: number): ExecStateInstance | null;
   getOrCreateExec(storeId: string, sessionId: number): ExecStateInstance;
-  /** 级联中止 agent，停止 exec，移除条目。 */
+  /** 停本卷的账：级联中止 agent + stop exec。句柄仍在册时**只停账、不注销条目**
+   *  （账本随句柄——注销在册句柄的账本 = 它自起的轮次永久不可见，见实现注释）；
+   *  句柄已消亡（removeAgent 之后）才连带注销条目。 */
   removeExec(storeId: string, sessionId: number): void;
 
   // ── Agent 工厂（每面板）──
@@ -187,6 +189,14 @@ export function createAgentSessionState(): AgentSessionStateApi {
         agent.dispose();
         _agentBySession.delete(k);
       }
+      // 账本随句柄（2026-09-17 运行态单一权威源）：句柄消亡后本卷的 exec 账本
+      // 不再有主——连带停账 + 注销条目。删除/合卷路径此前靠「先 removeExec 再
+      // removeAgent」清条目，现由本处接管（removeExec 在句柄仍在册时只停账）。
+      const es = _execBySession.get(k);
+      if (es) {
+        es.stop();
+        _execBySession.delete(k);
+      }
       // 句柄消亡 = 旧定位映射全部作废（重开卷由尾对齐重派生）+ 卷记录的组合
       // 身份一并作废（重开时由读盘结果重新登记——P0 记录闭环）
       _turnIdBridgeBySession.delete(k);
@@ -235,12 +245,18 @@ export function createAgentSessionState(): AgentSessionStateApi {
     removeExec(storeId, sessionId): void {
       const k = agentKey(storeId, sessionId);
       const es = _execBySession.get(k);
-      if (es) {
-        _agentBySession.get(k)?.cascadeAbort();
-        es.stop();
-        _execBySession.delete(k);
-        _bump();
-      }
+      if (!es) return;
+      const owner = _agentBySession.get(k);
+      owner?.cascadeAbort();
+      es.stop();
+      // 句柄仍在册 = 这本账还有人用（它自起的轮次走 agent._execState）：注销条目
+      // 会让那些轮次记在「不在册」的实例上——UI 全域（getExec / subscribeExecAll）
+      // 看不见、停止钮空按，随后 getOrCreateExec 还会另铸一本新账，两本账永久分裂
+      //（2026-09-17 运行态丢失同类病灶；触发面 = 后台卷停止钮曾直呼本 API）。
+      // 此时只停账，条目留给 removeAgent（句柄消亡）注销。
+      if (owner) return;
+      _execBySession.delete(k);
+      _bump();
     },
 
     // ── Agent 工厂 ──

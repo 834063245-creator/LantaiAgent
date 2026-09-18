@@ -170,6 +170,11 @@ export interface AgentHandle extends ChatAgentHandle {
    *  聊天会话的数字 id 在 createAgent 之后才分配 — 会话层在登记句柄时调用，
    *  此后该 Agent 的 board 写入不再随会话切换改变。 */
   bindSession(sessionId: string): void;
+  /** 装配收尾回填本卷 exec 账本 — 转发到 Agent.setExecState（运行态单一权威源：
+   *  句柄自起的轮次必须与 UI 读的注册表实例同账，见 chat-session.bindSessionExec）。
+   *  **必实现**：这是一层薄转发，少接一跳 = 静默退回孤儿账本（同 run 少接 images
+   *  的 B3 事故形态），由 tests/session-exec-single-authority.test.ts 走真链路钉住。 */
+  setExecState(exec: ExecStateInstance): void;
 }
 
 // ── Agent 概况 ──

@@ -7,6 +7,7 @@
 
 import type { StoredThinking } from '../provider/thinking';
 import type { ChatImageRef, Message, Provider } from '../provider/types';
+import type { ExecStateInstance } from './execution-state';
 import type { TokenLedgerSnapshot, TokenMeasurement } from './token-meter/types';
 
 /** 目标运行结果 — runGoal / resumeGoal 的统一返回 */
@@ -67,6 +68,16 @@ export interface ChatAgentHandle {
 
   /** Set the UI session ID — used for precise per-session bump in sub-agent notifications */
   setUiSessionId(sid: number): void;
+
+  // ── 运行态账本（2026-09-17 运行态单一权威源）──
+  // 能力位（可选）：句柄不实现 = 只有注册表一本账（旧实现/测试桩降级不炸）。
+  // **生产句柄（Agent）必须实现**——缺了它，句柄自起的轮次（总线唤醒 / 后台任务
+  // 回件）会记在构造期那本已被会话层换掉的旧账上，UI 全域不可见：卷里事件照流而
+  // 呼吸线不亮、停止钮拉不动（见 chat-session.bindSessionExec 头注）。守护 =
+  // tests/session-exec-single-authority.test.ts（走真 Agent 断言两本账是同一个对象）。
+
+  /** 装配收尾回填本卷 exec 账本（注册表实例）。 */
+  setExecState?(exec: ExecStateInstance): void;
 
   // ── token 计量（2026-09-13）——每卷一本账，UI 只读、卷文件持久化 ──
   // 能力位（可选）：句柄不实现 = 无账本可读（旧实现/测试桩），调用方降级

@@ -85,7 +85,7 @@ describe('AgentSessionState', () => {
       expect(state.getExec('panel-1', 999)).toBeNull();
     });
 
-    it('removeExec cascade-aborts agent and stops exec', () => {
+    it('removeExec 停账：句柄仍在册 → 级联中止 + 停账，条目保留（账本随句柄）', () => {
       let aborted = false;
       const agent = mockAgent(() => {
         aborted = true;
@@ -94,7 +94,18 @@ describe('AgentSessionState', () => {
       state.setExec('panel-1', 1, mockExec(true) as any);
       state.removeExec('panel-1', 1);
       expect(aborted).toBe(true);
+      // 句柄仍在册 = 这本账还有人用（它自起的轮次走 agent._execState）：注销条目
+      // 会让那些轮次记在不在册的实例上——UI 全域看不见、停止钮空按（2026-09-17
+      // 运行态丢失）。故只停账；条目由句柄消亡（removeAgent）接管注销。
+      expect(state.getExec('panel-1', 1)).not.toBeNull();
+      state.removeAgent('panel-1', 1);
       expect(state.getExec('panel-1', 1)).toBeNull();
+    });
+
+    it('removeExec 注销条目：句柄已消亡（账本无主）', () => {
+      state.setExec('panel-1', 2, mockExec(true) as any);
+      state.removeExec('panel-1', 2);
+      expect(state.getExec('panel-1', 2)).toBeNull();
     });
   });
 
