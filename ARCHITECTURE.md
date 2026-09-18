@@ -730,6 +730,6 @@ EventBus 只覆盖不到一半通信，存在孤儿 emit 与三层通信混用�
 | 各层门禁命令与实测基线（引擎 / 壳 / 前端 / convergence / 打包，含本机测试运行纪律） | `CONVENTIONS.md` §3 + §3 尾注 |
 | 改动类型 → 必过门禁（按改动面索引） | `CLAUDE.md` 的「验证门禁」表 |
 | 生成物文档与源码逐字节对拍 | `cd src-ui && npm run doc-sync` |
-| 文档面七查（事实对拍 / 断链 / 权威文件引用 / 体量 / 孤儿 / 归档 / 注入预算） | `cd src-ui && npm run doc-check` |
+| 文档面门禁（逐查清单见 `scripts/doc-check.cjs` 头注） | `cd src-ui && npm run doc-check` |
 
 前提不变：CI（`.github/workflows/ci.yml`）只做编译 + 测试，不可修改；**门禁不过不交付、不 commit**。

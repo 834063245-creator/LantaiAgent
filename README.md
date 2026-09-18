@@ -194,7 +194,7 @@ cd src-tauri && cargo test               # 壳用例（权限 / 生命周期 / �
 cd src-ui && npx vitest run              # 前端用例（本机跑前先 $env:NODE_ENV='test'）
 cd src-ui && npm run build               # tsc --noEmit + vite build
 cd src-ui && npm run verify:convergence  # Agent 运行时契约门禁（standard + minimal 双轨）
-cd src-ui && npm run doc-check           # 文档面门禁（七查）
+cd src-ui && npm run doc-check           # 文档面门禁
 ```
 
 **门禁不过不 commit。** 基线数字会漂移，以重新实测为准（基线值与运行纪律见

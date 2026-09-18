@@ -462,7 +462,7 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 - **跨文档数字只准来自 `docs/facts.generated.md` 或写指针**：改真源 → `npm run gen:doc-facts` 重生成 → 同 commit。
   新增事实 = `scripts/doc-facts.cjs` 的 `FACTS` 表加解析器 + `scripts/doc-check.cjs` 的 `CLAIMS` 加断言
   （**宁窄勿宽**：误报会把门禁变噪声；先靠 `--report` 的「未登记候选」栏人工归并）。
-- **文档面门禁**：`cd src-ui && npm run doc-check`（七查 = 事实对拍 / 断链 / 权威文件引用 / 体量 / 孤儿 / 归档纪律 / 注入预算）。
+- **文档面门禁**：`cd src-ui && npm run doc-check`（逐查清单见 `scripts/doc-check.cjs` 头注，禁在本文件复述计数）。
   在册豁免记在 `scripts/doc-check-exemptions.json`，每条必须写 `reason` + `payoff` 批次——**豁免是账，不是免罪符**，
   对应批次落地时同步删条目。
 

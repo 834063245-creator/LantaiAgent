@@ -6,7 +6,7 @@
 > `plugins/`、`composition/`）/ **L3 生成层**（六份生成物，含 [`facts.generated.md`](facts.generated.md)——
 > **跨文档数字只准来自它或写指针**）/ **L4 过程层**（`plans/` 活在办项 · `research/` 冻结证据 · `archive/` 历史）。
 > 找文档先看本页；本页没有的再去 `docs/archive/`，归档内容不是现状。
-> 门禁：`cd src-ui && npm run doc-check`（七查 + 树内 README 顾问查；施工单 [`plans/doc-surface-refactor-plan.md`](plans/doc-surface-refactor-plan.md)）。
+> 门禁：`cd src-ui && npm run doc-check`（doc-check + 树内 README 顾问查；施工单 [`plans/doc-surface-refactor-plan.md`](plans/doc-surface-refactor-plan.md)）。
 
 ## 按任务找（想干什么 → 读什么）
 
@@ -86,8 +86,7 @@
 
 ## 维护规则
 
-0. **事实与体量门禁**：`cd src-ui && npm run doc-check`（七查：事实对拍 / 断链 / 权威文件引用 / 体量 / 孤儿 /
-   归档纪律 / 注入预算；`--report` 看全量漂移清单）。**跨文档复述的数字只准来自
+0. **事实与体量门禁**：`cd src-ui && npm run doc-check`（逐查清单见 `scripts/doc-check.cjs` 头注；`--report` 看全量漂移清单）。**跨文档复述的数字只准来自
    [`docs/facts.generated.md`](facts.generated.md) 或写指针**，禁手抄——改了真源就跑
    `npm run gen:doc-facts`（doc-sync 会对拍）。
 1. **完成即归档**：施工稿、交接稿、被取代的 plan 完成后移入 `docs/archive/`，并更新本索引与相关链接。

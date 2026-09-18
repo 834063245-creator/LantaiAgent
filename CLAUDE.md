@@ -76,7 +76,7 @@
 | 引擎 | `cd engine && cargo test`（快验 `cargo build`） |
 | 壳 | `cd src-tauri && cargo check`；权限/锁/IPC/命令改动跑 `cargo test` |
 | 生成物文档 | `cd src-ui && npm run doc-sync` |
-| 文档面 | `cd src-ui && npm run doc-check`（七查；`--report` 看漂移清单） |
+| 文档面 | `cd src-ui && npm run doc-check`（`--report` 看逐查漂移清单） |
 | 桌面打包 | `cd src-tauri && cargo tauri build`（会自动先跑前端构建；根目录 `build.cmd` 是 Windows 包装） |
 
 禁止用 `cargo build --release` 代替桌面发布验证。**实测基线数字与测试运行纪律（含 `cargo` 假挂规避、`hologram-engine.exe` 禁杀、`NODE_ENV=production` 两刀）见 `CONVENTIONS.md` §3 + §3 尾注**——数字会漂移，以重新实测为准。
