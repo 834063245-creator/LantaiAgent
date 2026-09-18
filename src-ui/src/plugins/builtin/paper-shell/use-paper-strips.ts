@@ -36,6 +36,29 @@ function pointInSelectionRects(range: Range, x: number, y: number): boolean {
   return false;
 }
 
+/** 输入面判据——**选区消费面共用**：选区落在可编辑控件里 = 用户在自己写字，
+ *  不是划纸面正文。块内也长着这些面（准奏卡的「修改意见」textarea、卡内输入件），
+ *  单靠「在 .pp-block 内」认不出来：在自己的输入框里选一段，纸上就会冒出抽纸条
+ *  浮钮、还落一道划词朱线（2026-09-17 收口）。
+ *  正文块本身**不是**输入面（`.pp-block` 不可编辑），故本判据不影响纸面划词。 */
+export function isEditableSurface(node: Node | null | undefined): boolean {
+  const el = node instanceof Element ? node : (node?.parentElement ?? null);
+  return !!el?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+}
+
+/** 选区起手面判据（选区消费面共用的第二层）：按下点是否落在纸面正文里。
+ *  **为什么必须有这一层**：`user-select: none` 只挡「从该面起选」，挡不住
+ *  「按住家具再扫进纸面」——浏览器把选区锚点**夹到最近的可选内容**（块内文字），
+ *  于是从目次带/坞/侧栏/题条起手的拖拽在锚点上与真划词无法区分，浮钮照弹
+ *  （同族实测见 paper-minimap 的 preventDefault 注：拖小地图会选中画布文字）。
+ *  故按下的那一刻就记下起手面，本次按住期间的选区一律按起手面算。
+ *  代价（明账）：纯键盘造出的选区（Ctrl+A / Shift+方向键）沿用「上一次按下的面」
+ *  ——先在块里点过一下即照常认，冷启动直接 Ctrl+A 不认（那是全选不是划词）。 */
+function pressedInProse(target: EventTarget | null): boolean {
+  const el = target instanceof Element ? target : null;
+  return !!el?.closest('.pp-block');
+}
+
 /** 纸条/选区域（paper-panel-split C4，自 PaperPanel 2264-2602 + 2810-2820
  *  域内原样搬入）。A 拖拽路径的手势守卫读块拖拽/resize 的在途 ref（跨域
  * 握着东西不抢活跃——显式穿参）。 */
@@ -100,7 +123,22 @@ export function usePaperStrips(params: {
     lastX: number;
     lastY: number;
   } | null>(null);
+  /** 本次按住是否起于纸面正文（见 pressedInProse 注；capture 面登记，恒在
+   *  selectionchange 之前落值）。初值 false = 冷启动就 Ctrl+A 不算划词。 */
+  const pressInProseRef = useRef(false);
   const [ghost, setGhost] = useState<{ x: number; y: number; zone: 'flow' | 'strip' } | null>(null);
+
+  /* 起手面登记：唯一写点（选区消费面共用读点）。capture 是刻意的——家具上的
+   * 拖拽手势多在 React 层 stopPropagation，冒泡面收不到，与本仓既有的
+   * 「捕获面先行」纪律同源（见 use-paper-viewport 拖选自动滚屏注）。 */
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      pressInProseRef.current = pressedInProse(e.target);
+    };
+    window.addEventListener('mousedown', onDown, true);
+    return () => window.removeEventListener('mousedown', onDown, true);
+  }, []);
 
   /* ── lift 遮罩（P1 抽纸条手感 2026-08-30）：拖出选区时原地「被揭起」占位。
    * rects = 捕获时刻选区的世界矩形快照（世界层渲染，随视口变换跟手）；
@@ -150,7 +188,8 @@ export function usePaperStrips(params: {
     [canvasRef],
   );
 
-  /** 选区快照（块内才认）：{ 文本, 来源块 messageId, 来源流区 sessionId } | null。 */
+  /** 选区快照（块内才认）：{ 文本, 来源块 messageId, 来源流区 sessionId } | null。
+   *  两道守卫缺一不可：起手面（按住才起于正文——挡家具扫入）+ 输入面（挡块内输入件）。 */
   const snapshotBlockSelection = useCallback((): {
     text: string;
     messageId: string | undefined;
@@ -158,7 +197,9 @@ export function usePaperStrips(params: {
   } | null => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) return null;
+    if (!pressInProseRef.current) return null; // 起手不在正文：扫入的选区不算划纸
     const anchorNode = sel.anchorNode;
+    if (isEditableSurface(anchorNode)) return null; // 输入面选区不是划纸
     const anchorEl = anchorNode instanceof Element ? anchorNode : (anchorNode?.parentElement ?? null);
     const blockEl = anchorEl?.closest('.pp-block') ?? null;
     if (!blockEl) return null;
@@ -322,7 +363,10 @@ export function usePaperStrips(params: {
   } | null>(null);
   /* 划词朱线（2026-09-02 视觉迭代）：选区在画布内即记录（不限块级——跨块选区也要有线）；
    * Range 存活期随 DOM 变化自刷新矩形，渲染期现取（同 fabPos 范式）。
-   * 折叠/画布外（composer、菜单）清线——原生洗底只在流区外保留。 */
+   * 折叠/画布外（composer、菜单）清线——原生洗底只在流区外保留。
+   * 输入面同样清线：块内输入件（准奏卡修改意见框）里的选区是写字不是划纸
+   * （2026-09-17 收口——共用 isEditableSurface，与浮钮同一把尺子）；
+   * 起手面同样管：从家具扫进纸面的选区不落线（共用 pressInProseRef）。 */
   const [selInk, setSelInk] = useState<Range | null>(null);
   useEffect(() => {
     const onSelChange = () => {
@@ -330,8 +374,8 @@ export function usePaperStrips(params: {
       const live = selAll && selAll.rangeCount > 0 ? selAll.getRangeAt(0) : null;
       const anc = live?.commonAncestorContainer;
       const ancEl = anc instanceof Element ? anc : (anc?.parentElement ?? null);
-      const inCanvas = !!(ancEl && canvasRef.current?.contains(ancEl));
-      setSelInk(inCanvas && live && !live.collapsed ? live.cloneRange() : null);
+      const inCanvas = !!(ancEl && canvasRef.current?.contains(ancEl)) && !isEditableSurface(anc);
+      setSelInk(inCanvas && pressInProseRef.current && live && !live.collapsed ? live.cloneRange() : null);
       const snap = snapshotBlockSelection();
       if (!snap) {
         setSelAnchor(null);

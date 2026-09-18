@@ -55,7 +55,6 @@
   padding: 0 10px 0 12px;
   border-bottom: var(--rule-soft);
   font-family: var(--f-song);
-  user-select: none;
   flex: none;
 }
 

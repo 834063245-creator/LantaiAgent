@@ -31,6 +31,7 @@ import {
 } from './host';
 import { panForAnchor } from './landing';
 import type { PaperCore } from './use-paper-sessions';
+import { isEditableSurface } from './use-paper-strips';
 
 /** 拖选自动滚屏的手势态（选区域产出，激活/布局核心两域穿参消费）：
  *  keepAlive → 锚点块保活（见 effect 注——原生选区锚点死则选区截顶）。 */
@@ -534,10 +535,14 @@ export function usePaperViewport(core: PaperCore | null) {
       const t = e.target instanceof Element ? e.target : null;
       if (!canvasEl || !t || !canvasEl.contains(t)) return;
       // 选择手势只可能起于块文本（.pp-block user-select:text）——纸条/流区
-      // 背景 user-select:none 天然不进；界面注记（按钮/文类签拖出柄/宽度
-      // 手调柄）是手势面不是文本，排除。
+      // 背景不可选（全局选区政策，见 foundation.css）天然不进；界面注记
+      // （按钮/链接/折叠闸 summary/文类签拖出柄/宽度手调柄）是手势面不是文本，
+      // 排除；块内输入件同理（在准奏卡的意见框里拖选是写字，不是划纸面）。
+      // ⚠ 本族与 PaperPanel.css 的块内禁选族（`.pp-block :where(…)`）**同步维护**
+      //   ——2026-09-17 实测漂移过一回：CSS 收了 summary 而此处没收，BibTeX 折叠闸
+      //   照样能武装拖选自动滚屏。
       if (!t.closest('.pp-block')) return;
-      if (t.closest('button, .pp-kind, .pp-resize')) return;
+      if (t.closest('button, a, summary, .pp-kind, .pp-resize') || isEditableSurface(t)) return;
       selDragRef.current = { x: e.clientX, y: e.clientY, keepAlive: null };
     };
     const move = (e: MouseEvent): void => {

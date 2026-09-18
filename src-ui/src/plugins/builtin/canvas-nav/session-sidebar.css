@@ -310,7 +310,8 @@
 }
 
 /* 行：两行式——宋体卷名 / 等宽机读注记；当前卷 = 墨洗 + 朱砂左脊
- * （§11 行型选中语言，2026-09-02 拍板 B）；user-select 关闭给拖行让路。 */
+ * （§11 行型选中语言，2026-09-02 拍板 B）；禁选给拖行让路——2026-09-17 起
+ * 由全局选区政策兜底（foundation.css），界面件不再逐处自持。 */
 .ss-row {
   position: relative;
   display: flex;
@@ -318,7 +319,6 @@
   gap: 8px;
   padding: 8px 12px;
   cursor: pointer;
-  user-select: none;
   transition: background var(--snap);
 }
 .ss-row:hover {

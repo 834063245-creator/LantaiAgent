@@ -94,6 +94,7 @@ import { wheelFactor } from '../src/paper/canvas-math';
 import { makeStrip } from '../src/paper/selection';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { blockReturnsToFlow } from '../src/plugins/builtin/paper-shell/use-paper-drag';
+import { isEditableSurface } from '../src/plugins/builtin/paper-shell/use-paper-strips';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import { loadSettings, saveSettings } from '../src/settings';
 import { getCanvasStore } from '../src/state/canvas-store';
@@ -141,6 +142,9 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
   /** window.getSelection 间谍（installFakeSelection 装、afterEach 卸——模块级
    * vi.mock 工厂不能用 restoreAllMocks（会把 pretext 桩的原实现一并还原掉）。 */
   let selSpy: ReturnType<typeof vi.spyOn> | null = null;
+  /** `stubRangeRects` 打在原型上，必须逐例还原（否则后续用例的 cloneRange 也吃假矩形）。 */
+  const origRangeRects = Range.prototype.getClientRects;
+  const origRangeBounding = Range.prototype.getBoundingClientRect;
 
   beforeEach(() => {
     localStorage.clear();
@@ -172,6 +176,8 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     }
     selSpy?.mockRestore();
     selSpy = null;
+    Range.prototype.getClientRects = origRangeRects;
+    Range.prototype.getBoundingClientRect = origRangeBounding;
     delete (document as Document & { caretRangeFromPoint?: unknown }).caretRangeFromPoint;
   });
 
@@ -345,10 +351,13 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
   /** 假选区（jsdom 无原生拖选模拟）：真 Range 锚在块文本 + 可数 extend +
    *  注入 caretRangeFromPoint（Chromium 面——jsdom 缺席，延伸链路要它）。
    *  `rects` 非空时供抽纸条 A 路的落点探针（pointInSelectionRects）用：
-   *  传了 = 指针「落在选区内」，可考 lift 手势。 */
+   *  传了 = 指针「落在选区内」，可考 lift 手势。
+   *  `bounding` 非空时给 Range.getBoundingClientRect 一个真矩形——抽纸条浮钮
+   *  按 `rect.width > 0` 定 fabPos，零矩形下浮钮恒不现身（见划词消费面守卫考）。 */
   function installFakeSelection(
     collapsed: boolean,
     rects: Array<{ left: number; top: number; right: number; bottom: number }> = [],
+    bounding: { left: number; top: number; right: number; bottom: number } | null = null,
   ): { extend: ReturnType<typeof vi.fn> } {
     const block = container?.querySelector('.pp-block') ?? null;
     if (!block) throw new Error('pp-block 未挂载');
@@ -376,7 +385,16 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
           }) as unknown as DOMRect,
       ) as unknown as DOMRectList;
     (range as Range & { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect = () =>
-      ({ x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON: () => ({}) }) as DOMRect;
+      bounding
+        ? ({
+            ...bounding,
+            x: bounding.left,
+            y: bounding.top,
+            width: bounding.right - bounding.left,
+            height: bounding.bottom - bounding.top,
+            toJSON: () => ({}),
+          } as DOMRect)
+        : ({ x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON: () => ({}) } as DOMRect);
     const extend = vi.fn();
     const fake = {
       isCollapsed: collapsed,
@@ -447,6 +465,88 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
       fire(window, 'mouseup', { clientX: 600, clientY: 780 });
     });
   }, 30_000);
+
+  /* ── ③b 划词消费面守卫（2026-09-17 选区政策批）──
+   * 用户操作序列：家具（浮件/目次带/坞/侧栏）上按下 → 一路拖过纸面 → 松手。
+   * user-select:none 只挡「从家具起选」，浏览器会把选区锚点夹进块内文字 ⇒ 锚点
+   * 与真划词无法区分。故按下那一刻的起手面才是判据（纸壳 capture 面登记）。 */
+
+  /** 消费面矩形桩（**必须打在原型上**）：`selInk` / `selAnchor` 存的是
+   *  `range.cloneRange()`——clone 不继承实例级补丁（installFakeSelection 的
+   *  实例桩只管得住 A 路落点探针），jsdom 原型的 getClientRects 恒空 ⇒ 朱线
+   *  与浮钮在 jsdom 里永远产不出可断言物。 */
+  function stubRangeRects(rect: { left: number; top: number; right: number; bottom: number }): void {
+    const domRect = {
+      ...rect,
+      x: rect.left,
+      y: rect.top,
+      width: rect.right - rect.left,
+      height: rect.bottom - rect.top,
+      toJSON: () => ({}),
+    } as DOMRect;
+    Range.prototype.getClientRects = () => [domRect] as unknown as DOMRectList;
+    Range.prototype.getBoundingClientRect = () => domRect;
+  }
+
+  /** 假选区锚在块内**首个**文本节点上——块首常是 JSX 留下的空白文本节点，而
+   *  空节点 `selectNodeContents` 得的 Range 是**折叠**的（划词消费面据此判空，
+   *  真机块首是正文不是空白）。故先塞一个有内容的文本节点占位。 */
+  function seedBlockText(): void {
+    const block = container?.querySelector('.pp-block') as HTMLElement;
+    block.insertBefore(document.createTextNode('选中文字'), block.firstChild);
+  }
+
+  it('起手在家具上（扫进纸面）：划词朱线不落、抽纸条浮钮不弹', async () => {
+    await mountCanvas();
+    seedBlockText();
+    const rect = { left: 600, top: 300, right: 700, bottom: 320 };
+    stubRangeRects(rect);
+    // rects 不传：指针不算「落在选区内」，A 路 lift（按住已有选区拖出）不参与本考
+    installFakeSelection(false, [], rect);
+    const chrome = container?.querySelector('.pp-chrome') as HTMLElement;
+    expect(chrome).not.toBeNull();
+    await act(async () => {
+      fire(chrome, 'mousedown', { button: 0, clientX: 900, clientY: 40 });
+    });
+    // 浏览器把锚点夹进块内（假选区本就锚在块文本）——判据只剩起手面
+    const block = container?.querySelector('.pp-block') as HTMLElement;
+    expect(block.contains(document.createTreeWalker(block, NodeFilter.SHOW_TEXT).nextNode())).toBe(true);
+    await act(async () => {
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    expect(container?.querySelector('.pp-sel-ink')).toBeNull();
+    expect(container?.querySelector('.pp-strip-fab')).toBeNull();
+  }, 30_000);
+
+  it('起手在纸面正文（块内按下）：同一选区照常落朱线 + 弹浮钮', async () => {
+    await mountCanvas();
+    seedBlockText();
+    const rect = { left: 600, top: 300, right: 700, bottom: 320 };
+    stubRangeRects(rect);
+    installFakeSelection(false, [], rect);
+    const block = container?.querySelector('.pp-block') as HTMLElement;
+    await act(async () => {
+      fire(block, 'mousedown', { button: 0, clientX: 600, clientY: 300 });
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    expect(container?.querySelector('.pp-sel-ink')).not.toBeNull();
+    expect(container?.querySelector('.pp-strip-fab')).not.toBeNull();
+  }, 30_000);
+
+  it('输入面判据：可编辑控件内（含块内输入件）不算划纸，正文/按钮不算', () => {
+    const ta = document.createElement('textarea');
+    const inner = document.createElement('span');
+    ta.appendChild(inner);
+    document.body.appendChild(ta);
+    expect(isEditableSurface(ta)).toBe(true);
+    expect(isEditableSurface(inner)).toBe(true); // 祖先链上找得到输入件
+    expect(isEditableSurface(container ?? document.body)).toBe(false);
+    expect(isEditableSurface(document.createElement('button'))).toBe(false);
+    expect(isEditableSurface(null)).toBe(false);
+    ta.remove();
+  });
 
   /* ── ④ 缩放舒适度（2026-09-08 拍板：书眉缩放控件 + 键盘 +/−/0 + 滚轮行为设置）── */
 

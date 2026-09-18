@@ -16,10 +16,10 @@
   /* V3b 欠账接回（2026-08-30）：点击跳转——不再是只读装饰 */
   pointer-events: auto;
   cursor: grab;
-  /* R3.5 拖动不选字（2026-09-05 收尾）：用户拖 minimap 时鼠标框选不该选中
-   * 画布文字——user-select 掐断原生选择，配合 pointerdown preventDefault 双保险 */
-  user-select: none;
-  -webkit-user-select: none;
+  /* R3.5 拖动不选字（2026-09-05 收尾）：拖 minimap 时鼠标框选不该选中画布文字。
+   * CSS 侧已不必自持——全应用默认不可选（foundation.css 选区政策），可选面只有
+   * 纸面正文与输入件；本面只剩 pointerdown preventDefault 一层（MinimapView：
+   * WebView 下指针选择在 capture 阶段就启动，显式取消更早）。 */
   transition: border-color var(--snap);
 }
 .pp-minimap:hover {

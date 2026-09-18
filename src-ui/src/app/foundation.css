@@ -13,6 +13,28 @@
   box-sizing: border-box;
 }
 
+/* ── 选区政策（2026-09-17 全局化）：默认不可选，正文自证可选 ──
+ * 此前没人管这件事：只在出事的那一处各自补 user-select（坞拖动期 / 纸条 / 书脊行 /
+ * 插件窗题条…），补一处漏十处——拖动扫选、双击选词、Ctrl+A 把整壳收进选区在其余
+ * 所有面上照旧发生；纸上挂着 document 级 selectionchange（纸壳选中浮钮 + 划词朱线），
+ * 于是任何一次扫选都可能唤醒画布上的划词动作。
+ * 语义反转：**界面是界面，不是可复制的文档**。全树默认不可选，放开面只有两处：
+ *   ① 输入面（本文件下方一条——Chromium 下 input/textarea 的拖选会被祖先连坐）；
+ *   ② 正文面——由正文容器自己声明 `user-select: text`（纸壳 .pp-block 即范式，
+ *      见 PaperPanel.css；其中的结构件/交互件再各自撤回到 none）。
+ * 新增产品面若确有可复制正文，照 ② 自行放开；界面件一律不写。 */
+html {
+  user-select: none;
+  -webkit-user-select: none;
+}
+input,
+textarea,
+select,
+[contenteditable]:not([contenteditable="false"]) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 html,
 body {
   width: 100%;

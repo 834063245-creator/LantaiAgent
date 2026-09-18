@@ -26,6 +26,7 @@ import { bindBridgeWindow, postBridgeEvent, unbindBridgeWindow } from '../../plu
 import { closePluginWindow, focusPluginWindow } from '../../plugins/window-facility';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../../state/plugin-window-store';
 import { PluginBoundary } from '../PluginBoundary';
+import { isTopbarInteractiveTarget } from '../window-drag';
 
 interface FrameProps {
   instance: PluginWindowInstance;
@@ -69,6 +70,12 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
     stop(e);
     focusPluginWindow(instance.windowId);
     if (instance.mode !== 'floating') return;
+    /* 拖动期禁选（2026-09-17 选区政策批）：浮窗是**页内**拖动（mousemove 移 DOM），
+     * 指针会横穿纸面——不掐断就是「拖窗口 = 顺手划过一段纸面选区」（全应用默认
+     * 不可选之后残留的最后一条：其它拖动面要么走 Tauri 原生移动循环、要么活动
+     * 范围被自身家具圈住，只有浮窗能扫过整张纸）。交互件（关窗钮）除外——
+     * 掐掉它的 mousedown 默认就是掐掉它的取焦，闸门不拦自己人。 */
+    if (!isTopbarInteractiveTarget(e.target)) e.preventDefault();
     dragRef.current = { offX: e.clientX - instance.x, offY: e.clientY - instance.y };
     const onMove = (ev: MouseEvent) => {
       const d = dragRef.current;

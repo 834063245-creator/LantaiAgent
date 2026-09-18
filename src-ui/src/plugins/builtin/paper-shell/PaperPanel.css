@@ -189,14 +189,14 @@
 }
 
 /* ── 画布区（世界容器的宿主）──
- * user-select:none：空白画布不参与原生扫选——平移手势与文字选择分家
- * （幻影扫选曾借道活选区把平移喂进抽纸条通道）；可选性由 .pp-block 自持。 */
+ * 空白画布不参与原生扫选——平移手势与文字选择分家（幻影扫选曾借道活选区把
+ * 平移喂进抽纸条通道）。本面**不**再自持 user-select：不可选是全局默认
+ * （foundation.css 选区政策），可选性只由 .pp-block 自证。 */
 .pp-canvas {
   position: relative;
   flex: 1;
   overflow: hidden;
   cursor: grab;
-  user-select: none;
 }
 .pp-canvas.pp-panning {
   cursor: grabbing;
@@ -415,7 +415,6 @@
      下内距 0——底距由版心内层的 padding-bottom 承担（规线随之内缩） */
   padding: 24px 16px 0;
   pointer-events: none;
-  user-select: none;
 }
 /* 版心内层（2026-09-16 新增）：卷首四行 + 硬规线 + 版口钮的**唯一版心盒**。
  * width = min(720px, 100%)（100% 已扣掉外层左右内距）——宽流区封顶 720 与正文
@@ -682,7 +681,10 @@
 
 /* ── 块（注疏范式：透明无边框，文类由分体字体与墨色承载）──
  * 手势分工不变（V3a 待定 #10）：文类签=整块拖出手柄（grab），文本区=原生可选
- * （选中拖离流 = 抽纸条）。 */
+ * （选中拖离流 = 抽纸条）。
+ * 可选性的**唯一放开点**（2026-09-17 选区政策全局化）：全应用默认 user-select:none
+ * （见 foundation.css 选区政策条），纸面正文由本规则自证可选——块内的界面件
+ * 再各自撤回（见下条）。 */
 .pp-block {
   position: absolute;
   background: transparent;
@@ -779,15 +781,15 @@
   animation: pp-ink-enter var(--glide) ease-out both;
 }
 
-/* 结构件不进选区：文类签/状态签/收回钮/占位钮是界面注记不是正文——
- * 跨块扫选与 Ctrl+A 曾把它们卷进 sel.toString()（抽出的纸条带签名）。 */
-.pp-kind,
-.pp-status,
-.pp-unpin,
-.pp-pin-hint,
-.pp-ghost,
-.pp-fold,
-.pp-msg-ops {
+/* 结构件/交互件不进选区（2026-09-17 收族）：块是纸面唯一的可选面，而块内长着
+ * 一堆界面注记与控件——文类签 / 状态签 / 收回钮 / 折叠钮 / 宽度手调柄 / 卡内
+ * 按钮与折叠闸（summary）。不逐个撤回就会被跨块扫选与 Ctrl+A 卷进 sel.toString()
+ * （抽出的纸条带签名「NOTE · 003」），或被拖动扫出一片选区。
+ * 旧账是逐类枚举（漏网实证：.pp-resize 宽度手调柄、块内 button/summary 全在
+ * 枚举外），现按「块内一切交互件」一次收口——正文（.pp-body / .pp-md-* /
+ * .pp-code-src…）不在列，照旧可选。
+ * `:where()` 归零基数：本族靠「直陈声明胜过继承」成立，不靠特异性压人。 */
+.pp-block :where(button, summary, .pp-kind, .pp-status, .pp-unpin, .pp-pin-hint, .pp-fold, .pp-msg-ops, .pp-resize) {
   user-select: none;
 }
 
@@ -2347,14 +2349,12 @@
   flex-direction: column;
   z-index: 6;
 }
-/* 坞浮动（2026-09-17）·拖动期全页禁选：坞上按下会带出**原生选区**，而纸上挂着
- * document 级 selectionchange（use-paper-strips 的选中浮钮）——不禁选就是
- * 「拖动创作坞 = 纸上划词」，用户报的第一条冲突。类由 use-composer-float 在
- * 拖动期挂到 <html> 上（松手即撤）；user-select 可继承，故一条规则覆盖全树。
- * 锁定态不挂此类（坞是普通 DOM，划词照旧）。 */
-html.pp-composer-dragging {
-  user-select: none;
-}
+/* 坞浮动（2026-09-17）·拖动期禁选**已由全局选区政策接管**（2026-09-17 收族）：
+ * 坞上按下会带出原生选区，而纸上挂着 document 级 selectionchange（use-paper-strips
+ * 的选中浮钮）——「拖动创作坞 = 纸上划词」是用户报的第一条冲突。当时的修法是拖动期
+ * 往 <html> 挂 `pp-composer-dragging` 做全树禁选；全应用默认不可选之后这条成为空操作
+ * （坞内本就只剩输入件可选，而输入件内的选区不认作划纸），故撤规则留类——
+ * 类仍由 use-composer-float 在拖动期挂/撤，服务下方的抓手光标。 */
 /* 拖动锁（2026-09-17 用户方案）：**按钮本体不在此**——它归坞的书眉工具行
  * （`.pp-dock-tools` 里的第三枚 `.pp-tool-btn`：`移` ↔ `锁`，与 翰/律 同排同语言），
  * 由坞本体经 `PaperDockContext.composerLock` 能力位渲染（锁态与写面在槽主人）。
@@ -2363,14 +2363,14 @@ html.pp-composer-dragging {
  *（用户「太难看了」）。**教训：控件的悬停区必须与它的可见区同盒**，
  * 否则「揭示」与「命中」互为前提，必死锁。 */
 
-/* 解锁态 = 整坞是抓手：坞体一律抓手光标 + 坞内文字禁选（拖动不拖出选区；**锁定态
- * 不设**——锁定就是普通 DOM，文字照常可选）。子选择器一律裹 :where() 归零基数：
+/* 解锁态 = 整坞是抓手：坞体一律抓手光标（坞内文字可选性**不再逐态切换**——全局
+ * 默认已经全树禁选、输入件自证可选，见 foundation.css 选区政策；旧「锁定态文字
+ * 照常可选 / 解锁态禁选」的逐态口径随之退役）。子选择器一律裹 :where() 归零基数：
  * 本族须压过 .pp-composer 那条 (0,3,0) 的继承规则，但不能把文件后面那些
  * input/textarea/button 细规（(0,1,1)~(0,2,1)）一并罩死——特异性阶梯纪律，
  * biome 的 noDescendingSpecificity 守护（3 条警告的由来即此）。 */
 .pp-composer-slot.pp-composer-unlocked .pp-composer {
   cursor: grab;
-  user-select: none;
   touch-action: none;
 }
 .pp-composer-slot.pp-composer-unlocked.pp-composer-dragging .pp-composer {
@@ -2378,7 +2378,6 @@ html.pp-composer-dragging {
 }
 .pp-composer-slot.pp-composer-unlocked .pp-composer :where(input, textarea, select) {
   cursor: text;
-  user-select: text;
 }
 .pp-composer-slot.pp-composer-unlocked .pp-composer :where(button, [role="button"]) {
   cursor: pointer;
@@ -3661,7 +3660,11 @@ html.pp-composer-dragging {
 /* 纸条 = 桌面纸片（2026-09-05 换装，plan：pin-strip-rework）：虚线框退役
  * ——线级语义里虚线 = 草稿/占位，纸条是真实物件（快照已落盘）穿草稿的衣服
  * 是语义错位；且纸条样式从未过审美账本（原型无此物件，产品自创）。物理缘
- * 比钉住块再收半档（更小更薄的纸片）+ 接触落影。 */
+ * 比钉住块再收半档（更小更薄的纸片）+ 接触落影。
+ * 纸条文本**刻意不放开可选**（2026-09-17 选区政策全局化时复核过）：整张纸条是
+ * 拖拽把手（grab，按住即拖走），放开可选 = 在纸条上按下变成扫选、拖不动纸条
+ * （与「纸面正文可选」不是同一回事：正文不是把手）。要抄纸条文字请用块级「抄」钮
+ * （use-block-ops）——同一条通道，不靠划选。 */
 .pp-strip {
   position: absolute;
   background: var(--paper);
@@ -3671,7 +3674,6 @@ html.pp-composer-dragging {
   font-size: var(--pp-ch-strip-size);
   line-height: var(--pp-ch-strip-lh);
   cursor: grab;
-  user-select: none;
   z-index: 40;
   box-shadow:
     inset 1px 1px 2px var(--sheet-lit),
@@ -3766,7 +3768,6 @@ html.pp-composer-dragging {
   letter-spacing: 0.3em;
   color: var(--ink-4);
   pointer-events: none;
-  user-select: none;
 }
 
 /* 落笔点（2026-09-06 纸面运行态）：本卷在跑而尾部无湿墨（模型思考/工具
@@ -3809,7 +3810,6 @@ html.pp-composer-dragging {
   transform: translate(-50%, -50%);
   text-align: center;
   pointer-events: none;
-  user-select: none;
   animation: pp-empty-in 0.45s cubic-bezier(0.23, 1, 0.32, 1) 0.08s both;
 }
 /* 空态入场：只淡入，不动位（保住 translate(-50%,-50%) 的居中） */
@@ -3913,7 +3913,6 @@ html.pp-composer-dragging {
   border-left: var(--rule-soft);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
   z-index: 5; /* 居画布之上、坞槽(z-6)之下；顶部浮件(z-30)居其上并已按带宽让位 */
-  user-select: none;
   touch-action: none;
   cursor: pointer;
 }
