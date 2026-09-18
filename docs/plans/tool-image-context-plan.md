@@ -1,6 +1,7 @@
 # 工具附图通道（agent 眼睛环 P0）
 
-> **状态：P0a 代码已落地（2026-09-17）· 真机验收待跑（owner：用户）**
+> **状态：P0a 代码已落地（2026-09-17）· 2026-09-18 加固批（按路径读图 + 请求期能力戳修复）·
+> 真机验收待跑（owner：用户；两批均需重打包后生效）**
 > 一句话：把「工具产出的截图」接进模型可见的附图通道——模型从此能看见自己的产出（资产卡、界面、窗口），
 > 而不是把 PNG 路径交给用户求人看图。
 >
@@ -28,6 +29,27 @@
   要接需让 code_execution 的工具结果承载子调用图（P0c 候选）。
 - 桌面截图族（`desktop_screenshot` / `desktop_uia_window_shot`）未接：它们的 PNG 仍落临时目录、
   不产附件。全屏截图是高隐私动作，接图 = 每次把整屏像素送进上下文，须单独裁定（P0b）。
+
+## 0b. 2026-09-18 加固批：按路径读图 + 请求期能力戳修复
+
+**由来**：用户实测「视觉模型收不到图」——工具截图落盘成功、引用也挂上了，但请求期被
+投影成「图已省略」占位。两层病灶，同批修复：
+
+| 面 | 病灶 / 改动 | 文件 |
+|---|---|---|
+| **能力戳断线（根因）** | 能力戳只打在内层实例（`createProvider`，随 `stream()` 用完即弃），Agent 持的 live 外壳不暴露该属性 ⇒ `supportsImage` 恒 false ⇒ **一切附图（用户附图 + 工具截图）从多模态线落地（2026-09-09）起就没送出去过**。修 = 外壳补 `inputModalities` 活读 getter（会话覆盖 ?? 行值 → `modelInput` 四层链，请求期现读） | `src-ui/src/provider/live.ts`；回归钉 `tests/provider-live.test.ts`「附图能力戳」组（修前红） |
+| **按路径读图（新能力）** | `fs(read)` 一张图片 → 此前 UTF-8 解码失败（二进制读不进来）。修 = Rust 侧字节嗅探（png/jpeg/webp/gif，不信任扩展名）→ 命中则转存内容寻址附件 + 输出附图信封（形态与 browser 截图口一致）；TS 侧 `fs(read)` 声明 `imageChannel`、包装层（`[file:]` 尾缀 / 状态前缀）对信封放行 | `src-tauri/src/image_probe.rs`（嗅探）、`src-tauri/src/attachments.rs`（落盘单一权威，browser 截图口同批换用）、`src-tauri/src/confined_fs.rs`（`read_cap`）、`src-tauri/src/commands/fs_cap.rs`、`src-ui/src/agent/tools/coding.ts`、`tools/domains.ts`、`agent/hooks.ts`、`plugins/builtin/fs-builtin/index.ts` |
+
+**接线纪律（新）**：附图信封是 executor 要 `JSON.parse` 的机器可读体——
+**任何输出包装层**（fs 的 `[file:]` 焦点回显、state-read 状态前缀等）必须以
+`hasImageRefs()`（`tool-images.ts` 单一判据）放行信封，否则解析失败、图静默丢。
+
+**顺带（不属本计划）**：内置 DeepSeek 目录按官方 2026-09-10 改名刷新
+（`deepseek-flash` = V4.1 Flash 全系多模态入目录；出厂默认与模板默认同步；
+`guessReasoningFromId` 补 `deepseek-flash` 词）。
+
+**验收**：见 §5 真机项；重打包后 ①贴图/拖图发给声明视觉的模型；②工具截图；
+③`fs(read)` 一张图片（三入口同一判据：图进 wire 而非占位文本）。
 
 ## 1. 现状断点（实测证据，非推断）
 

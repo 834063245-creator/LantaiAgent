@@ -266,6 +266,10 @@ function fsCapTool(action: FsAction, localName: string, exec: ToolExecutor): Too
     description: () => FS_CAP_DESCRIPTION[action],
     parameters: () => parameters,
     readOnly: () => FS_CAP_READONLY[action] ?? false,
+    // 附图通道（2026-09-18 按路径读图）：read 读到图片字节时输出带 image 引用
+    // （Rust 侧落内容寻址附件）。旗标归实现工具——模型侧走 fs 门面，executor 按
+    // guardName（read_file_content）解析；其余 fs 动作输出无 image 键，同旗标无害。
+    ...(action === 'read' ? { imageChannel: true } : {}),
     execute: (args, onProgress, signal) => fsExecute(action, args, exec, onProgress, signal),
   };
 }

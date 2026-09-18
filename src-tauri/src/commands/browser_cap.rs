@@ -295,10 +295,8 @@ const SHOT_ATTACH_MAX_BYTES: usize = 8 * 1024 * 1024;
 ///
 /// 为何在 Rust 侧写而不是 TS 侧搬运：截图落在系统临时目录（工作区外），Agent 通道读
 /// 会撞权限闸；本口已持 WorkspaceState（gate.state），直接写 attachments 零摩擦。
-/// 命名与 #14 同义：{id}.png，id = 字节 sha256（content-addressed，同图天然去重）。
+/// 落盘走 attachments::store_attachment（内容寻址单一权威，与 fs(read) 附图同一份）。
 fn attach_screenshot_ref(gate: &BrowserGate<'_>, output: String) -> String {
-    use sha2::{Digest, Sha256};
-
     let Ok(mut val) = serde_json::from_str::<Value>(&output) else {
         return output;
     };
@@ -324,15 +322,9 @@ fn attach_screenshot_ref(gate: &BrowserGate<'_>, output: String) -> String {
     let Ok(ws) = crate::utils::workspace_path(gate.state) else {
         return output;
     };
-    let id = format!("{:x}", Sha256::digest(&bytes));
-    let dir = std::path::Path::new(&ws).join(".lantai").join("attachments");
-    if std::fs::create_dir_all(&dir).is_err() {
+    let Ok((id, dst)) = crate::attachments::store_attachment(&ws, &bytes, "png") else {
         return output;
-    }
-    let dst = dir.join(format!("{id}.png"));
-    if !dst.exists() && std::fs::write(&dst, &bytes).is_err() {
-        return output;
-    }
+    };
     let name = src_path
         .file_name()
         .map(|s| s.to_string_lossy().to_string())

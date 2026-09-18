@@ -28,6 +28,8 @@ mod ignored_paths;
 mod utils;
 mod commands;
 mod confined_fs;
+mod attachments;
+mod image_probe;
 mod rpc;
 mod app;
 mod lifecycle;

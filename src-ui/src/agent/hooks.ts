@@ -127,6 +127,7 @@ import {
   invalidateBlameEntry,
   refreshGitBlame,
 } from './state-inject';
+import { hasImageRefs } from './tool-images';
 
 const MAX_RESULT_BYTES = 30_000; // leave 2KB headroom below 32KB
 const _MAX_STATE_BYTES = 600;
@@ -148,6 +149,9 @@ export function createStateReadHook(projectPath: string, diagSource: Diagnostics
 
       const block = buildPreReadBlock(filePath, diagSource);
       if (!block) return result;
+      // 附图信封（fs read 图片，2026-09-18）：不注入状态前缀——前缀会让信封
+      // JSON 解析失败、图静默丢。图片本就没有诊断/blame 可注，跳过语义无损。
+      if (hasImageRefs(result)) return result;
 
       const full = `📋 [状态] ${block}\n${'─'.repeat(40)}\n\n`;
       if (result.length + full.length <= MAX_RESULT_BYTES) {

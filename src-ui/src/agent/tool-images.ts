@@ -81,3 +81,11 @@ export function parseToolImageOutput(output: string): ChatImageRef[] {
   }
   return out2;
 }
+
+/** 输出是否为附图信封（至少含一条合法引用）。
+ *  工具输出的**包装层**（fs 的 [file:] 焦点回显 / state-read 状态前缀等）据此
+ *  放行：信封是机器可读 JSON，在其上再拼人读文本会让 executor 的解析失败——
+ *  图会静默丢失（2026-09-18 附图读图批的接线纪律）。 */
+export function hasImageRefs(output: string): boolean {
+  return parseToolImageOutput(output).length > 0;
+}

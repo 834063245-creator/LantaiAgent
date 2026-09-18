@@ -54,7 +54,7 @@ pub(crate) async fn fs_cap(
         "read" => {
             let fp = file_path.or(path).ok_or_else(|| "fs_cap read: missing 'file_path'".to_string())?;
             let ln = line_numbers.unwrap_or(false);
-            let (real, text) = crate::confined_fs::read_text_cap(
+            let out = crate::confined_fs::read_cap(
                 &fp,
                 is_agent,
                 agent_id.as_deref(),
@@ -65,10 +65,28 @@ pub(crate) async fn fs_cap(
                 limit,
             )
             .await?;
-            Ok(json!({
-                "path": real.to_string_lossy(),
-                "content": text,
-            }))
+            // 附图结局（2026-09-18 按路径读图）：输出 JSON 带 image 引用（形状与
+            // browser 截图口一致）——模型侧 executor 经 parseToolImageOutput 把它
+            // 挂进上下文；`content` 键缺席是两形态的判据（fs-builtin 读分支透传）。
+            Ok(match out {
+                crate::confined_fs::ReadCapOutcome::Text { real, content } => json!({
+                    "path": real.to_string_lossy(),
+                    "content": content,
+                }),
+                crate::confined_fs::ReadCapOutcome::Image { real, image } => json!({
+                    "path": real.to_string_lossy(),
+                    "image": {
+                        "id": image.id,
+                        "mediaType": image.media_type,
+                        "bytes": image.bytes,
+                        "width": image.width,
+                        "height": image.height,
+                        "name": image.name,
+                    },
+                    "attachment": image.attachment.to_string_lossy(),
+                    "imageNote": "本图已作为附图进入上下文：视觉模型可直接观察（纯文本模型只看到本占位说明）。",
+                }),
+            })
         }
         "read_base64" => {
             let fp = file_path.or(path).ok_or_else(|| "fs_cap read_base64: missing 'file_path'".to_string())?;

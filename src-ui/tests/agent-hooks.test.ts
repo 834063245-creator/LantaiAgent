@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HookRegistry, PreflightHookRegistry } from '../src/agent/hooks';
+import { createStateReadHook, HookRegistry, PreflightHookRegistry } from '../src/agent/hooks';
 
 // （图谱 hooks——GraphContext/GraphContextHook/GraphPreflightHook 的测试——
 // 随图谱功能全量退役整段删除，2026-09-09；hooks.ts 只保留注册表 + 状态
@@ -72,5 +72,39 @@ describe('PreflightHookRegistry', () => {
       check: () => null,
     });
     expect(reg.check('edit_file', {})).toBeNull();
+  });
+});
+
+// ── state-read 钩子 — 附图信封不被前缀污染（2026-09-18 附图读图批）──
+// fs(read) 读到图片时输出是附图信封（机器可读 JSON）；状态前缀拼在其上会让
+// executor 的 parseToolImageOutput 解析失败、图静默丢。图片没有诊断/blame 可注，
+// 跳过即语义无损。
+describe('state-read 钩子 — 附图信封放行', () => {
+  const diagSource = () => [
+    {
+      severity: 'error' as const,
+      message: 'boom',
+      startLine: 0,
+      startColumn: 0,
+      endLine: 0,
+      endColumn: 1,
+    },
+  ];
+
+  it('普通 read 结果：有诊断 → 注入状态前缀（对照组，行为回归）', async () => {
+    const hook = createStateReadHook('D:/proj', diagSource);
+    const out = await hook.enrich('read_file_content', { filePath: 'D:/proj/a.ts' }, 'const a = 1;');
+    expect(out.startsWith('📋 [状态]')).toBe(true);
+    expect(out.endsWith('const a = 1;')).toBe(true);
+  });
+
+  it('附图信封：原样返回（前缀会破坏 JSON 解析 → 图静默丢）', async () => {
+    const hook = createStateReadHook('D:/proj', diagSource);
+    const envelope = JSON.stringify({
+      path: 'D:/proj/x.png',
+      image: { id: 'a'.repeat(64), mediaType: 'image/png', bytes: 1, width: 1, height: 1 },
+    });
+    const out = await hook.enrich('read_file_content', { filePath: 'D:/proj/x.png' }, envelope);
+    expect(out).toBe(envelope);
   });
 });

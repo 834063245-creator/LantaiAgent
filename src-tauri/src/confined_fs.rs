@@ -771,8 +771,42 @@ pub(crate) fn glob_entries(root: &str, patterns: &[String]) -> Result<Vec<GlobEn
 // append_text_unchecked（fs_cap append 用）。
 // ═══════════════════════════════════════════════════════════════
 
-/// fs_cap.read 文本读（能力口入口：dispatch 闸 + 行号格式化）。
-pub(crate) async fn read_text_cap(
+/// 单张附图的字节上限（20MiB，与 TS 侧 image-intake 的 MAX_IMAGE_BYTES 同档；
+/// browser 截图口的 8MiB 是另一口径——那边是自家产物转存的护栏）。
+const MAX_IMAGE_ATTACH_BYTES: usize = 20 * 1024 * 1024;
+
+/// fs_cap.read 的两种结局（2026-09-18 按路径读图）：文本（原文/行号格式）
+/// 或附图（字节已落内容寻址附件 + 引用数据供 fs_cap.rs 组 JSON）。
+pub(crate) enum ReadCapOutcome {
+    Text {
+        real: PathBuf,
+        content: String,
+    },
+    Image {
+        real: PathBuf,
+        image: AttachedImage,
+    },
+}
+
+/// 附图引用数据——形状契约与 TS 侧 parseToolImageOutput（id/mediaType/bytes/
+/// width/height/name）一致；字节已在盘上（INVARIANTS #14）。
+pub(crate) struct AttachedImage {
+    pub id: String,
+    pub media_type: &'static str,
+    pub width: u32,
+    pub height: u32,
+    pub bytes: usize,
+    pub name: String,
+    pub attachment: PathBuf,
+}
+
+/// fs_cap.read（能力口入口：dispatch 闸 + 行号格式化 + 图片嗅探）。
+///
+/// 2026-09-18 附图读图：字节先按**字节事实**嗅探（image_probe，不信任扩展名），
+/// 命中受支持格式 → 转存工作区附件并返回附图引用（模型侧经 imageChannel 挂进
+/// 上下文——视觉模型可见，纯文本模型走请求期占位投影）；未命中 → 与旧 read
+/// 逐字节同语义（UTF-8 文本 + 行号/切片）。
+pub(crate) async fn read_cap(
     file_path: &str,
     is_agent: bool,
     agent_id: Option<&str>,
@@ -781,7 +815,7 @@ pub(crate) async fn read_text_cap(
     line_numbers: bool,
     offset: Option<usize>,
     limit: Option<usize>,
-) -> Result<(PathBuf, String), String> {
+) -> Result<ReadCapOutcome, String> {
     let real_path = crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
     let rp = real_path.clone();
     let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
@@ -793,13 +827,54 @@ pub(crate) async fn read_text_cap(
             file_path
         ));
     }
-    let content = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
-        with_io_retry(|| std::fs::read_to_string(&rp), "read_to_string")
+    // 先读字节（不再直接 read_to_string——嗅探需要原始字节）。
+    let bytes = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
+        with_io_retry(|| std::fs::read(&rp), "read_bytes")
     }))
     .await
     .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), file_path))?
     .map_err(|e| format!("读取任务失败: {}", e))?
     .map_err(|e| format!("无法读取文件 {}: {}", file_path, e))?;
+
+    if let Some(probe) = crate::image_probe::probe(&bytes) {
+        if bytes.len() > MAX_IMAGE_ATTACH_BYTES {
+            return Err(format!(
+                "图片过大 ({} MiB)，超过附图上限 ({} MiB): {}——请压缩后重试",
+                bytes.len() / (1024 * 1024),
+                MAX_IMAGE_ATTACH_BYTES / (1024 * 1024),
+                file_path
+            ));
+        }
+        // 无工作区 = 无处落附件；读图的产出就是附图，静默降级会成「读了但没给」→ 响亮报错。
+        let ws = crate::utils::workspace_path(state)?;
+        let (id, attachment) = crate::attachments::store_attachment(&ws, &bytes, probe.ext)
+            .map_err(|e| format!("图片附件落盘失败: {e}"))?;
+        let name = real_path
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| format!("{id}.{}", probe.ext));
+        return Ok(ReadCapOutcome::Image {
+            real: real_path,
+            image: AttachedImage {
+                id,
+                media_type: probe.media_type,
+                width: probe.width,
+                height: probe.height,
+                bytes: bytes.len(),
+                name,
+                attachment,
+            },
+        });
+    }
+
+    // 文本路径：UTF-8 解码语义与 read_to_string 等价（错误文案保持一致）。
+    let content = String::from_utf8(bytes).map_err(|_| {
+        let err = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "stream did not contain valid UTF-8",
+        );
+        format!("无法读取文件 {}: {}", file_path, err)
+    })?;
     let content = if line_numbers {
         format_lines(&content, offset, limit)
     } else {
@@ -807,7 +882,10 @@ pub(crate) async fn read_text_cap(
         // 装饰前缀）——offset/limit 切片在原文路径同样生效（此前被静默忽略）。
         slice_lines(&content, offset, limit)
     };
-    Ok((real_path, content))
+    Ok(ReadCapOutcome::Text {
+        real: real_path,
+        content,
+    })
 }
 
 /// fs_cap.write 文本写（能力口入口：dispatch 闸 + 原子写）。返回解析后路径。

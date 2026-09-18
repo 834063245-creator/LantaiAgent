@@ -23,6 +23,7 @@ import {
   type WindowLocator,
 } from '../session-context';
 import type { Tool, ToolRegistry } from '../tool';
+import { hasImageRefs } from '../tool-images';
 
 interface JsonProp {
   type?: string;
@@ -540,7 +541,11 @@ function buildDomainTool(registry: ToolRegistry, spec: DomainSpec): Tool | null 
             const v = pathKey ? out[pathKey] : undefined;
             if (pathKey && typeof v === 'string' && v !== '') {
               setFocusPath(ownerId, v);
-              // 回显（shell `[cwd: ...]` 行先例）：每步落点模型可见
+              // 回显（shell `[cwd: ...]` 行先例）：每步落点模型可见。
+              // 例外：附图信封（fs read 图片，2026-09-18）不再追加尾巴——信封是
+              // executor 要 JSON.parse 的机器可读体，尾缀会让解析失败、图静默丢；
+              // 落点信息信封自带的 path 字段已承载。
+              if (hasImageRefs(result)) return result;
               return `${result}\n[file: ${v}]`;
             }
           } else {

@@ -102,6 +102,9 @@ export const builtinFsProvider: FsProvider = {
     const raw = await opts.dispatch('fs_cap', toCapArgs(action, args), opts.onProgress, opts.signal);
     // read：fs_cap 返回 {path, content}——解包 content（缺省原文；lineNumbers:
     // true 时为 cat -n 行号格式，Text 语义不变）。
+    // 附图信封（2026-09-18 按路径读图）：读到图片字节时输出无 content 键
+    // （{path, image, attachment, imageNote}）——原样透传，引用由 executor 的
+    // parseToolImageOutput 消费（下方 typeof content 检查天然放行）。
     if (action === 'read') {
       try {
         const parsed = JSON.parse(raw) as { content?: unknown };
