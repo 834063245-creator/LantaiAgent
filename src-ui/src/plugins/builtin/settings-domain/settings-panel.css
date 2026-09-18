@@ -200,6 +200,10 @@
   align-items: start;
   padding: 14px 0;
   border-bottom: var(--rule-soft);
+  /* dense 回填（2026-09-18 叠印修复）：缺省 sparse 排布的指针只进不退，注疏
+     一落位，其后的控件就被推到下方空行（标签与控件那一列对不上）。dense 让
+     每个件落进「它该在的最早空格」：左列注疏逐条下叠，右列控件自成一路。 */
+  grid-auto-flow: row dense;
 }
 
 .sp-field:last-child {
@@ -248,18 +252,19 @@
   padding-top: 4px;
 }
 
-/* 提示注随控件右列换行铺开；有标签时归位左列标签下（原型 .lbl .d 注疏语法） */
-.sp-field > .sp-hint-sub {
-  grid-column: 2;
-}
-
+/* 注疏落位（⚠ 2026-09-18 叠印修复，勿回退成写死行号）：
+   有真标签 → 归位左列标签下（原型 .lbl .d 注疏语法），多条**逐条下叠**；
+   无标签 → 通栏铺开。
+   病灶：旧写法给每条注疏都写死 `grid-row: 2` —— 一个字段有多条注疏时
+   （Agent 页「组合」节的组合目录字段有 3 条）三条同占一格 = 字全糊在一起
+   （实测 9 对文字矩形互相压印）。行号一律交给上面的 dense 自动排布自适应，
+   本处只定「哪一列」。 */
 .sp-field:has(> .sp-label:not(.sp-checkbox-label)) > .sp-hint-sub {
   grid-column: 1;
-  grid-row: 2;
   padding-top: 4px;
 }
 
-.sp-field:not(:has(> .sp-label)) > .sp-hint-sub:first-child {
+.sp-field:not(:has(> .sp-label)) > .sp-hint-sub {
   grid-column: 1 / -1;
 }
 
