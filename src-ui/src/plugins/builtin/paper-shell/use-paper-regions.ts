@@ -9,6 +9,7 @@
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { MinimapRegionInput } from '../../../paper/minimap-core';
+import { volumeDisplayName } from '../../../state/volume-name';
 import type {
   BlockMeasureCache,
   CanvasStore,
@@ -304,7 +305,7 @@ export function usePaperRegions(params: {
           // 缩到视口外的卷回场时纸的上缘会跳一下，且远档地志标签的锚点
           // （InkLayer 的 regionTop − folioH）在 stub 与非 stub 卷之间不一致。
           // label 与 width 都在手，测高无额外依赖）
-          folioH: measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width),
+          folioH: measureFolioHeadHeight(volumeDisplayName(s.label, s.id), anchor.width),
           stubbed: true,
           extent: known.extent,
           lastBlockIds: known.blockIds,
@@ -392,7 +393,7 @@ export function usePaperRegions(params: {
         // 卷首头高度：题字按**流区宽**实测（左右内距 16×2 与 720 版心封顶都在
         // measureFolioHeadHeight 内一次算清——2026-09-16 前此处手写 `anchor.width - 32`，
         // 宽流区下漏掉版心封顶，实测值与渲染的换行不符）
-        const folioH = measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width);
+        const folioH = measureFolioHeadHeight(volumeDisplayName(s.label, s.id), anchor.width);
         // P2-2：全量构建后登记包围盒/块 id 集——stub 判定与 stub 消费面的
         // 最近已知值真源。空卷（无块）用锚点框兜底（stub 判定不至于盲区）。
         if (blocks.length > 0) {

@@ -29,6 +29,7 @@
 import { type ClipboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DirEntry } from '../../../rpc-contract';
 import { kernelListDirectory } from '../../../rpc-contract';
+import { volumeDisplayName } from '../../../state/volume-name';
 import type {
   ChatImageRef,
   ComposeSessionPrefs,
@@ -342,7 +343,7 @@ export const ComposerDock = memo(function ComposerDock() {
         const exec = agentSessionState.getExec(core.panelId, s.id);
         if (!exec?.isRunning) continue;
         if (s.id === activeSidNum) activeRun = true;
-        else bg.push({ id: s.id, label: s.label || `案卷 ${s.id}` });
+        else bg.push({ id: s.id, label: volumeDisplayName(s.label, s.id) });
       }
       setRunning(activeRun);
       setBgRunning(bg);
@@ -796,7 +797,7 @@ export const ComposerDock = memo(function ComposerDock() {
           className="pp-composer-target"
           title={activeSession ? `案卷 ${activeSession.id}` : '无活跃卷——落笔即另起一卷'}
         >
-          {activeSession ? activeSession.label || `案卷 ${activeSession.id}` : '新卷'}
+          {activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '新卷'}
         </span>
         <div className="pp-composer-settings-spacer" />
         {/* v2（2026-08-31）：翰（命令面板入口——/ 的可发现性）+ 律（快捷键总览）。
@@ -1314,7 +1315,7 @@ export const ComposerDock = memo(function ComposerDock() {
         {activeSidNum != null && (
           <InkLedger
             stats={tokenStats}
-            sessionLabel={activeSession?.label || `案卷 ${activeSidNum}`}
+            sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
             fallbackTotal={tokenCount}
             open={inkOpen}
             onToggle={() => toggleLayer('ink')}

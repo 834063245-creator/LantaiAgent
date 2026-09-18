@@ -81,15 +81,11 @@ const WS_SESSIONS = 'D:/ws/.lantai/sessions';
 
 /** 磁盘卷 7（本工作区会话根）——Phase 3b：卷本体 = 事件日志（.ndjson）。 */
 function volumeLog(): string {
-  return logText(
-    7,
-    [
-      { role: 'system', content: 'sys' },
-      { role: 'user', content: '之前的问题' },
-      { role: 'assistant', content: '之前的回答' },
-    ],
-    '历史卷',
-  );
+  return logText(7, [
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: '之前的问题' },
+    { role: 'assistant', content: '之前的回答' },
+  ]);
 }
 
 /** 工作区会话根磁盘预置：{WS}/.lantai/sessions 有 7.json（恢复 = 扫描推导，

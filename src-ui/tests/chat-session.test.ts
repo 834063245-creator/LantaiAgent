@@ -288,16 +288,16 @@ describe('ChatPanel session persistence', () => {
       return { files, reads, volumeReads };
     }
 
-    /** 一卷的盘上形态：事件日志（卷本体）+ 投影缓存（label/savedAt）。 */
+    /** 一卷的盘上形态：事件日志（卷本体）+ 投影缓存（label/savedAt——**卷名的家**）。 */
     function seedVolume(
       files: Record<string, string>,
       id: number,
       opts: { label?: string; savedAt?: string; msgs?: Array<{ role: string; content?: string }> } = {},
     ): void {
       const msgs = opts.msgs ?? [{ role: 'user', content: `内容 ${id}` }];
-      files[`${ROOT}/${id}.ndjson`] = logText(id, msgs, opts.label, opts.savedAt);
+      files[`${ROOT}/${id}.ndjson`] = logText(id, msgs, opts.savedAt);
       files[`${ROOT}/${id}.json`] = cacheText(id, {
-        label: opts.label ?? `案卷 ${id}`,
+        label: opts.label ?? '',
         savedAt: opts.savedAt ?? '2026-01-01T00:00:00Z',
       });
     }
@@ -687,7 +687,7 @@ describe('ChatPanel session persistence', () => {
       );
 
       // 归零重建：从首页打开历史卷 = 工作区会话根单读（归属即存储位置）
-      const vol1 = logText(1, mockSessionMessages, '测试会话', undefined, 'D:/test');
+      const vol1 = logText(1, mockSessionMessages, undefined, 'D:/test');
       mockInvoke.mockImplementation(
         fsCapAware((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
           const { method, params } = payload;
@@ -1089,14 +1089,10 @@ describe('ChatPanel session persistence', () => {
             // Phase 3b：卷内容 = 事件日志（`.ndjson`）。旧 `paper` 字段是**快照时代**
             // 的字段，事件日志里根本无从承载——「不回灌」由结构保证（属性退役）。
             return Promise.resolve(
-              logText(
-                5,
-                [
-                  { role: 'system', content: 'sys' },
-                  { role: 'user', content: '旧消息' },
-                ],
-                '带纸面的卷',
-              ),
+              logText(5, [
+                { role: 'system', content: 'sys' },
+                { role: 'user', content: '旧消息' },
+              ]),
             );
           }
           void params;
@@ -1156,14 +1152,10 @@ describe('ChatPanel session persistence', () => {
             if (fp.endsWith('/5.ndjson')) {
               // Phase 3b：卷内容 = 事件日志（不再是快照 JSON）
               return Promise.resolve(
-                logText(
-                  5,
-                  [
-                    { role: 'system', content: 'sys' },
-                    { role: 'user', content: 'hi' },
-                  ],
-                  '卷五',
-                ),
+                logText(5, [
+                  { role: 'system', content: 'sys' },
+                  { role: 'user', content: 'hi' },
+                ]),
               );
             }
           }
@@ -1227,7 +1219,7 @@ describe('ChatPanel session persistence', () => {
               );
             }
             if (fp.endsWith('/5.ndjson')) {
-              return Promise.resolve(logText(5, [{ role: 'user', content: 'hi' }], '卷五', undefined, PROJ));
+              return Promise.resolve(logText(5, [{ role: 'user', content: 'hi' }], undefined, PROJ));
             }
           }
           return Promise.resolve('ok');
@@ -1585,7 +1577,6 @@ describe('ChatPanel session persistence', () => {
             { role: 'system', content: 'sys' },
             { role: 'user', content: '历史内容' },
           ],
-          '有记录的卷',
           '2026-09-14T00:00:00Z',
           'ghost',
         ),
@@ -1606,7 +1597,6 @@ describe('ChatPanel session persistence', () => {
         [`${PROJ}/.lantai/sessions/8.ndjson`]: logText(
           8,
           [{ role: 'user', content: '旧内容' }],
-          '旧卷',
           '2026-09-01T00:00:00Z',
         ),
       });
@@ -1686,15 +1676,10 @@ describe('ChatPanel session persistence', () => {
     it('卷不在本工作区会话根 = 不存在（无回退面——单一路径）', async () => {
       mockDualDirDisk({
         // 卷躺在别处（旧全局位/他目录残留）——本工作区会话根无此卷，代码不回读
-        '/.lantai/sessions/5.json': logText(
-          5,
-          [
-            { role: 'system', content: 'sys' },
-            { role: 'user', content: '游离卷' },
-          ],
-          '游离卷',
-          undefined,
-        ),
+        '/.lantai/sessions/5.json': logText(5, [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '游离卷' },
+        ]),
       });
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
@@ -1758,7 +1743,7 @@ describe('ChatPanel session persistence', () => {
 
     it('deleteSessionFile 真删卷：日志 + 投影缓存一并删除（墓碑语义退役）', async () => {
       const files = mockDualDirDisk({
-        [`${PROJ}/.lantai/sessions/3.ndjson`]: logText(3, [{ role: 'user', content: 'x' }], '本区卷'),
+        [`${PROJ}/.lantai/sessions/3.ndjson`]: logText(3, [{ role: 'user', content: 'x' }]),
         [`${PROJ}/.lantai/sessions/3.json`]: cacheText(3, { label: '本区卷' }),
       });
       panel = createChatPanel();

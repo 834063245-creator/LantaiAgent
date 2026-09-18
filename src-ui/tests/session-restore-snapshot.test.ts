@@ -145,15 +145,11 @@ function snapshotVolumeCache() {
 
 /** 旧档卷：只有 provider 消息，无投影缓存（走重建兜底）。 */
 function legacyVolumeLog() {
-  return logText(
-    72,
-    [
-      { role: 'system', content: 'sys' },
-      { role: 'user', content: '旧问' },
-      { role: 'assistant', content: '旧答' },
-    ],
-    '旧档卷',
-  );
+  return logText(72, [
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: '旧问' },
+    { role: 'assistant', content: '旧答' },
+  ]);
 }
 
 describe('会话恢复采信现场快照（2026-08-31 会话流专项）', () => {

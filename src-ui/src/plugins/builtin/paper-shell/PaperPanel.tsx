@@ -35,6 +35,7 @@
 // 行为考官 = tests/perf-paper-pan.test.tsx（挂真实组件穿全层）。
 
 import { type CSSProperties, Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { volumeDisplayName } from '../../../state/volume-name';
 import { FolioCompositionChip } from './FolioCompositionChip';
 import { formatCNDate } from './folio-date';
 import type { RegionView, SourcedBlock } from './host';
@@ -341,7 +342,7 @@ function DeskShelf({ core }: { core: PaperCore | null }) {
       .then((rows) => {
         if (!alive) return;
         const sorted = [...rows].sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1)).slice(0, 3);
-        setRecent(sorted.map((r) => ({ id: r.id, label: r.label || `案卷 ${r.id}` })));
+        setRecent(sorted.map((r) => ({ id: r.id, label: volumeDisplayName(r.label, r.id) })));
       })
       .catch(() => {
         if (alive) setRecent([]);
@@ -770,7 +771,7 @@ export function PaperPanel() {
                            * 题字落「案卷 N」fallback，眉行退为「兰台 · 案卷」文类行。
                            * 重排前眉行 + 题字 fallback + 档行三处都报卷号（同义反复）。 */}
                           <p className="pp-folio-eyebrow">{r.label ? `案卷 Nº ${r.sessionNum}` : '兰台 · 案卷'}</p>
-                          <h2 className="pp-folio-title">{r.label || `案卷 ${r.sessionNum}`}</h2>
+                          <h2 className="pp-folio-title">{volumeDisplayName(r.label, r.sessionNum)}</h2>
                           <p className="pp-folio-sub">{folioSubLine(r)}</p>
                           {/* 组合芯片（S6 P5a）：**本卷**的组合身份与（空白卷的）拨动入口——
                               绝对定位覆盖在版心右上、与眉行同行、不进高度流水

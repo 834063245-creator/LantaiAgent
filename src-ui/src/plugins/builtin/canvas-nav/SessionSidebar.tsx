@@ -36,6 +36,7 @@
 // 真实例（store 单例不可内联副本），react 由构建期别名桥共享。
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isUnnamedVolumeLabel, volumeDisplayName } from '../../../state/volume-name';
 import {
   activeSpace,
   agentSessionState,
@@ -644,7 +645,9 @@ export const SessionSidebar = memo(function SessionSidebar() {
         const row = flat[idx];
         disarmAll();
         setRenamingId(row.id);
-        setDraftLabel(row.label || `案卷 ${row.id}`);
+        // 预填**原名**（未命名/旧默认名 → 空）：显示兜底「案卷 N」不得被洗成写入值
+        // （否则改一次名就把一个假名字钉进卷文件）——见 state/volume-name 头注。
+        setDraftLabel(isUnnamedVolumeLabel(row.label) ? '' : row.label);
         return;
       } else if ((e.key === 'c' || e.key === 'C') && idx >= 0) {
         const row = flat[idx];
@@ -708,7 +711,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         role="button"
         tabIndex={cursorId === r.id ? 0 : -1}
         className={`ss-row${r.open ? ' open' : ''}${isCurrent ? ' current' : ''}${isSelected ? ' selected' : ''}`}
-        title={`${r.label || `案卷 ${r.id}`}${isCurrent ? ' · 当前卷' : ''} · ${statusLabel(r.status)} · 左键摊开/定位 · 拖动落位`}
+        title={`${volumeDisplayName(r.label, r.id)}${isCurrent ? ' · 当前卷' : ''} · ${statusLabel(r.status)} · 左键摊开/定位 · 拖动落位`}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={(e) => onRowClick(e, r)}
         onMouseDown={(e) => onRowMouseDown(e, r)}
@@ -724,7 +727,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
           type="button"
           className={`ss-check${isSelected ? ' on' : ''}`}
           aria-pressed={isSelected}
-          aria-label={`${isSelected ? '取消选择' : '选择'}案卷：${r.label || `案卷 ${r.id}`}`}
+          aria-label={`${isSelected ? '取消选择' : '选择'}案卷：${volumeDisplayName(r.label, r.id)}`}
           title="勾选后可批量删除（Ctrl+点击 / X 键同效）"
           onClick={(e) => {
             e.stopPropagation();
@@ -753,7 +756,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
           />
         ) : (
           <div className="ss-row-main">
-            <span className="ss-label">{r.label || `案卷 ${r.id}`}</span>
+            <span className="ss-label">{volumeDisplayName(r.label, r.id)}</span>
             <span className="ss-meta">{sessionMeta(r)}</span>
           </div>
         )}
@@ -766,7 +769,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
                 e.stopPropagation();
                 disarmAll();
                 setRenamingId(r.id);
-                setDraftLabel(r.label || `案卷 ${r.id}`);
+                setDraftLabel(isUnnamedVolumeLabel(r.label) ? '' : r.label); // 原名（未命名 → 空）
               }}
             >
               改

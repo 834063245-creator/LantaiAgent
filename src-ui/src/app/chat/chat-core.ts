@@ -31,6 +31,7 @@ import { useDockStore } from '../../state/dock-store';
 import { broadcastGoalRecord, useGoalStore } from '../../state/goal-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import { bumpTurnDone } from '../../state/turn-done-store';
+import { deriveVolumeLabel, isUnnamedVolumeLabel, volumeDisplayName } from '../../state/volume-name';
 import { useWorkspaceSwitchStore } from '../../state/workspace-switch-store';
 import { useAgentPanelStore } from '../../ui/agent-panel-store';
 import * as Session from '../../ui/chat-session';
@@ -1122,11 +1123,11 @@ export class ChatCore {
     }
   }
 
-  /** 卷标签（ask/权限卡徽标用）：优先用户改过的标签，缺省「案卷 N」。 */
+  /** 卷标签（ask/权限卡徽标用）：显示名——未命名卷由 volumeDisplayName 按档号兜底。 */
   private _sessionLabelOf(sid: number): string {
     const st = getChatStore(this.panelId).sess.getState();
     const s = st.sessions.find((x) => x.id === sid);
-    return s?.label || `案卷 ${sid}`;
+    return volumeDisplayName(s?.label, sid);
   }
 
   /** _sessionLabelOf 的公开出口（bridges 权限卡徽标）。 */
@@ -1333,15 +1334,15 @@ export class ChatCore {
     // 并发会话（2026-08-26）：后台卷闸门拆除——本卷不在跑即可发起新轮次，
     // 与后台卷并行流式（事件路由由工厂绑定的 eventSinkFor 承担）。
 
-    // 首条用户消息时自动标记会话
+    // 首条来文即命名（未命名卷）：判据与派生都走 state/volume-name 的**同一把尺子**
+    // （与轮末 autoTitleSessionIfDefault 同规）。旧实现自带一套——只认「会话 」前缀
+    // （术语换代后对新卷恒不命中）、27 字截断（与轮末的 28 字不一致）——是收口前
+    // 的第三个命名写者，已拆。
     if (Session.getActiveIdx(this.panelId) >= 0) {
       const session = Session.getSessions(this.panelId)[Session.getActiveIdx(this.panelId)];
-      if (session && (session.label.startsWith('会话 ') || session.label === '已恢复的会话')) {
-        session.label = text.length > 28 ? text.slice(0, 27) + '…' : text;
-        // in-place 变更不会触发 store 订阅 — 换数组引用通知视图
-        getChatStore(this.panelId)
-          .sess.getState()
-          .setSessions([...Session.getSessions(this.panelId)]);
+      if (session && isUnnamedVolumeLabel(session.label)) {
+        const name = deriveVolumeLabel(text);
+        if (name) getChatStore(this.panelId).sess.getState().renameSession(session.id, name);
       }
     }
 

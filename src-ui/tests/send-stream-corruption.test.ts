@@ -185,33 +185,25 @@ function streamingFactory(panel: ChatCore, opts?: { factoryDelayMs?: number; pen
 }
 
 /** 旧档卷（无 UI 投影缓存——实机真实形态：C8 合卷剥离）：两轮对话。
- *  Phase 3b：卷本体 = 事件日志（`.ndjson`）。 */
-function volumeFile(id: number, label: string): string {
-  return logText(
-    id,
-    [
-      { role: 'system', content: 'sys' },
-      { role: 'user', content: '旧问一' },
-      { role: 'assistant', content: '旧答一' },
-      { role: 'user', content: '旧问二' },
-      { role: 'assistant', content: '旧答二', reasoning_content: '旧思考' },
-    ],
-    label,
-  );
+ *  Phase 3b：卷本体 = 事件日志（`.ndjson`）。头行不带卷名（2026-09-18 命名收口）。 */
+function volumeFile(id: number): string {
+  return logText(id, [
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: '旧问一' },
+    { role: 'assistant', content: '旧答一' },
+    { role: 'user', content: '旧问二' },
+    { role: 'assistant', content: '旧答二', reasoning_content: '旧思考' },
+  ]);
 }
 
 /** 现代卷（带 UI 投影缓存——运行中退出/崩溃后的摊开集恢复形态）：
  *  缓存里的 _id 是上一运行铸的旧号（m1/m2）；日志 = 内容真源。 */
-function snapshotVolumeFile(id: number, label: string): string {
-  return logText(
-    id,
-    [
-      { role: 'system', content: 'sys' },
-      { role: 'user', content: '旧问一' },
-      { role: 'assistant', content: '旧答一' },
-    ],
-    label,
-  );
+function snapshotVolumeFile(id: number): string {
+  return logText(id, [
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: '旧问一' },
+    { role: 'assistant', content: '旧答一' },
+  ]);
 }
 
 /** UI 投影缓存（与 snapshotVolumeFile 配套；新鲜 seq 给足）。 */
@@ -232,8 +224,8 @@ function snapshotVolumeCache(id: number, label: string): string {
   });
 }
 
-function seedVolumeFile(id: number, label: string): void {
-  H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/${id}.ndjson`, volumeFile(id, label));
+function seedVolumeFile(id: number): void {
+  H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/${id}.ndjson`, volumeFile(id));
 }
 
 function freshPanel(factoryDelayMs?: number, pendingRuns?: Array<() => void>): ChatCore {
@@ -275,7 +267,7 @@ describe('发送链路不变量（反馈环）', () => {
   });
 
   it('实机形态：续开旧档卷（无 uiMessages → provider 重建）后发送——消息不消失、历史不被覆盖', async () => {
-    seedVolumeFile(30, '旧档卷');
+    seedVolumeFile(30);
     const panel = freshPanel();
     await panel.loadSessionFromDisk(PROJ, 30);
     const restored = msgStoreFor(panel.panelId, 30).getState().messages;
@@ -293,7 +285,7 @@ describe('发送链路不变量（反馈环）', () => {
   });
 
   it('续开卷连续多轮快速发送——每轮消息与历史全程完好', async () => {
-    seedVolumeFile(31, '多轮卷');
+    seedVolumeFile(31);
     const panel = freshPanel();
     await panel.loadSessionFromDisk(PROJ, 31);
     await send(panel, '第一发');
@@ -310,7 +302,7 @@ describe('发送链路不变量（反馈环）', () => {
   });
 
   it('运行中插话（insertMessage 路径）——插话消息不丢、流不冲坏', async () => {
-    seedVolumeFile(32, '插话卷');
+    seedVolumeFile(32);
     const pendingRuns: Array<() => void> = [];
     const panel = freshPanel(undefined, pendingRuns);
     await panel.loadSessionFromDisk(PROJ, 32);
@@ -337,7 +329,7 @@ describe('发送链路不变量（反馈环）', () => {
     '停止后立刻重发——新轮消息/回复完整、旧流不冲坏',
     { timeout: 20_000 },
     async () => {
-      seedVolumeFile(33, '停止卷');
+      seedVolumeFile(33);
       const pendingRuns: Array<() => void> = [];
       const panel = freshPanel(undefined, pendingRuns);
       await panel.loadSessionFromDisk(PROJ, 33);
@@ -362,7 +354,7 @@ describe('发送链路不变量（反馈环）', () => {
   );
 
   it('重启形态：快照卷回填旧 id + counter 归零 → 发消息不撞号、流不冲坏（主症状）', async () => {
-    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/50.ndjson`, snapshotVolumeFile(50, '快照卷'));
+    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/50.ndjson`, snapshotVolumeFile(50));
     H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/50.json`, snapshotVolumeCache(50, '快照卷'));
     // 模拟重启：全局发号器归零（上一运行的 uiMessages 仍带旧 id m1/m2）
     getChatStore('__default__').sess.setState({ msgIdSeq: 0 });
@@ -431,7 +423,7 @@ describe('发送链路不变量（反馈环）', () => {
   });
 
   it('合卷自动存快照必须含 uiMessages（C8 丢字段 = 重开降采样）', async () => {
-    seedVolumeFile(34, '合卷卷');
+    seedVolumeFile(34);
     const panel = freshPanel();
     await panel.loadSessionFromDisk(PROJ, 34);
     await send(panel, '合卷前的消息');
@@ -456,7 +448,7 @@ describe('发送链路不变量（反馈环）', () => {
   });
 
   it('建卷与续开并发（lost-update 竞态）——续开的卷不得从列表消失', async () => {
-    seedVolumeFile(40, '并发续开卷');
+    seedVolumeFile(40);
     const panel = freshPanel(15);
     const loadP = panel.loadSessionFromDisk(PROJ, 40); // 工厂在途
     const createP = panel.createNewSession(); // 在途窗口内用户又建卷
@@ -468,5 +460,20 @@ describe('发送链路不变量（反馈环）', () => {
       '建卷的陈旧快照写回把续开的卷挤出了列表',
     ).toBe(true);
     expect(ids.length).toBe(2);
+  });
+
+  it('首条来文即命名（发送那一刻；规则与轮末同一处 state/volume-name）', async () => {
+    const pendingRuns: Array<() => void> = [];
+    const panel = freshPanel(undefined, pendingRuns);
+    await panel.createNewSession();
+
+    const run = send(panel, '甲'.repeat(30)); // 首轮挂在 pending 上：轮末尚未到
+    await tick(40);
+
+    // 未命名卷 → 发送即命名（28 字 + 「…」；旧实现在此处自带 27 字截断的另一套规则）
+    expect(getChatStore(panel.panelId).sess.getState().sessions[0].label).toBe(`${'甲'.repeat(28)}…`);
+
+    pendingRuns[0]?.();
+    await run;
   });
 });

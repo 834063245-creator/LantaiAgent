@@ -20,9 +20,11 @@
 // 像素对齐（P4c）：所有屏幕坐标取整到设备像素——半像素小字/细条加倍糊，
 // 距离观感的第一杀手。
 //
-// 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
+// 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例；
+// 例外 = 纯函数（无实例身份）直连真身：卷名显示兜底 volumeDisplayName。
 
 import { useEffect, useRef } from 'react';
+import { volumeDisplayName } from '../../../state/volume-name';
 import type { InkCache, LodTier, RegionView, SourcedBlock } from './host';
 import {
   INK_LABEL_ALPHA,
@@ -168,7 +170,7 @@ export function InkLayer({ regionsRef, foldedOf, inkCache }: InkLayerProps) {
           const top = worldToScreen(view, r.anchor.anchorX, r.regionTop - r.folioH);
           const py = snap(top.y) - snap(labelPx * 1.6);
           if (py < -20 || py > canvasSize.h) continue;
-          ctx.fillText(r.label || `案卷 ${r.sessionNum}`, snap(top.x), py);
+          ctx.fillText(volumeDisplayName(r.label, r.sessionNum), snap(top.x), py);
         }
         ctx.textAlign = 'left';
       };

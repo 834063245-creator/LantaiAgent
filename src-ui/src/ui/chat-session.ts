@@ -21,6 +21,7 @@ import { type ComposeSessionPrefs, getComposeStore } from '../state/compose-stor
 import { disposeMessagesStores, disposeSessionMessagesStore } from '../state/messages-store';
 import { bumpSessionVolumes } from '../state/session-volumes-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../state/toast-store';
+import { deriveVolumeLabel, isUnnamedVolumeLabel, volumeDisplayName } from '../state/volume-name';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
@@ -195,9 +196,11 @@ export function resetSessionState(storeId: string): void {
   setTurnPairs(storeId, null, []);
 }
 
-/** 若会话仍为默认标签（"案卷 N"，兼容旧 "会话 N"），则从第一条用户消息自动命名。
- *  在每轮对话完成后调用。sid 指定轮次所属卷（并发会话：后台卷跑完只命名
- *  自己）；缺省 = 活跃卷（遗留调用语义）。 */
+/** 若会话**尚未命名**（空名，或旧存档遗留的默认名「案卷 N」/"会话 N"），则从第一
+ *  条用户消息自动命名。在每轮对话完成后调用。sid 指定轮次所属卷（并发会话：后台卷
+ *  跑完只命名自己）；缺省 = 活跃卷（遗留调用语义）。
+ *  判据与派生都是 state/volume-name 的**同一把尺子**（与读盘路径同判——收口前
+ *  这里严「\d+$」、读盘路径松「案卷␣前缀」，同一个名两条路答得不一样）。 */
 export function autoTitleSessionIfDefault(storeId: string, sid?: number): void {
   const st = getChatStore(storeId).sess.getState();
   const { sessions, activeIdx } = st;
@@ -208,8 +211,8 @@ export function autoTitleSessionIfDefault(storeId: string, sid?: number): void {
   const s = sessions[idx];
   if (!s) return;
 
-  // 仅在标签仍为默认格式时自动命名（兰台术语：案卷；旧存档：会话）
-  if (!/^(?:会话|案卷) \d+$/.test(s.label)) return;
+  // 仅在**未命名**时自动命名（判据单一真源：state/volume-name）
+  if (!isUnnamedVolumeLabel(s.label)) return;
 
   const agent = agentSessionState.getAgent(storeId, s.id);
   if (!agent) return;
@@ -218,7 +221,8 @@ export function autoTitleSessionIfDefault(storeId: string, sid?: number): void {
   const firstUser = msgs.find((m) => m.role === 'user' && m.content && !m.content.startsWith('<compacted-context>'));
   if (!firstUser?.content) return;
 
-  const derived = firstUser.content.slice(0, 28) + (firstUser.content.length > 28 ? '…' : '');
+  const derived = deriveVolumeLabel(firstUser.content);
+  if (!derived) return;
   const updated = sessions.map((x, i) => (i === idx ? { ...x, label: derived } : x));
   getChatStore(storeId).sess.setState({ sessions: updated });
 }
@@ -328,13 +332,10 @@ function hydrateSessionAgentVisible(ctx: SessionContext): void {
  *  在句柄刚到手、本轮尚未产生事件的窗口里调用：读盘 → 置回真源（+断尾修复+
  *  补悬空工具调用）→ 接到盘上。返回 `adopted` = 日志里有磁盘历史（调用方据此走
  *  `adoptSessionLog` 而不是整段 setSession）。
- *  句柄无 `sessionLog` 能力位（旧实现/测试桩）或工作区路径为空 = no-op（降级不炸）。 */
-async function seedVolumeLog(
-  ctx: SessionContext,
-  sid: number,
-  agent: OwnedAgentHandle,
-  label?: string,
-): Promise<{ adopted: boolean }> {
+ *  句柄无 `sessionLog` 能力位（旧实现/测试桩）或工作区路径为空 = no-op（降级不炸）。
+ *  头行**不写卷名**（2026-09-18 命名收口）：头行是 append-only 的物化一次，改名永不
+ *  回写 ⇒ 那一份 label 总是陈旧副本（三份落地副本之一）。卷名的家 = 卷快照 `label`。 */
+async function seedVolumeLog(ctx: SessionContext, sid: number, agent: OwnedAgentHandle): Promise<{ adopted: boolean }> {
   const logInstance = agent.sessionLog;
   if (!logInstance) return { adopted: false };
   const projectPath = ctx.getProjectPath();
@@ -348,7 +349,6 @@ async function seedVolumeLog(
         version: 1,
         id: sid,
         createdAt: new Date().toISOString(),
-        ...(label ? { label } : {}),
         ...(agent.presetId ? { presetId: agent.presetId } : {}),
         cwd: projectPath,
       },
@@ -384,8 +384,7 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
   // 事件日志接线（换轨 Phase 1）：在**任何本轮事件产生之前**把日志置回磁盘真源
   // （openSessionLog：有日志→restoreInPlace+append；无日志→materialize），
   // 否则本轮 append 会与上一次运行的 seq 撞号（重放面判损坏）。
-  const stForLabel = getChatStore(ctx.storeId).sess.getState();
-  const seed = await seedVolumeLog(ctx, sid, agent, stForLabel.sessions.find((s) => s.id === sid)?.label);
+  const seed = await seedVolumeLog(ctx, sid, agent);
   if (!isCurrentEpoch(epoch)) return false;
 
   // 会话内容回填：msgStore 的 ChatMessage 不是 provider 消息——从磁盘卷文件
@@ -459,7 +458,7 @@ export function closeSession(ctx: SessionContext, idx: number): void {
         seq: agent.sessionLog?.lastSeq ?? 0,
         ver: SESSION_CACHE_VERSION,
         compose,
-      }).catch(() => showToast(`合卷落盘失败：${s.label}`, 'error', TOAST_LONG_HOLD_MS));
+      }).catch(() => showToast(`合卷落盘失败：${volumeDisplayName(s.label, s.id)}`, 'error', TOAST_LONG_HOLD_MS));
     }
   }
   removeSessionExecState(ctx.storeId, s.id);
@@ -615,14 +614,18 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
   if (newAgent) {
     // 事件日志接线（换轨 Phase 1）：新卷 = 无日志文件 → materialize
     // （首批把「头行 + 当时全部事件」原子物化；构造期的 reset/preset 一并落盘）。
-    await seedVolumeLog(ctx, id, newAgent, `案卷 ${getChatStore(ctx.storeId).sess.getState().sessions.length + 1}`);
+    await seedVolumeLog(ctx, id, newAgent);
     agentSessionState.setAgent(ctx.storeId, id, newAgent);
     // 静态绑定该 Agent 的 board 到新会话（id 在 factory 之后才确定）
     newAgent.bindSession?.(String(id));
     bindSessionExec(ctx, id, newAgent);
   }
   getChatStore(ctx.storeId).sess.setState((s) => ({
-    sessions: [...s.sessions, { id, label: `案卷 ${s.sessions.length + 1}`, createdAt: new Date().toISOString() }],
+    // 起卷 = **未命名**（2026-09-18 命名收口）：数字名不是写入值——显示兜底由
+    // state/volume-name 的 volumeDisplayName 按档号给（旧实现写序数「案卷 N」，
+    // 合卷 splice 之后再起一卷会与在案卷撞名）。首轮跑完由 autoTitleSessionIfDefault
+    // 以首条来文命名。
+    sessions: [...s.sessions, { id, label: '', createdAt: new Date().toISOString() }],
     activeIdx: s.sessions.length,
   }));
   // ponytail: 创建会话级消息 store — 唯一数据源
@@ -842,6 +845,7 @@ function enqueueVolumeWrite<T>(key: string, task: () => Promise<T>): Promise<T> 
 /** 会话清单行（侧栏/书脊/签条共用形状——磁盘投影三字段 + 身份）。 */
 export interface SavedSessionRow {
   id: number;
+  /** **原样**卷名（空 = 未命名）——显示兜底按档号，走 state/volume-name。 */
   label: string;
   msgCount: number;
   savedAt: string;
@@ -969,7 +973,9 @@ async function hydrateVolumeRow(projectPath: string, id: number): Promise<SavedS
   if (!data) return null;
   return {
     id: data.id || id,
-    label: data.label || `案卷 ${id}`,
+    // 原样带出（空 = 未命名）——显示兜底是**呈现层**的事（state/volume-name），
+    // 不在这里把「案卷 N」写进数据（那正是旧实现把显示值洗成真值的路径）。
+    label: data.label ?? '',
     msgCount: (data.messages ?? []).filter((m) => m.role !== 'system').length,
     savedAt: data.savedAt || '',
   };
@@ -1075,7 +1081,7 @@ function rowFromSnapshot(data: {
   if (!Array.isArray(data.messages)) return null;
   return {
     id: data.id,
-    label: data.label || `案卷 ${data.id}`,
+    label: data.label, // 原样（空 = 未命名；显示兜底在呈现层）
     msgCount: data.messages.filter((m) => m.role !== 'system').length,
     savedAt: data.savedAt,
   };
@@ -1400,7 +1406,10 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
   const fresh = cache !== null && typeof cache.seq === 'number' && cache.seq >= logRead.lastSeq;
   return {
     id,
-    label: cache?.label || logRead.header.label || `案卷 ${id}`,
+    // 卷名的家 = 投影缓存（2026-09-18 命名收口：事件日志头行不再带 label——那份
+    // append-only 副本改名永不回写，只会在读面冒充真值）。缺缓存 = 未命名（空），
+    // 显示兜底由呈现层按档号给；内容真源仍是事件日志。
+    label: cache?.label ?? '',
     savedAt: cache?.savedAt ?? '',
     createdAt: logRead.header.createdAt,
     messages: logRead.messages,
@@ -1548,7 +1557,7 @@ export async function loadSessionFromDisk(
   // 事件日志接线（换轨 Phase 1）：**必须先于 setSession** —— 把日志置回磁盘真源
   // （读 .ndjson → restoreInPlace + append 姿态），随后 setSession 的 session/reset
   // 才能以「新事实」接在旧事件之后（日志单调增长，崩溃尾巴不被覆写）。
-  const seed = newAgent ? await seedVolumeLog(ctx, data.id || sessionId, newAgent, data.label) : { adopted: false };
+  const seed = newAgent ? await seedVolumeLog(ctx, data.id || sessionId, newAgent) : { adopted: false };
 
   const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
   const freshSys = newAgent?.getSession().filter((m: Message) => m.role === 'system') ?? [];
@@ -1561,13 +1570,14 @@ export async function loadSessionFromDisk(
   }
 
   const firstUser = conv.find((m: Message) => m.role === 'user' && !isInternalMessage(m.content));
-  const st1 = getChatStore(ctx.storeId).sess.getState();
-  const label =
-    data.label && !/^(?:会话|案卷) /.test(data.label) && data.label !== '已恢复的会话' && data.label !== '已恢复的案卷'
-      ? data.label
-      : firstUser
-        ? firstUser.content?.slice(0, 28) + (firstUser.content?.length > 28 ? '…' : '')
-        : `案卷 ${st1.sessions.length + 1}`;
+  // 卷名（与 autoTitleSessionIfDefault 同规）：有名卷直采；未命名 → 首条来文派生
+  // （仍无名 = 留空，显示兜底由呈现层按档号给）。判据/派生 = state/volume-name 单一真源。
+  const storedLabel = data.label ?? '';
+  const label = isUnnamedVolumeLabel(storedLabel)
+    ? firstUser?.content
+      ? deriveVolumeLabel(firstUser.content)
+      : ''
+    : storedLabel;
 
   // ponytail: 消息在会话级 store 中 — 无需 saveCurrentMessages
   ctx.flushReasoning();
@@ -1694,20 +1704,17 @@ export async function batchRestoreSessions(
   const batch = items.filter(({ sid }) => !openNow.has(sid));
   if (batch.length === 0) return 0;
 
-  // 标签派生（与 loadSessionFromDisk 同规：命名卷直采 / 首条用户消息截断 / 案卷序号兜底）
-  const baseCount = getChatStore(ctx.storeId).sess.getState().sessions.length;
-  const labeled = batch.map(({ sid, data }, i) => {
+  // 卷名派生（与 loadSessionFromDisk / autoTitleSessionIfDefault 同规：有名卷直采 /
+  // 未命名 → 首条来文截断 / 仍无名 = 留空由呈现层兜底）——单一真源 state/volume-name
+  const labeled = batch.map(({ sid, data }) => {
     const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
     const firstUser = conv.find((m) => m.role === 'user' && !isInternalMessage(m.content));
-    const label =
-      data.label &&
-      !/^(?:会话|案卷) /.test(data.label) &&
-      data.label !== '已恢复的会话' &&
-      data.label !== '已恢复的案卷'
-        ? data.label
-        : firstUser
-          ? firstUser.content?.slice(0, 28) + (firstUser.content?.length > 28 ? '…' : '')
-          : `案卷 ${baseCount + i + 1}`;
+    const storedLabel = data.label ?? '';
+    const label = isUnnamedVolumeLabel(storedLabel)
+      ? firstUser?.content
+        ? deriveVolumeLabel(firstUser.content)
+        : ''
+      : storedLabel;
     return { sid: data.id || sid, label, data, conv };
   });
 

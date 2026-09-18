@@ -135,7 +135,6 @@ describe('同工作区多卷语义（workspace-session-ownership-rework 重写�
           { role: 'system', content: 'sys' },
           { role: 'user', content: '本区卷内容' },
         ],
-        '本区卷',
         '2026-08-24T00:00:00Z',
       ),
     );

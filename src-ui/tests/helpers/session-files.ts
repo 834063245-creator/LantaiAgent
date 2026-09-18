@@ -8,11 +8,12 @@
 // 形状与生产写面同源（`app/chat/session-log-store.ts` 的物化 + `chat-session` 的缓存写），
 // 差异只在此处不落盘、直接交给内存盘 / mock。
 
-/** 造一份事件日志文本（`{root}/{id}.ndjson` 的内容）。 */
+/** 造一份事件日志文本（`{root}/{id}.ndjson` 的内容）。
+ *  **头行不带卷名**（2026-09-18 命名收口）：卷名的家 = 投影缓存（`cacheText` 的
+ *  `label`）。头行 write-once，带 label 只会是陈旧副本。 */
 export function logText(
   id: number,
   messages: Array<{ role: string; content?: string; [k: string]: unknown }>,
-  label?: string,
   savedAt?: string,
   presetId?: string,
 ): string {
@@ -21,7 +22,6 @@ export function logText(
     version: 1,
     id,
     createdAt: savedAt ?? '2026-01-01T00:00:00Z',
-    ...(label ? { label } : {}),
     ...(presetId ? { presetId } : {}),
   });
   const sys = messages.filter((m) => m.role === 'system');
@@ -53,7 +53,7 @@ export function cacheText(
 ): string {
   return JSON.stringify({
     id,
-    label: opts.label ?? `会话 ${id}`,
+    label: opts.label ?? '', // 缺省 = 未命名（卷名的家在这里，见 logText 头注）
     savedAt: opts.savedAt ?? '2026-01-01T00:00:00Z',
     tokensUsed: opts.tokensUsed ?? 0,
     seq: opts.seq ?? 999, // 缺省给足（新鲜）

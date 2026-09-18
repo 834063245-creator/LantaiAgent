@@ -6,11 +6,17 @@
 // 已存卷（listSavedSessions）两源合流；状态点 pending > running > done/idle
 // （子 agent 与 running 同点——当前 exec 面暂无每会话子 agent 计数，运行中
 // 即亮石青点，stage-3 §5 数据源核对）。
+//
+// 行的 `label` = **原样卷名**（空 = 未命名）——显示兜底是呈现层的事
+// （state/volume-name 的 volumeDisplayName，按档号；禁在数据面把显示值洗成真值）。
+
+import { volumeDisplayName } from '../../../state/volume-name';
 
 export type SessionStatus = 'pending' | 'running' | 'done' | 'idle';
 
 export interface SidebarRow {
   id: number;
+  /** **原样**卷名（空 = 未命名）——显示走 volumeDisplayName，别直接用。 */
   label: string;
   savedAt: string;
   open: boolean;
@@ -29,7 +35,7 @@ export function mergeSessionRows(
   for (const s of saved) {
     byId.set(s.id, {
       id: s.id,
-      label: s.label || `案卷 ${s.id}`,
+      label: s.label,
       savedAt: s.savedAt,
       open: false,
       msgCount: s.msgCount,
@@ -40,7 +46,8 @@ export function mergeSessionRows(
     const prev = byId.get(o.id);
     byId.set(o.id, {
       id: o.id,
-      label: o.label || prev?.label || `案卷 ${o.id}`,
+      // 内存最新优先；缺则沿用盘上行（两者都是**原名**，空 = 未命名）
+      label: o.label || prev?.label || '',
       savedAt: prev?.savedAt ?? '',
       open: true,
       msgCount: o.msgCount ?? prev?.msgCount ?? 0,
@@ -88,11 +95,11 @@ export function statusLabel(status: SessionStatus): string {
 }
 
 /** 检索过滤（注疏重排 2026-08-31）：query 空 = 全量；匹配卷名（大小写
- *  无关）或卷号数字——卷名缺省名「案卷 N」天然可被命中。 */
+ *  无关）或卷号数字——未命名卷的显示名「案卷 N」天然可被命中。 */
 export function filterRows(rows: SidebarRow[], query: string): SidebarRow[] {
   const q = query.trim().toLowerCase();
   if (!q) return rows;
-  return rows.filter((r) => (r.label || `案卷 ${r.id}`).toLowerCase().includes(q) || String(r.id).includes(q));
+  return rows.filter((r) => volumeDisplayName(r.label, r.id).toLowerCase().includes(q) || String(r.id).includes(q));
 }
 
 /** 分节：摊开中（OPEN）在前、已合卷（CLOSED）在后——节内保持合流排序

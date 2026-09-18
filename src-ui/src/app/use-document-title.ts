@@ -8,6 +8,7 @@
 // 活跃案卷名跟随 sess store（切卷/改名即刷新）。
 
 import { useEffect } from 'react';
+import { volumeDisplayName } from '../state/volume-name';
 import { getChatStore } from '../ui/chat-store';
 import { useCoreStore } from './chat/core-instance';
 import { useShellStore } from './shell-store';
@@ -31,7 +32,7 @@ export function useDocumentTitle(): void {
         if (core) {
           const st = getChatStore(core.panelId).sess.getState();
           const cur = st.sessions[st.activeIdx];
-          if (cur) title = `${ws} · ${cur.label || `案卷 ${cur.id}`} — 兰台`;
+          if (cur) title = `${ws} · ${volumeDisplayName(cur.label, cur.id)} — 兰台`;
         }
       }
       document.title = title;

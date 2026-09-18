@@ -24,8 +24,11 @@
 // 双走查形态（增补四）：本文件是产物域源码（esbuild 编译进插件产物，
 // 视觉迭代秒级热更）——项目内依赖一律经 './host' 取宿主共享真实例
 // （store/service 单例不可内联副本），react 由构建期别名桥共享。
+// 例外 = **纯函数**（无实例身份）：卷名显示兜底 volumeDisplayName 直连
+// state/volume-name（产物内联副本与真身同行为，同 InkLedger 直连 token-meter）。
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { volumeDisplayName } from '../../../state/volume-name';
 import type { ExecStateInstance } from './host';
 import {
   activeSpace,
@@ -60,7 +63,7 @@ function spineOrder(
 ): Array<{ id: number; label: string }> {
   return mergeSessionRows(open, saved)
     .filter((r) => r.open)
-    .map((r) => ({ id: r.id, label: r.label }));
+    .map((r) => ({ id: r.id, label: volumeDisplayName(r.label, r.id) }));
 }
 
 export const SpineRack = memo(function SpineRack() {

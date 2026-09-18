@@ -12,8 +12,10 @@
 //
 // 文件形状（每卷一个，扁平落点——用户拍板 2026-09-15）：
 //   {root}/{id}.ndjson
-//   第 1 行  头行：{"type":"session","version":1,"id":…,"createdAt":…,"label":…,"presetId":…,"cwd":…}
+//   第 1 行  头行：{"type":"session","version":1,"id":…,"createdAt":…,"presetId":…,"cwd":…}
 //   第 2..n 行 事件：{"seq":1,"ts":…,"kind":"user/message","data":{…}}
+// 头行**不带卷名**（2026-09-18 命名收口）：头行只在 materialize 那一次写、改名永不
+// 回写 ⇒ 带 label 就是一份只会陈旧的副本（真源 = 卷快照 `<id>.json` 的 label）。
 //
 // 两种接入姿态（DSH `appendBatch(…, isMaterialized)` 契约的兰台形）：
 //   · **materialize**（文件不存在/不可读）：首批把「头行 + 当时日志全部事件」一次原子
@@ -31,13 +33,13 @@ import { interruptedToolCallClosers } from '../../agent/session-log-repair';
 import { DEFAULT_WRITE_BATCH_MAX_DELAY_MS, SessionLogWriteBehind } from '../../agent/session-log-write-behind';
 import { sessionExecute } from '../../composition/session-persistence-service';
 
-/** 事件日志头行（第 1 行）。`version` 是格式版本——未来版本拒绝读而不是报损坏。 */
+/** 事件日志头行（第 1 行）。`version` 是格式版本——未来版本拒绝读而不是报损坏。
+ *  不带卷名：头行 write-once，改名的事实在卷快照里（见文件头注）。 */
 export interface SessionLogHeader {
   type: 'session';
   version: 1;
   id: number;
   createdAt: string;
-  label?: string;
   presetId?: string;
   cwd?: string;
 }

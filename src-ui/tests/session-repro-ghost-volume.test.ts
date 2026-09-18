@@ -65,7 +65,6 @@ describe('实机复现：冷启动装配后点开旧卷不得凭空多卷', () =
           { role: 'system', content: 'sys' },
           { role: 'user', content: '旧卷内容' },
         ],
-        '旧卷',
         '2026-08-25T09:00:00.000Z',
       ),
     );
@@ -92,6 +91,9 @@ describe('实机复现：冷启动装配后点开旧卷不得凭空多卷', () =
     const sessions = Session.getSessions(panel.panelId);
     expect(sessions.map((s) => s.id)).toEqual([7]);
     expect(sessions.some((s) => s.label === '案卷 1')).toBe(false);
+    // 卷名不再由日志头行冒充（2026-09-18 命名收口）：无投影缓存 = 未命名 →
+    // 按首条来文派生（头行那份 label 是改名永不回写的陈旧副本）
+    expect(sessions[0].label).toBe('旧卷内容');
     expect(
       msgStoreFor(panel.panelId, 7)
         .getState()
@@ -118,7 +120,9 @@ describe('实机复现：冷启动装配后点开旧卷不得凭空多卷', () =
 
     const sessions = Session.getSessions(panel.panelId);
     expect(sessions).toHaveLength(1);
-    // 新建的第一卷领预留句柄——不得伴随出现第二条「案卷 1」
-    expect(sessions.filter((s) => s.label.startsWith('案卷')).length).toBe(1);
+    // 新建卷 = **未命名**（2026-09-18 命名收口：起卷不再写数字名——「案卷 1」
+    // 那类默认名是显示兜底，由 state/volume-name 按档号给）。「凭空多出第二条」
+    // 的旧症状由上面的「恰一卷」钉住。
+    expect(sessions[0].label).toBe('');
   });
 });
