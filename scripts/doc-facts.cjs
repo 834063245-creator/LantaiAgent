@@ -119,17 +119,41 @@ function engineDefaultTools() {
   return { value: count, source: rel };
 }
 
+/** 引擎模型可见默认工具数（契约 v5）= 域数 + 未折叠的默认工具数。 */
+function engineVisibleTools() {
+  const rel = 'engine/src/tools/mod.rs';
+  const src = read(rel);
+  const domainBlock = slice(src, 'pub const DOMAIN_SPECS: &[DomainSpec] = &[', '\n];', rel);
+  const domains = (domainBlock.match(/DomainSpec\s*\{/g) || []).length;
+  const folded = new Set(
+    [...domainBlock.matchAll(/DomainAction \{ action: "[a-z_]+", tool: "([a-z_]+)"/g)].map((m) => m[1]),
+  );
+  const defaultBlock = slice(src, 'pub const DEFAULT_MCP_TOOLS: &[&str] = &[', '\n    ];', rel);
+  const standalone = [...defaultBlock.matchAll(/"([a-z_]+)"/g)]
+    .map((m) => m[1])
+    .filter((t) => !folded.has(t));
+  if (domains === 0 || standalone.length === 0) {
+    throw new Error('[doc-facts] DOMAIN_SPECS / 未折叠默认工具解析失效');
+  }
+  return { value: domains + standalone.length, source: rel };
+}
+
 // ── 事实表 ────────────────────────────────────────────────────────────────
 
 const FACTS = [
   { id: 'agent_config_fields', label: 'AgentConfig 冻结字段数', parse: agentConfigFields },
   { id: 'builtin_service_plugins', label: '内核插件数（BUILTIN_PLUGINS 表）', parse: builtinServicePlugins },
   { id: 'factory_products', label: '出厂产物数（builtin-roster.json）', parse: factoryProducts },
-  { id: 'tool_domains', label: '模型可见域工具数（DOMAIN_SPECS）', parse: toolDomains },
+  { id: 'tool_domains', label: '兰台应用侧域工具数（src-ui DOMAIN_SPECS）', parse: toolDomains },
   { id: 'open_surface_contract_version', label: '开放面契约版本', parse: openSurfaceContractVersion },
   { id: 'engine_contract_version', label: '引擎开放面契约版本', parse: engineContractVersion },
   { id: 'engine_shell_methods', label: '引擎壳专属方法数', parse: engineShellMethods },
-  { id: 'engine_default_tools', label: '引擎模型可见默认工具数', parse: engineDefaultTools },
+  { id: 'engine_visible_tools', label: '引擎模型可见默认工具数（域 + 未折叠）', parse: engineVisibleTools },
+  {
+    id: 'engine_default_tools',
+    label: '引擎可寻址工具数（DEFAULT_MCP_TOOLS，tools/call 原名）',
+    parse: engineDefaultTools,
+  },
 ];
 
 function collectFacts() {

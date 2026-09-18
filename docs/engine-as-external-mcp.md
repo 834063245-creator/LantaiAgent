@@ -49,6 +49,18 @@
 保存后新会话的 Agent 工具面即出现引擎的图查询工具（清单以生成物
 [`agents/engine-plugin-contract.md`](agents/engine-plugin-contract.md) 为准）。
 
+### 工具面形态：域 + action（引擎契约 v5）
+
+引擎 `tools/list` 缺省返回 **6~7 个工具**，不是几十个：只读工具折叠成
+`graph` / `analysis` / `lsp` / `ops` 四个域，调用形态
+`graph {"action": "impact", "nodeId": "…"}`；写操作（`analyze_project` /
+`import_scip` / `rename_symbol`）留在顶层。**原名一个没删**——`tools/call`
+仍可按 `search_symbols` / `preflight_check` 等原名直达（老客户端零破坏）。
+
+要回全量扁平面（36 个原名）：给 server 进程设环境变量
+`HOLOGRAM_MCP_TOOLS=*`；要精确子集：`HOLOGRAM_MCP_TOOLS=graph,engine_status`
+（条目可为原名，也可为域名）。
+
 ## 接入方式二：插件 manifest mcpServers
 
 外部/本地插件可在 manifest 里声明（S4-4 乙机器桥，stdio 受治进程）：
@@ -76,6 +88,10 @@
 
 ## 验证
 
-1. 兰台打开任一会话，工具面应出现引擎的图查询工具（名字由引擎 schema 决定；接进 DSH 时前缀为
-   `mcp__hologram__*`）。注意兰台**内置**的 `graph` / `ops` / `lsp` 域工具已随图谱内置接线退役（2026-09-09）。
-2. 引擎侧：`engine serve --project-root <root>` 单独启动，用任意 MCP 客户端连接可列 schema——回归纯 MCP 形态验证即此。
+1. 兰台打开任一会话，工具面应出现引擎的图查询工具（缺省 = 引擎契约 v5 的域面：
+   `mcp__hologram__graph` / `__analysis` / `__lsp` / `__ops` + 三个写工具
+   `mcp__hologram__analyze_project` / `__import_scip` / `__rename_symbol`）。
+   注意：兰台**内置**的同名 `graph` / `ops` / `lsp` 域工具已随图谱内置接线退役
+   （2026-09-09）——现在看到的 `graph` 是引擎自己的域，与兰台内置域无关。
+2. 引擎侧：`engine serve --project-root <root>` 单独启动，用任意 MCP 客户端连接可列 schema；
+   `hologram-engine run --list` 打印域面与每个动作对应的原名。回归纯 MCP 形态验证即此。

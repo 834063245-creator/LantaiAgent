@@ -6,9 +6,10 @@
 
 可见工具 17 个（域折叠形态 + 常驻件）；隐藏旧名 104 个（附录）。
 
-装配说明：标准注册表 = composition 行表出厂序；hologram 动态族（graph/ops/lsp 引擎侧
-schema）在本生成环境（无 Tauri bridge / 无引擎连接）恒为空集，引擎侧工具面以引擎
-`HOLOGRAM_MCP_TOOLS` 清单与 Rust 测试为准。
+装配说明：标准注册表 = composition 行表出厂序；**引擎侧工具面不在这里**——图谱引擎
+（`hologram-engine serve`）的可见面由引擎自己决定（契约 v5 = 域 + action 折叠，见
+`docs/agents/engine-plugin-contract.md`），接进兰台后以 `mcp__hologram__*` 形态出现，
+其真源 = 引擎 Rust 侧 `DOMAIN_SPECS`。
 范围说明：会话级 capability 工具（Skill / enter_exit_plan_mode / 通信族等）经 blueprint
 在会话装配期追加，不在本文档（其契约由 convergence phase 快照钉住）；本文档覆盖
 buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。

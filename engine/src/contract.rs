@@ -8,8 +8,8 @@
 //!   2. `ENGINE_CONTRACT_FILES` —— 契约面物理载体清单（指纹 guard 消费，
 //!      文件变更未升版/未更新指纹 = 红）；
 //!   3. `SHELL_METHODS` —— **壳专属方法清单**（host API，永不进模型
-//!      `tools/list`；模型工具面单一真源仍是 `tools/mod.rs` 的
-//!      `DEFAULT_MCP_TOOLS`）。
+//!      `tools/list`；模型工具面真源 = `tools/mod.rs` 的 `DOMAIN_SPECS`
+//!      （可见面，契约 v5 域折叠）+ `DEFAULT_MCP_TOOLS`（可寻址面））。
 //!
 //! 本契约是「引擎 = 独立插件，兰台 / DSH / 任意 MCP 客户端消费同一二进制」
 //! 的对外承诺面：任何形状变更（工具名 / schema / 输出形态 / 新增壳方法）
@@ -37,7 +37,27 @@
 /// ∪ manifest 工具（`HOLOGRAM_MCP_TOOLS` 显式白名单优先）；manifest 工具经
 /// `tools::builtin_handler` 注册表按 id 复用既有 handler，壳专属方法不入表。
 /// 免编译扩展自身的破坏性兼容由 manifest 文件的 `manifest_version` 管控。
-pub const ENGINE_CONTRACT_VERSION: u32 = 4;
+///
+/// v5（2026-09-18 工具面收敛）：模型 `tools/list` 缺省面从「36 个扁平工具」
+/// 折叠为「**域 + action 枚举**」——
+///   ① 只读工具折成 4 个域：`graph`(10 动作) / `analysis`(15) / `lsp`(4) / `ops`(4)；
+///      写工具（`analyze_project` / `import_scip` / `rename_symbol`）留在顶层
+///      ——MCP 只读注解只能声明到工具粒度，读写混装的域会被宿主 fail-closed
+///      判为写（plan 门禁连带拦掉同域的只读动作）；
+///   ② 调用面 `tools/call("graph", {"action":"impact", ...})`：域名进 dispatch
+///      一层 action→handler 路由，`action` 键不进 handler；action 缺失/未知
+///      给 Degraded 引导（含合法动作清单），不静默兜底；
+///   ③ **底层工具名一个不删**：schema 全留、`tools/call` 原名直达（壳与外部
+///      MCP 客户端零破坏）；后续工具建议改按可见面折算（`graph(impact)` 形态，
+///      不再回吐被折叠的裸名）；
+///   ④ 只读语义改发 **MCP 标准注解** `annotations.readOnlyHint`——旧的非标准
+///      顶层 `readOnly` 删除（宿主只认 annotations，该键零消费方）；
+///   ⑤ `HOLOGRAM_MCP_TOOLS` 三档语义：未设 = 折叠面 / `*` = 全量原名（**壳专属
+///      方法除外**——旧实现会把 host API 一并列出，本版修正为契约本意）/
+///      显式名单 = 严格名单（条目可为原名或域名 = 整域）。
+/// 真源：`tools/mod.rs` 的 `DOMAIN_SPECS`（域表）+ `DEFAULT_MCP_TOOLS`
+/// （可寻址面）+ `SurfaceMode`（可见面三档）。
+pub const ENGINE_CONTRACT_VERSION: u32 = 5;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard 对拍：文件变更未升版 = 红。
 pub const ENGINE_CONTRACT_FILES: &[&str] = &[
@@ -169,10 +189,24 @@ pub fn shell_method_names() -> Vec<&'static str> {
 
 /// 引擎 status 的契约摘要（engine_status 暴露，宿主可探测契约版本）。
 pub fn engine_contract_info() -> serde_json::Value {
+    let domains: Vec<serde_json::Value> = crate::tools::DOMAIN_SPECS
+        .iter()
+        .map(|d| {
+            serde_json::json!({
+                "name": d.name,
+                "read_only": d.read_only,
+                "actions": d.actions.iter().map(|a| a.action).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
     serde_json::json!({
         "version": ENGINE_CONTRACT_VERSION,
         "files": ENGINE_CONTRACT_FILES,
+        // 可寻址面（tools/call 原名直达；v5 起不再等于模型可见面）
         "model_tools_default": crate::tools::ToolRegistry::DEFAULT_MCP_TOOLS.len(),
+        // 模型可见默认面（tools/list 缺省）= 域 + 未折叠的默认工具
+        "model_surface_default": crate::tools::default_visible_names(),
+        "domains": domains,
         "shell_methods": SHELL_METHODS.iter().map(|m| serde_json::json!({
             "name": m.name,
             "read_only": m.read_only,

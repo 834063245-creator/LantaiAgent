@@ -1028,13 +1028,18 @@ fn cli_run(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // --list：列出所有可用工具名称及描述
+    // --list：列出模型可见面（域 + 未折叠工具），并展开每个域的可用动作
     if tool == "--list" {
         let tools = ToolRegistry::global().tools_list();
         for t in &tools {
             let name = t["name"].as_str().unwrap_or("?");
             let desc = t.get("description").and_then(|d| d.as_str()).unwrap_or("");
             println!("{:<22} {}", name, desc);
+            if let Some(spec) = hologram_engine::tools::domain_of(name) {
+                for a in spec.actions {
+                    println!("    {:<18} → {}({})  [原名 {}]", a.action, name, a.action, a.tool);
+                }
+            }
         }
         return Ok(());
     }

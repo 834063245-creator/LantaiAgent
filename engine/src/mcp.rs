@@ -443,8 +443,13 @@ impl McpServer {
             return McpServer::error_response(id, -32000, &msg);
         }
 
+        // 域工具（契约 v5）：调用面是 `domain + action`，长任务判定与新鲜度横幅
+        // 都必须按**路由后的真实工具**算——按域名判会把 preflight/dataflow 的
+        // 近似性横幅、analyze 的长任务进度全判丢。
+        let effective = crate::tools::ToolRegistry::effective_tool_name(tool_name, &args);
+
         // 长任务：若请求带 progressToken，先发一条 "started" 进度通知。
-        if is_long_running(tool_name) {
+        if is_long_running(effective) {
             if let Some(token) = params.get("_meta").and_then(|m| m.get("progressToken")).cloned() {
                 out(McpServer::progress_notification(id, Some(&token), 0, 0, &format!("{} started", tool_name)));
             }
@@ -460,10 +465,10 @@ impl McpServer {
         if let Some(banner) = crate::tools::staleness::check_staleness(&result) {
             banners.push(banner);
         }
-        if let Some(banner) = crate::tools::staleness::check_derived_staleness(tool_name) {
+        if let Some(banner) = crate::tools::staleness::check_derived_staleness(effective) {
             banners.push(banner);
         }
-        if let Some(banner) = crate::tools::staleness::check_scip_staleness(tool_name) {
+        if let Some(banner) = crate::tools::staleness::check_scip_staleness(effective) {
             banners.push(banner);
         }
         if !banners.is_empty() {
@@ -615,16 +620,56 @@ mod tests {
 
     #[test]
     fn test_tools_list() {
-        // tools/list 应返回至少 30 个工具
+        // 契约 v5：tools/list 默认面 = 折叠面（域 + 未折叠默认工具），原名不再单列
         let srv = server();
         let req = serde_json::to_string(&make_rpc("tools/list", json!({}), 1)).unwrap();
         let lines = srv.handle_request(&req);
         let v = responses(&lines);
         let tools = v[0]["result"]["tools"].as_array().unwrap();
-        assert!(tools.len() >= 30, "at least 30 tools exposed");
         let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-        assert!(names.contains(&"get_neighbors"));
-        assert!(names.contains(&"analyze_project"));
+        assert_eq!(
+            tools.len(),
+            crate::tools::default_visible_names().len(),
+            "默认面 = 域 + 未折叠默认工具"
+        );
+        assert!(names.contains(&"graph") && names.contains(&"analysis"));
+        assert!(names.contains(&"analyze_project"), "写工具留在顶层");
+        assert!(!names.contains(&"get_neighbors"), "折叠后不再单列原名");
+        // 域 schema 带 action 枚举与只读注解（宿主 plan 门禁认 annotations）
+        let graph = tools.iter().find(|t| t["name"] == "graph").expect("graph 域");
+        assert_eq!(graph["annotations"]["readOnlyHint"], true);
+        assert!(graph["inputSchema"]["properties"]["action"]["enum"].is_array());
+    }
+
+    /// 契约 v5：域调用经 stdio 端到端可达，且与原名调用等价（协议级守护）。
+    #[test]
+    fn test_domain_tool_call_via_stdio() {
+        let srv = server();
+        let routed = serde_json::to_string(&make_tool_call(
+            "graph",
+            json!({"action": "neighbors", "nodeId": "src/a.ts.foo"}),
+            2,
+        ))
+        .unwrap();
+        let raw = serde_json::to_string(&make_tool_call(
+            "get_neighbors",
+            json!({"nodeId": "src/a.ts.foo"}),
+            3,
+        ))
+        .unwrap();
+        let v = responses(&srv.handle_request(&routed));
+        let r = responses(&srv.handle_request(&raw));
+        assert!(v[0].get("error").is_none(), "域调用不得是 JSON-RPC 层错误: {:?}", v[0]);
+        assert_eq!(
+            v[0]["result"]["content"][0]["text"], r[0]["result"]["content"][0]["text"],
+            "域调用与原名调用必须逐字节等价"
+        );
+        // 未知 action：降级（可见引导）而非 JSON-RPC 错误
+        let bad = serde_json::to_string(&make_tool_call("graph", json!({"action": "nope"}), 4)).unwrap();
+        let v = responses(&srv.handle_request(&bad));
+        assert!(v[0].get("error").is_none(), "未知 action 走 Degraded: {:?}", v[0]);
+        let text = v[0]["result"]["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(text.contains("unknown graph action"), "{text}");
     }
 
     /// 契约 v2（Phase 1）：tools/list 默认面绝不返回壳专属方法

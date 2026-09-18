@@ -53,6 +53,32 @@ function parseModelDefaults(src: string): string[] {
   return defMatch ? [...defMatch[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]) : [];
 }
 
+interface ParsedDomain {
+  name: string;
+  readOnly: boolean;
+  actions: Array<{ action: string; tool: string }>;
+}
+
+/** 解析出厂域表（契约 v5：DOMAIN_SPECS = 模型可见面的折叠单元）。 */
+function parseDomains(src: string): ParsedDomain[] {
+  const start = src.indexOf('pub const DOMAIN_SPECS');
+  if (start < 0) return [];
+  const end = src.indexOf('\n];', start);
+  const block = src.slice(start, end < 0 ? src.length : end);
+  const out: ParsedDomain[] = [];
+  for (const part of block.split('DomainSpec {').slice(1)) {
+    const name = part.match(/^\s*name: "([a-z_]+)",/m)?.[1];
+    if (!name) continue;
+    const readOnly = /read_only: (true|false)/.exec(part)?.[1] === 'true';
+    const actions = [...part.matchAll(/DomainAction \{ action: "([a-z_]+)", tool: "([a-z_]+)"/g)].map((m) => ({
+      action: m[1],
+      tool: m[2],
+    }));
+    out.push({ name, readOnly, actions });
+  }
+  return out;
+}
+
 function esc(s: string): string {
   return s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
@@ -68,6 +94,10 @@ function main(): void {
   const version = parseContractVersion(contractSrc);
   const methods = parseShellMethods(contractSrc);
   const modelTools = parseModelDefaults(toolsSrc);
+  const domains = parseDomains(toolsSrc);
+  const foldedTools = new Set(domains.flatMap((d) => d.actions.map((a) => a.tool)));
+  const standalone = modelTools.filter((t) => !foldedTools.has(t));
+  const surfaceCount = domains.length + standalone.length;
   // GraphJSON 权威源是否在引擎源码里可证（graph_snapshot_value 聚合函数）
   const graphJsonAuthorityOk = toolsSrc.includes('pub fn graph_snapshot_value');
 
@@ -79,12 +109,16 @@ function main(): void {
     console.error('[engine-plugin-contract] 壳专属方法清单为空——解析失效');
     process.exit(1);
   }
+  if (domains.length === 0) {
+    console.error('[engine-plugin-contract] 域表解析为空——契约 v5 起 DOMAIN_SPECS 是模型可见面真源');
+    process.exit(1);
+  }
 
   const md: string[] = [];
   md.push('# 引擎开放面契约（Engine Plugin Contract）');
   md.push('');
   md.push(
-    '> 生成物（勿手改）。真源：`engine/src/contract.rs`（版本 + 壳专属方法清单）、`engine/src/tools/mod.rs`（模型工具面）。',
+    '> 生成物（勿手改）。真源：`engine/src/contract.rs`（版本 + 壳专属方法清单）、`engine/src/tools/mod.rs`（域表 + 可寻址工具面）。',
   );
   md.push(
     '> 重新生成：`node scripts/gen-engine-plugin-contract.cjs`（根目录薄壳）或 `npm run gen:engine-contract`（src-ui）。',
@@ -98,7 +132,16 @@ function main(): void {
   md.push('| 项 | 值 |');
   md.push('|---|---|');
   md.push('| 当前版本 | ' + version + ' |');
-  md.push('| 模型可见默认工具数 | ' + modelTools.length + ' |');
+  md.push(
+    '| 模型可见工具数（`tools/list` 缺省面） | ' +
+      surfaceCount +
+      '（' +
+      domains.length +
+      ' 域 + ' +
+      standalone.length +
+      ' 未折叠） |',
+  );
+  md.push('| 可寻址工具数（`tools/call` 原名直达） | ' + modelTools.length + ' |');
   md.push('| 壳专属方法数 | ' + methods.length + ' |');
   md.push(
     '| GraphJSON 权威源 | engine/src/tools/mod.rs `graph_snapshot_value`' +
@@ -108,7 +151,36 @@ function main(): void {
   md.push('');
   md.push('## 模型可见默认工具面（tools/list 默认返回）');
   md.push('');
+  md.push('### 域工具（契约 v5：只读工具折叠为 `域 + action` 调用面）');
+  md.push('');
+  md.push('| 域 | 只读 | 动作 → 原名 |');
+  md.push('|---|---|---|');
+  for (const d of domains) {
+    const acts = d.actions.map((a) => '`' + a.action + '`→`' + a.tool + '`').join('，');
+    md.push('| `' + d.name + '` | ' + (d.readOnly ? '✓' : '—') + ' | ' + esc(acts) + ' |');
+  }
+  md.push('');
+  md.push('调用形态：`tools/call {"name":"graph","arguments":{"action":"impact","nodeId":"…"}}`。');
+  md.push('');
+  md.push('### 未折叠工具（写操作留在顶层）');
+  md.push('');
+  md.push(standalone.map((t) => '`' + t + '`').join(' · '));
+  md.push('');
+  md.push('## 可寻址工具面（折叠不改可达性）');
+  md.push('');
+  md.push('下列原名全部保留 schema，`tools/call` 可按原名直达（壳与外部 MCP 客户端零破坏）：');
+  md.push('');
   md.push(modelTools.map((t) => '`' + t + '`').join(' · '));
+  md.push('');
+  md.push('### `HOLOGRAM_MCP_TOOLS` 三档语义');
+  md.push('');
+  md.push('| 取值 | `tools/list` 返回面 |');
+  md.push('|---|---|');
+  md.push(
+    '| 未设（缺省） | 折叠面：' + domains.length + ' 域 + ' + standalone.length + ' 未折叠工具 + manifest 工具 |',
+  );
+  md.push('| `*` | 全量原名（壳专属方法除外）+ manifest 工具 |');
+  md.push('| 逗号名单 | 严格名单——条目可为原名，也可为域名（`graph` = 整域） |');
   md.push('');
   md.push('## 壳专属方法（host API，永不进模型 tools/list）');
   md.push('');

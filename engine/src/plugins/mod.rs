@@ -196,7 +196,8 @@ impl ToolEntry {
         json!({
             "name": self.name,
             "description": self.description,
-            "readOnly": self.read_only,
+            // 与 ToolSchema::mcp_value 同形状：只读语义走 MCP 标准注解（契约 v5）
+            "annotations": { "readOnlyHint": self.read_only },
             "inputSchema": {
                 "type": "object",
                 "properties": properties,
@@ -687,10 +688,6 @@ pub(crate) fn dataflow_entry(ext: &str) -> Option<(&'static str, LangDataflowCon
 /// `framework_routes` 消费：manifest 框架行（glob 已编译）。
 pub(crate) fn framework_entries() -> Vec<FrameworkEntry> {
     FRAMEWORK_ENTRIES.read().unwrap_or_else(|e| e.into_inner()).clone()
-}
-
-pub(crate) fn plugin_tool_names() -> Vec<String> {
-    TOOL_ENTRIES.read().unwrap_or_else(|e| e.into_inner()).iter().map(|t| t.name.clone()).collect()
 }
 
 pub(crate) fn plugin_tool_values() -> Vec<Value> {

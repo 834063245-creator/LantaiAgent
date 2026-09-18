@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 工具注册表 —— 所有 27 个 hologram_* 工具的 schema 定义 + 处理器分发。
+// 工具注册表 —— 全部 hologram_* 工具的 schema 定义 + 处理器分发。
+// 模型可见面（契约 v5）= DOMAIN_SPECS 域表 + 未折叠的默认工具；
+// 可寻址面 = DEFAULT_MCP_TOOLS（tools/call 原名直达）。
 // 与 MCP 传输层分离，使 Tauri / TCP / CLI 能共享同一套工具层。
 
 use std::collections::{HashMap, HashSet};
@@ -56,8 +58,9 @@ impl ToolSchema {
         json!({
             "name": self.name,
             "description": self.description,
-            // readOnly 供前端领域收敛判定动作级只读性（plan 门禁依赖）
-            "readOnly": self.read_only,
+            // MCP 标准只读注解：宿主（兰台 plan 门禁 / 只读并行组）认 annotations.readOnlyHint；
+            // 旧的非标准顶层 readOnly 已随契约 v5 删除（无消费方的第二写点）。
+            "annotations": { "readOnlyHint": self.read_only },
             "inputSchema": {
                 "type": "object",
                 "properties": properties,
@@ -65,6 +68,245 @@ impl ToolSchema {
             }
         })
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 域工具（DomainSpec —— 契约 v5）
+// ═══════════════════════════════════════════════════════════════
+//
+// 模型可见面从「36 个扁平工具」收敛为「域 + action 枚举」（2026-09-18）：
+//   ① 只读工具按域折叠（graph / analysis / lsp / ops）；
+//   ② 写工具（analyze_project / import_scip / rename_symbol）保持顶层——
+//      MCP 只读注解只能声明到工具粒度，读写混装的域会被宿主 fail-closed 判为写，
+//      plan 门禁连带拦掉同域的只读动作；
+//   ③ 底层工具名一个不删：schema 仍在 all_schemas、tools/call 原名直达
+//      （壳 / 外部 MCP 客户端零破坏）。
+// 域 schema 的参数说明不另抄一份——properties 由成员工具的 ParamDef 派生
+// （单一权威源）；「每个动作干什么、何时用」由 action hint 短句承载。
+
+/// 域内一个动作：模型传 `action=<action>`，引擎路由到 `tool`。
+pub struct DomainAction {
+    pub action: &'static str,
+    pub tool: &'static str,
+    pub hint: &'static str,
+}
+
+/// 域工具（模型可见面的折叠单元；契约 v5）。
+pub struct DomainSpec {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub read_only: bool,
+    pub actions: &'static [DomainAction],
+}
+
+/// 出厂域表：域 ∪ 未折叠的默认工具 = tools/list 默认返回面。
+///
+/// guard（测试）钉住：默认面里每个只读工具恰好是一个域动作、写工具必须留在顶层、
+/// 域内同名参数类型一致（域 schema 不许对模型说谎）。
+pub const DOMAIN_SPECS: &[DomainSpec] = &[
+    DomainSpec {
+        name: "graph",
+        description: "Code knowledge-graph queries (27 languages, AST + symbol-level edges). Pick the action matching your question — symbol lookup, dependency direction, blast radius, architecture shape. **改代码前先问图**: grep sees text, the graph sees structure. All actions read-only. Raw per-tool names (search_symbols / trace_impact / ...) stay callable via tools/call.",
+        read_only: true,
+        actions: &[
+            DomainAction { action: "explore", tool: "explore_deps", hint: "natural-language dependency exploration (flow + blast radius + source); START HERE when unsure which action to use" },
+            DomainAction { action: "symbols", tool: "search_symbols", hint: "find symbols by name substring → node IDs (知道名字、不知道 ID 时的第一步)" },
+            DomainAction { action: "semantic", tool: "semantic_search", hint: "meaning-based search over the embedding index (按语义找，不知道确切名字)" },
+            DomainAction { action: "neighbors", tool: "get_neighbors", hint: "1-hop in/out edges of a node (这个模块被谁依赖？)" },
+            DomainAction { action: "impact", tool: "trace_impact", hint: "downstream blast radius layered by distance (改这个会炸多少地方？)" },
+            DomainAction { action: "path", tool: "find_dep_path", hint: "dependency chain from A to B with hop count (A 是怎么依赖到 B 的？)" },
+            DomainAction { action: "inspect", tool: "inspect_symbol", hint: "everything about one symbol: identity, community, all edges grouped by kind" },
+            DomainAction { action: "community", tool: "get_community", hint: "which Leiden cluster a node belongs to (+ siblings)" },
+            DomainAction { action: "clusters", tool: "cluster_report", hint: "global community map sorted by size (high-level architecture)" },
+            DomainAction { action: "summary", tool: "graph_summary", hint: "graph stats: nodes/edges/resolution rate/SCIP freshness" },
+        ],
+    },
+    DomainSpec {
+        name: "analysis",
+        description: "Whole-graph architecture and health analysis: cycles, coupling, fragility, blind spots, concurrency conflicts, boundary rules, dead code, execution flows, async/temporal edges, syntax-level dataflow, audit timeline, gRPC contracts, and pre-change preflight. All actions read-only; run action=preflight before editing files.",
+        read_only: true,
+        actions: &[
+            DomainAction { action: "cycles", tool: "detect_cycles", hint: "circular dependencies, filter all/data/llm (有没有循环依赖？)" },
+            DomainAction { action: "coupling", tool: "coupling_report", hint: "one module's L1-L4 coupling profile (needs module)" },
+            DomainAction { action: "fragile", tool: "fragile_modules", hint: "top-N most coupled modules (structural hub ranking)" },
+            DomainAction { action: "blindspots", tool: "arch_blindspots", hint: "aggregated architecture blind spots (cycles + conflicts + L4)" },
+            DomainAction { action: "conflicts", tool: "thread_conflicts", hint: "thread × shared-resource conflict matrix (并发问题，可给 nodeId 收窄)" },
+            DomainAction { action: "boundaries", tool: "check_boundaries", hint: "boundary/policy rule violations (自定义 rules 或约束文件)" },
+            DomainAction { action: "unused", tool: "find_unused", hint: "dead-code candidates (无入边符号，kind_filter 可筛)" },
+            DomainAction { action: "timeline", tool: "project_timeline", hint: "audit timeline of past analyses/changes (since/limit 可筛)" },
+            DomainAction { action: "grpc", tool: "grpc_services", hint: "gRPC service map from .proto: implementation status + call sites" },
+            DomainAction { action: "flows", tool: "list_flows", hint: "list execution flows (entry point → critical path)" },
+            DomainAction { action: "flow", tool: "get_flow", hint: "one execution flow by id or name" },
+            DomainAction { action: "affected_flows", tool: "get_affected_flows", hint: "flows touched by changed files/nodes" },
+            DomainAction { action: "async", tool: "async_edges", hint: "async/temporal edges (triggers/awaits) — computed on demand, not stored" },
+            DomainAction { action: "dataflow", tool: "trace_dataflow", hint: "syntax-level read/write/share stats for files (非污点分析)" },
+            DomainAction { action: "preflight", tool: "preflight_check", hint: "pre-change preflight: impact + flows + boundaries in one call (改文件前必须)" },
+        ],
+    },
+    DomainSpec {
+        name: "lsp",
+        description: "Language-server resolution (server started on demand): compiler-accurate answers when the graph's heuristic edges are not enough — resolve a call site, infer a type, list implementations, list references. Slower than graph actions (spawns a language server); try graph(symbols|neighbors|impact) first.",
+        read_only: true,
+        actions: &[
+            DomainAction { action: "resolve", tool: "resolve_call", hint: "resolve a call site to its real definition (function name, or file+line+column)" },
+            DomainAction { action: "infer_type", tool: "infer_type", hint: "infer the type of the symbol at a position (file+line+column)" },
+            DomainAction { action: "implementations", tool: "find_implementations", hint: "find implementations of an interface/abstract symbol" },
+            DomainAction { action: "references", tool: "find_references", hint: "find all references to a symbol (includeDeclaration optional)" },
+        ],
+    },
+    DomainSpec {
+        name: "ops",
+        description: "Project-level READ-ONLY state: constraint validation, health snapshot, engine status (contract / tool-call counts / vector index / LSP / watcher), and graph diff against a baseline. Write operations stay top-level tools: analyze_project, import_scip, rename_symbol.",
+        read_only: true,
+        actions: &[
+            DomainAction { action: "validate", tool: "validate_project", hint: "run all constraint checks (path optional; defaults to the bound root)" },
+            DomainAction { action: "health", tool: "project_health", hint: "project health snapshot over N days" },
+            DomainAction { action: "status", tool: "engine_status", hint: "engine status + contract + per-tool call counts + index/LSP state" },
+            DomainAction { action: "diff", tool: "graph_diff", hint: "diff current graph against a baseline graph (beforePath)" },
+        ],
+    },
+];
+
+/// 按名取静态 schema（get_schema 与域 schema 派生共用同一处查找）。
+fn find_schema(name: &str) -> Option<&'static ToolSchema> {
+    all_schemas().iter().find(|s| s.name == name)
+}
+
+/// 域名 → 域规格（非域名返回 None）。
+pub fn domain_of(name: &str) -> Option<&'static DomainSpec> {
+    DOMAIN_SPECS.iter().find(|d| d.name == name)
+}
+
+/// 工具名 → 承载它的域（未折叠工具返回 None）。
+pub fn domain_of_tool(tool: &str) -> Option<&'static DomainSpec> {
+    DOMAIN_SPECS
+        .iter()
+        .find(|d| d.actions.iter().any(|a| a.tool == tool))
+}
+
+/// 域动作清单文本（引导语 / 错误信息共用）。
+fn action_list(spec: &DomainSpec) -> String {
+    spec.actions.iter().map(|a| a.action).collect::<Vec<_>>().join(", ")
+}
+
+/// 域调用路由：域名 + args → (目标工具名, 剥掉 action 的 args)。
+///
+/// action 缺失 / 未知 → Err(给模型看的引导语)——错误必须可见且可自恢复
+/// （沿用 ToolResponse::Degraded 的降级形态，不做静默兜底）。
+fn route_domain(spec: &DomainSpec, args: &Value) -> Result<(&'static str, Value), String> {
+    let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    if action.is_empty() {
+        return Err(format!(
+            "{} requires an 'action' argument — valid actions: {}",
+            spec.name,
+            action_list(spec)
+        ));
+    }
+    let Some(hit) = spec.actions.iter().find(|a| a.action == action) else {
+        return Err(format!(
+            "unknown {} action '{}' — valid actions: {}",
+            spec.name,
+            action,
+            action_list(spec)
+        ));
+    };
+    // action 是域层的路由键，不进底层 handler（handler 只认自己的参数）。
+    let mut routed = args.clone();
+    if let Some(obj) = routed.as_object_mut() {
+        obj.remove("action");
+    }
+    Ok((hit.tool, routed))
+}
+
+/// 折叠后的可调用引用：`domain(action)`；未折叠的默认工具返回原名；
+/// 既不在域里也不在默认面（legacy 隐藏名）返回 None——建议里不许出现隐藏名。
+pub fn visible_ref(tool: &str) -> Option<String> {
+    if let Some(d) = domain_of_tool(tool) {
+        let action = d
+            .actions
+            .iter()
+            .find(|a| a.tool == tool)
+            .map(|a| a.action)
+            .unwrap_or("");
+        return Some(format!("{}({})", d.name, action));
+    }
+    if ToolRegistry::DEFAULT_MCP_TOOLS.contains(&tool) {
+        return Some(tool.to_string());
+    }
+    None
+}
+
+/// 模型可见默认面清单（域 + 未折叠的默认工具）——engine_status / 文档 / guard 消费。
+pub fn default_visible_names() -> Vec<String> {
+    let mut names: Vec<String> = DOMAIN_SPECS.iter().map(|d| d.name.to_string()).collect();
+    for s in all_schemas() {
+        if s.category == "shell" {
+            continue;
+        }
+        if ToolRegistry::DEFAULT_MCP_TOOLS.contains(&s.name) && domain_of_tool(s.name).is_none() {
+            names.push(s.name.to_string());
+        }
+    }
+    names
+}
+
+impl DomainSpec {
+    /// 域工具 schema：action 枚举 + 成员参数并集（参数文档派生自 ToolSchema）。
+    fn mcp_value(&self) -> Value {
+        let mut action_doc = format!("{} action — one of:", self.name);
+        for a in self.actions {
+            action_doc.push_str(&format!("\n- {}: {}", a.action, a.hint));
+        }
+        let mut action_prop = serde_json::Map::new();
+        action_prop.insert("type".to_string(), json!("string"));
+        action_prop.insert("description".to_string(), json!(action_doc));
+        action_prop.insert(
+            "enum".to_string(),
+            json!(self.actions.iter().map(|a| a.action).collect::<Vec<_>>()),
+        );
+
+        let mut properties = serde_json::Map::new();
+        properties.insert("action".to_string(), Value::Object(action_prop));
+        for a in self.actions {
+            let Some(schema) = find_schema(a.tool) else { continue };
+            for p in schema.params {
+                // 同名参数保留首个（类型一致性由 test_domain_param_types_consistent 钉住）；
+                // 其文档来自 ToolSchema——域层不重复维护第二份参数说明。
+                if properties.contains_key(p.name) {
+                    continue;
+                }
+                let mut prop = serde_json::Map::new();
+                prop.insert("type".to_string(), json!(p.ptype));
+                prop.insert("description".to_string(), json!(p.description));
+                if !p.enum_values.is_empty() {
+                    prop.insert("enum".to_string(), json!(p.enum_values));
+                }
+                properties.insert(p.name.to_string(), Value::Object(prop));
+            }
+        }
+        json!({
+            "name": self.name,
+            "description": self.description,
+            // MCP 标准只读注解（annotations.readOnlyHint）——
+            // 宿主（兰台 plan 门禁 / 并行只读组）认的是这个键，不是旧的非标准顶层 readOnly。
+            "annotations": { "readOnlyHint": self.read_only },
+            "inputSchema": {
+                "type": "object",
+                "properties": properties,
+                "required": ["action"],
+            }
+        })
+    }
+}
+
+/// 模型可见面的构成方式（契约 v5；`HOLOGRAM_MCP_TOOLS` 解析产物）。
+pub enum SurfaceMode {
+    /// 缺省：折叠面（域 + 未折叠的默认工具 + manifest 工具）。
+    Folded,
+    /// `*`：全量原名（壳专属方法除外）+ manifest 工具。
+    AllRaw,
+    /// 显式名单：严格按名单（条目可为原名，也可为域名 = 整域）。
+    Explicit(Vec<String>),
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -120,111 +362,212 @@ impl ToolRegistry {
         "import_scip",
     ];
 
-    fn get_active_tool_names() -> Vec<String> {
-        let mut names = match std::env::var("HOLOGRAM_MCP_TOOLS") {
-            Ok(val) if val == "*" => {
-                // 全量 = 静态 schema 面 ∪ manifest 工具面（免编译扩展面 Phase 4）
-                let mut all: Vec<String> =
-                    all_schemas().iter().map(|s| s.name.to_string()).collect();
-                all.extend(crate::plugins::plugin_tool_names());
-                all
+    /// 模型可见面的三档语义（HOLOGRAM_MCP_TOOLS）——契约 v5。
+    ///
+    /// | 环境变量 | 面 |
+    /// |---|---|
+    /// | 未设 / 空串 | **折叠面**：域（graph/analysis/lsp/ops）+ 未折叠的默认工具（写工具）+ manifest 工具 |
+    /// | `*` | **全量原名**：全部 schema（壳专属方法除外）+ manifest 工具 |
+    /// | 显式名单 | **严格名单**：条目可为原名，也可为域名（`graph` = 整域） |
+    ///
+    /// 解析是纯函数（测试不碰进程环境）：两侧空白容忍——实测 `set VAR=* && …`
+    /// 在 cmd 下会带尾随空格，严格等于 `"*"` 会把全量面静默解析成空集。
+    fn parse_surface_mode(raw: Option<&str>) -> SurfaceMode {
+        let val = raw.unwrap_or("").trim();
+        if val.is_empty() {
+            return SurfaceMode::Folded;
+        }
+        if val == "*" {
+            return SurfaceMode::AllRaw;
+        }
+        SurfaceMode::Explicit(
+            val.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+        )
+    }
+
+    fn surface_mode() -> SurfaceMode {
+        let raw = std::env::var("HOLOGRAM_MCP_TOOLS").ok();
+        Self::parse_surface_mode(raw.as_deref())
+    }
+
+    /// 可见面组装（tools_list 的行为本体；测试直接喂 mode，不碰进程环境）。
+    fn tools_list_with(mode: &SurfaceMode) -> Vec<Value> {
+        let mut list: Vec<Value> = Vec::new();
+        match mode {
+            SurfaceMode::Folded => {
+                for d in DOMAIN_SPECS {
+                    list.push(d.mcp_value());
+                }
+                for s in all_schemas() {
+                    // 壳专属方法（host API）永不进模型面
+                    if s.category == "shell" {
+                        continue;
+                    }
+                    // 默认面里未折叠的工具（= 写工具）以原名出现；已折叠的由域承载。
+                    if ToolRegistry::DEFAULT_MCP_TOOLS.contains(&s.name)
+                        && domain_of_tool(s.name).is_none()
+                    {
+                        list.push(s.mcp_value());
+                    }
+                }
+                // manifest 工具装了即见（免编译扩展面 Phase 4）
+                list.extend(crate::plugins::plugin_tool_values());
             }
-            Ok(val) => val.split(',').map(|s| s.trim().to_string()).collect(),
-            Err(_) => {
-                // 缺省 = 出厂默认 ∪ manifest 工具（manifest 工具装了即见；
-                // HOLOGRAM_MCP_TOOLS 显式白名单则严格按白名单）。
-                let mut all: Vec<String> =
-                    Self::DEFAULT_MCP_TOOLS.iter().map(|s| s.to_string()).collect();
-                all.extend(crate::plugins::plugin_tool_names());
-                all
+            SurfaceMode::AllRaw => {
+                for s in all_schemas() {
+                    if s.category == "shell" {
+                        continue;
+                    }
+                    list.push(s.mcp_value());
+                }
+                list.extend(crate::plugins::plugin_tool_values());
             }
-        };
-        names.dedup();
-        names
+            SurfaceMode::Explicit(names) => {
+                let want: HashSet<&str> = names.iter().map(|s| s.as_str()).collect();
+                for d in DOMAIN_SPECS {
+                    if want.contains(d.name) {
+                        list.push(d.mcp_value());
+                    }
+                }
+                for s in all_schemas() {
+                    if s.category == "shell" {
+                        continue;
+                    }
+                    if want.contains(s.name) {
+                        list.push(s.mcp_value());
+                    }
+                }
+                list.extend(
+                    crate::plugins::plugin_tool_values()
+                        .into_iter()
+                        .filter(|v| want.contains(v["name"].as_str().unwrap_or(""))),
+                );
+            }
+        }
+        list
     }
 
     pub fn tools_list(&self) -> Vec<Value> {
-        let active: HashSet<String> = Self::get_active_tool_names().into_iter().collect();
-        let mut list: Vec<Value> = all_schemas()
-            .iter()
-            .filter(|s| active.contains(s.name))
-            .map(|s| s.mcp_value())
-            .collect();
-        // manifest 工具追加在静态面之后（tools/list 消费方零感知）
-        list.extend(
-            crate::plugins::plugin_tool_values()
-                .into_iter()
-                .filter(|v| active.contains(v["name"].as_str().unwrap_or(""))),
-        );
+        let list = Self::tools_list_with(&Self::surface_mode());
+        if list.is_empty() {
+            // 空面是坏故障（模型看得见零工具），必须留痕而不是静默返回空数组。
+            tracing::warn!(
+                env = ?std::env::var("HOLOGRAM_MCP_TOOLS").ok(),
+                "tools/list 解析为空——HOLOGRAM_MCP_TOOLS 名单没有命中任何工具或域"
+            );
+        }
         list
     }
 
     pub fn get_schema(&self, name: &str) -> Option<&'static ToolSchema> {
-        all_schemas().iter().find(|s| s.name == name)
+        find_schema(name)
     }
 
-    /// 工具是否可被 tools/call 调用（静态 schema 面 ∪ manifest 工具面）。
+    /// 工具是否可被 `tools/call` 调用（静态 schema 面 ∪ manifest 工具面 ∪ 域面）。
+    ///
+    /// 域可调用性是契约 v5 的新面：`tools/call("graph", {action:"impact", ...})`。
+    /// 折叠不改可达性——被折叠的原名同样仍可 `tools/call` 直达。
     pub fn knows_tool(&self, name: &str) -> bool {
-        self.get_schema(name).is_some() || crate::plugins::is_plugin_tool(name)
+        self.get_schema(name).is_some()
+            || domain_of(name).is_some()
+            || crate::plugins::is_plugin_tool(name)
+    }
+
+    /// 调用生效的工具名：域调用解析成路由目标（供长任务判定 / 新鲜度横幅用），
+    /// 非域调用原样返回。action 缺失/未知时返回域名本身（dispatch 会给出引导语）。
+    pub fn effective_tool_name<'a>(name: &'a str, args: &Value) -> &'a str {
+        match domain_of(name).map(|spec| route_domain(spec, args)) {
+            Some(Ok((tool, _))) => tool,
+            _ => name,
+        }
     }
 
     pub fn dispatch(name: &str, args: &Value, id: &Value) -> Value {
-        // 调用计数（进程内）：engine_status 可观测 Agent 对各工具的真实
-        // 使用率 —— 图工具被挂起却没人调，从数字上立刻可见。
-        if let Ok(mut counts) = TOOL_CALL_COUNTS.lock() {
-            *counts.entry(name.to_string()).or_default() += 1;
+        // ── 域路由（契约 v5）：action → 既有工具 + args 透传（action 键剥掉）──
+        let mut effective = name;
+        let mut call_args: std::borrow::Cow<'_, Value> = std::borrow::Cow::Borrowed(args);
+        if let Some(spec) = domain_of(name) {
+            match route_domain(spec, args) {
+                Ok((tool, stripped)) => {
+                    effective = tool;
+                    call_args = std::borrow::Cow::Owned(stripped);
+                }
+                Err(guidance) => {
+                    Self::count_call(name);
+                    return ToolResponse::Degraded {
+                        guidance,
+                        fallback: format!("{} actions: {}", name, action_list(spec)),
+                        details: json!({
+                            "domain": name,
+                            "action": args.get("action").cloned().unwrap_or(Value::Null),
+                            "valid_actions": spec.actions.iter().map(|a| a.action).collect::<Vec<_>>(),
+                        }),
+                    }
+                    .to_mcp_value(id);
+                }
+            }
         }
-        let resp = match name {
-            "get_neighbors" => handlers::handler_neighbors(args),
-            "trace_impact" => handlers::handler_impact(args),
-            "find_dep_path" => handlers::handler_path(args),
-            "inspect_symbol" | "symbol_history" => handlers::handler_node(args),
-            "get_community" => handlers::handler_community(args),
-            "async_edges" => handlers::handler_delayed(args),
-            "fragile_modules" => handlers::handler_fragile(args),
-            "detect_cycles" => handlers::handler_cycle(args),
-            "thread_conflicts" => handlers::handler_thread_conflicts(args),
-            "coupling_report" => handlers::handler_coupling_report(args),
-            "project_timeline" => handlers::handler_timeline(args),
-            "arch_blindspots" => handlers::handler_blindspots(args),
-            "grpc_services" => handlers::handler_grpc_services(args),
-            "preflight_check" => handlers::handler_preflight(args),
-            "search_symbols" => handlers::handler_search(args),
-            "semantic_search" => handlers::handler_semantic_search(args),
-            "explore_deps" => handlers::handler_explore(args),
-            "graph_summary" => handlers::handler_graph_summary(args),
-            "cluster_report" => handlers::handler_clusters(args),
-            "graph_diff" => handlers::handler_diff(args),
-            "analyze_project" => handlers::handler_analyze(args),
-            "validate_project" => handlers::handler_run_check(args),
-            "project_health" => handlers::handler_run_health(args),
-            "rename_symbol" => handlers::handler_rename(args),
-            "engine_status" => handlers::handler_status(args),
-            "check_boundaries" => handlers::handler_policy_check(args),
-            "find_unused" => handlers::handler_unused(args),
-            "list_flows" => handlers::handler_list_flows(args),
-            "get_flow" => handlers::handler_get_flow(args),
-            "get_affected_flows" => handlers::handler_affected_flows(args),
-            "trace_dataflow" => handlers::handler_dataflow(args),
-            "resolve_call" => handlers::handler_resolve_call(args),
-            "infer_type" => handlers::handler_resolve_type(args),
-            "find_implementations" => handlers::handler_find_implementations(args),
-            "find_references" => handlers::handler_find_references(args),
-            "import_scip" => handlers::handler_import_scip(args),
+        // 调用计数（进程内）：engine_status 可观测 Agent 对各工具的真实使用率。
+        // 域调用记账两次——域名（模型实际调了什么）+ 路由目标（底层能力被用了几次）。
+        Self::count_call(name);
+        if effective != name {
+            Self::count_call(effective);
+        }
+        let call_args = call_args.as_ref();
+        let resp = match effective {
+            "get_neighbors" => handlers::handler_neighbors(call_args),
+            "trace_impact" => handlers::handler_impact(call_args),
+            "find_dep_path" => handlers::handler_path(call_args),
+            "inspect_symbol" | "symbol_history" => handlers::handler_node(call_args),
+            "get_community" => handlers::handler_community(call_args),
+            "async_edges" => handlers::handler_delayed(call_args),
+            "fragile_modules" => handlers::handler_fragile(call_args),
+            "detect_cycles" => handlers::handler_cycle(call_args),
+            "thread_conflicts" => handlers::handler_thread_conflicts(call_args),
+            "coupling_report" => handlers::handler_coupling_report(call_args),
+            "project_timeline" => handlers::handler_timeline(call_args),
+            "arch_blindspots" => handlers::handler_blindspots(call_args),
+            "grpc_services" => handlers::handler_grpc_services(call_args),
+            "preflight_check" => handlers::handler_preflight(call_args),
+            "search_symbols" => handlers::handler_search(call_args),
+            "semantic_search" => handlers::handler_semantic_search(call_args),
+            "explore_deps" => handlers::handler_explore(call_args),
+            "graph_summary" => handlers::handler_graph_summary(call_args),
+            "cluster_report" => handlers::handler_clusters(call_args),
+            "graph_diff" => handlers::handler_diff(call_args),
+            "analyze_project" => handlers::handler_analyze(call_args),
+            "validate_project" => handlers::handler_run_check(call_args),
+            "project_health" => handlers::handler_run_health(call_args),
+            "rename_symbol" => handlers::handler_rename(call_args),
+            "engine_status" => handlers::handler_status(call_args),
+            "check_boundaries" => handlers::handler_policy_check(call_args),
+            "find_unused" => handlers::handler_unused(call_args),
+            "list_flows" => handlers::handler_list_flows(call_args),
+            "get_flow" => handlers::handler_get_flow(call_args),
+            "get_affected_flows" => handlers::handler_affected_flows(call_args),
+            "trace_dataflow" => handlers::handler_dataflow(call_args),
+            "resolve_call" => handlers::handler_resolve_call(call_args),
+            "infer_type" => handlers::handler_resolve_type(call_args),
+            "find_implementations" => handlers::handler_find_implementations(call_args),
+            "find_references" => handlers::handler_find_references(call_args),
+            "import_scip" => handlers::handler_import_scip(call_args),
             // ── 壳专属方法（契约 v2；hidden —— 不在 DEFAULT_MCP_TOOLS）──
-            "graph_snapshot" => handlers::shell::handler_graph_snapshot(args),
-            "file_nodes" => handlers::shell::handler_file_nodes(args),
-            "analyze_with_progress" => handlers::shell::handler_analyze_with_progress(args),
-            "save" => handlers::shell::handler_save(args),
-            "fts_search" => handlers::shell::handler_fts_search(args),
-            "timeline_record" => handlers::shell::handler_timeline_record(args),
-            "diff" => handlers::shell::handler_diff(args),
-            "ensure_ready" => handlers::shell::handler_ensure_ready(args),
-            "cache_stale" => handlers::shell::handler_cache_stale(args),
-            "watcher_subscribe" => handlers::shell::handler_watcher_subscribe(args),
-            "run_check" => handlers::shell::handler_run_check(args),
+            "graph_snapshot" => handlers::shell::handler_graph_snapshot(call_args),
+            "file_nodes" => handlers::shell::handler_file_nodes(call_args),
+            "analyze_with_progress" => handlers::shell::handler_analyze_with_progress(call_args),
+            "save" => handlers::shell::handler_save(call_args),
+            "fts_search" => handlers::shell::handler_fts_search(call_args),
+            "timeline_record" => handlers::shell::handler_timeline_record(call_args),
+            "diff" => handlers::shell::handler_diff(call_args),
+            "ensure_ready" => handlers::shell::handler_ensure_ready(call_args),
+            "cache_stale" => handlers::shell::handler_cache_stale(call_args),
+            "watcher_subscribe" => handlers::shell::handler_watcher_subscribe(call_args),
+            "run_check" => handlers::shell::handler_run_check(call_args),
             // ── manifest 工具（免编译扩展面 Phase 4）──
-            _ => match crate::plugins::dispatch_plugin_tool(name, args) {
+            _ => match crate::plugins::dispatch_plugin_tool(effective, call_args) {
                 Some(resp) => resp,
                 None => {
                     return ToolResponse::Degraded {
@@ -238,7 +581,20 @@ impl ToolRegistry {
         };
         // ponytail：在分发层注入后续工具建议，
         // 使每个处理器免费获得 —— 无需逐处理器编写样板代码。
-        resp.with_suggestions(suggestions_for(name)).to_mcp_value(id)
+        // 建议名一律经 visible_ref 折算成**模型实际能调用的引用**（v5）：
+        // 折叠后裸名 `preflight_check` 不可见，建议必须是 `analysis(preflight)`。
+        let suggestions: Vec<String> = suggestions_for(effective)
+            .iter()
+            .filter_map(|t| crate::tools::visible_ref(t))
+            .collect();
+        resp.with_suggestions(&suggestions).to_mcp_value(id)
+    }
+
+    /// 调用计数递增（进程内观测面）。
+    fn count_call(name: &str) {
+        if let Ok(mut counts) = TOOL_CALL_COUNTS.lock() {
+            *counts.entry(name.to_string()).or_default() += 1;
+        }
     }
 }
 
@@ -1277,6 +1633,259 @@ mod tests {
         assert!(read_only_tools.contains(&"get_neighbors"));
         assert!(read_only_tools.contains(&"search_symbols"));
         assert!(read_only_tools.contains(&"engine_status"));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 契约 v5 域折叠 guard —— 折叠必须「不丢工具、不说谎、不遮壳方法」
+    // ═══════════════════════════════════════════════════════════
+
+    /// 域表覆盖：默认面里每个只读工具恰好是一个域动作。
+    #[test]
+    fn test_domain_actions_cover_readonly_defaults() {
+        let mut folded: Vec<&str> = Vec::new();
+        for d in DOMAIN_SPECS {
+            assert!(d.read_only, "域 {} 现在是只读域（写工具留顶层）", d.name);
+            for a in d.actions {
+                assert!(
+                    !folded.contains(&a.tool),
+                    "工具 {} 被多个域承载（折叠必须唯一）",
+                    a.tool
+                );
+                folded.push(a.tool);
+            }
+        }
+        for name in ToolRegistry::DEFAULT_MCP_TOOLS {
+            let schema = find_schema(name).unwrap_or_else(|| panic!("默认工具 {name} 缺 schema"));
+            if schema.read_only {
+                assert!(
+                    folded.contains(name),
+                    "只读默认工具 {name} 未进任何域（折叠漏项 = 模型面少一个能力）"
+                );
+            } else {
+                assert!(
+                    !folded.contains(name),
+                    "写工具 {name} 不得进只读域（MCP 只读注解只能到工具粒度）"
+                );
+            }
+        }
+        assert_eq!(folded.len(), 33, "只读默认工具折叠数（36 默认 - 3 写）");
+    }
+
+    /// 域动作目标必须存在且在默认可寻址面内（域不许挂隐藏工具）。
+    #[test]
+    fn test_domain_action_targets_resolve() {
+        for d in DOMAIN_SPECS {
+            let mut actions: Vec<&str> = Vec::new();
+            for a in d.actions {
+                assert!(
+                    find_schema(a.tool).is_some(),
+                    "域 {}.{} 指向不存在的工具 {}",
+                    d.name,
+                    a.action,
+                    a.tool
+                );
+                assert!(
+                    ToolRegistry::DEFAULT_MCP_TOOLS.contains(&a.tool),
+                    "域 {}.{} 指向非默认工具 {}（域面不许吞隐藏名）",
+                    d.name,
+                    a.action,
+                    a.tool
+                );
+                assert!(!a.hint.is_empty(), "域 {}.{} 缺路由提示", d.name, a.action);
+                assert!(
+                    !actions.contains(&a.action),
+                    "域 {} 动作名重复：{}",
+                    d.name,
+                    a.action
+                );
+                actions.push(a.action);
+            }
+        }
+    }
+
+    /// 域内同名参数类型必须一致——域 schema 的 properties 是并集，冲突即对模型说谎。
+    #[test]
+    fn test_domain_param_types_consistent() {
+        for d in DOMAIN_SPECS {
+            let mut seen: Vec<(&str, &str)> = Vec::new();
+            for a in d.actions {
+                let schema = find_schema(a.tool).expect("guard: target resolves");
+                for p in schema.params {
+                    if let Some((_, prev)) = seen.iter().find(|(n, _)| *n == p.name) {
+                        assert_eq!(
+                            *prev, p.ptype,
+                            "域 {} 参数 {} 类型冲突（{} vs {}，来自 {}）",
+                            d.name, p.name, prev, p.ptype, a.tool
+                        );
+                    } else {
+                        seen.push((p.name, p.ptype));
+                    }
+                }
+            }
+        }
+    }
+
+    /// 域名与工具名不得撞名（tools/call 路由必须无歧义）。
+    #[test]
+    fn test_domain_names_do_not_collide() {
+        let tools: HashSet<&str> = all_schemas().iter().map(|s| s.name).collect();
+        let mut domains: Vec<&str> = Vec::new();
+        for d in DOMAIN_SPECS {
+            assert!(!tools.contains(d.name), "域名 {} 与工具名撞车", d.name);
+            assert!(!domains.contains(&d.name), "域名重复：{}", d.name);
+            domains.push(d.name);
+        }
+    }
+
+    /// 默认可见面 = 域 + 未折叠默认工具（写 3 个）；原名一个不丢（可寻址面 36）。
+    #[test]
+    fn test_default_visible_face_is_folded() {
+        let face = default_visible_names();
+        assert_eq!(face.len(), DOMAIN_SPECS.len() + 3, "默认面 = 4 域 + 3 写工具");
+        for d in DOMAIN_SPECS {
+            assert!(face.contains(&d.name.to_string()));
+        }
+        for w in ["analyze_project", "import_scip", "rename_symbol"] {
+            assert!(face.contains(&w.to_string()), "写工具 {w} 必须留在可见面");
+        }
+        // 折叠不改可达性：全部默认工具仍可 tools/call 直达
+        let registry = ToolRegistry::global();
+        for name in ToolRegistry::DEFAULT_MCP_TOOLS {
+            assert!(registry.knows_tool(name), "折叠后原名 {name} 必须仍可寻址");
+        }
+    }
+
+    /// 三档可见面语义（直接喂 mode，不碰进程环境）。
+    #[test]
+    fn test_surface_modes() {
+        let folded = ToolRegistry::tools_list_with(&SurfaceMode::Folded);
+        let folded_names: Vec<&str> = folded.iter().filter_map(|t| t["name"].as_str()).collect();
+        assert_eq!(folded_names.len(), DOMAIN_SPECS.len() + 3);
+
+        let all = ToolRegistry::tools_list_with(&SurfaceMode::AllRaw);
+        let all_names: Vec<&str> = all.iter().filter_map(|t| t["name"].as_str()).collect();
+        // 全量面 = 全部非壳 schema（36 默认 + legacy symbol_history = 37）
+        let non_shell = all_schemas()
+            .iter()
+            .filter(|s| s.category != "shell")
+            .count();
+        assert_eq!(all_names.len(), non_shell, "全量面 = 全部非壳 schema");
+        assert_eq!(non_shell, 37);
+        assert!(all_names.contains(&"search_symbols"));
+
+        let explicit = ToolRegistry::tools_list_with(&SurfaceMode::Explicit(vec![
+            "graph".into(),
+            "engine_status".into(),
+        ]));
+        let explicit_names: Vec<&str> =
+            explicit.iter().filter_map(|t| t["name"].as_str()).collect();
+        assert_eq!(explicit_names.len(), 2, "严格名单：域名整域出，原名单出");
+        assert!(explicit_names.contains(&"graph"));
+        assert!(explicit_names.contains(&"engine_status"));
+    }
+
+    /// `HOLOGRAM_MCP_TOOLS` 解析：空白容忍 + 空值回落折叠面（不静默空面）。
+    #[test]
+    fn test_parse_surface_mode() {
+        assert!(matches!(
+            ToolRegistry::parse_surface_mode(None),
+            SurfaceMode::Folded
+        ));
+        assert!(
+            matches!(ToolRegistry::parse_surface_mode(Some("")), SurfaceMode::Folded),
+            "空值 = 未设（回落折叠面，不许解析成空面）"
+        );
+        assert!(matches!(
+            ToolRegistry::parse_surface_mode(Some("   ")),
+            SurfaceMode::Folded
+        ));
+        assert!(
+            matches!(ToolRegistry::parse_surface_mode(Some("*")), SurfaceMode::AllRaw),
+            "全量面"
+        );
+        // 实测坑：cmd 的 `set VAR=* && …` 会带尾随空格——必须仍是全量面
+        assert!(
+            matches!(ToolRegistry::parse_surface_mode(Some("* ")), SurfaceMode::AllRaw),
+            "尾随空白不得把全量面解析成空集"
+        );
+        match ToolRegistry::parse_surface_mode(Some(" graph , engine_status ")) {
+            SurfaceMode::Explicit(names) => assert_eq!(names, vec!["graph", "engine_status"]),
+            _ => panic!("显式名单应解析为 Explicit"),
+        }
+    }
+
+    /// 域 schema 形状：action 枚举 + 成员参数并集 + 只读注解。
+    #[test]
+    fn test_domain_schema_shape() {
+        let value = domain_of("graph").expect("graph 域存在").mcp_value();
+        assert_eq!(value["name"], "graph");
+        assert_eq!(value["annotations"]["readOnlyHint"], true);
+        let props = &value["inputSchema"]["properties"];
+        assert!(props["action"]["description"]
+            .as_str()
+            .expect("action 说明")
+            .contains("impact"));
+        let actions = props["action"]["enum"].as_array().expect("action 枚举");
+        assert_eq!(actions.len(), 10);
+        // 参数文档派生自成员 schema（抽一个验证透传）
+        assert_eq!(props["nodeId"]["type"], "string");
+        assert!(props["nodeId"]["description"].as_str().is_some());
+        assert_eq!(value["inputSchema"]["required"][0], "action");
+        // 未折叠的写工具仍是标准注解形态
+        let raw = find_schema("rename_symbol").expect("写工具 schema").mcp_value();
+        assert_eq!(raw["annotations"]["readOnlyHint"], false);
+        assert!(raw.get("readOnly").is_none(), "非标准顶层 readOnly 已删");
+    }
+
+    /// 域调用 ≡ 原名调用（逐字节等价，action 键被剥离）+ 缺/错 action 给引导。
+    #[test]
+    fn test_domain_call_routes_like_raw_tool() {
+        let id = json!(1);
+        let routed = ToolRegistry::dispatch("graph", &json!({"action": "neighbors"}), &id);
+        let raw = ToolRegistry::dispatch("get_neighbors", &json!({}), &id);
+        assert_eq!(
+            routed["result"]["content"][0]["text"], raw["result"]["content"][0]["text"],
+            "域路由必须与原名调用逐字节等价"
+        );
+
+        let missing = ToolRegistry::dispatch("graph", &json!({}), &id);
+        let text = missing["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(text.contains("requires an 'action'"), "缺 action 要可见: {text}");
+        assert!(text.contains("valid actions"), "缺 action 要给合法清单: {text}");
+
+        let unknown = ToolRegistry::dispatch("graph", &json!({"action": "nope"}), &id);
+        let text = unknown["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(text.contains("unknown graph action"), "未知 action 要具名: {text}");
+        assert!(text.contains("_isDegraded"), "未知 action 走降级而非静默: {text}");
+    }
+
+    /// 建议必须落在可见面：折叠后回吐裸名 = 建议指向不存在的工具。
+    #[test]
+    fn test_suggestions_use_visible_refs() {
+        let id = json!(1);
+        let result = ToolRegistry::dispatch("graph", &json!({"action": "impact"}), &id);
+        let text = result["result"]["content"][0]["text"].as_str().unwrap_or("");
+        let payload: Value = serde_json::from_str(text).expect("工具响应是 JSON 文本");
+        let suggestions = payload["next_tool_suggestions"]
+            .as_array()
+            .expect("建议数组");
+        assert!(!suggestions.is_empty());
+        let visible: HashSet<String> = default_visible_names().into_iter().collect();
+        for s in suggestions {
+            let name = s.as_str().expect("建议是字符串");
+            let head = name.split('(').next().unwrap_or("");
+            assert!(
+                visible.contains(head),
+                "建议 {name} 不在可见面（模型照调必撞 Degraded）"
+            );
+        }
+        // 折叠面里必须出现 `域(动作)` 形态，而不是裸工具名
+        assert!(
+            suggestions.iter().any(|s| s.as_str().unwrap_or("").contains('(')),
+            "折叠后建议应写成 domain(action) 形态: {suggestions:?}"
+        );
+        assert!(visible_ref("trace_impact").as_deref() == Some("graph(impact)"));
+        assert!(visible_ref("symbol_history").is_none(), "隐藏名不进建议");
     }
 
     #[test]

@@ -9,8 +9,9 @@
 //     此处刻意偏离，原因见 docs/plans/agent-plugin-architecture-plan.md P1 记录）。
 //   - 领域折叠形态保持（D2）：文档按「域工具 + action 枚举」呈现，不摊平细粒度工具。
 // 装配路径与 tests/convergence/helpers/fixtures.ts 的 buildStandardRegistry 同源：
-// 真实 buildToolRegistry 生产行表 + 确定性夹具依赖（无 Tauri bridge；
-// hologram 动态 schema 在此环境恒返回空集，引擎侧工具面由 Rust 测试守护）。
+// 真实 buildToolRegistry 生产行表 + 确定性夹具依赖（无 Tauri bridge）。
+// 图谱引擎工具面不在此文档范围（引擎是独立进程，可见面真源在引擎 Rust 侧——
+// 见 docs/agents/engine-plugin-contract.md）。
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -131,9 +132,10 @@ async function generate(): Promise<string> {
   md += '> 从 `buildToolRegistry` 出厂行表装配产物生成 — 勿手改；工具面变更后重新生成并同 commit。\n';
   md += '> 本文档不含时间戳：字节稳定是 `--check` 构建守护的前提。\n\n';
   md += `可见工具 ${visible.length} 个（域折叠形态 + 常驻件）；隐藏旧名 ${hidden.length} 个（附录）。\n\n`;
-  md += '装配说明：标准注册表 = composition 行表出厂序；hologram 动态族（graph/ops/lsp 引擎侧\n';
-  md += 'schema）在本生成环境（无 Tauri bridge / 无引擎连接）恒为空集，引擎侧工具面以引擎\n';
-  md += '`HOLOGRAM_MCP_TOOLS` 清单与 Rust 测试为准。\n';
+  md += '装配说明：标准注册表 = composition 行表出厂序；**引擎侧工具面不在这里**——图谱引擎\n';
+  md += '（`hologram-engine serve`）的可见面由引擎自己决定（契约 v5 = 域 + action 折叠，见\n';
+  md += '`docs/agents/engine-plugin-contract.md`），接进兰台后以 `mcp__hologram__*` 形态出现，\n';
+  md += '其真源 = 引擎 Rust 侧 `DOMAIN_SPECS`。\n';
   md += '范围说明：会话级 capability 工具（Skill / enter_exit_plan_mode / 通信族等）经 blueprint\n';
   md += '在会话装配期追加，不在本文档（其契约由 convergence phase 快照钉住）；本文档覆盖\n';
   md += 'buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。\n\n';

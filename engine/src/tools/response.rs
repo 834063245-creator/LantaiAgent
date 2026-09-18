@@ -35,17 +35,26 @@ pub enum ToolResponse {
 impl ToolResponse {
     /// 将后续工具建议附加到 Success 和 Degraded 响应。
     /// Fault/Refused 直接透传不变。
-    pub fn with_suggestions(self, suggestions: &[&'static str]) -> Self {
+    ///
+    /// 契约 v5 域折叠：建议名必须是模型**实际能调用**的引用
+    /// （`graph(impact)` / `analyze_project`），不能是被折叠掉的裸名——
+    /// 否则建议指向 tools/list 里不存在的工具，模型照着调必然撞 Degraded。
+    /// 折算真源 = `tools::visible_ref`。
+    pub fn with_suggestions(self, suggestions: &[String]) -> Self {
+        self.insert_suggestions(json!(suggestions))
+    }
+
+    fn insert_suggestions(self, value: Value) -> Self {
         match self {
             Self::Success(mut data) => {
                 if let Some(obj) = data.as_object_mut() {
-                    obj.insert("next_tool_suggestions".into(), json!(suggestions));
+                    obj.insert("next_tool_suggestions".into(), value);
                 }
                 Self::Success(data)
             }
             Self::Degraded { guidance, fallback, mut details } => {
                 if let Some(obj) = details.as_object_mut() {
-                    obj.insert("next_tool_suggestions".into(), json!(suggestions));
+                    obj.insert("next_tool_suggestions".into(), value);
                 }
                 Self::Degraded { guidance, fallback, details }
             }

@@ -43,6 +43,26 @@ function parseModelDefaults(): string[] {
   return defMatch ? [...defMatch[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]) : [];
 }
 
+/** 出厂域表（契约 v5）：模型可见面的折叠单元。 */
+function parseDomains(): Array<{ name: string; actions: Array<{ action: string; tool: string }> }> {
+  const src = readFileSync(TOOLS_RS, 'utf8');
+  const start = src.indexOf('pub const DOMAIN_SPECS');
+  if (start < 0) return [];
+  const end = src.indexOf('\n];', start);
+  const block = src.slice(start, end < 0 ? src.length : end);
+  const out: Array<{ name: string; actions: Array<{ action: string; tool: string }> }> = [];
+  for (const part of block.split('DomainSpec {').slice(1)) {
+    const name = part.match(/^\s*name: "([a-z_]+)",/m)?.[1];
+    if (!name) continue;
+    const actions = [...part.matchAll(/DomainAction \{ action: "([a-z_]+)", tool: "([a-z_]+)"/g)].map((m) => ({
+      action: m[1],
+      tool: m[2],
+    }));
+    out.push({ name, actions });
+  }
+  return out;
+}
+
 describe('引擎开放面契约（engine-plugin-extraction Phase 0）', () => {
   const { version, shellMethods } = parseContract();
   const modelTools = new Set(parseModelDefaults());
@@ -75,5 +95,40 @@ describe('引擎开放面契约（engine-plugin-extraction Phase 0）', () => {
 
   it('模型默认工具面已由 engine-tool-surface.test.ts 钉住（此处确认非空）', () => {
     expect(modelTools.size).toBeGreaterThanOrEqual(35);
+  });
+
+  // ── 契约 v5：模型可见面 = 域折叠面（域 ∪ 未折叠写工具）──
+  const domains = parseDomains();
+  const folded = new Set(domains.flatMap((d) => d.actions.map((a) => a.tool)));
+
+  it('契约版本 ≥ 5（域折叠随 v5 引入，降版即回退工具面）', () => {
+    expect(version).toBeGreaterThanOrEqual(5);
+  });
+
+  it('域表存在且动作目标全部在可寻址面内（折叠不吞工具）', () => {
+    expect(domains.length).toBeGreaterThan(0);
+    for (const d of domains) {
+      expect(d.actions.length, `域 ${d.name} 无动作`).toBeGreaterThan(0);
+      for (const a of d.actions) {
+        expect(modelTools.has(a.tool), `域 ${d.name}.${a.action} 指向非默认工具 ${a.tool}`).toBe(true);
+      }
+    }
+    // 折叠必须唯一（同一工具不得被两个域承载）
+    const targets = domains.flatMap((d) => d.actions.map((a) => a.tool));
+    expect(new Set(targets).size).toBe(targets.length);
+  });
+
+  it('未折叠工具恰为三个写工具（读写同质：只读域不许混写动作）', () => {
+    const standalone = [...modelTools].filter((t) => !folded.has(t)).sort();
+    expect(standalone).toEqual(['analyze_project', 'import_scip', 'rename_symbol']);
+  });
+
+  it('域名不与壳专属方法撞车（host API 永不成为域）', () => {
+    for (const m of shellMethods) {
+      expect(
+        domains.some((d) => d.name === m),
+        `${m} 被当成域`,
+      ).toBe(false);
+    }
   });
 });
