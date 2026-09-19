@@ -1008,6 +1008,36 @@ export class ChatCore {
       const idx = st2.sessions.findIndex((s) => s.id === activeSid);
       if (idx >= 0 && idx !== st2.activeIdx) this.switchSession(idx);
     }
+
+    // ── 枝线卷的后台句柄水合（2026-09-19，真机报的「重启后引线消失」）──
+    // 批量恢复刻意不造句柄（P3-1），只有活跃卷由上面那次 switchSession 惰性补建；
+    // 而枝边的画布承接要求**父子卷都有句柄**（血缘在子卷头行、父卷那个节点要走父卷的
+    // 投影与定位桥）⇒ 非活跃的枝卷/父卷重启后一条线都画不出来。
+    // 只为**参与枝边的摊开卷**补建（子卷 + 其父卷，且都在摊开集内）：数量 = 树上的卷
+    // （摊开集按设计只放活跃路径），不是全摊开集。串行补建避免启动期 I/O 突发；
+    // 失败可见（console + warn），不挡冷启动。
+    const spread = getCanvasStore(this.panelId).getState().spread;
+    const edgeSids: number[] = [];
+    for (const s of getChatStore(this.panelId).sess.getState().sessions) {
+      if (!Object.hasOwn(spread, String(s.id))) continue;
+      const parentId = readBySid.get(s.id)?.parentId;
+      if (parentId == null) continue;
+      if (!edgeSids.includes(s.id)) edgeSids.push(s.id);
+      if (Object.hasOwn(spread, String(parentId)) && !edgeSids.includes(parentId)) edgeSids.push(parentId);
+    }
+    if (edgeSids.length > 0) {
+      void (async () => {
+        for (const sid of edgeSids) {
+          if (agentSessionState.getAgent(this.panelId, sid)) continue;
+          try {
+            await Session.ensureVolumeAgent(this._sessionCtx(), sid);
+          } catch (e) {
+            console.error('[chat-core] 枝线卷句柄水合失败', sid, e);
+            log.warn('chat', `案卷 ${sid} 的 Agent 未就绪（枝边引线待其就绪后出现）`, { error: String(e) });
+          }
+        }
+      })();
+    }
   }
 
   /** Stage-5：显式保存点落盘工作区画布状态（切换/关闭窗口时调用）。 */

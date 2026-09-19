@@ -52,6 +52,7 @@ import type { RegionView, SourcedBlock } from './host';
 import {
   activeOverlayContributions,
   activeSpace,
+  agentSessionState,
   blockFromSnapshot,
   ConfirmDialog,
   foldLabel,
@@ -627,6 +628,12 @@ export function PaperPanel() {
     );
   }, [tetherPinId, tracedPinId, canvasState.pins, regions, draggingId, dragPos, view]);
 
+  /* 句柄就绪信号（2026-09-19，真机报的「重启后引线消失」）：枝边读面落在**卷句柄**上，
+   *  而冷启动的批量恢复刻意不造句柄、参与枝边的卷由后台水合补上 ⇒ 句柄是**迟到**的。
+   *  订阅 `agentSessionState`（setAgent/exec 变更即 bump）驱动枝边重算——见下方 branchEdges 注。 */
+  const [agentsTick, setAgentsTick] = useState(0);
+  useEffect(() => agentSessionState.subscribe(() => setAgentsTick((t) => t + 1)), []);
+
   /* ── 会话树「枝」的画布承接（P3，2026-09-18）──
    * 边 = 一丝朱砂引线：**枝卷卷首 → 父卷的那个节点**（不是「父卷」这个整体）。
    * 与出处引导**同一支笔**（`tetherAnchorsAt` + `tetherPath`：屏幕坐标 / 恒定墨宽 /
@@ -635,8 +642,16 @@ export function PaperPanel() {
    *   ① **常显**——树是结构不是瞬时手势，且线要能点着溯源（hover 才出现的线点不到）；
    *   ② **可点**——命中的是一条加粗透明「受墨带」，墨仍是那一丝（见 CSS 注）。
    * 父节点不在视口内时线照样出屏（同款判据：锚点在世界里定、投到屏上落墨）。
-   * 数据来自 `core.branchEdge`（**零 I/O**：血缘在卷日志头行里，attach 时已带入内存）。 */
+   * 数据来自 `core.branchEdge`（**零 I/O**：血缘在卷日志头行里，attach 时已带入内存）。
+   *
+   * ⚠ **句柄就绪信号**（2026-09-19，真机报的「重启后引线消失」）：该读面落在**卷句柄**上
+   * （血缘在子卷的日志写面里、父卷那个节点要走父卷的投影与定位桥），而冷启动的批量恢复
+   * 刻意不造句柄（只有活跃卷惰性补建）——参与枝边的卷由冷启动后台水合补上
+   * （`chat-core.restoreCanvasSpread`）⇒ 句柄**迟到**。故本 memo 吃 `agentsTick`
+   * （`agentSessionState.subscribe`：setAgent 即 bump），句柄一到就重算，引线随之出现。
+   * 刻意**不**吃 `regionMsgs`：父卷锚点要走一整段 fold（O(事件数)），逐流式 tick 重跑会拖帧。 */
   const branchEdges = useMemo(() => {
+    void agentsTick; // 依赖信号（句柄迟到——见上注）
     if (!core) return [];
     const out: Array<{ childSid: number; parentSid: number; nodeMessageId: string }> = [];
     for (const s of sessions) {
@@ -644,7 +659,7 @@ export function PaperPanel() {
       if (edge) out.push({ childSid: s.id, ...edge });
     }
     return out;
-  }, [core, sessions]);
+  }, [core, sessions, agentsTick]);
   /** 枝边 → 父卷那个节点的**流位**（块 id）。父卷锚点要走一整段 fold（O(事件数)），
    *  故与 `view` 解耦单列一层——平移帧不重跑，只有引线几何那一层吃 view。 */
   const branchTargets = useMemo(() => {

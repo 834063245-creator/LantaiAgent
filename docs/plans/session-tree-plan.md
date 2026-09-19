@@ -513,4 +513,37 @@ P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批�
 故按裁定①它不压实 ⇒ 事件流逐字节不变、基线文件零改动（`git status` 可查）。
 若哪天有人把压实改成「无盘面也压」，这份基线会当场变红——门禁即证据。
 
+### 12.11 真机报的「冷启动后摊开的父子卷引线消失」（本批修）
+
+**现象（用户真机）**：重启应用后，纸上摊开的父子卷之间那条朱砂引线不见了。
+
+**机理（已复现，非本线前几批引入）**：枝边的读面（`core.branchEdge`）**两半都落在卷句柄上**——
+① 血缘在**子卷**的日志写面里（`sessionLogStoreOf(log).header.parent`，写面随句柄 attach）；
+② 父卷那个节点要走**父卷**的投影 + 撤回定位桥（`branchNodeMessageId` 的 `agent.getSession()` 与
+`canRetraceTurnBridge`）。而冷启动走 `restoreCanvasSpread` 的**批量恢复**（P3-1，2026-09-02）——
+**刻意不造 Agent**，只有活跃卷由末尾 `switchSession` 惰性补建句柄 ⇒ 两卷里至多一卷有句柄
+⇒ 引线一条都画不出来（P3 承诺的「**常显**」在重启后失效）。既有测试没抓到，是因为
+`session-tree-canvas.test.tsx` 把 `branchEdge` **桩掉**了（测的是几何与交互，不是取数来源）。
+
+**修法**（三步，全部复用既有件）：
+
+| 件 | 内容 |
+|---|---|
+| `ui/chat-session.ts` | `ensureSessionAgent(ctx)`（活跃卷形）拆出 `ensureVolumeAgent(ctx, sid)`（**指定卷形**）——原体一行未改，只是参数化了 sid（两个都是导出） |
+| `app/chat/chat-core.ts` | `restoreCanvasSpread` 末尾：为**参与枝边的摊开卷**（子卷 + 其父卷，且都在摊开集内）**后台**串行补建句柄（fire-and-forget，不挡开机；失败 console + warn 可见）。数量 = 树上的卷（摊开集按设计只放活跃路径），不是全摊开集 |
+| `paper-shell/PaperPanel.tsx` | 枝边 memo 增依赖 `agentsTick`（`agentSessionState.subscribe`：`setAgent`/exec 变更即 bump）——句柄**迟到**，读面必须随它重算，否则重启后引线永远不出现。**刻意不吃 `regionMsgs`**：父卷锚点要走一整段 fold（O(事件数)），逐流式 tick 重跑会拖帧 |
+
+**测试**：
+
+| 件 | 内容 |
+|---|---|
+| `tests/session-branch.test.ts` +1 例 | **真冷启动路径**（真 canvas.json + 真卷 + `core.restoreCanvasSpread`）：两卷摊开、活跃卷 1 ⇒ 等后台水合落定后 `core.branchEdge(2)` = 父卷 + 那条来文（重启前的值），且父子卷**都有句柄** |
+| `tests/session-tree-canvas.test.tsx` +1 例 | 挂真 PaperPanel：挂载时无句柄 ⇒ 无引线；桩上边 + 一次 `agentSessionState` 变更（= 水合的 bump）⇒ **引线随之出现**（该用例已实测「去掉依赖即红」——考官有效性自证） |
+
+**门禁**：`npm run build` ✓（30 个内置插件产物自包含）；`npx vitest run` 349 文件 / **3572** 通过
+（本批 +2 例）✓；`npx biome ci .` 829 文件 0/0 ✓；`npm run verify:convergence` 双轨 exit 0 ✓。
+
+**已知边界（诚实）**：后台水合失败（无工厂 / API Key 缺失 / 代际丢弃）⇒ 那一卷仍无句柄 ⇒ 引线不出现
+（可见 warn；点一下该卷会走既有 `hydrateSessionAgentVisible` 弹具名提示）。
+
 

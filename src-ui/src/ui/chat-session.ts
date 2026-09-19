@@ -383,6 +383,17 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
   const st = getChatStore(ctx.storeId).sess.getState();
   const sid = st.sessions[st.activeIdx]?.id;
   if (sid == null) return false;
+  return ensureVolumeAgent(ctx, sid);
+}
+
+/** **指定卷**的句柄补建（`ensureSessionAgent` 的单卷形，2026-09-19）。
+ *
+ *  为什么需要它：冷启动走 `restoreCanvasSpread` 的**批量恢复**（刻意不造 Agent，
+ *  只有活跃卷由末尾 switchSession 惰性补建），而会话树「枝」的画布承接需要**父子卷
+ *  都有句柄**（血缘在子卷头行里、父卷那个节点要走父卷的投影与定位桥）⇒ 重启后非活跃
+ *  卷的枝边读面全空（真机报的「引线消失」）。调用方（chat-core 冷启动）只为**参与枝边
+ *  的摊开卷**补建：数量 = 树上的卷，不是全摊开集。 */
+export async function ensureVolumeAgent(ctx: SessionContext, sid: number): Promise<boolean> {
   if (agentSessionState.getAgent(ctx.storeId, sid)) return true;
 
   const factory = getAgentFactory(ctx.storeId);

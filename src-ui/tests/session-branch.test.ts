@@ -940,4 +940,54 @@ describe('会话树「枝」——立枝即摊开并定位（P0：expand 是「�
     expect(expand).not.toHaveBeenCalled();
     expect(useCanvasViewStore.getState().pendingFocusId).toBeNull();
   });
+
+  it('**冷启动**：摊开的父子卷引线仍可得（真机报的「重启后引线消失」）', async () => {
+    // 机理：冷启动走 `restoreCanvasSpread` 的**批量恢复**（P3-1 刻意不造 Agent），
+    // 只有活跃卷由末尾 switchSession 惰性补建句柄 ⇒ 枝边的读面（血缘 + 父卷那个节点）
+    // 全落在句柄上 ⇒ 非活跃卷一条线都画不出来（「常显」承诺在重启后失效）。
+    const core = new ChatCore();
+    useCoreStore.getState().setChatCore(core);
+    const store = core.panelId;
+    installFactory(store);
+    useShellStore.setState({ projectPath: WS });
+    // 盘上：父卷 1 + 枝卷 2（头行带 parent{1, 2}）；画布：两卷都摊开（activeSessionId = 1）
+    setVolume(1, logText(1, [sys, user('一'), assistant('二')]));
+    setVolume(2, logText(2, [sys, user('一'), assistant('二')], undefined, undefined, { id: 1, atSeq: 2 }));
+    H.kernelFs?.fs.setFile(
+      `${WS}/.lantai/canvas.json`,
+      JSON.stringify({
+        version: 2,
+        spread: [
+          { sessionId: 1, anchorX: 0, anchorY: 0, width: 720 },
+          { sessionId: 2, anchorX: 2000, anchorY: 0, width: 720 },
+        ],
+        activeSessionId: 1,
+      }),
+    );
+
+    await core.restoreCanvasSpread(WS);
+
+    // 两卷都在案头（批恢复 ✓）
+    expect(
+      getChatStore(store)
+        .sess.getState()
+        .sessions.map((s) => s.id)
+        .sort((a, b) => a - b),
+    ).toEqual([1, 2]);
+    // 引线读面：枝卷 2 → 父卷 1 的那条来文（重启前是这个值，重启后必须还是）。
+    // 句柄由冷启动的**后台**水合补建（不挡开机）⇒ 等它落定（真机 = 引线随之一现）。
+    const parentUser = msgStoreFor(store, 1)
+      .getState()
+      .messages.find((m) => m.role === 'user');
+    expect(parentUser).toBeDefined();
+    await vi.waitFor(
+      () => {
+        expect(core.branchEdge(2)).toEqual({ parentSid: 1, nodeMessageId: parentUser?._id });
+      },
+      { timeout: 5000 },
+    );
+    // 父子卷都真的活了（水合到位：非活跃卷也有句柄）
+    expect(agentSessionState.getAgent(store, 1)).toBeTruthy();
+    expect(agentSessionState.getAgent(store, 2)).toBeTruthy();
+  }, 30_000);
 });

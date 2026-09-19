@@ -78,6 +78,8 @@ class FakeResizeObserver {
 }
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= FakeResizeObserver;
 
+import { agentSessionState } from '../src/agent/agent-session-state';
+import { createExecState } from '../src/agent/execution-state';
 import { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { useShellStore } from '../src/app/shell-store';
@@ -303,5 +305,26 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
     expect(container?.querySelector('.pp-branch-tether')).not.toBeNull();
     const bead = container?.querySelector('.pp-branch-layer .pp-tether-bead');
     expect(Number(bead?.getAttribute('cx'))).toBeLessThan(0); // 朱点在屏外——线出屏，方向即来路
+  }, 30_000);
+
+  it('句柄迟到（冷启动后台水合）⇒ 引线随之出现（枝边读面订阅 agentSessionState）', async () => {
+    // 真机机理：冷启动批量恢复不造句柄，参与枝边的卷由后台水合补上 ⇒ `branchEdge`
+    // 一开始返回 null（无句柄），句柄落定后才有值。枝边 memo 必须吃这个信号重算，
+    // 否则重启后引线永远不出现（2026-09-19 真机报）。
+    await mountTwoVolumes(null);
+    expect(container?.querySelector('.pp-branch-tether')).toBeNull();
+
+    // 句柄到位：桩上边 + 一次 agentSessionState 变更（= setAgent 的 bump，冷启动水合的等价物）
+    branchEdgeSpy = vi
+      .spyOn(panel, 'branchEdge')
+      .mockImplementation((sid: number) => (sid === 2 ? { parentSid: 1, nodeMessageId: 'a1-1' } : null));
+    branchOriginSpy = vi
+      .spyOn(panel, 'branchOrigin')
+      .mockImplementation((sid: number) => (sid === 2 ? { id: 1, atSeq: 2 } : null));
+    await act(async () => {
+      agentSessionState.setExec(panel.panelId, 2, createExecState());
+    });
+    await act(async () => {});
+    expect(container?.querySelector('.pp-branch-tether')).not.toBeNull();
   }, 30_000);
 });
