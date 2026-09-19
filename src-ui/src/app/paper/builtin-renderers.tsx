@@ -41,6 +41,7 @@ import {
 } from '../../paper/markdown';
 import { parseCircledSegments } from '../../paper/marks';
 import {
+  codeDisplay,
   hasArgsToShow,
   hasPayloadToShow,
   type ToolDisplay,
@@ -857,7 +858,8 @@ function PayloadText({ display }: { display: ToolDisplay }) {
 }
 
 /** 载荷段（段头 + 盒）。variant 即语义：args=石青直排（机器的输入面）/
- *  out=中性滚动盒 / err=错误墨段。段类同时是段头的染色挂点。
+ *  out=中性滚动盒 / result=石青段头（程序产出的答案段）/ err=错误墨段。
+ *  段类同时是段头的染色挂点。
  *  useMemo 按原始串记忆展示模型（20–30KB JSON 的解析+摊行不随无关重渲染重跑）。 */
 const PayloadSection = memo(function PayloadSection({
   label,
@@ -867,7 +869,7 @@ const PayloadSection = memo(function PayloadSection({
 }: {
   label: string;
   raw: string;
-  variant: 'args' | 'out' | 'err';
+  variant: 'args' | 'out' | 'err' | 'result';
   /** 段头前留空档（首段紧跟折叠行/程序体，不留） */
   gap?: boolean;
 }) {
@@ -902,17 +904,28 @@ function ToolBody({ block, folded }: BlockRendererProps) {
 
 /** 程序执行卡（P2-A）：三段式——程序体（等宽）→ 日志/完成值（终态写入）。
  *  与 ToolBody 的分离点：code 是程序语义（体/出）而非调用语义（参/果）。
- *  折叠态收程序体、留输出/错误（执行结果一眼可见——测量端同款镜像）。 */
+ *  折叠态收程序体、留输出/错误（执行结果一眼可见——测量端同款镜像）。
+ *  2026-09-19 换代：输出不再是「一段直出」——信封解析成真段（日志/完成值/错误），
+ *  段序与测高由 paper/tool-text 的 codeDisplay 单一真源给出（渲染/测量同源）。 */
 function CodeBody({ block, folded }: BlockRendererProps) {
   const p = block.payload as { code: string; output?: string; err?: string };
   const showSrc = !folded && !!p.code;
-  const showOut = hasPayloadToShow(p.output);
+  const secs = useMemo(() => codeDisplay(p.output), [p.output]);
   const showErr = hasPayloadToShow(p.err);
   return (
     <>
       {showSrc && <pre className="pp-code-src">{p.code}</pre>}
-      {showOut && <PayloadSection label="输出" raw={p.output ?? ''} variant="out" gap={showSrc} />}
-      {showErr && <PayloadSection label="错误" raw={p.err ?? ''} variant="err" gap={showSrc || showOut} />}
+      {secs.map((sec, i) => (
+        <PayloadSection
+          // biome-ignore lint/suspicious/noArrayIndexKey: 段按位渲染（信封段序稳定，无重排身份）
+          key={`${sec.kind}-${i}`}
+          label={sec.label}
+          raw={sec.raw}
+          variant={sec.kind === 'error' ? 'err' : sec.kind === 'result' ? 'result' : 'out'}
+          gap={showSrc || i > 0}
+        />
+      ))}
+      {showErr && <PayloadSection label="错误" raw={p.err ?? ''} variant="err" gap={showSrc || secs.length > 0} />}
     </>
   );
 }

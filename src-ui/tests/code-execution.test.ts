@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { evalBootstrapSource, WORKER_BOOTSTRAP_SOURCE } from '../src/agent/code-run/bootstrap';
 import { createCodeExecutionTool } from '../src/agent/code-run/code-execution-tool';
 import { type CodeBindingSpec, type CodeWorkerLike, runCode } from '../src/agent/code-run/host';
-import { normalizeCompletion, normalizeJsonArgs, parseWorkerMessage } from '../src/agent/code-run/protocol';
+import { normalizeJsonArgs, parseWorkerMessage } from '../src/agent/code-run/protocol';
 import { codeRuntimePlugin, resetCodeRuntimeForTests, runViaRuntime } from '../src/agent/code-run/runtime-service';
 
 /** 绑定集快捷构造（测试）。 */
@@ -91,13 +91,6 @@ describe('code-run 协议纯函数', () => {
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
     expect(normalizeJsonArgs(cyclic)).toBeNull();
-  });
-
-  it('normalizeCompletion：undefined / 非无损拒，合法返回 JSON 文本', () => {
-    expect(normalizeCompletion(undefined)).toBeNull();
-    expect(normalizeCompletion(42)).toBe('42');
-    expect(normalizeCompletion({ a: [1] })).toBe('{"a":[1]}');
-    expect(normalizeCompletion(() => 1)).toBeNull();
   });
 });
 
@@ -290,6 +283,61 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
   });
 });
 
+describe('完成值形态 + 日志渲染（2026-09-19 程文输出换代）', () => {
+  /** 程序源码里写死一个字符串值（JSON.stringify 保证逐字节无损注入）。 */
+  const programReturning = (value: string): string => `return ${JSON.stringify(value)};`;
+
+  it('字符串完成值原样出：真换行/制表/单反斜杠路径不被二次转义', async () => {
+    const text = 'ls -la .lantai\ntotal 129385\n-rw-r--r-- 1 x 37882346 audit.jsonl';
+    const winPath = String.raw`\\?\D:\ws\docs\a.md`;
+    const lines = await runCode(programReturning(text), { createWorker: makeFakeWorker, bindings: [] });
+    const path = await runCode(programReturning(winPath), { createWorker: makeFakeWorker, bindings: [] });
+    // 规格变更（2026-09-19）：旧行为是 JSON 编码形态（`"ls -la\ntotal…"` —— 真换行
+    // 变字面 \n、整段塌成一行），新行为是文本本体（真机 40 行清单塌成一行的根治）
+    expect(lines.result).toBe(text);
+    expect(lines.result).not.toContain('\\n');
+    expect(path.result).toBe(winPath);
+    // 旧观感：路径被 JSON 再编码一层（`\\\\?\\D:\\…`）——四反斜杠打头即旧形态
+    expect(path.result).not.toContain(String.raw`\\\\?`);
+  });
+
+  it('非字符串完成值仍走 JSON 文本（对象/数组/字面量契约不变）', async () => {
+    const obj = await runCode(`return {count: 2, files: ['a', 'b']};`, {
+      createWorker: makeFakeWorker,
+      bindings: [],
+    });
+    expect(obj.result).toBe('{"count":2,"files":["a","b"]}');
+    const num = await runCode(`return 42;`, { createWorker: makeFakeWorker, bindings: [] });
+    expect(num.result).toBe('42');
+  });
+
+  it('无效完成值仍归一为 invalid-output（函数/undefined 根级不可序列化）', async () => {
+    const fn = await runCode(`return function () {};`, { createWorker: makeFakeWorker, bindings: [] });
+    expect(fn.error?.kind).toBe('invalid-output');
+  });
+
+  it('console.log 有界 inspect：深度/条目封顶 + 循环标记 + Error 取栈', async () => {
+    const result = await runCode(
+      `const a = {name: 'x'}; a.self = a; console.log(a);
+       console.log({deep:{a:{b:{c:{d:1}}}}});
+       console.log(Array.from({length: 60}, (_, i) => i));
+       console.log(new Error('boom'));`,
+      { createWorker: makeFakeWorker, bindings: [] },
+    );
+    expect(result.error).toBeUndefined();
+    const [cyclic, deep, arr, err] = result.logs;
+    // 旧实现：循环引用掉进 String(a) → '[object Object]'（信息静默丢失）
+    expect(cyclic).toBe('{name: x, self: [Circular]}');
+    // 深度封顶：注释承诺过、实现此前并不存在（深对象炸成单行巨串）
+    expect(deep).toBe('{deep: {a: {b: {c: [Object]}}}}');
+    // 条目封顶 + 可见注记（不静默截断）
+    expect(arr.startsWith('[0, 1, 2,')).toBe(true);
+    expect(arr).toContain('… +10');
+    // Error 不是可枚举对象：旧实现 stringify 成 '{}'（栈全丢）
+    expect(err).toContain('Error: boom');
+  });
+});
+
 describe('code_execution 工具本体', () => {
   it('成功路径：logs + result 结构化输出', async () => {
     const tool = createCodeExecutionTool({
@@ -326,6 +374,13 @@ describe('code_execution 工具本体', () => {
     expect(out).toContain('a');
     expect(out).not.toContain('[code_execution 失败]');
     expect(out).not.toContain('── result ──');
+  });
+
+  it('字符串完成值进卡即文本本体：result 段下是真换行（展示面分段消费同一信封）', async () => {
+    const tool = createCodeExecutionTool({ bindings: [], createWorker: makeFakeWorker });
+    const text = 'drwxr-xr-x agents\n-rw-r--r-- audit.jsonl';
+    const out = await tool.execute({ code: `return ${JSON.stringify(text)};`, description: '盘点' });
+    expect(out).toBe(`── result ──\n${text}`);
   });
 
   it('schema：defineTool 形状（zod → JSON Schema，required = code+description）', () => {
@@ -366,7 +421,8 @@ describe('codeRuntime 服务（P3 cordis 收口）', () => {
       bindings: [],
       createWorker: makeFakeWorker,
     });
-    expect(result.result).toBe('"via-service"');
+    // 规格变更（2026-09-19）：字符串完成值不再 JSON 编码（旧值 = '"via-service"'）
+    expect(result.result).toBe('via-service');
     // 清理：fiber dispose + 复位模块态（不泄漏到后续用例）
     await fiber.dispose();
     resetCodeRuntimeForTests();

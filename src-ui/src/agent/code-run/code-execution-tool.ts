@@ -21,6 +21,9 @@
 //
 // 失败语义（C6）：程序异常/预算超限/超时/中止/substrate 死亡分类报错
 // （结构化失败文本输出，模型可自我修正——DSH CodeRunFailedError 同款）。
+//
+// 完成值形态（2026-09-19 换代）：字符串完成值原样出（文本本体——不再二次
+// JSON 编码，真换行/单反斜杠直达模型与纸面），其余值出 JSON 文本。
 
 import { z } from 'zod';
 import type { Tool } from '../tool';
@@ -77,6 +80,8 @@ export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
       });
 
       // 结构化输出：logs + result / error 分类文本（对齐 DSH「失败也是可读结果」）
+      // 信封（`── logs ──` / `── result ──` / `[code_execution 失败]`）是展示面的
+      // 解析契约（paper/tool-text 的 codeSections 分段成真段头）——改格式同改那边。
       const lines: string[] = [];
       if (result.logs.length > 0) {
         lines.push('── logs ──');
@@ -90,6 +95,7 @@ export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
       }
       if (result.result !== undefined) {
         lines.push('── result ──');
+        // 字符串完成值已是文本本体（worker 侧不再二次编码），原样进段
         lines.push(result.result);
       }
       if (lines.length === 0) return '(程序完成，无输出)';

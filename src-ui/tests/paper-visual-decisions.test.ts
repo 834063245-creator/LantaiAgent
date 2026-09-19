@@ -753,6 +753,51 @@ describe('工具卡载荷可读性定稿（2026-09-14——「展开乱得像乱
   });
 });
 
+describe('程文输出换代（2026-09-19——「输出栏一点没处理，跟乱码一样」根治批）', () => {
+  const TOOL_TEXT_TS = readFileSync(join(SRC, 'paper', 'tool-text.ts'), 'utf8');
+  const BOOTSTRAP_TS = readFileSync(join(SRC, 'agent', 'code-run', 'bootstrap.ts'), 'utf8');
+  const TOOL_TS = readFileSync(join(SRC, 'agent', 'code-run', 'code-execution-tool.ts'), 'utf8');
+
+  it('完成值段（日志/完成值/错误）走 .pp-sec-head 同一套；完成值 = 石青答案段', () => {
+    expect(ruleBody(PANEL_CSS, '.pp-sec--result .pp-sec-label')).toContain('var(--indigo)');
+    // 段语义挂在渲染端（单一真源 = paper/tool-text 的 codeDisplay）
+    expect(RENDERER_TS).toContain('codeDisplay');
+    expect(TOOL_TEXT_TS).toContain('错误 · '); // 失败分类升格成段头文案
+  });
+
+  it('信封是自产契约：生成端与解析端成对（改一边即红）', () => {
+    for (const mark of ['── logs ──', '── result ──', '── code run failed (', '[code_execution 失败] kind=']) {
+      expect(TOOL_TS, mark).toContain(mark);
+      expect(TOOL_TEXT_TS, mark).toContain(mark);
+    }
+  });
+
+  it('测量镜像：code 块段高走 codeOutSections 单一入口（两处 y 累加同源）', () => {
+    const hits = MEASURE_TS.split('codeOutSections(').length - 1;
+    expect(hits).toBe(3); // 定义 1 + 墨迹 1 + 测高 1
+  });
+
+  it('字符串完成值不再二次 JSON 编码（数据面根治；展示面另有解转义兜旧卷）', () => {
+    // worker 侧分支：字符串原样出，只有非字符串才 JSON.stringify
+    expect(BOOTSTRAP_TS).toContain("if (typeof value === 'string')");
+    expect(BOOTSTRAP_TS).toContain('text = value;');
+    // 日志 inspect 有界（注释承诺过、旧实现并不存在的深度封顶）
+    expect(BOOTSTRAP_TS).toContain('INSPECT_DEPTH');
+    expect(BOOTSTRAP_TS).toContain('[Circular]');
+    // 展示面解转义层数封顶（防套娃）
+    expect(TOOL_TEXT_TS).toContain('MAX_UNWRAP');
+  });
+
+  it('值级展开与尽力结构打印在册（内嵌文档 / 截断 JSON 两条兜底）', () => {
+    expect(TOOL_TEXT_TS).toContain('expandStringValue');
+    expect(TOOL_TEXT_TS).toContain('bestEffortLines');
+    expect(TOOL_TEXT_TS).toContain('JSON_SHAPE_RE'); // 不像 JSON 的长行不误判（shell 行）
+    expect(TOOL_TEXT_TS).toContain('MAX_EXPAND');
+    // 展示变换是渲染/测量的唯一上游（三面同源）
+    expect(MEASURE_TS).toContain('codeDisplay');
+  });
+});
+
 describe('会话流族节奏（stream-rhythm 刀5，2026-09-03——族边界切单元后真机判「瀑布未破」的根治批）', () => {
   it('族边界切单元在册：group 消费节律族 + translate 按族切组 + grammar 节律族面', () => {
     expect(GROUP_TS).toContain('族边界（刀5 A）');

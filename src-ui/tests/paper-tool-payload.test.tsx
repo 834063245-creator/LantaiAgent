@@ -169,6 +169,101 @@ describe('纯文本与混合载荷 — 内容不丢', () => {
   });
 });
 
+describe('字符串载荷解开 — 程文/工具输出的双层编码（2026-09-19）', () => {
+  it('整段是 JSON 字符串字面量：解开为文本本体（真换行回来，转义乱码消失）', () => {
+    const ls = 'ls -la .lantai\ntotal 129385\n-rw-r--r-- 1 x 37882346 audit.jsonl';
+    const raw = JSON.stringify(ls); // 真机形态：完成值经二次编码，40 行塌成一行
+    expect(raw).toContain('\\n');
+    const d = toolDisplay(raw);
+    expect(d.text).toBe(ls);
+    expect(d.text.split('\n')).toHaveLength(3);
+  });
+
+  it('解开后是 JSON 容器：走结构化打印（键值行 + 四档墨，不是满屏反斜杠）', () => {
+    const win = String.raw`\\?\D:\ws\a.md`;
+    const payload = JSON.stringify({ files: [win], count: 2, note: 'x'.repeat(80) });
+    const d = toolDisplay(JSON.stringify(payload)); // 双层：字符串里套 JSON 文本
+    expect(d.lines).not.toBeNull();
+    expect(d.text).toContain('count: 2');
+    expect(d.text).toContain(`"${win}"`); // 单反斜杠真值（路径本体的 \\?\ 打头照旧）
+    expect(d.text).not.toContain(String.raw`\\\\?`); // 四反斜杠 = 旧的双重转义形态
+  });
+
+  it('解开层数封顶：套娃两层解开，超过封顶原样直出（不递归爆）', () => {
+    const inner = JSON.stringify({ a: 1, b: 'y'.repeat(80) });
+    expect(toolDisplay(JSON.stringify(inner)).text).toContain('a: 1'); // 字符串套 JSON 文本 → 结构化
+    const deep = JSON.stringify(JSON.stringify(JSON.stringify(inner)));
+    const d = toolDisplay(deep);
+    expect(d.text).not.toContain('a: 1');
+    expect(d.text).toContain('\\"a\\"'); // 超限即原样（仍是编码形态，不炸不空）
+  });
+
+  it('短引号串照常解（`"ok"` → ok）；非字符串 JSON 不误解', () => {
+    expect(toolDisplay('"ok"').text).toBe('ok');
+    expect(toolDisplay('"unterminated').text).toBe('"unterminated');
+    expect(toolDisplay('123').text).toBe('123');
+  });
+
+  it('混合载荷里的长字符串字面量行：解开成容器再展开', () => {
+    const inner = JSON.stringify({ ts: '2026-09-19T00:00:00Z', note: 'z'.repeat(120) });
+    const d = toolDisplay(`=== 日志尾部 ===\n${JSON.stringify(inner)}\n尾注一行`);
+    expect(d.lines).not.toBeNull();
+    expect(d.text).toContain('=== 日志尾部 ===');
+    expect(d.text).toContain('note: "');
+    expect(d.text).toContain('尾注一行');
+  });
+});
+
+describe('截断 JSON 的尽力结构打印（2026-09-19）', () => {
+  /** 真机形态：模型自己 `JSON.stringify(x).slice(0, N)`——整段 parse 必然失败。 */
+  const truncJson = (n: number): string =>
+    `{"pattern":"image_url","count":3,"scanned_files":1,"results":[{"file":"${WIN_PATH}","line":10},{"file":"b.ts","line":20}],"tail":"${'z'.repeat(n)}`;
+
+  it('截断的容器：按串外定界符摊行（parse 失败也读出结构）', () => {
+    const d = toolDisplay(truncJson(200));
+    expect(d.lines).not.toBeNull();
+    expect(d.text).toContain('"pattern":"image_url",');
+    expect(d.text.split('\n').length).toBeGreaterThan(4);
+  });
+
+  it('串内一字不改：长值不被腰斩，只有空白被插进结构位', () => {
+    const d = toolDisplay(truncJson(200));
+    // 所有非空白字符原样保留（只动空白 = 可逆）
+    const strip = (s: string): string => s.replace(/\s+/g, '');
+    expect(strip(d.text)).toBe(strip(truncJson(200)));
+  });
+
+  it('不像 JSON 的长行不动（shell 行不误判）', () => {
+    const shell = `[任务已完成, exit code: 0] ${'x'.repeat(200)}, 后面还有一段说明`;
+    expect(toolDisplay(shell).lines).toBeNull();
+    const prose = `[INFO] build ok, 3 files changed, ${'y'.repeat(200)}`;
+    expect(toolDisplay(prose).lines).toBeNull();
+  });
+
+  it('长 token 里的字面转义还原成真行（截断的编码串没有闭合引号）', () => {
+    const doc = ['# 契约', '', '> 生成物勿手改', '', '## 工具面', '- browser', '- fs', `- ${'p'.repeat(120)}`].join(
+      '\\n',
+    );
+    const d = toolDisplay(`{"len":45313,"head":"${doc}","tail":"${'q'.repeat(300)}`);
+    const lines = d.text.split('\n');
+    expect(lines.some((l) => l.trim() === '> 生成物勿手改')).toBe(true);
+    expect(lines.some((l) => l.trim() === '- browser')).toBe(true);
+    expect(lines.some((l) => l.trim() === '"len":45313,')).toBe(true);
+  });
+
+  it('短转义值照旧内联（不为拆而拆）', () => {
+    const d = toolDisplay(`{"count":2,"note":"a\\nb\\nc","pad":"${'x'.repeat(140)}"}`);
+    expect(d.text).toContain('"a\\nb\\nc"');
+  });
+
+  it('值级块引：键下的多行文档摊成真行（不是一行转义串）', () => {
+    const doc = `# 标题\n\n正文第一段\n正文第二段\n${'x'.repeat(140)}`;
+    const d = toolDisplay(JSON.stringify({ len: 45313, head: doc }));
+    expect(d.text).toContain('head: │');
+    expect(d.text.split('\n').filter((l) => l.includes('正文'))).toHaveLength(2);
+  });
+});
+
 describe('渲染面 — 分段 + 着色 + 折叠', () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;

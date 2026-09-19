@@ -48,7 +48,8 @@ export interface CodeOutputLimitMessage {
 /** worker → 宿主：程序落定（恰好一条生效，后续忽略）。 */
 export interface CodeDoneMessage {
   t: 'done';
-  /** 完成值（无损 JSON 文本；无返回值/异常时缺省）。 */
+  /** 完成值文本：字符串完成值 = 原样文本（未转义，2026-09-19）；其余 = 无损
+   *  JSON 文本。无返回值/异常时缺省。 */
   value?: string;
   /** 失败分类：exception 程序抛错 / invalid-output 返回值非无损 JSON /
    *  output-limit 超输出预算（宿主侧超限/超时/中止也归一为同形状）。 */
@@ -71,7 +72,7 @@ export type CodeRunErrorKind = NonNullable<CodeDoneMessage['error']>['kind'];
 export interface CodeRunResult {
   /** 捕获日志（按序；预算内的全部行）。 */
   logs: string[];
-  /** 完成值 JSON 文本（程序 return 了无损 JSON 时存在）。 */
+  /** 完成值文本（程序 return 了字符串时 = 原样文本；其余 = JSON 文本）。 */
   result?: string;
   /** 失败时的分类与消息（成功时缺省）。 */
   error?: { kind: CodeRunErrorKind; message: string };
@@ -120,19 +121,6 @@ export function normalizeJsonArgs(value: unknown): Record<string, unknown> | nul
     if (text === undefined) return null; // 值含 undefined/函数/symbol 的根级不可序列化
     const back = JSON.parse(text) as Record<string, unknown>;
     return back;
-  } catch {
-    return null;
-  }
-}
-
-/** 完成值无损校验 — 程序 return 的值必须是无损 JSON（返回 JSON 文本，非法 null）。 */
-export function normalizeCompletion(value: unknown): string | null {
-  if (value === undefined) return null;
-  try {
-    const text = JSON.stringify(value);
-    if (text === undefined) return null;
-    JSON.parse(text);
-    return text;
   } catch {
     return null;
   }

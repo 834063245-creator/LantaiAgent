@@ -36,7 +36,7 @@ import {
   textHasTable,
 } from './markdown';
 import { parseCircledSegments } from './marks';
-import { hasArgsToShow, hasPayloadToShow, toolDisplay } from './tool-text';
+import { codeDisplay, hasArgsToShow, hasPayloadToShow, toolDisplay } from './tool-text';
 
 /* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
  * 2026-09-10 三体换代：宋/楷/等宽退役，三栈统一 MiSans（文类语义键 song/kai/mono
@@ -1275,8 +1275,7 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
       const out: InkSource[] = [];
       let y = TOOL_PAD_TOP + FOLD_ROW_H;
       const src = (b.payload as { code?: string }).code ?? p.args ?? '';
-      const showOut = hasPayloadToShow(p.output);
-      const showErr = hasPayloadToShow(p.err);
+      const secs = codeOutSections(p);
       if (src) {
         out.push({
           text: src,
@@ -1288,31 +1287,18 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
         });
         y += SEC_HEAD_H + codeSrcH(src, b.w);
       }
-      if (showOut) {
-        const text = toolDisplay(p.output).text;
+      secs.forEach((sec, i) => {
+        const gap = src || i > 0 ? SEC_HEAD_GAP : 0;
         out.push({
-          text,
+          text: sec.text,
           font: PAPER_OUT_FONT,
           lineHeight: PAPER_OUT_LINE_HEIGHT,
           inset: 0,
-          y: y + SEC_HEAD_H + (src ? SEC_HEAD_GAP : 0),
+          y: y + SEC_HEAD_H + gap,
           cap: Math.floor(CODE_OUT_TEXT_MAX / PAPER_OUT_LINE_HEIGHT),
         });
-        y +=
-          SEC_HEAD_H +
-          (src ? SEC_HEAD_GAP : 0) +
-          cappedH(text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX);
-      }
-      if (showErr) {
-        out.push({
-          text: toolDisplay(p.err).text,
-          font: PAPER_OUT_FONT,
-          lineHeight: PAPER_OUT_LINE_HEIGHT,
-          inset: 0,
-          y: y + SEC_HEAD_H + (src || showOut ? SEC_HEAD_GAP : 0),
-          cap: Math.floor(CODE_OUT_TEXT_MAX / PAPER_OUT_LINE_HEIGHT),
-        });
-      }
+        y += SEC_HEAD_H + gap + cappedH(sec.text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX);
+      });
       return out;
     }
     case 'plan': {
@@ -1343,6 +1329,16 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
  *  inset0 = 该体的横向内缩（正文块 0；拟策体策面内缩），进每个墨源的 x 起点。 */
 function markdownInkSources(text: string, w: number, inset0 = 0, y0 = 0): InkSource[] {
   return measureMdBlocks(parseMarkdown(text), w, y0, inset0).ink;
+}
+
+/** 程文（code）块的分段输出（2026-09-19 换代）：信封段（日志/完成值/错误）
+ *  + executor 级错误段。段序 = 信封出现序；段数决定段头与 gap 的累加。
+ *  **单一入口**：inkSourcesFor（墨迹 y）与 measureBlockHeight（块高）两处镜像
+ *  共用——渲染端 CodeBody 消费同一 codeDisplay（三段逐字对齐）。 */
+function codeOutSections(p: { output?: string; err?: string }): Array<{ kind: string; text: string }> {
+  const secs = codeDisplay(p.output).map((s) => ({ kind: s.kind, text: s.display.text }));
+  if (hasPayloadToShow(p.err)) secs.push({ kind: 'error', text: toolDisplay(p.err).text });
+  return secs;
 }
 
 /* ── markdown 块测量（渲染 MarkdownBody 的逐字镜像——消费同一 parseMarkdown 模型）── */
@@ -1629,26 +1625,24 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       return TOOL_PAD_TOP + FOLD_ROW_H + argsH + outH + errH;
     }
     case 'code': {
-      // 与 tool 同构的封顶测量（P2-A）：程序体 + 输出 + 错误三段。
+      // 与 tool 同构的封顶测量（P2-A）：程序体 + 输出段 + 错误段。
       // 折叠态收程序体、留输出/错误（执行结果一眼可见——与脚注折叠的差异面）。
       // 2026-08-30 溢出修复：程序体走 .pp-code-src 专属镜像（内缩/内距/320 封顶），
       // 输出/错误走 .pp-code .pp-out 的 200 上限（脚注族 160 不同款）。
       // 2026-09-14：段头 + 展示变换同 tool 族（codeOutTextMax 内距归段头后 = 200）。
+      // 2026-09-19：输出段数由信封决定（日志/完成值/错误）——段序与 gap 判据走
+      // codeOutSections 单一入口，与渲染端 CodeBody 逐段对齐。
       const showSrc = !folded && !!(b.payload as { code?: string }).code;
-      const showOut = hasPayloadToShow(p.output);
-      const showErr = hasPayloadToShow(p.err);
+      const secs = codeOutSections(p);
       const codeH = showSrc ? codeSrcH((b.payload as { code?: string }).code ?? p.args ?? '', b.w) : 0;
-      const outH = showOut
-        ? SEC_HEAD_H +
-          (showSrc ? SEC_HEAD_GAP : 0) +
-          cappedH(toolDisplay(p.output).text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX)
-        : 0;
-      const errH = showErr
-        ? SEC_HEAD_H +
-          (showSrc || showOut ? SEC_HEAD_GAP : 0) +
-          cappedH(toolDisplay(p.err).text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX)
-        : 0;
-      return TOOL_PAD_TOP + FOLD_ROW_H + codeH + outH + errH;
+      let outH = 0;
+      secs.forEach((sec, i) => {
+        outH +=
+          SEC_HEAD_H +
+          (showSrc || i > 0 ? SEC_HEAD_GAP : 0) +
+          cappedH(sec.text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX);
+      });
+      return TOOL_PAD_TOP + FOLD_ROW_H + codeH + outH;
     }
     case 'plan': {
       // 拟策内容 = 完整 markdown 体（2026-09-10 拟策卡渲染专项）：与正文块同一

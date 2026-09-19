@@ -1461,6 +1461,9 @@
 .pp-sec--args .pp-sec-label {
   color: var(--indigo); /* 参数（入）= 石青：机器的输入面 */
 }
+.pp-sec--result .pp-sec-label {
+  color: var(--indigo); /* 完成值（2026-09-19 程文分段）= 石青：程序产出的答案段 */
+}
 .pp-sec--err .pp-sec-label {
   color: var(--fail); /* 错误 = 墨浓红（--fail 单一真源） */
 }

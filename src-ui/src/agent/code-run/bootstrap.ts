@@ -15,6 +15,10 @@
 // `tools`（null-prototype 绑定命名空间）与 `console`（五方法 shim）以参数
 // 注入——程序体不接触 self.postMessage 原语（源码级隔离，纵深防御一层）。
 //
+// 完成值形态（2026-09-19）：字符串完成值原样出（文本本体——不再 JSON.stringify
+// 那一层转义），其余值出无损 JSON 文本；两者都算「无损」才是合法落定。
+// 日志渲染 = 有界 inspect（深度/条目封顶 + 循环标记 + Error 取栈）。
+//
 // 预算纪律（对齐 DSH LogBuffer）：logs + 完成值共享一个字节预算，
 // JSON 序列化形态计账（含字符串转义），耗尽即截断并上报 output-limit；
 // 日志先行——每条 log 即时 postMessage，中途被杀也不丢已发日志。
@@ -92,14 +96,59 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
     post({ t: 'log', text: text });
   }
 
-  // console shim：五方法，inspect 风格渲染（无 util.inspect——降级为
-  // JSON.stringify + String 混合，深度封顶防爆炸）
-  function renderArg(a) {
-    if (typeof a === 'string') return a;
+  // console shim：五方法，有界 inspect 渲染（无 util.inspect——降级为自带的
+  // renderValue：深度/条目封顶 + 循环标记 + Error 取栈 + 不可读值兜底）。
+  // 2026-09-19 换代：旧实现是无封顶 JSON.stringify，注释承诺的「深度封顶」并不
+  // 存在——深对象炸成单行巨串，循环引用掉进 String(a) 变 '[object Object]'
+  // （信息静默丢失），Error 对象 stringify 成 '{}'（栈全丢）。
+  var INSPECT_DEPTH = 4;
+  var INSPECT_ITEMS = 50;
+  function renderValue(v, depth, seen) {
+    if (v === null) return 'null';
+    var t = typeof v;
+    if (t === 'string') return v;
+    if (t === 'number' || t === 'boolean') return String(v);
+    if (t === 'undefined') return 'undefined';
+    if (t === 'function') return '[Function]';
+    if (t === 'symbol' || t === 'bigint') return String(v);
+    if (seen.indexOf(v) >= 0) return '[Circular]';
+    if (depth >= INSPECT_DEPTH) return Array.isArray(v) ? '[Array]' : '[Object]';
+    seen.push(v);
+    var out;
     try {
-      var s = JSON.stringify(a, null, 0);
-      return s === undefined ? String(a) : s;
-    } catch (e) { return String(a); }
+      if (Array.isArray(v)) {
+        var items = [];
+        var n = Math.min(v.length, INSPECT_ITEMS);
+        for (var i = 0; i < n; i++) items.push(renderValue(v[i], depth + 1, seen));
+        if (v.length > n) items.push('… +' + (v.length - n));
+        out = '[' + items.join(', ') + ']';
+      } else if (v instanceof Error) {
+        // Error 不是可枚举对象：取栈（模型最需要的诊断面）
+        out = v.stack || (v.name + ': ' + v.message);
+      } else {
+        var keys = Object.keys(v);
+        var kvs = [];
+        var m = Math.min(keys.length, INSPECT_ITEMS);
+        for (var j = 0; j < m; j++) {
+          var k = keys[j];
+          var s;
+          try { s = renderValue(v[k], depth + 1, seen); } catch (e) { s = '[unreadable]'; }
+          kvs.push(k + ': ' + s);
+        }
+        if (keys.length > m) kvs.push('… +' + (keys.length - m));
+        out = '{' + kvs.join(', ') + '}';
+      }
+    } finally {
+      seen.pop(); // 路径栈（非全局集合）：共享引用照常渲染，只有真环被标
+    }
+    return out;
+  }
+  function renderArg(a) {
+    try {
+      return renderValue(a, 0, []);
+    } catch (e) {
+      return '[unrenderable value]';
+    }
   }
   var consoleShim = { log: noop, info: noop, warn: noop, error: noop, debug: noop };
   function noop() {}
@@ -162,22 +211,32 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
       function (value) {
         var out = {};
         if (value !== undefined) {
-          try {
-            var text = JSON.stringify(value);
+          // 字符串完成值 = 文本本体（2026-09-19 程文输出换代）：不再过
+          // JSON.stringify——那一层把真换行编码成字面 \n、把引号编码成 \"、
+          // Windows 路径 \?\D:\ 变 \\?\\D:\（真机实况：40 行目录清单塌成
+          // 一行 2678 字符，模型与纸面双双白付 10.1% 字符的转义噪音）。
+          // 非字符串仍走无损 JSON 文本（对象/数组/字面量的既有契约不变）。
+          var text;
+          if (typeof value === 'string') {
+            text = value;
+          } else {
+            try {
+              text = JSON.stringify(value);
+            } catch (e) {
+              post({ t: 'done', error: { kind: 'invalid-output', message: 'program completion must be lossless JSON' } });
+              return;
+            }
             if (text === undefined) {
               post({ t: 'done', error: { kind: 'invalid-output', message: 'program completion must be lossless JSON' } });
               return;
             }
-            // 完成值与日志共享预算：剩余不足 → output-limit
-            if (jsonLen(text) > budget - usedBytes) {
-              post({ t: 'done', error: { kind: 'output-limit', message: 'outer output exceeded ' + budget + ' bytes' } });
-              return;
-            }
-            out.value = text;
-          } catch (e) {
-            post({ t: 'done', error: { kind: 'invalid-output', message: 'program completion must be lossless JSON' } });
+          }
+          // 完成值与日志共享预算：剩余不足 → output-limit
+          if (jsonLen(text) > budget - usedBytes) {
+            post({ t: 'done', error: { kind: 'output-limit', message: 'outer output exceeded ' + budget + ' bytes' } });
             return;
           }
+          out.value = text;
         }
         post({ t: 'done', value: out.value });
       },

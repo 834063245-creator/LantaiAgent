@@ -24,7 +24,7 @@
 
 import type { BlockKind } from './block-model';
 import { type RhythmFamily, rhythmFamilyOfTool } from './grammar';
-import { hasArgsToShow, toolDigest } from './tool-text';
+import { codeSections, hasArgsToShow, toolDigest } from './tool-text';
 
 /** 可折叠 kind（渲染器与测量端共用判据）。 */
 export function isFoldable(kind: BlockKind): boolean {
@@ -84,8 +84,9 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
     status?: string;
     items?: Array<{ name?: string; args?: string; readOnly?: boolean; status?: string }>;
   };
-  const outSuffix = (): string => {
-    const out = (p.output?.length ?? 0) + (p.err?.length ?? 0);
+  const outSuffix = (outputLen?: number): string => {
+    // 程文块传入「段文本字数」（信封行 `── logs ──` 不计入内容——2026-09-19）。
+    const out = (outputLen ?? p.output?.length ?? 0) + (p.err?.length ?? 0);
     return out > 0 ? ` · 输出 ${charLabel(out)} 字` : '';
   };
   if (kind === 'reasoning') {
@@ -105,7 +106,8 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
     const who = p.description || '程序';
     if (!folded) return `▾ 收起 ${who}`;
     if (!p.code && !p.output && !p.err) return `▸ ${who} · 待执行`;
-    return `▸ ${who}${outSuffix()}`;
+    const contentLen = codeSections(p.output).reduce((n, s) => n + s.raw.length, 0);
+    return `▸ ${who}${outSuffix(contentLen)}`;
   }
   if (kind === 'subagent') {
     // 子代理组头（2026-09-01 F4）：描述即身份，段数量化；在跑/出错缀状态。
