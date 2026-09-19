@@ -546,4 +546,73 @@ P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批�
 **已知边界（诚实）**：后台水合失败（无工厂 / API Key 缺失 / 代际丢弃）⇒ 那一卷仍无句柄 ⇒ 引线不出现
 （可见 warn；点一下该卷会走既有 `hydrateSessionAgentVisible` 弹具名提示）。
 
+### 12.12 真机报的「分支子卷卷名乱套」——残留 `{id}.json` 冒充新卷的缓存（本批修）
+
+**现象（用户真机，2026-09-19，§12.6 修完仍复现）**：立枝出来的子卷卷名**永远是乱的**——名字与
+本卷内容毫无关系，而且**怎么说话都不会改**。
+
+**取证（真机数据，可重跑）**：`{ws}/.lantai/sessions/` 逐卷对拍「日志里的事实」与「落盘的 label」：
+
+| 卷 | 父边 | 自己的首条来文（事件日志里的事实） | 落盘 label（= 显示的名） |
+|---|---|---|---|
+| 13 | 根 | 测试，输出一个表格给我，我看渲染效果 | 同左 ✓ |
+| 14 | 13@11 | 输出点数学公式给我 | **test test** ✗ |
+| 15 | 14@18 | 挺好的，给我做个饼形图出来 | **测试渲染效果，输出一些极其复杂的数学公式给我** ✗ |
+| 16 | 15@46 | 可以，做个柱状图 | **帮我查一个渲染bug。会话流渲染会偶发吞最后的一些字符不…** ✗ |
+
+三个错名的文字**在全部 `.ndjson` 里一个都搜不到**（只存在于 label 字段本身）；而
+`13.json / 14.json / 15.json / 16.json` 的**文件创建时间是 9/6–9/7**——它们是**上一代同名卷的残留**。
+
+**机理（三段，缺一不可）**：
+
+1. **卷集判定只认 `.ndjson`**（`listVolumeIds` / `scanMaxSessionId`），而 `{id}.json` 是另一条命：
+   上一代的 `.json` 会留在盘上——Phase 3b 之前的旧格式卷（用户 2026-09-15 拍板「不做兼容读」，
+   文件留在盘上不再被认作卷）+ **删除竞态复活**（`deleteSessionFile` 先 `delete_log`、后
+   `closeSession`，而合卷快照是 **fire-and-forget** 的写链任务 ⇒ 已删卷的 `.json` 被写回来。
+   真机实测：`10.json` 的 `savedAt` 恰是删除那一刻，比新卷 `13.ndjson` 的立卷时刻早 14 秒）。
+2. **档号会被复用**：`createBranchVolume` 取 `max(nextSessionId, scanMax + 1)`，而 `scanMax` 只数
+   `.ndjson` ⇒ 上一代死掉的 14 号卷留下的 `14.json`，正好接住今天新立的枝卷。
+3. **读面无条件采信 `<id>.json`**：`readVolumeData` 的 `label` 直接取缓存（旧实现连新鲜度门都不
+   过），`loadSessionFromDisk` 拿到非空 label 就**直采为「已命名」**⇒ 之后
+   `autoTitleSessionIfDefault` 与「首条来文即命名」**全都跳过**（`isUnnamedVolumeLabel` = false）。
+   **这一半才是「永远」**：没有任何路径会纠正它。
+
+**为什么只有枝卷中招**：根卷走「+」起卷（`createNewSession` 在内存里写 label `''`，不读盘），
+枝卷走 `createBranchVolume → loadSessionFromDisk`（**读盘取 label**）——同一份残留，只有后者吃。
+（§12.6 修的是「别拿继承来的前缀起名」，方向没错，但真机这三个名根本不是派生出来的，是**读来的**。）
+
+**修法（读写两侧同一病灶，一把尺子）**：
+
+| 件 | 内容 |
+|---|---|
+| `ui/chat-session.ts` `cacheOfThisVolume` | **同代校验**（读面唯一判据）：缓存必须**晚于卷的立卷时刻**（头行 `createdAt` = write-once 真源；缓存 `savedAt` 恒 ≥ 立卷时刻）。两刻有任一不可判（旧卷缺字段）= **不否决**——误伤本代缓存要丢卷名/账本/组合，比漏放一份残留贵 |
+| `ui/chat-session.ts` `readVolumeData` | 缓存不是本卷的 ⇒ **整份当没有**：label 留空（呈现层按档号兜底）、`uiMessages`/`tokens`/`tokensUsed`/`compose`/`presetId` 全不采信；内容真源仍是事件日志 |
+| `ui/chat-session.ts` `renameSessionFile` | 同一把尺子：残留缓存**不展开**改名（旧行为会把死卷的消息表/账本写成新卷的快照——下次开卷 `seq` 够大就整表搬过来）。代价：改名多读一次日志（既有性能钉子按事实 `+1` → `+2`；清点仍零卷体读） |
+| `ui/chat-session.ts` `_removedVolumes` + `writeSessionSnapshot` / `deleteSessionFile` | **供给侧**：删除先登记「已删」再真删，已删卷的快照写一律拒绝（挡在途写链任务与防抖自动存；真删失败则撤销登记，不把卷钉成只读）。进程内发号单调 ⇒ 同号不复用 ⇒ 名单不误伤；**跨进程**残留由读面同代校验兜住——两侧合起来才是完整的「死卷不得冒充新卷」 |
+
+**测试（4 例，全走真入口）**：
+
+| 件 | 内容 |
+|---|---|
+| `tests/session-branch.test.ts` +1 | 残留 `2.json`（旧卷缓存）在场 ⇒ 立枝拿到档号 2，但**卷名留空**（显示「案卷 2」），不顶着死卷的名（本批的复现用例，修前红） |
+| `tests/chat-session.test.ts` +1 | `readVolumeData`：残留缓存 `seq` 比本卷日志大也不采信——label/`uiMessages`/`tokens`/`tokensUsed`/`presetId` 全不进来，内容仍是日志 |
+| `tests/chat-session.test.ts` +1 | `renameSessionFile`：残留缓存不展开（新快照只有 label，无死卷的 messages/uiMessages/seq） |
+| `tests/chat-session.test.ts` +1 | 删除**在案**的卷：`closeSession` 的合卷快照不得把 `{id}.json` 写回来（旧行为：真删后缓存复活 = 下一份化石） |
+
+**已知边界（诚实）**：真机那三卷（14/15/16）的错名**不会自愈**——它们的缓存已被后续保存改写成
+「`savedAt` > 立卷时刻」（看起来同代），本批不写迁移：错名与用户手起的名在数据上无法区分，
+自动改会误伤手起的名。**处理 = 手动改名一次**（侧栏行操作）；此后新立的枝卷一律干净。
+
+**判据在真机盘面上的对照（修复后重跑，可复现）**：在册 11 卷的缓存**全部仍被采信**（零误伤——
+卷名/账本/组合都在这份缓存里）；盘上残留的 8 份 `.json` 里 **7 份被挡下**（含今天删除竞态复活的
+`10.json`：`savedAt` = 删除那一刻、`uiMessages` 6 条、`tokensUsed` 24086——修复前它接住下一个
+复用 10 号的新卷），唯一放行的是 `18.json`（`savedAt` 空、label 空、零内容 = 不可判且无害）。
+
+**门禁**：`npm run build` ✓；`npx vitest run` 349 文件 / **3580** 通过（本批 +4 例）✓；
+`npx biome ci .` 829 文件 0/0 ✓；`npm run verify:convergence` 双轨 exit 0 ✓；`npm run doc-check` ✓。
+**测试面声明**（测试改造禁令）：除 +4 例新用例外，**改了 1 例既有性能钉子的期望值**
+（`chat-session.test.ts`「写面就地更行」：改名自身读卷体 `+1` → `+2`——同代校验要多读一次日志头行，
+清点仍零卷体读）；该钉子的原意（写面就地更行、清点不重扫）未变，属**显式规格变更**，非改造后放回。
+
+
 

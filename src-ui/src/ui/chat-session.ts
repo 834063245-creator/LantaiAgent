@@ -1147,9 +1147,10 @@ function rowFromSnapshot(data: {
 }
 
 /** 清空卷目录内存态（跨用例隔离——模块级态不做测试间泄漏；磁盘上的目录文件
- *  由各用例的 mock 盘自理）。 */
+ *  由各用例的 mock 盘自理）。已删卷写拒绝名单同属模块级态，一并清。 */
 export function resetSessionListCacheForTests(): void {
   _volumeCatalogs.clear();
+  _removedVolumes.clear();
 }
 
 /** 等在途卷写全部 settle（退出 flush 的 drain 点——保证「退出快照」最后落盘）。 */
@@ -1202,11 +1203,36 @@ function warnSaveAnomaly(key: string, msg: string): void {
   log.warn('chat', msg);
 }
 
+// ── 已删卷的写拒绝名单（内存，进程内）────────────────────────────────
+//
+// 病灶（2026-09-19「子卷卷名乱套」的**供给侧**）：`deleteSessionFile` 先 `delete_log`
+// 真删两文件、后 `closeSession`，而合卷快照（C8）是 **fire-and-forget 的写链任务**
+// ⇒ 已删卷的 `{id}.json` 被写回盘上，成为一份「死卷快照」（本机实测：`10.json` 的
+// `savedAt` 恰是删除那一刻，比新卷 `13.ndjson` 的立卷时刻早 14 秒）。防抖自动存
+// （`scheduleAutoSave`）在途时同理。
+//
+// 盘上墓碑（`deleted:true`）已随 Phase 3b 退役——「文件不在 = 卷不存在」；这里挡的是
+// **同一进程内的在途写**，不是又立一套持久语义。键 = `{root}/{id}`：进程内发号单调
+// （`nextSessionId` 只增不减，各恢复路径都取 max）⇒ 同号不会被新卷复用，名单不会误伤；
+// **跨进程**的残留（旧格式化石 / 上次运行的删除竞态）由读面同代校验
+// （`cacheOfThisVolume`）兜住——两侧合起来才是完整的「死卷不得冒充新卷」。
+const _removedVolumes = new Set<string>();
+
+function volumeKey(root: string, id: number): string {
+  return `${root}/${id}`;
+}
+
 async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotData): Promise<void> {
   // 序列化在入链前完成（快照语义 = 调用时刻的会话，不被前序写在途拖成旧值）
   const json = JSON.stringify(data);
   const root = workspaceSessionsDir(projectPath);
   const target = `${root}/${data.id}.json`;
+  // 已删卷的快照写一律拒绝（在途写链任务 / 防抖自动存都可能晚于删除到达）——
+  // 不挡就是「删了又活」的化石种子（见 `_removedVolumes` 注）。
+  if (_removedVolumes.has(volumeKey(root, data.id))) {
+    log.debug('chat', `案卷 ${data.id} 已删——快照写被拒绝（防复活）`);
+    return;
+  }
   try {
     await enqueueVolumeWrite(target, () =>
       sessionExecute('save_volume', {
@@ -1359,24 +1385,34 @@ export async function saveAllSessions(ctx: SessionContext, projectPath: string):
 
 /** 改名未摊开的已存卷（Stage-3 侧边栏行操作）：磁盘直改 label，不要求
  *  句柄/不摊开卷。读取当前工作区会话根的卷文件 → 保留 messages/tokens
- *  原样 → 重写同一路径（归属 = 存储位置，无字段改写面）。 */
+ *  原样 → 重写同一路径（归属 = 存储位置，无字段改写面）。
+ *  **同代校验与 `readVolumeData` 同一把尺子**（`cacheOfThisVolume`）：残留的上一代
+ *  `.json` 不是本卷的快照——展开它改名 = 把**死卷**的消息表/账本写成新卷的缓存
+ *  （下次开卷 `seq` 够大就整表搬过来），故残留一律当没有（只写 label 的干净快照）。 */
 export async function renameSessionFile(projectPath: string, sessionId: number, label: string): Promise<void> {
   const data = await readVolumeJSON(projectPath, sessionId);
   if (!data) {
     showToast('案卷文件不存在，无法改名', 'error');
     return;
   }
+  const born = (await readVolumeLogMessages(workspaceSessionsDir(projectPath), sessionId))?.header.createdAt;
+  const base: Pick<StoredSession, 'id' | 'label' | 'savedAt' | 'messages' | 'tokensUsed'> = cacheOfThisVolume(
+    data,
+    born,
+  )
+    ? data
+    : { id: sessionId, label: '', savedAt: '', messages: [], tokensUsed: 0 };
   try {
     // ⚡ 连带修复（2026-09-14 审计）：改名此前**重建**卷对象（只写 6 个字面字段），
     // 于是 `tokens`（token 账本）与 `compose`（创作坞覆盖）被静默抹掉——改名即丢数据。
     // 现改为「展开原卷 → 只覆盖 label」：未知/后续新增字段天然保留（presetId 等）。
     await writeSessionSnapshot(projectPath, {
-      ...data,
-      id: data.id,
+      ...base,
+      id: sessionId,
       label,
-      savedAt: data.savedAt ?? new Date().toISOString(),
-      messages: data.messages ?? [],
-      tokensUsed: data.tokensUsed ?? 0,
+      savedAt: base.savedAt || new Date().toISOString(),
+      messages: base.messages ?? [],
+      tokensUsed: base.tokensUsed ?? 0,
     });
   } catch {
     /* writeSessionSnapshot 已记日志；此处不重复静默 */
@@ -1446,9 +1482,36 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
 
 // ── 摊开集多卷恢复（扫描推导；session-ledger L0 语义承继面）─────────────
 
+/** **投影缓存是否属于这一卷**（同代校验——读面唯一判据，2026-09-19「子卷卷名乱套」根治）。
+ *
+ *  为什么必须有：**卷集判定只认 `.ndjson`**（`listVolumeIds` / `scanMaxSessionId`），
+ *  而 `{id}.json` 是**另一条命**——上一代的 `.json` 会以两种方式留在盘上：
+ *    · **旧格式化石**：Phase 3b 之前的 `.json` 卷（用户 2026-09-15 拍板「不做兼容读」，
+ *      文件留在盘上不再被认作卷）；
+ *    · **删除竞态复活**：删除链先 `delete_log` 再 `closeSession`，而合卷快照是
+ *      fire-and-forget 的写链任务 ⇒ 已删卷的 `.json` 被写回盘上（本机实测：`10.json`
+ *      的 `savedAt` 恰是删除那一刻，与 `13.ndjson` 的立卷时刻只差 14 秒）。
+ *  档号一旦被复用（删掉大号卷后 `scanMaxSessionId` 回退，发号取 `scanned + 1`），
+ *  残留缓存就冒充**新卷**的缓存：新卷顶着**死卷的名**（真机验收：立枝出来的三个子卷
+ *  卷名全来自 9/6–9/7 的死卷，且因为「有名 = 已命名」再也没有任何命名路径会纠正它），
+ *  `seq` 够大时连死卷的 `uiMessages`/账本/组合都一并搬过来。
+ *
+ *  判据：**缓存必须晚于卷的立卷时刻**（头行 `createdAt` = write-once 真源；缓存 `savedAt`
+ *  = 最后一次落盘，恒 ≥ 立卷时刻）。两刻有任一不可判（旧卷缺字段）= **不否决**——
+ *  误伤本代缓存的代价是卷名/账本/组合一起丢，比漏放一份残留贵得多。 */
+function cacheOfThisVolume(cache: StoredSession | null, bornAt: string | undefined): boolean {
+  if (!cache) return false;
+  const born = Date.parse(bornAt ?? '');
+  const saved = Date.parse(cache.savedAt ?? '');
+  if (Number.isNaN(born) || Number.isNaN(saved)) return true;
+  return saved >= born;
+}
+
 /** 恢复路径的卷数据（**Phase 3b 权威翻转**）：**事件日志 = 卷本体与内容真源**，
  *  `.json` 降级为 UI 投影缓存（`uiMessages`/tokens/compose/label）。
  *  · 无日志 = 卷不存在（旧 `.json` 卷不做兼容读——用户 2026-09-15 拍板）；
+ *  · 缓存**不是本卷的**（同代校验不过 = 上一代残留）→ 一律当没有：卷名留空（呈现层按
+ *    档号兜底）、账本/组合不采信——见 `cacheOfThisVolume` 注；
  *  · 缓存陈旧（`cache.seq < 日志 lastSeq`）→ **不采信快照**，UI 面走既有
  *    `rebuildMessagesFromMessages` 重建（DSH「possibly stale but never wrong」）。
  *  P0-3（2026-09-02）导出：restoreCanvasSpread 两阶段恢复的并行读面。 */
@@ -1463,7 +1526,10 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
   if (!logRead) return null;
   // 空卷（无任何非系统消息）不进摊开集——与「空卷不落盘」同规
   if (!logRead.messages.some((m) => m.role !== 'system')) return null;
-  const cache = await readVolumeJSON(projectPath, id);
+  const raw = await readVolumeJSON(projectPath, id);
+  // 同代校验：`.json` 不是本卷的（上一代残留）⇒ 整份当没有——卷名的家在这里，
+  // 采信残留 = 新卷顶着死卷的名（真机「子卷卷名乱套」的机理，见 cacheOfThisVolume）。
+  const cache = cacheOfThisVolume(raw, logRead.header.createdAt) ? raw : null;
   const fresh = cache !== null && typeof cache.seq === 'number' && cache.seq >= logRead.lastSeq;
   return {
     id,
@@ -1869,12 +1935,18 @@ export async function deleteSessionFile(
   sessionId: number,
 ): Promise<SessionDeleteResult> {
   const root = workspaceSessionsDir(projectPath);
+  // 先登记「这一卷已删」再真删文件：本函数尾部的 `closeSession` 会 fire-and-forget 地
+  // 写一份合卷快照（C8），在途的防抖自动存同理——不挡就把 `{id}.json` 写回来，成为
+  // 下一轮档号复用时的「死卷快照」（见 `_removedVolumes` 注）。
+  _removedVolumes.add(volumeKey(root, sessionId));
   try {
     await sessionExecute('delete_log', {
       root,
       id: String(sessionId),
     });
   } catch (e) {
+    // 真删失败 = 卷还在：撤销登记（写面必须继续工作——不能因为一次删除失败把卷钉成只读）
+    _removedVolumes.delete(volumeKey(root, sessionId));
     const why = e instanceof Error ? e.message : String(e);
     console.error('[chat] deleteSessionFile failed:', e);
     showToast(`删除案卷 ${sessionId} 失败：${why}`, 'error');

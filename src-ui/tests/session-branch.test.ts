@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionPersistenceService } from '../src/composition/session-persistence-service';
 import { Context } from '../src/cordis';
 import { builtinSessionsPlugin } from '../src/plugins/builtin/sessions-builtin';
-import { logText } from './helpers/session-files';
+import { cacheText, logText } from './helpers/session-files';
 
 {
   // seam 装配：builtin provider 在册（卷写面经 sessionExecute 单点——与生产同链）
@@ -259,6 +259,23 @@ describe('会话树「枝」——卷名（真机验收：子卷不得顶着父�
     resetPanel(store);
     expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 2)).toBe(true);
     expect(labelOf(store, 2)).toBe('枝上第一句'); // 不是「父卷首句」，也不是空
+  });
+
+  it('**死卷的投影缓存不得给新枝卷起名**（档号复用：卷集只看 .ndjson，残留 {id}.json 的 label 会冒充本卷卷名）', async () => {
+    const store = 'branch-name-4';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(1, logText(1, [sys, user('父卷首句'), assistant('父卷回复')]));
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+
+    // 残留物：档号 2 上留着一份**旧卷**的投影缓存（它的 .ndjson 早已不在 = 该卷不存在）。
+    // 卷集判定（scanMaxSessionId / listVolumeIds）只认 .ndjson ⇒ 新枝卷照拿档号 2。
+    H.kernelFs?.fs.setFile(`${SESSIONS}/2.json`, cacheText(2, { label: '死卷的名', seq: 3 }));
+
+    expect(await createBranchVolume(makeCtx(store), 1)).toMatchObject({ ok: true, sid: 2 });
+    // 本卷是**新的**：未说话 = 未命名（显示档号），绝不顶着死卷的名
+    expect(labelOf(store, 2)).toBe('');
+    expect(volumeDisplayName(labelOf(store, 2), 2)).toBe('案卷 2');
   });
 });
 

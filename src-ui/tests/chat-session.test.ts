@@ -556,9 +556,11 @@ describe('ChatPanel session persistence', () => {
 
       const renamed = await panel.listSavedSessions(P);
       expect(renamed[0].label).toBe('新名');
-      // 改名自身读了卷体（读-改-写），但清点没有再读
+      // 改名自身读两跳：投影缓存（读-改-写）+ 事件日志（**同代校验**要卷的立卷时刻，
+      // 见 `cacheOfThisVolume`——不读就分不清「本卷的缓存」与「上一代残留」，
+      // 残留一旦被展开改名，死卷的消息表/账本就被写成新卷的快照）；清点仍零卷体读。
       const afterRename = disk.volumeReads().length;
-      expect(afterRename).toBe(readsBefore + 1);
+      expect(afterRename).toBe(readsBefore + 2);
       expect(Object.values(catalogOfDisk(files).rows)[0]).toMatchObject({ label: '新名' });
 
       await panel.deleteSessionFile(P, 1);
@@ -1736,6 +1738,114 @@ describe('ChatPanel session persistence', () => {
       });
       return factory;
     }
+
+    it('**同代校验**：上一代残留的 {id}.json 不是本卷的缓存——卷名/账本/UI 快照全不采信', async () => {
+      mockDualDirDisk({
+        // 本卷：今天立卷（头行 createdAt 是 write-once 真源）
+        [`${PROJ}/.lantai/sessions/9.ndjson`]: logText(
+          9,
+          [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: '本卷首句' },
+          ],
+          '2026-09-19T09:00:00Z',
+        ),
+        // 残留：**上一代**的 9.json（Phase 3b 前的旧格式化石 / 删除竞态复活）——
+        // 早于本卷立卷时刻，`seq` 却比本卷日志大（旧实现只看 seq 就整份采信）
+        [`${PROJ}/.lantai/sessions/9.json`]: JSON.stringify({
+          id: 9,
+          label: '死卷的名',
+          savedAt: '2026-09-06T00:00:00Z',
+          messages: [{ role: 'user', content: '死卷内容' }],
+          uiMessages: [{ _id: 'dead' }],
+          tokensUsed: 999,
+          tokens: { total: 999 },
+          presetId: 'minimal',
+          seq: 99,
+          ver: 1,
+        }),
+      });
+
+      const data = await Session.readVolumeData(PROJ, 9);
+
+      // 卷名留空（呈现层按档号兜底）——绝不顶着死卷的名（真机「子卷卷名乱套」的机理）
+      expect(data?.label).toBe('');
+      expect(data?.uiMessages).toBeUndefined();
+      expect(data?.tokens).toBeUndefined();
+      expect(data?.tokensUsed).toBeUndefined();
+      expect(data?.presetId).toBeUndefined();
+      // 内容真源仍是事件日志（残留缓存一个字段都进不来）
+      expect(data?.messages.map((m) => m.content)).toEqual(['sys', '本卷首句']);
+    });
+
+    it('改名不展开上一代残留缓存：死卷的消息表/账本不得写成新卷的快照', async () => {
+      const files = mockDualDirDisk({
+        [`${PROJ}/.lantai/sessions/9.ndjson`]: logText(
+          9,
+          [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: '本卷首句' },
+          ],
+          '2026-09-19T09:00:00Z',
+        ),
+        [`${PROJ}/.lantai/sessions/9.json`]: JSON.stringify({
+          id: 9,
+          label: '死卷的名',
+          savedAt: '2026-09-06T00:00:00Z',
+          messages: [{ role: 'user', content: '死卷内容' }],
+          uiMessages: [{ _id: 'dead' }],
+          tokensUsed: 999,
+          seq: 99,
+          ver: 1,
+        }),
+      });
+
+      await Session.renameSessionFile(PROJ, 9, '新名');
+
+      const parsed = JSON.parse(files[`${PROJ}/.lantai/sessions/9.json`]);
+      expect(parsed.label).toBe('新名');
+      // 残留字段一个都不继承（否则下次开卷 seq 够大就把死卷的消息表搬过来）
+      expect(parsed.messages).toEqual([]);
+      expect(parsed.uiMessages).toBeUndefined();
+      expect(parsed.tokensUsed).toBe(0);
+      expect(parsed.seq).toBeUndefined();
+    });
+
+    it('删除**在案**的卷：合卷快照不得把 {id}.json 写回来（死卷快照 = 下次档号复用时冒充新卷的卷名）', async () => {
+      const files = mockDualDirDisk({
+        [`${PROJ}/.lantai/sessions/8.ndjson`]: logText(8, [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '八' },
+        ]),
+        [`${PROJ}/.lantai/sessions/9.ndjson`]: logText(9, [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '九' },
+        ]),
+      });
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      const bySid = new Map<number, any[]>();
+      panel.setAgentFactory(
+        async (sid: number) =>
+          ({
+            getSession: () => bySid.get(sid) ?? [{ role: 'system', content: 'sys' }],
+            setSession: (msgs: any[]) => bySid.set(sid, msgs),
+            dispose: vi.fn(),
+            cascadeAbort: vi.fn(),
+            bindSession: vi.fn(),
+          }) as any,
+      );
+      await panel.loadSessionFromDisk(PROJ, 8);
+      await panel.loadSessionFromDisk(PROJ, 9);
+
+      await panel.deleteSessionFile(PROJ, 8);
+      // closeSession 的合卷快照是 fire-and-forget（走每卷写链）——等在途写落定再断言
+      await Session.drainVolumeWrites();
+
+      // 真删就是真删：两半文件都不许复活（旧行为：closeSession 把 8.json 写回来）
+      expect(files[`${PROJ}/.lantai/sessions/8.ndjson`]).toBeUndefined();
+      expect(files[`${PROJ}/.lantai/sessions/8.json`]).toBeUndefined();
+    });
 
     it('卷不在本工作区会话根 = 不存在（无回退面——单一路径）', async () => {
       mockDualDirDisk({
