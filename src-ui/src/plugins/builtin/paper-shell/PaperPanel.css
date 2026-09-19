@@ -3439,13 +3439,27 @@
   box-shadow: none; /* 压印：投影塌缩，章沉进纸面 */
 }
 
-/* 消息操作条（施工单 #5 → 2026-08-31 修订）：块左下角、块体之外（底边下方，
- * 落 48px 块间距带内——不遮正文不压下一块）；hover 浮现，隐没态不吃指针。
- * 状态类操作（改/重发）只在各卷最新一条来文上出现（过时块深回滚无意义，
- * 用户拍板摘除），抄恒有。样式归机读墨色族（同 .pp-marginalia-pin） */
+/* 消息操作条（施工单 #5 → 2026-08-31 修订 → 2026-09-19 悬停可达性批）：
+ * 块左下角、块体之外（底边下方，落块间距带内——不遮正文不压下一块；**来文块
+ * 例外，见下 ②**）；hover 浮现，隐没态不吃指针。状态类操作（改/重发）只在各卷
+ * 最新一条来文上出现（过时块深回滚无意义，用户拍板摘除），抄恒有。样式归机读
+ * 墨色族（同 .pp-marginalia-pin）。
+ *
+ * 2026-09-19 悬停可达性批（用户报「鼠标还没挪过去就消失」+「来文块的按钮和
+ * 后续文字重合」；真 Chrome 走位台架 prototype/msg-ops-hover-ab.html 复现出数）：
+ *  ① **块底 +2px 视觉缝 = 死带**：缝里既不在块内、也不在按钮上，`.pp-block:hover`
+ *     断链 ⇒ 隐没态 pointer-events:none 让按钮**永不可命中**——揭示靠 hover、
+ *     命中又要靠揭示（互为前提）。实测：指针停在缝里 opacity 0；再挪到按钮
+ *     正上方仍 opacity 0，命中落回下一块正文。治法 = **缝并进容器 padding**
+ *     （顶边贴块底，多出的 2px 是透明桥面）：视觉 2px 呼吸不变，hover 链不断。
+ *  ② **来文块块下只有 8px 机械尾距**（ANCHOR.userTailGap——花押那 30px 视觉
+ *     尾距在块内），19px 的动作行塞不进 ⇒ 越出块底 13px 压住下一块的题签与
+ *     首行（实测越界 13px / 握把 15px）。治法 = 来文块的动作行改落**块内尾带**
+ *     （花押行之上那 30px 空白）：块体之内 ⇒ 零死带、零越界。 */
 .pp-msg-ops {
   position: absolute;
-  top: calc(100% + 2px);
+  top: 100%; /* 顶边贴块底——`calc(100% + 2px)` 的缝曾是死带（见上 ①） */
+  padding-top: 2px; /* 桥面：视觉仍留 2px 呼吸，那 2px 并进命中盒 */
   left: 0;
   display: flex;
   gap: 6px;
@@ -3453,6 +3467,13 @@
   pointer-events: none;
   transition: opacity var(--snap);
   z-index: 5;
+}
+/* 来文块专属落位（见上 ②）：块内尾带——花押行（asterismLine）之上 2px。
+ * 尾带 = asterismMarginTop 30px，19px 的行塞得下（余 9px）。 */
+.pp-block.pp-user .pp-msg-ops {
+  top: auto;
+  bottom: calc(var(--pp-ch-user-asterismLine) + 2px);
+  padding-top: 0;
 }
 .pp-block:hover .pp-msg-ops,
 .pp-msg-ops:focus-within {
@@ -3483,10 +3504,12 @@
  * ⇒ 不吃划词选字；不是文类签（`.pp-kind` = 整块拖出钉住的把手）⇒ 两条手势各占各的把手。
  * hover 浮现（同动作行纪律：隐没态不吃指针），`cursor: grab`（拖拽件的手势语言）。
  * 墨阶与动作行同族（机读墨色 + 朱砂 hover）；只在可立枝的块上渲染（判据同按钮，见
- * `use-block-ops` 的 branchGrips）。 */
+ * `use-block-ops` 的 branchGrips）。
+ * 2026-09-19 悬停可达性批：落位纪律与动作行**同一条**（缝=死带 ⇒ 顶边贴块底；
+ * 来文块落块内尾带）——握把是有边框的实盒，缝不能用 padding 补，改 `::before` 桥面。 */
 .pp-branch-grip {
   position: absolute;
-  top: calc(100% + 2px);
+  top: 100%; /* 贴块底（`calc(100% + 2px)` 的缝 = 死带，见 .pp-msg-ops 头注 ①） */
   right: 0;
   padding: 2px 8px;
   border: var(--rule-soft);
@@ -3503,6 +3526,21 @@
     border-color var(--snap),
     color var(--snap);
   z-index: 5;
+}
+/* 桥面：块底那 2px 视觉缝的命中补丁（只给落在块外的握把——来文块的握把在块内，
+ * 不需要桥）。 */
+.pp-block:not(.pp-user) .pp-branch-grip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 2px;
+}
+/* 来文块专属落位：块内尾带（同 `.pp-block.pp-user .pp-msg-ops`）。 */
+.pp-block.pp-user .pp-branch-grip {
+  top: auto;
+  bottom: calc(var(--pp-ch-user-asterismLine) + 2px);
 }
 .pp-block:hover .pp-branch-grip {
   opacity: 1;

@@ -340,3 +340,13 @@
   **钉值**：`tests/paper-visual-decisions.test.ts` 钉住/纸条段**整组重写**（故意规格变更，显式声明）——旧三条（物理包边轻量档 / 竖排签 / 纸条物理缘轻档）整删，新五条（便条白边与无影 / 纸内报头 + token+measure 三处齐全 / 纸条同族 + 题签墨阶 / 来源行快照 / 携带态几何不动 + settle 只声明 translate）；新增 `tests/paper-markdown.test.ts` +3 例（**钉住态几何高镜像**：= 纸内白边 + 报头 + 按收窄测宽；流/钉两态各持一条缓存——拔钉后不许读到钉住高）。
   **测量镜像（本批真正的暗礁）**：`PinnedGeom.h` 走 `measureBlockHeightCached`，白边与报头是**钉住态独有的竖直增量**——不镜像则剔除矩形比真身矮，块尾滑到视口边**整块消失**、小地图框偏小。治法：主函数按 `b.state` 分支（`pinnedBlockHeightCached`：RO 实测优先——实测读的是钉住 DOM 的 border-box，白边与报头已含在内；静态镜像族按 `w − padH×2` 收窄测宽 + 白边 + 报头），cache 键加 `#pin` 后缀与流内条目分家。**宿主面零新增出口**（未动 `faceDeps`、未重生成基线）。
   **交付口径**：`PaperPanel.tsx/css` + `use-paper-strips.ts` 属**产地域**（磁盘通道，可热更），但 `paper/measure.ts`（钉住态分支）与 `paper/type-tokens.ts`（`pin` token 组 ⇒ `--pp-ch-pin-*` 注入）属**壳域** ⇒ **本批必须重建 exe**；产物单独热更到旧 exe 上不会报错（宿主面键集未变，封印不响），但 `--pp-ch-pin-*` 缺席会让 `padding: var(...)` 整条声明失效、白边静默塌成 0（A/B 台复现过一次，故记在此）。
+
+- 2026-09-19 · **消息块动作行的悬停可达性：从「块外缝隙里」收回「块内尾带」**（用户报两条：「鼠标还没挪过去就消失」+「来文块的按钮和后续文字重合」）·
+  **探查先于意见**：搭真 CSS + 真 Chrome 走位台架 `prototype/msg-ops-hover-ab.html`（A 栏复刻旧几何、B 栏现网；`msg-ops-hover-probe.mjs` 逐点走位出数），旧几何实测三数——
+  ① 指针停在**块底 +1px 的缝里**：行 `opacity 0` / `pointer-events none` / 命中落回 `.flow`；
+  ② 再挪到**动作行正上方**：仍 `opacity 0`，命中是**下一块的正文** `.pp-md-p` —— **揭示靠 hover、命中又要靠揭示（互为前提），按钮永不可命中**（与 §9.2 坞锁钮一版同病，那次是「浮在坞外有缝」，同一条教训第二次上门）；
+  ③ **来文块越界**：块下只有 `ANCHOR.userTailGap` 8px，19px 的行越出块底 **13px**（握把 15px）压住下一块的题签与首行——用户看到的「重合」就是算术结果。
+  **选**：**甲·缝并进容器 padding**（行盒顶边贴块底，多出的 2px 是透明桥面——视觉呼吸不变、hover 链不断）+ **乙·来文块的行落块内尾带**（花押行之上 2px：块体之内 ⇒ 零死带、零越界，尾带 30px 塞得下 19px 的行，余 9px）；握把（`.pp-branch-grip`）走**同一条纪律**，但它是带边框的实盒 ⇒ 缝用 `::before` 桥面补。
+  **弃**：① **把 `userTailGap` 8 → 28**（改的是**纸的节奏**：花押那 30px 尾距本来就在块内，为一条 hover 行去加宽来文后的留白，是拿版面还交互的债）；② **隐没态留 `pointer-events: auto`**（让透明按钮自己当桥）——2026-08-31 刚摘掉的「透明按钮吃块下点击」会原样回来，且缝里仍会闪一下。
+  **钉值**：新增 `tests/paper-msg-ops-hover.test.ts`（5 例）——钉**结构**（贴块底 / 不许回 `calc(100% + 2px)` / 来文块落块内 / 隐没态不吃指针 / hover + focus-within 揭示面在册），不钉像素；并**用 token 真源算一遍尾带算术**（行底偏移 `asterismLine + 2` + 行高 19 ≤ `asterismLine + asterismMarginTop`，且 `userTailGap < 行高` 是「非落块内不可」的理由）。改按钮字号/padding 必须重跑台架并同步行高常数（文件里写明了）。
+  **交付口径**：改的是**插件 CSS**（`paper-shell/PaperPanel.css`）⇒ 按 landmine H2「产物里的 CSS 从不生效」，**必须 `cd src-tauri && cargo tauri build --no-bundle` 重建 exe**（先关掉在跑的兰台）；只热更产物无效。
