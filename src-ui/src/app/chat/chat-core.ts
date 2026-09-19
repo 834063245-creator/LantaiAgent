@@ -22,6 +22,7 @@ import type { RuntimePort } from '../../agent/runtime/types';
 import { totalTokens } from '../../agent/token-meter/usage';
 import { useShellStore } from '../../app/shell-store';
 import { sessionExecute } from '../../composition/session-persistence-service';
+import { activeSpace } from '../../composition/space-service';
 import type { ChatImageRef } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
@@ -702,7 +703,14 @@ export class ChatCore {
    *  本卷原样保留（字节零变化），新枝复制到此为止的历史并摊到案头。
    *  入口 = 块 hover 动作行（与「改」「重发」同族，见 `use-block-ops`）。
    *  返回新枝卷号；null = 未立（具名原因已可见）。
-   *  「改」原地重写（破坏性）、「立枝」另起一条（非破坏性）——两者并存。 */
+   *  「改」原地重写（破坏性）、「立枝」另起一条（非破坏性）——两者并存。
+   *
+   *  **摊开 + 定位 = expand 一家的职责**（P0 修复，2026-09-18）：立枝原只走
+   *  `loadSessionFromDisk`（卷进了案头），但**没有 requestFocus 就不会飞**——
+   *  新卷由落位 effect 用 `nearestFreeRegion` 补位，落点可能在视口外，用户视角
+   *  就是「没摊开」。故此处补唯一一次 `expand`（已摊开 ⇒ focus + requestFocus；
+   *  未摊开 ⇒ 读盘成功才飞）。**调用侧不得再自己补 requestFocus**：失败路径照样
+   *  发请求 = 永不兑现的悬空定位（landmine-map #28）。 */
   async branchFromMessage(msg: ChatMessage, sessionId: number): Promise<number | null> {
     const point = Branch.resolveBranchPoint(this.panelId, sessionId, msg);
     if (!point.ok) {
@@ -710,7 +718,9 @@ export class ChatCore {
       return null;
     }
     const result = await Branch.createBranchVolume(this._sessionCtx(), sessionId, point.atSeq);
-    return result.ok ? result.sid : null;
+    if (!result.ok) return null;
+    activeSpace()?.expand(String(result.sid));
+    return result.sid;
   }
 
   // ── 组合（S6 P1c：卷级选择）──

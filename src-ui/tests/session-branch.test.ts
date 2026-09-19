@@ -13,7 +13,7 @@
 // 另钉三条切点纪律的**拒态**（未落定 / 断尾 / 空卷 / 缺卷）：拒态**一个字节都不落盘**
 // ——绝不制造「半个枝」。
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionPersistenceService } from '../src/composition/session-persistence-service';
 import { Context } from '../src/cordis';
 import { builtinSessionsPlugin } from '../src/plugins/builtin/sessions-builtin';
@@ -71,10 +71,16 @@ vi.mock('../src/agent/permission', () => ({ showApprovalDialog: vi.fn(), cancelP
 import { agentSessionState } from '../src/agent/agent-session-state';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';
+import { ChatCore } from '../src/app/chat/chat-core';
+import { useCoreStore } from '../src/app/chat/core-instance';
 import { createBranchVolume, resolveBranchOrigin, resolveBranchPoint } from '../src/app/chat/session-branch';
 import { flushSessionLog } from '../src/app/chat/session-log-store';
+import { useShellStore } from '../src/app/shell-store';
+import { SpaceService } from '../src/composition/space-service';
 import type { Chunk, Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
+import { resetCanvasStoresForTests } from '../src/state/canvas-store';
+import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import type { SessionContext } from '../src/ui/chat-session';
 import * as Session from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
@@ -453,5 +459,103 @@ describe('会话树「枝」——切点纪律的拒态（拒了必须一个字�
     if (result.ok) return;
     expect(result.reason).toContain('读不出来');
     expect(getChatStore(store).sess.getState().sessions).toEqual([]);
+  });
+});
+
+describe('会话树「枝」——立枝即摊开并定位（P0：expand 是「摊开 + 定位」单一权威入口）', () => {
+  beforeEach(() => {
+    const fs = H.kernelFs?.fs;
+    if (fs) {
+      fs.files.clear();
+      fs.dirs.clear();
+      fs.writes.length = 0;
+      fs.fail = {};
+    }
+    Session.resetSessionListCacheForTests();
+    resetCanvasStoresForTests();
+    useCanvasViewStore.getState().requestFocus(null);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('点「立枝」⇒ expand(新卷) 恰好一次 + 视角飞向新枝；连点两次各飞各的、无悬空请求', async () => {
+    const core = new ChatCore();
+    useCoreStore.getState().setChatCore(core); // 空间命令按此 core 取 panelId
+    const store = core.panelId;
+    installFactory(store);
+    useShellStore.setState({ projectPath: WS });
+    setVolume(1, logText(1, [sys, user('一'), assistant('二')]));
+    expect(await core.loadSessionFromDisk(WS, 1)).toBe(true);
+    // 基线在**父卷写后队列排空之后**取：开卷自带的 adopt 落盘是开卷的账，不是立枝的
+    await flushSessionLog(agentSessionState.getAgent(store, 1)?.sessionLog ?? null);
+    const parentBefore = volumeText(1);
+
+    // 空间服务在册（activeSpace()）——生产装配面
+    new SpaceService(new Context());
+    const expand = vi.spyOn(SpaceService.prototype, 'expand');
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    const uiUser = ui.find((m) => m.role === 'user');
+    expect(uiUser).toBeDefined();
+    if (!uiUser) return;
+
+    // ① 点「立枝」：新枝卷摊到案头 **且** 视角飞到它（缺任一半 = 用户看到的「没摊开」）
+    expect(await core.branchFromMessage(uiUser, 1)).toBe(2);
+    expect(expand).toHaveBeenCalledTimes(1);
+    expect(expand).toHaveBeenCalledWith('2');
+    expect(
+      getChatStore(store)
+        .sess.getState()
+        .sessions.map((s) => s.id),
+    ).toContain(2);
+    // 在途定位指向**真实存在于案头**的卷 ⇒ 会被补飞兑现，不是永不兑现的悬空请求
+    expect(useCanvasViewStore.getState().pendingFocusId).toBe('2');
+    expect(volumeText(1)).toBe(parentBefore); // 父卷字节零变化
+
+    // ② 连点第二次：另起一枝、同样飞过去；旧请求被新请求取代（不叠加悬空）
+    expect(await core.branchFromMessage(uiUser, 1)).toBe(3);
+    expect(expand).toHaveBeenCalledTimes(2);
+    expect(expand).toHaveBeenLastCalledWith('3');
+    expect(
+      getChatStore(store)
+        .sess.getState()
+        .sessions.map((s) => s.id),
+    ).toContain(3);
+    expect(useCanvasViewStore.getState().pendingFocusId).toBe('3');
+    expect(volumeText(1)).toBe(parentBefore);
+  });
+
+  it('未落定 ⇒ 拒绝时 expand 一次都不调（失败路径不留悬空定位请求）', async () => {
+    const core = new ChatCore();
+    useCoreStore.getState().setChatCore(core);
+    const store = core.panelId;
+    installFactory(store);
+    useShellStore.setState({ projectPath: WS });
+    setVolume(1, logText(1, [sys, user('一'), assistant('二')]));
+    expect(await core.loadSessionFromDisk(WS, 1)).toBe(true);
+    new SpaceService(new Context());
+    const expand = vi.spyOn(SpaceService.prototype, 'expand');
+
+    // 模拟「正在跑」：开卷**之后**经产品自己的双写入口宣布一次调用（结果未落）——
+    // 开卷时的恢复链只兜盘上残留，兜不到这一刻在途的调用。
+    const handle = agentSessionState.getAgent(store, 1) as unknown as {
+      _getAgent(): { _appendMessage(kind: string, message: unknown): void };
+    };
+    handle._getAgent()._appendMessage('assistant/text', {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id: 'c9', name: 'fs', arguments: '{}' }],
+    });
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    const uiAssistant = ui.find((m) => m.role === 'assistant');
+    expect(uiAssistant).toBeDefined();
+    if (!uiAssistant) return;
+
+    // 回复块切点落在本轮末尾（那条悬空宣布）⇒ 拒；失败路径不得发定位请求
+    expect(await core.branchFromMessage(uiAssistant, 1)).toBeNull();
+    expect(expand).not.toHaveBeenCalled();
+    expect(useCanvasViewStore.getState().pendingFocusId).toBeNull();
   });
 });
