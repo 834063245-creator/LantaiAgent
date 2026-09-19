@@ -528,12 +528,16 @@
  * 浸墨法则 1②：本屏唯一主动作 = 墨底实色 + 硬偏移投影，拟文印 .pp-send
  * 同款语言——hover 翻朱砂深，按压沉朱砂 ── */
 .ss-new-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
   padding: 10px 12px 8px;
   border-bottom: var(--rule-soft);
   flex-shrink: 0;
 }
 .ss-new {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 7px 0;
   background: var(--ink-1);
   border: none;
@@ -563,6 +567,42 @@
   outline-offset: 2px;
 }
 .ss-new:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 立枝（会话树 P1，2026-09-18）：本屏唯一主动作仍是 `.ss-new`（浸墨法则 1②），
+ * 立枝是次要动作——ghost 档（同 `.ss-actions button` 的语言：无底 + ink 字，
+ * hover 墨底反白），不抢墨底实色。 */
+.ss-branch {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap),
+    transform var(--snap);
+}
+.ss-branch:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+.ss-branch:active {
+  transform: translateY(1px);
+}
+.ss-branch:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+.ss-branch:disabled {
   cursor: default;
   opacity: 0.6;
 }

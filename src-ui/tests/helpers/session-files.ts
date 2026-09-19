@@ -10,12 +10,15 @@
 
 /** 造一份事件日志文本（`{root}/{id}.ndjson` 的内容）。
  *  **头行不带卷名**（2026-09-18 命名收口）：卷名的家 = 投影缓存（`cacheText` 的
- *  `label`）。头行 write-once，带 label 只会是陈旧副本。 */
+ *  `label`）。头行 write-once，带 label 只会是陈旧副本。
+ *  `parent`（可选）= 会话树血缘边（枝卷）：`{id, atSeq}`——见
+ *  `app/chat/session-log-store` 的 `SessionLogHeader.parent`。 */
 export function logText(
   id: number,
   messages: Array<{ role: string; content?: string; [k: string]: unknown }>,
   savedAt?: string,
   presetId?: string,
+  parent?: { id: number; atSeq: number },
 ): string {
   const header = JSON.stringify({
     type: 'session',
@@ -23,6 +26,7 @@ export function logText(
     id,
     createdAt: savedAt ?? '2026-01-01T00:00:00Z',
     ...(presetId ? { presetId } : {}),
+    ...(parent ? { parent } : {}),
   });
   const sys = messages.filter((m) => m.role === 'system');
   const rest = messages.filter((m) => m.role !== 'system');

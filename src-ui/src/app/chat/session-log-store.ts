@@ -33,6 +33,14 @@ import { interruptedToolCallClosers } from '../../agent/session-log-repair';
 import { DEFAULT_WRITE_BATCH_MAX_DELAY_MS, SessionLogWriteBehind } from '../../agent/session-log-write-behind';
 import { sessionExecute } from '../../composition/session-persistence-service';
 
+/** 父卷引用 = 会话树的一条**边**（血缘）。 */
+export interface SessionLogParentRef {
+  /** 父卷号（**归一化后**的那一卷——见 `SessionLogHeader.parent` 注）。 */
+  id: number;
+  /** 从父卷继承到的**最后一个事件 seq**（= 前缀长度 = 切点）。 */
+  atSeq: number;
+}
+
 /** 事件日志头行（第 1 行）。`version` 是格式版本——未来版本拒绝读而不是报损坏。
  *  不带卷名：头行 write-once，改名的事实在卷快照里（见文件头注）。 */
 export interface SessionLogHeader {
@@ -42,6 +50,22 @@ export interface SessionLogHeader {
   createdAt: string;
   presetId?: string;
   cwd?: string;
+  /** **卷间血缘（会话树「枝」，2026-09-18）**：本卷从哪一卷的哪个切点分出。
+   *  `atSeq` = 继承到的最后一个事件 seq ⇒ 本卷自己的事件自 `atSeq + 1` 起；
+   *  前缀（seq ≤ atSeq）是父卷事件的**复制**（自包含：读不依赖父卷在场）。
+   *  write-once（随头行物化写一次，改名不回写）；缺字段 = 根卷（无父）。
+   *  **刻意不升 `version`**：可选字段是加法而非格式断裂，而升版会把现有**全部**
+   *  卷判成「本版本读不了」（版本硬判见 `loadSessionLogFile`），代价与收益不成比例。
+   *  边一律**归一化**过（归到「自己的区域覆盖切点的那个卷」）——不归一化会画错树，
+   *  且删除连坐会删错子树；实现见 `app/chat/session-branch.resolveBranchOrigin`。 */
+  parent?: SessionLogParentRef;
+}
+
+/** 血缘字段的形状判据（读路径容忍毒化——形状不对当无父，见 `parseHeader`）。 */
+export function isSessionLogParentRef(value: unknown): value is SessionLogParentRef {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as { id?: unknown; atSeq?: unknown };
+  return Number.isInteger(v.id) && (v.id as number) > 0 && Number.isInteger(v.atSeq) && (v.atSeq as number) >= 0;
 }
 
 /** 磁盘上的一卷事件日志（头行 + 已认领的连续前缀）。 */
@@ -209,6 +233,9 @@ function parseHeader(line: string): SessionLogHeader | null {
     const parsed = JSON.parse(line) as SessionLogHeader & { type?: string };
     if (parsed?.type !== 'session') return null;
     if (typeof parsed.id !== 'number') return null;
+    // 毒化容忍（INVARIANTS #11 读路径纪律）：血缘形状不对 = 当无父（根卷）——
+    // 不让一条脏字段把整卷判成损坏（「文件在、内容在」比「血缘完整」重要）。
+    if (parsed.parent !== undefined && !isSessionLogParentRef(parsed.parent)) delete parsed.parent;
     return parsed;
   } catch {
     return null;

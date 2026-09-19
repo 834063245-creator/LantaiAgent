@@ -41,6 +41,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | **出厂产物归家** | Proposed·Draft（未开工） | 一个产物 = 一个物理目录（魂身合一：实现从内核深处搬进插件包）——[`factory-products-homing-plan.md`](factory-products-homing-plan.md) |
 | **v11 分析引擎** | 草案挂起（用户拍板挂起） | 动态边 + 查询预算 + 降噪分级三篇合一——[`v11-analysis-engine-master-plan.md`](v11-analysis-engine-master-plan.md)；D 篇原件 [`dynamic-edge-detection-plan.md`](dynamic-edge-detection-plan.md)（superseded，以主文档为准） |
 | **会话存盘换轨（DSH 参照）** | 未定 | 参照 DSH 的会话持久化审计与移植——[`session-persistence-dsh-port-plan.md`](session-persistence-dsh-port-plan.md) |
+| **会话树（枝）** | 中（app 层为主：节点判据 + 头行血缘与边归一化 + 树面与连坐 + 画布承接，三批 + 可选一批；不动事件词表） | **P1 已落地（2026-09-18）**：从卷尾立枝可用（侧栏「＋ 立枝」）——节点自包含（每枝一卷 = 父卷前缀复制）、边落头行、父卷字节零变化；**P2 未开工**（任意节点立枝 + 删除连坐 + 侧栏树形）。三项裁定见正文 §9、施工记录见 §12——[`session-tree-plan.md`](session-tree-plan.md) |
 | **钉住与纸条改造** | 未定 | 钉住/纸条 UX 重构 + UI 换装——[`pin-strip-rework-plan.md`](pin-strip-rework-plan.md) |
 | **Skills 与 MCP 生产级改造** | 余文档收口 + 真机验收 | Commit 1-6 已落地——[`skills-mcp-production-plan.md`](skills-mcp-production-plan.md) |
 | **卷首字节稳定性（前缀缓存）** | 中（动段表 + 基线重录双轨） | 记忆库坐卷首第 ~2.5k token ⇒ 每次「重启 + 记忆变动」整卷重算（实测 34.7 万 token 全价、命中率 99%→0.6%）；「把记忆段挪到卷首末尾」已验算**无效**（只省 2.8%）——[`prompt-prefix-stability-plan.md`](prompt-prefix-stability-plan.md) |

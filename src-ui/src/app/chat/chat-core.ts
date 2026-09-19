@@ -55,6 +55,7 @@ import {
   splitIntakePaths,
 } from './image-intake';
 import type { PromptShelfHandle } from './PromptShelf';
+import * as Branch from './session-branch';
 import * as SessionComposition from './session-composition';
 
 // ── 斜杠技能候选缓存（skills-mcp-production-plan Commit 4）──
@@ -695,6 +696,20 @@ export class ChatCore {
     // S6 P4：模块入口返回新卷 id（程序入口判成败用）——本编排面包装器不承载该值
     // （程序入口 = app/chat/session-composition 的模块函数，UI 之外的调用者直接调它）。
     await Session.createNewSession(this._sessionCtx());
+  }
+
+  /** **立枝**（会话树 P1，2026-09-18）：从 `sessionId`（缺省 = 当前活跃卷）的
+   *  **卷尾**另起一枝——本卷原样保留，新枝复制其历史（前缀 + 血缘头行）。
+   *  返回新枝卷号；null = 未立（具名原因已可见，见 `session-branch`）。
+   *  「改」原地重写（破坏性）、「立枝」另起一条（非破坏性）——两者并存。 */
+  async branchFromTail(sessionId?: number): Promise<number | null> {
+    const sid = sessionId ?? this.activeSessionId;
+    if (sid == null) {
+      showToast('案头还没有卷，无从立枝', 'warn');
+      return null;
+    }
+    const result = await Branch.createBranchVolume(this._sessionCtx(), sid);
+    return result.ok ? result.sid : null;
   }
 
   // ── 组合（S6 P1c：卷级选择）──

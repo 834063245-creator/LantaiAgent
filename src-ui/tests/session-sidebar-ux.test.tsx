@@ -34,6 +34,8 @@ function fakeCore(panelId: string): { core: ChatCore; deleteSessionFile: Mock } 
       { id: 2, label: '盘卷甲', msgCount: 5, savedAt: new Date(Date.now() - 3 * 86400_000).toISOString() },
     ]),
     createNewSession: vi.fn(),
+    // 会话树「枝」P1：立枝入口（从当前卷卷尾另起一枝）
+    branchFromTail: vi.fn(async () => 9),
     renameSession: vi.fn(),
     renameSavedSession: vi.fn(),
     closeSession: vi.fn(),
@@ -305,6 +307,18 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     expect(useDockStore.getState().open['canvas-sidebar']).toBe(true);
     act(() => keydown(aside, 'Escape'));
     expect(useDockStore.getState().open['canvas-sidebar']).toBe(false);
+  });
+
+  it('立枝入口（会话树 P1）：常驻次动作在册，点击 = 从当前卷卷尾立枝', async () => {
+    await mount();
+    const branch = container.querySelector('.ss-branch') as HTMLButtonElement;
+    expect(branch).not.toBeNull();
+    expect(branch.textContent).toBe('＋ 立枝');
+    await act(async () => {
+      branch.click();
+    });
+    const branchFromTail = (core as unknown as { branchFromTail: Mock }).branchFromTail;
+    expect(branchFromTail).toHaveBeenCalledTimes(1);
   });
 
   it('节/桶折叠：多桶立头、「更早」默认收起、展开可点、localStorage 持久', async () => {
