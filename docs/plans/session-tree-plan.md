@@ -325,10 +325,10 @@ P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批�
 |---|---|
 | `app/chat/session-log-store.ts` | `SessionLogStore.header`（attach 时带入内存，write-once）+ 续开姿态改传**盘上头行**（调用方现造的出生头没有血缘——带错了画布上枝卷就找不到父卷） |
 | `app/chat/session-branch.ts` | `branchOriginOf`（血缘读面，**零 I/O**）+ `branchNodeMessageId`（切点 → 父卷里承载它的界面消息：投影锚点 + 用户轮桥，与 `resolveBranchPoint` 同一条链、方向相反） |
-| `app/chat/chat-core.ts` | `branchEdge(sessionId)`（父卷 + 那个节点；null = 无句柄/落不到节点 ⇒ 不画线） |
+| `app/chat/chat-core.ts` | `branchOrigin(sessionId)`（血缘读面，零 I/O——侧栏/书脊/卷首那枚「枝」标读它）+ `branchEdge(sessionId)`（父卷 + 那个节点；null = 无句柄/落不到节点 ⇒ 不画线） |
 | `paper/provenance.ts` | `tetherAnchorsAt`（锚高由调用方给）——`tetherAnchors` 变成它 + 钉锚高，**选边/留白/收笔规则只有一份**（不新造一种线） |
-| `paper-shell/PaperPanel.tsx` + `.css` | 枝边层：常显的一丝朱砂（卷首中线 → 节点缘）+ **受墨带**（加粗透明描边承接点击，墨本身仍是那一丝）+ 点线溯源（飞节点 + 点名一拍） |
-| `tests/session-tree-canvas.test.tsx`（新） | 挂真 PaperPanel：无枝边不落笔 / 起笔在卷首左缘且朱点落在**父卷那个节点**的缘上 / 点线飞到节点（视口对准父卷中轴）/ 父节点在屏外时线出屏 |
+| `paper-shell/PaperPanel.tsx` + `.css` | 枝边层：常显的一丝朱砂（卷首中线 → 节点缘）+ **受墨带**（加粗透明描边承接点击，墨本身仍是那一丝）+ 点线溯源（飞节点 + 点名一拍）；卷首眉行缀「枝」（§5「书脊与卷首标枝」的卷首那半；眉行 line-height 是定值 15px，缀字不改卷首高契约） |
+| `tests/session-tree-canvas.test.tsx`（新） | 挂真 PaperPanel：无枝边不落笔（卷首也不缀枝）/ 卷首标「枝」/ 起笔在卷首左缘且朱点落在**父卷那个节点**的缘上 / 点线飞到节点（视口对准父卷中轴）/ 父节点在屏外时线出屏 |
 | `tests/session-branch.test.ts` +1 / `tests/paper-provenance.test.ts` +1 | `branchEdge` 真卷三例（根卷无边 / 来文节点 / 回复节点）；同一支笔的锚高等价式 |
 
 **两处实现裁定**（留痕，防回漂）：
@@ -341,7 +341,7 @@ P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批�
 - **出屏的诚实边界**：父卷整个在屏外时线照样出屏，但仅限**卸载余量**（`use-paper-regions` 的
   STUB_MX 900 / STUB_MY 1200）之内——超出即该流区连几何都卸载了（与出处引导同一条边界，不是本批新引入的）。
 
-**门禁**：`npm run build` ✓；`npx vitest run` 347 文件 / 3550 通过 ✓；`npx biome ci .` 0/0 ✓；
+**门禁**：`npm run build` ✓；`npx vitest run` 347 文件 / 3551 通过 ✓；`npx biome ci .` 0/0 ✓；
 `npm run verify:convergence` 双轨 exit 0 ✓（未改 `agent/**` / `composition/**`，仍跑双轨确认零漂移）。
 
 

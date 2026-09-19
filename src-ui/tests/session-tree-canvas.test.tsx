@@ -116,6 +116,7 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
   let root: Root | null = null;
   let container: HTMLElement | null = null;
   let branchEdgeSpy: ReturnType<typeof vi.spyOn> | null = null;
+  let branchOriginSpy: ReturnType<typeof vi.spyOn> | null = null;
 
   beforeEach(() => {
     localStorage.clear();
@@ -147,6 +148,8 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
     }
     branchEdgeSpy?.mockRestore();
     branchEdgeSpy = null;
+    branchOriginSpy?.mockRestore();
+    branchOriginSpy = null;
   });
 
   /** 挂两卷（父卷 1 在 x=0、枝卷 2 在 x=2000——远隔，引线必然横跨）。
@@ -158,6 +161,9 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
       branchEdgeSpy = vi
         .spyOn(panel, 'branchEdge')
         .mockImplementation((sid: number) => (sid === 2 ? { parentSid: 1, nodeMessageId: edgeNode } : null));
+      branchOriginSpy = vi
+        .spyOn(panel, 'branchOrigin')
+        .mockImplementation((sid: number) => (sid === 2 ? { id: 1, atSeq: 2 } : null));
     }
     useCoreStore.setState({ core: panel });
     const sess = getChatStore(panel.panelId).sess;
@@ -177,7 +183,9 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
 
     const view = useCanvasViewStore;
     view.getState().setCanvasSize(1200, 800);
-    view.getState().restoreView({ zoom: 1, panX: 600, panY: 600 });
+    // 视口偏向**枝卷**一侧：枝卷的卷首（眉行的「枝」标）在渲染面，父卷整卷在屏外但仍在
+    // 卸载余量之内（几何照旧在场——引线仍画得出，正是「父节点不在视口内」那条判据）。
+    view.getState().restoreView({ zoom: 1, panX: -1000, panY: 600 });
 
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -189,7 +197,7 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
       view.getState().setCanvasSize(1200, 800);
     });
     await act(async () => {
-      view.getState().setView((v) => ({ ...v, zoom: 1, panX: 600, panY: 600 }));
+      view.getState().setView((v) => ({ ...v, zoom: 1, panX: -1000, panY: 600 }));
     });
     const el = container.querySelector<HTMLDivElement>('.pp-canvas');
     if (!el) throw new Error('pp-canvas 未挂载');
@@ -230,6 +238,16 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
     await mountTwoVolumes(null);
     expect(container?.querySelector('.pp-branch-tether')).toBeNull();
     expect(container?.querySelector('.pp-tether-hit')).toBeNull();
+    // 卷首眉行也不缀「枝」（根卷）
+    const eyebrow = container?.querySelector('.pp-folio-eyebrow')?.textContent ?? '';
+    expect(eyebrow).not.toContain('枝');
+  }, 30_000);
+
+  it('卷首标「枝」：有父卷的卷眉行缀「枝」（与侧栏/书脊同一枚标，血缘读面零 I/O）', async () => {
+    await mountTwoVolumes('a1-1');
+    const eyebrows = [...(container?.querySelectorAll('.pp-folio-eyebrow') ?? [])].map((e) => e.textContent);
+    // 枝卷 2 的卷首在案头（父卷 1 在视口外 ⇒ 只有它在渲染面），眉行缀「枝」
+    expect(eyebrows.some((t) => (t ?? '').includes('枝'))).toBe(true);
   }, 30_000);
 
   it('枝边引线常显：起笔在枝卷卷首左缘、收笔朱点落在**父卷那个节点**的缘上', async () => {

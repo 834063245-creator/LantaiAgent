@@ -750,6 +750,13 @@ export class ChatCore {
     return Branch.deleteBranchSubtrees(this.panelId, pp, sessionIds, (sid) => this.deleteSessionFile(pp, sid));
   }
 
+  /** **某卷的枝边血缘**（父卷 + 切点）：真源 = 卷日志头行（attach 时已带入内存），
+   *  **零 I/O、O(1)**——卷首/侧栏/书脊那枚「枝」标读它（父卷在不在场都不影响「本卷是枝」
+   *  这个事实）。null = 根卷 / 无句柄 / 无日志。 */
+  branchOrigin(sessionId: number): Branch.BranchNodeOrigin | null {
+    return Branch.branchOriginOf(this.panelId, sessionId);
+  }
+
   /** **一枝的画布承接面**（P3）：从本卷头行取父卷与切点，再把切点落到父卷里承载它的
    *  那条界面消息——引线要指的那个节点（plan §5：连回**那个节点**，不是「父卷」整体）。
    *  null = 根卷 / 无句柄 / 父卷没句柄 / 切点落不到节点 ⇒ 调用方不画线（宁可没有，

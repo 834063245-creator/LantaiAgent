@@ -953,8 +953,13 @@ export function PaperPanel() {
                           </span>
                           {/* 卷号**恰出现一次**：有名卷 → 眉行（题字只放卷名）；无名卷 →
                            * 题字落「案卷 N」fallback，眉行退为「兰台 · 案卷」文类行。
-                           * 重排前眉行 + 题字 fallback + 档行三处都报卷号（同义反复）。 */}
-                          <p className="pp-folio-eyebrow">{r.label ? `案卷 Nº ${r.sessionNum}` : '兰台 · 案卷'}</p>
+                           * 重排前眉行 + 题字 fallback + 档行三处都报卷号（同义反复）。
+                           * 会话树「枝」：本卷有父卷 ⇒ 眉行缀「枝」（与侧栏/书脊同一枚标；
+                           * 血缘读面零 I/O；眉行 line-height 是定值 15px，缀字不改卷首高）。 */}
+                          <p className="pp-folio-eyebrow">
+                            {r.label ? `案卷 Nº ${r.sessionNum}` : '兰台 · 案卷'}
+                            {core?.branchOrigin(r.sessionNum) ? ' · 枝' : ''}
+                          </p>
                           <h2 className="pp-folio-title">{volumeDisplayName(r.label, r.sessionNum)}</h2>
                           <p className="pp-folio-sub">{folioSubLine(r)}</p>
                           {/* 组合芯片（S6 P5a）：**本卷**的组合身份与（空白卷的）拨动入口——

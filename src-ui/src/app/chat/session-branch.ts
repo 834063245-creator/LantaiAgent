@@ -65,6 +65,9 @@ export interface BranchNode {
 /** 某节点的切点（`atSeq` = 枝要包含的最后一个事件 seq）或不可立枝的具名原因。 */
 export type BranchPoint = { ok: true; atSeq: number } | { ok: false; reason: string };
 
+/** 枝边血缘（父卷 + 切点）——侧栏/书脊/卷首那枚「枝」标与画布引线的取材形状。 */
+export type BranchNodeOrigin = SessionLogParentRef;
+
 /**
  * 定位上下文（**一次算清**，单点与批量共用同一份判据）。
  *
