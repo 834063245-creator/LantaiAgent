@@ -168,7 +168,25 @@ export const CHROME_TOKENS = {
   notice: { padV: 8, borderBottom: 1, padH: 12 },
   codeSrc: { borderL: 3, padL: 14, padV: 10, maxH: 320 },
   codeOut: { maxH: 200 },
-  marginalia: { offset: 24, width: 240, borderL: 2, padL: 10 },
+  /* 眉批栏（P5 夹注旁注化）几何。offset/width/borderL/padL 管横向镜像；
+   *  top/toggleH/toggleGap 管**纵向**：块高 = max(正文, 眉批 extent)，而 extent
+   *  = top + 栏高 —— 栏高 = 展开态的文字高 + 折叠钮行，或折叠态只剩折叠钮行。
+   *  2026-09-19（夹注叠字批）补：这三项此前是 CSS 里的裸字面量（`top: 2px`）与
+   *  引擎默认行高（按钮 line-height: normal ⇒ 10px 字得 13px 行），测高镜像拿不到
+   *  ——真机实测眉批栏越出块高最多 218.75px（长夹注在 228px 窄列里折行分歧被放大），
+   *  其中约 15px 是这段 chrome 漏算的确定项。 */
+  marginalia: {
+    offset: 24,
+    width: 240,
+    borderL: 2,
+    padL: 10,
+    top: 2,
+    toggleH: 13,
+    toggleGap: 4,
+    outPadV: 2,
+    outBorder: 1,
+    outLineH: 13,
+  },
   /* 便条（纸内件，2026-09-19 钉纸条便条批）：钉住块与纸条共用一族纸面几何——
    * 纸内白边（墨不再贴纸缘：流内 720 墨借 1440 纸的白边，钉到桌面后那份白边
    * 不存在了，必须由纸自己付）+ 纸内报头（文类签/序号/出处行从纸外 -128px 的
@@ -233,6 +251,13 @@ export const CHROME_DERIVED = {
   codeOutMaxH: CHROME_TOKENS.codeOut.maxH,
   marginaliaW: CHROME_TOKENS.marginalia.width,
   marginaliaInset: CHROME_TOKENS.marginalia.borderL + CHROME_TOKENS.marginalia.padL,
+  /** 眉批栏顶距（.pp-marginalia top）。 */
+  marginaliaTop: CHROME_TOKENS.marginalia.top,
+  /** 眉批栏折叠钮行总高 = 钮行高 + 钮下距（.pp-marginalia-toggle）。 */
+  marginaliaToggleH: CHROME_TOKENS.marginalia.toggleH + CHROME_TOKENS.marginalia.toggleGap,
+  /** 眉批已移出占位行高（.pp-marginalia-out：上下内距 + 上下规线 + 行盒）。 */
+  marginaliaOutH:
+    CHROME_TOKENS.marginalia.outPadV * 2 + CHROME_TOKENS.marginalia.outBorder * 2 + CHROME_TOKENS.marginalia.outLineH,
   /* 钉住块（便条）几何：报头行高（单行 = 字号 × 行高系数）+ 规线间隙 + 规线 +
    * 报头下距；纸内白边 = 上下内距之和；正文测宽要收 padH × 2。 */
   pinHeadH:

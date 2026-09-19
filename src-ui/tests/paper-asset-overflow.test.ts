@@ -278,15 +278,20 @@ describe('实测回写桥（动态高兜底）', () => {
     resetBlockIdCounterForTests();
   });
 
-  it('needsObservedHeight：资产/开放/拟策/夹注要实测，其余内置文本族不要', () => {
+  it('needsObservedHeight：资产/开放/拟策/夹注·正文·抄录要实测，其余内置文本族不要', () => {
     expect(needsObservedHeight('file', true)).toBe(true);
     expect(needsObservedHeight('future_custom', false)).toBe(true);
     expect(needsObservedHeight('plan', false)).toBe(true);
-    // 夹注（2026-09-19 夹注叠字批）：唯一无封顶自由散文——canvas 折行与 DOM 折行
-    // 在「半角标点 + 拉丁」处每行差 0.1~1.2px，长文累积成 ±1~6 行；挂 RO 实测。
+    // 2026-09-19 夹注叠字批（真会话对拍实测）：canvas 折行与 DOM 折行系统性分家
+    // ——夹注 936 条里 27% 块高有差、正文 163 条里 17%、抄录 36 条里 11% ⇒ 入族。
     expect(needsObservedHeight('reasoning', false)).toBe(true);
+    expect(needsObservedHeight('markdown', false)).toBe(true);
+    expect(needsObservedHeight('diff', false)).toBe(true);
+    // 不入族者亦实测为零偏差/恒高：来文 60/60 零偏差（题签+花押定值、正文短）；
+    // 工具卡载荷段全封顶（468/468）；工具组/子代理头恒一行结构块。
+    expect(needsObservedHeight('user', false)).toBe(false);
     expect(needsObservedHeight('tool', false)).toBe(false);
-    expect(needsObservedHeight('markdown', false)).toBe(false);
+    expect(needsObservedHeight('toolgroup', false)).toBe(false);
   });
 
   it('实测优先：record 存在时 cached 直接采用，静态镜像不参与', () => {

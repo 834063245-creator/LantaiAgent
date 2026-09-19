@@ -1,5 +1,5 @@
 {
-  "fingerprint": "683867eb",
+  "fingerprint": "6e7afd1d",
   "keys": [
     "ANCHOR",
     "CORDIS_TOOL_NAMES",
@@ -14,6 +14,7 @@
     "INK_SIL_MASS_ALPHA",
     "Icon",
     "LOD_TEXT_MIN_PX",
+    "MARGINALIA_TOP",
     "MODE_DESCRIPTIONS",
     "MODE_LABELS",
     "McpPage",
@@ -140,6 +141,7 @@
     "regionFrame",
     "removeSecret",
     "reportObservedBlockHeight",
+    "reportObservedSidecarExtent",
     "rescanPresets",
     "resolveApiKey",
     "resolveAssetBlock",

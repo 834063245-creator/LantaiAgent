@@ -3753,7 +3753,7 @@
  * MARGINALIA_INSET（测高 max(正文, 夹注@侧栏) 的另一半）。 ── */
 .pp-marginalia {
   position: absolute;
-  top: 2px;
+  top: var(--pp-ch-marginalia-top); /* 测高镜像另一端：CHROME_DERIVED.marginaliaTop */
   left: calc(100% + var(--pp-ch-marginalia-offset));
   width: var(--pp-ch-marginalia-width);
   font-family: var(--f-song);
@@ -3764,12 +3764,16 @@
   padding-left: var(--pp-ch-marginalia-padL);
   white-space: pre-wrap;
 }
-/* 眉批折叠切换（P5 夹注恒折拍板延续：默认收起「▸ 思考 N 字」，点击展开） */
+/* 眉批折叠切换（P5 夹注恒折拍板延续：默认收起「▸ 思考 N 字」，点击展开）。
+ * 行高**必须显式钉死**（2026-09-19 夹注叠字批）：按钮的 UA 默认是
+ * `line-height: normal`，10px 字得 13px 行（引擎相关）；而块高 = max(正文,
+ * 眉批 extent) 要把这一行算进镜像——留默认值就是让测高去猜引擎。 */
 .pp-marginalia-toggle {
   display: block;
-  margin: 0 0 4px;
+  margin: 0 0 var(--pp-ch-marginalia-toggleGap);
   font-family: var(--f-mono);
   font-size: 10px;
+  line-height: var(--pp-ch-marginalia-toggleH);
   letter-spacing: 0.08em;
   color: var(--ink-3);
   background: none;
@@ -3812,11 +3816,13 @@
   border: var(--rule-dashed);
   font-family: var(--f-mono);
   font-size: 10px;
+  /* 行高同折叠钮：显式钉死（UA normal 是引擎相关值，测高镜像要的是定值） */
+  line-height: var(--pp-ch-marginalia-outLineH);
   letter-spacing: 0.1em;
   color: var(--ink-3);
   background: none;
   cursor: pointer;
-  padding: 2px 0;
+  padding: var(--pp-ch-marginalia-outPadV) 0;
   text-align: center;
   transition:
     border-color var(--snap),

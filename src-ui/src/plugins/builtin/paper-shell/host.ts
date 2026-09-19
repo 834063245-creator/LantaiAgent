@@ -79,11 +79,13 @@ export type { BlockMeasureCache } from '../../../paper/measure';
 export {
   clearPaperMeasureCache,
   createBlockMeasureCache,
+  MARGINALIA_TOP,
   measureBlockHeightCached,
   measureFolioHeadHeight,
   needsObservedHeight,
   observedKeyOf,
   reportObservedBlockHeight,
+  reportObservedSidecarExtent,
   subscribeObservedBlockHeights,
   USER_SHRINK_MIN_W,
 } from '../../../paper/measure';

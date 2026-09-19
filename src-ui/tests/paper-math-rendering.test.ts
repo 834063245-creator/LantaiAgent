@@ -218,11 +218,10 @@ describe('paper/measure — 数学块测高', () => {
     expect(h).toBeCloseTo(3 * 34 * 2.2, 1);
   });
 
-  it('含公式 markdown 触发 RO 判据（needsObservedHeight 内容感知）', () => {
-    expect(needsObservedHeight('markdown', false, '普通文本')).toBe(false);
-    expect(needsObservedHeight('markdown', false, '有 $x$ 公式')).toBe(true);
-    expect(needsObservedHeight('markdown', false, '$$块级$$')).toBe(true);
-    // 向后兼容：无 text 参数（旧调用）不触发
-    expect(needsObservedHeight('markdown', false)).toBe(false);
+  it('含公式 markdown 挂 RO 实测（2026-09-19 起：正文**恒**入实测族，内容感知判据退役）', () => {
+    // 旧行为是「含公式/表格才挂」（needsObservedHeight 内容感知）——真机对拍证明
+    // 正文块整体受 canvas↔DOM 折行分歧影响（163 条真会话正文：27 条块高有差），
+    // 与是否含公式无关 ⇒ 判据收敛为按 kind，公式只是其中一例。
+    expect(needsObservedHeight('markdown', false)).toBe(true);
   });
 });

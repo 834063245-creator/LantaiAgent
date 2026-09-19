@@ -6,7 +6,13 @@
 // 的显式失效信号（regions memo 消费）。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { clearPaperMeasureCache, reportObservedBlockHeight, subscribeObservedBlockHeights } from './host';
+import {
+  clearPaperMeasureCache,
+  MARGINALIA_TOP,
+  reportObservedBlockHeight,
+  reportObservedSidecarExtent,
+  subscribeObservedBlockHeights,
+} from './host';
 
 /** 块实测回写（paper-panel-split C1，自 PaperPanel 903-966 域内原样搬入）。
  *  - measureTick：字体加载（webfont 到位前 canvas 量的是回退字体宽度）→ 清全
@@ -39,6 +45,9 @@ export function useBlockMeasure() {
 
   const blockRoRef = useRef<ResizeObserver | null>(null);
   const blockRoElIds = useRef(new WeakMap<Element, string>());
+  /** 眉批栏（`.pp-marginalia`）目标表：出流子件，块级 RO 报不出它的高（绝对定位），
+   *  单独观察、单独上报（paper/measure.reportObservedSidecarExtent）。 */
+  const sidecarRoElIds = useRef(new WeakMap<Element, string>());
   /* 首报收敛去抖：滚动中不断有新卡挂载，逐次重排 = 布局脉冲；停下 120ms 后
    * 一次收敛全部登记（媒体图/反馈框等挂载后动态高仍走 changed 即时重排）。 */
   const convergeTimerRef = useRef<number | null>(null);
@@ -67,10 +76,16 @@ export function useBlockMeasure() {
       if (!blockRoRef.current) {
         blockRoRef.current = new ResizeObserver((entries) => {
           for (const e of entries) {
-            const ekey = blockRoElIds.current.get(e.target);
-            if (!ekey) continue;
             const box = e.borderBoxSize?.[0];
             const target = e.target as HTMLElement;
+            const sidecarKey = sidecarRoElIds.current.get(e.target);
+            if (sidecarKey) {
+              // 眉批栏 extent = 顶距 + 栏高（块高按设计要容下它，见 paper/measure 头注）
+              reportObservedSidecarExtent(sidecarKey, (box ? box.blockSize : target.offsetHeight) + MARGINALIA_TOP);
+              continue;
+            }
+            const ekey = blockRoElIds.current.get(e.target);
+            if (!ekey) continue;
             const verdict = reportObservedBlockHeight(
               ekey,
               box ? box.inlineSize : target.offsetWidth,
@@ -83,6 +98,14 @@ export function useBlockMeasure() {
       }
       blockRoElIds.current.set(el, key);
       blockRoRef.current.observe(el);
+      /* 眉批栏是块内的绝对定位子件：块级 RO 只报块的边框盒（不含它），而块高
+       * 按设计 = max(正文, 眉批 extent)——故同样观察它、单独上报。
+       * 挂载时刻取（眉批随块一起渲染；流式路径下块是带 sidecar 新建的）。 */
+      const aside = el.querySelector('.pp-marginalia');
+      if (aside) {
+        sidecarRoElIds.current.set(aside, key);
+        blockRoRef.current.observe(aside);
+      }
     },
     [scheduleConverge],
   );

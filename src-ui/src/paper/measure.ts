@@ -32,8 +32,6 @@ import {
   mdPlainText,
   parseMarkdown,
   parseMarkdownIncremental,
-  textHasMath,
-  textHasTable,
 } from './markdown';
 import { parseCircledSegments } from './marks';
 import { codeDisplay, hasArgsToShow, hasPayloadToShow, toolDisplay } from './tool-text';
@@ -997,6 +995,9 @@ interface ObservedHeight {
   h: number;
   /** 渲染态键（renderStateKey 产出）——同键才算同一种盒子。 */
   key: string;
+  /** 眉批栏 extent（块顶起算，含 top 与折叠钮行）——**出流子件**的实测高，
+   *  由壳层对 `.pp-marginalia` 的 RO 单独上报（见 reportObservedSidecarExtent）。 */
+  sc?: number;
 }
 
 const observedHeights = new Map<string, ObservedHeight>();
@@ -1065,6 +1066,33 @@ export function observedBlockHeightOf(observedKey: string, w: number): number | 
   return rec && rec.w === w && rec.key === key ? rec.h : undefined;
 }
 
+/** 眉批栏 extent 实测回写（壳层对 `.pp-marginalia` 的 RO 单独上报）。
+ *  眉批栏是**绝对定位的出流件**——块的边框盒装不下它，块级 RO 报不出这份高；
+ *  而块高按设计 = max(正文, 眉批 extent)（眉批恒容于块高，见 measureMarkdownBody）。
+ *  真机实测（真会话 40 组配对 × 四态）：静态镜像的 228px 窄列折行估计比 DOM 短
+ *  最多 218.75px，眉批尾巴整段越出块高。此上报与块级记录同键同宽（渲染态翻转
+ *  一并作废），消费端取 max（见 measureBlockHeightCached）。 */
+export function reportObservedSidecarExtent(observedKey: string, extent: number): void {
+  const [blockId, key] = splitObservedKey(observedKey);
+  const rec = observedHeights.get(blockId);
+  const sc = Math.ceil(extent);
+  if (!rec || rec.key !== key) {
+    // 块级记录未到（同帧内先后不定）：先登记半条（w=0 ⇒ 块级查询不认，安全）
+    observedHeights.set(blockId, { w: 0, h: 0, key, sc });
+    return;
+  }
+  if (rec.sc === sc) return;
+  observedHeights.set(blockId, { ...rec, sc });
+  notifyObserved();
+}
+
+/** 眉批栏 extent 实测（同键才有效；未上报过 = undefined，消费端回落静态镜像）。 */
+export function observedSidecarExtentOf(observedKey: string): number | undefined {
+  const [blockId, key] = splitObservedKey(observedKey);
+  const rec = observedHeights.get(blockId);
+  return rec && rec.key === key ? rec.sc : undefined;
+}
+
 function notifyObserved(): void {
   for (const fn of observedListeners) fn();
 }
@@ -1109,12 +1137,19 @@ const BUILTIN_MEASURE_KINDS = new Set<string>([
  *  更高（最大 +49px > 单元内间距 32px ⇒ 末行压到下一块脚注上 = 叠字 17.94px），
  *  239 条 DOM 更矮（最大 −153px = 幻影空档）。对拍另证脚注侧 468 次零偏差
  *  （工具卡载荷段全部封顶，误差无处累积）——这就是「为什么总是夹注压脚注」。
- *  静态镜像对这一族结构性失明 ⇒ 挂 RO 实测（补丁后同语料复算：叠字 0 块）。 */
-export function needsObservedHeight(kind: BlockKind, hasAsset: boolean, text?: string): boolean {
+ *  静态镜像对这一族结构性失明 ⇒ 挂 RO 实测（补丁后同语料复算：叠字 0 块）。
+ *
+ *  正文 markdown / 抄录 diff（2026-09-19 第二批实测）：同一把失明的尺子。
+ *  真会话对拍——正文 163 条里 27 条（17%）块高有差（正方向最大 +34px = 整一行；
+ *  负方向最大 −85px = 2.5 行幻影空档）；抄录 36 条里 4 条（11%，全为负方向
+ *  ≤−30px）。⇒ 一并入族。
+ *  **不入族**者亦有实测依据：来文 user 60/60 零偏差（题签/花押是定值 chrome，
+ *  正文短）；工具 tool / 程文 code 载荷段全部封顶（468/468 零偏差）；工具组/
+ *  子代理头是恒高结构块（一行注线 + 折叠行）。省下的 RO 目标是虚拟化窗口里
+ *  数量最多的一批。 */
+export function needsObservedHeight(kind: BlockKind, hasAsset: boolean): boolean {
   if (hasAsset || kind === 'plan' || !BUILTIN_MEASURE_KINDS.has(kind)) return true;
-  if (kind === 'reasoning') return true;
-  if (kind === 'markdown' && text != null && (textHasMath(text) || textHasTable(text))) return true;
-  return false;
+  return kind === 'reasoning' || kind === 'markdown' || kind === 'diff';
 }
 
 /** 测试复位（生产不调用）。 */
@@ -1208,9 +1243,13 @@ function inkShifted(sources: InkSource[], dy: number): InkSource[] {
 }
 
 /* ── 眉批栏（P5 夹注旁注化）——.pp-marginalia 镜像：块右缘 24px 起、总宽 240，
- * 左规线 2 + padding 10 → 内容宽 228；字体沿用夹注族（13.5px/1.85 石墨）。 ── */
+ * 左规线 2 + padding 10 → 内容宽 228；字体沿用夹注族（13.5px/1.85 石墨）。
+ * 纵向 chrome（top / 折叠钮行 / 占位行）同源 CHROME_DERIVED（2026-09-19 补）。 ── */
 export const MARGINALIA_W = CHROME_DERIVED.marginaliaW;
 export const MARGINALIA_INSET = CHROME_DERIVED.marginaliaInset;
+export const MARGINALIA_TOP = CHROME_DERIVED.marginaliaTop;
+export const MARGINALIA_TOGGLE_H = CHROME_DERIVED.marginaliaToggleH;
+export const MARGINALIA_OUT_H = CHROME_DERIVED.marginaliaOutH;
 
 export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
   const p = b.payload as PayloadLike;
@@ -1590,24 +1629,30 @@ export function measureMdBlocks(blocks: MdBlock[], w: number, y0 = 0, inset0 = 0
  *  blocks 由调用方解析（全量 parseMarkdown 或增量 parseMarkdownIncremental）
  *  ——增量路径复用同函数，测量与渲染共用单一解析的纪律不变。
  *  sidecarOut（2026-08-31 移出语义）：`:sc` 快照钉在画布上时眉批栏只剩占位
- *  一行（.pp-marginalia-out，实高 ~18px）——按折叠态同款「一行夹注」计
- *  （安全方向超测，与折叠态测高约定一致）。 */
+ *  一行（.pp-marginalia-out）——按占位行实高计（真机实测 19px = 上下内距 2×2
+ *  + 上下规线 1×2 + 行盒 13）。
+ *  2026-09-19（夹注叠字批）：眉批栏纵向 chrome 补齐——extent = top + 栏高，
+ *  栏高 = 文字高 + 折叠钮行（16px）/ 或只剩钮行 / 或占位行。旧实现只算文字高，
+ *  真机实测越出块高最多 218.75px（长夹注在 228px 窄列里折行分歧被放大；其中
+ *  约 15px 是这段 chrome 的确定项）。挂载后另有实测 extent 兜底（observedSidecarExtentOf）。 */
 function measureMarkdownBody(blocks: MdBlock[], b: SourcedBlock, sidecarFolded = false, sidecarOut = false): number {
   const bodyH = measureMdBlocks(blocks, b.w).h;
   // P5 眉批化：夹注挂侧栏（.pp-marginalia）——复合块高 = max(正文@全宽,
-  // 夹注@侧栏内容宽)。眉批恒容于块高内 → 栈几何零变化（方案甲的决定性
+  // 眉批@侧栏内容宽+纵向 chrome)。眉批恒容于块高内 → 栈几何零变化（方案甲的决定性
   // 优势，见 pretext-typography-plan §三）。折叠态（夹注恒折拍板）只占一行。
   const sidecar = (b.payload as { sidecar?: { text: string } }).sidecar;
   if (!sidecar?.text) return bodyH;
   const noteH =
     sidecarOut || sidecarFolded
-      ? PAPER_REASONING_LINE_HEIGHT
-      : measureTextHeight(
+      ? MARGINALIA_TOP + (sidecarOut ? MARGINALIA_OUT_H : MARGINALIA_TOGGLE_H)
+      : MARGINALIA_TOP +
+        measureTextHeight(
           sidecar.text,
           MARGINALIA_W - MARGINALIA_INSET,
           PAPER_REASONING_FONT,
           PAPER_REASONING_LINE_HEIGHT,
-        );
+        ) +
+        MARGINALIA_TOGGLE_H;
   return Math.max(bodyH, noteH);
 }
 
@@ -1840,25 +1885,30 @@ export function measureBlockHeightCached(
    * 独有**的竖直增量，签名里必须带 state——否则同一块在流/钉两态之间共用一条
    * 缓存，拔钉/钉住后高度照旧（虚拟化剔除矩形错、洞位错）。 */
   if (b.state === 'pinned') return pinnedBlockHeightCached(b, cache, folded, sidecarFolded, sidecarOut);
-  const obs = needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
-    ? observedBlockHeightOf(observedKeyOf(b, folded, sidecarFolded, sidecarOut), b.w)
-    : undefined;
-  const sig = `${measureSignature(b, folded, sidecarFolded, sidecarOut)}|w=${b.w}|obs=${obs ?? ''}`;
+  const obsKey = needsObservedHeight(b.kind, b.asset != null)
+    ? observedKeyOf(b, folded, sidecarFolded, sidecarOut)
+    : null;
+  const obs = obsKey ? observedBlockHeightOf(obsKey, b.w) : undefined;
+  /* 眉批栏是绝对定位的出流件：块的边框盒装不下它，而块高按设计 = max(正文,
+   * 眉批 extent)——故实测路径要把两个实测取 max（静态镜像同款见 measureMarkdownBody）。 */
+  const sc = obsKey ? observedSidecarExtentOf(obsKey) : undefined;
+  const sig = `${measureSignature(b, folded, sidecarFolded, sidecarOut)}|w=${b.w}|obs=${obs ?? ''}|sc=${sc ?? ''}`;
   const hit = cache.byId.get(b.id);
   if (hit && hit.sig === sig) return hit.h;
   let h: number;
   if (obs != null) {
-    h = obs;
+    h = sc != null ? Math.max(obs, sc) : obs;
   } else if (b.kind === 'markdown') {
     const p = b.payload as { text?: string };
     const text = p.text ?? '';
     if (!text) {
-      h = 0;
+      h = sc ?? 0;
     } else {
       const prev = cache.mdParse.get(b.id) ?? null;
       const res = parseMarkdownIncremental(text, prev);
       cache.mdParse.set(b.id, res.state);
       h = measureMarkdownBody(res.blocks, b, sidecarFolded, sidecarOut);
+      if (sc != null) h = Math.max(h, sc);
     }
   } else {
     h = measureBlockHeight(b, folded, sidecarFolded, sidecarOut);
@@ -1885,10 +1935,12 @@ function pinnedBlockHeightCached(
   sidecarFolded = false,
   sidecarOut = false,
 ): number {
-  const obs = needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
-    ? observedBlockHeightOf(observedKeyOf(b, folded, sidecarFolded, sidecarOut), b.w)
-    : undefined;
-  if (obs != null) return obs;
+  const obsKey = needsObservedHeight(b.kind, b.asset != null)
+    ? observedKeyOf(b, folded, sidecarFolded, sidecarOut)
+    : null;
+  const obs = obsKey ? observedBlockHeightOf(obsKey, b.w) : undefined;
+  const sc = obsKey ? observedSidecarExtentOf(obsKey) : undefined;
+  if (obs != null) return sc != null ? Math.max(obs, sc) : obs;
   const inner: SourcedBlock = {
     ...b,
     id: `${b.id}#pin`,

@@ -1227,7 +1227,7 @@ export function PaperPanel() {
                         data-session-id={r.sessionId}
                         data-block-id={b.id}
                         data-block-observed={
-                          needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
+                          needsObservedHeight(b.kind, b.asset != null)
                             ? observedKeyOf(b, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
                             : undefined
                         }
@@ -1287,7 +1287,7 @@ export function PaperPanel() {
                         data-session-id={r.sessionId}
                         data-block-id={b.id}
                         data-block-observed={
-                          needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
+                          needsObservedHeight(b.kind, b.asset != null)
                             ? observedKeyOf(b, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
                             : undefined
                         }

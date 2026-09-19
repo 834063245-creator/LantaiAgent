@@ -5,6 +5,8 @@
 // 紧随 text）/ 回退规则（无正文后继不丢字）/ 复合测高 max(正文, 夹注@侧栏)。
 // measure 依赖 Canvas 2D（jsdom 没有）→ vi.mock pretext 全家（paper-v3a 同款）。
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { layoutMock, richStatsMock } = vi.hoisted(() => ({
@@ -27,11 +29,18 @@ import type { SourcedBlock } from '../src/paper/block-model';
 import {
   clearPaperMeasureCache,
   createBlockMeasureCache,
+  MARGINALIA_OUT_H,
+  MARGINALIA_TOGGLE_H,
+  MARGINALIA_TOP,
   measureBlockHeight,
   measureBlockHeightCached,
-  PAPER_REASONING_LINE_HEIGHT,
+  observedKeyOf,
+  observedSidecarExtentOf,
+  reportObservedBlockHeight,
+  reportObservedSidecarExtent,
 } from '../src/paper/measure';
 import { translateMessage } from '../src/paper/translate';
+import { injectPaperTokens } from '../src/paper/type-tokens';
 import type { AssistantMessage } from '../src/ui/message-model';
 
 function asstMsg(parts: AssistantMessage['parts']): AssistantMessage {
@@ -121,16 +130,23 @@ describe('measure 眉批复合块（P5）', () => {
     expect(measureBlockHeight(mdBlock('单段'))).toBe(36);
   });
 
-  it('有眉批：块高 = max(正文, 夹注@侧栏)——夹注更高时块长高', () => {
+  it('有眉批：块高 = max(正文, 眉批 extent)——眉批更高时块长高（extent 含纵向 chrome）', () => {
     // 第 1 次 layout = 正文（36），第 2 次 = 夹注@侧栏（override 100）
     layoutMock.mockReturnValueOnce({ height: 36, lineCount: 2 }).mockReturnValueOnce({ height: 100, lineCount: 2 });
-    expect(measureBlockHeight(mdBlock('正文', { text: '一段很长很长的眉批' }))).toBe(100);
+    // 2026-09-19：noteH = top + 文字高 + 折叠钮行（旧实现只算文字高，真机实测
+    // 眉批尾巴越出块高最多 218.75px）
+    expect(measureBlockHeight(mdBlock('正文', { text: '一段很长很长的眉批' }))).toBe(
+      100 + MARGINALIA_TOP + MARGINALIA_TOGGLE_H,
+    );
   });
 
   it('夹注低于正文时取正文高（眉批恒容于块高——栈几何零变化）', () => {
-    // 正文 36（第 1 次），夹注 override 20 → max = 36
-    layoutMock.mockReturnValueOnce({ height: 36, lineCount: 2 }).mockReturnValueOnce({ height: 20, lineCount: 1 });
+    // 正文 36（第 1 次），眉批文字 override 10 → max(36, 10 + chrome 19) = 36
+    layoutMock.mockReturnValueOnce({ height: 36, lineCount: 2 }).mockReturnValueOnce({ height: 10, lineCount: 1 });
     expect(measureBlockHeight(mdBlock('正文', { text: '短眉批' }))).toBe(36);
+    // 反例守边界：眉批文字 20 → 20 + chrome 19 = 39 > 正文 36 ⇒ 块随眉批长高
+    layoutMock.mockReturnValueOnce({ height: 36, lineCount: 2 }).mockReturnValueOnce({ height: 20, lineCount: 1 });
+    expect(measureBlockHeight(mdBlock('正文', { text: '中眉批' }))).toBe(20 + MARGINALIA_TOP + MARGINALIA_TOGGLE_H);
   });
 
   it('眉批文本变化 → 测量签名失效重测（缓存正确性）', () => {
@@ -140,15 +156,18 @@ describe('measure 眉批复合块（P5）', () => {
     // payload 原位变更（流式/重组语义）
     (b.payload as { sidecar?: { text: string } }).sidecar = { text: '眉批二' };
     const hit = measureBlockHeightCached(b, cache);
-    expect(hit).toBe(36); // 重测成功（mock 恒 36）——关键是不命中旧缓存也不抛
+    // 重测成功（mock 恒 36）——关键是不命中旧缓存也不抛；眉批侧 chrome 仍在
+    expect(hit).toBe(36 + MARGINALIA_TOP + MARGINALIA_TOGGLE_H);
   });
 
   /* ═══ 眉批已钉出（2026-08-31 移出语义：`:sc` 快照钉在画布）═══ */
 
-  it('眉批已钉出：眉批栏只剩占位一行（noteH = 一行夹注，占位实高更低）', () => {
-    // 正文很矮（20）→ max(20, 一行夹注) = 一行夹注
+  it('眉批已钉出：眉批栏只剩占位一行（extent = top + 占位行实高，非折叠态一行夹注）', () => {
+    // 正文很矮（20）→ max(20, top + 占位行 19) = 21
     layoutMock.mockReturnValueOnce({ height: 20, lineCount: 1 });
-    expect(measureBlockHeight(mdBlock('短', { text: '长眉批' }), false, false, true)).toBe(PAPER_REASONING_LINE_HEIGHT);
+    expect(measureBlockHeight(mdBlock('短', { text: '长眉批' }), false, false, true)).toBe(
+      Math.max(20, MARGINALIA_TOP + MARGINALIA_OUT_H),
+    );
   });
 
   it('钉出/拔钉 → 测量签名失效重测（out 维度入签）', () => {
@@ -156,10 +175,78 @@ describe('measure 眉批复合块（P5）', () => {
     const b = mdBlock('正文', { text: '长眉批' });
     // 展开态：正文 1 次 + 夹注侧栏 1 次 layout
     layoutMock.mockReturnValueOnce({ height: 36, lineCount: 2 }).mockReturnValueOnce({ height: 100, lineCount: 2 });
-    expect(measureBlockHeightCached(b, cache, false, false, false)).toBe(100);
-    // 钉出：签名变化必重测——夹注侧不再计高（占位一行，零 layout 调用）
+    expect(measureBlockHeightCached(b, cache, false, false, false)).toBe(100 + MARGINALIA_TOP + MARGINALIA_TOGGLE_H);
+    // 钉出：签名变化必重测——夹注侧不再计高（占位一行）
     const calls = layoutMock.mock.calls.length;
-    expect(measureBlockHeightCached(b, cache, false, false, true)).toBe(Math.max(36, PAPER_REASONING_LINE_HEIGHT));
+    expect(measureBlockHeightCached(b, cache, false, false, true)).toBe(
+      Math.max(36, MARGINALIA_TOP + MARGINALIA_OUT_H),
+    );
     expect(layoutMock.mock.calls.length).toBe(calls + 1);
+  });
+
+  /* ═══ 眉批 extent 实测回写（2026-09-19：228px 窄列折行分歧被放大）═══ */
+
+  it('眉批 extent 实测优先：块高 = max(块实测, 眉批实测 extent)——两个实测取 max', () => {
+    const cache = createBlockMeasureCache();
+    const b = mdBlock('正文', { text: '长眉批' });
+    const key = observedKeyOf(b, false, true, false);
+    // 块级实测（正文盒）68、眉批 extent 24014 ⇒ 块高取 24014（静态镜像只会给 ~23800）
+    reportObservedBlockHeight(key, b.w, 68);
+    reportObservedSidecarExtent(key, 24014);
+    expect(observedSidecarExtentOf(key)).toBe(24014);
+    expect(measureBlockHeightCached(b, cache, false, true, false)).toBe(24014);
+    // 眉批钉出（换态）⇒ 旧 extent 作废，回落静态镜像
+    expect(observedSidecarExtentOf(observedKeyOf(b, false, true, true))).toBeUndefined();
+  });
+
+  it('眉批 extent 变化 → 签名变化 → 重测采用新值（窄列折行随宽度/内容变）', () => {
+    const cache = createBlockMeasureCache();
+    const b = mdBlock('正文', { text: '长眉批' });
+    const key = observedKeyOf(b, false, true, false);
+    reportObservedBlockHeight(key, b.w, 68);
+    reportObservedSidecarExtent(key, 500);
+    expect(measureBlockHeightCached(b, cache, false, true, false)).toBe(500);
+    reportObservedSidecarExtent(key, 300);
+    expect(measureBlockHeightCached(b, cache, false, true, false)).toBe(300);
+  });
+});
+
+/* ═══ 眉批纵向 chrome 的 CSS 端在场（镜像的另一半，2026-09-19）═══
+ * 测高镜像只在 CSS 真的按同一批 token 取值时才成立：顶距不许再是裸字面量
+ * `top: 2px`，两个按钮的行高不许再吃 UA 的 `line-height: normal`（引擎相关值，
+ * 真机实测 10px 字得 13px 行——正是镜像要算的那一项）。 */
+
+describe('眉批纵向 chrome：CSS 与 token 同源', () => {
+  const CSS = readFileSync(join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
+  const ruleOf = (sel: string): string => {
+    const i = CSS.indexOf(sel);
+    if (i < 0) throw new Error(`选择器缺席：${sel}`);
+    return CSS.slice(i, CSS.indexOf('}', i));
+  };
+
+  it('.pp-marginalia 顶距走 token（禁裸 2px）', () => {
+    const rule = ruleOf('.pp-marginalia {');
+    expect(rule).toContain('top: var(--pp-ch-marginalia-top)');
+    expect(rule).not.toMatch(/top:\s*2px/);
+  });
+
+  it('折叠钮 / 移出占位行高显式钉死（不吃 UA line-height: normal）', () => {
+    expect(ruleOf('.pp-marginalia-toggle {')).toContain('line-height: var(--pp-ch-marginalia-toggleH)');
+    expect(ruleOf('.pp-marginalia-toggle {')).toContain('margin: 0 0 var(--pp-ch-marginalia-toggleGap)');
+    expect(ruleOf('.pp-marginalia-out {')).toContain('line-height: var(--pp-ch-marginalia-outLineH)');
+    expect(ruleOf('.pp-marginalia-out {')).toContain('padding: var(--pp-ch-marginalia-outPadV) 0');
+  });
+
+  it('token 注入表带齐四项（改 token 即改 CSS 用值）', () => {
+    const injected: Record<string, string> = {};
+    injectPaperTokens({
+      style: { setProperty: (k: string, v: string) => (injected[k] = v) },
+    } as unknown as HTMLElement);
+    expect(injected['--pp-ch-marginalia-top']).toBe(`${MARGINALIA_TOP}px`);
+    expect(injected['--pp-ch-marginalia-toggleH']).toBe('13px');
+    expect(injected['--pp-ch-marginalia-toggleGap']).toBe('4px');
+    expect(injected['--pp-ch-marginalia-outLineH']).toBe('13px');
+    expect(MARGINALIA_TOGGLE_H).toBe(13 + 4); // 钮行 + 钮下距
+    expect(MARGINALIA_OUT_H).toBe(2 * 2 + 2 * 1 + 13); // 上下内距 + 上下规线 + 行盒
   });
 });

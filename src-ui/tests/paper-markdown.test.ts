@@ -277,10 +277,10 @@ describe('paper/measure — markdown 计高（mock 36/段）', () => {
     for (const call of layoutMock.mock.calls) expect(call[1]).toBeCloseTo(720 / 3 - 16, 5);
   });
 
-  it('含表格 markdown 触发 RO 判据（needsObservedHeight——同公式先例）', () => {
-    expect(needsObservedHeight('markdown', false, '| a |\n| --- |\n| 1 |')).toBe(true);
-    expect(needsObservedHeight('markdown', false, 'a | b（纯竖线行无分隔行）')).toBe(false);
-    expect(needsObservedHeight('markdown', false, '普通文本')).toBe(false);
+  it('正文块挂 RO 实测（2026-09-19：按 kind 恒入族，内容感知判据退役）', () => {
+    // 真机对拍：正文块的测高偏差与内容无关（163 条真会话正文 27 条块高有差，
+    // 最大 −85px 幻影空档 / +34px 整行）——表格/公式只是其中一案。
+    expect(needsObservedHeight('markdown', false)).toBe(true);
   });
 
   it('嵌套列表 = 项文本 + 嵌套列表（+4 顶距）', () => {
