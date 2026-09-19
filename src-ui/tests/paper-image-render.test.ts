@@ -179,13 +179,14 @@ describe('paper/measure — md img 固定盒（B4 D-9）', () => {
   const W = 720;
   it('img 块高 = 固定盒（末元素无 gap）', () => {
     const blocks = parseMarkdown('![图](https://example.com/a.png)');
-    expect(measureMdBlocks(blocks, W)).toBe(MD_TOKENS.imgBoxH);
+    // measureMdBlocks 返回 { h, ink }（2026-09-20：墨迹几何与测高同趟产出）
+    expect(measureMdBlocks(blocks, W).h).toBe(MD_TOKENS.imgBoxH);
   });
 
   it('img + 后继段落：盒 + gap + 段落高', () => {
     const blocks = parseMarkdown('![图](https://example.com/a.png)\n\n后文');
-    const onlyImg = measureMdBlocks([blocks[0]], W);
-    const both = measureMdBlocks(blocks, W);
+    const onlyImg = measureMdBlocks([blocks[0]], W).h;
+    const both = measureMdBlocks(blocks, W).h;
     // 差值 = imgGap + 段落高（pretext mock 恒 36 + 末元素 p 无 gap）
     expect(both - onlyImg).toBe(MD_TOKENS.imgGap + 36);
   });

@@ -5,11 +5,12 @@
 
 // 远景三档行为考官（P4c，2026-09-06 用户拍板「奔效果最好的方向」）——挂真实
 // PaperPanel 穿全层，钉三件事：
-//   ① DOM 面：卷首头/边缘手柄在文字档在场、行影档退场（缩糊的 DOM 文本
-//     不如无——卷名由 canvas 地志标签接管）；
-//   ② 绘制通道：文字档画真文字（fillText），行影档画行影墨条（fillRect），
-//     通道随档切换 = 分档渲染真的在跑；
+//   ① DOM 面：接管阈（0.36）之上流块与卷首头照常渲染，之下双双退场
+//      （卷名由 canvas 地志标签接管）；
+//   ② 绘制通道：行影档画行影墨条（fillRect），fillText 只剩地志标签；
 //   ③ 迟滞带：0.36-0.39 之间往返不闪档（DOM 不抖）。
+// 2026-09-20：接管阈自 0.55 下移到行影档边界 0.36（用户拍板）——可读区留给
+// DOM，切轨只发生在「本来就读不清」的地方。
 // harness 时序纪律同 paper-regionsref-wiring：jsdom clientWidth=0 的 RO
 // 直写须覆盖 + 预置 restoreView 掐掉挂载期视角飞行（见该文件注释）。
 
@@ -60,6 +61,10 @@ class Fake2dCtx {
   globalAlpha = 1;
   setTransform(): void {}
   clearRect(): void {}
+  /** 基线半行距探针（InkLayer halfLeading 用 measureText 读字体正常行高）。 */
+  measureText(): { width: number; fontBoundingBoxAscent: number; fontBoundingBoxDescent: number } {
+    return { width: 100, fontBoundingBoxAscent: 16, fontBoundingBoxDescent: 5 };
+  }
   fillRect(): void {
     inkStats.fillRect++;
   }
@@ -202,19 +207,23 @@ describe('远景三档（P4c）——分档渲染行为考官', () => {
     });
   }
 
-  it('文字档（zoom 0.45）：卷首头 DOM 在场 + 真文字缩微通道（fillText 带块文字字体）', async () => {
+  it('文字档（zoom 0.45）：DOM 块在场（接管阈 0.36 之上）+ 卷首头在场', async () => {
     await mountAtZoom(0.45);
     expect(container?.querySelectorAll('.pp-folio-head').length).toBe(1);
-    expect(inkStats.fillText).toBeGreaterThan(0);
-    // 块文字字体在场（非标签独占）——真缩微通道在画
-    expect([...inkFonts].some((f) => !f.startsWith('700'))).toBe(true);
+    /* 2026-09-20 接管阈下移（0.55 → 0.36）：0.45 在可读区，DOM 照常渲染、
+       InkLayer 不在场——切轨只发生在「本来就读不清」的地方。 */
+    expect(container?.querySelectorAll('.pp-ink-layer').length).toBe(0);
+    expect(container?.querySelectorAll('.pp-block').length).toBeGreaterThan(0);
+    expect(inkStats.fillText).toBe(0);
   }, 30_000);
 
-  it('行影档（zoom 0.25）：卷首头退场 + 行影墨条通道（fillRect > 0）+ fillText 只剩地志标签字体', async () => {
+  it('行影档（zoom 0.25）：卷首头退场 + 流块 DOM 退场（墨迹接管）+ fillText 只剩地志标签字体', async () => {
     await mountAtZoom(0.25);
     expect(container?.querySelectorAll('.pp-folio-head').length).toBe(0);
     expect(container?.querySelectorAll('.pp-region-edge').length).toBe(0);
-    expect(inkStats.fillRect).toBeGreaterThan(0);
+    expect(container?.querySelectorAll('.pp-ink-layer').length).toBe(1);
+    expect(container?.querySelectorAll('.pp-block').length).toBe(0); // 流块 DOM 全退
+    expect(inkStats.fillRect).toBeGreaterThan(0); // 行影墨条通道在画
     // 真文字通道退役：行影档 fillText 只允许卷名标签（700 粗宋体栈）
     expect([...inkFonts].every((f) => f.startsWith('700'))).toBe(true);
   }, 30_000);
@@ -236,6 +245,7 @@ describe('远景三档（P4c）——分档渲染行为考官', () => {
       await new Promise((r) => setTimeout(r, 120));
     });
     expect(container?.querySelectorAll('.pp-folio-head').length).toBe(1); // 越过退出阈回文字档
+    expect(container?.querySelectorAll('.pp-ink-layer').length).toBe(0); // 墨迹层同帧退场（DOM 回场）
   }, 30_000);
 
   it('剪影档（zoom 0.1）：块级墨影通道在画（fillRect > 0），卷首头仍退场', async () => {

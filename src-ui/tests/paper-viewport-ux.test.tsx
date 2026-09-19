@@ -63,6 +63,10 @@ class Fake2dCtx {
   globalAlpha = 1;
   setTransform(): void {}
   clearRect(): void {}
+  /** 基线半行距探针（InkLayer halfLeading 用 measureText 读字体正常行高）。 */
+  measureText(): { width: number; fontBoundingBoxAscent: number; fontBoundingBoxDescent: number } {
+    return { width: 100, fontBoundingBoxAscent: 16, fontBoundingBoxDescent: 5 };
+  }
   fillRect(): void {}
   fillText(): void {}
   beginPath(): void {}

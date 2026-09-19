@@ -21,9 +21,11 @@
 // 距离观感的第一杀手。
 //
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例；
-// 例外 = 纯函数（无实例身份）直连真身：卷名显示兜底 volumeDisplayName。
+// 例外 = 纯函数（无实例身份）直连真身：卷名显示兜底 volumeDisplayName、
+// 卷名标签落位 regionLabelTopWorld（纯几何，不进宿主面 ⇒ 不动面指纹）。
 
 import { useEffect, useRef } from 'react';
+import { regionLabelTopWorld } from '../../../paper/ink';
 import { volumeDisplayName } from '../../../state/volume-name';
 import type { InkCache, LodTier, RegionView, SourcedBlock } from './host';
 import {
@@ -58,6 +60,52 @@ interface InkLayerProps {
 /** 桩条屏幕高（折叠/空块的短矩形——text 为空串的墨条走矩形路径）。 */
 function stubH(zoom: number): number {
   return Math.max(1.5, Math.min(10, 14 * zoom * 0.6));
+}
+
+/** 解析 measure 字体串（`${size}px ${stack}`）→ 缩放直绘用的字号/栈。
+ *  与 paper/ink.ts parseFont 同款（渲染层只消费字体串，不 import 内核内部）。 */
+function parseInkFont(font: string): { size: number; stack: string } {
+  const m = /^([\d.]+)px (.*)$/.exec(font);
+  return m ? { size: Number.parseFloat(m[1]), stack: m[2] } : { size: 14, stack: font };
+}
+
+/* ── 基线对齐（2026-09-20 墨迹几何重做；实测驱动）──
+ * 墨条的 dy = **行盒顶**（与 DOM 同源，见 paper/measure.ts InkSource.y）。但
+ * canvas 的 textBaseline:'top' 落在 em 盒顶 ≠ 行盒顶——实机受控实验（四种字号
+ * 各量一次：DOM 字形盒顶 vs canvas 墨迹顶）读数：
+ *   17px/34 → DOM 字形盒顶在行盒内 +6，'top' 偏差 −6；
+ *   13.5/24.975 → +3 / −3；11.5/18.4 → +1 / −1；22/36.3 → +3 / −3。
+ * 即 'top' 恒把文字画高一个半行距。改用 **'alphabetic' 把基线钉在 DOM 基线上**：
+ *   baseline = 行盒顶 + 半行距 + 字体 ascent
+ *   半行距 = (行高 − (ascent + descent)) / 2   ← CSS 行盒居中字形的定义
+ * 实测该式在四种字号下基线与 DOM **完全重合**（残差 = 字形实际墨迹顶与
+ * fontBoundingBox 顶之差，属字体度量面，非位置错）。
+ * 缓存按字体串记忆（每帧只查表，不进测量）。 */
+interface FontMetrics {
+  ascent: number;
+  /** 字体正常行盒高（ascent + descent） */
+  normal: number;
+}
+const FONT_METRICS_CACHE = new Map<string, FontMetrics>();
+function fontMetrics(size: number, stack: string): FontMetrics {
+  const key = `${size}px ${stack}`;
+  let fm = FONT_METRICS_CACHE.get(key);
+  if (fm === undefined) {
+    const probe = document.createElement('canvas').getContext('2d');
+    let ascent = size * 0.9;
+    let normal = size * 1.2;
+    if (probe) {
+      probe.font = key;
+      const m = probe.measureText('Hg中');
+      if (m.fontBoundingBoxAscent !== undefined && m.fontBoundingBoxDescent !== undefined) {
+        ascent = m.fontBoundingBoxAscent;
+        normal = m.fontBoundingBoxAscent + m.fontBoundingBoxDescent;
+      }
+    }
+    fm = { ascent, normal };
+    FONT_METRICS_CACHE.set(key, fm);
+  }
+  return fm;
 }
 
 export function InkLayer({ regionsRef, foldedOf, inkCache }: InkLayerProps) {
@@ -106,25 +154,44 @@ export function InkLayer({ regionsRef, foldedOf, inkCache }: InkLayerProps) {
         // 文字档且字号够读 → 真文字缩微（本档的质感所在）
         if (tier === 'text' && ink.size * view.zoom >= LOD_TEXT_MIN_PX) {
           ctx.fillStyle = inkColorOf(b.kind);
-          ctx.textBaseline = 'top';
-          ctx.font = `${(ink.size * view.zoom).toFixed(2)}px ${ink.stack}`;
+          /* 基线钉在 DOM 基线上（见 fontMetrics 注）：'alphabetic' + 行盒顶
+           * + 半行距 + ascent。半行距按**该墨条的行高**现算（同一块内不同源的
+           * 行高可以不同：正文 34 / 行内码族 21.25）。 */
+          ctx.textBaseline = 'alphabetic';
           for (const bar of ink.bars) {
             const p = worldToScreen(view, x + bar.x0, y + bar.dy);
-            const px = snap(p.x);
-            const py = snap(p.y);
+            const px = p.x;
+            // 半行距按**本条**行高算（多源块内行高可以不同）
+            const lineH = bar.lineH * view.zoom;
+            // 行盒顶 → 基线；文字**不做设备像素取整**（2026-09-20）：取整让文字
+            // 位置随缩放逐帧跳格，是「文字位置跳变」的第二病灶；Chromium 对亚
+            // 像素文字位置本就有抗锯齿。矩形（fillRect）保留取整——细条/描边的
+            // 半像素才是真的双倍糊。
+            const fm = fontMetrics(bar.fontSize, bar.stack);
+            const py = p.y + Math.max(0, (lineH - fm.normal * view.zoom) / 2) + fm.ascent * view.zoom;
             if (py < -20 || py > canvasSize.h + 20 || px > canvasSize.w || px + bar.w * view.zoom < 0) continue;
-            if (bar.text) {
+            if (bar.frags) {
+              // 富行内：逐片段直绘（各自字体）。基线用**该源**的度量算（行内码族
+              // 字号小一档，其行盒与主源同高，同基线才是对的——与 DOM 一致）
+              for (const f of bar.frags) {
+                const ff = parseInkFont(f.font);
+                ctx.font = `${(ff.size * view.zoom).toFixed(2)}px ${ff.stack}`;
+                ctx.fillText(f.text, px + f.x * view.zoom, py);
+              }
+            } else if (bar.text) {
+              ctx.font = `${(bar.fontSize * view.zoom).toFixed(2)}px ${bar.stack}`;
               ctx.fillText(bar.text, px, py);
             } else {
-              ctx.fillRect(px, py, Math.max(2, bar.w * view.zoom), stubH(view.zoom));
+              // 桩条是矩形：仍按行盒顶画（无字形基线可言）
+              ctx.fillRect(snap(px), snap(p.y), Math.max(2, bar.w * view.zoom), stubH(view.zoom));
             }
           }
           return;
         }
         // 行影档：文字的影子——真行宽/真行距墨条（距离墨量已兑水，见 INK_BAR_COLORS）
         ctx.fillStyle = inkBarColorOf(b.kind);
-        const barH = Math.max(1.25, Math.min(3.5, ink.lineH * view.zoom * 0.55));
         for (const bar of ink.bars) {
+          const barH = Math.max(1.25, Math.min(3.5, bar.lineH * view.zoom * 0.55));
           const p = worldToScreen(view, x + bar.x0, y + bar.dy);
           const px = snap(p.x);
           const py = snap(p.y);
@@ -156,9 +223,10 @@ export function InkLayer({ regionsRef, foldedOf, inkCache }: InkLayerProps) {
 
       /* 远档卷名（地志标签）：卷首头 DOM 退场后由本层接管——字号有下限
        * （地图标签逻辑），墨色 ink-1（卷首题字同色，朱砂=人铁律不挪用）。
-       * 位置 = 卷首（regionTop - folioH 之上）世界位，横向居中卷宽。 */
+       * 落位（2026-09-20 修「卷名跳出流区」）：**锚在纸面内**——位置由纯几何
+       * regionLabelTopWorld 定（见 paper/ink.ts 注：旧实现把屏幕偏移当世界偏移，
+       * 实机测得标签恒在纸顶之上 51-60 世界单位）。 */
       const drawRegionLabels = (): void => {
-        if (tier === 'text') return;
         const labelPx = Math.max(INK_LABEL_MIN_PX, 32 * view.zoom);
         ctx.fillStyle = `rgba(${INK_RGB}, ${INK_LABEL_ALPHA})`;
         ctx.textBaseline = 'top';
@@ -167,8 +235,8 @@ export function InkLayer({ regionsRef, foldedOf, inkCache }: InkLayerProps) {
         for (const r of regionsRef.current) {
           const half = r.anchor.width / 2;
           if (r.anchor.anchorX + half < vx0 || r.anchor.anchorX - half > vx1) continue;
-          const top = worldToScreen(view, r.anchor.anchorX, r.regionTop - r.folioH);
-          const py = snap(top.y) - snap(labelPx * 1.6);
+          const top = worldToScreen(view, r.anchor.anchorX, regionLabelTopWorld(r.regionTop, r.folioH, labelPx));
+          const py = snap(top.y);
           if (py < -20 || py > canvasSize.h) continue;
           ctx.fillText(volumeDisplayName(r.label, r.sessionNum), snap(top.x), py);
         }

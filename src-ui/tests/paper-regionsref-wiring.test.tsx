@@ -57,6 +57,10 @@ class Fake2dCtx {
   textBaseline = '';
   setTransform(): void {}
   clearRect(): void {}
+  /** 基线半行距探针（InkLayer halfLeading 用 measureText 读字体正常行高）。 */
+  measureText(): { width: number; fontBoundingBoxAscent: number; fontBoundingBoxDescent: number } {
+    return { width: 100, fontBoundingBoxAscent: 16, fontBoundingBoxDescent: 5 };
+  }
   fillRect(): void {
     inkStats.fillRect++;
   }
@@ -162,9 +166,11 @@ describe('纸壳共享 ref 穿线（paper-panel-split 接线事故回归）', ()
     const view = useCanvasViewStore;
     /* 模拟「已恢复视口的工作区」（restoreView 置位）：① 守恒首测不落默认锚；
      * ② 重挂清除 effect 不发 requestFocus——掐掉挂载期 240ms 视角飞行动画
-     * 对测试视口的覆写（restoreView 随首个 setView 清除，语义合法）。 */
+     * 对测试视口的覆写（restoreView 随首个 setView 清除，语义合法）。
+     * zoom 0.3：2026-09-20 接管阈下移到 0.36 后，0.5 已属 DOM 区（墨迹层不在场）
+     * ——本用例考的是「regionsRef 穿线」，须落在墨迹真在画的档位。 */
     view.getState().setCanvasSize(1200, 800);
-    view.getState().restoreView({ zoom: 0.5, panX: 600, panY: 450 });
+    view.getState().restoreView({ zoom: 0.3, panX: 600, panY: 450 });
 
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -180,7 +186,7 @@ describe('纸壳共享 ref 穿线（paper-panel-split 接线事故回归）', ()
       view.getState().setCanvasSize(1200, 800);
     });
     await act(async () => {
-      view.getState().setView((v) => ({ ...v, zoom: 0.5, panX: 600, panY: 450 }));
+      view.getState().setView((v) => ({ ...v, zoom: 0.3, panX: 600, panY: 450 }));
     });
 
     // rAF 帧跑起来（jsdom pretendToBeVisual ~16ms/帧）——空 regionsRef 时

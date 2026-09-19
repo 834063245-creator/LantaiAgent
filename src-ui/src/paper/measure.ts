@@ -46,6 +46,7 @@ import {
   ASSET_DERIVED,
   ASSET_TOKENS,
   CHROME_DERIVED,
+  CHROME_TOKENS,
   FOLIO_TOKENS,
   FONT_STACKS,
   LIMIT_TOKENS,
@@ -264,6 +265,10 @@ const PLAN_TEXT_INSET = CHROME_DERIVED.planTextInset; // 策面横向内缩：�
 const PLAN_ACTIONS_H = CHROME_DERIVED.planActionsH; // 按钮行
 const NOTICE_CHROME_H = CHROME_DERIVED.noticeChromeH; // padding 8×2 + border-bottom 1
 const NOTICE_TEXT_INSET = CHROME_DERIVED.noticeTextInset; // padding 12×2
+/** 贴黄正文上距 = padding-top（chrome 的另一半是 border-bottom 1）——墨迹纵向用。 */
+const NOTICE_TEXT_PAD_V = CHROME_TOKENS.notice.padV;
+/** diff 文本上距 = pre padding-top（DIFF_PRE_CHROME_H 是上下内距 + 上下 border 之和）。 */
+const DIFF_PRE_PAD_V = CHROME_TOKENS.diff.prePadV;
 
 /* ── 资产/开放 kind 镜像常量（2026-08-30 溢出修复：default 固定 80 退役）──
  * 资产块此前测高恒 80、签名不含 payload——媒体图 320 / JSON 兜底 400+ /
@@ -1107,15 +1112,35 @@ export const USER_SHRINK_MIN_W = 320;
  * 产出每类块的「文本源」清单，行条几何由 paper/ink 的 walkLineRanges 消费。
  * 改块内容语义/版式常量时两处同改。 */
 
-/** 单个文本源 → 墨条几何输入。cap = 行条数上限（镜像测量端的封顶高度）。 */
+/** 单个文本源 → 墨条几何输入。cap = 行条数上限（镜像测量端的封顶高度）。
+ *
+ *  y（2026-09-20 墨迹几何重做）：**源顶距块顶的纵向偏移（世界单位）**——必填，
+ *  由测高走查在算高的同时产出（见 measureMdBlocks/markdownInkSources）。
+ *  旧实现让 ink.ts 自己「逐源累加行高、源间零间距」重建纵向几何，于是段落
+ *  margin(14)/列表项 liGap(6)/标题 pt·pb/引用·代码内距全部丢失——误差逐元素
+ *  累加，实测一个 478px 的 markdown 块在越 LOD 阈时正文整体上移 68px（用户报
+ *  「文字位置跳变」的直接病灶）。纵向位置现在只有**一个**产出者：测高走查。 */
 export interface InkSource {
   text: string;
   font: string;
   lineHeight: number;
   /** 横向内缩（世界单位——墨条起点 = 块左缘 + inset） */
   inset: number;
+  /** 纵向偏移（世界单位——源顶距块顶，含块级 chrome 与元素间间距） */
+  y: number;
   /** 行条上限（pre/output 族按 PRE_MAX_H/OUT 族镜像，缺省不封顶） */
   cap?: number;
+  /** 富行内片段（2026-09-20 富行内折行批）：**仅当测高走查走的是富行内路径**
+   *  （`mdHasRichInline(inl)`）时在场——加粗/斜体/行内码/行内公式的字体与字宽
+   *  与纯文本不同，按 text 走查会得到与 DOM 不同的折行点。在场时墨迹改走
+   *  `walkRichInlineLineRanges` 逐片段落墨（片段各自字体直绘），折行点与
+   *  测高（measureRichItemsHeight）**同一把尺子**。 */
+  rich?: RichInlineItem[];
+}
+
+/** 把一组墨源整体下移 dy（块级 chrome：题签/花押/折叠行/段头/语言行）。 */
+function inkShifted(sources: InkSource[], dy: number): InkSource[] {
+  return dy === 0 ? sources : sources.map((s) => ({ ...s, y: s.y + dy }));
 }
 
 /* ── 眉批栏（P5 夹注旁注化）——.pp-marginalia 镜像：块右缘 24px 起、总宽 240，
@@ -1128,12 +1153,22 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
   switch (b.kind) {
     case 'user':
       // 圈点行宽差 ≤ 椭圆 chrome 量级——远缩墨条按纯文本即可（LOD 抽象层）
+      // 纵向：正文在题签区之下（USER_KIND_H——来文块顶到正文顶）。
       return p.text && !folded
-        ? [{ text: p.text, font: PAPER_USER_FONT, lineHeight: PAPER_USER_LINE_HEIGHT, inset: USER_TEXT_INSET }]
+        ? [
+            {
+              text: p.text,
+              font: PAPER_USER_FONT,
+              lineHeight: PAPER_USER_LINE_HEIGHT,
+              inset: USER_TEXT_INSET,
+              y: USER_KIND_H,
+            },
+          ]
         : [];
     case 'markdown':
-      return p.text ? markdownInkSources(p.text) : [];
+      return p.text ? markdownInkSources(p.text, b.w) : [];
     case 'reasoning':
+      // 折叠行（「▸ 思考 N 字」）恒在正文之上：展开 = FOLD_ROW_H，折叠预览 = 同高一行。
       return p.text && !folded
         ? [
             {
@@ -1141,151 +1176,173 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
               font: PAPER_REASONING_FONT,
               lineHeight: PAPER_REASONING_LINE_HEIGHT,
               inset: REASONING_TEXT_INSET,
+              y: FOLD_ROW_H,
             },
           ]
         : [];
     case 'notice':
       return p.text
-        ? [{ text: p.text, font: PAPER_NOTICE_FONT, lineHeight: PAPER_NOTICE_LINE_HEIGHT, inset: NOTICE_TEXT_INSET }]
+        ? [
+            {
+              text: p.text,
+              font: PAPER_NOTICE_FONT,
+              lineHeight: PAPER_NOTICE_LINE_HEIGHT,
+              inset: NOTICE_TEXT_INSET,
+              y: NOTICE_TEXT_PAD_V,
+            },
+          ]
         : [];
     case 'turn-error':
-      return p.text
-        ? [{ text: p.text, font: PAPER_NOTICE_FONT, lineHeight: PAPER_NOTICE_LINE_HEIGHT, inset: NOTICE_TEXT_INSET }]
-        : [];
-    case 'diff':
       return p.text
         ? [
             {
               text: p.text,
-              font: PAPER_MONO_FONT,
-              lineHeight: PAPER_MONO_LINE_HEIGHT,
-              inset: DIFF_TEXT_INSET,
-              cap: Math.floor(PRE_MAX_H / PAPER_MONO_LINE_HEIGHT),
+              font: PAPER_NOTICE_FONT,
+              lineHeight: PAPER_NOTICE_LINE_HEIGHT,
+              inset: NOTICE_TEXT_INSET,
+              y: NOTICE_TEXT_PAD_V,
             },
           ]
         : [];
+    case 'diff':
+      // 语言行（.pp-lang）在 pre 之上；pre 自带上下内距。
+      return p.text
+        ? inkShifted(
+            [
+              {
+                text: p.text,
+                font: PAPER_MONO_FONT,
+                lineHeight: PAPER_MONO_LINE_HEIGHT,
+                inset: DIFF_TEXT_INSET,
+                y: 0,
+                cap: Math.floor(PRE_MAX_H / PAPER_MONO_LINE_HEIGHT),
+              },
+            ],
+            ((b.payload as { lang?: string }).lang ? DIFF_LANG_H : 0) + DIFF_PRE_PAD_V,
+          )
+        : [];
     case 'tool': {
       if (folded) return [];
+      // 段头（.pp-sec-head 恒一行）在每段之上；首段紧跟折叠行（无上距）。
+      // 逐段推进游标：段高 = 段头 + 内容高（+ 非首段的段头上距）——与
+      // measureBlockHeight 的 argsH/outH/errH 同款累加，两处逐字对齐。
       const out: InkSource[] = [];
-      if (hasArgsToShow(p.args))
+      let y = TOOL_PAD_TOP + FOLD_ROW_H;
+      const showArgs = hasArgsToShow(p.args);
+      const showOut = hasPayloadToShow(p.output);
+      const showErr = hasPayloadToShow(p.err);
+      if (showArgs) {
+        const text = toolDisplay(p.args).text;
         out.push({
-          text: toolDisplay(p.args).text,
+          text,
           font: PAPER_TOOL_FONT,
           lineHeight: PAPER_TOOL_LINE_HEIGHT,
           inset: 0,
+          y: y + SEC_HEAD_H,
           cap: Math.floor(PRE_MAX_H / PAPER_TOOL_LINE_HEIGHT),
         });
-      if (hasPayloadToShow(p.output))
+        y += SEC_HEAD_H + cappedH(text, b.w, PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT, PRE_MAX_H);
+      }
+      if (showOut) {
+        const text = toolDisplay(p.output).text;
         out.push({
-          text: toolDisplay(p.output).text,
+          text,
           font: PAPER_OUT_FONT,
           lineHeight: PAPER_OUT_LINE_HEIGHT,
           inset: 0,
+          y: y + SEC_HEAD_H + (showArgs ? SEC_HEAD_GAP : 0),
           cap: Math.floor(OUT_MAX_H / PAPER_OUT_LINE_HEIGHT),
         });
-      if (hasPayloadToShow(p.err))
+        y +=
+          SEC_HEAD_H +
+          (showArgs ? SEC_HEAD_GAP : 0) +
+          cappedH(text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H);
+      }
+      if (showErr) {
         out.push({
           text: toolDisplay(p.err).text,
           font: PAPER_OUT_FONT,
           lineHeight: PAPER_OUT_LINE_HEIGHT,
           inset: 0,
+          y: y + SEC_HEAD_H + (showArgs || showOut ? SEC_HEAD_GAP : 0),
           cap: Math.floor(OUT_MAX_H / PAPER_OUT_LINE_HEIGHT),
         });
+      }
       return out;
     }
     case 'code': {
       if (folded) return [];
       const out: InkSource[] = [];
+      let y = TOOL_PAD_TOP + FOLD_ROW_H;
       const src = (b.payload as { code?: string }).code ?? p.args ?? '';
-      if (src)
+      const showOut = hasPayloadToShow(p.output);
+      const showErr = hasPayloadToShow(p.err);
+      if (src) {
         out.push({
           text: src,
           font: PAPER_TOOL_FONT,
           lineHeight: PAPER_TOOL_LINE_HEIGHT,
           inset: CODE_SRC_INSET,
+          y: y + SEC_HEAD_H + CODE_SRC_PAD_V,
           cap: Math.floor((CODE_SRC_MAX_H - CODE_SRC_PAD_V) / PAPER_TOOL_LINE_HEIGHT),
         });
-      if (hasPayloadToShow(p.output))
+        y += SEC_HEAD_H + codeSrcH(src, b.w);
+      }
+      if (showOut) {
+        const text = toolDisplay(p.output).text;
         out.push({
-          text: toolDisplay(p.output).text,
+          text,
           font: PAPER_OUT_FONT,
           lineHeight: PAPER_OUT_LINE_HEIGHT,
           inset: 0,
+          y: y + SEC_HEAD_H + (src ? SEC_HEAD_GAP : 0),
           cap: Math.floor(CODE_OUT_TEXT_MAX / PAPER_OUT_LINE_HEIGHT),
         });
-      if (hasPayloadToShow(p.err))
+        y +=
+          SEC_HEAD_H +
+          (src ? SEC_HEAD_GAP : 0) +
+          cappedH(text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX);
+      }
+      if (showErr) {
         out.push({
           text: toolDisplay(p.err).text,
           font: PAPER_OUT_FONT,
           lineHeight: PAPER_OUT_LINE_HEIGHT,
           inset: 0,
+          y: y + SEC_HEAD_H + (src || showOut ? SEC_HEAD_GAP : 0),
           cap: Math.floor(CODE_OUT_TEXT_MAX / PAPER_OUT_LINE_HEIGHT),
         });
+      }
       return out;
     }
-    case 'plan':
+    case 'plan': {
       // 拟策内容 = markdown 体（2026-09-10 渲染专项）：墨迹走 markdown 同一
-      // 走查（p/h/列表项/围栏码逐款），内缩 = 策面横向 chrome。
-      return p.content ? markdownInkSources(p.content, PLAN_TEXT_INSET) : [];
+      // 走查（p/h/列表项/围栏码逐款），内缩 = 策面横向 chrome、纵向下移
+      // 策面内距 + 标题行（.pp-pc-head 恒在正文之上）。
+      const content = p.content ?? '';
+      if (!content) return [];
+      const plan = b.payload as { title?: string };
+      const headH =
+        measureTextHeight(plan.title || '拟策', b.w - PLAN_TEXT_INSET, PLAN_TITLE_FONT, PLAN_TITLE_LINE_HEIGHT) +
+        PLAN_HEAD_MARGIN;
+      return markdownInkSources(content, b.w - PLAN_TEXT_INSET, PLAN_TEXT_INSET, PLAN_CHROME_H + headH);
+    }
     default:
       return []; // 资产/开放 kind：远缩画外框即可（无行条）
   }
 }
 
-/** markdown 元素 → 墨迹源（parseMarkdown 同源走查：p/h/列表项走正文族字号，
- *  围栏码走 mono 封顶，引用递归，hr 跳过，表格按行退化）。
- *  inset：正文块 0；拟策体传策面横向内缩（.pp-pc-body 左线+内距）。 */
-function markdownInkSources(text: string, inset = 0): InkSource[] {
-  const out: InkSource[] = [];
-  const push = (t: string, size: number, lh: number): void => {
-    if (t) out.push({ text: t, font: `${size}px ${SONG_STACK}`, lineHeight: lh, inset });
-  };
-  const walk = (blocks: MdBlock[]): void => {
-    for (const el of blocks) {
-      switch (el.t) {
-        case 'p':
-          push(mdPlainText(el.inl), BODY_SIZE, PAPER_BODY_LINE_HEIGHT);
-          break;
-        case 'h': {
-          const c = MD_H[el.lv - 1];
-          push(mdPlainText(el.inl), c.size, c.size * c.lh);
-          break;
-        }
-        case 'list':
-          for (const it of el.items) {
-            push(mdPlainText(it.inl), BODY_SIZE, PAPER_BODY_LINE_HEIGHT);
-            if (it.sub) walk(it.sub);
-          }
-          break;
-        case 'quote':
-          walk(el.blocks);
-          break;
-        case 'code':
-          if (el.text)
-            out.push({
-              text: el.text,
-              font: PAPER_MONO_FONT,
-              lineHeight: PAPER_MONO_LINE_HEIGHT,
-              inset: inset + MD_CODE_INSET,
-              cap: Math.floor(PRE_MAX_H / PAPER_MONO_LINE_HEIGHT),
-            });
-          break;
-        case 'math':
-          // 公式墨迹：源文本当正文行条（远缩只求「这里有内容」的痕迹）；
-          // 行数封顶同静态预算（公式结构不按行折——墨迹不展开）。
-          if (el.text) push(el.text.slice(0, 160), BODY_SIZE, PAPER_BODY_LINE_HEIGHT * MD_MATH_DISPLAY_LINE_H);
-          break;
-        case 'table':
-          for (const row of [el.head, ...el.rows])
-            push(row.map((c) => mdPlainText(c)).join(' '), MD_TABLE_SIZE, MD_TABLE_LINE_HEIGHT);
-          break;
-        case 'hr':
-          break;
-      }
-    }
-  };
-  walk(parseMarkdown(text));
-  return out;
+/** markdown 文本 → 墨迹源（**走测高走查**，不再另起一套平行走查）。
+ *
+ *  墨迹几何重做（2026-09-20）：旧实现是 parseMarkdown 的第二趟走查，只推
+ *  行宽与行距、源间零间距——与测高走查各自演化，纵向 chrome 全丢（病灶见
+ *  InkSource.y 注）。现在直接消费 measureMdBlocks 的产出：墨迹 y 与块高同源。
+ *
+ *  w 必须是**该 markdown 体的实际测宽**（正文块 b.w；拟策体 b.w - 策面内缩）
+ *  ——走查要按它算行数，行数决定每个元素的占高、进而决定后续元素的 y。
+ *  inset0 = 该体的横向内缩（正文块 0；拟策体策面内缩），进每个墨源的 x 起点。 */
+function markdownInkSources(text: string, w: number, inset0 = 0, y0 = 0): InkSource[] {
+  return measureMdBlocks(parseMarkdown(text), w, y0, inset0).ink;
 }
 
 /* ── markdown 块测量（渲染 MarkdownBody 的逐字镜像——消费同一 parseMarkdown 模型）── */
@@ -1298,54 +1355,126 @@ function tableRowH(cells: MdInline[][], cols: number, w: number): number {
   return linesH + MD_TABLE_CELL_PAD_V + MD_TABLE_ROW_BORDER;
 }
 
-/** 单个 markdown 元素高度（last = 序列末元素：margin-bottom 归零镜像）。 */
-function measureMdElement(el: MdBlock, w: number, last: boolean): number {
+/** 单个 markdown 元素的高度 + 其墨源（**同一趟走查产出**）。
+ *
+ *  墨迹几何重做（2026-09-20）：旧实现让 paper/ink 自己「逐源累加行高、源间零
+ *  间距」重建纵向几何，于是本函数里所有的纵向 chrome——p 的 margin(14)、li 的
+ *  liGap(6)、标题 pt·pb、quote/code 上下内距——在墨迹里全部丢失，误差逐元素
+ *  累加（实测 478px 的块越 LOD 阈时正文上移 68px）。现在纵向位置与高度出自同
+ *  一趟走查：墨迹 y 与 DOM 几何**结构上不可能漂**（同一个 token、同一次累加）。
+ *
+ *  y0 = 本元素顶距块顶的纵向偏移；inset0 = 本元素的横向内缩（父级累积）。
+ *  子块宽度 = w（调用方已按父级内缩扣过），子块 inset = inset0 + 本级内缩。 */
+function measureMdElement(
+  el: MdBlock,
+  w: number,
+  last: boolean,
+  y0: number,
+  inset0: number,
+): { h: number; ink: InkSource[] } {
+  const none = { h: 0, ink: [] as InkSource[] };
+  /** 纯文本墨源（正文族/标题族共用：走查产出的 y 即元素顶 + 元素内上距）。
+   *  富行内（加粗/斜体/行内码/行内公式）随源带出 rich 片段——墨迹逐片段直绘，
+   *  折行点与 measureInlineHeight 的富行内路径同源（mdRichItems 同一构造）。 */
+  const piece = (inl: MdInline[], size: number, lh: number, y: number, inset: number): InkSource[] => {
+    const text = mdPlainText(inl);
+    if (text.length === 0) return [];
+    const rich = mdHasRichInline(inl) ? mdRichItems(inl, size, SONG_STACK) : undefined;
+    return [{ text, font: `${size}px ${SONG_STACK}`, lineHeight: lh, inset, y, rich }];
+  };
   switch (el.t) {
     case 'p': {
       const h = measureInlineHeight(el.inl, w, BODY_SIZE, SONG_STACK, PAPER_BODY_LINE_HEIGHT);
-      if (!el.inl.length || mdPlainText(el.inl).length === 0) return 0;
-      return h + (last ? 0 : MD_P_GAP);
+      if (!el.inl.length || mdPlainText(el.inl).length === 0) return none;
+      return { h: h + (last ? 0 : MD_P_GAP), ink: piece(el.inl, BODY_SIZE, PAPER_BODY_LINE_HEIGHT, y0, inset0) };
     }
     case 'h': {
       const c = MD_H[el.lv - 1];
-      return c.pt + measureInlineHeight(el.inl, w, c.size, SONG_STACK, c.size * c.lh) + c.pb;
+      // 标题：padding-top 把文字压低（DOM 同款——pt 在文字之上、pb 之下）。
+      return {
+        h: c.pt + measureInlineHeight(el.inl, w, c.size, SONG_STACK, c.size * c.lh) + c.pb,
+        ink: piece(el.inl, c.size, c.size * c.lh, y0 + c.pt, inset0),
+      };
     }
     case 'list': {
       let items = 0;
+      let iy = y0;
+      const ink: InkSource[] = [];
       for (const it of el.items) {
         let ih = measureInlineHeight(it.inl, w - MD_LI_INDENT, BODY_SIZE, SONG_STACK, PAPER_BODY_LINE_HEIGHT);
         // 纯复选框项（- [ ] 无尾文）：li 仍占一行正文高（框是 absolute 不占行盒——
         // 无文字时给最小行高，否则零高压叠下一块）
         if (ih === 0 && it.check !== undefined) ih = PAPER_BODY_LINE_HEIGHT;
-        if (it.sub) ih += MD_SUB_TOP + measureMdBlocks(it.sub, w - MD_LI_INDENT - MD_SUB_INDENT);
+        // 项文字左缘 = li 内容左缘 = 列表左缘 + liIndent（DOM .pp-md-li padding-left）。
+        ink.push(...piece(it.inl, BODY_SIZE, PAPER_BODY_LINE_HEIGHT, iy, inset0 + MD_LI_INDENT));
+        let subY = iy + ih;
+        if (it.sub) {
+          const sub = measureMdBlocks(
+            it.sub,
+            w - MD_LI_INDENT - MD_SUB_INDENT,
+            subY + MD_SUB_TOP,
+            inset0 + MD_LI_INDENT + MD_SUB_INDENT,
+          );
+          ih += MD_SUB_TOP + sub.h;
+          ink.push(...sub.ink);
+        }
+        subY = iy + ih + MD_LI_GAP;
         items += ih + MD_LI_GAP;
+        iy = subY;
       }
       items = Math.max(0, items - MD_LI_GAP); // 末项 li margin-bottom 0（:last-child）
-      return items + (last ? 0 : MD_LIST_GAP);
+      return { h: items + (last ? 0 : MD_LIST_GAP), ink };
     }
-    case 'quote':
-      return MD_QUOTE_PAD_V + measureMdBlocks(el.blocks, w - MD_QUOTE_INSET) + (last ? 0 : MD_QUOTE_GAP);
+    case 'quote': {
+      // 引用：上下内距把内容压低、左内距缩进（DOM .pp-md-quote padding/border）。
+      const sub = measureMdBlocks(el.blocks, w - MD_QUOTE_INSET, y0 + MD_QUOTE_PAD_V, inset0 + MD_QUOTE_INSET);
+      return { h: MD_QUOTE_PAD_V + sub.h + (last ? 0 : MD_QUOTE_GAP), ink: sub.ink };
+    }
     case 'code': {
-      if (!el.text) return 0;
+      if (!el.text) return none;
       const h = cappedH(el.text, w - MD_CODE_INSET, PAPER_MONO_FONT, PAPER_MONO_LINE_HEIGHT, PRE_MAX_H);
-      return MD_CODE_PAD_V + h + (last ? 0 : MD_CODE_GAP);
+      return {
+        h: MD_CODE_PAD_V + h + (last ? 0 : MD_CODE_GAP),
+        ink: [
+          {
+            text: el.text,
+            font: PAPER_MONO_FONT,
+            lineHeight: PAPER_MONO_LINE_HEIGHT,
+            inset: inset0 + MD_CODE_INSET,
+            y: y0 + MD_CODE_PAD_V,
+            cap: Math.floor(PRE_MAX_H / PAPER_MONO_LINE_HEIGHT),
+          },
+        ],
+      };
     }
     case 'math': {
       // 块级公式静态预算（虚拟化未挂载窗口估高；挂载后 RO 实测优先）。
       // 预算 = 源码显式行数（截 maxLines 防长公式无限膨胀）× 正文行高 ×
       // display 行高系数。单行短公式（无换行）= 1 × 34 × 2.2 ≈ 75px，
       // 覆盖 KaTeX display margin（上下 1em）+ glyph 区，安全方向高估。
-      if (!el.text) return 0;
+      if (!el.text) return none;
       const explicitLines = el.text.split('\n').length;
       const lines = Math.min(explicitLines, MD_MATH_DISPLAY_MAX_LINES);
       const h = lines * PAPER_BODY_LINE_HEIGHT * MD_MATH_DISPLAY_LINE_H;
-      return h + (last ? 0 : MD_MATH_GAP);
+      // 公式墨迹：源文本当正文行条（远缩只求「这里有内容」的痕迹）——行高按预算。
+      return {
+        h: h + (last ? 0 : MD_MATH_GAP),
+        ink: [
+          {
+            text: el.text.slice(0, 160),
+            font: `${BODY_SIZE}px ${SONG_STACK}`,
+            lineHeight: PAPER_BODY_LINE_HEIGHT * MD_MATH_DISPLAY_LINE_H,
+            inset: inset0,
+            y: y0,
+          },
+        ],
+      };
     }
     case 'hr':
-      return last ? MD_HR_LAST_H : MD_HR_H;
+      return { h: last ? MD_HR_LAST_H : MD_HR_H, ink: [] };
     case 'img':
       // 固定盒（B4 D-9）：高度与加载态解耦——静态镜像即精确，无 RO 面需求
-      return MD_IMG_BOX_H + (last ? 0 : MD_IMG_GAP);
+      return { h: MD_IMG_BOX_H + (last ? 0 : MD_IMG_GAP), ink: [] };
     case 'table': {
       // 列数 = 表头格数（GFM 列真源）；行格数异常（多于/少于表头）取 max 防呆。
       // 2026-09 表格叠字修复：旧 cols 取「单元格内联段数 max」——单段格行退化
@@ -1355,18 +1484,45 @@ function measureMdElement(el: MdBlock, w: number, last: boolean): number {
       // 含表格的 markdown 挂载后 RO 实测回写精确化（needsObservedHeight，
       // 同公式先例）。
       const cols = Math.max(1, el.head.length, ...el.rows.map((r) => r.length));
-      let h = tableRowH(el.head, cols, w);
-      for (const row of el.rows) h += tableRowH(row, cols, w);
-      return h + (last ? 0 : MD_TABLE_GAP);
+      // 墨迹逐行落位（旧实现把整表当一串行、行距用单元格行高——表格是多行结构，
+      // 行位必须逐行给）：行高 = 该行最高单元格行盒 + 上下内距 + 行底规线。
+      // 行高**只算一次**（测高与墨迹 y 共用同一份读数——重算会让每格多跑一次
+      // layout，既是性能浪费也让「测高 = 墨迹」的同源关系变松）。
+      const ink: InkSource[] = [];
+      const allRows = [el.head, ...el.rows];
+      const rowHs = allRows.map((r) => tableRowH(r, cols, w));
+      let ry = y0;
+      let h = 0;
+      for (let i = 0; i < allRows.length; i++) {
+        ink.push({
+          text: allRows[i].map((c) => mdPlainText(c)).join(' '),
+          font: `${MD_TABLE_SIZE}px ${MONO_STACK}`,
+          lineHeight: MD_TABLE_LINE_HEIGHT,
+          inset: inset0,
+          y: ry + MD_TABLE_CELL_PAD_V / 2,
+        });
+        h += rowHs[i];
+        ry += rowHs[i];
+      }
+      return { h: h + (last ? 0 : MD_TABLE_GAP), ink };
     }
   }
 }
 
-/** markdown 块序列总高（顶层 .pp-body 直排子元素）。 */
-export function measureMdBlocks(blocks: MdBlock[], w: number): number {
+/** markdown 块序列：总高 + 各元素墨源（同一趟走查——纵向几何单一产出者）。
+ *  y0/inset0 = 本序列起点的纵向偏移 / 横向内缩（父级累积，顶层均 0）。
+ *  高度语义与旧版逐字一致（墨迹重做不动测高：只多带出一份 y）。 */
+export function measureMdBlocks(blocks: MdBlock[], w: number, y0 = 0, inset0 = 0): { h: number; ink: InkSource[] } {
   let total = 0;
-  for (let k = 0; k < blocks.length; k++) total += measureMdElement(blocks[k], w, k === blocks.length - 1);
-  return total;
+  let y = y0;
+  const ink: InkSource[] = [];
+  for (let k = 0; k < blocks.length; k++) {
+    const r = measureMdElement(blocks[k], w, k === blocks.length - 1, y, inset0);
+    total += r.h;
+    y += r.h;
+    ink.push(...r.ink);
+  }
+  return { h: total, ink };
 }
 
 /** markdown 块体高（渲染 MarkdownBody 的逐字镜像——消费同一结构模型）。
@@ -1376,7 +1532,7 @@ export function measureMdBlocks(blocks: MdBlock[], w: number): number {
  *  一行（.pp-marginalia-out，实高 ~18px）——按折叠态同款「一行夹注」计
  *  （安全方向超测，与折叠态测高约定一致）。 */
 function measureMarkdownBody(blocks: MdBlock[], b: SourcedBlock, sidecarFolded = false, sidecarOut = false): number {
-  const bodyH = measureMdBlocks(blocks, b.w);
+  const bodyH = measureMdBlocks(blocks, b.w).h;
   // P5 眉批化：夹注挂侧栏（.pp-marginalia）——复合块高 = max(正文@全宽,
   // 夹注@侧栏内容宽)。眉批恒容于块高内 → 栈几何零变化（方案甲的决定性
   // 优势，见 pretext-typography-plan §三）。折叠态（夹注恒折拍板）只占一行。
@@ -1500,7 +1656,7 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       // 解析，结构漂移结构性不成立），宽度扣策面横向 chrome（石青左线+内距）。
       // 拟策块恒挂壳层 RO 实测（needsObservedHeight），公式/图等动态高兜底。
       const content = p.content ?? '';
-      const mdH = content ? measureMdBlocks(parseMarkdown(content), b.w - PLAN_TEXT_INSET) : 0;
+      const mdH = content ? measureMdBlocks(parseMarkdown(content), b.w - PLAN_TEXT_INSET).h : 0;
       // 2026-08-30 溢出修复：标题实测（旧固定 39 漏算换行）、方案选择区逐枚
       // 实测（旧 118 装不下两枚带描述的方案）、操作行按钮实高（旧 40 偏小）。
       // 无回调的只读拟策块不增加交互区高度（施工单 #1/#2 语义不变）。
