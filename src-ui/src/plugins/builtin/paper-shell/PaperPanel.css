@@ -4129,32 +4129,51 @@
  * → 带内一切元素恒 top ≥ 0（本批不再为「书眉带」让位，那 4px 归带体自身留白）。
  *
  * **2026-09-19 加宽批（用户「由于边缘滚动的落地，我需要再次加宽我的目次带，
- * 因为会有误触的问题」）**：带体 = **内容列 64 + 缘滚跑道 40 = 104px**。
+ * 因为会有误触的问题」）+ 同日甲案（用户看像素对照后定）**：带体 =
+ * **识别层（全带 104）+ 控制列 64 + 缘滚跑道 40**（后两者重叠于同一段 x）。
  * 病灶是**两条面抢同一条带**：边缘滚动的右缘感应带（基准 36px，贴屏最右）
  * 正落在目次带上（带只 64px 宽 ⇒ 带内几乎处处是感应带），于是「用带导航」
- * 与「贴右缘缘滚」互为误触。修法 = 把带体**加宽出一条跑道**，让导航面整条
- * 让出感应带：`.pp-toc-col`（内容列，宽度与旧带体逐字同 64px ⇒ 带内一切既有
- * 几何——墨迹缩放/刻痕/锚/滑块/hover 卡——零漂移）承载**全部导航面与交互**，
- * 带体右 40px 是**缘滚跑道**（`TOC_RUNWAY_W` ≥ 基准带宽，钉值见
- * tests/stage4-toc-top-band）。跑道本体**惰性**：无 handler（交互判据在组件里
- * 按内容列夹紧）、光标默认、点击只被吞掉不做事（不吞就点穿到纸上划词），
- * 而悬停照旧算画布 ⇒ 贴屏最右照旧缘滚（edge-scroll 的 HOVER_ALLOW_DOCKS）。 */
+ * 与「贴右缘缘滚」互为误触。修法 = 把带体**加宽出一条跑道**，让控制面整条
+ * 让出感应带：`.pp-toc-col`（控制列，宽度与旧带体逐字同 64px ⇒ 刻痕/锚/滑块/
+ * hover 卡零漂移）承载**全部可交互面**，带体右 40px 是**缘滚跑道**
+ * （`TOC_RUNWAY_W` ≥ 基准带宽，钉值见 tests/stage4-toc-top-band）。
+ * 甲案：**识别层（墨迹 canvas / 未读区 / 活线）按带体满宽铺**（缩放比随带体
+ * 变宽 ⇒ 剪影 48 → ~78px，扫读更清；它们全是 pointer-events:none 的纯识别面），
+ * 与控制列以一道**界栏线**（`.pp-toc::after`）分界。
+ * 跑道本体**惰性**：无 handler（交互判据在组件里按控制列夹紧）、光标默认、
+ * 点击只被吞掉不做事（不吞就点穿到纸上划词），而悬停照旧算画布 ⇒ 贴屏最右
+ * 照旧缘滚（edge-scroll 的 HOVER_ALLOW_DOCKS）。 */
 .pp-toc {
   position: fixed;
   right: 0;
   top: 0; /* 屏顶——书眉已退役（2026-09-17），带体通栏 */
   bottom: 0;
-  width: 104px; /* = 内容列 64（.pp-toc-col）+ 缘滚跑道 40；浮件右距按此值让位（+16） */
+  width: 104px; /* = 控制列 64（.pp-toc-col）+ 缘滚跑道 40；浮件右距按此值让位（+16） */
   border-left: var(--rule-soft);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
   z-index: 5; /* 居画布之上、坞槽(z-6)之下；顶部浮件(z-30)居其上并已按带宽让位 */
   touch-action: none;
   cursor: default; /* 带体默认光标 = 跑道口径（惰性）；可交互光标在 .pp-toc-col */
 }
-/* 内容列 = 带内**唯一导航面**（组件把 scrub / hover 卡判据夹在本列内）。
- * 它同时是带内所有绝对定位子件的**定位父**：子件沿用「left/right 贴列缘」的
- * 旧写法即自动收在 64px 内（墨迹画布 clientWidth 也随之恒为 64 ⇒ 识别层
- * 缩放比零漂移）。 */
+/* 界栏线 = **可交互面与缘滚跑道的分界**（甲案：识别层铺过线，控制面止于线）：
+ * 位置 = 控制列右缘（组件 TOC_COL_W 的 CSS 镜像，改一处必红）；比带体左缘那条
+ * 弱线再淡一档——它是带内的次级分隔，不是带体的边。painted 在识别层之上、
+ * 惰性元素（z-3 的刻痕 / z-4 的锚）之下，故刻痕与锚照旧清晰压在线上。 */
+.pp-toc::after {
+  content: "";
+  position: absolute;
+  left: 64px; /* = 控制列宽 TOC_COL_W（组件常量镜像） */
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in oklch, var(--ink-4) 65%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+/* 控制列 = 带内**唯一可交互面**（组件把 scrub / hover 卡判据夹在本列内）。
+ * 它同时是控制层子件的**定位父**：滑块/刻痕/锚/卡沿用「left/right 贴列缘」的
+ * 旧写法即自动收在 64px 内，界栏线右侧（跑道）留给缘滚。识别层不在本列里
+ * （甲案：画布按带体满宽铺，见 .pp-toc-ink）。 */
 .pp-toc-col {
   position: absolute;
   left: 0;
@@ -4163,6 +4182,8 @@
   width: 64px;
   cursor: pointer;
 }
+/* 识别层画布（甲案：**按带体满宽**，不是控制列宽）——组件按 clientWidth 算
+ * 横向缩放比，故它铺到 104px 时剪影也跟着横向放大（48 → ~78px）。纯装饰。 */
 .pp-toc-ink {
   position: absolute;
   inset: 0;
@@ -4184,7 +4205,8 @@
   background: color-mix(in oklch, var(--seal) 8%, transparent);
   border-color: color-mix(in oklch, var(--seal) 22%, transparent);
 }
-/* 未读区：上翻欠账的新内容段（多为机来文 → 石青淡染，非朱砂——朱砂=人铁律） */
+/* 未读区：上翻欠账的新内容段（多为机来文 → 石青淡染，非朱砂——朱砂=人铁律）。
+ * 甲案：与墨迹同为识别层 ⇒ 按带体满宽（left/right 0 的定位父 = 带体，非控制列）。 */
 .pp-toc-unread {
   position: absolute;
   left: 0;
@@ -4278,7 +4300,8 @@
   background: var(--seal-deep);
 }
 /* 活线：流式运行 writing head（石青呼吸——机=石青语义，pp-breathe 复用；
- * 坐标随映射底（坞顶线）由组件内联 top 下发） */
+ * 坐标随映射底（坞顶线）由组件内联 top 下发）。甲案：与墨迹同为识别层 ⇒
+ * 按带体满宽横贯（含跑道段——它是「流到哪了」的读数，不涉命中）。 */
 .pp-toc-head {
   position: absolute;
   left: 0;

@@ -206,21 +206,27 @@ describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => 
     expect(tokens).not.toContain('--bar-h:'); // 注释里的历史沿革不算声明
   });
 
-  /* **2026-09-19 加宽批**（用户「由于边缘滚动的落地，我需要再次加宽我的目次带，
-   *  因为会有误触的问题」）——带体 = 内容列 + 缘滚跑道，两列宽度三处同源
-   *  （组件常量 / CSS / 本文件算术）。这里钉的是**加宽的理由本身**：
-   *  贴屏最右那条边缘滚动感应带必须整条落在跑道上，带内导航面才谈得上不误触。 */
-  it('加宽批：带体 = 内容列 64 + 缘滚跑道 40；跑道 ≥ 缘滚感应带（加宽的理由）', () => {
-    expect(TOC_COL_W).toBe(64); // 与旧带体逐字同宽 ⇒ 带内既有几何零漂移
+  /* **2026-09-19 加宽批 + 同日甲案**（用户「由于边缘滚动的落地，我需要再次加宽
+   *  我的目次带，因为会有误触的问题」；甲案 = 用户看像素对照后定：识别层铺满整条
+   *  带）。两列宽度三处同源（组件常量 / CSS / 本文件算术），这里钉的是**加宽的
+   *  理由本身**：贴屏最右那条边缘滚动感应带必须整条落在跑道上，带内控制面才谈得
+   *  上不误触；识别层满宽 + 界栏线分界是同日甲案补的观感那一半。 */
+  it('加宽批：带体 = 控制列 64 + 缘滚跑道 40；跑道 ≥ 缘滚感应带（加宽的理由）', () => {
+    expect(TOC_COL_W).toBe(64); // 与旧带体逐字同宽 ⇒ 控制层几何零漂移
     expect(TOC_RUNWAY_W).toBe(40);
     expect(TOC_W).toBe(TOC_COL_W + TOC_RUNWAY_W);
     expect(ruleBody(PANEL_CSS, '.pp-toc {')).toContain(`width: ${TOC_W}px`);
     expect(ruleBody(PANEL_CSS, '.pp-toc-col {')).toContain(`width: ${TOC_COL_W}px`);
     // ① 基准感应带整条落在跑道上（指针贴屏最右 = 跑道，照旧缘滚）
     expect(EDGE_SCROLL.band).toBeLessThanOrEqual(TOC_RUNWAY_W);
-    // ② 灵敏度拉满（sensMax → 带宽 36×√2 ≈ 51）也不碰导航件：锚/刻痕只占左 26px
+    // ② 灵敏度拉满（sensMax → 带宽 36×√2 ≈ 51）也不碰控制件：锚/刻痕只占左 26px
     const maxBand = Math.round(EDGE_SCROLL.band * Math.sqrt(EDGE_SCROLL.sensMax));
     expect(maxBand).toBeLessThanOrEqual(TOC_RUNWAY_W + (TOC_COL_W - 26));
+    // ③ 甲案：界栏线落在控制列右缘（可交互面与跑道的分界必须看得见——「看着能点
+    //    其实不能」是误触的另一面），且它自己不吃指针
+    const fence = ruleBody(PANEL_CSS, '.pp-toc::after {');
+    expect(fence).toContain(`left: ${TOC_COL_W}px`);
+    expect(fence).toContain('pointer-events: none');
   });
 
   /* 顶部浮件几何（2026-09-17 标题栏拆除批）四处同源：CSS 真源（.pp-chrome 的
@@ -311,12 +317,13 @@ describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => 
     const nav = container!.querySelector('.pp-toc') as HTMLElement;
     const col = container!.querySelector('.pp-toc-col') as HTMLElement;
     expect(col).not.toBeNull();
-    /* 带内件全收在内容列里（结构性零漂移）：墨迹画布是列的子件 ⇒ 它的
-     * clientWidth 恒 = TOC_COL_W（识别层缩放比读的就是这个值，宽了剪影就被拉伸）。
-     * 真 CSS + 无头 Chrome 探针实测：canvas.clientWidth = 64、滑块 56、锚 26、
-     * unread/活线 64——与加宽前逐字同值，整条只左移 40px。
-     * （本夹具 units 为空 ⇒ 无阶段锚，锚的 26px 左缘栏由 stage-anchor-layer 件钉。） */
-    expect(col.querySelector('.pp-toc-ink')).not.toBeNull();
+    /* 甲案结构：**识别层（墨迹画布）是带体子件、不在控制列里** ⇒ 它按带体满宽铺
+     * （clientWidth = TOC_W − 0，实测 104 ⇒ 剪影横向 ×1.625）；控制层（滑块等）
+     * 仍收在列内。真 CSS + 无头 Chrome 探针实测：canvas.clientWidth = 104、
+     * unread/活线 104、控制列 64、滑块 56、锚 26、界栏线 left=64px·1px·α≈0.20、
+     * 跑道恰 40.0px——控制层与加宽前逐字同值，整条左移 40px。 */
+    expect(nav.querySelector(':scope > .pp-toc-ink')).not.toBeNull();
+    expect(col.querySelector('.pp-toc-ink')).toBeNull();
     expect(col.querySelector('.pp-toc-slider')).not.toBeNull();
     // 真机几何桩：带体右缘贴屏（2560 − 104 = 2456），内容列 = 带体左 64px
     nav.getBoundingClientRect = () =>
