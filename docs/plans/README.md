@@ -42,7 +42,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | **v11 分析引擎** | 草案挂起（用户拍板挂起） | 动态边 + 查询预算 + 降噪分级三篇合一——[`v11-analysis-engine-master-plan.md`](v11-analysis-engine-master-plan.md)；D 篇原件 [`dynamic-edge-detection-plan.md`](dynamic-edge-detection-plan.md)（superseded，以主文档为准） |
 | **会话存盘换轨（DSH 参照）** | 未定 | 参照 DSH 的会话持久化审计与移植——[`session-persistence-dsh-port-plan.md`](session-persistence-dsh-port-plan.md) |
 | **会话树（枝）** | [`session-tree-plan.md`](session-tree-plan.md) | **全批已落地（2026-09-19）；余真机手感** | 消息动作行「立枝」+ **空间手势立枝**（块上「枝」握把拖出引线、松手落在纸上就地立枝）；侧栏树形 + 书脊/卷首「枝」标 + 未落定置灰；删父卷**连坐整棵子树**；画布上朱砂引线连回父卷分叉节点、点线溯源。**旧枝考古不做**（用户裁定，§9）。裁定见 §9、施工记录见 §12 |
-| **卷日志的抹除（判定件）** | [`session-log-erasure-plan.md`](session-log-erasure-plan.md) | **待用户裁**（只判定不写码） | 「改 / 重发」的旧内容**只从投影里消失、从不从 `.ndjson` 里消失**（已复现：卷只增不减、立枝复制放大）；DSH 同族**同样不抹除**（且把遮蔽内容当可检索资产）⇒ 抹除 = 自觉偏离，须落账。建议 **A 撤回即压实**（原子重写、不动词表 ⇒ 不需 BCR）。五种形状与代价见 §3 |
+| **卷日志的抹除（判定件）** | [`session-log-erasure-plan.md`](session-log-erasure-plan.md) | **A 案已落地（2026-09-19）** | 「改 / 重发」之后旧内容**从 `.ndjson` 里物理抹除**（撤回即压实：整份原子重写 + 头行 `erased` 账声明空洞；投影/词表/载荷零改动 ⇒ 零 BCR）；无落盘面不压实（旧语义），写失败 = 未落定 + 下个检查点重试。设计与证据见 [`session-tree-plan.md`](session-tree-plan.md) §12.9/§12.10 |
 | **钉住与纸条改造** | 未定 | 钉住/纸条 UX 重构 + UI 换装——[`pin-strip-rework-plan.md`](pin-strip-rework-plan.md) |
 | **Skills 与 MCP 生产级改造** | 余文档收口 + 真机验收 | Commit 1-6 已落地——[`skills-mcp-production-plan.md`](skills-mcp-production-plan.md) |
 | **卷首字节稳定性（前缀缓存）** | 中（动段表 + 基线重录双轨） | 记忆库坐卷首第 ~2.5k token ⇒ 每次「重启 + 记忆变动」整卷重算（实测 34.7 万 token 全价、命中率 99%→0.6%）；「把记忆段挪到卷首末尾」已验算**无效**（只省 2.8%）——[`prompt-prefix-stability-plan.md`](prompt-prefix-stability-plan.md) |

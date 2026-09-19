@@ -28,7 +28,7 @@
 // 权威翻转（内容从日志派生、快照降级为带 seq 的投影缓存）归 Phase 3。
 
 import { log } from '../../agent/logger';
-import type { SessionEvent, SessionLog } from '../../agent/session-log';
+import type { SessionEvent, SessionLog, SessionLogErasedRange } from '../../agent/session-log';
 import { interruptedToolCallClosers } from '../../agent/session-log-repair';
 import { DEFAULT_WRITE_BATCH_MAX_DELAY_MS, SessionLogWriteBehind } from '../../agent/session-log-write-behind';
 import { sessionExecute } from '../../composition/session-persistence-service';
@@ -59,6 +59,25 @@ export interface SessionLogHeader {
    *  边一律**归一化**过（归到「自己的区域覆盖切点的那个卷」）——不归一化会画错树，
    *  且删除连坐会删错子树；实现见 `app/chat/session-branch.resolveBranchOrigin`。 */
   parent?: SessionLogParentRef;
+  /** **压实抹除账**（2026-09-19 A 案）：本卷被「改 / 重发」**物理抹除**过的 seq 段
+   *  （含端点）——事件流因此有**合法空洞**，读路径据此区分「抹除」与「掉行/坏段」。
+   *
+   *  与 `parent` 同族（可选字段、不升 version），但**不是** write-once：它在每次压实的
+   *  **原子整写**里与事件流同批扩写（结构属性随流走，不是「只会陈旧的副本」——write-once
+   *  纪律针对的是 label 那类可变量，见文件头注）。缺字段 = 无抹除（旧卷天然合法）。 */
+  erased?: SessionLogErasedRange[];
+}
+
+/** 抹除账条目的形状判据（读路径容忍毒化——形状不对当无账，见 `parseHeader`）。 */
+export function isSessionLogErasedRange(value: unknown): value is SessionLogErasedRange {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as { from?: unknown; to?: unknown };
+  return (
+    Number.isInteger(v.from) &&
+    (v.from as number) > 0 &&
+    Number.isInteger(v.to) &&
+    (v.to as number) >= (v.from as number)
+  );
 }
 
 /** 血缘字段的形状判据（读路径容忍毒化——形状不对当无父，见 `parseHeader`）。 */
@@ -124,10 +143,13 @@ export interface SessionLogStore {
   readonly header: SessionLogHeader;
   /** 静默点：排空队列（检查点/退出收尾）。 */
   flush(): Promise<void>;
-  /** 是否还有待写事件或在途写。 */
+  /** 是否还有待写事件、在途写或待兑现的整写。 */
   hasWork(): boolean;
   /** 已落盘批次数与事件数（观测面）。 */
   stats(): { batches: number; events: number; failures: number };
+  /** **整写能力位**（压实，2026-09-19 A 案）：记下抹除段并整写盘面（`SessionLogSink.rewrite`
+   *  的实现面）。失败自行可见化 + 保留下次 `flush` 重试，故调用方 fire-and-forget。 */
+  rewrite(erased: SessionLogErasedRange): void;
 }
 
 /** 注册表：SessionLog 实例 → 写面（WeakMap——日志随 Agent 消亡，不留强引用）。 */
@@ -192,6 +214,11 @@ export async function loadSessionLogFile(root: string, id: number): Promise<Load
   let committedBytes = utf8Len(`${lines[0]}\n`);
   const events: SessionEvent[] = [];
   let stopReason: string | null = torn ? `断尾：末行不完整（${utf8Len(tail)}\n 字节）` : null;
+  // 抹除账（压实，2026-09-19 A 案）：**只有被账声明的空洞**才是合法的（那是「改 / 重发」
+  // 抹掉的段）；未声明的空洞仍是「序号断裂」（掉行/坏段）——Phase-2 截断修复行为不变。
+  const erased = header.erased ?? [];
+  const isErased = (seq: number): boolean => erased.some((r) => seq >= r.from && seq <= r.to);
+  let prevSeq = 0;
   for (let i = 1; i < lines.length; i++) {
     let ev: SessionEvent;
     try {
@@ -200,11 +227,21 @@ export async function loadSessionLogFile(root: string, id: number): Promise<Load
       stopReason = `第 ${i + 1} 行不可解析`;
       break;
     }
-    if (typeof ev?.seq !== 'number' || ev.seq !== events.length + 1) {
-      stopReason = `第 ${i + 1} 行序号断裂（期望 ${events.length + 1}，得到 ${String(ev?.seq)}）`;
+    let hole = typeof ev?.seq !== 'number' || !Number.isInteger(ev.seq) || ev.seq <= prevSeq;
+    if (!hole) {
+      for (let s = prevSeq + 1; s < ev.seq; s++) {
+        if (!isErased(s)) {
+          hole = true;
+          break;
+        }
+      }
+    }
+    if (hole) {
+      stopReason = `第 ${i + 1} 行序号断裂（期望 ${prevSeq + 1}，得到 ${String(ev?.seq)}）`;
       break;
     }
     events.push(ev);
+    prevSeq = ev.seq;
     committedBytes += utf8Len(`${lines[i]}\n`);
   }
   if (stopReason) {
@@ -240,6 +277,12 @@ function parseHeader(line: string): SessionLogHeader | null {
     // 毒化容忍（INVARIANTS #11 读路径纪律）：血缘形状不对 = 当无父（根卷）——
     // 不让一条脏字段把整卷判成损坏（「文件在、内容在」比「血缘完整」重要）。
     if (parsed.parent !== undefined && !isSessionLogParentRef(parsed.parent)) delete parsed.parent;
+    // 同族：抹除账形状不对 = 当无账（空洞会按「掉行」处理——宁可判坏段，不静默接受）
+    if (parsed.erased !== undefined) {
+      const kept = Array.isArray(parsed.erased) ? parsed.erased.filter(isSessionLogErasedRange) : [];
+      if (kept.length > 0) parsed.erased = kept;
+      else delete parsed.erased;
+    }
     return parsed;
   } catch {
     return null;
@@ -281,7 +324,29 @@ export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessi
   let batches = 0;
   let events = 0;
   let failures = 0;
+  /** 抹除账（压实，A 案）：从盘上头行续账，每次压实累加（相邻段合并）。 */
+  const erasedRanges: SessionLogErasedRange[] = [...(opts.header.erased ?? [])];
+  /** 有待兑现的整写（压实）——`flush` 会重试；`hasWork` 据此让退出收尾等它。 */
+  let rewritePending = false;
 
+  /** 整写盘面（压实）：头行（含抹除账）+ 当前全部事件，原子替换。
+   *  **必须在整写屏障里跑**（队列空 + 持屏障 ⇒ 不与 append 交错，见 queue.rewrite 注）。 */
+  const writeWholeLog = async (): Promise<void> => {
+    const header: SessionLogHeader = erasedRanges.length > 0 ? { ...opts.header, erased: erasedRanges } : opts.header;
+    const body = logInstance
+      .events()
+      .map((e) => JSON.stringify(e))
+      .join('\n');
+    await sessionExecute('write_log', {
+      root: opts.root,
+      id: String(opts.sessionId),
+      data: `${JSON.stringify(header)}\n${body}${body ? '\n' : ''}`,
+    });
+    materialized = true;
+    rewritePending = false;
+  };
+
+  /** 兑现整写（失败可见 + 保留待重试——盘面临时落后 = 「这次撤回还没落定」）。 */
   const sink = async (batch: readonly SessionEvent[]): Promise<void> => {
     if (batch.length === 0) return;
     if (materialized) {
@@ -328,19 +393,52 @@ export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessi
     queue.enqueue(ev);
   });
 
+  /** 兑现整写（压实）：失败可见 + 保留待重试（盘面临时落后 = 「这次撤回还没落定」）。 */
+  const runRewrite = (): void => {
+    rewritePending = true;
+    void queue.rewrite(writeWholeLog).catch((error: unknown) => {
+      failures += 1;
+      log.warn('session-log', `会话日志整写失败（撤回尚未落定，下个检查点重试）：${target}`, {
+        error: String(error),
+      });
+    });
+  };
+
   const store: SessionLogStore = {
     sessionId: opts.sessionId,
     root: opts.root,
     header: opts.header,
-    flush: () => queue.flush(),
-    hasWork: () => queue.hasWork,
+    flush: async () => {
+      // 待兑现的整写先跑（自己带屏障）：压实是「撤回的落定」，先于普通排空
+      if (rewritePending) await queue.rewrite(writeWholeLog);
+      await queue.flush();
+    },
+    hasWork: () => queue.hasWork || rewritePending,
     stats: () => ({ batches, events, failures }),
+    rewrite: (erased) => {
+      mergeErasedRange(erasedRanges, erased);
+      runRewrite();
+    },
   };
   // 落盘面接上日志（agent 层的检查点问日志要屏障——见 SessionLog.flushPersistence）
   logInstance.setPersistenceSink(store);
   _stores.set(logInstance, store);
   _live.add(store);
   return store;
+}
+
+/** 累加抹除账（相邻/重叠段合并——账要能一行读完，且读路径的洞判据是逐 seq 查表）。 */
+function mergeErasedRange(ledger: SessionLogErasedRange[], next: SessionLogErasedRange): void {
+  ledger.push(next);
+  ledger.sort((a, b) => a.from - b.from);
+  const merged: SessionLogErasedRange[] = [];
+  for (const r of ledger) {
+    const last = merged[merged.length - 1];
+    if (last && r.from <= last.to + 1) last.to = Math.max(last.to, r.to);
+    else merged.push({ ...r });
+  }
+  ledger.length = 0;
+  ledger.push(...merged);
 }
 
 /** 取某条日志的写面（未 attach = null）。 */

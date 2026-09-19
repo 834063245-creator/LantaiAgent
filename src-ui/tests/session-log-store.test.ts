@@ -161,6 +161,30 @@ describe('Phase 1 写后队列（SessionLogWriteBehind，DSH 语义）', () => {
     await Promise.all([a, b]);
     expect(writes).toBe(1);
   });
+
+  it('整写屏障（rewrite）：op 独占文件——其期间入队的事件排在整写**之后**落盘', async () => {
+    // 压实（A 案）的落盘形状：整写若与 append 交错，窗口内落盘的批次会被整写覆盖
+    // （事件静默丢失）⇒ 持屏障跑 op（队列空 + 屏障在手 = 独占）。
+    const { SessionLogWriteBehind } = await import('../src/agent/session-log-write-behind');
+    const trace: string[] = [];
+    const queue = new SessionLogWriteBehind({
+      maxDelayMs: 5,
+      write: async (events) => {
+        trace.push(`append:${events.map((e) => e.seq).join(',')}`);
+      },
+      reportBackgroundFailure: vi.fn(),
+    });
+    const ev = (seq: number) => ({ seq, ts: 0, kind: 'user/message' as const, data: {} }) as never;
+    queue.enqueue(ev(1));
+    await queue.rewrite(async () => {
+      trace.push('rewrite:start');
+      queue.enqueue(ev(2)); // 整写期间到达（真机 = 撤回事件之后的正常产出）
+      trace.push('rewrite:end');
+    });
+    expect(trace).toEqual(['append:1', 'rewrite:start', 'rewrite:end', 'append:2']);
+    expect(queue.pendingCount).toBe(0);
+    expect(queue.hasWork).toBe(false);
+  });
 });
 
 describe('Phase 1 事件日志落盘（materialize → durable append）', () => {

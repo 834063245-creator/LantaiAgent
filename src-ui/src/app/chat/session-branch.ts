@@ -24,7 +24,7 @@
 
 import { agentSessionState } from '../../agent/agent-session-state';
 import { log } from '../../agent/logger';
-import type { SessionEvent } from '../../agent/session-log';
+import type { SessionEvent, SessionLogErasedRange } from '../../agent/session-log';
 import { danglingToolCalls } from '../../agent/session-log-repair';
 import { sessionExecute } from '../../composition/session-persistence-service';
 import type { Message, ToolCall } from '../../provider/types';
@@ -355,13 +355,16 @@ export async function resolveBranchOrigin(
   return lastReadable ?? { id, atSeq };
 }
 
-/** 立枝备料：切点 + 归一化后的边 + 前缀事件 + 继承的组合。 */
+/** 立枝备料：切点 + 归一化后的边 + 前缀事件 + 继承的组合 + 继承的抹除账。 */
 interface BranchSeed {
   origin: SessionLogParentRef;
   /** 要复制进新卷的前缀事件（父卷事件的字节同源副本，seq 原样保留）。 */
   events: SessionEvent[];
   /** 父卷生效组合（newest-wins，`resolveSessionPreset` 单一真源）——枝出生即继承。 */
   presetId?: string;
+  /** 父卷的**抹除账**（压实产生的合法空洞）——前缀带着同样的空洞，子卷头行必须同账，
+   *  否则子卷文件被读路径判成「序号断裂」（掉行）而截断（2026-09-19 A 案连带面）。 */
+  erased?: SessionLogErasedRange[];
 }
 
 type SeedResult = { ok: true; seed: BranchSeed } | { ok: false; reason: string };
@@ -403,7 +406,17 @@ async function prepareBranchSeed(root: string, fromId: number, atSeq?: number): 
   // 枝出生即继承父卷生效组合：既是意图，也是钱（前缀逐字节同源 ⇒ 提供方缓存命中）。
   const { SessionLog } = await import('../../agent/session-log');
   const presetId = SessionLog.replay(prefix).resolveSessionPreset() ?? loaded.header.presetId;
-  return { ok: true, seed: { origin, events: prefix, ...(presetId ? { presetId } : {}) } };
+  // 抹除账随前缀裁剪继承：只带切点之内的段（切点之外的抹除与本卷无关）
+  const inheritedErased = (loaded.header.erased ?? []).filter((r) => r.from <= cut);
+  return {
+    ok: true,
+    seed: {
+      origin,
+      events: prefix,
+      ...(presetId ? { presetId } : {}),
+      ...(inheritedErased.length > 0 ? { erased: inheritedErased } : {}),
+    },
+  };
 }
 
 /**
@@ -434,7 +447,7 @@ export async function createBranchVolume(ctx: SessionContext, fromId: number, at
 
   const prepared = await prepareBranchSeed(root, fromId, atSeq);
   if (!prepared.ok) return refuse(prepared.reason);
-  const { origin, events, presetId } = prepared.seed;
+  const { origin, events, presetId, erased } = prepared.seed;
 
   const sess = getChatStore(ctx.storeId).sess.getState();
   const scanned = await scanMaxSessionId(projectPath);
@@ -449,6 +462,7 @@ export async function createBranchVolume(ctx: SessionContext, fromId: number, at
     ...(presetId ? { presetId } : {}),
     cwd: projectPath,
     parent: origin,
+    ...(erased ? { erased } : {}),
   };
   const payload = `${JSON.stringify(header)}\n${events.map((e) => JSON.stringify(e)).join('\n')}\n`;
   try {

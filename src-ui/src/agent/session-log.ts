@@ -162,6 +162,41 @@ export interface DerivePayloadOptions {
   toolFoldBoundary?: number;
 }
 
+/** **压实抹除的 seq 段**（含端点）——盘面空洞的唯一声明源（卷日志头行 `erased` 账）。
+ *  语义：本段事件曾被写入，后因「改 / 重发」的撤回被**物理抹除**（2026-09-19 A 案）。 */
+export interface SessionLogErasedRange {
+  from: number;
+  to: number;
+}
+
+/** 落盘面（app 层 attach）——日志自己回答「我落盘了吗」。 */
+export interface SessionLogSink {
+  /** 排空到静默点（持久化屏障）。 */
+  flush(): Promise<void>;
+  /** **整写能力位**（压实）：把当前事件全量重写盘面（原子替换）+ 记下抹除段。
+   *  实现方**不得** reject（失败自行可见化 + 保留下次 flush 重试），故调用方 fire-and-forget。
+   *  未实现 = 该写面不支持整写 ⇒ 压实不发生（旧语义）。 */
+  rewrite?(erased: SessionLogErasedRange): void;
+}
+
+/** 一次撤回的落定形态。 */
+export interface RetractOutcome {
+  /** 写进日志的撤回事件（`{fromIndex:0,toIndex:0}` = 已压实；真实区间 = 未压实）。 */
+  event: SessionEvent<'session/retract'>;
+  /** 已物理抹除的 seq 段（null = 未压实——`reason` 必有）。 */
+  erased: SessionLogErasedRange | null;
+  /** 未压实的原因（结构性降级：无盘面 / 锚点不可抹 / 自校验不过）。 */
+  reason?: string;
+}
+
+/** 可抹除的事件 kind（有消息投影的三族）——`session/reset` 的锚点**不可**抹
+ *  （它承载整段历史：抹掉它等于抹掉那一整批消息）。 */
+const ERASABLE_KINDS: ReadonlySet<SessionEventKind> = new Set<SessionEventKind>([
+  'user/message',
+  'assistant/text',
+  'tool/result',
+]);
+
 // ── SessionLog ──
 
 export class SessionLog {
@@ -171,10 +206,10 @@ export class SessionLog {
   /** 落盘面（由 app 层 attach——`app/chat/session-log-store.attachSessionLogStore`）。
    *  日志自己回答「我落盘了吗」：检查点（模型请求前 / 工具副作用前 / 退出）都问它，
    *  而不是让 agent 层去认识 app 层的写入面（分层：agent 不 import app）。 */
-  private _sink: { flush(): Promise<void> } | null = null;
+  private _sink: SessionLogSink | null = null;
 
   /** 接上落盘面（app 层调用；重复接 = 覆盖，摘除 = 传 null）。 */
-  setPersistenceSink(sink: { flush(): Promise<void> } | null): void {
+  setPersistenceSink(sink: SessionLogSink | null): void {
     this._sink = sink;
   }
 
@@ -282,6 +317,72 @@ export class SessionLog {
   /** 完整历史投影 — 必须与旧 session 数组逐字节等价（T1/T2 差分钉住）。 */
   deriveMessages(): Message[] {
     return this.project().messages;
+  }
+
+  /**
+   * **区间撤回 + 压实**（「改 / 重发」的落定形态，2026-09-19 A 案）。
+   *
+   * 旧语义（仍是降级路径）：只 append 一条 `session/retract {fromIndex,toIndex}`——投影里
+   * 抹掉，**盘上留着原文**。新语义：把该区间的**来源事件**（连同区间内的审计事件）从日志里
+   * **物理抹除**，并整写盘面 ⇒ 「旧消息直接抹掉」在文件上也成立。
+   *
+   * 三条纪律（设计件 `docs/plans/session-tree-plan.md` §12.9）：
+   *   ① **压实的目标是盘面**：未接落盘面 / 写面无整写能力位 ⇒ 不压实（退回旧语义，
+   *      与 `flushPersistence` 的「未接落盘面 = no-op」同一降级纪律）；
+   *   ② **seq 保留原值、留空洞**（不重编号——重编号会让枝卷头行的 `parent.atSeq` 指针错位）；
+   *      空洞由头行 `erased` 账声明（写面负责累账），读路径据此区分「抹除」与「坏段」；
+   *   ③ **自校验 fail-closed**：候选事件表重放出的投影 / 锚点 / 载荷必须与旧语义逐字节
+   *      相同才落定，否则不压实（`reason` 具名可见）——压实不许改变任何「读出来的东西」。
+   *
+   * 压实后写进日志的撤回事件是 `{fromIndex: 0, toIndex: 0}`（no-op）：被抹除的那份投影
+   * 已不存在，原始索引无意义；**投影语义与事件词表因此零改动**。
+   */
+  retractRange(fromIndex: number, toIndex: number): RetractOutcome {
+    const legacy = (reason?: string): RetractOutcome => ({
+      event: this.append('session/retract', { fromIndex, toIndex }),
+      erased: null,
+      ...(reason !== undefined ? { reason } : {}),
+    });
+    if (!this._sink?.rewrite) return legacy('未接落盘面（无整写面 = 无压实）');
+    if (!(toIndex > fromIndex)) return legacy('空区间');
+    const pre = this.project();
+    if (fromIndex < 0 || toIndex > pre.messages.length) return legacy('区间越界');
+    const run = pre.anchors.slice(fromIndex, toIndex);
+    const bySeq = new Map(this._events.map((e) => [e.seq, e]));
+    for (const seq of run) {
+      const ev = bySeq.get(seq);
+      // 锚点必须指向可抹除的消息事件：`session/reset` 的锚点承载整段历史（抹它 = 抹那一整批）
+      if (!ev || !ERASABLE_KINDS.has(ev.kind)) return legacy('区间的来源事件不可抹（整段替换的锚或锚缺失）');
+    }
+    const erased: SessionLogErasedRange = { from: Math.min(...run), to: Math.max(...run) };
+    const kept = this._events.filter((e) => e.seq < erased.from || e.seq > erased.to);
+    if (!this._projectionPreserved(kept, fromIndex, toIndex)) return legacy('自校验不过（压实会改变投影或载荷）');
+    // 落定：抹除（内存与盘面同批）+ 一条 no-op 撤回事件（保留「撤回发生过」与清悬空集的读面语义）
+    const event = this.append('session/retract', { fromIndex: 0, toIndex: 0 });
+    this._events = [...kept, event];
+    this._sink.rewrite(erased);
+    return { event, erased };
+  }
+
+  /** 压实自校验：候选事件表（已抹除 + no-op 撤回）与旧语义日志（原事件 + 真实区间撤回）
+   *  的投影 / 锚点 / 载荷逐字节相同。seq 用当前 `_nextSeq`（对投影无影响）。 */
+  private _projectionPreserved(kept: readonly SessionEvent[], fromIndex: number, toIndex: number): boolean {
+    const seq = this._nextSeq;
+    const ts = 0;
+    const legacyLog = SessionLog.replay([
+      ...this._events,
+      { seq, ts, kind: 'session/retract', data: { fromIndex, toIndex } },
+    ]);
+    const compactedLog = SessionLog.replay([
+      ...kept,
+      { seq, ts, kind: 'session/retract', data: { fromIndex: 0, toIndex: 0 } },
+    ]);
+    const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+    return (
+      same(legacyLog.deriveMessages(), compactedLog.deriveMessages()) &&
+      same(legacyLog.deriveMessageAnchors(), compactedLog.deriveMessageAnchors()) &&
+      same(legacyLog.derivePayload({ toolResultWindow: 0 }), compactedLog.derivePayload({ toolResultWindow: 0 }))
+    );
   }
 
   /**

@@ -708,9 +708,15 @@ export class Agent {
     rebuildAssetsFromSession(this.id, this.session);
   }
 
-  /** 区间撤回（[fromIndex, toIndex) splice 语义 — retractTurnAt / goal 暂停裁剪）。 */
+  /** 区间撤回（[fromIndex, toIndex) splice 语义 — retractTurnAt / goal 暂停裁剪）。
+   *  **压实优先**（2026-09-19 A 案）：撤回落定时把区间的来源事件从日志里**物理抹除**
+   *  （盘面整写 + 头行 erased 账），不可压实（无盘面 / 锚点不可抹 / 自校验不过）退回
+   *  「只记区间」旧语义——降级原因在日志面可见（debug），设计见 session-tree-plan §12.9。 */
   private _retractSessionRange(fromIndex: number, toIndex: number): void {
-    this._sessionLog.append('session/retract', { fromIndex, toIndex });
+    const outcome = this._sessionLog.retractRange(fromIndex, toIndex);
+    if (outcome.erased === null && outcome.reason) {
+      log.debug('agent', `撤回未压实（退回只记区间）：${outcome.reason}`, { fromIndex, toIndex });
+    }
     this.session.splice(fromIndex, toIndex - fromIndex);
   }
 

@@ -83,6 +83,29 @@ export class SessionLogWriteBehind {
    * 失败时屏障 reject（调用方决定可见等级），队列内容保留待重试。
    */
   flush(): Promise<void> {
+    return this.runBarrier(undefined);
+  }
+
+  /**
+   * **整写屏障**（压实，2026-09-19 A 案）：排空在途 → **持屏障**跑 `op` → 排空 op 期间
+   * 到达的事件。
+   *
+   * 为什么必须持屏障跑：整写（全量重写文件）若与 append 交错，窗口内落盘的批次会被
+   * 随后的整写覆盖（事件静默丢失）。持屏障期间 `enqueue` 不自己起窗口（既有语义），
+   * 故队列空 + 屏障在手 = 整写独占文件；op 期间到达的事件在其后按 append 落定。
+   */
+  rewrite(op: () => Promise<void>): Promise<void> {
+    return this.runBarrier(op);
+  }
+
+  /** 取消当前自动窗口（不清队列）——退出路径「先取消防抖」的对应物。 */
+  cancelAutomaticWait(): void {
+    this.cancelTimer();
+    this.deadlineExpired = false;
+  }
+
+  /** 屏障公共入口（flush = 无 op；rewrite = 持屏障跑整写）。 */
+  private runBarrier(op?: () => Promise<void>): Promise<void> {
     if (this.barrier !== undefined) return this.barrier;
     this.cancelTimer();
     this.deadlineExpired = false;
@@ -97,14 +120,8 @@ export class SessionLogWriteBehind {
       rejectBarrier = reject;
     });
     this.barrier = barrier;
-    void this.drainBarrier(resolveBarrier, rejectBarrier);
+    void this.drainBarrier(resolveBarrier, rejectBarrier, op);
     return barrier;
-  }
-
-  /** 取消当前自动窗口（不清队列）——退出路径「先取消防抖」的对应物。 */
-  cancelAutomaticWait(): void {
-    this.cancelTimer();
-    this.deadlineExpired = false;
   }
 
   private armTimer(): void {
@@ -147,13 +164,20 @@ export class SessionLogWriteBehind {
     }
   }
 
-  private async drainBarrier(resolve: () => void, reject: (reason?: unknown) => void): Promise<void> {
+  private async drainBarrier(
+    resolve: () => void,
+    reject: (reason?: unknown) => void,
+    op?: () => Promise<void>,
+  ): Promise<void> {
     try {
       const overlapping = this.active;
       if (overlapping !== undefined) {
         await Promise.allSettled([overlapping]);
         this.automaticPaused = false;
       }
+      while (this.pending.length > 0) await this.startWrite(false);
+      // 整写（压实）：队列空 + 仍持屏障 ⇒ 不与任何 append 交错（见 rewrite 注）
+      if (op) await op();
       while (this.pending.length > 0) await this.startWrite(false);
     } catch (error: unknown) {
       this.barrier = undefined;

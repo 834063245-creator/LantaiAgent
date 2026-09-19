@@ -470,4 +470,47 @@ P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批�
 `npx biome ci .` 828 文件 0/0 ✓；`npm run verify:convergence` 双轨 exit 0 ✓；
 `npm run doc-check` / `doc-sync` ✓。
 
+### 12.9 A 案落地：撤回即压实（物理抹除）——设计先落（2026-09-19）
+
+用户裁定（「那就按A改」）后，动手前先把**实现形状**钉死（写码中查实的读路径约束改变了原判定件
+里「保留 seq 空洞」的设想，故此处逐条留痕）：
+
+| # | 裁定 | 理由 |
+|---|---|---|
+| ① | **压实的目标是盘面**：仅当本日志**已接落盘面且写面支持整写**时才压实；未接（测试桩 / 无 UI 的纯 Agent）= 不压实，退回「只记区间」旧语义 | 残留的家在文件里；无盘面 = 无持久化的账要清（与 `flushPersistence` 的「未接落盘面 = no-op」同一降级纪律）。**连带收益**：phase-5 T3 冻结基线（`session-projection.trace.json`，场景含一次 `retractTurnAt` 且**不接盘面**）逐字节不动 ⇒ 不需 BCR |
+| ② | **seq 保留原值、留空洞**（不重编号） | 重编号会让**枝卷头行里的 `parent.atSeq` 指针**（子卷指着父卷某个 seq）静默错位——那是 0375e3c2 修过的「子卷顶着父卷的名」同族事故 |
+| ③ | **空洞的声明源唯一 = 头行 `erased` 账**（可选字段）；读路径由「seq 必须连续」放宽为「**严格递增 + 空洞必须被账声明**」 | 读路径 `loadSessionLogFile` 原本要求 `seq === 序号`（掉行检测）；压实会合法地制造空洞 ⇒ 必须能区分「抹除」与「坏段」。未声明的空洞**仍是**「序号断裂」（Phase-2 修复链行为不变，守护测试零改动） |
+| ④ | **投影语义零改动、事件词表零改动**：压实后的撤回事件写 `{fromIndex: 0, toIndex: 0}`（no-op splice） | 被抹除的那份投影已不存在，原始索引无意义；零改动 ⇒ 不触 BCR 面。**不做**「带 erased 的 retract 跳过 splice」那条投影规则（那会改投影语义） |
+| ⑤ | **自校验 fail-closed**：重写前用候选事件表重放一遍，`deriveMessages` / `deriveMessageAnchors` / `derivePayload({toolResultWindow:0})` 必须与旧语义日志**逐字节相同**；不同 ⇒ 不压实（具名原因可见） | 压实不许改变任何「读出来的东西」——这是它的全部合法性来源 |
+| ⑥ | **写失败 = 未落定**（不回滚内存）：整写走**整写屏障**（排在写后队列之后，不与 append 交错）；失败可见 warn + 下次 `flush` 重试 | 盘面临时落后 = 「这次撤回还没落定」（诚实），比「盘上一条 no-op 撤回把内容复活」好 |
+
+**连带面**：枝卷复制前缀时必须**继承裁剪后的 erased 账**（子卷文件带着同样的空洞，否则子卷被判断尾）；
+`erased` 账随每次压实累加（相邻段合并）。
+
+### 12.10 A 案落地（本批）
+
+| 件 | 内容 |
+|---|---|
+| `agent/session-log.ts` | `retractRange(from,to)` = 撤回的唯一落定形态（压实优先 + 三条 fail-closed 判据 + `_projectionPreserved` 自校验）；`SessionLogErasedRange` / `SessionLogSink`（`rewrite?` 能力位）/ `RetractOutcome` 三个形状出口 |
+| `agent/agent.ts` | `_retractSessionRange` 改走 `retractRange`（未压实的结构性原因记 debug——降级可见不喧哗）；`this.session.splice` 仍是本方法**唯一**直改（phase-5 T0 AST 门禁原样绿） |
+| `agent/session-log-write-behind.ts` | 新增 `rewrite(op)` **整写屏障**：排空在途 → **持屏障**跑 op（队列空 + 屏障在手 = 独占文件，整写不与 append 交错）→ 排空 op 期间到达的事件。`flush()` 与它共用 `runBarrier` |
+| `app/chat/session-log-store.ts` | 头行 `erased` 账（形状判据 + 毒化容忍）+ `writeWholeLog`（整写盘面，`write_log` 原子替换）+ `runRewrite`（失败可见 + 保留下次 flush 重试）+ `store.rewrite` 能力位；读路径空洞判据改「**严格递增 + 空洞必须被账声明**」（未声明的空洞仍是「序号断裂」） |
+| `app/chat/session-branch.ts` | 立枝时**继承裁剪后的抹除账**（`erased` 只带切点之内的段）——子卷文件带着同样的空洞 |
+
+**测试**：
+
+| 件 | 内容 |
+|---|---|
+| `tests/session-log-compaction.test.ts`（新，8 例） | ① 撤回最后一轮 ⇒ 文件里**搜不到**旧内容、被抹 seq 不在文件里、撤回事件退化为 `{0,0}`、头行记账、内存投影 = 会话（T1 等价）、锚点前缀不变、**重开 = 撤回后的内容**；② 中段压实（adopt 在空洞之后）⇒ 重开照常；③ **无落盘面 ⇒ 不压实**（旧语义，事件带真实区间）；④ fail-closed：整段替换的锚不可抹 ⇒ 不压实 + 真实区间 + 原文还在；⑤ **写失败 = 未落定**（文件保持原样）+ 故障解除后下个 flush 兑现；⑥ 枝卷继承裁剪后的账（子卷可正常读回）；⑦ 连撤两轮 ⇒ 抹除账累加（有序不重叠）+ 压实后继续 append 照常；⑧ 读路径：已声明空洞照常认领 / 未声明空洞仍判断裂（Phase-2 行为不变） |
+| `tests/session-log-store.test.ts` +1 例 | 整写屏障独占文件：op 期间入队的事件排在整写**之后**落盘（不与整写交错） |
+
+**门禁**：`npm run build` ✓；`npx vitest run` 349 文件 / **3570** 通过（本批 +9 例）✓；
+`npx biome ci .` 829 文件 0/0 ✓；`npm run verify:convergence` 双轨 exit 0 ✓；
+`doc-check` / `doc-sync`（含 `gen:catalogs:event`：agent.ts 行号漂移重生成）✓。
+
+**零 BCR 的证据**：`verify:convergence` 双轨对拍里含 phase-5 T3 的
+`session-projection.trace.json`——那个固定场景**含一次 `retractTurnAt(7)`** 且**不接落盘面**，
+故按裁定①它不压实 ⇒ 事件流逐字节不变、基线文件零改动（`git status` 可查）。
+若哪天有人把压实改成「无盘面也压」，这份基线会当场变红——门禁即证据。
+
 
