@@ -10,7 +10,12 @@ import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
 import { log } from '../agent/logger';
 import type { TokenLedgerSnapshot } from '../agent/token-meter/types';
-import { detachSessionLogStore, openSessionLog, readVolumeLogMessages } from '../app/chat/session-log-store';
+import {
+  detachSessionLogStore,
+  inheritedMessageCount,
+  openSessionLog,
+  readVolumeLogMessages,
+} from '../app/chat/session-log-store';
 import { sessionExecute } from '../composition/session-persistence-service';
 import type { Message } from '../provider/types';
 import { kernelWriteFile } from '../rpc-contract';
@@ -200,7 +205,9 @@ export function resetSessionState(storeId: string): void {
  *  条用户消息自动命名。在每轮对话完成后调用。sid 指定轮次所属卷（并发会话：后台卷
  *  跑完只命名自己）；缺省 = 活跃卷（遗留调用语义）。
  *  判据与派生都是 state/volume-name 的**同一把尺子**（与读盘路径同判——收口前
- *  这里严「\d+$」、读盘路径松「案卷␣前缀」，同一个名两条路答得不一样）。 */
+ *  这里严「\d+$」、读盘路径松「案卷␣前缀」，同一个名两条路答得不一样）。
+ *  **枝卷只认自己的首条来文**（`inheritedMessageCount`）：继承来的前缀是父卷的复制，
+ *  拿它起名 = 子卷顶着父卷的名（真机验收报的「卷名乱套」）。 */
 export function autoTitleSessionIfDefault(storeId: string, sid?: number): void {
   const st = getChatStore(storeId).sess.getState();
   const { sessions, activeIdx } = st;
@@ -218,7 +225,8 @@ export function autoTitleSessionIfDefault(storeId: string, sid?: number): void {
   if (!agent) return;
 
   const msgs = agent.getSession();
-  const firstUser = msgs.find((m) => m.role === 'user' && m.content && !m.content.startsWith('<compacted-context>'));
+  const own = msgs.slice(inheritedMessageCount(agent.sessionLog));
+  const firstUser = own.find((m) => m.role === 'user' && m.content && !m.content.startsWith('<compacted-context>'));
   if (!firstUser?.content) return;
 
   const derived = deriveVolumeLabel(firstUser.content);
@@ -1618,13 +1626,24 @@ export async function loadSessionFromDisk(
     newAgent.setSession([...freshSys, ...conv]);
   }
 
-  const firstUser = conv.find((m: Message) => m.role === 'user' && !isInternalMessage(m.content));
-  // 卷名（与 autoTitleSessionIfDefault 同规）：有名卷直采；未命名 → 首条来文派生
+  // 卷名（与 autoTitleSessionIfDefault 同规）：有名卷直采；未命名 → **自己的**首条来文派生
   // （仍无名 = 留空，显示兜底由呈现层按档号给）。判据/派生 = state/volume-name 单一真源。
+  // **枝卷只认自己的首条来文**（`inheritedMessageCount` 跳过继承来的前缀）：前缀是父卷的
+  // 复制，拿它起名 = 子卷顶着父卷的名（真机验收报的「卷名乱套」）。句柄/日志缺席时边界
+  // 不可知 ⇒ 有父即不起名（宁可显示档号，也不顶别人的名）。
+  // ⚠ 切片必须在**全量**消息表上做：继承长度是**投影下标**（含 system 头），而 `conv`
+  // 已滤掉 system——在 `conv` 上切会多切掉自己的首条来文（两套下标空间）。
+  const inherited = inheritedMessageCount(newAgent?.sessionLog);
   const storedLabel = data.label ?? '';
+  const ownFirstUser =
+    inherited === 0 && data.parentId != null
+      ? undefined
+      : (data.messages as Message[])
+          .slice(inherited)
+          .find((m: Message) => m.role === 'user' && !isInternalMessage(m.content));
   const label = isUnnamedVolumeLabel(storedLabel)
-    ? firstUser?.content
-      ? deriveVolumeLabel(firstUser.content)
+    ? ownFirstUser?.content
+      ? deriveVolumeLabel(ownFirstUser.content)
       : ''
     : storedLabel;
 
@@ -1754,14 +1773,22 @@ export async function batchRestoreSessions(
   if (batch.length === 0) return 0;
 
   // 卷名派生（与 loadSessionFromDisk / autoTitleSessionIfDefault 同规：有名卷直采 /
-  // 未命名 → 首条来文截断 / 仍无名 = 留空由呈现层兜底）——单一真源 state/volume-name
+  // **自己的**首条来文截断 / 仍无名 = 留空由呈现层兜底）——单一真源 state/volume-name。
+  // 批恢复不造句柄（本函数同 loadSessionFromDisk 的 restore 模式）⇒ 继承边界算不出来，
+  // 故枝卷（`parentId`）一律不起名——宁可显示档号，也不让子卷顶着父卷的名。
   const labeled = batch.map(({ sid, data }) => {
     const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
-    const firstUser = conv.find((m) => m.role === 'user' && !isInternalMessage(m.content));
+    const logInstance = agentSessionState.getAgent(ctx.storeId, data.id || sid)?.sessionLog;
+    const inherited = inheritedMessageCount(logInstance);
+    // 切片在**全量**消息表上做（继承长度是含 system 头的投影下标——见 loadSessionFromDisk 注）
+    const ownFirstUser =
+      inherited === 0 && data.parentId != null
+        ? undefined
+        : (data.messages as Message[]).slice(inherited).find((m) => m.role === 'user' && !isInternalMessage(m.content));
     const storedLabel = data.label ?? '';
     const label = isUnnamedVolumeLabel(storedLabel)
-      ? firstUser?.content
-        ? deriveVolumeLabel(firstUser.content)
+      ? ownFirstUser?.content
+        ? deriveVolumeLabel(ownFirstUser.content)
         : ''
       : storedLabel;
     return { sid: data.id || sid, label, data, conv };

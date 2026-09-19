@@ -348,6 +348,37 @@ export function sessionLogStoreOf(logInstance: SessionLog): SessionLogStore | nu
   return _stores.get(logInstance) ?? null;
 }
 
+/**
+ * **切点 seq → 投影消息条数**（最后一个「来源 seq ≤ 切点」的投影下标 + 1；无日志/无命中 = 0）。
+ *
+ * ⚠ **不假设锚点单调**：`adopt`（开卷重设头部 system 提示）给头条消息的锚点是**那条
+ * adopt 事件的 seq**（比尾部历史的锚点都大，见 `agent/session-log` 的 adopt 分支），
+ * 故只能**全扫取最后一个命中**——遇大即断会在开过卷的卷上直接落空（P3 实测）。
+ */
+export function inheritedCountAt(logInstance: SessionLog | null | undefined, atSeq: number): number {
+  if (!logInstance) return 0;
+  const anchors = logInstance.deriveMessageAnchors();
+  let k = -1;
+  for (let i = 0; i < anchors.length; i++) {
+    if (anchors[i] <= atSeq) k = i;
+  }
+  return k + 1;
+}
+
+/**
+ * **本卷的继承前缀长度**（投影消息条数）：头行 `parent.atSeq` 的切点 → 见 `inheritedCountAt`。
+ * 非枝卷 / 无父 / 无日志 = 0（整卷都是它自己的）。
+ *
+ * 用途：**给未命名卷起名**（首条来文派生）——枝卷的前缀是父卷的复制，拿它派生卷名 =
+ * 子卷顶着父卷的名（2026-09-18 真机验收报的「卷名乱套」）。枝边的父卷落点用
+ * `inheritedCountAt`（那个切点是**别的卷**的，不是本卷头行里的）。
+ */
+export function inheritedMessageCount(logInstance: SessionLog | null | undefined): number {
+  if (!logInstance) return 0;
+  const atSeq = sessionLogStoreOf(logInstance)?.header.parent?.atSeq;
+  return atSeq == null ? 0 : inheritedCountAt(logInstance, atSeq);
+}
+
 /** 静默点：排空一条日志的队列（未 attach = no-op）。检查点与退出收尾共用。 */
 export async function flushSessionLog(logInstance: SessionLog | null | undefined): Promise<void> {
   if (!logInstance) return;

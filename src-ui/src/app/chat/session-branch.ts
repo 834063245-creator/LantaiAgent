@@ -41,6 +41,7 @@ import {
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 import {
   flushSessionLog,
+  inheritedCountAt,
   loadSessionLogFile,
   type SessionLogHeader,
   type SessionLogParentRef,
@@ -259,15 +260,10 @@ export function branchNodeMessageId(storeId: string, sid: number, atSeq: number)
   const logInstance = agent?.sessionLog;
   if (!agent || !logInstance) return null;
   const session = agent.getSession();
-  const anchors = logInstance.deriveMessageAnchors();
-  // 切点 → 投影下标：**最后一个**「来源 seq ≤ 切点」的消息。
-  // 不假设锚点单调：`adopt`（开卷重设头部 system 提示）给头条消息的锚点是**那条
-  // adopt 事件的 seq**（比尾部历史的锚点都大，见 session-log 的 adopt 分支），
-  // 故只能全扫取最后一个命中——遇大即断会在开过卷的卷上直接落空。
-  let k = -1;
-  for (let i = 0; i < anchors.length; i++) {
-    if (anchors[i] <= atSeq) k = i;
-  }
+  // 切点 → 投影下标 = **该切点处的投影消息条数 - 1**（`inheritedCountAt` = 同一把尺子：
+  // 最后一个「来源 seq ≤ 切点」的投影下标 + 1；它同时供「给未命名卷起名」用，一条实现）。
+  // 注意传的是**本卷（父卷）自己的**日志 + 子卷的切点——不是 `inheritedMessageCount`。
+  const k = inheritedCountAt(logInstance, atSeq) - 1;
   if (k < 0 || k >= session.length) return null;
   const msgs = msgStoreFor(storeId, sid).getState().messages;
   const uiUsers = msgs.filter((m) => m.role === 'user');

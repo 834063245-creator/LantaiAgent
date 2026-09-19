@@ -89,6 +89,7 @@ import type { Chunk, Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
+import { volumeDisplayName } from '../src/state/volume-name';
 import type { SessionContext } from '../src/ui/chat-session';
 import * as Session from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
@@ -174,6 +175,92 @@ function installFactory(storeId: string): void {
     })) as never;
   });
 }
+
+describe('会话树「枝」——卷名（真机验收：子卷不得顶着父卷的名）', () => {
+  beforeEach(() => {
+    const fs = H.kernelFs?.fs;
+    if (fs) {
+      fs.files.clear();
+      fs.dirs.clear();
+      fs.writes.length = 0;
+      fs.fail = {};
+    }
+    Session.resetSessionListCacheForTests();
+  });
+
+  /** 面板里某卷的卷名（空 = 未命名 ⇒ 显示走档号兜底）。 */
+  function labelOf(store: string, sid: number): string {
+    return (
+      getChatStore(store)
+        .sess.getState()
+        .sessions.find((s) => s.id === sid)?.label ?? ''
+    );
+  }
+
+  it('枝卷不继承父卷的名：未说话 = 未命名（显示档号），在枝上说话后才按**它自己的**首条来文起名', async () => {
+    const store = 'branch-name-1';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(1, logText(1, [sys, user('父卷首句'), assistant('父卷回复')]));
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+    // 父卷按自己的首条来文起名（原行为，不变）
+    expect(labelOf(store, 1)).toBe('父卷首句');
+
+    expect(await createBranchVolume(makeCtx(store), 1)).toMatchObject({ ok: true, sid: 2 });
+    // 枝卷的前缀 = 父卷首句（**继承**来的）——不得拿它起名（否则子卷顶着父卷的名）
+    expect(labelOf(store, 2)).toBe('');
+    expect(volumeDisplayName(labelOf(store, 2), 2)).toBe('案卷 2');
+
+    // 在枝上说话 → 每轮末的自动命名按它**自己的**首条来文起名
+    const handle = agentSessionState.getAgent(store, 2) as unknown as {
+      _getAgent(): { _appendMessage(kind: string, message: unknown): void };
+    };
+    handle._getAgent()._appendMessage('user/message', { role: 'user', content: '枝上第一句' });
+    Session.autoTitleSessionIfDefault(store, 2);
+    expect(labelOf(store, 2)).toBe('枝上第一句');
+    // 父卷的名不被牵连
+    expect(labelOf(store, 1)).toBe('父卷首句');
+  });
+
+  it('中段立枝同理：枝卷的名取**它自己**的首条来文，不是父卷的第一句', async () => {
+    const store = 'branch-name-2';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(1, logText(1, [sys, user('父卷首句'), assistant('二'), user('第三句'), assistant('四')]));
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+
+    // 从第三条来文（seq 4）立枝 ⇒ 前缀含「父卷首句」——仍不得拿它起名
+    expect(await createBranchVolume(makeCtx(store), 1, 4)).toMatchObject({ ok: true, sid: 2 });
+    expect(labelOf(store, 2)).toBe('');
+
+    const handle = agentSessionState.getAgent(store, 2) as unknown as {
+      _getAgent(): { _appendMessage(kind: string, message: unknown): void };
+    };
+    handle._getAgent()._appendMessage('user/message', { role: 'user', content: '枝上的问法' });
+    Session.autoTitleSessionIfDefault(store, 2);
+    expect(labelOf(store, 2)).toBe('枝上的问法');
+  });
+
+  it('重开已有自己内容的枝卷：名仍取它自己的首条来文（继承长度含 system 头——切片下标不可错位）', async () => {
+    const store = 'branch-name-3';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(1, logText(1, [sys, user('父卷首句'), assistant('父卷回复')]));
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+    expect(await createBranchVolume(makeCtx(store), 1)).toMatchObject({ ok: true, sid: 2 });
+
+    // 枝上说话（走产品自己的双写入口）并落盘，然后模拟重启重开
+    const handle = agentSessionState.getAgent(store, 2) as unknown as {
+      _getAgent(): { _appendMessage(kind: string, message: unknown): void };
+    };
+    handle._getAgent()._appendMessage('user/message', { role: 'user', content: '枝上第一句' });
+    await flushSessionLog(agentSessionState.getAgent(store, 2)?.sessionLog ?? null);
+
+    resetPanel(store);
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 2)).toBe(true);
+    expect(labelOf(store, 2)).toBe('枝上第一句'); // 不是「父卷首句」，也不是空
+  });
+});
 
 describe('会话树「枝」——从卷尾立枝', () => {
   beforeEach(() => {
