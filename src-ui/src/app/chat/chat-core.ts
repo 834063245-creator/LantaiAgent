@@ -23,6 +23,7 @@ import { totalTokens } from '../../agent/token-meter/usage';
 import { useShellStore } from '../../app/shell-store';
 import { sessionExecute } from '../../composition/session-persistence-service';
 import { activeSpace } from '../../composition/space-service';
+import { pickDropAnchor } from '../../paper/space';
 import type { ChatImageRef } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
@@ -710,8 +711,17 @@ export class ChatCore {
    *  新卷由落位 effect 用 `nearestFreeRegion` 补位，落点可能在视口外，用户视角
    *  就是「没摊开」。故此处补唯一一次 `expand`（已摊开 ⇒ focus + requestFocus；
    *  未摊开 ⇒ 读盘成功才飞）。**调用侧不得再自己补 requestFocus**：失败路径照样
-   *  发请求 = 永不兑现的悬空定位（landmine-map #28）。 */
-  async branchFromMessage(msg: ChatMessage, sessionId: number): Promise<number | null> {
+   *  发请求 = 永不兑现的悬空定位（landmine-map #28）。
+   *
+   *  `drop`（P4-① 空间手势，2026-09-19）：**落点世界坐标**——按住块上的「枝」握把拖到
+   *  纸上松手时给。落位走 `pickDropAnchor`（与既有流区横向重叠 ⇒ 推最近空位；不重叠 ⇒
+   *  落哪算哪）+ `space.place`，**再** expand（先落位后摊开，与书脊拖落同一顺序：region
+   *  先写、装载即用落点位）。缺省 = 既有点击入口，落位由落位 effect 补（行为零变化）。 */
+  async branchFromMessage(
+    msg: ChatMessage,
+    sessionId: number,
+    drop?: { x: number; y: number },
+  ): Promise<number | null> {
     const point = Branch.resolveBranchPoint(this.panelId, sessionId, msg);
     if (!point.ok) {
       showToast(point.reason, 'warn', TOAST_LONG_HOLD_MS);
@@ -719,7 +729,12 @@ export class ChatCore {
     }
     const result = await Branch.createBranchVolume(this._sessionCtx(), sessionId, point.atSeq);
     if (!result.ok) return null;
-    activeSpace()?.expand(String(result.sid));
+    const space = activeSpace();
+    if (drop) {
+      const anchor = pickDropAnchor(space?.getState().regions ?? [], String(result.sid), drop.x, drop.y);
+      space?.place(String(result.sid), anchor.anchorX, anchor.anchorY);
+    }
+    space?.expand(String(result.sid));
     return result.sid;
   }
 

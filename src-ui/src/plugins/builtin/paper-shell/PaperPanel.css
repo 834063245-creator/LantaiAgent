@@ -789,7 +789,7 @@
  * 枚举外），现按「块内一切交互件」一次收口——正文（.pp-body / .pp-md-* /
  * .pp-code-src…）不在列，照旧可选。
  * `:where()` 归零基数：本族靠「直陈声明胜过继承」成立，不靠特异性压人。 */
-.pp-block :where(button, summary, .pp-kind, .pp-status, .pp-unpin, .pp-fold, .pp-msg-ops, .pp-resize) {
+.pp-block :where(button, summary, .pp-kind, .pp-status, .pp-unpin, .pp-fold, .pp-msg-ops, .pp-branch-grip, .pp-resize) {
   user-select: none;
 }
 
@@ -3476,6 +3476,46 @@
 .pp-msg-ops button:hover {
   border-color: var(--seal);
   color: var(--seal-deep);
+}
+
+/* ── 空间手势立枝的握把（P4-①，2026-09-19）──
+ * 位置 = 块**底间距带**右端（与动作行 `.pp-msg-ops` 同一条带、各占一端）：在块体**之外**
+ * ⇒ 不吃划词选字；不是文类签（`.pp-kind` = 整块拖出钉住的把手）⇒ 两条手势各占各的把手。
+ * hover 浮现（同动作行纪律：隐没态不吃指针），`cursor: grab`（拖拽件的手势语言）。
+ * 墨阶与动作行同族（机读墨色 + 朱砂 hover）；只在可立枝的块上渲染（判据同按钮，见
+ * `use-block-ops` 的 branchGrips）。 */
+.pp-branch-grip {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  padding: 2px 8px;
+  border: var(--rule-soft);
+  background: var(--paper);
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  cursor: grab;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--snap),
+    border-color var(--snap),
+    color var(--snap);
+  z-index: 5;
+}
+.pp-block:hover .pp-branch-grip {
+  opacity: 1;
+  pointer-events: auto;
+}
+.pp-branch-grip:hover {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
+/* 按下即「抓住了」——与文类签拖出把手同一手势语言（.pp-kind:active 同款）。
+ * 握把刻意**不可聚焦**：它是拖拽件，键盘路径 = 动作行那颗「立枝」按钮（入口单一）。 */
+.pp-branch-grip:active {
+  cursor: grabbing;
 }
 
 /* 斜杠补全面板（施工单 #7）：行首 '/' 时弹出的可用命令列表 */

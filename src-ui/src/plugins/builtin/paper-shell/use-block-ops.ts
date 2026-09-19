@@ -103,20 +103,29 @@ export function useBlockOps(params: {
   const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[]; stamp: string; regionMsgs: unknown }>>(
     new Map(),
   );
-  const opsByBlockCacheRef = useRef<{ key: unknown[]; map: Map<string, BlockOp[]> } | null>(null);
-  const opsByBlock = useMemo(() => {
+  /** 派生产物（同一趟循环攒出、同一份复合键缓存）：
+   *  `opsByBlock` = 动作行表；`branchGrips` = **可立枝的块**集——空间手势立枝的握把
+   *  可见性真源（P4-①，plan §5）：与「立枝」按钮**同一张判据表**（`branchPoints` →
+   *  `branchPointIn`），故握把不会长在工具卡/通知块/未落定轮上（那些地方按钮本就置灰，
+   *  握把 = 一个注定被拒的整段手势）。 */
+  const derivedCacheRef = useRef<{
+    key: unknown[];
+    opsByBlock: Map<string, BlockOp[]>;
+    branchGrips: Set<string>;
+  } | null>(null);
+  const derived = useMemo(() => {
     // P2-3：复合键复用——输入不变（平移帧：blocks 引用稳定 + regionMsgs 同一
-    // 性）时整 Map 原样复用，O(总块数) 的 byId 建表/最新来文扫尾/缓存比对
+    // 性）时整份产物原样复用，O(总块数) 的 byId 建表/最新来文扫尾/缓存比对
     // 全免。retrace 判定只在内容变化时重算（stamp 语义不变）。
     const key: unknown[] = [regionMsgs, core, msgOpsFor];
     for (const r of regions) key.push(r.sessionNum, r.blocks);
-    const prev = opsByBlockCacheRef.current;
-    if (prev && sameKey(prev.key, key)) return prev.map;
-    const map = new Map<string, BlockOp[]>();
-    if (!core) {
-      opsByBlockCacheRef.current = { key, map };
-      return map;
-    }
+    const prev = derivedCacheRef.current;
+    if (prev && sameKey(prev.key, key)) return prev;
+    const opsByBlock = new Map<string, BlockOp[]>();
+    const branchGrips = new Set<string>();
+    const out = { key, opsByBlock, branchGrips };
+    derivedCacheRef.current = out;
+    if (!core) return out;
     for (const r of regions) {
       const msgs = regionMsgs[r.sessionNum]?.messages ?? [];
       const byId = new Map<string, ChatMessage>();
@@ -145,6 +154,7 @@ export function useBlockOps(params: {
         let retrace = false;
         if (stateOps && msg.role === 'user') retrace = core.canRetraceUserMessage(msg);
         const branch = branches.get(msg._id);
+        if (branch?.ok) branchGrips.add(b.id);
         const stamp = `${stateOps ? (retrace ? '1' : '0') : ''}|${
           branch ? (branch.ok ? `b${branch.atSeq}` : `x${branch.reason}`) : ''
         }`;
@@ -153,17 +163,16 @@ export function useBlockOps(params: {
           // 2026-09-01 审计：缓存键补 regionMsgs 同一性——ops 闭包捕获建时的
           // regionMsgs，消息表换新而 msg/stamp 未变时旧 ops 的 latest() 会读到
           // 陈旧会话消息表。
-          map.set(b.id, hit.ops);
+          opsByBlock.set(b.id, hit.ops);
         } else {
           const ops = msgOpsFor(msg, stateOps, retrace, r.sessionNum, branches);
           opsCacheRef.current.set(b.id, { msg, ops, stamp, regionMsgs });
-          map.set(b.id, ops);
+          opsByBlock.set(b.id, ops);
         }
       }
     }
-    opsByBlockCacheRef.current = { key, map };
-    return map;
+    return out;
   }, [regions, regionMsgs, core, msgOpsFor]);
 
-  return { opsByBlock };
+  return { opsByBlock: derived.opsByBlock, branchGrips: derived.branchGrips };
 }

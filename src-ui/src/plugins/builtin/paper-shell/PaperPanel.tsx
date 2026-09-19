@@ -67,6 +67,7 @@ import {
   PluginBoundary,
   resolveAssetBlock,
   resolveRenderer,
+  screenToWorld,
   selSeedOf,
   sheetCharacter,
   subscribeOverlayContributions,
@@ -84,6 +85,7 @@ import { ToastHost } from './ToastHost';
 import { useBlockMeasure } from './use-block-measure';
 import type { BlockOp } from './use-block-ops';
 import { useBlockOps } from './use-block-ops';
+import { BRANCH_GRIP_TITLE, useBranchDrag } from './use-branch-drag';
 import { useComposerFloat } from './use-composer-float';
 import { useFoldState } from './use-fold-state';
 import { useJumpKeys } from './use-jump-keys';
@@ -187,6 +189,7 @@ const BlockView = memo(function BlockView({
   onSidecarRestore,
   onUnpin,
   onDragHandleMouseDown,
+  onBranchGripMouseDown,
   unpinLabel = '收回',
   prov,
   provTitle,
@@ -215,6 +218,10 @@ const BlockView = memo(function BlockView({
   onUnpin: (id: string) => void;
   /** 拖拽手柄（文类签 .pp-kind）——V3a 手势分工：签=整块拖出（D-R2-1） */
   onDragHandleMouseDown: (e: React.MouseEvent, block: SourcedBlock) => void;
+  /** **空间手势立枝**（P4-①）：块 hover 出现的「枝」握把——按住拖出一条引线、松手落在
+   *  纸上就地立枝。**只在可立枝的块上传**（判据 = `branchPoints`，与「立枝」按钮同一张
+   *  表；见 `use-block-ops` 的 `branchGrips`）——缺省 = 不长握把（钉住块/通知块/未落定轮）。 */
+  onBranchGripMouseDown?: (e: React.MouseEvent, block: SourcedBlock) => void;
   /** 孤儿钉按钮文案（2026-08-28 会话管理专项）：源卷已删 = 「删除」，否则「收回」 */
   unpinLabel?: string;
   /** 出处行文本（**仅钉住块**，paper/provenance.provenanceText 产出）——页边注
@@ -329,6 +336,15 @@ const BlockView = memo(function BlockView({
               {o.label}
             </button>
           ))}
+        </div>
+      )}
+      {/* 空间手势立枝的握把（P4-①，2026-09-19）：块底间距带右端（与动作行同带、右对齐）
+          ——按住拖出一条引线、松手落在纸上就地立枝。块体之外 ⇒ 不吃划词选字；独立于
+          文类签 ⇒ 不抢「整块拖出钉住」那条手势；只在可立枝的块上出现（判据与按钮同表）。 */}
+      {onBranchGripMouseDown && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: 拖拽握把（拖出立枝）；立枝本身另有按钮入口
+        <div className="pp-branch-grip" title={BRANCH_GRIP_TITLE} onMouseDown={(e) => onBranchGripMouseDown(e, block)}>
+          枝
         </div>
       )}
       {block.state === 'pinned' && (
@@ -543,7 +559,7 @@ export function PaperPanel() {
     selDragRef,
   });
 
-  const { opsByBlock } = useBlockOps({ core, regions, regionsRef, regionMsgs });
+  const { opsByBlock, branchGrips } = useBlockOps({ core, regions, regionsRef, regionMsgs });
 
   const { flyToPoint, flyToRegion, glideViewTo } = usePaperFocus({
     core,
@@ -715,6 +731,35 @@ export function PaperPanel() {
     });
 
   const { resizeRef, resizePreview, onResizeMouseDown } = usePinStripResize({ core, canvasRef, viewRef });
+
+  /* ── 空间手势立枝（P4-①，2026-09-19）──
+   * 按住块上的「枝」握把拖出一条引线、松手落在纸上 = 就地立枝（枝卷落在落点）。
+   * 判据与弃案见 plan §5；手势域本体见 use-branch-drag。预览线与枝边层同一支笔、
+   * 同一层位（屏幕坐标）：起笔 = 原块缘（世界矩形投到屏上），收笔 = 指针（朱点即
+   * 落点——「线是引，点是落」）。 */
+  const { branchDrag, onBranchGripMouseDown } = useBranchDrag({
+    core,
+    canvasRef,
+    blockSessionRef,
+    regionMsgs,
+    takeOverViewport,
+  });
+  const branchDragTether = useMemo(() => {
+    if (!branchDrag) return null;
+    const region = regions.find((r) => r.sessionNum === Number(branchDrag.sessionId));
+    const block = region?.flowGeom.find((g) => g.id === branchDrag.blockId);
+    if (!block) return null;
+    const at = screenToWorld(view, branchDrag.screen.x, branchDrag.screen.y);
+    const world = tetherAnchorsAt(
+      { x: block.x, y: block.y + block.h / 2, w: block.w },
+      { x: at.x, y: at.y, w: 0, h: 0 },
+    );
+    return tetherPath(
+      worldToScreen(view, world.from.x, world.from.y),
+      worldToScreen(view, world.to.x, world.to.y),
+      selSeedOf(`branch-drag-${branchDrag.blockId}`),
+    );
+  }, [branchDrag, regions, view]);
 
   /* 公共物 · 纸条（工作区级宿主，Stage-5）：不再随流区归属——独立渲染层 */
   const canvasStrips = canvasState.strips;
@@ -1192,6 +1237,9 @@ export function PaperPanel() {
                           onSidecarRestore={onSidecarRestore}
                           onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
+                          /* 空间手势立枝的握把：只在**判据通过**的块上（与「立枝」按钮
+                             同一张表）——工具卡/通知块/未落定轮不长一个注定被拒的手势。 */
+                          onBranchGripMouseDown={branchGrips.has(b.id) ? onBranchGripMouseDown : undefined}
                         />
                       </div>
                     );
@@ -1309,6 +1357,17 @@ export function PaperPanel() {
                   <circle className="pp-tether-bead" cx={t.bead.x} cy={t.bead.y} r={2.2} />
                 </g>
               ))}
+            </svg>
+          )}
+
+          {/* 立枝手势的**拖动预览**（P4-①，2026-09-19）：按住「枝」握把拖动时的一丝引线
+              ——起笔在原块缘、朱点落在指针上（落点即所见）。同一支笔（.pp-tether 的墨）、
+              同一层位（屏幕坐标、不吃指针），与枝边层只差「这是手势不是结构」。
+              拖动中不吃事件（.pp-tether-layer pointer-events:none）⇒ mouseup 照常落在纸上。 */}
+          {branchDragTether && (
+            <svg className="pp-tether-layer pp-branch-drag-layer" aria-hidden="true">
+              <path className="pp-tether" d={branchDragTether.d} />
+              <circle className="pp-tether-bead" cx={branchDragTether.bead.x} cy={branchDragTether.bead.y} r={2.2} />
             </svg>
           )}
 

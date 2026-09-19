@@ -60,12 +60,21 @@ function fakeCore(branches: Map<string, { ok: true; atSeq: number } | { ok: fals
   return { core, branchCalls };
 }
 
-/** 探针组件：只跑 hook 并把 opsByBlock 交出来（不渲染纸面）。 */
-function Probe({ core, onOps }: { core: ChatCore; onOps: (map: Map<string, BlockOp[]>) => void }): null {
+/** 探针组件：只跑 hook 并把 opsByBlock / branchGrips 交出来（不渲染纸面）。 */
+function Probe({
+  core,
+  onOps,
+  onGrips,
+}: {
+  core: ChatCore;
+  onOps: (map: Map<string, BlockOp[]>) => void;
+  onGrips: (set: Set<string>) => void;
+}): null {
   const regions = useMemo(() => [region], []);
   const regionsRef = useRef(regions);
-  const { opsByBlock } = useBlockOps({ core, regions, regionsRef, regionMsgs });
+  const { opsByBlock, branchGrips } = useBlockOps({ core, regions, regionsRef, regionMsgs });
   onOps(opsByBlock);
+  onGrips(branchGrips);
   return null;
 }
 
@@ -88,7 +97,7 @@ describe('会话树「枝」入口 = 消息动作行（useBlockOps）', () => {
     let ops = new Map<string, BlockOp[]>();
     act(() => {
       root = createRoot(container);
-      root.render(createElement(Probe, { core, onOps: (m) => (ops = m) }));
+      root.render(createElement(Probe, { core, onOps: (m) => (ops = m), onGrips: () => {} }));
     });
 
     const userOps = ops.get('pb-user') ?? [];
@@ -106,7 +115,7 @@ describe('会话树「枝」入口 = 消息动作行（useBlockOps）', () => {
     let ops = new Map<string, BlockOp[]>();
     act(() => {
       root = createRoot(container);
-      root.render(createElement(Probe, { core, onOps: (m) => (ops = m) }));
+      root.render(createElement(Probe, { core, onOps: (m) => (ops = m), onGrips: () => {} }));
     });
 
     const assistOps = ops.get('pb-assistant') ?? [];
@@ -124,7 +133,7 @@ describe('会话树「枝」入口 = 消息动作行（useBlockOps）', () => {
     let ops = new Map<string, BlockOp[]>();
     act(() => {
       root = createRoot(container);
-      root.render(createElement(Probe, { core, onOps: (m) => (ops = m) }));
+      root.render(createElement(Probe, { core, onOps: (m) => (ops = m), onGrips: () => {} }));
     });
 
     // 判据每卷一趟（不是每块一趟）
@@ -141,5 +150,45 @@ describe('会话树「枝」入口 = 消息动作行（useBlockOps）', () => {
 
     // 置灰的按钮点击不落动作（PaperPanel 的渲染面同判据：disabled 即 return）
     expect(branchCalls).toEqual([]);
+  });
+
+  it('空间手势的握把可见性 = **同一张判据表**（P4-①：判据通过才有握把）', () => {
+    // 全通过：两个对话块都有握把
+    const ok = fakeCore(
+      new Map([
+        [uiUser._id, { ok: true as const, atSeq: 2 }],
+        [uiAssistant._id, { ok: true as const, atSeq: 3 }],
+      ]),
+    );
+    let grips = new Set<string>();
+    act(() => {
+      root = createRoot(container);
+      root.render(createElement(Probe, { core: ok.core, onOps: () => {}, onGrips: (s) => (grips = s) }));
+    });
+    expect([...grips].sort()).toEqual(['pb-assistant', 'pb-user']);
+
+    // 未落定的块不长握把（按钮同时置灰）；切点在它之前的来文块照常有
+    act(() => root?.unmount());
+    const refused = fakeCore(
+      new Map([
+        [uiUser._id, { ok: true as const, atSeq: 2 }],
+        [uiAssistant._id, { ok: false as const, reason: '这一轮还有 1 处工具调用没落定——等它跑完再立枝' }],
+      ]),
+    );
+    act(() => {
+      root = createRoot(container);
+      root.render(createElement(Probe, { core: refused.core, onOps: () => {}, onGrips: (s) => (grips = s) }));
+    });
+    expect([...grips]).toEqual(['pb-user']);
+
+    // 判据表缺席（非对话节点：工具卡/通知块——`branchPoints` 只收 user/assistant）
+    // ⇒ 也不长握把（一个注定被拒的整段手势比置灰的按钮更糟）
+    act(() => root?.unmount());
+    const none = fakeCore();
+    act(() => {
+      root = createRoot(container);
+      root.render(createElement(Probe, { core: none.core, onOps: () => {}, onGrips: (s) => (grips = s) }));
+    });
+    expect(grips.size).toBe(0);
   });
 });
