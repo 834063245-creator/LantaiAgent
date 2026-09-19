@@ -38,12 +38,13 @@ import {
   scanMaxSessionId,
   workspaceSessionsDir,
 } from '../../ui/chat-session';
-import { getChatStore } from '../../ui/chat-store';
+import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 import {
   flushSessionLog,
   loadSessionLogFile,
   type SessionLogHeader,
   type SessionLogParentRef,
+  sessionLogStoreOf,
 } from './session-log-store';
 
 /** 血缘上溯的深度上限（坏数据成环时的兜底——正常树远小于此）。 */
@@ -221,6 +222,78 @@ export function deriveBranchPoints(
 function refuse(reason: string): BranchResult {
   showToast(reason, 'warn', TOAST_LONG_HOLD_MS);
   return { ok: false, reason };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 画布承接（P3）：枝边的**读面**——引线从枝卷卷首拉向父卷的那个节点
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 某**摊开卷**的枝边（child → 父卷 + 切点）。
+ *
+ * 真源 = 卷日志头行（`SessionLogStore.header`，attach 时带入内存，write-once）
+ * ⇒ **零 I/O、O(1)**——画布每帧问它也不花钱。null = 根卷 / 无句柄 / 无日志
+ * （旧实现或测试桩）。
+ */
+export function branchOriginOf(storeId: string, sid: number): SessionLogParentRef | null {
+  const logInstance = agentSessionState.getAgent(storeId, sid)?.sessionLog;
+  if (!logInstance) return null;
+  return sessionLogStoreOf(logInstance)?.header.parent ?? null;
+}
+
+/**
+ * 枝边的**父卷落点**：切点 seq → 父卷里承载它的那条**界面消息** `_id`。
+ *
+ * 这就是引线要指的那个节点（plan §5「引线连回父卷的那个节点」，不是「父卷」这个整体）。
+ * 方向与 `resolveBranchPoint` 相反，但**同一条链**：投影锚点（与投影同一个 fold）
+ * → 用户轮桥（同一条尾对齐）→ 界面消息（用户轮 = 桥的来文；其余归到该轮的回复）。
+ *
+ * 返回 null = 该切点在父卷里落不到界面消息（无句柄/桥对不上/切点在首轮之前）——
+ * 调用方据此不画引线（宁可没有线，也不指错）。
+ */
+export function branchNodeMessageId(storeId: string, sid: number, atSeq: number): string | null {
+  const agent = agentSessionState.getAgent(storeId, sid);
+  const logInstance = agent?.sessionLog;
+  if (!agent || !logInstance) return null;
+  const session = agent.getSession();
+  const anchors = logInstance.deriveMessageAnchors();
+  // 切点 → 投影下标：**最后一个**「来源 seq ≤ 切点」的消息。
+  // 不假设锚点单调：`adopt`（开卷重设头部 system 提示）给头条消息的锚点是**那条
+  // adopt 事件的 seq**（比尾部历史的锚点都大，见 session-log 的 adopt 分支），
+  // 故只能全扫取最后一个命中——遇大即断会在开过卷的卷上直接落空。
+  let k = -1;
+  for (let i = 0; i < anchors.length; i++) {
+    if (anchors[i] <= atSeq) k = i;
+  }
+  if (k < 0 || k >= session.length) return null;
+  const msgs = msgStoreFor(storeId, sid).getState().messages;
+  const uiUsers = msgs.filter((m) => m.role === 'user');
+  if (uiUsers.length === 0) return null;
+  // 桥整趟只对齐一次（`canRetraceUserTurn` 的失效戳在此不变）——与 deriveBranchPoints 同法
+  canRetraceUserTurn(storeId, sid, uiUsers[0]._id);
+  const bridge = agentSessionState.getTurnIdBridge(storeId, sid);
+  if (!bridge) return null;
+  // 该消息属于哪一轮：≤ k 的最后一个 user 投影下标
+  let u = -1;
+  for (let i = k; i >= 0; i--) {
+    if (session[i]?.role === 'user') {
+      u = i;
+      break;
+    }
+  }
+  if (u < 0) return null;
+  let uiUserId: string | null = null;
+  for (const [uiId, idx] of bridge.byUiId) {
+    if (idx === u) {
+      uiUserId = uiId;
+      break;
+    }
+  }
+  if (!uiUserId) return null;
+  if (k === u) return uiUserId;
+  // 回复/工具结果归到该轮的回复块（引线指「那个节点」所在的块）
+  const owner = msgs.find((m) => m.role === 'assistant' && m.respondingTo === uiUserId);
+  return owner?._id ?? uiUserId;
 }
 
 /**

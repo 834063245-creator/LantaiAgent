@@ -750,6 +750,18 @@ export class ChatCore {
     return Branch.deleteBranchSubtrees(this.panelId, pp, sessionIds, (sid) => this.deleteSessionFile(pp, sid));
   }
 
+  /** **一枝的画布承接面**（P3）：从本卷头行取父卷与切点，再把切点落到父卷里承载它的
+   *  那条界面消息——引线要指的那个节点（plan §5：连回**那个节点**，不是「父卷」整体）。
+   *  null = 根卷 / 无句柄 / 父卷没句柄 / 切点落不到节点 ⇒ 调用方不画线（宁可没有，
+   *  也不指错）。零 I/O（血缘在头行、attach 时已带入内存）。 */
+  branchEdge(sessionId: number): { parentSid: number; nodeMessageId: string } | null {
+    const origin = Branch.branchOriginOf(this.panelId, sessionId);
+    if (!origin) return null;
+    const nodeMessageId = Branch.branchNodeMessageId(this.panelId, origin.id, origin.atSeq);
+    if (!nodeMessageId) return null;
+    return { parentSid: origin.id, nodeMessageId };
+  }
+
   // ── 组合（S6 P1c：卷级选择）──
 
   /** 本卷组合身份 + 来源（卷级记录 / 全局默认）——创作坞组合芯片的读面。

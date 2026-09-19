@@ -2124,6 +2124,37 @@
   }
 }
 
+/* ── 枝边层（P3 会话树「枝」，2026-09-18）──
+ * 与钉那条腿**同一支笔同一层位**（.pp-tether 的墨、屏幕坐标），差别只有两点：
+ *   ① **常显**——树是结构，不是瞬时手势；② **可点**（点它飞回父卷的分叉节点）。
+ * 常显故墨退半档（.55）：一屏几枝同时在场时，线是底噪不是主角；hover 受墨带时
+ * 抬回 .9（「这一枝」被指着）。
+ * 可点靠**受墨带**（.pp-tether-hit）：命中的是一条加粗透明描边，**墨本身仍是那一丝**
+ * ——给线加粗会破「一屏一语言」（墨宽是那支笔的明文字律）。受墨带在 DOM 里排在墨之前，
+ * 故 hover 抬墨用兄弟选择器（+ 号在 SVG 里同父同级同样成立）。 */
+.pp-branch-layer {
+  /* 层本身仍不吃事件；受墨带自己开（pointer-events: stroke） */
+  pointer-events: none;
+}
+.pp-branch-tether {
+  opacity: 0.55;
+}
+.pp-tether-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.pp-tether-hit:hover ~ .pp-branch-tether,
+.pp-tether-hit:focus-visible ~ .pp-branch-tether {
+  opacity: 0.9;
+}
+.pp-tether-hit:focus-visible {
+  outline: none;
+  stroke: var(--seal-soft);
+}
+
 /* 冷启动本地提示（无会话发送防护——UI 层直示，不入消息 store）；贴黄同族 */
 .pp-local-notice {
   display: flex;

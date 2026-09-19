@@ -718,6 +718,33 @@ describe('会话树「枝」——立枝即摊开并定位（P0：expand 是「�
     expect(volumeText(1)).toBe(parentBefore);
   });
 
+  it('画布承接读面（P3）：枝边 = 父卷 + 那个节点；根卷没有边（零 I/O，血缘在头行里）', async () => {
+    const core = new ChatCore();
+    useCoreStore.getState().setChatCore(core);
+    const store = core.panelId;
+    installFactory(store);
+    useShellStore.setState({ projectPath: WS });
+    setVolume(1, logText(1, [sys, user('一'), assistant('二')]));
+    expect(await core.loadSessionFromDisk(WS, 1)).toBe(true);
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    const uiUser = ui.find((m) => m.role === 'user');
+    expect(uiUser).toBeDefined();
+    if (!uiUser) return;
+
+    expect(core.branchEdge(1)).toBeNull(); // 根卷：无父无边（不画凭空的线）
+    expect(await core.branchFromMessage(uiUser, 1)).toBe(2);
+
+    // 枝卷 2 的边：父卷 1 + 分叉节点 = 卷 1 里那条来文（切点 seq 2 的承载消息）
+    expect(core.branchEdge(2)).toEqual({ parentSid: 1, nodeMessageId: uiUser._id });
+    // 切点落在**回复**上时，节点归到该轮的回复块（不是来文块）
+    const uiAssistant = ui.find((m) => m.role === 'assistant');
+    expect(uiAssistant).toBeDefined();
+    if (!uiAssistant) return;
+    expect(await core.branchFromMessage(uiAssistant, 1)).toBe(3);
+    expect(core.branchEdge(3)).toEqual({ parentSid: 1, nodeMessageId: uiAssistant._id });
+  });
+
   it('未落定 ⇒ 拒绝时 expand 一次都不调（失败路径不留悬空定位请求）', async () => {
     const core = new ChatCore();
     useCoreStore.getState().setChatCore(core);

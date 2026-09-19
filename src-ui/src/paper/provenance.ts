@@ -119,18 +119,28 @@ export function tetherAnchors(
   pin: { x: number; y: number; w: number },
   hole: Pick<FlowGeom, 'x' | 'y' | 'w' | 'h'>,
 ): { from: { x: number; y: number }; to: { x: number; y: number } } {
-  const y0 = pin.y + TETHER_PIN_DY;
+  return tetherAnchorsAt({ x: pin.x, y: pin.y + TETHER_PIN_DY, w: pin.w }, hole);
+}
+
+/** 同一条引线，**锚高由调用方给**——钉那一路的锚高是「页边注的线」（`pin.y +
+ *  TETHER_PIN_DY`，见上）；枝边那一路从**卷首**起笔，锚在卷首中线。
+ *  选边/留白/收笔规则只有这一份（会话树「枝」的画布承接复用同一支笔，不新造线）。 */
+export function tetherAnchorsAt(
+  from: { x: number; y: number; w: number },
+  hole: Pick<FlowGeom, 'x' | 'y' | 'w' | 'h'>,
+): { from: { x: number; y: number }; to: { x: number; y: number } } {
+  const y0 = from.y;
   const y2 = hole.y + hole.h / 2;
   let x0: number;
   let x2: number;
-  if (pin.x - (hole.x + hole.w) > 0) {
-    x0 = pin.x;
+  if (from.x - (hole.x + hole.w) > 0) {
+    x0 = from.x;
     x2 = hole.x + hole.w; // 洞全在左
-  } else if (hole.x - (pin.x + pin.w) > 0) {
-    x0 = pin.x + pin.w;
+  } else if (hole.x - (from.x + from.w) > 0) {
+    x0 = from.x + from.w;
     x2 = hole.x; // 洞全在右
   } else {
-    x0 = pin.x;
+    x0 = from.x;
     x2 = hole.x; // 横向相叠：两侧都取左缘
   }
   const dx = x2 - x0;

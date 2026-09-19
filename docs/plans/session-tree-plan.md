@@ -2,7 +2,7 @@
 
 > 立项：2026-09-18（用户提「想做会话分支」；追问后裁定 **要的是会话树**——理由「画布式交互契合树状会话」）。
 > 性质：**数据结构 + 交互新增**。app 层为主；**不动事件词表、不动 phase-5 投影契约**；头行加可选字段，旧卷照读。
-> 状态：**P1 + P1′ 已落地（2026-09-18，施工记录见 §12）；P2-P4 未开工**——三项裁定已定（§9）。
+> 状态：**P1 + P1′ + P0 修 + P2 + P3 已落地（2026-09-18，施工记录见 §12）；P4（可选）未开工**——三项裁定已定（§9）。
 > 入口 = **消息动作行**（与「改 / 重发 / 抄」同行；用户两次纠偏后定案，见 §5 与 §12.2）。
 > 结论一句话：**树做在卷之间——节点自包含（每枝一卷，前缀复制）、边落头行（`parent`）、画布当画布用
 > （枝落成流区、边落成引线）；分叉点是流内任意**已落定节点**，删除按树的语义**连坐**整棵子树。**
@@ -161,12 +161,14 @@ DSH 的 fork 是同一族做法（`packages/core/session/src/index.ts:1236-1251`
 |---|---|---|
 | **P1 数据原语** | ✅ **已落地**：头行 `parent` + 父边归一化（§1.3）+ `createBranchVolume(fromId, atSeq?)` | ① 新卷 `.ndjson` 头行带 parent，事件 = 父卷前缀 + adopt；② 打开它，内容与父卷切点一致；③ **父卷文件字节零变化**；④ 重启后血缘仍在；⑤ 继承区内立枝 → 边归到上层卷（§1.3 用例）——逐条见 §12.1 |
 | **P1′ 节点定位与入口** | ✅ **已落地**：投影锚点（`deriveMessageAnchors`）+ `resolveBranchPoint` + **消息动作行的「立枝」**（`use-block-ops`） | ① 来文块切点 = 该来文 seq、回复块切点 = 本轮末尾；② 未落定/句柄缺席 ⇒ 具名拒绝；③ 中段切点立枝只到该节点为止；④ 入口位置守护（`[改,重发,抄,立枝]` / `[抄,立枝]`）——见 §12.2 |
-| **P2 树面与连坐** | 清单行 `parentId` + `CATALOG_VERSION` bump + 侧栏树形 + 书脊标「枝」 + 未落定节点**置灰** + **删除连坐** | ① 未落定节点置灰且原因可读；② 删父卷连坐整棵子树（**含在继承区立枝的孙卷**——按归一化后的边）；③ 子树里任一卷在运行 ⇒ 整体拒绝并列出；④ 中断重入后不留孤儿（§8 后序删除） |
-| **P3 画布承接** | 枝卷落位 + 引线连回**父卷的那个节点** + 溯源（点引线飞回该节点） | ① 立枝即在纸上可见、引线指得对；② 父节点不在视口内时引线仍出屏（出处引导同款判据） |
-| **P4（可选）** | 空间手势立枝 / 旧枝考古 / 轮内插入处不截断（整轮末尾的精确判据） | 单独立项时定 |
+| **P0 修（用户报）** | ✅ **已落地**：立枝路径绕过空间权威入口 ⇒ 新卷进了案头却不飞（落点可能在视口外，用户视角 =「没摊开」）。修 = 调用层唯一一处 `activeSpace()?.expand(String(sid))` | 点「立枝」⇒ 新枝卷在纸上可见**且视角飞到它**；父卷字节零变化；连点两次不产生悬空定位请求——见 §12.3 |
+| **P2 树面与连坐** | ✅ **已落地**：清单行 `parentId` + `CATALOG_VERSION` 2 + 侧栏树形 + 书脊标「枝」 + 未落定节点**置灰** + **删除连坐** | ① 未落定节点置灰且原因可读；② 删父卷连坐整棵子树（**含在继承区立枝的孙卷**——按归一化后的边）；③ 子树里任一卷在运行 ⇒ 整体拒绝并列出；④ 中断重入后不留孤儿（§8 后序删除）——见 §12.4 |
+| **P3 画布承接** | ✅ **已落地**：枝卷落位（P0 修后即有）+ 卷首→父卷那个节点的**朱砂引线**（复用出处引导那一支笔）+ 点引线溯源 | ① 立枝即在纸上可见、引线指得对；② 父节点不在视口内时引线仍出屏（出处引导同款判据）——见 §12.5 |
+| **P4（可选）** | ⏳ **未开工**：空间手势立枝 / 旧枝考古 / 轮内插入处不截断（整轮末尾的精确判据） | 单独立项时定 |
 
 门禁（每批）：`cd src-ui && npm run build` + `npx vitest run` + `npx biome ci .`。
-P1′ 动了 `src-ui/src/agent/session-log.ts`（fold 加锚点）⇒ 已过 `npm run verify:convergence` **双轨零漂移**。
+P1′ 动了 `src-ui/src/agent/session-log.ts`（fold 加锚点）⇒ 已过 `npm run verify:convergence` **双轨零漂移**；
+P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批跑双轨确认零漂移。
 
 ## 8. 风险与本仓已有的坑
 
@@ -272,5 +274,74 @@ P1′ 动了 `src-ui/src/agent/session-log.ts`（fold 加锚点）⇒ 已过 `np
 
 **门禁**：动 `src/agent/session-log.ts` ⇒ `npm run verify:convergence` **双轨零漂移**（锚点是新增读面，
 投影与载荷字节未变）；vitest 全量 + tsc + vite build + biome ci + doc-check/doc-sync 见提交信息。
+
+### 12.3 P0 修：立枝后视角飞到新枝（用户报，commit `16138a65`）
+
+**现象**：点「立枝」→ 新枝卷建出来了，但**没摊到纸上、视角也没飞过去**。
+
+**判性质（先复现后修）**：立枝后新卷**在案头**（既有用例 ② 钉住 `sessions = [2]`、`activeIdx` 指向它）
+⇒ 缺的是**定位**，不是读盘。机理：立枝路径绕过了空间权威入口 `composition/space-service.expand`
+（「摊开 + 定位」的单一权威入口，注释原文：调用方不得再自己补 `requestFocus`）；新卷落位由
+`paper-shell/use-region-placement` 的 effect 用 `nearestFreeRegion` 补（相对视口中心的**最近空位**，
+落点可能在视口外），**没有 requestFocus 就不会飞** ⇒ 用户视角就是「没摊开」。
+
+**修法**（沿用 landmine-map #28 的收口形态，与侧栏行点击 / 案头签条架 / PaperPanel 同款）：
+`createBranchVolume` 成功后，由**调用层唯一一处** `chat-core.branchFromMessage` 调
+`activeSpace()?.expand(String(sid))`——已摊开卷走 `focus + requestFocus`（飞行），未摊开卷走
+「读盘成功才飞」。**不在别处再补 requestFocus**：失败路径照样发请求 = 永不兑现的悬空定位。
+
+**测试**（`tests/session-branch.test.ts` 新增一组，走生产装配面：真 ChatCore + 真 SpaceService）：
+① 立枝成功 ⇒ `expand(新卷)` 恰好一次 + `pendingFocusId` = 新卷号（指向真实在案的卷）+ 父卷字节零变化；
+连点两次 ⇒ 各飞各的（旧请求被新请求取代）；② 未落定 ⇒ 拒绝时 expand 一次都不调、pending 保持 null。
+
+### 12.4 P2 树面与连坐（commit `c78b8c98`）
+
+| 件 | 内容 |
+|---|---|
+| `ui/chat-session.ts` | `SavedSessionRow.parentId`（真源 = 卷日志头行）+ `CATALOG_VERSION` **1→2**（不认版本即整份重建，血缘一次到位）；`listVolumeIds` 导出（目录枚举 = 卷集真源，`listSavedSessions` 改走它）；`deleteSessionFile` 返回 `SessionDeleteResult`（失败带原因） |
+| `app/chat/session-branch.ts` | `loadBranchLineage`（目录枚举 + 逐卷头行 + 边归一化，**复用 `resolveBranchOrigin` 同一条规则**）+ `branchSubtree`（后序）+ `planBranchDelete` / `deleteBranchSubtrees`（单卷真删由调用层注入——app 层不持有 `SessionContext`） |
+| `canvas-nav/session-sidebar-model.ts` | `treeRows` 纯函数（DFS 父子段 / `depth` / `orphan` / 环守卫**绝不吞行**）+ `mergeSessionRows` 带血缘 + `sessionMeta` 出「父卷已删」 |
+| `canvas-nav/SessionSidebar.tsx` + `SpineRack.tsx` + 两个 css | 行缩进 + 「枝」标（侧栏与书脊）；删除改走连坐面（一击按真源核对血缘 + 报数，再击连坐删除；批量同款） |
+| `paper-shell/use-block-ops.ts` | 「立枝」吃**每卷一趟**派生的判据表（`core.branchPoints`）——未落定即置灰，title = 具名原因；判据并入 ops 缓存戳（跑完即刷新） |
+| `plugins/builtin/sessions-builtin` | `delete_log` 的**日志删除失败改为上抛**（原 `.catch(() => '')`）——吞掉就是「报成功而卷还在」 |
+
+**清单血缘的单一真源纪律**（本批的架构裁定）：`upsertCatalogRow` 改为「**只更已建行、不新建**」——
+快照写面不知道血缘（它在 `.ndjson` 头行里），若由写面建行，那行会永远缺 `parentId` ⇒ 树上的边静默丢失。
+新建一律留给补建（读头行），由此得到不变式：**凡在场之行，血缘必已定**。代价 = 新卷首次清点多读它一次
+（与「每卷一生一次」的既有预算同族）。
+
+**三条硬规的落地**：① 血缘图**不信 `_index.json`**（目录枚举定卷集 + 逐卷读头行定边；成本诚实说：
+一次删除 = 每卷一次整份日志读，几百卷的工作区要几秒——不可逆动作换正确性）；② **后序删**（先子后父：
+任何中断点剩下的都还是合法森林，测试对每个截断点验「有父的卷其父都在场」）；③ **逐卷可见**
+（`deleted` / `failed`（带原因）/ `blocked`（运行中拦下的选择卷）三分账）。
+
+**测试**：新 `tests/session-sidebar-tree.test.tsx`（6 例）；`tests/session-branch.test.ts` +7 例
+（血缘图归一化 / 连坐后序 / 只连自己子树 / 中断点零孤儿 / 运行中整体拒绝 / 部分失败逐卷可见 / 悬空父卷当根卷）；
+`tests/session-sidebar-ux.test.tsx` 三条删除用例改写为新路径；`tests/chat-session.test.ts` 目录版本与血缘四例。
+
+### 12.5 P3 画布承接（本批）
+
+| 件 | 内容 |
+|---|---|
+| `app/chat/session-log-store.ts` | `SessionLogStore.header`（attach 时带入内存，write-once）+ 续开姿态改传**盘上头行**（调用方现造的出生头没有血缘——带错了画布上枝卷就找不到父卷） |
+| `app/chat/session-branch.ts` | `branchOriginOf`（血缘读面，**零 I/O**）+ `branchNodeMessageId`（切点 → 父卷里承载它的界面消息：投影锚点 + 用户轮桥，与 `resolveBranchPoint` 同一条链、方向相反） |
+| `app/chat/chat-core.ts` | `branchEdge(sessionId)`（父卷 + 那个节点；null = 无句柄/落不到节点 ⇒ 不画线） |
+| `paper/provenance.ts` | `tetherAnchorsAt`（锚高由调用方给）——`tetherAnchors` 变成它 + 钉锚高，**选边/留白/收笔规则只有一份**（不新造一种线） |
+| `paper-shell/PaperPanel.tsx` + `.css` | 枝边层：常显的一丝朱砂（卷首中线 → 节点缘）+ **受墨带**（加粗透明描边承接点击，墨本身仍是那一丝）+ 点线溯源（飞节点 + 点名一拍） |
+| `tests/session-tree-canvas.test.tsx`（新） | 挂真 PaperPanel：无枝边不落笔 / 起笔在卷首左缘且朱点落在**父卷那个节点**的缘上 / 点线飞到节点（视口对准父卷中轴）/ 父节点在屏外时线出屏 |
+| `tests/session-branch.test.ts` +1 / `tests/paper-provenance.test.ts` +1 | `branchEdge` 真卷三例（根卷无边 / 来文节点 / 回复节点）；同一支笔的锚高等价式 |
+
+**两处实现裁定**（留痕，防回漂）：
+- **锚点不假设单调**：`adopt`（开卷重设头部 system 提示）给头条消息的锚点是**那条 adopt 事件的 seq**
+  （比尾部历史都大），故「切点 → 投影下标」只能**全扫取最后一个命中**——遇大即断会在开过卷的卷上直接落空
+  （实测：`branchEdge` 返回 null）。
+- **枝边常显、钉引线 hover**：树是**结构**不是瞬时手势，且线要能点着溯源（hover 才出现的线点不到）；
+  一屏一语言指的是**同一支笔**（屏幕坐标 / 恒定墨宽 / 定种子相位 / 起笔留白 + 收笔朱点），不是同一条触发纪律。
+  常显故墨退半档（.55，hover 受墨带时抬回 .9）——防「一纸十几枝」时线成面条。
+- **出屏的诚实边界**：父卷整个在屏外时线照样出屏，但仅限**卸载余量**（`use-paper-regions` 的
+  STUB_MX 900 / STUB_MY 1200）之内——超出即该流区连几何都卸载了（与出处引导同一条边界，不是本批新引入的）。
+
+**门禁**：`npm run build` ✓；`npx vitest run` 347 文件 / 3550 通过 ✓；`npx biome ci .` 0/0 ✓；
+`npm run verify:convergence` 双轨 exit 0 ✓（未改 `agent/**` / `composition/**`，仍跑双轨确认零漂移）。
 
 

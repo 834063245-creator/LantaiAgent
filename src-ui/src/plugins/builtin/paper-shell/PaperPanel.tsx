@@ -42,6 +42,7 @@ import {
   provenanceTraceable,
   sourceBlockIdOf,
   tetherAnchors,
+  tetherAnchorsAt,
   tetherPath,
 } from '../../../paper/provenance';
 import { volumeDisplayName } from '../../../state/volume-name';
@@ -609,6 +610,80 @@ export function PaperPanel() {
       selSeedOf(id),
     );
   }, [tetherPinId, tracedPinId, canvasState.pins, regions, draggingId, dragPos, view]);
+
+  /* ── 会话树「枝」的画布承接（P3，2026-09-18）──
+   * 边 = 一丝朱砂引线：**枝卷卷首 → 父卷的那个节点**（不是「父卷」这个整体）。
+   * 与出处引导**同一支笔**（`tetherAnchorsAt` + `tetherPath`：屏幕坐标 / 恒定墨宽 /
+   * 定种子相位 / 起笔留白 + 收笔朱点）——一屏一语言，不新造一种线。
+   * 与钉那条腿的两处不同（各记理由）：
+   *   ① **常显**——树是结构不是瞬时手势，且线要能点着溯源（hover 才出现的线点不到）；
+   *   ② **可点**——命中的是一条加粗透明「受墨带」，墨仍是那一丝（见 CSS 注）。
+   * 父节点不在视口内时线照样出屏（同款判据：锚点在世界里定、投到屏上落墨）。
+   * 数据来自 `core.branchEdge`（**零 I/O**：血缘在卷日志头行里，attach 时已带入内存）。 */
+  const branchEdges = useMemo(() => {
+    if (!core) return [];
+    const out: Array<{ childSid: number; parentSid: number; nodeMessageId: string }> = [];
+    for (const s of sessions) {
+      const edge = core.branchEdge(s.id);
+      if (edge) out.push({ childSid: s.id, ...edge });
+    }
+    return out;
+  }, [core, sessions]);
+  /** 枝边 → 父卷那个节点的**流位**（块 id）。父卷锚点要走一整段 fold（O(事件数)），
+   *  故与 `view` 解耦单列一层——平移帧不重跑，只有引线几何那一层吃 view。 */
+  const branchTargets = useMemo(() => {
+    const out: Array<{ childSid: number; parentSid: number; blockId: string }> = [];
+    for (const e of branchEdges) {
+      const parent = regions.find((r) => r.sessionNum === e.parentSid);
+      const block = parent?.blocks.find((b) => b.source.messageId === e.nodeMessageId);
+      if (block) out.push({ childSid: e.childSid, parentSid: e.parentSid, blockId: block.id });
+    }
+    return out;
+  }, [branchEdges, regions]);
+  /** 引线笔道（屏幕坐标）+ 落点：**卷首中线 → 节点缘**。种子取枝卷号：同枝恒同线。 */
+  const branchTethers = useMemo(() => {
+    const out: Array<{
+      childSid: number;
+      parentSid: number;
+      blockId: string;
+      d: string;
+      bead: { x: number; y: number };
+    }> = [];
+    for (const t of branchTargets) {
+      const child = regions.find((r) => r.sessionNum === t.childSid);
+      const parent = regions.find((r) => r.sessionNum === t.parentSid);
+      const hole = parent?.flowGeom.find((g) => g.id === t.blockId);
+      // 节点被折叠摘出流栈 / 卷不在场 = 无洞可指（同钉那条腿：宁可没有线，也不指错）
+      if (!child || !hole) continue;
+      const world = tetherAnchorsAt(
+        {
+          x: child.anchor.anchorX - child.anchor.width / 2,
+          y: child.regionTop - child.folioH / 2,
+          w: child.anchor.width,
+        },
+        hole,
+      );
+      const art = tetherPath(
+        worldToScreen(view, world.from.x, world.from.y),
+        worldToScreen(view, world.to.x, world.to.y),
+        selSeedOf(`branch-${t.childSid}`),
+      );
+      out.push({ ...t, d: art.d, bead: art.bead });
+    }
+    return out;
+  }, [branchTargets, regions, view]);
+
+  /** 点引线 = 溯源：飞到父卷那个节点（落节点中线）+ 节点点名一拍（同钉那条腿）。 */
+  const onBranchTrace = useCallback(
+    (parentSid: number, blockId: string) => {
+      const parent = regionsRef.current.find((r) => r.sessionNum === parentSid);
+      const hole = parent?.flowGeom.find((g) => g.id === blockId);
+      if (!parent || !hole) return;
+      setTracedPinId(blockId);
+      flyToPoint(String(parentSid), hole.y + hole.h / 2, parent.anchor.anchorX);
+    },
+    [flyToPoint],
+  );
 
   /* 手动接管视口（拖块用）：取消在途定位飞行 + 清挂起定位——与滚轮/拖画布/
    *  缩放同纪律（use-paper-viewport 内联同款三行）。拖块时指针贴缘自动滚屏，
@@ -1197,6 +1272,38 @@ export function PaperPanel() {
               <path className="pp-tether" d={tether.d} />
               {/* 落点朱点（句读点朱遗意）：线是引，点是落 */}
               <circle className="pp-tether-bead" cx={tether.bead.x} cy={tether.bead.y} r={2.2} />
+            </svg>
+          )}
+
+          {/* 枝边层（P3 会话树「枝」）：**常显**的一丝朱砂引线——枝卷卷首 → 父卷那个节点。
+              同一支笔（.pp-tether 的墨），同一层位（屏幕坐标）。与钉那条腿的差别只有两点：
+              ① 常显（树是结构）；② 可点——墨仍是那一丝，命中的是叠在其上的加粗透明
+              「受墨带」（.pp-tether-hit，见 CSS 注：不给墨本身加粗，一屏一语言）。
+              节点不在视口内时线照样出屏（同款判据）。 */}
+          {branchTethers.length > 0 && (
+            <svg className="pp-tether-layer pp-branch-layer" aria-label="会话树的枝（引线连回父卷的分叉节点）">
+              {branchTethers.map((t) => (
+                <g key={t.childSid}>
+                  {/* 受墨带：命中的是它，墨仍是那一丝（.pp-tether-hit 注） */}
+                  {/* biome-ignore lint/a11y/useSemanticElements: 引线是 SVG 笔道——<button> 进不了 SVG 坐标系（受墨带必须与墨同形）；role/tabIndex/Enter 已补 */}
+                  <path
+                    className="pp-tether-hit"
+                    d={t.d}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`回到案卷 ${t.childSid} 这一枝的来处：父卷的分叉节点`}
+                    onClick={() => onBranchTrace(t.parentSid, t.blockId)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onBranchTrace(t.parentSid, t.blockId);
+                      }
+                    }}
+                  />
+                  <path className="pp-tether pp-branch-tether" d={t.d} />
+                  <circle className="pp-tether-bead" cx={t.bead.x} cy={t.bead.y} r={2.2} />
+                </g>
+              ))}
             </svg>
           )}
 

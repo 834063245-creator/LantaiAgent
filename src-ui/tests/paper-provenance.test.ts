@@ -30,6 +30,7 @@ import {
   TETHER_SAG_MAX,
   TETHER_WOBBLE,
   tetherAnchors,
+  tetherAnchorsAt,
   tetherPath,
   tetherPoints,
 } from '../src/paper/provenance';
@@ -100,6 +101,17 @@ describe('引线（划词朱线同族的手绘墨迹，2026-09-18 重做）', ()
     const y0 = pin.y + TETHER_PIN_DY;
     expect(Math.hypot(a.from.x - pin.x, a.from.y - y0)).toBeCloseTo(TETHER_GAP, 6);
     expect(a.from.y).toBeLessThan(y0); // 缩向洞（向上）
+  });
+
+  it('锚高由调用方给的同一支笔（会话树「枝」的画布承接复用）：tetherAnchors 只是它 + 钉锚高', () => {
+    // 钉那一路 = tetherAnchorsAt(锚高 pin.y + TETHER_PIN_DY)（判例内转录，不新造线）
+    expect(tetherAnchors(pin, hole)).toEqual(tetherAnchorsAt({ x: pin.x, y: pin.y + TETHER_PIN_DY, w: pin.w }, hole));
+    // 枝边那一路：锚在**卷首中线**（世界坐标由调用方给），选边/留白/收笔规则同一份
+    const folio = { x: 1640, y: -1400, w: 720 };
+    const node = { x: -360, y: -300, w: 720, h: 40 };
+    const a = tetherAnchorsAt(folio, node);
+    expect(a.to).toEqual({ x: 360, y: -280 }); // 节点全在卷首左 ⇒ 收笔落节点右缘中线
+    expect(Math.hypot(a.from.x - folio.x, a.from.y - folio.y)).toBeCloseTo(TETHER_GAP, 6);
   });
 
   it('笔道：两端微伏收零（起笔/收笔干净），点数随长度、上下有界', () => {

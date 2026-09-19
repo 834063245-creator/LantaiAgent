@@ -118,6 +118,10 @@ export interface AttachSessionLogStoreOptions {
 export interface SessionLogStore {
   readonly sessionId: number;
   readonly root: string;
+  /** 本卷的**头行**（write-once：物化写一次，改名不回写）——attach 时带入内存。
+   *  读面零 I/O 的用途 = **血缘**（`header.parent`，会话树「枝」的画布承接面：
+   *  枝卷卷首要拉一丝引线到父卷的那个节点，见 `app/chat/session-branch.branchOriginOf`）。 */
+  readonly header: SessionLogHeader;
   /** 静默点：排空队列（检查点/退出收尾）。 */
   flush(): Promise<void>;
   /** 是否还有待写事件或在途写。 */
@@ -327,6 +331,7 @@ export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessi
   const store: SessionLogStore = {
     sessionId: opts.sessionId,
     root: opts.root,
+    header: opts.header,
     flush: () => queue.flush(),
     hasWork: () => queue.hasWork,
     stats: () => ({ batches, events, failures }),
@@ -419,8 +424,11 @@ export async function openSessionLog(
         });
       }
       // ② 置回磁盘真源 + 续写姿态
+      // 头行取**盘上那一份**（不是调用方现造的出生头）：血缘（`parent`）只写在
+      // 文件头行里，续开时调用方的 header 是新的出生记录、没有它——带错了，
+      // 画布上枝卷就找不到父卷（见 SessionLogStore.header 注）。
       logInstance.restoreInPlace(loaded.events);
-      const store = attachSessionLogStore(logInstance, { ...opts, adopt: 'continue' });
+      const store = attachSessionLogStore(logInstance, { ...opts, header: loaded.header, adopt: 'continue' });
       // ③ 补悬空工具调用（崩溃时「宣布了但没结果」的调用）并立刻持久化
       const closers = interruptedToolCallClosers(loaded.events);
       if (closers.length > 0) {
