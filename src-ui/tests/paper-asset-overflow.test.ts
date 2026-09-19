@@ -33,7 +33,9 @@ import {
   measureSignature,
   needsObservedHeight,
   observedBlockHeightOf,
+  observedKeyOf,
   reportObservedBlockHeight,
+  splitObservedKey,
   subscribeObservedBlockHeights,
 } from '../src/paper/measure';
 import { ASSET_DERIVED } from '../src/paper/type-tokens';
@@ -276,10 +278,13 @@ describe('实测回写桥（动态高兜底）', () => {
     resetBlockIdCounterForTests();
   });
 
-  it('needsObservedHeight：资产/开放/拟策要实测，内置文本族不要', () => {
+  it('needsObservedHeight：资产/开放/拟策/夹注要实测，其余内置文本族不要', () => {
     expect(needsObservedHeight('file', true)).toBe(true);
     expect(needsObservedHeight('future_custom', false)).toBe(true);
     expect(needsObservedHeight('plan', false)).toBe(true);
+    // 夹注（2026-09-19 夹注叠字批）：唯一无封顶自由散文——canvas 折行与 DOM 折行
+    // 在「半角标点 + 拉丁」处每行差 0.1~1.2px，长文累积成 ±1~6 行；挂 RO 实测。
+    expect(needsObservedHeight('reasoning', false)).toBe(true);
     expect(needsObservedHeight('tool', false)).toBe(false);
     expect(needsObservedHeight('markdown', false)).toBe(false);
   });
@@ -287,25 +292,61 @@ describe('实测回写桥（动态高兜底）', () => {
   it('实测优先：record 存在时 cached 直接采用，静态镜像不参与', () => {
     const cache = createBlockMeasureCache();
     const b = assetBlock('html', { code: 'x' });
-    reportObservedBlockHeight(b.id, b.w, 800);
+    // 记录键 = 壳层 data-block-observed 同源（observedKeyOf——渲染态入键）
+    reportObservedBlockHeight(observedKeyOf(b, false, false, false), b.w, 800);
     expect(measureBlockHeightCached(b, cache)).toBe(800);
   });
 
   it('记录宽与块宽不一致 → 实测作废回落静态镜像（钉住改宽后待重报）', () => {
     const cache = createBlockMeasureCache();
     const b = assetBlock('html', { code: 'x' });
-    reportObservedBlockHeight(b.id, 640, 800);
-    expect(observedBlockHeightOf(b.id, b.w)).toBeUndefined();
+    reportObservedBlockHeight(observedKeyOf(b, false, false, false), 640, 800);
+    expect(observedBlockHeightOf(observedKeyOf(b, false, false, false), b.w)).toBeUndefined();
     expect(measureBlockHeightCached(b, cache)).toBe(4 + ASSET_DERIVED.plateHeadH + 240);
   });
 
   it('记录变化 → 签名变化 → 缓存重测采用新实测（反馈框展开/iframe 上报路径）', () => {
     const cache = createBlockMeasureCache();
     const b = block('plan', { planId: 'p', title: 't', content: 'c', status: 's', _callback: () => {} });
-    reportObservedBlockHeight(b.id, b.w, 500);
+    reportObservedBlockHeight(observedKeyOf(b, false, false, false), b.w, 500);
     expect(measureBlockHeightCached(b, cache)).toBe(500);
-    reportObservedBlockHeight(b.id, b.w, 300);
+    reportObservedBlockHeight(observedKeyOf(b, false, false, false), b.w, 300);
     expect(measureBlockHeightCached(b, cache)).toBe(300);
+  });
+
+  /* ── 渲染态签名（2026-09-19 夹注叠字批）── */
+  it('观测键 = 块 id + 渲染态；渲染态翻转 → 旧读数作废（不喂给另一种盒子）', () => {
+    const b = block('reasoning', { text: '思考' });
+    const collapsed = observedKeyOf(b, true, false, false);
+    const expanded = observedKeyOf(b, false, false, false);
+    expect(collapsed).not.toBe(expanded);
+    expect(splitObservedKey(expanded)).toEqual([b.id, 'flow|f0s0o0']);
+    // 折叠态读到的 44.97 不许被展开态消费（同一块 id、同宽）
+    reportObservedBlockHeight(collapsed, b.w, 44.97);
+    expect(observedBlockHeightOf(collapsed, b.w)).toBe(45); // ceil
+    expect(observedBlockHeightOf(expanded, b.w)).toBeUndefined();
+    // 钉住态也是另一种盒子（纸内白边 + 报头）
+    const pinned = observedKeyOf({ ...b, state: 'pinned' }, false, false, false);
+    expect(pinned).not.toBe(expanded);
+    expect(observedBlockHeightOf(pinned, b.w)).toBeUndefined();
+  });
+
+  it('同宽换态 = restated（立即重排）：折叠翻转不等 120ms 去抖', () => {
+    const events: number[] = [];
+    const off = subscribeObservedBlockHeights(() => events.push(events.length));
+    const b = block('reasoning', { text: '思考' });
+    const collapsed = observedKeyOf(b, true, false, false);
+    expect(reportObservedBlockHeight(collapsed, b.w, 45)).toBe('registered');
+    expect(events).toHaveLength(0); // 首报校准登记不脉冲
+    // 展开：同宽、换渲染态 → 旧读数已废，新读数立即生效（用户手势刚落）
+    const expanded = observedKeyOf(b, false, false, false);
+    expect(reportObservedBlockHeight(expanded, b.w, 1200)).toBe('restated');
+    expect(events).toHaveLength(1);
+    expect(observedBlockHeightOf(expanded, b.w)).toBe(1200);
+    // 展开后流式长高：同态值变 → changed
+    expect(reportObservedBlockHeight(expanded, b.w, 1250)).toBe('changed');
+    expect(events).toHaveLength(2);
+    off();
   });
 
   it('首报静默登记不触发订阅；挂载后值变才重排（滚动意图修 2026-08-31）', () => {

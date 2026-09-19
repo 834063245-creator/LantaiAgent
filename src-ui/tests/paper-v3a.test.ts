@@ -53,6 +53,7 @@ import {
   sliceSelection,
   tryMakeStripFromSelection,
 } from '../src/paper/selection';
+import { cssUsedPx } from '../src/paper/type-tokens';
 import {
   type FlowGeom,
   type PinnedGeom,
@@ -117,10 +118,15 @@ describe('paper/measure', () => {
     expect(PAPER_MONO_FONT).toContain('MiSans');
   });
 
-  it('B4 环1 钉值：来文 22px / 行高 22×1.65=36.3（seal-deep 不变；2026-08-30 标题化：题 > 正文 17；手迹位三体换代后同 MiSans）', () => {
+  it('B4 环1 钉值：来文 22px / 行高 22×1.65=36.3——测高取 CSS **用值** 36.296875（seal-deep 不变；2026-08-30 标题化：题 > 正文 17；手迹位三体换代后同 MiSans）', () => {
     expect(PAPER_USER_FONT).toContain('22px');
     expect(PAPER_USER_FONT).toContain('MiSans');
-    expect(PAPER_USER_LINE_HEIGHT).toBeCloseTo(36.3, 5);
+    // 2026-09-19 行高量化：token 算式仍是 22×1.65 = 36.3，但引擎把 line-height
+    // 存成 LayoutUnit（1/64px）= 36.296875——测高必须用同一个数（真机读数：
+    // 8 行 pre-wrap 盒 = 290.375 = 8×36.296875），否则每行攒 0.003px 的确定
+    // 性偏差（夹注 24.975 → 24.96875 是同一律，1702 行攒 −10.6px）。
+    expect(cssUsedPx(22 * 1.65)).toBe(36.296875);
+    expect(PAPER_USER_LINE_HEIGHT).toBe(36.296875);
   });
 
   // CSS 字面量钉值在 tests/paper-visual-decisions.test.ts（node 环境 readFileSync；

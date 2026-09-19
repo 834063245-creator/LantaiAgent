@@ -22,6 +22,16 @@ export const FONT_STACKS = {
   mono: '"MiSans", "PingFang SC", "Microsoft YaHei", sans-serif',
 } as const;
 
+/** CSS 用值量化（LayoutUnit = 1/64 px，2026-09-19 夹注叠字批）。
+ *
+ *  line-height 无单位时，引擎把 size × lh 存成 LayoutUnit（Chromium 与 WebKit
+ *  同为 1/64 px）——13.5 × 1.85 = 24.975 在 DOM 里实为 **24.96875**。测高若按
+ *  未量化的浮点乘行数，每行差 −0.00625px：长夹注（真会话实测 1702 行）累积
+ *  −10.6px 的**确定性**偏差（真机读数：8 行 pre-wrap 盒 = 199.75 = 8 × 24.96875；
+ *  36.3 → 36.296875 同律）。凡由 size × lh 派生的行高常量一律过本函数——
+ *  镜像纪律的又一条：测高用的行高必须等于 CSS 的**用值**，不是字面算式值。 */
+export const cssUsedPx = (n: number): number => Math.round(n * 64) / 64;
+
 /* ── 块体字号 / 行高系数（CSS 侧 .pp-block.pp-* .pp-body 镜像）── */
 export const PAPER_TYPE = {
   user: { size: 22, lh: 1.65, stack: 'kai' as const }, // 来文楷书朱砂深——2026-08-30 标题化：题签居中、正文变大（题 > 正文 17）

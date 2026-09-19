@@ -47,6 +47,7 @@ import {
   ASSET_TOKENS,
   CHROME_DERIVED,
   CHROME_TOKENS,
+  cssUsedPx,
   FOLIO_TOKENS,
   FONT_STACKS,
   LIMIT_TOKENS,
@@ -60,33 +61,34 @@ const KAI_STACK = FONT_STACKS.kai;
 const MONO_STACK = FONT_STACKS.mono;
 
 /** 来文（user）：手迹位 16px/1.9 朱砂深（.pp-block.pp-user .pp-body；三体换代后同 MiSans）
- *  B4 环1 拍板 C：字号 18→16 收到正文 17 之下，行高同 C 变体 1.9 */
+ *  B4 环1 拍板 C：字号 18→16 收到正文 17 之下，行高同 C 变体 1.9
+ *  （2026-09-19：行高一律过 cssUsedPx——测高须用 CSS **用值**，见 type-tokens 头注） */
 export const PAPER_USER_FONT = `${PAPER_TYPE.user.size}px ${FONT_STACKS[PAPER_TYPE.user.stack]}`;
-export const PAPER_USER_LINE_HEIGHT = PAPER_TYPE.user.size * PAPER_TYPE.user.lh;
+export const PAPER_USER_LINE_HEIGHT = cssUsedPx(PAPER_TYPE.user.size * PAPER_TYPE.user.lh);
 
 /** 正文（markdown）：宋体 17px/2.0（.pp-block.pp-markdown .pp-body） */
 export const PAPER_BODY_FONT = `${PAPER_TYPE.body.size}px ${FONT_STACKS[PAPER_TYPE.body.stack]}`;
-export const PAPER_BODY_LINE_HEIGHT = PAPER_TYPE.body.size * PAPER_TYPE.body.lh;
+export const PAPER_BODY_LINE_HEIGHT = cssUsedPx(PAPER_TYPE.body.size * PAPER_TYPE.body.lh);
 
 /** 夹注（reasoning）：13.5px/1.85 石墨（.pp-block.pp-reasoning .pp-body） */
 export const PAPER_REASONING_FONT = `${PAPER_TYPE.reasoning.size}px ${FONT_STACKS[PAPER_TYPE.reasoning.stack]}`;
-export const PAPER_REASONING_LINE_HEIGHT = PAPER_TYPE.reasoning.size * PAPER_TYPE.reasoning.lh;
+export const PAPER_REASONING_LINE_HEIGHT = cssUsedPx(PAPER_TYPE.reasoning.size * PAPER_TYPE.reasoning.lh);
 
 /** 贴黄（notice）：12.5px/1.7（.pp-block.pp-notice .pp-body） */
 export const PAPER_NOTICE_FONT = `${PAPER_TYPE.notice.size}px ${FONT_STACKS[PAPER_TYPE.notice.stack]}`;
-export const PAPER_NOTICE_LINE_HEIGHT = PAPER_TYPE.notice.size * PAPER_TYPE.notice.lh;
+export const PAPER_NOTICE_LINE_HEIGHT = cssUsedPx(PAPER_TYPE.notice.size * PAPER_TYPE.notice.lh);
 
 /** 抄录（diff）图版：等宽 12.5px/1.7（.pp-block.pp-diff pre） */
 export const PAPER_MONO_FONT = `${PAPER_TYPE.mono.size}px ${FONT_STACKS[PAPER_TYPE.mono.stack]}`;
-export const PAPER_MONO_LINE_HEIGHT = PAPER_TYPE.mono.size * PAPER_TYPE.mono.lh;
+export const PAPER_MONO_LINE_HEIGHT = cssUsedPx(PAPER_TYPE.mono.size * PAPER_TYPE.mono.lh);
 
 /** 脚注（tool）args：等宽 11.5px/1.6 石青（.pp-block.pp-tool pre） */
 export const PAPER_TOOL_FONT = `${PAPER_TYPE.tool.size}px ${FONT_STACKS[PAPER_TYPE.tool.stack]}`;
-export const PAPER_TOOL_LINE_HEIGHT = PAPER_TYPE.tool.size * PAPER_TYPE.tool.lh;
+export const PAPER_TOOL_LINE_HEIGHT = cssUsedPx(PAPER_TYPE.tool.size * PAPER_TYPE.tool.lh);
 
 /** 脚注输出/错误（.pp-out）：等宽 11px/1.5 */
 export const PAPER_OUT_FONT = `${PAPER_TYPE.out.size}px ${FONT_STACKS[PAPER_TYPE.out.stack]}`;
-export const PAPER_OUT_LINE_HEIGHT = PAPER_TYPE.out.size * PAPER_TYPE.out.lh;
+export const PAPER_OUT_LINE_HEIGHT = cssUsedPx(PAPER_TYPE.out.size * PAPER_TYPE.out.lh);
 
 /** 正文段距（2026-08-30 markdown 专项改版：17px/行距 2.0 下 10px 段距比行距
  *  还小、段落黏连——提到 14px；.pp-md-p margin-bottom 镜像）。 */
@@ -982,41 +984,89 @@ function measureAssetBlockHeight(b: SourcedBlock): number {
  * 2026-08-31 滚动意图修（与壳层 blockRoRef 配套）：破「首报即重排」脉冲——
  * 首报（无记录）= 静态镜像校准登记，只写入不通知；滚动虚拟化中逐卡挂载
  * 逐卡立即重排 = 全局布局脉冲（实机症状：滚过图表/拟策卡区域整个流抽搐）。
- * 收敛改为壳层去抖一次触发；首报后值再变（媒体图加载等动态高）才即时通知。 */
+ * 收敛改为壳层去抖一次触发；首报后值再变（媒体图加载等动态高）才即时通知。
+ *
+ * 2026-09-19 渲染态签名（夹注叠字批）：记录带**渲染态键**（见 renderStateKey）——
+ * 同一块 id 在不同渲染态（折叠/展开、眉批折/展、流/钉）下是两个不同的盒子，
+ * 而 RO 只报「当前那个盒子的尺寸」。旧实现只按 (id, w) 认记录 ⇒ 折叠态翻转后
+ * 的第一帧吃到另一态的读数（44.97 的折叠高喂给展开态 = 整块高度差一个量级、
+ * 下一块直接压在正文上）。带签名后旧读数自然作废，走静态镜像兜一帧。 */
 
 interface ObservedHeight {
   w: number;
   h: number;
+  /** 渲染态键（renderStateKey 产出）——同键才算同一种盒子。 */
+  key: string;
 }
 
 const observedHeights = new Map<string, ObservedHeight>();
 const observedListeners = new Set<() => void>();
 
-/** RO 实测回写结果：registered=首报校准登记（不触发布局重排）/
- *  changed=挂载后值变（动态高，立即重排）/ unchanged=同值（无变化）。 */
-export type ObservedReport = 'registered' | 'changed' | 'unchanged';
+/** RO 实测回写结果：registered=首报/换宽校准登记（不触发布局重排）/
+ *  changed=挂载后值变（动态高，立即重排）/ restated=渲染态翻转（立即重排）/
+ *  unchanged=同值（无变化）。 */
+export type ObservedReport = 'registered' | 'changed' | 'restated' | 'unchanged';
+
+/** 渲染态键：同 id 的块在**哪一种盒子**里被量（决定高度的渲染态维度）。
+ *  只有三件：钉住态（纸内白边 + 报头是钉住独有）、折叠态（夹注/脚注/程文的
+ *  展开与收起是两个高度）、眉批态（`:sc` 移出后眉批栏只剩一行占位）。
+ *  形状 `{state}|f{0/1}s{0/1}o{0/1}`——**自描述**（同键才算同一种盒子）。
+ *  文本增长不在键里——那是 `changed` 的路（值变即立即重排），入键会让每次
+ *  流式加行都变成「新记录」，实测表无界增长且首报去抖把即时性也吞掉。
+ *  两侧必须同源：壳层写进 data-block-observed 的是本函数与 id 的复合串。 */
+export function renderStateKey(b: SourcedBlock, folded: boolean, sidecarFolded: boolean, sidecarOut: boolean): string {
+  return `${b.state}|f${folded ? 1 : 0}s${sidecarFolded ? 1 : 0}o${sidecarOut ? 1 : 0}`;
+}
+
+/** 块实测观测键（壳层 data-block-observed 的值 = 本函数产出）。格式
+ *  `{块 id}|{渲染态}`——**格式只此一处**（拆解见 splitObservedKey，壳层不解析）。 */
+export function observedKeyOf(b: SourcedBlock, folded: boolean, sidecarFolded: boolean, sidecarOut: boolean): string {
+  return `${b.id}|${renderStateKey(b, folded, sidecarFolded, sidecarOut)}`;
+}
+
+/** 观测键拆解（块 id / 渲染态）。块 id 不含 `|`（pb:msg:idx 形状），取**首个**
+ *  分隔符即 id 边界（渲染态自身含 `|`，见 renderStateKey）；无分隔符（裸 id）
+ *  按无态处理。 */
+export function splitObservedKey(key: string): [string, string] {
+  const i = key.indexOf('|');
+  return i < 0 ? [key, ''] : [key.slice(0, i), key.slice(i + 1)];
+}
 
 /** 壳层 RO 实测回写（世界单位 = CSS px——RO 读布局盒，transform 缩放不影响）。
+ *  observedKey（observedKeyOf 产出）里的渲染态必须与记录时一致才认账——见文件头
+ *  2026-09-19 条。
  *  无记录或宽度变化 = 首报：登记不通知（校准登记——收敛由壳层去抖一次触发，
- *  避免滚动挂载逐卡脉冲式全局重排）；记录已存在且值变 = 动态高（媒体图加载/
- *  iframe 上报/拟策反馈框展开），通知订阅者立即重排。 */
-export function reportObservedBlockHeight(blockId: string, w: number, h: number): ObservedReport {
+ *  避免滚动挂载逐卡脉冲式全局重排）；同宽换态 = 用户手势刚落（折叠翻转），
+ *  立即通知重排（等去抖会看见块错位一瞬）；同态值变 = 动态高（媒体图加载/
+ *  iframe 上报/拟策反馈框展开/流式长高），立即通知。 */
+export function reportObservedBlockHeight(observedKey: string, w: number, h: number): ObservedReport {
   const rec = Math.ceil(h);
+  const [blockId, key] = splitObservedKey(observedKey);
   const prev = observedHeights.get(blockId);
-  if (prev && prev.w === w) {
+  if (prev && prev.w === w && prev.key === key) {
     if (prev.h === rec) return 'unchanged';
-    observedHeights.set(blockId, { w, h: rec });
-    for (const fn of observedListeners) fn();
+    observedHeights.set(blockId, { w, h: rec, key });
+    notifyObserved();
     return 'changed';
   }
-  observedHeights.set(blockId, { w, h: rec });
+  observedHeights.set(blockId, { w, h: rec, key });
+  if (prev && prev.w === w) {
+    notifyObserved();
+    return 'restated';
+  }
   return 'registered';
 }
 
-/** 有效实测高（记录宽与块宽一致才有效——钉住改宽后旧实测作废待重报）。 */
-export function observedBlockHeightOf(blockId: string, w: number): number | undefined {
+/** 有效实测高（记录宽与块宽一致**且渲染态同键**才有效——钉住改宽/折叠翻转后
+ *  旧实测作废待重报，见 renderStateKey 头注）。 */
+export function observedBlockHeightOf(observedKey: string, w: number): number | undefined {
+  const [blockId, key] = splitObservedKey(observedKey);
   const rec = observedHeights.get(blockId);
-  return rec && rec.w === w ? rec.h : undefined;
+  return rec && rec.w === w && rec.key === key ? rec.h : undefined;
+}
+
+function notifyObserved(): void {
+  for (const fn of observedListeners) fn();
 }
 
 /** 壳层订阅（回报 → measureTick bump → 布局重算）。 */
@@ -1046,9 +1096,23 @@ const BUILTIN_MEASURE_KINDS = new Set<string>([
  *  text（2026-09 科研数学）：含公式的 markdown 块也挂 RO——公式高取决于
  *  KaTeX 结构（分式/矩阵/求和堆叠）无法从源码可靠静态镜像，挂载后实测回写。
  *  表格（2026-09 表格叠字修复）：auto 布局列宽分布取决于字形度量——均分
- *  假设只能近似（偏高方向安全），挂载后 RO 实测回写精确化（同公式先例）。 */
+ *  假设只能近似（偏高方向安全），挂载后 RO 实测回写精确化（同公式先例）。
+ *
+ *  夹注 reasoning（2026-09-19 夹注叠字批，真机报「夹注展开常与脚注叠字」）：
+ *  **唯一无封顶的自由散文**文类——canvas 折行（pretext）与 DOM 折行在
+ *  「半角标点 + 拉丁/汉字」处每行可差 0.1~1.2px（真 Chrome 逐字对拍实证：`,C`
+ *  一步 DOM 比 canvas 宽 0.518px、`,X` 窄 0.115px；`text-autospace` 已钉死
+ *  no-autospace，残余是引擎内部度量差，CSS 侧无可关的开关——text-rendering/
+ *  font-kerning/ligatures/font-feature-settings/text-spacing-trim 逐条试过皆无效）。
+ *  长夹注（本仓真会话实测 1000~1700 行）逐行累积 ⇒ 折行点翻转 ⇒ DOM 行数与
+ *  测高行数差 ±1~6 行。936 条真夹注实测：253 条（27%）块高有差，其中 14 条 DOM
+ *  更高（最大 +49px > 单元内间距 32px ⇒ 末行压到下一块脚注上 = 叠字 17.94px），
+ *  239 条 DOM 更矮（最大 −153px = 幻影空档）。对拍另证脚注侧 468 次零偏差
+ *  （工具卡载荷段全部封顶，误差无处累积）——这就是「为什么总是夹注压脚注」。
+ *  静态镜像对这一族结构性失明 ⇒ 挂 RO 实测（补丁后同语料复算：叠字 0 块）。 */
 export function needsObservedHeight(kind: BlockKind, hasAsset: boolean, text?: string): boolean {
   if (hasAsset || kind === 'plan' || !BUILTIN_MEASURE_KINDS.has(kind)) return true;
+  if (kind === 'reasoning') return true;
   if (kind === 'markdown' && text != null && (textHasMath(text) || textHasTable(text))) return true;
   return false;
 }
@@ -1386,10 +1450,11 @@ function measureMdElement(
     }
     case 'h': {
       const c = MD_H[el.lv - 1];
+      const lh = cssUsedPx(c.size * c.lh);
       // 标题：padding-top 把文字压低（DOM 同款——pt 在文字之上、pb 之下）。
       return {
-        h: c.pt + measureInlineHeight(el.inl, w, c.size, SONG_STACK, c.size * c.lh) + c.pb,
-        ink: piece(el.inl, c.size, c.size * c.lh, y0 + c.pt, inset0),
+        h: c.pt + measureInlineHeight(el.inl, w, c.size, SONG_STACK, lh) + c.pb,
+        ink: piece(el.inl, c.size, lh, y0 + c.pt, inset0),
       };
     }
     case 'list': {
@@ -1776,7 +1841,7 @@ export function measureBlockHeightCached(
    * 缓存，拔钉/钉住后高度照旧（虚拟化剔除矩形错、洞位错）。 */
   if (b.state === 'pinned') return pinnedBlockHeightCached(b, cache, folded, sidecarFolded, sidecarOut);
   const obs = needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
-    ? observedBlockHeightOf(b.id, b.w)
+    ? observedBlockHeightOf(observedKeyOf(b, folded, sidecarFolded, sidecarOut), b.w)
     : undefined;
   const sig = `${measureSignature(b, folded, sidecarFolded, sidecarOut)}|w=${b.w}|obs=${obs ?? ''}`;
   const hit = cache.byId.get(b.id);
@@ -1821,7 +1886,7 @@ function pinnedBlockHeightCached(
   sidecarOut = false,
 ): number {
   const obs = needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
-    ? observedBlockHeightOf(b.id, b.w)
+    ? observedBlockHeightOf(observedKeyOf(b, folded, sidecarFolded, sidecarOut), b.w)
     : undefined;
   if (obs != null) return obs;
   const inner: SourcedBlock = {

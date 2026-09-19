@@ -61,6 +61,7 @@ import {
   isFoldable,
   leaveToHome,
   needsObservedHeight,
+  observedKeyOf,
   onTopbarDoubleClick,
   onTopbarPointerDown,
   PaperDockContext,
@@ -1227,7 +1228,7 @@ export function PaperPanel() {
                         data-block-id={b.id}
                         data-block-observed={
                           needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
-                            ? b.id
+                            ? observedKeyOf(b, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
                             : undefined
                         }
                         ref={blockRootRef}
@@ -1287,7 +1288,7 @@ export function PaperPanel() {
                         data-block-id={b.id}
                         data-block-observed={
                           needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
-                            ? b.id
+                            ? observedKeyOf(b, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
                             : undefined
                         }
                         ref={blockRootRef}

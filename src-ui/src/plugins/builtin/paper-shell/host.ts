@@ -82,6 +82,7 @@ export {
   measureBlockHeightCached,
   measureFolioHeadHeight,
   needsObservedHeight,
+  observedKeyOf,
   reportObservedBlockHeight,
   subscribeObservedBlockHeights,
   USER_SHRINK_MIN_W,

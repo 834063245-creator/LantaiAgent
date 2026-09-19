@@ -72,6 +72,7 @@ export const createBlockMeasureCache = impl.createBlockMeasureCache;
 export const measureBlockHeightCached = impl.measureBlockHeightCached;
 export const measureFolioHeadHeight = impl.measureFolioHeadHeight;
 export const needsObservedHeight = impl.needsObservedHeight;
+export const observedKeyOf = impl.observedKeyOf;
 export const reportObservedBlockHeight = impl.reportObservedBlockHeight;
 export const subscribeObservedBlockHeights = impl.subscribeObservedBlockHeights;
 export const USER_SHRINK_MIN_W = impl.USER_SHRINK_MIN_W;

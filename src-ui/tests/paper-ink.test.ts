@@ -70,7 +70,7 @@ import {
   lodTierOf,
   regionLabelTopWorld,
 } from '../src/paper/ink';
-import { clearPaperMeasureCache } from '../src/paper/measure';
+import { clearPaperMeasureCache, PAPER_USER_LINE_HEIGHT } from '../src/paper/measure';
 import {
   CHROME_DERIVED,
   CHROME_TOKENS,
@@ -234,9 +234,11 @@ describe('paper/ink inkForBlock', () => {
     // mock 每次走查出 2 行：bars = 2，dy 依次 起笔位 / +lineHeight
     expect(ink.bars).toHaveLength(2);
     // 2026-09-20：起笔位 = 题签区高（正文在题签之下——旧实现画在块顶，实测偏高 58px）
+    // 2026-09-19（夹注叠字批）：行高一律取 CSS **用值**（22×1.65 = 36.296875 而非
+    // 36.3）——墨迹与测高同一把尺子，禁止在测试里手写未量化的算式。
     expect(ink.bars[0]).toMatchObject({ dy: CHROME_DERIVED.userKindH, x0: 0, text: '测试行' });
-    expect(ink.bars[1]).toMatchObject({ dy: CHROME_DERIVED.userKindH + 22 * 1.65, text: '测试行' });
-    expect(ink.lineH).toBe(22 * 1.65);
+    expect(ink.bars[1]).toMatchObject({ dy: CHROME_DERIVED.userKindH + PAPER_USER_LINE_HEIGHT, text: '测试行' });
+    expect(ink.lineH).toBe(PAPER_USER_LINE_HEIGHT);
     expect(ink.size).toBe(22); // 来文楷体字号（缩放直绘用）——标题化放大
   });
 
