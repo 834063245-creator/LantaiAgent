@@ -23,6 +23,10 @@ export interface BlockOp {
   title?: string;
 }
 
+/** 「立枝」判据表（`_id` → 判据）：形状取自 core 能力位，不另立类型出口——
+ *  判据真源在 `app/chat/session-branch`（本文件只消费）。 */
+type BranchMap = ReturnType<PaperCore['branchPoints']>;
+
 /** 从消息提取可复制的正文文本（text part 拼接）。 */
 function messageCopyText(msg: ChatMessage): string {
   if (msg.role !== 'assistant') return msg.text;
@@ -44,7 +48,7 @@ export function useBlockOps(params: {
   const { core, regions, regionsRef, regionMsgs } = params;
 
   const msgOpsFor = useCallback(
-    (msg: ChatMessage, stateOps: boolean, retrace: boolean, sid: number): BlockOp[] => {
+    (msg: ChatMessage, stateOps: boolean, retrace: boolean, sid: number, branches: BranchMap): BlockOp[] => {
       if (!core) return [];
       const latest = (): ChatMessage => {
         // 在来源会话的消息流里找最新版本
@@ -79,14 +83,18 @@ export function useBlockOps(params: {
       // 位置纪律 = 与「改 / 重发 / 抄」同一行动作（主流 agent 软件的分支入口都挂在
       // 消息自己身上，不是会话列表、不是标题栏）；来文块与回复块都给（回复块的切点
       // 落在本轮末尾，见 `session-branch.resolveBranchPoint`）。
-      // **不做渲染期置灰**：判定要走尾对齐 + fold 锚点（O(消息数)），逐块在渲染期跑会
-      // 拖帧；不可立枝的原因由点击后的具名 toast 兜住（错误不静默），置灰留 P2 与
-      // 「未落定节点」一起做。
+      // **置灰**：判据由调用方**每卷一趟**派生（`core.branchPoints`）后传进来——判定
+      // 含整段 fold（O(事件数)），逐块在渲染期跑会拖帧；不可立枝的**具名原因**直接
+      // 作 title（错误不静默），点击时仍由 `branchFromMessage` 兜底。
+      // 无判据的块按**可立枝**处理（置灰是提示不是门禁：宁可让用户点一下看到具名
+      // toast，也不误灰一个合法的枝）。
+      const branch = branches.get(msg._id);
       ops.push({
         key: 'branch',
         label: '立枝',
         run: () => void core.branchFromMessage(latest(), sid),
-        title: '从这条另起一枝：本卷原样保留，新枝复制到此为止的历史',
+        ...(branch && !branch.ok ? { disabled: true } : {}),
+        title: branch && !branch.ok ? branch.reason : '从这条另起一枝：本卷原样保留，新枝复制到此为止的历史',
       });
       return ops;
     },
@@ -113,6 +121,13 @@ export function useBlockOps(params: {
       const msgs = regionMsgs[r.sessionNum]?.messages ?? [];
       const byId = new Map<string, ChatMessage>();
       for (const m of msgs) byId.set(m._id, m);
+      // 可立枝判据：**每卷一趟**派生（O(事件数 + 消息数)）——逐块问 = 每块一次整段
+      // fold（长卷拖帧，见 session-branch.deriveBranchPoints）。判据随缓存戳走：
+      // 未落定批次跑完/锚点变化 ⇒ 戳变 ⇒ 该块的 ops 重算（置灰态不粘旧判定）。
+      const branches = core.branchPoints(
+        r.sessionNum,
+        msgs.filter((m) => m.role === 'user' || m.role === 'assistant'),
+      );
       // 各卷最新一条来文（倒序首见）——状态类操作按钮的准入判定
       let lastUser: ChatMessage | undefined;
       for (let i = msgs.length - 1; i >= 0; i--) {
@@ -129,7 +144,10 @@ export function useBlockOps(params: {
         // 可撤态入缓存戳——压缩/漂移后置灰态随渲染刷新（不粘旧判定）
         let retrace = false;
         if (stateOps && msg.role === 'user') retrace = core.canRetraceUserMessage(msg);
-        const stamp = stateOps ? (retrace ? '1' : '0') : '';
+        const branch = branches.get(msg._id);
+        const stamp = `${stateOps ? (retrace ? '1' : '0') : ''}|${
+          branch ? (branch.ok ? `b${branch.atSeq}` : `x${branch.reason}`) : ''
+        }`;
         const hit = opsCacheRef.current.get(b.id);
         if (hit && hit.msg === msg && hit.stamp === stamp && hit.regionMsgs === regionMsgs) {
           // 2026-09-01 审计：缓存键补 regionMsgs 同一性——ops 闭包捕获建时的
@@ -137,7 +155,7 @@ export function useBlockOps(params: {
           // 陈旧会话消息表。
           map.set(b.id, hit.ops);
         } else {
-          const ops = msgOpsFor(msg, stateOps, retrace, r.sessionNum);
+          const ops = msgOpsFor(msg, stateOps, retrace, r.sessionNum, branches);
           opsCacheRef.current.set(b.id, { msg, ops, stamp, regionMsgs });
           map.set(b.id, ops);
         }

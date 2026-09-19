@@ -12,8 +12,6 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { agentSessionState } from '../src/agent/agent-session-state';
-import { createExecState } from '../src/agent/execution-state';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { useShellStore } from '../src/app/shell-store';
@@ -25,8 +23,28 @@ import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import { useDockStore } from '../src/state/dock-store';
 import { getChatStore } from '../src/ui/chat-store';
 
-function fakeCore(panelId: string): { core: ChatCore; deleteSessionFile: Mock } {
-  const deleteSessionFile = vi.fn();
+function fakeCore(panelId: string): {
+  core: ChatCore;
+  planBranchDelete: Mock;
+  deleteSessionWithBranches: Mock;
+  deleteSessionsWithBranches: Mock;
+} {
+  const planBranchDelete = vi.fn(async (id: number) => ({
+    roots: [id],
+    order: [id],
+    blocked: [] as Array<{ id: number; running: number[] }>,
+    branchCount: 0,
+  }));
+  const deleteSessionWithBranches = vi.fn(async (id: number) => ({
+    deleted: [id],
+    failed: [] as Array<{ id: number; reason: string }>,
+    blocked: [] as Array<{ id: number; running: number[] }>,
+  }));
+  const deleteSessionsWithBranches = vi.fn(async (ids: number[]) => ({
+    deleted: [...ids],
+    failed: [] as Array<{ id: number; reason: string }>,
+    blocked: [] as Array<{ id: number; running: number[] }>,
+  }));
   const core = {
     panelId,
     listSavedSessions: vi.fn(async () => [
@@ -37,12 +55,14 @@ function fakeCore(panelId: string): { core: ChatCore; deleteSessionFile: Mock } 
     renameSession: vi.fn(),
     renameSavedSession: vi.fn(),
     closeSession: vi.fn(),
-    deleteSessionFile,
+    planBranchDelete,
+    deleteSessionWithBranches,
+    deleteSessionsWithBranches,
     // 摊开成功（expand 收口后：返回 false = 卷不存在 → 不发定位请求）
     loadSessionFromDisk: vi.fn(async () => true),
     switchSession: vi.fn(),
   } as unknown as ChatCore;
-  return { core, deleteSessionFile };
+  return { core, planBranchDelete, deleteSessionWithBranches, deleteSessionsWithBranches };
 }
 
 /** React 受控 input 的原生设值（绕开 value tracker 去重）。 */
@@ -61,7 +81,9 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
   let root: Root | null = null;
   let panelId: string;
   let core: ChatCore;
-  let deleteSessionFile: Mock;
+  let planBranchDelete: Mock;
+  let deleteSessionWithBranches: Mock;
+  let deleteSessionsWithBranches: Mock;
 
   beforeEach(() => {
     panelId = `test-ss-ux-${Math.random().toString(36).slice(2)}`;
@@ -73,7 +95,7 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     localStorage.removeItem('lantai.sidebar.width');
     container = document.createElement('div');
     document.body.appendChild(container);
-    ({ core, deleteSessionFile } = fakeCore(panelId));
+    ({ core, planBranchDelete, deleteSessionWithBranches, deleteSessionsWithBranches } = fakeCore(panelId));
     useCoreStore.getState().setChatCore(core);
     // 摊开两卷（卷 1 = 当前卷，均未落盘）+ 盘上一卷（未摊开）
     getChatStore(panelId).sess.setState({
@@ -214,19 +236,46 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     expect(container.querySelector('.ss-rename-input')).toBeNull();
   });
 
-  it('键盘 Delete：一击武装（确删?）再一击写墓碑', async () => {
+  it('键盘 Delete：一击武装（确删?）再一击**连坐**删除', async () => {
     await mount();
     const rows = [...container.querySelectorAll('.ss-row')] as HTMLElement[];
     const closed = rows[rows.length - 1]; // 盘卷甲（id 2，未摊开）
     act(() => closed.focus()); // onFocus → 游标切到该行
-    act(() => keydown(closed, 'Delete')); // 一击：武装
+    await act(async () => keydown(closed, 'Delete')); // 一击：按真源核对血缘后武装
     const danger = container.querySelector('.ss-danger') as HTMLButtonElement;
-    expect(danger?.textContent).toBe('确删?');
-    expect(deleteSessionFile).not.toHaveBeenCalled();
-    act(() => {
+    expect(danger?.textContent).toBe('确删?'); // 无枝 = 不报数
+    expect(planBranchDelete).toHaveBeenCalledWith(2);
+    expect(deleteSessionWithBranches).not.toHaveBeenCalled();
+    await act(async () => {
       danger.click();
-    }); // 再击：写墓碑
-    expect(deleteSessionFile).toHaveBeenCalledWith('', 2);
+    }); // 再击：连坐删除
+    expect(deleteSessionWithBranches).toHaveBeenCalledWith(2);
+  });
+
+  it('键盘 Delete：有枝时确认钮如实报数「将同时删除 N 枝」', async () => {
+    planBranchDelete.mockResolvedValue({ roots: [2], order: [5, 2], blocked: [], branchCount: 1 });
+    await mount();
+    const rows = [...container.querySelectorAll('.ss-row')] as HTMLElement[];
+    const closed = rows[rows.length - 1];
+    act(() => closed.focus());
+    await act(async () => keydown(closed, 'Delete'));
+    const danger = container.querySelector('.ss-danger') as HTMLButtonElement;
+    expect(danger?.textContent).toBe('确删 2 卷?'); // 本卷 + 1 枝
+    expect(danger?.title).toContain('将同时删除 1 枝');
+  });
+
+  it('键盘 Delete：子树里有运行中的卷 ⇒ 整体拒绝并列出（不武装）', async () => {
+    planBranchDelete.mockResolvedValue({ roots: [2], order: [], blocked: [{ id: 2, running: [5] }], branchCount: 0 });
+    await mount();
+    const rows = [...container.querySelectorAll('.ss-row')] as HTMLElement[];
+    const closed = rows[rows.length - 1];
+    act(() => closed.focus());
+    await act(async () => keydown(closed, 'Delete'));
+    expect(container.querySelector('.ss-danger')).toBeNull(); // 不武装
+    const notice = container.querySelector('.ss-notice')?.textContent ?? '';
+    expect(notice).toContain('案卷 5');
+    expect(notice).toContain('运行中');
+    expect(deleteSessionWithBranches).not.toHaveBeenCalled();
   });
 
   it('键盘 C 合卷：游标在摊开卷 → closeSession；闭合卷无效', async () => {
@@ -240,7 +289,7 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     expect(core.closeSession).toHaveBeenCalledTimes(1); // 闭合卷 C 无效
   });
 
-  it('多选批量删除：勾选两卷 → 批量条两击确认 → 逐卷写墓碑', async () => {
+  it('多选批量删除：勾选两卷 → 批量条两击确认 → 一次连坐删除（各自带子树）', async () => {
     await mount();
     const checks = [...container.querySelectorAll('.ss-check')] as HTMLButtonElement[];
     act(() => checks[0].click()); // Cordis 迁移
@@ -251,23 +300,20 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     act(() => del.click()); // 一击：武装
     const armed = container.querySelector('.ss-batch-del') as HTMLButtonElement;
     expect(armed.textContent).toBe('确删 2 卷?');
-    expect(deleteSessionFile).not.toHaveBeenCalled();
-    act(() => armed.click()); // 再击：执行
-    expect(deleteSessionFile).toHaveBeenCalledTimes(2);
-    expect(deleteSessionFile).toHaveBeenCalledWith('', 3);
-    expect(deleteSessionFile).toHaveBeenCalledWith('', 2);
+    expect(deleteSessionsWithBranches).not.toHaveBeenCalled();
+    await act(async () => armed.click()); // 再击：执行
+    expect(deleteSessionsWithBranches).toHaveBeenCalledTimes(1);
+    expect(deleteSessionsWithBranches).toHaveBeenCalledWith([3, 2]);
     expect(container.querySelector('.ss-new')).not.toBeNull(); // 选择清空 → 脚部复位
   });
 
-  it('批量删除：运行中卷跳过并报数', async () => {
+  it('批量删除：子树里有运行中的卷的选择卷跳过并报数', async () => {
+    deleteSessionsWithBranches.mockResolvedValue({
+      deleted: [2],
+      failed: [],
+      blocked: [{ id: 3, running: [3] }],
+    });
     await mount();
-    const exec = createExecState();
-    act(() => {
-      agentSessionState.setExec(panelId, 3, exec); // Cordis 迁移运行中
-    });
-    act(() => {
-      exec.start();
-    });
     const checks = [...container.querySelectorAll('.ss-check')] as HTMLButtonElement[];
     act(() => checks[0].click()); // 运行中的 Cordis
     act(() => checks[2].click()); // 闲的盘卷甲
@@ -277,12 +323,10 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     await act(async () => {
       del.click();
     });
-    expect(deleteSessionFile).toHaveBeenCalledTimes(1);
-    expect(deleteSessionFile).toHaveBeenCalledWith('', 2); // 只删闲卷
-    expect(container.querySelector('.ss-notice')?.textContent).toContain('1 卷运行中已跳过');
-    act(() => {
-      exec.done();
-    });
+    expect(deleteSessionsWithBranches).toHaveBeenCalledWith([3, 2]);
+    const notice = container.querySelector('.ss-notice')?.textContent ?? '';
+    expect(notice).toContain('已删 1 卷');
+    expect(notice).toContain('案卷 3');
   });
 
   it('Ctrl+A 全选可见 + Esc 清选择复位脚部（不收侧栏）', async () => {

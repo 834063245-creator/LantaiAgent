@@ -56,14 +56,15 @@ function readRunning(storeId: string, sid: number): boolean {
 
 /** 书脊卷序 = 侧边栏合流序（摊开组：savedAt 倒序，未落盘按卷号新者上）——
  *  书脊与侧边栏并陈两份名单，顺序打架是可见 bug（2026-08-31 前
- *  书脊用内存数组序，与侧边栏「新者上」相反）。 */
+ *  书脊用内存数组序，与侧边栏「新者上」相反）。
+ *  `branch` = 有父卷（会话树「枝」）——书脊上标「枝」（血缘由清单投影的盘上行供给）。 */
 function spineOrder(
   open: Array<{ id: number; label: string; msgCount: number }>,
   saved: Parameters<typeof mergeSessionRows>[1],
-): Array<{ id: number; label: string }> {
+): Array<{ id: number; label: string; branch: boolean }> {
   return mergeSessionRows(open, saved)
     .filter((r) => r.open)
-    .map((r) => ({ id: r.id, label: volumeDisplayName(r.label, r.id) }));
+    .map((r) => ({ id: r.id, label: volumeDisplayName(r.label, r.id), branch: r.parentId != null }));
 }
 
 export const SpineRack = memo(function SpineRack() {
@@ -268,7 +269,7 @@ export const SpineRack = memo(function SpineRack() {
               role="tab"
               tabIndex={0}
               aria-selected={isActive}
-              title={`${s.label}${isRunning ? '（运行中）' : ''} — 左键定位 · 拖动落位 · hover 合卷`}
+              title={`${s.label}${s.branch ? '（枝）' : ''}${isRunning ? '（运行中）' : ''} — 左键定位 · 拖动落位 · hover 合卷`}
               onClick={() => onLocate(s.id)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -281,13 +282,21 @@ export const SpineRack = memo(function SpineRack() {
               <span className="sr-label" dir="ltr">
                 {s.label}
               </span>
+              {s.branch && (
+                <span className="sr-branch-tag" title="枝：从父卷的某个节点分出">
+                  枝
+                </span>
+              )}
               {isRunning && <span className="sr-run-dot" role="presentation" />}
             </div>
 
             {/* hover 小卡：卷名 + 运行态 + 合卷钮（改名/删除在侧边栏——各管一摊） */}
             <div className="sr-hover-card">
               <div className="sr-hover-title">{s.label}</div>
-              <div className="sr-hover-meta">{isRunning ? '运行中 · 不可合卷' : '左键定位 · 拖动落位'}</div>
+              <div className="sr-hover-meta">
+                {s.branch ? '枝 · ' : ''}
+                {isRunning ? '运行中 · 不可合卷' : '左键定位 · 拖动落位'}
+              </div>
               <button type="button" className="sr-close-btn" disabled={isRunning} onClick={() => onClose(s.id)}>
                 合卷（自动存）
               </button>

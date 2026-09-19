@@ -292,10 +292,16 @@ describe('ChatPanel session persistence', () => {
     function seedVolume(
       files: Record<string, string>,
       id: number,
-      opts: { label?: string; savedAt?: string; msgs?: Array<{ role: string; content?: string }> } = {},
+      opts: {
+        label?: string;
+        savedAt?: string;
+        msgs?: Array<{ role: string; content?: string }>;
+        /** 会话树血缘边（枝卷）——写进**事件日志头行**（write-once 真源）。 */
+        parent?: { id: number; atSeq: number };
+      } = {},
     ): void {
       const msgs = opts.msgs ?? [{ role: 'user', content: `内容 ${id}` }];
-      files[`${ROOT}/${id}.ndjson`] = logText(id, msgs, opts.savedAt);
+      files[`${ROOT}/${id}.ndjson`] = logText(id, msgs, opts.savedAt, undefined, opts.parent);
       files[`${ROOT}/${id}.json`] = cacheText(id, {
         label: opts.label ?? '',
         savedAt: opts.savedAt ?? '2026-01-01T00:00:00Z',
@@ -328,7 +334,7 @@ describe('ChatPanel session persistence', () => {
       });
       // 目录已落盘（下次清点直接用它）
       const cat = catalogOfDisk(files);
-      expect(cat.ver).toBe(1);
+      expect(cat.ver).toBe(2);
       expect(Object.keys(cat.rows).sort()).toEqual(['1', '2']);
     });
 
@@ -387,7 +393,65 @@ describe('ChatPanel session persistence', () => {
       const result = await panel.listSavedSessions(P);
       expect(result.map((r) => r.id)).toEqual([3]);
       expect(result[0].label).toBe('丙'); // 真值来自卷体，不采信不认版本的目录
-      expect(catalogOfDisk(files).ver).toBe(1);
+      expect(catalogOfDisk(files).ver).toBe(2);
+    });
+
+    it('v1 目录（无血缘栏）不认版本 → 整份重建：血缘从卷日志头行一次到位', async () => {
+      panel = createChatPanel();
+      const files: Record<string, string> = {};
+      // 卷 2 是从卷 1 的 seq 1 分出的枝
+      seedVolume(files, 1, { label: '父卷' });
+      seedVolume(files, 2, { label: '枝卷', parent: { id: 1, atSeq: 1 } });
+      // v1 目录：行里没有 parentId（P2 之前的形状）
+      files[`${ROOT}/_index.json`] =
+        '{"ver":1,"rows":{"1":{"label":"父卷","savedAt":"2026-01-01T00:00:00Z","msgCount":1},' +
+        '"2":{"label":"枝卷","savedAt":"2026-01-01T00:00:00Z","msgCount":1}}}';
+      const disk = mockSessionDisk(files);
+
+      const result = await panel.listSavedSessions(P);
+      expect(result.find((r) => r.id === 1)?.parentId).toBeUndefined(); // 根卷无父
+      expect(result.find((r) => r.id === 2)?.parentId).toBe(1); // 枝卷的边
+      expect(disk.volumeReads().length).toBeGreaterThan(0); // 重建 = 真读头行
+      expect(catalogOfDisk(files).ver).toBe(2);
+      expect((catalogOfDisk(files).rows as Record<string, { parentId?: number }>)['2']?.parentId).toBe(1);
+    });
+
+    it('血缘在稳态清点里也不丢：重启后从 _index.json 取回（不重读卷体）', async () => {
+      panel = createChatPanel();
+      const files: Record<string, string> = {};
+      seedVolume(files, 1, { label: '父卷' });
+      seedVolume(files, 2, { label: '枝卷', parent: { id: 1, atSeq: 1 } });
+      const disk = mockSessionDisk(files);
+      await panel.listSavedSessions(P);
+      const reads = disk.volumeReads().length;
+
+      Session.resetSessionListCacheForTests(); // 模拟重启
+      const again = await panel.listSavedSessions(P);
+      expect(again.find((r) => r.id === 2)?.parentId).toBe(1);
+      expect(disk.volumeReads().length).toBe(reads); // 血缘随目录走，不额外读盘
+    });
+
+    it('写面不新建行（血缘只有头行一个真源）：写面先跑也不丢边，更新已建行更不抹边', async () => {
+      panel = createChatPanel();
+      useShellStore.setState({ projectPath: P });
+      const files: Record<string, string> = {};
+      seedVolume(files, 1, { label: '父卷' });
+      const disk = mockSessionDisk(files);
+
+      // 立枝的盘上结果：新卷 2 带血缘，**目录里还没有它的行**——写面先跑一步
+      // （改名即存走 writeSessionSnapshot → upsertCatalogRow；它不知道血缘）
+      seedVolume(files, 2, { label: '', parent: { id: 1, atSeq: 1 } });
+      await panel.renameSavedSession(2, '枝卷');
+
+      const rows = await panel.listSavedSessions(P);
+      expect(rows.find((r) => r.id === 2)?.parentId).toBe(1); // 行由补建读头行建
+      expect(disk.volumeReads().some((p) => p.replace(/\\/g, '/').endsWith('/2.ndjson'))).toBe(true);
+
+      // 再写一次（写面更新**已建**行）——边不丢
+      await panel.renameSavedSession(2, '枝卷二');
+      const again = await panel.listSavedSessions(P);
+      expect(again.find((r) => r.id === 2)?.parentId).toBe(1);
+      expect(again.find((r) => r.id === 2)?.label).toBe('枝卷二');
     });
 
     it('非卷文件与保留名不进清单（_active.json / _index.json / 非 .ndjson）', async () => {

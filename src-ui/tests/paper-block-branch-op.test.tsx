@@ -14,7 +14,7 @@
 
 import { act, createElement, useMemo, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import type { RegionView } from '../src/paper/region-view';
 import { type BlockOp, useBlockOps } from '../src/plugins/builtin/paper-shell/use-block-ops';
@@ -40,7 +40,10 @@ const regionMsgs: Record<string, { messages: readonly ChatMessage[]; tick: numbe
 };
 
 /** 桩 core：只带块动作行用到的那几个能力位（含新的 branchFromMessage）。 */
-function fakeCore(): { core: ChatCore; branchCalls: Array<{ sid: number; msgId: string }> } {
+function fakeCore(branches: Map<string, { ok: true; atSeq: number } | { ok: false; reason: string }> = new Map()): {
+  core: ChatCore;
+  branchCalls: Array<{ sid: number; msgId: string }>;
+} {
   const branchCalls: Array<{ sid: number; msgId: string }> = [];
   const core = {
     panelId: 'p-branch-op',
@@ -48,6 +51,7 @@ function fakeCore(): { core: ChatCore; branchCalls: Array<{ sid: number; msgId: 
     editUserMessage: vi.fn(),
     resendUserMessage: vi.fn(),
     canRetraceUserMessage: vi.fn(() => true),
+    branchPoints: vi.fn(() => branches),
     branchFromMessage: vi.fn(async (msg: ChatMessage, sid: number) => {
       branchCalls.push({ sid, msgId: msg._id });
       return 8;
@@ -108,5 +112,34 @@ describe('会话树「枝」入口 = 消息动作行（useBlockOps）', () => {
     const assistOps = ops.get('pb-assistant') ?? [];
     expect(assistOps.map((o) => o.key)).toEqual(['copy', 'branch']);
     expect(assistOps.find((o) => o.key === 'branch')?.title).toContain('本卷原样保留');
+  });
+
+  it('未落定节点：判据表里的具名原因 = 按钮置灰 + title 可见（不在渲染期逐块判定）', () => {
+    const { core, branchCalls } = fakeCore(
+      new Map([
+        [uiUser._id, { ok: true as const, atSeq: 2 }],
+        [uiAssistant._id, { ok: false as const, reason: '这一轮还有 1 处工具调用没落定——等它跑完再立枝' }],
+      ]),
+    );
+    let ops = new Map<string, BlockOp[]>();
+    act(() => {
+      root = createRoot(container);
+      root.render(createElement(Probe, { core, onOps: (m) => (ops = m) }));
+    });
+
+    // 判据每卷一趟（不是每块一趟）
+    expect((core as unknown as { branchPoints: Mock }).branchPoints).toHaveBeenCalledTimes(1);
+    expect((core as unknown as { branchPoints: Mock }).branchPoints).toHaveBeenCalledWith(SID, [uiUser, uiAssistant]);
+
+    const branch = ops.get('pb-assistant')?.find((o) => o.key === 'branch');
+    expect(branch?.disabled).toBe(true);
+    expect(branch?.title).toContain('没落定');
+    // 同一卷里切点在未落定之前的来文块照常可点
+    const userBranch = ops.get('pb-user')?.find((o) => o.key === 'branch');
+    expect(userBranch?.disabled).toBeFalsy();
+    expect(userBranch?.title).toContain('本卷原样保留');
+
+    // 置灰的按钮点击不落动作（PaperPanel 的渲染面同判据：disabled 即 return）
+    expect(branchCalls).toEqual([]);
   });
 });

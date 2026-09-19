@@ -665,6 +665,10 @@ export interface StoredSession {
   /** 立卷时刻（ISO）——**不落快照**，读面每次取自卷日志头行（`SessionLogHeader.createdAt`，
    *  卷本体真源）。列在此处仅供 `readVolumeData` 的返回值携带（2026-09-16 卷首档行）。 */
   createdAt?: string;
+  /** **父卷号**（会话树「枝」的血缘，2026-09-18）——同样**不落快照**：真源 = 卷日志
+   *  头行 `SessionLogHeader.parent.id`（write-once），此处仅供 `readVolumeData` 的返回值
+   *  携带（清单投影 `_index.json` 的血缘栏由它供数）。缺 = 根卷。 */
+  parentId?: number;
   messages?: Message[];
   /** UI 消息副本（WO-7）：含 BlockPart 资产块；旧存档无此字段 = 仅 provider 消息。 */
   uiMessages?: ChatMessage[];
@@ -827,7 +831,9 @@ function enqueueVolumeWrite<T>(key: string, task: () => Promise<T>): Promise<T> 
 // 清点 = 目录枚举 + 一份小 JSON（几百卷 ≈ 20 KB），**一卷体都不读**。
 //
 // 失效面（谁能改变清单）：
-//   · 本进程写面（自动存 / 改名 / 合卷 / 删除）→ 就地更该行 + 落盘（写面自己知道真值）；
+//   · 本进程写面（自动存 / 改名 / 合卷 / 删除）→ 就地更**已建**行 + 落盘（写面自己
+//     知道 label/savedAt/块数三栏真值；**血缘不在写面**——新建一律留给补建，见
+//     `upsertCatalogRow` 注）；删除 → 摘行；
 //   · 目录枚举逐次对账（**文件不在 = 卷不存在**）：目录里多出来的卷补建、少掉的摘掉；
 //   · 事件日志 append（只发生在**已摊开**的卷上，其行由内存投影供数）：不在失效面。
 // 补建（读该卷日志 + 投影缓存——老实现的全量读）**每卷一生只发生一次**：首次调用
@@ -842,19 +848,25 @@ function enqueueVolumeWrite<T>(key: string, task: () => Promise<T>): Promise<T> 
 // 键 = 会话根（工作区各归各，切换天然隔离）。模块级可变态归属 CONVENTIONS §1.10
 // 第 3 类（键控自清理：键 = 会话根，值 = 该根的投影 + 落盘状态，不持工作区资源所有权）。
 
-/** 会话清单行（侧栏/书脊/签条共用形状——磁盘投影三字段 + 身份）。 */
+/** 会话清单行（侧栏/书脊/签条共用形状——磁盘投影三字段 + 身份 + 血缘）。 */
 export interface SavedSessionRow {
   id: number;
   /** **原样**卷名（空 = 未命名）——显示兜底按档号，走 state/volume-name。 */
   label: string;
   msgCount: number;
   savedAt: string;
+  /** 父卷号（会话树「枝」——侧栏树形的那条边）。缺 = 根卷。
+   *  真源 = 卷日志头行（`StoredSession.parentId`），故**只由补建（读头行）产生**：
+   *  快照写面带不出血缘（见 `upsertCatalogRow` 注）。 */
+  parentId?: number;
 }
 
 /** 目录文件 id（`{root}/_index.json`——下划线保留名，各消费方的卷集过滤天然跳过）。 */
 const CATALOG_ID = '_index';
-/** 目录文件版本（结构变更即 +1；版本不认 = 视为无目录重建）。 */
-const CATALOG_VERSION = 1;
+/** 目录文件版本（结构变更即 +1；版本不认 = 视为无目录重建）。
+ *  v2（2026-09-18）：行加 `parentId`（会话树「枝」的血缘）——v1 行没有这一栏，
+ *  不认版本即整份重建（补建读头行，血缘一次到位），不做就地补读。 */
+const CATALOG_VERSION = 2;
 /** 首次补建的**阻塞**预算（ms）：预算内补齐多少算多少，其余转后台（不吊死首屏）。 */
 const CATALOG_BLOCK_BUDGET_MS = 2500;
 /** 补建并发（每卷 = 日志 + 投影缓存两跳读；并发过高只是把 IPC 挤满）。 */
@@ -916,8 +928,16 @@ function flushCatalog(cat: VolumeCatalog, root: string): void {
       return;
     }
     cat.dirty = false;
-    const rows: Record<string, { label: string; savedAt: string; msgCount: number }> = {};
-    for (const [id, r] of cat.rows) rows[String(id)] = { label: r.label, savedAt: r.savedAt, msgCount: r.msgCount };
+    const rows: Record<string, { label: string; savedAt: string; msgCount: number; parentId?: number }> = {};
+    for (const [id, r] of cat.rows) {
+      rows[String(id)] = {
+        label: r.label,
+        savedAt: r.savedAt,
+        msgCount: r.msgCount,
+        // 缺 = 根卷（JSON 丢 undefined 键——缺席即无父，读面同判）
+        ...(r.parentId != null ? { parentId: r.parentId } : {}),
+      };
+    }
     const data = JSON.stringify({ ver: CATALOG_VERSION, rows });
     void enqueueVolumeWrite(catalogPath(root), () => sessionExecute('save_volume', { root, id: CATALOG_ID, data }))
       .catch((e) => {
@@ -943,7 +963,7 @@ function loadCatalog(cat: VolumeCatalog, root: string): Promise<void> {
         } else if (parsed.rows && typeof parsed.rows === 'object') {
           for (const [key, v] of Object.entries(parsed.rows as Record<string, unknown>)) {
             const id = Number(key);
-            const row = v as { label?: unknown; savedAt?: unknown; msgCount?: unknown };
+            const row = v as { label?: unknown; savedAt?: unknown; msgCount?: unknown; parentId?: unknown };
             if (!Number.isFinite(id) || typeof row?.label !== 'string') continue;
             // 本地写入优先（载入不得覆盖本次运行已更的行）
             if (cat.rows.has(id)) continue;
@@ -952,6 +972,10 @@ function loadCatalog(cat: VolumeCatalog, root: string): Promise<void> {
               label: row.label,
               savedAt: typeof row.savedAt === 'string' ? row.savedAt : '',
               msgCount: typeof row.msgCount === 'number' ? row.msgCount : 0,
+              // 血缘形状不对 = 当根卷（毒化容忍同 parseHeader：不让一栏脏数据毁掉整行）
+              ...(Number.isInteger(row.parentId) && (row.parentId as number) > 0
+                ? { parentId: row.parentId as number }
+                : {}),
             });
           }
         }
@@ -978,6 +1002,8 @@ async function hydrateVolumeRow(projectPath: string, id: number): Promise<SavedS
     label: data.label ?? '',
     msgCount: (data.messages ?? []).filter((m) => m.role !== 'system').length,
     savedAt: data.savedAt || '',
+    // 血缘 = 卷日志头行（`readVolumeData` 已从头行取；缺 = 根卷）
+    ...(data.parentId != null ? { parentId: data.parentId } : {}),
   };
 }
 
@@ -1054,10 +1080,21 @@ async function buildMissingRows(
   })();
 }
 
-/** 写面就地更行（写完 = 该卷磁盘状态已知）+ 落盘。 */
+/** 写面就地更行（写完 = 该卷磁盘状态已知）+ 落盘。
+ *
+ *  **只更已建行，不新建**（2026-09-18 会话树「枝」）：写面（快照落盘）知道
+ *  label/savedAt/块数三栏的真值，但**不知道血缘**——`parentId` 的真源是
+ *  `.ndjson` 头行，快照里没有它（`rowFromSnapshot` 无此字段）。若在这里新建一行，
+ *  那一行会永远缺 `parentId`（行一旦存在就不再补建）⇒ 侧栏树上「枝」的边静默丢失。
+ *  故新建一律留给**补建**（`hydrateVolumeRow` 读头行，血缘一次到位）——代价是
+ *  新卷首次清点多读它一次（与「每卷一生一次」的既有预算同族），换来的是
+ *  「行 = 补建行」这条不变式：凡在场之行，血缘必已定。
+ *  已建行照旧就地更三栏（parentId 是 write-once，不在更新面内）。 */
 function upsertCatalogRow(root: string, row: SavedSessionRow): void {
   const cat = catalogOf(root);
-  cat.rows.set(row.id, row);
+  const prev = cat.rows.get(row.id);
+  if (!prev) return;
+  cat.rows.set(row.id, { ...row, ...(prev.parentId != null ? { parentId: prev.parentId } : {}) });
   cat.failed.delete(row.id);
   flushCatalog(cat, root);
 }
@@ -1162,8 +1199,10 @@ async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotDa
     console.error('[chat] 会话落盘失败:', e);
     throw e;
   }
-  // 写成功：该卷磁盘状态已知 → 就地更行 + 落盘（清单消费面无需重扫——见「卷目录」头注）；
-  // 快照无 messages（只改元数据的写）时无处更行 → 摘行（下次清点补建，不猜块数）。
+  // 写成功：该卷磁盘状态已知 → 就地更**已建**行 + 落盘（清单消费面无需重扫——见
+  // 「卷目录」头注）；行尚未建（新卷首次落盘）→ 留给补建读头行（写面不知道血缘，
+  // 见 `upsertCatalogRow` 注）。快照无 messages（只改元数据的写）时无处更行 → 摘行
+  // （下次清点补建，不猜块数）。
   // 最后广播「卷清单已变更」——消费面（侧栏/书脊）据此重读（零卷体 I/O 的投影取回）；
   // 顺序要紧：先更行再广播，订阅者读到的就是写后状态。
   const row = rowFromSnapshot(data);
@@ -1412,6 +1451,8 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
     label: cache?.label ?? '',
     savedAt: cache?.savedAt ?? '',
     createdAt: logRead.header.createdAt,
+    // 血缘取**头行**（write-once 真源），不取快照——快照里没有这一栏
+    ...(logRead.header.parent ? { parentId: logRead.header.parent.id } : {}),
     messages: logRead.messages,
     uiMessages: fresh ? cache?.uiMessages : undefined,
     tokensUsed: cache?.tokensUsed,
@@ -1442,14 +1483,7 @@ export async function listSavedSessions(_ctx: SessionContext, projectPath: strin
   // 无工作区 = 无卷（合法空态，不是失败——不抛）
   if (!projectPath) return [];
   const root = workspaceSessionsDir(projectPath);
-  const names = await listVolumeNames(root);
-  // 卷集 = .ndjson（跳过下划线开头的保留名；provider 已滤目录）
-  const ids: number[] = [];
-  for (const name of names) {
-    if (!name.endsWith('.ndjson') || name.startsWith('_')) continue;
-    const sid = parseInt(name.replace(/\.ndjson$/, ''), 10);
-    if (!Number.isNaN(sid)) ids.push(sid);
-  }
+  const ids = await listVolumeIds(projectPath);
 
   const cat = catalogOf(root);
   await loadCatalog(cat, root);
@@ -1479,6 +1513,21 @@ export async function listSavedSessions(_ctx: SessionContext, projectPath: strin
   }
   rows.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
   return rows;
+}
+
+/** **本工作区卷号集**（目录枚举 = 卷集真源：文件不在 = 卷不存在）——清单之外的
+ *  读面（会话树「枝」的血缘图重建）取材于此，**不信 `_index.json`**（它是投影，
+ *  可陈旧；删除连坐是不可逆动作，见 `app/chat/session-branch.loadBranchLineage`）。 */
+export async function listVolumeIds(projectPath: string): Promise<number[]> {
+  const names = await listVolumeNames(workspaceSessionsDir(projectPath));
+  // 卷集 = .ndjson（跳过下划线开头的保留名；provider 已滤目录）
+  const ids: number[] = [];
+  for (const name of names) {
+    if (!name.endsWith('.ndjson') || name.startsWith('_')) continue;
+    const sid = parseInt(name.replace(/\.ndjson$/, ''), 10);
+    if (!Number.isNaN(sid)) ids.push(sid);
+  }
+  return ids;
 }
 
 /** 目录枚举（list_volumes）——失败**上抛**（旧实现返回空集，把「目录读不出来」
@@ -1767,8 +1816,17 @@ export async function batchRestoreSessions(
 /** 将磁盘上的会话文件标记为已删除。workspace-session-ownership-rework：
  *  墓碑写工作区会话根（归属即存储位置，无 workspace 字段）。
  *  seam：delete_volume（D-2 语义动作——默认 provider 墓碑重写 deleted:true，
- *  消费方过滤契约依赖此形态，行为字节不变；SQLite provider 可真删）。 */
-export async function deleteSessionFile(ctx: SessionContext, projectPath: string, sessionId: number): Promise<void> {
+ *  消费方过滤契约依赖此形态，行为字节不变；SQLite provider 可真删）。
+ *  ⚠ 返回**删除结果**（2026-09-18 会话树「枝」P2）：连坐删除要**逐卷可见**
+ *  （部分失败不静默），故这里不再只 toast——`ok:false` 带原因（已 toast +
+ *  console.error），调用方据此逐卷报账（失败卷的标签页照旧不关）。 */
+export type SessionDeleteResult = { ok: true } | { ok: false; reason: string };
+
+export async function deleteSessionFile(
+  ctx: SessionContext,
+  projectPath: string,
+  sessionId: number,
+): Promise<SessionDeleteResult> {
   const root = workspaceSessionsDir(projectPath);
   try {
     await sessionExecute('delete_log', {
@@ -1776,9 +1834,10 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
       id: String(sessionId),
     });
   } catch (e) {
+    const why = e instanceof Error ? e.message : String(e);
     console.error('[chat] deleteSessionFile failed:', e);
-    showToast('删除案卷文件失败', 'error');
-    return; // 写入失败则不关闭标签页
+    showToast(`删除案卷 ${sessionId} 失败：${why}`, 'error');
+    return { ok: false, reason: why }; // 写入失败则不关闭标签页
   }
   // 真删成功：目录就地摘行（「文件不在 = 卷不存在」——消费面无需重扫）+ 广播
   dropCatalogRow(root, sessionId);
@@ -1793,7 +1852,7 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
   const idx = getChatStore(ctx.storeId)
     .sess.getState()
     .sessions.findIndex((s) => s.id === sessionId);
-  if (idx < 0) return;
+  if (idx < 0) return { ok: true };
   // 删除唯一/最后一卷（2026-08-28 会话管理专项修复）：删除语义下允许清空
   // 画布（closeSession 已同步放开——合卷最后一卷同样清空画布，见其空分支）。
   // 否则墓碑已写、流区已移除，但标签页不关（僵尸），且再发消息自动保存会把
@@ -1809,9 +1868,10 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
     const runtime = ctx.getRuntime?.();
     if (runtime) runtime.destroySessionBoards(String(sessionId)).catch(() => {});
     ctx.updateFooter();
-    return;
+    return { ok: true };
   }
   closeSession(ctx, idx);
+  return { ok: true };
 }
 
 // ── 会话恢复（内部辅助函数）──

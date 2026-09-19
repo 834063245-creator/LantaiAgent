@@ -119,6 +119,18 @@
   font-weight: 600;
 }
 
+/* 枝标（会话树「枝」）：有父卷的脊上一枚朱砂小签——与侧栏行同语汇 */
+.sr-branch-tag {
+  writing-mode: vertical-rl;
+  font-family: var(--f-song);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--seal);
+  border: 1px solid var(--seal-soft);
+  padding: 2px 1px;
+  flex: 0 0 auto;
+}
+
 /* 运行点：石青呼吸（机=石青，语义铁律）；D2 方点化（圆角恒 0 收编） */
 .sr-run-dot {
   width: 6px;

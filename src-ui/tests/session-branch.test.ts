@@ -73,7 +73,15 @@ import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';
 import { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
-import { createBranchVolume, resolveBranchOrigin, resolveBranchPoint } from '../src/app/chat/session-branch';
+import {
+  createBranchVolume,
+  deleteBranchSubtrees,
+  deriveBranchPoints,
+  loadBranchLineage,
+  planBranchDelete,
+  resolveBranchOrigin,
+  resolveBranchPoint,
+} from '../src/app/chat/session-branch';
 import { flushSessionLog } from '../src/app/chat/session-log-store';
 import { useShellStore } from '../src/app/shell-store';
 import { SpaceService } from '../src/composition/space-service';
@@ -111,6 +119,12 @@ function makeCtx(storeId: string): SessionContext {
 function resetPanel(storeId: string): void {
   agentSessionState.clearPanelState(storeId);
   getChatStore(storeId).sess.setState({ sessions: [], activeIdx: -1, sessionTokens: {}, nextSessionId: 1 });
+}
+
+/** 连坐删除（单卷真删由调用层注入——与 `ChatCore.deleteSessionWithBranches` 同形）。 */
+function cascade(store: string, ids: number[]) {
+  const ctx = makeCtx(store);
+  return deleteBranchSubtrees(store, WS, ids, (sid) => Session.deleteSessionFile(ctx, WS, sid));
 }
 
 function setVolume(sid: number, text: string): void {
@@ -393,6 +407,49 @@ describe('会话树「枝」——节点定位（消息动作行的入口：枝�
     if (point.ok) return;
     expect(point.reason).toContain('Agent 未就绪');
   });
+
+  it('批量派生（渲染期置灰读面）：一趟算清、逐节点与单点判据**同源**', async () => {
+    const store = 'branch-node-5';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(1, logText(1, [sys, user('一'), assistant('二')]));
+    await Session.loadSessionFromDisk(makeCtx(store), WS, 1);
+
+    // 模拟「正在跑」：产品自己的双写入口宣布一次调用（结果未落）
+    const handle = agentSessionState.getAgent(store, 1) as unknown as {
+      _getAgent(): { _appendMessage(kind: string, message: unknown): void };
+    };
+    handle._getAgent()._appendMessage('assistant/text', {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id: 'c9', name: 'fs', arguments: '{}' }],
+    });
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    const uiUser = ui.find((m) => m.role === 'user');
+    const uiAssistant = ui.find((m) => m.role === 'assistant');
+    expect(uiUser).toBeDefined();
+    expect(uiAssistant).toBeDefined();
+    if (!uiUser || !uiAssistant) return;
+    const nodes = [
+      { _id: uiUser._id, role: 'user' },
+      { _id: uiAssistant._id, role: 'assistant', respondingTo: uiUser._id },
+    ];
+
+    const derived = deriveBranchPoints(store, 1, nodes);
+    // 逐节点与单点路径逐字同判据（不出现第二把尺子）
+    for (const n of nodes) {
+      expect(derived.get(n._id)).toEqual(resolveBranchPoint(store, 1, n));
+    }
+    // 未落定批次：回复块置灰 + 具名原因；切点在它之前的来文块照常可立枝
+    expect(derived.get(uiUser._id)).toEqual({ ok: true, atSeq: 2 });
+    const refused = derived.get(uiAssistant._id);
+    expect(refused?.ok).toBe(false);
+    if (!refused || refused.ok) return;
+    expect(refused.reason).toContain('没落定');
+    // 空节点表 = 空表（渲染期无块可问时不建上下文）
+    expect(deriveBranchPoints(store, 1, []).size).toBe(0);
+  });
 });
 
 describe('会话树「枝」——切点纪律的拒态（拒了必须一个字节都不落）', () => {
@@ -459,6 +516,141 @@ describe('会话树「枝」——切点纪律的拒态（拒了必须一个字�
     if (result.ok) return;
     expect(result.reason).toContain('读不出来');
     expect(getChatStore(store).sess.getState().sessions).toEqual([]);
+  });
+});
+
+describe('会话树「枝」——删除连坐（P2，plan §8/§9：删父卷 = 删整棵子树）', () => {
+  beforeEach(() => {
+    const fs = H.kernelFs?.fs;
+    if (fs) {
+      fs.files.clear();
+      fs.dirs.clear();
+      fs.writes.length = 0;
+      fs.fail = {};
+    }
+    Session.resetSessionListCacheForTests();
+  });
+
+  /** 一棵四卷的树（**含继承区内立枝的孙卷**——边必须归一化到上层卷）：
+   *  卷 1（根，5 事件）→ 卷 2（从 1@3 分出，自己的区域 4..5）
+   *                    → 卷 3（从 **2@2** 分出——2 落在卷 2 的继承区 ⇒ 归到卷 1）
+   *  卷 2 → 卷 4（从 2@5 分出——落在卷 2 自己区域 ⇒ 归卷 2） */
+  function seedTree(): void {
+    setVolume(1, logText(1, [sys, user('一'), assistant('二'), user('三'), assistant('四')]));
+    setVolume(
+      2,
+      logText(2, [sys, user('一'), assistant('二'), user('五'), assistant('六')], undefined, undefined, {
+        id: 1,
+        atSeq: 3,
+      }),
+    );
+    setVolume(3, logText(3, [sys, user('一'), assistant('七')], undefined, undefined, { id: 2, atSeq: 2 }));
+    setVolume(
+      4,
+      logText(4, [sys, user('一'), assistant('二'), user('五'), assistant('八')], undefined, undefined, {
+        id: 2,
+        atSeq: 5,
+      }),
+    );
+  }
+
+  it('血缘图按磁盘真源重建：继承区内的孙卷归到**上层卷**（归一化后的边）', async () => {
+    seedTree();
+    const lineage = await loadBranchLineage(SESSIONS, [1, 2, 3, 4]);
+    expect(lineage.parentOf.get(1)).toBeNull();
+    expect(lineage.parentOf.get(2)).toBe(1);
+    expect(lineage.parentOf.get(3)).toBe(1); // 从 2@2 分出，但 2 落在卷 2 的继承区 ⇒ 归卷 1
+    expect(lineage.parentOf.get(4)).toBe(2); // 从 2@5 分出（卷 2 自己的区域）⇒ 归卷 2
+    expect(lineage.childrenOf.get(1)?.sort()).toEqual([2, 3]);
+    expect(lineage.childrenOf.get(2)).toEqual([4]);
+  });
+
+  it('连坐：删父卷 ⇒ 整棵子树（**后序**：先子后父），卷 3 按归一化边跟着卷 1 走', async () => {
+    const store = 'branch-cascade-1';
+    resetPanel(store);
+    seedTree();
+
+    const outcome = await cascade(store, [1]);
+
+    // 后序：4（2 的子）→ 2 → 3 → 1（根）——任何中断点剩下的都还是合法森林
+    expect(outcome.deleted).toEqual([4, 2, 3, 1]);
+    expect(outcome.failed).toEqual([]);
+    expect(outcome.blocked).toEqual([]);
+    for (const sid of [1, 2, 3, 4]) expect(volumeText(sid)).toBeUndefined();
+  });
+
+  it('连坐只连自己的子树：删卷 2 ⇒ 只带走 4，卷 3（归一化归卷 1）与卷 1 都在', async () => {
+    const store = 'branch-cascade-2';
+    resetPanel(store);
+    seedTree();
+
+    const outcome = await cascade(store, [2]);
+
+    expect(outcome.deleted).toEqual([4, 2]);
+    expect(volumeText(1)).toBeDefined();
+    expect(volumeText(3)).toBeDefined();
+  });
+
+  it('后序删除：**任何中断点剩下的都还是合法森林**（零孤儿）', async () => {
+    seedTree();
+    const lineage = await loadBranchLineage(SESSIONS, [1, 2, 3, 4]);
+    const plan = await planBranchDelete('branch-cascade-3', WS, [1]);
+    expect(plan.order).toEqual([4, 2, 3, 1]);
+    expect(plan.branchCount).toBe(3); // 「将同时删除 3 枝」
+
+    // 逐步截断删除序：剩下的卷里，凡有父的，父都还在场
+    for (let k = 0; k <= plan.order.length; k++) {
+      const removed = new Set(plan.order.slice(0, k));
+      const alive = new Set([1, 2, 3, 4].filter((sid) => !removed.has(sid)));
+      for (const sid of alive) {
+        const parent = lineage.parentOf.get(sid) ?? null;
+        if (parent != null) expect(alive.has(parent)).toBe(true);
+      }
+    }
+  });
+
+  it('子树里有运行中的卷 ⇒ 该选择卷整体拒绝并列出（不删一个字节）', async () => {
+    const store = 'branch-cascade-4';
+    resetPanel(store);
+    seedTree();
+    // 孙卷 4 运行中
+    const exec = Session.getSessionExecState(store, 4);
+    exec.start();
+
+    const outcome = await cascade(store, [1]);
+
+    expect(outcome.deleted).toEqual([]);
+    expect(outcome.blocked).toEqual([{ id: 1, running: [4] }]);
+    for (const sid of [1, 2, 3, 4]) expect(volumeText(sid)).toBeDefined();
+    exec.done();
+  });
+
+  it('部分失败逐卷可见：删不掉的卷进 failed 并带原因，成功的不回滚（剩下的仍是合法森林）', async () => {
+    const store = 'branch-cascade-5';
+    resetPanel(store);
+    seedTree();
+    H.kernelFs!.fs.fail.delete = '注入：磁盘拒绝删除';
+
+    const outcome = await cascade(store, [1]);
+
+    expect(outcome.deleted).toEqual([]);
+    expect(outcome.failed.map((f) => f.id)).toEqual([4, 2, 3, 1]); // 逐卷报账（不静默）
+    expect(outcome.failed[0]?.reason).toContain('注入');
+    expect(volumeText(1)).toBeDefined();
+  });
+
+  it('血缘悬空（父卷已被外部删掉）⇒ 子卷当根卷，删它不连坐别人', async () => {
+    const store = 'branch-cascade-6';
+    resetPanel(store);
+    // 卷 9 的头行写着父卷 5，但 5 不在盘上
+    setVolume(9, logText(9, [sys, user('一')], undefined, undefined, { id: 5, atSeq: 1 }));
+    setVolume(8, logText(8, [sys, user('二')]));
+
+    const lineage = await loadBranchLineage(SESSIONS, [8, 9]);
+    expect(lineage.parentOf.get(9)).toBeNull();
+    const outcome = await cascade(store, [9]);
+    expect(outcome.deleted).toEqual([9]);
+    expect(volumeText(8)).toBeDefined();
   });
 });
 

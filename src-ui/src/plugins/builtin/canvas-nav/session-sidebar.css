@@ -434,7 +434,25 @@
   flex-direction: column;
   gap: 2px;
 }
+/* 卷名行（名 + 枝标）：名可省略号截断，枝标不参与压缩（会话树「枝」） */
+.ss-label-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+.ss-branch-tag {
+  flex: 0 0 auto;
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
+  line-height: 1.5;
+  color: var(--seal);
+  border: 1px solid var(--seal-soft);
+  padding: 0 3px;
+}
 .ss-label {
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: calc(13px * var(--font-scale));
   font-weight: 600;
   line-height: 1.6;

@@ -723,6 +723,33 @@ export class ChatCore {
     return result.sid;
   }
 
+  /** **一卷内全部节点的可立枝判据**（一次性派生）——「立枝」按钮置灰 + 具名原因的
+   *  渲染期读面（`use-block-ops` 每卷问一次，不逐块问；见 `Branch.deriveBranchPoints`）。
+   *  判据与点击时的 `branchFromMessage` 同源：置灰是提示，点击仍由后者兜底。 */
+  branchPoints(sessionId: number, nodes: Branch.BranchNode[]): Map<string, Branch.BranchPoint> {
+    return Branch.deriveBranchPoints(this.panelId, sessionId, nodes);
+  }
+
+  /** 连坐删除的准备面（只读、**磁盘真源**血缘）：确认文案的枝数 + 运行中拦截名单。
+   *  第一击确认时问一次（子树里有运行中的卷 ⇒ 整体拒绝并列出，plan §9）。 */
+  planBranchDelete(sessionId: number): Promise<Branch.CascadePlan> {
+    const pp = useShellStore.getState().projectPath;
+    return Branch.planBranchDelete(this.panelId, pp, [sessionId]);
+  }
+
+  /** **连坐删除**（plan §9 用户裁定）：删父卷 = 删整棵子树，后序（先子后父，永不产生
+   *  孤儿），逐卷可见（部分失败不静默）。见 `Branch.deleteBranchSubtrees`。 */
+  deleteSessionWithBranches(sessionId: number): Promise<Branch.CascadeOutcome> {
+    const pp = useShellStore.getState().projectPath;
+    return Branch.deleteBranchSubtrees(this.panelId, pp, [sessionId], (sid) => this.deleteSessionFile(pp, sid));
+  }
+
+  /** 批量连坐删除（多选批量条）：同一套准备/执行面，可删的删、被运行中拦下的逐个报。 */
+  deleteSessionsWithBranches(sessionIds: readonly number[]): Promise<Branch.CascadeOutcome> {
+    const pp = useShellStore.getState().projectPath;
+    return Branch.deleteBranchSubtrees(this.panelId, pp, sessionIds, (sid) => this.deleteSessionFile(pp, sid));
+  }
+
   // ── 组合（S6 P1c：卷级选择）──
 
   /** 本卷组合身份 + 来源（卷级记录 / 全局默认）——创作坞组合芯片的读面。
@@ -811,7 +838,10 @@ export class ChatCore {
   async loadSessionFromDisk(projectPath: string, sessionId: number): Promise<boolean> {
     return Session.loadSessionFromDisk(this._sessionCtx(), projectPath, sessionId);
   }
-  async deleteSessionFile(projectPath: string, sessionId: number): Promise<void> {
+  /** 单卷真删（返回**删除结果**——连坐删除要逐卷报账，见 session-branch 的连坐面）。
+   *  产品侧单卷删除的唯一入口 = `deleteSessionWithBranches`（连坐）；本方法是它注入的
+   *  逐卷执行面（也是既有单卷删除语义的直呼面，测试据此钉画布/标签页副作用）。 */
+  async deleteSessionFile(projectPath: string, sessionId: number): Promise<Session.SessionDeleteResult> {
     return Session.deleteSessionFile(this._sessionCtx(), projectPath, sessionId);
   }
 

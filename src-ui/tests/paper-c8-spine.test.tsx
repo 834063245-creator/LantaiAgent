@@ -102,6 +102,34 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     expect(container!.querySelectorAll('.sr-spine')).toHaveLength(1);
   });
 
+  it('会话树「枝」：有父卷的脊带「枝」标（血缘来自清单投影的盘上行），根卷不带', async () => {
+    const { core } = bootSpine(
+      'sr-branch',
+      [
+        { id: 1, label: '父卷' },
+        { id: 2, label: '枝卷' },
+      ],
+      0,
+    );
+    core.listSavedSessions.mockResolvedValue([
+      { id: 1, label: '父卷', msgCount: 2, savedAt: '2026-01-01T00:00:00Z' },
+      { id: 2, label: '枝卷', msgCount: 1, savedAt: '2026-02-01T00:00:00Z', parentId: 1 },
+    ]);
+    await act(async () => {
+      root?.render(<SpineRack />);
+    });
+    await act(async () => {}); // listSavedSessions promise flush
+    const tags = [...container!.querySelectorAll('.sr-spine .sr-branch-tag')];
+    expect(tags).toHaveLength(1);
+    expect(tags[0].textContent).toBe('枝');
+    // 卷序仍按合流序（savedAt 倒序：枝卷在前），枝标跟着它自己的脊走
+    const labels = [...container!.querySelectorAll('.sr-label')].map((e) => e.textContent);
+    expect(labels).toEqual(['枝卷', '父卷']);
+    const branchSpine = tags[0].closest('.sr-spine');
+    expect(branchSpine?.querySelector('.sr-label')?.textContent).toBe('枝卷');
+    expect(branchSpine?.querySelector('.sr-spine-main')?.getAttribute('title')).toContain('（枝）');
+  });
+
   it('左键 = 定位器：切活跃会话 + 发定位请求（当前卷也飞）', async () => {
     const { core } = bootSpine(
       'sr-t3',

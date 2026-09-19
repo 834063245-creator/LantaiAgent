@@ -62,11 +62,15 @@ import {
   sessionMeta,
   splitSections,
   statusLabel,
+  treeRows,
 } from './session-sidebar-model';
 import './session-sidebar.css';
 
 /** 拖动阈值（px）：超过即视为拖行（区分点击摊开）。 */
 const DRAG_THRESHOLD = 6;
+/** 面板核类型（`useCoreStore` 所持 core 的非空形状）——本文件不 import ChatCore
+ *  （产物域依赖一律经 './host'），删除连坐的返回值类型从能力位本身取。 */
+type SidebarCore = NonNullable<ReturnType<typeof useCoreStore.getState>['core']>;
 /** 宽度拖拽区间 + 默认值（px）。 */
 const WIDTH_MIN = 240;
 const WIDTH_MAX = 420;
@@ -161,6 +165,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
   /** 删除二次确认：已武装的卷 id（第一击变红，再击才删；null = 未武装）。 */
   const confirmingDeleteIdRef = useRef<number | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
+  /** 武装时按**磁盘真源**核出的枝数（确认文案「将同时删除 N 枝」——用户据此同意）。 */
+  const [deleteBranchCount, setDeleteBranchCount] = useState(0);
   /** 多选批量删除：已勾选卷 id 集 + 批量钮武装态。 */
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchArmed, setBatchArmed] = useState(false);
@@ -308,6 +314,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const disarmAll = useCallback(() => {
     confirmingDeleteIdRef.current = null;
     setConfirmingDeleteId(null);
+    setDeleteBranchCount(0);
     setBatchArmed(false);
   }, []);
 
@@ -492,27 +499,65 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const onDelete = useCallback(
     async (id: number) => {
       if (!core) return;
-      if (agentSessionState.getExec(core.panelId, id)?.isRunning) {
-        setLocalNotice('运行中的卷不能删除——先停止再移除');
-        return;
-      }
       // 二次确认（2026-08-28 会话管理专项，用户拍板）：第一击武装（按钮变红），
       // 再击才真正写墓碑——「删」与「改」「合」相邻，防误触不可撤销。
       if (confirmingDeleteIdRef.current !== id) {
+        // 第一击 = 按**磁盘真源**核对血缘（plan §8 硬规①）：确认文案要如实说出
+        // 「将同时删除 N 枝」；子树里有运行中的卷 ⇒ 整体拒绝并列出（§9）。
+        // 核对要逐卷读头行（几百卷的工作区要几秒）——给可见的等待，别让用户以为没反应。
+        setLocalNotice('正在核对血缘（逐卷读头行）…');
+        let plan: Awaited<ReturnType<SidebarCore['planBranchDelete']>>;
+        try {
+          plan = await core.planBranchDelete(id);
+        } catch (e) {
+          setLocalNotice(`血缘核对失败（未删除任何卷）：${e instanceof Error ? e.message : String(e)}`);
+          return;
+        }
+        setLocalNotice(null);
+        if (plan.blocked.length > 0) {
+          const running = plan.blocked.flatMap((b) => b.running);
+          setLocalNotice(
+            `这一枝里有 ${running.length} 卷运行中，不能删除——先停止再移除：${running.map((n) => `案卷 ${n}`).join('、')}`,
+          );
+          return;
+        }
         confirmingDeleteIdRef.current = id;
         setConfirmingDeleteId(id);
+        setDeleteBranchCount(plan.branchCount);
         return;
       }
       confirmingDeleteIdRef.current = null;
       setConfirmingDeleteId(null);
-      const pp = useShellStore.getState().projectPath;
-      await core.deleteSessionFile(pp, id); // 写完再重读（见 commitRename 注）
+      setDeleteBranchCount(0);
+      // 再击 = 连坐删除（后序、逐卷可见——部分失败不静默）
+      let outcome: Awaited<ReturnType<SidebarCore['deleteSessionWithBranches']>>;
+      try {
+        outcome = await core.deleteSessionWithBranches(id);
+      } catch (e) {
+        setLocalNotice(`删除失败：${e instanceof Error ? e.message : String(e)}`);
+        refresh();
+        return;
+      }
+      const running = outcome.blocked.flatMap((b) => b.running);
+      if (outcome.deleted.length === 0 && running.length > 0) {
+        setLocalNotice(
+          `这一枝里有 ${running.length} 卷运行中，已整体拒绝：${running.map((n) => `案卷 ${n}`).join('、')}`,
+        );
+      } else {
+        const branches = outcome.deleted.length - 1;
+        const why =
+          outcome.failed.length > 0
+            ? `；${outcome.failed.length} 卷没删掉（${outcome.failed.map((f) => `案卷 ${f.id}：${f.reason}`).join('；')}）`
+            : '';
+        setLocalNotice(`已删 ${outcome.deleted.length} 卷${branches > 0 ? `（含 ${branches} 枝）` : ''}${why}`);
+      }
       refresh();
     },
     [core, refresh],
   );
 
-  /* ── 批量删除（两击确认同款）：运行中卷跳过并报数。 ── */
+  /* ── 批量删除（两击确认同款）：同样**连坐**（选中的卷各自带整棵子树），
+   *  子树里有运行中的卷 ⇒ 该选择卷整体跳过并报数。 ── */
   const onBatchDelete = useCallback(async () => {
     if (!core || selectedIds.size === 0) return;
     if (!batchArmed) {
@@ -520,21 +565,25 @@ export const SessionSidebar = memo(function SessionSidebar() {
       return;
     }
     setBatchArmed(false);
-    const pp = useShellStore.getState().projectPath;
-    let skipped = 0;
-    let done = 0;
-    const writes: Promise<void>[] = [];
-    for (const id of selectedIds) {
-      if (agentSessionState.getExec(core.panelId, id)?.isRunning) {
-        skipped++;
-        continue;
-      }
-      writes.push(core.deleteSessionFile(pp, id));
-      done++;
+    let outcome: Awaited<ReturnType<SidebarCore['deleteSessionsWithBranches']>>;
+    try {
+      outcome = await core.deleteSessionsWithBranches([...selectedIds]);
+    } catch (e) {
+      setLocalNotice(`删除失败（未删除任何卷）：${e instanceof Error ? e.message : String(e)}`);
+      refresh();
+      return;
     }
-    await Promise.allSettled(writes); // 写完再重读（见 commitRename 注）
     setSelectedIds(new Set());
-    setLocalNotice(`已删 ${done} 卷${skipped > 0 ? `（${skipped} 卷运行中已跳过）` : ''}`);
+    const parts = [`已删 ${outcome.deleted.length} 卷`];
+    if (outcome.blocked.length > 0) {
+      parts.push(
+        `${outcome.blocked.length} 卷的子树里有运行中的卷已跳过（${outcome.blocked.map((b) => `案卷 ${b.id}`).join('、')}）`,
+      );
+    }
+    if (outcome.failed.length > 0) {
+      parts.push(`${outcome.failed.length} 卷没删掉（${outcome.failed.map((f) => `案卷 ${f.id}`).join('、')}）`);
+    }
+    setLocalNotice(parts.join('；'));
     refresh();
   }, [core, selectedIds, batchArmed, refresh]);
 
@@ -574,19 +623,24 @@ export const SessionSidebar = memo(function SessionSidebar() {
   /* ── 检索 ── */
   const visible = useMemo(() => filterRows(rows, query), [rows, query]);
   const sections = useMemo(() => splitSections(visible), [visible]);
-  const buckets = useMemo(() => bucketClosed(sections.closed), [sections.closed]);
+  /** 在场卷号（**全部**行，不只可见行）：血缘悬空的判据——父卷被检索滤掉不算悬空。 */
+  const presentIds = useMemo(() => new Set(rows.map((r) => r.id)), [rows]);
+  /** 树形排布（会话树「枝」）：节内按血缘排父子段（父不在本节 ⇒ 当根行，缩进归 0）。 */
+  const openTree = useMemo(() => treeRows(sections.open, presentIds), [sections.open, presentIds]);
+  const closedTree = useMemo(() => treeRows(sections.closed, presentIds), [sections.closed, presentIds]);
+  const buckets = useMemo(() => bucketClosed(closedTree), [closedTree]);
   /** 桶头仅在合卷集横跨多桶时立（单桶立头是噪音）。 */
   const showBucketHeads = buckets.length > 1;
   const flat = useMemo(() => {
     const out: SidebarRow[] = [];
-    if (!folded('open')) out.push(...sections.open);
+    if (!folded('open')) out.push(...openTree);
     if (!folded('closed')) {
       for (const b of buckets) {
         if (!showBucketHeads || !folded(b.bucket)) out.push(...b.rows);
       }
     }
     return out;
-  }, [sections, buckets, showBucketHeads, folded]);
+  }, [openTree, buckets, showBucketHeads, folded]);
 
   /* 游标随可见行收窄而收敛（过滤/折叠/删除后游标行可能消失）。 */
   useEffect(() => {
@@ -700,6 +754,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
     const isRenaming = renamingId === r.id;
     const isCurrent = r.open && r.id === activeSid;
     const isSelected = selectedIds.has(r.id);
+    const branch = r.parentId != null;
+    const depth = r.depth ?? 0;
     return (
       // biome-ignore lint/a11y/useSemanticElements: 行容器内含行操作按钮，button 嵌套交互元素非法——用 div 承载行级点击
       <div
@@ -710,8 +766,13 @@ export const SessionSidebar = memo(function SessionSidebar() {
         }}
         role="button"
         tabIndex={cursorId === r.id ? 0 : -1}
-        className={`ss-row${r.open ? ' open' : ''}${isCurrent ? ' current' : ''}${isSelected ? ' selected' : ''}`}
-        title={`${volumeDisplayName(r.label, r.id)}${isCurrent ? ' · 当前卷' : ''} · ${statusLabel(r.status)} · 左键摊开/定位 · 拖动落位`}
+        className={`ss-row${r.open ? ' open' : ''}${isCurrent ? ' current' : ''}${isSelected ? ' selected' : ''}${
+          branch ? ' branch' : ''
+        }`}
+        style={depth > 0 ? { paddingLeft: 10 + depth * 14 } : undefined}
+        title={`${volumeDisplayName(r.label, r.id)}${branch ? ' · 枝' : ''}${r.orphan ? ' · 父卷已删' : ''}${
+          isCurrent ? ' · 当前卷' : ''
+        } · ${statusLabel(r.status)} · 左键摊开/定位 · 拖动落位`}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={(e) => onRowClick(e, r)}
         onMouseDown={(e) => onRowMouseDown(e, r)}
@@ -756,7 +817,15 @@ export const SessionSidebar = memo(function SessionSidebar() {
           />
         ) : (
           <div className="ss-row-main">
-            <span className="ss-label">{volumeDisplayName(r.label, r.id)}</span>
+            <span className="ss-label-row">
+              <span className="ss-label">{volumeDisplayName(r.label, r.id)}</span>
+              {/* 枝标（会话树）：有父卷 = 这一卷是从某个节点分出来的枝 */}
+              {branch && (
+                <span className="ss-branch-tag" title="枝：从父卷的某个节点分出（内容自包含）">
+                  枝
+                </span>
+              )}
+            </span>
             <span className="ss-meta">{sessionMeta(r)}</span>
           </div>
         )}
@@ -791,13 +860,17 @@ export const SessionSidebar = memo(function SessionSidebar() {
               <button
                 type="button"
                 className="ss-danger"
-                title="再点一次确认删除（不可撤销）；点其它处取消"
+                title={
+                  deleteBranchCount > 0
+                    ? `再点一次确认：将同时删除 ${deleteBranchCount} 枝（删父卷连坐整棵子树，不可撤销）`
+                    : '再点一次确认删除（不可撤销）；点其它处取消'
+                }
                 onClick={(e) => {
                   e.stopPropagation();
                   void onDelete(r.id);
                 }}
               >
-                确删?
+                {deleteBranchCount > 0 ? `确删 ${deleteBranchCount + 1} 卷?` : '确删?'}
               </button>
             ) : (
               <button
@@ -899,7 +972,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
 
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 键盘导航容器（↑↓/F2/C/Delete/X 经事件冒泡统一处理） */}
       <div className="ss-list" onKeyDown={onListKeyDown}>
-        {sections.open.length > 0 && (
+        {openTree.length > 0 && (
           <div className="ss-section">
             <button
               type="button"
@@ -909,12 +982,12 @@ export const SessionSidebar = memo(function SessionSidebar() {
             >
               <span className="t">摊开中</span>
               <span className="leader" role="presentation" />
-              <span className="n">OPEN · {sections.open.length}</span>
+              <span className="n">OPEN · {openTree.length}</span>
             </button>
-            {!openFolded && sections.open.map(renderRow)}
+            {!openFolded && openTree.map(renderRow)}
           </div>
         )}
-        {sections.closed.length > 0 && (
+        {closedTree.length > 0 && (
           <div className="ss-section">
             <button
               type="button"
@@ -924,7 +997,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
             >
               <span className="t">已合卷</span>
               <span className="leader" role="presentation" />
-              <span className="n">CLOSED · {sections.closed.length}</span>
+              <span className="n">CLOSED · {closedTree.length}</span>
             </button>
             {!closedFolded &&
               (showBucketHeads ? buckets.map(renderBucket) : buckets.flatMap((b) => b.rows.map(renderRow)))}

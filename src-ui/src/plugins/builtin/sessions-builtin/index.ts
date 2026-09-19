@@ -66,7 +66,11 @@ async function executeViaKernel(action: SessionPersistAction, args: Record<strin
     case 'delete_log': {
       // 卷真删（Phase 3b 权威翻转）：事件日志 + UI 投影缓存一并删除。墓碑语义
       // 退役——「文件不在 = 卷不存在」（缺日志即判空），不再写 deleted:true 占位。
-      await kernelDeleteFile(`${root}/${id}.ndjson`).catch(() => '');
+      // **日志删不掉必须上抛**（2026-09-18 会话树「枝」P2 连坐删除）：吞掉就是
+      // 「报成功而卷还在」——侧栏说「已删」、下次清点它又冒出来（宪法「错误不
+      // 静默」+ CONVENTIONS §2.2「写入/持久化错误必须传播或 warn」）。投影缓存
+      // 缺失是常态（空卷不落盘），故 `.json` 照旧容忍。
+      await kernelDeleteFile(`${root}/${id}.ndjson`);
       await kernelDeleteFile(`${root}/${id}.json`).catch(() => '');
       return 'null';
     }

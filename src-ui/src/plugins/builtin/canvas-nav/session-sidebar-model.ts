@@ -23,13 +23,23 @@ export interface SidebarRow {
   msgCount: number;
   /** 行状态点（组件计算后填充；纯模型保留类型供测试） */
   status: SessionStatus;
+  /** **父卷号**（会话树「枝」的那条边；真源 = 卷日志头行 → 清单投影 `parentId`）。
+   *  缺 = 根卷。合流时由**盘上行**供给（摊开集只有 label/块数，没有血缘）。 */
+  parentId?: number;
+  /** 树深（0 = 本节内的根行）——渲染缩进用，由 `treeRows` 填。 */
+  depth?: number;
+  /** **血缘悬空**：父卷不在场（外部删除/拷走——应用内删除必连坐，故悬空只可能来自外部）。
+   *  显示「父卷已删」，**不阻塞打开**（枝卷内容自包含，plan §8）。 */
+  orphan?: boolean;
 }
 
 /** 两源合流：磁盘已存卷为底，摊开会话覆盖（label 取内存最新；savedAt 缺失
- *  的未落盘新卷保留空）。排序 = 摊开优先，同组按 savedAt 倒序（新者上）。 */
+ *  的未落盘新卷保留空）。排序 = 摊开优先，同组按 savedAt 倒序（新者上）。
+ *  血缘（`parentId`）只在盘上那一源：摊开集没有它（卷日志头行是唯一真源），
+ *  故摊开行沿用其盘上行的边——未落盘的摊开卷 = 无父（新卷本就是根卷）。 */
 export function mergeSessionRows(
   open: Array<{ id: number; label: string; msgCount: number }>,
-  saved: Array<{ id: number; label: string; msgCount: number; savedAt: string }>,
+  saved: Array<{ id: number; label: string; msgCount: number; savedAt: string; parentId?: number }>,
 ): SidebarRow[] {
   const byId = new Map<number, SidebarRow>();
   for (const s of saved) {
@@ -40,6 +50,7 @@ export function mergeSessionRows(
       open: false,
       msgCount: s.msgCount,
       status: 'idle',
+      ...(s.parentId != null ? { parentId: s.parentId } : {}),
     });
   }
   for (const o of open) {
@@ -52,6 +63,7 @@ export function mergeSessionRows(
       open: true,
       msgCount: o.msgCount ?? prev?.msgCount ?? 0,
       status: 'idle',
+      ...(prev?.parentId != null ? { parentId: prev.parentId } : {}),
     });
   }
   const rows = [...byId.values()];
@@ -62,6 +74,49 @@ export function mergeSessionRows(
     return b.id - a.id;
   });
   return rows;
+}
+
+/**
+ * **树形排布**（会话树「枝」）：把一节的扁平行列排成父子段。
+ *
+ *  · 根行（无父 / 父不在本节 / 自环）= 本节既有序（合流序：新者上）不动；
+ *  · 子行**紧随其父之后**（DFS，兄弟间保持既有序），`depth` 逐层 +1；
+ *  · `present` = **全部**已知卷号（不只本节）——父不在场 = 血缘悬空（外部删除/
+ *    拷走），标 `orphan`（显示「父卷已删」，不阻塞打开：内容自包含，plan §8）。
+ *
+ *  坏血缘兜底（**绝不因脏数据让行消失**）：环里的行从根走不到，末尾按根行补出；
+ *  自环当根行。
+ */
+export function treeRows(rows: SidebarRow[], present: ReadonlySet<number>): SidebarRow[] {
+  const inSection = new Set(rows.map((r) => r.id));
+  const byParent = new Map<number, SidebarRow[]>();
+  const roots: SidebarRow[] = [];
+  for (const r of rows) {
+    const pid = r.parentId;
+    if (pid != null && pid !== r.id && inSection.has(pid)) {
+      const bucket = byParent.get(pid);
+      if (bucket) bucket.push(r);
+      else byParent.set(pid, [r]);
+    } else {
+      roots.push(r);
+    }
+  }
+  const out: SidebarRow[] = [];
+  const seen = new Set<number>();
+  const walk = (row: SidebarRow, depth: number): void => {
+    if (seen.has(row.id)) return; // 环守卫：坏血缘不递归，也不吞行
+    seen.add(row.id);
+    out.push({
+      ...row,
+      depth,
+      ...(row.parentId != null && !present.has(row.parentId) ? { orphan: true } : {}),
+    });
+    for (const child of byParent.get(row.id) ?? []) walk(child, depth + 1);
+  };
+  for (const r of roots) walk(r, 0);
+  // 环 / 父在本节但其自身不可达的行：按根行补出（顺序退化为合流序，行不丢）
+  for (const r of rows) walk(r, 0);
+  return out;
 }
 
 /** 相对时间（DSH 行副信息）：刚刚 / N 分钟前 / N 小时前 / N 天前；缺省 '—'。 */
@@ -152,10 +207,12 @@ export function bucketClosed(
 }
 
 /** 行机读注记（注疏版式第二行）：Nº 卷号 · N 块 · 相对时间；未落盘新卷
- *  （无 savedAt）出「未存」段——显式标记比缺段诚实（自动存失败可据此发现）。 */
-export function sessionMeta(r: Pick<SidebarRow, 'id' | 'msgCount' | 'savedAt'>, now = Date.now()): string {
+ *  （无 savedAt）出「未存」段——显式标记比缺段诚实（自动存失败可据此发现）。
+ *  血缘悬空（`orphan`）追加「父卷已删」——外部删除/拷走才可能，不阻塞打开。 */
+export function sessionMeta(r: Pick<SidebarRow, 'id' | 'msgCount' | 'savedAt' | 'orphan'>, now = Date.now()): string {
   const parts = [`Nº ${r.id}`, `${r.msgCount} 块`];
   if (r.savedAt) parts.push(relativeTime(r.savedAt, now));
   else parts.push('未存');
+  if (r.orphan) parts.push('父卷已删');
   return parts.join(' · ');
 }
