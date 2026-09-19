@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
 import { AgentContext } from '../../../src/agent/context';
 import { SubAgentPool } from '../../../src/agent/coordinator';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
-import type { AgentConfig } from '../../../src/agent/runtime/types';
+import { type AgentConfig, ASSEMBLY_INPUT_KEYS, pickAssemblyInputs } from '../../../src/agent/runtime/types';
 import { ToolRegistry } from '../../../src/agent/tool';
 import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
 import { fsDomainTool, readOnlyTool, scriptedProvider } from '../helpers/fixtures';
@@ -29,6 +29,23 @@ import { stableStringify } from '../helpers/normalize';
 import { extractRuntimeMethodWiring, extractRuntimeWiring } from '../helpers/wiring';
 
 // ── T0 结构门禁 ──
+
+/** AgentConfig 字段名全集 —— AST 解析真源文件（消费面不手抄，防快照过期）。 */
+function agentConfigFields(): string[] {
+  const file = path.resolve(process.cwd(), 'src/agent/runtime/types.ts');
+  const src = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  const sf = ts.createSourceFile('types.ts', src, ts.ScriptTarget.ES2021, true);
+  for (const stmt of sf.statements) {
+    if (!ts.isInterfaceDeclaration(stmt) || stmt.name.text !== 'AgentConfig') continue;
+    return stmt.members.filter(ts.isPropertySignature).map((m) => m.name.getText(sf));
+  }
+  throw new Error('[convergence] types.ts 未找到 AgentConfig interface');
+}
+
+/** 已登记未消费的 AgentConfig 字段（历史遗留账本）。
+ *  这些字段声明了但 runtime 从未读取（2026-09-19 实测：`config.<name>` 直读
+ *  0 处、全库无消费者）——登在此处而非默默消失；清理时整行删除即可。 */
+const UNCONSUMED_CONFIG_FIELDS = ['skillRegistry', 'taskManager', 'messageBus', 'taskBoard', 'discoveryBoard'] as const;
 
 describe('phase-3 T0 结构门禁 — 装配收敛', () => {
   it('createAgent 的 config.* 直读数 ≤ 15（基线 26 的 -40% 验收线）', () => {
@@ -53,40 +70,57 @@ describe('phase-3 T0 结构门禁 — 装配收敛', () => {
     ).toEqual([]);
   });
 
-  it('config 消费面完整迁移 — 基线表的全部 22 个字段都在翻译层消费', () => {
-    // 防字段漏配：config 基线表的 22 个字段（本表 = 翻译面实况快照——
-    // 2026-09-02 随 AURA SDK 拆除去 preRunHook；2026-09-09 图谱退役删
-    // graphData/graphContext 后 24→22，数字以本表为准）必须全部出现在
-    // _contextFromConfig 的翻译面里。漏一个 = 该字段被静默丢弃
-    // （execState 漏配就是以此方式被人工发现的，此断言把这类回归挡在门禁）。
+  it('config 字段面分类完备 — 无未登记的静默丢弃字段', () => {
+    // 三面分类：① ctx 服务/身份 —— 翻译层直读（AST 实况，不手抄）
+    //           ② 装配素材 —— ASSEMBLY_INPUT_KEYS 真源，经 pickAssemblyInputs 搬运
+    //           ③ 已登记未消费 —— 历史遗留账本（UNCONSUMED_CONFIG_FIELDS）
+    // AgentConfig 新增字段若三面都不登记 = 静默丢弃 ⇒ 本断言变红。
+    //
+    // Why 取代旧的「22 字段手抄表」（2026-09-19 结构减法）：旧表是手抄快照，
+    // **漏登了 imageReader** —— B3（2026-09-09）给两条链加附图读取腰时这道门禁
+    // 没能拦住，事故一路走到真机（图既不进 wire 也无占位/日志）。改为「AST 实况
+    // + 真源清单」推导：消费面不再手抄，新增字段漏登记即红。
     const w = extractRuntimeMethodWiring(['_contextFromConfig']);
-    const translated = new Set(w.configReads);
-    const expected = [
-      'agentId',
-      'sessionId',
-      'parentId',
-      'systemPrompt',
-      'memoryManager',
-      'projectPath',
-      'provider',
-      'tools',
-      'collaborationMode',
-      'eventSink',
-      'execState',
-      'onSessionPersisted',
-      'temperature',
-      'contextWindow',
-      'subagentDepth',
-      'toolResultWindow',
-      'isolationId',
-      'agentStore',
-      'goalManager',
-      'subAgentPool',
-      'subAgentSpawner',
-      'hooksEnabled',
-    ];
-    const missing = expected.filter((f) => !translated.has(f));
-    expect(missing, `翻译层漏掉了 config 字段：${missing.join(', ')}`).toEqual([]);
+    const reads = new Set(w.configReads);
+    const assembly = new Set<string>(ASSEMBLY_INPUT_KEYS);
+    const known = new Set<string>(UNCONSUMED_CONFIG_FIELDS);
+    const unclassified = agentConfigFields().filter((f) => !reads.has(f) && !assembly.has(f) && !known.has(f));
+    expect(
+      unclassified,
+      `AgentConfig 字段未分类（既未进 ctx 也未经装配清单——会静默丢弃）：${unclassified.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('装配素材不得回到翻译层手抄（清单驱动是唯一搬运路径）', () => {
+    // 结构减法（2026-09-19）把「逐键手抄表」退役为 pickAssemblyInputs 清单驱动；
+    // 本断言钉住回归——谁再把素材字段抄回 _contextFromConfig 直读，门禁即红。
+    const w = extractRuntimeMethodWiring(['_contextFromConfig']);
+    const reads = new Set(w.configReads);
+    const leaked = ASSEMBLY_INPUT_KEYS.filter((f) => reads.has(f));
+    expect(leaked, `装配素材被翻译层手抄直读（应经 pickAssemblyInputs 清单搬运）：${leaked.join(', ')}`).toEqual([]);
+  });
+
+  it('pickAssemblyInputs 搬运清单全键 + undefined 不落键（行为钉）', () => {
+    const full: AgentConfig = {
+      agentId: 'pick-test',
+      projectPath: '/projects/demo',
+      provider: scriptedProvider([]),
+      tools: diffInputTools(),
+      systemPrompt: 'sp',
+      hooksEnabled: false,
+      subAgentSpawner: stubSpawner,
+      temperature: 0.3,
+      contextWindow: 111,
+      toolResultWindow: 7,
+      onSessionPersisted: () => {},
+      imageReader: async () => 'b64',
+    };
+    const inputs = pickAssemblyInputs(full);
+    expect(Object.keys(inputs).sort()).toEqual([...ASSEMBLY_INPUT_KEYS].sort());
+    for (const k of ASSEMBLY_INPUT_KEYS) expect(inputs[k]).toBe(full[k]);
+    // 全缺省 → 空对象（undefined 不落键；消费端 ?? / falsy 兜底，语义等价）
+    const bare = pickAssemblyInputs({ projectPath: '/p', provider: scriptedProvider([]), tools: diffInputTools() });
+    expect(Object.keys(bare)).toEqual([]);
   });
 
   it('AgentContext 公共成员均有 JSDoc', () => {

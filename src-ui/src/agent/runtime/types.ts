@@ -134,21 +134,45 @@ export interface AgentConfig {
 
 import type { AgentContext } from '../context';
 
-/** createAgentFromContext 的非服务装配输入 — 与 AgentConfig 的对应字段同语义。 */
-export interface AgentAssemblyInputs {
-  /** 预构建 system prompt（缺省由 runtime 按 ctx 构建） */
-  systemPrompt?: string;
-  /** 提示注入类 hooks 总开关（false = 关闭 preflight / state / 构建结果注入；
-   *  默认开启。board-tracking 等有实际副作用的 hook 不受影响） */
-  hooksEnabled?: boolean;
-  /** 子 Agent 派生函数 — 由调用者注入；装配时替换 agent_spawn 为绑定本 Agent 的版本 */
-  subAgentSpawner?: import('../tools/subagent').SubAgentSpawner;
-  temperature?: number;
-  contextWindow?: number;
-  toolResultWindow?: number;
-  onSessionPersisted?: (sessionId: string, messages: Message[]) => void;
-  /** 附图字节读取器（B3）——经 AgentOptions 落 Agent；子 Agent 继承父读取器。 */
-  imageReader?: (ref: import('../../provider/types').ChatImageRef) => Promise<string>;
+/** 装配输入字段真源 —— **唯一权威**。类型（AgentAssemblyInputs）与搬运
+ *  （pickAssemblyInputs）都从这份清单派生：新增装配素材只在此加一个名字，
+ *  类型与搬运两处自动跟上 ⇒ **漏搬在结构上不可能**。
+ *
+ *  Why 收敛为单一真源（2026-09-19 事故）：同一事实此前手抄三遍——AgentConfig
+ *  字段声明 / 本类型字段声明（现已派生化）/ runtime 翻译层的逐键搬运表。
+ *  B3（2026-09-09）加 imageReader 时两端都改了、唯独漏了搬运表 ⇒ Agent 持空
+ *  读取器 ⇒ 附图静默丢弃、三天无痕（能力戳已声明支持图，故连占位都没有）。
+ *  手抄触点 5 → 1（宪法第二条「单一权威源」判定：改这个值要动几个地方 = 1）。
+ *  `satisfies` 保证清单里的名字必须真实存在于 AgentConfig——拼错即编译错误。
+ *  同款先例：events.ts 的 LOOP_EVENT_NAMES（interface 无运行时键 → 常量镜像
+ *  + satisfies 钉编译期同步）。 */
+export const ASSEMBLY_INPUT_KEYS = [
+  'systemPrompt',
+  'hooksEnabled',
+  'subAgentSpawner',
+  'temperature',
+  'contextWindow',
+  'toolResultWindow',
+  'onSessionPersisted',
+  'imageReader',
+] as const satisfies readonly (keyof AgentConfig)[];
+
+/** createAgentFromContext 的非服务装配输入 — 与 AgentConfig 的对应字段同语义。
+ *  **派生自 ASSEMBLY_INPUT_KEYS，禁在本文件手抄字段名**（手抄 = 又一个漂移点）。 */
+export type AgentAssemblyInputs = Pick<AgentConfig, (typeof ASSEMBLY_INPUT_KEYS)[number]>;
+
+/** AgentConfig → AgentAssemblyInputs 的搬运（清单驱动；逐键手抄表已退役）。
+ *  只挑清单内的键，undefined 不落键——消费端全部是属性访问 + `??` / falsy
+ *  兜底（_assembleAgent 与 blueprint capability 共 9 处，无 `in` / Object.keys
+ *  反射），故「键缺失」与「显式 undefined」等价，行为零漂移。
+ *  服务与身份字段（provider / tools / execState / …）不进这里——走 AgentContext。 */
+export function pickAssemblyInputs(config: AgentConfig): AgentAssemblyInputs {
+  const out: AgentAssemblyInputs = {};
+  for (const key of ASSEMBLY_INPUT_KEYS) {
+    const value = config[key];
+    if (value !== undefined) Object.assign(out, { [key]: value });
+  }
+  return out;
 }
 
 // ── Agent 句柄 ──
