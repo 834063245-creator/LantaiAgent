@@ -59,7 +59,10 @@ export interface ChatSession {
 
 /** Agent 在 session 中注入的内部上下文消息（非用户输入），恢复/导出时应跳过 */
 const INTERNAL_PREFIXES = ['<system-reminder>', '<goal>', '<truncated-context>', '<compacted-context>'];
-function isInternalMessage(content: string | undefined): boolean {
+/** 内部来文判定（Agent 注入的上下文，不是用户说的话）——恢复/导出/撤回定位共用这一把尺子。
+ *  导出供 `app/chat/session-branch` 复用（会话树「枝」的轮内切点不得被内部插入截断）：
+ *  前缀表只有这一份，绝不出现第二把尺子。 */
+export function isInternalMessage(content: string | undefined): boolean {
   if (!content) return false;
   return INTERNAL_PREFIXES.some((p) => content.startsWith(p));
 }
@@ -1951,6 +1954,11 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
 
   let pendingUserText: string | null = null;
   let pendingUserId: MessageId | null = null;
+  // 本轮的来文（**内部插入不打断它**）：`pendingUserId` 是轮次簿册的暂存（每条助手消息
+  // 结账后清空），而 `respondingTo` 问的是「这条回复答的是哪条来文」——轮内被 append 的
+  // 内部来文（inbox / goal 提醒，`isInternalMessage`）不是轮边界，答块不得因此丢掉关联
+  // （丢了 ⇒ 「立枝」等按节点定位的读面直接落空，见 `app/chat/session-branch`）。
+  let turnUserId: MessageId | null = null;
   let sessionIdx = 0;
 
   for (const m of msgs) {
@@ -1978,13 +1986,14 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
       const um = createUserMessage(m.content || '', undefined, idx);
       rebuilt.push(um);
       pendingUserId = um._id;
+      turnUserId = um._id;
       continue;
     }
 
     if (m.role === 'tool') continue;
 
     if (m.role === 'assistant') {
-      const am = createAssistantMessage(pendingUserId || '');
+      const am = createAssistantMessage(turnUserId || '');
       am.status = 'done';
 
       if (m.reasoning_content) {

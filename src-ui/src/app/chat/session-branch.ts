@@ -33,6 +33,7 @@ import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import type { SessionContext, SessionDeleteResult } from '../../ui/chat-session';
 import {
   canRetraceUserTurn,
+  isInternalMessage,
   listVolumeIds,
   loadSessionFromDisk,
   scanMaxSessionId,
@@ -77,7 +78,7 @@ export type BranchNodeOrigin = SessionLogParentRef;
  * 最早未落定点 / 尾对齐桥」一次算清，逐节点判定退化为 O(1)。
  */
 interface BranchContext {
-  session: ReadonlyArray<{ role?: string }>;
+  session: ReadonlyArray<{ role?: string; content?: string }>;
   /** 与 `session` 同长同序的来源事件 seq（`SessionLog.deriveMessageAnchors()`）。 */
   anchors: readonly number[];
   /** 日志里**最早的未落定点** seq（null = 全落定）——切点 ≥ 它即含未落定批次。 */
@@ -156,8 +157,15 @@ function branchPointIn(ctx: BranchContext, node: BranchNode): BranchPoint {
 
   let cutIdx = userIdx;
   if (node.role === 'assistant') {
+    // 走到**下一个真正的来文**为止——内部来文（`<system-reminder>` / `<goal>` 等，
+    // `isInternalMessage` 同一把尺子）不算轮边界：轮内被 append 的内部插入若当成边界，
+    // 枝会止于插入之前（后面的工具结果/正文不在枝里，且缺得看不出来）。
     let i = userIdx + 1;
-    while (i < ctx.session.length && ctx.session[i]?.role !== 'user') i++;
+    while (i < ctx.session.length) {
+      const m = ctx.session[i];
+      if (m?.role === 'user' && !isInternalMessage(m.content)) break;
+      i++;
+    }
     cutIdx = Math.max(userIdx, i - 1);
   }
   const atSeq = ctx.anchors[cutIdx];
@@ -176,10 +184,10 @@ function branchPointIn(ctx: BranchContext, node: BranchNode): BranchPoint {
  * 「枝含该节点」：
  *   · **来文块** → 切点 = 这条来文自己的来源 seq（新枝到此为止，改写在枝上继续）；
  *   · **回复块** → 一条 UI 助手消息聚合**整轮**（parts 里含工具/子代理块）⇒ 切点 =
- *     本轮最后一个已落定节点的 seq。停止条件 = 下一条 `user` 消息。
- *     **诚实边界**：轮内插入的内部来文（`<system-reminder>` 等）也会让行走停下——
- *     枝止于该插入之前，仍是**合法且可复现**的前缀（下一条更精确的规则留给 P2 的
- *     节点选择器；此处绝不为了"含满整轮"去猜内部消息）。
+ *     本轮最后一个已落定节点的 seq。停止条件 = 下一条**真正的**来文——轮内被 append 的
+ *     内部来文（`<system-reminder>` / `<goal>` 等）不是轮边界，故切点落在**整轮末尾**
+ *     （判据 = `isInternalMessage`，与恢复/导出/撤回定位**同一把尺子**，见
+ *     `ui/chat-session.ts`；plan §3.2 的书面语义「该节点所属批次全部落定之后」）。
  *
  * 定位链全部复用既有单一真源，不另立尺子：
  *   UI `_id` →（`canRetraceUserTurn` 触发的尾对齐 `TurnIdBridge`）→ 投影下标 →

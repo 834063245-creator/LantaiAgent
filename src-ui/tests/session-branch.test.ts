@@ -537,6 +537,82 @@ describe('会话树「枝」——节点定位（消息动作行的入口：枝�
     // 空节点表 = 空表（渲染期无块可问时不建上下文）
     expect(deriveBranchPoints(store, 1, []).size).toBe(0);
   });
+
+  it('轮内插入的内部来文不截断（实时形态：inbox / goal 提醒）：回复块切点 = 整轮末尾', async () => {
+    const store = 'branch-node-6';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(1, logText(1, [sys, user('一'), assistant('二')]));
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    const uiUser = ui.find((m) => m.role === 'user');
+    const uiAssistant = ui.find((m) => m.role === 'assistant');
+    expect(uiUser).toBeDefined();
+    expect(uiAssistant).toBeDefined();
+    if (!uiUser || !uiAssistant) return;
+
+    // 轮内插入：走**产品自己的双写入口**（`_appendMessage` = agent.ts 的 inbox 注入
+    // :1042 / goal-loop 的目标提醒 :238 同一形态），再让本轮继续产出。
+    const handle = agentSessionState.getAgent(store, 1) as unknown as {
+      _getAgent(): { _appendMessage(kind: string, message: unknown): void };
+    };
+    const agent = handle._getAgent();
+    agent._appendMessage('user/message', {
+      role: 'user',
+      content: '<system-reminder>\n📬 消息 (1 条)\n</system-reminder>',
+    });
+    agent._appendMessage('assistant/text', { role: 'assistant', content: '三' });
+
+    // seq 账：1 = 开卷 init、2 = 来文「一」、3 = 回复「二」、4 = 开卷 adopt、
+    // 5 = 内部来文、6 = 插入之后那条回复。切点必须是 **6（整轮末尾）**，
+    // 不是 3（插入之前）——后者会让枝缺掉插入之后的正文/工具结果，且缺得看不出来。
+    expect(resolveBranchPoint(store, 1, { _id: uiAssistant._id, role: 'assistant', respondingTo: uiUser._id })).toEqual(
+      { ok: true, atSeq: 6 },
+    );
+  });
+
+  it('轮内插入的内部来文不截断（重开形态）：插入前后的回复块都切到整轮末尾；内部来文自己不成块', async () => {
+    const store = 'branch-node-7';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(
+      1,
+      logText(1, [
+        sys,
+        user('一'),
+        assistant('二'),
+        user('<system-reminder>\n📬 消息 (1 条)\n</system-reminder>'),
+        assistant('三'),
+      ]),
+    );
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    // ③ 内部来文在 UI 上**不成块**（`rebuildMessagesFromMessages` 直接 continue）⇒
+    // 它没有「立枝」入口（动作行挂在块上）；它也不占来文位（只有一条真来文）。
+    expect(ui.map((m) => m.role)).toEqual(['user', 'assistant', 'assistant']);
+    const uiUsers = ui.filter((m) => m.role === 'user');
+    expect(uiUsers).toHaveLength(1);
+    expect(uiUsers.map((m) => (m as unknown as { text: string }).text)).toEqual(['一']);
+    expect(ui.some((m) => (m as unknown as { text?: string }).text?.includes('system-reminder'))).toBe(false);
+
+    // seq 账：1 = init、2 = 来文「一」、3 = 回复「二」、4 = 内部来文、5 = 回复「三」、
+    // 6 = 开卷 adopt。两条回复块（插入之前 / 之后）切点都 = **5（整轮末尾）**。
+    const nodes = ui
+      .filter((m) => m.role === 'assistant')
+      .map((m) => ({
+        _id: m._id,
+        role: 'assistant',
+        respondingTo: (m as unknown as { respondingTo: string }).respondingTo,
+      }));
+    expect(nodes).toHaveLength(2);
+    for (const n of nodes) expect(resolveBranchPoint(store, 1, n)).toEqual({ ok: true, atSeq: 5 });
+
+    // ④ 置灰读面（`deriveBranchPoints`）与单点 `resolveBranchPoint` **同源**——不出现第二把尺子
+    const derived = deriveBranchPoints(store, 1, nodes);
+    for (const n of nodes) expect(derived.get(n._id)).toEqual(resolveBranchPoint(store, 1, n));
+  });
 });
 
 describe('会话树「枝」——切点纪律的拒态（拒了必须一个字节都不落）', () => {
