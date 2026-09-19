@@ -82,16 +82,24 @@ settings-domain / compose-dock 等、工具域、prompt/capability 段贡献、�
 4. 应用内：设置 → 插件 → 对应插件「重新加载」    ← 产物通道重激活，不重启
 ```
 
-⚠ **两条硬边界（2026-09-17 实机撞上并记档 landmine H2/H3）**：
+⚠ **CSS 与壳域边界（2026-09-17 撞上 landmine H2/H3；2026-09-19 已修，边界重划）**：
 
-- **产物里的 CSS 从不生效**：`face-css.ts` 的产物域判定（`__LANTAI_FACE_ARTIFACT__`）因 esbuild define
-  未命中而恒早退 ⇒ 插件 CSS 实际只经 vite 打进**壳 bundle（嵌在 exe 里）**。
-  *2026-09-17 实机取证*：页面 `document.styleSheets` 只有壳那两张、`link[id^="lantai-plugin-css"]` 计数 0。
-  ⇒ **改了任何 CSS（`tokens.css` / 壳 CSS / 插件 `.css`）都必须重建 exe**：
-  `cd src-tauri && cargo tauri build --no-bundle`（先关掉正在跑的兰台——exe 被占用会 os error 32）。
-- **壳域文件**（`src-ui/src/app/**`、`src/plugins/loader.ts` 等打进 bundle 的东西）同理，只能重建 exe。
+- **插件 CSS 现在进热更面**（H2 已修）：`face-css.ts` 的产物域判定曾因 esbuild define 未命中而恒早退
+  ⇒ 插件 CSS 只经 vite 打进**壳 bundle（嵌在 exe 里）**、产物里的 `entry.css` 从未被注入
+  （实机 `link[id^="lantai-plugin-css"]` 计数 0）。修后：五个面产物 apply 时真注入自己的 `entry.css`
+  ⇒ **改插件 CSS = 同上三步，不重建 exe**。
+- **但有三条残留边界**（都写在 `landmine-map.md` H2/H3，别当没修）：
+  1. **删规则不算数**：首帧那份应用 CSS（壳 bundle）里还留着插件 CSS 的旧拷贝，产物 link 只能
+     **覆盖**不能抹除 ⇒ 改值/加规则即刻生效，**删掉**一条规则仍要重建 exe。绕法：把规则改成中性
+     声明（如 `display: revert`）而不是删。
+  2. **tokens / 壳 CSS**（`src-ui/src/app/**` 的 `tokens.css`、`foundation.css`…）属壳域 ⇒ 照旧重建 exe。
+  3. **`src/plugins/loader.ts` 等壳域文件**同理，只能重建 exe（H3 的版本号与摘除就在这个文件里，
+     故修它的那一批必须重建一次——此后不再需要）。
+- **H3 修后「重新加载」真能刷 CSS**：link 的 URL 带版本号（会话戳 + 注入序号，恒新 ⇒ 必重新请求）、
+  同产品重注先摘旧 link、插件停用即摘 ⇒ 不再出现「新 JS + 旧 CSS」的偏斜，也不再留累积的死 link。
 
-> 一句话记忆：**只改插件 JS = 三步热更；碰了 CSS 或壳域文件 = `cargo tauri build --no-bundle`。**
+> 一句话记忆：**改插件（JS 或 CSS）= 三步热更；删规则、碰 tokens/壳 CSS、碰壳域文件 =
+> `cargo tauri build --no-bundle`**（先关掉正在跑的兰台——exe 被占用会 os error 32）。
 
 - 生效语义：面板/命令即时生效；工具/prompt/capability 贡献在**下次 Agent
   装配**生效（已开会话的注册表是装配期快照，不被中断——特性非缺陷）。

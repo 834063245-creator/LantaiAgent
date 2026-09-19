@@ -119,14 +119,16 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
 - **产物形态**：全部产物 = 真源编译（插件对象代码在产物内，不薄重导出——
   S3 已拆薄壳）；UI 面 = 组件源码真迁移（项目内依赖经 `host.ts` /
   `host.aliased.ts` 宿主桥对拍面取**共享真实例**——zustand store/service
-  单例不可内联副本；CSS 抽取为 entry.css 经 `loadCss` 注入）；供应商/工具
+  单例不可内联副本；CSS 抽取为 entry.css 经 `loadCss` 注入（版本号 + 每产品一 link，
+  见 `docs/dev-workflow.md` 的 CSS 边界段））；供应商/工具
   域 = 运行时依赖（工具工厂/RPC/seam 函数）经 faceDeps 桥取用。
 - 产物构建：`--jsx=automatic --jsx-import-source=./<hostModule>` + onResolve
   重定向到 `*.aliased.ts` + `react` 别名桥（`react-bridge.cjs`——产物内全部
   react import 落到宿主注入的同一份 React，零副本）——产物自包含（零静态
   import / 零动态裸 import，构建断言）。
 - 宿主桥（P1a + 增补四扩面）：`window.__lantai_plugin_host__` 提供 `react`
-  （React 全量）、hooks 全集、`Overlay`、`rpc`、`loadCss`（产物 CSS 幂等注入）、
+  （React 全量）、hooks 全集、`Overlay`、`rpc`、`loadCss`（产物 CSS 注入：URL 带
+  版本号、每产品一 link、停用即摘——2026-09-19 起，见 landmine H2/H3）、
   `mods`（faceDeps 依赖真实例 + toolDomains/segments 插件对象）——见 §4。
 
 ### 契约版本

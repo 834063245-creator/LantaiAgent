@@ -164,8 +164,13 @@ async function buildPlugin(spec) {
 
   const define = { ...(spec.define ?? {}) };
   if (spec.face) {
-    // 产物域标记：apply 据此注入 entry.css（bundle 域 CSS 由 vite 打进应用）
-    define['globalThis.__LANTAI_FACE_ARTIFACT__'] = '"1"';
+    // 产物域标记：apply 据此注入 entry.css（bundle 域 CSS 由 vite 打进应用）。
+    // ⚠ **裸标识符形态**，与 face-css.ts 里的 `typeof __LANTAI_FACE_ARTIFACT__`
+    // 严格同源——esbuild define 按表达式字面形态匹配，旧版写
+    // `globalThis.__LANTAI_FACE_ARTIFACT__`（源码却是 `flags.X` 别名）⇒ 永不命中
+    // ⇒ 产物 CSS 从未被注入（landmine H2，2026-09-17 实机撞上、09-19 修）。
+    // 下面的产物自检是这条契约的保险丝：命不中即构建失败（不静默交付）。
+    define.__LANTAI_FACE_ARTIFACT__ = '"1"';
   }
 
   const result = await build({
@@ -222,6 +227,19 @@ async function buildPlugin(spec) {
     process.exit(1);
   }
   const hasCss = readdirSync(outDir).some((f) => f.endsWith('.css'));
+  // 产物域标记自检（landmine H2 保险丝，2026-09-19）：面产物若仍残留
+  // `__LANTAI_FACE_ARTIFACT__` 标识符 = esbuild define 没命中（源码形态与 define
+  // 键不一致）⇒ 该产物的 CSS 永远不会被注入，且**静默**（页面只是少一份样式，
+  // 与「改了但没生效」难以区分——正是 H2 骗过历次批次的原因）。此处构建即失败。
+  if (spec.face && entrySrc.includes('__LANTAI_FACE_ARTIFACT__')) {
+    console.error(
+      `[build-builtin-plugins] ${spec.dir} 产物域标记未被替换（define 未命中）——\n` +
+        '  esbuild define 按表达式字面形态匹配：face-css.ts 必须用裸标识符\n' +
+        '  `__LANTAI_FACE_ARTIFACT__`，本脚本必须 define 同名裸键（勿加 globalThis. 前缀、\n' +
+        '  勿让源码走局部别名）。产物 CSS 靠它才会被注入（landmine H2）——构建中止。',
+    );
+    process.exit(1);
+  }
   // face.json（保险丝 a，2026-09-03 生产事故立法）：产物实际引用的宿主面
   // 键集——装载器 import 前对拍运行时 faceDeps，缺键拒载（防 exe↔产物版本
   // 偏斜在渲染期炸成整树卸载）。无 faceDeps 面（renderers 走 renderer-host）

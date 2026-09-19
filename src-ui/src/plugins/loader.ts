@@ -210,19 +210,70 @@ declare global {
   }
 }
 
-/** 产物 CSS 注入（幂等——同 URL 只注一次 link；增补四面携 CSS 方案）。 */
-function injectPluginCss(url: string): void {
-  if (typeof document === 'undefined') return;
-  const id = 'lantai-plugin-css:' + url;
-  if (document.getElementById(id)) return;
-  const link = document.createElement('link');
-  link.id = id;
-  link.rel = 'stylesheet';
-  link.href = url;
-  document.head.appendChild(link);
+/** 产物 CSS 的 link 记账（landmine H3，2026-09-19 修）——两条都在这里收口：
+ *  ① **URL 带版本号**（会话戳 + 注入序号）：`<link>` 与 JS 的 `import` 不同，
+ *     同一 href 不会被重新请求（channel 的 `cache-control: no-store` 救不了它），
+ *     于是「改了 CSS + 点重新加载」= 新 DOM + 旧 CSS 的偏斜。版本号恒新 ⇒
+ *     浏览器必重新请求（本地产物，放弃跨会话缓存复用是划算的）。
+ *  ② **每产品一 link**：同产品再次注入先摘旧 link（否则旧规则留场：新样式里
+ *     **删掉**的规则会一直生效），插件停用时也摘（不留累积的死 link）。
+ *  键 = CSS URL 的产物路径（= 插件名，如 `hologram/compose-dock`）；异形 URL
+ *  退回按原 URL 归并。摘除按名匹配（三等形态，见 cssKeyMatches）。 */
+const pluginCssLinks = new Map<string, HTMLLinkElement>();
+/** 会话戳（模块初始化一次性）+ 注入序号：合起来保证同文档内 href 恒新。 */
+const cssSessionStamp = Date.now().toString(36);
+let cssSeq = 0;
+
+/** CSS URL → 记账键：产物 CSS 落在 `<origin>/<pluginName>/entry.css`，取其
+ *  路径段当键（与 `manifest.name` 同形，停用时按名摘得掉）；异形退回原 URL。 */
+function cssKeyOf(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const m = /^\/(.+)\/entry\.css$/.exec(path);
+    if (m) return m[1];
+  } catch {
+    /* 非绝对 URL：退回原串（幂等语义不变，只是不参与按名摘除） */
+  }
+  return url;
 }
 
-function installPluginHostBridge(): void {
+/** 键与插件名是否指同一产品（名 = `hologram/<dir>`，键 = URL 路径，两者同形；
+ *  容错三种形态：全等 / 一方是另一方的路径尾段）。 */
+function cssKeyMatches(key: string, name: string): boolean {
+  return key === name || key.endsWith('/' + name) || name.endsWith('/' + key);
+}
+
+/** 摘掉某产品的产物 CSS link（幂等；返回是否真摘掉）。 */
+function removePluginCss(nameOrKey: string): boolean {
+  if (typeof document === 'undefined') return false;
+  let removed = false;
+  for (const [key, link] of [...pluginCssLinks]) {
+    if (!cssKeyMatches(key, nameOrKey)) continue;
+    link.remove(); // 摘掉即失效：本会话内被删的规则不再留场（壳 bundle 那份另说，见 docs/dev-workflow）
+    pluginCssLinks.delete(key);
+    removed = true;
+  }
+  return removed;
+}
+
+/** 产物 CSS 注入（版本号 + 每产品一 link；H3 修后不再是「同 URL 只注一次」——
+ *  同产品重注 = 换新 link，正是「重新加载后 CSS 也得换新」要的）. */
+function injectPluginCss(url: string): void {
+  if (typeof document === 'undefined') return;
+  const key = cssKeyOf(url);
+  removePluginCss(key); // 同产品旧 link 先摘（旧规则不许留场）
+  const link = document.createElement('link');
+  link.id = 'lantai-plugin-css:' + key;
+  link.rel = 'stylesheet';
+  link.href = url + (url.includes('?') ? '&' : '?') + 'v=' + cssSessionStamp + '-' + cssSeq++;
+  document.head.appendChild(link);
+  pluginCssLinks.set(key, link);
+}
+
+/** 装插件宿主桥（幂等；`loadBuiltinPlugins` 装载前调用）。
+ *  **导出于测试**：产物 CSS 通道的行为面考官（tests/plugin-css-channel）要经
+ *  `__lantai_plugin_host__.loadCss` 走**真实**注入路径，而不是复制一份判据。 */
+export function installPluginHostBridge(): void {
   if (typeof globalThis !== 'undefined') {
     (globalThis as { __lantai_plugin_host__?: unknown }).__lantai_plugin_host__ = {
       createElement,
@@ -380,6 +431,8 @@ export function activeExternalPluginNames(): string[] {
 export function resetPluginRuntimeForTests(): void {
   runtime = null;
   activeExternalFibers.clear();
+  for (const link of pluginCssLinks.values()) link.remove();
+  pluginCssLinks.clear();
 }
 
 /** 增量装载一个外部插件（安装/启用后的运行时生效入口）。
@@ -405,8 +458,11 @@ export async function activateExternalPlugin(dirId: string): Promise<PluginRecor
 
 /** 增量停用（禁用/卸载后的运行时生效入口）：dispose fiber → 贡献链式
  *  回收。位移式内置插件的产物停用后重启 bundle 插件（出厂兜底行恢复，
- *  记录翻回 bundle 形态）。未活跃 = no-op 返回 false。 */
+ *  记录翻回 bundle 形态）。未活跃 = no-op 返回 false。
+ *  产物 CSS 的 link 一并摘掉（H3：停用/重载不许留累积的死 link——先摘再判
+ *  fiber，故未活跃时也幂等摘净）。 */
 export async function deactivateExternalPlugin(name: string): Promise<boolean> {
+  removePluginCss(name);
   const fiber = activeExternalFibers.get(name);
   if (!fiber) return false;
   activeExternalFibers.delete(name);
