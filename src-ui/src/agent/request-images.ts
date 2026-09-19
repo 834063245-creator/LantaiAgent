@@ -31,9 +31,36 @@ export function textModelImagePlaceholder(ref: ChatImageRef): string {
   return `[图片：${ref.name ?? ref.id.slice(0, 12)}（${ref.width}×${ref.height}）——当前模型不支持图片输入，图已省略。]`;
 }
 
+/** 送不出去时的占位（2026-09-19 事故）：模型**声明支持图**、载荷里也确有图，
+ *  却因为读取通道缺失（装配漏接线）或读盘全失败而拿不到字节——此时图既不进
+ *  wire 也不留痕，模型与用户都无从知晓（旧实现静默跳过：无图、无占位、无日志，
+ *  真机三天没图）。占位把「有图但没送到」写在 wire 上。 */
+export function unsentImageText(ref: ChatImageRef, reason: string): string {
+  return `[图片：${ref.name ?? ref.id.slice(0, 12)}（${ref.width}×${ref.height}）——本次未能送达模型（${reason}）。]`;
+}
+
+/** 「图送不出去」投影：换占位文本 + 摘掉引用（与文本模型投影同形状）。
+ *  reason 由调用方给（装配缺陷 / 读取失败）——文案里带上原因，便于用户回报。 */
+export function projectImagesUnsent(messages: readonly Message[], reason: string): Message[] {
+  return projectImagesWith(messages, (ref) => unsentImageText(ref, reason));
+}
+
+/** 投影公共体（文本模型 / 图送不出去两个投影共用一份形状）：逐消息把附图换成
+ *  占位文本并摘掉引用；不含图 = 原数组浅拷贝（零漂移）。 */
+function projectImagesWith(messages: readonly Message[], textOf: (ref: ChatImageRef) => string): Message[] {
+  if (!messages.some((m) => (m.images?.length ?? 0) > 0)) return [...messages];
+  return messages.map((m) => {
+    const images = carriedImages(m);
+    if (images === undefined || images.length === 0) return m;
+    const placeholder = images.map(textOf).join('\n');
+    const { images: _drop, ...rest } = m;
+    return { ...rest, content: appendPlaceholder(m.content, placeholder) };
+  });
+}
+
 /** 可携带附图的角色（契约 v40：语言面 = user + tool；assistant 不带图，见
  *  provider/types.ts 的 Message.images 注与 open-surface-contract 变更记录）。
- *  三个纯函数共用同一判据——收集/预算/投影口径不分开，避免三处各判一套。 */
+ *  收集/预算/投影全部纯函数共用同一判据——口径不分开，避免各处各判一套。 */
 function carriedImages(m: Message): ChatImageRef[] | undefined {
   return m.role === 'user' || m.role === 'tool' ? m.images : undefined;
 }
@@ -116,14 +143,7 @@ export function applyImageBudget(
  * （不报错）。不含图 = 原数组原样返回。
  */
 export function projectImagesForTextModel(messages: readonly Message[]): Message[] {
-  if (!messages.some((m) => (m.images?.length ?? 0) > 0)) return [...messages];
-  return messages.map((m) => {
-    const images = carriedImages(m);
-    if (images === undefined || images.length === 0) return m;
-    const placeholder = images.map(textModelImagePlaceholder).join('\n');
-    const { images: _drop, ...rest } = m;
-    return { ...rest, content: appendPlaceholder(m.content, placeholder) };
-  });
+  return projectImagesWith(messages, textModelImagePlaceholder);
 }
 
 /** 请求期解析产物（Request.imageData 形状）。 */
@@ -133,7 +153,9 @@ export type ResolvedRequestImages = Record<string, { mediaType: ImageMediaType; 
  * 引用 → base64 解析（D-5）。读盘经注入 reader（app 层闭包：工作区根拼
  * attachments 路径 → fs_cap read_base64）；cache 键控 id——Agent 实例级
  * 缓存由调用方持有，同图跨回合零重读。读失败的图**不入 imageData**——
- * 适配器 join 时自然跳过（wire 上该图缺失，不炸请求）。
+ * 适配器 join 时自然跳过（wire 上该图缺失，不炸请求）；调用方
+ * （Agent.streamOnce）拿期望集比对结果，缺图落日志、全失败降级占位
+ * ——「送不出去」绝不静默（2026-09-19 事故的教训，见 projectImagesUnsent）。
  */
 export async function resolveRequestImageData(
   messages: readonly Message[],

@@ -574,7 +574,16 @@ export class AgentRuntime implements RuntimePort {
         planState,
       },
     );
-    const inputs: AgentAssemblyInputs = {
+    // 非服务装配输入逐键搬运。**键面必须 = AgentAssemblyInputs 全集**：漏一键
+    // 就是静默丢配置（TS 对「少搬一个可选字段」不报错，调用方也无从发现），
+    // 下面的 `satisfies` 让「AgentAssemblyInputs 新增键而未在此搬运」变成编译错误。
+    // 事故（2026-09-19 实测定位）：B3（2026-09-09）给两条链都加了 `imageReader`
+    // ——workspace 传 config、_assembleAgent 读 inputs——唯独这层翻译漏搬 ⇒
+    // Agent 持 `_imageReader = null` ⇒ 请求期图既不进 wire 也不留占位（能力戳
+    // 已声明支持图，故连「图已省略」都没有），**用户附图 / 工具截图 / fs(read)
+    // 图片从落地起一张都没到过模型**；真机复验与既有用例全绿（用例走
+    // createTestAgent / mock provider，恰好绕开本层）。
+    const translated = {
       systemPrompt: config.systemPrompt,
       hooksEnabled: config.hooksEnabled,
       subAgentSpawner: config.subAgentSpawner,
@@ -582,7 +591,9 @@ export class AgentRuntime implements RuntimePort {
       contextWindow: config.contextWindow,
       toolResultWindow: config.toolResultWindow,
       onSessionPersisted: config.onSessionPersisted,
-    };
+      imageReader: config.imageReader,
+    } satisfies { [K in keyof Required<AgentAssemblyInputs>]: AgentAssemblyInputs[K] };
+    const inputs: AgentAssemblyInputs = translated;
     return { ctx, inputs };
   }
 

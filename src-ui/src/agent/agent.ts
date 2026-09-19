@@ -60,7 +60,13 @@ import type { Disposer } from './lifecycle';
 import { log } from './logger';
 import { batchStormSignature, type ToolOutcome } from './loop-helpers';
 import { type PlanGate, planGateCheck } from './plan/plan-registry';
-import { applyImageBudget, projectImagesForTextModel, resolveRequestImageData } from './request-images';
+import {
+  applyImageBudget,
+  collectImageRefs,
+  projectImagesForTextModel,
+  projectImagesUnsent,
+  resolveRequestImageData,
+} from './request-images';
 import {
   backoffDelay,
   formatElapsed,
@@ -1492,15 +1498,38 @@ export class Agent {
     // 引用→wire 全部发生在发送边界：session 永持完整引用（INVARIANTS #14）。
     //   1. 模型无 image 声明 → 全部图投影成文本占位（不报错）；
     //   2. 声明支持 → 请求级预算降级（超限最旧先移除换占位）；
-    //   3. 幸存引用经读取器解析成 Request.imageData（缓存键控 id）。
+    //   3. 幸存引用经读取器解析成 Request.imageData（缓存键控 id）；
+    //   4. 送不出去（无读取通道 / 读盘全失败）→ **响亮降级**：留占位 + 落日志，
+    //      绝不静默丢图（2026-09-19 事故：读盘腰漏接线，图三天没到过模型而全链无痕）。
     let wireSession = fullSession;
+    let imageData: Request['imageData'];
     if (fullSession.some((m) => (m.images?.length ?? 0) > 0)) {
       const supportsImage = this.prov.inputModalities?.includes('image') === true;
-      wireSession = supportsImage ? applyImageBudget(fullSession) : projectImagesForTextModel(fullSession);
-    }
-    let imageData: Request['imageData'];
-    if (wireSession.some((m) => (m.images?.length ?? 0) > 0) && this._imageReader) {
-      imageData = await resolveRequestImageData(wireSession, this._imageReader, this._imageDataCache);
+      if (!supportsImage) {
+        wireSession = projectImagesForTextModel(fullSession);
+      } else if (this._imageReader === null) {
+        const n = collectImageRefs(fullSession).length;
+        log.error('agent', '附图无读取通道（imageReader 未注入——装配漏接线）——本请求图降级为占位', { images: n });
+        wireSession = projectImagesUnsent(fullSession, '本会话未接附图读取通道');
+      } else {
+        wireSession = applyImageBudget(fullSession);
+        const wanted = collectImageRefs(wireSession);
+        if (wanted.length > 0) {
+          imageData = await resolveRequestImageData(wireSession, this._imageReader, this._imageDataCache);
+          const missing = wanted.filter((ref) => imageData?.[ref.id] === undefined);
+          if (missing.length > 0) {
+            log.warn('agent', '附图读取失败——这些图本次不送达', {
+              missing: missing.length,
+              total: wanted.length,
+              ids: missing.map((ref) => ref.id.slice(0, 12)),
+            });
+            if (missing.length === wanted.length) {
+              wireSession = projectImagesUnsent(wireSession, '附图字节读取失败');
+              imageData = undefined;
+            }
+          }
+        }
+      }
     }
 
     // 流空闲超时：30s 无任何 chunk 视为挂起（与 callSummaryLLM / dataflow NL 解析

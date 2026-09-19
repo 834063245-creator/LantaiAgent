@@ -1,7 +1,8 @@
 # 工具附图通道（agent 眼睛环 P0）
 
 > **状态：P0a 代码已落地（2026-09-17）· 2026-09-18 加固批（按路径读图 + 请求期能力戳修复）·
-> 真机验收待跑（owner：用户；两批均需重打包后生效）**
+> 2026-09-19 第三断点修复（读盘腰漏接线——§0c，最终根因）·
+> 真机验收待跑（owner：用户；需重打包后生效）**
 > 一句话：把「工具产出的截图」接进模型可见的附图通道——模型从此能看见自己的产出（资产卡、界面、窗口），
 > 而不是把 PNG 路径交给用户求人看图。
 >
@@ -50,6 +51,48 @@
 
 **验收**：见 §5 真机项；重打包后 ①贴图/拖图发给声明视觉的模型；②工具截图；
 ③`fs(read)` 一张图片（三入口同一判据：图进 wire 而非占位文本）。
+
+## 0c. 2026-09-19 第三断点：读盘腰漏接线（**最终根因**，§0b 的修复单独不够）
+
+**由来**：用户重打包后复验「贴图 → 模型仍说看不到」（exe 21:39 构建、21:41 启动、
+21:52 实测），且这次**连「图已省略」占位都没有**——与 §0b 修复前的症状（占位在）
+不同，说明能力戳已生效、断点挪到了别处。
+
+**实测证据（真机存档 + 日志，非推断）**
+- 会话卷 `.lantai/sessions/17.ndjson`：用户消息带 `images`（`b1cc7fee…` 268 878 B PNG
+  114×1182），`fs(read)` 同一附件的工具结果也带 `images` ⇒ **会话层与工具层都挂上了**。
+- 同一轮 `llm response` 的 token 账（`.lantai/logs/ui.log`）：`prompt_tokens` 22174 /
+  `cache_hit` 22016 / `cache_miss` 158，与当日**纯文本**首轮基线（miss = 145 + 用户
+  文本 token 数：153/162/163/195/205 五组）严丝合缝 ⇒ **出站请求里既没有图 token
+  也没有占位文本**——图在客户端就没进 wire（不是网关丢图）。
+- `provider-live.test.ts` 的「Agent + live 壳 → wire 真带图」用例是绿的：它走
+  `createTestAgent`（直接构造 Agent + 假 reader），**恰好绕开本层翻译**。
+
+**根因**：`AgentRuntime._contextFromConfig`（`runtime/runtime.ts`）把 `AgentConfig`
+逐键搬进 `AgentAssemblyInputs` 时**漏搬 `imageReader`**。B3（2026-09-09）给两端都加了
+这根腰——workspace 传 `config.imageReader`、`_assembleAgent` 读 `inputs.imageReader`——
+唯独中间这层白名单没有它，且字段可选 ⇒ TS 不报错 ⇒ Agent 持 `_imageReader = null` ⇒
+请求期「有图 + 声明支持图 + 无读取通道」走了旧代码的静默分支：图不进 wire、不留占位、
+不落日志。**用户附图 / 工具截图 / `fs(read)` 图片从 B3 落地起一张都没到过模型**
+（与 §0b 记忆「多模态线从第一天起就没送出过任何一张图」同一事实，两处独立断点串联）。
+
+**修复（同批三条）**
+| 面 | 改动 | 文件 |
+|---|---|---|
+| 根因 | 翻译层补搬 `imageReader` | `src-ui/src/agent/runtime/runtime.ts` |
+| 防复发 | 翻译层改 `satisfies { [K in keyof Required<AgentAssemblyInputs>]: … }`——**新增装配输入键而未在此搬运 = 编译错误**（实测：删键即 TS1360） | 同上 |
+| 错误不静默 | 送不出去必须留痕：无读取通道 / 读盘全失败 → `log.error`/`log.warn` + `projectImagesUnsent` 占位（部分失败只落日志） | `src-ui/src/agent/agent.ts`、`agent/request-images.ts` |
+
+**回归钉**：`tests/image-chain-production.test.ts`（新，5 例）——**生产镜像**：
+真 `settings` 行（视觉覆盖）→ `createLiveProvider` 壳 → `AgentRuntime.createAgent`
+（真翻译层）→ 真 `readAttachmentBase64` + `fs_cap` RPC 桩 → openai adapter → 断言
+出站 body 里 `image_url` data URI。修前红在「reader 从未被调用 / body 无图」两条，
+修后全绿；另两例钉「无读盘腰 / 读盘全失败 → wire 上必须有占位」。
+
+**教训（测试面）**：三次断点同型——**两个各测各的层之间那一跳没人测**
+（2026-09-11 `handle.run` 漏 images 第三参；2026-09-18 live 壳缺能力戳；
+2026-09-19 翻译层漏搬 imageReader）。凡「装配面搬运字段」处，要么有编译期护栏，
+要么有一条**从设置行到出站 body**的镜像用例，别再用分层用例的绿色代表链路通。
 
 ## 1. 现状断点（实测证据，非推断）
 
@@ -144,6 +187,9 @@
   引用挂到 tool 消息 / 文本模型降级占位 / 预算计入工具附图；
 - `tests/request-images.test.ts` 扩：非 user 角色带图的收集、预算、投影（既有 20 例须零改动——行为未变者不动）；
 - 三适配器各补一例：anthropic tool_result 数组形态 / responses `function_call_output` 图项 / openai 组尾合成 user；
+- **生产镜像（§0c 新增）**：`tests/image-chain-production.test.ts`——settings 行 →
+  live 壳 → `AgentRuntime.createAgent` → 真读盘腰 → 出站 body 断言 `image_url`
+  （分层用例的绿色不代表链路通，本文件是本链路的唯一端到端钉）；
 - 无图路径回归：既有适配器 fixture 逐字节不变；
 - 门禁：`npx vitest run` · `npm run build` · `npx biome ci .` · `npm run verify:convergence` · `cd src-tauri && cargo test`（截图口改动）。
 
