@@ -2,7 +2,8 @@
 
 > 立项：2026-09-18（用户提「想做会话分支」；追问后裁定 **要的是会话树**——理由「画布式交互契合树状会话」）。
 > 性质：**数据结构 + 交互新增**。app 层为主；**不动事件词表、不动 phase-5 投影契约**；头行加可选字段，旧卷照读。
-> 状态：**P1 已落地（2026-09-18，施工记录见 §12）；P2-P4 未开工**——三项裁定已定（§9）。
+> 状态：**P1 + P1′ 已落地（2026-09-18，施工记录见 §12）；P2-P4 未开工**——三项裁定已定（§9）。
+> 入口 = **消息动作行**（与「改 / 重发 / 抄」同行；用户两次纠偏后定案，见 §5 与 §12.2）。
 > 结论一句话：**树做在卷之间——节点自包含（每枝一卷，前缀复制）、边落头行（`parent`）、画布当画布用
 > （枝落成流区、边落成引线）；分叉点是流内任意**已落定节点**，删除按树的语义**连坐**整棵子树。**
 
@@ -130,8 +131,11 @@ DSH 的 fork 是同一族做法（`packages/core/session/src/index.ts:1236-1251`
 - **边的表达**：从枝卷卷首拉一丝**朱砂引线**到父卷的**那个节点**（不是「父卷」这个整体）——
   直接复用出处引导那一支笔（屏幕坐标 / 恒定墨宽 / 定种子相位 / 起笔留白收笔朱点；
   判例见 `docs/plans/pin-provenance-plan.md` §1.1）。**不要新造一种线**：一屏一语言。
-- **入口**（节点级，不是"轮"级）：流内任意节点的 hover 动作加「立枝」（现在那里的动作是「改」「重发」等，
-  `chat-core.ts:1609-1637`）；侧栏「＋ 另起一卷」旁加「＋ 立枝」（= 从卷尾）。
+- **入口 = 消息自己的动作行**（2026-09-18 用户两次纠偏后定案）：块 hover 出现的
+  「改 / 重发 / 抄」那一行加「立枝」——**主流 agent 软件的分支入口都挂在消息身上**
+  （每条回复/来文的动作里），不在会话列表、不在标题栏、不在卷首。来文块与回复块都给。
+  **落地前先犯过两次错**（侧栏「＋ 另起一卷」旁、卷首组合芯片旁）——两次都是位置错，
+  记在 §12 以防回漂；守护 = `tests/paper-block-branch-op.test.tsx`。
 - **导航**：侧栏树形（`src-ui/src/plugins/builtin/canvas-nav/session-sidebar-model.ts` 的
   `mergeSessionRows` / `splitSections` 加父子段）；书脊与卷首标「枝」。
 - **默认只摊开活跃路径**：其它枝收起为签条/小卡（防「一纸十几卷」）。
@@ -155,14 +159,14 @@ DSH 的 fork 是同一族做法（`packages/core/session/src/index.ts:1236-1251`
 
 | 批 | 范围 | 验收判据 |
 |---|---|---|
-| **P1 数据原语** | ✅ **已落地**：头行 `parent` + 父边归一化（§1.3）+ `createBranchVolume(fromId, atSeq?)` + 「从卷尾立枝」入口（侧栏 ＋ 立枝） | ① 新卷 `.ndjson` 头行带 parent，事件 = 父卷前缀 + adopt；② 打开它，内容与父卷切点一致；③ **父卷文件字节零变化**；④ 重启后血缘仍在；⑤ 继承区内立枝 → 边归到上层卷（§1.3 用例）——逐条见 §12 |
-| **P2 树面与连坐** | **节点锚点派生**（§4，P1 刻意不预埋）+ 清单行 `parentId` + `CATALOG_VERSION` bump + 侧栏树形 + 卷首/书脊标「枝」 + **从任意已落定节点立枝** + **删除连坐** | ① 任意已落定节点可立枝，枝含该节点；② 未落定节点置灰且原因可读；③ 删父卷连坐整棵子树（**含在继承区立枝的孙卷**——按归一化后的边）；④ 子树里任一卷在运行 ⇒ 整体拒绝并列出；⑤ 中断重入后不留孤儿（§8 后序删除） |
+| **P1 数据原语** | ✅ **已落地**：头行 `parent` + 父边归一化（§1.3）+ `createBranchVolume(fromId, atSeq?)` | ① 新卷 `.ndjson` 头行带 parent，事件 = 父卷前缀 + adopt；② 打开它，内容与父卷切点一致；③ **父卷文件字节零变化**；④ 重启后血缘仍在；⑤ 继承区内立枝 → 边归到上层卷（§1.3 用例）——逐条见 §12.1 |
+| **P1′ 节点定位与入口** | ✅ **已落地**：投影锚点（`deriveMessageAnchors`）+ `resolveBranchPoint` + **消息动作行的「立枝」**（`use-block-ops`） | ① 来文块切点 = 该来文 seq、回复块切点 = 本轮末尾；② 未落定/句柄缺席 ⇒ 具名拒绝；③ 中段切点立枝只到该节点为止；④ 入口位置守护（`[改,重发,抄,立枝]` / `[抄,立枝]`）——见 §12.2 |
+| **P2 树面与连坐** | 清单行 `parentId` + `CATALOG_VERSION` bump + 侧栏树形 + 书脊标「枝」 + 未落定节点**置灰** + **删除连坐** | ① 未落定节点置灰且原因可读；② 删父卷连坐整棵子树（**含在继承区立枝的孙卷**——按归一化后的边）；③ 子树里任一卷在运行 ⇒ 整体拒绝并列出；④ 中断重入后不留孤儿（§8 后序删除） |
 | **P3 画布承接** | 枝卷落位 + 引线连回**父卷的那个节点** + 溯源（点引线飞回该节点） | ① 立枝即在纸上可见、引线指得对；② 父节点不在视口内时引线仍出屏（出处引导同款判据） |
-| **P4（可选）** | 空间手势立枝 / 旧枝考古 | 单独立项时定 |
+| **P4（可选）** | 空间手势立枝 / 旧枝考古 / 轮内插入处不截断（整轮末尾的精确判据） | 单独立项时定 |
 
 门禁（每批）：`cd src-ui && npm run build` + `npx vitest run` + `npx biome ci .`。
-P1 **未动** `src-ui/src/agent/**`（锚点派生已挪 P2）⇒ 不需要 `verify:convergence`；
-P2 动 `session-log.ts` 的 fold 时那一道必须补上。
+P1′ 动了 `src-ui/src/agent/session-log.ts`（fold 加锚点）⇒ 已过 `npm run verify:convergence` **双轨零漂移**。
 
 ## 8. 风险与本仓已有的坑
 
@@ -208,7 +212,9 @@ P2 动 `session-log.ts` 的 fold 时那一道必须补上。
 | 引线判例（画布那条腿） | `docs/plans/pin-provenance-plan.md` §1.1 |
 | DSH 参照（fork 语义与边界） | `packages/core/session/src/index.ts` 的 `fork` / `_forkSeed`（外部仓 `D:\useful\deepseek-harness`） |
 
-## 12. P1 施工记录（2026-09-18）
+## 12. 施工记录（2026-09-18）
+
+### 12.1 数据原语（P1，commit `6cd80395`）
 
 **落点**（app 层为主；**未碰冻结文件** `ui/chat-session.ts`、**未动** `src/agent/**`）：
 
@@ -216,10 +222,7 @@ P2 动 `session-log.ts` 的 fold 时那一道必须补上。
 |---|---|
 | `src-ui/src/app/chat/session-log-store.ts` | 头行加 `parent?: {id, atSeq}` + 形状判据 `isSessionLogParentRef`；`parseHeader` 毒化容忍（脏血缘当根卷，不把整卷判损坏） |
 | `src-ui/src/app/chat/session-branch.ts`（新） | `resolveBranchOrigin`（§1.3 归一化）+ `createBranchVolume`（校验 → 发号 → 原子写盘 → 交给既有开卷路径摊开） |
-| `src-ui/src/app/chat/chat-core.ts` | `branchFromTail(sessionId?)` 编排入口 |
-| `canvas-nav/SessionSidebar.tsx` + `session-sidebar.css` | 「＋ 立枝」常驻次动作（ghost 档——本屏唯一主动作仍是「另起一卷」，浸墨法则 1②） |
-| `tests/session-branch.test.ts`（新，10 例） | 六条判据（含「枝卷在侧栏清单可见」——清单投影 + 缺行补建那条路）+ 四条拒态 |
-| `tests/session-sidebar-ux.test.tsx` | 立枝入口在册 + 点击落到 `core.branchFromTail` |
+| `tests/session-branch.test.ts`（新） | 验收判据 + 拒态 |
 | `tests/helpers/session-files.ts` | 夹具 `logText` 加可选 `parent`（7 个消费者的兼容加法） |
 
 **验收判据的状态**（全部有测试钉住）：
@@ -231,8 +234,7 @@ P2 动 `session-log.ts` 的 fold 时那一道必须补上。
 4. 血缘在盘上：清面板态后重开，血缘与内容都在（头行 write-once）。
 5. 归一化：继承区内归上层卷、正好等于边界继续上溯、自己区域内归本卷、根卷归自己、缺卷返回 null。
 
-**拒态零副作用**（一个字节都不落）：未落定（悬空 `tool_call`）/ 断尾坏行 / 空卷 / 源卷不存在——
-四条各断了「新卷文件不存在 + 案头未变」。
+**拒态零副作用**（一个字节都不落）：未落定（悬空 `tool_call`）/ 断尾坏行 / 空卷 / 源卷不存在。
 
 **两处实现判据的裁定**（留痕，防回漂）：
 
@@ -241,4 +243,34 @@ P2 动 `session-log.ts` 的 fold 时那一道必须补上。
   但**不读那份 MB 级的投影缓存**（立枝只为一个字段不值当）。
 - **断尾/坏行的父卷拒绝立枝**：认领到的前缀虽安全，但父卷文件带垃圾 ⇒ 立出来的枝与父卷**字节不同源**
   （父卷下次打开还会被截断修复，两卷会悄悄分叉）。宁缺毋滥——先让恢复链修好。
+
+### 12.2 入口纠偏 + 节点定位（P1′，本批）
+
+**用户两次纠偏**（都是位置错，记此防回漂）：
+
+| 错法 | 为什么错 |
+|---|---|
+| 放进侧栏「＋ 另起一卷」旁 | 侧栏**默认不展开**（纸开只起书脊态）⇒ 唯一入口默认不可见；且侧栏是**卷集管理**，立枝是**对本卷**的动作，语义层级不对 |
+| 放进卷首组合芯片旁（拟） | 同上第二半：卷首是「本卷身份」（组合/卷名/日期），不是「对话动作」；**分支按钮的行业位置是消息自己的动作行** |
+
+**定案落点 = 消息动作行**（与「改 / 重发 / 抄」同一行，`use-block-ops.ts`）——来文块与回复块都给。
+
+| 件 | 内容 |
+|---|---|
+| `src-ui/src/agent/session-log.ts` | `project()` 产出**投影锚点**（每条消息的来源事件 seq，与 messages 同长同序）+ 只读派生 `deriveMessageAnchors()`；三条变异路径（push / reset / adopt / retract）与 messages **同步推进** |
+| `src-ui/src/app/chat/session-branch.ts` | `resolveBranchPoint(storeId, sid, node)`——节点 → 切点（纯同步零 I/O）：UI `_id` →（`canRetraceUserTurn` 触发的尾对齐）→ 投影下标 →（锚点）→ 事件 seq →（`danglingToolCalls`）→ 落定校验 |
+| `src-ui/src/app/chat/chat-core.ts` | `branchFromMessage(msg, sessionId)`（`branchFromTail` 随侧栏入口一并删除——零消费者不留） |
+| `paper-shell/use-block-ops.ts` | 动作行加「立枝」（`key:'branch'`）；渲染期**不置灰**（判定是 O(消息数)，逐块跑会拖帧）——不可立枝的原因由点击后的具名 toast 兜住 |
+| `canvas-nav/SessionSidebar.tsx` + `session-sidebar.css` + `tests/session-sidebar-ux.test.tsx` | 侧栏那套**整段撤回**（含 CSS 与测试，不留兼容残迹） |
+| `tests/session-log.test.ts` | 锚点四条：同长同序 / retract 同步 splice / adopt 换头保尾 / 整段 reset 全归该事件 |
+| `tests/session-branch.test.ts` | 节点定位四条：来文块锚点 / 回复块落本轮末尾 / 未落定具名拒绝（同卷来文块仍可立枝）/ 句柄缺席具名拒绝；另加**中段切点**（枝只到该来文为止、父卷零变化） |
+| `tests/paper-block-branch-op.test.tsx`（新） | **入口位置守护**：来文块 ops = `[改, 重发, 抄, 立枝]`、回复块 = `[抄, 立枝]`，点击落到 `core.branchFromMessage(本块, 本卷)` |
+
+**语义边界（诚实）**：回复块的切点走「本轮最后一个已落定节点」，停止条件 = 下一条 `user` 消息——
+轮内插入的内部来文（`<system-reminder>` 等）会让行走停下，枝止于该插入之前（仍是**合法且可复现**的
+前缀）。精确到「整轮末尾」需 P2 的节点选择器，此处不猜。
+
+**门禁**：动 `src/agent/session-log.ts` ⇒ `npm run verify:convergence` **双轨零漂移**（锚点是新增读面，
+投影与载荷字节未变）；vitest 全量 + tsc + vite build + biome ci + doc-check/doc-sync 见提交信息。
+
 

@@ -212,3 +212,49 @@ describe('SessionLog T1 — onEvent 内部事件', () => {
     expect(log.size).toBe(1);
   });
 });
+
+// ── 投影锚点（会话树「枝」的切点：docs/plans/session-tree-plan.md §4）──
+// 锚点 = 每条投影消息的**来源事件 seq**（与 messages 同长同序）：从某个节点立枝时，
+// 切点取该节点的锚点 ⇒ 前缀重放一定得到同样的内容。锚点必须与投影**同一个 fold**
+// 产出（另起一份重算 = 同类双源），故三条变异路径（push / reset / retract）都得
+// 与 messages 同步。
+
+describe('SessionLog — 投影锚点 deriveMessageAnchors', () => {
+  it('与 messages 同长同序，值为该消息的来源事件 seq', () => {
+    const log = new SessionLog();
+    seedConversation(log);
+    const msgs = log.deriveMessages();
+    // init(seq1, 承载 system) → user(3) → assistant(4) → tool/result(6)；
+    // turn/start(2) 与 tool/call(5) 无消息投影，故不出现在锚点里。
+    expect(log.deriveMessageAnchors()).toEqual([1, 3, 4, 6]);
+    expect(log.deriveMessageAnchors()).toHaveLength(msgs.length);
+  });
+
+  it('retract 区间：锚点与消息同步 splice（长度恒等）', () => {
+    const log = new SessionLog();
+    seedConversation(log);
+    log.append('session/retract', { fromIndex: 1, toIndex: 3 }); // 撤 [U1, A1)
+    expect(log.deriveMessages().map((m) => m.role)).toEqual(['system', 'tool']);
+    expect(log.deriveMessageAnchors()).toEqual([1, 6]);
+  });
+
+  it('adopt：头部 system 换成 adopt 事件的 seq，尾部锚点原样保留', () => {
+    const log = new SessionLog();
+    seedConversation(log);
+    const adopt = log.append('session/reset', {
+      messages: [{ role: 'system', content: '新提示' }],
+      reason: 'adopt',
+    });
+    const anchors = log.deriveMessageAnchors();
+    expect(log.deriveMessages()[0]).toMatchObject({ role: 'system', content: '新提示' });
+    expect(anchors[0]).toBe(adopt.seq);
+    expect(anchors.slice(1)).toEqual([3, 4, 6]);
+  });
+
+  it('整段 reset：全部消息的锚点 = 该 reset 事件（前缀重放到它即得同样内容）', () => {
+    const log = new SessionLog();
+    seedConversation(log);
+    const reset = log.append('session/reset', { messages: [SYS, U1], reason: 'restore' });
+    expect(log.deriveMessageAnchors()).toEqual([reset.seq, reset.seq]);
+  });
+});

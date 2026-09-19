@@ -567,31 +567,6 @@ export const SessionSidebar = memo(function SessionSidebar() {
     })();
   }, [core, disarmAll]);
 
-  /** **立枝**（会话树 P1）：从当前活跃卷的卷尾另起一枝——本卷原样保留，新枝复制
-   *  其历史。防抖与落位语义同「另起一卷」（出生 = 一种展开，聚焦把它带到眼前）；
-   *  失败原因由 `session-branch` 具名 toast，本层不重复报。 */
-  const onBranch = useCallback(() => {
-    if (!core) return;
-    setLocalNotice(null);
-    disarmAll();
-    if (newBusyRef.current) return;
-    newBusyRef.current = true;
-    setNewBusy(true);
-    void (async () => {
-      try {
-        const before = getChatStore(core.panelId).sess.getState().sessions.length;
-        await core.branchFromTail();
-        const st = getChatStore(core.panelId).sess.getState();
-        if (st.sessions.length <= before) return;
-        const sid = st.sessions[st.activeIdx]?.id;
-        if (sid != null) useCanvasViewStore.getState().requestFocus(String(sid));
-      } finally {
-        newBusyRef.current = false;
-        setNewBusy(false);
-      }
-    })();
-  }, [core, disarmAll]);
-
   const onCollapseSidebar = useCallback(() => {
     useDockStore.getState().closePanel('canvas-sidebar');
   }, []);
@@ -904,17 +879,6 @@ export const SessionSidebar = memo(function SessionSidebar() {
           title={newBusy ? '正在创建…' : undefined}
         >
           ＋ 另起一卷
-        </button>
-        {/* 次动作用（会话树「枝」P1，2026-09-18）：本屏唯一主动作仍是「另起一卷」
-            （浸墨法则 1②），立枝走 ghost 档——与行内动作同一语言。 */}
-        <button
-          type="button"
-          className="ss-branch"
-          onClick={onBranch}
-          disabled={newBusy}
-          title="从当前卷卷尾另起一枝：本卷原样保留，新枝复制其历史（分叉后两条路都在场）"
-        >
-          ＋ 立枝
         </button>
       </div>
 

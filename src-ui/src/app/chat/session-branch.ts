@@ -30,7 +30,7 @@ import { sessionExecute } from '../../composition/session-persistence-service';
 import { bumpSessionVolumes } from '../../state/session-volumes-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import type { SessionContext } from '../../ui/chat-session';
-import { loadSessionFromDisk, scanMaxSessionId, workspaceSessionsDir } from '../../ui/chat-session';
+import { canRetraceUserTurn, loadSessionFromDisk, scanMaxSessionId, workspaceSessionsDir } from '../../ui/chat-session';
 import { getChatStore } from '../../ui/chat-store';
 import {
   flushSessionLog,
@@ -44,6 +44,74 @@ const MAX_ANCESTOR_WALK = 64;
 
 /** 立枝结果。`ok:false` 时 `reason` 已 toast（错误不静默），调用方无需再报。 */
 export type BranchResult = { ok: true; sid: number } | { ok: false; reason: string };
+
+/** 可立枝的节点（UI 消息的最小形状——`chat-core` 直接把 ChatMessage 传进来）。 */
+export interface BranchNode {
+  /** UI 消息 id（`_id`）——经既有尾对齐映射落到投影下标。 */
+  _id: string;
+  role: string;
+  /** 助手消息回答的来文 `_id`（`AssistantMessage.respondingTo`）——助手块的定位入口。 */
+  respondingTo?: string;
+}
+
+/** 某节点的切点（`atSeq` = 枝要包含的最后一个事件 seq）或不可立枝的具名原因。 */
+export type BranchPoint = { ok: true; atSeq: number } | { ok: false; reason: string };
+
+/**
+ * **节点 → 事件切点**（会话树「枝」的定位半边，plan §3/§4）。
+ *
+ * 「枝含该节点」：
+ *   · **来文块** → 切点 = 这条来文自己的来源 seq（新枝到此为止，改写在枝上继续）；
+ *   · **回复块** → 一条 UI 助手消息聚合**整轮**（parts 里含工具/子代理块）⇒ 切点 =
+ *     本轮最后一个已落定节点的 seq。停止条件 = 下一条 `user` 消息。
+ *     **诚实边界**：轮内插入的内部来文（`<system-reminder>` 等）也会让行走停下——
+ *     枝止于该插入之前，仍是**合法且可复现**的前缀（下一条更精确的规则留给 P2 的
+ *     节点选择器；此处绝不为了"含满整轮"去猜内部消息）。
+ *
+ * 定位链全部复用既有单一真源，不另立尺子：
+ *   UI `_id` →（`canRetraceUserTurn` 触发的尾对齐 `TurnIdBridge`）→ 投影下标 →
+ *   （`SessionLog.deriveMessageAnchors()`，与投影同一个 fold）→ 事件 seq →
+ *   （`danglingToolCalls`，恢复链同一判据）→ 落定校验。
+ *
+ * 纯同步、零 I/O（故可在点击时即时判定）；不可立枝一律给具名原因，绝不静默失败。
+ */
+export function resolveBranchPoint(storeId: string, sid: number, node: BranchNode): BranchPoint {
+  if (node.role !== 'user' && node.role !== 'assistant') {
+    return { ok: false, reason: '通知不是对话节点，无从立枝' };
+  }
+  const agent = agentSessionState.getAgent(storeId, sid);
+  if (!agent) return { ok: false, reason: '本卷的 Agent 未就绪（配好 API Key 后再试）' };
+  const logInstance = agent.sessionLog;
+  if (!logInstance) return { ok: false, reason: '本卷没有事件日志（旧实现/测试桩），无从立枝' };
+
+  // 定位用户轮：来文块用自己；回复块用 respondsTo（同一条尾对齐链）
+  const userId = node.role === 'user' ? node._id : node.respondingTo;
+  if (!userId) return { ok: false, reason: '这条回复没有可定位的来文（旧存档缺关联），无从立枝' };
+  if (!canRetraceUserTurn(storeId, sid, userId)) {
+    return { ok: false, reason: '该轮已不可唯一定位（会话已压缩或上下文已变），无从立枝' };
+  }
+  const session = agent.getSession();
+  const userIdx = agentSessionState.getTurnIdBridge(storeId, sid)?.byUiId.get(userId);
+  if (userIdx == null || userIdx < 0 || userIdx >= session.length) {
+    return { ok: false, reason: '该轮已不可唯一定位（会话已压缩或上下文已变），无从立枝' };
+  }
+
+  let cutIdx = userIdx;
+  if (node.role === 'assistant') {
+    let i = userIdx + 1;
+    while (i < session.length && session[i]?.role !== 'user') i++;
+    cutIdx = Math.max(userIdx, i - 1);
+  }
+  const atSeq = logInstance.deriveMessageAnchors()[cutIdx];
+  if (typeof atSeq !== 'number') {
+    return { ok: false, reason: '该节点在事件日志里没有来源锚点（日志与会话不同步），无从立枝' };
+  }
+  const dangling = danglingToolCalls(logInstance.events().filter((e) => e.seq <= atSeq));
+  if (dangling.length > 0) {
+    return { ok: false, reason: `这一轮还有 ${dangling.length} 处工具调用没落定——等它跑完再立枝` };
+  }
+  return { ok: true, atSeq };
+}
 
 /** 具名拒绝 + 可见化（本模块唯一的失败出口形态）。 */
 function refuse(reason: string): BranchResult {

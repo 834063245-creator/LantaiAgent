@@ -71,7 +71,7 @@ vi.mock('../src/agent/permission', () => ({ showApprovalDialog: vi.fn(), cancelP
 import { agentSessionState } from '../src/agent/agent-session-state';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';
-import { createBranchVolume, resolveBranchOrigin } from '../src/app/chat/session-branch';
+import { createBranchVolume, resolveBranchOrigin, resolveBranchPoint } from '../src/app/chat/session-branch';
 import { flushSessionLog } from '../src/app/chat/session-log-store';
 import type { Chunk, Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
@@ -280,6 +280,112 @@ describe('会话树「枝」——从卷尾立枝', () => {
     expect(await resolveBranchOrigin(SESSIONS, 1, 2)).toEqual({ id: 1, atSeq: 2 });
     // 缺卷 = 首跳读不出来（调用方据此具名拒绝）
     expect(await resolveBranchOrigin(SESSIONS, 99, 1)).toBeNull();
+  });
+});
+
+describe('会话树「枝」——节点定位（消息动作行的入口：枝含该节点）', () => {
+  beforeEach(() => {
+    const fs = H.kernelFs?.fs;
+    if (fs) {
+      fs.files.clear();
+      fs.dirs.clear();
+      fs.writes.length = 0;
+      fs.fail = {};
+    }
+    Session.resetSessionListCacheForTests();
+  });
+
+  it('来文块 → 切点 = 该来文的来源 seq；回复块 → 切点 = 本轮末尾', async () => {
+    const store = 'branch-node-1';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(1, logText(1, [sys, user('一'), assistant('二')]));
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    const uiUser = ui.find((m) => m.role === 'user');
+    const uiAssistant = ui.find((m) => m.role === 'assistant');
+    expect(uiUser).toBeDefined();
+    expect(uiAssistant).toBeDefined();
+    if (!uiUser || !uiAssistant) return;
+
+    // 开卷后头部 system 由 adopt 事件（seq 4）承载，尾部来文/回复仍锚在 2 / 3
+    expect(resolveBranchPoint(store, 1, uiUser)).toEqual({ ok: true, atSeq: 2 });
+    expect(resolveBranchPoint(store, 1, { _id: uiAssistant._id, role: 'assistant', respondingTo: uiUser._id })).toEqual(
+      {
+        ok: true,
+        atSeq: 3,
+      },
+    );
+    // 通知块不是对话节点
+    expect(resolveBranchPoint(store, 1, { _id: 'mX', role: 'notice' }).ok).toBe(false);
+  });
+
+  it('中段切点：从某条来文立枝 ⇒ 枝只到该来文为止，父卷零变化', async () => {
+    const store = 'branch-node-2';
+    resetPanel(store);
+    setVolume(1, logText(1, [sys, user('一'), assistant('二'), user('三'), assistant('四')]));
+    const parentBefore = volumeText(1);
+
+    const result = await createBranchVolume(makeCtx(store), 1, 4); // seq4 = 第二条来文
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(volumeHeader(2).parent).toEqual({ id: 1, atSeq: 4 });
+    expect(volumeLines(2).slice(1)).toEqual(volumeLines(1).slice(1, 5)); // 前缀 = 父卷前 4 条事件
+    expect(volumeText(1)).toBe(parentBefore); // 父卷一个字节未动
+
+    const msgs = msgStoreFor(store, 2).getState().messages;
+    expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+    expect((msgs[2] as unknown as { text: string }).text).toBe('三');
+  });
+
+  it('未落定 ⇒ 具名拒绝；同一卷的来文块仍可立枝（切点在其之前）', async () => {
+    const store = 'branch-node-3';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(1, logText(1, [sys, user('一'), assistant('二')]));
+    await Session.loadSessionFromDisk(makeCtx(store), WS, 1);
+
+    // 模拟「正在跑」：走**产品自己的双写入口**宣布一次调用（结果未落）——日志与
+    // 会话同时前进。（直接往 sessionLog append 会让两者失同步，那是坏不变式、
+    // 不是产品态；`_appendMessage` 是 agent.ts 里 session 变异的三个合法入口之一。）
+    const handle = agentSessionState.getAgent(store, 1) as unknown as {
+      _getAgent(): { _appendMessage(kind: string, message: unknown): void };
+    };
+    handle._getAgent()._appendMessage('assistant/text', {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id: 'c9', name: 'fs', arguments: '{}' }],
+    });
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    const uiUser = ui.find((m) => m.role === 'user');
+    const uiAssistant = ui.find((m) => m.role === 'assistant');
+    expect(uiUser).toBeDefined();
+    expect(uiAssistant).toBeDefined();
+    if (!uiUser || !uiAssistant) return;
+
+    // 回复块：切点落在本轮末尾（那条悬空宣布）⇒ 拒
+    const refused = resolveBranchPoint(store, 1, {
+      _id: uiAssistant._id,
+      role: 'assistant',
+      respondingTo: uiUser._id,
+    });
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.reason).toContain('没落定');
+    // 来文块：切点在悬空调用之前 ⇒ 仍可立枝（合法前缀）
+    expect(resolveBranchPoint(store, 1, uiUser)).toEqual({ ok: true, atSeq: 2 });
+  });
+
+  it('句柄缺席 ⇒ 具名拒绝（不静默）', () => {
+    const store = 'branch-node-4';
+    resetPanel(store);
+    const point = resolveBranchPoint(store, 1, { _id: 'm1', role: 'user' });
+    expect(point.ok).toBe(false);
+    if (point.ok) return;
+    expect(point.reason).toContain('Agent 未就绪');
   });
 });
 

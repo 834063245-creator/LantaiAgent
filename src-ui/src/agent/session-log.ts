@@ -144,6 +144,12 @@ export function buildCompactedSummaryMessage(summary: string): Message {
 
 interface ProjectionState {
   messages: Message[];
+  /** **每条投影消息的「来源事件 seq」**（与 messages 同长同序）——会话树「枝」的
+   *  切点锚（docs/plans/session-tree-plan.md §4）：从某个节点立枝时，切点 = 该节点的
+   *  来源 seq（**含该节点**），因为由前缀事件重放一定能得到同样的内容。
+   *  与 messages 同步推进的三种变异：push（新消息）/ reset（整段替换或 adopt 换头）/
+   *  retract（区间 splice）——两数组必须同生共死，长度不等即是 bug。 */
+  anchors: number[];
   /** 最新压缩折叠状态；session/reset 后为 null（与 Agent 侧折叠失效语义一致）。 */
   compaction: { summary: string; tailStart: number } | null;
 }
@@ -278,6 +284,22 @@ export class SessionLog {
     return this.project().messages;
   }
 
+  /**
+   * **每条投影消息的来源事件 seq**（与 `deriveMessages()` 同长同序）——会话树「枝」的
+   * 切点锚（docs/plans/session-tree-plan.md §4）。
+   *
+   * 用途：从某个节点（UI 消息/块）立枝时，切点 = 该节点的来源 seq（**含该节点**）；
+   * 因为是「前缀重放 ⇒ 同样的内容」，锚点必须**由同一个 fold 产出**——另起一份重算
+   * 就是同类双源（本仓明令）。`project()` 仍是唯一 fold，本方法只是它的第二个读面。
+   *
+   * 语义边界（诚实）：锚点是「这段内容**成为事实**的时点」，不保证是「产出它的那条
+   * 原始事件」——例如 `session/reset` 携带整段 messages（恢复路径），那批消息的锚点
+   * 都是这条 reset 事件：前缀重放到它同样能得到它们，故对「立枝」而言判据正确。
+   */
+  deriveMessageAnchors(): number[] {
+    return this.project().anchors;
+  }
+
   /** 发送载荷投影 — 复刻 agent.ts payloadMessages() 的全部折叠层。
    *  折叠参数须镜像 Agent 当前运行时值（见文件头"折叠边界的状态性说明"）。 */
   derivePayload(opts: DerivePayloadOptions): Message[] {
@@ -303,7 +325,7 @@ export class SessionLog {
 
   /** 事件流 → 投影状态（单一 fold，reset/retract/compaction 语义逐点镜像 Agent）。 */
   private project(): ProjectionState {
-    const state: ProjectionState = { messages: [], compaction: null };
+    const state: ProjectionState = { messages: [], anchors: [], compaction: null };
     for (const ev of this._events) {
       switch (ev.kind) {
         case 'user/message':
@@ -311,6 +333,7 @@ export class SessionLog {
         case 'tool/result': {
           const data = ev.data as { message: Message };
           state.messages.push(data.message);
+          state.anchors.push(ev.seq); // 锚点与消息同生共死（见 ProjectionState 注）
           break;
         }
         case 'session/reset': {
@@ -322,15 +345,17 @@ export class SessionLog {
             // 为何不整段替换：整段替换要把全部消息再写一遍（每次开卷 +1 份全文），
             // 与「append-only 增量」背道而驰。
             const head = data.messages;
-            const tail =
-              state.messages.length > 0 && state.messages[0].role === 'system'
-                ? state.messages.slice(1)
-                : state.messages;
+            const hasSysHead = state.messages.length > 0 && state.messages[0].role === 'system';
+            const tail = hasSysHead ? state.messages.slice(1) : state.messages;
+            // 被换掉的头部 system 消息：其内容成为事实的时点 = 本条 adopt 事件
+            state.anchors = [...head.map(() => ev.seq), ...(hasSysHead ? state.anchors.slice(1) : state.anchors)];
             state.messages = [...head, ...tail];
             break;
           }
           const data2 = ev.data as { messages: Message[] };
           state.messages = [...data2.messages];
+          // 整段替换：新内容全部「成为事实」于本条 reset 事件（前缀重放到此即得同样内容）
+          state.anchors = data2.messages.map(() => ev.seq);
           state.compaction = null; // 替换 → 折叠状态失效（setSession/newSession 语义）
           break;
         }
@@ -339,6 +364,7 @@ export class SessionLog {
           const from = Math.max(0, Math.min(data.fromIndex, state.messages.length));
           const to = Math.max(from, Math.min(data.toIndex, state.messages.length));
           state.messages.splice(from, to - from); // 撤回不清折叠状态（retractTurnAt 语义）
+          state.anchors.splice(from, to - from); // 锚点同步 splice（长度恒等）
           break;
         }
         case 'session/compaction': {

@@ -44,7 +44,7 @@ export function useBlockOps(params: {
   const { core, regions, regionsRef, regionMsgs } = params;
 
   const msgOpsFor = useCallback(
-    (msg: ChatMessage, stateOps: boolean, retrace: boolean): BlockOp[] => {
+    (msg: ChatMessage, stateOps: boolean, retrace: boolean, sid: number): BlockOp[] => {
       if (!core) return [];
       const latest = (): ChatMessage => {
         // 在来源会话的消息流里找最新版本
@@ -75,6 +75,19 @@ export function useBlockOps(params: {
       }
       const text = messageCopyText(latestMsg);
       if (text.trim()) ops.push({ key: 'copy', label: '抄', run: () => core.copyText(messageCopyText(latest())) });
+      // **立枝**（会话树，2026-09-18）：从这条消息（节点）另起一枝——枝**含该节点**。
+      // 位置纪律 = 与「改 / 重发 / 抄」同一行动作（主流 agent 软件的分支入口都挂在
+      // 消息自己身上，不是会话列表、不是标题栏）；来文块与回复块都给（回复块的切点
+      // 落在本轮末尾，见 `session-branch.resolveBranchPoint`）。
+      // **不做渲染期置灰**：判定要走尾对齐 + fold 锚点（O(消息数)），逐块在渲染期跑会
+      // 拖帧；不可立枝的原因由点击后的具名 toast 兜住（错误不静默），置灰留 P2 与
+      // 「未落定节点」一起做。
+      ops.push({
+        key: 'branch',
+        label: '立枝',
+        run: () => void core.branchFromMessage(latest(), sid),
+        title: '从这条另起一枝：本卷原样保留，新枝复制到此为止的历史',
+      });
       return ops;
     },
     [core, regionMsgs, regionsRef],
@@ -124,7 +137,7 @@ export function useBlockOps(params: {
           // 陈旧会话消息表。
           map.set(b.id, hit.ops);
         } else {
-          const ops = msgOpsFor(msg, stateOps, retrace);
+          const ops = msgOpsFor(msg, stateOps, retrace, r.sessionNum);
           opsCacheRef.current.set(b.id, { msg, ops, stamp, regionMsgs });
           map.set(b.id, ops);
         }

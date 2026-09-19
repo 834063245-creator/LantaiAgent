@@ -698,17 +698,18 @@ export class ChatCore {
     await Session.createNewSession(this._sessionCtx());
   }
 
-  /** **立枝**（会话树 P1，2026-09-18）：从 `sessionId`（缺省 = 当前活跃卷）的
-   *  **卷尾**另起一枝——本卷原样保留，新枝复制其历史（前缀 + 血缘头行）。
-   *  返回新枝卷号；null = 未立（具名原因已可见，见 `session-branch`）。
+  /** **立枝**（会话树，2026-09-18）：从某条消息（节点）另起一枝——**枝含该节点**，
+   *  本卷原样保留（字节零变化），新枝复制到此为止的历史并摊到案头。
+   *  入口 = 块 hover 动作行（与「改」「重发」同族，见 `use-block-ops`）。
+   *  返回新枝卷号；null = 未立（具名原因已可见）。
    *  「改」原地重写（破坏性）、「立枝」另起一条（非破坏性）——两者并存。 */
-  async branchFromTail(sessionId?: number): Promise<number | null> {
-    const sid = sessionId ?? this.activeSessionId;
-    if (sid == null) {
-      showToast('案头还没有卷，无从立枝', 'warn');
+  async branchFromMessage(msg: ChatMessage, sessionId: number): Promise<number | null> {
+    const point = Branch.resolveBranchPoint(this.panelId, sessionId, msg);
+    if (!point.ok) {
+      showToast(point.reason, 'warn', TOAST_LONG_HOLD_MS);
       return null;
     }
-    const result = await Branch.createBranchVolume(this._sessionCtx(), sid);
+    const result = await Branch.createBranchVolume(this._sessionCtx(), sessionId, point.atSeq);
     return result.ok ? result.sid : null;
   }
 
