@@ -56,9 +56,13 @@ import {
   MARK_HALF,
   STRIP_TOP,
   TOC_CARD_FLIP_Y,
+  TOC_COL_W,
+  TOC_RUNWAY_W,
   TOC_TOP,
+  TOC_W,
   TocStrip,
 } from '../src/plugins/builtin/compose-dock/TocStrip';
+import { EDGE_SCROLL } from '../src/plugins/builtin/paper-shell/edge-scroll';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 
 /** 流区夹具：2000 世界高、三枚 user 刻痕——最旧块顶 = regionTop，于是最上
@@ -175,10 +179,19 @@ describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => 
   }
 
   /** 按下（jsdom 无 PointerEvent 构造器：MouseEvent 同型即触发 React onPointerDown；
-   *  fit 态不走 pointer capture，故不需要捕获桩）。 */
+   *  fit 态不走 pointer capture，故不需要捕获桩）。clientX 显式给 0 = **内容列内**
+   *  （带体左缘即内容列左缘）——缘滚跑道上的按下另有 pointerDownAt。 */
   function pointerDown(el: Element, clientY: number): void {
+    pointerDownAt(el, 0, clientY);
+  }
+  function pointerDownAt(el: Element, clientX: number, clientY: number): void {
     act(() => {
-      el.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientY }));
+      el.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
+    });
+  }
+  function mouseMoveAt(el: Element, clientX: number, clientY: number): void {
+    act(() => {
+      el.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX, clientY }));
     });
   }
 
@@ -186,11 +199,28 @@ describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => 
     const rule = ruleBody(PANEL_CSS, '.pp-toc {');
     expect(rule).toContain('top: 0');
     expect(rule).not.toContain('--bar-h');
-    expect(rule).toContain('width: 64px'); // 浮件让位量按此值算（.pp-chrome right）
+    expect(rule).toContain(`width: ${TOC_W}px`); // 浮件让位量按此值算（.pp-chrome right）
     // 带体起点三处同源：组件 TOC_TOP = CSS top = 本文件基准（改一处必红）
     expect(TOC_TOP).toBe(TOC_TOP_PX);
     const tokens = readFileSync(join(__dirname, '..', 'src', 'app', 'tokens.css'), 'utf8');
     expect(tokens).not.toContain('--bar-h:'); // 注释里的历史沿革不算声明
+  });
+
+  /* **2026-09-19 加宽批**（用户「由于边缘滚动的落地，我需要再次加宽我的目次带，
+   *  因为会有误触的问题」）——带体 = 内容列 + 缘滚跑道，两列宽度三处同源
+   *  （组件常量 / CSS / 本文件算术）。这里钉的是**加宽的理由本身**：
+   *  贴屏最右那条边缘滚动感应带必须整条落在跑道上，带内导航面才谈得上不误触。 */
+  it('加宽批：带体 = 内容列 64 + 缘滚跑道 40；跑道 ≥ 缘滚感应带（加宽的理由）', () => {
+    expect(TOC_COL_W).toBe(64); // 与旧带体逐字同宽 ⇒ 带内既有几何零漂移
+    expect(TOC_RUNWAY_W).toBe(40);
+    expect(TOC_W).toBe(TOC_COL_W + TOC_RUNWAY_W);
+    expect(ruleBody(PANEL_CSS, '.pp-toc {')).toContain(`width: ${TOC_W}px`);
+    expect(ruleBody(PANEL_CSS, '.pp-toc-col {')).toContain(`width: ${TOC_COL_W}px`);
+    // ① 基准感应带整条落在跑道上（指针贴屏最右 = 跑道，照旧缘滚）
+    expect(EDGE_SCROLL.band).toBeLessThanOrEqual(TOC_RUNWAY_W);
+    // ② 灵敏度拉满（sensMax → 带宽 36×√2 ≈ 51）也不碰导航件：锚/刻痕只占左 26px
+    const maxBand = Math.round(EDGE_SCROLL.band * Math.sqrt(EDGE_SCROLL.sensMax));
+    expect(maxBand).toBeLessThanOrEqual(TOC_RUNWAY_W + (TOC_COL_W - 26));
   });
 
   /* 顶部浮件几何（2026-09-17 标题栏拆除批）四处同源：CSS 真源（.pp-chrome 的
@@ -200,10 +230,10 @@ describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => 
     const chrome = ruleBody(PANEL_CSS, '.pp-chrome {');
     expect(chrome).toContain('top: 8px');
     expect(chrome).toContain('height: 40px');
-    expect(chrome).toContain('right: 80px');
-    expect(ruleBody(PANEL_CSS, '.pp-toc {')).toContain('width: 64px');
-    // 算术同源：让位 = 带宽 64 + 16；带高 = 8 + 40 + 8
-    expect(64 + 16).toBe(80);
+    expect(chrome).toContain(`right: ${TOC_W + 16}px`);
+    expect(ruleBody(PANEL_CSS, '.pp-toc {')).toContain(`width: ${TOC_W}px`);
+    // 算术同源：让位 = 带宽 104 + 16；带高 = 8 + 40 + 8
+    expect(TOC_W + 16).toBe(120);
     expect(8 + 40 + 8).toBe(TOP_CHROME_BAND);
     // TS 侧两处镜像（各自产物域，不可 import —— 只能逐字对拍）
     const composerFloat = readFileSync(
@@ -271,6 +301,51 @@ describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => 
     // 带内：点带即跳照旧生效（断言不为空转）
     pointerDown(nav, STRIP_TOP + 300);
     expect(useCanvasViewStore.getState().view.panY).not.toBe(before);
+  });
+
+  /* **2026-09-19 加宽批**的行为面：带体右那条**缘滚跑道**惰性——按下不 scrub、
+   *  mousemove 不弹卡；同一姿态落在内容列上照旧。跑道正是缘滚感应带所在，带内
+   *  交互不认它，两条面才不互相误触（几何不变量见上方「加宽批」用例）。 */
+  it('缘滚跑道惰性：带右 40px 按下不 scrub、不弹 hover 卡；内容列上照旧', async () => {
+    await mount();
+    const nav = container!.querySelector('.pp-toc') as HTMLElement;
+    const col = container!.querySelector('.pp-toc-col') as HTMLElement;
+    expect(col).not.toBeNull();
+    /* 带内件全收在内容列里（结构性零漂移）：墨迹画布是列的子件 ⇒ 它的
+     * clientWidth 恒 = TOC_COL_W（识别层缩放比读的就是这个值，宽了剪影就被拉伸）。
+     * 真 CSS + 无头 Chrome 探针实测：canvas.clientWidth = 64、滑块 56、锚 26、
+     * unread/活线 64——与加宽前逐字同值，整条只左移 40px。
+     * （本夹具 units 为空 ⇒ 无阶段锚，锚的 26px 左缘栏由 stage-anchor-layer 件钉。） */
+    expect(col.querySelector('.pp-toc-ink')).not.toBeNull();
+    expect(col.querySelector('.pp-toc-slider')).not.toBeNull();
+    // 真机几何桩：带体右缘贴屏（2560 − 104 = 2456），内容列 = 带体左 64px
+    nav.getBoundingClientRect = () =>
+      ({
+        left: 2456,
+        top: 0,
+        right: 2560,
+        bottom: 1000,
+        width: TOC_W,
+        height: 1000,
+        x: 2456,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const inCol = 2456 + 20; // 内容列内（导航面）
+    const inRunway = 2560 - 8; // 贴屏最右（缘滚感应带里）
+    const tick = container!.querySelector('.pp-toc-mark.is-user') as HTMLElement;
+    const tickY = Number.parseFloat(tick.style.top) + MARK_HALF; // 刻痕所在（hover 有词可读）
+    const before = useCanvasViewStore.getState().view.panY;
+
+    pointerDownAt(nav, inRunway, STRIP_TOP + 300);
+    expect(useCanvasViewStore.getState().view.panY).toBe(before); // 跑道：点击只被吞掉
+    mouseMoveAt(nav, inRunway, tickY);
+    expect(container!.querySelector('.pp-toc-card')).toBeNull(); // 跑道：不读带、不留卡
+
+    mouseMoveAt(nav, inCol, tickY);
+    expect(container!.querySelector('.pp-toc-card')).not.toBeNull(); // 内容列：照旧指哪读哪
+    pointerDownAt(nav, inCol, STRIP_TOP + 300);
+    expect(useCanvasViewStore.getState().view.panY).not.toBe(before); // 内容列：点带即跳照旧
   });
 
   /* 2026-09-17 用户裁定「目次带似乎没必要做让位」——坞被拖到哪都不该压缩导航带，

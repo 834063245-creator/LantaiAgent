@@ -34,6 +34,9 @@
 // 起两坐标重合），内容恒在可见带内；带内任何元素（刻痕盒/滑块/墨迹/hover 卡）
 // 都不得越出带体顶（2026-09-14 病史：刻痕盒不内缩半高，最上一枚就有 4px 落在
 // 当时的书眉拖动带里，点刻痕变成拖窗口）。
+// **2026-09-19 加宽批**：带体 = 内容列（TOC_COL_W=64，旧带体原样）+ 缘滚跑道
+// （TOC_RUNWAY_W=40，边缘滚动的右缘感应带落在那里）——导航面整条让开感应带，
+// 「用带」与「贴右缘缘滚」不再互为误触；跑道惰性（判据见 insideCol）。
 // 挂载：compose-dock 插件以 ctx.overlays 贡献行注册（slot:'right-edge'），
 // 经 paper/overlay-context 取活跃流区派生数据与折叠态（与主渲染同真源）。
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
@@ -64,6 +67,23 @@ import {
  *  2026-09-14 那次「整体下移 56px」随之取消）。此处是字面量镜像与测试基准：
  *  带体坐标 = 页面坐标 − TOC_TOP，本批之后两者重合。 */
 export const TOC_TOP = 0;
+/** **内容列宽**（px）= 带内唯一导航面：墨迹 / 刻痕 / 阶段锚 / 滑块 / hover 卡
+ *  全在这一列里，交互判据也夹在这一列里（`insideCol`）。**与旧带体逐字同宽**
+ *  （2026-09-19 加宽批刻意不动它）⇒ 带内一切既有几何零漂移。
+ *  CSS 镜像 = `.pp-toc-col` 的 width（paper-shell/PaperPanel.css，同文件里
+ *  `.pp-toc` 的 width = 本值 + TOC_RUNWAY_W）——改一处必红
+ *  （tests/stage4-toc-top-band）。 */
+export const TOC_COL_W = 64;
+/** **缘滚跑道宽**（px）= 带体右缘那一条（2026-09-19 加宽批）：贴屏最右的
+ *  **边缘滚动感应带**（基准 `EDGE_SCROLL.band` = 36，见 paper-shell/edge-scroll.ts）
+ *  落在这里，故带内导航与缘滚零重叠——这就是加宽的全部理由。跑道本体惰性：
+ *  交互判据不认它（点击只被吞掉）、悬停照旧算画布（`HOVER_ALLOW_DOCKS`）。
+ *  ⚠ 恒 ≥ 基准带宽（钉值）；灵敏度拉满时带宽 ≈51px，会吃掉内容列**右缘的
+ *  scrub 余量**（锚/刻痕只占左 26px，任何档位都不在感应带内）。 */
+export const TOC_RUNWAY_W = 40;
+/** 带体总宽（px）= 内容列 + 缘滚跑道。CSS 镜像 = `.pp-toc` 的 width，
+ *  顶部浮件右距 = 本值 + 16（.pp-chrome）。 */
+export const TOC_W = TOC_COL_W + TOC_RUNWAY_W;
 /** 刻痕盒半高（.pp-toc-mark 高 8px、刻位居中）——映射区顶必须再内缩这半高：
  *  刻痕盒 top = stripY − MARK_HALF，不内缩时最上一枚刻痕的盒顶会越出带体顶
  *  （旧版越进书眉＝拖窗口；书眉退役后带体顶即屏顶，这半高仍是带体自身的留白）。 */
@@ -383,9 +403,16 @@ export const TocStrip = memo(function TocStrip() {
     useCanvasViewStore.getState().setView((v) => ({ ...v, panY: -visTop * v.zoom }));
   };
   const stripYOf = (clientY: number, el: HTMLElement): number => clientY - el.getBoundingClientRect().top;
+  /** 指针是否落在**内容列**内（带体坐标；带体左缘 = 内容列左缘）：带体右
+   *  `TOC_RUNWAY_W` 那条是**缘滚跑道**，带内交互一律不认它——否则「指针甩到屏
+   *  右缘缘滚」会顺带 scrub / 弹 hover 卡，这正是 2026-09-19 加宽批要买的。
+   *  拖拽在途（dragRef）不受此判据约束：抓到手就是连续手势，可一路拖过跑道。 */
+  const insideCol = (clientX: number, el: HTMLElement): boolean =>
+    clientX - el.getBoundingClientRect().left <= TOC_COL_W;
 
   const onPointerDown = (e: React.PointerEvent<HTMLElement>): void => {
     if (e.button !== 0 || !range || !slider) return;
+    if (!insideCol(e.clientX, e.currentTarget)) return; // 缘滚跑道：不 scrub（点击只被吞掉）
     const stripY = stripYOf(e.clientY, e.currentTarget);
     /* 带外一律不响应（2026-09-14 行为变更）：元素框是通栏 fixed（top:0/bottom:0），
      * 但映射区只有 [刻痕半高, 坞上缘]——带顶那半高是带体自身留白（旧版归书眉＝
@@ -425,6 +452,10 @@ export const TocStrip = memo(function TocStrip() {
   const [hover, setHover] = useState<{ y: number; text: string; tickId: string | null } | null>(null);
   const onMouseMove = (e: React.MouseEvent<HTMLElement>): void => {
     if (dragRef.current || !range) return;
+    if (!insideCol(e.clientX, e.currentTarget)) {
+      setHover(null); // 指针在跑道上（多半正在缘滚）：不读带、不留卡
+      return;
+    }
     const stripY = stripYOf(e.clientY, e.currentTarget);
     let text: string | null = null;
     let tickId: string | null = null;
@@ -488,48 +519,52 @@ export const TocStrip = memo(function TocStrip() {
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
     >
-      <canvas ref={canvasRef} className="pp-toc-ink" />
-      {unread && <div className="pp-toc-unread" style={{ top: unread.top, height: unread.height }} />}
-      {slider && (
-        <div
-          className={`pp-toc-slider${slider.draggable ? '' : ' is-fit'}`}
-          style={{ top: slider.top, height: slider.height }}
-        />
-      )}
-      {/* 装饰刻痕（扫读层）：惰性 div + aria-hidden + CSS pointer-events:none——
-          不是点击靶（点它们 = 点带空白 = scrub 到该 y），也不再是 289 个 tab 停靠点。 */}
-      {decorations.map((m) => (
-        <div
-          key={m.blockId}
-          className={`pp-toc-mark is-${m.kind}${hover?.tickId === m.blockId ? ' is-hover' : ''}`}
-          style={{ top: m.stripY - MARK_HALF }}
-          aria-hidden="true"
-        />
-      ))}
-      {/* 阶段锚（可点层）：带内唯一可点的离散目标——28px 命中盒（热区纪律），
-          点击 = 飞到该阶段首块。 */}
-      {stageAnchors.map((a) => (
-        <button
-          key={a.unitId}
-          type="button"
-          className="pp-toc-anchor"
-          style={{ top: anchorBoxTop(a.stripY) }}
-          aria-label={`跳到阶段 ${a.stageIndex}：${a.preview}`}
-          onClick={() => {
-            if (activeSessionId) flyToPoint(activeSessionId, a.worldY);
-          }}
-        />
-      ))}
-      {streaming && <div className="pp-toc-head" style={{ top: mappedBottom - 2 }} />}
-      {hover && (
-        <div
-          className="pp-toc-card"
-          style={{ top: cardAnchorFor(hover.y).top, transform: cardAnchorFor(hover.y).transform }}
-          role="tooltip"
-        >
-          {hover.text}
-        </div>
-      )}
+      {/* 内容列（带体左 TOC_COL_W）：带内一切导航件都收在它里面——子件的绝对定位
+          （left/right 贴列缘）随之自动落在列内，带体右那条缘滚跑道留空。 */}
+      <div className="pp-toc-col">
+        <canvas ref={canvasRef} className="pp-toc-ink" />
+        {unread && <div className="pp-toc-unread" style={{ top: unread.top, height: unread.height }} />}
+        {slider && (
+          <div
+            className={`pp-toc-slider${slider.draggable ? '' : ' is-fit'}`}
+            style={{ top: slider.top, height: slider.height }}
+          />
+        )}
+        {/* 装饰刻痕（扫读层）：惰性 div + aria-hidden + CSS pointer-events:none——
+            不是点击靶（点它们 = 点带空白 = scrub 到该 y），也不再是 289 个 tab 停靠点。 */}
+        {decorations.map((m) => (
+          <div
+            key={m.blockId}
+            className={`pp-toc-mark is-${m.kind}${hover?.tickId === m.blockId ? ' is-hover' : ''}`}
+            style={{ top: m.stripY - MARK_HALF }}
+            aria-hidden="true"
+          />
+        ))}
+        {/* 阶段锚（可点层）：带内唯一可点的离散目标——28px 命中盒（热区纪律），
+            点击 = 飞到该阶段首块。 */}
+        {stageAnchors.map((a) => (
+          <button
+            key={a.unitId}
+            type="button"
+            className="pp-toc-anchor"
+            style={{ top: anchorBoxTop(a.stripY) }}
+            aria-label={`跳到阶段 ${a.stageIndex}：${a.preview}`}
+            onClick={() => {
+              if (activeSessionId) flyToPoint(activeSessionId, a.worldY);
+            }}
+          />
+        ))}
+        {streaming && <div className="pp-toc-head" style={{ top: mappedBottom - 2 }} />}
+        {hover && (
+          <div
+            className="pp-toc-card"
+            style={{ top: cardAnchorFor(hover.y).top, transform: cardAnchorFor(hover.y).transform }}
+            role="tooltip"
+          >
+            {hover.text}
+          </div>
+        )}
+      </div>
     </nav>
   );
 });
