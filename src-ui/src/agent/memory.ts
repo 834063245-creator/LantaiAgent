@@ -14,7 +14,13 @@
 //   Agent 自己主动存的记忆最高只能给 reference。fact 级别只有用户通过 /remember 明确要求时才能使用。
 
 import { z } from 'zod';
-import { kernelCreateDirectory, kernelReadFile, kernelReadMemoryBatch, kernelWriteFile } from '../rpc-contract';
+import {
+  kernelCreateDirectory,
+  kernelDeleteFile,
+  kernelReadFile,
+  kernelReadMemoryBatch,
+  kernelWriteFile,
+} from '../rpc-contract';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
 
@@ -54,6 +60,43 @@ export interface MemoryFile {
   hit_count: number;
   content: string; // 仅正文（不含 frontmatter）
   raw: string; // 完整文件文本（用于重写时更新元数据）
+}
+
+// ── 记忆文件判据 ──
+
+/** frontmatter 正则——**唯一真源**：既是「这是不是一份记忆」的读侧判据
+ *  （isMemoryText），也是 parseFrontmatter 的解析入口。 */
+const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
+
+/** 记忆文件判据：必须带 frontmatter。非记忆内容（旧墓碑 `{"deleted":true}`、
+ *  手写垃圾、截断档）= 读侧一律当**不存在**——与「文件不在 = 记忆不存在」同一把
+ *  尺子。旧实现缺这道闸：墓碑被 parseFrontmatter 的兜底分支判成
+ *  confidence='reference' 的「正常记忆」，从而绕开 loadPromptSection 的缺文件容错，
+ *  残渣被注入每一个新会话。 */
+function isMemoryText(raw: string): boolean {
+  return FRONTMATTER_RE.test(raw);
+}
+
+// ── 索引写链（同一 MEMORY.md 的读-改-写串行化）──────────────────────
+//
+// 病灶（2026-09-19 真机事故，2026-09-20 彻查）：索引是**整文件读-改-写**，而工具
+// 执行器对同一批调用**立即并发派发**（streaming-executor.addTool；「读并行写串行」
+// 只存在于 code_execution 程序体内，主管道无写串行化）。六条 `memory delete` 同批
+// 落下（.lantai/sessions/19.ndjson seq=379..384 落在同一毫秒）→ 六个「读索引 → 删
+// 自己那行 → 整写回」互相覆盖 → 最后一个写者赢 → 其余五条的索引行复活。
+// 写链把「谁最后写」钉成「谁最后被要求写」（同 chat-session.enqueueVolumeWrite）。
+// 键 = 索引文件路径；失败不阻断链（下一条照常发起），错误照旧上抛调用方。
+const _indexWriteChains = new Map<string, Promise<unknown>>();
+
+function enqueueIndexWrite<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const prev = _indexWriteChains.get(key) ?? Promise.resolve();
+  const next = prev.then(task, task);
+  _indexWriteChains.set(key, next);
+  const settle = (): void => {
+    if (_indexWriteChains.get(key) === next) _indexWriteChains.delete(key);
+  };
+  next.then(settle, settle);
+  return next;
 }
 
 // ── MemoryManager ──
@@ -161,12 +204,14 @@ export class MemoryManager {
 
   // ── 读取 ──
 
-  /** 按名称读取完整记忆文件（不含 .md）。未找到则返回 null。
+  /** 按名称读取完整记忆文件（不含 .md）。未找到则返回 null；
+   *  文件在但不是一份记忆（旧墓碑 / 垃圾 / 截断档）也返回 null——读侧不与坏数据同流。
    *  设置 incrementHit 以追踪回想频率。 */
   async read(name: string, scope: 'project' | 'global' = 'project', incrementHit = false): Promise<MemoryFile | null> {
     await this.ensureDir(scope);
     try {
       const raw = await kernelReadFile(this.filePath(name, scope));
+      if (!isMemoryText(raw)) return null;
       const mf = parseFrontmatter(raw);
 
       if (incrementHit) {
@@ -220,9 +265,9 @@ export class MemoryManager {
         const fp = this.filePath(entry.name, scope);
 
         if (batchResults[fp] !== undefined) {
-          // 使用批量读取结果
+          // 使用批量读取结果（非记忆内容 = 不存在——索引行残留不会把垃圾带进注入面）
           const content = batchResults[fp];
-          mf = content !== null ? parseFrontmatter(content) : null;
+          mf = content !== null && isMemoryText(content) ? parseFrontmatter(content) : null;
         } else {
           // 降级为逐个读取
           mf = await this.read(entry.name, scope);
@@ -366,30 +411,48 @@ export class MemoryManager {
     return { created, bytes: content.length, path: this.filePath(name, scope) };
   }
 
-  /** 按名称删除记忆。删除成功返回 true，未找到返回 false。 */
+  /** 按名称删除记忆——**真删**：索引行与记忆文件一并从盘上抹除。
+   *  返回 true = 索引行 / 文件至少清掉一样；false = 两处都不存在。
+   *
+   *  2026-09-20 墓碑退役（与全仓同款的权威翻转；先例：会话卷 Phase 3b、
+   *  board-persistence、goal-manager、message-store 早改真删）：旧实现把记忆文件
+   *  改写成 16 字节 `{"deleted":true}` 了事——文件不死，而且因为「文件在 = 照索引
+   *  读」绕开了 loadPromptSection 的缺文件容错，残渣被注入**每一个**新会话的记忆库段。
+   *  删除必须让文件消失：「文件不在 = 记忆不存在」。
+   *  索引整文件读-改-写经 enqueueIndexWrite 串行化——同批并发删除各自读同一份索引
+   *  再整写回，最后一个写者会复活别人删掉的行（2026-09-19 真机事故形状）。 */
   async delete(name: string, scope: 'project' | 'global' = 'project'): Promise<boolean> {
-    let index = await this.loadIndexText(scope);
-    if (!index.trim()) return false;
+    const removedIndexLine = await enqueueIndexWrite(this.indexPath(scope), async () => {
+      let index = await this.loadIndexText(scope);
+      if (!index.trim()) return false;
 
-    const pattern = new RegExp(`^\\s*-\\s*\\[[^\\]]*\\]\\(${escapeRegExp(name)}\\.md\\)\\s+[—–-]\\s+.+$\\n?`, 'm');
-    if (!pattern.test(index)) return false;
+      const pattern = new RegExp(`^\\s*-\\s*\\[[^\\]]*\\]\\(${escapeRegExp(name)}\\.md\\)\\s+[—–-]\\s+.+$\\n?`, 'm');
+      if (!pattern.test(index)) return false;
 
-    index = index
-      .replace(pattern, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-    if (index) index += '\n';
+      index = index
+        .replace(pattern, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      if (index) index += '\n';
 
-    await kernelWriteFile(this.indexPath(scope), index);
+      await kernelWriteFile(this.indexPath(scope), index);
+      return true;
+    });
 
+    // 真删文件：先探存在性（读得到 = 在），再删。`fs_cap delete` 对缺失路径会抛错，
+    // 故不盲删；真删失败**上抛不吞**（错误不静默——写入/持久化失败必须可见）。
+    // 探针自身读失败一律当「不在」（多数情况确实如此——这条记忆本就没文件）；
+    // 万一真是故障导致文件残留，它也进不了注入面与列表（读侧判据兜底），不会复活成记忆。
+    let existed = true;
     try {
-      await kernelWriteFile(this.filePath(name, scope), JSON.stringify({ deleted: true }));
-    } catch (e) {
-      console.warn(`[memory] failed to delete file for "${name}":`, e);
+      await kernelReadFile(this.filePath(name, scope));
+    } catch {
+      existed = false;
     }
+    if (existed) await kernelDeleteFile(this.filePath(name, scope));
 
     this._promptSectionCache = null;
-    return true;
+    return removedIndexLine || existed;
   }
 
   private async upsertIndex(
@@ -398,29 +461,32 @@ export class MemoryManager {
     description: string,
     scope: 'project' | 'global' = 'project',
   ): Promise<void> {
-    let index = await this.loadIndexText(scope);
-    const newLine = `- [${title}](${file}) — ${description}`;
+    // 与 delete 共用同一条索引写链：save 与 delete 并发时也不再互相覆盖。
+    await enqueueIndexWrite(this.indexPath(scope), async () => {
+      let index = await this.loadIndexText(scope);
+      const newLine = `- [${title}](${file}) — ${description}`;
 
-    const pattern = new RegExp(
-      `^\\s*-\\s*\\[[^\\]]*\\]\\(${escapeRegExp(file.replace(/\.md$/, ''))}\\.md\\)\\s+[—–-]\\s+.+$`,
-      'm',
-    );
-    if (pattern.test(index)) {
-      index = index.replace(pattern, newLine);
-    } else {
-      index = index.trimEnd();
-      if (index) index += '\n';
-      index += newLine + '\n';
-    }
+      const pattern = new RegExp(
+        `^\\s*-\\s*\\[[^\\]]*\\]\\(${escapeRegExp(file.replace(/\.md$/, ''))}\\.md\\)\\s+[—–-]\\s+.+$`,
+        'm',
+      );
+      if (pattern.test(index)) {
+        index = index.replace(pattern, newLine);
+      } else {
+        index = index.trimEnd();
+        if (index) index += '\n';
+        index += newLine + '\n';
+      }
 
-    await kernelWriteFile(this.indexPath(scope), index);
+      await kernelWriteFile(this.indexPath(scope), index);
+    });
   }
 }
 
 // ── Frontmatter 解析 ──
 
 function parseFrontmatter(raw: string): MemoryFile {
-  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const fmMatch = raw.match(FRONTMATTER_RE);
   if (!fmMatch) {
     return {
       name: 'unknown',
@@ -533,14 +599,20 @@ export function createMemoryTools(mm: MemoryManager): Tool[] {
           const entries = await mm.list(scope);
           if (entries.length === 0) continue;
           const label = scope === 'global' ? '🌐 全局记忆' : '📁 项目记忆';
-          sections.push(`### ${label}`);
+          const rows: string[] = [];
           for (const e of entries) {
             const mf = await mm.read(e.name, scope);
-            const conf = mf?.confidence || 'reference';
+            // 索引行残留（旧墓碑 / 文件已删 / 垃圾档）= 不列：列表不得把不存在的
+            // 记忆报成活的（2026-09-20 彻查副产物——旧实现照索引回显标题摘要）。
+            if (!mf) continue;
+            const conf = mf.confidence || 'reference';
             const confTag = { fact: '[fact]', reference: '[ref]', background: '[bg]', suppressed: '[sup]' }[conf];
-            const hit = mf?.hit_count ? ` · 回想${mf.hit_count}次` : '';
-            sections.push(`- ${confTag} **${e.title}** (\`${e.name}\`)${hit} — ${e.description}`);
+            const hit = mf.hit_count ? ` · 回想${mf.hit_count}次` : '';
+            rows.push(`- ${confTag} **${e.title}** (\`${e.name}\`)${hit} — ${e.description}`);
           }
+          if (rows.length === 0) continue;
+          sections.push(`### ${label}`);
+          sections.push(...rows);
         }
         return sections.length > 0 ? sections.join('\n') : '暂无已保存的记忆。';
       },
