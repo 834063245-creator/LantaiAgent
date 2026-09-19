@@ -11,10 +11,23 @@ import { flushAllSessionLogs, flushSessionLog } from '../../app/chat/session-log
 import { watchWindowClose } from '../../bridge';
 import { loadSettings } from '../../settings';
 import { useAgentConfigStore } from '../../state/agent-config-store';
+import { useExitGuardStore } from '../../state/exit-guard-store';
 import { useTurnDoneStore } from '../../state/turn-done-store';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
 import type { ShellRefs } from '../runtime';
 import { pushStatus } from '../runtime';
+
+/** 正在运行的卷数（关窗拦截判据，2026-09-19）。账本随句柄：在册句柄 + 该卷
+ *  exec.isRunning = 跑着（chat-core 与 agent 的每次 run 都经 execState.start()；
+ *  子 Agent 不入 agentSessionState——其父卷未收尾即在跑）。与纸面运行态
+ *  （useRunningSessions）同义：都是「这卷有活没干完」。 */
+function countRunningSessions(): number {
+  let running = 0;
+  agentSessionState.forEachAgentEntry((storeId, sessionId) => {
+    if (agentSessionState.getExec(storeId, sessionId)?.isRunning) running++;
+  });
+  return running;
+}
 
 export function bootPersistence(refs: ShellRefs): void {
   // ═══════════════════════════════════════════════════════════════
@@ -254,14 +267,31 @@ export function bootPersistence(refs: ShellRefs): void {
 
   // ① 权威入口：Tauri 关窗请求。preventDefault → flush → destroy（destroy 后
   //    Rust 侧 Destroyed 照常 drain + exit；窗口不会因为异常而永久卡住）。
+  //    2026-09-19 用户拍板：有会话正在跑时先拦一次（升起 ExitConfirmDialog）——
+  //    回首页有确认，而紧挨着它的 ✕ 没有，等于手一抖就把在跑的一轮掐死；
+  //    空闲时不拦（会话与画布本来就会自动落盘，弹层只是多一次点击）。
+  //    系统关机不走本路（tao 0.35.3 显式不处理 WM_QUERYENDSESSION，
+  //    event_loop.rs 有注释）——弹层不会阻塞关机；关机仍由 ② 兜底入口接。
   void watchWindowClose((ev) => {
+    // 一律先摘默认关闭：本次要么由 proceed 收尾，要么交弹层决定（取消 = 窗口留着）。
     ev.preventDefault();
-    _closing = true;
-    void flushForExit(refs, 'close-requested').finally(() => {
-      void ev.destroy().catch((e: unknown) => {
-        log.error('persistence', '关窗 destroy 失败', { error: String(e) });
+    const proceed = () => {
+      _closing = true;
+      void flushForExit(refs, 'close-requested').finally(() => {
+        void ev.destroy().catch((e: unknown) => {
+          log.error('persistence', '关窗 destroy 失败', { error: String(e) });
+        });
       });
-    });
+    };
+    // 弹层已在场（连点 ✕ / 键位与按钮并发）：本次请求并入那一次，不重复升起、
+    // 也不越过用户直接 proceed。
+    if (useExitGuardStore.getState().pending) return;
+    const running = countRunningSessions();
+    if (running > 0) {
+      useExitGuardStore.getState().requestExit(running, proceed);
+      return;
+    }
+    proceed();
   });
 
   // ② 兜底：页面隐藏（系统关机/注销/休眠时窗口未必收到 close-requested；

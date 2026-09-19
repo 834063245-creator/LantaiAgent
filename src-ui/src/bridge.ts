@@ -160,7 +160,8 @@ export async function watchFileDragDrop(handler: (e: FileDragEvent) => void): Pr
 // 收尾 → 主动 destroy()。与 drag/drop 同属「Tauri 路由面，住本桥」。
 
 export interface WindowCloseRequest {
-  /** 阻止本次关闭（调用方承诺最终自行 destroy——否则窗口永不关闭）。 */
+  /** 阻止本次关闭（调用方承诺：要么最终自行 destroy，要么明确作废本次关闭
+   *  ——2026-09-19 起后者成立：退出守卫拦下关窗问一句，用户取消 = 窗口留着）。 */
   preventDefault(): void;
   /** 销毁窗口（此后 Rust 侧 Destroyed → 进程退出）。 */
   destroy(): Promise<void>;

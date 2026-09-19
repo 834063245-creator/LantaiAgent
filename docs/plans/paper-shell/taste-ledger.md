@@ -350,3 +350,11 @@
   **弃**：① **把 `userTailGap` 8 → 28**（改的是**纸的节奏**：花押那 30px 尾距本来就在块内，为一条 hover 行去加宽来文后的留白，是拿版面还交互的债）；② **隐没态留 `pointer-events: auto`**（让透明按钮自己当桥）——2026-08-31 刚摘掉的「透明按钮吃块下点击」会原样回来，且缝里仍会闪一下。
   **钉值**：新增 `tests/paper-msg-ops-hover.test.ts`（5 例）——钉**结构**（贴块底 / 不许回 `calc(100% + 2px)` / 来文块落块内 / 隐没态不吃指针 / hover + focus-within 揭示面在册），不钉像素；并**用 token 真源算一遍尾带算术**（行底偏移 `asterismLine + 2` + 行高 19 ≤ `asterismLine + asterismMarginTop`，且 `userTailGap < 行高` 是「非落块内不可」的理由）。改按钮字号/padding 必须重跑台架并同步行高常数（文件里写明了）。
   **交付口径**：改的是**插件 CSS**（`paper-shell/PaperPanel.css`）⇒ 按 landmine H2「产物里的 CSS 从不生效」，**必须 `cd src-tauri && cargo tauri build --no-bundle` 重建 exe**（先关掉在跑的兰台）；只热更产物无效。
+
+- 2026-09-19 · **退出守卫：关窗时有会话在跑先问一句**（用户报「工作区退回到首页是有一次提示的，但是从工作区直接关软件完全不提示，感觉不是很对」）·
+  **病灶（两条路径不对称，而两个钮是挨着的）**：回首页有确认（`PaperPanel` 关闭守卫 → `ConfirmDialog` → `leaveToHome`），紧挨着它的窗口 ✕（`WinControls`）没有——关窗路径（`shell/rows/persistence` 的 `watchWindowClose`）只做「退出落盘 → destroy」，正在跑的那一轮被直接终止且用户零感知；手一抖点到 ✕，应用就没了。
+  **选（用户拍板：只有会话正在跑时才拦）**：空闲关窗照旧直接退（会话与画布本来就会自动落盘，弹层只是多一次点击）；有卷在跑才升起确认——**真正不可挽回的只有「跑着的一轮被终止」这一件事**。**弃**：(a) 只要在工作区里就弹（与回首页对称，但空闲时多一次点击）；(b) 每次关窗都弹（最可预期，代价是每次退出都点一下）。
+  **判据**：`countRunningSessions()` = 在册句柄 + 该卷 `exec.isRunning`（账本随句柄；子 Agent 不入 `agentSessionState`，其父卷未收尾即在跑）——与纸面运行态（`useRunningSessions`）同义。取消 = 本次关窗作废（窗口留着，`_closing` 不置位，下次点 ✕ 重新问）；弹层在场时再点 ✕ 并入那一次，不越过用户 proceed。
+  **系统关机不走本路（查过上游源码，非推测）**：tao 0.35.3 显式不处理 `WM_QUERYENDSESSION`（`event_loop.rs` 有「until we introduce … Tauri's ExitRequested」注释），故弹层不会阻塞关机；关机仍由 `pagehide`/`visibilitychange` 兜底入口接。
+  **钉值**：新增 `tests/exit-confirm-guard.test.ts` 6 例（无卷在跑=直接退 / 有卷在跑=拦下且不落盘不 destroy / 取消作废且再问 / 确认=落盘→destroy / 弹层在场不重复 / 跑完后再关窗不拦）——走生产单点 `bootPersistence` 的关窗入口，不复制编排逻辑。
+  **交付口径**：全部落在**壳域**（`app/App.tsx`、`app/ExitConfirmDialog.tsx`、`state/exit-guard-store.ts`、`shell/rows/persistence.ts` 均静态 import 进 app bundle）⇒ **本批必须重建 exe**（关掉在跑的兰台后 `cd src-tauri && cargo tauri build --no-bundle`），只热更插件产物不生效。

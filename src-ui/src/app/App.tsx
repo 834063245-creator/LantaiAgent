@@ -8,6 +8,7 @@
 //   - DockPanel：面板容器（paper / settings 均为组合层贡献——S3 后常量面为空）
 //   - CommandPalette：命令面板（Ctrl+K；组合层命令贡献的合流消费面）
 //   - PromptShelfHost：ask_user / 权限卡独立浮层（会话编排域刚需）
+//   - ExitConfirmDialog：退出确认（关窗时若有会话在跑——2026-09-19）
 //   - PluginWindowsHost：插件应用窗视口层（app shell 件 A——无开窗零渲染）
 //
 // 旧观测台 chrome（CommandBar/DockRail/StatusBar/TimelineHUD/
@@ -16,6 +17,7 @@
 import { CommandPalette } from './CommandPalette';
 import { useCoreStore } from './chat/core-instance';
 import { PromptShelfHost } from './chat/PromptShelfHost';
+import { ExitConfirmDialog } from './ExitConfirmDialog';
 import { DockPanel } from './panels/DockPanel';
 import { PluginWindowsHost } from './plugin-windows/PluginWindowsHost';
 import { SessionsHome } from './SessionsHome';
@@ -33,6 +35,7 @@ export function App() {
       <CommandPalette />
       {core ? <PromptShelfHost core={core} /> : null}
       <PluginWindowsHost />
+      <ExitConfirmDialog />
     </>
   );
 }

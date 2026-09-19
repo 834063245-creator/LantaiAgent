@@ -1,0 +1,18 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License. */
+/* SPDX-License-Identifier: MIT. */
+
+/* 退出确认（2026-09-19）——App 根直接子元素，全局模态档位。
+ *
+ * ConfirmDialog 自带的 .cd-overlay 是「面板内模态」形态：absolute + z 60，只争
+ * 面板内部（tokens.css 海拔表）。本件挂在 App 根，纸壳（280）/ 插件应用窗（460）/
+ * 命令面板（510）都在它上面——照搬面板形态会被整个盖住。故改 fixed 覆盖视口，
+ * 并抬到全局退出档位（--z-exit-modal）。
+ *
+ * 选择器带 `#app-root >` 前缀：只命中本件。面板内的 ConfirmDialog 嵌在 .pp-root /
+ * #settings-panel 里，够不着这条规则（id 选择器特异性也压过 .pp-root .cd-overlay
+ * 那条同形规则）。 */
+
+#app-root > .cd-overlay {
+  position: fixed;
+  z-index: var(--z-exit-modal);
+}
