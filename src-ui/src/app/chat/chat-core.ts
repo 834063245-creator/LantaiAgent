@@ -1779,7 +1779,7 @@ export class ChatCore {
       });
   }
 
-  /** /request… 无参 = 提示用法并填好前缀（用户接着打字）；有参 = 授权保存 + 交模型写库。 */
+  /** /remember <事实> —— 无参 = 提示用法并填好前缀（用户接着打字）；有参 = 授权保存 + 交模型写库。 */
   private rememberFact(arg: string): void {
     const fact = arg.trim();
     if (!fact) {
