@@ -106,9 +106,11 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
     },
     options?.seamView,
   );
-  // 输入模态能力戳（multimodal-image-plan B3 · D-8③）：生效声明 = ModelOverrides.input
-  // 覆盖 ?? 目录值（B5 modelInput 合并链）盖在实例上——Agent 请求期投影读它，
-  // Provider 实现自身零感知。未声明 = ['text']（不编造能力）。
+  // 输入模态声明（multimodal-image-plan B3 · D-8③）：生效声明 = ModelOverrides.input
+  // 覆盖 ?? 目录值（B5 modelInput 合并链）盖在实例上，Provider 实现自身零感知。
+  // 未声明 = ['text']（不编造能力）。
+  // ⚡ 2026-09-19 语义降级：**不再作发送硬闸门**（agent 请求期已改为「先发、
+  // 被拒再降级」）——本字段现存身份 = 声明面 / UI 提示（选择器徽标、创作坞门禁）。
   prov.inputModalities = modelInput(settings, settings.model);
   return prov;
 }

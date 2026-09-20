@@ -91,12 +91,14 @@ export function createLiveProvider(
       // 响亮报错兜底，这里不编造模型名。
       return loadSettings().providers.find((p) => p.name === name)?.model ?? '';
     },
-    /** 输入模态能力戳（multimodal-image-plan B3 · D-8③ 的读面）——Agent 在请求期
-     *  图投影处读它（agent.ts streamOnce），决定附图走 wire 还是投影成占位。
+    /** 输入模态**声明**（multimodal-image-plan B3 · D-8③ 的读面；2026-09-19 语义降级）。
+     *  ⚡ 不再是发送硬闸门：agent 请求期**不**据它决定发不发图——现行策略 =
+     *  「先发、被拒再降级」（见 agent.ts streamOnce 附图分支注）。声明猜错的
+     *  代价从「静默丢图」变成「多发一次被拒的请求」，故它退回纯声明身份。
+     *  现存消费面 = UI 提示（选择器「视」徽标、创作坞贴图门禁与文案）+ 排查读面。
      *  与会话 model() 同序解析：会话覆盖 ?? 行值，经 modelInput 四层链
-     *  （覆盖 ?? API 拉取元数据 ?? 目录声明 ?? ['text']）——与创作坞附图门禁、
-     *  选择器「视」徽标同一条链（一处声明三面同效）。
-     *  ⚡ 必须**活读**（getter）：请求期现读 ⇒ 设置保存 / 覆盖切换即刻生效。
+     *  （覆盖 ?? API 拉取元数据 ?? 目录声明 ?? ['text']）。
+     *  ⚡ 必须**活读**（getter）：设置保存 / 覆盖切换即刻生效（UI 提示面要跟手）。
      *  事故（2026-09-18 实测定位）：此前能力戳只打在内层实例（createProvider，
      *  随 stream() 用完即弃）而本壳不暴露该属性——Agent 读到恒 undefined ⇒ 一切
      *  模型被判纯文本、附图（用户附图 + 工具截图）全被请求期投影静默丢弃，

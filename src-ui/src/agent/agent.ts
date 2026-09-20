@@ -6,6 +6,7 @@
 import { currentPresetId } from '../composition/preset-assembly';
 import { registerSeamScope } from '../composition/seam-scope';
 import { activeSubagentProviders } from '../composition/subagent-service';
+import { isImageUnsupportedError } from '../provider/error-catalog';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-stream';
 import type { StoredThinking } from '../provider/thinking';
 import type { Message, Provider, Request, ToolCall, ToolSchema, Usage } from '../provider/types';
@@ -211,6 +212,10 @@ export class Agent {
 
   /** 附图字节读取器 — 请求期 IO 腰（app 注入；null = 无读取器，附图降级缺图）。 */
   _imageReader: ((ref: import('../provider/types').ChatImageRef) => Promise<string>) | null = null;
+  /** 已实测拒绝图片输入的模型 id 集合（2026-09-19 起能力戳不再作发送硬闸门）。
+   *  按**模型 id** 键控——换模型（含会话级覆盖切换）自动重试发图，不把「某模型
+   *  不收图」的实测记忆错误地延续到另一个模型上。空集 = 一律先发（默认）。 */
+  private _imageUnsupportedModels = new Set<string>();
   /** 附图解析缓存（ref.id → base64）——实例级，同图跨回合零重读。 */
   private _imageDataCache = new Map<string, { mediaType: import('../provider/types').ImageMediaType; data: string }>();
 
@@ -1384,6 +1389,34 @@ export class Agent {
         }
       }
 
+      // ── 图片输入被服务商拒绝 → 记档 + 去图重发（2026-09-19）──
+      // 能力戳降级为 UI 提示后（见 streamOnce 附图分支注），代价是可能真撞上
+      // 服务商明确的「不收图」拒绝。此时不能按不可重试直接失败：把该模型记进
+      // 拒绝集（下次直接投影，不再白撞一次），然后**立即**去图重发一轮——
+      // 用户侧表现为自动恢复，而不是「一贴图就报错」。
+      // 记档键 = 模型 id：换模型自动重新尝试发图（不把旧模型的拒绝延续过去）。
+      // 判据用 this.session 而非本轮 wire 载荷（保守方向）——只要历史含图且
+      // 错误形态吻合就降级；降级本身是「不发图 + 明确提示」，不会更糟。
+      const errModel = this.prov.model();
+      if (
+        !this._imageUnsupportedModels.has(errModel) &&
+        collectImageRefs(this.session).length > 0 &&
+        isImageUnsupportedError(lastErr)
+      ) {
+        this._imageUnsupportedModels.add(errModel);
+        log.warn('agent', 'provider rejected image input — retrying without images', {
+          model: errModel,
+          error: String(lastErr.message || lastErr),
+        });
+        this._sink({
+          kind: EventKind.Notice,
+          level: 'warn',
+          text: `模型「${errModel}」不接受图片输入——改用文字占位重发（本会话后续附图将自动转述）`,
+        });
+        executor?.discard();
+        continue;
+      }
+
       // 不可重试的错误不重试
       if (!isRetryable(lastErr)) return result;
 
@@ -1494,18 +1527,26 @@ export class Agent {
     this._envelope = envelope;
     const fullSession = transientMsgs.length > 0 ? [...payload, ...transientMsgs] : payload;
 
-    // ── 附图发送面（multimodal-image-plan B3 · D-5/D-7/D-8③）──
+    // ── 附图发送面（multimodal-image-plan B3 · D-5/D-7/D-8③；2026-09-19 语义变更）──
     // 引用→wire 全部发生在发送边界：session 永持完整引用（INVARIANTS #14）。
-    //   1. 模型无 image 声明 → 全部图投影成文本占位（不报错）；
-    //   2. 声明支持 → 请求级预算降级（超限最旧先移除换占位）；
+    // ⚡ 语义变更（2026-09-19）：**能力戳不再作发送硬闸门**。
+    //   旧行为：inputModalities 未声明 image → 直接投影成占位（图根本不发）。
+    //   四层声明链末位默认 ['text']，声明缺失 / 过时 / 与实际端点不符时，附图
+    //   **静默**送不出去——模型与用户都无从知晓（B3/B5 一族的失效形态）。
+    //   新行为：**先发、被拒再降级**。除非本模型已实测拒过图
+    //   （_imageUnsupportedModels），一律照发；真被服务商拒了才由 stream() 记档
+    //   并去图重发（用户可见的自动恢复）。声明面（inputModalities）就此降级为
+    //   **UI 提示**（选择器徽标 / 创作坞门禁），不再参与发送决策——
+    //   「猜错了会响」优先于「猜对了省一次请求」。
+    //   1. 本模型已实测拒图 → 全部图投影成文本占位（不报错）；
+    //   2. 否则请求级预算降级（超限最旧先移除换占位）；
     //   3. 幸存引用经读取器解析成 Request.imageData（缓存键控 id）；
     //   4. 送不出去（无读取通道 / 读盘全失败）→ **响亮降级**：留占位 + 落日志，
     //      绝不静默丢图（2026-09-19 事故：读盘腰漏接线，图三天没到过模型而全链无痕）。
     let wireSession = fullSession;
     let imageData: Request['imageData'];
     if (fullSession.some((m) => (m.images?.length ?? 0) > 0)) {
-      const supportsImage = this.prov.inputModalities?.includes('image') === true;
-      if (!supportsImage) {
+      if (this._imageUnsupportedModels.has(this.prov.model())) {
         wireSession = projectImagesForTextModel(fullSession);
       } else if (this._imageReader === null) {
         const n = collectImageRefs(fullSession).length;

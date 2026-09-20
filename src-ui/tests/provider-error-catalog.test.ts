@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { createAnthropicProvider } from '../src/provider/anthropic';
-import { classifyProviderError, type ProviderErrorKind } from '../src/provider/error-catalog';
+import { classifyProviderError, isImageUnsupportedError, type ProviderErrorKind } from '../src/provider/error-catalog';
 import { createOpenAIProvider } from '../src/provider/openai';
 import {
   ApiError,
@@ -341,5 +341,53 @@ describe('流内错误接线 — openai.ts / anthropic.ts', () => {
 
     expect(chunk?.err).toMatchObject({ kind: 'transient', code: 'overloaded_error' });
     vi.unstubAllGlobals();
+  });
+});
+
+// ── isImageUnsupportedError：图片拒绝判据（2026-09-19）──
+//
+// 与 kind 分类**正交**的第二问：这次失败是不是「服务商不收图」。能力戳不再作
+// 发送硬闸门后（改「先发、被拒再降级」），agent 请求层靠本判据决定要不要去图
+// 重发。误判的代价 = 把可自愈的失败变成静默去图（正是要根治的失效形态），
+// 故判据**宁漏勿误**：必须同时满足 ① HTTP 4xx ② 文本命中图片特征。
+
+describe('isImageUnsupportedError — 图片拒绝判据（保守双条件）', () => {
+  const withStatus = (status: number | undefined, message: string, raw?: string): ApiError =>
+    new ApiError(message, { ...(status === undefined ? {} : { status }), ...(raw === undefined ? {} : { raw }) });
+
+  it('4xx + 明确拒图措辞 → true（三类厂商真实形态）', () => {
+    // OpenAI 兼容族
+    expect(
+      isImageUnsupportedError(
+        withStatus(400, '[未知错误] "x" 返回了意外错误 (400)', 'image_url is only supported by certain models'),
+      ),
+    ).toBe(true);
+    // Anthropic 型（tag 不匹配）
+    expect(
+      isImageUnsupportedError(
+        withStatus(400, "messages.1.content.0.type: Unexpected value. Input tag 'image' found using 'type'"),
+      ),
+    ).toBe(true);
+    // 多模态能力缺失
+    expect(isImageUnsupportedError(withStatus(400, 'this model is not multimodal'))).toBe(true);
+  });
+
+  it('4xx 但措辞与图片无关 → false（普通参数错不许被当成「该丢图」）', () => {
+    expect(isImageUnsupportedError(withStatus(400, '[未知错误] "x" 返回了意外错误 (400)：bad parameter foo'))).toBe(
+      false,
+    );
+    expect(isImageUnsupportedError(withStatus(404, 'model_not_found'))).toBe(false);
+  });
+
+  it('5xx / 网络层带图片字样 → false（链路故障与收不收图无关，可自愈的不许变静默丢图）', () => {
+    expect(isImageUnsupportedError(withStatus(500, 'internal error while handling image_url'))).toBe(false);
+    expect(isImageUnsupportedError(withStatus(0, 'failed to fetch image_url'))).toBe(false);
+  });
+
+  it('无 status（流内 message-only / 普通 Error）→ 一律 false（保守：宁可本次可见地失败）', () => {
+    expect(isImageUnsupportedError(new Error('image_url is not supported'))).toBe(false);
+    expect(isImageUnsupportedError(withStatus(undefined, 'image_url is not supported'))).toBe(false);
+    expect(isImageUnsupportedError('image input rejected')).toBe(false);
+    expect(isImageUnsupportedError(undefined)).toBe(false);
   });
 });

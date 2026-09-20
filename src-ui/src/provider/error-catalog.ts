@@ -150,3 +150,48 @@ export function providerErrorKind(err: unknown): ProviderErrorKind | undefined {
   const kind = (err as { kind?: unknown }).kind;
   return typeof kind === 'string' ? (kind as ProviderErrorKind) : undefined;
 }
+
+// ── 图片输入被拒的判定（2026-09-19，与 kind 分类正交）──
+//
+// Why：能力戳（Provider.inputModalities）不再作发送硬闸门——四层声明链末位
+// 默认 ['text']，声明缺失/过时会把附图静默丢掉（B3/B5 事故形态）。改为
+// 「先发、被拒再降级」后，需要一条判据回答「这次失败是不是因为发了图」，
+// 供 agent 请求层去图重发。kind 分类不受影响（此类拒绝多落 400 → 已归
+// auth_or_param）——本判据是叠加的第二问，不改写既有 kind 语义。
+
+/** 图片相关特征（服务商明确拒绝图片输入时的常见措辞）。 */
+const IMAGE_UNSUPPORTED_MARKERS = [
+  'image_url', // OpenAI 兼容：image_url is only supported by certain models
+  'image url',
+  'image input',
+  'image content',
+  'input image',
+  'does not support image',
+  'not support image',
+  'unsupported image',
+  'invalid image',
+  "input tag 'image'", // Anthropic：Input tag 'image' found using 'type' does not match
+  'multimodal', // this model is not multimodal
+  '不支持图片',
+];
+
+/**
+ * 该错误是否表现为「服务商不接受图片输入」。
+ *
+ * **双条件，都满足才判真（宁漏勿误）**：
+ *   ① HTTP 4xx —— 只有客户端错误才可能是「你发的载荷我不吃」；5xx / 网络故障
+ *      与收不收图无关。误判会把可自愈的瞬态失败变成静默去图，恰恰是本判据
+ *      要根治的失效形态。
+ *   ② 文本命中图片相关特征。
+ *
+ * 错误对象无 status（普通 Error / 流内 message-only）→ 一律 false（保守）。
+ * 漏判的代价 = 本次请求照常失败并可见，远小于误判的代价。
+ */
+export function isImageUnsupportedError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { message?: unknown; raw?: unknown; code?: unknown; status?: unknown };
+  const status = typeof e.status === 'number' ? e.status : undefined;
+  if (status === undefined || status < 400 || status > 499) return false;
+  const text = `${String(e.message ?? '')}\n${String(e.raw ?? '')}\n${String(e.code ?? '')}`.toLowerCase();
+  return IMAGE_UNSUPPORTED_MARKERS.some((m) => text.includes(m));
+}

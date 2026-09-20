@@ -259,9 +259,11 @@ describe('createLiveProvider — 配置在使用点解析', () => {
 // （内层随 stream() 用完即弃）⇒ 壳层 inputModalities 恒 undefined ⇒ 一切模型
 // 被判纯文本、附图全被请求期投影静默丢弃。测试盲区：既有用例全在测内层
 // createProvider（provider-factory / provider-model-meta）——绿灯常亮，生产恒断。
-// 本组钉两端：① 壳层能力戳活读设置（视觉声明可见 + 覆盖优先 + 无需换引用）；
-// ② Agent + live 壳真跑：声明视觉 → wire 真带图；未声明 → 占位降级零回归。
-describe('createLiveProvider — 附图能力戳（请求期图投影的读面）', () => {
+// 本组钉两端：① 壳层 inputModalities 活读设置（视觉声明可见 + 覆盖优先 + 无需
+// 换引用）；② Agent + live 壳真跑：声明视觉 → wire 真带图；**未声明也照发**
+// （2026-09-19 语义变更——声明面降级为 UI 提示，发送决策改「先发、被拒再降级」，
+// 未声明不再等于图不发）。
+describe('createLiveProvider — 附图能力声明（发送面已改为先发策略）', () => {
   const IMG: ChatImageRef = {
     id: 'img-live-1',
     mediaType: 'image/jpeg',
@@ -313,7 +315,13 @@ describe('createLiveProvider — 附图能力戳（请求期图投影的读面�
     expect(parts.some((p) => p.type === 'image_url' && p.image_url?.url === 'data:image/jpeg;base64,QUJD')).toBe(true);
   });
 
-  it('Agent + live 壳：未声明视觉 → 占位降级零回归（不炸、不读盘、无图）', async () => {
+  it('Agent + live 壳：未声明视觉 → 仍照发（先发策略：声明面不再作发送闸门）', async () => {
+    // ⚡ 2026-09-19 规格变更（原断言「未声明 → 占位降级」随行为退役同批删除）。
+    // 旧行为：inputModalities 未声明 image ⇒ 请求期直接投影成占位，图根本不发。
+    // 四层声明链末位默认 ['text']，声明缺失 / 过时 / 与实际端点不符时用户贴的图
+    // 静默送不出去（模型与用户都无从知晓，B3/B5 一族失效形态）。
+    // 现行行为 = 「先发、被拒再降级」：声明只作 UI 提示，发不发由服务商实际反应
+    // 决定（真被拒 → 记档 + 去图重发，见 tests/image-reject-fallback.test.ts）。
     seedSettings({ model: 'vm1' });
     seedWithKey();
     const reader = vi.fn(async () => 'QUJD');
@@ -325,9 +333,12 @@ describe('createLiveProvider — 附图能力戳（请求期图投影的读面�
 
     await agent.run(new AbortController().signal, '看这张图', [IMG]);
 
-    expect(reader).not.toHaveBeenCalled();
+    // 未声明也照读盘、照带图——「静默丢图」的窗口就此关闭
+    expect(reader).toHaveBeenCalledTimes(1);
     const body = fetchCalls[0]?.body as { messages: Array<{ role: string; content: unknown }> };
     const userMsg = body.messages.find((m) => m.role === 'user');
-    expect(String(userMsg?.content)).toContain('图已省略');
+    const parts = userMsg?.content as Array<{ type: string; image_url?: { url: string } }>;
+    expect(Array.isArray(parts)).toBe(true);
+    expect(parts.some((p) => p.type === 'image_url' && p.image_url?.url === 'data:image/jpeg;base64,QUJD')).toBe(true);
   });
 });
