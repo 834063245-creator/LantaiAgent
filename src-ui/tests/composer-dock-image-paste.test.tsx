@@ -3,9 +3,11 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 附图粘贴门禁组件测试（multimodal-image-plan B2——D-8②）：
+// 附图粘贴门禁组件测试（multimodal-image-plan B2——D-8②；2026-09-19 语义变更）：
 // - vision 模型（目录声明 input 含 'image'）：贴图 → core.intakeImageFiles 直呼；
-// - 文本模型：贴图 → 不入卷 + localNotice 提示（D-8② paste 弹提示）；
+// - 未声明视觉：贴图 → **仍入卷**（旧行为「直接忽略」随 agent 侧发送策略改
+//   「先发、被拒再降级」同批退役——声明面降级为提示开关，不再是粘贴门禁），
+//   外加 localNotice 提示「图已收，可能被转述」；
 // - 纯文本粘贴零影响：intake 不触发、提示不出现。
 // harness 镜像 composer-dock-keyboard.test.tsx（fakeCore + mountDock）。
 
@@ -135,14 +137,19 @@ describe('附图粘贴门禁（B2 · D-8②）', () => {
     expect(container.querySelector('.pp-local-notice')).toBeNull();
   });
 
-  it('文本模型：贴图不入卷，localNotice 提示（当前模型不支持图片输入）', async () => {
+  it('未声明视觉：贴图仍入卷 + localNotice 提示（不再静默丢弃）', async () => {
+    // ⚡ 2026-09-19 规格变更：原断言「文本模型贴图不入卷」随旧行为同批退役——
+    // 旧行为把图拦在门外（用户意图静默丢失，连路径都不留），与 agent 侧已改的
+    // 「先发、被拒再降级」矛盾。现在声明只是提示开关，图一律收。
     const core = await mountDock('text-only-model', container);
     const ta = container.querySelector('textarea');
     pasteOn(ta as HTMLTextAreaElement, [IMAGE_ITEM]);
-    expect(core.intakeImageFiles).not.toHaveBeenCalled();
+    // 图进附图道（不再被丢）
+    expect(core.intakeImageFiles).toHaveBeenCalledTimes(1);
+    // 提示照给（用户知情：可能被转述）
     const notice = container.querySelector('.pp-local-notice');
     expect(notice).not.toBeNull();
-    expect(notice?.textContent).toContain('当前模型不支持图片输入');
+    expect(notice?.textContent).toContain('图已收');
   });
 
   it('纯文本粘贴零影响：intake 不触发、无提示', async () => {
