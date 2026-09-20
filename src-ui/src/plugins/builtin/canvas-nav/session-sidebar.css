@@ -164,16 +164,23 @@
 }
 
 .ss-notice {
-  margin: 8px 10px 0;
+  /* 浮件：锚列表区顶部，**不进高度流水**；本体不吃指针（只放开「知道了」）——
+     它盖住的那几行仍可点：确认动作不许被一条提示挡住（同纸壳动作行「隐没态不吃指针」纪律） */
+  position: absolute;
+  top: 4px;
+  left: 10px;
+  right: 10px;
+  z-index: 3;
+  pointer-events: none;
   padding: 8px 10px;
   background: var(--paper);
   border: var(--rule-strong);
   border-left: 3px solid var(--warn);
   font-size: calc(12px * var(--font-scale));
   color: var(--ink-2);
-  flex-shrink: 0;
 }
 .ss-notice button {
+  pointer-events: auto;
   margin-top: 4px;
   font-family: var(--f-song);
   font-size: calc(10px * var(--font-scale));
@@ -185,7 +192,17 @@
   cursor: pointer;
 }
 
-/* ── 列表：两节（摊开中 / 已合卷），节头点线引出 + 等宽朱字计数 ── */
+/* ── 列表区（含浮件锚点）：本栏高度流水到此为止 ──
+ * 通知条 / 批量条是**浮件**（绝对定位覆盖在列表之上），挂载与撤下都不许改动列表几何。
+ * 病史（2026-09-20 跳变批，真 Chrome 台架 prototype/sidebar-ops-jump-ab.html 读数）：
+ * 两者住在 flex 列里 ⇒ 通知挂载把列表顶推下 49px（列表高 −49px、列表内所有行整体位移），
+ * 批量条挂载吃掉列表高 51px——指针底下那一行会跑。 */
+.ss-list-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 .ss-list {
   flex: 1;
   overflow-y: auto;
@@ -467,19 +484,34 @@
   text-overflow: ellipsis;
 }
 
-.ss-rename-input {
-  flex: 1;
+/* 改名输入件：落在**名行之内**（`.ss-label-row`）——两行式骨架与动作行都不动。
+ * 病史（2026-09-20 跳变批台架读数）：旧形态整块顶替 `.ss-row-main` ⇒ 行高 53.8 → 42px、
+ * 动作行整块消失（Δ左 −201px），该行之下所有行整体弹一次。
+ * 高度取卷名行盒（1.6em，content-box 明写：地基是 border-box），2px 底线用负外边距吃掉
+ * ⇒ 行高零变化。 */
+.ss-label-row .ss-rename-input {
+  flex: 1 1 auto;
   min-width: 0;
-  margin-top: 2px;
+  box-sizing: content-box;
+  height: calc(13px * var(--font-scale) * 1.6);
+  margin: 0 0 -2px;
+  padding: 0;
   font-family: var(--f-song);
   font-size: calc(13px * var(--font-scale));
+  line-height: 1.6;
   color: var(--ink-1);
   background: var(--paper);
   border: none;
   border-bottom: 2px solid var(--seal);
   border-radius: 0;
-  padding: 2px 0;
   outline: none;
+}
+
+/* 武装态（删除二次确认）：**行内**告知——连坐数写进机读注记行（朱砂），按钮只换色。
+ * 宽度恒定的代价由这里补回：旧形态把数字写进按钮（「删」→「确删 3 卷?」）⇒ 动作行
+ * 76 → 115.6px、名区被压 39.6px（长卷名的省略号跟着位移）。 */
+.ss-meta-confirm {
+  color: var(--seal-deep);
 }
 
 /* 行操作：无边框文字钮（中文钮禁 mono——mono 栈无中文字形），
@@ -577,14 +609,20 @@
   opacity: 0.6;
 }
 
-/* ── 批量条（多选态脚部，条件挂载）：计数 + 两击确认删除 + 取消 ── */
+/* ── 批量条（多选态脚部）：**浮件**——锚列表区底部，不吃列表高度（旧形态 −51px）；
+ *  浮在行上 ⇒ 必须自持纸底（否则文字与行叠印）。计数 + 两击确认删除 + 取消。 ── */
 .ss-batch {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px;
+  background: var(--paper);
   border-top: var(--rule-soft);
-  flex-shrink: 0;
 }
 .ss-batch-n {
   font-family: var(--f-mono);
@@ -862,15 +900,15 @@
   width: 1px;
   background: var(--rail);
 }
+/* ── 标记列（两视角**同一形状**）：勾选格与状态点**同槽叠放**（一槽一件，显形即让位）——
+ *  让位只许改可见性，**不许摘出流**：旧案卷视图走 `.ss-bare{display:contents}` 两槽制
+ *  （勾选格 `visibility` 占位、状态点 `display:none` 不占位），hover 时名区整体平移 16px；
+ *  枝视图同语义 0px ⇒ 2026-09-20 跳变批收编为同一份，`.ss-bare` 两槽制退役。 ── */
 .ss-mark {
   position: relative;
   flex: 0 0 16px;
   width: 16px;
   align-self: stretch;
-}
-/* 案卷视图：勾选格与状态点仍是行内的两个直接槽位（沿现网布局，零漂移） */
-.ss-bare {
-  display: contents;
 }
 .ss-mark .ss-check {
   position: absolute;
@@ -904,21 +942,20 @@
   letter-spacing: 0.04em;
   color: var(--ink-3);
 }
-/* 右端一槽两租客：常态 = 「▾ N 枝」汇总（父行，点它折枝），hover/聚焦 = 改/合/删。
- * 叠在同一槽里（不并排）⇒ 汇总不额外吃名区宽度；常态动作行不接指针。 */
+/* 右端槽：折枝汇总与动作行**并排**（汇总在左、动作行在右）——可点件不许共享同一坐标。
+ * 病史（2026-09-20 跳变批台架实测）：旧实现两者叠在同一槽里按 hover 换租客 ⇒ 同一坐标
+ * (583,328)「指针停栏外 = `.ss-kids`」/「移上去（点击必经）= `.ss-del`『删』」，且汇总钮
+ * 鼠标**永不可达**（指针一进行就 `display:none` 把它藏了）。代价 = 有枝父行名区窄约 46px。 */
 .ss-tail {
   position: relative;
   flex: 0 0 auto;
   align-self: center;
   display: flex;
   align-items: center;
+  gap: 4px;
 }
 .ss-kids {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
+  flex: 0 0 auto;
   padding: 3px 5px;
   background: none;
   border: none;
@@ -939,10 +976,6 @@
 }
 .ss-tail .ss-actions {
   pointer-events: none;
-}
-.ss-row:hover .ss-kids,
-.ss-row:focus-within .ss-kids {
-  display: none;
 }
 .ss-row:hover .ss-tail .ss-actions,
 .ss-row:focus-within .ss-tail .ss-actions {

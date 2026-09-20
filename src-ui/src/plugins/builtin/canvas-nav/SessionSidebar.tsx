@@ -186,6 +186,11 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const [newBusy, setNewBusy] = useState(false);
   /** 删除二次确认：已武装的卷 id（第一击变红，再击才删；null = 未武装）。 */
   const confirmingDeleteIdRef = useRef<number | null>(null);
+  /** 武装**代际**：第一击的核对是异步的（几百卷要逐卷读头行，几秒），应答回来时用户可能
+   *  已经点到别处（任何其它意图都走 disarmAll）。无守卫时旧应答照样把该行武装上，
+   *  用户再点一次「删」就被读作第二次确认——**一次点击直接删除**（默认测试
+   *  tests/session-sidebar-ops-jump.test.tsx 己条钉住）。 */
+  const armSeqRef = useRef(0);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
   /** 武装时按**磁盘真源**核出的枝数（确认文案「将同时删除 N 枝」——用户据此同意）。 */
   const [deleteBranchCount, setDeleteBranchCount] = useState(0);
@@ -334,12 +339,16 @@ export const SessionSidebar = memo(function SessionSidebar() {
     });
   }, [rows]);
 
-  /** 取消删除武装 + 批量解武（改名/点击行/新建等任何其它动作都解武）。 */
+  /** 取消删除武装 + 批量解武（改名/点击行/新建等任何其它动作都解武）。
+   *  连带清提示：武装态的「再点一次确认」指令写在行内 meta 行，其它意图一来它就过期了
+   *  ——留着一条已作废的确认指令比没有更坏（读作"还等我一击"）。 */
   const disarmAll = useCallback(() => {
     confirmingDeleteIdRef.current = null;
+    armSeqRef.current += 1; // 作废在途的核对应答（见 armSeqRef 注）
     setConfirmingDeleteId(null);
     setDeleteBranchCount(0);
     setBatchArmed(false);
+    setLocalNotice(null);
   }, []);
 
   /* ── 多选 ── */
@@ -529,14 +538,19 @@ export const SessionSidebar = memo(function SessionSidebar() {
         // 第一击 = 按**磁盘真源**核对血缘（plan §8 硬规①）：确认文案要如实说出
         // 「将同时删除 N 枝」；子树里有运行中的卷 ⇒ 整体拒绝并列出（§9）。
         // 核对要逐卷读头行（几百卷的工作区要几秒）——给可见的等待，别让用户以为没反应。
+        // 代际：核对在途期间任何其它意图（点行/勾选/改名/合卷/新建/切视角都走 disarmAll）
+        // 一律作废本次武装——否则旧应答会把「已经不在看的那一行」武装上（见 armSeqRef 注）。
+        const seq = ++armSeqRef.current;
         setLocalNotice('正在核对血缘（逐卷读头行）…');
         let plan: Awaited<ReturnType<SidebarCore['planBranchDelete']>>;
         try {
           plan = await core.planBranchDelete(id);
         } catch (e) {
+          if (seq !== armSeqRef.current) return; // 已作废：错误也不再打扰
           setLocalNotice(`血缘核对失败（未删除任何卷）：${e instanceof Error ? e.message : String(e)}`);
           return;
         }
+        if (seq !== armSeqRef.current) return; // 已作废：提示已被 disarmAll 清掉，不复活
         setLocalNotice(null);
         if (plan.blocked.length > 0) {
           const running = plan.blocked.flatMap((b) => b.running);
@@ -917,6 +931,17 @@ export const SessionSidebar = memo(function SessionSidebar() {
    */
   const renderRow = (r: SidebarRow, variant: SidebarView) => {
     const isRenaming = renamingId === r.id;
+    /** 本行已武装删除确认（武装态只换色 + 行内 meta 行换文案，几何零变化）。 */
+    const armedDelete = confirmingDeleteId === r.id;
+    /** 武装态的行内告知（连坐数：本卷 + 各枝）——不可逆动作的知情权落在这里。 */
+    const deleteConfirmText =
+      deleteBranchCount > 0
+        ? `再点一次确认：同时删除 ${deleteBranchCount + 1} 卷（含 ${deleteBranchCount} 枝，不可撤销）`
+        : '再点一次确认删除；点其它处取消';
+    const deleteConfirmTitle =
+      deleteBranchCount > 0
+        ? `再点一次确认：将同时删除 ${deleteBranchCount + 1} 卷（含 ${deleteBranchCount} 枝，不可撤销）；点其它处取消`
+        : '再点一次确认删除（不可撤销）；点其它处取消';
     const isCurrent = r.open && r.id === activeSid;
     const isSelected = selectedIds.has(r.id);
     const branch = r.parentId != null;
@@ -979,7 +1004,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         {tree && kids > 0 && !famFolded && (
           <i className="ss-desc" aria-hidden="true" style={{ left: 18 + 16 * depth }} />
         )}
-        <span className={tree ? 'ss-mark' : 'ss-bare'}>
+        <span className="ss-mark">
           <button
             type="button"
             className={`ss-check${isSelected ? ' on' : ''}`}
@@ -993,97 +1018,110 @@ export const SessionSidebar = memo(function SessionSidebar() {
           />
           <span className={`ss-dot ss-dot-${r.status}`} role="presentation" />
         </span>
-        {isRenaming ? (
-          <input
-            ref={renameInputRef}
-            className="ss-rename-input"
-            value={draftLabel}
-            onChange={(e) => setDraftLabel(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                void commitRename(r.id, draftLabel);
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                setRenamingId(null);
-              }
-              e.stopPropagation();
-            }}
-            onBlur={() => void commitRename(r.id, draftLabel)}
-          />
-        ) : (
-          <div className="ss-row-main">
-            <span className="ss-label-row">
-              <span className="ss-label">{volumeDisplayName(r.label, r.id)}</span>
-              {/* 案卷视图：枝卷的**明显标识** = 与书脊/卷首同一枚「枝」牌（一屏一语言），
-                  牌上带父卷号、牌是血缘卡的热区；卡与牌同属 .ss-lineage 子树
-                  ⇒ 指针从牌移到卡不会触发 mouseleave（旧实现把卡挂在行上、热区只在记号上，
-                  指针一动就掉出热区 = 真机报的「鼠标一动卡片就消失」）。 */}
-              {!tree && branch && (
-                // biome-ignore lint/a11y/noStaticElementInteractions: 悬停宽限区——可交互件是里面的「枝」牌按钮；本 span 只负责让指针从牌走到卡时不掉出热区
-                <span className="ss-lineage" onMouseEnter={() => openCard(r.id)} onMouseLeave={closeCardSoon}>
-                  <button
-                    type="button"
-                    className="ss-branch-tag"
-                    aria-label={`枝：这一卷分出案卷 Nº ${r.parentId}`}
-                    aria-expanded={cardId === r.id}
-                    title={`枝：从父卷 Nº ${r.parentId} 的某个节点分出（内容自包含）${parentRow ? '' : '；父卷不在场'}`}
-                    onFocus={() => openCard(r.id)}
-                    onBlur={closeCardSoon}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (cardId === r.id) closeCardNow();
-                      else openCard(r.id);
-                    }}
-                  >
-                    枝<i className="ss-tag-src">{r.parentId}</i>
-                  </button>
-                  {cardId === r.id && (
-                    <div className="ss-lineage-card">
-                      <div className="t">
-                        {parentRow
-                          ? volumeDisplayName(parentRow.label, parentRow.id)
-                          : `案卷 Nº ${r.parentId}（不在场）`}
-                      </div>
-                      <span className="m">
-                        Nº {r.parentId}
-                        {parentRow ? ` · ${parentRow.msgCount} 块 · 枝自它分出` : ' · 外部删除或拷走'}
-                      </span>
-                      <div className="acts">
-                        {parentRow ? (
+        {/* 行主体：**骨架恒定**（2026-09-20 跳变批）。改名只换名行里那一件——两行式、
+            动作行、行高都不动（旧形态整块顶替本块 ⇒ 行高 −11.8px，下面所有行弹一次）；
+            武装态只把连坐指令写进机读注记行（按钮只换色 ⇒ 动作行宽度恒定）。 */}
+        <div className="ss-row-main">
+          <span className="ss-label-row">
+            {isRenaming ? (
+              <input
+                ref={renameInputRef}
+                className="ss-rename-input"
+                value={draftLabel}
+                onChange={(e) => setDraftLabel(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void commitRename(r.id, draftLabel);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setRenamingId(null);
+                  }
+                  e.stopPropagation();
+                }}
+                onBlur={() => void commitRename(r.id, draftLabel)}
+              />
+            ) : (
+              <>
+                <span className="ss-label">{volumeDisplayName(r.label, r.id)}</span>
+                {/* 案卷视图：枝卷的**明显标识** = 与书脊/卷首同一枚「枝」牌（一屏一语言），
+                    牌上带父卷号、牌是血缘卡的热区；卡与牌同属 .ss-lineage 子树
+                    ⇒ 指针从牌移到卡不会触发 mouseleave（旧实现把卡挂在行上、热区只在记号上，
+                    指针一动就掉出热区 = 真机报的「鼠标一动卡片就消失」）。 */}
+                {!tree && branch && (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: 悬停宽限区——可交互件是里面的「枝」牌按钮；本 span 只负责让指针从牌走到卡时不掉出热区
+                  <span className="ss-lineage" onMouseEnter={() => openCard(r.id)} onMouseLeave={closeCardSoon}>
+                    <button
+                      type="button"
+                      className="ss-branch-tag"
+                      aria-label={`枝：这一卷分出案卷 Nº ${r.parentId}`}
+                      aria-expanded={cardId === r.id}
+                      title={`枝：从父卷 Nº ${r.parentId} 的某个节点分出（内容自包含）${parentRow ? '' : '；父卷不在场'}`}
+                      onFocus={() => openCard(r.id)}
+                      onBlur={closeCardSoon}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (cardId === r.id) closeCardNow();
+                        else openCard(r.id);
+                      }}
+                    >
+                      枝<i className="ss-tag-src">{r.parentId}</i>
+                    </button>
+                    {cardId === r.id && (
+                      <div className="ss-lineage-card">
+                        <div className="t">
+                          {parentRow
+                            ? volumeDisplayName(parentRow.label, parentRow.id)
+                            : `案卷 Nº ${r.parentId}（不在场）`}
+                        </div>
+                        <span className="m">
+                          Nº {r.parentId}
+                          {parentRow ? ` · ${parentRow.msgCount} 块 · 枝自它分出` : ' · 外部删除或拷走'}
+                        </span>
+                        <div className="acts">
+                          {parentRow ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                closeCardNow();
+                                activeSpace()?.expand(String(r.parentId));
+                              }}
+                            >
+                              摊开父卷
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               closeCardNow();
-                              activeSpace()?.expand(String(r.parentId));
                             }}
                           >
-                            摊开父卷
+                            知道了
                           </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            closeCardNow();
-                          }}
-                        >
-                          知道了
-                        </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </span>
-              )}
-              {r.contextOnly && <span className="ss-context-tag">上下文</span>}
-            </span>
-            {/* 悬空血缘的注记由 sessionMeta 出（「父卷已删」，两视角同一处，不重复写） */}
-            <span className="ss-meta">{sessionMeta(r)}</span>
-          </div>
-        )}
+                    )}
+                  </span>
+                )}
+                {r.contextOnly && <span className="ss-context-tag">上下文</span>}
+              </>
+            )}
+          </span>
+          {/* 悬空血缘的注记由 sessionMeta 出（「父卷已删」，两视角同一处，不重复写）；
+              武装态这一行改说「再点一次会删掉什么」——连坐数必须**在行内**可见（不可逆动作
+              的知情权），但不许挤动几何 ⇒ 行内换文案，不换按钮宽度。 */}
+          <span className={`ss-meta${armedDelete ? ' ss-meta-confirm' : ''}`}>
+            {armedDelete ? deleteConfirmText : sessionMeta(r)}
+          </span>
+        </div>
         <span className="ss-tail">
+          {/* 折枝汇总与动作行**并排**（汇总在左、动作行在右）：可点件不许共享同一坐标。
+              旧实现两者叠在同一槽里按 hover 换租客 ⇒ 指针移到「▾ N 枝」上时它自己消失、
+              原地换成动作行（台架实测同一坐标归属：停栏外 = .ss-kids / 移上去 = .ss-del），
+              汇总钮鼠标永不可达，瞄着折枝点下去打中的是删除钮。 */}
           {tree && kids > 0 && (
             <button
               type="button"
@@ -1099,63 +1137,46 @@ export const SessionSidebar = memo(function SessionSidebar() {
               {famFolded ? '▸' : '▾'} {kids} 枝
             </button>
           )}
-          {!isRenaming && (
-            <div className="ss-actions">
+          {/* 动作行常驻（改名态也不撤下）：撤下 = 尾部槽宽归零，名区当场变宽（跳变） */}
+          <div className="ss-actions">
+            <button
+              type="button"
+              title="改名"
+              onClick={(e) => {
+                e.stopPropagation();
+                disarmAll();
+                setRenamingId(r.id);
+                setDraftLabel(isUnnamedVolumeLabel(r.label) ? '' : r.label); // 原名（未命名 → 空）
+              }}
+            >
+              改
+            </button>
+            {r.open && (
               <button
                 type="button"
-                title="改名"
+                title="合卷（收起，数据保留；C 键同效）"
                 onClick={(e) => {
                   e.stopPropagation();
                   disarmAll();
-                  setRenamingId(r.id);
-                  setDraftLabel(isUnnamedVolumeLabel(r.label) ? '' : r.label); // 原名（未命名 → 空）
+                  onCollapse(r.id);
                 }}
               >
-                改
+                合
               </button>
-              {r.open && (
-                <button
-                  type="button"
-                  title="合卷（收起，数据保留；C 键同效）"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    disarmAll();
-                    onCollapse(r.id);
-                  }}
-                >
-                  合
-                </button>
-              )}
-              {confirmingDeleteId === r.id ? (
-                <button
-                  type="button"
-                  className="ss-danger"
-                  title={
-                    deleteBranchCount > 0
-                      ? `再点一次确认：将同时删除 ${deleteBranchCount} 枝（删父卷连坐整棵子树，不可撤销）`
-                      : '再点一次确认删除（不可撤销）；点其它处取消'
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void onDelete(r.id);
-                  }}
-                >
-                  {deleteBranchCount > 0 ? `确删 ${deleteBranchCount + 1} 卷?` : '确删?'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  title="彻底删除（点两次确认）"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void onDelete(r.id);
-                  }}
-                >
-                  删
-                </button>
-              )}
-            </div>
-          )}
+            )}
+            {/* 两击确认：武装态**只换色**（文案恒「删」⇒ 动作行宽度恒定），连坐数写在行内 meta 行 */}
+            <button
+              type="button"
+              className={armedDelete ? 'ss-danger' : ''}
+              title={armedDelete ? deleteConfirmTitle : '彻底删除（点两次确认）'}
+              onClick={(e) => {
+                e.stopPropagation();
+                void onDelete(r.id);
+              }}
+            >
+              删
+            </button>
+          </div>
         </span>
         {/* 血缘卡随「枝」牌走（在 .ss-lineage 子树里）——见 renderRow 头注的病灶说明 */}
       </div>
@@ -1227,21 +1248,6 @@ export const SessionSidebar = memo(function SessionSidebar() {
         </button>
       </div>
 
-      {(localNotice || loadError) && (
-        <div className="ss-notice">
-          {localNotice ?? `案卷清单读取失败：${loadError}——已保留上次结果，重开侧栏可重试`}
-          <button
-            type="button"
-            onClick={() => {
-              setLocalNotice(null);
-              setLoadError(null);
-            }}
-          >
-            知道了
-          </button>
-        </div>
-      )}
-
       {/* 视角分段（2026-09-20 双视角批）：案卷 = 时间序（默认）/ 枝 = 血缘森林。
           紧贴列表之上——它管的就是下面这一屏，不挤「另起一卷」那条主动作。 */}
       <div className="ss-views" role="tablist" aria-label="案卷列表视角">
@@ -1267,129 +1273,149 @@ export const SessionSidebar = memo(function SessionSidebar() {
         </button>
       </div>
 
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: 键盘导航容器（↑↓/←→/F2/C/Delete/X 经事件冒泡统一处理）。
+      {/* 列表区：**浮件锚点**（通知条 / 批量条绝对定位覆盖在列表之上）——本栏高度流水
+          到此为止：提示与批量条挂载/撤下都不许改动列表几何（旧形态 ±49px / −51px 跳变）。 */}
+      <div className="ss-list-wrap">
+        {(localNotice || loadError) && (
+          <div className="ss-notice">
+            {localNotice ?? `案卷清单读取失败：${loadError}——已保留上次结果，重开侧栏可重试`}
+            <button
+              type="button"
+              onClick={() => {
+                setLocalNotice(null);
+                setLoadError(null);
+              }}
+            >
+              知道了
+            </button>
+          </div>
+        )}
+
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: 键盘导航容器（↑↓/←→/F2/C/Delete/X 经事件冒泡统一处理）。
           role=tree 语义留待重排 DOM 的小批（分组头/折枝注记是并列件，硬套 role=tree 结构不成立）——
           本批只给折枝钮 aria-expanded + 行 aria-current（见 plan §2.4 裁定）。 */}
-      <div className="ss-list" onKeyDown={onListKeyDown} data-view={view}>
-        {view === 'case' && caseSections.open.length > 0 && (
-          <div className="ss-section">
-            <button
-              type="button"
-              className={`ss-section-head${openFolded ? ' folded' : ''}`}
-              aria-expanded={!openFolded}
-              onClick={() => toggleFold('open')}
-            >
-              <span className="t">摊开中</span>
-              <span className="leader" role="presentation" />
-              <span className="n">OPEN · {caseSections.open.length}</span>
-            </button>
-            {!openFolded && caseSections.open.map((r) => renderRow(r, 'case'))}
-          </div>
-        )}
-        {view === 'case' && caseSections.closed.length > 0 && (
-          <div className="ss-section">
-            <button
-              type="button"
-              className={`ss-section-head${closedFolded ? ' folded' : ''}`}
-              aria-expanded={!closedFolded}
-              onClick={() => toggleFold('closed')}
-            >
-              <span className="t">已合卷</span>
-              <span className="leader" role="presentation" />
-              <span className="n">CLOSED · {caseSections.closed.length}</span>
-            </button>
-            {!closedFolded &&
-              (showBucketHeads
-                ? buckets.map(renderBucket)
-                : buckets.flatMap((b) => b.rows.map((r) => renderRow(r, 'case'))))}
-          </div>
-        )}
-
-        {view === 'tree' && forest.families.length > 0 && (
-          <div className="ss-section">
-            <button
-              type="button"
-              className={`ss-section-head${folded('trees') ? ' folded' : ''}`}
-              aria-expanded={!folded('trees')}
-              onClick={() => toggleFold('trees')}
-            >
-              <span className="t">有一枝的卷</span>
-              <span className="leader" role="presentation" />
-              <span className="n">TREES · {forest.families.length}</span>
-            </button>
-            {!folded('trees') &&
-              forest.families.map((fam) => {
-                const foldKey = famFoldKey(fam.root.id);
-                const isFolded = folded(foldKey);
-                const latest = fam.rows.reduce((acc, x) => ((x.savedAt || '') > acc ? x.savedAt || '' : acc), '');
-                return (
-                  <div className="ss-fam" key={fam.root.id}>
-                    {renderRow(fam.rows[0], 'tree')}
-                    {!isFolded && fam.rows.slice(1).map((r) => <div key={r.id}>{renderRow(r, 'tree')}</div>)}
-                    {isFolded && (
-                      <div className="ss-folded-note">
-                        … 折起的 {fam.rows.length - 1} 枝（点 ▸ 展开，最近 {relativeTime(latest)}）
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-          </div>
-        )}
-        {view === 'tree' && forest.solo.length > 0 && (
-          <div className="ss-section">
-            <button
-              type="button"
-              className={`ss-section-head${folded(SOLO_KEY) ? ' folded' : ''}`}
-              aria-expanded={!folded(SOLO_KEY)}
-              onClick={() => toggleFold(SOLO_KEY)}
-            >
-              <span className="t">独立卷（无枝）</span>
-              <span className="leader" role="presentation" />
-              <span className="n">SOLO · {forest.solo.length}</span>
-            </button>
-            {!folded(SOLO_KEY) && forest.solo.map((r) => renderRow(r, 'tree'))}
-          </div>
-        )}
-
-        {rows.length === 0 && <div className="ss-empty">本工作区暂无案卷</div>}
-        {rows.length > 0 && flat.length === 0 && <div className="ss-empty">无匹配案卷</div>}
-      </div>
-
-      {selectedIds.size > 0 && (
-        <div className="ss-batch">
-          <span className="ss-batch-n">已选 {selectedIds.size} 卷</span>
-          {batchArmed ? (
-            <button
-              type="button"
-              className="ss-batch-del ss-danger"
-              title="再点一次确认批量删除（不可撤销）；Esc 取消"
-              onClick={onBatchDelete}
-            >
-              确删 {selectedIds.size} 卷?
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="ss-batch-del"
-              title="批量删除所选（点两次确认；运行中卷自动跳过）"
-              onClick={onBatchDelete}
-            >
-              删除所选
-            </button>
+        <div className="ss-list" onKeyDown={onListKeyDown} data-view={view}>
+          {view === 'case' && caseSections.open.length > 0 && (
+            <div className="ss-section">
+              <button
+                type="button"
+                className={`ss-section-head${openFolded ? ' folded' : ''}`}
+                aria-expanded={!openFolded}
+                onClick={() => toggleFold('open')}
+              >
+                <span className="t">摊开中</span>
+                <span className="leader" role="presentation" />
+                <span className="n">OPEN · {caseSections.open.length}</span>
+              </button>
+              {!openFolded && caseSections.open.map((r) => renderRow(r, 'case'))}
+            </div>
           )}
-          <button
-            type="button"
-            className="ss-batch-cancel"
-            onClick={() => {
-              setBatchArmed(false);
-              setSelectedIds(new Set());
-            }}
-          >
-            取消
-          </button>
+          {view === 'case' && caseSections.closed.length > 0 && (
+            <div className="ss-section">
+              <button
+                type="button"
+                className={`ss-section-head${closedFolded ? ' folded' : ''}`}
+                aria-expanded={!closedFolded}
+                onClick={() => toggleFold('closed')}
+              >
+                <span className="t">已合卷</span>
+                <span className="leader" role="presentation" />
+                <span className="n">CLOSED · {caseSections.closed.length}</span>
+              </button>
+              {!closedFolded &&
+                (showBucketHeads
+                  ? buckets.map(renderBucket)
+                  : buckets.flatMap((b) => b.rows.map((r) => renderRow(r, 'case'))))}
+            </div>
+          )}
+
+          {view === 'tree' && forest.families.length > 0 && (
+            <div className="ss-section">
+              <button
+                type="button"
+                className={`ss-section-head${folded('trees') ? ' folded' : ''}`}
+                aria-expanded={!folded('trees')}
+                onClick={() => toggleFold('trees')}
+              >
+                <span className="t">有一枝的卷</span>
+                <span className="leader" role="presentation" />
+                <span className="n">TREES · {forest.families.length}</span>
+              </button>
+              {!folded('trees') &&
+                forest.families.map((fam) => {
+                  const foldKey = famFoldKey(fam.root.id);
+                  const isFolded = folded(foldKey);
+                  const latest = fam.rows.reduce((acc, x) => ((x.savedAt || '') > acc ? x.savedAt || '' : acc), '');
+                  return (
+                    <div className="ss-fam" key={fam.root.id}>
+                      {renderRow(fam.rows[0], 'tree')}
+                      {!isFolded && fam.rows.slice(1).map((r) => <div key={r.id}>{renderRow(r, 'tree')}</div>)}
+                      {isFolded && (
+                        <div className="ss-folded-note">
+                          … 折起的 {fam.rows.length - 1} 枝（点 ▸ 展开，最近 {relativeTime(latest)}）
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+          {view === 'tree' && forest.solo.length > 0 && (
+            <div className="ss-section">
+              <button
+                type="button"
+                className={`ss-section-head${folded(SOLO_KEY) ? ' folded' : ''}`}
+                aria-expanded={!folded(SOLO_KEY)}
+                onClick={() => toggleFold(SOLO_KEY)}
+              >
+                <span className="t">独立卷（无枝）</span>
+                <span className="leader" role="presentation" />
+                <span className="n">SOLO · {forest.solo.length}</span>
+              </button>
+              {!folded(SOLO_KEY) && forest.solo.map((r) => renderRow(r, 'tree'))}
+            </div>
+          )}
+
+          {rows.length === 0 && <div className="ss-empty">本工作区暂无案卷</div>}
+          {rows.length > 0 && flat.length === 0 && <div className="ss-empty">无匹配案卷</div>}
         </div>
-      )}
+
+        {/* 批量条（浮件）：锚列表区底沿，盖在列表末行之上——不吃列表高度（旧形态 −51px） */}
+        {selectedIds.size > 0 && (
+          <div className="ss-batch">
+            <span className="ss-batch-n">已选 {selectedIds.size} 卷</span>
+            {batchArmed ? (
+              <button
+                type="button"
+                className="ss-batch-del ss-danger"
+                title="再点一次确认批量删除（不可撤销）；Esc 取消"
+                onClick={onBatchDelete}
+              >
+                确删 {selectedIds.size} 卷?
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="ss-batch-del"
+                title="批量删除所选（点两次确认；运行中卷自动跳过）"
+                onClick={onBatchDelete}
+              >
+                删除所选
+              </button>
+            )}
+            <button
+              type="button"
+              className="ss-batch-cancel"
+              onClick={() => {
+                setBatchArmed(false);
+                setSelectedIds(new Set());
+              }}
+            >
+              取消
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* 宽度拖拽柄（右缘）：拖拽调宽 + 聚焦后 ←→ 微调 */}
       <button

@@ -236,14 +236,16 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     expect(container.querySelector('.ss-rename-input')).toBeNull();
   });
 
-  it('键盘 Delete：一击武装（确删?）再一击**连坐**删除', async () => {
+  it('键盘 Delete：一击武装（删钮换色）再一击**连坐**删除', async () => {
     await mount();
     const rows = [...container.querySelectorAll('.ss-row')] as HTMLElement[];
     const closed = rows[rows.length - 1]; // 盘卷甲（id 2，未摊开）
     act(() => closed.focus()); // onFocus → 游标切到该行
     await act(async () => keydown(closed, 'Delete')); // 一击：按真源核对血缘后武装
     const danger = container.querySelector('.ss-danger') as HTMLButtonElement;
-    expect(danger?.textContent).toBe('确删?'); // 无枝 = 不报数
+    // 武装只换色（文案恒「删」⇒ 动作行宽度恒定，名区不被压缩）；无枝 = 指令不报数
+    expect(danger?.textContent).toBe('删');
+    expect(closed.querySelector('.ss-meta')?.textContent).toBe('再点一次确认删除；点其它处取消');
     expect(planBranchDelete).toHaveBeenCalledWith(2);
     expect(deleteSessionWithBranches).not.toHaveBeenCalled();
     await act(async () => {
@@ -252,7 +254,7 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     expect(deleteSessionWithBranches).toHaveBeenCalledWith(2);
   });
 
-  it('键盘 Delete：有枝时确认钮如实报数「将同时删除 N 枝」', async () => {
+  it('键盘 Delete：有枝时**行内**如实报数「将同时删除 N 枝」', async () => {
     planBranchDelete.mockResolvedValue({ roots: [2], order: [5, 2], blocked: [], branchCount: 1 });
     await mount();
     const rows = [...container.querySelectorAll('.ss-row')] as HTMLElement[];
@@ -260,8 +262,11 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     act(() => closed.focus());
     await act(async () => keydown(closed, 'Delete'));
     const danger = container.querySelector('.ss-danger') as HTMLButtonElement;
-    expect(danger?.textContent).toBe('确删 2 卷?'); // 本卷 + 1 枝
-    expect(danger?.title).toContain('将同时删除 1 枝');
+    expect(danger?.textContent).toBe('删'); // 按钮不报数（宽度恒定）
+    const meta = closed.querySelector('.ss-meta') as HTMLElement;
+    expect(meta.textContent).toContain('同时删除 2 卷（含 1 枝，不可撤销）'); // 本卷 + 1 枝
+    expect(meta.className).toContain('ss-meta-confirm');
+    expect(danger?.title).toContain('含 1 枝');
   });
 
   it('键盘 Delete：子树里有运行中的卷 ⇒ 整体拒绝并列出（不武装）', async () => {
