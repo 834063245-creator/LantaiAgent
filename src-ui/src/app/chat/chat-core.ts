@@ -18,6 +18,7 @@ import type { ChatAgentHandle, GoalRunResult } from '../../agent/chat-agent-hand
 import { createExecState, type ExecStateInstance, type RunKind } from '../../agent/execution-state';
 import { GoalManager, type GoalRecord } from '../../agent/goal-manager';
 import { log } from '../../agent/logger';
+import { isRunDeadlineExceeded } from '../../agent/run-watchdog';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { totalTokens } from '../../agent/token-meter/usage';
 import { useShellStore } from '../../app/shell-store';
@@ -1156,6 +1157,18 @@ export class ChatCore {
       // 悬空来文，用户只看见「模型不响应」。
       if (msg.includes('paused after')) {
         Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
+      } else if (isRunDeadlineExceeded(err)) {
+        // ⚡ 硬截止作废（landmine L3，2026-09-20）：**必须**落墓碑，且不能被
+        // `!signal.aborted` 挡住——看门狗作废的第一步就是 abort（既有停止语义），
+        // 若沿用用户停止的静默分支，这一轮就变成「无错误、无墓碑、无日志」的幽灵轮
+        // （正是本雷的用户侧症状）。判据是错误**类型**（RunDeadlineExceededError），
+        // 不是文案——与 2026-09-14 拆掉 `msg.includes('aborted')` 同一条纪律。
+        Stream.markTurnError(
+          this._streamCtxFor(turnSid),
+          `本轮超硬截止已作废，结果未知，勿当成功继续——${msg}。` +
+            '可直接重发上一条消息；若反复出现，检查出网链路或服务商状态。',
+          'error',
+        );
       } else if (!signal.aborted) {
         const code = apiErrorSummary(err);
         Stream.markTurnError(this._streamCtxFor(turnSid), `错误: ${msg}${code ? `\n（${code}）` : ''}`, 'error');
@@ -1459,6 +1472,15 @@ export class ChatCore {
       // （同 _runAgentTurn 的 catch——两处同款病灶同治）。
       if (msg.includes('paused after')) {
         Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
+      } else if (isRunDeadlineExceeded(err)) {
+        // 硬截止作废（landmine L3）：墓碑照落——判据是错误类型，不是「signal 是否
+        // 中止」（作废的第一步就是 abort，沿用静默分支会把这一轮变成幽灵轮）。
+        Stream.markTurnError(
+          this._streamCtxFor(turnSid),
+          `本轮超硬截止已作废，结果未知，勿当成功继续——${msg}。` +
+            '可直接重发上一条消息；若反复出现，检查出网链路或服务商状态。',
+          'error',
+        );
       } else if (!signal.aborted) {
         const code = apiErrorSummary(err);
         Stream.markTurnError(

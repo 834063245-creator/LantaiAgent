@@ -62,6 +62,7 @@ vi.mock('gsap', () => {
 });
 vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
+import { NO_PROGRESS_WARN_MS, RUN_ABANDON_MS, setRunWatchdogThresholds } from '../src/agent/run-watchdog';
 import { ToolRegistry } from '../src/agent/tool';
 import { ChatCore } from '../src/app/chat/chat-core';
 import { useShellStore } from '../src/app/shell-store';
@@ -124,6 +125,19 @@ function stoppableProvider(): Provider {
           else signal.addEventListener('abort', () => resolve(), { once: true });
         });
         throw new Error(TRANSPORT_ABORT_MSG);
+      })(),
+  };
+}
+
+/** 永不产出、永不结束，且**无视 signal**（landmine L3 的病灶形态）。 */
+function blackHoleProvider(): Provider {
+  return {
+    name: () => 'mock',
+    model: () => 'mock',
+    stream: () =>
+      (async function* (): AsyncGenerator<Chunk> {
+        await new Promise<void>(() => {});
+        yield { type: ChunkType.Text, text: '迟到的一口' };
       })(),
   };
 }
@@ -256,5 +270,43 @@ describe('发送链路活性（反馈环）', () => {
       .join('');
     expect(text, '用户停止后已产出的文本不得丢失').toContain('开始回答');
     expect(o.tombstoned, '用户自己的停止被当成错误播报（过度纠正）').toEqual([]);
+  });
+
+  // 第三种形态（2026-09-20 补齐，原文件头注点名的缺口）：**永不落定的传输**
+  // —— provider 不认 signal，停止钮对它无效。硬截止（运行看门狗）到期之后，
+  // 用户必须看见墓碑而不是「模型不响应」。
+  it('永不落定的传输：硬截止到期后必须落墓碑（结果未知，勿当成功继续），且不悬空来文', async () => {
+    const panel = panelWith(blackHoleProvider());
+    await panel.createNewSession();
+
+    // 真机阈值 20 分钟不适合测试台：走看门狗的阈值注入面（同一份代码路径）
+    setRunWatchdogThresholds({ warnMs: 200, abandonMs: 600 });
+    vi.useFakeTimers();
+    try {
+      const done = send(panel, '在吗');
+      // 先排空微任务（Agent 装配/首次请求发出），再推时钟——假时钟下别把
+      // 「装配链的微任务」和「定时器推进」混在一句里（会互相等成死锁）。
+      await flush(30);
+      // 看门狗按固定间隔巡检（30s 步长），推进量要跨过巡检点才会看到 abandon=600ms
+      await vi.advanceTimersByTimeAsync(60_000);
+      await done;
+      await flush();
+
+      const o = outcome(panel, 1);
+      expect(o.tombstoned.length, '硬截止到期却没有墓碑——用户只看见「模型不响应」').toBeGreaterThan(0);
+      // 文案纪律（用户 2026-09-20 定的墓碑口径）：作废 + 结果未知 + 勿当成功继续，
+      // 三件事都要在，缺一用户就会把作废轮当成功读下去。
+      const text = o.tombstoned[0].errorMessage ?? '';
+      expect(text, `墓碑文案不含作废口径：${text}`).toContain('超硬截止已作废');
+      expect(text).toContain('结果未知，勿当成功继续');
+      // 硬截止的事实也要可见（runId / 无进展时长 / 最后脉搏）
+      expect(text).toMatch(/runId=\d+/);
+      expectNoDanglingUser(panel, 1, '硬截止作废');
+      // 作废之后立刻可重发：运行账空闲（用户不必等这条挂死的链路）
+      const exec = (panel as unknown as { _activeExec(): { isRunning: boolean } })._activeExec();
+      expect(exec.isRunning).toBe(false);
+    } finally {
+      setRunWatchdogThresholds({ warnMs: NO_PROGRESS_WARN_MS, abandonMs: RUN_ABANDON_MS });
+    }
   });
 });
