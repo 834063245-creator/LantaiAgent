@@ -1775,7 +1775,11 @@ export class ChatCore {
         showToast(`压缩失败: ${err.message}`, 'error');
       })
       .finally(() => {
-        exec.done();
+        // 带 signal 收尾（同 sendMessage / _runAgentTurn 的 `exec.done(signal)`）：
+        // 不带 signal 的 done() 无条件清账——压缩在途期间本卷若已开出新轮
+        // （exec.start() 已换 controller），这一下会把新轮的运行态连带清掉
+        //（会话在跑而创作坞无停钮）。runSignal 守卫只清「属于自己的运行」。
+        exec.done(signal);
       });
   }
 

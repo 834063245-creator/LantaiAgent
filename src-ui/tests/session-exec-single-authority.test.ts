@@ -174,6 +174,64 @@ async function until(cond: () => boolean, ms = 2000): Promise<void> {
   if (!cond()) throw new Error('until(): 条件未在超时内成立');
 }
 
+/** 脚本化 provider（⑥ 延迟唤醒链 / ⑦ 停后立刻重发 共用）：
+ *  - `hang: [n…]`：第 n 次 stream 卡在闸门上（「这一轮在跑」的窗口可断言；认 abort——停钮要掐断它）；
+ *  - `arm(n, fn)`：第 n 次 stream 一开始跑的回调（轮内投 inbox 消息用——本步的 injectInbox
+ *    已经跑过，那条会留到轮末，正是 default-loop `queueMicrotask(onMessageDelivered)` 处理的那种）。 */
+function scriptedProvider(opts: { hang?: readonly number[] }): {
+  provider: Provider;
+  arm: (n: number, fn: () => void) => void;
+  calls: () => number;
+  release: (n: number) => void;
+} {
+  const hooks = new Map<number, () => void>();
+  const gates = new Map<number, { promise: Promise<void>; resolve: () => void }>();
+  const gateAt = (n: number) => {
+    let g = gates.get(n);
+    if (!g) {
+      let resolve = (): void => {};
+      const promise = new Promise<void>((r) => {
+        resolve = r;
+      });
+      g = { promise, resolve };
+      gates.set(n, g);
+    }
+    return g;
+  };
+  let calls = 0;
+  const provider: Provider = {
+    name: () => 'mock',
+    model: () => 'mock',
+    stream: (signal: AbortSignal) => {
+      calls += 1;
+      const n = calls;
+      return (async function* (): AsyncGenerator<Chunk> {
+        hooks.get(n)?.();
+        if (opts.hang?.includes(n)) {
+          await Promise.race([
+            gateAt(n).promise,
+            new Promise<void>((resolve) => {
+              if (signal.aborted) resolve();
+              else signal.addEventListener('abort', () => resolve(), { once: true });
+            }),
+          ]);
+        }
+        if (signal.aborted) throw new Error('aborted');
+        yield { type: ChunkType.Text, text: `第 ${n} 轮产出` };
+        yield { type: ChunkType.Done };
+      })();
+    },
+  };
+  return {
+    provider,
+    arm: (n, fn) => {
+      hooks.set(n, fn);
+    },
+    calls: () => calls,
+    release: (n) => gateAt(n).resolve(),
+  };
+}
+
 describe('运行态单一权威源：装配账本 = UI 读到的账本', () => {
   it('① 唤醒轮次（总线回件）：Agent 在跑 ⇒ 注册表实例的运行态/停止句柄必须同真，且订阅面收到通知', async () => {
     const store = 'exec-authority-wake';
@@ -304,5 +362,92 @@ describe('运行态单一权威源：装配账本 = UI 读到的账本', () => {
     // 句柄消亡 = 账本才真正注销（删除/合卷路径的清理由此接管）
     agentSessionState.removeAgent(store, sid);
     expect(agentSessionState.getExec(store, sid)).toBeNull();
+  });
+
+  it('⑥ 延迟唤醒链：上一轮收尾只清自己的运行（会话在跑 ⟹ 账本在跑 + 停钮不空按）', async () => {
+    const store = 'exec-authority-delayed-wake';
+    resetPanel(store);
+    const script = scriptedProvider({ hang: [2] }); // 轮 B 卡闸门（在跑窗口）
+    const assemblies = installWorkspaceLikeFactory(store, script.provider);
+
+    const sid = await createNewSession(makeCtx(store));
+    expect(sid).not.toBeNull();
+    if (sid === null) return;
+    const assembly = assemblies[0]; // 句柄由上面的工厂现造（此刻才入册）
+
+    // 轮内投递方（第一条回件唤醒本轮；第二条留到轮末 → 延迟唤醒开下一轮）
+    assembly.bus.register({ agentId: 'ghost-late', parentId: null, depth: 0 });
+    script.arm(1, () => {
+      assembly.bus.send({
+        from: 'ghost-late',
+        to: assembly.agent.id,
+        type: 'result',
+        payload: '迟到的回件',
+      });
+    });
+
+    wake(assembly); // 起手 = 唤醒轮 A（_onMessageDelivered 的账本）
+    await until(() => script.calls() >= 2); // default-loop 的延迟唤醒已开出轮 B
+    // 让轮 A 的收尾（microtask 链：loop finally → run() finally → done()）全部落定
+    await new Promise((r) => setTimeout(r, 0));
+
+    // 事实面：轮 B 真在跑（卡在闸门上）
+    expect(assembly.agent.isRunning).toBe(true);
+
+    // 读面：UI 全域（创作坞停钮 / 呼吸线 / 书眉「行卷中」）读的注册表账本必须同真。
+    // 病灶版：轮 A 的 done() 不带 signal ⇒ 把轮 B 刚建立的运行态与 controller 一起清空
+    // （此处 isRunning=false、abortSignal=undefined ⇒ 本断言红）。
+    const uiExec = agentSessionState.getExec(store, sid);
+    expect(uiExec?.isRunning).toBe(true);
+    expect(uiExec?.abortSignal).toBeDefined();
+
+    // 控制面：停钮不空按——账本 stop() 必须真掐断在跑的轮 B
+    uiExec?.stop();
+    await until(() => !assembly.agent.isRunning);
+    expect(agentSessionState.getExec(store, sid)?.isRunning).toBe(false);
+
+    script.release(2);
+  });
+
+  it('⑦ 停后立刻重发：旧轮的慢收尾不得清掉新轮（runSignal 守卫的另一触发面）', async () => {
+    const store = 'exec-authority-stop-resend';
+    resetPanel(store);
+    const script = scriptedProvider({ hang: [1, 2] }); // 旧轮卡闸门（被停）· 新轮卡闸门（在跑）
+    const assemblies = installWorkspaceLikeFactory(store, script.provider);
+
+    const sid = await createNewSession(makeCtx(store));
+    expect(sid).not.toBeNull();
+    if (sid === null) return;
+    const assembly = assemblies[0];
+
+    wake(assembly); // 旧轮 W（唤醒轮）开跑，卡在闸门上
+    await until(() => script.calls() >= 1 && assembly.agent.isRunning);
+
+    // 用户按停（chat-core.abort 语义：账本 stop）+ 立刻重发（chat-core.sendMessage
+    // 语义：账本 start → agent.run）。真机上两步之间隔着「工具不认 abort」的慢收尾
+    // （abort 的 3s forceReset 兜底即为此设）——这里同步紧邻，等价于「W 的收尾
+    // 落定晚于新轮 start」这一**顺序**，不赌墙钟。
+    const exec = agentSessionState.getExec(store, sid);
+    expect(exec).not.toBeNull();
+    if (!exec) return;
+    exec.stop();
+    const signal2 = exec.start();
+    const run2 = assembly.agent.run(signal2, '用户重发');
+    // 立即挂兜底：停钮中止一轮会让 stream 链以 'aborted' 收场（landmine L3 的
+    // 遗弃尝试族），那不是本用例的被考面——但绝不能让它变成未处理拒绝。
+    void run2.catch(() => {});
+    await until(() => script.calls() >= 2);
+
+    // 旧轮 W 的收尾此刻已落定（microtask）；新轮仍在跑 ⇒ 账本必须仍然在跑。
+    await new Promise((r) => setTimeout(r, 0));
+    expect(assembly.agent.isRunning).toBe(true);
+    expect(exec.isRunning).toBe(true);
+    expect(exec.abortSignal).toBe(signal2);
+
+    exec.stop(); // 停钮仍能掐断新轮（controller 未被旧轮清掉）
+    await until(() => !assembly.agent.isRunning);
+    await run2.catch(() => {}); // 本轮的收场 = 用户中止（'aborted' 预期内）
+    script.release(1);
+    script.release(2);
   });
 });

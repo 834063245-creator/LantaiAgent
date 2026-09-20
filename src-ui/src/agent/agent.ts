@@ -432,6 +432,14 @@ export class Agent {
   // runLoop 是否正在运行 — 用于 bus 唤醒时避免重入
   private _isRunning = false;
 
+  /** 轮次代数 — 每起一次 runLoop 递增（`runLoop()`）。收尾清 `_isRunning` 只认
+   *  「自己仍是最新那轮」：旧轮的收尾落定晚于新轮 start 时（停后立刻重发／工具不认
+   *  abort 的慢收尾／default-loop 的延迟唤醒），旧轮的 `host.isRunning = false`
+   *  不得把新轮刚点亮的运行标志清掉——清了 = bus 唤醒的重入守卫失效（`_onMessageDelivered`
+   *  的 `if (this._isRunning) return`）⇒ 同一会话并发两条 loop 写同一个 session。
+   *  与 exec 账本的 runSignal 守卫同族（那本账是 UI 读的运行态，这本是 Agent 自用）。 */
+  private _runGen = 0;
+
   /** runLoop 是否正在运行 */
   get isRunning(): boolean {
     return this._isRunning;
@@ -942,7 +950,19 @@ export class Agent {
     } catch {
       // 唤醒失败不致命——消息还在 inbox，下次 run() 会捡到
     } finally {
-      this._execState.done();
+      // ⚠ 交账必须带**本轮自己的** signal（execution-state.done 的 runSignal 守卫；
+      //   与 chat-core 两处收尾 `exec.done(signal)` 同规）——不带 signal 的 done()
+      //   无条件清账，会连带清掉**别人**的运行。
+      //   触发面（默认 loop 的「延迟唤醒」）：runDefaultLoop 的 finally 在
+      //   `host.isRunning = false` 之后 `queueMicrotask(onMessageDelivered)` 处理
+      //   「本轮已注入但未 ack」的 inbox 消息，而那条微任务**排在本 finally 之前**
+      //   （微任务序：轮内 loop finally → 新轮 start() 换 controller → 本轮 done()）。
+      //   于是新轮（B）已 start，本轮的 done() 却把 B 的 isRunning/AbortController
+      //   一起清空 ⇒ 卷里模型照跑、创作坞/呼吸线/书眉却认为空闲，停止钮空按
+      //   （controller 已被清）——2026-09-17「会话在跑而运行态丢失」的剩余触发面。
+      //   带 signal 后：controller 已换人 ⇒ 守卫 return，B 的运行态完好。
+      //   钉子：tests/session-exec-single-authority.test.ts ⑥（延迟唤醒链）/⑦（停后立刻重发）。 */
+      this._execState.done(signal);
     }
   }
 
@@ -1221,12 +1241,16 @@ export class Agent {
     // D13（平台化 Phase 5）：流式循环降为第一方默认实现（agent/agent-loop/）
     // ——Agent 接口不变；解析 = ctx.agentLoop 注册表后注册胜，缺省 =
     // builtin/default（行为逐字节一致，钉子见包内注释）。
-    await this._loop.run(this._loopHost(), signal);
+    // 轮次代数（`_runGen`）在此取号：goal 循环的多轮也会各取一号，收尾清除权
+    // 永远归「最后起的那轮」（见 `_runGen` 注）。
+    const gen = ++this._runGen;
+    await this._loop.run(this._loopHost(gen), signal);
   }
 
   /** loop 宿主面（D13）——私有成员以闭包暴露给 loop 包（不出类边界；
-   *  稳定引用传引用、可变标量 get/set 闭包保活性）。 */
-  private _loopHost(): AgentLoopHost {
+   *  稳定引用传引用、可变标量 get/set 闭包保活性）。gen = 本轮的轮次代数：
+   *  `isRunning` 的清除只由最新那轮执行（旧轮收尾不得清掉新轮的运行标志）。 */
+  private _loopHost(gen: number): AgentLoopHost {
     const self = this;
     return {
       id: this.id,
@@ -1271,7 +1295,9 @@ export class Agent {
         return self._isRunning;
       },
       set isRunning(v) {
-        self._isRunning = v;
+        // 点亮：任何人点都算（本轮确是开着 loop 的）；
+        // 熄灭：只认最新那轮（gen 相符）——旧轮的收尾不得清掉新轮的运行标志。
+        if (v || self._runGen === gen) self._isRunning = v;
       },
       get currentRunSignal() {
         return self._currentRunSignal;
