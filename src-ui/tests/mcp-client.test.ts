@@ -3,8 +3,8 @@
 
 // MCP client 测试 — 用内存回环传输连一个 fake MCP server，验证握手/工具列表/调用/错误。
 
-import { describe, expect, it } from 'vitest';
-import { McpClient, publicToolName } from '../src/agent/mcp/client';
+import { describe, expect, it, vi } from 'vitest';
+import { MCP_HANDSHAKE_TIMEOUT_MS, McpClient, publicToolName } from '../src/agent/mcp/client';
 import { mcpClientTool, registerMcpTools, resolveMcpToolReadOnly } from '../src/agent/mcp/registry';
 import { createLoopbackTransport } from '../src/agent/mcp/transport';
 import { planGateCheck } from '../src/agent/plan/plan-registry';
@@ -135,6 +135,29 @@ describe('McpClient', () => {
     const ac = new AbortController();
     const out = await tool.execute({ text: 'x' }, undefined, ac.signal);
     expect(out).toContain('echo:x');
+  });
+
+  // ── 每请求硬截止（2026-09-20，landmine L3 收窄洞面）──
+  // 远端 server 不回包时，旧实现那条 pending promise 永不落定（工具侧 30min backstop
+  // 之前是**没有上界**的静默挂起）。现在以具名超时收场 + 摘 pending 条目。
+  it('server 不回包：以具名超时收场，且 pending 条目被摘掉（不留内存/迟到回包）', async () => {
+    vi.useFakeTimers();
+    try {
+      // 回环传输照收不答（handler 永远返回空 = 没有任何响应行）
+      const client = new McpClient({ serverName: 'mute', transport: createLoopbackTransport(() => []) });
+      // connect 的握手也有硬截止（30s）
+      const connected = client.connect().catch((e: unknown) => e as Error);
+      await vi.advanceTimersByTimeAsync(MCP_HANDSHAKE_TIMEOUT_MS + 1_000);
+      const err = await connected;
+      expect(String(err)).toContain('MCP initialize 超时');
+      expect(client.isConnected).toBe(false);
+
+      // 调用面同上：同一把尺子（request 单点）
+      const pending = (client as unknown as { pending: Map<number, unknown> }).pending;
+      expect(pending.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // ── 只读语义（P0，2026-09-13）：条目声明 > 远端 readOnlyHint > 缺省 false ──

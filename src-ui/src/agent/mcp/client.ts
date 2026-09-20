@@ -10,6 +10,7 @@
 //!
 //! 不依赖 Tauri/UI；传输由外部注入，测试可在内存回环上跑通。
 
+import { withTimeout } from '../../lifecycle/timeout';
 import { type Disposer, once } from '../lifecycle';
 import {
   createNodeStdioProc,
@@ -18,6 +19,16 @@ import {
   type McpTransport,
   type ProcIO,
 } from './transport';
+
+/** MCP 每请求硬截止（2026-09-20，landmine L3 收窄洞面）：远端 server 不回包时
+ *  `pending` 里那条 promise 永不落定——工具侧虽有一层 30 分钟 backstop 兜住回合，
+ *  但那 30 分钟里这一发请求是**没有上界**的（且 backstop 之后工具本体成孤儿副作用）。
+ *  有了它，卡死的 server 以具名超时收场（可见、可重试），不再是静默挂起。 */
+export const MCP_REQUEST_TIMEOUT_MS = 120_000;
+
+/** 握手（initialize / tools/list）硬截止——比工具调用短：握手卡住说明 server
+ *  根本没起来，让装配面尽早拿到失败（转 lazy / 报错），别拖满两分钟。 */
+export const MCP_HANDSHAKE_TIMEOUT_MS = 30_000;
 
 /** MCP 工具注解（规范 `ToolAnnotations`——服务器自述的行为提示，纯提示不担保）。
  *  `readOnlyHint` 是只读语义的**唯一远端来源**（见 registry.resolveMcpToolReadOnly）。 */
@@ -214,9 +225,10 @@ export class McpClient {
     method: string,
     params: Record<string, unknown>,
     signal?: AbortSignal,
+    timeoutMs: number = MCP_REQUEST_TIMEOUT_MS,
   ): Promise<JsonRpcMessage> {
     const id = this.nextId++;
-    return new Promise<JsonRpcMessage>((resolve, reject) => {
+    const raw = new Promise<JsonRpcMessage>((resolve, reject) => {
       const onAbort = () => reject(new Error(`${method} aborted by caller`));
       const entry: PendingReq = { resolve, reject, signal, onAbort };
       this.pending.set(id, entry);
@@ -234,23 +246,45 @@ export class McpClient {
         reject(e instanceof Error ? e : new Error(String(e)));
       });
     });
+    // 超时兜底：到点以具名错误收场，并**摘掉 pending 条目**——否则那条 promise
+    // 永久留在表里（内存 + 迟到回包会 resolve 一个没人要的请求）。摘表之后迟到
+    // 回包走 dispatch 的「未知 id」路径（当通知处理），不会误 resolve。
+    let timedOut = false;
+    return withTimeout(raw, timeoutMs, () => {
+      timedOut = true;
+      const p = this.pending.get(id);
+      if (p) {
+        p.signal?.removeEventListener('abort', p.onAbort);
+        this.pending.delete(id);
+      }
+    }).catch((e: unknown) => {
+      // 只给超时织上出处分；调用方主动中止 / 传输错误原样上抛（错误不静默，
+      // 也不改语义——abort 的判据在上层是事实，不是文案）。
+      if (!timedOut) throw e;
+      throw new Error(`MCP ${method} 超时（${timeoutMs}ms 内无回包）`);
+    });
   }
 
   /** 握手：initialize → 通知 initialized → tools/list。 */
   async connect(): Promise<void> {
     if (this.connected) return;
     await this.transport.start();
-    const init = await this.request('initialize', {
-      protocolVersion: '2024-11-05',
-      capabilities: {},
-      clientInfo: { name: 'hologram-agent', version: '4.0.0' },
-    });
+    const init = await this.request(
+      'initialize',
+      {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'hologram-agent', version: '4.0.0' },
+      },
+      undefined,
+      MCP_HANDSHAKE_TIMEOUT_MS,
+    );
     if (init.error) {
       throw new Error(`MCP initialize failed: ${init.error.message ?? init.error.code}`);
     }
     // 通知服务器已初始化（无 id 的 notify）
     await this.transport.send(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }));
-    const toolsMsg = await this.request('tools/list', {});
+    const toolsMsg = await this.request('tools/list', {}, undefined, MCP_HANDSHAKE_TIMEOUT_MS);
     if (toolsMsg.error) {
       throw new Error(`MCP tools/list failed: ${toolsMsg.error.message ?? toolsMsg.error.code}`);
     }
