@@ -20,6 +20,7 @@ import { generateAssetId, parseAssetEventOutput } from './asset-kinds';
 import { markConfirmEmitted, resolveConfirm } from './confirm-registry';
 import type { AgentEventBus } from './events';
 import { log } from './logger';
+import { isAbandoned } from './run-watchdog';
 import type { Tool, ToolRegistry } from './tool';
 import { parseToolImageOutput } from './tool-images';
 import { resolveGuardToolName, retireRedirect } from './tools/domains';
@@ -145,6 +146,15 @@ export class StreamingToolExecutor {
   addTool(call: ToolCall): void {
     if (this.dispatchedIds.has(call.id)) return;
     this.dispatchedIds.add(call.id);
+    // ⚡ 遗弃栅栏（landmine L3）：本轮被运行看门狗硬截止作废之后，**不许再开新的
+    //   副作用**。为什么必须在这里拦：被作废的那条 loop 可能仍挂在某个不认 signal
+    //   的 await 上，事后吐出 chunk 就还会走到这里——那是「判死之后又动刀」，
+    //   而它的结果谁也不会认（投影栅栏挡在 `Agent._appendMessage`），纯属孤儿副作用。
+    //   判据读 signal（executor 本来就持有它），与 loop 的步骤栅栏同一把钥匙。
+    if (this.signal && isAbandoned(this.signal)) {
+      log.warn('agent', '作废轮的迟到工具调用被栅栏拦下（不执行）', { tool: call.name, id: call.id });
+      return;
+    }
     const tool = this.tools.get(call.name);
     const idx = this.toolIndex++;
 
@@ -360,7 +370,17 @@ export class StreamingToolExecutor {
     });
   }
 
-  /** 丢弃所有待处理执行（如中止时）。 */
+  /** 丢弃所有待处理执行（如中止时）。
+   *
+   *  ⚡ 语义补齐（landmine L3 遗弃面，2026-09-20）：本方法是「这一批工具的结果
+   *  我不要了」的**唯一**表达——清 pending / pendingCalls / completed，并清
+   *  dispatchedIds（新一轮流式重试要能重新分发同名 id）。调用面两处：
+   *   ① `agent.stream` 的重试路径（失败尝试的调用作废，下一发重新来）；
+   *   ② 硬截止作废后（default-loop 的遗弃分支）——此时**审计面不回滚**：
+   *      `tool/call` 早在分发时已落 session-log（触发点 B 的宣布补落），盘上留着
+   *      「模型宣布过这个调用」的事实；被 discard 的只是它进会话投影的资格。
+   *      这正是「迟到工具结果只进审计、不进投影」的落点，与 `tool/result` 的
+   *      投影栅栏（`Agent._appendMessage`）一对。 */
   discard(): void {
     this.pending.clear();
     this.pendingCalls.clear();

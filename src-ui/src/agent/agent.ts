@@ -9,7 +9,7 @@ import { activeSubagentProviders } from '../composition/subagent-service';
 import { isImageUnsupportedError } from '../provider/error-catalog';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-stream';
 import type { StoredThinking } from '../provider/thinking';
-import type { Message, Provider, Request, ToolCall, ToolSchema, Usage } from '../provider/types';
+import type { Chunk, Message, Provider, Request, ToolCall, ToolSchema, Usage } from '../provider/types';
 import { ApiError, apiErrorSummary, ChunkType } from '../provider/types';
 import {
   applyAutoTuneConfigImpl,
@@ -80,6 +80,17 @@ import {
   sleepWithAbort,
   withinRetryBudget,
 } from './retry';
+import {
+  beatPulse,
+  isAbandoned,
+  logWatchdogAbandon,
+  logWatchdogWarn,
+  pulseOf,
+  RunDeadlineExceededError,
+  RunPulse,
+  watchdogAbandonText,
+  watchdogWarnText,
+} from './run-watchdog';
 import { registerOwnerContext } from './session-context';
 import { SessionLog, type SessionResetReason } from './session-log';
 import type { StreamingToolExecutor } from './streaming-executor';
@@ -171,6 +182,40 @@ export interface AgentOptions {
 }
 
 const STORM_BREAK_THRESHOLD = 3;
+
+/** 把「消费一个 chunk 流」与 signal 竞速（landmine L3：停止/作废必须真解旋）。
+ *
+ *  为什么需要它：`run()` 的硬截止竞速只让**调用方**收场，挂住的 `for await` 本身
+ *  不会因此返回——那条 loop 就永留栈上（`_loopDepth > 0`）＝幽灵轮。这里把 signal
+ *  的 abort 变成一次真实的**拒绝**，让 `for await` 走 catch/finally 正常退出。
+ *
+ *  语义细节：
+ *  - 拒绝值是 `AbortError`（`DOMException`）——与「fetch 真被 abort」同形，
+ *    上层 `streamOnce` 的 catch 会据 `signal.aborted` 事实分流（不读错误文本）；
+ *  - `signal` 未中止时行为逐字节不变（每轮 `next()` 直接透传，无额外定时器）；
+ *  - **不取消**底层迭代：记下来的 `next()` 若日后落定，其值被丢弃
+ *    （`void p.catch()` 标记为已处理，不产生 unhandled rejection）；
+ *  - 结束时摘监听，防泄漏。 */
+async function* streamWithAbort(chunks: AsyncGenerator<Chunk>, signal: AbortSignal): AsyncGenerator<Chunk> {
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  aborted.catch(() => {}); // 正常路径下这条腿不会有人 await
+  try {
+    for (;;) {
+      const p = chunks.next();
+      p.catch(() => {}); // 竞速败者：底层 await 若日后落定，值丢弃且不留 rejection
+      const r = await Promise.race([p, aborted]);
+      if (r.done) return;
+      yield r.value;
+    }
+  } finally {
+    if (onAbort) signal.removeEventListener('abort', onAbort);
+  }
+}
 // 默认发全量可见工具 schema（0 = 全量）。DeepSeek 前缀缓存对 tools 段敏感：
 // 按用户消息重打分选子集会让 tools 段漂移，整段历史缓存失效按全价计费
 // （实测单次 ~10 万 tokens）。全量目录 ~46 工具 ≈ 10k tokens，逐字节稳定后
@@ -442,6 +487,13 @@ export class Agent {
    *  唤醒重入判定**——不表示 UI 的运行态（那是运行账的记录，含收尾窗口）。
    *  两个问题的答案本就不同：「这 Agent 在跑吗」（账）vs「现在能不能再进一条 loop」（栈）。 */
   private _loopDepth = 0;
+
+  /** 本轮运行的栅栏（被看门狗作废后，迟到的事实一律不进 session 投影）。
+   *  **不是第二本账**：「还在不在跑」的唯一事实仍是运行账（execution-state 的
+   *  RunRecord）；这里只表达「这一轮被硬截止作废过」（用户按停是另一回事——
+   *  停止后已收到的部分输出照常入卷，历史行为不变）。生命周期 = `run()` 的
+   *  try 段：起 watch 时挂上、finally 里摘掉（只摘自己那面）。 */
+  private _runFence: RunPulse | null = null;
 
   // TaskBoard — 异步子 Agent 追踪的共享状态区
   // （子 Agent 派生域经宿主接口读取 — 11c 拆分）
@@ -727,6 +779,24 @@ export class Agent {
 
   /** 追加一条模型可见消息（user / assistant / tool）。 */
   private _appendMessage(kind: 'user/message' | 'assistant/text' | 'tool/result', message: Message): void {
+    // ⚡ 栅栏（landmine L3 遗弃语义）：本轮被看门狗作废之后，**迟到的事实不进投影**
+    //   ——挂住的 stream 事后吐出的 chunk、迟到的工具结果都到此为止（审计面照旧：
+    //  `tool/call` 早在分发时已落 session-log，盘上有事实、卷里不认账）。
+    //   为什么在入口拦而不是在各自调用点拦：投影只有这一个写入口（phase-5 T0 钉死），
+    //   拦这里 = 拦得住全部迟到路径，且不会漏掉将来新增的调用点。
+    if (this._runFence?.abandoned) {
+      log.warn('agent', '作废轮的迟到事实被栅栏拦下（只留审计，不进会话投影）', {
+        runId: this._runFence.runId,
+        kind,
+        role: message.role,
+      });
+      return;
+    }
+    // 脉搏 ②（landmine L3 定义）：**工具结果落盘**即「这一轮在动」。
+    // 为什么挂在本入口而不在各调用点：这是投影的唯一写入口（phase-5 T0 钉死），
+    // 挂这里 = 全部落盘路径（含将来新增）自动带上脉搏，不会漏。
+    // 只给 tool/result 计脉：user/assistant 文本不算「进展」（模型还在想）。
+    if (kind === 'tool/result' && this._runFence) this._runFence.beat('tool');
     this._sessionLog.append(kind, { message });
     this.session.push(message);
   }
@@ -1209,7 +1279,50 @@ export class Agent {
     // 运行记录（认领或自起，见 `_claimRun`）：本轮的「在跑」事实由账上这条记录承担，
     // 收尾只注销自己这条（`end()` 按 id 身份）——`this.isRunning` 也派生于此。
     // 子 Agent（自己那本私账）记 kind='subagent'，会话主 Agent 记 'turn'——读面据种类分策略。
-    const run = this._claimRun(signal, this._subagentDepth > 0 ? 'subagent' : 'turn');
+    const myRun = this._claimRun(signal, this._subagentDepth > 0 ? 'subagent' : 'turn');
+    // ⚡ 运行看门狗（2026-09-20 landmine L3 拆弹）：硬截止落点 = 本函数的收尾——
+    //   哪怕 `runLoop` 挂在「不认 signal 的 await」上永不返回，`deadline` 仍会
+    //   以 `RunDeadlineExceededError` 拒绝，本函数的 finally 照常跑完（saveState /
+    //   记账注销 / 补唤醒判定）。为什么必须是竞速而不是「在 await 上加超时」：
+    //   被挂住的那个 await 属于第三方/适配器内部，我们既改不到它、也无法取消它
+    //   ——能做的只有「不等它了」，并让遗留的那条 loop 在栅栏后自我了断。
+    const myPulse = new RunPulse({
+      runId: this._runIdOf(signal),
+      kind: this._subagentDepth > 0 ? 'subagent' : 'turn',
+      // 到期动作（顺序要紧）：① 栅栏已由 RunPulse 打上（先于本回调）② abort
+      //（既有停止语义，让认 signal 的等待方尽快解旋）③ 记账作废（点名自己的
+      // runId —— 绝不误伤后来起的新轮；已被 stopAll 注销 = no-op）。
+      onAbandon: (runId, sig) => {
+        // abort 的**唯一合法通道是运行账**：signal 由谁铸谁有权中止——本账铸的
+        // 走它的 controller；借用的（调用方 beginRun 铸的 / 第三方递进来的）由
+        // 它的主人中止，本层不越权。`discardRuns` 正是这条纪律的既有实现
+        // （`r.controller?.abort()`），顺带把记录指名作废（绝不误伤后来起的新轮；
+        // 已被 stopAll 注销 = no-op）。
+        this._execState.discardRuns([runId]);
+        // 借用的 signal 主人若无中止路径（第三方驱动面），看门狗这一层不再补刀：
+        // 栅栏（已由 RunPulse 打上）+ run() 的硬截止已足以让本轮收场，
+        // 强行 abort 一个不属于本层的 signal 是越界（且 AbortSignal 只有
+        // controller 能中止，本层拿不到它）。
+        if (!sig.aborted) {
+          log.warn('agent', '运行看门狗作废：signal 由调用方持有，abort 交由它的主人（本层只打栅栏 + 收场）', {
+            runId,
+          });
+        }
+        this._onRunAbandoned(runId, myPulse);
+      },
+      onWarn: (info) => {
+        logWatchdogWarn(info);
+        // UI 可见一口：走既有 Notice 通道（warn = 长显提示条），不新造 store。
+        this._sink({ kind: EventKind.Notice, level: 'warn', text: watchdogWarnText(info) });
+      },
+    });
+    myPulse.bindSignal(signal);
+    // 还没人 await 的 `deadline` 在作废那一刻会拒绝——`Promise.race` 的两条腿里
+    // 只有先到的那条被消费，另一条的拒绝若无 handler 会变成 unhandled rejection
+    // （进程级噪音，且会被测试台当失败）。这里先挂一个 no-op handler 把它标记为
+    // 「已处理」：竞速与 `_abandonedError` 照常拿到拒绝值（handler 只标记，不吞）。
+    void myPulse.deadline.catch(() => {});
+    this._runFence = myPulse;
     this._ui.onStatusChange?.(true);
     // token 计量：一轮 = 一次用户输入（含空 input 的唤醒轮——它同样会发请求）。
     // 计数点在循环之前，因此本轮所有 step（含重试）都归到同一个轮槽。
@@ -1226,7 +1339,18 @@ export class Agent {
       this._planInjector?.resetOnUserInput();
     }
     try {
-      await this.runLoop(signal);
+      // 硬截止竞速：`runLoop` 挂在「不认 signal 的 await」上时，`deadline` 到点
+      // 拒绝 ⇒ 本函数 settle（拒绝值 = RunDeadlineExceededError，调用方据类型落
+      // 墓碑）。挂住的那条 loop 不会因此复活：栅栏已打（RunPulse.abandoned），
+      // 它的迟到 chunk / 工具结果一律不进投影，步骤边界与重试循环顶层也会退出。
+      //
+      // ⚡ 同一竞速还负责**用户停止**（landmine L3 的「停止钮语义升级」）：停止 =
+      //   signal abort，而挂在「不认 signal 的 await」上的 loop 同样收不到 ——
+      //   所以停止也必须让 `run()` settle。否则停止只清了账（v43 逃生舱），那条
+      //   loop 永留栈上（`_loopDepth > 0`）＝幽灵轮：新轮与它并发、只留一行 log.error。
+      //   停止路径的拒绝值仍是 `aborted`（与历史语义、与 chat-core 的静默分支一致）；
+      //   作废路径才是具名硬截止错误。
+      await Promise.race([this.runLoop(signal), myPulse.deadline, this._settleOnAbort(signal)]);
       // 触发 onSessionPersisted 回调（记忆 bundle 摄取、git 刷新、turn-start 块）
       if (this._onSessionPersisted) {
         try {
@@ -1240,9 +1364,98 @@ export class Agent {
       // 此刻只存在于内存 session；saveState 若被 throw 跳过，崩溃时静默丢失。
       // 旧实现 saveState 在 await runLoop 之后，throw 路径直接绕过。
       this.saveState('running').catch(() => {});
-      run?.end();
-      this._wakeIfInboxHasNew(signal);
+      myRun?.end();
+      // 作废轮不补唤醒（2026-09-20）：被硬截止作废的那一轮，inbox 里未注入的
+      // 消息**留待下次**（用户重发 / 下一条唤醒）——由一条「结果未知」的作废轮
+      // 顺手叫起新轮，等于把不知情的后续工作接到一个不知死活的上下文后面。
+      // 正常收尾（含用户停止）语义不变。
+      if (!myPulse.abandoned) this._wakeIfInboxHasNew(signal);
+      myPulse.end();
+      // ⚠ 栅栏**刻意不摘**（2026-09-20）：`_runFence` 只在下一轮 `run()` 里被换成
+      //   新脉搏——若在这里清空，「作废之后、下一轮开始之前」那段时间里，孤儿
+      //   loop 的迟到 append 就又能进卷了（本轮判死的事实不该因为收尾而失效）。
+      //   替换语义天然安全：新轮的脉搏 `abandoned=false`，正常写入不受影响。
     }
+  }
+
+  /** 停止竞速腿：signal 被中止（用户停止 / 上层级联中止）即拒绝，让 `run()` 在
+   *  「loop 挂在认不得 signal 的 await 上」时也能收场（否则 `_loopDepth` 永不清零）。
+   *  与 `RunPulse.deadline` 一样先挂 no-op handler：另一条腿先到是常态，
+   *  它的拒绝若无 handler 会变成 unhandled rejection。
+   *  **拒绝值分流**：已作废（`RunPulse.abandoned`）→ 具名硬截止错误；否则（用户停止
+   *  / 上层中止）→ `aborted`，与历史语义、与 chat-core 的「用户停止静默」分支一致。 */
+  private _settleOnAbort(signal: AbortSignal): Promise<never> {
+    const p = new Promise<never>((_resolve, reject) => {
+      const onAbort = () => reject(isAbandoned(signal) ? this._abandonedError(signal) : new Error('aborted'));
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+    p.catch(() => {});
+    return p;
+  }
+
+  /** 本轮运行号（看门狗日志与作废点名的身份）。认领不到（无主 signal）时
+   *  以 -1 上报——诊断面诚实，不编造 id。 */
+  private _runIdOf(signal: AbortSignal): number {
+    return this._execState.runFor(signal)?.id ?? -1;
+  }
+
+  /** 硬截止到期后的可见化（顺序在 `RunPulse` 的栅栏与 abort 之后）：
+   *  ① 日志一行（真机取证面：runId / 无进展时长 / 最后脉搏种类）；
+   *  ② `run/abandoned` loop 事件（观测面 —— 组合层可据此做策略）；
+   *  ③ error 级 Notice → 调用方（chat-core）落墓碑（「结果未知，勿当成功继续」）。 */
+  private _onRunAbandoned(runId: number, pulse: RunPulse): void {
+    const info = {
+      runId,
+      kind: pulse.kind,
+      noProgressMs: pulse.noProgressMs,
+      lastPulse: pulse.lastPulse,
+    };
+    logWatchdogAbandon(info);
+    this._loopEvents.emitLoopEvent('run/abandoned', {
+      agentId: this.id,
+      runId,
+      kind: pulse.kind,
+      noProgressMs: pulse.noProgressMs,
+      lastPulse: pulse.lastPulse,
+    });
+    this._sink({ kind: EventKind.Notice, level: 'error', text: watchdogAbandonText(info) });
+  }
+
+  /** 本轮被硬截止作废时构造同型错误 —— 三条出口（deadline 竞速 / 重试循环顶层 /
+   *  步骤边界）共用同一组事实，调用方只需认 `RunDeadlineExceededError` 一个类型。 */
+  private _abandonedError(signal: AbortSignal): RunDeadlineExceededError {
+    const p = pulseOf(signal);
+    return new RunDeadlineExceededError({
+      runId: p?.runId ?? this._runIdOf(signal),
+      kind: this._subagentDepth > 0 ? 'subagent' : 'turn',
+      noProgressMs: p?.noProgressMs ?? 0,
+      lastPulse: p?.lastPulse ?? 'step',
+    });
+  }
+
+  /** 本轮是否已被看门狗作废（栅栏读法 —— loop 步骤边界与 executor 判据的统一入口）。 */
+  isAbandoned(signal: AbortSignal): boolean {
+    return isAbandoned(signal);
+  }
+
+  /** 记一次脉搏（有进展）。三个天然边界共用：① chunk 到达（streamOnce 的 chunk
+   *  循环）② 工具结果落盘（tool/call · tool/result）③ loop 步骤边界（default-loop
+   *  每步入场，经 `AgentLoopHost.stepBoundary`）。无登记（未经 `run()` 的驱动面 /
+   *  压缩 / 子 Agent 内轮）= no-op。 */
+  private _beat(signal: AbortSignal, kind: 'chunk' | 'tool' | 'step'): void {
+    beatPulse(signal, kind);
+  }
+
+  /** 步骤边界脉搏的宿主面实现（default-loop 每步开头调）—— 顺带做**栅栏拒绝**：
+   *  已作废的轮不许再往下走一步（否则它会在 abort 之后又发一次请求、又写一次卷）。 */
+  private _stepBoundary(signal: AbortSignal): boolean {
+    if (isAbandoned(signal)) return false;
+    this._beat(signal, 'step');
+    return true;
   }
 
   /** 收尾后补唤醒（契约 v43 —— 从 default-loop 的 finally 上移到 Agent 侧）：
@@ -1340,6 +1553,9 @@ export class Agent {
       sink: (ev: AgentEvent) => this._sink(ev),
       appendMessage: (kind, message) => this._appendMessage(kind, message),
       stream: (sig, turn, executor) => this.stream(sig, turn, executor),
+      stepBoundary: (sig) => this._stepBoundary(sig),
+      abandonedError: (sig) => this._abandonedError(sig),
+      isAbandoned: (sig) => isAbandoned(sig),
       tokenCountWithEstimation: () => this.tokenCountWithEstimation(),
       compactNow: (sig) => this.compactNow(sig),
       compactIfNeeded: (sig) => this.compactIfNeeded(sig),
@@ -1417,6 +1633,11 @@ export class Agent {
     for (let attempt = 0; ; attempt++) {
       if (signal.aborted) {
         executor?.discard();
+        // ⚡ 作废轮在**循环顶层**就退出（landmine L3）：被硬截止作废之后，
+        //   「再试一次」等于把 abort 当成一次普通的失败又发一轮请求——那条请求
+        //   同样会挂住，硬截止就白设了。具名错误上抛（run() 的 deadline 竞速与
+        //   这里二选一先到，两条路径同一个错误类型/同一个 runId）。
+        if (isAbandoned(signal)) throw this._abandonedError(signal);
         return {
           text: '',
           reasoning: '',
@@ -1676,7 +1897,18 @@ export class Agent {
     let err: Error | undefined;
 
     try {
-      for await (const chunk of stream.chunks) {
+      // ⚡ 流消费与 signal **竞速**（landmine L3 拆弹的第二半：停止要真解旋）：
+      //   只让 `run()` 收场还不够——那条 loop 若挂在「不认 signal 的 `for await`」上，
+      //   它会永留在栈上（`_loopDepth` 永不清零）＝幽灵轮。竞速把它也拽出来：
+      //   signal 一 aborted，这里立刻抛 AbortError，`finally` 清理订阅副作用、
+      //   `runLoop` 的 finally 递减深度。**上游那个 await 仍然挂着**（我们改不到
+      //   第三方内部），但这里已经不管它了：它的迟到产物由执行器栅栏与投影栅栏
+      //   拦下（见 `_appendMessage` / `StreamingToolExecutor.addTool`）。
+      const chunks = streamWithAbort(stream.chunks, signal);
+      for await (const chunk of chunks) {
+        // 脉搏 ①（landmine L3 定义）：**chunk 到达**即「这一轮在动」——每 4 分钟
+        // 吐一个 token 的慢模型因此不会被误杀（脉搏定义错了会让慢模型被砍）。
+        this._beat(signal, 'chunk');
         switch (chunk.type) {
           case ChunkType.Reasoning:
             reasoning += chunk.text || '';
