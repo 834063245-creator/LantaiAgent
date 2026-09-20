@@ -446,7 +446,7 @@ ${subTools
       }
     }
 
-    // 通过 bus 通知父 Agent
+    // 通过 bus 通知父 Agent（async 模式下这是**唯一**交付通道——不落 session、不进工具结果）
     if (ag._bus) {
       try {
         ag._bus.send({
@@ -460,8 +460,13 @@ ${subTools
             error: subAgentSucceeded ? undefined : result.err,
           },
         });
-      } catch {
-        /* bus 发送失败非致命 */
+      } catch (e) {
+        // ⚠ 投递失败必须留痕（宪法四）：父 Agent 已消亡（卷已关/句柄被换 ⇒ 未注册）或拓扑
+        // 拒绝时，这条 result 就没了下文——子 Agent 随即从 bus 注销、无从重投；产出仍在
+        // worktree / taskBoard 上，但要人去核验。静默吞掉 = 「任务做完了，父卷永远不知道」。
+        log.warn('agent', `子 Agent ${subAgent.id} 的回传投递失败（父 ${ag.id} 不可达？）`, {
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     }
   } else {
