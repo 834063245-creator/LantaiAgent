@@ -13,9 +13,6 @@ import type { SubAgentPool } from '../coordinator';
 import type { ExecStateInstance } from '../execution-state';
 import type { GoalManager } from '../goal-manager';
 import type { MemoryManager } from '../memory';
-import type { MessageBus } from '../message-bus';
-import type { SkillRegistry } from '../skills';
-import type { TaskManager } from '../task';
 import type { TaskBoard } from '../task-board';
 import type { ToolRegistry } from '../tool';
 
@@ -82,8 +79,6 @@ export interface AgentConfig {
   tools: ToolRegistry;
   /** 记忆管理器 */
   memoryManager?: MemoryManager;
-  /** 技能注册表 */
-  skillRegistry?: SkillRegistry;
   /** 目标管理器 */
   goalManager?: GoalManager;
   /** Agent 持久化存储 */
@@ -93,8 +88,6 @@ export interface AgentConfig {
   /** 子 Agent 派生函数 — 由调用者注入；createAgent 内会用绑定本 Agent 的版本替换
    *  agent_spawn 工具（修复多会话下 spawn 路由到错误 Agent 实例的错位） */
   subAgentSpawner?: import('../tools/subagent').SubAgentSpawner;
-  /** 任务管理器 */
-  taskManager?: TaskManager;
   /** 执行状态实例 */
   execState?: ExecStateInstance;
   /** 事件接收器（Agent 事件流） */
@@ -118,12 +111,6 @@ export interface AgentConfig {
   /** 附图字节读取器（multimodal-image-plan B3 · D-5）——请求期 ChatImageRef →
    *  base64。app 层闭包注入（工作区根拼 attachments 路径 → fs_cap read_base64）。 */
   imageReader?: (ref: import('../../provider/types').ChatImageRef) => Promise<string>;
-  /** 通信总线（可选 — 无则为 headless 无通信能力） */
-  messageBus?: MessageBus;
-  /** TaskBoard — 共享状态区，追踪异步子 Agent 的工作状态 */
-  taskBoard?: TaskBoard;
-  /** DiscoveryBoard — 共享发现区，Agent 间交换探索结果 */
-  discoveryBoard?: import('../discovery-board').DiscoveryBoard;
 }
 
 // ── AgentContext 入口的装配输入 ──

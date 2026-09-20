@@ -908,11 +908,9 @@ export class Workspace {
             provider: sessProv,
             tools: sessionRegistry,
             memoryManager: this.memoryManager ?? undefined,
-            skillRegistry: this.skillRegistry ?? undefined,
             goalManager: this.goalManager ?? undefined,
             agentStore: this.agentStore ?? undefined,
             subAgentPool: this.subAgentPool,
-            taskManager: this.taskManager,
             // 并发会话（2026-08-26）：事件入口按会话绑定——事件天生携带所属卷
             // 身份，两卷并发流式互不串扰（旧共享 eventSink 靠活跃卷猜测路由）。
             // execState 同步改挂会话级（权限卡/停止语义按卷隔离）。

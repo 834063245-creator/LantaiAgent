@@ -201,7 +201,7 @@ React 靠引用比较观察变化。store 是唯一提交口：
 ✅ 会话级工具/hook（plan/通信/discovery/merge/board/kill/request/spawn/task
    替换/compaction/converge/code-execution）：在 agent/blueprint.ts 的 standard() capability 表
    加一项（或 createAgentFromContext 第 3 参注入扩展蓝图）——不改 AgentConfig
-   （字段面冻结 31：specs/phase-6 AST 断言 + gate.mjs 计数扫描双层门禁）
+   （字段面冻结 23：specs/phase-6 AST 断言 + gate.mjs 计数扫描双层门禁）
 ✅ 注册顺序 = 表序（行表序 / section 表序 / capability 表序）：表序是字节契约
    （DeepSeek 前缀缓存 + phase-1 effective 快照依赖此序），插入必须显式选位置
 ✅ capability 只做组合不做 teardown：生命周期所有权走 ctx.effect；
@@ -259,7 +259,9 @@ preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
    工作区默认时自建会话作用域注册表（V5 选择器的机制位）；子 Agent 经
    ctx composition 服务 child() 继承（父子同面）
 ✅ 消费闭环（G0 修复）：面板清单 = panelDefs()（常量 + ctx.panels 贡献）；
-   命令面板 = listActions() + ctx.commands 折算；工具行 = composition/
+   命令清单 = 会话内建（ChatCore.builtinCommands）+ ctx.commands 折算 + 技能候选，
+   合流点 src/app/commands/command-catalog.ts（`/` 内联面板与 Ctrl+K 面板同源——
+   旧 ui/command-registry 单例已随 command-surface-rework 退役）；工具行 = composition/
    plugin-tool-rows.ts 折算（行 id 'plugin/<贡献 id>'，factory 缓存实例）。
    S4-4 甲（2026-08-23）：折算行进组合解析域（factoryComposition 快照，
    patch/preset 可寻址 plugin/<贡献 id> 行）——buildToolRegistry 单一循环
