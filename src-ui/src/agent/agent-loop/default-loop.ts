@@ -74,6 +74,13 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
     });
 
     for (let step = 0; ; step++) {
+      // ── 步骤边界：脉搏 + 栅栏（契约 v44，landmine L3 拆弹）──
+      // 一次调用两件事：记一次「无进展看门狗」的脉搏（步骤边界是天然脉搏点），
+      // 并裁决本轮是否已被硬截止作废。返回 false = **必须立刻停步**：那一轮已经被
+      // 判死（看门狗已 abort + 记账作废），再走一步就是又发一次注定挂住的请求、
+      // 又往卷里写一次没人要的事实。具名错误照抛——调用方（Agent.run 的 finally /
+      // 上层 catch）认的是 RunDeadlineExceededError 这个类型，不是文案。
+      if (!host.stepBoundary(signal)) throw host.abandonedError(signal);
       host.loopEvents.emitLoopEvent('step/start', { agentId: host.id, step });
       // 清除上一步的临时提醒 — 提醒只应对本轮 LLM 可见。
       host.transientReminders = [];
@@ -216,6 +223,9 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         // baseline-change-request 审批并重录两轨基线。
         // 失败语义：执行器内 fail-open + warn（磁盘故障不锁死工具链）。
         async (call) => {
+          // 遗弃栅栏（v44）：已作废的一轮不该再产生新事实——连「模型宣布过它」
+          // 这条审计补落也停（executor.addTool 侧同时拦执行，两处同一把钥匙）。
+          if (host.isAbandoned(signal)) return;
           host.sessionLog.append('tool/call', { call });
           await host.sessionLog.flushPersistence();
         },
@@ -342,11 +352,19 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         return;
       }
 
-      // ---- 收集工具结果（流式执行器在 stream 期间已执行）----
+      // ── 收集工具结果（流式执行器在 stream 期间已执行）----
       log.info('agent', 'collect streaming results', {
         tools: calls.map((c) => c.name),
         count: calls.length,
       });
+      // ⚡ 遗弃语义（landmine L3）：本轮若已被硬截止作废，**不再等**这些工具——
+      //   `awaitRemaining` 的 30 分钟 backstop 是「工具不返回时回合仍能往前」的
+      //   兜底；已被判死的一轮没有「往前」可言。`discard()` 清掉 pending 面
+      //  （迟到结果由此不再进会话投影；`tool/call` 审计事实早在分发时已落盘）。
+      if (host.stepBoundary(signal) === false) {
+        executor.discard();
+        throw host.abandonedError(signal);
+      }
       const pendingResults = await executor.awaitRemaining();
       // 按调用顺序构建结果
       const resultsByCallId = new Map(pendingResults.map((r) => [r.call.id, r]));

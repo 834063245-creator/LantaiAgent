@@ -4,7 +4,7 @@
 > 从 `src/agent/events.ts`（AGENT_EVENT_MAP / LOOP_EVENT_NAMES 运行时真源）+ 全仓调用点扫描生成 — 勿手改。
 > 事件面变更后重新生成并同 commit；不含时间戳——字节稳定是 `--check`（doc-sync 门禁）的前提。
 
-共 13 个事件（loop/能力域 8 + 工具管道域 5）。
+共 14 个事件（loop/能力域 9 + 工具管道域 5）。
 
 > R1 声明：loop/能力域事件是可观测监听面——非模型可见、不进 session log；
 > legacy tool/* 事件保持 executor 双发（bus + legacy sink），UI 零改动。
@@ -13,19 +13,20 @@
 
 | 事件 | mode | 载荷 | 声明处 | 发射点 | 监听点 |
 |---|---|---|---|---|---|
-| `request/end` | emit | RequestEndPayload | `src/agent/events.ts:54` | `src/agent/agent-loop/default-loop.ts:230` | — |
-| `request/start` | emit | RequestStartPayload | `src/agent/events.ts:53` | `src/agent/agent-loop/default-loop.ts:223` | — |
-| `step/end` | emit | StepEndPayload | `src/agent/events.ts:52` | `src/agent/agent-loop/default-loop.ts:341` · `src/agent/agent-loop/default-loop.ts:425` | — |
-| `step/start` | emit | StepStartPayload | `src/agent/events.ts:51` | `src/agent/agent-loop/default-loop.ts:77` | — |
-| `subagent/done` | emit | SubagentDonePayload | `src/agent/events.ts:56` | `src/agent/agent.ts:2051` · `src/agent/agent.ts:2059` | — |
-| `subagent/spawn` | emit | SubagentSpawnPayload | `src/agent/events.ts:55` | `src/agent/agent.ts:2033` | — |
-| `tool/around` | waterfall | ToolPipelineContext + string | `src/agent/events.ts:45` | `src/agent/streaming-executor.ts:525` | `src/agent/agent.ts:593` · `src/agent/events.ts:321` |
-| `tool/error` | emit | ToolPipelineContext + string | `src/agent/events.ts:47` | `src/agent/streaming-executor.ts:594` | — |
-| `tool/guard` | waterfall | ToolPipelineContext | `src/agent/events.ts:43` | `src/agent/streaming-executor.ts:207` | `src/agent/agent.ts:497` · `src/agent/events.ts:292` |
-| `tool/preflight` | serial | ToolPipelineContext | `src/agent/events.ts:44` | `src/agent/streaming-executor.ts:415` | `src/agent/agent.ts:602` · `src/agent/events.ts:305` |
-| `tool/result` | emit | ToolPipelineContext + object | `src/agent/events.ts:46` | `src/agent/streaming-executor.ts:596` · `src/agent/streaming-executor.ts:599` | — |
-| `turn/end` | emit | TurnEndPayload | `src/agent/events.ts:50` | `src/agent/agent-loop/default-loop.ts:432` | — |
-| `turn/start` | emit | TurnStartPayload | `src/agent/events.ts:49` | `src/agent/agent-loop/default-loop.ts:70` | `src/agent/agent-loop/observability.ts:25` |
+| `request/end` | emit | RequestEndPayload | `src/agent/events.ts:56` | `src/agent/agent-loop/default-loop.ts:240` | — |
+| `request/start` | emit | RequestStartPayload | `src/agent/events.ts:55` | `src/agent/agent-loop/default-loop.ts:233` | — |
+| `run/abandoned` | emit | RunAbandonedPayload | `src/agent/events.ts:60` | `src/agent/agent.ts:1418` | — |
+| `step/end` | emit | StepEndPayload | `src/agent/events.ts:54` | `src/agent/agent-loop/default-loop.ts:351` · `src/agent/agent-loop/default-loop.ts:443` | — |
+| `step/start` | emit | StepStartPayload | `src/agent/events.ts:53` | `src/agent/agent-loop/default-loop.ts:84` | — |
+| `subagent/done` | emit | SubagentDonePayload | `src/agent/events.ts:58` | `src/agent/agent.ts:2283` · `src/agent/agent.ts:2291` | — |
+| `subagent/spawn` | emit | SubagentSpawnPayload | `src/agent/events.ts:57` | `src/agent/agent.ts:2265` | — |
+| `tool/around` | waterfall | ToolPipelineContext + string | `src/agent/events.ts:47` | `src/agent/streaming-executor.ts:545` | `src/agent/agent.ts:645` · `src/agent/events.ts:341` |
+| `tool/error` | emit | ToolPipelineContext + string | `src/agent/events.ts:49` | `src/agent/streaming-executor.ts:614` | — |
+| `tool/guard` | waterfall | ToolPipelineContext | `src/agent/events.ts:45` | `src/agent/streaming-executor.ts:217` | `src/agent/agent.ts:549` · `src/agent/events.ts:312` |
+| `tool/preflight` | serial | ToolPipelineContext | `src/agent/events.ts:46` | `src/agent/streaming-executor.ts:435` | `src/agent/agent.ts:654` · `src/agent/events.ts:325` |
+| `tool/result` | emit | ToolPipelineContext + object | `src/agent/events.ts:48` | `src/agent/streaming-executor.ts:616` · `src/agent/streaming-executor.ts:619` | — |
+| `turn/end` | emit | TurnEndPayload | `src/agent/events.ts:52` | `src/agent/agent-loop/default-loop.ts:450` | — |
+| `turn/start` | emit | TurnStartPayload | `src/agent/events.ts:51` | `src/agent/agent-loop/default-loop.ts:70` | `src/agent/agent-loop/observability.ts:25` |
 
 ## feature → mechanism 叙事
 

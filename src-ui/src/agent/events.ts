@@ -12,7 +12,9 @@
 //
 // D4（2026-08-27）扩域——loop 生命周期 + 能力事件域（全部 emit·广播，观察者语义）：
 //   turn/start|end  step/start|end  request/start|end   subagent/spawn|done
-// 发射点：Agent.runLoop / Agent.spawnSubAgent（消费漏斗）；监听面 = Agent.onLoopEvent。
+//   run/abandoned（v44，2026-09-20）
+// 发射点：Agent.runLoop / Agent.spawnSubAgent / Agent._onRunAbandoned（消费漏斗）；
+// 监听面 = Agent.onLoopEvent。
 // R1 声明：本域事件是可观测监听面，**非模型可见、不进 session log**——session 溯源
 // 仍走三入口 + 既有 'turn/start' sessionLog append，双轨不混。
 //
@@ -54,6 +56,8 @@ export const AGENT_EVENT_MAP = {
   'request/end': { mode: 'emit' },
   'subagent/spawn': { mode: 'emit' },
   'subagent/done': { mode: 'emit' },
+  // ── 运行看门狗（v44，2026-09-20 landmine L3 拆弹）──
+  'run/abandoned': { mode: 'emit' },
 } as const;
 
 export type AgentEventName = keyof typeof AGENT_EVENT_MAP;
@@ -112,6 +116,20 @@ export interface SubagentDonePayload {
   ok: boolean;
   async: boolean;
 }
+/** 运行看门狗硬截止作废了本轮（v44）——本轮**不会**再有 turn/end 之外的正常收尾
+ *  （那一轮的 loop 可能永远留在栈上），故作废事实单独成事件，便于组合层/诊断面
+ *  观察「有幽灵轮被遗弃」。载荷与 `RunDeadlineExceededError` 同源同口径。 */
+export interface RunAbandonedPayload {
+  agentId: string;
+  /** 运行记录 id（运行账 RunRecord.id）——与日志/错误同一身份。 */
+  runId: number;
+  /** 运行种类（turn/wake/goal/compact/subagent）。 */
+  kind: string;
+  /** 作废时的无进展时长（ms）。 */
+  noProgressMs: number;
+  /** 最后观测到的脉搏种类（chunk/tool/step）——「最后动的是什么」。 */
+  lastPulse: 'chunk' | 'tool' | 'step';
+}
 
 /** loop/能力域载荷形状表 —— emit 域新事件的强制登记处（完整性 guard：emit 域
  *  除 tool/result|error 外必须在此有键；此处的键必须在 AGENT_EVENT_MAP 为 emit）。 */
@@ -124,6 +142,7 @@ export interface LoopEventPayload {
   'request/end': RequestEndPayload;
   'subagent/spawn': SubagentSpawnPayload;
   'subagent/done': SubagentDonePayload;
+  'run/abandoned': RunAbandonedPayload;
 }
 
 export type LoopEventName = keyof LoopEventPayload;
@@ -139,6 +158,7 @@ export const LOOP_EVENT_NAMES = [
   'request/end',
   'subagent/spawn',
   'subagent/done',
+  'run/abandoned',
 ] as const satisfies readonly LoopEventName[];
 
 /** guard：同步裁决，非 null = 拦截（返回拦截文案）。 */

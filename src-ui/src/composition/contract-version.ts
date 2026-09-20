@@ -22,9 +22,27 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 43;
+export const OPEN_SURFACE_CONTRACT_VERSION = 44;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v44（2026-09-20）**运行看门狗**（landmine L3 拆弹）：`AgentLoopHost` 新增三个成员
+ *  ——`stepBoundary(signal): boolean`（步骤边界：记一次脉搏 + 栅栏裁决；返回 false =
+ *  本轮已被硬截止作废，loop 必须立刻停步）、`abandonedError(signal): Error`（具名
+ *  `RunDeadlineExceededError`，调用方按类型落墓碑）、`isAbandoned(signal): boolean`
+ *  （栅栏纯读法，给「不该再产生新事实」的写入点用）。同版 `events.ts` 新增 emit 域
+ *  事件 `run/abandoned`（载荷 RunAbandonedPayload：agentId/runId/kind/noProgressMs/
+ *  lastPulse）——本轮被作废后**不会**再有正常收尾，故作废事实单独成事件。
+ *  **动机（真机病象）**：模型请求链上唯一的活性守卫是 `provider/idle-stream.ts` 的
+ *  30s 空闲计时器，而它只 abort 一个 controller ——等待方不认 signal（本机 IPC /
+ *  凭据解析 / 吞掉 abort 的适配器与 SSE 读）时 `for await` 永不返回 ⇒ 连「停滞错误」
+ *  都产不出来 ⇒ `provider/retry.ts` 的 15 分钟停滞预算永不生效 ⇒ `agent.run()` 永不
+ *  settle（停止钮无效；v43 之后变「幽灵轮」：账注销了、loop 永留栈上）。
+ *  同版 `Agent.run()` 把 `runLoop` 与 **硬截止** 和 **signal 中止** 竞速：
+ *  无进展 20min → 作废该轮（栅栏 + abort + 具名错误 settle，迟到事实不进投影）；
+ *  用户停止 → 同一竞速立刻 settle（停止因此真解旋，`_loopDepth` 归零）。
+ *  **对外可感知**：第三方 loop 不调 `stepBoundary` 照旧跑（脉搏少一路，误判方向是
+ *  「更晚作废」而非误杀）；读 `signal.aborted` 的 loop 若想识别「被作废 vs 用户停止」，
+ *  用 `host.isAbandoned(signal)`。阈值参数**不扩 AgentConfig**（23 字段冻结）。
  *  v43（2026-09-20）**运行态收口**：`AgentLoopHost` 去掉 `isRunning` 成员（get/set 一对）
  *  ——「这卷/这轮在不在跑」的唯一事实改为**运行账**（`agent/execution-state.ts` 的
  *  RunRecord；`Agent.isRunning` 派生自它，UI 全域读 `agentSessionState.runStateOf`）。

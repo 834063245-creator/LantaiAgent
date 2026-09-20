@@ -72,6 +72,23 @@ export interface AgentLoopHost {
   sink(ev: AgentEvent): void;
   appendMessage(kind: 'user/message' | 'assistant/text' | 'tool/result', message: Message): void;
   stream(signal: AbortSignal, turn: number, executor?: StreamingToolExecutor): Promise<LoopStreamResult>;
+  /** 步骤边界（v44，2026-09-20 landmine L3 拆弹）：loop 每步入场调一次——
+   *  **一次调用两件事**：① 记一次「无进展看门狗」的脉搏（步骤边界是天然脉搏点）；
+   *  ② 栅栏裁决 —— 返回 `false` = 本轮已被硬截止**作废**，loop 必须立刻停止
+   *  （`throw host.abandonedError(signal)`，别当普通失败再试一步）。
+   *  **缺省（第三方 loop 不调）= 该轮的脉搏只剩 chunk 到达与工具结果落盘两条**
+   *  ——不需要它也能跑（看门狗照常兜底），只是「模型在长时间思考、工具还没结果」
+   *  的窗口少了步骤这一路脉搏（误判方向是**更晚**作废，不会误杀）。 */
+  stepBoundary(signal: AbortSignal): boolean;
+  /** 本轮被硬截止作废时的**具名错误**（v44）——`stepBoundary` 返回 false 之后
+   *  照抛它，别自己拼文案：调用方（`Agent.run` 调用面 / chat-core 墓碑）认的是
+   *  `RunDeadlineExceededError` 这个类型与它携带的 runId / 无进展时长 / 最后脉搏。
+   *  未作废时调用 = 抛一个诚实报错（调用点错了，错误不静默）。 */
+  abandonedError(signal: AbortSignal): Error;
+  /** 栅栏**纯读法**（v44；无副作用，与 `stepBoundary` 分开的理由在此）：
+   *  「本轮是不是已经被硬截止作废了」——给「不该再产生新事实」的写入点用
+   *  （如分发前的 `tool/call` 审计补落；一旦作废，那条审计也不该再写）。 */
+  isAbandoned(signal: AbortSignal): boolean;
   tokenCountWithEstimation(): number;
   compactNow(signal: AbortSignal): Promise<string>;
   /** 自动压缩入口（step 前 pre-flight 主触发）— 尾部按 retainRatio token
@@ -98,6 +115,11 @@ export interface AgentLoopHost {
   //   旧轮收尾把新轮刚点亮的状态清掉 = 「会话在跑而创作坞丢运行态」那一族病灶的载体。
   //   第三方 loop 若仍写 `host.isRunning`：JS 侧只是给宿主对象挂了个无主属性（no-op），
   //   运行态不再受其影响。变更四步见 composition/contract-version.ts（v43）。
+  // ⚡ 契约 v44（2026-09-20 运行看门狗 = landmine L3 拆弹）：**新增成员
+  //   `stepBoundary(signal): boolean`**（方法区，见上方成员注）。语义增量为零：
+  //   不调它的第三方 loop 照旧跑（脉搏少一路，误判方向是更晚作废，不误杀）；调了
+  //   的 loop 在硬截止作废后能**主动停步**。同版 `Agent.run()` 加硬截止竞速
+  //   （`RunDeadlineExceededError`）。变更四步见 composition/contract-version.ts（v44）。
   get currentRunSignal(): AbortSignal | null;
   set currentRunSignal(v: AbortSignal | null);
   get transientReminders(): string[];

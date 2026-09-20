@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：43
+当前版本：44
 
-<!-- contract-fingerprint: f0b00637965cad70ce25309e88a5789911b37df3ca8d96659fdbeeeb04ea26b6 -->
+<!-- contract-fingerprint: e84d67ce951e43804596f37a12c310e0bae8ecf085e1425808f7dd4f8c253ab4 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -31,8 +31,8 @@
 | `src/composition/roster.ts` | **用户 preset 写法契约**（v38 补登记，用户裁定 F）：`CompositionPatchSchema`——四行域（tools/prompt/capabilities/shell）+ 七 seam 裁剪域（`seam/<域>`）键，用户手写在 `~/.lantai/composition/presets/<id>/roster.patch.yml`；`ResolvedComposition` / `CompositionDiagnostics` 为解析产物形状 |
 | `src/composition/activation.ts` | **激活账**（v38 新增）：`ActivationSpec`（插件在 apply 期登记的形状——`{ resources?, exclusive?, start, stop? }`）+ 引用计数账（retain/release/plan，键 = 插件名）；叶模块（零项目内运行时依赖） |
 | `src/composition/activation-service.ts` | `ctx.activation`（v38 新增第五个组合层 service）：`declare` / `planFor` / `retainForComposition` / `releaseAll` / `states`——插件面声明与装配面记账的契约载体 |
-| src/agent/agent-loop/types.ts | AgentLoop/AgentLoopHost（D13 loop seam 契约） |
-| src/agent/agent-loop/default-loop.ts | 默认 loop 实现（行为逐字节一致，D13） |
+| `src/agent/agent-loop/types.ts` | AgentLoop/AgentLoopHost（D13 loop seam 契约）。**v44 起新增 `stepBoundary` / `abandonedError` / `isAbandoned` 三成员**（运行看门狗：步骤边界脉搏 + 硬截止栅栏 + 具名作废错误） |
+| `src/agent/agent-loop/default-loop.ts` | 默认 loop 实现（行为逐字节一致，D13）。**v44 起每步入场调 `host.stepBoundary(signal)`**，为 false 即抛 `host.abandonedError(signal)` 停步；分发前审计补落加同款栅栏 |
 | src/agent/agent-loop/agent-loop-service.ts → `src/plugins/builtin/agent-loop-service/index.ts` | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜；S5b 起本体在产物域，活动面留 `agent-loop-active.ts`——**清单真源以 `contract-version.ts` 为准，本行同步实况**） |
 
 （`graph-service.ts` / `ctx.graph` seam 随图谱功能全量退役移除，2026-09-09。）
@@ -98,7 +98,8 @@
 
 | 43 | 2026-09-20 | **运行态收口（run-state single source）**：`AgentLoopHost` 去掉 `isRunning`（get/set 一对）——「这卷/这轮在不在跑」的唯一事实改为**运行账**（`agent/execution-state.ts` 的 RunRecord 表；`Agent.isRunning` 派生自它，UI 全域读 `agentSessionState.runStateOf` / `runningSessions`）。同版 `default-loop` 不再写 `host.isRunning`，并把「本轮结束时 inbox 还有未注入消息 ⇒ 补唤醒」上移到 `Agent.run()` 的 finally（在运行记录注销**之后**——原先在 loop 的 finally 里 queueMicrotask，新轮会在旧记录还活着时被叫醒，正是「旧轮收尾清掉新轮」那一族的温床）。运行账 API 破坏性变更：`start()` / `done(runSignal?)` / `stop()` / `forceReset()` 退役，改为 `beginRun(kind)` → `RunHandle{signal,end}`（**谁起谁收、按记录身份注销**——「清掉别人的运行」在类型上不可能）/ `runFor(signal)` / `stopAll()` / `discardRuns(ids)`；`isRunning` 变只读派生值，新增 `runState`（running/kinds/count/since）与 `runEpoch`。装配面新增 `agentSessionState.bindExec`（账是**卷级恒定**的那一本：装配只绑定、绝不换账——换账 = 在跑的记录被孤儿化 = 「会话在跑而 UI 说空闲」）。**对外可感知**：第三方 loop 写 `host.isRunning` 变 no-op（给宿主对象挂无主属性），读该字段需改读运行账；第三方若直接持有 `ExecStateInstance`，旧四个方法不再存在。**事件序列与载荷零变更**（convergence 双轨零漂移） | 用户 2026-09-20 拍板 B 案（「代码层面有质量问题、总是复发」→ 结构性收口 + 基线变更授权）；病象与四次同族修复（`994c4c4d`/`32bc8dd4`/`b67ac7e8`/`54981624`）见 `docs/landmine-map.md` 与 `tests/run-state-ledger.test.ts` 头注 |
 
-## 变更流程（guard 红 → 修复四步）
+| 44 | 2026-09-20 | **运行看门狗（landmine L3 拆弹：不认 signal 的 await 不再永久挂起）**：`AgentLoopHost` 新增三个成员——`stepBoundary(signal): boolean`（步骤边界：记一次「无进展」脉搏 + 栅栏裁决；返回 `false` = 本轮已被硬截止作废，loop 必须立刻停步）、`abandonedError(signal): Error`（具名 `RunDeadlineExceededError`，调用方按**类型**落墓碑）、`isAbandoned(signal): boolean`（栅栏纯读法，给「不该再产生新事实」的写入点用）。同版 `events.ts` 新增 emit 域事件 **`run/abandoned`**（`RunAbandonedPayload{agentId,runId,kind,noProgressMs,lastPulse}`）——被作废的那一轮**不会**再有正常收尾，故作废事实单独成事件。**动机**：模型请求链上唯一的活性守卫是 `provider/idle-stream.ts` 的 30s 空闲计时器，而它只 abort 一个 controller——等待方不认 signal（本机 IPC / 凭据解析 / 吞掉 abort 的适配器与 SSE 读）时 `for await` 永不返回 ⇒ 连「停滞错误」都产不出来 ⇒ `provider/retry.ts` 的 15 分钟停滞预算永不生效 ⇒ `agent.run()` 永不 settle（停止钮无效；v43 之后症状变成「幽灵轮」——账注销了、那条 loop 永留栈上）。同版 `Agent.run()` 把 `runLoop` 与**硬截止**和**signal 中止**竞速：无进展 20min → 作废该轮（栅栏 → abort → 具名错误 settle；迟到 chunk / 迟到工具结果只留审计、不进投影；不补唤醒）；用户停止 → 同一竞速立刻 settle（停止因此**真解旋**，`_loopDepth` 归零）。**对外可感知**：第三方 loop 不调 `stepBoundary` 照旧跑（该轮脉搏少一路，误判方向是「更晚作废」而非误杀慢模型）；想区分「被作废」与「用户停止」读 `host.isAbandoned(signal)`。阈值参数**不扩 `AgentConfig`**（23 字段冻结），走 `agent/run-watchdog.ts` 的常量 + 注入面 | `docs/landmine-map.md` 第四批 L3（复现钉 `tests/landmine-l3-hang.test.ts` 两条 `it.fails` 按原文件交代改写为正向断言）；参数默认（无进展 warn 5min / abandon 20min、绝对上限不设）沿用户 2026-09-20 批注的推荐项 |
+
 
 1. 改契约文件（接口形状 / 注册契约 / 事件载荷 / manifest schema）；
 2. `src/composition/contract-version.ts` 的 `OPEN_SURFACE_CONTRACT_VERSION` +1；
