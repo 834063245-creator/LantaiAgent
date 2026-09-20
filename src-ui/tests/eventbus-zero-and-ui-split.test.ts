@@ -42,7 +42,6 @@ const UI_MANIFEST = [
   'chat-store.ts',
   'chat-stream.ts',
   'chat-utils.ts',
-  'command-registry.ts',
   'context-menu.ts',
   'dataflow-store.ts',
   'debug.ts',

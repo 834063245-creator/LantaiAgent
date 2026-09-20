@@ -13,14 +13,14 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
+import type { CommandContribution } from '../src/composition/services';
 import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
 import { ComposerDock } from '../src/plugins/builtin/compose-dock/ComposerDock';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { resetComposeStoresForTests } from '../src/state/compose-store';
 import { getChatStore } from '../src/ui/chat-store';
-import { type CommandDef, CommandRegistry } from '../src/ui/command-registry';
 
-function fakeCore(panelId: string): ChatCore {
+function fakeCore(panelId: string, commands: readonly CommandContribution[] = []): ChatCore {
   return {
     panelId,
     sendMessage: vi.fn(),
@@ -28,6 +28,9 @@ function fakeCore(panelId: string): ChatCore {
     openFilePicker: vi.fn(),
     registerComposer: vi.fn(),
     executeCommand: vi.fn(),
+    // 命令清单真源（2026-09-19 command-surface-rework）：旧 CommandRegistry
+    // 单例退役——测试经会话内建命令位注入，断言面零改动。
+    builtinCommands: () => [...commands],
   } as unknown as ChatCore;
 }
 
@@ -43,14 +46,17 @@ interface InputSeed {
   draftText?: string;
 }
 
-/** 装配 core + 播种会话/输入 store，并把 ComposerDock 渲染进 container。返回 fake core。 */
+/** 装配 core + 播种会话/输入 store，并把 ComposerDock 渲染进 container。返回 fake core。
+ *  commands = 注入的命令清单（命令真源 = app/commands/command-catalog 合流点，
+ *  测试经会话内建命令位提供——旧 CommandRegistry 单例已退役）。 */
 async function mountDock(
   panelId: string,
   container: HTMLDivElement,
   seed: InputSeed,
   onRoot: (r: Root) => void,
+  commands: readonly CommandContribution[] = [],
 ): Promise<ChatCore> {
-  const core = fakeCore(panelId);
+  const core = fakeCore(panelId, commands);
   useCoreStore.getState().setChatCore(core);
   getChatStore(panelId).sess.setState({
     sessions: [{ id: 1, label: '案卷一' }],
@@ -177,13 +183,13 @@ describe('ComposerDock 输入历史键盘导航（↑↓）', () => {
 });
 
 describe('ComposerDock 斜杠命令键盘导航', () => {
-  const SLASH_CMDS: CommandDef[] = [
+  const SLASH_CMDS: CommandContribution[] = [
     {
       id: 'alpha',
       label: 'Alpha 命令',
       description: '测试 alpha',
       group: '案卷',
-      shortcut: '/alpha',
+      slash: '/alpha',
       action: { type: 'fill', text: '/alpha ' },
     },
     {
@@ -191,7 +197,7 @@ describe('ComposerDock 斜杠命令键盘导航', () => {
       label: 'Beta 命令',
       description: '测试 beta',
       group: '案卷',
-      shortcut: '/beta',
+      slash: '/beta',
       action: { type: 'fill', text: '/beta ' },
     },
   ];
@@ -199,7 +205,6 @@ describe('ComposerDock 斜杠命令键盘导航', () => {
   let root: Root | null = null;
 
   beforeEach(() => {
-    CommandRegistry.instance.registerAll(SLASH_CMDS); // registerAll 按 id 去重，可重复调用
     resetComposeStoresForTests();
     resetCanvasStoresForTests();
     container = document.createElement('div');
@@ -217,9 +222,15 @@ describe('ComposerDock 斜杠命令键盘导航', () => {
   });
 
   it('输入 / 弹出面板：↑↓ 移动高亮，Enter 执行当前命令（非发送）', async () => {
-    const core = await mountDock('slash-nav', container, { inputText: '/' }, (r) => {
-      root = r;
-    });
+    const core = await mountDock(
+      'slash-nav',
+      container,
+      { inputText: '/' },
+      (r) => {
+        root = r;
+      },
+      SLASH_CMDS,
+    );
     const ta = container.querySelector<HTMLTextAreaElement>('.pp-composer-row textarea');
     expect(container.querySelector('.pp-slash')).not.toBeNull();
     let items = [...container.querySelectorAll<HTMLButtonElement>('.pp-slash-item')];
@@ -245,9 +256,15 @@ describe('ComposerDock 斜杠命令键盘导航', () => {
   });
 
   it('斜杠面板激活时 Shift+Enter 不执行命令也不发送（换行留给 textarea，2026-09-03）', async () => {
-    const core = await mountDock('slash-shift', container, { inputText: '/' }, (r) => {
-      root = r;
-    });
+    const core = await mountDock(
+      'slash-shift',
+      container,
+      { inputText: '/' },
+      (r) => {
+        root = r;
+      },
+      SLASH_CMDS,
+    );
     const ta = container.querySelector<HTMLTextAreaElement>('.pp-composer-row textarea');
     expect(container.querySelector('.pp-slash')).not.toBeNull();
 
@@ -260,9 +277,15 @@ describe('ComposerDock 斜杠命令键盘导航', () => {
   });
 
   it('Esc 关闭斜杠面板并去掉触发词', async () => {
-    await mountDock('slash-esc', container, { inputText: '/al' }, (r) => {
-      root = r;
-    });
+    await mountDock(
+      'slash-esc',
+      container,
+      { inputText: '/al' },
+      (r) => {
+        root = r;
+      },
+      SLASH_CMDS,
+    );
     const ta = container.querySelector<HTMLTextAreaElement>('.pp-composer-row textarea');
     expect(container.querySelector('.pp-slash')).not.toBeNull();
     keyOn(ta!, 'Escape');

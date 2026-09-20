@@ -40,12 +40,14 @@ import type {
 } from './host';
 import {
   agentSessionState,
-  CommandRegistry,
   composerSubmitOnKey,
+  ensureSkillCatalog,
   extractImageFiles,
+  filterCommands,
   getChatStore,
   getComposeStore,
   getModel,
+  listCommands,
   loadSettings,
   MODE_DESCRIPTIONS,
   MODE_LABELS,
@@ -57,6 +59,7 @@ import {
   previewUrlFor,
   resolveNewSessionDefault,
   selectPreset,
+  slashOnly,
   thinkingOptionsFor,
   useCoreStore,
   useModeStore,
@@ -519,9 +522,12 @@ export const ComposerDock = memo(function ComposerDock() {
   const compLocked = activeSessionId != null && !compBlank;
   const compLabel = compInfo.presetId;
 
-  /* ── 斜杠命令（沿用旧 composer 逻辑）＋ 翰 入口（v2 2026-08-31）：
-   *    命令面板不再只靠盲打 / 发现——设置行「翰」按钮开同一层面板
-   *    （空查询 = 全量命令）。打字优先：手输即散翰面板，/ 触发词接管过滤。 ── */
+  /* ── 斜杠命令 ＋ 翰 入口（v2 2026-08-31；2026-09-19 command-surface-rework）：
+   *    命令清单真源 = app/commands/command-catalog 合流点（本卷内建命令 +
+   *    ctx.commands 贡献 + 技能候选）——旧 CommandRegistry 单例已退役。
+   *    命令面板不再只靠盲打 / 发现：设置行「翰」按钮开同一层面板（空查询 =
+   *    全量，含无斜杠触发词的键位命令）。打字优先：手输即散翰面板，
+   *    / 触发词接管过滤（只列斜杠触达的命令）。 ── */
   const slashQuery = useMemo(() => {
     const v = inputText;
     if (!v) return null;
@@ -534,10 +540,14 @@ export const ComposerDock = memo(function ComposerDock() {
   const effectiveSlashQuery = slashQuery ?? (menuOpen ? '' : null);
   const slashCommands = useMemo(() => {
     if (effectiveSlashQuery === null) return [];
-    const q = effectiveSlashQuery.toLowerCase();
-    const all = CommandRegistry.instance.getAll();
-    if (q === '') return all;
-    return all.filter((c) => c.shortcut.toLowerCase().includes(q) || c.label.toLowerCase().includes(q));
+    const all = listCommands(core);
+    return filterCommands(slashQuery !== null ? slashOnly(all) : all, effectiveSlashQuery);
+  }, [effectiveSlashQuery, slashQuery, core]);
+  /* 面板打开即确保技能候选新鲜（工作区切换后无需重挂）——同步读缓存，
+   * 键变了则后台重扫（见 app/commands/skill-catalog）。 */
+  useEffect(() => {
+    if (effectiveSlashQuery === null) return;
+    ensureSkillCatalog(useShellStore.getState().projectPath);
   }, [effectiveSlashQuery]);
   /* ── C3（2026-08-27）：斜杠面板键盘导航（↑↓ 选、Enter 执行、Esc 关）。 ── */
   const [slashIdx, setSlashIdx] = useState(0);
@@ -567,17 +577,24 @@ export const ComposerDock = memo(function ComposerDock() {
   );
 
   /* ── 粘贴附图（B2 2026-09-08）：clipboardData.items kind='file' 且 mime 为
-   *    图片 → 附图道（D-8② 门禁：非 vision 模型贴图提示并忽略）；文本粘贴零影响。 ── */
+   *    图片 → 附图道；文本粘贴零影响。
+   *    ⚡ 语义变更（2026-09-19）：**声明面不再是粘贴门禁**。旧行为「非 vision
+   *    模型贴图直接忽略」= 用户意图被静默丢弃（图没收、没缩略图、没提示对象，
+   *    连路径都不留）——与 agent 侧新发送策略（先发、被拒再降级，见 agent.ts
+   *    streamOnce 附图分支注）自相矛盾：那边已改为「一律先发」，这边却仍按声明
+   *    把图拦在门外。现在图一律收进附图道，声明只决定**要不要提示**。
+   *    注：夹选 / 拖放（attachPaths）仍按声明分流走路径附件——那是**有意的**
+   *    文本模型语义（图作文件引用，模型可按路径读取），非静默丢弃，故不在此列。 ── */
   const onComposerPaste = useCallback(
     (e: ClipboardEvent<HTMLTextAreaElement>) => {
       const files = extractImageFiles(e.clipboardData.items);
       if (files.length === 0) return; // 文本/非图片粘贴走默认
       e.preventDefault();
-      if (!imageCapable) {
-        setLocalNotice('当前模型不支持图片输入——贴图已忽略（可在设置行换 vision 模型）');
-        return;
-      }
+      // 收图无条件——发送面会兜底（真被服务商拒 → 记档 + 改文字占位重发）
       void core?.intakeImageFiles(files);
+      if (!imageCapable) {
+        setLocalNotice('当前模型未声明图片输入——图已收；若服务商拒收会自动改用文字转述（可在设置行换 vision 模型）');
+      }
     },
     [core, imageCapable],
   );
@@ -907,7 +924,7 @@ export const ComposerDock = memo(function ComposerDock() {
                   core?.executeCommand(c);
                 }}
               >
-                <span className="pp-slash-shortcut">{c.shortcut}</span>
+                <span className="pp-slash-shortcut">{c.slash ?? c.kbd ?? ''}</span>
                 <span className="pp-slash-label">{c.label}</span>
               </button>
             ))}

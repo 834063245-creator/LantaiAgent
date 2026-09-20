@@ -22,9 +22,19 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 41;
+export const OPEN_SURFACE_CONTRACT_VERSION = 42;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v42（2026-09-19）斜杠命令面重做（command-surface-rework）：`CommandContribution`
+ *  的 `shortcut: string` 拆为 `slash?: string` + `kbd?: string`——旧字段一名两义
+ *  （'/dock' 斜杠触发词与 'ctrl P' 键位提示同处一栏），命令面板把键位当命令陈列、
+ *  斜杠面板把斜杠词当快捷键显示。同版 `CommandAction` 由内联联合提升为具名导出，
+ *  且 `local` 的 handler 收斜杠参数（`(arg: string) => void`；无参 = 空串）——
+ *  `/goal resume` · `/remember <事实>` 一类带参命令不再需要在发送面硬编码分支。
+ *  **对外可感知**：第三方插件贡献命令必须改字段名（`shortcut: '/x'` → `slash: '/x'`），
+ *  旧名不留别名；两字段皆缺省 = 只进 Ctrl+K 面板（不再强制每条命令都有触达词）。
+ *  同版命令清单唯一真源收归本通道——旧 `ui/command-registry` 单例与裸表整文件退役，
+ *  消费合流点 = `src/app/commands/command-catalog.ts`（内建 + 贡献 + 技能候选）。
  *  v41（2026-09-17）ctx.llm seam：连接怪癖的**用户可编辑面**——`ProviderRuntimeArgs`
  *  新增可选 `headers`（自定义请求头，源头 = `ProviderSettings.headers`）：三方言
  *  stream/prewarm/fetchModels 一并携带，合并序「自定义头在前、内核必需头与凭据头

@@ -86,7 +86,10 @@ export const selectPreset = impl.selectPreset;
 export const usePresetStore = impl.usePresetStore;
 export const getChatStore = impl.getChatStore;
 export const msgStoreFor = impl.msgStoreFor;
-export const CommandRegistry = impl.CommandRegistry;
+export const listCommands = impl.listCommands;
+export const slashOnly = impl.slashOnly;
+export const filterCommands = impl.filterCommands;
+export const ensureSkillCatalog = impl.ensureSkillCatalog;
 export const useCoreStore = impl.useCoreStore;
 export const iconHtml = impl.iconHtml;
 
@@ -107,6 +110,7 @@ export type TocInkLine = import('./host').TocInkLine;
 export type TocInkBucket = import('./host').TocInkBucket;
 export type SourcedBlock = import('./host').SourcedBlock;
 export type FileDragEvent = import('./host').FileDragEvent;
+export type CommandContribution = import('./host').CommandContribution;
 
 // ── esbuild automatic JSX 注入面（--jsx=automatic --jsx-import-source=./host）──
 

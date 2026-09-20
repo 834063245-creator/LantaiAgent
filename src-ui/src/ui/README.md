@@ -3,8 +3,10 @@
 > 定位一句话（eventbus-zero-and-ui-split-plan §3.3）：本目录是**chat 编排域核心 + 旧层命令式基础设施**，
 > 不是杂物间。2026-08-19 总线归零 + ui/ 拆分（P0-P3）后的终态残余；**2026-08-22 C13 休眠层 sweep
 > 删除 9 个死件**（agent-visualizer/chat-utils/context-menu/file-translator+css/file-viewer/
-> markdown-file-preview/message-height/pretext-cache——可达性闭包实测零活引用），现 **14 个文件
-> （13 ts + 本 README）**，只减不增（守护 `tests/eventbus-zero-and-ui-split.test.ts`，COMPLETE=true）。
+> markdown-file-preview/message-height/pretext-cache——可达性闭包实测零活引用）；**2026-09-19
+> command-surface-rework 删 `command-registry.ts`**（斜杠命令唯一真源收归 `ctx.commands` 通道，
+> 合流点 = `src/app/commands/command-catalog.ts`）。现 **13 个文件（12 ts + 本 README）**，
+> 只减不增（守护 `tests/eventbus-zero-and-ui-split.test.ts`，COMPLETE=true）。
 
 ## 目录契约
 
@@ -19,7 +21,7 @@
 |---|---|---|
 | 冻结（禁改） | `chat-session.ts` `chat-stream.ts` `part-mutator.ts` | chat 编排域核心；`agent/execution-state.ts`（在 agent/）同列 |
 | chat 编排域 | `chat-store.ts`（聚合入口）`message-model.ts` `tool-semantics.ts` `agent-panel-store.ts` | 面板级 store 四件套在 `src/state/`（scoped/messages/session/panel/input），聚合编排在此 |
-| 命令式基础设施 | `runtime-adapter.ts` `lsp-client.ts` `command-registry.ts` `subagent-sink.ts` `resize-zones.ts` `icons.ts` | imperative-DOM/旧层宿主；LspService 是子系统服务化样板 |
+| 命令式基础设施 | `runtime-adapter.ts` `lsp-client.ts` `subagent-sink.ts` `resize-zones.ts` `icons.ts` | imperative-DOM/旧层宿主；LspService 是子系统服务化样板 |
 
 ## 依赖方向
 

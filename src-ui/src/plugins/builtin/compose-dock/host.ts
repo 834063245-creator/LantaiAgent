@@ -10,12 +10,17 @@
 export { agentSessionState } from '../../../agent/agent-session-state';
 export { useCoreStore } from '../../../app/chat/core-instance';
 export { extractImageFiles, previewUrlFor } from '../../../app/chat/image-intake';
+// 命令目录（2026-09-19 command-surface-rework）：斜杠命令与命令面板的唯一合流点
+// ——旧 `ui/command-registry` 单例已退役（退役命令陈列 + 就地写全局表两病灶）
+export { filterCommands, listCommands, slashOnly } from '../../../app/commands/command-catalog';
+export { ensureSkillCatalog } from '../../../app/commands/skill-catalog';
 export { useShellStore } from '../../../app/shell-store';
 export type { FileDragEvent } from '../../../bridge';
 export { isMockMode, watchFileDragDrop } from '../../../bridge';
 // 组合芯片（S6 P1e）：preset 清单/选择态读取面 + 全局默认选择入口 + 卷消息面
 // （空白判据 = 本卷消息数，与写路径二道闸同一把尺子）
 export { selectPreset } from '../../../composition/preset-assembly';
+export type { CommandContribution } from '../../../composition/services';
 export type { SourcedBlock } from '../../../paper/block-model';
 export { composerSubmitOnKey } from '../../../paper/ime';
 export { createInkCache, INK_FAIL, inkBarColorOf, inkColorOf, inkForBlock } from '../../../paper/ink';
@@ -60,5 +65,4 @@ export { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '
 export type { PresetStoreState } from '../../../state/preset-store';
 export { usePresetStore } from '../../../state/preset-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
-export { CommandRegistry } from '../../../ui/command-registry';
 export { iconHtml } from '../../../ui/icons';

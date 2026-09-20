@@ -21,6 +21,7 @@ import { log } from '../../agent/logger';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { totalTokens } from '../../agent/token-meter/usage';
 import { useShellStore } from '../../app/shell-store';
+import type { CommandContribution } from '../../composition/services';
 import { sessionExecute } from '../../composition/session-persistence-service';
 import { activeSpace } from '../../composition/space-service';
 import { pickDropAnchor } from '../../paper/space';
@@ -46,9 +47,10 @@ import {
   msgStoreForActive,
 } from '../../ui/chat-store';
 import * as Stream from '../../ui/chat-stream';
-import { type CommandDef, CommandRegistry, DEFAULT_COMMANDS } from '../../ui/command-registry';
 import { type ChatMessage, resetMsgIdCounter, type UserMessage } from '../../ui/message-model';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
+import { listCommands, parseSlashInput } from '../commands/command-catalog';
+import { ensureSkillCatalog } from '../commands/skill-catalog';
 import {
   admitImageBlob,
   admitImageFromPath,
@@ -60,55 +62,14 @@ import type { PromptShelfHandle } from './PromptShelf';
 import * as Branch from './session-branch';
 import * as SessionComposition from './session-composition';
 
-// ── 斜杠技能候选缓存（skills-mcp-production-plan Commit 4）──
-// CommandRegistry.skillProvider 是同步签名；技能扫描是异步——用模块级缓存
-// 桥接：chat-core 构造时 fire-and-forget 扫一次当前工作区技能，provider 同步
-// 读缓存。技能变更（装/删）经 SettingsPage 或重开会话后自然刷新。
-let _slashSkillCache: Array<{ name: string; description?: string }> = [];
-
-/** 刷新斜杠技能候选（当前工作区 .lantai/skills + ~/.lantai/skills）。
- *  chat-core 构造时调用（会话创建低频）；无工作区/读失败保持空候选。 */
-async function refreshSlashSkillCache(): Promise<void> {
-  try {
-    const path = useShellStore.getState().projectPath;
-    if (!path) return;
-    const { scanSkills } = await import('../../agent/skills');
-    const scan = await scanSkills(path);
-    _slashSkillCache = scan.skills.map((s) => ({ name: s.name, description: s.description }));
-  } catch {
-    // 技能读不到不阻塞 slash 路由——保持空候选
-  }
-}
+// ── 斜杠技能候选 ──
+// 真源 = app/commands/skill-catalog（工作区路径键控缓存）；chat-core 构造时
+// 同步确保一次，工作区已变则后台重扫——命令清单是同步读取面，见该模块头注。
 
 /** 视图注册的输入框命令式接口（聚焦/全选），其余输入状态一律走 input-store */
 export interface ComposerApi {
   focus: () => void;
   selectEnd: () => void;
-}
-
-/** 视图注册的 @ 自动补全句柄（V5 拆除后无注册方——旧聊天视图退役；
- *  注册槽保留：纸壳未来接块内 @ 引用时复用此契约）。 */
-export interface AtAutocompleteHandle {
-  /** 每次输入事件调用。textBefore = value.slice(0, cursorPos) */
-  update(textBefore: string, cursorPos: number): void;
-  /** 更新可用节点名（来自星图/图数据） */
-  setNodeNames(names: string[]): void;
-  /** 键盘上下导航 — 输入框 keydown 转发 */
-  navigate(delta: number): void;
-  /** 选中当前高亮项 */
-  select(): void;
-  /** 弹层是否有可选项（非加载/空态） */
-  readonly open: boolean;
-}
-
-/** 视图注册的斜杠面板句柄（V5 拆除后无注册方——SlashPanel 退役；
- *  斜杠命令本身仍由 sendMessage 的文本解析面承接，槽保留待纸壳 autocomplete）。 */
-export interface SlashPanelHandle {
-  show(query?: string): void;
-  hide(): void;
-  navigate(delta: number): boolean;
-  select(): CommandDef | null;
-  readonly visible: boolean;
 }
 
 /** 消息列表命令式句柄 —— /compact 重建会话后强制重拉（bump = bumpChat(panelId)） */
@@ -143,13 +104,10 @@ export class ChatCore {
   private _syncTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   private onOpenSettings: (() => void) | null = null;
-  private _onTrailToggle: (() => void) | null = null;
 
-  // ── 视图注册槽（ChatBeacon 挂载后注入组件 ref 句柄）──
+  // ── 视图注册槽（视图挂载后注入组件 ref 句柄）──
   private _composer: ComposerApi | null = null;
   private _promptShelf: PromptShelfHandle | null = null;
-  private _slashController: SlashPanelHandle | null = null;
-  private _atAutocomplete: AtAutocompleteHandle | null = null;
   private _chatMessages: MessagesApi | null = null;
 
   // ── chat-session ctx 的 DOM 桩：分离元素，吸收写入，永不挂载 ──
@@ -188,11 +146,9 @@ export class ChatCore {
     this.panelId = `cp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     this._exec = createExecState();
 
-    CommandRegistry.instance.registerAll(DEFAULT_COMMANDS);
-    // 斜杠技能候选（Commit 4）：provider 同步读模块级缓存，构造时异步预热
-    CommandRegistry.instance.setSkillProvider(() => _slashSkillCache);
-    void refreshSlashSkillCache();
-    this._wireCommandHandlers();
+    // 斜杠技能候选：同步确保当前工作区的清单（键变了则后台重扫；
+    // 命令清单是同步读取面，见 app/commands/skill-catalog）
+    ensureSkillCatalog(useShellStore.getState().projectPath);
 
     // ── ask_user tool → prompt shelf（视图注册后生效）──
     // P1 总线归零：prompt:ask → state/ask-store（callback-in-store：pending 跨
@@ -304,12 +260,6 @@ export class ChatCore {
     // 窗口时请求已留在 ask-store，此处补收——不再有「无声取消」路径。
     this._consumePendingAsk();
   }
-  registerSlash(c: SlashPanelHandle): void {
-    this._slashController = c;
-  }
-  registerAt(c: AtAutocompleteHandle): void {
-    this._atAutocomplete = c;
-  }
   registerMessages(c: MessagesApi): void {
     this._chatMessages = c;
   }
@@ -330,15 +280,9 @@ export class ChatCore {
   setOnOpenSettings(fn: () => void): void {
     this.onOpenSettings = fn;
   }
-  setOnTrailToggle(fn: () => void): void {
-    this._onTrailToggle = fn;
-  }
   /** 由视图转发 — Footer 的设置按钮 */
   fireOpenSettings(): void {
     this.onOpenSettings?.();
-  }
-  fireTrailToggle(): void {
-    this._onTrailToggle?.();
   }
 
   /** 面板级事件接收器 — 直接调用，无总线中转。（遗留：无会话身份，
@@ -440,7 +384,6 @@ export class ChatCore {
   summonPanel(): void {
     getChatStore(this.panelId).panel.getState().setPanelMode('panel');
     this._resetPillBadge();
-    this._hideSlashPanel();
     this.closeHistory();
     setTimeout(() => this._composer?.focus(), 60);
   }
@@ -1053,7 +996,8 @@ export class ChatCore {
     return sid != null && Session.canRetraceUserTurn(this.panelId, sid, msg._id);
   }
 
-  private async exportSession(): Promise<void> {
+  /** 导出当前案卷（/export 命令面调用的能力位）。 */
+  async exportSession(): Promise<void> {
     return Session.exportSession(this._sessionCtx());
   }
 
@@ -1370,50 +1314,22 @@ export class ChatCore {
       }
     }
 
-    // ── 注册表驱动的斜杠命令 ──
+    // ── 斜杠命令（真源 = app/commands/command-catalog 合流清单）──
+    // 命令词与参数在目录层解析（`/goal resume` → cmd=/goal · arg='resume'），
+    // 执行面唯一 = executeCommand——内建命令（/new /compact /export /goal…）与
+    // 插件贡献命令（/settings /paper /sidebar /dock）走同一条路；带参命令不再
+    // 需要在发送面硬编码分支（2026-09-19 command-surface-rework）。
     if (text.startsWith('/')) {
-      if (text.startsWith('/remember ')) {
-        const fact = text.slice('/remember '.length).trim();
-        getChatStore(this.panelId).input.getState().setInputText('');
-        if (!fact) {
-          showToast('用法: /remember 要记住的内容', 'info');
-          return;
-        }
-        import('../../agent/memory.js').then((m) => m.authorizeFactSave());
-        this.sendAgentText(
-          `请将以下事实保存到记忆库：${fact}\n\n使用 hologram_memory_save 工具。选择合适的 type（user/feedback/project/reference），起一个简短的 kebab-case 名称，写清楚 description。`,
-          `/remember ${fact}`,
-        );
-        return;
-      }
-      if (text === '/goal' || text.startsWith('/goal ')) {
-        const arg = text === '/goal' ? '' : text.slice('/goal '.length).trim();
-        getChatStore(this.panelId).input.getState().setInputText('');
-        if (arg === '' || arg === 'status') {
-          this.showGoalStatus();
-          return;
-        }
-        if (arg === 'resume') {
-          this.runGoalResume();
-          return;
-        }
-        if (arg === 'cancel') {
-          this.cancelGoal();
-          return;
-        }
-        this.runGoal(arg);
-        return;
-      }
-      const cmd = CommandRegistry.instance.findByShortcut(text.trim());
-      if (cmd) {
-        this._executeCommand(cmd);
+      const hit = parseSlashInput(listCommands(this), text);
+      if (hit) {
+        this.executeCommand(hit.cmd, hit.arg);
         return;
       }
       // 未知斜杠命令 — 路由到 Skill 工具
       if (!text.includes(' ')) {
         const skillName = text.slice(1);
         getChatStore(this.panelId).input.getState().setInputText('');
-        this.sendAgentText(`Execute skill: ${skillName}`, text);
+        void this.sendAgentText(`Execute skill: ${skillName}`, text);
         return;
       }
     }
@@ -1756,154 +1672,163 @@ export class ChatCore {
     this.sendMessage();
   }
 
-  // ── @ file reference autocomplete（视图注册控制器，core 转发）──
+  // ── 会话命令面（斜杠命令真源；消费面 = app/commands/command-catalog）──
+  //
+  // 内建命令由本卷实例提供（handler 绑 this、作用于本卷）——不再往模块级全局
+  // 表里就地写 handler（旧 `_wireCommandHandlers` 的多面板串扰形状，2026-09-19
+  // command-surface-rework 拆除）。退役条目随图分析面（/trail · /fragile ·
+  // /cycle · /impact · /path）一并删除——面板不再陈列点不动的命令。
 
-  private _lastAtCursor = 0;
-  handleAtInput(textBefore: string, cursorPos: number): void {
-    this._lastAtCursor = cursorPos;
-    this._atAutocomplete?.update(textBefore, cursorPos);
-  }
-  atNavigate(delta: number): void {
-    this._atAutocomplete?.navigate(delta);
-  }
-  atSelect(): void {
-    this._atAutocomplete?.select();
-  }
-  get atOpen(): boolean {
-    return this._atAutocomplete?.open ?? false;
-  }
-  /** @ 弹层选中回填：atIdx(@ 位置) → 当前光标处替换为 token */
-  applyAtSelect(atIdx: number, token: string): void {
-    const input = getChatStore(this.panelId).input.getState();
-    const v = input.inputText;
-    input.setInputText(v.slice(0, atIdx) + token + v.slice(this._lastAtCursor));
-    this._composer?.focus();
+  builtinCommands(): CommandContribution[] {
+    return [
+      {
+        id: 'new',
+        label: '重置当前案卷',
+        description: '清空对话历史，保留项目上下文',
+        group: '案卷',
+        slash: '/new',
+        action: { type: 'local', handler: () => void this.createNewSession() },
+      },
+      {
+        id: 'compact',
+        label: '压缩上下文',
+        description: '压缩对话历史以节省 token',
+        group: '案卷',
+        slash: '/compact',
+        action: { type: 'local', handler: () => void this.compactSession() },
+      },
+      {
+        id: 'compact-stats',
+        label: '压缩统计',
+        description: '查看上下文压缩的运行数据',
+        group: '案卷',
+        slash: '/compact-stats',
+        action: {
+          type: 'send',
+          text: '查看上下文压缩的运行状态和数据（使用 hologram_compaction_stats 工具）。',
+          displayLabel: '/compact-stats',
+        },
+      },
+      {
+        id: 'export',
+        label: '导出对话',
+        description: '导出当前案卷为 Markdown',
+        group: '案卷',
+        slash: '/export',
+        action: { type: 'local', handler: () => void this.exportSession() },
+      },
+      {
+        id: 'goal',
+        label: '自主目标',
+        description: 'Agent 自主循环直到完成目标 —— /goal · /goal status · /goal resume · /goal cancel',
+        group: '案卷',
+        slash: '/goal',
+        action: { type: 'local', handler: (arg) => void this.goalCommand(arg) },
+      },
+      {
+        id: 'memory',
+        label: '查看记忆',
+        description: '列出所有已保存的记忆',
+        group: '记忆',
+        slash: '/memory',
+        action: {
+          type: 'send',
+          text: '列出所有已保存的记忆（使用 memory 工具 action="list"）。',
+          displayLabel: '/memory',
+        },
+      },
+      {
+        id: 'remember',
+        label: '记住一件事',
+        description: '保存一条事实到记忆库',
+        group: '记忆',
+        slash: '/remember',
+        action: { type: 'local', handler: (arg) => this.rememberFact(arg) },
+      },
+    ];
   }
 
-  // ── Slash panel（视图注册控制器，core 转发）──
-
-  get slashVisible(): boolean {
-    return this._slashController?.visible ?? false;
-  }
-  slashNavigate(delta: number): boolean {
-    return this._slashController?.navigate(delta) ?? false;
-  }
-  slashSelect(): void {
-    this._slashController?.select();
-  }
-  hideSlash(): void {
-    this._hideSlashPanel();
-  }
-  /** Escape 专用：剥离输入框中的 /query 文本再隐藏，避免下次按键触发 handleSlashInput 重新弹出 */
-  dismissSlash(): void {
-    const input = getChatStore(this.panelId).input.getState();
-    const v = input.inputText;
-    const slashIdx = v.lastIndexOf('/');
-    if (slashIdx >= 0) {
-      input.setInputText(v.slice(0, slashIdx));
+  /** /compact — 压缩会重写会话，与运行中的轮次竞争会损坏数据（守卫在方法内）。 */
+  private async compactSession(): Promise<void> {
+    if (!this.agent) return;
+    if (this._activeExec().isRunning) {
+      showToast('Agent 正在运行，请先停止或等待完成后再压缩。', 'warn');
+      return;
     }
-    this._hideSlashPanel();
-    this._composer?.focus();
-  }
-  private _hideSlashPanel(): void {
-    this._slashController?.hide();
-  }
-
-  /** 为需要实例上下文的命令（new/compact/trail/export）挂载本地处理器。 */
-  private _wireCommandHandlers(): void {
-    const override = (id: string, handler: () => void) => {
-      const idx = DEFAULT_COMMANDS.findIndex((c) => c.id === id);
-      if (idx >= 0 && DEFAULT_COMMANDS[idx].action.type === 'local') {
-        (DEFAULT_COMMANDS[idx].action as { handler: () => void }).handler = handler;
-      }
-    };
-    override('new', () => {
-      getChatStore(this.panelId).input.getState().setInputText('');
-      this.createNewSession();
-    });
-    override('compact', () => {
-      getChatStore(this.panelId).input.getState().setInputText('');
-      if (!this.agent) return;
-      // 守卫：压缩会重写会话 — 与运行中的轮次竞争会损坏数据。
-      if (this._activeExec().isRunning) {
-        showToast('Agent 正在运行，请先停止或等待完成后再压缩。', 'warn');
-        return;
-      }
-      this.appendUserBubble('/compact');
-      const exec = this._activeExec();
-      const signal = exec.start();
-      this.agent
-        .compactNow(signal)
-        .then(() => {
-          this.messages = [];
-          resetMsgIdCounter(this.panelId);
-          // 压缩只发生在活跃卷（上方 isRunning 守卫 = 本卷）——清本卷流式槽
-          const compactSid = this.activeSessionId;
-          if (compactSid != null) msgStoreFor(this.panelId, compactSid).getState().setStreamingAssistantId(null);
-          getChatStore(this.panelId).msg.getState().setStreamingAssistantId(null);
-          Session._rebuildMessagesFromSession(this._sessionCtx());
-          this._chatMessages?.bump();
-        })
-        .catch((err: Error) => {
-          // 压缩失败：旧内容未动、无对话断层——toast 播报即可（错误不静默）
-          showToast(`压缩失败: ${err.message}`, 'error');
-        })
-        .finally(() => {
-          exec.done();
-        });
-    });
-    override('export', () => this.exportSession());
-    override('trail', () => {
-      this._onTrailToggle?.();
-    });
+    this.appendUserBubble('/compact');
+    const exec = this._activeExec();
+    const signal = exec.start();
+    void this.agent
+      .compactNow(signal)
+      .then(() => {
+        this.messages = [];
+        resetMsgIdCounter(this.panelId);
+        // 压缩只发生在活跃卷（上方 isRunning 守卫 = 本卷）——清本卷流式槽
+        const compactSid = this.activeSessionId;
+        if (compactSid != null) msgStoreFor(this.panelId, compactSid).getState().setStreamingAssistantId(null);
+        getChatStore(this.panelId).msg.getState().setStreamingAssistantId(null);
+        Session._rebuildMessagesFromSession(this._sessionCtx());
+        this._chatMessages?.bump();
+      })
+      .catch((err: Error) => {
+        // 压缩失败：旧内容未动、无对话断层——toast 播报即可（错误不静默）
+        showToast(`压缩失败: ${err.message}`, 'error');
+      })
+      .finally(() => {
+        exec.done();
+      });
   }
 
-  /** 从注册表执行命令（SlashPanel onCommit 委托）。 */
-  executeCommand(cmd: CommandDef): void {
-    this._executeCommand(cmd);
+  /** /request… 无参 = 提示用法并填好前缀（用户接着打字）；有参 = 授权保存 + 交模型写库。 */
+  private rememberFact(arg: string): void {
+    const fact = arg.trim();
+    if (!fact) {
+      getChatStore(this.panelId).input.getState().setInputText('/remember ');
+      this._composer?.focus();
+      this._composer?.selectEnd();
+      showToast('用法: /remember 要记住的内容', 'info');
+      return;
+    }
+    void import('../../agent/memory.js').then((m) => m.authorizeFactSave());
+    void this.sendAgentText(
+      `请将以下事实保存到记忆库：${fact}\n\n使用 memory 工具 action="save"，type 取 user/feedback/project/reference 之一；起一个简短的 kebab-case 名称，写清楚 description。`,
+      `/remember ${fact}`,
+    );
   }
 
-  private _executeCommand(cmd: CommandDef): void {
-    this._hideSlashPanel();
+  /** /goal 命令面 —— 参数由命令目录解析后传入（status/resume/cancel/目标文本）。 */
+  private async goalCommand(arg: string): Promise<void> {
+    const a = arg.trim();
+    if (a === '' || a === 'status') return this.showGoalStatus();
+    if (a === 'resume') return this.runGoalResume();
+    if (a === 'cancel') return this.cancelGoal();
+    return this.runGoal(a);
+  }
+
+  /** 执行命令 —— 斜杠面板 / 命令面板 / 文本解析三入口的唯一执行面（四型全语义）。
+   *  arg = 斜杠参数（`/goal resume` → 'resume'；无参空串），fill 型拼在提示文本后。 */
+  executeCommand(cmd: CommandContribution, arg = ''): void {
     const action = cmd.action;
     switch (action.type) {
       case 'send':
         getChatStore(this.panelId).input.getState().setInputText('');
-        this.sendAgentText(action.text, action.displayLabel);
+        void this.sendAgentText(action.text, action.displayLabel);
         break;
       case 'fill':
-        getChatStore(this.panelId).input.getState().setInputText(action.text);
+        getChatStore(this.panelId)
+          .input.getState()
+          .setInputText(action.text + arg);
         this._composer?.focus();
         this._composer?.selectEnd();
         break;
       case 'local':
         getChatStore(this.panelId).input.getState().setInputText('');
-        action.handler();
+        action.handler(arg);
         break;
       case 'skill':
         getChatStore(this.panelId).input.getState().setInputText('');
-        this.sendAgentText(`Execute skill: ${action.skillName}`, `/${action.skillName}`);
+        void this.sendAgentText(`Execute skill: ${action.skillName}`, `/${action.skillName}`);
         break;
-    }
-  }
-
-  handleSlashInput(textBefore: string): void {
-    // 行首或空格后的 / 时显示面板
-    const showPanel = /(?:^|\s)\/$/.test(textBefore);
-    if (showPanel) {
-      const slashIdx = textBefore.lastIndexOf('/');
-      const query = textBefore.slice(slashIdx + 1);
-      this._slashController?.show(query);
-    } else if (!textBefore.includes('/')) {
-      this._hideSlashPanel();
-    } else {
-      const slashIdx = textBefore.lastIndexOf('/');
-      if (slashIdx > 0 && textBefore[slashIdx - 1] !== ' ') {
-        this._hideSlashPanel();
-        return;
-      }
-      const query = textBefore.slice(slashIdx + 1).trimStart();
-      this._slashController?.show(query.length > 0 ? query : '');
     }
   }
 

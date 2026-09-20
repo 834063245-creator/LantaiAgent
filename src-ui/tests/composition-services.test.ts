@@ -41,7 +41,7 @@ const COMMAND: CommandContribution = {
   id: 'probe-command',
   label: '探针命令',
   group: '测试',
-  shortcut: '/probe',
+  slash: '/probe',
   action: { type: 'local', handler: () => {} },
 };
 
@@ -179,8 +179,8 @@ describe('组合序（前缀缓存语义的地基）', () => {
     const root = new Context();
     const fiber = root.plugin(compositionServicesPlugin);
     await fiber;
-    const a = root.commands.register({ ...COMMAND, id: 'cmd-a', shortcut: '/a' });
-    const b = root.commands.register({ ...COMMAND, id: 'cmd-b', shortcut: '/b' });
+    const a = root.commands.register({ ...COMMAND, id: 'cmd-a', slash: '/a' });
+    const b = root.commands.register({ ...COMMAND, id: 'cmd-b', slash: '/b' });
     root.commands.get('cmd-b');
     root.commands.get('cmd-a');
     expect(root.commands.list().map((c) => c.id)).toEqual(['cmd-a', 'cmd-b']);

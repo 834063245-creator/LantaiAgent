@@ -12,14 +12,14 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
+import type { CommandContribution } from '../src/composition/services';
 import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
 import { ComposerDock, flattenDirEntries, fuzzyMatchFiles } from '../src/plugins/builtin/compose-dock/ComposerDock';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { getComposeStore, resetComposeStoresForTests } from '../src/state/compose-store';
 import { getChatStore } from '../src/ui/chat-store';
-import { type CommandDef, CommandRegistry } from '../src/ui/command-registry';
 
-function fakeCore(panelId: string): ChatCore {
+function fakeCore(panelId: string, commands: readonly CommandContribution[] = []): ChatCore {
   return {
     panelId,
     sendMessage: vi.fn(),
@@ -27,6 +27,9 @@ function fakeCore(panelId: string): ChatCore {
     openFilePicker: vi.fn(),
     registerComposer: vi.fn(),
     executeCommand: vi.fn(),
+    // 命令清单真源（2026-09-19 command-surface-rework）：旧 CommandRegistry
+    // 单例退役——测试经会话内建命令位注入，断言面零改动。
+    builtinCommands: () => [...commands],
   } as unknown as ChatCore;
 }
 
@@ -40,8 +43,9 @@ async function mountDock(
   container: HTMLDivElement,
   opts: { tokens?: Record<number, number> } = {},
   onRoot: (r: Root) => void,
+  commands: readonly CommandContribution[] = [],
 ): Promise<ChatCore> {
-  const core = fakeCore(panelId);
+  const core = fakeCore(panelId, commands);
   useCoreStore.getState().setChatCore(core);
   getChatStore(panelId).sess.setState({
     sessions: [{ id: 1, label: '案卷一' }],
@@ -112,13 +116,13 @@ describe('创作坞 v2 纯函数：目录树摊平', () => {
 });
 
 describe('创作坞 v2：翰（命令面板入口）', () => {
-  const CMDS: CommandDef[] = [
+  const CMDS: CommandContribution[] = [
     {
       id: 'gamma',
       label: 'Gamma 命令',
       description: '测试 gamma',
       group: '案卷',
-      shortcut: '/gamma',
+      slash: '/gamma',
       action: { type: 'fill', text: '/gamma ' },
     },
   ];
@@ -126,7 +130,6 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
   let root: Root | null = null;
 
   beforeEach(() => {
-    CommandRegistry.instance.registerAll(CMDS);
     resetComposeStoresForTests();
     resetCanvasStoresForTests();
     container = document.createElement('div');
@@ -139,9 +142,15 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
   });
 
   it('点翰开面板（空查询 = 全量命令）；再点散；执行命令即散面板', async () => {
-    const core = await mountDock('han-open', container, {}, (r) => {
-      root = r;
-    });
+    const core = await mountDock(
+      'han-open',
+      container,
+      {},
+      (r) => {
+        root = r;
+      },
+      CMDS,
+    );
     // 点翰 → 面板现身（无 / 触发词）
     act(() => {
       [...container.querySelectorAll<HTMLButtonElement>('.pp-tool-btn')].find((b) => b.textContent === '翰')?.click();
@@ -160,9 +169,15 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
   });
 
   it('手输即散翰面板（打字接管，/ 触发词自然接管过滤）', async () => {
-    await mountDock('han-type', container, {}, (r) => {
-      root = r;
-    });
+    await mountDock(
+      'han-type',
+      container,
+      {},
+      (r) => {
+        root = r;
+      },
+      CMDS,
+    );
     act(() => {
       [...container.querySelectorAll<HTMLButtonElement>('.pp-tool-btn')].find((b) => b.textContent === '翰')?.click();
     });

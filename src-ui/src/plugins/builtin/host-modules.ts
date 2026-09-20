@@ -6,7 +6,7 @@
 // 取用的项目模块真实例注册表。
 //
 // 为什么是「共享真实例」而不是产物内联副本：面组件消费的 zustand store /
-// 服务 active 访问器（CommandRegistry.instance、provider/catalog 动态拉取态、
+// 服务 active 访问器（provider/catalog 动态拉取态、
 // paper/measure 观察缓存）/ React Context（PaperDockContext 等）都是模块级
 // 单例——产物内联副本会分裂状态（产物组件订阅到影子 store，UI 串流）。
 // 本注册表把 bundle 域的唯一实例交给产物域消费；只有面组件本体与其 CSS
@@ -47,6 +47,8 @@ import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/sub
 import { createWaitTool } from '../../agent/tools/wait';
 import { useCoreStore } from '../../app/chat/core-instance';
 import { extractImageFiles, previewUrlFor } from '../../app/chat/image-intake';
+import { filterCommands, listCommands, slashOnly } from '../../app/commands/command-catalog';
+import { ensureSkillCatalog } from '../../app/commands/skill-catalog';
 import { Icon } from '../../app/Icon';
 import { useDialogEscape } from '../../app/overlay';
 import { PluginBoundary } from '../../app/PluginBoundary';
@@ -196,7 +198,6 @@ import { usePresetStore } from '../../state/preset-store';
 import { useSessionVolumesStore } from '../../state/session-volumes-store';
 import { useUpdateStore } from '../../state/update-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
-import { CommandRegistry } from '../../ui/command-registry';
 import { iconHtml } from '../../ui/icons';
 
 /** 宿主桥供面封蜡（2026-09-02 划词白屏事故立法）：faceDeps 此前是手抄清单，
@@ -361,7 +362,10 @@ const faceDeps = {
   notifyAgentConfigChanged,
   getChatStore,
   msgStoreFor,
-  CommandRegistry,
+  listCommands,
+  slashOnly,
+  filterCommands,
+  ensureSkillCatalog,
   useCoreStore,
   // 应用壳件
   Icon,

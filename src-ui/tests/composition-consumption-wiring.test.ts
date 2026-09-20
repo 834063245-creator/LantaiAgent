@@ -102,7 +102,7 @@ describe('S4-1.5 commands 合流点：贡献折算 + bump 信号', () => {
       id: 'probe-cmd',
       label: '探针命令',
       group: '测试',
-      shortcut: '/probe',
+      slash: '/probe',
       action: { type: 'local', handler: () => (fired = true) },
     });
     expect(usePanelDefsStore.getState().commandsTick).toBe(tick0 + 1);
@@ -200,7 +200,7 @@ describe('S4-1.5 hello 前身：mock 贡献三通道机制（面板+命令+工�
               id: 'hello/hello',
               label: 'Hello 命令',
               group: '插件',
-              shortcut: '/hello',
+              slash: '/hello',
               action: { type: 'local', handler: () => {} },
             }),
           'hello-command',

@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：41
+当前版本：42
 
-<!-- contract-fingerprint: d502b767c2076d676e8571200672108e23dd3ad1979a6823ffac48efe64eb637 -->
+<!-- contract-fingerprint: c8e26cab891fe2f095006c8d961e51a3517c5093acbd5fc146f8d7348c1f9b44 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -93,6 +93,8 @@
 | 40 | 2026-09-17 | **工具附图通道（agent 眼睛环 P0a）**：`Message.images` 的合法角色从「**仅 user**」扩到「**user + tool**」——工具产出的截图（`browser(action:"screenshot")`）从此能进模型上下文，而不是把 PNG 路径交给用户求人看图（该断点由 `taste-ledger` 2026-08-22 点名为结构性瓶颈：agent 看不见自己的产出，眼判类细化只能靠用户眼睛逐轮喂）。**wire 面**：两协议用各自原生形态（anthropic `tool_result.content` 数组 `[text,image]`、responses `function_call_output.output` 数组 `[input_text,input_image]`），OpenAI 兼容 chat 的 tool role 不收图 ⇒ 在**该轮 tool 组尾**补一条合成 user 消息携带图。**缺省 = 无图消息 ⇒ 三协议 wire 形态逐字节不变**（D-6 纪律，实测钉住）；`tool/result` 事件形状零变更（事件 data 本就是整个 Message，新字段可选）⇒ convergence 双轨零漂移。`default-loop` 两处 `tool/result` 写入点把 executor 产出的引用挂到消息上（单一写入点纪律不变） | `docs/plans/tool-image-context-plan.md`（P0a 落地清单 §0；裁定 3 = 角色扩档、裁定 4 = 三协议不统一抽象、裁定 5 = 本批不动工具 schema/描述故免 BCR） |
 
 | 41 | 2026-09-17 | **ctx.llm seam：连接怪癖的用户可编辑面（自定义请求头 + 配方）**。`ProviderRuntimeArgs` 新增可选 `headers`（持久化在 `ProviderSettings.headers`），三方言（openai/anthropic/responses）的 stream / prewarm / fetchModels 一并携带；合并序「自定义头在前、内核必需头与凭据头在后」，且按键（小写）剔除冲突——HTTP 头名大小写不敏感，大小写不同的同名会被 Fetch 合并成 `"a, b"` 污染凭据头（实测钉住）。动机：OpenCode GO 强制 `x-opencode-session` 一类网关怪癖此前只能改代码发版，exe 用户无路可走。**缺省 = 未配置 headers ⇒ 请求头逐字节不变**（老行零迁移，第三方 adapter 不读该字段即可）；同批设置页新增「高级」面（请求头编辑 + 该行配方 JSON 导出/导入——密钥剥除、整单校验） | provider-system-spec.md（本批新增「自定义请求头与配方」节） |
+
+| 42 | 2026-09-19 | **斜杠命令面重做（command-surface-rework）**：`CommandContribution.shortcut: string` 拆为 `slash?: string`（斜杠触发词）与 `kbd?: string`（键位提示，仅展示）——旧字段一名两义，命令面板把 `'ctrl P'` 当命令陈列、斜杠面板把 `'/dock'` 当快捷键显示，两套消费面各按自己的误读渲染。同版 `CommandAction` 由内联联合提升为具名导出类型，`local` 的 handler 改收斜杠参数（`(arg: string) => void`；无参 = 空串）——`/goal resume` · `/remember <事实>` 一类带参命令不再需要在发送面硬编码分支解析。**对外可感知**：第三方插件贡献命令必须改字段名（`shortcut: '/x'` → `slash: '/x'`，旧名不留别名），两字段皆缺省 = 只进 Ctrl+K 面板；命令清单唯一真源收归本通道——旧 `ui/command-registry` 单例（模块级裸表 + `_wireCommandHandlers` 就地写 handler 的多面板串扰形状）整文件退役，消费合流点 = `src/app/commands/command-catalog.ts`（会话内建 + 通道贡献 + 技能候选） | 用户 2026-09-19 裁定「斜杠命令退役的功能没删除、新加的能力没加入——这块重做」（`docs/plans/command-surface-rework-plan.md`） |
 
 ## 变更流程（guard 红 → 修复四步）
 

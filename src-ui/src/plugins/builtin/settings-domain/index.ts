@@ -48,8 +48,9 @@ export const settingsPlugin = {
           id: 'settings/toggle',
           label: '设置…',
           group: '设置',
-          // shortcut 是 palette 显示值（kbd 提示）；键绑定仍在 useGlobalKeys 全局层
-          shortcut: 'ctrl ,',
+          slash: '/settings',
+          // kbd 是 palette 显示值（kbd 提示）；键绑定仍在 useGlobalKeys 全局层
+          kbd: 'ctrl ,',
           action: { type: 'local', handler: () => useDockStore.getState().togglePanel('settings') },
         }),
       'settings-command',

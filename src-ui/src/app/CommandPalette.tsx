@@ -7,12 +7,15 @@
 // （折算为 AppAction 形状：action.type 'local' + handler 调用贡献执行面）；
 // commandsTick 信号驱动贡献变更后的清单刷新（palette 每次打开本就重取——
 // tick 让打开态的长驻清单也跟上）。
+// 2026-09-19 command-surface-rework：加第三源「会话内建命令」（ChatCore 的
+// builtinCommands）——与 `/` 内联面板同一份命令清单、同一执行面（executeCommand），
+// 两处只差过滤与呈现。
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { activeCommandContributions, type CommandContribution } from '../composition/services';
+import type { CommandContribution } from '../composition/services';
+import { activeCommandContributions } from '../composition/services';
 import { shellRefs } from '../shell/runtime';
 import { usePanelDefsStore } from '../state/panel-defs-store';
-import type { CommandDef } from '../ui/command-registry';
 import { type AppAction, listActions } from './actions';
 import { mountDialogFocus } from './dialog-focus';
 import { Icon } from './Icon';
@@ -31,18 +34,18 @@ function commandContributionActions(): AppAction[] {
       group: c.group || '插件',
       label: c.label,
       icon: undefined,
-      kbd: c.shortcut || undefined,
-      run: () => {
+      kbd: c.kbd || c.slash || undefined,
+      run: (arg) => {
         // 折算为 local handler 型 AppAction：run 调用贡献的执行面（§2.3）。
         // local → 直接调 handler；send/fill/skill → 经聊天面板的命令执行面
         //（executeCommand 四型全语义：清输入/聚焦/发文本）。
         if (contribution.action.type === 'local') {
-          contribution.action.handler();
+          contribution.action.handler(arg ?? '');
           return;
         }
         const panel = shellRefs.chatPanel;
         if (panel) {
-          panel.executeCommand(contribution as unknown as CommandDef);
+          panel.executeCommand(contribution, arg ?? '');
         } else {
           console.warn('[palette] 无聊天面板承接命令贡献（send/fill/skill 型）:', contribution.id);
         }
@@ -50,6 +53,19 @@ function commandContributionActions(): AppAction[] {
     });
   }
   return out;
+}
+
+/** 会话内建命令 → AppAction 折算（与 `/` 面板同一清单、同一执行面）。 */
+function sessionCommandActions(): AppAction[] {
+  const panel = shellRefs.chatPanel;
+  if (!panel) return [];
+  return panel.builtinCommands().map((c) => ({
+    id: 'session/' + c.id,
+    group: c.group,
+    label: c.label,
+    kbd: c.slash ?? c.kbd,
+    run: (arg) => panel.executeCommand(c, arg ?? ''),
+  }));
 }
 
 export function CommandPalette() {
@@ -87,7 +103,9 @@ export function CommandPalette() {
     void tick;
     void commandsTick;
     const q = query.trim().toLowerCase();
-    return [...listActions(), ...commandContributionActions()].filter((a) => !q || a.label.toLowerCase().includes(q));
+    return [...listActions(), ...sessionCommandActions(), ...commandContributionActions()].filter(
+      (a) => !q || a.label.toLowerCase().includes(q),
+    );
   }, [query, tick, commandsTick]);
 
   if (!open) return null;

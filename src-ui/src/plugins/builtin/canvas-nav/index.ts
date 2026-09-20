@@ -102,7 +102,7 @@ export const canvasNavPlugin = {
           id: 'canvas/sidebar-toggle',
           label: '案卷侧边栏（开/收起）',
           group: '画布',
-          shortcut: '/sidebar',
+          slash: '/sidebar',
           action: { type: 'local', handler: () => useDockStore.getState().togglePanel('canvas-sidebar') },
         }),
       'canvas-sidebar-command',

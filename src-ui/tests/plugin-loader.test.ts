@@ -1014,7 +1014,7 @@ describe('face 键集对拍门禁（保险丝 a）', () => {
                   id: 'acme/probe',
                   label: '探针',
                   group: '测试',
-                  shortcut: '/probe',
+                  slash: '/probe',
                   action: { type: 'local', handler: () => {} },
                 }),
               'acme-probe',

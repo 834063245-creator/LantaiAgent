@@ -162,10 +162,11 @@ ctx.commands.register({
   label: '打个招呼',
   description: '示例命令',
   group: '插件',
-  shortcut: '/hi',           // 输入匹配用
-  action: { type: 'local', handler: () => host.notify('👋') },
+  slash: '/hi',              // 斜杠触发词（可选；缺省 = 不可斜杠触达，只进 Ctrl+K 面板）
+  kbd: 'ctrl H',             // 键位提示（可选，仅展示——真实绑定在全局快捷键层）
+  action: { type: 'local', handler: (arg) => host.notify('👋' + arg) },
   // action 四型：{ type:'send', text, displayLabel } 发消息给 Agent
-  //           { type:'local', handler() } 本地执行
+  //           { type:'local', handler(arg) } 本地执行（arg = 斜杠参数，无参为空串）
   //           { type:'fill', text } 填充输入框
   //           { type:'skill', skillName } 执行技能
 });

@@ -61,7 +61,7 @@ export function runAction(id: string, arg?: string): void {
   const contribution = activeCommandContributions().find((c) => c.id === contributionId);
   if (contribution == null) return; // 贡献缺席（服务未装载/已 dispose），同上静默
   if (contribution.action.type === 'local') {
-    contribution.action.handler();
+    contribution.action.handler(arg ?? '');
     return;
   }
   // 非local 型贡献（send/fill/skill）需聊天面板承接——快捷键分发面只桥接

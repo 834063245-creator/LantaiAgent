@@ -248,7 +248,7 @@ ctx.effect(
 生效语义：register/dispose 即时（面板清单经信号 store bump，DockPanel/
 命令面板当场重取）。
 
-### ctx.commands —— 命令（即时生效）
+### ctx.commands —— 命令（即时生效；斜杠命令唯一真源）
 
 ```js
 ctx.effect(
@@ -257,10 +257,11 @@ ctx.effect(
       id: 'acme/do-thing',     // 约定 '<插件名>/<动作>'
       label: '做一件事',
       group: '插件',            // 命令面板分组
-      shortcut: '/dothing',     // 展示用
+      slash: '/dothing',        // 斜杠触发词（可选；缺省 = 只进 Ctrl+K 面板）
+      kbd: 'ctrl D',            // 键位提示（可选；仅展示，真实绑定在全局快捷键层）
       action: {
         type: 'local',          // local（handler 直调）| send | fill | skill
-        handler: () => { /* ... */ },
+        handler: (arg) => { /* arg = 斜杠参数（`/dothing x` → 'x'；无参为空串） */ },
       },
     }),
   'acme/do-thing',
@@ -269,6 +270,12 @@ ctx.effect(
 
 `send`/`fill`/`skill` 型经聊天面板的命令执行面路由（需要 chat 面板在场）；
 命令面板（Ctrl+K）里全部类型可见。
+
+**命令清单唯一真源**（2026-09-19 契约 v42）：本通道 + 会话内建命令（`/new` `/compact`
+`/export` `/goal` `/memory` `/remember` `/compact-stats`，由 `ChatCore.builtinCommands()`
+提供）+ 技能候选（`/<技能名>`）在 `src/app/commands/command-catalog.ts` 合流——
+`/` 内联面板与 Ctrl+K 面板消费同一份清单（差异只在过滤：`/` 触发只列有 `slash` 的条目）。
+旧 `ui/command-registry` 单例已退役；`shortcut` 字段更名为 `slash`（旧名不留别名）。
 
 ### ctx.tools —— 工具（下次 Agent 装配生效）
 

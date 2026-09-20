@@ -55,7 +55,7 @@ export const composeDockPlugin = {
           id: 'compose/space-status',
           label: '创作坞：画布状态',
           group: '画布',
-          shortcut: '/dock',
+          slash: '/dock',
           action: {
             type: 'local',
             handler: () => {

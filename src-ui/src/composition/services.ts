@@ -21,9 +21,12 @@
 //   - 工具/provider 贡献下次 Agent 装配生效；命令/面板即时生效（生效时机语义由
 //     消费方实现，本文件不实现任何生效逻辑）。
 //
-// S1-1 是纯新增批：既有内置装配（PANEL_DEFS / DEFAULT_COMMANDS / buildToolRegistry）
+// S1-1 是纯新增批：既有内置装配（PANEL_DEFS / buildToolRegistry）
 // 不改读这里；S1-2/S1-3 起内置面才逐族迁行接管。四 service 经 compositionServicesPlugin
 // 挂根 Context（loadBuiltinPlugins 引导，先于外部插件装载——inject 依赖可解析）。
+// v42（2026-09-19 command-surface-rework）：命令通道成为**斜杠命令唯一真源**——
+// 旧 ui/command-registry 单例（模块级裸表 + 就地 mutate handler）已删除；消费
+// 合流点 = src/app/commands/command-catalog.ts（内建命令 + 本通道贡献 + 技能候选）。
 
 import type { ComponentType } from 'react';
 import type { Tool } from '../agent/tool';
@@ -53,7 +56,7 @@ function fireContributionsChanged(): void {
   for (const cb of [...contributionListeners]) cb();
 }
 
-// ── def 形状（字段对齐既有消费面：PanelDef / CommandDef；tools 行对齐 S1-0 的
+// ── def 形状（字段对齐既有消费面：PanelDef / CommandContribution；tools 行对齐 S1-0 的
 //    ToolContribution 概念——S1-2 起行表统一到此形状）──
 
 export interface PanelContribution {
@@ -79,14 +82,22 @@ export interface CommandContribution {
   description?: string;
   /** 分组 */
   group: string;
-  /** 快捷路径（如 '/memory'），用于输入匹配和提示 */
-  shortcut: string;
-  action:
-    | { type: 'send'; text: string; displayLabel: string }
-    | { type: 'local'; handler: () => void }
-    | { type: 'fill'; text: string }
-    | { type: 'skill'; skillName: string };
+  /** 斜杠触发词（如 '/memory'）。缺省 = 不可斜杠触达（纯键位/面板命令）——
+   *  v42 起与键位提示分家：旧 `shortcut` 一个字段兼表两义（'/dock' 与 'ctrl P'
+   *  同处一栏），命令面板把键位当快捷键显示、斜杠面板把键位当命令列出的病灶。 */
+  slash?: string;
+  /** 键位提示（如 'ctrl P'）——仅展示，真实绑定在 useGlobalKeys 全局层。 */
+  kbd?: string;
+  action: CommandAction;
 }
+
+/** 命令执行面四型（v42：`local` 收斜杠参数——`/goal resume` 一类带参命令
+ *  不再需要在 sendMessage 里硬编码解析，缺省空串 = 无参调用）。 */
+export type CommandAction =
+  | { type: 'send'; text: string; displayLabel: string }
+  | { type: 'local'; handler: (arg: string) => void }
+  | { type: 'fill'; text: string }
+  | { type: 'skill'; skillName: string };
 
 export interface ToolContribution {
   /** 行 id（S1-2 起由行表寻址；与 Tool.name 可不同——行 id 稳定寻址，name 是模型可见名）。 */
