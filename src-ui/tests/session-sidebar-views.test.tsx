@@ -126,8 +126,12 @@ describe('案卷侧栏双视角（案卷 ⇄ 枝）', () => {
     ]);
     await mount(core);
     const tag = rows()[0].querySelector('.ss-branch-tag') as HTMLElement;
-    expect(tag.textContent).toContain('枝'); // 枝卷的明显标识（与书脊/卷首同一枚标）
-    expect(tag.querySelector('.ss-tag-src')?.textContent).toBe('1'); // 牌上带父卷号
+    // 枝卷的明显标识（与书脊/卷首同一枚标）：**只留「枝」不带号**（2026-09-20 用户拍板）
+    // ——牌紧贴卷名、下面机读行又有本卷「Nº N」，牌上再放父卷号被读成「这卷的号是父号」
+    expect(tag.textContent).toBe('枝');
+    expect(tag.querySelector('.ss-tag-src')).toBeNull();
+    // 号改由 title 与血缘卡承接口
+    expect(tag.getAttribute('title')).toContain('父卷 Nº 1');
     expect(container.querySelector('.ss-lineage-card')).toBeNull(); // 常态不出卡
 
     await hover(tag);

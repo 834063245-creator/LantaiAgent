@@ -1045,10 +1045,13 @@ export const SessionSidebar = memo(function SessionSidebar() {
             ) : (
               <>
                 <span className="ss-label">{volumeDisplayName(r.label, r.id)}</span>
-                {/* 案卷视图：枝卷的**明显标识** = 与书脊/卷首同一枚「枝」牌（一屏一语言），
-                    牌上带父卷号、牌是血缘卡的热区；卡与牌同属 .ss-lineage 子树
-                    ⇒ 指针从牌移到卡不会触发 mouseleave（旧实现把卡挂在行上、热区只在记号上，
-                    指针一动就掉出热区 = 真机报的「鼠标一动卡片就消失」）。 */}
+                {/* 案卷视图：枝卷的**明显标识** = 与书脊/卷首同一枚「枝」牌（一屏一语言）。
+                    **牌上不带号**（2026-09-20 用户拍板：只留「枝」）——牌紧贴卷名、下面机读行
+                    又有本卷「Nº N」，牌上再放一个**父卷号**会被读成「这卷的号是父号」
+                    （用户实际数据 13→14→15→16 连枝时牌上号恰好是本卷号 −1，实测就是这观感）。
+                    父卷号改由 title 与血缘卡承接（卡里父卷名 + Nº + 「枝自它分出」）。
+                    牌是血缘卡的热区；卡与牌同属 .ss-lineage 子树 ⇒ 指针从牌移到卡不会触发
+                    mouseleave（旧实现把卡挂在行上、热区只在记号上，指针一动就掉出热区）。 */}
                 {!tree && branch && (
                   // biome-ignore lint/a11y/noStaticElementInteractions: 悬停宽限区——可交互件是里面的「枝」牌按钮；本 span 只负责让指针从牌走到卡时不掉出热区
                   <span className="ss-lineage" onMouseEnter={() => openCard(r.id)} onMouseLeave={closeCardSoon}>
@@ -1066,7 +1069,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
                         else openCard(r.id);
                       }}
                     >
-                      枝<i className="ss-tag-src">{r.parentId}</i>
+                      枝
                     </button>
                     {cardId === r.id && (
                       <div className="ss-lineage-card">

@@ -745,8 +745,11 @@
 }
 
 /* ── 案卷视图：枝卷的「枝」牌（与书脊 .sr-branch-tag / 卷首眉行**同一枚标**——一屏一语言）
- *  + 血缘卡。牌是热区本体；卡随牌走（同在 .ss-lineage 子树里 ⇒ 指针从牌移到卡不触发
- *  mouseleave；旧实现热区只在记号上、卡挂在行上 ⇒ 真机报「鼠标一动卡片就消失」） ── */
+ *  + 血缘卡。**牌上不带号**（2026-09-20 用户拍板「只留枝」）：牌紧贴卷名、下面机读行又有
+ *  本卷「Nº N」，牌上再放父卷号会被读成「这卷的号是父号」（13→14→15→16 连枝时牌上号恰好
+ *  是本卷号 −1，实测就是这观感）；父卷号改由 title 与血缘卡承接。
+ *  牌是热区本体；卡随牌走（同在 .ss-lineage 子树里 ⇒ 指针从牌移到卡不触发 mouseleave；
+ *  旧实现热区只在记号上、卡挂在行上 ⇒ 真机报「鼠标一动卡片就消失」） ── */
 .ss-lineage {
   display: inline-flex;
   align-items: center;
@@ -773,15 +776,6 @@
   background: var(--seal-deep);
   border-color: var(--seal-deep);
   outline: none;
-}
-/* 牌上的父卷号：等宽、弱一档（牌说「是枝」，号说「自谁分出」） */
-.ss-tag-src {
-  margin-left: 4px;
-  font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
-  font-style: normal;
-  letter-spacing: 0.04em;
-  opacity: 0.85;
 }
 /* 悬空血缘（父卷不在场）：牌转实朱砂边（「父卷已删」的注记在 meta 行） */
 .ss-row.orphan .ss-branch-tag {
