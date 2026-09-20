@@ -41,6 +41,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | **出厂产物归家** | Proposed·Draft（未开工） | 一个产物 = 一个物理目录（魂身合一：实现从内核深处搬进插件包）——[`factory-products-homing-plan.md`](factory-products-homing-plan.md) |
 | **v11 分析引擎** | 草案挂起（用户拍板挂起） | 动态边 + 查询预算 + 降噪分级三篇合一——[`v11-analysis-engine-master-plan.md`](v11-analysis-engine-master-plan.md)；D 篇原件 [`dynamic-edge-detection-plan.md`](dynamic-edge-detection-plan.md)（superseded，以主文档为准） |
 | **会话存盘换轨（DSH 参照）** | 未定 | 参照 DSH 的会话持久化审计与移植——[`session-persistence-dsh-port-plan.md`](session-persistence-dsh-port-plan.md) |
+| **案卷侧栏双视角** | [`sidebar-two-views-plan.md`](sidebar-two-views-plan.md) | **P1-P5 已落地（2026-09-20）；余真机体感** | 父卷/子卷展示重构（用户拍板「丙 · 双视角」）：案卷视图 = 纯时间序扁平列表 + 「枝 N」血缘牌（父卷号并在牌内；`↳N` 记号当日退役）+ 血缘卡；枝视图 = 森林（族不拆、引线折角、`▾ N 枝` 折枝、hover 整族高亮）；走查与本机几何对拍见 `prototype/sidebar-tree-ab.NOTES.md`（**该目录在 .gitignore 内**，证据不随仓库分发） |
 | **会话树（枝）** | [`session-tree-plan.md`](session-tree-plan.md) | **全批已落地（2026-09-19）；余真机手感** | 消息动作行「立枝」+ **空间手势立枝**（块上「枝」握把拖出引线、松手落在纸上就地立枝）；侧栏树形 + 书脊/卷首「枝」标 + 未落定置灰；删父卷**连坐整棵子树**；画布上朱砂引线连回父卷分叉节点、点线溯源。**旧枝考古不做**（用户裁定，§9）。裁定见 §9、施工记录见 §12 |
 | **卷日志的抹除（判定件）** | [`session-log-erasure-plan.md`](session-log-erasure-plan.md) | **A 案已落地（2026-09-19）** | 「改 / 重发」之后旧内容**从 `.ndjson` 里物理抹除**（撤回即压实：整份原子重写 + 头行 `erased` 账声明空洞；投影/词表/载荷零改动 ⇒ 零 BCR）；无落盘面不压实（旧语义），写失败 = 未落定 + 下个检查点重试。设计与证据见 [`session-tree-plan.md`](session-tree-plan.md) §12.9/§12.10 |
 | **钉住与纸条改造** | 未定 | 钉住/纸条 UX 重构 + UI 换装——[`pin-strip-rework-plan.md`](pin-strip-rework-plan.md) |

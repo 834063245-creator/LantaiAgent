@@ -11,6 +11,7 @@
  * 挂载：DockPanel 上层覆盖（z 高于纸面板 .pp-root z:280），随纸面板开合。 */
 
 .ss-sidebar {
+  --rail: color-mix(in oklch, var(--ink-4) 78%, transparent); /* 引线墨：比规线再淡一档（结构不抢字） */
   position: fixed;
   left: 0; /* 互斥两态：独占左缘（书脊 = 本栏收起态，展开时退场） */
   top: 0; /* 屏顶——书眉已退役（2026-09-17 标题栏拆除批），左缘整列多出 56px */
@@ -434,21 +435,12 @@
   flex-direction: column;
   gap: 2px;
 }
-/* 卷名行（名 + 枝标）：名可省略号截断，枝标不参与压缩（会话树「枝」） */
+/* 卷名行（名 + 血缘记号）：名可省略号截断，记号不参与压缩 */
 .ss-label-row {
   display: flex;
   align-items: baseline;
   gap: 5px;
   min-width: 0;
-}
-.ss-branch-tag {
-  flex: 0 0 auto;
-  font-family: var(--f-song);
-  font-size: calc(10px * var(--font-scale));
-  line-height: 1.5;
-  color: var(--seal);
-  border: 1px solid var(--seal-soft);
-  padding: 0 3px;
 }
 .ss-label {
   flex: 0 1 auto;
@@ -676,4 +668,283 @@
   letter-spacing: 0.2em;
   color: var(--seal-deep);
   white-space: nowrap;
+}
+
+/* ── 视角分段（2026-09-20 双视角批：案卷 ⇄ 枝）——贴着列表之上，管的就是下面这一屏 ── */
+.ss-views {
+  display: flex;
+  padding: 8px 12px 0;
+  border-bottom: var(--rule-soft);
+  flex-shrink: 0;
+}
+.ss-views button {
+  flex: 1;
+  padding: 6px 0 5px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: calc(11.5px * var(--font-scale));
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.ss-views button:hover {
+  color: var(--ink-1);
+}
+.ss-views button.on {
+  color: var(--ink-1);
+  font-weight: 700;
+  border-bottom-color: var(--seal);
+}
+.ss-views button:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+
+/* ── 案卷视图：枝卷的「枝」牌（与书脊 .sr-branch-tag / 卷首眉行**同一枚标**——一屏一语言）
+ *  + 血缘卡。牌是热区本体；卡随牌走（同在 .ss-lineage 子树里 ⇒ 指针从牌移到卡不触发
+ *  mouseleave；旧实现热区只在记号上、卡挂在行上 ⇒ 真机报「鼠标一动卡片就消失」） ── */
+.ss-lineage {
+  display: inline-flex;
+  align-items: center;
+}
+.ss-branch-tag {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  background: none;
+  border: 1px solid var(--seal-soft);
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: calc(10.5px * var(--font-scale));
+  line-height: 1.5;
+  color: var(--seal);
+  cursor: pointer;
+  transition:
+    color var(--snap),
+    border-color var(--snap),
+    background var(--snap);
+}
+.ss-branch-tag:hover,
+.ss-branch-tag:focus-visible {
+  color: var(--paper);
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  outline: none;
+}
+/* 牌上的父卷号：等宽、弱一档（牌说「是枝」，号说「自谁分出」） */
+.ss-tag-src {
+  margin-left: 4px;
+  font-family: var(--f-mono);
+  font-size: calc(9px * var(--font-scale));
+  font-style: normal;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+/* 悬空血缘（父卷不在场）：牌转实朱砂边（「父卷已删」的注记在 meta 行） */
+.ss-row.orphan .ss-branch-tag {
+  border-color: var(--seal);
+}
+.ss-lineage-card {
+  position: absolute;
+  left: 30px;
+  top: calc(100% - 4px);
+  z-index: 2;
+  width: 244px;
+  padding: 9px 11px;
+  background: var(--paper);
+  border: var(--rule-strong);
+  border-left: 3px solid var(--seal);
+  box-shadow: var(--elev-menu);
+}
+.ss-lineage-card .t {
+  font-size: calc(11.5px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+  line-height: 1.5;
+}
+.ss-lineage-card .m {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--f-mono);
+  font-size: calc(9.5px * var(--font-scale));
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+}
+.ss-lineage-card .acts {
+  display: flex;
+  gap: 12px;
+  margin-top: 7px;
+}
+.ss-lineage-card .acts button {
+  padding: 2px 0;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--seal-soft);
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--seal-deep);
+  cursor: pointer;
+}
+.ss-lineage-card .acts button:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+/* 检索上下文行（祖先链）：弱墨在场——它回答「这一卷从哪来」，不是命中行 */
+.ss-row.context .ss-label {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+.ss-context-tag {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: calc(9px * var(--font-scale));
+  letter-spacing: 0.06em;
+  color: var(--ink-4);
+}
+
+/* ── 枝视图：引线（rails）——轴走左标记列，父行垂线由子行折角接住 ──
+ * 标记列 16px：勾选格与状态点**同槽叠放**（沿用现网「显形即让位」那条语义），
+ * 于是引线走它的中心（x = 18 + 16·i），每层步进 16px；顺带把现网那 22px
+ * 「勾选格列」（常空）收回来 ⇒ 同深度名区不更窄（浅层反而宽 14px）。 */
+.ss-list[data-view="tree"] .ss-row {
+  align-items: stretch;
+}
+.ss-guide {
+  display: flex;
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+.ss-guide .gl {
+  position: relative;
+  width: 16px;
+  flex: 0 0 16px;
+}
+/* 竖线出血 9px 探进行的上下内距 ⇒ 相邻行接得上（不断成一截一截） */
+.ss-guide .gl.v::before,
+.ss-guide .gl.tee::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: -9px;
+  bottom: -9px;
+  width: 1px;
+  background: var(--rail);
+}
+.ss-guide .gl.tee::after,
+.ss-guide .gl.end::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 18px;
+  width: 12px;
+  height: 1px;
+  background: var(--rail);
+}
+.ss-guide .gl.end::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: -9px;
+  height: 27px;
+  width: 1px;
+  background: var(--rail);
+}
+.ss-desc {
+  position: absolute;
+  top: 18px;
+  bottom: -8px;
+  width: 1px;
+  background: var(--rail);
+}
+.ss-mark {
+  position: relative;
+  flex: 0 0 16px;
+  width: 16px;
+  align-self: stretch;
+}
+/* 案卷视图：勾选格与状态点仍是行内的两个直接槽位（沿现网布局，零漂移） */
+.ss-bare {
+  display: contents;
+}
+.ss-mark .ss-check {
+  position: absolute;
+  left: 1px;
+  top: 11px;
+  margin: 0;
+}
+.ss-mark .ss-dot {
+  position: absolute;
+  left: 4px;
+  top: 14px;
+  margin: 0;
+}
+/* hover 某行 ⇒ **整族**（同族全部行）纸深一档 + 引线转朱砂：谁和谁是一家、
+ * 删父卷会连坐谁，一眼看出。刻意不用朱砂洗底——那是「当前卷」的语言。 */
+.ss-row.fam {
+  background: var(--paper-deep);
+}
+.ss-row.fam .gl::before,
+.ss-row.fam .gl::after,
+.ss-row.fam .ss-desc {
+  background: color-mix(in oklch, var(--seal) 60%, transparent);
+}
+.ss-fam {
+  position: relative;
+}
+.ss-folded-note {
+  padding: 2px 12px 8px 42px;
+  font-family: var(--f-mono);
+  font-size: calc(9.5px * var(--font-scale));
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+/* 右端一槽两租客：常态 = 「▾ N 枝」汇总（父行，点它折枝），hover/聚焦 = 改/合/删。
+ * 叠在同一槽里（不并排）⇒ 汇总不额外吃名区宽度；常态动作行不接指针。 */
+.ss-tail {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+}
+.ss-kids {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  padding: 3px 5px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  font-family: var(--f-mono);
+  font-size: calc(9.5px * var(--font-scale));
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ss-kids:hover {
+  color: var(--seal-deep);
+}
+.ss-kids:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+.ss-tail .ss-actions {
+  pointer-events: none;
+}
+.ss-row:hover .ss-kids,
+.ss-row:focus-within .ss-kids {
+  display: none;
+}
+.ss-row:hover .ss-tail .ss-actions,
+.ss-row:focus-within .ss-tail .ss-actions {
+  pointer-events: auto;
 }

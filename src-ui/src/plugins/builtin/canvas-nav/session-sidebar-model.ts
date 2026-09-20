@@ -31,6 +31,12 @@ export interface SidebarRow {
   /** **血缘悬空**：父卷不在场（外部删除/拷走——应用内删除必连坐，故悬空只可能来自外部）。
    *  显示「父卷已删」，**不阻塞打开**（枝卷内容自包含，plan §8）。 */
   orphan?: boolean;
+  /** **直系子行数**（在场者；`treeRows`/`familyForest` 填）——枝视图右端「▾ N 枝」汇总。 */
+  kids?: number;
+  /** **逐层「是否末子」**（下标 = 层，0 = 本族根层；`treeRows` 填）——引线折角 `├/└` 的素材。 */
+  lastAt?: boolean[];
+  /** **仅作检索上下文在场**（不是命中行）：搜到子卷时把它的祖先链补进来，弱墨呈现。 */
+  contextOnly?: boolean;
 }
 
 /** 两源合流：磁盘已存卷为底，摊开会话覆盖（label 取内存最新；savedAt 缺失
@@ -103,20 +109,127 @@ export function treeRows(rows: SidebarRow[], present: ReadonlySet<number>): Side
   }
   const out: SidebarRow[] = [];
   const seen = new Set<number>();
-  const walk = (row: SidebarRow, depth: number): void => {
+  const walk = (row: SidebarRow, depth: number, lastAt: boolean[]): void => {
     if (seen.has(row.id)) return; // 环守卫：坏血缘不递归，也不吞行
     seen.add(row.id);
+    const kids = byParent.get(row.id) ?? [];
     out.push({
       ...row,
       depth,
+      lastAt,
+      kids: kids.length,
       ...(row.parentId != null && !present.has(row.parentId) ? { orphan: true } : {}),
     });
-    for (const child of byParent.get(row.id) ?? []) walk(child, depth + 1);
+    kids.forEach((child, i) => {
+      walk(child, depth + 1, [...lastAt, i === kids.length - 1]);
+    });
   };
-  for (const r of roots) walk(r, 0);
+  roots.forEach((r, i) => {
+    walk(r, 0, [i === roots.length - 1]);
+  });
   // 环 / 父在本节但其自身不可达的行：按根行补出（顺序退化为合流序，行不丢）
-  for (const r of rows) walk(r, 0);
+  for (const r of rows) if (!seen.has(r.id)) walk(r, 0, [true]);
   return out;
+}
+
+/**
+ * **族**（会话树「枝」的呈现单位）：一个根卷 + 它的整棵子树 = 一族。
+ *
+ *  · `families` = 有子行的族（按**族内最新 `savedAt`** 倒序——族序读作「最近动过的那一家在上」）；
+ *  · `solo` = 无子行的根卷（独立卷；呈现面折成末组一行）。
+ *
+ *  与 `treeRows` 的分工：`treeRows` 管**节内**树形（父不在本节 ⇒ 当根行）；本函数管**跨节**建族
+ *  （枝视图里族不拆——摊开/已合卷由行状态表达，不再切段）。父不在场（悬空血缘）的行自成根，
+ *  其子行仍随它成族（族内在场，族根那条边是断的）。
+ */
+export function familyForest(rows: SidebarRow[]): {
+  families: Array<{ root: SidebarRow; rows: SidebarRow[] }>;
+  solo: SidebarRow[];
+} {
+  const ids = new Set(rows.map((r) => r.id));
+  const byParent = new Map<number, SidebarRow[]>();
+  const roots: SidebarRow[] = [];
+  for (const r of rows) {
+    const pid = r.parentId;
+    if (pid != null && pid !== r.id && ids.has(pid)) {
+      const bucket = byParent.get(pid);
+      if (bucket) bucket.push(r);
+      else byParent.set(pid, [r]);
+    } else {
+      roots.push(r);
+    }
+  }
+  const families: Array<{ root: SidebarRow; rows: SidebarRow[]; latestAt: string }> = [];
+  const solo: SidebarRow[] = [];
+  const covered = new Set<number>();
+  const buildFamily = (root: SidebarRow): void => {
+    const members: SidebarRow[] = [root];
+    const guard = new Set<number>([root.id]);
+    covered.add(root.id);
+    const collect = (id: number): void => {
+      for (const child of byParent.get(id) ?? []) {
+        if (guard.has(child.id)) continue; // 环守卫：坏血缘不递归（与 treeRows 同一纪律）
+        guard.add(child.id);
+        covered.add(child.id);
+        members.push(child);
+        collect(child.id);
+      }
+    };
+    collect(root.id);
+    const tree = treeRows(members, ids);
+    if (tree.length <= 1) {
+      solo.push(tree[0] ?? root);
+      return;
+    }
+    const latestAt = tree.reduce((acc, r) => ((r.savedAt || '') > acc ? r.savedAt || '' : acc), '');
+    families.push({ root, rows: tree, latestAt });
+  };
+  for (const root of roots) buildFamily(root);
+  // 坏血缘（环）：从任何根都走不到的行**末尾按族根补出**——绝不吞行（与 treeRows 同一条纪律）
+  for (const r of rows) if (!covered.has(r.id)) buildFamily(r);
+  families.sort((a, b) => (b.latestAt || '').localeCompare(a.latestAt || ''));
+  return { families: families.map(({ root, rows: famRows }) => ({ root, rows: famRows })), solo };
+}
+
+/**
+ * **检索保祖先链**：命中行 + 其祖先上下文行（父不在命中集 ⇒ 补进来，标 `contextOnly`）。
+ *
+ *  病根（2026-09-20 走查）：旧实现先 `filterRows` 再建树 ⇒ 搜子卷名时父卷被滤掉，
+ *  子卷当根行、血缘不可见；搜父卷名时子卷不出现（「这一枝都有谁」搜不到）。
+ *  祖先按**根→父**顺序插在首个命中的后代行之前；同一祖先只补一次（幂等）。
+ */
+export function withAncestorContext(hits: SidebarRow[], all: SidebarRow[]): SidebarRow[] {
+  const byId = new Map(all.map((r) => [r.id, r]));
+  const hitIds = new Set(hits.map((r) => r.id));
+  const emitted = new Set<number>();
+  const out: SidebarRow[] = [];
+  for (const hit of hits) {
+    const chain: SidebarRow[] = [];
+    const seen = new Set<number>([hit.id]);
+    let cur = hit.parentId != null ? byId.get(hit.parentId) : undefined;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      chain.unshift(cur);
+      cur = cur.parentId != null ? byId.get(cur.parentId) : undefined;
+    }
+    for (const anc of chain) {
+      if (hitIds.has(anc.id) || emitted.has(anc.id)) continue;
+      emitted.add(anc.id);
+      out.push({ ...anc, contextOnly: true });
+    }
+    out.push(hit);
+  }
+  return out;
+}
+
+/**
+ * **血缘悬空标记**（案卷视图用）：父卷不在场（外部删除/拷走）⇒ 标 `orphan`。
+ *
+ *  树面（枝视图）由 `treeRows` 顺带标记；案卷视图不建树，但同样需要那枚「父卷已删」
+ *  ——同一条判据（父卷号在场集里查不到），两处不许各写一份。
+ */
+export function markOrphans(rows: SidebarRow[], present: ReadonlySet<number>): SidebarRow[] {
+  return rows.map((r) => (r.parentId != null && !present.has(r.parentId) ? { ...r, orphan: true } : r));
 }
 
 /** 相对时间（DSH 行副信息）：刚刚 / N 分钟前 / N 小时前 / N 天前；缺省 '—'。 */

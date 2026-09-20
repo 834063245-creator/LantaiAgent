@@ -55,14 +55,17 @@ import {
   bucketClosed,
   CLOSED_BUCKET_LABEL,
   type ClosedBucket,
+  familyForest,
   filterRows,
+  markOrphans,
   mergeSessionRows,
+  relativeTime,
   type SessionStatus,
   type SidebarRow,
   sessionMeta,
   splitSections,
   statusLabel,
-  treeRows,
+  withAncestorContext,
 } from './session-sidebar-model';
 import './session-sidebar.css';
 
@@ -77,10 +80,19 @@ const WIDTH_MAX = 420;
 const WIDTH_DEFAULT = 264;
 const WIDTH_KEY = 'lantai.sidebar.width';
 const FOLDS_KEY = 'lantai.sidebar.folds';
+const VIEW_KEY = 'lantai.sidebar.view';
 
-/** 折叠面键：两节头 + 三桶头。默认全展开，唯「更早」默认收起。 */
-type FoldKey = 'open' | 'closed' | ClosedBucket;
-const DEFAULT_FOLDED: Record<string, boolean> = { earlier: true };
+/** 视角（2026-09-20 用户拍板「双视角」，立案 `docs/plans/sidebar-two-views-plan.md`）：
+ *  `case` = 案卷（纯时间序扁平列表 + 血缘记号）/ `tree` = 枝（森林 + 引线）。
+ *  **默认 `case`**——日常找卷的动线零漂移；视角只影响列表区。 */
+type SidebarView = 'case' | 'tree';
+
+/** 折叠面键：两节头 + 三桶头 + 族（`fam:<根号>`）+ 独卷组（`solo`）。默认全展开，唯「更早」默认收起。 */
+type FoldKey = string;
+/** 折枝/独卷组的折叠面键（走同一份 `folds` 账：节/桶 + 族 + 独卷组）。 */
+const famFoldKey = (id: number) => `fam:${id}`;
+const SOLO_KEY = 'solo';
+const DEFAULT_FOLDED: Record<string, boolean> = { earlier: true, [SOLO_KEY]: true };
 
 /** localStorage 毒化容忍（INVARIANTS #11 同款）：坏值 → 默认。 */
 function loadWidth(): number {
@@ -104,6 +116,16 @@ function loadFolds(): Record<string, boolean> {
     /* 坏 JSON → 默认折叠面 */
   }
   return {};
+}
+/** 视角读取（同款毒化容忍）：未知值 → `case`。 */
+function loadView(): SidebarView {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY);
+    if (raw === 'tree' || raw === 'case') return raw;
+  } catch {
+    /* 坏值 → 默认视角 */
+  }
+  return 'case';
 }
 
 /** 桶机读码（节头等宽计数位）。 */
@@ -170,8 +192,10 @@ export const SessionSidebar = memo(function SessionSidebar() {
   /** 多选批量删除：已勾选卷 id 集 + 批量钮武装态。 */
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchArmed, setBatchArmed] = useState(false);
-  /** 节/桶折叠面（默认全展开，「更早」默认收起）。 */
+  /** 节/桶/族折叠面（默认全展开，「更早」与「独立卷」默认收起）。 */
   const [folds, setFolds] = useState<Record<string, boolean>>(loadFolds);
+  /** 视角（案卷 ⇄ 枝）：状态持久化（`VIEW_KEY`），默认案卷。 */
+  const [view, setView] = useState<SidebarView>(loadView);
   /** 侧栏宽度（右缘拖拽）。 */
   const [width, setWidth] = useState<number>(loadWidth);
   /** 行拖放：拖行中跟随光标的幽灵预览（屏幕坐标）。 */
@@ -620,27 +644,131 @@ export const SessionSidebar = memo(function SessionSidebar() {
     useDockStore.getState().closePanel('canvas-sidebar');
   }, []);
 
-  /* ── 检索 ── */
-  const visible = useMemo(() => filterRows(rows, query), [rows, query]);
-  const sections = useMemo(() => splitSections(visible), [visible]);
-  /** 在场卷号（**全部**行，不只可见行）：血缘悬空的判据——父卷被检索滤掉不算悬空。 */
+  /* ── 视角（2026-09-20 双视角批）──
+   * 案卷 = 纯时间序扁平列表（不缩进、不被建树打断）；枝 = 森林（族不拆 + 引线）。
+   * 视角只影响列表区；切换时解武一切破坏性动作（同「点击行 = 其它意图」纪律）。 */
+  const switchView = useCallback(
+    (v: SidebarView) => {
+      disarmAll();
+      setView(v);
+      try {
+        localStorage.setItem(VIEW_KEY, v);
+      } catch {
+        /* 写失败仅本次会话生效 */
+      }
+    },
+    [disarmAll],
+  );
+
+  /* ── 案卷视图：全量分节 → 节内过滤（**祖先上下文行只在同节内补**，血缘不因检索丢） ── */
+  const sections = useMemo(() => splitSections(rows), [rows]);
+  /** 在场卷号（全部行）：血缘悬空的判据——父卷被检索滤掉不算悬空，**不在场**才算。 */
   const presentIds = useMemo(() => new Set(rows.map((r) => r.id)), [rows]);
-  /** 树形排布（会话树「枝」）：节内按血缘排父子段（父不在本节 ⇒ 当根行，缩进归 0）。 */
-  const openTree = useMemo(() => treeRows(sections.open, presentIds), [sections.open, presentIds]);
-  const closedTree = useMemo(() => treeRows(sections.closed, presentIds), [sections.closed, presentIds]);
-  const buckets = useMemo(() => bucketClosed(closedTree), [closedTree]);
+  const caseSections = useMemo(
+    () => ({
+      open: markOrphans(
+        query ? withAncestorContext(filterRows(sections.open, query), sections.open) : sections.open,
+        presentIds,
+      ),
+      closed: markOrphans(
+        query ? withAncestorContext(filterRows(sections.closed, query), sections.closed) : sections.closed,
+        presentIds,
+      ),
+    }),
+    [sections, query, presentIds],
+  );
+  const buckets = useMemo(() => bucketClosed(caseSections.closed), [caseSections.closed]);
   /** 桶头仅在合卷集横跨多桶时立（单桶立头是噪音）。 */
   const showBucketHeads = buckets.length > 1;
-  const flat = useMemo(() => {
+  /** 案卷视图的可见行（扁平序；合卷节内按桶展开）。 */
+  const caseFlat = useMemo(() => {
     const out: SidebarRow[] = [];
-    if (!folded('open')) out.push(...openTree);
+    if (!folded('open')) out.push(...caseSections.open);
     if (!folded('closed')) {
       for (const b of buckets) {
         if (!showBucketHeads || !folded(b.bucket)) out.push(...b.rows);
       }
     }
     return out;
-  }, [openTree, buckets, showBucketHeads, folded]);
+  }, [caseSections, buckets, showBucketHeads, folded]);
+
+  /* ── 枝视图：森林（族 = 根卷 + 整棵子树，**跨摊开/已合卷不拆**） ── */
+  const forest = useMemo(() => {
+    const src = query ? withAncestorContext(filterRows(rows, query), rows) : rows;
+    return familyForest(src);
+  }, [rows, query]);
+  const treeFlat = useMemo(() => {
+    const out: SidebarRow[] = [];
+    for (const fam of forest.families) {
+      out.push(fam.rows[0]);
+      if (!folded(famFoldKey(fam.root.id))) out.push(...fam.rows.slice(1));
+    }
+    if (!folded(SOLO_KEY)) out.push(...forest.solo);
+    return out;
+  }, [forest, folded]);
+  /** 可见行（键盘游标 / Ctrl+A / 全选可见都读它）——当前视角那一份。 */
+  const flat = view === 'case' ? caseFlat : treeFlat;
+  /** 族根查表（hover 整族高亮的判据；坏血缘由 guard 兜底，绝不无限上溯）。 */
+  const rootOfRow = useMemo(() => {
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const cache = new Map<number, number>();
+    const rootOf = (id: number): number => {
+      const hit = cache.get(id);
+      if (hit != null) return hit;
+      let cur = byId.get(id);
+      const seen = new Set<number>([id]);
+      while (cur?.parentId != null && byId.has(cur.parentId) && !seen.has(cur.parentId)) {
+        seen.add(cur.parentId);
+        cur = byId.get(cur.parentId);
+      }
+      const root = cur?.id ?? id;
+      for (const s of seen) cache.set(s, root);
+      cache.set(id, root);
+      return root;
+    };
+    return rootOf;
+  }, [rows]);
+  const [hoverId, setHoverId] = useState<number | null>(null);
+  /** 血缘卡（案卷视图）：父卷名 + 号 + 相对时间；「枝」牌 hover/聚焦/点击开合。
+   *  **热区与宽限**（真机报「鼠标一动卡片就消失」的修法）：牌与卡同属 `.ss-lineage`
+   *  子树（进卡不触发 mouseleave），再加 200ms 关延迟——牌在名行、卡在行外，
+   *  指针总要横穿一截非热区（meta 行），没有宽限就必然中途掉出。 */
+  const [cardId, setCardId] = useState<number | null>(null);
+  const cardTimerRef = useRef<number | null>(null);
+  const openCard = useCallback((id: number) => {
+    if (cardTimerRef.current != null) {
+      clearTimeout(cardTimerRef.current);
+      cardTimerRef.current = null;
+    }
+    setCardId(id);
+  }, []);
+  const closeCardNow = useCallback(() => {
+    if (cardTimerRef.current != null) {
+      clearTimeout(cardTimerRef.current);
+      cardTimerRef.current = null;
+    }
+    setCardId(null);
+  }, []);
+  const closeCardSoon = useCallback(() => {
+    if (cardTimerRef.current != null) clearTimeout(cardTimerRef.current);
+    cardTimerRef.current = window.setTimeout(() => {
+      cardTimerRef.current = null;
+      setCardId(null);
+    }, 200);
+  }, []);
+  useEffect(
+    () => () => {
+      if (cardTimerRef.current != null) clearTimeout(cardTimerRef.current);
+    },
+    [],
+  );
+  const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
+
+  /* 当前卷进场（2026-09-20 双视角批）：切换当前卷后把它滚进视野（nearest = 已在视野内不动）。 */
+  useEffect(() => {
+    if (activeSid == null) return;
+    rowRefs.current.get(activeSid)?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeSid]);
 
   /* 游标随可见行收窄而收敛（过滤/折叠/删除后游标行可能消失）。 */
   useEffect(() => {
@@ -694,7 +822,38 @@ export const SessionSidebar = memo(function SessionSidebar() {
       else if (e.key === 'ArrowUp') next = idx < 0 ? 0 : Math.max(0, idx - 1);
       else if (e.key === 'Home') next = 0;
       else if (e.key === 'End') next = flat.length - 1;
-      else if (e.key === 'F2' && idx >= 0) {
+      /* ← →（枝视图专属；案卷视图无树可走 ⇒ 不吞键，留给其它面）
+       *  → = 折着就展开本行；已展开就进第一个子行；无枝 = 空操作
+       *  ← = 展着就折起本行；否则回父行（父不在可见集 = 空操作） */ else if (
+        (e.key === 'ArrowRight' || e.key === 'ArrowLeft') &&
+        view === 'tree' &&
+        idx >= 0
+      ) {
+        const row = flat[idx];
+        const kids = row.kids ?? 0;
+        const foldKey = famFoldKey(row.id);
+        const isFolded = folded(foldKey);
+        if (e.key === 'ArrowRight') {
+          if (kids === 0) return;
+          e.preventDefault();
+          if (isFolded) toggleFold(foldKey);
+          else {
+            const childId = flat[idx + 1]?.parentId === row.id ? flat[idx + 1].id : null;
+            if (childId != null) {
+              setCursorId(childId);
+              rowRefs.current.get(childId)?.focus();
+            }
+          }
+          return;
+        }
+        e.preventDefault();
+        if (kids > 0 && !isFolded) toggleFold(foldKey);
+        else if (row.parentId != null && flat.some((x) => x.id === row.parentId)) {
+          setCursorId(row.parentId);
+          rowRefs.current.get(row.parentId)?.focus();
+        }
+        return;
+      } else if (e.key === 'F2' && idx >= 0) {
         e.preventDefault();
         const row = flat[idx];
         disarmAll();
@@ -727,7 +886,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
       rowRefs.current.get(row.id)?.focus();
       rowRefs.current.get(row.id)?.scrollIntoView?.({ block: 'nearest' });
     },
-    [flat, cursorId, renamingId, onDelete, onCollapse, toggleSelect, disarmAll],
+    [flat, cursorId, renamingId, onDelete, onCollapse, toggleSelect, disarmAll, view, folded, toggleFold],
   );
 
   /* Esc 四级撤退（列表外，如书眉/检索失焦后）：解武删除 → 解武批量 →
@@ -750,12 +909,31 @@ export const SessionSidebar = memo(function SessionSidebar() {
 
   if (!core) return null;
 
-  const renderRow = (r: SidebarRow) => {
+  /**
+   * 行渲染（两视角共用壳，差异集中在三处）：
+   *  · **案卷视图**（`variant === 'case'`）＝不缩进；血缘 = 名后一枚等宽 `↳N` 记号（hover/聚焦/点击
+   *    开血缘卡）——树不画进窄栏，时间序不被打断（2026-09-20 双视角批）；
+   *  · **枝视图**（`variant === 'tree'`）＝引线折角（轴走左标记列）+ 父行 `▾ N 枝` 汇总 + 族高亮。
+   */
+  const renderRow = (r: SidebarRow, variant: SidebarView) => {
     const isRenaming = renamingId === r.id;
     const isCurrent = r.open && r.id === activeSid;
     const isSelected = selectedIds.has(r.id);
     const branch = r.parentId != null;
-    const depth = r.depth ?? 0;
+    const depth = variant === 'tree' ? (r.depth ?? 0) : 0;
+    const tree = variant === 'tree';
+    const kids = r.kids ?? 0;
+    const famFolded = tree && kids > 0 && folded(famFoldKey(r.id));
+    const famHot = tree && hoverId != null && rootOfRow(hoverId) === rootOfRow(r.id);
+    const parentRow = r.parentId != null ? rowById.get(r.parentId) : undefined;
+    // 引线：逐层「末子」旗标 ⇒ ├ / └ / 竖线 / 空（与原型同一套判据）
+    const guides: React.ReactNode[] = [];
+    if (tree && depth > 0) {
+      for (let i = 0; i < depth; i++) {
+        const last = r.lastAt?.[i] ?? true;
+        guides.push(<i key={i} className={`gl ${i === depth - 1 ? (last ? 'end' : 'tee') : last ? 'blank' : 'v'}`} />);
+      }
+    }
     return (
       // biome-ignore lint/a11y/useSemanticElements: 行容器内含行操作按钮，button 嵌套交互元素非法——用 div 承载行级点击
       <div
@@ -768,15 +946,24 @@ export const SessionSidebar = memo(function SessionSidebar() {
         tabIndex={cursorId === r.id ? 0 : -1}
         className={`ss-row${r.open ? ' open' : ''}${isCurrent ? ' current' : ''}${isSelected ? ' selected' : ''}${
           branch ? ' branch' : ''
+        }${r.orphan ? ' orphan' : ''}${r.contextOnly ? ' context' : ''}${famHot ? ' fam' : ''}${
+          famFolded ? ' folded' : ''
         }`}
-        style={depth > 0 ? { paddingLeft: 10 + depth * 14 } : undefined}
-        title={`${volumeDisplayName(r.label, r.id)}${branch ? ' · 枝' : ''}${r.orphan ? ' · 父卷已删' : ''}${
-          isCurrent ? ' · 当前卷' : ''
-        } · ${statusLabel(r.status)} · 左键摊开/定位 · 拖动落位`}
+        data-id={r.id}
+        data-depth={depth}
+        title={`${volumeDisplayName(r.label, r.id)}${branch ? ` · 枝（父卷 Nº ${r.parentId}）` : ''}${
+          r.orphan ? ' · 父卷已删' : ''
+        }${isCurrent ? ' · 当前卷' : ''} · ${statusLabel(r.status)} · 左键摊开/定位 · 拖动落位`}
         aria-current={isCurrent ? 'true' : undefined}
+        aria-expanded={tree && kids > 0 ? !famFolded : undefined}
         onClick={(e) => onRowClick(e, r)}
         onMouseDown={(e) => onRowMouseDown(e, r)}
-        onFocus={() => setCursorId(r.id)}
+        onMouseEnter={tree ? () => setHoverId(r.id) : undefined}
+        onMouseLeave={tree ? () => setHoverId((prev) => (prev === r.id ? null : prev)) : undefined}
+        onFocus={() => {
+          setCursorId(r.id);
+          if (tree) setHoverId(r.id);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -784,18 +971,28 @@ export const SessionSidebar = memo(function SessionSidebar() {
           }
         }}
       >
-        <button
-          type="button"
-          className={`ss-check${isSelected ? ' on' : ''}`}
-          aria-pressed={isSelected}
-          aria-label={`${isSelected ? '取消选择' : '选择'}案卷：${volumeDisplayName(r.label, r.id)}`}
-          title="勾选后可批量删除（Ctrl+点击 / X 键同效）"
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleSelect(r.id);
-          }}
-        />
-        <span className={`ss-dot ss-dot-${r.status}`} role="presentation" />
+        {guides.length > 0 && (
+          <span className="ss-guide" aria-hidden="true">
+            {guides}
+          </span>
+        )}
+        {tree && kids > 0 && !famFolded && (
+          <i className="ss-desc" aria-hidden="true" style={{ left: 18 + 16 * depth }} />
+        )}
+        <span className={tree ? 'ss-mark' : 'ss-bare'}>
+          <button
+            type="button"
+            className={`ss-check${isSelected ? ' on' : ''}`}
+            aria-pressed={isSelected}
+            aria-label={`${isSelected ? '取消选择' : '选择'}案卷：${volumeDisplayName(r.label, r.id)}`}
+            title="勾选后可批量删除（Ctrl+点击 / X 键同效）"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSelect(r.id);
+            }}
+          />
+          <span className={`ss-dot ss-dot-${r.status}`} role="presentation" />
+        </span>
         {isRenaming ? (
           <input
             ref={renameInputRef}
@@ -819,73 +1016,148 @@ export const SessionSidebar = memo(function SessionSidebar() {
           <div className="ss-row-main">
             <span className="ss-label-row">
               <span className="ss-label">{volumeDisplayName(r.label, r.id)}</span>
-              {/* 枝标（会话树）：有父卷 = 这一卷是从某个节点分出来的枝 */}
-              {branch && (
-                <span className="ss-branch-tag" title="枝：从父卷的某个节点分出（内容自包含）">
-                  枝
+              {/* 案卷视图：枝卷的**明显标识** = 与书脊/卷首同一枚「枝」牌（一屏一语言），
+                  牌上带父卷号、牌是血缘卡的热区；卡与牌同属 .ss-lineage 子树
+                  ⇒ 指针从牌移到卡不会触发 mouseleave（旧实现把卡挂在行上、热区只在记号上，
+                  指针一动就掉出热区 = 真机报的「鼠标一动卡片就消失」）。 */}
+              {!tree && branch && (
+                // biome-ignore lint/a11y/noStaticElementInteractions: 悬停宽限区——可交互件是里面的「枝」牌按钮；本 span 只负责让指针从牌走到卡时不掉出热区
+                <span className="ss-lineage" onMouseEnter={() => openCard(r.id)} onMouseLeave={closeCardSoon}>
+                  <button
+                    type="button"
+                    className="ss-branch-tag"
+                    aria-label={`枝：这一卷分出案卷 Nº ${r.parentId}`}
+                    aria-expanded={cardId === r.id}
+                    title={`枝：从父卷 Nº ${r.parentId} 的某个节点分出（内容自包含）${parentRow ? '' : '；父卷不在场'}`}
+                    onFocus={() => openCard(r.id)}
+                    onBlur={closeCardSoon}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (cardId === r.id) closeCardNow();
+                      else openCard(r.id);
+                    }}
+                  >
+                    枝<i className="ss-tag-src">{r.parentId}</i>
+                  </button>
+                  {cardId === r.id && (
+                    <div className="ss-lineage-card">
+                      <div className="t">
+                        {parentRow
+                          ? volumeDisplayName(parentRow.label, parentRow.id)
+                          : `案卷 Nº ${r.parentId}（不在场）`}
+                      </div>
+                      <span className="m">
+                        Nº {r.parentId}
+                        {parentRow ? ` · ${parentRow.msgCount} 块 · 枝自它分出` : ' · 外部删除或拷走'}
+                      </span>
+                      <div className="acts">
+                        {parentRow ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeCardNow();
+                              activeSpace()?.expand(String(r.parentId));
+                            }}
+                          >
+                            摊开父卷
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            closeCardNow();
+                          }}
+                        >
+                          知道了
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </span>
               )}
+              {r.contextOnly && <span className="ss-context-tag">上下文</span>}
             </span>
+            {/* 悬空血缘的注记由 sessionMeta 出（「父卷已删」，两视角同一处，不重复写） */}
             <span className="ss-meta">{sessionMeta(r)}</span>
           </div>
         )}
-        {!isRenaming && (
-          <div className="ss-actions">
+        <span className="ss-tail">
+          {tree && kids > 0 && (
             <button
               type="button"
-              title="改名"
+              className="ss-kids"
+              aria-expanded={!famFolded}
+              title={famFolded ? '展开这一枝' : '收起这一枝'}
               onClick={(e) => {
                 e.stopPropagation();
                 disarmAll();
-                setRenamingId(r.id);
-                setDraftLabel(isUnnamedVolumeLabel(r.label) ? '' : r.label); // 原名（未命名 → 空）
+                toggleFold(famFoldKey(r.id));
               }}
             >
-              改
+              {famFolded ? '▸' : '▾'} {kids} 枝
             </button>
-            {r.open && (
+          )}
+          {!isRenaming && (
+            <div className="ss-actions">
               <button
                 type="button"
-                title="合卷（收起，数据保留；C 键同效）"
+                title="改名"
                 onClick={(e) => {
                   e.stopPropagation();
                   disarmAll();
-                  onCollapse(r.id);
+                  setRenamingId(r.id);
+                  setDraftLabel(isUnnamedVolumeLabel(r.label) ? '' : r.label); // 原名（未命名 → 空）
                 }}
               >
-                合
+                改
               </button>
-            )}
-            {confirmingDeleteId === r.id ? (
-              <button
-                type="button"
-                className="ss-danger"
-                title={
-                  deleteBranchCount > 0
-                    ? `再点一次确认：将同时删除 ${deleteBranchCount} 枝（删父卷连坐整棵子树，不可撤销）`
-                    : '再点一次确认删除（不可撤销）；点其它处取消'
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void onDelete(r.id);
-                }}
-              >
-                {deleteBranchCount > 0 ? `确删 ${deleteBranchCount + 1} 卷?` : '确删?'}
-              </button>
-            ) : (
-              <button
-                type="button"
-                title="彻底删除（点两次确认）"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void onDelete(r.id);
-                }}
-              >
-                删
-              </button>
-            )}
-          </div>
-        )}
+              {r.open && (
+                <button
+                  type="button"
+                  title="合卷（收起，数据保留；C 键同效）"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    disarmAll();
+                    onCollapse(r.id);
+                  }}
+                >
+                  合
+                </button>
+              )}
+              {confirmingDeleteId === r.id ? (
+                <button
+                  type="button"
+                  className="ss-danger"
+                  title={
+                    deleteBranchCount > 0
+                      ? `再点一次确认：将同时删除 ${deleteBranchCount} 枝（删父卷连坐整棵子树，不可撤销）`
+                      : '再点一次确认删除（不可撤销）；点其它处取消'
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void onDelete(r.id);
+                  }}
+                >
+                  {deleteBranchCount > 0 ? `确删 ${deleteBranchCount + 1} 卷?` : '确删?'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  title="彻底删除（点两次确认）"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void onDelete(r.id);
+                  }}
+                >
+                  删
+                </button>
+              )}
+            </div>
+          )}
+        </span>
+        {/* 血缘卡随「枝」牌走（在 .ss-lineage 子树里）——见 renderRow 头注的病灶说明 */}
       </div>
     );
   };
@@ -906,7 +1178,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
             {BUCKET_CODE[bucket]} · {brows.length}
           </span>
         </button>
-        {!isFolded && brows.map(renderRow)}
+        {!isFolded && brows.map((r) => renderRow(r, 'case'))}
       </div>
     );
   };
@@ -970,9 +1242,36 @@ export const SessionSidebar = memo(function SessionSidebar() {
         </div>
       )}
 
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: 键盘导航容器（↑↓/F2/C/Delete/X 经事件冒泡统一处理） */}
-      <div className="ss-list" onKeyDown={onListKeyDown}>
-        {openTree.length > 0 && (
+      {/* 视角分段（2026-09-20 双视角批）：案卷 = 时间序（默认）/ 枝 = 血缘森林。
+          紧贴列表之上——它管的就是下面这一屏，不挤「另起一卷」那条主动作。 */}
+      <div className="ss-views" role="tablist" aria-label="案卷列表视角">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === 'case'}
+          className={view === 'case' ? 'on' : ''}
+          title="案卷：按时间排（最近动过的在上），血缘看每行那枚 ↳ 记号"
+          onClick={() => switchView('case')}
+        >
+          案卷
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === 'tree'}
+          className={view === 'tree' ? 'on' : ''}
+          title="枝：按血缘排（一族一卷一棵树），父子不拆"
+          onClick={() => switchView('tree')}
+        >
+          枝
+        </button>
+      </div>
+
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: 键盘导航容器（↑↓/←→/F2/C/Delete/X 经事件冒泡统一处理）。
+          role=tree 语义留待重排 DOM 的小批（分组头/折枝注记是并列件，硬套 role=tree 结构不成立）——
+          本批只给折枝钮 aria-expanded + 行 aria-current（见 plan §2.4 裁定）。 */}
+      <div className="ss-list" onKeyDown={onListKeyDown} data-view={view}>
+        {view === 'case' && caseSections.open.length > 0 && (
           <div className="ss-section">
             <button
               type="button"
@@ -982,12 +1281,12 @@ export const SessionSidebar = memo(function SessionSidebar() {
             >
               <span className="t">摊开中</span>
               <span className="leader" role="presentation" />
-              <span className="n">OPEN · {openTree.length}</span>
+              <span className="n">OPEN · {caseSections.open.length}</span>
             </button>
-            {!openFolded && openTree.map(renderRow)}
+            {!openFolded && caseSections.open.map((r) => renderRow(r, 'case'))}
           </div>
         )}
-        {closedTree.length > 0 && (
+        {view === 'case' && caseSections.closed.length > 0 && (
           <div className="ss-section">
             <button
               type="button"
@@ -997,14 +1296,64 @@ export const SessionSidebar = memo(function SessionSidebar() {
             >
               <span className="t">已合卷</span>
               <span className="leader" role="presentation" />
-              <span className="n">CLOSED · {closedTree.length}</span>
+              <span className="n">CLOSED · {caseSections.closed.length}</span>
             </button>
             {!closedFolded &&
-              (showBucketHeads ? buckets.map(renderBucket) : buckets.flatMap((b) => b.rows.map(renderRow)))}
+              (showBucketHeads
+                ? buckets.map(renderBucket)
+                : buckets.flatMap((b) => b.rows.map((r) => renderRow(r, 'case'))))}
           </div>
         )}
+
+        {view === 'tree' && forest.families.length > 0 && (
+          <div className="ss-section">
+            <button
+              type="button"
+              className={`ss-section-head${folded('trees') ? ' folded' : ''}`}
+              aria-expanded={!folded('trees')}
+              onClick={() => toggleFold('trees')}
+            >
+              <span className="t">有一枝的卷</span>
+              <span className="leader" role="presentation" />
+              <span className="n">TREES · {forest.families.length}</span>
+            </button>
+            {!folded('trees') &&
+              forest.families.map((fam) => {
+                const foldKey = famFoldKey(fam.root.id);
+                const isFolded = folded(foldKey);
+                const latest = fam.rows.reduce((acc, x) => ((x.savedAt || '') > acc ? x.savedAt || '' : acc), '');
+                return (
+                  <div className="ss-fam" key={fam.root.id}>
+                    {renderRow(fam.rows[0], 'tree')}
+                    {!isFolded && fam.rows.slice(1).map((r) => <div key={r.id}>{renderRow(r, 'tree')}</div>)}
+                    {isFolded && (
+                      <div className="ss-folded-note">
+                        … 折起的 {fam.rows.length - 1} 枝（点 ▸ 展开，最近 {relativeTime(latest)}）
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        )}
+        {view === 'tree' && forest.solo.length > 0 && (
+          <div className="ss-section">
+            <button
+              type="button"
+              className={`ss-section-head${folded(SOLO_KEY) ? ' folded' : ''}`}
+              aria-expanded={!folded(SOLO_KEY)}
+              onClick={() => toggleFold(SOLO_KEY)}
+            >
+              <span className="t">独立卷（无枝）</span>
+              <span className="leader" role="presentation" />
+              <span className="n">SOLO · {forest.solo.length}</span>
+            </button>
+            {!folded(SOLO_KEY) && forest.solo.map((r) => renderRow(r, 'tree'))}
+          </div>
+        )}
+
         {rows.length === 0 && <div className="ss-empty">本工作区暂无案卷</div>}
-        {rows.length > 0 && visible.length === 0 && <div className="ss-empty">无匹配案卷</div>}
+        {rows.length > 0 && flat.length === 0 && <div className="ss-empty">无匹配案卷</div>}
       </div>
 
       {selectedIds.size > 0 && (
