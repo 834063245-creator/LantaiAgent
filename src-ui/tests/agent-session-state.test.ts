@@ -11,16 +11,19 @@ import { createExecState } from '../src/agent/execution-state';
 
 // ── Mock OwnedAgentHandle — minimal shape for testing ──
 function mockAgent(cascadeAbort: () => void = () => {}): any {
-  return { cascadeAbort, dispose: () => {} };
+  return { id: 'mock-agent', cascadeAbort, dispose: () => {}, setExecState: () => {} };
 }
 
+/** 运行账替身（removeExec/removeAgent 路径只用到 stopAll）。 */
 function mockExec(running = false): any {
   let _running = running;
   return {
     isRunning: _running,
     isBusy: _running,
-    stop: () => {
+    runState: { running: _running, kinds: _running ? ['turn'] : [], count: _running ? 1 : 0, since: null },
+    stopAll: () => {
       _running = false;
+      return [];
     },
   };
 }
@@ -106,6 +109,90 @@ describe('AgentSessionState', () => {
       state.setExec('panel-1', 2, mockExec(true) as any);
       state.removeExec('panel-1', 2);
       expect(state.getExec('panel-1', 2)).toBeNull();
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // 运行态唯一读面（v43）——消费面（创作坞/纸面/侧栏/书脊/退出守卫）
+  // 只读这两支，不再各自取账本实例
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('runStateOf / runningSessions / stopRuns', () => {
+    it('runStateOf：无卷 / 无在跑 = 空闲（不编造）', () => {
+      expect(state.runStateOf('panel-1', 1)).toEqual({ running: false, kinds: [], count: 0, since: null });
+      state.getOrCreateExec('panel-1', 1);
+      expect(state.runStateOf('panel-1', 1).running).toBe(false);
+    });
+
+    it('runStateOf：起一轮 → 在跑（含种类）；收尾 → 空闲', () => {
+      const exec = state.getOrCreateExec('panel-1', 1);
+      const run = exec.beginRun('turn');
+      const st = state.runStateOf('panel-1', 1);
+      expect(st.running).toBe(true);
+      expect(st.kinds).toEqual(['turn']);
+      run.end();
+      expect(state.runStateOf('panel-1', 1).running).toBe(false);
+    });
+
+    it('runningSessions：只列本面板在跑的卷（创作坞后台指示 / 退出守卫计数同源）', () => {
+      const a = state.getOrCreateExec('panel-1', 1);
+      const b = state.getOrCreateExec('panel-1', 2);
+      state.getOrCreateExec('panel-2', 1); // 他面板：不串味
+      const runB = b.beginRun('wake');
+      a.beginRun('compact');
+
+      const rows = state.runningSessions('panel-1');
+      expect(rows.map((r) => r.sid).sort()).toEqual([1, 2]);
+      expect(rows.find((r) => r.sid === 2)?.state.kinds).toEqual(['wake']);
+      expect(state.runningSessions('panel-2')).toEqual([]);
+      expect(state.runningSessions('panel-1').length).toBe(2);
+
+      runB.end();
+      expect(state.runningSessions('panel-1').map((r) => r.sid)).toEqual([1]);
+    });
+
+    it('stopRuns：用户停止某卷 = 停它名下全部运行（返回身份 id），不动别的卷', () => {
+      const a = state.getOrCreateExec('panel-1', 1);
+      const b = state.getOrCreateExec('panel-1', 2);
+      const runA1 = a.beginRun('turn');
+      const runA2 = a.beginRun('compact'); // 同卷两类并存（压缩在途）
+      const runB = b.beginRun('turn');
+
+      const stopped = state.stopRuns('panel-1', 1);
+      expect(stopped.sort()).toEqual([runA1.id, runA2.id].sort());
+      expect(state.runStateOf('panel-1', 1).running).toBe(false);
+      expect(state.runStateOf('panel-1', 2).running).toBe(true); // 后台卷不受连坐
+      expect(runA1.signal.aborted).toBe(true);
+      expect(runA2.signal.aborted).toBe(true);
+      expect(runB.signal.aborted).toBe(false);
+      // 未在册的卷：空集（不炸、不铸造）
+      expect(state.stopRuns('panel-1', 99)).toEqual([]);
+    });
+
+    it('bindExec：账是卷级恒定的那一本——装配只绑定、绝不换账（在跑的记录不孤儿化）', () => {
+      const first = mockAgent();
+      const bound = state.bindExec('panel-1', 1, first);
+      expect(bound).toBe(state.getExec('panel-1', 1));
+      // 句柄重建（惰性补建 / 重开卷）：绑的还是同一本账
+      const second = mockAgent();
+      const rebound = state.bindExec('panel-1', 1, second);
+      expect(rebound).toBe(bound);
+      expect(state.getExec('panel-1', 1)).toBe(bound);
+    });
+
+    it('bindExec：运行期仍绑同一本账（在跑 ⇒ 运行态不丢）', () => {
+      const exec = state.getOrCreateExec('panel-1', 1);
+      const run = exec.beginRun('wake');
+      const handle = mockAgent();
+      state.bindExec('panel-1', 1, handle);
+      expect(state.runStateOf('panel-1', 1).running).toBe(true);
+      run.end();
+    });
+
+    it('bindExec：句柄缺 setExecState 能力位 = 降级不炸（只读注册表一本账）', () => {
+      const bare = { id: 'bare', cascadeAbort: () => {}, dispose: () => {} } as any;
+      const exec = state.bindExec('panel-1', 5, bare);
+      expect(exec).toBe(state.getExec('panel-1', 5));
     });
   });
 
@@ -305,14 +392,14 @@ describe('AgentSessionState', () => {
         fired++;
       });
       fired = 0; // 挖掉初始触发
-      es.start();
+      const run = es.beginRun('turn');
       expect(fired).toBe(1);
-      es.done();
+      run.end();
       expect(fired).toBe(2);
       unsub();
     });
 
-    it('迟到实例可见（回归钉——割裂病根）：订阅后才 getOrCreateExec 出生 的实例，其 start() 必须触发', () => {
+    it('迟到实例可见（回归钉——割裂病根）：订阅后才 getOrCreateExec 出生 的实例，其起轮必须触发', () => {
       let fired = 0;
       const unsub = state.subscribeExecAll('panel-1', () => {
         fired++;
@@ -321,7 +408,7 @@ describe('AgentSessionState', () => {
       // 惰性水合/拟文路径：实例在订阅之后才出生（捕获式订阅在此永聋）
       const late = state.getOrCreateExec('panel-1', 7);
       expect(fired).toBe(1); // 实例表变更（版本 bump）→ 重挂 + 重算
-      late.start();
+      late.beginRun('turn');
       expect(fired).toBe(2); // ← 旧「挂载时刻挂一次 onChange」形态在此必失灵
       unsub();
     });
@@ -337,10 +424,10 @@ describe('AgentSessionState', () => {
       const fresh = createExecState();
       state.setExec('panel-1', 1, fresh); // 切卷惰性水合 setExec 换实例
       expect(fired).toBe(1); // 重挂 + 重算
-      fresh.start();
+      fresh.beginRun('turn');
       expect(fired).toBe(2); // 新实例起停可见
       const before = fired;
-      old.start(); // 旧实例已退场——不再触发
+      old.beginRun('turn'); // 旧实例已退场——不再触发
       expect(fired).toBe(before);
       unsub();
     });
@@ -366,8 +453,8 @@ describe('AgentSessionState', () => {
         fired++;
       });
       fired = 0;
-      other.start();
-      other.done();
+      const run = other.beginRun('turn');
+      run.end();
       expect(fired).toBe(0);
       unsub();
     });
@@ -380,7 +467,7 @@ describe('AgentSessionState', () => {
       fired = 0;
       unsub();
       const es = state.getOrCreateExec('panel-1', 1);
-      es.start();
+      es.beginRun('turn');
       expect(fired).toBe(0);
     });
   });

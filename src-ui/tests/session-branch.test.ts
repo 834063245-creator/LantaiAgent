@@ -795,14 +795,14 @@ describe('会话树「枝」——删除连坐（P2，plan §8/§9：删父卷 =
     seedTree();
     // 孙卷 4 运行中
     const exec = Session.getSessionExecState(store, 4);
-    exec.start();
+    const run = exec.beginRun('turn'); // v43：运行态 = 账上的活记录
 
     const outcome = await cascade(store, [1]);
 
     expect(outcome.deleted).toEqual([]);
     expect(outcome.blocked).toEqual([{ id: 1, running: [4] }]);
     for (const sid of [1, 2, 3, 4]) expect(volumeText(sid)).toBeDefined();
-    exec.done();
+    run.end();
   });
 
   it('部分失败逐卷可见：删不掉的卷进 failed 并带原因，成功的不回滚（剩下的仍是合法森林）', async () => {

@@ -7,7 +7,7 @@
 
 import { agentSessionState, type OwnedAgentHandle, type TurnPair } from '../agent/agent-session-state';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
-import { createExecState, type ExecStateInstance } from '../agent/execution-state';
+import type { ExecStateInstance } from '../agent/execution-state';
 import { log } from '../agent/logger';
 import type { TokenLedgerSnapshot } from '../agent/token-meter/types';
 import {
@@ -125,7 +125,9 @@ export function setAgentFactory(
   agentSessionState.setAgentFactory(storeId, fn);
 }
 
-/** 获取或创建会话的 execState。 */
+/** 获取或创建会话的**账**（运行账 = 每卷一本，「这卷在不在跑」的唯一事实）。
+ *  铸造点只有这一处（`agentSessionState.getOrCreateExec`）；读运行态请走
+ *  `agentSessionState.runStateOf`，不要各自取实例。 */
 export function getSessionExecState(storeId: string, sessionId: number): ExecStateInstance {
   return agentSessionState.getOrCreateExec(storeId, sessionId);
 }
@@ -135,29 +137,22 @@ export function removeSessionExecState(storeId: string, sessionId: number): void
   agentSessionState.removeExec(storeId, sessionId);
 }
 
-/** 装配收尾：给本卷装一本**新** exec 账，并把**同一实例**交给句柄——运行态
- *  单一权威源（2026-09-17「偶发：会话在跑而运行态丢失」根治）。
+/** 装配收尾：把本卷的账**绑**给句柄（`agentSessionState.bindExec`）——2026-09-17
+ *  「偶发：会话在跑而运行态丢失」那半（账本身份）+ 2026-09-20 结构性收口。
  *
  *  两个读账方必须是同一个对象：
- *  - UI 全域读注册表实例（chat-core._activeExec / useRunningSessions /
- *    ComposerDock / TocStrip）；
+ *  - UI 全域读注册表实例（chat-core._activeExec / runStateOf / 创作坞 / 目次带）；
  *  - Agent 自起的轮次（`_onMessageDelivered`：异步子 Agent 回件 / 后台任务 bg /
- *    通信族消息）走句柄内部账本 `agent._execState`。
+ *    延迟唤醒）走句柄内部账本 `agent._execState`。
  *
- *  此前三条装配路径（createNewSession / ensureSessionAgent / loadSessionFromDisk）
- *  都在**工厂返回之后**才往注册表塞新实例，而工厂（workspace.ts:920
- *  `getSessionExecState`）早已把**旧实例**交给了 Agent ⇒ 同卷两本账。后果只落在
- *  Agent 自起的轮次上：卷里事件照流、模型照跑，UI 却认为空闲（呼吸线不亮、书眉无
- *  「行卷中」、停止钮按不动——chat-core.abort() 读注册表实例，`!isRunning` 直接
- *  return）；UI 发起的轮次反而看不出问题，所以病象是「偶发」。
- *
- *  装账 + 交账同处发生、紧邻 setAgent：并发装配竞态下「最后注册的句柄」与
- *  「最后装的账」仍是同一对（拆开就会在竞态里重新错位）。
- *  句柄无 `setExecState` 能力位（旧实现/测试桩）= 只有注册表一本账，降级不炸。 */
+ *  两条身份纪律（2026-09-20 收口后**都是结构性的**，不靠调用方记得）：
+ *  ① **账是卷级恒定的那一本**——装配只绑定、绝不新铸（旧实现 `createExecState()`
+ *     每装配一次换一本账：在跑的记录被孤儿化，UI 立刻丢失运行态）；
+ *  ② 句柄拿到的就是注册表那一本（同处发生、紧邻 setAgent，并发装配竞态下
+ *     「最后注册的句柄 ↔ 最后绑的账」仍成对）。
+ *  句柄无 `setExecState` 能力位（旧实现/测试桩）= 只有注册表一本账，bindExec 留痕。 */
 function bindSessionExec(ctx: SessionContext, sid: number, agent: OwnedAgentHandle): void {
-  const exec = createExecState();
-  agentSessionState.setExec(ctx.storeId, sid, exec);
-  agent.setExecState?.(exec);
+  agentSessionState.bindExec(ctx.storeId, sid, agent);
 }
 
 /** 拆除面板全部 Agent 句柄与 exec 状态（dispose）— ChatCore.setAgent(null) 用，

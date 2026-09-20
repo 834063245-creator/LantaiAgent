@@ -53,7 +53,7 @@ import {
   type LoopEventName,
   type LoopEventPayload,
 } from './events';
-import { type ExecStateInstance, execState } from './execution-state';
+import { createExecState, type ExecStateInstance, type RunHandle, type RunKind } from './execution-state';
 import { type GoalLoopHost, type GoalRunResult, resumeGoalImpl, runGoalImpl } from './goal-loop';
 import type { GoalManager } from './goal-manager';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
@@ -140,7 +140,8 @@ export interface AgentOptions {
   /** 自定义事件 sink。设置后，Agent 事件发送到此处而非默认空操作。
    *  子 Agent 用它将输出捕获到 SubAgentPart。 */
   eventSink?: (ev: AgentEvent) => void;
-  /** 执行状态实例。未提供则回退到全局 execState。 */
+  /** 执行状态实例（运行账）。会话装配面/子 Agent 派生面显式供账；两者都缺席时
+   *  自铸一本私有账（见构造期注——不再回退全局单例）。 */
   execState?: ExecStateInstance;
   /** 每轮发给模型的工具 schema 上限（0 = 全量，默认 14）。 */
   visibleToolsLimit?: number;
@@ -429,21 +430,18 @@ export class Agent {
   // 子 Agent 派生域（subagent-spawn.ts）经宿主接口读取。
   _currentRunSignal: AbortSignal | null = null;
 
-  // runLoop 是否正在运行 — 用于 bus 唤醒时避免重入
-  private _isRunning = false;
-
-  /** 轮次代数 — 每起一次 runLoop 递增（`runLoop()`）。收尾清 `_isRunning` 只认
-   *  「自己仍是最新那轮」：旧轮的收尾落定晚于新轮 start 时（停后立刻重发／工具不认
-   *  abort 的慢收尾／default-loop 的延迟唤醒），旧轮的 `host.isRunning = false`
-   *  不得把新轮刚点亮的运行标志清掉——清了 = bus 唤醒的重入守卫失效（`_onMessageDelivered`
-   *  的 `if (this._isRunning) return`）⇒ 同一会话并发两条 loop 写同一个 session。
-   *  与 exec 账本的 runSignal 守卫同族（那本账是 UI 读的运行态，这本是 Agent 自用）。 */
-  private _runGen = 0;
-
-  /** runLoop 是否正在运行 */
+  // runLoop 是否正在运行 — **派生值**（2026-09-20 运行态收口）：运行账上有没有活的
+  // 运行记录。不再有第二个写者：旧实现 `_isRunning` 布尔 + `_runGen` 代数守卫，都是
+  // 「声明」——旧轮收尾清掉新轮标志那一族病灶的载体（见 execution-state.ts 头注）。
+  /** runLoop 是否正在运行（账上有活运行记录） */
   get isRunning(): boolean {
-    return this._isRunning;
+    return this._execState.isRunning;
   }
+
+  /** loop 深度（执行面事实）：同一 Agent 有几条 runLoop 在栈上。**只用于并发闸门与
+   *  唤醒重入判定**——不表示 UI 的运行态（那是运行账的记录，含收尾窗口）。
+   *  两个问题的答案本就不同：「这 Agent 在跑吗」（账）vs「现在能不能再进一条 loop」（栈）。 */
+  private _loopDepth = 0;
 
   // TaskBoard — 异步子 Agent 追踪的共享状态区
   // （子 Agent 派生域经宿主接口读取 — 11c 拆分）
@@ -521,7 +519,12 @@ export class Agent {
     this._subagentDepth = ctx.subagentDepth ?? opts.subagentDepth ?? 0;
     this.id = ctx.agentId ?? opts.agentId ?? `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     this.parentId = ctx.parentId ?? opts.parentId ?? null;
-    this._execState = opts.execState ?? ctx.get('execState') ?? execState;
+    // 运行账（「这 Agent 在不在跑」的唯一事实，2026-09-20 收口）：会话装配面
+    // （workspace 会话工厂 → 卷级账）/ 子 Agent 派生面（subagent-spawn → 私账）都显式
+    // 供账；两处都缺席 = 非会话装配路径（测试直构 / headless 驱动）→ 自铸一本**私有**账
+    // 并留 debug 痕。**不再有模块级单例兜底**——那本共享账会让「谁在跑」跨 Agent 串味
+    //（UI 读卷级账、Agent 记在单例上 = 运行态丢失的经典形状）。
+    this._execState = opts.execState ?? ctx.get('execState') ?? this._mintPrivateExec();
     this._bus = ctx.get('messageBus') ?? opts.messageBus ?? null;
     this._taskBoard = ctx.get('taskBoard') ?? opts.taskBoard ?? null;
     this._discoveryBoard = ctx.get('discoveryBoard') ?? opts.discoveryBoard ?? null;
@@ -676,12 +679,32 @@ export class Agent {
     this._uiSessionId = sid;
   }
 
-  /** 会话层装配收尾回填本卷 exec 账本（`chat-session.bindSessionExec`）——运行态
-   *  单一权威源（2026-09-17「会话在跑而运行态丢失」根治）。构造期经
-   *  `opts.execState` 拿到的那本账可能已被会话层换掉（每卷装配收尾装一本新账）；
-   *  不回填 = Agent 自起的轮次（`_onMessageDelivered`：总线唤醒 / 异步子 Agent
-   *  回件 / 后台任务 bg）记在孤儿账上——卷里事件照流、模型照跑，UI 全域（读注册表
-   *  实例）却认为空闲：呼吸线不亮、书眉无「行卷中」、停止钮拉不动。 */
+  /** 私账自铸（非会话装配路径：测试直构 / headless 驱动）。
+   *  刻意**不是**模块级单例（旧实现的 `?? execState` 兜底）：共享账会让「谁在跑」
+   *  跨 Agent 串味——UI 读卷级账、Agent 记在单例上 = 运行态丢失的经典形状。
+   *  留 debug 痕（生产不该走到这里；真走了可从 ui.log 认出来）。 */
+  private _mintPrivateExec(): ExecStateInstance {
+    const exec = createExecState();
+    log.debug('agent', `Agent ${this.id} 未接运行账——自铸私有账（非会话装配路径）`);
+    return exec;
+  }
+
+  /** 认领本次运行的账上记录：调用方（chat-core 起轮 / 唤醒自起）通常已经
+   *  `beginRun` 过——按 signal 身份查得即**不由本层收尾**（谁起谁收）；
+   *  查不到（子 Agent 派生 / 第三方驱动面递进来的 signal）则由本层登记并收尾。
+   *  ⚠ 这一跳是「Agent 在跑 ⟺ 账上在跑」的兜底半边：少了它，外部驱动的轮次
+   *  会在账上隐形（UI 说空闲）。 */
+  private _claimRun(signal: AbortSignal, kind: RunKind): RunHandle | null {
+    if (this._execState.runFor(signal)) return null;
+    return this._execState.beginRun(kind, signal);
+  }
+
+  /** 会话层装配收尾回填本卷 exec 账本（`chat-session.bindSessionExec` → registry.bindExec）
+   *  ——运行态单一权威源的绑定点。**账是卷级恒定的那一本**：本方法只换引用、不新铸，
+   *  在跑的记录因此跨句柄重建仍然可见（2026-09-20 收口；旧实现每次装配换一本新账，
+   *  在跑的记录被孤儿化 = 「会话在跑而 UI 说空闲」）。
+   *  Agent 自起的轮次（`_onMessageDelivered`：总线唤醒 / 异步子 Agent 回件 / 后台任务 bg）
+   *  也走这本账——两处读的必须是同一个对象。 */
   setExecState(exec: ExecStateInstance): void {
     this._execState = exec;
   }
@@ -942,27 +965,24 @@ export class Agent {
    *  若 Agent 空闲（未运行），启动新的 runLoop 处理消息。
    *  若正在运行，_injectInbox 会在下次迭代时拾取消息。 */
   private async _onMessageDelivered(): Promise<void> {
-    if (this._isRunning) return;
+    // 重入判定 = **loop 是否在栈上**（不是「账上有没有记录」）：上一轮 loop 已返回、
+    // 记录还在收尾窗口时，唤醒必须能进来（否则本轮结束时投递的那条消息要等到用户
+    // 下次发言才被处理——延迟唤醒的意义就没了）。真正的并发由 runLoop 的深度守卫兜。
+    if (this._loopDepth > 0) return;
     if (this._bus?.unreadCount(this.id) === 0) return;
-    const signal = this._execState.start();
+    // 唤醒轮 = 本 Agent **自起**的运行：起一条记录（kind='wake'），句柄即收尾凭证。
+    // ⚠ 旧实现是 `const signal = start()` + finally `done()`（不带令牌）——默认 loop 的
+    //   「延迟唤醒」微任务排在轮内收尾之前，于是旧轮的 done() 会把新轮刚建立的运行态
+    //   一起清空（会话在跑而创作坞说空闲 + 停钮空按）。新模型里 `run.end()` 只注销
+    //   **自己这条记录**：新轮有它自己的记录，谁也清不掉谁（结构性，不靠守卫记得带令牌）。
+    //   钉子：tests/session-exec-single-authority.test.ts ⑥/⑦。
+    const run = this._execState.beginRun('wake');
     try {
-      await this.run(signal, '');
+      await this.run(run.signal, '');
     } catch {
       // 唤醒失败不致命——消息还在 inbox，下次 run() 会捡到
     } finally {
-      // ⚠ 交账必须带**本轮自己的** signal（execution-state.done 的 runSignal 守卫；
-      //   与 chat-core 两处收尾 `exec.done(signal)` 同规）——不带 signal 的 done()
-      //   无条件清账，会连带清掉**别人**的运行。
-      //   触发面（默认 loop 的「延迟唤醒」）：runDefaultLoop 的 finally 在
-      //   `host.isRunning = false` 之后 `queueMicrotask(onMessageDelivered)` 处理
-      //   「本轮已注入但未 ack」的 inbox 消息，而那条微任务**排在本 finally 之前**
-      //   （微任务序：轮内 loop finally → 新轮 start() 换 controller → 本轮 done()）。
-      //   于是新轮（B）已 start，本轮的 done() 却把 B 的 isRunning/AbortController
-      //   一起清空 ⇒ 卷里模型照跑、创作坞/呼吸线/书眉却认为空闲，停止钮空按
-      //   （controller 已被清）——2026-09-17「会话在跑而运行态丢失」的剩余触发面。
-      //   带 signal 后：controller 已换人 ⇒ 守卫 return，B 的运行态完好。
-      //   钉子：tests/session-exec-single-authority.test.ts ⑥（延迟唤醒链）/⑦（停后立刻重发）。 */
-      this._execState.done(signal);
+      run.end();
     }
   }
 
@@ -1186,7 +1206,10 @@ export class Agent {
   }
 
   async run(signal: AbortSignal, input: string, images?: import('../provider/types').ChatImageRef[]): Promise<void> {
-    this._isRunning = true;
+    // 运行记录（认领或自起，见 `_claimRun`）：本轮的「在跑」事实由账上这条记录承担，
+    // 收尾只注销自己这条（`end()` 按 id 身份）——`this.isRunning` 也派生于此。
+    // 子 Agent（自己那本私账）记 kind='subagent'，会话主 Agent 记 'turn'——读面据种类分策略。
+    const run = this._claimRun(signal, this._subagentDepth > 0 ? 'subagent' : 'turn');
     this._ui.onStatusChange?.(true);
     // token 计量：一轮 = 一次用户输入（含空 input 的唤醒轮——它同样会发请求）。
     // 计数点在循环之前，因此本轮所有 step（含重试）都归到同一个轮槽。
@@ -1217,7 +1240,22 @@ export class Agent {
       // 此刻只存在于内存 session；saveState 若被 throw 跳过，崩溃时静默丢失。
       // 旧实现 saveState 在 await runLoop 之后，throw 路径直接绕过。
       this.saveState('running').catch(() => {});
+      run?.end();
+      this._wakeIfInboxHasNew(signal);
     }
+  }
+
+  /** 收尾后补唤醒（契约 v43 —— 从 default-loop 的 finally 上移到 Agent 侧）：
+   *  本轮/本目标**全部收尾之后**，inbox 里若还有「未注入」的消息，再叫一次唤醒入口
+   *  （它按运行账的互斥语义决定起不起新轮）。
+   *  为什么必须上移：默认 loop 的 finally 先于 `Agent.run()` 返回，在那里
+   *  `queueMicrotask(onMessageDelivered)` = 新轮在**旧记录还活着**时被叫醒——
+   *  正是「旧轮收尾清掉新轮运行态」那一族的温床。
+   *  判据逐字沿用旧实现：已注入但未 ack 的消息不算（否则 request 类消息会让唤醒无限自转）。 */
+  private _wakeIfInboxHasNew(signal: AbortSignal): void {
+    if (signal.aborted || !this._bus) return;
+    const hasNew = this._bus.peekInbox(this.id).some((m) => !this._injectedMsgIds.has(m.id));
+    if (hasNew) queueMicrotask(() => void this._onMessageDelivered());
   }
 
   // ══════════════════════════════════════════════════════
@@ -1227,12 +1265,24 @@ export class Agent {
   /** 自主运行目标: 规划 → 执行 → 验证 → 循环直到 goal_report。
    *  委托 goal-loop.ts（11c 拆分）；语义见 runGoalImpl 文档。 */
   async runGoal(signal: AbortSignal, goal: string): Promise<GoalRunResult> {
-    return runGoalImpl(this as unknown as GoalLoopHost, signal, goal);
+    const run = this._claimRun(signal, 'goal');
+    try {
+      return await runGoalImpl(this as unknown as GoalLoopHost, signal, goal);
+    } finally {
+      run?.end();
+      this._wakeIfInboxHasNew(signal);
+    }
   }
 
   /** 恢复活跃目标（暂停/受阻的，或崩溃遗留的活跃记录）。返回类型与 runGoal 相同。 */
   async resumeGoal(signal: AbortSignal, id?: string): Promise<GoalRunResult> {
-    return resumeGoalImpl(this as unknown as GoalLoopHost, signal, id);
+    const run = this._claimRun(signal, 'goal');
+    try {
+      return await resumeGoalImpl(this as unknown as GoalLoopHost, signal, id);
+    } finally {
+      run?.end();
+      this._wakeIfInboxHasNew(signal);
+    }
   }
 
   /** 驱动工具循环而不添加用户消息。用于 fork 子 Agent
@@ -1241,16 +1291,28 @@ export class Agent {
     // D13（平台化 Phase 5）：流式循环降为第一方默认实现（agent/agent-loop/）
     // ——Agent 接口不变；解析 = ctx.agentLoop 注册表后注册胜，缺省 =
     // builtin/default（行为逐字节一致，钉子见包内注释）。
-    // 轮次代数（`_runGen`）在此取号：goal 循环的多轮也会各取一号，收尾清除权
-    // 永远归「最后起的那轮」（见 `_runGen` 注）。
-    const gen = ++this._runGen;
-    await this._loop.run(this._loopHost(gen), signal);
+    // ⚡ v43（2026-09-20）：loop 契约不再有 `isRunning` 成员——「在跑」的唯一事实
+    // 归运行账（RunRecord），loop 只管跑，不声明自己的运行状态（旧契约的
+    // `host.isRunning = true/false` 正是「旧轮收尾清掉新轮」那一族病灶的载体）。
+    // 并发闸门（执行面）：loop 深度 = 「同一 Agent 有几条 loop 在栈上」——正常恒为 0/1，
+    // 两道并发就会让同一 session 被两条循环同时写。守卫本该在调用面拦住（chat-core /
+    // 唤醒入口都有 isRunning 检查），漏了就**留痕**，不当静默并发。
+    this._loopDepth += 1;
+    if (this._loopDepth > 1) {
+      log.error('agent', `并发轮次：Agent ${this.id} 已有 loop 在跑，第二条同时进入（守卫漏网）`, {
+        depth: this._loopDepth,
+      });
+    }
+    try {
+      await this._loop.run(this._loopHost(), signal);
+    } finally {
+      this._loopDepth -= 1;
+    }
   }
 
   /** loop 宿主面（D13）——私有成员以闭包暴露给 loop 包（不出类边界；
-   *  稳定引用传引用、可变标量 get/set 闭包保活性）。gen = 本轮的轮次代数：
-   *  `isRunning` 的清除只由最新那轮执行（旧轮收尾不得清掉新轮的运行标志）。 */
-  private _loopHost(gen: number): AgentLoopHost {
+   *  稳定引用传引用、可变标量 get/set 闭包保活性）。 */
+  private _loopHost(): AgentLoopHost {
     const self = this;
     return {
       id: this.id,
@@ -1291,14 +1353,6 @@ export class Agent {
       injectInbox: () => this._injectInbox(),
       injectDiscoveries: () => this._injectDiscoveries(),
       onMessageDelivered: () => this._onMessageDelivered(),
-      get isRunning() {
-        return self._isRunning;
-      },
-      set isRunning(v) {
-        // 点亮：任何人点都算（本轮确是开着 loop 的）；
-        // 熄灭：只认最新那轮（gen 相符）——旧轮的收尾不得清掉新轮的运行标志。
-        if (v || self._runGen === gen) self._isRunning = v;
-      },
       get currentRunSignal() {
         return self._currentRunSignal;
       },

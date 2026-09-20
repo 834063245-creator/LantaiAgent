@@ -205,7 +205,7 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
       root?.render(<SpineRack />);
     });
     act(() => {
-      exec.start();
+      exec.beginRun('turn'); // v43：运行态 = 账上的活记录
     });
     const closeBtns = [...container!.querySelectorAll('.sr-close-btn')] as HTMLButtonElement[];
     expect(closeBtns[1].disabled).toBe(true); // 新序：跑着的(id=1) 渲染在后位
@@ -215,7 +215,7 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     // 运行中点击（disabled 按钮不触发 onClick）不得触达 closeSession
     expect(core.closeSession).not.toHaveBeenCalled();
     act(() => {
-      exec.done();
+      exec.stopAll();
     });
   });
 

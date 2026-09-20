@@ -556,7 +556,7 @@ describe('改/重发两操作语义（ChatCore 级，2026-09-01 重发锚点工�
 
   it('运行中拦截：不撤回、不发送、不抄文本', async () => {
     const { p, run } = seedLive();
-    agentSessionState.getExec(p.panelId, 1)!.start();
+    agentSessionState.getExec(p.panelId, 1)!.beginRun('turn'); // v43：起一条运行记录
 
     const m1 = uiMsgs(p).find((m) => m.role === 'user') as any;
     p.editUserMessage(m1);

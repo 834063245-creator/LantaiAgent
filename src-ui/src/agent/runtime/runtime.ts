@@ -606,7 +606,13 @@ export class AgentRuntime implements RuntimePort {
       ctx.set('discoveryBoard', discoveryProxy as unknown as DiscoveryBoard);
     }
     if (!ctx.get('planState')) ctx.set('planState', new PlanStateManager());
-    if (!ctx.get('execState')) ctx.set('execState', createExecState());
+    if (!ctx.get('execState')) {
+      // 物化兜底：非会话装配路径（headless / 第三方 createAgentFromContext）自铸一本私账。
+      // 会话路径**必须**显式供账（workspace 会话工厂传卷级账）——在这里铸 = 该 Agent 记在
+      // 一本 UI 读不到的账上（2026-09-17 运行态丢失的形状），故留 debug 痕可回溯。
+      log.debug('runtime', `Agent ${ctx.agentId} 未收运行账——runtime 物化一本私账（非会话装配路径）`);
+      ctx.set('execState', createExecState());
+    }
     // Phase 5：会话事件溯源日志 — 每 Agent 独立物化（Agent 构造从 ctx 读取并双写）
     if (!ctx.get('sessionLog')) ctx.set('sessionLog', new SessionLog());
   }

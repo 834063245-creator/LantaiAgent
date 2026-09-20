@@ -117,8 +117,8 @@ function computeStatus(
   askPending: boolean,
 ): SessionStatus {
   if (row.open) {
-    const exec = agentSessionState.getExec(panelId, row.id);
-    if (exec?.isRunning) {
+    // 运行态唯一读面（v43）
+    if (agentSessionState.runStateOf(panelId, row.id).running) {
       return askPending && activeSid === row.id ? 'pending' : 'running';
     }
   }
@@ -486,7 +486,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
       const st = getChatStore(core.panelId).sess.getState();
       const idx = st.sessions.findIndex((s) => s.id === id);
       if (idx < 0) return;
-      if (agentSessionState.getExec(core.panelId, id)?.isRunning) {
+      if (agentSessionState.runStateOf(core.panelId, id).running) {
         setLocalNotice('运行中的卷不能合卷——先停止再收起');
         return;
       }

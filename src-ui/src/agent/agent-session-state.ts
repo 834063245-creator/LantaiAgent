@@ -17,7 +17,8 @@
 
 import { createStore } from 'zustand/vanilla';
 import type { ChatAgentHandle } from './chat-agent-handle';
-import { createExecState, type ExecStateInstance } from './execution-state';
+import { createExecState, type ExecStateInstance, type RunState } from './execution-state';
+import { log } from './logger';
 
 // ── 类型 ──
 
@@ -74,8 +75,20 @@ export interface AgentSessionStateApi {
   setExec(storeId: string, sessionId: number, exec: ExecStateInstance): void;
   getExec(storeId: string, sessionId: number): ExecStateInstance | null;
   getOrCreateExec(storeId: string, sessionId: number): ExecStateInstance;
-  /** 停本卷的账：级联中止 agent + stop exec。句柄仍在册时**只停账、不注销条目**
-   *  （账本随句柄——注销在册句柄的账本 = 它自起的轮次永久不可见，见实现注释）；
+  /** **装配收尾：把本卷的账绑给句柄**（唯一绑定点）。
+   *  账是**卷级恒定**的那一本——已有就复用，绝不新铸：换账 = 在跑的记录被孤儿化，
+   *  UI 立刻丢失运行态（2026-09-17 那半已经吃过一次亏，这里从结构上关掉）。
+   *  句柄无 `setExecState` 能力位 = 留痕（生产句柄必须实现；旧实现/测试桩降级不炸）。 */
+  bindExec(storeId: string, sessionId: number, agent: OwnedAgentHandle): ExecStateInstance;
+  /** **运行态唯一读面**：某卷在不在跑（消费面只准读这里，不再各自取账本实例）。 */
+  runStateOf(storeId: string, sessionId: number): RunState;
+  /** **运行态唯一读面（批量）**：本面板在跑的卷（含种类）——清单类消费面用
+   *  （创作坞后台指示 / 纸面呼吸线 / 侧栏书脊光点 / 退出守卫）。 */
+  runningSessions(storeId: string): Array<{ sid: number; state: RunState }>;
+  /** 停某卷全部在跑的运行（用户停止语义；返回被停记录 id 供兜底身份守卫）。 */
+  stopRuns(storeId: string, sessionId: number): number[];
+  /** 停本卷的账：级联中止 agent + 停掉全部在跑的运行。句柄仍在册时**只停账、不注销
+   *  条目**（账本随句柄——注销在册句柄的账本 = 它自起的轮次永久不可见）；
    *  句柄已消亡（removeAgent 之后）才连带注销条目。 */
   removeExec(storeId: string, sessionId: number): void;
 
@@ -194,7 +207,7 @@ export function createAgentSessionState(): AgentSessionStateApi {
       // removeAgent」清条目，现由本处接管（removeExec 在句柄仍在册时只停账）。
       const es = _execBySession.get(k);
       if (es) {
-        es.stop();
+        es.stopAll();
         _execBySession.delete(k);
       }
       // 句柄消亡 = 旧定位映射全部作废（重开卷由尾对齐重派生）+ 卷记录的组合
@@ -242,13 +255,58 @@ export function createAgentSessionState(): AgentSessionStateApi {
       return es;
     },
 
+    bindExec(storeId, sessionId, agent): ExecStateInstance {
+      const exec = self.getOrCreateExec(storeId, sessionId);
+      if (typeof agent.setExecState !== 'function') {
+        // 能力位缺席 = 生产句柄漏实现（旧实现/测试桩是刻意的降级面）——留痕，
+        // 因为这一跳少了就退回「句柄自起的轮次记在孤儿账上」（2026-09-17 病灶）。
+        log.warn('agent', `句柄未实现 setExecState：本卷（${storeId}:${sessionId}）只能读注册表一本账`, {
+          agentId: agent.id,
+        });
+        return exec;
+      }
+      if (exec.isRunning) {
+        // 装配期账上仍有活运行 = 句柄被重建而旧轮尚未收尾。**账沿用**（不新铸），
+        // 旧轮的记录因此仍被 UI 看得见——这正是「换账 = 丢运行态」的反面。
+        log.info('agent', `本卷（${storeId}:${sessionId}）装配时仍在跑——账沿用（运行态不丢）`, {
+          runs: exec.runState.count,
+          kinds: exec.runState.kinds.join(','),
+        });
+      }
+      agent.setExecState(exec);
+      return exec;
+    },
+
+    runStateOf(storeId, sessionId): RunState {
+      const es = _execBySession.get(agentKey(storeId, sessionId));
+      return es?.runState ?? { running: false, kinds: [], count: 0, since: null };
+    },
+
+    runningSessions(storeId): Array<{ sid: number; state: RunState }> {
+      const out: Array<{ sid: number; state: RunState }> = [];
+      const prefix = storeId + ':';
+      for (const [k, es] of _execBySession) {
+        if (!k.startsWith(prefix)) continue;
+        const state = es.runState;
+        if (!state.running) continue;
+        const sid = Number.parseInt(k.slice(prefix.length), 10);
+        if (!Number.isFinite(sid)) continue; // 形状防御——键恒为 `${storeId}:${sid}`
+        out.push({ sid, state });
+      }
+      return out;
+    },
+
+    stopRuns(storeId, sessionId): number[] {
+      return _execBySession.get(agentKey(storeId, sessionId))?.stopAll() ?? [];
+    },
+
     removeExec(storeId, sessionId): void {
       const k = agentKey(storeId, sessionId);
       const es = _execBySession.get(k);
       if (!es) return;
       const owner = _agentBySession.get(k);
       owner?.cascadeAbort();
-      es.stop();
+      es.stopAll();
       // 句柄仍在册 = 这本账还有人用（它自起的轮次走 agent._execState）：注销条目
       // 会让那些轮次记在「不在册」的实例上——UI 全域（getExec / subscribeExecAll）
       // 看不见、停止钮空按，随后 getOrCreateExec 还会另铸一本新账，两本账永久分裂

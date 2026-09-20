@@ -15,7 +15,7 @@
 import { agentSessionState, type OwnedAgentHandle } from '../../agent/agent-session-state';
 import type { AgentEvent } from '../../agent/agent-types';
 import type { ChatAgentHandle, GoalRunResult } from '../../agent/chat-agent-handle';
-import { createExecState, type ExecStateInstance } from '../../agent/execution-state';
+import { createExecState, type ExecStateInstance, type RunKind } from '../../agent/execution-state';
 import { GoalManager, type GoalRecord } from '../../agent/goal-manager';
 import { log } from '../../agent/logger';
 import type { RuntimePort } from '../../agent/runtime/types';
@@ -619,8 +619,8 @@ export class ChatCore {
         const signal = this._activeExec().abortSignal;
         if (!signal) return null;
         // 2026-09-01 审计：此前裸 { signal } 冒充 AbortController——消费方一旦
-        // 调 .abort() 即 TypeError。补转发 abort 的最小实现（真源仍是 execState）。
-        return { signal, abort: () => this._activeExec().stop() } as AbortController;
+        // 调 .abort() 即 TypeError。补转发 abort 的最小实现（真源仍是运行账）。
+        return { signal, abort: () => this._activeExec().stopAll() } as AbortController;
       },
       setAbortCtrl: (_c: unknown) => {
         /* 由 execState 管理 */
@@ -1030,6 +1030,7 @@ export class ChatCore {
     await this._runAgentTurn({
       userText: '/goal resume',
       bubbleLabel: '🔄 恢复目标',
+      runKind: 'goal',
       drive: (signal) => agent.resumeGoal(signal),
       onResult: (r) => this._notifyGoalResult(r),
     });
@@ -1041,6 +1042,7 @@ export class ChatCore {
     await this._runAgentTurn({
       userText: `/goal ${goal}`,
       bubbleLabel: `🎯 ${goal}`,
+      runKind: 'goal',
       drive: (signal) => agent.runGoal(signal, goal),
       onResult: (r) => this._notifyGoalResult(r),
     });
@@ -1096,6 +1098,8 @@ export class ChatCore {
   private async _runAgentTurn(opts: {
     userText?: string;
     bubbleLabel?: string;
+    /** 运行种类（运行账的记录标签：诊断 + 读面策略）——目标循环传 'goal'。 */
+    runKind?: RunKind;
     drive: (signal: AbortSignal) => Promise<unknown>;
     onResult?: (result: GoalRunResult) => void;
   }): Promise<void> {
@@ -1103,7 +1107,10 @@ export class ChatCore {
     // 仅本卷自身在跑时拒发（Enter 插话路径由 sendMessage 处理）。
     if (!this.agent || this._activeExec().isRunning) return;
     const exec = this._activeExec();
-    const signal = exec.start();
+    // 起一条运行记录（谁起谁收）：signal 由账铸；收尾 `run.end()` 只注销自己这条
+    //（v43 起「清掉别人的运行」在类型上不可能——旧实现的 done(signal) 守卫是约定）。
+    const run = exec.beginRun(opts.runKind ?? 'turn');
+    const signal = run.signal;
     // L2（session-ledger）：本轮跑的是哪卷——头部捕获，finally 随 turn-done
     // 信号发出（后台卷跑完存它自己，不再只存当前翻开的卷）。
     let turnSid: number | null = null;
@@ -1155,9 +1162,10 @@ export class ChatCore {
       }
       // 正常中止（用户主动停止）：exec 状态已表达，不另播报
     } finally {
-      // 发起时刻捕获的 exec + signal 守卫（execution-state.done 注释）——
-      // 收尾清「发起轮次的卷」的状态，与结算时刻的活跃卷无关
-      exec.done(signal);
+      // 收尾**只注销本轮自己那条运行记录**（v43：按 id 身份，清不掉别人的运行；
+      // 旧实现的 done(signal) 要靠调用方记得带令牌）。发起时刻捕获的 run 与结算
+      // 时刻的活跃卷无关——切卷不影响本卷账。
+      run.end();
       // 轮次代数守卫（2026-09-03「停止后会话坏掉」次因）：本轮仍是该卷最新
       // 轮次时才 finalize——停止后用户立刻发新消息的窗口里，旧轮 finally 迟到
       // 落地会把新轮刚建立的流式助手误终结。让位时新轮自己的
@@ -1392,8 +1400,10 @@ export class ChatCore {
     getChatStore(this.panelId).input.getState().setDraftText('');
     getChatStore(this.panelId).input.getState().setInputText('');
 
+    // 起一条运行记录（谁起谁收；v43 起 signal 由账铸、收尾按记录身份注销）
     const exec = this._activeExec();
-    const signal = exec.start();
+    const run = exec.beginRun('turn');
+    const signal = run.signal;
 
     // 用户气泡（原始文本，焦点上下文仅供 Agent 读取）——先铸气泡拿 _id，
     // 轮次簿册以它作权威身份（撤回/重发 ID 直达）
@@ -1458,9 +1468,9 @@ export class ChatCore {
         );
       }
     } finally {
-      // 发起时刻捕获的 exec + signal 守卫（execution-state.done 注释）——
-      // 收尾清「发起轮次的卷」的状态，与结算时刻的活跃卷无关
-      exec.done(signal);
+      // 收尾只注销**本轮自己那条**运行记录（v43：按 id 身份；旧实现 done(signal) 靠
+      // 调用方记得带令牌）。与结算时刻的活跃卷无关——切卷不影响本卷账。
+      run.end();
       // 轮次代数守卫（2026-09-03「停止后会话坏掉」次因）：本轮仍是该卷最新
       // 轮次时才 finalize——停止后用户立刻发新消息的窗口里，旧轮 finally 迟到
       // 落地会把新轮刚建立的流式助手误终结（streamingAssistantId 被清、新轮
@@ -1479,35 +1489,17 @@ export class ChatCore {
     const stopped = this._activeExec();
     if (!stopped.isRunning) return;
 
-    // 捕获被停止轮次的 signal —— 安全网的身份锚（只对这一轮负责）。
-    const stoppedSignal = stopped.abortSignal;
-
-    // 安全超时：3 秒内若 Agent 没响应，强制复位。
-    // 2026-09-03 修复（「停止后会话坏掉」主因）：订阅必须先于 stop() 注册——
-    // stop() 同步置 idle，晚注册的订阅等不到「已过去」的转变 → safety 永不
-    // 清除 → 3s 后把用户停止后新发的轮次 forceReset 掉（aborted 被 catch
-    // 静默吞 → 「新输入无任何响应」）。注册在前，stop 的同步 setState 即刻
-    // 触发监听清网；fire 时再做身份守卫（busy 仍来自被停止的那一轮才复位），
-    // 双保险下新轮次（signal 已换新）永不被误杀。
-    const safety = setTimeout(() => {
-      unsub();
-      const exec = this._activeExec();
-      if (exec.isRunning && exec.abortSignal === stoppedSignal) {
-        exec.forceReset();
-        this.finishTurn();
-        showToast('已强制中止（超时）', 'warn');
-      }
-    }, 3000);
-    // Zustand 订阅代替轮询 — 状态变为 idle 时自动取消超时
-    const unsub = stopped.onChange(() => {
-      if (!stopped.isBusy) {
-        clearTimeout(safety);
-        unsub();
-      }
-    });
-
-    // ⚡ 统一状态管理：停止主Agent + 级联子Agent + 清权限队列
-    stopped.stop();
+    // ⚡ 统一状态管理：停本卷全部在跑的运行（abort 全部 signal + 注销记录 + 清权限卡队列）
+    //   + 级联子 Agent。
+    // v43（2026-09-20 运行态收口）：旧的「3 秒安全网」退役——它在旧模型里已是空转
+    //   （stop() 同步置 idle → 订阅先于 stop 注册 → 定时器当场被 clear，fire 的条件
+    //   `isRunning && abortSignal === stoppedSignal` 永不成立），而新模型按用户意图
+    //   **同步注销记录**，没有可判「还没解旋」的事实面。留着它只会在正常停止时误报
+    //   「已强制中止（超时）」。停止的可见性改由运行账承担（记录没了 = UI 立刻 idle，
+    //   这正是用户按下停止时应得的答复）；未被 stop 覆盖的挂起（工具不认 abort）属
+    //   landmine L3 的通用缺口，单独立项，不在此处伪造兜底。
+    const stoppedIds = stopped.stopAll();
+    log.info('chat', `用户停止：本卷 ${stoppedIds.length} 条运行已中止`, { runs: stoppedIds.join(',') });
     this.agent?.cascadeAbort();
   }
 
@@ -1633,10 +1625,6 @@ export class ChatCore {
     return Stream.appendUserBubble(this._streamCtxFor(null), text, files, _skipActions, images);
   }
 
-  private finishTurn(): void {
-    Stream.finishTurn(this._streamCtxFor(null));
-  }
-
   // ── 消息操作回调（视图 ChatMessages 委托）──
 
   copyText(text: string): void {
@@ -1757,9 +1745,12 @@ export class ChatCore {
     }
     this.appendUserBubble('/compact');
     const exec = this._activeExec();
-    const signal = exec.start();
+    // 压缩 = 本卷的一条运行（kind='compact'）：在账上可见（呼吸线/停钮/退出守卫都不瞎），
+    // 收尾按记录身份注销。旧实现 start() 铸的 controller 会被后来的轮次换掉，
+    // 而 done() 不带令牌就无条件清账（压缩在途开新轮 = 新轮运行态被清）。
+    const run = exec.beginRun('compact');
     void this.agent
-      .compactNow(signal)
+      .compactNow(run.signal)
       .then(() => {
         this.messages = [];
         resetMsgIdCounter(this.panelId);
@@ -1775,11 +1766,7 @@ export class ChatCore {
         showToast(`压缩失败: ${err.message}`, 'error');
       })
       .finally(() => {
-        // 带 signal 收尾（同 sendMessage / _runAgentTurn 的 `exec.done(signal)`）：
-        // 不带 signal 的 done() 无条件清账——压缩在途期间本卷若已开出新轮
-        // （exec.start() 已换 controller），这一下会把新轮的运行态连带清掉
-        //（会话在跑而创作坞无停钮）。runSignal 守卫只清「属于自己的运行」。
-        exec.done(signal);
+        run.end(); // 只注销压缩自己那条记录（在途新轮不受影响）
       });
   }
 

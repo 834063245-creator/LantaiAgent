@@ -91,8 +91,13 @@ export interface AgentLoopHost {
   onMessageDelivered(): Promise<void>;
 
   // ── 可变标量（get/set 闭包——活性由 Agent 侧字段保证）──
-  get isRunning(): boolean;
-  set isRunning(v: boolean);
+  // ⚡ 契约 v43（2026-09-20 运行态收口）：`isRunning` 成员**已移除**——「这卷在不在跑」
+  //   的唯一事实是运行账（execution-state.ts 的 RunRecord；`Agent.isRunning` 派生自它）。
+  //   loop 只管跑，不再声明自己的运行状态：旧契约由 loop 的 finally 写 `host.isRunning
+  //   = false`，而 loop 的 finally 早于调用方收尾（默认 loop 的「延迟唤醒」微任务序），
+  //   旧轮收尾把新轮刚点亮的状态清掉 = 「会话在跑而创作坞丢运行态」那一族病灶的载体。
+  //   第三方 loop 若仍写 `host.isRunning`：JS 侧只是给宿主对象挂了个无主属性（no-op），
+  //   运行态不再受其影响。变更四步见 composition/contract-version.ts（v43）。
   get currentRunSignal(): AbortSignal | null;
   set currentRunSignal(v: AbortSignal | null);
   get transientReminders(): string[];

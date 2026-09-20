@@ -595,9 +595,9 @@ export interface CascadeOutcome {
   blocked: Array<{ id: number; running: number[] }>;
 }
 
-/** 运行中判定（与侧栏/书脊同一真源：卷的 exec 状态）。 */
+/** 运行中判定（与侧栏/书脊/退出守卫同一真源：运行态唯一读面，v43）。 */
 function isRunning(storeId: string, sid: number): boolean {
-  return agentSessionState.getExec(storeId, sid)?.isRunning === true;
+  return agentSessionState.runStateOf(storeId, sid).running;
 }
 
 /**

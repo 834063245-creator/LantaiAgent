@@ -278,8 +278,8 @@ describe('运行态单一权威源：装配账本 = UI 读到的账本', () => {
     wake(assemblies[0]);
     await until(() => assemblies[0].agent.isRunning);
 
-    // 用户按下停止钮 = chat-core.abort() → 注册表实例 stop()
-    agentSessionState.getExec(store, sid)?.stop();
+    // 用户按下停止钮 = chat-core.abort() → 本卷 stopRuns（abort 全部活记录 + 注销）
+    agentSessionState.stopRuns(store, sid);
 
     await until(() => !assemblies[0].agent.isRunning);
     expect(agentSessionState.getExec(store, sid)?.isRunning).toBe(false);
@@ -331,7 +331,7 @@ describe('运行态单一权威源：装配账本 = UI 读到的账本', () => {
     await until(() => fresh.isRunning);
     expect(agent.isRunning).toBe(true);
 
-    fresh.stop();
+    fresh.stopAll();
     await until(() => !agent.isRunning);
   });
 
@@ -394,22 +394,23 @@ describe('运行态单一权威源：装配账本 = UI 读到的账本', () => {
     // 事实面：轮 B 真在跑（卡在闸门上）
     expect(assembly.agent.isRunning).toBe(true);
 
-    // 读面：UI 全域（创作坞停钮 / 呼吸线 / 书眉「行卷中」）读的注册表账本必须同真。
-    // 病灶版：轮 A 的 done() 不带 signal ⇒ 把轮 B 刚建立的运行态与 controller 一起清空
-    // （此处 isRunning=false、abortSignal=undefined ⇒ 本断言红）。
+    // 读面：UI 全域（创作坞停钮 / 呼吸线 / 书眉「行卷中」）读的唯一读面必须同真。
+    // 病灶版（旧模型）：轮 A 的 done() 不带令牌 ⇒ 把轮 B 刚建立的运行态与 controller
+    // 一起清空（此处 running=false、abortSignal=undefined ⇒ 本断言红）。
+    const uiState = agentSessionState.runStateOf(store, sid);
+    expect(uiState.running).toBe(true);
     const uiExec = agentSessionState.getExec(store, sid);
-    expect(uiExec?.isRunning).toBe(true);
     expect(uiExec?.abortSignal).toBeDefined();
 
-    // 控制面：停钮不空按——账本 stop() 必须真掐断在跑的轮 B
-    uiExec?.stop();
+    // 控制面：停钮不空按——stopRuns 必须真掐断在跑的轮 B
+    agentSessionState.stopRuns(store, sid);
     await until(() => !assembly.agent.isRunning);
-    expect(agentSessionState.getExec(store, sid)?.isRunning).toBe(false);
+    expect(agentSessionState.runStateOf(store, sid).running).toBe(false);
 
     script.release(2);
   });
 
-  it('⑦ 停后立刻重发：旧轮的慢收尾不得清掉新轮（runSignal 守卫的另一触发面）', async () => {
+  it('⑦ 停后立刻重发：旧轮的慢收尾不得清掉新轮（身份语义的另一触发面）', async () => {
     const store = 'exec-authority-stop-resend';
     resetPanel(store);
     const script = scriptedProvider({ hang: [1, 2] }); // 旧轮卡闸门（被停）· 新轮卡闸门（在跑）
@@ -423,30 +424,29 @@ describe('运行态单一权威源：装配账本 = UI 读到的账本', () => {
     wake(assembly); // 旧轮 W（唤醒轮）开跑，卡在闸门上
     await until(() => script.calls() >= 1 && assembly.agent.isRunning);
 
-    // 用户按停（chat-core.abort 语义：账本 stop）+ 立刻重发（chat-core.sendMessage
-    // 语义：账本 start → agent.run）。真机上两步之间隔着「工具不认 abort」的慢收尾
-    // （abort 的 3s forceReset 兜底即为此设）——这里同步紧邻，等价于「W 的收尾
-    // 落定晚于新轮 start」这一**顺序**，不赌墙钟。
+    // 用户按停（chat-core.abort 语义：stopRuns）+ 立刻重发（chat-core.sendMessage
+    // 语义：beginRun → agent.run）。真机上两步之间隔着「工具不认 abort」的慢收尾
+    // ——这里同步紧邻，等价于「W 的收尾落定晚于新轮 start」这一**顺序**，不赌墙钟。
     const exec = agentSessionState.getExec(store, sid);
     expect(exec).not.toBeNull();
     if (!exec) return;
-    exec.stop();
-    const signal2 = exec.start();
-    const run2 = assembly.agent.run(signal2, '用户重发');
+    exec.stopAll();
+    const run2 = exec.beginRun('turn');
+    const runPromise = assembly.agent.run(run2.signal, '用户重发');
     // 立即挂兜底：停钮中止一轮会让 stream 链以 'aborted' 收场（landmine L3 的
     // 遗弃尝试族），那不是本用例的被考面——但绝不能让它变成未处理拒绝。
-    void run2.catch(() => {});
+    void runPromise.catch(() => {});
     await until(() => script.calls() >= 2);
 
     // 旧轮 W 的收尾此刻已落定（microtask）；新轮仍在跑 ⇒ 账本必须仍然在跑。
     await new Promise((r) => setTimeout(r, 0));
     expect(assembly.agent.isRunning).toBe(true);
-    expect(exec.isRunning).toBe(true);
-    expect(exec.abortSignal).toBe(signal2);
+    expect(agentSessionState.runStateOf(store, sid).running).toBe(true);
+    expect(exec.abortSignal).toBe(run2.signal);
 
-    exec.stop(); // 停钮仍能掐断新轮（controller 未被旧轮清掉）
+    agentSessionState.stopRuns(store, sid); // 停钮仍能掐断新轮（记录未被旧轮收尾波及）
     await until(() => !assembly.agent.isRunning);
-    await run2.catch(() => {}); // 本轮的收场 = 用户中止（'aborted' 预期内）
+    await runPromise.catch(() => {}); // 本轮的收场 = 用户中止（'aborted' 预期内）
     script.release(1);
     script.release(2);
   });

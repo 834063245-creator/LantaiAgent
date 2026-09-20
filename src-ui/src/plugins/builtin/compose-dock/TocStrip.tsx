@@ -307,7 +307,7 @@ export const TocStrip = memo(function TocStrip() {
       setStreaming(false);
       return;
     }
-    const sync = () => setStreaming(agentSessionState.getExec(core.panelId, activeSessionNum)?.isRunning ?? false);
+    const sync = () => setStreaming(agentSessionState.runStateOf(core.panelId, activeSessionNum).running);
     const un = agentSessionState.subscribeExecAll(core.panelId, sync);
     return () => un();
   }, [core, activeSessionNum]);

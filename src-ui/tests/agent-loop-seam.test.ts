@@ -13,6 +13,7 @@ import { resetAgentLoopForTests, resolveAgentLoop } from '../src/agent/agent-loo
 import { DEFAULT_AGENT_LOOP_ID, defaultAgentLoop } from '../src/agent/agent-loop/default-loop';
 import type { AgentLoop, AgentLoopHost } from '../src/agent/agent-loop/types';
 import { AgentContext } from '../src/agent/context';
+import { createExecState, type ExecStateInstance } from '../src/agent/execution-state';
 import type { ToolRegistry } from '../src/agent/tool';
 import { Context } from '../src/cordis';
 import { AgentLoopService, agentLoopServicePlugin } from '../src/plugins/builtin/agent-loop-service';
@@ -44,14 +45,14 @@ function stubRegistry(): ToolRegistry {
   return { get: () => undefined } as unknown as ToolRegistry;
 }
 
-function testAgent(opts: { agentLoop?: AgentLoop } = {}): Agent {
+function testAgent(opts: { agentLoop?: AgentLoop; execState?: ExecStateInstance } = {}): Agent {
   const ctx = new AgentContext(
     { agentId: 'loop-test', parentId: null, subagentDepth: 0 },
     {
       provider: stubProvider(),
       tools: stubRegistry(),
       eventSink: () => {},
-      execState: undefined,
+      execState: opts.execState,
       messageBus: undefined,
       taskBoard: undefined,
       discoveryBoard: undefined,
@@ -79,27 +80,45 @@ describe('ctx.agentLoop（D13 loop seam）', () => {
   });
 
   it('③ Agent 装配：显式注入的替换 loop 接管 runLoop；host 面活性断言', async () => {
-    const seen: Array<{ kind: string; isRunning: boolean; contextWindow: number; id: string }> = [];
+    const exec = createExecState();
+    const seen: Array<{ kind: string; reminders: string[]; contextWindow: number; id: string }> = [];
     const custom: AgentLoop = {
       id: 'test/replacing-loop',
       run: async (host: AgentLoopHost, signal) => {
-        seen.push({ kind: 'enter', isRunning: host.isRunning, contextWindow: host.contextWindow, id: host.id });
-        // 宿主面活性：写标量 → 读回（Agent 侧字段真的变了）
-        host.isRunning = true;
+        // 宿主面活性：写标量 → 读回（Agent 侧字段真的变了）。
+        // 契约 v43 起 `isRunning` 成员退役——「在不在跑」归运行账（见下方断言），
+        // loop 不再声明自己的运行状态。
+        seen.push({
+          kind: 'enter',
+          reminders: [...host.transientReminders],
+          contextWindow: host.contextWindow,
+          id: host.id,
+        });
+        // loop 在跑 ⟺ 账上有一条活记录（Agent 已认领本轮 signal；替换实现不必自己登记）
+        expect(exec.isRunning).toBe(true);
+        expect(exec.runFor(signal)?.kind).toBe('turn');
         host.transientReminders = ['a', 'b'];
         host.transientReminders = [...host.transientReminders, 'c'];
-        seen.push({ kind: 'mutations', isRunning: host.isRunning, contextWindow: host.contextWindow, id: host.id });
+        seen.push({
+          kind: 'mutations',
+          reminders: [...host.transientReminders],
+          contextWindow: host.contextWindow,
+          id: host.id,
+        });
         host.sink({ kind: 0, text: 'probe' } as never);
         expect(signal.aborted).toBe(false);
       },
     };
-    const agent = testAgent({ agentLoop: custom });
+    const agent = testAgent({ agentLoop: custom, execState: exec });
     await agent.run(new AbortController().signal, 'hello');
-    // run() 入口已置 isRunning=true——loop 入口读到的是活值
-    expect(seen[0]).toEqual({ kind: 'enter', isRunning: true, contextWindow: 1000000, id: 'loop-test' });
-    expect(seen[1]).toEqual({ kind: 'mutations', isRunning: true, contextWindow: 1000000, id: 'loop-test' });
+    expect(seen[0]).toEqual({ kind: 'enter', reminders: [], contextWindow: 1000000, id: 'loop-test' });
+    // 写标量 → 读回（Agent 侧字段真的变了）
+    expect(seen[1]).toEqual({ kind: 'mutations', reminders: ['a', 'b', 'c'], contextWindow: 1000000, id: 'loop-test' });
     // 默认实现未介入：默认 loop 的 turn/step 事件未发射（替换实现完全接管）
     expect(seen.map((s) => s.kind)).toEqual(['enter', 'mutations']);
+    // 运行态（v43）：loop 只管跑——run() 收尾即注销自己那条记录
+    expect(exec.isRunning).toBe(false);
+    expect(agent.isRunning).toBe(false);
   });
 
   it('④ 默认实现可寻址：builtin/default 是出厂面一条真实现', () => {

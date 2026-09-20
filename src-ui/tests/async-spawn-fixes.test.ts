@@ -344,12 +344,12 @@ describe('async_signal_independence', () => {
     // 等父 agent 完成
     await parentRunPromise;
 
-    // 父 agent run 结束后，模拟用户发新消息 — 新的 AbortController + start
+    // 父 agent run 结束后，模拟用户发新消息 — 新的账 + 新的一条运行记录（v43）
     const newCtrl = new AbortController();
     const newExecState = createExecState();
-    // 新的 signal — 模拟用户发新消息
-    newExecState.start(); // 旧的 execState 的 signal 被 abort
-    newCtrl.abort(); // 模拟新消息打断（触发 execState.stop 行为）
+    // 新的 signal — 模拟用户发新消息（signal 由账铸，不再是裸 start()）
+    newExecState.beginRun('turn');
+    newCtrl.abort(); // 模拟新消息打断（触发 stopAll 行为）
 
     // 等待后台子 agent 完成
     await new Promise((r) => setTimeout(r, 300));
@@ -398,10 +398,10 @@ describe('sub_agent_execState_isolation', () => {
     expect(bus.unreadCount(agent1.id)).toBe(1);
     expect(bus.unreadCount(agent2.id)).toBe(1);
 
-    // 两个 agent 各自被唤醒（_onMessageDelivered → execState.start() → run(signal, '')）
-    // 并发触发 — 如果 execState 不独立，一个 start() 会 abort 另一个的 signal
-    const p1 = agent1.run(execState1.start(), '');
-    const p2 = agent2.run(execState2.start(), '');
+    // 两个 agent 各自被唤醒（_onMessageDelivered → 自起一条运行记录 → run(signal, '')）
+    // 并发触发 — 如果两本账不独立，一条记录的中止会波及另一个的 signal
+    const p1 = agent1.run(execState1.beginRun('wake').signal, '');
+    const p2 = agent2.run(execState2.beginRun('wake').signal, '');
 
     // 等待两个 agent 都完成
     await Promise.all([p1, p2]);

@@ -65,7 +65,7 @@ function makeWorkspace() {
   return { path: WS, subAgentPool: { stopAll: vi.fn() }, runtime: null };
 }
 
-/** 铺一个在册句柄（+ 可选正在跑的账本）——运行态真源 = 句柄 + 该卷 exec。 */
+/** 铺一个在册句柄（+ 可选正在跑的账本）——运行态真源 = 运行账上的活记录（v43 唯一读面）。 */
 async function armSession(sid: number, running: boolean) {
   const { agentSessionState } = await import('../src/agent/agent-session-state');
   agentSessionState.setAgent(STORE_ID, sid, {
@@ -74,8 +74,8 @@ async function armSession(sid: number, running: boolean) {
     dispose: vi.fn(),
   } as never);
   const exec = agentSessionState.getOrCreateExec(STORE_ID, sid);
-  if (running) exec.start();
-  return exec;
+  const run = running ? exec.beginRun('turn') : null;
+  return { exec, run };
 }
 
 /** 走生产入口：bootPersistence 注册关窗处理器（异步注册，等它落位）。 */
@@ -198,11 +198,11 @@ describe('退出守卫 —— 关窗时有会话在跑先问一句（2026-09-19 
   });
 
   it('同一卷跑完后再关窗：不拦——判据是「正在跑」不是「有卷」', async () => {
-    const exec = await armSession(7, true);
+    const { run } = await armSession(7, true);
     const panel = makePanel();
     await boot(panel, makeWorkspace());
 
-    exec.done(); // 本轮收尾（句柄仍在册，账本已停）
+    run?.end(); // 本轮收尾（句柄仍在册；账上记录注销 = 空闲）
 
     const ev = closeRequest();
 

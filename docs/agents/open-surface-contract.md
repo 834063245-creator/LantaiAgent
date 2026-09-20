@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：42
+当前版本：43
 
-<!-- contract-fingerprint: c8e26cab891fe2f095006c8d961e51a3517c5093acbd5fc146f8d7348c1f9b44 -->
+<!-- contract-fingerprint: f0b00637965cad70ce25309e88a5789911b37df3ca8d96659fdbeeeb04ea26b6 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -95,6 +95,8 @@
 | 41 | 2026-09-17 | **ctx.llm seam：连接怪癖的用户可编辑面（自定义请求头 + 配方）**。`ProviderRuntimeArgs` 新增可选 `headers`（持久化在 `ProviderSettings.headers`），三方言（openai/anthropic/responses）的 stream / prewarm / fetchModels 一并携带；合并序「自定义头在前、内核必需头与凭据头在后」，且按键（小写）剔除冲突——HTTP 头名大小写不敏感，大小写不同的同名会被 Fetch 合并成 `"a, b"` 污染凭据头（实测钉住）。动机：OpenCode GO 强制 `x-opencode-session` 一类网关怪癖此前只能改代码发版，exe 用户无路可走。**缺省 = 未配置 headers ⇒ 请求头逐字节不变**（老行零迁移，第三方 adapter 不读该字段即可）；同批设置页新增「高级」面（请求头编辑 + 该行配方 JSON 导出/导入——密钥剥除、整单校验） | provider-system-spec.md（本批新增「自定义请求头与配方」节） |
 
 | 42 | 2026-09-19 | **斜杠命令面重做（command-surface-rework）**：`CommandContribution.shortcut: string` 拆为 `slash?: string`（斜杠触发词）与 `kbd?: string`（键位提示，仅展示）——旧字段一名两义，命令面板把 `'ctrl P'` 当命令陈列、斜杠面板把 `'/dock'` 当快捷键显示，两套消费面各按自己的误读渲染。同版 `CommandAction` 由内联联合提升为具名导出类型，`local` 的 handler 改收斜杠参数（`(arg: string) => void`；无参 = 空串）——`/goal resume` · `/remember <事实>` 一类带参命令不再需要在发送面硬编码分支解析。**对外可感知**：第三方插件贡献命令必须改字段名（`shortcut: '/x'` → `slash: '/x'`，旧名不留别名），两字段皆缺省 = 只进 Ctrl+K 面板；命令清单唯一真源收归本通道——旧 `ui/command-registry` 单例（模块级裸表 + `_wireCommandHandlers` 就地写 handler 的多面板串扰形状）整文件退役，消费合流点 = `src/app/commands/command-catalog.ts`（会话内建 + 通道贡献 + 技能候选） | 用户 2026-09-19 裁定「斜杠命令退役的功能没删除、新加的能力没加入——这块重做」（`docs/plans/command-surface-rework-plan.md`） |
+
+| 43 | 2026-09-20 | **运行态收口（run-state single source）**：`AgentLoopHost` 去掉 `isRunning`（get/set 一对）——「这卷/这轮在不在跑」的唯一事实改为**运行账**（`agent/execution-state.ts` 的 RunRecord 表；`Agent.isRunning` 派生自它，UI 全域读 `agentSessionState.runStateOf` / `runningSessions`）。同版 `default-loop` 不再写 `host.isRunning`，并把「本轮结束时 inbox 还有未注入消息 ⇒ 补唤醒」上移到 `Agent.run()` 的 finally（在运行记录注销**之后**——原先在 loop 的 finally 里 queueMicrotask，新轮会在旧记录还活着时被叫醒，正是「旧轮收尾清掉新轮」那一族的温床）。运行账 API 破坏性变更：`start()` / `done(runSignal?)` / `stop()` / `forceReset()` 退役，改为 `beginRun(kind)` → `RunHandle{signal,end}`（**谁起谁收、按记录身份注销**——「清掉别人的运行」在类型上不可能）/ `runFor(signal)` / `stopAll()` / `discardRuns(ids)`；`isRunning` 变只读派生值，新增 `runState`（running/kinds/count/since）与 `runEpoch`。装配面新增 `agentSessionState.bindExec`（账是**卷级恒定**的那一本：装配只绑定、绝不换账——换账 = 在跑的记录被孤儿化 = 「会话在跑而 UI 说空闲」）。**对外可感知**：第三方 loop 写 `host.isRunning` 变 no-op（给宿主对象挂无主属性），读该字段需改读运行账；第三方若直接持有 `ExecStateInstance`，旧四个方法不再存在。**事件序列与载荷零变更**（convergence 双轨零漂移） | 用户 2026-09-20 拍板 B 案（「代码层面有质量问题、总是复发」→ 结构性收口 + 基线变更授权）；病象与四次同族修复（`994c4c4d`/`32bc8dd4`/`b67ac7e8`/`54981624`）见 `docs/landmine-map.md` 与 `tests/run-state-ledger.test.ts` 头注 |
 
 ## 变更流程（guard 红 → 修复四步）
 

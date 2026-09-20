@@ -339,12 +339,15 @@ export const ComposerDock = memo(function ComposerDock() {
       return;
     }
     const syncAll = () => {
+      // 运行态唯一读面（v43）：`runningSessions` = 本面板在跑的卷（含种类）。
+      // 不再各自 `getExec(...).isRunning`——读面漂移在订阅那一环已经炸过一次
+      //（2026-09-06），事实面收成一处后，停钮/后台指示/呼吸线永远同源。
+      const runningIds = new Map(agentSessionState.runningSessions(core.panelId).map((r) => [r.sid, r.state]));
       let activeRun = false;
       const bg: Array<{ id: number; label: string }> = [];
       const sess = getChatStore(core.panelId).sess.getState().sessions;
       for (const s of sess) {
-        const exec = agentSessionState.getExec(core.panelId, s.id);
-        if (!exec?.isRunning) continue;
+        if (!runningIds.has(s.id)) continue;
         if (s.id === activeSidNum) activeRun = true;
         else bg.push({ id: s.id, label: volumeDisplayName(s.label, s.id) });
       }
@@ -881,12 +884,12 @@ export const ComposerDock = memo(function ComposerDock() {
               title={`停止后台卷：${bgRunning.map((s) => s.label).join('、')}`}
               onClick={() => {
                 if (!core) return;
-                // 停账 + 级联（同 chat-core.abort 语义）——**不得**注销账本条目：
-                // 句柄仍在册，注销 = 该卷之后自起的轮次（总线唤醒/子 Agent 回件）
-                // 记在不在册的实例上，UI 全域看不见、停止钮空按（2026-09-17 运行态
-                // 丢失的第二个触发面）。条目由句柄消亡（removeAgent）接管清理。
+                // 停账 + 级联（同 chat-core.abort 语义）：`stopRuns` = 用户停止
+                //（abort 全部在跑运行 + 注销记录 + 清权限卡队列）——**不注销账本条目**
+                //（句柄仍在册；条目由句柄消亡 removeAgent 接管清理）。v43 起这条纪律
+                // 是结构性的：stop 不再有「把条目注销掉」的形态，也没有「谁记得带令牌」。
                 for (const s of bgRunning) {
-                  agentSessionState.getExec(core.panelId, s.id)?.stop();
+                  agentSessionState.stopRuns(core.panelId, s.id);
                   agentSessionState.getAgent(core.panelId, s.id)?.cascadeAbort();
                 }
               }}

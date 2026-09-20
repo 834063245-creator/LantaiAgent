@@ -177,7 +177,7 @@ describe('ComposerDock 运行中守卫（DSH 移植）', () => {
   it('活跃卷运行中：模型下拉打开被拦 + localNotice 提示', async () => {
     // 种子运行中的 exec（B7 running 态来源）——须在 mount 前，运行态 effect 才能读到
     const exec = createExecState();
-    exec.start();
+    exec.beginRun('turn'); // v43：运行态 = 账上的活记录
     agentSessionState.setExec('guard', 1, exec);
     await mountDock('guard', container, (r) => {
       root = r;
@@ -189,7 +189,7 @@ describe('ComposerDock 运行中守卫（DSH 移植）', () => {
     expect(container.querySelector('.ms-dropdown')).toBeNull(); // 没打开（DSH onAttemptOpen veto）
     expect(container.querySelector('.pp-local-notice')?.textContent).toContain('正在运行');
     // 停止 exec 会触发运行态订阅更新——须在 act 内，否则 React 报未包裹更新
-    act(() => exec.stop());
+    act(() => exec.stopAll());
   });
 });
 
@@ -212,7 +212,7 @@ describe('钤印单钮三态（2026-09-03：运行态按钮随输入翻转）', 
 
   it('空闲 = 拟文；运行中空输入 = 停；打字立即翻回拟文且点它走 sendMessage（插话路径）', async () => {
     const exec = createExecState();
-    exec.start();
+    exec.beginRun('turn'); // v43：运行态 = 账上的活记录
     agentSessionState.setExec('seal', 1, exec);
     await mountDock('seal', container, (r) => {
       root = r;
@@ -240,7 +240,7 @@ describe('钤印单钮三态（2026-09-03：运行态按钮随输入翻转）', 
     });
     await act(async () => {});
     expect(core?.sendMessage).toHaveBeenCalled();
-    act(() => exec.stop());
+    act(() => exec.stopAll());
   });
 
   it('mount 后进入运行态：拟文翻停；停钮点了走 abort；清空输入回拟文', async () => {
@@ -252,8 +252,8 @@ describe('钤印单钮三态（2026-09-03：运行态按钮随输入翻转）', 
     expect(container.querySelector('.pp-send')).not.toBeNull();
     expect(container.querySelector('.pp-stop')).toBeNull();
 
-    // mount 后 start → 订阅活着 → 翻成停
-    act(() => exec.start());
+    // mount 后起一轮 → 订阅活着 → 翻成停
+    act(() => exec.beginRun('turn'));
     await act(async () => {});
     expect(container.querySelector('.pp-stop')).not.toBeNull();
     expect(container.querySelector('.pp-send')).toBeNull();
@@ -280,7 +280,7 @@ describe('钤印单钮三态（2026-09-03：运行态按钮随输入翻转）', 
     await act(async () => {});
     expect(container.querySelector('.pp-stop')).not.toBeNull();
     expect(container.querySelector('.pp-send')).toBeNull();
-    act(() => exec.stop());
+    act(() => exec.stopAll());
   });
 });
 
@@ -319,13 +319,14 @@ describe('ComposerDock 运行态同步（2026-09-06 exec 实例迟到订阅根�
     expect(container.querySelector('.pp-stop')).toBeNull(); // 实例在但未运行——仍是拟文
 
     // 拟文 → 本卷开始跑 → 停钮出现（回归钉：旧实现 start() 无人通知）
-    act(() => exec.start());
+    const run = exec.beginRun('turn');
+    act(() => {});
     await act(async () => {});
     expect(container.querySelector('.pp-stop')).not.toBeNull();
     expect(container.querySelector('.pp-send')).toBeNull();
 
     // 跑完 → 回拟文
-    act(() => exec.done());
+    act(() => run.end());
     await act(async () => {});
     expect(container.querySelector('.pp-stop')).toBeNull();
     expect(container.querySelector('.pp-send')).not.toBeNull();

@@ -17,14 +17,14 @@ import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
 import type { ShellRefs } from '../runtime';
 import { pushStatus } from '../runtime';
 
-/** 正在运行的卷数（关窗拦截判据，2026-09-19）。账本随句柄：在册句柄 + 该卷
- *  exec.isRunning = 跑着（chat-core 与 agent 的每次 run 都经 execState.start()；
- *  子 Agent 不入 agentSessionState——其父卷未收尾即在跑）。与纸面运行态
- *  （useRunningSessions）同义：都是「这卷有活没干完」。 */
+/** 正在运行的卷数（关窗拦截判据，2026-09-19）。真源 = 运行态唯一读面（v43：
+ *  运行账上的活记录）——与纸面呼吸线 / 创作坞后台指示同源，不再各自取账本实例。
+ *  ⚠ 已知边界（landmine L5，未拆）：异步子 Agent / 后台任务在父轮收尾后仍活着时
+ *  不算「在跑」——「本卷在跑」是否该含活体后台工作属产品语义，待拍板。 */
 function countRunningSessions(): number {
   let running = 0;
-  agentSessionState.forEachAgentEntry((storeId, sessionId) => {
-    if (agentSessionState.getExec(storeId, sessionId)?.isRunning) running++;
+  agentSessionState.forEachAgentEntry((storeId) => {
+    running += agentSessionState.runningSessions(storeId).length;
   });
   return running;
 }

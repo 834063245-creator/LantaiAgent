@@ -24,11 +24,9 @@ export function useRunningSessions(core: PaperCore | null, activeSessionId: numb
       return;
     }
     const sync = () => {
-      const st = getChatStore(core.panelId).sess.getState();
-      const next = new Set<number>();
-      for (const s of st.sessions) {
-        if (agentSessionState.getExec(core.panelId, s.id)?.isRunning) next.add(s.id);
-      }
+      // 运行态唯一读面（v43）：runningSessions = 本面板在跑的卷（含种类）。
+      // 不再各自遍历 sess 表取账本实例——读面收成一处，与创作坞/侧栏/退出守卫同源。
+      const next = new Set(agentSessionState.runningSessions(core.panelId).map((r) => r.sid));
       // 引用稳定守卫：rehang 期 sync 每实例表 bump 必发，无变化不动引用——
       // 下游 memo 链（含 TocStrip 等）不因空转重渲。
       setRunningSessions((prev) => {

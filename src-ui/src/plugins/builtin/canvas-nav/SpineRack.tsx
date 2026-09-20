@@ -29,7 +29,6 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { volumeDisplayName } from '../../../state/volume-name';
-import type { ExecStateInstance } from './host';
 import {
   activeSpace,
   agentSessionState,
@@ -48,10 +47,9 @@ import './spine-rack.css';
 /** 拖动阈值（px）：超过即视为拖脊（区分点击定位）。 */
 const DRAG_THRESHOLD = 6;
 
-/** 卷运行态快照（书脊小点）：isRunning 直读 exec store。 */
+/** 卷运行态快照（书脊小点）：运行态唯一读面（v43）。 */
 function readRunning(storeId: string, sid: number): boolean {
-  const exec = agentSessionState.getExec(storeId, sid);
-  return !!exec && exec.isRunning;
+  return agentSessionState.runStateOf(storeId, sid).running;
 }
 
 /** 书脊卷序 = 侧边栏合流序（摊开组：savedAt 倒序，未落盘按卷号新者上）——
@@ -168,18 +166,13 @@ export const SpineRack = memo(function SpineRack() {
     };
   }, [core, resync, resyncMemory]);
 
-  /* exec isRunning 变化：对每个会话的 exec 挂 onChange（列表变化时重挂）。 */
+  /* 运行态变化：订阅面 = subscribeExecAll（v43 收口）：账本**实例表**变更（迟到/被换/
+   *  注销重建都重挂）+ 既有账本的运行记录起落。旧实现在挂载时对「当时已存在」的账本
+   *  逐个 onChange——后来才铸的账本永远没订阅（会话在跑而书脊光点不亮那个病灶族）。 */
   useEffect(() => {
     if (!core) return;
-    const unsubs: Array<() => void> = [];
-    for (const s of sessions) {
-      const exec: ExecStateInstance | null = agentSessionState.getExec(core.panelId, s.id);
-      if (exec) unsubs.push(exec.onChange(() => resyncMemory()));
-    }
-    return () => {
-      for (const u of unsubs) u();
-    };
-  }, [core, sessions, resyncMemory]);
+    return agentSessionState.subscribeExecAll(core.panelId, resyncMemory);
+  }, [core, resyncMemory]);
 
   /* ── 手势 1：左键定位器 ── */
   const onLocate = useCallback(

@@ -212,7 +212,7 @@ describe('concurrent sessions — permission card exec isolation', () => {
     );
 
     // 停 A 卷（A 的权限卡应被否决；B 的卡不受影响）
-    execA.stop();
+    execA.stopAll();
 
     const settled = await Promise.race([
       cardB.then((r) => ({ state: 'resolved', r })),

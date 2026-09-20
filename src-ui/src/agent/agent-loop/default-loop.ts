@@ -62,7 +62,6 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
   let turnErr: unknown = null;
 
   try {
-    host.isRunning = true;
     host.currentRunSignal = signal; // 子 Agent 派生时合并此 signal 用于级联中止
     host.sink({ kind: EventKind.TurnStarted });
     // Phase 5：轮次边界事件（无消息投影 — 回放/审计用）
@@ -429,22 +428,15 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
     turnErr = e;
     throw e;
   } finally {
-    host.isRunning = false;
     host.ui.onStatusChange?.(false);
     host.loopEvents.emitLoopEvent('turn/end', {
       agentId: host.id,
       ok: turnErr === null,
       aborted: signal.aborted,
     });
-    // 重新检查新（尚未注入的）消息 — 避免本轮已注入但未 ack 的消息
-    // 导致无限循环。
-    if (!signal.aborted && host.bus) {
-      const hasNew = host.bus.peekInbox(host.id).some((m) => !host.injectedMsgIds.has(m.id));
-      if (hasNew) {
-        queueMicrotask(() => {
-          void host.onMessageDelivered();
-        });
-      }
-    }
+    // 「本轮结束时 inbox 还有未注入消息 ⇒ 补唤醒」已上移到 `Agent.run()` 的 finally
+    //（契约 v43）：那里在**运行记录注销之后**——本函数先于 Agent.run 返回，原先在此
+    // queueMicrotask 会让新轮在旧记录仍活着时被叫醒（旧轮收尾清掉新轮那一族）。
+    // 判据（peekInbox 去掉已注入 id）逐字保留在 Agent 侧。
   }
 }

@@ -22,9 +22,27 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 42;
+export const OPEN_SURFACE_CONTRACT_VERSION = 43;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v43（2026-09-20）**运行态收口**：`AgentLoopHost` 去掉 `isRunning` 成员（get/set 一对）
+ *  ——「这卷/这轮在不在跑」的唯一事实改为**运行账**（`agent/execution-state.ts` 的
+ *  RunRecord；`Agent.isRunning` 派生自它，UI 全域读 `agentSessionState.runStateOf`）。
+ *  同版 `default-loop` 不再写 `host.isRunning`，并把「本轮结束时 inbox 还有未注入消息 ⇒
+ *  补唤醒」上移到 `Agent.run()` 的 finally（**在运行记录注销之后**）。
+ *  **动机（真机病象，三周内同族修了四次：994c4c4d / 32bc8dd4 / b67ac7e8 / 54981624）**：
+ *  旧模型把「在跑」建模成**靠约定同步的声明**——`isRunning` 布尔 + 可选令牌
+ *  `done(runSignal?)` + 多处各自持有的账本实例。每个新异步路径（延迟唤醒 / 停后立刻重发 /
+ *  压缩在途开新轮 / 句柄重建）都能把它撕开一条缝，而撕开时**无声**（违宪法四）。
+ *  新模型：运行记录是可加的事实，isRunning 是派生值，注销按记录身份（清不掉别人的运行）。
+ *  **对外可感知**：第三方 loop 若写 `host.isRunning` = 给宿主对象挂无主属性（no-op），
+ *  运行态不再受其影响；第三方若**读**该字段需改读运行账（`host` 无此成员）。
+ *  同版运行账 API 破坏性变更：`start()` / `done()` / `stop()` / `forceReset()` 退役，
+ *  改为 `beginRun(kind)` → `RunHandle{signal,end}` / `runFor(signal)` / `stopAll()` /
+ *  `discardRuns(ids)`；`ExecStateInstance.isRunning` 变只读派生值。
+ *  同版新增运行态**唯一读面**（会话注册表）：`runStateOf` / `runningSessions` / `stopRuns`，
+ *  以及装配绑定点 `bindExec`（账是卷级恒定的那一本——装配只绑定、绝不换账）。
+ *  事件序列/载荷零变更（convergence 双轨零漂移）；`tool/call` 落点未动。
  *  v42（2026-09-19）斜杠命令面重做（command-surface-rework）：`CommandContribution`
  *  的 `shortcut: string` 拆为 `slash?: string` + `kbd?: string`——旧字段一名两义
  *  （'/dock' 斜杠触发词与 'ctrl P' 键位提示同处一栏），命令面板把键位当命令陈列、
