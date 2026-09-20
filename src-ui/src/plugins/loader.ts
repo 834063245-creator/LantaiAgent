@@ -217,15 +217,35 @@ declare global {
  *     浏览器必重新请求（本地产物，放弃跨会话缓存复用是划算的）。
  *  ② **每产品一 link**：同产品再次注入先摘旧 link（否则旧规则留场：新样式里
  *     **删掉**的规则会一直生效），插件停用时也摘（不留累积的死 link）。
- *  键 = CSS URL 的产物路径（= 插件名，如 `hologram/compose-dock`）；异形 URL
- *  退回按原 URL 归并。摘除按名匹配（三等形态，见 cssKeyMatches）。 */
+ *  键 = CSS URL 的产物路径（生产形如 `plugins/hologram/compose-dock`，见 cssKeyOf）；
+ *  异形 URL 退回按原 URL 归并。摘除按名匹配（三等形态，见 cssKeyMatches）。 */
 const pluginCssLinks = new Map<string, HTMLLinkElement>();
-/** 会话戳（模块初始化一次性）+ 注入序号：合起来保证同文档内 href 恒新。 */
-const cssSessionStamp = Date.now().toString(36);
-let cssSeq = 0;
+
+/** 产物 URL 版本戳（会话戳一次性 + 取用序号）——**CSS link 与 JS import 共用**
+ *  （landmine H4，2026-09-20 立法：H3 只修了 CSS 一侧，JS 那侧留着同一个洞）。
+ *  为什么 JS 也要：ES module 的**模块图（module map）按 URL 缓存已求值的模块**，
+ *  同文档内 `import(同一 URL)` 不会重新发请求、也不会重新求值——`cache-control:
+ *  no-store` 只覆盖 HTTP 缓存与跨重启复用，**管不到模块图**。
+ *  实机取证（真 WebView2/Chromium 探针，2026-09-20）：产物换文件后同 URL 第二次
+ *  `import` 的**模块请求数 = 0**（返回旧模块），带 `?v=` 的同次实验取回新内容。
+ *  ⇒ 无版本号时「点重新加载」只重跑旧模块，唯有页面重载/重启应用才换新；
+ *  这正是「热重载经常不自动生效」的真根因（CSS 改动能生效、TS 改动不能，
+ *  所以症状是「经常」而不是「从来」）。
+ *  版本号恒新 ⇒ 每次重载必取新模块（本地产物，放弃模块复用是划算的——
+ *  与 H3 的 CSS 口径一致）。 */
+const artifactSessionStamp = Date.now().toString(36);
+let artifactSeq = 0;
+
+/** 给产物 URL 追加恒新版本号（`?v=<会话戳>-<序号>`；已有查询串时接 `&`）。 */
+function withArtifactVersion(url: string): string {
+  return url + (url.includes('?') ? '&' : '?') + 'v=' + artifactSessionStamp + '-' + artifactSeq++;
+}
 
 /** CSS URL → 记账键：产物 CSS 落在 `<origin>/<pluginName>/entry.css`，取其
- *  路径段当键（与 `manifest.name` 同形，停用时按名摘得掉）；异形退回原 URL。 */
+ *  路径段当键；**生产 origin 自带 `/plugins` 路由前缀 ⇒ 键形如
+ *  `plugins/hologram/compose-dock`**（不是裸插件名——按名摘除靠 cssKeyMatches
+ *  的尾段容错兜住；测试用的 ORIGIN 不带前缀，故断言的是短键形态）。
+ *  异形 URL 退回原串（幂等语义不变，只是不参与按名摘除）。 */
 function cssKeyOf(url: string): string {
   try {
     const path = new URL(url).pathname;
@@ -265,7 +285,7 @@ function injectPluginCss(url: string): void {
   const link = document.createElement('link');
   link.id = 'lantai-plugin-css:' + key;
   link.rel = 'stylesheet';
-  link.href = url + (url.includes('?') ? '&' : '?') + 'v=' + cssSessionStamp + '-' + cssSeq++;
+  link.href = withArtifactVersion(url);
   document.head.appendChild(link);
   pluginCssLinks.set(key, link);
 }
@@ -426,6 +446,23 @@ export function activeExternalPluginNames(): string[] {
   return [...activeExternalFibers.keys()];
 }
 
+/** 产物通道 origin（自动重载等外部消费者用；null = 无通道或运行时未引导）。 */
+export function pluginChannelOrigin(): string | null {
+  return runtime?.deps.origin ?? null;
+}
+
+/** dev **源码域**已装载的出厂产物（dev 且非 forceProductChannel = 源码路径装载）。
+ *  它们不在 activeExternalFibers 里（那张表只记产物通道的装载），因此从产物
+ *  通道重载 = **同一批贡献 id 再注册一次** ⇒ `ContributionChannel.register`
+ *  见同 id 即抛（不静默覆盖）。判据：`factoryProductNames()` 是名册派生全集。 */
+export function isSourceDomainProduct(name: string): boolean {
+  return import.meta.env.DEV && !forceProductChannel && factoryProductNames().has(name);
+}
+
+/** dev 源码域重载的**具名**拒绝原因（用户看到「为什么不能」而不是隐晦的撞 id 抛错）。 */
+export const SOURCE_DOMAIN_RELOAD_REASON =
+  'dev 源码域已装载该出厂产物（走源码路径，不是产物通道）：从产物通道重载会与源码域贡献撞 id（注册表见同 id 即拒）。dev 下改插件源码保存即整页热更新，无须重载；要验产物形态请用打包态 exe（npm run watch:builtin-plugins + 应用内自动重载）';
+
 /** 测试复位：清空运行时绑定与活跃注册表（vitest 同 worker 模块态跨用例
  *  共享——loader 测试的 beforeEach 调用，防用例间串味）。 */
 export function resetPluginRuntimeForTests(): void {
@@ -442,6 +479,11 @@ export function resetPluginRuntimeForTests(): void {
 export async function activateExternalPlugin(dirId: string): Promise<PluginRecord> {
   if (runtime == null) {
     return errorRecord(dirId, null, '插件运行时未引导（main.ts loadExternalPlugins 未跑）');
+  }
+  // dev 源码域：出厂产物不在产物通道的活跃表里，重载 = 同 id 贡献二次注册
+  //（注册表见同 id 即抛）⇒ 具名拒绝，不制造隐晦的装载失败（2026-09-20 审计）。
+  if (isSourceDomainProduct(dirId)) {
+    return errorRecord(dirId, null, SOURCE_DOMAIN_RELOAD_REASON);
   }
   const { root, deps } = runtime;
   // 重装载路径：旧 fiber 先拆（dispose 链式回收全部贡献）
@@ -810,8 +852,10 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
   const { origin, importModule } = deps;
   const { manifest, bundleMeta, isBuiltinNamed, tim } = entry;
   try {
-    // 5) 导入（S5：displace 位移机制退役——产物是唯一装载面）
-    const url = origin + '/' + manifest.name + '/' + manifest.entry;
+    // 5) 导入（S5：displace 位移机制退役——产物是唯一装载面）。
+    // URL **必带恒新版本号**（landmine H4）：ES module 的模块图按 URL 缓存，
+    // 无版本号时同文档内重载拿回的是**旧模块**（见 withArtifactVersion 头注）。
+    const url = withArtifactVersion(origin + '/' + manifest.name + '/' + manifest.entry);
     const tImport = performance.now();
     const mod = await importModule(url);
     const candidate = pickPluginObject(mod);

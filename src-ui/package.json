@@ -10,6 +10,8 @@
     "dev:mock": "vite",
     "build": "node ../scripts/build-builtin-plugins.mjs && tsc --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
     "build:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs",
+    "watch:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs --watch",
+    "check:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs --check",
     "format": "biome format --write .",
     "lint": "biome check --fix .",
     "check": "biome ci .",

@@ -350,9 +350,10 @@ function mockFetch(routes: Record<string, unknown>): (url: string) => Promise<Mo
 }
 
 /** importModule mock：按 URL 目录返回与 manifest 同名的插件对象（loader
- *  有名字对拍门禁——错名直接 error 记录）。 */
+ *  有名字对拍门禁——错名直接 error 记录）。URL 自 2026-09-20（landmine H4）
+ *  起带恒新版本号 `?v=` ⇒ 目录名正则须容忍查询串。 */
 function importByName(url: string): Promise<Record<string, unknown>> {
-  const m = /\/plugins\/([^/]+)\/entry\.js$/.exec(url);
+  const m = /\/plugins\/([^/]+)\/entry\.js(?:\?|$)/.exec(url);
   const name = m ? m[1] : 'unknown';
   return Promise.resolve({ default: { name, apply() {} } });
 }

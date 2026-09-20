@@ -29,7 +29,8 @@ import { log } from './agent/logger';
 import { App } from './app/App';
 import { initCordisKernel } from './cordis/boot';
 import { auditBoot } from './plugins/boot-gate';
-import { loadBuiltinPlugins, loadExternalPlugins } from './plugins/loader';
+import { loadBuiltinPlugins, loadExternalPlugins, pluginChannelOrigin } from './plugins/loader';
+import { startProductWatch } from './plugins/product-watch';
 import { registerUserMcpServerTools } from './plugins/user-mcp';
 import { bootShell } from './shell/boot';
 
@@ -76,4 +77,11 @@ void (async () => {
     throw new Error('[boot-gate] 插件装载失败:\n' + audit.failures.map((f) => '  - ' + f).join('\n'));
   }
   await bootShell();
+  // ── 产物自动重载（landmine H1/H4 收口，2026-09-20）──
+  // 构建脚本（watch:builtin-plugins）重建产物 + 镜像进 exe 资源根 + 更新
+  // `_rev.json`；这里盯那一份修订表 ⇒ 改插件保存后秒级自动换新，不必再手工
+  // 「构建 → 拷贝 → 点重新加载」三步（三步里前两步漏掉是静默的）。
+  // 无产物通道（浏览器/mock）= 不启动；boot 审计之后才启动（不与首帧争）。
+  const channelOrigin = pluginChannelOrigin();
+  if (channelOrigin) startProductWatch({ origin: channelOrigin });
 })();

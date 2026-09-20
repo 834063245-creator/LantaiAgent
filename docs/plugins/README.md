@@ -103,16 +103,22 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
 「重新加载」→ 重装载（秒级生效，应用不重启；工具面下次装配生效）。
 
 **改插件 = 换产物，永不重编译 exe**——编辑 `plugins/builtin/<name>/` 源码 →
-重跑构建 → 替换 `dist-plugins` 产物 → 重启应用即生效。
+`npm run watch:builtin-plugins`（保存即重建 + 逐文件 SHA256 自动镜像进 **exe 侧资源根** +
+应用内自动重载）→ 秒级生效，无须重启应用。手工口径（`build:builtin-plugins` /
+`check:builtin-plugins` / 设置面板「重新加载」）与三条仍需重建 exe 的边界见
+`docs/dev-workflow.md`「生产包热更」。
 
 - **装载形态（S5 后单一）**：产物从磁盘通道装载（exe 只留 13 内核装配台——
   displace 位移机制已退役，产物是唯一装载面，无 bundle 兜底行）。装载序 =
   `factoryProductPlugins()` 表序（贡献注册序 = 原 bundle 序——组合快照/
   前缀缓存依赖此序），用户插件按索引序殿后。
 - **dev/prod 双态**：dev 模式经 `import.meta.env.DEV` 分支走源码路径
-  （`plugins/factory-products.ts`——vite HMR 热重载，产物通道的磁盘副本被
-  过滤防覆盖热重载）；生产端该分支经 vite define DCE 消除，产物只从磁盘
-  通道装载。
+  （`plugins/factory-products.ts`——产物通道的磁盘副本被过滤防覆盖热重载）；
+  生产端该分支经 vite define DCE 消除，产物只从磁盘通道装载。**dev 下的更新语义**：
+  改 `.ts/.tsx` = **整页 reload**（本仓零 `import.meta.hot` accept 边界、未装
+  `@vitejs/plugin-react` ⇒ 没有模块级热替换），改 `.css` = 换 `<link>` 不重跑 apply；
+  源码域装载的出厂产物**拒绝**从产物通道重载（同一批贡献 id 会二次注册 ⇒ 注册表见同 id 即抛，
+  装载器改为具名拒绝——`loader.isSourceDomainProduct`）。
 - **装载调度（S4，2026-09-03）**：cordis fiber PENDING 挂起语义（manifest
   `inject` 缺依赖不拒载——等 provide）+ `plugins/boot-gate.ts` 全树 settle
   审计——全 ACTIVE 才放行 bootShell（fail-loud，不带病运行）。

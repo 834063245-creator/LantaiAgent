@@ -53,7 +53,8 @@ async function loadNotesApp(pluginDataEnsure: (name: string) => Promise<string>)
       ok: url in routeTable(),
       json: async () => (url in routeTable() ? routeTable()[url] : null),
     }),
-    importModule: async (url) => (url === ORIGIN + '/notes-app/entry.js' ? await importRealEntry() : {}),
+    // 入口 URL 自 2026-09-20（landmine H4）起带恒新版本号 `?v=`——按前缀判定产物寻址
+    importModule: async (url) => (url.startsWith(ORIGIN + '/notes-app/entry.js') ? await importRealEntry() : {}),
     pluginDataEnsure,
   });
 }

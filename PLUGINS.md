@@ -234,8 +234,9 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 「插件」tab 三组陈列：**平台服务**（内核，不可禁）/ **内置插件**（产物，
 可禁用）/ **已安装**（第三方）。
 
-新增出厂产物 = **四步**（2026-09-14 校准——此前写的「建 manifest.json / 改
-`first-party-manifest.ts` 加条目」两条都是错的）：
+新增出厂产物 = **三步**（2026-09-20 校准——旧版「四步」的第 4 步早已不存在：
+build 规格从名册派生、`plugin_assets.rs` 白名单 2026-09-06 删除；第 3 步也只在
+「产物对象直接 import」时才需要）：
 
 1. `src/plugins/builtin/<name>/` 建目录：`index.ts`（`LantaiPlugin` 插件对象）
    + 可选 `host.ts` / `host.aliased.ts`（产物域运行时依赖桥）。
@@ -243,16 +244,19 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
    从名册生成（2026-09-06 起源目录 manifest.json 已退役，名册是唯一真源），
    所以 `inject` 一类字段只许写在名册里。
 2. `src/plugins/builtin-roster.json` 加条目（`dir` / `buildOrder` / `description` /
-   `entry` / `hostModule` / `inject` / 可选 `face`）——**这是唯一真源**。
-3. `src/plugins/factory-products.ts` 加 import + 加一行（dev 模式源码域装载用；
-   表序由名册 `buildOrder` 排出，不手写）。
-4. `scripts/build-builtin-plugins.mjs` 的规格表加条目 + `src-tauri/src/plugin_assets.rs`
-   白名单加名。
+   `entry` / `hostModule` / `inject` / 可选 `face`）——**这是唯一真源**；
+   构建脚本与 Rust 资产通道都不用动。
+3. 插件对象进**出厂装配面**：直接 import 的产物在
+   `src/plugins/factory-products.ts` 加 import + 一行（dev 模式源码域装载用；
+   表序由名册 `buildOrder` 排出，不手写）；工具域 / prompt 段 / capability 段产物
+   只进各自通道清单（`composition/first-party-tools.ts` / `-prompts.ts` /
+   `-capabilities.ts`）。
 
 `src/plugins/first-party-manifest.ts` 是**派生的**（身份元数据由名册 + 内核表算出），
 **不需要手工加条目**——覆盖性由 `tests/first-party-manifest.test.ts` +
 `tests/builtin-roster.test.ts`（含 factory-products 覆盖与序对拍）钉死，漏一步即红。
 
 产物可禁用（`state/plugin-prefs.ts`，localStorage 持久化、下次启动生效）。
-开发模式下产物走源码路径（`import.meta.env.DEV` 分支——vite HMR 热重载，
-产物仅发布形态）。详细纪律见 `CONVENTIONS.md` §1.7 与 `AGENTS.md`。
+开发模式下产物走源码路径（`import.meta.env.DEV` 分支——改 `.ts/.tsx` 是整页 reload、
+改 `.css` 是换 `<link>`，没有模块级热替换；源码域产物拒绝从产物通道重载，见
+`docs/dev-workflow.md`「生产包热更」）。详细纪律见 `CONVENTIONS.md` §1.7 与 `AGENTS.md`。

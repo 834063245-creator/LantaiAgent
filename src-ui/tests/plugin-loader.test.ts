@@ -185,7 +185,7 @@ describe('loadExternalPlugins（失败隔离铁律）', () => {
       }),
       importModule: async (url: string) => {
         importCalls.push(url);
-        if (url.endsWith('bad/entry.js')) throw new Error('disk boom');
+        if (url.includes('/bad/entry.js')) throw new Error('disk boom');
         return { default: { name: 'hello', apply() {} } };
       },
     });
@@ -771,6 +771,57 @@ describe('D6 运行时热重载（activateExternalPlugin / deactivateExternalPlu
     await activateExternalPlugin('hello'); // 已活跃 → 重装载
     expect(probe.events).toEqual(['hello:setup', 'hello:dispose', 'hello:setup']);
     expect(activeExternalPluginNames()).toEqual(['hello']);
+  });
+
+  // ── landmine H4（2026-09-20 立法）：产物 JS 入口必带恒新版本号 ──
+  // 病灶：ES module 的模块图按 URL 缓存已求值的模块，同文档内 `import(同一 URL)`
+  // 连请求都不发（实测模块请求数 0）⇒「点重新加载」只重跑旧模块，TS 改动必须
+  // 重启应用才可见（CSS 那侧 H3 已带版本号 ⇒ 症状是「经常不生效」而非「从来不」）。
+  it('⑥ 重载取新产物：入口 URL 带版本号，且两次装载的 URL 必不相同', async () => {
+    const root = new Context();
+    const probe = { events: [] as string[] };
+    const urls: string[] = [];
+    const importModule = async (url: string): Promise<Record<string, unknown>> => {
+      urls.push(url);
+      return hotPluginModule('hello', probe);
+    };
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hello'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hello/manifest.json']: HELLO_MANIFEST,
+      }),
+      importModule,
+    });
+    await activateExternalPlugin('hello'); // 用户操作：设置 → 插件 → 重新加载
+
+    expect(urls).toHaveLength(2);
+    for (const url of urls) expect(url).toContain(ORIGIN + '/hello/entry.js?v=');
+    // 判据：URL 恒新 ⇒ 浏览器必重新请求模块（相同 URL = 拿到模块图里的旧模块）
+    expect(urls[0]).not.toBe(urls[1]);
+  });
+
+  // ── dev 源码域语义错配（2026-09-20 审计）：出厂产物在 dev 走源码路径装载，
+  //    不在产物通道的活跃表里 ⇒ 从产物通道重载 = 同 id 贡献二次注册 ⇒
+  //    注册表见同 id 即抛（contribution-channel）。具名拒绝取代隐晦抛错。
+  it('⑦ dev 源码域：出厂产物的产物通道重载被具名拒绝，不制造撞 id 的隐晦失败', async () => {
+    const root = new Context();
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hologram/canvas-nav'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+      }),
+      importModule: async () => {
+        throw new Error('dev 源码域的产物不应被 import');
+      },
+    });
+    // vitest 域 DEV=true（同 allBuiltinPlugins 的 dev 展开判据）
+    const record = await activateExternalPlugin('hologram/canvas-nav');
+    expect(record.status).toBe('error');
+    expect(record.error).toContain('dev 源码域');
+    expect(activeExternalPluginNames()).toEqual([]);
   });
 });
 
