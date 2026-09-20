@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // 消息操作域（paper-panel-split C3）——块 hover 操作按钮（施工单 #5 →
-// 2026-08-31 修订）：抄恒有；状态类操作（改/重发）只出现在各卷最新一条
-// 来文上（答块的「重试」与来文块的「重发」同轨冗余，2026-09-16 用户裁定
-// 删除）。opsByBlock 是 O(总块数) 的按块建表，P2-3 复合键缓存平移帧零重建。
+// 2026-08-31 修订 → 2026-09-20 造型批）：抄录恒有；状态类操作（改写/重发）只出现在
+// 各卷最新一条来文上（答块的「重试」与来文块的「重发」同轨冗余，2026-09-16 用户裁定
+// 删除）。**标签用文言双字（改写/重发/抄录/立枝）**：四件等宽、节奏齐——造型批与
+// 「去框素面行」同批（台架 prototype/msg-ops-style-ab.html）。
+// opsByBlock 是 O(总块数) 的按块建表，P2-3 复合键缓存平移帧零重建。
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useMemo, useRef } from 'react';
@@ -13,8 +15,8 @@ import { sameKey } from './use-paper-regions';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 消息操作项（施工单 #5）：块 hover 出现的操作按钮。
- *  disabled/title：状态类操作（改/重发）在该轮已无法唯一定位撤回时
- *  置灰降级（2026-09-01 重发锚点工程——绝不撤错轮）。 */
+ *  disabled/title：状态类操作（改写/重发）在该轮已无法唯一定位撤回时
+ *  置灰降级（2026-09-01 重发锚点工程——绝不撤错轮；置灰样式归 `:disabled`）。 */
 export interface BlockOp {
   key: string;
   label: string;
@@ -74,11 +76,11 @@ export function useBlockOps(params: {
           }
           return msg as UserMessage;
         };
-        ops.push({ key: 'edit', label: '改', run: () => core.editUserMessage(latestUser()), ...gone(retrace) });
+        ops.push({ key: 'edit', label: '改写', run: () => core.editUserMessage(latestUser()), ...gone(retrace) });
         ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(latestUser()), ...gone(retrace) });
       }
       const text = messageCopyText(latestMsg);
-      if (text.trim()) ops.push({ key: 'copy', label: '抄', run: () => core.copyText(messageCopyText(latest())) });
+      if (text.trim()) ops.push({ key: 'copy', label: '抄录', run: () => core.copyText(messageCopyText(latest())) });
       // **立枝**（会话树，2026-09-18）：从这条消息（节点）另起一枝——枝**含该节点**。
       // 位置纪律 = 与「改 / 重发 / 抄」同一行动作（主流 agent 软件的分支入口都挂在
       // 消息自己身上，不是会话列表、不是标题栏）；来文块与回复块都给（回复块的切点

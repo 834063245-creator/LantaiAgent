@@ -3442,11 +3442,11 @@
   box-shadow: none; /* 压印：投影塌缩，章沉进纸面 */
 }
 
-/* 消息操作条（施工单 #5 → 2026-08-31 修订 → 2026-09-19 悬停可达性批）：
- * 块左下角、块体之外（底边下方，落块间距带内——不遮正文不压下一块；**来文块
- * 例外，见下 ②**）；hover 浮现，隐没态不吃指针。状态类操作（改/重发）只在各卷
- * 最新一条来文上出现（过时块深回滚无意义，用户拍板摘除），抄恒有。样式归机读
- * 墨色族（同 .pp-marginalia-pin）。
+/* ── 消息动作行（施工单 #5 → 2026-08-31 修订 → 2026-09-19 悬停可达性批 →
+ *    2026-09-20 造型批）──
+ * 内容：各块恒有「抄录」，可立枝的块再有「立枝」；状态类操作（改写/重发）**只在
+ * 各卷最新一条来文上**出现（过时块深回滚无意义，用户拍板摘除）。hover 浮现，
+ * 隐没态不吃指针。
  *
  * 2026-09-19 悬停可达性批（用户报「鼠标还没挪过去就消失」+「来文块的按钮和
  * 后续文字重合」；真 Chrome 走位台架 prototype/msg-ops-hover-ab.html 复现出数）：
@@ -3456,27 +3456,52 @@
  *     正上方仍 opacity 0，命中落回下一块正文。治法 = **缝并进容器 padding**
  *     （顶边贴块底，多出的 2px 是透明桥面）：视觉 2px 呼吸不变，hover 链不断。
  *  ② **来文块块下只有 8px 机械尾距**（ANCHOR.userTailGap——花押那 30px 视觉
- *     尾距在块内），19px 的动作行塞不进 ⇒ 越出块底 13px 压住下一块的题签与
- *     首行（实测越界 13px / 握把 15px）。治法 = 来文块的动作行改落**块内尾带**
- *     （花押行之上那 30px 空白）：块体之内 ⇒ 零死带、零越界。 */
+ *     尾距在块内），动作行塞不进 ⇒ 越出块底压住下一块的题签与首行。治法 = 来文
+ *     块的动作行改落**块内尾带**（花押行之上那 30px 空白）：块体之内 ⇒ 零死带、
+ *     零越界。尾带可容行长 = asterismMarginTop(30) + asterismLine(14) − 行底偏移
+ *     (asterismLine + 2) = 28px；现行行长 24px，余 4px（tests/paper-msg-ops-hover
+ *     按 token 真源算、不手抄数字）。
+ *
+ * 2026-09-20 造型批（用户报「这些按钮真的太丑了」）——**动作行改隶注记族**；
+ * 四栏并排出图出数见 prototype/msg-ops-style-ab.html（同名 .NOTES.md 记诊断与代价）：
+ *  ③ **去框**。`border + paper 底` 是全产品**常驻件**的语法（文类签 .pp-kind /
+ *     眉批钉 .pp-marginalia-pin）；hover 瞬时件一律去框纯文字 + hover 朱砂
+ *     （.pp-fold / .pp-marginalia-toggle / .pp-tool-btn）。四枚方框随 hover 一起
+ *     长出来 ⇒ 与「一方向至多两层框」的版框层级打架，观感是通用工具条而非纸面
+ *     批注。去框的额外收益：命中盒靠**隐形 padding** 从 19px 撑到 24px，而可见
+ *     墨量反而变小（旧写法要加高只能把可见的框画大）。
+ *  ④ **来文块的行居中**：题签/正文/花押全在版心轴上，只有动作行左齐 = 孤儿
+ *     （实测行中心比块中心偏左 281px）；回复块保持左齐（与左齐正文同轴）。
+ *  ⑤ **握把并入行尾**成六点握把：旧形态「行内立枝按钮 + 块右端独立枝方框」是
+ *     一个动作两个词、两处落位；并进行盒后块外落位与 `::before` 桥面补丁**一并
+ *     删除**（行盒之内没有缝）。 */
 .pp-msg-ops {
   position: absolute;
   top: 100%; /* 顶边贴块底——`calc(100% + 2px)` 的缝曾是死带（见上 ①） */
   padding-top: 2px; /* 桥面：视觉仍留 2px 呼吸，那 2px 并进命中盒 */
+  padding-left: 6px; /* 纸色遮罩出血：行越出块底时盖住被越过的字（见下 background） */
+  padding-right: 6px;
   left: 0;
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 12px;
+  /* 纸色底 = **隐形遮罩**（同底同色，不显形）：去框之后 glyph 仍不与被越过的正文
+   * 糊在一起——回复块的行悬在块底之外、正压着下一块的题签。 */
+  background: var(--paper);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--snap);
   z-index: 5;
 }
-/* 来文块专属落位（见上 ②）：块内尾带——花押行（asterismLine）之上 2px。
- * 尾带 = asterismMarginTop 30px，19px 的行塞得下（余 9px）。 */
+/* 来文块专属落位（见上 ②）：块内尾带——花押行（asterismLine）之上 2px；
+ * 并**居中于版心轴**（见上 ④）——行宽随件数变，靠 shrink-to-fit + translate 收中。 */
 .pp-block.pp-user .pp-msg-ops {
   top: auto;
   bottom: calc(var(--pp-ch-user-asterismLine) + 2px);
   padding-top: 0;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
 }
 .pp-block:hover .pp-msg-ops,
 .pp-msg-ops:focus-within {
@@ -3484,73 +3509,91 @@
   pointer-events: auto;
 }
 .pp-msg-ops button {
-  padding: 2px 8px;
-  border: var(--rule-soft);
-  background: var(--paper);
+  /* 无框无底（见上 ③）：盒只剩**隐形热区**——11px 字 + padding 4/7 = 命中盒 26×24
+   * （旧写法 29×19：可见的框把高度顶死了）。行底纸色由容器给，按钮自身透明。 */
+  padding: 4px 7px;
+  border: none;
+  background: none;
   color: var(--ink-3);
   font-family: var(--f-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.06em;
   cursor: pointer;
   border-radius: 0;
   transition:
-    border-color var(--snap),
-    color var(--snap);
+    color var(--snap),
+    text-decoration-color var(--snap);
 }
-.pp-msg-ops button:hover {
-  border-color: var(--seal);
+/* hover 一件 = 它自己开口说话：朱砂 + 一丝朱砂底线（全产品 hover/选中的同一语言；
+ * 朱砂=人——hover 是瞬时态，不占「每屏至多一处红」的常驻名额，同文类签 hover）。
+ * `:not(:disabled)` 必需：禁用件照样吃 `:hover`（旧写法靠内联 opacity 压住，
+ * 现归 `:disabled` 就必须在这里排掉——置灰件不许被 hover 点亮）。 */
+.pp-msg-ops button:not(:disabled):hover {
   color: var(--seal-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--seal);
+}
+/* 不可用（该轮已不可唯一定位撤回——压缩/漂移）= 墨更淡一档、鼠标不变手。
+ * 2026-09-20 收编：旧写法是 JSX 内联 style{opacity:.4, cursor:default}。 */
+.pp-msg-ops button:disabled {
+  color: var(--ink-4);
+  cursor: default;
+}
+/* 件间分隔点（注疏行读法）：落在 gap 正中——translate 收中，与点的字宽无关；
+ * 点左右各 13px 到字（gap 12 + padding 7），`pointer-events: none` 不吃命中盒。 */
+.pp-msg-ops button + button {
+  position: relative;
+}
+.pp-msg-ops button + button::before {
+  content: "·";
+  position: absolute;
+  left: -6px; /* gap 12 的一半 = 缝正中 */
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--ink-4);
+  pointer-events: none;
 }
 
-/* ── 空间手势立枝的握把（P4-①，2026-09-19）──
- * 位置 = 块**底间距带**右端（与动作行 `.pp-msg-ops` 同一条带、各占一端）：在块体**之外**
- * ⇒ 不吃划词选字；不是文类签（`.pp-kind` = 整块拖出钉住的把手）⇒ 两条手势各占各的把手。
- * hover 浮现（同动作行纪律：隐没态不吃指针），`cursor: grab`（拖拽件的手势语言）。
- * 墨阶与动作行同族（机读墨色 + 朱砂 hover）；只在可立枝的块上渲染（判据同按钮，见
- * `use-block-ops` 的 branchGrips）。
- * 2026-09-19 悬停可达性批：落位纪律与动作行**同一条**（缝=死带 ⇒ 顶边贴块底；
- * 来文块落块内尾带）——握把是有边框的实盒，缝不能用 padding 补，改 `::before` 桥面。 */
+/* ── 空间手势立枝的握把（P4-①，2026-09-19 → 2026-09-20 并入动作行行尾）──
+ * 位置 = **动作行行尾**（见上 ⑤）：不再是块右端一枚独立方框 ⇒ 一个动作一个视觉入口、
+ * 一条落位纪律、零桥面特例（旧形态那两段——块外 `top:100%/right:0` 落位与
+ * `.pp-block:not(.pp-user) .pp-branch-grip::before` 的 2px 缝补丁——**已删除**：握把
+ * 进行盒后行内没有缝）。显隐随行（行 opacity），故自身不再持 opacity/pointer-events。
+ * 六点由 `::before` 画：字形无关（不吃字体回退），`cursor: grab` 是拖拽件的手势语言。
+ * 只在可立枝的块上渲染（判据同按钮，见 `use-block-ops` 的 branchGrips）。 */
 .pp-branch-grip {
-  position: absolute;
-  top: 100%; /* 贴块底（`calc(100% + 2px)` 的缝 = 死带，见 .pp-msg-ops 头注 ①） */
-  right: 0;
-  padding: 2px 8px;
-  border: var(--rule-soft);
-  background: var(--paper);
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 16px;
+  padding: 3px 4px;
+  border: none;
+  background: none;
   color: var(--ink-3);
-  font-family: var(--f-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
   cursor: grab;
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity var(--snap),
-    border-color var(--snap),
-    color var(--snap);
-  z-index: 5;
+  transition: color var(--snap);
 }
-/* 桥面：块底那 2px 视觉缝的命中补丁（只给落在块外的握把——来文块的握把在块内，
- * 不需要桥）。 */
-.pp-block:not(.pp-user) .pp-branch-grip::before {
+.pp-branch-grip::before {
   content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
+  display: block;
+  width: 2px;
   height: 2px;
-}
-/* 来文块专属落位：块内尾带（同 `.pp-block.pp-user .pp-msg-ops`）。 */
-.pp-block.pp-user .pp-branch-grip {
-  top: auto;
-  bottom: calc(var(--pp-ch-user-asterismLine) + 2px);
-}
-.pp-block:hover .pp-branch-grip {
-  opacity: 1;
-  pointer-events: auto;
+  /* 笔画级圆点：铁律「圆角恒 0」管结构件，不管字形/笔画（同 .pp-circled 的圈点） */
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow:
+    0 -4px 0 currentColor,
+    0 4px 0 currentColor,
+    5px -4px 0 currentColor,
+    5px 0 0 currentColor,
+    5px 4px 0 currentColor;
 }
 .pp-branch-grip:hover {
-  border-color: var(--seal);
   color: var(--seal-deep);
 }
 /* 按下即「抓住了」——与文类签拖出把手同一手势语言（.pp-kind:active 同款）。

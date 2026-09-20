@@ -320,7 +320,7 @@ const BlockView = memo(function BlockView({
       ) : (
         <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>
       )}
-      {ops.length > 0 && (
+      {(ops.length > 0 || onBranchGripMouseDown) && (
         <div className="pp-msg-ops">
           {ops.map((o) => (
             <button
@@ -328,7 +328,6 @@ const BlockView = memo(function BlockView({
               type="button"
               disabled={o.disabled}
               title={o.title}
-              style={o.disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
               onClick={(e) => {
                 e.stopPropagation();
                 if (o.disabled) return;
@@ -338,15 +337,19 @@ const BlockView = memo(function BlockView({
               {o.label}
             </button>
           ))}
-        </div>
-      )}
-      {/* 空间手势立枝的握把（P4-①，2026-09-19）：块底间距带右端（与动作行同带、右对齐）
-          ——按住拖出一条引线、松手落在纸上就地立枝。块体之外 ⇒ 不吃划词选字；独立于
-          文类签 ⇒ 不抢「整块拖出钉住」那条手势；只在可立枝的块上出现（判据与按钮同表）。 */}
-      {onBranchGripMouseDown && (
-        // biome-ignore lint/a11y/noStaticElementInteractions: 拖拽握把（拖出立枝）；立枝本身另有按钮入口
-        <div className="pp-branch-grip" title={BRANCH_GRIP_TITLE} onMouseDown={(e) => onBranchGripMouseDown(e, block)}>
-          枝
+          {/* 空间手势立枝的握把（P4-①，2026-09-19 → 2026-09-20 造型批并入本行行尾）：
+              按住拖出一条引线、松手落在纸上就地立枝。旧形态是块右端一枚独立「枝」方框
+              ——一个动作两个词、两处落位；并进行盒后只剩**六点握把**（CSS 画的点，
+              字形无关），语义落在 title 上。在块体之外/之内不再有别：行盒在块外的块
+              （非来文块）行本身就是那条悬空腿。只在可立枝的块上出现（判据与按钮同表）。 */}
+          {onBranchGripMouseDown && (
+            // biome-ignore lint/a11y/noStaticElementInteractions: 拖拽握把（拖出立枝）；立枝本身另有按钮入口（键盘路径 = 行内那颗「立枝」）
+            <div
+              className="pp-branch-grip"
+              title={BRANCH_GRIP_TITLE}
+              onMouseDown={(e) => onBranchGripMouseDown(e, block)}
+            />
+          )}
         </div>
       )}
       {block.state === 'pinned' && (

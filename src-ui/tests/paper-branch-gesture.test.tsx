@@ -353,8 +353,13 @@ describe('会话树「枝」——空间手势立枝（P4-①：拖出引线、�
     await flushSessionLog(agentSessionState.getAgent(store, 1)?.sessionLog ?? null);
     const parentBefore = volumeText(1);
 
-    // 握把在块底间距带右端（与动作行同带、右对齐）
-    expect(gripEl(uiUser._id).textContent).toBe('枝');
+    // 握把在**动作行行内**（2026-09-20 造型批）：旧形态是块右端一枚独立「枝」方框
+    // ——一个动作两个词、两处落位；并进行盒后只剩六点握把（`::before` 画的点，无字），
+    // 语义落在 title 上，键盘路径照旧是行内那颗「立枝」按钮。
+    const grip = gripEl(uiUser._id);
+    expect(grip.parentElement?.className).toBe('pp-msg-ops');
+    expect(grip.textContent).toBe('');
+    expect(grip.title).toContain('立枝');
 
     // ① 按下 → 拖动（过阈值）⇒ 纸上出现引线预览，朱点落在**指针**上（落点即所见）
     await dragGrip(uiUser._id, DROP);
