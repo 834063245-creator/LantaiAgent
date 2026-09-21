@@ -19,6 +19,18 @@
 //   - 窗口隐藏时不轮询（不做后台空转）；
 //   - 用户禁用的 feature 插件不自动重载（plugin-prefs 是唯一权威，与 boot 装载同一条判据）；
 //   - 只重载变更的产物（不做全量重装）；单个失败记状态栏提示并继续下一轮。
+//
+// ── H6（2026-09-21 实机取证）：**基线之后的静默死亡** ─────────────────────
+// 症状：一整个下午改了四批产物，应用里「什么都没变」；ui.log 里 product-watch
+// 只有一行（12:33:48，当天唯一一次重载），之后既无重载也无任何报错。
+// 两条静默路（都在本文件内）：
+//   ① `readRev()` 返回 null（通道读不到/坏形状）——旧代码只在 `baseline == null` 时
+//      计数与停轮询 ⇒ **基线一经建立，后续 N 次失败既不报也不停**，纯哑掉；
+//   ② `inFlight` 一旦被一个**不 settle 的 await**（activateExternalPlugin 卡住）
+//      永久占住 ⇒ 之后每次 pollOnce 首行就 return，同样一声不响。
+// 治法（本批）：失败**可见化**——连缺到阈值即 warn（不刷屏），再往上推一条状态栏；
+// `inFlight` 加看门狗（超时释放 + warn）。判据：产物通道断了要能在界面上看见，
+// 而不是让用户对着旧界面猜「为什么没生效」。
 
 import { log } from '../agent/logger';
 import { useShellStore } from '../app/shell-store';
@@ -32,6 +44,13 @@ import { activateExternalPlugin, deactivateExternalPlugin, isSourceDomainProduct
 export const PRODUCT_WATCH_INTERVAL_MS = 1000;
 /** 连续读不到修订表的次数上限（超了停轮询——无信号源环境不空转）。 */
 const MAX_MISSES = 5;
+/** H6：**基线之后**连缺到这个数就 warn（1s 周期 ⇒ 约 15s 断流），此后每 MISS_WARN_EVERY 次再报一次。 */
+const MISS_WARN_AFTER = 15;
+const MISS_WARN_EVERY = 300;
+/** H6：单次轮询的在途上限——超时释放 `inFlight`（不让一个不 settle 的 await 把整条通道哑掉）。 */
+const INFLIGHT_TIMEOUT_MS = 30_000;
+/** H6：状态栏提示只在跨过这个次数时报一次（不刷屏）。 */
+const MISS_STATUS_AFTER = 60;
 
 /** 修订表（`<origin>/_rev.json`）：插件名（= dirId）→ 内容指纹。 */
 export type ProductRev = Record<string, string>;
@@ -70,6 +89,8 @@ export function startProductWatch(opts: ProductWatchOptions): ProductWatch {
   let misses = 0;
   let stopped = false;
   let inFlight = false;
+  let inFlightSince = 0;
+  let missStatusPushed = false;
   let timer: ReturnType<typeof setInterval> | null = null;
 
   function stop(): void {
@@ -90,9 +111,18 @@ export function startProductWatch(opts: ProductWatchOptions): ProductWatch {
   }
 
   async function pollOnce(): Promise<string[]> {
-    if (stopped || inFlight) return [];
+    if (stopped) return [];
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return [];
+    // H6②：在途看门狗——一个不 settle 的 await 不许把整条通道永久占住
+    if (inFlight) {
+      if (Date.now() - inFlightSince < INFLIGHT_TIMEOUT_MS) return [];
+      log.warn(
+        'plugins',
+        `[product-watch] 上一次轮询在途超过 ${Math.round(INFLIGHT_TIMEOUT_MS / 1000)}s——强制释放（产物通道可能已卡住）`,
+      );
+    }
     inFlight = true;
+    inFlightSince = Date.now();
     try {
       const rev = await readRev();
       if (rev == null) {
@@ -100,10 +130,24 @@ export function startProductWatch(opts: ProductWatchOptions): ProductWatch {
         if (baseline == null && misses >= MAX_MISSES) {
           log.warn('plugins', `[product-watch] 连续 ${misses} 次读不到 ${url}——产物无修订表，自动重载停用`);
           stop();
+          return [];
+        }
+        // H6①：基线之后的失败必须**可见**（旧代码在这里完全静默 ⇒ 一下午的产物变更全丢）
+        if (
+          baseline != null &&
+          misses >= MISS_WARN_AFTER &&
+          (misses === MISS_WARN_AFTER || misses % MISS_WARN_EVERY === 0)
+        ) {
+          log.warn('plugins', `[product-watch] 连续 ${misses} 次读不到 ${url}——自动重载可能已失效（改产物请重启应用）`);
+        }
+        if (baseline != null && misses >= MISS_STATUS_AFTER && !missStatusPushed) {
+          missStatusPushed = true;
+          useShellStore.getState().pushStatus('产物通道读不到修订表——自动重载已失效，改产物请重启应用');
         }
         return [];
       }
       misses = 0;
+      missStatusPushed = false;
       // 首轮 = 基线（boot 期装载的就是它，无须重载）
       if (baseline == null) {
         baseline = rev;
