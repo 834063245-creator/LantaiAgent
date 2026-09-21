@@ -375,18 +375,15 @@
   height: 400000px;
   pointer-events: none;
   z-index: 0;
-  filter: brightness(1.05);
+  /* 桌垫 = 桌面/家具的**同一套板面纹理**（2026-09-21 侧栏纸面批把配方提成
+   * tokens.css 的 --panel-tex-*：桌垫 / 侧栏 / 书脊三处共用一份真源，
+   * 换纸或改档只动 token；本处取值与提 token 前逐字相同，零视觉漂移） */
+  filter: brightness(var(--panel-tex-bright));
   background-color: var(--paper);
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
-    url("../../../assets/paper/paper-grain.jpg"), url("../../../assets/paper/paper-fiber.jpg"), var(--laid-lines);
-  background-size:
-    180px 180px,
-    2048px 2048px,
-    2048px 2048px,
-    auto;
+  background-image: var(--panel-tex-image);
+  background-size: var(--panel-tex-size);
   background-repeat: repeat;
-  background-blend-mode: normal, multiply, multiply, multiply;
+  background-blend-mode: var(--panel-tex-blend);
 }
 /* ── 卷首（folio-head）──
  * 2026-08-30 自 prototype/lantai.html .folio-head 族转录；**2026-09-16「版心天头」
@@ -4181,7 +4178,7 @@
  * → 带内一切元素恒 top ≥ 0（本批不再为「书眉带」让位，那 4px 归带体自身留白）。
  *
  * **2026-09-19 加宽批（用户「由于边缘滚动的落地，我需要再次加宽我的目次带，
- * 因为会有误触的问题」）+ 同日甲案（用户看像素对照后定）**：带体 =
+ * 因为会有误触的问题」）+ 同日甲案**：带体 =
  * **识别层（全带 104）+ 控制列 64 + 缘滚跑道 40**（后两者重叠于同一段 x）。
  * 病灶是**两条面抢同一条带**：边缘滚动的右缘感应带（基准 36px，贴屏最右）
  * 正落在目次带上（带只 64px 宽 ⇒ 带内几乎处处是感应带），于是「用带导航」
@@ -4189,9 +4186,13 @@
  * 让出感应带：`.pp-toc-col`（控制列，宽度与旧带体逐字同 64px ⇒ 刻痕/锚/滑块/
  * hover 卡零漂移）承载**全部可交互面**，带体右 40px 是**缘滚跑道**
  * （`TOC_RUNWAY_W` ≥ 基准带宽，钉值见 tests/stage4-toc-top-band）。
- * 甲案：**识别层（墨迹 canvas / 未读区 / 活线）按带体满宽铺**（缩放比随带体
- * 变宽 ⇒ 剪影 48 → ~78px，扫读更清；它们全是 pointer-events:none 的纯识别面），
- * 与控制列以一道**界栏线**（`.pp-toc::after`）分界。
+ * 甲案那半：**识别层（墨迹 canvas / 未读区 / 活线）按带体满宽铺**（缩放比随带体
+ * 变宽 ⇒ 剪影 48 → ~78px，扫读更清；它们全是 pointer-events:none 的纯识别面）。
+ * ⚠ **2026-09-21 摘线（用户「我从来也没拍板过界栏线」）**：甲案里那道**界栏线**
+ * （`.pp-toc::after`）已删除——它是 agent 自提的观感件（记录曾被写成「用户看像素
+ * 对照后定」，实为用户从未验收，更正入账见 taste-ledger 2026-09-21 条），且
+ * **零功能**：跑道惰性由组件 `insideCol` 判据（夹在 `TOC_COL_W` 内）决定，与线无关。
+ * 识别层铺满照旧保留（与甲案其余内容同属**待用户验收**项）。
  * 跑道本体**惰性**：无 handler（交互判据在组件里按控制列夹紧）、光标默认、
  * 点击只被吞掉不做事（不吞就点穿到纸上划词），而悬停照旧算画布 ⇒ 贴屏最右
  * 照旧缘滚（edge-scroll 的 HOVER_ALLOW_DOCKS）。 */
@@ -4207,25 +4208,10 @@
   touch-action: none;
   cursor: default; /* 带体默认光标 = 跑道口径（惰性）；可交互光标在 .pp-toc-col */
 }
-/* 界栏线 = **可交互面与缘滚跑道的分界**（甲案：识别层铺过线，控制面止于线）：
- * 位置 = 控制列右缘（组件 TOC_COL_W 的 CSS 镜像，改一处必红）；比带体左缘那条
- * 弱线再淡一档——它是带内的次级分隔，不是带体的边。painted 在识别层之上、
- * 惰性元素（z-3 的刻痕 / z-4 的锚）之下，故刻痕与锚照旧清晰压在线上。 */
-.pp-toc::after {
-  content: "";
-  position: absolute;
-  left: 64px; /* = 控制列宽 TOC_COL_W（组件常量镜像） */
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: color-mix(in oklch, var(--ink-4) 65%, transparent);
-  pointer-events: none;
-  z-index: 2;
-}
 /* 控制列 = 带内**唯一可交互面**（组件把 scrub / hover 卡判据夹在本列内）。
  * 它同时是控制层子件的**定位父**：滑块/刻痕/锚/卡沿用「left/right 贴列缘」的
- * 旧写法即自动收在 64px 内，界栏线右侧（跑道）留给缘滚。识别层不在本列里
- * （甲案：画布按带体满宽铺，见 .pp-toc-ink）。 */
+ * 旧写法即自动收在 64px 内，列右（跑道）留给缘滚。识别层不在本列里
+ * （画布按带体满宽铺，见 .pp-toc-ink）。 */
 .pp-toc-col {
   position: absolute;
   left: 0;

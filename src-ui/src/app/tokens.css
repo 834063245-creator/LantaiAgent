@@ -89,6 +89,22 @@
     rgba(255, 250, 238, 0) 38%
   );
   --laid-lines: repeating-linear-gradient(0deg, rgba(38, 34, 28, 0.032) 0 1px, transparent 1px 7px);
+  /* ── 板面纹理（2026-09-21 侧栏纸面批）：**桌面/家具同一张纸** ──
+   * 真源 = 下面三个 token（图 + 尺寸 + 混合），消费面：.pp-desk（桌垫）、
+   * .ss-sidebar / .sr-rack 的纹理层（::before）。非画布态的文档级层
+   * （foundation.css body::after）尺寸走 cover，不在此列。
+   * 病灶：画布态把文档级纹理层整层退役（foundation.css body:has(.pp-root)::after），
+   * 固定家具（侧栏/书脊）随之只剩 flat --paper ⇒ 用户判「死气沉沉」——而它旁边
+   * 的桌垫是有纹的，两者并陈就是一块平色板贴在一张纸上。
+   * 尺寸走**固定 tile**（2048）不走 cover：cover 会随容器高矮变缩放，家具与桌面
+   * 颗粒大小不一就「不像同一批纸」（流区 1200 平铺的同一条判例，见 .pp-region）。
+   * 提亮 1.05 由消费面自挂（挂在本层，别挂容器——免得连字一起提亮）。 */
+  --panel-tex-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    url("../assets/paper/paper-grain.jpg"), url("../assets/paper/paper-fiber.jpg"), var(--laid-lines);
+  --panel-tex-size: 180px 180px, 2048px 2048px, 2048px 2048px, auto;
+  --panel-tex-blend: normal, multiply, multiply, multiply;
+  --panel-tex-bright: 1.05;
 
   /* ── 海拔（硬偏移 letterpress，禁软模糊大投影）── */
   --elev-raise: 2px 3px 0 rgba(38, 34, 28, 0.06), 3px 6px 16px rgba(38, 34, 28, 0.1);

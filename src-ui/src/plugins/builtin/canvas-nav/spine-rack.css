@@ -75,6 +75,22 @@
   }
 }
 
+/* ── 板面纹理（2026-09-21 纸面批）：与 .ss-sidebar **同一套 token、同一张桌** ──
+ * 互斥两态是同一块板换宽度 ⇒ 两态的材质必须逐字相同（侧栏有纹而书脊平色 =
+ * 换态像换了个东西）。纹理走 ::before 且 z-index:-1（面板底之上、脊块之下）。 */
+.sr-rack::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1; /* 本列是 stacking context：z 281 + fixed */
+  pointer-events: none;
+  background-image: var(--panel-tex-image);
+  background-size: var(--panel-tex-size);
+  background-repeat: repeat;
+  background-blend-mode: var(--panel-tex-blend);
+  filter: brightness(var(--panel-tex-bright));
+}
+
 /* ── 函套扣（用户点名的那枚虚线框按钮）：虚线 = 「这里是个可开的扣」，hover 转石青 ── */
 .sr-sidebar-toggle {
   pointer-events: auto;

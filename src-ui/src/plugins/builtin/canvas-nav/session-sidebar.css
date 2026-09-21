@@ -8,6 +8,12 @@
  * 选中语言（§11 分型）：行型 = --sel-wash 墨洗 + 朱砂左脊（当前卷/多选共用）。
  * 互斥两态（2026-09-02 拍板）：本栏展开时独占左缘（left:0，书脊整列退场），
  * 宽度右缘可拖（240–420px，localStorage 持久）。
+ * 板面纹理（2026-09-21 纸面批，用户报「纯色背景死气沉沉」）：画布态把文档级
+ * 纹理层整层退役（foundation.css body:has(.pp-root)::after），固定家具只剩 flat
+ * --paper——而它旁边的桌垫（.pp-desk）是有纹的，并陈就是「一块平色板贴在一张纸上」。
+ * 治法 = 本栏挂**桌面同一套 token 纹理**（--panel-tex-*，尺寸走 2048 固定平铺，
+ * 与桌垫颗粒同档 ⇒ 两态同一块板、面板与桌同一张纸）。纹理走 ::before 且 z-index:-1：
+ * 落在面板底色之上、内容之下，brightness 1.05 只提纹理层，不连字一起提亮。
  * 挂载：DockPanel 上层覆盖（z 高于纸面板 .pp-root z:280），随纸面板开合。 */
 
 .ss-sidebar {
@@ -25,6 +31,19 @@
   font-family: var(--f-song);
   /* 展场动画：从左缘滑入 + 内容级联浮现（sh-rise 曲线家族） */
   animation: ss-slide-in 0.18s cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* 板面纹理层（见头注；绝对定位 ⇒ 不是 flex 项，不参与本栏排版） */
+.ss-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1; /* 面板底色之上、内容之下（本栏是 stacking context：z 282 + fixed） */
+  pointer-events: none;
+  background-image: var(--panel-tex-image);
+  background-size: var(--panel-tex-size);
+  background-repeat: repeat;
+  background-blend-mode: var(--panel-tex-blend);
+  filter: brightness(var(--panel-tex-bright));
 }
 @keyframes ss-slide-in {
   from {

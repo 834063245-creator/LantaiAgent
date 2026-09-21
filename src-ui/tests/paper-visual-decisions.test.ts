@@ -35,6 +35,9 @@ const CANVAS_MATH_TS = readFileSync(join(SRC, 'paper', 'canvas-math.ts'), 'utf8'
 const GROUP_TS = readFileSync(join(SRC, 'paper', 'group.ts'), 'utf8');
 const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8');
 const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
+/** 互斥两态的两块板（2026-09-21 侧栏纸面批：板面纹理三个消费面同源） */
+const SIDEBAR_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'canvas-nav', 'session-sidebar.css'), 'utf8');
+const SPINE_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'canvas-nav', 'spine-rack.css'), 'utf8');
 const FONTS_TS = readFileSync(join(SRC, 'app', 'fonts.ts'), 'utf8');
 const FONTS_CSS = readFileSync(join(SRC, 'app', 'fonts.css'), 'utf8');
 const NORMALIZE_PS1 = readFileSync(join(__dirname, '..', '..', 'scripts', 'normalize-paper-texture.ps1'), 'utf8');
@@ -609,10 +612,12 @@ describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
     const desk = ruleBody(PANEL_CSS, '.pp-desk {');
     // 桌面纸配方：与 body::after 同源 + 帘纹归桌面
     expect(desk).toContain('background-color: var(--paper)');
-    expect(desk).toContain('paper-grain.jpg');
-    expect(desk).toContain('paper-fiber.jpg');
-    expect(desk).toContain('var(--laid-lines)');
-    expect(desk).toContain('normal, multiply, multiply, multiply');
+    // 2026-09-21 侧栏纸面批：配方提成 tokens.css 的 --panel-tex-*（板面纹理真源，
+    // 桌垫/侧栏/书脊三处共用一份）——桌垫只消费 token，四层本体钉在下面那条用例
+    expect(desk).toContain('var(--panel-tex-image)');
+    expect(desk).toContain('var(--panel-tex-size)');
+    expect(desk).toContain('var(--panel-tex-blend)');
+    expect(desk).toContain('brightness(var(--panel-tex-bright))');
     // 只混自身层（background-blend），不乘盖流区/纸条（无 mix-blend-mode）
     expect(desk).not.toContain('mix-blend-mode');
     // 无界近似：±200000px 世界坐标
@@ -622,6 +627,39 @@ describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
     expect(desk).toContain('pointer-events: none');
     // TSX 挂载：world 第一子（DOM 序即层序，垫在一切世界内容之下）
     expect(PANEL_TSX).toContain('className="pp-desk"');
+  });
+
+  it('板面纹理真源（2026-09-21 侧栏纸面批）：四层配方 + 固定 tile + 三个消费面同源', () => {
+    // 真源 = tokens.css 的三个 --panel-tex-*：微颗粒×grain×fiber×帘纹
+    expect(TOKENS_CSS).toContain('--panel-tex-image:');
+    expect(TOKENS_CSS).toContain('paper-grain.jpg');
+    expect(TOKENS_CSS).toContain('paper-fiber.jpg');
+    expect(TOKENS_CSS).toContain('var(--laid-lines)');
+    expect(TOKENS_CSS).toContain('--panel-tex-size: 180px 180px, 2048px 2048px, 2048px 2048px, auto');
+    expect(TOKENS_CSS).toContain('--panel-tex-blend: normal, multiply, multiply, multiply');
+    // 固定 tile（2048）而非 cover：cover 会随容器高矮变缩放，家具与桌面颗粒不一
+    // 就「不像同一批纸」（流区 1200 平铺的同一条判例）
+    expect(TOKENS_CSS).not.toContain('--panel-tex-size: cover');
+    // 病灶守护：画布态把文档级纹理层整层退役 ⇒ 固定家具必须自挂纹理，
+    // 否则侧栏/书脊只剩 flat --paper（用户判「死气沉沉」）
+    const retire = ruleBody(HOME_CSS, 'body:has(.pp-root)::after');
+    expect(retire).toContain('display: none');
+    for (const [css, sel] of [
+      [SIDEBAR_CSS, '.ss-sidebar::before'],
+      [SPINE_CSS, '.sr-rack::before'],
+    ] as const) {
+      const body = ruleBody(css, sel);
+      expect(body).toContain('background-image: var(--panel-tex-image)');
+      expect(body).toContain('background-size: var(--panel-tex-size)');
+      expect(body).toContain('background-blend-mode: var(--panel-tex-blend)');
+      expect(body).toContain('brightness(var(--panel-tex-bright))');
+      // 纹理层落在面板底色之上、内容之下（z:-1）；提亮只提这层，不连字一起提亮
+      expect(body).toContain('z-index: -1');
+      expect(body).toContain('pointer-events: none');
+    }
+    // 两态同一块板：侧栏与书脊的纹理逐字同源（面板底色也同族）
+    expect(ruleBody(SIDEBAR_CSS, '.ss-sidebar {')).toContain('background: var(--paper)');
+    expect(ruleBody(SPINE_CSS, '.sr-rack {')).toContain('background: var(--paper)');
   });
 
   it('流区帘纹退役：单层纸纹（纸性由 paper-sheet 独自承载——帘纹叠乘读作屏纹，实机过审移除）', () => {
