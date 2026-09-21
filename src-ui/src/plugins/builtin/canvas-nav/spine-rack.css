@@ -46,6 +46,7 @@
   --label-w: calc(39px * var(--fs)); /* = 2 × 栏距：恰好两栏 */
   --gutter: calc(15px * var(--fs)); /* 标栏（档号 / 枝牌） */
   --spine-pad: 8px; /* 脊上下内距之和（分配器的 SPINE_PAD_V 镜像） */
+  --thin-h: 32px; /* 书口高（分配器的 SPINE_THIN_H 镜像）：横排题名两行 + 上下内距 */
   --seam: 6px; /* 书缝（分配器的 SPINE_SEAM 镜像） */
   position: fixed;
   left: 0;
@@ -59,7 +60,13 @@
   background: var(--paper); /* 函套底 = .ss-sidebar 同一块板（互斥两态真是换宽度） */
   border-right: var(--rule-strong);
   z-index: var(--z-paper-rack);
-  pointer-events: none; /* 列容器不挡画布，热区在脊自身 */
+  /* 热区 = **整块板**（2026-09-21 滚轮批）。旧值 `none` 是「无底散块」时代的产物
+   * （当年脊是浮块、块间露出画布，故列不挡画布）；二批补了函套底之后本列已是**不透明
+   * 整块板**，画布在它下面根本看不见 ⇒ 让事件穿过去只剩害处：书缝 6px 与四周内距带
+   * 全是**不可命中**的真空，滚轮落在那儿不滚列、反而去平移/缩放画布。
+   * 实测（prototype/_probe-wheel.mjs，24 卷矮窗）：脊上滚 → scrollTop 0→300 ✓；
+   * 书缝上滚 → 0→0 ✗（命中元素是画布那侧）。改 auto 后三处皆滚。 */
+  pointer-events: auto;
   font-family: var(--f-song);
   /* 互斥两态回场（2026-09-02）：侧栏收起 → 书脊重挂载，从左缘轻滑入 */
   animation: sr-slide-in 0.16s cubic-bezier(0.23, 1, 0.32, 1);
@@ -133,7 +140,8 @@
   color: var(--indigo);
 }
 
-/* ── 脊列：可滚（滚轴隐去，位置靠右缘位置条读）── */
+/* ── 脊列：可滚（滚轴隐去，位置靠右缘位置条读）──
+ * 热区随板（.sr-rack 已是 auto）：书缝与内距带**都算列内**，滚轮落哪儿都滚这一列。 */
 .sr-list {
   display: flex;
   flex-direction: column;
@@ -144,6 +152,7 @@
   overflow-y: auto;
   overscroll-behavior: contain; /* 滚到底不把画布带跑 */
   scrollbar-width: none;
+  pointer-events: auto;
 }
 .sr-list::-webkit-scrollbar {
   width: 0;
@@ -280,6 +289,52 @@
   color: var(--seal);
   border: 1px solid var(--seal-soft);
   padding: 2px 0;
+}
+
+/* ── 书口档（乙 · 密度档，2026-09-21 用户拍板）：摊开的卷太多、连 3 行下限都放不下时 ——
+ * 活跃卷保持整脊（在读的那本整着），其余压成一条「**书口**」：**横排题名两行**
+ * （约 6 字 + 省略号，与整脊的竖排两栏同容量，却只占三分之一高度）。
+ * 用户口径（2026-09-21）：「不要用编号，编号写了跟没写一样」⇒ 书口档**不写档号**，
+ * 认卷靠题名；运行点 / 枝 仍留在左标栏（与整脊同一列，扫下来不乱）。
+ * 高度 = --thin-h（TS 的 SPINE_THIN_H 镜像，改必同改）。 */
+.sr-spine.sr-thin {
+  height: calc(var(--thin-h) * var(--fs));
+}
+.sr-spine.sr-thin .sr-spine-main {
+  padding: 3px 6px 3px 13px; /* 左标栏 13：横排「枝」牌（11px 宽）塞得下，且与题名留 1px 净空 */
+}
+.sr-spine.sr-thin .sr-label {
+  writing-mode: horizontal-tb; /* 书口横排：竖排两栏在这个高度站不下两行 */
+  text-orientation: mixed;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  font-size: calc(11.5px * var(--fs));
+  line-height: calc(13px * var(--fs));
+  letter-spacing: 0;
+  overflow: hidden;
+}
+.sr-spine.sr-thin .sr-num {
+  display: none; /* 书口不写编号（用户拍板：编号写了跟没写一样） */
+}
+.sr-spine.sr-thin .sr-branch-tag {
+  writing-mode: horizontal-tb;
+  font-size: calc(9px * var(--fs));
+  line-height: 1;
+  padding: 1px 0;
+  left: 1px;
+  bottom: 3px;
+}
+.sr-spine.sr-thin .sr-run-dot {
+  left: 4px;
+  right: auto;
+  top: 5px;
 }
 
 /* ── 活跃卷：抽出一半（离桌高一档）——纸提亮 + 朱砂脊边 + 影深一档，零变色 ── */

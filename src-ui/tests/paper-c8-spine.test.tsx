@@ -18,15 +18,26 @@ import { useCoreStore } from '../src/app/chat/core-instance';
 import { SpaceService } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
 import {
-  allocSpineRows,
   fitLabel,
   labelWeight,
+  planSpines,
   SPINE_PAD_V,
   SPINE_SEAM,
+  SPINE_THIN_H,
   SpineRack,
+  type SpineSlot,
   spineRows,
   spineWantRows,
 } from '../src/plugins/builtin/canvas-nav/SpineRack';
+
+/** 一排脊占的总高（含书缝）——分配器判据的同一把尺子。 */
+function stackOf(plan: SpineSlot[], pitch: number): number {
+  return (
+    plan.reduce((s, p) => s + (p.thin ? SPINE_THIN_H : SPINE_PAD_V + p.rows * pitch), 0) +
+    SPINE_SEAM * Math.max(0, plan.length - 1)
+  );
+}
+
 import { getCanvasStore, resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import { getChatStore } from '../src/ui/chat-store';
@@ -348,7 +359,7 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     expect(spineWantRows('测试，kind工具全部拿来给我生成出来个样板，内容自定，…')).toBe(6); // >22 档
   });
 
-  it('分配器：列高不够按行降档（永不半行），13 卷 1010px 窗全落 3 行且零滚', () => {
+  it('分配器①自然档 / ②降档档：宽敞不动它，挤了按行降档（永不半行），13 卷 1010px 落②全 3 行', () => {
     // 真值：列高 946 = 1010 − 顶底内距 12 − 案卷扣 46 − 扣下书缝 6；栏距 19.5。
     const wants = [
       4,
@@ -365,17 +376,34 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
       3,
       6, // 13 卷自然行数（真卷名）
     ];
-    const rows = allocSpineRows(wants, 946, 19.5);
-    expect(rows.every((n) => n === 3)).toBe(true);
-    const used = rows.reduce((s, n) => s + SPINE_PAD_V + n * 19.5, 0) + SPINE_SEAM * 12;
-    expect(used).toBeLessThanOrEqual(946);
+    const plan = planSpines(wants, 946, 19.5, 4);
+    expect(plan.every((p) => !p.thin)).toBe(true); // 走②，不该书口化
+    expect(plan.every((p) => p.rows === 3)).toBe(true);
+    expect(stackOf(plan, 19.5)).toBeLessThanOrEqual(946);
     // 宽裕时保持自然行数（不无谓降档）
-    expect(allocSpineRows([4, 3, 5], 400, 19.5)).toEqual([4, 3, 5]);
+    expect(planSpines([4, 3, 5], 400, 19.5, 0).map((p) => p.rows)).toEqual([4, 3, 5]);
   });
 
-  it('分配器：削的是最高的那几根（并列轮转），且绝不落到下限以下', () => {
-    const rows = allocSpineRows([6, 6, 6], 3 * (SPINE_PAD_V + 3 * 19.5) + 2 * SPINE_SEAM - 1, 19.5);
-    expect(rows).toEqual([3, 3, 3]); // 削到下限就停手（剩下交给列内滚）
+  it('分配器③书口档：连下限都放不下 ⇒ 活跃卷整脊 + 其余书口（20 卷 1010px 由滚 498px 变零滚）', () => {
+    // 20 卷 / 1010px：②全 3 行 = 20×66.5 + 19×6 = 1444 > 946 ⇒ 旧行为整列滚 498px
+    const wants = new Array(20).fill(4) as number[];
+    const plan = planSpines(wants, 946, 19.5, 6);
+    expect(plan[6].thin).toBe(false); // 活跃卷永不书口化
+    expect(plan[6].rows).toBe(4); // 且保持**自然高**（不是下限）
+    expect(plan.filter((p) => p.thin)).toHaveLength(19);
+    expect(stackOf(plan, 19.5)).toBeLessThanOrEqual(946); // 一屏放得下 ⇒ 零滚
+    // 没有活跃卷（activeIdx 越界）时保首位整脊，不出现「全是书口」
+    const noActive = planSpines(wants, 946, 19.5, -1);
+    expect(noActive.filter((p) => !p.thin)).toHaveLength(1);
+  });
+
+  it('分配器③书口档：极端密度（24 卷 620px 矮窗）仍放不下 ⇒ 交给列内滚，但先省下一大截', () => {
+    const wants = new Array(24).fill(4) as number[];
+    const before = 24 * (SPINE_PAD_V + 3 * 19.5) + 23 * SPINE_SEAM; // 旧行为（全 3 行）
+    const plan = planSpines(wants, 556, 19.5, 0);
+    expect(plan.filter((p) => p.thin)).toHaveLength(23);
+    expect(stackOf(plan, 19.5)).toBeLessThan(before); // 省下一大截（仍需滚，但滚得少）
+    expect(plan[0].rows).toBe(4);
   });
 
   it('题名截字：容量 = 2 栏 × 行数，放不下留一格给省略号（竖排 ellipsis 不生效）', () => {

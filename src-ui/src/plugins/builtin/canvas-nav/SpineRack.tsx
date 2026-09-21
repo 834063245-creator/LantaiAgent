@@ -19,7 +19,7 @@
 //   脊 = **纸片件**——左脊 3px 厚边 + 受光/背光缘 + 硬接触落影（墨缘）；
 //   题签另贴一枚亮纸（自带同一套缘）；书缝 6px（块块独立，函套底从缝里露出来）；
 //   「案卷」= 虚线扣。脊高 = 8px 内距 + **整数行** × 栏距：行数由
-//   spineWantRows（内容需要几行）与 allocSpineRows（列高够几行）共同定，
+//   spineWantRows（内容需要几行）与 planSpines（自然档 → 降档档 → 书口档）共同定，
 //   溢出截字 + 省略号（fitLabel）。定值与病灶见 spine-rack.css 头注。
 //
 // 病史（两批，勿回退）：
@@ -91,19 +91,32 @@ export function spineWantRows(name: string): number {
 /** 脊内距（上+下）与书缝——CSS 真源见 spine-rack.css 的 `--spine-pad` / `--seam`。 */
 export const SPINE_PAD_V = 8;
 export const SPINE_SEAM = 6;
+/** 书口高（px @ font-scale 1）——CSS 真源见 `--thin-h`（横排题名两行 + 上下内距）。 */
+export const SPINE_THIN_H = 32;
 /** 压缩下限（行）：两栏 × 3 行 = 6 字，仍够认出「统计一下本地…」这一类。 */
 export const SPINE_MIN_ROWS = 3;
 
-/** 整数行分配器：列高不够时**按行降档**（不是按比例压缩）——永不半行。
- *  病灶（2026-09-21 二批实测）：旧案 `flex: 0 1 <档高>` 按 basis 等比缩，
- *  而四档减内距后是 2.67 / 3.28 / 4.10 / 5.13 行 ⇒ 每条题签末行半空或半切。
- *  从最高的往下削（并列取靠后者 = 轮转），削到下限仍不够就交给列内滚。 */
-export function allocSpineRows(wants: number[], avail: number, pitch: number): number[] {
+/** 一条脊的排布：占几行（`rows`，书口档下无用）+ 是不是书口。 */
+export interface SpineSlot {
+  rows: number;
+  /** 书口档：只留档号 / 枝 / 运行点，题名给 hover 卡（活跃卷永不书口化）。 */
+  thin: boolean;
+}
+
+const slotH = (rows: number, pitch: number) => SPINE_PAD_V + rows * pitch;
+const stackH = (hs: number[], seam: number) => hs.reduce((s, h) => s + h, 0) + seam * Math.max(0, hs.length - 1);
+
+/** 全部压到下限后仍放不下 ⇒ 从最高的往下削（并列取靠后者 = 轮转）。返回削到底的结果。 */
+function shrinkToFloor(wants: number[], avail: number, pitch: number): number[] {
   const rows = wants.map((n) => Math.max(SPINE_MIN_ROWS, n));
-  const slot = (n: number) => SPINE_PAD_V + n * pitch;
-  const total = () => rows.reduce((s, n) => s + slot(n), 0) + SPINE_SEAM * Math.max(0, rows.length - 1);
   let guard = rows.length * 64;
-  while (total() > avail && guard-- > 0) {
+  while (
+    stackH(
+      rows.map((n) => slotH(n, pitch)),
+      SPINE_SEAM,
+    ) > avail &&
+    guard-- > 0
+  ) {
     let best = -1;
     for (let i = 0; i < rows.length; i++) {
       if (rows[i] > SPINE_MIN_ROWS && (best < 0 || rows[i] >= rows[best])) best = i;
@@ -112,6 +125,40 @@ export function allocSpineRows(wants: number[], avail: number, pitch: number): n
     rows[best] -= 1;
   }
   return rows;
+}
+
+/** 三步分配（2026-09-21 乙 · 密度档，用户拍板）：
+ *  ① **自然档**：各按需（3–6 行）全放得下 ⇒ 就这样（宽敞时不去动它）；
+ *  ② **降档档**：都压到 3 行下限还放得下 ⇒ 就这样（13 卷 / 1010px 窗落这里，与四批一致）；
+ *  ③ **书口档**：连下限都放不下 ⇒ **活跃卷保持自然高**（正在读的那本整着），其余压成
+ *     24px 一条的书口；仍放不下才交给列内滚。
+ *  病史：三批之前只有①②，第 14 卷起就整列进滚动（1010px 窗 14 卷滚 63px、20 卷滚 498px、
+ *  24 卷 / 620px 窗滚 1178px）——用户问「卷多是不是还是会被挤出屏幕」后立本档。 */
+export function planSpines(wants: number[], avail: number, pitch: number, activeIdx: number): SpineSlot[] {
+  if (wants.length === 0) return [];
+  const natural = wants.map((n) => Math.max(SPINE_MIN_ROWS, n));
+  // ① 自然档
+  if (
+    stackH(
+      natural.map((n) => slotH(n, pitch)),
+      SPINE_SEAM,
+    ) <= avail
+  ) {
+    return natural.map((rows) => ({ rows, thin: false }));
+  }
+  // ② 降档档（全在下限也放得下 ⇒ 用削到底的结果）
+  const stepped = shrinkToFloor(natural, avail, pitch);
+  if (
+    stackH(
+      stepped.map((n) => slotH(n, pitch)),
+      SPINE_SEAM,
+    ) <= avail
+  ) {
+    return stepped.map((rows) => ({ rows, thin: false }));
+  }
+  // ③ 书口档：活跃卷整脊，其余书口
+  const act = activeIdx >= 0 && activeIdx < natural.length ? activeIdx : 0;
+  return natural.map((rows, i) => (i === act ? { rows, thin: false } : { rows: 0, thin: true }));
 }
 
 /** 题名截字：容量 = 2 栏 × 行数（CJK 1 格、拉丁 0.55 格），放不下就留一格给省略号。
@@ -212,8 +259,11 @@ export const SpineRack = memo(function SpineRack() {
   }, []);
   const rowPlan = useMemo(() => {
     const wants = sessions.map((s) => spineWantRows(s.name));
-    return alloc ? allocSpineRows(wants, alloc.avail, alloc.pitch) : wants;
-  }, [sessions, alloc]);
+    const activeIdx = sessions.findIndex((s) => s.id === activeId);
+    return alloc
+      ? planSpines(wants, alloc.avail, alloc.pitch, activeIdx)
+      : wants.map((rows) => ({ rows, thin: false }));
+  }, [sessions, alloc, activeId]);
 
   /* ── hover 小卡 = **架级单卡**（全列共用一枚）──
    * 每脊一枚的写法有两处结构病（走查记录 §2 尾注实测回归②）：
@@ -467,13 +517,18 @@ export const SpineRack = memo(function SpineRack() {
         {sessions.map((s, i) => {
           const isActive = s.id === activeId;
           const isRunning = runningIds.has(s.id);
-          const rows = rowPlan[i] ?? spineWantRows(s.name);
+          const slot = rowPlan[i] ?? { rows: spineWantRows(s.name), thin: false };
           return (
             <div
               key={s.id}
-              className={['sr-spine', isActive ? 'sr-active' : '', isRunning ? 'sr-running' : ''].join(' ')}
+              className={[
+                'sr-spine',
+                isActive ? 'sr-active' : '',
+                isRunning ? 'sr-running' : '',
+                slot.thin ? 'sr-thin' : '', // 书口档：只留档号/枝/运行点（活跃卷永不书口化）
+              ].join(' ')}
               data-id={s.id}
-              style={{ '--rows': rows } as CSSProperties}
+              style={{ '--rows': slot.rows } as CSSProperties}
             >
               <div
                 className="sr-spine-main"
@@ -493,7 +548,7 @@ export const SpineRack = memo(function SpineRack() {
                 onFocus={(e) => openCard(s, e.currentTarget)}
               >
                 <span className="sr-label" dir="ltr">
-                  {fitLabel(s.name, rows)}
+                  {fitLabel(s.name, Math.max(SPINE_MIN_ROWS, slot.rows))}
                 </span>
                 {s.branch && (
                   <span className="sr-branch-tag" title="枝：从父卷的某个节点分出">
