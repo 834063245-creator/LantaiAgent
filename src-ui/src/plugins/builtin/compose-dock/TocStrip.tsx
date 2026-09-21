@@ -37,9 +37,11 @@
 // **2026-09-19 加宽批 + 同日甲案**：带体 = 识别层（全带 TOC_W）+ 控制列
 // （TOC_COL_W=64，旧带体原样）+ 缘滚跑道（TOC_RUNWAY_W=40，边缘滚动的右缘感应带
 // 落在那里）——导航面整条让开感应带，「用带」与「贴右缘缘滚」不再互为误触。
-// 甲案（用户看像素对照后定）：**识别层（墨迹/未读区/活线）铺满整条带**（缩放比
-// 随带体变宽 ⇒ 剪影 48 → ~78px，扫读更清），控制层（刻痕/锚/滑块/卡）仍在左 64px，
-// 两者以一道界栏线分界（CSS `.pp-toc::after`）；跑道惰性（判据见 insideCol）。
+// 甲案（**agent 自提，用户未验收**——记录曾被写成「用户看像素对照后定」，见
+// taste-ledger 2026-09-21 更正条）：**识别层（墨迹/未读区/活线）铺满整条带**
+// （缩放比随带体变宽 ⇒ 剪影 48 → ~78px，扫读更清），控制层（刻痕/锚/滑块/卡）
+// 仍在左 64px；甲案原附的那道**界栏线已于 2026-09-21 摘除**（用户「我从来也没
+// 拍板过界栏线」；它零功能——跑道惰性由下方 insideCol 判据决定，与线无关）。
 // 挂载：compose-dock 插件以 ctx.overlays 贡献行注册（slot:'right-edge'），
 // 经 paper/overlay-context 取活跃流区派生数据与折叠态（与主渲染同真源）。
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
@@ -75,14 +77,14 @@ export const TOC_TOP = 0;
  *  加宽批刻意不动它）⇒ 控制层几何零漂移；识别层那半在同日甲案里改铺满整条带
  *  （见 TOC_W）。
  *  CSS 镜像 = `.pp-toc-col` 的 width（paper-shell/PaperPanel.css，同文件里
- *  `.pp-toc` 的 width = 本值 + TOC_RUNWAY_W，界栏线 `.pp-toc::after` 的 left = 本值）
+ *  `.pp-toc` 的 width = 本值 + TOC_RUNWAY_W）
  *  ——改一处必红（tests/stage4-toc-top-band）。 */
 export const TOC_COL_W = 64;
 /** **缘滚跑道宽**（px）= 带体右缘那一条（2026-09-19 加宽批）：贴屏最右的
  *  **边缘滚动感应带**（基准 `EDGE_SCROLL.band` = 36，见 paper-shell/edge-scroll.ts）
  *  落在这里，故带内导航与缘滚零重叠——这就是加宽的全部理由。跑道本体惰性：
  *  交互判据不认它（点击只被吞掉）、悬停照旧算画布（`HOVER_ALLOW_DOCKS`）；
- *  识别层照旧铺过它（甲案），两者以界栏线分界。
+ *  识别层照旧铺过它（甲案那半，保留）。
  *  ⚠ 恒 ≥ 基准带宽（钉值）；灵敏度拉满时带宽 ≈51px，会吃掉控制列**右缘的
  *  scrub 余量**（锚/刻痕只占左 26px，任何档位都不在感应带内）。 */
 export const TOC_RUNWAY_W = 40;
@@ -525,14 +527,15 @@ export const TocStrip = memo(function TocStrip() {
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
     >
-      {/* 识别层（**全带**：2026-09-19 甲案）——墨迹 / 未读区 / 活线随带体宽度铺满：
-          墨迹画布 clientWidth = 带体内容宽（TOC_W）⇒ 剪影横向 ×1.625（48 → ~78px），
-          扫读更清。三者都是 pointer-events:none 的纯识别面，越进跑道不涉命中。 */}
+      {/* 识别层（**全带**：2026-09-19 甲案那半，保留）——墨迹 / 未读区 / 活线随
+          带体宽度铺满：墨迹画布 clientWidth = 带体内容宽（TOC_W）⇒ 剪影横向
+          ×1.625（48 → ~78px），扫读更清。三者都是 pointer-events:none 的纯识别面，
+          越进跑道不涉命中。 */}
       <canvas ref={canvasRef} className="pp-toc-ink" />
       {unread && <div className="pp-toc-unread" style={{ top: unread.top, height: unread.height }} />}
       {streaming && <div className="pp-toc-head" style={{ top: mappedBottom - 2 }} />}
       {/* 控制列（带体左 TOC_COL_W）：刻痕 / 阶段锚 / 滑块 / hover 卡——带内**唯一
-          可交互区**，与右缘那条缘滚跑道以界栏线分界（CSS `.pp-toc::after`）。 */}
+          可交互区**（判据 = insideCol，夹在本列宽内；列右那条缘滚跑道惰性）。 */}
       <div className="pp-toc-col">
         {slider && (
           <div
