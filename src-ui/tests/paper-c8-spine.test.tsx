@@ -359,51 +359,35 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     expect(spineWantRows('测试，kind工具全部拿来给我生成出来个样板，内容自定，…')).toBe(6); // >22 档
   });
 
-  it('分配器①自然档 / ②降档档：宽敞不动它，挤了按行降档（永不半行），13 卷 1010px 落②全 3 行', () => {
-    // 真值：列高 946 = 1010 − 顶底内距 12 − 案卷扣 46 − 扣下书缝 6；栏距 19.5。
-    const wants = [
-      4,
-      4,
-      3,
-      6,
-      6,
-      3,
-      5,
-      3,
-      3,
-      6,
-      5,
-      3,
-      6, // 13 卷自然行数（真卷名）
-    ];
-    const plan = planSpines(wants, 946, 19.5, 4);
-    expect(plan.every((p) => !p.thin)).toBe(true); // 走②，不该书口化
-    expect(plan.every((p) => p.rows === 3)).toBe(true);
-    expect(stackOf(plan, 19.5)).toBeLessThanOrEqual(946);
-    // 宽裕时保持自然行数（不无谓降档）
-    expect(planSpines([4, 3, 5], 400, 19.5, 0).map((p) => p.rows)).toEqual([4, 3, 5]);
+  it('排布①默认书口（2026-09-21 用户拍板）：活跃卷整脊、其余全 32px 书口', () => {
+    // 用户口径：一列里只有正在读的那本整着——不再等「装不下」才变书口。
+    const wants = [4, 4, 3, 6, 6, 3, 5, 3, 3, 6, 5, 3, 6, 3, 4]; // 15 卷自然行数
+    const plan = planSpines(wants, 4);
+    expect(plan.filter((p) => p.thin)).toHaveLength(14);
+    expect(plan[4]).toEqual({ rows: 6, thin: false }); // 活跃卷保持**自然高**（不是下限）
+    expect(plan[0]).toEqual({ rows: 0, thin: true });
+    // 认卷能力不降：书口（横排 3 字 × 2 行 = 6 格）与旧 3 行档（竖排 2 栏 × 3 行 = 6 格）同一口径
+    expect(fitLabel('测试渲染效果，输出一些极其复杂的数学公式给我', 3)).toBe('测试渲染效…');
   });
 
-  it('分配器③书口档：连下限都放不下 ⇒ 活跃卷整脊 + 其余书口（20 卷 1010px 由滚 498px 变零滚）', () => {
-    // 20 卷 / 1010px：②全 3 行 = 20×66.5 + 19×6 = 1444 > 946 ⇒ 旧行为整列滚 498px
-    const wants = new Array(20).fill(4) as number[];
-    const plan = planSpines(wants, 946, 19.5, 6);
-    expect(plan[6].thin).toBe(false); // 活跃卷永不书口化
-    expect(plan[6].rows).toBe(4); // 且保持**自然高**（不是下限）
-    expect(plan.filter((p) => p.thin)).toHaveLength(19);
-    expect(stackOf(plan, 19.5)).toBeLessThanOrEqual(946); // 一屏放得下 ⇒ 零滚
-    // 没有活跃卷（activeIdx 越界）时保首位整脊，不出现「全是书口」
-    const noActive = planSpines(wants, 946, 19.5, -1);
-    expect(noActive.filter((p) => !p.thin)).toHaveLength(1);
+  it('排布②：活跃卷永不书口化；无活跃（越界）时首位整脊；空列 = 空计划', () => {
+    const wants = [4, 4, 3];
+    expect(planSpines(wants, -1).filter((p) => !p.thin)).toHaveLength(1); // 首位整脊，不出现「全是书口」
+    expect(planSpines(wants, -1)[0].thin).toBe(false);
+    expect(planSpines(wants, 99)[0].thin).toBe(false);
+    expect(planSpines(wants, 1)[1]).toEqual({ rows: 4, thin: false });
+    expect(planSpines([], 0)).toEqual([]);
+    // 单卷 = 一条整脊（没有书口）
+    expect(planSpines([5], 0)).toEqual([{ rows: 5, thin: false }]);
   });
 
-  it('分配器③书口档：极端密度（24 卷 620px 矮窗）仍放不下 ⇒ 交给列内滚，但先省下一大截', () => {
+  it('排布③：极端密度（24 卷 / 620px 矮窗）仍放不下 ⇒ 交给列内滚，但书口先省下一大截', () => {
     const wants = new Array(24).fill(4) as number[];
-    const before = 24 * (SPINE_PAD_V + 3 * 19.5) + 23 * SPINE_SEAM; // 旧行为（全 3 行）
-    const plan = planSpines(wants, 556, 19.5, 0);
+    const before = 24 * (SPINE_PAD_V + 3 * 19.5) + 23 * SPINE_SEAM; // 旧行为（全 3 行档）
+    const plan = planSpines(wants, 0);
     expect(plan.filter((p) => p.thin)).toHaveLength(23);
-    expect(stackOf(plan, 19.5)).toBeLessThan(before); // 省下一大截（仍需滚，但滚得少）
-    expect(plan[0].rows).toBe(4);
+    expect(stackOf(plan, 19.5)).toBeLessThan(before - 700); // 省下 700px 以上
+    expect(plan[0]).toEqual({ rows: 4, thin: false });
   });
 
   it('题名截字：容量 = 2 栏 × 行数，放不下留一格给省略号（竖排 ellipsis 不生效）', () => {

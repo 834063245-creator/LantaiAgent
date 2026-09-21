@@ -19,7 +19,7 @@
 //   脊 = **纸片件**——左脊 3px 厚边 + 受光/背光缘 + 硬接触落影（墨缘）；
 //   题签另贴一枚亮纸（自带同一套缘）；书缝 6px（块块独立，函套底从缝里露出来）；
 //   「案卷」= 虚线扣。脊高 = 8px 内距 + **整数行** × 栏距：行数由
-//   spineWantRows（内容需要几行）与 planSpines（自然档 → 降档档 → 书口档）共同定，
+//   planSpines（活跃卷整脊 / 其余 32px 书口）定，
 //   溢出截字 + 省略号（fitLabel）。定值与病灶见 spine-rack.css 头注。
 //
 // 病史（两批，勿回退）：
@@ -99,66 +99,25 @@ export const SPINE_MIN_ROWS = 3;
 /** 一条脊的排布：占几行（`rows`，书口档下无用）+ 是不是书口。 */
 export interface SpineSlot {
   rows: number;
-  /** 书口档：只留档号 / 枝 / 运行点，题名给 hover 卡（活跃卷永不书口化）。 */
+  /** 书口档：只留题名（横排两行）+ 枝 + 运行点；活跃卷永不书口化。 */
   thin: boolean;
 }
 
-const slotH = (rows: number, pitch: number) => SPINE_PAD_V + rows * pitch;
-const stackH = (hs: number[], seam: number) => hs.reduce((s, h) => s + h, 0) + seam * Math.max(0, hs.length - 1);
-
-/** 全部压到下限后仍放不下 ⇒ 从最高的往下削（并列取靠后者 = 轮转）。返回削到底的结果。 */
-function shrinkToFloor(wants: number[], avail: number, pitch: number): number[] {
-  const rows = wants.map((n) => Math.max(SPINE_MIN_ROWS, n));
-  let guard = rows.length * 64;
-  while (
-    stackH(
-      rows.map((n) => slotH(n, pitch)),
-      SPINE_SEAM,
-    ) > avail &&
-    guard-- > 0
-  ) {
-    let best = -1;
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i] > SPINE_MIN_ROWS && (best < 0 || rows[i] >= rows[best])) best = i;
-    }
-    if (best < 0) break;
-    rows[best] -= 1;
-  }
-  return rows;
-}
-
-/** 三步分配（2026-09-21 乙 · 密度档，用户拍板）：
- *  ① **自然档**：各按需（3–6 行）全放得下 ⇒ 就这样（宽敞时不去动它）；
- *  ② **降档档**：都压到 3 行下限还放得下 ⇒ 就这样（13 卷 / 1010px 窗落这里，与四批一致）；
- *  ③ **书口档**：连下限都放不下 ⇒ **活跃卷保持自然高**（正在读的那本整着），其余压成
- *     24px 一条的书口；仍放不下才交给列内滚。
- *  病史：三批之前只有①②，第 14 卷起就整列进滚动（1010px 窗 14 卷滚 63px、20 卷滚 498px、
- *  24 卷 / 620px 窗滚 1178px）——用户问「卷多是不是还是会被挤出屏幕」后立本档。 */
-export function planSpines(wants: number[], avail: number, pitch: number, activeIdx: number): SpineSlot[] {
+/** 分配（2026-09-21 用户拍板：**书口档就是默认形态**）：
+ *  **活跃卷 = 整脊**（自然 3–6 行），其余全部 = 32px 书口一条；一列装不下才交给列内滚。
+ *  病史：四批曾是「自然档 → 降档档 → 书口档」三步（书口只在装不下时出现），用户实机
+ *  看过后要求改成默认——他要的是「一列里只有正在读的那本整着」这个**稳定形态**，
+ *  不是「有时候全是高脊、有时候才变书口」。
+ *  容量口径（保证这次改动不降认卷能力）：书口 = 横排 3 字 × 2 行 = **6 格**；旧 3 行档 =
+ *  竖排 2 栏 × 3 行 = **6 格**——同为 6 格（`fitLabel(name, 3)` 那条口径），认得出的还是
+ *  5 字 + 省略号；省下来的高度全还给活跃卷（它现在能站满 3–6 行）。
+ *  `activeIdx` 越界（无活跃卷）⇒ 首位整脊，不出现「全是书口」。 */
+export function planSpines(wants: number[], activeIdx: number): SpineSlot[] {
   if (wants.length === 0) return [];
-  const natural = wants.map((n) => Math.max(SPINE_MIN_ROWS, n));
-  // ① 自然档
-  if (
-    stackH(
-      natural.map((n) => slotH(n, pitch)),
-      SPINE_SEAM,
-    ) <= avail
-  ) {
-    return natural.map((rows) => ({ rows, thin: false }));
-  }
-  // ② 降档档（全在下限也放得下 ⇒ 用削到底的结果）
-  const stepped = shrinkToFloor(natural, avail, pitch);
-  if (
-    stackH(
-      stepped.map((n) => slotH(n, pitch)),
-      SPINE_SEAM,
-    ) <= avail
-  ) {
-    return stepped.map((rows) => ({ rows, thin: false }));
-  }
-  // ③ 书口档：活跃卷整脊，其余书口
-  const act = activeIdx >= 0 && activeIdx < natural.length ? activeIdx : 0;
-  return natural.map((rows, i) => (i === act ? { rows, thin: false } : { rows: 0, thin: true }));
+  const act = activeIdx >= 0 && activeIdx < wants.length ? activeIdx : 0;
+  return wants.map((n, i) =>
+    i === act ? { rows: Math.max(SPINE_MIN_ROWS, n), thin: false } : { rows: 0, thin: true },
+  );
 }
 
 /** 题名截字：容量 = 2 栏 × 行数（CJK 1 格、拉丁 0.55 格），放不下就留一格给省略号。
@@ -233,37 +192,18 @@ export const SpineRack = memo(function SpineRack() {
   const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
   const sessions = useMemo(() => spineRows(openRows, savedRows), [openRows, savedRows]);
 
-  /* ── 整数行分配（2026-09-21 四批）──
-   * 脊高必须落成「内距 + 整数行 × 栏距」，否则末行半空或半切（二批实测四档减内距后
-   * 是 2.67 / 3.28 / 4.10 / 5.13 行）。栏距随 --font-scale 走，故**从真题签的
-   * line-height 读**（CSS 是唯一真源，不在 TS 里复写 19.5）；列高从 .sr-list 的
-   * clientHeight 读；两样都量不到（jsdom / 未挂载 / 无高）就退回自然行数。
-   * 观测量变化 = 列尺寸（窗口改高、字体档改栏宽）与首帧——RO 一处跟上。 */
-  const [alloc, setAlloc] = useState<{ pitch: number; avail: number } | null>(null);
+  /* ── 排布（2026-09-21 用户拍板：书口档 = 默认形态）──
+   * 活跃卷整脊（自然 3–6 行），其余 32px 书口。**不再量列高**：一列装不下就列内滚
+   * （`.sr-list` overflow-y auto + 右缘位置条）。四批那套「列高够几行」的分配器与
+   * 那枚 ResizeObserver 随之退役——判据从「装得下吗」变成「谁在活跃」。 */
   const listRef = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const measure = () => {
-      const avail = list.clientHeight;
-      if (!avail) return; // 未挂载/无高：保持自然行数
-      const label = list.querySelector<HTMLElement>('.sr-label');
-      const pitch = label ? Number.parseFloat(getComputedStyle(label).lineHeight) : Number.NaN;
-      setAlloc({ pitch: Number.isFinite(pitch) && pitch > 0 ? pitch : 19.5, avail });
-    };
-    measure();
-    if (typeof ResizeObserver === 'undefined') return; // jsdom 无 RO（测试自铺桩）
-    const ro = new ResizeObserver(measure);
-    ro.observe(list);
-    return () => ro.disconnect();
-  }, []);
   const rowPlan = useMemo(() => {
     const wants = sessions.map((s) => spineWantRows(s.name));
-    const activeIdx = sessions.findIndex((s) => s.id === activeId);
-    return alloc
-      ? planSpines(wants, alloc.avail, alloc.pitch, activeIdx)
-      : wants.map((rows) => ({ rows, thin: false }));
-  }, [sessions, alloc, activeId]);
+    return planSpines(
+      wants,
+      sessions.findIndex((s) => s.id === activeId),
+    );
+  }, [sessions, activeId]);
 
   /* ── hover 小卡 = **架级单卡**（全列共用一枚）──
    * 每脊一枚的写法有两处结构病（走查记录 §2 尾注实测回归②）：
