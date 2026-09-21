@@ -375,15 +375,23 @@
   height: 400000px;
   pointer-events: none;
   z-index: 0;
-  /* 桌垫 = 桌面/家具的**同一套板面纹理**（2026-09-21 侧栏纸面批把配方提成
-   * tokens.css 的 --panel-tex-*：桌垫 / 侧栏 / 书脊三处共用一份真源，
-   * 换纸或改档只动 token；本处取值与提 token 前逐字相同，零视觉漂移） */
-  filter: brightness(var(--panel-tex-bright));
+  /* ⚠ 四层配方**内联**（2026-09-21 教训）：本文件是**插件产物**（磁盘通道热更），
+   * 壳层 CSS 烧在 exe 里——产物依赖「比壳层新的 token」会在旧壳上解析成 none，
+   * 实机症状 = 桌垫纸纹整片消失（只剩流区有纹）。同配方另两份在
+   * .ss-sidebar::before / .sr-rack::before，三份由
+   * tests/paper-visual-decisions 的「同配方」用例钉住。 */
+  filter: brightness(1.05);
   background-color: var(--paper);
-  background-image: var(--panel-tex-image);
-  background-size: var(--panel-tex-size);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    url("../../../assets/paper/paper-grain.jpg"), url("../../../assets/paper/paper-fiber.jpg"), var(--laid-lines);
+  background-size:
+    180px 180px,
+    2048px 2048px,
+    2048px 2048px,
+    auto;
   background-repeat: repeat;
-  background-blend-mode: var(--panel-tex-blend);
+  background-blend-mode: normal, multiply, multiply, multiply;
 }
 /* ── 卷首（folio-head）──
  * 2026-08-30 自 prototype/lantai.html .folio-head 族转录；**2026-09-16「版心天头」

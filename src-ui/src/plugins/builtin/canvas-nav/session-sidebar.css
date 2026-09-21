@@ -32,18 +32,29 @@
   /* 展场动画：从左缘滑入 + 内容级联浮现（sh-rise 曲线家族） */
   animation: ss-slide-in 0.18s cubic-bezier(0.23, 1, 0.32, 1);
 }
-/* 板面纹理层（见头注；绝对定位 ⇒ 不是 flex 项，不参与本栏排版） */
+/* 板面纹理层（见头注；绝对定位 ⇒ 不是 flex 项，不参与本栏排版）。
+ * ⚠ 四层配方**内联**（2026-09-21 教训）：本文件是**插件产物**（磁盘通道热更，换产物
+ * 不重编译 exe），壳层 CSS 却烧在 exe 里——产物一旦依赖「比壳层新的 token」，热更
+ * 产物上了旧壳就解析成 none（实机症状：桌垫纸纹整片消失、只剩流区有纹）。同配方另
+ * 两份在 .pp-desk / .sr-rack::before，三份由 tests/paper-visual-decisions 的
+ * 「同配方」用例钉住。`--laid-lines` 是 2026-09-01 就有的老 token，可安全引用。 */
 .ss-sidebar::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1; /* 面板底色之上、内容之下（本栏是 stacking context：z 282 + fixed） */
   pointer-events: none;
-  background-image: var(--panel-tex-image);
-  background-size: var(--panel-tex-size);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    url("../../../assets/paper/paper-grain.jpg"), url("../../../assets/paper/paper-fiber.jpg"), var(--laid-lines);
+  background-size:
+    180px 180px,
+    2048px 2048px,
+    2048px 2048px,
+    auto;
   background-repeat: repeat;
-  background-blend-mode: var(--panel-tex-blend);
-  filter: brightness(var(--panel-tex-bright));
+  background-blend-mode: normal, multiply, multiply, multiply;
+  filter: brightness(1.05); /* 提亮只提纹理层，不连字一起提亮 */
 }
 @keyframes ss-slide-in {
   from {

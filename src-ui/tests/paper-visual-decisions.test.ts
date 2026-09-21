@@ -612,12 +612,11 @@ describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
     const desk = ruleBody(PANEL_CSS, '.pp-desk {');
     // 桌面纸配方：与 body::after 同源 + 帘纹归桌面
     expect(desk).toContain('background-color: var(--paper)');
-    // 2026-09-21 侧栏纸面批：配方提成 tokens.css 的 --panel-tex-*（板面纹理真源，
-    // 桌垫/侧栏/书脊三处共用一份）——桌垫只消费 token，四层本体钉在下面那条用例
-    expect(desk).toContain('var(--panel-tex-image)');
-    expect(desk).toContain('var(--panel-tex-size)');
-    expect(desk).toContain('var(--panel-tex-blend)');
-    expect(desk).toContain('brightness(var(--panel-tex-bright))');
+    expect(desk).toContain('paper-grain.jpg');
+    expect(desk).toContain('paper-fiber.jpg');
+    expect(desk).toContain('var(--laid-lines)');
+    expect(desk).toContain('normal, multiply, multiply, multiply');
+    expect(desk).toContain('brightness(1.05)');
     // 只混自身层（background-blend），不乘盖流区/纸条（无 mix-blend-mode）
     expect(desk).not.toContain('mix-blend-mode');
     // 无界近似：±200000px 世界坐标
@@ -629,37 +628,61 @@ describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
     expect(PANEL_TSX).toContain('className="pp-desk"');
   });
 
-  it('板面纹理真源（2026-09-21 侧栏纸面批）：四层配方 + 固定 tile + 三个消费面同源', () => {
-    // 真源 = tokens.css 的三个 --panel-tex-*：微颗粒×grain×fiber×帘纹
-    expect(TOKENS_CSS).toContain('--panel-tex-image:');
-    expect(TOKENS_CSS).toContain('paper-grain.jpg');
-    expect(TOKENS_CSS).toContain('paper-fiber.jpg');
-    expect(TOKENS_CSS).toContain('var(--laid-lines)');
-    expect(TOKENS_CSS).toContain('--panel-tex-size: 180px 180px, 2048px 2048px, 2048px 2048px, auto');
-    expect(TOKENS_CSS).toContain('--panel-tex-blend: normal, multiply, multiply, multiply');
-    // 固定 tile（2048）而非 cover：cover 会随容器高矮变缩放，家具与桌面颗粒不一
-    // 就「不像同一批纸」（流区 1200 平铺的同一条判例）
-    expect(TOKENS_CSS).not.toContain('--panel-tex-size: cover');
-    // 病灶守护：画布态把文档级纹理层整层退役 ⇒ 固定家具必须自挂纹理，
-    // 否则侧栏/书脊只剩 flat --paper（用户判「死气沉沉」）
-    const retire = ruleBody(HOME_CSS, 'body:has(.pp-root)::after');
-    expect(retire).toContain('display: none');
-    for (const [css, sel] of [
-      [SIDEBAR_CSS, '.ss-sidebar::before'],
-      [SPINE_CSS, '.sr-rack::before'],
-    ] as const) {
+  it('板面纹理同配方（2026-09-21 侧栏纸面批）：三处**内联**同一四层配方，禁提 token', () => {
+    // 病灶交代：画布态把文档级纹理层整层退役（body:has(.pp-root)::after），固定家具
+    // 只剩 flat --paper，用户判「死气沉沉」⇒ 侧栏/书脊各挂一层板面纹理。
+    //
+    // ⚠ 为什么是**内联三份**而不是一个 token（本批踩过的坑，勿回退）：
+    // 三个消费面里 .pp-desk / .ss-sidebar / .sr-rack **全在插件产物里**（磁盘通道
+    // 热更 ⇒ 换产物不重编译 exe），而 tokens.css 烧在 exe 里。产物一旦依赖「比壳层
+    // 新的 token」，热更产物上了旧壳就解析成 none——实机症状 = 桌垫纸纹整片消失
+    // （只剩流区有纹，因为它内联 paper-sheet.jpg）。产品自包含（图片 base64 内联进
+    // entry.css）是硬约束 ⇒ 配方必须跟着产物走，复制品由本用例钉住不许漂移。
+    const consumers: Array<[string, string]> = [
+      [PANEL_CSS, '.pp-desk {'],
+      [SIDEBAR_CSS, '.ss-sidebar::before {'],
+      [SPINE_CSS, '.sr-rack::before {'],
+    ];
+    const recipes = consumers.map(([css, sel]) => {
       const body = ruleBody(css, sel);
-      expect(body).toContain('background-image: var(--panel-tex-image)');
-      expect(body).toContain('background-size: var(--panel-tex-size)');
-      expect(body).toContain('background-blend-mode: var(--panel-tex-blend)');
-      expect(body).toContain('brightness(var(--panel-tex-bright))');
-      // 纹理层落在面板底色之上、内容之下（z:-1）；提亮只提这层，不连字一起提亮
-      expect(body).toContain('z-index: -1');
-      expect(body).toContain('pointer-events: none');
+      return {
+        sel,
+        img: /background-image:\s*([\s\S]*?);/.exec(body)?.[1].replace(/\s+/g, ' ').trim(),
+        size: /background-size:\s*([\s\S]*?);/.exec(body)?.[1].replace(/\s+/g, ' ').trim(),
+        blend: /background-blend-mode:\s*([^;]*);/.exec(body)?.[1].trim(),
+        bright: /brightness\(([^)]*)\)/.exec(body)?.[1],
+      };
+    });
+    for (const r of recipes) {
+      expect(r.img, r.sel).toContain('paper-grain.jpg');
+      expect(r.img, r.sel).toContain('paper-fiber.jpg');
+      expect(r.img, r.sel).toContain('var(--laid-lines)');
+      expect(r.size, r.sel).toBe('180px 180px, 2048px 2048px, 2048px 2048px, auto');
+      expect(r.blend, r.sel).toBe('normal, multiply, multiply, multiply');
+      expect(r.bright, r.sel).toBe('1.05');
     }
-    // 两态同一块板：侧栏与书脊的纹理逐字同源（面板底色也同族）
+    // 三份逐字相同（图片层 / 尺寸 / 混合 / 提亮四项全等）
+    for (const key of ['img', 'size', 'blend', 'bright'] as const) {
+      expect(recipes[1][key], `${key} 侧栏 vs 桌垫`).toBe(recipes[0][key]);
+      expect(recipes[2][key], `${key} 书脊 vs 桌垫`).toBe(recipes[0][key]);
+    }
+    // 纹理层落在面板底色之上、内容之下（z:-1），且不吃指针
+    for (const [css, sel] of consumers.slice(1)) {
+      const body = ruleBody(css, sel);
+      expect(body, sel).toContain('z-index: -1');
+      expect(body, sel).toContain('pointer-events: none');
+    }
+    // 两态同一块板：底色同族
     expect(ruleBody(SIDEBAR_CSS, '.ss-sidebar {')).toContain('background: var(--paper)');
     expect(ruleBody(SPINE_CSS, '.sr-rack {')).toContain('background: var(--paper)');
+    // **回归守卫**：壳层/产物都不许再冒出 --panel-tex-*（提 token = 上面那条坑复现）
+    expect(TOKENS_CSS).not.toContain('--panel-tex-');
+    for (const [css, sel] of consumers) {
+      expect(ruleBody(css, sel), sel).not.toContain('--panel-tex-');
+    }
+    // 尺寸走固定 tile（2048）而非 cover：cover 随容器高矮变缩放，家具与桌面颗粒
+    // 不一就「不像同一批纸」（流区 1200 平铺的同一条判例）
+    expect(TOKENS_CSS).not.toContain('--panel-tex-size: cover');
   });
 
   it('流区帘纹退役：单层纸纹（纸性由 paper-sheet 独自承载——帘纹叠乘读作屏纹，实机过审移除）', () => {
