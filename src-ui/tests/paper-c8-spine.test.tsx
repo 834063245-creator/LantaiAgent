@@ -17,7 +17,16 @@ import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { SpaceService } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
-import { SpineRack } from '../src/plugins/builtin/canvas-nav/SpineRack';
+import {
+  allocSpineRows,
+  fitLabel,
+  labelWeight,
+  SPINE_PAD_V,
+  SPINE_SEAM,
+  SpineRack,
+  spineRows,
+  spineWantRows,
+} from '../src/plugins/builtin/canvas-nav/SpineRack';
 import { getCanvasStore, resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import { getChatStore } from '../src/ui/chat-store';
@@ -168,7 +177,10 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     expect(container!.querySelector('.sr-menu')).toBeNull();
   });
 
-  it('hover 小卡合卷：闲卷 → core.closeSession(idx)', async () => {
+  it('hover 小卡合卷：悬停某脊 → 架级单卡出该卷全名 + 点合卷 → core.closeSession(idx)', async () => {
+    // 2026-09-21 重做批：小卡由「每脊一枚」改**架级单卡**（住 .sr-list 之外）——
+    // 每脊一枚有两处结构病（卡在滚动容器里撑大 scrollHeight；脊一裁题名就把
+    // 定位在脊外的卡一并裁掉）。用户操作序列不变：悬停一根脊 → 出卡 → 点合卷。
     const { core } = bootSpine(
       'sr-t5',
       [
@@ -180,15 +192,21 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     await act(async () => {
       root?.render(<SpineRack />);
     });
-    const closeBtns = [...container!.querySelectorAll('.sr-close-btn')] as HTMLButtonElement[];
-    expect(closeBtns).toHaveLength(2);
+    expect(container!.querySelector('.sr-card')).toBeNull(); // 未悬停不出卡
+    const mains = [...container!.querySelectorAll('.sr-spine-main')] as HTMLElement[];
     act(() => {
-      closeBtns[0].click(); // 新序 b(id=2) 在前位 → store idx 1
+      mains[0].dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); // 新序 b(id=2) 在前位
+    });
+    expect(container!.querySelector('.sr-hover-title')?.textContent).toBe('b');
+    const close = container!.querySelector('.sr-close-btn') as HTMLButtonElement;
+    expect(close.disabled).toBe(false);
+    act(() => {
+      close.click(); // store idx 1
     });
     expect(core.closeSession).toHaveBeenCalledWith(1);
   });
 
-  it('运行中卷：合卷钮禁用（不可半途 dispose agent）', async () => {
+  it('运行中卷：小卡合卷钮禁用（不可半途 dispose agent）', async () => {
     const { core } = bootSpine(
       'sr-t6',
       [
@@ -207,10 +225,14 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     act(() => {
       exec.beginRun('turn'); // v43：运行态 = 账上的活记录
     });
-    const closeBtns = [...container!.querySelectorAll('.sr-close-btn')] as HTMLButtonElement[];
-    expect(closeBtns[1].disabled).toBe(true); // 新序：跑着的(id=1) 渲染在后位
+    const mains = [...container!.querySelectorAll('.sr-spine-main')] as HTMLElement[];
     act(() => {
-      closeBtns[1].click();
+      mains[1].dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); // 新序：跑着的(id=1) 在后位
+    });
+    const close = container!.querySelector('.sr-close-btn') as HTMLButtonElement;
+    expect(close.disabled).toBe(true);
+    act(() => {
+      close.click();
     });
     // 运行中点击（disabled 按钮不触发 onClick）不得触达 closeSession
     expect(core.closeSession).not.toHaveBeenCalled();
@@ -310,5 +332,91 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
       anchorY: 30,
       width: 1440,
     });
+  });
+
+  /* ── 2026-09-21 四批（设计感复原 · 戊·墨缘题签脊）契约 ─────────────────
+   * 二批的「脊高四档 px」换成**行数**：像素高 = 8px 内距 + 整数行 × 栏距，
+   * 行数由「内容需要几行」与「列高够几行」共同定。 */
+
+  it('脊行四档：按题名权重分行（CJK 1 字、拉丁 0.55 字），边界落在档位上', () => {
+    expect(labelWeight('哈喽？')).toBe(3);
+    expect(labelWeight('test')).toBeCloseTo(2.2, 5);
+    expect(spineWantRows('哈喽？')).toBe(3); // 3 字
+    expect(spineWantRows('测试，能看到图吗')).toBe(3); // 8 字（≤9 档）
+    expect(spineWantRows('看看你手里有多少个工具')).toBe(4); // 10 字（9–15 档）
+    expect(spineWantRows('测试渲染效果，输出一些极其复杂的数学公式给我')).toBe(5); // 21 字（15–22 档）
+    expect(spineWantRows('测试，kind工具全部拿来给我生成出来个样板，内容自定，…')).toBe(6); // >22 档
+  });
+
+  it('分配器：列高不够按行降档（永不半行），13 卷 1010px 窗全落 3 行且零滚', () => {
+    // 真值：列高 946 = 1010 − 顶底内距 12 − 案卷扣 46 − 扣下书缝 6；栏距 19.5。
+    const wants = [
+      4,
+      4,
+      3,
+      6,
+      6,
+      3,
+      5,
+      3,
+      3,
+      6,
+      5,
+      3,
+      6, // 13 卷自然行数（真卷名）
+    ];
+    const rows = allocSpineRows(wants, 946, 19.5);
+    expect(rows.every((n) => n === 3)).toBe(true);
+    const used = rows.reduce((s, n) => s + SPINE_PAD_V + n * 19.5, 0) + SPINE_SEAM * 12;
+    expect(used).toBeLessThanOrEqual(946);
+    // 宽裕时保持自然行数（不无谓降档）
+    expect(allocSpineRows([4, 3, 5], 400, 19.5)).toEqual([4, 3, 5]);
+  });
+
+  it('分配器：削的是最高的那几根（并列轮转），且绝不落到下限以下', () => {
+    const rows = allocSpineRows([6, 6, 6], 3 * (SPINE_PAD_V + 3 * 19.5) + 2 * SPINE_SEAM - 1, 19.5);
+    expect(rows).toEqual([3, 3, 3]); // 削到下限就停手（剩下交给列内滚）
+  });
+
+  it('题名截字：容量 = 2 栏 × 行数，放不下留一格给省略号（竖排 ellipsis 不生效）', () => {
+    expect(fitLabel('哈喽？', 3)).toBe('哈喽？'); // 3 ≤ 5 格，原样
+    expect(fitLabel('看看你手里有多少个工具', 4)).toBe('看看你手里有多…'); // 7 格 + 省略号
+    expect(fitLabel('哈喽？', 3)).not.toContain('…');
+    // 拉丁半角算 0.55 格：'test test' 权重 4.95 → 5 格内放得下
+    expect(fitLabel('test test', 3)).toBe('test test');
+    // 3 行档容量 5 格：'测试，kind…' 的 k/i/n 各 0.55 格，d 越界
+    expect(fitLabel('测试，kind工具全部拿来给我生成出来个样板', 3)).toBe('测试，kin…');
+  });
+
+  it('spineRows：盘上块数/落盘时间/血缘不被内存摊开集盖掉（内存只给 {id,label}）', () => {
+    // 病灶：调用点曾填死 msgCount: 0，而 0 不是 nullish ⇒ mergeSessionRows 的
+    // `o.msgCount ?? prev?.msgCount` 把盘上真值整个盖掉（小卡「Nº 7 · 0 块」）。
+    const rows = spineRows(
+      [
+        { id: 7, label: '内存新名' },
+        { id: 9, label: '未落盘' },
+      ],
+      [{ id: 7, label: '盘上旧名', msgCount: 563, savedAt: '2026-09-20T11:41:34.593Z', parentId: 3 }],
+    );
+    expect(rows.find((r) => r.id === 7)).toMatchObject({
+      name: '内存新名', // 内存最新优先
+      msgCount: 563, // 盘上真值不得被 0 盖掉
+      branch: true, // 血缘只在盘上那一源
+      savedAt: '2026-09-20T11:41:34.593Z',
+    });
+    expect(rows.find((r) => r.id === 9)).toMatchObject({
+      name: '未落盘',
+      msgCount: 0,
+      branch: false,
+      savedAt: '',
+    });
+  });
+
+  it('档号恒显：每条脊都有 .sr-num（题名被两栏截断后唯一可靠的身份）', async () => {
+    bootSpine('sr-num', [{ id: 21, label: '来，帮我统计领先远端多少commit和对应的改动量' }], 0);
+    await act(async () => {
+      root?.render(<SpineRack />);
+    });
+    expect([...container!.querySelectorAll('.sr-spine .sr-num')].map((e) => e.textContent)).toEqual(['21']);
   });
 });

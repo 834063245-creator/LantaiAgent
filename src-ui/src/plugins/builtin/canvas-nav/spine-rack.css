@@ -1,23 +1,66 @@
 /* SpineRack — 画布空间导航器（Stage-3 书脊三手势）。
- * 视觉契约同 PaperPanel.css：兰台 token（paper / ink / seal 系）、圆角恒 0、
- * 无软投影（硬偏移可用 --elev-raise）。书脊 = 函套立视图抽象：
- * 宽 36px 常态、hover 展宽露出全文（题签竖排，writing-mode 竖排）。
+ *
+ * 隐喻：案头一摞函套——左缘一列脊，一卷一脊（只列**摊开**的卷），当前卷「抽出一半」。
+ *
+ * ── 2026-09-21 四批：设计感复原（用户拍板「戊 · 墨缘题签脊」）─────────────────
+ *
+ * **病灶不是「框不好看」，是上一批把脊块错归档。** §11 海拔表把整列判成
+ * 「面板架档 = 零投影」，于是上一批按「禁框禁影」办，删掉三件语汇（对拍 git c78b8c98）：
+ *   ① 「案卷」扣 `border: var(--rule-dashed)`  →  `border: none` + 一条弱底线（平标签）
+ *   ② 脊块 `background: --paper-deep` + `border: --rule-soft` + `border-left: 3px --ink-4`
+ *      → `background: transparent` + `border: none`（无块）
+ *   ③ 活跃态 `--elev-raise` + 3px 朱砂脊边  →  只剩 2px 朱砂
+ * 用户判词：**「又平又简陋，设计不存在了」**——判词属实。
+ *
+ * **归位**：脊块是**纸片件**（与便条/纸条同族），不是面板骨架——该有缘、有脊边、有接触落影。
+ * §11 海拔表本批改写：面板架档只留「列容器」，脊块另立判例（见 §12.1）。
+ *
+ * **但「纸缘」分尺度**（本批复原台实测）：照抄 .pp-region 那套大面积物理包边
+ * （受光缘 3–4px / 背光缘 / 裱边带 / 接触落影）缩到 60px 的脊上**读成一片糊**——
+ * 那套内距是给 720px 流区定的。**通则：大尺寸用纸（渐变带宽），小尺寸用线（有方向的边）。**
+ * 故本列用「墨缘」：受光缘（上/左各一线）+ 背光缘（下/右各一线）+ 左脊 3px 厚边
+ * + 硬接触落影（--shadow-sheet 族）；题签另贴一枚亮纸（自带同一套缘）⇒ 两种纸同屏。
+ *
+ * ── 几何契约定值（改动必同改 SpineRack.tsx 与 tests/paper-c8-spine.test.tsx）──
+ *   · 栏宽 72 = 左内距 6 + 脊宽 63 + 右内距 3（现状 63 → +9）
+ *   · 脊宽 63 = 脊边 3 + 标栏 15 + 题签 39 + 右内距 6
+ *   · 题签宽 39 = 2 × 栏距 19.5 ⇒ **恰两栏**（给到 42px 会露出半截第三栏，实测比截断更难看）
+ *   · 脊高 = 8px 内距 + **整数行** × 栏距（行数由 SpineRack 的分配器按列高算，永不半行）
+ *   · 书缝 6px（块块独立，函套底从缝里露出来）
+ *   · 竖排：行距（line-height）管栏距、字距（letter-spacing）管行内推进；溢出**截字 + 省略号**
+ *     （竖排的溢出发生在块轴/宽度上，text-overflow: ellipsis 不产省略号——SpineRack.fitLabel 给）
+ *   · 字号一律接 --font-scale（栏宽/栏距/行高随它走）
+ *
+ * 海拔（§11 修订后）：本列容器 = 面板架档（零投影）；**脊块 = 纸片件**——受光/背光缘 +
+ * 接触落影（--shadow-sheet 族），活跃 = 抽出 3px + 朱砂脊边 + 影深一档（--shadow-sheet-active）。
+ * 圆角恒 0；影一律取 token，禁散写。
+ *
  * 挂载：DockPanel 上层覆盖（z 高于纸面板），随纸面板开合；
  * 互斥两态（2026-09-02）= 侧栏的收起态，侧栏展开时整列卸载退场。 */
 
 .sr-rack {
+  --fs: var(--font-scale);
+  --rail-w: calc(72px * var(--fs)); /* 左内距 6 + 脊宽 63 + 右内距 3 */
+  --plate-w: calc(63px * var(--fs)); /* 脊宽（脊边 3 + 标栏 15 + 题签 39 + 右内距 6） */
+  --pitch: calc(19.5px * var(--fs)); /* 栏距（= 题签的 line-height） */
+  --label-w: calc(39px * var(--fs)); /* = 2 × 栏距：恰好两栏 */
+  --gutter: calc(15px * var(--fs)); /* 标栏（档号 / 枝牌） */
+  --spine-pad: 8px; /* 脊上下内距之和（分配器的 SPINE_PAD_V 镜像） */
+  --seam: 6px; /* 书缝（分配器的 SPINE_SEAM 镜像） */
   position: fixed;
   left: 0;
-  top: 0; /* 屏顶——书眉已退役（2026-09-17 标题栏拆除批），不再让出 56px */
-  bottom: 0; /* 拉通屏幕底（2026-09-02 用户拍板：与侧栏一致，不再给清坞顶线让位） */
-  width: 44px;
+  top: 0; /* 屏顶——书眉已退役（2026-09-17 标题栏拆除批） */
+  bottom: 0; /* 拉通屏幕底（互斥两态：与侧栏一致） */
+  width: var(--rail-w);
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
-  padding: 12px 0 12px 6px;
-  z-index: var(--z-paper-rack); /* 纸面板 .pp-root z:280 之上——互斥两态下独占左缘 */
-  pointer-events: none; /* 列容器不挡画布，热区在书脊自身 */
+  padding: 6px 3px 6px 6px;
+  background: var(--paper); /* 函套底 = .ss-sidebar 同一块板（互斥两态真是换宽度） */
+  border-right: var(--rule-strong);
+  z-index: var(--z-paper-rack);
+  pointer-events: none; /* 列容器不挡画布，热区在脊自身 */
+  font-family: var(--f-song);
   /* 互斥两态回场（2026-09-02）：侧栏收起 → 书脊重挂载，从左缘轻滑入 */
   animation: sr-slide-in 0.16s cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -32,13 +75,16 @@
   }
 }
 
+/* ── 函套扣（用户点名的那枚虚线框按钮）：虚线 = 「这里是个可开的扣」，hover 转石青 ── */
 .sr-sidebar-toggle {
   pointer-events: auto;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  min-height: 56px;
+  width: 100%;
+  min-height: calc(46px * var(--fs));
+  margin-bottom: var(--seam);
   background: transparent;
   border: var(--rule-dashed);
   border-radius: 0;
@@ -53,91 +99,140 @@
 }
 .sr-sidebar-toggle-label {
   writing-mode: vertical-rl;
-  font-family: var(--f-song);
-  font-size: 11px;
-  letter-spacing: 0.22em;
+  font-size: calc(11px * var(--fs));
+  letter-spacing: 0.3em;
   color: var(--ink-3);
   white-space: nowrap;
+  transition: color var(--snap);
 }
 .sr-sidebar-toggle:hover .sr-sidebar-toggle-label {
   color: var(--indigo);
 }
 
+/* ── 脊列：可滚（滚轴隐去，位置靠右缘位置条读）── */
+.sr-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--seam);
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* 滚到底不把画布带跑 */
+  scrollbar-width: none;
+}
+.sr-list::-webkit-scrollbar {
+  width: 0;
+}
+
+/* 右缘位置条：可见窗口在整列中的位置/长度（2px，机读细线，与目次带同族语言） */
+.sr-scrollbar {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  pointer-events: none;
+}
+.sr-scrollbar i {
+  position: absolute;
+  left: 0;
+  width: 2px;
+  display: block;
+  background: var(--ink-3);
+}
+
+/* ── 脊槽（行数由 TS 分配器写 --rows）：高 = 内距 + 整数行 × 栏距 ── */
 .sr-spine {
   position: relative;
   pointer-events: auto;
+  flex: 0 0 auto;
+  height: calc(var(--rows, 3) * var(--pitch) + var(--spine-pad));
 }
 
-/* 书脊本体：竖排题签。当前卷 = 抽出一半（朱砂左条 + 位移 + 深墨） */
+/* ── 脊块 = 一枚纸片（墨缘）：受光缘（上/左）+ 背光缘（下/右）+ 左脊 3px + 硬接触落影 ── */
 .sr-spine-main {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  width: 36px;
-  min-height: 84px;
-  padding: 12px 0 10px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 4px 6px 4px var(--gutter);
   background: var(--paper-deep);
-  border: var(--rule-soft);
-  border-left: 3px solid var(--ink-4);
+  border: none;
+  border-left: 3px solid var(--ink-3); /* 书脊那条厚边 */
   border-radius: 0;
+  box-shadow:
+    inset 0 1px 0 var(--sheet-lit),
+    inset 1px 0 0 var(--sheet-lit),
+    inset 0 -1px 0 var(--sheet-shade),
+    inset -1px 0 0 var(--sheet-shade),
+    var(--shadow-sheet);
   cursor: pointer;
+  position: relative;
   transition:
     background var(--snap),
     border-color var(--snap),
+    box-shadow var(--snap),
     transform var(--snap);
-  position: relative;
 }
 .sr-spine-main:hover {
   background: var(--paper);
-  border-left-color: var(--ink-2);
+  border-left-color: var(--ink-1);
 }
-.sr-spine.sr-active .sr-spine-main {
-  background: var(--paper);
-  border: var(--rule-strong);
-  border-left: 3px solid var(--seal);
-  transform: translateX(4px); /* 抽出一半 */
-  box-shadow: var(--elev-raise);
+.sr-spine-main:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
 }
 
-/* 题签：竖排（从右往左读——线装书脊惯例；mixed=拉丁侧躺，汉字直立） */
+/* ── 题签：脊身上另贴一枚亮纸（自带同一套受光/背光缘）——两种纸同屏，层次靠纸不靠框 ── */
 .sr-label {
   writing-mode: vertical-rl;
-  font-family: var(--f-song);
-  font-size: 13px;
-  letter-spacing: 0.18em;
-  color: var(--ink-2);
-  max-height: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-.sr-spine.sr-active .sr-label {
+  text-orientation: mixed; /* 汉字直立、拉丁侧躺——线装书脊惯例 */
+  font-size: calc(13px * var(--fs));
+  line-height: var(--pitch);
+  letter-spacing: 0.06em; /* 行内推进（近密排）——栏距由 line-height 管 */
+  width: var(--label-w);
+  box-sizing: border-box;
+  padding: 0 2px;
+  height: calc(var(--rows, 3) * var(--pitch));
+  background: var(--paper);
+  box-shadow:
+    inset 0 1px 0 var(--sheet-lit),
+    inset 1px 0 0 var(--sheet-lit),
+    inset 0 -1px 0 var(--sheet-shade),
+    inset -1px 0 0 var(--sheet-shade);
   color: var(--ink-1);
-  font-weight: 600;
-}
-
-/* 枝标（会话树「枝」）：有父卷的脊上一枚朱砂小签——与侧栏行同语汇 */
-.sr-branch-tag {
-  writing-mode: vertical-rl;
-  font-family: var(--f-song);
-  font-size: 10px;
-  line-height: 1;
-  color: var(--seal);
-  border: 1px solid var(--seal-soft);
-  padding: 2px 1px;
   flex: 0 0 auto;
+  overflow: hidden;
+  white-space: normal;
 }
 
-/* 运行点：石青呼吸（机=石青，语义铁律）；D2 方点化（圆角恒 0 收编） */
+/* ── 脊内三枚小标：全走绝对层（不进流水，改行数时不挤题名）──
+ * 位置按实测钉值：档号箱 9px 宽落在标栏内、与题签左缘留净空；枝牌宽 13–14px 同栏 */
+.sr-num {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  writing-mode: vertical-rl;
+  text-orientation: upright; /* 数字直立叠排（旋转侧躺读不出） */
+  font-family: var(--f-mono);
+  font-size: calc(9px * var(--fs));
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--ink-3);
+}
+/* 运行点：石青呼吸（机=石青，语义铁律）；方点语言（圆角恒 0）。
+ * right: 0 = 贴脊右缘（右内距 6px 里那一线），与题签右缘留 1px 净空（验收台判据 dotGap）。 */
 .sr-run-dot {
-  width: 6px;
-  height: 6px;
+  position: absolute;
+  top: 5px;
+  right: 0;
+  width: calc(5px * var(--fs));
+  height: calc(5px * var(--fs));
   background: var(--indigo);
   animation: sr-breathe 1.6s ease-in-out infinite;
-  flex: 0 0 auto;
 }
 @keyframes sr-breathe {
   0%,
@@ -148,61 +243,86 @@
     opacity: 1;
   }
 }
-
-/* hover 小卡：卷名 + 运行态 + 合卷钮（改名/删除在侧边栏——各管一摊） */
-.sr-hover-card {
+/* 枝标（会话树「枝」）：有父卷的脊脚一枚朱砂小签——与侧栏行/卷首眉行同语汇。
+ * 标栏 15px 的钉值：牌宽 = 10 字 + 边 2 = 12（`padding: 2px 0`），left 1 ⇒ 右缘 13，
+ * 与题签左缘留 2px 净空（验收台判据 markGap——牌宽 14 会压到题签上，实测踩过）。 */
+.sr-branch-tag {
   position: absolute;
-  left: calc(100% + 10px);
+  bottom: 4px;
+  left: 1px;
+  writing-mode: vertical-rl;
+  font-size: calc(10px * var(--fs));
+  line-height: 1;
+  color: var(--seal);
+  border: 1px solid var(--seal-soft);
+  padding: 2px 0;
+}
+
+/* ── 活跃卷：抽出一半（离桌高一档）——纸提亮 + 朱砂脊边 + 影深一档，零变色 ── */
+.sr-spine.sr-active .sr-spine-main {
+  background: var(--paper);
+  border-left-color: var(--seal);
+  transform: translateX(3px);
+  box-shadow:
+    inset 0 1px 0 var(--sheet-lit),
+    inset 1px 0 0 var(--sheet-lit),
+    inset 0 -1px 0 var(--sheet-shade),
+    inset -1px 0 0 var(--sheet-shade),
+    var(--shadow-sheet-active);
+}
+.sr-spine.sr-active .sr-label {
+  font-weight: 600;
+}
+.sr-spine.sr-active .sr-num {
+  color: var(--seal-deep);
+}
+
+/* ── hover 小卡：**架级单卡**（住在 .sr-list 之外）──
+ * 每脊一枚的写法有两处结构病（实测回归②）：① 卡在滚动容器里，即使 opacity:0
+ * 也照样撑大 scrollHeight（0 → 901px 幻影滚动）；② 脊一旦裁题名就把定位在脊外
+ * 的卡一并裁掉。故全列共用一枚，按悬停脊的 rect 定位 + 上下夹紧（SpineRack.tsx）。 */
+.sr-card {
+  position: absolute;
+  left: calc(100% + 8px);
   top: 0;
-  width: 168px;
+  width: 208px;
   background: var(--paper);
   border: var(--rule-strong);
   border-radius: 0;
-  box-shadow: var(--elev-raise);
-  padding: 12px 14px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--snap);
-  z-index: 2;
-}
-.sr-spine:hover .sr-hover-card {
-  opacity: 1;
+  box-shadow: var(--elev-menu); /* 浮层 = 漫射族（§11 规则①） */
+  padding: 11px 13px;
   pointer-events: auto;
+  z-index: 9;
 }
-/* hover 桥：书脊右缘伸出透明通行带（平时 pointer-events:none 不挡画布；
- * 书脊 hover 时激活）——鼠标穿过缝隙去点合卷时 :hover 不断开。 */
-.sr-spine::after {
+/* 过桥：脊 → 卡之间 8px 缝隙不可悬停，补一条透明通行带（否则鼠标一过缝卡就收，
+ * 合卷点不到）。卡在时恒有效，不依赖脊 :hover。 */
+.sr-card::before {
   content: "";
   position: absolute;
-  left: 100%;
-  top: -6px;
-  bottom: -6px;
-  width: 14px;
-  pointer-events: none;
-}
-.sr-spine:hover::after {
+  right: 100%;
+  top: 0;
+  bottom: 0;
+  width: 16px;
   pointer-events: auto;
 }
 .sr-hover-title {
-  font-family: var(--f-song);
-  font-size: 14px;
+  font-size: calc(13.5px * var(--fs));
   font-weight: 600;
+  line-height: 1.45;
   color: var(--ink-1);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 .sr-hover-meta {
   font-family: var(--f-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
+  font-size: calc(9.5px * var(--fs));
+  letter-spacing: 0.06em;
   color: var(--ink-3);
-  margin: 6px 0 10px;
+  margin: 7px 0 10px;
 }
 .sr-close-btn {
   width: 100%;
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--fs));
   letter-spacing: 0.1em;
   color: var(--ink-2);
   background: none;
@@ -226,15 +346,15 @@
   background: none;
 }
 
+/* 空列（画布暂无摊开的卷） */
 .sr-empty {
   writing-mode: vertical-rl;
-  font-family: var(--f-song);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs));
   letter-spacing: 0.2em;
   color: var(--ink-4);
   white-space: nowrap;
   pointer-events: none;
-  padding: 8px 0;
+  padding: 10px 0 10px 14px;
 }
 
 /* 拖动落位幽灵预览（屏幕坐标浮层——抽书放桌） */
@@ -251,12 +371,12 @@
   align-items: center;
   padding: 0 12px;
   pointer-events: none;
-  z-index: var(--z-dialog); /* 2026-09-01 海拔批：320 散写收编 520 全局瞬时层 */
+  z-index: var(--z-dialog); /* 海拔批：320 散写收编 520 全局瞬时层 */
 }
 .sr-drag-ghost-tag {
   writing-mode: vertical-rl;
   font-family: var(--f-song);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs));
   letter-spacing: 0.2em;
   color: var(--seal-deep);
   white-space: nowrap;

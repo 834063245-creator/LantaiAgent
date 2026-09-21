@@ -42,9 +42,13 @@ export interface SidebarRow {
 /** 两源合流：磁盘已存卷为底，摊开会话覆盖（label 取内存最新；savedAt 缺失
  *  的未落盘新卷保留空）。排序 = 摊开优先，同组按 savedAt 倒序（新者上）。
  *  血缘（`parentId`）只在盘上那一源：摊开集没有它（卷日志头行是唯一真源），
- *  故摊开行沿用其盘上行的边——未落盘的摊开卷 = 无父（新卷本就是根卷）。 */
+ *  故摊开行沿用其盘上行的边——未落盘的摊开卷 = 无父（新卷本就是根卷）。
+ *
+ *  `open[].msgCount` **可选**：内存摊开集只有 `{id, label}`（ChatSessionMeta），
+ *  块数真源在盘上投影。传 `undefined` = 沿用盘上值；2026-09-21 前调用点填死 0，
+ *  而 `0` 不是 nullish ⇒ 把盘上真值整个盖掉（书脊小卡「Nº 7 · 0 块」病灶）。 */
 export function mergeSessionRows(
-  open: Array<{ id: number; label: string; msgCount: number }>,
+  open: Array<{ id: number; label: string; msgCount?: number }>,
   saved: Array<{ id: number; label: string; msgCount: number; savedAt: string; parentId?: number }>,
 ): SidebarRow[] {
   const byId = new Map<number, SidebarRow>();
