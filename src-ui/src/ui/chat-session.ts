@@ -93,8 +93,11 @@ export function getActiveAgent(storeId: string): ChatAgentHandle | null {
 export function getNextSessionId(storeId: string): number {
   return getChatStore(storeId).sess.getState().nextSessionId;
 }
+/** 发号下限访问器（产线零调用，仅测试用）。**只增不许拉低**（B·2026-09-21）：下限是
+ *  「号永不复用」的承重面，旧语义（无条件覆盖）能把它写小——水位一低，旧号就能被
+ *  重新发出（正是本批要拆的那族事故）。 */
 export function setNextSessionId(storeId: string, id: number): void {
-  getChatStore(storeId).sess.setState({ nextSessionId: id });
+  getChatStore(storeId).sess.setState((s) => ({ nextSessionId: Math.max(s.nextSessionId, id) }));
 }
 /** 将活跃会话的 token 计数同步到会话级映射中。 */
 export function syncActiveSessionTokens(storeId: string, count: number): void {
@@ -579,6 +582,11 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
   // 代际防护（H1 跨工作区串卷，2026-09-02）：与 loadSessionFromDisk 同款——
   // 工厂装配在途期间切走工作区，迟到的 append 不得落进新工作区 sess store。
   const epoch = getWorkspaceEpoch();
+  // 发号前对账（B·2026-09-21）：await **读账**（不扫盘——起卷只认内存的既有语义不动）
+  // + 抬下限；**claim 仍留在无 await 的同步段**（占号与推高 nextSessionId 之间不许有
+  // await，否则并发建卷铸同号；对账只抬地板）。
+  await reconcileVolumeIssueFloor(ctx, claimWs);
+  if (!isCurrentEpoch(epoch)) return null; // 在途切走工作区：丢弃（同下方判据，提前一步）
   // DSH 形态（2026-08-25）：信封先行——建卷是纯数据操作，立即摊开可见；
   // 句柄不是建卷的前置条件（拟文时 ensureSessionAgent 惰性现造）。
   // 工厂在场时顺手现造一个句柄（首次拟文的常见路径提前就绪）；
@@ -593,6 +601,9 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
   // 与「发号下限保留」纪律一致。
   const id = getChatStore(ctx.storeId).sess.getState().nextSessionId;
   getChatStore(ctx.storeId).sess.setState({ nextSessionId: id + 1 });
+  // 发出即记账（B）：await 落盘——「发出号 → 崩溃 → 删卷」这条复用窗口靠它关掉
+  // （占号已成事实，此处的 await 不影响占号本身的同步性）。
+  await noteVolumeIssued(claimWs, id);
   // S6 P4 程序入口：显式指定的组合在**工厂调用之前**落卷级登记——工厂按卷登记
   // 决定组合（workspace 工厂读 getRecordedPresetId），登记先于装配 ⇒ 出生即一次
   // 装配到位。（「出生后拨组合」是另一条语义，见 app/chat/session-composition。）
@@ -773,6 +784,149 @@ export async function scanMaxSessionId(projectPath: string): Promise<number> {
     /* 目录缺席/读失败 = 空（首启常态） */
   }
   return maxId;
+}
+
+// ── 发号账（`{root}/_issue.json`，2026-09-21 卷号治理 B）────────────────────
+//
+// 病根：号 = 身份（落盘文件名主体 / 血缘 `parent` / 每卷账本键），而发号器只在内存
+// （`session-store.nextSessionId`）——重启按「磁盘现存最大号 + 1」对账 ⇒ **删掉高位卷后
+// 旧号会被重新发出**。复用正是「死卷冒充新卷」那一族事故的根（真机：三个子卷顶着 9/6
+// 死卷的卷名，且不会自愈——见 docs/plans/session-tree-plan.md §12）。
+//
+// 治法：**号一经发出即记账**——账落盘、单调、只增不减 ⇒ 号永不复用。形状抄
+// `_index.json`（下划线保留名 + 同一 seam `read_volume`/`save_volume`：零 Rust 变更、
+// 零 RPC 契约变更、零文件格式版本升级），但**独立成文件**、不寄生卷目录：`_index` 是
+// 可丢弃投影（版本不认即整份重建），单调事实不得住在会被重建的缓存里（单一权威源）。
+//
+// 与退役总目的关系：`_ledger.json` 里的 `nextSessionId` 正是这一栏
+// （docs/archive/session-ledger-plan.md §56-76）；总目因**摊开集**用途退役（见下方
+// saveActiveSession 注），发号这一半在本批补回、用途收窄到发号。
+//
+// 旧工作区不迁移：无账 = `next` 记 0，首次发号时写账；账丢失/被删 = 退回磁盘对账并
+// warn（比今日不劣，不炸）。
+
+/** 发号账 id（`{root}/_issue.json`）。卷集判定只认 `.ndjson` 且跳过 `_` 开头
+ *  （`listVolumeIds` / `scanMaxSessionId`）⇒ 账文件对既有清点面天然隐形。 */
+const ISSUE_LEDGER_ID = '_issue';
+/** 账版本（不认即当账缺席：退回磁盘对账，不炸）。 */
+const ISSUE_LEDGER_VERSION = 1;
+
+/** 每工作区一本账（模块级可变态归属：**键控自清理**——键 = 会话根，与 `_volumeCatalogs`
+ *  同族；不做跨工作区共享，INVARIANTS #1）。 */
+interface IssueLedger {
+  /** 下一个可发的号（**单调**：只增不减；0 = 账缺席/尚未发出过号）。 */
+  next: number;
+  /** 是否已读过盘（每根每进程一次）。 */
+  loaded: boolean;
+  loading: Promise<void> | null;
+  /** 盘上账的版本本 build 读不了（**不是损坏**——定向拒读、**绝不覆写**，同卷日志
+   *  格式的拒读纪律：降级运行不得把新版写的账抹掉）。此状态下不写账，号段退回
+   *  磁盘对账（最坏 = 今日语义）。 */
+  foreign: boolean;
+}
+
+const _issueLedgers = new Map<string, IssueLedger>();
+
+/** 内存键归一：`D:\ws` 与 `D:/ws` 指向**同一份盘上账**，而 `workspaceSessionsDir`
+ *  只剥尾分隔符、不转反斜杠（两条键会各持一份水位——审计 2026-09-21 §6 #12）。
+ *  传给 seam 的仍是原路径（fs 层各自归一）。 */
+function issueLedgerKey(root: string): string {
+  return root.replace(/\\/g, '/');
+}
+
+function issueLedgerOf(root: string): IssueLedger {
+  const key = issueLedgerKey(root);
+  let led = _issueLedgers.get(key);
+  if (!led) {
+    led = { next: 0, loaded: false, loading: null, foreign: false };
+    _issueLedgers.set(key, led);
+  }
+  return led;
+}
+
+/** 账载入（每根每进程一次）。坏档 / 版本不认 / 字段非法 ⇒ 当账缺席（`next = 0`）+ 可见
+ *  warn——毒化容忍与卷目录同规：不让一份脏数据变成「每卷都发不出号」。 */
+function loadIssueLedger(root: string): Promise<void> {
+  const led = issueLedgerOf(root);
+  if (led.loaded) return Promise.resolve();
+  if (led.loading) return led.loading;
+  led.loading = (async () => {
+    try {
+      const raw = await sessionExecute('read_volume', { root, id: ISSUE_LEDGER_ID });
+      if (raw !== 'null') {
+        const parsed = JSON.parse(raw) as { ver?: unknown; next?: unknown };
+        if (parsed?.ver !== ISSUE_LEDGER_VERSION) {
+          led.foreign = true;
+          console.warn(
+            `[chat] 发号账版本不认（${String(parsed?.ver)}）——按账缺席对账，且本 build 不覆写它` +
+              '（号段退回磁盘对账；升级兰台后恢复）',
+          );
+        } else if (Number.isInteger(parsed.next) && (parsed.next as number) > 0) {
+          led.next = parsed.next as number;
+        }
+      }
+    } catch (e) {
+      // 坏 JSON / 读失败：账缺席，不炸（号段退回磁盘对账）。可见化不静默。
+      console.warn('[chat] 发号账读取失败（按账缺席处理）:', e);
+    } finally {
+      led.loaded = true;
+      led.loading = null;
+    }
+  })();
+  return led.loading;
+}
+
+/** **发号前对账**（三个入口共用：起卷 / 立枝 / 重启装配）：
+ *  `next = max(内存下限, [磁盘最大号 + 1], 账 next)`——账把「已发出、盘上却已不存在」的
+ *  号段接住（这就是「重启不回退」的全部机制）。**方括号项只在调用方已经扫过盘时参与**：
+ *  装配（`autoRestoreLastSession`）与立枝本来就要扫，发号路径**不扫**（见函数内注）。
+ *  在途切走工作区 ⇒ 丢弃（不抬旧区下限，同 H5 防护）。 */
+export async function reconcileVolumeIssueFloor(
+  ctx: SessionContext,
+  projectPath: string,
+  scannedMax?: number,
+): Promise<void> {
+  const epoch = getWorkspaceEpoch();
+  const root = workspaceSessionsDir(projectPath);
+  await loadIssueLedger(root);
+  if (!isCurrentEpoch(epoch)) return;
+  const memNext = getChatStore(ctx.storeId).sess.getState().nextSessionId;
+  // 扫盘项只在调用方已扫时参与：发号是**同步占号**的热路径，起卷今天不读盘（盘上号由
+  // 装配对账与开卷抬下限覆盖）——把目录枚举塞进发号会让既有语义漂移（2026-09-21 全量
+  // 回归实测 9 例因它变红；收窄后零漂移）。账那一项则**每次都在场**：只有它知道
+  // 「发出过、卷已删」的号。账读取每 root 每进程一次 ⇒ 第二次起发号零 I/O。
+  const floor = scannedMax === undefined ? memNext : Math.max(memNext, scannedMax + 1);
+  const next = Math.max(floor, issueLedgerOf(root).next);
+  if (next !== memNext) getChatStore(ctx.storeId).sess.setState({ nextSessionId: next });
+}
+
+/** **记「号已发出」**（发号后半边，起卷与立枝同源）。**await 落盘**：否则「发出号 →
+ *  立刻崩溃 → 该卷被删」这条窗口仍能复用——账的全部意义就是关掉它（每建一卷多一次
+ *  小文件写，与同路径已 await 的卷日志物化同量级）。写失败**可见**但不阻断建卷：
+ *  退回今日语义，下一次发号重试。 */
+export async function noteVolumeIssued(projectPath: string, id: number): Promise<void> {
+  let root: string;
+  try {
+    root = workspaceSessionsDir(projectPath);
+  } catch {
+    return; // 无工作区：发号路径本就走不到这里（防御位，静默合理——无存储位可记）
+  }
+  const led = issueLedgerOf(root);
+  // 盘上是更新版兰台写的账（版本不认）：**定向拒读、绝不覆写**——覆写会抹掉新版
+  // 已发出的号段，降级运行反而制造「号被复用」。合法降级路径 = 退回磁盘对账。
+  if (led.foreign) return;
+  const next = Math.max(led.next, id + 1);
+  led.next = next;
+  try {
+    await sessionExecute('save_volume', {
+      root,
+      id: ISSUE_LEDGER_ID,
+      data: JSON.stringify({ ver: ISSUE_LEDGER_VERSION, next }),
+    });
+  } catch (e) {
+    console.warn('[chat] 发号账落盘失败（号段可能被复用；下次发号重试）:', e);
+    showToast(`发号账落盘失败：案卷 ${id} 的号没被记账（下次发号重试）`, 'warn', TOAST_LONG_HOLD_MS);
+  }
 }
 
 /** 会话快照的磁盘形状（C8：saveActiveSession 与合卷落盘共用）。
@@ -1142,10 +1296,11 @@ function rowFromSnapshot(data: {
 }
 
 /** 清空卷目录内存态（跨用例隔离——模块级态不做测试间泄漏；磁盘上的目录文件
- *  由各用例的 mock 盘自理）。已删卷写拒绝名单同属模块级态，一并清。 */
+ *  由各用例的 mock 盘自理）。已删卷写拒绝名单与发号账同属模块级态，一并清。 */
 export function resetSessionListCacheForTests(): void {
   _volumeCatalogs.clear();
   _removedVolumes.clear();
+  _issueLedgers.clear();
 }
 
 /** 等在途卷写全部 settle（退出 flush 的 drain 点——保证「退出快照」最后落盘）。 */
@@ -1462,17 +1617,13 @@ export function cancelScheduledAutoSave(storeId: string): boolean {
  *  workspace-session-ownership-rework（2026-08-27）：发号 = 本工作区独立
  *  （scanMax 只算本区目录）——跨工作区撞号在结构上不可能。 */
 export async function autoRestoreLastSession(ctx: SessionContext, projectPath: string): Promise<void> {
-  // 代际防护（H5）：对账在途期间可能切换工作区 — 写入前校验，过期丢弃。
-  const epoch = getWorkspaceEpoch();
-
-  // #5 修复：用 scanMaxSessionId（仅 list_directory，不读文件内容）替代
-  // listSavedSessions（读全部卷文件）——避免与 restoreCanvasSpread 的
-  // listSavedSessions 调用双倍 I/O。发号对账只需最大档号，不需读内容。
-  const scanMax = await scanMaxSessionId(projectPath);
-  const memNext = getChatStore(ctx.storeId).sess.getState().nextSessionId;
-  const next = Math.max(memNext, scanMax + 1);
-  if (!isCurrentEpoch(epoch)) return;
-  getChatStore(ctx.storeId).sess.setState({ nextSessionId: next });
+  // #5 修复（保留）：用 scanMaxSessionId（仅 list_directory，不读文件内容）替代
+  // listSavedSessions（读全部卷文件）——避免与 restoreCanvasSpread 的 listSavedSessions
+  // 调用双倍 I/O。发号对账只需最大档号，不需读内容。
+  // B（2026-09-21）：扫出的档号交给 reconcileVolumeIssueFloor 与账、内存下限取 max——
+  // **装配是扫盘的那一处**（发号路径不扫，见该函数注），地板公式与代际防护（H5）都在里面。
+  const scanned = await scanMaxSessionId(projectPath);
+  await reconcileVolumeIssueFloor(ctx, projectPath, scanned);
 }
 
 // ── 摊开集多卷恢复（扫描推导；session-ledger L0 语义承继面）─────────────

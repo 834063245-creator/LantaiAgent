@@ -944,13 +944,16 @@ export const SessionSidebar = memo(function SessionSidebar() {
         : '再点一次确认删除（不可撤销）；点其它处取消';
     const isCurrent = r.open && r.id === activeSid;
     const isSelected = selectedIds.has(r.id);
-    const branch = r.parentId != null;
+    // 父卷号取成一枚 **const**（不是就地读 `r.parentId`）：别名条件 `branch` 的类型收窄
+    // 只对 const / readonly 引用生效——收窄后卡里那处「父卷不在场」的显示名才拿得到 number。
+    const parentId = r.parentId;
+    const branch = parentId != null;
     const depth = variant === 'tree' ? (r.depth ?? 0) : 0;
     const tree = variant === 'tree';
     const kids = r.kids ?? 0;
     const famFolded = tree && kids > 0 && folded(famFoldKey(r.id));
     const famHot = tree && hoverId != null && rootOfRow(hoverId) === rootOfRow(r.id);
-    const parentRow = r.parentId != null ? rowById.get(r.parentId) : undefined;
+    const parentRow = parentId != null ? rowById.get(parentId) : undefined;
     // 引线：逐层「末子」旗标 ⇒ ├ / └ / 竖线 / 空（与原型同一套判据）
     const guides: React.ReactNode[] = [];
     if (tree && depth > 0) {
@@ -976,7 +979,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         }`}
         data-id={r.id}
         data-depth={depth}
-        title={`${volumeDisplayName(r.label, r.id)}${branch ? ` · 枝（父卷 Nº ${r.parentId}）` : ''}${
+        title={`${volumeDisplayName(r.label, r.id)}${branch ? ' · 枝（自父卷分出）' : ''}${
           r.orphan ? ' · 父卷已删' : ''
         }${isCurrent ? ' · 当前卷' : ''} · ${statusLabel(r.status)} · 左键摊开/定位 · 拖动落位`}
         aria-current={isCurrent ? 'true' : undefined}
@@ -1046,10 +1049,12 @@ export const SessionSidebar = memo(function SessionSidebar() {
               <>
                 <span className="ss-label">{volumeDisplayName(r.label, r.id)}</span>
                 {/* 案卷视图：枝卷的**明显标识** = 与书脊/卷首同一枚「枝」牌（一屏一语言）。
-                    **牌上不带号**（2026-09-20 用户拍板：只留「枝」）——牌紧贴卷名、下面机读行
-                    又有本卷「Nº N」，牌上再放一个**父卷号**会被读成「这卷的号是父号」
-                    （用户实际数据 13→14→15→16 连枝时牌上号恰好是本卷号 −1，实测就是这观感）。
-                    父卷号改由 title 与血缘卡承接（卡里父卷名 + Nº + 「枝自它分出」）。
+                    **牌上不带号**（2026-09-20 用户拍板：只留「枝」）——牌紧贴卷名，
+                    牌上放**父卷号**会被读成「这卷的号是父号」（用户实际数据 13→14→15→16
+                    连枝时牌上号恰好是本卷号 −1，实测就是这观感）。
+                    **号也不再进 title/aria/血缘卡机读行**（2026-09-21 卷号收显示）：父卷的
+                    指代由**父卷名**承接（无名父卷的名就是「案卷 N」——号自然还在），血缘由
+                    卡里的「枝自它分出」说清；同一处既报名又报号是同义反复。
                     牌是血缘卡的热区；卡与牌同属 .ss-lineage 子树 ⇒ 指针从牌移到卡不会触发
                     mouseleave（旧实现把卡挂在行上、热区只在记号上，指针一动就掉出热区）。 */}
                 {!tree && branch && (
@@ -1058,9 +1063,9 @@ export const SessionSidebar = memo(function SessionSidebar() {
                     <button
                       type="button"
                       className="ss-branch-tag"
-                      aria-label={`枝：这一卷分出案卷 Nº ${r.parentId}`}
+                      aria-label="枝：这一卷自父卷分出"
                       aria-expanded={cardId === r.id}
-                      title={`枝：从父卷 Nº ${r.parentId} 的某个节点分出（内容自包含）${parentRow ? '' : '；父卷不在场'}`}
+                      title={`枝：从父卷的某个节点分出（内容自包含）${parentRow ? '' : '；父卷不在场'}`}
                       onFocus={() => openCard(r.id)}
                       onBlur={closeCardSoon}
                       onClick={(e) => {
@@ -1076,11 +1081,10 @@ export const SessionSidebar = memo(function SessionSidebar() {
                         <div className="t">
                           {parentRow
                             ? volumeDisplayName(parentRow.label, parentRow.id)
-                            : `案卷 Nº ${r.parentId}（不在场）`}
+                            : `${volumeDisplayName('', parentId)}（不在场）`}
                         </div>
                         <span className="m">
-                          Nº {r.parentId}
-                          {parentRow ? ` · ${parentRow.msgCount} 块 · 枝自它分出` : ' · 外部删除或拷走'}
+                          {parentRow ? `${parentRow.msgCount} 块 · 枝自它分出` : '外部删除或拷走'}
                         </span>
                         <div className="acts">
                           {parentRow ? (

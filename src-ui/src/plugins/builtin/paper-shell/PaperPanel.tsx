@@ -1363,7 +1363,7 @@ export function PaperPanel() {
                     d={t.d}
                     role="button"
                     tabIndex={0}
-                    aria-label={`回到案卷 ${t.childSid} 这一枝的来处：父卷的分叉节点`}
+                    aria-label="回到这一枝的来处：父卷的分叉节点"
                     onClick={() => onBranchTrace(t.parentSid, t.blockId)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {

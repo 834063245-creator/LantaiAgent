@@ -36,6 +36,8 @@ import {
   isInternalMessage,
   listVolumeIds,
   loadSessionFromDisk,
+  noteVolumeIssued,
+  reconcileVolumeIssueFloor,
   scanMaxSessionId,
   workspaceSessionsDir,
 } from '../../ui/chat-session';
@@ -449,10 +451,15 @@ export async function createBranchVolume(ctx: SessionContext, fromId: number, at
   if (!prepared.ok) return refuse(prepared.reason);
   const { origin, events, presetId, erased } = prepared.seed;
 
-  const sess = getChatStore(ctx.storeId).sess.getState();
   const scanned = await scanMaxSessionId(projectPath);
-  const id = Math.max(sess.nextSessionId, scanned + 1);
+  // 发号前对账（B·2026-09-21）：账把「已发出、盘上却已不存在」的号段接住——撞号即
+  // 原子替换写覆写既有卷，所以地板必须先抬到位（原「宁可多发一号也不赌」由账兜底）。
+  await reconcileVolumeIssueFloor(ctx, projectPath, scanned);
+  const sess = getChatStore(ctx.storeId).sess.getState();
+  const id = sess.nextSessionId;
   sess.setNextSessionId(id + 1);
+  // 发出即记账（B）：与起卷同源（await 落盘的取舍见 chat-session.noteVolumeIssued 注）。
+  await noteVolumeIssued(projectPath, id);
 
   const header: SessionLogHeader = {
     type: 'session',

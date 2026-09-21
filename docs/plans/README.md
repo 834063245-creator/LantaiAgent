@@ -28,6 +28,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | 软件级插件（app shell） | [`app-shell-software-plugin-plan.md`](app-shell-software-plugin-plan.md) | S0-S6 竣工；**余管理 UI 面 + 用户真机验收** | 数据目录 / 受治进程治理 / 窗口原语 / 后台唤醒四件套 + 范本 `examples/plugins/notes-app/` |
 | 纸壳交互承接 | [`paper-interaction-handoff.md`](paper-interaction-handoff.md) | 审计完成，逐条修复中 | 守护 `src-ui/tests/paper-interaction-handoff.test.ts`（KNOWN_DEAD 收敛机制——只减不增） |
 | **工具附图通道（agent 眼睛环）** | [`tool-image-context-plan.md`](tool-image-context-plan.md) | **P0a 代码已落地 2026-09-17；余真机验收** | 工具产出的截图进模型可见通道（此前只挂 user 消息 ⇒ 模型看不见自己的产出，靠用户眼睛逐轮喂）；P0b（元素级截图 + 描述改写 + 拆 `inline`）需 BCR 放行 |
+| **卷号治理（A 收显示 + B 号不复用）** | [`volume-number-governance-plan.md`](volume-number-governance-plan.md) | **开工（2026-09-21，用户拍板 A+B）** | 号保留为身份但**永不复用**（每工作区发号账 `_issue.json`：发出即记账、重启不回退）+ **有名卷**常显号收成两处（书脊档号 / 卷首眉行）；C「换 UUID」不做。顺带拆立枝发号的 await 前快照竞态 |
 
 ## 待执行但已立项（按成本排）
 

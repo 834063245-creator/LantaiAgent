@@ -69,6 +69,7 @@ import { useShellStore } from '../src/app/shell-store';
 import type { Chunk, Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 import { useToastStore } from '../src/state/toast-store';
+import { resetSessionListCacheForTests } from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 import type { AssistantMessage, ChatMessage } from '../src/ui/message-model';
 import { createTestAgent } from './helpers/agent';
@@ -198,6 +199,9 @@ beforeEach(() => {
   mockRpc.mockResolvedValue(null);
   useShellStore.setState({ projectPath: '' });
   useToastStore.setState({ toasts: [] });
+  // 工作区级模块态（卷目录 + 发号账，B·2026-09-21）逐例清空——每个用例 = 一个全新工作区，
+  // 否则上一例发出的号会延续下来（号按工作区单调），而本文件的用例以「卷 1」为固定夹具。
+  resetSessionListCacheForTests();
 });
 
 afterEach(() => {

@@ -116,6 +116,9 @@ function storingFactory() {
 beforeEach(() => {
   localStorage.clear();
   memDisk();
+  // 工作区级模块态（卷目录 + 发号账）逐例清空——本文件的每个用例 = 一个**全新工作区**，
+  // 否则发号账会把上一例发出的号延续下来（号按工作区单调，正是 B 的语义）。
+  Session.resetSessionListCacheForTests();
   useShellStore.setState({ projectPath: '' });
 });
 

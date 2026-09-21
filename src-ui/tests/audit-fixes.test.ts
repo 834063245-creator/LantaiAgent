@@ -175,7 +175,8 @@ describe('#1 exportSession parameter name', () => {
     // fs 域收口：export 写盘 = kernelWriteFile(filePath, content)——mock 层
     // 断言第一参即文件路径（旧「write_file_content 的 filePath 而非 path」
     // 的语义由 helper 签名天然保证——文件路径恒为第一参）。
-    const writes = H.kernelFs!.fs.writes;
+    // 发号账（`_issue.json`，2026-09-21 卷号治理 B）在起卷时另写一笔——导出面只认自己那条。
+    const writes = H.kernelFs!.fs.writes.filter((w) => !w.file_path.endsWith('/_issue.json'));
     expect(writes.length).toBe(1);
     // 导出到对话框返回的路径（filePath 键语义 = 第一参）
     expect(writes[0].file_path).toBe('/tmp/test-export.md');

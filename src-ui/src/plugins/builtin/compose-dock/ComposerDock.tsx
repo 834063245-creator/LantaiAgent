@@ -815,7 +815,10 @@ export const ComposerDock = memo(function ComposerDock() {
       <div className="pp-composer-header">
         <span
           className="pp-composer-target"
-          title={activeSession ? `案卷 ${activeSession.id}` : '无活跃卷——落笔即另起一卷'}
+          // hover 文案 = **显示名**（2026-09-21 卷号收显示）：旧实现硬报 `案卷 ${id}`——
+          // 对有名卷也报号（同元素下一行就有名字），且裸用 id 绕过了单一真源
+          // `volumeDisplayName`（state/volume-name 纪律①：禁在调用点散写）。
+          title={activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '无活跃卷——落笔即另起一卷'}
         >
           {activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '新卷'}
         </span>

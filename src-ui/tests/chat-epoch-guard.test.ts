@@ -19,21 +19,31 @@ import { describe, expect, it } from 'vitest';
 const sessionSrc = readFileSync(path.resolve(process.cwd(), 'src/ui/chat-session.ts'), 'utf8');
 const coreSrc = readFileSync(path.resolve(process.cwd(), 'src/app/chat/chat-core.ts'), 'utf8');
 
-describe('chat-session H5 — autoRestoreLastSession epoch 防护', () => {
+describe('chat-session H5 — 发号对账的 epoch 防护（B·2026-09-21 起 owner = reconcileVolumeIssueFloor）', () => {
   it('入口记 epoch（getWorkspaceEpoch）', () => {
-    const body = sessionSrc.slice(sessionSrc.indexOf('export async function autoRestoreLastSession'));
-    // Q-B：epoch 记录点之后是代际校验 + 发号写 store（restoreOpenSet 已退役）
+    const body = sessionSrc.slice(sessionSrc.indexOf('export async function reconcileVolumeIssueFloor'));
+    // epoch 记录点之后是代际校验 + 发号写 store（本函数自 autoRestoreLastSession 收口而来）
     expect(body.indexOf('getWorkspaceEpoch()')).toBeLessThan(body.indexOf('if (!isCurrentEpoch(epoch)) return;'));
   });
 
   it('最终写 store 前有 isCurrentEpoch 校验', () => {
-    const restore = sessionSrc.slice(sessionSrc.indexOf('export async function autoRestoreLastSession'));
-    // Q-B：写 block（nextSessionId setState）之前必须有代际校验
-    const guardIdx = restore.indexOf('if (!isCurrentEpoch(epoch)) return;');
+    const body = sessionSrc.slice(sessionSrc.indexOf('export async function reconcileVolumeIssueFloor'));
+    // 写 block（nextSessionId setState）之前必须有代际校验
+    const guardIdx = body.indexOf('if (!isCurrentEpoch(epoch)) return;');
     expect(guardIdx).toBeGreaterThan(-1);
-    const writeIdx = restore.indexOf('setState({ nextSessionId: next })', guardIdx);
+    const writeIdx = body.indexOf('setState({ nextSessionId: next })', guardIdx);
     expect(writeIdx).toBeGreaterThan(-1);
     expect(guardIdx).toBeLessThan(writeIdx);
+  });
+
+  it('起卷：对账之后、占号之前复校代际（在途切区不建卷）', () => {
+    const body = sessionSrc.slice(sessionSrc.indexOf('export async function createNewSession'));
+    const reconcileIdx = body.indexOf('await reconcileVolumeIssueFloor');
+    const guardIdx = body.indexOf('if (!isCurrentEpoch(epoch)) return null;', reconcileIdx);
+    const claimIdx = body.indexOf('const id = getChatStore(ctx.storeId).sess.getState().nextSessionId;', guardIdx);
+    expect(reconcileIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeGreaterThan(reconcileIdx); // 对账在途切走工作区 ⇒ 不占号
+    expect(claimIdx).toBeGreaterThan(guardIdx);
   });
 });
 

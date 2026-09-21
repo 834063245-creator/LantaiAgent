@@ -515,7 +515,6 @@ export const SpineRack = memo(function SpineRack() {
           <div className="sr-hover-title">{card.row.name}</div>
           <div className="sr-hover-meta">
             {sessionMeta({
-              id: card.row.id,
               msgCount: card.row.msgCount,
               savedAt: card.row.savedAt,
               orphan: false,

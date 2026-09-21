@@ -166,13 +166,15 @@ describe('会话树「枝」——侧栏树面（渲染）', () => {
     expect(rows[0].style.paddingLeft).toBe(''); // 扁平：不缩进（缩进归枝视图的引线）
     expect(rows[0].className).toContain('branch');
     // 枝卷的明显标识 = 「枝」牌（与书脊/卷首同一枚标）；**牌上不带号**（2026-09-20 用户拍板
-    // 「只留枝」）——父卷号在 title 与血缘卡里，牌上放号会被读成「这卷的号是父号」
+    // 「只留枝」）——牌上放号会被读成「这卷的号是父号」。
+    // **号也不进 title**（2026-09-21 卷号收显示）：指代归父卷名与血缘卡，见设计件 §2。
     const tags = [...container.querySelectorAll('.ss-row .ss-branch-tag')];
     expect(tags).toHaveLength(1);
     expect(tags[0].textContent).toBe('枝');
     expect(tags[0].querySelector('.ss-tag-src')).toBeNull();
-    expect(tags[0].getAttribute('title')).toContain('父卷 Nº 1');
-    expect(rows[0].getAttribute('title')).toContain('枝（父卷 Nº 1）');
+    expect(tags[0].getAttribute('title')).toContain('从父卷的某个节点分出');
+    expect(tags[0].getAttribute('title')).not.toContain('Nº');
+    expect(rows[0].getAttribute('title')).toContain('枝（自父卷分出）');
   });
 
   it('枝视图：族不拆——父子同屏且子行带引线折角 + 父行「▾ N 枝」汇总', async () => {
@@ -217,9 +219,10 @@ describe('会话树「枝」——侧栏树面（渲染）', () => {
 
     const meta = container.querySelector('.ss-row .ss-meta')?.textContent ?? '';
     expect(meta).toContain('父卷已删');
-    // 牌同样不带号（悬空也一样）：不存在的号不进牌面，靠 orphan 朱砂边 + meta 注记明说
+    // 牌同样不带号（悬空也一样）：不存在的号不进牌面，靠 orphan 朱砂边 + meta 注记明说；
+    // 悬空父卷的号只在**它自己的显示名**里出现（血缘卡「案卷 99（不在场）」，2026-09-21 收显示）
     expect(container.querySelector('.ss-row .ss-tag-src')).toBeNull();
-    expect(container.querySelector('.ss-row .ss-branch-tag')?.getAttribute('title')).toContain('Nº 99');
+    expect(container.querySelector('.ss-row .ss-branch-tag')?.getAttribute('title')).toContain('父卷不在场');
     expect(container.querySelector('.ss-row')?.className).toContain('orphan');
     // 点开照常（不因血缘悬空被挡）
     await act(async () => {

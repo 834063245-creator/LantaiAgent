@@ -323,11 +323,16 @@ export function bucketClosed(
   return out;
 }
 
-/** 行机读注记（注疏版式第二行）：Nº 卷号 · N 块 · 相对时间；未落盘新卷
+/** 行机读注记（注疏版式第二行）：N 块 · 相对时间；未落盘新卷
  *  （无 savedAt）出「未存」段——显式标记比缺段诚实（自动存失败可据此发现）。
- *  血缘悬空（`orphan`）追加「父卷已删」——外部删除/拷走才可能，不阻塞打开。 */
-export function sessionMeta(r: Pick<SidebarRow, 'id' | 'msgCount' | 'savedAt' | 'orphan'>, now = Date.now()): string {
-  const parts = [`Nº ${r.id}`, `${r.msgCount} 块`];
+ *  血缘悬空（`orphan`）追加「父卷已删」——外部删除/拷走才可能，不阻塞打开。
+ *
+ *  **不报卷号**（2026-09-21 卷号收显示）：号就在紧邻的卷名里——未命名卷的名本身
+ *  即「案卷 N」（state/volume-name 的档号兜底），同一行再报一次是同义反复。
+ *  常显的号只留两处：书脊档号 `.sr-num`（题名两栏截断后唯一可靠的身份）与卷首
+ *  眉行（恰出现一次口径）。设计件：docs/plans/volume-number-governance-plan.md §2。 */
+export function sessionMeta(r: Pick<SidebarRow, 'msgCount' | 'savedAt' | 'orphan'>, now = Date.now()): string {
+  const parts = [`${r.msgCount} 块`];
   if (r.savedAt) parts.push(relativeTime(r.savedAt, now));
   else parts.push('未存');
   if (r.orphan) parts.push('父卷已删');

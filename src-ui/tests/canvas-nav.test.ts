@@ -101,10 +101,10 @@ describe('session-sidebar-model（注疏重排：检索/分节/机读注记）',
     expect(closed.map((r) => r.id)).toEqual([3, 4]);
   });
 
-  it('sessionMeta：Nº · 块数 · 相对时间；未落盘出「未存」段（2026-09-02）', () => {
+  it('sessionMeta：块数 · 相对时间（**卷号已退**，2026-09-21）；未落盘出「未存」段', () => {
     const now = Date.parse('2026-08-25T12:00:00Z');
-    expect(sessionMeta({ id: 12, msgCount: 8, savedAt: '2026-08-25T11:00:00Z' }, now)).toBe('Nº 12 · 8 块 · 1 小时前');
-    expect(sessionMeta({ id: 13, msgCount: 0, savedAt: '' }, now)).toBe('Nº 13 · 0 块 · 未存');
+    expect(sessionMeta({ msgCount: 8, savedAt: '2026-08-25T11:00:00Z' }, now)).toBe('8 块 · 1 小时前');
+    expect(sessionMeta({ msgCount: 0, savedAt: '' }, now)).toBe('0 块 · 未存');
   });
 });
 
