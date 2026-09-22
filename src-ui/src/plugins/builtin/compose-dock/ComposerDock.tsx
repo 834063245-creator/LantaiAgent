@@ -27,6 +27,17 @@
 // 真实例，react 经构建期别名桥。
 
 import { type ClipboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// 浮层 portal（2026-09-22 附图预览案）：坞内两处**全局模态**（附图大图预览 /
+// 全放二次确认）必须挂到 body，理由见下方附图预览处病灶注。
+// ⚠ 为什么是裸 `createPortal` 而不是 app/overlay 的 Overlay 原语：**产物域装不下它**
+// ——构建用 `--jsx-import-source=./host`，插件目录之外的 JSX 文件会被 esbuild 按它
+// 自己的相对路径解析 `./host/jsx-runtime`（该处没有此文件 ⇒ 构建直接红：
+// `Could not resolve "./host/jsx-runtime"` from `app/overlay.tsx`）；而把 Overlay
+// 加进 host.ts ⇒ 撞 host-modules 的 FaceBridgeSeal（faceDeps 必须补键）⇒ 宿主面指纹
+// 变 ⇒ 产物不能热更、须重建 exe。故本件只取**无 JSX 的两件**：portal 走 react-dom
+// （esbuild 内联，不涉 JSX），Escape 走宿主桥既有的 useDialogEscape（faceDeps 早已在
+// 册，取用零指纹代价）——遮罩点关语义就地写在下面两处。
+import { createPortal } from 'react-dom';
 import type { DirEntry } from '../../../rpc-contract';
 import { kernelListDirectory } from '../../../rpc-contract';
 import { volumeDisplayName } from '../../../state/volume-name';
@@ -64,6 +75,7 @@ import {
   slashOnly,
   thinkingOptionsFor,
   useCoreStore,
+  useDialogEscape,
   useModeStore,
   usePaperDock,
   usePresetStore,
@@ -454,6 +466,8 @@ export const ComposerDock = memo(function ComposerDock() {
   const pendingYolo = useModeStore((s) => s.pendingYolo);
   const setPermissionMode = useModeStore((s) => s.setPermissionMode);
   const setPendingYolo = useModeStore((s) => s.setPendingYolo);
+  /* 全放二次确认模态的 Esc（同附图预览：portal 到 body 后 Escape 只能走 document 级） */
+  useDialogEscape(() => setPendingYolo(false), { enabled: pendingYolo });
 
   const selectMode = useCallback(
     (mode: PermissionMode) => {
@@ -621,8 +635,12 @@ export const ComposerDock = memo(function ComposerDock() {
     [core, imageCapable],
   );
 
-  /* ── 附图预览（B2）：大图浮层——点击缩略图开、点浮层/再点图关。 ── */
+  /* ── 附图预览（B2）：大图浮层——点击缩略图开；关闭三路 = 点遮罩 / Esc。
+   *    Esc 走 useDialogEscape（document capture 监听，**与焦点无关**）——旧实现把
+   *    onKeyDown 挂在那个不可聚焦的 div 上，焦点在缩略图按钮上时永远收不到（用户报
+   *    「预览收不回」的键盘那一半）。 ── */
   const [imagePreview, setImagePreview] = useState<ChatImageRef | null>(null);
+  useDialogEscape(() => setImagePreview(null), { enabled: imagePreview !== null });
 
   /* ── 附文件入卷共用底座（引 / 拖放，v3 B2）：图片入附图道，其余走路径附件老路
    *    （C10 语义保留：size 恒 0 不显示——拿不到真大小就不伪造）。
@@ -1061,25 +1079,41 @@ export const ComposerDock = memo(function ComposerDock() {
             {attachedImages.length > 1 && <span className="pp-attach-count">共 {attachedImages.length} 图</span>}
           </div>
         )}
-        {imagePreview !== null && (
-          <div
-            className="pp-image-lightbox"
-            role="dialog"
-            aria-modal="true"
-            aria-label="附图预览"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setImagePreview(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setImagePreview(null);
-            }}
-          >
-            <img src={previewUrlFor(imagePreview.id)} alt={imagePreview.name ?? '附图'} />
-            <div className="pp-image-lightbox-meta">
-              {imagePreview.name ?? imagePreview.id.slice(0, 12)} · {imagePreview.width}×{imagePreview.height}
-            </div>
-          </div>
-        )}
+        {/* 附图预览（B2）：大图浮层——点击缩略图开、点遮罩/Esc 关。
+            ⚡ 2026-09-22 病灶修复：原先这里是坞内一个裸 `position: fixed` 的 div，
+            症状是**收不回也看不全**（用户报「点开图整个创作坞被图糊住，撤回不了」）。
+            根因 = 坞槽 `.pp-composer-slot` 带 `transform: translateX(-50%)`（版心居中）：
+            transform 让该元素成为 **`position: fixed` 后代的包含块**，于是 `inset: 0`
+            量的是坞的盒子而不是视口——预览被关进坞里（图 `max-width: min(86vw,1200px)`
+            远大于坞 ⇒ 几乎盖满遮罩，而关闭判据是 `e.target === e.currentTarget`，点哪儿
+            都落在图上）；坞槽同时是 `z-index: 6` 的层叠上下文（坞内 `z-index: 95` 只在
+            坞里排序，出不去）；Escape 又挂在**不可聚焦**的 div 上（焦点在缩略图按钮上，
+            事件不经过它）⇒ 鼠标键盘都关不掉 = 死锁。
+            修法 = 归位成它本来的身份：**全局模态**（CONVENTIONS 浮层政策
+            「面板内模态就地渲染；全局模态用 portal=true」）——portal 到 body（与 media
+            渲染器的大图预览 `.pp-media-preview-overlay` 同款同层），Escape 交给
+            useDialogEscape（document capture 监听，与焦点无关，见下方 hook 调用）。
+            坞被拖动后本就写内联 `transform: none`（浮动化），故旧写法只在**默认坞位**
+            上炸——那正是默认路径。 */}
+        {imagePreview !== null &&
+          createPortal(
+            // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 关闭（明确对话框语义）
+            <div
+              className="pp-image-lightbox"
+              role="dialog"
+              aria-modal="true"
+              aria-label="附图预览"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setImagePreview(null);
+              }}
+            >
+              <img src={previewUrlFor(imagePreview.id)} alt={imagePreview.name ?? '附图'} />
+              <div className="pp-image-lightbox-meta">
+                {imagePreview.name ?? imagePreview.id.slice(0, 12)} · {imagePreview.width}×{imagePreview.height}
+              </div>
+            </div>,
+            document.body,
+          )}
         <textarea
           ref={composerRef}
           rows={1}
@@ -1405,29 +1439,33 @@ export const ComposerDock = memo(function ComposerDock() {
         <span style={{ width: `${Math.round(inkRatio * 100)}%` }} />
       </div>
 
-      {/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞，避免高度/关窗竞态） */}
-      {pendingYolo && (
-        // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 取消（明确对话框语义）
-        <div
-          className="pp-mode-dialog-backdrop"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setPendingYolo(false);
-          }}
-        >
-          <div className="pp-mode-dialog" role="dialog" aria-modal="true" aria-label="确认全放模式">
-            <div className="pp-mode-dialog-title">切换到全放模式</div>
-            <div className="pp-mode-dialog-body">{MODE_DESCRIPTIONS.yolo}</div>
-            <div className="pp-mode-dialog-actions">
-              <button type="button" onClick={() => setPendingYolo(false)}>
-                取消
-              </button>
-              <button type="button" className="primary" onClick={() => setPermissionMode('yolo')}>
-                确定
-              </button>
+      {/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞，避免高度/关窗竞态）
+          ——同附图预览：坞槽带 transform（版心居中）⇒ 就地渲染的 `position: fixed`
+          后代被关进坞的盒子里（遮罩只有坞那么大、点坞外收不回），归位为 portal 全局模态。 */}
+      {pendingYolo &&
+        createPortal(
+          // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 取消（明确对话框语义）
+          <div
+            className="pp-mode-dialog-backdrop"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setPendingYolo(false);
+            }}
+          >
+            <div className="pp-mode-dialog" role="dialog" aria-modal="true" aria-label="确认全放模式">
+              <div className="pp-mode-dialog-title">切换到全放模式</div>
+              <div className="pp-mode-dialog-body">{MODE_DESCRIPTIONS.yolo}</div>
+              <div className="pp-mode-dialog-actions">
+                <button type="button" onClick={() => setPendingYolo(false)}>
+                  取消
+                </button>
+                <button type="button" className="primary" onClick={() => setPermissionMode('yolo')}>
+                  确定
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 });

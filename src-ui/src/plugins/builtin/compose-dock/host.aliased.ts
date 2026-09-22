@@ -39,6 +39,7 @@ export const agentSessionState = impl.agentSessionState;
 export const composerSubmitOnKey = impl.composerSubmitOnKey;
 export const isMockMode = impl.isMockMode;
 export const typedJsonRpc = impl.typedJsonRpc;
+export const useDialogEscape = impl.useDialogEscape;
 export const useShellStore = impl.useShellStore;
 export const watchFileDragDrop = impl.watchFileDragDrop;
 export const usePaperDock = impl.usePaperDock;

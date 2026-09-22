@@ -372,12 +372,16 @@ describe('ComposerDock 返工 P2-3（权限分段 + 全放模态）', () => {
       yoloBtn?.click();
     });
     await act(async () => {});
-    expect(container.querySelector('.pp-mode-dialog')).not.toBeNull();
+    /* 2026-09-22：模态改 portal 到 body（坞槽的 transform 会把它关进坞的盒子，
+       见 ComposerDock 附图预览处病灶注）⇒ 探针从 container 移到 document，
+       并顺带钉住「不在坞子树内」这条不变量。 */
+    expect(document.querySelector('.pp-mode-dialog')).not.toBeNull();
+    expect(container.querySelector('.pp-mode-dialog')).toBeNull();
     act(() => {
-      container.querySelector<HTMLButtonElement>('.pp-mode-dialog-actions .primary')?.click();
+      document.querySelector<HTMLButtonElement>('.pp-mode-dialog-actions .primary')?.click();
     });
     await act(async () => {});
     expect(useModeStore.getState().permissionMode).toBe('yolo');
-    expect(container.querySelector('.pp-mode-dialog')).toBeNull();
+    expect(document.querySelector('.pp-mode-dialog')).toBeNull();
   });
 });

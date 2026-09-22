@@ -973,6 +973,19 @@ describe('B4 多模态附图渲染面（multimodal-image-plan D-9，2026-09）',
     expect(thumb).toContain('cursor: zoom-in');
   });
 
+  it('点击放大浮层取全局模态档（portal 到 body 之后必须盖过纸壳）', () => {
+    const lb = ruleBody(PANEL_CSS, '.pp-image-lightbox {');
+    expect(lb).toContain('position: fixed');
+    /* 2026-09-22 病灶修复（用户报「点开图整个创作坞被糊住且收不回」）：坞槽
+     * `.pp-composer-slot` 的 transform（版心居中）是 `position: fixed` 后代的包含块
+     * ⇒ 浮层改 portal 到 body。**层级随之必须换轨**：坞内小档（旧 95）挂在 body 上
+     * 会被 `.pp-root`（280）盖在底下——点开一片黑，比原病更难查。 */
+    expect(lb).toContain('z-index: var(--z-dialog)');
+    const rootZ = /z-index:\s*(\d+)/.exec(ruleBody(PANEL_CSS, '.pp-root {'))?.[1];
+    const dialogZ = /--z-dialog:\s*(\d+)/.exec(TOKENS_CSS)?.[1];
+    expect(Number(dialogZ)).toBeGreaterThan(Number(rootZ));
+  });
+
   it('md 远端图固定盒：高走 --pp-md-imgBoxH token（D-9 钉值 160），border 计入盒高', () => {
     const box = ruleBody(PANEL_CSS, '.pp-md-imgbox');
     expect(box).toContain('height: var(--pp-md-imgBoxH)');

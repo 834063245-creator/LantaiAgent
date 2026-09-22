@@ -2485,12 +2485,19 @@
 .pp-image-remove:focus-visible {
   opacity: 1;
 }
-/* 大图浮层：ink-solid 墨罩（lightbox 唯一豁免用墨源实色——alpha 墨罩透字）；
- * 海拔 95 = 浮层带（§11 45-90）之上、全屏顶件（280）之下 */
+/* 大图浮层：ink-solid 墨罩（lightbox 唯一豁免用墨源实色——alpha 墨罩透字）。
+ * ⚡ 2026-09-22 病灶修复：本件由坞内就地渲染改为 **portal 到 body 的全局模态**
+ * （坞槽 `.pp-composer-slot` 带 `transform: translateX(-50%)` ⇒ 它是 `position:
+ * fixed` 后代的包含块，就地渲染时 `inset: 0` 量的是坞的盒子——预览糊住整个创作坞
+ * 且点坞外收不回；详见 ComposerDock 附图预览处病灶注）。
+ * **层级随之换轨**：就地渲染时 `z-index: 95` 只在坞槽（z-index: 6）的层叠上下文里
+ * 排序；挂到 body 之后要跟 `.pp-root`（z-index: 280）同台比，必须走高阶全局模态档，
+ * 否则整个浮层会被纸壳盖在底下（= 点开一片黑）。与 media 渲染器同款大图预览
+ * `.pp-media-preview-overlay` 同档同位。 */
 .pp-image-lightbox {
   position: fixed;
   inset: 0;
-  z-index: 95;
+  z-index: var(--z-dialog);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3304,7 +3311,10 @@
   border-bottom-color: var(--seal);
 }
 
-/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞） */
+/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞）
+ * ⚡ 2026-09-22：本遮罩改为 **portal 到 body**（同附图预览的病灶修复——坞槽的
+ * transform 是 `position: fixed` 后代的包含块，就地渲染时遮罩只有坞那么大）。
+ * 本级 z-index 本就取全局模态档，port 之后语义正好归位，无数值改动。 */
 .pp-mode-dialog-backdrop {
   position: fixed;
   inset: 0;

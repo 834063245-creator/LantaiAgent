@@ -14,6 +14,11 @@ export { extractImageFiles, previewUrlFor } from '../../../app/chat/image-intake
 // ——旧 `ui/command-registry` 单例已退役（退役命令陈列 + 就地写全局表两病灶）
 export { filterCommands, listCommands, slashOnly } from '../../../app/commands/command-catalog';
 export { ensureSkillCatalog } from '../../../app/commands/skill-catalog';
+/* 浮层 Escape 收口（2026-09-22 附图预览案）：坞内两处全局模态 portal 到 body 后，
+ * Escape 必须走 **document 级**监听——原先挂在坞内那个不可聚焦的 div 上，焦点在
+ * 缩略图按钮上时事件根本不经过它（用户报「预览收不回」的键盘那一半）。本键**早已在
+ * faceDeps 在册**（paper-shell 用），故取用不新增宿主面键、不改指纹。 */
+export { useDialogEscape } from '../../../app/overlay';
 export { useShellStore } from '../../../app/shell-store';
 export type { FileDragEvent } from '../../../bridge';
 export { isMockMode, watchFileDragDrop } from '../../../bridge';
