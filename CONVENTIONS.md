@@ -443,7 +443,12 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 | 桌面打包 | `cd src-tauri && cargo tauri build` | 会先跑前端构建；禁止用 `cargo build --release` 代替 |
 | 生成物文档 | `cd src-ui && npm run doc-sync` | 五生成器全对拍（工具契约 / service·event 目录 / 开放面指纹 / 引擎契约 v6） |
 
-- CI（`.github/workflows/ci.yml`）只做编译 + 测试。**不要修改 CI。**
+- CI（`.github/workflows/ci.yml`）**现只覆盖前端构建**（`npm ci` + `npm run build` = esbuild 产物域 + `tsc --noEmit` + `vite build`）。
+  改动前须先问用户（不是禁止，是**不可擅自**）：2026-09-22 收敛为「必过的最简 CI」即经用户授权。
+  三条被删的 job 之所以删，是**失败与代码质量无关**（推上去必红、红了没信息量）——若要把它们加回来，
+  先确认该门禁在 CI 环境真能过（详见 `ci.yml` 头部与 CLAUDE.md「不可擅动」一条）。
+  注：Rust 侧现已**无 CI 覆盖**；要补的干净入口是 `cargo check -p hologram-engine`（引擎 crate 不含
+  tauri 的编译期资源校验，绕开 `bundle.resources` 需文件在场那个坑）。
 - **中文文本批量改文件：禁用 PowerShell `Get-Content`/`Set-Content`（2026-09-18 实测事故）**：本机 `Get-Content -Raw` + `Set-Content -NoNewline` 往返会把全角左括号 `（`（U+FF08）写成 `六`（U+516D）——一次"批量改几处数字"把 8 份文档 591 行写坏（**识别指纹：`git diff --numstat` 增删行数 1:1 且文件几乎每行都变** = 编码事故，不是内容改动）。改文本一律走 Node（`fs.readFileSync(p,'utf8')` + `writeFileSync(p,txt,'utf8')`），并**逐条校验替换命中数**（未命中即报错退出，不静默）；改完第一眼看 `git diff --stat` 规模是否符合预期。修复 = `git checkout -- <文件>` 回已提交态重做（前提：先确认那些文件里没有他窗在途改动）。
 - 修 INVARIANTS/landmine-map 里的雷，必须配回归测试，一颗雷一个 commit。
 - **convergence 双轨纪律**：`npm run verify:convergence` 连跑 standard + minimal（单轨仍可用 `:standard` / `:minimal`）；只有 CI 的 `convergence.yml` 跑单轨 standard。**新增/改基线时两轨一起验**——教训：第二条轨不在默认门禁里就会静默腐烂（2026-09-14 审计发现的 minimal 漏录即此因）。

@@ -3,7 +3,8 @@
 # 看一眼 diff 点 merge 即可；不看也不影响任何现有行为。
 #
 # 拍板记录（2026-08-27 用户）：daily 频率获批。CONVENTIONS §3「不要修改 CI」
-# 的豁免范围仅限本文件；ci.yml 本体仍不动。
+# 的豁免范围仅限本文件。（2026-09-22 更新：`ci.yml` 已由用户授权重写为「必过的最简 CI」，
+# CI 面规则见 CONVENTIONS §3 —— 改动前须先问用户，非绝对禁止。）
 name: catalog-refresh
 
 on:
