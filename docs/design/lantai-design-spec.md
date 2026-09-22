@@ -325,7 +325,7 @@
 
 **owner → 会话归属**：Rust 只给裸 owner 串（`main-<ts>-<rand>` / `sub-<ts>-<rand>` / null），没有会话字段。子 Agent 不入 `sessionOfAgent` 表（`agent-session-state.ts:99-101` 明写），故解析走 **bus 的 `parentId` 链上溯**到主 Agent 再查表——这条链对子 Agent 是通的（子 Agent 随 `setBus` 注册）。解析器由 `workspace` 在装配期注入（面板 runtime 才有 bus），teardown 对称解除；**不注入＝归属未知**，条目仍可见，落「他卷」档。
 
-**边界（诚实栏）**：① **子代理条目无逐条停止**——池对 UI 不可达（`ChatAgentHandle` 只暴露 `runningSubAgentCount` / `stopAllSubAgents`），逐条停需另开只读/控制通道，本批不做；② **shell 终态无退出码**（账本不回流，见上）；③ `background_activity` 混着**前台**正在跑的命令（`BgJob` 无 fg/bg 字段，外部不可观测），故册页叫「役」不叫「后台任务」；④ 记录**不落盘**，重开即空；⑤ **landmine L5 未拆**：本册只解决「看得见」，不改变「算不算在跑」——呼吸线/停钮/侧栏状态点/退出守卫仍读运行账（那半边是产品语义待拍板，见 `landmine-map`）。
+**边界（诚实栏）**：① **子代理条目无逐条停止**——池对 UI 不可达（`ChatAgentHandle` 只暴露 `runningSubAgentCount` / `stopAllSubAgents`），逐条停需另开只读/控制通道，本批不做；② **shell 终态无退出码**（账本不回流，见上）；③ `background_activity` 混着**前台**正在跑的命令（`BgJob` 无 fg/bg 字段，外部不可观测），故册页叫「役」不叫「后台任务」；④ 记录**不落盘**，重开即空；⑤ **「算不算在跑」= 用户裁定「不计入」**（**拍板日 2026-09-20**，留痕 `tests/async-return-delivery.test.ts` 头注；landmine L5 状态格当时漏记，2026-09-22 用户复述后补记）：**后台活体不计入**——本卷 Agent 就是空闲的、可继续交互，呼吸线 / 停钮 / 侧栏状态点 / 行卷中 / 退出守卫一律保持只读运行账。役册不是补在那个判据上，而是**另立一个面**：「Agent 忙不忙」读运行账，「还有什么在跑」读役册。**接受的代价**：在役后台任务不升起退出确认，关窗即被 lifecycle 终止。
 
 **证据**：`tests/work-ledger-store.test.ts`（21 例：spawn/finished 记账、未观察到的收尾 no-op、起算反推稳定、消失即结转中性终态、按面板×卷切分与排序、终态配额淘汰不吃在役、**只读纪律**（对账只打 `background_activity`）、形状坏/传输错都写 error 不静默、`bash_kill` 不带 owner＝用户路径）+ `tests/composer-dock-work-ledger.test.tsx`（10 例：触发器读数与空态、无活跃卷整枚不出现、册页三段与空态诚实、逐条停止只出 shell 条目、停止走 `bash_kill` 后立刻落「已了」、六层互斥、切卷清本地态）+ `tests/composer-dock-settings-pair.test.tsx`（**显式规格变更**：行尾由单枚仪表扩为「役 | 墨」两枚读数件，成对契约与「读数不插进策略对」不变）。
 

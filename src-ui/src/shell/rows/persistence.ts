@@ -19,8 +19,14 @@ import { pushStatus } from '../runtime';
 
 /** 正在运行的卷数（关窗拦截判据，2026-09-19）。真源 = 运行态唯一读面（v43：
  *  运行账上的活记录）——与纸面呼吸线 / 创作坞后台指示同源，不再各自取账本实例。
- *  ⚠ 已知边界（landmine L5，未拆）：异步子 Agent / 后台任务在父轮收尾后仍活着时
- *  不算「在跑」——「本卷在跑」是否该含活体后台工作属产品语义，待拍板。 */
+ *  **后台活体不计入**（用户裁定 **2026-09-20**，留痕 `tests/async-return-delivery.test.ts`
+ *  头注；landmine L5 状态格当时漏记，2026-09-22 用户复述同一裁定后补记）：async
+ *  子 Agent / 后台命令在父轮收尾后仍活着时，**本卷 Agent 就是空闲的**（用户原话
+ *  「可以继续和用户交互，没问题」）⇒ 呼吸线 / 停钮 / 侧栏状态点 / 行卷中 / 本判据
+ *  一律保持只读运行账，**不**在派发点寄 `kind:'subagent'` / `kind:'bg'` 记录。
+ *  代价（用户已知并接受）：在役后台任务不升起退出确认，随退出被 lifecycle 终止。
+ *  「派出去的活在跑」另由创作坞**役册**承担可见性（设计规格书 §9.4）——两个信号
+ *  两个面：本判据答「Agent 忙不忙」，役册答「还有什么在跑」。 */
 function countRunningSessions(): number {
   let running = 0;
   agentSessionState.forEachAgentEntry((storeId) => {
