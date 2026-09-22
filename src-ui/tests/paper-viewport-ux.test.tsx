@@ -95,7 +95,7 @@ import { rendererServicePlugin } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { wheelFactor, worldToScreen } from '../src/paper/canvas-math';
-import { tetherAnchors } from '../src/paper/provenance';
+import { TETHER_ANCHOR_DY, tetherAnchors } from '../src/paper/provenance';
 import { makeStrip } from '../src/paper/selection';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { blockReturnsToFlow } from '../src/plugins/builtin/paper-shell/use-paper-drag';
@@ -1380,11 +1380,19 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     const fromWorld = tetherAnchors({ x: pin.x, y: pin.y, w: pin.w }, hole).from;
     expect(Number(m?.[1])).toBeCloseTo(worldToScreen(v, fromWorld.x, fromWorld.y).x, 0);
     expect(Number(m?.[2])).toBeCloseTo(worldToScreen(v, fromWorld.x, fromWorld.y).y, 0);
-    // 收笔朱点 = 洞缘落点的投影（洞全在钉左 → 洞右缘中线）
+    // 起笔那枚朱点压在同一锚点上（2026-09-22 锚点批：两端都是「落」，不再有飘空的起点）
+    const origin = container?.querySelector('.pp-tether-origin');
+    expect(origin).not.toBeNull();
+    expect(Number(origin?.getAttribute('cx'))).toBeCloseTo(worldToScreen(v, fromWorld.x, fromWorld.y).x, 6);
+    expect(Number(origin?.getAttribute('cy'))).toBeCloseTo(worldToScreen(v, fromWorld.x, fromWorld.y).y, 6);
+    // 每块左右缘各一枚常显锚点——引线接的就是它们
+    expect(el.querySelectorAll('.pp-anchor--l, .pp-anchor--r').length).toBe(2);
+    // 收笔朱点 = 洞的**锚点**落点投影（洞全在钉左 → 洞右缘 × 块顶下 TETHER_ANCHOR_DY）
     const bead = container?.querySelector('.pp-tether-bead');
     expect(bead).not.toBeNull();
-    expect(Number(bead?.getAttribute('cx'))).toBeCloseTo(worldToScreen(v, hole.x + hole.w, hole.y + hole.h / 2).x, 6);
-    expect(Number(bead?.getAttribute('cy'))).toBeCloseTo(worldToScreen(v, hole.x + hole.w, hole.y + hole.h / 2).y, 6);
+    const anchorY = hole.y + TETHER_ANCHOR_DY;
+    expect(Number(bead?.getAttribute('cx'))).toBeCloseTo(worldToScreen(v, hole.x + hole.w, anchorY).x, 6);
+    expect(Number(bead?.getAttribute('cy'))).toBeCloseTo(worldToScreen(v, hole.x + hole.w, anchorY).y, 6);
     await act(async () => {
       fire(el, 'mouseout', { relatedTarget: null });
     });

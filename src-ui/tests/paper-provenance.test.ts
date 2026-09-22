@@ -25,8 +25,7 @@ import {
   provenanceTitle,
   provenanceTraceable,
   sourceBlockIdOf,
-  TETHER_GAP,
-  TETHER_PIN_DY,
+  TETHER_ANCHOR_DY,
   TETHER_SAG_MAX,
   TETHER_WOBBLE,
   tetherAnchors,
@@ -87,52 +86,104 @@ describe('引线（划词朱线同族的手绘墨迹，2026-09-18 重做）', ()
   const pin = { x: 260, y: 100, w: 480 };
   const hole = { x: -240, y: -600, w: 480, h: 32 };
 
-  it('锚点选边（世界坐标）：净空优先（左/右）；横向相叠取左缘（不横穿钉身）', () => {
-    // 洞全在钉左：钉左缘 → 洞右缘；落点 = 洞中线
-    expect(tetherAnchors(pin, hole).to).toEqual({ x: 240, y: -584 });
+  it('锚点选边（世界坐标）：面对面——两端各取朝向对方的那条缘', () => {
+    // 洞全在钉左：钉左缘 → 洞右缘；落点 = 洞的**锚点**（块顶下 TETHER_ANCHOR_DY）
+    expect(tetherAnchors(pin, hole).to).toEqual({ x: 240, y: -600 + TETHER_ANCHOR_DY });
     // 洞全在钉右：钉右缘 → 洞左缘
-    expect(tetherAnchors(pin, { x: 900, y: -600, w: 480, h: 32 }).to).toEqual({ x: 900, y: -584 });
-    // 横向相叠（钉压着洞的一截）：两侧都取左缘
-    expect(tetherAnchors({ x: 200, y: 100, w: 480 }, hole).to).toEqual({ x: -240, y: -584 });
+    expect(tetherAnchors(pin, { x: 900, y: -600, w: 480, h: 32 }).to).toEqual({
+      x: 900,
+      y: -600 + TETHER_ANCHOR_DY,
+    });
+    // 横向相叠（2026-09-22 三刀改）：仍取**朝向钉的那条缘**（洞右缘 240），
+    // 不再送到背离钉的远缘（旧规则给 -240）——线因此不横穿该块
+    expect(tetherAnchors({ x: 200, y: 100, w: 480 }, hole).to).toEqual({ x: 240, y: -600 + TETHER_ANCHOR_DY });
   });
 
-  it('起笔留白：线不贴死钉缘——沿弦内缩 TETHER_GAP（收笔端不缩，朱点压在洞缘上）', () => {
+  it('两端都落在锚点上（2026-09-22 锚点批）：起笔**不再留白**——就是块缘那枚圆点的圆心', () => {
     const a = tetherAnchors(pin, hole);
-    const y0 = pin.y + TETHER_PIN_DY;
-    expect(Math.hypot(a.from.x - pin.x, a.from.y - y0)).toBeCloseTo(TETHER_GAP, 6);
-    expect(a.from.y).toBeLessThan(y0); // 缩向洞（向上）
+    // 起笔 = 钉左缘 × 块顶下 TETHER_ANCHOR_DY，**逐位相等**（旧写法沿弦内缩 6px，
+    // 把起点推到块缘外的虚空里——用户判「没有固定的锚点」，该写法退役）
+    expect(a.from).toEqual({ x: pin.x, y: pin.y + TETHER_ANCHOR_DY });
   });
 
-  it('锚高由调用方给的同一支笔（会话树「枝」的画布承接复用）：tetherAnchors 只是它 + 钉锚高', () => {
-    // 钉那一路 = tetherAnchorsAt(锚高 pin.y + TETHER_PIN_DY)（判例内转录，不新造线）
-    expect(tetherAnchors(pin, hole)).toEqual(tetherAnchorsAt({ x: pin.x, y: pin.y + TETHER_PIN_DY, w: pin.w }, hole));
-    // 枝边那一路：锚在**卷首中线**（世界坐标由调用方给），选边/留白/收笔规则同一份
+  it('锚高由调用方给的同一支笔（会话树「枝」的画布承接复用）：tetherAnchors 只是它 + 块锚高', () => {
+    // 钉那一路 = tetherAnchorsAt(锚高 pin.y + TETHER_ANCHOR_DY)（判例内转录，不新造线）
+    expect(tetherAnchors(pin, hole)).toEqual(
+      tetherAnchorsAt({ x: pin.x, y: pin.y + TETHER_ANCHOR_DY, w: pin.w }, hole),
+    );
+    // 枝边那一路：锚在**卷首中线**（世界坐标由调用方给），选边/锚点规则同一份
     const folio = { x: 1640, y: -1400, w: 720 };
     const node = { x: -360, y: -300, w: 720, h: 40 };
     const a = tetherAnchorsAt(folio, node);
-    expect(a.to).toEqual({ x: 360, y: -280 }); // 节点全在卷首左 ⇒ 收笔落节点右缘中线
-    expect(Math.hypot(a.from.x - folio.x, a.from.y - folio.y)).toBeCloseTo(TETHER_GAP, 6);
+    expect(a.to).toEqual({ x: 360, y: -300 + TETHER_ANCHOR_DY }); // 节点全在卷首左 ⇒ 收笔落节点右缘锚点
+    expect(a.from).toEqual({ x: folio.x, y: folio.y }); // 起笔 = 卷首左缘锚点，无留白
   });
 
-  it('笔道：两端微伏收零（起笔/收笔干净），点数随长度、上下有界', () => {
+  it('笔道：两端收零（起笔/收笔干净），点数随长度；**无横向净空 ⇒ 直弦不鼓**', () => {
     const from = { x: 100, y: 500 };
     const to = { x: 100, y: -300 };
     const pts = tetherPoints(from, to, 7);
     expect(pts[0]).toEqual([from.x, from.y]); // 起笔 = 锚点（微伏包络为零）
     expect(pts[pts.length - 1]).toEqual([to.x, to.y]); // 收笔 = 落点（微伏包络为零）
-    expect(pts.length).toBe(Math.max(6, Math.min(28, Math.round(800 / 46))) + 1);
-    // 纯纵向：**不垂**（两端同轴没有可垂的余量）——纵坐标逐点仍在弦上，
-    // 偏离只发生在横轴（微伏走弦的法向）
-    const step = (to.y - from.y) / (pts.length - 1);
-    for (let k = 0; k < pts.length; k++) {
-      expect(pts[k][1]).toBeCloseTo(from.y + step * k, 6);
-      expect(Math.abs(pts[k][0] - from.x)).toBeLessThanOrEqual(TETHER_WOBBLE);
+    expect(pts.length).toBe(Math.max(10, Math.min(48, Math.round(800 / 18))) + 1);
+    // 纯纵向（dx = 0 ⇒ 臂长 = 0）：**不垂也不鼓**——逐点仍在弦上，偏离只发生在横轴
+    // （微伏走弦的法向，包络两端收零）。y 的**参数化**是不均匀的（贝塞尔两端慢中间快），
+    // 但**轨迹**就是那条竖弦——这里钉的是轨迹不是步长。
+    for (const [x, y] of pts) {
+      expect(Math.abs(x - from.x)).toBeLessThanOrEqual(TETHER_WOBBLE);
+      expect(y).toBeLessThanOrEqual(from.y + 1e-6);
+      expect(y).toBeGreaterThanOrEqual(to.y - 1e-6);
     }
-    // 中段抖得最开、两端归零
-    const midK = Math.floor(pts.length / 2);
-    expect(Math.abs(pts[midK][0] - from.x)).toBeGreaterThan(0.3);
+    // 中段确实在抖（不是一条零振幅的机器线），两端归零
+    expect(Math.max(...pts.map(([x]) => Math.abs(x - from.x)))).toBeGreaterThan(0.3);
     expect(pts[0][0]).toBe(from.x);
     expect(pts[pts.length - 1][0]).toBe(to.x);
+  });
+
+  it('切向贝塞尔（三刀）：**有横向净空 ⇒ 成弧**（不再是直弦），出笔切线水平', () => {
+    // 典型场景：钉落在卷右外侧（真净空），洞在卷内左上方。臂长 = 弦长 × 0.25 且在上限内
+    const from = { x: 700, y: 400 };
+    const to = { x: 300, y: 0 };
+    const pts = tetherPoints(from, to, 42);
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy);
+    const nx = -dy / len;
+    const ny = dx / len;
+    const maxDev = Math.max(...pts.map(([x, y]) => Math.abs((x - from.x) * nx + (y - from.y) * ny)));
+    // 直弦的法向偏离 ≈ 0（只有微伏 1.2px）；成弧后应到几十 px 量级
+    expect(maxDev).toBeGreaterThan(20);
+    expect(maxDev).toBeLessThan(len * 0.25); // 弧不是失控的鼓包
+    // 出笔切线水平：首段斜率远平于弦（弦是 45°=1.0）——贝塞尔的参数化两端慢中间快，
+    // 所以钉的是**切线方向**，不是某一步的绝对位移（那会把「参数化」误判成「几何」）
+    const exitSlope = (pts[1][1] - pts[0][1]) / (pts[1][0] - pts[0][0]);
+    const last = pts[pts.length - 1];
+    const prev = pts[pts.length - 2];
+    const entrySlope = (last[1] - prev[1]) / (last[0] - prev[0]);
+    expect(Math.abs(exitSlope)).toBeLessThan(0.2);
+    expect(Math.abs(entrySlope)).toBeLessThan(0.2);
+    expect(pts[0]).toEqual([from.x, from.y]);
+    expect(pts[pts.length - 1]).toEqual([to.x, to.y]);
+  });
+
+  it('臂长两道夹：远洞不失控（上限），横向窄不鼓（净空比例）', () => {
+    // 远洞（洞离屏 1288px）：无上限照抄 ComfyUI 会给 349px 臂长 → 240px 鼓包（台架实测）；
+    // 夹到 TETHER_SPLINE_MAX 后，法向偏离必须显著小于那个值
+    const far = tetherPoints({ x: 596, y: 368 }, { x: 40, y: -920 }, 42);
+    const fx = -556;
+    const fy = -1288;
+    const flen = Math.hypot(fx, fy);
+    const fnx = -fy / flen;
+    const fny = fx / flen;
+    const farDev = Math.max(...far.map(([x, y]) => Math.abs((x - 596) * fnx + (y - 368) * fny)));
+    expect(farDev).toBeLessThan(180); // 未夹时是 240
+    // 窄横向（钉缘贴着洞缘，只有 4px 净空）：臂长退到 ≈2.4px ⇒ 仍是一条直线
+    const tight = tetherPoints({ x: 596, y: 312 }, { x: 600, y: 80 }, 42);
+    const tdx = 4;
+    const tdy = -232;
+    const tlen = Math.hypot(tdx, tdy);
+    const tDev = Math.max(...tight.map(([x, y]) => Math.abs((x - 596) * (-tdy / tlen) + (y - 312) * (tdx / tlen))));
+    expect(tDev).toBeLessThan(6);
   });
 
   it('垂（重力）：只吃横向跨度——横丝中段下垂 ≈ 上限，纵丝不垂', () => {
@@ -213,6 +264,33 @@ describe('接线与样式钉值（防回漂）', () => {
     // 手绘平滑与他人共用（同一支笔）——不各写一份
     expect(SEL_INK_TS).toContain('export function smoothPath');
     expect(PROVENANCE_TS).toContain("import { smoothPath } from './sel-ink'");
+  });
+
+  it('锚点（2026-09-22 锚点批）：每块左右缘各一枚固定圆点，引线两端各落一枚朱点', () => {
+    // 常量与 CSS 字面量**同值**（两处各写一遍就必须钉住）
+    expect(TETHER_ANCHOR_DY).toBe(12);
+    const dot = ruleBody(PANEL_CSS, '.pp-anchor {');
+    expect(dot).toContain('position: absolute');
+    expect(dot).toContain(`top: ${TETHER_ANCHOR_DY}px`);
+    expect(dot).toContain('border-radius: 50%');
+    expect(dot).toContain('var(--ink-4)'); // 淡墨（与文类签 hairline 同阶）
+    expect(dot).toContain('pointer-events: none');
+    // **不常显**（2026-09-22 用户判「专门加的锚点圆点没必要常显」）：静态零信息噪声——
+    // 引线本来就会在两端各落一枚朱点；改为进入块才显形（同 .pp-kind:hover 那族）
+    expect(dot).toContain('opacity: 0');
+    expect(dot).toContain('transition: opacity var(--snap)');
+    expect(PANEL_CSS).toContain('.pp-block:hover .pp-anchor {');
+    // 左右两缘各一枚（同一个相对位置 = 这套锚点的全部意义）
+    expect(ruleBody(PANEL_CSS, '.pp-anchor--l {')).toContain('left: 0');
+    expect(ruleBody(PANEL_CSS, '.pp-anchor--r {')).toContain('right: 0');
+    // 页边注 hairline 加长接到左缘那枚锚点（地标与锚点连成一条链）
+    expect(ruleBody(PANEL_CSS, '.pp-kind::after {')).toContain('width: 18px');
+    // 起笔那枚独立成类：`.pp-tether-bead` 是「落点」的既有读面，不能被顶掉
+    expect(ruleBody(PANEL_CSS, '.pp-tether-origin {')).toContain('var(--seal)');
+    // JSX 挂点：两枚锚点在 BlockView（三条渲染路径共用那一处）；引线两端各一枚
+    expect(PANEL_TSX).toContain('className="pp-anchor pp-anchor--l"');
+    expect(PANEL_TSX).toContain('className="pp-anchor pp-anchor--r"');
+    expect(PANEL_TSX).toContain('className="pp-tether-origin"');
   });
 
   it('一屏一线（防面条）：引线只在 hover/溯源期存在，不是常显装饰', () => {

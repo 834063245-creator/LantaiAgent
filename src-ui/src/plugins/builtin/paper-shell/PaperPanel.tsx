@@ -41,6 +41,7 @@ import {
   provenanceTitle,
   provenanceTraceable,
   sourceBlockIdOf,
+  TETHER_ANCHOR_DY,
   tetherAnchors,
   tetherAnchorsAt,
   tetherPath,
@@ -259,6 +260,12 @@ const BlockView = memo(function BlockView({
         : false);
   return (
     <>
+      {/* 锚点（2026-09-22 锚点批）：块的**左右缘各一枚圆点**——引线两端的落点，
+          高度 = 块顶下 TETHER_ANCHOR_DY（= 文类签 hairline 那一档）。**不常显**：
+          进入块才显形（用户判「专门加的锚点圆点没必要常显」），走 --ink-4；
+          被引线连上时由引线层自己的朱点标出位置。见 CSS .pp-anchor 注。 */}
+      <span className="pp-anchor pp-anchor--l" aria-hidden="true" />
+      <span className="pp-anchor pp-anchor--r" aria-hidden="true" />
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽手柄（D-R2-1 拖出钉住）；收回有原生按钮 */}
       <div className="pp-kind pp-drag-handle" onMouseDown={(e) => onDragHandleMouseDown(e, block)}>
         <span className="pp-zh">{KIND_ZH[block.kind] ?? block.kind}</span>
@@ -675,13 +682,14 @@ export function PaperPanel() {
     }
     return out;
   }, [branchEdges, regions]);
-  /** 引线笔道（屏幕坐标）+ 落点：**卷首中线 → 节点缘**。种子取枝卷号：同枝恒同线。 */
+  /** 引线笔道（屏幕坐标）+ **两端锚点**：**卷首中线 → 节点锚点**。种子取枝卷号：同枝恒同线。 */
   const branchTethers = useMemo(() => {
     const out: Array<{
       childSid: number;
       parentSid: number;
       blockId: string;
       d: string;
+      origin: { x: number; y: number };
       bead: { x: number; y: number };
     }> = [];
     for (const t of branchTargets) {
@@ -703,7 +711,7 @@ export function PaperPanel() {
         worldToScreen(view, world.to.x, world.to.y),
         selSeedOf(`branch-${t.childSid}`),
       );
-      out.push({ ...t, d: art.d, bead: art.bead });
+      out.push({ ...t, d: art.d, origin: art.origin, bead: art.bead });
     }
     return out;
   }, [branchTargets, regions, view]);
@@ -769,9 +777,11 @@ export function PaperPanel() {
     const block = region?.flowGeom.find((g) => g.id === branchDrag.blockId);
     if (!block) return null;
     const at = screenToWorld(view, branchDrag.screen.x, branchDrag.screen.y);
+    // 起笔 = 块缘锚点（与引线同一套）；落点 = 指针**本身**（「落点即所见」）——指针不是块、
+    // 没有块锚点，故先把锚点偏移减掉，让 tetherAnchorsAt 算出的 to 正好落在指针上。
     const world = tetherAnchorsAt(
-      { x: block.x, y: block.y + block.h / 2, w: block.w },
-      { x: at.x, y: at.y, w: 0, h: 0 },
+      { x: block.x, y: block.y + TETHER_ANCHOR_DY, w: block.w },
+      { x: at.x, y: at.y - TETHER_ANCHOR_DY, w: 0, h: 0 },
     );
     return tetherPath(
       worldToScreen(view, world.from.x, world.from.y),
@@ -1342,7 +1352,9 @@ export function PaperPanel() {
           {tether && (
             <svg className="pp-tether-layer" aria-hidden="true">
               <path className="pp-tether" d={tether.d} />
-              {/* 落点朱点（句读点朱遗意）：线是引，点是落 */}
+              {/* 两端各一枚朱点（2026-09-22 锚点批）：起笔那枚正压在块缘的常显锚点上，
+                  收笔那枚压在洞的锚点上——「线是引，点是落」，现在两头都是落。 */}
+              <circle className="pp-tether-origin" cx={tether.origin.x} cy={tether.origin.y} r={2.2} />
               <circle className="pp-tether-bead" cx={tether.bead.x} cy={tether.bead.y} r={2.2} />
             </svg>
           )}
@@ -1373,6 +1385,7 @@ export function PaperPanel() {
                     }}
                   />
                   <path className="pp-tether pp-branch-tether" d={t.d} />
+                  <circle className="pp-tether-origin" cx={t.origin.x} cy={t.origin.y} r={2.2} />
                   <circle className="pp-tether-bead" cx={t.bead.x} cy={t.bead.y} r={2.2} />
                 </g>
               ))}
@@ -1386,6 +1399,12 @@ export function PaperPanel() {
           {branchDragTether && (
             <svg className="pp-tether-layer pp-branch-drag-layer" aria-hidden="true">
               <path className="pp-tether" d={branchDragTether.d} />
+              <circle
+                className="pp-tether-origin"
+                cx={branchDragTether.origin.x}
+                cy={branchDragTether.origin.y}
+                r={2.2}
+              />
               <circle className="pp-tether-bead" cx={branchDragTether.bead.x} cy={branchDragTether.bead.y} r={2.2} />
             </svg>
           )}

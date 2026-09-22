@@ -820,7 +820,10 @@
   position: absolute;
   right: -18px;
   top: 10px;
-  width: 14px;
+  /* 14 → 18（2026-09-22 锚点批）：让页边注这条 hairline **接上左缘那枚锚点**
+     （末端由「块缘外 6px」收到 2px，正好抵住半径 2 的圆点）——地标与锚点连成一条链，
+     引线再从锚点出发。钉块的这条仍是 display:none（报头批），故它由右缘那枚锚点承担。 */
+  width: 18px;
   height: 1px;
   background: var(--ink-4);
   transition: background var(--snap);
@@ -2100,7 +2103,54 @@
  * （墨宽不随缩放变——世界 1px 在 zoom .3 下 = .3px，等于没画）；② 微伏走弦的法向；
  * ③ 叠一层垂（只吃横向跨度，纯纵向的丝不垂）；④ 起笔留白 6px + 收笔朱点。
  * 朱砂 = 人（钉住是用户的动作），瞬时态不占「每屏至多一处红」的常驻名额；
- * 双笔 echo 不抄——划词是短线语汇，长引线上会读成双线/毛边。 */
+ * 双笔 echo 不抄——划词是短线语汇，长引线上会读成双线/毛边。
+ *
+ * **2026-09-22 三刀**（用户拿 ComfyUI 连线为参照判「观感质感好多了」）：笔道从「直弦 + 微伏」
+ * 换成**切向贝塞尔**（出笔沿锚面水平 + 臂长 = 弦长×0.25，夹上限与净空），选边改「面对面」，
+ * 垂的包络改零斜率。几何见 `paper/provenance.ts` 头注「三刀」；本文件只动墨阶与层序。
+ *
+ * **2026-09-22 锚点批**（用户判「没有一个固定的锚点来连接引线，感觉奇怪」）：每块左右缘各印
+ * 一枚**固定圆点**（`.pp-anchor`），引线两端都接在它上面、两端各落一枚朱点。
+ * 根因是两头都没有实体：起点被 `TETHER_GAP` 推到块缘外的虚空里，而**钉块的 hairline 是
+ * `display: none`**（便条批「页边注随页边一起退役」）、流块的 hairline 又是 1px `--ink-4`
+ * ——地标要么不在、要么看不见。
+/* ── 锚点（2026-09-22 锚点批）：块的左右缘各一枚**固定圆点**，引线两端的落点 ──
+ * 高度 = 块顶下 12px（= 文类签 hairline 那一档；真源 `provenance.TETHER_ANCHOR_DY`，
+ * 两处同值由 tests/paper-provenance 钉住）。**同一个相对位置**是这套锚点的全部意义：
+ * 线因此永远插在东西上，不再有飘在虚空里的起点。
+ * 墨阶与显形：走 `--ink-4`（与 hairline 同阶——它本来就是那条线的「端」），但**非常显**
+ * ——进入块才显形（2026-09-22 用户判「专门加的锚点圆点没必要常显」：静态点是零信息噪声，
+ * 引线本来就会在两端各落一枚朱点）。显形时也不转朱砂：位置由引线层的朱点标，一屏至多一处红不破。
+ * 形制：**圆点**，与「钉住」身份的**方墨点**（`.pp-block.pp-pinned .pp-kind .pp-zh::before`）
+ * 分属两种语言——方 = 状态，圆 = 连接点。 */
+.pp-anchor {
+  position: absolute;
+  top: 12px;
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 50%;
+  background: var(--ink-4);
+  pointer-events: none;
+  /* **不常显**（2026-09-22 用户判「专门加的锚点圆点没必要常显」）：常显是零信息噪声
+     ——引线本来就在两端各落一枚朱点，静态点只是重复它。改**进入块才显形**：与
+     `.pp-kind:hover::after` 那一族「手柄可发现性」同一套语言（hover 即示意「这里可以接」），
+     走 `--snap` 档。**节点恒在 DOM**（只是透明）——引线两端仍按同一个相对位置落点。 */
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.pp-block:hover .pp-anchor {
+  opacity: 1;
+}
+.pp-anchor--l {
+  left: 0;
+  margin-left: -2px;
+}
+.pp-anchor--r {
+  right: 0;
+  margin-right: -2px;
+}
+
 .pp-tether-layer {
   position: absolute;
   inset: 0;
@@ -2108,7 +2158,10 @@
   height: 100%;
   overflow: visible;
   pointer-events: none;
-  /* 纸与块之上、坞（5）与一切浮件之下——引线不盖家具 */
+  /* 纸与块之上、坞（5）与一切浮件之下——引线不盖家具。
+     2026-09-22 用户拍板**维持块之上**（方案 §2 原案「块之下」由此退役）：`.pp-world` 带
+     transform 即层叠上下文、引线层是它的兄弟，「块之下」那一档拿不到（要拆世界层）；
+     且锚点批把「线接在实体上」做实之后，穿字的代价由锚点与选边共同收窄。 */
   z-index: 4;
 }
 .pp-tether {
@@ -2122,6 +2175,14 @@
   animation: pp-tether-in var(--snap) ease-out both;
 }
 .pp-tether-bead {
+  fill: var(--seal);
+  opacity: 0.8;
+  animation: pp-tether-in var(--snap) ease-out both;
+}
+/* 起笔锚点上那枚朱点（2026-09-22 锚点批）：与收笔同墨同形——**两端都是「落」**。
+ * 独立成类而不是与 .pp-tether-bead 合并选择器：`.pp-tether-bead` 是「落点」的既有读面
+ * （测试按首个匹配取它），起笔那枚若也挂这个类，会把落点从读面里顶掉。 */
+.pp-tether-origin {
   fill: var(--seal);
   opacity: 0.8;
   animation: pp-tether-in var(--snap) ease-out both;

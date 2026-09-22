@@ -29,6 +29,29 @@
 //   ④ 起笔**留白** TETHER_GAP（飘出来，不贴死钉缘）+ 收笔**朱点**（句读点朱的
 //      遗意：线是引，点是落；划词的收笔挑钩是「离纸」，引线到站，故以点收）。
 //
+// ── 2026-09-22 三刀：笔道从「直弦 + 微伏」换成**切向贝塞尔**（用户拿 ComfyUI 的
+//    连线为参照判「观感质感好多了」）──
+//
+// 诊断先行（`prototype/tether-pen-ab.NOTES.md`，实测不是印象）：微伏振幅是**绝对量**
+// 1.2px、频率 ≈1 个周期——这套参数是给划词朱线（一行字，几十到几百 px）定的；搬到
+// 600–1400px 的引线上，最大法向偏离只剩 2.68% → 0.47%，实看就是**一根尺子画的直线**
+// （2026-09-18 判死的那版在视觉上原样回来了，只是多了留白与朱点）。同一台架实测墨本身
+// 没问题（墨宽 1.42px、峰值覆盖 1.00，与字面量逐位吻合）——**劣质感出在几何，不在描边**。
+//
+// 治法 = 转录 ComfyUI 的曲线定律（`renderer/core/canvas/litegraph/litegraphLinkAdapter.ts:241-294`
+// 的 SPLINE 分支：控制点 = 端点 + 锚面法向 × **弦长 × 0.25**，两端切线因此垂直于锚面）。
+// 但**不能无上限照抄**——那条公式与弦长成正比且只有下限没上限，ComfyUI 里两端永远同屏
+// （弦长几百 px）所以不炸，引线的洞可以在一屏之外：台架实测 1397px 弦 → 349px 臂长 →
+// **240px 法向鼓包**。上限必须由我们给，两条各记理由：
+//   · `TETHER_SPLINE_MAX`（160px）：臂长的**绝对**上限——鼓包随弦长线性增长，离屏越远越炸；
+//   · `× TETHER_SPLINE_ROOM`：臂长还不得超过**横向净空**的比例——纯纵向的丝没有可鼓的余量
+//     （与「垂只吃横向跨度」同一条判据），否则近纵向的线会朝一个任意方向鼓出去。
+// 微伏与垂都留着（纸面语义，且「同钉恒同线」有防闪的功能价值），但各改一处：
+//   · 垂的包络从 `4t(1-t)` 换成 `16t²(1-t)²`——**两端斜率归零**，不再破贝塞尔的水平切线
+//     （旧包络在起笔处斜率为 4·sag，等于一边说着「水平出场」一边把线掰斜）；
+//   · 微伏频率提高（≈1 个周期 → ≈1.4–2 个周期）：低频大振幅读作「这根直线没画准」，
+//     高频小振幅才读作手抖。长线上它本来就看不太见，留着是**同钉恒同线**与近看的纸感。
+//
 // 渲染决定（字号/墨阶/层序）不在这里——与 block-model「本层不做任何视觉决定」
 // 同纪律；字面量由 tests/paper-provenance.test.ts 钉死。
 
@@ -51,13 +74,12 @@ export const PROVENANCE_NOTE: Record<ProvenanceState, string> = {
  *  截断只为「一行读得完」，不占版心。状态字不受截断影响（后缀恒在）。 */
 export const PROVENANCE_NAME_MAX = 10;
 
-/** 引线起点纵向偏移（世界 px）：与文类签 hairline 连线（.pp-kind::after top 10px）
- *  同高地——视觉上「页边注的线」一直延长到洞里。 */
-export const TETHER_PIN_DY = 12;
-
-/** 起笔留白（屏幕 px）：线**不贴死钉缘**——飘出来的一丝，不是插在盒子上的插头。
- *  （收笔端不留守白：朱点要压在洞缘上，「落点」是实体。） */
-export const TETHER_GAP = 6;
+/** **锚点纵向偏移**（世界 px）：块的左右缘各有一枚**固定锚点**（圆点），高度 = 块顶下这么多。
+ *  取值 12 = 文类签 hairline 那一档（`.pp-kind` 的 `top: 2` + `::after` 的 `top: 10`）——流块上
+ *  它正落在页边注连线的末端，钉块上它落在报头行里。
+ *  **同一个相对位置是这套锚点的全部意义**（2026-09-22 锚点批）：引线两端都接在它上面，
+ *  线因此永远插在东西上。 */
+export const TETHER_ANCHOR_DY = 12;
 
 /** 微伏振幅上限（屏幕 px）——与划词朱线同量级（sel-ink amp ≤1.4）：一丝手抖，
  *  不是波浪。 */
@@ -67,6 +89,20 @@ export const TETHER_WOBBLE = 1.2;
  *  的余量），垂度 = min(L×0.06, 18) × clamp(|dx| / (0.35L))。同理：真丝挂在两点间
  *  的样子。 */
 export const TETHER_SAG_MAX = 18;
+
+/** 控制点臂长 = 弦长 × 0.25（ComfyUI SPLINE 判例，出处见文件头注「三刀」）。 */
+export const TETHER_SPLINE_K = 0.25;
+
+/** 控制点臂长上限（屏幕 px）——ComfyUI 那条公式与弦长成正比且**没有上限**：它的两端
+ *  永远同屏（弦长几百 px）所以不炸，引线的洞可以在一屏之外（台架实测 1397px 弦 →
+ *  无上限时 349px 臂长 → 240px 法向鼓包）。160 的由来：中距档（弦 ≈600px）臂长 149
+ *  落在上限内 ⇒ 那一档的弧线与判例逐位一致，只有远洞档被夹住。 */
+export const TETHER_SPLINE_MAX = 160;
+
+/** 臂长还不得超过**横向净空 × 这个比例**——纯纵向的丝没有可鼓的余量（同「垂只吃横向
+ *  跨度」那条判据）；dx → 0 时臂长 → 0，笔道退化成一条直线（正是纯纵向该有的样子，
+ *  不去朝一个任意方向鼓）。 */
+export const TETHER_SPLINE_ROOM = 0.6;
 
 /** 出处行文本：`摘自 卷名` / `摘自 卷名 · 未摊开`。
  *  **卷名由调用方经 state/volume-name 的 volumeDisplayName 派生**（无名卷 → 案卷 N
@@ -108,54 +144,50 @@ export function sourceBlockIdOf(sourceBlockId: string): string {
   return sourceBlockId.endsWith(':sc') ? sourceBlockId.slice(0, -':sc'.length) : sourceBlockId;
 }
 
-/** 引线端点（世界坐标）：钉缘 → 洞缘。选边规则 = **净空优先**：
- *  - 洞全在钉左（有净空）→ 钉左缘 → 洞右缘（最近对最近）；
- *  - 洞全在钉右 → 钉右缘 → 洞左缘；
- *  - 横向相叠（钉压着洞的一截）→ 两侧都取**左缘**：线往左出去，不横穿钉身
- *    （相叠时洞的右半被钉盖住，指向它等于没指）。
- *  起笔端再沿弦内缩 TETHER_GAP（线飘出来，不贴死钉缘）；收笔端**不缩**——
- *  朱点压在洞缘上。 */
+/** 引线端点（世界坐标）：钉缘 → 洞缘。选边规则 = **面对面**（按两者的横向中线）：
+ *  - 洞中线在钉中线左 → 取**钉左缘**接**洞右缘**；
+ *  - 否则 → 取**钉右缘**接**洞左缘**。
+ *  一条判据覆盖全部三种相对位置（全在左 / 全在右 / 横向相叠），且两端都是**朝向对方
+ *  的那条缘**——线因此不必绕过任何一方。
+ *
+ *  （2026-09-22 三刀改：旧规则是「净空优先 + 相叠时两侧都取左缘」。相叠那条**把落点
+ *  送到背离钉的远缘**，线为了够到它**整条横穿该块全部正文**——台架实测中距档 4 段正文
+ *  83 个采样点压在字上（`prototype/tether-pen-ab.NOTES.md` 病灶 4）。旧注给的理由是
+ *  「相叠时洞的右半被钉盖住，指向它等于没指」，但判据只看横向（纵向叠不叠不知道），
+ *  纵向分开时那个落点根本没被盖住——理由与判据不等强，故弃。现在线贴洞的**近缘**落点，
+ *  不再横穿。
+ *  **两端都落在锚点上**（2026-09-22 锚点批，用户判「没有一个固定的锚点来连接引线，
+ *  感觉奇怪」）：高度一律 `TETHER_ANCHOR_DY`（块顶下 12px——每块左右缘各一枚固定圆点，
+ *  见该常量注）；**起笔留白退役**（旧 `TETHER_GAP = 6` 把起点推到块缘外的虚空里，正是
+ *  「没有锚点」的直接成因）。 */
 export function tetherAnchors(
   pin: { x: number; y: number; w: number },
   hole: Pick<FlowGeom, 'x' | 'y' | 'w' | 'h'>,
 ): { from: { x: number; y: number }; to: { x: number; y: number } } {
-  return tetherAnchorsAt({ x: pin.x, y: pin.y + TETHER_PIN_DY, w: pin.w }, hole);
+  return tetherAnchorsAt({ x: pin.x, y: pin.y + TETHER_ANCHOR_DY, w: pin.w }, hole);
 }
 
-/** 同一条引线，**锚高由调用方给**——钉那一路的锚高是「页边注的线」（`pin.y +
- *  TETHER_PIN_DY`，见上）；枝边那一路从**卷首**起笔，锚在卷首中线。
- *  选边/留白/收笔规则只有这一份（会话树「枝」的画布承接复用同一支笔，不新造线）。 */
+/** 同一条引线，**锚高由调用方给**——钉那一路的锚高 = 块的锚点（`pin.y + TETHER_ANCHOR_DY`，
+ *  见上）；枝边那一路从**卷首**起笔，锚在卷首中线。
+ *  选边/锚点规则只有这一份（会话树「枝」的画布承接复用同一支笔，不新造线）。 */
 export function tetherAnchorsAt(
   from: { x: number; y: number; w: number },
   hole: Pick<FlowGeom, 'x' | 'y' | 'w' | 'h'>,
 ): { from: { x: number; y: number }; to: { x: number; y: number } } {
   const y0 = from.y;
-  const y2 = hole.y + hole.h / 2;
-  let x0: number;
-  let x2: number;
-  if (from.x - (hole.x + hole.w) > 0) {
-    x0 = from.x;
-    x2 = hole.x + hole.w; // 洞全在左
-  } else if (hole.x - (from.x + from.w) > 0) {
-    x0 = from.x + from.w;
-    x2 = hole.x; // 洞全在右
-  } else {
-    x0 = from.x;
-    x2 = hole.x; // 横向相叠：两侧都取左缘
-  }
-  const dx = x2 - x0;
-  const dy = y2 - y0;
-  const len = Math.hypot(dx, dy);
-  const k = len > TETHER_GAP ? TETHER_GAP / len : 0;
-  return { from: { x: x0 + dx * k, y: y0 + dy * k }, to: { x: x2, y: y2 } };
+  const y2 = hole.y + TETHER_ANCHOR_DY;
+  // 面对面：按两者横向中线判「洞偏哪边」，两端各取朝向对方的那条缘（判据见上注）。
+  const x0 = hole.x + hole.w / 2 <= from.x + from.w / 2 ? from.x : from.x + from.w;
+  const x2 = hole.x + hole.w / 2 <= from.x + from.w / 2 ? hole.x + hole.w : hole.x;
+  return { from: { x: x0, y: y0 }, to: { x: x2, y: y2 } };
 }
 
-/** 引线笔道采样点（**屏幕坐标**）+ 落点。与划词朱线同一手绘语法（sel-ink）：
- *  逐点正弦微伏 + 定种子相位（**同钉恒同线**，重渲染/平移不闪），但两处按引线的
- *  几何改写（各记理由）：
- *   ① 微伏取**弦的法向**——划词是横线（竖向微伏即可），引线可朝任意方向，
- *      纯竖向微伏在纵线上等于没有；
- *   ② 叠一层**垂**（重力）：只吃横向跨度，纯纵向的丝不垂。 */
+/** 引线笔道采样点（**屏幕坐标**）。
+ *
+ *  骨架 = **切向三次贝塞尔**（ComfyUI SPLINE 判例）：出笔与到站都沿锚面的水平法向，
+ *  控制点臂长 = 弦长 × 0.25，再夹两道上限（`TETHER_SPLINE_MAX` / `_ROOM` 各注）。
+ *  墨仍是划词朱线那一支笔：逐点正弦微伏（走**弦的法向**，两端收零）+ 一层垂（重力，
+ *  只吃横向跨度）+ 定种子相位（**同钉恒同线**，重渲染/平移不闪）。 */
 export function tetherPoints(
   from: { x: number; y: number },
   to: { x: number; y: number },
@@ -164,31 +196,61 @@ export function tetherPoints(
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const len = Math.hypot(dx, dy);
-  const n = Math.max(6, Math.min(28, Math.round(len / 46)));
+  const n = Math.max(10, Math.min(48, Math.round(len / 18)));
+  // 两端控制点都沿**行进方向**的水平法向推出去（推出去多少 = 臂长，两道夹见常量注）。
+  const sx = dx < 0 ? -1 : 1;
+  const off = Math.min(len * TETHER_SPLINE_K, TETHER_SPLINE_MAX, Math.abs(dx) * TETHER_SPLINE_ROOM);
+  const c0x = from.x + sx * off;
+  const c0y = from.y;
+  const c1x = to.x - sx * off;
+  const c1y = to.y;
   const nx = len > 0 ? -dy / len : 0;
   const ny = len > 0 ? dx / len : 0;
   const sag = Math.min(len * 0.06, TETHER_SAG_MAX) * Math.min(1, Math.abs(dx) / Math.max(1, len * 0.35));
   const phase = ((seed >>> 0) % 628) / 100;
-  const freq = 4.2 + (seed % 3);
+  const freq = 8.5 + (seed % 4);
   const pts: Array<[number, number]> = [];
   for (let k = 0; k <= n; k++) {
     const t = k / n;
-    // 包络取 sin(πt)：**两端微伏收零**——起笔留白、收笔落点都要干净（划词是着重线，
+    const u = 1 - t;
+    // 两端**逐位**取锚点：微伏/垂的包络在两端是「数学上的 0」，浮点上是 1e-16 量级的
+    // 残差——起笔留白与收笔朱点都按这两个点对齐，钉死它免得残差渗进下游对位。
+    if (k === 0) {
+      pts.push([from.x, from.y]);
+      continue;
+    }
+    if (k === n) {
+      pts.push([to.x, to.y]);
+      continue;
+    }
+    const bx = u * u * u * from.x + 3 * u * u * t * c0x + 3 * u * t * t * c1x + t * t * t * to.x;
+    const by = u * u * u * from.y + 3 * u * u * t * c0y + 3 * u * t * t * c1y + t * t * t * to.y;
+    // 微伏包络取 sin(πt)：**两端微伏收零**——起笔留白、收笔落点都要干净（划词是着重线，
     // 两端照抖；引线的两端是「飘出」与「到站」）。
     const wob = Math.sin(phase + t * freq) * TETHER_WOBBLE * Math.sin(t * Math.PI);
-    pts.push([from.x + dx * t + nx * wob, from.y + dy * t + ny * wob + 4 * t * (1 - t) * sag]);
+    // 垂的包络取 16t²(1-t)²：**两端斜率为零**——不破上面那对水平切线（旧包络 4t(1-t)
+    // 在起笔处斜率为 4·sag，等于一边说着「水平出场」一边把线掰斜）。
+    const bump = 16 * t * t * u * u;
+    pts.push([bx + nx * wob, by + ny * wob + bump * sag]);
   }
   return pts;
 }
 
-/** 引线绘制产物（屏幕坐标）：笔道 d 串（同一手绘平滑）+ 落点朱点。
- *  朱点是「句读点朱」的遗意——**线是引，点是落**（划词朱线的收笔挑钩是「离纸」，
- *  引线到站，故以点收）。 */
+/** 引线绘制产物（屏幕坐标）：笔道 d 串（同一手绘平滑）+ **两端锚点**。
+ *  2026-09-22 锚点批：`origin` 与 `bead` 是同一套锚点的两端——线从锚点出发、到锚点到站，
+ *  两端各落一枚朱点（**线是引，点是落**，现在是「两头都是落」）。 */
 export interface TetherArt {
   d: string;
+  /** 起笔锚点（屏幕坐标）——块上那枚常显锚点圆点的圆心 */
+  origin: { x: number; y: number };
+  /** 收笔锚点（屏幕坐标）——同上 */
   bead: { x: number; y: number };
 }
 
 export function tetherPath(from: { x: number; y: number }, to: { x: number; y: number }, seed: number): TetherArt {
-  return { d: smoothPath(tetherPoints(from, to, seed)), bead: { x: to.x, y: to.y } };
+  return {
+    d: smoothPath(tetherPoints(from, to, seed)),
+    origin: { x: from.x, y: from.y },
+    bead: { x: to.x, y: to.y },
+  };
 }
