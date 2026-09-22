@@ -154,6 +154,130 @@ export async function readAttachmentBase64(
   return b64;
 }
 
+// ── wire 规整（2026-09-22 读图挂起事故）──────────────────────────────
+//
+// 为什么需要第二道规整：准入规整（admitImageBytes）只覆盖**创作坞**三入口
+// （粘贴/拖放/夹选）。工具附图通道（`fs(read)` 读到图片 → Rust 落 attachments
+// → parseToolImageOutput 挂引用）**不经过准入**：实测一张 2560×1400 PNG
+// （6.46MB）内联成 8.61MB data URI 直接上线 → 服务商 30 秒零字节 → 被空闲守卫
+// 判挂起（agent 侧据此把重试改成有界，见 agent/retry.ts 载荷分账）。
+// 本函数是「任何来源的图上线前都受同一条发送带约束」的落点：越界即降采样 +
+// 重编码（PNG 先换 WebP），合规图**逐字节原样返回**（零漂移——不重复重编码）。
+
+/** 单图发送带（caps 由 agent 层 request-images 传入——预算是发送面的账）。 */
+export interface WireImageCaps {
+  maxBytes: number;
+  maxDimension: number;
+  maxPixels: number;
+}
+
+/** wire 载荷（读取器产物）：字节 + 实际编码媒型。 */
+export interface WireImagePayload {
+  mediaType: ImageMediaType;
+  data: string;
+}
+
+/** base64 → 字节。 */
+export function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** 是否已在发送带内（三条同判：字节 / 长边 / 像素）。 */
+function withinWireCaps(bytes: number, width: number, height: number, caps: WireImageCaps): boolean {
+  return bytes <= caps.maxBytes && Math.max(width, height) <= caps.maxDimension && width * height <= caps.maxPixels;
+}
+
+/** 按目标尺寸/编码重画（解码 → canvas → toBlob）。 */
+async function encodeAt(
+  src: { bytes: Uint8Array; mediaType: ImageMediaType },
+  width: number,
+  height: number,
+  outType: ImageMediaType,
+  quality: number | undefined,
+): Promise<Uint8Array> {
+  const copy = new Uint8Array(src.bytes);
+  const { bitmap } = await decodeBitmap(new Blob([copy.buffer as ArrayBuffer], { type: src.mediaType }));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas 2d 上下文不可用，无法规整图片');
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  if (typeof bitmap.close === 'function') bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outType, quality));
+  if (blob === null) throw new Error('canvas 重编码失败');
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/**
+ * wire 规整：把越界图压进发送带，合规图原样（零漂移）。
+ *
+ * 收敛策略（逐轮收紧，最多 4 轮——先保清晰度，再让编码，最后才降尺寸）：
+ *   1. 保比降采样到带内尺寸 + 原编码重编码（长边 2560 → 2048 这一步）；
+ *   2. 同尺寸换编码：PNG → WebP（截图/照片小一个量级）；
+ *   3. 仍超 → 长边 × 0.75 再来一轮（最多再两轮）。
+ * 四轮仍压不进去 = 这张图不适合上线，抛错（调用方降级为原字节上线，由 agent 侧
+ * 单图预算闸摘除换占位——「送不出去」绝不静默）。
+ */
+export async function projectImageForWire(
+  b64: string,
+  mediaType: ImageMediaType,
+  width: number,
+  height: number,
+  caps: WireImageCaps,
+): Promise<WireImagePayload> {
+  const bytes = base64ToBytes(b64);
+  if (withinWireCaps(bytes.length, width, height, caps)) return { mediaType, data: b64 };
+
+  let current: { bytes: Uint8Array; mediaType: ImageMediaType; width: number; height: number } = {
+    bytes,
+    mediaType,
+    width,
+    height,
+  };
+  // GIF 走 canvas 必然首帧化——越界 GIF 直接降级为 WebP 静态帧（与准入面同款取舍）。
+  let outType: ImageMediaType = mediaType === 'image/gif' ? 'image/webp' : mediaType;
+  let maxDimension = caps.maxDimension;
+  let maxPixels = caps.maxPixels;
+  for (let round = 0; round < 4; round++) {
+    if (round >= 2) {
+      // 尺寸让步放在编码让步之后（先丢压缩率，后丢像素）
+      maxDimension = Math.max(256, Math.floor(maxDimension * 0.75));
+      maxPixels = maxDimension * maxDimension;
+    } else if (round === 1 && outType === 'image/png') {
+      outType = 'image/webp';
+    }
+    const target = projectedDimensions(current.width, current.height, maxDimension, maxPixels);
+    const quality = outType === 'image/png' ? undefined : round === 0 ? 0.9 : 0.8;
+    const out = await encodeAt(current, target.width, target.height, outType, quality);
+    if (out.length <= caps.maxBytes) {
+      return { mediaType: outType, data: bytesToBase64(out) };
+    }
+    current = { bytes: out, mediaType: outType, width: target.width, height: target.height };
+  }
+  throw new Error(`附图规整 ${width}×${height} 后仍超出单图发送上限（${Math.round(caps.maxBytes / 1024 / 1024)}MiB）`);
+}
+
+/** 请求期读取 + wire 规整（Agent.imageReader 的 app 端实现）。
+ *  规整失败（jsdom 无 canvas / 解码失败）→ **原字节上线**并留痕：宁可让 agent 侧
+ *  的单图预算闸去裁决（它会摘图换占位并落日志/通知），也不在读取层吞掉这张图。 */
+export async function readAttachmentForWire(
+  root: string,
+  ref: ChatImageRef,
+  caps: WireImageCaps,
+): Promise<WireImagePayload> {
+  const b64 = await readAttachmentBase64(root, ref);
+  try {
+    return await projectImageForWire(b64, ref.mediaType, ref.width, ref.height, caps);
+  } catch (e) {
+    console.warn('[image] wire 规整失败，按原字节上线（agent 侧单图预算闸兜底）:', e);
+    return { mediaType: ref.mediaType, data: b64 };
+  }
+}
+
 // ── B2 采集路由（纯函数面——可测）──────────────────────────────
 
 /** 图片扩展名集合（小写——路由分流判据；与 IMAGE_MEDIA_TYPES 对应 + jpeg 别名）。 */
@@ -179,13 +303,21 @@ export function splitIntakePaths(
 }
 
 /** 粘贴载荷抽图（DSH keymap 同款：clipboardData.items kind='file' → getAsFile，
- *  只取 mime 图片项——文本粘贴零影响）。入参鸭子类型，jsdom 可测。 */
+ *  只取图片项——文本粘贴零影响）。入参鸭子类型，jsdom 可测。
+ *
+ *  ⚡ 判据放宽（2026-09-22 真机失灵）：只认 `file.type` 会把「资源管理器里复制
+ *  的图」挡在门外——CF_HDROP 那条通道交上来的 type 可能是空串，而字节其实是
+ *  真图（用户侧表现 = 粘贴毫无反应，连提示都没有；当事人只能改成手打路径）。
+ *  真守门人是下游 admitImageBytes 的 magic-byte 嗅探（声明与字节不符即拒），
+ *  按扩展名放行只是把「有没有机会被嗅探」还给它；非图在准入处换可见 toast，
+ *  不静默。 */
 export function extractImageFiles(items: Iterable<{ kind: string; getAsFile: () => File | null }>): File[] {
   const out: File[] = [];
   for (const item of items) {
     if (item.kind !== 'file') continue;
     const file = item.getAsFile();
-    if (file?.type.startsWith('image/')) out.push(file);
+    if (file === null) continue;
+    if (file.type.startsWith('image/') || isImagePath(file.name)) out.push(file);
   }
   return out;
 }

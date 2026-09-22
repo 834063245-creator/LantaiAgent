@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // 壳行表（S2-3 填充；S2-4 迁入；V5 拆除 2026-08-22 缩至 9 行；2026-08-24
-// 增 shell-update-check 行至 10 行）—— 壳装配的组合数据源。
+// 增 shell-update-check 行至 10 行；2026-09-22 增 shell-drag-drop 行至 11 行）
+// —— 壳装配的组合数据源。
 //
 // 壳行 = 启动接线单元（S2 设计件 §2.6）：main.ts init() 既有执行序切成
 // 行块，每行一行（id 惯例 hologram/shell-<block>）。与 cordis 插件通道
@@ -28,6 +29,7 @@ import { bootActions, type WorkspaceFlowDeps } from '../shell/rows/actions';
 import { bootBridges } from '../shell/rows/bridges';
 import { bootChat } from '../shell/rows/chat';
 import { bootColdStart } from '../shell/rows/cold-start';
+import { bootDragDrop } from '../shell/rows/drag-drop';
 import { bootKeyguard } from '../shell/rows/keyguard';
 import { bootPersistence } from '../shell/rows/persistence';
 import { bootPlatform } from '../shell/rows/platform';
@@ -50,6 +52,7 @@ export function builtinShellRows(): ShellRow[] {
     { id: 'hologram/shell-platform', boot: () => bootPlatform() },
     { id: 'hologram/shell-chat', boot: (refs) => bootChat(refs) },
     { id: 'hologram/shell-bridges', boot: (refs) => bootBridges(refs) },
+    { id: 'hologram/shell-drag-drop', boot: () => bootDragDrop() },
     { id: 'hologram/shell-keyguard', boot: () => bootKeyguard() },
     { id: 'hologram/shell-sandbox-probe', boot: () => bootSandboxProbe() },
     { id: 'hologram/shell-persistence', boot: (refs) => bootPersistence(refs) },

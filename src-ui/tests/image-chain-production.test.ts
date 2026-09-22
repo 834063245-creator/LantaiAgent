@@ -35,9 +35,10 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
+import { WIRE_IMAGE_CAPS } from '../src/agent/request-images';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';
-import { attachmentFilePath, bytesToBase64, readAttachmentBase64 } from '../src/app/chat/image-intake';
+import { attachmentFilePath, bytesToBase64, readAttachmentForWire } from '../src/app/chat/image-intake';
 import { _resetCredentialCacheForTests } from '../src/provider/credentials';
 import { createLiveProvider } from '../src/provider/live';
 import { resetProxyPort } from '../src/provider/transport';
@@ -175,8 +176,9 @@ async function runTurnWithImage(wired = true): Promise<{ seen: Request[] }> {
     systemPrompt: 'test system prompt',
     eventSink: () => {},
     contextWindow: 0,
-    // 生产注入点（workspace.ts createAgent 的 config.imageReader）
-    ...(wired ? { imageReader: (ref: ChatImageRef) => readAttachmentBase64(ROOT, ref) } : {}),
+    // 生产注入点（workspace.ts createAgent 的 config.imageReader——2026-09-22 起
+    // 读取腰同时负责 wire 规整，故镜像 readAttachmentForWire + 同一份 caps 真源）
+    ...(wired ? { imageReader: (ref: ChatImageRef) => readAttachmentForWire(ROOT, ref, WIRE_IMAGE_CAPS) } : {}),
   });
   await handle.run(new AbortController().signal, '测试，能看到这个图吗', [IMG]);
   return { seen };

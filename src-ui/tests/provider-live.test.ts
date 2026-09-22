@@ -298,7 +298,7 @@ describe('createLiveProvider — 附图能力声明（发送面已改为先发�
   it('Agent + live 壳：声明视觉 → 请求 wire 真带图（reader 读盘 → image_url data URI）', async () => {
     seedSettings({ model: 'vm1', modelOverrides: { vm1: { input: ['text', 'image'] } } });
     seedWithKey();
-    const reader = vi.fn(async () => 'QUJD');
+    const reader = vi.fn(async () => ({ mediaType: 'image/jpeg' as const, data: 'QUJD' }));
     const agent = createTestAgent(createLiveProvider('p1'), new ToolRegistry(), 'sys', {
       eventSink: () => {},
       contextWindow: 0,
@@ -324,7 +324,7 @@ describe('createLiveProvider — 附图能力声明（发送面已改为先发�
     // 决定（真被拒 → 记档 + 去图重发，见 tests/image-reject-fallback.test.ts）。
     seedSettings({ model: 'vm1' });
     seedWithKey();
-    const reader = vi.fn(async () => 'QUJD');
+    const reader = vi.fn(async () => ({ mediaType: 'image/jpeg' as const, data: 'QUJD' }));
     const agent = createTestAgent(createLiveProvider('p1'), new ToolRegistry(), 'sys', {
       eventSink: () => {},
       contextWindow: 0,

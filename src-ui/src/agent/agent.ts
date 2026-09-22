@@ -64,9 +64,14 @@ import { type PlanGate, planGateCheck } from './plan/plan-registry';
 import {
   applyImageBudget,
   collectImageRefs,
+  dropImagesOverBudget,
+  overWireBudgetIds,
   projectImagesForTextModel,
   projectImagesUnsent,
+  type RequestImagePayload,
+  type RequestImageReader,
   resolveRequestImageData,
+  wireImageChars,
 } from './request-images';
 import {
   backoffDelay,
@@ -76,7 +81,10 @@ import {
   isRetryable,
   isStallError,
   MAX_RETRIES,
+  STALL_NOTICE_MARK,
   STALL_RETRY_BUDGET_MS,
+  SUSPECT_PAYLOAD_MAX_ATTEMPTS,
+  SUSPECT_PAYLOAD_MIN_WIRE_CHARS,
   sleepWithAbort,
   withinRetryBudget,
 } from './retry';
@@ -174,10 +182,11 @@ export interface AgentOptions {
    *  （逐字节一致）；runtime 装配经 ctx.agentLoop 注册表解析传入。 */
   agentLoop?: AgentLoop;
   /** 附图字节读取器（multimodal-image-plan B3 · D-5）——请求期把 ChatImageRef
-   *  解析成 base64。注入层：app（工作区根拼 attachments 路径 → fs_cap
-   *  read_base64）；agent 层零 app 依赖。缺省 = 无读取器（附图请求期降级
-   *  为 wire 缺图，不炸）。子 Agent 经 spawn 继承。 */
-  imageReader?: (ref: import('../provider/types').ChatImageRef) => Promise<string>;
+   *  解析成**发放载荷**（规整后字节 + 实际编码媒型，2026-09-22 起）。
+   *  注入层：app（工作区根拼 attachments 路径 → fs_cap read_base64 → wire 规整）；
+   *  agent 层零 app 依赖。缺省 = 无读取器（附图请求期降级为 wire 缺图，不炸）。
+   *  子 Agent 经 spawn 继承。 */
+  imageReader?: import('./request-images').RequestImageReader;
   // gate 已移除 — 权限由 Rust 后端 has_permission_to_use_tool() 处理
 }
 
@@ -256,14 +265,19 @@ export class Agent {
    *  消费面：spawnSubAgent 透传子 Agent（ctx 路径）、诊断/测试只读。 */
   private readonly _composition: import('../composition/roster').ResolvedComposition | null = null;
 
-  /** 附图字节读取器 — 请求期 IO 腰（app 注入；null = 无读取器，附图降级缺图）。 */
-  _imageReader: ((ref: import('../provider/types').ChatImageRef) => Promise<string>) | null = null;
+  /** 附图字节读取器 — 请求期 IO 腰（app 注入；null = 无读取器，附图降级缺图）。
+   *  ⚡ 2026-09-22：产物从裸 base64 改为 {mediaType, data}——wire 规整可能换编码
+   *  （PNG → WebP 压进单图发送带），媒型必须由读取器回报而非沿用 ref。 */
+  _imageReader: RequestImageReader | null = null;
   /** 已实测拒绝图片输入的模型 id 集合（2026-09-19 起能力戳不再作发送硬闸门）。
    *  按**模型 id** 键控——换模型（含会话级覆盖切换）自动重试发图，不把「某模型
    *  不收图」的实测记忆错误地延续到另一个模型上。空集 = 一律先发（默认）。 */
   private _imageUnsupportedModels = new Set<string>();
-  /** 附图解析缓存（ref.id → base64）——实例级，同图跨回合零重读。 */
-  private _imageDataCache = new Map<string, { mediaType: import('../provider/types').ImageMediaType; data: string }>();
+  /** 附图解析缓存（ref.id → 规整后载荷）——实例级，同图跨回合零重读。 */
+  private _imageDataCache = new Map<string, RequestImagePayload>();
+  /** 最近一次请求实际带上的附图 base64 字符数（挂起分账判据——见 stream 重试循环
+   *  的 suspectPayload）。0 = 本轮无图。 */
+  private _wireImageChars = 0;
 
   /** 会话创建时点生效的 preset id（S4-1b 首事件的事实源镜像——构造期读
    *  currentPresetId()；空白会话期经 selectPreset() 改选并追加同名事件）。
@@ -1721,13 +1735,18 @@ export class Agent {
       // 不可重试的错误不重试
       if (!isRetryable(lastErr)) return result;
 
-      // 重试预算分账（2026-09-12 自愈修复）：
+      // 重试预算分账（2026-09-12 自愈修复；2026-09-22 加**载荷分账**）：
+      //   - 载荷可疑（本轮刚带上 MB 级附图，见 _wireImageChars）= **计数预算**：
+      //     挂起走时间预算是为「与载荷无关的出网链路瞬断」设计的；重发同一份大
+      //     载荷不会自愈，只会把 6.4MB 图重传 28 次、把 15 分钟耗成「假挂起」
+      //     （2026-09-22 实测事故）；
       //   - 流挂起（[响应超时]）= 链路级瞬态，可持续数分钟——走时间预算，
       //     窗口内持续重试，链路恢复即自动继续；
       //   - 其余可重试错误（限流/5xx/繁忙）= 计数预算，不该被无限重试。
       // 判定收在 retry.withinRetryBudget 单点（可单测，不再散在循环里）。
       const stalled = isStallError(lastErr);
-      if (!withinRetryBudget(lastErr, attempt, Date.now() - startedAt)) break;
+      const suspectPayload = stalled && this._wireImageChars >= SUSPECT_PAYLOAD_MIN_WIRE_CHARS;
+      if (!withinRetryBudget(lastErr, attempt, Date.now() - startedAt, { suspectPayload })) break;
 
       // 丢弃失败尝试的所有工具调用
       executor?.discard();
@@ -1742,23 +1761,35 @@ export class Agent {
           : undefined;
       const delay = hinted ?? backoffDelay(attempt);
       // 进度口径随预算分账：挂起报「已等待 / 上限」（次数无意义），
-      // 其余错误报「第 n/N 次重试」。
+      // 其余错误报「第 n/N 次重试」；载荷可疑的挂起报「还剩 n 次」。
       const elapsed = Date.now() - startedAt;
-      const progress = stalled
-        ? `仍未收到服务商数据，已等待 ${formatElapsed(elapsed)} / 上限 ${formatElapsed(STALL_RETRY_BUDGET_MS)}`
-        : `第 ${attempt + 1}/${MAX_RETRIES} 次重试`;
+      const imageMiB = (this._wireImageChars / 4 / 3 / 1024 / 1024).toFixed(1);
+      const progress = suspectPayload
+        ? `本轮附图约 ${imageMiB}MiB，服务商无响应——再试 ${SUSPECT_PAYLOAD_MAX_ATTEMPTS - attempt - 1} 次后停止`
+        : stalled
+          ? `仍未收到服务商数据，已等待 ${formatElapsed(elapsed)} / 上限 ${formatElapsed(STALL_RETRY_BUDGET_MS)}`
+          : `第 ${attempt + 1}/${MAX_RETRIES} 次重试`;
       log.info('agent', `stream retry ${attempt + 1} in ${delay}ms`, {
         error: String(lastErr.message || lastErr),
         code: summary || undefined,
-        budget: stalled
-          ? `stall-time:${formatElapsed(elapsed)}/${formatElapsed(STALL_RETRY_BUDGET_MS)}`
-          : `count:${attempt + 1}/${MAX_RETRIES}`,
+        budget: suspectPayload
+          ? `suspect-payload:${attempt + 1}/${SUSPECT_PAYLOAD_MAX_ATTEMPTS}`
+          : stalled
+            ? `stall-time:${formatElapsed(elapsed)}/${formatElapsed(STALL_RETRY_BUDGET_MS)}`
+            : `count:${attempt + 1}/${MAX_RETRIES}`,
         elapsed_ms: elapsed,
+        wire_image_chars: this._wireImageChars || undefined,
       });
       this._sink({
         kind: EventKind.Notice,
         level: 'warn',
-        text: `模型调用失败${codePart}，${(delay / 1000).toFixed(1)}s 后重试（${progress}）…`,
+        text: stalled
+          ? attempt === 0
+            ? // 首条不带计数：它会以卷内贴黄持久留痕（UI 按 STALL_NOTICE_MARK 落卷），
+              // 计数写进去必然过期（2026-09-22：6.4s toast 消失后卷面只剩转圈）。
+              `${STALL_NOTICE_MARK} 服务商 30 秒内未返回任何数据，已进入自动重试——期间卷面可能只有转圈，可随时停止。`
+            : `${STALL_NOTICE_MARK} 服务商仍未返回数据，${(delay / 1000).toFixed(1)}s 后重试（${progress}）…`
+          : `模型调用失败${codePart}，${(delay / 1000).toFixed(1)}s 后重试（${progress}）…`,
       });
 
       const aborted = await sleepWithAbort(delay, signal);
@@ -1778,13 +1809,20 @@ export class Agent {
     // 重试已耗尽——墓碑带原始错误码（第二行，pre-line 渲染）。
     // 挂起与非挂起分别给建议：挂起是链路/服务商侧无响应，与本地配置无关，
     // 说清楚「恢复后直接重发」比泛泛的「请检查网络连接和 API 设置」有用。
+    // 载荷可疑的挂起再多说一句：这类失败重发同一张图不会变好（2026-09-22 事故）。
     const finalMsg = lastErr?.message || '未知错误';
     const finalCode = apiErrorSummary(lastErr);
     const finalWaited = formatElapsed(Date.now() - startedAt);
+    const suspectPayload =
+      lastErr !== undefined && isStallError(lastErr) && this._wireImageChars >= SUSPECT_PAYLOAD_MIN_WIRE_CHARS;
+    const imageMiB = (this._wireImageChars / 4 / 3 / 1024 / 1024).toFixed(1);
     const hint =
       lastErr && isStallError(lastErr)
-        ? `服务商连续 ${finalWaited} 未返回任何数据（共 ${attempts} 次尝试），已停止重试。` +
-          '此形态多为出网链路或服务商侧故障，而非本地配置问题——链路恢复后直接重发即可。'
+        ? suspectPayload
+          ? `服务商连续 ${finalWaited} 未返回任何数据（共 ${attempts} 次尝试），已停止重试。本轮请求带约 ${imageMiB}MiB 附图——` +
+            '此形态多为**载荷过大/该图服务商消化不了**，重发同一张图不会变好：请压缩图片后重发，或换更小的截图。'
+          : `服务商连续 ${finalWaited} 未返回任何数据（共 ${attempts} 次尝试），已停止重试。` +
+            '此形态多为出网链路或服务商侧故障，而非本地配置问题——链路恢复后直接重发即可。'
         : `请检查网络连接和 API 设置。`;
     this._sink({
       kind: EventKind.Notice,
@@ -1841,11 +1879,16 @@ export class Agent {
     //   「猜错了会响」优先于「猜对了省一次请求」。
     //   1. 本模型已实测拒图 → 全部图投影成文本占位（不报错）；
     //   2. 否则请求级预算降级（超限最旧先移除换占位）；
-    //   3. 幸存引用经读取器解析成 Request.imageData（缓存键控 id）；
+    //   3. 幸存引用经读取器解析成 Request.imageData（缓存键控 id；读取器负责 wire 规整）；
     //   4. 送不出去（无读取通道 / 读盘全失败）→ **响亮降级**：留占位 + 落日志，
-    //      绝不静默丢图（2026-09-19 事故：读盘腰漏接线，图三天没到过模型而全链无痕）。
+    //      绝不静默丢图（2026-09-19 事故：读盘腰漏接线，图三天没到过模型而全链无痕）；
+    //   5. **单图 wire 预算**（2026-09-22 读图挂起事故）：解析产物逐条量 base64，
+    //      越界者摘除换占位——读取器已按带规整，本闸兜规整失败/别家读取器两条路。
     let wireSession = fullSession;
     let imageData: Request['imageData'];
+    // 挂起分账判据先清零：本轮若没有图（或下面各行提前返回/抛错），绝不能沿用上一轮
+    // 的体量把「链路瞬态」误判成「载荷可疑」。
+    this._wireImageChars = 0;
     if (fullSession.some((m) => (m.images?.length ?? 0) > 0)) {
       if (this._imageUnsupportedModels.has(this.prov.model())) {
         wireSession = projectImagesForTextModel(fullSession);
@@ -1870,9 +1913,30 @@ export class Agent {
               imageData = undefined;
             }
           }
+          // ── 单图 wire 预算闸（最后一道）──
+          const over = overWireBudgetIds(imageData);
+          if (over.size > 0) {
+            const facts = wanted
+              .filter((ref) => over.has(ref.id))
+              .map((ref) => `${ref.width}×${ref.height} ${(ref.bytes / 1024 / 1024).toFixed(1)}MiB`);
+            log.warn('agent', '附图超出单图发送预算——这些图本次摘除换占位（不发注定挂起的包）', {
+              over: over.size,
+              total: wanted.length,
+              images: facts.join(' / '),
+            });
+            this._sink({
+              kind: EventKind.Notice,
+              level: 'warn',
+              text: `附图过大，本次不送模型（${facts.join(' / ')}）——请压缩后重发，或改用更小的截图。`,
+            });
+            wireSession = dropImagesOverBudget(wireSession, over);
+            for (const id of over) delete imageData?.[id];
+          }
         }
       }
     }
+    // 挂起分账判据：本轮实际带上线的附图体量（0 = 无图 → 挂起仍按链路瞬态处理）。
+    this._wireImageChars = wireImageChars(imageData);
 
     // 流空闲超时：30s 无任何 chunk 视为挂起（与 callSummaryLLM / dataflow NL 解析
     // 共用 streamWithIdleTimeout）。超时 abort 后 sendWithRetry/readSSE 抛 aborted，

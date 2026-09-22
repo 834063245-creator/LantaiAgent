@@ -46,7 +46,7 @@ export interface SubAgentSpawnHost {
   _currentRunSignal: AbortSignal | null;
   _fileOwnership: FileOwnership | null;
   /** 附图字节读取器（B3 multimodal-image-plan）——子 Agent 继承父读取器。 */
-  _imageReader: ((ref: import('../provider/types').ChatImageRef) => Promise<string>) | null;
+  _imageReader: import('./request-images').RequestImageReader | null;
   extractRecentContext(maxMessages: number): string;
   /** 父 preflight 注册表（null = 主 Agent 未接线）— 子 Agent 门禁继承用。 */
   getPreflightHooks(): import('./hooks').PreflightHookRegistry | null;

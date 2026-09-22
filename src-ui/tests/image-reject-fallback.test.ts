@@ -43,8 +43,11 @@ const IMG: ChatImageRef = {
 };
 const IMG2: ChatImageRef = { ...IMG, id: 'bb' + IMG.id.slice(2), name: '截图2.png' };
 
-/** 图字节读取腰（app 注入面的替身）。 */
-const reader = async (): Promise<string> => 'iVBORw0KGgo=';
+/** 图字节读取腰（app 注入面的替身）——2026-09-22 起产物 = {mediaType, data}。 */
+const reader = async (): Promise<{ mediaType: 'image/png'; data: string }> => ({
+  mediaType: 'image/png',
+  data: 'iVBORw0KGgo=',
+});
 
 interface SeenCall {
   /** 本次请求是否真的带了图字节（wire 侧判据）。 */

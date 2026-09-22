@@ -21,6 +21,26 @@ const JITTER_MS = 1000;
  *  （限流/5xx/繁忙）仍走 MAX_RETRIES 计数预算——它们不该被无限重试。 */
 export const STALL_RETRY_BUDGET_MS = 15 * 60_000;
 
+/** 载荷可疑时的挂起计数预算（2026-09-22 读图挂起事故）。
+ *
+ *  事故形态：一张 6.4MB 工具附图 → 请求体 ~9MB → 服务商 **30 秒零字节** ×2 →
+ *  按时间预算本会盲等 15 分钟（用户全程只见转圈）。
+ *  判据哲学：挂起走时间预算是为「出网链路瞬断」设计的——那种故障与载荷无关，
+ *  重发同一个请求是有意义的等待。而**载荷刚长大的挂起**不是链路瞬态：重发 28 次
+ *  会把同一份大载荷重新上传 28 次，链路再好也不会变好。故这类挂起回到计数预算，
+ *  快速失败并把载荷事实写进墓碑，让用户看见真因（而不是 15 分钟后的泛泛超时）。
+ *  **语义 = 总尝试次数**（含第一次）。 */
+export const SUSPECT_PAYLOAD_MAX_ATTEMPTS = 2;
+
+/** 「载荷可疑」的 wire 附图体量门槛（base64 字符数）——约 1MiB 源字节。
+ *  低于此值仍按链路瞬态等待（几百 KB 的图挂起，多半真是链路问题，值得等链路恢复）；
+ *  高于此值才认「载荷不像是链路能解释的失败」。 */
+export const SUSPECT_PAYLOAD_MIN_WIRE_CHARS = 1_400_000;
+
+/** 「服务商零字节」通知的稳定前缀（判据标记——UI 据此把挂起留痕落进卷面；
+ *  文案可改，前缀不可改，与 `[响应超时]` 同纪律）。 */
+export const STALL_NOTICE_MARK = '[服务商无响应]';
+
 /** 中止语义结构化（2026-09-14）——判据是「谁的 signal 被中止」这一**事实**，
  *  不是错误文本。旧实现用 `msg.includes('aborted')` 猜「用户按了停止」，于是
  *  传输出自己断的错误（`BodyStreamBuffer was aborted`、`<provider>: aborted`）
@@ -54,10 +74,18 @@ export function formatElapsed(ms: number): string {
 
 /** 重试预算判定（agent.stream 的唯一预算真源）——调用面先判 isRetryable，
  *  再用本函数判「还允许再试一次吗」。
- *  挂起（[响应超时]）走时间预算，其余可重试错误走计数预算。
+ *  挂起（[响应超时]）走时间预算，其余可重试错误走计数预算；**载荷可疑的挂起**
+ *  （本轮请求刚带上 MB 级附图）回到计数预算，见 SUSPECT_PAYLOAD_MAX_ATTEMPTS。
  *  @param attempt   已失败的尝试序号（0 起）
- *  @param elapsedMs 本轮自首次尝试起的墙钟耗时 */
-export function withinRetryBudget(err: Error, attempt: number, elapsedMs: number): boolean {
+ *  @param elapsedMs 本轮自首次尝试起的墙钟耗时
+ *  @param opts.suspectPayload 本轮载荷含大体量附图（挂起时不再按链路瞬态盲等） */
+export function withinRetryBudget(
+  err: Error,
+  attempt: number,
+  elapsedMs: number,
+  opts?: { suspectPayload?: boolean },
+): boolean {
+  if (opts?.suspectPayload) return attempt + 1 < SUSPECT_PAYLOAD_MAX_ATTEMPTS;
   return isStallError(err) ? elapsedMs < STALL_RETRY_BUDGET_MS : attempt < MAX_RETRIES;
 }
 

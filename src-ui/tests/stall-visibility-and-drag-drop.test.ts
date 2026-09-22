@@ -1,0 +1,212 @@
+// @vitest-environment jsdom
+
+// Copyright (c) 2026 Wenbing Jing. MIT License.
+// SPDX-License-Identifier: MIT.
+
+// 挂起可见化 + 原生拖放接线回归（2026-09-22 读图挂起事故）。
+//
+// 事故现场（会话 26，21:15–21:17）：附图请求挂起 → 重试提示只活 6.4s（toast），
+// 卷面只剩转圈 → 用户读成「Agent 直接挂了」，两次手动停止。用户原话还指出触发
+// 路径：**创作坞粘贴/拖放失灵**，他才改成手打路径让 Agent 自己读。
+//
+// 本文件钉两件事：
+//   ① 挂起类 warn 通知落**卷内贴黄**（持久、贴回合、同回合只一条）；
+//      非挂起 warn 仍只走 toast（不把卷面变成通知垃圾场）。
+//   ② 原生拖放（Tauri onDragDropEvent）→ 当前卷创作坞草稿槽；图片走附图道，
+//      声明缺失时只提示不拦截。
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+type DropHandler = (e: { payload: { type: string; paths: string[] } }) => void;
+let dropHandler: DropHandler | null = null;
+
+vi.mock('@tauri-apps/api/webview', () => ({
+  getCurrentWebview: () => ({
+    onDragDropEvent: async (h: DropHandler) => {
+      dropHandler = h;
+      return () => {
+        dropHandler = null;
+      };
+    },
+  }),
+}));
+
+import { STALL_NOTICE_MARK } from '../src/agent/retry';
+import type { ChatCore } from '../src/app/chat/chat-core';
+import { useCoreStore } from '../src/app/chat/core-instance';
+import { bootDragDrop } from '../src/shell/rows/drag-drop';
+import { getComposeStore, resetComposeStoresForTests } from '../src/state/compose-store';
+import { useToastStore } from '../src/state/toast-store';
+import { getChatStore } from '../src/ui/chat-store';
+import type { StreamContext } from '../src/ui/chat-stream';
+import { handleAgentNotice } from '../src/ui/chat-stream';
+import type { ChatMessage } from '../src/ui/message-model';
+import { createAssistantMessage, createUserMessage } from '../src/ui/message-model';
+
+// ── ① 挂起留痕 ──
+
+function makeCtx(storeId: string, sessionId: number, assistantId: string, msgs: ChatMessage[]): StreamContext {
+  getChatStore(storeId).sess.setState({
+    sessions: [{ id: sessionId, label: '案卷一' }],
+    activeIdx: 0,
+    sessionTokens: {},
+    nextSessionId: sessionId + 1,
+  });
+  let current = msgs;
+  return {
+    storeId,
+    sessionId,
+    getSessionMessages: () => current,
+    getActiveMessages: () => current,
+    setSessionMessages: (_sid: number, m: ChatMessage[]) => {
+      current = m;
+    },
+    bumpSessionMessages: () => {},
+    getStreamingAssistantId: () => assistantId,
+  } as unknown as StreamContext;
+}
+
+function turn(): { msgs: ChatMessage[]; assistantId: string; ctx: StreamContext } {
+  const storeId = `stall-test-${Date.now()}-${Math.random()}`;
+  const assistant = createAssistantMessage('u1');
+  const msgs: ChatMessage[] = [createUserMessage('看这张图'), assistant];
+  return { msgs, assistantId: assistant._id, ctx: makeCtx(storeId, 1, assistant._id, msgs) };
+}
+
+function notices(msgs: ChatMessage[]): ChatMessage[] {
+  return msgs.filter((m) => m.role === 'notice');
+}
+
+describe('挂起通知的卷内留痕（2026-09-22）', () => {
+  beforeEach(() => {
+    useToastStore.setState({ toasts: [] });
+  });
+
+  it('挂起 warn → 卷内贴黄一条（持久），且插在流式正文之前', () => {
+    const { msgs, assistantId, ctx } = turn();
+    handleAgentNotice(
+      ctx,
+      `${STALL_NOTICE_MARK} 服务商 30 秒内未返回任何数据，已进入自动重试——期间卷面可能只有转圈，可随时停止。`,
+      'warn',
+    );
+    const found = notices(ctx.getSessionMessages(1));
+    expect(found).toHaveLength(1);
+    expect(found[0]?.text).toContain(STALL_NOTICE_MARK);
+    expect((found[0] as { level?: string }).level).toBe('warn');
+    // 读序 = 来文 → 贴黄 → 正文
+    const seq = ctx.getSessionMessages(1).map((m) => (m._id === assistantId ? 'assistant' : m.role));
+    expect(seq).toEqual(['user', 'notice', 'assistant']);
+    expect(notices(msgs)).toHaveLength(1); // 写入的是同一份卷数组
+  });
+
+  it('同一回合内重复重试 → 仍只一条贴黄（不刷屏）', () => {
+    const { ctx } = turn();
+    handleAgentNotice(ctx, `${STALL_NOTICE_MARK} 服务商 30 秒内未返回任何数据，已进入自动重试。`, 'warn');
+    handleAgentNotice(ctx, `${STALL_NOTICE_MARK} 服务商仍未返回数据，29.3s 后重试（仍未收到服务商数据）…`, 'warn');
+    handleAgentNotice(ctx, `${STALL_NOTICE_MARK} 服务商仍未返回数据，58.6s 后重试（仍未收到服务商数据）…`, 'warn');
+    expect(notices(ctx.getSessionMessages(1))).toHaveLength(1);
+  });
+
+  it('非挂起 warn 不落卷（仍只走 toast）——卷面不被通知淹没', () => {
+    const { ctx } = turn();
+    handleAgentNotice(ctx, '上下文过长，自动压缩后重试…', 'warn');
+    expect(notices(ctx.getSessionMessages(1))).toHaveLength(0);
+    expect(useToastStore.getState().toasts.length).toBeGreaterThan(0);
+  });
+});
+
+// ── ② 原生拖放 ──
+
+function fakeCore(panelId: string): ChatCore {
+  // attachIntakePaths 真身是 async（Promise<void>）——替身必须同形：拖放行按契约挂了
+  // `.catch`（入卷失败不静默），返回 undefined 的替身会当场炸。
+  return { panelId, attachIntakePaths: vi.fn(async () => {}) } as unknown as ChatCore;
+}
+
+function seedModel(model: string, declarations?: { input?: string[] }): void {
+  const provider: Record<string, unknown> = {
+    kind: 'openai',
+    name: 'p',
+    apiKey: '',
+    baseUrl: 'https://gateway.example/v1',
+    model,
+  };
+  if (declarations?.input) provider.modelOverrides = { [model]: { input: declarations.input } };
+  localStorage.setItem(
+    'hologram_settings',
+    JSON.stringify({
+      activeProvider: 'p',
+      providers: [provider],
+      projectPath: '.',
+      agent: {},
+      display: { language: 'zh', fontScale: 1 },
+    }),
+  );
+}
+
+describe('创作坞原生拖放（Tauri onDragDropEvent）', () => {
+  beforeEach(() => {
+    dropHandler = null;
+    useToastStore.setState({ toasts: [] });
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    resetComposeStoresForTests();
+  });
+
+  it('拖进来的路径落到当前卷草稿槽（图片与普通文件一并交给共用底座分流）', async () => {
+    const core = fakeCore(`drop-test-${Date.now()}`);
+    useCoreStore.getState().setChatCore(core);
+    getChatStore(core.panelId).sess.setState({
+      sessions: [{ id: 1, label: '案卷一' }],
+      activeIdx: 0,
+      sessionTokens: {},
+      nextSessionId: 2,
+    });
+    seedModel('vision-x', { input: ['text', 'image'] });
+    getComposeStore(core.panelId).setState({
+      sessions: { '1': { providerName: 'p', model: 'vision-x', thinking: '' } },
+    });
+
+    await bootDragDrop();
+    expect(dropHandler).not.toBeNull();
+    dropHandler?.({ payload: { type: 'drop', paths: ['D:/x/user-ref.png', 'D:/x/notes.txt'] } });
+
+    expect(core.attachIntakePaths).toHaveBeenCalledWith(['D:/x/user-ref.png', 'D:/x/notes.txt']);
+    expect(useToastStore.getState().toasts).toHaveLength(0); // 声明了 vision → 不提示
+  });
+
+  it('未声明图片输入也照收（先发语义），只加一条提示', async () => {
+    const core = fakeCore(`drop-test-${Date.now()}`);
+    useCoreStore.getState().setChatCore(core);
+    getChatStore(core.panelId).sess.setState({
+      sessions: [{ id: 1, label: '案卷一' }],
+      activeIdx: 0,
+      sessionTokens: {},
+      nextSessionId: 2,
+    });
+    seedModel('text-only-model'); // 无声明（末位缺省 ['text']）
+    getComposeStore(core.panelId).setState({
+      sessions: { '1': { providerName: 'p', model: 'text-only-model', thinking: '' } },
+    });
+
+    await bootDragDrop();
+    dropHandler?.({ payload: { type: 'drop', paths: ['D:/x/user-ref.png'] } });
+
+    expect(core.attachIntakePaths).toHaveBeenCalledTimes(1); // 收——不再按声明拦
+    const toasts = useToastStore.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]?.text).toContain('图已收');
+  });
+
+  it('非 drop 阶段（enter/over/leave）不触发入卷', async () => {
+    const core = fakeCore(`drop-test-${Date.now()}`);
+    useCoreStore.getState().setChatCore(core);
+    await bootDragDrop();
+    dropHandler?.({ payload: { type: 'enter', paths: [] } });
+    dropHandler?.({ payload: { type: 'over', paths: [] } });
+    dropHandler?.({ payload: { type: 'leave', paths: [] } });
+    expect(core.attachIntakePaths).not.toHaveBeenCalled();
+  });
+});

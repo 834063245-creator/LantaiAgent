@@ -21,6 +21,7 @@ import { DisposerBag } from './agent/lifecycle';
 import { initLogger, log } from './agent/logger';
 import { MemoryManager } from './agent/memory';
 import { memoryBundleIngest } from './agent/memory-bundle-client';
+import { WIRE_IMAGE_CAPS } from './agent/request-images';
 import { type BuilderDeps, buildToolRegistry } from './agent/runtime/agent-builder';
 // ── 运行时层（替代 bootstrap.ts）──
 import { AgentRuntime } from './agent/runtime/runtime';
@@ -30,7 +31,7 @@ import { buildTurnStartBlock, refreshGitStatus } from './agent/state-inject';
 import { TaskManager } from './agent/task';
 import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
-import { readAttachmentBase64 } from './app/chat/image-intake';
+import { readAttachmentForWire } from './app/chat/image-intake';
 import { useShellStore } from './app/shell-store';
 import {
   compositionIdentity,
@@ -946,10 +947,12 @@ export class Workspace {
             execState: chatPanel.getSessionExecState(sessionId),
             collaborationMode: ms.collaborationMode,
             temperature: 0.7,
-            // 附图读取器（multimodal-image-plan B3 · D-5）：请求期 ref→base64
-            // 的 IO 腰——工作区根拼 attachments 路径经 fs_cap read_base64；
+            // 附图读取器（multimodal-image-plan B3 · D-5）：请求期 ref→载荷
+            // 的 IO 腰——工作区根拼 attachments 路径经 fs_cap read_base64，
+            // 再过 **wire 规整**（2026-09-22 读图挂起事故：工具附图通道不走准入
+            // 规整，6.4MB 图直接内联成 8.6MB data URI 让服务商 30s 零字节）；
             // Agent 层零 app 依赖（注入闭包）。子 Agent 经 spawn 继承。
-            imageReader: (ref) => readAttachmentBase64(this.path, ref),
+            imageReader: (ref) => readAttachmentForWire(this.path, ref, WIRE_IMAGE_CAPS),
             // 从模型目录动态解析窗口（deepseek-v4 标 1M），查不到才 fallback 200K。
             // 0b3e5bf 曾加 Math.min(..., 200000) 硬封顶 — 把动态结果压成 200K，
             // 导致压缩在 110K 就触发；压缩已根治为只影响发送载荷，cap 无必要。

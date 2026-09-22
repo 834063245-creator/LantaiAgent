@@ -135,8 +135,12 @@ describe('projectImagesForTextModel', () => {
 // ── 请求期解析（D-5——缓存键控 id）──
 
 describe('resolveRequestImageData', () => {
+  // ⚡ 规格变更（2026-09-22 读图挂起事故）：读取器产物从裸 base64 改为
+  // {mediaType, data}——wire 规整会把 PNG 换成 WebP 压进单图发送带，媒型必须由
+  // 读取器回报而非沿用 ref（沿用 = data URI 与字节不符）。原两条断言形状不变，
+  // 只是替身按新契约回话；新契约本身由下一条用例显式钉住。
   it('解析成功 → id 键控表 + 写缓存；二调命中缓存不再读盘', async () => {
-    const reader = vi.fn(async () => 'QUJD');
+    const reader = vi.fn(async () => ({ mediaType: 'image/png' as const, data: 'QUJD' }));
     const cache = new Map();
     const msgs: Message[] = [userMsg('x', [R1])];
     const out = await resolveRequestImageData(msgs, reader, cache);
@@ -148,10 +152,16 @@ describe('resolveRequestImageData', () => {
     expect(reader).toHaveBeenCalledTimes(1); // 缓存命中——零重读
   });
 
+  it('媒型以读取器回报为准（规整换编码后不得沿用 ref 声明）', async () => {
+    const reader = vi.fn(async () => ({ mediaType: 'image/webp' as const, data: 'UklGRg==' }));
+    const out = await resolveRequestImageData([userMsg('x', [R1])], reader, new Map());
+    expect(out.r1).toEqual({ mediaType: 'image/webp', data: 'UklGRg==' }); // ref 声明是 image/png
+  });
+
   it('读失败 → 不入表不炸请求；缓存不落（下次可重试）', async () => {
     const reader = vi.fn(async (r: ChatImageRef) => {
       if (r.id === 'bad') throw new Error('盘上没了');
-      return 'OK';
+      return { mediaType: 'image/png' as const, data: 'OK' };
     });
     const cache = new Map();
     const msgs: Message[] = [userMsg('x', [ref('bad'), R2])];

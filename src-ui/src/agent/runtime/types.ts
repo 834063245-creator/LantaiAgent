@@ -109,8 +109,11 @@ export interface AgentConfig {
   /** 会话持久化回调 */
   onSessionPersisted?: (sessionId: string, messages: Message[]) => void;
   /** 附图字节读取器（multimodal-image-plan B3 · D-5）——请求期 ChatImageRef →
-   *  base64。app 层闭包注入（工作区根拼 attachments 路径 → fs_cap read_base64）。 */
-  imageReader?: (ref: import('../../provider/types').ChatImageRef) => Promise<string>;
+   *  **发放载荷**（规整后字节 + 实际编码媒型）。app 层闭包注入（工作区根拼
+   *  attachments 路径 → fs_cap read_base64 → wire 规整压进单图发送带）。
+   *  ⚡ 2026-09-22：产物从裸 base64 改为 {mediaType, data}——规整可能换编码
+   *  （PNG → WebP），媒型沿用 ref 会让 data URI 与字节不符。 */
+  imageReader?: import('../request-images').RequestImageReader;
 }
 
 // ── AgentContext 入口的装配输入 ──

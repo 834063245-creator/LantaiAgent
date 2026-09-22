@@ -10,6 +10,7 @@ import type { TurnPair } from '../agent/agent-session-state';
 import type { AgentEvent, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
+import { STALL_NOTICE_MARK } from '../agent/retry';
 import type { TokenRequestRecord } from '../agent/token-meter/types';
 import { getAssetTableStore } from '../state/asset-store';
 import { refreshPinnedAssetSnapshots } from '../state/canvas-store';
@@ -17,7 +18,7 @@ import { showToast, TOAST_HOLD_MS, TOAST_LONG_HOLD_MS } from '../state/toast-sto
 import { autoTitleSessionIfDefault } from './chat-session';
 import { bumpChat, getChatStore, msgStoreFor } from './chat-store';
 import type { AssistantMessage, ChatMessage, FileAttachment, MessageId, PlanPart, UserMessage } from './message-model';
-import { createAssistantMessage, createUserMessage } from './message-model';
+import { createAssistantMessage, createNoticeMessage, createUserMessage } from './message-model';
 import { applyAssetUpdateToExistingParts, applyEventToParts } from './part-mutator';
 import { isSubagentSpawnTool } from './tool-semantics';
 
@@ -197,14 +198,49 @@ export function markTurnError(ctx: StreamContext, text: string, level: 'warn' | 
 
 /** Agent 层系统通知（EventKind.Notice）分流（2026-08-31 贴黄拆迁）：
  *  - error → 回合墓碑（贴当前回合尾）
- *  - warn  → toast 长显（说完即走）
+ *  - warn  → toast 长显（说完即走）+ **挂起类另落卷内贴黄**（见下）
  *  - info  → 丢弃。agent 侧日志已记；goal 轮播/操作反馈是噪音，且 goal
- *            终结结果由 UI 层 _notifyGoalResult 单独播报，不重复。 */
+ *            终结结果由 UI 层 _notifyGoalResult 单独播报，不重复。
+ *
+ *  ⚡ 2026-09-22 读图挂起事故：挂起（服务商零字节）能跑满时间预算（15 分钟），
+ *  而 toast 只活 6.4s——用户看到的是「转圈 + 无任何解释」，实测被读成「Agent 挂了」
+ *  并两次手动停止。故 stall 类通知额外**落一条卷内贴黄**（持久、贴回合）：
+ *  卷案是用户唯一会回头看的地方。同回合只落一条（判据 = 本回合来文之后已有带
+ *  标记的贴黄），后续重试仍只走 toast（不刷屏）。 */
 export function handleAgentNotice(ctx: StreamContext, text: string, level: string): void {
   if (level === 'error') {
     markTurnError(ctx, text || '未知错误', 'error');
-  } else if (level === 'warn') {
-    showToast(text, 'warn', TOAST_LONG_HOLD_MS);
+    return;
+  }
+  if (level !== 'warn') return;
+  showToast(text, 'warn', TOAST_LONG_HOLD_MS);
+  if (text.startsWith(STALL_NOTICE_MARK)) appendStallNotice(ctx, text);
+}
+
+/** 本回合（最后一条来文之后）是否已有挂起贴黄——去重判据，无状态。 */
+function hasStallNoticeThisTurn(msgs: readonly ChatMessage[]): boolean {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.role === 'user') return false;
+    if (m.role === 'notice' && m.text.startsWith(STALL_NOTICE_MARK)) return true;
+  }
+  return false;
+}
+
+/** 挂起贴黄落卷：插在流式助手之前（本轮读序 = 来文 → 贴黄 → 正文）。 */
+function appendStallNotice(ctx: StreamContext, text: string): void {
+  const sid = ctx.getStreamingAssistantId();
+  const target = _resolveSessionTarget(ctx, sid);
+  const msgs = target ? target.messages : ctx.getActiveMessages();
+  if (hasStallNoticeThisTurn(msgs)) return;
+  const notice = createNoticeMessage(text, 'warn');
+  const assistantIdx = sid ? msgs.findIndex((m) => m.role === 'assistant' && m._id === sid) : -1;
+  msgs.splice(assistantIdx >= 0 ? assistantIdx : msgs.length, 0, notice);
+  if (target) {
+    ctx.setSessionMessages(target.sessionId, [...msgs]);
+    ctx.bumpSessionMessages(target.sessionId);
+  } else {
+    bumpChat(ctx.storeId);
   }
 }
 

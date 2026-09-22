@@ -7,7 +7,7 @@
 // 竣工时只有行实现各自的功能测试，表序/失败隔离/编排语义从未有专门钉面）。
 //
 // 覆盖（S2 设计件 §2.6 验收）：
-//   1. 表序 = 引导序（V5 拆除后 9 行 + shell-update-check = 10 行硬序——字节契约）；
+//   1. 表序 = 引导序（V5 拆除后 9 行 + shell-update-check + shell-drag-drop = 11 行硬序——字节契约）；
 //   2. 行 id 唯一（roster shell 域寻址面）；
 //   3. workspace 流 deps：actions 行的涟漪语义（deps 缺席 → 跳过注册，warn 可见）；
 //   4. bootShell 失败隔离：单行 boot 抛错 → 后续行照常执行；
@@ -22,6 +22,9 @@ const EXPECTED_ROW_IDS = [
   'hologram/shell-platform',
   'hologram/shell-chat',
   'hologram/shell-bridges',
+  // 2026-09-22 新增（读图挂起事故）：原生拖放接线（Tauri onDragDropEvent）——
+  // 排在 chat 之后（需要 core 就绪）。表序是字节契约，插入位置即本行。
+  'hologram/shell-drag-drop',
   'hologram/shell-keyguard',
   'hologram/shell-sandbox-probe',
   'hologram/shell-persistence',
@@ -40,7 +43,7 @@ function stubFlowDeps(): WorkspaceFlowDeps {
 }
 
 describe('S2-3/S2-4 壳行表（composition/shell-rows.ts）', () => {
-  it('表序 = 引导序（V5 拆除后 9 行 + shell-update-check = 10 行硬序——字节契约，错位即返工）', () => {
+  it('表序 = 引导序（V5 拆除后 9 行 + shell-update-check + shell-drag-drop = 11 行硬序——字节契约，错位即返工）', () => {
     expect(builtinShellRows().map((r) => r.id)).toEqual(EXPECTED_ROW_IDS);
   });
 

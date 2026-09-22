@@ -581,8 +581,8 @@ export const ComposerDock = memo(function ComposerDock() {
 
   /* ── 附件 ── */
   const onAttach = useCallback(() => {
-    void core?.openFilePicker({ images: imageCapable });
-  }, [core, imageCapable]);
+    void core?.openFilePicker();
+  }, [core]);
   const onRemoveAttached = useCallback(
     (idx: number) => {
       if (!core) return;
@@ -624,15 +624,16 @@ export const ComposerDock = memo(function ComposerDock() {
   /* ── 附图预览（B2）：大图浮层——点击缩略图开、点浮层/再点图关。 ── */
   const [imagePreview, setImagePreview] = useState<ChatImageRef | null>(null);
 
-  /* ── 附文件入卷共用底座（引 / 拖放，v3 B2）：图片分流经 chat-core——图片
-   *    扩展名且 imageCapable 时入附图道，否则与非图片一并走路径附件老路
-   *    （C10 语义保留：size 恒 0 不显示——拿不到真大小就不伪造）。 ── */
+  /* ── 附文件入卷共用底座（引 / 拖放，v3 B2）：图片入附图道，其余走路径附件老路
+   *    （C10 语义保留：size 恒 0 不显示——拿不到真大小就不伪造）。
+   *    ⚡ 2026-09-22：不再按 `imageCapable` 分流——声明缺失时用户拖进来的图会静默
+   *    变成「路径附件」（实测就是「拖放失灵」）；声明面只作 UI 提示。 ── */
   const attachPaths = useCallback(
     (paths: readonly string[]) => {
       if (!core || paths.length === 0) return;
-      void core.attachIntakePaths(paths, imageCapable);
+      void core.attachIntakePaths(paths);
     },
-    [core, imageCapable],
+    [core],
   );
 
   /* ── 引：工作区文件模糊引用（v2 2026-08-31）。

@@ -62,6 +62,8 @@ describe('composition/roster（S2-0 组合引擎）', () => {
       'hologram/shell-platform',
       'hologram/shell-chat',
       'hologram/shell-bridges',
+      // 2026-09-22 新增：原生拖放接线（读图挂起事故的触发路径修复，见 landmine-map 第十一批）
+      'hologram/shell-drag-drop',
       'hologram/shell-keyguard',
       'hologram/shell-sandbox-probe',
       'hologram/shell-persistence',

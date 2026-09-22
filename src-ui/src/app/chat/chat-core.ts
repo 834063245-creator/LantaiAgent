@@ -1547,15 +1547,15 @@ export class ChatCore {
    * 拿假路径 read_file 必报错）；②size 恒 0 写死，来文渲染「0 B」误导。
    * 修法：回退分支只往 input-store 存能兑现的（路径拿不到就不入附件面，
    * 打日志可见）；size 不再伪造（渲染层不显示，agent 只需路径）。 */
-  async openFilePicker(opts?: { images?: boolean }): Promise<void> {
+  async openFilePicker(): Promise<void> {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
       const result = await open({ multiple: true, title: '拾遗——选择要附入案卷的文件', filters: [] });
       if (!result) return;
       const paths = Array.isArray(result) ? result : [result];
-      // B2（multimodal-image-plan）：夹选经共用底座分流——图片扩展名且当前
-      // 模型声明 vision 时入附图道；否则与非图片一并走路径附件老路。
-      await this.attachIntakePaths(paths, opts?.images === true);
+      // B2（multimodal-image-plan）：夹选经共用底座分流——图片一律入附图道
+      // （2026-09-22 起不再按模型声明分流，见 attachIntakePaths）。
+      await this.attachIntakePaths(paths);
     } catch (e) {
       // 浏览器 dev（mock）环境：File 无真路径——不再用 name 冒充（旧病灶）。
       // 附件链在真机才有意义；dev 下静默提示不可用，错误可见不炸。
@@ -1611,11 +1611,16 @@ export class ChatCore {
     }
   }
 
-  /** 夹/引/拖放共用底座（v3 B2）：图片扩展名分流——allowImages 时入附图道，
-   *  否则与非图片文件一并走路径附件老路（文本模型零回归）。 */
-  async attachIntakePaths(paths: readonly string[], allowImages: boolean): Promise<void> {
+  /** 夹/引/拖放共用底座（v3 B2；2026-09-22 拆 allowImages 参数）：图片扩展名
+   *  **一律**入附图道，其余与非图片一并走路径附件老路。
+   *  ⚡ 为什么拆掉能力参数：它曾是这里的硬闸门，而 `inputModalities` 四层声明链
+   *  末位是缺省 `['text']`——声明缺失/过时（本机 opencode/deepseek-flash 即如此）
+   *  时，用户拖进来的图被静默改成「路径附件」，看着就是**拖放失灵**（本次事故的
+   *  触发路径：用户拖图没反应，只能手打路径让 Agent 自己读）。发送面 2026-09-19
+   *  已改「先发、被拒再降级」，分流不该再问声明。 */
+  async attachIntakePaths(paths: readonly string[]): Promise<void> {
     if (paths.length === 0) return;
-    const { images, files } = splitIntakePaths(paths, allowImages);
+    const { images, files } = splitIntakePaths(paths, true);
     const input = getChatStore(this.panelId).input.getState();
     for (const p of files) {
       if (!input.attachedFiles.some((f) => f.path === p)) {
@@ -1625,12 +1630,9 @@ export class ChatCore {
     if (images.length > 0) await this.intakeImagePaths(images);
   }
 
-  /** 视图拖放转发 — T2 WebView 默认接管 dragDrop，网页层收不到 HTML5 drop
-   * 事件，本方法自旧 Composer 迁来但从未在真机触发；纸壳不接（要做须走
-   * Tauri onDragDropEvent 原生通道，另立任务）。保留给潜在消费方。 */
-  handleFileDrop(_e: DragEvent): void {
-    // no-op（见注释）
-  }
+  // 视图拖放转发（T2 WebView 默认接管 dragDrop，网页层收不到 HTML5 drop 事件——
+  // 旧 handleFileDrop no-op 已随原生通道落地**删除**：2026-09-22 起走
+  // shell/rows/drag-drop.ts 的 Tauri onDragDropEvent → attachIntakePaths。）
 
   removeAttachedFile(idx: number): void {
     getChatStore(this.panelId).input.getState().removeAttachedFile(idx);
