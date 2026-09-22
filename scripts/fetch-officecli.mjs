@@ -15,6 +15,7 @@
 //   node scripts/fetch-officecli.mjs --check         只校验（打包前门禁用；缺件或哈希不符 = 非零退出）
 //   node scripts/fetch-officecli.mjs --from-local <path>   离线取件（从本机已有二进制装，仍要过哈希）
 //   node scripts/fetch-officecli.mjs --allow-unpinned      显式放行非 pin 哈希（**响警报**，仅开发排查用）
+//   node scripts/fetch-officecli.mjs --upstream       查上游有无新版（**只提示**：不改 pin、不影响退出码、不阻断流程）
 //
 // 纪律（照 examples/office-cli/install-officecli.ps1 的成熟做法）：
 //   - **哈希不符即拒绝**（错误不静默）——防篡改，也防「下到一半的截断文件」冒充成功；
@@ -22,6 +23,7 @@
 //   - **幂等**——目标哈希已对，直接报「无需取件」成功；
 //   - 版本升级 = 换 tag + 换哈希，**同改本文件与 install-officecli.ps1 的 pin 表**。
 
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   createWriteStream,
@@ -58,6 +60,7 @@ const RUNTIME_NAME = 'officecli.exe';
 // ── 参数 ──────────────────────────────────────────────────────────────────────
 const args = argv.slice(2);
 const checkOnly = args.includes('--check');
+const upstreamOnly = args.includes('--upstream');
 const allowUnpinned = args.includes('--allow-unpinned');
 const fromLocalIdx = args.indexOf('--from-local');
 const fromLocal = fromLocalIdx >= 0 ? args[fromLocalIdx + 1] : null;
@@ -105,6 +108,115 @@ if (checkOnly) {
     );
   }
   log(`✓ 随包件就位且哈希相符（v${PINNED_VERSION}，${human(st.size)}）`);
+  exit(0);
+}
+
+// ── --upstream：查上游有无新版（**只提示**，不改 pin、不影响退出码、不阻断流程）────────
+//
+// 为什么要它：pin 住版本是对的（哈希校验才有意义、上游改 CLI 不会打到用户），但副作用是
+// **「该升级了」没有任何信号**——只能靠人记得。本开关补上信号，决定权仍在人手里：
+// 它绝不改 PINNED_*、绝不落位、绝不因「有新版本」而失败。
+//
+// 何时跑：显式 `--upstream`（手动查），或 release.yml 里那条 continue-on-error 的提醒步。
+// **刻意不挂进 build.cmd / `--check`**：那样每次构建都要联网，离线构建还得干等超时。
+const UPSTREAM_API = 'https://api.github.com/repos/iOfficeAI/OfficeCLI/releases/latest';
+
+/** 版本号比较：a 比 b 新则 true（按点分数字段比，**不能按字典序**——'1.0.9' < '1.0.10'）。 */
+function isNewer(a, b) {
+  const parse = (v) =>
+    v
+      .replace(/^v/i, '')
+      .split('.')
+      .map((n) => Number.parseInt(n, 10) || 0);
+  const [pa, pb] = [parse(a), parse(b)];
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const [x, y] = [pa[i] ?? 0, pb[i] ?? 0];
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+/** 取上游最新 tag（返回 tag 字符串；两条通道都失败返回 null——**从不抛**）。 */
+async function latestUpstreamTag() {
+  // 通道 1：node https（自带 CA 包）
+  try {
+    const tag = await new Promise((res, rej) => {
+      const req = get(
+        UPSTREAM_API,
+        { headers: { 'user-agent': 'lantai-build' }, timeout: 8000 },
+        (r) => {
+          if (r.statusCode !== 200) {
+            r.resume();
+            rej(new Error(`HTTP ${r.statusCode}`));
+            return;
+          }
+          let body = '';
+          r.setEncoding('utf8');
+          r.on('data', (c) => {
+            body += c;
+          });
+          r.on('end', () => {
+            try {
+              res(JSON.parse(body).tag_name ?? null);
+            } catch (e) {
+              rej(e);
+            }
+          });
+        },
+      );
+      req.on('timeout', () => req.destroy(new Error('连接超时')));
+      req.on('error', rej);
+    });
+    if (tag) return { tag, via: 'node' };
+  } catch {
+    // 落到通道 2（常见于本机 TLS 链的根不在 node 自带 CA 包里的情形）
+  }
+  // 通道 2：curl 兜底（`--ssl-no-revoke` 绕开 schannel 吊销检查——受限网络下的常态）
+  try {
+    const out = execFileSync(
+      'curl',
+      [
+        '-sS',
+        '--ssl-no-revoke',
+        '--max-time',
+        '10',
+        '-H',
+        'user-agent: lantai-build',
+        UPSTREAM_API,
+      ],
+      // stderr 一律丢弃：这只是"顺手查一下上游"的提醒通道，它的报错不该在构建日志里
+      // 喧宾夺主（探测失败由下方统一降级为一句「无法查询…已跳过」）。
+      { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    const tag = JSON.parse(out).tag_name ?? null;
+    if (tag) return { tag, via: 'curl' };
+  } catch {
+    // 两条都不通
+  }
+  return null;
+}
+
+if (upstreamOnly) {
+  const found = await latestUpstreamTag();
+  if (!found) {
+    log('无法查询上游最新版（网络 / TLS 均不可达）——已跳过，不影响任何流程。');
+    log(
+      '  · 若报证书类错误，本机可试：node --use-system-ca scripts/fetch-officecli.mjs --upstream',
+    );
+    exit(0);
+  }
+  if (isNewer(found.tag, PINNED_VERSION)) {
+    log(
+      `⬆ 上游已发布 ${found.tag}（当前随包 pin 的是 v${PINNED_VERSION}；经 ${found.via} 查得）`,
+    );
+    log('  升级是**可选项**、不影响现有功能；要升再走下面四步（否则忽略本条即可）：');
+    log('    ① 改本文件 PINNED_VERSION / PINNED_SHA256（从该 tag 的官方 SHA256SUMS 取）');
+    log('    ② 同步 examples/office-cli/install-officecli.ps1 的 $PINNED（两处必须同改）');
+    log('    ③ node scripts/fetch-officecli.mjs 取件（哈希不符会拒绝落位）');
+    log('    ④ 重跑门禁——office 域工具的动词白名单要重验（上游可能改了命令行）');
+  } else {
+    log(`✓ 随包版本已是最新（v${PINNED_VERSION}；上游最新 ${found.tag}，经 ${found.via} 查得）`);
+  }
   exit(0);
 }
 

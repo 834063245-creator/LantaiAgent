@@ -190,6 +190,14 @@ jobs:
         shell: bash
         run: node scripts/fetch-officecli.mjs
 
+      # 上游新版提醒（**非致命**，continue-on-error）：pin 住版本是对的（哈希校验才有意义、
+      # 上游改 CLI 不会打到用户），但副作用是「该升级了」没有任何信号。这一步补上信号——
+      # 只提示、不改 pin、不阻断发版；查不到（离线/限流）也静默跳过。
+      - name: Check upstream OfficeCLI version (advisory)
+        shell: bash
+        continue-on-error: true
+        run: node scripts/fetch-officecli.mjs --upstream
+
       - name: Generate changelog
         id: cliff
         shell: bash
