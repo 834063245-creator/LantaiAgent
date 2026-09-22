@@ -54,9 +54,12 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential g++ pkg-config
 
+      # 产物落点：仓库根 `target/release/`，**不是** `engine/target/`——根 Cargo.toml 是工作区
+      # （members = engine/src-tauri/hologram-{graph,storage,vector}，2026-09-08 L5b crate 拆出时立的），
+      # 从成员目录跑 cargo 一样写工作区根 target。原写法 `cd engine && cargo build` + 从
+      # `engine/target/...` 取件，自那次改造起就必然 `cp: No such file or directory`。
       - name: Build engine
-        run: cargo build --release
-        working-directory: engine
+        run: cargo build --release -p hologram-engine
 
       # 2026-09-16：release-bin/（`hologram` wrapper + install.cmd/install.sh）已删除——
       # 引擎包只发裸二进制，用法见 README「引擎 CLI」。B3 收口，见 docs/landmine-map.md。
@@ -64,14 +67,14 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           mkdir -p staging
-          cp engine/target/release/hologram-engine staging/
+          cp target/release/hologram-engine staging/
           tar -czf ${{ matrix.artifact }}.tar.gz -C staging .
       - name: Stage artifacts (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           mkdir -p staging
-          cp engine/target/release/hologram-engine.exe staging/
+          cp target/release/hologram-engine.exe staging/
           cd staging && 7z a -tzip ../${{ matrix.artifact }}.zip .
 
       - name: Generate changelog
@@ -108,14 +111,13 @@ jobs:
           toolchain: stable
 
       - name: Build engine (release)
-        run: cargo build --release
-        working-directory: engine
+        run: cargo build --release -p hologram-engine
 
       - name: Stage engine binary for dsh-bundle
         shell: bash
         run: |
           mkdir -p staging
-          cp engine/target/release/hologram-engine.exe staging/hologram-engine-win32-x64.exe
+          cp target/release/hologram-engine.exe staging/hologram-engine-win32-x64.exe
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -147,7 +149,12 @@ jobs:
 
   desktop:
     runs-on: windows-latest
-    timeout-minutes: 30
+    # 45 分钟，不是 30：本 job 现在**多了一次冷编引擎**（bundle.resources 要那枚二进制，
+    # 见下面 "Build engine binary" 一步）。v10.4.0 实测本 job 17m51s / 30m 预算，当时
+    # 并不编引擎；同一 runner 上冷编 engine 的实测开销 ≈ 6m（见 engine-cli 的 windows 腿）。
+    # 加起来 ≈ 24m——卡在 30m 预算的 80%，而 GH runner 的方差足以让它偶发超时，
+    # 超时一次就废掉整轮发版（Release 已被部分创建）。留出行李。
+    timeout-minutes: 45
     env:
       RUSTC_WRAPPER: ''
     steps:
@@ -197,6 +204,15 @@ jobs:
         shell: bash
         continue-on-error: true
         run: node scripts/fetch-officecli.mjs --upstream
+
+      # 引擎二进制本身也是 bundle.resources 的一员（tauri.conf.json 首条：
+      # `"../target/release/hologram-engine.exe": "hologram-engine.exe"`），而 tauri 的 build script
+      # 对 resources 每一条做**编译期存在性校验**——缺它 = 整个打包在编译阶段就失败（不是打包后缺件）。
+      # ⚠ 别指望配置里的 beforeBuildCommand 兜底：下面 tauri-action 的 args 把它**覆盖成空**
+      # （`--config '{"build":{"beforeBuildCommand":""}}'`，本意是免得前端构建跑两遍），
+      # 而那份被覆盖掉的脚本里恰好带着 `cargo build -p hologram-engine --release`。所以这里必须显式补。
+      - name: Build engine binary (bundle resource)
+        run: cargo build --release -p hologram-engine
 
       - name: Generate changelog
         id: cliff
