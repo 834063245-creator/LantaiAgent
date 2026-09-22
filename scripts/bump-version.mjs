@@ -37,12 +37,13 @@ const CARGO_TOMLS = [
 ];
 
 /**
- * 三份 lock 都改。注意 engine/Cargo.lock 与 src-tauri/Cargo.lock 是**化石**——
- * 根 Cargo.toml 立工作区之后 cargo 只认仓库根的 Cargo.lock（实测：把 engine/Cargo.lock
- * 写成 garbage，`cargo metadata --locked` 照样 exit 0）。这里仍同步它们，纯粹是免得
- * 全仓 grep 版本号时看见三个不同的数；删不删由后续清理决定。
+ * 只有仓库根这一份 lock（真源）。`engine/Cargo.lock` 与 `src-tauri/Cargo.lock` 曾在表里
+ * ——它们是工作区之前留下的化石，2026-09-22 已删（实测：把 engine/Cargo.lock 写成 garbage，
+ * `cargo metadata --locked` 照样 exit 0 ⇒ cargo 根本不读它们）。删掉之后本表少维护两项，
+ * 也不会再出现「三个 lock 三个版本号」的 grep 噪声。新增 crate 只改 Cargo.toml 段，
+ * lock 由本脚本按包名改 + 收尾 `cargo metadata --locked` 校验。
  */
-const CARGO_LOCKS = ['Cargo.lock', 'engine/Cargo.lock', 'src-tauri/Cargo.lock'];
+const CARGO_LOCKS = ['Cargo.lock'];
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
