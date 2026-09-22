@@ -25,9 +25,15 @@ export interface BlockOp {
   title?: string;
 }
 
-/** 「立枝」判据表（`_id` → 判据）：形状取自 core 能力位，不另立类型出口——
+/** 「立枝」判据表（**块 id** → 判据）：形状取自 core 能力位，不另立类型出口——
  *  判据真源在 `app/chat/session-branch`（本文件只消费）。 */
 type BranchMap = ReturnType<PaperCore['branchPoints']>;
+type BranchPoint = NonNullable<ReturnType<BranchMap['get']>>;
+/** 查表结果（未列出的块 = 无判据 ⇒ 按可立枝处理——置灰是提示，不是门禁）。 */
+type BranchVerdict = BranchPoint | undefined;
+type BranchNode = Parameters<PaperCore['branchPoints']>[1][number];
+/** 块坐标（消息 parts + 本块下标）——按块定位的输入，形状同样取自 core 能力位。 */
+type BranchBlockRef = NonNullable<BranchNode['block']>;
 
 /** 从消息提取可复制的正文文本（text part 拼接）。 */
 function messageCopyText(msg: ChatMessage): string {
@@ -50,7 +56,14 @@ export function useBlockOps(params: {
   const { core, regions, regionsRef, regionMsgs } = params;
 
   const msgOpsFor = useCallback(
-    (msg: ChatMessage, stateOps: boolean, retrace: boolean, sid: number, branches: BranchMap): BlockOp[] => {
+    (
+      msg: ChatMessage,
+      stateOps: boolean,
+      retrace: boolean,
+      sid: number,
+      branch: BranchVerdict,
+      block: BranchBlockRef | undefined,
+    ): BlockOp[] => {
       if (!core) return [];
       const latest = (): ChatMessage => {
         // 在来源会话的消息流里找最新版本
@@ -81,22 +94,23 @@ export function useBlockOps(params: {
       }
       const text = messageCopyText(latestMsg);
       if (text.trim()) ops.push({ key: 'copy', label: '抄录', run: () => core.copyText(messageCopyText(latest())) });
-      // **立枝**（会话树，2026-09-18）：从这条消息（节点）另起一枝——枝**含该节点**。
+      // **立枝**（会话树，2026-09-18；2026-09-22 改按**块**定位）：从这一块另起一枝——
+      // 枝**含这一块**，切点 = 该块所在**那一步**的末尾（判据在 `session-branch`）。
       // 位置纪律 = 与「改 / 重发 / 抄」同一行动作（主流 agent 软件的分支入口都挂在
-      // 消息自己身上，不是会话列表、不是标题栏）；来文块与回复块都给（回复块的切点
-      // 落在本轮末尾，见 `session-branch.resolveBranchPoint`）。
-      // **置灰**：判据由调用方**每卷一趟**派生（`core.branchPoints`）后传进来——判定
-      // 含整段 fold（O(事件数)），逐块在渲染期跑会拖帧；不可立枝的**具名原因**直接
-      // 作 title（错误不静默），点击时仍由 `branchFromMessage` 兜底。
+      // 消息自己身上，不是会话列表、不是标题栏）；一条答复的每一块都给（正文段 / 工具卡…）
+      // ——**块坐标随点击一起交给 core**：一条助手消息在实时形态里聚合整轮，
+      // 不带块坐标就只能切到整轮末尾（用户报的「复制了一整个会话」）。
+      // **置灰**：判据由调用方每卷**一趟**派生（`core.branchPoints`，逐块 O(1)）后传进来
+      // ——判定含整段 fold（O(事件数)），逐块在渲染期跑会拖帧；不可立枝的**具名原因**
+      // 直接作 title（错误不静默），点击时仍由 `branchFromMessage` 兜底。
       // 无判据的块按**可立枝**处理（置灰是提示不是门禁：宁可让用户点一下看到具名
       // toast，也不误灰一个合法的枝）。
-      const branch = branches.get(msg._id);
       ops.push({
         key: 'branch',
         label: '立枝',
-        run: () => void core.branchFromMessage(latest(), sid),
+        run: () => void core.branchFromMessage(latest(), sid, undefined, block),
         ...(branch && !branch.ok ? { disabled: true } : {}),
-        title: branch && !branch.ok ? branch.reason : '从这条另起一枝：本卷原样保留，新枝复制到此为止的历史',
+        title: branch && !branch.ok ? branch.reason : '从这一块另起一枝：本卷原样保留，新枝复制到这一块为止的历史',
       });
       return ops;
     },
@@ -132,13 +146,28 @@ export function useBlockOps(params: {
       const msgs = regionMsgs[r.sessionNum]?.messages ?? [];
       const byId = new Map<string, ChatMessage>();
       for (const m of msgs) byId.set(m._id, m);
-      // 可立枝判据：**每卷一趟**派生（O(事件数 + 消息数)）——逐块问 = 每块一次整段
+      // 每**块**一张节点（键 = 块 id）：同一条答复拆出的各块切点各不相同，故判据必须
+      // 按块问——块坐标（消息 parts + 本块下标）一并带上（2026-09-22 按块定位）。
+      const nodes: BranchNode[] = [];
+      const blockRefs = new Map<string, BranchBlockRef>();
+      for (const b of r.blocks) {
+        const msg = byId.get(b.source.messageId);
+        if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) continue;
+        if (msg.role !== 'assistant') {
+          nodes.push({ key: b.id, _id: msg._id, role: msg.role });
+          continue;
+        }
+        const block: BranchBlockRef = {
+          parts: msg.parts,
+          index: msg.parts.findIndex((p) => p === b.source.part),
+        };
+        blockRefs.set(b.id, block);
+        nodes.push({ key: b.id, _id: msg._id, role: msg.role, respondingTo: msg.respondingTo, block });
+      }
+      // 可立枝判据：**每卷一趟**派生（O(事件数 + 块数)）——逐块问 = 每块一次整段
       // fold（长卷拖帧，见 session-branch.deriveBranchPoints）。判据随缓存戳走：
       // 未落定批次跑完/锚点变化 ⇒ 戳变 ⇒ 该块的 ops 重算（置灰态不粘旧判定）。
-      const branches = core.branchPoints(
-        r.sessionNum,
-        msgs.filter((m) => m.role === 'user' || m.role === 'assistant'),
-      );
+      const branches: BranchMap = core.branchPoints(r.sessionNum, nodes);
       // 各卷最新一条来文（倒序首见）——状态类操作按钮的准入判定
       let lastUser: ChatMessage | undefined;
       for (let i = msgs.length - 1; i >= 0; i--) {
@@ -155,7 +184,7 @@ export function useBlockOps(params: {
         // 可撤态入缓存戳——压缩/漂移后置灰态随渲染刷新（不粘旧判定）
         let retrace = false;
         if (stateOps && msg.role === 'user') retrace = core.canRetraceUserMessage(msg);
-        const branch = branches.get(msg._id);
+        const branch: BranchVerdict = branches.get(b.id);
         if (branch?.ok) branchGrips.add(b.id);
         const stamp = `${stateOps ? (retrace ? '1' : '0') : ''}|${
           branch ? (branch.ok ? `b${branch.atSeq}` : `x${branch.reason}`) : ''
@@ -167,7 +196,7 @@ export function useBlockOps(params: {
           // 陈旧会话消息表。
           opsByBlock.set(b.id, hit.ops);
         } else {
-          const ops = msgOpsFor(msg, stateOps, retrace, r.sessionNum, branches);
+          const ops = msgOpsFor(msg, stateOps, retrace, r.sessionNum, branch, blockRefs.get(b.id));
           opsCacheRef.current.set(b.id, { msg, ops, stamp, regionMsgs });
           opsByBlock.set(b.id, ops);
         }

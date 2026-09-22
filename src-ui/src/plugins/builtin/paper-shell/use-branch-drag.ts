@@ -59,6 +59,8 @@ export function useBranchDrag(params: {
   const dragRef = useRef<{
     blockId: string;
     messageId: string;
+    /** 本块对应的 part（`BlockSource.part` 活引用）——松手时的**块坐标**（按块定位）。 */
+    part: object | null;
     sessionId: string;
     sx: number;
     sy: number;
@@ -80,6 +82,7 @@ export function useBranchDrag(params: {
       dragRef.current = {
         blockId: block.id,
         messageId: block.source.messageId,
+        part: block.source.part,
         sessionId,
         sx: e.clientX,
         sy: e.clientY,
@@ -128,7 +131,16 @@ export function useBranchDrag(params: {
       if (!msg) return; // 块已不在消息表里（卷被换掉/关掉）：无从立枝，取消
       // 落点 = **世界坐标**（与书脊拖落同一把尺子：pickDropAnchor + place 在 chat-core）
       const w = screenToWorld(useCanvasViewStore.getState().view, e.clientX - rect.left, e.clientY - rect.top);
-      void core?.branchFromMessage(msg, Number(d.sessionId), { x: w.x, y: w.y });
+      // 块坐标随点击一起交出去（2026-09-22 按块定位）：握把长在**块**上，切点就必须是
+      // 该块所在那一步的末尾——只给消息 = 整轮末尾（一条助手消息在实时形态里聚合整轮）。
+      const partIndex = msg.role === 'assistant' ? msg.parts.findIndex((p) => p === d.part) : -1;
+      // 第三位 = 落点（旧核也认），第四位 = 块坐标（旧核忽略）——见 chat-core 该函数的注
+      void core?.branchFromMessage(
+        msg,
+        Number(d.sessionId),
+        { x: w.x, y: w.y },
+        msg.role === 'assistant' ? { parts: msg.parts, index: partIndex } : undefined,
+      );
     };
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') cancel();

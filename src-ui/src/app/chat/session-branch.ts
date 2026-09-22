@@ -12,7 +12,7 @@
 // 原子替换写）→ 交既有开卷路径摊开（`loadSessionFromDisk` 读路径**一行不改**）。
 // 不建 Agent、不碰父卷一个字节、不动事件词表。
 //
-// 三条切点纪律（plan §3）：
+// 切点纪律（plan §3 三条 + 2026-09-22 补第四条）：
 //   ① **只落已落定处**：前缀里每个宣布的 `tool_call` 都必须有配对结果——这是
 //      provider 转写合法性，不是风格问题。判据复用 `danglingToolCalls`（恢复链
 //      同一真源，杜绝第二把尺子）。没落定 = 具名拒绝，**绝不「悄悄向前归一」**
@@ -21,6 +21,10 @@
 //      `session-log-store` 的写后队列），再读盘取前缀。
 //   ③ **边归一化**（plan §1.3）：在**继承区**内立枝时，边归到上层卷——否则树画错，
 //      且删除连坐（P2）会删错子树。
+//   ④ **按块定位**（2026-09-22 用户报「复制了一整个会话」后补）：入口挂在**块**上，
+//      切点就必须是**块**的切点——实时形态里一条助手消息聚合整轮（跨步复用同一条
+//      消息），只按「消息」定位会让点中间任意一块都切到整轮末尾（单轮卷 = 整卷）。
+//      块坐标（`BranchBlockRef`）→ 该块所在**步**的末尾；定位不到才退回整轮。
 
 import { agentSessionState } from '../../agent/agent-session-state';
 import { log } from '../../agent/logger';
@@ -57,13 +61,31 @@ const MAX_ANCESTOR_WALK = 64;
 /** 立枝结果。`ok:false` 时 `reason` 已 toast（错误不静默），调用方无需再报。 */
 export type BranchResult = { ok: true; sid: number } | { ok: false; reason: string };
 
-/** 可立枝的节点（UI 消息的最小形状——`chat-core` 直接把 ChatMessage 传进来）。 */
+/**
+ * **块坐标**（按块定位的输入）：本块所在界面消息的 `parts` + 本块在其中的下标。
+ *
+ * 为什么必须有这一层（2026-09-22 用户报「立枝复制了一整个会话」）：一条答复会拆成
+ * **多块**（正文段 / 工具卡 / 资产卡…，见 `paper/translate`），而一条 UI 助手消息在
+ * **实时形态**里聚合**整轮**（`chat-stream` 的流式助手跨步复用同一条消息）——只带
+ * 「消息 id」的旧定位只能给整轮末尾，点中间任意一块都切到整轮（单轮卷 = 整卷）。
+ * 块坐标把「点的是哪一块」带进判定：切点 = **该块所在那一步的末尾**（见 `branchPointIn`）。
+ */
+export interface BranchBlockRef {
+  parts: readonly unknown[];
+  index: number;
+}
+
+/** 可立枝的节点（UI 消息/块的最小形状——`chat-core` 直接把 ChatMessage 传进来）。 */
 export interface BranchNode {
+  /** 判据表的键（**块** id——同一条答复的各块切点各不相同；缺席 = `_id`）。 */
+  key?: string;
   /** UI 消息 id（`_id`）——经既有尾对齐映射落到投影下标。 */
   _id: string;
   role: string;
   /** 助手消息回答的来文 `_id`（`AssistantMessage.respondingTo`）——助手块的定位入口。 */
   respondingTo?: string;
+  /** 本块坐标——缺席 = 按**整轮**定位（无块信息的调用方；块入口一律带它）。 */
+  block?: BranchBlockRef;
 }
 
 /** 某节点的切点（`atSeq` = 枝要包含的最后一个事件 seq）或不可立枝的具名原因。 */
@@ -71,6 +93,14 @@ export type BranchPoint = { ok: true; atSeq: number } | { ok: false; reason: str
 
 /** 枝边血缘（父卷 + 切点）——侧栏/书脊/卷首那枚「枝」标与画布引线的取材形状。 */
 export type BranchNodeOrigin = SessionLogParentRef;
+
+/** 投影消息的读面形状（只读本文件用到的几个字段——不 import provider 类型）。 */
+interface ProjectionMessage {
+  role?: string;
+  content?: string;
+  tool_calls?: ReadonlyArray<{ id?: string }>;
+  tool_call_id?: string;
+}
 
 /**
  * 定位上下文（**一次算清**，单点与批量共用同一份判据）。
@@ -80,7 +110,7 @@ export type BranchNodeOrigin = SessionLogParentRef;
  * 最早未落定点 / 尾对齐桥」一次算清，逐节点判定退化为 O(1)。
  */
 interface BranchContext {
-  session: ReadonlyArray<{ role?: string; content?: string }>;
+  session: ReadonlyArray<ProjectionMessage>;
   /** 与 `session` 同长同序的来源事件 seq（`SessionLog.deriveMessageAnchors()`）。 */
   anchors: readonly number[];
   /** 日志里**最早的未落定点** seq（null = 全落定）——切点 ≥ 它即含未落定批次。 */
@@ -168,7 +198,13 @@ function branchPointIn(ctx: BranchContext, node: BranchNode): BranchPoint {
       if (m?.role === 'user' && !isInternalMessage(m.content)) break;
       i++;
     }
-    cutIdx = Math.max(userIdx, i - 1);
+    const turnEnd = Math.max(userIdx, i - 1);
+    // 按**块**定位（2026-09-22）：切点 = 该块所在那一步的末尾。块坐标缺席（只给了消息
+    // 的调用方）= 旧语义「整轮末尾」；定位不到（块与日志不同步）= 同样退回整轮（宁可切宽，
+    // 不切错——枝缺内容看不出来，多带内容看得见）。
+    const part = placeablePartOf(node);
+    const step = part ? stepIndexOf(ctx, part, node, userIdx, turnEnd) : null;
+    cutIdx = step === null ? turnEnd : stepEndOf(ctx, step, turnEnd);
   }
   const atSeq = ctx.anchors[cutIdx];
   if (typeof atSeq !== 'number') {
@@ -180,21 +216,135 @@ function branchPointIn(ctx: BranchContext, node: BranchNode): BranchPoint {
   return { ok: true, atSeq };
 }
 
+// ── 按块定位（块坐标 → 那一步的末尾）─────────────────────────────
+//
+// 一块能不能落到「某条模型回复」上，取决于它是哪一种 part：
+//   · **正文块**（text）→ 内容相同的那条 assistant 消息（同文本多次按出现次序消歧）；
+//   · **工具卡**（tool）→ 这次调用的结果那条 tool 消息（`tool_call_id` 身份匹配，唯一）；
+//   · 其余（夹注 / 资产卡 / 计划卡 / 子代理组）自己没有事件落点——取**最近的邻块**
+//     （它们挨着本步的正文或工具卡），由 `placeablePartOf` 顶替。
+// 切点再从那条回复往后走**紧邻的工具结果**（并行调用的一串算同一步），故：
+// 「含这一块」+「前缀里每个宣布的调用都有配对结果」两条同时成立。
+
+/** part 的形状读面（结构性读——本文件只认这三个字段）。 */
+interface PartView {
+  type?: string;
+  text?: string;
+  toolId?: string;
+}
+
+function partViewOf(v: unknown): PartView | null {
+  return v !== null && typeof v === 'object' ? (v as PartView) : null;
+}
+
+/** 这个 part 有事件落点吗（正文 / 工具卡）。 */
+function placeable(v: unknown): PartView | null {
+  const p = partViewOf(v);
+  if (!p) return null;
+  if (p.type === 'tool' && typeof p.toolId === 'string' && p.toolId.length > 0) return p;
+  if (p.type === 'text' && typeof p.text === 'string' && p.text.length > 0) return p;
+  return null;
+}
+
+/** 本块（或最近的邻块）里那个有事件落点的 part——资产卡/夹注块 = 同一步的正文/工具卡。 */
+function placeablePartOf(node: BranchNode): PartView | null {
+  const parts = node.block?.parts;
+  const idx = node.block?.index ?? -1;
+  if (!parts || idx < 0 || idx >= parts.length) return null;
+  const self = placeable(parts[idx]);
+  if (self) return self;
+  for (let i = idx - 1; i >= 0; i--) {
+    const p = placeable(parts[i]);
+    if (p) return p;
+  }
+  for (let i = idx + 1; i < parts.length; i++) {
+    const p = placeable(parts[i]);
+    if (p) return p;
+  }
+  return null;
+}
+
+/** 这条回复宣布了这次调用吗（工具卡的「宣布者」定位）。 */
+function announcesCall(m: ProjectionMessage | undefined, toolId: string): boolean {
+  if (m?.role !== 'assistant') return false;
+  return (m.tool_calls ?? []).some((c) => String(c?.id ?? '') === toolId);
+}
+
+/** 该块在 parts 里是**第几次**出现相同正文（同文本多次时的消歧序）。 */
+function textOrdinal(node: BranchNode, text: string): number {
+  const parts = node.block?.parts;
+  const idx = node.block?.index ?? -1;
+  if (!parts || idx < 0) return 1;
+  let n = 0;
+  for (let i = 0; i <= idx && i < parts.length; i++) {
+    const p = partViewOf(parts[i]);
+    if (p?.type === 'text' && p.text === text) n++;
+  }
+  return Math.max(1, n);
+}
+
+/** 该 part 落在投影的哪条消息上（null = 定位不到）。 */
+function stepIndexOf(
+  ctx: BranchContext,
+  part: PartView,
+  node: BranchNode,
+  userIdx: number,
+  turnEnd: number,
+): number | null {
+  const { session } = ctx;
+  if (part.type === 'tool' && typeof part.toolId === 'string') {
+    // 结果那条 tool 消息（身份匹配）；结果还没落（在跑）⇒ 退到宣布它的回复：
+    // 切点落在宣布处，随后的落定校验照样具名拒绝（不静默切到别处）
+    for (let i = userIdx + 1; i <= turnEnd; i++) {
+      const m = session[i];
+      if (m?.role === 'tool' && String(m.tool_call_id ?? '') === part.toolId) return i;
+    }
+    for (let i = userIdx + 1; i <= turnEnd; i++) {
+      if (announcesCall(session[i], part.toolId)) return i;
+    }
+    return null;
+  }
+  if (part.type === 'text' && typeof part.text === 'string' && part.text.length > 0) {
+    const want = textOrdinal(node, part.text);
+    let seen = 0;
+    let last: number | null = null;
+    for (let i = userIdx + 1; i <= turnEnd; i++) {
+      const m = session[i];
+      if (m?.role !== 'assistant' || (m.content ?? '') !== part.text) continue;
+      seen++;
+      last = i;
+      if (seen === want) return i;
+    }
+    return last; // 出现次数少于块序（日志与界面不同步）⇒ 退到最后一处，宁可切宽
+  }
+  return null;
+}
+
+/** 那一步的末尾 = 该条回复之后**紧邻**的工具结果（并行调用的一串算同一步）。 */
+function stepEndOf(ctx: BranchContext, step: number, turnEnd: number): number {
+  let end = step;
+  while (end + 1 <= turnEnd && ctx.session[end + 1]?.role === 'tool') end++;
+  return end;
+}
+
 /**
  * **节点 → 事件切点**（会话树「枝」的定位半边，plan §3/§4）。
  *
  * 「枝含该节点」：
  *   · **来文块** → 切点 = 这条来文自己的来源 seq（新枝到此为止，改写在枝上继续）；
- *   · **回复块** → 一条 UI 助手消息聚合**整轮**（parts 里含工具/子代理块）⇒ 切点 =
- *     本轮最后一个已落定节点的 seq。停止条件 = 下一条**真正的**来文——轮内被 append 的
- *     内部来文（`<system-reminder>` / `<goal>` 等）不是轮边界，故切点落在**整轮末尾**
- *     （判据 = `isInternalMessage`，与恢复/导出/撤回定位**同一把尺子**，见
- *     `ui/chat-session.ts`；plan §3.2 的书面语义「该节点所属批次全部落定之后」）。
+ *   · **回复块（带块坐标）** → 切点 = **该块所在那一步的末尾**（2026-09-22 修正）：
+ *     正文块 = 它那条回复 + 它宣布的调用的结果；工具卡 = 这次调用的结果（并行的一串算一步）。
+ *   · **回复块（无块坐标）** → 切点 = **整轮末尾**（旧语义；只有「消息」没有「块」的调用方走这条）。
+ *     轮边界判据 = 下一条**真正的**来文：轮内被 append 的内部来文（`<system-reminder>` /
+ *     `<goal>` 等）不是轮边界（`isInternalMessage`，与恢复/导出/撤回定位**同一把尺子**，
+ *     见 `ui/chat-session.ts`）。
  *
  * 定位链全部复用既有单一真源，不另立尺子：
  *   UI `_id` →（`canRetraceUserTurn` 触发的尾对齐 `TurnIdBridge`）→ 投影下标 →
  *   （`SessionLog.deriveMessageAnchors()`，与投影同一个 fold）→ 事件 seq →
  *   （`danglingToolCalls`，恢复链同一判据）→ 落定校验。
+ * 按块定位只在这一条链的**末端**多走一步：投影下标 → 本块那一步的下标（内容/身份匹配，
+ * 见 `stepIndexOf`），故不引入第二把「哪条消息属于哪一轮」的尺子。
  *
  * 纯同步、零 I/O（故可在点击时即时判定）；不可立枝一律给具名原因，绝不静默失败。
  */
@@ -213,7 +363,8 @@ export function resolveBranchPoint(storeId: string, sid: number, node: BranchNod
  * `resolveBranchPoint` **同一条**（`branchPointIn`）——绝不出现「灰着却能点」或
  * 「能点却灰着」的第二把尺子。
  *
- * 返回 `Map<节点 _id, 判据>`；未列出的节点 = 无判据（调用方按可立枝处理，点击时仍由
+ * 返回 `Map<节点键, 判据>`（键 = `node.key ?? node._id`——**块**入口给块 id，因为同一条
+ * 答复拆出的各块切点不同）；未列出的节点 = 无判据（调用方按可立枝处理，点击时仍由
  * `resolveBranchPoint` 兜底——置灰是提示，不是门禁）。
  */
 export function deriveBranchPoints(
@@ -221,14 +372,15 @@ export function deriveBranchPoints(
   sid: number,
   nodes: readonly BranchNode[],
 ): Map<string, BranchPoint> {
+  const keyOf = (n: BranchNode): string => n.key ?? n._id;
   const out = new Map<string, BranchPoint>();
   if (nodes.length === 0) return out;
   const built = branchContext(storeId, sid, nodes);
   if (!built.ok) {
-    for (const n of nodes) out.set(n._id, { ok: false, reason: built.reason });
+    for (const n of nodes) out.set(keyOf(n), { ok: false, reason: built.reason });
     return out;
   }
-  for (const n of nodes) out.set(n._id, branchPointIn(built.ctx, n));
+  for (const n of nodes) out.set(keyOf(n), branchPointIn(built.ctx, n));
   return out;
 }
 

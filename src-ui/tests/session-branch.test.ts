@@ -93,6 +93,7 @@ import { volumeDisplayName } from '../src/state/volume-name';
 import type { SessionContext } from '../src/ui/chat-session';
 import * as Session from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
+import { type AssistantMessage, createAssistantMessage, type UserMessage } from '../src/ui/message-model';
 
 const WS = 'D:/wsBranch';
 const SESSIONS = `${WS}/.lantai/sessions`;
@@ -629,6 +630,235 @@ describe('会话树「枝」——节点定位（消息动作行的入口：枝�
     // ④ 置灰读面（`deriveBranchPoints`）与单点 `resolveBranchPoint` **同源**——不出现第二把尺子
     const derived = deriveBranchPoints(store, 1, nodes);
     for (const n of nodes) expect(derived.get(n._id)).toEqual(resolveBranchPoint(store, 1, n));
+  });
+
+  it('按块定位（实时形态：一条助手消息聚合整轮）：每块切点 = 它那**一步**的末尾，不是整轮末尾', async () => {
+    const store = 'branch-block-live';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(
+      1,
+      logText(1, [
+        sys,
+        user('给我打个招呼'),
+        { role: 'assistant', content: '先看看工作区', tool_calls: [{ id: 'c1', name: 'shell', arguments: '{}' }] },
+        { role: 'tool', tool_call_id: 'c1', content: '结果一' },
+        { role: 'assistant', content: '再写一份信', tool_calls: [{ id: 'c2', name: 'fs', arguments: '{}' }] },
+        { role: 'tool', tool_call_id: 'c2', content: '结果二' },
+        { role: 'assistant', content: '搞定了' },
+      ]),
+    );
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+
+    // 实时形态 = 整轮**一条**界面助手消息（`chat-stream` 的流式助手跨步复用同一条），
+    // 块 = 它的 parts 拆出来的那些（正文段 / 工具卡）——旧定位只有「消息」，故整轮任意一块
+    // 都切到整轮末尾（用户报：「复制了一整个会话」）。这里按真形态合并重开面的 parts。
+    const rebuilt = msgStoreFor(store, 1).getState().messages;
+    const uiUser = rebuilt.find((m) => m.role === 'user') as UserMessage;
+    const live = createAssistantMessage(uiUser._id);
+    for (const m of rebuilt) if (m.role === 'assistant') live.parts.push(...m.parts);
+    live.status = 'done';
+    msgStoreFor(store, 1).getState().setMessages([uiUser, live]);
+
+    const at = (index: number) =>
+      resolveBranchPoint(store, 1, {
+        key: `pb:${live._id}:${index}`,
+        _id: live._id,
+        role: 'assistant',
+        respondingTo: uiUser._id,
+        block: { parts: live.parts, index },
+      });
+    const toolIdx = (id: string) => live.parts.findIndex((p) => p.type === 'tool' && p.toolId === id);
+    const textIdx = (t: string) => live.parts.findIndex((p) => p.type === 'text' && p.text === t);
+
+    // seq 账：1 = init、2 = 来文、3 = 第一步正文、4 = 它的结果、5 = 第二步正文、
+    // 6 = 它的结果、7 = 收尾正文、8 = 开卷 adopt。
+    expect(at(textIdx('先看看工作区'))).toEqual({ ok: true, atSeq: 4 }); // 本步末尾（含它宣布的调用的结果）
+    expect(at(toolIdx('c1'))).toEqual({ ok: true, atSeq: 4 }); // 工具卡 = 这次调用的结果
+    expect(at(textIdx('再写一份信'))).toEqual({ ok: true, atSeq: 6 });
+    expect(at(toolIdx('c2'))).toEqual({ ok: true, atSeq: 6 });
+    expect(at(textIdx('搞定了'))).toEqual({ ok: true, atSeq: 7 }); // 收尾正文（无调用）= 它自己
+    // 来文块不变；不带块坐标 = 整轮末尾（只有「消息」没有「块」的调用方，旧语义保留）
+    expect(resolveBranchPoint(store, 1, uiUser)).toEqual({ ok: true, atSeq: 2 });
+    expect(resolveBranchPoint(store, 1, { _id: live._id, role: 'assistant', respondingTo: uiUser._id })).toEqual({
+      ok: true,
+      atSeq: 7,
+    });
+
+    // 判据表按**块**键（同一条消息的各块切点不同——一张表装得下）
+    const derived = deriveBranchPoints(store, 1, [
+      {
+        key: 'b-text1',
+        _id: live._id,
+        role: 'assistant',
+        respondingTo: uiUser._id,
+        block: { parts: live.parts, index: textIdx('先看看工作区') },
+      },
+      {
+        key: 'b-final',
+        _id: live._id,
+        role: 'assistant',
+        respondingTo: uiUser._id,
+        block: { parts: live.parts, index: textIdx('搞定了') },
+      },
+    ]);
+    expect(derived.get('b-text1')).toEqual({ ok: true, atSeq: 4 });
+    expect(derived.get('b-final')).toEqual({ ok: true, atSeq: 7 });
+  });
+
+  it('按块定位（重开形态：一步一条界面消息）：同样按步切——块坐标在两种形态下同判据', async () => {
+    const store = 'branch-block-rebuilt';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(
+      1,
+      logText(1, [
+        sys,
+        user('给我打个招呼'),
+        { role: 'assistant', content: '先看看工作区', tool_calls: [{ id: 'c1', name: 'shell', arguments: '{}' }] },
+        { role: 'tool', tool_call_id: 'c1', content: '结果一' },
+        { role: 'assistant', content: '再写一份信', tool_calls: [{ id: 'c2', name: 'fs', arguments: '{}' }] },
+        { role: 'tool', tool_call_id: 'c2', content: '结果二' },
+        { role: 'assistant', content: '搞定了' },
+      ]),
+    );
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    const uiUser = ui.find((m) => m.role === 'user') as UserMessage;
+    const assistants = ui.filter((m): m is AssistantMessage => m.role === 'assistant');
+    expect(assistants).toHaveLength(3);
+
+    const at = (m: AssistantMessage) => {
+      const index = m.parts.findIndex((p) => p.type === 'text');
+      return resolveBranchPoint(store, 1, {
+        key: `${m._id}:${index}`,
+        _id: m._id,
+        role: 'assistant',
+        respondingTo: uiUser._id,
+        block: { parts: m.parts, index },
+      });
+    };
+    expect(assistants.map(at)).toEqual([
+      { ok: true, atSeq: 4 },
+      { ok: true, atSeq: 6 },
+      { ok: true, atSeq: 7 },
+    ]);
+  });
+
+  it('按块定位：没有事件落点的块（资产卡 / 夹注）取**最近的邻块**——同一块序里各归各步', async () => {
+    const store = 'branch-block-neighbour';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(
+      1,
+      logText(1, [
+        sys,
+        user('给我打个招呼'),
+        { role: 'assistant', content: '先看看工作区', tool_calls: [{ id: 'c1', name: 'shell', arguments: '{}' }] },
+        { role: 'tool', tool_call_id: 'c1', content: '结果一' },
+        { role: 'assistant', content: '再写一份信', tool_calls: [{ id: 'c2', name: 'shell', arguments: '{}' }] },
+        { role: 'tool', tool_call_id: 'c2', content: '结果二' },
+        { role: 'assistant', content: '搞定了' },
+      ]),
+    );
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+
+    const rebuilt = msgStoreFor(store, 1).getState().messages;
+    const uiUser = rebuilt.find((m) => m.role === 'user') as UserMessage;
+    const live = createAssistantMessage(uiUser._id);
+    // 真形态的块序：每步 = 工具卡 + 正文段；**资产卡**（`show_asset` 的产物）紧随其步
+    live.parts.push({
+      type: 'tool',
+      toolId: 'c1',
+      name: 'shell',
+      args: '{}',
+      label: 'shell',
+      readOnly: false,
+      status: 'done',
+    });
+    live.parts.push({ type: 'text', text: '先看看工作区', finalised: true });
+    live.parts.push({
+      type: 'block',
+      assetId: 'as_1',
+      kind: 'html',
+      presentation: 'html',
+      payload: {},
+      finalised: true,
+    });
+    live.parts.push({
+      type: 'tool',
+      toolId: 'c2',
+      name: 'shell',
+      args: '{}',
+      label: 'shell',
+      readOnly: false,
+      status: 'done',
+    });
+    live.parts.push({ type: 'text', text: '再写一份信', finalised: true });
+    live.parts.push({
+      type: 'block',
+      assetId: 'as_2',
+      kind: 'html',
+      presentation: 'html',
+      payload: {},
+      finalised: true,
+    });
+    live.parts.push({ type: 'text', text: '搞定了', finalised: true });
+    live.status = 'done';
+    msgStoreFor(store, 1).getState().setMessages([uiUser, live]);
+
+    const at = (index: number) =>
+      resolveBranchPoint(store, 1, {
+        key: `pb:${live._id}:${index}`,
+        _id: live._id,
+        role: 'assistant',
+        respondingTo: uiUser._id,
+        block: { parts: live.parts, index },
+      });
+    const card = (i: number) => live.parts.findIndex((p) => p.type === 'block' && p.assetId === `as_${i}`);
+    // 资产卡自己没有事件落点 ⇒ 取最近邻块那一步：第一张归第一步（切 4），第二张归第二步（切 6）
+    expect(at(card(1))).toEqual({ ok: true, atSeq: 4 });
+    expect(at(card(2))).toEqual({ ok: true, atSeq: 6 });
+  });
+
+  it('按块定位：这一块的调用还没落定 ⇒ 照旧具名拒绝（切点退回宣布处，被落定校验拦下）', async () => {
+    const store = 'branch-block-dangling';
+    resetPanel(store);
+    installFactory(store);
+    setVolume(1, logText(1, [sys, user('跑个工具'), assistant('这就去跑')]));
+    expect(await Session.loadSessionFromDisk(makeCtx(store), WS, 1)).toBe(true);
+
+    // 模拟「正在跑」：走**产品自己的双写入口**宣布一次调用（结果未落）——开卷路径会修好
+    // 盘上的历史悬空（`interruptedToolCallClosers`），故运行中的悬空只能这样造。
+    const handle = agentSessionState.getAgent(store, 1) as unknown as {
+      _getAgent(): { _appendMessage(kind: string, message: unknown): void };
+    };
+    handle._getAgent()._appendMessage('assistant/text', {
+      role: 'assistant',
+      content: '这就去跑',
+      tool_calls: [{ id: 'c9', name: 'fs', arguments: '{}' }],
+    });
+
+    const ui = msgStoreFor(store, 1).getState().messages;
+    const uiUser = ui.find((m) => m.role === 'user') as UserMessage;
+    const uiAssistant = ui.find((m) => m.role === 'assistant') as AssistantMessage;
+    const parts = [
+      { type: 'tool', toolId: 'c9', name: 'fs', args: '{}', label: 'fs', readOnly: false, status: 'running' },
+    ];
+
+    const point = resolveBranchPoint(store, 1, {
+      key: 'b-running',
+      _id: uiAssistant._id,
+      role: 'assistant',
+      respondingTo: uiUser._id,
+      block: { parts, index: 0 },
+    });
+    expect(point.ok).toBe(false);
+    if (point.ok) return;
+    expect(point.reason).toContain('没落定');
+    // 来文块切点在悬空调用之前 ⇒ 照常可立枝（同一条落定判据的合法半边）
+    expect(resolveBranchPoint(store, 1, uiUser)).toEqual({ ok: true, atSeq: 2 });
   });
 });
 

@@ -660,13 +660,25 @@ export class ChatCore {
    *  `drop`（P4-① 空间手势，2026-09-19）：**落点世界坐标**——按住块上的「枝」握把拖到
    *  纸上松手时给。落位走 `pickDropAnchor`（与既有流区横向重叠 ⇒ 推最近空位；不重叠 ⇒
    *  落哪算哪）+ `space.place`，**再** expand（先落位后摊开，与书脊拖落同一顺序：region
-   *  先写、装载即用落点位）。缺省 = 既有点击入口，落位由落位 effect 补（行为零变化）。 */
+   *  先写、装载即用落点位）。缺省 = 既有点击入口，落位由落位 effect 补（行为零变化）。
+   *
+   *  `block`（2026-09-22 按块定位）：**本块坐标**（消息 parts + 本块下标）——切点落在
+   *  该块所在**那一步**的末尾，而不是整轮末尾。不带 = 只按消息定位（整轮末尾，旧语义）。
+   *  **两参数刻意各自独立、都留在原位**（`drop` 第三、`block` 第四）：插件产物是磁盘通道
+   *  热更的（换产物不重编译 exe），而本函数住在壳里——产物已更、壳未重建时，按钮路径传的
+   *  块坐标若占了第三位，旧核会把它当**落点**（`drop.x` undefined ⇒ NaN 落位）。 */
   async branchFromMessage(
     msg: ChatMessage,
     sessionId: number,
     drop?: { x: number; y: number },
+    block?: Branch.BranchBlockRef,
   ): Promise<number | null> {
-    const point = Branch.resolveBranchPoint(this.panelId, sessionId, msg);
+    const point = Branch.resolveBranchPoint(this.panelId, sessionId, {
+      _id: msg._id,
+      role: msg.role,
+      ...(msg.role === 'assistant' ? { respondingTo: msg.respondingTo } : {}),
+      ...(block ? { block } : {}),
+    });
     if (!point.ok) {
       showToast(point.reason, 'warn', TOAST_LONG_HOLD_MS);
       return null;
@@ -682,9 +694,10 @@ export class ChatCore {
     return result.sid;
   }
 
-  /** **一卷内全部节点的可立枝判据**（一次性派生）——「立枝」按钮置灰 + 具名原因的
+  /** **一卷内全部块的可立枝判据**（一次性派生）——「立枝」按钮置灰 + 具名原因的
    *  渲染期读面（`use-block-ops` 每卷问一次，不逐块问；见 `Branch.deriveBranchPoints`）。
-   *  判据与点击时的 `branchFromMessage` 同源：置灰是提示，点击仍由后者兜底。 */
+   *  节点键 = **块** id（同一条答复的各块切点不同）；判据与点击时的 `branchFromMessage`
+   *  同源：置灰是提示，点击仍由后者兜底。 */
   branchPoints(sessionId: number, nodes: Branch.BranchNode[]): Map<string, Branch.BranchPoint> {
     return Branch.deriveBranchPoints(this.panelId, sessionId, nodes);
   }
