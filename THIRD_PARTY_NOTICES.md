@@ -289,7 +289,34 @@ These crates power the desktop application shell. All sourced from crates.io.
 
 ---
 
-## 4. MIT License (Full Text)
+## 4. Bundled Application Binaries
+
+Binaries shipped alongside the desktop application itself (not part of the graph
+engine). Fetched at build time and verified by SHA-256; **not** committed to git.
+
+### 4.1 OfficeCLI (`officecli.exe`)
+
+- **Source**: <https://github.com/iOfficeAI/OfficeCLI>
+- **Version**: 1.0.149 (pinned)
+- **License**: Apache-2.0
+- **Usage**: backend for the built-in `office(action, …)` domain tool — reads and
+  writes `.docx` / `.xlsx` / `.pptx`. Fetched by `scripts/fetch-officecli.mjs`
+  (pinned version + SHA-256 verified, atomic placement), bundled via
+  `tauri.conf.json` `bundle.resources`, and installed next to the application
+  executable.
+- **Pinned artifact**: `officecli-win-x64.exe`,
+  SHA-256 `abd82dae417b66aae62d1ec8edbf88ba9d5be7442b55be470b34b764f10731e2`
+- **Full license text**: [`docs/officecli-LICENSE-APACHE-2.0.txt`](docs/officecli-LICENSE-APACHE-2.0.txt)
+- **Copyright / NOTICE**: the copyright notice and any `NOTICE` file of the
+  upstream project are authoritative and live at the source repository above.
+  This repository does not reproduce upstream `NOTICE` contents — it has no
+  verified copy of one (the upstream artifact was fetched over a network this
+  machine cannot reach). **Follow-up: verify upstream `NOTICE`/copyright line
+  when network access is available, and copy it here verbatim.**
+
+---
+
+## 5. MIT License (Full Text)
 
 The MIT License is referenced throughout this file. The complete text is:
 

@@ -94,29 +94,93 @@ struct OfficeTarget {
     write: bool,
 }
 
-/// officecli 二进制定位（与 TS 侧旧 BIN 解析序一致，但**在 Rust 侧**做）：
-/// `$OFFICECLI_PATH` → `~/.lantai/tools/officecli/officecli[.exe]` → PATH 兜底（裸名）。
+/// 随包 officecli 的可执行名——**三处必须一致**：本常量、`tauri.conf.json`
+/// `bundle.resources` 的目标名（`bin/officecli.exe` → `officecli.exe`）、取件脚本
+/// `scripts/fetch-officecli.mjs` 的 `RUNTIME_NAME`。
+#[cfg(windows)]
+const OFFICECLI_EXE: &str = "officecli.exe";
+#[cfg(not(windows))]
+const OFFICECLI_EXE: &str = "officecli";
+
+/// 随包件候选梯（纯函数——不碰 env / 不碰缓存，测试可直测顺序与形状）。
+///
+/// **为什么要有随包分支（2026-09-22 补）**：officecli 此前只有两处来源——用户安装位
+/// 与 PATH，而两处都要求用户**自己动手**（跑 `examples/office-cli/install-officecli.ps1`，
+/// 或者把它装进 PATH）。终端用户拿到的是安装包、没有本仓库目录，跑不了那个脚本
+/// ⇒ `office(action,…)` 一调就报「未找到 officecli 可执行文件」，而给出的补救办法
+/// 他够不着（**功能对用户是死的**：开发机装过所以看不见）。现在二进制随安装包分发
+/// （取件脚本落 `src-tauri/bin/` → 打包映射到宿主 exe 同级），本梯负责找到它。
+///
+/// 候选序：
+///   1. 宿主 exe 同级 `<exe_dir>/officecli[.exe]`——tauri resources 的落点（打包态）；
+///   2. 宿主 exe 上一级——部分安装布局变体（照 `engine_assets` 的同款第二候选）；
+///   3. 仓库开发态兜底 `<repo>/src-tauri/bin/officecli[.exe]`——**取件脚本的落点**，
+///      dev / `cargo test` 走这条（打包态由 1 命中）。
+///
+/// 纪律：**顺序即语义**——用户显式安装位（见 `office_bin` 候选 2）排在随包件**之前**：
+/// 显式装的件是用户的选择，且 `install-officecli.ps1` 自带哈希校验；随包件是「什么
+/// 都没装过」时的零配置默认。
+fn office_bundled_candidates() -> Vec<std::path::PathBuf> {
+    let mut out: Vec<std::path::PathBuf> = Vec::new();
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            out.push(dir.join(OFFICECLI_EXE));
+            if let Some(parent) = dir.parent() {
+                out.push(parent.join(OFFICECLI_EXE));
+            }
+        }
+    }
+
+    // 仓库开发态兜底（与取件脚本的 TARGET 同址——两处漂移即找不到）
+    out.push(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("bin")
+            .join(OFFICECLI_EXE),
+    );
+
+    out
+}
+
+/// officecli 二进制定位（**在 Rust 侧**做——命令由本口拼装，模型与调用方都不碰路径）。
+///
+/// 解析序（顺序即语义）：
+///   1. `$OFFICECLI_PATH`——显式覆盖（测试隔离 / 目录重定位）；
+///   2. `~/.lantai/tools/officecli/officecli[.exe]`——**用户显式安装位**（install 脚本落点）；
+///   3. 随包件（`office_bundled_candidates`）——零配置默认，终端用户走这条；
+///   4. PATH 兜底（返回裸名，交给 shell 查 PATH）。
+///
+/// **刻意不做缓存**：此前的实现每次调用现查盘，于是「用户中途装了 officecli」无需重启
+/// 即可生效。加 OnceLock 会掐死这条活性（`plugin_assets` 的 OnceLock `set(None)` 钉死
+/// 兜底分支就是同族事故，见 `engine_assets` 头注）——这里宁可每次多几次 `is_file()`。
 fn office_bin() -> String {
     if let Ok(p) = std::env::var("OFFICECLI_PATH") {
         if !p.trim().is_empty() {
             return p;
         }
     }
+
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_default();
     if !home.is_empty() {
-        let name = if cfg!(windows) { "officecli.exe" } else { "officecli" };
         let cand = std::path::PathBuf::from(&home)
             .join(".lantai")
             .join("tools")
             .join("officecli")
-            .join(name);
+            .join(OFFICECLI_EXE);
         if cand.is_file() {
             return cand.to_string_lossy().to_string();
         }
     }
-    "officecli".to_string()
+
+    for cand in office_bundled_candidates() {
+        if cand.is_file() {
+            return cand.to_string_lossy().to_string();
+        }
+    }
+
+    OFFICECLI_EXE.to_string()
 }
 
 /// POSIX 单引号包裹（内嵌单引号按 `'\''` 收尾）——命令由本口拼装，模型与调用方都不碰引号。
@@ -1043,6 +1107,62 @@ mod tests {
         assert!(!cmd.contains("${"), "命令里不得再有 ${{…}} 赋值段（R3 根因）: {cmd}");
         assert!(!cmd.contains("BIN="), "命令里不得再有 BIN 赋值段: {cmd}");
         assert!(!cmd.contains("'close'"), "无写目标时不得前置 close: {cmd}");
+    }
+
+    /// 随包件候选梯：含「宿主 exe 同级」形态（打包态落点语义——tauri resources 的落点）。
+    #[test]
+    fn bundled_candidates_include_exe_sibling() {
+        let cands = office_bundled_candidates();
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|d| d.to_path_buf()));
+        let Some(dir) = exe_dir else { return };
+        let want = dir.join(OFFICECLI_EXE);
+        assert!(cands.contains(&want), "候选梯必须含宿主 exe 同级 {want:?}: {cands:?}");
+    }
+
+    /// 随包件候选梯：含取件脚本的落点（`src-tauri/bin/`）——dev / `cargo test` 靠它。
+    #[test]
+    fn bundled_candidates_include_fetch_staging_dir() {
+        let want = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("bin")
+            .join(OFFICECLI_EXE);
+        let cands = office_bundled_candidates();
+        assert!(cands.contains(&want), "候选梯必须含取件落点 {want:?}: {cands:?}");
+    }
+
+    /// **跨面漂移守护（静默故障变响亮）**：运行时名 `OFFICECLI_EXE`、取件脚本的落点与
+    /// `RUNTIME_NAME`、`tauri.conf.json` 的映射目标名——四者任一漂移，症状都是
+    /// 「随包了但运行时找不到」：安装包看着完整，用户一调才报错。此前这类缺口正是
+    /// 靠人肉三处同步漏掉的（officecli 压根没随包，2026-09-22 才补）。
+    /// 仅 Windows：随包映射本身是 Windows 形态（资产是 win-x64）。
+    #[cfg(windows)]
+    #[test]
+    fn bundled_binary_name_and_path_agree_across_surfaces() {
+        let repo = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(|p| p.to_path_buf())
+            .expect("src-tauri 应有上级（仓库根）");
+
+        // 1) 取件脚本：落点 + 运行时名
+        let script = std::fs::read_to_string(repo.join("scripts").join("fetch-officecli.mjs"))
+            .expect("取件脚本应存在（随包分发的取件端）");
+        assert!(
+            script.contains(&format!("'bin', '{OFFICECLI_EXE}'")),
+            "取件脚本 TARGET 应与运行时名同址（src-tauri/bin/{OFFICECLI_EXE}）"
+        );
+        assert!(
+            script.contains(&format!("RUNTIME_NAME = '{OFFICECLI_EXE}'")),
+            "取件脚本 RUNTIME_NAME 应与 OFFICECLI_EXE 一致"
+        );
+
+        // 2) tauri.conf.json：随包映射（源 bin/… → 宿主 exe 同级同名）
+        let conf = std::fs::read_to_string(repo.join("src-tauri").join("tauri.conf.json"))
+            .expect("tauri.conf.json 应存在");
+        assert!(
+            conf.contains(&format!("\"bin/{OFFICECLI_EXE}\": \"{OFFICECLI_EXE}\"")),
+            "tauri.conf.json 应把 bin/{OFFICECLI_EXE} 映射成宿主 exe 同级的 {OFFICECLI_EXE}"
+        );
     }
 
     /// 写动作前置 close 的**推导规则**：只有 `create` 命中，且只关已过闸的写目标。

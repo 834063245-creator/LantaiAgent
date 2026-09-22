@@ -523,7 +523,7 @@ drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable）。
 | `hologram-engine.exe` + `grammars/` + `onnxruntime.dll` + `models/` | 随安装包分发的图引擎及其资产（`tauri.conf.json` 的 `bundle.resources`） |
 | `memory-bundle.exe`（可选） | 进程隔离的记忆服务 |
 | LSP 服务器 | 原生类型解析（rust-analyzer / gopls / pyright 等） |
-| `officecli`（可选） | Office 域工具后端（解析序 `$OFFICECLI_PATH` → `~/.lantai/tools/officecli/` → PATH） |
+| `officecli.exe` | Office 域工具后端（**随安装包分发**，与宿主 exe 同级；解析序 `$OFFICECLI_PATH` → 用户安装位 `~/.lantai/tools/officecli/` → **随包位** → PATH） |
 
 ---
 

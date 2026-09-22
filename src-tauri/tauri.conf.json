@@ -38,6 +38,7 @@
       "../engine/onnxruntime.dll": "onnxruntime.dll",
       "../engine/models/all-MiniLM-L6-v2/model.onnx": "models/all-MiniLM-L6-v2/model.onnx",
       "../engine/models/all-MiniLM-L6-v2/vocab.txt": "models/all-MiniLM-L6-v2/vocab.txt",
+      "bin/officecli.exe": "officecli.exe",
       "vendor": "vendor/",
       "../src-ui/dist-plugins": "_up_/src-ui/dist-plugins/"
     },
