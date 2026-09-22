@@ -14,6 +14,10 @@
   <a href="https://whyihaveyou.github.io/dsh-suite/"><img src="https://img.shields.io/badge/featured%20on-dsh--suite-4d6bfe" alt="dsh-suite" /></a>
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/hero-space.jpg" alt="兰台：多卷摊在同一张纸上，可对照、可追溯" />
+</p>
+
 ---
 
 ## 这是什么
@@ -66,6 +70,10 @@
   即渲染成朱砂圈点（人的批改）。块类型是**开放面**：内置 + Agent 资产 kind + 插件贡献。
 - **回合有呼吸**：流式输出按**读包 / 写包 / 验证包 / 提交**成族，不是等距瀑布；零摊开卷时是**案头**——
   退匣直书 + 最近几卷的签条架，落笔即另起一卷。
+
+<p align="center">
+  <img src="assets/screenshots/hero-blocks.jpg" alt="注疏层级：来文 / 夹注 / 脚注，各得其位" />
+</p>
 
 纸底 + 矿物墨色（朱砂＝人 / 石青＝机 / 石墨＝夹注 / 墨＝正文），自托管 MiSans 可变字体单文件；版式契约见
 [`docs/design/lantai-design-spec.md`](docs/design/lantai-design-spec.md)，视觉决定账本见
