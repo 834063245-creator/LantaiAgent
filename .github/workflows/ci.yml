@@ -1,4 +1,31 @@
-# CI — 只做两件事：编译 + 测试。格式和 lint 在本地跑。
+# CI — 只做一件事：前端能编译（= 本仓记录在册的前端门禁）。
+#
+# ── 为什么只剩这一个 job（2026-09-22 重写）──────────────────────────────────────
+# CLAUDE.md 把 `ci.yml` 列在「不改的」清单里；本次重写**由用户明确授权**
+# （原话「搞一个必过的最简 CI」）。规则本身仍然有效——后续再动仍须先问。
+#
+# 旧的四条 job 里，三条注定不可靠，且**失败与代码质量无关**（推上去必红）：
+#   · desktop —— tauri 的 build script 对 bundle.resources 做**编译期存在性校验**
+#     （`cargo check` 即触发），而它依赖的东西 CI 里没人创建：
+#       ① `../src-ui/dist-plugins` 由 src-ui 的 `npm run build` 生成，该 job 却只跑
+#          `npx vite build` ⇒ 实测报 `resource path ..\src-ui\dist-plugins doesn't exist`；
+#       ② 随包件 `bin/officecli.exe`（office 域工具后端，32 MB）同理，CI 不取件；
+#       ③ 90 MB 的 `model.onnx` 要现场从 HuggingFace 拉——外网依赖，随时可挂。
+#     修它要么换 job 用的命令、要么换资源注入通道，都属工程改动，不在本次范围。
+#   · engine 矩阵（ubuntu + windows × `cargo test --release` 全 workspace）——重，
+#     要装系统 C++ 工具链，失败模式与前端无关。
+#   · dsh-bundle —— 依赖 npm 安装 + 打包校验，价值面窄。
+#
+# 保留的判据 = **仓库自己的前端门禁**（CLAUDE.md 门禁表：`cd src-ui && npm run build`，
+# 即 esbuild 产物域 + `tsc --noEmit` + `vite build`）。三件全在仓库内、无外网依赖、
+# 结果确定；已在本地实测通过（2026-09-22：`npm run build` exit 0）。
+#
+# 环境前提（已核）：`src-ui/package-lock.json` 被 git 跟踪且未被 ignore（`npm ci` 可用）；
+# `build-builtin-plugins.mjs` 走的 esbuild 是 lock 内的具名条目（`node_modules/esbuild`），
+# 按显式相对路径导入；仓库无 `target/` 时其镜像步骤优雅降级为空操作。
+#
+# 要加回真实门禁（vitest / cargo test / convergence）时，**先确认它在 CI 环境真能过**——
+# 别把「跑不完 / 拉不到外网 / 缺资源」这类失败重新引进来。
 name: CI
 
 on:
@@ -14,106 +41,14 @@ concurrency:
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - run: npm ci
         working-directory: src-ui
-      - run: npx tsc --noEmit
-        working-directory: src-ui
-      - run: npx vite build
+      - run: npm run build
         working-directory: src-ui
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-
-  dsh-bundle:
-    # hologram-dsh npm 包（薄发布适配层；3D 视图已随图谱内核退役拆除）：
-    # 装依赖必须 --ignore-scripts —— postinstall 会按版本从 GitHub Release 拉
-    # 引擎二进制，普通 push 时该附件还不存在。
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '22' }
-
-      - name: Install plugin build deps
-        working-directory: dsh-bundle
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
-      - name: Build host plugin
-        working-directory: dsh-bundle
-        run: npm run build
-
-      - name: Verify npm pack payload
-        working-directory: dsh-bundle
-        run: node scripts/ci-verify.mjs
-
-  engine:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    env:
-      RUSTFLAGS: -D warnings
-      # 仓库级 .cargo/config.toml 配了 sccache（本地 worktree 共享编译缓存），
-      # CI runner 没装 sccache 会全体暴毙——置空 env 覆盖之（env 优先于 config）。
-      RUSTC_WRAPPER: ''
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          cache: false
-
-      # Linux: install C/C++ build deps for native crates (usearch, libsqlite3-sys, tree-sitter)
-      - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential g++ pkg-config
-
-      # L2 crate 化（layering-rework-plan §4.3 欠账项 1）：storage/vector/graph
-      # 已拆为独立 crate，测试必须 workspace 全量跑；lantai 除外
-      # （desktop job 单独 check，且需要前端资源/model.onnx）。
-      # working-directory 改根目录：根 Cargo.toml 是 workspace 入口。
-      - run: cargo test --release --workspace --exclude lantai
-        env:
-          RUSTFLAGS: ''
-      - run: cargo build --release -p hologram-engine
-        env:
-          RUSTFLAGS: ''
-
-  desktop:
-    runs-on: windows-latest
-    env:
-      RUSTFLAGS: -D warnings
-      # 同 engine job：中和 .cargo/config.toml 的 sccache wrapper
-      RUSTC_WRAPPER: ''
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '22' }
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          cache: false
-
-      - run: npm ci && npx vite build
-        working-directory: src-ui
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-
-      # model.onnx（90MB）不入库（.gitignore），但 tauri.conf.json resources 要求路径存在。
-      # 从 HuggingFace 拉取并校验哈希，与本地开发机文件一致。
-      - name: Download MiniLM ONNX model
-        shell: bash
-        working-directory: src-tauri
-        run: |
-          set -euo pipefail
-          f=models/all-MiniLM-L6-v2/model.onnx
-          curl -fL --retry 3 -o "$f" \
-            https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx
-          echo "6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452 *$f" | sha256sum -c -
-
-      - run: cargo check --release
-        working-directory: src-tauri
