@@ -65,6 +65,7 @@ import { useCompositionStore } from './state/composition-store';
 import { broadcastGoalRecord } from './state/goal-store';
 import { getPanelStore } from './state/panel-store';
 import { showToast, TOAST_LONG_HOLD_MS } from './state/toast-store';
+import { pullShellWork, setOwnerSessionResolver, useWorkLedgerStore } from './state/work-ledger-store';
 import { useAgentPanelStore } from './ui/agent-panel-store';
 import { resetSessionState } from './ui/chat-session';
 import { getDiagnosticsForFile, LspService } from './ui/lsp-client';
@@ -700,6 +701,10 @@ export class Workspace {
     const bgNoteBus = runtime.getBus();
     const unBgNote = await typedListen('bg:note', (payload) => {
       const owner = payload.owner;
+      // 役台账（2026-09-22）：job 完成/停滞即对账一次——`bg:note` 是**唯一**的
+      // 终态时点信号（快照只含在役，job 一旦终态就查不到它了）。这一跳必须
+      // **先于**下面的 owner 守卫：owner=null（用户/UI 发起）也要落账。
+      void pullShellWork(this._storeId);
       // 用户/UI 发起的任务（owner=null）不投给 agent；owner 已注销的直接跳过（见上）
       if (!owner || !bgNoteBus.isRegistered(owner)) return;
       void (async () => {
@@ -733,8 +738,29 @@ export class Workspace {
     // ── 初始化 Agent 面板数据 + 订阅消息流 ──
     useAgentPanelStore.getState().setRuntime(runtime);
     useAgentPanelStore.getState().refresh(runtime);
+    /* 役台账的 owner → 会话归属解析（2026-09-22）。Rust 账本只给裸 owner 串
+     * （`main-…` / `sub-…` / null，bg_jobs.rs:147），没有「属于哪个会话」的字段；
+     * 解析要 bus 的父子树 + agentSessionState，两者都只在**本面板的 runtime**
+     * 手里 ⇒ 在此装配期注入（能力位：不注入 = 归属未知，条目不丢，落「他卷」档）。
+     * 子 Agent 不入 sessionOfAgent 表（agent-session-state.ts:99-101 明写），
+     * 故沿 bus 的 parentId 链上溯到主 Agent 再查表——这条链对子 Agent 是通的
+     *（子 Agent 在 Agent 构造时随 setBus 注册，agent.ts:608-614）。 */
+    const resolveOwnerSession = (owner: string | null): number | null => {
+      if (!owner) return null;
+      const bus = runtime.getBus();
+      const seen = new Set<string>();
+      let cursor: string | null = owner;
+      while (cursor && !seen.has(cursor)) {
+        seen.add(cursor);
+        const hit = agentSessionState.sessionOfAgent(cursor);
+        if (hit && hit.storeId === this._storeId) return hit.sessionId;
+        cursor = bus.getAgent(cursor)?.parentId ?? null;
+      }
+      return null;
+    };
+    setOwnerSessionResolver(this._storeId, resolveOwnerSession);
     // 获取即登记：停用时清面板 runtime 引用 + currentSessionId（拆 audit 中危#3：
-    // 2s 轮询打旧 runtime 建错位 board）+ 清看板列表。
+    // 2s 轮询打旧 runtime 建错位 board）+ 清看板列表 + 解役台账归属。
     teardown.add(() => {
       const p = useAgentPanelStore.getState();
       p.setAgents([]);
@@ -742,6 +768,8 @@ export class Workspace {
       p.setDiscoveries([]);
       p.setCurrentSessionId('default');
       p.setRuntime(null);
+      setOwnerSessionResolver(this._storeId, null);
+      useWorkLedgerStore.getState().clearPanel(this._storeId);
     }, 'agent-panel-store-clear');
     const unsubMsg = runtime.getBus().subscribe({}, (msg) => {
       useAgentPanelStore.getState().pushMessage(msg);

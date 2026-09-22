@@ -92,6 +92,11 @@ export const filterCommands = impl.filterCommands;
 export const ensureSkillCatalog = impl.ensureSkillCatalog;
 export const useCoreStore = impl.useCoreStore;
 export const iconHtml = impl.iconHtml;
+export const useWorkLedgerStore = impl.useWorkLedgerStore;
+export const pullShellWork = impl.pullShellWork;
+export const killShellWork = impl.killShellWork;
+export const selectSessionWork = impl.selectSessionWork;
+export const setOwnerSessionResolver = impl.setOwnerSessionResolver;
 
 export type StoredThinking = import('./host').StoredThinking;
 export type ThinkingMode = import('./host').ThinkingMode;
@@ -111,6 +116,10 @@ export type TocInkBucket = import('./host').TocInkBucket;
 export type SourcedBlock = import('./host').SourcedBlock;
 export type FileDragEvent = import('./host').FileDragEvent;
 export type CommandContribution = import('./host').CommandContribution;
+export type WorkEntry = import('./host').WorkEntry;
+export type WorkKind = import('./host').WorkKind;
+export type WorkState = import('./host').WorkState;
+export type SessionWorkView = import('./host').SessionWorkView;
 
 // ── esbuild automatic JSX 注入面（--jsx=automatic --jsx-import-source=./host）──
 

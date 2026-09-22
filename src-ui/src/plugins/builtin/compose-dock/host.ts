@@ -64,5 +64,16 @@ export type { PermissionMode } from '../../../state/mode-store';
 export { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../../state/mode-store';
 export type { PresetStoreState } from '../../../state/preset-store';
 export { usePresetStore } from '../../../state/preset-store';
+/* 役册（2026-09-22）：后台工作监视装置的数据面。台账是 **zustand 单例**——
+ * 必须经本通道取宿主真实例（产物域直接 import 会打包出第二份 store，
+ * 与宿主那份永不互通：坞写一份、Rust 观察点喂另一份）。 */
+export type { SessionWorkView, WorkEntry, WorkKind, WorkState } from '../../../state/work-ledger-store';
+export {
+  killShellWork,
+  pullShellWork,
+  selectSessionWork,
+  setOwnerSessionResolver,
+  useWorkLedgerStore,
+} from '../../../state/work-ledger-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export { iconHtml } from '../../../ui/icons';

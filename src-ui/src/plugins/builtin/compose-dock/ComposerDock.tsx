@@ -37,6 +37,7 @@ import type {
   ProviderSettings,
   StoredThinking,
   ThinkingMode,
+  WorkEntry,
 } from './host';
 import {
   agentSessionState,
@@ -47,6 +48,7 @@ import {
   getChatStore,
   getComposeStore,
   getModel,
+  killShellWork,
   listCommands,
   loadSettings,
   MODE_DESCRIPTIONS,
@@ -71,6 +73,7 @@ import {
 import './composition-chip.css';
 import { InkLedger } from './InkLedger';
 import { ModelSelector } from './ModelSelector';
+import { WorkLedger } from './WorkLedger';
 
 /** 把目录模型描述符映射到已配置 provider 名（跨 provider 搜索时联动切换）。 */
 function providerNameForModel(desc: { vendor: string } | undefined, fallback: string): string {
@@ -253,6 +256,9 @@ export const ComposerDock = memo(function ComposerDock() {
     return agentSessionState.getAgent(core.panelId, activeSidNum)?.getTokenStats?.() ?? null;
   }, [core, activeSidNum, sessionTokens]);
   const [inkOpen, setInkOpen] = useState(false);
+  /* 役册（2026-09-22）：与墨量册同族的第二个读数件——墨 = 还能喂多少上下文，
+   * 役 = 已经派了多少活出去。同属「落笔前该看的读数」，故同居设置行行尾。 */
+  const [workOpen, setWorkOpen] = useState(false);
 
   /* ── 草稿（input-store live = 当前活跃会话的输入框；切卷由 chat-session
    *    负责 save/restore sessionDrafts，本组件只读写 live 槽）── */
@@ -313,6 +319,7 @@ export const ComposerDock = memo(function ComposerDock() {
     setHelpOpen(false);
     setYinOpen(false);
     setInkOpen(false);
+    setWorkOpen(false);
     setHistHint(false);
   }, [activeSessionId]);
 
@@ -366,6 +373,18 @@ export const ComposerDock = memo(function ComposerDock() {
       unSess();
     };
   }, [core, activeSidNum]);
+
+  /** 卷名反查（役册「他卷」段用）——与后台卷指示同一把尺子：sess 表 +
+   *  `volumeDisplayName`（禁在调用点散写卷号；2026-09-21 卷号收显示纪律）。 */
+  const sessionNameOf = useCallback(
+    (sid: number | null): string => {
+      if (sid == null || !core) return '归属未知';
+      const sess = getChatStore(core.panelId).sess.getState().sessions;
+      const s = sess.find((x) => x.id === sid);
+      return s ? volumeDisplayName(s.label, s.id) : `案卷 ${sid}`;
+    },
+    [core],
+  );
 
   /* ── 会话生效配置（方案甲：覆盖 ?? 全局默认，实时解析）── */
   const [prefs, setPrefs] = useState<ComposeSessionPrefs | undefined>(undefined);
@@ -798,13 +817,15 @@ export const ComposerDock = memo(function ComposerDock() {
   }, [core, attachPaths]);
 
   /* ── 浮层互斥（2026-09-01 审计）：思考/翰/律/引 四浮层同屏只开一个——
-   *    此前各 onClick 只关自己认识的兄弟面板，思考菜单与引面板可叠开（截图实证）。 ── */
-  const toggleLayer = useCallback((layer: 'thinking' | 'menu' | 'help' | 'yin' | 'ink') => {
+   *    此前各 onClick 只关自己认识的兄弟面板，思考菜单与引面板可叠开（截图实证）。
+   *    2026-09-13 墨量册、2026-09-22 役册并入（两枚读数件的册页同属浮层族）。 ── */
+  const toggleLayer = useCallback((layer: 'thinking' | 'menu' | 'help' | 'yin' | 'ink' | 'work') => {
     setSettingsOpen(layer === 'thinking' ? (v) => !v : false);
     setMenuOpen(layer === 'menu' ? (v) => !v : false);
     setHelpOpen(layer === 'help' ? (v) => !v : false);
     setYinOpen(layer === 'yin' ? (v) => !v : false);
     setInkOpen(layer === 'ink' ? (v) => !v : false);
+    setWorkOpen(layer === 'work' ? (v) => !v : false);
   }, []);
 
   return (
@@ -1332,9 +1353,27 @@ export const ComposerDock = memo(function ComposerDock() {
             )}
           </div>
         )}
+        {/* 役册（2026-09-22）：后台工作监视装置——触发器报在役条数，点开是完整
+            台账（在役 / 他卷 / 已了，带逐条停止）。与墨量册同为「落笔前该看的
+            读数」，同居行尾内侧；墨量册保持最右（拟文印正下方的读点不动）。 */}
+        {activeSidNum != null && (
+          <WorkLedger
+            panelId={core?.panelId ?? ''}
+            sessionId={activeSidNum}
+            sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
+            sessionNameOf={sessionNameOf}
+            onStop={(e: WorkEntry) => {
+              if (!core) return;
+              const jobId = Number.parseInt(e.id.replace(/^job-/, ''), 10);
+              if (Number.isFinite(jobId)) void killShellWork(core.panelId, jobId);
+            }}
+            open={workOpen}
+            onToggle={() => toggleLayer('work')}
+          />
+        )}
         {/* 墨量册（2026-09-13）：坞内 token 计量装置——触发器报占用百分比，
             点开是完整账本（构成 / 压力 / 投影 / 四桶 / 命中率 / 逐轮）。
-            与思考 pill 同隔离级：并入浮层互斥（四层同屏只开一个）。 */}
+            与思考 pill 同隔离级：并入浮层互斥（六层同屏只开一个）。 */}
         {activeSidNum != null && (
           <InkLedger
             stats={tokenStats}

@@ -2980,6 +2980,261 @@
   letter-spacing: 0.02em;
 }
 
+/* ── 役册（2026-09-22）：后台工作监视装置 ─────────────────────────────
+ * 与墨量册同族（设置行行尾读数件 + 坞内向上开的浮层 + 并入浮层互斥），
+ * 但落位在墨量册**内侧**一档：墨 = 还能喂多少上下文（拟文印正下方的读点，
+ * 保持最右），役 = 已经派了多少活出去。几何（right/bottom/z/宽/封高）
+ * 与 `.pp-ink-panel` 逐字同源——两枚读数件的册页必须一样大、一样位置弹。
+ * 色：石青 = 机/在役（语义铁律）；朱砂只归人的动作（句读点朱配额不占）。 */
+.pp-composer-settings .pp-work-sel {
+  position: relative;
+  flex: 0 0 auto;
+}
+.pp-composer-settings .pp-work-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 2px;
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--snap);
+}
+.pp-composer-settings .pp-work-trigger:hover,
+.pp-composer-settings .pp-work-trigger.open {
+  color: var(--seal-deep);
+}
+/* 役点：在役信号——空档灰墨点，有活转石青（机=石青），开着时呼吸 */
+.pp-work-trigger-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  flex: 0 0 auto;
+  transition: background var(--snap);
+}
+.pp-composer-settings .pp-work-trigger.live .pp-work-trigger-dot {
+  background: var(--indigo);
+}
+.pp-composer-settings .pp-work-trigger.live .pp-work-trigger-dot.on {
+  opacity: 0.35;
+}
+.pp-composer-settings .pp-work-trigger:hover .pp-work-trigger-dot,
+.pp-composer-settings .pp-work-trigger.open .pp-work-trigger-dot {
+  background: var(--seal);
+}
+/* 读数定宽（同墨量册纪律）：条数位数变化不推挤同行控件 */
+.pp-composer-settings .pp-work-trigger-label {
+  display: inline-block;
+  min-width: 3.5em;
+  text-align: left;
+}
+.pp-composer-settings .pp-work-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 85;
+  width: 300px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong-ink);
+  box-shadow: var(--elev-menu);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  animation: pop-up 0.14s cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* 同墨量册的坑：滚动 flex 列的子项必须 flex:0 0 auto（否则被压成 0 高） */
+.pp-work-panel > * {
+  flex: 0 0 auto;
+}
+.pp-work-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: var(--rule-head);
+}
+.pp-work-head-title {
+  font-family: var(--f-song);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-work-head-figures {
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
+  color: var(--ink-3);
+  letter-spacing: 0.2em;
+  white-space: nowrap;
+}
+.pp-work-reading {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: 2px;
+}
+.pp-work-count {
+  font-family: var(--f-song);
+  font-size: calc(26px * var(--font-scale));
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-3);
+  letter-spacing: -0.01em;
+}
+/* 有在役 = 石青（机在干活）；归零退回淡墨（不点朱——朱砂是人的动作，
+   这里的「有活」不是预警）。 */
+.pp-work-count.live {
+  color: var(--indigo);
+}
+.pp-work-reading-label {
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
+  letter-spacing: 0.18em;
+}
+.pp-work-note {
+  margin: 5px 0 0;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+.pp-work-note-sep {
+  padding: 0 5px;
+  color: var(--ink-4);
+}
+.pp-work-section {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule-soft-ink);
+}
+.pp-work-section-mark {
+  width: 8px;
+  height: 8px;
+  background: var(--ink-1);
+  flex: 0 0 auto;
+}
+.pp-work-section-title {
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+  letter-spacing: 0.26em;
+}
+.pp-work-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 一条役：徽 + 主文（两行夹）+ 副行 + 可选停止钮 */
+.pp-work-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 7px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.pp-work-item:last-child {
+  border-bottom: none;
+}
+.pp-work-mark {
+  font-family: var(--f-song);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink-2);
+  padding: 1px 3px;
+  flex: 0 0 auto;
+}
+/* 子代理 = 石青徽（机派生），后台命令 = 墨徽 */
+.pp-work-subagent .pp-work-mark {
+  background: var(--indigo);
+}
+.pp-work-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pp-work-label {
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-1);
+  line-height: 1.4;
+  /* 命令原文可到 80 字（Rust 侧截断）——两行夹，超出省略 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
+.pp-work-sub {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+/* 终态条目：主文退一档淡墨（记录不是告警） */
+.pp-work-state-done .pp-work-label,
+.pp-work-state-stopped .pp-work-label {
+  color: var(--ink-2);
+}
+.pp-work-state-failed .pp-work-label {
+  color: var(--seal-deep);
+}
+.pp-work-stop {
+  font-family: var(--f-song);
+  font-size: 11px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 0 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--snap);
+}
+.pp-work-stop:hover {
+  color: var(--seal-deep);
+}
+.pp-work-empty {
+  margin: 4px 0 0;
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+.pp-work-foot {
+  margin: 8px 0 0;
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
+  line-height: 1.5;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+
 /* ── 墨量线（创作坞 v2 2026-08-31）：坞底 1px 墨线──
  * 本卷已用 token 占模型目录窗口的比例；裸数字徽标退役（[0] 是噪音），
  * 读数收进 hover title。近满（>80%）转朱砂预警。 */

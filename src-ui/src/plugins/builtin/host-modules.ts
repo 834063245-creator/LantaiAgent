@@ -197,6 +197,13 @@ import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '
 import { usePresetStore } from '../../state/preset-store';
 import { useSessionVolumesStore } from '../../state/session-volumes-store';
 import { useUpdateStore } from '../../state/update-store';
+import {
+  killShellWork,
+  pullShellWork,
+  selectSessionWork,
+  setOwnerSessionResolver,
+  useWorkLedgerStore,
+} from '../../state/work-ledger-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 import { iconHtml } from '../../ui/icons';
 
@@ -356,6 +363,13 @@ const faceDeps = {
   useAskStore,
   useBgAlertStore,
   useUpdateStore,
+  /* 役册（2026-09-22）：后台工作台账——zustand 单例 + 只读对账口，坞只读；
+   * 归属解析器由 workspace 装配期注入（面板 runtime 才有 bus 父子树）。 */
+  useWorkLedgerStore,
+  selectSessionWork,
+  pullShellWork,
+  killShellWork,
+  setOwnerSessionResolver,
   /* 卷清单变更信号（2026-09-18 侧栏载入批）：canvas-nav 侧栏/书脊订阅——卷文件
    * 落定写入后重读清单投影（写代缓存已就地更行，重读零 I/O）。 */
   useSessionVolumesStore,

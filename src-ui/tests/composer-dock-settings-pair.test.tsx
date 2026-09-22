@@ -17,6 +17,12 @@
 // 「模型 | 组合」（pp-comp-sel）——两者共同定义「本卷拿什么跑」（模型 = 谁的脑子，
 // 组合 = 哪些工具与提示面），故同居左端；右端「运行策略」对与行尾墨量仪表的契约
 // **不变**（组合是运行环境面，不是运行策略，不插进那一对）。
+//
+// 2026-09-22 规格变更（役册落位）：行尾由「单枚仪表」扩为**两枚读数件**
+// 「役 | 墨」——役 = 已经派了多少活出去（后台命令 + 子 Agent 的在役清单，点开是
+// 役册），墨 = 还能喂多少上下文（点开是墨量册）。两者同属「落笔前该看的读数」，
+// 故同居行尾、**役在墨内、墨仍收最右**（§9.1 对墨「读数件居行最右 = 拟文印正下方
+// 的读点」的判据逐字保留，零漂移）。成对契约与「读数不插进策略对」两条**不变**。
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -76,7 +82,7 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     await act(async () => {});
   };
 
-  it('模型+组合居左端、权限+思考成对靠右、墨量仪表收行尾：子序 = 模型 → 组合 → spacer → 权限 → 思考 → 墨量', async () => {
+  it('模型+组合居左端、权限+思考成对靠右、读数件收行尾（役内墨外）：子序 = 模型 → 组合 → spacer → 权限 → 思考 → 役 → 墨', async () => {
     await mountDock('settings-pair');
     const settings = container.querySelector('.pp-composer-settings')!;
     const classes = [...settings.children].map((el) => el.className);
@@ -87,13 +93,16 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     const spacerIdx = classes.indexOf('pp-composer-settings-spacer');
     const permIdx = classes.findIndex((c) => c.includes('pp-mode-seg'));
     const thinkIdx = classes.findIndex((c) => c.includes('pp-thinking-sel'));
+    const workIdx = classes.findIndex((c) => c.includes('pp-work-sel'));
     const inkIdx = classes.findIndex((c) => c.includes('pp-ink-sel'));
     expect(msIdx).toBe(0);
     expect(compIdx).toBe(msIdx + 1); // 组合紧跟模型（同居「本卷拿什么跑」左端）
     expect(spacerIdx).toBe(compIdx + 1); // 左端簇与策略对之间隔 spacer——成对被推右
     expect(permIdx).toBe(spacerIdx + 1);
     expect(thinkIdx).toBe(permIdx + 1); // 思考收尾「运行策略」对；权限在组内左侧
-    expect(inkIdx).toBe(thinkIdx + 1); // 墨量仪表居行最右（读数不插进策略对）
+    // 2026-09-22：役册紧邻墨量册（两枚读数件成对居行尾），役在内、墨仍收最右
+    expect(workIdx).toBe(thinkIdx + 1);
+    expect(inkIdx).toBe(workIdx + 1);
     expect(inkIdx).toBe(classes.length - 1);
   });
 

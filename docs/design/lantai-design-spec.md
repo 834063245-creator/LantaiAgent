@@ -301,6 +301,36 @@
 
 **证据**：`tests/paper-dock-tether.test.tsx`（真 PaperPanel 七例：两端扎实体且卷端在卷首之下 / 切卷改指 / 坞被拖走线随坞 / 无活卷 / 案头态 / 活卷在屏外线照样出屏 / 点线溯源）+ `tests/paper-provenance.test.ts`（笔的法向与下限）+ `tests/composer-float.test.ts`（坞锚与 CSS 字面量对拍）；判例账本见 [`../plans/paper-shell/taste-ledger.md`](../plans/paper-shell/taste-ledger.md) 2026-09-22 条。
 
+### 9.4 役册（2026-09-22 落地）——坞内后台工作监视装置
+
+**来由**：用户报「每个会话如果跑后台任务，我没有一个能监控后台任务的地方……是往创作坞放，还是往标题栏放，还是直接放会话流区里面」。**落位三选一的裁定与理由**：
+
+1. **标题栏排除**——它已经在 **2026-09-17 由用户自己拆掉**（§14：旧书眉 56px 布局行整条退役，控制件落成右上浮件 `.pp-chrome`）。浮件占位那段 x 区间的顶缘边缘滚动感应带随之失效，且坞顶被上夹紧 56px 以免盖死窗口钮（`decorations:false` 下唯一关闭入口）——往那儿长监视面＝重建刚拆的东西，并付两笔已记账的代价。
+2. **会话流区排除**——流区块是消息的派生视图（`paper/translate.ts`），要落盘、有块序、有消息语义，且 `EventKind.Notice` 的 info 级根本没有入流通路（`ui/chat-stream.ts:198-209` 明写「info → 丢弃」）。监视面是**环境态**，写进会话记录＝把运行态混进历史。流区已经有它在上下文里的正确位置：`SubAgentPart`（「这次派生的记录」就地显示）——那是记录，不是监控台，该留不该扩。
+3. **创作坞落位**——唯一同时满足「常显 + 跟活跃会话 + 已有同类先例」的位。§9.1 已为同类装置立法（墨量册：设置行行尾一枚读数件 + 坞内向上开的浮层 + 并入浮层互斥），且坞已有运行态一族（停钮 §9.6 / 后台卷指示 / 底缘呼吸线 §9.8）。役册是这一族的**展开面**，不是新族。
+
+**定案**：
+
+| 项 | 定案 |
+|---|---|
+| 名字 | **役**（使役/差役＝派出去替你干的活）。与「墨」并列成对：墨＝耗，役＝工 |
+| 触发器 | 设置行行尾，**役内墨外**（`pp-work-sel` 紧邻墨量册内侧、`pp-ink-sel` 仍收最右）——§9.1 对墨「读数件居行最右＝拟文印正下方的读点」的判据逐字保留。有活跃卷才渲染（同墨量册的无主待命纪律）。读数：空档 `役 —`、有活 `役 N`、他卷另计 `N+M`；有活时墨点转**石青**并呼吸（机＝石青铁律；不点朱——朱砂是人的动作，这里的「有活」不是预警） |
+| 册页 | 向上开（坞贴屏底），几何与 `.pp-ink-panel` 逐字同源（`right:0` / `bottom: calc(100% + 6px)` / `z 85` / 宽 300 / `max-height: min(70vh,520px)`）。三段：**在役**（本卷，逐条带时长与旁注，shell 条目带「停」）→ **他卷**（条件段，标卷名不裸报号）→ **已了**（终态，按结束倒序，至多 8 条）。排印沿墨量册的册页语言（段题＝方墨锚点 + 字距题字；读数当全册唯一题字） |
+| 互斥 | 并入坞的浮层互斥（原四层 → §9.1 墨量册五层 → 本批**六层**）；切卷清本地态照旧 |
+| 归属 | 坞是视图不是容器（铁律不动）：台账真源在 `state/work-ledger-store`（由 Agent 侧观察点喂），本册只读 |
+
+**数据面（为什么 UI 侧要自建一本账）**：Agent 侧三本账都读不出「按会话的在役清单」——① `SubAgentPool` 是**工作区级**单例，句柄无 session/parent 字段，`listRunning()` 只能给「本工作区全部子 Agent」；② `subagent-activity` 键＝子 Agent id、**终态即删**、无订阅，唯一读者是 `agent_status` 模型工具；③ Rust `BG_JOBS` 的 `bg_jobs_snapshot()` **只返回仍在跑的 job**（`try_wait()==Ok(None)`），已完成待读 / `try_wait` 出错 / 已移除三者同形，且 exit code 从未落进 `BgJob` 字段——而 `bg:note` 在 job **完成时**才发，那一刻它已查不到。故「记录」这半边只能由 UI 在**观察点**上自记：子 Agent 走 `AgentUINotifier` 的 `subAgentSpawn`/`subAgentFinished`（全仓唯一带 `sessionId` + `parentAgentId` 的派生观察点，`runtime.ts:957-968` 补的父身份），shell 走 `background_activity` 快照对账（在役集合）+ `bg:note`（终态时点，`workspace.ts` 的既有监听点里加一跳，且**先于** owner 守卫——`owner=null` 的用户任务也要落账）。
+
+**口径纪律**：① **只读**——对账绝不调 `bash_output`（那个 action 的增量游标是所有读方共用的，且读到终态即 `jobs.remove()`，UI 读一次等于吃掉模型随后要用的输出并销毁 job，`bg_jobs.rs:474-479`）；② **终态不编造**——shell 的终态由「从在役集合消失」外推，只写中性「已了」+ 旁注「已结束」，**不报退出码、不外推成败**；③ **不落盘**——纯内存、按面板隔离、退出即空（与 `SubAgentPart` 同命运；要持久记录是 Agent 侧 TaskBoard 的事）；④ **失败可见**——账本读取失败写进册页页脚，停止动作失败走提示条（两件事两个面，互不抹除）。
+
+**owner → 会话归属**：Rust 只给裸 owner 串（`main-<ts>-<rand>` / `sub-<ts>-<rand>` / null），没有会话字段。子 Agent 不入 `sessionOfAgent` 表（`agent-session-state.ts:99-101` 明写），故解析走 **bus 的 `parentId` 链上溯**到主 Agent 再查表——这条链对子 Agent 是通的（子 Agent 随 `setBus` 注册）。解析器由 `workspace` 在装配期注入（面板 runtime 才有 bus），teardown 对称解除；**不注入＝归属未知**，条目仍可见，落「他卷」档。
+
+**边界（诚实栏）**：① **子代理条目无逐条停止**——池对 UI 不可达（`ChatAgentHandle` 只暴露 `runningSubAgentCount` / `stopAllSubAgents`），逐条停需另开只读/控制通道，本批不做；② **shell 终态无退出码**（账本不回流，见上）；③ `background_activity` 混着**前台**正在跑的命令（`BgJob` 无 fg/bg 字段，外部不可观测），故册页叫「役」不叫「后台任务」；④ 记录**不落盘**，重开即空；⑤ **landmine L5 未拆**：本册只解决「看得见」，不改变「算不算在跑」——呼吸线/停钮/侧栏状态点/退出守卫仍读运行账（那半边是产品语义待拍板，见 `landmine-map`）。
+
+**证据**：`tests/work-ledger-store.test.ts`（21 例：spawn/finished 记账、未观察到的收尾 no-op、起算反推稳定、消失即结转中性终态、按面板×卷切分与排序、终态配额淘汰不吃在役、**只读纪律**（对账只打 `background_activity`）、形状坏/传输错都写 error 不静默、`bash_kill` 不带 owner＝用户路径）+ `tests/composer-dock-work-ledger.test.tsx`（10 例：触发器读数与空态、无活跃卷整枚不出现、册页三段与空态诚实、逐条停止只出 shell 条目、停止走 `bash_kill` 后立刻落「已了」、六层互斥、切卷清本地态）+ `tests/composer-dock-settings-pair.test.tsx`（**显式规格变更**：行尾由单枚仪表扩为「役 | 墨」两枚读数件，成对契约与「读数不插进策略对」不变）。
+
+**部署面（诚实栏）**：本批**动了宿主面**——`faceDeps` 新增 5 键（`useWorkLedgerStore` / `selectSessionWork` / `pullShellWork` / `killShellWork` / `setOwnerSessionResolver`），且两个观察点接线（`ui/runtime-adapter.ts` 的 spawn/finished、`workspace.ts` 的归属解析注入与 `bg:note` 对账）都在宿主代码里 ⇒ **不能只换产物热更，须重建 exe**；`src-ui/src/plugins/host-surface.baseline.json` 已同批重生成（封印测试 `tests/host-surface-seal.test.ts` 是这条纪律的考官）。
+
 ---
 
 ## 10. 浸墨法则（2026-08-31 全局视觉立宪 · 用户拍板 B）

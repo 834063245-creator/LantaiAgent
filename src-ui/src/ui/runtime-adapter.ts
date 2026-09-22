@@ -14,6 +14,7 @@ import type { AgentEvent, EventSink } from '../agent/agent-types';
 import type { AgentStatus, RuntimeNotifier } from '../agent/runtime/types';
 import type { Message } from '../provider/types';
 import { pushAsk } from '../state/ask-store';
+import { useWorkLedgerStore } from '../state/work-ledger-store';
 import { useAgentPanelStore } from './agent-panel-store';
 import { rebuildMessagesFromMessages } from './chat-session';
 import { getChatStore, msgStoreFor } from './chat-store';
@@ -69,6 +70,12 @@ export function createRuntimeAdapter(storeId: string): RuntimeNotifier {
 
     onSubAgentSpawn(info): EventSink | undefined {
       const sid = info.sessionId;
+      // 役台账（2026-09-22）：这是全仓**唯一**带 sessionId + parentAgentId 的
+      // 子 Agent 派生观察点（`SubAgentPool` 是工作区级、无会话字段；`TaskBoard`
+      // 只记 async 且终态 1h 淘汰）。监视面按会话组织，就只能从这里记。
+      useWorkLedgerStore
+        .getState()
+        .noteSubAgentSpawn(storeId, sid, info.agentId, info.parentAgentId ?? null, info.description);
       const store = msgStoreFor(storeId, sid);
       if (!store) return undefined;
       const subPart: SubAgentPart = {
@@ -125,6 +132,8 @@ export function createRuntimeAdapter(storeId: string): RuntimeNotifier {
     },
 
     onSubAgentFinished(agentId: string, _parentAgentId: string, sessionId: number, ok: boolean): void {
+      // 役台账收尾（先落账再修卡片——卡片那条路可能早返回）
+      useWorkLedgerStore.getState().noteSubAgentFinished(storeId, agentId, ok);
       const text = ok ? `子 Agent ${agentId} 已完成` : `子 Agent ${agentId} 失败`;
       useAgentPanelStore.getState().pushAlert({
         id: `finish-${agentId}-${hashStr(text)}`,
