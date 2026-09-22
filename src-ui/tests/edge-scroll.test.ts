@@ -75,10 +75,11 @@ describe('边缘滚动·策略读面', () => {
     expect(clampSensitivity(undefined)).toBe(EDGE_SCROLL.sensDefault);
   });
 
-  /* 悬停可滚判据（纯函数）：三处刻意约束 + 交互面豁免 + **贴边浮件（目次带）视为画布**
-   * ——2026-09-17 两轮实机取证：① canvas 宽 2560 / 右带 2524–2560 / 目次带 2496–2560 整条
-   * 压住 ⇒ 右缘本无可用带；② 目次带是 `.pp-canvas` 的**兄弟**（覆盖件，不属画布 DOM），
-   * 故「指针须落在画布内」这条硬判据才是真病灶（贴屏最右命中的是 nav.pp-toc 本身）。 */
+  /* 悬停可滚判据（纯函数）：三处刻意约束 + 交互面豁免 + **贴边浮件（目次带 / 书脊列）
+   * 视为画布**——2026-09-17 右缘两轮实机取证：① canvas 宽 2560 / 右带 2524–2560 / 目次带
+   * 2496–2560 整条压住 ⇒ 右缘本无可用带；② 目次带是 `.pp-canvas` 的**兄弟**（覆盖件，
+   * 不属画布 DOM），故「指针须落在画布内」这条硬判据才是真病灶（贴屏最右命中的是
+   * nav.pp-toc 本身）。2026-09-21 左缘批同族（书脊列 [0,72] 压住左带 [0,36]）。 */
   describe('hoverEdgeEligible 判据', () => {
     /* 画布 rect：**top 0**——2026-09-17 标题栏拆除批后画布铺满整窗（顶缘 = 屏缘）。
      * 正是这一条让「指针甩到屏顶」落进上缘感应带（旧书眉 56px 布局行时，屏顶
@@ -93,6 +94,14 @@ describe('边缘滚动·策略读面', () => {
       chrome: HTMLElement;
       chromeBtn: HTMLElement;
       veil: HTMLElement;
+      rack: HTMLElement;
+      list: HTMLElement;
+      spineMain: HTMLElement;
+      label: HTMLElement;
+      rackToggle: HTMLElement;
+      card: HTMLElement;
+      cardBtn: HTMLElement;
+      sidebar: HTMLElement;
     } => {
       document.body.innerHTML = '';
       const root = document.createElement('div');
@@ -125,7 +134,60 @@ describe('边缘滚动·策略读面', () => {
       root.appendChild(chrome);
       root.appendChild(veil);
       document.body.appendChild(root);
-      return { canvas, block, toc, tocCard, chrome, chromeBtn, veil };
+
+      /* 书脊列（左缘 dock，2026-09-21 左缘批）：真机结构 = 面板坞里的一枚 fixed 覆盖件，
+       * **在 `.pp-root` 之外**（探针实测 parentElement = 无名 div，非 .pp-canvas）。
+       * 内部层级照 SpineRack：列 > 案卷扣 button + 脊列 .sr-list > 脊槽 .sr-spine >
+       * 脊块 .sr-spine-main（div[role=tab]，点/拖/hover 三手势的瞄准面）> 题签 .sr-label。 */
+      const dock = document.createElement('div'); // 面板坞宿主（DockPanel 的容器）
+      const rack = document.createElement('div');
+      rack.className = 'sr-rack';
+      const rackToggle = document.createElement('button');
+      rackToggle.className = 'sr-sidebar-toggle';
+      const list = document.createElement('div');
+      list.className = 'sr-list';
+      const spine = document.createElement('div');
+      spine.className = 'sr-spine sr-active';
+      const spineMain = document.createElement('div');
+      spineMain.className = 'sr-spine-main';
+      spineMain.setAttribute('role', 'tab');
+      const label = document.createElement('span');
+      label.className = 'sr-label';
+      spineMain.appendChild(label);
+      spine.appendChild(spineMain);
+      list.appendChild(spine);
+      const card = document.createElement('div'); // hover 小卡：列外、压画布的瞄准面
+      card.className = 'sr-card';
+      const cardBtn = document.createElement('button');
+      cardBtn.className = 'sr-close-btn';
+      card.appendChild(cardBtn);
+      rack.appendChild(rackToggle);
+      rack.appendChild(list);
+      rack.appendChild(card);
+      dock.appendChild(rack);
+      // 案卷侧栏 = 同一坞位的**展开态**（互斥两态）：宽面板，非贴边浮件
+      const sidebar = document.createElement('div');
+      sidebar.className = 'ss-sidebar';
+      dock.appendChild(sidebar);
+      document.body.appendChild(dock);
+
+      return {
+        canvas,
+        block,
+        toc,
+        tocCard,
+        chrome,
+        chromeBtn,
+        veil,
+        rack,
+        list,
+        spineMain,
+        label,
+        rackToggle,
+        card,
+        cardBtn,
+        sidebar,
+      };
     };
     const at = (target: Element | null, x: number, y: number, tuning = tuningOn, buttons = 0): boolean =>
       hoverEdgeEligible({
@@ -167,6 +229,27 @@ describe('边缘滚动·策略读面', () => {
       expect(at(s.block, 1266, 1390, { ...tuningOn, hover: false })).toBe(false);
       expect(at(s.block, 1266, 1390, tuningOn, 1)).toBe(false); // 拖拽在途 → 让位
       expect(at(null, 1266, 1390)).toBe(false); // 无 target（指针离开文档）
+    });
+
+    /* 书脊列压住**左缘**感应带（2026-09-21 左缘批；用户「边缘滚动的左侧边缘失灵了，
+     * 估计是和新的书脊栏逻辑冲突了」）。真机几何（探针 prototype/_probe-edge-left.mjs
+     * --stim，2560×1400）：列 [0,72] 全高、脊块占 [6,68]、左带 = [0,36] ⇒ **整条带
+     * 压在列内**；列自滚轮批起 pointer-events: auto ⇒ 贴屏最左命中的是列板面而不是
+     * 画布 ⇒ 左缘等于没有缘滚（实测 x=2/5/20/40 停 500ms pan Δ=0，同刻右缘跑道
+     * Δ=−958、上缘 Δ=+1032）。判据：列的**板面与书缝**算画布（最左内距带正是「指针
+     * 甩到屏左」的落点），**脊块 / 小卡 / 按钮**是瞄准面（同目次带卡片口径）。 */
+    it('左缘：书脊列的板面/内距带可滚（贴死屏左即滚），脊块与 hover 小卡豁免', () => {
+      const s = build();
+      expect(at(s.rack, 2, 700)).toBe(true); // 最左内距带：指针被屏缘钉住处
+      expect(at(s.rack, 5, 700)).toBe(true);
+      expect(at(s.list, 20, 1380)).toBe(true); // 列板面/书缝（末脊之下的空白）= 画布
+      expect(at(s.spineMain, 20, 121)).toBe(false); // 脊块：点=定位 / 拖=落位 / hover=小卡
+      expect(at(s.label, 40, 121)).toBe(false); // 题签在脊块内
+      expect(at(s.rackToggle, 36, 20)).toBe(false); // 「案卷」虚线扣 = button
+      expect(at(s.card, 120, 121)).toBe(false); // hover 小卡（列外、压画布的瞄准面）
+      expect(at(s.cardBtn, 130, 160)).toBe(false);
+      // 展开态案卷侧栏是同一坞位的宽面板，**不是**贴边浮件（悬停其上照滚 = 跟随相机）
+      expect(at(s.sidebar, 150, 700)).toBe(false);
     });
   });
 });
