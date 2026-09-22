@@ -148,9 +148,19 @@ registry 与 bridge 两处工具构造同源消费；`~/.lantai/mcp.json` 同构
 + 换 `install-officecli.ps1` 的 `$PINNED`（两处必须同改）；运行时名 `OFFICECLI_EXE` /
 取件落点 / conf 映射名三处漂移由 Rust 侧守护测试 `bundled_binary_name_and_path_agree_across_surfaces` 钉死。
 
-**随包件的哈希诚实**：pin 值 `abd82dae…731e2` 有**两处独立来源互证**（`install-officecli.ps1` 的
-`$PINNED`，以及同版本官方 `SHA256SUMS` 的 win-x64 行）。注意**本机安装位那份不是 pin 件**
-（实测 `04770540…`，且文件被当日自更新改写）——officecli 会自更新，所以**不能**拿本机安装位当随包源。
+**随包件的哈希诚实**：pin 值 `abd82dae…731e2` 有**三处互证**——① `install-officecli.ps1` 的
+`$PINNED`；② 同版本官方 `SHA256SUMS` 的 win-x64 行；③ **2026-09-22 实测从 Releases 下到该资产，
+实得哈希与 pin 逐字节相符**，且落位后二进制自报版本 `1.0.149`、可正常执行。
+
+反面教训（同时实测）：**本机安装位那份不是 pin 件**——它自报 `1.0.152`（officecli 会自更新，
+文件已被改写），哈希 `04770540…` 既不在官方清单也不等于 pin。所以**不能**拿本机安装位当随包源；
+同理 `.old` 备份也不是（`57cd0e59…`）。
+
+**本机取件的两个环境坑（2026-09-22 实测，取件器失败提示里已内建）**：① node 用自带 CA 包，
+本机 TLS 链的根不在其中 ⇒ `UNABLE_TO_VERIFY_LEAF_SIGNATURE`，解 = `node --use-system-ca`
+（Node ≥22.15 用系统证书库）；② curl 走 Windows schannel 时连不上吊销服务器 ⇒
+`CRYPT_E_NO_REVOCATION_CHECK`，解 = `curl --ssl-no-revoke`。**两者都只影响"怎么把字节弄下来"，
+不影响完整性**——落位前一律 SHA256 校验，与 pin 不符即拒绝。
 
 ## 5. 坑账（实测得出，均已在技能/脚本/文档里落地）
 

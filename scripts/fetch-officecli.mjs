@@ -223,9 +223,27 @@ try {
   stageVerified(tmp, '下载件');
 } catch (err) {
   rmSync(tmp, { force: true });
+  const code = err?.code ?? '';
+  // 环境相关的两类下载拦路（2026-09-22 本机实测，均已验证有效）：
+  //   · UNABLE_TO_VERIFY_LEAF_SIGNATURE —— node 用自带 CA 包，而本机的 TLS 链由本机信任的
+  //     根签发（代理/安全软件介入的常见形态）：node 不认，浏览器/channel 认（schannel 走
+  //     Windows 证书库）。修法 = `node --use-system-ca`（Node ≥22.15 支持用系统证书库）。
+  //   · schannel 的 CRYPT_E_NO_REVOCATION_CHECK —— curl 走 Windows schannel 时连不上吊销
+  //     服务器（受限网络下的常态）⇒ 加 `--ssl-no-revoke`。
+  const hints = [
+    '  · 若报「unable to verify the first certificate / UNABLE_TO_VERIFY_LEAF_SIGNATURE」：',
+    '      本机 TLS 链用的根不在 node 自带 CA 包里。改用系统证书库重跑：',
+    '        node --use-system-ca scripts/fetch-officecli.mjs',
+    '  · 若本机 curl 也连不上（schannel 吊销检查失败 / 超时）：',
+    '        curl -L --ssl-no-revoke -o officecli.exe \\',
+    `          ${RELEASE_URL}`,
+    '        node scripts/fetch-officecli.mjs --from-local officecli.exe',
+    '    （哈希仍会校验：符合 pin 才落位，不符合即拒绝——绕过 TLS 不等于放弃完整性。）',
+    '  · 离线环境：用本机已有的 pin 版二进制走 --from-local。',
+    '    注意：本机安装位 %USERPROFILE%\\.lantai\\tools\\officecli\\ 下的件**可能已被 officecli',
+    '    自更新改写**（不再是 pin 版本，哈希对不上），那种件不适合随包。',
+  ].join('\n');
   fail(
-    `下载失败：${err?.message ?? err}\n` +
-      `  请在网络可达时重试；离线环境可用本机已有 pin 件：\n` +
-      `    node scripts/fetch-officecli.mjs --from-local <officecli.exe 路径>`,
+    `下载失败：${err?.message ?? err}${code ? `（code=${code}）` : ''}\n${hints}`,
   );
 }
