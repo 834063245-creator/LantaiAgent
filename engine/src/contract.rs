@@ -72,7 +72,16 @@
 ///   ③ **动作 hint 补前置纪律**：把原文里「何时用 / 用之前先做什么 / 下一步去哪」
 ///      压进 40-240 字的迷你说明书，并由测试钉住下限与上限（不许退化成词，
 ///      也不许把完整说明书抄回常驻上下文）。
-pub const ENGINE_CONTRACT_VERSION: u32 = 6;
+/// v7（2026-09-22 契约面内容纪律）：**形状零变更**——只为让 CI 过而清掉
+/// `tools/mod.rs` 顶层那条用不到的 `HashSet` import（它只在 `#[cfg(test)] mod tests`
+/// 里用裸名，非测试段一律全限定 `std::collections::HashSet`）。
+/// 指纹 guard 是**按内容**算的（任一契约面文件动一个字节即红），所以这一步照样要走
+/// 全套纪律；版本号 +1 因此只是「本文件被触碰」的记账，**不构成任何对宿主的形状承诺
+/// 变化**——工具名 / schema / 输出形态 / 壳方法清单一律照旧，消费方无需跟改。
+/// 连带记一条本地门禁的裂缝：CI 的 `actions-rust-lang/setup-rust-toolchain@v1` 默认塞
+/// `RUSTFLAGS=-D warnings`，本机 `.cargo/config.toml` 没有这条——于是同一个文件本地是
+/// warning、CI 是 error；**本地 `cargo test` 全绿并不代表 CI 绿**。
+pub const ENGINE_CONTRACT_VERSION: u32 = 7;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard（本文件的
 /// `contract_face_fingerprint_matches`）对拍 `CONTRACT_FACE_FINGERPRINT`：
@@ -97,7 +106,7 @@ pub const ENGINE_CONTRACT_FILES: &[&str] = &[
 /// 实现细节：换行归一（CRLF→LF）——工作树 EOL 因 `.gitattributes` 归一而可能
 /// 与索引不同，指纹必须跟着**仓库内容**走；contract.rs 自身在哈希前剔除本行
 /// （自指），其余内容照常参与。
-pub const CONTRACT_FACE_FINGERPRINT: &str = "b635cb28e4c477e0";
+pub const CONTRACT_FACE_FINGERPRINT: &str = "6e9f1b09a493301a";
 
 /// 壳专属方法参数（最小形状；Phase 1 接线时并入 dispatch）。
 pub struct ShellParam {

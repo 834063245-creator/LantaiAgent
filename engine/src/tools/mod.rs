@@ -6,7 +6,7 @@
 // 可寻址面 = DEFAULT_MCP_TOOLS（tools/call 原名直达）。
 // 与 MCP 传输层分离，使 Tauri / TCP / CLI 能共享同一套工具层。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
@@ -1451,6 +1451,7 @@ fn all_schemas() -> &'static [ToolSchema] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn test_tool_count() {

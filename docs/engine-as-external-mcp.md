@@ -49,7 +49,7 @@
 保存后新会话的 Agent 工具面即出现引擎的图查询工具（清单以生成物
 [`agents/engine-plugin-contract.md`](agents/engine-plugin-contract.md) 为准）。
 
-### 工具面形态：域 + action（引擎契约 v6）
+### 工具面形态：域 + action（引擎契约）
 
 引擎 `tools/list` 恒定返回 **7 个工具**，不是几十个：只读工具折叠成
 `graph` / `analysis` / `lsp` / `ops` 四个域，调用形态
@@ -92,7 +92,7 @@
 
 ## 验证
 
-1. 兰台打开任一会话，工具面应出现引擎的图查询工具（缺省 = 引擎契约 v6 的域面：
+1. 兰台打开任一会话，工具面应出现引擎的图查询工具（缺省 = 引擎契约的域面：
    `mcp__hologram__graph` / `__analysis` / `__lsp` / `__ops` + 三个写工具
    `mcp__hologram__analyze_project` / `__import_scip` / `__rename_symbol`）。
    注意：兰台**内置**的同名 `graph` / `ops` / `lsp` 域工具已随图谱内置接线退役
