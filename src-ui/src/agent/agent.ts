@@ -106,6 +106,7 @@ import { parseAssetEventOutput } from './streaming-executor';
 import type { SubAgentSpawnHost } from './subagent-spawn';
 import { countMessages, countTexts, countToolSchemas } from './token-counter';
 import {
+  countImageTokens,
   type EnvelopeMeasure,
   measureEnvelope,
   SessionTokenMeter,
@@ -2166,7 +2167,11 @@ export class Agent {
   }
 
   private tokenCountWithEstimation(): number {
-    let total = countMessages(this.payloadMessages());
+    const payload = this.payloadMessages();
+    let total = countMessages(payload);
+    // 附图视觉 token（2026-09-22 补账）：文本分词器看不见图——不计这一项，
+    // 有图时的压力判定（step 前 pre-flight / 响应式压缩 / 压缩埋点）全部少算。
+    total += countImageTokens(payload).tokens;
     // 计算临时提醒 token — 发送给 LLM 但不在会话中
     total += countTexts(this._transientReminders);
     // 计算工具 schema token — 每次请求都发送
@@ -2200,6 +2205,9 @@ export class Agent {
         transient_reminders: { tokens: env.transientTokens, msgs: this._transientReminders.length },
         assistant: { tokens: env.assistantTokens, msgs: env.assistantMessages },
         tool_results: { tokens: env.toolResultTokens, msgs: env.toolResultMessages },
+        // 附图细目（2026-09-22）：已并入 messageTokens（对话段），此处单列以便
+        // 与 api_reported 对账——「差额」是这条口径的探针（见下 api_delta）。
+        images: { tokens: env.imageTokens, count: env.imageCount },
         tool_schemas: { tokens: env.breakdown.toolsTokens, count: env.schemaCount },
         folded_tool_results: Math.min(this._toolFoldBoundary, env.toolResultMessages),
         // ── 汇总 ──
@@ -2207,6 +2215,9 @@ export class Agent {
         api_reported: apiUsage
           ? { prompt: apiUsage.prompt_tokens, completion: apiUsage.completion_tokens, total: apiUsage.total_tokens }
           : null,
+        // 本地估算 − 提供方回报（正 = 估高）。持续非零即说明构成口径该校（例如换到
+        // 非 DeepSeek 血统的视觉路由：图价网格不再成立）；有图那几轮尤其要看它。
+        api_delta: apiUsage ? env.surfaceTokens - apiUsage.prompt_tokens : null,
         cache: apiUsage ? { hit: apiUsage.cache_hit_tokens, miss: apiUsage.cache_miss_tokens } : null,
       };
 

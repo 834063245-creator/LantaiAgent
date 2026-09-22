@@ -10,6 +10,7 @@
 
 export type { EnvelopeMeasure } from './estimate';
 export { estimatePayloadTokens, measureEnvelope } from './estimate';
+export { countImageTokens, deepSeekImageTokens } from './image-tokens';
 export { SessionTokenMeter } from './meter';
 export type {
   ContextBreakdown,

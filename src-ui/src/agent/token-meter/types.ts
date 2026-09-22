@@ -28,13 +28,17 @@ export interface TokenBuckets {
   outputTokens: number;
 }
 
-/** 上下文构成（启发式估算，三项之和 = 请求载荷估算量）。 */
+/** 上下文构成（启发式估算，三项之和 = 请求载荷估算量）。
+ *  ⚡ 2026-09-22：对话段**含附图**的视觉 token（按提供方发布的像素网格计价，
+ *  见 image-tokens.ts）——图是对话内容的一部分，不新开第四段（纸墨三阶，见
+ *  design-spec §9.1）；细目在 EnvelopeMeasure.imageTokens / TokenRequestRecord
+ *  的诊断行。 */
 export interface ContextBreakdown {
   /** 系统提示（含随会话重建的 persona/规则/记忆段）。 */
   systemTokens: number;
   /** 工具 schema（每次请求全量重发的那一份）。 */
   toolsTokens: number;
-  /** 对话消息（含临时提醒与工具结果）。 */
+  /** 对话消息（含临时提醒、工具结果与**附图视觉 token**）。 */
   messageTokens: number;
 }
 

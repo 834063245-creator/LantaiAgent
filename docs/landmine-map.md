@@ -390,3 +390,9 @@ CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**—
 
 **家族结论（写给自己与下一个人）**：I1 与 I3 是**同一个病的两端**——「能力/规整的判据散在多处，且每处都以为自己那半边是对的」。I3 让用户的图走不进正门（创作坞），I1 让图从侧门（工具通道）进来时没人量它的体积。**新增任何产图/收图通道时，先回答两句**：它过不过 wire 发送带？它的失败会不会在卷里留痕？（`readAttachmentForWire` 是发送带的唯一入口，别再开 base64 直通口。）
 
+### I4（同日追查补记，2026-09-22）——附图**不计 token**：账本对图是瞎的
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| I4 | `agent/token-meter/estimate.ts`（构成测量只走文本分词器）+ `agent.ts::tokenCountWithEstimation()`（压力与压缩预检同一口径）+ `estimatePayloadTokens`（坞底墨量线的轻量口径） | **图是对话内容，却一颗 token 都不进账**：`measureEnvelope` 逐消息只 `countMessage`（文本），`m.images` 完全不看。于是有图时本地估算系统性小于提供方回报——实测会话 20 那轮「读图链路终于通了」：三桶估算 **20,457** vs `api_reported.prompt` **22,404**（差 ≈1.9k，其中含图 + 估算噪声）。后果两条：① 占用读数（墨量册/坞底墨线）有图时偏小；② **压缩压力判定少算**（step 前 pre-flight、响应式压缩的 `errAt > contextWindow * 0.6`、投影占用基准全走这条）⇒ 多图会话该压缩时不压 | 发现路径（值得记）：用户问「一张 9MB 的图发过去，上下文不爆吗」——顺着去对账才发现**四桶加总与提供方 `prompt_tokens` 在有图时不相等**，而这件事**没有任何检查会报**：两个数字并排躺在 `token breakdown` 日志里，没人对拍。当前路由窗口 1M 咬不到人；换成 128K/200K 的路由 + 多图，就会以「莫名 prompt too long」的形态冒出来 | ✅ **已拆（2026-09-22）**：口径改用提供方**发布**的视觉网格——`agent/token-meter/image-tokens.ts` 逐字移植 DSH `packages/llm/llm-deepseek/src/common/image-tokens.ts`（14px patch / 每轴 3:1 降采样 / 544² 像素下限 / 保比投影 / **单图封顶 1024 token**），图价并入**对话段**（不新开第四段：纸墨只有三阶墨、占用条三段几何不动）；`countImageTokens` 在 `measureEnvelope` / `tokenCountWithEstimation` / `estimatePayloadTokens` **三处同源**求和（口径纪律④的「同一把尺子」= 文本分词器 + 图网格**加起来**那一处）；诊断行加 `images: {tokens, count}` 与 **`api_delta`**（本地估算 − 提供方 `prompt_tokens`，正 = 估高）——差额持续非零就是「该换口径了」的探针（换非 DeepSeek 血统的视觉路由时网格系数不再成立）。**量级纠正**：事故那张 2560×1400 / 6.46MB 的图 = **991 token**（封顶内），不是按像素/字节外推的万级——**字节是传输面，token 才是上下文面**，两者在这一案里差了三个数量级的直觉。钉值 `tests/image-token-pricing.test.ts`（14 例；其中五例逐值锚 DSH 发布算法测试 422/968/832/1024/992 = 移植不漂的机器化判据） |
+
