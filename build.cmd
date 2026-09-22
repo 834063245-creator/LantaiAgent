@@ -13,4 +13,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-cargo tauri build %*
+REM --config 覆盖：本地构建**不生成 updater 签名产物**。
+REM   · 为什么：tauri.conf.json 的 bundle.createUpdaterArtifacts 恒为 true（发版／CI 需要
+REM     .sig + latest.json，否则应用内更新静默失效）；而本机没有签名私钥密码，本地构建
+REM     若走 true 会直接失败。所以本地这一侧显式覆盖为 false，两边各取所需。
+REM   · 文件名刻意不叫 tauri.<平台>.conf.json——那种形态会被 tauri **自动合并**，
+REM     一旦如此就会把 false 带回发版态（2026-08-25 那个 bug 的翻版）。
+REM   · 要本地产出带签名的安装包：先设好 TAURI_SIGNING_PRIVATE_KEY 与
+REM     TAURI_SIGNING_PRIVATE_KEY_PASSWORD，再直接跑
+REM     `cargo tauri build`（不带本覆盖）。
+cargo tauri build --config src-tauri/no-updater.local.json %*

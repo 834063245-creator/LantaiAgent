@@ -1,6 +1,18 @@
 # 打 v* tag 自动发版。
 #   engine-cli: 双平台 engine 二进制 + CLI 安装脚本
-#   desktop:    Windows 桌面应用 (MSI)
+#   desktop:    Windows 桌面应用 (MSI/NSIS)
+#
+# ⚠ 自动更新的两根命脉（2026-09-22 修复，两者曾同时断掉）：
+#   1. `src-tauri/tauri.conf.json` 的 `bundle.createUpdaterArtifacts` **必须为 true**，
+#      否则 tauri-action 不产出 `.sig` 与 `latest.json` —— 应用内更新会静默失效（不报错，
+#      就是不更新）。该开关 2026-08-25 曾因「本地构建不再要 updater 签名密码」被置为 false，
+#      但它是**全局**的，把发版一起关了；现改为：conf 恒 true（发版态），本地构建由 build.cmd
+#      以 `--config src-tauri/no-updater.local.json` 覆盖（本地无签名密码，也不需要 updater 产物）。
+#   2. updater 端点（tauri.conf.json `plugins.updater.endpoints`）的**仓库名必须真实存在**：
+#      2026-09 改名曾写成 `/Lantai/`（该仓库不存在）⇒ 端点 404。正确为 `/LantaiAgent/`。
+#
+# 签名密钥注意：升级签名的私钥密码若已遗失，**不要**贸然重新生成密钥对——已安装的旧客户端
+# 内嵌的是旧 pubkey，用新密钥签名会导致旧客户端校验失败（用户须手动重装一次）。
 name: Release
 
 on:
@@ -170,6 +182,13 @@ jobs:
           curl -fL --retry 3 -o "$f" \
             https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx
           echo "6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452 *$f" | sha256sum -c -
+
+      # 随包件：office 域工具的后端二进制（不入 git，打包期取件——见 scripts/fetch-officecli.mjs）。
+      # 缺它 ⇒ tauri 的 build script 在资源校验阶段即失败（`resource path bin/officecli.exe
+      # doesn't exist`），整个打包无从谈起。pin 版本 + SHA256 校验，落点 src-tauri/bin/。
+      - name: Fetch bundled OfficeCLI binary
+        shell: bash
+        run: node scripts/fetch-officecli.mjs
 
       - name: Generate changelog
         id: cliff

@@ -1,4 +1,4 @@
-# git-cliff configuration for HoloGram
+# git-cliff configuration for 兰台（Lantai）
 # https://git-cliff.org/docs/configuration
 #
 # Usage:
@@ -9,7 +9,7 @@
 header = """\
 # Changelog
 
-All notable changes to HoloGram are documented here. \
+All notable changes to 兰台（Lantai） are documented here. \
 This file is auto-generated from commit history — never edited by hand.
 """
 body = """\
