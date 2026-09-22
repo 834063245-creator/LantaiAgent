@@ -158,11 +158,22 @@ jobs:
           echo "Publishing version: $VER"
           node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));p.version=process.argv[1];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" "$VER"
 
-      - name: Publish to npm
+      # 幂等：npm 不允许覆盖已发布的版本号，所以「重跑一次发版」时这一步必然红
+      # （`npm publish` → E403 "You cannot publish over the previously published versions"）。
+      # 而重跑恰恰是发版失败后的标准恢复动作——不该因为「已经发过了」把整轮判红。
+      # 已存在即跳过（内容本来也改不了：同版本同产物）。
+      - name: Publish to npm (skip if this version already exists)
         working-directory: dsh-bundle
+        shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          if npm view "@a834063245/hologram-dsh@$VER" version >/dev/null 2>&1; then
+            echo "npm 上已有 @a834063245/hologram-dsh@$VER —— 跳过发布"
+          else
+            npm publish --access public
+          fi
 
   desktop:
     runs-on: windows-latest
