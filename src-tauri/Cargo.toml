@@ -3,7 +3,7 @@
 
 [package]
 name = "lantai"
-version = "10.4.0"
+version = "1.0.0"
 description = "兰台"
 authors = ["Lantai Team"]
 edition = "2021"
