@@ -1367,7 +1367,9 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     const pin = getCanvasStore(panel.panelId).getState().pins[id];
     expect(pin).toBeTruthy();
     // 不 hover 不落笔（防面条：钉多起来时全画线就是一团乱麻）
-    expect(container?.querySelector('.pp-tether')).toBeNull();
+    // 2026-09-22 版口引线批：屏上从此恒有一条**常显**的版口引线（坞 → 活卷），
+    // 故本档的判据按**腿**收窄（.pp-pin-layer）——「不 hover 不落笔」说的是这条腿。
+    expect(container?.querySelector('.pp-pin-layer .pp-tether')).toBeNull();
     await act(async () => {
       fire(el, 'mouseover', { relatedTarget: null });
     });
@@ -1396,7 +1398,7 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     await act(async () => {
       fire(el, 'mouseout', { relatedTarget: null });
     });
-    expect(container?.querySelector('.pp-tether')).toBeNull();
+    expect(container?.querySelector('.pp-pin-layer .pp-tether')).toBeNull();
   }, 30_000);
 
   it('溯源：点出处行 → 飞到源洞（洞落视口中心）+ 洞点名一拍', async () => {

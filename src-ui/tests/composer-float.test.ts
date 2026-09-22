@@ -12,6 +12,8 @@
 //   - 让位带 band = bottom + 坞高（默认位恒 = 96 + 坞高 ⇒ 与浮动化前零漂移）；
 //   - 命中判据 isComposerHandle：坞书眉行内的**非交互件**才是抓手。
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   COMPOSER_CHROME_H,
@@ -19,8 +21,12 @@ import {
   COMPOSER_POS_KEY,
   COMPOSER_RISE,
   COMPOSER_SNAP,
+  COMPOSER_TICK_H,
+  COMPOSER_TICK_TOP,
+  COMPOSER_TICK_W,
   COMPOSER_UNLOCK_KEY,
   clampComposerPos,
+  composerAnchorOf,
   composerGeomOf,
   isComposerDragSurface,
   loadComposerPos,
@@ -29,6 +35,18 @@ import {
   saveComposerUnlocked,
   snapComposerPos,
 } from '../src/plugins/builtin/paper-shell/composer-float';
+
+const PANEL_CSS = readFileSync(
+  join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
+  'utf8',
+);
+
+/** 从选择器名截取规则体（到下一个 `}` 为止——同 paper-provenance 的既有范式）。 */
+function ruleBody(css: string, selector: string): string {
+  const i = css.indexOf(selector);
+  if (i < 0) return '';
+  return css.slice(i, css.indexOf('}', i));
+}
 
 const VP = { w: 1200, h: 800 };
 const BOX = { w: 880, h: 110 };
@@ -87,6 +105,43 @@ describe('创作坞浮动化 · 坞几何下发（两种口径由消费面各自
 
   it('坞高变了 height 跟着变（思考展开/附件/墨量册——同一条式子）', () => {
     expect(composerGeomOf(null, 300).height).toBe(300);
+  });
+});
+
+/* 版口引线（2026-09-22）：坞侧锚点 = 坞顶左端那枚**版口钮**的起端中点——坞的版口钮
+ * 与活卷卷首规线左端那枚同名同形同墨（56×3 朱砂短横），线把两枚红连起来即「红对红」。
+ * 锚点只用坞位 + 坞实测尺寸算（坞本体一字不知），与 CSS 字面量必须同值。 */
+describe('创作坞浮动化 · 版口引线坞侧锚点（坞顶左端版口钮的起端中点）', () => {
+  it('默认位（无覆盖）：锚点 = 版心居中左缘 × 坞顶线上方版口钮的中线', () => {
+    // top = 视口高 − 抬高 96 − 坞高 110 = 594；锚 y = top − 3 + 1.5（钮悬在坞顶线上 3px、高 3px）
+    expect(composerAnchorOf(null, VP, BOX)).toEqual({ x: (VP.w - BOX.w) / 2, y: VP.h - COMPOSER_RISE - BOX.h - 1.5 });
+  });
+
+  it('浮动态：锚点跟着坞位走（x = 槽左边 / y = 坞顶线 − 1.5）', () => {
+    expect(composerAnchorOf({ left: 300, bottom: 200 }, VP, BOX)).toEqual({
+      x: 300,
+      y: VP.h - 200 - BOX.h - 1.5,
+    });
+  });
+
+  it('坞高变（思考展开/附件）锚点跟着落——线不悬空', () => {
+    const tall = composerAnchorOf(null, VP, { w: BOX.w, h: 300 });
+    expect(tall.y).toBe(VP.h - COMPOSER_RISE - 300 - 1.5);
+    expect(tall.y).toBeLessThan(composerAnchorOf(null, VP, BOX).y);
+  });
+
+  it('字面量与坞的版口钮 CSS **同值**（两处各写一遍就必须钉住）', () => {
+    expect(COMPOSER_TICK_W).toBe(56);
+    expect(COMPOSER_TICK_H).toBe(3);
+    expect(COMPOSER_TICK_TOP).toBe(-3);
+    const tick = ruleBody(PANEL_CSS, '.pp-composer::before {');
+    expect(tick).toContain('left: 0');
+    expect(tick).toContain(`top: ${COMPOSER_TICK_TOP}px`);
+    expect(tick).toContain(`width: ${COMPOSER_TICK_W}px`);
+    expect(tick).toContain(`height: ${COMPOSER_TICK_H}px`);
+    expect(tick).toContain('var(--seal)'); // 朱砂短横——与活卷那枚同墨（红对红）
+    // 案头态（匣退）：钮 content:none ⇒ 锚点不在场，引线随之不画（空态诚实）
+    expect(ruleBody(PANEL_CSS, '.pp-composer-slot.pp-at-desk .pp-composer::before {')).toContain('content: none');
   });
 });
 

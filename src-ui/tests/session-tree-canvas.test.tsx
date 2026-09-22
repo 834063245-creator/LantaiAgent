@@ -238,8 +238,10 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
 
   it('无枝边不落笔：不是枝卷就没有引线（不误画一条凭空的线）', async () => {
     await mountTwoVolumes(null);
+    // 2026-09-22 版口引线批：屏上从此恒有一条**常显**的版口引线（坞 → 活卷），
+    // 故本档判据按**腿**收窄（.pp-branch-layer）——「无枝边不落笔」说的是枝这条腿。
     expect(container?.querySelector('.pp-branch-tether')).toBeNull();
-    expect(container?.querySelector('.pp-tether-hit')).toBeNull();
+    expect(container?.querySelector('.pp-branch-layer')).toBeNull();
     // 卷首眉行也不缀「枝」（根卷）
     const eyebrow = container?.querySelector('.pp-folio-eyebrow')?.textContent ?? '';
     expect(eyebrow).not.toContain('枝');

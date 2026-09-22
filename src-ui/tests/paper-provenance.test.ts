@@ -27,6 +27,8 @@ import {
   sourceBlockIdOf,
   TETHER_ANCHOR_DY,
   TETHER_SAG_MAX,
+  TETHER_SPLINE_K,
+  TETHER_SPLINE_MIN,
   TETHER_WOBBLE,
   tetherAnchors,
   tetherAnchorsAt,
@@ -41,6 +43,8 @@ const DRAG_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'use
 const CANVAS_STORE_TS = readFileSync(join(SRC, 'state', 'canvas-store.ts'), 'utf8');
 const PROVENANCE_TS = readFileSync(join(SRC, 'paper', 'provenance.ts'), 'utf8');
 const SEL_INK_TS = readFileSync(join(SRC, 'paper', 'sel-ink.ts'), 'utf8');
+const DOCK_TETHER_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'dock-tether.ts'), 'utf8');
+const COMPOSER_FLOAT_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'composer-float.ts'), 'utf8');
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——纸壳 CSS 规则无嵌套，同
  *  paper-visual-decisions 的既有范式）。 */
@@ -222,6 +226,103 @@ describe('眉批钉源块剥离', () => {
   });
 });
 
+/* 版口引线（2026-09-22）：第三条腿的笔——两端锚面一个在**匣顶线**、一个在**卷首底线**，
+ * 故把判例原文的「锚面法向」与「只有下限没上限」两处**补全**（前两条腿因锚面皆竖面，
+ * 把法向写死水平、只搬了上限）。缺省值必须恒等于旧行为——那是既有两条腿零漂移的证据。 */
+describe('版口引线笔（2026-09-22：锚面法向 + 臂长下限，缺省 = 旧行为）', () => {
+  const from = { x: 700, y: 400 };
+  const to = { x: 300, y: 0 };
+  /** 一条笔道对弦的**最大法向偏离**（px）。 */
+  function maxDev(pts: Array<[number, number]>, a = from, b = to): number {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    const nx = -dy / len;
+    const ny = dx / len;
+    return Math.max(...pts.map(([x, y]) => Math.abs((x - a.x) * nx + (y - a.y) * ny)));
+  }
+
+  it('缺省恒等于旧行为：不传笔 / 空笔 / `{normals: undefined, minArm: 0}` **逐点相等**', () => {
+    const base = tetherPoints(from, to, 42);
+    expect(tetherPoints(from, to, 42, {})).toEqual(base);
+    expect(tetherPoints(from, to, 42, { minArm: 0 })).toEqual(base);
+    expect(tetherPoints(from, to, 42, { normals: undefined, minArm: 0 })).toEqual(base);
+    // d 串同逐字节（笔道是下游唯一读面）
+    expect(tetherPath(from, to, 42, { minArm: 0 }).d).toBe(tetherPath(from, to, 42).d);
+    expect(tetherPath(from, to, 42, {}).d).toBe(tetherPath(from, to, 42).d);
+  });
+
+  it('竖法向（匣顶朝上 / 卷首底线朝下）：出笔与到站都竖直，两端仍逐位落在锚点上', () => {
+    const dock = { x: 400, y: 620 }; // 坞的版口钮（匣顶线上）
+    const folio = { x: 520, y: 120 }; // 活卷的版口钮（卷首底线上，在匣上方）
+    const pts = tetherPoints(dock, folio, 7, {
+      normals: { from: { x: 0, y: -1 }, to: { x: 0, y: 1 } },
+    });
+    expect(pts[0]).toEqual([dock.x, dock.y]);
+    expect(pts[pts.length - 1]).toEqual([folio.x, folio.y]);
+    // 出笔朝上（匣顶外法向），切线竖直（水平位移远小于竖直位移）
+    const exit = [pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]];
+    expect(exit[1]).toBeLessThan(0);
+    expect(Math.abs(exit[0])).toBeLessThan(Math.abs(exit[1]) * 0.2);
+    // 到站自下方（卷首底线外法向），切线同样竖直——线是「胀上去」不是「贴过去」
+    const last = pts[pts.length - 1];
+    const prev = pts[pts.length - 2];
+    const entry = [last[0] - prev[0], last[1] - prev[1]];
+    expect(entry[1]).toBeLessThan(0);
+    expect(Math.abs(entry[0])).toBeLessThan(Math.abs(entry[1]) * 0.2);
+  });
+
+  it('法向**按锚面定，不按相对方位现算**：卷首落在匣身之下时，出笔仍朝上（不藏进匣里）', () => {
+    // 翻转档（卷首底线在匣顶线之下）：出笔方向必须与「卷在上方」那一档**同一个**，
+    // 否则线一出门就钻进匣身（z 4 < 匣 6 ⇒ 整段被匣盖住 = 绑定当场隐形）
+    const dock = { x: 400, y: 200 };
+    const folio = { x: 520, y: 700 };
+    const pts = tetherPoints(dock, folio, 7, {
+      normals: { from: { x: 0, y: -1 }, to: { x: 0, y: 1 } },
+    });
+    const exit = [pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]];
+    expect(exit[1]).toBeLessThan(0); // 仍朝上出笔（匣顶外法向）
+    // 到站仍自下方（卷首底线外法向）——两端各按自己的锚面走，中间那一段自然成 S
+    const last = pts[pts.length - 1];
+    const prev = pts[pts.length - 2];
+    expect(last[1] - prev[1]).toBeLessThan(0);
+  });
+
+  it('臂长下限：沿法向净空趋零时托住笔道，不再贴着弦退化成一条直线', () => {
+    // 卷首底线与匣顶线**同高**（纯水平弦）：净空 = |Δ·n| = 0 ⇒ 上限 0，没下限时
+    // 笔道就是一条贴着弦的直线（摆在匣顶规线上＝那条规线的影子/双线）
+    const dock = { x: 400, y: 300 };
+    const folio = { x: 1100, y: 300 };
+    const pen = { normals: { from: { x: 0, y: -1 }, to: { x: 0, y: 1 } } } as const;
+    const flat = tetherPoints(dock, folio, 11, pen);
+    const lifted = tetherPoints(dock, folio, 11, { ...pen, minArm: TETHER_SPLINE_MIN });
+    /** 笔道越过起笔锚点**朝上**（-y）的最大幅度——下限托起的那一下。 */
+    const up = (pts: Array<[number, number]>) => dock.y - Math.min(...pts.map(([, y]) => y));
+    // 没下限：只会被重力垂往下拉，向上的偏离只有微伏振幅（≤ TETHER_WOBBLE）
+    expect(up(flat)).toBeLessThanOrEqual(TETHER_WOBBLE + 1e-9);
+    // 有下限：真的离开那条规线（出笔沿匣顶外法向抬起）
+    expect(up(lifted)).toBeGreaterThan(5);
+  });
+
+  it('下限不得越过弦长比例臂长：短线不鼓出不相称的肚子，两端重合（退化）不绕圈', () => {
+    const a = { x: 0, y: 0 };
+    const b = { x: 40, y: 2 };
+    const pen = { normals: { from: { x: 0, y: -1 }, to: { x: 0, y: 1 } }, minArm: TETHER_SPLINE_MIN } as const;
+    const pts = tetherPoints(a, b, 3, pen);
+    const len = Math.hypot(40, 2);
+    // 上限 = min(下限, 弦长 × K)：短线上抬起的量必须与长度相称（此处 ≤ 10px 臂长）
+    const arm = Math.min(TETHER_SPLINE_MIN, len * TETHER_SPLINE_K);
+    const sagMax = Math.min(len * 0.06, TETHER_SAG_MAX);
+    expect(maxDev(pts, a, b)).toBeLessThan(arm + sagMax + TETHER_WOBBLE + 1e-6);
+    // 两端重合：不动（下限不得在零长上造出一个圈）
+    const same = tetherPoints(a, a, 3, pen);
+    for (const [x, y] of same) {
+      expect(x).toBe(0);
+      expect(y).toBe(0);
+    }
+  });
+});
+
 describe('接线与样式钉值（防回漂）', () => {
   it('出处行：页边注第三行（文类签内），mono 9px 墨三档——不新立浮件、不占版心', () => {
     const prov = ruleBody(PANEL_CSS, '.pp-prov {');
@@ -319,5 +420,31 @@ describe('接线与样式钉值（防回漂）', () => {
   it('孤儿钉三态（已删 / 不在卷内 / 未摊开）：活卷名优先、冻结卷名兜底', () => {
     expect(PANEL_TSX).toContain('deadOrphanPinIds.has(pinId)');
     expect(PANEL_TSX).toContain('liveSession?.label ?? source.label');
+  });
+
+  /* 匣脚引线（2026-09-22）：坞的版口钮 → 活卷的纸脚。
+   * 卷端落点**二版改档**（用户打回一版「你挂在第一条用户输入那不是乱了套了」）：天头那枚
+   * 钮是「哪一卷活跃」的标记，位置又压在标题与第一条来文的接缝上；二版改接纸脚（纸的
+   * 材料缘、没有任何字，且它才是「这一卷写到哪儿」的那一端）。 */
+  it('匣脚引线：常显半档 + 可点（受墨带）、坞端＝坞顶左端版口钮、卷端＝活卷纸脚', () => {
+    // 墨阶：常显半档 .55（同枝边——一屏一线不抢正文），hover 受墨带抬回 .9
+    expect(ruleBody(PANEL_CSS, '.pp-dock-tether {')).toContain('opacity: 0.55');
+    expect(PANEL_CSS).toContain('.pp-tether-hit:hover ~ .pp-dock-tether');
+    // 层位不变（z 4 在坞 z 6 之下——引线不盖家具），可点靠受墨带（墨本身仍是那一丝）
+    expect(PANEL_TSX).toContain('className="pp-tether pp-dock-tether"');
+    expect(PANEL_TSX).toContain('className="pp-tether-layer pp-dock-layer"');
+    // 坞端锚点：版口钮的**起端中点**——坞位/实测尺寸在槽主人手里
+    expect(COMPOSER_FLOAT_TS).toContain('export function composerAnchorOf(');
+    expect(COMPOSER_FLOAT_TS).toContain('COMPOSER_TICK_TOP + COMPOSER_TICK_H / 2');
+    // 卷端锚点：版心左缘 × **卷底边（纸脚）**（版心宽走 measure.folioHeadWidthFor）
+    expect(DOCK_TETHER_TS).toContain('export function regionFootAnchorOf(');
+    expect(DOCK_TETHER_TS).toContain('folioHeadWidthFor(region.width)');
+    expect(DOCK_TETHER_TS).toContain('region.regionTop + region.regionHeight');
+    expect(PANEL_TSX).toContain('regionFootAnchorOf({');
+    // 无活卷 / 流区尚未落位 ⇒ 不画线（宁可没有线，也不指错）
+    expect(PANEL_TSX).toContain('if (activeSessionKey === null) return null;');
+    expect(PANEL_TSX).toContain('if (!region) return null;');
+    // 点线 = 溯源：飞到线的那一头（纸脚）——同枝边/出处引导那条判例
+    expect(PANEL_TSX).toContain('flyToPoint(dockTether.sid, dockTether.foot.y, dockTether.foot.x)');
   });
 });

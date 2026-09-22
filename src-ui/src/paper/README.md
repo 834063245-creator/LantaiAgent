@@ -13,11 +13,11 @@
 | `tool-text.ts` | **2026-08-30** 脚注参数规整（pretty JSON）——ToolBody 渲染与 measure 计高共用的单一变换 |
 | `canvas-math.ts` | 交互层：无限画布数学（视口/缩放锚点/屏幕↔世界换算/流锚布局） |
 | `translate.ts` | 宿主侧块转译 v1：`ChatMessage[]` → `SourcedBlock[]` 纯函数（agent 层零改动） |
-| `measure.ts` | **V3a** 块高真测量：`@chenglou/pretext`（上游包，待定 #8）+ prepare 缓存纪律 + 纸面字体常量（FONT_STACKS 真源 = type-tokens.ts，2026-09-10 三体换代后统一 MiSans） |
+| `measure.ts` | **V3a** 块高真测量：`@chenglou/pretext`（上游包，待定 #8）+ prepare 缓存纪律 + 纸面字体常量（FONT_STACKS 真源 = type-tokens.ts，2026-09-10 三体换代后统一 MiSans）；**2026-09-22** 抽出 `folioHeadWidthFor(流区宽)`——卷首**版心宽单一真源**（左右内距 16×2 与封顶 720 都在那一式里；此前只有注释这么叫、代码里是内联的），测高与版口引线的卷侧锚点共用它 |
 | `virtualize.ts` | **V3a** 视口虚拟化：视口→世界矩形、flow 窗口二分（O(log n)）、pinned 矩形相交——数据全量、渲染窗口化；**Stage-2** 加跨流区窗口 `visibleRegionWindows`（一纸多卷） |
 | `space.ts` | **Stage-2** 画布空间纯函数 + 常量：流区宽 1440 / 间距 720 / 吸附网格 2160 / 边缘宽 6px / 线性排比默认落位 / X 吸附 |
 | `selection.ts` | **V3a** 抽纸条（待定 #10）：`PaperStrip` 用户层物件——拷贝语义快照 + 世界坐标 + source 溯源元信息（收尾 2026-08-24 接入持久化；**Stage-5 起随工作区画布状态文件**落盘，不随会话快照）。**2026-09-19 便条批**加可选 `source.label`（抽取那一刻的卷名快照 = 纸条报头「摘自 卷名」；快照非活引用——源卷改名不追改，旧存档无字段则整行不渲染） |
-| `provenance.ts` | **2026-09-18** 出处引导：钉住块的**来路**派生面——出处行文本（`摘自 卷名 · 状态字`，四态 + 纯层截断）+ 引线（`tetherAnchors` 世界锚点选边/起笔留白 + `tetherPath` 屏幕坐标笔道：**划词朱线同族**——微伏/定种子/手绘平滑/恒定墨宽 + 重力垂 + 收笔朱点）+ 眉批钉 `:sc` 源块剥离。零依赖（同 `selection.ts` 纪律；唯一进口 = `sel-ink.smoothPath`，同一支笔共用），字号墨阶/层序等**渲染决定不入本层**；守护 `tests/paper-provenance.test.ts` |
+| `provenance.ts` | **2026-09-18** 出处引导：钉住块的**来路**派生面——出处行文本（`摘自 卷名 · 状态字`，四态 + 纯层截断）+ 引线（`tetherAnchors` 世界锚点选边/起笔留白 + `tetherPath` 屏幕坐标笔道：**划词朱线同族**——微伏/定种子/手绘平滑/恒定墨宽 + 重力垂 + 收笔朱点）+ 眉批钉 `:sc` 源块剥离。零依赖（同 `selection.ts` 纪律；唯一进口 = `sel-ink.smoothPath`，同一支笔共用），字号墨阶/层序等**渲染决定不入本层**；守护 `tests/paper-provenance.test.ts`。**2026-09-22 版口引线批**：笔的两端**锚面外法向**与**臂长下限**参数化（`TetherPen`——缺省恒等于既有两条腿的逐字节行为，判例原文「控制点 = 端点 + 锚面法向 × 弦长 × 0.25」「只有下限没上限」两处补全）；第三条腿（创作坞 → 活卷**纸脚**）的锚点派生在产地域 `plugins/builtin/paper-shell/dock-tether.ts` |
 | `ime.ts` | **V3a** IME 安全谓词：输入条提交守卫（合成中 Enter 不发送）；2026-08-29 R5 D4 收档：编辑宿主 = composer（世界层外），块内编辑候选窗错位风险结构性不成立 |
 | `paper-plugin.ts` | **V3b** 壳装配：纸面板经 PanelsService 贡献挂载（第一方插件行——面板贡献走组合层通道，不自建旁路）；块体渲染器消费第五通道（`composition/renderer-service.tsx` 的 `resolveRenderer`） |
 

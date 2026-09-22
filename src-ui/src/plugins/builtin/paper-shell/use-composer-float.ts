@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComposerBox, ComposerDockGeom, ComposerPos, ComposerViewport } from './composer-float';
 import {
   clampComposerPos,
+  composerAnchorOf,
   composerGeomOf,
   isComposerDragSurface,
   loadComposerPos,
@@ -51,6 +52,9 @@ export interface ComposerFloat {
   toggleUnlocked: () => void;
   /** 坞几何（bottom = 视口底 → 坞下边；height = 坞实测高）——覆盖层消费面按各自规矩派生。 */
   dock: ComposerDockGeom;
+  /** **坞侧锚点**（屏幕坐标；2026-09-22 版口引线的起笔）= 坞顶左端版口钮的起端中点。
+   *  引用稳定（只在坞位/坞实测尺寸变时换新）——平移/缩放帧不重算，线不闪。 */
+  anchor: { x: number; y: number };
   /** 槽 pointerdown（锁定态直接放行；解锁态按拖动面判据）。 */
   onPointerDown: (e: React.PointerEvent) => void;
   /** 槽 dblclick（解锁态双击坞体 = 复位到版心居中坐底）。 */
@@ -114,6 +118,9 @@ export function useComposerFloat(): ComposerFloat {
   /* 坞几何引用稳定（P2-3 纪律）：PaperPanel 平移/缩放帧都会重渲，若此处每帧换新对象，
    * 覆盖层 context 跟着变 → 目次带/小地图每帧重渲。依赖只有坞位与坞高，平移帧不变。 */
   const dock = useMemo(() => composerGeomOf(effective, box.h), [effective, box.h]);
+  /* 坞侧锚点（版口引线，2026-09-22）：坞位取**夹紧后**的那一份（与内联 style 同一个数
+   * ——否则窗口缩小后线会离坞）。引用稳定纪律同 dock：平移/缩放帧不重算。 */
+  const anchor = useMemo(() => composerAnchorOf(effective, vp, box), [effective, vp, box]);
   const band = dock.bottom + dock.height;
 
   /* 让位带下发 :root（CSS 消费面：递牒卡宿主 / 插件 dock）。 */
@@ -207,5 +214,5 @@ export function useComposerFloat(): ComposerFloat {
     });
   }, []);
 
-  return { slotRef, style, dragging, unlocked, toggleUnlocked, dock, onPointerDown, onDoubleClick };
+  return { slotRef, style, dragging, unlocked, toggleUnlocked, dock, anchor, onPointerDown, onDoubleClick };
 }

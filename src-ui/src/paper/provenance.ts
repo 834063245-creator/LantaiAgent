@@ -54,6 +54,15 @@
 //
 // 渲染决定（字号/墨阶/层序）不在这里——与 block-model「本层不做任何视觉决定」
 // 同纪律；字面量由 tests/paper-provenance.test.ts 钉死。
+//
+// ── 2026-09-22 版口引线批：**锚面法向**与臂长下限参数化（`TetherPen`）──
+// 第三条腿（创作坞的版口钮 → 活卷的**纸脚**）两端锚面一个在**匣顶线**、一个在**卷底
+// 边**，法向竖直——判例原文本来就是「锚面法向」，前两条腿因为锚面都是竖面才写死
+// 水平。两处补全，缺省值恒等于旧行为（既有两条腿的 d 串逐字节不变 = 测试 diff 为零）：
+//   · `normals`：两端**锚面外法向**（按锚面定，不按相对方位现算——方位一变就改法向，
+//     会把「卷首落在匣身背后」那一档的线藏进匣里）；
+//   · `minArm`：判例那条公式「只有下限没上限」，我们此前只搬了上限——法向近乎垂直于
+//     两端连线时净空上限趋零、笔道退化成直线（摆在匣顶规线上就是一条贴出来的双线）。
 
 import { smoothPath } from './sel-ink';
 import type { FlowGeom } from './virtualize';
@@ -99,10 +108,43 @@ export const TETHER_SPLINE_K = 0.25;
  *  落在上限内 ⇒ 那一档的弧线与判例逐位一致，只有远洞档被夹住。 */
 export const TETHER_SPLINE_MAX = 160;
 
-/** 臂长还不得超过**横向净空 × 这个比例**——纯纵向的丝没有可鼓的余量（同「垂只吃横向
- *  跨度」那条判据）；dx → 0 时臂长 → 0，笔道退化成一条直线（正是纯纵向该有的样子，
- *  不去朝一个任意方向鼓）。 */
+/** 臂长还不得超过**沿法向的净空 × 这个比例**——纯横向的丝没有可鼓的余量（同「垂只吃
+ *  横向跨度」那条判据）；沿法向分量 → 0 时臂长 → 0，笔道退化成一条直线（正是纯垂向
+ *  该有的样子，不去朝一个任意方向鼓）。 */
 export const TETHER_SPLINE_ROOM = 0.6;
+
+/** 臂长**下限**（屏幕 px）——判例那条公式本就「只有下限没上限」（见文件头注「三刀」），
+ *  我们此前只搬了上限。下限只在**沿法向净空趋零**时才起作用：那一刻上面那条净空上限
+ *  趋零、笔道退化成直线——放在版口引线上就是「沿匣顶规线贴出一条双线」（正是用户判过
+ *  的劣质感来源）。
+ *  取值 48 的由来（实测，不是手感）：抬起的幅度 ≈ 0.75 × 臂长，而**重力垂**（上限
+ *  `TETHER_SAG_MAX` = 18）在水平弦上正好把它吃回去——下限 24 时净抬起只剩 2.6px
+ *  （tests/paper-provenance 的台架读数），等于没抬。48 ⇒ 净抬起 ≈ 18px，与垂同量级，
+ *  一眼看得出「线离开了那条规线」。
+ *  下限自身又不得超过弦长比例臂长（`min(minArm, len × K)`）：短线不许鼓出与长度不
+ *  相称的肚子，退化点（len → 0）仍归零。 */
+export const TETHER_SPLINE_MIN = 48;
+
+/** 笔的两端**锚面外法向**（判例原文是「控制点 = 端点 + **锚面法向** × 弦长 × 0.25」（见
+ *  文件头注「三刀」）——既有两条腿的两个锚面都是竖面（块的左右缘 / 卷首纸缘），故法向
+ *  写死水平。版口引线那条腿两端一个在**匣顶线**、一个在**卷首底线**，法向竖直。
+ *  **按锚面定，不按相对方位现算**：锚点挂在哪条缘上，线就朝那条缘的外侧出/进（相对
+ *  方位一变就改法向，会让「卷首落在匣身背后」那一档把线藏进匣里——实测形态见
+ *  tests/paper-provenance 的翻转档）。 */
+export interface TetherNormals {
+  /** 起笔端外法向（单位向量）。 */
+  from: { x: number; y: number };
+  /** 收笔端外法向（单位向量）。 */
+  to: { x: number; y: number };
+}
+
+/** 笔的可调项（**缺省 = 既有两条腿的逐字节行为**：水平「面对面」法向 + 无臂长下限）。 */
+export interface TetherPen {
+  /** 两端锚面外法向（缺省 = 现行规则：由弦的 x 符号定，两端反向）。 */
+  normals?: TetherNormals;
+  /** 臂长下限（缺省 0 = 无下限；版口引线传 `TETHER_SPLINE_MIN`）。 */
+  minArm?: number;
+}
 
 /** 出处行文本：`摘自 卷名` / `摘自 卷名 · 未摊开`。
  *  **卷名由调用方经 state/volume-name 的 volumeDisplayName 派生**（无名卷 → 案卷 N
@@ -184,26 +226,39 @@ export function tetherAnchorsAt(
 
 /** 引线笔道采样点（**屏幕坐标**）。
  *
- *  骨架 = **切向三次贝塞尔**（ComfyUI SPLINE 判例）：出笔与到站都沿锚面的水平法向，
- *  控制点臂长 = 弦长 × 0.25，再夹两道上限（`TETHER_SPLINE_MAX` / `_ROOM` 各注）。
+ *  骨架 = **切向三次贝塞尔**（ComfyUI SPLINE 判例）：出笔与到站都沿**锚面外法向**
+ *  （`pen.normals` 给，缺省水平 = 既有两条腿），控制点臂长 = 弦长 × 0.25，
+ *  再夹两道上限与一道下限（`TETHER_SPLINE_MAX` / `_ROOM` / `_MIN` 各注）。
  *  墨仍是划词朱线那一支笔：逐点正弦微伏（走**弦的法向**，两端收零）+ 一层垂（重力，
  *  只吃横向跨度）+ 定种子相位（**同钉恒同线**，重渲染/平移不闪）。 */
 export function tetherPoints(
   from: { x: number; y: number },
   to: { x: number; y: number },
   seed: number,
+  pen?: TetherPen,
 ): Array<[number, number]> {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const len = Math.hypot(dx, dy);
   const n = Math.max(10, Math.min(48, Math.round(len / 18)));
-  // 两端控制点都沿**行进方向**的水平法向推出去（推出去多少 = 臂长，两道夹见常量注）。
+  // 两端控制点的推进方向 = 各端**锚面外法向**；缺省 = 现行水平「面对面」规则（由弦的
+  // x 符号定，两端反向）——既有两条腿的锚面都是竖面，逐字节不变。
   const sx = dx < 0 ? -1 : 1;
-  const off = Math.min(len * TETHER_SPLINE_K, TETHER_SPLINE_MAX, Math.abs(dx) * TETHER_SPLINE_ROOM);
-  const c0x = from.x + sx * off;
-  const c0y = from.y;
-  const c1x = to.x - sx * off;
-  const c1y = to.y;
+  const nx0 = pen?.normals?.from.x ?? sx;
+  const ny0 = pen?.normals?.from.y ?? 0;
+  const nx1 = pen?.normals?.to.x ?? -sx;
+  const ny1 = pen?.normals?.to.y ?? 0;
+  // 沿起笔法向的净空（缺省 = |dx|）：臂长 = min(弦长 × K, 上限, 净空 × ROOM)，
+  // 再托一次下限（下限只在净空趋零时起作用，且自身不得越过弦长比例臂长）。
+  const along = dx * nx0 + dy * ny0;
+  const off = Math.max(
+    Math.min(len * TETHER_SPLINE_K, TETHER_SPLINE_MAX, Math.abs(along) * TETHER_SPLINE_ROOM),
+    Math.min(pen?.minArm ?? 0, len * TETHER_SPLINE_K),
+  );
+  const c0x = from.x + nx0 * off;
+  const c0y = from.y + ny0 * off;
+  const c1x = to.x + nx1 * off;
+  const c1y = to.y + ny1 * off;
   const nx = len > 0 ? -dy / len : 0;
   const ny = len > 0 ? dx / len : 0;
   const sag = Math.min(len * 0.06, TETHER_SAG_MAX) * Math.min(1, Math.abs(dx) / Math.max(1, len * 0.35));
@@ -247,9 +302,14 @@ export interface TetherArt {
   bead: { x: number; y: number };
 }
 
-export function tetherPath(from: { x: number; y: number }, to: { x: number; y: number }, seed: number): TetherArt {
+export function tetherPath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  seed: number,
+  pen?: TetherPen,
+): TetherArt {
   return {
-    d: smoothPath(tetherPoints(from, to, seed)),
+    d: smoothPath(tetherPoints(from, to, seed, pen)),
     origin: { x: from.x, y: from.y },
     bead: { x: to.x, y: to.y },
   };

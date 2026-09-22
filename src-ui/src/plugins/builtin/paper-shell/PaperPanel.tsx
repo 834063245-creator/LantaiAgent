@@ -47,6 +47,7 @@ import {
   tetherPath,
 } from '../../../paper/provenance';
 import { volumeDisplayName } from '../../../state/volume-name';
+import { DOCK_TETHER_PEN, DOCK_TETHER_SEED, regionFootAnchorOf } from './dock-tether';
 import { FolioCompositionChip } from './FolioCompositionChip';
 import { formatCNDate } from './folio-date';
 import type { RegionView, SourcedBlock } from './host';
@@ -888,6 +889,52 @@ export function PaperPanel() {
     [regions, activeSessionKey, viewRect, canvasSize, composerDock, foldedOf, minimapContent, minimapGeo, inkCache],
   );
 
+  /* ── 匣脚引线（2026-09-22）：**坞的版口钮 → 活卷的纸脚** ──
+   * 病灶（用户）：「多会话卷的激活态一直没做好」——活卷的信号全在纸上，而坞与纸上任何
+   * 一卷之间没有任何可见联系；坞浮动化之后两边各自在屏上走，「坞报的卷名指哪一张纸」
+   * 只能靠读者自己连线。
+   * 卷端落点**二版改档**（用户当场打回一版：「你这个引线能挂在页尾吗……你挂在第一条
+   * 用户输入那不是乱了套了」）：一版接在**卷首规线左端那枚版口钮**上——那枚钮是
+   * 「哪一卷活跃」的标记，位置又正好压在标题与第一条来文的接缝上，线读起来像在指第一
+   * 条来文。二版改接**纸脚**（版心左缘 × 卷底边）：纸的材料缘、没有任何字，且它才是
+   * 「这一卷写到哪儿」的那一端（人在读尾时它就在坞上方几十像素）。坞端不变：坞顶左端
+   * 那枚版口钮（匣口）。
+   * 两端各在既有单一真源：坞侧 = `composer.anchor`（槽主人实测坞位与尺寸），
+   * 卷侧 = `regionFootAnchorOf`（世界坐标 → 投到屏上落墨，同枝边那条腿）。
+   * 笔 = 同一支（`.pp-tether` 的墨）；与既有两条腿两处不同（各记理由）：
+   *   ① 锚面外法向（匣顶朝上 / 卷底边朝下——判例原文就是「锚面法向」，前两条腿因锚面
+   *      皆竖面才写死水平）+ 臂长下限（防近水平时笔道退化成贴着弦的一条直线）；
+   *   ② **常显且可点**（结构不是瞬时手势，同枝边那一条）。
+   * 无活卷 / 案头态（匣退、钮本就不画）⇒ **不画线**；「活卷在场上但流区还没落位」
+   * （新卷出生后落位 effect 之前那一帧）同样不画——宁可没有线，也不指错（锚点批同款判据）。 */
+  const dockTether = useMemo(() => {
+    if (activeSessionKey === null) return null;
+    const region = regions.find((r) => r.sessionId === activeSessionKey);
+    if (!region) return null;
+    const foot = regionFootAnchorOf({
+      anchorX: region.anchor.anchorX,
+      width: region.anchor.width,
+      regionTop: region.regionTop,
+      regionHeight: region.regionHeight,
+    });
+    return {
+      sid: activeSessionKey,
+      foot,
+      art: tetherPath(
+        composer.anchor,
+        worldToScreen(view, foot.x, foot.y),
+        selSeedOf(`${DOCK_TETHER_SEED}-${activeSessionKey}`),
+        DOCK_TETHER_PEN,
+      ),
+    };
+  }, [activeSessionKey, regions, view, composer.anchor]);
+
+  /** 点线 = 溯源：飞到线的那一头（本卷纸脚）——与枝边/出处引导同一语义。 */
+  const onDockTrace = useCallback(() => {
+    if (!dockTether) return;
+    flyToPoint(dockTether.sid, dockTether.foot.y, dockTether.foot.x);
+  }, [dockTether, flyToPoint]);
+
   /* 拖拽回流判据（渲染面）：与松手定夺共用 `blockReturnsToFlow`（据来源原位量）
    * ——视觉与规则同一把尺子：预览说「回槽」就必须真的回槽（2026-09-17 修正） */
 
@@ -1350,7 +1397,7 @@ export function PaperPanel() {
               里定、投到屏上落墨 ⇒ 墨宽不随缩放变（世界 1px 在 zoom .3 下 = .3px，
               等于没画）。z 4：纸与块之上、坞（5）与一切浮件之下——引线不盖家具。 */}
           {tether && (
-            <svg className="pp-tether-layer" aria-hidden="true">
+            <svg className="pp-tether-layer pp-pin-layer" aria-hidden="true">
               <path className="pp-tether" d={tether.d} />
               {/* 两端各一枚朱点（2026-09-22 锚点批）：起笔那枚正压在块缘的常显锚点上，
                   收笔那枚压在洞的锚点上——「线是引，点是落」，现在两头都是落。 */}
@@ -1389,6 +1436,36 @@ export function PaperPanel() {
                   <circle className="pp-tether-bead" cx={t.bead.x} cy={t.bead.y} r={2.2} />
                 </g>
               ))}
+            </svg>
+          )}
+
+          {/* 匣脚引线（2026-09-22）：**常显**的一丝朱砂——坞的版口钮 → 活卷的纸脚。
+              两端都扎在实体上（坞顶左端那枚 56×3 朱短横 / 纸的材料底缘），线只是把
+              「这一匣对着这一卷」画出来。可点（受墨带，同枝边）：飞到线的那一头
+              （本卷纸脚）。坞在 z 6 之上、线在 z 4 ⇒ 线不盖家具，坞端起点那枚朱点
+              落在钮上。坞被拖走 / 切卷 / 平移缩放都随几何重算（两端各自单一真源）。
+              无活卷 / 案头态 ⇒ 整层不在场。 */}
+          {dockTether && (
+            <svg className="pp-tether-layer pp-dock-layer" aria-label="匣脚引线：创作坞 → 当前活跃卷的纸脚">
+              {/* 受墨带：命中的是它，墨仍是那一丝（.pp-tether-hit 注） */}
+              {/* biome-ignore lint/a11y/useSemanticElements: 引线是 SVG 笔道——<button> 进不了 SVG 坐标系（受墨带必须与墨同形）；role/tabIndex/Enter 已补 */}
+              <path
+                className="pp-tether-hit"
+                d={dockTether.art.d}
+                role="button"
+                tabIndex={0}
+                aria-label="回到创作坞正写着的那一卷（纸脚）"
+                onClick={onDockTrace}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onDockTrace();
+                  }
+                }}
+              />
+              <path className="pp-tether pp-dock-tether" d={dockTether.art.d} />
+              <circle className="pp-tether-origin" cx={dockTether.art.origin.x} cy={dockTether.art.origin.y} r={2.2} />
+              <circle className="pp-tether-bead" cx={dockTether.art.bead.x} cy={dockTether.art.bead.y} r={2.2} />
             </svg>
           )}
 

@@ -124,6 +124,32 @@ export function composerGeomOf(pos: ComposerPos | null, dockH: number): Composer
   return { bottom: pos?.bottom ?? COMPOSER_RISE, height: dockH };
 }
 
+/* ── 版口钮（坞侧锚点，2026-09-22 版口引线批）──────────────────────────────
+ * 坞顶左端那枚朱砂短横（`.pp-composer::before`）本来就是坞的「版口钮」——全坞唯一
+ * 暖色件，与**活卷**卷首规线左端那枚版口钮同名同形同墨（那一枚只挂活跃卷：
+ * 「红在哪卷即活卷」）。版口引线就是把这两枚红连起来，故坞侧锚点 = 本钮的**起端**
+ * 中点（左端，与卷侧同取「起端」）。 */
+
+/** 坞顶左端版口钮 56×3、悬在坞顶线上 3px——**镜像** = 本插件 CSS 的
+ *  `.pp-composer::before`（left 0 / top -3 / 56×3）；改一处必改两处，
+ *  由 tests/composer-float 的「字面量对拍」钉住。 */
+export const COMPOSER_TICK_W = 56;
+export const COMPOSER_TICK_H = 3;
+export const COMPOSER_TICK_TOP = -3;
+
+/** **坞侧锚点**（屏幕坐标）：版口钮左端的中点——版口引线从这里出笔。
+ *  坞位（`pos`，无覆盖 = 版心居中坐底）与坞实测尺寸已够算，**坞本体一字不知**；
+ *  `pos` 要传**夹紧后**的那一份（与内联 style 同一个数，否则窗口缩小后线会离坞）。 */
+export function composerAnchorOf(
+  pos: ComposerPos | null,
+  vp: ComposerViewport,
+  box: ComposerBox,
+): { x: number; y: number } {
+  const left = pos?.left ?? (vp.w - box.w) / 2; // 无覆盖 = CSS 的 left:50% + translateX(-50%)
+  const top = vp.h - (pos?.bottom ?? COMPOSER_RISE) - box.h;
+  return { x: left, y: top + COMPOSER_TICK_TOP + COMPOSER_TICK_H / 2 };
+}
+
 /**
  * 坞的拖动面命中判据（**锁定态一律 false**）：解锁后**整坞**（`.pp-composer` 内）
  * 的非交互件才是抓手——用户 2026-09-17 原话「解锁之后拓展坞要对鼠标有响应」，

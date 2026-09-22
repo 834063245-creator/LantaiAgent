@@ -456,13 +456,24 @@ export const FOLIO_HEAD_GAP = FOLIO_TOKENS.headGap;
 /** 卷首版心宽（**唯一真源** = FOLIO_TOKENS.colW）。CSS 端有两条镜像：
  *  内层盒 `width: min(720px, 100%)` 与卷首左右内距 16×2——改一处必改三处。 */
 export const FOLIO_COL_W = FOLIO_TOKENS.colW;
+/** 卷首**版心宽**（= 题字/规线可用宽）：内层盒 `width: min(720px, 100%)` 落在左右
+ *  内距 16×2 之内，两条都在本式一次算清。**单一真源**——调用点禁手写 `width − 32`
+ *  （2026-09-16 前正是那么散的：宽流区下漏掉版心封顶，长题字永不换行）。
+ *  CSS 端两条镜像 = `PaperPanel.css` 的 `.pp-folio-head` `padding: 24px 16px 0` 与
+ *  `.pp-folio-inner` `width: min(720px, 100%)`（改一处必改三处）。
+ *  消费面：卷首测高（本文件）+ **版口引线的卷侧锚点**（卷首规线左端那枚版口钮的起端
+ *  = 版心左缘，见 paper-shell/dock-tether.ts）。 */
+export function folioHeadWidthFor(regionWidth: number): number {
+  return Math.min(FOLIO_COL_W, regionWidth - 32);
+}
+
 /** 卷首头整体高度（世界单位）：题字按可用宽实测行数，其余固定。
  *  入参 = **流区宽**（不是题字可用宽）：左右内距 16×2 与版心封顶 720 都在本函数内
  *  一次算清。2026-09-16 前由调用点手写 `regionWidth - 32`，宽流区下漏掉版心封顶
  *  ——默认 1440 宽流区实得「可用宽 1408」，长题字永不换行、卷首高度恒等于一行
  *  （题字实际按 720 版心换行 → 实测值与渲染值不符，卷级几何偏矮）。本次收口。 */
 export function measureFolioHeadHeight(title: string, regionWidth: number): number {
-  const availWidth = Math.min(FOLIO_COL_W, regionWidth - 32);
+  const availWidth = folioHeadWidthFor(regionWidth);
   const titleH = measureTextHeight(title, availWidth, FOLIO_TITLE_FONT, FOLIO_TITLE_LINE_HEIGHT);
   return (
     FOLIO_PAD_TOP +
