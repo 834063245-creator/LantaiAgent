@@ -351,6 +351,48 @@ export const SessionSidebar = memo(function SessionSidebar() {
     setLocalNotice(null);
   }, []);
 
+  /* ── 武装期间「点其它处 = 取消」的**鼠标半边**（2026-09-21 用户报「点了别处会把卷摊开」）──
+   * 病灶：提示写着「再点一次确认删除；点其它处取消」，而「其它处」全是**别的动作**——
+   * 点另一行 = 摊开/定位那一卷（未摊开卷还要读盘摊上画布 + 视角飞过去）、点勾选格 = 勾选、
+   * 点节头 = 折节。取消手势与「摊开」焊在同一击上，用户照提示去取消，卷却摊开了——
+   * 提示承诺的那个手势从来不存在。
+   * 修法：武装是**行内确认态**，本栏内除「本行删」以外的点击一律先撤武装；**行内**点击
+   * 再多吃掉这一击（不摊开、不切活跃、不飞视角）——这就是提示里那句「点其它处取消」。
+   * 三类照常执行（点击照旧生效，只是顺带撤武装）：① 非行件（检索/新建/视图/节头/批量条）；
+   * ② 栏外任何处（见下方 document 监听）；③ 别的卷的「删」= 改删目标（自会重新核对武装，
+   * 连按不会删——第二击要等新武装，见 armSeqRef 代际）。
+   * 捕获相位：必须早于行自身 onClick，否则这一击已经被 onRowClick 读成摊开了。 */
+  const onArmedClickCapture = useCallback(
+    (e: React.MouseEvent) => {
+      const armed = confirmingDeleteIdRef.current;
+      if (armed === null) return;
+      const t = e.target as HTMLElement | null;
+      const row = t?.closest?.('.ss-row') as HTMLElement | null;
+      const del = t?.closest?.('.ss-actions [data-act="del"]');
+      if (row && del && row.dataset.id === String(armed)) return; // 本行「删」再击 = 第二次确认（放行且不解武）
+      disarmAll();
+      if (!row) return; // 非行件（检索/新建/视角/节头/批量条）：照常执行
+      if (del) return; // 别的卷的「删」：改删目标（自会重新核对武装），照常执行
+      e.preventDefault();
+      e.stopPropagation(); // 行内其它点击：这一击只作取消
+    },
+    [disarmAll],
+  );
+
+  /* 武装的寿命不越出本栏：栏外按下即撤（点击本身照常执行——画布/聊天/别的面板都不知道
+   * 这里有个待确认的删除）。旧实现只在本栏内其它动作里撤 ⇒ 去画布点一下再回来，红态还在，
+   * 下一击「删」被读成第二次确认 = **一次点击直接删除**（armSeqRef 注里那条病的另一半）。 */
+  useEffect(() => {
+    if (confirmingDeleteId === null) return;
+    const onOutsideDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('.ss-sidebar')) return; // 栏内点击归捕获守卫处置
+      disarmAll();
+    };
+    document.addEventListener('mousedown', onOutsideDown, true);
+    return () => document.removeEventListener('mousedown', onOutsideDown, true);
+  }, [confirmingDeleteId, disarmAll]);
+
   /* ── 多选 ── */
   const toggleSelect = useCallback(
     (id: number) => {
@@ -459,6 +501,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
       const anchor = pickDropAnchor(regions, String(d.id), w.x, w.y);
       space?.place(String(d.id), anchor.anchorX, anchor.anchorY);
       if (!d.open) space?.expand(String(d.id)); // expand 自带视角聚焦（用户拍板）
+      disarmAll(); // 落位 = 别的意图：武装同撤（红态不跨手势残留——同「点击行 = 其它意图」纪律）
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -466,7 +509,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
-  }, [core]);
+  }, [core, disarmAll]);
 
   /* ── 行点击：摊开/定位（Ctrl+点击 = 勾选）——键盘 Enter/Space 同入口，
    *  只取修饰键窄形（MouseEvent/KeyboardEvent 双兼容） ── */
@@ -477,6 +520,12 @@ export const SessionSidebar = memo(function SessionSidebar() {
         return;
       }
       if (!core) return;
+      /* 武装期间「点别处 = 取消」的**键盘半边**（Enter/Space 不走 click 事件，捕获守卫
+       * 罩不到）：这一击只解武、不摊开——与鼠标路径同一句话（见 onArmedClickCapture）。 */
+      if (confirmingDeleteIdRef.current !== null) {
+        disarmAll();
+        return;
+      }
       disarmAll(); // 点击行 = 其它意图，解除一切武装
       setCursorId(row.id);
       if (e.ctrlKey || e.metaKey) {
@@ -940,8 +989,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
         : '再点一次确认删除；点其它处取消';
     const deleteConfirmTitle =
       deleteBranchCount > 0
-        ? `再点一次确认：将同时删除 ${deleteBranchCount + 1} 卷（含 ${deleteBranchCount} 枝，不可撤销）；点其它处取消`
-        : '再点一次确认删除（不可撤销）；点其它处取消';
+        ? `再点一次确认：将同时删除 ${deleteBranchCount + 1} 卷（含 ${deleteBranchCount} 枝，不可撤销）；点其它处或 Esc 取消（点别的卷只取消、不摊开）`
+        : '再点一次确认删除（不可撤销）；点其它处或 Esc 取消（点别的卷只取消、不摊开）';
     const isCurrent = r.open && r.id === activeSid;
     const isSelected = selectedIds.has(r.id);
     // 父卷号取成一枚 **const**（不是就地读 `r.parentId`）：别名条件 `branch` 的类型收窄
@@ -1174,6 +1223,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
             {/* 两击确认：武装态**只换色**（文案恒「删」⇒ 动作行宽度恒定），连坐数写在行内 meta 行 */}
             <button
               type="button"
+              data-act="del"
               className={armedDelete ? 'ss-danger' : ''}
               title={armedDelete ? deleteConfirmTitle : '彻底删除（点两次确认）'}
               onClick={(e) => {
@@ -1215,7 +1265,13 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const closedFolded = folded('closed');
 
   return (
-    <aside className="ss-sidebar" style={{ width }} aria-label="当前工作区案卷管理" onKeyDown={onRootKeyDown}>
+    <aside
+      className="ss-sidebar"
+      style={{ width }}
+      aria-label="当前工作区案卷管理"
+      onClickCapture={onArmedClickCapture}
+      onKeyDown={onRootKeyDown}
+    >
       <div className="ss-head">
         <span className="ss-title">案卷</span>
         <span className="ss-count">SESSIONS · {rows.length}</span>
