@@ -99,11 +99,21 @@ describe('translate 眉批配对（P5）', () => {
     expect((blocks[0].payload as { sidecar?: { text: string } }).sidecar).toBeUndefined();
   });
 
-  it('text 全是围栏 → 眉批未消化回退独立块，id 用原夹注 idx（钉住续命不断）', () => {
+  it('text 全是代码围栏 → 眉批正常吸附（不再回退独立块）', () => {
+    // 2026-09 修：原断言为回退 ['reasoning','diff']——代码围栏当时被拆成 diff
+    // 块，眉批没了正文可吸附。代码围栏回吐 markdown 后，全围栏 text 就是普通
+    // 正文（t:'code'），眉批按 P5 常态吸附到它身上，思考内容一字不丢。
     const blocks = translateMessage(
       asstMsg([reasoning('围栏前的思考'), textPart('```ts\nconst a = 1;\n```')]),
       undefined,
     );
+    expect(blocks.map((b) => b.kind)).toEqual(['markdown']);
+    expect((blocks[0].payload as { sidecar?: { text: string } }).sidecar?.text).toBe('围栏前的思考');
+  });
+
+  it('text 只有 diff 围栏 → 无正文段，眉批仍回退独立块（id 用原夹注 idx）', () => {
+    // diff 块仍是掏空正文的拆分段，回退路径原样保留
+    const blocks = translateMessage(asstMsg([reasoning('围栏前的思考'), textPart('```diff\n+ a\n```')]), undefined);
     const kinds = blocks.map((b) => b.kind);
     expect(kinds).toContain('reasoning');
     expect(kinds).toContain('diff');

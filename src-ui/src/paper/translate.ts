@@ -208,9 +208,20 @@ function translateUser(msg: UserMessage): SourcedBlock {
 /* ── 围栏拆分：text part → markdown / diff 块序列 ──
  * 走查弹定义（R1）：灰框块 = markdown + diff + tool result。真实会话里 diff
  * 以 markdown 围栏（```diff）出现在 text part 内——转译层把它拆出来。
+ *
+ * ⚠️ 只有真差分语言（diff/patch）拆成 `diff` 块，其余围栏**原样回吐**给
+ * markdown 段。2026-09 修：本函数原先把所有围栏一律拆成 diff 块，于是
+ * ```ts / ```python 全被 DiffBody 接走（它只按行首 +/-/@@ 上色，不认得
+ * hljs），MdCodeBlock 的语法高亮在真实会话里**从未被触发过**——只有嵌在
+ * 列表/引用里的围栏才漏得过去。回吐时重建围栏（保留语言标记），markdown
+ * 段继续由 parseMarkdown 收成 t:'code'，高亮链路才是活的。
+ *
  * 流式友好：围栏未闭合（token 还在到达）时按已闭合处理（差分块持续生长）。
  * id 方案：无围栏的纯文本保持 pb:{msg}:{i}（兼容）；拆分后 text 段
  * pb:{msg}:{i}t{n}、围栏段 pb:{msg}:{i}f{n}——围栏标记位置稳定则 id 稳定。 */
+
+/** 真差分围栏语言（其余语言标记走代码路径，不拆块）。 */
+const DIFF_LANGS = new Set(['diff', 'patch']);
 
 interface TextSegment {
   kind: 'markdown' | 'diff';
@@ -250,7 +261,15 @@ export function splitFencedSegments(text: string): TextSegment[] {
       }
       void closed; // 未闭合 = 流式中：照常产出（块内容持续增长）
       flushText();
-      segments.push({ kind: 'diff', text: code.join('\n'), lang });
+      if (lang !== undefined && DIFF_LANGS.has(lang.toLowerCase())) {
+        segments.push({ kind: 'diff', text: code.join('\n'), lang });
+      } else {
+        // 代码围栏：重建围栏回吐 markdown（语言标记保留 → parseMarkdown 收
+        // 成 t:'code' → MdCodeBlock 走 hljs）。不带 lang 的裸围栏同样回吐：
+        // 落到 .pp-md-code 图码形态，好过被当成 diff 按 +/- 误着色。
+        const head = `\`\`\`${lang ?? ''}`;
+        segments.push({ kind: 'markdown', text: [head, ...code, '```'].join('\n') });
+      }
     } else {
       buf.push(lines[i]);
       i++;
@@ -325,8 +344,8 @@ function translateAssistantParts(
 ): void {
   /* P5 眉批化配对预扫：连续 reasoning 合并 → 紧随的 text part 吸收为眉批
    * （payload.sidecar，测高 max(正文, 夹注@侧栏)）；无正文后继（tool 结尾/
-   * 消息尾/全围栏 text 由 emitTextWithFences 二次回退）→ 独立 reasoning 块
-   * 不丢字，id 保持原夹注 part idx（钉住续命不断）。 */
+   * 消息尾/只含 diff 围栏的 text 由 emitTextWithFences 二次回退）→ 独立
+   * reasoning 块不丢字，id 保持原夹注 part idx（钉住续命不断）。 */
   const sidecarFor = new Map<number, { text: string; reasoningIdx: number }>();
   const fallbackIdx = new Set<number>();
   let pending: Array<{ idx: number; text: string }> = [];
