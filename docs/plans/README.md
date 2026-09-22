@@ -58,7 +58,7 @@ Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 
 |---|---|
 | agent-plugin **C12 dsh-compat** | P4 全清后的唯一合法挂起：DSH peer 出非 workspace 版本即启动（外部信号依赖；p4a 调研已备好契约地图，见 [`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md)） |
 | v4-pro-minimal AB 实验 | Linux 环境（Windows 不可用）；**且旧 harness 已删**（2026-09-16 `77ad6fe7` 后续一笔——`src-ui/tests/ab/` + `scripts/ab-test/` 是图谱时代化石，重跑需先重写 harness）——[`v4-pro-minimal-ab-test-plan.md`](v4-pro-minimal-ab-test-plan.md) |
-| repo 改名 GitHub 侧执行 | 用户操作；改名前不打发布包 |
+| repo 改名 GitHub 侧执行 | 用户操作；**2026-09-22 已在现名下发布 v1.0.0** ⇒ 原先「改名前不打发布包」的约束随之作废（改名与否不再卡发版，纯 GitHub 设置面动作） |
 
 ## 真机验证欠账（代码完成、未实跑——**本表是唯一在办真值**）
 
