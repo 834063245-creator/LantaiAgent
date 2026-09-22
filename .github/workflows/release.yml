@@ -77,9 +77,26 @@ jobs:
           cp target/release/hologram-engine.exe staging/
           cd staging && 7z a -tzip ../${{ matrix.artifact }}.zip .
 
+      # 为什么不用 `git cliff --current`（2026-09-22 实测翻案）：
+      # `--current` 内部要拿「HEAD 上那个 tag」在 git-cliff 自己的 tags 表里的下标再 `index-1`
+      # （git-cliff-core：`current_tag_index.checked_sub(1)`，None 即 ChangelogError
+      # "No suitable tags found"）。而 cliff.toml 开了 `topo_order = true`，此时 git-cliff
+      # **不按时间排序**，tags 顺序 = libgit2 列 refs 的顺序 —— 松散 ref 排在打包 ref 之前。
+      # 于是成败全看「HEAD 那个 tag 是以什么形态存的」：
+      #   · 本仓实测：v1.0.0 是刚打的松散 ref ⇒ 落成 index 0 ⇒ 下溢 ⇒ 8/8 全红；
+      #   · 全打包 ref 的新克隆 ⇒ 5/5 通过（同一份 tag 集合、两种结果）。
+      # 换句话说它能不能过取决于 ref 存储形态（本地/CI、git 版本、fetch 行为都会影响），
+      # 不能拿发版去赌。显式范围只认版本拓扑，实测 5/5 稳定。
       - name: Generate changelog
         shell: bash
-        run: git cliff --current > /tmp/changelog.md
+        run: |
+          if PREV="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null)"; then
+            RANGE="${PREV}..HEAD"
+          else
+            RANGE="HEAD"   # 没有上一个 tag（首版）⇒ 整段历史
+          fi
+          echo "changelog range: ${RANGE}"
+          git cliff "${RANGE}" --tag "${GITHUB_REF_NAME}" --offline > /tmp/changelog.md
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -218,9 +235,15 @@ jobs:
         id: cliff
         shell: bash
         run: |
+          if PREV="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null)"; then
+            RANGE="${PREV}..HEAD"
+          else
+            RANGE="HEAD"   # 没有上一个 tag（首版）⇒ 整段历史
+          fi
+          echo "changelog range: ${RANGE}"
           {
             echo 'changelog<<CLIFF_EOF'
-            git cliff --current
+            git cliff "${RANGE}" --tag "${GITHUB_REF_NAME}" --offline
             echo CLIFF_EOF
           } >> "$GITHUB_OUTPUT"
 
