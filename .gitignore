@@ -71,7 +71,6 @@ chat_sessions.json
 # Environment / secrets
 .env
 .env.*
-!.env.example
 
 # Claude Code IDE
 .claude/

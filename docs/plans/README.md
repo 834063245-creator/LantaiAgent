@@ -5,19 +5,21 @@
 > 状态词：In progress（干着）/ Proposed·Draft（立项未开工）/ 搁置（等条件）。
 > 维护纪律：**竣工即归档**（CONVENTIONS §4）——`npm run doc-check` 的 archive 查已上牙：plans/ 下挂竣工横幅 = 门禁红。
 
-## 一句话现状（2026-09-16）
+## 一句话现状（2026-09-22）
 
-**兰台（Lantai）= 纸壳（注疏案卷工作台）为唯一主界面的桌面 Agent 软件**；HoloGram 图谱引擎降为随包配套的
-独立进程（应用内默认关），不再是应用内的主叙事。**在办三件**：文档面重构 P4（索引重建——本页所在批）· paper-shell
-R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威叙事全在 [`docs/archive/`](../archive/README.md)
-（组合架构 S0-S6、平台化 Phase 0-6、引擎插件化、bundle 退役…点名见文末）；**跨文档数字一律看
-[`docs/facts.generated.md`](../facts.generated.md)，本页不复述**。
+**兰台（Lantai）= 纸壳（注疏案卷工作台）为唯一主界面的桌面 Agent 软件**；HoloGram 图谱引擎是随包配套的
+独立进程（应用内默认关），不再是应用内的主叙事。**九月的建设高峰（内核能力口收口 / 插件 bundle 退役 / 组合层
+S0-S7 / 图谱退役 / 会话存盘换轨 / 文档面 P0-P3）已过，当前在办以「真机体感验收」为最大宗**——下表真机欠账
+多为 09-17～09-21 代码已落地、门禁全绿、只差实机勾销的项；此外四条活跃线：paper-shell R5 打磨环 · 画布支
+Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 A+B（09-21 开工）。已竣工线的权威叙事全在
+[`docs/archive/`](../archive/README.md)（组合架构 S0-S7、平台化 Phase 0-6、引擎插件化、bundle 退役、内核
+能力口收口…）；**跨文档数字一律看 [`docs/facts.generated.md`](../facts.generated.md)，本页不复述**。
 
 ## 活跃线（在办）
 
 | 线 | 文档 | 状态 | 一句话 |
 |---|---|---|---|
-| **文档面重构** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0-P4 已落**（P3 补批 = 11 件竣工件归档，本页所在批） | 四层形态 + 批序 + 豁免账见施工单；门禁 `npm run doc-check`，真源 `scripts/doc-facts.cjs` |
+| **文档面重构** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0-P3 已落；P4 在推**（P3 补批 = 11 件竣工件归档；P4a ADR/cookbook/research 三索引已落，docs/README 唯一入口重写进行中） | 四层形态 + 批序 + 豁免账见施工单；门禁 `npm run doc-check`，真源 `scripts/doc-facts.cjs` |
 | **paper-shell（R5 打磨环）** | [`paper-shell/README.md`](paper-shell/README.md) | **收尾中** | 剩余工作逐项清单 = [`r5-polish-backlog.md`](paper-shell/r5-polish-backlog.md)（最常看）；视觉决定账本 [`taste-ledger.md`](paper-shell/taste-ledger.md)；管线史 [`HISTORY.md`](paper-shell/HISTORY.md)；走查 [`walkthrough.md`](paper-shell/walkthrough.md)；表面覆盖地图 [`v2-surface-inventory.md`](paper-shell/v2-surface-inventory.md)；访谈 [`interviews/R1-2026-08-20.md`](paper-shell/interviews/R1-2026-08-20.md) |
 | **画布空间模型** | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **Stage-6 进行中**（UI/UX 专项） | 一纸多卷 / 有界流区 / 宿主模型 / 三层导航；阶段件与返工清单见笔记「展开」段；provider+创作坞联合体检 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md) |
 | **出处引导（钉住块的来路）** | [`pin-provenance-plan.md`](pin-provenance-plan.md) | **代码已落地（2026-09-18）；余真机验收** | 钉块页边注第三行常显「摘自 卷名」（不依赖视口内目标）+ hover 引线拉到源洞（**洞离屏也出屏**）+ 点行溯源飞到洞；连带修飞行动画混钟（jsdom 实测循环永不终止、视口飞出 16 万 px） |
@@ -29,6 +31,9 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | 纸壳交互承接 | [`paper-interaction-handoff.md`](paper-interaction-handoff.md) | 审计完成，逐条修复中 | 守护 `src-ui/tests/paper-interaction-handoff.test.ts`（KNOWN_DEAD 收敛机制——只减不增） |
 | **工具附图通道（agent 眼睛环）** | [`tool-image-context-plan.md`](tool-image-context-plan.md) | **P0a 代码已落地 2026-09-17；余真机验收** | 工具产出的截图进模型可见通道（此前只挂 user 消息 ⇒ 模型看不见自己的产出，靠用户眼睛逐轮喂）；P0b（元素级截图 + 描述改写 + 拆 `inline`）需 BCR 放行 |
 | **卷号治理（A 收显示 + B 号不复用）** | [`volume-number-governance-plan.md`](volume-number-governance-plan.md) | **开工（2026-09-21，用户拍板 A+B）** | 号保留为身份但**永不复用**（每工作区发号账 `_issue.json`：发出即记账、重启不回退）+ **有名卷**常显号收成两处（书脊档号 / 卷首眉行）；C「换 UUID」不做。顺带拆立枝发号的 await 前快照竞态 |
+| **案卷侧栏双视角** | [`sidebar-two-views-plan.md`](sidebar-two-views-plan.md) | **P1-P5 已落地（2026-09-20）；余真机体感** | 父卷/子卷展示重构（用户拍板「丙 · 双视角」）：案卷视图 = 纯时间序扁平列表 + 「枝 N」血缘牌（父卷号并在牌内；`↳N` 记号当日退役）+ 血缘卡；枝视图 = 森林（族不拆、引线折角、`▾ N 枝` 折枝、hover 整族高亮）；走查与本机几何对拍见 `prototype/sidebar-tree-ab.NOTES.md`（**该目录在 .gitignore 内**，证据不随仓库分发） |
+| **会话树（枝）** | [`session-tree-plan.md`](session-tree-plan.md) | **全批已落地（2026-09-19）；余真机手感** | 消息动作行「立枝」+ **空间手势立枝**（块上「枝」握把拖出引线、松手落在纸上就地立枝）；侧栏树形 + 书脊/卷首「枝」标 + 未落定置灰；删父卷**连坐整棵子树**；画布上朱砂引线连回父卷分叉节点、点线溯源。**旧枝考古不做**（用户裁定，§9）。裁定见 §9、施工记录见 §12 |
+| **卷日志的抹除（判定件）** | [`session-log-erasure-plan.md`](session-log-erasure-plan.md) | **A 案已落地（2026-09-19）** | 「改 / 重发」之后旧内容**从 `.ndjson` 里物理抹除**（撤回即压实：整份原子重写 + 头行 `erased` 账声明空洞；投影/词表/载荷零改动 ⇒ 零 BCR）；无落盘面不压实（旧语义），写失败 = 未落定 + 下个检查点重试。设计与证据见 [`session-tree-plan.md`](session-tree-plan.md) §12.9/§12.10 |
 
 ## 待执行但已立项（按成本排）
 
@@ -42,9 +47,6 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | **出厂产物归家** | Proposed·Draft（未开工） | 一个产物 = 一个物理目录（魂身合一：实现从内核深处搬进插件包）——[`factory-products-homing-plan.md`](factory-products-homing-plan.md) |
 | **v11 分析引擎** | 草案挂起（用户拍板挂起） | 动态边 + 查询预算 + 降噪分级三篇合一——[`v11-analysis-engine-master-plan.md`](v11-analysis-engine-master-plan.md)；D 篇原件 [`dynamic-edge-detection-plan.md`](dynamic-edge-detection-plan.md)（superseded，以主文档为准） |
 | **会话存盘换轨（DSH 参照）** | 未定 | 参照 DSH 的会话持久化审计与移植——[`session-persistence-dsh-port-plan.md`](session-persistence-dsh-port-plan.md) |
-| **案卷侧栏双视角** | [`sidebar-two-views-plan.md`](sidebar-two-views-plan.md) | **P1-P5 已落地（2026-09-20）；余真机体感** | 父卷/子卷展示重构（用户拍板「丙 · 双视角」）：案卷视图 = 纯时间序扁平列表 + 「枝 N」血缘牌（父卷号并在牌内；`↳N` 记号当日退役）+ 血缘卡；枝视图 = 森林（族不拆、引线折角、`▾ N 枝` 折枝、hover 整族高亮）；走查与本机几何对拍见 `prototype/sidebar-tree-ab.NOTES.md`（**该目录在 .gitignore 内**，证据不随仓库分发） |
-| **会话树（枝）** | [`session-tree-plan.md`](session-tree-plan.md) | **全批已落地（2026-09-19）；余真机手感** | 消息动作行「立枝」+ **空间手势立枝**（块上「枝」握把拖出引线、松手落在纸上就地立枝）；侧栏树形 + 书脊/卷首「枝」标 + 未落定置灰；删父卷**连坐整棵子树**；画布上朱砂引线连回父卷分叉节点、点线溯源。**旧枝考古不做**（用户裁定，§9）。裁定见 §9、施工记录见 §12 |
-| **卷日志的抹除（判定件）** | [`session-log-erasure-plan.md`](session-log-erasure-plan.md) | **A 案已落地（2026-09-19）** | 「改 / 重发」之后旧内容**从 `.ndjson` 里物理抹除**（撤回即压实：整份原子重写 + 头行 `erased` 账声明空洞；投影/词表/载荷零改动 ⇒ 零 BCR）；无落盘面不压实（旧语义），写失败 = 未落定 + 下个检查点重试。设计与证据见 [`session-tree-plan.md`](session-tree-plan.md) §12.9/§12.10 |
 | **钉住与纸条改造** | 未定 | 钉住/纸条 UX 重构 + UI 换装——[`pin-strip-rework-plan.md`](pin-strip-rework-plan.md) |
 | **Skills 与 MCP 生产级改造** | 余文档收口 + 真机验收 | Commit 1-6 已落地——[`skills-mcp-production-plan.md`](skills-mcp-production-plan.md) |
 | **卷首字节稳定性（前缀缓存）** | 中（动段表 + 基线重录双轨） | 记忆库坐卷首第 ~2.5k token ⇒ 每次「重启 + 记忆变动」整卷重算（实测 34.7 万 token 全价、命中率 99%→0.6%）；「把记忆段挪到卷首末尾」已验算**无效**（只省 2.8%）——[`prompt-prefix-stability-plan.md`](prompt-prefix-stability-plan.md) |
@@ -84,6 +86,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | **退出确认（关窗拦截）** | 代码已落地（2026-09-19，门禁全绿；决定记录见 [`paper-shell/taste-ledger.md`](paper-shell/taste-ledger.md) 末条）——待用户体感确认四件：① 有会话在跑时点 ✕ / Alt+F4 / 任务栏关窗**是否弹出确认**（空闲时应当不弹、直接退）；② 点「留在工作区」后窗口是否留着且能继续干活（下次点 ✕ 重新问）；③ 点「退出并终止本轮」是否正常落盘后退出（不卡死、不白屏）；④ 弹层是否盖得住纸壳与命令面板。**须重建 exe**（壳域改动）——owner：用户 |
 | **目次带加宽（缘滚跑道）手感** | 代码已落地（2026-09-19 加宽批 + 同日甲案，门禁全绿；病灶与几何见 [§13](../design/lantai-design-spec.md)）——待用户体感确认三件：① 带体 104px（识别层满宽 + 控制列 64 + 缘滚跑道 40）是否碍眼/压正文；② **读带/拖带时视口是否不再自己跑**；③ 贴屏最右是否照旧起滚，且**不弹 hover 卡、点击不跳视口**（跑道惰性）。④ 甲案观感：**界栏线已于 2026-09-21 摘除**（用户「我从来也没拍板过界栏线」——归因更正见 [taste-ledger](paper-shell/taste-ledger.md) 同日条；识别层铺满保留、仍待验收）。**须重建 exe**（插件 CSS 进壳 bundle；此后 CSS 微调走三步热更，边界见 [dev-workflow](../dev-workflow.md)）——owner：用户 |
 | **左缘边缘滚动（书脊列压带）手感** | 代码已落地（2026-09-22 左缘批，门禁全绿；病灶与判据见 [§12.1 契约 9](../design/lantai-design-spec.md)）——待用户体感确认两件：① **贴死屏左是否起滚**（最左 6px 内距带：指针甩到屏左即被屏缘钉住；已实机探针验过 Δ=+909/+1164）；② 起滚区**只有那条内距带 + 书缝 + 末脊之下空白**——脊块/题签/小卡/按钮一律不滚（它们是瞄准面），这个宽度（6px）是否够用、是否要改成「给列加一条 36px 左跑道」（脊块整条右推、列 72 → 108px 的可见改动，见 [taste-ledger](paper-shell/taste-ledger.md) 同日条「弃 ②」）。**产物热更即可**（插件产物 `paper-shell`，无需重建 exe）——owner：用户 |
+| **匣脚引线（多会话卷的激活态）手感** | 代码已落地（2026-09-22 匣脚引线批，门禁全绿；设计与边界见 [§9.3](../design/lantai-design-spec.md)，判例与一版翻案见 [taste-ledger](paper-shell/taste-ledger.md) 同日条）——待用户体感确认七件：① 坞 → 活卷纸脚那条**常显**线（默认位下近乎垂直）是否够读、是否碍眼；② .55 墨阶是否合意（不合意可改墨阶或换 hover 才显）；③ 切卷瞬间「旧线撤 + 新线淡入 + 朱笔划界」是否读得出「绑定换了」；④ **坞拖到别处**时线随坞拉长好不好看；⑤ **活卷在屏外**时线指的方向是否真的指得对路（点线飞过去应落在纸脚）；⑥ **纸脚落点是否合意**（二版就改在这里——一版接天头版口钮被用户打回「挂在第一条用户输入那不是乱了套了」；若仍嫌它碍事，下一候选是「纸的左缘下端」）；⑦ 与枝边线在同一卷附近并存时是否打架。**产物热更即可**（改动全在插件产物 + `paper/` 共享笔，无需重建 exe）——owner：用户 |
 | **L3 回复链路活性（运行看门狗）** | landmine L3 **已拆**（2026-09-20，门禁全绿；契约 v44，见 [`../landmine-map.md`](../landmine-map.md) L3）——运行看门狗（无进展硬截止 + 遗弃语义）+ 停止走同一竞速真解旋；**真机复现证据欠**：临时把阈值压到 60s（`setRunWatchdogThresholds`）+ 假 provider／拔网线实跑，取 `ui.log` 两条 `log.warn('agent', …)`（`no_progress_ms`／`last_pulse`），确认「无进展 → 硬截止作废 → 落墓碑 → 可重发」在真机成立——owner：开发侧（阈值注入 + 假 provider，不待用户） |
 
 ## 已完成并归档（点名即可，详情勿读）
