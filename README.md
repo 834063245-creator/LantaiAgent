@@ -81,31 +81,43 @@
 
 ## 内置 Agent 工作台
 
-**工具面**：模型只见一批高内聚域工具，每个域以 `action` 作首参——`fs(read|write|edit|…)`、
+### 工具面
+
+模型只见一批高内聚域工具，每个域以 `action` 作首参——`fs(read|write|edit|…)`、
 `shell(run|output|wait|kill)`、`git(status|diff|commit|…)`……；会话级另有 `Skill`、plan、通信族、
 `code_execution` 执行原语（程序体在 Web Worker 沙箱里跑，可嵌套调用全部可见工具）。旧细粒度工具名已
 淘汰，误调会被拦成「[已淘汰] → 域动作」。事实源 = 生成物
 [`docs/agents/model-tool-contract.md`](docs/agents/model-tool-contract.md)；**跨文档标量（字段数 / 域数 /
 契约版本等）见 [`docs/facts.generated.md`](docs/facts.generated.md)**，本文不复述。
 
-**运行时**：工具行 / prompt 段 / capability 三层装配面的**表序是字节契约**，由
+### 运行时
+
+工具行 / prompt 段 / capability 三层装配面的**表序是字节契约**，由
 `npm run verify:convergence` 双轨钉死；会话变异只走 `_appendMessage` / `_replaceSession` /
 `_retractSessionRange` 三个入口（`SessionLog` 支撑差分对拍、回放与审计）。规则见 [`CLAUDE.md`](CLAUDE.md) ·
 [`CONVENTIONS.md`](CONVENTIONS.md) · [`INVARIANTS.md`](INVARIANTS.md)。
 
-**多 Agent**：子 Agent 池（`fork` 继承上下文 / `fresh` 干净启动）+ 有界 inbox + 按会话隔离的 TaskBoard /
+### 多 Agent
+
+子 Agent 池（`fork` 继承上下文 / `fresh` 干净启动）+ 有界 inbox + 按会话隔离的 TaskBoard /
 DiscoveryBoard + **git worktree 隔离执行**（`git worktree add --detach`，cherry-pick 串行合并、孤儿收养、
 TTL 清理）。
 
-**Plan / Goal**：Plan 模式只读探索 + 写计划文件，交你审批后离开，写约束由 `planGateCheck` 在执行层拦截；
+### Plan / Goal
+
+Plan 模式只读探索 + 写计划文件，交你审批后离开，写约束由 `planGateCheck` 在执行层拦截；
 Goal 模式把目标状态持久化在 `.lantai/goals/{id}/`，跨会话恢复。
 
-**记忆与 Provider**：事件溯源会话记忆 · 项目记忆（`.lantai/memory/*.md`）· 技能
+### 记忆与 Provider
+
+事件溯源会话记忆 · 项目记忆（`.lantai/memory/*.md`）· 技能
 （`.lantai/skills/<name>/SKILL.md`，装完即用不必重启）；多厂商 Provider（Anthropic / OpenAI 兼容 /
 DeepSeek 等，清单可运行时拉取）+ loopback 反向代理（绕开 WebView 跨域）+ 系统级加密凭据（Windows DPAPI /
 macOS Keychain / Linux Secret Service）。
 
-**护栏**：权限引擎合流系统 / 项目 / 会话规则，裁决 `Allow` / `Deny` / `Ask` / `Passthrough`（后者 = 该工具
+### 护栏
+
+权限引擎合流系统 / 项目 / 会话规则，裁决 `Allow` / `Deny` / `Ask` / `Passthrough`（后者 = 该工具
 自检无意见，中央闸按规则面放行、不弹窗），**Yolo 不旁路 Deny**；危险命令表拦 `rm -rf /`、`curl | sh`、
 `eval` / `source`、`sudo`、`git push --force main` 等并对 PowerShell 特判；三层沙箱（OS 层 Windows Job
 Object / macOS `sandbox-exec` / Linux `bubblewrap`——发布主力是 Windows，另两者依赖系统自带沙箱程序；shell
@@ -130,14 +142,18 @@ Object / macOS `sandbox-exec` / Linux `bubblewrap`——发布主力是 Windows�
 
 ## 配套引擎 HoloGram
 
-**与兰台的关系**：引擎是**独立进程**（Rust 单二进制 `hologram-engine`）。壳只做二进制位置的**只读探测**
+### 与兰台的关系
+
+引擎是**独立进程**（Rust 单二进制 `hologram-engine`）。壳只做二进制位置的**只读探测**
 （`engine_assets.rs`；`LANTAI_ENGINE_EXE` 可覆盖），不链接任何引擎 crate；启用后由前端经受治进程通道拉起
 （`bundled-engine.ts` → `mcp-bridge.ts` 的 ServerGovernor：懒启动 / 崩溃退避重启 / 空闲回收 / 进程树终止
 → Rust `protocol_bridge.rs` stdio）。**一进程一根**（同根幂等、异根拒绝）、**离开工作区即停**；引擎数据落
 工作区根 `.hologram/`，与兰台的 `.lantai/` 分居。手动接法见
 [`docs/engine-as-external-mcp.md`](docs/engine-as-external-mcp.md)。
 
-**它能做什么**：把代码库静态解析成依赖图，让「改 A 会炸什么」变成**确定性图查询**，而不是让模型逐文件读
+### 它能做什么
+
+把代码库静态解析成依赖图，让「改 A 会炸什么」变成**确定性图查询**，而不是让模型逐文件读
 源码去猜：tree-sitter 语法静态链接 + 运行时 `.dll` / `.so` 动态加载；分批并行解析 → 跨文件引用 → L1–L4
 耦合 → 框架路由 → 合成边 → 社区检测 → 落库（内存 CSR + SQLite / FTS5 + 语义向量，向量后端不可用时降级
 n-gram）。分析后按项目语言**异步预热**原生 LSP，查询按需调用（调用解析 / 类型推断 / 实现 / 引用）；可
@@ -147,13 +163,15 @@ n-gram）。分析后按项目语言**异步预热**原生 LSP，查询按需调
 [`ARCHITECTURE.md`](ARCHITECTURE.md) §5–§6 与生成物
 [`docs/agents/engine-plugin-contract.md`](docs/agents/engine-plugin-contract.md)。
 
-**三种消费形态**：① 桌面应用内——设置 → MCP →「随包图谱引擎」（默认关）；② 任意 MCP 客户端——引擎就是
+### 三种消费形态
+
+① 桌面应用内——设置 → MCP →「随包图谱引擎」（默认关）；② 任意 MCP 客户端——引擎就是
 标准 stdio MCP server，复制仓库根 [`.mcp.json.example`](.mcp.json.example) 为项目级 `.mcp.json`（用户级用
 `claude mcp add --scope user`）；③ DSH 插件包 [`@a834063245/hologram-dsh`](dsh-bundle/README.md)——薄发布
 适配层（不自带产品资产），Windows x64，装后重启 `dsh web`，图查询工具进 agent 工具箱
 （`mcp__hologram__*`）。原先随包的 3D 星图已随主仓图谱渲染内核退役拆除，**包内只发引擎 + MCP 工具面**。
 
-**引擎 CLI（从源码构建，Linux / Windows 均可）**：
+### 引擎 CLI（从源码构建，Linux / Windows 均可）
 
 ```bash
 cd engine && cargo build --release
@@ -163,7 +181,9 @@ hologram-engine run <工具> [项目根] [--key value]     # 一次性执行：�
 hologram-engine serve --project-root <项目根>         # MCP stdio 服务（加 --tcp 同时开 TCP 数据面）
 ```
 
-**免编译扩展（不改 Rust）**：扩展目录（`HOLOGRAM_PLUGIN_DIR`，缺省 `<项目根>/plugins`）放 manifest 即可
+### 免编译扩展（不改 Rust）
+
+扩展目录（`HOLOGRAM_PLUGIN_DIR`，缺省 `<项目根>/plugins`）放 manifest 即可
 声明**新语言**（扩展名表 + 查询式）、**新框架**（路由候选）、**新工具**（schema + 复用既有 handler）；
 装载情况经 `engine_status.extensions` 可见，单个 manifest 失败不阻断启动。示例见
 [`examples/engine-plugins/`](examples/engine-plugins/README.md)。
@@ -213,3 +233,5 @@ cd src-ui && npm run doc-check           # 文档面门禁
 
 兰台（Lantai）© 2026 Wenbing Jing — [MIT](LICENSE)。第三方组件版权声明见
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；安全策略见 [SECURITY.md](SECURITY.md)。
+
+[file: D:/HoloGramHG/README.md]
