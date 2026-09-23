@@ -1108,7 +1108,6 @@ export const ComposerDock = memo(function ComposerDock() {
             上炸——那正是默认路径。 */}
         {imagePreview !== null &&
           createPortal(
-            // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 关闭（明确对话框语义）
             <div
               className="pp-image-lightbox"
               role="dialog"

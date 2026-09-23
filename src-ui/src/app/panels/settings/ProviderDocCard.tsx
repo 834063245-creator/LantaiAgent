@@ -14,7 +14,6 @@
 //   3. 打开目录 / 重读两个入口（重读是 watcher 之外的第二条路）；
 //   4. 没配过时给一个「写骨架」的即时动作（首启空文件也能一眼看懂格式）。
 
-import type React from 'react';
 import type { ProviderDocView } from './ProviderDetail';
 
 interface ProviderDocCardProps {
