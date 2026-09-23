@@ -48,6 +48,7 @@ import { resetProxyPort } from '../src/provider/transport';
 import { ChunkType, type Request } from '../src/provider/types';
 import {
   type AppSettings,
+  effectiveModels,
   loadSettings,
   modelContextWindow,
   modelDescriptor,
@@ -239,7 +240,7 @@ describe('settings 四层链：用户覆盖 ?? API 拉取元数据 ?? 目录 see
 
 // ── ③ 落盘合并（model-sync 单一写入口）───────────────────────────────
 
-describe('applyFetchedModels — 拉取结果的唯一 settings 落点', () => {
+describe('applyFetchedModels — 拉取结果的唯一 settings 落点（目录 / 启用分层，2026-09-23）', () => {
   const settingsOf = (p: Partial<ProviderSettings>): AppSettings => ({
     activeProvider: providerId('gw'),
     providers: [
@@ -257,13 +258,33 @@ describe('applyFetchedModels — 拉取结果的唯一 settings 落点', () => {
     display: { language: 'zh', fontScale: 1 },
   });
 
-  it('id 列表：拉取优先在前、既有手工条目保留、默认模型不丢', () => {
+  it('拉取只写目录（catalog）：启用集一行不碰——「拉过来就全在列表里」不再发生', () => {
     const next = applyFetchedModels(settingsOf({ model: 'hand-added', models: ['hand-added'] }), 'gw', {
       models: [{ id: 'pulled-1' }, { id: 'pulled-2' }] as never,
       meta: {},
     });
-    expect(next.providers[0].models).toEqual(['pulled-1', 'pulled-2', 'hand-added']);
+    expect(next.providers[0].catalog).toEqual(['pulled-1', 'pulled-2']);
+    expect(next.providers[0].models).toEqual(['hand-added']); // 用户启用集保持原样
     expect(next.providers[0].model).toBe('hand-added');
+  });
+
+  it('目录是快照不是并集：远端下架的模型从目录消失，已启用的它保留（不静默撤销用户选择）', () => {
+    const first = applyFetchedModels(settingsOf({ models: ['pulled-1', 'pulled-2'] }), 'gw', {
+      models: [{ id: 'pulled-1' }, { id: 'pulled-2' }] as never,
+      meta: {},
+    });
+    const second = applyFetchedModels(first, 'gw', { models: [{ id: 'pulled-1' }] as never, meta: {} });
+    expect(second.providers[0].catalog).toEqual(['pulled-1']);
+    expect(second.providers[0].models).toEqual(['pulled-1', 'pulled-2']);
+  });
+
+  it('空拉取（端点无 data）不清 last-good 目录，元数据照常合并', () => {
+    const next = applyFetchedModels(settingsOf({ catalog: ['old-1'] }), 'gw', {
+      models: [],
+      meta: { m1: { name: 'M One', fetchedAt: 2 } },
+    });
+    expect(next.providers[0].catalog).toEqual(['old-1']);
+    expect(next.providers[0].modelMeta?.m1?.name).toBe('M One');
   });
 
   it('元数据落盘：字段级合并，本次未披露的字段保留 last-good', () => {
@@ -280,12 +301,12 @@ describe('applyFetchedModels — 拉取结果的唯一 settings 落点', () => {
     });
   });
 
-  it('空壳元数据（端点什么都没披露）不落盘——不给每个模型留 fetchedAt 垃圾条目', () => {
+  it('空壳元数据（端点什么都没披露）不落盘——id 仍进目录（目录不靠元数据键复原）', () => {
     const next = applyFetchedModels(settingsOf({ model: '', models: [] }), 'gw', {
       models: [{ id: 'bare-id' }] as never,
       meta: { 'bare-id': { fetchedAt: 1 } },
     });
-    expect(next.providers[0].models).toEqual(['bare-id']);
+    expect(next.providers[0].catalog).toEqual(['bare-id']);
     expect(next.providers[0].modelMeta).toBeUndefined();
   });
 
@@ -294,14 +315,15 @@ describe('applyFetchedModels — 拉取结果的唯一 settings 落点', () => {
     expect(applyFetchedModels(s, 'ghost', { models: [{ id: 'x' }] as never, meta: {} })).toBe(s);
   });
 
-  it('mergeIntoProvider：旧数据无 models 字段时把默认模型并入（默认模型不因拉取消失）', () => {
+  it('mergeIntoProvider：旧存档（无 models 字段）拉取后启用集仍空——生效列表回落 [model]', () => {
     const p = mergeIntoProvider(
       { kind: 'openai', name: providerId('gw'), apiKey: '', baseUrl: 'u', model: 'legacy-default' },
       ['new-1'],
       {},
     );
-    expect(p.models).toEqual(['new-1', 'legacy-default']);
-    expect(p.model).toBe('legacy-default');
+    expect(p.catalog).toEqual(['new-1']);
+    expect(p.models).toBeUndefined();
+    expect(effectiveModels(p)).toEqual(['legacy-default']); // 用户的默认模型照常可用
   });
 });
 
@@ -406,6 +428,7 @@ describe('端到端：从 API 拉取 → 落盘 → 重启后仍生效 → 抵�
 
     // 「重启」= 重新读盘：元数据仍在（此前只落 id 列表，元数据随进程消失）
     const reloaded = loadSettings();
+    expect(reloaded.providers[0].catalog).toEqual(['gw-a', 'gw-b']); // 目录快照同样持久化
     expect(reloaded.providers[0].modelMeta?.['gw-b'].contextWindow).toBe(1050000);
     expect(modelContextWindow(reloaded.providers[0], 'gw-b')).toBe(1050000); // 不再是 200K 假默认
     expect(modelContextWindow(reloaded.providers[0], 'gw-a')).toBe(262144);

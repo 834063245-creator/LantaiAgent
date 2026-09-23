@@ -5,7 +5,7 @@
 // 状态展示与测试结果均按 provider 独立，切换提供方不会串台。
 
 import type React from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getModel } from '../../../provider/catalog';
 import { thinkingOptionsFor } from '../../../provider/thinking';
 import {
@@ -84,6 +84,8 @@ export interface ProviderDetailActions {
   onAddModel: (modelId: string) => void;
   /** 从「可用模型」列表移除一个模型 id。 */
   onRemoveModel: (modelId: string) => void;
+  /** 整份写「可用模型」（2026-09-23 三层）：目录区勾选/全选/全部取消的写入口。 */
+  onSetEnabledModels: (ids: readonly string[]) => void;
   /** per-model 覆盖（P14）：上下文窗口 / 最大输出，0 = 清回目录值。 */
   onModelOverride: (modelId: string, field: 'contextWindow' | 'maxTokens', value: number) => void;
   /** 视觉声明覆盖（B5 · D-8①）：on = ['text','image'] 强制开；off = 清覆盖回落目录。 */
@@ -116,6 +118,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     onFetchModels,
     onAddModel,
     onRemoveModel,
+    onSetEnabledModels,
     onModelOverride,
     onModelVisionToggle,
     onAdvancedChange,
@@ -127,6 +130,39 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
   } = actions;
   // ── 「可用模型」列表编辑器本地态（瞬时 UI，不持久化）──
   const models = effectiveModels(provider);
+  // ── 模型目录（远端事实，2026-09-23 三层：目录 / 启用 / 选中）──
+  // 目录 = 最近一次「刷新目录」的快照（provider.catalog）；缺省 = 从未拉取。
+  const catalogIds = useMemo(
+    () => (Array.isArray(provider.catalog) ? provider.catalog.filter((m) => m?.trim()) : []),
+    [provider.catalog],
+  );
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState('');
+  // 本组件跨 provider 复用（无 key）——切行必须重置目录区本地态，否则 A 家的搜索词
+  // 与展开态串到 B 家（与 paramModel 同族的本地态纪律）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: provider.name 是刻意的重置触发器（切行/新拉取），非 effect 体内读取值——与 ComposerDock settingsTick 同款手法
+  useEffect(() => {
+    setCatalogOpen(catalogIds.length > 0);
+    setCatalogQuery('');
+  }, [provider.name, catalogIds.length]);
+  const catalogRows = useMemo(() => {
+    const q = catalogQuery.toLowerCase().trim();
+    if (!q) return catalogIds;
+    return catalogIds.filter(
+      (id) => id.toLowerCase().includes(q) || (modelDescriptor(provider, id)?.name ?? '').toLowerCase().includes(q),
+    );
+  }, [catalogIds, catalogQuery, provider]);
+  /** 目录头的时间标注：端点未披露任何元数据时没有 fetchedAt（空壳条目不落盘）——
+   *  如实说「有快照但无元数据」，不编造时间。 */
+  const catalogMeta = useMemo(() => {
+    if (catalogIds.length === 0) return '尚未拉取';
+    let last = 0;
+    for (const id of catalogIds) {
+      const t = provider.modelMeta?.[id]?.fetchedAt ?? 0;
+      if (t > last) last = t;
+    }
+    return last > 0 ? `拉取自 API · ${new Date(last).toLocaleDateString()}` : '已有快照（端点未披露元数据）';
+  }, [catalogIds, provider.modelMeta]);
   const [newModel, setNewModel] = useState('');
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState('');
@@ -138,7 +174,9 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     setFetchMsg('');
     try {
       const count = await onFetchModels();
-      setFetchMsg(count > 0 ? `已拉取 ${count} 个模型` : '未获取到模型');
+      setFetchMsg(
+        count > 0 ? `目录已更新：${count} 个模型——在下方「模型目录」里勾选要启用的` : '端点未返回模型——可手动补模型 id',
+      );
     } catch (e) {
       setFetchMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -313,8 +351,9 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
           </div>
         )}
 
-        {/* 可用模型 = 唯一的模型配置面（2026-08-26）：创作坞下拉的可选列表 + 新会话
-            默认（= 最近使用，自动跟从创作坞切换，不在此手动选「默认模型」） */}
+        {/* 模型区（2026-09-23 三层重构：目录 / 启用 / 选中）：
+            可用模型 = 用户从目录里**勾选启用**的（创作坞下拉可选面）；
+            「刷新目录」只更新目录快照（catalog）与元数据，**不改**已启用集。 */}
         <div className="pp-field">
           <div className="pp-f-label-row">
             <label className="pp-f-label" htmlFor="pd-models-input">
@@ -323,7 +362,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
             <span className="pp-chip">{models.length} 个</span>
             {/* oauth 订阅（Codex）：登录后也可从账号 API 拉取真实模型——非「账号自动提供」 */}
             <button type="button" className="sp-btn-sm" disabled={fetching} onClick={handleFetch}>
-              {fetching ? '拉取中…' : '从 API 拉取'}
+              {fetching ? '拉取中…' : '刷新目录'}
             </button>
           </div>
           {models.length > 0 && (
@@ -448,9 +487,89 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
             </button>
           </div>
           {fetchMsg && <div className="pp-f-hint">{fetchMsg}</div>}
+
+          {/* ── 模型目录（折叠）：远端事实 = 最近一次拉取的全量快照；勾选写「可用模型」 ── */}
+          <div className="pp-catalog">
+            <button
+              type="button"
+              className="pp-catalog-head"
+              aria-expanded={catalogOpen}
+              onClick={() => setCatalogOpen((v) => !v)}
+            >
+              <span className="pp-catalog-caret" aria-hidden="true">
+                {catalogOpen ? '▾' : '▸'}
+              </span>
+              <span className="pp-catalog-title">模型目录</span>
+              <span className="pp-catalog-meta">{catalogMeta}</span>
+              <span className="pp-spacer" />
+              {catalogIds.length > 0 && <span className="pp-chip">{catalogIds.length} 个</span>}
+            </button>
+            {catalogOpen && (
+              <div className="pp-catalog-body">
+                {catalogIds.length === 0 ? (
+                  <div className="pp-f-hint">
+                    还没有目录快照——点上方「刷新目录」从该提供方 /models
+                    拉取。拉取只更新目录与元数据，不会改动上面的可用模型。
+                  </div>
+                ) : (
+                  <>
+                    <div className="pp-catalog-tools">
+                      <input
+                        className="sp-input"
+                        value={catalogQuery}
+                        placeholder="搜索模型…"
+                        aria-label="搜索模型目录"
+                        onChange={(e) => setCatalogQuery(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="sp-btn-sm"
+                        title="把目录里的模型全部加入可用模型"
+                        onClick={() => onSetEnabledModels([...new Set([...models, ...catalogIds])])}
+                      >
+                        全选
+                      </button>
+                      <button
+                        type="button"
+                        className="sp-btn-sm"
+                        title="取消目录里的全部勾选（手动添加的可用模型保留）"
+                        onClick={() => onSetEnabledModels(models.filter((m) => !catalogIds.includes(m)))}
+                      >
+                        全部取消
+                      </button>
+                    </div>
+                    <div className="pp-catalog-list">
+                      {catalogRows.map((id) => {
+                        const on = models.includes(id);
+                        const win = modelContextWindow(provider, id, 0);
+                        return (
+                          <label key={id} className={`pp-catalog-row${on ? ' on' : ''}`} title={id}>
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => onSetEnabledModels(on ? models.filter((m) => m !== id) : [...models, id])}
+                            />
+                            <span className="pp-catalog-name">{modelDescriptor(provider, id)?.name ?? id}</span>
+                            {modelInput(provider, id).includes('image') && (
+                              <span className="pp-model-chip-vision" title="视觉模型（覆盖 / API 拉取 / 目录声明）">
+                                视
+                              </span>
+                            )}
+                            {win > 0 && <span className="pp-catalog-win">{Math.round(win / 1000)}k</span>}
+                          </label>
+                        );
+                      })}
+                      {catalogRows.length === 0 && <div className="pp-f-hint">无匹配模型「{catalogQuery}」</div>}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="pp-f-hint">
-            创作坞模型下拉只列这里的模型；「新会话默认」= 最近在创作坞选用的模型，自动跟从（不可在此改）。从 API
-            拉取会并入新模型，手动添加的保留。
+            创作坞模型下拉只列「可用模型」；「新会话默认」= 最近在创作坞选用的模型，自动跟从（不可在此改）。 目录 =
+            该提供方 /models 的最近一次快照（只读）；勾选即写可用模型，手动添加的不受目录变动影响。
           </div>
         </div>
 

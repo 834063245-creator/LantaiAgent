@@ -189,8 +189,9 @@ export function ProviderPage({
     }
     // C5（2026-08-27）：手动刷新记目录失败面（compact 选择器分组头同步可见）；
     // 失败上抛给调用方显示真实原因（fetchModels 不再把网络失败伪装成「无模型」）。
-    // 重构（2026-08-26）：拉取结果 = 该提供方「可用模型」列表（DSH /api/models 的
-    // host 报告语义）——写进暂存 settings，随保存落盘；创作坞下拉据此列项。
+    // ⚡ 2026-09-23 三层重构：拉取结果 = **目录快照**（ProviderSettings.catalog），
+    // 不再灌进启用集（models）——启用集由用户在目录里勾选（三层：目录 / 启用 /
+    // 选中）。两者同走暂存，随保存落盘。
     // provider-model-meta（2026-09-11）：**元数据一并落盘**——适配器的宽容解析层
     // 认出的窗口/输出上限/视觉/推理（含聚合网关的 name + context_length）经
     // lastModelMeta 取出，写进 ProviderSettings.modelMeta（暂存，保存即持久化）。
@@ -236,6 +237,23 @@ export function ProviderPage({
       const patch: Partial<ProviderSettings> = { models: next };
       // 删的是当前「新会话默认」→ 自动顶上第一个（无剩余则清空）
       if (p?.model === modelId) patch.model = next[0] ?? '';
+      onCommitProvider(updateProvider(settings, name, patch));
+    },
+    [settings, onCommitProvider],
+  );
+
+  /** 目录勾选（2026-09-23 三层重构）：整份写**启用集**（`models`）——目录是远端
+   *  事实（拉取写 `catalog`），启用集是用户选择，两处各写各的、同走暂存。
+   *  默认模型被取消勾选时同 `handleRemoveModel` 规则顶上第一个（否则创作坞触发器
+   *  会显示一个不在下拉里的模型）；空集合法（= 本家不贡献可选模型）。 */
+  const handleSetEnabledModels = useCallback(
+    (name: string, ids: readonly string[]) => {
+      const p = settings.providers.find((x) => x.name === name);
+      const next = [...new Set(ids.map((m) => m.trim()).filter(Boolean))];
+      const patch: Partial<ProviderSettings> = { models: next };
+      const def = p?.model?.trim() ?? '';
+      if (!def && next.length > 0) patch.model = next[0];
+      else if (def && !next.includes(def)) patch.model = next[0] ?? '';
       onCommitProvider(updateProvider(settings, name, patch));
     },
     [settings, onCommitProvider],
@@ -352,6 +370,9 @@ export function ProviderPage({
           if (entry.baseUrl?.trim()) added.baseUrl = entry.baseUrl.trim();
           added.models = entry.models;
           added.model = entry.model;
+          // 目录快照（2026-09-23 三层）：添加弹层拉到的全量 id 随行落盘——
+          // 详情页据此可再勾选（不再需要重拉），启用集 = entry.models（勾上的那些）
+          if (entry.catalog && entry.catalog.length > 0) added.catalog = entry.catalog;
           // provider-model-meta：拉取到的元数据随行落盘（新行出生即带窗口/视觉/
           // 推理；未拉取或端点未披露 = 缺省，不编造）
           if (entry.modelMeta && Object.keys(entry.modelMeta).length > 0) {
@@ -525,6 +546,7 @@ export function ProviderPage({
             onFetchModels: handleRefreshModels,
             onAddModel: (modelId) => handleAddModel(selectedProvider.name, modelId),
             onRemoveModel: (modelId) => handleRemoveModel(selectedProvider.name, modelId),
+            onSetEnabledModels: (ids) => handleSetEnabledModels(selectedProvider.name, ids),
             onModelOverride: (modelId, field, value) =>
               handleModelOverride(selectedProvider.name, modelId, field, value),
             onModelVisionToggle: (modelId, on) => handleModelVisionToggle(selectedProvider.name, modelId, on),

@@ -729,3 +729,57 @@ describe('R3b：settings 保存后下拉可选面即时刷新（新提供方模�
     expect(ids.some((t) => t.includes('qwen3-coder-plus'))).toBe(true);
   });
 });
+
+// C6（2026-09-23 三层重构配套）：结果链上的 slice(0, 30) 拆除——它来自初版选择器对
+// **静态目录搜索**的「前 30 条」展示上限，compact 面换成「已配置模型」后变成了配置
+// 列表天花板（用户实测：拉了 81 个模型，下拉里根本没有那么多）。
+describe('ModelSelector 配置面不截断（2026-09-23）', () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    localStorage.clear();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container?.remove();
+    root = null;
+  });
+
+  it('已配置 40 个模型 → 下拉列全 40 条（末位不再被 30 条上限砍掉）', async () => {
+    const ids = Array.from({ length: 40 }, (_, i) => `m-${String(i).padStart(2, '0')}`);
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'gw',
+        providers: [
+          { kind: 'openai', name: 'gw', apiKey: '', baseUrl: 'https://gw.test/v1', model: ids[0], models: ids },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: ids[0],
+          providerName: 'gw',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    const keys = [...container!.querySelectorAll<HTMLButtonElement>('.ms-item')].map((b) => b.dataset.key);
+    expect(keys).toHaveLength(40);
+    expect(keys).toContain('gw/m-39'); // 旧实现里这一条被 slice(0, 30) 砍掉
+  });
+});

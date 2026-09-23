@@ -49,11 +49,18 @@ export interface ProviderSettings {
   oauthProvider?: string;
   thinking?: StoredThinking; // 领域词 ThinkingPolicy；存储字段名保持 thinking（遗留名）
   lastTest?: ConnectionProbe; // 存储字段名保持 lastTest（遗留名）；领域词 ConnectionProbe
-  /** 该提供方「可用模型」id 列表——创作坞下拉的可选面（DSH routable 列表的
-   *  前端配置形态）。与 model（默认模型）解耦：同一提供方可挂多个模型，
-   *  会话级在列表内切换；缺省/空 = 视为 [model]（旧数据零迁移）。
-   *  从 API 拉取（fetchModels）会填充此列表（写进暂存，随保存落盘）。 */
+  /** 该提供方「可用模型」id 列表 = **用户启用的模型**——创作坞下拉的可选面
+   *  （DSH routable 列表的前端配置形态）。与 model（默认模型）解耦：同一提供方
+   *  可挂多个模型，会话级在列表内切换；缺省/空 = 视为 [model]（旧数据零迁移）。
+   *  ⚡ 2026-09-23 provider 配置面三层重构：本字段**不再由「从 API 拉取」直接填充**
+   *  ——拉取只更新 `catalog`（目录快照），启用集由用户在目录里勾选（写这里）。
+   *  旧存档（models = 拉取并集）语义不变：它们就是「全部已启用」，零迁移。 */
   models?: string[];
+  /** 模型**目录**快照 = 最近一次「从 API 拉取」拿到的模型 id 全量列表（含端点
+   *  未披露任何元数据的条目——故不能只靠 modelMeta 的键复原）。与 `models`
+   *  （启用集）分工：目录是只读远端事实，启用集是用户选择。
+   *  缺省/空 = 从未拉取过目录（旧存档零迁移：启用集照常可用，只少一个可勾选面）。 */
+  catalog?: string[];
   /** per-model 覆盖（P14 替代旧的 per-provider 单字段 contextWindow/maxTokens——
    *  多模型时代按 Provider 管一个值毫无意义）。键 = 模型 id；0/缺省 = 用目录值。
    *  workspace._contextWindowFor 与 createProvider → buildRequest → clampMaxTokens 消费。 */
@@ -355,6 +362,16 @@ export function loadSettings(): AppSettings {
               const headers = sanitizeProviderHeaders((p as { headers?: unknown }).headers, String(p.name));
               if (headers) (p as { headers?: Record<string, string> }).headers = headers;
               else delete (p as { headers?: unknown }).headers;
+              // 目录快照（2026-09-23 三层）：非数组/非字符串条目 = 毒化读容忍
+              // （INVARIANTS #11）——清洗后为空即视为「从未拉取」。
+              if ('catalog' in p) {
+                const rawCatalog = (p as { catalog?: unknown }).catalog;
+                const cleanCatalog = Array.isArray(rawCatalog)
+                  ? rawCatalog.filter((m): m is string => typeof m === 'string' && m.trim().length > 0)
+                  : [];
+                if (cleanCatalog.length > 0) (p as { catalog?: string[] }).catalog = cleanCatalog;
+                else delete (p as { catalog?: unknown }).catalog;
+              }
             }
           }
         }

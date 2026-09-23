@@ -1,14 +1,20 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 添加提供方弹层（两步式，2026-09-06 重做；OAuth 内联登录 2026-09-11）：
+// 添加提供方弹层（两步式，2026-09-06 重做；OAuth 内联登录 2026-09-11；
+//   目录/启用分层 2026-09-23）：
 //   第一步「连接配置」：名称/协议/Base URL/API Key——目录 chips 点击 = 预填表单
 //     （name/kind/baseUrl 带出），不再一键直加（目录模型名可能 stale）；
-//   第二步「可用模型」：点「拉取模型」从提供方 /models 拉真实列表（无 Key 也可
-//     尝试——本地端点如 Ollama 无需鉴权；云端失败会如实报因），勾选「新会话默认」，
-//     也可手动补一个模型 id（拉取失败/无 /models 端点的兜底）。
-//   确认添加 → 一次性把 name/kind/key/baseUrl/models/model 交给父组件（即时落盘 +
-//     settings-saved 热广播，新提供方模型立刻全会话可选）。
+//   第二步「可用模型」：点「从 API 拉取模型」从提供方 /models 拉真实列表（无 Key
+//     也可尝试——本地端点如 Ollama 无需鉴权；云端失败会如实报因），拉到的 id 进
+//     **目录**并默认全勾（本弹层是从零建行，全勾=最小惊讶），用户可逐条取消/全选/
+//     清空，勾上的才是「可用模型」（进创作坞下拉）；每行可点「设为默认」，也可手动
+//     补一个模型 id（拉取失败/无 /models 端点的兜底）。
+//   确认添加 → 一次性把 name/kind/key/baseUrl/models(启用)/catalog(目录)/model
+//     交给父组件（即时落盘 + settings-saved 热广播，新提供方模型立刻全会话可选）。
+//
+//   ⚡ 2026-09-23（用户实测报告「拉过来就全在列表里，从没让我挑」）：拉取 = 刷目录，
+//     不再等于配置；与详情页同一套三层语义（目录 / 启用 / 选中）。
 //
 //   OAuth 订阅（authMode='oauth'，codex 等）走弹层内登录（2026-09-11 重做）：
 //     以前「确认添加 → 建行 → 再进详情页登录」两步割裂；现在登录直接发生在
@@ -40,8 +46,10 @@ export interface AddProviderEntry {
   kind: Protocol;
   apiKey?: string;
   baseUrl?: string;
-  /** 可用模型 id 列表（创作坞可选面）。 */
+  /** 可用模型 id 列表（= 勾选启用的那些；创作坞下拉可选面）。 */
   models: string[];
+  /** 模型目录快照（拉取到的全量 id）——详情页据此可继续勾选，不必重拉。 */
+  catalog?: string[];
   /** 新会话默认模型（必须是 models 之一或与 model 一致）。 */
   model: string;
   /** API 拉取到的 per-model 元数据（provider-model-meta，2026-09-11）——拉取时
@@ -86,6 +94,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   const [baseUrl, setBaseUrl] = useState('');
   const [key, setKey] = useState('');
   const [models, setModels] = useState<string[]>([]);
+  /** 勾选启用的模型（models 的真子集）——「可用模型」= 它，不再是目录全量。
+   *  本弹层是从零建行：拉取后默认全勾（否则建出行却没有模型可用），用户可取消。 */
+  const [enabled, setEnabled] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState('');
   const [manualModel, setManualModel] = useState('');
   // API 拉取到的 per-model 元数据（provider-model-meta）：随确认添加落盘到
@@ -138,6 +149,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       setBaseUrl('');
       setKey('');
       setModels([]);
+      setEnabled([]);
       setDefaultModel('');
       setManualModel('');
       setPulledMeta({});
@@ -178,6 +190,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     setError('');
     setManualModel('');
     setModels([]);
+    setEnabled([]);
     setDefaultModel('');
     // authMode/oauthProvider 随模板预填（codex = oauth）
     setAuthMode(tpl.authMode ?? 'api-key');
@@ -225,6 +238,8 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
             const tpl = findVendorTemplate(name.trim());
             const seed = tpl?.defaultModel?.trim();
             setModels((prev) => (seed && !prev.includes(seed) ? (prev.length === 0 ? [seed] : [...prev, seed]) : prev));
+            // seed 同时勾上（否则「确认添加」会因启用集空而被拦——seed 就是本行的默认模型）
+            setEnabled((prev) => (seed && !prev.includes(seed) ? [...prev, seed] : prev));
             setDefaultModel((prev) => prev || seed || '');
             setOauthStatus({
               tone: 'ok',
@@ -281,6 +296,8 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       const ids = found.map((m) => m.id).filter(Boolean);
       const merged = [...ids, ...models.filter((m) => !ids.includes(m))];
       setModels(merged);
+      // 目录/启用分层：新拉到的 id 默认勾上（本弹层从零建行；用户可逐条取消）
+      setEnabled((prev) => [...new Set([...prev, ...ids])]);
       setPulledMeta((prev) => ({ ...prev, ...(prov.lastModelMeta?.() ?? {}) }));
       setPulled(true);
       if (merged.length > 0 && !defaultModel) setDefaultModel(merged[0]);
@@ -306,6 +323,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       const found = (await prov.fetchModels?.()) ?? [];
       const ids = found.map((m) => m.id).filter(Boolean);
       setModels(ids);
+      setEnabled(ids); // 新拉取 = 新目录 → 默认全勾（用户随即可取消/全选/清空）
       // 元数据（端点披露多少收多少）——确认添加时随行落盘
       setPulledMeta((prev) => ({ ...prev, ...(prov.lastModelMeta?.() ?? {}) }));
       setPulled(true);
@@ -320,14 +338,27 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     }
   };
 
-  /** 手动补充模型 id（拉取失败/端点无 /models 的兜底）。 */
+  /** 手动补充模型 id（拉取失败/端点无 /models 的兜底）——直接进目录并勾上。 */
   const submitManual = () => {
     const id = manualModel.trim();
     if (!id) return;
     setModels((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setEnabled((prev) => (prev.includes(id) ? prev : [...prev, id]));
     setDefaultModel((prev) => prev || id);
     setManualModel('');
     setPulled(true);
+  };
+
+  /** 勾选/取消一个模型（= 写启用集）。取消的正是「新会话默认」时顶第一个可用项
+   *  （否则默认模型落在启用集外，创作坞触发器会显示一个不在下拉里的模型）。 */
+  const toggleEnabled = (id: string) => {
+    setEnabled((prev) => {
+      const on = prev.includes(id);
+      const next = on ? prev.filter((m) => m !== id) : [...prev, id];
+      if (on) setDefaultModel((cur) => (cur === id ? (next[0] ?? '') : cur));
+      else setDefaultModel((cur) => cur || id);
+      return next;
+    });
   };
 
   const handleConfirm = () => {
@@ -353,19 +384,21 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       setError('OAuth 订阅还没登录——请先在上方完成浏览器授权登录，再确认添加');
       return;
     }
-    const ids = [...new Set(models.filter((m) => m?.trim()))];
+    const ids = [...new Set(enabled.filter((m) => m?.trim()))];
     if (ids.length === 0) {
-      setError('还没有可用模型——先登录（OAuth）/拉取模型，或手动补一个模型 id');
+      setError('还没有可用模型——先登录（OAuth）/拉取模型并在列表里勾选，或手动补一个模型 id');
       modelInputRef.current?.focus();
       return;
     }
-    const def = defaultModel.trim() || ids[0];
+    const def = defaultModel.trim() && ids.includes(defaultModel.trim()) ? defaultModel.trim() : ids[0];
+    const catalog = [...new Set(models.filter((m) => m?.trim()))];
     onAdd({
       name: providerId(n),
       kind,
       apiKey: authMode === 'oauth' ? undefined : key.trim() || undefined,
       baseUrl: baseUrl.trim() || undefined,
       models: ids,
+      ...(catalog.length > 0 ? { catalog } : {}),
       model: def,
       ...(Object.keys(pulledMeta).length > 0 ? { modelMeta: pulledMeta } : {}),
       authMode,
@@ -460,6 +493,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                 if (pulled && !isOAuth) {
                   setPulled(false);
                   setModels([]);
+                  setEnabled([]);
                   setDefaultModel('');
                   setFetchMsg('');
                 }
@@ -485,6 +519,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                 if (pulled) {
                   setPulled(false);
                   setModels([]);
+                  setEnabled([]);
                   setDefaultModel('');
                   setFetchMsg('');
                 }
@@ -510,6 +545,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                 if (pulled) {
                   setPulled(false);
                   setModels([]);
+                  setEnabled([]);
                   setDefaultModel('');
                   setFetchMsg('');
                 }
@@ -623,22 +659,57 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
         )}
 
         {models.length > 0 ? (
-          <div className="pp-pick-models" role="listbox" aria-label="可用模型">
-            {models.map((id) => (
+          <>
+            {/* 目录 / 启用分层（2026-09-23）：拉取只填目录，勾选才进「可用模型」 */}
+            <div className="pp-pick-head">
+              <span className="pp-f-label">可用模型</span>
+              <span className="pp-chip">
+                已启用 {enabled.length} / 目录 {models.length}
+              </span>
+              <span className="pp-spacer" />
+              <button type="button" className="sp-btn-sm" onClick={() => setEnabled(models)}>
+                全选
+              </button>
               <button
                 type="button"
-                key={id}
-                role="option"
-                aria-selected={defaultModel === id}
-                className={`pp-pick-model${defaultModel === id ? ' selected' : ''}`}
-                title={id}
-                onClick={() => setDefaultModel(id)}
+                className="sp-btn-sm"
+                onClick={() => {
+                  setEnabled([]);
+                  setDefaultModel('');
+                }}
               >
-                <span className="pp-pick-model-id">{id}</span>
-                {defaultModel === id && <span className="pp-model-chip-default">新会话默认</span>}
+                清空
               </button>
-            ))}
-          </div>
+            </div>
+            <div className="pp-pick-models">
+              {models.map((id) => {
+                const on = enabled.includes(id);
+                return (
+                  <div key={id} className={`pp-pick-model${on ? ' selected' : ''}`} title={id}>
+                    <label className="pp-pick-check">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        aria-label={`启用 ${id}`}
+                        onChange={() => toggleEnabled(id)}
+                      />
+                      <span className="pp-pick-model-id">{id}</span>
+                    </label>
+                    {defaultModel === id && <span className="pp-model-chip-default">新会话默认</span>}
+                    <button
+                      type="button"
+                      className="pp-pick-setdefault"
+                      disabled={!on || defaultModel === id}
+                      title={on ? '设为新会话默认模型' : '先勾选启用，才能设为默认'}
+                      onClick={() => setDefaultModel(id)}
+                    >
+                      设为默认
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         ) : (
           <div className="pp-f-hint">
             {isOAuth

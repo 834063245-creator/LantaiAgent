@@ -27,6 +27,11 @@
 //     （自定义模型名提交仍属设置页字段形态）。
 // 非 compact（设置页字段）形态零改动。
 //
+// 2026-09-23 三层重构配套（用户实测报告「拉了 81 个模型，下拉里根本没有那么多」）：
+//   结果链上的 `.slice(0, 30)` 拆除。它来自初版选择器（8c00891f）对**静态目录搜索**
+//   的"前 30 条"展示上限；compact 形态的可选面后来换成「已配置模型」（配置面）后，
+//   这条上限就退化成配置列表的天花板——配多少个都只列 30 个。配置面不该有截断。
+//
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享
 // 真实例；@react-aria/* react-stately 由 esbuild 内联（其 react import 经
 // 构建期别名桥共享宿主 React，零副本）。
@@ -147,6 +152,7 @@ export function ModelSelector({
     //   - 紧凑形态（compact=true，创作坞）= 各已配置 provider 的「可用模型」列表
     //     （ProviderSettings.models，缺省回落 [model]）并集——配了哪些列哪些，
     //     跨 vendor 直接选（rework P2-1），协议不互拦（精选列表每项自带 kind）。
+    //     2026-09-23：不截断（配置面列全；搜索在截断前语义不变）。
     //   - 字段形态（compact=false，设置页）= 本家 vendor 目录（跨家走左侧切 provider）。
     // 查询词：compact 在配置面内过滤；字段形态走全目录搜索。
     let base: ModelDescriptor[];
@@ -166,10 +172,7 @@ export function ModelSelector({
       const providerRow = settingsState.providers.find((p) => p.name === providerName);
       base = findModels(providerName).map((m) => ({ ...m, input: modelInput(providerRow, m.id) }));
     }
-    return base
-      .filter((m) => compact || m.kind === kind)
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .slice(0, 30);
+    return base.filter((m) => compact || m.kind === kind).sort((a, b) => a.id.localeCompare(b.id));
   }, [query, kind, providerName, compact, settingsState]);
 
   // ── react-aria combobox 状态机：items = 已过滤结果（受控 → 不再二次过滤）──

@@ -529,6 +529,109 @@
   padding: 0 3px;
 }
 
+/* ── 模型目录（2026-09-23 三层：目录 / 启用 / 选中）──
+   折叠头 + 搜索/全选/全部取消 + 勾选行：目录是只读远端事实（拉取快照），
+   勾选写「可用模型」（启用集）——拉取不再灌满可用模型。 */
+.pp-catalog {
+  margin-top: 6px;
+  border: 1px solid var(--rule-soft-ink);
+  background: var(--paper-deep);
+}
+.pp-catalog-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  font-size: calc(10px * var(--font-scale));
+}
+.pp-catalog-head:hover {
+  color: var(--ink-1);
+}
+.pp-catalog-caret {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: 9px;
+}
+.pp-catalog-title {
+  flex: 0 0 auto;
+  letter-spacing: 0.04em;
+}
+.pp-catalog-meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: calc(9px * var(--font-scale));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-catalog-body {
+  padding: 0 8px 8px;
+}
+.pp-catalog-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+.pp-catalog-tools .sp-input {
+  flex: 1;
+  min-width: 0;
+}
+.pp-catalog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.pp-catalog-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: calc(10px * var(--font-scale));
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.pp-catalog-row:hover {
+  border-color: var(--rule-soft-ink);
+  color: var(--ink-2);
+}
+.pp-catalog-row.on {
+  color: var(--ink-1);
+  border-color: color-mix(in oklch, var(--seal) 30%, var(--paper));
+  background: color-mix(in oklch, var(--seal) 6%, transparent);
+}
+.pp-catalog-row input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.pp-catalog-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--f-mono);
+  font-size: calc(9.5px * var(--font-scale));
+}
+.pp-catalog-win {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: calc(9px * var(--font-scale));
+}
+
 /* ── OAuth 订阅登录面板（ProviderDetail + AddProviderSheet 弹层共用）── */
 .pp-oauth-accounts {
   display: flex;
@@ -1028,6 +1131,45 @@
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+}
+/* 添加弹层的目录头与逐行勾选（2026-09-23：拉取只填目录，勾选才进可用模型） */
+.pp-pick-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+.pp-pick-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.pp-pick-check input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.pp-pick-setdefault {
+  flex: 0 0 auto;
+  border: 1px solid var(--rule-soft-ink);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: calc(9px * var(--font-scale));
+  padding: 1px 5px;
+  cursor: pointer;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.pp-pick-setdefault:hover:not(:disabled) {
+  color: var(--ink-1);
+  border-color: var(--seal);
+}
+.pp-pick-setdefault:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 /* ── Provider 页独立保存条（P11：保存与全局拆域）── */
