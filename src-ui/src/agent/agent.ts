@@ -33,6 +33,8 @@ import {
   maybeCompactImpl,
   mergePartialsImpl,
   payloadMessagesImpl,
+  type SummaryCall,
+  type SummaryRun,
   setCompactionConfigPathImpl,
   summarizeRegionImpl,
   summaryProviderImpl,
@@ -52,6 +54,7 @@ import {
   DEFAULT_COMPACT_RATIO,
   DEFAULT_RETAIN_RATIO,
 } from './compaction-model';
+import { SUMMARY_OUTPUT_BUDGET } from './compaction-summarize';
 import type { AgentContext } from './context';
 import {
   AgentEventBus,
@@ -305,6 +308,9 @@ export class Agent {
   private recentKeep: number;
   /** 自动压缩尾部保留 token 预算比例（0.16 默认，见 agent-compaction.ts）。 */
   private retainRatio: number;
+  /** 摘要调用的输出上限（token）——缺省 SUMMARY_OUTPUT_BUDGET（8192），
+   *  配置面 = .lantai/compaction-config.json 的 summaryMaxTokens。 */
+  private summaryMaxTokens: number;
   // 真卡死闩锁 — 仅在"折叠后载荷仍 >95% 窗口"时置位（此时压缩确实
   // 无能为力，只有 /new 能解决）。瞬时失败不再使用它 — 见下方退避门控。
   compactStuck = false;
@@ -592,6 +598,10 @@ export class Agent {
     // 自动压缩尾部 token 预算（对齐 DSH retainRatio 0.16）— 从尾部往回
     // 累计 token 保留完整 user 回合，工具密集会话里保证模型有足够近期现场。
     this.retainRatio = opts.retainRatio ?? DEFAULT_RETAIN_RATIO;
+    // 摘要输出上限（2026-09-23）：4096 会被思考吃光（摘要与主会话同模型同思考
+    // 档位，共用这一份输出预算）→ 空摘要 → 静默退化。8192 对齐 DSH 缺省；
+    // 压缩配置里的 summaryMaxTokens 在 applyAutoTuneConfig 时覆盖它。
+    this.summaryMaxTokens = SUMMARY_OUTPUT_BUDGET;
     this._subagentDepth = ctx.subagentDepth ?? opts.subagentDepth ?? 0;
     this.id = ctx.agentId ?? opts.agentId ?? `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     this.parentId = ctx.parentId ?? opts.parentId ?? null;
@@ -932,6 +942,10 @@ export class Agent {
   /** 自动压缩尾部保留的 token 预算比例（agent-compaction.ts 消费）。 */
   getRetainRatio(): number {
     return this.retainRatio;
+  }
+  /** 摘要调用的输出上限（压缩统计工具/配置面消费）。 */
+  getSummaryMaxTokens(): number {
+    return this.summaryMaxTokens;
   }
   getContextWindow(): number {
     return this.contextWindow;
@@ -2300,11 +2314,7 @@ export class Agent {
   }
 
   /** 对消息区域生成摘要 — map-reduce 分块管线（测试经 as any 调用）。 */
-  async summarizeRegion(
-    signal: AbortSignal,
-    msgs: Message[],
-    priorSummary: string | null = null,
-  ): Promise<{ text: string; degraded: boolean }> {
+  async summarizeRegion(signal: AbortSignal, msgs: Message[], priorSummary: string | null = null): Promise<SummaryRun> {
     return summarizeRegionImpl(this as unknown as CompactionHost, signal, msgs, priorSummary);
   }
 
@@ -2313,8 +2323,8 @@ export class Agent {
     return summaryProviderImpl(this as unknown as CompactionHost);
   }
 
-  /** 单次摘要 LLM 调用 — 空闲超时守卫。 */
-  async callSummaryLLM(signal: AbortSignal, systemPrompt: string, userText: string): Promise<string> {
+  /** 单次摘要 LLM 调用 — 空闲超时守卫；返回文本 + 发出的 cap + 提供方 usage。 */
+  async callSummaryLLM(signal: AbortSignal, systemPrompt: string, userText: string): Promise<SummaryCall> {
     return callSummaryLLMImpl(this as unknown as CompactionHost, signal, systemPrompt, userText);
   }
 
@@ -2324,7 +2334,7 @@ export class Agent {
     priorSummary: string | null,
     partials: string[],
     budgetTokens: number,
-  ): Promise<{ text: string; degraded: boolean }> {
+  ): Promise<SummaryRun> {
     return mergePartialsImpl(this as unknown as CompactionHost, signal, priorSummary, partials, budgetTokens);
   }
 

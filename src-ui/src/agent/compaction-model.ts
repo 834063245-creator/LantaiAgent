@@ -30,6 +30,17 @@ import { defineTool } from './tools/define-tool';
 
 // ── 收集的指标 ──
 
+/** 摘要调用的提供方回报求和（只有真回报 usage 的调用入账 —— 不编造）。 */
+export interface SummaryUsageTotals {
+  /** 入账的调用数（< CompactionEvent.summaryCalls ⇒ 有调用未回报 usage） */
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  /** 思考吃掉的输出预算 —— 「摘要为什么空」的答案就在这个数里 */
+  reasoningTokens: number;
+  cacheHitTokens: number;
+}
+
 export interface CompactionEvent {
   ts: number;
   /** 被压缩区域的消息数 */
@@ -48,6 +59,14 @@ export interface CompactionEvent {
   postTokens: number;
   /** 结果: 'summary' = LLM 摘要 | 'digest' = 机械提取（LLM 降级） | 'truncated' | 'stuck' */
   outcome: 'summary' | 'truncated' | 'stuck' | 'digest';
+  /** 本次压缩发出的摘要调用数（分块 map-reduce 时 > 1；含失败那次） */
+  summaryCalls?: number;
+  /** 写给提供方的输出上限（摘要 cap）—— 判定「吃满 cap」的分母 */
+  summaryMaxTokens?: number;
+  /** 提供方回报的摘要 usage 求和（真账；缺省 = 一次都没回报） */
+  summaryUsage?: SummaryUsageTotals;
+  /** 降级原因（截断到 cap / 空文本 / 提供方错误…）—— 「为什么退化」的落账面 */
+  summaryError?: string;
 }
 
 export interface CompactionSessionStats {
@@ -380,6 +399,9 @@ export class CompactionTracker {
 export interface CompactionConfig {
   compactRatio: number;
   recentKeep: number;
+  /** 摘要调用的输出上限（token）——缺省 = SUMMARY_OUTPUT_BUDGET（8192，对齐 DSH）。
+   *  手写此文件即可改；自动调优只透传，不改写它。 */
+  summaryMaxTokens?: number;
   tunedAt: number; // 上次调优时间戳
   sampleCount: number; // 使用的压缩事件数量
   avgCompressionRatio: number;
@@ -511,6 +533,7 @@ export function createCompactionTools(
     recentKeep: number;
     retainRatio: number;
     contextWindow: number;
+    summaryMaxTokens: number;
   },
   loadConfig: () => Promise<CompactionConfig | null>,
 ): Tool[] {
@@ -536,6 +559,7 @@ export function createCompactionTools(
           `- compactRatio: ${(current.compactRatio * 100).toFixed(0)}% (触发阈值 ${((current.contextWindow * current.compactRatio) / 1000).toFixed(0)}K tokens)`,
           `- retainRatio: ${(current.retainRatio * 100).toFixed(0)}% (自动压缩保留尾部 ${((current.contextWindow * current.retainRatio) / 1000).toFixed(0)}K tokens)`,
           `- recentKeep: ${current.recentKeep} 条 (手动 /compact 尾部消息数下限)`,
+          `- 摘要输出上限: ${current.summaryMaxTokens.toLocaleString()} tokens (配置面 .lantai/compaction-config.json 的 summaryMaxTokens)`,
           '',
         ];
 
@@ -543,6 +567,9 @@ export function createCompactionTools(
           lines.push('## 已持久化的调优结果');
           lines.push(`- compactRatio: ${(persisted.compactRatio * 100).toFixed(0)}%`);
           lines.push(`- recentKeep: ${persisted.recentKeep} 条`);
+          if (persisted.summaryMaxTokens !== undefined) {
+            lines.push(`- 摘要输出上限: ${persisted.summaryMaxTokens.toLocaleString()} tokens`);
+          }
           lines.push(`- 基于 ${persisted.sampleCount} 次压缩样本`);
           lines.push(`- 调优时间: ${new Date(persisted.tunedAt).toLocaleString()}`);
           lines.push(`- 依据: ${persisted.reasoning}`);
@@ -587,6 +614,18 @@ export function createCompactionTools(
               `### #${i + 1} ${e.outcome === 'summary' ? '✅ 总结' : e.outcome === 'digest' ? '📋 机械提取' : e.outcome === 'truncated' ? '✂️ 截断' : '⏸️ 卡住'}`,
             );
             lines.push(`- 压缩 ${e.regionMsgCount} 条消息 → 摘要 ${e.summaryOutputTokens.toLocaleString()} tokens`);
+            // 摘要调用账（2026-09-23）：发出的 cap + 提供方回报的 usage ——
+            // 「空返回 = 思考吃满 cap」这类归因此前只能猜（usage 被整条丢弃）。
+            if (e.summaryUsage) {
+              lines.push(
+                `- 摘要调用: ${e.summaryCalls ?? e.summaryUsage.calls} 次（${e.summaryUsage.calls} 次回报 usage）/ cap ${(e.summaryMaxTokens ?? 0).toLocaleString()} tokens · 输出 ${e.summaryUsage.completionTokens.toLocaleString()}（含思考 ${e.summaryUsage.reasoningTokens.toLocaleString()}）· 输入 ${e.summaryUsage.promptTokens.toLocaleString()}`,
+              );
+            } else if (e.summaryCalls !== undefined) {
+              lines.push(
+                `- 摘要调用: ${e.summaryCalls} 次 / cap ${(e.summaryMaxTokens ?? 0).toLocaleString()} tokens（提供方未回报 usage）`,
+              );
+            }
+            if (e.summaryError) lines.push(`- 降级原因: ${e.summaryError}`);
             lines.push(
               `- 上下文: ${e.preTokens.toLocaleString()} → ${e.postTokens.toLocaleString()} tokens (${ratio}%)`,
             );

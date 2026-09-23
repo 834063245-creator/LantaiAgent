@@ -186,6 +186,7 @@ export function registerCompactionTools(agent: Agent, reg: ToolRegistry): void {
       recentKeep: agent.getRecentKeep(),
       retainRatio: agent.getRetainRatio(),
       contextWindow: agent.getContextWindow(),
+      summaryMaxTokens: agent.getSummaryMaxTokens(),
     }),
     async () => agent.loadCompactionConfig(),
   )) {

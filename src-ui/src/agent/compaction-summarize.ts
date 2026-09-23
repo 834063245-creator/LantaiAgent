@@ -11,11 +11,16 @@ import { countMessage, countText } from './token-counter';
 import type { ToolRegistry } from './tool';
 import { resolveGuardToolName } from './tools/domains';
 
-/** 摘要调用的输出预算（token）— 固定上界。配合 chunkCap 保证
+/** 摘要调用的输出预算（token）— 缺省输出上限。配合 chunkCap 保证
  *  每次调用 输入+输出 严格小于摘要模型窗口（"永不塞爆"的硬上界）。
- *  2026-09 迭代：2048 → 4096 — 摘要内容（结构化简报 + 合并）需要更高
- *  上限才能在一次压缩里承载完整任务恢复信息，避免多段合并被截断。 */
-export const SUMMARY_OUTPUT_BUDGET = 4096;
+ *  2026-09 迭代：2048 → 4096 → **8192**。4096 的病：摘要调用与主会话同模型、
+ *  同思考档位（summaryProviderImpl 不关思考），思考与摘要共用这一份输出预算
+ *  ——真机实测思考吃光 4096 后返回空文本，管线静默退化成机械提取。
+ *  8192 对齐 DSH `compaction-basic/src/types.ts` 的 `maxTokens` 缺省
+ *  （"Provider generation cap for summarization. Defaults to 8192"）。
+ *  **可配**：`.lantai/compaction-config.json` 的 `summaryMaxTokens`
+ *  （host.summaryMaxTokens，见 agent-compaction.ts 的 applyAutoTuneConfigImpl）。 */
+export const SUMMARY_OUTPUT_BUDGET = 8192;
 /** prompt 预算：摘要指令 + 合并指令 + priorSummary 预留。 */
 export const SUMMARY_PROMPT_BUDGET = 4000;
 /** 摘要模型最低窗口 — 低于此值切块会碎到失去意义，直接无参选资格。 */

@@ -11,6 +11,13 @@
 //   6. 摘要飞行中 session 增长 — 折叠点自洽（append-only）
 //   7. 摘要飞行中 session 替换 — 折叠结果被丢弃
 //   8. 块数超上限 — 最老块机械消化，LLM 调用数封顶
+//   9. step 前 pre-flight 同步压缩（自动触发主链路）
+//  10. 单轮工具循环超过尾部预算 — 退到预算位置，不再永久 stuck
+//  11. 摘要 cap 缺省 8192（对齐 DSH）且 host 字段即 wire 的 max_tokens
+//  12. 摘要调用 usage 入账（发出的 cap + 提供方回报，含 reasoning_tokens）
+//  13. 空摘要（思考吃满 cap）→ 明说原因 + 机械提取兜底 + 事件账留归因
+//  14. 压缩过程可见：首拍块数 → 每块完成（含用时）→ 收尾带压前→压后
+//  15. 撞 cap 但仍有文本 → 截断残稿不许当摘要用（fail-closed）
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -56,12 +63,18 @@ import { createTestAgent } from './helpers/agent';
 interface RecordedCall {
   system: string;
   user: string;
+  /** 本次请求写进 wire 的输出上限（= 摘要 cap） */
+  maxTokens: number;
 }
 
 function makeSummaryProvider(behavior: {
   onCall?: (c: RecordedCall) => void;
   fail?: boolean;
   gate?: () => Promise<void>;
+  /** 摘要调用产出的文本（缺省 `摘要#n`；返回 '' = 空返回形态） */
+  text?: (n: number) => string;
+  /** 每次摘要调用回报的 usage（缺省 = 不回报 —— 真机形态之一） */
+  usage?: () => any;
 }): { prov: Provider; callCount: () => number } {
   let n = 0;
   return {
@@ -72,10 +85,16 @@ function makeSummaryProvider(behavior: {
       prewarm() {},
       async *stream(_signal: AbortSignal, req: any) {
         n++;
-        behavior.onCall?.({ system: req.messages[0].content, user: req.messages[1].content });
+        behavior.onCall?.({
+          system: req.messages[0].content,
+          user: req.messages[1].content,
+          maxTokens: req.max_tokens,
+        });
         if (behavior.gate) await behavior.gate();
         if (behavior.fail) throw new Error('provider boom');
-        yield { type: ChunkType.Text, text: `摘要#${n}` } as any;
+        const text = behavior.text ? behavior.text(n) : `摘要#${n}`;
+        if (text) yield { type: ChunkType.Text, text } as any;
+        if (behavior.usage) yield { type: ChunkType.Usage, usage: behavior.usage() } as any;
         yield { type: ChunkType.Done } as any;
       },
     },
@@ -421,5 +440,178 @@ describe('compaction pipeline E2E', () => {
     expect(a.session[a._compactTailStart].role).not.toBe('tool');
     // 近期现场仍按预算保留（≈3200；没有被一并折进摘要）
     expect(countMessages(a.session.slice(a._compactTailStart))).toBeGreaterThanOrEqual(3000);
+  });
+
+  it('11. 摘要 cap：缺省 8192（对齐 DSH maxTokens），host 字段即 wire 的 max_tokens', async () => {
+    const calls: RecordedCall[] = [];
+    const { prov } = makeSummaryProvider({ onCall: (c) => calls.push(c) });
+    const agent = makeAgent(prov, { contextWindow: 100000 });
+    pushPadMessages(agent, 12, 200);
+
+    await agent.compactNow(new AbortController().signal);
+
+    // 4096 时代的病：思考与摘要共用同一份输出预算，思考吃光 → 空摘要。
+    expect(SUMMARY_OUTPUT_BUDGET).toBe(8192);
+    expect(calls[0].maxTokens).toBe(8192);
+
+    // 配置面（host.summaryMaxTokens）就是 wire 值 —— 不留第二处真源
+    asAny(agent).summaryMaxTokens = 2048;
+    pushPadMessages(agent, 8, 200);
+    await agent.compactNow(new AbortController().signal);
+
+    expect(calls.at(-1)?.maxTokens).toBe(2048);
+  });
+
+  it('12. 摘要调用 usage 入账：事件账记下发出的 cap 与提供方回报（含 reasoning）', async () => {
+    const { prov } = makeSummaryProvider({
+      usage: () => ({
+        prompt_tokens: 1234,
+        completion_tokens: 567,
+        total_tokens: 1801,
+        cache_hit_tokens: 900,
+        cache_miss_tokens: 334,
+        cache_creation_tokens: 0,
+        reasoning_tokens: 89,
+        finish_reason: 'stop',
+      }),
+    });
+    const agent = makeAgent(prov, { contextWindow: 100000 });
+    pushPadMessages(agent, 12, 200);
+
+    await agent.compactNow(new AbortController().signal);
+
+    const ev = agent.getCompactionStats().events.at(-1)!;
+    expect(ev.outcome).toBe('summary');
+    expect(ev.summaryCalls).toBe(1);
+    expect(ev.summaryMaxTokens).toBe(8192);
+    // 真 usage 单独入账（不冒充本地估算的 summaryInput/OutputTokens）
+    expect(ev.summaryUsage).toEqual({
+      calls: 1,
+      promptTokens: 1234,
+      completionTokens: 567,
+      reasoningTokens: 89,
+      cacheHitTokens: 900,
+    });
+    expect(ev.summaryError).toBeUndefined();
+  });
+
+  it('13. 空摘要（思考吃满 cap）→ 明说原因 + 机械提取兜底 + 事件账留归因', async () => {
+    const events: any[] = [];
+    // 真机形态（案卷 35）：思考吃光输出预算 → 零文本；usage 里有答案。
+    const { prov } = makeSummaryProvider({
+      text: () => '',
+      usage: () => ({
+        prompt_tokens: 5000,
+        completion_tokens: 8192,
+        total_tokens: 13192,
+        cache_hit_tokens: 0,
+        cache_miss_tokens: 5000,
+        cache_creation_tokens: 0,
+        reasoning_tokens: 8192,
+        finish_reason: 'length',
+      }),
+    });
+    const agent = makeAgent(prov, { contextWindow: 100000, events });
+    const a = asAny(agent);
+    // 机械提取兜底要抓得到事实（被折区域里的读文件记录）
+    a.session.push(
+      { role: 'user', content: '帮我改 main.ts' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'c1', name: 'read_file_content', arguments: '{"filePath":"src/main.ts"}' }],
+      },
+      { role: 'tool', tool_call_id: 'c1', name: 'read_file_content', content: 'export function main() {}' },
+    );
+    pushPadMessages(agent, 12, 200);
+
+    const result = await agent.compactNow(new AbortController().signal);
+
+    const ev = agent.getCompactionStats().events.at(-1)!;
+    // 管线不闩死：机械提取落地，且真含事实
+    expect(ev.outcome).toBe('digest');
+    expect(result).toContain('src/main.ts');
+    // 归因落账：撞 cap + 发出的 cap + 思考吃掉的量
+    expect(ev.summaryError).toContain('truncated at the token cap');
+    expect(ev.summaryError).toContain('max_tokens=8192');
+    expect(ev.summaryError).toContain('reasoning=8192');
+    expect(ev.summaryUsage?.reasoningTokens).toBe(8192);
+    // 降级不静默：UI 上有一条 warn 说清原因
+    const warns = events.filter((e) => e.level === 'warn' && String(e.text).includes('压缩降级'));
+    expect(warns).toHaveLength(1);
+    expect(warns[0].text).toContain('truncated at the token cap');
+    expect(warns[0].text).toContain('机械提取');
+  });
+
+  it('14. 压缩过程可见：首拍块数 → 每块完成（含用时）→ 收尾带压前→压后', async () => {
+    const events: any[] = [];
+    const { prov } = makeSummaryProvider({});
+    const contextWindow = 20000;
+    const agent = makeAgent(prov, { contextWindow, events });
+    pushPadMessages(agent, 24, 2000);
+
+    await agent.compactNow(new AbortController().signal);
+
+    const texts = events.map((e) => String(e.text ?? ''));
+    // 首拍：块数 + 区域规模（压缩期间此前 1–3 分钟毫无提示，像挂死）
+    const head = /^压缩中 · 共 (\d+) 块（约 [\d.]+ 万 token）$/.exec(texts[0]);
+    expect(head).not.toBeNull();
+    const total = Number(head![1]);
+    expect(total).toBeGreaterThan(1);
+    // 逐块完成（长杆唯一可读的真进度：第 i/N 块 + 已用秒数）
+    const seq = texts
+      .map((t) => /^压缩中 · 第 (\d+)\/(\d+) 块完成（用时 \d+s）$/.exec(t))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => [Number(m[1]), Number(m[2])]);
+    expect(seq.length).toBeGreaterThan(1);
+    expect(seq.map(([i]) => i)).toEqual(seq.map((_, k) => k + 1)); // 1,2,3…N 不漏拍
+    expect(new Set(seq.map(([, n]) => n))).toEqual(new Set([total])); // 与首拍同一个 N
+    // 收尾：压前 → 压后（同口径千分位；压前读数取自折叠**之前**）
+    const final = texts.at(-1)!;
+    expect(final).toContain('上下文已压缩');
+    const nums = /压前 ([\d,]+) → 压后 ([\d,]+)/.exec(final);
+    expect(nums).not.toBeNull();
+    const asNumber = (s: string) => Number(s.replace(/,/g, ''));
+    expect(asNumber(nums![1])).toBeGreaterThan(asNumber(nums![2]));
+    // 事件账同一读数（旧实现两次都在折叠后取 → 两个读数恒等）
+    const ev = agent.getCompactionStats().events.at(-1)!;
+    expect(ev.preTokens).toBeGreaterThan(ev.postTokens);
+  });
+
+  it('15. 撞 cap 但仍有文本：截断残稿不许当摘要用（fail-closed），退机械提取并说明', async () => {
+    const events: any[] = [];
+    const { prov } = makeSummaryProvider({
+      text: () => '## 目标\n半截摘要（写到这里被 cap 砍断）',
+      usage: () => ({
+        prompt_tokens: 5000,
+        completion_tokens: 8192,
+        total_tokens: 13192,
+        cache_hit_tokens: 0,
+        cache_miss_tokens: 5000,
+        cache_creation_tokens: 0,
+        reasoning_tokens: 8000,
+        finish_reason: 'length',
+      }),
+    });
+    const agent = makeAgent(prov, { contextWindow: 100000, events });
+    const a = asAny(agent);
+    a.session.push(
+      { role: 'user', content: '帮我改 main.ts' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'c1', name: 'read_file_content', arguments: '{"filePath":"src/main.ts"}' }],
+      },
+      { role: 'tool', tool_call_id: 'c1', name: 'read_file_content', content: 'export function main() {}' },
+    );
+    pushPadMessages(agent, 12, 200);
+
+    const result = await agent.compactNow(new AbortController().signal);
+
+    const ev = agent.getCompactionStats().events.at(-1)!;
+    expect(result).not.toContain('半截摘要'); // 残稿没被采用
+    expect(ev.outcome).toBe('digest');
+    expect(ev.summaryError).toContain('truncated at the token cap');
+    expect(events.some((e) => e.level === 'warn' && String(e.text).includes('truncated at the token cap'))).toBe(true);
   });
 });

@@ -20,7 +20,6 @@ import {
   renderTranscript,
   SUMMARY_MAX_LLM_CHUNKS,
   SUMMARY_MIN_INPUT,
-  SUMMARY_OUTPUT_BUDGET,
   SUMMARY_PROMPT_BUDGET,
 } from './compaction-summarize';
 import type { ExecStateInstance } from './execution-state';
@@ -44,6 +43,9 @@ export interface CompactionHost {
   /** 自动压缩尾部保留的 token 预算比例（占 contextWindow；0 缺省用
    *  DEFAULT_RETAIN_RATIO）。手动 /compact 不消费它（保留 recentKeep 条）。 */
   retainRatio: number;
+  /** 摘要调用的输出上限（token）——缺省 SUMMARY_OUTPUT_BUDGET；
+   *  配置面 = .lantai/compaction-config.json 的 summaryMaxTokens。 */
+  summaryMaxTokens: number;
   compactStuck: boolean;
   compactRetryAfterLen: number;
   compactFailCount: number;
@@ -62,6 +64,108 @@ export interface CompactionHost {
   _foldHead(): number;
   payloadMessages(): Message[];
   tokenCountWithEstimation(): number;
+}
+
+// ── 摘要调用账（cap + usage）──
+// 2026-09-23：摘要调用的 usage 此前被整条丢弃（只收 Text 块），发出的 cap 也无处可查
+// ——「摘要为什么返回空」只能猜。下列形状对齐 DSH `SummaryResult`（provider/model/
+// maxTokens/usage）；本仓摘要模型恒为主模型，provider/model 不入账。
+
+/** 单次摘要调用的产物。usage 缺省 = 提供方未回报（该次调用不可归因）。 */
+export interface SummaryCall {
+  text: string;
+  /** 写进本次请求的输出上限（= 摘要 cap；适配器另按模型 maxTokens 钳制） */
+  maxTokens: number;
+  usage?: Usage;
+}
+
+/** 摘要区段（summarizeRegion / mergePartials）的产物。 */
+export interface SummaryRun {
+  text: string;
+  /** 有环节降级为机械提取 / 拼接（机械提取是兜底，但降级必须可见且可归因） */
+  degraded: boolean;
+  /** 降级原因（degraded=true 时非空） */
+  failure?: string;
+  /** 本次区段的全部调用账（**含失败那次** —— 空返回的 usage 正是归因核心） */
+  calls: SummaryCall[];
+}
+
+/** cap/usage 单行摘要 —— 日志与错误消息共用同一口径（不两处各写一份）。 */
+function capStats(call: SummaryCall): string {
+  const u = call.usage;
+  const parts = [`max_tokens=${call.maxTokens}`];
+  if (u) {
+    parts.push(
+      `finish_reason=${u.finish_reason || '未知'}`,
+      `completion=${u.completion_tokens}`,
+      `reasoning=${u.reasoning_tokens}`,
+    );
+  } else {
+    parts.push('usage 未回报');
+  }
+  parts.push(`text_chars=${call.text.length}`);
+  return parts.join(', ');
+}
+
+/** 撞输出上限判据：① 提供方 finish_reason='length'（协议直给）；
+ *  ② completion 用满发出的 cap —— openai 兼容方言的 usage 独立帧不带
+ *  finish_reason（适配器在该帧只能置 'stop'），缺了这条真机上「撞 cap」不可判。 */
+function hitOutputCap(call: SummaryCall): boolean {
+  if (call.usage?.finish_reason === 'length') return true;
+  return call.usage !== undefined && call.usage.completion_tokens >= call.maxTokens;
+}
+
+/** 摘要调用的 fail-closed 判据（对齐 DSH `summarizer.ts` 的 `finishError` +
+ *  空文本报错）：撞 cap = 检查点不完整（截断的残稿不许当摘要用），
+ *  空文本 = 提供方没产出可用文本。两者都抛 —— 由调用方降级为机械提取并**明说原因**。 */
+function assertUsableSummary(call: SummaryCall, label = 'summary'): void {
+  if (hitOutputCap(call)) throw new Error(`${label} truncated at the token cap (${capStats(call)})`);
+  if (!call.text) throw new Error(`empty ${label} (${capStats(call)})`);
+}
+
+/** 降级原因汇总（去重 + 封顶 —— 8 块全失败时不写成 8 份同样的理由）。 */
+function failureText(reasons: string[]): { failure?: string } {
+  const uniq = [...new Set(reasons.filter((r) => r.length > 0))];
+  if (uniq.length === 0) return {};
+  const text = uniq.join(' | ');
+  return { failure: text.length > 400 ? `${text.slice(0, 400)}…` : text };
+}
+
+/** 调用账 → 事件账字段（真 usage 单独入账 summaryUsage；summaryInput/OutputTokens
+ *  保持原有本地估算口径 —— 两者不混账）。 */
+function meteringOf(
+  host: CompactionHost,
+  run: { calls: SummaryCall[]; failure?: string },
+): Pick<CompactionEvent, 'summaryCalls' | 'summaryMaxTokens' | 'summaryUsage' | 'summaryError'> {
+  const reported = run.calls.filter((c) => c.usage !== undefined);
+  const sum = (pick: (u: Usage) => number) => reported.reduce((acc, c) => acc + pick(c.usage as Usage), 0);
+  return {
+    summaryCalls: run.calls.length,
+    summaryMaxTokens: host.summaryMaxTokens,
+    ...(reported.length === 0
+      ? {}
+      : {
+          summaryUsage: {
+            calls: reported.length,
+            promptTokens: sum((u) => u.prompt_tokens),
+            completionTokens: sum((u) => u.completion_tokens),
+            reasoningTokens: sum((u) => u.reasoning_tokens),
+            cacheHitTokens: sum((u) => u.cache_hit_tokens),
+          },
+        }),
+    ...(run.failure ? { summaryError: run.failure } : {}),
+  };
+}
+
+/** 块进度文案 —— 摘要长杆是**一次** LLM 调用，调用内没有可读百分比：
+ *  诚实的真进度只有「第 i/N 块 + 已用秒数」，约 30 秒一跳。 */
+function chunkDoneText(index: number, total: number, startedAt: number): string {
+  return `压缩中 · 第 ${index}/${total} 块完成（用时 ${((Date.now() - startedAt) / 1000).toFixed(0)}s）`;
+}
+
+/** token 数的人类读数 —— 压前/压后**同口径**（千分位），不混「万」与裸数字。 */
+function fmtTokens(n: number): string {
+  return n.toLocaleString();
 }
 
 // ── 折叠视图（根治核心）──
@@ -141,6 +245,10 @@ export async function loadCompactionConfigImpl(host: CompactionHost): Promise<Co
   }
 }
 
+/** 摘要 cap 的可接受面：有限数且 ≥ 256 —— 低于此值连标题都写不完，
+ *  视作坏配置回退缺省（不静默接受垃圾值）。 */
+const MIN_SUMMARY_MAX_TOKENS = 256;
+
 /** 应用自动调优的压缩参数。返回应用的配置。 */
 export async function applyAutoTuneConfigImpl(host: CompactionHost): Promise<CompactionConfig | null> {
   // E5: 先加载 tracker 状态，使调优有历史数据
@@ -153,9 +261,16 @@ export async function applyAutoTuneConfigImpl(host: CompactionHost): Promise<Com
   // 在每个新 Agent 上静默覆盖了按模型的限制。）
   host.compactRatio = config.compactRatio;
   host.recentKeep = config.recentKeep;
+  // 摘要输出上限（2026-09-23）：压缩配置里手写的 summaryMaxTokens 生效。
+  // 缺省 / 坏值 = 保持 SUMMARY_OUTPUT_BUDGET（8192，对齐 DSH）。
+  const cap = config.summaryMaxTokens;
+  if (typeof cap === 'number' && Number.isFinite(cap) && cap >= MIN_SUMMARY_MAX_TOKENS) {
+    host.summaryMaxTokens = Math.floor(cap);
+  }
   log.info('agent', 'auto-tune applied', {
     compactRatio: config.compactRatio,
     recentKeep: config.recentKeep,
+    summaryMaxTokens: host.summaryMaxTokens,
     tunedAt: new Date(config.tunedAt).toISOString(),
     samples: config.sampleCount,
   });
@@ -182,10 +297,14 @@ async function tryAutoTune(host: CompactionHost): Promise<void> {
     text: `[自动调优] ${config.reasoning}。参数已保存，下次会话生效。`,
   });
 
-  // 持久化供下次会话使用
+  // 持久化供下次会话使用（summaryMaxTokens 是手写配置面 —— 透传保留，
+  // 别让自动调优把用户的 cap 顺手写没）。
   if (host._compactionConfigPath) {
     try {
-      await kernelWriteFile(host._compactionConfigPath, JSON.stringify(config, null, 2));
+      await kernelWriteFile(
+        host._compactionConfigPath,
+        JSON.stringify({ ...config, summaryMaxTokens: host.summaryMaxTokens }, null, 2),
+      );
     } catch {
       // 尽力而为
     }
@@ -345,15 +464,17 @@ export async function runCompactionImpl(
       return 'stuck';
     }
     const { region, tailStart, priorSummary } = regionInfo;
-    let result: { text: string; degraded: boolean } | null = null;
+    let result: SummaryRun | null = null;
+    let hardFailure: string | undefined;
     try {
       result = await summarizeRegionImpl(host, signal, region, priorSummary);
     } catch (e) {
-      log.warn('agent', `summarizeRegion failed (${errMessage(e)})`);
+      hardFailure = errMessage(e);
+      log.warn('agent', `summarizeRegion failed (${hardFailure})`);
     }
     if (!result?.text) {
       // 摘要失败 = 放弃本次压缩。历史保持完整，仅继续增长。
-      // 根治: 绝不截断/删除历史消息。
+      // 根治: 绝不截断/删除历史消息。（原因随通知/事件账可见 —— 失败不许静默）
       recordCompactionEvent(host, {
         ts: Date.now(),
         regionMsgCount: region.length,
@@ -364,11 +485,12 @@ export async function runCompactionImpl(
         preTokens: host.tokenCountWithEstimation(),
         postTokens: host.tokenCountWithEstimation(),
         outcome: 'stuck',
+        ...(result ? meteringOf(host, result) : hardFailure ? { summaryError: hardFailure } : {}),
       });
       host._sink({
         kind: EventKind.Notice,
         level: 'warn',
-        text: '压缩失败，本次跳过（完整历史仍保留）。可继续对话或用 /new 开启新会话。',
+        text: `压缩失败，本次跳过（完整历史仍保留）。${hardFailure ? `原因：${hardFailure}。` : ''}可继续对话或用 /new 开启新会话。`,
       });
       return 'stuck';
     }
@@ -397,6 +519,7 @@ export async function runCompactionImpl(
           preTokens: preEstimate,
           postTokens: preEstimate,
           outcome: 'stuck',
+          ...meteringOf(host, result),
         });
         host._sink({
           kind: EventKind.Notice,
@@ -416,22 +539,27 @@ export async function runCompactionImpl(
     host.compactFailCount = 0;
 
     // ── 压缩模型埋点 ──
-    const preTokens = host.tokenCountWithEstimation();
+    // preTokens = 折叠**前**的载荷估算（preEstimate，上面已测）；旧实现两次都在
+    // applyCompactState 之后取，两个读数恒等 —— 事件账里的压缩比因此恒 0%。
+    const postTokens = host.tokenCountWithEstimation();
     recordCompactionEvent(host, {
       ts: Date.now(),
       regionMsgCount: region.length,
       regionTokensEst: countMessages(region),
-      summaryInputTokens: countMessages(region), // 近似值
+      summaryInputTokens: countMessages(region), // 近似值（真 usage 见 summaryUsage）
       summaryOutputTokens: countText(summary),
       tailMsgCount: host.session.length - tailStart,
-      preTokens,
-      postTokens: host.tokenCountWithEstimation(),
+      preTokens: preEstimate,
+      postTokens,
       outcome: result.degraded ? 'digest' : 'summary',
+      ...meteringOf(host, result),
     });
     host._sink({
       kind: EventKind.Notice,
       level: 'info',
-      text: `上下文已压缩: ${region.length} 条消息 → 摘要 (保留最近 ${host.session.length - tailStart} 条，完整历史仍保留)`,
+      text: `上下文已压缩: ${region.length} 条消息 → ${result.degraded ? '机械摘要（LLM 摘要降级）' : '摘要'} (保留最近 ${
+        host.session.length - tailStart
+      } 条，完整历史仍保留)；压前 ${fmtTokens(preEstimate)} → 压后 ${fmtTokens(postTokens)}`,
     });
     return summary;
   } finally {
@@ -495,7 +623,8 @@ export function maybeCompactImpl(host: CompactionHost, usage: Usage | undefined)
 
   const abortCtrl = new AbortController();
   summarizeRegionImpl(host, abortCtrl.signal, regionInfo.region, regionInfo.priorSummary)
-    .then(({ text: summary, degraded }) => {
+    .then((run) => {
+      const { text: summary, degraded } = run;
       if (genAtStart !== host._execState.sessionVersion) {
         host.compactRunning = false;
         return;
@@ -540,6 +669,7 @@ export function maybeCompactImpl(host: CompactionHost, usage: Usage | undefined)
         preTokens: estimated,
         postTokens: postEstimate,
         outcome: degraded ? 'digest' : 'summary',
+        ...meteringOf(host, run),
       });
       host._sink({
         kind: EventKind.Notice,
@@ -573,46 +703,75 @@ export function maybeCompactImpl(host: CompactionHost, usage: Usage | undefined)
  *
  *  硬保证（不存在"塞爆"这个状态）：
  *    每次 LLM 调用的输入 ≤ prompt(≤SUMMARY_PROMPT_BUDGET) + chunkCap，
- *    输出 ≤ SUMMARY_OUTPUT_BUDGET，两者之和严格小于摘要模型窗口；
+ *    输出 ≤ host.summaryMaxTokens，两者之和严格小于摘要模型窗口；
  *    窗口连最低可行条件都不满足的模型直接走机械摘要，不调 LLM。
  *
  *  降级阶梯（任何环节失败只降质量，管线永不闩死）：
  *    LLM 全量摘要 > 部分块机械提取 > 纯机械提取。
+ *  降级**不静默**（2026-09-23）：每个块/合并环节的失败都发一条 warn 通知说清原因
+ *  （撞 cap / 空文本 / 提供方错误），并把原因与调用账写进 CompactionEvent。
  *
  *  @param priorSummary 来自上次 `<compacted-context>` 块的内容，用于
  *    与新区域合并（累积压缩），若为首次压缩则为 null。
- *  @returns text = 摘要文本；degraded = 是否有环节降级为机械提取 */
+ *  @returns text = 摘要文本；degraded = 是否有环节降级为机械提取；
+ *    failure = 降级原因；calls = 本次区段的调用账（cap + usage） */
 export async function summarizeRegionImpl(
   host: CompactionHost,
   signal: AbortSignal,
   msgs: Message[],
   priorSummary: string | null = null,
-): Promise<{ text: string; degraded: boolean }> {
+): Promise<SummaryRun> {
   // priorSummary 防御性截断 — 理论上每轮 LLM 输出 ≤ 摘要预算不会无限涨，
   // 但手工编辑/旧版本数据可能异常，超限时保留头部
   if (priorSummary && countText(priorSummary) > SUMMARY_PROMPT_BUDGET - 1000) {
     priorSummary = priorSummary.slice(0, (SUMMARY_PROMPT_BUDGET - 1000) * 4);
   }
 
+  const outputBudget = host.summaryMaxTokens;
   const { window } = await summaryProviderImpl(host);
-  const inputBudget = window - SUMMARY_OUTPUT_BUDGET - SUMMARY_PROMPT_BUDGET;
+  const inputBudget = window - outputBudget - SUMMARY_PROMPT_BUDGET;
   if (inputBudget < SUMMARY_MIN_INPUT) {
     log.warn('agent', `summary model window too small (${window}) — 走机械摘要`);
-    return { text: digestMessages(msgs, host.tools), degraded: true };
+    return {
+      text: digestMessages(msgs, host.tools),
+      degraded: true,
+      failure: `摘要模型窗口 ${window} 装不下 cap ${outputBudget} + 输入下限 ${SUMMARY_MIN_INPUT}`,
+      calls: [],
+    };
   }
   const chunkCap = Math.floor(inputBudget * 0.8);
   const chunks = chunkMessages(msgs, chunkCap);
+  const calls: SummaryCall[] = [];
+  const failures: string[] = [];
+
+  // 进度首拍（2026-09-23 用户要求）：压缩期间此前 1–3 分钟毫无提示，像挂死。
+  // 诚实约束：百分比做不了（一块 = 一次 LLM 调用，调用内无可读进度），
+  // 真进度只有「共 N 块」+ 每块的用时。
+  host._sink({
+    kind: EventKind.Notice,
+    level: 'info',
+    text: `压缩中 · 共 ${chunks.length} 块（约 ${(countMessages(msgs) / 10_000).toFixed(1)} 万 token）`,
+  });
 
   // 单块 — 与旧行为一致：一次调用，priorSummary 直接嵌入 prompt
   if (chunks.length <= 1) {
+    const startedAt = Date.now();
     try {
-      const text = await callSummaryLLMImpl(host, signal, buildSummaryPrompt(priorSummary), renderTranscript(msgs));
-      if (!text) throw new Error('empty summary');
-      return { text, degraded: false };
+      const call = await callSummaryLLMImpl(host, signal, buildSummaryPrompt(priorSummary), renderTranscript(msgs));
+      calls.push(call);
+      assertUsableSummary(call);
+      host._sink({ kind: EventKind.Notice, level: 'info', text: chunkDoneText(1, 1, startedAt) });
+      return { text: call.text, degraded: false, calls };
     } catch (e) {
       if (signal.aborted) throw e; // 用户中止 — 不兜底，直接传播
-      log.warn('agent', `summarize LLM failed (${errMessage(e)}) — 降级为机械摘要`);
-      return { text: digestMessages(msgs), degraded: true };
+      const reason = errMessage(e);
+      log.warn('agent', `summarize LLM failed (${reason}) — 降级为机械摘要`);
+      host._sink({
+        kind: EventKind.Notice,
+        level: 'warn',
+        text: `压缩降级 · ${reason} —— 本次改用机械提取（完整历史仍保留）`,
+      });
+      return { text: digestMessages(msgs), degraded: true, failure: reason, calls };
     }
   }
 
@@ -628,25 +787,40 @@ export async function summarizeRegionImpl(
     degraded = true;
   }
   for (let i = startIdx; i < chunks.length; i++) {
+    const startedAt = Date.now();
     try {
-      const text = await callSummaryLLMImpl(
+      const call = await callSummaryLLMImpl(
         host,
         signal,
         buildSummaryPrompt(null, { index: i + 1, total: chunks.length }),
         renderTranscript(chunks[i]),
       );
-      if (!text) throw new Error('empty summary');
-      partials.push(text);
+      calls.push(call);
+      assertUsableSummary(call);
+      partials.push(call.text);
+      host._sink({ kind: EventKind.Notice, level: 'info', text: chunkDoneText(i + 1, chunks.length, startedAt) });
     } catch (e) {
       if (signal.aborted) throw e;
-      log.warn('agent', `chunk ${i + 1}/${chunks.length} summary failed (${errMessage(e)}) — 该块机械提取`);
+      const reason = errMessage(e);
+      log.warn('agent', `chunk ${i + 1}/${chunks.length} summary failed (${reason}) — 该块机械提取`);
+      host._sink({
+        kind: EventKind.Notice,
+        level: 'warn',
+        text: `压缩中 · 第 ${i + 1}/${chunks.length} 块失败（${reason}）—— 该块改用机械提取`,
+      });
       partials.push(digestMessages(chunks[i], host.tools));
+      failures.push(reason);
       degraded = true;
     }
   }
   // mergePartials 只报告合并阶段的降级 — 块阶段的降级必须透传
   const merged = await mergePartialsImpl(host, signal, priorSummary, partials, chunkCap);
-  return { text: merged.text, degraded: degraded || merged.degraded };
+  return {
+    text: merged.text,
+    degraded: degraded || merged.degraded,
+    ...failureText([...failures, ...(merged.failure ? [merged.failure] : [])]),
+    calls: [...calls, ...merged.calls],
+  };
 }
 
 /**
@@ -660,15 +834,21 @@ export async function summaryProviderImpl(host: CompactionHost): Promise<{ prov:
 }
 
 /** 单次摘要 LLM 调用 — 30s 空闲超时守卫（挂起判定，streamWithIdleTimeout），
- *  流仍在产出就让它跑完。max_tokens 固定为输出预算，
- *  配合 chunkCap 构成"永不塞爆"的输入/输出硬上界。 */
+ *  流仍在产出就让它跑完。max_tokens = host.summaryMaxTokens（缺省 8192），
+ *  配合 chunkCap 构成"永不塞爆"的输入/输出硬上界。
+ *
+ *  usage 与发出的 cap 全部入账（2026-09-23）：此前只收 Text 块、usage 被整条丢弃
+ *  ——「摘要为什么返回空」在真机上不可判。空文本**不在这里抛**（调用账要能被
+ *  调用方收下再判），fail-closed 判据在 assertUsableSummary。 */
 export async function callSummaryLLMImpl(
   host: CompactionHost,
   signal: AbortSignal,
   systemPrompt: string,
   userText: string,
-): Promise<string> {
+): Promise<SummaryCall> {
   const { prov } = await summaryProviderImpl(host);
+  const maxTokens = host.summaryMaxTokens;
+  const startedAt = Date.now();
   const stream = streamWithIdleTimeout(prov, signal, {
     messages: [
       { role: 'system', content: systemPrompt },
@@ -676,18 +856,35 @@ export async function callSummaryLLMImpl(
     ],
     tools: [], // 摘要不需要工具
     temperature: 0.3, // 低温用于事实性摘要
-    max_tokens: SUMMARY_OUTPUT_BUDGET,
+    max_tokens: maxTokens,
   });
 
   try {
     let text = '';
+    let usage: Usage | undefined;
     for await (const chunk of stream.chunks) {
       if (chunk.type === ChunkType.Text && chunk.text) {
         text += chunk.text;
       }
+      // 提供方回报的 usage（含 reasoning_tokens / finish_reason）—— 收下并入账
+      if (chunk.type === ChunkType.Usage && chunk.usage) usage = chunk.usage;
       if (chunk.type === ChunkType.Error) throw chunk.err ?? new Error('stream error');
     }
-    return text.trim();
+    const call: SummaryCall = { text: text.trim(), maxTokens, ...(usage ? { usage } : {}) };
+    // 每次调用都落一行（含空返回那次）—— 探针可查「发出的 cap / 回报的 usage」。
+    log.info('agent', 'summary llm response', {
+      provider: prov.name(),
+      model: prov.model(),
+      max_tokens: maxTokens,
+      text_chars: call.text.length,
+      finish_reason: usage?.finish_reason,
+      prompt_tokens: usage?.prompt_tokens,
+      completion_tokens: usage?.completion_tokens,
+      reasoning_tokens: usage?.reasoning_tokens,
+      cache_hit_tokens: usage?.cache_hit_tokens,
+      elapsed_ms: Math.round(Date.now() - startedAt),
+    });
+    return call;
   } catch (e) {
     if (stream.idleTimedOut && !signal.aborted) {
       log.warn('agent', 'summary LLM call stalled (30s no output) — 该次调用放弃');
@@ -698,16 +895,18 @@ export async function callSummaryLLMImpl(
 
 /** 滚动合并分段摘要（含 priorSummary）— 每轮把尽量多段塞进
  *  budgetTokens 内合并为一，直到只剩一段。合并调用失败时
- *  降级为直接拼接（结构化文本拼接本身就是及格的简报）。 */
+ *  降级为直接拼接（结构化文本拼接本身就是及格的简报），并**明说原因**。 */
 export async function mergePartialsImpl(
   host: CompactionHost,
   signal: AbortSignal,
   priorSummary: string | null,
   partials: string[],
   budgetTokens: number,
-): Promise<{ text: string; degraded: boolean }> {
+): Promise<SummaryRun> {
   let texts = [...(priorSummary ? [`<previous-summary>\n${priorSummary}\n</previous-summary>`] : []), ...partials];
   let degraded = false;
+  const calls: SummaryCall[] = [];
+  const failures: string[] = [];
   while (texts.length > 1) {
     const group = [texts[0], texts[1]];
     let rest = texts.slice(2);
@@ -717,19 +916,27 @@ export async function mergePartialsImpl(
     }
     try {
       const merged = await callSummaryLLMImpl(host, signal, buildMergePrompt(), group.join('\n\n---\n\n'));
-      if (!merged) throw new Error('empty merge');
-      texts = [merged, ...rest];
+      calls.push(merged);
+      assertUsableSummary(merged, 'merge');
+      texts = [merged.text, ...rest];
     } catch (e) {
       if (signal.aborted) throw e;
-      log.warn('agent', `merge round failed (${errMessage(e)}) — 降级为拼接`);
+      const reason = errMessage(e);
+      log.warn('agent', `merge round failed (${reason}) — 降级为拼接`);
+      host._sink({
+        kind: EventKind.Notice,
+        level: 'warn',
+        text: `压缩降级 · 分段摘要合并失败（${reason}）—— 已直接拼接`,
+      });
       texts = [group.join('\n\n---\n\n'), ...rest];
+      failures.push(reason);
       degraded = true;
     }
   }
   let final = texts[0] ?? '';
   // 防御性封顶 — 拼接路径下摘要可能超长
   if (countText(final) > 8192) final = final.slice(0, 32768) + '\n…(过长摘要已截断)';
-  return { text: final, degraded };
+  return { text: final, degraded, ...failureText(failures), calls };
 }
 
 /** catch(e) unknown 取消息（对齐旧 e?.message || e 语义）。 */
