@@ -631,6 +631,19 @@
   color: var(--ink-3);
   font-size: calc(9px * var(--font-scale));
 }
+/* 行上动作名（添加 / 移除）——「拉取」与「添加」是两个动作，这一步要有动词 */
+.pp-catalog-verb {
+  flex: 0 0 auto;
+  color: var(--seal-deep);
+  font-size: calc(9px * var(--font-scale));
+  letter-spacing: 0.05em;
+  border: 1px solid color-mix(in oklch, var(--seal) 30%, var(--paper));
+  padding: 0 4px;
+}
+.pp-catalog-verb.on {
+  color: var(--ink-3);
+  border-color: var(--rule-soft-ink);
+}
 
 /* ── OAuth 订阅登录面板（ProviderDetail + AddProviderSheet 弹层共用）── */
 .pp-oauth-accounts {
@@ -1132,24 +1145,40 @@
   flex: 1;
   min-width: 0;
 }
-/* 添加弹层的目录头与逐行勾选（2026-09-23：拉取只填目录，勾选才进可用模型） */
+/* 添加弹层的目录头与逐行「＋ 添加 / ✓ 移除」（2026-09-23：拉取只填目录，
+   行首动作按钮才是添加——行业惯例的「拉取 → 添加」两步） */
 .pp-pick-head {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 5px;
 }
-.pp-pick-check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
-}
-.pp-pick-check input {
+.pp-pick-act {
   flex: 0 0 auto;
-  margin: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule-soft-ink);
+  background: var(--paper);
+  color: var(--seal-deep);
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  transition:
+    color var(--snap),
+    border-color var(--snap),
+    background var(--snap);
+}
+.pp-pick-act:hover {
+  border-color: var(--seal);
+}
+.pp-pick-act.on {
+  color: var(--ink-2);
+  border-color: color-mix(in oklch, var(--seal) 45%, var(--paper));
+  background: color-mix(in oklch, var(--seal) 8%, transparent);
 }
 .pp-pick-setdefault {
   flex: 0 0 auto;

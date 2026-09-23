@@ -187,7 +187,9 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     try {
       const count = await onFetchModels();
       setFetchMsg(
-        count > 0 ? `目录已更新：${count} 个模型——在下方「模型目录」里勾选要启用的` : '端点未返回模型——可手动补模型 id',
+        count > 0
+          ? `目录已更新：${count} 个模型——在下方「模型目录」里点「添加」挑要用的`
+          : '端点未返回模型——可手动补模型 id',
       );
     } catch (e) {
       setFetchMsg(e instanceof Error ? e.message : String(e));
@@ -548,7 +550,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                 {catalogIds.length === 0 ? (
                   <div className="pp-f-hint">
                     还没有目录快照——点上方「刷新目录」从该提供方 /models
-                    拉取。拉取只更新目录与元数据，不会改动上面的可用模型。
+                    拉取。拉取只把远端清单取回来（不改可用模型），要从里面挑模型用，点行上的「添加」。
                   </div>
                 ) : (
                   <>
@@ -566,15 +568,15 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                         title="把目录里的模型全部加入可用模型"
                         onClick={() => onSetEnabledModels([...new Set([...models, ...catalogIds])])}
                       >
-                        全选
+                        全部添加
                       </button>
                       <button
                         type="button"
                         className="sp-btn-sm"
-                        title="取消目录里的全部勾选（手动添加的可用模型保留）"
+                        title="把目录里的模型全部移出可用模型（手动添加的保留）"
                         onClick={() => onSetEnabledModels(models.filter((m) => !catalogIds.includes(m)))}
                       >
-                        全部取消
+                        全部移除
                       </button>
                     </div>
                     <div className="pp-catalog-list">
@@ -595,6 +597,9 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                               </span>
                             )}
                             {win > 0 && <span className="pp-catalog-win">{Math.round(win / 1000)}k</span>}
+                            {/* 动作名写在行上（2026-09-23 用户 UX 复盘：「拉取」与「添加」
+                                是两个动作——这一步必须有明确动词，不是裸勾选框） */}
+                            <span className={`pp-catalog-verb${on ? ' on' : ''}`}>{on ? '移除' : '添加'}</span>
                           </label>
                         );
                       })}
@@ -608,7 +613,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
 
           <div className="pp-f-hint">
             创作坞模型下拉只列「可用模型」；「新会话默认」= 最近在创作坞选用的模型，自动跟从（不可在此改）。 目录 =
-            该提供方 /models 的最近一次快照（只读）；勾选即写可用模型，手动添加的不受目录变动影响。
+            该提供方 /models 的最近一次快照（只读）——点行上的「添加」才进可用模型，手动添加的不受目录变动影响。
           </div>
         </div>
 

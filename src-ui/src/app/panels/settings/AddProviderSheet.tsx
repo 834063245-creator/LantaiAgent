@@ -238,7 +238,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
             const tpl = findVendorTemplate(name.trim());
             const seed = tpl?.defaultModel?.trim();
             setModels((prev) => (seed && !prev.includes(seed) ? (prev.length === 0 ? [seed] : [...prev, seed]) : prev));
-            // seed 同时勾上（否则「确认添加」会因启用集空而被拦——seed 就是本行的默认模型）
+            // seed **例外地直接添加**：它是厂商模板钦定的默认模型（一个，且已具名告知）
+            // ——OAuth 订阅的 /models 不一定可用，空手落地会被「确认添加」拦下。
+            // 拉取（「从账号拉取模型」）则一律只填目录，不自动添加。
             setEnabled((prev) => (seed && !prev.includes(seed) ? [...prev, seed] : prev));
             setDefaultModel((prev) => prev || seed || '');
             setOauthStatus({
@@ -296,12 +298,14 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       const ids = found.map((m) => m.id).filter(Boolean);
       const merged = [...ids, ...models.filter((m) => !ids.includes(m))];
       setModels(merged);
-      // 目录/启用分层：新拉到的 id 默认勾上（本弹层从零建行；用户可逐条取消）
-      setEnabled((prev) => [...new Set([...prev, ...ids])]);
+      // 拉取 = 只看远端有什么（2026-09-23 三层 + 用户 UX 复盘）：**不自动添加**，
+      // 添加是用户的显式动作（行首「＋」/「全部添加」）——「拉过来就全在列表里」
+      // 正是本批要根治的那一步缺失。
       setPulledMeta((prev) => ({ ...prev, ...(prov.lastModelMeta?.() ?? {}) }));
       setPulled(true);
-      if (merged.length > 0 && !defaultModel) setDefaultModel(merged[0]);
-      setFetchMsg(ids.length > 0 ? `已拉取 ${ids.length} 个模型` : '该端点未返回模型——可手动补模型 id');
+      setFetchMsg(
+        ids.length > 0 ? `已拉取 ${ids.length} 个模型——点行首「＋」添加要用的` : '该端点未返回模型——可手动补模型 id',
+      );
     } catch (e) {
       // 拉取失败不阻断：如实提示，仍可手动补模型（错误不静默）
       setPulled(true);
@@ -323,12 +327,13 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       const found = (await prov.fetchModels?.()) ?? [];
       const ids = found.map((m) => m.id).filter(Boolean);
       setModels(ids);
-      setEnabled(ids); // 新拉取 = 新目录 → 默认全勾（用户随即可取消/全选/清空）
+      // 新拉取 = 新目录，**不自动添加**（同上：添加是用户的显式动作）
       // 元数据（端点披露多少收多少）——确认添加时随行落盘
       setPulledMeta((prev) => ({ ...prev, ...(prov.lastModelMeta?.() ?? {}) }));
       setPulled(true);
-      if (ids.length > 0) setDefaultModel(ids[0]);
-      setFetchMsg(ids.length > 0 ? `已拉取 ${ids.length} 个模型` : '该端点未返回模型——可手动输入模型 id');
+      setFetchMsg(
+        ids.length > 0 ? `已拉取 ${ids.length} 个模型——点行首「＋」添加要用的` : '该端点未返回模型——可手动输入模型 id',
+      );
     } catch (e) {
       // 拉取失败不阻断：如实提示，仍可手动补模型（错误不静默）
       setPulled(true);
@@ -349,8 +354,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     setPulled(true);
   };
 
-  /** 勾选/取消一个模型（= 写启用集）。取消的正是「新会话默认」时顶第一个可用项
-   *  （否则默认模型落在启用集外，创作坞触发器会显示一个不在下拉里的模型）。 */
+  /** **添加 / 移除**一个模型（行首「＋」/「✓」）——「添加」是进「可用模型」的
+   *  唯一动作（拉取只填目录，不自动添加）。移除的正是「新会话默认」时顶第一个
+   *  已添加项（否则默认模型落在可用模型之外，创作坞触发器会显示一个不在下拉里的模型）。 */
   const toggleEnabled = (id: string) => {
     setEnabled((prev) => {
       const on = prev.includes(id);
@@ -386,7 +392,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     }
     const ids = [...new Set(enabled.filter((m) => m?.trim()))];
     if (ids.length === 0) {
-      setError('还没有可用模型——先登录（OAuth）/拉取模型并在列表里勾选，或手动补一个模型 id');
+      setError('还没有可用模型——先在列表里点「＋」添加要用的模型（或「全部添加」），也可手动补一个模型 id');
       modelInputRef.current?.focus();
       return;
     }
@@ -660,15 +666,16 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
 
         {models.length > 0 ? (
           <>
-            {/* 目录 / 启用分层（2026-09-23）：拉取只填目录，勾选才进「可用模型」 */}
+            {/* 「拉取」与「添加」是两个动作（2026-09-23 用户 UX 复盘）：
+                拉取只填**目录**（远端有什么），行首「＋」才是**添加**（进可用模型）。 */}
             <div className="pp-pick-head">
               <span className="pp-f-label">可用模型</span>
-              <span className="pp-chip">
-                已启用 {enabled.length} / 目录 {models.length}
+              <span className={`pp-chip${enabled.length === 0 ? ' clear' : ''}`}>
+                已添加 {enabled.length} / 目录 {models.length}
               </span>
               <span className="pp-spacer" />
               <button type="button" className="sp-btn-sm" onClick={() => setEnabled(models)}>
-                全选
+                全部添加
               </button>
               <button
                 type="button"
@@ -678,7 +685,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                   setDefaultModel('');
                 }}
               >
-                清空
+                全部移除
               </button>
             </div>
             <div className="pp-pick-models">
@@ -686,21 +693,23 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                 const on = enabled.includes(id);
                 return (
                   <div key={id} className={`pp-pick-model${on ? ' selected' : ''}`} title={id}>
-                    <label className="pp-pick-check">
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        aria-label={`启用 ${id}`}
-                        onChange={() => toggleEnabled(id)}
-                      />
-                      <span className="pp-pick-model-id">{id}</span>
-                    </label>
+                    <button
+                      type="button"
+                      className={`pp-pick-act${on ? ' on' : ''}`}
+                      aria-pressed={on}
+                      aria-label={on ? `从可用模型移除 ${id}` : `添加 ${id} 到可用模型`}
+                      title={on ? `从可用模型移除 ${id}` : `添加 ${id} 到可用模型`}
+                      onClick={() => toggleEnabled(id)}
+                    >
+                      {on ? '✓' : '＋'}
+                    </button>
+                    <span className="pp-pick-model-id">{id}</span>
                     {defaultModel === id && <span className="pp-model-chip-default">新会话默认</span>}
                     <button
                       type="button"
                       className="pp-pick-setdefault"
                       disabled={!on || defaultModel === id}
-                      title={on ? '设为新会话默认模型' : '先勾选启用，才能设为默认'}
+                      title={on ? '设为新会话默认模型' : '先点「＋」添加，才能设为默认'}
                       onClick={() => setDefaultModel(id)}
                     >
                       设为默认
@@ -709,6 +718,11 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                 );
               })}
             </div>
+            {enabled.length === 0 && (
+              <div className="pp-f-hint">
+                目录里的模型还没添加——点行首「＋」挑要用的，或「全部添加」。确认添加至少需要一个。
+              </div>
+            )}
           </>
         ) : (
           <div className="pp-f-hint">
