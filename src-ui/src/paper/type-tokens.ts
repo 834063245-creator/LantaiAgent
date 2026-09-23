@@ -283,7 +283,12 @@ export const ASSET_TOKENS = {
     preSize: 11,
     preLh: 1.6,
   },
-  media: { padV: 2, labelSize: 13, labelMarginB: 4, imgMaxH: 320, rowSize: 11 },
+  media: { imgMaxH: 320, rowSize: 11 },
+  // viewer（渲染面补全 B1，2026-09-23）：查看器**公共壳**（.pp-viewer*）的版式数字。
+  // 壳 = 题签行（plateHeadH 已含）+ 题名行 + 内容区；media 组只剩媒体本身的两个数字
+  // （图上限 / 文件行字号），壳的 padding 与题名行字号归本组（原在 media 组）。
+  // audioBoxH：音频查看器**固定盒高**（chem boxH 先例——盒高与内容无关，静态镜像精确）。
+  viewer: { padV: 2, labelSize: 13, labelMarginB: 4, audioBoxH: 54, metaSize: 11 },
   // interactiveBoxH（科研渲染 #16）：ECharts 交互图固定盒高（canvas 自绘，
   // 盒高恒定——measure 静态镜像精确，RO 恒挂仅兜底）
   //
@@ -497,10 +502,13 @@ export const ASSET_DERIVED = {
   jsonPreSize: ASSET_TOKENS.json.preSize,
   jsonPreLh: ASSET_TOKENS.json.preLh,
 
-  mediaPadV: ASSET_TOKENS.media.padV * 2, // .pp-media padding 2×2
-  mediaLabelH: ASSET_TOKENS.media.labelSize * 1.8 + ASSET_TOKENS.media.labelMarginB,
   mediaImgMaxH: ASSET_TOKENS.media.imgMaxH,
   mediaRowSize: ASSET_TOKENS.media.rowSize,
+
+  viewerPadV: ASSET_TOKENS.viewer.padV * 2, // .pp-viewer padding 2×2
+  viewerLabelH: ASSET_TOKENS.viewer.labelSize * 1.8 + ASSET_TOKENS.viewer.labelMarginB,
+  viewerAudioBoxH: ASSET_TOKENS.viewer.audioBoxH, // .pp-viewer-audio-el 固定盒高
+  viewerAudioMetaH: 2 + ASSET_TOKENS.viewer.metaSize * 1.8, // .pp-viewer-audio flex gap 2 + 读数行
 
   /** 图版题签行总高（严格等于原题注行高：题注字号行高 + 题注下距；题签行内部
    *  把该下距拆成「下内距 + 1px 规线 + 规线下间距」⇒ 换装不动测高）。 */

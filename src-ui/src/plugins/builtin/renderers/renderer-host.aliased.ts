@@ -16,11 +16,14 @@
 // React 类型系统摩擦（构建产物不需要通过项目 tsc，但保持类型合法便于
 // biome 与编辑器）。
 
-import type { ComponentType, ReactNode } from 'react';
+import type { Component, ComponentType, ReactNode } from 'react';
 
-/** 宿主桥最小形状（与 plugins/loader.ts 的注入面一致）。 */
+/** 宿主桥最小形状（与 plugins/loader.ts 的注入面一致）。
+ *  注：运行期注入的是 React **本体**（`react: React`），故 `Component` 在产物域同样
+ *  可用——这里只是把类型面补齐（查看器宿主用错误边界类组件，B1 2026-09-23）。 */
 interface PluginHostBridge {
   react: {
+    Component: typeof Component;
     createElement: (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) => ReactNode;
     Fragment: unknown;
     useEffect: (effect: () => undefined | (() => undefined), deps?: readonly unknown[]) => undefined;

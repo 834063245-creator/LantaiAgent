@@ -139,15 +139,22 @@ function pluginSpecs() {
   return [...roster].sort((a, b) => a.buildOrder - b.buildOrder).map((e) => ({ ...e, name: 'hologram/' + e.dir }));
 }
 
-/** esbuild onResolve 钩子工厂：把 `./<hostModule>` 及其 jsx-runtime 子路径
- *  重定向到 aliased 版本（仅对来源在插件目录内的 import 生效）。
+/** esbuild onResolve 钩子工厂：把指向 `./<hostModule>` 的 import（及其 jsx-runtime
+ *  子路径）重定向到 aliased 版本（仅对来源在插件目录内的 import 生效）。
  *  esbuild automatic JSX 会产出 `import … from './<hostModule>/jsx-runtime'`
- *  （jsxImportSource 追加 /jsx-runtime）——两种形态都映射到 aliased 文件。 */
+ *  （jsxImportSource 追加 /jsx-runtime）——两种形态都映射到 aliased 文件。
+ *
+ *  2026-09-23（renderers/viewers 子目录批）：匹配从「同目录形态 `./host`」放宽到
+ *  「**末段**是 host 名的任意相对形态」——产物内部允许子目录（`viewers/audio.tsx`
+ *  写 `../renderer-host`，其 JSX 注入也是相对自身的 `./renderer-host/jsx-runtime`）。
+ *  旧正则只认 `^\./host$` ⇒ 子目录里的 import 漏过重定向、解析到真 `host.ts`，
+ *  把 `app/overlay.tsx` 一类宿主文件拖进产物图并在那里炸 jsx-runtime 解析。
+ *  仍然按 importer 是否在本产物目录内收口，跨产物不受影响。 */
 function redirectHostModule(srcDir, hostModule) {
   return {
     name: 'redirect-' + hostModule,
     setup(buildApi) {
-      const filter = new RegExp('^\\./' + hostModule + '(?:/jsx-runtime)?$');
+      const filter = new RegExp('(?:^|/)' + hostModule + '(?:/jsx-runtime)?$');
       buildApi.onResolve({ filter }, (args) => {
         if (args.importer && args.importer.startsWith(srcDir)) {
           return { path: join(srcDir, hostModule + '.aliased.ts') };

@@ -1895,7 +1895,23 @@
 .pp-block.pp-pinned {
   padding: var(--pp-ch-pin-padTop) var(--pp-ch-pin-padH) var(--pp-ch-pin-padBottom);
   background-color: var(--paper-deep);
-  box-shadow: inset 0 1px 0 var(--sheet-lit);
+  /* ── 2026-09-23 质感批（用户拍板「图版 + 纹 + 包边 + 落影」）──
+   * ① 纹：paper-sheet 实拍纤维纹，尺寸压 900px。桌面走 fiber + grain 两张粗纹，
+   *    卡片走 sheet 细纹 ⇒ **两种纸，不是同一张纸的深浅**。
+   *    ⚠ 本条**显式推翻** 09-19 便条批的「实色深纸无纹」——那批把纹理当干扰删掉，
+   *    而纹理恰恰是质感的来源（真机取证与三轮台子见 taste-ledger 2026-09-23 条）。
+   * ② 包边：四层物理包边（受光左上 / 背光右下），与流区同配方。
+   * ③ 落影：`--shadow-sheet` 硬偏移族（无模糊）。钉住块已离开流、躺在桌面上，
+   *    按「**纸片件**」而不是「纸内件」适用 —— §11 该行同批改写。
+   * ④ 框：单线（`--ink-2`）。图版的双线在台子 `pin-species-ab` 里，但双线加包边会
+   *    互相吃（box-shadow 实心 spread 层序），故本批取单线；真机若嫌框不够可回退双线。 */
+  background-image: url("../../../assets/paper/paper-sheet.jpg");
+  background-size: 900px 900px;
+  box-shadow:
+    var(--shadow-sheet),
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 1px var(--ink-2);
   z-index: 30;
 }
 
@@ -1909,7 +1925,9 @@
   width: auto;
   margin: 0 0 var(--pp-ch-pin-headGap);
   padding: 0 0 var(--pp-ch-pin-headRuleGap);
-  border-bottom: var(--rule-soft);
+  /* 2026-09-23 质感批：报头规线由弱线档（--rule-soft = ink-4）提到 ink-3 ——
+   * 卡片外围有了框线之后，报头线落在同一档会跟框线抢读。 */
+  border-bottom: 1px solid var(--ink-3);
   flex-direction: row;
   align-items: center;
   gap: 12px;
@@ -4386,7 +4404,16 @@
   line-height: var(--pp-ch-strip-lh);
   cursor: grab;
   z-index: 40;
-  box-shadow: inset 0 1px 0 var(--sheet-lit);
+  /* 2026-09-23 质感批：纸条跟钉块**同一套语言**（「钉住块与纸条」换装纪律从 09-19
+   * 延续；只改钉块会让两者读起来是两代东西）。同纹同包边同落影，框取单线
+   * （纸条更窄，双线框在 480px 宽上会过重）。 */
+  background-image: url("../../../assets/paper/paper-sheet.jpg");
+  background-size: 900px 900px;
+  box-shadow:
+    var(--shadow-sheet),
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 1px var(--ink-2);
 }
 .pp-strip.pp-dragging {
   cursor: grabbing;
@@ -5357,14 +5384,38 @@
   color: var(--ink-3);
 }
 
-.pp-media {
-  padding: var(--pp-asset-media-padV) 0;
+/* 查看器公共壳（B1 2026-09-23）：题签行（.pp-plate 恒在）+ 题名行 + 内容区 + 降级行。
+   壳负责「按扩展名分发 + 降级」，查看器只管内容——样式分层同此。 */
+.pp-viewer {
+  padding: var(--pp-asset-viewer-padV) 0;
 }
-.pp-media-label {
+.pp-viewer-label {
   font-family: var(--f-song);
-  font-size: var(--pp-asset-media-labelSize);
+  font-size: var(--pp-asset-viewer-labelSize);
   color: var(--ink-2);
-  margin-bottom: var(--pp-asset-media-labelMarginB);
+  margin-bottom: var(--pp-asset-viewer-labelMarginB);
+}
+.pp-viewer-error {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-media-rowSize);
+  color: var(--fail);
+  margin-bottom: var(--pp-asset-viewer-labelMarginB);
+}
+/* 音频查看器（B1）：固定盒高（原生控件高度随 UA 变 ⇒ 静态测高镜像要钉死） + 时长读数行 */
+.pp-viewer-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pp-viewer-audio-el {
+  display: block;
+  width: 100%;
+  height: var(--pp-asset-viewer-audioBoxH);
+}
+.pp-viewer-audio-meta {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
 }
 .pp-media-img {
   max-width: 100%;

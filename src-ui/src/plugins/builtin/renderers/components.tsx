@@ -51,7 +51,9 @@ import type { ConfirmCardResponse } from '../../../agent/agent-types';
 import type { BlockRendererProps } from '../../../composition/renderer-service';
 // 物类签真源（2026-09-23 图版架批上移宿主层；本件取用 + 原样转出，见下方题签段注）
 import { plateSignOf } from '../../../paper/plate-sign';
-import { rendererHooks, rendererOverlay, rendererRpc } from './renderer-host';
+import { rendererHooks, rendererOverlay, rendererReact, rendererRpc } from './renderer-host';
+import { normalizeExt, type ViewerBytes, viewerRegistry } from './viewer-registry';
+import { registerBuiltinViewers } from './viewers';
 
 echarts.use([
   BarChart,
@@ -876,27 +878,12 @@ function MetricBody({ block }: BlockRendererProps) {
   );
 }
 
-/* ── media ── */
+/* ── media（= 查看器宿主，B1 2026-09-23）──
+ *  MIME 表与图片/视频组件已迁入 viewer-registry 的查看器定义（viewers/*）；
+ *  本段只剩「查表分发 + 公共壳 + 降级链」。 */
 
-/** 媒体扩展名 → MIME 类型（冻结常量表——初始化后只读，模块级归属第 4 类） */
-const MEDIA_MIME: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  bmp: 'image/bmp',
-  svg: 'image/svg+xml',
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  ogg: 'video/ogg',
-  mov: 'video/quicktime',
-};
-
-/** 图片扩展名集合 */
-const MEDIA_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
-/** 视频扩展名集合 */
-const MEDIA_VIDEO_EXTS = new Set(['mp4', 'webm', 'ogg', 'mov']);
+/** 内置查看器注册（模块装载期一次——先例 agent/asset-kinds.ts 尾部；重名装载期 throw）。 */
+registerBuiltinViewers();
 
 /** 媒体加载状态（base64 拉取 + 生命周期守卫） */
 type MediaLoadState =
@@ -943,58 +930,134 @@ function useMediaData(filePath: string | undefined): MediaLoadState {
   return state;
 }
 
+/** 文件壳（未命中查看器 / 查看器降级）：签 = 扩展名 + 路径（B1 前行为，零变化）。 */
+function FileShell({ ext, filePath }: { ext: string; filePath?: string }) {
+  return (
+    <div className="pp-media-file">
+      {ext && <span className="pp-media-ext">{ext}</span>}
+      <span className="pp-media-path">{filePath ?? ''}</span>
+    </div>
+  );
+}
+
+/** 降级行：说清**哪个文件、哪一步**（错误即导航；不静默、不空白）。 */
+function ViewerError({ text }: { text: string }) {
+  return <div className="pp-viewer-error">{text}</div>;
+}
+
+/** 字节数 → MB 读数（降级文案用）。 */
+function mbText(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+interface ViewerBoundaryProps {
+  /** 失败文案点名查看器（错误即导航） */
+  viewerId: string;
+  /** 降级体（文件壳）——边界自己渲染，不借父组件状态（免一层异步提交） */
+  fallback: ReactNode;
+  children?: ReactNode;
+}
+
+interface ViewerBoundaryState {
+  failed: boolean;
+  message: string;
+}
+
+/** 查看器渲染错误边界：某个查看器 render 抛错 → 文件壳 + 可读错误，**不炸整棵纸面**。
+ *  `rendererReact.Component` 在产物域由宿主桥的 React 全量提供（loader.ts 注入的就是
+ *  React 本体），类型面在 renderer-host.aliased.ts 同形声明。
+ *  换文件（ext/路径变）时宿主经 `key` 换实例 ⇒ 失败态不粘到下一个文件上。 */
+class ViewerBoundary extends rendererReact.Component<ViewerBoundaryProps, ViewerBoundaryState> {
+  state: ViewerBoundaryState = { failed: false, message: '' };
+  static getDerivedStateFromError(error: unknown): ViewerBoundaryState {
+    return { failed: true, message: error instanceof Error ? error.message : String(error) };
+  }
+  render(): ReactNode {
+    if (!this.state.failed) return this.props.children ?? null;
+    return (
+      <>
+        <ViewerError text={`查看器「${this.props.viewerId}」渲染失败：${this.state.message}`} />
+        {this.props.fallback}
+      </>
+    );
+  }
+}
+
+/** 媒体块体 = **查看器宿主**（B1）：`ext → viewerRegistry.resolve` → 命中出查看器、
+ *  未命中出文件壳；壳件（题签行 + 题名行 + 内容区）与降级链都在这里，查看器只管自己那块。
+ *
+ *  降级链（注册面缺失不再等价于「给你看 JSON」）：
+ *    未命中 / 需要字节但没有路径 → 文件壳（B1 前行为）；
+ *    读取失败 → 可读错误行（文案与旧实现逐字一致）；
+ *    字节超 maxBytes → 可读错误 + 文件壳（**不静默截断**）；
+ *    渲染抛错 → 错误边界兜住 + 文件壳（可读错误带查看器 id）。 */
 function MediaBody({ block }: BlockRendererProps) {
   const p = block.payload as { fileId?: string; filePath?: string; label?: string; ext?: string };
   const label = p.label || p.fileId || p.filePath || '文件';
-  const ext = (p.ext || '').toLowerCase();
-  const mime = MEDIA_MIME[ext];
-  const isImage = MEDIA_IMAGE_EXTS.has(ext);
-  const isVideo = MEDIA_VIDEO_EXTS.has(ext);
-  // 只有图片/视频才需要读文件内容；未知类型走文件壳，不浪费一次 RPC
-  const isMedia = isImage || isVideo;
-  const loaded = useMediaData(isMedia ? p.filePath : undefined);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const loadingNode =
-    loaded.status === 'error' ? (
-      <div className="pp-media-loading">读取失败：{loaded.error}</div>
-    ) : (
-      <div className="pp-media-loading">加载中…</div>
-    );
-  const src =
-    loaded.status === 'ready' && loaded.data
-      ? `data:${mime ?? (isVideo ? 'video/mp4' : 'image/png')};base64,${loaded.data}`
-      : null;
-  const previewBody = isVideo ? (
-    // biome-ignore lint/a11y/useMediaCaption: 预览用户本地视频，无字幕轨道来源（非交互媒体）
-    <video className="pp-media-preview" src={src ?? undefined} controls autoPlay aria-label={label} />
-  ) : (
-    <img className="pp-media-preview" src={src ?? undefined} alt={label} />
-  );
-  const Overlay = rendererOverlay;
-  return (
-    <div className="pp-media">
-      <PlateHead kind="media" titleClass="pp-plate-title" />
-      <div className="pp-media-label">{label}</div>
-      {isImage && p.filePath ? (
-        src ? (
-          <button type="button" className="pp-media-open" onClick={() => setPreviewOpen(true)}>
-            <img className="pp-media-img" src={src} alt={label} />
-          </button>
-        ) : (
-          loadingNode
-        )
-      ) : isVideo && p.filePath ? (
-        // biome-ignore lint/a11y/useMediaCaption: 展示用户本地视频，无字幕轨道来源（非交互媒体）
-        <video className="pp-media-video" src={src ?? undefined} controls aria-label={label} />
+  const ext = normalizeExt(p.ext ?? '');
+  const filePath = p.filePath;
+  const def = viewerRegistry.resolve(ext);
+  // 只有需要字节的查看器才读文件内容；文件壳/只看元数据的查看器不浪费一次 RPC
+  const needsBytes = Boolean(def?.needsBytes && filePath);
+  const loaded = useMediaData(needsBytes ? filePath : undefined);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+
+  const base64 = loaded.status === 'ready' ? loaded.data : '';
+  const mime = def?.mimes?.[ext];
+  const bytes: ViewerBytes | undefined =
+    base64 && mime ? { kind: 'data-uri', value: `data:${mime};base64,${base64}` } : undefined;
+  // base64 字符数 → 原始字节数（4 字符表 3 字节）；上限判定按原始字节，不按字符串长
+  const bytesLen = base64 ? Math.floor((base64.length * 3) / 4) : 0;
+  const limit = def?.maxBytes ?? 0;
+
+  const shell = <FileShell ext={ext} filePath={filePath} />;
+  let body: ReactNode;
+  if (!def || (def.needsBytes && !filePath)) {
+    body = shell; // 未命中查看器 / 无路径可读：文件壳（B1 前行为，零变化）
+  } else if (needsBytes && loaded.status !== 'ready') {
+    body =
+      loaded.status === 'error' ? (
+        <div className="pp-media-loading">读取失败：{loaded.error}</div>
       ) : (
-        <div className="pp-media-file">
-          {ext && <span className="pp-media-ext">{ext}</span>}
-          <span className="pp-media-path">{p.filePath ?? ''}</span>
-        </div>
-      )}
-      {/* 点击放大浏览：全局浮层（portal 到 body）+ Escape/点遮罩关闭 */}
-      <Overlay open={previewOpen} onClose={() => setPreviewOpen(false)} portal className="pp-media-preview-overlay">
-        {previewBody}
+        <div className="pp-media-loading">加载中…</div>
+      );
+  } else if (limit > 0 && bytesLen > limit) {
+    body = (
+      <>
+        <ViewerError
+          text={`${mbText(bytesLen)} 超过「${def.id}」查看器的 ${mbText(limit)} 上限——截断的媒体不可用，故不做截断读取，已退回文件壳`}
+        />
+        {shell}
+      </>
+    );
+  } else {
+    const Viewer = def.component;
+    body = (
+      <ViewerBoundary key={`${ext}:${filePath ?? ''}`} viewerId={def.id} fallback={shell}>
+        <Viewer
+          block={block}
+          label={label}
+          filePath={filePath}
+          bytes={bytes}
+          mode="stream"
+          onOpenOverlay={() => setOverlayOpen(true)}
+        />
+      </ViewerBoundary>
+    );
+  }
+
+  const Overlay = rendererOverlay;
+  const OverlayViewer = def?.component;
+  return (
+    <div className="pp-viewer">
+      <PlateHead kind="media" title={block.asset?.title} titleClass="pp-plate-title" />
+      <div className="pp-viewer-label">{label}</div>
+      <div className="pp-viewer-body">{body}</div>
+      {/* 点击放大浏览：全局浮层（portal 到 body）+ Escape/点遮罩关闭（放大态 = 同一查看器的 mode='overlay'） */}
+      <Overlay open={overlayOpen} onClose={() => setOverlayOpen(false)} portal className="pp-media-preview-overlay">
+        {OverlayViewer ? (
+          <OverlayViewer block={block} label={label} filePath={filePath} bytes={bytes} mode="overlay" />
+        ) : null}
       </Overlay>
     </div>
   );

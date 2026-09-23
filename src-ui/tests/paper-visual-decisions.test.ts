@@ -185,23 +185,30 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
 });
 
 describe('钉住与纸条（09-05 松手定夺批 → 09-19 便条批 · 用户拍板「甲+丙」）', () => {
-  it('钉住块 = 便条：纸内白边 + 实色深纸无纹 + 贴平无落影（§11 纸内件无投影）', () => {
+  it('钉住块 = 纸片件：纸内白边 + sheet 细纹 + 四层包边 + --shadow-sheet 落影（§11 纸片件，2026-09-23 翻案）', () => {
     const pin = ruleBody(PANEL_CSS, '.pp-block.pp-pinned {');
     // 甲·留白：墨不再贴纸缘（流内 720 墨借 1440 纸的白边，钉住后必须自付）
     expect(pin).toContain('var(--pp-ch-pin-padTop)');
     expect(pin).toContain('var(--pp-ch-pin-padH)');
     expect(pin).toContain('var(--pp-ch-pin-padBottom)');
-    // 丙·便条：实色深纸（桌面有纹 / 流区有纹 / 便条素纸——三分材质）
+    // 纸色不动（--paper-deep），材质改由**纹**承担：桌面 fiber+grain 粗纹 / 卡片 sheet 细纹
+    // ⇒ 两种纸，不是同一张纸的深浅。**推翻 09-19「实色深纸无纹」**（纹理是质感来源不是干扰）。
     expect(pin).toContain('background-color: var(--paper-deep)');
-    expect(pin).not.toContain('paper-sheet.jpg');
-    // 贴平：纸内件无投影（规格书 §11 层次法原表列，09-05 批曾越）；接触落影族
-    // 自此只归流区（那张「纸」）
-    expect(pin).not.toContain('var(--shadow-sheet');
+    expect(pin).toContain('paper-sheet.jpg');
+    expect(pin).toContain('background-size: 900px 900px');
+    // 四层物理包边（受光左上 / 背光右下）——与流区同配方
+    expect(pin).toContain('inset 3px 4px 5px var(--sheet-lit)');
+    expect(pin).toContain('inset -2px -3px 6px var(--sheet-shade)');
+    // 落影：钉住块已离开流、躺在桌面上，按「**纸片件**」适用 --shadow-sheet 硬偏移族。
+    // §11「纸内件无投影」原表列**于 2026-09-23 翻案**——那行说的是仍被夹在纸内的排印件。
+    expect(pin).toContain('var(--shadow-sheet');
     expect(pin).not.toContain('var(--sheet-band)');
     expect(pin).toContain('var(--sheet-lit)');
+    // 框取单线（双线加包边会互相吃，见 CSS 注释）
+    expect(pin).toContain('inset 0 0 0 1px var(--ink-2)');
     expect(pin).not.toContain('outline');
     expect(pin).not.toContain('border:');
-    // hover 不再提落影（无影可提）——hover 信号在收回钮与文类签（各自规则）
+    // hover 不再提落影（落影已常显）——hover 信号在收回钮与文类签（各自规则）
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-pinned:hover {')).toBe('');
   });
 
@@ -211,7 +218,9 @@ describe('钉住与纸条（09-05 松手定夺批 → 09-19 便条批 · 用户�
     expect(head).toContain('flex-direction: row');
     expect(head).toContain('var(--pp-ch-pin-headGap)');
     expect(head).toContain('var(--pp-ch-pin-headRuleGap)');
-    expect(head).toContain('var(--rule-soft)');
+    // 2026-09-23 质感批：报头规线由弱线档（--rule-soft = ink-4）提到 ink-3 ——
+    // 卡片外围有了框线之后，报头线落在同一档会跟框线抢读
+    expect(head).toContain('1px solid var(--ink-3)');
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-pinned .pp-kind::after')).toContain('display: none');
     // 方墨点身份（D2 方点语言，常显、不占朱砂）替 hover 才显形的竖排「钉住」签
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-pinned .pp-kind .pp-zh::before')).toContain('var(--pp-ch-pin-dot)');
@@ -228,13 +237,19 @@ describe('钉住与纸条（09-05 松手定夺批 → 09-19 便条批 · 用户�
     expect(MEASURE_TS).toContain('CHROME_DERIVED.pinTextInset');
   });
 
-  it('纸条 = 便条族同纸：纸内白边 18/20 + 实色深纸无纹 + 贴平；题签墨阶 + 方点（不占常驻朱砂）', () => {
+  it('纸条 = 纸片件同族：纸内白边 18/20 + sheet 细纹 + 包边 + 落影（与钉块同套语言）；题签墨阶 + 方点（不占常驻朱砂）', () => {
     const strip = ruleBody(PANEL_CSS, '.pp-strip {');
     expect(strip).not.toContain('border:');
     expect(strip).toContain('background: var(--paper-deep)');
     expect(strip).toContain('padding: var(--pp-ch-strip-padV) var(--pp-ch-strip-padH)');
     expect(strip).toContain('var(--sheet-lit)');
-    expect(strip).not.toContain('var(--shadow-sheet');
+    // 2026-09-23 质感批：纸条跟钉块**同一套语言**（同纹 / 同包边 / 同落影 / 同单线框）——
+    // 「钉住块与纸条」换装纪律从 09-19 延续，只改钉块会让两者读起来是两代东西
+    expect(strip).toContain('paper-sheet.jpg');
+    expect(strip).toContain('background-size: 900px 900px');
+    expect(strip).toContain('inset 3px 4px 5px var(--sheet-lit)');
+    expect(strip).toContain('inset -2px -3px 6px var(--sheet-shade)');
+    expect(strip).toContain('var(--shadow-sheet');
     expect(strip).not.toContain('var(--sheet-band)');
     // 内距定档走 token（真源 CHROME_TOKENS.strip）：10/12 → 18/20
     expect(TYPE_TOKENS_TS).toContain('strip: { size: 12.5, lh: 1.7, padV: 18, padH: 20 }');
@@ -1090,5 +1105,59 @@ describe('图版架段面（丙案 §9.5）· 墨阶与「不套方框」钉值'
     expect(rack).toContain('box-shadow: inset 0 -1px 0 var(--sheet-lit)');
     // 一条板：横向不滚（架是家具，不是滚动条）
     expect(rack).toContain('overflow: hidden');
+  });
+});
+
+/* ── 查看器公共壳（渲染面补全 B1，2026-09-23）─────────────────────────────────
+ * 壳 = 题签行（.pp-plate 恒在）+ 题名行 + 内容区 + 降级行；查看器只管内容。
+ * 扫描纪律同 tests/asset-ink-tiers（不出现裸色值）+ 壳件数值全走 token
+ * （--pp-asset-viewer-*，真源 type-tokens.ASSET_TOKENS.viewer）。 */
+describe('查看器公共壳段面（B1）· 不裸色 + 壳件走 token', () => {
+  /** `.pp-viewer` 段的规则（选择器含 `.pp-viewer`；剥注释后按 `}` 切块——同上图版架手法）。 */
+  function viewerRules(): Array<{ selector: string; body: string }> {
+    const stripped = PANEL_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+    const out: Array<{ selector: string; body: string }> = [];
+    for (const chunk of stripped.split('}')) {
+      const at = chunk.lastIndexOf('{');
+      if (at < 0) continue;
+      const selector = chunk.slice(0, at).trim();
+      const body = chunk.slice(at + 1);
+      if (!body.trim()) continue;
+      if (selector.includes('.pp-viewer')) out.push({ selector, body });
+    }
+    return out;
+  }
+  const bodyOf = (sel: string): string => {
+    const hit = viewerRules().find((r) => r.selector === sel);
+    if (!hit) throw new Error(`规则不存在：${sel}`);
+    return hit.body;
+  };
+
+  it('扫面非空（防选择器改名把守卫变成永真）', () => {
+    expect(viewerRules().length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('.pp-viewer 段不出现裸色值（墨/纸/线全走 token）', () => {
+    const offenders: string[] = [];
+    for (const r of viewerRules()) {
+      const decls = r.body
+        .split(';')
+        .map((d) => d.trim())
+        .filter((d) => /^(color|background|border|box-shadow|fill|stroke|outline)/.test(d));
+      for (const d of decls) {
+        if (/#[0-9a-fA-F]{3,8}\b/.test(d) || /\b(rgba?|hsla?|oklch)\(/.test(d.replace(/color-mix\(in oklch,/g, ''))) {
+          offenders.push(`${r.selector} { ${d} }`);
+        }
+      }
+    }
+    expect(offenders, `查看器壳段出现裸色值（应走 token）：\n${offenders.join('\n')}`).toEqual([]);
+  });
+
+  it('壳件走 viewer token：壳内距 / 题名行字号 / 降级行墨 / 音频固定盒高', () => {
+    expect(bodyOf('.pp-viewer')).toContain('padding: var(--pp-asset-viewer-padV) 0');
+    expect(bodyOf('.pp-viewer-label')).toContain('font-size: var(--pp-asset-viewer-labelSize)');
+    expect(bodyOf('.pp-viewer-error')).toContain('color: var(--fail)'); // 失败 = 朱砂（错误不静默）
+    expect(bodyOf('.pp-viewer-audio-el')).toContain('height: var(--pp-asset-viewer-audioBoxH)');
+    expect(bodyOf('.pp-viewer-audio-meta')).toContain('color: var(--ink-3)'); // 读数 = 淡墨
   });
 });

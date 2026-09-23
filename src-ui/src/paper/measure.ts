@@ -285,8 +285,10 @@ const JSON_PRE_MAX_H = ASSET_DERIVED.jsonPreMaxH; // box-sizing border-box → �
 const JSON_PRE_FONT = `${ASSET_DERIVED.jsonPreSize}px ${MONO_STACK}`;
 const JSON_PRE_LINE_HEIGHT = ASSET_DERIVED.jsonPreSize * ASSET_DERIVED.jsonPreLh;
 
-const MEDIA_PAD_V = ASSET_DERIVED.mediaPadV; // .pp-media padding 2×2
-const MEDIA_LABEL_H = ASSET_DERIVED.mediaLabelH; // .pp-media-label + margin-bottom 4
+const VIEWER_PAD_V = ASSET_DERIVED.viewerPadV; // .pp-viewer padding 2×2
+const VIEWER_LABEL_H = ASSET_DERIVED.viewerLabelH; // .pp-viewer-label + margin-bottom 4
+const VIEWER_AUDIO_BOX_H = ASSET_DERIVED.viewerAudioBoxH; // .pp-viewer-audio-el 固定盒高
+const VIEWER_AUDIO_META_H = ASSET_DERIVED.viewerAudioMetaH; // .pp-viewer-audio gap 2 + 读数行
 const MEDIA_IMG_MAX_H = ASSET_DERIVED.mediaImgMaxH; // .pp-media-img max-height
 const MEDIA_ROW_H = ASSET_DERIVED.mediaRowSize * 1.8; // .pp-media-file 行（行距继承 1.8）
 
@@ -542,12 +544,25 @@ function jsonViewH(payload: unknown, w: number): number {
   return JSON_VIEW_PAD_V + JSON_VIEW_HEAD_H + JSON_PRE_PAD_V + textH;
 }
 
-/** media 体高：图（保守占满 320 上限——加载后 RO 实测收敛）/ 文件行。 */
-function mediaBodyH(p: { ext?: unknown; filePath?: unknown }): number {
-  const ext = typeof p.ext === 'string' ? p.ext.toLowerCase() : '';
-  const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext) && typeof p.filePath === 'string';
-  // 题签恒在（2026-09-17）：媒体块也带题签行（签「图」）
-  return MEDIA_PAD_V + PLATE_HEAD_H + MEDIA_LABEL_H + (isImage ? 2 + MEDIA_IMG_MAX_H : MEDIA_ROW_H);
+/** 查看器宿主体高（B1 2026-09-23 重写：媒体块的体 = 查看器宿主壳）：
+ *  壳 = padding + 题签行 + 题名行 + 内容区。内容分四档镜像渲染面（components.tsx
+ *  MediaBody 的分发）：
+ *    - 图片：保守占满上限（加载后 RO 实测收敛，原行为）；
+ *    - 音频：**固定盒高** + 时长读数行（B1 新增档；chem boxH 同纪律）；
+ *    - 视频 / 未命中查看器 / 无路径：文件行（视频沿用 B1 前模型，RO 兜底）。
+ *  **ext 表是本层镜像**（paper 层不得反向 import 插件产物，见 paper/plate-sign.ts 的头注），
+ *  与 viewer-registry 认领表的一致性由 tests/viewer-registry.test.ts 对拍钉住。 */
+export const VIEWER_IMAGE_EXTS: readonly string[] = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
+export const VIEWER_AUDIO_EXTS: readonly string[] = ['mp3', 'wav', 'flac', 'm4a', 'aac', 'opus', 'oga'];
+
+function viewerBodyH(p: { ext?: unknown; filePath?: unknown }): number {
+  const ext = typeof p.ext === 'string' ? p.ext.trim().toLowerCase().replace(/^\./, '') : '';
+  const hasPath = typeof p.filePath === 'string' && p.filePath.length > 0;
+  const head = VIEWER_PAD_V + PLATE_HEAD_H + VIEWER_LABEL_H;
+  if (!hasPath) return head + MEDIA_ROW_H;
+  if (VIEWER_IMAGE_EXTS.includes(ext)) return head + 2 + MEDIA_IMG_MAX_H;
+  if (VIEWER_AUDIO_EXTS.includes(ext)) return head + VIEWER_AUDIO_BOX_H + VIEWER_AUDIO_META_H;
+  return head + MEDIA_ROW_H;
 }
 
 /** chart 体高（D9，2026-09-16 重写）：type 行 +（可选）title 行 + svg +（可选）标签行/轴名行。
@@ -951,7 +966,7 @@ function measureAssetBlockHeight(b: SourcedBlock): number {
   const p = b.payload;
   switch (pres) {
     case 'media':
-      return mediaBodyH(p as { ext?: unknown; filePath?: unknown });
+      return viewerBodyH(p as { ext?: unknown; filePath?: unknown });
     case 'chart':
       // D9：传完整 payload（含 config）——title/轴名会改变块高，旧签名丢 config 会算错
       return chartBodyH(p as { type?: unknown; data?: unknown; config?: unknown }, b.w);

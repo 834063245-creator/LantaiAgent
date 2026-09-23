@@ -16,6 +16,7 @@ import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
+import { viewerRegistry } from '../src/plugins/builtin/renderers/viewer-registry';
 import { typedRpc } from '../src/rpc-contract';
 
 vi.mock('../src/rpc-contract', () => ({
@@ -148,5 +149,113 @@ describe('composition/asset-renderers — 媒体图片经 read_file_base64 加�
       });
       expect(document.querySelector('.pp-media-preview-overlay')).toBeNull();
     });
+  });
+});
+
+/* ── B1（2026-09-23）：查看器宿主 = 按扩展名路由 + 公共壳 + 降级链 ──────────────
+ * 既有四条用例（上）在宿主改造后**逐字未改**——这是「图片/视频迁入查看器面 =
+ * 行为零漂移」的对拍证据；下面四条覆盖本批新增面（音频 / 壳 / 超限 / 渲染抛错）。 */
+describe('查看器宿主（B1）：音频 · 公共壳 · 降级链', () => {
+  let container: HTMLDivElement;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    root?.unmount();
+    root = null;
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  async function renderMedia(payload: unknown): Promise<void> {
+    const Comp = resolveAssetBlock('file', 'media')!;
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(createElement(Comp, { block: mediaBlock(payload) }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+
+  it('音频 ext → 音频查看器（原生播放器 + 诚实时长读数），字节经 fs_cap 取回', async () => {
+    vi.mocked(typedRpc).mockResolvedValue('QUJD');
+    await withRenderers(async () => {
+      await renderMedia({ filePath: 'D:/a.mp3', ext: 'mp3', label: '曲' });
+      const el = container.querySelector('.pp-viewer-audio-el');
+      expect(el).not.toBeNull();
+      expect(el?.getAttribute('aria-label')).toBe('曲');
+      expect(el?.getAttribute('src')).toBe('data:audio/mpeg;base64,QUJD');
+      expect(container.querySelector('.pp-viewer-label')?.textContent).toBe('曲');
+      // jsdom 无媒体栈 ⇒ metadata 永不就绪：读数必须诚实说「未知」，不假装 0:00
+      expect(container.querySelector('.pp-viewer-audio-meta')?.textContent).toBe('时长未知');
+      expect(typedRpc).toHaveBeenCalledWith('fs_cap', {
+        action: 'read_base64',
+        file_path: 'D:/a.mp3',
+        is_agent: false,
+      });
+    });
+  });
+
+  it('公共壳：.pp-viewer 出题签行（带 asset.title）+ 题名行；旧容器名 `.pp-media` 已退休', async () => {
+    vi.mocked(typedRpc).mockResolvedValue('QUJD');
+    await withRenderers(async () => {
+      await renderMedia({ filePath: 'D:/a.png', ext: 'png', label: '图' });
+      expect(container.querySelector('.pp-viewer')).not.toBeNull();
+      expect(container.querySelector('.pp-media')).toBeNull(); // 破坏性改名，不做双写兼容
+      expect(container.querySelector('.pp-plate-title')?.textContent).toBe('t'); // mediaBlock 的 asset.title
+      expect(container.querySelector('.pp-media-img')).not.toBeNull(); // 查看器体仍在壳内
+    });
+  });
+
+  it('字节超 maxBytes → 可读错误 + 文件壳（不静默截断、不渲染查看器体）', async () => {
+    const dispose = viewerRegistry.register({
+      id: 'tmp-big',
+      exts: ['zzbig'],
+      mimes: { zzbig: 'application/octet-stream' },
+      needsBytes: true,
+      maxBytes: 4,
+      component: () => createElement('div', { className: 'tmp-big-body' }),
+    });
+    try {
+      vi.mocked(typedRpc).mockResolvedValue('QUJDRA=='); // base64 → 6 字节 > 4 上限
+      await withRenderers(async () => {
+        await renderMedia({ filePath: 'D:/a.zzbig', ext: 'zzbig', label: '大' });
+        expect(container.querySelector('.pp-viewer-error')?.textContent).toContain('超过「tmp-big」查看器的');
+        expect(container.querySelector('.pp-media-file')).not.toBeNull();
+        expect(container.querySelector('.tmp-big-body')).toBeNull();
+      });
+    } finally {
+      dispose();
+    }
+  });
+
+  it('查看器渲染抛错 → 错误边界兜住：可读错误（带查看器 id）+ 文件壳，不炸纸面', async () => {
+    const dispose = viewerRegistry.register({
+      id: 'tmp-boom',
+      exts: ['zzboom'],
+      needsBytes: false,
+      component: () => {
+        throw new Error('boom-render');
+      },
+    });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {}); // React 照例记一次，测试面静音
+    try {
+      await withRenderers(async () => {
+        await renderMedia({ filePath: 'D:/a.zzboom', ext: 'zzboom', label: '坏' });
+        expect(container.querySelector('.pp-viewer-error')?.textContent).toContain(
+          '查看器「tmp-boom」渲染失败：boom-render',
+        );
+        expect(container.querySelector('.pp-media-file')).not.toBeNull();
+        expect(typedRpc).not.toHaveBeenCalled(); // needsBytes=false ⇒ 不读字节
+      });
+    } finally {
+      spy.mockRestore();
+      dispose();
+    }
   });
 });
