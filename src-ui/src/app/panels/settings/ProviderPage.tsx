@@ -69,6 +69,8 @@ export interface ProvidersDocView {
     fatal?: string;
     empty: boolean;
     loaded: boolean;
+    available: boolean;
+    lastError: string;
   };
   path: string;
   /** 项目级覆盖（`{ws}/.lantai/providers.yml`）的逐节错误与整份状态。 */
@@ -78,12 +80,14 @@ export interface ProvidersDocView {
   onReload: () => void;
   /** 外部改动到达时有未保存暂存 ⇒ 面板没替换（提示用户先保存/放弃）。 */
   staleHint?: boolean;
+  /** 手动重试取路径（通道就绪后不必重启应用）。 */
+  onRetryPath?: () => void;
 }
 
 /** 空态配置文件面（未接入 provider-store 的宿主：测试 / 降级）。 */
 export const EMPTY_PROVIDERS_DOC: ProvidersDocView = {
   version: 0,
-  status: { path: '', errors: [], empty: true, loaded: false },
+  status: { path: '', errors: [], empty: true, loaded: false, available: false, lastError: '' },
   path: '',
   projectErrors: [],
   onReload: () => {},
@@ -640,6 +644,7 @@ export function ProviderPage({
               projectErrors: providersDoc.projectErrors,
               projectFatal: providersDoc.projectFatal,
               staleHint: providersDoc.staleHint === true,
+              onRetryPath: providersDoc.onRetryPath,
             },
             onOpenDocDir: handleOpenDocDir,
             onReloadDoc: handleReloadDoc,

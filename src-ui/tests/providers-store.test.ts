@@ -37,6 +37,7 @@ import {
   bootstrapProvidersDoc,
   loadProvidersDoc,
   providersDocStatus,
+  retryProvidersPath,
 } from '../src/provider/providers-store';
 import { installProvidersProjection, loadSettings, loadSettingsWithSecrets } from '../src/settings';
 
@@ -137,6 +138,29 @@ describe('provider 配置文件通道（写盘一半）', () => {
     const rows = loadSettings().providers;
     expect(rows.map((p) => p.name)).toEqual(['commandcodegoat']);
     expect(rows[0].apiKey).toBe('sk-secret');
+  });
+
+  it('「重试路径」：通道就绪后点一下就接上（不必重启应用）——且状态里留原因可读', async () => {
+    seedStored([
+      {
+        kind: 'openai',
+        name: 'opencode',
+        apiKey: '',
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        model: 'deepseek-flash',
+      },
+    ]);
+    breakChannel();
+    await loadProvidersDoc();
+    // 失败必须留**可读原因**（设置页把它显示出来——此前只有一句「路径不可用」）
+    expect(providersDocStatus().available).toBe(false);
+    expect(providersDocStatus().lastError).toContain('providers_dir');
+
+    wireRpc();
+    await retryProvidersPath();
+    expect(providersDocStatus().available).toBe(true);
+    expect(providersDocStatus().path).toContain('providers.yml');
+    expect(providersDocStatus().lastError).toBe('');
   });
 
   it('通道不可用时保存设置：绝不剥掉 localStorage 里的意图副本（那是唯一来源）', async () => {

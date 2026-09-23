@@ -1,5 +1,5 @@
 {
-  "fingerprint": "f4cb0fb7",
+  "fingerprint": "3752cc57",
   "keys": [
     "ANCHOR",
     "CORDIS_TOOL_NAMES",
@@ -160,6 +160,7 @@
     "resolveAssetBlock",
     "resolveNewSessionDefault",
     "resolveRenderer",
+    "retryProvidersPath",
     "rhythmAssign",
     "saveProvidersDoc",
     "saveSettings",

@@ -27,6 +27,7 @@ export {
   projectProvidersFatal,
   providersDocStatus,
   providersFilePath,
+  retryProvidersPath,
   saveProvidersDoc,
 } from '../../../provider/providers-store';
 export { typedJsonRpc } from '../../../rpc-contract';

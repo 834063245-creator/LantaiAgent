@@ -51,10 +51,33 @@ export function ProviderDocCard({ doc, myName, onOpenDir, onReload, msg }: Provi
           >
             重读
           </button>
+          {doc.onRetryPath && (
+            <button
+              type="button"
+              className="sp-btn-sm"
+              title="重新向壳请求配置文件路径（通道刚就绪时不必重启应用）"
+              onClick={doc.onRetryPath}
+            >
+              重试路径
+            </button>
+          )}
         </div>
         <div className="pp-doc-path" title={doc.path || '（还没读到路径）'}>
           {doc.path || (doc.status.loaded ? '配置文件路径不可用' : '装载中…')}
         </div>
+        {/* 路径拿不到时**必须说清为什么**（2026-09-23 教训：此前只有一句
+            「路径不可用」，用户与事后排查都读不出原因） */}
+        {!doc.path && doc.status.loaded && (
+          <div className="pp-doc-error">
+            <b>没能拿到配置文件路径，本机仍按内置存储工作（provider 不会丢）：</b>
+            <div className="pp-doc-error-body">{doc.status.lastError || '原因未记录'}</div>
+            <div className="pp-f-hint">
+              常见原因：正在运行的壳比前端旧（改过 Rust 侧后需要重建 exe，只热更前端不够）。
+              壳重建后点「重试路径」，或重启应用——首启会把现有 provider 迁移成
+              <code> providers.yml</code>。
+            </div>
+          </div>
+        )}
         <div className="pp-f-hint">
           人和 agent 都可以直接改这个文件——一行 provider =一个顶层键，键名就是 provider 身份；改完约 1
           秒即生效。密钥不在文件里（权威在本机系统凭据）。

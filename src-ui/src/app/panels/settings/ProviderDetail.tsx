@@ -127,11 +127,15 @@ export interface ProviderDocView {
     fatal?: string;
     empty: boolean;
     loaded: boolean;
+    available: boolean;
+    lastError: string;
   };
   projectErrors: ReadonlyArray<{ name: string; message: string }>;
   projectFatal?: string;
   /** 外部改动到达时有未保存暂存 ⇒ 面板没替换（提示用户先保存/放弃）。 */
   staleHint: boolean;
+  /** 手动重试取路径（通道就绪后不必重启应用）。 */
+  onRetryPath?: () => void;
 }
 
 /** Phase 3D：OAuth 订阅登录数据面（authMode='oauth' 的 provider 专用）。

@@ -169,6 +169,7 @@ import {
   projectProvidersFatal,
   providersDocStatus,
   providersFilePath,
+  retryProvidersPath,
   saveProvidersDoc,
 } from '../../provider/providers-store';
 import { createResponsesProvider } from '../../provider/responses';
@@ -276,6 +277,7 @@ const faceDeps = {
   loadProjectProvidersDoc,
   projectProvidersErrors,
   projectProvidersFatal,
+  retryProvidersPath,
   // S6 P3b：激活诊断读面（第四栏「被跳过」= 激活失败的插件 + 原因；独占冲突回看）
   activationSkipped,
   activationConflict,

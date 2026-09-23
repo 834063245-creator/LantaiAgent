@@ -26,6 +26,7 @@
 //   - 坏节只坏自己（其余节照常生效），错误面点名到 provider（设置页显示）；
 //   - 写盘 = 读-改-写（先重读磁盘再渲染）：绝不复活陈旧文档、不丢本进程没观察到的兄弟节点。
 
+import { log } from '../agent/logger';
 import { activeLlmAdapters } from '../composition/services';
 import {
   applyProvidersDoc,
@@ -128,6 +129,18 @@ export function providersDocStatus(): Readonly<ProvidersDocStatus> {
   return state;
 }
 
+/**
+ * 手动重试取路径（设置页「重试路径」按钮）。
+ *
+ * 用武之地：壳与前端版本错位时（前端热更跑在旧壳上 / 壳刚重建完而窗口没重启），
+ * 前一次取路径失败过——那之后**不必重启应用**，通道就绪后点一下就接上。
+ * 失败**绝不缓存**，所以这里就是再跑一次装载。
+ */
+export async function retryProvidersPath(): Promise<void> {
+  await loadProvidersDoc({ reloadRuntime: true });
+  notify();
+}
+
 /** 配置文件绝对路径（未装载 = 空串）。 */
 export function providersFilePath(): string {
   return state.path;
@@ -212,6 +225,7 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
         state.loaded = true;
         state.available = false;
         state.lastError = `配置文件通道不可用（providers_dir 返回的不是路径：${String(dir)}）——本机仍按内置存储工作`;
+        log.error('provider-doc', 'providers_dir 返回的不是路径', { got: String(dir) });
         notify();
         return false;
       }
@@ -219,6 +233,9 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
       state.loaded = true;
       state.available = false;
       state.lastError = `取配置文件路径失败：${errText(e)}——本机仍按内置存储工作`;
+      // 失败必须留痕（2026-09-23 教训）：此前只写在内存里，用户看到的是一句
+      // 读不出原因的冷话，事后连 ui.log 都查不到。落 console + ui.log 两处。
+      log.error('provider-doc', '取配置文件路径失败（providers_dir）', { error: errText(e) });
       notify();
       return false;
     }

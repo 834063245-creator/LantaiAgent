@@ -39,6 +39,7 @@ import {
   providersFilePath,
   removeSecret,
   rescanPresets,
+  retryProvidersPath,
   SkillsPage,
   saveProvidersDoc,
   saveSettings,
@@ -508,6 +509,14 @@ const SettingsPanelApp: React.FC<{
                   setSettings((s) => ({ ...s, providers: loadSettings().providers }));
                 },
                 staleHint: docStaleHint,
+                // 通道就绪后不必重启应用：再跑一次取路径（失败从不缓存）
+                onRetryPath: () => {
+                  void retryProvidersPath().then(() => {
+                    setDocStaleHint(false);
+                    setSettings((s) => ({ ...s, providers: loadSettings().providers }));
+                    setProvidersDocVersion((v) => v + 1);
+                  });
+                },
               }}
             />
           </div>
