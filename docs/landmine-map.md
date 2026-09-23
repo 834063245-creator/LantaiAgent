@@ -408,3 +408,13 @@ CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**—
 
 顺带一条**产物域约束**（本批撞过、构建期才现形）：插件目录之外的 JSX 文件进不了产物——构建用 `--jsx-import-source=./host`，`app/overlay.tsx` 里的 JSX 会被 esbuild 按**它自己的相对路径**解析 `./host/jsx-runtime`（该处无此文件，`Could not resolve` 直接红）。所以「坞内直接用 `Overlay` 原语」这条路要么改产物域写法，要么把 `Overlay` 加进 `host.ts` ⇒ 撞 host-modules 的 FaceBridgeSeal ⇒ 宿主面指纹变 ⇒ **须重建 exe**（本批工作树里另有在途改动，重建会把它们编进 exe——正是 V1 那条「算式落产地域」要避的代价）。故本批只取**无 JSX 的两件**：portal 走 `react-dom`、Escape 走既有的 `useDialogEscape`。
 
+## 第十三批审计（2026-09-23）— LLM 代理 CORS 头叠加家族（用户报「provider 刷新目录永远失败」）
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| N1 | `src-tauri/src/llm_proxy.rs::handle_inner`（上游响应头逐条透传 → 再追加本代理那套 CORS 头） | **CORS 头叠加**：上游自带 `Access-Control-Allow-Origin` 时，"透传 + 追加" 产出两条 ACAO；浏览器按 CORS 规范判 `'*, *'` 并**拒收整条响应**（请求 200 到过，前端只看到 `Failed to fetch`）。实测两端点都自带 ACAO（`api.commandcode.ai/provider/v1`、`opencode.ai/zen/go/v1`）⇒ 凡经代理的调用必失败；回退直连又被上游预检拦下（该行配了自定义头 `x-opencode-session`）⇒ 设置页「刷新目录」永远失败。指纹正合本图收录标准：**接缝靠人肉纪律**（"透传上游头"看起来天经地义）+ **真因被静默吞掉**（`fetchJsonWithTimeout` 任何失败一律折成 `null` → UI 只报「网络错误或端点无响应」）+ 单测全绿 | ✅ 已拆（上游 `access-control-*` 一律不透传，CORS 策略归代理独占；回归 `llm_proxy::tests::upstream_cors_headers_are_not_duplicated`——假上游自带 ACAO + credentials + expose，断言成品响应 ACAO 恰一条、凭据头不外泄；**先证红**（`left: 2`）再转绿）。**端到端已验**（2026-09-23，真机页面 + 真实凭据 + 真实上游）：以行为等同修复后代理的本地替身（转发时丢弃上游 `access-control-*`）代跑「刷新目录」，两端点均读到目录——opencode 33 个模型 / commandcodegoat 80 个，上游皆 200 且**各自自带 ACAO**（叠加来源当场坐实） |
+
+**取证路径（CDP attach 运行中的壳——值得复用）**：WebView 是只读可观测面，壳已带 `--remote-debugging-port=9222`；`GET /json/list` 取页面 target → WebSocket 上 `Runtime.evaluate` 在**页面真实上下文**里复现请求（本次：经 `127.0.0.1:14570/proxy` 拉目录）+ `Log.enable` 收 CORS 原文 + `Network.responseReceived` 收成品响应头。两条绕路都不通：PowerShell/curl 不执行 CORS（同一响应 curl 200、浏览器拒收），WebView 里 `headers.get('access-control-allow-origin')` 看不见（未 expose）——**"只有浏览器看得见的那一层"必须问浏览器**。
+
+**家族结论**：反代是 CORS 策略的**唯一作者**——上游响应里属于"浏览器协议面"的头（`access-control-*`）一律不得透传；也别再把"透传上游头"当默认正确。**同批欠账（未拆）**：`provider/shared.ts::fetchJsonWithTimeout` 把任何失败折成 `null`，CORS／401／DNS 在 UI 上是同一句话——诊断面若再被追着问"为什么失败"，改这里。
+

@@ -267,6 +267,18 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
                 ) {
                     continue;
                 }
+                // ⚠️ 上游自带的 CORS 头**一律不透传**（2026-09-23 实测事故，见下
+                // `upstream_cors_headers_are_not_duplicated`）：上游若返回
+                // `Access-Control-Allow-Origin`，原样透传后再由下面追加本代理的一套
+                // ⇒ 响应里出现两个 ACAO，浏览器按 CORS 规范判「multiple values '*, *'」
+                // 并**拒收整条响应**（请求其实 200 到过，前端只看到 Failed to fetch）。
+                // 实测受害者：`api.commandcode.ai/provider/v1/models` 与
+                // `opencode.ai/zen/go/v1/models` 都自带 ACAO ⇒ 凡经代理的调用必失败，
+                // 回退直连又被自定义头（`x-opencode-session`）的上游预检拦下 ⇒
+                // 设置页「刷新目录」永远失败。CORS 策略归本代理独占（只服务 loopback）。
+                if name.starts_with("access-control-") {
+                    continue;
+                }
                 if let Ok(s) = v.to_str() {
                     rb = rb.header(k.as_str(), s);
                 }
@@ -425,6 +437,91 @@ mod tests {
             assert!(buf.contains("data: {\"a\":1}"), "SSE 第一段必须透传: {buf}");
             assert!(buf.contains("data: {\"b\":2}"), "SSE 第二段必须透传: {buf}");
             assert!(buf.contains("[DONE]"), "SSE [DONE] 必须透传");
+
+            server_handle.abort();
+        });
+        upstream_thread.join().unwrap();
+    }
+
+    /// ⚠️ 上游自带 CORS 头不得与本代理的 CORS 头叠加（2026-09-23 实测事故）。
+    ///
+    /// 浏览器按 CORS 规范拒收「`Access-Control-Allow-Origin` 有两个值」的响应
+    /// （`'*, *'`）——请求明明 200 到过，前端只看到 `Failed to fetch`。实测两端点
+    /// （`api.commandcode.ai/provider/v1/models`、`opencode.ai/zen/go/v1/models`）
+    /// 都自带 ACAO ⇒ 经代理的每次调用必失败，回落直连又被上游预检拦下 ⇒
+    /// 设置页「刷新目录」永远失败。本测试在真实 HTTP 栈上钉住：ACAO 恒只有一条。
+    #[test]
+    fn upstream_cors_headers_are_not_duplicated() {
+        use std::io::{Read, Write};
+
+        // 上游：一条 GET /models 响应，自带上游那套 CORS 头（ACAO + credentials + expose）。
+        let upstream = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let target_addr = upstream.local_addr().unwrap();
+        let upstream_thread = std::thread::spawn(move || {
+            let (mut sock, _) = upstream.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = sock.read(&mut buf);
+            let body = "{\"object\":\"list\",\"data\":[]}";
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\
+                 Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Credentials: true\r\n\
+                 Access-Control-Expose-Headers: x-upstream-thing\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            sock.write_all(resp.as_bytes()).unwrap();
+            sock.flush().unwrap();
+        });
+
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let proxy_addr = listener.local_addr().unwrap();
+            let client = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap();
+            let shutdown = std::sync::atomic::AtomicBool::new(false);
+            let server_handle = tokio::spawn(async move { serve_listener(&listener, client, &shutdown).await });
+
+            let mut probe = std::net::TcpStream::connect(proxy_addr).unwrap();
+            probe
+                .set_read_timeout(Some(std::time::Duration::from_secs(8)))
+                .unwrap();
+            let req = format!(
+                "GET /proxy HTTP/1.1\r\nHost: {proxy_addr}\r\nx-hologram-target: http://{target_addr}/v1/models\r\nconnection: close\r\n\r\n"
+            );
+            probe.write_all(req.as_bytes()).unwrap();
+            probe.flush().unwrap();
+            let mut buf = String::new();
+            let read_res = probe.read_to_string(&mut buf);
+            assert!(read_res.is_ok(), "代理读取超时/失败: {read_res:?} 已收: {buf}");
+
+            let lower = buf.to_ascii_lowercase();
+            assert!(buf.starts_with("HTTP/1.1 200"), "上游 200 应透传: {buf}");
+            assert!(lower.contains("{\"object\":\"list\""), "响应体必须透传: {buf}");
+            assert_eq!(
+                lower.matches("access-control-allow-origin").count(),
+                1,
+                "ACAO 只能有一条（两条 = 浏览器判 '*, *' 拒收整条响应）: {buf}"
+            );
+            assert!(
+                lower.contains("access-control-allow-origin: *"),
+                "本代理自己的 CORS 头必须还在: {buf}"
+            );
+            assert!(
+                !lower.contains("access-control-allow-credentials")
+                    && !lower.contains("access-control-expose-headers: x-upstream-thing"),
+                "上游 CORS 头一律不得透传（凭据头与 '*' 冲突、expose 名单也不归上游）: {buf}"
+            );
+            assert!(
+                lower.contains("access-control-expose-headers: x-hologram-proxy-error"),
+                "本代理的 expose 头必须还在: {buf}"
+            );
 
             server_handle.abort();
         });
