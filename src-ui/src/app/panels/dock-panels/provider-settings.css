@@ -529,8 +529,26 @@
   padding: 0 3px;
 }
 
-/* ── 模型目录（2026-09-23 三层：目录 / 启用 / 选中）──
-   折叠头 + 搜索/全选/全部取消 + 勾选行：目录是只读远端事实（拉取快照），
+/* ── 后台目录拉取失败（2026-09-23）：原因就地显示在「刷新目录」下方（重试入口旁边）
+      ——此前同一条信息只存在于创作坞徽标的 hover title 里，那个面没有补救动作。 */
+.pp-catalog-fail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 5px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in oklch, var(--fail) 35%, var(--paper));
+  background: color-mix(in oklch, var(--fail) 6%, transparent);
+  color: var(--fail);
+  font-size: calc(9.5px * var(--font-scale));
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.pp-catalog-fail-hint {
+  color: var(--ink-3);
+}
+
+/* ── 模型目录（2026-09-23 三层：目录 / 启用 / 选中）──   折叠头 + 搜索/全选/全部取消 + 勾选行：目录是只读远端事实（拉取快照），
    勾选写「可用模型」（启用集）——拉取不再灌满可用模型。 */
 .pp-catalog {
   margin-top: 6px;

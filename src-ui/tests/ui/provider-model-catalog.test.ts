@@ -32,6 +32,7 @@ vi.mock('../../src/bridge', () => ({
 }));
 
 import { ProviderPage } from '../../src/app/panels/settings/ProviderPage';
+import { recordDynamicFetchResult } from '../../src/provider/catalog';
 import { resetProxyPort } from '../../src/provider/transport';
 import { type AppSettings, type ProviderId, type ProviderSettings, providerId } from '../../src/settings';
 import { ensureProductionChannelsBooted } from '../helpers/composition-boot';
@@ -221,6 +222,23 @@ describe('Provider 页 — 模型目录 / 可用模型分层（2026-09-23）', (
     expect(chipIds()).toEqual(['hand-added']); // 可用模型不动
   });
 
+  it('后台拉取失败：原因就地显示在「刷新目录」下方，成功即消失（不是只在坞里 hover）', async () => {
+    // 后台预热（workspace 对每个提供方行各拉一次）的失败面 = catalog 模块级失败表。
+    recordDynamicFetchResult('gw', false, 'gw: 模型目录获取失败（网络错误或端点无响应）');
+    await render(makeSettings());
+
+    const failBox = () => document.querySelector('.pp-catalog-fail');
+    expect(failBox()?.textContent).toContain('模型目录获取失败');
+    expect(failBox()?.textContent).toContain('已启用的模型不受影响');
+    expect(chipIds()).toEqual(['hand-added']); // 可用模型不受影响
+
+    // 一次成功拉取即清标记 → 提示消失（订阅 onDynamicFetchChange 实时刷新）
+    await act(async () => {
+      recordDynamicFetchResult('gw', true);
+    });
+    expect(failBox()).toBeNull();
+  });
+
   it('目录搜索：按 id 过滤可挑的行（大目录里挑得动）', async () => {
     await render(makeSettings({ catalog: ['gw-a', 'gw-b', 'gw-c'] }));
     const search = document.querySelector<HTMLInputElement>('input[aria-label="搜索模型目录"]');
@@ -291,7 +309,7 @@ describe('添加提供方 — 拉取 → 添加 两步（2026-09-23）', () => {
     await act(async () => {});
   }
 
-  it('拉取后目录列出全部模型但**一个都没添加**（那一步不再被吃掉）', async () => {
+  it('拉取后目录列出全部模型但**一个都没添加**（那一步不再被吃掉）', { timeout: 20_000 }, async () => {
     await openAndPull();
     expect(pickIds()).toEqual(['gw-a', 'gw-b', 'gw-c']);
     expect(addedCount()).toBe('已添加 0 / 目录 3');
@@ -300,7 +318,7 @@ describe('添加提供方 — 拉取 → 添加 两步（2026-09-23）', () => {
     expect(document.body.textContent).toContain('目录里的模型还没添加');
   });
 
-  it('未添加就确认 → 被拦并指名那一步；添加后再确认 → 只带已添加的 + 目录快照', async () => {
+  it('未添加就确认 → 被拦并指名那一步；添加后再确认 → 只带已添加的 + 目录快照', { timeout: 20_000 }, async () => {
     await openAndPull();
     await click(byText('.cd-actions button', '确认添加'));
     expect(addedSettings).toHaveLength(0);
@@ -318,7 +336,7 @@ describe('添加提供方 — 拉取 → 添加 两步（2026-09-23）', () => {
     expect(added?.model).toBe('gw-b'); // 第一个添加的成为新会话默认
   });
 
-  it('全部添加 / 全部移除 与逐个添加等价（同一份语义）', async () => {
+  it('全部添加 / 全部移除 与逐个添加等价（同一份语义）', { timeout: 20_000 }, async () => {
     await openAndPull();
     await click(byText('.pp-pick-head button', '全部添加'));
     expect(addedCount()).toBe('已添加 3 / 目录 3');

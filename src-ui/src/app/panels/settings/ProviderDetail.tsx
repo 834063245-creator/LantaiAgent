@@ -6,7 +6,7 @@
 
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getModel } from '../../../provider/catalog';
+import { getDynamicFetchFailure, getModel, onDynamicFetchChange } from '../../../provider/catalog';
 import { type StoredThinking, thinkingModeLabel, thinkingOptionsOrDefault } from '../../../provider/thinking';
 import {
   effectiveModels,
@@ -178,6 +178,16 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
   const [newModel, setNewModel] = useState('');
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState('');
+  /* 后台目录拉取的失败面（2026-09-23）：原因一直存在（catalog 的失败表，键 = 提供方名），
+   * 但此前只在**创作坞**分组头的 hover 里可见——那儿没有可操作的补救入口，用户只看到
+   * 一个没有下文的「目录获取失败」。这里就地显示原因，重试 = 上方「刷新目录」按钮。
+   * 订阅 onDynamicFetchChange（后台拉取随时收尾）。 */
+  const [catalogFail, setCatalogFail] = useState<string | undefined>(() => getDynamicFetchFailure(provider.name));
+  useEffect(() => {
+    const sync = () => setCatalogFail(getDynamicFetchFailure(provider.name));
+    sync();
+    return onDynamicFetchChange(sync);
+  }, [provider.name]);
   // per-model 参数展开（参数编辑器作用到哪个模型）
   const [paramModel, setParamModel] = useState<string | null>(null);
   const handleFetch = useCallback(async () => {
@@ -364,8 +374,8 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
         )}
 
         {/* 模型区（2026-09-23 三层重构：目录 / 启用 / 选中）：
-            可用模型 = 用户从目录里**勾选启用**的（创作坞下拉可选面）；
-            「刷新目录」只更新目录快照（catalog）与元数据，**不改**已启用集。 */}
+            可用模型 = 用户从目录里**添加**进来的（创作坞下拉可选面）；
+            「刷新目录」只更新目录快照（catalog）与元数据，**不改**可用模型。 */}
         <div className="pp-field">
           <div className="pp-f-label-row">
             <label className="pp-f-label" htmlFor="pd-models-input">
@@ -377,6 +387,14 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               {fetching ? '拉取中…' : '刷新目录'}
             </button>
           </div>
+          {/* 后台目录拉取的失败原因（2026-09-23）：原因就地显示 + 重试就在上一行
+              （此前只在创作坞徽标 hover 里，那儿做不了任何补救） */}
+          {catalogFail && (
+            <div className="pp-catalog-fail" title={catalogFail}>
+              <span>目录拉取失败（后台）：{catalogFail}</span>
+              <span className="pp-catalog-fail-hint">已启用的模型不受影响；点上方「刷新目录」重试。</span>
+            </div>
+          )}
           {models.length > 0 && (
             <div className="pp-models-list">
               {models.map((id) => {
