@@ -161,7 +161,7 @@ import {
 import { resolveApiKey } from '../../provider/credentials';
 import { createOpenAIProvider } from '../../provider/openai';
 import { createResponsesProvider } from '../../provider/responses';
-import { thinkingOptionsFor } from '../../provider/thinking';
+import { thinkingOptionsFor, thinkingOptionsOrDefault } from '../../provider/thinking';
 import {
   kernelAppendFileDurable,
   kernelDeleteFile,
@@ -178,7 +178,9 @@ import {
   loadSettings,
   loadSettingsWithSecrets,
   modelContextWindow,
+  modelDescriptor,
   modelInput,
+  modelThinking,
   onSettingsSaved,
   persistSecrets,
   removeSecret,
@@ -405,6 +407,10 @@ const faceDeps = {
   // B5 multimodal-image：生效输入模态解析（覆盖 ?? 目录 ?? ['text']）——
   // 创作坞附图门禁与 ModelSelector「视」徽标同链消费
   modelInput,
+  // 2026-09-23 思考下沉：provider 作用域描述符 + 生效思考档位（覆盖 ?? 行值）
+  // ——创作坞 pill 换源到与设置页/请求期同一把尺子
+  modelDescriptor,
+  modelThinking,
   onSettingsSaved,
   persistSecrets,
   removeSecret,
@@ -420,6 +426,7 @@ const faceDeps = {
   extractImageFiles,
   previewUrlFor,
   thinkingOptionsFor,
+  thinkingOptionsOrDefault,
   typedJsonRpc,
   // sessions-builtin（2026-09-05 seam 动作面重设计）：默认 provider 换
   // kernel* 具名 helper（D-3/D-4——行为与今日直连逐字节一致 + 测试 mock 面

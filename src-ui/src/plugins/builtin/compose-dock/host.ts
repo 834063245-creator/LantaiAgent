@@ -57,11 +57,19 @@ export {
 export { resolveApiKey } from '../../../provider/credentials';
 // 类型面（产物域经 host.aliased 对拍）
 export type { StoredThinking, ThinkingMode } from '../../../provider/thinking';
-export { thinkingOptionsFor } from '../../../provider/thinking';
+export { thinkingOptionsFor, thinkingOptionsOrDefault } from '../../../provider/thinking';
 export type { ChatImageRef, ModelDescriptor, Protocol } from '../../../provider/types';
 export { typedJsonRpc } from '../../../rpc-contract';
 export type { ProviderSettings } from '../../../settings';
-export { effectiveModels, loadSettings, modelContextWindow, modelInput, onSettingsSaved } from '../../../settings';
+export {
+  effectiveModels,
+  loadSettings,
+  modelContextWindow,
+  modelDescriptor,
+  modelInput,
+  modelThinking,
+  onSettingsSaved,
+} from '../../../settings';
 export { useCanvasViewStore } from '../../../state/canvas-view-store';
 export type { ComposeSessionPrefs } from '../../../state/compose-store';
 export { getComposeStore, resolveNewSessionDefault } from '../../../state/compose-store';

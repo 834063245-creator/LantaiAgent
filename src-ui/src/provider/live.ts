@@ -20,7 +20,7 @@
 //   - 覆盖存在 = 该维度用会话值（改过的卷不跟随全局——方案甲语义 4）；
 //   - thinking 覆盖区分 undefined（回落行值）与 ''（显式自动 = 不发参数）。
 
-import { loadSettings, modelInput, type ProviderSettings, providerId } from '../settings';
+import { loadSettings, modelInput, modelThinking, type ProviderSettings, providerId } from '../settings';
 import { resolveOauthToken, resolveProviderRuntime } from './credentials';
 import { type CreateProviderOptions, createProvider } from './index';
 import type { ModelMeta } from './model-meta';
@@ -71,7 +71,14 @@ export function createLiveProvider(
         ...rt.provider,
         apiKey,
         ...(overrides_.model !== undefined ? { model: overrides_.model } : {}),
-        thinking: overrides_.thinking !== undefined ? overrides_.thinking : rt.provider.thinking,
+        // 思考档位三层（2026-09-23 思考下沉）：会话覆盖（创作坞 pill）??
+        // **本模型**的 per-model 覆盖 ?? 提供方行值（本家默认档位）。
+        // 模型取生效值（会话覆盖 ?? 行值）——per-model 档位必须跟着**实际要发的
+        // 那个模型**解析，否则「给 A 设的档位」会跟着 B 一起发出去。
+        thinking:
+          overrides_.thinking !== undefined
+            ? overrides_.thinking
+            : modelThinking(rt.provider, overrides_.model ?? rt.provider.model),
       },
       { ...options, oauthHeaders },
     );

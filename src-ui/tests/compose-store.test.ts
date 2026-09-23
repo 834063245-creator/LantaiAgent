@@ -90,11 +90,13 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     const st = getComposeStore(STORE).getState();
     // 切到与 anthropic 行当前 model 不同的模型——触发「最近使用」定向写
     st.setModel('1', 'anthropic', 'claude-opus-4-6');
-    // 覆盖条目：provider/model + thinking 跟随目标 provider 行
+    // 覆盖条目：provider/model；thinking 留 undefined = 「按目标模型解析」
+    // （2026-09-23 思考下沉：不再把行值快照进会话覆盖——旧行为会把同一个档位
+    //  带给之后切到的每个模型，并盖掉目标模型自己的 per-model 档位）
     expect(st.getPrefs('1')).toEqual({
       providerName: 'anthropic',
       model: 'claude-opus-4-6',
-      thinking: '', // anthropic 行的 thinking
+      thinking: undefined,
     });
     // 信号带 sessionId（applyAgentConfig 只热切换该会话）
     expect(notifyAgentConfigChanged).toHaveBeenCalledWith('model-switched', 1);
@@ -176,5 +178,19 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     const st = getComposeStore(STORE).getState();
     expect(st.resolveEffective('9')).toEqual({ providerName: '', model: '', thinking: undefined });
     vi.mocked(settingsModule.loadSettings).mockRestore();
+  });
+
+  // 2026-09-23 思考下沉：无主态（无活跃卷）在创作坞拨档位 = 给**当前出生默认模型**
+  // 设档位——落该模型的 per-model 覆盖，而不是整个提供方一刀切。
+  it('setGlobalThinking：写目标模型的 per-model 覆盖（不动行级默认档位）', () => {
+    const saveSpy = vi.mocked(settingsModule.saveSettings);
+    const st = getComposeStore(STORE).getState();
+    st.setGlobalThinking('max');
+    expect(saveSpy).toHaveBeenCalled();
+    const saved = saveSpy.mock.calls.at(-1)?.[0] as settingsModule.AppSettings;
+    const deepseekRow = saved.providers.find((p) => p.name === 'deepseek');
+    expect(deepseekRow?.modelOverrides?.['deepseek-v4-pro']?.thinking).toBe('max');
+    expect(deepseekRow?.thinking).toBe('medium'); // 行级默认档位原样（是另一层）
+    expect(saved.providers.find((p) => p.name === 'anthropic')?.thinking).toBe(''); // 别家不牵动
   });
 });

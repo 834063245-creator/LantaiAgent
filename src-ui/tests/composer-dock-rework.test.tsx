@@ -385,3 +385,87 @@ describe('ComposerDock 返工 P2-3（权限分段 + 全放模态）', () => {
     expect(document.querySelector('.pp-mode-dialog')).toBeNull();
   });
 });
+
+// 2026-09-23 思考下沉：pill 的档位**与档位表**都换源到 provider 作用域描述符
+// （覆盖 ?? API 拉取元数据 ?? 目录 seed）——与设置页参数面板、请求期门禁同一把尺子。
+// 用户报的病灶：坞里显示/可选的东西与「我到底在给哪个模型设档位」对不上。
+describe('ComposerDock 思考档位换源（2026-09-23）', () => {
+  let container: HTMLDivElement;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    resetComposeStoresForTests();
+    resetCanvasStoresForTests();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container.remove();
+    root = null;
+  });
+
+  /** 播种一行 provider + 未改卷（不落会话覆盖）后挂载坞。 */
+  async function mountWithRow(panelId: string, providerRow: Record<string, unknown>): Promise<void> {
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: providerRow.name,
+        providers: [providerRow],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    useCoreStore.getState().setChatCore(fakeCore(panelId));
+    getChatStore(panelId).sess.setState({
+      sessions: [{ id: 1, label: '案卷一' }],
+      activeIdx: 0,
+      sessionTokens: {},
+      nextSessionId: 2,
+    });
+    getChatStore(panelId).input.getState().setInputText('');
+    act(() => {
+      root = createRoot(container);
+      root.render(createElement(PaperDockContext.Provider, { value: DOCK_CONTEXT }, createElement(ComposerDock)));
+    });
+    await act(async () => {});
+  }
+
+  const row = (over: Record<string, unknown> = {}) => ({
+    kind: 'openai',
+    name: 'deepseek',
+    apiKey: '',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-v4-pro',
+    thinking: 'low',
+    ...over,
+  });
+
+  it('无会话覆盖：pill 显示该模型生效的档位（per-model 覆盖压过行值）', async () => {
+    await mountWithRow('p23-permodel', row({ modelOverrides: { 'deepseek-v4-pro': { thinking: 'max' } } }));
+    const pill = container.querySelector<HTMLButtonElement>('.pp-thinking-pill');
+    expect(pill?.textContent).toContain('极限'); // 覆盖值，而不是行值「低」
+  });
+
+  it('无覆盖的模型回落行值（本家默认档位）', async () => {
+    await mountWithRow('p23-rowvalue', row());
+    expect(container.querySelector<HTMLButtonElement>('.pp-thinking-pill')?.textContent).toContain('低');
+  });
+
+  it('档位表来自 provider 作用域：API 拉取元数据声明的档位在坞里可选（此前读全局目录 → 拿不到）', async () => {
+    await mountWithRow(
+      'p23-declared',
+      row({
+        model: 'gw-model-x',
+        thinking: '',
+        modelMeta: { 'gw-model-x': { thinkingEfforts: ['minimal', 'low'], fetchedAt: 1 } },
+      }),
+    );
+    act(() => {
+      container.querySelector<HTMLButtonElement>('.pp-thinking-pill')?.click();
+    });
+    const labels = [...container.querySelectorAll('.pp-thinking-opt-label')].map((e) => e.textContent ?? '');
+    expect(labels).toContain('最浅'); // 网关模型自己的声明（目录里没有这个模型）
+  });
+});

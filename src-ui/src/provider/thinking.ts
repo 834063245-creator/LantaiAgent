@@ -116,6 +116,23 @@ export function thinkingOptionsFor(
   ];
 }
 
+/** 无声明模型的**协议安全兜底档**（DSH 语义：思考控件常驻）：只给「自动 / 关闭」
+ *  两档——''/off 在 assertEffortDeclared 不拦，openai 关闭未声明时降级不发参数、
+ *  anthropic 不发 thinking 块，都不编造命名档位（P14 不破）。 */
+export const THINKING_SAFE_OPTIONS: readonly { value: ThinkingMode; label: string }[] = [
+  { value: '', label: '自动（模型自定）' },
+  { value: 'off', label: '关闭' },
+];
+
+/** 档位表（**设置页与创作坞共用的同一把尺子**，2026-09-23 思考下沉收口）：
+ *  有声明 → 声明表；无声明 → 协议安全兜底。此前兜底表在创作坞内各抄一份。 */
+export function thinkingOptionsOrDefault(
+  desc: ModelDescriptor | undefined,
+): readonly { value: ThinkingMode; label: string }[] {
+  const declared = thinkingOptionsFor(desc);
+  return declared.length > 0 ? declared : THINKING_SAFE_OPTIONS;
+}
+
 /** 校验已存储的思考策略是否在声明清单内（发请求前的响亮门禁）。
  *  - 自动（''/遗留数字）与「关闭」：协议层各自处理，此函数不拦（关闭未声明时
  *    openai 协议降级为不发参数——翻译路径的强制关闭不能因未知模型而炸）。

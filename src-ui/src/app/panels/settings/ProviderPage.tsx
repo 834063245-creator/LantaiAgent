@@ -12,6 +12,7 @@ import { invalidateCredentialCache } from '../../../provider/credentials';
 import { createLiveProvider } from '../../../provider/live';
 import { applyFetchedModels } from '../../../provider/model-sync';
 import { oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
+import type { StoredThinking } from '../../../provider/thinking';
 import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
 import {
@@ -160,6 +161,21 @@ export function ProviderPage({
       const nextOverrides = {
         ...(p?.modelOverrides ?? {}),
         [modelId]: { ...cur, input: on ? (['text', 'image'] as ('text' | 'image')[]) : undefined },
+      };
+      onCommitProvider(updateProvider(settings, name, { modelOverrides: nextOverrides }));
+    },
+    [settings, onCommitProvider],
+  );
+
+  /** per-model 思考档位（2026-09-23 思考下沉）：undefined = 清覆盖回本家默认档位
+   *  （写 undefined 经 JSON 落盘即键消失，与「未设置」同语义）。 */
+  const handleModelThinking = useCallback(
+    (name: string, modelId: string, value: StoredThinking | undefined) => {
+      const p = settings.providers.find((x) => x.name === name);
+      const cur = p?.modelOverrides?.[modelId] ?? {};
+      const nextOverrides = {
+        ...(p?.modelOverrides ?? {}),
+        [modelId]: { ...cur, thinking: value },
       };
       onCommitProvider(updateProvider(settings, name, { modelOverrides: nextOverrides }));
     },
@@ -550,6 +566,7 @@ export function ProviderPage({
             onModelOverride: (modelId, field, value) =>
               handleModelOverride(selectedProvider.name, modelId, field, value),
             onModelVisionToggle: (modelId, on) => handleModelVisionToggle(selectedProvider.name, modelId, on),
+            onModelThinking: (modelId, value) => handleModelThinking(selectedProvider.name, modelId, value),
             onAdvancedChange: (next) => handleAdvancedChange(selectedProvider.name, next),
             onTest: handleTest,
             onClearKey: () => setClearTarget(selectedProvider.name),

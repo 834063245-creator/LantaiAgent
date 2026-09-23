@@ -91,7 +91,9 @@ describe('workspace provider 配置 — 使用点解析（Phase C + 方案甲会
     // 方案甲：会话生效配置解析（覆盖 ?? 全局默认）+ 覆盖卷带 model/thinking 覆盖
     expect(body).toContain('resolveComposeEffective(this._storeId, sessionId)');
     expect(body).toContain('getComposeStore(this._storeId).getState().getPrefs(String(sessionId))');
-    expect(body).toContain('model: eff.model, thinking: eff.thinking');
+    // 2026-09-23 思考下沉：档位覆盖只来自**会话显式改动**（override.thinking）；
+    // 写 eff.thinking（解析后的全局快照值）会把行值钉成会话覆盖，per-model 档位失效
+    expect(body).toContain('model: eff.model, thinking: override.thinking');
     // 配置快照来自同步 settings（零 IPC）——凭据不进构造
     expect(body).toContain('const s = loadSettings();');
   });

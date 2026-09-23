@@ -388,16 +388,20 @@ export class Workspace {
       if (!handle) return; // 句柄未建（惰性）——工厂现造时会吃到新覆盖
       const eff = resolveComposeEffective(this._storeId, sessionId);
       const row = s.providers.find((p) => p.name === eff.providerName) ?? act;
+      // 档位只有**会话显式覆盖**才写进 provider 的覆盖槽（2026-09-23 思考下沉）：
+      // 写 undefined = 清覆盖 → live 按目标模型解析（per-model ?? 行值）。
+      // 写「解析后的全局快照值」会把行值钉成本卷覆盖，per-model 档位永不生效。
+      const prefs = getComposeStore(this._storeId).getState().getPrefs(String(sessionId));
       const prov = createLiveProvider(
         eff.providerName,
         // S6 P2b：热切换重造的 provider 也用**该卷自己组合**的 seam 裁剪面
         // （否则切一次模型就把卷级 seam 面退回全局——与装配面不自洽）。
         { seamView: sessionSeamViewFor(this._storeId, sessionId) },
-        { model: eff.model, thinking: eff.thinking },
+        { model: eff.model, thinking: prefs?.thinking },
       );
       prov.prewarm?.();
       handle.setProvider(prov);
-      handle.setThinking(eff.thinking);
+      handle.setThinking(prefs?.thinking);
       handle.setContextWindow(this._contextWindowFor(row, eff.model));
       return;
     }
@@ -414,10 +418,13 @@ export class Workspace {
       const override = getComposeStore(storeId).getState().getPrefs(String(sid));
       const seamView = sessionSeamViewFor(storeId, sid);
       const prov = override
-        ? createLiveProvider(eff.providerName, { seamView }, { model: eff.model, thinking: eff.thinking })
+        ? createLiveProvider(eff.providerName, { seamView }, { model: eff.model, thinking: override.thinking })
         : createLiveProvider(eff.providerName, { seamView });
       h.setProvider(prov);
-      h.setThinking(eff.thinking);
+      // 档位覆盖只来自**会话显式改动**（override.thinking）；未改卷传 undefined =
+      // 清覆盖 → live 现解析 per-model ?? 行值（2026-09-23 思考下沉：旧写法传
+      // eff.thinking = 全局快照里的行值，把它钉成了会话覆盖，per-model 永不生效）。
+      h.setThinking(override?.thinking);
       h.setContextWindow(this._contextWindowFor(row, eff.model));
     });
   }
@@ -854,7 +861,12 @@ export class Workspace {
       const row = s.providers.find((p) => p.name === eff.providerName) ?? act;
       const sessSeamView = sessionSeamViewFor(this._storeId, sessionId);
       const sessProv = override
-        ? createLiveProvider(eff.providerName, { seamView: sessSeamView }, { model: eff.model, thinking: eff.thinking })
+        ? createLiveProvider(
+            eff.providerName,
+            { seamView: sessSeamView },
+            // 档位同理（2026-09-23 思考下沉）：只有会话显式覆盖才写覆盖槽
+            { model: eff.model, thinking: override.thinking },
+          )
         : createLiveProvider(eff.providerName, { seamView: sessSeamView });
       sessProv.prewarm?.(); // 廉价预热（fire-and-forget）；fetchModels 合目录只在 setupAgent 做
 

@@ -90,6 +90,11 @@ export interface ModelOverrides {
    *  模型（附图入口开 + 请求期图投影放行）；缺省 = 用目录声明；目录亦无 =
    *  ['text']（不编造能力）。GLM-4V/Qwen-VL 等目录外 vision 模型在此补声明。 */
   input?: ('text' | 'image')[];
+  /** 思考档位覆盖（2026-09-23 思考下沉）：缺省 = 用提供方行值（`ProviderSettings
+   *  .thinking`，语义 = 本家默认档位）；显式写入 = 本模型自己的档位（'' 也是显式值
+   *  ——「自动」是真实选择，不是缺省）。消费面 = `modelThinking` 一把尺子
+   *  （live provider 请求期 / 设置页参数面板 / 创作坞 pill）。 */
+  thinking?: StoredThinking;
 }
 
 /** 解析某提供方的「可用模型」id 列表：显式 models 优先，缺省回落 [model]
@@ -149,6 +154,18 @@ export function modelThinkingEfforts(
   modelId: string,
 ): readonly ThinkingEffort[] | undefined {
   return p?.modelMeta?.[modelId]?.thinkingEfforts ?? getModel(modelId)?.thinkingEfforts;
+}
+
+/** 某模型生效的思考档位**值**（与 modelThinkingEfforts 的**能力**面对偶，
+ *  2026-09-23 思考下沉）：per-model 覆盖 ?? 提供方行值（行值 = 本家默认档位，
+ *  没单独设置过的模型用它）。会话级覆盖（compose-store 的创作坞 pill）优先级
+ *  更高，在消费点另行解析——本函数是「设置面 / 请求面 / 显示面」共用的同一把尺子
+ *  （live provider 请求期、设置页参数面板、创作坞 pill）。
+ *  '' 是显式值（「自动」= 不发 effort 参数），与「无覆盖」区分。 */
+export function modelThinking(p: ProviderSettings | undefined, modelId: string): StoredThinking | undefined {
+  const ov = p?.modelOverrides?.[modelId]?.thinking;
+  if (ov !== undefined) return ov;
+  return p?.thinking;
 }
 
 /** 拉取元数据与静态目录 seed + 用户覆盖合并成完整 ModelDescriptor——

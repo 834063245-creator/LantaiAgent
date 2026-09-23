@@ -140,6 +140,15 @@ async function setInputValue(el: HTMLInputElement, value: string): Promise<void>
   });
 }
 
+/** 下拉选择（React onChange 走 change 事件）。 */
+async function setSelectValue(el: HTMLSelectElement, value: string): Promise<void> {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
+    setter.call(el, value);
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
 describe('ProviderPage — 暂存流程', () => {
   let container: HTMLElement;
   let root: Root;
@@ -408,6 +417,35 @@ describe('ProviderPage — 暂存流程', () => {
     // 收起后展开仍在（modelOverrides 已持久到暂存 settings）
     await click(paramBtn);
     expect(document.querySelector('.pp-model-params')).toBeNull();
+  });
+
+  // 2026-09-23 思考下沉：思考档位从「提供方行级一个控件」下沉到每个模型自己的
+  // 覆盖（用户报「选了档位却不知道是对哪个模型生效」）。缺省 = 本家默认档位。
+  it('per-model 思考档位：选档位写 modelOverrides.thinking；「随本家默认」清覆盖', async () => {
+    const base = makeSettings();
+    await render(
+      makeSettings({
+        providers: [
+          { ...base.providers[0]!, modelOverrides: { 'deepseek-v4-pro': { thinking: 'max' } } },
+          base.providers[1]!,
+        ],
+      }),
+    );
+    const paramBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-param')].find((b) =>
+      b.title.includes('上下文窗口'),
+    )!;
+    await click(paramBtn);
+    const select = () => document.querySelector<HTMLSelectElement>('.pp-model-params select')!;
+    expect(select()).not.toBeNull();
+    expect(select().value).toBe('max'); // 覆盖生效值（该模型自己的档位）
+
+    // 改成声明内的另一档 → 写覆盖
+    await setSelectValue(select(), 'high');
+    expect(select().value).toBe('high');
+
+    // 「随本家默认」= 清覆盖（undefined 经 JSON 落盘即键消失，与本家默认档位同语义）
+    await setSelectValue(select(), '__inherit__');
+    expect(select().value).toBe('__inherit__');
   });
 
   it('oauth 订阅（codex chip）：未登录不能确认添加——先弹层内登录（device-flow）→ seed 模型 → 确认添加', async () => {

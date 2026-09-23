@@ -7,7 +7,7 @@
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getModel } from '../../../provider/catalog';
-import { thinkingOptionsFor } from '../../../provider/thinking';
+import { type StoredThinking, thinkingModeLabel, thinkingOptionsOrDefault } from '../../../provider/thinking';
 import {
   effectiveModels,
   isFactoryBaseUrl,
@@ -27,6 +27,10 @@ export type ProviderField = 'apiKey' | 'baseUrl' | 'model' | 'thinking';
 /** per-model 参数的来源标注字段（provider-model-meta 四层链的展示面）。 */
 type MetaField = 'contextWindow' | 'maxTokens' | 'input';
 
+/** per-model 思考档位 select 的「未覆盖」哨兵值（'' 有实义 = 显式「自动」，
+ *  不能拿来当「随默认」——两者语义不同，混用会把用户的显式选择吃掉）。 */
+const INHERIT_THINKING = '__inherit__';
+
 /** 该字段当前生效值的来源（给用户看清「这个数是哪儿来的」）：
  *  手动设置 > API 拉取（带日期）> 目录 seed > 未提供。
  *  此前面板只显示 `目录值 || 200000` 占位符——网关模型的「200000」是编造的
@@ -42,6 +46,11 @@ function metaSource(provider: ProviderSettings, id: string, field: MetaField): s
   }
   if (has(getModel(id)?.[field])) return '目录';
   return '未提供';
+}
+
+/** per-model 思考档位表（与请求期同一把尺子）：该模型声明表无声明时给协议安全兜底。 */
+function modelThinkingOptions(provider: ProviderSettings, id: string): readonly { value: string; label: string }[] {
+  return thinkingOptionsOrDefault(modelDescriptor(provider, id));
 }
 
 /** 连接探针的 UI 阶段（瞬时态，不持久化）；结果本体见 ConnectionProbe。 */
@@ -88,6 +97,8 @@ export interface ProviderDetailActions {
   onSetEnabledModels: (ids: readonly string[]) => void;
   /** per-model 覆盖（P14）：上下文窗口 / 最大输出，0 = 清回目录值。 */
   onModelOverride: (modelId: string, field: 'contextWindow' | 'maxTokens', value: number) => void;
+  /** per-model 思考档位覆盖（2026-09-23 思考下沉）：undefined = 清覆盖回本家默认。 */
+  onModelThinking: (modelId: string, value: StoredThinking | undefined) => void;
   /** 视觉声明覆盖（B5 · D-8①）：on = ['text','image'] 强制开；off = 清覆盖回落目录。 */
   onModelVisionToggle: (modelId: string, on: boolean) => void;
   /** 高级连接配置（2026-09-17）：请求头编辑 / 配方导入的整行回填（名字与密钥保持本行）。 */
@@ -120,6 +131,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     onRemoveModel,
     onSetEnabledModels,
     onModelOverride,
+    onModelThinking,
     onModelVisionToggle,
     onAdvancedChange,
     onTest,
@@ -192,15 +204,13 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
   const st = providerStatus(provider, isOAuth ? (oauthData?.accounts.length ?? 0) > 0 : false);
   const statusCls = test.phase === 'testing' ? 'testing' : st;
   const statusLabel = test.phase === 'testing' ? '测试中…' : STATUS_LABEL[st];
-  // P14 能力协商：档位表来自当前模型的**生效描述符**（provider 作用域合并链 =
-  // 用户覆盖 + API 拉取元数据 + 目录 seed）——网关模型若在拉取时拿到档位声明
-  // 同样生效；皆无 = 不显示选择器（思考走模型默认，无法控制），不编造档位。
+  // P14 能力协商 + 2026-09-23 思考下沉：档位表来自**该模型**的生效描述符
+  // （provider 作用域合并链 = 用户覆盖 + API 拉取元数据 + 目录 seed）。
+  // 本控件 = 「本家默认档位」——只作用于**没单独设置过档位**的模型；单个模型在
+  // 上方「可用模型」的「参数」面板里覆盖（modelOverrides[id].thinking）。
   const modelDesc = modelDescriptor(provider, provider.model);
-  const thinkingModes = thinkingOptionsFor(modelDesc);
-  const thinkingHint =
-    thinkingModes.length > 0
-      ? '档位由该模型的声明提供（API 拉取或目录）；声明外的档位不可选（不会静默替换为其他档位）。'
-      : '该模型暂无思考档位数据（端点未披露且目录外）——思考行为由模型默认决定，无法在此控制。';
+  const thinkingModes = thinkingOptionsOrDefault(modelDesc);
+  const thinkingHint = `作用于本家未单独设置档位的模型（当前档位表来自「${modelDesc?.name ?? (provider.model || '—')}」）；单个模型在「参数」里覆盖。声明外的档位不可选（不会静默替换为其他档位）。`;
   const isFactoryUrl = isFactoryBaseUrl(provider.baseUrl);
 
   const keyChip = provider.apiKey?.trim()
@@ -456,9 +466,38 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                           </button>
                           <span className="pp-model-param-src">{metaSource(provider, id, 'input')}</span>
                         </span>
+                        {/* 思考档位（2026-09-23 思考下沉）：per-model 覆盖——缺省 = 用
+                         *  本家默认档位（下方「默认思考档位」控件）。档位表仍由该模型的
+                         *  声明裁决（API 拉取 / 目录；无声明则只给协议安全的自动/关闭）。 */}
+                        <label className="pp-model-param">
+                          <span>思考档位</span>
+                          <select
+                            className="sp-select"
+                            value={provider.modelOverrides?.[id]?.thinking ?? INHERIT_THINKING}
+                            onChange={(e) =>
+                              onModelThinking(
+                                id,
+                                e.target.value === INHERIT_THINKING ? undefined : (e.target.value as StoredThinking),
+                              )
+                            }
+                          >
+                            <option value={INHERIT_THINKING}>
+                              随本家默认（{thinkingModeLabel(provider.thinking)}）
+                            </option>
+                            {modelThinkingOptions(provider, id).map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="pp-model-param-src">
+                            {provider.modelOverrides?.[id]?.thinking !== undefined ? '手动设置' : '默认'}
+                          </span>
+                        </label>
                         <span className="pp-model-params-hint">
                           留空 = 用 API 拉取/目录值（都没有则上下文按未知处理、输出不钳制）；视觉生效 = 覆盖 ?? API 拉取
-                          ?? 目录
+                          ?? 目录；思考档位缺省 = 本家默认档位
+                          {modelThinkingOptions(provider, id).length === 0 ? '（该模型未声明档位——只有自动/关闭）' : ''}
                         </span>
                       </div>
                     )}
@@ -603,34 +642,35 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
           />
         </div>
 
-        {thinkingModes.length > 0 && (
-          <div className="pp-field">
-            <div className="pp-f-label-row">
-              <label className="pp-f-label" htmlFor="pd-thinking">
-                思考努力等级
-              </label>
-            </div>
-            <select
-              id="pd-thinking"
-              className="sp-select"
-              value={provider.thinking || ''}
-              onChange={(e) => onFieldChange('thinking', e.target.value)}
-            >
-              {thinkingModes.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-              {/* D4（2026-08-27）：遗留数字 thinking（如 "4000"）不在档位表内——
-                  原实现把它显示成「自动」，一旦 onChange 就静默写成 ''，历史预算
-                  无声丢失。现在给存量值加显式 option，改不改由用户定。 */}
-              {provider.thinking && !thinkingModes.some((o) => o.value === (provider.thinking || '')) && (
-                <option value={provider.thinking}>自定义 ({provider.thinking})</option>
-              )}
-            </select>
-            <div className="pp-f-hint">{thinkingHint}</div>
+        {/* 本家默认思考档位（2026-09-23 思考下沉）：作用于**没单独设置过档位**的
+            模型；单个模型的档位在「可用模型 → 参数」里覆盖。 */}
+        <div className="pp-field">
+          <div className="pp-f-label-row">
+            <label className="pp-f-label" htmlFor="pd-thinking">
+              默认思考档位
+            </label>
+            <span className="pp-chip">未单独设置的模型用它</span>
           </div>
-        )}
+          <select
+            id="pd-thinking"
+            className="sp-select"
+            value={provider.thinking || ''}
+            onChange={(e) => onFieldChange('thinking', e.target.value)}
+          >
+            {thinkingModes.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+            {/* D4（2026-08-27）：遗留数字 thinking（如 "4000"）不在档位表内——
+                原实现把它显示成「自动」，一旦 onChange 就静默写成 ''，历史预算
+                无声丢失。现在给存量值加显式 option，改不改由用户定。 */}
+            {provider.thinking && !thinkingModes.some((o) => o.value === (provider.thinking || '')) && (
+              <option value={provider.thinking}>自定义 ({provider.thinking})</option>
+            )}
+          </select>
+          <div className="pp-f-hint">{thinkingHint}</div>
+        </div>
       </div>
 
       {/* 高级连接配置（2026-09-17）：请求头 + 配方导入/导出——网关怪癖的用户

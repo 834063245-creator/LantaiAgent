@@ -8,8 +8,10 @@ import {
   type ThinkingCapability,
   thinkingCapability,
   thinkingOptionsFor,
+  thinkingOptionsOrDefault,
 } from '../src/provider/thinking';
 import type { ModelDescriptor } from '../src/provider/types';
+import { modelThinking, type ProviderSettings, providerId } from '../src/settings';
 
 function desc(partial: Partial<ModelDescriptor>): ModelDescriptor {
   return {
@@ -79,6 +81,52 @@ describe('thinkingOptionsFor — UI 档位表（声明驱动）', () => {
 
   it('静态目录条目（glm-4.5 无声明）：空表', () => {
     expect(thinkingOptionsFor(getModel('glm-4.5'))).toEqual([]);
+  });
+});
+
+// 2026-09-23 思考下沉：设置页参数面板与创作坞共用同一把尺子——有声明用声明表，
+// 无声明给「自动 / 关闭」协议安全兜底（思考控件常驻，不编造命名档位）。
+describe('thinkingOptionsOrDefault — 设置页与创作坞共用的兜底表', () => {
+  it('有声明：与 thinkingOptionsFor 逐项一致', () => {
+    const d = desc({ thinkingEfforts: ['low', 'high'], thinkingOff: true });
+    expect(thinkingOptionsOrDefault(d)).toEqual(thinkingOptionsFor(d));
+  });
+
+  it('无声明（含描述符缺席）：自动 / 关闭两档兜底', () => {
+    expect(thinkingOptionsOrDefault(desc({})).map((o) => o.value)).toEqual(['', 'off']);
+    expect(thinkingOptionsOrDefault(undefined).map((o) => o.value)).toEqual(['', 'off']);
+  });
+});
+
+describe('modelThinking — 档位值三层（per-model 覆盖 ?? 行值）', () => {
+  const row = (over: Partial<ProviderSettings> = {}): ProviderSettings => ({
+    kind: 'openai',
+    name: providerId('gw'),
+    apiKey: '',
+    baseUrl: 'https://gw.test/v1',
+    model: 'a',
+    thinking: 'low',
+    ...over,
+  });
+
+  it('无覆盖：回落行值（本家默认档位）', () => {
+    expect(modelThinking(row(), 'm1')).toBe('low');
+    expect(modelThinking(row(), 'm2')).toBe('low');
+  });
+
+  it('有覆盖：该模型用自己的档位，兄弟模型不受影响', () => {
+    const p = row({ modelOverrides: { m1: { thinking: 'max' } } });
+    expect(modelThinking(p, 'm1')).toBe('max');
+    expect(modelThinking(p, 'm2')).toBe('low');
+  });
+
+  it('空串是显式值（自动）而非缺省——不会被行值顶掉', () => {
+    const p = row({ modelOverrides: { m1: { thinking: '' } } });
+    expect(modelThinking(p, 'm1')).toBe('');
+  });
+
+  it('provider 缺席（行已删）：undefined，不编造', () => {
+    expect(modelThinking(undefined, 'm1')).toBeUndefined();
   });
 });
 

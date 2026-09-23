@@ -14,7 +14,7 @@
 import type { ProviderSettings } from '../settings';
 import { type HeaderEntry, headerEntryError, MAX_CUSTOM_HEADERS } from './custom-headers';
 import type { ModelMeta } from './model-meta';
-import type { StoredThinking, ThinkingEffort } from './thinking';
+import { isThinkingMode, type StoredThinking, THINKING_MODES, type ThinkingEffort } from './thinking';
 
 /** 配方文件标识（防误贴其它 JSON）。 */
 export const RECIPE_FORMAT = 'lantai-provider-recipe';
@@ -127,6 +127,17 @@ function readModelOverrides(raw: unknown, errors: string[]): ProviderSettings['m
       const input = readStringArray(ov.input, `modelOverrides「${id}」.input`, errors);
       if (input) next.input = input as ('text' | 'image')[];
     }
+    // per-model 思考档位（2026-09-23 思考下沉）：只认 canonical 档位 + 空串（自动）
+    // ——写入边界严格，遗留数字预算不进配方字段（那是 provider 行级的历史形态）。
+    if (ov.thinking !== undefined) {
+      if (typeof ov.thinking === 'string' && isThinkingMode(ov.thinking)) {
+        next.thinking = ov.thinking;
+      } else {
+        errors.push(
+          `provider.modelOverrides「${id}」.thinking 必须是合法档位（${THINKING_MODES.map((m) => m.value || '自动').join(' / ')}）`,
+        );
+      }
+    }
     out[id] = next;
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -229,6 +240,8 @@ export function parseProviderRecipe(text: string): ParsedRecipe | RecipeError {
     notices.push('配方里的 apiKey 已忽略——密钥只在本机凭据库，请在 Key 输入框单独填写');
   }
   const models = readStringArray(src.models, 'models', errors);
+  // 目录快照（2026-09-23 三层）：随配方传递——对方不必先拉一次就有可勾选面
+  const catalog = readStringArray(src.catalog, 'catalog', errors);
   const headers = readHeaders(src.headers, errors);
   const modelOverrides = readModelOverrides(src.modelOverrides, errors);
   const modelMeta = readModelMeta(src.modelMeta, errors);
@@ -252,6 +265,7 @@ export function parseProviderRecipe(text: string): ParsedRecipe | RecipeError {
       baseUrl: (src.baseUrl as string).trim(),
       model: (src.model as string).trim(),
       ...(models !== undefined ? { models } : {}),
+      ...(catalog !== undefined ? { catalog } : {}),
       ...(headers !== undefined ? { headers } : {}),
       ...(modelOverrides !== undefined ? { modelOverrides } : {}),
       ...(modelMeta !== undefined ? { modelMeta } : {}),

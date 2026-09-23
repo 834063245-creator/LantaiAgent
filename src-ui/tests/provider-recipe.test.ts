@@ -95,6 +95,26 @@ describe('parseProviderRecipe', () => {
     if ('error' in parsed) throw new Error(parsed.error);
     expect(parsed.recipe).not.toHaveProperty('unknownJunk');
   });
+
+  // 2026-09-23：目录快照与 per-model 思考档位随配方同行（收方拿到就能勾选/复用档位）
+  it('目录快照 + per-model 思考档位随配方往返', () => {
+    const withNew: ProviderSettings = {
+      ...row,
+      catalog: ['deepseek-v4.1-flash', 'claude-opus-4-6'],
+      modelOverrides: { 'deepseek-v4.1-flash': { thinking: 'max' } },
+    };
+    const parsed = parseProviderRecipe(exportProviderRecipe(withNew));
+    if ('error' in parsed) throw new Error(parsed.error);
+    expect(parsed.recipe.catalog).toEqual(['deepseek-v4.1-flash', 'claude-opus-4-6']);
+    expect(parsed.recipe.modelOverrides?.['deepseek-v4.1-flash']?.thinking).toBe('max');
+  });
+
+  it('per-model 思考档位非法值整单拒绝（写入边界严格）', () => {
+    const recipe = JSON.parse(exportProviderRecipe(row));
+    recipe.provider.modelOverrides = { m1: { thinking: '超高' } };
+    const parsed = parseProviderRecipe(JSON.stringify(recipe));
+    expect('error' in parsed && parsed.error).toContain('thinking');
+  });
 });
 
 describe('applyRecipeToProvider', () => {

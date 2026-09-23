@@ -342,3 +342,47 @@ describe('createLiveProvider — 附图能力声明（发送面已改为先发�
     expect(parts.some((p) => p.type === 'image_url' && p.image_url?.url === 'data:image/jpeg;base64,QUJD')).toBe(true);
   });
 });
+
+// 2026-09-23 思考下沉（用户报「思考强度看起来是供应商级全局生效，不是分模型」）：
+// 档位解析三层 = 会话覆盖（创作坞 pill）> per-model 覆盖 > 提供方行值（本家默认）。
+// 本组从「发出的请求体」钉死——模型与档位必须一一对应。
+describe('createLiveProvider — 思考档位三层（per-model 覆盖 ?? 行值；会话覆盖最优先）', () => {
+  function seedWithKey(over: Partial<AppSettings['providers'][number]> = {}): void {
+    mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
+      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-1'));
+      return Promise.resolve(null);
+    });
+    seedSettings(over);
+  }
+
+  const lastEffort = () => fetchCalls.at(-1)?.body.reasoning_effort;
+
+  it('同一行两个模型各发自己的档位（不再一刀切）', async () => {
+    seedWithKey({
+      model: 'm1',
+      thinking: 'low',
+      modelOverrides: { m1: { thinking: 'max' }, m2: { thinking: 'high' } },
+    });
+    await collectText(createLiveProvider('p1'));
+    expect(lastEffort()).toBe('max');
+    await collectText(createLiveProvider('p1', undefined, { model: 'm2' }));
+    expect(lastEffort()).toBe('high');
+  });
+
+  it('未单独设置档位的模型回落行值（本家默认档位）', async () => {
+    seedWithKey({ model: 'm1', thinking: 'low', modelOverrides: { m1: { thinking: 'max' } } });
+    await collectText(createLiveProvider('p1', undefined, { model: 'm2' }));
+    expect(lastEffort()).toBe('low');
+  });
+
+  it('会话覆盖压过 per-model；覆盖为 undefined = 回落该模型自己的档位（切模型不冻结行值）', async () => {
+    seedWithKey({ model: 'm1', thinking: 'low', modelOverrides: { m1: { thinking: 'max' } } });
+    // 本卷显式拨过（会话覆盖）
+    await collectText(createLiveProvider('p1', undefined, { model: 'm1', thinking: 'high' }));
+    expect(lastEffort()).toBe('high');
+    // 创作坞切模型后的形态：覆盖条目在、thinking = undefined（compose-store.setModel）
+    // ——必须回落**目标模型**的档位，而不是把行值/上一个模型的档位带过去
+    await collectText(createLiveProvider('p1', undefined, { model: 'm1', thinking: undefined }));
+    expect(lastEffort()).toBe('max');
+  });
+});

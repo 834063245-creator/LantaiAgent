@@ -47,7 +47,6 @@ import type {
   PermissionMode,
   ProviderSettings,
   StoredThinking,
-  ThinkingMode,
   WorkEntry,
 } from './host';
 import {
@@ -65,7 +64,9 @@ import {
   MODE_DESCRIPTIONS,
   MODE_LABELS,
   modelContextWindow,
+  modelDescriptor,
   modelInput,
+  modelThinking,
   msgStoreFor,
   onSettingsSaved,
   PERMISSION_MODES,
@@ -73,7 +74,7 @@ import {
   resolveNewSessionDefault,
   selectPreset,
   slashOnly,
-  thinkingOptionsFor,
+  thinkingOptionsOrDefault,
   useCoreStore,
   useDialogEscape,
   useModeStore,
@@ -211,13 +212,9 @@ const THINKING_DESC: Record<string, string> = {
   max: '极限推理',
 };
 
-/** 无目录声明模型的思考控件安全兜底（DSH 语义：思考控制常驻）：只给「自动 /
- *  关闭」两个协议安全档——assertEffortDeclared 对 ''/off 不拦，openai 关闭未声明
- *  时降级不发参数、anthropic 不发 thinking 块，都不编造命名档位（P14 不破）。 */
-const THINKING_SAFE_FALLBACK: readonly { value: ThinkingMode; label: string }[] = [
-  { value: '', label: '自动（模型自定）' },
-  { value: 'off', label: '关闭' },
-];
+/** 无目录声明模型的思考控件安全兜底表已收口到 provider/thinking 的
+ *  THINKING_SAFE_OPTIONS（2026-09-23 思考下沉：设置页参数面板与这里共用同一把
+ *  尺子），本件不再自抄一份。 */
 
 export const ComposerDock = memo(function ComposerDock() {
   const core = useCoreStore((s) => s.core);
@@ -400,13 +397,22 @@ export const ComposerDock = memo(function ComposerDock() {
 
   /* ── 会话生效配置（方案甲：覆盖 ?? 全局默认，实时解析）── */
   const [prefs, setPrefs] = useState<ComposeSessionPrefs | undefined>(undefined);
+  /* 会话**显式**思考覆盖（2026-09-23 思考下沉）：prefs 是「解析后」的生效配置，
+   * 未改卷时它带着全局快照的档位值——拿它当「本卷拨过」用会把全局值误当覆盖，
+   * 永远压住模型的 per-model 档位显示。故档位显示单独读覆盖表（getPrefs）。 */
+  const [thinkingOverride, setThinkingOverride] = useState<StoredThinking | undefined>(undefined);
   useEffect(() => {
     if (!core || activeSessionId == null) {
       setPrefs(undefined);
+      setThinkingOverride(undefined);
       return;
     }
     const compose = getComposeStore(core.panelId);
-    const sync = () => setPrefs(compose.getState().resolveEffective(activeSessionId));
+    const sync = () => {
+      const st = compose.getState();
+      setPrefs(st.resolveEffective(activeSessionId));
+      setThinkingOverride(st.getPrefs(activeSessionId)?.thinking);
+    };
     sync();
     return compose.subscribe(sync);
   }, [core, activeSessionId]);
@@ -433,7 +439,11 @@ export const ComposerDock = memo(function ComposerDock() {
   }, [settingsVersion]);
   const provider: ProviderSettings | undefined = settings?.providers.find((p) => p.name === providerName);
   const providerKind = provider?.kind ?? 'openai';
-  const modelDesc = useMemo(() => getModel(model), [model]);
+  // 2026-09-23 思考下沉：描述符改读 **provider 作用域**（覆盖 ?? API 拉取 ?? 目录
+  // seed）——与设置页参数面板、请求期 assertEffortDeclared 同一把尺子。此前读全局
+  // getModel：网关模型在拉取失败/重启后拿不到自己的档位声明，同一模型在坞里与在
+  // 设置页显示的档位表可以不一致。行缺席（已删）才回落全局目录。
+  const modelDesc = useMemo(() => (provider ? modelDescriptor(provider, model) : getModel(model)), [provider, model]);
   // 附图能力门禁（multimodal-image-plan D-8②）：生效输入模态含 'image' 才开
   // 图片采集道——策略在此（视图层），机制在 chat-core（intake 方法）。
   // modelInput 合并链（B5）：ModelOverrides.input 覆盖 ?? 目录 seed vision 声明；
@@ -452,14 +462,15 @@ export const ComposerDock = memo(function ComposerDock() {
   const inkUsed = tokenStats?.usedTokens ?? tokenCount;
   const inkRatio = inkWindow > 0 && inkUsed > 0 ? Math.min(1, inkUsed / inkWindow) : 0;
   const thinkingOptions = useMemo(() => {
-    const declared = thinkingOptionsFor(modelDesc);
-    // P14：有目录声明用声明档位表；无声明也给「自动/关闭」协议安全兜底——
-    // 思考按钮常驻（DSH 语义），不编造命名档位（''/off 在 assertEffortDeclared
-    // 不拦、协议层可安全表达，P14「不编造参数」不破）。
-    return declared.length > 0 ? declared : THINKING_SAFE_FALLBACK;
+    // P14：有声明用声明档位表；无声明给「自动/关闭」协议安全兜底——思考按钮常驻
+    // （DSH 语义），不编造命名档位（''/off 在 assertEffortDeclared 不拦、协议层可
+    // 安全表达）。表来自 thinkingOptionsOrDefault（与设置页参数面板同一函数）。
+    return thinkingOptionsOrDefault(modelDesc);
   }, [modelDesc]);
-  // 开口即开卷（2026-08-31）：无主态思考档位跟随新卷出生默认
-  const currentThinking = prefs?.thinking ?? newSessionDefault.thinking;
+  // 生效档位三层（2026-09-23）：会话覆盖（本卷显式拨过）?? 该模型档位
+  // （per-model 覆盖 ?? 本家默认档位，经 modelThinking 一把尺子）；行缺席（已删）
+  // 才回落新卷出生默认。
+  const currentThinking = thinkingOverride ?? (provider ? modelThinking(provider, model) : newSessionDefault.thinking);
 
   /* ── 权限（mode-store 工作区级单一真相）── */
   const permissionMode = useModeStore((s) => s.permissionMode);

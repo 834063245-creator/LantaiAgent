@@ -705,6 +705,10 @@ waterfall 拦截、配置面声明路由）；兰台是**单活跃 provider** �
 
 ### 数据模型（当前真源，settings.ts）
 
+> ⚡ 2026-09-23 三层重构后：`models` = **启用集**、`catalog` = **目录快照**、
+> `model` + 会话覆盖 = **选中**；思考档位下沉到 `ModelOverrides.thinking`
+> （见文末「追裁 · 模型配置面三层 + 思考档位下沉」）。
+
 ```ts
 interface ProviderSettings {
   kind: 'anthropic' | 'openai';
@@ -712,9 +716,10 @@ interface ProviderSettings {
   apiKey: string;            // 会话内明文，持久化权威 = 加密凭据
   baseUrl: string;
   model: string;             // 新会话默认 = 最近使用（自动跟从创作坞，非手动设置）
-  thinking?: StoredThinking;
+  thinking?: StoredThinking; // 本家默认档位（未单独设置过档位的模型用它）
   lastTest?: ConnectionProbe;
-  models?: string[];         // 可用模型列表（创作坞下拉可选面；缺省 = [model]，零迁移）
+  models?: string[];         // **启用集**（创作坞下拉可选面；缺省 = [model]，零迁移）
+  catalog?: string[];        // **目录快照**：最近一次拉取的全量 id（2026-09-23 三层）
   modelOverrides?: Record<string, ModelOverrides>; // per-model 覆盖（用户手改）
   modelMeta?: Record<string, ModelMeta>;           // per-model API 拉取元数据（2026-09-11）
 }
@@ -722,6 +727,7 @@ interface ModelOverrides {
   contextWindow?: number;
   maxTokens?: number;
   input?: ('text' | 'image')[]; // 输入模态声明（multimodal-image B5 · D-8①）
+  thinking?: StoredThinking;    // per-model 思考档位（2026-09-23 思考下沉）
 }
 interface ModelMeta {        // provider/model-meta.ts —— 端点真披露的字段（不编造）
   name?: string; contextWindow?: number; maxTokens?: number;
@@ -731,10 +737,12 @@ interface ModelMeta {        // provider/model-meta.ts —— 端点真披露的
 }
 ```
 
-- **`models` = 用户管的模型配置面**：Provider 页增删 + 「从 API 拉取」填充
-  （拉取结果写进暂存 models，随保存落盘）。创作坞下拉只列它（`effectiveModels`），
-  不再倒静态目录全集。vendor 一律用 provider 名（自定义 provider 复用目录模型 id 时
-  分组/切换对准该 provider，杜绝写错家 400）。
+- **`models` = 用户的启用集**（2026-09-23 三层重构修订）：Provider 页「模型目录」里
+  勾选的模型；创作坞下拉只列它（`effectiveModels`），不再倒静态目录全集。
+  「从 API 拉取」（现名「刷新目录」）**只写 `catalog` 与 `modelMeta`，不动本字段**
+  ——配一个提供方不再等于把端点给的几十上百个模型全灌进配置面（用户实测病灶）。
+  vendor 一律用 provider 名（自定义 provider 复用目录模型 id 时分组/切换对准该
+  provider，杜绝写错家 400）。
 - **`model` = 新会话默认 = 最近使用**：`compose-store.setModel` 定向写该 provider 行
   model + activeProvider（新鲜 loadSettings 读改写单字段，不整份快照 → A4 clobber
   不复活）；只影响新卷/未改卷出生默认，已存在会话走覆盖（applyAgentConfig 会话级
@@ -960,3 +968,80 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
   端到端「拉取 → 落盘 → 重启后生效 → 抵达请求体」）。
 - 全量 vitest 279 文件 2842 passed / 4 skipped · tsc --noEmit 0 错 · biome ci 0/0 ·
   verify:convergence exit 0。
+
+## 追裁 · 模型配置面三层 + 思考档位下沉（2026-09-23，用户实测报告拍板方案 A）
+
+> 用户三问的落点：①「从 API 拉了 81 个可用模型，为什么创作坞的模型选择器里根本
+> 没有那么多」；②「思考强度在我的 provider 里看起来是供应商级全局生效，不是分模型」；
+> ③「配置模型时 API 拉到的模型从来没让我选择就全在列表里了 —— 整个 UX 是乱的」。
+> 彻查结论：前两问各有硬机制（下拉链上有 `.slice(0, 30)`；思考档位是提供方行级单值），
+> 第三问是**领域对象缺一层**——目录（远端事实）/ 启用（用户选择）/ 选中（跑哪一卷）
+> 挤在同一个字段与同一个控件里。
+
+### 病根（修复前现状）
+
+1. **一个 `models: string[]` 身兼三义**：① 远端目录快照 ② 用户启用集 ③ 创作坞可选面。
+   于是「从 API 拉取」必然等于「全部灌进配置面」：`AddProviderSheet.handleFetch`
+   直接 `setModels(ids)`、`model-sync.mergeIntoProvider` 取 `pulledIds + 既有` 的
+   **并集**（只增不减），全程没有一步问过用户「这 81 个里要哪几个」。
+2. **`.slice(0, 30)`**：初版选择器（`8c00891f`）对**静态目录搜索**的「前 30 条」
+   展示上限；compact 面的可选面后来换成「已配置模型」后，这条上限退化成配置列表的
+   天花板——配多少都只列 30 个（且是 id 字母序前 30，多提供方时还会互相挤占）。
+3. **思考档位是提供方行级单值**（`ProviderSettings.thinking`），per-model 覆盖表里
+   没有它；设置页那个 select 的**档位表却只由 `provider.model`（默认模型）决定**
+   ——控件长得像模型的设置，却既不绑定模型、作用域也不可见。会话侧
+   `compose-store.setModel` 还把行值**快照**进会话覆盖，等于把一个档位带给之后切到的
+   每个模型（「供应商级全局生效」的观感来源之一）。
+4. **坞里读全局目录**：创作坞 pill 的档位表读 `getModel(model)`（进程内目录），
+   设置页与请求期读 provider 作用域描述符（`modelDescriptor`）——同一模型两处可以
+   显示不同的档位表（拉取失败/重启后尤其明显）。
+
+### 修复（三层 + 下沉）
+
+1. **目录（新 `ProviderSettings.catalog`）**：`applyFetchedModels` 只写目录快照
+   （**整份替换**——远端下架的模型离开目录）与 `modelMeta`，**`models` 一行不碰**；
+   空拉取不清 last-good 目录。旧存档（`models` = 历史并集）语义 = 全部已启用，零迁移。
+2. **启用（`models`）**：Provider 页新增「模型目录」折叠区（搜索 + 全选 + 全部取消 +
+   逐条勾选 + 窗口/视觉提示），勾选写启用集；已启用但不在目录里的（手工添加的）
+   不受目录变动影响。「从 API 拉取」改名「**刷新目录**」——名字即新语义。
+   添加弹层同样分家：拉取填目录（默认全勾，可逐条取消），确认只带勾上的，
+   目录快照随行落盘（收方不必先拉一次）。
+3. **选中**：`model`（新会话默认 = 最近使用）+ 会话覆盖（compose-store）不变。
+4. **思考档位下沉**：新增 `ModelOverrides.thinking` + 单一解析尺子
+   `modelThinking(p, id)` = per-model 覆盖 ?? 行值。三面同链：设置页参数面板
+   （每模型一行，含「随本家默认」= 清覆盖）、创作坞 pill（换源到
+   `modelDescriptor(provider, model)`）、live provider 请求期。档位表同理收口到
+   `thinkingOptionsOrDefault`（设置页与坞共用；无声明模型的「自动/关闭」兜底不再各抄一份）。
+   行级 select 更名「**默认思考档位**」并显式标注作用域（作用于没单独设置过的模型）。
+5. **会话不再快照行值**：`compose-store.setModel` 写 `thinking: undefined`（= 按目标模型
+   解析）；`workspace.applyAgentConfig` / 会话工厂只把**会话显式覆盖**写进 live 的
+   覆盖槽（此前未改卷的卷也被钉上全局快照里的行值，per-model 档位永不生效）。
+6. **拆掉 `.slice(0, 30)`**（配置面不截断）。
+7. **配方**：`catalog` 与 `modelOverrides[*].thinking` 进白名单（导出/导入对称，
+   非法档位整单拒绝）。
+
+### 行为变化（用户可感知）
+
+- 「刷新目录」不再改变可用模型：**拉取 = 看远端有什么，勾选 = 决定我用什么**。
+- 创作坞模型下拉列出**全部**已启用模型（不再止于 30 条）。
+- 每个模型有自己的思考档位；设置页行级那个是「没单独设置过的模型用它」。
+- 创作坞 pill 与设置页显示同一个档位表与同一个生效值（同一把尺子）。
+
+### 已知边界（如实记录）
+
+- 档位清单仍由**模型声明**裁决（P14）：端点未披露 `thinking_efforts` 的模型，
+  设置页与坞都只给「自动 / 关闭」（不编造命名档位）。网关若想开放档位，
+  需在 `/models` 响应里显式声明，或在配方里带上 `thinkingEfforts` 元数据。
+
+### 守护
+
+- `tests/ui/provider-model-catalog.test.ts`（新增，5 例：刷新目录不动启用集 /
+  勾选与取消 / 全选与全部取消不牵连手工条目 / 拉取失败双侧不动 / 目录搜索）。
+- `tests/provider-live.test.ts`（思考三层：同家两模型各发自己的档位 / 未覆盖回落行值 /
+  会话覆盖压过 per-model 且 undefined 不冻结）。
+- `tests/provider-thinking.test.ts`（`modelThinking` 链 + 兜底表）、
+  `tests/compose-store.test.ts`（setModel 不再快照、setGlobalThinking 落 per-model）、
+  `tests/provider-recipe.test.ts`（目录 + per-model 档位往返与拒绝）、
+  `tests/ui/provider-page-staging.test.ts`（参数面板写/清覆盖）、
+  `tests/composer-dock-rework.test.tsx`（pill 值换源 + provider 作用域档位表）、
+  `tests/model-selector-compact.test.tsx`（40 个模型列全 40 条）。

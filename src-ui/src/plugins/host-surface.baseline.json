@@ -1,5 +1,5 @@
 {
-  "fingerprint": "7d0e335f",
+  "fingerprint": "4bee8d31",
   "keys": [
     "ANCHOR",
     "CORDIS_TOOL_NAMES",
@@ -125,7 +125,9 @@
     "mergeSelectionLines",
     "minimapProject",
     "modelContextWindow",
+    "modelDescriptor",
     "modelInput",
+    "modelThinking",
     "msgStoreFor",
     "nearestAnchorAt",
     "nearestFreeRegion",
@@ -175,6 +177,7 @@
     "subscribeObservedBlockHeights",
     "subscribeOverlayContributions",
     "thinkingOptionsFor",
+    "thinkingOptionsOrDefault",
     "translateMessagesCached",
     "typedJsonRpc",
     "unitMembership",

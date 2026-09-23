@@ -92,15 +92,12 @@ function createComposeStoreImpl() {
     resolveEffective: (sessionId) => get().sessions[sessionId] ?? snapshotFromGlobal(),
 
     setModel: (sessionId, providerName, model) => {
-      // 覆盖条目的 thinking 初值取目标 provider 行的当前值（跨 provider 切模型
-      // 时档位跟随目标家——与既有创作坞行为一致，只是落点从全局行改为会话覆盖）
-      let thinking: StoredThinking | undefined;
-      try {
-        thinking = loadSettings().providers.find((p) => p.name === providerName)?.thinking;
-      } catch {
-        /* 读失败 → thinking 覆盖缺省（undefined = 使用点回落 provider 行） */
-      }
-      const next: ComposeSessionPrefs = { providerName, model, thinking };
+      // 2026-09-23 思考下沉：切模型**不再把提供方行值快照进会话覆盖**——覆盖里的
+      // thinking 保持 undefined = 「按目标模型解析」（per-model 覆盖 ?? 行值，见
+      // settings.modelThinking / live provider）。旧行为把行值冻结进覆盖，于是切到
+      // 任何模型都带同一个档位（「供应商级全局生效」的观感来源之一），且会盖掉
+      // 目标模型自己的档位。
+      const next: ComposeSessionPrefs = { providerName, model, thinking: undefined };
       set((s) => ({ sessions: { ...s.sessions, [sessionId]: next } }));
       // 新会话默认 = 最近使用（2026-08-26）：定向写「最近使用的 provider + 该行
       // model」。只影响新卷/未改卷的出生默认；已存在会话走覆盖（方案甲 A1
@@ -127,12 +124,24 @@ function createComposeStoreImpl() {
     },
 
     setGlobalThinking: (thinking) => {
-      // 无主态：写 activeProvider 行的 thinking（新卷出生默认）。
+      // 无主态（开口即开卷）：坞里拨的是**当前出生默认模型**的档位——2026-09-23
+      // 思考下沉后落到该模型的 per-model 覆盖（与本家默认档位各管一层：设置页行级
+      // 那个是「没单独设过的模型用它」）。行无模型时无从定位，回落写行值。
       // 发 thinking-changed 信号无意义——无会话句柄可热切，工厂出生时现读。
       try {
         const s = loadSettings();
         const act = getActiveProvider(s);
-        saveSettings(updateProvider(s, act.name, { thinking }));
+        const model = act.model?.trim();
+        if (!model) {
+          saveSettings(updateProvider(s, act.name, { thinking }));
+          return;
+        }
+        const cur = act.modelOverrides?.[model] ?? {};
+        saveSettings(
+          updateProvider(s, act.name, {
+            modelOverrides: { ...(act.modelOverrides ?? {}), [model]: { ...cur, thinking } },
+          }),
+        );
       } catch {
         /* 读/写失败静默 */
       }
