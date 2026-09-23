@@ -17,6 +17,7 @@ import type { ActivationService } from '../../composition/activation-service';
 import { activeHookContributions } from '../../composition/hook-service';
 import { factoryComposition, type ResolvedComposition } from '../../composition/roster';
 import type { Context } from '../../cordis';
+import { providersFilePath } from '../../provider/providers-store';
 import type { StoredThinking } from '../../provider/thinking';
 import type { ChatImageRef, Message, Provider } from '../../provider/types';
 import { kernelDeleteFile, kernelProcessCall, kernelReadFile, kernelWriteFile, parseJson } from '../../rpc-contract';
@@ -698,6 +699,9 @@ export class AgentRuntime implements RuntimePort {
         shellEnvSection,
         composition.prompt,
         await loadSkillCatalogFor(ctx.projectPath),
+        // provider 配置文件路径（2026-09-24 配方改文件批）：让 agent 知道
+        // 「配 provider」落在哪份文件上——它能直接读写它，不必请用户去点设置页。
+        providersFilePath(),
       );
     }
 

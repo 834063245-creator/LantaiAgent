@@ -91,7 +91,7 @@ interface ProviderSettings {
 1. `apiKey` **永不落 localStorage**（settings.ts saveSettings 抹空）——权威在 `persistSecrets` 写入的系统加密凭据
 2. `name` 全局唯一——它是 provider 身份、credential 键、动态模型合并键的三合一
 
-### ProviderSettings.headers 与配方（2026-09-17）
+### ProviderSettings.headers 与配方（2026-09-17；2026-09-24 配方改文件批）
 
 网关怪癖（如 OpenCode GO 强制的 `x-opencode-session`）此前只能改代码发版——
 本版做成用户可编辑数据：
@@ -102,9 +102,40 @@ interface ProviderSettings {
   凭据头在后」且按键（小写）去重**——HTTP 头名大小写不敏感，同名不同大小写会被
   Fetch 合并成 `"a, b"` 污染凭据头（实测钉住），故自定义头不能覆写
   `Authorization` / `x-api-key`。
-- 设置页「高级」面：请求头文本编辑（每行 `Name: Value`，注释行忽略）+ 该行
-  **配方**导入/导出（`provider-recipe.ts`：format/version 校验、白名单字段、
-  密钥剥除与整单拒绝；套用时名字与 API Key 保持本行——身份与凭据键不随配方走）。
+- 设置页「高级」面：请求头文本编辑（每行 `Name: Value`，注释行忽略）。
+
+**⚡ 2026-09-24 配方改文件批：导入/导出两个动作退役，配方 = 一份磁盘文件。**
+
+病灶：配方此前只是设置页里一段剪贴板 JSON（导出 = 复制、导入 = 粘贴套用）——
+没有落点、不能 diff、不能进 git、agent 碰不到，每次分享/复用都要人来回复制粘贴。
+现在它是**一份 YAML 文件**：复制文件即导入，文件本身就是导出，agent 直接改。
+
+- **用户级**（唯一权威面）：`~/.lantai/providers.yml`；**项目级**（可选）：
+  `{工作区}/.lantai/providers.yml`，同 id **整节覆盖**用户级（一个仓库的内网网关
+  不该污染全局）。路径由 Rust 侧计算（`plugin_assets::providers_file`，尊重
+  `HOLOGRAM_PROVIDERS_FILE`），RPC `providers_dir` 只回目录、前端拼文件名。
+- **一行 provider = 一个顶层键，键名即身份**（= 系统凭据键）。可写字段：
+  `kind` / `baseUrl` / `model` / `models` / `thinking` / `headers` / `modelOverrides`
+  / `modelMeta` / `authMode` / `oauthProvider`。
+- **权威三分（互不重叠，各自只有一处）**：意图 → 本文件；密钥 → 系统凭据库
+  （`apiKey` 写进文件 = 点名报错——明文落盘会被误分享）；**运行态读数**
+  （`lastTest` 连接探针、`catalog` 目录快照）→ localStorage，不进文件（照 DSH
+  `settings-file`「文件里只放用户层」的分工）。存量迁移：首启时文件还没有内容 ⇒
+  把旧 localStorage 存档里的 provider 行写出去；此后文件即权威。
+- **热生效**：Rust `providers_watcher.rs`（mtime 轮询 1s + settle 去抖，照
+  `composition_watcher` 同款）emit `providers:changed` → 前端 `providers-store`
+  重读 → 投影换新 + 复用 `settings-saved` 广播（UI 重读 + 逐会话重解析）。
+- **写盘保注释**：UI 保存是「读-改-写 + leaf-diff」（`providers-doc.applyProvidersDoc`，
+  照 DSH settings-file 的 YAML 渲染）——只手改动的叶子值、只删没了的键，手写注释与
+  排版在未触及的节点上逐字保留（阵列内注释与改动标量的行内注释会随值走，空间归一为
+  单空格——与 DSH 记录的限制同款）。
+- **校验纪律**（照 DSH「boot fails loud, reload keeps last good」落到本仓库语义）：
+  **逐节校验**——坏节只坏自己（点名到 provider、该节回落上次可用值、其余节照常）；
+  **整份解析失败** ⇒ 保留上次可用文档 + 报错 + **拒绝写盘**（绝不覆盖人手稿）。
+  错误面在 设置 → 提供方 → 配置文件卡片（路径 / 本行错误 / 其它节错误 / 重读入口）。
+- **agent 可直接读写**：prompt 段 `provider-config` 注入文件绝对路径与可改字段清单；
+  沙箱读写白名单（`sandbox.rs`）与安全层（`permissions/safety.rs`）按**精确文件名**
+  放行 `providers.yml`（`.lantai` 整目录不放行）。
 
 ### ModelDescriptor（types.ts）
 
@@ -1052,7 +1083,10 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
   会话覆盖压过 per-model 且 undefined 不冻结）。
 - `tests/provider-thinking.test.ts`（`modelThinking` 链 + 兜底表）、
   `tests/compose-store.test.ts`（setModel 不再快照、setGlobalThinking 落 per-model）、
-  `tests/provider-recipe.test.ts`（目录 + per-model 档位往返与拒绝）、
+  `tests/providers-doc.test.ts`（**配方文件层**，2026-09-24：逐节解析/坏节只坏自己/
+  整份 fatal 不覆盖手稿/注释保留的 leaf-diff 往返/身份与密钥不进文件/modelMeta 往返；
+  原 `provider-recipe.test.ts` 与 `settings-provider-headers.test.ts` 的用例随之整批
+  迁入这一把尺子）、
   `tests/ui/provider-page-staging.test.ts`（参数面板写/清覆盖）、
   `tests/composer-dock-rework.test.tsx`（pill 值换源 + provider 作用域档位表）、
   `tests/model-selector-compact.test.tsx`（40 个模型列全 40 条）。

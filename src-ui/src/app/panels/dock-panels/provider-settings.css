@@ -1281,9 +1281,8 @@
   color: var(--ink-3);
 }
 
-/* 2026-09-17 高级连接配置（请求头 + 配方）：text area 沿用输入框语言，等机读位字体 */
-.pp-headers-text,
-.pp-recipe-text {
+/* 2026-09-17 高级连接配置（请求头）：text area 沿用输入框语言，等机读位字体 */
+.pp-headers-text {
   width: 100%;
   min-height: 48px;
   resize: vertical;
@@ -1294,6 +1293,54 @@
   overflow-wrap: normal;
   overflow-x: auto;
 }
-.pp-recipe-text {
-  margin-top: 4px;
+
+/* ── 配置文件卡片（2026-09-24 配方改文件批）──────────────────────────────
+   provider 连接配置的唯一权威是一份磁盘 YAML（~/.lantai/providers.yml）——
+   本卡亮出路径、点名报错、给两个入口（打开目录 / 重读）；导入导出两个按钮退役。 */
+.pp-doc-path {
+  margin: 2px 0 4px;
+  padding: 5px 8px;
+  border: 1px solid var(--rule-soft-ink);
+  background: var(--paper-deep);
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  line-height: 1.5;
+  color: var(--ink-2);
+  /* 长 Windows 路径：允许在任意处折行，不撑破面板 */
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.pp-doc-error {
+  margin: 6px 0 0;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in oklch, var(--fail) 35%, var(--paper));
+  background: color-mix(in oklch, var(--fail) 6%, transparent);
+  color: var(--fail);
+  font-size: calc(9.5px * var(--font-scale));
+  line-height: 1.5;
+}
+.pp-doc-error-body {
+  margin-top: 3px;
+  font-family: var(--f-mono);
+  font-size: calc(9.5px * var(--font-scale));
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.pp-doc-other {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 0;
+  font-size: calc(9.5px * var(--font-scale));
+  line-height: 1.45;
+}
+.pp-doc-other-name {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  color: var(--ink-2);
+}
+.pp-doc-other-msg {
+  flex: 1 1 auto;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
 }

@@ -35,34 +35,36 @@ pub fn composition_dir(open: bool) -> Result<String, String> {
     let root = crate::plugin_assets::composition_root_public();
     let path = ensure_composition_dirs(&root)?;
     if open {
-        open_in_file_manager(&root)?;
+        open_in_file_manager(&root, "composition_dir")?;
     }
     Ok(path)
 }
 
 /// 用系统文件管理器打开目录（路径由调用方保证来自服务端计算）。
-fn open_in_file_manager(path: &Path) -> Result<(), String> {
+/// `what` = 调用方命令名（错误文案的归属前缀，两条通道共用同一份平台分派）。
+/// 共用面：composition_dir 与 commands::providers::providers_dir。
+pub(crate) fn open_in_file_manager(path: &Path, what: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
         // explorer 直接开目录（不用 cmd start：少一层 shell 解析面）。
         std::process::Command::new("explorer")
             .arg(path)
             .spawn()
-            .map_err(|e| format!("composition_dir: 打开目录失败 {}: {e}", path.display()))?;
+            .map_err(|e| format!("{what}: 打开目录失败 {}: {e}", path.display()))?;
     }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
             .arg(path)
             .spawn()
-            .map_err(|e| format!("composition_dir: 打开目录失败 {}: {e}", path.display()))?;
+            .map_err(|e| format!("{what}: 打开目录失败 {}: {e}", path.display()))?;
     }
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
             .arg(path)
             .spawn()
-            .map_err(|e| format!("composition_dir: 打开目录失败 {}: {e}", path.display()))?;
+            .map_err(|e| format!("{what}: 打开目录失败 {}: {e}", path.display()))?;
     }
     Ok(())
 }

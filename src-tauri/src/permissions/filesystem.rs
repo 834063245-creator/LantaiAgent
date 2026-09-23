@@ -267,6 +267,29 @@ mod tests {
         assert!(matches!(r, PermissionResult::Allow), "expected Allow, got: {:?}", r);
     }
 
+    /// provider 配方文件（`.lantai/providers.yml`，providers.yml 统管通道）写路径
+    /// 不再被安全层拦成 Ask——钉**整条闸**（沙箱 → deny 规则 → safety → ask 规则），
+    /// 安全层单测只钉判据。同目录的 settings.json 仍 Ask：豁免不许扩面。
+    #[test]
+    fn test_write_providers_yml_not_asked() {
+        let (s, root) = sandbox_in_temp();
+        let rules = PermissionRules::new();
+        let r = check_write_permission(
+            &root.join(".lantai/providers.yml").to_string_lossy(),
+            &s,
+            &rules,
+            None,
+        );
+        assert!(matches!(r, PermissionResult::Allow), "providers.yml 写应 Allow, got: {:?}", r);
+        let r = check_write_permission(
+            &root.join(".lantai/settings.json").to_string_lossy(),
+            &s,
+            &rules,
+            None,
+        );
+        assert!(matches!(r, PermissionResult::Ask { .. }), "settings.json 写仍应 Ask, got: {:?}", r);
+    }
+
     #[test]
     fn test_write_dangerous_path_ask() {
         let (s, root) = sandbox_in_temp();

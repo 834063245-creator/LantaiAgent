@@ -143,6 +143,29 @@ pub(crate) fn composition_root_public() -> PathBuf {
     PathBuf::from(home).join(".lantai").join("composition")
 }
 
+/// provider 配置文件（providers.yml 统管通道）：用户主目录下
+/// `.lantai/providers.yml` 的绝对路径。`HOLOGRAM_PROVIDERS_FILE` 环境变量
+/// 非空可覆盖（测试隔离/重定位语义；镜像 HOLOGRAM_COMPOSITION_ROOT）。
+/// providers_watcher 经 providers_file_public 复用同一真源——路径只有这一处。
+pub(crate) fn providers_file() -> PathBuf {
+    if let Some(custom) = std::env::var_os("HOLOGRAM_PROVIDERS_FILE") {
+        if !custom.is_empty() {
+            return PathBuf::from(custom);
+        }
+    }
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".lantai").join("providers.yml")
+}
+
+/// providers_file 的跨模块访问面（providers_watcher / commands::providers 消费；
+/// 别名方向与 composition_root 一族相反——那边逻辑落在 _public、本处落在真源
+/// providers_file，语义相同：全仓库只有一处算这个路径）。
+pub(crate) fn providers_file_public() -> PathBuf {
+    providers_file()
+}
+
 /// 最小 percent 解码（解码失败 → None，整条请求拒绝）。
 fn percent_decode(s: &str) -> Option<String> {
     let bytes = s.as_bytes();
@@ -724,6 +747,46 @@ mod tests {
         });
         std::env::remove_var("HOLOGRAM_PLUGINS_ROOT");
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
+    }
+
+    // ── provider 配置文件路径真源（providers.yml 统管通道）──
+
+    /// providers_file：env 覆盖生效 + 默认落 `~/.lantai/providers.yml`。
+    /// env 是进程级变量——**同一个测试内 set/remove**，不为「覆盖」与「默认」
+    /// 各开一个测试：并行测试同时设同一变量会互相 clobber（本机踩过，
+    /// 见下方 HOLOGRAM_COMPOSITION_ROOT 注记）。
+    #[test]
+    fn providers_file_path_respects_env_and_defaults_to_lantai() {
+        let tmp =
+            std::env::temp_dir().join(format!("lantai_providers_file_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let custom = tmp.join("providers.yml");
+
+        // 默认形态（env 未设）：`~/.lantai/providers.yml`
+        std::env::remove_var("HOLOGRAM_PROVIDERS_FILE");
+        let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok();
+        let default = providers_file();
+        assert_eq!(default.file_name().and_then(|n| n.to_str()), Some("providers.yml"));
+        assert_eq!(
+            default.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()),
+            Some(".lantai"),
+            "默认落 ~/.lantai/ 根级（与 mcp.json 同列）"
+        );
+        if let Some(home) = home.filter(|h| !h.is_empty()) {
+            assert_eq!(default, PathBuf::from(home).join(".lantai").join("providers.yml"));
+        }
+
+        // env 覆盖（测试隔离/重定位）：公开访问面与内部真源同源
+        std::env::set_var("HOLOGRAM_PROVIDERS_FILE", &custom);
+        assert_eq!(providers_file(), custom);
+        assert_eq!(providers_file_public(), custom);
+        // 空值（未设/空串）仍落默认——空路径不是合法配置文件
+        std::env::set_var("HOLOGRAM_PROVIDERS_FILE", "");
+        assert_eq!(providers_file(), default);
+
+        std::env::remove_var("HOLOGRAM_PROVIDERS_FILE");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     // ── S4-0 preset 索引路由 ──

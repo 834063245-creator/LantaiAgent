@@ -39,6 +39,15 @@ export const selectPreset = impl.selectPreset;
 export const compositionDir = impl.compositionDir;
 export const createPresetFromTemplate = impl.createPresetFromTemplate;
 export const rescanPresets = impl.rescanPresets;
+// provider 配置文件通道（2026-09-24 配方改文件批）
+export const saveProvidersDoc = impl.saveProvidersDoc;
+export const providersFilePath = impl.providersFilePath;
+export const providersDocStatus = impl.providersDocStatus;
+export const onProvidersDocChange = impl.onProvidersDocChange;
+export const ensureProvidersDir = impl.ensureProvidersDir;
+export const loadProjectProvidersDoc = impl.loadProjectProvidersDoc;
+export const projectProvidersErrors = impl.projectProvidersErrors;
+export const projectProvidersFatal = impl.projectProvidersFatal;
 // S6 P3b：激活诊断读面（设置面板「组合」节第四栏）
 export const activationConflict = impl.activationConflict;
 export const activationSkipped = impl.activationSkipped;

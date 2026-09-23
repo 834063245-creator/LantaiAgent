@@ -17,6 +17,18 @@ export { activationConflict, activationSkipped } from '../../../composition/acti
 export { selectPreset } from '../../../composition/preset-assembly';
 export { compositionDir, createPresetFromTemplate, rescanPresets } from '../../../composition/preset-authoring';
 export { setLang } from '../../../i18n';
+// provider 配置文件通道（2026-09-24 配方改文件批）：设置页显示路径与逐节错误、
+// 打开目录、保存时写盘——意图的唯一权威是那份 YAML，这里是它的界面面。
+export {
+  ensureProvidersDir,
+  loadProjectProvidersDoc,
+  onProvidersDocChange,
+  projectProvidersErrors,
+  projectProvidersFatal,
+  providersDocStatus,
+  providersFilePath,
+  saveProvidersDoc,
+} from '../../../provider/providers-store';
 export { typedJsonRpc } from '../../../rpc-contract';
 export type { AppSettings, ConnectionProbe, ProviderId } from '../../../settings';
 export {

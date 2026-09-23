@@ -3,14 +3,18 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 高级连接配置组件（2026-09-17）：请求头编辑的提交纪律（非法行不提交、合法行提交）
-// 与配方导入/导出的用户动作链（导出生文言、导入套用保名字与密钥）。
+// 高级连接配置组件：请求头编辑的提交纪律（非法行不提交、合法行提交）。
+//
+// ⚡ 2026-09-24 配方改文件批：本文件原先还覆盖「配方导出/导入」两个按钮的用户动作链
+// ——那两个动作整批退役（provider 连接配置的权威改成 `~/.lantai/providers.yml`
+// 那份磁盘文件：复制文件即导入、文件本身即导出，agent 直接改）。
+// 配方文档本身的逐条语义在 `tests/providers-doc.test.ts` + `tests/providers-store.test.ts`；
+// 配置文件的界面面在 `ProviderDocCard`（此处钉住「导入/导出按钮确实不再出现」）。
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderAdvanced } from '../src/app/panels/settings/ProviderAdvanced';
-import { exportProviderRecipe } from '../src/provider/provider-recipe';
 import { type ProviderSettings, providerId } from '../src/settings';
 
 function row(overrides: Partial<ProviderSettings> = {}): ProviderSettings {
@@ -37,7 +41,7 @@ function buttonByText(text: string): HTMLButtonElement {
   return found as HTMLButtonElement;
 }
 
-describe('ProviderAdvanced（请求头 + 配方）', () => {
+describe('ProviderAdvanced（请求头）', () => {
   let container: HTMLDivElement;
   let root: Root | undefined;
 
@@ -73,53 +77,20 @@ describe('ProviderAdvanced（请求头 + 配方）', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ headers: { 'x-opencode-session': 'sess-1' } }));
   });
 
-  it('导出：生成配方文本（不含密钥）并提示落文本框', async () => {
-    mount(row({ headers: { 'x-opencode-session': 'sess-1' } }));
-    await act(async () => {
-      buttonByText('导出').click();
-    });
-    const text = container.querySelector<HTMLTextAreaElement>('.pp-recipe-text')?.value ?? '';
-    expect(text).toContain('"format": "lantai-provider-recipe"');
-    expect(text).toContain('x-opencode-session');
-    expect(text).not.toContain('sk-local');
+  it('清空请求头 = 提交 undefined（字段清除语义，不是空对象）', () => {
+    const onChange = mount(row({ headers: { 'x-opencode-session': 'sess-1' } }));
+    const ta = container.querySelector<HTMLTextAreaElement>('#pd-headers');
+    if (!ta) throw new Error('缺少请求头输入框');
+    act(() => setTextarea(ta, ''));
+    act(() => buttonByText('保存').click());
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ headers: undefined }));
   });
 
-  it('导入：粘贴配方套用本行——连接配置来自配方，名字与密钥保持本行', () => {
-    const source = row({
-      name: providerId('shared-row'),
-      kind: 'openai',
-      baseUrl: 'https://opencode.ai/zen/go/v1',
-      model: 'deepseek-v4.1-flash',
-      headers: { 'x-opencode-session': 'sess-9' },
-    });
-    const onChange = mount(row());
-    act(() => {
-      buttonByText('导入').click();
-    });
-    const ta = container.querySelector<HTMLTextAreaElement>('.pp-recipe-text');
-    if (!ta) throw new Error('缺少配方输入框');
-    act(() => setTextarea(ta, exportProviderRecipe(source)));
-    act(() => buttonByText('套用到本行').click());
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'opencodego',
-        apiKey: 'sk-local',
-        baseUrl: 'https://opencode.ai/zen/go/v1',
-        headers: { 'x-opencode-session': 'sess-9' },
-      }),
-    );
-  });
-
-  it('导入：坏配方整单拒绝并显示原因', () => {
-    const onChange = mount(row());
-    act(() => {
-      buttonByText('导入').click();
-    });
-    const ta = container.querySelector<HTMLTextAreaElement>('.pp-recipe-text');
-    if (!ta) throw new Error('缺少配方输入框');
-    act(() => setTextarea(ta, '{ not json'));
-    act(() => buttonByText('套用到本行').click());
-    expect(onChange).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('不是合法 JSON');
+  // 2026-09-24 配方改文件批的退役断言：导入/导出两个动作不在这个面板了
+  it('导入/导出两个动作已退役（配方 = 磁盘文件，见 ProviderDocCard）', () => {
+    mount(row());
+    expect([...document.querySelectorAll('button')].map((b) => b.textContent?.trim())).not.toContain('导出');
+    expect([...document.querySelectorAll('button')].map((b) => b.textContent?.trim())).not.toContain('导入');
+    expect(container.querySelector('.pp-recipe-text')).toBeNull();
   });
 });

@@ -88,19 +88,24 @@ fn watch_loop(app_handle: AppHandle, running: std::sync::Arc<AtomicBool>) {
 /// 当前存在性区分 modified/removed）；窗口内连续变化重置去抖（编辑器保存
 /// 常连发多次写——只在静默后发一次，避免 reload 风暴）；发射后回到静默，
 /// 无新变化不再重复发射。
-struct WatchState {
+///
+/// 共用面（providers.yml 统管通道）：`providers_watcher` 的 mtime 轮询 +
+/// 去抖语义与此**逐字相同**（1s 轮询 + 1s settle，载荷同形），故本状态机
+/// 与 `file_mtime` 提为 `pub(crate)` 供其复用——不复制第二份状态机。
+pub(crate) struct WatchState {
     last_mtime: Option<u64>,
     pending: bool,
     last_change_at: Option<std::time::Instant>,
 }
 
 impl WatchState {
-    fn new(initial_mtime: Option<u64>) -> Self {
+    pub(crate) fn new(initial_mtime: Option<u64>) -> Self {
         Self { last_mtime: initial_mtime, pending: false, last_change_at: None }
     }
 
-    /// 一次轮询的转移。返回 Some(reason) = 本轮应发射 composition:changed。
-    fn poll(
+    /// 一次轮询的转移。返回 Some(reason) = 本轮应发射变更事件
+    /// （composition:changed / providers:changed——载荷取同一对取值）。
+    pub(crate) fn poll(
         &mut self,
         current: Option<u64>,
         now: std::time::Instant,
@@ -131,7 +136,8 @@ fn root_patch_path() -> PathBuf {
 }
 
 /// 文件 mtime（不存在/不可读 = None——删除也是变更事件）。
-fn file_mtime(path: &std::path::Path) -> Option<u64> {
+/// 共用面：providers_watcher 同用（见 WatchState 注）。
+pub(crate) fn file_mtime(path: &std::path::Path) -> Option<u64> {
     let meta = std::fs::metadata(path).ok()?;
     let modified = meta.modified().ok()?;
     modified.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())

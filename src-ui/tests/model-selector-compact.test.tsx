@@ -705,25 +705,23 @@ describe('R3b：settings 保存后下拉可选面即时刷新（新提供方模�
     expect(heads.some((h) => h.includes('deepseek'))).toBe(true);
     expect(heads.some((h) => h.includes('qwen-token-plan'))).toBe(false);
 
-    // 模拟「添加提供方即时生效」：settings 落盘（含新 provider + models）
+    // 模拟「添加提供方即时生效」：2026-09-24 配方改文件批之后，provider 意图的
+    // 权威是配置文件，localStorage 只留运行态——所以这里照真实链路走两步：
+    //   ① 文件权威投影换新（= provider-store 写盘后重读）；
+    //   ② saveSettings 广播（= 设置页保存管道的同一发信号）。
     // 复用真实 saveSettings → onSettingsSaved 触发 → 可选面重快照
-    const { loadSettings, providerId, saveSettings } = await import('../src/settings');
+    const { installProvidersProjection, loadSettings, providerId, saveSettings } = await import('../src/settings');
     const s = loadSettings();
-    saveSettings({
-      ...s,
-      activeProvider: providerId('qwen-token-plan'),
-      providers: [
-        ...s.providers,
-        {
-          kind: 'openai',
-          name: providerId('qwen-token-plan'),
-          apiKey: '',
-          baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-          model: 'qwen3-coder-plus',
-          models: ['qwen3-coder-plus', 'qwen3-max'],
-        },
-      ],
-    });
+    const added = {
+      kind: 'openai',
+      name: providerId('qwen-token-plan'),
+      apiKey: '',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      model: 'qwen3-coder-plus',
+      models: ['qwen3-coder-plus', 'qwen3-max'],
+    };
+    installProvidersProjection({ rows: () => [...s.providers, added] });
+    saveSettings({ ...s, activeProvider: providerId('qwen-token-plan'), providers: [...s.providers, added] });
     await act(async () => {});
 
     // 下拉仍开着：新分组出现，模型可选
@@ -731,6 +729,7 @@ describe('R3b：settings 保存后下拉可选面即时刷新（新提供方模�
     expect(heads.some((h) => h.includes('qwen-token-plan'))).toBe(true);
     const ids = [...container!.querySelectorAll<HTMLButtonElement>('.ms-item')].map((b) => b.textContent ?? '');
     expect(ids.some((t) => t.includes('qwen3-coder-plus'))).toBe(true);
+    installProvidersProjection(null);
   });
 });
 

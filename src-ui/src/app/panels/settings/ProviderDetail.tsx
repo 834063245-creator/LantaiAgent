@@ -19,6 +19,7 @@ import {
   type ProviderSettings,
 } from '../../../settings';
 import { ProviderAdvanced } from './ProviderAdvanced';
+import { ProviderDocCard } from './ProviderDocCard';
 import { protocolLabel } from './protocol';
 import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
 
@@ -101,13 +102,36 @@ export interface ProviderDetailActions {
   onModelThinking: (modelId: string, value: StoredThinking | undefined) => void;
   /** 视觉声明覆盖（B5 · D-8①）：on = ['text','image'] 强制开；off = 清覆盖回落目录。 */
   onModelVisionToggle: (modelId: string, on: boolean) => void;
-  /** 高级连接配置（2026-09-17）：请求头编辑 / 配方导入的整行回填（名字与密钥保持本行）。 */
+  /** 高级连接配置（2026-09-17）：请求头编辑的整行回填（名字与密钥保持本行）。 */
   onAdvancedChange: (next: ProviderSettings) => void;
+  /** 配置文件面（2026-09-24 配方改文件批）：provider 意图的唯一权威是
+   *  `~/.lantai/providers.yml`——这里给路径、逐节错误、打开目录与重读入口。 */
+  doc: ProviderDocView;
+  onOpenDocDir: () => void;
+  onReloadDoc: () => void;
+  /** 配置文件操作的回执（打开失败/已重读）。 */
+  docMsg: string;
   onTest: () => void;
   onClearKey: () => void;
   onResetBaseUrl: () => void;
   onToggleKeyVisible: () => void;
   onDelete: () => void;
+}
+
+/** 配置文件在详情页的读面（形状与 ProviderPage.ProvidersDocView 同源）。 */
+export interface ProviderDocView {
+  path: string;
+  status: {
+    path: string;
+    errors: Array<{ name: string; message: string }>;
+    fatal?: string;
+    empty: boolean;
+    loaded: boolean;
+  };
+  projectErrors: ReadonlyArray<{ name: string; message: string }>;
+  projectFatal?: string;
+  /** 外部改动到达时有未保存暂存 ⇒ 面板没替换（提示用户先保存/放弃）。 */
+  staleHint: boolean;
 }
 
 /** Phase 3D：OAuth 订阅登录数据面（authMode='oauth' 的 provider 专用）。
@@ -134,6 +158,10 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     onModelThinking,
     onModelVisionToggle,
     onAdvancedChange,
+    doc,
+    onOpenDocDir,
+    onReloadDoc,
+    docMsg,
     onTest,
     onClearKey,
     onResetBaseUrl,
@@ -696,9 +724,14 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
         </div>
       </div>
 
-      {/* 高级连接配置（2026-09-17）：请求头 + 配方导入/导出——网关怪癖的用户
-          可编辑面（key 化 provider 名以在切行时重置编辑态） */}
+      {/* 高级连接配置（2026-09-17）：请求头——网关怪癖的用户可编辑面
+           （key 化 provider 名以在切行时重置编辑态） */}
       <ProviderAdvanced key={provider.name} provider={provider} onChange={onAdvancedChange} />
+
+      {/* 配置文件（2026-09-24 配方改文件批）：provider 连接配置的**唯一权威**
+           是一份 YAML——人和 agent 都能直接改它，改完约 1 秒热生效。
+           这里只给路径、错误与两个入口（打开目录 / 重读），不再有导入导出动作。 */}
+      <ProviderDocCard doc={doc} myName={provider.name} onOpenDir={onOpenDocDir} onReload={onReloadDoc} msg={docMsg} />
 
       <div className="pp-card">
         <div className="pp-card-hd">

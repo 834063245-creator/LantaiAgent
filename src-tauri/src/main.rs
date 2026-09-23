@@ -42,6 +42,7 @@ mod llm_proxy;
 mod plugin_assets;
 mod engine_assets;
 mod composition_watcher;
+mod providers_watcher;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -142,6 +143,12 @@ fn main() {
             // app 生命周期 = watcher 生命周期（Drop 停线程）。
             let _composition_watcher = composition_watcher::CompositionWatcher::start(app.handle().clone());
             app.manage(std::sync::Mutex::new(_composition_watcher));
+            // provider 配置文件热重载 watcher：~/.lantai/providers.yml 变更 →
+            // providers:changed 事件 → 前端重读 provider 配方。
+            // manage key = Mutex<ProvidersWatcher>（与组合 watcher 不同类型，互不冲突）；
+            // app 生命周期 = watcher 生命周期（Drop 停线程）。
+            let _providers_watcher = providers_watcher::ProvidersWatcher::start(app.handle().clone());
+            app.manage(std::sync::Mutex::new(_providers_watcher));
             // Memory Bundle: 如果在 hologram 旁找到 exe 则启动
             if let Ok(exe_path) = std::env::current_exe() {
                 if let Some(exe_dir) = exe_path.parent() {

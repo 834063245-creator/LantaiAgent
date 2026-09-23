@@ -12,6 +12,7 @@ import { invalidateCredentialCache } from '../../../provider/credentials';
 import { createLiveProvider } from '../../../provider/live';
 import { applyFetchedModels } from '../../../provider/model-sync';
 import { oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
+import { loadProvidersDoc } from '../../../provider/providers-store';
 import type { StoredThinking } from '../../../provider/thinking';
 import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
@@ -52,7 +53,41 @@ interface ProviderPageProps {
   /** 添加提供方即时生效（2026-09-06）：一步落盘 + 写 Key + settings-saved 热广播，
    *  使新提供方模型立刻全会话可选（不再走暂存-保存条）。next 已含新 provider。 */
   onAddAndPersist: (next: AppSettings, addedName: ProviderId) => Promise<void>;
+  /** 配置文件面（2026-09-24 配方改文件批）：路径 / 逐节错误 / 外部改动代数。
+   *  version 变化 = 文件被（人/agent）改过 → 面板重读生效行表。
+   *  缺省 = 测试与降级环境（没有配置文件面时的空态，不崩）。 */
+  providersDoc?: ProvidersDocView;
 }
+
+/** 配置文件在设置页的读面（provider 意图的唯一权威是那份 YAML）。 */
+export interface ProvidersDocView {
+  /** 文件每次被外部改动（watcher 重读）自增——重读触发器。 */
+  version: number;
+  status: {
+    path: string;
+    errors: Array<{ name: string; message: string }>;
+    fatal?: string;
+    empty: boolean;
+    loaded: boolean;
+  };
+  path: string;
+  /** 项目级覆盖（`{ws}/.lantai/providers.yml`）的逐节错误与整份状态。 */
+  projectErrors: ReadonlyArray<{ name: string; message: string }>;
+  projectFatal?: string;
+  /** 外部改动后重读面板 state（settings 由父组件持有）。 */
+  onReload: () => void;
+  /** 外部改动到达时有未保存暂存 ⇒ 面板没替换（提示用户先保存/放弃）。 */
+  staleHint?: boolean;
+}
+
+/** 空态配置文件面（未接入 provider-store 的宿主：测试 / 降级）。 */
+export const EMPTY_PROVIDERS_DOC: ProvidersDocView = {
+  version: 0,
+  status: { path: '', errors: [], empty: true, loaded: false },
+  path: '',
+  projectErrors: [],
+  onReload: () => {},
+};
 
 export function ProviderPage({
   settings,
@@ -66,6 +101,7 @@ export function ProviderPage({
   providerDirty,
   onSaveProviders,
   onAddAndPersist,
+  providersDoc = EMPTY_PROVIDERS_DOC,
 }: ProviderPageProps) {
   const [selected, setSelected] = useState<ProviderId>(() => getActiveProvider(settings).name);
   const [keyDirtyMap, setKeyDirtyMap] = useState<Map<ProviderId, boolean>>(new Map());
@@ -95,12 +131,42 @@ export function ProviderPage({
 
   const requestFocusKey = useCallback(() => setFocusNonce((n) => n + 1), []);
 
+  /** 打开配置文件所在目录（系统文件管理器；Rust 侧按需建目录）。 */
+  const [docMsg, setDocMsg] = useState('');
+  const handleOpenDocDir = useCallback(async () => {
+    try {
+      const { typedRpc } = await import('../../../rpc-contract');
+      await typedRpc('providers_dir', { open: true });
+      setDocMsg('');
+    } catch (e) {
+      setDocMsg(`打开目录失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, []);
+
+  /** 手动重读配置文件（改完手稿不点保存也能当场看到；watcher 之外的第二条路）。 */
+  const handleReloadDoc = useCallback(async () => {
+    try {
+      await loadProvidersDoc({ reloadRuntime: true });
+      providersDoc.onReload();
+      setDocMsg('已重新读取配置文件');
+    } catch (e) {
+      setDocMsg(`重读失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [providersDoc]);
+
   // 选中项失效（被删除/切换）时回落到当前 Provider
   useEffect(() => {
     if (!settings.providers.some((p) => p.name === selected)) {
       setSelected(settings.activeProvider);
     }
   }, [settings, selected]);
+
+  // 配置文件被外部改动（人/agent 手写 → watcher 重读）：请求父组件从投影重读
+  // 面板 state——否则「文件改了、面板还是旧的」会让人以为改错了地方。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: providersDoc.version 是刻意的重读触发器（非 effect 体内读取值）
+  useEffect(() => {
+    if (providersDoc.version > 0) providersDoc.onReload();
+  }, [providersDoc.version]);
 
   useEffect(() => {
     if (focusNonce > 0) keyInputRef.current?.focus();
@@ -568,6 +634,16 @@ export function ProviderPage({
             onModelVisionToggle: (modelId, on) => handleModelVisionToggle(selectedProvider.name, modelId, on),
             onModelThinking: (modelId, value) => handleModelThinking(selectedProvider.name, modelId, value),
             onAdvancedChange: (next) => handleAdvancedChange(selectedProvider.name, next),
+            doc: {
+              path: providersDoc.path,
+              status: providersDoc.status,
+              projectErrors: providersDoc.projectErrors,
+              projectFatal: providersDoc.projectFatal,
+              staleHint: providersDoc.staleHint === true,
+            },
+            onOpenDocDir: handleOpenDocDir,
+            onReloadDoc: handleReloadDoc,
+            docMsg,
             onTest: handleTest,
             onClearKey: () => setClearTarget(selectedProvider.name),
             onResetBaseUrl: () =>

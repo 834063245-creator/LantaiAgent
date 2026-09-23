@@ -160,6 +160,17 @@ import {
 } from '../../provider/catalog';
 import { resolveApiKey } from '../../provider/credentials';
 import { createOpenAIProvider } from '../../provider/openai';
+// provider 配置文件通道（2026-09-24 配方改文件批）：设置页路径/错误/写盘面
+import {
+  ensureProvidersDir,
+  loadProjectProvidersDoc,
+  onProvidersDocChange,
+  projectProvidersErrors,
+  projectProvidersFatal,
+  providersDocStatus,
+  providersFilePath,
+  saveProvidersDoc,
+} from '../../provider/providers-store';
 import { createResponsesProvider } from '../../provider/responses';
 import { thinkingOptionsFor, thinkingOptionsOrDefault } from '../../provider/thinking';
 import {
@@ -256,6 +267,15 @@ const faceDeps = {
   compositionDir,
   createPresetFromTemplate,
   rescanPresets,
+  // provider 配置文件通道（2026-09-24 配方改文件批）：路径 / 逐节错误 / 写盘
+  saveProvidersDoc,
+  providersFilePath,
+  providersDocStatus,
+  onProvidersDocChange,
+  ensureProvidersDir,
+  loadProjectProvidersDoc,
+  projectProvidersErrors,
+  projectProvidersFatal,
   // S6 P3b：激活诊断读面（第四栏「被跳过」= 激活失败的插件 + 原因；独占冲突回看）
   activationSkipped,
   activationConflict,

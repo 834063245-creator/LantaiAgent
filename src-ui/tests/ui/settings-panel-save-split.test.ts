@@ -91,8 +91,12 @@ describe('SettingsPanel — 保存拆域', () => {
     await tick();
 
     expect(document.querySelector('.pp-save-bar')).toBeNull();
+    // ⚡ 2026-09-24 配方改文件批：provider 的**意图**（baseUrl 等）权威已迁
+    // `~/.lantai/providers.yml`，localStorage 只留运行态读数（探针/目录/密钥壳）
+    // ——所以这里不再断言 baseUrl 落 localStorage（那会变成第二份真相）。
+    // 「保存了没」的判据 = 保存条消失 + settings-saved 广播（下面两条）。
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(stored.providers.find((p: any) => p.name === 'deepseek').baseUrl).toBe('https://custom.example/v1');
+    expect(stored.providers.find((p: any) => p.name === 'deepseek')).not.toHaveProperty('baseUrl');
     expect(mockConfigChanged).toHaveBeenCalledTimes(1);
     expect(mockConfigChanged).toHaveBeenCalledWith('settings-saved');
   });

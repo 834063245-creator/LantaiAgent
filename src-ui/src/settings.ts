@@ -6,7 +6,6 @@
 
 import { ANTHROPIC_DEFAULT_BASE_URL } from './provider/anthropic';
 import { getCatalogVendors, getDefaultModel, getModel } from './provider/catalog';
-import { sanitizeProviderHeaders } from './provider/custom-headers';
 import type { ModelMeta } from './provider/model-meta';
 import type { StoredThinking, ThinkingEffort } from './provider/thinking';
 import type { CoreProtocol, ModelDescriptor, Protocol } from './provider/types';
@@ -374,21 +373,10 @@ export function loadSettings(): AppSettings {
             if (p && typeof p === 'object') {
               delete (p as { contextWindow?: unknown }).contextWindow;
               delete (p as { maxTokens?: unknown }).maxTokens;
-              // 自定义请求头（2026-09-17）：毒化条目丢弃 + warn（INVARIANTS #11
-              // 读取容忍毒化数据）；全坏 = 字段清除，与「未配置」同语义。
-              const headers = sanitizeProviderHeaders((p as { headers?: unknown }).headers, String(p.name));
-              if (headers) (p as { headers?: Record<string, string> }).headers = headers;
-              else delete (p as { headers?: unknown }).headers;
-              // 目录快照（2026-09-23 三层）：非数组/非字符串条目 = 毒化读容忍
-              // （INVARIANTS #11）——清洗后为空即视为「从未拉取」。
-              if ('catalog' in p) {
-                const rawCatalog = (p as { catalog?: unknown }).catalog;
-                const cleanCatalog = Array.isArray(rawCatalog)
-                  ? rawCatalog.filter((m): m is string => typeof m === 'string' && m.trim().length > 0)
-                  : [];
-                if (cleanCatalog.length > 0) (p as { catalog?: string[] }).catalog = cleanCatalog;
-                else delete (p as { catalog?: unknown }).catalog;
-              }
+              // ⚡ 2026-09-24 配方改文件批：headers/catalog 等**意图字段**的权威已迁
+              // `~/.lantai/providers.yml`，这里不再逐字段清洗——旧存档整行只当
+              // 「运行态读数的壳」，意图由 provider-store 投影覆盖（未启用文件权威
+              // 时=测试与降级路径，走的是旧语义）。
             }
           }
         }
@@ -397,13 +385,83 @@ export function loadSettings(): AppSettings {
         if (!Array.isArray(parsed?.providers) || parsed.providers.length === 0) {
           parsed.providers = DEFAULTS.providers;
         }
-        return { ...DEFAULTS, ...parsed };
+        const merged = { ...DEFAULTS, ...parsed };
+        return prefersFileProviders() ? { ...merged, providers: fileProvidersProjection(merged.providers) } : merged;
       }
     }
   } catch {
     // 设置损坏，使用默认值
   }
-  return { ...DEFAULTS };
+  const fallback = { ...DEFAULTS };
+  return prefersFileProviders() ? { ...fallback, providers: fileProvidersProjection(fallback.providers) } : fallback;
+}
+
+// ── provider 意图 → 文件；运行态 → localStorage（2026-09-24 配方改文件批）─────
+//
+// ⚡ 权威三分（互不重叠，各自只有一处权威）：
+//   1. **意图**（kind/baseUrl/模型/请求头/覆盖/档位）→ `~/.lantai/providers.yml`
+//      （人可手写、agent 可读写、改动约 1 秒热生效）；见 `provider/providers-store.ts`。
+//   2. **密钥** → 系统加密凭据（`persistSecrets` / `restoreSecrets`，权威不变）。
+//   3. **运行态读数**（连接探针结果 / 模型目录快照）→ 本文件的 localStorage
+//      投影（那是本机读数，不是用户意图——照 DSH `settings-file`「文件里只放
+//      用户层」的同一分工，不进配置文件）。
+//
+// 这里是**投影口**：provider 意图由 provider-store 持有内存投影，loadSettings
+// 在读取边界把它合上来。这样「文件改了 → 全应用即时看到」不需要改几十个
+// `loadSettings()` 调用点，也不会在打字/滚轮热路径上做文件 IO
+// （`onSettingsSaved` 订阅方在文件变更后照常重读）。
+
+/** localStorage 只承载 provider 的**运行态读数**（意图在文件里）。 */
+export type ProviderRuntime = Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog'>;
+
+/** provider 文档投影口（由 provider-store 在 boot 期注入；缺省 = 未启用文件权威）。 */
+interface ProvidersProjection {
+  /** 文件里的 provider（顺序 = 文件键序）合上运行态读数。 */
+  rows(fallback: ProviderSettings[]): ProviderSettings[];
+}
+
+let providersProjection: ProvidersProjection | null = null;
+
+/** 装配投影口（provider-store 调用一次；boot 期先于一切 provider 消费）。 */
+export function installProvidersProjection(p: ProvidersProjection | null): void {
+  providersProjection = p;
+}
+
+/** 是否已启用文件权威（未装配时按旧语义走 localStorage——测试与降级路径）。 */
+function prefersFileProviders(): boolean {
+  return providersProjection !== null;
+}
+
+function fileProvidersProjection(fallback: ProviderSettings[]): ProviderSettings[] {
+  return providersProjection ? providersProjection.rows(fallback) : fallback;
+}
+
+/** 读某 provider 的运行态读数（文件权威下 localStorage 里只留这些）。 */
+export function providerRuntimeOf(name: string): ProviderRuntime {
+  const row = loadSettings().providers.find((p) => p.name === name);
+  return { apiKey: row?.apiKey ?? '', lastTest: row?.lastTest, catalog: row?.catalog };
+}
+
+/**
+ * localStorage 里**原样躺着**的 provider 行（不经文件投影）。
+ *
+ * 2026-09-24 配方改文件批的迁移专用口：首次启动时配置文件还不存在，而意图还躺在
+ * 旧存档里——迁移必须读**未投影**的存量（loadSettings 在文件权威下会拿文件投影，
+ * 空文件 = 空行表，用它做迁移源会把存量整份丢掉）。
+ */
+export function storedProviderRows(): ProviderSettings[] {
+  try {
+    if (typeof localStorage === 'undefined') return [];
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { providers?: unknown };
+    if (!Array.isArray(parsed?.providers)) return [];
+    return parsed.providers.filter(
+      (p): p is ProviderSettings => !!p && typeof p === 'object' && typeof (p as { name?: unknown }).name === 'string',
+    );
+  } catch {
+    return [];
+  }
 }
 
 export function saveSettings(s: AppSettings): void {
@@ -411,9 +469,20 @@ export function saveSettings(s: AppSettings): void {
     // ⚡ 2026-08-04 状态治理：apiKey 不落 localStorage 明文。
     // 唯一权威 = 系统加密凭据（persistSecrets / restoreSecrets）；
     // localStorage 只存非敏感配置。provider 配置结构保留，仅抹空密钥字段。
+    // ⚡ 2026-09-24 配方改文件批：provider 的**意图**也一并剥掉（权威在
+    // `~/.lantai/providers.yml`）——localStorage 只留运行态读数，否则
+    // 「文件已删掉某行、localStorage 还留着」会造出第二份真相。
     const sanitized: AppSettings = {
       ...s,
-      providers: s.providers.map((p) => (p.apiKey ? { ...p, apiKey: '' } : p)),
+      providers: s.providers.map(
+        (p) =>
+          ({
+            name: p.name,
+            apiKey: '',
+            ...(p.lastTest !== undefined ? { lastTest: p.lastTest } : {}),
+            ...(p.catalog !== undefined ? { catalog: p.catalog } : {}),
+          }) as ProviderSettings,
+      ),
     };
     // P0-9：localStorage 配额与会话备份共享，耗尽时 setItem 同步抛——
     // 绝不能让异常冲出（曾打断 handleSave，key 因此未落凭据库）

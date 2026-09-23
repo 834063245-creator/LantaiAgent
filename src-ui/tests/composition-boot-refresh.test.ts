@@ -71,12 +71,14 @@ describe('composition-store 引导期新鲜度（①b boot 序洞）', () => {
       expect(tools.some((r) => r.id === 'plugin/hologram/git-domain/git_status')).toBe(true);
       expect(tools.some((r) => r.id === 'plugin/hologram/search-domain/search_content')).toBe(true);
       expect(tools.length).toBeGreaterThan(20);
-      // prompt 域：8 第一方段全量（空提示词是同一快照的第二处毒害；
-      // graph-snapshot 段随图谱全量退役删除，2026-09-09）
+      // prompt 域：第一方段全量（空提示词是同一快照的第二处毒害；
+      // graph-snapshot 段随图谱全量退役删除，2026-09-09；
+      // provider-config 段为 2026-09-24 配方改文件批新增——计数随之 8 → 9）
       expect(prompt.map((s) => s.id)).toContain('identity-brief');
       expect(prompt.map((s) => s.id)).toContain('identity');
+      expect(prompt.map((s) => s.id)).toContain('provider-config');
       expect(prompt.map((s) => s.id)).not.toContain('graph-snapshot');
-      expect(prompt).toHaveLength(8);
+      expect(prompt).toHaveLength(9);
       // capabilities 域：14 第一方能力全量（第三处毒害）
       expect(capabilities.map((c) => c.id)).toContain('plan-tools');
       expect(capabilities.map((c) => c.id)).toContain('spawn-tool');

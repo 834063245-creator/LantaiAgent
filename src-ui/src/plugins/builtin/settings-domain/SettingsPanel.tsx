@@ -12,6 +12,8 @@
 import { getVersion } from '@tauri-apps/api/app';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+// 配方文档纯函数面（意图抽取——写盘补丁的形状真源；纯计算，不经宿主桥）
+import { intentOf, type ProviderIntent } from '../../../provider/providers-doc';
 import type { AppSettings, ConnectionProbe, ProviderId } from './host';
 import './settings-panel.css';
 import {
@@ -27,12 +29,18 @@ import {
   loadSettingsWithSecrets,
   McpPage,
   notifyAgentConfigChanged,
+  onProvidersDocChange,
   PluginsPage,
   ProviderPage,
   persistSecrets,
+  projectProvidersErrors,
+  projectProvidersFatal,
+  providersDocStatus,
+  providersFilePath,
   removeSecret,
   rescanPresets,
   SkillsPage,
+  saveProvidersDoc,
   saveSettings,
   selectPreset,
   setLang,
@@ -195,6 +203,13 @@ const SettingsPanelApp: React.FC<{
   }, []);
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // provider 配置文件状态代数（2026-09-24 配方改文件批）：文件被外部改动
+  // （人/agent 手写）→ watcher 重读 → 本计数 +1 → provider 页就地反映新行表
+  // 与逐节错误（「文件改了 UI 不变」会让人以为改错了地方）。
+  const [providersDocVersion, setProvidersDocVersion] = useState(0);
+  /** 外部改动到达时面板有未保存暂存 ⇒ 不整体替换，只标一条提示（不冲掉用户输入）。 */
+  const [docStaleHint, setDocStaleHint] = useState(false);
+  useEffect(() => onProvidersDocChange(() => setProvidersDocVersion((v) => v + 1)), []);
   // Provider 页独立 dirty：与其他 tab 的全局保存互不牵连
   const [providerDirty, setProviderDirty] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -300,6 +315,20 @@ const SettingsPanelApp: React.FC<{
   const runSavePipeline = useCallback(
     async (toSave?: AppSettings): Promise<boolean> => {
       const target = toSave ?? settings;
+      // 0) **provider 配置写文件**（2026-09-24 配方改文件批）：意图的唯一权威是
+      //    `~/.lantai/providers.yml`——先把面板里这轮连接配置改动写进去（读-改-写，
+      //    保住用户手写注释），失败即中止保存（错误不静默，绝不假装保存成功）。
+      //    暂存的「删除 provider」= 从文件里删掉那一节（身份即键名）。
+      const kept = target.providers.filter((p) => !pendingDeletes.includes(p.name));
+      const patch: Record<string, ProviderIntent> = {};
+      for (const p of kept) patch[p.name] = intentOf(p);
+      const docWrite = await saveProvidersDoc(patch);
+      if (!docWrite.ok) {
+        setSaveError(
+          `provider 配置文件写入失败：${docWrite.error ?? '未知原因'}\n设置未保存——配置文件是 provider 连接配置的唯一权威。`,
+        );
+        return false;
+      }
       // ⚡ F3（2026-09-15 审计修复）：composition 节**不在本面板的表单面内**——
       // 它由预设选择器即时持久化（selectPreset → saveSettings）。settings 是
       // 挂载期快照，整体写盘会把期间改过的 preset 选择静默回退（复现：面板开着
@@ -329,7 +358,6 @@ const SettingsPanelApp: React.FC<{
     },
     [settings, pendingClears, pendingDeletes, onSave],
   );
-
   /** 全局保存（Agent / 显示等 tab） */
   const handleSave = useCallback(async () => {
     const ok = await runSavePipeline();
@@ -461,6 +489,26 @@ const SettingsPanelApp: React.FC<{
               providerDirty={providerDirty}
               onSaveProviders={handleSaveProviders}
               onAddAndPersist={handleAddAndPersist}
+              providersDoc={{
+                version: providersDocVersion,
+                status: providersDocStatus(),
+                path: providersFilePath(),
+                projectErrors: projectProvidersErrors(),
+                projectFatal: projectProvidersFatal(),
+                // 外部改动（人/agent 手写文件）→ 面板重读生效行表。
+                // ⚡ 有未保存的暂存时**不整体替换**（那会把用户正在敲的改动冲掉）：
+                // 只标一条提示，等用户保存/放弃后随下一次广播重读。
+                onReload: () => {
+                  if (providerDirty) {
+                    setDocStaleHint(true);
+                    return;
+                  }
+                  setDocStaleHint(false);
+                  // 只换 providers 一域（其余 tab 的暂存改动不牵连）
+                  setSettings((s) => ({ ...s, providers: loadSettings().providers }));
+                },
+                staleHint: docStaleHint,
+              }}
             />
           </div>
 

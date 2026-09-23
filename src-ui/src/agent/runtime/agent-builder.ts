@@ -63,6 +63,7 @@ export function buildSystemPrompt(
   shellEnvSection = '',
   sections?: PromptSection[],
   skillCatalog?: string,
+  providerConfigPath?: string,
 ): string {
   const base = assembleSystemPrompt(
     {
@@ -72,6 +73,7 @@ export function buildSystemPrompt(
       claudeMdSection,
       providerName,
       shellEnvSection,
+      providerConfigPath,
     },
     sections,
   );

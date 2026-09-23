@@ -802,6 +802,16 @@ async fn dispatch_rpc(
                 .map_err(|e| format!("composition_dir 任务失败: {e}"))?;
             ok_json(r)
         }
+        // provider 配置文件地基通道：配置文件（providers.yml）所在目录路径 +
+        // 按需创建（可选打开）。路径只来自服务端计算（providers_file_public）
+        // ——无调用方路径参数；文件内容写入走 fs_cap（沙箱放行这一个文件）。
+        "providers_dir" => {
+            let open = matches!(params.get("open"), Some(v) if v.as_bool().unwrap_or(false));
+            let r = tokio::task::spawn_blocking(move || commands::providers::providers_dir(open))
+                .await
+                .map_err(|e| format!("providers_dir 任务失败: {e}"))?;
+            ok_json(r)
+        }
 
         // ═══════════════════════════════════════════════════════
         // 插件数据目录（app shell 四件套 · 件 B，S1，5 个命令）：manifest.dataDir

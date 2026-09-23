@@ -53,6 +53,7 @@ fn capability_command_modules_are_frozen() {
         "plugin_install",
         "process_cap",
         "protocol_bridge",
+        "providers",
         "pty_cap",
         "search_cap",
         "uia_cap",
@@ -116,6 +117,13 @@ fn capability_command_modules_are_frozen() {
          `commands/composition.rs`）：preset 目录 I/O + 名/rel 双围栏，与\n\
          plugin_data 同族（壳侧写盘必须 Rust）——非能力口、不进 Agent 工具面。\n\
          基线补录 2026-09-15：该模块引入时漏更本基线致 HEAD 红，按本测试自有\n\
-         程序补录（同 oauth 先例），非新授权。"
+         程序补录（同 oauth 先例），非新授权。\n\
+         providers = 应用壳基础设施（provider 配方统管文件 providers.yml 的作者面，\n\
+         `~/.lantai/providers.yml` 所在的目录路径 + 按需 create_dir_all + 可选\n\
+         文件管理器打开）：与 composition 逐字同族（壳侧路径计算必须 Rust，\n\
+         webview 无盘权）——非能力口、不进 Agent 工具面、**不接受调用方路径参数**\n\
+         （路径只来自 plugin_assets::providers_file_public 单一真源）；文件内容\n\
+         读写走 fs_cap + sandbox 单文件白名单。按本测试自有程序补录基线\n\
+         （同 composition 先例），非新授权。"
     );
 }

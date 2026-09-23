@@ -18,6 +18,7 @@
 
 import { useShellStore } from '../../app/shell-store';
 import { withTimeout } from '../../lifecycle/timeout';
+import { loadProjectProvidersDoc } from '../../provider/providers-store';
 import { kernelCreateDirectory } from '../../rpc-contract';
 import { useDockStore } from '../../state/dock-store';
 import { bumpWorkspaceSwitched } from '../../state/workspace-switch-store';
@@ -130,6 +131,11 @@ async function switchWorkspace(path?: string): Promise<void> {
     // restoreCanvasSpread 尚未完成。用户看到 analyzing 已清除、认为工作区就绪，
     // 实际卷还在恢复。移到 restoreCanvasSpread 之后。这里保留 pushStatus 进度。
     bumpWorkspaceSwitched(); // P1 总线归零：workspace:switched → state/workspace-switch-store
+
+    // 项目级 provider 覆盖（2026-09-24 配方改文件批）：`{ws}/.lantai/providers.yml`
+    // 同 id 整节覆盖用户级——必须在 setupAgent **之前**装（Agent 装配读的就是
+    // 生效行表）。无该文件 = 常态，零开销。
+    await loadProjectProvidersDoc(folder);
 
     try {
       await ws.setupAgent(chatPanel);

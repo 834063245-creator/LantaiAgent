@@ -10,6 +10,7 @@ pub mod workspace;
 pub mod protocol_bridge;
 pub mod plugin_install;
 pub mod composition;
+pub mod providers;
 pub mod plugin_data;
 pub mod search_cap;
 pub mod fs_cap;

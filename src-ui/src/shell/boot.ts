@@ -30,6 +30,7 @@ import type { ResolvedComposition } from '../composition/roster';
 import { onToolContributionsChanged } from '../composition/services';
 import { type ShellRow, type WorkspaceFlowDeps, workspaceFlow } from '../composition/shell-rows';
 import { setLang } from '../i18n';
+import { armProvidersWatcher, bootstrapProvidersDoc, ensureProvidersDir } from '../provider/providers-store';
 import { typedListen } from '../rpc-contract';
 import { loadSettings } from '../settings';
 import { useCompositionStore } from '../state/composition-store';
@@ -82,6 +83,20 @@ export async function bootShell(
   composition?: ResolvedComposition,
 ): Promise<void> {
   try {
+    // 0) provider 配置文件（2026-09-24 配方改文件批）——**必须是第一句**：
+    //    provider 的权威在 `~/.lantai/providers.yml`，`loadSettings()` 在读取
+    //    边界按投影合成完整行，而投影要等文件装载完才成立。此处还承担一次性
+    //    存量迁移（磁盘上没有配置内容 ⇒ 把旧 localStorage 存档写成文件）。
+    //    失败不阻断引导：投影缺席 = 回落旧语义（按 localStorage 走），
+    //    原因在设置页「提供方」页可见。
+    try {
+      await bootstrapProvidersDoc();
+      await ensureProvidersDir();
+    } catch (e) {
+      log.error('shell', 'provider 配置文件装载失败（回落本机存储语义）', { error: String(e) });
+    }
+    armProvidersWatcher();
+
     // 1) 引导三件套（原 init() 首段——先于一切 UI 行）
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     setLang(loadSettings().display.language);

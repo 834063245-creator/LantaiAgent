@@ -95,6 +95,9 @@ pub fn check_path_safety(path: &Path) -> SafetyCheckResult {
 /// 兰台 配置路径 — `.lantai/` 目录内容。
 /// 运行时数据目录（memory、sessions、logs、worktrees）被豁免 —
 /// 兰台 UI 在正常运行时会写入这些目录。
+/// provider 配方文件（`.lantai/providers.yml`）同列豁免 — 该文件是 agent 的
+/// 编辑面（providers.yml 统管通道），每次写都弹权限卡 = 功能等于不存在；
+/// 豁免**只按精确文件名**（见函数体），不放宽 `.lantai/` 其余内容。
 fn is_hologram_config_path(path: &Path) -> bool {
     let components: Vec<&str> = path
         .components()
@@ -105,6 +108,15 @@ fn is_hologram_config_path(path: &Path) -> bool {
             // 运行时数据目录被豁免 — 兰台 UI 会写入这些目录
             if let Some(sub) = components.get(i + 1) {
                 if *sub == "worktrees" || *sub == "memory" || *sub == "logs" || *sub == "sessions" {
+                    return false;
+                }
+                // provider 配方文件（2026-09-24）：判据 = 「紧跟 `.lantai` 的那一段
+                // 恰为 providers.yml」——用户级 `~/.lantai/providers.yml` 与项目级
+                // `{ws}/.lantai/providers.yml` 同一条判定覆盖。刻意不写成全路径
+                // contains/suffix：providers.yml.bak、`.lantai/providers/x.yml`、
+                // `.lantai/<其它文件名>`、以及更深层级 `.lantai/sub/providers.yml`
+                // 一律照旧受保护。
+                if *sub == "providers.yml" {
                     return false;
                 }
             }
@@ -410,6 +422,37 @@ mod tests {
         assert!(!r.safe, "settings.json writes should be blocked");
         let r = check_path_safety(Path::new(".git/config"));
         assert!(!r.safe, ".git/config writes should be blocked");
+    }
+
+    // ── provider 配方文件写豁免（providers.yml 统管通道，2026-09-24）──
+
+    /// `.lantai/providers.yml` 写放行：该文件是 agent 的编辑面，写不得弹权限卡。
+    /// 用户级（home）与项目级（{ws}）形态同一条判定覆盖。
+    #[test]
+    fn test_write_safety_exempts_providers_yml() {
+        let r = check_path_safety(Path::new(r"C:\Users\test\.lantai\providers.yml"));
+        assert!(r.safe, "~/.lantai/providers.yml（Windows 形态）写应放行");
+        let r = check_path_safety(Path::new("/home/test/.lantai/providers.yml"));
+        assert!(r.safe, "~/.lantai/providers.yml（POSIX 形态）写应放行");
+        let r = check_path_safety(Path::new(r"D:\proj\.lantai\providers.yml"));
+        assert!(r.safe, "项目级 .lantai/providers.yml 写应放行（同一条判定）");
+    }
+
+    /// 豁免收窄：只放行 providers.yml 这**一个文件名**——相邻形态照旧受保护
+    /// （`.bak` / providers 子目录 / 更深层级 / `.lantai` 下其余配置文件名）。
+    #[test]
+    fn test_write_safety_blocks_providers_adjacent_paths() {
+        for p in [
+            r"C:\Users\test\.lantai\providers.yml.bak",
+            r"C:\Users\test\.lantai\providers\x.yml",
+            r"C:\Users\test\.lantai\providers",
+            r"C:\Users\test\.lantai\sub\providers.yml",
+            r"C:\Users\test\.lantai\settings.json",
+            r"C:\Users\test\.lantai\permissions.json",
+        ] {
+            let r = check_path_safety(Path::new(p));
+            assert!(!r.safe, "{p} 写仍应受保护（豁免只覆盖 providers.yml 一个文件名）");
+        }
     }
 
     // ── Unix 路径安全 ──

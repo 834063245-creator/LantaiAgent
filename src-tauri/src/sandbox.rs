@@ -56,7 +56,8 @@ impl Sandbox {
     }
 
     /// 验证对 `path` 的读取操作。
-    /// 用户级数据目录（~/.lantai/{global_memory,skills}）绕过项目沙箱（与写入相同）。
+    /// 用户级数据（~/.lantai/ 下白名单子目录 + 根级配置文件，见
+    /// is_user_data_path_with_home）绕过项目沙箱（与写入相同）。
     pub fn resolve_read(&self, path: &Path) -> SandboxResult {
         // 用户级数据目录绕过
         if Self::is_user_data_path(path) {
@@ -113,13 +114,14 @@ impl Sandbox {
     /// 用户级数据目录判定纯函数（home 注入——测试免 env 污染直测）。
     /// ~/.lantai 下允许项目沙箱外访问的：
     ///   - 数据子目录：global_memory（读+写豁免）、skills（读豁免，写锁项目内）
-    ///   - 根级数据文件：mcp.json（用户级 MCP 配置——读+写豁免，Commit 5b/6c）
+    ///   - 根级数据文件：mcp.json（用户级 MCP 配置——读+写豁免，Commit 5b/6c）、
+    ///     providers.yml（provider 配方统管文件——读+写豁免，人可手写/agent 可读写）
     fn is_user_data_path_with_home(path: &Path, home: &str) -> bool {
         // ~/.lantai 下允许项目沙箱外访问的用户数据子目录（只读为主；
         // global_memory 历史含写绕过——skills 设计只读，写仍走项目内）。
         const USER_DATA_SUBDIRS: &[&str] = &["global_memory", "skills"];
         // 根级数据文件（~/.lantai/<file>——首段即文件名，非子目录）。
-        const USER_DATA_FILES: &[&str] = &["mcp.json"];
+        const USER_DATA_FILES: &[&str] = &["mcp.json", "providers.yml"];
         let lantai = logical_path(&PathBuf::from(home).join(".lantai"));
         let rel_ok = |p: &Path| {
             let rel = match p.strip_prefix(&lantai).ok() {
@@ -174,10 +176,13 @@ impl Sandbox {
     }
 
     /// 用户级数据**写**豁免判定：global_memory 子目录（agent 管理记忆）
-    /// + ~/.lantai/mcp.json（用户 UI 管理用户级 MCP 配置，Commit 6c）。
+    /// + ~/.lantai/mcp.json（用户 UI 管理用户级 MCP 配置，Commit 6c）
+    /// + ~/.lantai/providers.yml（provider 配方——agent 可读写）。
     /// 其余用户数据（skills 目录等）写仍锁项目内——防任意写跨项目资产。
     fn is_user_data_writable_path(path: &Path) -> bool {
-        Self::is_global_memory_path(path) || Self::is_user_mcp_json_path(path)
+        Self::is_global_memory_path(path)
+            || Self::is_user_mcp_json_path(path)
+            || Self::is_user_providers_file_path(path)
     }
 
     /// ~/.lantai/mcp.json 判定（用户级 MCP 配置文件——读+写豁免）。
@@ -201,12 +206,34 @@ impl Sandbox {
                 .unwrap_or(false)
     }
 
+    /// ~/.lantai/providers.yml 判定（provider 配方统管文件——读+写豁免）。
+    fn is_user_providers_file_path(path: &Path) -> bool {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home.is_empty() {
+            return false;
+        }
+        Self::is_user_providers_file_path_with_home(path, &home)
+    }
+
+    /// providers.yml 判定纯函数（home 注入——测试免 env 污染直测）。
+    /// 只放行这一个文件：`providers.yml.bak` / `providers/` 子目录都不豁免。
+    fn is_user_providers_file_path_with_home(path: &Path, home: &str) -> bool {
+        let f = logical_path(&PathBuf::from(home).join(".lantai").join("providers.yml"));
+        // 同款：verbatim 拼写（`\\?\`/`//?/`）统一后再比——用户级 providers.yml 的读+写都靠它
+        logical_path(path) == f
+            || std::fs::canonicalize(path)
+                .map(|p| logical_path(&p) == f)
+                .unwrap_or(false)
+    }
+
     /// 验证写入操作。锁定到项目目录，
     /// 用户级数据目录除外（global_memory 为 agent 管理；skills 本期只读——
     /// 写入仍锁项目内，防技能目录被任意写）。
     pub fn resolve_write(&self, path: &Path) -> SandboxResult {
-        // 用户级数据写豁免（global_memory + mcp.json；skills 目录不在豁免——
-        // 技能安装走项目级 UI 动作，不开放任意写）
+        // 用户级数据写豁免（global_memory + mcp.json + providers.yml；
+        // skills 目录不在豁免——技能安装走项目级 UI 动作，不开放任意写）
         if Self::is_user_data_writable_path(path) {
             let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
             // 安全检查仍然适用 — 用户数据路径不允许符号链接
@@ -488,6 +515,80 @@ mod tests {
             !Sandbox::is_user_mcp_json_path_with_home(&other, &home_s),
             "mcp.json.bak 不豁免"
         );
+    }
+
+    /// ~/.lantai/providers.yml（provider 配方统管文件）：读+写豁免；
+    /// 相邻路径一律不放行——白名单只放行**这一个文件**（providers.yml.bak /
+    /// providers/ 子目录 / providers 目录本身都拒绝）。
+    #[test]
+    fn user_data_path_providers_yml_allowed_rw() {
+        let home = fake_home();
+        let home_s = home.to_string_lossy().into_owned();
+        let lantai = home.join(".lantai");
+        // 读豁免（is_user_data_path_with_home）+ 写豁免（is_user_providers_file_path_with_home）
+        let f = lantai.join("providers.yml");
+        assert!(
+            Sandbox::is_user_data_path_with_home(&f, &home_s),
+            "~/.lantai/providers.yml 读应放行"
+        );
+        assert!(
+            Sandbox::is_user_providers_file_path_with_home(&f, &home_s),
+            "~/.lantai/providers.yml 写豁免判定应真"
+        );
+        // 相邻路径写侧一律不豁免
+        for adjacent in [
+            lantai.join("providers.yml.bak"),
+            lantai.join("providers").join("x.yml"),
+            lantai.join("providers"),
+            lantai.join("mcp.json"),
+            lantai.join("providers.yaml"),
+        ] {
+            assert!(
+                !Sandbox::is_user_providers_file_path_with_home(&adjacent, &home_s),
+                "写豁免不得放行 {:?}",
+                adjacent
+            );
+        }
+        // 相邻路径读侧同样拒绝（豁免是"单文件"，不是"providers* 前缀"）
+        for adjacent in [
+            lantai.join("providers.yml.bak"),
+            lantai.join("providers").join("x.yml"),
+            lantai.join("providers"),
+            lantai.join("providers.yaml"),
+        ] {
+            assert!(
+                !Sandbox::is_user_data_path_with_home(&adjacent, &home_s),
+                "读豁免不得放行 {:?}",
+                adjacent
+            );
+        }
+    }
+
+    /// 端到端拼接：`resolve_read` / `resolve_write` 真的走到 providers.yml 豁免
+    /// （纯函数真 ≠ 接线真——漏把判别函数接进 is_user_data_writable_path 时本用例红）。
+    /// 只 stat/canonicalize，不写用户真实主目录。
+    #[test]
+    fn providers_file_bypasses_project_sandbox_rw() {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home.is_empty() {
+            return; // 无 home 环境：本机不适用（同 test_expand_home_forms 的处置）
+        }
+        let sandbox = Sandbox::new(&std::env::temp_dir());
+        let lantai = PathBuf::from(&home).join(".lantai");
+        assert!(
+            matches!(sandbox.resolve_read(&lantai.join("providers.yml")), SandboxResult::Allowed(_)),
+            "~/.lantai/providers.yml 读应绕过项目沙箱"
+        );
+        assert!(
+            matches!(sandbox.resolve_write(&lantai.join("providers.yml")), SandboxResult::Allowed(_)),
+            "~/.lantai/providers.yml 写应绕过项目沙箱"
+        );
+        // 相邻路径两项都仍锁项目内
+        let bak = lantai.join("providers.yml.bak");
+        assert!(matches!(sandbox.resolve_read(&bak), SandboxResult::Denied(_)), "providers.yml.bak 读仍拒绝");
+        assert!(matches!(sandbox.resolve_write(&bak), SandboxResult::Denied(_)), "providers.yml.bak 写仍拒绝");
     }
 
     #[test]

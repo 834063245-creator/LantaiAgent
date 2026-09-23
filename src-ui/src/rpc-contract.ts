@@ -498,6 +498,12 @@ export interface RpcContract {
    *  绝对路径并按需创建（root + presets/，幂等，不动已有内容）；`open: true`
    *  时用系统文件管理器打开。路径只来自服务端计算，无调用方路径参数。 */
   composition_dir: { params: { open?: boolean }; result: string }; // 绝对路径
+  /** provider 配置文件目录（2026-09-24 配方改文件批）：返回
+   *  `~/.lantai/providers.yml` 所在目录的绝对路径并按需创建（幂等，不动已有内容）；
+   *  `open: true` 时用系统文件管理器打开。路径只来自服务端计算，无调用方路径参数
+   *  （与 composition_dir 同一条安全纪律）。前端据此拼 `providers.yml`
+   *  （文件名前端持有——打开目录给人看的是目录，不是文件）。 */
+  providers_dir: { params: { open?: boolean }; result: string }; // 绝对路径
 
   // ── 插件数据目录（app shell 四件套 · 件 B，S1）─────────────
   // manifest.dataDir 插件的专属数据地盘：装载期 loader 调 ensure 分配（幂等），
@@ -619,6 +625,11 @@ export interface EventContract {
    *  重跑 reload → composition-store 更新（新 Agent 装配即用新组合；
    *  在途会话不动——创建时点冻结语义）。 */
   'composition:changed': string;
+  /** provider 配置文件热重载（2026-09-24 配方改文件批，src-tauri
+   *  providers_watcher.rs 发射）：`~/.lantai/providers.yml` 变更
+   *  （"modified" | "removed"）→ 前端 providers-store 重读 → 投影换新
+   *  → 广播（UI 重读 + 逐会话重解析）。人/agent 手改文件即时生效的那一半。 */
+  'providers:changed': string;
 }
 
 // ─────────────────────────────────────────────────────────────

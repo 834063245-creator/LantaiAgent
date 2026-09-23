@@ -11,7 +11,7 @@
 //
 // 两个装配面（2026-09-09 图谱退役后——原三面解耦随图谱面移除）：
 //   - 零目录面（无项目）：identity-brief → memory-brief → env-brief
-//   - 有目录面：identity → env → model-identity → memory → claude-md
+//   - 有目录面：identity → env → model-identity → provider-config → memory → claude-md
 // 2026-08-28 用户拍板：behavior-rules / graph-discipline / visual-discipline /
 // collaboration-mode / multi-agent 五段删除——策略与工具说明不内建，改走
 // A 类设置页与工具自带 schema 注入；system prompt 收缩为身份 + 动态数据。
@@ -57,6 +57,8 @@ export interface PromptSectionContext {
   memorySection?: string;
   claudeMdSection?: string;
   providerName?: string;
+  /** provider 配置文件绝对路径（2026-09-24 配方改文件批）——空 = 不注入配置段。 */
+  providerConfigPath?: string;
   shellEnvSection?: string;
 }
 
@@ -177,19 +179,50 @@ const CLAUDE_MD: PromptSection = {
 ${ctx.claudeMdSection}`,
 };
 
+/** provider 配置段（2026-09-24 配方改文件批）：让 agent 知道「配 provider」这件事
+ *  落在哪份文件上——否则它只能猜，或者让用户去点设置页（那正是本批要根治的麻烦）。
+ *
+ *  内容全是稳定字面量 + 装载期算好的绝对路径（不随会话变化）⇒ 前缀缓存零破坏。
+ *  规则只讲「可改什么」与「怎么验」——不替用户推断 bug 根因（产品输出纪律）。 */
+const PROVIDER_CONFIG: PromptSection = {
+  id: 'provider-config',
+  // 只在**完整面**参与（有项目目录）：零目录面是极简骨架，provider 配置文件
+  // 属于「完整面才需要知道的家底」（与 env/model-identity 同款判面）。
+  applicable: (ctx) => hasProject(ctx) && !!ctx.providerConfigPath,
+  render: (ctx) => {
+    const userPath = ctx.providerConfigPath ?? '';
+    return `
+
+## provider 配置
+本机所有 provider 的连接配置在一份 YAML 文件里，人和 agent 都可以直接改它：
+- 用户级：${userPath}
+- 项目级（可选，仅本项目生效）：本工作区 .lantai/providers.yml
+
+一行 provider = 一个顶层键，键名就是 provider 身份（字母/数字/下划线/连字符）；可改字段：
+kind（协议：anthropic / openai / responses）、baseUrl、model（新会话默认）、models（可用模型）、
+thinking（默认思考档位）、headers（网关怪癖）、modelOverrides / modelMeta、authMode / oauthProvider。
+同名的项目级节整节覆盖用户级。
+
+改完约 1 秒自动生效（无需重启、无需用户点保存）。密钥**不要**写进这个文件——
+apiKey 权威在本机系统凭据库（用户可在 设置 → 提供方 的 Key 栏填写）；lastTest / catalog
+是本机读数，也不属于这份文件。写错一节只影响那一行（其余 provider 照常），原因会显示在
+设置 → 提供方页。`;
+  },
+};
+
 /** 第一方 prompt 段清单（序 = 拼装序）——经 ctx.prompts
  *  第一方插件通道贡献（plugins/prompt-segments-plugin.ts 装载本清单，
  *  装配腰 composition/first-party-prompts.ts）。
  *  B④ 收官（2026-08-23）：出厂段表 builtinPromptSections() 退役，本清单
  *  即出厂装配面的全部段落来源（简短/完整两面经 applicable 互斥分流，
- *  序不变）。**8 段**——原 13 段（`adc3750c` B④ 收官）经两批减到 8：`56fb9285`
- *  极简骨架收缩（去 BEHAVIOR_RULES / GRAPH_DISCIPLINE / VISUAL_DISCIPLINE /
- *  COLLABORATION_MODE / MULTI_AGENT，补 IDENTITY）→ 9 段；`51047f99` 图谱退役去
- *  graph-snapshot → 8 段。**段数以本函数返回值为唯一真源**（禁手抄计数）。
+ *  序不变）。**段数以本函数返回值为唯一真源**（禁手抄计数）：
+ *  原 13 段 → `56fb9285` 极简骨架收缩去五段补 IDENTITY → 9 段 →
+ *  `51047f99` 图谱退役去 graph-snapshot → 8 段 → 2026-09-24 配方改文件批
+ *  补 provider-config → 9 段。
  *  S4-4 甲：清单段经通道进 roster 解析域（factoryComposition prompt 域
  *  快照）——patch/preset 可寻址段 id（disable/text/锚定）。 */
 export function firstPartyPromptSections(): PromptSection[] {
-  return [IDENTITY_BRIEF, MEMORY_BRIEF, ENV_BRIEF, IDENTITY, ENV, MODEL_IDENTITY, MEMORY, CLAUDE_MD];
+  return [IDENTITY_BRIEF, MEMORY_BRIEF, ENV_BRIEF, IDENTITY, ENV, MODEL_IDENTITY, PROVIDER_CONFIG, MEMORY, CLAUDE_MD];
 }
 
 /** 按序拼装系统提示词（applicable=false 的段跳过，其余纯 concat）。
