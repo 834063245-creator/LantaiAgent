@@ -1725,6 +1725,43 @@ describe('ChatPanel session persistence', () => {
       expect(data?.uiMessages).toBeUndefined(); // 内容投影仍按新鲜度取舍（陈旧即不采信）
     });
 
+    it('惰性补建句柄恢复 token 账本（2026-09-23 修：拟文懒建不再把累计账丢掉）', async () => {
+      // 病灶（案卷 35 实测）：句柄是惰性资源，「拟文/切卷补建」是最常见的来路，
+      // 而 ensureVolumeAgent 此前只回填消息、不回填账本 ⇒ 卷文件里 14 次请求的
+      // 累计账（未缓存 59,721 / 缓存读 708,736）在懒建那一刻消失，下一次落盘再把
+      // 它覆盖成更小的账；墨量册「缓存命中」于是从 68% 起爬（看着像命中率坏了）。
+      const ledger = {
+        version: 1,
+        totals: { uncachedInputTokens: 59721, cacheReadTokens: 708736, cacheWriteTokens: 0, outputTokens: 900 },
+        attempts: 14,
+        turns: [],
+      };
+      mockDualDirDisk({
+        [`${PROJ}/.lantai/sessions/9.ndjson`]: logText(9, [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '历史内容' },
+        ]),
+        [`${PROJ}/.lantai/sessions/9.json`]: cacheText(9, { tokens: ledger }),
+      });
+      const restore = vi.fn();
+      const STORE = 'lazy-ledger-store';
+      Session.setAgentFactory(STORE, (async () => ({
+        getSession: () => [{ role: 'system', content: 'sys' }],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+        restoreTokenLedger: restore,
+      })) as never);
+
+      await expect(Session.ensureVolumeAgent({ storeId: STORE, getProjectPath: () => PROJ } as never, 9)).resolves.toBe(
+        true,
+      );
+
+      expect(restore).toHaveBeenCalledTimes(1);
+      expect(restore).toHaveBeenCalledWith(ledger);
+      Session.setAgentFactory(STORE, null);
+    });
+
     /** 工厂桩：setSession 真正落进闭包（loadSessionFromDisk 重建消息依赖 agent 持有会话）。 */
     function storingFactory() {
       let agentSession: any[] = [{ role: 'system', content: 'sys' }];

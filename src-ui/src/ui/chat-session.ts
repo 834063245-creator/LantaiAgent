@@ -410,10 +410,18 @@ export async function ensureVolumeAgent(ctx: SessionContext, sid: number): Promi
   // 会话内容回填：msgStore 的 ChatMessage 不是 provider 消息——从磁盘卷文件
   // 取原始会话（readVolumeData 与恢复路径同源：工作区会话根单读 + 已删/空卷过滤）。
   let conv: Message[] = [];
+  // token 账本同批捕获（2026-09-23 修）：句柄是**惰性**资源，「拟文/切卷时补建」
+  // 是最常见的一条句柄来路——此前只回填消息、不回填账本，于是每次懒建都把卷文件
+  // 里的累计账丢掉，下一次落盘再把它覆盖成更小的账（案卷 35 实测：第 1 轮 14 次
+  // 请求 768,457 输入凭空消失，墨量册「缓存命中」从 68% 起爬）。与开卷路径
+  // （loadSessionFromDisk 的 `if (newAgent && data.tokens)`）同一条纪律：
+  // **重开该卷账本不归零**（2026-09-18 已在合卷路径立此规，此处是同一族的第三条写面）。
+  let ledger: StoredSession['tokens'];
   try {
     const data = await readVolumeData(ctx.getProjectPath(), sid);
     if (data) {
       conv = (data.messages as Message[])?.filter((m) => m.role !== 'system') ?? [];
+      ledger = data.tokens;
     }
   } catch {
     /* 卷文件缺失/读失败 → 空会话起步（新卷语义） */
@@ -435,6 +443,9 @@ export async function ensureVolumeAgent(ctx: SessionContext, sid: number): Promi
     return true;
   }
   agentSessionState.setAgent(ctx.storeId, sid, agent);
+  // 账本恢复放在**入册之后**：上方两次「句柄已被并行补建」的早退会 dispose 本句柄，
+  // 恢复给一个即将丢弃的实例没有意义。
+  if (ledger) agent.restoreTokenLedger?.(ledger);
   agent.bindSession?.(String(sid));
   bindSessionExec(ctx, sid, agent);
   // turnPairs 与 UI 消息已由 restoreFromLedger 的 rebuildMessagesFromMessages
