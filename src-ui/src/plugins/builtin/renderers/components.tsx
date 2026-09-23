@@ -99,7 +99,11 @@ function emphasisRowsOf(payload: unknown): Set<number> {
   return new Set(rows.filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0));
 }
 
-function GridBody({ block }: BlockRendererProps) {
+/** 表格体（`grid` 表现原语）——**导出面给查看器复用**（P3 · B4：Office 查看器的
+ *  xlsx 表体与流内 `grid` 同一份实现，不造第二份表体——施工单 §B4「复用 grid 的
+ *  表体」）。入参仍是 `BlockRendererProps`：调用方传 `{...block, payload:{columns,
+ *  rows, caption}}` 即可，`grid` 的形状守卫与虚拟滚动随之复用。 */
+export function GridBody({ block }: BlockRendererProps) {
   const p = block.payload as {
     columns?: unknown[];
     rows?: unknown[][];
@@ -882,8 +886,9 @@ function MetricBody({ block }: BlockRendererProps) {
  *  MIME 表与图片/视频组件已迁入 viewer-registry 的查看器定义（viewers/*）；
  *  本段只剩「查表分发 + 公共壳 + 降级链」。 */
 
-/** 内置查看器注册（模块装载期一次——先例 agent/asset-kinds.ts 尾部；重名装载期 throw）。 */
-registerBuiltinViewers();
+// 内置查看器注册：**在装配点触发**（见 `assetRendererComponents()`），不在模块顶层——
+// 查看器可以反向 import 本文件复用原语（office 复用 GridBody），顶层调用会在
+// `components ↔ viewers/index` 的环里撞 `BUILTIN_VIEWERS` 的 TDZ。
 
 /** 媒体加载状态（base64 拉取 + 生命周期守卫） */
 type MediaLoadState =
@@ -1992,6 +1997,9 @@ export type AssetRendererKind =
   | 'interactive';
 
 export function assetRendererComponents(): Record<AssetRendererKind, (props: BlockRendererProps) => ReactNode> {
+  // 装配点注册内置查看器（幂等；见上方「注册：在装配点触发」注）——插件 apply 与本函数
+  // 的测试直呼面都经这里，故注册总在第一次解析之前发生。
+  registerBuiltinViewers();
   return {
     grid: GridBody,
     chart: ChartBody,

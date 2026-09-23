@@ -48,8 +48,13 @@ describe('viewer-registry 装载期纪律（重名/缺件一律当场 throw）',
     first();
   });
 
-  it('出厂表重复注册 → throw（防装配双跑）', () => {
-    expect(() => registerBuiltinViewers()).toThrow(/重复注册查看器 "image"/);
+  it('出厂表重复注册 → 幂等（同表多次触发不炸；防装配双跑改由 id 判据承担）', () => {
+    expect(() => registerBuiltinViewers()).not.toThrow();
+    expect(() => registerBuiltinViewers()).not.toThrow();
+    // 外来重名仍装载期拒绝（真正要防的是「两个不同实现抢同一个 id」）
+    expect(() => viewerRegistry.register(fakeDef({ id: 'image', exts: ['zz-img-dup'] }))).toThrow(
+      /重复注册查看器 "image"/,
+    );
   });
 
   it('空认领 → throw（永远不会被命中的查看器是装配错误）', () => {
@@ -225,10 +230,12 @@ describe('出厂查看器表（图片 / 视频 / 音频 / 代码）', () => {
 });
 
 describe('重查看器白名单（P2：`app/paper/viewers` 目录即白名单）', () => {
-  it('目录里只有真查看器（props 必须是 ViewerProps；非查看器文件不得混入）', () => {
-    // mermaid 围栏渲染器曾落在这里，被挪去 `app/paper/mermaid-block.tsx`——本断言防它（或别的
-    // 非查看器文件）再溜进白名单：取件键 = 文件名，混进来的东西将来会被 `heavy:'…'` 误取。
-    expect(heavyViewerIds()).toEqual(['model3d', 'pdf']);
+  it('白名单 = 全部 heavy 取件键的集合（多一个文件少一个文件都算装配断层）', () => {
+    // 目录即白名单：`import.meta.glob('./*.tsx')` 取件，props 必须是 ViewerProps。
+    // 这条断言两侧都钉：① 每个 heavy 声明都有文件（少 = 声明悬空）；② 目录里没有多余文件
+    // （多 = 非查看器文件混入，将来会被 `heavy:'…'` 误取——mermaid 围栏渲染器曾溜进来过一次）。
+    const declared = BUILTIN_VIEWERS.flatMap((d) => (d.heavy ? [d.heavy] : [])).sort();
+    expect(heavyViewerIds()).toEqual(declared);
   });
 
   it('每个 heavy 声明的取件键都有对应文件（登记与文件对得上）', () => {

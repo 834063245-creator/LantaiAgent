@@ -23,7 +23,12 @@ import { ASSET_DERIVED } from '../src/paper/type-tokens';
 import { viewerClassOf } from '../src/paper/viewer-exts';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import { viewerRegistry } from '../src/plugins/builtin/renderers/viewer-registry';
+import { registerBuiltinViewers } from '../src/plugins/builtin/renderers/viewers';
 import { typedRpc } from '../src/rpc-contract';
+
+// 出厂查看器注册已挪到装配点（`assetRendererComponents()`——见 components.tsx 的环注），
+// 本文件的「认领面」describe 不渲染、只查表，故显式触发一次（幂等）。
+registerBuiltinViewers();
 
 vi.mock('../src/rpc-contract', () => ({
   typedRpc: vi.fn(),
@@ -70,9 +75,10 @@ describe('代码查看器 · 认领面（B2）', () => {
     }
   });
 
-  it('留给后续包（P3）的扩展名**不被**本包抢占：office / epub / ipynb / md', () => {
-    for (const ext of ['docx', 'xlsx', 'pptx', 'doc', 'xls', 'ppt', 'epub', 'ipynb', 'md']) {
-      expect(viewerRegistry.resolve(ext), `${ext} 应留给后续包（P3）`).toBeUndefined();
+  it('P3 竣工后：office / epub / ipynb / md 等扩展名都已有认领面（留白清单清空）', () => {
+    // 本单各包的「留白」逐包收口——P3 是最后一包，故这批判据从「不被抢占」翻转为「都已认领」。
+    for (const ext of ['docx', 'xlsx', 'pptx', 'doc', 'xls', 'ppt', 'epub', 'ipynb', 'md', 'pdf', 'glb', 'stl']) {
+      expect(viewerRegistry.resolve(ext), `${ext} 应有认领面（P3 竣工后不留白）`).toBeDefined();
     }
   });
 });

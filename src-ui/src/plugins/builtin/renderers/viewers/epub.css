@@ -1,0 +1,127 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+   SPDX-License-Identifier: MIT
+
+   电子书（epub）查看器样式（渲染面补全 P3 · B11）——左目录列 + 右正文列，两列各自
+   是壳件 `.pp-viewer-box`（上限盒 + 内部滚动，一行一盒、互不牵连）。
+
+   颜色全走 tokens.css 的 token（`tests/paper-token-audit.test.ts` 有裸色值 + 悬空 var
+   两条守卫扫本目录）；盒高/字号全走 type-tokens 注入的 `--pp-*` 键。
+   外壳件（`.pp-viewer-box` / `.pp-viewer-note` / `.pp-viewer-error` / `.pp-viewer-empty`）
+   在 PaperPanel.css，本件只用不复制。
+
+   正文段落用**纸面正文字号**（`--pp-type-body-*` + `--f-song`）：读者读的是书，不是机读表；
+   导航与提示仍走 `.pp-viewer-box` 继承的 mono（机读位）。 */
+
+.pp-viewer-epub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--pp-asset-viewer-codePadV) var(--pp-asset-viewer-codePadH);
+}
+.pp-viewer-epub-toc {
+  flex: 0 0 34%;
+}
+.pp-viewer-epub-body {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.pp-viewer-epub-tocList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pp-viewer-epub-tocItem {
+  display: flex;
+  gap: var(--pp-asset-viewer-codePadV);
+  width: 100%;
+  padding: 1px var(--pp-asset-viewer-codePadH);
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--ink-2);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+/* 标题来自文件名（XHTML 里没有 h1..h3）：淡墨——文件名不冒充章节标题 */
+.pp-viewer-epub-tocItem-fromName {
+  color: var(--ink-3);
+}
+/* 当前章：朱砂深 + 左缘朱砂标（`box-shadow` inset 不进盒宽，与板面同款手法） */
+.pp-viewer-epub-tocItem-on {
+  color: var(--seal-deep);
+  background: color-mix(in oklch, var(--paper-deep) 45%, var(--paper));
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+.pp-viewer-epub-tocItem:hover {
+  color: var(--ink-1);
+}
+.pp-viewer-epub-tocNo {
+  flex: 0 0 auto;
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+  text-align: right;
+}
+.pp-viewer-epub-tocName {
+  flex: 1 1 auto;
+}
+.pp-viewer-epub-nav {
+  display: flex;
+  gap: var(--pp-asset-viewer-codePadH);
+  padding: 0 var(--pp-asset-viewer-codePadH) var(--pp-asset-viewer-codePadV);
+}
+.pp-viewer-epub-navBtn {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--indigo);
+  cursor: pointer;
+}
+.pp-viewer-epub-navBtn:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+.pp-viewer-epub-text {
+  padding: 0 var(--pp-asset-viewer-codePadH);
+}
+.pp-viewer-epub-p {
+  margin: 0 0 var(--pp-md-pGap);
+  font-family: var(--f-song);
+  font-size: var(--pp-type-body-size);
+  line-height: var(--pp-type-body-lh);
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
+/* 章节内标题（h1..h6 也是正文，别丢）：字号照纸面 markdown 标题档（h5/h6 归 h4 档） */
+.pp-viewer-epub-h {
+  margin: 0 0 var(--pp-md-pGap);
+  font-family: var(--f-song);
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
+.pp-viewer-epub-h1 {
+  font-size: var(--pp-md-h1-size);
+  line-height: var(--pp-md-h1-lh);
+}
+.pp-viewer-epub-h2 {
+  font-size: var(--pp-md-h2-size);
+  line-height: var(--pp-md-h2-lh);
+}
+.pp-viewer-epub-h3 {
+  font-size: var(--pp-md-h3-size);
+  line-height: var(--pp-md-h3-lh);
+}
+.pp-viewer-epub-h4 {
+  font-size: var(--pp-md-h4-size);
+  line-height: var(--pp-md-h4-lh);
+}
+/* 书级信息 + 能力边界（纯文本阅读 / 包体大小）：机读小字，落两列之下（换行占满一行） */
+.pp-viewer-epub-meta {
+  flex: 1 0 100%;
+  padding: var(--pp-asset-viewer-codePadV) var(--pp-asset-viewer-codePadH) 0;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}

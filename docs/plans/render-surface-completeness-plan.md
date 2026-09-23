@@ -195,6 +195,40 @@ ext 未命中 → 通用文件壳（现行为，零变化）
 **P2 验收**：全量门禁 + `gen:host-surface` + **重建 exe** + 真机（§8 第 3/5/6 项：PDF 翻页与选中、
 系统打开、Mermaid 出图与坏语法回落）。
 
+### 4.3 P3 详设：承接面 + 收尾（2026-09-23 立）
+
+**落点分工**（判据同 D3：能用产物内自绘/既有依赖的留产物热更；要用**应用侧**渲染器的走 `heavy` 通道）：
+
+| 件 | 形态 | 要点 |
+|---|---|---|
+| Office 读（B4） | **轻**（产物侧 `viewers/office.tsx`） | 走 `process_cap{action:'office_exec', is_agent:false}`（**不能调 `office` 域工具**——那是 agent 面 + 目标文件门禁）；docx → 富文本块序列 · xlsx → 复用 `grid` 的**表体**（多 sheet 页签）· pptx → 逐页文本；只读，无写入口 |
+| 旧 Office 出口（B5 余项） | **轻**（`viewers/legacy-office.tsx`） | 不解析：文件壳 + 类型标记（「Word 97-2003 文档」等）+ 一行「旧格式无法内嵌预览」；系统打开按钮由壳统一提供（P2 已落） |
+| epub（B11） | **轻**（`viewers/epub.tsx`） | 复用 zip 中央目录解析 + `DecompressionStream('deflate-raw')`（WebView2 原生）+ `META-INF/container.xml` → OPF → spine；章节文本渲染 + 目录导航 |
+| ipynb（B11） | **重**（`app/paper/viewers/ipynb.tsx`） | 单元格序列（markdown / code / output）；markdown 单元格要**复用应用侧 markdown 渲染器** ⇒ 走 heavy 通道（产物域拿不到它） |
+| Markdown 独立查看（B14） | **重**（`app/paper/viewers/markdown-doc.tsx`） | 同上：复用应用侧 `MarkdownBody` + 左侧标题树（锚点跳转）；**不塞第二份 markdown 解析** |
+| 文档面（B15） | — | 本单登记、README 状态、facts 零漂移核对、竣工即归档 + HISTORY |
+
+**P3 验收**：全量门禁 + `doc-check`；真机（§8 第 4/8 项：docx/xlsx/pptx 出内容且不触发写权限、epub/ipynb/mol/geojson/srt/eml 各能打开）。
+
+### P3 施工记录（2026-09-23）
+
+**五件承接面查看器**（两轻三重，登记由主 Agent 统一落）：
+
+| 件 | 形态 | 要点与如实标注 |
+|---|---|---|
+| **Office**（B4） | 轻（`viewers/office.tsx`，15 例） | 走 `process_cap{action:'office_exec', is_agent:false}`，argv 形状抄 `agent/tools/office.ts`（`['view', f, 'annotated'|'text']`，targets 恒 `write:false`，不发 `--json`）；docx → 正文块序列 · xlsx → `GridBody` 多表页签（切页签只重渲不重读）· pptx → 逐页文本。**只读**（测试逐次断言 argv[0] ∈ 读动词面）。未支持：pptx 出图（写动词）· 批注/修订 · 公式求值结果 · 内嵌图片 · 32K 输出截断/单表 1000 行/逐页 300 页上限（都有可见读数） |
+| **旧 Office 出口**（B5 余项） | 轻（`legacy-office.tsx`，7 例） | 不解析：文件壳 + 类型标记 + 「旧格式无法内嵌预览」；系统打开按钮由壳统一提供（P2） |
+| **epub**（B11） | 轻（`epub.tsx`，21 例） | 自绘 zip（EOCD+中央目录+本地头）+ `DecompressionStream('deflate-raw')` + `container.xml` → OPF → spine → 逐章 XHTML；左目录 + 右正文双上限盒。**method 8 是真跑**（本机 Node 暴露 `deflate-raw`）+ 另加一条「环境无 DecompressionStream」的可读降级用例。未支持：DRM/加密封装 · 内嵌 CSS/图片/字体 · 脚注跳转 · nav/NCX 层级目录（目录 = spine 平铺） |
+| **ipynb**（B11） | 重（`app/paper/viewers/ipynb.tsx`，22 例） | markdown 单元格复用应用侧渲染器（`heavy` 通道）；code 单元格用 hljs（已在应用 bundle，零新增依赖），墨色沿用 `.pp-md-code` 作用域（不写第三份配色）；ANSI 剥除复用 `paper/tool-text`。未支持：widget · HTML 输出不注入 · 图片只报 MIME/字节数 · attachments · 无执行入口 |
+| **Markdown 独立查看**（B14） | 重（`app/paper/viewers/markdown-doc.tsx`，14 例） | 复用 `MarkdownBody` + 标题树（按标题行切段 + section ref → `scrollIntoView`，**未改应用侧渲染器**）；容器宽 < 640px 折叠目录。未支持：树只收 `#`–`###` · 超 8000 行截断 + 吸顶横幅 · 无编辑入口 |
+
+**整合期拆掉的两处结构病**：
+1. **`components ↔ viewers/index` 的环**：office 按施工单复用 `GridBody`（`import { GridBody } from '../components'`）⇒ 模块顶层 `registerBuiltinViewers()` 在环里撞 `BUILTIN_VIEWERS` 的 TDZ（Cannot access before initialization，测试域与**产物域**同时炸）。修法：注册挪到**装配点**（`assetRendererComponents()`，幂等——已注册 id 跳过）；「防装配双跑」改由「外来重名仍装载期拒绝」承担（测试同步改写）。教训记此：**注册面不得在模块顶层跑**，一旦允许产物内互相 import，环是常态。
+2. `GridBody` 原本没 `export`（施工单措辞有误）——office 批补的 `export` 保留（组件体零改动）。
+
+**P3 门禁**：`npm run build` ✓ · `npx vitest run` **395 文件 / 4234 例全绿** · `npx biome ci .` exit 0 · `npm run doc-check` ✓。
+**officecli 端到端**（子代理临时 scratch 测试，跑完即删）：真 docx/xlsx/pptx 经真 officecli 解析断言全中；坏文件/缺失文件各出带原话的可读错误。
+
 ### P2 施工记录（2026-09-23）
 
 **通道（本包的结构件）**：
@@ -240,6 +274,10 @@ ext 未命中 → 通用文件壳（现行为，零变化）
 `npx biome ci .` exit 0 · `npm run doc-check` ✓ · `host-surface.baseline.json` **零漂移**（口径见 §4.2 第 1 条）。
 `npm run doc-sync` 现为红，**原因不在本包**：`docs/facts.generated.md` 漂的是 `engine_contract_version`
 （他窗在途改 `engine/src/contract.rs`，7 → 9），我未夹带该重生成。
+
+**exe 重建（本包部署面要求，已跑）**：`cmd /c build.cmd`（= 前端构建 + `cargo tauri build`）exit 0 ——
+`target/release/lantai.exe` **61 390 029 字节**（20:08）+ `兰台_1.0.1_x64_zh-CN.msi` 167 MB + NSIS setup；
+壳层 Rust 新代码（`fs_cap stat` / `open_with_system`）已进这份 exe ⇒ §8 第 3/5/6 项真机验收可用它跑。
 
 ### B1 · 查看器注册面骨架 + 音频
 

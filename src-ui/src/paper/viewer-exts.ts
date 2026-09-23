@@ -126,6 +126,22 @@ export const VIEWER_PDF_EXTS: readonly string[] = ['pdf'];
 /** 3D 模型（P2 · B9）——**重依赖**：本体在应用 bundle（three + 各 loader）。 */
 export const VIEWER_MODEL_EXTS: readonly string[] = ['glb', 'gltf', 'obj', 'stl'];
 
+/** Office（P3 · B4）：内容经 officecli 读（走 `process_cap office_exec` 用户路径），
+ *  **不读字节** ⇒ 轻查看器，住产物。 */
+export const VIEWER_OFFICE_EXTS: readonly string[] = ['docx', 'xlsx', 'pptx'];
+
+/** 旧 Office（P3 · B5 余项）：**不解析**，出文件壳 + 类型标记 + 系统打开出口。 */
+export const VIEWER_LEGACY_OFFICE_EXTS: readonly string[] = ['doc', 'xls', 'ppt'];
+
+/** 电子书（P3 · B11）：zip + deflate 自绘解析（零依赖），章节目录 + 正文。 */
+export const VIEWER_EPUB_EXTS: readonly string[] = ['epub'];
+
+/** 笔记本（P3 · B11）——**重**：markdown 单元格要复用应用侧渲染器 ⇒ 走 `heavy` 通道。 */
+export const VIEWER_IPYNB_EXTS: readonly string[] = ['ipynb'];
+
+/** Markdown 独立查看（P3 · B14）——**重**：同上（复用应用侧 `MarkdownBody` + 标题树）。 */
+export const VIEWER_MARKDOWN_EXTS: readonly string[] = ['md'];
+
 /** 兜底查看器（B8：**未认领的扩展名**不再落文件壳）——`hex` 是 catch-all，无认领表：
  *  读字节后先嗅探（可打印 UTF-8 → 文本视图；否则 → hex 视图），两条都带「未认领」横幅。 */
 export const VIEWER_CATCHALL_ID = 'hex';
@@ -144,6 +160,11 @@ export const VIEWER_BOX_CLASSES: readonly ViewerExtClass[] = [
   'mail',
   'pdf',
   'model3d',
+  'office',
+  'legacy-office',
+  'epub',
+  'ipynb',
+  'markdown-doc',
 ];
 
 /** 查看器分类（= 测高按类给档的键）。 */
@@ -161,7 +182,12 @@ export type ViewerExtClass =
   | 'subtitle'
   | 'mail'
   | 'pdf'
-  | 'model3d';
+  | 'model3d'
+  | 'office'
+  | 'legacy-office'
+  | 'epub'
+  | 'ipynb'
+  | 'markdown-doc';
 
 /** 类 → 扩展名表（表序 = 类序，取用时按需）。 */
 export const VIEWER_EXTS_BY_CLASS: Readonly<Record<ViewerExtClass, readonly string[]>> = {
@@ -179,6 +205,11 @@ export const VIEWER_EXTS_BY_CLASS: Readonly<Record<ViewerExtClass, readonly stri
   mail: VIEWER_MAIL_EXTS,
   pdf: VIEWER_PDF_EXTS,
   model3d: VIEWER_MODEL_EXTS,
+  office: VIEWER_OFFICE_EXTS,
+  'legacy-office': VIEWER_LEGACY_OFFICE_EXTS,
+  epub: VIEWER_EPUB_EXTS,
+  ipynb: VIEWER_IPYNB_EXTS,
+  'markdown-doc': VIEWER_MARKDOWN_EXTS,
 };
 
 /** ext → 类（小写无点；未认领 = undefined → 宿主走文件壳）。模块装载期一次建表。 */

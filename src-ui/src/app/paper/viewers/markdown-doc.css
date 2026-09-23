@@ -1,0 +1,147 @@
+/* Markdown 独立查看器（P3 · B14）自带样式——颜色一律走 tokens.css 的语义色（`--ink-1/2/3` /
+   `--seal` / `--seal-deep` / `--paper*` / `--rule-soft` / `--rule-soft-ink` / `--fail`），
+   字号与盒高走纸面版式 token（`--pp-asset-viewer-*`）。
+   壳件（`.pp-viewer-note` 吸顶标注 / `.pp-viewer-empty` 空态 / `.pp-viewer-error` 失败行）
+   在 PaperPanel.css，本件只用不复制（同 subtitle.css / pdf.css 纪律）。
+
+   正文排版**不在本件**：每段由应用侧 markdown 渲染器渲染（`.pp-body.pp-md` 与 `.pp-md-*`
+   的版式在 PaperPanel.css），本件只管「标题树列 + 正文列」这个两栏框架与窄档折叠。 */
+
+.pp-viewer-mddoc {
+  max-height: var(--pp-asset-viewer-boxH);
+  overflow: auto;
+  padding: var(--pp-asset-viewer-codePadV) 0;
+  background: color-mix(in oklch, var(--paper-deep) 30%, var(--paper));
+}
+
+/* 截断横幅（复用壳件 .pp-viewer-note 的吸顶行）：左右留出正文内距，盒高不随截断漂 */
+.pp-viewer-mddoc .pp-viewer-note {
+  margin: 0 var(--pp-asset-viewer-codePadH) 4px;
+}
+
+/* 窄档（容器宽 < 640px）：标题树折叠成一行按钮 */
+.pp-viewer-mddoc-tocbtn {
+  display: block;
+  margin: 0 var(--pp-asset-viewer-codePadH) 4px;
+  padding: 0 6px;
+  border: var(--rule-soft);
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  cursor: pointer;
+}
+
+.pp-viewer-mddoc-tocbtn:hover {
+  color: var(--seal);
+}
+
+/* 两栏框架：左标题树（sticky，列内自滚）+ 右正文 */
+.pp-viewer-mddoc-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pp-viewer-mddoc-toc {
+  position: sticky;
+  top: 0;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  box-sizing: border-box;
+  width: 176px;
+  max-height: var(--pp-asset-viewer-boxH);
+  overflow: auto;
+  padding-right: 8px;
+  border-right: var(--rule-soft);
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-viewer-metaSize);
+}
+
+.pp-viewer-mddoc-tochead {
+  margin-bottom: 4px;
+  color: var(--ink-3);
+}
+
+.pp-viewer-mddoc-toclist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pp-viewer-mddoc-tocrow {
+  margin: 0 0 2px;
+}
+
+/* 标题条目：一行一条（超长省略），层级靠 padding-left 缩进 */
+.pp-viewer-mddoc-tocitem {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-viewer-metaSize);
+  line-height: 1.7;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.pp-viewer-mddoc-tocitem:hover {
+  color: var(--seal);
+}
+
+/* 当前落点（点过的那条）：朱砂深——导航面与正文题字的墨阶同族 */
+.pp-viewer-mddoc-tocitem--on {
+  color: var(--seal-deep);
+}
+
+.pp-viewer-mddoc-lv1 {
+  padding-left: 0;
+}
+
+.pp-viewer-mddoc-lv2 {
+  padding-left: 10px;
+}
+
+.pp-viewer-mddoc-lv3 {
+  padding-left: 20px;
+}
+
+.pp-viewer-mddoc-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+}
+
+/* 锚点段：跳转落点留一点上白（scrollIntoView 的 block:'start'） */
+.pp-viewer-mddoc-section {
+  scroll-margin-top: 4px;
+}
+
+/* 窄档：标题树改为正文上方的一栏（不再 sticky、不再右规线） */
+.pp-viewer-mddoc--narrow .pp-viewer-mddoc-body {
+  display: block;
+}
+
+.pp-viewer-mddoc--narrow .pp-viewer-mddoc-toc {
+  position: static;
+  width: auto;
+  max-height: none;
+  margin: 0 var(--pp-asset-viewer-codePadH) 6px;
+  padding: 0 0 4px;
+  border-right: none;
+  border-bottom: var(--rule-soft);
+}
+
+/* 复用面缺失（应用侧 markdown 渲染器取不到——不该发生，但不能静默空白） */
+.pp-viewer-mddoc-missing {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--fail);
+}

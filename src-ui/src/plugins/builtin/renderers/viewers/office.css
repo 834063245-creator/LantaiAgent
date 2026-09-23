@@ -1,0 +1,83 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+   SPDX-License-Identifier: MIT
+
+   Office 查看器样式（P3 · B4，2026-09-23）——盒高 / 底色 / 字号 / 行高全复用公共壳件
+   （`.pp-viewer-box` / `.pp-viewer-note` / `.pp-viewer-empty`，真源 PaperPanel.css）；
+   本文件只管三种格式各自的内件：docx 正文块（题 / 标题三档 / 段落 / 表格标记）、
+   xlsx 页签行、pptx 逐页。颜色一律走 token（有裸色值守卫）；要配局部宽度的规线用
+   颜色位 `--rule-soft-ink`（整条简写 `--rule-soft` 不可再拼装——拼装后是非法声明）。 */
+
+/* 正文面读起来是文档不是日志：块体走宋体（表格标记 / 页签仍走 mono）。 */
+.pp-viewer-office {
+  font-family: var(--f-song);
+}
+
+/* docx：段落（`pre-wrap` 保住 officecli 给的软换行，长行不撑破盒） */
+.pp-viewer-office-p {
+  padding: 0 var(--pp-asset-viewer-codePadH) 4px;
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* docx：标题三档（Heading1..3；Heading4+ 收进第三档——纸面只分三级） */
+.pp-viewer-office-title {
+  padding: 0 var(--pp-asset-viewer-codePadH) 4px;
+  font-size: var(--pp-asset-viewer-labelSize);
+  color: var(--ink-1);
+}
+.pp-viewer-office-h {
+  padding: 0 var(--pp-asset-viewer-codePadH) 2px;
+  color: var(--ink-1);
+}
+.pp-viewer-office-h1 {
+  font-size: var(--pp-asset-viewer-labelSize);
+}
+.pp-viewer-office-h2 {
+  font-size: var(--pp-type-mono-size);
+}
+.pp-viewer-office-h3 {
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-2);
+}
+/* docx：表格节点标记行（officecli 的 annotated 只给 `[Table: 3×3]`——如实转出，不画假表） */
+.pp-viewer-office-table {
+  padding: 0 var(--pp-asset-viewer-codePadH) 4px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--indigo);
+}
+
+/* xlsx：工作表页签（多表才出；切换只重渲不重读） */
+.pp-viewer-office-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 var(--pp-asset-viewer-codePadH) 4px;
+  border-bottom: var(--rule-soft);
+}
+.pp-viewer-office-tab {
+  padding: 0 2px;
+  border: none;
+  border-bottom: var(--pp-asset-viewer-metaSize) solid transparent;
+  background: none;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.pp-viewer-office-tab--on {
+  border-bottom-color: var(--seal);
+  color: var(--seal-deep);
+}
+
+/* pptx：一页一段（页序行 + 该页文本块） */
+.pp-viewer-office-slide {
+  padding-bottom: 6px;
+}
+.pp-viewer-office-page {
+  padding: 2px var(--pp-asset-viewer-codePadH) 2px;
+  border-top: var(--rule-soft);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}

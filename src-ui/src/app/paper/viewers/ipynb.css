@@ -1,0 +1,148 @@
+/* ipynb 查看器（P3 · B11）自带样式——颜色一律走 tokens.css 的语义色（`--ink-1/2/3` /
+   `--seal-deep` / `--indigo` / `--paper*` / `--rule-soft` / `--rule-soft-ink` / `--fail`），
+   字号与盒高走纸面版式 token（`--pp-type-mono-size` / `--pp-asset-viewer-*`）。
+   壳件（`.pp-viewer-note` 吸顶标注 / `.pp-viewer-empty` 空态 / `.pp-viewer-error` 失败行）
+   在 PaperPanel.css，本件只用不复制（同 subtitle.css / pdf.css 纪律）。
+
+   代码单元格（含 hljs 输出）**不在本件配色**：hljs 墨色映射的单一真源是 PaperPanel.css 的
+   `.pp-md-code` / `.pp-viewer-code` 选择器组，代码块直接挂纸面围栏码作用域 `.pp-md-code`
+   （第三份配色必然漂——B2 的同一条纪律）。本件只管单元格框架与输出块。 */
+
+.pp-viewer-ipynb {
+  display: block;
+}
+
+/* 读数行：单元格总数 + 各类型计数 + 内核名（mono・淡墨；读数不抢正文） */
+.pp-viewer-ipynb-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+
+.pp-viewer-ipynb-count {
+  color: var(--ink-2);
+}
+
+.pp-viewer-ipynb-kernel {
+  color: var(--indigo);
+}
+
+/* 单元格序列：上限盒 + 内部滚动（与 measure 的 viewerBodyH 保守档同源——静态测高取上限） */
+.pp-viewer-ipynb-cells {
+  max-height: var(--pp-asset-viewer-boxH);
+  overflow: auto;
+  padding: var(--pp-asset-viewer-codePadV) 0;
+  background: color-mix(in oklch, var(--paper-deep) 30%, var(--paper));
+}
+
+/* 单元格框架：细分隔线分格（首格不留线），首行 = 序号 + 类型徽记 + 执行序号 */
+.pp-viewer-ipynb-cell {
+  padding: 4px var(--pp-asset-viewer-codePadH);
+  border-top: var(--rule-soft);
+}
+
+.pp-viewer-ipynb-cell:first-child {
+  border-top: none;
+}
+
+.pp-viewer-ipynb-cellhead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+
+.pp-viewer-ipynb-idx {
+  min-width: 1.6em;
+  color: var(--ink-3);
+  text-align: right;
+}
+
+/* 类型徽记（md / code / raw）：细分隔线框 + 石青（机器的语汇） */
+.pp-viewer-ipynb-badge {
+  padding: 0 4px;
+  border: var(--rule-soft);
+  color: var(--indigo);
+}
+
+.pp-viewer-ipynb-exec {
+  color: var(--ink-3);
+}
+
+.pp-viewer-ipynb-body {
+  padding-left: var(--pp-asset-viewer-codeGutterPadH);
+}
+
+/* raw 单元格（nbformat 语义：不渲染，原文 mono） */
+.pp-viewer-ipynb-raw {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 输出块（stream / execute_result / display_data 的文本）：次级纸面底 + 段头小字 */
+.pp-viewer-ipynb-out {
+  margin: 4px 0 0;
+  padding: var(--pp-asset-viewer-codePadV) var(--pp-asset-viewer-codePadH);
+  background: color-mix(in oklch, var(--paper-deep) 45%, var(--paper));
+  color: var(--ink-1);
+}
+
+/* 两条失败墨（stderr 流 / error 异常结果）：同一支朱砂，类名分开以便判据面各自点名 */
+.pp-viewer-ipynb-out--err,
+.pp-viewer-ipynb-out--error {
+  color: var(--fail);
+}
+
+.pp-viewer-ipynb-outlabel {
+  display: block;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+
+.pp-viewer-ipynb-out--err .pp-viewer-ipynb-outlabel,
+.pp-viewer-ipynb-out--error .pp-viewer-ipynb-outlabel {
+  color: var(--fail);
+}
+
+.pp-viewer-ipynb-outtext {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 「不渲染」说明（图片输出 / HTML / widget / 其余 MIME）：朱砂深一行——如实标注，不静默 */
+.pp-viewer-ipynb-note {
+  margin: 4px 0 0;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--seal-deep);
+}
+
+.pp-viewer-ipynb-note .pp-viewer-ipynb-outlabel {
+  display: inline;
+  margin-right: 4px;
+  color: var(--seal-deep);
+}
+
+/* 复用面缺失（应用侧 markdown 渲染器取不到——不该发生，但不能静默空白） */
+.pp-viewer-ipynb-missing {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--fail);
+}

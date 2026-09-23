@@ -1,0 +1,18 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+   SPDX-License-Identifier: MIT
+
+   旧 Office 出口样式（P3 · B5 余项，2026-09-23）——**不解析**：文件壳
+   （`.pp-media-file` / `.pp-media-ext` / `.pp-media-path`，真源 PaperPanel.css）
+   + 类型标记 + 一行说明；系统打开出口由公共壳统一提供（本件不画按钮）。
+   颜色一律走 token（有裸色值守卫）。 */
+
+.pp-viewer-legacy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pp-viewer-legacy-type {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-viewer-labelSize);
+  color: var(--ink-2);
+}

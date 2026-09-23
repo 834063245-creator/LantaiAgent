@@ -16,12 +16,17 @@ import { archiveViewer } from './archive';
 import { audioViewer } from './audio';
 import { chemViewer } from './chem';
 import { codeViewer } from './code';
+import { epubViewer } from './epub';
 import { fontViewer } from './font';
 import { geoViewer } from './geo';
 import { hexViewer } from './hex';
 import { imageViewer } from './image';
+import { ipynbViewer } from './ipynb';
+import { legacyOfficeViewer } from './legacy-office';
 import { mailViewer } from './mail';
+import { markdownDocViewer } from './markdown-doc';
 import { model3dViewer } from './model3d';
+import { officeViewer } from './office';
 import { pdfViewer } from './pdf';
 import { subtitleViewer } from './subtitle';
 import { tableViewer } from './table';
@@ -42,12 +47,25 @@ export const BUILTIN_VIEWERS: readonly ViewerDef[] = [
   fontViewer,
   subtitleViewer,
   mailViewer,
+  epubViewer,
+  officeViewer,
+  legacyOfficeViewer,
   pdfViewer,
   model3dViewer,
+  ipynbViewer,
+  markdownDocViewer,
   hexViewer,
 ];
 
-/** 注册出厂查看器（模块装载期调用一次；重复调用会因重名 throw——防装配双跑）。 */
+/** 注册出厂查看器（**幂等**：已注册的 id 跳过——同一个表可被多次触发）。
+ *
+ *  ⚠️ 触发点不是模块顶层，而是 `components.tsx` 的 `assetRendererComponents()`（装配面）：
+ *  查看器可以 `import { GridBody } from '../components'` 复用既有原语（office 查看器就这么做），
+ *  于是形成 `components → viewers/index → office → components` 的**环**；模块顶层调用会在环里
+ *  撞 `BUILTIN_VIEWERS` 的 TDZ（Cannot access before initialization）。挪到装配点后，
+ *  环上的模块先各自求值完，再注册。 */
 export function registerBuiltinViewers(): void {
-  for (const def of BUILTIN_VIEWERS) viewerRegistry.register(def);
+  for (const def of BUILTIN_VIEWERS) {
+    if (!viewerRegistry.get(def.id)) viewerRegistry.register(def);
+  }
 }
