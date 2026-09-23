@@ -372,3 +372,28 @@ cd src-ui && npm run doc-check     # 文档面（本单动了 docs/plans）
 `npx biome ci .` exit 0（改动文件 0/0）；`npm run doc-check` ✓。
 **体积**：`dist-plugins/.../renderers/entry.js` 2 006 951 → **2 014 661** 字节（+7.7 KB，零新依赖）；`host-surface.baseline.json` **零漂移**（未动宿主面）。
 **真机待办**（§8 第 1 项）：给一个 mp3，验流内播放器能播、能拖进度、时长读数对。
+
+### B2 · 代码/文本查看器（hljs 路线，2026-09-23 落地）
+
+| 面 | 落点 |
+|---|---|
+| 分类真源 | **新** `paper/viewer-exts.ts`（宿主层单一真源：图片/视频/音频/代码四类的扩展名表 + `viewerClassOf`）——B1 的「measure 镜像表 + 对拍」因此退休（B2 代码类一次 ~50 个扩展名，镜像成本超过收益）。两侧各自 import（同 `paper/plate-sign.ts` 先例） |
+| 注册面扩展 | `ViewerDef` 增 `bytesKind?: 'data-uri' \| 'text'` + `readLines?`；装载期校验：text ⇒ `needsBytes` 必真、`readLines` 正整数、不要求 `mimes`；非 text 带 `readLines` ⇒ throw |
+| 文本读取 | 宿主新 `useTextData`：`fs_cap read` + **行窗口** `limit = readLines + 1`（不整份进 IPC——大响应白屏先例）；响应无 `content` 键（图片结局）或非 JSON ⇒ 可读错误行 |
+| 查看器 | `viewers/code.tsx`：hljs（`lib/common` + 补注册 10 语言）+ 行号列（CSS sticky）+ `max-height` 内部滚动 + **吸顶截断横幅** |
+| 截断语义 | 宿主多读 1 行 = 「文件更长」判据；查看器显示前 2000 行 ⇒ 横幅「已截断：只显示前 2000 行（文件更长）」。**总行数在行窗口读取下不可得**（要它得整份进 IPC）——文案不假装知道 |
+| 体积闸 | code 查看器 `maxBytes = 2 MiB`（按窗口**字符数**近似，文案写「约」）；超出 ⇒ 可读错误 + 文件壳，不静默截断 |
+| 墨阶 | `PaperPanel.css` 的 `.hljs-*` 映射改为「`.pp-md-code` / `.pp-viewer-code` **成对选择器组**」——流内围栏码与查看器同一份配色（单一真源，测试钉成对性） |
+| 桥扩展 | `rendererHooks` 增 `useMemo`（高亮记忆化；运行期本就注入 React 本体，仅补类型面） |
+| 认领留白 | json/jsonl/yaml/toml/xml/csv/tsv（B7）· md（B14）· ipynb（B11）· srt/vtt/eml（B13）**本批不抢占**（扩展名路由唯一，先认领者胜）；测试钉住这些 ext 仍未被认领 |
+
+**判据实测**：`tests/viewer-code.test.tsx`（13 例：认领覆盖 / 留白 ext / 行窗口参数 / 行号对齐 / 高亮层 / 无语言则原文 / 2001 行截断横幅 / 恰好 2000 行不误报 / 空文件 / 非文本响应 / 非 JSON 响应 / 体积闸 / 测高三档）；
+`tests/viewer-registry.test.ts` 20 例（+4 条文本契约装载期纪律；镜像对拍换成「认领表 = 宿主层分类表」同源查）；
+`tests/viewer-artifact-load.test.tsx` 2 例（**产物域**音频 + 代码：hljs 内联真出 span、行窗口真走 read 口）。
+
+**门禁**：`npm run build` ✓；`npx vitest run` **379 文件 / 4013 例全绿**；`npx biome ci .` exit 0；`npm run doc-check` ✓。
+**体积（诚实栏）**：产物 `renderers/entry.js` 2 014 661 → **2 441 085** 字节（**+426 KB = hljs 内联**——hljs 是轻依赖、判据见 D3；若日后启动开销有感，可改走宿主桥分片，代价是该批要重建 exe）；
+应用入口 chunk 5 047.11 → **5 061.84** KB（+14.7 KB：bundle 兜底行同源，内含 5 个应用侧此前没有的 hljs 语言模块）；`host-surface.baseline.json` 零漂移。
+**顺带发现（不在本批修）**：产物域六个 `host.aliased.ts` 的 `jsx/jsxs` 桥用 `createElement(type, props)` 传数组 children ⇒ React 对**静态多子元素**也报 key 警告（全仓产物域的既有噪声，非功能缺陷、非本批引入）。
+
+**真机待办**（§8 第 2 项）：给一个 .ts 与一个 .rs，验语法高亮对、行号在、大文件截断横幅诚实。

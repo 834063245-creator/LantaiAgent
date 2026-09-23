@@ -12,7 +12,7 @@
 //      （宿主层不得反向 import 插件产物）——这里把两侧钉在一起，漂了就红。
 
 import { describe, expect, it } from 'vitest';
-import { VIEWER_AUDIO_EXTS, VIEWER_IMAGE_EXTS } from '../src/paper/measure';
+import { VIEWER_EXTS_BY_CLASS, viewerClassOf } from '../src/paper/viewer-exts';
 import { normalizeExt, type ViewerDef, viewerRegistry } from '../src/plugins/builtin/renderers/viewer-registry';
 import { BUILTIN_VIEWERS, registerBuiltinViewers } from '../src/plugins/builtin/renderers/viewers';
 
@@ -77,6 +77,50 @@ describe('viewer-registry 装载期纪律（重名/缺件一律当场 throw）',
     expect(viewerRegistry.resolve('.zz6')?.id).toBe('tmp-norm');
     dispose();
   });
+
+  // ── 文本读取形态（B2 新增契约：bytesKind:'text' + readLines）──
+  it('文本查看器缺 readLines → throw（行窗口是「不整份进 IPC」的唯一闸）', () => {
+    expect(() =>
+      viewerRegistry.register(fakeDef({ id: 'tmp-text-a', exts: ['zz9'], needsBytes: true, bytesKind: 'text' })),
+    ).toThrow(/缺 readLines/);
+    expect(() =>
+      viewerRegistry.register(
+        fakeDef({ id: 'tmp-text-a2', exts: ['zz9'], needsBytes: true, bytesKind: 'text', readLines: 0 }),
+      ),
+    ).toThrow(/缺 readLines/);
+  });
+
+  it('bytesKind:text 但 needsBytes=false → throw（不读字节就没有文本）', () => {
+    expect(() =>
+      viewerRegistry.register(fakeDef({ id: 'tmp-text-b', exts: ['zz10'], bytesKind: 'text', readLines: 10 })),
+    ).toThrow(/needsBytes=false/);
+  });
+
+  it('非文本查看器带 readLines → throw（字段与语义必须一致）', () => {
+    expect(() =>
+      viewerRegistry.register(
+        fakeDef({
+          id: 'tmp-text-c',
+          exts: ['zz11'],
+          needsBytes: true,
+          mimes: { zz11: 'application/octet-stream' },
+          readLines: 10,
+        }),
+      ),
+    ).toThrow(/不是文本查看器/);
+  });
+
+  it('文本查看器不要求 mimes（形态是文本，不拼 data URI）；出厂 code 查看器是文本形态', () => {
+    const dispose = viewerRegistry.register(
+      fakeDef({ id: 'tmp-text-d', exts: ['zz12'], needsBytes: true, bytesKind: 'text', readLines: 10 }),
+    );
+    expect(viewerRegistry.resolve('zz12')?.id).toBe('tmp-text-d');
+    dispose();
+    const code = viewerRegistry.get('code');
+    expect(code?.bytesKind).toBe('text');
+    expect(code?.readLines).toBeGreaterThan(0);
+    expect(code?.mimes).toBeUndefined();
+  });
 });
 
 describe('disposer 幂等 + 陈旧性守卫', () => {
@@ -99,8 +143,8 @@ describe('disposer 幂等 + 陈旧性守卫', () => {
   });
 });
 
-describe('出厂查看器表（图片 / 视频 / 音频）', () => {
-  it('认领面与 MIME 齐备：needsBytes 的每个 ext 都有 MIME，且路由唯一', () => {
+describe('出厂查看器表（图片 / 视频 / 音频 / 代码）', () => {
+  it('认领面与 MIME 齐备：data-uri 形态的每个 ext 都有 MIME，且路由唯一', () => {
     const seen = new Map<string, string>();
     for (const def of BUILTIN_VIEWERS) {
       expect(def.exts.length).toBeGreaterThan(0);
@@ -108,7 +152,10 @@ describe('出厂查看器表（图片 / 视频 / 音频）', () => {
         expect(normalizeExt(ext)).toBe(ext); // 出厂表本身就归一（不靠装载期兜）
         expect(seen.has(ext), `${ext} 被 ${seen.get(ext)} 与 ${def.id} 同时认领`).toBe(false);
         seen.set(ext, def.id);
-        if (def.needsBytes) expect(def.mimes?.[ext], `${def.id}.${ext} 缺 MIME`).toBeTruthy();
+        // 文本形态（bytesKind:'text'）不拼 data URI ⇒ 不要求 MIME；其余要字节的必须有
+        if (def.needsBytes && def.bytesKind !== 'text') {
+          expect(def.mimes?.[ext], `${def.id}.${ext} 缺 MIME`).toBeTruthy();
+        }
       }
     }
   });
@@ -139,16 +186,32 @@ describe('出厂查看器表（图片 / 视频 / 音频）', () => {
   });
 });
 
-describe('measure 镜像对拍（宿主层 ext 表 ↔ 插件认领表）', () => {
-  it('图片 ext 表两侧一致（漂了 = 静态测高与渲染面分家）', () => {
-    expect([...VIEWER_IMAGE_EXTS].sort()).toEqual(
-      [...(viewerRegistry.get('image')?.exts ?? [])].map(normalizeExt).sort(),
-    );
+describe('认领表与宿主层分类表同源（B2 起：paper/viewer-exts 单一真源）', () => {
+  it('每个出厂查看器的认领表 = 该类的宿主层扩展名表（两侧不可能漂）', () => {
+    for (const def of BUILTIN_VIEWERS) {
+      const cls = def.id as keyof typeof VIEWER_EXTS_BY_CLASS;
+      expect(VIEWER_EXTS_BY_CLASS[cls], `宿主层没有 "${cls}" 类`).toBeDefined();
+      expect([...def.exts].sort()).toEqual([...VIEWER_EXTS_BY_CLASS[cls]].sort());
+    }
   });
 
-  it('音频 ext 表两侧一致（音频是固定盒高档，漂了 = 块高算错）', () => {
-    expect([...VIEWER_AUDIO_EXTS].sort()).toEqual(
-      [...(viewerRegistry.get('audio')?.exts ?? [])].map(normalizeExt).sort(),
-    );
+  it('分类表自身：四类互不重叠、类内无重复（认领唯一性的宿主层一半）', () => {
+    const seen = new Map<string, string>();
+    for (const [cls, exts] of Object.entries(VIEWER_EXTS_BY_CLASS)) {
+      expect(new Set(exts).size, `${cls} 类内有重复扩展名`).toBe(exts.length);
+      for (const ext of exts) {
+        expect(seen.has(ext), `${ext} 同时在 ${seen.get(ext)} 与 ${cls} 类`).toBe(false);
+        seen.set(ext, cls);
+      }
+    }
+  });
+
+  it('measure 判据走同一张表（viewerClassOf 的类与认领表一致 + 大小写宽容 + 未认领 undefined）', () => {
+    for (const [cls, exts] of Object.entries(VIEWER_EXTS_BY_CLASS)) {
+      for (const ext of exts) expect(viewerClassOf(ext), ext).toBe(cls);
+      expect(viewerClassOf(exts[0]?.toUpperCase()), '大小写宽容').toBe(cls);
+    }
+    expect(viewerClassOf('xyz')).toBeUndefined(); // 未认领 → 文件壳档
+    expect(viewerClassOf(undefined)).toBeUndefined();
   });
 });

@@ -940,6 +940,54 @@ function FileShell({ ext, filePath }: { ext: string; filePath?: string }) {
   );
 }
 
+/** 文本加载状态（行窗口读取 + 生命周期守卫） */
+type TextLoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; data: string }
+  | { status: 'error'; error: string };
+
+/**
+ * 经 `fs_cap read` 拉取文本查看器的内容（B2）——**按行窗口读**（`limit = readLines + 1`），
+ * 不整份进 IPC：大响应白屏先例（INVARIANTS #11）与「文本查看器只看前 N 行」的语义同向。
+ * 多读 1 行是截断判据的来源（查看器显示前 readLines 行，末行存在 ⇒ 文件更长）。
+ * 与 `useMediaData` 同形（epoch 守卫 + 卸载丢弃在途结果），差别只在能力口与解析字段。
+ */
+function useTextData(filePath: string | undefined, readLines: number | undefined): TextLoadState {
+  const [state, setState] = useState<TextLoadState>({ status: filePath ? 'loading' : 'idle' });
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: filePath ? 'loading' : 'idle' });
+    if (!filePath || !readLines) return;
+    rendererRpc('fs_cap', { action: 'read', file_path: filePath, limit: readLines + 1, is_agent: false })
+      .then((res) => {
+        if (cancelled) return;
+        const raw = typeof res === 'string' ? res : JSON.stringify(res);
+        try {
+          const parsed = JSON.parse(raw) as { content?: unknown };
+          if (typeof parsed.content === 'string') {
+            setState({ status: 'ready', data: parsed.content });
+            return;
+          }
+          // 读口对图片按路径返回附图引用（无 content 键）——文本查看器拿到这种响应必须说话
+          setState({ status: 'error', error: '读口返回的不是文本内容（该路径是图片或二进制？）' });
+        } catch {
+          setState({ status: 'error', error: `读口响应无法解析为 JSON（前 120 字符：${raw.slice(0, 120)}）` });
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setState({ status: 'error', error: msg });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath, readLines]);
+  return state;
+}
+
 /** 降级行：说清**哪个文件、哪一步**（错误即导航；不静默、不空白）。 */
 function ViewerError({ text }: { text: string }) {
   return <div className="pp-viewer-error">{text}</div>;
@@ -989,8 +1037,10 @@ class ViewerBoundary extends rendererReact.Component<ViewerBoundaryProps, Viewer
  *  降级链（注册面缺失不再等价于「给你看 JSON」）：
  *    未命中 / 需要字节但没有路径 → 文件壳（B1 前行为）；
  *    读取失败 → 可读错误行（文案与旧实现逐字一致）；
- *    字节超 maxBytes → 可读错误 + 文件壳（**不静默截断**）；
- *    渲染抛错 → 错误边界兜住 + 文件壳（可读错误带查看器 id）。 */
+ *    体积超 maxBytes → 可读错误 + 文件壳（**不静默截断**；文本按窗口字符数，文案说「约」）；
+ *    渲染抛错 → 错误边界兜住 + 文件壳（可读错误带查看器 id）。
+ *  读取形态（B2）：`bytesKind:'data-uri'`（媒体 → read_base64）｜`'text'`
+ *  （文本 → fs_cap read 行窗口，`readLines + 1` 行）。 */
 function MediaBody({ block }: BlockRendererProps) {
   const p = block.payload as { fileId?: string; filePath?: string; label?: string; ext?: string };
   const label = p.label || p.fileId || p.filePath || '文件';
@@ -999,33 +1049,52 @@ function MediaBody({ block }: BlockRendererProps) {
   const def = viewerRegistry.resolve(ext);
   // 只有需要字节的查看器才读文件内容；文件壳/只看元数据的查看器不浪费一次 RPC
   const needsBytes = Boolean(def?.needsBytes && filePath);
-  const loaded = useMediaData(needsBytes ? filePath : undefined);
+  const textMode = needsBytes && def?.bytesKind === 'text';
+  const binMode = needsBytes && !textMode;
+  const text = useTextData(textMode ? filePath : undefined, textMode ? def?.readLines : undefined);
+  const loaded = useMediaData(binMode ? filePath : undefined);
   const [overlayOpen, setOverlayOpen] = useState(false);
 
   const base64 = loaded.status === 'ready' ? loaded.data : '';
   const mime = def?.mimes?.[ext];
-  const bytes: ViewerBytes | undefined =
+  const binBytes: ViewerBytes | undefined =
     base64 && mime ? { kind: 'data-uri', value: `data:${mime};base64,${base64}` } : undefined;
-  // base64 字符数 → 原始字节数（4 字符表 3 字节）；上限判定按原始字节，不按字符串长
-  const bytesLen = base64 ? Math.floor((base64.length * 3) / 4) : 0;
+  const textBytes: ViewerBytes | undefined = text.status === 'ready' ? { kind: 'text', value: text.data } : undefined;
+  const bytes = textMode ? textBytes : binBytes;
+  // base64 字符数 → 原始字节数（4 字符表 3 字节）；上限判定按原始字节，不按字符串长。
+  // 文本路径按**窗口字符数**（近似——多字节字符下字符数 < 字节数，文案里如实说「约」）。
+  const size = textMode
+    ? text.status === 'ready'
+      ? text.data.length
+      : 0
+    : base64
+      ? Math.floor((base64.length * 3) / 4)
+      : 0;
   const limit = def?.maxBytes ?? 0;
+  const approx = textMode ? '约 ' : '';
 
   const shell = <FileShell ext={ext} filePath={filePath} />;
   let body: ReactNode;
   if (!def || (def.needsBytes && !filePath)) {
     body = shell; // 未命中查看器 / 无路径可读：文件壳（B1 前行为，零变化）
-  } else if (needsBytes && loaded.status !== 'ready') {
-    body =
-      loaded.status === 'error' ? (
-        <div className="pp-media-loading">读取失败：{loaded.error}</div>
-      ) : (
-        <div className="pp-media-loading">加载中…</div>
-      );
-  } else if (limit > 0 && bytesLen > limit) {
+  } else if (needsBytes && (textMode ? text.status : loaded.status) !== 'ready') {
+    const failure = textMode
+      ? text.status === 'error'
+        ? text.error
+        : null
+      : loaded.status === 'error'
+        ? loaded.error
+        : null;
+    body = failure ? (
+      <div className="pp-media-loading">读取失败：{failure}</div>
+    ) : (
+      <div className="pp-media-loading">加载中…</div>
+    );
+  } else if (limit > 0 && size > limit) {
     body = (
       <>
         <ViewerError
-          text={`${mbText(bytesLen)} 超过「${def.id}」查看器的 ${mbText(limit)} 上限——截断的媒体不可用，故不做截断读取，已退回文件壳`}
+          text={`${approx}${mbText(size)} 超过「${def.id}」查看器的 ${mbText(limit)} 上限——不做截断读取（截断的${textMode ? '源码' : '媒体'}不可用），已退回文件壳`}
         />
         {shell}
       </>
@@ -1037,6 +1106,7 @@ function MediaBody({ block }: BlockRendererProps) {
         <Viewer
           block={block}
           label={label}
+          ext={ext}
           filePath={filePath}
           bytes={bytes}
           mode="stream"
@@ -1056,7 +1126,7 @@ function MediaBody({ block }: BlockRendererProps) {
       {/* 点击放大浏览：全局浮层（portal 到 body）+ Escape/点遮罩关闭（放大态 = 同一查看器的 mode='overlay'） */}
       <Overlay open={overlayOpen} onClose={() => setOverlayOpen(false)} portal className="pp-media-preview-overlay">
         {OverlayViewer ? (
-          <OverlayViewer block={block} label={label} filePath={filePath} bytes={bytes} mode="overlay" />
+          <OverlayViewer block={block} label={label} ext={ext} filePath={filePath} bytes={bytes} mode="overlay" />
         ) : null}
       </Overlay>
     </div>

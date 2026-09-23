@@ -5,6 +5,7 @@
 // （mp4/webm/ogg/mov），**行为等价**：流内直接出播放器；放大态是同一 src 的浮层播放
 // （自动播放）。宿主不因视频渲染放大按钮（与旧实现同形态）。
 
+import { VIEWER_VIDEO_EXTS } from '../../../../paper/viewer-exts';
 import type { ViewerDef, ViewerProps } from '../viewer-registry';
 
 /** ext → MIME（原 MEDIA_MIME 表的视频段，逐字迁入）。 */
@@ -31,7 +32,7 @@ function VideoViewer({ label, bytes, mode }: ViewerProps) {
 
 export const videoViewer: ViewerDef = {
   id: 'video',
-  exts: ['mp4', 'webm', 'ogg', 'mov'],
+  exts: VIEWER_VIDEO_EXTS,
   mimes: VIDEO_MIMES,
   needsBytes: true,
   component: VideoViewer,

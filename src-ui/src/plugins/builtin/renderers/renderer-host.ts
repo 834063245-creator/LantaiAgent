@@ -16,12 +16,12 @@
 // ——宿主桥的 React 出口（P1a）按此形状注入。
 
 import * as React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Overlay } from '../../../app/overlay';
 import { typedRpc } from '../../../rpc-contract';
 
 export const rendererReact: typeof React = React;
-export const rendererHooks = { useEffect, useRef, useState };
+export const rendererHooks = { useEffect, useMemo, useRef, useState };
 export const rendererOverlay = Overlay;
 export type { OverlayProps } from '../../../app/overlay';
 

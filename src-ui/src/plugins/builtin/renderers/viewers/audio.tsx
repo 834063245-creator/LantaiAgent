@@ -11,6 +11,7 @@
 // 时长读数**诚实**：metadata 未就绪时显「时长未知」，不假装 0:00（jsdom 无媒体栈，
 // 测试面看到的就是这一态）。播放器自身解码失败（坏文件）另有一条可读错误行。
 
+import { VIEWER_AUDIO_EXTS } from '../../../../paper/viewer-exts';
 import { rendererHooks } from '../renderer-host';
 import type { ViewerDef, ViewerProps } from '../viewer-registry';
 
@@ -67,7 +68,7 @@ function AudioViewer({ label, bytes, mode }: ViewerProps) {
 
 export const audioViewer: ViewerDef = {
   id: 'audio',
-  exts: ['mp3', 'wav', 'flac', 'm4a', 'aac', 'opus', 'oga'],
+  exts: VIEWER_AUDIO_EXTS,
   mimes: AUDIO_MIMES,
   needsBytes: true,
   maxBytes: AUDIO_MAX_BYTES,

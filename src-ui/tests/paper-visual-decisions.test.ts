@@ -1160,4 +1160,22 @@ describe('查看器公共壳段面（B1）· 不裸色 + 壳件走 token', () =>
     expect(bodyOf('.pp-viewer-audio-el')).toContain('height: var(--pp-asset-viewer-audioBoxH)');
     expect(bodyOf('.pp-viewer-audio-meta')).toContain('color: var(--ink-3)'); // 读数 = 淡墨
   });
+
+  it('B2 代码查看器：盒高走上限 token + 行号列淡墨 + 截断横幅朱砂（不裸色，同上一查）', () => {
+    expect(bodyOf('.pp-viewer-code')).toContain('max-height: var(--pp-asset-viewer-codeBoxH)');
+    expect(bodyOf('.pp-viewer-code')).toContain('overflow: auto'); // 超长内部滚动（不改纸面高度）
+    expect(bodyOf('.pp-viewer-code-gutter')).toContain('color: var(--ink-3)');
+    expect(bodyOf('.pp-viewer-code-note')).toContain('color: var(--seal-deep)'); // 截断 = 朱砂深（可见）
+    expect(bodyOf('.pp-viewer-code-note')).toContain('position: sticky'); // 吸顶：盒高不随截断漂
+  });
+
+  it('hljs 墨阶映射两个消费面**成对**出现（流内围栏码 ↔ 代码查看器同一份配色）', () => {
+    const groups = PANEL_CSS.replace(/\/\*[\s\S]*?\*\//g, '').match(/\.pp-md-code \.hljs-[^{]+/g) ?? [];
+    expect(groups.length).toBeGreaterThanOrEqual(9); // 9 组语义类（防改名把守卫变成永真）
+    for (const g of groups) {
+      const md = (g.match(/\.pp-md-code \.hljs-/g) ?? []).length;
+      const vw = (g.match(/\.pp-viewer-code \.hljs-/g) ?? []).length;
+      expect(vw, `高亮选择器组两侧不成对（补 .pp-viewer-code 一侧）：${g.trim()}`).toBe(md);
+    }
+  });
 });

@@ -19,14 +19,16 @@
 import type { Component, ComponentType, ReactNode } from 'react';
 
 /** 宿主桥最小形状（与 plugins/loader.ts 的注入面一致）。
- *  注：运行期注入的是 React **本体**（`react: React`），故 `Component` 在产物域同样
- *  可用——这里只是把类型面补齐（查看器宿主用错误边界类组件，B1 2026-09-23）。 */
+ *  注：运行期注入的是 React **本体**（`react: React`），故 `Component` / `useMemo`
+ *  在产物域同样可用——这里只是把类型面补齐（B1 错误边界用 Component；
+ *  B2 代码查看器的高亮记忆化用 useMemo）。 */
 interface PluginHostBridge {
   react: {
     Component: typeof Component;
     createElement: (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) => ReactNode;
     Fragment: unknown;
     useEffect: (effect: () => undefined | (() => undefined), deps?: readonly unknown[]) => undefined;
+    useMemo: <T>(factory: () => T, deps?: readonly unknown[]) => T;
     useRef: <T>(initial: T) => { current: T };
     useState: <T>(initial: T | (() => T)) => [T, (v: T | ((p: T) => T)) => void];
   };
@@ -58,9 +60,10 @@ const host = requireHost();
 /** React 全量（组件构造面——esbuild define 产物域用到的元素类型不在此受限）。 */
 export const rendererReact = host.react;
 
-/** hooks 子集（useState/useEffect/useRef）。 */
+/** hooks 子集（useState/useEffect/useRef/useMemo）。 */
 export const rendererHooks = {
   useEffect: host.react.useEffect,
+  useMemo: host.react.useMemo,
   useRef: host.react.useRef,
   useState: host.react.useState,
 } as const;
