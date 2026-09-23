@@ -295,6 +295,7 @@ const CHART_TYPE_H = ASSET_DERIVED.chartTypeH; // .pp-chart-type + margin-bottom
 const CHART_LABEL_GAP = ASSET_DERIVED.chartLabelGap; // .pp-chart-labels margin-top
 const CHART_LABEL_LINE = ASSET_DERIVED.chartLabelSize * 1.8;
 const CHART_LABEL_FONT = `${ASSET_DERIVED.chartLabelSize}px ${MONO_STACK}`;
+const CHART_SWATCH_ADVANCE = ASSET_DERIVED.chartSwatchAdvance; // 图例色块每条横向占位（D11）
 const CHART_INTERACTIVE_BOX_H = ASSET_DERIVED.chartInteractiveBoxH; // .pp-chart-interactive-box 固定盒高（#16）
 // D4-D9（2026-09-16）：静态图几何——与 components.tsx CHART_GEO 同值（一致性由
 // tests/chart-geometry.test.ts 钉住；token 真源 = ASSET_TOKENS.chart）
@@ -579,14 +580,17 @@ function chartBodyH(p: { type?: unknown; data?: unknown; config?: unknown }, w: 
   // 只占 213px 居中、两侧各空 253px；现模型见 ASSET_DERIVED.chartSvgH。
   const svgH = ASSET_DERIVED.chartSvgH(type, n);
 
-  // 分类标签（D8 起进 SVG，占 SVG 高度的一部分，不再单独占盒外行）；饼图仍走盒外图例行
+  // 分类标签（D8 起进 SVG，占 SVG 高度的一部分，不再单独占盒外行）；饼图另加
+  // 扇区内标注（D11）——盒外图例行保留为完整兜底，且每条前置色块（扣宽后再折行）
   const pieLegendH =
     type === 'pie' && anyLabelText
       ? (() => {
-          const text = labels.filter((l) => l.length > 0).join(' ');
+          const shown = labels.filter((l) => l.length > 0);
+          const text = shown.join(' ');
+          const textW = Math.max(1, w - shown.length * CHART_SWATCH_ADVANCE);
           const lines = Math.max(
             1,
-            Math.ceil(measureTextHeight(text, w, CHART_LABEL_FONT, CHART_LABEL_LINE) / CHART_LABEL_LINE),
+            Math.ceil(measureTextHeight(text, textW, CHART_LABEL_FONT, CHART_LABEL_LINE) / CHART_LABEL_LINE),
           );
           return CHART_LABEL_GAP + lines * CHART_LABEL_LINE;
         })()

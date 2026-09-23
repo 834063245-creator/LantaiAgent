@@ -9,6 +9,8 @@
 //
 // 每个 describe 都对应一条可被旧实现证伪的性质（见各 it 注释）。
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -19,7 +21,34 @@ import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
 import { ASSET_DERIVED, ASSET_TOKENS } from '../src/paper/type-tokens';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
-import { chartLayout, chartSvgHeight, pieSlices } from '../src/plugins/builtin/renderers/components';
+import {
+  chartLayout,
+  chartSvgHeight,
+  pieSliceAnnotations,
+  pieSlices,
+} from '../src/plugins/builtin/renderers/components';
+
+/** 纸壳样式（D11 色块/扇区内标注的源码形断言；jsdom 无排版引擎，钉形不钉像素）。 */
+const PAPER_CSS = readFileSync(
+  join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
+  'utf8',
+);
+
+/** 取某选择器命中的全部规则体（选择器组按逗号拆开逐条匹配；本 CSS 无嵌套）。
+ *  返回多段拼接——同一选择器可以出现在多条规则里（共享规则先例：
+ *  `.pp-chart-slice-label, .pp-chart-slice-value { … }`）。 */
+function cssRule(selector: string): string {
+  const bare = PAPER_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  const bodies: string[] = [];
+  for (const m of bare.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = m[1]
+      .split(',')
+      .map((s) => s.trim().replace(/\s+/g, ' '))
+      .filter(Boolean);
+    if (selectors.includes(selector)) bodies.push(m[2]);
+  }
+  return bodies.join('\n');
+}
 
 type Ctx = Awaited<ReturnType<typeof makeCtx>>;
 
@@ -131,6 +160,145 @@ describe('chart 饼图几何 — 真扇区（旧实现必然证伪）', () => {
     // 每个扇区都带真实角度区间
     expect(html).toMatch(/data-start="[-\d.]+"/);
     expect(html).toMatch(/data-end="[-\d.]+"/);
+  });
+});
+
+/* ═══ 1b. 饼图标长在扇区上（D11，2026-09-17）═══
+ * 病灶（用户报「文字根本不在图上」）：饼图是图表族里唯一把文字甩到盒外的一个
+ * ——分类标签只活在 .pp-chart-labels 图例行（版心左下的裸文字列，无色块，与扇区
+ * 隔着整个 SVG 盒的空白），必须横跨半张卡给扇区对号。D8 已把柱/线/散点的分类
+ * 标签收进 SVG。以下断言对「只有盒外图例行」的旧实现全部为假。 */
+
+const PIE_CX = 80;
+const PIE_CY = 80;
+const PIE_R = 70;
+
+/** 极角（度，-180..180）。 */
+function angleOf(x: number, y: number): number {
+  return (Math.atan2(y - PIE_CY, x - PIE_CX) * 180) / Math.PI;
+}
+
+/** 两角最小夹角（度，0..180）——扇区平分线可能落在 -180..180 之外。 */
+function angleDiff(a: number, b: number): number {
+  return Math.abs(((((a - b) % 360) + 540) % 360) - 180);
+}
+
+describe('chart 饼图 — 标注长在扇区上（D11）', () => {
+  const DATA = { labels: ['前端', '后端', '引擎', '测试', '文档'], values: [35, 25, 20, 12, 8] };
+
+  it('扇区容得下时，标签与数值都落在圆内的角平分线上（双行上下叠）', () => {
+    const slices = pieSlices(DATA.values);
+    const ann = pieSliceAnnotations(slices, DATA.labels, DATA.values, { showLabels: true, showValues: true });
+    expect(ann).toHaveLength(slices.length);
+    ann.forEach((list, i) => {
+      expect(list.map((a) => a.kind)).toEqual(['label', 'value']);
+      expect(list[0].text).toBe(DATA.labels[i]);
+      expect(list[1].text).toBe(String(DATA.values[i]));
+      // 两行同一半径、屏幕上下叠（标签在上 / 数值在下）——不是沿径向排
+      expect(list[0].x).toBeCloseTo(list[1].x, 9);
+      expect(list[0].y).toBeLessThan(list[1].y);
+      // 块心落在本扇区的角平分线上的落点，且整块在圆内（旧实现文字在盒外，连坐标都没有）
+      const mid = ((slices[i].start + slices[i].end) / 2) * (Math.PI / 180);
+      const blockX = (list[0].x + list[1].x) / 2;
+      const blockY = (list[0].y + list[1].y) / 2;
+      expect(blockX).toBeCloseTo(PIE_CX + 44 * Math.cos(mid), 9);
+      expect(blockY).toBeCloseTo(PIE_CY + 44 * Math.sin(mid), 9);
+      for (const a of list) {
+        expect(Math.hypot(a.x - PIE_CX, a.y - PIE_CY)).toBeLessThan(PIE_R);
+      }
+      // 角平分线方向自洽（块心极角 == 扇区中角）
+      expect(angleDiff(angleOf(blockX, blockY), (slices[i].start + slices[i].end) / 2)).toBeLessThan(0.001);
+    });
+  });
+
+  it('薄扇区降级：标签放不下退单行数值，数值也放不下就不画（宁缺不叠）', () => {
+    // 3% → 10.8°：标签（2 全角 = 18 单位）放不下，数值（1 位 = 4.8 单位）放得下
+    const thin = pieSlices([97, 3]);
+    const thinAnn = pieSliceAnnotations(thin, ['大块', '小块'], [97, 3], {
+      showLabels: true,
+      showValues: true,
+    });
+    expect(thinAnn[0].map((a) => a.kind)).toEqual(['label', 'value']);
+    expect(thinAnn[1].map((a) => a.kind)).toEqual(['value']);
+    expect(thinAnn[1][0].text).toBe('3');
+    // 1% → 3.6°：连数值都放不下 ⇒ 空（值仍能在盒外图例里读到）
+    const sliver = pieSlices([99, 1]);
+    const sliverAnn = pieSliceAnnotations(sliver, ['大块', '小块'], [99, 1], {
+      showLabels: true,
+      showValues: true,
+    });
+    expect(sliverAnn[1]).toEqual([]);
+  });
+
+  it('纯数值数组（无标签）时数值照样标在图上（旧实现整张图无字）', () => {
+    const ann = pieSliceAnnotations(pieSlices([3, 1]), [], [3, 1], { showLabels: true, showValues: true });
+    expect(ann[0].map((a) => a.text)).toEqual(['3']);
+    expect(ann[1].map((a) => a.text)).toEqual(['1']);
+  });
+
+  it('渲染层：标注在 SVG 盒内（不是盒外图例行），且标签/数值各有其类', async () => {
+    const html = await renderChart({ type: 'pie', data: DATA });
+    const svgEnd = html.indexOf('</svg>');
+    expect(svgEnd).toBeGreaterThan(-1);
+    for (const cls of ['pp-chart-slice-label', 'pp-chart-slice-value']) {
+      const at = html.indexOf(cls);
+      expect(at).toBeGreaterThan(-1);
+      expect(at).toBeLessThan(svgEnd); // 在 SVG 里 = 长在图上
+    }
+    expect(html).toContain('>前端<');
+    // 盒外图例行保留为完整兜底（细扇区放不下的值仍可读），排在 SVG 之后
+    expect(html.indexOf('pp-chart-labels')).toBeGreaterThan(svgEnd);
+  });
+
+  it('扇区数为 1（满圆）时标注仍在圆内，落在 -90°..270° 的平分线（正下方）', () => {
+    const slices = pieSlices([42]);
+    const ann = pieSliceAnnotations(slices, ['全部'], [42], { showLabels: true, showValues: true });
+    expect(ann[0]).toHaveLength(2);
+    for (const a of ann[0]) {
+      expect(Math.hypot(a.x - PIE_CX, a.y - PIE_CY)).toBeLessThan(PIE_R);
+      expect(a.x).toBeCloseTo(PIE_CX, 6); // 平分线 = (-90 + 270) / 2 = +90°
+      expect(a.y).toBeGreaterThan(PIE_CY);
+    }
+  });
+});
+
+/* ═══ 1c. 图例色块与测高镜像（D11）═══
+ * 盒外图例行此前是裸文字列（无色块）——读者没法把某条对到某块扇区。色块让图例
+ * 成为真正的「键」；代价是每条多占 swatchSize + swatchGap 宽，测高必须同扣
+ * （jsdom 无排版引擎 ⇒ 钉源码形，先例见 settings-panel-field-grid.test.ts）。 */
+
+describe('chart 饼图图例 — 色块与测高镜像（D11）', () => {
+  it('色板单一真源：扇区填色与图例色块同取 --pp-chart-cN（6 槽循环）', () => {
+    expect(cssRule('.pp-chart')).toContain('--pp-chart-c0:');
+    for (let i = 0; i < 6; i++) {
+      expect(cssRule(`.pp-chart-slice-${i}`)).toContain(`var(--pp-chart-c${i})`);
+    }
+    // 第 1 条用基色，第 2..6 条与第 7..12 条循环同色板
+    expect(cssRule('.pp-chart-labels > span::before')).toContain('var(--pp-chart-c0)');
+    for (const [n, slot] of [
+      ['6n + 2', 1],
+      ['6n + 3', 2],
+      ['6n + 4', 3],
+      ['6n + 5', 4],
+      ['6n', 5],
+    ] as const) {
+      expect(cssRule(`.pp-chart-labels > span:nth-child(${n})::before`)).toContain(`var(--pp-chart-c${slot})`);
+    }
+  });
+
+  it('色块尺寸取 token（不手抄像素）且测高派生同源', () => {
+    const swatch = cssRule('.pp-chart-labels > span::before');
+    expect(swatch).toContain('var(--pp-asset-chart-swatchSize)');
+    expect(swatch).toContain('var(--pp-asset-chart-swatchGap)');
+    expect(ASSET_DERIVED.chartSwatchAdvance).toBe(ASSET_TOKENS.chart.swatchSize + ASSET_TOKENS.chart.swatchGap);
+  });
+
+  it('扇区内标注走纸色（深色扇区上可读），字号取既有 token', () => {
+    for (const cls of ['.pp-chart-slice-label', '.pp-chart-slice-value']) {
+      expect(cssRule(cls)).toContain('var(--paper)');
+    }
+    expect(cssRule('.pp-chart-slice-label')).toContain('var(--pp-asset-chart-axisSize)');
+    expect(cssRule('.pp-chart-slice-value')).toContain('var(--pp-asset-chart-valueSize)');
   });
 });
 

@@ -24,7 +24,18 @@ function captureInjectedTokens(): Map<string, string> {
 
 /** 组件私有变量白名单：不由 type-tokens 注入，由宿主组件 inline style 提供
  * （ToastHost 的 --pp-toast-hold = 存活时长，组件级动态值）。 */
-const COMPONENT_PRIVATE = new Set(['--pp-toast-hold']);
+// 另有 CSS 自身在同文件内定义的**颜色**合成位（D11 饼图扇区色板 --pp-chart-c0..c5：
+// 扇区填色与图例色块共用一份，色值取自 tokens.css 的语义色——type-tokens 的注入口径是
+// 「只注入版式数字，不碰颜色」，故色板天然不走注入面）。
+const COMPONENT_PRIVATE = new Set([
+  '--pp-toast-hold',
+  '--pp-chart-c0',
+  '--pp-chart-c1',
+  '--pp-chart-c2',
+  '--pp-chart-c3',
+  '--pp-chart-c4',
+  '--pp-chart-c5',
+]);
 
 /** 读取纸面全部 CSS（PaperPanel + ToastHost）的 var(--pp-*) 引用键。 */
 function usedTokenKeys(): Set<string> {

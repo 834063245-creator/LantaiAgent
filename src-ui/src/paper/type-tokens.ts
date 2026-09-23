@@ -298,9 +298,17 @@ export const ASSET_TOKENS = {
     padV: 4,
     typeSize: 9,
     typeMarginB: 4,
-    pieH: 180,
+    // pieH：饼图 SVG 盒高（用户单位 160 的 viewBox 按此高 meet 缩放 ⇒ 圆 = pieH×7/8）。
+    // D11（2026-09-17）由 180 提到 240：svg 盒宽 == 版心（720）本就与饼无关，180 下
+    // 圆只有 157px、扇区内标注 9px——字号被 SVG 缩放吃掉的正是 D9 批自己点名的病灶
+    // （「8px 字被缩到 6.5px」）；240 下圆 210px、标注 12px，与柱/线最高档同高。
+    pieH: 240,
     labelMarginTop: 6,
     labelSize: 9,
+    // 图例色块（D11）：饼图图例每条前的方块尺寸与右距——图例要能与扇区对上号；
+    // 测高必须同扣（ASSET_DERIVED.chartSwatchAdvance × 条数，见 measure.ts pieLegendH）
+    swatchSize: 8,
+    swatchGap: 4,
     interactiveBoxH: 260,
     // titleSize/titleMarginB：config.title 行（静态版此前完全忽略 config）
     titleSize: 11,
@@ -503,6 +511,8 @@ export const ASSET_DERIVED = {
   chartPieH: ASSET_TOKENS.chart.pieH,
   chartLabelGap: ASSET_TOKENS.chart.labelMarginTop,
   chartLabelSize: ASSET_TOKENS.chart.labelSize,
+  /** 图例色块每条横向占位（D11）：块宽 + 右距——measure 扣掉它再折行（CSS 同源）。 */
+  chartSwatchAdvance: ASSET_TOKENS.chart.swatchSize + ASSET_TOKENS.chart.swatchGap,
   chartInteractiveBoxH: ASSET_TOKENS.chart.interactiveBoxH, // .pp-chart-interactive-box 固定盒高（#16）
   // chart 静态图几何（D4-D9，2026-09-16；2026-09-17 改盒定比例）——measure 与渲染
   // 组件共用同一套坐标系；渲染侧因插件产物域不 import paper 层而镜像同一组数值

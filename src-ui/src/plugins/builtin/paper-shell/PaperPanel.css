@@ -5110,6 +5110,13 @@
 
 .pp-chart {
   padding: var(--pp-asset-chart-padV) 0;
+  /* 扇区色板（D11）：单一真源——扇区填色与图例色块同取这 6 槽 */
+  --pp-chart-c0: var(--indigo);
+  --pp-chart-c1: var(--seal);
+  --pp-chart-c2: color-mix(in oklch, var(--indigo) 70%, var(--seal));
+  --pp-chart-c3: color-mix(in oklch, var(--indigo) 45%, var(--ink-3));
+  --pp-chart-c4: color-mix(in oklch, var(--seal) 60%, var(--ink-2));
+  --pp-chart-c5: color-mix(in oklch, var(--ink-3) 80%, var(--indigo));
 }
 .pp-chart-type {
   font-family: var(--f-mono);
@@ -5204,22 +5211,36 @@
   stroke-width: 1;
 }
 .pp-chart-slice-0 {
-  fill: var(--indigo);
+  fill: var(--pp-chart-c0);
 }
 .pp-chart-slice-1 {
-  fill: var(--seal);
+  fill: var(--pp-chart-c1);
 }
 .pp-chart-slice-2 {
-  fill: color-mix(in oklch, var(--indigo) 70%, var(--seal));
+  fill: var(--pp-chart-c2);
 }
 .pp-chart-slice-3 {
-  fill: color-mix(in oklch, var(--indigo) 45%, var(--ink-3));
+  fill: var(--pp-chart-c3);
 }
 .pp-chart-slice-4 {
-  fill: color-mix(in oklch, var(--seal) 60%, var(--ink-2));
+  fill: var(--pp-chart-c4);
 }
 .pp-chart-slice-5 {
-  fill: color-mix(in oklch, var(--ink-3) 80%, var(--indigo));
+  fill: var(--pp-chart-c5);
+}
+/* 扇区内标注（D11）：文字长在扇区上（此前只活在盒外图例行，与扇区隔着一整个
+   SVG 盒的空白）——扇区填色都是深色，字走纸色（与扇区分隔线同源，读作「从扇区
+   上刻出来」），字号与盒外图例同档。 */
+.pp-chart-slice-label,
+.pp-chart-slice-value {
+  font-family: var(--f-mono);
+  fill: var(--paper);
+}
+.pp-chart-slice-label {
+  font-size: var(--pp-asset-chart-axisSize);
+}
+.pp-chart-slice-value {
+  font-size: var(--pp-asset-chart-valueSize);
 }
 /* 轴名（D4）：config.xName / yName */
 .pp-chart-axis-names {
@@ -5238,6 +5259,33 @@
   font-family: var(--f-mono);
   font-size: var(--pp-asset-chart-labelSize);
   color: var(--ink-3);
+}
+/* 图例色块（D11）：条目前置色块（与扇区同色板）——无块时图例只是版心左下的裸
+   文字列，读不出哪条对哪块扇区。条数 >6 时色板循环（与 .pp-chart-slice-N 同规则）。
+   测高镜像见 measure.ts pieLegendH（每条多占 swatchSize + swatchGap）。 */
+.pp-chart-labels > span::before {
+  content: "";
+  display: inline-block;
+  width: var(--pp-asset-chart-swatchSize);
+  height: var(--pp-asset-chart-swatchSize);
+  margin-right: var(--pp-asset-chart-swatchGap);
+  vertical-align: middle;
+  background: var(--pp-chart-c0);
+}
+.pp-chart-labels > span:nth-child(6n + 2)::before {
+  background: var(--pp-chart-c1);
+}
+.pp-chart-labels > span:nth-child(6n + 3)::before {
+  background: var(--pp-chart-c2);
+}
+.pp-chart-labels > span:nth-child(6n + 4)::before {
+  background: var(--pp-chart-c3);
+}
+.pp-chart-labels > span:nth-child(6n + 5)::before {
+  background: var(--pp-chart-c4);
+}
+.pp-chart-labels > span:nth-child(6n)::before {
+  background: var(--pp-chart-c5);
 }
 
 .pp-metric {

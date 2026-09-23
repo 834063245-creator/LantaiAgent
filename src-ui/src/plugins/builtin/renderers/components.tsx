@@ -255,7 +255,7 @@ const CHART_GEO = {
 /** 类目数 → SVG 盒高（盒定比例：与坐标系宽度解耦，字号因此不再被 viewBox 缩放）。
  *  导出 = 测试直呼面（pieSlices 先例）。 */
 export function chartSvgHeight(type: string, count: number): number {
-  if (type === 'pie') return 180; // = ASSET_TOKENS.chart.pieH
+  if (type === 'pie') return 240; // = ASSET_TOKENS.chart.pieH（D11 由 180 提到 240）
   const [t1, t2] = CHART_GEO.countTiers;
   const [h1, h2, h3] = CHART_GEO.svgHByCount;
   if (count <= t1) return h1;
@@ -370,14 +370,16 @@ function chartEmpty(data: unknown): boolean {
   return chartValues(data).length === 0;
 }
 
+/** 饼图坐标系（用户单位）：viewBox 160×160，圆心 80/80、半径 70。
+ *  单一真源——扇区路径（pieSlices）与扇区内标注（pieSliceAnnotations）共用。 */
+const PIE_GEO = { cx: 80, cy: 80, R: 70 } as const;
+
 /** 饼图扇区几何（D5）：按累计角度生成 SVG 弧路径。
  *  单一真源——渲染与测试共用（tart 前必失败：旧实现是 0 宽的 conic-gradient 空 span）。 */
 export function pieSlices(values: number[]): Array<{ d: string; start: number; end: number; ratio: number }> {
   const total = values.reduce((a, b) => a + Math.max(0, b), 0);
   if (total <= 0) return [];
-  const R = 70;
-  const cx = 80;
-  const cy = 80;
+  const { R, cx, cy } = PIE_GEO;
   let acc = -90; // 从 12 点方向起画
   const out: Array<{ d: string; start: number; end: number; ratio: number }> = [];
   for (const v of values) {
@@ -398,6 +400,97 @@ export function pieSlices(values: number[]): Array<{ d: string; start: number; e
     acc = end;
   }
   return out;
+}
+
+/* 饼图扇区内标注（D11，2026-09-17）——把分类标签与数值放进**扇区里**。
+ *
+ * 病灶：饼图是图表族里唯一把文字甩到盒外的一个——分类标签只活在 .pp-chart-labels
+ * 图例行（版心左下的裸文字列，无色块、与扇区隔着整个 SVG 盒的空白），细看才知
+ * 哪条对哪块；D8 已把柱/线/散点的分类标签收进 SVG，本条把饼图补齐（**文字长在图上**）。
+ * 盒外图例行保留为完整兜底：细扇区放不下时，值仍能在图例里读到（不静默丢数）。
+ *
+ * 落位纪律：水平书写（不做径向旋转——中文竖排/斜排都更难认），居中于扇区角平分线；
+ * 放不下就降级（双行 → 单行 → 不画），宁缺不叠。 */
+
+const PIE_LABEL_GEO = {
+  /** 标注半径（用户单位）——约 0.63R，落在扇区中段 */
+  r: 44,
+  /** 双行时上下各自偏移（**屏幕坐标**：标签在上、数值在下） */
+  lineGap: 6,
+  /** 单行字高（用户单位）——双行块高 = 2×lineGap + lineH 判定用 */
+  lineH: 8,
+  /** 字宽估算（用户单位；axisSize 8 的等宽字体）：CJK 1em / ASCII 0.6em */
+  cjkAdvance: 8,
+  asciiAdvance: 4.8,
+  /** 扇区边缘留白（用户单位）——贴边会读成扇区缺口 */
+  pad: 2,
+} as const;
+
+/** 文本估算宽（用户单位）。 */
+function estTextWidth(text: string): number {
+  let w = 0;
+  for (const ch of text) {
+    w += /[\u2E80-\u9FFF\u3000-\u303F\uFF00-\uFFEF]/.test(ch) ? PIE_LABEL_GEO.cjkAdvance : PIE_LABEL_GEO.asciiAdvance;
+  }
+  return w;
+}
+
+/** 扇区在半径 r 处的可用弦宽（用户单位）；sweep > 180° 时按 180° 封顶。 */
+function wedgeWidthAt(sweepDeg: number, r: number): number {
+  return 2 * r * Math.sin(((Math.min(sweepDeg, 180) / 2) * Math.PI) / 180);
+}
+
+/** 一枚扇区内标注（kind 决定字号类：标签用分类字号、数值用数值字号）。 */
+export interface PieAnnotation {
+  kind: 'label' | 'value';
+  text: string;
+  x: number;
+  y: number;
+}
+
+/** 逐扇区的标注落位（D11）。返回与 slices 等长的数组（放不下 = 空数组）。
+ *  双行时两行**同半径、屏幕坐标上下叠**（标签在上、数值在下）——沿径向排会在
+ *  朝左/朝右的扇区变成横排「20引擎」，读起来像连写。导出 = 测试直呼面。 */
+export function pieSliceAnnotations(
+  slices: Array<{ start: number; end: number }>,
+  labels: string[],
+  values: number[],
+  opts: { showLabels: boolean; showValues: boolean },
+): PieAnnotation[][] {
+  const { cx, cy } = PIE_GEO;
+  const { r, lineGap, lineH, pad } = PIE_LABEL_GEO;
+  const at = (midDeg: number): { x: number; y: number } => {
+    const rad = (midDeg * Math.PI) / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  };
+  /** 文本在 r 处放得下（弦宽 = 该扇区在此半径的可用宽）。 */
+  const fits = (text: string, sweepDeg: number): boolean => estTextWidth(text) + pad <= wedgeWidthAt(sweepDeg, r);
+  /** 双行块（两行 + 行距）在 r 处放得下。 */
+  const fitsBlock = (sweepDeg: number): boolean => 2 * lineGap + lineH <= wedgeWidthAt(sweepDeg, r);
+
+  return slices.map((s, i) => {
+    const sweep = s.end - s.start;
+    const label = opts.showLabels ? (labels[i] ?? '') : '';
+    const value = opts.showValues ? String(values[i] ?? '') : '';
+    const p = at((s.start + s.end) / 2);
+    // ① 双行：标签在上、数值在下
+    if (label && value && fitsBlock(sweep) && fits(label, sweep) && fits(value, sweep)) {
+      return [
+        { kind: 'label', text: label, x: p.x, y: p.y - lineGap },
+        { kind: 'value', text: value, x: p.x, y: p.y + lineGap },
+      ];
+    }
+    // ② 单行：标签优先（识别是谁），放不下退数值（薄扇区至少读得到量）
+    for (const cand of [
+      { kind: 'label' as const, text: label },
+      { kind: 'value' as const, text: value },
+    ]) {
+      if (cand.text && fits(cand.text, sweep)) {
+        return [{ ...cand, x: p.x, y: p.y }];
+      }
+    }
+    return [];
+  });
 }
 
 function ChartBody({ block }: BlockRendererProps) {
@@ -524,6 +617,8 @@ function ChartBody({ block }: BlockRendererProps) {
 
   // 饼：真扇区（D5）——旧实现是 0 宽 conic-gradient 空 span，渲染成空圈
   const slices = pieSlices(values);
+  // 扇区内标注（D11）：文字长在扇区上，不再只活在盒外图例行
+  const annotations = pieSliceAnnotations(slices, labels, values, { showLabels, showValues });
   const pie = (
     <svg className="pp-chart-svg pp-chart-pie-svg" viewBox="0 0 160 160" role="img" aria-label="pie chart">
       {slices.map((s, i) => (
@@ -537,6 +632,21 @@ function ChartBody({ block }: BlockRendererProps) {
           data-ratio={s.ratio}
         />
       ))}
+      {annotations.map((list, i) =>
+        list.map((a) => (
+          <text
+            // biome-ignore lint/suspicious/noArrayIndexKey: 饼图扇区标注按数据序渲染（同图表族约定）
+            key={`a${i}-${a.kind}`}
+            className={a.kind === 'label' ? 'pp-chart-slice-label' : 'pp-chart-slice-value'}
+            x={a.x}
+            y={a.y}
+            textAnchor="middle"
+            dominantBaseline="middle"
+          >
+            {a.text}
+          </text>
+        )),
+      )}
     </svg>
   );
 
