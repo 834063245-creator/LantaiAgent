@@ -42,6 +42,8 @@ interface PluginHostBridge {
     children?: ReactNode;
   }>;
   rpc: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+  /** 重依赖查看器取件（P2）：宿主桥注入 `loadHeavyViewer`（loader.ts）。 */
+  loadViewer: (id: string) => Promise<ComponentType<{ mode: string } & Record<string, unknown>>>;
 }
 
 function requireHost(): PluginHostBridge {
@@ -74,6 +76,11 @@ export const rendererOverlay = host.Overlay;
 /** 媒体渲染器的 RPC 取用（read_file_base64）。 */
 export function rendererRpc(method: string, params: Record<string, unknown>): Promise<unknown> {
   return host.rpc(method, params);
+}
+
+/** 重依赖查看器取件（P2）：本体在应用 bundle，产物域经宿主桥按 id 取（同 rendererRpc 纪律）。 */
+export function rendererLoadViewer(id: string): Promise<ComponentType<never>> {
+  return host.loadViewer(id) as unknown as Promise<ComponentType<never>>;
 }
 
 // ── esbuild automatic JSX 注入面（--jsx=automatic --jsx-import-source=./renderer-host）──

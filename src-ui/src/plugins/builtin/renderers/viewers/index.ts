@@ -21,6 +21,8 @@ import { geoViewer } from './geo';
 import { hexViewer } from './hex';
 import { imageViewer } from './image';
 import { mailViewer } from './mail';
+import { model3dViewer } from './model3d';
+import { pdfViewer } from './pdf';
 import { subtitleViewer } from './subtitle';
 import { tableViewer } from './table';
 import { treeViewer } from './tree';
@@ -40,6 +42,8 @@ export const BUILTIN_VIEWERS: readonly ViewerDef[] = [
   fontViewer,
   subtitleViewer,
   mailViewer,
+  pdfViewer,
+  model3dViewer,
   hexViewer,
 ];
 

@@ -203,10 +203,15 @@ export interface RpcContract {
 
   // ── 能力口（R3-a + 收口，kernel-capability-c3-design.md）──────────
   // fs_cap：fs 能力族直呼入口（read/list/list_flat/glob/write/delete/rename/
-  // create_dir/append/read_base64/write_base64/memory_batch/global_memory_dir）
+  // create_dir/append/read_base64/write_base64/memory_batch/global_memory_dir/
+  // stat/open_with_system）
   // ——不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。参数键顶层
   // snake_case（bridge.rpc() 转换幂等）；is_agent/agent_id 显式传（Agent 过
   // resolve_*_dispatch 闸 / UI 只解析）。编排（缺省/输出格式）归 TS。
+  // stat（P2）：只给 {path,size,is_dir}——查看器面据此**在读取前**拦超限档
+  // （此前只能整份读回来再判，大文件会把 payload 推进 IPC）。
+  // open_with_system（P2 · B5）：交系统默认程序打开（ShellExecuteW）；**只开用户
+  // 通道**（is_agent=true 口内即拒）。
   fs_cap: {
     params: {
       action:
@@ -223,7 +228,9 @@ export interface RpcContract {
         | 'read_base64'
         | 'write_base64'
         | 'memory_batch'
-        | 'global_memory_dir';
+        | 'global_memory_dir'
+        | 'stat'
+        | 'open_with_system';
       path?: string;
       from?: string;
       to?: string;
@@ -244,7 +251,7 @@ export interface RpcContract {
       is_agent?: boolean;
       agent_id?: string | null;
     };
-    result: string; // JSON — read={path,content} / read_base64={path,base64} / list|list_flat={entries} / glob={pattern,count,truncated,results} / memory_batch=Record<path,content|null> / 写类（write|write_base64|create_dir|rename|delete）={path}
+    result: string; // JSON — read={path,content} / read_base64={path,base64} / list|list_flat={entries} / glob={pattern,count,truncated,results} / stat={path,size,is_dir} / open_with_system={path} / memory_batch=Record<path,content|null> / 写类（write|write_base64|create_dir|rename|delete）={path}
   };
 
   // ── 能力口（R3-c，kernel-capability-c3-design.md §8）──────────

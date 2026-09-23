@@ -1,0 +1,48 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+ * SPDX-License-Identifier: MIT
+ *
+ * Mermaid 代码块渲染样式（渲染面补全 P2 · B6，2026-09-23）。
+ *
+ * 颜色只走 tokens.css 的 token（墨/纸/矿物色），版式数字只走 injectPaperTokens 注入的
+ * `--pp-*` 键——本文件零裸色值、零裸像素。
+ *
+ * 高度口径（头注④同一决定）：图区宽撑满版心、高随图自适应，上限 `--pp-asset-viewer-boxH`
+ * + 容器内滚动（超大图不撑破纸面，也不靠 JS 量高）。图保 mermaid 写在 svg 上的自然
+ * 宽度上限（`max-width` inline）——小图不被拉大成巨型字，宽图缩进版心内。
+ *
+ * 皮肤归属：图本身即内容——**不套代码块的左线/深底**（那是「源码」的语言）；回落体由父层
+ * 的原代码块自带皮肤（.pp-md-code），本件只给它一层定位壳（.pp-mermaid-fallback）。 */
+
+/* 图壳：块级纸面件，下距与代码块同源（margin 相邻塌陷，不叠双份）。 */
+.pp-mermaid {
+  margin: 0 0 var(--pp-md-codeGap);
+}
+
+/* 图区：内部滚动盒（上限 + overflow）——高随图自适应，超限在盒内滚。 */
+.pp-mermaid-figure {
+  max-height: var(--pp-asset-viewer-boxH);
+  overflow: auto;
+}
+.pp-mermaid-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* mermaid 只给 svg 自然宽上限（inline max-width），这里兜一层「不出容器」：
+     横向超版心的图缩到版心内，纵向交给上面的滚动盒。 */
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* 失败行：一行可读原因（错误不静默），机读位小字，--fail 是失败色的单一真源。 */
+.pp-mermaid-error {
+  margin: 0 0 var(--pp-md-codePadV);
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--fail);
+}
+
+/* 回落体壳：零皮肤（原代码块自带 .pp-md-code 的线/底/内距）；仅供父层与测试定位。 */
+.pp-mermaid-fallback {
+  display: block;
+}

@@ -119,6 +119,13 @@ export const VIEWER_SUBTITLE_EXTS: readonly string[] = ['srt', 'vtt'];
 /** 邮件（B13：头字段 + 正文 + 附件列表；附件本身走各自查看器）。 */
 export const VIEWER_MAIL_EXTS: readonly string[] = ['eml'];
 
+/** PDF（P2 · B3）——**重依赖**：本体在应用 bundle（pdfjs-dist 走 vite 真分片），
+ *  产物侧只登记认领与读取形态（`ViewerDef.heavy = 'pdf'`）。 */
+export const VIEWER_PDF_EXTS: readonly string[] = ['pdf'];
+
+/** 3D 模型（P2 · B9）——**重依赖**：本体在应用 bundle（three + 各 loader）。 */
+export const VIEWER_MODEL_EXTS: readonly string[] = ['glb', 'gltf', 'obj', 'stl'];
+
 /** 兜底查看器（B8：**未认领的扩展名**不再落文件壳）——`hex` 是 catch-all，无认领表：
  *  读字节后先嗅探（可打印 UTF-8 → 文本视图；否则 → hex 视图），两条都带「未认领」横幅。 */
 export const VIEWER_CATCHALL_ID = 'hex';
@@ -135,6 +142,8 @@ export const VIEWER_BOX_CLASSES: readonly ViewerExtClass[] = [
   'geo',
   'subtitle',
   'mail',
+  'pdf',
+  'model3d',
 ];
 
 /** 查看器分类（= 测高按类给档的键）。 */
@@ -150,7 +159,9 @@ export type ViewerExtClass =
   | 'chem'
   | 'geo'
   | 'subtitle'
-  | 'mail';
+  | 'mail'
+  | 'pdf'
+  | 'model3d';
 
 /** 类 → 扩展名表（表序 = 类序，取用时按需）。 */
 export const VIEWER_EXTS_BY_CLASS: Readonly<Record<ViewerExtClass, readonly string[]>> = {
@@ -166,6 +177,8 @@ export const VIEWER_EXTS_BY_CLASS: Readonly<Record<ViewerExtClass, readonly stri
   geo: VIEWER_GEO_EXTS,
   subtitle: VIEWER_SUBTITLE_EXTS,
   mail: VIEWER_MAIL_EXTS,
+  pdf: VIEWER_PDF_EXTS,
+  model3d: VIEWER_MODEL_EXTS,
 };
 
 /** ext → 类（小写无点；未认领 = undefined → 宿主走文件壳）。模块装载期一次建表。 */

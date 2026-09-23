@@ -128,3 +128,70 @@ describe('paper/measure — 代码块高亮零镜像变化', () => {
     expect(plain).toBe(hl); // 高亮前后零差异
   });
 });
+
+/* ═══ mermaid 围栏认领（B6 · P2）═══
+ * 只在模型**显式**写 ```mermaid 时触发；jsdom 里 mermaid 多半渲染不出 SVG，
+ * 而那正是降级链要考的：出 `.pp-mermaid` 容器 + 「图渲染失败：」可读错误 + **原代码块回落**。 */
+describe('MarkdownBody — mermaid 围栏认领', () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container?.remove();
+    root = null;
+    container = null;
+  });
+
+  it('```mermaid 围栏 → 交给 MermaidBlock（.pp-mermaid 容器）；普通围栏不误入', async () => {
+    await act(async () => {
+      root?.render(
+        createElement(rendererFor('markdown'), {
+          block: block('markdown', { text: '```mermaid\ngraph TD; A-->B;\n```' }),
+        }),
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container!.querySelector('.pp-mermaid')).not.toBeNull();
+    await act(async () => {
+      root?.render(
+        createElement(rendererFor('markdown'), { block: block('markdown', { text: '```ts\nconst a = 1;\n```' }) }),
+      );
+    });
+    expect(container!.querySelector('.pp-mermaid')).toBeNull();
+    expect(container!.querySelector('pre.pp-md-code')).not.toBeNull();
+  });
+
+  it('渲染失败时回落原代码块（不吞错、不空白）', async () => {
+    await act(async () => {
+      root?.render(
+        createElement(rendererFor('markdown'), { block: block('markdown', { text: '```mermaid\n%% 非法图\n```' }) }),
+      );
+    });
+    // mermaid 是动态分片 + 异步解析：轮询到状态落定（ok/fail），最多 2s
+    const stateNow = (): string | null =>
+      container!.querySelector('.pp-mermaid')?.getAttribute('data-mermaid-state') ?? null;
+    for (let i = 0; i < 40 && stateNow() !== 'ok' && stateNow() !== 'fail'; i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+    }
+    const host = container!.querySelector('.pp-mermaid');
+    expect(host).not.toBeNull();
+    const state = host!.getAttribute('data-mermaid-state');
+    expect(state === 'ok' || state === 'fail', `状态未落定：${String(state)}`).toBe(true);
+    if (state === 'fail') {
+      expect(host!.querySelector('.pp-mermaid-error')?.textContent).toContain('图渲染失败：');
+      expect(host!.querySelector('pre.pp-md-code')).not.toBeNull(); // 原代码块回落
+    } else {
+      expect(host!.querySelector('svg')).not.toBeNull();
+    }
+  });
+});

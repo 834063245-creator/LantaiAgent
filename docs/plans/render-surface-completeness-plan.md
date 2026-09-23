@@ -180,8 +180,66 @@ ext 未命中 → 通用文件壳（现行为，零变化）
 线框切换；流内首帧静态、浮层可交互）· B5 通用出口（`openWithSystem` 能力位 + 公共壳工具条按钮，
 旧 Office 三格式借此出壳）· 顺带 `fs_cap` 尺寸预检（P1 发现的未知档整份读风险）。
 
+**P2 落地口径两处修订（2026-09-23 施工中定）**：
+
+1. **B5 做成 `fs_cap` 的两个 action，不新开能力位命令**：`stat`（尺寸预检）+ `open_with_system`
+   （ShellExecuteW，**只开用户通道**——`is_agent=true` 口内即拒）。理由：路径解析与权限语义本来
+   就收在 fs 口，新开命令只是多一层注册面；**副作用是 `host-surface.baseline.json` 零漂移**
+   （基线记的是插件宿主 mod 面，不是能力口 action 表）——原计划的「baseline 同批重生成」不再需要，
+   但 **exe 仍须重建**（Rust 有新代码）。
+2. **系统打开出口落题名行右端（绝对定位），不做独立工具条**：`.pp-viewer-head` + `.pp-viewer-open-system`
+   绝对定位 ⇒ **不进高度流水**（与组合芯片同一条落位纪律），故本批对所有查看器的静态测高**零改动**
+   （原计划「工具条」会引入一致的高度漂移与一串测高测试改动，收益不值）。能力位缺席（旧 exe 换新
+   产物）时按钮本会话收起 + 首次失败出可读错误行（容缺、不静默）。
+
 **P2 验收**：全量门禁 + `gen:host-surface` + **重建 exe** + 真机（§8 第 3/5/6 项：PDF 翻页与选中、
 系统打开、Mermaid 出图与坏语法回落）。
+
+### P2 施工记录（2026-09-23）
+
+**通道（本包的结构件）**：
+
+| 面 | 落点 |
+|---|---|
+| 取件通道 | 产物侧 `ViewerDef.heavy = '<id>'`（与 `component` **二选一**，装载期拒绝双份/双无）→ 宿主渲染前 `loadViewer(id)` |
+| 桥三处同形 | `renderer-host.ts`（真：直连应用侧 `loadHeavyViewer`）· `renderer-host.aliased.ts`（产物域：读 `window.__lantai_plugin_host__.loadViewer`）· `plugins/loader.ts`（注入） |
+| 应用侧装载面 | **新** `app/paper/viewers/index.ts`：`import.meta.glob('./*.tsx')` —— **目录即白名单**，每个文件一个 vite 真分片；未注册 id / 无 default ⇒ 抛错（宿主转「文件壳 + 可读错误」） |
+| 登记（产物侧） | `viewers/pdf.ts` · `viewers/model3d.ts`：只声明认领 + MIME + `maxBytes`（32 MiB）+ `heavy`，本体在应用侧 |
+
+**B5 · 系统出口 + 尺寸预检**（两处口径修订见 §4.2）：
+
+| 面 | 落点 |
+|---|---|
+| Rust | `fs_cap` 两个新 action：`stat`（只给 `{path,size,is_dir}`）· `open_with_system`（`ShellExecuteW`，**agent 侧口内即拒**） |
+| 宿主 | `useFileSize` **先 stat 后读**：预检落定前不读、超限档**根本不读**（大文件不进 IPC）；预检缺席（旧 exe）⇒ 回落读后判据（容缺） |
+| 出口 UI | `.pp-viewer-head` + `.pp-viewer-open-system`（题名行右端**绝对定位**、不进高度流水 ⇒ 全浏览器的静态测高零改动）；失败出可读错误行，「未知 action」时本会话收起按钮 |
+
+**新增依赖**：`pdfjs-dist@6.3.289` · `mermaid@12`（`three` 已在）。
+
+**分片判据（实测，`npm run build`）**：`pdf-zjYMagsG.js` 537 KB + `pdf.worker.min.mjs` 1.3 MB ·
+`three-DB74AqZ-.js` 567 KB · `mermaid.core-3Qc9MIER.js` 671 KB · `model3d-BnuMLESx.js` 86 KB
+——**入口 chunk 只 +8 KB**（5 115.50 → 5 123.68 KB）⇒ 重依赖确未进启动路径 ✓。
+
+**Mermaid 接线（我这份）**：`app/paper/builtin-renderers.tsx` 的 `MdCodeBlock` 只在 `el.lang === 'mermaid'`
+时转交 `MermaidBlock`（失败由它出「图渲染失败：<原因>」并把原代码块**原样放回**）；测试见
+`tests/paper-code-highlight.test.ts` 的新 describe（轮询到状态落定后断言两条路都合规）。
+
+**壳层门禁**：`cargo check` ✓；`cargo test` **509 过 / 1 挂**——挂的是
+`utils::bg_jobs::tests::spawn_bg_with_uses_given_job_id`（10s 等待超时），**单跑 2.1s 即过**，
+系三路并行测试压满机器所致（CONVENTIONS §3「待机红线是超时不是逻辑」同款），与本包改动无关。
+
+**三件应用侧重查看器**（并行铺，主 Agent 统一登记与接线）：
+
+| 件 | 落点 | 要点与如实标注 |
+|---|---|---|
+| **PDF**（B3） | `app/paper/viewers/pdf.tsx` + `.css`（12 例） | 走 `pdfjs-dist/legacy/build/pdf.mjs`——**非 legacy 版在 Node 24/jsdom 里 import 即抛**（初始化算 md5 用了 ES2026 的 `toHex`，legacy 自带 polyfill，老 WebView2 同理更安全）；worker 经 `?url` 出独立资源（构建实证 `pdf.worker.min-*.mjs` 1.3 MB）。流内首页缩略 + 页数、浮层翻页/缩放/文本层（近似落位）。**未支持**：cmaps/standard_fonts/wasm 不打包（非内嵌 CJK 字体档文字可能缺失、JPEG2000 图可能画不出）· 加密档无密码框 · 注释层/表单/签名不渲染 · 一次一页 |
+| **3D**（B9） | `app/paper/viewers/model3d.tsx` + `.css`（13 例） | GLTFLoader/OBJLoader/STLLoader 走 `parse`（data URI → ArrayBuffer，不走 `loader.load(url)`）；流内静态首帧、浮层轨道控制 + 线框切换；读数（格式/三角面/顶点/包围盒）与 GPU 无关 ⇒ 无 WebGL 时读数照显 + 可读提示；three 资源成对 dispose。**未支持**：DRACO/KTX2/meshopt 具名报错（不接解码器）· glTF 动画/外部 URI 资源/`.mtl` 贴图 |
+| **Mermaid**（B6） | `app/paper/mermaid-block.tsx` + `.css`（13 例） | 接线在我这侧（`MdCodeBlock` 认 `el.lang === 'mermaid'`）；**真解析**（jsdom 只需补 `getBBox` 量尺桩）；主题现读纸面墨阶 token（**墨阶不可读 ⇒ 不出图**，绝不回落 mermaid 默认配色）；pending 出回落体（不空白、不跳高）；失败出「图渲染失败：<原因>」+ 原代码块。落点从 `viewers/` 挪到 `paper/`——`viewers/` 是重查看器白名单目录（`import.meta.glob` 取件、props 必须 `ViewerProps`），围栏渲染器不是文件查看器；`tests/viewer-registry.test.ts` 加断言钉住白名单只含 `['model3d','pdf']` |
+
+**P2 门禁**：`npm run build` ✓（**5m10s**，含三路并行占机）· `npx vitest run` **390 文件 / 4152 例全绿** ·
+`npx biome ci .` exit 0 · `npm run doc-check` ✓ · `host-surface.baseline.json` **零漂移**（口径见 §4.2 第 1 条）。
+`npm run doc-sync` 现为红，**原因不在本包**：`docs/facts.generated.md` 漂的是 `engine_contract_version`
+（他窗在途改 `engine/src/contract.rs`，7 → 9），我未夹带该重生成。
 
 ### B1 · 查看器注册面骨架 + 音频
 

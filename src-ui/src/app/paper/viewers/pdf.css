@@ -1,0 +1,113 @@
+/* PDF 查看器（P2 · B3）自带样式——颜色一律走 tokens.css 的语义色（`--ink-*` / `--seal*` /
+   `--indigo` / `--graphite` / `--paper*` / `--rule-soft-ink` / `--fail`），字号与盒高走纸面
+   版式 token（`--pp-type-mono-size` / `--pp-asset-viewer-*`）。
+   失败行 / 吸顶标注 / 空态复用宿主壳件 `.pp-viewer-error` / `.pp-viewer-note` / `.pp-viewer-empty`，
+   本文件不重复定义（同 subtitle.css 纪律）。
+
+   两条盒高纪律：
+   · 流内（--stream）= **上限盒**（`--pp-asset-viewer-boxH`，与 measure.ts 的 `viewerBodyH`
+     保守档同源）+ 内部滚动；canvas 再扣掉读数行的高度（28px 上界 = 读数行 11px×1.8 + 间距）。
+   · 浮层（--overlay）= portal 到 body，**在 `.pp-root` 之外** ⇒ `--pp-*` 在此解析不到，
+     故带兜底值 `var(--pp-asset-viewer-boxH, 320px)`；浮层给更高的上限（78vh）以便整页阅读。 */
+
+.pp-viewer-pdf {
+  display: block;
+}
+
+/* 读数 / 工具行：页数读数（流内「共 N 页」/ 浮层「第 i / N 页」）+ 按钮 */
+.pp-viewer-pdf-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+
+.pp-viewer-pdf-pages {
+  color: var(--ink-2);
+}
+
+.pp-viewer-pdf-btn {
+  padding: 0 6px;
+  border: var(--rule-soft);
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  cursor: pointer;
+}
+
+.pp-viewer-pdf-btn:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.pp-viewer-pdf-zoom {
+  min-width: 4em;
+  color: var(--graphite);
+  text-align: center;
+}
+
+/* 上限盒 + 内部滚动（保守测高 + 挂载后 RO 收敛） */
+.pp-viewer-pdf-stage {
+  max-height: var(--pp-asset-viewer-boxH, 320px);
+  overflow: auto;
+  background: color-mix(in oklch, var(--paper-deep) 30%, var(--paper));
+}
+
+.pp-viewer-pdf--overlay .pp-viewer-pdf-stage {
+  max-height: 78vh;
+}
+
+/* 页面容器：浮层里显式给 viewport 尺寸（文本层与画布同一参照系），流内自适应 */
+.pp-viewer-pdf-page {
+  position: relative;
+  margin: 0 auto;
+}
+
+.pp-viewer-pdf-canvas {
+  display: block;
+  background: var(--paper);
+}
+
+/* 流内缩略图：CSS 等比缩进上限盒（不再单独测宽——盒宽由版心给） */
+.pp-viewer-pdf--stream .pp-viewer-pdf-canvas {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(var(--pp-asset-viewer-boxH, 320px) - 28px);
+  margin: 0 auto;
+}
+
+/* 浮层：画布铺满页面容器（尺寸由 inline style 给，文本层按同一坐标系绝对定位） */
+.pp-viewer-pdf--overlay .pp-viewer-pdf-canvas {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 文本层（自绘 span，不引 pdfjs 的 text_layer CSS）：透明文字覆盖在画布上，可选中可复制。
+   落位与字号由 `layoutPdfText` 用 pdfjs 的 `Util.transform` 算出（近似落位，见组件头注）。 */
+.pp-viewer-pdf-text {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  line-height: 1;
+  text-align: initial;
+}
+
+.pp-viewer-pdf-text-item {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  transform-origin: 0 0;
+  cursor: text;
+}
+
+.pp-viewer-pdf-text-item::selection {
+  background: color-mix(in oklch, var(--indigo) 35%, transparent);
+}

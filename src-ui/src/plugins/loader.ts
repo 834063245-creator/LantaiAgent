@@ -31,6 +31,7 @@ import React, {
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { dynamicRunnerPlugin } from '../agent/dynamic-runner/dynamic-runner-service';
 import { Overlay } from '../app/overlay';
+import { loadHeavyViewer } from '../app/paper/viewers';
 import { useShellStore } from '../app/shell-store';
 import { capabilitiesServicePlugin } from '../composition/capability-service';
 import { fsServicePlugin } from '../composition/fs-service';
@@ -313,6 +314,7 @@ export function installPluginHostBridge(): void {
       },
       Overlay,
       rpc: (method: string, params: Record<string, unknown>) => typedRpc(method as never, params as never),
+      loadViewer: loadHeavyViewer,
       notify: (text: string) => useShellStore.getState().pushStatus(text),
       loadCss: injectPluginCss,
       fs: pluginDataFs,

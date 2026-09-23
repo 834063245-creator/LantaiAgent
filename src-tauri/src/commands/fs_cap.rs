@@ -26,7 +26,15 @@ use tauri::State;
 
 /// fs_cap 能力口分派。action ∈ {read, list, list_flat, glob, write, delete,
 /// rename, create_dir, append, truncate, read_base64, write_base64, memory_batch,
-/// global_memory_dir}。
+/// global_memory_dir, stat, open_with_system}。
+///
+/// stat（P2 2026-09-23）：**尺寸预检**——查看器面在此之前只能「整份读回来再判超限」，
+/// 大文件会把 payload 推进 IPC（白屏先例 INVARIANTS #11 那类形态）。本动作先只给
+/// {size, is_dir}，宿主据此在读取前拦下超限档。
+/// open_with_system（P2 · B5）：把文件交给系统默认程序（ShellExecuteW）——应用内
+/// 没有这条出口（desktop 域是 UIA 控件面、shell/process 口没有 start），旧 Office
+/// 与「想用 Excel 打开 csv」这类偏好都走它。**只开用户通道**（is_agent=true 直接拒：
+/// agent 侧要开文件走 fs/office 域工具，不给它一条拉起任意程序的口子）。
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn fs_cap(
     action: String,
@@ -92,6 +100,30 @@ pub(crate) async fn fs_cap(
             let fp = file_path.or(path).ok_or_else(|| "fs_cap read_base64: missing 'file_path'".to_string())?;
             let b64 = crate::confined_fs::read_base64_cap(&fp, is_agent, agent_id.as_deref(), state, app).await?;
             Ok(json!({ "path": fp, "base64": b64 }))
+        }
+        // 尺寸预检（P2）：只 stat，不读字节——宿主据此在读取前拦超限档
+        "stat" => {
+            let fp = file_path.or(path).ok_or_else(|| "fs_cap stat: missing 'file_path'".to_string())?;
+            let real = crate::utils::resolve_read_dispatch(&fp, is_agent, agent_id.as_deref(), state, app).await?;
+            let meta = std::fs::metadata(&real).map_err(|e| format!("stat 失败 {}: {}", fp, e))?;
+            Ok(json!({
+                "path": real.to_string_lossy(),
+                "size": meta.len(),
+                "is_dir": meta.is_dir(),
+            }))
+        }
+        // 用系统默认程序打开（P2 · B5）：用户通道专用（agent 侧走 fs/office 域工具）
+        "open_with_system" => {
+            if is_agent {
+                return Err("fs_cap open_with_system: 仅用户通道（agent 侧请用 fs/office 域工具）".to_string());
+            }
+            let fp = file_path.or(path).ok_or_else(|| "fs_cap open_with_system: missing 'file_path'".to_string())?;
+            let real = crate::utils::resolve_read_dispatch(&fp, is_agent, agent_id.as_deref(), state, app).await?;
+            if !real.exists() {
+                return Err(format!("用系统程序打开失败：文件不存在 {}", real.to_string_lossy()));
+            }
+            shell_open_with_default(&real)?;
+            Ok(json!({ "path": real.to_string_lossy() }))
         }
         "list" => {
             let p = path.ok_or_else(|| "fs_cap list: missing 'path'".to_string())?;
@@ -224,5 +256,55 @@ pub(crate) async fn fs_cap(
             Ok(json!({ "path": rp, "truncate_to": off }))
         }
         other => Err(format!("fs_cap: 未知 action '{other}'")),
+    }
+}
+
+/// 把文件交给系统默认程序（P2 · B5）。
+///
+/// Windows：`ShellExecuteW(…, "open", path, …)`——shell 关联的唯一正确入口，不经
+/// `cmd /c start`（少一层 shell 解析面；与 `commands/composition.rs` 的 explorer
+/// 先例同一纪律）。非 Windows：`open` / `xdg-open` 兜底。
+///
+/// 调用后不等待进程（用户程序自己活），故不持锁、不阻塞 tokio 线程。
+fn shell_open_with_default(real: &std::path::Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::PCWSTR;
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        let wide = |s: &std::ffi::OsStr| -> Vec<u16> { s.encode_wide().chain(std::iter::once(0)).collect() };
+        let verb = wide(std::ffi::OsStr::new("open"));
+        let file = wide(real.as_os_str());
+        // SAFETY: 三个指针都指向本函数栈上、以 NUL 结尾的 UTF-16 缓冲，调用期间存活；
+        // ShellExecuteW 只读它们。返回值 ≤32 表示失败（不是句柄）。
+        let rc = unsafe {
+            ShellExecuteW(
+                None,
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(file.as_ptr()),
+                PCWSTR::null(),
+                PCWSTR::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        let code = rc.0 as isize;
+        if code <= 32 {
+            return Err(format!(
+                "用系统程序打开失败（ShellExecuteW 返回 {code}）：{}",
+                real.to_string_lossy()
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        std::process::Command::new(opener)
+            .arg(real)
+            .spawn()
+            .map_err(|e| format!("用系统程序打开失败 {}: {}", real.to_string_lossy(), e))?;
+        Ok(())
     }
 }

@@ -70,23 +70,9 @@ describe('代码查看器 · 认领面（B2）', () => {
     }
   });
 
-  it('留给后续包（P2/P3）的扩展名**不被**本包抢占：pdf / office / 3D / epub / ipynb / md', () => {
-    for (const ext of [
-      'pdf',
-      'docx',
-      'xlsx',
-      'pptx',
-      'doc',
-      'xls',
-      'ppt',
-      'epub',
-      'ipynb',
-      'md',
-      'glb',
-      'gltf',
-      'stl',
-    ]) {
-      expect(viewerRegistry.resolve(ext), `${ext} 应留给后续包（P2/P3）`).toBeUndefined();
+  it('留给后续包（P3）的扩展名**不被**本包抢占：office / epub / ipynb / md', () => {
+    for (const ext of ['docx', 'xlsx', 'pptx', 'doc', 'xls', 'ppt', 'epub', 'ipynb', 'md']) {
+      expect(viewerRegistry.resolve(ext), `${ext} 应留给后续包（P3）`).toBeUndefined();
     }
   });
 });

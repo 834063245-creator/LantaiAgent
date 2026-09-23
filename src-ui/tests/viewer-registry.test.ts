@@ -12,6 +12,7 @@
 //      （宿主层不得反向 import 插件产物）——这里把两侧钉在一起，漂了就红。
 
 import { describe, expect, it } from 'vitest';
+import { heavyViewerIds } from '../src/app/paper/viewers';
 import { VIEWER_EXTS_BY_CLASS, viewerClassOf } from '../src/paper/viewer-exts';
 import { normalizeExt, type ViewerDef, viewerRegistry } from '../src/plugins/builtin/renderers/viewer-registry';
 import { BUILTIN_VIEWERS, registerBuiltinViewers } from '../src/plugins/builtin/renderers/viewers';
@@ -219,6 +220,21 @@ describe('出厂查看器表（图片 / 视频 / 音频 / 代码）', () => {
   it('不支持字节的查看器不设 maxBytes（只看元数据的查看器没有「超限」语义）', () => {
     for (const def of BUILTIN_VIEWERS) {
       if (!def.needsBytes) expect(def.maxBytes).toBeUndefined();
+    }
+  });
+});
+
+describe('重查看器白名单（P2：`app/paper/viewers` 目录即白名单）', () => {
+  it('目录里只有真查看器（props 必须是 ViewerProps；非查看器文件不得混入）', () => {
+    // mermaid 围栏渲染器曾落在这里，被挪去 `app/paper/mermaid-block.tsx`——本断言防它（或别的
+    // 非查看器文件）再溜进白名单：取件键 = 文件名，混进来的东西将来会被 `heavy:'…'` 误取。
+    expect(heavyViewerIds()).toEqual(['model3d', 'pdf']);
+  });
+
+  it('每个 heavy 声明的取件键都有对应文件（登记与文件对得上）', () => {
+    const ids = new Set(heavyViewerIds());
+    for (const def of BUILTIN_VIEWERS) {
+      if (def.heavy) expect(ids.has(def.heavy), `${def.id} → heavy:'${def.heavy}' 没有对应文件`).toBe(true);
     }
   });
 });

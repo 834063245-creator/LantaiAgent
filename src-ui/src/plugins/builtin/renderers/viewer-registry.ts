@@ -78,8 +78,13 @@ export interface ViewerDef {
   /** 体积上限（超出 → 文件壳 + 可读错误，**不静默截断**）；缺省 = 不设限。
    *  文本查看器上它是**近似值**（按窗口文本字符数判），文案里如实说「约」。 */
   maxBytes?: number;
-  /** 组件本体——B1 只有产物内直挂的轻查看器（零依赖/自绘/复用既有原语） */
-  component: ComponentType<ViewerProps>;
+  /** 组件本体——产物内直挂的轻查看器（零依赖 / 自绘 / 复用既有原语）。
+   *  与 `heavy` **二选一**（装载期拒绝既无实现又双份声明的行）。 */
+  component?: ComponentType<ViewerProps>;
+  /** 重依赖查看器的**取件键**（P2）：本体在应用 bundle（vite 真分片），
+   *  经宿主桥 `loadViewer(id)` 按需取——产物域禁动态裸 import，重依赖进不了产物
+   *  （D3 修订）。取件失败 ⇒ 文件壳 + 可读错误（不静默）。 */
+  heavy?: string;
 }
 
 /** 扩展名归一：小写 + 去前导点（'PNG' / '.png' → 'png'）。 */
@@ -96,6 +101,17 @@ class ViewerRegistry {
    *  重名装载期拒绝；disposer 幂等 + 陈旧守卫——同 id 重注册后旧 disposer 不误删新行）。 */
   register(def: ViewerDef): () => void {
     if (!def.id) throw new Error('[viewer-registry] 查看器 id 不能为空');
+    if (def.component && def.heavy) {
+      throw new Error(
+        `[viewer-registry] 查看器 "${def.id}" 同时声明了 component 与 heavy —— 二选一（轻查看器住产物、重查看器住应用 bundle）`,
+      );
+    }
+    if (!def.component && !def.heavy) {
+      throw new Error(`[viewer-registry] 查看器 "${def.id}" 既没有 component 也没有 heavy —— 没有任何实现`);
+    }
+    if (def.heavy !== undefined && def.heavy.trim().length === 0) {
+      throw new Error(`[viewer-registry] 查看器 "${def.id}" 的 heavy 取件键不能为空串`);
+    }
     if (this.defs.has(def.id)) {
       throw new Error(`[viewer-registry] 重复注册查看器 "${def.id}" —— 装载期拒绝，不静默覆盖`);
     }

@@ -87,10 +87,17 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + 2 + 320);
   });
 
-  it('media 文件行：非图扩展走单行文件行', () => {
-    const b = assetBlock('file', { ext: 'pdf', filePath: 'x.pdf' });
+  it('media 文件行：未认领扩展走单行文件行（静态保守档；兜底查看器实测由 RO 收敛）', () => {
+    // 注：P1 起未认领扩展交兜底查看器（hex/文本嗅探，盒高），P2 起 pdf/3D 也各有盒高——
+    // 静态测高对**未认领**档仍按文件行保守估（虚拟化窗口先按此摆位，挂载后 RO 实测收敛）。
+    const b = assetBlock('file', { ext: 'xyz', filePath: 'x.xyz' });
     // 题签恒在（2026-09-17 收尾）：媒体块也带题签行（签「图」）
     expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + 11 * 1.8);
+  });
+
+  it('P2 盒高档：pdf / 3D 等重依赖查看器按盒高上限记（保守）', () => {
+    const pdf = assetBlock('file', { ext: 'pdf', filePath: 'x.pdf' });
+    expect(measureBlockHeight(pdf)).toBe(4 + ASSET_DERIVED.plateHeadH + (13 * 1.8 + 4) + ASSET_DERIVED.viewerBoxH);
   });
 
   it('chart 柱状：type 行 + svg 封顶 240（标签已进 SVG，不占盒外行）', () => {

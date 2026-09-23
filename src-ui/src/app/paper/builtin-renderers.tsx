@@ -30,7 +30,6 @@ import type { ReactNode } from 'react';
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../../agent/plan/plan-tools';
 import type { BlockRendererContribution, BlockRendererProps } from '../../composition/renderer-service';
-
 import { foldLabel, foldPreviewLine } from '../../paper/fold';
 import {
   type MdBlock,
@@ -53,6 +52,9 @@ import type { ChatImageRef } from '../../provider/types';
 import { previewUrlFor, readAttachmentBase64 } from '../chat/image-intake';
 import { Overlay } from '../overlay';
 import { useShellStore } from '../shell-store';
+// mermaid 围栏渲染器（B6 · P2）：本体在应用侧（`mermaid` 重依赖走动态 import 分片），
+// 解析失败时它把 fallback（原代码块）原样放回——降级链在它内部，本文件只做认领。
+import MermaidBlock from './mermaid-block';
 
 /* ── 流式增量渐显（streaming-fade-render-plan 2026-08-30）──
  * 把「新长出来的文本」与「旧文本」分开：旧文本零动画（流式重渲染不闪），
@@ -238,7 +240,7 @@ function MdBlocksView({ blocks, tail }: { blocks: MdBlock[]; tail?: ReactNode })
  *  switch case 内不可调 hook（hooks 规则），块渲染在这里抽顶。 */
 function MdCodeBlock({ el, tail }: { el: Extract<MdBlock, { t: 'code' }>; tail?: ReactNode }) {
   const highlighted = useMemo(() => highlightCode(el.text, el.lang), [el.lang, el.text]);
-  return (
+  const codeBlock = (
     <pre className="pp-md-code">
       {highlighted !== null ? (
         // biome-ignore lint/security/noDangerouslySetInnerHtml: hljs 输出为可信本地渲染（非模型 HTML；转义由 hljs 内建）
@@ -249,6 +251,10 @@ function MdCodeBlock({ el, tail }: { el: Extract<MdBlock, { t: 'code' }>; tail?:
       {tail}
     </pre>
   );
+  // mermaid 围栏（B6 · P2）：只在模型**显式**写 ```mermaid 时触发 ⇒ 与 show_asset(chart)
+  // 零竞争；渲染失败由 MermaidBlock 出「图渲染失败：<原因>」并把本代码块原样放回（不吞错、不空白）。
+  if (el.lang === 'mermaid') return <MermaidBlock code={el.text} fallback={codeBlock} />;
+  return codeBlock;
 }
 
 /* ── 远端图（B4 multimodal-image-plan · D-9）：独立行 ![alt](http/https) ──

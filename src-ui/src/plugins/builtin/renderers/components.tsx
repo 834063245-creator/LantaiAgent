@@ -45,14 +45,14 @@ import {
 } from 'echarts/components';
 import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import SmilesDrawer from 'smiles-drawer';
 import type { ConfirmCardResponse } from '../../../agent/agent-types';
 import type { BlockRendererProps } from '../../../composition/renderer-service';
 // 物类签真源（2026-09-23 图版架批上移宿主层；本件取用 + 原样转出，见下方题签段注）
 import { plateSignOf } from '../../../paper/plate-sign';
-import { rendererHooks, rendererOverlay, rendererReact, rendererRpc } from './renderer-host';
-import { normalizeExt, type ViewerBytes, viewerRegistry } from './viewer-registry';
+import { rendererHooks, rendererLoadViewer, rendererOverlay, rendererReact, rendererRpc } from './renderer-host';
+import { normalizeExt, type ViewerBytes, type ViewerProps, viewerRegistry } from './viewer-registry';
 import { registerBuiltinViewers } from './viewers';
 
 echarts.use([
@@ -1031,16 +1031,86 @@ class ViewerBoundary extends rendererReact.Component<ViewerBoundaryProps, Viewer
   }
 }
 
-/** 媒体块体 = **查看器宿主**（B1）：`ext → viewerRegistry.resolve` → 命中出查看器、
- *  未命中出文件壳；壳件（题签行 + 题名行 + 内容区）与降级链都在这里，查看器只管自己那块。
+/** 尺寸预检状态（P2）：读字节前先 `fs_cap stat`。 */
+type StatLoadState =
+  | { status: 'idle' | 'loading' }
+  | { status: 'ready'; size: number }
+  | { status: 'error'; error: string };
+
+/**
+ * 读字节前的**尺寸预检**（P2）：查看器面此前只能「整份读回来再判超限」，大文件会把
+ * payload 推进 IPC（白屏先例 INVARIANTS #11 那类形态）。这里先 stat 一次，超限档
+ * **根本不读**。
+ * 能力位缺席（旧 exe 换新产物）⇒ 记 error、宿主静默回落旧行为（读回来再判），不挡路。
+ */
+function useFileSize(filePath: string | undefined, enabled: boolean): StatLoadState {
+  const [state, setState] = useState<StatLoadState>({ status: 'idle' });
+  useEffect(() => {
+    let cancelled = false;
+    setState(enabled && filePath ? { status: 'loading' } : { status: 'idle' });
+    if (!enabled || !filePath) return;
+    rendererRpc('fs_cap', { action: 'stat', file_path: filePath, is_agent: false })
+      .then((res) => {
+        if (cancelled) return;
+        const raw = typeof res === 'string' ? res : JSON.stringify(res);
+        try {
+          const parsed = JSON.parse(raw) as { size?: unknown };
+          if (typeof parsed.size === 'number') setState({ status: 'ready', size: parsed.size });
+          else setState({ status: 'error', error: 'stat 响应缺 size 字段' });
+        } catch {
+          setState({ status: 'error', error: `stat 响应无法解析为 JSON（前 120 字符：${raw.slice(0, 120)}）` });
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setState({ status: 'error', error: e instanceof Error ? e.message : String(e) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath, enabled]);
+  return state;
+}
+
+/** 重依赖查看器取件状态（P2）：本体在应用 bundle（vite 真分片），产物域这侧按 id 懒取。
+ *  取件在途 → 「加载中…」；失败 → 可读错误（带取件键）+ 文件壳。 */
+function useHeavyViewer(heavyId: string | undefined): {
+  component: ComponentType<ViewerProps> | null;
+  error: string | null;
+} {
+  const [component, setComponent] = useState<ComponentType<ViewerProps> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setComponent(null);
+    setError(null);
+    if (!heavyId) return;
+    rendererLoadViewer(heavyId)
+      .then((c) => {
+        if (!cancelled) setComponent(() => c);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [heavyId]);
+  return { component, error };
+}
+
+/** 媒体块体 = **查看器宿主**（B1/P1/P2）：`ext → viewerRegistry.resolve` → 命中出查看器、
+ *  未命中出兜底查看器（P1）、再没有才落文件壳（B1 前行为）；查看器本体两态：
+ *  产物内直挂（`component`）或应用 bundle 懒取（`heavy`，P2）。
+ *  壳件（题签行 + 题名行 + 内容区）与降级链都在这里，查看器只管自己那块。
  *
  *  降级链（注册面缺失不再等价于「给你看 JSON」）：
- *    未命中 / 需要字节但没有路径 → 文件壳（B1 前行为）；
+ *    未命中 / 需要字节但没有路径 → 文件壳；
  *    读取失败 → 可读错误行（文案与旧实现逐字一致）；
  *    体积超 maxBytes → 可读错误 + 文件壳（**不静默截断**；文本按窗口字符数，文案说「约」）；
+ *    重查看器取件失败 → 可读错误（带取件键）+ 文件壳；
  *    渲染抛错 → 错误边界兜住 + 文件壳（可读错误带查看器 id）。
- *  读取形态（B2）：`bytesKind:'data-uri'`（媒体 → read_base64）｜`'text'`
- *  （文本 → fs_cap read 行窗口，`readLines + 1` 行）。 */
+ *  读取形态（B2/P1）：`bytesKind:'data-uri'`（媒体 → read_base64）｜`'text'`（文本 →
+ *  fs_cap read 行窗口，`readLines + 1` 行）｜`'auto'`（先文本窗口、失败再二进制）。 */
 function MediaBody({ block }: BlockRendererProps) {
   const p = block.payload as { fileId?: string; filePath?: string; label?: string; ext?: string };
   const label = p.label || p.fileId || p.filePath || '文件';
@@ -1050,18 +1120,30 @@ function MediaBody({ block }: BlockRendererProps) {
   const def = viewerRegistry.resolve(ext) ?? viewerRegistry.catchAll();
   // 只有需要字节的查看器才读文件内容；文件壳/只看元数据的查看器不浪费一次 RPC
   const needsBytes = Boolean(def?.needsBytes && filePath);
+  const limit = def?.maxBytes ?? 0;
+  // 尺寸预检（P2）：有上限的查看器先 stat；**预检落定前不读**（否则会先读一次、
+  // 预检回来又读一次），超限档根本不读；能力位缺席（error）⇒ 放行，回落读后判据
+  const wantSize = Boolean(needsBytes && limit > 0);
+  const stat = useFileSize(wantSize ? filePath : undefined, wantSize);
+  const overSize = stat.status === 'ready' && limit > 0 && stat.size > limit;
+  const gateOpen = !wantSize || stat.status === 'ready' || stat.status === 'error';
+  const readPath = gateOpen && !overSize ? filePath : undefined;
   const textMode = needsBytes && def?.bytesKind === 'text';
   // auto（兜底查看器）：先文本窗口（有界、无 base64 膨胀），文本读失败才付二进制代价
   const autoMode = needsBytes && def?.bytesKind === 'auto';
   const autoText = useTextData(
-    textMode || autoMode ? filePath : undefined,
+    textMode || autoMode ? readPath : undefined,
     textMode || autoMode ? def?.readLines : undefined,
   );
   const textFallback = autoMode && autoText.status === 'error';
   const binMode = needsBytes && !textMode && (!autoMode || textFallback);
   const text = autoText;
-  const loaded = useMediaData(binMode ? filePath : undefined);
+  const loaded = useMediaData(binMode ? readPath : undefined);
+  const heavy = useHeavyViewer(def?.heavy);
   const [overlayOpen, setOverlayOpen] = useState(false);
+  // 用系统程序打开（P2 · B5）：能力位缺席（旧 exe）时本会话收起按钮（不反复报错）
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [openGone, setOpenGone] = useState(false);
 
   const base64 = loaded.status === 'ready' ? loaded.data : '';
   // 兜底查看器接任意扩展名 ⇒ 缺 MIME 按二进制兜（它本来就要看原始字节）
@@ -1086,13 +1168,22 @@ function MediaBody({ block }: BlockRendererProps) {
   // base64 字符数 → 原始字节数（4 字符表 3 字节）；上限判定按原始字节，不按字符串长。
   // 文本路径按**窗口字符数**（近似——多字节字符下字符数 < 字节数，文案里如实说「约」）。
   const size = usingText ? text.data.length : base64 ? Math.floor((base64.length * 3) / 4) : 0;
-  const limit = def?.maxBytes ?? 0;
   const approx = usingText ? '约 ' : '';
 
   const shell = <FileShell ext={ext} filePath={filePath} />;
   let body: ReactNode;
   if (!def || (def.needsBytes && !filePath)) {
     body = shell; // 未命中查看器 / 无路径可读：文件壳（B1 前行为，零变化）
+  } else if (overSize) {
+    // 尺寸预检（P2）：**没读**就拦下——大文件不进 IPC（白名单外的一切都不读）
+    body = (
+      <>
+        <ViewerError
+          text={`文件 ${mbText(stat.status === 'ready' ? stat.size : 0)} 超过「${def.id}」查看器的 ${mbText(limit)} 上限——已在读取前拦下（未读取内容），可用「用系统程序打开」交给本机程序`}
+        />
+        {shell}
+      </>
+    );
   } else if (needsBytes && !ready) {
     body = failure ? (
       <div className="pp-media-loading">读取失败：{failure}</div>
@@ -1100,6 +1191,7 @@ function MediaBody({ block }: BlockRendererProps) {
       <div className="pp-media-loading">加载中…</div>
     );
   } else if (limit > 0 && size > limit) {
+    // 预检能力缺席时的兜底判据（旧 exe）：读回来再判——同样是可读错误，不静默截断
     body = (
       <>
         <ViewerError
@@ -1108,9 +1200,20 @@ function MediaBody({ block }: BlockRendererProps) {
         {shell}
       </>
     );
-  } else {
-    const Viewer = def.component;
+  } else if (def.heavy && heavy.error) {
+    // 重依赖查看器取件失败（P2）：可读错误带取件键 + 文件壳（不静默）
     body = (
+      <>
+        <ViewerError text={`重查看器「${def.heavy}」装载失败：${heavy.error}`} />
+        {shell}
+      </>
+    );
+  } else if (def.heavy && !heavy.component) {
+    body = <div className="pp-media-loading">装载查看器「{def.heavy}」…</div>;
+  } else {
+    // 走到这里：轻查看器有 component，或重查看器已取件成功（上方两分支已排除其余情形）
+    const Viewer = def.component ?? heavy.component;
+    body = Viewer ? (
       <ViewerBoundary key={`${ext}:${filePath ?? ''}`} viewerId={def.id} fallback={shell}>
         <Viewer
           block={block}
@@ -1122,16 +1225,44 @@ function MediaBody({ block }: BlockRendererProps) {
           onOpenOverlay={() => setOverlayOpen(true)}
         />
       </ViewerBoundary>
+    ) : (
+      <>
+        <ViewerError text={`查看器「${def.id}」没有可渲染的实现（component 与 heavy 都取不到）`} />
+        {shell}
+      </>
     );
   }
 
   const Overlay = rendererOverlay;
-  const OverlayViewer = def?.component;
+  const OverlayViewer = def?.component ?? heavy.component;
+  /** 用系统程序打开（P2 · B5）：把文件交给本机默认程序——旧 Office、csv 想用 Excel 开等都走它。 */
+  const openWithSystem = (): void => {
+    if (!filePath) return;
+    setOpenError(null);
+    rendererRpc('fs_cap', { action: 'open_with_system', file_path: filePath, is_agent: false }).catch((e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      setOpenError(msg);
+      // 能力位缺席（旧 exe 换新产物）：本会话收起按钮，不反复报同一句
+      if (/未知 action|unknown action|missing 'file_path'/i.test(msg)) setOpenGone(true);
+    });
+  };
   return (
     <div className="pp-viewer">
-      <PlateHead kind="media" title={block.asset?.title} titleClass="pp-plate-title" />
+      {/* 题名行 = 壳的头部；系统打开出口**绝对定位**在行右端（不进高度流水——
+          与组合芯片同一条落位纪律），故静态测高与本批之前完全一致 */}
+      <div className="pp-viewer-head">
+        <PlateHead kind="media" title={block.asset?.title} titleClass="pp-plate-title" />
+        {filePath && !openGone ? (
+          <button type="button" className="pp-viewer-open-system" onClick={openWithSystem}>
+            用系统程序打开
+          </button>
+        ) : null}
+      </div>
       <div className="pp-viewer-label">{label}</div>
-      <div className="pp-viewer-body">{body}</div>
+      <div className="pp-viewer-body">
+        {openError ? <ViewerError text={`用系统程序打开失败：${openError}`} /> : null}
+        {body}
+      </div>
       {/* 点击放大浏览：全局浮层（portal 到 body）+ Escape/点遮罩关闭（放大态 = 同一查看器的 mode='overlay'） */}
       <Overlay open={overlayOpen} onClose={() => setOverlayOpen(false)} portal className="pp-media-preview-overlay">
         {OverlayViewer ? (

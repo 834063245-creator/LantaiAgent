@@ -15,10 +15,13 @@
 // react 全量（组件）+ hooks 子集（useState/useEffect/useRef）都从这里出
 // ——宿主桥的 React 出口（P1a）按此形状注入。
 
+import type { ComponentType } from 'react';
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Overlay } from '../../../app/overlay';
+import { loadHeavyViewer } from '../../../app/paper/viewers';
 import { typedRpc } from '../../../rpc-contract';
+import type { ViewerProps } from './viewer-registry';
 
 export const rendererReact: typeof React = React;
 export const rendererHooks = { useEffect, useMemo, useRef, useState };
@@ -31,4 +34,9 @@ export type { OverlayProps } from '../../../app/overlay';
  */
 export function rendererRpc(method: string, params: Record<string, unknown>): Promise<unknown> {
   return typedRpc(method as never, params as never);
+}
+
+/** 重依赖查看器取件（P2）：本体在应用 bundle（vite 真分片），产物域这侧经宿主桥同形取用。 */
+export function rendererLoadViewer(id: string): Promise<ComponentType<ViewerProps>> {
+  return loadHeavyViewer(id);
 }

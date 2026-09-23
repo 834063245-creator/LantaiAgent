@@ -1,0 +1,116 @@
+/* 3D 模型查看器（渲染面补全 P2 · B9，2026-09-23）自带样式——颜色一律走 tokens.css 的
+   语义色，盒高 / 字号走 --pp-* 版式 token（裸色值纪律同 viewers/*.css：
+   tests/paper-token-audit.test.ts）。公共壳件（.pp-viewer / .pp-viewer-label /
+   .pp-viewer-note / .pp-viewer-error / .pp-viewer-empty / .pp-media-open）在
+   PaperPanel.css，本件**只用不复制**——只补查看器内部件。
+
+   盒高纪律：`.pp-viewer-3d-stage` 的 height = var(--pp-asset-viewer-boxH)，与
+   paper/measure.ts 的静态测高镜像同档（model3d 在 VIEWER_BOX_CLASSES 里取
+   ASSET_DERIVED.viewerBoxH）——**无 WebGL 时提示行落在同一盒里**，块高不因环境漂移。 */
+
+.pp-viewer-3d-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: var(--pp-asset-viewer-labelMarginB);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+
+.pp-viewer-3d-meta-name {
+  color: var(--ink-2);
+  word-break: break-all;
+}
+
+.pp-viewer-3d-meta-ext {
+  color: var(--indigo);
+  text-transform: uppercase;
+}
+
+/* 字节数读数靠右（文件身份行 = 名 · 格式 · 体积三段） */
+.pp-viewer-3d-meta-size {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* 画布宿主：上限盒 + 内部裁剪（canvas 由 three 绘制，尺寸按宿主 client 尺寸换算）。
+   元素是 `<span>` 配 display:block —— 流内整块被包在 `<button>` 里，而 button 只收
+   phrasing content（div 落在 button 内是非法 HTML）。 */
+.pp-viewer-3d-stage {
+  display: block;
+  position: relative;
+  height: var(--pp-asset-viewer-boxH);
+  overflow: hidden;
+  background: color-mix(in oklch, var(--paper-deep) 30%, var(--paper));
+}
+
+.pp-viewer-3d-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 流内：整块可点（进浮层看可交互的那一版）——.pp-media-open 提供 cursor 与按钮复位 */
+.pp-viewer-3d-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+/* 提示行落在盒内居中（公共壳的 .pp-viewer-note 是吸顶行，这里按盒定位） */
+.pp-viewer-3d-stage .pp-viewer-note {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  text-align: center;
+}
+
+.pp-viewer-3d-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-top: 2px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  color: var(--ink-2);
+}
+
+.pp-viewer-3d-tools {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pp-viewer-3d-tool {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-2);
+  background: var(--paper);
+  border: var(--rule-soft);
+  cursor: pointer;
+}
+
+.pp-viewer-3d-tool[aria-pressed="true"] {
+  color: var(--paper);
+  background: var(--seal-deep);
+}
+
+.pp-viewer-3d-hint {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+
+/* 浮层（mode='overlay'）：宿主浮层是 flex 居中的全屏模态 ⇒ 画布吃 92vw × 92vh
+   （与 .pp-media-preview 的图片上限同档） */
+.pp-viewer-3d-overlay .pp-viewer-3d-stage {
+  width: 92vw;
+  height: 92vh;
+}
