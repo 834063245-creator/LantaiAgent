@@ -56,7 +56,13 @@ export const VENDOR_TEMPLATES: readonly VendorTemplate[] = [
   },
   {
     vendor: 'openai',
-    kind: 'openai',
+    // ⚡ 协议 = responses（2026-09-23）：官方模型页对 GPT-6 Sol/Luna 明文写着
+    //   「Chat Completions supports function calling only with reasoning_effort
+    //   set to none」——而本应用是工具驱动主循环，每轮都带 tools（agent.ts:1950），
+    //   chat 方言下「自动 / 命名档位」两种组合都可能带不动工具。官方端点两个方言
+    //   都在，baseUrl 一字不变（responses.ts 打 {baseUrl}/responses），故官方出厂行
+    //   改走 Responses。第三方兼容端点各按自己模板（deepseek/glm/qwen/… 仍 chat）。
+    kind: 'responses',
     baseUrl: 'https://api.openai.com/v1',
     // 2026-09-23 随 GPT-6 家族换代（Sol = OpenAI 官方「复杂编码 / agentic workflow」
     // 定位款，也是 Codex 面的起步预设；Astra/Luna 在 seed 里按需改选）

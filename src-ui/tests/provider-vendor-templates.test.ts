@@ -39,9 +39,12 @@ describe('vendor-templates', () => {
     }
   });
 
-  it('内核三家模板的 kind 落在 CORE_PROTOCOLS（anthropic/openai）', () => {
+  it('内核三家模板的 kind：anthropic/deepseek 走内核协议，openai 走 responses', () => {
     expect(findVendorTemplate('anthropic')?.kind).toBe('anthropic');
-    expect(findVendorTemplate('openai')?.kind).toBe('openai');
+    // 2026-09-23 起官方 openai 行走 Responses（GPT-6 在 chat completions 上带工具需
+    // reasoning_effort=none，见 vendor-templates.ts 该行注释）；deepseek 等第三方
+    // 兼容端点没有 Responses 面，仍走 chat。
+    expect(findVendorTemplate('openai')?.kind).toBe('responses');
     expect(findVendorTemplate('deepseek')?.kind).toBe('openai');
   });
 
