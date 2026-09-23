@@ -1,0 +1,50 @@
+/* 字幕查看器（B13）自带样式——颜色一律走 tokens.css 的语义色，字号/行高走 --pp-* 版式
+   token（裸色值守卫 = tests/paper-token-audit.test.ts）。
+   盒高与吸顶提示行复用壳件 `.pp-viewer-box` / `.pp-viewer-note`，本文件不重复定义。 */
+
+.pp-viewer-sub-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pp-viewer-sub-table th,
+.pp-viewer-sub-table td {
+  padding: 2px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--rule-soft);
+}
+
+.pp-viewer-sub-table th {
+  font-weight: normal;
+  color: var(--ink-3);
+}
+
+/* 序号列：窄且右齐（对齐表头的 #）；块内标识行（srt 序号 / vtt cue id）原样显示 */
+.pp-viewer-sub-idx {
+  width: 3.5em;
+  color: var(--ink-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 起止列：mono 时间码不换行（换行会把一行的起止拆成两行读不出） */
+.pp-viewer-sub-tc {
+  width: 9em;
+  color: var(--indigo);
+  white-space: nowrap;
+}
+
+.pp-viewer-sub-text {
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 读数行（N 条 + 总时长）——盒外一行，不受盒内滚动影响 */
+.pp-viewer-sub-meta {
+  margin-top: 2px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}

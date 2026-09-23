@@ -1,0 +1,57 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+   SPDX-License-Identifier: MIT
+
+   结构化数据树查看器样式（P1 · B7 之一）——颜色全走 token（有裸色值守卫）；
+   上限盒 / 吸顶提示 / 空态 / 盒内字体全复用壳件类（.pp-viewer-box / .pp-viewer-note /
+   .pp-viewer-empty，真源 PaperPanel.css），本文件只管树件内部：缩进靠嵌套容器
+   （组件不写内联样式，也就没有深度计算）。 */
+
+.pp-viewer-tree-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+}
+.pp-viewer-tree-toggle {
+  flex: none;
+  width: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.pp-viewer-tree-key {
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.pp-viewer-tree-kind {
+  flex: none;
+  color: var(--indigo); /* 类型徽记 = 机器语汇（石青） */
+  font-size: var(--pp-asset-viewer-metaSize);
+}
+.pp-viewer-tree-value {
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pp-viewer-tree-error {
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  color: var(--fail); /* 坏行 / 未支持特性 = 朱砂（错误不静默） */
+  white-space: pre-wrap;
+}
+.pp-viewer-tree-children {
+  padding-left: 14px;
+  border-left: var(--rule-soft);
+}
+.pp-viewer-tree-raw {
+  margin: 0;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  color: var(--ink-2);
+  font: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

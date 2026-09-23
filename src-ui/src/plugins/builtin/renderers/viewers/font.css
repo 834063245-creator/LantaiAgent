@@ -1,0 +1,93 @@
+/* 字体查看器（B10）自带样式——颜色一律走 tokens.css 的语义色，字号/行高/间距走
+   --pp-* 版式 token（裸色值守卫 = tests/paper-token-audit.test.ts）。
+   盒高与吸顶提示行复用壳件 `.pp-viewer-box` / `.pp-viewer-note`，本文件不重复定义。 */
+
+.pp-viewer-font-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: var(--pp-asset-viewer-labelMarginB);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+
+.pp-viewer-font-meta-name {
+  color: var(--ink-2);
+  word-break: break-all;
+}
+
+.pp-viewer-font-meta-ext {
+  color: var(--indigo);
+  text-transform: uppercase;
+}
+
+/* 字节数读数靠右（文件身份行 = 名 · 扩展名 · 体积三段） */
+.pp-viewer-font-meta-size {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* 样本 / 输入 / 镜像行 / 阶梯都吃装载进来的家族名——装载失败或环境不支持时这些行
+   根本不渲染（拿回退字体冒充字形是误导），故这组选择器只在 ready 态生效。 */
+.pp-viewer-font-sample,
+.pp-viewer-font-input,
+.pp-viewer-font-custom-line,
+.pp-viewer-font-ladder-item {
+  font-family: "pp-viewer-font-sample", var(--f-song);
+}
+
+.pp-viewer-font-sample {
+  color: var(--ink-1);
+  line-height: var(--pp-type-mono-lh);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pp-viewer-font-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.pp-viewer-font-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 2px 6px;
+  border: var(--rule-soft);
+  background: var(--paper);
+  color: var(--ink-1);
+  font-size: var(--pp-type-mono-size);
+}
+
+.pp-viewer-font-custom-line {
+  min-height: 1em;
+  color: var(--ink-2);
+  line-height: var(--pp-type-mono-lh);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pp-viewer-font-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  border-top: var(--rule-soft);
+  padding-top: 4px;
+}
+
+.pp-viewer-font-ladder-item {
+  color: var(--ink-1);
+  line-height: var(--pp-type-mono-lh);
+  white-space: pre-wrap;
+}
+
+/* 阶梯上的字号读数（不随阶梯字号缩放的注记） */
+.pp-viewer-font-ladder-px {
+  margin-left: 8px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}

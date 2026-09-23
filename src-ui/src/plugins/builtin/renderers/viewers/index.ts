@@ -14,10 +14,16 @@
 import { type ViewerDef, viewerRegistry } from '../viewer-registry';
 import { archiveViewer } from './archive';
 import { audioViewer } from './audio';
+import { chemViewer } from './chem';
 import { codeViewer } from './code';
+import { fontViewer } from './font';
+import { geoViewer } from './geo';
 import { hexViewer } from './hex';
 import { imageViewer } from './image';
+import { mailViewer } from './mail';
+import { subtitleViewer } from './subtitle';
 import { tableViewer } from './table';
+import { treeViewer } from './tree';
 import { videoViewer } from './video';
 
 /** 出厂查看器表（顺序 = 注册序；路由按扩展名唯一，互不重叠；`hex` 是兜底认领，放最后）。 */
@@ -26,8 +32,14 @@ export const BUILTIN_VIEWERS: readonly ViewerDef[] = [
   videoViewer,
   audioViewer,
   codeViewer,
+  chemViewer,
+  geoViewer,
   tableViewer,
+  treeViewer,
   archiveViewer,
+  fontViewer,
+  subtitleViewer,
+  mailViewer,
   hexViewer,
 ];
 

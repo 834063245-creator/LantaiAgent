@@ -1,0 +1,74 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+ * SPDX-License-Identifier: MIT
+ *
+ * 化学结构查看器样式（渲染面补全 P1 · B12 之一，2026-09-23）——mol / sdf / pdb。
+ *
+ * 颜色全走 tokens.css 的 token（`tests/paper-token-audit.test.ts` 有裸色值 + 悬空
+ * var 两条守卫扫本目录）；盒高/字号全走 type-tokens 注入的 `--pp-*` 键。
+ * 外壳件（`.pp-viewer-box` 上限盒 + 内部滚动 / `.pp-viewer-note` 吸顶 / `.pp-viewer-error`
+ * 失败行 / `.pp-viewer-empty` 空态）在 PaperPanel.css，本件只用不复制。
+ *
+ * SVG 只写 viewBox、不写尺寸（smiles 结构图先例）：宽 100% + max-height 上限，
+ * meet 居中不失真——结构纵横比随文件走，盒高不随之漂。 */
+
+.pp-viewer-chem-nav {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 var(--pp-asset-viewer-codePadH) var(--pp-asset-viewer-codePadV);
+}
+.pp-viewer-chem-nav button {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.pp-viewer-chem-nav button:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+.pp-viewer-chem-pos {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+.pp-viewer-chem-meta {
+  padding: 0 var(--pp-asset-viewer-codePadH) var(--pp-asset-viewer-codePadV);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-2);
+}
+.pp-viewer-chem-stage {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+}
+.pp-viewer-chem-svg {
+  width: 100%;
+  max-height: var(--pp-asset-viewer-boxH);
+}
+/* 键：一级墨；芳香键的内侧虚线同色（线型而非颜色区分） */
+.pp-viewer-chem-bond-line {
+  stroke: var(--ink-1);
+}
+/* 原子：圆 + 元素符号（碳不标，见组件注释） */
+.pp-viewer-chem-atom {
+  fill: var(--paper);
+  stroke: var(--ink-2);
+}
+.pp-viewer-chem-symbol {
+  fill: var(--ink-1);
+  font-family: var(--f-mono);
+}
+/* 失败态原文（错误不静默：坏记录照显原文） */
+.pp-viewer-chem-pre {
+  margin: 0;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--ink-2);
+  white-space: pre;
+}

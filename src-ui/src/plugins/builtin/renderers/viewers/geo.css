@@ -1,0 +1,57 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+ * SPDX-License-Identifier: MIT
+ *
+ * 地理数据查看器样式（渲染面补全 P1 · B12 之一，2026-09-23）——geojson / kml 简图。
+ *
+ * 颜色全走 tokens.css 的 token（`tests/paper-token-audit.test.ts` 有裸色值 + 悬空
+ * var 两条守卫扫本目录）；盒高/字号全走 type-tokens 注入的 `--pp-*` 键。
+ * 外壳件（`.pp-viewer-box` 上限盒 + 内部滚动 / `.pp-viewer-note` 吸顶 / `.pp-viewer-error`
+ * 失败行 / `.pp-viewer-empty` 空态）在 PaperPanel.css，本件只用不复制。
+ *
+ * ⚠ 点必须显式 `stroke: none`：SVG 默认 stroke-width = 1 **用户单位**，而本图
+ * viewBox 的单位是**度**（跨度常 <1）——不关掉描边，一个点会被画成横跨整幅的墨块。 */
+
+.pp-viewer-geo-meta {
+  padding: 0 var(--pp-asset-viewer-codePadH) var(--pp-asset-viewer-codePadV);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-2);
+}
+/* 数据不全的提示（坐标非法 / 要素缺坐标 / 类型不支持）：朱砂深——可见但不冒充硬错误 */
+.pp-viewer-geo-warn {
+  padding: 0 var(--pp-asset-viewer-codePadH) var(--pp-asset-viewer-codePadV);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--seal-deep);
+}
+.pp-viewer-geo-stage {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+}
+.pp-viewer-geo-svg {
+  width: 100%;
+  max-height: var(--pp-asset-viewer-boxH);
+}
+.pp-viewer-geo-point {
+  fill: var(--seal);
+  stroke: none;
+}
+.pp-viewer-geo-line {
+  fill: none;
+  stroke: var(--indigo);
+}
+.pp-viewer-geo-poly {
+  fill: color-mix(in oklch, var(--indigo) 8%, transparent);
+  stroke: var(--indigo);
+}
+/* 失败态原文（错误不静默：解析不了照显原文） */
+.pp-viewer-geo-pre {
+  margin: 0;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--ink-2);
+  white-space: pre;
+}

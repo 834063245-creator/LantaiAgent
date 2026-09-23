@@ -1,8 +1,10 @@
 # 渲染面补全（查看器全谱 + Mermaid 代码块）· 施工单
 
-> 立项 2026-09-23 · 状态：**已拍板（§2）· 施工中（B1 开工）**
+> 立项 2026-09-23 · 状态：**已拍板（§2）· 施工中（P1 开工）**
 > **2026-09-23 开工前实测修订**（逐条证据见 §10）：D3 改「重依赖走宿主桥」、B2 改 hljs 优先、
 > B6 落点改应用侧、补新增依赖清单、门禁顺序改 build → vitest。修订缘由 = 三条与代码现状冲突的假设。
+> **2026-09-23 批次重排**（用户要求整合）：15 批 → **3 包 + 收尾**（见 §4.0）——按机制分包，
+> 包内并行铺查看器、门禁每包一次。
 > 现状真源：`src-ui/src/plugins/builtin/renderers/components.tsx`（`MEDIA_MIME` / `MEDIA_IMAGE_EXTS` / `MEDIA_VIDEO_EXTS` / `MediaBody` / `useMediaData`）
 > 契约真源：`src-ui/src/composition/renderer-service.tsx`（`ctx.renderers` 通道 · `BlockRendererContribution` · `resolveAssetBlock` 降级链）
 > 资产真源：`src-ui/src/agent/asset-kinds.ts`（`file` kind：`presentations: ['media']`，`streamable: 'atomic'`）
@@ -132,7 +134,54 @@ ext 未命中 → 通用文件壳（现行为，零变化）
 | 样式 | `PaperPanel.css` 新增 `.pp-viewer*` 段（墨/纸/线全走 token，无裸色值） |
 | 分片判据 | 大依赖只出现在**应用 bundle 的分片**（入口 chunk 不含 pdfjs/mermaid/three/monaco）；产物内不做动态 import |
 
-## 4. 批次（全部为正式 feature，按实施顺序）
+## 4. 批次
+
+### 4.0 三包重排（2026-09-23 用户要求整合：15 批 → 3 包 + 收尾）
+
+**重排理由**：B1/B2 实测显示，单个查看器的实现成本很小（一件一文件 + 一条注册 + 一组用例），
+而**工序成本**（每次全量门禁 ≈ build 45s + vitest ~190s + biome + doc-check）与**共享缝成本**
+（注册面 / 宿主 / 样式 / 测高 / 依赖通道）才是大头。故按**机制**而非按格式分包：
+同一包内共享一次依赖/通道/门禁，包内条目可并行铺（各自独立文件，互不依赖）。
+
+| 包 | 内容（原批次） | 依赖与部署 | 门禁 |
+|---|---|---|---|
+| **P1 · 轻查看器总装** | 数据面 B7 · 归档与 hex B8 · 字体 B10 · 科研 B12 · 字幕与邮件 B13（+ 兜底认领：未知扩展名不再落文件壳） | **零新依赖**；产物热更，**不重建 exe** | 包内逐件 focused vitest → 包末一次全量门禁 |
+| **P2 · 宿主面扩容 + 重依赖三件套** | 宿主桥 `loadViewer` 通道（D3 修订件）· PDF B3 · Mermaid B6 · 3D B9 · **并落 B5 的 `openWithSystem` 能力位** · **顺带：未知扩展名的体积预检**（P1 实测发现——兜底查看器接未知档，二进制分支只能整份 `read_base64`；`fs_cap` 加一个 stat/尺寸预检动作即可在读取前拦下大文件，同属宿主面变更，一次 exe 重建带上） | 新增 `pdfjs-dist` / `mermaid`（`three` 已在）；**须重建 exe** | 全量门禁 + `gen:host-surface` + 桌面打包验证 |
+| **P3 · 承接面 + 收尾** | Office 读取 B4（走 `process_cap office_exec`）· 旧 Office 出口壳 · epub 与 ipynb B11 · Markdown 独立查看 B14（经 P2 的 `loadViewer` 复用应用侧 markdown 渲染器，不塞第二份解析）· 文档面 B15 | 零新依赖；产物热更 | 全量门禁 + `doc-check` + 竣工归档 |
+
+**包内提交纪律**：包内每 3-5 件一条 commit（保持可 bisect），包末全量门禁全绿后才算该包竣工；
+原 B1-B15 的分项表保留在下方，作为各包的**逐件清单**（内容不变，只是分组与顺序改由包决定）。
+
+### 4.1 逐件清单（原文保留）
+
+> 全部为正式 feature；顺序由所属包决定（P1 → P2 → P3）。
+
+### 4.2 P2 详设：宿主桥 `loadViewer` + 重依赖三件套（2026-09-23 立）
+
+**为什么需要通道**：产物域禁动态裸 import（D3 修订）⇒ 重依赖（pdfjs / mermaid / three）只能随
+**应用 bundle** 编译，而查看器注册面在产物里（热更）。两者之间加一个「按 id 取重查看器」的宿主桥键。
+
+**桥面**（三处同形，同 host 桥既有纪律）：
+
+```
+产物侧（renderers/viewer-registry.ts 的 ViewerDef）  heavy?: string        ← 声明用哪个重查看器
+宿主桥（renderer-host.ts / renderer-host.aliased.ts）loadViewer(id)         ← 产物域经 window.__lantai_plugin_host__
+桥实现（plugins/loader.ts 注入）                      loadViewer: loadHeavyViewer
+应用侧（app/paper/viewers/index.ts）                  loadHeavyViewer(id)   ← 白名单 + 动态 import（vite 真分片）
+```
+
+- 重查看器收 `ViewerProps`（与轻查看器同形），故宿主渲染路径**只有取组件那一步不同**：
+  `heavy` ⇒ `await loadViewer(id)`（取件失败 → 文件壳 + 可读错误，**不静默**）；`component` ⇒ 直取。
+- 加桥键 = **动宿主面** ⇒ 该批 `npm run gen:host-surface` 重生成 baseline + **重建 exe**（B5 同批）。
+- 分片判据：入口 chunk 不含 pdfjs / mermaid / three（构建产物断言，见 §5 全批共同）。
+
+**P2 条目**：B3 PDF（pdfjs-dist；流内首页缩略 + 页数，浮层翻页/缩放/文本层）· B6 Mermaid
+（应用侧围栏认领 + 失败回落代码块 + 墨阶主题）· B9 3D（three + GLTFLoader/DRACO/KTX2 + 轨道控制 +
+线框切换；流内首帧静态、浮层可交互）· B5 通用出口（`openWithSystem` 能力位 + 公共壳工具条按钮，
+旧 Office 三格式借此出壳）· 顺带 `fs_cap` 尺寸预检（P1 发现的未知档整份读风险）。
+
+**P2 验收**：全量门禁 + `gen:host-surface` + **重建 exe** + 真机（§8 第 3/5/6 项：PDF 翻页与选中、
+系统打开、Mermaid 出图与坏语法回落）。
 
 ### B1 · 查看器注册面骨架 + 音频
 
@@ -397,3 +446,30 @@ cd src-ui && npm run doc-check     # 文档面（本单动了 docs/plans）
 **顺带发现（不在本批修）**：产物域六个 `host.aliased.ts` 的 `jsx/jsxs` 桥用 `createElement(type, props)` 传数组 children ⇒ React 对**静态多子元素**也报 key 警告（全仓产物域的既有噪声，非功能缺陷、非本批引入）。
 
 **真机待办**（§8 第 2 项）：给一个 .ts 与一个 .rs，验语法高亮对、行号在、大文件截断横幅诚实。
+
+### P1 · 轻查看器总装（2026-09-23 施工中）
+
+**共享缝**（本包新增的接口面，均由主 Agent 落）：
+
+| 面 | 落点 |
+|---|---|
+| 分类表扩档 | `paper/viewer-exts.ts` 增 8 类（table / tree / archive / font / chem / geo / subtitle / mail）——认领与测高仍是同一张表 |
+| 兜底认领 | `ViewerDef.catchAll`：**至多一个**，接「谁都没认领」那一档（`resolve` 未命中 → `catchAll()`）；装载期拒绝第二个、拒绝 `needsBytes:false` |
+| 字节形态第三档 | `bytesKind:'auto'`：**先文本行窗口（有界）→ 文本读失败才走 `read_base64`**。兜底查看器用——未知扩展名大多是文本，整份 base64 在 100MB 级文件上有白屏先例那类 IPC 风险；真二进制的根治（尺寸预检）挂 P2 |
+| 盒高档 | `ASSET_TOKENS.viewer.boxH`（320）+ `VIEWER_BOX_CLASSES`：8 个新类共用一档上限，`viewerBodyH` 按类给值（保守 + RO 收敛） |
+| 壳件 | `.pp-viewer-box`（上限盒 + 内部滚动）/ `.pp-viewer-note`（吸顶提示）/ `.pp-viewer-empty`；查看器自带样式落 `viewers/<id>.css` |
+| 产物 CSS 通道 | renderers 产物开 **`face: true`** + `injectFaceArtifactCss()`——否则 `viewers/*.css` 会被抽成 `entry.css` 但**永不注入**（H2 那颗「改了没生效且静默」的雷形态）；产物已实证产出 `renderers/entry.css` |
+| 审计面 | `tests/paper-token-audit.test.ts` 的 token 悬空查与裸色值查**扩到 `viewers/*.css`** |
+
+**主 Agent 三件**：`viewers/table.tsx`（csv/tsv：RFC4180 子集 + 表头冻结 + 行数读数 + 截断横幅；**不复用 grid 组件本体**——原语自带题签行与虚拟滚动，与本壳题签行重复、且改热原语的风险高于收益；样式走同一组 `--pp-asset-grid-*` token）· `viewers/archive.tsx`（zip EOCD+中央目录 / tar 头链 / gz 头与 ISIZE；**只列目录、不解压、不落盘**；`maxBytes` 8 MiB——中央目录在包尾只能整份读；**7z 不做**，需引库 = P2 级）· `viewers/hex.tsx`（兜底：文本嗅探 ↔ hex 分页；`bytesKind:'auto'` + 256 KiB 闸）。
+
+**并行铺六件**（子代理工作流，各自一件一文件一测试；注册行由主 Agent 统一加）：`tree`（json/jsonl/yaml/toml/xml）· `font`（ttf/otf/woff/woff2）· `subtitle`（srt/vtt）· `mail`（eml）· `chem`（mol/sdf/pdb）· `geo`（geojson/kml）。
+
+**P1 竣工实证**（2026-09-23）：
+
+- **查看器面**：13 个 def（12 个带认领表 + `hex` 兜底）= image / video / audio / code / table / tree / archive / font / subtitle / mail / chem / geo / hex。
+- **测试**：新增/扩写 9 个测试文件（`viewer-light` 9 · `viewer-tree` 12 · `viewer-chem` 13 · `viewer-geo` 14 · `viewer-font` 8 · `viewer-subtitle` 12 · `viewer-mail` 14 · `viewer-registry` 24 · `viewer-artifact-load` 3）+ 两条既有守卫扩面（`paper-token-audit` 扫 `viewers/*.css`、`asset-media-load` 的未知档语义改写）。
+- **门禁**：`npm run build` ✓（产物自包含闸过 + 产出 `renderers/entry.css`）；`npx vitest run` **386 文件 / 4102 例全绿**；`npx biome ci .` exit 0；`npm run doc-check` ✓；`host-surface.baseline.json` 零漂移（P1 不动宿主面）。
+- **体积（诚实栏）**：产物 `renderers/entry.js` 2 441 085 → **2 738 518** 字节（+297 KB：`yaml` 随 tree 查看器内联一份）；`entry.css` 2 886 → **10 581**；应用入口 chunk 5 061.84 → **5 115.50** KB（+53.7 KB：bundle 兜底行同源，查看器源码随应用编译）。
+- **P1 拆掉/发现的三处**：① 未知扩展名整份 `read_base64` 的 IPC 风险 → `bytesKind:'auto'`（先文本行窗口）；② renderers 产物缺 `face: true` ⇒ 查看器 CSS 会抽成 `entry.css` 却**永不注入**（H2 雷形态）→ 已开 face 通道；③ 本包自写 CSS 里 `border-bottom: <宽度> solid var(--rule-soft)` 把整条简写再拼装 = 展开后非法声明（线画不出来）⇒ 已被既有 `tests/css-rule-shorthand.test.ts` 当场抓住并改正为 `--rule-soft-ink` 颜色位。
+- **如实标注的简化**（各查看器头注同款）：csv/tsv **不复用 `grid` 组件本体**（样式同 token）；归档只列目录不解压、**7z 不做**（需引库 → P2 级）、`maxBytes` 8 MiB（中央目录在包尾只能整份读）；chem **只解析 V2000**（V3000 明确报错）且无化学感知——`smiles-drawer` 实测**吃不了 molfile**（PEG SMILES 文法，喂 V2000 在标题词即断），故自绘 2D（PDB 走 x/y 投影、CONECT 一律单键）；geo 走等距圆柱投影（读数行自陈「非地图投影」，洞只画轮廓）；mail 只显示第一个 `text/plain`（其余仅 N/M 提示）、嵌套 multipart ≤3 层；subtitle 坏块计数不静默；TOML 自绘解析器的未支持特性逐行如实挂出（不静默塞进上一张表）；font 在无 `document.fonts` 的环境只出文件信息 + 提示，不拿回退字体冒充字形。

@@ -1,0 +1,88 @@
+/* 邮件查看器（B13）自带样式——颜色一律走 tokens.css 的语义色，字号/行高走 --pp-* 版式
+   token（裸色值守卫 = tests/paper-token-audit.test.ts）。
+   盒高与吸顶提示行复用壳件 `.pp-viewer-box` / `.pp-viewer-note`，本文件不重复定义。 */
+
+/* 头字段块（From/To/Cc/Subject/Date/Message-ID）：名值两列，值可折行 */
+.pp-viewer-mail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: var(--pp-asset-viewer-labelMarginB);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+}
+
+.pp-viewer-mail-field {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pp-viewer-mail-fieldName {
+  min-width: 5.5em;
+  color: var(--ink-3);
+}
+
+.pp-viewer-mail-fieldValue {
+  color: var(--ink-2);
+  word-break: break-all;
+}
+
+/* 正文（盒内滚动）：信文按原文折行，长串硬换行不撑破版心 */
+.pp-viewer-mail-body,
+.pp-viewer-mail-raw {
+  margin: 0;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 原文照显（头解析失败）用石墨色——与「已解读的正文」区分 */
+.pp-viewer-mail-raw {
+  color: var(--graphite);
+}
+
+/* 附件清单（盒外：与正文滚动解耦，滚正文不会把附件名滚走） */
+.pp-viewer-mail-attach {
+  margin-top: var(--pp-asset-viewer-labelMarginB);
+}
+
+.pp-viewer-mail-attachTitle {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+
+.pp-viewer-mail-attachList {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pp-viewer-mail-attachItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+}
+
+.pp-viewer-mail-attachName {
+  color: var(--ink-1);
+  word-break: break-all;
+}
+
+.pp-viewer-mail-attachType {
+  color: var(--indigo);
+  white-space: nowrap;
+}
+
+.pp-viewer-mail-attachSize {
+  margin-left: auto;
+  color: var(--ink-3);
+  white-space: nowrap;
+}

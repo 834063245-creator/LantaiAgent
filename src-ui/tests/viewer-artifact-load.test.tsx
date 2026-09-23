@@ -35,11 +35,14 @@ const d = hasArtifact ? describe : describe.skip;
  *  ⚠️ **模块级单例**：产物在首次 import 时就把宿主桥收进模块常量
  *  （renderer-host.aliased.ts 的 `const host = requireHost()`）⇒ 每个用例换一个新 mock
  *  是无效的（产物仍打旧对象）。故桥与桩在本文件生命周期内身份稳定，用例间只 `mockClear`。 */
-const rpcMock = vi.fn(async (_method: string, params: Record<string, unknown>) =>
-  params.action === 'read'
-    ? JSON.stringify({ path: 'D:/a.ts', content: 'const a = 1;\nexport {};' })
-    : JSON.stringify({ base64: 'QUJD' }),
-);
+const rpcMock = vi.fn(async (_method: string, params: Record<string, unknown>) => {
+  const p = params as { action?: string; file_path?: string };
+  if (p.action === 'read') {
+    const content = p.file_path?.endsWith('.json') ? '{"a":1,"b":[true,null]}' : 'const a = 1;\nexport {};';
+    return JSON.stringify({ path: p.file_path, content });
+  }
+  return JSON.stringify({ base64: 'QUJD' });
+});
 const BRIDGE = {
   react: React, // 产物域取用的就是宿主 React 本体（loader.ts 同款注入）
   Overlay: () => null,
@@ -128,6 +131,21 @@ d('渲染器产物：磁盘通道装载 + 查看器面渲染（dist-plugins 在�
       });
       expect(document.querySelector('.pp-viewer-code-gutter')?.textContent).toBe('1\n2');
       expect(document.querySelector('.pp-viewer-code-pre code')?.innerHTML).toContain('hljs-keyword');
+    });
+  }, 90_000);
+
+  it('P1 数据树查看器在产物域：`yaml` 等依赖内联可跑（json 出树）', async () => {
+    await withArtifact(async (render) => {
+      await render({ filePath: 'D:/a.json', ext: 'json', label: 'a.json' });
+      expect(rpcMock).toHaveBeenCalledWith('fs_cap', {
+        action: 'read',
+        file_path: 'D:/a.json',
+        limit: 4001,
+        is_agent: false,
+      });
+      const keys = [...document.querySelectorAll('.pp-viewer-tree-key')].map((el) => el.textContent);
+      expect(keys).toEqual(expect.arrayContaining(['a', 'b']));
+      expect(document.querySelector('.pp-viewer-box')).not.toBeNull();
     });
   }, 90_000);
 });
