@@ -5521,6 +5521,27 @@
   font-size: var(--pp-asset-viewer-metaSize);
   color: var(--ink-3);
 }
+/* 题名行容器 + 系统打开出口（P2 · B5）：按钮**绝对定位**在行右端——不进高度流水
+   （与组合芯片同一条落位纪律），故静态测高不受影响；题名行自身的规线仍满宽。 */
+.pp-viewer-head {
+  position: relative;
+}
+.pp-viewer-open-system {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.pp-viewer-open-system:hover {
+  color: var(--ink-1);
+  border-bottom: var(--pp-asset-viewer-metaSize) solid var(--seal);
+}
 .pp-media-img {
   max-width: 100%;
   max-height: var(--pp-asset-media-imgMaxH);

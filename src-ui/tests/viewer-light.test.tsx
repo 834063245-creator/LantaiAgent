@@ -27,15 +27,11 @@ function readOk(content: string): string {
   return JSON.stringify({ path: 'D:/a.csv', content });
 }
 
-/** base64 编码（测试构造二进制载荷；btoa 在 jsdom 可用）。 */
+/** 载荷 → base64：`number[]` 直接编码；**字符串先过 TextEncoder**——`btoa` 只吃 Latin-1，
+ *  而 `String.fromCharCode('n')` 会把字符 ToNumber 成 NaN→0（静默产出 NUL 字节，不是该文本）。 */
 function b64(bytes: number[] | string): string {
-  const bin = typeof bytes === 'string' ? bytes : String.fromCharCode(...bytes);
-  return btoa(bin);
-}
-
-/** 文本 → UTF-8 字节 → base64（btoa 只吃 Latin-1，中文必须先过 TextEncoder）。 */
-function b64Text(text: string): string {
-  return b64([...new TextEncoder().encode(text)]);
+  const arr = typeof bytes === 'string' ? new TextEncoder().encode(bytes) : bytes;
+  return btoa(String.fromCharCode(...arr));
 }
 
 async function withRenderers(fn: () => void | Promise<void>): Promise<void> {

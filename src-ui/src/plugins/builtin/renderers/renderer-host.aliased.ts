@@ -86,11 +86,22 @@ export function rendererLoadViewer(id: string): Promise<ComponentType<never>> {
 // ── esbuild automatic JSX 注入面（--jsx=automatic --jsx-import-source=./renderer-host）──
 // React 的 jsx-runtime 形状：jsx(type, props, key?) / jsxs(type, props, key?) /
 // Fragment。经 createElement 等价实现——纯函数组件渲染，key 由 React 处理。
+//
+// children **必须摊成实参**（2026-09-23 修）：jsx-runtime 形状下 children 在 props 里，
+// 直接透传给 createElement = 交给 React 一个**裸数组子元素** ⇒ 每个多子元素都报
+// 「Each child in a list should have a unique \"key\" prop」（产物域真渲染时逐条刷屏，
+// 且空数组/单元素数组都走这条不必要路径）。真 React jsx-runtime 用 static-children
+// 校验绕过该告警；这里等价的做法是把数组摊成 createElement 的位置实参。
 
-/** createElement 等价（自动 JSX 注入）。props 已含 children（jsx-runtime 形状）。 */
+/** createElement 等价（自动 JSX 注入）。props 含 children（jsx-runtime 形状）⇒ 摊成实参。 */
 export function jsx(type: unknown, props: Record<string, unknown> | null, key?: unknown): ReactNode {
-  const merged = key != null ? { ...(props ?? {}), key } : (props ?? {});
-  return host.react.createElement(type, merged) as ReactNode;
+  const { children, ...rest } = props ?? {};
+  const withKey = key != null ? { ...rest, key } : rest;
+  if (!Array.isArray(children)) {
+    return host.react.createElement(type, withKey, children) as ReactNode;
+  }
+  // biome-ignore lint/suspicious/noExplicitAny: createElement 形参为可变实参，React 类型面收窄此处无收益
+  return host.react.createElement(type, withKey, ...(children as any[])) as ReactNode;
 }
 
 /** createElement 等价（多子——static children，children 已在 props 中为数组）。 */

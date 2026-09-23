@@ -1,10 +1,10 @@
 # 渲染面补全（查看器全谱 + Mermaid 代码块）· 施工单
 
-> 立项 2026-09-23 · 状态：**已拍板（§2）· 施工中（P1 开工）**
+> 立项 2026-09-23 · 状态：**P1 / P2 / P3 代码全落地（2026-09-23）· 余真机验收（§8 十项）**
 > **2026-09-23 开工前实测修订**（逐条证据见 §10）：D3 改「重依赖走宿主桥」、B2 改 hljs 优先、
 > B6 落点改应用侧、补新增依赖清单、门禁顺序改 build → vitest。修订缘由 = 三条与代码现状冲突的假设。
 > **2026-09-23 批次重排**（用户要求整合）：15 批 → **3 包 + 收尾**（见 §4.0）——按机制分包，
-> 包内并行铺查看器、门禁每包一次。
+> 包内并行铺查看器、门禁每包一次。三个包的施工记录见 §11。
 > 现状真源：`src-ui/src/plugins/builtin/renderers/components.tsx`（`MEDIA_MIME` / `MEDIA_IMAGE_EXTS` / `MEDIA_VIDEO_EXTS` / `MediaBody` / `useMediaData`）
 > 契约真源：`src-ui/src/composition/renderer-service.tsx`（`ctx.renderers` 通道 · `BlockRendererContribution` · `resolveAssetBlock` 降级链）
 > 资产真源：`src-ui/src/agent/asset-kinds.ts`（`file` kind：`presentations: ['media']`，`streamable: 'atomic'`）
@@ -569,3 +569,12 @@ cd src-ui && npm run doc-check     # 文档面（本单动了 docs/plans）
 - **体积（诚实栏）**：产物 `renderers/entry.js` 2 441 085 → **2 738 518** 字节（+297 KB：`yaml` 随 tree 查看器内联一份）；`entry.css` 2 886 → **10 581**；应用入口 chunk 5 061.84 → **5 115.50** KB（+53.7 KB：bundle 兜底行同源，查看器源码随应用编译）。
 - **P1 拆掉/发现的三处**：① 未知扩展名整份 `read_base64` 的 IPC 风险 → `bytesKind:'auto'`（先文本行窗口）；② renderers 产物缺 `face: true` ⇒ 查看器 CSS 会抽成 `entry.css` 却**永不注入**（H2 雷形态）→ 已开 face 通道；③ 本包自写 CSS 里 `border-bottom: <宽度> solid var(--rule-soft)` 把整条简写再拼装 = 展开后非法声明（线画不出来）⇒ 已被既有 `tests/css-rule-shorthand.test.ts` 当场抓住并改正为 `--rule-soft-ink` 颜色位。
 - **如实标注的简化**（各查看器头注同款）：csv/tsv **不复用 `grid` 组件本体**（样式同 token）；归档只列目录不解压、**7z 不做**（需引库 → P2 级）、`maxBytes` 8 MiB（中央目录在包尾只能整份读）；chem **只解析 V2000**（V3000 明确报错）且无化学感知——`smiles-drawer` 实测**吃不了 molfile**（PEG SMILES 文法，喂 V2000 在标题词即断），故自绘 2D（PDB 走 x/y 投影、CONECT 一律单键）；geo 走等距圆柱投影（读数行自陈「非地图投影」，洞只画轮廓）；mail 只显示第一个 `text/plain`（其余仅 N/M 提示）、嵌套 multipart ≤3 层；subtitle 坏块计数不静默；TOML 自绘解析器的未支持特性逐行如实挂出（不静默塞进上一张表）；font 在无 `document.fonts` 的环境只出文件信息 + 提示，不拿回退字体冒充字形。
+
+**收尾轮（2026-09-23，三处真正修出来的东西）**：
+
+1. **`PaperPanel.css` 的 21 行漏暂存（P2 漏项，已补）**：`.pp-viewer-head { position: relative }` + `.pp-viewer-open-system` 绝对定位规则在 P2 提交时**没进 commit**（`git show HEAD:<file>` 实测 0 处命中），而 TSX 已在渲染该 class ⇒ 已提交的 P2/P3 状态里「用系统程序打开」是**浏览器默认样式的裸按钮**（题名行还会被它挤压）。教训记此：**样式与用它的 TSX 必须同批 `git add`**——门禁不会红（CSS 少一条规则不违反任何守卫），只能靠「改完回看 `git status` 是否干净」发现。
+2. **产物域 `jsx-runtime` 垫片把 `children` 整数组透传（真缺陷，已修）**：`renderer-host.aliased.ts` 的 `jsx/jsxs` 原样 `createElement(type, propsWithChildrenArray)` ⇒ 交给 React 一个裸数组子元素，产物域**每个多子元素**都报 `Each child in a list should have a unique "key" prop`（`viewer-artifact-load` 真渲染时刷屏，指认到 `MediaBody`）。真 React jsx-runtime 用 static-children 校验绕开该告警，这里等价做法 = **把 children 摊成 `createElement` 的位置实参**。修后真渲染用例无告警、全绿。
+3. **`tests/viewer-light.test.tsx` 的 `b64('…')` 静默产 NUL（测试说谎，已修）**：`String.fromCharCode('n')` 先把字符 ToNumber 成 NaN → 0，故那例「坏 zip」实际喂的是 NUL 字节而非预期 ASCII 文本——测试是绿的，但绿在别的原因上。字符串路径改走 `TextEncoder`，修后 9/9 仍绿（真喂 ASCII，仍正确降级）。同批清掉该文件的未用变量。
+
+**收尾轮门禁**：`npm run build` ✓（产物重建）· `npx vitest run` **395 文件 / 4234 例全绿** · `npx biome ci .` exit 0 · `npm run doc-check` ✓（241 份文档无未豁免违规）。
+**已知遗留（不属本计划面）**：`biome ci` 仍有 3 条诊断——`paper-shell/use-block-ops.ts` / `use-branch-drag.ts` 的 `useIndexOf`（在他人提交 `25f067b6` 内，未动）；`docs/facts.generated.md` 的 `engine_contract_version 7→9` 漂移来自他窗在途的 `engine/src/contract.rs`（未随本计划提交）。

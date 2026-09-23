@@ -41,7 +41,7 @@ Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 
 | 项 | 成本 | 说明 |
 |---|---|---|
 | **OfficeCLI 集成** | 工程完成；**余用户真机验收**（计划 §6 六条 + 权限面判据） | 单二进制 Office 套件接成一等 `office(action,…)` 域工具；真机复盘四处病灶与 P0 权限判定已全修（`4412ce87` / `f207e5f4`）——见 [`office-cli-integration-plan.md`](office-cli-integration-plan.md) |
-| **渲染面补全（查看器全谱 + Mermaid）** | 重排为 **3 包 + 收尾**（§4.0）；**P1 已落地（2026-09-23）**：13 个查看器（图/视频/音频/代码/表格/数据树/归档/字体/字幕/邮件/化学/地理 + 兜底）；**P2 落地中**：宿主桥 `loadViewer` + PDF/3D/Mermaid + 「用系统程序打开」+ 尺寸预检（一次重建 exe）；随后 P3（Office/epub/ipynb/Markdown + 收尾） | 把 `media` 一个表现原语扩成按扩展名路由的**查看器注册面**（含兜底认领：未知扩展名不再落文件壳）+ Mermaid 代码块渲染；已拍板 D1-D5（旧 Office 走「移交系统」不做内嵌解析）；**D3 已修订**（产物域禁动态裸 import ⇒ 重依赖走宿主桥分片，依据见施工单 §10）——见 [`render-surface-completeness-plan.md`](render-surface-completeness-plan.md) |
+| **渲染面补全（查看器全谱 + Mermaid）** | **P1/P2/P3 代码全落地（2026-09-23）· 余真机验收（施工单 §8 十项）** | 20 个查看器（图/视频/音频/代码/表格/数据树/归档/字体/字幕/邮件/化学/地理/PDF/3D/Office/旧 Office/epub/ipynb/Markdown 目录/兜底）+ Mermaid 代码块 + 「用系统程序打开」+ 尺寸预检；D3 修订见施工单 §10、三包施工记录见 §11——[`render-surface-completeness-plan.md`](render-surface-completeness-plan.md) |
 | **科研渲染（scientific-rendering）** | 4A/4B 已验收；#5/#10/#11/#15/#16 已落地；**余 §7 真机项** | 双通道决策模型（正文 markdown / 产物资产通道）+ kind 扩充（math / citation / chem / 交互 chart / 虚拟 table）——见 [`scientific-rendering-plan.md`](scientific-rendering-plan.md) §7 |
 | **会话流版式语法（stream-rhythm）** | 五批全落地；**余真机验收五项 + D1/D2 终审** | 事件语义分类 + 工作单元 + 节奏渲染（族边界切单元）+ 目次带阶段导航——见 [`stream-rhythm-plan.md`](stream-rhythm-plan.md) §5 |
 | **pretext 排版引擎** | P1-P5 全竣工 + P4c 远景三档；**余 P2a 对齐 A\|B 环待实机拍板** | 从高度计算器升级为纸面排版引擎（lift 遮罩 / rich-inline 精确测量 / 来文变宽纸条 / 缩远墨迹 LOD 与小地图真墨）——[`pretext-typography-plan.md`](pretext-typography-plan.md) |
