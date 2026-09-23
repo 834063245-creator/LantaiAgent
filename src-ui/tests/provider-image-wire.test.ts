@@ -209,16 +209,16 @@ describe('responses buildResponsesRequest — function_call_output 内容项（P
     );
     const item = body.input.find((i) => i.type === 'function_call_output');
     const out = item?.output as Array<{ type: string; text?: string; image_url?: string }>;
-    expect(item?.output_text).toBeUndefined();
     expect(out[0]).toEqual({ type: 'input_text', text: '{"path":"shot-1.png","bytes":1234}' });
     expect(out[1]).toEqual({ type: 'input_image', image_url: 'data:image/png;base64,QUJD' });
   });
 
-  it('tool 无图 → 仍是 output_text 纯文本（D-6 字节不变）', () => {
+  it('tool 无图 → 仍是字符串 output（D-6：纯文本载荷形态不变，字段名合规）', () => {
     const msgs = sessionWithToolImage().map((m) => (m.role === 'tool' ? { ...m, images: undefined } : m));
     const body = buildResponsesRequest(msgs, [], 'gpt-5.4', 100, undefined, undefined, imageDataTable);
     const item = body.input.find((i) => i.type === 'function_call_output');
-    expect(item?.output_text).toBe('{"path":"shot-1.png","bytes":1234}');
-    expect(item?.output).toBeUndefined();
+    // 字段名 = 官方 schema 的 `output`（`FunctionCallOutput.output` 必填）——
+    // 2026-09-23 合规批次修正（旧实现发 schema 里不存在的 `output_text`）。
+    expect(item?.output).toBe('{"path":"shot-1.png","bytes":1234}');
   });
 });

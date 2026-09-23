@@ -9,7 +9,16 @@ import { activeSubagentProviders } from '../composition/subagent-service';
 import { isImageUnsupportedError } from '../provider/error-catalog';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-stream';
 import type { StoredThinking } from '../provider/thinking';
-import type { Chunk, Message, Provider, Request, ToolCall, ToolSchema, Usage } from '../provider/types';
+import type {
+  Chunk,
+  Message,
+  Provider,
+  Request,
+  ResponsesOutputItem,
+  ToolCall,
+  ToolSchema,
+  Usage,
+} from '../provider/types';
 import { ApiError, apiErrorSummary, ChunkType } from '../provider/types';
 import {
   applyAutoTuneConfigImpl,
@@ -1848,6 +1857,8 @@ export class Agent {
     usage: Usage | undefined;
     err: Error | undefined;
     token: TokenRequestRecord | undefined;
+    /** Responses 方言：本轮 output items 原样留档（见 Message.responses_items）。 */
+    responses_items: ResponsesOutputItem[] | undefined;
   }> {
     // 将临时提醒作为 user 消息追加到末尾 — 它们
     // 本轮对 LLM 可见但不持久化到 this.session。
@@ -1958,6 +1969,8 @@ export class Agent {
     let reasoning = '';
     let signature = '';
     const calls: ToolCall[] = [];
+    /** Responses 方言：本轮 output items 原样留档（reasoning 项回放必需）。 */
+    let responsesItems: ResponsesOutputItem[] | undefined;
     let usage: Usage | undefined;
     let err: Error | undefined;
 
@@ -2025,6 +2038,15 @@ export class Agent {
             }
             break;
 
+          case ChunkType.ResponsesItems:
+            // Responses 方言：本轮 response.output 原样收下（含 reasoning 项的
+            // encrypted_content）——下一轮请求必须把它拼回 input，否则带 tools
+            // 的请求被服务端拒（见 Message.responses_items）。
+            if (chunk.responses_items !== undefined && chunk.responses_items.length > 0) {
+              responsesItems = chunk.responses_items;
+            }
+            break;
+
           case ChunkType.Usage:
             usage = chunk.usage;
             break;
@@ -2089,7 +2111,7 @@ export class Agent {
       // （资产生成等有副作用工具），default-loop 需要真实的 calls 才能把已执行
       // 的结果补 append 进上下文——否则 UI 已渲染、上下文无记录，Agent 下一轮
       // 会重复执行同一任务（会话 225 事故根因：流内错误丢资产生成结果）。
-      return { text, reasoning, signature, calls, usage, err, token };
+      return { text, reasoning, signature, calls, usage, err, token, responses_items: responsesItems };
     }
 
     // 关闭文本流
@@ -2097,7 +2119,7 @@ export class Agent {
       this._sink({ kind: EventKind.Message, text, reasoning });
     }
 
-    return { text, reasoning, signature, calls, usage, err: undefined, token };
+    return { text, reasoning, signature, calls, usage, err: undefined, token, responses_items: responsesItems };
   }
 
   // ---- Storm breaker — 打断重复工具调用循环 ----

@@ -22,9 +22,29 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 46;
+export const OPEN_SURFACE_CONTRACT_VERSION = 47;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v47（2026-09-23）**Responses 方言合规批次**（思考链回传的第二半 + 三处不合
+ *  schema 的请求形状）。① `provider/types.ts`：`Message` 新增可选 `responses_items`
+ *  （`ResponsesOutputItem[]`，原样留档本轮 `response.output`），`ChunkType` 新增
+ *  `ResponsesItems`(=8) 且 `Chunk` 增同名字段。② `agent-loop/types.ts`：
+ *  `LoopStreamResult` 新增可选 `responses_items`（第三方 loop 不提供 = 该方言不写
+ *  留档，其它方言零变化）。③ `default-loop.ts`：两处 assistant 轮落盘把留档写进
+ *  `Message.responses_items`（与 `reasoning_content`/签名同址——显示与回放共用
+ *  一份事实）。**动机**：官方对话状态指引要求手工管理上下文时把上一轮
+ *  `response.output` **原样拼回** `input`；漏掉 `type:"reasoning"` 项时带 tools 的
+ *  请求被服务端拒（OpenAI「Item 'fc_…' of type 'function_call' was provided without
+ *  its required 'reasoning' item」/ DeepSeek Responses「The `reasoning_text` in the
+ *  thinking mode must be passed back to the API.」）——与 Chat 的 `reasoning_content`、
+ *  Messages 的 thinking 块是**同一条规则的三种字段名**。同批 `provider/responses.ts`
+ *  （不在本清单）修正三处不合官方 schema 的形状：assistant 的 tool_calls 由
+ *  `message.output`（schema 无此字段）改为顶层 `function_call` item；工具结果
+ *  `output_text` → `output`（schema 必填）；配对键改用 `call_id`（`call_…`）而非
+ *  item id（`fc_…`）；请求体补 `store:false` + `include:['reasoning.encrypted_content']`
+ *  （Codex 客户端同款——本适配器自己重放全部历史，无状态端点需要加密推理体）。
+ *  **对外可感知**：Responses 方言历史从此自带思考链留档；
+ *  无留档（旧卷/别的方言）走既有合成路径；**非 Responses 方言请求体逐字节不变**。
  *  v46（2026-09-23）**思考链回传**（`agent-loop/default-loop.ts` 落盘注释同步；
  *  行为变更发生在 `provider/openai.ts`，该文件不在本清单）：OpenAI 兼容 chat 的
  *  assistant 轮现在把历史 `reasoning_content` 原样回传。规则真源 = DeepSeek 官方

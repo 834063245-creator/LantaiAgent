@@ -236,7 +236,11 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         provider: host.prov.name(),
         model: host.prov.model(),
       });
-      let { text, reasoning, signature, calls, usage, err, token } = await host.stream(signal, step + 1, executor);
+      let { text, reasoning, signature, calls, usage, err, token, responses_items } = await host.stream(
+        signal,
+        step + 1,
+        executor,
+      );
       host.loopEvents.emitLoopEvent('request/end', {
         agentId: host.id,
         step: step + 1,
@@ -260,6 +264,7 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
             reasoning_content: reasoning,
             reasoning_signature: signature,
             tool_calls: calls,
+            ...(responses_items === undefined || responses_items.length === 0 ? {} : { responses_items }),
           });
           // 注：`tool/call` 审计事件已由执行器在**分发时**落（触发点 B 的宣布补落），
           // 此处不再重复追加——单一写入点，避免同一次调用两条记录。
@@ -337,13 +342,15 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
 
       // 存储 assistant 轮次（reasoning + 签名一并留档：纸面显示与**下一轮回传**
       // 共用同一份事实——OpenAI 兼容方言带 tools 时必须回传 reasoning_content，
-      // Anthropic 必须重放带签名的 thinking 块；见 provider/openai.ts · anthropic.ts）
+      // Anthropic 必须重放带签名的 thinking 块，Responses 必须把 response.output
+      // 原样拼回 input；见 provider/openai.ts · anthropic.ts · responses.ts）
       host.appendMessage('assistant/text', {
         role: 'assistant',
         content: text,
         reasoning_content: reasoning,
         reasoning_signature: signature,
         tool_calls: calls,
+        ...(responses_items === undefined || responses_items.length === 0 ? {} : { responses_items }),
       });
       // 工具调用审计事件（每调用一条）——**已由执行器在分发时落**（触发点 B 的
       // 宣布补落，2026-09-15）：那里是「模型宣布 → 落盘 → 才执行」的正确时点，

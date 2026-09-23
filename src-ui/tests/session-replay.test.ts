@@ -23,6 +23,17 @@ function seedScenario(): SessionLog {
       content: '调用工具',
       reasoning_content: '思考中',
       tool_calls: [{ id: 'c1', name: 'echo', arguments: '{"v":1}' }],
+      // Responses 方言的 output items 留档（2026-09-23 合规批次）：整个 Message
+      // 原样进事件 data ⇒ 回放必须逐字节还原（形状同「整个 Message」既有契约）
+      responses_items: [
+        {
+          type: 'reasoning',
+          id: 'rs_1',
+          summary: [{ type: 'summary_text', text: '思考中' }],
+          encrypted_content: 'enc',
+        },
+        { type: 'function_call', id: 'fc_1', call_id: 'c1', name: 'echo', arguments: '{"v":1}', status: 'completed' },
+      ],
     },
   });
   log.append('tool/call', { call: { id: 'c1', name: 'echo', arguments: '{"v":1}' } });

@@ -58,12 +58,31 @@ export interface Message {
   reasoning_content?: string;
   /** provider 签发的推理证明（Anthropic thinking signature） */
   reasoning_signature?: string;
+  /** **Responses 方言**：本轮模型输出的 output items 原样留档（reasoning /
+   *  message / function_call …，含 reasoning 项的 `encrypted_content`）。
+   *  官方对话状态指引（OpenAI SDK `ResponseReasoningItemParam` 注 + DeepSeek
+   *  Responses 兼容页）：手工管理上下文时必须把 `response.output` **原样拼回**
+   *  `input`——漏掉 `type:"reasoning"` 项时，带 tools 的请求返回 400
+   *  （Chat/Responses/Messages 三方言同一条规则的不同字段名）。encrypted_content
+   *  必须取 `response.output_item.done` 的那一份（`added` 里的可能不完整）。
+   *  仅 responses 方言写入，其它方言恒缺省 = 请求体逐字节不变。 */
+  responses_items?: ResponsesOutputItem[];
   /** 由 assistant 设置 */
   tool_calls?: ToolCall[];
   /** 将工具结果关联到其调用 */
   tool_call_id?: string;
   /** tool 消息：工具名称 */
   name?: string;
+}
+
+/** Responses 协议的 output item（原样留档，回放时逐字段带回）。
+ *  字段随端点/模型而异（OpenAI 平台：id/summary/content/encrypted_content/status；
+ *  Codex 系另有 phase；DeepSeek 兼容层给 id/summary），因此按开放形状存——
+ *  认识的字段不重写、不认识的字段不丢，回放即「原样」。 */
+export interface ResponsesOutputItem {
+  type: string;
+  id?: string;
+  [extra: string]: unknown;
 }
 
 export interface ToolCall {
@@ -99,6 +118,8 @@ export enum ChunkType {
   Error = 6,
   /** 部分工具参数预览 — 在 input_json_delta 期间为 write/edit 工具发出 */
   ToolArgPreview = 7,
+  /** Responses 方言：本轮 output items 原样带回（见 Message.responses_items） */
+  ResponsesItems = 8,
 }
 
 export interface Usage {
@@ -122,6 +143,8 @@ export interface Chunk {
   tool_call?: ToolCall; // ChunkToolCallStart（仅 id+name）或 ChunkToolCall（完整）
   /** 部分工具参数预览（write_file 内容、edit_file diff 等） */
   tool_arg_preview?: { tool_id: string; tool_name: string; content: string };
+  /** Responses 方言：本轮 response.output 原样（仅 ChunkType.ResponsesItems） */
+  responses_items?: ResponsesOutputItem[];
   usage?: Usage;
   err?: Error;
 }

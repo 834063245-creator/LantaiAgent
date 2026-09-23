@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：46
+当前版本：47
 
-<!-- contract-fingerprint: 3bed163b29e6ad335e1cb05160e621498bc15c3ca2b963dd0cd528a6bd68e337 -->
+<!-- contract-fingerprint: d2bbb78ad7841acb1d2ba5e0e2b0bd59e54c1b1d726c90b15908cdcd6d1b5e81 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -103,6 +103,8 @@
 | 45 | 2026-09-23 | **错误文案与重试判据（网关拒模型却不给原因）**：`classifyError` 的未知分支新增判据——4xx + body 是 JSON 对象且带非空 string `model` + body 内没有任何原因文本（`message`/`detail`/`code`/`type` 一族全空）三条同时成立时，把 body 里唯一可行动的事实写成一句人话（「网关只回了模型名「X」、没给原因——该模型 id 可能已下线或改名，请在设置里换用当前可用的模型 id 后重试」），不再只回「请截图联系开发者」。判据刻意宁窄勿宽：body 另有原因文本、非 JSON、`model` 非字符串、5xx 一律不命中，既有文案逐字不变；解析失败不抛（读边界容忍垃圾响应体）。**动机（真机事故 2026-09-23）**：opencode GO 对模型 id `deepseek-v4-flash` 回 HTTP 400，body 只有 `{"object":"error","model":"deepseek-v4-flash"}`（无 message/type/code）——用户唯一拿到的信息是「请截图联系开发者」，而可行动的事实（网关拒的是这个模型 id）就摆在 body 里。同批两处不入本清单：`agent/retry.ts` 的 `isRetryable` 改读 `providerErrorKind`（显式 4xx + kind=`auth_or_param` ⇒ 不重试；此前按文案判「[未知错误] 可重试」⇒ 同一个 400 每轮白烧 3 次尝试），`provider/vendor-templates.ts` 的 opencode 默认模型 legacy `deepseek-v4-flash` → `deepseek-flash`（与 deepseek 模板同源） | 2026-09-23 真机事故：会话 34 两次轮次 400×3 全败（14:26:53 / 14:29:32），连接改用 `deepseek-flash` 即恢复；取证与排除项见当日排查记录 |
 
 | 46 | 2026-09-23 | **思考链回传（模型从此看得见自己上一轮的推理）**：OpenAI 兼容 chat 的 assistant 轮现在把历史 `reasoning_content` 原样回传（行为落在 `src/provider/openai.ts` 的 `buildChatRequest`——该文件不在本清单，故契约面只有同批的 `default-loop` 落盘注释同步：思考不再是「保留用于显示，不重新上传」）。规则真源 = DeepSeek 官方 `guides/thinking_mode` · Tool Calls 节：**带 `tools` 参数的请求里历史思考必须完整回传，否则 400**（不带 tools 时官方忽略该字段）；Anthropic 侧本就重放带签名的 thinking 块（须在 `tool_use` 之前，无签名不发）。**动机（真机病象）**：兰台带 tools 是常态，此前一律不回传 ⇒ 直连 `api.deepseek.com` 时第一轮工具调用之后每个请求都撞 400，而那条缺字段的 assistant 消息已落卷 ⇒ 整卷持续重放失败（DSH 同类事故 `deepseek-harness#3857`；参照实现 = DSH `llm-deepseek` 的 `serializeAssistant`）。**契约形状零变更**（`Message.reasoning_content` 早已在册，`types.ts` 注释写的就是「多轮对话中原样往返」——本版让实现追上它）；**对外可感知**：模型从此看得见自己上一轮的推理，第三方 adapter 不受影响；**无思考的轮次请求体逐字节不变**（不编造空串） | DeepSeek 官方文档 `guides/thinking_mode`（Tool Calls 节 "must be fully passed back"）+ DSH 讨论 #3857 + 本机 40 卷取证（38 卷有非空 `reasoning_content`、0 卷有签名 ⇒ 兰台此前一条都没回过）+ `tests/provider-reasoning-passback.test.ts`（五用例规则面）与 `tests/provider-request-shape.test.ts`（真 socket 上行证据） |
+
+| 47 | 2026-09-23 | **Responses 方言合规批次（思考链回传的第二半 + 三处不合官方 schema 的请求形状）**：① `Message` 新增可选 `responses_items`（`ResponsesOutputItem[]` = 本轮 `response.output` **原样留档**），`ChunkType` 新增 `ResponsesItems`(=8)，`LoopStreamResult` 增同名字段，`default-loop` 两处 assistant 落盘写入该字段（与 `reasoning_content`/签名同址：纸面显示与回放共用一份事实）。② `provider/responses.ts`（不在本清单）修正三处**不合 schema** 的形状：assistant 的 tool_calls 由 `message.output`（OpenAI SDK 类型里根本没有这个字段）改为**顶层** `function_call` item；工具结果 `output_text` → **`output`**（`FunctionCallOutput.output` 是必填）；配对键改用 `call_id`（`call_…`，模型生成的调用 id）而非 item id（`fc_…`）；请求体补 `store:false` + `include:['reasoning.encrypted_content']`（Codex 客户端同款——本适配器自己重放全部历史，无状态端点需要加密推理体）。加上 reasoning 项留档/回放，这几处合起来才是「工具链能在 Responses 上跑通」。**动机**：官方对话状态指引要求手工管理上下文时把上一轮 `response.output` **原样拼回** `input`——漏掉 `type:"reasoning"` 项时带 tools 的请求被拒（OpenAI「Item 'fc_…' of type 'function_call' was provided without its required 'reasoning' item」/ DeepSeek Responses「The `reasoning_text` in the thinking mode must be passed back to the API.」；与 Chat 的 `reasoning_content`、Messages 的 thinking 块是同一条规则的三种字段名）；而 `9298fd30`（同一天）刚把**官方 OpenAI 出厂行**切到 Responses 方言 ⇒ 这三处使默认线路首次调用工具即 400。**对外可感知**：第三方 loop 不返回 `responses_items` = 该方言不写留档（其它方言与旧卷走既有合成路径，**非 Responses 方言请求体逐字节不变**）；`encrypted_content` 取 `output_item.done` 那一份（`added` 的可能不完整，官方 SDK 类型注原文），回放时只剥 `logprobs`（逐 token 概率不进卷） | OpenAI SDK 类型定义（OpenAPI 生成）：`ResponseReasoningItemParam`（"include these items in your `input`" + encrypted_content 取 done）/ `ResponseFunctionToolCallParam` / `FunctionCallOutput` / `EasyInputMessageParam` + DeepSeek 三方言 passback 矩阵实测（AIHubMix 2026-08-13：Responses 漏 reasoning 项 → 400）+ `tests/provider-responses.test.ts`（20 用例）与 `tests/responses-items-plumbing.test.ts`（chunk→会话→下一轮载荷接线两用例）+ `tests/session-replay.test.ts`（留档过回放逐字节还原） |
 
 
 1. 改契约文件（接口形状 / 注册契约 / 事件载荷 / manifest schema）；

@@ -44,16 +44,32 @@ import {
   type ModelDescriptor,
   type Provider,
   type Request,
+  type ResponsesOutputItem,
   sanitizeToolPairing,
 } from './types';
 
 const DEFAULT_MAX_TOKENS = 64000;
+
+/** output_item.added / output_item.done 的 item：开放形状（ResponsesOutputItem）
+ *  外加本适配器点名消费的字段——留档一律用**原始 item 对象**（回放要原样）。 */
+interface ResponsesSseItem extends ResponsesOutputItem {
+  role?: string;
+  name?: string;
+  arguments?: string;
+  call_id?: string;
+  status?: string;
+  /** reasoning item：加密推理体（**必须取 output_item.done 那一份**，
+   *  added 事件里的可能不完整——官方 SDK 类型注原文）。 */
+  encrypted_content?: string;
+}
 
 /** Responses API SSE 事件形状（本文件消费的子集）。 */
 interface ResponsesSseEvent extends SseEvent {
   response?: {
     id?: string;
     status?: string;
+    /** 完整输出项数组（response.completed 携带）——reasoning 项的回放真源。 */
+    output?: ResponsesOutputItem[];
     usage?: {
       input_tokens: number;
       output_tokens: number;
@@ -64,14 +80,7 @@ interface ResponsesSseEvent extends SseEvent {
     error?: { code?: string; message?: string };
   };
   output_index?: number;
-  item?: {
-    id: string;
-    type: string;
-    role?: string;
-    name?: string;
-    arguments?: string;
-    call_id?: string;
-  };
+  item?: ResponsesSseItem;
   /** response.output_text.delta 段 */
   delta?: string;
   /** response.function_call_arguments.delta 段 */
@@ -192,29 +201,30 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
 
 // ---- 请求构建 ----
 
-/** input 数组 item：message item 或 function_call_output item（Responses 官方
- *  item-based 形态，非 chat messages 形态）。content 数组元素含 B3 附图
- *  input_image part（image_url = data URI）。 */
+/** 本适配器**合成**的 input item（message / function_call / function_call_output）。
+ *  官方 schema（openai-python `ResponseInputItemParam`，由 OpenAPI 生成）里这三者
+ *  是**平级**的顶层 item——function_call **不是** message 的子字段（旧实现把
+ *  function_call 数组塞进 `message.output`：schema 没有该字段，整个工具链因此
+ *  不合规）。content 数组元素含 B3 附图 input_image part（image_url = data URI）。 */
 interface ResponsesInputItem {
-  type?: 'message' | 'function_call_output';
+  type?: 'message' | 'function_call' | 'function_call_output';
   role?: 'user' | 'assistant' | 'developer' | 'system';
   content?: Array<{ type: string; text?: string; output?: string; image_url?: string }>;
-  /** message item 的 assistant 工具输出子项（function_call 数组）；
-   *  function_call_output item 的**内容项数组**（带图时用它取代 output_text——
-   *  工具附图通道 P0a：`[{type:'input_text'},{type:'input_image'}]`）。 */
-  output?: Array<{
-    id?: string;
-    type: 'function_call' | 'input_text' | 'input_image';
-    name?: string;
-    arguments?: string;
-    call_id?: string;
-    text?: string;
-    image_url?: string;
-  }>;
-  /** function_call_output item：关联的 function_call id */
+  /** function_call_output 的载荷：字符串，或**内容项数组**（带图时用它——
+   *  工具附图通道 P0a：`[{type:'input_text'},{type:'input_image'}]`）。
+   *  官方字段名是 `output`（`output_text` 不在 schema 里；缺 `output` = 400）。 */
+  output?: string | Array<{ type: string; text?: string; image_url?: string }>;
+  /** function_call / function_call_output 的**配对键**：模型生成的 call id
+   *  （`call_…`，不是 item id `fc_…`）——两者都在 item 上，用错就配不上对。 */
   call_id?: string;
-  output_text?: string;
+  /** function_call item：工具名 + 参数 JSON */
+  name?: string;
+  arguments?: string;
 }
+
+/** input 数组条目 = 本适配器合成的 item，或**原样回放的 output item**
+ *  （reasoning / message / function_call —— 见 Message.responses_items）。 */
+type ResponsesInputEntry = ResponsesInputItem | ResponsesOutputItem;
 
 /** Responses API 工具形状：type/name/description/parameters 平铺（非 chat 的
  *  function 嵌套）。 */
@@ -229,11 +239,34 @@ interface ResponsesTool {
 interface ResponsesRequest {
   model: string;
   instructions?: string;
-  input: ResponsesInputItem[];
+  input: ResponsesInputEntry[];
   tools?: ResponsesTool[];
   reasoning?: { effort?: string; summarize?: 'auto' | 'concise' | 'detailed' };
   max_output_tokens: number;
   stream: true;
+  /** 无状态请求（本适配器自己重放历史，不用 previous_response_id）。 */
+  store: false;
+  /** 要求回传 reasoning 项的 encrypted_content（无状态回放的必需料）。 */
+  include: ['reasoning.encrypted_content'];
+}
+
+/** 留档 output item 的回放净化：只剥 `logprobs`（逐 token 概率——端点若回传可达
+ *  MB 级，回放它既不必要又把卷撑爆；本适配器从不请求它，属防御）。其余字段
+ *  **一律原样**：id / encrypted_content / status / phase 都是回放必需或有益的
+ *  （见 Message.responses_items）。 */
+function sanitizeStoredItem(item: ResponsesOutputItem): ResponsesOutputItem {
+  const content = item.content;
+  if (item.type !== 'message' || !Array.isArray(content)) return item;
+  if (!content.some((part) => part !== null && typeof part === 'object' && 'logprobs' in part)) return item;
+  return {
+    ...item,
+    content: content.map((part) => {
+      if (part === null || typeof part !== 'object') return part;
+      const rest: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(part as Record<string, unknown>)) if (k !== 'logprobs') rest[k] = v;
+      return rest;
+    }),
+  };
 }
 
 export function buildResponsesRequest(
@@ -251,17 +284,18 @@ export function buildResponsesRequest(
   const systemParts = msgs.filter((m) => m.role === 'system').map((m) => m.content);
   const instructions = systemParts.length > 0 ? systemParts.join('\n') : undefined;
 
-  // input：非 system 消息（user/assistant/tool）——标准 Responses item 形态：
+  // input：非 system 消息（user/assistant/tool）——官方 item 形态（三者平级）：
   //   user/assistant → {type:'message', role, content}
+  //   assistant 工具 → 顶层 {type:'function_call', call_id, name, arguments}
   //   tool 结果      → {type:'function_call_output', call_id, output}
-  // assistant 的 tool_calls → message.output 里的 function_call 子项
-  const input: ResponsesInputItem[] = [];
+  //   **已留档的 output items**（reasoning/message/function_call）→ 原样回放
+  const input: ResponsesInputEntry[] = [];
   for (const m of msgs) {
     if (m.role === 'system') continue;
     if (m.role === 'tool') {
       // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：本协议
       // function_call_output 支持内容项数组 → 图随工具结果进上下文。
-      // 无图 tool 仍是 output_text 纯文本（wire 形态逐字节不变，D-6）。
+      // 无图 tool 仍是字符串 output（纯文本 wire 逐字节不变，D-6）。
       const parts: Array<{ type: 'input_text' | 'input_image'; text?: string; image_url?: string }> = [];
       if (m.images !== undefined && m.images.length > 0 && imageData !== undefined) {
         parts.push({ type: 'input_text', text: m.content || '(no output)' });
@@ -271,18 +305,45 @@ export function buildResponsesRequest(
           parts.push({ type: 'input_image', image_url: `data:${hit.mediaType};base64,${hit.data}` });
         }
       }
-      if (parts.length > 1) {
-        input.push({ type: 'function_call_output', call_id: m.tool_call_id, output: parts });
-      } else {
-        input.push({
-          type: 'function_call_output',
-          call_id: m.tool_call_id,
-          output_text: m.content || '(no output)',
-        });
+      input.push({
+        type: 'function_call_output',
+        call_id: m.tool_call_id,
+        output: parts.length > 1 ? parts : m.content || '(no output)',
+      });
+      continue;
+    }
+    if (m.role === 'assistant' && m.responses_items !== undefined && m.responses_items.length > 0) {
+      // ⚡ 思考链/工具项回放（2026-09-23 Responses 合规批次）：官方对话状态指引
+      // 要求手工管理上下文时把上一轮 `response.output` **原样拼回** input——
+      // 漏掉 `type:"reasoning"` 项时带 tools 的请求被拒：
+      //   · OpenAI：Item 'fc_…' of type 'function_call' was provided without its
+      //     required 'reasoning' item / 反向的「provided without its required
+      //     following item」（reasoning 与它的后继项必须成对相邻）；
+      //   · DeepSeek Responses：The `reasoning_text` in the thinking mode must be
+      //     passed back to the API.（与 Chat 的 reasoning_content、Messages 的
+      //     thinking 块同一条规则的三种字段名）。
+      // 「原样」= 逐字段照搬（含 id / encrypted_content / status / phase），
+      // 这样 reasoning 与它的 function_call 相邻关系、Codex 的 phase 全部保住。
+      for (const item of m.responses_items) input.push(sanitizeStoredItem(item));
+      // 留档里没有 message 项却有正文（流中断/旧卷）——补一条，正文不丢。
+      if (m.content && !m.responses_items.some((it) => it.type === 'message')) {
+        input.push({ type: 'message', role: 'assistant', content: [{ type: 'input_text', text: m.content }] });
+      }
+      // 留档缺了某个 function_call（`output_item.done` 没到就断流）：补合成项。
+      // **必须补**——否则该工具的 function_call_output 找不到配对的调用，服务端
+      // 直接拒（"No tool call found for function call output with call_id …"）。
+      const storedCalls = new Set(
+        m.responses_items
+          .filter((it) => it.type === 'function_call')
+          .map((it) => (typeof it.call_id === 'string' ? it.call_id : '')),
+      );
+      for (const tc of m.tool_calls ?? []) {
+        if (storedCalls.has(tc.id)) continue;
+        input.push({ type: 'function_call', call_id: tc.id, name: tc.name, arguments: tc.arguments || '' });
       }
       continue;
     }
-    // user / assistant
+    // user / assistant（无留档时的合成路径：旧卷、非 Responses 方言写入的历史）
     const content: Array<{ type: string; text?: string; image_url?: string }> = [];
     if (m.content) content.push({ type: 'input_text', text: m.content });
     // B3（multimodal-image-plan）：user 带图且解析表非空 → input_image parts
@@ -294,29 +355,25 @@ export function buildResponsesRequest(
         content.push({ type: 'input_image', image_url: `data:${hit.mediaType};base64,${hit.data}` });
       }
     }
-    const item: ResponsesInputItem = {
-      type: 'message',
-      role: m.role as 'user' | 'assistant',
-      content,
-    };
-    // assistant 的 tool_calls → message.output 里的 function_call（id/name/arguments）
+    input.push({ type: 'message', role: m.role as 'user' | 'assistant', content });
+    // assistant 的 tool_calls → **顶层** function_call item（官方 schema 里
+    // function_call 不是 message 的子字段；配对的 call_id 就是 ToolCall.id）
     if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
-      item.output = m.tool_calls.map((tc) => ({
-        id: tc.id,
-        type: 'function_call' as const,
-        name: tc.name,
-        arguments: tc.arguments || '',
-        call_id: tc.id,
-      }));
-      // assistant 只有 tool_calls 无文本：content 可为空（output 承载调用）
-      if (!m.content) item.content = undefined;
+      for (const tc of m.tool_calls) {
+        input.push({
+          type: 'function_call',
+          call_id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments || '',
+        });
+      }
     }
-    input.push(item);
   }
 
-  // 历史消息必然 user 开头（首个 user 前无 tool 结果）——若 input 首条是
-  // function_call_output（sanitize 失败边缘），前置空 user 防 400
-  if (input.length > 0 && input[0].type === 'function_call_output') {
+  // 历史必然 user 开头——input 首条**不是 message** 时（sanitize 失败边缘的孤立
+  // tool 结果、或留档首项就是 reasoning/function_call），前置空 user 防 400
+  const first = input[0];
+  if (first !== undefined && first.type !== 'message') {
     input.unshift({ type: 'message', role: 'user', content: [{ type: 'input_text', text: '' }] });
   }
 
@@ -336,6 +393,15 @@ export function buildResponsesRequest(
     tools: respTools,
     max_output_tokens: 0,
     stream: true,
+    // 无状态 + 加密推理体（Codex 客户端同款，2026-09-23 合规批次）：
+    // 本适配器**自己重放全部历史**（不用 previous_response_id）⇒ 服务端无需留
+    // 会话状态；`include` 要求把 reasoning 项的 `encrypted_content` 一并回传——
+    // 无状态端点上缺了它，回放的 reasoning 项就是「没料的空壳」，校验不过。
+    // 官方 SDK 类型注：encrypted_content 取 `output_item.done` 那一份（added 的
+    // 可能不完整）。不支持的兼容层按既有实测语义忽略这两个字段（DeepSeek
+    // Responses 兼容页：store/metadata/safety_identifier 一律「不支持但 200」）。
+    store: false,
+    include: ['reasoning.encrypted_content'],
   };
   if (instructions) r.instructions = instructions;
 
@@ -360,20 +426,42 @@ export function buildResponsesRequest(
 async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?: AbortSignal): AsyncGenerator<Chunk> {
   // function_call 累积：output_index → {id, name, arguments}
   const toolsByIndex = new Map<number, { id: string; name: string; arguments: string }>();
+  // 本轮 output items 留档（reasoning 项的回放真源）：**只收 `output_item.done`**
+  // 的完整 item——added 里的 encrypted_content 可能不完整（官方 SDK 类型注），
+  // 且 added 的 function_call 还没有 arguments（回放带空参数 = 篡改历史）。
+  const itemsByIndex = new Map<number, ResponsesOutputItem>();
   let usage: Chunk['usage'];
+
+  /** 收尾取本轮 items：优先 `response.completed.response.output`（权威全量，
+   *  官方指引「splice response.output back in as-is」的原文来源），回落 done 累积。 */
+  const finalItems = (ev: ResponsesSseEvent): ResponsesOutputItem[] => {
+    const fromCompleted = ev.response?.output;
+    if (Array.isArray(fromCompleted) && fromCompleted.length > 0) return fromCompleted;
+    return [...itemsByIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, item]) => item);
+  };
 
   for await (const ev of sseEvents<ResponsesSseEvent>(body, name, signal)) {
     switch (ev.type) {
       case 'response.output_item.added': {
         const item = ev.item;
-        // function_call item 开始
+        // function_call item 开始。⚡ 配对键用 **call_id**（`call_…`，模型生成的
+        // 调用 id）——item.id（`fc_…`）是 item 自身的 id，拿去跟
+        // function_call_output.call_id 配对会配不上（服务端按 call_id 认）。
         if (item?.type === 'function_call' && ev.output_index !== undefined) {
-          toolsByIndex.set(ev.output_index, { id: item.id || '', name: item.name || '', arguments: '' });
+          const callId = item.call_id || item.id || '';
+          toolsByIndex.set(ev.output_index, { id: callId, name: item.name || '', arguments: '' });
           yield {
             type: ChunkType.ToolCallStart,
-            tool_call: { id: item.id || '', name: item.name || '', arguments: '' },
+            tool_call: { id: callId, name: item.name || '', arguments: '' },
           };
         }
+        break;
+      }
+
+      case 'response.output_item.done': {
+        // 完整 item（含 reasoning 的 encrypted_content / summary、function_call
+        // 的 arguments、message 的 content+phase）——留档待下一轮原样回放。
+        if (ev.item !== undefined && ev.output_index !== undefined) itemsByIndex.set(ev.output_index, ev.item);
         break;
       }
 
@@ -403,6 +491,9 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
       }
 
       case 'response.completed': {
+        // 本轮 output items 原样留档（reasoning 项是下一轮带 tools 请求的必需项）
+        const items = finalItems(ev);
+        if (items.length > 0) yield { type: ChunkType.ResponsesItems, responses_items: items };
         // 收尾：补发完整 tool_call（output_item.done 之前可能已逐项补发——
         // 幂等：content_block_stop 后这里只 flush 残留）
         for (const tc of toolsByIndex.values()) {
@@ -455,7 +546,10 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
     }
   }
 
-  // 流意外结束（无 completed）——flush 残留 tool + Done（不静默吞）
+  // 流意外结束（无 completed）——已收到的完整 items 照样留档（reasoning 项
+  // 不回放 = 下一轮 400），再 flush 残留 tool + Done（不静默吞）
+  const dangling = [...itemsByIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, item]) => item);
+  if (dangling.length > 0) yield { type: ChunkType.ResponsesItems, responses_items: dangling };
   for (const tc of toolsByIndex.values()) {
     yield {
       type: ChunkType.ToolCall,

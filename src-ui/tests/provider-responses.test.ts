@@ -69,7 +69,7 @@ describe('buildResponsesRequest（Responses 协议请求形状）', () => {
     });
   });
 
-  it('assistant tool_calls → message.output function_call 数组', () => {
+  it('assistant tool_calls → **顶层** function_call item（官方 schema：非 message 子字段）', () => {
     const req = buildResponsesRequest(
       [
         {
@@ -83,14 +83,20 @@ describe('buildResponsesRequest（Responses 协议请求形状）', () => {
       100,
       undefined,
     );
-    expect(req.input[0].type).toBe('message');
-    expect(req.input[0].role).toBe('assistant');
-    expect(req.input[0].output).toEqual([
-      { id: 'call_1', type: 'function_call', name: 'fs', arguments: '{"action":"read"}', call_id: 'call_1' },
-    ]);
+    expect(req.input[0]).toEqual({
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'input_text', text: 'let me check' }],
+    });
+    expect(req.input[1]).toEqual({
+      type: 'function_call',
+      call_id: 'call_1',
+      name: 'fs',
+      arguments: '{"action":"read"}',
+    });
   });
 
-  it('tool 消息 → function_call_output item（无 role）', () => {
+  it('tool 消息 → function_call_output item（字段名 output，schema 无 output_text）', () => {
     const req = buildResponsesRequest(
       [
         {
@@ -105,10 +111,105 @@ describe('buildResponsesRequest（Responses 协议请求形状）', () => {
       100,
       undefined,
     );
-    expect(req.input[1]).toEqual({
+    expect(req.input[1]).toEqual({ type: 'function_call', call_id: 'call_1', name: 'fs', arguments: '{}' });
+    expect(req.input[2]).toEqual({
       type: 'function_call_output',
       call_id: 'call_1',
-      output_text: 'file contents',
+      output: 'file contents',
+    });
+  });
+
+  it('留档 output items 原样回放（reasoning 项在前、与 function_call 相邻）', () => {
+    const items = [
+      {
+        type: 'reasoning',
+        id: 'rs_1',
+        summary: [{ type: 'summary_text', text: '想过' }],
+        encrypted_content: 'enc-blob',
+        status: 'completed',
+      },
+      { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'fs', arguments: '{"a":1}', status: 'completed' },
+    ];
+    const req = buildResponsesRequest(
+      [
+        { role: 'user', content: '问' },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: 'call_1', name: 'fs', arguments: '{"a":1}' }],
+          responses_items: items,
+        },
+        { role: 'tool', content: 'ok', tool_call_id: 'call_1', name: 'fs' },
+      ],
+      [],
+      'm',
+      100,
+      undefined,
+    );
+    // 逐字段原样（含 id / encrypted_content / status）——漏 reasoning 项 = 400
+    expect(req.input[0]).toMatchObject({ type: 'message', role: 'user' });
+    expect(req.input[1]).toEqual(items[0]);
+    expect(req.input[2]).toEqual(items[1]);
+    expect(req.input[3]).toEqual({ type: 'function_call_output', call_id: 'call_1', output: 'ok' });
+    // 留档里已有该 function_call → 不再补合成项（不重复）
+    expect(req.input.filter((it) => it.type === 'function_call')).toHaveLength(1);
+  });
+
+  it('留档缺 message 项的正文 / 缺 function_call 的调用 → 各自补齐（不丢正文、不悬空配对）', () => {
+    const req = buildResponsesRequest(
+      [
+        { role: 'user', content: '问' },
+        {
+          role: 'assistant',
+          content: '回答正文',
+          tool_calls: [{ id: 'call_9', name: 'fs', arguments: '{}' }],
+          // 只有 reasoning 项（function_call 的 done 没到、message 项也缺）
+          responses_items: [{ type: 'reasoning', id: 'rs_9', summary: [] }],
+        },
+        { role: 'tool', content: 'ok', tool_call_id: 'call_9', name: 'fs' },
+      ],
+      [],
+      'm',
+      100,
+      undefined,
+    );
+    expect(req.input[1]).toMatchObject({ type: 'reasoning', id: 'rs_9' });
+    expect(req.input[2]).toEqual({
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'input_text', text: '回答正文' }],
+    });
+    expect(req.input[3]).toEqual({ type: 'function_call', call_id: 'call_9', name: 'fs', arguments: '{}' });
+  });
+
+  it('回放时剥掉 output_text 的 logprobs（逐 token 概率不进卷、不回放）', () => {
+    const req = buildResponsesRequest(
+      [
+        {
+          role: 'assistant',
+          content: '答',
+          responses_items: [
+            {
+              type: 'message',
+              id: 'msg_1',
+              role: 'assistant',
+              status: 'completed',
+              content: [{ type: 'output_text', text: '答', annotations: [], logprobs: [{ token: 'a' }] }],
+            },
+          ],
+        },
+      ],
+      [],
+      'm',
+      100,
+      undefined,
+    );
+    expect(req.input[0]).toEqual({
+      type: 'message',
+      id: 'msg_1',
+      role: 'assistant',
+      status: 'completed',
+      content: [{ type: 'output_text', text: '答', annotations: [] }],
     });
   });
 
@@ -150,6 +251,12 @@ describe('buildResponsesRequest（Responses 协议请求形状）', () => {
   it('max_output_tokens：maxTok 缺省回落默认上限', () => {
     const req = buildResponsesRequest([{ role: 'user', content: 'hi' }], [], 'm', 0, undefined);
     expect(req.max_output_tokens).toBeGreaterThan(0);
+  });
+
+  it('无状态请求形状：store:false + include reasoning.encrypted_content（Codex 同款）', () => {
+    const req = buildResponsesRequest([{ role: 'user', content: 'hi' }], [], 'm', 100, undefined);
+    expect(req.store).toBe(false);
+    expect(req.include).toEqual(['reasoning.encrypted_content']);
   });
 
   it('孤立 tool 结果前置空 user 消息防 400（input 首条不可为 function_call_output）', () => {
@@ -239,12 +346,12 @@ describe('createResponsesProvider stream（SSE 解析端到端）', () => {
     ).toBe('思考中更多思考');
   });
 
-  it('工具调用：added → ToolCallStart；arguments.delta 累积 → completed flush ToolCall', async () => {
+  it('工具调用：added → ToolCallStart（配对键取 call_id）；arguments.delta 累积 → completed flush', async () => {
     const chunks = await collect([
       {
         type: 'response.output_item.added',
         output_index: 0,
-        item: { id: 'fc_1', type: 'function_call', name: 'fs' },
+        item: { id: 'fc_1', call_id: 'call_1', type: 'function_call', name: 'fs' },
       },
       { type: 'response.function_call_arguments.delta', output_index: 0, partial_json: '{"action":' },
       { type: 'response.function_call_arguments.delta', output_index: 0, partial_json: '"read"}' },
@@ -252,10 +359,61 @@ describe('createResponsesProvider stream（SSE 解析端到端）', () => {
     ]);
     const starts = chunks.filter((c) => c.type === ChunkType.ToolCallStart);
     expect(starts).toHaveLength(1);
-    expect(starts[0].tool_call).toEqual({ id: 'fc_1', name: 'fs', arguments: '' });
+    // call_id（call_…）才是与 function_call_output 的配对键——item.id（fc_…）不是
+    expect(starts[0].tool_call).toEqual({ id: 'call_1', name: 'fs', arguments: '' });
     const full = chunks.find((c) => c.type === ChunkType.ToolCall);
-    expect(full?.tool_call).toEqual({ id: 'fc_1', name: 'fs', arguments: '{"action":"read"}' });
+    expect(full?.tool_call).toEqual({ id: 'call_1', name: 'fs', arguments: '{"action":"read"}' });
     expect(chunks[chunks.length - 1].type).toBe(ChunkType.Done);
+  });
+
+  it('output items 留档：reasoning 项取 done 那一份，随 completed 的 response.output 上行', async () => {
+    const reasoning = {
+      type: 'reasoning',
+      id: 'rs_1',
+      summary: [{ type: 'summary_text', text: '想过' }],
+      encrypted_content: 'enc-from-done',
+      status: 'completed',
+    };
+    const call = {
+      type: 'function_call',
+      id: 'fc_1',
+      call_id: 'call_1',
+      name: 'fs',
+      arguments: '{}',
+      status: 'completed',
+    };
+    const chunks = await collect([
+      // added 里的 reasoning 可能不完整——不得作为留档
+      {
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: { type: 'reasoning', id: 'rs_1', encrypted_content: '' },
+      },
+      { type: 'response.output_item.done', output_index: 0, item: reasoning },
+      {
+        type: 'response.output_item.added',
+        output_index: 1,
+        item: { id: 'fc_1', call_id: 'call_1', type: 'function_call', name: 'fs' },
+      },
+      { type: 'response.output_item.done', output_index: 1, item: call },
+      { type: 'response.completed', response: { output: [reasoning, call] } },
+    ]);
+    const items = chunks.find((c) => c.type === ChunkType.ResponsesItems);
+    expect(items?.responses_items).toEqual([reasoning, call]);
+    // Done 是最后一块（留档块在其之前）
+    expect(chunks[chunks.length - 1].type).toBe(ChunkType.Done);
+  });
+
+  it('completed 未带 response.output → 回落 output_item.done 累积（按 output_index 排序）', async () => {
+    const a = { type: 'reasoning', id: 'rs_a', summary: [] };
+    const b = { type: 'message', id: 'msg_b', role: 'assistant', content: [{ type: 'output_text', text: '答' }] };
+    const chunks = await collect([
+      { type: 'response.output_item.done', output_index: 1, item: b },
+      { type: 'response.output_item.done', output_index: 0, item: a },
+      { type: 'response.completed', response: {} },
+    ]);
+    const items = chunks.find((c) => c.type === ChunkType.ResponsesItems);
+    expect(items?.responses_items).toEqual([a, b]);
   });
 
   it('failed 事件 → Error chunk（带 code），流终止', async () => {

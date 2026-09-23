@@ -13,7 +13,7 @@
 // 替换契约：第三方通常不替换 loop（事件/服务才是扩展面），但可以——
 // register 一个 AgentLoop 即接管 turn/step/request/tool 全生命周期。
 
-import type { Message, Provider, ToolCall, Usage } from '../../provider/types';
+import type { Message, Provider, ResponsesOutputItem, ToolCall, Usage } from '../../provider/types';
 import type { AgentEvent, AgentUINotifier } from '../agent-types';
 import type { CompactionTracker } from '../compaction-model';
 import type { AgentEventBus } from '../events';
@@ -36,6 +36,10 @@ export interface LoopStreamResult {
   /** token 计量记录（2026-09-13）：Agent 侧已入账，此处带回 loop 以便随
    *  Usage 事件投给 UI。第三方 loop 不提供时 UI 计量面缺一条（不影响执行）。 */
   token?: TokenRequestRecord | undefined;
+  /** Responses 方言（v47）：本轮 `response.output` 原样带回——loop 把它写进
+   *  assistant 轮的 `responses_items` 留档，下一轮请求据此回放 reasoning 项
+   *  （漏掉时带 tools 的请求被服务端 400）。其它方言恒缺省。 */
+  responses_items?: ResponsesOutputItem[] | undefined;
 }
 
 /** loop 体对宿主 Agent 的依赖面（Agent._loopHost() 构建）。
