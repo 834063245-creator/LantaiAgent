@@ -41,6 +41,7 @@ import {
 import { CORE_PROTOCOLS } from '../provider/types';
 import { kernelReadFile, kernelWriteFile, typedListen, typedRpc } from '../rpc-contract';
 import {
+  installProvidersFileReadyCheck,
   installProvidersProjection,
   loadSettings,
   type ProviderRuntime,
@@ -89,6 +90,12 @@ function looksLikePath(p: string): boolean {
   const t = p.trim();
   if (!t || t === 'null' || t === 'undefined') return false;
   return /^[a-zA-Z]:[\\/]/.test(t) || t.startsWith('/') || t.startsWith('\\\\');
+}
+
+/** 文件权威是否**已确认**可用（setting.ts 只在这个条件下才敢剥掉 localStorage
+ *  里的意图副本——通道没确认之前剥 = 丢掉用户唯一的配置来源）。 */
+export function providersFileReady(): boolean {
+  return state.available && state.loaded && !state.fatal;
 }
 /** 运行态读数（provider 名 → 探针结果/目录快照/密钥），localStorage 的作者。 */
 let runtimeMap = new Map<string, ProviderRuntime>();
@@ -174,11 +181,17 @@ function refreshRows(): void {
  *  boot 期调用一次（早于一切 provider 消费）。 */
 export function installProvidersDocProjection(): void {
   installProvidersProjection({
-    rows: () => {
+    rows: (fallback) => {
+      // ⚡ 文件权威未确认（通道缺失/取路径失败）⇒ **本机那份整行仍是权威**
+      //    （2026-09-23 真机事故：此前这里回空数组，与 saveSettings 剥意图叠加
+      //      = 用户配好的 provider 凭空消失）。只有在文件确认接管之后，
+      //      「文件里的键」才成为行表真源。
+      if (!providersFileReady()) return fallback;
       refreshRows();
       return cachedRows ?? [];
     },
   });
+  installProvidersFileReadyCheck(providersFileReady);
 }
 
 /** 装载一次用户级文档（boot / watcher / 保存后重读三处共用）。
@@ -186,19 +199,22 @@ export function installProvidersDocProjection(): void {
  *  @returns 是否读到（fatal 也算读到了——错误在 status 里，由设置页点名显示）。 */
 export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): Promise<boolean> {
   if (!state.path) {
+    // ⚡ **每次重试、绝不缓存失败**（2026-09-23 真机事故）：失败会被缓存的话，
+    //    任何一次早期调用（壳还没把 RPC 挂上 / 前端热更跑在旧壳上 / 宿主是 mock）
+    //    就把文件权威永久钉死成不可用——此后既不建文件也不迁移，用户看到
+    //    「provider 全没了」而盘上什么都没写。取路径是纯本地计算，重试零成本。
     try {
-      // 通道缺失（mock 宿主 / 极早期调用）⇒ 当「不可用」处理：读投影落回本机存储，
-      // 不抛错、不阻断引导（生产装配健全时这条永不发生）。
       const dir = typeof typedRpc === 'function' ? await typedRpc('providers_dir', { open: false }) : '';
-      if (!looksLikePath(dir)) {
+      if (looksLikePath(dir)) {
+        state.path = `${dir.replace(/[\\/]+$/, '')}/providers.yml`;
+        state.available = true;
+      } else {
         state.loaded = true;
         state.available = false;
         state.lastError = `配置文件通道不可用（providers_dir 返回的不是路径：${String(dir)}）——本机仍按内置存储工作`;
         notify();
         return false;
       }
-      state.path = `${dir.replace(/[\\/]+$/, '')}/providers.yml`;
-      state.available = true;
     } catch (e) {
       state.loaded = true;
       state.available = false;
@@ -341,9 +357,17 @@ export async function seedProvidersDoc(rows: readonly ProviderSettings[]): Promi
  *  目录快照）挂到同名行上，文件的连接配置一字不动。 */
 export async function bootstrapProvidersDoc(): Promise<void> {
   installProvidersDocProjection();
-  await loadProvidersDoc({ reloadRuntime: true });
-  if (!state.loaded || state.fatal) return;
+  await loadProvidersDoc();
   const stored = storedProviderRows();
+  // 运行态读数（密钥/探针/目录快照）先按名挂上——**必须在写盘之前**：
+  // 迁移出文件之后投影立刻生效，此时 apiKey 就该在（否则设置页那一下会显示空 Key）。
+  runtimeMap = new Map(stored.map((p) => [p.name, runtimeOf(p)]));
+  cachedRows = null;
+  refreshRows();
+  if (!state.loaded || state.fatal) {
+    notify();
+    return;
+  }
   if (state.empty && stored.length > 0) {
     const res = await seedProvidersDoc(stored);
     if (!res.ok) {
@@ -353,8 +377,6 @@ export async function bootstrapProvidersDoc(): Promise<void> {
       return;
     }
   }
-  // 运行态读数按名挂到投影上（localStorage 是它们唯一的家）
-  runtimeMap = new Map(stored.map((p) => [p.name, runtimeOf(p)]));
   cachedRows = null;
   refreshRows();
   notify();
@@ -381,8 +403,10 @@ export function armProvidersWatcher(): void {
 }
 
 /** 运行态读数写回（探针结果 / 目录快照——设置页保存与后台拉取共用）。
- *  合并语义：只覆盖给到的字段，其余保持磁盘现状。 */
-export function persistProviderRuntime(name: string, patch: Partial<ProviderRuntime>): void {
+ *  合并语义：只覆盖给到的字段，其余保持磁盘现状。 */ export function persistProviderRuntime(
+  name: string,
+  patch: Partial<ProviderRuntime>,
+): void {
   const s = loadSettings();
   runtimeMap.set(name, { ...(runtimeMap.get(name) ?? { apiKey: '' }), ...patch });
   cachedRows = null;
@@ -396,6 +420,27 @@ export function persistProviderRuntime(name: string, patch: Partial<ProviderRunt
  *  `providers_dir` RPC 自身按需 create_dir_all，这里只负责先把路径取回来。 */
 export async function ensureProvidersDir(): Promise<void> {
   if (!state.path && !state.loaded) await loadProvidersDoc();
+}
+
+/** **测试专用**：把模块态清回未装载（同一进程内多组用例各跑一遍真实时序）。
+ *  生产不使用——应用生命周期里只装载一次，且失败不缓存（见 loadProvidersDoc 注释）。 */
+export function __resetProvidersDocForTests(): void {
+  state.path = '';
+  state.errors = [];
+  state.fatal = undefined;
+  state.empty = true;
+  state.loaded = false;
+  state.available = false;
+  state.lastError = '';
+  runtimeMap = new Map();
+  lastFileText = '';
+  lastSections = [];
+  projectSections = [];
+  projectErrors = [];
+  projectFatal = undefined;
+  cachedRows = null;
+  cachedSignature = '';
+  armed = false;
 }
 
 function errText(e: unknown): string {

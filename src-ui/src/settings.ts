@@ -425,11 +425,30 @@ let providersProjection: ProvidersProjection | null = null;
 /** 装配投影口（provider-store 调用一次；boot 期先于一切 provider 消费）。 */
 export function installProvidersProjection(p: ProvidersProjection | null): void {
   providersProjection = p;
+  if (p === null) providersFileReadyCheck = null;
 }
 
 /** 是否已启用文件权威（未装配时按旧语义走 localStorage——测试与降级路径）。 */
 function prefersFileProviders(): boolean {
   return providersProjection !== null;
+}
+
+/** provider-store 注入的第二问：**文件权威确认可用了吗**。
+ *  这是「localStorage 里那份意图副本能不能剥掉」的唯一判据——通道没确认
+ *  （早期调用/旧壳/宿主不支持）就剥 = 把用户唯一的配置来源抹掉（2026-09-23 真机事故的病灶）。 */
+let providersFileReadyCheck: (() => boolean) | null = null;
+
+export function installProvidersFileReadyCheck(fn: (() => boolean) | null): void {
+  providersFileReadyCheck = fn;
+}
+
+function providersFileReadyNow(): boolean {
+  if (!providersProjection || !providersFileReadyCheck) return false;
+  try {
+    return providersFileReadyCheck();
+  } catch {
+    return false;
+  }
 }
 
 function fileProvidersProjection(fallback: ProviderSettings[]): ProviderSettings[] {
@@ -472,17 +491,26 @@ export function saveSettings(s: AppSettings): void {
     // ⚡ 2026-09-24 配方改文件批：provider 的**意图**也一并剥掉（权威在
     // `~/.lantai/providers.yml`）——localStorage 只留运行态读数，否则
     // 「文件已删掉某行、localStorage 还留着」会造出第二份真相。
+    //
+    // ⚠️ 但**只在文件权威确认可用时才剥**（2026-09-23 真机事故）：通道没确认
+    //    （早期调用 / 前端热更跑在旧壳上 / 宿主不支持 providers_dir）就剥，
+    //    等于把用户唯一的配置来源抹掉——盘上没有文件、内存里也没有行。
+    const stripIntent = providersFileReadyNow();
     const sanitized: AppSettings = {
       ...s,
-      providers: s.providers.map(
-        (p) =>
-          ({
-            name: p.name,
-            apiKey: '',
-            ...(p.lastTest !== undefined ? { lastTest: p.lastTest } : {}),
-            ...(p.catalog !== undefined ? { catalog: p.catalog } : {}),
-          }) as ProviderSettings,
-      ),
+      providers: s.providers.map((p) => {
+        if (!stripIntent) {
+          // 文件权威未确认：整行原样留在 localStorage（apiKey 仍然抹空——
+          // 那条纪律与文件通道无关，权威恒在系统凭据库）
+          return (p.apiKey ? { ...p, apiKey: '' } : p) as ProviderSettings;
+        }
+        return {
+          name: p.name,
+          apiKey: '',
+          ...(p.lastTest !== undefined ? { lastTest: p.lastTest } : {}),
+          ...(p.catalog !== undefined ? { catalog: p.catalog } : {}),
+        } as ProviderSettings;
+      }),
     };
     // P0-9：localStorage 配额与会话备份共享，耗尽时 setItem 同步抛——
     // 绝不能让异常冲出（曾打断 handleSave，key 因此未落凭据库）

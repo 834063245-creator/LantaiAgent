@@ -32,7 +32,12 @@ vi.mock('../src/state/agent-config-store', () => ({
 vi.mock('../src/ui/icons', () => ({ iconHtml: () => '' }));
 
 import { SettingsPanel } from '../src/plugins/builtin/settings-domain/SettingsPanel';
-import { bootstrapProvidersDoc, loadProvidersDoc, providersDocStatus } from '../src/provider/providers-store';
+import {
+  __resetProvidersDocForTests,
+  bootstrapProvidersDoc,
+  loadProvidersDoc,
+  providersDocStatus,
+} from '../src/provider/providers-store';
 import { installProvidersProjection, loadSettings, loadSettingsWithSecrets } from '../src/settings';
 
 const STORAGE_KEY = 'hologram_settings';
@@ -78,6 +83,13 @@ function seedStored(rows: StoredRow[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ activeProvider: 'deepseek', providers: rows }));
 }
 
+/** 断掉通道（模拟：壳里还没有 providers_dir / 前端热更跑在旧壳上 / mock 宿主）。 */
+function breakChannel(): void {
+  mockRpc.mockImplementation(async () => {
+    throw new Error('unknown command: providers_dir');
+  });
+}
+
 describe('provider 配置文件通道（写盘一半）', () => {
   beforeEach(() => {
     mockRpc.mockReset();
@@ -85,7 +97,89 @@ describe('provider 配置文件通道（写盘一半）', () => {
     disk.clear();
     localStorage.clear();
     installProvidersProjection(null);
+    // 每组用例各跑一遍真实时序（「通道先坏后好」那组必须从干净模块态开始）
+    __resetProvidersDocForTests();
     wireRpc();
+  });
+
+  // ⚡ 2026-09-23 真机事故回归（用户报「之前配好的供应商也没了」）：
+  // 病灶有两个，缺一不可成灾——
+  //   ① 取路径失败被**缓存**：任何一次早期调用（壳没挂上 RPC / 前端热更跑在旧壳上）
+  //      就把文件权威永久钉死成不可用，此后既不建文件也不迁移；
+  //   ② 那个状态下 saveSettings 仍把 provider 的**意图**从 localStorage 剥掉
+  //      ⇒ 盘上没有文件、内存里也没有行 = 配置凭空消失。
+  it('通道短暂不可用后恢复：不缓存失败，引导仍会建文件并迁移（不丢配置）', async () => {
+    seedStored([
+      {
+        kind: 'openai',
+        name: 'commandcodegoat',
+        apiKey: 'sk-secret',
+        baseUrl: 'https://api.commandcode.ai/provider/v1',
+        model: 'deepseek/deepseek-v4.1-flash',
+        models: ['deepseek/deepseek-v4.1-flash'],
+      },
+    ]);
+    // ① 壳还没挂上 providers_dir 的那一瞬间：读设置（真实引导序里 bootShell 第 0 步
+    //    之前就有别的调用点读它）
+    breakChannel();
+    const early = await loadProvidersDoc();
+    expect(early).toBe(false);
+    expect(providersDocStatus().available).toBe(false);
+
+    // ② 壳热重启完 / 通道就绪 → 引导跑完
+    wireRpc();
+    await bootstrapProvidersDoc();
+
+    expect(providersDocStatus().available).toBe(true);
+    expect(disk.get(DOC_PATH)).toContain('commandcodegoat:');
+    expect(disk.get(DOC_PATH)).toContain('https://api.commandcode.ai/provider/v1');
+    // 行表与密钥都还在（通道恢复后 apiKey 挂回投影）
+    const rows = loadSettings().providers;
+    expect(rows.map((p) => p.name)).toEqual(['commandcodegoat']);
+    expect(rows[0].apiKey).toBe('sk-secret');
+  });
+
+  it('通道不可用时保存设置：绝不剥掉 localStorage 里的意图副本（那是唯一来源）', async () => {
+    seedStored([
+      {
+        kind: 'openai',
+        name: 'opencode',
+        apiKey: '',
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        model: 'deepseek-flash',
+      },
+    ]);
+    breakChannel();
+    await bootstrapProvidersDoc();
+    expect(providersDocStatus().available).toBe(false);
+
+    // 面板此时仍可保存（不阻断用户）——但那份意图必须原样留在本机
+    const { saveSettings } = await import('../src/settings');
+    saveSettings(loadSettings());
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { providers?: StoredRow[] };
+    expect(raw.providers?.[0]?.baseUrl).toBe('https://opencode.ai/zen/go/v1');
+    expect(raw.providers?.[0]?.model).toBe('deepseek-flash');
+  });
+
+  it('文件权威确认可用之后：意图才离开 localStorage（只留运行态读数）', async () => {
+    seedStored([
+      {
+        kind: 'openai',
+        name: 'opencode',
+        apiKey: '',
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        model: 'deepseek-flash',
+      },
+    ]);
+    await bootstrapProvidersDoc();
+    expect(providersDocStatus().available).toBe(true);
+    const { saveSettings } = await import('../src/settings');
+    saveSettings(loadSettings());
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { providers?: StoredRow[] };
+    expect(raw.providers?.[0]).not.toHaveProperty('baseUrl');
+    expect(raw.providers?.[0]?.name).toBe('opencode');
+    // 文件里那份才是权威
+    expect(disk.get(DOC_PATH)).toContain('baseUrl: https://opencode.ai/zen/go/v1');
   });
 
   it('首启迁移：文件为空 ⇒ 把旧存档的 provider 行写成配置文件，此后文件即权威', async () => {
