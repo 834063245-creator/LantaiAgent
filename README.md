@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/seals/seal-zhuwen-orchis.png" width="112" alt="兰台印章" />
+  <img src="assets/hero-banner.jpg" alt="兰台（Lantai）：Agent 工作的空间 —— 来文 · 拟策 · 程文 · 抄录 · 产物" />
 </p>
 
 <p align="center">
@@ -234,4 +234,6 @@ cd src-ui && npm run doc-check           # 文档面门禁
 兰台（Lantai）© 2026 Wenbing Jing — [MIT](LICENSE)。第三方组件版权声明见
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；安全策略见 [SECURITY.md](SECURITY.md)。
 
-[file: D:/HoloGramHG/README.md]
+<p align="center">
+  <img src="assets/seals/seal-zhuwen-orchis.png" width="112" alt="兰台印章" />
+</p>
