@@ -105,7 +105,13 @@ export const VENDOR_TEMPLATES: readonly VendorTemplate[] = [
     vendor: 'opencode',
     kind: 'openai',
     baseUrl: 'https://opencode.ai/zen/go/v1',
-    defaultModel: 'deepseek-v4-flash',
+    // 与 deepseek 模板同源（opencode 复用上游 deepseek 的模型 id，见 catalog.ts
+    // getDefaultModel 的「造最小描述符」分支）：2026-09-18 官方改名（`8b6356bb`）
+    // 只刷了 deepseek 那行，本行留着 legacy id ⇒ 2026-09-23 真机事故：网关对
+    // `deepseek-v4-flash` 回 400（body 只有 `{"object":"error","model":…}`、无原因），
+    // 整轮重试全败；连接改用 `deepseek-flash` 即恢复。
+    // 守护：tests/provider-vendor-templates.test.ts（两模板 defaultModel 同源）。
+    defaultModel: 'deepseek-flash',
     label: 'OpenCode GO',
   },
   {

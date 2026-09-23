@@ -96,6 +96,29 @@ describe('classifyError', () => {
     expect(msg).toContain('[未知错误]');
     expect(msg).toContain('418');
   });
+
+  it('网关点名模型却无原因 → 换模型提示（2026-09-23 事故形态：body 只有 object+model）', () => {
+    const msg = classifyError('opencode', 400, '{"object":"error","model":"deepseek-v4-flash"}');
+    expect(msg).toContain('[未知错误]');
+    expect(msg).toContain('deepseek-v4-flash');
+    expect(msg).toContain('可能已下线或改名');
+    expect(msg).not.toContain('请截图联系开发者');
+  });
+
+  it('body 另有原因文本 → 不叠加换模型提示（宁窄勿宽）', () => {
+    const msg = classifyError('opencode', 400, '{"object":"error","model":"x","error":{"message":"boom"}}');
+    expect(msg).toContain('[未知错误]');
+    expect(msg).toContain('请截图联系开发者');
+    expect(msg).not.toContain('可能已下线或改名');
+  });
+
+  it('非 JSON / 非对象 body 不走该判据且不抛（读边界容忍垃圾响应体）', () => {
+    for (const body of ['not json', 'null', '[1,2]', '{"model":123}', '']) {
+      const msg = classifyError('p', 400, body);
+      expect(msg).toContain('[未知错误]');
+      expect(msg).toContain('请截图联系开发者');
+    }
+  });
 });
 
 describe('classifyStreamError', () => {

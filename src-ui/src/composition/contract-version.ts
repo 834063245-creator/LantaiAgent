@@ -22,9 +22,22 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 44;
+export const OPEN_SURFACE_CONTRACT_VERSION = 45;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v45（2026-09-23）**错误文案与重试判据**（`provider/types.ts`）：`classifyError` 的
+ *  未知分支新增「网关点名了模型、却没给原因」判据（4xx + body 是 JSON 对象且带非空
+ *  string `model` + body 内无任何原因文本）——命中时把 body 里唯一可行动的事实写成
+ *  人话（该模型 id 可能已下线/改名，请在设置里换用当前可用的模型 id），不再只回
+ *  「请截图联系开发者」。**动机（真机事故 2026-09-23）**：opencode GO 对某个模型 id
+ *  回 400，body 只有 `{"object":"error","model":"deepseek-v4-flash"}`（无 message/
+ *  type/code），用户拿到的唯一信息是「请截图联系开发者」。**对外可感知**：第三方
+ *  adapter 只要经 `classifyError` 造文案（本 seam 既有约定）即自动获得该提示；
+ *  判据宁窄勿宽 ⇒ body 另有原因文本的错误文案逐字不变。同批两处文件不入本清单：
+ *  `agent/retry.ts` 的 `isRetryable` 改读 `providerErrorKind`（显式 4xx +
+ *  kind=`auth_or_param` ⇒ 不重试——此前按文案判「[未知错误] 可重试」，同一 400
+ *  每轮白烧 3 次尝试）；`provider/vendor-templates.ts` 的 opencode 默认模型改
+ *  `deepseek-flash`（与 deepseek 模板同源，legacy `deepseek-v4-flash` 被网关拒）。
  *  v44（2026-09-20）**运行看门狗**（landmine L3 拆弹）：`AgentLoopHost` 新增三个成员
  *  ——`stepBoundary(signal): boolean`（步骤边界：记一次脉搏 + 栅栏裁决；返回 false =
  *  本轮已被硬截止作废，loop 必须立刻停步）、`abandonedError(signal): Error`（具名

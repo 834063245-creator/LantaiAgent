@@ -117,7 +117,9 @@ describe('catalog', () => {
   it('getDefaultModel：模板复用他厂 seed id 的厂商（opencode）→ 造描述符对齐模板', () => {
     const model = getDefaultModel('opencode');
     expect(model).toBeDefined();
-    expect(model?.id).toBe('deepseek-v4-flash');
+    // 2026-09-23：随官方改名对齐 deepseek 模板（legacy `deepseek-v4-flash` 被网关拒，
+    // 见 vendor-templates.ts 该行注释 + tests/provider-vendor-templates.test.ts）。
+    expect(model?.id).toBe('deepseek-flash');
     expect(model?.baseUrl).toBe('https://opencode.ai/zen/go/v1');
     expect(model?.kind).toBe('openai');
     expect(model?.vendor).toBe('opencode');

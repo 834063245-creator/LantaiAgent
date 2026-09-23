@@ -3,7 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { backoffDelay, isRetryable, sleepWithAbort } from '../src/agent/retry';
-import { ApiError, apiErrorSummary, errorCodeFromBody, retryAfterSeconds } from '../src/provider/types';
+import { classifyProviderError } from '../src/provider/error-catalog';
+import { ApiError, apiErrorSummary, classifyError, errorCodeFromBody, retryAfterSeconds } from '../src/provider/types';
 
 describe('isRetryable', () => {
   it('retries rate limit errors', () => {
@@ -66,6 +67,34 @@ describe('isRetryable', () => {
   it('retries raw fetch failures', () => {
     const err = new TypeError('Failed to fetch');
     expect(isRetryable(err)).toBe(true);
+  });
+});
+
+// ═══ 结构化永久错：显式 4xx 不重试（2026-09-23 真机事故）═══
+//
+// 事故形态：opencode GO 对模型 id 回 HTTP 400，body 只有
+// `{"object":"error","model":"deepseek-v4-flash"}`（无原因）→ 文案落 [未知错误]
+// → 旧判据只看文案，每轮白烧 3 次尝试。修法 = 读 provider 层已编织的 kind。
+
+describe('isRetryable — 结构化永久错（显式 4xx）', () => {
+  /** 生产管线构造：HTTP 状态 + 响应体 → classifyError 文案 → kind 编织。 */
+  const woven = (status: number, body: string) =>
+    classifyProviderError(new ApiError(classifyError('opencode', status, body), { status, raw: body }), 'opencode');
+
+  it('does NOT retry explicit 4xx with kind=auth_or_param（模型 id 被网关拒的形态）', () => {
+    expect(isRetryable(woven(400, '{"object":"error","model":"deepseek-v4-flash"}'))).toBe(false);
+  });
+
+  it('still retries 429（rate_limited 不得被这条规则吞掉）', () => {
+    expect(isRetryable(woven(429, 'Too Many Requests'))).toBe(true);
+  });
+
+  it('still retries 5xx（transient）', () => {
+    expect(isRetryable(woven(503, 'Internal Server Error'))).toBe(true);
+  });
+
+  it('keeps the self-heal retry for [未知错误] without an explicit status', () => {
+    expect(isRetryable(classifyProviderError(new Error('[未知错误] boom'), 'opencode'))).toBe(true);
   });
 });
 

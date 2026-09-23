@@ -224,6 +224,45 @@ export interface ModelDescriptor {
 
 // ---- 错误分类 ----
 
+/** 「网关点名了模型、却没给任何原因」的判据 —— 成立时返回被点名的模型 id。
+ *
+ *  Why（2026-09-23 真机事故）：opencode GO 对某个模型 id 回 HTTP 400，body 只有
+ *  `{"object":"error","model":"deepseek-v4-flash"}`（无 message/type/code）。
+ *  classifyError 无从分类 ⇒ 用户唯一拿到的信息是「请截图联系开发者」，而真正
+ *  可行动的事实就摆在 body 里：网关拒的是**这个模型 id**（该 id 已改名/下线）。
+ *
+ *  判据宁窄勿宽（三条同时成立才认，不给已有原因的错误叠一层猜测）：
+ *  ① 4xx —— 客户端错才是「你请求里的东西我不吃」，5xx/网络故障与模型无关；
+ *  ② body 是 JSON 对象且带非空 string `model`；
+ *  ③ body 里没有任何原因文本（message/detail/code/type 一族全空）。
+ *  body 非 JSON / 值类型不对一律判否（读边界容忍垃圾响应体）。 */
+function reasonlessModelRejection(status: number, body: string): string | undefined {
+  if (status < 400 || status >= 500) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  const top = parsed as Record<string, unknown>;
+  const err = top.error && typeof top.error === 'object' ? (top.error as Record<string, unknown>) : undefined;
+  const model = typeof top.model === 'string' && top.model ? top.model : undefined;
+  if (!model) return undefined;
+  const reasons = [
+    err?.message,
+    err?.code,
+    err?.type,
+    top.message,
+    top.detail,
+    top.reason,
+    typeof top.error === 'string' ? top.error : undefined,
+    top.code,
+    top.type,
+  ];
+  return reasons.some((r) => typeof r === 'string' && r.length > 0) ? undefined : model;
+}
+
 /** 把 raw error 映射成人能看懂的分类和操作建议。 */
 export function classifyError(name: string, status: number, body: string, fetchErr?: string): string {
   const b = body.toLowerCase();
@@ -270,7 +309,12 @@ export function classifyError(name: string, status: number, body: string, fetchE
 
   // 未知
   const snippet = body.slice(0, 300) || `HTTP ${status}`;
-  return `[未知错误] "${name}" 返回了意外错误 (${status})：${snippet}。如不确定原因，请截图联系开发者。`;
+  // 网关拒了模型却没给原因 → 把 body 里唯一可行动的事实翻译成人话（判据见上方）。
+  const rejected = reasonlessModelRejection(status, body);
+  const tail = rejected
+    ? `网关只回了模型名「${rejected}」、没给原因——该模型 id 可能已下线或改名，请在设置里换用当前可用的模型 id 后重试。`
+    : '如不确定原因，请截图联系开发者。';
+  return `[未知错误] "${name}" 返回了意外错误 (${status})：${snippet}。${tail}`;
 }
 
 /**

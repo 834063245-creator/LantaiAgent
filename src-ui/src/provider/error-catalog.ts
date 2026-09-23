@@ -15,7 +15,9 @@
 // OpenAI 的配额耗尽（insufficient_quota）伴随 429 到达，与厂商限流同语义退避。
 //
 // 未知错误保守归 auth_or_param（不重试）——与现行 sendWithRetry「只重试已知
-// 可重试状态」一致；agent 层 isRetryable 对 [未知错误] 仍保留一次自愈重试。
+// 可重试状态」一致；agent 层 isRetryable 只对**无显式 status** 的 [未知错误]
+// 保留自愈重试（显式 4xx 由 agent/retry.ts 读本模块的 kind 判永久——2026-09-23
+// 事故：400 白烧 3 次尝试）。
 
 import { ApiError, classifyStreamError } from './types';
 
@@ -123,7 +125,7 @@ function classifyKind(status: number | undefined, code: string | undefined, text
   }
   if (includesAny(text, TRANSIENT_MARKERS)) return 'transient';
 
-  // 5) 未知——保守不重试（agent 层 isRetryable 对 [未知错误] 保留一次自愈）
+  // 5) 未知——保守不重试（agent 层 isRetryable 只对无显式 status 的 [未知错误] 自愈重试）
   return 'auth_or_param';
 }
 

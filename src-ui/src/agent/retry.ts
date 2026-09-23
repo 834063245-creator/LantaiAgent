@@ -4,6 +4,8 @@
 // API retry — error classification + exponential backoff
 // CC ref: services/api/errors.ts:1163-1182, withRetry.ts
 
+import { providerErrorKind } from '../provider/error-catalog';
+
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 16000;
@@ -89,6 +91,25 @@ export function withinRetryBudget(
   return isStallError(err) ? elapsedMs < STALL_RETRY_BUDGET_MS : attempt < MAX_RETRIES;
 }
 
+/** 结构化永久错：provider 层已判 `auth_or_param` 且 HTTP 状态是**显式 4xx**。
+ *
+ *  Why（2026-09-23 真机事故）：opencode GO 对某个模型 id 回 HTTP 400，body 只有
+ *  `{"object":"error","model":"deepseek-v4-flash"}`（无原因）⇒ classifyError 落
+ *  「[未知错误]」⇒ 本文件的文案判据（下面的 `[未知错误]` 分支）认它可重试 ⇒
+ *  每轮白烧 3 次尝试（两轮 6 次请求、用户等 15 秒拿同一个 400）。
+ *  provider 层（error-catalog.ts 的 `AUTH_OR_PARAM_STATUSES`）早已把 4xx 判成永久错、
+ *  `sendWithRetry` 也据此不重试——但那个判据只躺在 `err.kind` 上没人读。
+ *  此处读结构化字段，不再靠文案猜：显式 4xx 是客户端错，重发同一个请求不会自愈。
+ *
+ *  边界（刻意保守）：只认「kind = auth_or_param 且有显式 4xx status」——
+ *  无 status 的 [未知错误]（流内错误 / 普通 Error）与 429（rate_limited）、
+ *  5xx（transient）、context_overflow 一律不受影响，自愈重试照旧。 */
+function isPermanentProviderError(err: Error): boolean {
+  const status = (err as { status?: unknown }).status;
+  if (typeof status !== 'number' || status < 400 || status >= 500) return false;
+  return providerErrorKind(err) === 'auth_or_param';
+}
+
 /** Check if an error is worth retrying. */
 export function isRetryable(err: Error): boolean {
   const msg = err.message || String(err);
@@ -99,6 +120,9 @@ export function isRetryable(err: Error): boolean {
   // `signal.aborted` 这一事实判定（agent.streamOnce / chat-core 的 catch），
   // 不靠消息文本。
   if (err.name === 'AbortError' || msg.includes('[已取消]')) return false;
+
+  // 结构化永久错（显式 4xx）→ 不重试（判据与 Why 见 isPermanentProviderError）
+  if (isPermanentProviderError(err)) return false;
 
   // Auth / permissions → don't retry (won't fix itself)
   if (
@@ -127,7 +151,7 @@ export function isRetryable(err: Error): boolean {
   // 模型流空闲超时 — 长时间无 chunk 的瞬态挂起，值得重试
   if (msg.includes('[响应超时]')) return true;
 
-  // Unknown errors → retry once (might be transient)
+  // Unknown errors → self-heal retry (might be transient)；显式 4xx 已在上方拦下
   if (msg.includes('[未知错误]')) return true;
 
   // Catch-all: raw fetch errors (network flakes)

@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：44
+当前版本：45
 
-<!-- contract-fingerprint: e84d67ce951e43804596f37a12c310e0bae8ecf085e1425808f7dd4f8c253ab4 -->
+<!-- contract-fingerprint: e089be71cf87d63a726f4ad001a62300b1fe99761bc0778343546dd7c256a90d -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -99,6 +99,8 @@
 | 43 | 2026-09-20 | **运行态收口（run-state single source）**：`AgentLoopHost` 去掉 `isRunning`（get/set 一对）——「这卷/这轮在不在跑」的唯一事实改为**运行账**（`agent/execution-state.ts` 的 RunRecord 表；`Agent.isRunning` 派生自它，UI 全域读 `agentSessionState.runStateOf` / `runningSessions`）。同版 `default-loop` 不再写 `host.isRunning`，并把「本轮结束时 inbox 还有未注入消息 ⇒ 补唤醒」上移到 `Agent.run()` 的 finally（在运行记录注销**之后**——原先在 loop 的 finally 里 queueMicrotask，新轮会在旧记录还活着时被叫醒，正是「旧轮收尾清掉新轮」那一族的温床）。运行账 API 破坏性变更：`start()` / `done(runSignal?)` / `stop()` / `forceReset()` 退役，改为 `beginRun(kind)` → `RunHandle{signal,end}`（**谁起谁收、按记录身份注销**——「清掉别人的运行」在类型上不可能）/ `runFor(signal)` / `stopAll()` / `discardRuns(ids)`；`isRunning` 变只读派生值，新增 `runState`（running/kinds/count/since）与 `runEpoch`。装配面新增 `agentSessionState.bindExec`（账是**卷级恒定**的那一本：装配只绑定、绝不换账——换账 = 在跑的记录被孤儿化 = 「会话在跑而 UI 说空闲」）。**对外可感知**：第三方 loop 写 `host.isRunning` 变 no-op（给宿主对象挂无主属性），读该字段需改读运行账；第三方若直接持有 `ExecStateInstance`，旧四个方法不再存在。**事件序列与载荷零变更**（convergence 双轨零漂移） | 用户 2026-09-20 拍板 B 案（「代码层面有质量问题、总是复发」→ 结构性收口 + 基线变更授权）；病象与四次同族修复（`994c4c4d`/`32bc8dd4`/`b67ac7e8`/`54981624`）见 `docs/landmine-map.md` 与 `tests/run-state-ledger.test.ts` 头注 |
 
 | 44 | 2026-09-20 | **运行看门狗（landmine L3 拆弹：不认 signal 的 await 不再永久挂起）**：`AgentLoopHost` 新增三个成员——`stepBoundary(signal): boolean`（步骤边界：记一次「无进展」脉搏 + 栅栏裁决；返回 `false` = 本轮已被硬截止作废，loop 必须立刻停步）、`abandonedError(signal): Error`（具名 `RunDeadlineExceededError`，调用方按**类型**落墓碑）、`isAbandoned(signal): boolean`（栅栏纯读法，给「不该再产生新事实」的写入点用）。同版 `events.ts` 新增 emit 域事件 **`run/abandoned`**（`RunAbandonedPayload{agentId,runId,kind,noProgressMs,lastPulse}`）——被作废的那一轮**不会**再有正常收尾，故作废事实单独成事件。**动机**：模型请求链上唯一的活性守卫是 `provider/idle-stream.ts` 的 30s 空闲计时器，而它只 abort 一个 controller——等待方不认 signal（本机 IPC / 凭据解析 / 吞掉 abort 的适配器与 SSE 读）时 `for await` 永不返回 ⇒ 连「停滞错误」都产不出来 ⇒ `provider/retry.ts` 的 15 分钟停滞预算永不生效 ⇒ `agent.run()` 永不 settle（停止钮无效；v43 之后症状变成「幽灵轮」——账注销了、那条 loop 永留栈上）。同版 `Agent.run()` 把 `runLoop` 与**硬截止**和**signal 中止**竞速：无进展 20min → 作废该轮（栅栏 → abort → 具名错误 settle；迟到 chunk / 迟到工具结果只留审计、不进投影；不补唤醒）；用户停止 → 同一竞速立刻 settle（停止因此**真解旋**，`_loopDepth` 归零）。**对外可感知**：第三方 loop 不调 `stepBoundary` 照旧跑（该轮脉搏少一路，误判方向是「更晚作废」而非误杀慢模型）；想区分「被作废」与「用户停止」读 `host.isAbandoned(signal)`。阈值参数**不扩 `AgentConfig`**（23 字段冻结），走 `agent/run-watchdog.ts` 的常量 + 注入面 | `docs/landmine-map.md` 第四批 L3（复现钉 `tests/landmine-l3-hang.test.ts` 两条 `it.fails` 按原文件交代改写为正向断言）；参数默认（无进展 warn 5min / abandon 20min、绝对上限不设）沿用户 2026-09-20 批注的推荐项 |
+
+| 45 | 2026-09-23 | **错误文案与重试判据（网关拒模型却不给原因）**：`classifyError` 的未知分支新增判据——4xx + body 是 JSON 对象且带非空 string `model` + body 内没有任何原因文本（`message`/`detail`/`code`/`type` 一族全空）三条同时成立时，把 body 里唯一可行动的事实写成一句人话（「网关只回了模型名「X」、没给原因——该模型 id 可能已下线或改名，请在设置里换用当前可用的模型 id 后重试」），不再只回「请截图联系开发者」。判据刻意宁窄勿宽：body 另有原因文本、非 JSON、`model` 非字符串、5xx 一律不命中，既有文案逐字不变；解析失败不抛（读边界容忍垃圾响应体）。**动机（真机事故 2026-09-23）**：opencode GO 对模型 id `deepseek-v4-flash` 回 HTTP 400，body 只有 `{"object":"error","model":"deepseek-v4-flash"}`（无 message/type/code）——用户唯一拿到的信息是「请截图联系开发者」，而可行动的事实（网关拒的是这个模型 id）就摆在 body 里。同批两处不入本清单：`agent/retry.ts` 的 `isRetryable` 改读 `providerErrorKind`（显式 4xx + kind=`auth_or_param` ⇒ 不重试；此前按文案判「[未知错误] 可重试」⇒ 同一个 400 每轮白烧 3 次尝试），`provider/vendor-templates.ts` 的 opencode 默认模型 legacy `deepseek-v4-flash` → `deepseek-flash`（与 deepseek 模板同源） | 2026-09-23 真机事故：会话 34 两次轮次 400×3 全败（14:26:53 / 14:29:32），连接改用 `deepseek-flash` 即恢复；取证与排除项见当日排查记录 |
 
 
 1. 改契约文件（接口形状 / 注册契约 / 事件载荷 / manifest schema）；

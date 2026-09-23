@@ -60,6 +60,14 @@ describe('vendor-templates', () => {
     expect(t?.defaultModel).toBeUndefined();
   });
 
+  it('opencode 与 deepseek 模板 defaultModel 同源（复用上游 id 空间，不得一边刷新一边留 legacy）', () => {
+    // 2026-09-23 真机事故：deepseek 行随官方改名（`8b6356bb`）刷成 deepseek-flash，
+    // opencode 行漏刷、留着 legacy `deepseek-v4-flash` ⇒ 新建 opencode 连接拿到
+    // 被网关拒的模型 id（HTTP 400，body 无原因），整轮重试全败。
+    expect(findVendorTemplate('opencode')?.defaultModel).toBe('deepseek-flash');
+    expect(findVendorTemplate('opencode')?.defaultModel).toBe(findVendorTemplate('deepseek')?.defaultModel);
+  });
+
   it('未知厂商 findVendorTemplate 返回 undefined', () => {
     expect(findVendorTemplate('nonexistent')).toBeUndefined();
   });
