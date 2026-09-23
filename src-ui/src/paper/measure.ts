@@ -35,7 +35,7 @@ import {
 } from './markdown';
 import { parseCircledSegments } from './marks';
 import { codeDisplay, hasArgsToShow, hasPayloadToShow, toolDisplay } from './tool-text';
-import { viewerClassOf } from './viewer-exts';
+import { VIEWER_BOX_CLASSES, viewerClassOf } from './viewer-exts';
 
 /* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
  * 2026-09-10 三体换代：宋/楷/等宽退役，三栈统一 MiSans（文类语义键 song/kai/mono
@@ -291,6 +291,7 @@ const VIEWER_LABEL_H = ASSET_DERIVED.viewerLabelH; // .pp-viewer-label + margin-
 const VIEWER_AUDIO_BOX_H = ASSET_DERIVED.viewerAudioBoxH; // .pp-viewer-audio-el 固定盒高
 const VIEWER_AUDIO_META_H = ASSET_DERIVED.viewerAudioMetaH; // .pp-viewer-audio gap 2 + 读数行
 const VIEWER_CODE_BOX_H = ASSET_DERIVED.viewerCodeBoxH; // .pp-viewer-code max-height 上限
+const VIEWER_BOX_H = ASSET_DERIVED.viewerBoxH; // B7-B13 盒高类共用上限（表格/树/归档/字体/化学/地理/字幕/邮件）
 const MEDIA_IMG_MAX_H = ASSET_DERIVED.mediaImgMaxH; // .pp-media-img max-height
 const MEDIA_ROW_H = ASSET_DERIVED.mediaRowSize * 1.8; // .pp-media-file 行（行距继承 1.8）
 
@@ -560,7 +561,8 @@ function viewerBodyH(p: { ext?: unknown; filePath?: unknown }): number {
   const hasPath = typeof p.filePath === 'string' && p.filePath.length > 0;
   const head = VIEWER_PAD_V + PLATE_HEAD_H + VIEWER_LABEL_H;
   if (!hasPath) return head + MEDIA_ROW_H;
-  switch (viewerClassOf(ext)) {
+  const cls = viewerClassOf(ext);
+  switch (cls) {
     case 'image':
       return head + 2 + MEDIA_IMG_MAX_H;
     case 'audio':
@@ -568,7 +570,9 @@ function viewerBodyH(p: { ext?: unknown; filePath?: unknown }): number {
     case 'code':
       return head + VIEWER_CODE_BOX_H;
     default:
-      return head + MEDIA_ROW_H;
+      // 盒高类（B7-B13：表格/树/归档/字体/化学/地理/字幕/邮件）共用一档保守上限；
+      // 未认领的 ext 走兜底查看器（hex/文本嗅探）——那档无法静态预估，按文件行 + RO 收敛
+      return cls && VIEWER_BOX_CLASSES.includes(cls) ? head + VIEWER_BOX_H : head + MEDIA_ROW_H;
   }
 }
 

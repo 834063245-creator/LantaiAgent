@@ -42,10 +42,11 @@
   {
     "dir": "renderers",
     "buildOrder": 5,
-    "description": "资产表现原语渲染器（grid/chart/metric/media/graph/tree/html/form；P1 插件通道化——禁用 = 资产块走 JSON 兜底）",
+    "description": "资产表现原语渲染器（grid/chart/metric/media/graph/tree/html/form；P1 插件通道化——禁用 = 资产块走 JSON 兜底）+ 资产文件查看器（P1 起面产物：自带 viewers/*.css）",
     "entry": "index.tsx",
     "hostModule": "renderer-host",
     "inject": ["renderers"],
+    "face": true,
     "define": {
       "globalThis.__LANTAI_RENDERER_ROW_PREFIX__": "\"plugin/hologram/renderers\""
     }

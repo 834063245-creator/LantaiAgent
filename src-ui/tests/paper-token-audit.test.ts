@@ -3,7 +3,7 @@
 // 到 .pp-root 的 inline style——CSS 引用任何不存在的键 = 该属性静默失效（悬空），
 // 且永远不报错。本测试钉死「CSS 引用的每个 token 都有注入源」。
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ASSET_TOKENS, CHROME_TOKENS, injectPaperTokens } from '../src/paper/type-tokens';
@@ -37,15 +37,27 @@ const COMPONENT_PRIVATE = new Set([
   '--pp-chart-c5',
 ]);
 
-/** 读取纸面全部 CSS（PaperPanel + ToastHost）的 var(--pp-*) 引用键。 */
+/** 读取纸面全部 CSS（PaperPanel + ToastHost + 查看器各自的 CSS）的 var(--pp-*) 引用键。
+ *  P1 起查看器样式落 `plugins/builtin/renderers/viewers/*.css`（一件一文件——查看器自带
+ *  内部样式），故扫描面跟到那里：token 悬空与裸色值两条守卫都要覆盖到。 */
+const VIEWERS_CSS_DIR = resolve(__dirname, '../src/plugins/builtin/renderers/viewers');
+
+function viewerCssFiles(): string[] {
+  if (!existsSync(VIEWERS_CSS_DIR)) return [];
+  return readdirSync(VIEWERS_CSS_DIR)
+    .filter((f) => f.endsWith('.css'))
+    .map((f) => resolve(VIEWERS_CSS_DIR, f));
+}
+
 function usedTokenKeys(): Set<string> {
   const keys = new Set<string>();
   const files = [
-    '../src/plugins/builtin/paper-shell/PaperPanel.css',
-    '../src/plugins/builtin/paper-shell/ToastHost.css',
+    resolve(__dirname, '../src/plugins/builtin/paper-shell/PaperPanel.css'),
+    resolve(__dirname, '../src/plugins/builtin/paper-shell/ToastHost.css'),
+    ...viewerCssFiles(),
   ];
   for (const f of files) {
-    const css = readFileSync(resolve(__dirname, f), 'utf8');
+    const css = readFileSync(f, 'utf8');
     for (const m of css.matchAll(/var\((--pp-[a-z0-9-]+)\)/g)) keys.add(m[1]);
   }
   return keys;
@@ -99,5 +111,27 @@ describe('paper token 注入键集审计', () => {
     // px 键仍带单位（防把整个注入裸化的反向事故）；math 系数豁免不变
     expect(injected.get('--pp-md-tableSize')).toBe('11.5px');
     expect(injected.get('--pp-md-mathSizeRatio')).toBe('1.06');
+  });
+
+  it('查看器自带 CSS（P1：viewers/*.css）不出现裸色值——墨/纸/线全走 token', () => {
+    const files = viewerCssFiles();
+    expect(files.length, '一个查看器 CSS 都没有 = 扫描面失灵').toBeGreaterThan(0);
+    const offenders: string[] = [];
+    for (const f of files) {
+      const stripped = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const chunk of stripped.split('}')) {
+        const at = chunk.lastIndexOf('{');
+        if (at < 0) continue;
+        const selector = chunk.slice(0, at).trim();
+        for (const raw of chunk.slice(at + 1).split(';')) {
+          const d = raw.trim();
+          if (!/^(color|background|border|box-shadow|fill|stroke|outline)/.test(d)) continue;
+          if (/#[0-9a-fA-F]{3,8}\b/.test(d) || /\b(rgba?|hsla?|oklch)\(/.test(d.replace(/color-mix\(in oklch,/g, ''))) {
+            offenders.push(`${f.split(/[\\/]/).pop()} → ${selector} { ${d} }`);
+          }
+        }
+      }
+    }
+    expect(offenders, `查看器 CSS 出现裸色值（应走 token）：\n${offenders.join('\n')}`).toEqual([]);
   });
 });

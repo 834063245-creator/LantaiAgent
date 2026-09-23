@@ -297,6 +297,7 @@ export const ASSET_TOKENS = {
     audioBoxH: 54,
     metaSize: 11,
     codeBoxH: 320,
+    boxH: 320,
     codePadV: 6,
     codePadH: 12,
     codeGutterPadH: 10,
@@ -522,6 +523,7 @@ export const ASSET_DERIVED = {
   viewerAudioBoxH: ASSET_TOKENS.viewer.audioBoxH, // .pp-viewer-audio-el 固定盒高
   viewerAudioMetaH: 2 + ASSET_TOKENS.viewer.metaSize * 1.8, // .pp-viewer-audio flex gap 2 + 读数行
   viewerCodeBoxH: ASSET_TOKENS.viewer.codeBoxH, // .pp-viewer-code max-height 上限（保守镜像）
+  viewerBoxH: ASSET_TOKENS.viewer.boxH, // B7-B13 盒高类共用上限（同一条保守纪律）
 
   /** 图版题签行总高（严格等于原题注行高：题注字号行高 + 题注下距；题签行内部
    *  把该下距拆成「下内距 + 1px 规线 + 规线下间距」⇒ 换装不动测高）。 */

@@ -1046,45 +1046,54 @@ function MediaBody({ block }: BlockRendererProps) {
   const label = p.label || p.fileId || p.filePath || '文件';
   const ext = normalizeExt(p.ext ?? '');
   const filePath = p.filePath;
-  const def = viewerRegistry.resolve(ext);
+  // 认领命中优先；未命中交兜底查看器（B8：hex/文本嗅探）——再没有才落文件壳
+  const def = viewerRegistry.resolve(ext) ?? viewerRegistry.catchAll();
   // 只有需要字节的查看器才读文件内容；文件壳/只看元数据的查看器不浪费一次 RPC
   const needsBytes = Boolean(def?.needsBytes && filePath);
   const textMode = needsBytes && def?.bytesKind === 'text';
-  const binMode = needsBytes && !textMode;
-  const text = useTextData(textMode ? filePath : undefined, textMode ? def?.readLines : undefined);
+  // auto（兜底查看器）：先文本窗口（有界、无 base64 膨胀），文本读失败才付二进制代价
+  const autoMode = needsBytes && def?.bytesKind === 'auto';
+  const autoText = useTextData(
+    textMode || autoMode ? filePath : undefined,
+    textMode || autoMode ? def?.readLines : undefined,
+  );
+  const textFallback = autoMode && autoText.status === 'error';
+  const binMode = needsBytes && !textMode && (!autoMode || textFallback);
+  const text = autoText;
   const loaded = useMediaData(binMode ? filePath : undefined);
   const [overlayOpen, setOverlayOpen] = useState(false);
 
   const base64 = loaded.status === 'ready' ? loaded.data : '';
-  const mime = def?.mimes?.[ext];
+  // 兜底查看器接任意扩展名 ⇒ 缺 MIME 按二进制兜（它本来就要看原始字节）
+  const mime = def?.mimes?.[ext] ?? (def?.catchAll ? 'application/octet-stream' : undefined);
   const binBytes: ViewerBytes | undefined =
     base64 && mime ? { kind: 'data-uri', value: `data:${mime};base64,${base64}` } : undefined;
-  const textBytes: ViewerBytes | undefined = text.status === 'ready' ? { kind: 'text', value: text.data } : undefined;
-  const bytes = textMode ? textBytes : binBytes;
-  // base64 字符数 → 原始字节数（4 字符表 3 字节）；上限判定按原始字节，不按字符串长。
-  // 文本路径按**窗口字符数**（近似——多字节字符下字符数 < 字节数，文案里如实说「约」）。
-  const size = textMode
-    ? text.status === 'ready'
-      ? text.data.length
-      : 0
-    : base64
-      ? Math.floor((base64.length * 3) / 4)
-      : 0;
-  const limit = def?.maxBytes ?? 0;
-  const approx = textMode ? '约 ' : '';
-
-  const shell = <FileShell ext={ext} filePath={filePath} />;
-  let body: ReactNode;
-  if (!def || (def.needsBytes && !filePath)) {
-    body = shell; // 未命中查看器 / 无路径可读：文件壳（B1 前行为，零变化）
-  } else if (needsBytes && (textMode ? text.status : loaded.status) !== 'ready') {
-    const failure = textMode
+  /** 文本窗口成功 = 用文本（auto 形态下这是**首选**路径：有界、无 base64 膨胀） */
+  const usingText = (textMode || autoMode) && text.status === 'ready';
+  const textBytes: ViewerBytes | undefined = usingText ? { kind: 'text', value: text.data } : undefined;
+  const bytes = usingText ? textBytes : binBytes;
+  // 就绪判据 / 失败文案：文本路径就绪即就绪；auto 转二进制后看二进制那路
+  const ready = usingText || loaded.status === 'ready';
+  const failure = usingText
+    ? null
+    : textMode || (autoMode && !textFallback)
       ? text.status === 'error'
         ? text.error
         : null
       : loaded.status === 'error'
         ? loaded.error
         : null;
+  // base64 字符数 → 原始字节数（4 字符表 3 字节）；上限判定按原始字节，不按字符串长。
+  // 文本路径按**窗口字符数**（近似——多字节字符下字符数 < 字节数，文案里如实说「约」）。
+  const size = usingText ? text.data.length : base64 ? Math.floor((base64.length * 3) / 4) : 0;
+  const limit = def?.maxBytes ?? 0;
+  const approx = usingText ? '约 ' : '';
+
+  const shell = <FileShell ext={ext} filePath={filePath} />;
+  let body: ReactNode;
+  if (!def || (def.needsBytes && !filePath)) {
+    body = shell; // 未命中查看器 / 无路径可读：文件壳（B1 前行为，零变化）
+  } else if (needsBytes && !ready) {
     body = failure ? (
       <div className="pp-media-loading">读取失败：{failure}</div>
     ) : (

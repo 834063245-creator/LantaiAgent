@@ -1,0 +1,29 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+   SPDX-License-Identifier: MIT
+
+   归档查看器样式（P1）——颜色全走 token（有裸色值守卫）。 */
+
+.pp-viewer-archive-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-1);
+}
+.pp-viewer-archive-table td {
+  padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-viewer-codePadH);
+  border-bottom: var(--pp-asset-grid-rowBorder) solid var(--rule-soft-ink);
+  vertical-align: top;
+}
+.pp-viewer-archive-name {
+  word-break: break-all;
+}
+.pp-viewer-archive-kind {
+  color: var(--indigo);
+  white-space: nowrap;
+}
+.pp-viewer-archive-size {
+  color: var(--ink-3);
+  white-space: nowrap;
+  text-align: right;
+}

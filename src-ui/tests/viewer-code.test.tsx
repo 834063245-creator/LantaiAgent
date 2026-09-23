@@ -70,23 +70,23 @@ describe('代码查看器 · 认领面（B2）', () => {
     }
   });
 
-  it('留给后续批次的扩展名**不被**本批抢占（json/yaml/xml/toml/csv/tsv/md/ipynb/srt/eml）', () => {
+  it('留给后续包（P2/P3）的扩展名**不被**本包抢占：pdf / office / 3D / epub / ipynb / md', () => {
     for (const ext of [
-      'json',
-      'jsonl',
-      'yaml',
-      'yml',
-      'toml',
-      'xml',
-      'csv',
-      'tsv',
-      'md',
+      'pdf',
+      'docx',
+      'xlsx',
+      'pptx',
+      'doc',
+      'xls',
+      'ppt',
+      'epub',
       'ipynb',
-      'srt',
-      'vtt',
-      'eml',
+      'md',
+      'glb',
+      'gltf',
+      'stl',
     ]) {
-      expect(viewerRegistry.resolve(ext), `${ext} 应留给后续批次（B7/B11/B13/B14）`).toBeUndefined();
+      expect(viewerRegistry.resolve(ext), `${ext} 应留给后续包（P2/P3）`).toBeUndefined();
     }
   });
 });

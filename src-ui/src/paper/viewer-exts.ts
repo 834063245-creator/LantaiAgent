@@ -95,8 +95,62 @@ export const VIEWER_CODE_EXTS: readonly string[] = [
   'log',
 ];
 
+/** 表格数据（B7：csv/tsv —— 复用 `grid` 原语；分页/截断横幅在查看器内）。 */
+export const VIEWER_TABLE_EXTS: readonly string[] = ['csv', 'tsv'];
+
+/** 结构化数据树（B7：json/jsonl/yaml/toml/xml —— 折叠树；jsonl 逐行独立根）。 */
+export const VIEWER_TREE_EXTS: readonly string[] = ['json', 'jsonl', 'yaml', 'yml', 'toml', 'xml'];
+
+/** 归档（B8：**只列目录不解压**；7z 需引库 ⇒ 本包不做，见施工单 §11）。 */
+export const VIEWER_ARCHIVE_EXTS: readonly string[] = ['zip', 'tar', 'gz'];
+
+/** 字体（B10：字形样本 + `@font-face` 动态装载）。 */
+export const VIEWER_FONT_EXTS: readonly string[] = ['ttf', 'otf', 'woff', 'woff2'];
+
+/** 化学结构文件（B12：mol/sdf/pdb —— molfile 自带 2D 坐标，自绘原子/键）。 */
+export const VIEWER_CHEM_EXTS: readonly string[] = ['mol', 'sdf', 'pdb'];
+
+/** 地理数据（B12：外边界 + 要素点简图，不做投影完整实现）。 */
+export const VIEWER_GEO_EXTS: readonly string[] = ['geojson', 'kml'];
+
+/** 字幕（B13：时间轴表 + 时长读数）。 */
+export const VIEWER_SUBTITLE_EXTS: readonly string[] = ['srt', 'vtt'];
+
+/** 邮件（B13：头字段 + 正文 + 附件列表；附件本身走各自查看器）。 */
+export const VIEWER_MAIL_EXTS: readonly string[] = ['eml'];
+
+/** 兜底查看器（B8：**未认领的扩展名**不再落文件壳）——`hex` 是 catch-all，无认领表：
+ *  读字节后先嗅探（可打印 UTF-8 → 文本视图；否则 → hex 视图），两条都带「未认领」横幅。 */
+export const VIEWER_CATCHALL_ID = 'hex';
+
+/** 盒高类（B7-B13 的查看器共用一档盒高：静态测高取上限**保守**，挂载后 RO 收敛——
+ *  与图片「保守占满上限」、代码「max-height 上限」同一条纪律；将来某类要单独调高，
+ *  在 measure 的 `VIEWER_BOX_H` 分支按类给值即可）。 */
+export const VIEWER_BOX_CLASSES: readonly ViewerExtClass[] = [
+  'table',
+  'tree',
+  'archive',
+  'font',
+  'chem',
+  'geo',
+  'subtitle',
+  'mail',
+];
+
 /** 查看器分类（= 测高按类给档的键）。 */
-export type ViewerExtClass = 'image' | 'video' | 'audio' | 'code';
+export type ViewerExtClass =
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'code'
+  | 'table'
+  | 'tree'
+  | 'archive'
+  | 'font'
+  | 'chem'
+  | 'geo'
+  | 'subtitle'
+  | 'mail';
 
 /** 类 → 扩展名表（表序 = 类序，取用时按需）。 */
 export const VIEWER_EXTS_BY_CLASS: Readonly<Record<ViewerExtClass, readonly string[]>> = {
@@ -104,6 +158,14 @@ export const VIEWER_EXTS_BY_CLASS: Readonly<Record<ViewerExtClass, readonly stri
   video: VIEWER_VIDEO_EXTS,
   audio: VIEWER_AUDIO_EXTS,
   code: VIEWER_CODE_EXTS,
+  table: VIEWER_TABLE_EXTS,
+  tree: VIEWER_TREE_EXTS,
+  archive: VIEWER_ARCHIVE_EXTS,
+  font: VIEWER_FONT_EXTS,
+  chem: VIEWER_CHEM_EXTS,
+  geo: VIEWER_GEO_EXTS,
+  subtitle: VIEWER_SUBTITLE_EXTS,
+  mail: VIEWER_MAIL_EXTS,
 };
 
 /** ext → 类（小写无点；未认领 = undefined → 宿主走文件壳）。模块装载期一次建表。 */

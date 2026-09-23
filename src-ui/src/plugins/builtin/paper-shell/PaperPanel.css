@@ -5495,6 +5495,32 @@
   font-size: var(--pp-asset-viewer-metaSize);
   color: var(--ink-3);
 }
+/* 盒高类查看器共用容器（P1：表格/树/归档/字体/化学/地理/字幕/邮件）——
+   上限盒 + 内部滚动（静态测高取上限保守，挂载后 RO 收敛）；提示行吸顶。 */
+.pp-viewer-box {
+  max-height: var(--pp-asset-viewer-boxH);
+  overflow: auto;
+  padding: var(--pp-asset-viewer-codePadV) 0;
+  background: color-mix(in oklch, var(--paper-deep) 30%, var(--paper));
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--ink-1);
+}
+.pp-viewer-note {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  background: inherit;
+  color: var(--seal-deep);
+  white-space: pre-wrap;
+}
+.pp-viewer-empty {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
 .pp-media-img {
   max-width: 100%;
   max-height: var(--pp-asset-media-imgMaxH);

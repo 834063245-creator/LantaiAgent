@@ -1,0 +1,63 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+   SPDX-License-Identifier: MIT
+
+   兜底（hex / 文本嗅探）查看器样式（P1）——颜色全走 token（有裸色值守卫）。 */
+
+.pp-viewer-hex-text {
+  display: flex;
+  align-items: stretch;
+}
+.pp-viewer-hex-gutter {
+  position: sticky;
+  left: 0;
+  padding-right: var(--pp-asset-viewer-codeGutterPadH);
+  background: inherit;
+  color: var(--ink-3);
+  text-align: right;
+  white-space: pre;
+  user-select: none;
+}
+.pp-viewer-hex-pre {
+  margin: 0;
+  padding-right: var(--pp-asset-viewer-codePadH);
+  white-space: pre;
+}
+.pp-viewer-hex-pre code {
+  font: inherit;
+}
+.pp-viewer-hex-nav {
+  display: flex;
+  gap: 8px;
+  padding: 0 var(--pp-asset-viewer-codePadH) var(--pp-asset-viewer-codePadV);
+}
+.pp-viewer-hex-nav button {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.pp-viewer-hex-nav button:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+.pp-viewer-hex-table {
+  border-collapse: collapse;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-1);
+}
+.pp-viewer-hex-table td {
+  padding: 0 var(--pp-asset-viewer-codeGutterPadH);
+  white-space: pre;
+}
+.pp-viewer-hex-offset {
+  color: var(--ink-3);
+}
+.pp-viewer-hex-bytes {
+  color: var(--ink-1);
+}
+.pp-viewer-hex-ascii {
+  color: var(--graphite);
+}

@@ -22,6 +22,7 @@
 // 构建产物自包含（零裸 import）。
 
 import type { Context } from '../../../cordis';
+import { injectFaceArtifactCss } from '../face-css';
 import { type AssetRendererKind, assetRendererComponents } from './components';
 
 /** 行 id 前缀：bundle 域 'builtin'；产物域经 esbuild define 把
@@ -40,6 +41,9 @@ export const builtinRenderersPlugin = {
   // 缺依赖服务 → 插件 error 记录（失败隔离）；renderers 是常驻服务必在。
   inject: ['renderers'],
   apply(ctx: Context) {
+    // 面产物 CSS（P1 起：查看器自带样式 `viewers/*.css` 经 esbuild 抽取成 entry.css）——
+    // 产物域经宿主桥注入（loader 负责版本号与摘除），bundle 域 no-op（vite 已打进应用 CSS）
+    injectFaceArtifactCss();
     const components = assetRendererComponents();
     for (const [kind, component] of Object.entries(components) as Array<
       [AssetRendererKind, (props: never) => unknown]

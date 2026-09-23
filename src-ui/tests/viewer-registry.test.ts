@@ -68,6 +68,24 @@ describe('viewer-registry 装载期纪律（重名/缺件一律当场 throw）',
     );
   });
 
+  // ── 兜底认领（B8 新增契约）──
+  it('第二个兜底查看器 → throw（出厂 hex 已占位）；兜底者 needsBytes=false → throw（先判自身形状）', () => {
+    expect(() =>
+      viewerRegistry.register(fakeDef({ id: 'tmp-fall-a', exts: [], catchAll: true, needsBytes: true })),
+    ).toThrow(/兜底查看器只能有一个/);
+    expect(() => viewerRegistry.register(fakeDef({ id: 'tmp-fall-c', exts: [], catchAll: true }))).toThrow(
+      /必须 needsBytes/,
+    );
+  });
+
+  it('兜底认领可无扩展名（空认领对它是合法的）——出厂 hex 就是「空 exts + catchAll」', () => {
+    const hex = viewerRegistry.get('hex');
+    expect(hex?.catchAll).toBe(true);
+    expect(hex?.exts).toEqual([]);
+    // 非兜底的空认领仍然是装配错误（上一条已钉）；这里钉两侧语义不同源
+    expect(viewerRegistry.resolve('')).toBeUndefined();
+  });
+
   it('扩展名归一：大小写与前导点都吃（注册与查询同一条判据）', () => {
     expect(normalizeExt('PNG')).toBe('png');
     expect(normalizeExt('.Png')).toBe('png');
@@ -107,7 +125,16 @@ describe('viewer-registry 装载期纪律（重名/缺件一律当场 throw）',
           readLines: 10,
         }),
       ),
-    ).toThrow(/不是文本查看器/);
+    ).toThrow(/不是 text\/auto 形态/);
+  });
+
+  it("bytesKind:'auto'（兜底形态）：缺 readLines 或 needsBytes=false 同样拒", () => {
+    expect(() =>
+      viewerRegistry.register(fakeDef({ id: 'tmp-auto-a', exts: ['zz13'], needsBytes: true, bytesKind: 'auto' })),
+    ).toThrow(/缺 readLines/);
+    expect(() =>
+      viewerRegistry.register(fakeDef({ id: 'tmp-auto-b', exts: ['zz14'], bytesKind: 'auto', readLines: 10 })),
+    ).toThrow(/needsBytes=false/);
   });
 
   it('文本查看器不要求 mimes（形态是文本，不拼 data URI）；出厂 code 查看器是文本形态', () => {
@@ -147,6 +174,7 @@ describe('出厂查看器表（图片 / 视频 / 音频 / 代码）', () => {
   it('认领面与 MIME 齐备：data-uri 形态的每个 ext 都有 MIME，且路由唯一', () => {
     const seen = new Map<string, string>();
     for (const def of BUILTIN_VIEWERS) {
+      if (def.catchAll) continue; // 兜底认领：无认领表，MIME 由宿主按二进制兜（下方专测）
       expect(def.exts.length).toBeGreaterThan(0);
       for (const ext of def.exts) {
         expect(normalizeExt(ext)).toBe(ext); // 出厂表本身就归一（不靠装载期兜）
@@ -158,6 +186,15 @@ describe('出厂查看器表（图片 / 视频 / 音频 / 代码）', () => {
         }
       }
     }
+  });
+
+  it('兜底认领（B8）：出厂表里恰有一个 catchAll，接未命中档，且不进 supportedExts', () => {
+    const fallbacks = BUILTIN_VIEWERS.filter((d) => d.catchAll);
+    expect(fallbacks.map((d) => d.id)).toEqual(['hex']);
+    expect(viewerRegistry.catchAll()?.id).toBe('hex');
+    expect(viewerRegistry.resolve('xyz-none')).toBeUndefined(); // 认领表里没有
+    expect(viewerRegistry.catchAll()?.needsBytes).toBe(true); // 不读字节无从嗅探
+    expect(viewerRegistry.supportedExts()).not.toContain('hex');
   });
 
   it('resolve 命中（含大小写/点号宽容）与未命中回落 undefined', () => {
@@ -189,6 +226,7 @@ describe('出厂查看器表（图片 / 视频 / 音频 / 代码）', () => {
 describe('认领表与宿主层分类表同源（B2 起：paper/viewer-exts 单一真源）', () => {
   it('每个出厂查看器的认领表 = 该类的宿主层扩展名表（两侧不可能漂）', () => {
     for (const def of BUILTIN_VIEWERS) {
+      if (def.catchAll) continue; // 兜底认领没有类（接的是「谁都没认领」）
       const cls = def.id as keyof typeof VIEWER_EXTS_BY_CLASS;
       expect(VIEWER_EXTS_BY_CLASS[cls], `宿主层没有 "${cls}" 类`).toBeDefined();
       expect([...def.exts].sort()).toEqual([...VIEWER_EXTS_BY_CLASS[cls]].sort());

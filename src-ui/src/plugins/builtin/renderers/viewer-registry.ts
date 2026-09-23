@@ -55,16 +55,24 @@ export interface ViewerDef {
   /** 机器名（'image' / 'video' / 'audio' / 'code' / 'pdf' …）——重名**装载期拒绝** */
   id: string;
   /** 认领的扩展名（小写无点；装载期归一；跨查看器重名**装载期拒绝**）。
-   *  分类真源 = `paper/viewer-exts.ts`（宿主层单一真源：测高与认领共用一张表）。 */
+   *  分类真源 = `paper/viewer-exts.ts`（宿主层单一真源：测高与认领共用一张表）。
+   *  `catchAll` 查看器例外：无认领表（它接的是「谁都没认领」那一档）。 */
   exts: readonly string[];
-  /** ext → MIME（`bytesKind: 'data-uri'` 时每个 ext 必填——缺了宿主拼不出 data URI，装载期拒绝） */
+  /** 兜底认领（B8）：ext 未命中任何查看器时交给它——全注册面**至多一个**（装载期拒绝第二个）。
+   *  兜底者必须 `needsBytes`（要嗅探内容才能决定怎么显示）。 */
+  catchAll?: boolean;
+  /** ext → MIME（`bytesKind: 'data-uri'` 时每个 ext 必填——缺了宿主拼不出 data URI，装载期拒绝）。
+   *  兜底查看器例外：接任意扩展名，宿主缺 MIME 时按 `application/octet-stream` 兜。 */
   mimes?: Readonly<Record<string, string>>;
   /** 要不要读文件字节；false = 只看路径与元数据 */
   needsBytes: boolean;
-  /** 字节形态（缺省 'data-uri' = 媒体）：'text' = 文本查看器，宿主走 `fs_cap read`
-   *  并按 `readLines` 开行窗口（**不整份进 IPC**——大响应白屏先例 INVARIANTS #11）。 */
-  bytesKind?: 'data-uri' | 'text';
-  /** 行窗口（**仅 text**，必填）：宿主读 `readLines + 1` 行、查看器显示前 `readLines` 行，
+  /** 字节形态（缺省 'data-uri' = 媒体）：
+   *  - `'text'`：文本查看器，宿主走 `fs_cap read` 按 `readLines` 开行窗口（不整份进 IPC）；
+   *  - `'auto'`：**先文本窗口、失败再二进制**（兜底查看器用：未知扩展名大多是文本，
+   *    文本路径有界且零 base64 膨胀；只有真二进制才付 read_base64 的代价）。
+   *    需要 `readLines`；`mimes` 可选（缺 MIME 时宿主按 application/octet-stream 兜）。 */
+  bytesKind?: 'data-uri' | 'text' | 'auto';
+  /** 行窗口（**text / auto 必填**）：宿主读 `readLines + 1` 行、查看器显示前 `readLines` 行，
    *  末行是否存在即「文件更长」的判据（截断必须可见，不静默）。 */
   readLines?: number;
   /** 体积上限（超出 → 文件壳 + 可读错误，**不静默截断**）；缺省 = 不设限。
@@ -82,6 +90,7 @@ export function normalizeExt(ext: string): string {
 class ViewerRegistry {
   private defs = new Map<string, ViewerDef>();
   private byExt = new Map<string, ViewerDef>();
+  private fallback: ViewerDef | null = null;
 
   /** 注册查看器并返回所有权清理器（对齐 ContributionChannel / asset-kinds 纪律：
    *  重名装载期拒绝；disposer 幂等 + 陈旧守卫——同 id 重注册后旧 disposer 不误删新行）。 */
@@ -90,26 +99,37 @@ class ViewerRegistry {
     if (this.defs.has(def.id)) {
       throw new Error(`[viewer-registry] 重复注册查看器 "${def.id}" —— 装载期拒绝，不静默覆盖`);
     }
+    if (def.catchAll && !def.needsBytes) {
+      throw new Error(`[viewer-registry] 兜底查看器 "${def.id}" 必须 needsBytes（不读字节无从嗅探内容）`);
+    }
+    if (def.catchAll && this.fallback) {
+      throw new Error(
+        `[viewer-registry] 兜底查看器只能有一个：已有 "${this.fallback.id}"，又来了 "${def.id}" —— 装载期拒绝`,
+      );
+    }
     const exts = [...new Set(def.exts.map(normalizeExt).filter((e) => e.length > 0))];
-    if (exts.length === 0) {
+    if (exts.length === 0 && !def.catchAll) {
       throw new Error(`[viewer-registry] 查看器 "${def.id}" 未认领任何扩展名（空认领 = 永远不会被命中）`);
     }
     if (def.maxBytes != null && !(def.maxBytes > 0)) {
       throw new Error(`[viewer-registry] 查看器 "${def.id}" 的 maxBytes 必须是正数（收到 ${def.maxBytes}）`);
     }
     const text = def.bytesKind === 'text';
-    if (text && !def.needsBytes) {
+    const auto = def.bytesKind === 'auto';
+    if ((text || auto) && !def.needsBytes) {
       throw new Error(
-        `[viewer-registry] 查看器 "${def.id}" 声明 bytesKind:'text' 但 needsBytes=false —— 不读字节就没有文本`,
+        `[viewer-registry] 查看器 "${def.id}" 声明 bytesKind:'${def.bytesKind}' 但 needsBytes=false —— 不读字节就没有内容`,
       );
     }
-    if (text && !(Number.isInteger(def.readLines) && (def.readLines as number) > 0)) {
+    if ((text || auto) && !(Number.isInteger(def.readLines) && (def.readLines as number) > 0)) {
       throw new Error(
-        `[viewer-registry] 查看器 "${def.id}" 是文本查看器但缺 readLines（正整数）——行窗口是「不整份进 IPC」的唯一闸`,
+        `[viewer-registry] 查看器 "${def.id}" 是『${def.bytesKind}』形态但缺 readLines（正整数）——行窗口是不整份进 IPC 的唯一闸`,
       );
     }
-    if (!text && def.readLines != null) {
-      throw new Error(`[viewer-registry] 查看器 "${def.id}" 声明了 readLines 但不是文本查看器（bytesKind !== 'text'）`);
+    if (!text && !auto && def.readLines != null) {
+      throw new Error(
+        `[viewer-registry] 查看器 "${def.id}" 声明了 readLines 但不是 text/auto 形态（bytesKind=${def.bytesKind ?? 'data-uri'}）`,
+      );
     }
     for (const ext of exts) {
       const owner = this.byExt.get(ext);
@@ -118,7 +138,7 @@ class ViewerRegistry {
           `[viewer-registry] 扩展名 "${ext}" 被两个查看器认领：先 "${owner.id}" 后 "${def.id}" —— 装载期拒绝（路由必须唯一）`,
         );
       }
-      if (def.needsBytes && !text && !def.mimes?.[ext]) {
+      if (def.needsBytes && !text && !auto && !def.mimes?.[ext]) {
         throw new Error(
           `[viewer-registry] 查看器 "${def.id}" 需要字节但缺 "${ext}" 的 MIME —— 宿主拼不出 data URI；补 mimes.${ext}`,
         );
@@ -126,19 +146,26 @@ class ViewerRegistry {
     }
     this.defs.set(def.id, def);
     for (const ext of exts) this.byExt.set(ext, def);
+    if (def.catchAll) this.fallback = def;
     let done = false;
     return () => {
       if (done) return;
       done = true;
       if (this.defs.get(def.id) === def) this.defs.delete(def.id);
       for (const ext of exts) if (this.byExt.get(ext) === def) this.byExt.delete(ext);
+      if (this.fallback === def) this.fallback = null;
     };
   }
 
-  /** 按扩展名解析查看器（大小写/点号宽容；未认领 = undefined → 宿主走文件壳）。 */
+  /** 按扩展名解析查看器（大小写/点号宽容；未认领 = undefined）。 */
   resolve(ext: string | undefined): ViewerDef | undefined {
     if (!ext) return undefined;
     return this.byExt.get(normalizeExt(ext));
+  }
+
+  /** 兜底查看器（B8）：`resolve` 未命中时的接盘者（缺省 = 无 → 宿主走文件壳）。 */
+  catchAll(): ViewerDef | undefined {
+    return this.fallback ?? undefined;
   }
 
   get(id: string): ViewerDef | undefined {

@@ -89,7 +89,8 @@ describe('composition/asset-renderers — 媒体图片经 read_file_base64 加�
     });
   });
 
-  it('未知扩展名 → 文件壳，且不调用 read_file_base64', async () => {
+  it('未知扩展名 → **兜底查看器**（P1 起：auto 形态先走文本行窗口，不再是文件壳）', async () => {
+    vi.mocked(typedRpc).mockResolvedValue(JSON.stringify({ path: 'D:/a.xyz', content: 'hello\n' }));
     await withRenderers(async () => {
       const Comp = resolveAssetBlock('file', 'media')!;
       root = createRoot(container);
@@ -99,8 +100,29 @@ describe('composition/asset-renderers — 媒体图片经 read_file_base64 加�
       await act(async () => {
         await Promise.resolve();
       });
+      // 兜底查看器要嗅探内容 ⇒ 必须读；首选路径是 fs_cap read 行窗口
+      // （B1 前这里断言「不调 RPC + 文件壳」，P1 起行为变了：未知档不再落文件壳）
+      expect(typedRpc).toHaveBeenCalledWith('fs_cap', {
+        action: 'read',
+        file_path: 'D:/a.xyz',
+        limit: 4001,
+        is_agent: false,
+      });
+      expect(container.querySelector('.pp-media-file')).toBeNull();
+    });
+  });
+
+  it('未知扩展名但**没有路径** → 文件壳（兜底查看器也要路径才读得了字节）', async () => {
+    await withRenderers(async () => {
+      const Comp = resolveAssetBlock('file', 'media')!;
+      root = createRoot(container);
+      await act(async () => {
+        root!.render(createElement(Comp, { block: mediaBlock({ ext: 'xyz', label: 'x' }) }));
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(container.querySelector('.pp-media-file')).not.toBeNull();
-      expect(container.querySelector('.pp-media-img')).toBeNull();
       expect(typedRpc).not.toHaveBeenCalled();
     });
   });

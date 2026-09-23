@@ -1,0 +1,33 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+   SPDX-License-Identifier: MIT
+
+   表格数据查看器样式（P1）——数值走 `--pp-asset-grid-*`（与流内 grid 原语同 token，
+   同一张表在流内与查看器里同貌）；颜色全走 token（有裸色值守卫）。 */
+
+.pp-viewer-table-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-grid-rowSize);
+  color: var(--ink-1);
+}
+.pp-viewer-table-grid th {
+  position: sticky; /* 表头冻结（查看器盒子内部滚动时仍可见） */
+  top: 0;
+  z-index: 1;
+  padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
+  background: color-mix(in oklch, var(--paper-deep) 55%, var(--paper));
+  border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft-ink);
+  text-align: left;
+  white-space: nowrap;
+}
+.pp-viewer-table-grid td {
+  padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
+  border-bottom: var(--pp-asset-grid-rowBorder) solid var(--rule-soft-ink);
+  vertical-align: top;
+}
+.pp-viewer-table-meta {
+  padding: 0 var(--pp-asset-viewer-codePadH) var(--pp-asset-viewer-codePadV);
+  color: var(--ink-3);
+  font-size: var(--pp-asset-viewer-metaSize);
+}
