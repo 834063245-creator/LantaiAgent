@@ -49,6 +49,8 @@ import type { ReactNode } from 'react';
 import SmilesDrawer from 'smiles-drawer';
 import type { ConfirmCardResponse } from '../../../agent/agent-types';
 import type { BlockRendererProps } from '../../../composition/renderer-service';
+// 物类签真源（2026-09-23 图版架批上移宿主层；本件取用 + 原样转出，见下方题签段注）
+import { plateSignOf } from '../../../paper/plate-sign';
 import { rendererHooks, rendererOverlay, rendererRpc } from './renderer-host';
 
 echarts.use([
@@ -713,28 +715,13 @@ function InteractiveChartBody({ block }: BlockRendererProps) {
  *
  * 高度中性（刻意）：题签行吃掉原题注行的 6px 下距、换成 1px 规线 + 5px 下距，
  * 行高不变 ⇒ measure 两侧镜像零改动（测高不因换装而漂）。
- * 无题名的图版暂不出题签行（下一批连同「题签恒在」的测高一起补）。 */
+ *
+ * 2026-09-23 图版架批：**物类签表已上移宿主层**（`paper/plate-sign.ts`，单一真源）
+ * ——同一枚签现在有三个消费面（本渲染器的题签行 / 流内折叠行 paper/fold /
+ * 架上签条 compose-dock），表留在插件里宿主层够不着。本件改为取用 + 原样转出
+ * （转出保持既有 import 面：测试与后续消费面照旧从本文件取）。 */
 
-/** 物类签：kind → 汉字（机器语汇，与既有文类签共用边缘字号制度的方向）。 */
-const PLATE_SIGNS: Record<string, string> = {
-  table: '表',
-  chart: '图',
-  metric: '卡',
-  board: '板',
-  timeline: '序',
-  citation: '引',
-  chem: '式',
-  media: '图',
-  file: '件',
-  deps_impact: '谱',
-  html: '页',
-  confirm: '问',
-};
-
-/** 取 kind 的物类签（未知 kind 回落「录」——开放 kind 也有签，不空着）。 */
-export function plateSignOf(kind: string): string {
-  return PLATE_SIGNS[kind] ?? '录';
-}
+export { plateSignOf };
 
 /** 题签行：物类签 + 题名。**题签恒在**（2026-09-17 第二批）——无题名的图版也出签，
  *  否则「有时有签、有时没签」读起来仍是不成族；行高严格等于原题注行（见 tokens.plateHeadH），

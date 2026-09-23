@@ -10,6 +10,7 @@ import { compositionServicesPlugin } from '../src/composition/services';
 import { spaceServicePlugin } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
 import { composeDockPlugin } from '../src/plugins/builtin/compose-dock';
+import { AssetRack } from '../src/plugins/builtin/compose-dock/AssetRack';
 import { ComposerDock } from '../src/plugins/builtin/compose-dock/ComposerDock';
 import { TocStrip } from '../src/plugins/builtin/compose-dock/TocStrip';
 
@@ -54,12 +55,17 @@ describe('composition/overlay-service（覆盖层贡献通道）', () => {
 });
 
 describe('plugins/compose-dock-plugin（贡献行 + 消费对拍）', () => {
-  it('注册 composer / right-edge 双覆盖贡献 + 空间消费命令', async () => {
+  it('注册 composer 三条（坞 + 图版架）+ right-edge 一条（目次带）+ 空间消费命令', async () => {
     const { root, f1, f2, f3, f4 } = await bootComposeDock();
     const composers = activeOverlayContributions('composer');
     const edges = activeOverlayContributions('right-edge');
     expect(composers.map((c) => c.id)).toContain('compose-dock');
     expect(composers.find((c) => c.id === 'compose-dock')?.component).toBe(ComposerDock);
+    // 图版架（2026-09-23 丙案）：**独立的 composer 槽贡献**——架是坞下缘那件家具，
+    // 单列一条贡献才落成「`.pp-composer` 的兄弟」这个 DOM 位（坞槽渲染器对每条贡献
+    // 各出一个直接子元素），且与坞各包一层边界（坞崩架还在）。
+    expect(composers.map((c) => c.id)).toContain('asset-rack');
+    expect(composers.find((c) => c.id === 'asset-rack')?.component).toBe(AssetRack);
     expect(edges.map((c) => c.id)).toContain('toc-strip');
     expect(edges.find((c) => c.id === 'toc-strip')?.component).toBe(TocStrip);
     // 消费 ctx.space 的证据（命令面）
@@ -74,8 +80,10 @@ describe('plugins/compose-dock-plugin（贡献行 + 消费对拍）', () => {
   it('fiber dispose → 覆盖贡献与命令干净退出', async () => {
     const { root, f1, f2, f3, f4 } = await bootComposeDock();
     expect(activeOverlayContributions('composer').some((c) => c.id === 'compose-dock')).toBe(true);
+    expect(activeOverlayContributions('composer').some((c) => c.id === 'asset-rack')).toBe(true);
     await f4.dispose();
     expect(activeOverlayContributions('composer').some((c) => c.id === 'compose-dock')).toBe(false);
+    expect(activeOverlayContributions('composer').some((c) => c.id === 'asset-rack')).toBe(false);
     expect(activeOverlayContributions('right-edge').some((c) => c.id === 'toc-strip')).toBe(false);
     expect(root.commands.get('compose/space-status')).toBeUndefined();
     await f3.dispose();

@@ -44,6 +44,28 @@ export const COMPOSER_EDGE = 8;
 /** 吸附阈（px）——拖到目标位 24px 内即吸附（左右缘/版心中轴/底带/最底缘）。 */
 export const COMPOSER_SNAP = 24;
 
+/** **图版架高**（2026-09-23 丙案）：**镜像** = `PaperPanel.css` 的
+ *  `.pp-rack { height: 38px }`——改一处必改两处（由 tests/composer-float 的
+ *  字面量对拍钉住，同 COMPOSER_TICK_* 的纪律）。吸附表要用它，故住本文件
+ *  （槽主人持吸附表；架的 DOM 与样式分别住 compose-dock 与 PaperPanel.css）。 */
+export const RACK_H = 38;
+
+/** 架在时的**屏缘位**（视口底 → 坞下边的最小值）= 屏缘留白 + 架高。
+ *
+ *  D2（2026-09-23 同批拍板）：架在时「最底缘」吸附位 **8 → 46**（不翻面——翻上去
+ *  就变回甲案、盖纸尾）。丙案的实质代价正是「匣下只有 96px，架吃 38 ⇒ 匣吸最底缘
+ *  时架被屏缘切掉 30px」，顺延架高即兑掉它。
+ *  **夹紧下限同值**（不只是吸附表）：吸附阈 24 < 架高 38，若下限仍在 8，用户拖到
+ *  最底那一下既不吸附、又能停在 8（架被切）——「最底缘」这个位在架在时就该是 46，
+ *  两个函数同一条尺子（真机验收 #2：架仍完整可见）。 */
+export const RACK_BOTTOM_FLOOR = COMPOSER_EDGE + RACK_H;
+
+/** 架在否（本轮几何的第二个输入）：真源 = `paper/asset-rack.ts` 的 `rackPresent`
+ *  （有活跃卷 **且** 架内非空）——槽主人与架同用一句判据，不各写一遍。 */
+export interface ComposerRackFlag {
+  rack?: boolean;
+}
+
 /** 坞位（视口坐标，见文件头注）。 */
 export interface ComposerPos {
   left: number;
@@ -72,13 +94,21 @@ export interface ComposerDockGeom {
  * 夹紧：坞整体留在视口内（左/右/下留 COMPOSER_EDGE，上不越顶部浮件带）。
  * 窗口缩小后对已存坞位也生效（读侧夹紧——存量值不因窗口变化被改写，
  * 窗口涨回去坞回到用户摆的那一处）。
+ * `opts.rack`（2026-09-23 丙案）：架在时下限顺延架高（8 → 46）——架挂在坞下缘，
+ * 屏缘要留给它，否则「最底缘」这一位上架被屏缘切（见 RACK_BOTTOM_FLOOR）。
  */
-export function clampComposerPos(pos: ComposerPos, vp: ComposerViewport, box: ComposerBox): ComposerPos {
+export function clampComposerPos(
+  pos: ComposerPos,
+  vp: ComposerViewport,
+  box: ComposerBox,
+  opts?: ComposerRackFlag,
+): ComposerPos {
+  const floor = opts?.rack ? RACK_BOTTOM_FLOOR : COMPOSER_EDGE;
   const maxLeft = Math.max(COMPOSER_EDGE, vp.w - box.w - COMPOSER_EDGE);
-  const maxBottom = Math.max(COMPOSER_EDGE, vp.h - COMPOSER_CHROME_H - box.h - COMPOSER_EDGE);
+  const maxBottom = Math.max(floor, vp.h - COMPOSER_CHROME_H - box.h - COMPOSER_EDGE);
   return {
     left: Math.min(Math.max(pos.left, COMPOSER_EDGE), maxLeft),
-    bottom: Math.min(Math.max(pos.bottom, COMPOSER_EDGE), maxBottom),
+    bottom: Math.min(Math.max(pos.bottom, floor), maxBottom),
   };
 }
 
@@ -87,10 +117,17 @@ export function clampComposerPos(pos: ComposerPos, vp: ComposerViewport, box: Co
  *   - 横向：左缘 / **版心中轴**（= 默认位的横坐标，坞回中轴的手感锚）/ 右缘；
  *   - 纵向：经典底带（--composer-rise，坞的出厂位）/ 最底缘。
  * 拖动全程施加（磁吸）；离阈即自由——由调用方在每次位移后调用，幂等。
+ * `opts.rack`（2026-09-23 丙案 D2）：架在时纵向两枚锚 = `[46, 96]`（最底缘顺延
+ * 架高，架永在匣下、阅读位置一致）；架不在 = `[8, 96]`（今日口径，逐值不变）。
  */
-export function snapComposerPos(pos: ComposerPos, vp: ComposerViewport, box: ComposerBox): ComposerPos {
+export function snapComposerPos(
+  pos: ComposerPos,
+  vp: ComposerViewport,
+  box: ComposerBox,
+  opts?: ComposerRackFlag,
+): ComposerPos {
   const lefts = [COMPOSER_EDGE, (vp.w - box.w) / 2, vp.w - box.w - COMPOSER_EDGE];
-  const bottoms = [COMPOSER_EDGE, COMPOSER_RISE];
+  const bottoms = opts?.rack ? [RACK_BOTTOM_FLOOR, COMPOSER_RISE] : [COMPOSER_EDGE, COMPOSER_RISE];
   return {
     left: nearest(lefts, pos.left, COMPOSER_SNAP) ?? pos.left,
     bottom: nearest(bottoms, pos.bottom, COMPOSER_SNAP) ?? pos.bottom,

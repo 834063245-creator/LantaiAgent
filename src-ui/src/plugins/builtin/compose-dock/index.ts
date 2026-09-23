@@ -1,13 +1,21 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// plugins/builtin/compose-dock — 创作坞 + 目次带第一方插件（Stage-4；
+// plugins/builtin/compose-dock — 创作坞 + 目次带 + 图版架第一方插件（Stage-4；
 // 增补四通道化）。
 //
 // 原则二/三（插件化分层）：创作坞/目次带 = 上层形态 = 贡献行，经 ctx.overlays
 // 注册（Stage-4 打孔：流区附着渲染通道），由 PaperPanel 渲染在对应槽位——
 // 核心只长「通道」，不写具体形态。消费 ctx.space（space-status 命令读画布
 // 状态 = 消费对拍证据）+ 会话状态 API（ComposerDock 内部经 compose-store）。
+//
+// 三条 composer/right-edge 贡献：创作坞（`compose-dock`）/ 目次带（`toc-strip`）/
+// **图版架**（`asset-rack`，2026-09-23 丙案 §9.5）。架**单列一条贡献**——理由两条：
+//   ① 判据要的 DOM 位就是「`.pp-composer` 的兄弟」（同在坞槽内），而坞槽渲染器
+//      对每条贡献各出一个直接子元素（`composerOverlays.map`）⇒ 单列贡献天然落位；
+//      若改由 ComposerDock 返回 fragment，则 1400 行坞 JSX 要整体重排（formatter
+//      权威），diff 变成不可审的一片缩进——同一结果取小 diff；
+//   ② 边界隔离：贡献行各包一层 PluginBoundary，坞崩了架还在（两件家具各有生死）。
 //
 // 双走查形态（增补四，first-party-hot-reload-plan）：bundle 兜底行 +
 // 产物域（dist-plugins/builtin/hologram/compose-dock/，manifest 声明
@@ -19,6 +27,7 @@
 
 import type { Context } from '../../../cordis';
 import { injectFaceArtifactCss } from '../face-css';
+import { AssetRack } from './AssetRack';
 import { ComposerDock } from './ComposerDock';
 import { TocStrip } from './TocStrip';
 
@@ -45,6 +54,18 @@ export const composeDockPlugin = {
           component: TocStrip,
         }),
       'toc-strip',
+    );
+    /* 图版架（2026-09-23 丙案 §9.5）：**独立的 composer 槽贡献**——架是坞下缘那件
+     * 独立家具（绝对定位挂在坞下、不进量高盒），不是坞的内部件；空态判据全在组件内
+     * （架内零张 / 无活跃卷 / 宿主未给流区 context ⇒ 自己不渲染），坞本体一字不知。 */
+    ctx.effect(
+      () =>
+        ctx.overlays.register({
+          id: 'asset-rack',
+          slot: 'composer',
+          component: AssetRack,
+        }),
+      'asset-rack',
     );
 
     // 消费 ctx.space 的证据（stage-4 §4.5「贡献行 + 消费对拍」）：

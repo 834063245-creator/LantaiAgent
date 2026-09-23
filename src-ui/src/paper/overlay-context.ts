@@ -16,6 +16,7 @@
 // 全部是 PaperPanel 的 P2-3 缓存原样下发，引用稳定纪律不破），
 // PaperDockContext 补 glideTo（无目标卷视口飞行——小地图点击跳转）。
 
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { createContext, useContext } from 'react';
 import type { SourcedBlock } from './block-model';
 import type { InkCache } from './ink';
@@ -36,6 +37,16 @@ export interface PaperDockContextValue {
    *  「不实现 = 无读数，不炸链路」）：**宿主不给 = 坞不渲染该工具**，其余照旧
    *  ——「只重载单个产物」的版本偏斜窗口里不会炸。 */
   composerLock?: { unlocked: boolean; toggle: () => void };
+  /** **图版架手势能力位**（2026-09-23 丙案 §9.5）：架归**产物流**（compose-dock 的
+   *  AssetRack），而两个手势的机制在**槽主人**手里——架不另起一套拖拽/折叠机制
+   *  （「同一个动作一个实现」）。按能力位纪律（同 composerLock）：**宿主不给 =
+   *  该手势不发生**，架其余部分照旧（只重载单个产物的版本偏斜窗口里不炸）。
+   *  - `expandBlock`：架上签条单击时若该块处于收起态则**连展开**（折叠覆盖表在
+   *    槽主人手里，架碰不到）；
+   *  - `dragBlockOut`：架上签条按住拖出 = **复用既有钉手势**（use-paper-drag 的
+   *    D-R2-1 路径：跟手预览 → 松手定夺，纸上落钉 = 公共物）。 */
+  expandBlock?: (blockId: string) => void;
+  dragBlockOut?: (e: ReactMouseEvent, block: SourcedBlock) => void;
 }
 
 /** 目次带消费的高频上下文（流区派生几何）。 */

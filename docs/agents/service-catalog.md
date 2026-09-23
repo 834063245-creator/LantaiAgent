@@ -65,7 +65,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 | `ctx.capabilities` | `CapabilitiesService` | `src/composition/capability-service.ts` | — | 1 文件 |
 | `ctx.commands` | `CommandsService` | `src/composition/services.ts` | `canvas/sidebar-toggle` · `compose/space-status` · `paper/toggle` · `settings/toggle` | 4 文件 |
 | `ctx.hooks` | `HooksService` | `src/composition/hook-service.ts` | `plan-injector` | 0 文件 |
-| `ctx.overlays` | `OverlayService` | `src/composition/overlay-service.ts` | `compose-dock` · `paper-minimap` · `toc-strip` | 2 文件 |
+| `ctx.overlays` | `OverlayService` | `src/composition/overlay-service.ts` | `asset-rack` · `compose-dock` · `paper-minimap` · `toc-strip` | 2 文件 |
 | `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `paper` · `settings` | 3 文件 |
 | `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | — | 1 文件 |
 | `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | — | 7 文件 |
@@ -100,7 +100,7 @@ capability 贡献注册表（A-3 第八贡献通道）——贡献注册 → dis
 画布覆盖层通道（Stage-4）：创作坞/目次带等视口固定形态经此注册， 由 PaperPanel 在对应槽位渲染。
 
 - owner：`src/composition/overlay-service.ts`
-- 默认实现 / 贡献者 id：`compose-dock` · `paper-minimap` · `toc-strip`
+- 默认实现 / 贡献者 id：`asset-rack` · `compose-dock` · `paper-minimap` · `toc-strip`
 - 消费面（2）：`src/plugins/builtin/compose-dock/index.ts` · `src/plugins/builtin/paper-minimap/index.ts`
 
 ### `ctx.panels` — PanelsService（贡献通道）

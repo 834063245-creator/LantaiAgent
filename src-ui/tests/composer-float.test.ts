@@ -31,6 +31,8 @@ import {
   isComposerDragSurface,
   loadComposerPos,
   loadComposerUnlocked,
+  RACK_BOTTOM_FLOOR,
+  RACK_H,
   saveComposerPos,
   saveComposerUnlocked,
   snapComposerPos,
@@ -40,6 +42,8 @@ const PANEL_CSS = readFileSync(
   join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
   'utf8',
 );
+/** token 真源（坞抬高 96 的出处——TS 侧的 COMPOSER_RISE 是它的镜像）。 */
+const TOKENS_CSS = readFileSync(join(__dirname, '..', 'src', 'app', 'tokens.css'), 'utf8');
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——同 paper-provenance 的既有范式）。 */
 function ruleBody(css: string, selector: string): string {
@@ -142,6 +146,40 @@ describe('创作坞浮动化 · 版口引线坞侧锚点（坞顶左端版口钮
     expect(tick).toContain('var(--seal)'); // 朱砂短横——与活卷那枚同墨（红对红）
     // 案头态（匣退）：钮 content:none ⇒ 锚点不在场，引线随之不画（空态诚实）
     expect(ruleBody(PANEL_CSS, '.pp-composer-slot.pp-at-desk .pp-composer::before {')).toContain('content: none');
+  });
+});
+
+/* 图版架兜底（2026-09-23 丙案 D2）：架挂在坞下缘（880×38）⇒ 架在时「最底缘」吸附位
+ * 顺延架高（8 → 46），架永在匣下、阅读位置一致（翻到匣顶就当场变回甲案=盖纸尾）。
+ * 判据真源 = paper/asset-rack.ts 的 rackPresent（有活跃卷且架内非空），由槽主人
+ * PaperPanel 算好递进 useComposerFloat。 */
+describe('创作坞浮动化 · 图版架兜底（架在 ⇒ 最底缘 8 → 46）', () => {
+  const snapBottom = (bottom: number, rack?: boolean): number =>
+    snapComposerPos({ left: 300, bottom }, VP, BOX, rack === undefined ? undefined : { rack }).bottom;
+
+  it('吸附表逐值：架不在 = [8, 96]（今日口径零漂）；架在 = [46, 96]', () => {
+    expect(snapBottom(COMPOSER_EDGE + COMPOSER_SNAP - 1)).toBe(COMPOSER_EDGE);
+    expect(snapBottom(COMPOSER_RISE + COMPOSER_SNAP - 1)).toBe(COMPOSER_RISE);
+    expect(snapBottom(RACK_BOTTOM_FLOOR + COMPOSER_SNAP - 1, true)).toBe(RACK_BOTTOM_FLOOR);
+    expect(snapBottom(COMPOSER_RISE + COMPOSER_SNAP - 1, true)).toBe(COMPOSER_RISE);
+    // 架在时屏缘位不再是锚（它正是「架被屏缘切掉 30px」的那一位）
+    expect(snapBottom(COMPOSER_EDGE + COMPOSER_SNAP - 1, true)).not.toBe(COMPOSER_EDGE);
+  });
+
+  it('夹紧下限同一条尺子：架在 ⇒ 46（吸附阈 24 < 架高 38——只改吸附表就还停得住被切位）', () => {
+    expect(clampComposerPos({ left: 300, bottom: -500 }, VP, BOX).bottom).toBe(COMPOSER_EDGE);
+    expect(clampComposerPos({ left: 300, bottom: -500 }, VP, BOX, { rack: true }).bottom).toBe(RACK_BOTTOM_FLOOR);
+    expect(RACK_BOTTOM_FLOOR).toBe(COMPOSER_EDGE + RACK_H);
+    // 横向与上界不受架影响（架只改屏缘那一位）
+    const box = { w: 880, h: 110 };
+    expect(clampComposerPos({ left: -500, bottom: -500 }, VP, box, { rack: true }).left).toBe(COMPOSER_EDGE);
+  });
+
+  it('常量与 CSS 对拍：RACK_H = .pp-rack 高（38）；坞抬高 96 与 --composer-rise 同源', () => {
+    expect(RACK_H).toBe(38);
+    expect(ruleBody(PANEL_CSS, '.pp-rack {')).toContain(`height: ${RACK_H}px`);
+    expect(COMPOSER_RISE).toBe(96);
+    expect(TOKENS_CSS).toContain(`--composer-rise: ${COMPOSER_RISE}px`);
   });
 });
 

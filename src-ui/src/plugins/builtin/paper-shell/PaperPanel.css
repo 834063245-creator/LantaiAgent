@@ -3242,6 +3242,102 @@
   letter-spacing: 0.02em;
 }
 
+/* ══ 图版架（2026-09-23 拍板**丙 · 匣下横架**；设计真源 = 规格书 §9.5）══════════
+ * 归**产物流**（compose-dock 的 AssetRack）但**样式住本文件**——同 `役册/墨量册`
+ * 的先例（`.pp-composer-settings .pp-work-*` 也是给 compose-dock 组件写的样式），
+ * 且吸附表（架在 ⇒ 最底缘 8→46）与 `.pp-composer` 几何同住 paper-shell：架与坞的
+ * 几何是一件事，分两处写会漂。**类名前缀 `.pp-rack`、高度 38 = TS 侧 RACK_H 镜像**
+ * （composer-float.ts，改一处必改两处，由 tests/composer-float 对拍）。
+ *
+ * 挂法（丙案全部几何依据）：**绝对定位挂在 `.pp-composer` 的兄弟位**——
+ *   `.pp-composer-slot > .pp-composer`（在流里，131px）
+ *   `.pp-composer-slot > .pp-rack`（`top:100%`，出流）
+ * 绝对定位不进 `.pp-composer-slot` 的**量高盒** ⇒ 让位带恒 227（小地图/递牒卡/
+ * 插件坞/目次带映射区零让位），这是丙案最省的地方，也是判据之一。
+ * 坞身透明（`.pp-composer { background: transparent }`，只有顶线）——纸尾从坞后
+ * 透出来读是既有形态，**别顺手给坞加底色**；架是不透明一条板，故它只吃「锚下留白」
+ * （流锚以下那 96px 页边），一个字不盖。
+ *
+ * 语汇（禁「工具栏化」）：单元 = 物类签（mono 9px 石青 + 发丝框）+ 题名（中墨）
+ * + 更新点（石青 5px 圆 = 机）。**签条不套方框**——一排灰边框按钮是工具栏的语言，
+ * 不是「架上签条」的语言；hover = 题名转重墨 + 一条朱砂底规线（坞内既有 hover
+ * 语言，同 `.pp-tool-btn`）。板面 = 深纸混色 + 上发丝线 + 受光缘内侧高光（家具语言，
+ * 不引新色）。溢出 = 6 张 + 「… 另 N 张」，横向不滚。 */
+.pp-rack {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 38px; /* 镜像 = composer-float.ts 的 RACK_H（吸附位顺延架高 46 = 8 + 38） */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--paper-deep) 58%, var(--paper));
+  border-top: 1px solid var(--rule-soft-ink);
+  box-shadow: inset 0 -1px 0 var(--sheet-lit); /* 受光缘内侧高光（下缘朝外） */
+}
+/* 签条：无框（见上）；nowrap = 签与题名同行，溢出交给题名的省略号 */
+.pp-rack-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 2px;
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.pp-rack-chip:hover {
+  color: var(--ink-1);
+  border-bottom-color: var(--seal);
+}
+/* 题名：单行截断（架恒 38px，换行会破坏测高与让位带口径） */
+.pp-rack-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 104px;
+}
+/* 物类签：题签语汇的小型化（与图版题签那枚签同款：mono 9px 石青 + 发丝框）。
+ * ⚠ 本注释刻意不写那三条类名（tests/asset-primitives 用 `indexOf` 切片量题签段，
+ * 在别处出现同名串会把切片截空）。 */
+.pp-rack-sign {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: var(--indigo);
+  border: 1px solid color-mix(in oklch, var(--indigo) 45%, transparent);
+}
+/* 更新点：石青（机＝石青，朱砂只留给人的动作） */
+.pp-rack-upd {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--indigo);
+  flex: 0 0 auto;
+}
+/* 溢出读数：**不是控件**（本批不做「展开全架」），故走淡墨小字而非签条 */
+.pp-rack-more {
+  font-family: var(--f-song);
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
 /* ── 墨量线（创作坞 v2 2026-08-31）：坞底 1px 墨线──
  * 本卷已用 token 占模型目录窗口的比例；裸数字徽标退役（[0] 是噪音），
  * 读数收进 hover title。近满（>80%）转朱砂预警。 */

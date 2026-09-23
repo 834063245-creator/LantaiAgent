@@ -38,6 +38,14 @@ import {
   snapComposerPos,
 } from './composer-float';
 
+/** 坞浮动域的输入（2026-09-23 图版架丙案 D2 起有第二个输入）。 */
+export interface ComposerFloatOpts {
+  /** **架在否**（有活跃卷且架内非空；真源 = `paper/asset-rack.ts` 的 rackPresent，
+   *  由 PaperPanel 按活跃流区算好递下）：架在 ⇒ 最底缘吸附位与夹紧下限顺延架高
+   *  （8 → 46），架永在匣下、不被屏缘切。 */
+  rackOn?: boolean;
+}
+
 /** 坞浮动域对 PaperPanel 的公开面。 */
 export interface ComposerFloat {
   /** 槽元素 callback ref（React 19 清理式：量实测宽高，供夹紧/几何用）。 */
@@ -61,7 +69,12 @@ export interface ComposerFloat {
   onDoubleClick: (e: React.MouseEvent) => void;
 }
 
-export function useComposerFloat(): ComposerFloat {
+export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
+  /* 架在否（2026-09-23 图版架丙案 D2）：吸附表/夹紧下限的第二个输入。手势闭包
+   * （pointermove 里的 snap）拿不到当帧 props ⇒ 同 unlockedRef 的手法存 ref。 */
+  const rackOn = opts?.rackOn ?? false;
+  const rackOnRef = useRef(rackOn);
+  rackOnRef.current = rackOn;
   /* 坞位（null = 无覆盖）——懒初始化读盘：挂载即回到用户上次摆的位置。 */
   const [pos, setPos] = useState<ComposerPos | null>(loadComposerPos);
   const [box, setBox] = useState<ComposerBox>({ w: 0, h: 0 });
@@ -108,12 +121,13 @@ export function useComposerFloat(): ComposerFloat {
   }, []);
 
   /* 读侧夹紧：存量坞位遇窗口缩小不越界（值不改写——窗口涨回去坞回原处）。
-   * 未实测（宽高为 0）时不夹：无真尺寸的夹紧只会算错。 */
+   * 未实测（宽高为 0）时不夹：无真尺寸的夹紧只会算错。
+   * 架在时下限顺延架高（rackOn 参与依赖：架出没会改这一位的合法区间）。 */
   const effective = useMemo(() => {
     if (!pos) return null;
     if (box.w <= 0 || box.h <= 0) return pos;
-    return clampComposerPos(pos, vp, box);
-  }, [pos, vp, box]);
+    return clampComposerPos(pos, vp, box, { rack: rackOn });
+  }, [pos, vp, box, rackOn]);
 
   /* 坞几何引用稳定（P2-3 纪律）：PaperPanel 平移/缩放帧都会重渲，若此处每帧换新对象，
    * 覆盖层 context 跟着变 → 目次带/小地图每帧重渲。依赖只有坞位与坞高，平移帧不变。 */
@@ -180,7 +194,9 @@ export function useComposerFloat(): ComposerFloat {
         left: start.left + (ev.clientX - start.x),
         bottom: start.bottom - (ev.clientY - start.y),
       };
-      const next = snapComposerPos(clampComposerPos(raw, vpNow, boxNow), vpNow, boxNow);
+      const next = snapComposerPos(clampComposerPos(raw, vpNow, boxNow, { rack: rackOnRef.current }), vpNow, boxNow, {
+        rack: rackOnRef.current,
+      });
       posRef.current = next;
       setPos(next);
     };

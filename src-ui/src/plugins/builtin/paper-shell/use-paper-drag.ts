@@ -367,6 +367,46 @@ export function usePaperDrag(params: {
     [canvasRef, viewRef, blockSessionRef],
   );
 
+  /* ── 架上签条拖出钉（2026-09-23 图版架丙案 §9.5 手势②）────────────────────
+   * 与整块拖出手势**同一套机制**（D-R2-1：跟手预览 → 松手定夺 —— 纸上落钉 /
+   * 原位取消），只有**起拖锚点**一处不同：锚在**签条所在的位置**（架在坞下缘，
+   * 屏幕下方），而不是块在流里的原位——否则拖影会先在纸上某处凭空出现再跟手。
+   * 取消端语义不变：落回起拖锚附近（回槽判据据**来源原位**量，此处来源 = 架上
+   * 那张签条）＝ 不落钉、签条留架。落钉 = `commitPinned`（快照 + 活引用源）⇒
+   * `state === 'pinned'` ⇒ 架内一条判据当场把这张签条摘掉（D4「钉出去 = 拿出来」）。 */
+  const onRackPinMouseDown = useCallback(
+    (e: React.MouseEvent, block: SourcedBlock) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const v = viewRef.current;
+      const grab = screenToWorld(v, e.clientX - rect.left, e.clientY - rect.top);
+      const chipRect = (e.currentTarget as HTMLElement | null)?.getBoundingClientRect();
+      const anchor = chipRect ? screenToWorld(v, chipRect.left - rect.left, chipRect.top - rect.top) : grab;
+      dragRef.current = {
+        id: block.id,
+        sessionId: blockSessionRef.current.get(block.id),
+        sx: e.clientX,
+        sy: e.clientY,
+        moved: false,
+        wasFlow: true, // 取消端 = 回槽判据（来源原位 = 架上签条位）
+        instant: false, // 松手定夺（与整块拖出同族；眉批撕出族是首动即建钉）
+        bw: block.w,
+        offX: grab.x - anchor.x,
+        offY: grab.y - anchor.y,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        ox: anchor.x,
+        oy: anchor.y,
+        lastPos: null,
+        block,
+      };
+    },
+    [canvasRef, viewRef, blockSessionRef],
+  );
+
   /* ── 钉住可发现性（一次性眉批，2026-09-05）：有摊开卷且从未提示过 →
    * 浮现 6s（localStorage 旗标，毒化容忍——创作坞历史眉批同款范式）。
    * 提示长在功能所在处：文类签 = 块左缘拖出把手。 ── */
@@ -398,6 +438,7 @@ export function usePaperDrag(params: {
     onGhostClick,
     onSidecarRestore,
     onSidecarPinMouseDown,
+    onRackPinMouseDown,
     pinHint,
   };
 }

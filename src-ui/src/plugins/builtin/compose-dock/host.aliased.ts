@@ -44,6 +44,7 @@ export const useShellStore = impl.useShellStore;
 export const watchFileDragDrop = impl.watchFileDragDrop;
 export const usePaperDock = impl.usePaperDock;
 export const usePaperRegion = impl.usePaperRegion;
+export const PaperRegionContext = impl.PaperRegionContext;
 export const buildStageAnchors = impl.buildStageAnchors;
 export const nearestAnchorAt = impl.nearestAnchorAt;
 export const viewportMarker = impl.viewportMarker;

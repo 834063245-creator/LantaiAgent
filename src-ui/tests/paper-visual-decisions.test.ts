@@ -1015,3 +1015,80 @@ describe('B4 多模态附图渲染面（multimodal-image-plan D-9，2026-09）',
     expect(RENDERER_TS).toContain('previewUrlFor');
   });
 });
+
+/* ── 图版架（2026-09-23 拍板丙 · 匣下横架；设计真源 = 规格书 §9.5）──────────────
+ * 架面语汇＝**禁「工具栏化」**：单元 = 物类签（mono 9px 石青 + 发丝框）+ 题名
+ * （中墨）+ 更新点（石青 5px 圆 = 机），**签条不套方框**（一排灰边框按钮是工具栏
+ * 的语言，不是「架上签条」的语言）；hover = 题名转重墨 + 一条朱砂底规线（坞内既有
+ * hover 语言，同 `.pp-tool-btn`）。板面 = 深纸混色 + 上发丝线 + 受光缘内侧高光。
+ * 扫描纪律同 tests/asset-ink-tiers（墨阶三级各就各位 + 不出现裸色值）。 */
+describe('图版架段面（丙案 §9.5）· 墨阶与「不套方框」钉值', () => {
+  /** `.pp-rack` 段的规则（选择器含 `.pp-rack`；剥注释后按 `}` 切块——同 asset-ink-tiers 手法）。 */
+  function rackRules(): Array<{ selector: string; body: string }> {
+    const stripped = PANEL_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+    const out: Array<{ selector: string; body: string }> = [];
+    for (const chunk of stripped.split('}')) {
+      const at = chunk.lastIndexOf('{');
+      if (at < 0) continue;
+      const selector = chunk.slice(0, at).trim();
+      const body = chunk.slice(at + 1);
+      if (!body.trim()) continue;
+      if (selector.includes('.pp-rack')) out.push({ selector, body });
+    }
+    return out;
+  }
+  const bodyOf = (sel: string): string => {
+    const hit = rackRules().find((r) => r.selector === sel);
+    if (!hit) throw new Error(`规则不存在：${sel}`);
+    return hit.body;
+  };
+
+  it('扫面非空（防选择器改名把守卫变成永真）', () => {
+    expect(rackRules().length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('.pp-rack 段不出现裸色值（墨/纸/线全走 token）', () => {
+    const offenders: string[] = [];
+    for (const r of rackRules()) {
+      const decls = r.body
+        .split(';')
+        .map((d) => d.trim())
+        .filter((d) => /^(color|background|border|box-shadow|fill|stroke|outline)/.test(d));
+      for (const d of decls) {
+        if (/#[0-9a-fA-F]{3,8}\b/.test(d) || /\b(rgba?|hsla?|oklch)\(/.test(d.replace(/color-mix\(in oklch,/g, ''))) {
+          offenders.push(`${r.selector} { ${d} }`);
+        }
+      }
+    }
+    expect(offenders, `图版架段出现裸色值（应走 token）：\n${offenders.join('\n')}`).toEqual([]);
+  });
+
+  it('签条**不套方框**（反向钉值）：无边框无圆角无底色，hover 才出一条朱砂底规线', () => {
+    const chip = bodyOf('.pp-rack-chip');
+    expect(chip).toContain('border: none');
+    expect(chip).toContain('border-radius: 0');
+    expect(chip).toContain('background: none');
+    // 底规线恒在（透明）——hover 才转朱砂，位移零变化（不跳）
+    expect(chip).toContain('border-bottom: 1px solid transparent');
+    const hover = bodyOf('.pp-rack-chip:hover');
+    expect(hover).toContain('color: var(--ink-1)'); // 题名转重墨
+    expect(hover).toContain('border-bottom-color: var(--seal)'); // 一条朱砂底规线
+  });
+
+  it('墨阶三级各就各位：物类签=石青 / 题名=中墨 / 更新点=石青 / 溢出读数=淡墨', () => {
+    expect(bodyOf('.pp-rack-chip')).toContain('color: var(--ink-2)'); // 题名中墨
+    expect(bodyOf('.pp-rack-sign')).toContain('color: var(--indigo)'); // 签 = 石青（机器语汇）
+    expect(bodyOf('.pp-rack-sign')).toContain('color-mix(in oklch, var(--indigo) 45%, transparent)'); // 发丝框
+    expect(bodyOf('.pp-rack-upd')).toContain('background: var(--indigo)'); // 更新点 = 机
+    expect(bodyOf('.pp-rack-more')).toContain('color: var(--ink-3)'); // 溢出读数淡墨
+  });
+
+  it('板面 = 深纸混色 + 上发丝线 + 受光缘内侧高光（家具语言，不引新色）', () => {
+    const rack = bodyOf('.pp-rack');
+    expect(rack).toContain('color-mix(in oklch, var(--paper-deep) 58%, var(--paper))');
+    expect(rack).toContain('border-top: 1px solid var(--rule-soft-ink)');
+    expect(rack).toContain('box-shadow: inset 0 -1px 0 var(--sheet-lit)');
+    // 一条板：横向不滚（架是家具，不是滚动条）
+    expect(rack).toContain('overflow: hidden');
+  });
+});

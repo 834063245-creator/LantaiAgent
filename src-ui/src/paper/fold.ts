@@ -18,21 +18,41 @@
 //     完整分发（running）与结果（done）近乎背靠背，展开只闪一帧，用户
 //     看到的是「折叠→完成时展开→又折叠」的抽搐；与 toolgroup/subagent
 //     组语义对齐（组内 running 子卡从不自动展开）后主灶消除；
-//   - 其余 kind（来文/正文/抄录/拟策/贴黄）不可折叠。
+//   - **资产块**（带 asset 元数据的块 —— 图版卡族）：默认**收起成一行签条**
+//     （折叠行 = 物类签 + 题名），点开就地展开；两条豁免——**钉住态**（钉是人工
+//     挑出来的收藏，默认该张着）与**活确认卡**（`asset._confirm` 在 = 等用户决议，
+//     可操作卡不可被折叠藏住）。这是 2026-09-23 图版架批对现行规则的**显式规格变更**
+//     ——原文是「其余 kind（来文/正文/抄录/拟策/贴黄）不可折叠」；改的理由：架上
+//     已有一份收纳面，流里再摊一整张卡＝同一张图版两处各一份（§9.5「流内配套」）。
+//     判据 = **块带 asset 元数据**（kind 是开放面，资产身份在 asset 上，不认 kind 名）；
+//   - 其余 kind（来文/正文/抄录/拟策/贴黄——**未带 asset 元数据**的那些）不可折叠。
 // 用户显式点开/收起写入壳层覆盖表（foldOv），覆盖默认——
 // 状态翻转（running→done）自动收回的是「没有用户意志的默认态」。
 
-import type { BlockKind } from './block-model';
+import type { BlockKind, SourcedBlock } from './block-model';
 import { type RhythmFamily, rhythmFamilyOfTool } from './grammar';
+import { plateSignOf } from './plate-sign';
 import { codeSections, hasArgsToShow, toolDigest } from './tool-text';
 
-/** 可折叠 kind（渲染器与测量端共用判据）。 */
-export function isFoldable(kind: BlockKind): boolean {
+/** 可折叠 kind（渲染器与测量端共用判据）。
+ *  `block` 缺省 = 只看 kind 面（非资产）；生产调用点一律传块——资产身份在
+ *  `block.asset` 上，不看 kind 名（开放 kind 面）。 */
+export function isFoldable(kind: BlockKind, block?: SourcedBlock): boolean {
+  if (block?.asset != null) return true;
   return kind === 'reasoning' || kind === 'tool' || kind === 'code' || kind === 'toolgroup' || kind === 'subagent';
 }
 
 /** 默认折叠态：无用户覆盖时的规则面。 */
-export function defaultFolded(kind: BlockKind, payload: unknown): boolean {
+export function defaultFolded(kind: BlockKind, payload: unknown, block?: SourcedBlock): boolean {
+  if (block?.asset != null) {
+    // 资产（图版卡）：默认收起；两条豁免——
+    // ① **钉住态**：钉是人工挑出来的收藏，默认该张着（见文件头注）；
+    // ② **活确认卡**（`asset._confirm` 在 = 等用户决议的实时卡）：可操作卡不可被
+    //    折叠藏住——同 subagent 组「子拟策待审批 ⇒ 张开」那条（判据形状也同源：
+    //    看活回调在不在，不看决议终态）。藏住它 = 用户看不见问题、Agent 空等。
+    if (block.asset._confirm != null) return false;
+    return block.state !== 'pinned';
+  }
   if (kind === 'reasoning') return true;
   if (kind === 'toolgroup') {
     // 工具组默认收起（并发调用的杂乱面是折叠机制的主病灶，2026-08-30 用户报）；
@@ -70,8 +90,18 @@ function charLabel(n: number): string {
   return String(n);
 }
 
-/** 折叠行文案：折叠态报「有什么可展开」（关键信息 + 字数量化），展开态报「可收起」。 */
-export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): string {
+/** 折叠行文案：折叠态报「有什么可展开」（关键信息 + 字数量化），展开态报「可收起」。
+ *  资产块（图版卡）出「物类签 + 题名」——与架上签条同一枚签、同一个语汇；
+ *  `block` 缺省 = 非资产（旧调用面照旧走 kind 面文案）。 */
+export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean, block?: SourcedBlock): string {
+  if (block?.asset != null) {
+    // 题名取 asset.title（资产身份上的题名，不是 payload 里的业务字段）；空题名
+    // 只出签——签恒在，不空着（同图版题签行的规则）。
+    const sign = plateSignOf(kind);
+    const title = (block.asset.title ?? '').replace(/\s+/g, ' ').trim();
+    const name = title ? `${sign} ${title}` : sign;
+    return folded ? `▸ ${name}` : `▾ 收起 ${name}`;
+  }
   const p = payload as {
     text?: string;
     args?: string;

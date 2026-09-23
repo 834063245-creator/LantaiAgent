@@ -35,6 +35,7 @@
 // 行为考官 = tests/perf-paper-pan.test.tsx（挂真实组件穿全层）。
 
 import { type CSSProperties, Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { rackPresent } from '../../../paper/asset-rack';
 import {
   type ProvenanceState,
   provenanceText,
@@ -244,7 +245,7 @@ const BlockView = memo(function BlockView({
   const Body = block.asset
     ? resolveAssetBlock(block.kind, block.asset.presentation)
     : resolveRenderer(block.kind)?.component;
-  const foldable = isFoldable(block.kind);
+  const foldable = isFoldable(block.kind, block);
   /* 折叠行在跑呼吸（2026-09-06 纸面运行态）：被收起的运行中卡片/组头——行内
    * 已有「N 在跑」字样（foldLabel），再给整行石青呼吸让静止的折叠行活
    * 起来。在跑口径与 foldLabel 对齐：running + pending。 */
@@ -308,12 +309,17 @@ const BlockView = memo(function BlockView({
             onToggleFold(block);
           }}
         >
-          {foldLabel(block.kind, p, folded)}
+          {foldLabel(block.kind, p, folded, block)}
         </button>
       )}
-      {Body ? (
+      {Body && !(block.asset != null && folded) ? (
         /* 保险丝 b（2026-09-03）：块渲染器（内置 + 资产/插件贡献面）包边界——
-         * 单块渲染崩溃只死该块，纸壳与整树永生。 */
+         * 单块渲染崩溃只死该块，纸壳与整树永生。
+         * 资产块折叠态（2026-09-23 图版架批）：**不渲染块体**——折叠行即本体
+         * （「流里的图版卡默认收成一行签条」），与脚注族 `ToolBody` 的
+         * `if (folded) return null` 同一条语义，只是收在壳层这一层做（资产表现
+         * 原语十二款各写一遍折叠判断＝十二份重复；这里一处收全）。测高侧同源：
+         * `measureBlockHeight` 的资产折叠分支返回 FOLD_ROW_H。 */
         <PluginBoundary label={`块 ${block.kind}`}>
           <Body
             block={block}
@@ -534,7 +540,7 @@ export function PaperPanel() {
   const regionsRef = useRef<RegionView[]>([]);
 
   const { measureTick, blockRootRef } = useBlockMeasure();
-  const { foldedOf, onToggleFold, sidecarFoldedOf, onToggleSidecarFold } = useFoldState();
+  const { foldedOf, onToggleFold, expandBlock, sidecarFoldedOf, onToggleSidecarFold } = useFoldState();
   const { runningSessions, streamLive, activeRunning } = useRunningSessions(core, activeSessionId);
   const { edgeDragPos, regionCornerPos, onRegionEdgeMouseDown, onRegionCornerMouseDown } = useRegionMove({
     core,
@@ -741,22 +747,30 @@ export function PaperPanel() {
     useCanvasViewStore.getState().requestFocus(null);
   }, [focusRafRef, focusFlightRef]);
 
-  const { dragRef, onBlockMouseDown, onUnpin, onGhostClick, onSidecarRestore, onSidecarPinMouseDown, pinHint } =
-    usePaperDrag({
-      core,
-      canvasRef,
-      viewRef,
-      regionsRef,
-      blockSessionRef,
-      sessionsCount: sessions.length,
-      takeOverViewport,
-      draggingId,
-      setDraggingId,
-      setDragPos,
-      setDragSource,
-      setBandSessionId,
-      setSettleId,
-    });
+  const {
+    dragRef,
+    onBlockMouseDown,
+    onUnpin,
+    onGhostClick,
+    onSidecarRestore,
+    onSidecarPinMouseDown,
+    onRackPinMouseDown,
+    pinHint,
+  } = usePaperDrag({
+    core,
+    canvasRef,
+    viewRef,
+    regionsRef,
+    blockSessionRef,
+    sessionsCount: sessions.length,
+    takeOverViewport,
+    draggingId,
+    setDraggingId,
+    setDragPos,
+    setDragSource,
+    setBandSessionId,
+    setSettleId,
+  });
 
   const { resizeRef, resizePreview, onResizeMouseDown } = usePinStripResize({ core, canvasRef, viewRef });
 
@@ -852,7 +866,13 @@ export function PaperPanel() {
    * （口径分家：目次带只按出厂底带；小地图与 CSS 让位件按坞的实际位置——见
    * paper/overlay-context.ts 的 composerDock 注释）。坞位/拖动锁/实测尺寸全归
    * useComposerFloat（槽主人持有；坞本体一字不知）。 */
-  const composer = useComposerFloat();
+  /** **架在否**（2026-09-23 图版架丙案 D2）：架挂在坞下缘，屏缘要留给它 ⇒ 架在时
+   *  「最底缘」吸附位与夹紧下限顺延架高（8 → 46）。判据真源 = `paper/asset-rack.ts`
+   *  的 `rackPresent`——**与架自己同一句**（架内零张 = 整条退场，两侧同时为假）。 */
+  const rackOn = rackPresent(
+    activeSessionKey != null ? regions.find((r) => r.sessionId === activeSessionKey)?.blocks : null,
+  );
+  const composer = useComposerFloat({ rackOn });
   /** 坞几何（引用稳定，见 use-composer-float）——下发给覆盖层消费面。 */
   const composerDock = composer.dock;
   /** 拖动锁能力位：坞在书眉工具行渲染那枚单字工具（移/锁）。引用必须稳定——
@@ -860,6 +880,23 @@ export function PaperPanel() {
   const composerLock = useMemo(
     () => ({ unlocked: composer.unlocked, toggle: composer.toggleUnlocked }),
     [composer.unlocked, composer.toggleUnlocked],
+  );
+  /** 图版架手势能力位之①「收起态连展开」（2026-09-23 丙案 §9.5）：架归**产物流**
+   *  （compose-dock），而折叠覆盖表在槽主人手里——架不自己碰折叠态（同一个动作一个
+   *  实现）。读 `regionsRef`（帧内最新，非 `regions` state）：本回调引用必须稳定，
+   *  否则 dockContext 每平移帧换新 ⇒ 坞随平移帧重渲（低频 context 纪律）。
+   *  块找不到（钉出/撤回竞态）= 不动作：宁可什么都不展开，也不展开错块。 */
+  const expandBlockById = useCallback(
+    (blockId: string) => {
+      for (const r of regionsRef.current) {
+        const b = r.blocks.find((x) => x.id === blockId);
+        if (b) {
+          expandBlock(b);
+          return;
+        }
+      }
+    },
+    [expandBlock],
   );
 
   /* ── 覆盖层上下文（Stage-4）：创作坞消费低频（动作/活跃），
@@ -872,8 +909,10 @@ export function PaperPanel() {
       flyToPoint,
       glideTo: glideViewTo,
       composerLock,
+      expandBlock: expandBlockById,
+      dragBlockOut: onRackPinMouseDown,
     }),
-    [activeSessionKey, flyToPoint, glideViewTo, composerLock],
+    [activeSessionKey, flyToPoint, glideViewTo, composerLock, expandBlockById, onRackPinMouseDown],
   );
   const regionContext = useMemo(
     () => ({
