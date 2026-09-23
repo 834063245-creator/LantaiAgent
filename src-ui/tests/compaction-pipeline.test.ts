@@ -389,4 +389,37 @@ describe('compaction pipeline E2E', () => {
     expect(agent.getCompactionStats().events.at(-1)?.outcome).toBe('summary');
     expect(a.compactStuck).toBe(false);
   });
+
+  it('10. 单轮工具循环超过尾部预算：退到预算位置压缩，不再永久 stuck（案卷 35 形态）', async () => {
+    const { prov, callCount } = makeSummaryProvider({});
+    // 窗口 20000 → 自动尾部保留预算 = 3200 token（retainRatio 0.16）。
+    // 形态 = 1 条用户消息 + 长工具循环（工具组里没有 user 回合边界）：
+    // 从尾部往回扫到预算位置也**遇不到任何 user 消息** ⇒ 旧行为 `autoTailStart`
+    // 一路返回 null（region 0 / outcome stuck），每步空转 + 告警直到占用撞窗口。
+    // 真机形态（案卷 35）：1 条用户消息 + 54 步工具循环 ≈ 80 万 token，预算 = 16 万。
+    const agent = makeAgent(prov, { contextWindow: 20000 });
+    const a = asAny(agent);
+    a.session.push({ role: 'user', content: 'go' });
+    for (let i = 0; i < 40; i++) {
+      a.session.push({
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: `c${i}`, name: 'fs', arguments: '{}' }],
+      });
+      a.session.push({ role: 'tool', tool_call_id: `c${i}`, name: 'fs', content: pad(300) });
+    }
+
+    a.maybeCompact(USAGE_HIGH);
+    await vi.waitFor(() => expect(a.compactRunning).toBe(false));
+
+    // 压缩真落地（旧行为：stuck）
+    expect(a.compactStuck).toBe(false);
+    expect(callCount()).toBeGreaterThan(0);
+    expect(String(a._compactSummary)).toContain('摘要');
+    expect(agent.getCompactionStats().events.at(-1)?.outcome).not.toBe('stuck');
+    // 尾部不以孤立 tool 结果开头（不拆 tool-call 组——与手动路径同规）
+    expect(a.session[a._compactTailStart].role).not.toBe('tool');
+    // 近期现场仍按预算保留（≈3200；没有被一并折进摘要）
+    expect(countMessages(a.session.slice(a._compactTailStart))).toBeGreaterThanOrEqual(3000);
+  });
 });

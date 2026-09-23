@@ -213,7 +213,9 @@ function recordCompactionEvent(host: CompactionHost, event: CompactionEvent): vo
  *
  *  与 DSH selectCompactableRange 同语义：foldPoint 之后全部内容累计仍
  *  不足预算（会话太短）→ 返回 null（不压，等对话增长）— 触发线 80% 压力
- *  下内容必远大于 16% 预算，此分支只在测试构造 / 极端小载荷时命中。 */
+ *  下内容必远大于 16% 预算，此分支只在测试构造 / 极端小载荷时命中。
+ *  ⚡ 2026-09-23：另有两条 null 出口——单轮工具循环比预算还大时退到预算位置后
+ *  无处可退（边界落在 foldPoint / 尾部会空），见函数内注。 */
 function autoTailStart(host: CompactionHost, foldPoint: number): number | null {
   const msgs = host.session;
   const budget = Math.max(1, Math.floor(host.contextWindow * host.retainRatio));
@@ -221,7 +223,8 @@ function autoTailStart(host: CompactionHost, foldPoint: number): number | null {
   // 已扫过的最靠后完整 user 回合起点 — 达标时从它开始保留尾部。
   let lastUser = -1;
   let reachedBudget = false;
-  for (let i = msgs.length - 1; i > foldPoint; i--) {
+  let i = msgs.length - 1;
+  for (; i > foldPoint; i--) {
     acc += countMessage(msgs[i]);
     if (msgs[i].role === 'user') lastUser = i;
     if (acc >= budget) {
@@ -230,8 +233,17 @@ function autoTailStart(host: CompactionHost, foldPoint: number): number | null {
     }
   }
   if (!reachedBudget) return null; // 会话太短 — 不足保留预算，无可压价值
-  if (lastUser <= foldPoint) return null; // 无完整 user 回合可留 / 无可折叠
-  return lastUser;
+  if (lastUser > foldPoint) return lastUser;
+  // 单轮工具循环比尾部预算还大：从尾部往回扫到预算位置，**一个 user 消息都没经过**
+  // ——「保留完整 user 回合」这条判据在此无解（案卷 35 实测：1 条用户消息 + 54 步
+  // 工具循环 ≈ 80 万 token，而预算 = 1M×0.16 = 16 万 ⇒ 此前一路返回 null，压缩每步
+  // 空转 16 次直到撞窗口）。退到**预算位置**，再把边界向前滚过孤立的 tool 结果：
+  // 尾部不以 tool 开头（不拆 tool-call 组，与手动路径同规），近期现场仍按预算保留；
+  // 「保留整轮」退化为「保留预算内的最近工具组」是可压与不可压之间唯一的安全落点。
+  let fallback = i;
+  while (fallback < msgs.length && msgs[fallback].role === 'tool') fallback++;
+  if (fallback <= foldPoint || fallback >= msgs.length) return null; // 无可折叠 / 尾部会空
+  return fallback;
 }
 
 /** 计算本次要折叠的中间区域。返回 null = 无可折叠内容（stuck）。
