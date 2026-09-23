@@ -22,9 +22,22 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 45;
+export const OPEN_SURFACE_CONTRACT_VERSION = 46;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v46（2026-09-23）**思考链回传**（`agent-loop/default-loop.ts` 落盘注释同步；
+ *  行为变更发生在 `provider/openai.ts`，该文件不在本清单）：OpenAI 兼容 chat 的
+ *  assistant 轮现在把历史 `reasoning_content` 原样回传。规则真源 = DeepSeek 官方
+ *  `guides/thinking_mode` · Tool Calls 节：**带 `tools` 参数的请求里历史思考必须
+ *  完整回传，否则 400**（不带 tools 时官方忽略该字段）；Anthropic 侧本就重放带签名
+ *  的 thinking 块（`anthropic.ts`，须在 `tool_use` 之前）。**动机（真机病象）**：
+ *  兰台带 tools 是常态，此前一律不回传 ⇒ 直连 `api.deepseek.com` 时第一轮工具调用
+ *  之后每个请求都撞 400，而缺字段的 assistant 消息已落卷 ⇒ 整卷持续重放失败
+ *  （DSH 同类事故 deepseek-harness#3857；参照实现 = DSH `llm-deepseek` 的
+ *  `serializeAssistant`）。**契约形状零变更**（`Message.reasoning_content` 早已在册，
+ *  `provider/types.ts` 的注释写的就是「多轮对话中原样往返」——本版让实现追上它）；
+ *  **对外可感知**：模型从此看得见自己上一轮的推理；第三方 adapter 不受影响；
+ *  **无思考的轮次请求体逐字节不变**（不编造空串）。
  *  v45（2026-09-23）**错误文案与重试判据**（`provider/types.ts`）：`classifyError` 的
  *  未知分支新增「网关点名了模型、却没给原因」判据（4xx + body 是 JSON 对象且带非空
  *  string `model` + body 内无任何原因文本）——命中时把 body 里唯一可行动的事实写成

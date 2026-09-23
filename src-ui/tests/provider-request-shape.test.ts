@@ -101,7 +101,10 @@ describe('provider 请求体形状契约（UI 概念零泄漏）', () => {
     }
 
     const body = JSON.parse(srv.bodies[srv.bodies.length - 1]);
-    const WHITELIST = new Set(['role', 'content', 'tool_call_id', 'name', 'tool_calls']);
+    // reasoning_content = 思考链回传（2026-09-23 批次）：带 tools 的请求里历史
+    // assistant 轮的思考必须原样上行，否则 DeepSeek 400（见
+    // tests/provider-reasoning-passback.test.ts 的规则面）。
+    const WHITELIST = new Set(['role', 'content', 'tool_call_id', 'name', 'tool_calls', 'reasoning_content']);
     for (const m of body.messages) {
       for (const key of Object.keys(m)) {
         expect(WHITELIST.has(key), `openai 消息出现白名单外字段: ${key}`).toBe(true);
@@ -111,6 +114,8 @@ describe('provider 请求体形状契约（UI 概念零泄漏）', () => {
     for (const marker of UI_LEAK_MARKERS) {
       expect(raw.includes(marker), `openai 请求体泄漏 UI 概念: ${marker}`).toBe(false);
     }
+    // 思考链回传的真 socket 证据（而不仅是白名单放行）：历史思考确实上了线。
+    expect(raw.includes('"reasoning_content":"think"')).toBe(true);
   });
 
   it('anthropic 方言：消息块只含白名单字段，无任何 UI 概念痕迹', async () => {

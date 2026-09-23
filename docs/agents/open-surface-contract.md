@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：45
+当前版本：46
 
-<!-- contract-fingerprint: e089be71cf87d63a726f4ad001a62300b1fe99761bc0778343546dd7c256a90d -->
+<!-- contract-fingerprint: 3bed163b29e6ad335e1cb05160e621498bc15c3ca2b963dd0cd528a6bd68e337 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -101,6 +101,8 @@
 | 44 | 2026-09-20 | **运行看门狗（landmine L3 拆弹：不认 signal 的 await 不再永久挂起）**：`AgentLoopHost` 新增三个成员——`stepBoundary(signal): boolean`（步骤边界：记一次「无进展」脉搏 + 栅栏裁决；返回 `false` = 本轮已被硬截止作废，loop 必须立刻停步）、`abandonedError(signal): Error`（具名 `RunDeadlineExceededError`，调用方按**类型**落墓碑）、`isAbandoned(signal): boolean`（栅栏纯读法，给「不该再产生新事实」的写入点用）。同版 `events.ts` 新增 emit 域事件 **`run/abandoned`**（`RunAbandonedPayload{agentId,runId,kind,noProgressMs,lastPulse}`）——被作废的那一轮**不会**再有正常收尾，故作废事实单独成事件。**动机**：模型请求链上唯一的活性守卫是 `provider/idle-stream.ts` 的 30s 空闲计时器，而它只 abort 一个 controller——等待方不认 signal（本机 IPC / 凭据解析 / 吞掉 abort 的适配器与 SSE 读）时 `for await` 永不返回 ⇒ 连「停滞错误」都产不出来 ⇒ `provider/retry.ts` 的 15 分钟停滞预算永不生效 ⇒ `agent.run()` 永不 settle（停止钮无效；v43 之后症状变成「幽灵轮」——账注销了、那条 loop 永留栈上）。同版 `Agent.run()` 把 `runLoop` 与**硬截止**和**signal 中止**竞速：无进展 20min → 作废该轮（栅栏 → abort → 具名错误 settle；迟到 chunk / 迟到工具结果只留审计、不进投影；不补唤醒）；用户停止 → 同一竞速立刻 settle（停止因此**真解旋**，`_loopDepth` 归零）。**对外可感知**：第三方 loop 不调 `stepBoundary` 照旧跑（该轮脉搏少一路，误判方向是「更晚作废」而非误杀慢模型）；想区分「被作废」与「用户停止」读 `host.isAbandoned(signal)`。阈值参数**不扩 `AgentConfig`**（23 字段冻结），走 `agent/run-watchdog.ts` 的常量 + 注入面 | `docs/landmine-map.md` 第四批 L3（复现钉 `tests/landmine-l3-hang.test.ts` 两条 `it.fails` 按原文件交代改写为正向断言）；参数默认（无进展 warn 5min / abandon 20min、绝对上限不设）沿用户 2026-09-20 批注的推荐项 |
 
 | 45 | 2026-09-23 | **错误文案与重试判据（网关拒模型却不给原因）**：`classifyError` 的未知分支新增判据——4xx + body 是 JSON 对象且带非空 string `model` + body 内没有任何原因文本（`message`/`detail`/`code`/`type` 一族全空）三条同时成立时，把 body 里唯一可行动的事实写成一句人话（「网关只回了模型名「X」、没给原因——该模型 id 可能已下线或改名，请在设置里换用当前可用的模型 id 后重试」），不再只回「请截图联系开发者」。判据刻意宁窄勿宽：body 另有原因文本、非 JSON、`model` 非字符串、5xx 一律不命中，既有文案逐字不变；解析失败不抛（读边界容忍垃圾响应体）。**动机（真机事故 2026-09-23）**：opencode GO 对模型 id `deepseek-v4-flash` 回 HTTP 400，body 只有 `{"object":"error","model":"deepseek-v4-flash"}`（无 message/type/code）——用户唯一拿到的信息是「请截图联系开发者」，而可行动的事实（网关拒的是这个模型 id）就摆在 body 里。同批两处不入本清单：`agent/retry.ts` 的 `isRetryable` 改读 `providerErrorKind`（显式 4xx + kind=`auth_or_param` ⇒ 不重试；此前按文案判「[未知错误] 可重试」⇒ 同一个 400 每轮白烧 3 次尝试），`provider/vendor-templates.ts` 的 opencode 默认模型 legacy `deepseek-v4-flash` → `deepseek-flash`（与 deepseek 模板同源） | 2026-09-23 真机事故：会话 34 两次轮次 400×3 全败（14:26:53 / 14:29:32），连接改用 `deepseek-flash` 即恢复；取证与排除项见当日排查记录 |
+
+| 46 | 2026-09-23 | **思考链回传（模型从此看得见自己上一轮的推理）**：OpenAI 兼容 chat 的 assistant 轮现在把历史 `reasoning_content` 原样回传（行为落在 `src/provider/openai.ts` 的 `buildChatRequest`——该文件不在本清单，故契约面只有同批的 `default-loop` 落盘注释同步：思考不再是「保留用于显示，不重新上传」）。规则真源 = DeepSeek 官方 `guides/thinking_mode` · Tool Calls 节：**带 `tools` 参数的请求里历史思考必须完整回传，否则 400**（不带 tools 时官方忽略该字段）；Anthropic 侧本就重放带签名的 thinking 块（须在 `tool_use` 之前，无签名不发）。**动机（真机病象）**：兰台带 tools 是常态，此前一律不回传 ⇒ 直连 `api.deepseek.com` 时第一轮工具调用之后每个请求都撞 400，而那条缺字段的 assistant 消息已落卷 ⇒ 整卷持续重放失败（DSH 同类事故 `deepseek-harness#3857`；参照实现 = DSH `llm-deepseek` 的 `serializeAssistant`）。**契约形状零变更**（`Message.reasoning_content` 早已在册，`types.ts` 注释写的就是「多轮对话中原样往返」——本版让实现追上它）；**对外可感知**：模型从此看得见自己上一轮的推理，第三方 adapter 不受影响；**无思考的轮次请求体逐字节不变**（不编造空串） | DeepSeek 官方文档 `guides/thinking_mode`（Tool Calls 节 "must be fully passed back"）+ DSH 讨论 #3857 + 本机 40 卷取证（38 卷有非空 `reasoning_content`、0 卷有签名 ⇒ 兰台此前一条都没回过）+ `tests/provider-reasoning-passback.test.ts`（五用例规则面）与 `tests/provider-request-shape.test.ts`（真 socket 上行证据） |
 
 
 1. 改契约文件（接口形状 / 注册契约 / 事件载荷 / manifest schema）；

@@ -195,6 +195,8 @@ interface ChatContentPart {
 interface ChatMessage {
   role: string;
   content: string | null | ChatContentPart[];
+  /** 思考链回传（DeepSeek 官方规则：带 tools 的请求必须回传历史 reasoning_content）。 */
+  reasoning_content?: string;
   tool_calls?: ChatToolCall[];
   tool_call_id?: string;
   name?: string;
@@ -333,6 +335,16 @@ export function buildChatRequest(
         break;
       case 'assistant': {
         const cm: ChatMessage = { role: 'assistant', content: m.content || null };
+        // 思考链回传（2026-09-23 思考回传批次）：**带 tools 参数的请求**里，历史
+        // assistant 轮的 `reasoning_content` 必须原样回传，否则 API 返回 400
+        // （「The `reasoning_content` in the thinking mode must be passed back to
+        // the API.」）；不带 tools 的请求官方会忽略该字段（guides/thinking_mode
+        // Tool Calls 节）。此前一律不回传——直连 api.deepseek.com 时第一轮工具调用
+        // 之后每个请求都撞 400，且那条缺字段的消息已在卷里，整卷持续重放失败
+        // （DSH 同类事故：deepseek-harness#3857）。**空思考不发**：缺字段 = 该轮
+        // 思考关闭或网关剥离，编造空串只会改字节、不给模型任何信息。
+        // 参照实现：DSH `llm-deepseek` protocols/chat-completions/serialize.ts。
+        if (m.reasoning_content) cm.reasoning_content = m.reasoning_content;
         if (m.tool_calls && m.tool_calls.length > 0) {
           cm.tool_calls = m.tool_calls.map((tc) => ({
             id: tc.id,

@@ -335,7 +335,9 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         }
       }
 
-      // 存储 assistant 轮次（reasoning 保留用于显示，不重新上传）
+      // 存储 assistant 轮次（reasoning + 签名一并留档：纸面显示与**下一轮回传**
+      // 共用同一份事实——OpenAI 兼容方言带 tools 时必须回传 reasoning_content，
+      // Anthropic 必须重放带签名的 thinking 块；见 provider/openai.ts · anthropic.ts）
       host.appendMessage('assistant/text', {
         role: 'assistant',
         content: text,
