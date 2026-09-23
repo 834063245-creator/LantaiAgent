@@ -58,7 +58,9 @@ export const VENDOR_TEMPLATES: readonly VendorTemplate[] = [
     vendor: 'openai',
     kind: 'openai',
     baseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-5',
+    // 2026-09-23 随 GPT-6 家族换代（Sol = OpenAI 官方「复杂编码 / agentic workflow」
+    // 定位款，也是 Codex 面的起步预设；Astra/Luna 在 seed 里按需改选）
+    defaultModel: 'gpt-6-sol',
   },
   {
     vendor: 'deepseek',
@@ -104,7 +106,9 @@ export const VENDOR_TEMPLATES: readonly VendorTemplate[] = [
     vendor: 'codex',
     kind: 'responses',
     baseUrl: 'https://chatgpt.com/backend-api/codex',
-    defaultModel: 'gpt-5.6-sol',
+    // 订阅面默认 = Codex 自己的起步预设（官方 Codex 模型页：Sol Light 是起始档；
+    // 9/22 起 gpt-6-sol / gpt-6-luna 在 Codex 可用，Astra 需按 rollout 手填）
+    defaultModel: 'gpt-6-sol',
     label: 'ChatGPT Codex（订阅）',
     authMode: 'oauth',
     oauthProvider: 'codex',

@@ -496,7 +496,7 @@ describe('ProviderPage — 暂存流程', () => {
     // 登录成功 → 账号 chip 出现、默认模型 seed 出现（模板 defaultModel）
     expect(document.querySelector('.pp-oauth-accounts')).not.toBeNull();
     expect(document.querySelector('.pp-oauth-accounts')?.textContent).toContain('user-1');
-    expect(document.querySelector('.pp-pick-model-id')?.textContent).toBe('gpt-5.6-sol');
+    expect(document.querySelector('.pp-pick-model-id')?.textContent).toBe('gpt-6-sol');
 
     // 现在确认添加 → onAddAndPersist 收到含 authMode/oauthProvider/models 的行
     await click(
@@ -512,8 +512,8 @@ describe('ProviderPage — 暂存流程', () => {
     expect(added.authMode).toBe('oauth');
     expect(added.oauthProvider).toBe('codex');
     expect(added.apiKey).toBeFalsy();
-    expect(added.models).toContain('gpt-5.6-sol');
-    expect(added.model).toBe('gpt-5.6-sol');
+    expect(added.models).toContain('gpt-6-sol');
+    expect(added.model).toBe('gpt-6-sol');
     expect(document.querySelector('.pp-add-sheet')).toBeNull();
   });
 });

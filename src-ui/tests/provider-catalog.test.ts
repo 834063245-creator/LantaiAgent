@@ -24,7 +24,7 @@ import { getVendorTemplateVendors } from '../src/provider/vendor-templates';
 describe('catalog', () => {
   it('loads models from catalog seeds (内核 seed：deepseek/anthropic/openai 官方常用款)', () => {
     const all = getAllModels();
-    // deepseek(4) + anthropic(4) + openai(7) 官方常用款（方案乙 seed 化精简）
+    // deepseek(4) + anthropic(4) + openai(10) 官方常用款（方案乙 seed 化精简）
     expect(all.length).toBeGreaterThanOrEqual(10);
   });
 
@@ -160,7 +160,7 @@ describe('catalog', () => {
     for (const m of findModels('anthropic')) {
       expect(m.input, `${m.id}`).toContain('image');
     }
-    // openai：GPT-4o 起全能线——GPT-5 系 7 款全声明
+    // openai：GPT-4o 起全能线——GPT-6/GPT-5 系 10 款全声明
     for (const m of findModels('openai')) {
       expect(m.input, `${m.id}`).toContain('image');
     }
@@ -174,6 +174,35 @@ describe('catalog', () => {
     expect(getModel('deepseek-flash')?.input).toEqual(['text', 'image']);
     expect(getModel('deepseek-flash')?.contextWindow).toBe(1000000);
     expect(getModel('deepseek-v4-pro')?.input).toEqual(['text']);
+  });
+
+  it('GPT-6 换代 seed（2026-09-23 按官方模型页核实）：Astra/Sol/Luna 窗口 1.05M、输出 128K、全模态', () => {
+    for (const id of ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']) {
+      const m = getModel(id);
+      expect(m, id).toBeDefined();
+      expect(m?.name).toMatch(/^GPT-6 /);
+      expect(m?.contextWindow, `${id} 上下文窗口`).toBe(1050000);
+      expect(m?.maxTokens, `${id} 输出上限`).toBe(128000);
+      expect(m?.input, `${id} 模态`).toEqual(['text', 'image']);
+      expect(m?.thinkingEfforts, `${id} 档位`).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+    }
+    // 档位差异是官方原文的差异：Astra 只列 low..max（无 none）⇒「关闭」不可表达；
+    // Sol/Luna 明列 none ⇒ 可关（openai 协议发 reasoning_effort:'none'）。
+    expect(getModel('gpt-6-astra')?.thinkingOff).toBeUndefined();
+    expect(getModel('gpt-6-sol')?.thinkingOff).toBe(true);
+    expect(getModel('gpt-6-luna')?.thinkingOff).toBe(true);
+  });
+
+  it('出厂默认模型随 GPT-6 换代：openai 与 codex 模板同指 gpt-6-sol', () => {
+    const openai = getDefaultModel('openai');
+    expect(openai?.id).toBe('gpt-6-sol');
+    expect(openai?.baseUrl).toBe('https://api.openai.com/v1');
+    // codex（OAuth 订阅）复用他厂 seed id → kind/baseUrl/vendor 对齐模板（非目录归属）
+    const codex = getDefaultModel('codex');
+    expect(codex?.id).toBe('gpt-6-sol');
+    expect(codex?.kind).toBe('responses');
+    expect(codex?.vendor).toBe('codex');
+    expect(codex?.baseUrl).toBe('https://chatgpt.com/backend-api/codex');
   });
 
   it('getDefaultModel(deepseek) = deepseek-flash（2026-09-18：出厂默认随官方改名刷新）', () => {

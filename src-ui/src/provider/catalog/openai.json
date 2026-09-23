@@ -87,5 +87,43 @@
     "maxTokens": 128000,
     "thinkingEfforts": ["low", "medium", "high", "xhigh", "max"],
     "thinkingOff": true
+  },
+  "gpt-6-astra": {
+    "id": "gpt-6-astra",
+    "name": "GPT-6 Astra",
+    "kind": "openai",
+    "vendor": "openai",
+    "baseUrl": "https://api.openai.com/v1",
+    "reasoning": true,
+    "input": ["text", "image"],
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "thinkingEfforts": ["low", "medium", "high", "xhigh", "max"]
+  },
+  "gpt-6-sol": {
+    "id": "gpt-6-sol",
+    "name": "GPT-6 Sol",
+    "kind": "openai",
+    "vendor": "openai",
+    "baseUrl": "https://api.openai.com/v1",
+    "reasoning": true,
+    "input": ["text", "image"],
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "thinkingEfforts": ["low", "medium", "high", "xhigh", "max"],
+    "thinkingOff": true
+  },
+  "gpt-6-luna": {
+    "id": "gpt-6-luna",
+    "name": "GPT-6 Luna",
+    "kind": "openai",
+    "vendor": "openai",
+    "baseUrl": "https://api.openai.com/v1",
+    "reasoning": true,
+    "input": ["text", "image"],
+    "contextWindow": 1050000,
+    "maxTokens": 128000,
+    "thinkingEfforts": ["low", "medium", "high", "xhigh", "max"],
+    "thinkingOff": true
   }
 }
