@@ -12,7 +12,7 @@
 // 2026-08-29 frontend-overlay-a11y-plan 档位 C：手写 combobox（handleKeyDown /
 // role=listbox/option/aria-activedescendant 手工接线）整体换成 @react-aria/combobox
 // 的 useComboBox + useListBox/useOption。保留：分组表头 / compact 触发按钮 /
-// 元数据徽标 / 空态文案 / 目录获取失败态。DOM 类名与布局不变。
+// 元数据徽标 / 空态文案（「目录获取失败态」于 2026-09-23 撤除，见下）。DOM 类名与布局不变。
 //
 // 2026-09-06 创作坞 UX 收口（compact 形态重做）：
 //   - 触发器恒驻：打开时不再被搜索输入框整体顶替（旧形态触发 pill 消失、
@@ -31,6 +31,10 @@
 //   结果链上的 `.slice(0, 30)` 拆除。它来自初版选择器（8c00891f）对**静态目录搜索**
 //   的"前 30 条"展示上限；compact 形态的可选面后来换成「已配置模型」（配置面）后，
 //   这条上限就退化成配置列表的天花板——配多少个都只列 30 个。配置面不该有截断。
+// 同日（用户拍板 A）：失败面「目录获取失败」徽标从坞里撤除——原因与重试归设置页
+//   的「模型目录」区（那是唯一能补救的地方）；坞里保留「目录获取中…」。原 C5（2026-08-27）
+//   的行为随之退役，`getDynamicFetchFailure` 在该产物的取用面归零（宿主桥键保留，
+//   属已发布宿主面，不随本批撤键）。
 //
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享
 // 真实例；@react-aria/* react-stately 由 esbuild 内联（其 react import 经
@@ -47,7 +51,6 @@ import './model-selector.css';
 import {
   effectiveModels,
   findModels,
-  getDynamicFetchFailure,
   getDynamicFetchInflight,
   getModel,
   hasDynamicFetchInflight,
@@ -241,21 +244,17 @@ export function ModelSelector({
     () => [...new Set(displayRows.filter((r) => r.type === 'header').map((r) => (r as { vendor: string }).vendor))],
     [displayRows],
   );
-  /* ── C5（2026-08-27）+ D8（2026-08-29）：动态目录状态面——分组头标注
-   *    「目录获取失败」（failure 在 setupAgent 后台拉取 / 设置页手动刷新时记录）
-   *    与「目录获取中…」（拉取中→完成必须实时刷新，否则「获取中」悬挂到下次
-   *    重开下拉）。订阅 catalog 的拉取状态变更：打开期间挂订阅，变更即重快照。 ── */
-  const [fetchFlags, setFetchFlags] = useState(() => ({
-    inflight: new Set<string>(),
-    failed: new Set<string>(),
-  }));
+  /* ── D8（2026-08-29）：拉取中面——分组头标注「目录获取中…」（拉取中→完成必须
+   *    实时刷新，否则「获取中」会悬挂到下次重开下拉）。订阅 catalog 的拉取状态
+   *    变更：打开期间挂订阅，变更即重快照。
+   *    ⚡ 2026-09-23（用户拍板 A）：**失败面从坞里撤除**——C5 的「目录获取失败」
+   *    徽标曾是坞里唯一的失败信号，但坞是消费面（看到也做不了补救），且它与
+   *    「下拉里有哪些模型」无关（失败不清 last-good）。原因与重试归设置页
+   *    「模型目录」区（ProviderDetail），那儿才有「刷新目录」按钮。 ── */
+  const [fetchInflight, setFetchInflight] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!state.isOpen) return;
-    const refresh = () =>
-      setFetchFlags({
-        inflight: new Set(headerVendors.filter((v) => getDynamicFetchInflight(v))),
-        failed: new Set(headerVendors.filter((v) => getDynamicFetchFailure(v) !== undefined)),
-      });
+    const refresh = () => setFetchInflight(new Set(headerVendors.filter((v) => getDynamicFetchInflight(v))));
     refresh();
     return onDynamicFetchChange(refresh);
   }, [state.isOpen, headerVendors]);
@@ -456,12 +455,7 @@ export function ModelSelector({
           <ProviderMark vendor={row.vendor} className="ms-group-mark" />
           <span className="ms-group-name">{row.vendor}</span>
           {noKeyVendors.has(row.vendor) && <span className="ms-group-nokey">未配置 Key</span>}
-          {fetchFlags.inflight.has(row.vendor) && <span className="ms-group-fetch">目录获取中…</span>}
-          {fetchFlags.failed.has(row.vendor) && (
-            <span className="ms-group-fail" title={getDynamicFetchFailure(row.vendor)}>
-              目录获取失败
-            </span>
-          )}
+          {fetchInflight.has(row.vendor) && <span className="ms-group-fetch">目录获取中…</span>}
         </div>
       ) : (
         <ModelRow key={itemKey(row.m)} state={state} m={row.m} value={value} />

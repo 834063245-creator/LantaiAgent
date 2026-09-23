@@ -644,7 +644,8 @@ export class Workspace {
         .then((models) => {
           if (models.length > 0) mergeDynamicModels(row.name, models);
           // C5（2026-08-27）：后台自动拉取也记失败面——成功清标记，失败记原因
-          // （compact 选择器分组头可见「目录获取失败」）。last-good 已合并模型
+          // （**设置页「模型目录」区**可见原因，那儿有「刷新目录」可重试；
+          // 2026-09-23 用户拍板 A 后创作坞不再报这个警）。last-good 已合并模型
           // 不因失败被清。
           recordDynamicFetchResult(row.name, true);
         })

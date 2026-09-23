@@ -187,10 +187,12 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     expect(plain?.querySelector('.ms-item-vision')).toBeNull();
   });
 
-  it('C5：动态目录拉取失败的厂商分组头标注「目录获取失败」', async () => {
+  // 2026-09-23 用户拍板 A：**坞里不再报目录失败**——它是消费面，看到也做不了补救；
+  // 原因与重试归设置页的「模型目录」区（tests/ui/provider-model-catalog.test.ts 钉住）。
+  // 原「C5：分组头标注目录获取失败」用例随该行为退役同批删除。
+  it('坞里不出现「目录获取失败」：失败标记在位也不报警（原因归设置页）', async () => {
     recordDynamicFetchResult('anthropic', false, '网络错误');
     try {
-      // 只配置 anthropic 一家——compact 空查询列出该 vendor 的静态目录模型
       localStorage.setItem(
         'hologram_settings',
         JSON.stringify({
@@ -225,7 +227,9 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
       });
       await act(async () => {});
       const heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
-      expect(heads.some((h) => h.includes('anthropic') && h.includes('目录获取失败'))).toBe(true);
+      expect(heads.some((h) => h.includes('anthropic'))).toBe(true); // 分组照常
+      expect(container!.querySelector('.ms-group-fail')).toBeNull(); // 但不报警
+      expect(document.body.textContent).not.toContain('目录获取失败');
     } finally {
       recordDynamicFetchResult('anthropic', true); // 清标记防污染同文件其它用例
     }
