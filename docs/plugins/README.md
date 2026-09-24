@@ -393,6 +393,15 @@ patch/preset 可寻址禁用单个 server（组合均匀性不破）。**不需�
   `protocol_bridge_spawn` 起子进程；http 直连）+ `tools/list` 拉远端清单。
   连接失败 = 该 server 空集 + console warn——**不炸装载不炸装配**；空集
   不缓存，下次装配重试（服务器恢复后新会话即得工具面）。
+- **装配时点纪律（2026-09-24 立规，两类 server 都受约束）**：**工具面在装配时点
+  冻结**——行工厂的产物（`mcp__<server>__*` 清单）进了注册表就不再重取，而工作区
+  **共享注册表**建一次即被所有同组合的卷复用，**不存在「下次装配」**。因此
+  「装配这一刻还没握手完 ⇒ 空集 ⇒ 下次装配重试」这条老语义在受治档上等于
+  **永久没有工具**（实测：任何声明 `restart`/`lifecycle` 的 server 全部命中；旧形态
+  条目因为是在装配期自己连接并 await，故不受影响）。现行语义：
+  `ASSEMBLY_READY_WAIT_MS`（10s）内**有界等待就绪**再取面；失败仍留空集 + 可见
+  warn（真因照抄治理器原文）。回归 `tests/third-party-mcp-assembly.test.ts`
+  （两条路 × 真 Workspace 装配腰，判据 = Agent 注册表里有 `mcp__*`）。
 - **startup-error**：装载期急连接验证——失败 → 插件 error 记录
   （设置面板可见）。
 - **进程生命周期**：kill 归插件 fiber disposer——插件卸载/禁用（重启

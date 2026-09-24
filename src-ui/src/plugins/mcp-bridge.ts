@@ -113,6 +113,36 @@ const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
 const DEFAULT_RESTART_BACKOFF_MS = 1_000;
 const RESTART_BACKOFF_CAP_MS = 30_000;
 
+/** 装配期等待受治进程就绪的上限（ms）。
+ *
+ *  为什么装配期必须等：MCP 工具行是**工具面行**——行工厂按 `governor.toolFace()`
+ *  快照产出，而工具面在**装配时点冻结**（注册表建好即定型，行工厂的产物进了
+ *  ToolRegistry 就不再重取）。空集是「不缓存，下次装配重试」——但工作区共享注册表
+ *  路径**没有下次装配**（组合身份不变 ⇒ 每卷都复用同一份注册表）。于是「装配这一刻
+ *  还没握手完」= 该 server 的工具**永久**进不了模型工具面，且除一行 console.warn 外
+ *  无任何用户可见痕迹（2026-09-24 实测：随包引擎、以及任何声明了 restart/lifecycle
+ *  的第三方 server 全部命中；旧形态条目走装配期连接，故不受影响）。
+ *
+ *  有界而非无限：健康 server 很快（实测随包引擎 本项目根 2.0s / 空项目 32ms，
+ *  其中 2s 是 SQLite 载图）；坏 server 封顶在「开工作区卡一下」。多条 server 的
+ *  等待是并行的（buildToolRegistry 的 Promise.all），总代价不随条数线性增长。 */
+export const ASSEMBLY_READY_WAIT_MS = 10_000;
+
+/** 有界等待：超时返回 false；被等待的 promise 失败则抛出（调用方决定吞不吞）。 */
+export async function waitWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p.then(() => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function resolveTiming(opts: RegisterMcpServerOptions | undefined): Required<McpGovernorTiming> {
   const t = opts?.timing ?? {};
   return {
@@ -302,6 +332,9 @@ function governedActivationFace(governors: readonly ServerGovernor[]): GovernedA
   };
 }
 
+/** 装配期就绪等待的结果（`awaitReadyWithin`）——失败必带真因（不静默）。 */
+export type AssemblyReadyOutcome = { ready: true } | { ready: false; reason: string };
+
 /** 单个受治 server 的生命周期治理器（每个声明治理字段的 mcpServers 条目一个，
  *  生命周期 = 插件 fiber——dispose 链式杀进程）。 */
 class ServerGovernor {
@@ -445,11 +478,23 @@ class ServerGovernor {
     });
   }
 
-  /** 装配期触发（factory）：with-window 不拉起（窗是生命周期主）；
-   *  lazy/eager 兜底拉起（eager 崩溃且 restart=off 时由装配兜底恢复）。 */
-  requestFromAssembly(): void {
-    if (this.disposed || this.state === 'ready' || this.lifecycle === 'with-window') return;
-    this.ensureStarted();
+  /** 装配期**有界等待就绪**（工具面是装配输入——见 `ASSEMBLY_READY_WAIT_MS`）。
+   *  这一步**同时是拉起触发**（等待即在拉起）——装配面不需要另一个「只触发不等」
+   *  的入口：重复触发会让挂壁 server 每次装配双 spawn（实测于本文件改造时）。
+   *  幂等：已就绪立即 ready；在途拉起复用同一 attempt；退避监管中不打断（归下次
+   *  装配）。失败/超时**不抛**（装配不因受治进程起不来而失败），但**带回真因**
+   *  ——调用方要据此写可见 warn（`就绪超时` / `启动途中退出` 一类原文都在这里，
+   *  吞掉它等于把「为什么没工具」变成不可查）。 */
+  async awaitReadyWithin(ms: number): Promise<AssemblyReadyOutcome> {
+    if (this.state === 'ready') return { ready: true };
+    if (this.disposed) return { ready: false, reason: '已随插件卸载' };
+    if (this.backoffTimer) return { ready: false, reason: '崩溃退避重启中' };
+    try {
+      const ok = await waitWithin(this.start(), ms);
+      return ok ? { ready: true } : { ready: false, reason: `握手未在 ${ms}ms 内完成` };
+    } catch (e) {
+      return { ready: false, reason: e instanceof Error ? e.message : String(e) };
+    }
   }
 
   /** 调用期触发（决策 7——lazy 失败调用本身已触发拉起）：with-window 不拉起。 */
@@ -671,7 +716,22 @@ async function registerGovernedServer(
     // 语义由 mcp-bridge.test 既有断言钉死）。
     noCache: true,
     factory: async () => {
-      if (governor.status !== 'ready') governor.requestFromAssembly();
+      // 装配期取工具面 = 这一步必须拿到就绪态（长注释见 ASSEMBLY_READY_WAIT_MS）。
+      // with-window 档不经手：窗才是它的生命周期主，装配既不替它拉起也不为它等。
+      // 等待本身即拉起触发（awaitReadyWithin → start）；失败者按 lazy 语义留待
+      // 下次装配/调用，不在这里补第二次触发（挂壁 server 会双 spawn）。
+      if (governor.lifecycle !== 'with-window' && governor.status !== 'ready') {
+        const outcome = await governor.awaitReadyWithin(ASSEMBLY_READY_WAIT_MS);
+        if (!outcome.ready) {
+          // 空集不缓存 = 下次装配重试；但用户侧没有回执面，故至少留一行可见 warn
+          //（「错误不静默」——静默空集正是 2026-09-24 那类事故的温床）。真因照抄
+          //  治理器的原文（就绪超时 / 启动途中退出 / 连接错…），别用它自己的话盖掉。
+          console.warn(
+            `[mcp-bridge] 受治 server "${server.name}"（${pluginName}）装配期未就绪：${outcome.reason}` +
+              '——本次装配该行空集，下次装配重试',
+          );
+        }
+      }
       return governor.toolFace().map((schema) => governedTool(governor, schema));
     },
   });

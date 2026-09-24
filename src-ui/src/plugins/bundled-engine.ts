@@ -35,7 +35,13 @@
 import { log } from '../agent/logger';
 import type { Context } from '../cordis';
 import { typedJsonRpc } from '../rpc-contract';
-import { type GovernedActivationFace, type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
+import {
+  ASSEMBLY_READY_WAIT_MS,
+  type GovernedActivationFace,
+  type McpBridgeIO,
+  registerMcpServerTools,
+  waitWithin,
+} from './mcp-bridge';
 import type { McpServerDecl } from './types';
 
 /** 随包引擎探测结果（`engine_bundled_info` RPC 的形状）。 */
@@ -124,38 +130,10 @@ export interface BundledEngineWiring {
   toolCount?: number;
 }
 
-/** 装配前等待引擎就绪的预算（ms）。
- *
- *  为什么要有界等待：工具面在**装配时点冻结**（行工厂按 `governor.toolFace()`
- *  快照产出，空集不缓存 = 指望「下次装配重试」，而工作区共享注册表路径没有下次
- *  装配——除非用户重开工作区）。所以「开工作区」这一步必须把工具面拿到手。
- *
- *  实测（2026-09-24，本机 + 本项目根）：引擎 `serve` 冷启动到 `ready` **32ms**、
- *  initialize + tools/list 各 1ms——`tools/list` 走静态折叠表，慢的是**分析**
- *  （引擎自己延迟到首次 `analyze_project`）。经 Rust protocol_bridge 的
- *  spawn + IPC 另加数百毫秒量级。10s 预算对健康引擎是 ~30× 余量，坏引擎则
- *  封顶在用户可感知为「开工作区卡一下」的范围内（不再是 60s 就绪时限）。 */
-const PREHEAT_BUDGET_MS = 10_000;
-
-/** 有界等待：超时返回 false（**不取消**在途拉起——进程照常起，只是本次装配不等它）。 */
-async function waitWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      p.then(
-        () => true,
-        (e: unknown) => {
-          throw e;
-        },
-      ),
-      new Promise<boolean>((resolve) => {
-        timer = setTimeout(() => resolve(false), ms);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
+/** 装配前等待引擎就绪的预算（ms）——**共享常量**：受治进程的装配期就绪等待
+ *  由 `mcp-bridge` 统一定义（随包引擎与任何声明 restart/lifecycle 的第三方
+ *  server 同一语义、同一上限）。此处只做别名，防两处数字各自漂移。 */
+const PREHEAT_BUDGET_MS = ASSEMBLY_READY_WAIT_MS;
 
 /** 注册随包引擎工具（**须在 Agent 装配前调用**——工具行先于装配进注册表）。
  *

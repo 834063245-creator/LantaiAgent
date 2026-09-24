@@ -199,18 +199,18 @@ describe('受治进程治理（S2）：a) 握手就绪 / 就绪超时', () => {
     resetMcpGovernorForTests();
   });
 
-  it('受治 lazy：装配非阻塞触发拉起，握手就绪后工具面可用', async () => {
+  it('受治 lazy：装配期有界等待就绪，工具面**当场**可用（不再空集等下轮）', async () => {
     const { io, spawns } = makeFakeIO();
     const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, { timing: TIMING });
     const rows = pluginToolRows();
     expect(rows.map((r) => r.id)).toEqual(['plugin/acme/tools/mcp/my-engine']);
     const row = first(rows);
-    // 装配 fail-fast（决策 7）：未就绪立即返回空集——宿主不阻塞等待
-    expect(await row.factory({} as never)).toEqual([]);
-    await pollUntil(() => spawns.length === 1); // 拉起已触发
-    // 就绪（initialize 握手 + tools/list）→ 工具整组产出
-    const tools = await waitForTools();
+    // 行为变更（2026-09-24）：装配期**有界等待**就绪后取工具面——工具面在装配时点
+    // 冻结，旧语义「立即返回空集」在共享注册表路径上等于**永久**没有工具
+    // （空集不缓存 = 下次装配重试，而那条路径没有下次装配）。见 ASSEMBLY_READY_WAIT_MS。
+    const tools = await row.factory({} as never);
     expect(tools.map((t) => t.name())).toEqual(['mcp__my-engine__echo', 'mcp__my-engine__ping']);
+    expect(spawns).toHaveLength(1); // 等待本身即拉起触发（不重复触发）
     const echo = first(tools);
     expect(await echo.execute({ text: 'hi' })).toBe('[echo] ok');
     await cleanup(root, fiber);
@@ -223,11 +223,13 @@ describe('受治进程治理（S2）：a) 握手就绪 / 就绪超时', () => {
       timing: { startupDeadlineMs: 80, restartBackoffMs: 30 },
     });
     const row = first(pluginToolRows());
-    await row.factory({} as never); // 触发拉起
+    await row.factory({} as never); // 触发拉起（装配期有界等待，失败不抛）
     await pollUntil(() => spawns.length === 1);
     // 到点判负：清场杀挂壁进程 + 拉起失败 warn（就绪超时）
     expect(await pollUntil(() => procs[0]?.killed === true, 1000)).toBe(true);
-    expect(warnSpy.mock.calls.some((c) => String(c[1]).includes('就绪超时'))).toBe(true);
+    // 行为变更（2026-09-24）：warn 由「装配期未就绪：<治理器原文>」一条承担
+    // （此前是 ensureStarted 的 `拉起失败: <err>`）——断言改成看整行文本。
+    expect(warnSpy.mock.calls.some((c) => c.map(String).join(' ').includes('就绪超时'))).toBe(true);
     // 启动失败 ≠ 崩溃：restart 不接管——无自动重拉
     await sleep(120);
     expect(spawns).toHaveLength(1);
