@@ -621,6 +621,11 @@ manifest.json —— 包内合计 30～110 行。
   **9 / 23 / 7,478**；空壳集仍 **7 条（5 纯壳 + 2 半壳）**（7c-1 起它就不是薄壳）。
 - **验收**：vitest 406 文件全绿 · build + build:builtin-plugins（35 产物自包含）· biome ci 0/0 ·
   **convergence 双轨基线零改动**（7 文件 / 44 用例双轨绿）· doc-sync + doc-check 全绿。
+- **真机验收**（重建 exe + CDP）：faceDeps **287 键**（276 → 287，+11）、13 个探针键类型全对、
+  `spawnSubAgentImpl` **已撤桥**（`(缺)`）；`/plugins/hologram/subagent-in-process/entry.js`
+  **577 KB**（554 → 577 KB）且动态 import 成功（`SubAgentPool` / `AgentLifecycleManager` /
+  `wrapTool` / `buildSubAgentTools` / `agent_merge` 真身俱在）；`face.json` **23 键**带指纹
+  `d5cd61db`（保险丝 a 覆盖 35/35）；启动期 console 无异常（仅结构性的无 face.json 产物 404）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
