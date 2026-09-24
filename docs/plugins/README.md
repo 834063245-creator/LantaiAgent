@@ -453,6 +453,25 @@ ctx.effect(
 );
 ```
 
+出厂行（十一 kind 全谱 + `'*'` 兜底）= 产物 `paper-renderers`（名册 `required: true`，
+**不可禁用**——禁用它等于纸壳裸奔）；内核 `renderer-service` 只做通道（批 8b 起零出厂行）。
+
+#### 重依赖才留应用 bundle（判据，2026-09-25 批 8 契约化）
+
+产物域有两条硬约束（`scripts/build-builtin-plugins.mjs` 的自包含闸）：**禁静态 import、
+禁动态裸 import**。因此：
+
+- **轻依赖**（hljs / katex / zod / yaml …）**内联进产物**——换来「零新依赖 + 只换产物热更」，
+  代价是产物体积（`renderers` 产物 ≈2.8 MB，含 hljs）；
+- **重依赖**（pdfjs / mermaid / three——MB 级且须按需分片）**组件本体留应用 bundle**，
+  产物侧只留「认领 + 降级 + 取件」逻辑，组件经宿主桥取用：
+  - 文件查看器：`ViewerDef.heavy = '<id>'` + 宿主桥 `loadViewer(id)`
+    （`app/paper/viewers/` **目录即白名单**，现存 `pdf` / `model3d`）；
+  - 块渲染器：faceDeps 桥（先例：`paper-renderers` 的 `MermaidBlock`——mermaid 围栏
+    「码 → 图」那一段留应用 bundle，认领与降级随产物）。
+- 判据一句话：**能在产物里跑的（零依赖/自绘/复用既有原语/轻依赖内联）一律留产物（可热更）；
+  只有真重依赖才进应用 bundle（代价：该批要重建 exe）**。
+
 ### ctx.prompts —— system-prompt 段落（下次 Agent 装配生效）
 
 第六贡献通道（P4 A-1，2026-08-23）：向 Agent 系统提示词追加段落——工具指导、

@@ -348,14 +348,14 @@ manifest.json —— 包内合计 30～110 行。
 
 | 项 | 路径（物理行） | 应去哪 | 通道 / 障碍 |
 |---|---|---|---|
-| 会话流块渲染器 11 kind + `'*'` 兜底 | `app/paper/builtin-renderers.tsx` **1,020** | 新产物 `paper-renderers/`（或并入 paper-shell） | `ctx.renderers`；现由**内核 service** 直接 `svc.register`，不经通道；注册序=字节契约 |
-| mermaid 围栏渲染器 | `app/paper/mermaid-block.tsx` 312 + css 48 = **360** | 同上 | 重依赖动态分片，须与上项同批 |
+| 会话流块渲染器 11 kind + `'*'` 兜底 | ~~`app/paper/builtin-renderers.tsx` **1,020**~~ | 新产物 `paper-renderers/`（**required 不可禁用**） | ✅ **批 8b 已归家**（2026-09-25）：整件 `git mv` 进 `plugins/builtin/paper-renderers/renderers.tsx`，注册点移到产物 apply（`ctx.renderers`，双走查前缀 `builtin/<kind>` ↔ `plugin/hologram/paper-renderers/<kind>`）；内核 `renderer-service` 回归纯通道；产物体积 955 KB（hljs + katex 内联） |
+| mermaid 围栏渲染器 | `app/paper/mermaid-block.tsx` 312 + css 48 = **360** | 同上 | ✅ **批 8b 已处置**：**认领 + 降级随包**（`MdCodeBlock` 里 `lang === 'mermaid'` 那一段），**组件本体留应用 bundle**（`import('mermaid')` 是动态裸 import，产物构建闸拒绝）——经 faceDeps 桥 `MermaidBlock` 取用，判据写进 `docs/plugins/README.md` §3（§4-2 文档契约化） |
 | ask/权限卡架 | `PromptShelf.tsx` 776 + Host 30 + css 412 = **1,218** | 新产物 `ask-cards/` | `ctx.overlays` **需新槽**（现槽位闭集渲染在 PaperPanel 内部）；`chat-core` 持 ref 句柄 |
 | 案卷首页 | `app/SessionsHome.tsx` **593** | 新产物 `sessions-home/` | `ctx.panels` 无「常驻」语义；顶栏与窗口壳件同体须切分 |
 | 首页样式 | `app/foundation.css` 首页区段 **≈800** | 随上项进包 | 与全局 `body::before/after` 氛围层同文件交织，须逐段切 |
-| ipynb 查看器 | `app/paper/viewers/ipynb.tsx` 516 + css 148 = **664** | `renderers/viewers/` 内联（撤 `heavy`） | 阻塞于「块渲染器归家」（它要复用 `MarkdownBody`） |
-| markdown 独立查看器 | `markdown-doc.tsx` 263 + css 147 = **410** | 同上 | 同上 |
-| 查看器装载面 | `app/paper/viewers/index.ts` **46** | 随上项收窄（仅 pdf/model3d 留白名单） | 与产物 `viewer-registry` 互为类型依赖（**内核 app 反向依赖产物包**） |
+| ipynb 查看器 | ~~`app/paper/viewers/ipynb.tsx` 516 + css 148 = **664**~~ | `renderers/viewers/` 内联（撤 `heavy`） | ✅ **批 8c 已内联**（2026-09-25）：本体 + css 迁进 `plugins/builtin/renderers/viewers/`（def 与组件同文件，`heavy:'ipynb'` → `component` 直挂）；markdown 单元格经宿主桥 `rendererActiveMarkdownBody()` 复用纸面渲染器 |
+| markdown 独立查看器 | ~~`markdown-doc.tsx` 263 + css 147 = **410**~~ | 同上 | ✅ **批 8c 已内联**：同 ipynb（重依赖障碍由 8b 的 markdown 体渲染登记表拆掉） |
+| 查看器装载面 | `app/paper/viewers/index.ts` **46** | 随上项收窄（仅 pdf/model3d 留白名单） | ✅ **批 8c 已收窄**（2026-09-25）：目录只剩 `pdf.tsx` + `model3d.tsx`（+ 各自 css）——「目录即白名单」自动生效，`viewer-registry.test` 的 heavy 双向全等守卫零改动即绿；**内核↔产物类型环同批解开**（批 8a：形状上收 `paper/viewer-contract.ts`） |
 
 （另含 §2.1 的 settings 5,291 行——它在 `app/**` 内，但归属上属「包已有」那类。）
 
@@ -468,11 +468,10 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 7c-2 后重测）：红 **9 产物 / 23 文件 / 7,478 行**（§1 的 7 条 +
-§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`；7c-2 销 `subagent-in-process` 的
-`agent/subagent-spawn.ts` 553 行 ⇒ 10→9 产物、24→23 文件）；
-绿 111 平台 + **101 已认领**；灰 **91 文件 / 26,597 行**（7c-2 三件 1,190 行进包 + 三件
-随行内核共享面转「已认领」）。
+**2026-09-25 基线**（批 8 后重测）：红 **9 产物 / 23 文件 / 7,478 行**（§1 的 7 条 +
+§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`；批 8 新产物 `paper-renderers` 零 impl 认领 ⇒ 红区不动）；
+绿 111 平台 + **107 已认领**；灰 **84 文件 / 23,124 行**（批 8 把渲染面判据层收成 `shared`：
+`markdown` / `marks` / `tool-text` / `fold` / `translate` 五件进 paper-renderers 与 renderers 的 shared 名单）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -490,7 +489,7 @@ manifest.json —— 包内合计 30～110 行。
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
-| **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | 🟡 **侦察已完成**（§6.4）+ 施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)（8a 类型环 → 8b 新产物 `paper-renderers`（不可禁用）→ 8c 撤 heavy 内联 → 8d 文档契约化）。依赖批 5/6 落地；同批消掉 hljs 两处内联（口径见 §6.4 硬点 4） |
+| **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
 | **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 需先有通道（§4-3/4/9）与归属裁定（§4-1/5/6/11/12/13） |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
@@ -660,6 +659,31 @@ manifest.json —— 包内合计 30～110 行。
 `tests/contribution-channel-single-source.test.ts:122-147` · `tests/viewer-artifact-load.test.tsx:110-135`。
 
 **爆破半径**：30 个测试文件（`viewer-*` 14 · `paper-*` 12 · `asset-media-load` · `renderer-registry` 一族）。
+
+**批 8 落地（2026-09-25，四笔各自的验收全绿）**：
+
+- **8a 类型环解结**：新内核契约 `src/paper/viewer-contract.ts`（`ViewerBytes` / `ViewerMode` /
+  `ViewerProps` / `ViewerDef` / `normalizeExt` 从产物原样上收，产物 re-export）；内核 5 处改指
+  （含 `model3d.tsx` 的**值** `normalizeExt`）；新守卫 `tests/kernel-product-import-guard.test.ts`
+  （4 用例：内核 ↛ 产物源码 + `main.ts` 只准引产物 CSS + 两条自检）。
+- **8b 纸面块渲染器归家**：新产物 `paper-renderers`（`renderers.tsx` 1,020 + `index.tsx` 注册 +
+  `host.ts`/`host.aliased.ts` 桥）；**required 机制**（名册 `required: true` → 清单 meta →
+  loader 两条禁用路径跳过 → 设置页「常驻 · 不可禁用」）；新内核登记表
+  `src/paper/markdown-body-seam.ts`（跨产物 markdown 复用面）；内核 `renderer-service` 回归纯通道；
+  faceDeps **287 → 290**（`MermaidBlock` / `Overlay` / `readAttachmentBase64`）。
+- **8c 撤 heavy 内联**：ipynb（516 + css 148）· markdown-doc（263 + css 147）迁进
+  `renderers/viewers/`（1,169 行随包），`app/paper/viewers/` 只剩 pdf/model3d；
+  hljs 收成 `viewers/hljs.ts` 一份（语言表并集）；faceDeps **290 → 291**（`activeMarkdownBody`）。
+  同批修提取器 bug：esbuild 路径注释 `// …/echarts/lib/core/impl.js` 被属性访问正则命中 ⇒
+  误把 `js` 收成宿主面键（会让装载器按缺键拒载整面）——修法 + 回归用例。
+- **8d 文档契约化**：`docs/plugins/README.md` §3 新增「重依赖才留应用 bundle」判据
+  （轻依赖内联 / 重依赖走 `heavy` 或 faceDeps 桥，附判据一句话）。
+- **真机数字**（重建 exe + CDP）：faceDeps **291 键**、指纹 `15720716`，7 个探针键类型全对
+  （`registerMarkdownBody` 正确地**不在**桥面——登记是内核内部事）；
+  `paper-renderers/entry.js` **955 KB**（hljs + katex 内联）动态 import 成功且 `MarkdownBody` /
+  `JsonBody` 真身在场、`face.json` 5 键；`renderers/entry.js` **2.68 MB** + `entry.css` 20 KB，
+  含 `parseNotebook` 与 `pp-viewer-mddoc` 类名（撤 heavy 后的两个查看器真身）、`face.json` 1 键；
+  启动期 console 无异常（仅结构性的无 face.json 产物 404）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
