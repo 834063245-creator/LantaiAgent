@@ -7,9 +7,21 @@
 
 import type { AgentEvent, AssetDeltaEventData, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
-import type { AssistantPart, BlockPart } from './message-model';
+import type { AssistantPart, BlockPart, NoticePart } from './message-model';
 import { findToolPart, lastTextPart } from './message-model';
 import { resolveSemanticToolName } from './tool-semantics';
+
+/**
+ * 卷内贴黄落进**流内位置**（2026-09-24）—— 追加一个 notice part 到 parts 末尾。
+ *
+ * 为何不是「插一条 notice 消息」：消息级的贴黄只能停在回合顶部（来文之后、助手消息
+ * 之前），而压缩这类长杆事件常发生在一轮工具循环的中段（案卷 35 形态：1 条来文 +
+ * 54 步工具循环）——贴黄停在顶部说的就不是它发生的位置。落成 part 后它就在当前
+ * 流位置上，与工具卡/正文同序（渲染层：notice 块，永不折叠）。
+ */
+export function appendNoticePart(parts: AssistantPart[], text: string, level: NoticePart['level']): void {
+  parts.push({ type: 'notice', text, level });
+}
 
 /**
  * 将一个 AgentEvent 应用到 parts 数组。原地变更。
@@ -18,7 +30,8 @@ import { resolveSemanticToolName } from './tool-semantics';
  * 处理：Reasoning、Text、Message、ToolDispatch、ToolProgress、ToolResult、
  *       Asset（资产终值）、AssetDelta（资产增量）。
  * 不处理：TurnStarted、Usage、Notice、SessionChanged — 这些有显示特定的
- * 副作用，由调用方单独管理。
+ * 副作用，由调用方单独管理（Notice 的可见性政策在 chat-stream，
+ * 其**流内落位**走本文件的 appendNoticePart）。
  */
 export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boolean {
   switch (ev.kind) {

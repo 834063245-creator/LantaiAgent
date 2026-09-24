@@ -27,6 +27,22 @@ function blockPart(overrides: Partial<BlockPart> = {}): BlockPart {
   };
 }
 
+describe('paper/translate — notice part → 贴黄块（2026-09-24）', () => {
+  it('notice part → kind=notice 块（带 level + 稳定 id），且位置在已产出的正文之后', () => {
+    const msg = asstMsg('a1', [
+      { type: 'text', text: '先看第一份档案。', finalised: true },
+      { type: 'notice', text: '[上下文压缩] 压缩中 · 共 1 块（约 23 万 token）', level: 'info' },
+    ]);
+    const blocks = translateMessages([msg]);
+    // 位置由流决定：正文块在前、贴黄在后（旧实现把贴黄插在消息级 = 正文之前）
+    expect(blocks.map((b) => b.kind)).toEqual(['markdown', 'notice']);
+    const notice = blocks[1];
+    expect(notice.payload).toEqual({ text: '[上下文压缩] 压缩中 · 共 1 块（约 23 万 token）', level: 'info' });
+    expect(notice.id).toBe('pb:a1:1'); // 稳定 id：可钉住、可参与增量转译缓存
+    expect(notice.source.part).toMatchObject({ type: 'notice', level: 'info' });
+  });
+});
+
 describe('paper/translate — BlockPart → 资产块映射（WO-3）', () => {
   it('BlockPart → 1 块：kind/payload/asset 元数据落位，source 活引用', () => {
     const bp = blockPart({ assetId: 'as_chart', kind: 'chart', presentation: 'chart', title: 'q4' });

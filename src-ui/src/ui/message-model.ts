@@ -108,6 +108,18 @@ export interface ToolCallPart {
   startedAt?: number;
 }
 
+/** 卷内贴黄（**流内位置**，2026-09-24）——长杆过程的可见心跳（压缩 / 挂起…）。
+ *
+ *  为何是 part 而不是 message：位置必须**由流决定**。消息级的贴黄只能插在「来文之后、
+ *  助手消息之前」，于是永远停在回合顶部；而压缩恰恰常发生在一轮工具循环的中段
+ *  （案卷 35 形态：1 条来文 + 54 步工具循环），贴黄停在顶部 = 说的不是它发生的位置。
+ *  落成 part 后它就在事件发生的那一格上（渲染层按 notice 块平铺，永不折叠）。 */
+export interface NoticePart {
+  type: 'notice';
+  text: string;
+  level: 'info' | 'warn' | 'error';
+}
+
 /** 子 agent 嵌套块 — 在助手消息内渲染为可折叠分组。 */
 export interface SubAgentPart {
   type: 'subagent';
@@ -158,7 +170,7 @@ export interface BlockPart {
   confirmResolution?: import('../agent/agent-types').ConfirmCardResponse;
 }
 
-export type AssistantPart = ReasonPart | TextPart | ToolCallPart | SubAgentPart | PlanPart | BlockPart;
+export type AssistantPart = ReasonPart | TextPart | ToolCallPart | SubAgentPart | PlanPart | BlockPart | NoticePart;
 
 // ── 消息 ─────────────────────────────────────────────
 

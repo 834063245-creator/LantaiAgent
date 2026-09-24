@@ -28,7 +28,7 @@ import type {
   UserMessage,
 } from './message-model';
 import { createAssistantMessage, createNoticeMessage, createUserMessage } from './message-model';
-import { applyAssetUpdateToExistingParts, applyEventToParts } from './part-mutator';
+import { appendNoticePart, applyAssetUpdateToExistingParts, applyEventToParts } from './part-mutator';
 import { isSubagentSpawnTool } from './tool-semantics';
 
 // ── 轮次配对类型 ──
@@ -229,7 +229,7 @@ export function handleAgentNotice(ctx: StreamContext, text: string, level: strin
     return;
   }
   if (text.startsWith(COMPACTION_NOTICE_MARK)) {
-    appendVolumeNotice(ctx, text, level === 'info' ? 'info' : 'warn');
+    appendNoticeInStream(ctx, text, level === 'info' ? 'info' : 'warn');
     if (level === 'warn') showToast(text, 'warn', TOAST_LONG_HOLD_MS);
     return;
   }
@@ -248,21 +248,15 @@ function hasStallNoticeThisTurn(msgs: readonly ChatMessage[]): boolean {
   return false;
 }
 
-/** 挂起贴黄落卷：同回合只一条（重试不刷屏）。 */
+/** 挂起贴黄落卷（**消息级**）：同回合只一条（重试不刷屏），插在流式助手之前
+ *  （本轮读序 = 来文 → 贴黄 → 正文）。挂起发生在「还没有任何输出」的时刻，
+ *  顶部正是它的真实位置 —— 与压缩类（流内 part，见下）分工不同。 */
 function appendStallNotice(ctx: StreamContext, text: string): void {
   const sid = ctx.getStreamingAssistantId();
   const target = _resolveSessionTarget(ctx, sid);
   const msgs = target ? target.messages : ctx.getActiveMessages();
   if (hasStallNoticeThisTurn(msgs)) return;
-  appendVolumeNotice(ctx, text, 'warn');
-}
-
-/** 卷内贴黄落卷：插在流式助手之前（本轮读序 = 来文 → 贴黄 → 正文）。 */
-function appendVolumeNotice(ctx: StreamContext, text: string, level: NoticeMessage['level']): void {
-  const sid = ctx.getStreamingAssistantId();
-  const target = _resolveSessionTarget(ctx, sid);
-  const msgs = target ? target.messages : ctx.getActiveMessages();
-  const notice = createNoticeMessage(text, level);
+  const notice = createNoticeMessage(text, 'warn');
   const assistantIdx = sid ? msgs.findIndex((m) => m.role === 'assistant' && m._id === sid) : -1;
   msgs.splice(assistantIdx >= 0 ? assistantIdx : msgs.length, 0, notice);
   if (target) {
@@ -271,6 +265,15 @@ function appendVolumeNotice(ctx: StreamContext, text: string, level: NoticeMessa
   } else {
     bumpChat(ctx.storeId);
   }
+}
+
+/** 卷内贴黄落进**流内位置**（2026-09-24 用户报「贴黄只停在来文下面」）：
+ *  追加到当前流式助手的 parts 末尾 —— 位置由流决定，于是压缩这种「发生在工具循环
+ *  中段」的长杆事件就报在它真正发生的那一格上，而不是永远贴着来文。 */
+function appendNoticeInStream(ctx: StreamContext, text: string, level: NoticeMessage['level']): void {
+  appendNoticePart(_streamingAssistant(ctx).parts, text, level);
+  _streamingBump(ctx);
+  _scheduleSync(ctx);
 }
 
 // ═══════════════════════════════════════════════════════════

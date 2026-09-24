@@ -411,6 +411,11 @@ function translateAssistantParts(
       case 'text':
         emitTextWithFences(msg._id, part.text, idx, part, out, pinned, sidecarFor.get(idx));
         break;
+      case 'notice':
+        // 卷内贴黄（流内位置，2026-09-24）：与 notice 消息同块形（kind='notice' +
+        // level），差别只在锚——消息级锚 messageId/part:null，part 级锚到具体 part。
+        emit('notice', { text: part.text, level: part.level }, idx, part);
+        break;
       case 'tool': {
         // code_execution 专属块（P2-A 拍板）：三段式形态与 tool 单进单出分离；
         // 判据 name === 'code_execution'（常驻名，不进 DOMAIN_SPECS）。
