@@ -2323,9 +2323,14 @@ export class Agent {
     return summaryProviderImpl(this as unknown as CompactionHost);
   }
 
-  /** 单次摘要 LLM 调用 — 空闲超时守卫；返回文本 + 发出的 cap + 提供方 usage。 */
-  async callSummaryLLM(signal: AbortSignal, systemPrompt: string, userText: string): Promise<SummaryCall> {
-    return callSummaryLLMImpl(this as unknown as CompactionHost, signal, systemPrompt, userText);
+  /** 单次摘要 LLM 调用 — 空闲超时守卫；返回文本 + 发出的 cap + 提供方 usage。
+   *  形状由调用方声明：回放口径发「真前缀 + 指令」（+ 与主请求同一份 tools）。 */
+  async callSummaryLLM(
+    signal: AbortSignal,
+    messages: Message[],
+    shape: { replay: boolean; tools?: ToolSchema[] } = { replay: false },
+  ): Promise<SummaryCall> {
+    return callSummaryLLMImpl(this as unknown as CompactionHost, signal, messages, shape);
   }
 
   /** 滚动合并分段摘要（含 priorSummary）。 */

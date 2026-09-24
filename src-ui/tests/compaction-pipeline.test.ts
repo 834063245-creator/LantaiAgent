@@ -18,6 +18,9 @@
 //  13. 空摘要（思考吃满 cap）→ 明说原因 + 机械提取兜底 + 事件账留归因
 //  14. 压缩过程可见：首拍块数 → 每块完成（含用时）→ 收尾带压前→压后
 //  15. 撞 cap 但仍有文本 → 截断残稿不许当摘要用（fail-closed）
+//  16. 摘要回放（E）：请求 = 主请求真前缀 + 指令，tools 与主请求同一份
+//  17. 二次压缩：回放前缀含 <compacted-context> 头，区域接在其后
+//  18. 区域含附图 → 不走回放（附图 wire 形态需重解析），退转录口径
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -62,10 +65,32 @@ import { createTestAgent } from './helpers/agent';
 // ── Helpers ──
 
 interface RecordedCall {
+  /** messages[0] 的内容（回放口径下 = 会话自己的 system 提示） */
   system: string;
+  /** messages[1] 的内容（回放口径下 = 区域首条；转录口径下 = 转录稿） */
   user: string;
+  /** 完整请求消息数组（回放对齐断言用） */
+  messages: any[];
+  /** 本次请求带上的工具 schema（回放口径 = 与主请求同一份） */
+  tools: any[];
   /** 本次请求写进 wire 的输出上限（= 摘要 cap） */
   maxTokens: number;
+  /** 请求形状：回放（真前缀 + 指令）/ 转录（system 即压缩器指令） */
+  shape: 'replay' | 'transcript';
+}
+
+/** 压缩指令判据：末条 user 消息即指令（两种口径共用同一句开场）。 */
+function isSummaryInstruction(m?: { role?: string; content?: string }): boolean {
+  return m?.role === 'user' && String(m.content ?? '').startsWith('你是对话压缩器');
+}
+
+/** 摘要**族**判据（2026-09-24 E 后有三形）：块调用回放形（末条 = 指令）、块调用转录形与
+ *  合并调用（system = 压缩/合并器指令）。主循环两条都不满足 ⇒ 可据此分流。 */
+function isSummaryFamily(messages: any[]): boolean {
+  return (
+    isSummaryInstruction(messages[messages.length - 1]) ||
+    String(messages[0]?.content ?? '').startsWith('你是对话压缩器')
+  );
 }
 
 function makeSummaryProvider(behavior: {
@@ -86,10 +111,15 @@ function makeSummaryProvider(behavior: {
       prewarm() {},
       async *stream(_signal: AbortSignal, req: any) {
         n++;
+        const messages = req.messages as any[];
+        const last = messages[messages.length - 1];
         behavior.onCall?.({
-          system: req.messages[0].content,
-          user: req.messages[1].content,
+          system: messages[0].content,
+          user: messages[1]?.content ?? '',
+          messages,
+          tools: (req.tools ?? []) as any[],
           maxTokens: req.max_tokens,
+          shape: isSummaryInstruction(last) ? 'replay' : 'transcript',
         });
         if (behavior.gate) await behavior.gate();
         if (behavior.fail) throw new Error('provider boom');
@@ -162,13 +192,14 @@ describe('compaction pipeline E2E', () => {
     expect(asAny(agent).compactStuck).toBe(false);
   });
 
-  it('2. 分块 map-reduce：每次 LLM 调用输入 ≤ chunkCap（永不塞爆）', async () => {
+  it('2. 分块 map-reduce：每次 LLM 调用（含回放前缀）装进输入预算（永不塞爆）', async () => {
     const calls: RecordedCall[] = [];
     const { prov } = makeSummaryProvider({ onCall: (c) => calls.push(c) });
     const contextWindow = 20000;
+    const inputBudget = contextWindow - SUMMARY_OUTPUT_BUDGET - SUMMARY_PROMPT_BUDGET;
     // chunkCap 与实现同源（输入预算 × 0.8）— 与 compaction-summarize.ts 的
-    // 单块容量公式一致，避免硬编码漂移（输出预算 2026-09 迭代 2048 → 4096）。
-    const chunkCap = Math.floor((contextWindow - SUMMARY_OUTPUT_BUDGET - SUMMARY_PROMPT_BUDGET) * 0.8);
+    // 单块容量公式一致，避免硬编码漂移（输出预算 2026-09 迭代 2048 → 4096 → 8192）。
+    const chunkCap = Math.floor(inputBudget * 0.8);
     const agent = makeAgent(prov, { contextWindow });
     pushPadMessages(agent, 24, 2000); // region 多块
 
@@ -184,11 +215,17 @@ describe('compaction pipeline E2E', () => {
     expect(calls).toHaveLength(expectedChunks + 1);
     const chunkCalls = calls.slice(0, expectedChunks);
     const mergeCall = calls[expectedChunks];
-    // 硬上界断言：每次块调用输入 ≤ chunkCap，合并调用 ≤ chunkCap
+    // 硬上界断言（规格变更 2026-09-24 E）：输入不再是「转录稿」，而是**回放前缀 + 指令**
+    // —— 故按消息数组量：整条调用必须装进输入预算（回放前缀随块号增长，故这条是真守门人）。
     for (const c of chunkCalls) {
-      expect(c.system).toContain('只总结本段内容');
-      expect(countText(c.user)).toBeLessThanOrEqual(chunkCap + 50); // 50 = 转录格式开销余量
+      expect(countMessages(c.messages)).toBeLessThanOrEqual(inputBudget);
+      // 两种口径之一，不许有第三种：回放（末条 = 指令）/ 转录（system = 压缩器指令）
+      const transcript = String(c.system).startsWith('你是对话压缩器');
+      expect(c.shape === 'replay' || transcript).toBe(true);
     }
+    // 首块前缀最短 ⇒ 必然回放；末块前缀≈全区 ⇒ 本窗口装不下 ⇒ 必退转录（护栏④实证）
+    expect(chunkCalls[0].shape).toBe('replay');
+    expect(chunkCalls.at(-1)?.shape).toBe('transcript');
     expect(mergeCall.system).toContain('多份分段简报');
     expect(countText(mergeCall.user)).toBeLessThanOrEqual(chunkCap + 50);
     expect(agent.getCompactionStats().events.at(-1)?.outcome).toBe('summary');
@@ -348,11 +385,12 @@ describe('compaction pipeline E2E', () => {
       model: () => 'mock',
       prewarm() {},
       async *stream(_signal: AbortSignal, _req: any) {
-        // 按请求内容分流：摘要调用的 system prompt 是「对话压缩器」指令，
-        // 主循环是测试 agent 的 system。分块 map-reduce 会产生多次摘要调用
-        // （块 + 合并），不能靠调用序号区分主循环。
-        const system = String(_req.messages?.[0]?.content ?? '');
-        if (system.includes('对话压缩器')) {
+        // 按请求内容分流：**摘要族** = 回放形（末条 = 压缩指令）/ 转录形 / 合并调用
+        // （2026-09-24 E 规格变更：回放口径下 system 就是会话自己的提示，旧判据
+        // 「system 含压缩器指令」只对转录口径成立）。分块 map-reduce 会产生多次摘要
+        // 调用（块 + 合并），不能靠调用序号区分主循环。
+        const msgs = (_req.messages ?? []) as any[];
+        if (isSummaryFamily(msgs)) {
           calls.push('preflight-summary');
           yield { type: ChunkType.Text, text: '自动触发摘要' } as any;
           yield { type: ChunkType.Done } as any;
@@ -620,5 +658,111 @@ describe('compaction pipeline E2E', () => {
     expect(ev.outcome).toBe('digest');
     expect(ev.summaryError).toContain('truncated at the token cap');
     expect(events.some((e) => e.level === 'warn' && String(e.text).includes('truncated at the token cap'))).toBe(true);
+  });
+
+  it('16. 摘要回放（E）：请求 = 主请求真前缀 + 指令，tools 与主请求同一份', async () => {
+    const calls: RecordedCall[] = [];
+    const { prov } = makeSummaryProvider({ onCall: (c) => calls.push(c) });
+    const registry = new ToolRegistry();
+    registry.register(
+      defineTool({
+        name: 'fake_tool',
+        description: 'fake',
+        schema: z.object({}),
+        readOnly: true,
+        execute: async () => 'fake output',
+      }),
+    );
+    const agent = createTestAgent(prov, registry, 'You are a test agent.', {
+      contextWindow: 100000,
+      execState: createExecState(),
+    });
+    pushPadMessages(agent, 12, 200);
+    const a = asAny(agent);
+    const region = a.computeCompactRegion()!.region;
+
+    await agent.compactNow(new AbortController().signal);
+
+    const call = calls[0];
+    // 回放口径：前缀 = 真载荷的前段（同一批消息对象 ⇒ 逐字节一致），不是渲染稿
+    expect(call.shape).toBe('replay');
+    expect(call.messages.slice(0, -1)).toEqual([a.session[0], ...region]);
+    expect(call.messages.slice(0, -1)).toHaveLength(1 + region.length);
+    expect(isSummaryInstruction(call.messages.at(-1))).toBe(true);
+    // tools 与主请求同一份（前缀对齐的另一半：tools 在 wire 上先于 messages）
+    expect(call.tools.length).toBeGreaterThan(0);
+    expect(call.tools).toEqual(a.requestToolSchemas());
+  });
+
+  it('17. 二次压缩：回放前缀含 <compacted-context> 头，区域接在其后', async () => {
+    const calls: RecordedCall[] = [];
+    const { prov } = makeSummaryProvider({ onCall: (c) => calls.push(c) });
+    const agent = makeAgent(prov, { contextWindow: 100000 });
+    pushPadMessages(agent, 12, 200);
+    const a = asAny(agent);
+
+    await agent.compactNow(new AbortController().signal);
+    pushPadMessages(agent, 8, 200);
+    const region = a.computeCompactRegion()!.region;
+    await agent.compactNow(new AbortController().signal);
+
+    const call = calls.at(-1)!;
+    expect(call.shape).toBe('replay');
+    // 载荷头 = system + <compacted-context> 摘要消息 —— 回放必须原样带上它，
+    // 否则前缀在第二条就分叉（也让模型天然看到上一轮简报，不再需要 <previous-summary> 注入）
+    expect(String(call.messages[1].content)).toContain('<compacted-context>');
+    expect(call.messages.slice(2, -1)).toEqual(region);
+    expect(isSummaryInstruction(call.messages.at(-1))).toBe(true);
+  });
+
+  it('18. 区域含附图 → 不走回放（附图的 wire 形态要重解析），退转录口径且仍出摘要', async () => {
+    const calls: RecordedCall[] = [];
+    const { prov } = makeSummaryProvider({ onCall: (c) => calls.push(c) });
+    const agent = makeAgent(prov, { contextWindow: 100000 });
+    const a = asAny(agent);
+    a.session.push({
+      role: 'user',
+      content: '看这张图',
+      images: [{ id: 'img-1', mediaType: 'image/png', width: 10, height: 10, name: 'x.png' }],
+    });
+    pushPadMessages(agent, 12, 200);
+
+    await agent.compactNow(new AbortController().signal);
+
+    expect(calls[0].shape).toBe('transcript');
+    expect(String(calls[0].system)).toContain('对话压缩器');
+    expect(agent.getCompactionStats().events.at(-1)?.outcome).toBe('summary');
+  });
+
+  it('19. 工具结果折叠开启 → 载荷里是占位符，回放会看不到真输出 ⇒ 退转录口径', async () => {
+    const calls: RecordedCall[] = [];
+    const { prov } = makeSummaryProvider({ onCall: (c) => calls.push(c) });
+    // toolResultWindow > 0 ⇒ payloadMessages() 把窗口外的旧工具结果换成占位符
+    const agent = createTestAgent(prov, new ToolRegistry(), 'You are a test agent.', {
+      contextWindow: 100000,
+      execState: createExecState(),
+      toolResultWindow: 2,
+    });
+    const a = asAny(agent);
+    a.session.push({ role: 'user', content: '跑几个命令' });
+    for (let i = 0; i < 6; i++) {
+      a.session.push(
+        { role: 'assistant', content: '', tool_calls: [{ id: `c${i}`, name: 'fs', arguments: '{}' }] },
+        { role: 'tool', tool_call_id: `c${i}`, name: 'fs', content: pad(200) },
+      );
+    }
+    pushPadMessages(agent, 6, 200);
+
+    // 前置事实：折叠确实改了载荷（旧工具结果被换成 `[工具结果已折叠: …]` 占位）
+    // —— 注意必须在压缩**之前**看载荷：压完区域被折进摘要，载荷里就没有 tool 消息了。
+    const payloadTools = a.payloadMessages().filter((m: any) => m.role === 'tool');
+    expect(payloadTools.length).toBeGreaterThan(0);
+    expect(payloadTools.some((m: any) => String(m.content).includes('工具结果已折叠'))).toBe(true);
+
+    await agent.compactNow(new AbortController().signal);
+
+    // 逐条身份比较不过 ⇒ 回放会看不到真工具输出 ⇒ 退转录口径（今天的形状）
+    expect(calls[0].shape).toBe('transcript');
+    expect(agent.getCompactionStats().events.at(-1)?.outcome).not.toBe('stuck');
   });
 });

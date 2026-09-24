@@ -6,13 +6,14 @@
 // 宿主模式：Agent 类经受控转换（as unknown as CompactionHost）传入本模块。
 
 import { streamWithIdleTimeout } from '../provider/idle-stream';
-import type { Message, Provider, Usage } from '../provider/types';
+import type { Message, Provider, ToolSchema, Usage } from '../provider/types';
 import { ChunkType } from '../provider/types';
 import { kernelReadFile, kernelWriteFile } from '../rpc-contract';
 import { type AgentEvent, EventKind } from './agent-types';
 import type { CompactionConfig, CompactionEvent, CompactionTracker } from './compaction-model';
 import { maybeTune } from './compaction-model';
 import {
+  buildCompactionInstruction,
   buildMergePrompt,
   buildSummaryPrompt,
   chunkMessages,
@@ -64,6 +65,9 @@ export interface CompactionHost {
   _foldHead(): number;
   payloadMessages(): Message[];
   tokenCountWithEstimation(): number;
+  /** 与主请求同一份工具 schema —— 回放前缀对齐的另一半（tools 在 wire 上先于 messages 进
+   *  token 流，不带上它前缀在 system 之后即分叉）。选择器按 user 请求锁存 ⇒ 同请求内字节稳定。 */
+  requestToolSchemas(): ToolSchema[];
 }
 
 // ── 摘要调用账（cap + usage）──
@@ -161,6 +165,52 @@ function meteringOf(
  *  诚实的真进度只有「第 i/N 块 + 已用秒数」，约 30 秒一跳。 */
 function chunkDoneText(index: number, total: number, startedAt: number): string {
   return `压缩中 · 第 ${index}/${total} 块完成（用时 ${((Date.now() - startedAt) / 1000).toFixed(0)}s）`;
+}
+
+// ── 摘要回放（E，2026-09-24）：让摘要调用成为主请求的真前缀 ──
+// 病：`[system(压缩器指令), user(renderTranscript(区域))]` + `tools: []` 这套字节从未在
+// 别处出现过 ⇒ 永远冷、全价（真机：25 万 token 输入 cache_hit=0）。
+// 法（对齐 DSH `compaction-basic/src/summarizer.ts:108-150`）：压缩指令作**最后一条 user
+// 消息**接在**上一份真实载荷的前缀**之后 ⇒ 这次调用成为主请求的真前缀，直接吃它刚种下的
+// KV 缓存（主循环 96.8% 命中已证明网关按内容跨请求缓存、不含随机数）。
+
+/** 回放计划：真前缀切片 + 与主请求同一份 tools + 指令。 */
+interface ReplayPlan {
+  messages: Message[];
+  tools: ToolSchema[];
+}
+
+/** 能否把区段 `msgs[0..endInRegion)` 映射成载荷前缀——不能则返回 null（调用方退转录形状）。
+ *
+ *  四条护栏都是**必要**的，且失败一律走回退而不是硬上：
+ *   ① 载荷前缀尾段必须与区域**逐条同一对象**（`msgs[0..endInRegion)` 整段）——一条
+ *      身份比较同时挡住三种偏斜：会话被回退/替换后的索引错位（会把**别的**内容当摘要
+ *      输入，比缓存未命中严重得多）、炸开出来的合成片段（`explodeTranscript`）、以及
+ *      **工具结果折叠**开启时载荷里那些占位符（回放它们 = 摘要看不到真工具输出，质量
+ *      比今天的转录口径更差 ⇒ 这种会话一律走转录）；
+ *   ② 前缀里不得含附图消息——附图的 wire 形态要 imageData 重解析，收益小、风险大；
+ *   ③ **整条调用（前缀 + 指令）必须装进输入预算**——回放前缀随块号增长（第 k 块回放
+ *      1..k 段），多块区域的末块前缀可能超出窗口。这一条是「永不塞爆」硬上界的守门人：
+ *      装不下就退转录口径（那一路的输入只有本段，天然装得下）。 */
+function replayPlan(
+  host: CompactionHost,
+  payload: Message[],
+  msgs: Message[],
+  endInRegion: number,
+  budget: number,
+  chunkInfo?: { index: number; total: number },
+): ReplayPlan | null {
+  const base = payload.indexOf(msgs[0]);
+  if (base < 0) return null;
+  if (base + endInRegion > payload.length) return null;
+  for (let i = 0; i < endInRegion; i++) {
+    if (payload[base + i] !== msgs[i]) return null; // 护栏①
+  }
+  const prefix = payload.slice(0, base + endInRegion);
+  if (prefix.some((m) => (m.images?.length ?? 0) > 0)) return null; // 护栏②
+  const messages: Message[] = [...prefix, { role: 'user', content: buildCompactionInstruction(chunkInfo) }];
+  if (countMessages(messages) > budget) return null; // 护栏③
+  return { messages, tools: host.requestToolSchemas() };
 }
 
 /** token 数的人类读数 —— 压前/压后**同口径**（千分位），不混「万」与裸数字。 */
@@ -757,6 +807,36 @@ export async function summarizeRegionImpl(
   const chunks = chunkMessages(msgs, chunkCap);
   const calls: SummaryCall[] = [];
   const failures: string[] = [];
+  // 回放用的载荷（= 刚发出去/即将发出去的那份）——区域永远落在它的前段，故前缀 =
+  // payload.slice(0, 区域首条偏移 + 区段长度)。见 replayPlan 的三条护栏。
+  const payload = host.payloadMessages();
+
+  /** 单块的请求形状：优先回放真前缀；护栏不过（或该段是炸开的合成片段）退转录口径。
+   *  @param segment 本段要总结的消息（转录口径下正是它）
+   *  @param endInRegion 本段末尾在**区域**里的下标+1；≤0 = 不可回放
+   *  @param withPrior 转录口径下是否嵌入 priorSummary（单块路径嵌、多块路径交给合并阶段） */
+  const shapeFor = (
+    segment: Message[],
+    endInRegion: number,
+    withPrior: boolean,
+    chunkInfo?: { index: number; total: number },
+  ): { messages: Message[]; shape: { replay: boolean; tools?: ToolSchema[] } } => {
+    if (endInRegion > 0) {
+      const plan = replayPlan(host, payload, msgs, endInRegion, inputBudget, chunkInfo);
+      if (plan) return { messages: plan.messages, shape: { replay: true, tools: plan.tools } };
+      log.warn('agent', 'summary replay unavailable — 该段走转录口径（冷前缀）', {
+        regionMsgs: msgs.length,
+        endInRegion,
+      });
+    }
+    return {
+      messages: [
+        { role: 'system', content: buildSummaryPrompt(withPrior ? priorSummary : null, chunkInfo) },
+        { role: 'user', content: renderTranscript(segment) },
+      ],
+      shape: { replay: false },
+    };
+  };
 
   // 进度首拍（2026-09-23 用户要求）：压缩期间此前 1–3 分钟毫无提示，像挂死。
   // 诚实约束：百分比做不了（一块 = 一次 LLM 调用，调用内无可读进度），
@@ -767,11 +847,12 @@ export async function summarizeRegionImpl(
     text: noticeText(`压缩中 · 共 ${chunks.length} 块（约 ${(countMessages(msgs) / 10_000).toFixed(1)} 万 token）`),
   });
 
-  // 单块 — 与旧行为一致：一次调用，priorSummary 直接嵌入 prompt
+  // 单块 — 一次调用，priorSummary 已在前缀里（回放口径）/ 嵌进 prompt（转录口径）
   if (chunks.length <= 1) {
     const startedAt = Date.now();
     try {
-      const call = await callSummaryLLMImpl(host, signal, buildSummaryPrompt(priorSummary), renderTranscript(msgs));
+      const req = shapeFor(msgs, msgs.length, true);
+      const call = await callSummaryLLMImpl(host, signal, req.messages, req.shape);
       calls.push(call);
       assertUsableSummary(call);
       host._sink({ kind: EventKind.Notice, level: 'info', text: noticeText(chunkDoneText(1, 1, startedAt)) });
@@ -803,12 +884,12 @@ export async function summarizeRegionImpl(
   for (let i = startIdx; i < chunks.length; i++) {
     const startedAt = Date.now();
     try {
-      const call = await callSummaryLLMImpl(
-        host,
-        signal,
-        buildSummaryPrompt(null, { index: i + 1, total: chunks.length }),
-        renderTranscript(chunks[i]),
-      );
+      // 本段末尾在区域里的下标：块是区域切出来的、消息对象身份唯一 ⇒ indexOf 精确；
+      // 炸开出来的合成片段（explodeTranscript）不在区域里 ⇒ -1 ⇒ 退转录口径。
+      const segment = chunks[i];
+      const endInRegion = msgs.indexOf(segment[segment.length - 1]) + 1;
+      const req = shapeFor(segment, endInRegion, false, { index: i + 1, total: chunks.length });
+      const call = await callSummaryLLMImpl(host, signal, req.messages, req.shape);
       calls.push(call);
       assertUsableSummary(call);
       partials.push(call.text);
@@ -855,24 +936,26 @@ export async function summaryProviderImpl(host: CompactionHost): Promise<{ prov:
  *  流仍在产出就让它跑完。max_tokens = host.summaryMaxTokens（缺省 8192），
  *  配合 chunkCap 构成"永不塞爆"的输入/输出硬上界。
  *
+ *  入参是**完整消息数组**（不是 system+user 两段）：回放口径下发「真前缀 + 指令」，
+ *  转录口径下发 `[system(压缩器指令), user(转录稿)]` —— 形状由调用方声明（`shape.replay`），
+ *  入账里如实记录，好让真机验收能一眼分辨「这次调用吃没吃到缓存」。
+ *
  *  usage 与发出的 cap 全部入账（2026-09-23）：此前只收 Text 块、usage 被整条丢弃
  *  ——「摘要为什么返回空」在真机上不可判。空文本**不在这里抛**（调用账要能被
  *  调用方收下再判），fail-closed 判据在 assertUsableSummary。 */
 export async function callSummaryLLMImpl(
   host: CompactionHost,
   signal: AbortSignal,
-  systemPrompt: string,
-  userText: string,
+  messages: Message[],
+  shape: { replay: boolean; tools?: ToolSchema[] } = { replay: false },
 ): Promise<SummaryCall> {
   const { prov } = await summaryProviderImpl(host);
   const maxTokens = host.summaryMaxTokens;
+  const tools = shape.tools ?? [];
   const startedAt = Date.now();
   const stream = streamWithIdleTimeout(prov, signal, {
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userText },
-    ],
-    tools: [], // 摘要不需要工具
+    messages,
+    tools,
     temperature: 0.3, // 低温用于事实性摘要
     max_tokens: maxTokens,
   });
@@ -889,11 +972,15 @@ export async function callSummaryLLMImpl(
       if (chunk.type === ChunkType.Error) throw chunk.err ?? new Error('stream error');
     }
     const call: SummaryCall = { text: text.trim(), maxTokens, ...(usage ? { usage } : {}) };
-    // 每次调用都落一行（含空返回那次）—— 探针可查「发出的 cap / 回报的 usage」。
+    // 每次调用都落一行（含空返回那次）—— 探针可查「发出的 cap / 回报的 usage / 命中多少」。
+    // E 的验收读数就在 cache_hit_tokens：回放命中 ⇒ 该值 ≈ prompt_tokens（转录口径恒 0）。
     log.info('agent', 'summary llm response', {
       provider: prov.name(),
       model: prov.model(),
       max_tokens: maxTokens,
+      shape: shape.replay ? 'replay' : 'transcript',
+      tools: tools.length,
+      messages: messages.length,
       text_chars: call.text.length,
       finish_reason: usage?.finish_reason,
       prompt_tokens: usage?.prompt_tokens,
@@ -933,7 +1020,11 @@ export async function mergePartialsImpl(
       rest = rest.slice(1);
     }
     try {
-      const merged = await callSummaryLLMImpl(host, signal, buildMergePrompt(), group.join('\n\n---\n\n'));
+      // 合并阶段输入是「分段简报文本」而非会话消息 —— 转录口径（冷），且输入很小。
+      const merged = await callSummaryLLMImpl(host, signal, [
+        { role: 'system', content: buildMergePrompt() },
+        { role: 'user', content: group.join('\n\n---\n\n') },
+      ]);
       calls.push(merged);
       assertUsableSummary(merged, 'merge');
       texts = [merged.text, ...rest];

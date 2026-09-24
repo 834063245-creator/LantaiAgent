@@ -30,7 +30,47 @@ export const SUMMARY_MIN_INPUT = 4000;
 /** LLM 处理的最多块数 — 超出时最老的块走机械提取（成本/时延封顶）。 */
 export const SUMMARY_MAX_LLM_CHUNKS = 8;
 
-/** 摘要 prompt — 单块时 priorSummary 直接嵌入（与旧行为一致）；
+/** 压缩指令（**回放口径**，2026-09-24 E）—— 作为**最后一条 user 消息**接在真会话前缀之后。
+ *
+ *  DSH 出处：`compaction-basic/src/summarizer.ts:31-66` 的 `COMPACTION_INSTRUCTION` +
+ *  `:108-114`「把压缩指令作为最后一条 user 消息追加在回放前缀之后」——会话自己的 system
+ *  提示 + 真实消息留在指令前面，这次辅助调用才是**上一次路由请求的真前缀**，提供方的
+ *  KV 缓存被复用而不是作废（转录口径的 prompt 从未在别处出现过 ⇒ 永远冷、全价）。
+ *
+ *  与 buildSummaryPrompt（转录口径）的分工：本函数 = **主路径**；
+ *  buildSummaryPrompt 留给回放不可用时的回退路径（见 agent-compaction 的 replayPlan）。 */
+export function buildCompactionInstruction(chunkInfo?: { index: number; total: number }): string {
+  const scope = chunkInfo
+    ? `\n注意：以上是同一会话的完整前缀。本次只需把**紧邻本指令之上的那一段**（第 ${chunkInfo.index}/${chunkInfo.total} 段）浓缩为简报；前缀中更早的部分仅供理解上下文，不要把它们写进本次简报。`
+    : '';
+  return `你是对话压缩器。把以上的编码 Agent 对话历史浓缩为一份简报。Agent 只会保留你的摘要（原始消息会被丢弃），因此必须能从摘要中恢复任务。${scope}
+
+按这些标题写（没有内容的标题可以省略）：
+
+## 目标
+用户的需求和意图，尽量用用户的措辞。包含明确的约束和偏好。
+
+## 决策与理由
+已做出的关键选择及原因——避免被推翻或重复争论。
+
+## 文件与代码
+读取或修改过的文件，包含具体事实：签名、位置、数据形状、应用的具体编辑。
+
+## 命令与结果
+执行过的命令（构建、测试、git）及结果——哪些通过、哪些失败、错误信息。
+
+## 错误与修复
+遇到的问题及解决方式（或未解决），避免走重复的弯路。
+
+## 待办与下一步
+仍在进行中或未开始的工作，以及最具体的下一个行动。
+
+规则：简洁——用要点和片段而非散文。准确保留标识符、路径和数字。不编造任何不存在于消息中的内容。
+若前缀里已出现 \`<compacted-context>\` 块，那是上一轮压缩的简报：保留其中仍成立的事实、丢掉过期的，合并成一份。
+只输出简报正文：**不要调用任何工具**，不要复述本指令，也不要提及「压缩」这件事本身。`;
+}
+
+/** 摘要 prompt（**转录口径** — 回退路径专用）— 单块时 priorSummary 直接嵌入；
  *  分块时告知 LLM 这是第几段，只总结本段。 */
 export function buildSummaryPrompt(priorSummary: string | null, chunkInfo?: { index: number; total: number }): string {
   const mergeInstruction = priorSummary
