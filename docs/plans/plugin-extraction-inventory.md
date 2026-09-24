@@ -388,8 +388,8 @@ manifest.json —— 包内合计 30～110 行。
 
 | 项 | 路径（物理行） | 判定 |
 |---|---|---|
-| 工作区级 Agent 装配编排 | `workspace.ts` **1,042** | **产品**（唯一持有工作区生命周期的装配点；直接 new Agent/AgentStore/SubAgentPool/GoalManager/MemoryManager/SkillRegistry + 内联调起 user-mcp/bundled-engine） |
-| provider 设置数据层 | `settings.ts` **703** | **产品**（settings-domain 只载了 UI，数据/存储/凭据层留内核；`preset-assembly.ts:41` 还反向依赖它） |
+| 工作区级 Agent 装配编排 | `workspace.ts` **1,076** | **产品**（唯一持有工作区生命周期的装配点；直接 new Agent/AgentStore/SubAgentPool/GoalManager/MemoryManager/SkillRegistry + 内联调起 user-mcp/bundled-engine） | 🟡 **批 9f 侦察（2026-09-26，判定细化）**：装配点**本体是内核平台**——`shell/rows/workspace.ts:33,108` 惰性 `import('../../workspace')` 并 `WorkspaceCls.open(folder)`，`shell/runtime.ts:29` 持 `Workspace` 句柄：**工作区生命周期宿主在壳行**，整件不可随包（内核 ↛ 产物源码）。真欠账 = 文件里**内联的产品装配**（new 五件管理器 + 拉起 user-mcp / bundled-engine）⇒ 解锁路径 = 批 10 的 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)（工作区接线贡献面），**不在批 9 内可搬** |
+| provider 设置数据层 | `settings.ts` **703** | **产品**（settings-domain 只载了 UI，数据/存储/凭据层留内核；`preset-assembly.ts:41` 还反向依赖它） | 🟡 **批 9f 侦察（2026-09-26，判定细化）**：实测 **28 个 import 方**（内核 16：`shell/boot.ts:35` 启动即 `loadSettings` · `shell/rows/{persistence,drag-drop,update-check}` · `state/{compose-store,mode-store}` · `ui/chat-session` · `composition/preset-assembly.ts:41` · `provider/**` 7 件 · `workspace.ts`；产物/桥 12）⇒ **整件不可随包**。真拆法 = ①**应用配置核心留内核**（`AppSettings` 四节 + `loadSettings`/`saveSettings`/`onSettingsSaved` + `canvasWheelMode`/`autoUpdateCheckEnabled`）；②**Provider 数据面随包**（L100–199 模型 helpers + `PROVIDER_PROTOCOL_DEFAULTS`/`defaultBaseUrl`/`isFactoryBaseUrl` + runtime 投影 + 四个 CRUD + `parseRpcString`），内核读点（compose-store / chat-session / provider 残件）走登记接缝 ⇒ 与核内 `provider/**`（16 件 3,502 行）**是同一件设计**，另立施工单 |
 | 第一方清单/腰四件 | `first-party-tools.ts` 86 + `first-party-prompts.ts` 43 + `first-party-capabilities.ts` 48 + `with-first-party-channel.ts` 51 = **228** | 清单→可由名册 `buildOrder` 派生（序真源其实已在名册）；`with-first-party-channel` 自述**只服务测试/无 UI 引导环境** ⇒ 应落 `tests/helpers/` |
 | 「新建组合」实现 | `preset-authoring.ts` **192** | **产品**（唯一消费者是 `settings-domain/host.ts:18`） |
 | 随包引擎接线 | `plugins/bundled-engine.ts` **186** | **产品**（见 §4-11） |
@@ -492,7 +492,7 @@ asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 share
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
-| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9d / 9g-1~2 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）⇒ 红区 8 → **6 产物 / 11 文件 / 3,983 行**、灰区 64 → **61 文件**。余：9c-4 判定已出（测量引擎接缝，另立设计件）→ 9e 常驻面（含 `ctx.overlays` 新槽，开工前问一次）→ 9f `settings.ts` + `workspace.ts` → 9g 余项（`asset-kinds` 内容表拆 · `i18n` 清 · `bundled-engine` B暂）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
+| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9d / 9g-1~2 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）⇒ 红区 8 → **6 产物 / 11 文件 / 3,983 行**、灰区 64 → **61 文件**。余：9c-4 判定已出（测量引擎接缝，另立设计件）→ 9e 常驻面（含 App 外壳落点，**方案已上交待裁**）→ 9f **侦察已出、判定细化**（`workspace.ts` 并入批 10 通道设计；`settings.ts` 拆「应用配置核心 + Provider 数据面」，与 `provider/**` 同件设计，需先出施工单）→ 9g 余项（`bundled-engine` B暂）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -786,6 +786,19 @@ asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 share
   `i18n` 清**已在批 0c 完成**（98 → 22 行，本次复核）；`asset-kinds` 内容表拆分**已随 9g-2 判定撤回**
   （判内核共享，见 §4-10 行）。
   9e（常驻面，含 `ctx.overlays` 新槽）/ 9f（`settings.ts` + `workspace.ts`）仍在队首。
+
+- **9f 侦察（2026-09-26，未施工——下次从这条接）**：`settings.ts` + `workspace.ts` **都不是单文件搬迁**。
+  ① `workspace.ts` 1,076：生命周期宿主在壳行（`shell/rows/workspace.ts` 惰性 import + `WorkspaceCls.open`），
+  欠账是**内联产品装配**（new 五件管理器 + 拉起 user-mcp / bundled-engine）⇒ 与批 10 的
+  [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md) 同一件工作。
+  ② `settings.ts` 703：28 个 import 方里内核 16（`shell/boot` 启动即读 · 三条壳行 · 两个 state store ·
+  `ui/chat-session` · `preset-assembly` · `provider/**` 7 件）⇒ 拆成「应用配置核心（留内核）」+
+  「Provider 数据面（随包，内核读点走登记接缝）」；后者与核内 `provider/**` 16 件 3,502 行同属
+  **provider 数据面归家**，需一份施工单（下一轮先出设计件再动刀）。
+- **9e 常驻面待裁（问题已上交用户）**：`SessionsHome` 593 + 首页 CSS ≈850 + `PromptShelf` 776 + Host 30 +
+  css 412 ⇒ 两者都要「App 外壳渲染产物组件」的落点（`ctx.overlays` 现只有 `composer`/`right-edge` 两槽、
+  且渲染在 PaperPanel 内部；`ctx.panels` 无「常驻」语义）；按 §7 路由属**新增通道**层，开工前问一次
+  （方案：A 统一 `ctx.rootViews` 双槽 / B 只立浮层槽 / C 两者留内核判平台）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
