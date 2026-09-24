@@ -6,7 +6,7 @@
 // 是别名（防破坏既有导入），行为必须一致。
 
 import { describe, expect, it } from 'vitest';
-import { parseBrowserError } from '../src/agent/tools/browser';
+import { parseBrowserError } from '../src/plugins/builtin/browser-desktop-domain/browser';
 import { parseStructuredError } from '../src/agent/tools/structured-error';
 
 describe('parseStructuredError', () => {

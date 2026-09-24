@@ -32,11 +32,8 @@
 // 逐字段调用细粒度动作（schema 仍 zod 定义）。
 
 import { z } from 'zod';
-import { typedRpc } from '../../rpc-contract';
-import { errText } from '../loop-helpers';
-import type { Tool } from '../tool';
-import { defineTool, toInputJsonSchema } from './define-tool';
-import { parseStructuredError } from './structured-error';
+import type { Tool } from './host';
+import { defineTool, errText, parseStructuredError, toInputJsonSchema, typedRpc } from './host';
 
 // ═══════════════════════════════════════════════════════════
 // 工具定义

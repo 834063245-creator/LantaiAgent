@@ -30,12 +30,12 @@ import { firstPartyCapabilities } from '../../agent/blueprint';
 // 批 3a 归家：wait/office/cordis 三域工厂已随包 ⇒ 撤桥，改桥它们仍住内核的依赖面。
 import { SubAgentStatus } from '../../agent/coordinator';
 import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-service';
+import { errText } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
 import { createSkillTool, scanSkills } from '../../agent/skills';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { createTaskTools } from '../../agent/task';
-import { createBrowserTools, createDesktopTools } from '../../agent/tools/browser';
 import {
   createAgentIsolationTools,
   createAskUserTools,
@@ -43,9 +43,10 @@ import {
   createGitTools,
   createShellTools,
 } from '../../agent/tools/coding';
-import { defineTool } from '../../agent/tools/define-tool';
+import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
 import { createSearchTools, createWebTools } from '../../agent/tools/manifest-tools';
 import { createAssetTools } from '../../agent/tools/show-asset';
+import { parseStructuredError } from '../../agent/tools/structured-error';
 import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
 import { useCoreStore } from '../../app/chat/core-instance';
 import { extractImageFiles, previewUrlFor } from '../../app/chat/image-intake';
@@ -528,8 +529,6 @@ const faceDeps = {
   createShellTools,
   createAgentIsolationTools,
   createAskUserTools,
-  createBrowserTools,
-  createDesktopTools,
   createSkillTool,
   createMemoryTools,
   createTaskTools,
@@ -555,6 +554,10 @@ const faceDeps = {
   Service,
   defaultAgentLoop,
   setActiveAgentLoop,
+  // 批 4a 归家（2026-09-24）：browser/desktop 实现进包 ⇒ 撤工厂桥，改桥依赖面
+  errText,
+  toInputJsonSchema,
+  parseStructuredError,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

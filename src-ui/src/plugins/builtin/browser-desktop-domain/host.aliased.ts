@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+// browser-desktop-domain · 宿主依赖面 · 构建产物域（与 host.ts 同形状镜像；
+// 类型面以 `typeof import('./host')` 对拍）。
+
 /* eslint-disable */
 interface PluginHostBridge {
   mods: { faceDeps: Record<string, unknown> };
@@ -11,5 +14,11 @@ function requireHost(): PluginHostBridge {
   return host;
 }
 const impl = requireHost().mods.faceDeps as unknown as typeof import('./host');
-export const createBrowserTools = impl.createBrowserTools;
-export const createDesktopTools = impl.createDesktopTools;
+
+export const typedRpc = impl.typedRpc;
+export const errText = impl.errText;
+export const defineTool = impl.defineTool;
+export const toInputJsonSchema = impl.toInputJsonSchema;
+export const parseStructuredError = impl.parseStructuredError;
+
+export type Tool = import('./host').Tool;

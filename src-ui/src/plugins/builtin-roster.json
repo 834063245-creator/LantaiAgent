@@ -158,8 +158,7 @@
     "description": "浏览器/桌面自动化域工具（browser_*/desktop_*）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/browser.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "git-domain",

@@ -5,7 +5,7 @@
 // 整组缓存行：一行贡献承载整族（53 工具）；不收 rowCtx（无装配期依赖）。
 
 import type { Context } from '../../../cordis';
-import { createBrowserTools, createDesktopTools } from './host';
+import { createBrowserTools, createDesktopTools } from './browser';
 
 /** browser-desktop 域插件（①b 迁入）——一行贡献承载整族
  *  （createBrowserTools + createDesktopTools，53 工具）。

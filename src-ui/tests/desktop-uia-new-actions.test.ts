@@ -16,7 +16,7 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
 });
 
 import { ToolRegistry } from '../src/agent/tool';
-import { createDesktopTools } from '../src/agent/tools/browser';
+import { createDesktopTools } from '../src/plugins/builtin/browser-desktop-domain/browser';
 import { typedRpc } from '../src/rpc-contract';
 
 function buildRegistry(): ToolRegistry {
