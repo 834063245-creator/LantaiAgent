@@ -701,7 +701,7 @@ export class Agent {
    *  DeepSeek 前缀缓存不被 enter/exit 击穿）；写约束在执行层按
    *  planState 运行时拦截（planGateCheck → StreamingToolExecutor）。 */
   private _planState: import('./plan/plan-state').PlanStateManager | null = null;
-  private _planInjector: import('./plan/plan-injection').PlanModeInjector | null = null;
+  private _planInjector: import('./plan/plan-contract').PlanReminderInjector | null = null;
   /** 项目路径 — plan 模式 enter 需要（UI 按钮切换路径） */
   private _projectPath = '';
 
@@ -710,7 +710,7 @@ export class Agent {
 
   setPlanState(
     state: import('./plan/plan-state').PlanStateManager,
-    injector: import('./plan/plan-injection').PlanModeInjector,
+    injector: import('./plan/plan-contract').PlanReminderInjector,
     projectPath = '',
   ): void {
     this._planState = state;

@@ -23,6 +23,7 @@
 import { setActiveAgentLoop } from '../../agent/agent-loop/agent-loop-active';
 import { defaultAgentLoop } from '../../agent/agent-loop/default-loop';
 import { agentSessionState } from '../../agent/agent-session-state';
+import { EventKind } from '../../agent/agent-types';
 // S3：工具域/段贡献插件对象导入已拆除——产物域真源自带；此处只导工具工厂
 // 运行时值（faceDeps 取用面）。（z（engine-domain 运行时取用）随图谱退役
 // 移除，2026-09-09。）
@@ -33,6 +34,7 @@ import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-s
 import { parseGitLogCommits, parseGitStatusPorcelain } from '../../agent/git-porcelain';
 import { errText } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
+import { registerPlanImplementation } from '../../agent/plan/plan-impl';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
 import { createSkillTool, scanSkills } from '../../agent/skills';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
@@ -275,6 +277,7 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./office-domain/host'), unknown> &
   Record<keyof typeof import('./prompt-segments/host'), unknown> &
   Record<keyof typeof import('./capability-segments/host'), unknown> &
+  Record<keyof typeof import('./plan-mode/host'), unknown> &
   Record<keyof typeof import('./agent-loop-service/host'), unknown>;
 
 /** 四面组件共享依赖（bundle 域真实例）。key = 产物 host.aliased 取用名。 */
@@ -558,6 +561,9 @@ const faceDeps = {
   ownerSeamView,
   activeFsProviders,
   activeShellProviders,
+  // 批 6a 归家：plan 模式实现进包 ⇒ 桥内核登记表 + 事件枚举（kernelReadFile 早已在册）
+  registerPlanImplementation,
+  EventKind,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

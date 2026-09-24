@@ -48,6 +48,11 @@ import { useCompositionStore } from '../src/state/composition-store';
 import { usePluginStore } from '../src/state/plugin-store';
 import { usePresetStore } from '../src/state/preset-store';
 import { readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';
+import { installPlanModeForTest } from './helpers/plan-mode-impl';
+
+// 批 6a：组合值可带出通道腰使用（装配在腰外）——复现生产「装载器已装载
+// hologram/plan-mode」的常驻登记态，否则工具面少 enter/exit_plan_mode。
+installPlanModeForTest();
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 

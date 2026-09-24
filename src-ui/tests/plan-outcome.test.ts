@@ -20,9 +20,9 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
 });
 
 import type { EventSink } from '../src/agent/agent-types';
+import type { PlanReviewRequest } from '../src/agent/plan/plan-contract';
 import { PlanStateManager } from '../src/agent/plan/plan-state';
-import type { PlanReviewRequest } from '../src/agent/plan/plan-tools';
-import { createExitPlanModeTool } from '../src/agent/plan/plan-tools';
+import { createExitPlanModeTool } from '../src/plugins/builtin/plan-mode/plan-tools';
 
 // 计划文件路径格式：{project}/.lantai/plans/plan-<ts>-<rand>.md
 function seedPlanFile(planPath: string | undefined): void {

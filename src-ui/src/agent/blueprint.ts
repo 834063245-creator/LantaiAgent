@@ -49,8 +49,7 @@ import {
 } from './hooks';
 import { createBoardTrackingHook } from './hooks/board-tracking-hook';
 import type { MessageBus } from './message-bus';
-import { PlanModeInjector } from './plan/plan-injection';
-import { createEnterPlanModeTool, createExitPlanModeTool } from './plan/plan-tools';
+import { activePlanImplementation } from './plan/plan-impl';
 import { registerCompactionTools } from './runtime/agent-builder';
 import type { AgentAssemblyInputs } from './runtime/types';
 import type { DiagnosticsSource } from './state-inject';
@@ -185,10 +184,14 @@ export function firstPartyCapabilities(): AgentCapability[] {
       id: 'plan-tools',
       phase: 'context',
       install: ({ ctx, tools }) => {
+        // 批 6a：实现在产物包 hologram/plan-mode，经内核登记表取用（feature 类——
+        // 未登记/被禁用 = 静默不装，工具面少 enter/exit_plan_mode）。
         // readOnly: true → 两种模式都存活；planState 由 ctx 提供（翻译层或物化层创建）
-        tools.register(createEnterPlanModeTool(ctx.resolve('planState'), ctx.projectPath));
+        const plan = activePlanImplementation();
+        if (!plan) return;
+        tools.register(plan.createEnterTool(ctx.resolve('planState'), ctx.projectPath));
         // exit_plan_mode 使用 eventSink 将 PlanReview 事件推入聊天流
-        tools.register(createExitPlanModeTool(ctx.resolve('planState'), ctx.get('eventSink')));
+        tools.register(plan.createExitTool(ctx.resolve('planState'), ctx.get('eventSink')));
       },
     },
     // ── agent 阶段（Agent 构造后 — 表序即工具面注册序）──
@@ -364,13 +367,15 @@ export function firstPartyCapabilities(): AgentCapability[] {
       },
     },
     {
-      // Plan 模式接线 — runLoop 提醒注入器 + 状态通知
+      // Plan 模式接线 — runLoop 提醒注入器 + 状态通知（批 6a：实现经登记表取自
+      // 产物包 hologram/plan-mode；未登记 = 静默不装）
       id: 'plan-injector',
       phase: 'agent',
       install: (scope) => {
+        const plan = activePlanImplementation();
+        if (!plan) return;
         const agent = requireAgent(scope);
-        const planInjector = new PlanModeInjector();
-        agent.setPlanState(scope.ctx.resolve('planState'), planInjector, scope.ctx.projectPath);
+        agent.setPlanState(scope.ctx.resolve('planState'), plan.createInjector(), scope.ctx.projectPath);
         scope.ctx.resolve('planState').onChange((s) => {
           scope.deps.onPlanModeChange?.(s.active, s.planFilePath);
         });

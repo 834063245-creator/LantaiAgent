@@ -8,7 +8,7 @@
 
 export type MessageId = string;
 
-import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
+import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-contract';
 import type { ChatImageRef } from '../provider/types';
 // ⚡ _idSeq → chat-store.ts
 import { getChatStore } from './chat-store';

@@ -72,7 +72,8 @@ describe('builtin-roster（名册单一真源守卫）', () => {
     expect([...roster].filter((d) => !disk.has(d))).toEqual([]); // 名册有磁盘无
     expect([...disk].filter((d) => !roster.has(d))).toEqual([]); // 磁盘有名册无
     // office-domain 新增（2026-09-13，C 路：OfficeCLI 一等域工具）：29 → 30
-    expect(roster.size).toBe(30);
+    // plan-mode 新增（2026-09-24 批 6a：规划模式实现归产物）：30 → 31
+    expect(roster.size).toBe(31);
   });
 
   it('名册 buildOrder 连续 0..N-1 无重复（防序号断裂/误插）', () => {

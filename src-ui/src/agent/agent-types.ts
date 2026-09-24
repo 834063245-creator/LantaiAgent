@@ -51,8 +51,8 @@ export interface ToolPipelineContext {
 export interface PlanReviewEvent {
   planFilePath: string;
   planContent: string;
-  options?: { label: string; description: string; outcome?: import('./plan/plan-tools').PlanOptionOutcome }[];
-  callback: (response: import('./plan/plan-tools').PlanApprovalResponse) => void;
+  options?: { label: string; description: string; outcome?: import('./plan/plan-contract').PlanOptionOutcome }[];
+  callback: (response: import('./plan/plan-contract').PlanApprovalResponse) => void;
 }
 
 /** 确认卡决议（confirm kind，plan 审批语义的资产化泛化）：

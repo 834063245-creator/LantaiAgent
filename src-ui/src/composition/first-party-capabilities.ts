@@ -27,15 +27,21 @@
 // 子 Agent 不自动继承（spawnSubAgent 手工装配不经 blueprint——既有语义）。
 
 import { capabilitySegmentsPlugin } from '../plugins/builtin/capability-segments';
+import { planModePlugin } from '../plugins/builtin/plan-mode';
 import type { LantaiPlugin } from '../plugins/types';
 import { capabilitiesServicePlugin } from './capability-service';
 import { withFirstPartyChannel } from './with-first-party-channel';
 
 /** 经 ctx.capabilities 贡献会话级能力的第一方插件（表序 = 贡献注册序
  *  = 迁移前出厂表序）。B⑤ 收官：capabilitySegmentsPlugin 装载全部
- *  十四项第一方 capability。 */
+ *  十四项第一方 capability。
+ *  批 6a 起补 `planModePlugin`：plan 两条 capability 的实现面住在该产物包，
+ *  它在 apply 期把实现登记进内核登记表（`agent/plan/plan-impl.ts`）——
+ *  **不贡献任何通道行**，故不进 capabilities 域行表、不影响表序；但
+ *  「第一方 capability 面的复现」（下方腰 + 生产装载器）都必须带上它，
+ *  否则装配出的工具面少 enter/exit_plan_mode。 */
 export function firstPartyCapabilityPlugins(): LantaiPlugin[] {
-  return [capabilitySegmentsPlugin];
+  return [capabilitySegmentsPlugin, planModePlugin];
 }
 
 /** 在第一方 capability 通道激活期间执行 run（通道随调用拆卸）。

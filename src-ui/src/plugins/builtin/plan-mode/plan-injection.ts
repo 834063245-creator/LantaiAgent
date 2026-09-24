@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Plan 模式去重上下文注入
+// Plan 模式去重上下文注入（**归家后真源**，2026-09-24 批 6a；原 agent/plan/plan-injection.ts）
 //
 // 首次进入 → 全量提醒
 // 2 轮后 → 稀疏提醒
@@ -9,13 +9,13 @@
 // 退出后 → 一次性退出提醒
 // 用户输入后的下一轮 → 刷新全量
 
+import type { PlanReminderInjector, PlanState } from './host';
 import { PLAN_EXIT_REMINDER, PLAN_FULL_REMINDER, PLAN_REENTRY_REMINDER, PLAN_SPARSE_REMINDER } from './plan-prompts';
-import type { PlanState } from './plan-state';
 
 const DEDUP_MIN_TURNS = 2;
 const FULL_REFRESH_TURNS = 5;
 
-export class PlanModeInjector {
+export class PlanModeInjector implements PlanReminderInjector {
   private _wasActive = false;
   private _lastInjectTurn = -1;
 

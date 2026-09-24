@@ -1,5 +1,5 @@
 {
-  "fingerprint": "11a78f3d",
+  "fingerprint": "1f16f24d",
   "keys": [
     "ANCHOR",
     "ApiError",
@@ -7,6 +7,7 @@
     "ConfirmDialog",
     "ContributionChannel",
     "EMPTY_REGION_CONTENT_H",
+    "EventKind",
     "INK_FAIL",
     "INK_LABEL_ALPHA",
     "INK_LABEL_MIN_PX",
@@ -164,6 +165,7 @@
     "pullShellWork",
     "reapplyComposition",
     "regionFrame",
+    "registerPlanImplementation",
     "removeSecret",
     "reportObservedBlockHeight",
     "reportObservedSidecarExtent",

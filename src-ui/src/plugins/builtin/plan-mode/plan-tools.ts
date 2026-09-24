@@ -1,36 +1,25 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Plan 模式工具 — enter_plan_mode + exit_plan_mode
+// plan 模式工具族（enter_plan_mode + exit_plan_mode）（**归家后真源**，2026-09-24 批 6a）。
 //
-// 两个工具都声明 readOnly: true，确保在任何模式下都存活。
-// exit_plan_mode 通过 EventSink 发 PlanReview 事件到聊天流，
+// 来历：原 `agent/plan/plan-tools.ts` 整件移出——两个工具都声明 readOnly: true，
+// 确保在任何模式下都存活；exit_plan_mode 通过 EventSink 发 PlanReview 事件到聊天流，
 // 由 chat-stream 创建 PlanPart 卡片（不是弹窗），用户在卡片上审批。
+//
+// 内核依赖改走包内宿主面（./host）：审批三类型 + 实现面接口上收 `agent/plan/plan-contract.ts`，
+// `PlanStateManager`（内核构造的状态机）与 `kernelReadFile` 经 faceDeps 取用。
 
 import { z } from 'zod';
-import { kernelReadFile } from '../../rpc-contract';
-import type { EventSink } from '../agent-types';
-import { EventKind } from '../agent-types';
-import type { Tool } from '../tool';
-import { defineTool } from '../tools/define-tool';
-import type { PlanStateManager } from './plan-state';
-
-// ── 审批接口 ──
-
-/** 方案选项的执行语义：execute=批准后立即执行（默认）；archive=批准但仅留档，用户说开工才动手。 */
-export type PlanOptionOutcome = 'execute' | 'archive';
-
-export interface PlanReviewRequest {
-  planFilePath: string;
-  planContent: string;
-  options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
-  callback: (response: PlanApprovalResponse) => void;
-}
-
-export type PlanApprovalResponse =
-  | { decision: 'approved'; selectedLabel?: string; outcome?: PlanOptionOutcome }
-  | { decision: 'revise'; feedback: string }
-  | { decision: 'rejected' };
+import {
+  defineTool,
+  EventKind,
+  type EventSink,
+  kernelReadFile,
+  type PlanOptionOutcome,
+  type PlanStateManager,
+  type Tool,
+} from './host';
 
 /** 审批等待上限——对齐 PromptShelf 的 CARD_TIMEOUT_MS（5 分钟）。
  *  超时后保持规划模式（用户未批准不给写能力），可重新提交审批。

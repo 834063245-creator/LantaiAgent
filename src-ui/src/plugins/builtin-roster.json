@@ -293,5 +293,13 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["tools"]
+  },
+  {
+    "dir": "plan-mode",
+    "buildOrder": 30,
+    "description": "规划模式（enter/exit_plan_mode + 提醒注入；禁用 = 模型无规划模式工具）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": []
   }
 ]

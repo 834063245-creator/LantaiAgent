@@ -23,7 +23,8 @@ import type { AssistantMessage } from '../src/ui/message-model';
 const SRC = join(process.cwd(), 'src');
 const APP = join(SRC, 'app');
 const BUILTIN = join(SRC, 'plugins', 'builtin');
-const PLAN_DIR = join(SRC, 'agent', 'plan');
+// 批 6a 起 plan 工具真源在产物包内（agent/plan 只余状态机/门禁/契约面）
+const PLAN_DIR = join(BUILTIN, 'plan-mode');
 
 /** 读取文件文本（不存在返回空串，避免测试崩溃）。 */
 function read(p: string): string {

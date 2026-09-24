@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+// plan 模式提醒文案真源（**归家后真源**，2026-09-24 批 6a；原 agent/plan/plan-prompts.ts）。
+
 // Plan 模式提醒文本 — 分层提醒，适配兰台的图引擎能力
 
 function withPlanFileFooter(body: string, planFilePath: string | null): string {

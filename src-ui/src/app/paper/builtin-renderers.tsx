@@ -28,7 +28,7 @@ import hljsScheme from 'highlight.js/lib/languages/scheme';
 import katex from 'katex';
 import type { ReactNode } from 'react';
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { PlanApprovalResponse, PlanOptionOutcome } from '../../agent/plan/plan-tools';
+import type { PlanApprovalResponse, PlanOptionOutcome } from '../../agent/plan/plan-contract';
 import type { BlockRendererContribution, BlockRendererProps } from '../../composition/renderer-service';
 import { foldLabel, foldPreviewLine } from '../../paper/fold';
 import {

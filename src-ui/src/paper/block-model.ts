@@ -15,7 +15,7 @@
 // 走查弹纪律：丑得理直气壮——本层不做任何视觉决定，只做结构与几何。
 
 /** 块状态：流内（随对话流走）| 钉住（用户主权，世界坐标说了算） */
-import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
+import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-contract';
 import type { ChatImageRef } from '../provider/types';
 import type { AssistantPart, ToolCallPart } from '../ui/message-model';
 

@@ -23,6 +23,9 @@ import { Context } from '../../src/cordis';
 import { agentLoopServicePlugin } from '../../src/plugins/builtin/agent-loop-service';
 import { builtinFsPlugin } from '../../src/plugins/builtin/fs-builtin';
 import { llmAdaptersPlugin } from '../../src/plugins/builtin/llm-adapters';
+// 批 6a：plan 模式实现归产物包（内核 blueprint 的两条 capability 查登记表取用）
+// ⇒ 「生产最小集」必须含它，否则装配出的工具面少 enter/exit_plan_mode。
+import { planModePlugin } from '../../src/plugins/builtin/plan-mode';
 import { builtinSessionsPlugin } from '../../src/plugins/builtin/sessions-builtin';
 import { builtinShellPlugin } from '../../src/plugins/builtin/shell-builtin';
 import { inProcessSubagentPlugin } from '../../src/plugins/builtin/subagent-in-process';
@@ -48,6 +51,7 @@ export async function ensureProductionChannelsBooted(): Promise<Context> {
   await root.plugin(builtinSessionsPlugin);
   await root.plugin(dynamicRunnerPlugin);
   await root.plugin(agentLoopServicePlugin);
+  await root.plugin(planModePlugin);
   bootRoot = root;
   return root;
 }

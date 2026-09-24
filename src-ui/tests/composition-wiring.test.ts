@@ -21,6 +21,11 @@ import { assembleSystemPrompt, firstPartyPromptSections } from '../src/compositi
 import { factoryComposition, type ResolvedComposition, resolveRoster } from '../src/composition/roster';
 import { useCompositionStore } from '../src/state/composition-store';
 import { buildStandardRegistry, readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';
+// 批 6a：plan 实现由 hologram/plan-mode 插件在装载期常驻登记（生产 = 装载器先于
+// 组合链）；本文件有「组合值带出通道腰、装配在腰外」的用例 ⇒ 复现该常驻态。
+import { installPlanModeForTest } from './helpers/plan-mode-impl';
+
+installPlanModeForTest();
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
