@@ -477,6 +477,7 @@ manifest.json —— 包内合计 30～110 行。
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
 
+
 | 批 | 内容 | 量 | 状态 / 为什么这个次序 |
 |---|---|---|---|
 | **0a** | **修 §0.1 缺陷**：序真源换名册（上窗）+ 构建期置换产物清单模块 + 构建期断言 | — | ✅ **已落**（2026-09-24）：产物 JS −1.32 MB（−25.5%）；「配置 DCE 两条路都无效」的实测记在 §0.1 |
@@ -489,7 +490,7 @@ manifest.json —— 包内合计 30～110 行。
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
-| **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈2,500 | 依赖批 5/6 落地；同批消掉 hljs 两处内联 |
+| **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | 🟡 **侦察已完成**（§6.4）+ 施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)（8a 类型环 → 8b 新产物 `paper-renderers`（不可禁用）→ 8c 撤 heavy 内联 → 8d 文档契约化）。依赖批 5/6 落地；同批消掉 hljs 两处内联（口径见 §6.4 硬点 4） |
 | **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 需先有通道（§4-3/4/9）与归属裁定（§4-1/5/6/11/12/13） |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
@@ -626,6 +627,39 @@ manifest.json —— 包内合计 30～110 行。
   **577 KB**（554 → 577 KB）且动态 import 成功（`SubAgentPool` / `AgentLifecycleManager` /
   `wrapTool` / `buildSubAgentTools` / `agent_merge` 真身俱在）；`face.json` **23 键**带指纹
   `d5cd61db`（保险丝 a 覆盖 35/35）；启动期 console 无异常（仅结构性的无 face.json 产物 404）。
+
+### 6.4 批 8 施工侦察（渲染面整合，2026-09-25 实测；施工单 = [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）
+
+**件（物理行，2026-09-25 实测）**：`app/paper/builtin-renderers.tsx` **1,020**（11 kind + `'*'`
+兜底；导出面只有 `JsonBody` 与 `builtinRendererDefs()`）· `app/paper/mermaid-block.tsx` 312 + css 48 ·
+`app/paper/viewers/ipynb.tsx` 516 + css 148 · `markdown-doc.tsx` 263 + css 147 ·
+`app/paper/viewers/index.ts` 46（目录即白名单）· 随包候选：`paper/markdown.ts` 613 ·
+`paper/tool-text.ts` 704 · `paper/marks.ts` 45（§4-8 重判：消费者只有渲染面）·
+留内核：`paper/fold.ts` 223 · `paper/translate.ts` 646（paper-shell 产物经 faceDeps 桥用）。
+合计约 **3,300 行**（账本原估 ≈2,500，差额 = 三个随包私有件）。
+
+**四条实测硬点**（施工前必读，逐条有 file:line）：
+1. **不是纯类型环**：内核 `app/paper/viewers/{index,ipynb,markdown-doc,pdf}.tsx` 引产物
+   `renderers/viewer-registry` 的**类型**，而 `model3d.tsx:69` 引的是**值** `normalizeExt` ⇒ 「白名单收窄」
+   必须先搬类型契约（值函数一并）。
+2. **产物域禁动态裸 import**（`build-builtin-plugins.mjs:239-243` 硬闸）：`mermaid-block.tsx:61` 的
+   `import('mermaid')` 使 mermaid **不能住产物** ⇒ 组件的「认领 + 降级」逻辑随包、**组件本体留应用
+   bundle 经 faceDeps 桥取用**（同 pdf/model3d 的重依赖例外，§4-2 的文档契约化一并办）。
+3. **渲染面 CSS 跨产物**：代码查看器的壳类与整套 hljs 配色住 **paper-shell 产物**
+   （`PaperPanel.css:1185-1290` / `:5477-5519`），不在 renderers 产物内 ⇒ 本轮不动这份 CSS，
+   只把「同族类名豁免」记进施工单（`product-source-not-in-bundle.test.ts:194-195` 的豁免面）。
+4. **hljs 实测 3 个 import 点 / 2 份独立内联副本**：`app/paper/builtin-renderers.tsx:19-27`（应用 bundle）
+   + `renderers/viewers/code.tsx:21-31`（产物）+ `app/paper/viewers/ipynb.tsx:32`（复用应用 bundle 那份）
+   ⇒ 「消掉两处内联」的口径定为：**应用 bundle 里的 hljs 归零**（两份都随包），语言注册表收成单一真源。
+
+**会响的守卫（搬前先看，file:line）**：`tests/paper-v3b.test.ts:37-60`（11 kind 精确序 + 行 id 以
+`builtin/` 开头）· `tests/viewer-registry.test.ts:237-246`（`heavyViewerIds()` ⇄ 全部 `heavy` 键双向全等）·
+`tests/paper-visual-decisions.test.ts:44-49`（**拼接两文件源码**做断言——搬文件必须同步改）·
+`tests/mermaid-block.test.tsx:239-262`（不得出现静态 `'mermaid'` 值 import）·
+`tests/product-source-not-in-bundle.test.ts:113-203`（产物独有串不得进壳 bundle + 产品 CSS 覆盖）·
+`tests/contribution-channel-single-source.test.ts:122-147` · `tests/viewer-artifact-load.test.tsx:110-135`。
+
+**爆破半径**：30 个测试文件（`viewer-*` 14 · `paper-*` 12 · `asset-media-load` · `renderer-registry` 一族）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
