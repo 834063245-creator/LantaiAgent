@@ -64,7 +64,7 @@
 //   · `minArm`：判例那条公式「只有下限没上限」，我们此前只搬了上限——法向近乎垂直于
 //     两端连线时净空上限趋零、笔道退化成直线（摆在匣顶规线上就是一条贴出来的双线）。
 
-import type { FlowGeom } from './host';
+import type { FlowGeom } from '../../../paper/region-geom-contract';
 import { smoothPath } from './sel-ink';
 
 /** 出处状态：源卷摊开且源块在流内 / 源块不在卷内（撤回、压缩）/ 源卷未摊开 /

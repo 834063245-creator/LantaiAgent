@@ -21,8 +21,8 @@ import { createContext, useContext } from 'react';
 import type { SourcedBlock } from './block-model';
 import type { InkCache } from './ink';
 import type { MinimapRegionInput } from './minimap-core';
+import type { WorldRect } from './region-geom-contract';
 import type { RegionView } from './region-view';
-import type { WorldRect } from './virtualize';
 
 /** 创作坞消费的低频上下文（动作 + 活跃会话）。 */
 export interface PaperDockContextValue {

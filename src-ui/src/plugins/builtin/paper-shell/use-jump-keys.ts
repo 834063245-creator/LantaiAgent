@@ -9,7 +9,8 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect } from 'react';
-import type { FlowGeom, RegionView } from './host';
+import type { FlowGeom } from '../../../paper/region-geom-contract';
+import type { RegionView } from './host';
 import { getChatStore, useCanvasViewStore, useShellStore, viewportCenterWorld } from './host';
 import type { PaperCore } from './use-paper-sessions';
 

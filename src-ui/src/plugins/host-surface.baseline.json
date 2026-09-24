@@ -1,5 +1,5 @@
 {
-  "fingerprint": "2ca7d449",
+  "fingerprint": "22223c8a",
   "keys": [
     "ANCHOR",
     "Agent",
@@ -279,9 +279,6 @@
     "validateObjectJsonSchema",
     "viewFocusRegion",
     "viewportCenterWorld",
-    "viewportWorldRect",
-    "visibleFlowWindow",
-    "visiblePinnedIds",
     "watchFileDragDrop",
     "wheelFactor",
     "worldToScreen",

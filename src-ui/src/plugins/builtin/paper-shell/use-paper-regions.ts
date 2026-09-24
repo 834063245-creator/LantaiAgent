@@ -9,14 +9,13 @@
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { MinimapRegionInput } from '../../../paper/minimap-core';
+import type { FlowGeom, PinnedGeom } from '../../../paper/region-geom-contract';
 import { volumeDisplayName } from '../../../state/volume-name';
 import type {
   BlockMeasureCache,
   CanvasStore,
   ChatMessage,
-  FlowGeom,
   MessageTranslateCache,
-  PinnedGeom,
   RegionView,
   SourcedBlock,
   StreamRegionState,
@@ -37,11 +36,10 @@ import {
   sealedMessageIdsOf,
   translateMessagesCached,
   USER_SHRINK_MIN_W,
-  visibleFlowWindow,
-  visiblePinnedIds,
   writingBlockIdOf,
 } from './host';
 import type { SelectionDragState } from './use-paper-viewport';
+import { visibleFlowWindow, visiblePinnedIds } from './virtualize';
 
 /** 流内占位符高度（pinned 块在流原序位的洞——设计文档 §2.3）——regions memo
  *  与渲染层 ghost 按钮共用。 */

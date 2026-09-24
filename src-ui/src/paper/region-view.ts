@@ -10,8 +10,8 @@
 
 import type { SourcedBlock } from './block-model';
 import type { WorkUnit } from './group';
+import type { FlowGeom, PinnedGeom } from './region-geom-contract';
 import type { StreamRegionState } from './space';
-import type { FlowGeom, PinnedGeom } from './virtualize';
 
 /** 单会话（流区）的完整渲染态——派生计算的最小隔离单元：
  *  一个会话吐字只重算它自己的栈（"单流区更新=常数"铁律）。

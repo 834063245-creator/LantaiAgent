@@ -25,13 +25,13 @@ import {
   scheduleCanvasSave,
   useCanvasViewStore,
   useShellStore,
-  viewportWorldRect,
   wheelFactor,
   zoomAt,
 } from './host';
 import { panForAnchor } from './landing';
 import type { PaperCore } from './use-paper-sessions';
 import { isEditableSurface } from './use-paper-strips';
+import { viewportWorldRect } from './virtualize';
 
 /** 拖选自动滚屏的手势态（选区域产出，激活/布局核心两域穿参消费）：
  *  keepAlive → 锚点块保活（见 effect 注——原生选区锚点死则选区截顶）。 */

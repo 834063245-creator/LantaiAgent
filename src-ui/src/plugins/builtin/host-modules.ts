@@ -183,7 +183,7 @@ import {
 } from '../../paper/space';
 import { collapseToolGroups, translateMessagesCached } from '../../paper/translate';
 import { injectPaperTokens } from '../../paper/type-tokens';
-import { viewportWorldRect, visibleFlowWindow, visiblePinnedIds } from '../../paper/virtualize';
+
 // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面——引擎开关 / 装卸面 /
 // MCP 声明与用户级 mcp.json / 插件与偏好 store。装卸面与 loader 的循环为
 // 运行期取用（组件按钮回调），无初始化期解引用，ESM 循环安全（见文件头注）。
@@ -441,9 +441,6 @@ const faceDeps = {
   collapseToolGroups,
   translateMessagesCached,
   injectPaperTokens,
-  viewportWorldRect,
-  visibleFlowWindow,
-  visiblePinnedIds,
   // 状态层（zustand 真实例——影子 store 禁止）
   blockFromSnapshot,
   getCanvasStore,

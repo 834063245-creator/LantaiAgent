@@ -1,7 +1,6 @@
-// Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
-
-// paper/virtualize — V3a 视口虚拟化（设计文档 §2.3：数据层全量永驻，
+// paper-shell/virtualize — V3a 视口虚拟化（**批 9c-2 归家**：原 paper/virtualize.ts 整件移入
+// 产物包；形状面 WorldRect / FlowGeom / PinnedGeom / RegionFlowGeom 上收内核契约
+// paper/region-geom-contract.ts；设计文档 §2.3：数据层全量永驻，
 // 渲染只画视口内，交互用平移——三者各司其职）。
 //
 // 纯函数零依赖（只 import canvas-math 的类型/换算）：
@@ -10,15 +9,10 @@
 //   - pinned 块散布在世界坐标（D-R2-4）→ 逐块矩形相交测试，O(m)。
 // 长会话成本：布局数学 O(n)（廉价算术），DOM 渲染 O(k)——虚拟化砍的是后者。
 
-import type { Viewport } from './canvas-math';
+import type { Viewport } from '../../../paper/canvas-math';
+import type { FlowGeom, PinnedGeom, RegionFlowGeom, WorldRect } from '../../../paper/region-geom-contract';
 
-/** 世界矩形（x0 < x1, y0 < y1，世界单位） */
-export interface WorldRect {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-}
+export type { FlowGeom, PinnedGeom, RegionFlowGeom, WorldRect };
 
 /** 视口（屏幕 [0,w]×[0,h]）对应的世界矩形。 */
 export function viewportWorldRect(v: Viewport, w: number, h: number): WorldRect {
@@ -29,18 +23,6 @@ export function viewportWorldRect(v: Viewport, w: number, h: number): WorldRect 
     x1: (w - v.panX) / v.zoom,
     y1: (h - v.panY) / v.zoom,
   };
-}
-
-/** flow 块几何（栈序 = 消息序，旧→新；顶边 y 单调递增） */
-export interface FlowGeom {
-  id: string;
-  /** 块顶 y（世界） */
-  y: number;
-  /** 块高（pinned 块在流原序位是占位符高度） */
-  h: number;
-  /** 块左 x（世界） */
-  x: number;
-  w: number;
 }
 
 /**
@@ -88,15 +70,6 @@ export function visibleFlowWindow(
   return { first, lastExcl: last + 1 };
 }
 
-/** pinned 块几何（世界坐标唯一真相 D-R2-4） */
-export interface PinnedGeom {
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 /** 视口内可见的 pinned 块 id（矩形相交，散布无序 → 线性扫）。 */
 export function visiblePinnedIds(pinned: PinnedGeom[], rect: WorldRect, overscan = 0): string[] {
   const x0 = rect.x0 - overscan;
@@ -118,19 +91,6 @@ export function rectsIntersect(a: WorldRect, b: WorldRect): boolean {
 /* ── Stage-2 一纸多卷：跨流区虚拟化 ──
  * 数据全量、渲染窗口化的铁律不变——视口窗口跨所有流区查询可见块。
  * 流区数少（上百会话 = 上百流区），成本 O(流区数 × log n) 可控。 */
-
-/** 单个流区的完整几何（flow 已是世界坐标——layoutRegion 平移后的产物）。 */
-export interface RegionFlowGeom {
-  sessionId: string;
-  /** 该流区的 flow 块几何（世界坐标，栈序 = 消息序） */
-  flow: FlowGeom[];
-  /** 流区中轴（世界） */
-  anchorX: number;
-  /** 流区最新块底边（世界） */
-  anchorY: number;
-  /** 流区宽（世界） */
-  width: number;
-}
 
 /**
  * 跨流区可见窗口：对每个与视口横向相交的流区跑二分窗口。

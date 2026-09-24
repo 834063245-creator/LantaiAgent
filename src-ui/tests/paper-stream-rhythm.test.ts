@@ -27,7 +27,7 @@ import {
   unitMembership,
 } from '../src/paper/group';
 import { collapseToolGroups, translateMessages } from '../src/paper/translate';
-import { visibleFlowWindow } from '../src/paper/virtualize';
+import { visibleFlowWindow } from '../src/plugins/builtin/paper-shell/virtualize';
 import type { AssistantMessage, ChatMessage, ToolCallPart, UserMessage } from '../src/ui/message-model';
 
 function toolPart(name: string, args: string, status: ToolCallPart['status'] = 'done'): ToolCallPart {

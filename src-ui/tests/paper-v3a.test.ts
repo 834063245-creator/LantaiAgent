@@ -45,14 +45,6 @@ import {
   SEC_HEAD_H,
 } from '../src/paper/measure';
 import { cssUsedPx } from '../src/paper/type-tokens';
-import {
-  type FlowGeom,
-  type PinnedGeom,
-  rectsIntersect,
-  viewportWorldRect,
-  visibleFlowWindow,
-  visiblePinnedIds,
-} from '../src/paper/virtualize';
 import { composerSubmitOnKey } from '../src/plugins/builtin/compose-dock/ime';
 import {
   makeStrip,
@@ -62,6 +54,14 @@ import {
   sliceSelection,
   tryMakeStripFromSelection,
 } from '../src/plugins/builtin/paper-shell/selection';
+import {
+  type FlowGeom,
+  type PinnedGeom,
+  rectsIntersect,
+  viewportWorldRect,
+  visibleFlowWindow,
+  visiblePinnedIds,
+} from '../src/plugins/builtin/paper-shell/virtualize';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });

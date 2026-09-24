@@ -23,8 +23,8 @@ import {
   REGION_MIN_W,
   STREAM_REGION,
 } from '../src/paper/space';
-import { type RegionFlowGeom, visibleRegionWindows } from '../src/paper/virtualize';
 import { stashStripPositionAt } from '../src/plugins/builtin/paper-shell/selection';
+import { type RegionFlowGeom, visibleRegionWindows } from '../src/plugins/builtin/paper-shell/virtualize';
 import {
   getCanvasStore,
   resetCanvasStoresForTests,
