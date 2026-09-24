@@ -131,4 +131,20 @@ describe('RPC 形状跨语言一致性（engine_bundled_info 实机缺陷守卫�
       expect(text.has(name), `${name} 不该出现在 Text 显式列`).toBe(false);
     }
   });
+
+  it('④ 裸串返回的路径类命令不得用 ok_json 包（2026-09-24 真机缺陷守卫）', () => {
+    // 缺陷：`ok_json(r)` 对 `r: Result<String, _>` 会产出**带引号的 JSON 文本**
+    // （`"C:\\Users\\…"`），而契约声明 `result: string`、前端按裸串直读（typedRpc）
+    // ⇒ 路径判据当场失败：真机 ui.log 报 `providers_dir 返回的不是路径`，provider
+    // YAML 通道被静默降级成内置存储；`composition_dir` 同病（preset 作者面路径同病）。
+    const src = readFileSync(RUST_RPC, 'utf8');
+    const bad: string[] = [];
+    // 逐臂扫描：`"<name>" => { ... }` 块内若出现 `ok_json(`，则其包装值必须是结构化值
+    // ——这里只钉**已知裸串路径命令**（它们一旦被改回 ok_json，本用例当场红）。
+    for (const name of ['composition_dir', 'providers_dir']) {
+      const arm = src.slice(src.indexOf(`"${name}" => {`), src.indexOf(`"${name}" => {`) + 600);
+      if (arm.includes('ok_json(')) bad.push(name);
+    }
+    expect(bad, `这些命令返回裸路径串，用 ok_json 会被序列化成带引号的 JSON 文本：\n${bad.join('\n')}`).toEqual([]);
+  });
 });

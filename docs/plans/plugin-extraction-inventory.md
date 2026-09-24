@@ -104,6 +104,19 @@
 必须在 Rust 出口展开或已收编；**变异验证**：改名 Rust 表项 ⇒ 当场红）。
 顺带：`scripts/gen-rpc-contract-md.cjs` 自 09-15 未再生成 ⇒ 本次一并重生成（53→55 方法）。
 
+> **同族第二例（2026-09-24 批 5 收尾，真机日志抓到）**：`composition_dir` / `providers_dir`
+> 两条**裸串路径**命令的 Rust 臂用了 `ok_json(r)`，而 `r: Result<String, _>` ⇒ 序列化成
+> **带引号的 JSON 文本**（`"C:\\Users\\…"`）；契约声明 `result: string`、前端按裸串直读
+> （`typedRpc`，非 `typedJsonRpc`）⇒ 路径判据当场失败。**症状**：真机 `ui.log` 报
+> `provider-doc: providers_dir 返回的不是路径`（provider YAML 通道被**静默降级**成内置存储，
+> 设置页显示「通道不可用」）；`composition_dir` 同病（preset 作者面路径同病，尚未被用户撞上）。
+> **修法**：两条臂改**裸串返回**（`spawn_blocking(...).await.map_err(...)?`——别再用 `ok_json`）。
+> **真机验收**：重建 exe 后设置页 Provider 段显示 `C:\Users\Administrator\.lantai/providers.yml`
+> （无引号），`ui.log` 该错误消失。
+> **守卫**：`rpc-json-shape-consistency.test.ts` 增 ④「裸串路径命令不得用 `ok_json` 包」
+> （机制验证：合成变异臂 ⇒ 判据命中）。**教训**：默认臂 `Text` + `ok_json` 对**裸串**是
+> 双刃——凡是「路径/单值」返回，先问一句「这是 JSON 值还是裸文本」。
+
 ### 0.3 实机缺陷「随包引擎接线失败：… without inject」——**已修**（2026-09-24，同一路径第二处）
 
 **症状**（0.2 修好后立刻暴露）：拨开开关 + 重开工作区 →

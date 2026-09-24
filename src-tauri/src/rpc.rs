@@ -806,22 +806,27 @@ async fn dispatch_rpc(
         }
         // P-1 authoring 环境（2026-09-14）：组合目录路径 + 按需创建（可选打开）。
         // 路径只来自服务端计算（composition_root_public）——无调用方路径参数。
+        //
+        // ⚠ 路径是**裸文本**返回（2026-09-24 真机修）：这里原用 `ok_json(r)`，而
+        // `r: Result<String, _>` ⇒ `ok_json` 把 String 序列化成**带引号的 JSON 文本**
+        // （`"C:\\Users\\…"`）；契约声明的是 `result: string`、前端按裸串直读（`typedRpc`，
+        // 非 `typedJsonRpc`）⇒ 读到带引号的串、路径判据当场失败。同族症状见
+        // `providers_dir`（provider YAML 通道被降级成内置存储）。裸串返回即正解。
         "composition_dir" => {
             let open = matches!(params.get("open"), Some(v) if v.as_bool().unwrap_or(false));
-            let r = tokio::task::spawn_blocking(move || commands::composition::composition_dir(open))
+            tokio::task::spawn_blocking(move || commands::composition::composition_dir(open))
                 .await
-                .map_err(|e| format!("composition_dir 任务失败: {e}"))?;
-            ok_json(r)
+                .map_err(|e| format!("composition_dir 任务失败: {e}"))?
         }
         // provider 配置文件地基通道：配置文件（providers.yml）所在目录路径 +
         // 按需创建（可选打开）。路径只来自服务端计算（providers_file_public）
         // ——无调用方路径参数；文件内容写入走 fs_cap（沙箱放行这一个文件）。
+        // ⚠ 裸文本返回（同 `composition_dir`——别改回 `ok_json`）。
         "providers_dir" => {
             let open = matches!(params.get("open"), Some(v) if v.as_bool().unwrap_or(false));
-            let r = tokio::task::spawn_blocking(move || commands::providers::providers_dir(open))
+            tokio::task::spawn_blocking(move || commands::providers::providers_dir(open))
                 .await
-                .map_err(|e| format!("providers_dir 任务失败: {e}"))?;
-            ok_json(r)
+                .map_err(|e| format!("providers_dir 任务失败: {e}"))?
         }
 
         // ═══════════════════════════════════════════════════════
