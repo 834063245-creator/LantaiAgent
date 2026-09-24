@@ -266,7 +266,7 @@ manifest.json —— 包内合计 30～110 行。
 | `browser-desktop-domain` | `agent/tools/browser.ts` **912** | ✅ **批 4a 已归家**（桥位仅 5 运行时 + 1 类型） |
 | `search-domain`·`web-domain` | `agent/tools/manifest-tools.ts` 187 | ✅ **批 4b 已归家**（按域拆两半：`search-domain/search-tools.ts` + `web-domain/web-tools.ts`；随行 `tools/search-assembly.ts` 169 随 search 走——**一个文件不能同时住两个包，故按域拆**） |
 | `agent-domain` | ~~`agent/tools/subagent.ts` 265~~ | ✅ **批 7a 已归家**（2026-09-24）：三个工具工厂进包 `plugins/builtin/agent-domain/subagent-tools.ts`；`SubAgentSpawner` 类型上收内核契约 `agent/subagent-tools-contract.ts`（装配输入，内核面先于产物）；登记表 `agent/subagent-tools-impl.ts`（feature 语义）；**退役 `agent/tool.ts:244` 的值 re-export**（4c 裁定① 同款）；13 个测试改指包内 |
-| `asset-domain` | ✅ **批 9g-2 已归家**（2026-09-26）：`agent/tools/show-asset.ts` 294 `git mv` 成 `plugins/builtin/asset-domain/asset-tools.ts`（逐字搬移；`index.ts` 直连，不再经桥取工厂）；桥面翻面成**内生依赖面** 13 个 faceDeps 键（asset-kinds 7 值 + asset-store 4 值 + confirm-registry 1 值 + `defineTool`，`Tool` 是类型不需键） | `asset-store.ts` 137 · `confirm-registry.ts` 80 · `asset-kinds.ts` 581 三条转 `shared`（都是内核 agent / executor / UI 同读同写的**有状态单例**，内联 = 副本状态分裂；§4-10 的 kind **内容表拆分仍欠**） |
+| `asset-domain` | ✅ **批 9g-2 已归家**（2026-09-26）：`agent/tools/show-asset.ts` 294 `git mv` 成 `plugins/builtin/asset-domain/asset-tools.ts`（逐字搬移；`index.ts` 直连，不再经桥取工厂）；桥面翻面成**内生依赖面** 13 个 faceDeps 键（asset-kinds 7 值 + asset-store 4 值 + confirm-registry 1 值 + `defineTool`，`Tool` 是类型不需键） | `asset-store.ts` 137 · `confirm-registry.ts` 80 · `asset-kinds.ts` 581 三条转 `shared`（都是内核 agent / executor / UI 同读同写的**有状态单例**，内联 = 副本状态分裂；`asset-kinds` 的 kind 内容表**判内核共享面、不再拆**——理由见 §4-10 行） |
 | `wait-domain` | `agent/tools/wait.ts` 102 | — |
 | `office-domain` | `agent/tools/office.ts` 576 | — |
 | `cordis-domain` | `agent/tools/cordis.ts` 200 | — |
@@ -393,8 +393,8 @@ manifest.json —— 包内合计 30～110 行。
 | 第一方清单/腰四件 | `first-party-tools.ts` 86 + `first-party-prompts.ts` 43 + `first-party-capabilities.ts` 48 + `with-first-party-channel.ts` 51 = **228** | 清单→可由名册 `buildOrder` 派生（序真源其实已在名册）；`with-first-party-channel` 自述**只服务测试/无 UI 引导环境** ⇒ 应落 `tests/helpers/` |
 | 「新建组合」实现 | `preset-authoring.ts` **192** | **产品**（唯一消费者是 `settings-domain/host.ts:18`） |
 | 随包引擎接线 | `plugins/bundled-engine.ts` **186** | **产品**（见 §4-11） |
-| prompt 段**文案真源** | `prompt-sections.ts` 的 L105–226 约 **122** | 第一方内容（注释自认「段定义仍留本文件」）——与 §1.1 的 `prompt-segments` 空壳是同一笔债 |
-| 半尸体 i18n | `i18n.ts` **98** | 翻译表全是已退役观测台的 `legend.*` 键、语言切换 UI 已摘除 ⇒ **删除或收缩** |
+| prompt 段**文案真源** | `prompt-sections.ts` 的 L105–226 约 **122** | ✅ **批 9g-1 已随包**（2026-09-26）：helpers + 9 段定义 + `firstPartyPromptSections()` 195 行进 `plugins/builtin/prompt-segments/sections.ts`，内核留类型 + `assembleSystemPrompt` 95 行 |
+| 半尸体 i18n | `i18n.ts` **98** | ✅ **批 0c 已收缩至 22 行**（2026-09-24）：`legend.*` 死表与语言切换残留删除，真源只剩仍在用的键 |
 | 兼容薄壳（真源已迁产物） | `composition/asset-renderers.tsx` **49** | **删除**（唯一真实 import 方是一个测试；真源=`builtin/renderers/components.tsx`） |
 
 ## 3. 零欠账面（同样重要，别再怀疑）
@@ -421,7 +421,7 @@ manifest.json —— 包内合计 30～110 行。
 | 7 | `agent/acp/**`（306） | 生产零消费者 ⇒ 拆包还是按死代码退役 |
 | 8 | `paper/viewer-exts.ts` 226 + `tool-text/markdown/marks/fold/translate` 2,226 | 判定随「`app/paper/**` 归属」翻转——第 1 条裁定后须重判 |
 | 9 | **壳行贡献通道缺口** | 插件无法贡献 boot 行（`builtinShellRows()` 是硬编码数组）⇒ `update-check` 一类「产物需要 boot 期副作用」的需求全卡住；需立 `ctx.shellRows` 一类通道 |
-| 10 | `asset-kinds.ts`（581） | 被 `composition/renderer-service.tsx` 与 `paper/measure.ts` 共享：随 asset-domain 迁 or 判「注册表机制」留内核 |
+| 10 | `asset-kinds.ts`（581） | 被 `composition/renderer-service.tsx` 与 `paper/measure.ts` 共享：随 asset-domain 迁 or 判「注册表机制」留内核 | ✅ **批 9g-2 裁定：判内核共享面（名册 `shared`），不再拆内容表**——两个内核读点（`renderer-service.tsx:127` `resolveAssetBlock` · `paper/measure.ts:751` `assetPresentationOf`）**每次渲染/测高**都要读 `presentations` 白名单 + `defaultPresentation`；asset-domain 是**可禁用** feature ⇒ 内容表随包后，禁用该产物会让旧卷里的资产块整片降级成 `'*'` JSON 兜底（用户可见回归）；改走「产物登记 + `required`」则代价是把禁用手柄收走。收益（改 kind 表免重建 exe）不抵这两笔 ⇒ 维持单一真源留内核 |
 | 11 | 装载链里的产品接线 | `plugins/bundled-engine.ts` 186（随包图谱引擎拉起）做成第一方产物即可进插件列表（天然 kill switch）；障碍：decl 需按**工作区根**动态构造（manifest 声明是静态的）+ 须覆写 `McpBridgeIO.pluginDir`（引擎不是已安装插件名）⇒ 现有声明通道缺这两个注入口。涉及引擎开关语义，须拍板。**最小设计件已立**（2026-09-24）：[`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)——复核后判定卡点不是声明面缺动态语义，而是「产物拿不到工作区生命周期 + 拿不到 MCP 桥」两件更基础的事 |
 | 12 | `user-mcp.ts`（142） | 第二套 MCP 声明通道：**现行契约已 sanction**（`plugins/README.md:416-420` 用户级直配段）；张力来自**已归档**的 `agent-platformization-plan.md:360`「不引入第二套插件格式…不加旁路」⇒ 按现行契约应「承认并登记」，而非折并 |
 | 13 | `ui/lsp-client.ts` 的 `ctx.lsp`（655） | **分类缺口（同 token-meter）**：真 cordis Service（`super(ctx,'lsp')`）却**不在 13 service 清单、不经 loader 装载**，还自建第二个根 Context 绕过 `initCordisKernel()` ⇒ 不受「内核不可禁用」声明覆盖、不进 boot 审计。全仓 `extends Service` 共 19 处 / 19 个 ctx 键，而「13」只覆盖其中一部分 |
@@ -709,7 +709,7 @@ asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 share
 
 **子批切分**（施工单 §3）：9a 账目登记 + 双写收口 + `ConfirmDialog` 挪位 → 9b `ctx.lsp` 入内核清单（13→14）→ 9c 拆分组五件（3,475；9c-4 判定见下）→ 9d provider 控制台（2,740）→ 9e 常驻面（≈2,660，含 `ctx.overlays`
 **新槽**——按 §7 路由属「新增通道」层，开工前问一次）→ 9f `settings.ts` + `workspace.ts`（≈1,780）
-→ 9g `asset-kinds` 内容表拆 / `i18n` 清 / `prompt-sections` 文案段（✅ 9g-1）/ `show-asset` 三工具（✅ 9g-2，随行 `asset-kinds` 判 shared）/ `bundled-engine`（B暂，前置=引擎链路真机验收）。
+→ 9g `asset-kinds` 内容表拆（**9g-2 判定撤回**，见 §4-10）/ `i18n` 清（✅ 批 0c 已收 98 → 22）/ `prompt-sections` 文案段（✅ 9g-1）/ `show-asset` 三工具（✅ 9g-2，随行 `asset-kinds` 判 shared）/ `bundled-engine`（B暂，前置=引擎链路真机验收）。
 
 **9a / 9b / 9c-1~3 落地（2026-09-26）**：
 
@@ -770,14 +770,16 @@ asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 share
   confirm-registry 1 值 · `defineTool`——`Tool` 是类型不需键），撤 `createAssetTools` 键 ⇒
   宿主面 296 → **307 键**（指纹 414f1382 → **f30be5fe**）。判据：这三者都是内核
   agent / streaming-executor / UI **同读同写的单例**，内联 = 副本状态分裂（工具写副本、
-  界面读内核那份）⇒ 名册三条转 `shared`（§4-10 的 kind **内容表拆分仍欠**）。红区 7 →
+  界面读内核那份）⇒ 名册三条转 `shared`（`asset-kinds` 的 kind 内容表同批判**内核共享面、
+  不再拆**：`renderer-service` + `paper/measure` 按次读 `presentations`/`defaultPresentation`，
+  而本产物可禁用 ⇒ 随包 = 禁用后旧卷资产块降级 JSON；详见 §4-10 行）。红区 7 →
   **6 产物 / 14 → 11 文件 / 4,494 → 3,983 行**；灰区 64 → **61 文件 / 19,186 → 18,388 行**；
   空壳集 **5 条（4 纯壳 + 1 半壳）**。行为变更：无（三工具同名 / 同 schema / 同输出、
   工具表条目原位不动，convergence 双轨零漂移）。
-- **9g 余项**（下次直接接）：`asset-kinds` 581 的 **kind 内容表拆**（机制留内核 + 内容随包，
-  需一次登记面设计；现判 `shared`）· `i18n.ts` 半尸体清（98 → 21）· `bundled-engine` 186（B暂，
-  前置 = 引擎链路真机验收）。9e（常驻面，含 `ctx.overlays` 新槽）/ 9f（`settings.ts` + `workspace.ts`）
-  仍在队首。
+- **9g 余项**（下次直接接）：**只剩 `bundled-engine` 186**（B暂，前置 = 引擎链路真机验收）。
+  `i18n` 清**已在批 0c 完成**（98 → 22 行，本次复核）；`asset-kinds` 内容表拆分**已随 9g-2 判定撤回**
+  （判内核共享，见 §4-10 行）。
+  9e（常驻面，含 `ctx.overlays` 新槽）/ 9f（`settings.ts` + `workspace.ts`）仍在队首。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
@@ -1004,8 +1006,9 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
 其余 7 条（§4-2/3/4/8/10/14/15）Agent 自裁并在此记录理由，不占用用户决策额度：
 §4-2 重查看器例外写进 `docs/plugins/README.md` §3（文档契约化）· §4-3 `ConfirmDialog` 判**内核共享原语**
 （与 `app/dialog-focus.ts` 同族，物理挪位 + host 改指）· §4-4 `CommandPalette` 判内核（命令通道消费面）·
-§4-8 `viewer-exts` 与 5 个 paper 文件随 §4-1 裁定联动重判 · §4-10 `asset-kinds` 判**注册表机制留内核、
-kind 内容表随 asset-domain**（需一次拆分）· §4-14 `space-service` 判平台（依 canvas 设计件裁定）·
+§4-8 `viewer-exts` 与 5 个 paper 文件随 §4-1 裁定联动重判 · §4-10 `asset-kinds` 原判「注册表机制留内核、
+kind 内容表随 asset-domain」**于批 9g-2 撤回**（实测：两个内核读点按次读 `presentations`/`defaultPresentation`，
+而 asset-domain 可禁用 ⇒ 内容表随包 = 禁用后旧卷资产块降级 JSON；改判**整件内核共享**，见 §4-10 行）· §4-14 `space-service` 判平台（依 canvas 设计件裁定）·
 §4-15 「13 service 名双写」收成单一真源（loader 从清单派生，或反之）。
 
 ## 8. 口径与来源
