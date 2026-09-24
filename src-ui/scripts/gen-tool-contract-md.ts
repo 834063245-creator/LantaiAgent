@@ -52,9 +52,12 @@ interface JsonSchema {
  *  capability 面（tools 域虽不消费 capability，通道腰对齐生产装配态——
  *  与 convergence 夹具同款纪律）。 */
 async function buildStandardRegistry() {
+  // 批 7c-2 归家：SubAgentPool 实现进产物包（内核不再有 `agent/coordinator`）。
+  // 本脚本与 convergence fixtures 同款纪律——直接取包内实现类（内核装配面只认
+  // `agent/subagent-runtime-contract.ts` 的 SubAgentPool 接口，包外引用不回流内核）。
   const [{ SubAgentPool }, { TaskManager }, { withFirstPartyToolChannel }, { withFirstPartyCapabilityChannel }] =
     await Promise.all([
-      import('../src/agent/coordinator'),
+      import('../src/plugins/builtin/subagent-in-process/coordinator'),
       import('../src/agent/task'),
       import('../src/composition/first-party-tools'),
       import('../src/composition/first-party-capabilities'),

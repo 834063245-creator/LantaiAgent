@@ -8,7 +8,7 @@
 // 为什么 `SubAgentSpawner` 是内核契约而不是包内类型：它是**装配输入**（`ToolRowContext`
 // 与 `AgentAssemblyInputs` 都带它，由 workspace 会话工厂注入），内核装配面先于产物存在。
 
-import type { SubAgentPool } from './coordinator';
+import type { SubAgentPool } from './subagent-runtime-contract';
 import type { Tool } from './tool';
 
 export type SubAgentSpawner = (

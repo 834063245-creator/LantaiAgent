@@ -5,8 +5,8 @@
 // Regressions covered: dropped tool_allowlist, undefined pool signal.
 
 import { describe, expect, it } from 'vitest';
-import { SubAgentPool } from '../src/agent/coordinator';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
+import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 
 function makeSpawner(result: { text: string; err?: string }, delayMs = 5): SubAgentSpawner {
   return async () => {

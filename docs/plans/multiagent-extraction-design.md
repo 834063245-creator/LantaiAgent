@@ -1,7 +1,7 @@
 # 多 Agent 协作域归家设计（批 7：子代理运行时 + 通信族 + discovery）
 
-> 状态：**施工单（2026-09-24 实测）· 待施工**；账本
-> [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md) §6.3 是它的侦察记录。
+> 状态：**7a / 7b / 7c 已落（2026-09-24）· 7d 待施工**（实测与真机数字见账本 §6.3 对应小段）；
+> 账本 [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md) §6.3 是它的侦察记录。
 > 承接批 6 的接缝（内核登记表 + 产物登记实现，见
 > [`capability-impl-seam-design.md`](capability-impl-seam-design.md) §2），本批是它的**重型应用**：
 > 多数实现是**内核构造的类**（`workspace.ts` new `SubAgentPool`、`runtime.ts` new `MessageBus` /
@@ -61,24 +61,29 @@
   service 语义 fail-loud。
 - 爆破半径：**13 个直连 MessageBus 的测试**（`message-bus.test.ts` 最大）· `ui/agent-panel-store` 类型改指。
 
-### 7c 子代理运行时进包（`subagent-in-process` 实心化，1,640 行，闭合 §1.2 + §2.3 两条）
+### 7c 子代理运行时进包（`subagent-in-process` 实心化，1,640 行，闭合 §1.2 + §2.3 两条）✅ 已落
 
-- 进包：`coordinator` · `lifecycle-manager` · `subagent-spawn` · `subagent-activity` ·
-  `tools/merge` · `tools/merge-gate`。
-- 内核构造者改造：`workspace.ts` 的 `new SubAgentPool(...)` 改查工厂；`runtime.ts` 的
-  `new AgentLifecycleManager(...)` 同改。
+**分两笔走**（7c-1 两工具族 → 7c-2 运行时本体，各自门禁全绿）：
+
+- 7c-1（✅ 2026-09-24）：`tools/merge` 215 · `tools/merge-gate` 55 · `tools/discovery` 68 = 338 行进包；
+  契约面 + 登记表首建（feature 语义）。
+- 7c-2（✅ 2026-09-24）：`coordinator` · `lifecycle-manager` · `subagent-spawn` 三件 1,169 行进包；
+  契约面扩到 149 行，登记表转 **service 语义**（`requireSubagentRuntime()`）。
+- 内核构造者改造：`workspace.ts` 的 `new SubAgentPool(...)` → `requireSubagentRuntime().createPool()`；
+  `runtime.ts` 的 `new AgentLifecycleManager(...)` → `createLifecycleManager(...)`。
 - **硬点**：`agent.ts:121` 的值 re-export（`export { buildSubAgentTools, wrapTool } from './subagent-spawn'`）
-  退役；`subagent-spawn.ts` 现经 `faceDeps` 桥 `spawnSubAgentImpl`（subagent-in-process/host.ts）——
-  翻面成「包内真源 + 内核只查登记表」。
-- 爆破半径：**21 个直连 coordinator 的测试** + `wait-domain` 的 `SubAgentStatus` 桥 + `tools/subagent`
-  （7a 已进包 ⇒ 本批顺理成章）。
+  与 `agent/tool.ts:244` 的两处值出口**都已退役**；`subagent-spawn.ts` 经 `faceDeps` 桥
+  `spawnSubAgentImpl` 的旧形态翻面成「包内真源 + 内核查登记表」（`spawnSubAgentImpl` 桥键一并撤）。
+- 爆破半径：**24 个直连测试**改指包内 + `wait-domain` / `agent-domain` 两 host 的类型桥改指契约面
+  （`SubAgentStatus` 未上收，随包里实现类走 `./host` 桥）。
 
 ### 7d 收尾：file-ownership / isolation-queue 判内核共享 + 账目清账
 
 - 两者**留内核**（判据见 §2 第 1 条），在账本 §2.3 写明认领，避免下批重复侦察；
-  compaction 包的 host 面**不需改**（它桥的正是内核面）。
-- 全批收尾：`plugin-home:report` 红区应降到 **9 产物 / 23 文件**；名册销账 2 条
-  （`agent-domain` · `subagent-in-process`）。
+  compaction 包的 host 面**不需改**（它桥的正是内核面）。7c-2 已把这两条连同 `subagent-activity`
+  写进账本 §2.3 的「判内核共享 182 行」。
+- ✅ 7c-2 已兑现的部分：`plugin-home:report` 红区 **9 产物 / 23 文件 / 7,478 行**；
+  名册销账 2 条（`agent-domain` · `subagent-in-process`）。7d 只剩账目复核（无代码动作）。
 
 ## 4. 每批验收（与批 6 同规格）
 
@@ -91,8 +96,8 @@ capability 原位注册，7c 的 spawn 工具面同理）· `doc-sync` + `doc-ch
 
 | 风险 | 对策 |
 |---|---|
-| `agent/tool.ts` / `agent.ts` 的**值 re-export**（两处） | 4c 裁定① 先例：退役聚合出口，消费方改指包内或登记表；测试腰 `tests/helpers/*` 兜住测试面 |
-| 34 个直连测试（coordinator 21 + MessageBus 13） | 逐批改指包内（`git mv` 保历史 + import 重写脚本，同批 4c-3 手法） |
-| `SubAgentPool` / `MessageBus` 由内核构造 | 工厂登记（`create…`）+ service 语义 fail-loud；`tests/helpers/*-impl.ts` 常驻腰按文件接（**勿入 setup.ts**——批 6d-2 实测教训） |
-| `wait-domain` 桥 `SubAgentStatus`（已归家产物） | 7c 时把该桥改指新包（或将 `SubAgentStatus` 上收契约） |
+| `agent/tool.ts` / `agent.ts` 的**值 re-export**（两处） | ✅ 两处均已退役（7a 收 `tool.ts:244` 的工具族出口；7c-2 收 `agent.ts:121` 的 `buildSubAgentTools`/`wrapTool`）——消费方改指包内或登记表 |
+| 34 个直连测试（coordinator 24 + MessageBus 13） | 逐批改指包内（`git mv` 保历史 + import 重写脚本，同批 4c-3 手法）；7c-2 实测 24 个文件 |
+| `SubAgentPool` / `MessageBus` 由内核构造 | ✅ 已改工厂登记（`createPool` / `createLifecycleManager` / `createBus`）+ service 语义 fail-loud；登记统一放 `tests/setup.ts` 的 `beforeAll` + 动态 import（**顶层静态 import 会架空 `vi.mock`**——批 6d-2 实测教训） |
+| `wait-domain` 桥 `SubAgentStatus`（已归家产物） | ✅ 7c-2 处置：`SubAgentStatus` **未上收**契约面（它是实现侧枚举）——两 host 的类型桥改指包内 `./host`，测试从契约面导入 |
 | 工具表序（字节契约） | 工具族仍走**原 capability 条目**（只换成查表），不动注册序；convergence 双轨每批自证 |

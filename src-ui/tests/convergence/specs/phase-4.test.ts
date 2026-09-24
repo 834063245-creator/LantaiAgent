@@ -13,9 +13,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as ts from 'typescript';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SubAgentPool } from '../../../src/agent/coordinator';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { ToolRegistry } from '../../../src/agent/tool';
+import { SubAgentPool } from '../../../src/plugins/builtin/subagent-in-process/coordinator';
 import { scriptedProvider } from '../helpers/fixtures';
 import { extractRuntimeWiring } from '../helpers/wiring';
 

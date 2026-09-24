@@ -19,18 +19,35 @@ function requireHost(): PluginHostBridge {
 const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
+export const Agent = impl.Agent;
+export const EventKind = impl.EventKind;
+export const FileOwnership = impl.FileOwnership;
+export const HookRegistry = impl.HookRegistry;
+export const SubAgentStatus = impl.SubAgentStatus;
+export const ToolRegistry = impl.ToolRegistry;
+export const WRITE_TOOLS = impl.WRITE_TOOLS;
+export const activeStateHooksImplementation = impl.activeStateHooksImplementation;
+export const buildOutputSchemaInstruction = impl.buildOutputSchemaInstruction;
+export const convergeRegistry = impl.convergeRegistry;
+export const createExecState = impl.createExecState;
+export const defineTool = impl.defineTool;
 export const enqueueIsolationOp = impl.enqueueIsolationOp;
 export const errText = impl.errText;
 export const execStreamedShell = impl.execStreamedShell;
+export const extractFilePath = impl.extractFilePath;
+export const log = impl.log;
+export const once = impl.once;
 export const parseIsolationDiff = impl.parseIsolationDiff;
-export const defineTool = impl.defineTool;
+export const planRegistry = impl.planRegistry;
 export const registerSubagentRuntime = impl.registerSubagentRuntime;
-export const spawnSubAgentImpl = impl.spawnSubAgentImpl;
+export const removeSubAgentActivity = impl.removeSubAgentActivity;
+export const wrapSubAgentSink = impl.wrapSubAgentSink;
 
 export type BoardEntry = import('./host').BoardEntry;
 export type DiscoveryBoard = import('./host').DiscoveryBoard;
 export type DiscoveryToolsImplementation = import('./host').DiscoveryToolsImplementation;
 export type MergeToolsImplementation = import('./host').MergeToolsImplementation;
+export type SubAgentSpawnHost = import('./host').SubAgentSpawnHost;
 export type TaskBoard = import('./host').TaskBoard;
 export type Tool = import('./host').Tool;
 export type ToolExecutor = import('./host').ToolExecutor;

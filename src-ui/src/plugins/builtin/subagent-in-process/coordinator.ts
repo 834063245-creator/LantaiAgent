@@ -1,5 +1,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
+//
+// 子 Agent 池（**归家后真源**，2026-09-24 批 7c-2）：原 `agent/coordinator.ts` 整件移出。
+// 契约面（SubAgentStatus / 句柄与派生形状 / SubAgentPool 接口）留内核
+// `agent/subagent-runtime-contract.ts`，经 ./host 取用。
+//
+// 子 Agent 池（**归家后真源**，2026-09-24 批 7c-2）：原 `agent/coordinator.ts` 整件移出。
+// 契约面（SubAgentStatus / 句柄与派生形状 / SubAgentPool 接口）留内核
+// `agent/subagent-runtime-contract.ts`，经 ./host 取用。
 
 // Coordinator — 子 Agent 生命周期注册器。
 //
@@ -14,36 +22,19 @@
 //      不存在"先跑起来再补 signal"的时序窗）
 //   4. 状态查询（getHandle / summary，供 UI 与日志使用）
 
-import { type Disposer, once } from './lifecycle';
-
-export enum SubAgentStatus {
-  Running = 'running',
-  Completed = 'completed',
-  Failed = 'failed',
-  Stopped = 'stopped',
-}
-
-export interface SubAgentHandle {
-  id: string;
-  description: string;
-  status: SubAgentStatus;
-  startedAt: number;
-  result?: string;
-  error?: string;
-}
+import {
+  type Disposer,
+  once,
+  type SpawnedAgent,
+  type SubAgentHandle,
+  type SubAgentRunFn,
+  SubAgentStatus,
+} from './host';
 
 /** 子 Agent 运行的工作。同步接收 pool 的 AbortSignal —
  *  将其接入子 agent 的 LLM stream，使 stop/timeout 能真正终止它。 */
-export type SubAgentRunFn = (signal: AbortSignal) => Promise<{ text: string; err?: string }>;
-
 /** 由 spawn() 同步返回。`done` 恰好 resolve 一次，返回
  *  最终句柄（completed / failed / stopped / timeout 计为 failed）。 */
-export interface SpawnedAgent {
-  id: string;
-  signal: AbortSignal;
-  done: Promise<SubAgentHandle>;
-}
-
 interface PendingAgent {
   handle: SubAgentHandle;
   done: Promise<SubAgentHandle>;

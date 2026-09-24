@@ -1,56 +1,33 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 子 Agent 派生 — 并行/委派工作。从 agent.ts 机械搬移（11c），零逻辑改动。
-// 宿主模式：Agent 类经受控转换（as unknown as SubAgentSpawnHost）传入本模块；
-// 循环 import（agent.ts ↔ 本文件）是安全的 — Agent 仅在函数体内引用，模块求值期不触达。
+// 子 Agent 派生（**归家后真源**，2026-09-24 批 7c-2）：原 `agent/subagent-spawn.ts` 整件移出
+// （更早从 agent.ts 机械搬移，11c，零逻辑改动）。宿主模式不变：Agent 类经受控转换
+// （as unknown as SubAgentSpawnHost）传入本模块。契约面（SubAgentSpawnHost）留内核
+// `agent/subagent-runtime-contract.ts`，经 ./host 取用。
 
-import type { Provider } from '../provider/types';
-import { Agent } from './agent';
-import type { AgentStore } from './agent-store';
-import type { AgentUINotifier } from './agent-types';
-import type { AgentContext } from './context';
-import type { DiscoveryBoard } from './discovery-board';
-import { createExecState } from './execution-state';
-import { extractFilePath, FileOwnership, WRITE_TOOLS } from './file-ownership';
-import { HookRegistry } from './hooks';
-import { enqueueIsolationOp } from './isolation-queue';
-import { log } from './logger';
-import type { MessageBus } from './message-contract';
-import { planRegistry } from './plan/plan-registry';
-import type { PlanStateManager } from './plan/plan-state';
-import { buildOutputSchemaInstruction } from './schema-validate';
-import { activeStateHooksImplementation } from './state-hooks-impl';
-import { removeSubAgentActivity, wrapSubAgentSink } from './subagent-activity';
-import { activeDiscoveryTools } from './subagent-runtime-impl';
-import type { TaskBoard } from './task-board';
-import type { Tool } from './tool';
-import { ToolRegistry } from './tool';
-import { convergeRegistry } from './tools/domains';
+import { createDiscoveryTools } from './discovery-tools';
+import {
+  Agent,
+  activeStateHooksImplementation,
+  buildOutputSchemaInstruction,
+  convergeRegistry,
+  createExecState,
+  enqueueIsolationOp,
+  extractFilePath,
+  FileOwnership,
+  HookRegistry,
+  log,
+  planRegistry,
+  removeSubAgentActivity,
+  type SubAgentSpawnHost,
+  type Tool,
+  ToolRegistry,
+  WRITE_TOOLS,
+  wrapSubAgentSink,
+} from './host';
 
-/** 子 Agent 派生对宿主 Agent 的最小状态面（成员与 Agent 类声明逐字对齐）。 */
-export interface SubAgentSpawnHost {
-  readonly id: string;
-  readonly prov: Provider;
-  readonly tools: ToolRegistry;
-  readonly contextWindow: number;
-  readonly _subagentDepth: number;
-  readonly _ctx: AgentContext;
-  readonly _planState: PlanStateManager | null;
-  readonly _discoveryBoard: DiscoveryBoard | null;
-  readonly _taskBoard: TaskBoard | null;
-  readonly _bus: MessageBus | null;
-  readonly _ui: AgentUINotifier;
-  readonly _uiSessionId: number;
-  readonly agentStore: AgentStore | null;
-  _currentRunSignal: AbortSignal | null;
-  _fileOwnership: FileOwnership | null;
-  /** 附图字节读取器（B3 multimodal-image-plan）——子 Agent 继承父读取器。 */
-  _imageReader: import('./request-images').RequestImageReader | null;
-  extractRecentContext(maxMessages: number): string;
-  /** 父 preflight 注册表（null = 主 Agent 未接线）— 子 Agent 门禁继承用。 */
-  getPreflightHooks(): import('./hooks').PreflightHookRegistry | null;
-}
+// （批 7c-2：`SubAgentSpawnHost` 形状上收内核契约 `agent/subagent-runtime-contract.ts`，经 ./host 取用）
 
 const MAX_SUBAGENT_DEPTH = 3;
 
@@ -159,9 +136,8 @@ export async function spawnSubAgentImpl(
   // archive() 永远匹配不上（onFinish 传的是子 Agent 的模型可见 id）。
   if (ag._discoveryBoard) {
     const subDiscId = agentIdOverride ?? `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    // 批 7c-1：discovery 工具族实现在产物包 subagent-in-process，经内核登记表取用
-    const discoveryTools = activeDiscoveryTools();
-    for (const tool of discoveryTools ? discoveryTools.createDiscoveryTools(ag._discoveryBoard, () => subDiscId) : []) {
+    // 批 7c-2：discovery 工具族与派生同包 ⇒ 直接调用，不再经内核登记表取用。
+    for (const tool of createDiscoveryTools(ag._discoveryBoard, () => subDiscId)) {
       subTools.unregister(tool.name());
       subTools.register(tool);
     }

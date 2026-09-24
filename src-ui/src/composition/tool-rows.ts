@@ -32,9 +32,9 @@
 // 解析域——patch/preset 寻址 'plugin/<插件名>/<工具名>' 行（builtin/<族>
 // 行 id 已随行表退役终结，不复存在）。
 
-import type { SubAgentPool } from '../agent/coordinator';
 import type { MemoryManager } from '../agent/memory';
 import type { SkillRegistry } from '../agent/skills';
+import type { SubAgentPool } from '../agent/subagent-runtime-contract';
 import type { SubAgentSpawner } from '../agent/subagent-tools-contract';
 import type { TaskManager } from '../agent/task';
 import type { CodingToolsUI, Tool, ToolExecutor } from '../agent/tool';

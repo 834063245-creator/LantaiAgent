@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from 'vitest';
-import { SubAgentPool, SubAgentStatus } from '../src/agent/coordinator';
+import { SubAgentStatus } from '../src/agent/subagent-runtime-contract';
+import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 
 function fakeRun(result: string, delayMs = 10, shouldFail = false) {
   return (_signal: AbortSignal) =>

@@ -19,7 +19,6 @@ import type { Context, Fiber } from '../cordis';
 import type { Provider } from '../provider/types';
 import type { AgentStore } from './agent-store';
 import type { EventSink } from './agent-types';
-import type { SubAgentPool } from './coordinator';
 import type { DiscoveryBoard } from './discovery-board';
 import type { ExecStateInstance } from './execution-state';
 import type { GoalManager } from './goal-manager';
@@ -29,6 +28,7 @@ import type { MemoryManager } from './memory';
 import type { MessageBus } from './message-contract';
 import type { PlanStateManager } from './plan/plan-state';
 import type { SessionLog } from './session-log';
+import type { SubAgentPool } from './subagent-runtime-contract';
 import type { TaskBoard } from './task-board';
 import type { ToolRegistry } from './tool';
 

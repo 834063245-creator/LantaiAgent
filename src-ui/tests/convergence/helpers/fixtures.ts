@@ -3,7 +3,6 @@
 // 目标：同一份代码在任何机器、任何时间跑出字节相同的契约输出。
 // 内容：录制型 ToolExecutor、标准工具注册表、合成门禁工具、脚本化 Provider。
 
-import { SubAgentPool } from '../../../src/agent/coordinator';
 import { buildToolRegistry } from '../../../src/agent/runtime/agent-builder';
 import { TaskManager } from '../../../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry } from '../../../src/agent/tool';
@@ -11,6 +10,7 @@ import { withFirstPartyCapabilityChannel } from '../../../src/composition/first-
 import { withFirstPartyToolChannel } from '../../../src/composition/first-party-tools';
 import type { BuiltinToolRow } from '../../../src/composition/tool-rows';
 import type { SubAgentSpawner } from '../../../src/plugins/builtin/agent-domain/subagent-tools';
+import { SubAgentPool } from '../../../src/plugins/builtin/subagent-in-process/coordinator';
 import type { Chunk, Provider, Usage } from '../../../src/provider/types';
 import { ChunkType } from '../../../src/provider/types';
 import type { ToolContribution } from './presets';

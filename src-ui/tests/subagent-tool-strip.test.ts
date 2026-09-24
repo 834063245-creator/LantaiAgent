@@ -8,9 +8,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { buildSubAgentTools } from '../src/agent/agent';
 import { ToolRegistry } from '../src/agent/tool';
 import { defineTool } from '../src/agent/tools/define-tool';
+import { buildSubAgentTools } from '../src/plugins/builtin/subagent-in-process/subagent-spawn';
 
 function fake(name: string) {
   return defineTool({

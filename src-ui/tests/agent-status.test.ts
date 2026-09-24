@@ -4,7 +4,6 @@
 // agent-status.test.ts — agent_status 工具输出（tool_wait 字段 / 空闲 null / 卡死标记）
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SubAgentPool } from '../src/agent/coordinator';
 import {
   noteSubAgentEvent,
   noteSubAgentToolStart,
@@ -12,6 +11,7 @@ import {
   STUCK_THRESHOLD_S,
 } from '../src/agent/subagent-activity';
 import { createAgentStatusTool } from '../src/plugins/builtin/agent-domain/subagent-tools';
+import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 
 const T0 = 1_700_000_000_000;
 

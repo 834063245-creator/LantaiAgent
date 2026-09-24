@@ -29,7 +29,6 @@ import { installCompactionForTest } from './helpers/compaction-impl';
 
 installCompactionForTest();
 
-import { SubAgentPool } from '../src/agent/coordinator';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';
 import { activationStates, clearActivationsForTest, declareActivation } from '../src/composition/activation';
@@ -39,6 +38,7 @@ import { factoryComposition, type ResolvedComposition } from '../src/composition
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import type { SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
+import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 import type { Provider } from '../src/provider/types';
 
 function stubProvider(): Provider {

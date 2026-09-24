@@ -7,14 +7,14 @@
 
 import type { SubagentProvider } from '../../../composition/subagent-service';
 import type { Context } from '../../../cordis';
-import { registerSubagentRuntime, spawnSubAgentImpl } from './host';
-import { discoveryToolsImplementation, mergeToolsImplementation } from './implementation';
+import { registerSubagentRuntime } from './host';
+import { subagentRuntimeImplementation } from './implementation';
 
 /** 默认 in-process 子代理 provider（id 'builtin/in-process'）。 */
 export const inProcessSubagentProvider: SubagentProvider = {
   id: 'builtin/in-process',
   spawn(host, args) {
-    return spawnSubAgentImpl(
+    return subagentRuntimeImplementation.spawnSubAgent(
       host,
       args.description,
       args.prompt,
@@ -34,12 +34,9 @@ export const inProcessSubagentPlugin = {
   name: 'hologram/subagent-in-process',
   inject: ['subagents'],
   apply(ctx: Context) {
-    // 批 7c-1：merge / discovery 两族实现登记进内核登记表（blueprint 两条 capability 查表取用）
-    ctx.effect(
-      () =>
-        registerSubagentRuntime({ mergeTools: mergeToolsImplementation, discoveryTools: discoveryToolsImplementation }),
-      'subagent-in-process-tools',
-    );
+    // 批 7c-1/7c-2：运行时实现（池 / 生命周期 / 派生 + merge / discovery 工具族）登记进内核登记表
+    // （workspace / runtime 的构造点与 blueprint 两条 capability 查表取用）
+    ctx.effect(() => registerSubagentRuntime(subagentRuntimeImplementation), 'subagent-in-process-tools');
     ctx.effect(() => ctx.subagents.register(inProcessSubagentProvider), 'subagent-in-process');
   },
 };

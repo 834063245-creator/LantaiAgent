@@ -104,9 +104,9 @@ export interface ToolRegistryOptions {
   toolRows?: BuiltinToolRow[];
 }
 
-import type { SubAgentPool } from '../coordinator';
 import type { MemoryManager } from '../memory';
 import type { SkillRegistry } from '../skills';
+import type { SubAgentPool } from '../subagent-runtime-contract';
 import type { SubAgentSpawner } from '../subagent-tools-contract';
 import type { TaskManager } from '../task';
 

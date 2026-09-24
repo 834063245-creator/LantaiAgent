@@ -22,9 +22,18 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 49;
+export const OPEN_SURFACE_CONTRACT_VERSION = 50;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v50（2026-09-24）**子代理运行时归产物包**（批 7c-2，契约形状零变更）：池 / 生命周期
+ *  巡检 / 派生（`SubAgentPool` / `AgentLifecycleManager` / `spawnSubAgent`）三件进
+ *  `plugins/builtin/subagent-in-process/`，形状上收内核契约
+ *  `agent/subagent-runtime-contract.ts`（`SubAgentStatus` / `SubAgentHandle` /
+ *  `SpawnedAgent` / `SubAgentPool` / `AgentLifecycleManager` / `SubAgentSpawnHost` /
+ *  `SpawnAgentFn` / `SubagentRuntimeImplementation`），运行时登记表扩三个工厂成员
+ *  （service 语义：缺实现 fail-loud）。本清单里只有 `composition/subagent-service.ts`
+ *  动了一行——`SubAgentSpawnHost` 类型导入改指新契约文件，**成员与形状逐字未动**；
+ *  指纹因原文 sha256 粗粒度而变（刻意取舍）。
  *  v49（2026-09-24）**通信族归产物包**（批 7b，契约形状零变更）：`MessageBus` 实现
  *  （总线 / JSON 存储 / 三种拓扑 / 通信与请求工具族）进 `plugins/builtin/multiagent-comm/`，
  *  类型与四个错误类升格为内核契约 `agent/message-contract.ts`（原 `message-types.ts`），

@@ -9,10 +9,10 @@
 import type { Message, Provider } from '../../provider/types';
 import type { AgentStore } from '../agent-store';
 import type { AgentEvent, EventSink } from '../agent-types';
-import type { SubAgentPool } from '../coordinator';
 import type { ExecStateInstance } from '../execution-state';
 import type { GoalManager } from '../goal-manager';
 import type { MemoryManager } from '../memory';
+import type { SubAgentPool } from '../subagent-runtime-contract';
 import type { TaskBoard } from '../task-board';
 import type { ToolRegistry } from '../tool';
 

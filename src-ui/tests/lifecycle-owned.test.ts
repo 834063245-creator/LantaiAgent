@@ -1,14 +1,14 @@
 // startOwned / ownedDisposer 所有权包装测试（agent-core-convergence Phase 1）。
 // 现有 start/stop、disconnect 语义不变；包装器只加"返回清理器"这一层。
 import { describe, expect, it } from 'vitest';
-import { SubAgentPool } from '../src/agent/coordinator';
-import { AgentLifecycleManager } from '../src/agent/lifecycle-manager';
 import { McpClient } from '../src/agent/mcp/client';
 import { createLoopbackTransport } from '../src/agent/mcp/transport';
 import { TaskBoard } from '../src/agent/task-board';
 import type { ToolExecutor } from '../src/agent/tool';
 import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
 import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
+import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
+import { AgentLifecycleManager } from '../src/plugins/builtin/subagent-in-process/lifecycle-manager';
 
 function makeManager(): AgentLifecycleManager {
   const pool = new SubAgentPool();

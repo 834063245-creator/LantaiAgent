@@ -14,8 +14,7 @@
     "description": "进程内子代理默认实现",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["subagents"],
-    "impl": ["agent/subagent-spawn.ts"]
+    "inject": ["subagents"]
   },
   {
     "dir": "fs-builtin",

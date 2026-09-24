@@ -12,11 +12,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SubAgentPool } from '../../../src/agent/coordinator';
 import { HookRegistry, PreflightHookRegistry } from '../../../src/agent/hooks';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { type Tool, ToolRegistry } from '../../../src/agent/tool';
 import type { SubAgentSpawner } from '../../../src/plugins/builtin/agent-domain/subagent-tools';
+import { SubAgentPool } from '../../../src/plugins/builtin/subagent-in-process/coordinator';
 // 批 6a：plan 工具实现在产物包 hologram/plan-mode，装配期经内核登记表取用。
 // 生产 = 装载器（main.ts → loadBuiltinPlugins）先于组合链且 fiber 常驻；本 spec 用
 // 裸 AgentRuntime + 通道腰（腰是瞬时的），故显式复现「装载器已装载」的常驻登记态

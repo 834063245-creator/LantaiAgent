@@ -1,5 +1,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
+//
+// AgentLifecycleManager（**归家后真源**，2026-09-24 批 7c-2）：原 `agent/lifecycle-manager.ts`
+// 整件移出。契约面（SubAgentPool / MessageBus / TaskBoard 接口与本类公开面）留内核
+// `agent/subagent-runtime-contract.ts`，经 ./host 取用。
+//
+// AgentLifecycleManager（**归家后真源**，2026-09-24 批 7c-2）：原 `agent/lifecycle-manager.ts`
+// 整件移出。契约面（SubAgentPool / MessageBus / TaskBoard 接口与本类公开面）留内核
+// `agent/subagent-runtime-contract.ts`，经 ./host 取用。
 
 // AgentLifecycleManager — 多 Agent 事件生命周期管理器
 //
@@ -14,14 +22,18 @@
 //   3. 泄漏告警 — 通过 EventSink 发 Notice 事件
 //   4. worktree TTL 清理 — 超时未 merge 的 worktree 自动清理
 
-import type { EventSink } from './agent-types';
-import { EventKind } from './agent-types';
-import type { SubAgentPool } from './coordinator';
-import { enqueueIsolationOp } from './isolation-queue';
-import { type Disposer, once } from './lifecycle';
-import type { MessageBus } from './message-contract';
-import type { BoardEntry, TaskBoard } from './task-board';
-import type { ToolExecutor } from './tool';
+import {
+  type BoardEntry,
+  type Disposer,
+  EventKind,
+  type EventSink,
+  enqueueIsolationOp,
+  type MessageBus,
+  once,
+  type SubAgentPool,
+  type TaskBoard,
+  type ToolExecutor,
+} from './host';
 
 // 巡检间隔 — 60 秒
 const LEAK_CHECK_INTERVAL_MS = 60_000;

@@ -5,7 +5,6 @@
 // 覆盖：受限子集拒绝、值校验、围栏/前后缀文本提取、异步组合拒绝、失败不静默。
 
 import { describe, expect, it } from 'vitest';
-import { SubAgentPool } from '../src/agent/coordinator';
 import {
   assertSupportedSchema,
   buildOutputSchemaInstruction,
@@ -13,6 +12,7 @@ import {
   validateObjectJsonSchema,
 } from '../src/agent/schema-validate';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
+import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 
 function _makeSpawner(result: { text: string; err?: string }): SubAgentSpawner {
   return async () => result;

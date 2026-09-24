@@ -100,7 +100,7 @@ import { registerOwnerContext } from './session-context';
 import { SessionLog, type SessionResetReason } from './session-log';
 import type { StreamingToolExecutor } from './streaming-executor';
 import { parseAssetEventOutput } from './streaming-executor';
-import type { SubAgentSpawnHost } from './subagent-spawn';
+import type { SubAgentSpawnHost } from './subagent-runtime-contract';
 import { countMessages, countTexts, countToolSchemas } from './token-counter';
 import {
   countImageTokens,
@@ -116,9 +116,8 @@ import { createStableSchemaSelector, type StableSchemaSelector, userContext } fr
 import { resolveGuardToolName } from './tools/domains';
 import { truncateToolOutput } from './truncate';
 
-// 11c 拆分：wrapTool / buildSubAgentTools 原体已迁 subagent-spawn.ts，
-// 此处 re-export 保外部导入面不变（tests/subagent-tool-strip.test.ts 等消费）。
-export { buildSubAgentTools, wrapTool } from './subagent-spawn';
+// 批 7c-2：`wrapTool` / `buildSubAgentTools` 的值 re-export 退役（4c 裁定① 同款——
+// 内核不聚合产物；实测零消费方）。
 
 import type { DiscoveryBoard } from './discovery-board';
 import type { FileOwnership } from './file-ownership';
@@ -1033,12 +1032,12 @@ export class Agent {
   // ── 子 Agent 生命周期 ──
 
   /** 子 Agent 池的引用。由 workspace 在构造后设置。 */
-  private _subAgentPool: import('./coordinator').SubAgentPool | null = null;
+  private _subAgentPool: import('./subagent-runtime-contract').SubAgentPool | null = null;
 
   /** Agent 间通信的消息总线。由 runtime/spawnSubAgent 设置。 */
   private _bus: MessageBus | null = null;
 
-  setSubAgentPool(pool: import('./coordinator').SubAgentPool): void {
+  setSubAgentPool(pool: import('./subagent-runtime-contract').SubAgentPool): void {
     this._subAgentPool = pool;
     this._ctx.set('subAgentPool', pool);
   }

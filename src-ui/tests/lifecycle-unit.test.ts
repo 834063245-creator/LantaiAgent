@@ -32,13 +32,13 @@ vi.mock('../src/bridge', () => ({
 
 import type { Agent } from '../src/agent/agent';
 import { EventKind } from '../src/agent/agent-types';
-import { SubAgentPool } from '../src/agent/coordinator';
 import type { AgentAddress } from '../src/agent/message-contract';
 import { TaskBoard } from '../src/agent/task-board';
 import { type ToolExecutor, ToolRegistry } from '../src/agent/tool';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
 import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
 import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
+import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 import { createMergeTool } from '../src/plugins/builtin/subagent-in-process/merge-tools';
 import type { Chunk, Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';

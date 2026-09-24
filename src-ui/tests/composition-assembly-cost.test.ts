@@ -25,7 +25,6 @@
 //   ⑥ seam 作用域查表零拷贝 + 对称清理（P2 装配期值注入的调用期成本形态）。
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { SubAgentPool } from '../src/agent/coordinator';
 import { buildToolRegistry } from '../src/agent/runtime/agent-builder';
 import { TaskManager } from '../src/agent/task';
 import type { Tool, ToolRegistry } from '../src/agent/tool';
@@ -45,6 +44,7 @@ import { factoryComposition, type ResolvedComposition, resolveRoster } from '../
 import { registerSeamScope, seamScopeOf } from '../src/composition/seam-scope';
 import { activeToolContributions } from '../src/composition/services';
 import type { BuiltinToolRow } from '../src/composition/tool-rows';
+import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 
 /** 计数用包装行：记调用次数，原样转发给真实 factory。 */
 function countingRows(rows: BuiltinToolRow[]): { rows: BuiltinToolRow[]; calls: Map<string, number> } {

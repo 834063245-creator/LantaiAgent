@@ -14,7 +14,6 @@
 // effect / plan 前缀判定放宽 / 归零不 stop / 失败静默吞 —— 各自用例必须能红。
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SubAgentPool } from '../src/agent/coordinator';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';
 import {
@@ -34,6 +33,7 @@ import { EMPTY_SEAM_DISABLED } from '../src/composition/seam-resolution';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import type { SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
+import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 import type { Provider } from '../src/provider/types';
 
 /** 探针 spec：记账 start/stop 调用次数（不持有真实资源）。 */

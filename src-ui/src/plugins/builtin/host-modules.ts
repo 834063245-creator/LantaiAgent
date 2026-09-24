@@ -20,6 +20,7 @@
 // 里的 PluginsPage 反向引用 loader 的 activate/deactivate——三处都是运行期
 // 取用（组件渲染 / 按钮回调），无模块初始化期解引用，ESM 循环安全。
 
+import { Agent } from '../../agent/agent';
 import { setActiveAgentLoop } from '../../agent/agent-loop/agent-loop-active';
 import { defaultAgentLoop } from '../../agent/agent-loop/default-loop';
 import { agentSessionState } from '../../agent/agent-session-state';
@@ -31,13 +32,14 @@ import { firstPartyCapabilities } from '../../agent/blueprint';
 import { COMPACTION_NOTICE_MARK, DEFAULT_COMPACT_RATIO, DEFAULT_RETAIN_RATIO } from '../../agent/compaction-contract';
 import { registerCompactionImplementation } from '../../agent/compaction-impl';
 import { DEFAULT_C_IN, DEFAULT_C_OUT, LOSS_FACTOR_PER_EVENT } from '../../agent/compaction-tracker';
-// 批 3a 归家：wait/office/cordis 三域工厂已随包 ⇒ 撤桥，改桥它们仍住内核的依赖面。
-import { SubAgentStatus } from '../../agent/coordinator';
 import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-service';
-import { extractFilePath, WRITE_TOOLS } from '../../agent/file-ownership';
+import { createExecState } from '../../agent/execution-state';
+import { extractFilePath, FileOwnership, WRITE_TOOLS } from '../../agent/file-ownership';
 import { parseGitLogCommits, parseGitStatusPorcelain } from '../../agent/git-porcelain';
 import { registerGoalImplementation } from '../../agent/goal-impl';
+import { HookRegistry } from '../../agent/hooks';
 import { enqueueIsolationOp } from '../../agent/isolation-queue';
+import { once } from '../../agent/lifecycle';
 import { log } from '../../agent/logger';
 import { errText, parseFilePathArg } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
@@ -49,13 +51,19 @@ import {
 } from '../../agent/message-contract';
 import { registerMultiagentComm } from '../../agent/multiagent-impl';
 import { registerPlanImplementation } from '../../agent/plan/plan-impl';
+import { planRegistry } from '../../agent/plan/plan-registry';
 import { execStreamedShell } from '../../agent/runtime/queued-shell';
-import { assertSupportedSchema, extractJsonObject, validateObjectJsonSchema } from '../../agent/schema-validate';
+import {
+  assertSupportedSchema,
+  buildOutputSchemaInstruction,
+  extractJsonObject,
+  validateObjectJsonSchema,
+} from '../../agent/schema-validate';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
 import { buildCompactedSummaryMessage } from '../../agent/session-log';
 import { createSkillTool, scanSkills } from '../../agent/skills';
 import { parseIsolationDiff } from '../../agent/spill';
-import { registerStateHooksImplementation } from '../../agent/state-hooks-impl';
+import { activeStateHooksImplementation, registerStateHooksImplementation } from '../../agent/state-hooks-impl';
 import {
   buildPreReadBlock,
   cacheBuildResult,
@@ -63,17 +71,24 @@ import {
   invalidateBlameEntry,
   refreshGitBlame,
 } from '../../agent/state-inject';
-import { getSubAgentActivity, STUCK_THRESHOLD_S } from '../../agent/subagent-activity';
+import {
+  getSubAgentActivity,
+  removeSubAgentActivity,
+  STUCK_THRESHOLD_S,
+  wrapSubAgentSink,
+} from '../../agent/subagent-activity';
+// 批 3a 归家：wait/office/cordis 三域工厂已随包 ⇒ 撤桥，改桥它们仍住内核的依赖面。
+import { SubAgentStatus } from '../../agent/subagent-runtime-contract';
 import { registerSubagentRuntime } from '../../agent/subagent-runtime-impl';
-import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { registerSubAgentTools } from '../../agent/subagent-tools-impl';
 import { createTaskTools } from '../../agent/task';
 import { countMessage, countMessages, countText } from '../../agent/token-counter';
+import { ToolRegistry } from '../../agent/tool';
 import { foldToolResults, nextFoldBoundary } from '../../agent/tool-fold';
 import { hasImageRefs } from '../../agent/tool-images';
 // 批 4c-2 归家：agent-isolation / ask 两族进包 ⇒ 撤工厂桥；两族只余 defineTool/类型面。
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
-import { resolveGuardToolName } from '../../agent/tools/domains';
+import { convergeRegistry, resolveGuardToolName } from '../../agent/tools/domains';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { parseStructuredError } from '../../agent/tools/structured-error';
 import { useCoreStore } from '../../app/chat/core-instance';
@@ -536,7 +551,6 @@ const faceDeps = {
   kernelAppendFileDurable,
   kernelDeleteFile,
   kernelTruncateFile,
-  spawnSubAgentImpl,
   // 批 2a：llm-adapters 归家后的依赖面（工厂已随包，不再桥）
   ApiError,
   ChunkType,
@@ -648,6 +662,19 @@ const faceDeps = {
   execStreamedShell,
   parseIsolationDiff,
   registerSubagentRuntime,
+  // 批 7c-2 归家：子代理运行时进包 ⇒ 撤 spawnSubAgentImpl 桥；补运行时依赖面
+  Agent,
+  activeStateHooksImplementation,
+  once,
+  createExecState,
+  HookRegistry,
+  buildOutputSchemaInstruction,
+  planRegistry,
+  removeSubAgentActivity,
+  wrapSubAgentSink,
+  ToolRegistry,
+  convergeRegistry,
+  FileOwnership,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

@@ -33,7 +33,6 @@ import { createExecState, type ExecStateInstance } from '../execution-state';
 import { HookRegistry, PreflightHookRegistry } from '../hooks';
 import { enqueueIsolationOp } from '../isolation-queue';
 import type { Disposer } from '../lifecycle';
-import { AgentLifecycleManager } from '../lifecycle-manager';
 import { log } from '../logger';
 import type { MessageBus } from '../message-contract';
 import { requireMultiagentComm } from '../multiagent-impl';
@@ -41,6 +40,8 @@ import { PlanStateManager } from '../plan/plan-state';
 import { SessionLog } from '../session-log';
 import { scanSkills } from '../skills';
 import type { DiagnosticsSource } from '../state-inject';
+import type { AgentLifecycleManager } from '../subagent-runtime-contract';
+import { requireSubagentRuntime } from '../subagent-runtime-impl';
 import type { TaskManager } from '../task';
 import { TaskBoard, TaskBoardProxy } from '../task-board';
 import type { TokenLedgerSnapshot } from '../token-meter';
@@ -820,7 +821,8 @@ export class AgentRuntime implements RuntimePort {
           this.notifier?.onLifecycleAlert?.(agentId, ev.level ?? 'info', ev.text ?? '');
         }
       };
-      const lifecycle = new AgentLifecycleManager(
+      // 批 7c-2：生命周期巡检器实现在产物包 subagent-in-process，经登记表造
+      const lifecycle = requireSubagentRuntime().createLifecycleManager(
         subPool,
         taskProxy as unknown as TaskBoard,
         this._bus,

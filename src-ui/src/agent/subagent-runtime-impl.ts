@@ -9,41 +9,45 @@
 // 模块级可变态归属：CONVENTIONS §1.10 第 3 类（单键自清理注册表）。**叶模块纪律**：
 // 零项目内运行时依赖（仅 type-only 引契约面）。
 
-import type { DiscoveryToolsImplementation, MergeToolsImplementation } from './subagent-runtime-contract';
+import type { SubagentRuntimeImplementation } from './subagent-runtime-contract';
 
-let merge: MergeToolsImplementation | null = null;
-let discovery: DiscoveryToolsImplementation | null = null;
+let impl: SubagentRuntimeImplementation | null = null;
 let seq = 0;
 
-/** 登记 merge / discovery 两族实现。栈语义同其余登记表。 */
-export function registerSubagentRuntime(next: {
-  mergeTools: MergeToolsImplementation;
-  discoveryTools: DiscoveryToolsImplementation;
-}): () => void {
-  const prev = { merge, discovery };
+/** 登记运行时实现（池 / 生命周期 / 派生 + merge / discovery 两工具族）。
+ *  栈语义同其余登记表。 */
+export function registerSubagentRuntime(next: SubagentRuntimeImplementation): () => void {
+  const prev = impl;
   const token = ++seq;
-  merge = next.mergeTools;
-  discovery = next.discoveryTools;
+  impl = next;
   return () => {
     if (token !== seq) return;
     seq++;
-    merge = prev.merge;
-    discovery = prev.discovery;
+    impl = prev;
   };
 }
 
+/** 读运行时实现；未登记即抛（池与生命周期是会话基础设施，service 语义）。 */
+export function requireSubagentRuntime(): SubagentRuntimeImplementation {
+  if (!impl) {
+    throw new Error(
+      '子代理运行时实现缺失：hologram/subagent-in-process 产物未装载（service 类产物不可禁用）——检查产物通道 / loadBuiltinPlugins。',
+    );
+  }
+  return impl;
+}
+
 /** 读 merge 族实现。未登记 = null——消费点按 feature 语义静默跳过。 */
-export function activeMergeTools(): MergeToolsImplementation | null {
-  return merge;
+export function activeMergeTools(): SubagentRuntimeImplementation['mergeTools'] | null {
+  return impl?.mergeTools ?? null;
 }
 
 /** 读 discovery 族实现。未登记 = null。 */
-export function activeDiscoveryTools(): DiscoveryToolsImplementation | null {
-  return discovery;
+export function activeDiscoveryTools(): SubagentRuntimeImplementation['discoveryTools'] | null {
+  return impl?.discoveryTools ?? null;
 }
 
 /** 测试隔离辅助——清空登记（生产代码禁用）。 */
 export function clearSubagentRuntimeForTest(): void {
-  merge = null;
-  discovery = null;
+  impl = null;
 }

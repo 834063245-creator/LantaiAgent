@@ -16,7 +16,7 @@ beforeAll(async () => {
     { registerMultiagentComm },
     { multiagentCommImplementation },
     { registerSubagentRuntime },
-    { mergeToolsImplementation, discoveryToolsImplementation },
+    { subagentRuntimeImplementation },
   ] = await Promise.all([
     import('../src/agent/multiagent-impl'),
     import('../src/plugins/builtin/multiagent-comm/implementation'),
@@ -24,7 +24,8 @@ beforeAll(async () => {
     import('../src/plugins/builtin/subagent-in-process/implementation'),
   ]);
   registerMultiagentComm(multiagentCommImplementation);
-  registerSubagentRuntime({ mergeTools: mergeToolsImplementation, discoveryTools: discoveryToolsImplementation });
+  // 批 7c-2：子代理运行时（池 / 生命周期 / 派生 + 两工具族）整体登记——与产物包 index.ts 同源。
+  registerSubagentRuntime(subagentRuntimeImplementation);
 });
 
 // jsdom 不实现 CSS.escape（react-aria ListKeyboardDelegate 依赖它拼 [data-key] 选择器）。

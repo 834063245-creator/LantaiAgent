@@ -198,7 +198,11 @@ describe('S4-1a 子 Agent 继承：ctx composition 服务 child() 白名单', ()
     // 或全局 store，透传是显式的）。
     // 11c 拆分：spawnSubAgent 原体迁 subagent-spawn.ts（agent.ts 留薄委托），
     // 断言定位点随迁，钉住的不变量不变（this._ctx → .child() 调用链）。
-    const src = readFileSync(path.resolve(process.cwd(), 'src/agent/subagent-spawn.ts'), 'utf8');
+    // 7c-2 归家：subagent-spawn.ts 进产物包 subagent-in-process，定位点随迁。
+    const src = readFileSync(
+      path.resolve(process.cwd(), 'src/plugins/builtin/subagent-in-process/subagent-spawn.ts'),
+      'utf8',
+    );
     const spawnIdx = src.indexOf('export async function spawnSubAgentImpl(');
     expect(spawnIdx).toBeGreaterThan(0);
     // child() 调用在 spawnSubAgentImpl 函数体内（isolation/所有权包装之后）

@@ -11,7 +11,7 @@
 // 注册纪律：ContributionChannel（自 contribution-channel.ts 单一内核复用——重名 id
 // 装载期拒绝 + disposer 双守卫）；disposer 经 ctx.effect 登记（调用方所有权）。
 
-import type { SubAgentSpawnHost } from '../agent/subagent-spawn';
+import type { SubAgentSpawnHost } from '../agent/subagent-runtime-contract';
 import { type Context, Service } from '../cordis';
 import { ContributionChannel } from './contribution-channel';
 import { type SeamDisabledMap, seamDisabled } from './seam-resolution';

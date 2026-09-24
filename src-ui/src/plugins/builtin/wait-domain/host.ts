@@ -7,7 +7,7 @@
 // ⇒ 本文件从「桥工厂」翻面成**桥它仍住内核的依赖面**（defineTool 工厂 /
 // Tool 类型面 / 该域用到的内核工具函数），产物域经 mods.faceDeps 取用。
 
-export type { SubAgentPool } from '../../../agent/coordinator';
-export { SubAgentStatus } from '../../../agent/coordinator';
+export type { SubAgentPool } from '../../../agent/subagent-runtime-contract';
+export { SubAgentStatus } from '../../../agent/subagent-runtime-contract';
 export type { Tool } from '../../../agent/tool';
 export { defineTool } from '../../../agent/tools/define-tool';

@@ -55,8 +55,6 @@ const NOTES: Record<string, string> = {
     'task.ts 178 + task-board.ts 319；随行 board-persistence.ts 121 · tools/board-status.ts 78（批 3 复核：TaskBoard 11 处内核消费者 ⇒ 待批 7）',
   'capability-segments': '389 行（14 项 capability 定义；AgentBlueprint 类=机制留内核）',
   'prompt-segments': '244 行（9 段文案真源；拼装序 = 字节契约）',
-  'subagent-in-process':
-    '批 7c-1 已收 merge/discovery 两工具族（338 行）；余 `agent/subagent-spawn.ts` 551 行随 7c-2（须先解 agent.ts 的值 re-export 桥）',
   'agent-loop-service':
     '469 行；搬前须先解 agent.ts 的 opts.agentLoop ?? defaultAgentLoop 内核回落（agent-loop-active.ts 是内核桥，留）',
   // 半迁移（实心包里的残余——不是薄包，故不进空壳集，但同样按 impl 销账）
@@ -210,9 +208,10 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     // 批 4a 销 `browser-desktop-domain`、批 4b 销 search/web 两域、批 4c 销
     // git/ask/agent-isolation/fs/shell 五域、批 6 四项、批 7a agent-domain ⇒ 销 13 条；
     // 批 7c-1 把 subagent-in-process 收成**半迁移**（merge/discovery 两工具族进包 ⇒ 不再是薄壳，
-    // 但余 `subagent-spawn.ts` 仍在内核）⇒ 出空壳集，impl 认领留到 7c-2 销。
+    // 但余 `subagent-spawn.ts` 仍在内核）⇒ 出空壳集；批 7c-2 运行时本体（coordinator /
+    // lifecycle-manager / subagent-spawn）也进包 ⇒ 名册 impl 全销、NOTES 条目删除，空壳数不变。
     // 数字再变 = 要么又销了账（改这条），要么漏登记。
-    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 13 − 半迁移 1 = 7`).toBe(7);
+    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 14 = 7`).toBe(7);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();
     // 反向：备注表不许留已销账的条目（防文本腐烂）
     const ghost = Object.keys(NOTES).filter((d) => !CLAIMS.some((c) => c.dir === d));

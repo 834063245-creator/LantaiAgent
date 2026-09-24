@@ -15,7 +15,6 @@ import type { Agent } from './agent/agent';
 import { agentSessionState } from './agent/agent-session-state';
 import { AgentStore } from './agent/agent-store';
 import { resetAgentCaches } from './agent/cache-store';
-import { SubAgentPool } from './agent/coordinator';
 import { GoalManager } from './agent/goal-manager';
 import { DisposerBag } from './agent/lifecycle';
 import { initLogger, log } from './agent/logger';
@@ -28,6 +27,8 @@ import { AgentRuntime } from './agent/runtime/runtime';
 import type { AgentHandle } from './agent/runtime/types';
 import { SkillRegistry } from './agent/skills';
 import { buildTurnStartBlock, refreshGitStatus } from './agent/state-inject';
+import type { SubAgentPool } from './agent/subagent-runtime-contract';
+import { requireSubagentRuntime } from './agent/subagent-runtime-impl';
 import { TaskManager } from './agent/task';
 import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
@@ -145,7 +146,8 @@ export class Workspace {
   runtime: AgentRuntime | null = null;
 
   // ── 子 Agent 池 ──
-  subAgentPool = new SubAgentPool();
+  // 批 7c-2：子 Agent 池实现归产物包 subagent-in-process，经内核登记表造（service 语义）
+  subAgentPool: SubAgentPool = requireSubagentRuntime().createPool();
 
   // ── Store 路由（面板级隔离）──
   _storeId: string = '__default__';
