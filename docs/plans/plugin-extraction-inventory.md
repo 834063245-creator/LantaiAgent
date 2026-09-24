@@ -485,6 +485,33 @@ manifest.json —— 包内合计 30～110 行。
 设计件与真机验收清单见 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)；
 **先跑验收四条，再定稿施工**（该链路从未真机跑通）。
 
+### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
+
+**件**：`agent/tools/coding.ts` **998** + 随行私有件 `git-porcelain.ts` 126 · `sticky-cwd.ts` 138 ·
+`session-context.ts` 122 · `tools/structured-error.ts` 24。
+
+**包内形状**（导出面实测）：5 个族工厂 `createFsTools` / `createShellTools` / `createGitTools` /
+`createAgentIsolationTools` / `createAskUserTools` + 聚合 `createCodingTools`；2 个执行器
+`fsExecute` / `shellExecute`；3 个类型 `AskUserQuestionItem` / `AskUserRequest` / `CodingToolsUI`。
+**出边**：`zod`（裸包，产物内联）· `composition/fs-service.ts` · `composition/seam-scope.ts` ·
+`composition/shell-service.ts` · `agent/git-porcelain.ts` · `agent/session-context.ts` ·
+`agent/tool.ts` · `agent/tools/define-tool.ts`。
+
+**硬点（与批 3 同族：内核反向依赖，宿主→插件禁反）**——搬前必须先解这四条：
+1. `agent/tool.ts` **值 re-export** `createCodingTools`（聚合工厂）——五族各归其包后，聚合
+   只能在产品之间拼接 ⇒ 要么退役该聚合（消费方改指包内，`tests/parallel-subagent-bugs.test.ts` 一处），
+   要么判它「内核 seam 面」；
+2. `agent/runtime/agent-builder.ts` 用 `AskUserRequest` 类型（**类型面可上收为内核契约**，不算反向依赖）；
+3. `composition/tool-rows.ts` 用 `CodingToolsUI` 类型（同上）；
+4. `state/ask-store.ts` 用 `AskUserRequest` 类型（同上）。
+⇒ **类型面（3 个 interface）建议上收内核**（`agent/tool.ts` 或 `composition/seam-scope.ts`），
+值面（5 工厂 + 2 executor）按族进包；**executor 归属**需一次裁定（随族走 vs 留 seam 面——
+`fsExecute`/`shellExecute` 被 `fs-seam`/`shell-seam`/`seam-composition`/`cross-seam-swap` 四个测试直连）。
+
+**测试直连面**（9 处）：`coding-domain-plugins` · `define-tool` · `fs-seam` · `shell-seam` ·
+`seam-composition` · `cross-seam-swap` · `tool-receipts` · `parallel-subagent-bugs` ·
+`tests/bench/composition-assembly.bench.ts`。
+
 每批收尾必做：`vitest` + `build`（含 `build:builtin-plugins`）+ `biome ci` + `verify:convergence` 双轨；
 faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` 并**重建一次 exe**。
 
