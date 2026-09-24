@@ -6,9 +6,9 @@
 // 接线验证（openai.ts / anthropic.ts 的 SSE error 事件 → chunk.err.kind）。
 
 import { describe, expect, it, vi } from 'vitest';
-import { createAnthropicProvider } from '../src/provider/anthropic';
+import { createAnthropicProvider } from '../src/plugins/builtin/llm-adapters/anthropic';
+import { createOpenAIProvider } from '../src/plugins/builtin/llm-adapters/openai';
 import { classifyProviderError, isImageUnsupportedError, type ProviderErrorKind } from '../src/provider/error-catalog';
-import { createOpenAIProvider } from '../src/provider/openai';
 import {
   ApiError,
   type Chunk,

@@ -22,9 +22,26 @@
 //  落地时经 live provider 行级解析扩展，见 provider/oauth.ts）。
 // 通用 OpenAI 官方：https://api.openai.com/v1/responses（平台 API Key）。
 
-import { getModel } from './catalog';
-import { classifyProviderError } from './error-catalog';
-import { type ModelMeta, modelEntries, parseModelEntry } from './model-meta';
+import {
+  ApiError,
+  assertEffortDeclared,
+  type Chunk,
+  ChunkType,
+  classifyProviderError,
+  classifyStreamError,
+  getModel,
+  type Message,
+  type ModelDescriptor,
+  type ModelMeta,
+  modelEntries,
+  type Provider,
+  parseModelEntry,
+  type Request,
+  type ResponsesOutputItem,
+  type StoredThinking,
+  sanitizeToolPairing,
+  thinkingCapability,
+} from './host';
 import { sendWithRetry } from './retry';
 import {
   extractWritePreview,
@@ -34,19 +51,6 @@ import {
   type SseEvent,
   sseEvents,
 } from './shared';
-import { assertEffortDeclared, type StoredThinking, thinkingCapability } from './thinking';
-import {
-  ApiError,
-  type Chunk,
-  ChunkType,
-  classifyStreamError,
-  type Message,
-  type ModelDescriptor,
-  type Provider,
-  type Request,
-  type ResponsesOutputItem,
-  sanitizeToolPairing,
-} from './types';
 
 const DEFAULT_MAX_TOKENS = 64000;
 

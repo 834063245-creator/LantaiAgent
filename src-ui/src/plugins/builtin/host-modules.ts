@@ -160,8 +160,11 @@ import {
 import { activateExternalPlugin, deactivateExternalPlugin } from '../../plugins/loader';
 import { McpServerDeclSchema } from '../../plugins/types';
 import { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../plugins/user-mcp';
-import { createAnthropicProvider } from '../../provider/anthropic';
+// 批 2a 归家：llm-adapters 的三方言实现已进产物包 ⇒ 撤掉工厂的 faceDeps 桥
+// （kernel 侧零消费者），改桥适配器仍依赖的内核面（seam 契约 / 目录与元数据 /
+// 错误分类 / 思考档 / 传输 / 协议默认端点表）。
 import {
+  clampMaxTokens,
   findModels,
   getDynamicFetchFailure,
   getDynamicFetchInflight,
@@ -171,7 +174,8 @@ import {
   searchModels,
 } from '../../provider/catalog';
 import { resolveApiKey } from '../../provider/credentials';
-import { createOpenAIProvider } from '../../provider/openai';
+import { classifyProviderError } from '../../provider/error-catalog';
+import { modelEntries, parseModelEntry } from '../../provider/model-meta';
 // provider 配置文件通道（2026-09-24 配方改文件批）：设置页路径/错误/写盘面
 import {
   ensureProvidersDir,
@@ -184,8 +188,24 @@ import {
   retryProvidersPath,
   saveProvidersDoc,
 } from '../../provider/providers-store';
-import { createResponsesProvider } from '../../provider/responses';
-import { thinkingOptionsFor, thinkingOptionsOrDefault } from '../../provider/thinking';
+import {
+  assertEffortDeclared,
+  isThinkingMode,
+  THINKING_EFFORT_BUDGETS,
+  thinkingCapability,
+  thinkingOptionsFor,
+  thinkingOptionsOrDefault,
+} from '../../provider/thinking';
+import { proxyFetch } from '../../provider/transport';
+import {
+  ApiError,
+  ChunkType,
+  classifyError,
+  classifyStreamError,
+  errorCodeFromBody,
+  retryAfterSeconds,
+  sanitizeToolPairing,
+} from '../../provider/types';
 import {
   kernelAppendFileDurable,
   kernelCreateDirectory,
@@ -210,6 +230,7 @@ import {
   modelInput,
   modelThinking,
   onSettingsSaved,
+  PROVIDER_PROTOCOL_DEFAULTS,
   persistSecrets,
   removeSecret,
   saveSettings,
@@ -439,6 +460,8 @@ const faceDeps = {
    * 真关工作区在壳层 workspace 流（host.ts 出口与 faceDeps 同步）。 */
   leaveToHome,
   ProviderPage,
+  // 批 2a 归家（2026-09-24）：llm-adapters 的端点真源（内核协议默认端点表）
+  PROVIDER_PROTOCOL_DEFAULTS,
   // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面
   scanSkills,
   isBundledEngineEnabled,
@@ -505,9 +528,23 @@ const faceDeps = {
   kernelDeleteFile,
   kernelTruncateFile,
   spawnSubAgentImpl,
-  createAnthropicProvider,
-  createOpenAIProvider,
-  createResponsesProvider,
+  // 批 2a：llm-adapters 归家后的依赖面（工厂已随包，不再桥）
+  ApiError,
+  ChunkType,
+  clampMaxTokens,
+  classifyProviderError,
+  modelEntries,
+  parseModelEntry,
+  assertEffortDeclared,
+  isThinkingMode,
+  THINKING_EFFORT_BUDGETS,
+  thinkingCapability,
+  proxyFetch,
+  classifyError,
+  classifyStreamError,
+  errorCodeFromBody,
+  retryAfterSeconds,
+  sanitizeToolPairing,
   setLang,
   iconHtml,
   // 创作坞 v2（2026-08-31）：引（typedJsonRpc 文件枚举）/ 拖放入卷（Tauri 原生通道）

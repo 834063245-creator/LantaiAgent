@@ -10,8 +10,8 @@
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createAnthropicProvider } from '../src/provider/anthropic';
-import { createOpenAIProvider } from '../src/provider/openai';
+import { createAnthropicProvider } from '../src/plugins/builtin/llm-adapters/anthropic';
+import { createOpenAIProvider } from '../src/plugins/builtin/llm-adapters/openai';
 import type { Message } from '../src/provider/types';
 
 /** 起一个本地 SSE server（照 provider-realsocket 同款姿势），捕获请求体。 */

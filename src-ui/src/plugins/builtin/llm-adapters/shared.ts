@@ -3,7 +3,7 @@
 
 // provider 实现的共享工具函数 — 从 anthropic.ts 和 openai.ts 中提取
 
-import { proxyFetch } from './transport';
+import { proxyFetch } from './host';
 
 /** 合并自定义请求头与内核必需头（2026-09-17）。
  *

@@ -9,7 +9,9 @@
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createAnthropicProvider } from '../src/provider/anthropic';
+import { createAnthropicProvider } from '../src/plugins/builtin/llm-adapters/anthropic';
+import { createOpenAIProvider } from '../src/plugins/builtin/llm-adapters/openai';
+import { createResponsesProvider } from '../src/plugins/builtin/llm-adapters/responses';
 import {
   formatHeaderLines,
   headerEntryError,
@@ -17,8 +19,6 @@ import {
   parseHeaderLines,
   sanitizeProviderHeaders,
 } from '../src/provider/custom-headers';
-import { createOpenAIProvider } from '../src/provider/openai';
-import { createResponsesProvider } from '../src/provider/responses';
 
 describe('custom-headers 纯函数', () => {
   it('parseHeaderLines：认 `Name: Value`，跳过空行与注释，值内冒号保留', () => {

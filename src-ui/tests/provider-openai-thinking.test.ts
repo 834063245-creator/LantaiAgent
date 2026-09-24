@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT.
 
 import { describe, expect, it } from 'vitest';
-import { buildChatRequest } from '../src/provider/openai';
+import { buildChatRequest } from '../src/plugins/builtin/llm-adapters/openai';
 import type { Message } from '../src/provider/types';
 
 const msgs: Message[] = [{ role: 'user', content: 'hi' }];

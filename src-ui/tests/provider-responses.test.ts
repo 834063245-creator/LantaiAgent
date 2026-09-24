@@ -7,7 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { buildResponsesRequest, createResponsesProvider } from '../src/provider/responses';
+import { buildResponsesRequest, createResponsesProvider } from '../src/plugins/builtin/llm-adapters/responses';
 import { resetProxyPort } from '../src/provider/transport';
 import { ChunkType, type Request } from '../src/provider/types';
 

@@ -14,9 +14,9 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createAnthropicProvider } from '../src/provider/anthropic';
+import { createAnthropicProvider } from '../src/plugins/builtin/llm-adapters/anthropic';
+import { createOpenAIProvider } from '../src/plugins/builtin/llm-adapters/openai';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../src/provider/idle-stream';
-import { createOpenAIProvider } from '../src/provider/openai';
 import { type Chunk, ChunkType } from '../src/provider/types';
 
 /** 起一个本地 SSE server。handler 收到 (req body, res writer helper)。 */

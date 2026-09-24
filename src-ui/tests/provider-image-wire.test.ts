@@ -7,9 +7,9 @@
 // 直呼面姿势）；断言对齐各协议官方多模态形态。
 
 import { describe, expect, it } from 'vitest';
-import { buildRequest as buildAnthropicRequest } from '../src/provider/anthropic';
-import { buildChatRequest } from '../src/provider/openai';
-import { buildResponsesRequest } from '../src/provider/responses';
+import { buildRequest as buildAnthropicRequest } from '../src/plugins/builtin/llm-adapters/anthropic';
+import { buildChatRequest } from '../src/plugins/builtin/llm-adapters/openai';
+import { buildResponsesRequest } from '../src/plugins/builtin/llm-adapters/responses';
 import type { ChatImageRef, Message } from '../src/provider/types';
 
 const IMG_A: ChatImageRef = {

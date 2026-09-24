@@ -90,7 +90,7 @@ describe('displayToolName — 领域调用显示名', () => {
 
 describe('extractWritePreview — 领域工具流式预览', () => {
   it('fs(action=write) 从部分 JSON 提取 content', async () => {
-    const { extractWritePreview } = await import('../src/provider/shared');
+    const { extractWritePreview } = await import('../src/plugins/builtin/llm-adapters/shared');
     const partial = '{"action":"write","filePath":"/a.ts","content":"hello\\nworld';
     const preview = extractWritePreview('fs', partial);
     expect(preview).toContain('hello');
@@ -98,14 +98,14 @@ describe('extractWritePreview — 领域工具流式预览', () => {
   });
 
   it('fs(action=edit) 提取 newString', async () => {
-    const { extractWritePreview } = await import('../src/provider/shared');
+    const { extractWritePreview } = await import('../src/plugins/builtin/llm-adapters/shared');
     const partial = '{"action":"edit","filePath":"/a.ts","newString":"replacement text';
     const preview = extractWritePreview('fs', partial);
     expect(preview).toBe('replacement text');
   });
 
   it('旧工具名行为不回归', async () => {
-    const { extractWritePreview } = await import('../src/provider/shared');
+    const { extractWritePreview } = await import('../src/plugins/builtin/llm-adapters/shared');
     expect(extractWritePreview('write_file', '{"content":"data')).toBe('data');
     expect(extractWritePreview('edit_file', '{"newString":"x')).toBe('x');
     expect(extractWritePreview('run_shell', '{"command":"ls"}')).toBeNull();

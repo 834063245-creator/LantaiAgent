@@ -3,9 +3,29 @@
 
 // Anthropic Messages API provider — 手写 fetch() + SSE 解析，零第三方 SDK
 
-import { clampMaxTokens, getModel } from './catalog';
-import { classifyProviderError } from './error-catalog';
-import { type ModelMeta, modelEntries, parseModelEntry } from './model-meta';
+import {
+  ApiError,
+  assertEffortDeclared,
+  type Chunk,
+  ChunkType,
+  clampMaxTokens,
+  classifyProviderError,
+  classifyStreamError,
+  getModel,
+  type Message,
+  type ModelDescriptor,
+  type ModelMeta,
+  modelEntries,
+  PROVIDER_PROTOCOL_DEFAULTS,
+  type Provider,
+  parseModelEntry,
+  type Request,
+  type Role,
+  type StoredThinking,
+  sanitizeToolPairing,
+  THINKING_EFFORT_BUDGETS,
+  thinkingCapability,
+} from './host';
 import { sendWithRetry } from './retry';
 import {
   extractWritePreview,
@@ -15,19 +35,6 @@ import {
   type SseEvent,
   sseEvents,
 } from './shared';
-import { assertEffortDeclared, type StoredThinking, THINKING_EFFORT_BUDGETS, thinkingCapability } from './thinking';
-import {
-  ApiError,
-  type Chunk,
-  ChunkType,
-  classifyStreamError,
-  type Message,
-  type ModelDescriptor,
-  type Provider,
-  type Request,
-  type Role,
-  sanitizeToolPairing,
-} from './types';
 
 const ANTHROPIC_VERSION = '2023-06-01';
 
@@ -55,8 +62,6 @@ interface AnthropicSseEvent extends SseEvent {
   // Anthropic 流内 error 事件：{ type, message }——type 即错误码（如 overloaded_error）
   error?: { message?: string; type?: string };
 }
-/** Anthropic 官方端点 — 字面量唯一事实源；settings.PROVIDER_PROTOCOL_DEFAULTS 引用此值。 */
-export const ANTHROPIC_DEFAULT_BASE_URL = 'https://api.anthropic.com';
 const DEFAULT_MAX_TOKENS = 32000; // ponytail：跨提供商的安全上限
 
 interface AnthropicConfig {
@@ -78,7 +83,7 @@ interface AnthropicConfig {
 
 export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
   const name = cfg.name || 'anthropic';
-  const baseUrl = (cfg.baseUrl || ANTHROPIC_DEFAULT_BASE_URL).replace(/\/$/, '');
+  const baseUrl = (cfg.baseUrl || PROVIDER_PROTOCOL_DEFAULTS.anthropic).replace(/\/$/, '');
   const { model, apiKey } = cfg;
   let thinking: StoredThinking | undefined = cfg.thinking; // setThinking 运行时更新
   // provider 作用域描述符；缺省回落全局目录（测试直呼面零改动）

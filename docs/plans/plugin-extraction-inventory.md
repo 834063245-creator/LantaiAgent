@@ -255,10 +255,21 @@ manifest.json —— 包内合计 30～110 行。
 
 ### 1.2 半壳（3）：插件对象已进包，provider 实现仍在内核 —— 2,928 行
 
+> **2026-09-24 批 2a 落地**：`llm-adapters` **已实心化**（1,916 行三方言 + 两 helper 进包）
+> ——销账一条。前提条件按账本原判执行：`ANTHROPIC_DEFAULT_BASE_URL` 上收内核
+> （`settings.PROVIDER_PROTOCOL_DEFAULTS.anthropic` 成为端点字面量唯一真源，适配器经宿主桥读表）。
+> 包内 `host.ts` 从「桥三个工厂」翻面成「桥仍住内核的依赖面」：seam 契约（types）·
+> 目录/元数据（catalog/model-meta）· 错误分类（error-catalog）· 思考档（thinking）·
+> 传输（transport）· 协议端点表（settings）——16 个运行时 faceDeps 键。
+> **收益兑现**：产物 `entry.js` 从 2.6 KB → 41.6 KB（三方言真身），**LLM 适配器自此改产物即热更**。
+> `subagent-in-process` **并入批 7**（复核后裁定）：它要 `agent/**` 的 22 个模块、16 个运行时桥位，
+> 而那批（子代理运行时本体 + 通信族）正要把同一片 `agent.ts`/context/message-bus 面整体搬走
+> ——现在单独搬要建 16 键桥、批 7 再拆一次，合并只付一次。
+
 | 产物包 | 实现真源（物理行） | 搬前须先解 |
 |---|---|---|
-| `llm-adapters` | `provider/anthropic.ts` 572 + `openai.ts` 518 + `responses.ts` 560 + `shared.ts` 151 + `retry.ts` 115 = **1,916** | `settings.ts` 引用 `ANTHROPIC_DEFAULT_BASE_URL`（默认端点真源须提成内核常量） |
-| `subagent-in-process` | `agent/subagent-spawn.ts` **543** | `agent.ts` 的值 re-export 桥（保一个测试的导入面） |
+| `llm-adapters` | `provider/anthropic.ts` 572 + `openai.ts` 518 + `responses.ts` 560 + `shared.ts` 151 + `retry.ts` 115 = **1,916** | ✅ **批 2a 已归家**（端点字面量上收内核协议表；16 个运行时桥位） |
+| `subagent-in-process` | `agent/subagent-spawn.ts` **543** | `agent.ts` 的值 re-export 桥（保一个测试的导入面）⇒ **并入批 7**（同族一次搬完） |
 | `agent-loop-service` | `agent/agent-loop/default-loop.ts` **469** | `agent.ts` 的 `opts.agentLoop ?? defaultAgentLoop` 内核回落真值（`agent-loop-active.ts` 41 行是内核桥，留） |
 
 > 合格样板（别混进来）：`fs-builtin` 148 · `shell-builtin` 71 · `sessions-builtin` 125
@@ -419,8 +430,8 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 1 后重测）：红 24 产物 / **54 文件 / 19,045 行**（§1 的 21 条 + §2.1 Provider
-家族 8 件 + §2.5 两包独占件）；绿 111 平台 + 72 已认领；灰 145 文件 / 39,984 行
+**2026-09-24 基线**（批 2a 后重测）：红 **23 产物 / 49 文件 / 17,129 行**（§1 的 20 条 +
+§2.1 Provider 家族 8 件 + §2.5 两包独占件）；绿 111 平台 + 72 已认领；灰 140 文件 / 39,135 行
 （`agent/` 87 · `app/` 32 · `ui/` 9）——**灰区 ⊇ 账③**：除 §2 已认领的面之外，还含内核自身的
 app/agent 编排件（归属判定未做），故灰区数字大于 §2 的 32,018。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
@@ -433,7 +444,7 @@ app/agent 编排件（归属判定未做），故灰区数字大于 §2 的 32,0
 | **0b** | 立账 + 三条守卫 + 常驻对账报告 | — | ✅ **已落**：归家账（名册 `impl`）/ 特权区冻结（31+17 文件 ⊇ 基线 + 销账制）/ dist 文案与 CSS 面断言 / `plugin-home:report` |
 | **0c** | 顺手三清：删 `composition/asset-renderers.tsx`（49，真源已迁）· 收缩 `i18n.ts`（98→21，半尸体）· 清 `preset-authoring.ts`（192）归 settings-domain | 339 | ✅ 全清（第三件并入批 1）——它要动的正是 settings-domain 的 host/faceDeps 面，与三页归家同一处 churn，合并只付一次 baseline 重生成 + exe 重建成本 |
 | **1** | settings 三页归家（McpPage/PluginsPage/SkillsPage）+ `preset-authoring` 随迁 | 1,103 + 192 | ✅ **已落**（2026-09-24）：三页 `git mv` 进包、内核依赖改走包内 `./host` 逐符号桥（+24 faceDeps 键，baseline 重生成）、产物自包含校验过、CSS 面无需动（三页 class 本就在包内 `settings-panel.css`）；链路（页面进包 + host 三处同步 + 产物构建 + faceDeps 指纹）已走通 |
-| **2** | seam provider 实心化：`llm-adapters`（三适配器 + 两个私有 helper）+ `subagent-in-process` | 1,916 + 543 | 通道现成（`ctx.llm`/`ctx.subagents`），零契约风险；**收益最大**——LLM 适配器从此可热更 |
+| **2** | seam provider 实心化：`llm-adapters`（三适配器 + 两个私有 helper）；`subagent-in-process` 并入批 7 | 1,916 | ✅ **llm-adapters 已落**（2026-09-24 批 2a）：1,916 行进包、端点真源上收内核、16 个运行时桥位、产物 2.6 KB→41.6 KB（**适配器自此可热更**）。`subagent-in-process`（543）复核后并入批 7——它要同一片 `agent.ts`/context/message-bus 面（16 桥位），那批本就要整片搬 |
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | 转发链最短、先例现成（`fs-builtin` 自包含形态）；先定「包内经 faceDeps 取实例 vs 装配期经 rowCtx 注入」 |
 | **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | 硬骨头：一文件载五族；9+5+2 个测试直连；search 输出形状须与 Rust 逐字节等价 |
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | 纯搬运；直接消灭「改版式 token 必须重建 exe」 |

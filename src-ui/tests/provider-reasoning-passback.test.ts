@@ -18,8 +18,8 @@
 // 用户操作序列（用例来源）：开思考档 → 问一句 → 模型调工具 → 再问一句。
 
 import { describe, expect, it } from 'vitest';
-import { buildRequest as buildAnthropicRequest } from '../src/provider/anthropic';
-import { buildChatRequest } from '../src/provider/openai';
+import { buildRequest as buildAnthropicRequest } from '../src/plugins/builtin/llm-adapters/anthropic';
+import { buildChatRequest } from '../src/plugins/builtin/llm-adapters/openai';
 import type { Message } from '../src/provider/types';
 
 /** assistant 轮工厂（只补本用例关心的字段）。 */

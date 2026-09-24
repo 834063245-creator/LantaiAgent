@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: MIT.
 
 import { describe, expect, it, vi } from 'vitest';
-
+import { computeBackoffMs, sendWithRetry } from '../src/plugins/builtin/llm-adapters/retry';
 import { type ClassifiedProviderError, providerErrorKind } from '../src/provider/error-catalog';
-import { computeBackoffMs, sendWithRetry } from '../src/provider/retry';
 
 // 微小退避参数——驱动真实重试序列而不拖慢测试（缺省值为生产值，见 computeBackoffMs 用例）。
 const fastOpts = { baseDelayMs: 1, jitterMs: 0, rateLimitedMultiplier: 1 };

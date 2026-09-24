@@ -2,17 +2,10 @@
   {
     "dir": "llm-adapters",
     "buildOrder": 0,
-    "description": "LLM 协议方言适配（seam/llm 默认实现）",
+    "description": "LLM 协议方言适配（seam/llm 默认实现）——三方言与私有 helper 已随包（批 2a）",
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["llm"],
-    "impl": [
-      "provider/anthropic.ts",
-      "provider/openai.ts",
-      "provider/responses.ts",
-      "provider/shared.ts",
-      "provider/retry.ts"
-    ],
     "shared": ["provider/types.ts"]
   },
   {

@@ -64,8 +64,7 @@ const NOTES: Record<string, string> = {
   'task-domain': 'task.ts 178 + task-board.ts 319；随行 board-persistence.ts 121 · tools/board-status.ts 78',
   'capability-segments': '389 行（14 项 capability 定义；AgentBlueprint 类=机制留内核）',
   'prompt-segments': '244 行（9 段文案真源；拼装序 = 字节契约）',
-  'llm-adapters': '1,916 行；搬前须先把 ANTHROPIC_DEFAULT_BASE_URL 提成内核常量（settings.ts 引用它）',
-  'subagent-in-process': '543 行；搬前须先解 agent.ts 的值 re-export 桥',
+  'subagent-in-process': '543 行；搬前须先解 agent.ts 的值 re-export 桥（批 2 复核后并入批 7 同族一次搬完）',
   'agent-loop-service':
     '469 行；搬前须先解 agent.ts 的 opts.agentLoop ?? defaultAgentLoop 内核回落（agent-loop-active.ts 是内核桥，留）',
   // 半迁移（实心包里的残余——不是薄包，故不进空壳集，但同样按 impl 销账）
@@ -195,9 +194,10 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     expect(done, `这些包的实现已不在内核（搬运完成）——请从名册该条目的 impl 销账：\n${done.join('\n')}`).toEqual([]);
   });
 
-  it('账本口径自洽：空壳 21 条（18 纯壳 + 3 半壳），且每条都有备注文本', () => {
-    // 60f 口径：账本 §1 记 21 条。数字变了 = 要么销了账（好事，改这条断言），要么漏登记。
-    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；账本 §1 记 21 条`).toBe(21);
+  it('账本口径自洽：空壳 20 条（18 纯壳 + 2 半壳），且每条都有备注文本', () => {
+    // 口径：账本 §1 立账 21 条；批 2a 实心化 `llm-adapters` ⇒ 销一条（19 仍是薄包，
+    // 加上实心包里的两处残余认领另有断言守）。数字再变 = 要么又销了账（改这条），要么漏登记。
+    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 1 = 20`).toBe(20);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();
     // 反向：备注表不许留已销账的条目（防文本腐烂）
     const ghost = Object.keys(NOTES).filter((d) => !CLAIMS.some((c) => c.dir === d));

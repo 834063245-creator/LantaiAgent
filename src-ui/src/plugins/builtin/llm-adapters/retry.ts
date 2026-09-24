@@ -10,9 +10,15 @@
 //     意义；上下文超长交给上层触发压缩）
 // 抛出的错误一律经 classifyProviderError 编织（挂 kind——上层可读 err.kind）。
 
-import { type ClassifiedProviderError, classifyProviderError } from './error-catalog';
-import { proxyFetch } from './transport';
-import { ApiError, classifyError, errorCodeFromBody, retryAfterSeconds } from './types';
+import {
+  ApiError,
+  type ClassifiedProviderError,
+  classifyError,
+  classifyProviderError,
+  errorCodeFromBody,
+  proxyFetch,
+  retryAfterSeconds,
+} from './host';
 
 export interface RetryConfig {
   url: string;

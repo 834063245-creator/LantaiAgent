@@ -4,7 +4,6 @@
 // Settings — API Key 管理、模型选择、provider 配置
 // 存储在 localStorage 中，在可用时由 Tauri store 插件支持
 
-import { ANTHROPIC_DEFAULT_BASE_URL } from './provider/anthropic';
 import { getCatalogVendors, getDefaultModel, getModel } from './provider/catalog';
 import type { ModelMeta } from './provider/model-meta';
 import type { StoredThinking, ThinkingEffort } from './provider/thinking';
@@ -276,9 +275,12 @@ const STORAGE_KEY = 'hologram_settings';
 /** 协议（kind）→ 默认 Base URL。字面量的唯一事实源——
  *  ⚡ provider-refactor Phase 1A：收窄到内核两族（Protocol 已开放，闭合 Record
  *  只覆盖内核；未知 kind 回落链见 defaultBaseUrl——模板表跳过后协议未命中
- *  时返回 undefined，由调用方决定（新增未知协议不静默给错端点）。 */
+ *  时返回 undefined，由调用方决定（新增未知协议不静默给错端点）。
+ *  ⚠ 2026-09-24 账本批 2a：anthropic 端点字面量从 `provider/anthropic.ts` **上收至此**
+ *  （适配器实现随包进 `plugins/builtin/llm-adapters/`，而 settings 是它唯一的内核读者）
+ *  ——适配器经产物宿主桥读本表（`PROVIDER_PROTOCOL_DEFAULTS.anthropic`），端点真源单点。 */
 export const PROVIDER_PROTOCOL_DEFAULTS: Record<CoreProtocol, string> = {
-  anthropic: ANTHROPIC_DEFAULT_BASE_URL,
+  anthropic: 'https://api.anthropic.com',
   openai: 'https://api.openai.com/v1',
 };
 

@@ -4,9 +4,30 @@
 // OpenAI 兼容 provider — DeepSeek、MiMo 及任何 OpenAI 兼容端点
 // 手写 fetch() + SSE 解析，零第三方 SDK
 
-import { clampMaxTokens, getModel } from './catalog';
-import { classifyProviderError } from './error-catalog';
-import { type ModelMeta, modelEntries, parseModelEntry } from './model-meta';
+import {
+  ApiError,
+  assertEffortDeclared,
+  type ChatImageRef,
+  type Chunk,
+  ChunkType,
+  clampMaxTokens,
+  classifyProviderError,
+  classifyStreamError,
+  getModel,
+  isThinkingMode,
+  type Message,
+  type ModelDescriptor,
+  type ModelMeta,
+  modelEntries,
+  type Provider,
+  parseModelEntry,
+  type Request,
+  type Role,
+  type StoredThinking,
+  sanitizeToolPairing,
+  type ThinkingEffort,
+  thinkingCapability,
+} from './host';
 import { sendWithRetry } from './retry';
 import {
   extractWritePreview,
@@ -16,26 +37,6 @@ import {
   type SseEvent,
   sseEvents,
 } from './shared';
-import {
-  assertEffortDeclared,
-  isThinkingMode,
-  type StoredThinking,
-  type ThinkingEffort,
-  thinkingCapability,
-} from './thinking';
-import {
-  ApiError,
-  type ChatImageRef,
-  type Chunk,
-  ChunkType,
-  classifyStreamError,
-  type Message,
-  type ModelDescriptor,
-  type Provider,
-  type Request,
-  type Role,
-  sanitizeToolPairing,
-} from './types';
 
 const DEFAULT_MAX_TOKENS = 32000; // ponytail：跨提供商的安全上限（GLM 上限 131072）
 

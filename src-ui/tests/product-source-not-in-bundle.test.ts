@@ -59,6 +59,17 @@ function cssClasses(css: string): string[] {
   return [...set];
 }
 
+/** 产物体内的探针串是否「够独特」。
+ *  ⚠ 只有「内核源码里不出现」还不够：bundle 里还有**依赖的数据表**（分词器词表
+ *  含几万条英文片段/单词——实测 `adaptive` 这种常见词会撞上，2026-09-24 批 2a 踩过）。
+ *  故再要求：含非字母数字（标识符/路径/版本串）· 或含大写（camelCase 标识符）·
+ *  或长纯小写词（≥14，词表里不会有的长度）。 */
+function distinctiveProbe(lit: string): boolean {
+  if (/[^a-zA-Z0-9]/.test(lit)) return true;
+  if (/[A-Z]/.test(lit)) return true;
+  return /^[a-z]{14,}$/.test(lit);
+}
+
 /** 产物源码里出现的字符串字面量（长度 ≥ 6、无模板插值）——探针候选。 */
 function stringLiterals(src: string): string[] {
   const out = new Set<string>();
@@ -108,8 +119,8 @@ d('产物源码不进壳 bundle（dist 在场：JS 面）', () => {
       const dir = join(BUILTIN_SRC, entry.dir);
       const literals = walkFiles(dir, (n) => /\.(ts|tsx)$/.test(n))
         .flatMap((f) => stringLiterals(read(f)))
-        // 只留「内核侧绝不出现」的字面量 ⇒ 命中即证明该产物源码进了 bundle
-        .filter((lit) => !kernelText.includes(lit));
+        // 只留「内核侧绝不出现」且「够独特」的字面量 ⇒ 命中即证明该产物源码进了 bundle
+        .filter((lit) => distinctiveProbe(lit) && !kernelText.includes(lit));
       const probes = [...new Set(literals)].slice(0, 5);
       if (probes.length === 0) continue; // 无独有串的产物：由 ③/其他用例兜底
       probed += 1;
