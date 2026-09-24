@@ -1,5 +1,5 @@
 {
-  "fingerprint": "6ed39b01",
+  "fingerprint": "414f1382",
   "keys": [
     "ANCHOR",
     "Agent",
@@ -117,7 +117,6 @@
     "filterCommands",
     "findModels",
     "firstPartyCapabilities",
-    "firstPartyPromptSections",
     "foldLabel",
     "foldToolResults",
     "formatDiagnostics",

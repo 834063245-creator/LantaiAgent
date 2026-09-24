@@ -54,7 +54,6 @@ const NOTES: Record<string, string> = {
   'task-domain':
     'task.ts 178 + task-board.ts 319；随行 board-persistence.ts 121 · tools/board-status.ts 78（批 3 复核：TaskBoard 11 处内核消费者 ⇒ 待批 7）',
   'capability-segments': '389 行（14 项 capability 定义；AgentBlueprint 类=机制留内核）',
-  'prompt-segments': '244 行（9 段文案真源；拼装序 = 字节契约）',
   'agent-loop-service':
     '469 行；搬前须先解 agent.ts 的 opts.agentLoop ?? defaultAgentLoop 内核回落（agent-loop-active.ts 是内核桥，留）',
   // 半迁移（实心包里的残余——不是薄包，故不进空壳集，但同样按 impl 销账）
@@ -203,7 +202,7 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     expect(done, `这些包的实现已不在内核（搬运完成）——请从名册该条目的 impl 销账：\n${done.join('\n')}`).toEqual([]);
   });
 
-  it('账本口径自洽：空壳 7 条（5 纯壳 + 2 半壳），且每条都有备注文本', () => {
+  it('账本口径自洽：空壳 6 条（5 纯壳 + 1 半壳），且每条都有备注文本', () => {
     // 口径：账本 §1 立账 21 条；批 2a 销 `llm-adapters`、批 3a 销 wait/office/cordis、
     // 批 4a 销 `browser-desktop-domain`、批 4b 销 search/web 两域、批 4c 销
     // git/ask/agent-isolation/fs/shell 五域、批 6 四项、批 7a agent-domain ⇒ 销 13 条；
@@ -211,8 +210,9 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     // 但余 `subagent-spawn.ts` 仍在内核）⇒ 出空壳集；批 7c-2 运行时本体（coordinator /
     // lifecycle-manager / subagent-spawn）也进包 ⇒ 名册 impl 全销、NOTES 条目删除，空壳数不变。
     // 批 9d：settings-domain 的 Provider 控制台 8 件随包 ⇒ 该条 NOTES 删除（半壳只剩 paper-shell）。
+    // 批 9g-1：prompt-segments 的段文案真源随包（包内 sections.ts 195 行 = 自有实现）⇒ 出空壳集、销账。
     // 数字再变 = 要么又销了账（改这条），要么漏登记。
-    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 14 = 7`).toBe(7);
+    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 15 = 6`).toBe(6);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();
     // 反向：备注表不许留已销账的条目（防文本腐烂）
     const ghost = Object.keys(NOTES).filter((d) => !CLAIMS.some((c) => c.dir === d));

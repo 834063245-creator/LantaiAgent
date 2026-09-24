@@ -10,6 +10,5 @@ function requireHost(): PluginHostBridge {
   if (!host) throw new Error('[prompt-segments/host.aliased] 宿主桥不可用——内置插件必须在兰台宿主内装载');
   return host;
 }
-const host = requireHost();
-const impl = host.mods.faceDeps as unknown as typeof import('./host');
-export const firstPartyPromptSections = impl.firstPartyPromptSections;
+// 批 9g-1：本包零 faceDeps 需求（内容随包）——保留 requireHost 与形状对拍，空实现。
+void requireHost;

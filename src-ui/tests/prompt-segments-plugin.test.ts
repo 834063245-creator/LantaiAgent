@@ -16,10 +16,11 @@
 
 import { describe, expect, it } from 'vitest';
 import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
-import { assembleSystemPrompt, firstPartyPromptSections } from '../src/composition/prompt-sections';
+import { assembleSystemPrompt } from '../src/composition/prompt-sections';
 import { activePromptContributions, promptsServicePlugin } from '../src/composition/prompt-service';
 import { Context } from '../src/cordis';
 import { promptSegmentsPlugin } from '../src/plugins/builtin/prompt-segments';
+import { firstPartyPromptSections } from '../src/plugins/builtin/prompt-segments/sections';
 
 const FULL_CTX = {
   projectPath: '/p',

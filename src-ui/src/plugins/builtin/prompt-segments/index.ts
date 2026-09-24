@@ -5,7 +5,7 @@
 // 原 plugins/prompt-segments-plugin.ts 整体迁入。
 
 import type { Context } from '../../../cordis';
-import { firstPartyPromptSections } from './host';
+import { firstPartyPromptSections } from './sections';
 
 /** 第一方 prompt 段插件——装载 firstPartyPromptSections()（全量段）。
  *  注册序 = 段清单序 = 迁移前出厂表序（拼装字节零漂移按构造；2026-09-24

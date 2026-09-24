@@ -17,8 +17,9 @@ import { ToolRegistry } from '../src/agent/tool';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
-import { assembleSystemPrompt, firstPartyPromptSections } from '../src/composition/prompt-sections';
+import { assembleSystemPrompt } from '../src/composition/prompt-sections';
 import { factoryComposition, type ResolvedComposition, resolveRoster } from '../src/composition/roster';
+import { firstPartyPromptSections } from '../src/plugins/builtin/prompt-segments/sections';
 import { useCompositionStore } from '../src/state/composition-store';
 import { buildStandardRegistry, readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';
 // 批 6a：plan 实现由 hologram/plan-mode 插件在装载期常驻登记（生产 = 装载器先于

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildSystemPrompt } from '../src/agent/runtime/agent-builder';
 import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
-import { assembleSystemPrompt, firstPartyPromptSections } from '../src/composition/prompt-sections';
+import { assembleSystemPrompt } from '../src/composition/prompt-sections';
+import { firstPartyPromptSections } from '../src/plugins/builtin/prompt-segments/sections';
 
 // ── S1-4 section 注册表自检 ──
 // 表序 = 拼装序（standard preset 的事实来源）。逐字节零漂移由

@@ -259,11 +259,10 @@
   {
     "dir": "prompt-segments",
     "buildOrder": 27,
-    "description": "出厂 system-prompt 段（12 段；禁用 = Agent 无出厂提示词）",
+    "description": "出厂 system-prompt 段（9 段文案真源已随包，批 9g-1；禁用 = Agent 无出厂提示词）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["prompts"],
-    "impl": ["composition/prompt-sections.ts"]
+    "inject": ["prompts"]
   },
   {
     "dir": "capability-segments",

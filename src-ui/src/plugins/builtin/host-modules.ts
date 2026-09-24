@@ -117,7 +117,6 @@ import { activeOverlayContributions, subscribeOverlayContributions } from '../..
 import { reapplyComposition, selectPreset } from '../../composition/preset-assembly';
 import { discoverPresets, stringifyPatchYaml } from '../../composition/preset-discovery';
 import { builtinPresets, isValidPresetId } from '../../composition/presets';
-import { firstPartyPromptSections } from '../../composition/prompt-sections';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
 import { ownerIdOf, ownerSeamView } from '../../composition/seam-scope';
 import { activeLlmAdapters } from '../../composition/services';
@@ -604,7 +603,6 @@ const faceDeps = {
   onTopbarPointerDown,
   onTopbarDoubleClick,
   createAssetTools,
-  firstPartyPromptSections,
   firstPartyCapabilities,
   // S5b agent-loop-service 产物运行时依赖
   ContributionChannel,
