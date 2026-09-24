@@ -207,6 +207,17 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // read = 文件内容文本 / write/delete = ok_unit "null"——Text（默认臂）。
         "plugin_data_ensure" | "plugin_data_list" => RpcResultShape::JsonValue,
 
+        // ── 随包图谱引擎探测（engine-bundled-mcp-distribution）──
+        // engine_bundled_info：serde_json::json!({path,dir,available}) 恒合法 JSON。
+        // **2026-09-24 补登记**：此前漏登记 ⇒ 落默认臂 Text ⇒ 出口把 JSON 当**字符串**
+        // 直通，而前端 `plugins/bundled-engine.ts` 的 probeBundledEngine 用 typedRpc
+        // （直通、不 parse；双形态 shim 在 typedJsonRpc）读 `raw.available` ⇒ 恒 false
+        // ⇒ 设置页「随包图谱引擎」开关置灰、**拨不开**（实机缺陷，用户 2026-09-24 报）。
+        // 09-16 的 CDP 探针读到的是那条 JSON 字符串本身（文本里写着 "available":true）
+        // ⇒ 假阳性，把该缺陷掩盖了 8 天。回归钉在
+        // `src-ui/tests/bundled-engine-probe-shape.test.ts`（两种线形都必须判 true）。
+        "engine_bundled_info" => RpcResultShape::JsonValue,
+
         // （数据流形状条目（dataflow_save / dataflow_query → Text）随图谱
         //  全量退役删除，2026-09-09。）
 
@@ -1084,6 +1095,14 @@ mod tests {
         //  图命令族（load_graph_json 等）已随图谱退役退表，2026-09-09——
         //  get_graph_meta/get_graph_page 断言改为「未列命令默认 Text」的同型小样）
         assert_eq!(rpc_result_shape("workspace_list"), RpcResultShape::JsonValue);
+        // 随包引擎探测（2026-09-24 补断言）：恒 JSON 对象 ⇒ 必须展开为 Value。
+        // 漏登记会把 JSON 当字符串直通，前端读 `raw.available` 恒 false ⇒
+        // 设置页开关置灰「拨不开」（实机缺陷；TS 侧对拍守卫见
+        // src-ui/tests/rpc-json-shape-consistency.test.ts）。
+        assert_eq!(
+            rpc_result_shape("engine_bundled_info"),
+            RpcResultShape::JsonValue
+        );
         assert_eq!(rpc_result_shape("load_graph_json"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("get_graph_snapshot"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("hologram_file_nodes"), RpcResultShape::Text);

@@ -60,6 +60,17 @@ import { typedRpc } from '../rpc-contract';
 import { bindMcpDeferredToken, completeMcpDeferred, type PluginDeferredStatus } from './deferred';
 import type { McpServerDecl } from './types';
 
+/** ⚠ 调用方的 ctx **必须**能访问 `tools` 服务（插件 fiber 声明 `inject: ['tools']`；
+ *  程序化 scope 同款）。
+ *
+ *  cordis 对未声明 inject 的 ctx 拒绝对服务做属性访问（`cannot get property "tools"
+ *  without inject`；`ctx.resolve` 同受此门禁，**不是**逃生口）。历史事故：工作区
+ *  scope（`workspace.ts` 的 `hologram/workspace`）漏声明 ⇒ 随包引擎接线一走到下面的
+ *  `ctx.tools.register` 就抛，实机症状「随包引擎接线失败：… without inject」
+ *  （2026-09-24；该链路此前从未真机跑通过）。修法是**给调用方 scope 补 inject**
+ *  （不是在本模块改免 inject 取用），回归 = tests/mcp-bridge.test.ts
+ *  「非插件 scope ctx」段。 */
+
 /** S4（app shell 件 D）——server 完成通知 method：调用期发出的 deferred
  *  progressToken 在 params.progressToken 回带，taskId/status 是 server 自订
  *  任务键。MCP 通知面标准语义（server 主动发、无 id、client dispatch 到

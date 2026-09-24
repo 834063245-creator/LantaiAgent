@@ -496,10 +496,13 @@ export interface RpcContract {
    *  安装目录里的 `hologram-engine.exe`（多候选：env `LANTAI_ENGINE_EXE` →
    *  宿主 exe 同级 → 上一级 → 仓库 target/）。**纯只读探测，不启动进程**——
    *  接线在 TS 侧 `plugins/bundled-engine.ts`，走 MCP 受治进程通道。
-   *  `path: null` = 未找到（走「引擎不可用」降级，非错误）。 */
+   *  `path: null` = 未找到（走「引擎不可用」降级，非错误）。
+   *  ⚠ 形态：`// JSON`（2026-09-24 补标注）——此前未标且未进 rpc.rs 的
+   *  rpc_result_shape 表 ⇒ 出口按 Text 直通字符串，消费面读属性恒 false
+   *  （设置页开关置灰「拨不开」，见 tests/bundled-engine-probe-shape.test.ts）。 */
   engine_bundled_info: {
     params: Record<string, never>;
-    result: { path: string | null; dir: string | null; available: boolean };
+    result: { path: string | null; dir: string | null; available: boolean }; // JSON
   };
   /** 组合目录（P-1 authoring 环境，2026-09-14）：返回 `~/.lantai/composition/`
    *  绝对路径并按需创建（root + presets/，幂等，不动已有内容）；`open: true`
@@ -1033,6 +1036,16 @@ export const rpcResultSchemas = {
   plugin_data_list: z
     .object({
       entries: z.array(z.object({ name: z.string(), is_dir: z.boolean(), size: z.number() }).passthrough()),
+    })
+    .passthrough(),
+  // 随包图谱引擎探测（2026-09-24 补收编）：恒 JSON 对象；三字段可空（未找到 =
+  // path/dir 为 null、available false，非错误）。收编后消费面走 typedJsonRpc ⇒
+  // 双形态兼容（Rust 出口已展开 / 表外仍字符串）+ 违形即 throw（不再静默读成 false）。
+  engine_bundled_info: z
+    .object({
+      path: z.nullable(z.string()),
+      dir: z.nullable(z.string()),
+      available: z.boolean(),
     })
     .passthrough(),
   sandbox_status: z

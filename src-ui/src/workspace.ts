@@ -105,7 +105,17 @@ function sessionSeamViewFor(storeId: string, sessionId: number): SeamDisabledMap
 // ── Workspace 类 ─────────────────────────────────────────────────
 
 /** 工作区 scope fiber 的插件定义（cordis-migration P1）。
- *  apply 为空：资源登记发生在 fiber ctx 上（获取点就地 effect），不走插件闭包。 */
+ *  apply 为空：资源登记发生在 fiber ctx 上（获取点就地 effect），不走插件闭包。
+ *
+ *  ⚠ **不要给它加 `inject`**（2026-09-24 试过，当场撞墙）：声明 inject 会让 cordis
+ *  为本插件派生 realm/隔离语义，于是 `new LspService(this._fiber.ctx)` 的
+ *  `core.set('lsp')` 与 realm 记账冲突——`tests/workspace-fiber.test.ts` 5 条当场
+ *  全红（`service "lsp" has been registered at <hologram/workspace>` /
+ *  `Cannot set properties of undefined`）。
+ *  需要 `ctx.tools` 的接线（随包引擎 MCP）走**自带 inject 的子 fiber**挂载
+ *  （见 `plugins/bundled-engine.ts`：`ctx.plugin({ inject: ['tools'], apply })`），
+ *  回收由调用方把子 fiber 的 dispose 登记进自己的 `ctx.effect`——**不依赖** cordis
+ *  的父 dispose 级联语义。 */
 const workspaceScopePlugin = {
   name: 'hologram/workspace',
   apply() {},

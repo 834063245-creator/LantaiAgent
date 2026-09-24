@@ -76,6 +76,16 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
     ]);
   }
 
+  // 随包图谱引擎探测（2026-09-24 补）：浏览器 dev 无随包二进制 ⇒ 诚实形状
+  // 「未检测到」（path/dir 为 null）。**不合成 available:true**——那会让 jsdom
+  // 测试环境凭空「有引擎」，改掉既有用例的前提（引擎缺席时零成本降级、
+  // 不碰 IO），也把「浏览器里能拨开关」这种假象带回 dev。形状真源 =
+  // rpc.rs 的 engine_bundled_info 分支；mock↔schema 同源自检
+  // （rpc-result-schemas.test）钉住形状。
+  if (cmd === 'engine_bundled_info') {
+    return JSON.stringify({ path: null, dir: null, available: false });
+  }
+
   // 回退
   console.warn(`[mock] Unhandled command: ${cmd}`, args);
   return JSON.stringify({ mock: true, cmd, note: 'No mock data for this command' });

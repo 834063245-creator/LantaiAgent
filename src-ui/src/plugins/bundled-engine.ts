@@ -32,8 +32,9 @@
 // 工具行 id = `plugin/hologram-engine/mcp/hologram`（与插件贡献同寻址域 ⇒
 // patch/preset 可禁用，免费 kill switch）。
 
+import { log } from '../agent/logger';
 import type { Context } from '../cordis';
-import { typedRpc } from '../rpc-contract';
+import { typedJsonRpc } from '../rpc-contract';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import type { McpServerDecl } from './types';
 
@@ -57,7 +58,12 @@ let cachedInfo: BundledEngineInfo | null = null;
 export async function probeBundledEngine(): Promise<BundledEngineInfo> {
   if (cachedInfo) return cachedInfo;
   try {
-    const raw = await typedRpc('engine_bundled_info', {});
+    // typedJsonRpc（2026-09-24 换轨）：本命令是 `// JSON` 形态，双形态兼容
+    // （Rust 出口已展开为 Value / 表外仍为 JSON 字符串——**两者都要吃**），
+    // 且违形即 throw 而非静默读成 false。旧实现用 typedRpc（直通、不 parse）
+    // ⇒ 出口按 Text 直通字符串时 `raw?.available` 恒 undefined ⇒ 设置页开关
+    // 置灰「拨不开」（实机缺陷；回归 tests/bundled-engine-probe-shape.test.ts）。
+    const raw = await typedJsonRpc('engine_bundled_info');
     const info: BundledEngineInfo = {
       path: typeof raw?.path === 'string' ? raw.path : null,
       dir: typeof raw?.dir === 'string' ? raw.dir : null,
@@ -65,8 +71,11 @@ export async function probeBundledEngine(): Promise<BundledEngineInfo> {
     };
     cachedInfo = info;
     return info;
-  } catch {
-    // 探测失败 = 引擎不可用（不缓存失败结果——代理未起等瞬态可重试）
+  } catch (e) {
+    // 探测失败 = 引擎不可用（不缓存失败结果——代理未起等瞬态可重试）。
+    // 但**不静默**：此前 catch 无输出，UI 只会说「未检测到引擎二进制」，
+    // 把「RPC/形状故障」误报成「二进制缺席」——留一行 warn 进 ui.log 可查。
+    log.warn('plugins', `[bundled-engine] 探测失败（按不可用降级）: ${e instanceof Error ? e.message : String(e)}`);
     return { path: null, dir: null, available: false };
   }
 }
@@ -132,8 +141,9 @@ export async function registerBundledEngineTools(
   if (!info.available || !info.path) {
     return { wired: false, reason: '未找到随包引擎二进制' };
   }
+  const exePath = info.path;
   // 注入 IO：pluginDir 锚点 = 引擎安装目录（绕开 plugin_dir RPC 对非插件名报错）
-  const dir = info.dir ?? info.path.replace(/[\\/][^\\/]+$/, '');
+  const dir = info.dir ?? exePath.replace(/[\\/][^\\/]+$/, '');
   const engineIo: McpBridgeIO = io ?? {
     createProcIO: async (bridgeId, command, args, env) => {
       const { createTauriProcIO } = await import('../agent/mcp/tauri-io');
@@ -141,8 +151,64 @@ export async function registerBundledEngineTools(
     },
     pluginDir: async () => dir,
   };
-  await registerMcpServerTools(ctx, OWNER, [bundledEngineDecl(root, info.path)], engineIo);
-  return { wired: true };
+  // 挂载点（2026-09-24）：**自带 inject 的子 fiber**——不能把调用方 ctx 直接交给
+  // registerMcpServerTools。它内部要属性访问 `ctx.tools`，而工作区 scope 插件
+  // 不能声明 inject（声明即撞 cordis realm：`new LspService(fiber.ctx)` 报
+  // 「service "lsp" has been registered」——见 workspace.ts 的 ⚠ 注释），
+  // 于是抛 `cannot get property "tools" without inject`（实机症状
+  // 「随包引擎接线失败：… without inject」）。
+  // 子 fiber 自持 inject ⇒ 服务可见性归它；**归属与回收仍挂调用方 ctx**：
+  // 下面把子 fiber 的 dispose 登记进调用方 ctx.effect ⇒ 离开/切换工作区时
+  // fiber.dispose 链式摘行 + 治理器杀进程树（与「工具行直挂工作区 ctx」等价，
+  // 不依赖 cordis 的父 dispose 级联语义）。
+  try {
+    const fiber = await ctx.plugin({
+      name: 'hologram/bundled-engine-mcp',
+      // activation：受治面 lazy 档的拉起/停止交给激活账（与 loader 给声明
+      // manifest.mcpServers 的插件补的那两条同款）。
+      inject: ['tools', 'activation'],
+      apply: async (c: Context) => {
+        const face = await registerMcpServerTools(c, OWNER, [bundledEngineDecl(root, exePath)], engineIo);
+        if (!face) return;
+        // ① 声明激活（**登记 ≠ 激活**）——loader 对 manifest 插件做的那一步，
+        //    引擎路径此前整个丢掉了 ⇒ 治理器永不被拉起：实机症状「UI 显示已接线、
+        //    任务管理器无 hologram-engine.exe、Agent 无图谱工具」（2026-09-24）。
+        //    账键 = 插件名（激活是插件级生命周期），而本接线贡献的行 id 前缀正是
+        //    `plugin/hologram-engine/…`（= OWNER）⇒ 组合里该行存活即 retain。
+        const activation = c.get('activation');
+        if (activation && !activation.has(OWNER)) {
+          activation.declare(OWNER, {
+            resources: ['stdio'],
+            start: () => face.startLazy(),
+            stop: () => face.stopLazy(),
+          });
+        }
+        // ② 开工作区即预热（fire-and-forget）——**不阻塞开工作区**（不 await），
+        //    但必须在首个 Agent 装配之前把进程与 tools/list 备好：装配面物化工具行
+        //    先于激活账 retain（runtime.ts 的注册表构建 → retainForComposition 次序），
+        //    行工厂又按 `toolFace()` 快照产出 —— 只靠 retain 的话**首个会话**拿不到
+        //    工具（工具面在会话创建时点冻结，要等下一个新卷）。引擎的 tools/list 走
+        //    静态表（快），慢的是分析，故预热窗口足够。
+        //    失败不静默：warn 进 ui.log，治理器另有诊断面（重试挂在下次装配）。
+        void face.startLazy().catch((e) => {
+          log.warn(
+            'plugins',
+            `[bundled-engine] 预热拉起失败（工具面待下次装配重试）: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        });
+      },
+    });
+    ctx.effect(
+      () => () => {
+        void fiber.dispose();
+      },
+      'hologram/bundled-engine-mcp',
+    );
+    return { wired: true };
+  } catch (e) {
+    // 接线失败可见（不静默）：调用方写回执 / 状态栏
+    return { wired: false, reason: `接线失败：${e instanceof Error ? e.message : String(e)}` };
+  }
 }
 
 // ═══════════════════════════════════════════════════════

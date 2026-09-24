@@ -151,6 +151,86 @@ async function bootBridge(
   return { root, fiber };
 }
 
+describe('MCP 机器桥：scope ctx 的服务可见性（实机「without inject」回归，2026-09-24）', () => {
+  // 实机症状（用户报）：拨开「随包图谱引擎」并重开工作区 →
+  //   随包引擎接线失败：can not get property "tools" without inject
+  //
+  // 根因：工作区 scope fiber 的插件（`workspace.ts` 的
+  // `{ name: 'hologram/workspace', apply() {} }`）**不声明 inject**，cordis 于是
+  // 拒绝对服务做属性访问（`ctx.tools` / `ctx.resolve('tools')` 同受门禁）；
+  // 而随包引擎接线把该 ctx 直接交给 `registerMcpServerTools` ⇒ 一走到
+  // `ctx.tools.register` 就抛。
+  //
+  // **不能**给工作区 scope 补 inject（2026-09-24 试过）：声明 inject 会让 cordis
+  // 为其派生 realm，`new LspService(fiber.ctx)` 的 set('lsp') 当场冲突
+  // （tests/workspace-fiber.test.ts 5 条全红）。正解 = 接线方**自带 inject 的子
+  // fiber** 挂载（见 `plugins/bundled-engine.ts`），归属与回收仍挂调用方 ctx。
+  //
+  // 既有 `bootBridge` 夹具的插件带 `inject: ['tools']` ⇒ 永远走不到这条路
+  //（漏网原因）。本段两种 ctx 都钉住。
+
+  /** 工作区 scope ctx（与 `workspace.ts` 的 workspaceScopePlugin 逐字同形：
+   *  apply 为空、**不声明 inject**）。 */
+  async function bootScopeCtx(): Promise<{ root: Context; scope: Awaited<ReturnType<Context['plugin']>> }> {
+    const root = new Context();
+    await root.plugin(compositionServicesPlugin);
+    const scope = await root.plugin({ name: 'hologram/workspace', apply() {} });
+    return { root, scope };
+  }
+
+  it('约束：裸 scope ctx 直接登记 ⇒ 抛 without inject（调用方必须自带 inject）', async () => {
+    const { io } = makeIO();
+    const { root, scope } = await bootScopeCtx();
+    await expect(registerMcpServerTools(scope.ctx, 'hologram-engine', [STDIO_SERVER], io)).rejects.toThrow(
+      /without inject/,
+    );
+    await scope.dispose();
+    await root[Symbol.asyncDispose]?.();
+  });
+
+  it('正解：自带 inject 的子 fiber（旧形态路）⇒ 登记成功', async () => {
+    const { io } = makeIO();
+    const { root, scope } = await bootScopeCtx();
+    await scope.ctx.plugin({
+      name: 'hologram/bundled-engine-mcp',
+      inject: ['tools'],
+      apply: async (c: Context) => {
+        await registerMcpServerTools(c, 'hologram-engine', [STDIO_SERVER], io);
+      },
+    });
+    expect(pluginToolRows().map((r) => r.id)).toContain('plugin/hologram-engine/mcp/my-engine');
+    await scope.dispose();
+    await root[Symbol.asyncDispose]?.();
+  });
+
+  it('正解：自带 inject 的子 fiber（治理路 = 随包引擎实际形态）⇒ 接线成功且 lazy 不 spawn', async () => {
+    const { io, spawns } = makeIO();
+    const { root, scope } = await bootScopeCtx();
+    const governed: McpServerDecl = {
+      name: 'hologram',
+      transport: 'stdio',
+      command: 'D:/x/hologram-engine.exe',
+      args: ['serve', '--project-root', 'D:/proj'],
+      restart: 'on-crash',
+      lifecycle: 'lazy',
+    };
+    const face = await scope.ctx.plugin({
+      name: 'hologram/bundled-engine-mcp',
+      inject: ['tools'],
+      // 块体（不返回治理面对象）：apply 的返回值会被 cordis 当 effect 处理，
+      // 返回对象即 `TypeError: Invalid effect`——生产实现同形（bundled-engine.ts）。
+      apply: async (c: Context) => {
+        await registerMcpServerTools(c, 'hologram-engine', [governed], io);
+      },
+    });
+    expect(pluginToolRows().map((r) => r.id)).toContain('plugin/hologram-engine/mcp/hologram');
+    expect(spawns, 'lazy 档注册期不拉起（首装配才连）').toEqual([]);
+    await face.dispose();
+    await scope.dispose();
+    await root[Symbol.asyncDispose]?.();
+  });
+});
+
 describe('MCP 机器桥（S4-4 乙）：折算与解析域', () => {
   it('一个 server = 一条贡献；pluginToolRows 行 id = plugin/<插件名>/mcp/<server名>', async () => {
     const { io } = makeIO();
