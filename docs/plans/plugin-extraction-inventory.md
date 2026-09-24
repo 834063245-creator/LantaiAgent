@@ -565,6 +565,31 @@ manifest.json —— 包内合计 30～110 行。
 每批收尾必做：`vitest` + `build`（含 `build:builtin-plugins`）+ `biome ci` + `verify:convergence` 双轨；
 faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` 并**重建一次 exe**。
 
+### 6.2 批 6 施工侦察（2026-09-24 实测；施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md)）
+
+**结论：批 6 四项不是「按域拆」型欠账——不能照搬批 4c 的 git mv。** 逐项证据（file:line）：
+
+| 项 | 行数 | 内核侧耦合（实测） |
+|---|---|---|
+| plan | 572（进包 302 / 留内核 270） | `runtime.ts:555` 构造 `PlanStateManager`、`:612` ctx 回落；`agent.ts:703-709` 持 `_planState/_planInjector/_planGate`；`blueprint.ts:184-193`+`:366-378` 两条 capability 直接 new/调用；`subagent-spawn.ts:154` `planRegistry` |
+| goal | 553 | `workspace.ts:19` + `chat-core.ts:19` `new GoalManager`；`agent.ts:69` 值导入 `runGoalImpl/resumeGoalImpl` |
+| state-hooks | 670（进包 332 / 留内核 338） | `HookRegistry` 七处内核消费；`state-inject`+`cache-store` 被 `workspace.ts:17,30` 消费 |
+| compaction | 2,022 | `agent.ts:41,56,57` 值导入三件；`agent-builder.ts:21` `createCompactionTools`；`ui/chat-stream.ts:9` 跨层常量 |
+
+**硬约束**：plan 的两条 capability 就在 `firstPartyCapabilities()` 的固定位置上，而
+「贡献序 = 注册序」「capability 表序 = 字节敏感面」（`capability-service.ts:29-30,128`）——
+换注册来源 = 换位置 = convergence 快照漂移 ⇒ 须走 baseline-change-request 审批。
+
+**已拍板路线（用户 2026-09-24 选 A）**：内核立「登记表」（`register/active/clearForTest`，照
+`composition/*-service.ts` seam 范式），capability 条目**原位不动**，只把 install 体换成查表；
+产物包 apply 期登记实现 ⇒ **表序零漂移、无需审批**。分类：plan/goal 判 `feature`（可禁用，缺实现
+即静默少面）、state-hooks/compaction 判 `service`（缺实现启动审计 fail-loud）。
+
+**审计路径（施工前逐条验过，勿省）**：convergence 基线含 `enter_plan_mode`/`exit_plan_mode`
+（`baseline{,-minimal}/phase-1/tool-schemas.effective.json`）⇒ 装配路径必须真登记到实现；
+`tests/helpers/composition-boot.ts` 是「生产最小集」定义处；`paper-interaction-handoff.test.ts:108-151`
+按**路径**读 `plan-tools.ts`（搬文件同步改指）；新增出厂产物 ⇒ 名册 + 首方清单 + `factory-products.ts` 三处。
+
 ## 7. 决策路由（**把「找」与「拍」分家**）
 
 本账不是一次性审计——它的稳态形态是**一条常驻对账报告**（`plugin-home:report`，见 §5）：
