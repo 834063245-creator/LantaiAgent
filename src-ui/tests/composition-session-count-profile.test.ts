@@ -18,6 +18,12 @@
 // tests/seam-composition.test.ts 的序列 D 用例兜住）。
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+// 批 6c：出厂 hook 实现（state-hooks 产物）在生产由装载器常驻登记；
+// service 类 ⇒ 缺实现装配期 fail-loud——本文件自行装配 Agent，须先复现该登记态。
+import { installStateHooksForTest } from './helpers/state-hooks-impl';
+
+installStateHooksForTest();
+
 import { SubAgentPool } from '../src/agent/coordinator';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';

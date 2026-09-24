@@ -49,6 +49,10 @@ import { usePluginStore } from '../src/state/plugin-store';
 import { usePresetStore } from '../src/state/preset-store';
 import { readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';
 import { installPlanModeForTest } from './helpers/plan-mode-impl';
+// 批 6c：出厂 hook 实现同样由装载器常驻登记（service 类 ⇒ 缺实现 fail-loud）。
+import { installStateHooksForTest } from './helpers/state-hooks-impl';
+
+installStateHooksForTest();
 
 // 批 6a：组合值可带出通道腰使用（装配在腰外）——复现生产「装载器已装载
 // hologram/plan-mode」的常驻登记态，否则工具面少 enter/exit_plan_mode。

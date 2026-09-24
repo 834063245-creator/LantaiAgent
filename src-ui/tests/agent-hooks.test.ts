@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createStateReadHook, HookRegistry, PreflightHookRegistry } from '../src/agent/hooks';
+import { HookRegistry, PreflightHookRegistry } from '../src/agent/hooks';
+// 批 6c：出厂 hook 实现（state-read 等四工厂）已归产物包
+import { createStateReadHook } from '../src/plugins/builtin/state-hooks/hook-factories';
 
 // （图谱 hooks——GraphContext/GraphContextHook/GraphPreflightHook 的测试——
 // 随图谱功能全量退役整段删除，2026-09-09；hooks.ts 只保留注册表 + 状态

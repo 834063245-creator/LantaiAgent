@@ -28,6 +28,7 @@
 
 import { capabilitySegmentsPlugin } from '../plugins/builtin/capability-segments';
 import { planModePlugin } from '../plugins/builtin/plan-mode';
+import { stateHooksPlugin } from '../plugins/builtin/state-hooks';
 import type { LantaiPlugin } from '../plugins/types';
 import { capabilitiesServicePlugin } from './capability-service';
 import { withFirstPartyChannel } from './with-first-party-channel';
@@ -41,7 +42,7 @@ import { withFirstPartyChannel } from './with-first-party-channel';
  *  「第一方 capability 面的复现」（下方腰 + 生产装载器）都必须带上它，
  *  否则装配出的工具面少 enter/exit_plan_mode。 */
 export function firstPartyCapabilityPlugins(): LantaiPlugin[] {
-  return [capabilitySegmentsPlugin, planModePlugin];
+  return [capabilitySegmentsPlugin, planModePlugin, stateHooksPlugin];
 }
 
 /** 在第一方 capability 通道激活期间执行 run（通道随调用拆卸）。

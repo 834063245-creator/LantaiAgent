@@ -40,18 +40,12 @@ import type { Agent } from './agent';
 import { createCodeExecutionTool } from './code-run/code-execution-tool';
 import type { CodeBindingSpec } from './code-run/host';
 import type { AgentContext } from './context';
-import {
-  createBuildResultHook,
-  createStatePreflightHook,
-  createStateReadHook,
-  type HookRegistry,
-  type PreflightHookRegistry,
-} from './hooks';
-import { createBoardTrackingHook } from './hooks/board-tracking-hook';
+import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import type { MessageBus } from './message-bus';
 import { activePlanImplementation } from './plan/plan-impl';
 import { registerCompactionTools } from './runtime/agent-builder';
 import type { AgentAssemblyInputs } from './runtime/types';
+import { activeStateHooksImplementation } from './state-hooks-impl';
 import type { DiagnosticsSource } from './state-inject';
 import { createTaskTools, TaskManager } from './task';
 import type { ToolRegistry } from './tool';
@@ -170,6 +164,10 @@ export class AgentBlueprint {
     return new AgentBlueprint([...capabilities]);
   }
 }
+
+/** 出厂 hook 实现缺失时的装配期错误（service 类：hook 管道是内核语义，缺了就是装歪）。 */
+const STATE_HOOKS_UNAVAILABLE =
+  '出厂 hook 实现缺失：hologram/state-hooks 产物未装载（service 类产物不可禁用）——检查产物通道 / loadBuiltinPlugins。';
 
 /** 第一方 capability 清单（序 = 迁移前出厂表序，十四项）——B⑤（2026-08-24）
  *  起经 ctx.capabilities 第一方插件通道贡献（plugins/capability-segments-
@@ -349,21 +347,28 @@ export function firstPartyCapabilities(): AgentCapability[] {
       phase: 'agent',
       install: ({ ctx, inputs, hooks, preflightHooks, deps }) => {
         if (inputs.hooksEnabled === false) return;
+        // 批 6c：出厂 hook 实现在产物包 hologram/state-hooks，经内核登记表取用。
+        // service 类（不可禁用）：缺实现 = 装歪了，装配期 fail-loud（不静默降级）。
+        const impl = activeStateHooksImplementation();
+        if (!impl) throw new Error(STATE_HOOKS_UNAVAILABLE);
         if (deps.diagnosticsSource) {
-          hooks.register(createStateReadHook(ctx.projectPath, deps.diagnosticsSource));
+          hooks.register(impl.createStateReadHook(ctx.projectPath, deps.diagnosticsSource));
         }
-        hooks.register(createBuildResultHook());
+        hooks.register(impl.createBuildResultHook());
         if (deps.diagnosticsSource) {
-          preflightHooks.register(createStatePreflightHook(deps.diagnosticsSource));
+          preflightHooks.register(impl.createStatePreflightHook(deps.diagnosticsSource));
         }
       },
     },
     {
-      // Board 追踪 hook — board 可用时始终注册（有实际副作用，不受 hooksEnabled 影响）
+      // Board 追踪 hook — board 可用时始终注册（有实际副作用，不受 hooksEnabled 影响）。
+      // 批 6c：同上，实现经登记表取自产物包。
       id: 'board-tracking-hook',
       phase: 'agent',
       install: ({ ctx, hooks }) => {
-        hooks.register(createBoardTrackingHook(ctx.agentId, ctx.resolve('taskBoard')));
+        const impl = activeStateHooksImplementation();
+        if (!impl) throw new Error(STATE_HOOKS_UNAVAILABLE);
+        hooks.register(impl.createBoardTrackingHook(ctx.agentId, ctx.resolve('taskBoard')));
       },
     },
     {

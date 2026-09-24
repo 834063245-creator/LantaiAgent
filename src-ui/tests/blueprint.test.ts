@@ -12,6 +12,12 @@
 // 断言语义一格未动，只换字段名。
 
 import { describe, expect, it } from 'vitest';
+// 批 6c：出厂 hook 实现由 hologram/state-hooks 产物在装载期常驻登记；
+// service 类 ⇒ 本文件直接跑 capability 时必须先复现该登记态。
+import { installStateHooksForTest } from './helpers/state-hooks-impl';
+
+installStateHooksForTest();
+
 import {
   AgentBlueprint,
   type AgentCapability,

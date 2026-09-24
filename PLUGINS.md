@@ -227,9 +227,9 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 
 ## 内部：给兰台仓库加第一方出厂产物
 
-兰台内置的 45 个第一方插件（**13 内核 + 32 出厂产物**）与第三方走同一套通道。
+兰台内置的 46 个第一方插件（**13 内核 + 33 出厂产物**）与第三方走同一套通道。
 内核 13 件编译进 exe（11 注册表/运行时 + code-runtime + dynamic-runner——`src-ui/src/plugins/loader.ts` 的
-`BUILTIN_PLUGINS` 表装载）；出厂产物 32 件真源在 `plugins/builtin/<name>/`
+`BUILTIN_PLUGINS` 表装载）；出厂产物 33 件真源在 `plugins/builtin/<name>/`
 目录（磁盘通道装载，**改插件 = 换产物，不重编译 exe**）。设置面板
 「插件」tab 三组陈列：**平台服务**（内核，不可禁）/ **内置插件**（产物，
 可禁用）/ **已安装**（第三方）。

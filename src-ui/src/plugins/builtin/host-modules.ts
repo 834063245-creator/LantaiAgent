@@ -38,8 +38,17 @@ import { createMemoryTools } from '../../agent/memory';
 import { registerPlanImplementation } from '../../agent/plan/plan-impl';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
 import { createSkillTool, scanSkills } from '../../agent/skills';
+import { registerStateHooksImplementation } from '../../agent/state-hooks-impl';
+import {
+  buildPreReadBlock,
+  cacheBuildResult,
+  formatDiagnostics,
+  invalidateBlameEntry,
+  refreshGitBlame,
+} from '../../agent/state-inject';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { createTaskTools } from '../../agent/task';
+import { hasImageRefs } from '../../agent/tool-images';
 // 批 4c-2 归家：agent-isolation / ask 两族进包 ⇒ 撤工厂桥；两族只余 defineTool/类型面。
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
 import { createAssetTools } from '../../agent/tools/show-asset';
@@ -280,6 +289,7 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./capability-segments/host'), unknown> &
   Record<keyof typeof import('./plan-mode/host'), unknown> &
   Record<keyof typeof import('./goal-mode/host'), unknown> &
+  Record<keyof typeof import('./state-hooks/host'), unknown> &
   Record<keyof typeof import('./agent-loop-service/host'), unknown>;
 
 /** 四面组件共享依赖（bundle 域真实例）。key = 产物 host.aliased 取用名。 */
@@ -568,6 +578,14 @@ const faceDeps = {
   EventKind,
   // 批 6b 归家：goal 循环实现进包 ⇒ 桥内核登记表（errText/defineTool 早已在册）
   registerGoalImplementation,
+  // 批 6c 归家：出厂 hook 四工厂进包 ⇒ 桥登记表 + 数据源（诊断/blame/构建缓存/附图判定）
+  registerStateHooksImplementation,
+  buildPreReadBlock,
+  cacheBuildResult,
+  formatDiagnostics,
+  hasImageRefs,
+  invalidateBlameEntry,
+  refreshGitBlame,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

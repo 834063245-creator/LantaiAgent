@@ -833,7 +833,7 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     usePluginStore.getState().setPlugins([]);
   });
 
-  it('装载后写入 plugin-store：45 条 builtin 记录 + 元数据 + 状态 active', async () => {
+  it('装载后写入 plugin-store：46 条 builtin 记录 + 元数据 + 状态 active', async () => {
     const root = new Context();
     loadBuiltinPlugins(root);
     // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
@@ -843,7 +843,8 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     // graph 三件套退役（2026-09-09）：45 → 42；office-domain 新增（2026-09-13）：42 → 43
     // plan-mode 新增（2026-09-24 批 6a：规划模式实现归产物）：43 → 44
     // goal-mode 新增（2026-09-24 批 6b：goal 循环实现归产物）：44 → 45
-    expect(ALL_PLUGINS.length).toBe(45);
+    // state-hooks 新增（2026-09-24 批 6c：出厂 hook 四工厂归产物）：45 → 46
+    expect(ALL_PLUGINS.length).toBe(46);
     expect(plugins.every((p) => p.builtin === true)).toBe(true);
     expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
     expect(plugins.every((p) => p.status === 'active')).toBe(true);

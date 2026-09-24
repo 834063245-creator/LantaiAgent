@@ -22,6 +22,11 @@ import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
 // 裸 AgentRuntime + 通道腰（腰是瞬时的），故显式复现「装载器已装载」的常驻登记态
 // ——否则本快照的运行时注册面会少 enter/exit_plan_mode（不是产品面变化）。
 import { installPlanModeForTest } from '../../helpers/plan-mode-impl';
+// 批 6c：出厂 hook 实现同样由装载器常驻登记（service 类 ⇒ 缺实现 fail-loud）。
+import { installStateHooksForTest } from '../../helpers/state-hooks-impl';
+
+installStateHooksForTest();
+
 import { scriptedProvider } from '../helpers/fixtures';
 import { snapshot } from '../helpers/snapshot';
 

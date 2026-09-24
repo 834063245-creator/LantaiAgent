@@ -309,5 +309,13 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": []
+  },
+  {
+    "dir": "state-hooks",
+    "buildOrder": 32,
+    "description": "出厂工具管道 hook（state-read/preflight/build-result/board-file-tracking）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": []
   }
 ]

@@ -14,13 +14,13 @@ import type { DiscoveryBoard } from './discovery-board';
 import { createExecState } from './execution-state';
 import { extractFilePath, FileOwnership, WRITE_TOOLS } from './file-ownership';
 import { HookRegistry } from './hooks';
-import { createBoardTrackingHook } from './hooks/board-tracking-hook';
 import { enqueueIsolationOp } from './isolation-queue';
 import { log } from './logger';
 import type { MessageBus } from './message-bus';
 import { planRegistry } from './plan/plan-registry';
 import type { PlanStateManager } from './plan/plan-state';
 import { buildOutputSchemaInstruction } from './schema-validate';
+import { activeStateHooksImplementation } from './state-hooks-impl';
 import { removeSubAgentActivity, wrapSubAgentSink } from './subagent-activity';
 import type { TaskBoard } from './task-board';
 import type { Tool } from './tool';
@@ -348,7 +348,15 @@ ${subTools
       isolationId,
     });
     const subHooks = new HookRegistry();
-    subHooks.register(createBoardTrackingHook(subAgent.id, ag._taskBoard));
+    // 批 6c：出厂 hook 实现在产物包 hologram/state-hooks，经内核登记表取用
+    // （service 类：缺实现 = 装歪了，fail-loud）。
+    const stateHooks = activeStateHooksImplementation();
+    if (!stateHooks) {
+      throw new Error(
+        '出厂 hook 实现缺失：hologram/state-hooks 产物未装载（service 类产物不可禁用）——检查产物通道 / loadBuiltinPlugins。',
+      );
+    }
+    subHooks.register(stateHooks.createBoardTrackingHook(subAgent.id, ag._taskBoard));
     subAgent.setHooks(subHooks);
   }
 

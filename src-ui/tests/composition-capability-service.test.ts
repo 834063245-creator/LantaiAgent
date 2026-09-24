@@ -25,6 +25,12 @@
 // 双 preset 实测）。
 
 import { describe, expect, it } from 'vitest';
+// 批 6c：出厂 hook 实现（state-hooks 产物）在生产由装载器常驻登记；
+// service 类 ⇒ 缺实现装配期 fail-loud——本文件自行装配 Agent，须先复现该登记态。
+import { installStateHooksForTest } from './helpers/state-hooks-impl';
+
+installStateHooksForTest();
+
 import { AgentBlueprint, type AgentCapability, firstPartyCapabilities } from '../src/agent/blueprint';
 import {
   activeCapabilityContributions,
