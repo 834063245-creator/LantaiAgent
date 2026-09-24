@@ -4,7 +4,7 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| Latest (桌面应用 10.1.x / 引擎 0.1.x) | :white_check_mark: |
+| Latest (桌面应用 1.0.x / 引擎 1.0.x) | :white_check_mark: |
 
 Security patches will be released for the latest version.
 
@@ -14,7 +14,7 @@ Security patches will be released for the latest version.
 
 Use GitHub's private vulnerability reporting instead:
 
-👉 **[Report a vulnerability](https://github.com/834063245-creator/HoloGram/security/advisories/new)**
+👉 **[Report a vulnerability](https://github.com/834063245-creator/LantaiAgent/security/advisories/new)**
 
 Include:
 - A clear description of the issue

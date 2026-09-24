@@ -96,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("HoloGram Engine {}", env!("CARGO_PKG_VERSION"));
         println!("Copyright (c) 2026 Wenbing Jing. MIT License.");
-        println!("https://github.com/834063245-creator/HoloGram");
+        println!("https://github.com/834063245-creator/LantaiAgent");
         return Ok(());
     }
     if args.iter().any(|a| a == "--help" || a == "-h") {

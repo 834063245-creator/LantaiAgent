@@ -114,7 +114,18 @@
 ///     Release tag（`v<version>`）三处自此同源。
 ///   消费方无需跟改：`serverInfo.version` 本来就是自由字符串，本版只是让它
 ///   从「错的常量」变成「对的值」。
-pub const ENGINE_CONTRACT_VERSION: u32 = 9;
+/// v10（仓库改名收口）：**模型工具面形状零变更**——工具名 / schema / 输出形态 /
+/// 壳方法清单一律照旧，消费方无需跟改。本版清的是嵌在握手信息里的旧仓库名：
+/// `initialize` 的 `serverInfo.homepage` 原写作 `github.com/…/HoloGram`（2026-09
+/// 仓库已改名 LantaiAgent），现按现名钉死。旧路径目前仍靠 GitHub 的改名 301
+/// 重定向兜着，但那是**会消失**的兜底（同账号下再出现一个叫 HoloGram 的仓库即
+/// 失效，届时宿主诊断与用户反馈看到的链接静默 404），而 homepage 本就是给人看的
+/// 规范地址，不该赌别人的重定向。
+///   连带（非契约面，同一 commit）：CLI `--version` 打印的仓库地址、`SECURITY.md`
+///   的私密报告链接同步改现名；`lib.rs` 那个从未被任何代码引用、版本号还冻在
+///   v4.0（引擎实为 1.0.2），且注释自称「所有输出里的水印」（实际各处输出各自
+///   硬编码）的 `GENERATOR` 常量按死代码删除。
+pub const ENGINE_CONTRACT_VERSION: u32 = 10;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard（本文件的
 /// `contract_face_fingerprint_matches`）对拍 `CONTRACT_FACE_FINGERPRINT`：
@@ -139,7 +150,7 @@ pub const ENGINE_CONTRACT_FILES: &[&str] = &[
 /// 实现细节：换行归一（CRLF→LF）——工作树 EOL 因 `.gitattributes` 归一而可能
 /// 与索引不同，指纹必须跟着**仓库内容**走；contract.rs 自身在哈希前剔除本行
 /// （自指），其余内容照常参与。
-pub const CONTRACT_FACE_FINGERPRINT: &str = "a7bb41aeb712a0f3";
+pub const CONTRACT_FACE_FINGERPRINT: &str = "5891c25b8fda1a86";
 
 /// 壳专属方法参数（最小形状；Phase 1 接线时并入 dispatch）。
 pub struct ShellParam {
