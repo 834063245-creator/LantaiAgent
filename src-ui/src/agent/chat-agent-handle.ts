@@ -6,12 +6,16 @@
 // Agent 类已结构性实现此接口，无需额外 adapter。
 
 import type { StoredThinking } from '../provider/thinking';
+// 批 6b：GoalRunResult 单一真源 = agent/goal-contract.ts（原此处自持一份同形声明）。
+import type { GoalRunResult } from './goal-contract';
+
+export type { GoalRunResult };
+
 import type { ChatImageRef, Message, Provider } from '../provider/types';
 import type { ExecStateInstance } from './execution-state';
 import type { TokenLedgerSnapshot, TokenMeasurement } from './token-meter/types';
 
 /** 目标运行结果 — runGoal / resumeGoal 的统一返回 */
-export type GoalRunResult = { status: 'completed' | 'failed' | 'blocked' | 'aborted' | 'paused'; summary: string };
 
 export interface ChatAgentHandle {
   /** 该 Agent 实例的唯一标识 — 会话层按会话登记，UI 据此定位其专属待办等。 */

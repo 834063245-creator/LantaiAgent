@@ -66,7 +66,8 @@ import {
   type LoopEventPayload,
 } from './events';
 import { createExecState, type ExecStateInstance, type RunHandle, type RunKind } from './execution-state';
-import { type GoalLoopHost, type GoalRunResult, resumeGoalImpl, runGoalImpl } from './goal-loop';
+import type { GoalLoopHost, GoalRunResult } from './goal-contract';
+import { activeGoalImplementation } from './goal-impl';
 import type { GoalManager } from './goal-manager';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import type { Disposer } from './lifecycle';
@@ -1532,15 +1533,22 @@ export class Agent {
   }
 
   // ══════════════════════════════════════════════════════
-  // Goal 循环 — 自主多轮执行（实现已迁 goal-loop.ts，宿主接口委托）
+  // Goal 循环 — 自主多轮执行（实现已归产物包 hologram/goal-mode，经登记表取用）
   // ══════════════════════════════════════════════════════
 
+  /** 目标模式不可用时的具名失败原因（feature 语义：插件被禁用/未装载 = 显式降解）。 */
+  private static readonly GOAL_MODE_UNAVAILABLE =
+    '目标模式不可用：hologram/goal-mode 产物未装载或被禁用（设置 → 插件可重新启用）。';
+
   /** 自主运行目标: 规划 → 执行 → 验证 → 循环直到 goal_report。
-   *  委托 goal-loop.ts（11c 拆分）；语义见 runGoalImpl 文档。 */
+   *  实现经 `agent/goal-impl.ts` 登记表取自产物包（feature 语义：未登记 = 具名失败，
+   *  不静默——`/goal` 命令可见原因）。 */
   async runGoal(signal: AbortSignal, goal: string): Promise<GoalRunResult> {
     const run = this._claimRun(signal, 'goal');
     try {
-      return await runGoalImpl(this as unknown as GoalLoopHost, signal, goal);
+      const impl = activeGoalImplementation();
+      if (!impl) return { status: 'failed', summary: Agent.GOAL_MODE_UNAVAILABLE };
+      return await impl.runGoal(this as unknown as GoalLoopHost, signal, goal);
     } finally {
       run?.end();
       this._wakeIfInboxHasNew(signal);
@@ -1551,7 +1559,9 @@ export class Agent {
   async resumeGoal(signal: AbortSignal, id?: string): Promise<GoalRunResult> {
     const run = this._claimRun(signal, 'goal');
     try {
-      return await resumeGoalImpl(this as unknown as GoalLoopHost, signal, id);
+      const impl = activeGoalImplementation();
+      if (!impl) return { status: 'failed', summary: Agent.GOAL_MODE_UNAVAILABLE };
+      return await impl.resumeGoal(this as unknown as GoalLoopHost, signal, id);
     } finally {
       run?.end();
       this._wakeIfInboxHasNew(signal);

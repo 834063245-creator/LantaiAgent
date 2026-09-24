@@ -22,6 +22,8 @@ import { subagentsServicePlugin } from '../../src/composition/subagent-service';
 import { Context } from '../../src/cordis';
 import { agentLoopServicePlugin } from '../../src/plugins/builtin/agent-loop-service';
 import { builtinFsPlugin } from '../../src/plugins/builtin/fs-builtin';
+// 批 6b：goal 循环实现归产物包（内核 Agent.runGoal/resumeGoal 查登记表取用）
+import { goalModePlugin } from '../../src/plugins/builtin/goal-mode';
 import { llmAdaptersPlugin } from '../../src/plugins/builtin/llm-adapters';
 // 批 6a：plan 模式实现归产物包（内核 blueprint 的两条 capability 查登记表取用）
 // ⇒ 「生产最小集」必须含它，否则装配出的工具面少 enter/exit_plan_mode。
@@ -52,6 +54,7 @@ export async function ensureProductionChannelsBooted(): Promise<Context> {
   await root.plugin(dynamicRunnerPlugin);
   await root.plugin(agentLoopServicePlugin);
   await root.plugin(planModePlugin);
+  await root.plugin(goalModePlugin);
   bootRoot = root;
   return root;
 }

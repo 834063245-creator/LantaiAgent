@@ -17,13 +17,13 @@ import { HookRegistry, PreflightHookRegistry } from '../../../src/agent/hooks';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { type Tool, ToolRegistry } from '../../../src/agent/tool';
 import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
-import { scriptedProvider } from '../helpers/fixtures';
-import { snapshot } from '../helpers/snapshot';
 // 批 6a：plan 工具实现在产物包 hologram/plan-mode，装配期经内核登记表取用。
 // 生产 = 装载器（main.ts → loadBuiltinPlugins）先于组合链且 fiber 常驻；本 spec 用
 // 裸 AgentRuntime + 通道腰（腰是瞬时的），故显式复现「装载器已装载」的常驻登记态
 // ——否则本快照的运行时注册面会少 enter/exit_plan_mode（不是产品面变化）。
 import { installPlanModeForTest } from '../../helpers/plan-mode-impl';
+import { scriptedProvider } from '../helpers/fixtures';
+import { snapshot } from '../helpers/snapshot';
 
 installPlanModeForTest();
 

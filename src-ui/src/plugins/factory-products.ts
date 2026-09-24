@@ -31,6 +31,7 @@ import { agentLoopServicePlugin } from './builtin/agent-loop-service';
 import { canvasNavPlugin } from './builtin/canvas-nav';
 import { composeDockPlugin } from './builtin/compose-dock';
 import { builtinFsPlugin } from './builtin/fs-builtin';
+import { goalModePlugin } from './builtin/goal-mode';
 import { llmAdaptersPlugin } from './builtin/llm-adapters';
 import { paperMinimapPlugin } from './builtin/paper-minimap';
 import { paperPlugin } from './builtin/paper-shell';
@@ -69,6 +70,7 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     composeDockPlugin,
     paperMinimapPlugin,
     agentLoopServicePlugin,
+    goalModePlugin,
     // ② 经 composition 通道函数取得的产物（薄层各自 import 自己的 builtin——
     //    这层间接是破环用的：settings-domain → SettingsPanel → PluginsPage →
     //    loader → factory-products 的直接环会让 settingsPlugin 在 BUILTIN_PLUGINS

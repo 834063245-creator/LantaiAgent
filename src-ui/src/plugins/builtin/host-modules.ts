@@ -32,6 +32,7 @@ import { firstPartyCapabilities } from '../../agent/blueprint';
 import { SubAgentStatus } from '../../agent/coordinator';
 import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-service';
 import { parseGitLogCommits, parseGitStatusPorcelain } from '../../agent/git-porcelain';
+import { registerGoalImplementation } from '../../agent/goal-impl';
 import { errText } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
 import { registerPlanImplementation } from '../../agent/plan/plan-impl';
@@ -278,6 +279,7 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./prompt-segments/host'), unknown> &
   Record<keyof typeof import('./capability-segments/host'), unknown> &
   Record<keyof typeof import('./plan-mode/host'), unknown> &
+  Record<keyof typeof import('./goal-mode/host'), unknown> &
   Record<keyof typeof import('./agent-loop-service/host'), unknown>;
 
 /** 四面组件共享依赖（bundle 域真实例）。key = 产物 host.aliased 取用名。 */
@@ -564,6 +566,8 @@ const faceDeps = {
   // 批 6a 归家：plan 模式实现进包 ⇒ 桥内核登记表 + 事件枚举（kernelReadFile 早已在册）
   registerPlanImplementation,
   EventKind,
+  // 批 6b 归家：goal 循环实现进包 ⇒ 桥内核登记表（errText/defineTool 早已在册）
+  registerGoalImplementation,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

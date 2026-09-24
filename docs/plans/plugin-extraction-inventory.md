@@ -338,7 +338,7 @@ manifest.json —— 包内合计 30～110 行。
 | 子代理运行时 | `coordinator.ts` 420 + `lifecycle-manager.ts` 217 + `tools/merge.ts` 215 + `subagent-activity.ts` 96 + `file-ownership.ts` 73 + `tools/merge-gate.ts` 55 + `isolation-queue.ts` 13 = **1,089** | `subagent-in-process/`（与 §1.2 同批实心化） | `SubAgentPool` 由 `workspace.ts` 构造；**21 个测试直连 coordinator** |
 | token 计量（**分类缺口**） | `token-meter/**` 874 + `token-counter.ts` 89 = **963** | **待裁**：立 `ctx.tokenMeter` service 或判内核 | 既不在 13 个 service，也不是任何 feature 产物 |
 | plan 模式五件 | `agent/plan/**` = **572** | 新包 `plan-mode/` | 🟡 **批 6a 已落 302 行**：`plan-tools` 184 + `plan-injection` 57 + `plan-prompts` 61 进包（`plugins/builtin/plan-mode/`，产物 entry 555 KB）；**留内核 270**：`plan-state.ts` 121（runtime 构造的状态机）+ `plan-registry.ts` 149（强制层门禁 + 子 Agent 只读克隆）；审批三类型与实现面接口上收新 `agent/plan/plan-contract.ts`，登记表 = `agent/plan/plan-impl.ts`（见 §6.2） |
-| goal 模式 | `goal-loop.ts` 317 + `goal-manager.ts` 236 = **553** | 新包 `goal-mode/` | GoalManager 由 `workspace.ts`/`chat-core.ts` 构造；goal-loop 是 Agent 类方法 |
+| goal 模式 | `goal-loop.ts` 317 + `goal-manager.ts` 236 = **553** | 新包 `goal-mode/` | 🟡 **批 6b 已落 317 行**：`goal-loop.ts` 整件进包（`plugins/builtin/goal-mode/`）；**留内核 236**：`goal-manager.ts`（记录 + 会话快照 + 持久化——由 `workspace.ts:634` / `chat-core.ts:1069,1101,1308` 构造，宿主→插件禁反）；契约面（`GoalLoopHost` / `GoalRunResult`）上收 `agent/goal-contract.ts`（`chat-agent-handle` 的同形声明同时删除，单一真源） |
 | 附图与资产事件通道 | `request-images.ts` 259 + `tool-images.ts` 91 = **350** | 随 asset-domain（归属待裁） | 工具结果管道 vs 资产域功能 |
 | state hooks 数据源 | `state-inject.ts` 231 + `cache-store.ts` 107 = **338** | 随 `state-hooks` 包（或判共享留内核） | `workspace.ts` 直调 |
 | 第一方工具管道 hook | `hooks.ts` 301 + `hooks/` 31 = **332** | 新包 `state-hooks/` | `HookRegistry` 类=机制留内核；7 个测试直连 |
@@ -468,10 +468,11 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 6a 后重测）：红 **11 产物 / 25 文件 / 8,270 行**（§1 的 9 条 +
+**2026-09-24 基线**（批 6b 后重测）：红 **11 产物 / 25 文件 / 8,270 行**（§1 的 9 条 +
 §2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`；文件按**认领计数**——`coding.ts` 曾被 fs/shell
 两条认领故按 2 计。批 6a 后 8,265 → 8,270 的 +5 全是 `agent/blueprint.ts` 的登记表取用改写，
-不是新欠账）；绿 111 平台 + 69 已认领；灰 **128 文件 / 37,248 行**（plan 三件 302 行随 6a 出灰区）。
+不是新欠账）；绿 111 平台 + **73 已认领**；灰 **125 文件 / 36,186 行**（plan 三件 302 行随 6a、
+goal-loop 317 行随 6b 出灰区）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -486,7 +487,7 @@ manifest.json —— 包内合计 30～110 行。
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | ✅ **批 3a 已落 3 件**（wait 102 · office 576 · cordis 200 = 878 行；桥位仅 9 运行时 + 7 类型）。**memory/skill/task 复核后改期**：它们的类是内核构造的（`workspace.ts` new MemoryManager/SkillRegistry、runtime 用 TaskBoard 11 处）⇒ 整件搬会造宿主→插件反向依赖（仓库禁反），改随批 7 / 批 9 |
 | **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | ✅ **已全落**：4a `browser.ts`（912）· 4b `manifest-tools` 按域拆（187+169，search/web 各归其包）· 4c `coding.ts`（998，一文件载五族）拆完 **整文件退役**——4c-1 git · 4c-2 ask/agent-isolation · 4c-3 fs/shell（顺带上收 `ownerIdOf`/`ownerSeamView` 进 `composition/seam-scope.ts`）。随行件去向：`sticky-cwd` 并入包内族段，`git-porcelain` 126 / `session-context` 122 / `structured-error` 24 因内核消费者**留内核桥** |
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
-| **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | 🟡 **6a plan-mode 已落（302 行，新产物 `plan-mode/`）**：四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝，capability 条目原位不动、**convergence 基线零改动**（表序零漂移的证明）。余 6b goal · 6c state-hooks · 6d compaction，施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
+| **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | 🟡 **6a plan-mode（302 行）+ 6b goal-mode（317 行）已落**：两项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝，capability 条目原位不动、**convergence 基线零改动**（表序零漂移的证明）。余 6c state-hooks · 6d compaction，施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | `ctx.subagents` seam 已在位；障碍是 runtime 单例与 21+13 个测试 |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈2,500 | 依赖批 5/6 落地；同批消掉 hljs 两处内联 |
 | **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 需先有通道（§4-3/4/9）与归属裁定（§4-1/5/6/11/12/13） |
@@ -617,6 +618,27 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
   `registerPlanImplementation` 为 function、`EventKind` 在册；`/plugins/hologram/plan-mode/entry.js`
   555 KB 在场且页面内动态 import 成功（含 enter/exit_plan_mode 真身）；plan-mode 与 fs-domain 的
   `face.json` 均带当前指纹 `1f16f24d`（保险丝 a 已武装）。
+
+**批 6b 落地（2026-09-24，goal-mode）**：
+- **进包 317 行** → `plugins/builtin/goal-mode/goal-loop.ts`（循环本体整件移出，零逻辑改动）+
+  `implementation.ts`（折成契约面）+ `index.ts`（apply 期登记，`inject: []`）+ host 双面。
+- **留内核 236 行**：`goal-manager.ts`（记录/会话快照/持久化）——由 `workspace.ts:634` 与
+  `app/chat/chat-core.ts:1069,1101,1308` 构造，搬它 = 造宿主→插件反向依赖。
+- **契约面上收**：新 `agent/goal-contract.ts`（`GoalLoopHost` + `GoalRunResult` +
+  `GoalModeImplementation`）；顺带删掉 `chat-agent-handle.ts` 里那份同形 `GoalRunResult`
+  声明（单一真源）。
+- **登记表**：新 `agent/goal-impl.ts`（与 plan 同款栈语义）。`Agent.runGoal/resumeGoal` 改查表，
+  未登记返回**具名失败**（`GOAL_MODE_UNAVAILABLE`：「目标模式不可用：hologram/goal-mode 产物未装载
+  或被禁用」）——feature 语义下的显式降解，不静默。
+- **登记面两处**：名册加 `goal-mode`（buildOrder 31，31→32 条）+ `factory-products.ts` 直接列表
+  （goal 不经任何通道）；计数快照三处 + `docs/facts.generated.md`（44→45）+ 文档两处（31→32）。
+- **faceDeps**：+`registerGoalImplementation`（`errText`/`defineTool`/`EventKind` 已在册）⇒
+  指纹 `1f16f24d → f84e6c5c`，baseline 重生成；新产物 `face.json` 4 键（保险丝 a 覆盖 32/32）。
+- **测试面**：`tests/helpers/composition-boot.ts`（生产最小集）加插件——`goal-persistence.test.ts`
+  的 11 处 `runGoal/resumeGoal` 因此零改动通过。
+- **验收**：**convergence 双轨基线零改动**（goal 不经 capability/tool 通道 ⇒ 表序与工具面不动）；
+  vitest / build / biome ci / doc-sync（`event-catalog` 随文件路径迁移重生成 + facts）/
+  doc-check 全绿。
 
 ## 7. 决策路由（**把「找」与「拍」分家**）
 

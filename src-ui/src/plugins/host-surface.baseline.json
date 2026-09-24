@@ -1,5 +1,5 @@
 {
-  "fingerprint": "1f16f24d",
+  "fingerprint": "f84e6c5c",
   "keys": [
     "ANCHOR",
     "ApiError",
@@ -165,6 +165,7 @@
     "pullShellWork",
     "reapplyComposition",
     "regionFrame",
+    "registerGoalImplementation",
     "registerPlanImplementation",
     "removeSecret",
     "reportObservedBlockHeight",

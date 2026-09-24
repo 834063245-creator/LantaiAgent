@@ -1,39 +1,22 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Goal 循环 — 自主多轮执行。从 agent.ts 机械搬移（11c），零逻辑改动。
+// Goal 循环（**归家后真源**，2026-09-24 批 6b）——自主多轮执行。
+// 来历：原 `agent/goal-loop.ts` 整件移出（更早从 agent.ts 机械搬移，11c，零逻辑改动）。
 // 宿主模式：Agent 类经受控转换（as unknown as GoalLoopHost）传入本模块；
 // session 变异只经宿主的三个双写入口（phase-5 门禁语义不因拆分而变）。
+// 契约面（GoalLoopHost / GoalRunResult）上收内核 `agent/goal-contract.ts`，经 ./host 取用。
 
 import { z } from 'zod';
-import type { Message } from '../provider/types';
-import { type AgentEvent, type AgentUINotifier, EventKind } from './agent-types';
-import type { ExecStateInstance } from './execution-state';
-import type { GoalManager, GoalRecord } from './goal-manager';
-import { errText } from './loop-helpers';
-import type { SessionResetReason } from './session-log';
-import type { Tool, ToolRegistry } from './tool';
-import { defineTool } from './tools/define-tool';
-
-/** Goal 循环对宿主 Agent 的最小状态面（成员与 Agent 类声明逐字对齐）。 */
-export interface GoalLoopHost {
-  readonly goalManager: GoalManager | null;
-  readonly tools: ToolRegistry;
-  /** UI 通知端口（workspace 注入；headless 时为空操作）。 */
-  readonly _ui: AgentUINotifier;
-  readonly _execState: ExecStateInstance;
-  _sink: (ev: AgentEvent) => void;
-  getSession(): Message[];
-  _appendMessage(kind: 'user/message' | 'assistant/text' | 'tool/result', message: Message): void;
-  _replaceSession(messages: Message[], reason: SessionResetReason): void;
-  _retractSessionRange(fromIndex: number, toIndex: number): void;
-  runLoop(signal: AbortSignal): Promise<void>;
-}
-
-export type GoalRunResult = {
-  status: 'completed' | 'failed' | 'blocked' | 'aborted' | 'paused';
-  summary: string;
-};
+import {
+  defineTool,
+  EventKind,
+  errText,
+  type GoalLoopHost,
+  type GoalRecord,
+  type GoalRunResult,
+  type Tool,
+} from './host';
 
 // Goal 循环安全: 强制终止前的硬上限（正常不应触发）
 const MAX_GOAL_ITERATIONS = 100;

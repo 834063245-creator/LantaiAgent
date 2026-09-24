@@ -301,5 +301,13 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": []
+  },
+  {
+    "dir": "goal-mode",
+    "buildOrder": 31,
+    "description": "目标模式（自主多轮 goal 循环 + goal_report；禁用 = /goal 不可用）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": []
   }
 ]
