@@ -18,7 +18,7 @@
 // 只有真重依赖才进这里（代价：该批要重建 exe）。
 
 import type { ComponentType } from 'react';
-import type { ViewerProps } from '../../../plugins/builtin/renderers/viewer-registry';
+import type { ViewerProps } from '../../../paper/viewer-contract';
 
 /** vite 静态分析出本目录全部 `<id>.tsx` → 各自一个分片（懒加载，不进入口 chunk）。 */
 const modules = import.meta.glob<{ default: ComponentType<ViewerProps> }>('./*.tsx');

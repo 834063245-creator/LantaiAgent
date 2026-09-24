@@ -49,7 +49,7 @@ import {
 } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import * as React from 'react';
-import type { ViewerBytes, ViewerProps } from '../../../plugins/builtin/renderers/viewer-registry';
+import type { ViewerBytes, ViewerProps } from '../../../paper/viewer-contract';
 import './pdf.css';
 
 /** worker 资源（Vite 发成独立资源文件；模块装载期一次，`getDocument` 前必须就位）。 */

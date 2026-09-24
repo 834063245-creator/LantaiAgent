@@ -65,8 +65,8 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { normalizeExt, type ViewerProps } from '../../../paper/viewer-contract';
 import { VIEWER_MODEL_EXTS } from '../../../paper/viewer-exts';
-import { normalizeExt, type ViewerProps } from '../../../plugins/builtin/renderers/viewer-registry';
 import './model3d.css';
 
 /** 与产物侧 def 的 `maxBytes` 同值（32 MiB）——宿主已按此预检，这里兜第二道（防御式）。 */

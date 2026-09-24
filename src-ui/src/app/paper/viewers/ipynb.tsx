@@ -33,7 +33,7 @@ import hljs from 'highlight.js/lib/common';
 import * as React from 'react';
 import { createBlock } from '../../../paper/block-model';
 import { sanitizePayloadText } from '../../../paper/tool-text';
-import type { ViewerProps } from '../../../plugins/builtin/renderers/viewer-registry';
+import type { ViewerProps } from '../../../paper/viewer-contract';
 import { builtinRendererDefs } from '../builtin-renderers';
 import './ipynb.css';
 

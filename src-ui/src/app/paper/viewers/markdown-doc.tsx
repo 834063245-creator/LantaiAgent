@@ -29,7 +29,7 @@
 
 import * as React from 'react';
 import { createBlock } from '../../../paper/block-model';
-import type { ViewerProps } from '../../../plugins/builtin/renderers/viewer-registry';
+import type { ViewerProps } from '../../../paper/viewer-contract';
 import { builtinRendererDefs } from '../builtin-renderers';
 import './markdown-doc.css';
 
