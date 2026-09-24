@@ -426,7 +426,7 @@ manifest.json —— 包内合计 30～110 行。
 | 12 | `user-mcp.ts`（142） | 第二套 MCP 声明通道：**现行契约已 sanction**（`plugins/README.md:416-420` 用户级直配段）；张力来自**已归档**的 `agent-platformization-plan.md:360`「不引入第二套插件格式…不加旁路」⇒ 按现行契约应「承认并登记」，而非折并 |
 | 13 | `ui/lsp-client.ts` 的 `ctx.lsp`（655） | **分类缺口（同 token-meter）**：真 cordis Service（`super(ctx,'lsp')`）却**不在 13 service 清单、不经 loader 装载**，还自建第二个根 Context 绕过 `initCordisKernel()` ⇒ 不受「内核不可禁用」声明覆盖、不进 boot 审计。全仓 `extends Service` 共 19 处 / 19 个 ctx 键，而「13」只覆盖其中一部分 |
 | 14 | `composition/space-service.ts`（193） | 零自有状态，只做只读合流 + 命令转发到产品 store：按 canvas 设计件判「平台开放 API」，按宪法第五条「能换实现 ⇒ 开放面」复核则偏产品 |
-| 15 | 13 service 名**双写** | `loader.ts` 的 `BUILTIN_PLUGINS` ↔ `first-party-manifest.ts` 的 `SERVICE_META` 两处手写、靠守护测试对拍 ⇒ 可收成单一真源 |
+| 15 | ~~13 service 名**双写**~~ | `loader.ts` 的 `BUILTIN_PLUGINS` ↔ `first-party-manifest.ts` 的 `SERVICE_META` 两处手写、靠守护测试对拍 ⇒ 可收成单一真源 |
 
 ## 5. 怎么让它不再隐形（守卫建议 · 批 0）
 
@@ -490,7 +490,7 @@ manifest.json —— 包内合计 30～110 行。
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
-| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **侦察已完成**（§6.5）+ 施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md)（9a 账目登记/双写收口/ConfirmDialog → 9b `ctx.lsp` 入内核清单 → 9c 拆分组五件 → 9d provider 控制台 → 9e 常驻面（含 `ctx.overlays` 新槽，开工前问一次）→ 9f `settings.ts` + `workspace.ts` → 9g `asset-kinds`/`i18n`/`prompt-sections`/`bundled-engine`（B暂））。前置裁定全在位（§7 八条） |
+| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」。余：9c 拆分组五件 → 9d provider 控制台 → 9e 常驻面（含 `ctx.overlays` 新槽，开工前问一次）→ 9f `settings.ts` + `workspace.ts` → 9g 收尾。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -705,10 +705,23 @@ manifest.json —— 包内合计 30～110 行。
 类型 + `PromptShelfHost`）· provider 控制台 8 件 2,740（红区已列）· 内核产品件 `workspace.ts` 1,076
 （8 个内核 import 方）· `settings.ts` 705（**29 个** import 方）· `ui/lsp-client.ts` 655（§4-13）。
 
-**子批切分**（施工单 §3）：9a 账目登记 + 双写收口 + `ConfirmDialog` 挪位 → 9b `ctx.lsp` 入内核清单
-（13→14）→ 9c 拆分组五件（3,475）→ 9d provider 控制台（2,740）→ 9e 常驻面（≈2,660，含 `ctx.overlays`
+**子批切分**（施工单 §3）：9a 账目登记 + 双写收口 + `ConfirmDialog` 挪位 → 9b `ctx.lsp` 入内核清单（13→14）→ 9c 拆分组五件（3,475）→ 9d provider 控制台（2,740）→ 9e 常驻面（≈2,660，含 `ctx.overlays`
 **新槽**——按 §7 路由属「新增通道」层，开工前问一次）→ 9f `settings.ts` + `workspace.ts`（≈1,780）
 → 9g `asset-kinds` 拆 / `i18n` 清 / `prompt-sections` 文案段 / `bundled-engine`（B暂，前置=引擎链路真机验收）。
+
+**9a / 9b 落地（2026-09-26）**：
+
+- **9a**（`2262320b`）：`§4-15` 新 `plugins/service-plugins.ts`（14 条单一真源；loader 的
+  `BUILTIN_PLUGINS` 与清单 `SERVICE_META` 双向派生，加/删内核 service 只改一处）·`§4-3`
+  `ConfirmDialog` 102 行挪到 `app/ConfirmDialog.tsx`（内核共享原语，两处消费者 + 三处 host 桥改指）·
+  `§4-6`/`§4-7` 账目登记（token-meter / acp 进平台白名单，带理由）⇒ 灰区 **84 → 79 文件**、
+  平台白名单 111 → 119 文件；doc-facts 的 `builtin_service_plugins` 计数点随迁。
+- **9b**（`bc8436ed`）：`§4-13 A` 第 14 个内核 service = `ui/lsp-client.ts` 的 `lspServicePlugin`
+  （loader 装载 ⇒ 清单登记 + boot 审计 + 不可禁用）；**所有权模型显式变更**：LSP 服务改
+  **进程级单例**（同链重名被 cordis reflect 拒——实测证据并入提交信息），工作区改在自身 fiber 上
+  登记 `resetWorkspaceState()`「工作区级清态」（与旧的「服务随 fiber dispose」逐条等价）；
+  自建第二个根 Context 删除；测试域在 setup.ts 复现「loader 已跑过」；清单计数 49 → **50**
+  （14 内核 service + 36 产物）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
@@ -930,7 +943,7 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
 | 9 | 壳行贡献通道 `ctx.shellRows` | `composition/shell-rows.ts` 自述壳行=**纯 boot 时序、无 disposer 诉求**；11 行已可按 roster shell 域寻址禁用 | **B** 不立通道（维持既有分工），把「产物不得贡献 boot 期副作用」立成规则；`update-check` 27 行留内核 | 该类需求永久留内核 |
 | 11 | 随包引擎（`bundled-engine.ts` 186）产物化 | 缺口三件（2026-09-24 复核）：**① 产物拿不到工作区生命周期**——现由 `workspace.ts:813` 以**工作区 fiber ctx** 调 `registerBundledEngineTools(ctx, root)`，插件无此 hook（结构性，与 §4-9 壳行通道同族）；② 产物拿不到 MCP 桥（`registerMcpServerTools`/`McpBridgeIO` 只在装载链内）；③ 声明静态——是①的推论。**不要扩 manifest 声明面**（会破坏「声明=可审数据 / 机器桥纯声明面」纪律） | **B（暂）**，解锁路径 = 补①一处「工作区生命周期 + scoped ctx」贡献面 + ②经 faceDeps 暴露 MCP 桥（第一方专用面）⇒ 运行期注册，无需给 manifest 加动态语义。**前置**：该链路真机从未跑通（`plans/README.md` 欠账表），先验收再定型 | 一处新契约面 + baseline 重生成 + 契约升版 + 重建 exe。**设计件 + 验收清单 = [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)**（2026-09-24） |
 | 12 | 用户级 `mcp.json`（142）第二通道 | **现行契约已 sanction**（`plugins/README.md:416-420`）；张力来自**已归档**计划的旧 Non-goals | **B** 承认并**登记为合法用户级配置面**（它不是「插件格式」） | 仅账目登记 |
-| 13 | 游离 `ctx.lsp`（655） | `LspService extends Service` + `super(ctx,'lsp')`；`lsp-client.ts:584` 自建**第二个根 Context**（绕过 `initCordisKernel()`）；不在 13 清单 ⇒ 不受「内核不可禁用」覆盖、不进 boot 审计 | **A** 纳入内核清单（13→14）由 loader 装载 + 去掉 fallback 根 Context | 小；须过 boot 审计与指纹 |
+| 13 | ~~游离 `ctx.lsp`（655）~~ | `LspService extends Service` + `super(ctx,'lsp')`；`lsp-client.ts:584` 自建**第二个根 Context**（绕过 `initCordisKernel()`）；不在 13 清单 ⇒ 不受「内核不可禁用」覆盖、不进 boot 审计 | **A** 纳入内核清单（13→14）由 loader 装载 + 去掉 fallback 根 Context | ✅ **批 9b 已落**（2026-09-26）：第 14 个内核 service = `ui/lsp-client.ts` 的 `lspServicePlugin`（loader 装载 + 清单登记 + boot 审计 + 不可禁用）；服务改**进程级单例**（同链重名会被 cordis reflect 拒——实测）、工作区改登记「工作区级清态」`resetWorkspaceState()`（与旧的「服务随 fiber dispose」逐条等价）；自建第二个根 Context 删除 |
 
 其余 7 条（§4-2/3/4/8/10/14/15）Agent 自裁并在此记录理由，不占用用户决策额度：
 §4-2 重查看器例外写进 `docs/plugins/README.md` §3（文档契约化）· §4-3 `ConfirmDialog` 判**内核共享原语**
