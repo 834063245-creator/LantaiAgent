@@ -35,7 +35,7 @@
 import { log } from '../agent/logger';
 import type { Context } from '../cordis';
 import { typedJsonRpc } from '../rpc-contract';
-import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
+import { type GovernedActivationFace, type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import type { McpServerDecl } from './types';
 
 /** 随包引擎探测结果（`engine_bundled_info` RPC 的形状）。 */
@@ -111,10 +111,50 @@ export function bundledEngineDecl(root: string, exePath: string): McpServerDecl 
 
 /** 随包引擎接线结果（调用方/诊断消费）。 */
 export interface BundledEngineWiring {
-  /** 是否真的接上了（未启用 / 引擎缺席 / 无工作区根 → false）。 */
+  /** 是否真的接上了（未启用 / 引擎缺席 / 无工作区根 → false）。
+   *
+   *  **判据 = 工具面真的在册**（不只是「行注册成功」）：2026-09-24 用户实机报
+   *  「接线显示正常 + 进程起了，Agent 手里却没工具」——旧口径把「行注册」当成功，
+   *  而装配面读的是**就绪后**的工具面快照，两者中间的窗口正好是用户看到的那一幕。
+   *  现在 wired=true ⟹ toolCount > 0（本工作区的 Agent 立刻能用上这些工具）。 */
   wired: boolean;
   /** 未接上的原因（enabled=false 时不填——那是用户意图不是异常）。 */
   reason?: string;
+  /** 在册的引擎工具数（wired=true 时 > 0；未接线时不填）。 */
+  toolCount?: number;
+}
+
+/** 装配前等待引擎就绪的预算（ms）。
+ *
+ *  为什么要有界等待：工具面在**装配时点冻结**（行工厂按 `governor.toolFace()`
+ *  快照产出，空集不缓存 = 指望「下次装配重试」，而工作区共享注册表路径没有下次
+ *  装配——除非用户重开工作区）。所以「开工作区」这一步必须把工具面拿到手。
+ *
+ *  实测（2026-09-24，本机 + 本项目根）：引擎 `serve` 冷启动到 `ready` **32ms**、
+ *  initialize + tools/list 各 1ms——`tools/list` 走静态折叠表，慢的是**分析**
+ *  （引擎自己延迟到首次 `analyze_project`）。经 Rust protocol_bridge 的
+ *  spawn + IPC 另加数百毫秒量级。10s 预算对健康引擎是 ~30× 余量，坏引擎则
+ *  封顶在用户可感知为「开工作区卡一下」的范围内（不再是 60s 就绪时限）。 */
+const PREHEAT_BUDGET_MS = 10_000;
+
+/** 有界等待：超时返回 false（**不取消**在途拉起——进程照常起，只是本次装配不等它）。 */
+async function waitWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p.then(
+        () => true,
+        (e: unknown) => {
+          throw e;
+        },
+      ),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** 注册随包引擎工具（**须在 Agent 装配前调用**——工具行先于装配进注册表）。
@@ -123,8 +163,9 @@ export interface BundledEngineWiring {
  *  @param root  工作区根（引擎绑此根）
  *  @param io    测试注入面（缺省生产实现）
  *
- *  返回 wired=false 的三种情形都**不是错误**：未启用（用户意图）、引擎缺席
- *  （未随包/未构建）、root 为空（无目录工作区）。
+ *  返回 wired=false 的情形都**不是错误**：未启用（用户意图）、引擎缺席
+ *  （未随包/未构建）、root 为空（无目录工作区）、就绪超预算（可见降级，
+ *  带具名原因——调用方写回执 + 状态栏）。
  */
 export async function registerBundledEngineTools(
   ctx: Context,
@@ -161,6 +202,8 @@ export async function registerBundledEngineTools(
   // 下面把子 fiber 的 dispose 登记进调用方 ctx.effect ⇒ 离开/切换工作区时
   // fiber.dispose 链式摘行 + 治理器杀进程树（与「工具行直挂工作区 ctx」等价，
   // 不依赖 cordis 的父 dispose 级联语义）。
+  // 持有体而非裸 `let`：apply 里赋值、外面读——TS 会把裸 let 的控制流收窄成 never。
+  const holder: { face: GovernedActivationFace | null } = { face: null };
   try {
     const fiber = await ctx.plugin({
       name: 'hologram/bundled-engine-mcp',
@@ -168,34 +211,24 @@ export async function registerBundledEngineTools(
       // manifest.mcpServers 的插件补的那两条同款）。
       inject: ['tools', 'activation'],
       apply: async (c: Context) => {
-        const face = await registerMcpServerTools(c, OWNER, [bundledEngineDecl(root, exePath)], engineIo);
-        if (!face) return;
-        // ① 声明激活（**登记 ≠ 激活**）——loader 对 manifest 插件做的那一步，
-        //    引擎路径此前整个丢掉了 ⇒ 治理器永不被拉起：实机症状「UI 显示已接线、
-        //    任务管理器无 hologram-engine.exe、Agent 无图谱工具」（2026-09-24）。
-        //    账键 = 插件名（激活是插件级生命周期），而本接线贡献的行 id 前缀正是
-        //    `plugin/hologram-engine/…`（= OWNER）⇒ 组合里该行存活即 retain。
+        const registered = await registerMcpServerTools(c, OWNER, [bundledEngineDecl(root, exePath)], engineIo);
+        if (!registered) return;
+        holder.face = registered;
+        // 声明激活（**登记 ≠ 激活**）——loader 对 manifest 插件做的那一步，
+        // 引擎路径此前整个丢掉了 ⇒ 治理器永不被拉起：实机症状「UI 显示已接线、
+        // 任务管理器无 hologram-engine.exe、Agent 无图谱工具」（2026-09-24）。
+        // 账键 = 插件名（激活是插件级生命周期），而本接线贡献的行 id 前缀正是
+        // `plugin/hologram-engine/…`（= OWNER）⇒ 组合里该行存活即 retain。
+        // ⚠ 取服务必须用子 fiber 的 `c`（它 inject 了 activation）——调用方 ctx
+        // 没声明 inject，属性访问与 resolve 都会被 cordis 拒（见 mcp-bridge 头注）。
         const activation = c.get('activation');
         if (activation && !activation.has(OWNER)) {
           activation.declare(OWNER, {
             resources: ['stdio'],
-            start: () => face.startLazy(),
-            stop: () => face.stopLazy(),
+            start: () => registered.startLazy(),
+            stop: () => registered.stopLazy(),
           });
         }
-        // ② 开工作区即预热（fire-and-forget）——**不阻塞开工作区**（不 await），
-        //    但必须在首个 Agent 装配之前把进程与 tools/list 备好：装配面物化工具行
-        //    先于激活账 retain（runtime.ts 的注册表构建 → retainForComposition 次序），
-        //    行工厂又按 `toolFace()` 快照产出 —— 只靠 retain 的话**首个会话**拿不到
-        //    工具（工具面在会话创建时点冻结，要等下一个新卷）。引擎的 tools/list 走
-        //    静态表（快），慢的是分析，故预热窗口足够。
-        //    失败不静默：warn 进 ui.log，治理器另有诊断面（重试挂在下次装配）。
-        void face.startLazy().catch((e) => {
-          log.warn(
-            'plugins',
-            `[bundled-engine] 预热拉起失败（工具面待下次装配重试）: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        });
       },
     });
     ctx.effect(
@@ -204,11 +237,40 @@ export async function registerBundledEngineTools(
       },
       'hologram/bundled-engine-mcp',
     );
-    return { wired: true };
   } catch (e) {
     // 接线失败可见（不静默）：调用方写回执 / 状态栏
     return { wired: false, reason: `接线失败：${e instanceof Error ? e.message : String(e)}` };
   }
+  // inject 未解析（组合层 service 不在调用方所在 cordis 树）时子 fiber 停在 PENDING：
+  // ctx.plugin 不抛、行也没注册——不当成「已接线」上报（错误不静默）。
+  const governed = holder.face;
+  if (!governed) {
+    return { wired: false, reason: '接线未生效：引擎工具行未注册（组合层 tools/activation 服务不可见）' };
+  }
+  // **有界等待就绪**（2026-09-24 缺陷②）：工具面在装配时点冻结，而本函数返回后
+  // 调用方立刻建注册表 ⇒ 必须在这里把 initialize + tools/list 走完。旧实现是
+  // fire-and-forget 预热（「不阻塞开工作区」），赌「首个会话装配在进程起来之后」
+  // —— 实测必输（装配只花微秒级，进程经 Rust 桥起要数百毫秒），且输了就
+  // **永久**没有工具（共享注册表路径没有下次装配）。故：等待有界（见
+  // PREHEAT_BUDGET_MS 的实测依据），超时/失败即降级为具名原因上报。
+  try {
+    const ready = await waitWithin(governed.startLazy(), PREHEAT_BUDGET_MS);
+    if (!ready) {
+      return {
+        wired: false,
+        reason: `引擎就绪超时（${PREHEAT_BUDGET_MS / 1000}s）——本次装配无引擎工具，重开工作区重试`,
+      };
+    }
+  } catch (e) {
+    // 拉起失败不是静默降级：原因进回执（治理器另有诊断面；重试挂下次装配）
+    return { wired: false, reason: `引擎拉起失败：${e instanceof Error ? e.message : String(e)}` };
+  }
+  const toolCount = governed.toolCount();
+  if (toolCount === 0) {
+    // 就绪但工具面为空（引擎 tools/list 返回空表）——如实上报，不冒充「已接线」
+    return { wired: false, reason: '引擎已就绪但未提供任何工具（tools/list 为空）' };
+  }
+  return { wired: true, toolCount };
 }
 
 // ═══════════════════════════════════════════════════════

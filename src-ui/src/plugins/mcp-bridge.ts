@@ -279,6 +279,12 @@ export interface GovernedActivationFace {
   startLazy(): Promise<void>;
   /** 停止全部 lazy 档受治进程（组合引用归零）。 */
   stopLazy(): void;
+  /** 本面治理的 server **当前**远端工具数（toolFace 快照大小之和）。
+   *
+   *  消费方 = 需要「就绪 ⟹ 工具面非空」这条因果做回执/诊断的接线方
+   *  （随包引擎：装配前有界等待就绪后报「N 件工具在册」）。取 `toolFace()`
+   *  快照而不是重新握手——与装配面读的是同一份数据，读数不会比它新。 */
+  toolCount(): number;
 }
 
 /** 由受治进程集合产出激活面（无 lazy 档 ⇒ null = 不接线）。 */
@@ -292,6 +298,7 @@ function governedActivationFace(governors: readonly ServerGovernor[]): GovernedA
     stopLazy: () => {
       for (const g of lazy) g.stop();
     },
+    toolCount: () => lazy.reduce((n, g) => n + g.toolFace().length, 0),
   };
 }
 

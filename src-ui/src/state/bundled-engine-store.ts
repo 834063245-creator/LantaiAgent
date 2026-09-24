@@ -30,22 +30,34 @@ export interface BundledEngineReceipt {
   workspacePath: string | null;
   /** 未接线原因（开关未启用时 null——那是用户意图，不是异常）。 */
   reason: string | null;
+  /** 在册的引擎工具数（仅 wired 态有值；null = 未接线）。
+   *
+   *  2026-09-24 用户实机报「接线显示正常、进程也起了，Agent 手里却没工具」——
+   *  旧回执把「行注册成功」当接线成功，与用户真正在意的判据（工具到手）脱节。
+   *  现在 wired ⟺ 工具面非空，本字段是那句话的证据。 */
+  toolCount: number | null;
   /** 回执时间（ms）；null = 无回执。 */
   at: number | null;
 }
 
-const INITIAL: BundledEngineReceipt = { status: 'idle', workspacePath: null, reason: null, at: null };
+const INITIAL: BundledEngineReceipt = { status: 'idle', workspacePath: null, reason: null, toolCount: null, at: null };
 
 interface BundledEngineStore extends BundledEngineReceipt {
   /** 写回执（`workspace.ts` 专用；UI 只读）。 */
-  report(receipt: { status: BundledEngineWiringStatus; workspacePath: string; reason?: string | null }): void;
+  report(receipt: {
+    status: BundledEngineWiringStatus;
+    workspacePath: string;
+    reason?: string | null;
+    toolCount?: number | null;
+  }): void;
   /** 测试复位。 */
   reset(): void;
 }
 
 export const useBundledEngineStore = create<BundledEngineStore>((set) => ({
   ...INITIAL,
-  report: ({ status, workspacePath, reason }) => set({ status, workspacePath, reason: reason ?? null, at: Date.now() }),
+  report: ({ status, workspacePath, reason, toolCount }) =>
+    set({ status, workspacePath, reason: reason ?? null, toolCount: toolCount ?? null, at: Date.now() }),
   reset: () => set({ ...INITIAL }),
 }));
 
@@ -54,8 +66,11 @@ export function describeReceipt(receipt: BundledEngineReceipt, enabled: boolean)
   switch (receipt.status) {
     case 'idle':
       return '本进程尚未打开过工作区——打开一个工作区后这里会显示接线结果';
-    case 'wired':
-      return `本工作区已接线：${receipt.workspacePath ?? ''}`;
+    case 'wired': {
+      // 工具数写进回执：这才是「Agent 手上有没有图谱工具」的直接读数
+      const n = receipt.toolCount ?? 0;
+      return `本工作区已接线：${receipt.workspacePath ?? ''}（${n} 个引擎工具在册）`;
+    }
     case 'failed':
       return `本工作区未接线：${receipt.reason ?? '原因未知'}`;
     default:

@@ -37,6 +37,7 @@ import {
   compositionIdentity,
   effectiveComposition,
   isPresetKnown,
+  reapplyComposition,
   selectionError,
 } from './composition/preset-assembly';
 import type { ResolvedComposition } from './composition/roster';
@@ -62,7 +63,6 @@ import {
 import type { AgentConfigChangeReason } from './state/agent-config-store';
 import { useBundledEngineStore } from './state/bundled-engine-store';
 import { getComposeStore, resolveComposeEffective } from './state/compose-store';
-import { useCompositionStore } from './state/composition-store';
 import { broadcastGoalRecord } from './state/goal-store';
 import { getPanelStore } from './state/panel-store';
 import { showToast, TOAST_LONG_HOLD_MS } from './state/toast-store';
@@ -461,8 +461,13 @@ export class Workspace {
   }
 
   /** 构建/重建共享工具注册表——setupAgent 与会话工厂覆盖路径的共用出口。
-   *  组装材料（deps/agentRef/memoryManager/skillRegistry…）全部工作区级。 */
-  private async _buildRegistryLocked(composition: ResolvedComposition): Promise<ToolRegistry> {
+   *  组装材料（deps/agentRef/memoryManager/skillRegistry…）全部工作区级。
+   *
+   *  `assemblyKey` = `composition` 那份产物的**输入身份**（`compositionIdentity()`，
+   *  调用方与产物同时求出）。不在这里读 composition-store：store 可能落后于本工作区
+   *  真实输入（引擎工具行注册后、error 态等——见 `_setupAgentInner` 的取产物注释），
+   *  而「注册表是按哪份组合建的」这条判定必须与**实际建表用的产物**一致。 */
+  private async _buildRegistryLocked(composition: ResolvedComposition, assemblyKey: string): Promise<ToolRegistry> {
     const registry = await buildToolRegistry({
       deps: this._builderDeps as BuilderDeps,
       memoryManager: this.memoryManager ?? undefined,
@@ -487,7 +492,7 @@ export class Workspace {
     this.registry = registry;
     // S6 P1d：身份与产物同步快照（建表时点）——判定「能否复用本注册表」用身份比，
     // 而身份必须是**建表时点**的（见 _assemblyKey 字段注）。
-    this._assemblyKey = useCompositionStore.getState().resolvedKey;
+    this._assemblyKey = assemblyKey;
     return registry;
   }
 
@@ -678,15 +683,71 @@ export class Workspace {
     }
     // 清注入缓存登记在 runtime 之前 → 逆序释放时晚于 runtime.disposeAll（先拆 Agent 再清缓存）。
     teardown.add(() => resetAgentCaches(), 'reset-agent-caches');
+
+    // ── 随包图谱引擎接线（engine-bundled-mcp-distribution，2026-09-16）──
+    // **必须在下面取组合快照之前**——理由有两条，都是实机缺陷（2026-09-24）：
+    //   ① 引擎的工具行是**接线时才注册**进组合层的：接线前取的那份快照里没有这一行
+    //      ⇒ `_buildRegistryLocked(composition)` 装配出来的注册表不含引擎工具，
+    //      且 `new AgentRuntime(..., composition)` 的激活 retain 也看不见它。
+    //      （此前注释只要求「在 _buildRegistryLocked 之前」，而那已经太晚：快照在
+    //      更上面就取走了。）
+    //   ② 接线现在**有界等待引擎就绪**（`registerBundledEngineTools` 内的
+    //      PREHEAT_BUDGET_MS）——工具面在装配时点冻结，必须等它物化完再建注册表。
+    //
+    // 生命周期归属：工具行挂 `this._fiber.ctx`（工作区 fiber）⇒ 离开/切换
+    // 工作区随 fiber.dispose 自动摘行 + 治理器杀进程树，**不需要额外清理代码**。
+    //
+    // 引擎契约「一进程一工作区根」（ensure_ready 异根拒绝）：注册粒度 =
+    // 工作区，root 进 `args` 的 `--project-root`。切工作区 = 旧 fiber 释放
+    // 进程 + 新 fiber 按新 root 重注册（= engine_init 说的「换整个实例」）。
+    //
+    // 默认关（方案乙）：未启用时立即返回，零行为变更。
+    //
+    // 回执（2026-09-16 用户实机报缺陷后补；2026-09-24 补工具数）：结果写
+    // `state/bundled-engine-store`（设置面板「随包图谱引擎」区块读）+ 状态栏一行
+    // ——此前只进 console，用户侧「引擎到底挂上没有」无从查证。判别口径 =
+    // **工具面真的在册**（wired + toolCount），不是「行注册成功」。
+    try {
+      const wiring = await registerBundledEngineTools(this._fiber.ctx, this.path);
+      const report = useBundledEngineStore.getState().report;
+      if (wiring.wired) {
+        report({ status: 'wired', workspacePath: this.path, toolCount: wiring.toolCount });
+        console.log(`[Workspace] 随包图谱引擎已接线：${this.path}（${wiring.toolCount ?? 0} 个工具在册）`);
+        useShellStore.getState().pushStatus(`随包图谱引擎已接线（${wiring.toolCount ?? 0} 个工具）`);
+      } else if (wiring.reason) {
+        // 启用了但接不上 = 可见降级（不静默——错误不静默纪律）
+        report({ status: 'failed', workspacePath: this.path, reason: wiring.reason });
+        console.warn('[Workspace] 随包图谱引擎未接线:', wiring.reason);
+        useShellStore.getState().pushStatus(`⚠️ 随包图谱引擎未接线：${wiring.reason}`);
+      } else {
+        // 开关未启用 = 用户意图（不打扰；回执留给设置面板显示）
+        report({ status: 'off', workspacePath: this.path });
+      }
+    } catch (e) {
+      // 接线失败不得阻断工作区打开（引擎工具面是增强，非核心路径）
+      const reason = e instanceof Error ? e.message : String(e);
+      useBundledEngineStore.getState().report({ status: 'failed', workspacePath: this.path, reason });
+      console.warn('[Workspace] 随包图谱引擎接线失败:', e);
+      useShellStore.getState().pushStatus(`⚠️ 随包图谱引擎接线失败：${reason}`);
+    }
+
+    // ── 创建 Runtime + UI 适配器（旧 runtime 的拆除已在上方 P0-10 处完成）──
     // cordis-migration P2：runtime 挂在工作区 fiber 下 — 每个 Agent 在 cordis 树上
     // 获得身份 fiber（hologram/agent），生命周期随 AgentContext.dispose 摘除。
-    // S2-1 组合外化：composition-store 的 resolved 穿进 runtime（capability
-    // 表 + prompt 段表的运行时真源；store 缺省 = 出厂组合 = 现行装配）。
-    // S6 P1d：连同产物的**输入身份**（resolvedKey）一起取——会话工厂据此判定
-    // 「本卷要的组合」与共享注册表所依据的组合是否同一份（取代引用比较）。
-    const compSnapshot = useCompositionStore.getState();
-    const composition = compSnapshot.resolved;
-    this._assemblyKey = compSnapshot.resolvedKey;
+    // S2-1 组合外化：组合解析产物穿进 runtime（capability 表 + prompt 段表的运行时
+    // 真源 + 激活 retain 的判定面）。
+    // ⚠ 取产物必须在**引擎接线之后**（见上）：接线注册的引擎工具行是这份产物的输入。
+    //
+    // 取法 = **重新解析**，而不是读 composition-store 的快照（2026-09-24 实测缺陷）：
+    // store 是解析产物的缓存，只在「贡献变更监听已武装（bootShell）+ 非 error 态」
+    // 时才会被刷新——工作区装配不该依赖那个监听在不在（无引导环境、或用户层 patch
+    // 被拒的 error 态下 store 停在旧产物，引擎行静默缺席，症状与用户报的一模一样）。
+    // `effectiveComposition()` 是**永不抛出**的解析入口（F1 捕获网），与 store 的
+    // 写入口同源；`compositionIdentity()` 是它的输入身份（S6 P1d：会话工厂据此判
+    // 「本卷要的组合」与共享注册表所依据的组合是否同一份）。
+    reapplyComposition(); // 正常态下顺带同步 store（诊断面与会话工厂读它）；error 态按纪律跳过
+    const composition = effectiveComposition();
+    this._assemblyKey = compositionIdentity();
     const runtime = new AgentRuntime(this.path, this._fiber.ctx, composition);
     const adapter = createRuntimeAdapter(this._storeId);
     runtime.setNotifier(adapter);
@@ -802,48 +863,9 @@ export class Workspace {
     this._agentRef = { current: null as Agent | null };
     const agentRef = this._agentRef;
 
-    // 随包图谱引擎接线（engine-bundled-mcp-distribution，2026-09-16）：
-    // **必须在 _buildRegistryLocked 之前**——MCP 工具行是注册表构建的输入，
-    // 晚于它注册则首装配看不到引擎工具（要等下次装配）。
-    //
-    // 生命周期归属：工具行挂 `this._fiber.ctx`（工作区 fiber）⇒ 离开/切换
-    // 工作区随 fiber.dispose 自动摘行 + 治理器杀进程树，**不需要额外清理代码**。
-    //
-    // 引擎契约「一进程一工作区根」（ensure_ready 异根拒绝）：注册粒度 =
-    // 工作区，root 进 `args` 的 `--project-root`。切工作区 = 旧 fiber 释放
-    // 进程 + 新 fiber 按新 root 重注册（= engine_init 说的「换整个实例」）。
-    //
-    // 默认关（方案乙）：未启用时立即返回，零行为变更。
-    //
-    // 回执（2026-09-16 用户实机报缺陷后补）：结果写 `state/bundled-engine-store`
-    // （设置面板「随包图谱引擎」区块读）+ 状态栏一行——此前只进 console，用户侧
-    // 「引擎到底挂上没有」无从查证（实测：打包 app 里开关从未被拨过，因为找不到
-    // 且拨了没回执）。失败必须可见（错误不静默纪律）。
-    try {
-      const wiring = await registerBundledEngineTools(this._fiber.ctx, this.path);
-      const report = useBundledEngineStore.getState().report;
-      if (wiring.wired) {
-        report({ status: 'wired', workspacePath: this.path });
-        console.log('[Workspace] 随包图谱引擎已接线:', this.path);
-        useShellStore.getState().pushStatus('随包图谱引擎已接线');
-      } else if (wiring.reason) {
-        // 启用了但接不上 = 可见降级（不静默——错误不静默纪律）
-        report({ status: 'failed', workspacePath: this.path, reason: wiring.reason });
-        console.warn('[Workspace] 随包图谱引擎未接线:', wiring.reason);
-        useShellStore.getState().pushStatus(`⚠️ 随包图谱引擎未接线：${wiring.reason}`);
-      } else {
-        // 开关未启用 = 用户意图（不打扰；回执留给设置面板显示）
-        report({ status: 'off', workspacePath: this.path });
-      }
-    } catch (e) {
-      // 接线失败不得阻断工作区打开（引擎工具面是增强，非核心路径）
-      const reason = e instanceof Error ? e.message : String(e);
-      useBundledEngineStore.getState().report({ status: 'failed', workspacePath: this.path, reason });
-      console.warn('[Workspace] 随包图谱引擎接线失败:', e);
-      useShellStore.getState().pushStatus(`⚠️ 随包图谱引擎接线失败：${reason}`);
-    }
-
-    const registry = await this._buildRegistryLocked(composition);
+    // 随包图谱引擎接线已在上方完成（**必须先于组合快照**：工具行是装配输入，
+    // 见该处注释——2026-09-24 实机缺陷①②）。这里只建注册表。
+    const registry = await this._buildRegistryLocked(composition, this._assemblyKey);
 
     // 冷启动：预热状态缓存（git 状态与引擎无关照刷）
     refreshGitStatus(this.path).catch(() => {});

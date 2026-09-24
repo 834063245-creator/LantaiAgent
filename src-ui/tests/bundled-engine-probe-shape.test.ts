@@ -77,7 +77,7 @@ describe('随包引擎探测 · 生产线形（实机「开关拨不开」回归
 });
 
 describe('随包引擎接线（实机三连回归，2026-09-24）', () => {
-  it('工作区 scope ctx（不声明 inject）下：接线成功 + 声明激活 + 开工作区即预热拉起', async () => {
+  it('工作区 scope ctx（不声明 inject）下：行注册 + 声明激活 + 尝试拉起；拉起失败如实上报', async () => {
     localStorage.setItem('lantai.bundledEngine.enabled', 'true');
     resetBundledEngineForTests();
     H.rpc?.mockResolvedValueOnce(JSON.stringify(ENGINE_ON_DISK));
@@ -91,14 +91,18 @@ describe('随包引擎接线（实机三连回归，2026-09-24）', () => {
     const io: McpBridgeIO = {
       createProcIO: async (id) => {
         spawns.push(id);
-        // 不真起进程：让治理器 start 立刻失败（预热路径的失败面也因此被走到）
+        // 不真起进程：让治理器 start 立刻失败（受治面的失败路径因此被走到）
         throw new Error('测试环境不真 spawn');
       },
       pluginDir: async () => 'D:/x',
     };
 
     const wiring = await registerBundledEngineTools(scope.ctx, 'D:/proj', io);
-    expect(wiring.wired, `接线应成功（reason=${wiring.reason ?? '—'}）`).toBe(true);
+    // 行为变更（2026-09-24 缺陷②）：接线**有界等待就绪**后才算成功——引擎起不来时
+    // 工具面为空，`wired:true` 就是谎报（用户看到的正是「显示正常 + 没工具」）。
+    // 故此处判据 = 行注册成功（下面两条）+ **失败如实上报**。
+    expect(wiring.wired, '工具面为空的接线不得报成功').toBe(false);
+    expect(wiring.reason ?? '', '失败原因必须具名（不静默降级）').toContain('引擎拉起失败');
     expect(pluginToolRows().map((r) => r.id)).toContain('plugin/hologram-engine/mcp/hologram');
     // 实机第二症状（UI 已接线、任务管理器无进程）的钉子：受治面**必须**在激活账里
     // 声明过——否则装配期 retainForComposition 看不到它，治理器永不被拉起。
@@ -106,10 +110,9 @@ describe('随包引擎接线（实机三连回归，2026-09-24）', () => {
       root.activation.has('hologram-engine'),
       '接线必须把 lazy 档受治面声明进激活账（loader 对 manifest 插件做的那一步）',
     ).toBe(true);
-    // 实机第二症状的另一半：开工作区即预热（fire-and-forget）——否则首个会话
-    // （工具行物化先于 retain）拿不到工具。createProcIO 首参是 bridgeId（不是插件名），
-    // 故只断言「发生了一次拉起尝试」。
-    expect(spawns, '开工作区即尝试拉起引擎进程（预热，不阻塞开工作区）').toHaveLength(1);
+    // 装配前就拉起（有界等待取代了旧的 fire-and-forget 预热）：createProcIO 首参是
+    // bridgeId（不是插件名），故只断言「发生了一次拉起尝试」。
+    expect(spawns, '接线即尝试拉起引擎进程（装配要等它就绪）').toHaveLength(1);
 
     // 归属与回收仍挂调用方 ctx：scope dispose ⇒ 子 fiber 一并 dispose ⇒ 行摘除
     await scope.dispose();
