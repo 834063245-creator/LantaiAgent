@@ -490,7 +490,7 @@ manifest.json —— 包内合计 30～110 行。
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
-| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 需先有通道（§4-3/4/9）与归属裁定（§4-1/5/6/11/12/13） |
+| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **侦察已完成**（§6.5）+ 施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md)（9a 账目登记/双写收口/ConfirmDialog → 9b `ctx.lsp` 入内核清单 → 9c 拆分组五件 → 9d provider 控制台 → 9e 常驻面（含 `ctx.overlays` 新槽，开工前问一次）→ 9f `settings.ts` + `workspace.ts` → 9g `asset-kinds`/`i18n`/`prompt-sections`/`bundled-engine`（B暂））。前置裁定全在位（§7 八条） |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -684,6 +684,31 @@ manifest.json —— 包内合计 30～110 行。
   `JsonBody` 真身在场、`face.json` 5 键；`renderers/entry.js` **2.68 MB** + `entry.css` 20 KB，
   含 `parseNotebook` 与 `pp-viewer-mddoc` 类名（撤 heavy 后的两个查看器真身）、`face.json` 1 键；
   启动期 console 无异常（仅结构性的无 face.json 产物 404）。
+
+### 6.5 批 9 施工侦察（拆分件 + 常驻面 + 内核产品件，2026-09-26 实测；施工单 = [`batch-9-extraction-design.md`](batch-9-extraction-design.md)）
+
+本批是账上最大一笔（≈11,000 行）：**灰区 84 文件 / 23,124 行的主体 + 红区最后 9 条账**都在这里。
+§7 八条前置裁定全部在位（§4-5 A · §4-6 B · §4-7 B · §4-9 B · §4-11 B暂 · §4-12 B · §4-13 A）。
+
+**拆分组实测出边**（2026-09-26，决定「契约层留什么 / 实现进哪」的那一行）：
+
+| 件 | 内核消费者（契约层） | 产物消费者（实现层） |
+|---|---|---|
+| `paper/measure.ts` 2,015 | `paper/ink.ts`（值 `inkSourcesFor`/`measureSignature`）· `state/messages-store.ts`（值 `clearObservedHeightsForSession`） | `paper-shell/{host,dock-tether}.ts` |
+| `paper/type-tokens.ts` 806 | 仅 `paper/measure.ts`（五符号） | `paper-shell/host.ts` + `host-modules.ts`（`injectPaperTokens`） |
+| `paper/group.ts` 306 | `paper/region-view.ts`（类型 `WorkUnit`） | `paper-shell/host.ts`（五值） |
+| `paper/virtualize.ts` 155 | `paper/overlay-context.ts` · `paper/region-view.ts`（三类型） | `paper-shell/host.ts`（三值） |
+| `paper/selection.ts` 193 | `state/canvas-store.ts`（类型 `PaperStrip`） | `paper-shell/host.ts`（四值） |
+
+**其余各组实测**：常驻面 `SessionsHome.tsx` 593（唯一消费者 `app/App.tsx`）+ `foundation.css` 1,003 行里
+首页段 ≈850（125–976 行）· ask 卡架 `PromptShelf` 776 + Host 30 + css 412（消费者 `chat-core`
+类型 + `PromptShelfHost`）· provider 控制台 8 件 2,740（红区已列）· 内核产品件 `workspace.ts` 1,076
+（8 个内核 import 方）· `settings.ts` 705（**29 个** import 方）· `ui/lsp-client.ts` 655（§4-13）。
+
+**子批切分**（施工单 §3）：9a 账目登记 + 双写收口 + `ConfirmDialog` 挪位 → 9b `ctx.lsp` 入内核清单
+（13→14）→ 9c 拆分组五件（3,475）→ 9d provider 控制台（2,740）→ 9e 常驻面（≈2,660，含 `ctx.overlays`
+**新槽**——按 §7 路由属「新增通道」层，开工前问一次）→ 9f `settings.ts` + `workspace.ts`（≈1,780）
+→ 9g `asset-kinds` 拆 / `i18n` 清 / `prompt-sections` 文案段 / `bundled-engine`（B暂，前置=引擎链路真机验收）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
