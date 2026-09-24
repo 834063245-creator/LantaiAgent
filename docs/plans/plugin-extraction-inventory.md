@@ -489,7 +489,7 @@ manifest.json —— 包内合计 30～110 行。
 | **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | ✅ **已全落**：4a `browser.ts`（912）· 4b `manifest-tools` 按域拆（187+169，search/web 各归其包）· 4c `coding.ts`（998，一文件载五族）拆完 **整文件退役**——4c-1 git · 4c-2 ask/agent-isolation · 4c-3 fs/shell（顺带上收 `ownerIdOf`/`ownerSeamView` 进 `composition/seam-scope.ts`）。随行件去向：`sticky-cwd` 并入包内族段，`git-porcelain` 126 / `session-context` 122 / `structured-error` 24 因内核消费者**留内核桥** |
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
-| **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | `ctx.subagents` seam 已在位；障碍是 runtime 单例与 21+13 个测试 |
+| **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | 🟡 **侦察已落（§6.3）**：实测**≈3,177 行**（通信族 1,204 · 子代理运行时 1,089 · `tools/subagent` 265 · `subagent-spawn` 551 · `tools/discovery` 68）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md)：7a `agent-domain` 实心化（265）→ 7b 通信族（1,204）→ 7c 运行时（1,640）→ 7d 账目清账。硬点两处**值 re-export**（`agent/tool.ts:244` · `agent.ts:121`，4c 裁定① 同款）+ 34 个直连测试 |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈2,500 | 依赖批 5/6 落地；同批消掉 hljs 两处内联 |
 | **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 需先有通道（§4-3/4/9）与归属裁定（§4-1/5/6/11/12/13） |
 
@@ -500,6 +500,35 @@ manifest.json —— 包内合计 30～110 行。
 **批 10（单独立项，2026-09-24）**：工作区接线贡献面 + 随包引擎产物化——
 设计件与真机验收清单见 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)；
 **先跑验收四条，再定稿施工**（该链路从未真机跑通）。
+
+### 6.3 批 7 施工侦察（2026-09-24 实测；施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md)）
+
+**范围（逐文件实测行数）**：通信族 **1,204**（`message-bus` 605 · `message-types` 137 ·
+`message-store` 129 · `topology` 80 · `tools/communication` 159 · `tools/request` 94）·
+子代理运行时 **1,089**（`coordinator` 420 · `lifecycle-manager` 217 · `tools/merge` 215 ·
+`subagent-activity` 96 · `file-ownership` 73 · `tools/merge-gate` 55 · `isolation-queue` 13）·
+**名册红账两条**：`agent-domain` = `tools/subagent` **265**、`subagent-in-process` =
+`subagent-spawn` **551** · `tools/discovery` **68** ⇒ 合计 **≈3,177 行**（账本原估 2,293）。
+
+**比批 6 更重的一层**：实现不只是「被内核调用」，而是**被内核 `new` 出来的类**——
+`workspace.ts:18` `new SubAgentPool`、`runtime.ts:34-39` `new MessageBus` / `new JsonMessageStore` /
+`new AgentLifecycleManager`、`tools/merge.ts:19` + `runtime.ts` + `lifecycle-manager.ts` +
+`subagent-spawn.ts` 四处共用模块级 `isolation-queue`。⇒ 除工具族外都要**工厂登记**
+（`requireX().create…(...)`，service 语义 fail-loud）。
+
+**两处值 re-export（4c 裁定① 同款，必须先退役）**：`agent/tool.ts:244`
+`export { createSubAgentTool, type SubAgentSpawner } from './tools/subagent'`（内核聚合产物）·
+`agent.ts:121` `export { buildSubAgentTools, wrapTool } from './subagent-spawn'`。
+
+**判内核共享（留内核，写进账目避免下批重侦察）**：`file-ownership`（compaction 包已桥
+`extractFilePath` / `WRITE_TOOLS`）· `isolation-queue`（四处共用的模块级队列）· `SubAgentStatus`
+类型面。**UI 直读类型**：`AgentMessage`（`ui/agent-panel-store.ts`）⇒ 7b 上收契约。
+
+**爆破半径**：34 个直连测试（coordinator 21 + MessageBus 13）+ `tools/subagent` 面的 12 个文件
+（含 convergence 两个 spec 与 fixtures）+ `wait-domain` 的 `SubAgentStatus` 桥。
+
+**子批**：7a `agent-domain` 实心化（265，闭合一条红账）→ 7b 通信族（1,204）→ 7c 运行时
+（1,640，闭合 §1.2 + §2.3 两条）→ 7d 账目清账（红区预期降到 9 产物 / 23 文件）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
