@@ -9,7 +9,7 @@
 // 的循环 import）。
 
 import type { SourcedBlock } from './block-model';
-import type { WorkUnit } from './group';
+import type { WorkUnit } from './group-contract';
 import type { FlowGeom, PinnedGeom } from './region-geom-contract';
 import type { StreamRegionState } from './space';
 

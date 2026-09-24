@@ -8,9 +8,11 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import type { WorkUnit } from '../../../paper/group-contract';
 import type { MinimapRegionInput } from '../../../paper/minimap-core';
 import type { FlowGeom, PinnedGeom } from '../../../paper/region-geom-contract';
 import { volumeDisplayName } from '../../../state/volume-name';
+import { groupWorkUnits, rhythmAssign, sealedMessageIdsOf } from './group';
 import type {
   BlockMeasureCache,
   CanvasStore,
@@ -19,7 +21,6 @@ import type {
   RegionView,
   SourcedBlock,
   StreamRegionState,
-  WorkUnit,
 } from './host';
 import {
   collapseToolGroups,
@@ -27,13 +28,10 @@ import {
   createInkCache,
   defaultRegionFor,
   EMPTY_REGION_CONTENT_H,
-  groupWorkUnits,
   layoutRegion,
   measureBlockHeightCached,
   measureFolioHeadHeight,
   REGION_CONTENT_MARGIN,
-  rhythmAssign,
-  sealedMessageIdsOf,
   translateMessagesCached,
   USER_SHRINK_MIN_W,
   writingBlockIdOf,

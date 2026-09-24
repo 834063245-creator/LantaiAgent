@@ -44,7 +44,6 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 }));
 
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
-import type { WorkUnit } from '../src/paper/group';
 import { createInkCache } from '../src/paper/ink';
 import {
   PaperDockContext,
@@ -54,6 +53,7 @@ import {
 } from '../src/paper/overlay-context';
 import type { RegionView } from '../src/paper/region-view';
 import { STAGE_HIT_H, TocStrip } from '../src/plugins/builtin/compose-dock/TocStrip';
+import type { WorkUnit } from '../src/plugins/builtin/paper-shell/group';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 
 /** 纸壳样式（目次带规则所在）：CSS 契约断言用（同 paper-visual-decisions 口径）。 */

@@ -139,7 +139,7 @@ import {
   zoomAt,
 } from '../../paper/canvas-math';
 import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
-import { groupWorkUnits, leadOf, rhythmAssign, sealedMessageIdsOf, unitMembership } from '../../paper/group';
+
 import {
   createInkCache,
   INK_FAIL,
@@ -396,11 +396,6 @@ const faceDeps = {
   defaultFolded,
   foldLabel,
   isFoldable,
-  groupWorkUnits,
-  leadOf,
-  rhythmAssign,
-  sealedMessageIdsOf,
-  unitMembership,
   createInkCache,
   inkBarColorOf,
   inkColorOf,

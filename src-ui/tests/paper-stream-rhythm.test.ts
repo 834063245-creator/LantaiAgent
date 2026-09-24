@@ -17,7 +17,8 @@ import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-mod
 import { ANCHOR, gapAbove, layoutFlow, type RhythmClass, rhythmGap } from '../src/paper/canvas-math';
 import { defaultFolded } from '../src/paper/fold';
 import { classifyTool } from '../src/paper/grammar';
-import type { WorkUnit } from '../src/paper/group';
+import { collapseToolGroups, translateMessages } from '../src/paper/translate';
+import type { WorkUnit } from '../src/plugins/builtin/paper-shell/group';
 import {
   groupWorkUnits,
   isErrorishBlock,
@@ -25,8 +26,7 @@ import {
   rhythmAssign,
   sealedMessageIdsOf,
   unitMembership,
-} from '../src/paper/group';
-import { collapseToolGroups, translateMessages } from '../src/paper/translate';
+} from '../src/plugins/builtin/paper-shell/group';
 import { visibleFlowWindow } from '../src/plugins/builtin/paper-shell/virtualize';
 import type { AssistantMessage, ChatMessage, ToolCallPart, UserMessage } from '../src/ui/message-model';
 

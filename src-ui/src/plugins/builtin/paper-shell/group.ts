@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// paper/group — 工作单元封套 pass（stream-rhythm 刀1：docs/plans/stream-rhythm-plan.md §2）。
+// paper-shell/group — 工作单元封套 pass（**批 9c-3 归家**：原 paper/group.ts 整件移入产物包；
+// 形状面 UnitKind / WorkUnit 上收内核 paper/group-contract.ts——内核 region-view 与
+// compose-dock 的阶段锚派生都用它）（stream-rhythm 刀1：docs/plans/stream-rhythm-plan.md §2）。
 //
 // 版式语法表的执行面：translate 产出的块序列 → 工作单元（WorkUnit[]）。
 // 单元 = 一次具有内在关系的 Agent 工作行为（原方案 §二第二层），是节奏渲染
@@ -26,25 +28,12 @@
 //   terminal   墓碑——turn-error（回合终止失败，贴回合尾）
 //   artifact   产物——未知 / 资产 kind（开放面兜底，不猜语义）
 
-import type { ChatMessage } from '../ui/message-model';
-import type { SourcedBlock } from './block-model';
-import { type RhythmFamily, rhythmFamilyOfBlock } from './grammar';
+import type { SourcedBlock } from '../../../paper/block-model';
+import { type RhythmFamily, rhythmFamilyOfBlock } from '../../../paper/grammar';
+import type { UnitKind, WorkUnit } from '../../../paper/group-contract';
+import type { ChatMessage } from '../../../ui/message-model';
 
-export type UnitKind = 'user' | 'work' | 'recovery' | 'narrative' | 'anchor' | 'annotation' | 'terminal' | 'artifact';
-
-export interface WorkUnit {
-  /** 单元 id：锚首成员块 id（`u:{blockId}`）——前缀扩展下 id 稳定。 */
-  id: string;
-  kind: UnitKind;
-  /** 成员块 id（流序）；封口后只增不减。 */
-  memberIds: string[];
-  /** 封口 = 全部成员来自非 streaming 消息（回顾性稳定的边界）。 */
-  sealed: boolean;
-  /** 节律族（刀5 A）：work/recovery 单元已表态的工具族（读/写/验证/落款）；
-   *  未表态（null）= 开放单元尚未被已知族认领——族不切节奏（other 兜底延伸）。
-   *  verify 工作单元的链毕「阶段完成」锚（刀5 C）以此判据。 */
-  family?: RhythmFamily | null;
-}
+export type { UnitKind, WorkUnit };
 
 /** 消息是否已封口（user/notice 到达即整条封口；assistant 待 status 离开 streaming）。 */
 export function sealedMessageIdsOf(msgs: readonly ChatMessage[]): ReadonlySet<string> {

@@ -32,7 +32,10 @@ const PANEL_TSX = readdirSync(join(SRC, 'plugins', 'builtin', 'paper-shell'))
 const ICONS_TS = readFileSync(join(SRC, 'ui', 'icons.ts'), 'utf8');
 const MEASURE_TS = readFileSync(join(SRC, 'paper', 'measure.ts'), 'utf8');
 const CANVAS_MATH_TS = readFileSync(join(SRC, 'paper', 'canvas-math.ts'), 'utf8');
-const GROUP_TS = readFileSync(join(SRC, 'paper', 'group.ts'), 'utf8');
+// 批 9c-3：group 实现随 paper-shell 产物（形状契约留内核）——断言点随迁产物源文件。
+const GROUP_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'group.ts'), 'utf8');
+// 批 9c-3：WorkUnit 形状（含节律族字段）上收内核契约——形状断言查契约文件。
+const GROUP_CONTRACT_TS = readFileSync(join(SRC, 'paper', 'group-contract.ts'), 'utf8');
 const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8');
 const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
 /** 互斥两态的两块板（2026-09-21 侧栏纸面批：板面纹理三个消费面同源） */
@@ -879,7 +882,7 @@ describe('程文输出换代（2026-09-19——「输出栏一点没处理，跟
 describe('会话流族节奏（stream-rhythm 刀5，2026-09-03——族边界切单元后真机判「瀑布未破」的根治批）', () => {
   it('族边界切单元在册：group 消费节律族 + translate 按族切组 + grammar 节律族面', () => {
     expect(GROUP_TS).toContain('族边界（刀5 A）');
-    expect(GROUP_TS).toContain('family?: RhythmFamily | null');
+    expect(GROUP_CONTRACT_TS).toContain('family?: RhythmFamily | null');
     expect(TRANSLATE_TS).toContain('族变断组');
     expect(GRAMMAR_TS).toContain('rhythmFamilyOfBlock');
   });
