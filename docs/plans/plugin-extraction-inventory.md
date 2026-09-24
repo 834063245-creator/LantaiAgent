@@ -453,6 +453,17 @@ manifest.json —— 包内合计 30～110 行。
    （清单四件 + `preset-authoring.ts`，搬完两处一起销）。
 3. **构建期断言**——`src-ui/tests/product-source-not-in-bundle.test.ts`（dist 在场才跑）：
    产物体内无产物源码独有串（探针从产物源码派生）+ 壳/产物两侧 CSS 面无未覆盖选择器。见 §0.1。
+4. **宿主面偏斜保险丝 a 的覆盖面**（2026-09-24 批 4c-3 补）——`scripts/lib/face-keys.mjs`
+   从产物 `entry.js` 反查 `mods.faceDeps` 的属性访问，构建期写进 `face.json`，装载器 import 前
+   对拍运行时 faceDeps（缺键拒载）+ 指纹（`hostApi`）。**实测病灶**：锚点形态是
+   `<标识符>.mods.faceDeps`，而 22/30 个产物的 `host.aliased.ts` 写成单行
+   `const impl = requireHost().mods.faceDeps;` ⇒ 提取为空 ⇒ 不写 `face.json` ⇒ 装载器按
+   「零需求」放行——**保险丝静默失效**（含批 2a/3a/4a/4b/4c/5a 亲手归家的全部产物，
+   以及 `sessions-builtin` 等先例）。修法 = 该行拆两步（`const host = requireHost();` +
+   `const impl = host.mods.faceDeps;`，esbuild 内联后正好命中锚点），22 个文件一次改完；
+   覆盖 5 → **27/30**（余 3 个真实无宿主面：`fs-builtin` / `shell-builtin` / `renderers`）。
+   守卫 = `tests/face-keys.test.ts` 第二段（dist 在场才跑）：引用 faceDeps 的产物必须有
+   `face.json`、`faceDeps` 非空、`hostApi` 指纹 = 当前宿主面基线。
 
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
@@ -570,6 +581,10 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
 | 新增通道 / 开放面契约变更 | 有成本、改契约面 | **用户点头**（Agent 出方案与代价） |
 
 §4 的 15 条按此路由收敛后，**真需要用户拍板的只有 8 条**。每条的证据已实地核过（2026-09-24）：
+
+> **✅ 用户已拍板（2026-09-24）：8 条全按推荐**——§4-1 **A** · §4-5 **A** · §4-6 **B** · §4-7 **B** ·
+> §4-9 **B** · §4-11 **B（暂）** · §4-12 **B** · §4-13 **A**。下表「推荐」列即**已生效裁定**，
+> 施工时不再逐条复议；账目登记类（§4-6 / §4-7 / §4-12）随批 6 的账本更新一并落账。
 
 | §4# | 问题 | 关键证据（已实测） | 推荐 | 代价 |
 |---|---|---|---|---|

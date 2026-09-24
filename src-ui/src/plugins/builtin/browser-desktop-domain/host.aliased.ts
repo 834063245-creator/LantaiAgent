@@ -13,7 +13,8 @@ function requireHost(): PluginHostBridge {
   if (!host) throw new Error('[browser-desktop-domain/host.aliased] 宿主桥不可用——内置插件必须在兰台宿主内装载');
   return host;
 }
-const impl = requireHost().mods.faceDeps as unknown as typeof import('./host');
+const host = requireHost();
+const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const typedRpc = impl.typedRpc;
 export const errText = impl.errText;

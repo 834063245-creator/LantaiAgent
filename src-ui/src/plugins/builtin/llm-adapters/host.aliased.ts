@@ -20,7 +20,8 @@ function requireHost(): PluginHostBridge {
   return host;
 }
 
-const impl = requireHost().mods.faceDeps as unknown as typeof import('./host');
+const host = requireHost();
+const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const PROVIDER_PROTOCOL_DEFAULTS = impl.PROVIDER_PROTOCOL_DEFAULTS;
 export const ApiError = impl.ApiError;
