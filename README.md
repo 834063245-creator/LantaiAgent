@@ -75,7 +75,8 @@
   <img src="assets/screenshots/hero-blocks.jpg" alt="注疏层级：来文 / 夹注 / 脚注，各得其位" />
 </p>
 
-纸底 + 矿物墨色（朱砂＝人 / 石青＝机 / 石墨＝夹注 / 墨＝正文），自托管 MiSans 可变字体单文件；版式契约见
+纸底 + 矿物墨色（朱砂＝人 / 石青＝机 / 石墨＝夹注 / 墨＝正文），自托管字体两枚（正文 MiSans 可变字体 +
+机读位 Noto Sans Mono CJK SC 等宽，均随包不依赖系统安装）；版式契约见
 [`docs/design/lantai-design-spec.md`](docs/design/lantai-design-spec.md)，视觉决定账本见
 [`docs/plans/paper-shell/taste-ledger.md`](docs/plans/paper-shell/taste-ledger.md)。
 

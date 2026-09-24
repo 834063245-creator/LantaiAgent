@@ -43,12 +43,14 @@
   --warn: #b0782e;
   --fail: #a9443f;
 
-  /* ── 字体四体（2026-09-10 三体换代：宋/楷/等宽退役，值层统一 MiSans——
+  /* ── 字体四体（2026-09-10 三体换代：宋/楷退役，值层统一 MiSans——
    * MiSans VF 经 src/app/fonts.css @font-face 装载，单文件覆盖 100-900 全字重。
+   * 2026-09-24 等宽位复原：mono 单独换回真等宽（Noto Sans Mono CJK SC，中文也等宽）。
    * 文类语义键保留：song=正文 / kai=来文手迹位 / mono=机读位，引用点按文类寻址不变）── */
   --f-song: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif; /* 正文位（原宋体） */
   --f-kai: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif; /* 手迹位（原楷书，只给人的来文） */
-  --f-mono: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif; /* 机读位（原等宽——非等宽对齐为拍板接受的代价） */
+  --f-mono:
+    "Noto Sans Mono CJK SC", "MiSans", "PingFang SC", "Microsoft YaHei", monospace; /* 机读位（2026-09-24 起真等宽；MiSans 兜缺字） */
 
   /* ── 规线三式（圆角恒 0，印刷品无圆角）──
    * 注意：三式是**整条 border 简写**（宽度+样式+颜色），只能**单独**赋给 border 系属性

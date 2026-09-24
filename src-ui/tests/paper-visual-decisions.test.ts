@@ -1181,3 +1181,42 @@ describe('查看器公共壳段面（B1）· 不裸色 + 壳件走 token', () =>
     }
   });
 });
+
+/* ═══ 机读位等宽（2026-09-24 等宽位复原批，用户拍板 B）═══
+ * 两件事同批：① 机读位换真等宽字体（中文也等宽）；② 修 `<pre><code>` 的
+ * UA 直接规则压继承（机器文本此前压根没走 var(--f-mono)）。 */
+describe('机读位字体与 pre>code 交还（2026-09-24）', () => {
+  /** tokens.css 的 --f-mono 值（去注释：注释在分号之后）。 */
+  const tokenMono = (() => {
+    const m = /--f-mono:\s*([^;]+);/.exec(TOKENS_CSS);
+    return m ? m[1].trim() : '';
+  })();
+
+  it('--f-mono 是具名等宽栈（中文也等宽），且不再是 MiSans 单栈', () => {
+    expect(tokenMono).toContain('"Noto Sans Mono CJK SC"');
+    expect(tokenMono).toContain('monospace');
+    expect(tokenMono).not.toBe('"MiSans", "PingFang SC", "Microsoft YaHei", sans-serif');
+  });
+
+  it('tokens.css --f-mono 与 type-tokens FONT_STACKS.mono **逐字同值**（测高与渲染两把尺子必须是一把）', () => {
+    const m = /mono:\s*'([^']+)'/.exec(TYPE_TOKENS_TS);
+    expect(m, 'type-tokens FONT_STACKS.mono 未找到').not.toBeNull();
+    expect(tokenMono).toBe(m?.[1]);
+  });
+
+  it('等宽字体随包自托管：@font-face + 字体文件 + OFL 副本齐备（缺件即裸奔到系统字体）', () => {
+    expect(FONTS_CSS).toContain('font-family: "Noto Sans Mono CJK SC"');
+    expect(FONTS_CSS).toContain('NotoSansMonoCJKsc-Regular.otf');
+    const dir = join(SRC, 'assets', 'fonts');
+    expect(existsSync(join(dir, 'NotoSansMonoCJKsc-Regular.otf')), '等宽字体文件缺失').toBe(true);
+    expect(existsSync(join(dir, 'LICENSE-NotoSansMonoCJK.txt')), 'OFL 授权副本缺失').toBe(true);
+  });
+
+  it('pre 里的 code 把字体交还父层（UA 对 code 有直接 font-family:monospace——直接规则压继承）', () => {
+    expect(ruleBody(HOME_CSS, 'pre code {')).toContain('font: inherit');
+    // 三个消费面都靠父层声明 var(--f-mono)（父层没声明 → code 落 UA 等宽 = 老 bug）
+    expect(ruleBody(PANEL_CSS, '.pp-md-code {')).toContain('font-family: var(--f-mono)');
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-diff pre {')).toContain('font-family: var(--f-mono)');
+    expect(ruleBody(PANEL_CSS, '.pp-viewer-code-pre code {')).toContain('font: inherit');
+  });
+});

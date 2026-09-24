@@ -111,11 +111,14 @@ describe('paper/measure', () => {
     expect(prepareMock).toHaveBeenCalledTimes(2);
   });
 
-  it('字体常量是具名栈（2026-09-10 三体换代：统一 MiSans，不用 system-ui）', () => {
+  it('字体常量是具名栈（2026-09-10 三体换代 + 2026-09-24 等宽位复原：正文 MiSans / 机读位真等宽，不用 system-ui）', () => {
     expect(PAPER_BODY_FONT).not.toContain('system-ui');
     expect(PAPER_MONO_FONT).not.toContain('ui-monospace');
     expect(PAPER_BODY_FONT).toContain('MiSans');
-    expect(PAPER_MONO_FONT).toContain('MiSans');
+    // 2026-09-24 等宽位复原（用户拍板 B：中文也要对齐）——显式规格变更，原断言
+    // 「PAPER_MONO_FONT 含 MiSans」随该决定退役，机读位改具名 CJK 等宽 + 兜底 generic
+    expect(PAPER_MONO_FONT).toContain('Noto Sans Mono CJK SC');
+    expect(PAPER_MONO_FONT).toContain('monospace');
   });
 
   it('B4 环1 钉值：来文 22px / 行高 22×1.65=36.3——测高取 CSS **用值** 36.296875（seal-deep 不变；2026-08-30 标题化：题 > 正文 17；手迹位三体换代后同 MiSans）', () => {

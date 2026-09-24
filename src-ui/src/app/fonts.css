@@ -14,3 +14,20 @@
   font-style: normal;
   font-display: swap;
 }
+
+/* Noto Sans Mono CJK SC —— 机读位等宽（2026-09-24「等宽位复原」批，用户拍板 B）：
+ * 代码 / 命令输出 / 引文（抄录·图码·脚注·程文·代码查看器）的等宽字体，思源黑体
+ * 同源的等宽设计——中文与西文同族同宽，与 MiSans 的气质不打架。
+ * 为什么不是 MiSans：「VF 单文件覆盖不了等宽对齐」正是 2026-09-10 三体换代列为
+ * 拍板接受的代价（注释原文「非等宽对齐为拍板接受的代价」）——2026-09-24 该代价翻案
+ * （用户报「这几种块的字体明显更粗糙」→ 查下去发现机器文本压根没走 MiSans，
+ * 见 foundation.css 的 `pre code` 条），补齐为中文也等宽。
+ * 只带 Regular：粗体走渲染器合成（同「MiSans 无 italic，伪斜已拍板接受」口径）。
+ * 授权：SIL OFL 1.1，副本同目录 LICENSE-NotoSansMonoCJK.txt（随包自托管，不依赖系统字体）。 */
+@font-face {
+  font-family: "Noto Sans Mono CJK SC";
+  src: url("../assets/fonts/NotoSansMonoCJKsc-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

@@ -15,11 +15,14 @@
 // 组合值，同一真源，不镜像。
 
 /* 2026-09-10 三体换代：song/kai/mono 语义键保留（PAPER_TYPE.stack 按文类
- * 寻址不变），值层统一 MiSans 栈——canvas 测量与 DOM 渲染同字体。 */
+ * 寻址不变），值层统一 MiSans 栈——canvas 测量与 DOM 渲染同字体。
+ * 2026-09-24 等宽位复原：mono 键改回真等宽（Noto Sans Mono CJK SC，中文也等宽），
+ * song/kai 仍 MiSans——**本常量须与 tokens.css 的 --f-mono 逐字同值**（canvas 测量
+ * 用这份栈、DOM 用那份；漂了就是测高与渲染两把尺子，守卫见 paper-visual-decisions）。 */
 export const FONT_STACKS = {
   song: '"MiSans", "PingFang SC", "Microsoft YaHei", sans-serif',
   kai: '"MiSans", "PingFang SC", "Microsoft YaHei", sans-serif',
-  mono: '"MiSans", "PingFang SC", "Microsoft YaHei", sans-serif',
+  mono: '"Noto Sans Mono CJK SC", "MiSans", "PingFang SC", "Microsoft YaHei", monospace',
 } as const;
 
 /** CSS 用值量化（LayoutUnit = 1/64 px，2026-09-19 夹注叠字批）。

@@ -29,25 +29,27 @@
 
 ---
 
-## 2. 字体系统（2026-09-10 三体换代拍板重锁）
+## 2. 字体系统（2026-09-10 三体换代拍板重锁；2026-09-24 机读位复原）
 
 | 角色 | 值层 | 装载 | 备注 |
 |---|---|---|---|
 | 正文位 `--f-song`（原宋体） | MiSans | `src/app/fonts.css` @font-face（`src/assets/fonts/MiSans-VF.ttf`，VF 单文件 100-900 全字重） | 原宋体/衬线正文 |
 | 手迹位 `--f-kai`（原楷书） | MiSans | 同上 | 只用于「人的」来文——文类语义保留，手写感随三体退役 |
-| 机读位 `--f-mono`（原等宽） | MiSans | 同上 | 代码/工具/编号——非等宽对齐为拍板接受的代价 |
+| 机读位 `--f-mono`（原等宽） | Noto Sans Mono CJK SC（OFL 1.1，随包自托管） | 同上 @font-face（`src/assets/fonts/NotoSansMonoCJKsc-Regular.otf`，只带 Regular——粗体走合成） | 代码/命令输出/引文——**中文也等宽**（2026-09-24 复原：09-10 的「非等宽对齐」代价翻案） |
 
-字体栈（CSS 直抄，文类语义键保留、值层统一）：
+字体栈（CSS 直抄，文类语义键保留）：
 
 ```css
 --f-song: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif;
 --f-kai:  "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif;
---f-mono: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif;
+--f-mono: "Noto Sans Mono CJK SC", "MiSans", "PingFang SC", "Microsoft YaHei", monospace;
 ```
 
 **装载**：`src/app/fonts.ts` 只 `import './fonts.css'`（本地 @font-face，打包进应用不依赖系统安装）；fontsource 四包（eb-garamond / ma-shan-zheng / ibm-plex-mono / noto-serif-sc）已卸载。
 
-> 关键纪律：**斜体走合成伪斜**（MiSans 无 italic 字形，`font-style: italic` 由渲染器合成——拍板接受）；canvas 侧字面量栈（type-tokens `FONT_STACKS`、InkLayer `LABEL_FONT_STACK`）与 tokens.css 同步改。
+> 关键纪律：**斜体走合成伪斜**（MiSans 无 italic 字形，`font-style: italic` 由渲染器合成——拍板接受）；canvas 侧字面量栈（type-tokens `FONT_STACKS`、InkLayer `LABEL_FONT_STACK`）与 tokens.css 同步改——`--f-mono` 与 `FONT_STACKS.mono` **逐字同值**由 `tests/paper-visual-decisions.test.ts` 守卫。
+>
+> **`pre > code` 纪律**（2026-09-24 补）：UA 样式表对 `<code>` 有直接规则 `font-family: monospace`，**直接规则压继承**——`<pre class="…">` 上声明的 `var(--f-mono)` 到不了真正画字的 `<code>`。故 `foundation.css` 收一条全局口径 **`pre code { font: inherit }`**；新增任何「pre 里套 code」的机器文本面照此写，别在父层声明了事。
 
 ---
 
