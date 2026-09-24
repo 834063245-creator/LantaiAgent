@@ -50,6 +50,7 @@ import { typedRpc } from '../rpc-contract';
 import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { faceDepsKeys, hostSurfaceFingerprint, pluginHostMods } from './builtin/host-modules';
+import { BUILTIN_ROSTER, builtinScopeName } from './builtin-roster';
 import { ensurePluginDataDir, type PluginDataFs, pluginDataFs } from './data-fs';
 import { completePluginTask } from './deferred';
 import { factoryProductNames, factoryProductPlugins } from './factory-products';
@@ -562,21 +563,28 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
       return;
     }
     const { disabled, granted } = await readPluginsState(fetchImpl, origin);
-    // 装载序纪律（增补四 + S5）：出厂产物按 factoryProductPlugins() 表序装载——
+    // 装载序纪律（增补四 + S5）：出厂产物按**名册 buildOrder** 装载——
     // 产物重激活的注册序必须与原 bundle 序逐位一致（S1 表序字节契约：
     // 组合解析快照 / 工具契约生成 / DeepSeek 前缀缓存都依赖贡献注册序，
     // 磁盘索引的字母序会让 assembly 面漂移）。其余用户插件按索引序随后。
+    //
+    // 序真源 = 名册（2026-09-24 收口）：旧实现取 `factoryProductPlugins()` 的表序
+    // ——那是**源码域（dev）装载面**，把它拉进生产路径会让整个 `factory-products.ts`
+    // 及其 30 个产物 import 无法被 rollup DCE（实机取证：生产 bundle 里能 grep 到
+    // `hologram/compose-dock` · `settings-panel` · `firstPartyCapabilities` 等产物独有串，
+    // 与 `docs/plugins/README.md`「exe 只留 13 内核装配台」+ `factory-products.ts` 头注
+    // 「本清单不进生产 bundle」直接矛盾）。名册本来就是序的唯一真源——
+    // `tests/builtin-roster.test.ts` 已断言「`factoryProductPlugins()` 序 == buildOrder」，
+    // 故这次换真源**不改序**（字节契约不动）。
+    const devSourceDomain = import.meta.env.DEV && !forceProductChannel;
+    const rosterOrder = BUILTIN_ROSTER.map((e) => builtinScopeName(e.dir));
     // dev 模式过滤：出厂产物已在源码域装载（BUILTIN_PLUGINS 的 DEV 分支），
     // 产物通道的磁盘副本是过期缓存——跳过防重复装载/覆盖热重载。
     // forceProductChannel=1（性能测量）：不过滤——产物通道是唯一装载面
     // （BUILTIN_PLUGINS 同步不展开源码工厂产物，形态与生产一致）。
-    const factoryNames = factoryProductNames();
-    const indexNames =
-      import.meta.env.DEV && !forceProductChannel
-        ? index.map(String).filter((n) => !factoryNames.has(n))
-        : index.map(String);
-    const factoryOrder = factoryProductPlugins().map((p) => p.name);
-    const builtinFirst = factoryOrder.filter((n) => indexNames.includes(n));
+    const factoryNames = devSourceDomain ? factoryProductNames() : null;
+    const indexNames = factoryNames ? index.map(String).filter((n) => !factoryNames.has(n)) : index.map(String);
+    const builtinFirst = rosterOrder.filter((n) => indexNames.includes(n));
     const rest = indexNames.filter((n) => !builtinFirst.includes(n));
     // 三波并行装载（2026-09-03 性能重构，保序契约不变）：
     //   波 1 并发拉全部 manifest + face（阶段 1——本地校验与拒载分支，无副作用）
