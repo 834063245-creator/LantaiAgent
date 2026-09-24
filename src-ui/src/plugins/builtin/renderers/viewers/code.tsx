@@ -17,37 +17,16 @@
 // 截断纪律（**不静默**）：宿主按 `readLines + 1` 行开窗；本件只显示前 `readLines` 行，
 // 窗口里存在下一行 ⇒ 出吸顶横幅说清「只显示前 N 行（文件更长）」。
 // （总行数在行窗口读取下不可得——要它得整份读进 IPC，那是白屏先例 INVARIANTS #11 的形态。）
+//
+// 批 8c（2026-09-25）：hljs 实例与语言补注册表收进同目录 `./hljs`（与 ipynb 查看器共用一份）；
+// 语言表合并了原先两份内联副本的并集（加语言 = 改 `./hljs` 的 EXTRA_LANGS 一处）。
 
-import hljs from 'highlight.js/lib/common';
-import hljsClojure from 'highlight.js/lib/languages/clojure';
-import hljsDart from 'highlight.js/lib/languages/dart';
-import hljsDos from 'highlight.js/lib/languages/dos';
-import hljsGradle from 'highlight.js/lib/languages/gradle';
-import hljsHaskell from 'highlight.js/lib/languages/haskell';
-import hljsJulia from 'highlight.js/lib/languages/julia';
-import hljsLatex from 'highlight.js/lib/languages/latex';
-import hljsPowershell from 'highlight.js/lib/languages/powershell';
-import hljsProtobuf from 'highlight.js/lib/languages/protobuf';
-import hljsScala from 'highlight.js/lib/languages/scala';
 import { VIEWER_CODE_EXTS } from '../../../../paper/viewer-exts';
 import { rendererHooks } from '../renderer-host';
 import type { ViewerDef, ViewerProps } from '../viewer-registry';
+import { hljs } from './hljs';
 
 const { useMemo } = rendererHooks;
-
-/** 补注册（模块装载期一次；hljs 对已注册语言重复 register 是覆盖，幂等放行）。
- *  `lib/common` 不含这几个本项目认领的语言；流内围栏码的补注册表在
- *  `app/paper/builtin-renderers.tsx`（应用域，另一份运行时），语义同源、各自内联。 */
-hljs.registerLanguage('clojure', hljsClojure);
-hljs.registerLanguage('dart', hljsDart);
-hljs.registerLanguage('dos', hljsDos);
-hljs.registerLanguage('gradle', hljsGradle);
-hljs.registerLanguage('haskell', hljsHaskell);
-hljs.registerLanguage('julia', hljsJulia);
-hljs.registerLanguage('latex', hljsLatex);
-hljs.registerLanguage('powershell', hljsPowershell);
-hljs.registerLanguage('protobuf', hljsProtobuf);
-hljs.registerLanguage('scala', hljsScala);
 
 /** ext → hljs 语言 id（缺省/不识别 → 原文 mono：`hljs.getLanguage` 判据，与流内围栏码同款）。
  *  `html/htm` 走 `xml`（hljs 的 xml 注册含 html 别名）；`vue/svelte/txt/log` 无语言 ⇒ 原文。 */

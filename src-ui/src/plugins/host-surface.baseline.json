@@ -1,5 +1,5 @@
 {
-  "fingerprint": "82f98df2",
+  "fingerprint": "15720716",
   "keys": [
     "ANCHOR",
     "Agent",
@@ -55,6 +55,7 @@
     "activationSkipped",
     "activeDynamicRunner",
     "activeFsProviders",
+    "activeMarkdownBody",
     "activeOverlayContributions",
     "activeShellProviders",
     "activeSpace",

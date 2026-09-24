@@ -65,6 +65,17 @@ describe('extractFaceKeys：产物宿主面键集提取', () => {
     `;
     expect(extractFaceKeys(src)).toEqual(['layoutRegion']);
   });
+
+  it('esbuild 模块路径注释与声明名同名 → 不误收（批 8c 实测：echarts/lib/core/impl.js 被收成键 "js"）', () => {
+    const src = `
+      var host = requireHost();
+      var impl = host.mods.faceDeps;
+      function use() { return impl.activeMarkdownBody?.() ?? null; }
+      // src-ui/node_modules/echarts/lib/core/impl.js
+      var implsStore = {};
+    `;
+    expect(extractFaceKeys(src)).toEqual(['activeMarkdownBody']);
+  });
 });
 
 // ── 磁盘产物覆盖面（dist-plugins 在场才跑，仿 face-deps-seal 第二段范式）──

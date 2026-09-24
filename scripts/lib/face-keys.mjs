@@ -17,15 +17,28 @@
 /**
  * 从产物 entry.js 源码提取宿主面键集。
  * 无 faceDeps 面（如 renderers 走 renderer-host）返回空数组——零需求。
+ *
+ * 批 8c（2026-09-25）修一处**误收**：esbuild 会在产物里插模块路径注释
+ * （`// src-ui/node_modules/echarts/lib/core/impl.js`），与声明名同名的路径会被属性访问
+ * 正则命中（实测：renderers 产物把 `js` 误收成宿主面键 ⇒ face.json 要求一个运行时
+ * 不存在的键 ⇒ 装载器按缺键拒载整面）。修法 = 扫描前剔除**路径注释行**；
+ * 不做通用注释剥离（字符串里的 `//`（URL）会被误切，得不偿失）。
  * @param {string} entrySrc 产物 entry.js 全文
  * @returns {string[]} 排序去重后的键名
  */
 export function extractFaceKeys(entrySrc) {
-  const decl = /var\s+([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\.mods\.faceDeps/.exec(entrySrc);
+  const stripped = entrySrc
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      return !(t.startsWith('//') && /\.(js|mjs|cjs|ts|tsx|jsx|css)\b/.test(t));
+    })
+    .join('\n');
+  const decl = /var\s+([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\.mods\.faceDeps/.exec(stripped);
   if (!decl) return [];
   const implName = decl[1];
   const use = new RegExp('\\b' + implName + '\\.([A-Za-z_$][\\w$]*)', 'g');
   const keys = new Set();
-  for (const m of entrySrc.matchAll(use)) keys.add(m[1]);
+  for (const m of stripped.matchAll(use)) keys.add(m[1]);
   return [...keys].sort();
 }

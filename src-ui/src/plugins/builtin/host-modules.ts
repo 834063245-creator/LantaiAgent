@@ -155,6 +155,7 @@ import {
   lodFarActive,
   lodTierOf,
 } from '../../paper/ink';
+import { activeMarkdownBody } from '../../paper/markdown-body-seam';
 import {
   clearPaperMeasureCache,
   createBlockMeasureCache,
@@ -301,8 +302,14 @@ import { iconHtml } from '../../ui/icons';
  *  host.ts 加出口漏注册时 tsc/测试全绿（两域测试都直连真身）、exe 里才炸
  *  （产物域 impl.X = undefined → TypeError → 整树卸载）。satisfies 四面
  *  host 形状后，漏注册在本文件保存即 tsc 红——失败从「用户 exe 运行时」
- *  搬回「写代码时」。 */
-type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> &
+ *  搬回「写代码时」。
+ *
+ *  批 8c（2026-09-25）补一条：封蜡是**下界**（faceDeps ⊇ 各产物 host.ts 的出口），
+ *  尾部 `Record<string, unknown>` 允许**平台级冗余键**——那些不属于任何产物 host.ts、
+ *  但产物域确需从 faceDeps 取的真实例（先例：内核登记表读面 `activeMarkdownBody`，
+ *  由 renderers 产物的 `renderer-host.aliased.ts` 取用，而该产物的桥不走 faceDeps）。 */
+type FaceBridgeSeal = Record<string, unknown> &
+  Record<keyof typeof import('./canvas-nav/host'), unknown> &
   Record<keyof typeof import('./compose-dock/host'), unknown> &
   Record<keyof typeof import('./paper-minimap/host'), unknown> &
   Record<keyof typeof import('./paper-shell/host'), unknown> &
@@ -684,6 +691,10 @@ const faceDeps = {
   MermaidBlock,
   Overlay,
   readAttachmentBase64,
+  // 批 8c 归家：ipynb / markdown-doc 查看器撤 heavy 内联进 renderers 包 ⇒ 桥内核登记表读面
+  // （markdown 体渲染由 paper-renderers 产物登记；产物域不得相对 import 那个叶模块——会被
+  //  esbuild 内联成另一份实例，读不到内核那份登记）
+  activeMarkdownBody,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

@@ -47,6 +47,9 @@ const BRIDGE = {
   react: React, // 产物域取用的就是宿主 React 本体（loader.ts 同款注入）
   Overlay: () => null,
   rpc: rpcMock,
+  // 批 8c：产品 faces 走到 faceDeps（markdown 体渲染读面）——真实 loader 也注入这一项
+  // （installPluginHostBridge 的 `mods: pluginHostMods()`）；本桩给空表（读面缺席 = null 分支）。
+  mods: { faceDeps: {} },
 };
 (globalThis as { __lantai_plugin_host__?: unknown }).__lantai_plugin_host__ = BRIDGE;
 afterAll(() => {

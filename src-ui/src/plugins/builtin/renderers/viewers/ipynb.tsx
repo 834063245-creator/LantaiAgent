@@ -29,12 +29,14 @@
 // 与字节数）· markdown 单元格的 attachments 图片 · 单元格折叠与执行（无写入口）·
 // 超过行窗口的笔记本（整份读的代价见 INVARIANTS #11）。
 
-import hljs from 'highlight.js/lib/common';
 import * as React from 'react';
-import { createBlock } from '../../../paper/block-model';
-import { activeMarkdownBody } from '../../../paper/markdown-body-seam';
-import { sanitizePayloadText } from '../../../paper/tool-text';
-import type { ViewerProps } from '../../../paper/viewer-contract';
+import { createBlock } from '../../../../paper/block-model';
+import { sanitizePayloadText } from '../../../../paper/tool-text';
+import type { ViewerProps } from '../../../../paper/viewer-contract';
+import { VIEWER_IPYNB_EXTS } from '../../../../paper/viewer-exts';
+import { rendererActiveMarkdownBody } from '../renderer-host';
+import type { ViewerDef } from '../viewer-registry';
+import { hljs } from './hljs';
 import './ipynb.css';
 
 /** 行窗口（与产物侧注册面 `readLines` **同值**——宿主多读 1 行作「文件更长」判据）。 */
@@ -354,13 +356,13 @@ export function parseNotebook(text: string): IpyParseResult {
 
 /* ── 复用面：应用侧 markdown 渲染器 ──────────────────────────────── */
 
-/** `activeMarkdownBody()` 是**运行期读面**（批 8b：实现由产物 `paper-renderers` 在 apply 期
+/** `rendererActiveMarkdownBody()` 是**运行期读面**（批 8c：实现由产物 `paper-renderers` 在 apply 期
  *  登记进内核登记表 `paper/markdown-body-seam.ts`）——故在渲染期取，不做模块级快照。 */
 
 /** markdown 单元格：构造一个 viewer 自己的 markdown 块，交给应用侧渲染器（零第二份解析）。 */
 function MarkdownCell({ text }: { text: string }) {
   const block = React.useMemo(() => createBlock('markdown', { text }, { messageId: 'viewer', part: null }), [text]);
-  const MarkdownView = activeMarkdownBody();
+  const MarkdownView = rendererActiveMarkdownBody();
   if (!MarkdownView) {
     return (
       <div className="pp-viewer-ipynb-missing">
@@ -515,3 +517,14 @@ export default function IpyNbViewer({ label, ext, filePath, bytes, mode }: Viewe
     </div>
   );
 }
+
+/** 登记（批 8c：撤 heavy——组件本体在同文件，markdown 单元格经宿主桥取纸面渲染器）。 */
+export const ipynbViewer: ViewerDef = {
+  id: 'ipynb',
+  exts: VIEWER_IPYNB_EXTS,
+  needsBytes: true,
+  bytesKind: 'text',
+  readLines: IPYNB_LINE_CAP,
+  maxBytes: 8 * 1024 * 1024,
+  component: IpyNbViewer,
+};

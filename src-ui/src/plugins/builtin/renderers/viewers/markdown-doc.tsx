@@ -28,9 +28,11 @@
 // 的标题不进树，仍在正文里照常渲染）· 无编辑入口（只读查看）。
 
 import * as React from 'react';
-import { createBlock } from '../../../paper/block-model';
-import { activeMarkdownBody } from '../../../paper/markdown-body-seam';
-import type { ViewerProps } from '../../../paper/viewer-contract';
+import { createBlock } from '../../../../paper/block-model';
+import type { ViewerProps } from '../../../../paper/viewer-contract';
+import { VIEWER_MARKDOWN_EXTS } from '../../../../paper/viewer-exts';
+import { rendererActiveMarkdownBody } from '../renderer-host';
+import type { ViewerDef } from '../viewer-registry';
 import './markdown-doc.css';
 
 /** 窄容器阈值（容器宽度 < 此值 ⇒ 标题树折叠为一行按钮）。 */
@@ -127,7 +129,7 @@ export function outlineOf(sections: readonly MdDocSection[]): MdDocHeading[] {
   return out;
 }
 
-/** `activeMarkdownBody()` 是**运行期读面**（批 8b：实现由产物 `paper-renderers` 在 apply 期
+/** `rendererActiveMarkdownBody()` 是**运行期读面**（批 8c：实现由产物 `paper-renderers` 在 apply 期
  *  登记进内核登记表 `paper/markdown-body-seam.ts`）——故在渲染期取，不做模块级快照。 */
 
 /** 正文一段：构造 viewer 自己的 markdown 块，交给应用侧渲染器（零第二份解析）。 */
@@ -141,7 +143,7 @@ function MdDocSectionView({
   sectionRef: (el: HTMLElement | null) => void;
 }) {
   const block = React.useMemo(() => createBlock('markdown', { text }, { messageId: 'viewer', part: null }), [text]);
-  const MarkdownView = activeMarkdownBody();
+  const MarkdownView = rendererActiveMarkdownBody();
   return (
     <section ref={sectionRef} className={`pp-viewer-mddoc-section pp-viewer-mddoc-section--lv${level}`}>
       {MarkdownView ? (
@@ -262,3 +264,14 @@ export default function MarkdownDocViewer({ label, ext, filePath, bytes, mode }:
     </div>
   );
 }
+
+/** 登记（批 8c：撤 heavy——组件本体在同文件，正文经宿主桥取纸面 markdown 渲染器）。 */
+export const markdownDocViewer: ViewerDef = {
+  id: 'markdown-doc',
+  exts: VIEWER_MARKDOWN_EXTS,
+  needsBytes: true,
+  bytesKind: 'text',
+  readLines: MDDOC_LINE_CAP,
+  maxBytes: 4 * 1024 * 1024,
+  component: MarkdownDocViewer,
+};

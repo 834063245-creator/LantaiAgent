@@ -44,6 +44,8 @@ interface PluginHostBridge {
   rpc: (method: string, params: Record<string, unknown>) => Promise<unknown>;
   /** 重依赖查看器取件（P2）：宿主桥注入 `loadHeavyViewer`（loader.ts）。 */
   loadViewer: (id: string) => Promise<ComponentType<{ mode: string } & Record<string, unknown>>>;
+  /** 宿主面真实例表（faceDeps）——批 8c 起 markdown 体渲染读面从这里取。 */
+  mods: { faceDeps: Record<string, unknown> };
 }
 
 function requireHost(): PluginHostBridge {
@@ -58,6 +60,10 @@ function requireHost(): PluginHostBridge {
 }
 
 const host = requireHost();
+
+/** 宿主面键取用（面键提取器锚定 `var <名> = <桥>.mods.faceDeps` 声明，故**模块顶层**取值；
+ *  批 8c 起本产物有 faceDeps 依赖 ⇒ 构建期写 face.json 保险丝 a）。 */
+const impl = host.mods.faceDeps as unknown as { activeMarkdownBody?: () => ComponentType<{ block: never }> | null };
 
 /** React 全量（组件构造面——esbuild define 产物域用到的元素类型不在此受限）。 */
 export const rendererReact = host.react;
@@ -81,6 +87,12 @@ export function rendererRpc(method: string, params: Record<string, unknown>): Pr
 /** 重依赖查看器取件（P2）：本体在应用 bundle，产物域经宿主桥按 id 取（同 rendererRpc 纪律）。 */
 export function rendererLoadViewer(id: string): Promise<ComponentType<never>> {
   return host.loadViewer(id) as unknown as Promise<ComponentType<never>>;
+}
+
+/** 纸面 markdown 体渲染取用（批 8c）：从宿主桥 mods.faceDeps 取**内核**登记表的读面
+ *  （产物域若相对 import 那个模块会被 esbuild 内联成另一份实例，读不到内核的登记）。 */
+export function rendererActiveMarkdownBody(): ComponentType<{ block: never }> | null {
+  return impl.activeMarkdownBody?.() ?? null;
 }
 
 // ── esbuild automatic JSX 注入面（--jsx=automatic --jsx-import-source=./renderer-host）──

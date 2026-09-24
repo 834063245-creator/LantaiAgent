@@ -14,7 +14,7 @@
 //   · 窄容器判据 = **容器宽度**（`clientWidth < 640`）。jsdom 无 ResizeObserver 且
 //     `clientWidth` 恒 0 ⇒ 默认走宽档；窄档用 `Element.prototype.clientWidth` 的
 //     只读桩喂 400 触发（用完即还原）。
-//   · 宿主路径走真取件：临时 def 声明 `heavy:'markdown-doc'`，宿主桥 `loadViewer` 从
+//   · 宿主路径走真装配：临时 def **直挂组件**（批 8c 撤 heavy——组件本体已随 renderers 产物），
 //     `app/paper/viewers/`（目录即白名单）取到本件，字节经 `fs_cap read` 行窗口来。
 //
 // 未覆盖（不伪造）：ResizeObserver 的**运行时**收放（jsdom 无 RO，只测首帧判据与折叠行为）、
@@ -23,14 +23,7 @@
 import { act, type ComponentType, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { heavyViewerIds, loadHeavyViewer } from '../src/app/paper/viewers';
-import MarkdownDocViewer, {
-  MDDOC_LINE_CAP,
-  MDDOC_NARROW_PX,
-  outlineOf,
-  splitMarkdownSections,
-  windowedText,
-} from '../src/app/paper/viewers/markdown-doc';
+import { heavyViewerIds } from '../src/app/paper/viewers';
 import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
@@ -43,7 +36,14 @@ import {
   type ViewerProps,
   viewerRegistry,
 } from '../src/plugins/builtin/renderers/viewer-registry';
-import { markdownDocViewer } from '../src/plugins/builtin/renderers/viewers/markdown-doc';
+import MarkdownDocViewer, {
+  MDDOC_LINE_CAP,
+  MDDOC_NARROW_PX,
+  markdownDocViewer,
+  outlineOf,
+  splitMarkdownSections,
+  windowedText,
+} from '../src/plugins/builtin/renderers/viewers/markdown-doc';
 import { typedRpc } from '../src/rpc-contract';
 
 vi.mock('../src/rpc-contract', () => ({
@@ -179,18 +179,18 @@ function stubContainerWidth(width: number): () => void {
 /* ── ① 装载面（认领 / 取件键 / 读取形态） ─────────────────────────── */
 
 describe('Markdown 独立查看器 · 装载面（P3 · B14）', () => {
-  it('default 导出 = 取件键 `markdown-doc`：目录即白名单，`loadHeavyViewer` 取到的就是它', async () => {
+  it('default 导出 = 组件本体（批 8c 撤 heavy：不再走应用 bundle 取件）', () => {
     expect(typeof MarkdownDocViewer).toBe('function');
-    expect(heavyViewerIds()).toContain('markdown-doc');
-    expect(await loadHeavyViewer('markdown-doc')).toBe(MarkdownDocViewer);
+    // 撤 heavy 的机器判据：白名单里不再有它
+    expect(heavyViewerIds()).not.toContain('markdown-doc');
   });
 
-  it('认领表 = 宿主层分类表；产物侧 def 声明 heavy 取件键 + 文本行窗口', () => {
+  it('认领表 = 宿主层分类表；产物侧 def 直挂组件 + 文本行窗口', () => {
     expect([...VIEWER_MARKDOWN_EXTS]).toEqual(['md']);
     expect(viewerClassOf('md')).toBe('markdown-doc');
     expect(markdownDocViewer.id).toBe('markdown-doc');
-    expect(markdownDocViewer.heavy).toBe('markdown-doc');
-    expect(markdownDocViewer.component).toBeUndefined();
+    expect(markdownDocViewer.heavy).toBeUndefined();
+    expect(markdownDocViewer.component).toBe(MarkdownDocViewer);
     expect(markdownDocViewer.bytesKind).toBe('text');
     expect(markdownDocViewer.readLines).toBeGreaterThan(0);
   });
@@ -369,7 +369,7 @@ describe('Markdown 独立查看器 · 失败面（错误不静默）', () => {
   });
 });
 
-/* ── ⑦ 宿主路径（heavy 取件 + 行窗口读取） ───────────────────────── */
+/* ── ⑦ 宿主路径（产物内直挂 + 行窗口读取） ───────────────────────── */
 
 /** 起组合服务 + 装载出厂渲染器行（`components.tsx` 模块装载期注册出厂查看器表）。 */
 async function withHostSurface(fn: () => void | Promise<void>): Promise<void> {
@@ -406,7 +406,7 @@ describe('Markdown 独立查看器 · 宿主路径（P3 · B14）', () => {
       needsBytes: true,
       bytesKind: 'text',
       readLines: 8000,
-      heavy: 'markdown-doc',
+      component: MarkdownDocViewer,
     };
     const dispose = viewerRegistry.register(temp);
     vi.mocked(typedRpc).mockResolvedValue(JSON.stringify({ path: 'D:/docs/a.zzmd', content: DOC }));

@@ -11,8 +11,8 @@
 //   · hljs 是**真高亮**（断言 hljs-* token span 存在，非原文纯文本）；
 //   · 失败面逐条走真解析（坏 JSON / 非数组 cells / 行窗口满 / 空文件），每条都断言
 //     **可读错误行**且**没有 JSON 兜底**（`.pp-json` 不存在）；
-//   · 宿主路径走真取件：临时 def 声明 `heavy:'ipynb'`，宿主桥 `loadViewer` 从
-//     `app/paper/viewers/`（目录即白名单）取到本件，字节经 `fs_cap read` 行窗口来。
+//   · 宿主路径走真装配：临时 def **直挂组件**（批 8c 撤 heavy——组件本体已随 renderers 产物），
+//     字节经 `fs_cap read` 行窗口来；白名单不再含 `ipynb`（撤 heavy 的机器判据）。
 //
 // 未覆盖（要真笔记本才有结论，本文件不伪造）：widget 运行时（无依赖，只出「不渲染」说明）、
 // 图片内联（只报 MIME 与字节数，不断言像素）、超 6000 行大笔记本（只钉「不解析 + 明说」）。
@@ -20,8 +20,7 @@
 import { act, type ComponentType, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { heavyViewerIds, loadHeavyViewer } from '../src/app/paper/viewers';
-import IpyNbViewer, { base64Bytes, IPYNB_LINE_CAP, parseNotebook } from '../src/app/paper/viewers/ipynb';
+import { heavyViewerIds } from '../src/app/paper/viewers';
 import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
@@ -34,7 +33,12 @@ import {
   type ViewerProps,
   viewerRegistry,
 } from '../src/plugins/builtin/renderers/viewer-registry';
-import { ipynbViewer } from '../src/plugins/builtin/renderers/viewers/ipynb';
+import IpyNbViewer, {
+  base64Bytes,
+  IPYNB_LINE_CAP,
+  ipynbViewer,
+  parseNotebook,
+} from '../src/plugins/builtin/renderers/viewers/ipynb';
 import { typedRpc } from '../src/rpc-contract';
 
 vi.mock('../src/rpc-contract', () => ({
@@ -160,18 +164,18 @@ function textsOf(selector: string): string[] {
 /* ── ① 装载面（认领 / 取件键 / 读取形态） ─────────────────────────── */
 
 describe('笔记本查看器 · 装载面（P3 · B11）', () => {
-  it('default 导出 = 取件键 `ipynb`：目录即白名单，`loadHeavyViewer` 取到的就是它', async () => {
+  it('default 导出 = 组件本体（批 8c 撤 heavy：不再走应用 bundle 取件）', () => {
     expect(typeof IpyNbViewer).toBe('function');
-    expect(heavyViewerIds()).toContain('ipynb');
-    expect(await loadHeavyViewer('ipynb')).toBe(IpyNbViewer);
+    // 撤 heavy 的机器判据：白名单里不再有它，取件链对它不再是必经之路
+    expect(heavyViewerIds()).not.toContain('ipynb');
   });
 
-  it('认领表 = 宿主层分类表；产物侧 def 声明 heavy 取件键 + 文本行窗口', () => {
+  it('认领表 = 宿主层分类表；产物侧 def 直挂组件 + 文本行窗口', () => {
     expect([...VIEWER_IPYNB_EXTS]).toEqual(['ipynb']);
     expect(viewerClassOf('ipynb')).toBe('ipynb');
     expect(ipynbViewer.id).toBe('ipynb');
-    expect(ipynbViewer.heavy).toBe('ipynb');
-    expect(ipynbViewer.component).toBeUndefined();
+    expect(ipynbViewer.heavy).toBeUndefined();
+    expect(ipynbViewer.component).toBe(IpyNbViewer);
     expect(ipynbViewer.needsBytes).toBe(true);
     expect(ipynbViewer.bytesKind).toBe('text');
     expect(ipynbViewer.readLines).toBe(IPYNB_LINE_CAP); // 行窗口与查看器同值（宿主多读 1 行作判据）
@@ -353,7 +357,7 @@ describe('笔记本查看器 · 失败面（错误不静默，不 JSON 兜底）
   });
 });
 
-/* ── ⑤ 宿主路径（heavy 取件 + 行窗口读取） ───────────────────────── */
+/* ── ⑤ 宿主路径（产物内直挂 + 行窗口读取） ───────────────────────── */
 
 /** 起组合服务 + 装载出厂渲染器行（`components.tsx` 模块装载期注册出厂查看器表）。 */
 async function withHostSurface(fn: () => void | Promise<void>): Promise<void> {
@@ -390,7 +394,7 @@ describe('笔记本查看器 · 宿主路径（P3 · B11）', () => {
       needsBytes: true,
       bytesKind: 'text',
       readLines: IPYNB_LINE_CAP,
-      heavy: 'ipynb',
+      component: IpyNbViewer,
     };
     const dispose = viewerRegistry.register(temp);
     vi.mocked(typedRpc).mockResolvedValue(JSON.stringify({ path: 'D:/nb/a.zzipynb', content: notebookText() }));
