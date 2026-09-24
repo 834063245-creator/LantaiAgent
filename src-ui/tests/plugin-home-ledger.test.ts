@@ -58,7 +58,7 @@ const NOTES: Record<string, string> = {
   'agent-loop-service':
     '469 行；搬前须先解 agent.ts 的 opts.agentLoop ?? defaultAgentLoop 内核回落（agent-loop-active.ts 是内核桥，留）',
   // 半迁移（实心包里的残余——不是薄包，故不进空壳集，但同样按 impl 销账）
-  'settings-domain': '门牌 + 面板壳已在包内；Provider 控制台 8 件 2,740 行仍在内核（账本 §2.1）',
+  // 批 9d（2026-09-26）：settings-domain 的 Provider 控制台 8 件（2,740 行）已随包 ⇒ NOTES 与名册 impl 一并销账。
   'paper-shell':
     '批 5a 已收 4 件（provenance/sel-ink/focus-flight/sheet）；余 `paper/type-tokens.ts` 806 行——它被内核 `paper/measure.ts` 引用（宿主→插件禁反）⇒ 随批 9',
 };
@@ -210,6 +210,7 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     // 批 7c-1 把 subagent-in-process 收成**半迁移**（merge/discovery 两工具族进包 ⇒ 不再是薄壳，
     // 但余 `subagent-spawn.ts` 仍在内核）⇒ 出空壳集；批 7c-2 运行时本体（coordinator /
     // lifecycle-manager / subagent-spawn）也进包 ⇒ 名册 impl 全销、NOTES 条目删除，空壳数不变。
+    // 批 9d：settings-domain 的 Provider 控制台 8 件随包 ⇒ 该条 NOTES 删除（半壳只剩 paper-shell）。
     // 数字再变 = 要么又销了账（改这条），要么漏登记。
     expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 14 = 7`).toBe(7);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();

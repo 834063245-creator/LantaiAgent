@@ -28,17 +28,25 @@
 // Overlay 原语（统一语义），本件只保留焦点环。
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { activeLlmAdapters } from '../../../composition/services';
-import { createProvider } from '../../../provider';
-import { invalidateOauthCache, resolveOauthToken } from '../../../provider/credentials';
 import type { ModelMeta } from '../../../provider/model-meta';
-import { buildOauthHeaders, oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
 import type { ModelDescriptor, Provider } from '../../../provider/types';
 import { CORE_PROTOCOLS, type Protocol } from '../../../provider/types';
 import { findVendorTemplate, getVendorTemplateVendors } from '../../../provider/vendor-templates';
-import { defaultBaseUrl, type ProviderId, type ProviderSettings, providerId } from '../../../settings';
-import { mountDialogFocus } from '../../dialog-focus';
-import { Overlay } from '../../overlay';
+import type { ProviderId, ProviderSettings } from '../../../settings';
+import {
+  activeLlmAdapters,
+  buildOauthHeaders,
+  createProvider,
+  defaultBaseUrl,
+  invalidateOauthCache,
+  mountDialogFocus,
+  Overlay,
+  oauthAccounts,
+  oauthLogout,
+  providerId,
+  resolveOauthToken,
+  runDeviceLogin,
+} from './host';
 import { protocolLabel } from './protocol';
 
 export interface AddProviderEntry {

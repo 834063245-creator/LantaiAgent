@@ -29,9 +29,11 @@ vi.mock('../../src/bridge', () => ({
   rpc: (method: string, params?: Record<string, unknown>) => mockInvoke('rpc', { method, params }),
   listen: vi.fn(),
   isMockMode: () => false,
+  // 批 9d：ProviderPage 随包后其宿主桥图更宽（image-intake 链引 watchFileDragDrop）——补桩
+  watchFileDragDrop: vi.fn(),
 }));
 
-import { ProviderPage } from '../../src/app/panels/settings/ProviderPage';
+import { ProviderPage } from '../../src/plugins/builtin/settings-domain/ProviderPage';
 import { recordDynamicFetchResult } from '../../src/provider/catalog';
 import { resetProxyPort } from '../../src/provider/transport';
 import { type AppSettings, type ProviderId, type ProviderSettings, providerId } from '../../src/settings';

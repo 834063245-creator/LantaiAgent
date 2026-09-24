@@ -96,12 +96,12 @@ import { useCoreStore } from '../../app/chat/core-instance';
 import { extractImageFiles, previewUrlFor, readAttachmentBase64 } from '../../app/chat/image-intake';
 import { filterCommands, listCommands, slashOnly } from '../../app/commands/command-catalog';
 import { ensureSkillCatalog } from '../../app/commands/skill-catalog';
+import { mountDialogFocus } from '../../app/dialog-focus';
 import { Icon } from '../../app/Icon';
 import { Overlay, useDialogEscape } from '../../app/overlay';
 import { PluginBoundary } from '../../app/PluginBoundary';
 // 批 1 归家：McpPage / PluginsPage / SkillsPage 已迁 plugins/builtin/settings-domain/
 // （改为逐符号桥，见下方「批 1」段）；ProviderPage 家族仍在内核（批 9）。
-import { ProviderPage } from '../../app/panels/settings/ProviderPage';
 // 批 8b 归家：纸面块渲染器进 paper-renderers 包 ⇒ 桥它仍住应用 bundle 的件
 // （MermaidBlock 是重依赖例外：内部 import('mermaid') 是动态裸 import，产物构建闸拒绝）。
 import MermaidBlock from '../../app/paper/mermaid-block';
@@ -120,6 +120,7 @@ import { builtinPresets, isValidPresetId } from '../../composition/presets';
 import { firstPartyPromptSections } from '../../composition/prompt-sections';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
 import { ownerIdOf, ownerSeamView } from '../../composition/seam-scope';
+import { activeLlmAdapters } from '../../composition/services';
 import { activeShellProviders } from '../../composition/shell-service';
 import { activeSpace } from '../../composition/space-service';
 import { Service } from '../../cordis';
@@ -139,7 +140,6 @@ import {
   zoomAt,
 } from '../../paper/canvas-math';
 import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
-
 import {
   createInkCache,
   INK_FAIL,
@@ -171,7 +171,6 @@ import {
 } from '../../paper/measure';
 import { clampViewportFrame, inkBarsFor, minimapProject, regionFrame } from '../../paper/minimap-core';
 import { PaperDockContext, PaperRegionContext, usePaperDock, usePaperRegion } from '../../paper/overlay-context';
-
 import {
   clampRegionW,
   defaultRegionFor,
@@ -183,7 +182,6 @@ import {
 } from '../../paper/space';
 import { collapseToolGroups, translateMessagesCached } from '../../paper/translate';
 import { injectPaperTokens } from '../../paper/type-tokens';
-
 // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面——引擎开关 / 装卸面 /
 // MCP 声明与用户级 mcp.json / 插件与偏好 store。装卸面与 loader 的循环为
 // 运行期取用（组件按钮回调），无初始化期解引用，ESM 循环安全（见文件头注）。
@@ -196,6 +194,7 @@ import {
 import { activateExternalPlugin, deactivateExternalPlugin } from '../../plugins/loader';
 import { McpServerDeclSchema } from '../../plugins/types';
 import { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../plugins/user-mcp';
+import { createProvider } from '../../provider';
 // 批 2a 归家：llm-adapters 的三方言实现已进产物包 ⇒ 撤掉工厂的 faceDeps 桥
 // （kernel 侧零消费者），改桥适配器仍依赖的内核面（seam 契约 / 目录与元数据 /
 // 错误分类 / 思考档 / 传输 / 协议默认端点表）。
@@ -206,17 +205,29 @@ import {
   getDynamicFetchInflight,
   getModel,
   hasDynamicFetchInflight,
+  markDynamicFetchStart,
+  mergeDynamicModels,
   onDynamicFetchChange,
+  recordDynamicFetchResult,
   searchModels,
 } from '../../provider/catalog';
-import { resolveApiKey } from '../../provider/credentials';
+import {
+  invalidateCredentialCache,
+  invalidateOauthCache,
+  resolveApiKey,
+  resolveOauthToken,
+} from '../../provider/credentials';
 import { classifyProviderError } from '../../provider/error-catalog';
 import { streamWithIdleTimeout } from '../../provider/idle-stream';
+import { createLiveProvider } from '../../provider/live';
 import { modelEntries, parseModelEntry } from '../../provider/model-meta';
+import { applyFetchedModels } from '../../provider/model-sync';
+import { buildOauthHeaders, oauthAccounts, oauthLogout, runDeviceLogin } from '../../provider/oauth';
 // provider 配置文件通道（2026-09-24 配方改文件批）：设置页路径/错误/写盘面
 import {
   ensureProvidersDir,
   loadProjectProvidersDoc,
+  loadProvidersDoc,
   onProvidersDocChange,
   projectProvidersErrors,
   projectProvidersFatal,
@@ -257,8 +268,10 @@ import {
   typedRpc,
 } from '../../rpc-contract';
 import {
+  addProvider,
   autoUpdateCheckEnabled,
   canvasWheelMode,
+  defaultBaseUrl,
   effectiveModels,
   loadSettings,
   loadSettingsWithSecrets,
@@ -269,6 +282,7 @@ import {
   onSettingsSaved,
   PROVIDER_PROTOCOL_DEFAULTS,
   persistSecrets,
+  providerId,
   removeSecret,
   saveSettings,
 } from '../../settings';
@@ -482,7 +496,6 @@ const faceDeps = {
   /* 离开工作区回首页（2026-09-08）：paper-shell 确认弹层确认后触发——运行时
    * 真关工作区在壳层 workspace 流（host.ts 出口与 faceDeps 同步）。 */
   leaveToHome,
-  ProviderPage,
   // 批 2a 归家（2026-09-24）：llm-adapters 的端点真源（内核协议默认端点表）
   PROVIDER_PROTOCOL_DEFAULTS,
   // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面
@@ -663,7 +676,26 @@ const faceDeps = {
   registerSubagentRuntime,
   // 批 7c-2 归家：子代理运行时进包 ⇒ 撤 spawnSubAgentImpl 桥；补运行时依赖面
   Agent,
-  activeStateHooksImplementation,
+  activeStateHooksImplementation, // 批 9d 归家：Provider 控制台 8 件进 settings-domain 包 ⇒ 桥它们的有状态内核依赖面
+  activeLlmAdapters,
+  addProvider,
+  applyFetchedModels,
+  buildOauthHeaders,
+  createLiveProvider,
+  createProvider,
+  defaultBaseUrl,
+  invalidateCredentialCache,
+  invalidateOauthCache,
+  loadProvidersDoc,
+  markDynamicFetchStart,
+  mergeDynamicModels,
+  mountDialogFocus,
+  oauthAccounts,
+  oauthLogout,
+  providerId,
+  recordDynamicFetchResult,
+  resolveOauthToken,
+  runDeviceLogin,
   once,
   createExecState,
   HookRegistry,

@@ -27,7 +27,6 @@ import {
   loadSettingsWithSecrets,
   notifyAgentConfigChanged,
   onProvidersDocChange,
-  ProviderPage,
   persistSecrets,
   projectProvidersErrors,
   projectProvidersFatal,
@@ -47,6 +46,7 @@ import {
 // 批 1 归家：三页与作者面已是包内实现（不再经宿主面整页桥）。
 import { McpPage } from './McpPage';
 import { PluginsPage } from './PluginsPage';
+import { ProviderPage } from './ProviderPage';
 import { compositionDir, createPresetFromTemplate, rescanPresets } from './preset-authoring';
 import { SkillsPage } from './SkillsPage';
 

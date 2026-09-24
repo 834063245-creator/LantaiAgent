@@ -6,7 +6,6 @@
 
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getDynamicFetchFailure, getModel, onDynamicFetchChange } from '../../../provider/catalog';
 import { type StoredThinking, thinkingModeLabel, thinkingOptionsOrDefault } from '../../../provider/thinking';
 import {
   effectiveModels,
@@ -18,6 +17,7 @@ import {
   type ProbeOutcome,
   type ProviderSettings,
 } from '../../../settings';
+import { getDynamicFetchFailure, getModel, onDynamicFetchChange } from './host';
 import { ProviderAdvanced } from './ProviderAdvanced';
 import { ProviderDocCard } from './ProviderDocCard';
 import { protocolLabel } from './protocol';

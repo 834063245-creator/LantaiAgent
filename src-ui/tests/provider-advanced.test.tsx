@@ -14,7 +14,7 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ProviderAdvanced } from '../src/app/panels/settings/ProviderAdvanced';
+import { ProviderAdvanced } from '../src/plugins/builtin/settings-domain/ProviderAdvanced';
 import { type ProviderSettings, providerId } from '../src/settings';
 
 function row(overrides: Partial<ProviderSettings> = {}): ProviderSettings {

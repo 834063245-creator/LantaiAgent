@@ -24,9 +24,11 @@ vi.mock('../../src/bridge', () => ({
   rpc: (method: string, params?: Record<string, unknown>) => mockInvoke('rpc', { method, params }),
   listen: vi.fn(),
   isMockMode: () => false,
+  // 批 9d：ProviderPage 随包后其宿主桥图更宽（image-intake 链引 watchFileDragDrop）——补桩
+  watchFileDragDrop: vi.fn(),
 }));
 
-import { ProviderPage } from '../../src/app/panels/settings/ProviderPage';
+import { ProviderPage } from '../../src/plugins/builtin/settings-domain/ProviderPage';
 import { type AppSettings, type ProviderId, providerId } from '../../src/settings';
 
 /** 让下一次 typedRpc 调用返回指定 JSON 字符串（按 method 校验）。 */

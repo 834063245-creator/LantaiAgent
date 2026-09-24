@@ -6,20 +6,12 @@
 // 添加/删除/清除 Key 均为「暂存」，保存时统一落盘 + 写/删凭据 + 重建 Agent。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createProvider } from '../../../provider';
-import { markDynamicFetchStart, mergeDynamicModels, recordDynamicFetchResult } from '../../../provider/catalog';
-import { invalidateCredentialCache } from '../../../provider/credentials';
-import { createLiveProvider } from '../../../provider/live';
-import { applyFetchedModels } from '../../../provider/model-sync';
-import { oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
-import { loadProvidersDoc } from '../../../provider/providers-store';
 import type { StoredThinking } from '../../../provider/thinking';
 import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
+import type { AppSettings, ConnectionProbe } from '../../../settings';
 import {
-  type AppSettings,
   addProvider,
-  type ConnectionProbe,
   defaultBaseUrl,
   getActiveProvider,
   type ProviderId,
@@ -27,8 +19,21 @@ import {
   removeProvider,
   updateProvider,
 } from '../../../settings';
-import { ConfirmDialog } from '../../ConfirmDialog';
 import { type AddProviderEntry, AddProviderSheet } from './AddProviderSheet';
+import {
+  applyFetchedModels,
+  ConfirmDialog,
+  createLiveProvider,
+  createProvider,
+  invalidateCredentialCache,
+  loadProvidersDoc,
+  markDynamicFetchStart,
+  mergeDynamicModels,
+  oauthAccounts,
+  oauthLogout,
+  recordDynamicFetchResult,
+  runDeviceLogin,
+} from './host';
 import { type ProbeUiState, ProviderDetail, type ProviderField } from './ProviderDetail';
 import { ProviderList } from './ProviderList';
 import { formatLatency } from './status';

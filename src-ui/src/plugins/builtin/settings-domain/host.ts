@@ -18,9 +18,12 @@
 // 技能域（SkillsPage 列表源；`agent/skills.ts` 归 skill-domain 见账本批 3）
 export { type SkillDef, scanSkills } from '../../../agent/skills';
 export { ConfirmDialog } from '../../../app/ConfirmDialog';
+// 批 9d（2026-09-26）：Provider 控制台 8 件归家 ⇒ 桥它们的**有状态**内核依赖面
+// （纯模块——vendor-templates / thinking / custom-headers / types——随包内联，不桥）。
+export { mountDialogFocus } from '../../../app/dialog-focus';
 // 应用壳件
 export { Icon } from '../../../app/Icon';
-export { ProviderPage } from '../../../app/panels/settings/ProviderPage';
+export { Overlay } from '../../../app/overlay';
 export { useShellStore } from '../../../app/shell-store';
 // S6 P3b：激活诊断读面（设置面板「组合」节第四栏「被跳过」+ 独占冲突回看）
 export { activationConflict, activationSkipped } from '../../../composition/activation';
@@ -32,6 +35,7 @@ export {
   stringifyPatchYaml,
 } from '../../../composition/preset-discovery';
 export { builtinPresets, isValidPresetId, type PresetEntry } from '../../../composition/presets';
+export { activeLlmAdapters } from '../../../composition/services';
 export { setLang } from '../../../i18n';
 // 随包引擎开关面（McpPage「随包图谱引擎」卡片）
 export {
@@ -46,11 +50,25 @@ export {
 export { activateExternalPlugin, deactivateExternalPlugin } from '../../../plugins/loader';
 export { type McpServerDecl, McpServerDeclSchema } from '../../../plugins/types';
 export { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../../plugins/user-mcp';
+export { createProvider } from '../../../provider';
+export {
+  getDynamicFetchFailure,
+  getModel,
+  markDynamicFetchStart,
+  mergeDynamicModels,
+  onDynamicFetchChange,
+  recordDynamicFetchResult,
+} from '../../../provider/catalog';
+export { invalidateCredentialCache, invalidateOauthCache, resolveOauthToken } from '../../../provider/credentials';
+export { createLiveProvider } from '../../../provider/live';
+export { applyFetchedModels } from '../../../provider/model-sync';
+export { buildOauthHeaders, oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
 // provider 配置文件通道（2026-09-24 配方改文件批）：设置页显示路径与逐节错误、
 // 打开目录、保存时写盘——意图的唯一权威是那份 YAML，这里是它的界面面。
 export {
   ensureProvidersDir,
   loadProjectProvidersDoc,
+  loadProvidersDoc,
   onProvidersDocChange,
   projectProvidersErrors,
   projectProvidersFatal,
@@ -71,11 +89,14 @@ export {
 } from '../../../rpc-contract';
 export type { AppSettings, ConnectionProbe, ProviderId } from '../../../settings';
 export {
+  addProvider,
   autoUpdateCheckEnabled,
   canvasWheelMode,
+  defaultBaseUrl,
   loadSettings,
   loadSettingsWithSecrets,
   persistSecrets,
+  providerId,
   removeSecret,
   saveSettings,
 } from '../../../settings';
