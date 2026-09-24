@@ -976,6 +976,28 @@ export class Agent {
     this._tokenMeter.setContextWindow(this.contextWindow);
   }
 
+  /** 从**卷日志**恢复折叠状态（压缩摘要 + 尾部起点）—— 运行时态的重建面。
+   *
+   *  病灶（2026-09-24 实测）：`_compactSummary/_compactTailStart` 只在压缩时写
+   *  （agent-compaction 的 applyCompactState），重开卷/重启后**没有恢复路径**：
+   *  载荷回到满值，付过钱的摘要在下一次请求里白丢，随后还要再压一次。
+   *  实证 = 卷 39 压缩后 postTokens 22,378，重建 exe + 重启后同一卷载荷 295,017。
+   *
+   *  真源 = `SessionLog.compactionState()`（`project()` 的唯一 fold：compaction 事件设置、
+   *  非 adopt 的 reset 清除、retract 不清），不在本类里另算一份。调用点与账本恢复同规：
+   *  开卷路径（loadSessionFromDisk）与惰性补建路径（ensureVolumeAgent）**都要**接
+   *  ——「句柄是惰性资源」这条教训在账本那一批已经付过一次学费（efa8ddd0）。
+   *
+   *  幂等：无折叠状态 / 摘要为空 / tailStart < 0 ⇒ 保持现状（新卷语义）。 */
+  restoreCompactionFromLog(): void {
+    const state = this._sessionLog.compactionState();
+    if (!state?.summary || state.tailStart < 0) return;
+    this._compactSummary = state.summary;
+    // 钳制与 applyCompactState 同规：头部偏移以下 / 会话长度以上都不是合法折叠点。
+    const head = foldHead(this as unknown as CompactionHost);
+    this._compactTailStart = Math.max(head, Math.min(state.tailStart, this.session.length));
+  }
+
   /** 设置自动调优压缩配置的持久化路径（委托 agent-compaction.ts）。 */
   setCompactionConfigPath(projectPath: string): void {
     setCompactionConfigPathImpl(this as unknown as CompactionHost, projectPath);

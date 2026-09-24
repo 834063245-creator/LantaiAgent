@@ -446,6 +446,11 @@ export async function ensureVolumeAgent(ctx: SessionContext, sid: number): Promi
   // 账本恢复放在**入册之后**：上方两次「句柄已被并行补建」的早退会 dispose 本句柄，
   // 恢复给一个即将丢弃的实例没有意义。
   if (ledger) agent.restoreTokenLedger?.(ledger);
+  // 折叠状态同批恢复（2026-09-24 修）：折叠（摘要 + 尾部起点）此前是纯运行时态，
+  // 句柄一重建就丢 ⇒ 载荷回到满值、付过钱的摘要在下一次请求里白丢（卷 39 实测
+  // 22,378 → 295,017）。真源 = 卷日志的 `session/compaction`（seedVolumeLog 刚置回）。
+  // 与账本同规：**重建句柄不丢折叠**，两条路径（此处的懒建 / loadSessionFromDisk）都要接。
+  agent.restoreCompactionFromLog?.();
   agent.bindSession?.(String(sid));
   bindSessionExec(ctx, sid, agent);
   // turnPairs 与 UI 消息已由 restoreFromLedger 的 rebuildMessagesFromMessages
@@ -1940,6 +1945,9 @@ export async function loadSessionFromDisk(
   // token 账本随卷恢复（2026-09-13）：句柄在场才回填（账本真源 = Agent）；
   // 旧存档无 tokens 字段 = 账本从空开始（不迁移）。
   if (newAgent && data.tokens) newAgent.restoreTokenLedger?.(data.tokens);
+  // 折叠状态随卷恢复（2026-09-24 修）：同一条纪律的另一半——重建句柄不丢折叠，
+  // 载荷不会回到满值（真源 = 卷日志的 session/compaction，seedVolumeLog 已置回）。
+  if (newAgent) newAgent.restoreCompactionFromLog?.();
   if (typeof data.tokensUsed === 'number') {
     ctx.setTotalTokensUsed(data.tokensUsed);
     getChatStore(ctx.storeId).sess.getState().setSessionTokens(sid, data.tokensUsed);

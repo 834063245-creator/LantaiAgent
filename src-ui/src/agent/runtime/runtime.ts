@@ -161,6 +161,9 @@ class AgentHandleImpl implements AgentHandle {
   restoreTokenLedger(snapshot: TokenLedgerSnapshot | null | undefined) {
     return this._agent.restoreTokenLedger(snapshot);
   }
+  restoreCompactionFromLog() {
+    return this._agent.restoreCompactionFromLog();
+  }
 
   // ── loop 事件监听转发（P0 会话存盘止血，2026-09-15）──
   // 消费面 = 会话检查点（「模型请求前」语义时刻，见 shell/rows/persistence）：

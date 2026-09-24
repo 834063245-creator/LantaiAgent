@@ -401,6 +401,21 @@ export class SessionLog {
     return this.project().anchors;
   }
 
+  /**
+   * 事件流里的**折叠状态**（`session/compaction` 的投影结果）——`project()` 的唯一 fold，
+   * 本方法只是它的第三个读面。
+   *
+   * 语义（与投影逐点一致）：`session/compaction` 设置它、非 adopt 的 `session/reset`
+   * 清掉它（换会话语义）、`session/retract` **不**清它（撤回一笔不清折叠）。
+   *
+   * 用途 = **恢复面**：Agent 的折叠状态（摘要 + 尾部起点）此前是纯运行时态，重开卷
+   * 没有接回真源 ⇒ 载荷回到满值、付过钱的摘要在下一次请求里白丢（2026-09-24 实测：
+   * 卷 39 压缩后 22,378 → 重启后 295,017）。见 agent.ts 的 restoreCompactionFromLog。
+   */
+  compactionState(): { summary: string; tailStart: number } | null {
+    return this.project().compaction;
+  }
+
   /** 发送载荷投影 — 复刻 agent.ts payloadMessages() 的全部折叠层。
    *  折叠参数须镜像 Agent 当前运行时值（见文件头"折叠边界的状态性说明"）。 */
   derivePayload(opts: DerivePayloadOptions): Message[] {

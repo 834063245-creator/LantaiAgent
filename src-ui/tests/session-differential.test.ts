@@ -410,6 +410,37 @@ describe('T2 差分 — compaction 边界', () => {
     expect(internals(agent)._compactSummary).toBe('压缩摘要文本'); // Agent 侧确实未清
     expectReplayEquivalence(agent);
   });
+
+  it('折叠状态的日志读面（compactionState）：压缩写入 / retract 保留 / reset 清除', async () => {
+    // 恢复面（agent.restoreCompactionFromLog）的真源就是这个读面 —— 语义必须与投影逐点一致：
+    // compaction 事件设置、非 adopt 的 session/reset 清除、session/retract **不**清。
+    const { agent } = makeHarness([
+      [text('第一轮回答'), done],
+      [text('第二轮回答'), done],
+      [text('第三轮回答'), done],
+      [text('压缩摘要文本'), done],
+    ]);
+    expect(agent.getSessionLog().compactionState()).toBeNull(); // 未压缩 = 无折叠
+
+    await agent.run(SIG, '第一句');
+    await agent.run(SIG, '第二句');
+    await agent.run(SIG, '第三句');
+    const summary = await agent.compactNow(SIG);
+    expect(summary).not.toBe('stuck');
+
+    // ① 压缩写入：读面 = 运行时态（同一条事实两处可读）
+    const state = agent.getSessionLog().compactionState();
+    expect(state?.summary).toBe('压缩摘要文本');
+    expect(state?.tailStart).toBe(internals(agent)._compactTailStart);
+
+    // ② retract 不清（撤回一笔不清折叠）
+    agent.retractTurnAt(agent.getSession().length - 2);
+    expect(agent.getSessionLog().compactionState()?.summary).toBe('压缩摘要文本');
+
+    // ③ reset 清除（换会话语义 —— 新会话没有折叠）
+    agent.newSession();
+    expect(agent.getSessionLog().compactionState()).toBeNull();
+  });
 });
 
 describe('T2 差分 — 工具结果批量折叠（window>0）', () => {
