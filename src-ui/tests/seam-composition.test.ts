@@ -26,7 +26,6 @@ import { AgentContext } from '../src/agent/context';
 import { AgentEventBus } from '../src/agent/events';
 import type { SubAgentSpawnHost } from '../src/agent/subagent-spawn';
 import type { ToolExecutor, ToolRegistry } from '../src/agent/tool';
-import { createFsTools, fsExecute } from '../src/agent/tools/coding';
 import type { FsProvider } from '../src/composition/fs-service';
 import { activeFsProviders, registeredFsProviders } from '../src/composition/fs-service';
 import type { CompositionPatch, ResolvedComposition } from '../src/composition/roster';
@@ -42,6 +41,7 @@ import {
 import { activeShellProviders } from '../src/composition/shell-service';
 import type { SubagentProvider } from '../src/composition/subagent-service';
 import { activeSubagentProviders, registeredSubagentProviders } from '../src/composition/subagent-service';
+import { createFsTools, fsExecute } from '../src/plugins/builtin/fs-domain/fs-tools';
 import { createProvider } from '../src/provider/index';
 import type { Provider } from '../src/provider/types';
 import { useCompositionStore } from '../src/state/composition-store';

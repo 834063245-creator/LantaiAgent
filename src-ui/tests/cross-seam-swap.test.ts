@@ -14,10 +14,10 @@ import { resetAgentLoopForTests } from '../src/agent/agent-loop/agent-loop-activ
 import { AgentContext } from '../src/agent/context';
 import type { SubAgentSpawnHost } from '../src/agent/subagent-spawn';
 import type { ToolExecutor, ToolRegistry } from '../src/agent/tool';
-import { createFsTools } from '../src/agent/tools/coding';
 import type { FsProvider } from '../src/composition/fs-service';
 import type { LlmAdapterContribution } from '../src/composition/services';
 import type { SubagentProvider } from '../src/composition/subagent-service';
+import { createFsTools } from '../src/plugins/builtin/fs-domain/fs-tools';
 import { createProvider } from '../src/provider/index';
 import type { Provider } from '../src/provider/types';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';

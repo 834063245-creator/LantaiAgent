@@ -37,13 +37,13 @@ import { buildToolRegistry } from '../../src/agent/runtime/agent-builder';
 import { AgentRuntime } from '../../src/agent/runtime/runtime';
 import { TaskManager } from '../../src/agent/task';
 import { type Tool, ToolRegistry } from '../../src/agent/tool';
-import { createFsTools } from '../../src/agent/tools/coding';
 import { withFirstPartyCapabilityChannel } from '../../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../../src/composition/first-party-tools';
 import { effectiveComposition } from '../../src/composition/preset-assembly';
 import { resolvePresetComposition } from '../../src/composition/presets';
 import { factoryComposition, type ResolvedComposition, resolveRoster } from '../../src/composition/roster';
 import { registerSeamScope, seamScopeOf } from '../../src/composition/seam-scope';
+import { createFsTools } from '../../src/plugins/builtin/fs-domain/fs-tools';
 import { readOnlyTool, scriptedProvider } from '../convergence/helpers/fixtures';
 import { ensureProductionChannelsBooted } from '../helpers/composition-boot';
 

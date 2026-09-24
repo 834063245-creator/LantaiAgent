@@ -8,10 +8,11 @@
 // 消费方（define-tool / tool-param-contract / parallel-subagent-bugs）不动。
 
 import type { CodingToolsUI, Tool, ToolExecutor } from '../../src/agent/tool';
-import { createFsTools, createShellTools } from '../../src/agent/tools/coding';
 import { createAgentIsolationTools } from '../../src/plugins/builtin/agent-isolation-domain/isolation-tools';
 import { createAskUserTools } from '../../src/plugins/builtin/ask-domain/ask-tools';
+import { createFsTools } from '../../src/plugins/builtin/fs-domain/fs-tools';
 import { createGitTools } from '../../src/plugins/builtin/git-domain/git-tools';
+import { createShellTools } from '../../src/plugins/builtin/shell-domain/shell-tools';
 
 /** 五族全量工具（表序 = 历史 createCodingTools 的拼接序：fs → shell → git → isolation → ask）。 */
 export function buildCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[] {

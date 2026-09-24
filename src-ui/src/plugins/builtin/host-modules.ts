@@ -37,7 +37,6 @@ import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '.
 import { createSkillTool, scanSkills } from '../../agent/skills';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { createTaskTools } from '../../agent/task';
-import { createFsTools, createShellTools } from '../../agent/tools/coding';
 // 批 4c-2 归家：agent-isolation / ask 两族进包 ⇒ 撤工厂桥；两族只余 defineTool/类型面。
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
 import { createAssetTools } from '../../agent/tools/show-asset';
@@ -61,12 +60,15 @@ import { isMockMode, watchFileDragDrop } from '../../bridge';
 // S6 P3b：激活诊断读面（设置面板「组合」节第四栏「被跳过」+ 独占冲突回看）
 import { activationConflict, activationSkipped } from '../../composition/activation';
 import { ContributionChannel } from '../../composition/contribution-channel';
+import { activeFsProviders } from '../../composition/fs-service';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { reapplyComposition, selectPreset } from '../../composition/preset-assembly';
 import { discoverPresets, stringifyPatchYaml } from '../../composition/preset-discovery';
 import { builtinPresets, isValidPresetId } from '../../composition/presets';
 import { firstPartyPromptSections } from '../../composition/prompt-sections';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
+import { ownerIdOf, ownerSeamView } from '../../composition/seam-scope';
+import { activeShellProviders } from '../../composition/shell-service';
 import { activeSpace } from '../../composition/space-service';
 import { Service } from '../../cordis';
 import { setLang } from '../../i18n';
@@ -517,8 +519,6 @@ const faceDeps = {
   isMockMode,
   watchFileDragDrop,
   // S3 工具域真源产物运行时依赖（经宿主桥 mods.faceDeps 取用）
-  createFsTools,
-  createShellTools,
   createSkillTool,
   createMemoryTools,
   createTaskTools,
@@ -553,6 +553,11 @@ const faceDeps = {
   // 批 4c-1 归家：git 工具族进包 ⇒ 撤工厂桥；改桥它仍住内核的解析器
   parseGitLogCommits,
   parseGitStatusPorcelain,
+  // 批 4c-3 归家：fs/shell 两族进包 ⇒ 撤工厂桥；改桥 seam 裁剪读面 + 活跃 provider 表
+  ownerIdOf,
+  ownerSeamView,
+  activeFsProviders,
+  activeShellProviders,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

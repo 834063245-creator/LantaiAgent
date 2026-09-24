@@ -52,6 +52,23 @@ export function seamScopeOf(key: string | undefined | null): SeamDisabledMap | u
   return scopes.get(key);
 }
 
+// ── 发起方身份与 seam 裁剪读面（2026-09-24 批 4c-3 从 agent/tools/coding.ts 上收）──
+// fs/shell 两族共用的入参解析；两族的产物包经 faceDeps 取用（host 面）。
+export function ownerIdOf(args: Record<string, unknown>): string | undefined {
+  return typeof args._owner_id === 'string'
+    ? args._owner_id
+    : typeof args._agent_id === 'string'
+      ? args._agent_id
+      : undefined;
+}
+
+/** 本调用所属 Agent 的组合裁剪面（S6 P2a）——装配期登记、请求期查表
+ *  （本文件）。未登记（无组合上下文/UI 直调/单测）= undefined
+ *  ⇒ 消费点落全局当前选择（P2 前语义，零漂移）。 */
+export function ownerSeamView(args: Record<string, unknown>) {
+  return seamScopeOf(ownerIdOf(args));
+}
+
 /** 测试隔离辅助——清空全部作用域（生产代码禁用）。 */
 export function clearSeamScopesForTest(): void {
   scopes.clear();

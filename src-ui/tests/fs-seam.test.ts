@@ -18,8 +18,8 @@ import { PlanStateManager } from '../src/agent/plan/plan-state';
 import { StreamingToolExecutor } from '../src/agent/streaming-executor';
 import type { Tool, ToolExecutor } from '../src/agent/tool';
 import { ToolRegistry } from '../src/agent/tool';
-import { createFsTools, fsExecute } from '../src/agent/tools/coding';
 import type { FsAction, FsProvider } from '../src/composition/fs-service';
+import { createFsTools, fsExecute } from '../src/plugins/builtin/fs-domain/fs-tools';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 const stubExec: ToolExecutor = async () => 'stub';

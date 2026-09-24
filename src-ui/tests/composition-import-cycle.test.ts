@@ -49,10 +49,10 @@ describe('composition 图导入成环守卫（P1c）', () => {
     expect(src).toContain("await import('../../state/preset-store')");
   });
 
-  // S6 P2a：装配期 seam 作用域是**键控叶模块**——被工具层（agent/tools/coding）、
-  // 会话基础设施与 agent 构造三面静态依赖，一旦它自己长出一条通往 store /
-  // roster 的静态边，环立刻闭合（同族症状见文件头注）。故此守卫钉它的叶性：
-  // 只准 type-only import（esbuild 擦除，运行时零边）。
+  // S6 P2a：装配期 seam 作用域是**键控叶模块**——被工具层（批 4c-3 起 =
+  // fs/shell 两个产物包，经各自 host 面）、会话基础设施与 agent 构造三面静态依赖，
+  // 一旦它自己长出一条通往 store / roster 的静态边，环立刻闭合（同族症状见文件头注）。
+  // 故此守卫钉它的叶性：只准 type-only import（esbuild 擦除，运行时零边）。
   it('seam-scope 叶性：零项目内运行时静态 import（type-only 允许）', () => {
     const src = read('src/composition/seam-scope.ts');
     const runtimeSpecs = src

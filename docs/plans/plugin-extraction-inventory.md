@@ -261,7 +261,7 @@ manifest.json —— 包内合计 30～110 行。
 
 | 产物包 | 实现真源（物理行） | 随行私有件（不随迁则悬空） |
 |---|---|---|
-| `fs-domain`·`shell-domain`·`ask-domain`·`agent-isolation-domain` | `agent/tools/coding.ts` **998**（**一文件载五族，须先按域拆**；git 族已随批 4c-1 归家） | `sticky-cwd.ts` 138 · `session-context.ts` 122 · `tools/structured-error.ts` 24 |
+| `fs-domain`·`shell-domain`·`ask-domain`·`agent-isolation-domain` | ~~`agent/tools/coding.ts` **998**（**一文件载五族，须先按域拆**）~~ | ✅ **批 4c 已全清**（4c-1 git · 4c-2 ask/agent-isolation · 4c-3 fs/shell ⇒ `coding.ts` 整文件退役，五族各归其包）。随行件仍留内核桥：`session-context.ts` 122（sticky-cwd 被 office 域+内核消费）· `tools/structured-error.ts` 24；`sticky-cwd.ts` 138 已随族段并入包内 |
 | `git-domain` | ~~`agent/tools/coding.ts` 的 git 段（318）+ `git-porcelain.ts` 126~~ | ✅ **批 4c-1 已归家**（族段整段移出进包；`git-porcelain` 因内核 `state-inject` 消费而**留内核桥**，随批 6 走） |
 | `browser-desktop-domain` | `agent/tools/browser.ts` **912** | ✅ **批 4a 已归家**（桥位仅 5 运行时 + 1 类型） |
 | `search-domain`·`web-domain` | `agent/tools/manifest-tools.ts` 187 | ✅ **批 4b 已归家**（按域拆两半：`search-domain/search-tools.ts` + `web-domain/web-tools.ts`；随行 `tools/search-assembly.ts` 169 随 search 走——**一个文件不能同时住两个包，故按域拆**） |
@@ -457,8 +457,9 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 4c-1 后重测）：红 **13 产物 / 27 文件 / 9,209 行**（§1 的 13 条 +
-§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`）；绿 111 平台 + 67 已认领；灰见报告。
+**2026-09-24 基线**（批 4c-3 后重测）：红 **11 产物 / 25 文件 / 8,265 行**（§1 的 9 条 +
+§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`；文件按**认领计数**——`coding.ts` 曾被 fs/shell
+两条认领故按 2 计）；绿 111 平台 + 66 已认领；灰见报告。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -471,7 +472,7 @@ manifest.json —— 包内合计 30～110 行。
 | **1** | settings 三页归家（McpPage/PluginsPage/SkillsPage）+ `preset-authoring` 随迁 | 1,103 + 192 | ✅ **已落**（2026-09-24）：三页 `git mv` 进包、内核依赖改走包内 `./host` 逐符号桥（+24 faceDeps 键，baseline 重生成）、产物自包含校验过、CSS 面无需动（三页 class 本就在包内 `settings-panel.css`）；链路（页面进包 + host 三处同步 + 产物构建 + faceDeps 指纹）已走通 |
 | **2** | seam provider 实心化：`llm-adapters`（三适配器 + 两个私有 helper）；`subagent-in-process` 并入批 7 | 1,916 | ✅ **llm-adapters 已落**（2026-09-24 批 2a）：1,916 行进包、端点真源上收内核、16 个运行时桥位、产物 2.6 KB→41.6 KB（**适配器自此可热更**）。`subagent-in-process`（543）复核后并入批 7——它要同一片 `agent.ts`/context/message-bus 面（16 桥位），那批本就要整片搬 |
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | ✅ **批 3a 已落 3 件**（wait 102 · office 576 · cordis 200 = 878 行；桥位仅 9 运行时 + 7 类型）。**memory/skill/task 复核后改期**：它们的类是内核构造的（`workspace.ts` new MemoryManager/SkillRegistry、runtime 用 TaskBoard 11 处）⇒ 整件搬会造宿主→插件反向依赖（仓库禁反），改随批 7 / 批 9 |
-| **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | 🟡 **4a 已落 `browser.ts`（912）· 4b 已落 `manifest-tools` 按域拆（187+169，search/web 各归其包）**；余 `coding.ts`（998，一文件载五族：fs/shell/git/ask/agent-isolation）与随行私有件（git-porcelain 126 · sticky-cwd 138 · session-context 122 · structured-error 24）。硬点：9+5+2 个测试直连 |
+| **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | ✅ **已全落**：4a `browser.ts`（912）· 4b `manifest-tools` 按域拆（187+169，search/web 各归其包）· 4c `coding.ts`（998，一文件载五族）拆完 **整文件退役**——4c-1 git · 4c-2 ask/agent-isolation · 4c-3 fs/shell（顺带上收 `ownerIdOf`/`ownerSeamView` 进 `composition/seam-scope.ts`）。随行件去向：`sticky-cwd` 并入包内族段，`git-porcelain` 126 / `session-context` 122 / `structured-error` 24 因内核消费者**留内核桥** |
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | 通道现成；工作量在拆 loop 契约耦合与 host 模式 |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | `ctx.subagents` seam 已在位；障碍是 runtime 单例与 21+13 个测试 |
@@ -524,6 +525,31 @@ manifest.json —— 包内合计 30～110 行。
   （生产零第二消费者，只有 seam 测试当入口用）⇒ 搬族时一并进包，测试 import 改指包内。
 - 余下三族（fs / shell / ask / agent-isolation）+ 随行件待下一轮；`ownerIdOf`/`ownerSeamView`
   两助手被 fs+shell 共用 ⇒ 搬这两族时须先上收（建议并入 `composition/seam-scope.ts`）。
+
+**批 4c-2 落地（2026-09-24）**：`ask-domain/ask-tools.ts`（120）与
+`agent-isolation-domain/isolation-tools.ts`（52）归家——两族只余 `defineTool`/`toInputJsonSchema`
+平台面桥；`AskUserQuestionItem`/`AskUserRequest`/`CodingToolsUI` 三类型已先随批 4c 前置上收
+`agent/tool.ts`（类型面不算反向依赖）。
+
+**批 4c-3 落地（2026-09-24，本批收官）**：
+- ✅ **fs/shell 两族归家**：`fs-domain/fs-tools.ts` **284**（11 工具：read/write/edit/list/glob/
+  mkdir/move/rename/delete + `fsExecute`）· `shell-domain/shell-tools.ts` **172**（4 工具 + `shellExecute`
+  + `withStickyCwd`）——两族定义逐字保留，只把内核依赖改走包内 `./host`。
+- ✅ **`agent/tools/coding.ts` 整文件删除**（998 → 0）：五族全部归家，内核不再持有任何一族实现。
+- ✅ **`ownerIdOf`/`ownerSeamView` 上收 `composition/seam-scope.ts`**（两族共用；该件保持叶性——
+  零项目内运行时 import，守卫 `composition-import-cycle` 逐行钉住）。
+- ✅ **faceDeps 面**：撤 `createFsTools`/`createShellTools` 两桥键，补 `ownerIdOf` · `ownerSeamView` ·
+  `activeFsProviders` · `activeShellProviders` 四键（净 +2；`host-surface.baseline.json` 已重生成，
+  指纹 `2a43fa3e` → `11a78f3d`）。两包宿主面翻面成「桥仍住内核的依赖面」——
+  **包内符号不再经 `host.ts` 二次出口**（`createFsTools` 由 `index.ts` 直连 `./fs-tools`）。
+- ✅ **空壳账销 2 条**：`fs-domain`/`shell-domain` 的 `impl` 从名册删除（红区 13 → 11 产物、
+  27 → 25 文件、9,209 → 8,265 行；空壳集 11 → 9）。
+- 测试面：8 个测试文件改指包内（`fs-seam`/`shell-seam`/`seam-composition`/`cross-seam-swap`/
+  `tool-receipts`/`coding-domain-plugins`/`bench/composition-assembly`/腰 `helpers/coding-tools.ts`），
+  断言零改动（只改 import 源）；两包产物 `entry.js` 2 KB → **539.7 / 536.9 KB**（真身 + 内联 zod，
+  与同族 `git-domain` 541.9 KB 同形——**fs/shell 工具自此改产物即热更**）。
+- 壳 bundle：`dist/assets/index-*.js` **3,706,995 B**（批 0a 后基线 3,838,924 B）——内核侧
+  schema/编排真身随族段离场（余量含批 1–5a）。
 
 每批收尾必做：`vitest` + `build`（含 `build:builtin-plugins`）+ `biome ci` + `verify:convergence` 双轨；
 faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` 并**重建一次 exe**。

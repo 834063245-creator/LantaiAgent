@@ -181,8 +181,7 @@
     "description": "文件域工具（读改写/目录）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/coding.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "shell-domain",
@@ -190,8 +189,7 @@
     "description": "命令域工具（run_shell/bash_*）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/coding.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "agent-isolation-domain",

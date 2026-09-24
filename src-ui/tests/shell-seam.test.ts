@@ -16,8 +16,8 @@ import { PlanStateManager } from '../src/agent/plan/plan-state';
 import { StreamingToolExecutor } from '../src/agent/streaming-executor';
 import type { Tool, ToolExecutor } from '../src/agent/tool';
 import { ToolRegistry } from '../src/agent/tool';
-import { createShellTools, shellExecute } from '../src/agent/tools/coding';
 import type { ShellAction, ShellProvider } from '../src/composition/shell-service';
+import { createShellTools, shellExecute } from '../src/plugins/builtin/shell-domain/shell-tools';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 const stubExec: ToolExecutor = async () => 'stub';

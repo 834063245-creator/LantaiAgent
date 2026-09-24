@@ -5,7 +5,7 @@
 
 import type { Context } from '../../../cordis';
 import { familyContributions, registerFamily } from '../contribution-helpers';
-import { createShellTools } from './host';
+import { createShellTools } from './shell-tools';
 
 /** shell 域插件——贡献 4 工具（run_shell → bash_output/kill/wait；② 批）。 */
 export const shellDomainPlugin = {

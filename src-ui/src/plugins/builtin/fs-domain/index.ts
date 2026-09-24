@@ -5,7 +5,7 @@
 
 import type { Context } from '../../../cordis';
 import { familyContributions, registerFamily } from '../contribution-helpers';
-import { createFsTools } from './host';
+import { createFsTools } from './fs-tools';
 
 /** fs 域插件——贡献 11 工具（序 = createFsTools 声明序；② 批 2026-08-23）。 */
 export const fsDomainPlugin = {

@@ -5,11 +5,12 @@
 //
 // 来历：原 agent/tools/coding.ts（一文件载五族）的该段整段移出——定义逐字保留，
 // 只把内核依赖改走包内宿主面（./host）。
-// UI 依赖面**类型**三件在 \`agent/tool.ts\`（2026-09-24 批 4c 前置上收内核契约）——
+// UI 依赖面**类型**三件在 `agent/tool.ts`（2026-09-24 批 4c 前置上收内核契约）——
 // 本族只取类型，不构成宿主→插件反向依赖。
 
 import { z } from 'zod';
-import { type AskUserRequest, type CodingToolsUI, defineTool, type Tool } from './host';
+import { type CodingToolsUI, defineTool, type Tool } from './host';
+
 export function createAskUserTools(ui?: CodingToolsUI): Tool[] {
   return [
     // ── 用户交互 ──
