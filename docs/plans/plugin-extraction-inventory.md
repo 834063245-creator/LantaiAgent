@@ -567,6 +567,9 @@ manifest.json —— 包内合计 30～110 行。
   （本轮实测：40+ 文件的缺实现红一次性收敛；先前 6a/6c/6d 的散点腰保留不动）。
 - **验收**：vitest 406 文件 / 4,306 用例全绿 · build + build:builtin-plugins（35 产物自包含）·
   biome ci 0/0 · **convergence 双轨基线零改动** · doc-sync + doc-check 全绿。
+- **真机验收**（重建 exe + CDP）：faceDeps **272 键**（+5）、5 个新键类型全对；
+  `/plugins/hologram/multiagent-comm/entry.js` 570 KB 且动态 import 成功（含 `agent_message` /
+  `agent_request` / `TreeTopology` 真身）；`face.json` 13 键带指纹 `5824ccb8`（保险丝 a 覆盖 35/35）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
