@@ -25,7 +25,6 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 
 import { createBlock, DEFAULT_BLOCK_WIDTH, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { layoutFlow, panBy, zoomAt } from '../src/paper/canvas-math';
-import { composerSubmitOnKey } from '../src/paper/ime';
 import {
   CIRCLE_EXTRA,
   CODE_OUT_TEXT_MAX,
@@ -62,6 +61,7 @@ import {
   visibleFlowWindow,
   visiblePinnedIds,
 } from '../src/paper/virtualize';
+import { composerSubmitOnKey } from '../src/plugins/builtin/compose-dock/ime';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });

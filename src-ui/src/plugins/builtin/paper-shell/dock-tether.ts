@@ -36,7 +36,7 @@
 // `docs/plans/paper-shell/taste-ledger.md` 同日条。
 
 import { folioHeadWidthFor } from '../../../paper/measure';
-import { TETHER_SPLINE_MIN, type TetherPen } from '../../../paper/provenance';
+import { TETHER_SPLINE_MIN, type TetherPen } from './provenance';
 
 /** 引线种子前缀（seed 取 `版口-<卷号>`）：**同卷恒同线**，重渲染/平移不闪——与
  *  `selSeedOf` 的定种子纪律同款；切卷即换种子，新线走 `pp-tether-in` 淡入。 */

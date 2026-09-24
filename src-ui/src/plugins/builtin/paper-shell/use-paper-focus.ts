@@ -8,8 +8,9 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect } from 'react';
+import type { createFocusFlightScheduler } from './focus-flight';
 import type { RegionView } from './host';
-import { type createFocusFlightScheduler, getCanvasStore, useCanvasViewStore, viewFocusRegion } from './host';
+import { getCanvasStore, useCanvasViewStore, viewFocusRegion } from './host';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 焦点飞行域（paper-panel-split C2，自 PaperPanel 1476-1590 域内原样搬入）。

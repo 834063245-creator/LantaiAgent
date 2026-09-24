@@ -46,7 +46,9 @@ export const wheelFactor = impl.wheelFactor;
 export const worldToScreen = impl.worldToScreen;
 export const zoomAt = impl.zoomAt;
 export const viewportCenterWorld = impl.viewportCenterWorld;
-export const createFocusFlightScheduler = impl.createFocusFlightScheduler;
+// 批 5a（2026-09-24）：focus-flight / sel-ink / sheet / provenance 已随包 ⇒ 它们不进
+// 宿主面（host.ts 同款注记：host 面只许桥内核——FaceBridgeSeal 要求每个导出都是
+// faceDeps 键），消费方直接 `from './<file>'`。
 export const defaultFolded = impl.defaultFolded;
 export const foldLabel = impl.foldLabel;
 export const isFoldable = impl.isFoldable;
@@ -84,10 +86,7 @@ export const classifyDropZone = impl.classifyDropZone;
 export const makeStrip = impl.makeStrip;
 export const selectionMaskRects = impl.selectionMaskRects;
 export const stashStripPositionAt = impl.stashStripPositionAt;
-export const mergeSelectionLines = impl.mergeSelectionLines;
-export const selInkPaths = impl.selInkPaths;
-export const selSeedOf = impl.selSeedOf;
-export const sheetCharacter = impl.sheetCharacter;
+export { sheetCharacter } from './sheet';
 export const clampRegionW = impl.clampRegionW;
 export const defaultRegionFor = impl.defaultRegionFor;
 export const EMPTY_REGION_CONTENT_H = impl.EMPTY_REGION_CONTENT_H;

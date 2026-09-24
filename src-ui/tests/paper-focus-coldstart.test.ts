@@ -8,7 +8,7 @@
 // 组件侧接线（flyToRegion 内部守卫 + 挂载 effect 兜底聚焦）以注释 + 单测双钉。
 
 import { describe, expect, it } from 'vitest';
-import { createFocusFlightScheduler } from '../src/paper/focus-flight';
+import { createFocusFlightScheduler } from '../src/plugins/builtin/paper-shell/focus-flight';
 
 /** R1 守卫核心判定（与 PaperPanel.flyToRegion 同规则）：
  *  目标卷在 spread 有持久位置 → 可飞；无位置（新建/未展开卷）→ 不可飞。 */

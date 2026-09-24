@@ -16,14 +16,12 @@ import {
   classifyDropZone,
   getCanvasStore,
   makeStrip,
-  mergeSelectionLines,
   screenToWorld,
   selectionMaskRects,
-  selInkPaths,
-  selSeedOf,
   stashStripPositionAt,
   useCanvasViewStore,
 } from './host';
+import { mergeSelectionLines, selInkPaths, selSeedOf } from './sel-ink';
 import { DRAG_THRESHOLD } from './use-paper-drag';
 import type { PaperCore } from './use-paper-sessions';
 

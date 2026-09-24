@@ -61,13 +61,7 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["panels", "commands"],
-    "impl": [
-      "paper/type-tokens.ts",
-      "paper/provenance.ts",
-      "paper/sel-ink.ts",
-      "paper/focus-flight.ts",
-      "paper/sheet.ts"
-    ],
+    "impl": ["paper/type-tokens.ts"],
     "shared": [
       "paper/block-model.ts",
       "paper/region-view.ts",
@@ -121,7 +115,6 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["overlays", "commands", "space"],
-    "impl": ["paper/toc.ts", "paper/toc-ink.ts", "paper/ime.ts"],
     "shared": [
       "paper/block-model.ts",
       "paper/ink.ts",

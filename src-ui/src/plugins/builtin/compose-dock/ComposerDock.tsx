@@ -51,7 +51,6 @@ import type {
 } from './host';
 import {
   agentSessionState,
-  composerSubmitOnKey,
   ensureSkillCatalog,
   extractImageFiles,
   filterCommands,
@@ -83,6 +82,7 @@ import {
   useShellStore,
   watchFileDragDrop,
 } from './host';
+import { composerSubmitOnKey } from './ime';
 import './composition-chip.css';
 import { InkLedger } from './InkLedger';
 import { ModelSelector } from './ModelSelector';

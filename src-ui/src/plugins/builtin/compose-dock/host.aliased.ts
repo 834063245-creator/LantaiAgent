@@ -36,7 +36,8 @@ const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const agentSessionState = impl.agentSessionState;
-export const composerSubmitOnKey = impl.composerSubmitOnKey;
+// 批 5a（2026-09-24）：toc / toc-ink / ime 已随包 ⇒ 不进宿主面（host.ts 同款注记），
+// 消费方直接 `from './<file>'`；本文件只保留内核桥键。
 export const isMockMode = impl.isMockMode;
 export const typedJsonRpc = impl.typedJsonRpc;
 export const useDialogEscape = impl.useDialogEscape;
@@ -45,22 +46,13 @@ export const watchFileDragDrop = impl.watchFileDragDrop;
 export const usePaperDock = impl.usePaperDock;
 export const usePaperRegion = impl.usePaperRegion;
 export const PaperRegionContext = impl.PaperRegionContext;
-export const buildStageAnchors = impl.buildStageAnchors;
-export const nearestAnchorAt = impl.nearestAnchorAt;
-export const viewportMarker = impl.viewportMarker;
-export const computeSlider = impl.computeSlider;
-export const grabOffsetAt = impl.grabOffsetAt;
-export const scrubViewTop = impl.scrubViewTop;
-export const jumpViewTopAt = impl.jumpViewTopAt;
-export const stripToWorld = impl.stripToWorld;
-export const deriveMarks = impl.deriveMarks;
-export const unreadBand = impl.unreadBand;
-export const createInkCache = impl.createInkCache;
+// 批 5a（2026-09-24）：toc / toc-ink / ime 已随包 ⇒ 不进宿主面，消费方直接
+// `from './toc'` / `'./toc-ink'` / `'./ime'`（host 面只许桥内核）。
 export const inkColorOf = impl.inkColorOf;
 export const inkBarColorOf = impl.inkBarColorOf;
 export const inkForBlock = impl.inkForBlock;
 export const INK_FAIL = impl.INK_FAIL;
-export const buildTocInkBuckets = impl.buildTocInkBuckets;
+export const createInkCache = impl.createInkCache;
 export const useCanvasViewStore = impl.useCanvasViewStore;
 export const findModels = impl.findModels;
 export const getDynamicFetchFailure = impl.getDynamicFetchFailure;
@@ -112,12 +104,12 @@ export type PermissionMode = import('./host').PermissionMode;
 export type ModelDescriptor = import('./host').ModelDescriptor;
 export type Protocol = import('./host').Protocol;
 export type ChatImageRef = import('./host').ChatImageRef;
-export type TocRange = import('./host').TocRange;
-export type TocMark = import('./host').TocMark;
-export type TocMarkInput = import('./host').TocMarkInput;
-export type TocSlider = import('./host').TocSlider;
-export type TocInkLine = import('./host').TocInkLine;
-export type TocInkBucket = import('./host').TocInkBucket;
+export type TocRange = import('./toc').TocRange;
+export type TocMark = import('./toc').TocMark;
+export type TocMarkInput = import('./toc').TocMarkInput;
+export type TocSlider = import('./toc').TocSlider;
+export type TocInkLine = import('./toc-ink').TocInkLine;
+export type TocInkBucket = import('./toc-ink').TocInkBucket;
 export type SourcedBlock = import('./host').SourcedBlock;
 export type FileDragEvent = import('./host').FileDragEvent;
 export type CommandContribution = import('./host').CommandContribution;

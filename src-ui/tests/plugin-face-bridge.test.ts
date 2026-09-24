@@ -55,10 +55,18 @@ describe('插件宿主桥完整性：faceDeps ⊇ 四面 host.aliased 全部 imp
     expect(missing, 'faceDeps 缺注册——插件产物域运行时将 TypeError（划词朱线事故同型）').toEqual([]);
   });
 
-  it('抽查：划词朱线三函数在册（8786c05e 事故回归钉）', () => {
+  it('抽查：纸壳桥仍有在册键，且归家件不得回退成桥（8786c05e 事故回归钉）', () => {
     const registry = faceDepsKeys();
-    for (const key of ['mergeSelectionLines', 'selInkPaths', 'selSeedOf']) {
-      expect(registry.has(key), `faceDeps.${key} 未注册`).toBe(true);
+    const aliased = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'host.aliased.ts'), 'utf8');
+    // 事故原型 = paper-shell 的 host.aliased 引用 impl.X 而 faceDeps 未注册。
+    // 2026-09-24 批 5a：那三个函数（mergeSelectionLines/selInkPaths/selSeedOf）已随包
+    // ⇒ 钉法改为「归家后不得再经 host 面桥回去」（桥回去 = 实现又漂回内核）＋
+    // 「纸壳桥整体不得为空」（桥消失是另一型事故）。
+    for (const moved of ['mergeSelectionLines', 'selInkPaths', 'selSeedOf', 'sheetCharacter']) {
+      expect(aliased.includes(`impl.${moved}`), `${moved} 已随包（批 5a）——不得再写成 host 桥`).toBe(false);
     }
+    const refs = [...aliased.matchAll(/\bimpl\.(\w+)/g)].map((m) => m[1]!);
+    expect(refs.length, '纸壳宿主桥不得为空（空 = 产物域一调即 undefined）').toBeGreaterThan(0);
+    for (const key of refs) expect(registry.has(key), `faceDeps.${key} 未注册`).toBe(true);
   });
 });

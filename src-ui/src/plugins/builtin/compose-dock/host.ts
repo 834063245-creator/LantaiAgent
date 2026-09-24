@@ -27,28 +27,12 @@ export { isMockMode, watchFileDragDrop } from '../../../bridge';
 export { selectPreset } from '../../../composition/preset-assembly';
 export type { CommandContribution } from '../../../composition/services';
 export type { SourcedBlock } from '../../../paper/block-model';
-export { composerSubmitOnKey } from '../../../paper/ime';
 export { createInkCache, INK_FAIL, inkBarColorOf, inkColorOf, inkForBlock } from '../../../paper/ink';
 /* 图版架（2026-09-23 丙案 §9.5）：架读流区数据面时**要用裸 context 做容缺读**
  * （宿主不给 ⇒ 架不渲染，同能力位纪律）——`usePaperRegion()` 是会抛的那个面，
  * 只挂坞岛的单件测试桩铺不出全套流区数据。键名 `PaperRegionContext` **早在册**
  * （paper-shell 出），故取用不新增宿主面键、指纹零漂移。 */
 export { PaperRegionContext, usePaperDock, usePaperRegion } from '../../../paper/overlay-context';
-export type { StageUnitInput, TocMark, TocMarkInput, TocRange, TocSlider } from '../../../paper/toc';
-export {
-  buildStageAnchors,
-  computeSlider,
-  deriveMarks,
-  grabOffsetAt,
-  jumpViewTopAt,
-  nearestAnchorAt,
-  scrubViewTop,
-  stripToWorld,
-  unreadBand,
-  viewportMarker,
-} from '../../../paper/toc';
-export type { TocInkBucket, TocInkLine } from '../../../paper/toc-ink';
-export { buildTocInkBuckets } from '../../../paper/toc-ink';
 export {
   findModels,
   getDynamicFetchFailure,
@@ -94,3 +78,6 @@ export {
 } from '../../../state/work-ledger-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export { iconHtml } from '../../../ui/icons';
+// 批 5a 注意：本包私有件（toc / toc-ink / ime）**不进本面**——host 面是「内核桥」专用
+// （host-modules 的 FaceBridgeSeal 要求本文件每个导出都是 faceDeps 键）；
+// 包内符号由消费方直接 `from './toc'` / `'./toc-ink'` / `'./ime'` 取用。

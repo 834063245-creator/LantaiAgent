@@ -354,12 +354,16 @@ manifest.json —— 包内合计 30～110 行。
 |---|---|---|
 | 契约层（2–4 个产物 + 内核共享） | `block-model.ts` 240 · `region-view.ts` 68 · `overlay-context.ts` 91 · `canvas-math.ts` 234 · `space.ts` 165 · `minimap-core.ts` 180 · `ink.ts` 374 | **留内核**（跨产物同实例/契约） |
 | 判据层（有意上移的单一真源） | `asset-rack.ts` 46 · `plate-sign.ts` 38 | **留内核**（头注有案：宿主→插件方向禁反） |
-| **产物私有排版引擎** | paper-shell 独占 5 件：`type-tokens.ts` **803** · `provenance.ts` 316 · `sel-ink.ts` 138 · `focus-flight.ts` 57 · `sheet.ts` 36；compose-dock 独占 3 件：`toc.ts` 275 · `toc-ink.ts` 103 · `ime.ts` 37 | **应归家**（全仓无第二消费者） |
+| **产物私有排版引擎** | paper-shell 独占 5 件：`type-tokens.ts` **806** · ~~provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36~~；compose-dock 独占 3 件：~~toc 275 · toc-ink 103 · ime 37~~ | **7 件已归家**（批 5a，962 行：paper-shell 4 + compose-dock 3）；余 `type-tokens.ts` |
 | 拆分件 | `measure.ts` **2015**（内核只用 1 个符号 `clearObservedHeightsForSession`）· `group.ts` 306 · `virtualize.ts` 155 · `selection.ts` 193 | 类型/账本留内核，实现进 paper-shell |
 
 **最痛的一条**：`paper/type-tokens.ts` 是 paper-shell 独占，却住在内核 ⇒
 `docs/plans/paper-shell/taste-ledger.md` 已把它记成现状：「属**壳域** ⇒ 改版式 token 必须重建 exe」——
 与「改插件 = 换产物，永不重编译 exe」正面冲突。
+**批 5a 复核（2026-09-24）**：它**还不能搬**——内核 `paper/measure.ts` 直接 import 它的
+`ASSET_DERIVED`/`CHROME_TOKENS`/`FOLIO_TOKENS`/`cssUsedPx`（宿主→插件禁反）⇒ 随批 9
+「拆分件」一起处理（measure.ts 的实现进 paper-shell 时，token 表随之）。同批复核：
+`provenance`/`sel-ink`/`toc`/`toc-ink` 等 7 件**零内核消费者**，已搬。
 
 ### 2.6 内核里的产品件与内容腰（`composition/` · `plugins/` · 顶层）—— 2,620 行
 
@@ -439,10 +443,8 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 3a 后重测）：红 **20 产物 / 46 文件 / 16,251 行**（§1 的 17 条 +
-§2.1 Provider 家族 8 件 + §2.5 两包独占件）；绿 111 平台 + 73 已认领；灰 136 文件 / 38,052 行
-（`agent/` 87 · `app/` 32 · `ui/` 9）——**灰区 ⊇ 账③**：除 §2 已认领的面之外，还含内核自身的
-app/agent 编排件（归属判定未做），故灰区数字大于 §2 的 32,018。
+**2026-09-24 基线**（批 5a 后重测）：红 **19 产物 / 39 文件 / 15,289 行**（§1 的 17 条 +
+§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`）；绿 111 平台 + 66 已认领；灰 136 文件 / 38,052 行。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -456,7 +458,7 @@ app/agent 编排件（归属判定未做），故灰区数字大于 §2 的 32,0
 | **2** | seam provider 实心化：`llm-adapters`（三适配器 + 两个私有 helper）；`subagent-in-process` 并入批 7 | 1,916 | ✅ **llm-adapters 已落**（2026-09-24 批 2a）：1,916 行进包、端点真源上收内核、16 个运行时桥位、产物 2.6 KB→41.6 KB（**适配器自此可热更**）。`subagent-in-process`（543）复核后并入批 7——它要同一片 `agent.ts`/context/message-bus 面（16 桥位），那批本就要整片搬 |
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | ✅ **批 3a 已落 3 件**（wait 102 · office 576 · cordis 200 = 878 行；桥位仅 9 运行时 + 7 类型）。**memory/skill/task 复核后改期**：它们的类是内核构造的（`workspace.ts` new MemoryManager/SkillRegistry、runtime 用 TaskBoard 11 处）⇒ 整件搬会造宿主→插件反向依赖（仓库禁反），改随批 7 / 批 9 |
 | **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | 硬骨头：一文件载五族；9+5+2 个测试直连；search 输出形状须与 Rust 逐字节等价 |
-| **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | 纯搬运；直接消灭「改版式 token 必须重建 exe」 |
+| **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | 通道现成；工作量在拆 loop 契约耦合与 host 模式 |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | `ctx.subagents` seam 已在位；障碍是 runtime 单例与 21+13 个测试 |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈2,500 | 依赖批 5/6 落地；同批消掉 hljs 两处内联 |

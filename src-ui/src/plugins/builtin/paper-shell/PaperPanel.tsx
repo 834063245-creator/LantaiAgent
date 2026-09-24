@@ -36,17 +36,6 @@
 
 import { type CSSProperties, Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rackPresent } from '../../../paper/asset-rack';
-import {
-  type ProvenanceState,
-  provenanceText,
-  provenanceTitle,
-  provenanceTraceable,
-  sourceBlockIdOf,
-  TETHER_ANCHOR_DY,
-  tetherAnchors,
-  tetherAnchorsAt,
-  tetherPath,
-} from '../../../paper/provenance';
 import { volumeDisplayName } from '../../../state/volume-name';
 import { DOCK_TETHER_PEN, DOCK_TETHER_SEED, regionFootAnchorOf } from './dock-tether';
 import { FolioCompositionChip } from './FolioCompositionChip';
@@ -73,8 +62,6 @@ import {
   resolveAssetBlock,
   resolveRenderer,
   screenToWorld,
-  selSeedOf,
-  sheetCharacter,
   subscribeOverlayContributions,
   useCanvasViewStore,
   useCoreStore,
@@ -85,6 +72,17 @@ import {
   worldToScreen,
 } from './host';
 import { InkLayer } from './InkLayer';
+import {
+  type ProvenanceState,
+  provenanceText,
+  provenanceTitle,
+  provenanceTraceable,
+  sourceBlockIdOf,
+  TETHER_ANCHOR_DY,
+  tetherAnchors,
+  tetherAnchorsAt,
+  tetherPath,
+} from './provenance';
 import { StatusLine } from './StatusLine';
 import { ToastHost } from './ToastHost';
 import { useBlockMeasure } from './use-block-measure';
@@ -108,6 +106,8 @@ import { useRegionMove } from './use-region-move';
 import { useRegionPlacement } from './use-region-placement';
 import { useRunningSessions } from './use-running-sessions';
 import './PaperPanel.css';
+import { selSeedOf } from './sel-ink';
+import { sheetCharacter } from './sheet';
 
 /* ── 文类签（页边注 rubric）：BlockKind → 注疏文类（docs/design/lantai-design-spec.md §4）── */
 

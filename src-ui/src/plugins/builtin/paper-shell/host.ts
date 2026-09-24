@@ -53,7 +53,6 @@ export {
   worldToScreen,
   zoomAt,
 } from '../../../paper/canvas-math';
-export { createFocusFlightScheduler } from '../../../paper/focus-flight';
 export { defaultFolded, foldLabel, isFoldable } from '../../../paper/fold';
 export type { WorkUnit } from '../../../paper/group';
 /* stream-rhythm 刀2（2026-09-03）：工作单元 pass——节奏档的产出面
@@ -91,11 +90,6 @@ export {
 } from '../../../paper/measure';
 export { PaperDockContext, PaperRegionContext } from '../../../paper/overlay-context';
 export type { RegionView } from '../../../paper/region-view';
-export {
-  mergeSelectionLines,
-  selInkPaths,
-  selSeedOf,
-} from '../../../paper/sel-ink';
 export type { MaskRect, PaperStrip } from '../../../paper/selection';
 export {
   classifyDropZone,
@@ -103,7 +97,6 @@ export {
   selectionMaskRects,
   stashStripPositionAt,
 } from '../../../paper/selection';
-export { sheetCharacter } from '../../../paper/sheet';
 export type { StreamRegionState } from '../../../paper/space';
 export {
   clampRegionW,
@@ -138,3 +131,6 @@ export { usePresetStore } from '../../../state/preset-store';
 export { useUpdateStore } from '../../../state/update-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../../ui/message-model';
+// 批 5a 注意：本包私有件（provenance / sel-ink / focus-flight / sheet）**不进本面**——
+// host 面是「内核桥」专用（host-modules 的 FaceBridgeSeal 要求本文件每个导出都是
+// faceDeps 键）；包内符号由消费方直接 `from './<file>'` 取用。

@@ -88,10 +88,8 @@ import {
   worldToScreen,
   zoomAt,
 } from '../../paper/canvas-math';
-import { createFocusFlightScheduler } from '../../paper/focus-flight';
 import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
 import { groupWorkUnits, leadOf, rhythmAssign, sealedMessageIdsOf, unitMembership } from '../../paper/group';
-import { composerSubmitOnKey } from '../../paper/ime';
 import {
   createInkCache,
   INK_FAIL,
@@ -122,9 +120,7 @@ import {
 } from '../../paper/measure';
 import { clampViewportFrame, inkBarsFor, minimapProject, regionFrame } from '../../paper/minimap-core';
 import { PaperDockContext, PaperRegionContext, usePaperDock, usePaperRegion } from '../../paper/overlay-context';
-import { mergeSelectionLines, selInkPaths, selSeedOf } from '../../paper/sel-ink';
 import { classifyDropZone, makeStrip, selectionMaskRects, stashStripPositionAt } from '../../paper/selection';
-import { sheetCharacter } from '../../paper/sheet';
 import {
   clampRegionW,
   defaultRegionFor,
@@ -134,19 +130,6 @@ import {
   REGION_CONTENT_MARGIN,
   STREAM_REGION,
 } from '../../paper/space';
-import {
-  buildStageAnchors,
-  computeSlider,
-  deriveMarks,
-  grabOffsetAt,
-  jumpViewTopAt,
-  nearestAnchorAt,
-  scrubViewTop,
-  stripToWorld,
-  unreadBand,
-  viewportMarker,
-} from '../../paper/toc';
-import { buildTocInkBuckets } from '../../paper/toc-ink';
 import { collapseToolGroups, translateMessagesCached } from '../../paper/translate';
 import { injectPaperTokens } from '../../paper/type-tokens';
 import { viewportWorldRect, visibleFlowWindow, visiblePinnedIds } from '../../paper/virtualize';
@@ -345,7 +328,6 @@ const faceDeps = {
   wheelFactor,
   worldToScreen,
   zoomAt,
-  createFocusFlightScheduler,
   defaultFolded,
   foldLabel,
   isFoldable,
@@ -382,25 +364,12 @@ const faceDeps = {
   PaperRegionContext,
   usePaperDock,
   usePaperRegion,
-  buildStageAnchors,
-  nearestAnchorAt,
-  viewportMarker,
-  buildTocInkBuckets,
-  computeSlider,
-  grabOffsetAt,
-  scrubViewTop,
-  jumpViewTopAt,
-  stripToWorld,
-  deriveMarks,
-  unreadBand,
+  // 批 5a 归家（2026-09-24）：toc / toc-ink / ime / sel-ink / focus-flight / sheet /
+  // provenance 七件随包 ⇒ 这些 faceDeps 键已撤（包内实现，两域同源）。
   classifyDropZone,
   makeStrip,
   selectionMaskRects,
   stashStripPositionAt,
-  mergeSelectionLines,
-  selInkPaths,
-  selSeedOf,
-  sheetCharacter,
   clampRegionW,
   defaultRegionFor,
   EMPTY_REGION_CONTENT_H,
@@ -414,7 +383,6 @@ const faceDeps = {
   viewportWorldRect,
   visibleFlowWindow,
   visiblePinnedIds,
-  composerSubmitOnKey,
   // 状态层（zustand 真实例——影子 store 禁止）
   blockFromSnapshot,
   getCanvasStore,

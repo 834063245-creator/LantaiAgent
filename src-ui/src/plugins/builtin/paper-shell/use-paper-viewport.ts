@@ -10,10 +10,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEdgeAutoScroll, useHoverEdgeScroll } from './edge-scroll';
+import { createFocusFlightScheduler } from './focus-flight';
 import {
   ANCHOR,
   canvasWheelMode,
-  createFocusFlightScheduler,
   getCanvasStore,
   injectPaperTokens,
   loadSettings,

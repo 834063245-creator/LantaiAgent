@@ -47,26 +47,31 @@
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { SourcedBlock, StageUnitInput, TocInkLine, TocMarkInput, TocRange } from './host';
+import type { SourcedBlock } from './host';
 import {
   agentSessionState,
-  buildStageAnchors,
-  buildTocInkBuckets,
-  computeSlider,
   createInkCache,
-  deriveMarks,
-  grabOffsetAt,
   INK_FAIL,
   inkBarColorOf,
   inkForBlock,
-  jumpViewTopAt,
-  scrubViewTop,
-  unreadBand,
   useCanvasViewStore,
   useCoreStore,
   usePaperDock,
   usePaperRegion,
 } from './host';
+import type { StageUnitInput, TocMarkInput, TocRange } from './toc';
+// 批 5a：toc / toc-ink 已归家随包 ⇒ 从包内文件取（host 面只许桥内核）
+import {
+  buildStageAnchors,
+  computeSlider,
+  deriveMarks,
+  grabOffsetAt,
+  jumpViewTopAt,
+  scrubViewTop,
+  unreadBand,
+} from './toc';
+import type { TocInkLine } from './toc-ink';
+import { buildTocInkBuckets } from './toc-ink';
 
 /** 带体自身的页面起点 = **屏顶 0**（2026-09-17 标题栏拆除批：书眉退役，
  *  2026-09-14 那次「整体下移 56px」随之取消）。此处是字面量镜像与测试基准：

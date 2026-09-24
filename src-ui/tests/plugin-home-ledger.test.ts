@@ -69,8 +69,8 @@ const NOTES: Record<string, string> = {
     '469 行；搬前须先解 agent.ts 的 opts.agentLoop ?? defaultAgentLoop 内核回落（agent-loop-active.ts 是内核桥，留）',
   // 半迁移（实心包里的残余——不是薄包，故不进空壳集，但同样按 impl 销账）
   'settings-domain': '门牌 + 面板壳已在包内；Provider 控制台 8 件 2,740 行仍在内核（账本 §2.1）',
-  'paper-shell': '独占排版引擎仍在内核（账本 §2.5）——「改版式 token 必须重建 exe」的根源',
-  'compose-dock': '独占 3 件（toc/toc-ink/ime）仍在内核（账本 §2.5）',
+  'paper-shell':
+    '批 5a 已收 4 件（provenance/sel-ink/focus-flight/sheet）；余 `paper/type-tokens.ts` 806 行——它被内核 `paper/measure.ts` 引用（宿主→插件禁反）⇒ 随批 9',
 };
 
 // ── 磁盘判据 ──

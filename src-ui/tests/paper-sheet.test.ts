@@ -3,7 +3,7 @@
 // paper/sheet 纯函数——同卷恒同纸（确定性）/ 值域合法 / 卷卷大概率不重样。
 
 import { describe, expect, it } from 'vitest';
-import { sheetCharacter } from '../src/paper/sheet';
+import { sheetCharacter } from '../src/plugins/builtin/paper-shell/sheet';
 
 describe('paper/sheet 流区纸性', () => {
   it('同卷恒同纸（确定性——重启/换页不换脸）', () => {

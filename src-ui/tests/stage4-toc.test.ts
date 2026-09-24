@@ -21,7 +21,7 @@ import {
   tocMapper,
   unreadBand,
   viewportMarker,
-} from '../src/paper/toc';
+} from '../src/plugins/builtin/compose-dock/toc';
 
 const RANGE: TocRange = {
   regionTop: -1000,

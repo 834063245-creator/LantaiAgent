@@ -6,7 +6,7 @@
 // 断言「同目标动画在途不重播」（regions 每帧打扰被吞）且「结束可再飞」。
 
 import { describe, expect, it } from 'vitest';
-import { createFocusFlightScheduler } from '../src/paper/focus-flight';
+import { createFocusFlightScheduler } from '../src/plugins/builtin/paper-shell/focus-flight';
 
 describe('paper/focus-flight — 焦点飞行调度（视口乱飞修复）', () => {
   it('书脊定位：空闲启动 = started；动画在途的同目标重播 = rejected（自锁消除）', () => {

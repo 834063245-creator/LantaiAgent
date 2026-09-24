@@ -10,7 +10,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { mergeSelectionLines, selInkPaths, selSeedOf } from '../src/paper/sel-ink';
+import { mergeSelectionLines, selInkPaths, selSeedOf } from '../src/plugins/builtin/paper-shell/sel-ink';
 
 type R = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 const rect = (left: number, top: number, right: number, bottom: number): R => ({

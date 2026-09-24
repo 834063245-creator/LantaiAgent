@@ -158,7 +158,7 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(ink).toContain('pointer-events: none');
     expect(ink).toContain('z-index: 62');
     // 纯函数真源在册（行合并 + 手写路径）
-    expect(existsSync(join(SRC, 'paper', 'sel-ink.ts'))).toBe(true);
+    expect(existsSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'sel-ink.ts'))).toBe(true);
     expect(PANEL_TSX).toContain('mergeSelectionLines');
     expect(PANEL_TSX).toContain('selInkPaths');
   });

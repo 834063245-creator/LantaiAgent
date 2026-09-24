@@ -34,15 +34,15 @@ import {
   tetherAnchorsAt,
   tetherPath,
   tetherPoints,
-} from '../src/paper/provenance';
+} from '../src/plugins/builtin/paper-shell/provenance';
 
 const SRC = join(__dirname, '..', 'src');
 const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
 const PANEL_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');
 const DRAG_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'use-paper-drag.ts'), 'utf8');
 const CANVAS_STORE_TS = readFileSync(join(SRC, 'state', 'canvas-store.ts'), 'utf8');
-const PROVENANCE_TS = readFileSync(join(SRC, 'paper', 'provenance.ts'), 'utf8');
-const SEL_INK_TS = readFileSync(join(SRC, 'paper', 'sel-ink.ts'), 'utf8');
+const PROVENANCE_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'provenance.ts'), 'utf8');
+const SEL_INK_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'sel-ink.ts'), 'utf8');
 const DOCK_TETHER_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'dock-tether.ts'), 'utf8');
 const COMPOSER_FLOAT_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'composer-float.ts'), 'utf8');
 
