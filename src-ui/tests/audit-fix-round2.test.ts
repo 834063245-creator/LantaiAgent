@@ -102,7 +102,7 @@ describe('DiscoveryBoard restore deduplicates entries', () => {
 describe('CompactionTracker deserializeState replaces not appends', () => {
   it('calling deserializeState twice does not duplicate events', async () => {
     freshFs();
-    const { CompactionTracker } = await import('../src/agent/compaction-model');
+    const { CompactionTracker } = await import('../src/agent/compaction-tracker');
     const tracker = new CompactionTracker();
     const state1 = JSON.stringify({
       events: [{ type: 'turn', turn: 1 }],

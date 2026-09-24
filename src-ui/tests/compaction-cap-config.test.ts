@@ -23,7 +23,7 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
 });
 
 import type { Agent } from '../src/agent/agent';
-import { SUMMARY_OUTPUT_BUDGET } from '../src/agent/compaction-summarize';
+import { SUMMARY_OUTPUT_BUDGET } from '../src/agent/compaction-contract';
 import { createExecState } from '../src/agent/execution-state';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Provider } from '../src/provider/types';

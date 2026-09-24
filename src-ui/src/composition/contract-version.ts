@@ -22,9 +22,16 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 47;
+export const OPEN_SURFACE_CONTRACT_VERSION = 48;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v48（2026-09-24）**压缩域结构切分**（批 6d-1，行为零变更）：记账面
+ *  （`CompactionTracker` + 三个账类型 + 费率常量）从 `agent/compaction-model.ts`
+ *  切到新 `agent/compaction-tracker.ts`，策略面留原文件；宿主接口 `CompactionHost`
+ *  与两个跨层常量（`COMPACTION_NOTICE_MARK` / `SUMMARY_OUTPUT_BUDGET`）上收新
+ *  `agent/compaction-contract.ts`（UI 不再直引实现文件）。本清单里只有
+ *  `agent-loop/types.ts` 动了一行——`CompactionTracker` 类型导入改指新记账面文件，
+ *  **契约形状零变更**；指纹因原文 sha256 粗粒度而变（刻意取舍：宁可多升版）。
  *  v47（2026-09-23）**Responses 方言合规批次**（思考链回传的第二半 + 三处不合
  *  schema 的请求形状）。① `provider/types.ts`：`Message` 新增可选 `responses_items`
  *  （`ResponsesOutputItem[]`，原样留档本轮 `response.output`），`ChunkType` 新增

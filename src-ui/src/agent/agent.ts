@@ -22,7 +22,6 @@ import type {
 import { ApiError, apiErrorSummary, ChunkType } from '../provider/types';
 import {
   applyAutoTuneConfigImpl,
-  type CompactionHost,
   callSummaryLLMImpl,
   compactIfNeededImpl,
   compactNowImpl,
@@ -47,14 +46,9 @@ import type { AgentRecord, AgentStore } from './agent-store';
 import { type AgentEvent, type AgentUINotifier, EventKind, type EventSink, type ToolEvent } from './agent-types';
 import { generateAssetId } from './asset-kinds';
 import { rebuildAssetsFromSession } from './asset-store';
-import {
-  type CompactionConfig,
-  type CompactionSessionStats,
-  CompactionTracker,
-  DEFAULT_COMPACT_RATIO,
-  DEFAULT_RETAIN_RATIO,
-} from './compaction-model';
-import { SUMMARY_OUTPUT_BUDGET } from './compaction-summarize';
+import { type CompactionHost, SUMMARY_OUTPUT_BUDGET } from './compaction-contract';
+import { type CompactionConfig, DEFAULT_COMPACT_RATIO, DEFAULT_RETAIN_RATIO } from './compaction-model';
+import { type CompactionSessionStats, CompactionTracker } from './compaction-tracker';
 import type { AgentContext } from './context';
 import {
   AgentEventBus,

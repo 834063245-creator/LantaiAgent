@@ -9,8 +9,10 @@ import { streamWithIdleTimeout } from '../provider/idle-stream';
 import type { Message, Provider, ToolSchema, Usage } from '../provider/types';
 import { ChunkType } from '../provider/types';
 import { kernelReadFile, kernelWriteFile } from '../rpc-contract';
-import { type AgentEvent, EventKind } from './agent-types';
-import type { CompactionConfig, CompactionEvent, CompactionTracker } from './compaction-model';
+import { EventKind } from './agent-types';
+// 批 6d-1：宿主面与跨层常量上收契约（实现文件不再自持定义）
+import { COMPACTION_NOTICE_MARK, type CompactionHost } from './compaction-contract';
+import type { CompactionConfig } from './compaction-model';
 import { maybeTune } from './compaction-model';
 import {
   buildCompactionInstruction,
@@ -23,52 +25,12 @@ import {
   SUMMARY_MIN_INPUT,
   SUMMARY_PROMPT_BUDGET,
 } from './compaction-summarize';
-import type { ExecStateInstance } from './execution-state';
+// 批 6d-1：账类型归记账面（compaction-tracker.ts）
+import type { CompactionEvent } from './compaction-tracker';
 import { log } from './logger';
 import { buildCompactedSummaryMessage } from './session-log';
 import { countMessage, countMessages, countText } from './token-counter';
-import type { ToolRegistry } from './tool';
 import { foldToolResults, nextFoldBoundary } from './tool-fold';
-
-/** 压缩域对宿主 Agent 的最小状态面（成员与 Agent 类声明逐字对齐）。 */
-export interface CompactionHost {
-  readonly session: Message[];
-  readonly prov: Provider;
-  readonly tools: ToolRegistry;
-  readonly contextWindow: number;
-  readonly compactionTracker: CompactionTracker;
-  readonly _execState: ExecStateInstance;
-  _sink: (ev: AgentEvent) => void;
-  compactRatio: number;
-  recentKeep: number;
-  /** 自动压缩尾部保留的 token 预算比例（占 contextWindow；0 缺省用
-   *  DEFAULT_RETAIN_RATIO）。手动 /compact 不消费它（保留 recentKeep 条）。 */
-  retainRatio: number;
-  /** 摘要调用的输出上限（token）——缺省 SUMMARY_OUTPUT_BUDGET；
-   *  配置面 = .lantai/compaction-config.json 的 summaryMaxTokens。 */
-  summaryMaxTokens: number;
-  compactStuck: boolean;
-  compactRetryAfterLen: number;
-  compactFailCount: number;
-  compactRunning: boolean;
-  _compactionConfigPath: string | null;
-  _compactionTrackerPath: string | null;
-  _compactSummary: string | null;
-  _compactTailStart: number;
-  stormSig: string;
-  stormCount: number;
-  /** 工具结果折叠边界 + 窗口（payloadMessages 尾段消费）。 */
-  _toolFoldBoundary: number;
-  _toolResultWindow: number;
-  /** Phase 5 事件日志 — 压缩折叠事件（session/compaction）直写。 */
-  _sessionLog: { append(kind: string, data: unknown): void };
-  _foldHead(): number;
-  payloadMessages(): Message[];
-  tokenCountWithEstimation(): number;
-  /** 与主请求同一份工具 schema —— 回放前缀对齐的另一半（tools 在 wire 上先于 messages 进
-   *  token 流，不带上它前缀在 system 之后即分叉）。选择器按 user 请求锁存 ⇒ 同请求内字节稳定。 */
-  requestToolSchemas(): ToolSchema[];
-}
 
 // ── 摘要调用账（cap + usage）──
 // 2026-09-23：摘要调用的 usage 此前被整条丢弃（只收 Text 块），发出的 cap 也无处可查
@@ -223,7 +185,6 @@ function fmtTokens(n: number): string {
  *  30 秒–3 分钟的长杆；info 级通知 UI 更默认丢弃 ⇒ 2026-09-24 真机实测：压缩成功落地
  *  （压前 295,017 → 压后 22,281、outcome=summary），用户界面上却「什么都没看到」，
  *  当场手动停止运行 —— 与 2026-09-22 读图挂起事故同形（长杆无痕 = 用户读成挂了）。 */
-export const COMPACTION_NOTICE_MARK = '[上下文压缩]';
 
 /** 压缩域通知文案（统一带上卷内落痕标记 —— 这一域的动作都是「用户要等」的长杆）。 */
 const noticeText = (text: string): string => `${COMPACTION_NOTICE_MARK} ${text}`;

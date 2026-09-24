@@ -53,8 +53,8 @@ vi.mock('../src/provider/catalog', async (importOriginal) => {
 });
 
 import type { Agent } from '../src/agent/agent';
-import { COMPACTION_NOTICE_MARK } from '../src/agent/agent-compaction';
-import { SUMMARY_OUTPUT_BUDGET, SUMMARY_PROMPT_BUDGET } from '../src/agent/compaction-summarize';
+import { COMPACTION_NOTICE_MARK, SUMMARY_OUTPUT_BUDGET } from '../src/agent/compaction-contract';
+import { SUMMARY_PROMPT_BUDGET } from '../src/agent/compaction-summarize';
 import { createExecState } from '../src/agent/execution-state';
 import { countMessages, countText } from '../src/agent/token-counter';
 import { ToolRegistry } from '../src/agent/tool';

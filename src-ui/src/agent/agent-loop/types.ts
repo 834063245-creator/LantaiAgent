@@ -15,7 +15,7 @@
 
 import type { Message, Provider, ResponsesOutputItem, ToolCall, Usage } from '../../provider/types';
 import type { AgentEvent, AgentUINotifier } from '../agent-types';
-import type { CompactionTracker } from '../compaction-model';
+import type { CompactionTracker } from '../compaction-tracker';
 import type { AgentEventBus } from '../events';
 import type { HookRegistry, PreflightHookRegistry } from '../hooks';
 import type { MessageBus } from '../message-bus';

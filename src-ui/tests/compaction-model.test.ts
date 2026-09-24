@@ -7,13 +7,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   breakevenTurns,
-  CompactionTracker,
   estimateLoss,
   formatCompactionReport,
   netBenefit,
   optimalRecentKeep,
   tailCost,
 } from '../src/agent/compaction-model';
+import { CompactionTracker } from '../src/agent/compaction-tracker';
 
 // ── netBenefit ──
 

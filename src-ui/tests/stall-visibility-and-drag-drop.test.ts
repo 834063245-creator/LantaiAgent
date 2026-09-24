@@ -31,8 +31,8 @@ vi.mock('@tauri-apps/api/webview', () => ({
   }),
 }));
 
-import { COMPACTION_NOTICE_MARK } from '../src/agent/agent-compaction';
 import { EventKind } from '../src/agent/agent-types';
+import { COMPACTION_NOTICE_MARK } from '../src/agent/compaction-contract';
 import { STALL_NOTICE_MARK } from '../src/agent/retry';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';

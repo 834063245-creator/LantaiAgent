@@ -6,11 +6,11 @@
 // 无面板级消息数组，无 sessionMessageModels 缓存，无手动同步。
 // 流式写入直接指向会话的 store — 无论哪个标签页活跃都始终正确。
 
-import { COMPACTION_NOTICE_MARK } from '../agent/agent-compaction';
 import type { TurnPair } from '../agent/agent-session-state';
 import type { AgentEvent, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
+import { COMPACTION_NOTICE_MARK } from '../agent/compaction-contract';
 import { STALL_NOTICE_MARK } from '../agent/retry';
 import type { TokenRequestRecord } from '../agent/token-meter/types';
 import { getAssetTableStore } from '../state/asset-store';

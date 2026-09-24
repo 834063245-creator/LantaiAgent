@@ -16,7 +16,7 @@ vi.mock('../src/bridge', () => ({
 }));
 
 import type { Agent } from '../src/agent/agent';
-import type { CompactionEvent } from '../src/agent/compaction-model';
+import type { CompactionEvent } from '../src/agent/compaction-tracker';
 import { type Tool, ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';

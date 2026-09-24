@@ -20,7 +20,7 @@ import { resolveGuardToolName } from './tools/domains';
  *  （"Provider generation cap for summarization. Defaults to 8192"）。
  *  **可配**：`.lantai/compaction-config.json` 的 `summaryMaxTokens`
  *  （host.summaryMaxTokens，见 agent-compaction.ts 的 applyAutoTuneConfigImpl）。 */
-export const SUMMARY_OUTPUT_BUDGET = 8192;
+
 /** prompt 预算：摘要指令 + 合并指令 + priorSummary 预留。 */
 export const SUMMARY_PROMPT_BUDGET = 4000;
 /** 摘要模型最低窗口 — 低于此值切块会碎到失去意义，直接无参选资格。 */
