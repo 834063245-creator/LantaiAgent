@@ -340,8 +340,8 @@ manifest.json —— 包内合计 30～110 行。
 | plan 模式五件 | `agent/plan/**` = **572** | 新包 `plan-mode/` | 🟡 **批 6a 已落 302 行**：`plan-tools` 184 + `plan-injection` 57 + `plan-prompts` 61 进包（`plugins/builtin/plan-mode/`，产物 entry 555 KB）；**留内核 270**：`plan-state.ts` 121（runtime 构造的状态机）+ `plan-registry.ts` 149（强制层门禁 + 子 Agent 只读克隆）；审批三类型与实现面接口上收新 `agent/plan/plan-contract.ts`，登记表 = `agent/plan/plan-impl.ts`（见 §6.2） |
 | goal 模式 | `goal-loop.ts` 317 + `goal-manager.ts` 236 = **553** | 新包 `goal-mode/` | 🟡 **批 6b 已落 317 行**：`goal-loop.ts` 整件进包（`plugins/builtin/goal-mode/`）；**留内核 236**：`goal-manager.ts`（记录 + 会话快照 + 持久化——由 `workspace.ts:634` / `chat-core.ts:1069,1101,1308` 构造，宿主→插件禁反）；契约面（`GoalLoopHost` / `GoalRunResult`）上收 `agent/goal-contract.ts`（`chat-agent-handle` 的同形声明同时删除，单一真源） |
 | 附图与资产事件通道 | `request-images.ts` 259 + `tool-images.ts` 91 = **350** | 随 asset-domain（归属待裁） | 工具结果管道 vs 资产域功能 |
-| state hooks 数据源 | `state-inject.ts` 231 + `cache-store.ts` 107 = **338** | 随 `state-hooks` 包（或判共享留内核） | `workspace.ts` 直调 |
-| 第一方工具管道 hook | `hooks.ts` 301 + `hooks/` 31 = **332** | 新包 `state-hooks/` | `HookRegistry` 类=机制留内核；7 个测试直连 |
+| state-hooks 数据源 | `state-inject.ts` 231 + `cache-store.ts` 107 = **338** | 随 `state-hooks` 包（或判共享留内核） | ✅ **批 6c 判内核共享面留内核**：消费者 `workspace.ts:17,30` / `runtime.ts:43` / `blueprint.ts:56` 全在内核（随批 9 workspace 拆分再动） |
+| 第一方工具管道 hook | `hooks.ts` 301 + `hooks/` 31 = **332** | 新包 `state-hooks/` | 🟡 **批 6c 已落 ≈200 行**：`hooks.ts` 137–301（四工厂 + 构建输出解析器）与 `hooks/board-tracking-hook.ts` 进包；**留内核 136**：`Hook`/`PreflightHook` 接口 + `HookRegistry`/`PreflightHookRegistry` 两类（机制，七处内核消费）。登记表 + service 类 fail-loud（见 §6.2） |
 | ACP server（**疑似死代码**） | `agent/acp/` = **306** | 新包 `acp-server/` 或**退役** | 生产零消费者（唯一引用是类型 + 自身测试） |
 
 ### 2.4 UI 面 12 项 —— 10,402 行（`app/**`+`ui/**` 共 22,901 行的 45%）
@@ -468,11 +468,12 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 6b 后重测）：红 **11 产物 / 25 文件 / 8,270 行**（§1 的 9 条 +
+**2026-09-24 基线**（批 6c 后重测）：红 **11 产物 / 25 文件 / 8,283 行**（§1 的 9 条 +
 §2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`；文件按**认领计数**——`coding.ts` 曾被 fs/shell
-两条认领故按 2 计。批 6a 后 8,265 → 8,270 的 +5 全是 `agent/blueprint.ts` 的登记表取用改写，
-不是新欠账）；绿 111 平台 + **73 已认领**；灰 **125 文件 / 36,186 行**（plan 三件 302 行随 6a、
-goal-loop 317 行随 6b 出灰区）。
+两条认领故按 2 计。批 6a/6c 后 8,265 → 8,283 的 +18 全是 `agent/blueprint.ts` 与
+`agent/subagent-spawn.ts` 的登记表取用改写，不是新欠账）；绿 111 平台 + **79 已认领**；
+灰 **120 文件 / 35,213 行**（plan 三件 302 行随 6a、goal-loop 317 行随 6b、hooks 里 ≈200 行
+随 6c 出灰区）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -487,7 +488,7 @@ goal-loop 317 行随 6b 出灰区）。
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | ✅ **批 3a 已落 3 件**（wait 102 · office 576 · cordis 200 = 878 行；桥位仅 9 运行时 + 7 类型）。**memory/skill/task 复核后改期**：它们的类是内核构造的（`workspace.ts` new MemoryManager/SkillRegistry、runtime 用 TaskBoard 11 处）⇒ 整件搬会造宿主→插件反向依赖（仓库禁反），改随批 7 / 批 9 |
 | **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | ✅ **已全落**：4a `browser.ts`（912）· 4b `manifest-tools` 按域拆（187+169，search/web 各归其包）· 4c `coding.ts`（998，一文件载五族）拆完 **整文件退役**——4c-1 git · 4c-2 ask/agent-isolation · 4c-3 fs/shell（顺带上收 `ownerIdOf`/`ownerSeamView` 进 `composition/seam-scope.ts`）。随行件去向：`sticky-cwd` 并入包内族段，`git-porcelain` 126 / `session-context` 122 / `structured-error` 24 因内核消费者**留内核桥** |
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
-| **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | 🟡 **6a plan-mode（302 行）+ 6b goal-mode（317 行）已落**：两项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝，capability 条目原位不动、**convergence 基线零改动**（表序零漂移的证明）。余 6c state-hooks · 6d compaction，施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
+| **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | 🟡 **6a plan-mode（302 行）+ 6b goal-mode（317 行）+ 6c state-hooks（≈200 行）已落**：三项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝，capability 条目原位不动、**convergence 基线零改动**（表序零漂移的证明）。余 6d compaction（2,022 行），施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | `ctx.subagents` seam 已在位；障碍是 runtime 单例与 21+13 个测试 |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈2,500 | 依赖批 5/6 落地；同批消掉 hljs 两处内联 |
 | **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 需先有通道（§4-3/4/9）与归属裁定（§4-1/5/6/11/12/13） |
@@ -642,6 +643,31 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
 - **真机验收**（重建 exe + CDP）：faceDeps **237 键**（+1）、`registerGoalImplementation` 为 function；
   `/plugins/hologram/goal-mode/entry.js` 556 KB 在场且动态 import 成功（含 `goal_report` 真身与
   `MAX_GOAL_ITERATIONS` 常量）；goal-mode 的 `face.json` 带当前指纹 `f84e6c5c`。
+
+**批 6c 落地（2026-09-24，state-hooks）**：
+- **切分实测**：`agent/hooks.ts`（301）1–115 行 = 两接口 + `HookRegistry`/`PreflightHookRegistry`
+  两类（**机制留内核**，七处内核消费：agent / context / events / runtime / subagent-spawn /
+  agent-loop 契约 / composition/hook-service）；137–301 行 = 四工厂 + 构建输出解析器 **进包**
+  （≈165 行）+ `hooks/board-tracking-hook.ts` 31 行 = **≈200 行进包 / 136 行留内核**；顺带删死常量
+  `_MAX_STATE_BYTES`。
+- **契约面 + 登记表**：新 `agent/state-hooks-contract.ts`（`StateHooksImplementation`）+
+  `agent/state-hooks-impl.ts`；blueprint 的 `state-hooks` / `board-tracking-hook` 两条 capability
+  **原位不动**、只换查表；`subagent-spawn.ts` 的子 Agent board hook 同改查表。
+- **service 语义（与 plan/goal 两个 feature 相对）**：缺实现 = 装配期 **fail-loud**
+  （`STATE_HOOKS_UNAVAILABLE`）——hook 管道是内核语义，禁用即装歪。
+- **登记面**：名册加 state-hooks（buildOrder 32，32→33 条）+ `firstPartyCapabilityPlugins()`
+  （channel 腰与 factory-products 一处登记两处生效）；计数快照三处 + facts（45→46）+ 文档（32→33）。
+- **faceDeps**：+7 键（登记表 + `buildPreReadBlock` / `cacheBuildResult` / `formatDiagnostics` /
+  `hasImageRefs` / `invalidateBlameEntry` / `refreshGitBlame`）⇒ 指纹 `f84e6c5c → 9eb85fdc`；
+  新产物 `face.json` 7 键（保险丝 a 覆盖 33/33）。
+- **fail-loud 的测试面代价（已付）**：六处装配点补常驻登记腰
+  `tests/helpers/state-hooks-impl.ts`（blueprint / composition-capability-service /
+  composition-session-count-profile / async-return-delivery / composition-wiring /
+  composition-preset-assembly）+ convergence phase-1 spec；`agent-hooks.test.ts` 改指包内。
+- **验收**：**convergence 双轨基线零改动**；vitest / build / biome ci / doc-sync / doc-check 全绿。
+- **真机验收**（重建 exe + CDP）：faceDeps **244 键**（+7 全部为 function）；`/plugins/hologram/state-hooks/entry.js`
+  7.3 KB 在场且动态 import 成功（含 `board-file-tracking` 真身）；state-hooks 的 `face.json` 7 键、
+  指纹 `9eb85fdc`（保险丝 a 覆盖 33/33）。
 
 ## 7. 决策路由（**把「找」与「拍」分家**）
 
