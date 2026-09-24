@@ -85,7 +85,12 @@ jobs:
       - name: Build dynamic grammars (Linux/macOS)
         if: runner.os != 'Windows'
         working-directory: engine/grammars
-        run: ./build.sh --all
+        # 显式 `bash` 调用，**不依赖 checkout 出来的可执行位**：本仓主力开发机是
+        # Windows（core.fileMode=false），build.sh 的 +x 只活在索引里，从 Windows
+        # 侧重新入库一次就会静默抹掉它。2026-09-24 v1.0.2 的 ubuntu / macOS 两腿
+        # 就是整轮红在 `./build.sh: Permission denied`（exit 126）上的——而这一步
+        # 之前没有任何一步失败，Windows 腿因为走 build.ps1 完全无感。
+        run: bash ./build.sh --all
       - name: Build dynamic grammars (Windows)
         if: runner.os == 'Windows'
         working-directory: engine/grammars

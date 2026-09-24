@@ -1441,13 +1441,27 @@ impl LspManager {
             use std::os::unix::process::CommandExt;
             // die-with-parent：引擎进程死亡（含 SIGKILL）时子进程立即自杀。
             // 没有它，引擎异常退出后 LSP 服务器变孤儿 —— 实测 32 jdtls +
-            // 24 omnisharp 存活 16 小时。prctl 之后复查 ppid：若父进程在
-            // prctl 前已死（子进程已被 init 收养），补一发自尽。
+            // 24 omnisharp 存活 16 小时。
+            //
+            // ⚠ 平台边界（2026-09-24 macOS 腿首次编译时暴露，exit 101）：
+            // `prctl` / `PR_SET_PDEATHSIG` 是 **Linux 专有**——libc crate 只在
+            // linux/android 目标上导出它们，用 `#[cfg(unix)]` 圈住就等于让
+            // 整个 macOS 腿编译不过（`cannot find value PR_SET_PDEATHSIG in
+            // crate libc` / `cannot find function prctl`）。macOS 没有等价物
+            // （kqueue 的 EVFILT_PROC 得由外部看门狗进程持有，不在 spawn 点
+            // 的能力面内），故 macOS 上只保留 ppid 复查这一半。
             unsafe {
                 c.pre_exec(|| {
-                    if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
-                        return Err(std::io::Error::last_os_error());
+                    #[cfg(target_os = "linux")]
+                    {
+                        if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                            return Err(std::io::Error::last_os_error());
+                        }
                     }
+                    // 复查 ppid：若父进程在 exec 前已死（子进程已被 init 收养），
+                    // 补一发自尽。Linux 上这是 prctl 的补漏；macOS 上这是唯一
+                    // 一条自尽路径 —— 引擎被 SIGKILL 时 macOS 可能残留 LSP 子进程，
+                    // 正常退出/SIGTERM 仍由 shutdown_all() + Drop 兜底（Linux 无此缺口）。
                     if libc::getppid() == 1 {
                         libc::kill(libc::getpid(), libc::SIGKILL);
                     }
