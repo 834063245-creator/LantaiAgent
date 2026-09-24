@@ -8,7 +8,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { FIRST_PARTY_MANIFEST, FIRST_PARTY_VERSION } from '../src/plugins/first-party-manifest';
-import { allBuiltinPlugins } from '../src/plugins/loader';
+import { allBuiltinPlugins, BUILTIN_PLUGINS } from '../src/plugins/loader';
+import { SERVICE_PLUGINS } from '../src/plugins/service-plugins';
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 
@@ -47,5 +48,19 @@ describe('first-party-manifest（清单完备性守护）', () => {
   it('两类都有存量：service 平台服务（常驻）与 feature 功能插件（可禁用）', () => {
     const kinds = new Set(Object.values(FIRST_PARTY_MANIFEST).map((m) => m.kind));
     expect(kinds).toEqual(new Set(['service', 'feature']));
+  });
+
+  it('§4-15 单一真源（批 9a）：内核 service 名单只在 service-plugins.ts 写一次', () => {
+    const names = SERVICE_PLUGINS.map((e) => e.plugin.name);
+    expect(names).toHaveLength(13);
+    // loader 表由本表派生（对象同一，不是「两份名单碰巧一样」）
+    expect(BUILTIN_PLUGINS.map((p) => p.name)).toEqual(names);
+    expect(BUILTIN_PLUGINS.map((p) => p.name)).toEqual(SERVICE_PLUGINS.map((e) => e.plugin.name));
+    // 清单 service 段的键集与序 = 本表（description 也从本表读，清单面零手写名单）
+    expect(
+      Object.entries(FIRST_PARTY_MANIFEST)
+        .filter(([, m]) => m.kind === 'service')
+        .map(([k]) => k),
+    ).toEqual(names);
   });
 });

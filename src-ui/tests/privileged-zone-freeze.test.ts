@@ -19,7 +19,8 @@
 // 「只减不增」的约束力由文件集封口承担（新文件即红）——这是本仓既有范式的口径。
 //
 // 基线 = 2026-09-24 账本立账时实测（composition 32 文件 → 批 0c 删
-// `asset-renderers.tsx` 后 31；plugins 顶层 17）。
+// `asset-renderers.tsx` 后 31；plugins 顶层 17 → 批 9a §4-15 收单一真源新增
+// `service-plugins.ts` 后 18）。
 
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -77,6 +78,7 @@ const PLUGINS_MANIFEST = [
   'loader.ts',
   'mcp-bridge.ts',
   'product-watch.ts',
+  'service-plugins.ts',
   'tool-declarations.ts',
   'types.ts',
   'user-mcp.ts',

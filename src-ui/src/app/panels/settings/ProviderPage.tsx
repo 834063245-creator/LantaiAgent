@@ -27,8 +27,8 @@ import {
   removeProvider,
   updateProvider,
 } from '../../../settings';
+import { ConfirmDialog } from '../../ConfirmDialog';
 import { type AddProviderEntry, AddProviderSheet } from './AddProviderSheet';
-import { ConfirmDialog } from './ConfirmDialog';
 import { type ProbeUiState, ProviderDetail, type ProviderField } from './ProviderDetail';
 import { ProviderList } from './ProviderList';
 import { formatLatency } from './status';

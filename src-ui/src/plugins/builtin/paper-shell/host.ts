@@ -13,13 +13,13 @@
 // 划词白屏事故即漏了第 ③ 处，exe 里才炸出。
 
 export { agentSessionState } from '../../../agent/agent-session-state';
+export { ConfirmDialog } from '../../../app/ConfirmDialog';
 export { useCoreStore } from '../../../app/chat/core-instance';
 export { Icon } from '../../../app/Icon';
 export { useDialogEscape } from '../../../app/overlay';
 /* 保险丝 b（2026-09-03 生产事故立法）：渲染面错误边界——面组件/块渲染器
  * 的崩溃隔离（单插件渲染崩溃只死自己那格，React 整树卸载绝迹）。 */
 export { PluginBoundary } from '../../../app/PluginBoundary';
-export { ConfirmDialog } from '../../../app/panels/settings/ConfirmDialog';
 export { useShellStore } from '../../../app/shell-store';
 export { WinControls } from '../../../app/WinControls';
 /* 标题栏交互（2026-09-14 app-region 全面退役）：画布顶部浮件拖拽/双击最大化走 Tauri

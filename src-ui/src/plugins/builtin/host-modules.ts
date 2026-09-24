@@ -91,6 +91,7 @@ import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
 import { convergeRegistry, resolveGuardToolName } from '../../agent/tools/domains';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { parseStructuredError } from '../../agent/tools/structured-error';
+import { ConfirmDialog } from '../../app/ConfirmDialog';
 import { useCoreStore } from '../../app/chat/core-instance';
 import { extractImageFiles, previewUrlFor, readAttachmentBase64 } from '../../app/chat/image-intake';
 import { filterCommands, listCommands, slashOnly } from '../../app/commands/command-catalog';
@@ -98,7 +99,6 @@ import { ensureSkillCatalog } from '../../app/commands/skill-catalog';
 import { Icon } from '../../app/Icon';
 import { Overlay, useDialogEscape } from '../../app/overlay';
 import { PluginBoundary } from '../../app/PluginBoundary';
-import { ConfirmDialog } from '../../app/panels/settings/ConfirmDialog';
 // 批 1 归家：McpPage / PluginsPage / SkillsPage 已迁 plugins/builtin/settings-domain/
 // （改为逐符号桥，见下方「批 1」段）；ProviderPage 家族仍在内核（批 9）。
 import { ProviderPage } from '../../app/panels/settings/ProviderPage';

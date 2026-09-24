@@ -12,8 +12,8 @@
 
 import type React from 'react';
 import { useEffect, useId, useRef } from 'react';
-import { mountDialogFocus } from '../../dialog-focus';
-import { Overlay } from '../../overlay';
+import { mountDialogFocus } from './dialog-focus';
+import { Overlay } from './overlay';
 
 interface ConfirmDialogProps {
   open: boolean;

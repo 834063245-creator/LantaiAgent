@@ -66,10 +66,14 @@ function agentConfigFields() {
 }
 
 function builtinServicePlugins() {
-  const rel = 'src-ui/src/plugins/loader.ts';
+  // 批 9a §4-15：内核 service 名单收单一真源 ⇒ 计数点随迁（`loader.ts` 的
+  // `BUILTIN_PLUGINS` 现由本表派生，不再有数组字面量可数）。
+  const rel = 'src-ui/src/plugins/service-plugins.ts';
   const src = read(rel);
-  const block = slice(src, 'export const BUILTIN_PLUGINS: LantaiPlugin[] = [', '\n];', rel);
-  return { value: countIdentifierLines(block), source: rel };
+  const block = slice(src, 'export const SERVICE_PLUGINS: readonly ServicePluginEntry[] = [', '\n];', rel);
+  // 表项形如 `{ plugin: xPlugin, description: '…' },`——biome 会把短条目压成单行，
+  // 故数 `plugin:` 出现次数（不依赖缩进/换行形态）。
+  return { value: (block.match(/\bplugin: /g) || []).length, source: rel };
 }
 
 function factoryProducts() {

@@ -53,6 +53,11 @@ const PLATFORM = [
     ],
     why: '平台入口 / RPC 契约 / 工作区原语 / 基础设施',
   },
+  // ── 批 9a 账目登记三件（§7 已拍板：§4-6 B / §4-7 B / §4-12 B）──
+  // 三条都不是「欠账」，而是**分类缺口**（既非 service 产物、也无 feature 归属）：
+  // 判定留内核后在此登记，灰区不再重复报警。
+  { prefix: 'agent/token-meter/', why: '§4-6 B：token 计量 = 内核度量/审计面（Agent 私有账本 + 口径不变量）' },
+  { prefix: 'agent/acp/', why: '§4-7 B：ACP 协议面 = 平台（当前零产线消费者，仅测试 + 类型 import）' },
 ];
 
 const lines = (p) => {

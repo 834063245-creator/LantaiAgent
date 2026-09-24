@@ -17,9 +17,9 @@
 
 // 技能域（SkillsPage 列表源；`agent/skills.ts` 归 skill-domain 见账本批 3）
 export { type SkillDef, scanSkills } from '../../../agent/skills';
+export { ConfirmDialog } from '../../../app/ConfirmDialog';
 // 应用壳件
 export { Icon } from '../../../app/Icon';
-export { ConfirmDialog } from '../../../app/panels/settings/ConfirmDialog';
 export { ProviderPage } from '../../../app/panels/settings/ProviderPage';
 export { useShellStore } from '../../../app/shell-store';
 // S6 P3b：激活诊断读面（设置面板「组合」节第四栏「被跳过」+ 独占冲突回看）

@@ -14,7 +14,7 @@
 // 的 .cd-overlay 只争面板内部，盖不住纸壳）。
 
 import { useExitGuardStore } from '../state/exit-guard-store';
-import { ConfirmDialog } from './panels/settings/ConfirmDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 import './exit-confirm.css';
 
 export function ExitConfirmDialog() {

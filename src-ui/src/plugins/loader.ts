@@ -28,22 +28,10 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
-import { dynamicRunnerPlugin } from '../agent/dynamic-runner/dynamic-runner-service';
+
 import { Overlay } from '../app/overlay';
 import { loadHeavyViewer } from '../app/paper/viewers';
 import { useShellStore } from '../app/shell-store';
-import { capabilitiesServicePlugin } from '../composition/capability-service';
-import { fsServicePlugin } from '../composition/fs-service';
-import { hooksServicePlugin } from '../composition/hook-service';
-import { overlayServicePlugin } from '../composition/overlay-service';
-import { promptsServicePlugin } from '../composition/prompt-service';
-import { rendererServicePlugin } from '../composition/renderer-service';
-import { compositionServicesPlugin } from '../composition/services';
-import { sessionPersistenceServicePlugin } from '../composition/session-persistence-service';
-import { shellServicePlugin } from '../composition/shell-service';
-import { spaceServicePlugin } from '../composition/space-service';
-import { subagentsServicePlugin } from '../composition/subagent-service';
 import type { Context, Fiber } from '../cordis';
 import { getProxyPort } from '../provider/transport';
 import { typedRpc } from '../rpc-contract';
@@ -56,6 +44,7 @@ import { completePluginTask } from './deferred';
 import { factoryProductNames, factoryProductPlugins } from './factory-products';
 import { FIRST_PARTY_MANIFEST, type FirstPartyPluginMeta } from './first-party-manifest';
 import { type GovernedActivationFace, type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
+import { SERVICE_PLUGINS } from './service-plugins';
 import { mountToolDeclarations } from './tool-declarations';
 import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
 import { mountPluginApp, type PluginWindowFacility, pluginWindowFacility } from './window-facility';
@@ -128,21 +117,7 @@ export function pluginAssetsOrigin(port: number): string {
  *  产物 HTTP import），用于测量真实 I/O 耗时。默认关，行为与开关前一致。 */
 const forceProductChannel = (import.meta.env as Record<string, unknown>).VITE_FORCE_PRODUCT_CHANNEL === '1';
 
-export const BUILTIN_PLUGINS: LantaiPlugin[] = [
-  compositionServicesPlugin,
-  subagentsServicePlugin,
-  fsServicePlugin,
-  shellServicePlugin,
-  sessionPersistenceServicePlugin,
-  spaceServicePlugin,
-  overlayServicePlugin,
-  codeRuntimePlugin,
-  dynamicRunnerPlugin,
-  rendererServicePlugin,
-  promptsServicePlugin,
-  hooksServicePlugin,
-  capabilitiesServicePlugin,
-];
+export const BUILTIN_PLUGINS: LantaiPlugin[] = SERVICE_PLUGINS.map((e) => e.plugin);
 
 /** 全部第一方插件（13 内核 + dev 出厂产物源码路径）。
  *  ⚠ 2026-09-06：出厂产物展开从 BUILTIN_PLUGINS 顶层挪到本函数——顶层展开会在

@@ -29,6 +29,7 @@
 // （PluginRecord.meta 类型）、app/panels/settings/PluginsPage.tsx（分组渲染）。
 
 import { BUILTIN_ROSTER, builtinScopeName } from './builtin-roster';
+import { SERVICE_PLUGINS } from './service-plugins';
 
 export type FirstPartyPluginKind = 'service' | 'feature';
 
@@ -54,35 +55,12 @@ function meta(name: string, kind: FirstPartyPluginKind, description: string, req
     : { name, version: FIRST_PARTY_VERSION, kind, description };
 }
 
-/** 平台 service 元数据（13 个内核——无目录、非产物，唯一手写处；
- *  feature 条目见下，由名册派生，禁止在此手写 description 造成双源）。 */
-const SERVICE_META: Record<string, FirstPartyPluginMeta> = {
-  'hologram/composition-services': meta(
-    'hologram/composition-services',
-    'service',
-    '组合层五 service 本体（panels/commands/tools/llm/activation 注册表）',
-  ),
-  'hologram/subagents-service': meta('hologram/subagents-service', 'service', '子代理服务注册表（seam/subagents）'),
-  'hologram/fs-service': meta('hologram/fs-service', 'service', '文件域服务注册表（seam/fs）'),
-  'hologram/shell-service': meta('hologram/shell-service', 'service', '命令域服务注册表（seam/shell）'),
-  'hologram/session-persistence-service': meta(
-    'hologram/session-persistence-service',
-    'service',
-    '会话持久化服务注册表（seam/sessionPersistence）',
-  ),
-  'hologram/composition-space': meta('hologram/composition-space', 'service', '空间服务（工作区/会话空间）'),
-  'hologram/composition-overlays': meta('hologram/composition-overlays', 'service', '覆盖层服务'),
-  'hologram/renderer-service': meta('hologram/renderer-service', 'service', '块渲染器注册表（第五贡献通道，后注册胜）'),
-  'hologram/prompts-service': meta('hologram/prompts-service', 'service', 'system-prompt 段贡献注册表（第六通道）'),
-  'hologram/hook-services': meta('hologram/hook-services', 'service', '工具管道钩子注册表（第七通道）'),
-  'hologram/capability-services': meta('hologram/capability-services', 'service', '会话级能力贡献注册表（第八通道）'),
-  'hologram/code-runtime': meta('hologram/code-runtime', 'service', 'code_execution 执行腰沙箱'),
-  'hologram/dynamic-runner': meta(
-    'hologram/dynamic-runner',
-    'service',
-    '运行时插件定义/执行（cordis 域，approval + 半沙箱）',
-  ),
-};
+/** 平台 service 元数据（13 个内核——无目录、非产物）。**名单与文案唯一真源 =
+ *  `service-plugins.ts` 的 `SERVICE_PLUGINS`**（批 9a §4-15 收口：此前 loader 与本文件
+ *  两处手写同一份 13 名单、只靠守护测试对拍）；feature 条目见下，由名册派生。 */
+const SERVICE_META: Record<string, FirstPartyPluginMeta> = Object.fromEntries(
+  SERVICE_PLUGINS.map((e) => [e.plugin.name, meta(e.plugin.name, 'service', e.description)]),
+);
 
 /** 第一方插件清单（key = 插件名；Record 注解允许字符串索引——loader/
  *  守护测试以运行时 name 寻址）。feature 条目按名册 buildOrder 派生
