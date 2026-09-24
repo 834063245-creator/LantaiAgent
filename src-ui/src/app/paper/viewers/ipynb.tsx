@@ -32,9 +32,9 @@
 import hljs from 'highlight.js/lib/common';
 import * as React from 'react';
 import { createBlock } from '../../../paper/block-model';
+import { activeMarkdownBody } from '../../../paper/markdown-body-seam';
 import { sanitizePayloadText } from '../../../paper/tool-text';
 import type { ViewerProps } from '../../../paper/viewer-contract';
-import { builtinRendererDefs } from '../builtin-renderers';
 import './ipynb.css';
 
 /** 行窗口（与产物侧注册面 `readLines` **同值**——宿主多读 1 行作「文件更长」判据）。 */
@@ -354,16 +354,17 @@ export function parseNotebook(text: string): IpyParseResult {
 
 /* ── 复用面：应用侧 markdown 渲染器 ──────────────────────────────── */
 
-/** `builtinRendererDefs()` 是冻结表（模块装载期建一次）——取 kind='markdown' 那一行。 */
-const MarkdownView = builtinRendererDefs().find((d) => d.kind === 'markdown')?.component ?? null;
+/** `activeMarkdownBody()` 是**运行期读面**（批 8b：实现由产物 `paper-renderers` 在 apply 期
+ *  登记进内核登记表 `paper/markdown-body-seam.ts`）——故在渲染期取，不做模块级快照。 */
 
 /** markdown 单元格：构造一个 viewer 自己的 markdown 块，交给应用侧渲染器（零第二份解析）。 */
 function MarkdownCell({ text }: { text: string }) {
   const block = React.useMemo(() => createBlock('markdown', { text }, { messageId: 'viewer', part: null }), [text]);
+  const MarkdownView = activeMarkdownBody();
   if (!MarkdownView) {
     return (
       <div className="pp-viewer-ipynb-missing">
-        应用侧 markdown 渲染器缺失（builtinRendererDefs 里没有 kind='markdown' 的行）——单元格原文：
+        应用侧 markdown 渲染器缺失（markdown 体渲染登记表为空）——单元格原文：
         {text.slice(0, 200)}
       </div>
     );

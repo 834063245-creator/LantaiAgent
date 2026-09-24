@@ -25,9 +25,9 @@ vi.mock('@chenglou/pretext', () => ({
   clearCache: vi.fn(),
 }));
 
-import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import type { SourcedBlock } from '../src/paper/block-model';
 import { createBlock } from '../src/paper/block-model';
+import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
 
 /** 取内置渲染器组件（按 kind）——渲染器清单是装配产物的消费面。 */
 function rendererFor(kind: string) {

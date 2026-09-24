@@ -17,15 +17,22 @@ beforeAll(async () => {
     { multiagentCommImplementation },
     { registerSubagentRuntime },
     { subagentRuntimeImplementation },
+    { registerMarkdownBody },
+    { MarkdownBody },
   ] = await Promise.all([
     import('../src/agent/multiagent-impl'),
     import('../src/plugins/builtin/multiagent-comm/implementation'),
     import('../src/agent/subagent-runtime-impl'),
     import('../src/plugins/builtin/subagent-in-process/implementation'),
+    import('../src/paper/markdown-body-seam'),
+    import('../src/plugins/builtin/paper-renderers/renderers'),
   ]);
   registerMultiagentComm(multiagentCommImplementation);
   // 批 7c-2：子代理运行时（池 / 生命周期 / 派生 + 两工具族）整体登记——与产物包 index.ts 同源。
   registerSubagentRuntime(subagentRuntimeImplementation);
+  // 批 8b：markdown 体渲染（纸面块渲染器产物 paper-renderers 的 apply 期登记项）——
+  // 重查看器（ipynb / markdown-doc）复用面，测试域复现「产物已装载」的常驻态。
+  registerMarkdownBody(MarkdownBody);
 });
 
 // jsdom 不实现 CSS.escape（react-aria ListKeyboardDelegate 依赖它拼 [data-key] 选择器）。

@@ -4,8 +4,8 @@
 // C7 来文圈点解析回归——paper/marks.ts parseCircledSegments 全路径。
 
 import { describe, expect, it } from 'vitest';
-import { builtinRendererDefs } from '../../src/app/paper/builtin-renderers';
 import { MAX_CIRCLED_CHARS, parseCircledSegments } from '../../src/paper/marks';
+import { builtinRendererDefs } from '../../src/plugins/builtin/paper-renderers/renderers';
 
 describe('parseCircledSegments — 基础解析', () => {
   it('无括号文本原样返回单段', () => {

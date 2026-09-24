@@ -15,6 +15,7 @@ import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/ren
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
+import { paperRenderersPlugin } from '../src/plugins/builtin/paper-renderers';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import { buildHtmlCardDocument, plateSignOf } from '../src/plugins/builtin/renderers/components';
 
@@ -27,7 +28,11 @@ async function withRenderers(fn: () => void | Promise<void>): Promise<void> {
   // P1：资产表现原语由内置渲染器插件注册（service 不再构造期注册资产 8 行）
   const f3 = ctx.plugin(builtinRenderersPlugin);
   await f3;
+  // 批 8b：出厂十一 kind 全谱 + '*' 兜底由 paper-renderers 产物注册（service 已回归纯通道）
+  const f4 = ctx.plugin(paperRenderersPlugin);
+  await f4;
   await fn();
+  await f4.dispose();
   await f3.dispose();
   await f2.dispose();
   await f1.dispose();

@@ -125,7 +125,7 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 - owner：`src/composition/renderer-service.tsx`
 - 默认实现 / 贡献者 id：—
-- 消费面（6）：`src/app/paper/builtin-renderers.tsx` · `src/plugins/builtin/host-modules.ts` · `src/plugins/builtin/paper-shell/host.ts` · `src/plugins/builtin/renderers/components.tsx` · `src/plugins/builtin/renderers/index.tsx` · `src/plugins/loader.ts`
+- 消费面（6）：`src/plugins/builtin/host-modules.ts` · `src/plugins/builtin/paper-renderers/index.tsx` · `src/plugins/builtin/paper-shell/host.ts` · `src/plugins/builtin/renderers/components.tsx` · `src/plugins/builtin/renderers/index.tsx` · `src/plugins/loader.ts`
 
 ### `ctx.tools` — ToolsService（贡献通道）
 

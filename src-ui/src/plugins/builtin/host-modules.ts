@@ -92,16 +92,19 @@ import { convergeRegistry, resolveGuardToolName } from '../../agent/tools/domain
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { parseStructuredError } from '../../agent/tools/structured-error';
 import { useCoreStore } from '../../app/chat/core-instance';
-import { extractImageFiles, previewUrlFor } from '../../app/chat/image-intake';
+import { extractImageFiles, previewUrlFor, readAttachmentBase64 } from '../../app/chat/image-intake';
 import { filterCommands, listCommands, slashOnly } from '../../app/commands/command-catalog';
 import { ensureSkillCatalog } from '../../app/commands/skill-catalog';
 import { Icon } from '../../app/Icon';
-import { useDialogEscape } from '../../app/overlay';
+import { Overlay, useDialogEscape } from '../../app/overlay';
 import { PluginBoundary } from '../../app/PluginBoundary';
 import { ConfirmDialog } from '../../app/panels/settings/ConfirmDialog';
 // 批 1 归家：McpPage / PluginsPage / SkillsPage 已迁 plugins/builtin/settings-domain/
 // （改为逐符号桥，见下方「批 1」段）；ProviderPage 家族仍在内核（批 9）。
 import { ProviderPage } from '../../app/panels/settings/ProviderPage';
+// 批 8b 归家：纸面块渲染器进 paper-renderers 包 ⇒ 桥它仍住应用 bundle 的件
+// （MermaidBlock 是重依赖例外：内部 import('mermaid') 是动态裸 import，产物构建闸拒绝）。
+import MermaidBlock from '../../app/paper/mermaid-block';
 import { useShellStore } from '../../app/shell-store';
 import { WinControls } from '../../app/WinControls';
 import { onTopbarDoubleClick, onTopbarPointerDown } from '../../app/window-drag';
@@ -330,6 +333,7 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./goal-mode/host'), unknown> &
   Record<keyof typeof import('./state-hooks/host'), unknown> &
   Record<keyof typeof import('./compaction/host'), unknown> &
+  Record<keyof typeof import('./paper-renderers/host'), unknown> &
   Record<keyof typeof import('./agent-domain/host'), unknown> &
   Record<keyof typeof import('./agent-loop-service/host'), unknown>;
 
@@ -675,6 +679,11 @@ const faceDeps = {
   ToolRegistry,
   convergeRegistry,
   FileOwnership,
+  // 批 8b 归家：纸面块渲染器进 paper-renderers 包 ⇒ 桥应用层依赖面
+  // （MermaidBlock 是重依赖例外：组件本体留应用 bundle，产物只做认领 + 降级）
+  MermaidBlock,
+  Overlay,
+  readAttachmentBase64,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

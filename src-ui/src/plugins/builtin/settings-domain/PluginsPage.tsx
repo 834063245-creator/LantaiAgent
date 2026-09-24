@@ -149,6 +149,10 @@ function FirstPartyCard({
         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
           {plugin.meta?.kind === 'service' ? (
             <span className="sp-hint-sub">平台服务 · 常驻</span>
+          ) : plugin.meta?.required ? (
+            /* 批 8b：`required` 产物（机制性默认面，如 paper-renderers 的十一 kind 全谱）
+               ——不可禁用：禁用即主界面裸奔，故只显示状态、不出开关。 */
+            <span className="sp-hint-sub">常驻 · 不可禁用</span>
           ) : (
             <button type="button" className="sp-btn-sm" onClick={() => onToggle(plugin.name, !enabled)}>
               {enabled ? '禁用' : '启用'}

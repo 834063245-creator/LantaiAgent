@@ -9,10 +9,11 @@
 //
 // M2 收口（2026-09-14）：本文件曾同时住着通道与出厂渲染器实现（1106 行里
 // 约 980 行是 markdown/高亮/katex/diff/plan/tool/user 的体渲染）——通道是
-// 内核线（永不插件化），实现是产品，两者同居使「通道文件」名不副实。现实现
-// 已迁 `src/app/paper/builtin-renderers.tsx`（随应用编译，不是可禁用产物），
-// 出厂行的注册点从 RenderersService 构造器移到 rendererServicePlugin 的
-// apply（装配点/wiring）——通道类（RenderersService）此后只做注册表。
+// 内核线（永不插件化），实现是产品，两者同居使「通道文件」名不副实。
+// **批 8b 归家（2026-09-25）**：实现已整件搬进产物 `plugins/builtin/paper-renderers/`
+// （`renderers.tsx` + `index.tsx`），出厂行的注册点随之移到该产物的 apply
+// （要求 `required: true`——十一 kind 是纸壳默认渲染面，不可禁用）；本文件此后是**纯通道**：
+// 只做注册表 + 解析读面，零出厂行。
 //
 // 契约（M1 收口后经 ContributionChannel 单一内核；历史五份手抄之一的
 // RendererRegistry 已退役）：
@@ -26,13 +27,12 @@
 //   - 渲染器只渲染块**体**（kind 特定内容）；块壳（头部/拖拽手柄/钉住收回/
 //     占位符）是纸壳结构件，不进注册表——插件换的是「这个 kind 长什么样」，
 //     不是「纸怎么交互」。
-//   - 出厂行（十一 kind 全谱 + '*' 兜底）= 默认行，由 rendererServicePlugin
-//     注册；贡献行与出厂行同 kind 时**后注册胜**（插件晚于出厂装载），同 id
-//     时装载期拒绝。
+//   - 出厂行（十一 kind 全谱 + '*' 兜底）= 默认行，由产物 `paper-renderers`
+//     注册（批 8b 起；该产物 required 不可禁用）；贡献行与出厂行同 kind 时
+//     **后注册胜**（插件晚于出厂装载），同 id 时装载期拒绝。
 
 import type { ComponentType } from 'react';
 import { assetKinds } from '../agent/asset-kinds';
-import { builtinRendererDefs, JsonBody } from '../app/paper/builtin-renderers';
 import { type Context, Service } from '../cordis';
 import type { BlockKind, SourcedBlock } from '../paper/block-model';
 import { ContributionChannel } from './contribution-channel';
@@ -140,11 +140,8 @@ export function resolveAssetBlock(
 // ── 挂载插件（对齐 compositionServicesPlugin；装载期在四 service 之后，
 //    同批 loadBuiltinPlugins 引导——块渲染器依赖 cordis Context 即可）──
 //
-// M2 起**出厂行的注册点在本插件**（不是 RenderersService 构造器）：
-//   1. 出厂注疏渲染器十一件（builtinRendererDefs——随应用编译，见
-//      app/paper/builtin-renderers.tsx 的归属纪律）；
-//   2. '*' 兜底行：未知/资产 kind 未接表现原语时显示漂亮 JSON（WO-4）——
-//      不并入 builtinRendererDefs()，保持「十一 kind 全谱」的既有契约面。
+// 批 8b 起本插件**只装通道**（零出厂行）：十一 kind 全谱 + '*' 兜底由产物
+// `paper-renderers`（名册 `required: true`，不可禁用）在 apply 期经本通道注册；
 // 资产表现原语（WO-6 → P1 插件通道化 → 4B citation）：grid/chart/metric/
 // media/graph/tree/html/form/board/timeline/citation 由「内置渲染器插件」
 // （plugins/builtin/renderers，BUILTIN_PLUGINS 表项）经 ctx.renderers 注册
@@ -161,8 +158,7 @@ declare module '../cordis/context' {
 export const rendererServicePlugin = {
   name: 'hologram/renderer-service',
   apply(ctx: Context) {
-    const svc = new RenderersService(ctx);
-    for (const def of builtinRendererDefs()) svc.register(def);
-    svc.register({ id: 'builtin/*', kind: '*', component: JsonBody });
+    // 纯通道（批 8b）：只建注册表，出厂行由产物 paper-renderers 喂入。
+    new RenderersService(ctx);
   },
 };

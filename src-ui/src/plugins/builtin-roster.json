@@ -331,5 +331,25 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": []
+  },
+  {
+    "dir": "paper-renderers",
+    "buildOrder": 35,
+    "description": "纸面块渲染器十一 kind 全谱 + '*' 兜底 JSON（纸壳默认渲染面；不可禁用——禁用即纸壳裸奔）",
+    "entry": "index.tsx",
+    "hostModule": "host",
+    "inject": ["renderers"],
+    "shared": [
+      "paper/block-model.ts",
+      "paper/markdown.ts",
+      "paper/marks.ts",
+      "paper/tool-text.ts",
+      "paper/fold.ts",
+      "paper/translate.ts"
+    ],
+    "required": true,
+    "define": {
+      "globalThis.__LANTAI_PAPER_RENDERER_ROW_PREFIX__": "\"plugin/hologram/paper-renderers\""
+    }
   }
 ]

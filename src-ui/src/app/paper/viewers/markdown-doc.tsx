@@ -29,8 +29,8 @@
 
 import * as React from 'react';
 import { createBlock } from '../../../paper/block-model';
+import { activeMarkdownBody } from '../../../paper/markdown-body-seam';
 import type { ViewerProps } from '../../../paper/viewer-contract';
-import { builtinRendererDefs } from '../builtin-renderers';
 import './markdown-doc.css';
 
 /** 窄容器阈值（容器宽度 < 此值 ⇒ 标题树折叠为一行按钮）。 */
@@ -127,8 +127,8 @@ export function outlineOf(sections: readonly MdDocSection[]): MdDocHeading[] {
   return out;
 }
 
-/** `builtinRendererDefs()` 是冻结表（模块装载期建一次）——取 kind='markdown' 那一行。 */
-const MarkdownView = builtinRendererDefs().find((d) => d.kind === 'markdown')?.component ?? null;
+/** `activeMarkdownBody()` 是**运行期读面**（批 8b：实现由产物 `paper-renderers` 在 apply 期
+ *  登记进内核登记表 `paper/markdown-body-seam.ts`）——故在渲染期取，不做模块级快照。 */
 
 /** 正文一段：构造 viewer 自己的 markdown 块，交给应用侧渲染器（零第二份解析）。 */
 function MdDocSectionView({
@@ -141,13 +141,14 @@ function MdDocSectionView({
   sectionRef: (el: HTMLElement | null) => void;
 }) {
   const block = React.useMemo(() => createBlock('markdown', { text }, { messageId: 'viewer', part: null }), [text]);
+  const MarkdownView = activeMarkdownBody();
   return (
     <section ref={sectionRef} className={`pp-viewer-mddoc-section pp-viewer-mddoc-section--lv${level}`}>
       {MarkdownView ? (
         React.createElement(MarkdownView, { block })
       ) : (
         <div className="pp-viewer-mddoc-missing">
-          应用侧 markdown 渲染器缺失（builtinRendererDefs 里没有 kind='markdown' 的行）——本段原文：
+          应用侧 markdown 渲染器缺失（markdown 体渲染登记表为空）——本段原文：
           {text.slice(0, 200)}
         </div>
       )}

@@ -351,7 +351,7 @@ export function loadBuiltinPlugins(root: Context): Context {
       });
       continue;
     }
-    if (meta.kind === 'feature' && usePluginPrefs.getState().isDisabled(plugin.name)) {
+    if (meta.kind === 'feature' && !meta.required && usePluginPrefs.getState().isDisabled(plugin.name)) {
       records.push({ name: plugin.name, manifest: null, status: 'disabled', builtin: true, meta });
       continue;
     }
@@ -765,7 +765,8 @@ async function manifestStage(dirId: string, deps: LoadOneDeps): Promise<Manifest
   const isBuiltinNamed = bundleMeta != null;
   // 2b) 第一方 feature 的用户禁用态（plugin-prefs）对产物通道同样生效
   //     （bundle 域 boot 跳过 + 产物域装载跳过——两域一致，下次启动语义不变）
-  if (bundleMeta?.kind === 'feature' && usePluginPrefs.getState().isDisabled(manifest.name)) {
+  //     `required` 产物例外（批 8b）：机制性默认面不可禁用，禁用偏好对它无效。
+  if (bundleMeta?.kind === 'feature' && !bundleMeta.required && usePluginPrefs.getState().isDisabled(manifest.name)) {
     return {
       ok: false,
       record: { name: manifest.name, manifest, status: 'disabled', builtin: true, meta: bundleMeta },
@@ -776,8 +777,8 @@ async function manifestStage(dirId: string, deps: LoadOneDeps): Promise<Manifest
   //    一次性存在性拒载。manifest.inject 合并进插件对象 inject（见阶段 2
   //    target 构造），缺依赖 = fiber PENDING 等待；boot 审计（boot-gate.ts）
   //    settle 后判全 ACTIVE 才放行——PENDING 且依赖永缺 = 审计 fail-loud。
-  // 4) disabled 跳过（不 import）
-  if (deps.disabled.has(manifest.name)) {
+  // 4) disabled 跳过（不 import）——`required` 第一方产物例外（批 8b：手改 plugins.json 也禁不掉）
+  if (deps.disabled.has(manifest.name) && !bundleMeta?.required) {
     return {
       ok: false,
       record: isBuiltinNamed

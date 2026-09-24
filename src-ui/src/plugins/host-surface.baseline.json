@@ -1,5 +1,5 @@
 {
-  "fingerprint": "d5cd61db",
+  "fingerprint": "82f98df2",
   "keys": [
     "ANCHOR",
     "Agent",
@@ -30,7 +30,9 @@
     "MODE_DESCRIPTIONS",
     "MODE_LABELS",
     "McpServerDeclSchema",
+    "MermaidBlock",
     "MessageNotFoundError",
+    "Overlay",
     "PERMISSION_MODES",
     "PROVIDER_PROTOCOL_DEFAULTS",
     "PaperDockContext",
@@ -203,6 +205,7 @@
     "providersFilePath",
     "proxyFetch",
     "pullShellWork",
+    "readAttachmentBase64",
     "reapplyComposition",
     "refreshGitBlame",
     "regionFrame",

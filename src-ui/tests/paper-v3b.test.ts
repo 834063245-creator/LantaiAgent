@@ -8,7 +8,6 @@
 // await ctx.plugin() fiber、fiber.dispose() 清理——不碰 boot 单例。
 
 import { describe, expect, it } from 'vitest';
-import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import {
   activeRendererContributions,
   type BlockRendererContribution,
@@ -19,13 +18,19 @@ import {
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import type { BlockKind } from '../src/paper/block-model';
+import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
 
-/** 每用例：装载第五 service 并等 fiber 就绪，返回可清理的 root。 */
+/** 每用例：装载第五 service + **出厂行产物**（批 8b 起出厂行由 paper-renderers 注册，
+ *  不再是内核 service 的职责）并等 fiber 就绪，返回可清理的 root。 */
 async function withRenderers(fn: (svc: RenderersService) => void | Promise<void>): Promise<void> {
   const ctx = new Context();
   const fiber = ctx.plugin(rendererServicePlugin);
   await fiber;
+  const { paperRenderersPlugin } = await import('../src/plugins/builtin/paper-renderers');
+  const products = ctx.plugin(paperRenderersPlugin);
+  await products;
   await fn(ctx.renderers);
+  await products.dispose();
   await fiber.dispose();
 }
 

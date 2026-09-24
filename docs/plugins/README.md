@@ -93,7 +93,7 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 
 ### 第四形态：第一方出厂产物（磁盘通道真源，S5 竣工 2026-09-03）
 
-兰台的 35 个出厂插件（7 seam 供应商 + 5 既有 + 16 工具域 + 2 段贡献 + plan-mode + goal-mode + state-hooks + compaction + multiagent-comm）——
+兰台的 36 个出厂插件（7 seam 供应商 + 5 既有 + 16 工具域 + 2 段贡献 + plan-mode + goal-mode + state-hooks + compaction + multiagent-comm + paper-renderers）——
 真源在仓库 `src-ui/src/plugins/builtin/<name>/` 目录，构建管线（esbuild，
 `scripts/build-builtin-plugins.mjs`，接入 `npm run build`）产出 ESM 产物 +
 manifest，随包携带（`tauri.conf.json` resources 目录映射

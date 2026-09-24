@@ -44,9 +44,10 @@ const NORMALIZE_PS1 = readFileSync(join(__dirname, '..', '..', 'scripts', 'norma
 // M2 收口（2026-09-14）：渲染器实现从 composition/renderer-service.tsx 迁至
 // app/paper/builtin-renderers.tsx（通道与实现分家）——本常量拼接两文件，保持
 // 断言覆盖面与迁移前一致（正向 token 在实现文件，反向「无 inline 色」覆盖两处）。
+// 批 8b（2026-09-25）：实现再迁产物包 paper-renderers/ ⇒ 第二个路径随迁（拼接面不变）。
 const RENDERER_TS =
   readFileSync(join(SRC, 'composition', 'renderer-service.tsx'), 'utf8') +
-  readFileSync(join(SRC, 'app', 'paper', 'builtin-renderers.tsx'), 'utf8');
+  readFileSync(join(SRC, 'plugins', 'builtin', 'paper-renderers', 'renderers.tsx'), 'utf8');
 const TRANSLATE_TS = readFileSync(join(SRC, 'paper', 'translate.ts'), 'utf8');
 const GRAMMAR_TS = readFileSync(join(SRC, 'paper', 'grammar.ts'), 'utf8');
 

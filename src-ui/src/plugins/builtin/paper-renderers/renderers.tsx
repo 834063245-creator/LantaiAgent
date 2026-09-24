@@ -1,20 +1,25 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 //
-// 出厂块渲染器（内置注疏渲染器十一件 + '*' 兜底）——M2 收口（2026-09-14）。
+// 出厂块渲染器（内置注疏渲染器十一件 + '*' 兜底）——M2 收口（2026-09-14）；
+// **批 8b 归家**（2026-09-25）：整件搬进产物包 `paper-renderers/`（原 `app/paper/builtin-renderers.tsx`）。
 //
 // 缘起：这些实现原与「第五贡献通道」（RendererRegistry / RenderersService /
 // resolveRenderer）同处 composition/renderer-service.tsx——通道属内核线
 // （永不插件化），实现是产品；两者同居使该文件 1106 行里只有约 120 行是通道，
 // 其余约 980 行是 markdown / 代码高亮 / katex 数学 / diff / plan / tool / user
-// 的体渲染实现。M2 把实现搬到 UI 层（本文件），通道文件恢复成通道。
+// 的体渲染实现。M2 把实现搬到 UI 层，批 8b 再搬进产物包（可热更）。
 //
-// 归属纪律：本文件随应用编译进 bundle——**不是** plugins/builtin/renderers
-// 产物（后者是资产表现原语十一件，随插件开关可禁用）；本文件的十一 kind 全谱
-// 是纸壳的默认渲染面，禁用它等于纸壳裸奔。
+// 归属纪律：十一 kind 全谱是纸壳的默认渲染面，禁用它等于纸壳裸奔 ⇒ 本产物在名册标
+// **`required: true`（不可禁用）**——设置页无禁用开关、loader 两条禁用路径直接跳过。
+// 注册点从内核 `rendererServicePlugin` 移到本包 `index.tsx` 的 apply（经 `ctx.renderers` 通道）；
+// 通道类（RenderersService）只做注册表，出厂行由产品装配点喂入。
 //
-// 注册点：rendererServicePlugin（装配点/wiring）——不是 RenderersService
-// 构造器（通道/registry）。通道类只做注册表，出厂行由产品装配点喂入。
+// 宿主依赖面：应用层件（`Overlay` / `useShellStore` / 图像回读 / `MermaidBlock`）经包内
+// `./host` 桥（dev 直连、产物域 faceDeps 取真实例）；`MermaidBlock` 是**重依赖例外**——
+// 它内部 `import('mermaid')` 是动态裸 import，产物域构建闸拒绝，故组件本体留应用 bundle。
+// 内核 `paper/*` 判据层（markdown / marks / tool-text / fold / translate）按 `shared` 登记随包内联
+// （同 `viewer-exts` / `block-model` 先例：纯函数无实例身份，两侧各自 import）。
 
 import hljs from 'highlight.js/lib/common';
 import hljsClojure from 'highlight.js/lib/languages/clojure';
@@ -28,17 +33,17 @@ import hljsScheme from 'highlight.js/lib/languages/scheme';
 import katex from 'katex';
 import type { ReactNode } from 'react';
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { PlanApprovalResponse, PlanOptionOutcome } from '../../agent/plan/plan-contract';
-import type { BlockRendererContribution, BlockRendererProps } from '../../composition/renderer-service';
-import { foldLabel, foldPreviewLine } from '../../paper/fold';
+import type { PlanApprovalResponse, PlanOptionOutcome } from '../../../agent/plan/plan-contract';
+import type { BlockRendererContribution, BlockRendererProps } from '../../../composition/renderer-service';
+import { foldLabel, foldPreviewLine } from '../../../paper/fold';
 import {
   type MdBlock,
   type MdInline,
   type MdParseState,
   parseMarkdown,
   parseMarkdownIncremental,
-} from '../../paper/markdown';
-import { parseCircledSegments } from '../../paper/marks';
+} from '../../../paper/markdown';
+import { parseCircledSegments } from '../../../paper/marks';
 import {
   codeDisplay,
   hasArgsToShow,
@@ -47,17 +52,12 @@ import {
   type ToolSpan,
   type ToolTone,
   toolDisplay,
-} from '../../paper/tool-text';
+} from '../../../paper/tool-text';
 // 差分语言判据（分块与块体渲染的单一真源——转译层把围栏一律拆成抄录块，
 // 块体在这里按语言分流：真差分 → 差分着色；其余 → hljs 代码体）。
-import { isDiffLang } from '../../paper/translate';
-import type { ChatImageRef } from '../../provider/types';
-import { previewUrlFor, readAttachmentBase64 } from '../chat/image-intake';
-import { Overlay } from '../overlay';
-import { useShellStore } from '../shell-store';
-// mermaid 围栏渲染器（B6 · P2）：本体在应用侧（`mermaid` 重依赖走动态 import 分片），
-// 解析失败时它把 fallback（原代码块）原样放回——降级链在它内部，本文件只做认领。
-import MermaidBlock from './mermaid-block';
+import { isDiffLang } from '../../../paper/translate';
+import type { ChatImageRef } from '../../../provider/types';
+import { MermaidBlock, Overlay, previewUrlFor, readAttachmentBase64, useShellStore } from './host';
 
 /* ── 流式增量渐显（streaming-fade-render-plan 2026-08-30）──
  * 把「新长出来的文本」与「旧文本」分开：旧文本零动画（流式重渲染不闪），
@@ -412,7 +412,7 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
  *    - 增量按首个换行切：换行前 = 行内续写（tail 接进最后一个块，字符级淡入）；
  *    - 换行后 = 新块（块级 DeltaZone，从行首开始不腰斩 markdown 结构）。
  *    - stable 为空（首 token）时行内尾也兜底渲染，不丢字。 */
-function MarkdownBody({
+export function MarkdownBody({
   block,
   sidecarFolded,
   onToggleSidecarFold,

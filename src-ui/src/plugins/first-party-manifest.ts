@@ -40,13 +40,18 @@ export interface FirstPartyPluginMeta {
   description: string;
   /** service = 平台服务（不可禁用）；feature = 功能插件（可禁用）。 */
   kind: FirstPartyPluginKind;
+  /** **不可禁用**（批 8b 新增，2026-09-25）：该出厂产物是机制性默认面（禁用即主界面裸奔）
+   *  ——设置页不出禁用开关、loader 两条禁用路径直接跳过。真源 = 名册 `required`。 */
+  required?: boolean;
 }
 
 /** 第一方插件统一版本 = 应用版本（随应用一起发布，无独立版本线）。 */
 export const FIRST_PARTY_VERSION = '0.1.0';
 
-function meta(name: string, kind: FirstPartyPluginKind, description: string): FirstPartyPluginMeta {
-  return { name, version: FIRST_PARTY_VERSION, kind, description };
+function meta(name: string, kind: FirstPartyPluginKind, description: string, required?: boolean): FirstPartyPluginMeta {
+  return required
+    ? { name, version: FIRST_PARTY_VERSION, kind, description, required }
+    : { name, version: FIRST_PARTY_VERSION, kind, description };
 }
 
 /** 平台 service 元数据（13 个内核——无目录、非产物，唯一手写处；
@@ -86,7 +91,10 @@ const SERVICE_META: Record<string, FirstPartyPluginMeta> = {
 export const FIRST_PARTY_MANIFEST: Record<string, FirstPartyPluginMeta> = {
   ...SERVICE_META,
   ...Object.fromEntries(
-    BUILTIN_ROSTER.map((e) => [builtinScopeName(e.dir), meta(builtinScopeName(e.dir), 'feature', e.description)]),
+    BUILTIN_ROSTER.map((e) => [
+      builtinScopeName(e.dir),
+      meta(builtinScopeName(e.dir), 'feature', e.description, e.required),
+    ]),
   ),
 };
 

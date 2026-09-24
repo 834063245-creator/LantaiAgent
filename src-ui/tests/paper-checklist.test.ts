@@ -30,10 +30,10 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
   measureRichInlineStats: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
 }));
 
-import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import { createBlock, resetBlockIdCounterForTests, type SourcedBlock } from '../src/paper/block-model';
 import { type MdBlock, parseMarkdown } from '../src/paper/markdown';
 import { clearPaperMeasureCache, measureBlockHeight } from '../src/paper/measure';
+import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });

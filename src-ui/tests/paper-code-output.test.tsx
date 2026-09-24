@@ -27,11 +27,11 @@ vi.mock('@chenglou/pretext', () => ({
   clearCache: vi.fn(),
 }));
 
-import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import type { SourcedBlock } from '../src/paper/block-model';
 import { createBlock } from '../src/paper/block-model';
 import { inkSourcesFor, measureBlockHeight } from '../src/paper/measure';
 import { codeDisplay, codeSections } from '../src/paper/tool-text';
+import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
 
 /** 真机形态的目录清单（完成值是字符串 → 旧行为整段塌成一行字面转义）。 */
 const LS = 'drwxr-xr-x agents\n-rw-r--r-- 1 x 37882346 audit.jsonl';

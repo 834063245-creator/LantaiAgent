@@ -43,12 +43,22 @@ export interface BuiltinRosterEntry {
   /** UI 面（产物需注入 entry.css 产物标记；仅 canvas-nav/paper-shell/
    *  settings-domain/compose-dock/paper-minimap 五面）。 */
   face?: boolean;
-  /** esbuild define 注入（仅 renderers 特例：ROW_PREFIX）。 */
+  /** **不可禁用**（批 8b 新增，2026-09-25）：true = 该产物是**机制性默认面**
+   *  （禁用即主界面裸奔，如 `paper-renderers` 的十一 kind 全谱）——
+   *  设置页不出禁用开关、loader 两条禁用路径（plugin-prefs / plugins.json）直接跳过。
+   *  语义沿 service 类（内核不可禁用）但**不是**内核插件：它仍是磁盘产物（可热更）。 */
+  required?: boolean;
+  /** esbuild define 注入（renderers 的 ROW_PREFIX；paper-renderers 的 ROW_PREFIX）。 */
   define?: Record<string, string>;
 }
 
-/** 名册条目数组（buildOrder 升序——装载/构建/清单共用的唯一序）。 */
-export const BUILTIN_ROSTER: readonly BuiltinRosterEntry[] = [...roster].sort((a, b) => a.buildOrder - b.buildOrder);
+/** 名册条目数组（buildOrder 升序——装载/构建/清单共用的唯一序）。
+ *  断言注记：JSON 字面量的**可选字段**在 TS 里推成「联合 + undefined」（如仅 renderers
+ *  带 `define`、仅 paper-renderers 带 `required`），与接口的可选字段写法同义——这里在数据
+ *  边界一次收敛，避免每个消费方各自 cast。 */
+export const BUILTIN_ROSTER: readonly BuiltinRosterEntry[] = [...(roster as BuiltinRosterEntry[])].sort(
+  (a, b) => a.buildOrder - b.buildOrder,
+);
 
 /** 名册条目按 dir 索引（守卫/生成器 O(1) 寻址）。 */
 export const BUILTIN_ROSTER_BY_DIR: ReadonlyMap<string, BuiltinRosterEntry> = new Map(

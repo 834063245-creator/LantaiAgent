@@ -284,7 +284,12 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     const f2 = ctx.plugin(rendererServicePlugin);
     const f3 = ctx.plugin(builtinRenderersPlugin);
     await f3;
+    // 批 8b：出厂十一 kind 全谱由 paper-renderers 产物注册（service 已回归纯通道）
+    const { paperRenderersPlugin } = await import('../src/plugins/builtin/paper-renderers');
+    const f4 = ctx.plugin(paperRenderersPlugin);
+    await f4;
     await fn();
+    await f4.dispose();
     await f3.dispose();
     await f2.dispose();
     await f1.dispose();

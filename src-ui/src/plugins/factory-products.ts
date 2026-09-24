@@ -34,6 +34,7 @@ import { builtinFsPlugin } from './builtin/fs-builtin';
 import { goalModePlugin } from './builtin/goal-mode';
 import { llmAdaptersPlugin } from './builtin/llm-adapters';
 import { paperMinimapPlugin } from './builtin/paper-minimap';
+import { paperRenderersPlugin } from './builtin/paper-renderers';
 import { paperPlugin } from './builtin/paper-shell';
 import { builtinRenderersPlugin } from './builtin/renderers';
 import { builtinSessionsPlugin } from './builtin/sessions-builtin';
@@ -64,6 +65,8 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     builtinShellPlugin,
     builtinSessionsPlugin,
     builtinRenderersPlugin,
+    // 批 8b（2026-09-25）：纸面块渲染器十一 kind 全谱归产物（名册 required——不可禁用）
+    paperRenderersPlugin,
     paperPlugin,
     settingsPlugin,
     canvasNavPlugin,

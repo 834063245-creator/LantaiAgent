@@ -28,11 +28,11 @@ vi.mock('@chenglou/pretext', () => ({
   clearCache: vi.fn(),
 }));
 
-import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import type { SourcedBlock } from '../src/paper/block-model';
 import { createBlock } from '../src/paper/block-model';
 import { measureBlockHeight } from '../src/paper/measure';
 import { hasPayloadToShow, sanitizePayloadText, toolDisplay, toolLinesText } from '../src/paper/tool-text';
+import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
 
 /** Windows 扩展路径真值（工具载荷里最常见的长串）。 */
 const WIN_PATH = '\\\\?\\D:\\ws\\docs\\a.md';
