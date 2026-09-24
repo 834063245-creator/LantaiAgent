@@ -29,8 +29,8 @@ import {
   ZOOM_MIN,
   zoomAt,
 } from '../src/paper/canvas-math';
-import { parseMarkdown } from '../src/paper/markdown';
 import {
+  isDiffLang,
   splitFencedSegments,
   translateMessages,
   translateMessagesCached,
@@ -452,57 +452,68 @@ describe('paper/translate', () => {
     expect(second[2].payload).toEqual({ text: '完成。' });
   });
 
-  it('围栏语言标记不拆 diff 块：```ts 整体回吐 markdown（高亮链路才活）', () => {
-    // 2026-09 修：原断言为 kind:'diff' —— 那正是「代码高亮从未生效」的根因
-    // （DiffBody 只认行首 +/-/@@，不认 hljs）。代码围栏必须留在 markdown 段，
-    // 由 parseMarkdown 收成 t:'code' 交给 MdCodeBlock。
-    const segs = splitFencedSegments('```ts\nconst a = 1;\n```');
-    expect(segs).toEqual([{ kind: 'markdown', text: '```ts\nconst a = 1;\n```' }]);
+  it('围栏拆分·代码围栏独立成抄录块（语言标记随 payload 下去）', () => {
+    // 2026-09-23 文类回归批：代码围栏不再回吐 markdown 段——独立成 diff 块
+    // （文类「抄录 / CODE」），块体在渲染侧按 isDiffLang 分流 hljs 代码体。
+    expect(splitFencedSegments('```ts\nconst a = 1;\n```')).toEqual([
+      { kind: 'diff', text: 'const a = 1;', lang: 'ts' },
+    ]);
   });
 
-  it('围栏拆分·代码围栏回吐：语言标记保留、裸围栏也回吐', () => {
+  it('围栏拆分·裸围栏同样独立成块（无语言标记 → 块体纯 mono 原文）', () => {
     const ts = splitFencedSegments('看这段：\n```ts\nconst a = 1;\n```\n完。');
-    expect(ts.map((s) => s.kind)).toEqual(['markdown', 'markdown', 'markdown']);
-    expect(ts[1].text).toBe('```ts\nconst a = 1;\n```');
-    // 裸围栏（无语言）：仍回吐代码路径——落 .pp-md-code 图码形态，
-    // 好过被 DiffBody 当差分按 +/- 误着色
-    const bare = splitFencedSegments('```\nconst a = 1;\n```');
-    expect(bare).toEqual([{ kind: 'markdown', text: '```\nconst a = 1;\n```' }]);
+    expect(ts).toEqual([
+      { kind: 'markdown', text: '看这段：' },
+      { kind: 'diff', text: 'const a = 1;', lang: 'ts' },
+      { kind: 'markdown', text: '完。' },
+    ]);
+    expect(splitFencedSegments('```\nconst a = 1;\n```')).toEqual([
+      { kind: 'diff', text: 'const a = 1;', lang: undefined },
+    ]);
   });
 
-  it('围栏拆分·只有 diff/patch 走 diff 块', () => {
+  it('围栏拆分·mermaid 是唯一回吐 markdown 的围栏（图渲染链路挂在 MdCodeBlock）', () => {
+    // 豁免理由：MermaidBlock 认领 + 代码块测高契约都在 markdown 段上（见 translate.ts 头注）
+    expect(splitFencedSegments('```mermaid\ngraph TD; A-->B;\n```')).toEqual([
+      { kind: 'markdown', text: '```mermaid\ngraph TD; A-->B;\n```' },
+    ]);
+  });
+
+  it('围栏拆分·diff/patch 判据（isDiffLang：块体分流真源，大小写不敏感）', () => {
     expect(splitFencedSegments('```patch\n--- a\n+++ b\n```')).toEqual([
       { kind: 'diff', text: '--- a\n+++ b', lang: 'patch' },
     ]);
-    // 大小写不敏感
-    expect(splitFencedSegments('```DIFF\n+ x\n```')[0].kind).toBe('diff');
+    expect(isDiffLang('DIFF')).toBe(true);
+    expect(isDiffLang('Patch')).toBe(true);
+    expect(isDiffLang('ts')).toBe(false);
+    expect(isDiffLang(undefined)).toBe(false); // 裸围栏 = 代码体，不按 +/- 误着色
   });
 
-  it('围栏拆分·代码围栏经全链转译后落在 markdown 块，且 parseMarkdown 收成 t:code', () => {
-    // 端到端回归：这是「代码高亮从未生效」的正题——围栏必须活到 MdCodeBlock。
+  it('围栏拆分·代码围栏经全链转译后是独立抄录块（payload 带 lang）', () => {
+    // 端到端回归：机器输出（命令结果 / 文件内容）必须以抄录块出现，
+    // 不再以「正文」块混进正文流。
     const msg = asstMsg('a1', [{ type: 'text', text: '修法是：\n```ts\nconst a = 1;\n```\n完。', finalised: true }]);
     const blocks = translateMessages([msg]);
-    // 没有任何块被误判成 diff（DiffBody 只认行首 +/-/@@，不认 hljs）
-    expect(blocks.map((b) => b.kind)).not.toContain('diff');
-    // 围栏段经 parseMarkdown 收成 code 块且语言标记在（→ hljs 可高亮）
-    const codes = blocks
-      .flatMap((b) => parseMarkdown((b.payload as { text?: string }).text ?? ''))
-      .filter((n) => n.t === 'code');
-    expect(codes).toHaveLength(1);
-    expect(codes[0]).toMatchObject({ t: 'code', lang: 'ts', text: 'const a = 1;' });
+    expect(blocks.map((b) => b.kind)).toEqual(['markdown', 'diff', 'markdown']);
+    expect(blocks[1].payload).toEqual({ lang: 'ts', text: 'const a = 1;' });
+    // 高亮不再经 parseMarkdown：块体分流在渲染侧（DiffBody → DiffCodeBody，见 paper-code-highlight）
+    expect(blocks[0].payload).toEqual({ text: '修法是：' });
+    expect(blocks[2].payload).toEqual({ text: '完。' });
   });
 
-  it('围栏拆分·裸围栏整体（纯代码消息）流式 id 稳定', () => {
+  it('围栏拆分·纯围栏消息（流式）块 id 稳定、内容取新', () => {
     resetBlockIdCounterForTests();
     const part = { type: 'text' as const, finalised: false, text: '```ts\nconst a = 1;' };
     const msg = asstMsg('a1', [part]);
     const first = translateMessages([msg]);
-    expect(first.map((b) => b.kind)).toEqual(['markdown']); // 单一回吐段 → 1:1 快径
-    // 流式追加（补围栏 + 尾文）：代码块 id 不随生长漂移
+    expect(first.map((b) => b.kind)).toEqual(['diff']);
+    expect(first[0].id).toBe('pb:a1:0f0');
+    // 流式追加（补围栏）：围栏块 id 不随生长漂移
     part.text += '\n```\n';
     const second = translateMessages([msg]);
-    expect(second.map((b) => b.kind)).toEqual(['markdown']);
+    expect(second.map((b) => b.kind)).toEqual(['diff']);
     expect(second[0].id).toBe(first[0].id);
+    expect(second[0].payload).toEqual({ lang: 'ts', text: 'const a = 1;' });
   });
 
   it('流式更新语义：part.text 原位追加后重转译，块 id 稳定、内容取新、钉住不丢（touchMessage 场景）', () => {

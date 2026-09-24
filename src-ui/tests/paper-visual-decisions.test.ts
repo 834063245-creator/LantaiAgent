@@ -1169,13 +1169,15 @@ describe('查看器公共壳段面（B1）· 不裸色 + 壳件走 token', () =>
     expect(bodyOf('.pp-viewer-code-note')).toContain('position: sticky'); // 吸顶：盒高不随截断漂
   });
 
-  it('hljs 墨阶映射两个消费面**成对**出现（流内围栏码 ↔ 代码查看器同一份配色）', () => {
+  it('hljs 墨阶映射三消费面**同源**（流内围栏码 ↔ 抄录块代码体 ↔ 代码查看器同一份配色）', () => {
     const groups = PANEL_CSS.replace(/\/\*[\s\S]*?\*\//g, '').match(/\.pp-md-code \.hljs-[^{]+/g) ?? [];
     expect(groups.length).toBeGreaterThanOrEqual(9); // 9 组语义类（防改名把守卫变成永真）
     for (const g of groups) {
       const md = (g.match(/\.pp-md-code \.hljs-/g) ?? []).length;
       const vw = (g.match(/\.pp-viewer-code \.hljs-/g) ?? []).length;
-      expect(vw, `高亮选择器组两侧不成对（补 .pp-viewer-code 一侧）：${g.trim()}`).toBe(md);
+      const dc = (g.match(/\.pp-diff-code \.hljs-/g) ?? []).length;
+      expect(vw, `高亮选择器组缺 .pp-viewer-code 一侧（补上）：${g.trim()}`).toBe(md);
+      expect(dc, `高亮选择器组缺 .pp-diff-code 一侧（抄录块代码体，补上）：${g.trim()}`).toBe(md);
     }
   });
 });

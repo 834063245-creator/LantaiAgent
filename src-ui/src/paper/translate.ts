@@ -205,23 +205,42 @@ function translateUser(msg: UserMessage): SourcedBlock {
   };
 }
 
-/* ── 围栏拆分：text part → markdown / diff 块序列 ──
+/* ── 围栏拆分：text part → 抄录 / markdown 块序列 ──
  * 走查弹定义（R1）：灰框块 = markdown + diff + tool result。真实会话里 diff
  * 以 markdown 围栏（```diff）出现在 text part 内——转译层把它拆出来。
  *
- * ⚠️ 只有真差分语言（diff/patch）拆成 `diff` 块，其余围栏**原样回吐**给
- * markdown 段。2026-09 修：本函数原先把所有围栏一律拆成 diff 块，于是
- * ```ts / ```python 全被 DiffBody 接走（它只按行首 +/-/@@ 上色，不认得
- * hljs），MdCodeBlock 的语法高亮在真实会话里**从未被触发过**——只有嵌在
- * 列表/引用里的围栏才漏得过去。回吐时重建围栏（保留语言标记），markdown
- * 段继续由 parseMarkdown 收成 t:'code'，高亮链路才是活的。
+ * ⚠️ 围栏一律**独立成块**（`diff` 块 = 文类「抄录 / CODE」的机器文本块），
+ * 块体按语言标记分流（判据 = `isDiffLang`，分块与渲染共用一处）：真差分
+ * 走差分着色，其余语言（含裸围栏）走 hljs 代码体。两条路**几何同源**——
+ * 同一 `<pre>`（.pp-block.pp-diff pre 的线/底/内距/cap）、同一 `.pp-lang`
+ * 语言行、同判据的 measure 预算，高亮只包 span 不改行数/折行 ⇒ 零漂移。
+ *
+ * 2026-09-23 文类回归批：上一批（a0076c9f）为救高亮把围栏「回吐」进 markdown
+ * 段，代价是**文类与块形态双失**——落在 `.pp-md-code` 图码形态上，而 spec 明
+ * 说图码是「独立 diff 块之外幸存围栏的兜底面」（只有嵌在列表/引用里的围栏才
+ * 该落那儿）。真实会话后果：`git status` / 文件内容这类机器输出以「正文 /
+ * AGENT」块混进正文流。本批把文类还给它们，高亮走块体内的语言分派。
+ *
+ * 唯一豁免 = ```mermaid：图渲染链路（MermaidBlock）与代码块测高契约都挂在
+ * markdown 段的 `MdCodeBlock` 上，独立成抄录块会与测高镜像脱钩 ⇒ 回吐
+ * markdown（行为与本批前一致）。
  *
  * 流式友好：围栏未闭合（token 还在到达）时按已闭合处理（差分块持续生长）。
  * id 方案：无围栏的纯文本保持 pb:{msg}:{i}（兼容）；拆分后 text 段
  * pb:{msg}:{i}t{n}、围栏段 pb:{msg}:{i}f{n}——围栏标记位置稳定则 id 稳定。 */
 
-/** 真差分围栏语言（其余语言标记走代码路径，不拆块）。 */
-const DIFF_LANGS = new Set(['diff', 'patch']);
+/** 真差分围栏语言——**分块与块体渲染共用的单一真源**（转译层分流 + `DiffBody`
+ *  分派都读它；两处各判一份必然漂）。 */
+export const DIFF_LANGS = new Set(['diff', 'patch']);
+
+/** 该围栏语言是否真差分（`undefined` = 裸围栏 ⇒ false，走代码体：纯 mono
+ *  原文，好过被差分体按行首 +/-/@@ 误着色）。 */
+export function isDiffLang(lang: string | undefined): boolean {
+  return lang !== undefined && DIFF_LANGS.has(lang.toLowerCase());
+}
+
+/** mermaid 围栏的唯一豁免标记（回吐 markdown——见文件头注）。 */
+const MERMAID_LANG = 'mermaid';
 
 interface TextSegment {
   kind: 'markdown' | 'diff';
@@ -261,14 +280,14 @@ export function splitFencedSegments(text: string): TextSegment[] {
       }
       void closed; // 未闭合 = 流式中：照常产出（块内容持续增长）
       flushText();
-      if (lang !== undefined && DIFF_LANGS.has(lang.toLowerCase())) {
-        segments.push({ kind: 'diff', text: code.join('\n'), lang });
+      if (lang === MERMAID_LANG) {
+        // 唯一豁免：重建围栏回吐 markdown（parseMarkdown 收成 t:'code' →
+        // MdCodeBlock 的 mermaid 认领与测高契约原样保留）。
+        segments.push({ kind: 'markdown', text: [`\`\`\`${lang}`, ...code, '```'].join('\n') });
       } else {
-        // 代码围栏：重建围栏回吐 markdown（语言标记保留 → parseMarkdown 收
-        // 成 t:'code' → MdCodeBlock 走 hljs）。不带 lang 的裸围栏同样回吐：
-        // 落到 .pp-md-code 图码形态，好过被当成 diff 按 +/- 误着色。
-        const head = `\`\`\`${lang ?? ''}`;
-        segments.push({ kind: 'markdown', text: [head, ...code, '```'].join('\n') });
+        // 其余围栏一律独立成块（抄录 / CODE）——语言标记随 payload 下去，
+        // 块体按 isDiffLang 分流差分着色 / hljs 代码体。
+        segments.push({ kind: 'diff', text: code.join('\n'), lang });
       }
     } else {
       buf.push(lines[i]);
@@ -344,8 +363,9 @@ function translateAssistantParts(
 ): void {
   /* P5 眉批化配对预扫：连续 reasoning 合并 → 紧随的 text part 吸收为眉批
    * （payload.sidecar，测高 max(正文, 夹注@侧栏)）；无正文后继（tool 结尾/
-   * 消息尾/只含 diff 围栏的 text 由 emitTextWithFences 二次回退）→ 独立
-   * reasoning 块不丢字，id 保持原夹注 part idx（钉住续命不断）。 */
+   * 消息尾/只含围栏的 text——围栏一律独立成抄录块，掏空了正文段，由
+   * emitTextWithFences 二次回退）→ 独立 reasoning 块不丢字，id 保持原夹注
+   * part idx（钉住续命不断）。 */
   const sidecarFor = new Map<number, { text: string; reasoningIdx: number }>();
   const fallbackIdx = new Set<number>();
   let pending: Array<{ idx: number; text: string }> = [];

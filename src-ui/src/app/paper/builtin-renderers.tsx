@@ -48,6 +48,9 @@ import {
   type ToolTone,
   toolDisplay,
 } from '../../paper/tool-text';
+// 差分语言判据（分块与块体渲染的单一真源——转译层把围栏一律拆成抄录块，
+// 块体在这里按语言分流：真差分 → 差分着色；其余 → hljs 代码体）。
+import { isDiffLang } from '../../paper/translate';
 import type { ChatImageRef } from '../../provider/types';
 import { previewUrlFor, readAttachmentBase64 } from '../chat/image-intake';
 import { Overlay } from '../overlay';
@@ -676,6 +679,9 @@ function diffLineClass(line: string): string | undefined {
 
 function DiffBody({ block }: BlockRendererProps) {
   const p = block.payload as { lang?: string; text: string };
+  // 语言分流（2026-09-23 文类回归批）：真差分（diff/patch）→ 差分着色抓在本
+  // 体；其余语言与裸围栏 → 代码体（hljs）。判据与转译层同源（isDiffLang）。
+  if (!isDiffLang(p.lang)) return <DiffCodeBody text={p.text} lang={p.lang} />;
   const lines = p.text.split('\n');
   return (
     <>
@@ -691,6 +697,29 @@ function DiffBody({ block }: BlockRendererProps) {
             </Fragment>
           );
         })}
+      </pre>
+    </>
+  );
+}
+
+/** 抄录体·代码路（文类回归批）：非差分语言的围栏（```ts / ```python / 裸围栏）
+ *  → hljs 高亮代码体。与差分路**几何同源**：同一 `<pre>`（吃
+ *  `.pp-block.pp-diff pre` 的 3px 硬左线 / 米黄底 / 内距 / max-height 帽）、
+ *  同一 `.pp-lang` 语言行（measure 的 DIFF_LANG_H 同判据）。
+ *  高亮只包 span（不改字体/行数/折行）⇒ 测高镜像零改动（同 MdCodeBlock 纪律）；
+ *  lang 不识别/为空 → 纯 mono 原文（不误着色、不炸块）。 */
+function DiffCodeBody({ text, lang }: { text: string; lang?: string }) {
+  const highlighted = useMemo(() => highlightCode(text, lang), [lang, text]);
+  return (
+    <>
+      {lang && <div className="pp-lang">{lang}</div>}
+      <pre className="pp-diff-code">
+        {highlighted !== null ? (
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: hljs 输出为可信本地渲染（非模型 HTML；转义由 hljs 内建）
+          <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+        ) : (
+          <code>{text}</code>
+        )}
       </pre>
     </>
   );

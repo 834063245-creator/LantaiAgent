@@ -109,6 +109,67 @@ describe('MarkdownBody — 代码块高亮', () => {
   });
 });
 
+/* ═══ render：抄录块代码体（2026-09-23 文类回归批）═══
+ * 顶层围栏独立成 diff 块（文类「抄录 / CODE」），块体按语言分流：
+ * 真差分 → 差分着色；其余语言（含裸围栏）→ hljs 代码体 `.pp-diff-code`。 */
+
+describe('DiffBody — 抄录块语言分流', () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container?.remove();
+    root = null;
+    container = null;
+  });
+
+  const renderDiff = (payload: object) => {
+    act(() => {
+      root?.render(createElement(rendererFor('diff'), { block: block('diff', payload) }));
+    });
+  };
+
+  it('```ts 围栏：出 .pp-diff-code + hljs token span + 语言签', () => {
+    renderDiff({ lang: 'ts', text: 'const x: number = 1;' });
+    const pre = container!.querySelector('pre.pp-diff-code');
+    expect(pre).not.toBeNull();
+    const kw = pre!.querySelector('.hljs-keyword');
+    expect(kw).not.toBeNull();
+    expect(kw!.textContent).toBe('const');
+    // 语言行 = 抄录块既有语言签（.pp-lang，measure 的 DIFF_LANG_H 同判据）
+    expect(container!.querySelector('.pp-lang')?.textContent).toBe('ts');
+  });
+
+  it('裸围栏（无 lang）：纯 mono 原文，无 token span、无语言行', () => {
+    renderDiff({ text: 'M engine/grammars/build.sh' });
+    const pre = container!.querySelector('pre.pp-diff-code');
+    expect(pre).not.toBeNull();
+    expect(pre!.querySelector('.hljs-keyword')).toBeNull();
+    expect(pre!.textContent).toContain('M engine/grammars/build.sh');
+    expect(container!.querySelector('.pp-lang')).toBeNull();
+  });
+
+  it('未知 lang（foobar）：不误着色、不炸块', () => {
+    renderDiff({ lang: 'foobar', text: 'whatever { text' });
+    const pre = container!.querySelector('pre.pp-diff-code');
+    expect(pre).not.toBeNull();
+    expect(pre!.textContent).toContain('whatever { text');
+  });
+
+  it('```diff 围栏仍走差分着色（不进代码体）', () => {
+    renderDiff({ lang: 'diff', text: '- old line\n+ new line' });
+    expect(container!.querySelector('pre.pp-diff-code')).toBeNull();
+    expect(container!.querySelector('.pp-del')?.textContent).toBe('- old line');
+    expect(container!.querySelector('.pp-add')?.textContent).toBe('+ new line');
+  });
+});
+
 /* ═══ measure：高亮零测量镜像变化 ═══ */
 
 describe('paper/measure — 代码块高亮零镜像变化', () => {
@@ -126,6 +187,14 @@ describe('paper/measure — 代码块高亮零镜像变化', () => {
     // gap 归零（markdown 末元素 margin-bottom 0 镜像）
     expect(hl).toBe(20 + 36);
     expect(plain).toBe(hl); // 高亮前后零差异
+  });
+
+  it('抄录块代码体（lang=ts）与差分路测高同值——分流不引入几何差', () => {
+    const text = 'const a = 1;\nconst b = 2;';
+    // 尺子同 paper-v3a：lang 行 16 + 图版 padding/border 30 + mock 文本 36
+    expect(measureBlockHeight(block('diff', { lang: 'ts', text }))).toBe(16 + 30 + 36);
+    expect(measureBlockHeight(block('diff', { lang: 'diff', text }))).toBe(16 + 30 + 36);
+    expect(measureBlockHeight(block('diff', { text }))).toBe(30 + 36); // 裸围栏：无语言行
   });
 });
 

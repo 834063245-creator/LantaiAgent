@@ -1180,84 +1180,114 @@
   max-height: var(--pp-lim-preMaxH);
   overflow: auto;
 }
-/* 代码高亮墨色协调（科研渲染 #5，2026-09；B2 起**两个消费面共用同一组选择器**）：
+/* 代码高亮墨色协调（科研渲染 #5，2026-09；B2 起多消费面共用同一组选择器，
+ * 2026-09-23 文类回归批加第三个消费面）：
  * hljs 的 .hljs-* 语义类 → 纸面 token（hljs 只产出类名，不装自带主题）。
- * 消费面 = 流内围栏码 `.pp-md-code` + 代码查看器 `.pp-viewer-code`——**同一份映射**
- * （单一真源：两处各写一份配色必然漂），作用域限定不污染全局。
+ * 消费面 = 流内围栏码 `.pp-md-code`（列表/引用内的嵌套围栏 + mermaid 回落）
+ *          + 代码查看器 `.pp-viewer-code`
+ *          + 抄录块代码体 `.pp-diff-code`（顶层围栏的 hljs 路）
+ * ——**同一份映射**（单一真源：各处各写一份配色必然漂），作用域限定不污染全局。
  * 墨色纪律：正文墨为主，关键字石青（与脚注题一致），字符串石墨降饱和，
  * 注释用 ink-3 弱化——代码与注疏同纸，不引入高饱和 IDE 配色。 */
 .pp-md-code .hljs-comment,
 .pp-viewer-code .hljs-comment,
+.pp-diff-code .hljs-comment,
 .pp-md-code .hljs-quote,
-.pp-viewer-code .hljs-quote {
+.pp-viewer-code .hljs-quote,
+.pp-diff-code .hljs-quote {
   color: var(--ink-3);
   font-style: italic;
 }
 .pp-md-code .hljs-keyword,
 .pp-viewer-code .hljs-keyword,
+.pp-diff-code .hljs-keyword,
 .pp-md-code .hljs-selector-tag,
 .pp-viewer-code .hljs-selector-tag,
+.pp-diff-code .hljs-selector-tag,
 .pp-md-code .hljs-literal,
 .pp-viewer-code .hljs-literal,
+.pp-diff-code .hljs-literal,
 .pp-md-code .hljs-meta,
-.pp-viewer-code .hljs-meta {
+.pp-viewer-code .hljs-meta,
+.pp-diff-code .hljs-meta {
   color: var(--indigo);
 }
 .pp-md-code .hljs-string,
 .pp-viewer-code .hljs-string,
+.pp-diff-code .hljs-string,
 .pp-md-code .hljs-regexp,
 .pp-viewer-code .hljs-regexp,
+.pp-diff-code .hljs-regexp,
 .pp-md-code .hljs-addition,
-.pp-viewer-code .hljs-addition {
+.pp-viewer-code .hljs-addition,
+.pp-diff-code .hljs-addition {
   color: var(--seal-deep);
 }
 .pp-md-code .hljs-number,
 .pp-viewer-code .hljs-number,
+.pp-diff-code .hljs-number,
 .pp-md-code .hljs-symbol,
 .pp-viewer-code .hljs-symbol,
+.pp-diff-code .hljs-symbol,
 .pp-md-code .hljs-bullet,
 .pp-viewer-code .hljs-bullet,
+.pp-diff-code .hljs-bullet,
 .pp-md-code .hljs-link,
-.pp-viewer-code .hljs-link {
+.pp-viewer-code .hljs-link,
+.pp-diff-code .hljs-link {
   color: var(--seal);
 }
 .pp-md-code .hljs-title,
 .pp-viewer-code .hljs-title,
+.pp-diff-code .hljs-title,
 .pp-md-code .hljs-title.function_,
 .pp-viewer-code .hljs-title.function_,
+.pp-diff-code .hljs-title.function_,
 .pp-md-code .hljs-section,
 .pp-viewer-code .hljs-section,
+.pp-diff-code .hljs-section,
 .pp-md-code .hljs-name,
-.pp-viewer-code .hljs-name {
+.pp-viewer-code .hljs-name,
+.pp-diff-code .hljs-name {
   color: var(--ink-1);
   font-weight: 600;
 }
 .pp-md-code .hljs-built_in,
 .pp-viewer-code .hljs-built_in,
+.pp-diff-code .hljs-built_in,
 .pp-md-code .hljs-type,
 .pp-viewer-code .hljs-type,
+.pp-diff-code .hljs-type,
 .pp-md-code .hljs-class .hljs-title,
 .pp-viewer-code .hljs-class .hljs-title,
+.pp-diff-code .hljs-class .hljs-title,
 .pp-md-code .hljs-attr,
 .pp-viewer-code .hljs-attr,
+.pp-diff-code .hljs-attr,
 .pp-md-code .hljs-attribute,
 .pp-viewer-code .hljs-attribute,
+.pp-diff-code .hljs-attribute,
 .pp-md-code .hljs-variable,
 .pp-viewer-code .hljs-variable,
+.pp-diff-code .hljs-variable,
 .pp-md-code .hljs-template-variable,
-.pp-viewer-code .hljs-template-variable {
+.pp-viewer-code .hljs-template-variable,
+.pp-diff-code .hljs-template-variable {
   color: var(--graphite);
 }
 .pp-md-code .hljs-deletion,
-.pp-viewer-code .hljs-deletion {
+.pp-viewer-code .hljs-deletion,
+.pp-diff-code .hljs-deletion {
   color: var(--fail);
 }
 .pp-md-code .hljs-emphasis,
-.pp-viewer-code .hljs-emphasis {
+.pp-viewer-code .hljs-emphasis,
+.pp-diff-code .hljs-emphasis {
   font-style: italic;
 }
 .pp-md-code .hljs-strong,
-.pp-viewer-code .hljs-strong {
+.pp-viewer-code .hljs-strong,
+.pp-diff-code .hljs-strong {
   font-weight: 600;
 }
 
