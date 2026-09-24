@@ -50,11 +50,11 @@ vi.mock('../src/bridge', () => ({ isMockMode: () => false }));
 
 import type { Agent } from '../src/agent/agent';
 import { createExecState } from '../src/agent/execution-state';
-import type { MessageBus } from '../src/agent/message-bus';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { type SubAgentSpawnHost, spawnSubAgentImpl } from '../src/agent/subagent-spawn';
 import { ToolRegistry } from '../src/agent/tool';
-import { MeshTopology } from '../src/agent/topology';
+import type { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
+import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 import type { Chunk, Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 

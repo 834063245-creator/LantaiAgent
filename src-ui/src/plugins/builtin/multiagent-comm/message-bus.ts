@@ -1,5 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
+//
+// 多 Agent 通信总线（**归家后真源**，2026-09-24 批 7b）：原 `agent/message-bus.ts` 整件移出。
+// 契约面（类型 + 四个错误类 + `MessageBus` 接口）留内核 `agent/message-contract.ts`，经 ./host 取用。
 
 // 多 Agent 通信层 — MessageBus 核心实现
 //
@@ -13,17 +16,20 @@
 //   - 拓扑策略注入，默认 TreeTopology
 //   - 传输层可替换（InProcessTransport 默认，未来可换跨进程/跨机器）
 
-import { log } from './logger';
-import type {
-  AgentAddress,
-  AgentMessage,
-  BackpressureStrategy,
-  MessageFilter,
-  MessageStore,
-  MessageTransport,
-  TopologyPolicy,
-} from './message-types';
-import { AgentNotFoundError, InboxFullError, MessageNotFoundError, TopologyDeniedError } from './message-types';
+import {
+  type AgentAddress,
+  type AgentMessage,
+  AgentNotFoundError,
+  type BackpressureStrategy,
+  InboxFullError,
+  log,
+  type MessageFilter,
+  MessageNotFoundError,
+  type MessageStore,
+  type MessageTransport,
+  TopologyDeniedError,
+  type TopologyPolicy,
+} from './host';
 import { TreeTopology } from './topology';
 
 const DEFAULT_INBOX_CAPACITY = 100;

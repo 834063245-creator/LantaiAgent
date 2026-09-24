@@ -11,7 +11,7 @@
 
 import { create } from 'zustand';
 import type { DiscoveryEntry } from '../agent/discovery-board';
-import type { AgentMessage } from '../agent/message-types';
+import type { AgentMessage } from '../agent/message-contract';
 import type { AgentSummary } from '../agent/runtime/types';
 import type { BoardEntry } from '../agent/task-board';
 

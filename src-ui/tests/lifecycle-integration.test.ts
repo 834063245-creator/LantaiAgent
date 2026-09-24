@@ -27,12 +27,12 @@ import type { AgentEvent } from '../src/agent/agent-types';
 import { EventKind } from '../src/agent/agent-types';
 import { SubAgentPool } from '../src/agent/coordinator';
 import { AgentLifecycleManager } from '../src/agent/lifecycle-manager';
-import { MessageBus } from '../src/agent/message-bus';
 import { TaskBoard } from '../src/agent/task-board';
 import type { ToolExecutor } from '../src/agent/tool';
 import { createMergeTool } from '../src/agent/tools/merge';
-import { MeshTopology } from '../src/agent/topology';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
+import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
+import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 
 // ═══════════════════════════════════════════════════════
 // Helpers

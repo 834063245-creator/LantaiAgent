@@ -16,10 +16,7 @@
 // 不做死锁检测 — timeout 兜底是工业标准（Erlang gen_server 40 年验证）。
 
 import { z } from 'zod';
-import { errText } from '../loop-helpers';
-import type { MessageBus } from '../message-bus';
-import type { Tool } from '../tool';
-import { defineTool } from './define-tool';
+import { defineTool, errText, type MessageBus, type Tool } from './host';
 
 export function createRequestTool(bus: MessageBus, getAgentId: () => string): Tool {
   return defineTool({

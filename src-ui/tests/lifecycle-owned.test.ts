@@ -5,10 +5,10 @@ import { SubAgentPool } from '../src/agent/coordinator';
 import { AgentLifecycleManager } from '../src/agent/lifecycle-manager';
 import { McpClient } from '../src/agent/mcp/client';
 import { createLoopbackTransport } from '../src/agent/mcp/transport';
-import { MessageBus } from '../src/agent/message-bus';
 import { TaskBoard } from '../src/agent/task-board';
 import type { ToolExecutor } from '../src/agent/tool';
-import { MeshTopology } from '../src/agent/topology';
+import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
+import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 
 function makeManager(): AgentLifecycleManager {
   const pool = new SubAgentPool();

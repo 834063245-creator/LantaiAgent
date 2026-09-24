@@ -40,6 +40,13 @@ import { registerGoalImplementation } from '../../agent/goal-impl';
 import { log } from '../../agent/logger';
 import { errText, parseFilePathArg } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
+import {
+  AgentNotFoundError,
+  InboxFullError,
+  MessageNotFoundError,
+  TopologyDeniedError,
+} from '../../agent/message-contract';
+import { registerMultiagentComm } from '../../agent/multiagent-impl';
 import { registerPlanImplementation } from '../../agent/plan/plan-impl';
 import { assertSupportedSchema, extractJsonObject, validateObjectJsonSchema } from '../../agent/schema-validate';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
@@ -293,6 +300,7 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./memory-domain/host'), unknown> &
   Record<keyof typeof import('./task-domain/host'), unknown> &
   Record<keyof typeof import('./agent-domain/host'), unknown> &
+  Record<keyof typeof import('./multiagent-comm/host'), unknown> &
   Record<keyof typeof import('./wait-domain/host'), unknown> &
   Record<keyof typeof import('./cordis-domain/host'), unknown> &
   Record<keyof typeof import('./asset-domain/host'), unknown> &
@@ -625,6 +633,12 @@ const faceDeps = {
   validateObjectJsonSchema,
   getSubAgentActivity,
   STUCK_THRESHOLD_S,
+  // 批 7b 归家：通信族进包 ⇒ 桥登记表 + 四个错误类 + 目录/删除/列举文件腰
+  registerMultiagentComm,
+  AgentNotFoundError,
+  InboxFullError,
+  MessageNotFoundError,
+  TopologyDeniedError,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

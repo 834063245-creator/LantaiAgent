@@ -22,9 +22,15 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 48;
+export const OPEN_SURFACE_CONTRACT_VERSION = 49;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v49（2026-09-24）**通信族归产物包**（批 7b，契约形状零变更）：`MessageBus` 实现
+ *  （总线 / JSON 存储 / 三种拓扑 / 通信与请求工具族）进 `plugins/builtin/multiagent-comm/`，
+ *  类型与四个错误类升格为内核契约 `agent/message-contract.ts`（原 `message-types.ts`），
+ *  并新增 `MessageBus` 接口 + `MultiagentCommImplementation` 工厂面（内核查表造会话级
+ *  bus/store）。本清单里只有 `agent-loop/types.ts` 动了一行——`MessageBus` 类型导入改指
+ *  新契约文件，**成员与形状逐字未动**；指纹因原文 sha256 粗粒度而变（刻意取舍）。
  *  v48（2026-09-24）**压缩域结构切分**（批 6d-1，行为零变更）：记账面
  *  （`CompactionTracker` + 三个账类型 + 费率常量）从 `agent/compaction-model.ts`
  *  切到新 `agent/compaction-tracker.ts`，策略面留原文件；宿主接口 `CompactionHost`

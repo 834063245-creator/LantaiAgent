@@ -18,7 +18,7 @@ import type { AgentEvent, AgentUINotifier } from '../agent-types';
 import type { CompactionTracker } from '../compaction-tracker';
 import type { AgentEventBus } from '../events';
 import type { HookRegistry, PreflightHookRegistry } from '../hooks';
-import type { MessageBus } from '../message-bus';
+import type { MessageBus } from '../message-contract';
 import type { PlanGate } from '../plan/plan-registry';
 import type { SessionLog } from '../session-log';
 import type { StreamingToolExecutor } from '../streaming-executor';

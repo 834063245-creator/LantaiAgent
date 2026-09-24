@@ -122,7 +122,7 @@ export { buildSubAgentTools, wrapTool } from './subagent-spawn';
 
 import type { DiscoveryBoard } from './discovery-board';
 import type { FileOwnership } from './file-ownership';
-import type { MessageBus } from './message-bus';
+import type { MessageBus } from './message-contract';
 import type { TaskBoard } from './task-board';
 
 export { type AgentEvent, EventKind, type EventSink, type ToolEvent };

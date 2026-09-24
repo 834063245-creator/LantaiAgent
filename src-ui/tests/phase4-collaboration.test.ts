@@ -28,11 +28,11 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
 
 import { SubAgentPool, SubAgentStatus } from '../src/agent/coordinator';
 import { DiscoveryBoard } from '../src/agent/discovery-board';
-import { MessageBus } from '../src/agent/message-bus';
-import type { AgentAddress } from '../src/agent/message-types';
+import type { AgentAddress } from '../src/agent/message-contract';
 import { createDiscoveryTools } from '../src/agent/tools/discovery';
-import { createRequestTool } from '../src/agent/tools/request';
-import { MeshTopology } from '../src/agent/topology';
+import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
+import { createRequestTool } from '../src/plugins/builtin/multiagent-comm/request-tools';
+import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 
 // ── Helpers ──
 

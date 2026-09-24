@@ -61,7 +61,7 @@ import {
 } from '../src/agent/run-watchdog';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';
-import { MeshTopology } from '../src/agent/topology';
+import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 import type { Chunk, Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 

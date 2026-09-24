@@ -19,7 +19,7 @@ import { EventKind } from './agent-types';
 import type { SubAgentPool } from './coordinator';
 import { enqueueIsolationOp } from './isolation-queue';
 import { type Disposer, once } from './lifecycle';
-import type { MessageBus } from './message-bus';
+import type { MessageBus } from './message-contract';
 import type { BoardEntry, TaskBoard } from './task-board';
 import type { ToolExecutor } from './tool';
 

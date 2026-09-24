@@ -17,10 +17,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProcIO } from '../src/agent/mcp';
-import { MessageBus } from '../src/agent/message-bus';
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
+import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
 import {
   completePluginTask,
   type DeferredWakeHandler,

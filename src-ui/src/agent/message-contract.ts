@@ -1,10 +1,14 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 多 Agent 通信层 — 类型定义
+// 多 Agent 通信域**契约面**（批 7b，2026-09-24；原 agent/message-types.ts 整件升格）
 //
-// 拓扑无关、格式无关的消息总线类型契约。
-// MessageBus / Topology / Communication Tools 都依赖这些类型。
+// 拓扑无关、格式无关的消息总线类型契约。实现（MessageBus / JsonMessageStore / 三种拓扑 /
+// 通信与请求工具族）已归产物包 `plugins/builtin/multiagent-comm/`，**类型与错误类留内核**：
+//   - `AgentMessage` 被 UI 直读（`ui/agent-panel-store.ts`）；
+//   - `MessageBus` 是内核多处只读面（agent / context / agent-loop 契约 / lifecycle-manager /
+//     subagent-spawn / blueprint）；
+//   - 四个错误类是**跨边界可判类型**（工具层 catch/throw 与调用方按类型分流）。
 
 // ── Agent 身份与路由 ──
 
@@ -135,3 +139,47 @@ export class MessageNotFoundError extends Error {
 // Phase 2+ 预留（暂不实现）
 // export class DeadlockError extends Error { ... }
 // export class RequestTimeoutError extends Error { ... }
+
+// ── 总线实现面（批 7b：实现进包，内核只读接口）──
+
+/** MessageBus 的公开面（成员与实现类逐字对齐；内核消费方只依赖本接口）。 */
+export interface MessageBus {
+  register(addr: AgentAddress, onWake?: () => void): void;
+  unregister(agentId: string): void;
+  isRegistered(agentId: string): boolean;
+  systemNotify(to: string, type: string, payload: unknown): string | null;
+  send(msg: Omit<AgentMessage, 'id' | 'ts'> & { from: string }): string;
+  reply(callerId: string, originalMsgId: string, payload: unknown, meta?: Record<string, unknown>): string;
+  broadcast(from: string, type: string, payload: unknown, meta?: Record<string, unknown>): string[];
+  subscribe(filter: MessageFilter, handler: (msg: AgentMessage) => void): () => void;
+  peekInbox(agentId: string): AgentMessage[];
+  queryInbox(
+    agentId: string,
+    filter: { from?: string; type?: string; msgId?: string; limit?: number; summaryOnly?: boolean },
+  ): AgentMessage[] | { count: number; messages: { id: string; from: string; type: string; ts: number }[] };
+  consumeByType(agentId: string, types: string[]): { consumed: AgentMessage[]; remaining: AgentMessage[] };
+  purgeExpired(agentId: string): void;
+  purgeEphemeralTypes(): void;
+  ackMessage(agentId: string, msgId: string): boolean;
+  unreadCount(agentId: string): number;
+  setTopology(policy: TopologyPolicy): void;
+  getTopology(): TopologyPolicy;
+  canSend(from: string, to: string): boolean;
+  setInboxCapacity(capacity: number): void;
+  setBackpressureStrategy(strategy: BackpressureStrategy): void;
+  flush(): Promise<void>;
+  restore(): Promise<void>;
+  clearFlushTimer(): void;
+  getAgent(id: string): AgentAddress | undefined;
+  listAgents(): AgentAddress[];
+}
+
+/** 通信域实现面——产物包 `hologram/multiagent-comm` 在 apply 期登记；内核
+ *  （`runtime.ts` 造 bus/store · blueprint 两条 capability 造工具面）查表取用。
+ *  **service 语义**：runtime 构造点是会话基础设施，缺实现即 fail-loud。 */
+export interface MultiagentCommImplementation {
+  createBus(transport?: MessageTransport, store?: MessageStore): MessageBus;
+  createJsonStore(projectPath: string): MessageStore;
+  createCommunicationTools(bus: MessageBus, agentId: () => string): import('./tool').Tool[];
+  createRequestTool(bus: MessageBus, getAgentId: () => string): import('./tool').Tool;
+}

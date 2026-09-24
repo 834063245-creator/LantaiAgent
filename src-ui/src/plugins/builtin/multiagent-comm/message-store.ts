@@ -8,13 +8,14 @@
 // 所有操作 best-effort — 永不抛异常阻塞主流程。
 
 import {
+  type AgentMessage,
   kernelCreateDirectory,
   kernelDeleteFile,
   kernelListDirectory,
   kernelReadFile,
   kernelWriteFile,
-} from '../rpc-contract';
-import type { AgentMessage, MessageStore } from './message-types';
+  type MessageStore,
+} from './host';
 
 /** 判断读错误是否为「文件不存在」——此时该 agent 本来就无 inbox（空 inbox 从不落盘），
  *  属正常状态，静默跳过即可。覆盖 POSIX ENOENT / os error 2 与中英文文案。 */

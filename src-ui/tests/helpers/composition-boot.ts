@@ -26,6 +26,8 @@ import { compactionPlugin } from '../../src/plugins/builtin/compaction';
 import { builtinFsPlugin } from '../../src/plugins/builtin/fs-builtin';
 import { goalModePlugin } from '../../src/plugins/builtin/goal-mode';
 import { llmAdaptersPlugin } from '../../src/plugins/builtin/llm-adapters';
+// 批 7b：通信族实现归产物包（内核 runtime 造 bus/store、blueprint 造工具面都查登记表）
+import { multiagentCommPlugin } from '../../src/plugins/builtin/multiagent-comm';
 // 批 6a：plan 模式实现归产物包（内核 blueprint 的两条 capability 查登记表取用）
 // ⇒ 「生产最小集」必须含它，否则装配出的工具面少 enter/exit_plan_mode。
 import { planModePlugin } from '../../src/plugins/builtin/plan-mode';
@@ -56,6 +58,7 @@ export async function ensureProductionChannelsBooted(): Promise<Context> {
   await root.plugin(agentLoopServicePlugin);
   await root.plugin(planModePlugin);
   await root.plugin(goalModePlugin);
+  await root.plugin(multiagentCommPlugin);
   await root.plugin(compactionPlugin);
   bootRoot = root;
   return root;

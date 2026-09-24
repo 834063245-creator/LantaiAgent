@@ -26,7 +26,7 @@ import type { GoalManager } from './goal-manager';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import { type Disposer, DisposerBag, runInContext } from './lifecycle';
 import type { MemoryManager } from './memory';
-import type { MessageBus } from './message-bus';
+import type { MessageBus } from './message-contract';
 import type { PlanStateManager } from './plan/plan-state';
 import type { SessionLog } from './session-log';
 import type { TaskBoard } from './task-board';

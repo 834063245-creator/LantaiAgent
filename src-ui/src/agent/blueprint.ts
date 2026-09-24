@@ -41,7 +41,8 @@ import { createCodeExecutionTool } from './code-run/code-execution-tool';
 import type { CodeBindingSpec } from './code-run/host';
 import type { AgentContext } from './context';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
-import type { MessageBus } from './message-bus';
+import type { MessageBus } from './message-contract';
+import { requireMultiagentComm } from './multiagent-impl';
 import { activePlanImplementation } from './plan/plan-impl';
 import { registerCompactionTools } from './runtime/agent-builder';
 import type { AgentAssemblyInputs } from './runtime/types';
@@ -51,11 +52,9 @@ import { activeSubAgentTools } from './subagent-tools-impl';
 import { createTaskTools, TaskManager } from './task';
 import type { ToolRegistry } from './tool';
 import { createBoardStatusTool } from './tools/board-status';
-import { createCommunicationTools } from './tools/communication';
 import { createDiscoveryTools } from './tools/discovery';
 import { convergeRegistry } from './tools/domains';
 import { createMergeTool } from './tools/merge';
-import { createRequestTool } from './tools/request';
 
 // ── 装配视图 ──
 
@@ -199,7 +198,8 @@ export function firstPartyCapabilities(): AgentCapability[] {
       phase: 'agent',
       install: (scope) => {
         const agent = requireAgent(scope);
-        for (const tool of createCommunicationTools(scope.deps.messageBus, () => agent.id)) {
+        // 批 7b：通信域实现在产物包 hologram/multiagent-comm，经内核登记表取用
+        for (const tool of requireMultiagentComm().createCommunicationTools(scope.deps.messageBus, () => agent.id)) {
           scope.tools.register(tool);
         }
       },
@@ -243,7 +243,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
       phase: 'agent',
       install: (scope) => {
         const agent = requireAgent(scope);
-        scope.tools.register(createRequestTool(scope.deps.messageBus, () => agent.id));
+        scope.tools.register(requireMultiagentComm().createRequestTool(scope.deps.messageBus, () => agent.id));
       },
     },
     {

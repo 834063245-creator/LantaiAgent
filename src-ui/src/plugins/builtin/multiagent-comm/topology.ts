@@ -6,7 +6,7 @@
 // 拓扑策略决定哪些 agent 之间可以通信。
 // 通信层本身拓扑无关，策略由上层注入。
 
-import type { AgentAddress, TopologyPolicy } from './message-types';
+import type { AgentAddress, TopologyPolicy } from './host';
 
 // ── 树形拓扑：只有 parent↔child 能通信 ──
 

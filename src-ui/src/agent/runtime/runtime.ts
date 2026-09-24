@@ -35,8 +35,8 @@ import { enqueueIsolationOp } from '../isolation-queue';
 import type { Disposer } from '../lifecycle';
 import { AgentLifecycleManager } from '../lifecycle-manager';
 import { log } from '../logger';
-import { MessageBus } from '../message-bus';
-import { JsonMessageStore } from '../message-store';
+import type { MessageBus } from '../message-contract';
+import { requireMultiagentComm } from '../multiagent-impl';
 import { PlanStateManager } from '../plan/plan-state';
 import { SessionLog } from '../session-log';
 import { scanSkills } from '../skills';
@@ -255,11 +255,13 @@ export class AgentRuntime implements RuntimePort {
     this._cordisParent = cordisParent;
     this._composition = composition ?? factoryComposition();
     if (projectPath) {
-      const store = new JsonMessageStore(projectPath);
-      this._bus = new MessageBus(undefined, store);
+      // 批 7b：通信域实现归产物包，经内核登记表造（service 语义：缺实现即 fail-loud）
+      const comm = requireMultiagentComm();
+      const store = comm.createJsonStore(projectPath);
+      this._bus = comm.createBus(undefined, store);
       this._readyPromise = this._restore();
     } else {
-      this._bus = new MessageBus();
+      this._bus = requireMultiagentComm().createBus();
       this._readyPromise = Promise.resolve();
     }
   }

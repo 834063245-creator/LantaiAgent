@@ -324,5 +324,13 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": []
+  },
+  {
+    "dir": "multiagent-comm",
+    "buildOrder": 34,
+    "description": "多 Agent 通信域（消息总线 / JSON 存储 / 三种拓扑 / 通信与请求工具族）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": []
   }
 ]

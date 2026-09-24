@@ -9,8 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import { Agent } from '../src/agent/agent';
 import { AgentContext, type AgentServices } from '../src/agent/context';
-import { MessageBus } from '../src/agent/message-bus';
 import { ToolRegistry } from '../src/agent/tool';
+import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
 import type { Chunk, Provider } from '../src/provider/types';
 
 function mockProvider(): Provider {

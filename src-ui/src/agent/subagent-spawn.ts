@@ -16,7 +16,7 @@ import { extractFilePath, FileOwnership, WRITE_TOOLS } from './file-ownership';
 import { HookRegistry } from './hooks';
 import { enqueueIsolationOp } from './isolation-queue';
 import { log } from './logger';
-import type { MessageBus } from './message-bus';
+import type { MessageBus } from './message-contract';
 import { planRegistry } from './plan/plan-registry';
 import type { PlanStateManager } from './plan/plan-state';
 import { buildOutputSchemaInstruction } from './schema-validate';

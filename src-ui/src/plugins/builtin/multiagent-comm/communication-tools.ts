@@ -13,10 +13,15 @@
 // agent_request（同步请求）推迟到 Phase 2+。
 
 import { z } from 'zod';
-import type { MessageBus } from '../message-bus';
-import { AgentNotFoundError, InboxFullError, MessageNotFoundError, TopologyDeniedError } from '../message-types';
-import type { Tool } from '../tool';
-import { defineTool } from './define-tool';
+import {
+  AgentNotFoundError,
+  defineTool,
+  InboxFullError,
+  type MessageBus,
+  MessageNotFoundError,
+  type Tool,
+  TopologyDeniedError,
+} from './host';
 
 /**
  * 创建通信工具集。闭包捕获 bus 和 agentId，不捕获 Agent 实例。

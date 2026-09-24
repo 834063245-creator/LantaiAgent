@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from 'vitest';
-import { MessageBus } from '../src/agent/message-bus';
-import type { AgentAddress, AgentMessage } from '../src/agent/message-types';
+import type { AgentAddress, AgentMessage } from '../src/agent/message-contract';
 import {
   AgentNotFoundError,
   InboxFullError,
   MessageNotFoundError,
   TopologyDeniedError,
-} from '../src/agent/message-types';
-import { MeshTopology, StarTopology, TreeTopology } from '../src/agent/topology';
+} from '../src/agent/message-contract';
+import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
+import { MeshTopology, StarTopology, TreeTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 
 // ── Helpers ──
 
@@ -557,7 +557,7 @@ function findTool(tools: Tool[], name: string): Tool {
 describe('Communication tools', () => {
   it('agent_message sends and returns success', async () => {
     const { bus, parent, child1 } = setupTree();
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => parent);
     const agentMessage = findTool(tools, 'agent_message');
     const result = await agentMessage.execute({ target: child1, type: 'question', content: 'hello' });
@@ -567,7 +567,7 @@ describe('Communication tools', () => {
 
   it('agent_message returns error string on topology denied', async () => {
     const { bus, child1, sibling } = setupTree();
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => child1);
     const agentMessage = findTool(tools, 'agent_message');
     const result = await agentMessage.execute({ target: sibling, type: 'msg', content: 'x' });
@@ -577,7 +577,7 @@ describe('Communication tools', () => {
   it('agent_message returns error string on agent not found', async () => {
     const { bus, parent } = setupTree();
     bus.setTopology(new MeshTopology());
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => parent);
     const agentMessage = findTool(tools, 'agent_message');
     const result = await agentMessage.execute({ target: 'ghost', type: 'msg', content: 'x' });
@@ -588,7 +588,7 @@ describe('Communication tools', () => {
     const { bus, parent, child1 } = setupTree();
     bus.setInboxCapacity(1);
     bus.setBackpressureStrategy('reject');
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => parent);
     const agentMessage = findTool(tools, 'agent_message');
     await agentMessage.execute({ target: child1, type: 'msg', content: '1' });
@@ -600,7 +600,7 @@ describe('Communication tools', () => {
     const { bus, parent, child1 } = setupTree();
     const msgId = bus.send({ from: parent, to: child1, type: 'question', payload: 'hi' });
 
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => child1);
     const agentReply = findTool(tools, 'agent_reply');
     const result = await agentReply.execute({ message_id: msgId, content: 'hello back' });
@@ -613,7 +613,7 @@ describe('Communication tools', () => {
 
   it('agent_reply returns error for unknown message', async () => {
     const { bus, child1 } = setupTree();
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => child1);
     const agentReply = findTool(tools, 'agent_reply');
     const result = await agentReply.execute({ message_id: 'ghost', content: 'reply' });
@@ -625,7 +625,7 @@ describe('Communication tools', () => {
     const { bus, parent, child1 } = setupTree();
     const msgId = bus.send({ from: parent, to: child1, type: 'msg', payload: 'hello' });
 
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => child1);
     const agentAck = findTool(tools, 'agent_ack');
     const result = await agentAck.execute({ message_id: msgId });
@@ -636,7 +636,7 @@ describe('Communication tools', () => {
 
   it('agent_ack returns not found for unknown message', async () => {
     const { bus, child1 } = setupTree();
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => child1);
     const agentAck = findTool(tools, 'agent_ack');
     const result = await agentAck.execute({ message_id: 'ghost' });
@@ -648,7 +648,7 @@ describe('Communication tools', () => {
     bus.send({ from: parent, to: child1, type: 'question', payload: 'hello' });
     bus.send({ from: parent, to: child1, type: 'status', payload: 'done' });
 
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => child1);
     const agentInbox = findTool(tools, 'agent_inbox');
 
@@ -670,7 +670,7 @@ describe('Communication tools', () => {
 
   it('agent_inbox shows empty when no messages', async () => {
     const { bus, child1 } = setupTree();
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => child1);
     const agentInbox = findTool(tools, 'agent_inbox');
     const result = await agentInbox.execute({});
@@ -679,7 +679,7 @@ describe('Communication tools', () => {
 
   it('agent_list shows communicable agents', async () => {
     const { bus, parent, child1, child2, sibling } = setupTree();
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => parent);
     const agentList = findTool(tools, 'agent_list');
     const result = await agentList.execute({});
@@ -691,7 +691,7 @@ describe('Communication tools', () => {
 
   it('agent_list shows empty when no targets', async () => {
     const { bus, sibling } = setupTree();
-    const { createCommunicationTools } = await import('../src/agent/tools/communication');
+    const { createCommunicationTools } = await import('../src/plugins/builtin/multiagent-comm/communication-tools');
     const tools = createCommunicationTools(bus, () => sibling);
     const agentList = findTool(tools, 'agent_list');
     const result = await agentList.execute({});

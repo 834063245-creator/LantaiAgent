@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：48
+当前版本：49
 
-<!-- contract-fingerprint: 6a32806ab334d9cc6b57b1007af28afe183dbaf5b75c38f1c0b569dd0e430c01 -->
+<!-- contract-fingerprint: 304bdfe517efa2433eb8284cd301d80704002d0255e4d284b967fcd2cd79955d -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -107,6 +107,8 @@
 | 47 | 2026-09-23 | **Responses 方言合规批次（思考链回传的第二半 + 三处不合官方 schema 的请求形状）**：① `Message` 新增可选 `responses_items`（`ResponsesOutputItem[]` = 本轮 `response.output` **原样留档**），`ChunkType` 新增 `ResponsesItems`(=8)，`LoopStreamResult` 增同名字段，`default-loop` 两处 assistant 落盘写入该字段（与 `reasoning_content`/签名同址：纸面显示与回放共用一份事实）。② `provider/responses.ts`（不在本清单）修正三处**不合 schema** 的形状：assistant 的 tool_calls 由 `message.output`（OpenAI SDK 类型里根本没有这个字段）改为**顶层** `function_call` item；工具结果 `output_text` → **`output`**（`FunctionCallOutput.output` 是必填）；配对键改用 `call_id`（`call_…`，模型生成的调用 id）而非 item id（`fc_…`）；请求体补 `store:false` + `include:['reasoning.encrypted_content']`（Codex 客户端同款——本适配器自己重放全部历史，无状态端点需要加密推理体）。加上 reasoning 项留档/回放，这几处合起来才是「工具链能在 Responses 上跑通」。**动机**：官方对话状态指引要求手工管理上下文时把上一轮 `response.output` **原样拼回** `input`——漏掉 `type:"reasoning"` 项时带 tools 的请求被拒（OpenAI「Item 'fc_…' of type 'function_call' was provided without its required 'reasoning' item」/ DeepSeek Responses「The `reasoning_text` in the thinking mode must be passed back to the API.」；与 Chat 的 `reasoning_content`、Messages 的 thinking 块是同一条规则的三种字段名）；而 `9298fd30`（同一天）刚把**官方 OpenAI 出厂行**切到 Responses 方言 ⇒ 这三处使默认线路首次调用工具即 400。**对外可感知**：第三方 loop 不返回 `responses_items` = 该方言不写留档（其它方言与旧卷走既有合成路径，**非 Responses 方言请求体逐字节不变**）；`encrypted_content` 取 `output_item.done` 那一份（`added` 的可能不完整，官方 SDK 类型注原文），回放时只剥 `logprobs`（逐 token 概率不进卷） | OpenAI SDK 类型定义（OpenAPI 生成）：`ResponseReasoningItemParam`（"include these items in your `input`" + encrypted_content 取 done）/ `ResponseFunctionToolCallParam` / `FunctionCallOutput` / `EasyInputMessageParam` + DeepSeek 三方言 passback 矩阵实测（AIHubMix 2026-08-13：Responses 漏 reasoning 项 → 400）+ `tests/provider-responses.test.ts`（20 用例）与 `tests/responses-items-plumbing.test.ts`（chunk→会话→下一轮载荷接线两用例）+ `tests/session-replay.test.ts`（留档过回放逐字节还原） |
 
 | 48 | 2026-09-24 | **压缩域结构切分（批 6d-1，行为零变更）**：① 记账面从 `agent/compaction-model.ts` 切到新 `src/agent/compaction-tracker.ts`——`CompactionTracker` + `CompactionEvent` / `CompactionSessionStats` / `SummaryUsageTotals` + 费率三常量（`DEFAULT_C_IN` / `DEFAULT_C_OUT` / `LOSS_FACTOR_PER_EVENT`，策略侧反向 import）。留内核的理由：它是 **Agent 私有账本**（每 Agent 一份）+ loop 契约只读面 + 卷级 `serializeState` 持久化。② 宿主接口 `CompactionHost` 与两个**跨层常量**（`COMPACTION_NOTICE_MARK`、`SUMMARY_OUTPUT_BUDGET`）上收新 `src/agent/compaction-contract.ts`——UI（`ui/chat-stream.ts` 识别压缩提示）不再直引实现文件。③ 本清单里只有 `agent-loop/types.ts` 动了一行：`CompactionTracker` 类型导入改指记账面文件，**契约形状零变更**（`AgentLoopHost.compactionTracker` 成员与其结构子集逐字未动）。**对外可感知**：第三方 loop / 插件零影响（无成员增删、无载荷变化、事件序列不变）。 | 账本 `plugin-extraction-inventory.md` §2.3「上下文压缩」行 + [`capability-impl-seam-design.md`](../plans/capability-impl-seam-design.md) §3（6d 切分：策略进包 / 记账留内核）；convergence 双轨零漂移 + `tests/compaction-model.test.ts` 等 6 文件 65 用例 |
+
+| 49 | 2026-09-24 | **通信族归产物包（批 7b，契约形状零变更）**：`MessageBus` 实现（总线 605 行 / JSON 存储 / 三种拓扑 / 通信与请求两个工具族）进 `plugins/builtin/multiagent-comm/`；类型与四个错误类升格为内核契约 `src/agent/message-contract.ts`（原 `message-types.ts` 整件改名），并新增 **`MessageBus` 接口**与 **`MultiagentCommImplementation`** 工厂面（`createBus` / `createJsonStore` / 两个工具族工厂）——内核 `runtime.ts` 不再 `new MessageBus`，改查登记表（service 语义：缺实现 fail-loud）。本清单里只有 `agent-loop/types.ts` 动了一行：`MessageBus` 类型导入改指新契约文件，**`AgentLoopHost` 成员与形状逐字未动**。**对外可感知**：第三方 loop / 插件零影响；消息类型名称与语义不变。 | 账本 §2.3「多 Agent 通信族」行 + [`multiagent-extraction-design.md`](../plans/multiagent-extraction-design.md) §3（7b）；convergence 双轨零漂移 + `tests/message-bus.test.ts` 等直连测试改指包内后全绿 |
 
 1. 改契约文件（接口形状 / 注册契约 / 事件载荷 / manifest schema）；2. `src/composition/contract-version.ts` 的 `OPEN_SURFACE_CONTRACT_VERSION` +1；
 3. 本文件「变更记录」加一行（版本 / 日期 / 变更内容 / 依据）；

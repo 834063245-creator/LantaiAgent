@@ -17,7 +17,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import type { AgentAddress } from '../src/agent/message-types';
+import type { AgentAddress } from '../src/agent/message-contract';
 
 const H = vi.hoisted(() => ({
   kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
@@ -38,11 +38,11 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
   return { ...actual, ...H.kernelFs.overrides };
 });
 
-import { MessageBus } from '../src/agent/message-bus';
-import { JsonMessageStore } from '../src/agent/message-store';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { TaskBoard } from '../src/agent/task-board';
-import { MeshTopology } from '../src/agent/topology';
+import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
+import { JsonMessageStore } from '../src/plugins/builtin/multiagent-comm/message-store';
+import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 
 // ═══════════════════════════════════════════════════════
 // 内存文件系统 helper（fs 域走共享 kernel-fs mock）
