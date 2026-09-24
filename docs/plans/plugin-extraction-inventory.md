@@ -527,6 +527,24 @@ manifest.json —— 包内合计 30～110 行。
 **子批**：7a `agent-domain` 实心化（265，闭合一条红账）→ 7b 通信族（1,204）→ 7c 运行时
 （1,640，闭合 §1.2 + §2.3 两条）→ 7d 账目清账（红区预期降到 9 产物 / 23 文件）。
 
+**批 7a 落地（2026-09-24，agent-domain）**：
+- 进包 265 行 → `plugins/builtin/agent-domain/subagent-tools.ts`（三工厂）+ `implementation.ts` +
+  `index.ts`（apply 期登记 + 工具行 family 两条面）+ host 双面（**不再**二次出口包内工厂）。
+- 契约面上收：`agent/subagent-tools-contract.ts`（`SubAgentSpawner` 是装配输入 ⇒ 类型留内核；
+  `SubAgentToolsImplementation`）；`composition/tool-rows` / `runtime/types` / `agent-builder` 改指。
+- 登记表：`agent/subagent-tools-impl.ts`（feature 语义）；blueprint 的 merge-tool / spawn-tool
+  两条 capability 改查表。**退役 `agent/tool.ts` 的值 re-export**（4c 裁定① 同款，实测零消费方）。
+- faceDeps：撤 2 键（`createSubAgentTool` / `createAgentStatusTool`）补 6 键 ⇒ 指纹
+  `5a542fb9 → f90a5a45`；产物 `face.json` 7 键（保险丝 a 覆盖 34/34）。
+- 测试面：13 个文件改指包内；新腰 `tests/helpers/subagent-tools-impl.ts` 接进 convergence phase-1
+  （裸 AgentRuntime 需复现「装载器已装载」）。
+- **真机验收**（重建 exe + CDP）：faceDeps **267 键**（−2 +6）、6 个新键类型全对、两个旧键**已撤**；
+  `/plugins/hologram/agent-domain/entry.js` 555 KB 且动态 import 成功（含 agent_spawn/agent_status/
+  agent_kill 真身）；`face.json` 带 `f90a5a45`。
+- **验收**：vitest 406 文件 / 4,310 用例全绿 · build + build:builtin-plugins · biome ci 0/0 ·
+  **convergence 双轨基线零改动** · doc-sync + doc-check 全绿。红区 **11 → 10 产物 / 25 → 24 文件 /
+  8,283 → 8,023 行**；空壳 9 → 8。
+
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
 **件**：`agent/tools/coding.ts` **998** + 随行私有件 `git-porcelain.ts` 126 · `sticky-cwd.ts` 138 ·
