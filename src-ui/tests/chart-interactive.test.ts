@@ -97,7 +97,7 @@ describe('chart kind — interactive presentation 白名单', () => {
   });
 
   it('show_asset 带 presentation=interactive 可生成', async () => {
-    const sa = await import('../src/agent/tools/show-asset');
+    const sa = await import('../src/plugins/builtin/asset-domain/asset-tools');
     const clearTables = (await import('../src/agent/asset-store')).clearAssetTablesForTests;
     clearTables();
     const tool = sa.createAssetTools().find((t) => t.name() === 'show_asset')!;

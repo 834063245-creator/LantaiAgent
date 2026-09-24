@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../src/agent/agent-types';
 
-type ShowAssetModule = Awaited<ReturnType<typeof import('../src/agent/tools/show-asset')>>;
+type ShowAssetModule = Awaited<ReturnType<typeof import('../src/plugins/builtin/asset-domain/asset-tools')>>;
 type StoreModule = Awaited<ReturnType<typeof import('../src/agent/asset-store')>>;
 type KindsModule = Awaited<ReturnType<typeof import('../src/agent/asset-kinds')>>;
 type ExecutorModule = Awaited<ReturnType<typeof import('../src/agent/streaming-executor')>>;
@@ -26,7 +26,7 @@ describe('资产工具三件套 — show_asset / update_asset / list_block_kinds
   const SCOPE = 'owner-test';
 
   beforeEach(async () => {
-    const sa = await import('../src/agent/tools/show-asset');
+    const sa = await import('../src/plugins/builtin/asset-domain/asset-tools');
     createAssetTools = sa.createAssetTools;
     const st = await import('../src/agent/asset-store');
     getAsset = st.getAsset;
@@ -196,7 +196,7 @@ describe('资产回执与幂等 — 2026-09-16 真机事故回归（"怀疑就�
   const SCOPE = 'owner-receipt';
 
   beforeEach(async () => {
-    const sa = await import('../src/agent/tools/show-asset');
+    const sa = await import('../src/plugins/builtin/asset-domain/asset-tools');
     createAssetTools = sa.createAssetTools;
     const st = await import('../src/agent/asset-store');
     getAsset = st.getAsset;
@@ -339,7 +339,7 @@ describe('工具参数 JSON 坏 — 报错带窗（§2.7 成功面对偶；事�
   it('缺括号：报错给解析位置/尾部窗口 + 常见成因（不让模型对着裸回显误诊）', async () => {
     const ex = await import('../src/agent/streaming-executor');
     const tl = await import('../src/agent/tool');
-    const sa = await import('../src/agent/tools/show-asset');
+    const sa = await import('../src/plugins/builtin/asset-domain/asset-tools');
     const registry = new tl.ToolRegistry();
     for (const t of sa.createAssetTools()) registry.register(t);
     const events: AgentEvent[] = [];
@@ -389,7 +389,7 @@ describe('executor 资产通道 — assetChannel 工具的事件路由', () => {
     StreamingToolExecutor = ex.StreamingToolExecutor;
     const tl = await import('../src/agent/tool');
     ToolRegistry = tl.ToolRegistry;
-    const sa = await import('../src/agent/tools/show-asset');
+    const sa = await import('../src/plugins/builtin/asset-domain/asset-tools');
     createAssetTools = sa.createAssetTools;
     const st = await import('../src/agent/asset-store');
     clearAssetTablesForTests = st.clearAssetTablesForTests;

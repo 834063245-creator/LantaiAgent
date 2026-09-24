@@ -5,7 +5,7 @@
 
 import type { Context } from '../../../cordis';
 import { familyContributions, registerFamily } from '../contribution-helpers';
-import { createAssetTools } from './host';
+import { createAssetTools } from './asset-tools';
 
 /** asset 域插件（Agent 资产块，2026 资产协议）——show_asset / update_asset /
  *  list_block_kinds 三工具。无状态族：只依赖模块级 kind 注册表与 args meta。 */

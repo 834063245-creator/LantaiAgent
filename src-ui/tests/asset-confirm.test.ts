@@ -14,7 +14,7 @@ import type { AgentEvent, ConfirmCardResponse } from '../src/agent/agent-types';
 import { EventKind } from '../src/agent/agent-types';
 
 type RegistryModule = Awaited<ReturnType<typeof import('../src/agent/confirm-registry')>>;
-type ShowAssetModule = Awaited<ReturnType<typeof import('../src/agent/tools/show-asset')>>;
+type ShowAssetModule = Awaited<ReturnType<typeof import('../src/plugins/builtin/asset-domain/asset-tools')>>;
 type StoreModule = Awaited<ReturnType<typeof import('../src/agent/asset-store')>>;
 type ExecutorModule = Awaited<ReturnType<typeof import('../src/agent/streaming-executor')>>;
 type ToolModule = Awaited<ReturnType<typeof import('../src/agent/tool')>>;
@@ -77,7 +77,7 @@ describe('show_asset(kind=confirm) — executor 全链路', () => {
     StreamingToolExecutor = ex.StreamingToolExecutor;
     const tl = await import('../src/agent/tool');
     ToolRegistry = tl.ToolRegistry;
-    const sa = await import('../src/agent/tools/show-asset');
+    const sa = await import('../src/plugins/builtin/asset-domain/asset-tools');
     createAssetTools = sa.createAssetTools;
     const st = await import('../src/agent/asset-store');
     clearAssetTablesForTests = st.clearAssetTablesForTests;

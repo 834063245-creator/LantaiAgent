@@ -254,7 +254,7 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["tools"],
-    "impl": ["agent/tools/show-asset.ts", "agent/asset-store.ts", "agent/confirm-registry.ts"]
+    "shared": ["agent/asset-store.ts", "agent/confirm-registry.ts", "agent/asset-kinds.ts"]
   },
   {
     "dir": "prompt-segments",

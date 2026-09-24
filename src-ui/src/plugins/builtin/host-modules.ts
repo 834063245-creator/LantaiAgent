@@ -25,6 +25,16 @@ import { setActiveAgentLoop } from '../../agent/agent-loop/agent-loop-active';
 import { defaultAgentLoop } from '../../agent/agent-loop/default-loop';
 import { agentSessionState } from '../../agent/agent-session-state';
 import { EventKind } from '../../agent/agent-types';
+import {
+  assetDigest,
+  assetKinds,
+  generateAssetId,
+  parseAssetEventOutput,
+  requireKind,
+  requirePresentation,
+  validatePayload,
+} from '../../agent/asset-kinds';
+import { findAssetByContent, getAsset, listAssets, upsertAsset } from '../../agent/asset-store';
 // S3：工具域/段贡献插件对象导入已拆除——产物域真源自带；此处只导工具工厂
 // 运行时值（faceDeps 取用面）。（z（engine-domain 运行时取用）随图谱退役
 // 移除，2026-09-09。）
@@ -32,6 +42,7 @@ import { firstPartyCapabilities } from '../../agent/blueprint';
 import { COMPACTION_NOTICE_MARK, DEFAULT_COMPACT_RATIO, DEFAULT_RETAIN_RATIO } from '../../agent/compaction-contract';
 import { registerCompactionImplementation } from '../../agent/compaction-impl';
 import { DEFAULT_C_IN, DEFAULT_C_OUT, LOSS_FACTOR_PER_EVENT } from '../../agent/compaction-tracker';
+import { waitForConfirm } from '../../agent/confirm-registry';
 import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-service';
 import { createExecState } from '../../agent/execution-state';
 import { extractFilePath, FileOwnership, WRITE_TOOLS } from '../../agent/file-ownership';
@@ -89,7 +100,6 @@ import { hasImageRefs } from '../../agent/tool-images';
 // 批 4c-2 归家：agent-isolation / ask 两族进包 ⇒ 撤工厂桥；两族只余 defineTool/类型面。
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
 import { convergeRegistry, resolveGuardToolName } from '../../agent/tools/domains';
-import { createAssetTools } from '../../agent/tools/show-asset';
 import { parseStructuredError } from '../../agent/tools/structured-error';
 import { ConfirmDialog } from '../../app/ConfirmDialog';
 import { useCoreStore } from '../../app/chat/core-instance';
@@ -602,7 +612,19 @@ const faceDeps = {
   // 标题栏交互（2026-09-14 app-region 退役）：顶部浮件拖拽/双击最大化的原生实现
   onTopbarPointerDown,
   onTopbarDoubleClick,
-  createAssetTools,
+  // 批 9g-2 归家：asset 三工具进 asset-domain 包 ⇒ 桥它们用的内核单例面
+  assetDigest,
+  assetKinds,
+  findAssetByContent,
+  generateAssetId,
+  getAsset,
+  listAssets,
+  parseAssetEventOutput,
+  requireKind,
+  requirePresentation,
+  upsertAsset,
+  validatePayload,
+  waitForConfirm,
   firstPartyCapabilities,
   // S5b agent-loop-service 产物运行时依赖
   ContributionChannel,

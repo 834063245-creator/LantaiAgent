@@ -63,8 +63,9 @@ describe('faceDeps 登记守卫：产物取用的模块键必须在宿主桥登�
   it('守卫自检：推导器确实能从 aliased 文件里读出取用键（防守卫自身失灵）', () => {
     // office-domain 批 3a 归家后改为桥平台面（defineTool / session-context 助手）
     expect(requiredKeysFromAliased('office-domain')).toContain('defineTool');
-    // asset-domain 同理（老域对照：工厂仍在内核，经桥取用）
-    expect(requiredKeysFromAliased('asset-domain')).toContain('createAssetTools');
+    // asset-domain（批 9g-2 归家后：工具工厂已在包内，桥面 = 内核资产表/确认桥/kind 注册表）
+    expect(requiredKeysFromAliased('asset-domain')).toContain('getAsset');
+    expect(requiredKeysFromAliased('asset-domain')).toContain('waitForConfirm');
   });
 });
 

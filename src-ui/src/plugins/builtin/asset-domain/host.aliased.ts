@@ -12,4 +12,17 @@ function requireHost(): PluginHostBridge {
 }
 const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
-export const createAssetTools = impl.createAssetTools;
+export const assetDigest = impl.assetDigest;
+export const assetKinds = impl.assetKinds;
+export const findAssetByContent = impl.findAssetByContent;
+export const generateAssetId = impl.generateAssetId;
+export const getAsset = impl.getAsset;
+export const listAssets = impl.listAssets;
+export const parseAssetEventOutput = impl.parseAssetEventOutput;
+export const requireKind = impl.requireKind;
+export const requirePresentation = impl.requirePresentation;
+export const upsertAsset = impl.upsertAsset;
+export const validatePayload = impl.validatePayload;
+export const waitForConfirm = impl.waitForConfirm;
+export const defineTool = impl.defineTool;
+export type Tool = import('./host').Tool;

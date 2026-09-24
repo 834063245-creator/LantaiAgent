@@ -13,17 +13,21 @@
 
 import { z } from 'zod';
 import {
+  type AssetRecord,
   assetDigest,
   assetKinds,
+  defineTool,
+  findAssetByContent,
   generateAssetId,
+  getAsset,
+  listAssets,
   requireKind,
   requirePresentation,
+  type Tool,
+  upsertAsset,
   validatePayload,
-} from '../asset-kinds';
-import { type AssetRecord, findAssetByContent, getAsset, listAssets, upsertAsset } from '../asset-store';
-import { waitForConfirm } from '../confirm-registry';
-import type { Tool } from '../tool';
-import { defineTool } from './define-tool';
+  waitForConfirm,
+} from './host';
 
 const ASSET_CHUNK = 64;
 

@@ -87,7 +87,9 @@ const reactionPayload = {
 
 describe('chem kind — 注册与工具通道', () => {
   let assetKinds: import('../src/agent/asset-kinds').AssetKindRegistry;
-  let createAssetTools: Awaited<ReturnType<typeof import('../src/agent/tools/show-asset')>>['createAssetTools'];
+  let createAssetTools: Awaited<
+    ReturnType<typeof import('../src/plugins/builtin/asset-domain/asset-tools')>
+  >['createAssetTools'];
   let getAsset: Awaited<ReturnType<typeof import('../src/agent/asset-store')>>['getAsset'];
   let clearAssetTablesForTests: Awaited<
     ReturnType<typeof import('../src/agent/asset-store')>
@@ -96,7 +98,7 @@ describe('chem kind — 注册与工具通道', () => {
   beforeEach(async () => {
     const ak = await import('../src/agent/asset-kinds');
     assetKinds = ak.assetKinds;
-    const sa = await import('../src/agent/tools/show-asset');
+    const sa = await import('../src/plugins/builtin/asset-domain/asset-tools');
     createAssetTools = sa.createAssetTools;
     const st = await import('../src/agent/asset-store');
     getAsset = st.getAsset;

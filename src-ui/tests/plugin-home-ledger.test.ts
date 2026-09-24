@@ -46,7 +46,6 @@ const PLATFORM_TARGETS: RegExp[] = [
 
 /** 账本 §1 的备注（人读；键 = 产物 dir）。与名册 impl 一起构成归家账。 */
 const NOTES: Record<string, string> = {
-  'asset-domain': '294 行；随行 asset-store.ts 137 · confirm-registry.ts 80',
   'memory-domain':
     '733 行；随行 memory-bundle-client.ts 134（批 3 复核：内核 `workspace.ts` 构造 MemoryManager ⇒ 宿主→插件方向禁反，待批 9）',
   'skill-domain':
@@ -202,7 +201,7 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     expect(done, `这些包的实现已不在内核（搬运完成）——请从名册该条目的 impl 销账：\n${done.join('\n')}`).toEqual([]);
   });
 
-  it('账本口径自洽：空壳 6 条（5 纯壳 + 1 半壳），且每条都有备注文本', () => {
+  it('账本口径自洽：空壳 5 条（4 纯壳 + 1 半壳），且每条都有备注文本', () => {
     // 口径：账本 §1 立账 21 条；批 2a 销 `llm-adapters`、批 3a 销 wait/office/cordis、
     // 批 4a 销 `browser-desktop-domain`、批 4b 销 search/web 两域、批 4c 销
     // git/ask/agent-isolation/fs/shell 五域、批 6 四项、批 7a agent-domain ⇒ 销 13 条；
@@ -211,8 +210,10 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     // lifecycle-manager / subagent-spawn）也进包 ⇒ 名册 impl 全销、NOTES 条目删除，空壳数不变。
     // 批 9d：settings-domain 的 Provider 控制台 8 件随包 ⇒ 该条 NOTES 删除（半壳只剩 paper-shell）。
     // 批 9g-1：prompt-segments 的段文案真源随包（包内 sections.ts 195 行 = 自有实现）⇒ 出空壳集、销账。
+    // 批 9g-2：asset-domain 的三工具随包（包内 asset-tools.ts 294 行 = 自有实现）⇒ 出空壳集、
+    // 余下 asset-store / confirm-registry / asset-kinds 三件判内核共享（有状态单例，经桥取用）。
     // 数字再变 = 要么又销了账（改这条），要么漏登记。
-    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 15 = 6`).toBe(6);
+    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 16 = 5`).toBe(5);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();
     // 反向：备注表不许留已销账的条目（防文本腐烂）
     const ghost = Object.keys(NOTES).filter((d) => !CLAIMS.some((c) => c.dir === d));
