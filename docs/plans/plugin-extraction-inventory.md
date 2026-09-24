@@ -743,6 +743,17 @@ group 三件实现随 paper-shell 包，9d 把 Provider 控制台 8 件随 setti
   7,478 → 4,738 行**、灰区 **78 → 64 文件 / 22,072 → 19,186 行**。
   **真机验收**（重建 exe + CDP）：faceDeps **297 键**、11 个探针键类型全对（`ProviderPage` 键已撤）、
   `settings-domain/entry.js` **881 KB** 动态 import 成功且含 `AddProviderSheet` / `createProvider` 真身。
+- **9c-4 判定（2026-09-26 实测，未施工——下次直接从这条接）**：机械切分**不成立**。
+  证据：① 墨迹路径（`inkSourcesFor` → `markdownInkSources` → `measureMdBlocks`，第 1251–1873 行）
+  引用了 25 个镜像常量里的 **23 个**（字体/行高/围栏/程文/节头全套）——引擎与墨迹走查是同一台机器；
+  ② `type-tokens` 十张表在 measure.ts 里合计出现 200+ 次（`ASSET_DERIVED` 单表 117 次）；
+  ③ `paper/ink.ts`（内核）+ `paper/minimap-core.ts`（内核）都依赖它，而 `ink.ts` 又被 **3 个产物**
+  （paper-shell / paper-minimap / compose-dock）经宿主桥共享 ⇒ 它是 §2.5 的「契约层」，不是产物私有件。
+  **真正的解锁路径**（另立设计件，不在本批）：把测量引擎做成**产物登记的实现**（批 6/7/8 同款接缝）——
+  内核留 `paper/measure-seam.ts`（`registerMeasureImplementation` / 走查读面）+ 类型 + 实测回写账，
+  `paper/ink.ts` / `minimap-core.ts` / `state/messages-store.ts` 改走 seam 取用；引擎（含 tokens）整件
+  随 paper-shell 包，并把 paper-shell 标 `required`（引擎缺席 = 纸面高度全崩）。代价：一次契约面变更 +
+  三处内核读面改指 + 产物 required 语义；收益：**改版式 token 不再重建 exe**（taste-ledger 那条现状消失）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
