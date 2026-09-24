@@ -686,6 +686,10 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
   全线红）。正确形态 = 腰文件按文件显式 import（in-band，受同一套 hoisting 管辖）。
 - **验收**：vitest 406 文件 / 4,309 用例全绿 · build + build:builtin-plugins（34 产物自包含）·
   biome ci 0/0 · **convergence 双轨基线零改动** · doc-sync + doc-check 全绿。
+- **真机验收**（重建 exe + CDP）：faceDeps **263 键**（+19，抽验 7 键类型全对）；
+  `/plugins/hologram/compaction/entry.js` 596 KB 在场且动态 import 成功（含
+  `hologram_compaction_stats` 真身）；compaction 的 `face.json` 24 键带指纹 `5a542fb9`
+  （保险丝 a 覆盖 34/34）。
 
 ## 7. 决策路由（**把「找」与「拍」分家**）
 
