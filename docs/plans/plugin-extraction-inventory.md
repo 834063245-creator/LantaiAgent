@@ -261,7 +261,8 @@ manifest.json —— 包内合计 30～110 行。
 
 | 产物包 | 实现真源（物理行） | 随行私有件（不随迁则悬空） |
 |---|---|---|
-| `fs-domain`·`shell-domain`·`git-domain`·`ask-domain`·`agent-isolation-domain` | `agent/tools/coding.ts` **998**（**一文件载五族，须先按域拆**） | `git-porcelain.ts` 126 · `sticky-cwd.ts` 138 · `session-context.ts` 122 · `tools/structured-error.ts` 24 |
+| `fs-domain`·`shell-domain`·`ask-domain`·`agent-isolation-domain` | `agent/tools/coding.ts` **998**（**一文件载五族，须先按域拆**；git 族已随批 4c-1 归家） | `sticky-cwd.ts` 138 · `session-context.ts` 122 · `tools/structured-error.ts` 24 |
+| `git-domain` | ~~`agent/tools/coding.ts` 的 git 段（318）+ `git-porcelain.ts` 126~~ | ✅ **批 4c-1 已归家**（族段整段移出进包；`git-porcelain` 因内核 `state-inject` 消费而**留内核桥**，随批 6 走） |
 | `browser-desktop-domain` | `agent/tools/browser.ts` **912** | ✅ **批 4a 已归家**（桥位仅 5 运行时 + 1 类型） |
 | `search-domain`·`web-domain` | `agent/tools/manifest-tools.ts` 187 | ✅ **批 4b 已归家**（按域拆两半：`search-domain/search-tools.ts` + `web-domain/web-tools.ts`；随行 `tools/search-assembly.ts` 169 随 search 走——**一个文件不能同时住两个包，故按域拆**） |
 | `agent-domain` | `agent/tools/subagent.ts` 265 | — |
@@ -456,8 +457,8 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 4b 后重测）：红 **16 产物 / 34 文件 / 13,665 行**（§1 的 14 条 +
-§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`）；绿 111 平台 + 66 已认领；灰 133 文件 / 37,797 行。
+**2026-09-24 基线**（批 4c-1 后重测）：红 **15 产物 / 31 文件 / 10,987 行**（§1 的 13 条 +
+§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`）；绿 111 平台 + 67 已认领；灰见报告。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -511,6 +512,18 @@ manifest.json —— 包内合计 30～110 行。
 **测试直连面**（9 处）：`coding-domain-plugins` · `define-tool` · `fs-seam` · `shell-seam` ·
 `seam-composition` · `cross-seam-swap` · `tool-receipts` · `parallel-subagent-bugs` ·
 `tests/bench/composition-assembly.bench.ts`。
+
+**批 4c-1 落地（2026-09-24）与两项裁定**：
+- ✅ **git 族已归家**（318 行移进 `git-domain/git-tools.ts`，包内宿主面桥 `defineTool`/
+  `toInputJsonSchema` + `parseGitLogCommits`/`parseGitStatusPorcelain`）。`agent/git-porcelain.ts`
+  **留内核**——它被 `agent/state-inject.ts` 消费（宿主→插件禁反），随批 6 state-hooks 搬。
+- 裁定①**聚合工厂 `createCodingTools` 退役**（`coding.ts` 的聚合 + `agent/tool.ts` 的值 re-export
+  一并撤）：五族各归其包后，内核再拼一次就等于内核 import 产物。测试改用新腰
+  `tests/helpers/coding-tools.ts::buildCodingTools()`（各族搬走时只改该文件一行）。
+- 裁定②**executor 随族走**：`fsExecute`/`shellExecute` 只是 fs/shell 两族自己的 dispatch
+  （生产零第二消费者，只有 seam 测试当入口用）⇒ 搬族时一并进包，测试 import 改指包内。
+- 余下三族（fs / shell / ask / agent-isolation）+ 随行件待下一轮；`ownerIdOf`/`ownerSeamView`
+  两助手被 fs+shell 共用 ⇒ 搬这两族时须先上收（建议并入 `composition/seam-scope.ts`）。
 
 每批收尾必做：`vitest` + `build`（含 `build:builtin-plugins`）+ `biome ci` + `verify:convergence` 双轨；
 faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` 并**重建一次 exe**。

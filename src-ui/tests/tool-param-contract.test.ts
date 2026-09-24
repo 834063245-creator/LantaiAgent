@@ -6,7 +6,7 @@
 // 对标 agent-exec.test.ts 的 isAgent 守护（旧名 _agent 事故前车之鉴）。
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolExecutor } from '../src/agent/tool';
-import { createCodingTools } from '../src/agent/tool';
+import { buildCodingTools } from './helpers/coding-tools';
 
 // bridge 保持完全真实（测的就是 rpc 转换 + 浏览器模式路由）。
 // 浏览器模式（jsdom 无 __TAURI_INTERNALS__）下 bridge.invoke 走 mock-data.mockInvoke，
@@ -81,7 +81,7 @@ describe('rpc() camelCase→snake_case 转换枢纽', () => {
 
 describe('全量工具 schema key 契约', () => {
   const exec: ToolExecutor = async () => '';
-  const tools = createCodingTools(exec);
+  const tools = buildCodingTools(exec);
 
   it('schema key 无混合风格（大写与下划线不共存；元参数 _ 开头除外）', () => {
     const problems: string[] = [];
@@ -124,7 +124,7 @@ describe('rename_file 三处契约端到端', () => {
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue('ok');
     const exec: ToolExecutor = (name, args) => agentInvoke(name, args);
-    const tools = createCodingTools(exec);
+    const tools = buildCodingTools(exec);
     const tool = tools.find((t) => t.name() === 'rename_file');
     expect(tool).toBeTruthy();
     await tool!.execute({ path: 'D:/a', new_name: 'b' });

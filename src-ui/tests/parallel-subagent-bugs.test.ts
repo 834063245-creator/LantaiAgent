@@ -31,13 +31,13 @@ import { AgentLifecycleManager } from '../src/agent/lifecycle-manager';
 import { MessageBus } from '../src/agent/message-bus';
 import { TaskBoard } from '../src/agent/task-board';
 import { type ToolExecutor, ToolRegistry } from '../src/agent/tool';
-import { createCodingTools } from '../src/agent/tools/coding';
 import { convergeRegistry, createDomainTools } from '../src/agent/tools/domains';
 import { createMergeTool } from '../src/agent/tools/merge';
 import { MeshTopology } from '../src/agent/topology';
 import type { Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 import { createTestAgent } from './helpers/agent';
+import { buildCodingTools } from './helpers/coding-tools';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 // 生产装配复现（平台化 Phase 1 · D3）：真实 spawnSubAgent 经 ctx.subagents
@@ -66,7 +66,7 @@ function recordingExec() {
 describe('edit/rename 透传 _agent_id（worktree 路由）', () => {
   it('edit_file 保留 _agent_id', async () => {
     const { calls, exec } = recordingExec();
-    const tools = createCodingTools(exec);
+    const tools = buildCodingTools(exec);
     const edit = tools.find((t) => t.name() === 'edit_file')!;
 
     await edit.execute({
@@ -88,7 +88,7 @@ describe('edit/rename 透传 _agent_id（worktree 路由）', () => {
 
   it('rename_file 保留 _agent_id', async () => {
     const { calls, exec } = recordingExec();
-    const tools = createCodingTools(exec);
+    const tools = buildCodingTools(exec);
     const rename = tools.find((t) => t.name() === 'rename_file')!;
 
     await rename.execute({
@@ -112,7 +112,7 @@ describe('edit/rename 透传 _agent_id（worktree 路由）', () => {
   it('fs(edit) 领域工具路径同样保留 _agent_id', async () => {
     const { calls, exec } = recordingExec();
     const registry = new ToolRegistry();
-    for (const t of createCodingTools(exec)) registry.register(t);
+    for (const t of buildCodingTools(exec)) registry.register(t);
     const domains = createDomainTools(registry);
     const fs = domains.find((t) => t.name() === 'fs')!;
 
@@ -205,7 +205,7 @@ function shortTextProvider(): Provider {
 
 function makeParent(prov: Provider, exec: ToolExecutor): Agent {
   const registry = new ToolRegistry();
-  for (const t of createCodingTools(exec)) registry.register(t);
+  for (const t of buildCodingTools(exec)) registry.register(t);
   convergeRegistry(registry); // 与生产 agent-builder 一致：领域工具 + 隐藏旧名
   return createTestAgent(prov, registry, 'test', { eventSink: () => {}, contextWindow: 0 });
 }

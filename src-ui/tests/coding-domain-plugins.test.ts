@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest';
 import { SubAgentPool } from '../src/agent/coordinator';
 import { TaskManager } from '../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry, ToolRowContext } from '../src/agent/tool';
-import { createAgentIsolationTools, createFsTools, createGitTools, createShellTools } from '../src/agent/tools/coding';
+import { createAgentIsolationTools, createFsTools, createShellTools } from '../src/agent/tools/coding';
 import { fsServicePlugin } from '../src/composition/fs-service';
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import { activeToolContributions, compositionServicesPlugin } from '../src/composition/services';
@@ -37,6 +37,7 @@ import { browserDesktopDomainPlugin } from '../src/plugins/builtin/browser-deskt
 import { builtinFsPlugin } from '../src/plugins/builtin/fs-builtin';
 import { fsDomainPlugin } from '../src/plugins/builtin/fs-domain';
 import { gitDomainPlugin } from '../src/plugins/builtin/git-domain';
+import { createGitTools } from '../src/plugins/builtin/git-domain/git-tools';
 import { memoryDomainPlugin } from '../src/plugins/builtin/memory-domain';
 import { searchDomainPlugin } from '../src/plugins/builtin/search-domain';
 import { createSearchTools } from '../src/plugins/builtin/search-domain/search-tools';

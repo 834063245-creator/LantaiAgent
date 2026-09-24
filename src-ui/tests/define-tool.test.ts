@@ -4,9 +4,9 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { ToolExecutor } from '../src/agent/tool';
-import { createCodingTools } from '../src/agent/tool';
-import { createGitTools } from '../src/agent/tools/coding';
 import { defineTool, toInputJsonSchema } from '../src/agent/tools/define-tool';
+import { createGitTools } from '../src/plugins/builtin/git-domain/git-tools';
+import { buildCodingTools } from './helpers/coding-tools';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 // 生产装配复现（平台化 Phase 2 · D11）：fs 工具 execute 经 ctx.fs 注册表解析
@@ -103,7 +103,7 @@ describe('defineTool execute 行为', () => {
 
 describe('迁移样板: read_file_content / git_log', () => {
   const exec: ToolExecutor = async (name, args) => JSON.stringify({ name, args });
-  const tools = createCodingTools(exec);
+  const tools = buildCodingTools(exec);
   it('read_file_content 的 schema key 与转换后 Rust 参数一致', async () => {
     const t = tools.find((x) => x.name() === 'read_file_content')!;
     const params = t.parameters() as { properties: Record<string, unknown>; required?: string[] };

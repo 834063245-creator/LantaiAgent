@@ -30,6 +30,7 @@ import { firstPartyCapabilities } from '../../agent/blueprint';
 // 批 3a 归家：wait/office/cordis 三域工厂已随包 ⇒ 撤桥，改桥它们仍住内核的依赖面。
 import { SubAgentStatus } from '../../agent/coordinator';
 import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-service';
+import { parseGitLogCommits, parseGitStatusPorcelain } from '../../agent/git-porcelain';
 import { errText } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
@@ -40,7 +41,6 @@ import {
   createAgentIsolationTools,
   createAskUserTools,
   createFsTools,
-  createGitTools,
   createShellTools,
 } from '../../agent/tools/coding';
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
@@ -521,7 +521,6 @@ const faceDeps = {
   isMockMode,
   watchFileDragDrop,
   // S3 工具域真源产物运行时依赖（经宿主桥 mods.faceDeps 取用）
-  createGitTools,
   createFsTools,
   createShellTools,
   createAgentIsolationTools,
@@ -557,6 +556,9 @@ const faceDeps = {
   errText,
   toInputJsonSchema,
   parseStructuredError,
+  // 批 4c-1 归家：git 工具族进包 ⇒ 撤工厂桥；改桥它仍住内核的解析器
+  parseGitLogCommits,
+  parseGitStatusPorcelain,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

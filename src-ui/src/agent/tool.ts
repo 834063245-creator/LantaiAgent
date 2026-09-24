@@ -239,5 +239,6 @@ export interface CodingToolsUI {
   askUser?: (req: AskUserRequest) => void;
 }
 
-export { createCodingTools } from './tools/coding';
+// 聚合工厂 createCodingTools 已退役（2026-09-24 批 4c-1）：五族各归其产物包，
+// 内核不再拼聚合（宿主→插件禁反）。测试用 tests/helpers/coding-tools.ts。
 export { createSubAgentTool, type SubAgentSpawner } from './tools/subagent';

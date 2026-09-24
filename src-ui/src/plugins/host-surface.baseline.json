@@ -1,5 +1,5 @@
 {
-  "fingerprint": "0fbc0916",
+  "fingerprint": "103bd3cd",
   "keys": [
     "ANCHOR",
     "ApiError",
@@ -59,7 +59,6 @@
     "createAssetTools",
     "createBlockMeasureCache",
     "createFsTools",
-    "createGitTools",
     "createInkCache",
     "createMemoryTools",
     "createShellTools",
@@ -147,6 +146,8 @@
     "onTopbarPointerDown",
     "ownerContext",
     "panBy",
+    "parseGitLogCommits",
+    "parseGitStatusPorcelain",
     "parseJson",
     "parseModelEntry",
     "parseStructuredError",

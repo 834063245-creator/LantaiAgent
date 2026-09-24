@@ -165,8 +165,7 @@
     "description": "git 域工具（status/diff/log/stage/commit…）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/coding.ts", "agent/git-porcelain.ts", "agent/sticky-cwd.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "search-domain",

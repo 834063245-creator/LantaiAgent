@@ -5,7 +5,7 @@
 
 import type { Context } from '../../../cordis';
 import { familyContributions, registerFamily } from '../contribution-helpers';
-import { createGitTools } from './host';
+import { createGitTools } from './git-tools';
 
 /** git 域插件——贡献 13 工具（序 = createGitTools 声明序）。 */
 export const gitDomainPlugin = {
