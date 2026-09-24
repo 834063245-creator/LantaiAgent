@@ -34,6 +34,14 @@ jobs:
           - os: windows-latest
             artifact: hologram-engine-windows-x64
             bin: hologram-engine.exe
+          # 2026-09 add：macOS 腿。`macos-latest` 现为 Apple Silicon（arm64），
+          # 覆盖绝大多数 Mac 用户；Intel Mac 用户需 Rosetta 转译或自行从源码构建，
+          # 见 README「引擎 CLI」的平台说明。产出的后缀是 .dylib——
+          # grammar_loader 的平台后缀真源已是 native_shared_lib_exts()，
+          # 三平台产物后缀与扫描两侧自此同源（v8 契约修复）。
+          - os: macos-latest
+            artifact: hologram-engine-macos-arm64
+            bin: hologram-engine
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
@@ -61,21 +69,75 @@ jobs:
       - name: Build engine
         run: cargo build --release -p hologram-engine
 
+      # 动态语法（kotlin / markdown / toml）不在静态注册表里——engine/grammar.rs
+      # 静态注册的 26 个语言之外，这三个靠 grammars/ 目录下的共享库惰性加载。
+      # 此前发版只 stage 裸二进制，grammars/ 从未进过任何 Release 产物，于是
+      # **三平台一致地**退化为「无这三个语法」：不报错、只降解析质量（Windows
+      # 本地开发有 engine/grammars/*.dll 所以看不出，Release 用户才中招）。
+      # 这里按平台现编现打，随产物一起发。
+      #
+      # 语法源码来源（与 engine/grammars/grammars.txt 同源，均为 MIT）：
+      #   https://github.com/tree-sitter-grammars/tree-sitter-{kotlin,markdown,toml}
+      # 各平台工具链：Linux/macOS 用系统 cc/cc+（macOS runner 自带 clang，
+      # clang 可直接吃 -fPIC -shared 产出 .dylib）；Windows 用 runner 预装的
+      # mingw64 gcc（build.ps1 已带 -static-libgcc -static-libstdc++，
+      # 避免产物依赖 mingw 运行库）。
+      - name: Build dynamic grammars (Linux/macOS)
+        if: runner.os != 'Windows'
+        working-directory: engine/grammars
+        run: ./build.sh --all
+      - name: Build dynamic grammars (Windows)
+        if: runner.os == 'Windows'
+        working-directory: engine/grammars
+        shell: pwsh
+        run: ./build.ps1 -All
+
       # 2026-09-16：release-bin/（`hologram` wrapper + install.cmd/install.sh）已删除——
       # 引擎包只发裸二进制，用法见 README「引擎 CLI」。B3 收口，见 docs/landmine-map.md。
+      #
+      # grammar_loader::find_grammar_dir 的查找顺序里，第 2 位就是
+      # <exe_dir>/grammars/——所以语法库必须铺在**二进制同级**的 grammars/ 下。
       - name: Stage artifacts (Linux)
         if: runner.os == 'Linux'
         run: |
-          mkdir -p staging
+          mkdir -p staging/grammars
           cp target/release/hologram-engine staging/
+          cp engine/grammars/tree-sitter-*.so staging/grammars/
+          tar -czf ${{ matrix.artifact }}.tar.gz -C staging .
+      - name: Stage artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p staging/grammars
+          cp target/release/hologram-engine staging/
+          cp engine/grammars/tree-sitter-*.dylib staging/grammars/
           tar -czf ${{ matrix.artifact }}.tar.gz -C staging .
       - name: Stage artifacts (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          mkdir -p staging
+          mkdir -p staging/grammars
           cp target/release/hologram-engine.exe staging/
+          cp engine/grammars/tree-sitter-*.dll staging/grammars/
           cd staging && 7z a -tzip ../${{ matrix.artifact }}.zip .
+
+      # 构建产物自检：语法库必须真的编出来了。
+      # 少了它，「build.ps1 静默没编出东西」会一路滑到用户侧才以「解析质量下降」
+      # 的形式暴露——那是最难归因的一类失败，所以在发版这一步就钉死。
+      - name: Verify grammar artifacts
+        shell: bash
+        run: |
+          expected=$(grep -v '^#' engine/grammars/grammars.txt | grep -v '^[[:space:]]*$' | wc -l | tr -d ' ')
+          case "${{ runner.os }}" in
+            Windows) ext=dll ;;
+            macOS)   ext=dylib ;;
+            *)       ext=so ;;
+          esac
+          actual=$(ls -1 engine/grammars/tree-sitter-*.$ext 2>/dev/null | wc -l | tr -d ' ')
+          echo "grammars.txt 声明 $expected 个，实际产出 $actual 个 .$ext"
+          if [ "$actual" -lt "$expected" ]; then
+            echo "::error::动态语法产物缺失（期望 $expected 个 .$ext，实得 $actual）"
+            exit 1
+          fi
 
       # 为什么不用 `git cliff --current`（2026-09-22 实测翻案）：
       # `--current` 内部要拿「HEAD 上那个 tag」在 git-cliff 自己的 tags 表里的下标再 `index-1`
