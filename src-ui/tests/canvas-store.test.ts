@@ -8,8 +8,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBlock } from '../src/paper/block-model';
-import { makeStrip, resetStripIdCounterForTests } from '../src/paper/selection';
 import { defaultRegionFor, STREAM_REGION } from '../src/paper/space';
+import { makeStrip, resetStripIdCounterForTests } from '../src/plugins/builtin/paper-shell/selection';
 import {
   blockFromSnapshot,
   getCanvasStore,

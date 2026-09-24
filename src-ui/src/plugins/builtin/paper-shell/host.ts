@@ -90,13 +90,6 @@ export {
 } from '../../../paper/measure';
 export { PaperDockContext, PaperRegionContext } from '../../../paper/overlay-context';
 export type { RegionView } from '../../../paper/region-view';
-export type { MaskRect, PaperStrip } from '../../../paper/selection';
-export {
-  classifyDropZone,
-  makeStrip,
-  selectionMaskRects,
-  stashStripPositionAt,
-} from '../../../paper/selection';
 export type { StreamRegionState } from '../../../paper/space';
 export {
   clampRegionW,

@@ -14,7 +14,6 @@ import { SpaceService } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
 import { createBlock } from '../src/paper/block-model';
 import { layoutRegion } from '../src/paper/canvas-math';
-import { stashStripPositionAt } from '../src/paper/selection';
 import {
   clampRegionW,
   defaultRegionFor,
@@ -25,6 +24,7 @@ import {
   STREAM_REGION,
 } from '../src/paper/space';
 import { type RegionFlowGeom, visibleRegionWindows } from '../src/paper/virtualize';
+import { stashStripPositionAt } from '../src/plugins/builtin/paper-shell/selection';
 import {
   getCanvasStore,
   resetCanvasStoresForTests,

@@ -6,7 +6,8 @@
 // 复合键缓存，平移帧零重扫（O(总块数) 降为 O(卷数) 键比较）；视口框随帧轻包装。
 
 import { useMemo, useRef } from 'react';
-import type { PaperStrip, RegionView } from './host';
+import type { PaperStrip } from '../../../paper/selection-contract';
+import type { RegionView } from './host';
 import { sameKey } from './use-paper-regions';
 
 /** 小地图包围盒（paper-panel-split C4，自 PaperPanel 2192-2262 域内原样搬入）。 */

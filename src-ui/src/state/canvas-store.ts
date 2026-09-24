@@ -21,7 +21,7 @@
 import { create } from 'zustand';
 import type { BlockAssetMeta, BlockKind, SourcedBlock } from '../paper/block-model';
 import { createBlock } from '../paper/block-model';
-import type { PaperStrip } from '../paper/selection';
+import type { PaperStrip } from '../paper/selection-contract';
 import { REGION_MAX_W, REGION_MIN_W, STREAM_REGION, type StreamRegionState } from '../paper/space';
 import { kernelReadFileRaw, kernelWriteFile } from '../rpc-contract';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';

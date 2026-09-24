@@ -272,7 +272,8 @@ describe('钉住与纸条（09-05 松手定夺批 → 09-19 便条批 · 用户�
     expect(PANEL_TSX).toContain('s.source?.label');
     // 快照取自流区显示名（唯一派生口 volumeDisplayName，禁调用点散写 label || …）
     expect(PANEL_TSX).toContain('volumeDisplayName(region.label, region.sessionNum)');
-    const sel = readFileSync(join(SRC, 'paper', 'selection.ts'), 'utf8');
+    // 批 9c-1：纸条形状上收内核契约（实现随 paper-shell 产物）——断言点随迁契约文件。
+    const sel = readFileSync(join(SRC, 'paper', 'selection-contract.ts'), 'utf8');
     expect(sel).toContain('label?: string');
   });
 

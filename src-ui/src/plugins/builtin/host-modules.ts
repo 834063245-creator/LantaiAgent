@@ -171,7 +171,7 @@ import {
 } from '../../paper/measure';
 import { clampViewportFrame, inkBarsFor, minimapProject, regionFrame } from '../../paper/minimap-core';
 import { PaperDockContext, PaperRegionContext, usePaperDock, usePaperRegion } from '../../paper/overlay-context';
-import { classifyDropZone, makeStrip, selectionMaskRects, stashStripPositionAt } from '../../paper/selection';
+
 import {
   clampRegionW,
   defaultRegionFor,
@@ -431,10 +431,6 @@ const faceDeps = {
   usePaperRegion,
   // 批 5a 归家（2026-09-24）：toc / toc-ink / ime / sel-ink / focus-flight / sheet /
   // provenance 七件随包 ⇒ 这些 faceDeps 键已撤（包内实现，两域同源）。
-  classifyDropZone,
-  makeStrip,
-  selectionMaskRects,
-  stashStripPositionAt,
   clampRegionW,
   defaultRegionFor,
   EMPTY_REGION_CONTENT_H,

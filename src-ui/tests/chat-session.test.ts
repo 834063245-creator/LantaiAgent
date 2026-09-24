@@ -89,7 +89,7 @@ await ensureProductionChannelsBooted();
 import { agentSessionState } from '../src/agent/agent-session-state';
 import { ChatCore } from '../src/app/chat/chat-core';
 import { createBlock } from '../src/paper/block-model';
-import { makeStrip } from '../src/paper/selection';
+import { makeStrip } from '../src/plugins/builtin/paper-shell/selection';
 import {
   getCanvasStore,
   loadCanvasFromDisk,

@@ -8,20 +8,13 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PaperStrip } from '../../../paper/selection-contract';
 import { volumeDisplayName } from '../../../state/volume-name';
 import { useEdgeAutoScroll } from './edge-scroll';
-import type { MaskRect, PaperStrip, RegionView, SourcedBlock } from './host';
-import {
-  ANCHOR,
-  classifyDropZone,
-  getCanvasStore,
-  makeStrip,
-  screenToWorld,
-  selectionMaskRects,
-  stashStripPositionAt,
-  useCanvasViewStore,
-} from './host';
+import type { RegionView, SourcedBlock } from './host';
+import { ANCHOR, getCanvasStore, screenToWorld, useCanvasViewStore } from './host';
 import { mergeSelectionLines, selInkPaths, selSeedOf } from './sel-ink';
+import { classifyDropZone, type MaskRect, makeStrip, selectionMaskRects, stashStripPositionAt } from './selection';
 import { DRAG_THRESHOLD } from './use-paper-drag';
 import type { PaperCore } from './use-paper-sessions';
 

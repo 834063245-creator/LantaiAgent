@@ -44,14 +44,6 @@ import {
   SEC_HEAD_GAP,
   SEC_HEAD_H,
 } from '../src/paper/measure';
-import {
-  makeStrip,
-  moveStrip,
-  resetStripIdCounterForTests,
-  selectionMaskRects,
-  sliceSelection,
-  tryMakeStripFromSelection,
-} from '../src/paper/selection';
 import { cssUsedPx } from '../src/paper/type-tokens';
 import {
   type FlowGeom,
@@ -62,6 +54,14 @@ import {
   visiblePinnedIds,
 } from '../src/paper/virtualize';
 import { composerSubmitOnKey } from '../src/plugins/builtin/compose-dock/ime';
+import {
+  makeStrip,
+  moveStrip,
+  resetStripIdCounterForTests,
+  selectionMaskRects,
+  sliceSelection,
+  tryMakeStripFromSelection,
+} from '../src/plugins/builtin/paper-shell/selection';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });
