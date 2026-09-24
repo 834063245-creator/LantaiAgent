@@ -1,0 +1,125 @@
+# 工作区接线贡献面（+ 随包引擎产物化作为第一消费者）· 最小设计件
+
+> 状态：**Proposed·Draft（2026-09-24 立项，等真机验收结果定稿）**
+> 缘起：[`plugin-extraction-inventory.md`](plugin-extraction-inventory.md) §7 第 11 条——
+> 随包引擎（`plugins/bundled-engine.ts`，186 行）是内核里最后一处「非插件目录的产品接线」。
+> 复核后判定：卡住它的**不是** MCP 声明面缺动态语义，而是两件更基础的事（§2）。
+> 前置：该链路真机从未跑通（`plans/README.md` 欠账表），**先验收再定型**（§7 清单）。
+
+## 1. 目标
+
+1. 让**产物**能在「工作区激活点」接线（起常驻 MCP server / 注册工具行 / 挂 fiber effect），
+   从而把随包引擎从内核装载链搬进 `plugins/builtin/bundled-engine/` 产物；
+2. 保持两条既有纪律不动：**manifest 声明是纯数据面**（不给它加占位符/动态语义）、
+   **MCP 机器桥对第三方仍是声明式**（运行期注册只对第一方产物开）；
+3. 用户可感行为逐位不变：开关默认关（`lantai.bundledEngine.enabled`）、回执三态
+   （wired / failed / off）、一进程一工作区根、离开工作区即停。
+
+## 2. 现状事实（2026-09-24 实测，file:line）
+
+| # | 事实 | 证据 |
+|---|---|---|
+| 1 | 引擎注册在**工作区激活点**、以**工作区 fiber ctx** 为宿主，且**必须在注册表构建之前** | `workspace.ts:813` `registerBundledEngineTools(this._fiber.ctx, this.path)`；序契约注释在 `workspace.ts:796-797` |
+| 2 | 工作区 fiber 是根内核上的 cordis scope（`initCordisKernel().plugin(workspaceScopePlugin)`），`ws.ctx` 即其 ctx | `workspace.ts:199` · `:180` |
+| 3 | 生命周期归属天然正确：工具行挂 fiber ctx ⇒ 离开/切换即 `fiber.dispose()` 摘行 + 治理器杀进程树，**无额外清理代码** | `workspace.ts:799-804` · `:293` |
+| 4 | 产物**拿不到工作区生命周期**：插件只在装载期拿一次 `apply(ctx)`；无「工作区开/关」hook | 全域 grep：`registerBundledEngineTools` 唯一调用方 = `workspace.ts:813` |
+| 5 | 产物**拿不到 MCP 桥**：`registerMcpServerTools` 只在装载链内被调（loader / user-mcp / bundled-engine） | `loader.ts:936` · `user-mcp.ts:140` · `mcp-bridge.ts:693` |
+| 6 | 桥的 IO 面很窄：`McpBridgeIO = { createProcIO, pluginDir }`——`pluginDir` 覆写是引擎绕开 `plugin_dir` RPC 的唯一手段 | `mcp-bridge.ts:70-81` · `bundled-engine.ts:137-143` |
+| 7 | `ctx.space` **不是**这个面：它是画布空间 API（regions / focus / place / expand / collapse），与工作区（project root）生命周期无关 | `composition/space-service.ts:53-159` |
+| 8 | manifest 的 `mcpServers` 是静态数据（name/transport/command/args/failurePolicy/readOnly/restart/lifecycle），**无占位符、无每工作区多实例语义** | `plugins/types.ts:43-93` |
+| 9 | 第一方产物取内核能力已有专用面：`faceDeps`（封印 `FaceBridgeSeal` + `host-surface.baseline.json` 指纹守卫） | `plugins/builtin/host-modules.ts`（552 行）· `tests/host-surface-seal.test.ts` |
+
+## 3. 为什么**不**扩 manifest 声明面（否掉的方案）
+
+给 `mcpServers` 加 `${workspace.root}` 占位符 + `resolveFrom` + `scope: workspace` 看起来更省，
+但代价是把「运行时逻辑」塞进「安装期可审的纯数据」里：占位符解析、每工作区多实例、
+异根拒绝的语义都要在声明层表达。**机器桥的全部价值在于声明是数据**（`docs/plugins/README.md`
+§2/§3：纯声明面、安装前可审）。动态能力应该走**代码面**（第一方产物），不是把数据面撑成小语言。
+
+## 4. 设计
+
+### 4.1 部件一：工作区接线贡献面（新通道，公开）
+
+```ts
+// 产物 apply(ctx) 内（一次性登记；每次工作区激活按注册序回调）
+ctx.effect(
+  () =>
+    ctx.workspaces.onActivate(async (scope) => {
+      // scope.root       —— 工作区根（绝对路径）
+      // scope.ctx        —— 该工作区的 fiber ctx：工具行/effect 挂它的都随 fiber dispose 自动摘
+      // scope.report(r)  —— 接线回执（通用；转状态栏 + 诊断面，不落贡献者自己的 store）
+      await mountMyStuff(scope);
+    }),
+  'acme/workspace-hook',
+);
+```
+
+**语义（逐条可测）**
+
+| 面 | 规定 |
+|---|---|
+| 调用时机 | 工作区激活点，**`_buildRegistryLocked` 之前**（序契约不变：工具行必须先于注册表构建，否则首装配看不到）；切换工作区 = 旧 fiber dispose → 新工作区重新回调 |
+| 调用序 | 多贡献者按**注册序串行 await**（与壳行同纪律），前一个抛错不影响后一个 |
+| 失败隔离 | 贡献抛错/超时**不得阻断工作区打开**（现语义保持），错误经 `scope.report` + 诊断面**具名可见**（错误不静默） |
+| 生命周期 | 登记者经 `ctx.effect` 登记；工作区侧挂 `scope.ctx` 的一切随 `fiber.dispose()` 回收，**贡献者不需要写 teardown** |
+| 子 Agent | 不自动继承（与本仓 hooks/capabilities 同款语义） |
+| 缺服务 | 无通道环境（测试/工具环境）= 空贡献面，工作区激活路径零行为变更 |
+
+**推荐命名**：`ctx.workspaces`（服务名 `workspaces`）。备选 `ctx.workspace`——单数读起来像「取当前工作区」，
+而本面是**贡献面**不是查询面；当前工作区查询已有 `workspace-scope.ts` / `app/shell-store`。
+
+### 4.2 部件二：MCP 桥对第一方产物可见（推荐 faceDeps，不新开公开面）
+
+| 方案 | 形态 | 取舍 |
+|---|---|---|
+| **A（推荐）** | `host-modules.ts` 的 faceDeps 加 `registerMcpServerTools`（需要时加默认 IO 工厂）；产物经 `host.ts`（dev/测试）/`host.aliased.ts`（产物域）取用 | 零新公开通道；第三方面零变化（仍只有 `manifest.mcpServers` 声明面）；契约载体 = `host-surface.baseline.json`（已有封印 + 指纹守卫） |
+| B | 新 ctx 服务 `ctx.mcp.mount({ owner, decls, io })` | 第三方也能运行期挂 server ⇒ 削弱「声明=可审数据」；文档/契约面扩大。**不建议** |
+
+### 4.3 第一消费者：`plugins/builtin/bundled-engine/`（产物化）
+
+- 搬 `plugins/bundled-engine.ts`（186 行：探测 + 声明构造 + 开关 + 回执订阅）进包；
+- 包内 `index.ts` 用 `ctx.workspaces.onActivate` 复现今日 `workspace.ts:813` 的行为（含三态回执）；
+- 删内核接线（`workspace.ts` 的 import + 调用点 + `plugins/bundled-engine.ts`）；
+- 名册加条目（30 → 31），`first-party-manifest` / `builtin-roster` 守卫自动覆盖；类别建议 `feature`
+  （可禁用——开关之外多一层天然 kill switch）。
+
+## 5. 要动的契约面与守卫
+
+| 对象 | 动作 |
+|---|---|
+| `composition/contract-version.ts` | `OPEN_SURFACE_CONTRACT_FILES` 增登记新通道文件；`OPEN_SURFACE_CONTRACT_VERSION` 47 → 48 |
+| `docs/agents/open-surface-contract.md` | 记录版本变更 + 新通道语义（守护测试红着就是没改完） |
+| `src/plugins/host-surface.baseline.json` | faceDeps 键集变化 ⇒ 同 commit 重生成 |
+| `docs/plugins/README.md` | §3 加「ctx.workspaces」通道段；§2/§3 明确「运行期 MCP 注册只对第一方产物（经宿主桥）」 |
+| 新增守护测试 | 面存在 + 注册序串行 + 失败不阻断工作区打开 + fiber dispose 摘行 + 引擎产物装载后行 id = `plugin/bundled-engine/mcp/hologram` |
+| 门禁 | `vitest` + `build`（含 `build:builtin-plugins`）+ `biome ci` + `verify:convergence` 双轨 + **重建一次 exe** |
+
+## 6. 批次
+
+| 批 | 内容 | 交付判据 |
+|---|---|---|
+| 1 | 部件一（通道 + 守卫 + 文档） | 工作区激活路径零行为变更（无贡献者时）；新守卫全绿 |
+| 2 | 部件二（faceDeps 暴露）+ 引擎产物化 | 名册 31 条；启用开关后行为与今日逐位一致（三态回执、一进程一根、离开即停） |
+| 3 | 真机验收（§7）+ 文档收尾（`ARCHITECTURE.md` 引擎段 / 插件指南） | 四条验收全勾 |
+
+## 7. 真机验收清单（**先跑这个，再定稿设计**）
+
+打包态跑（随包探测只在 exe 里成立）；若 exe 早于最近改动，先 `build.cmd` 重建一次。
+
+| # | 步骤 | 观察 | 结果 |
+|---|---|---|---|
+| 1 | 设置面板找到「随包图谱引擎」开关并拨开 → 重开工作区 | 有无回执；无回执时报文是否可读 | ☐ |
+| 2 | 看状态栏 / 设置面板「接线回执」 | 三态之一（wired / failed + 具名原因 / off） | ☐ |
+| 3 | 任务管理器看 `hologram-engine.exe` 是否挂在 `lantai.exe` 下；模型工具面是否出现 `mcp__hologram__*` | 进程在 + 工具面在 | ☐ |
+| 4 | 切换/离开工作区 | 进程真停（一进程一根、离开即停） | ☐ |
+
+**验收结论决定下一步**：四条全通 ⇒ 按 §4 施工；任一条不通 ⇒ 先修链路（通道设计等它跑通再定，
+避免给未验证的消费者开模）。
+
+## 8. 开放问题（需一次裁定）
+
+1. 面的名字：`ctx.workspaces`（推荐）vs 并入 `ctx.space`（否——语义不同，见 §2-7）。
+2. 回执面是否通用化：现只有 `state/bundled-engine-store`（引擎专用）。建议面提供 `scope.report`
+   统一转状态栏 + 诊断面，避免每个贡献者自带 store（本批只需支撑引擎三态）。
+3. 是否允许第三方产物用本面：推荐**允许**（通道一旦公开就开；真正敏感的是 MCP 桥，它走 faceDeps 留第一方）。
+4. 贡献超时阈值：现引擎路径无显式超时（`await` 直等）。建议本面给一个可配上限（缺省不设，避免行为变更）。

@@ -46,7 +46,7 @@ Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 
 | **会话流版式语法（stream-rhythm）** | 五批全落地；**余真机验收五项 + D1/D2 终审** | 事件语义分类 + 工作单元 + 节奏渲染（族边界切单元）+ 目次带阶段导航——见 [`stream-rhythm-plan.md`](stream-rhythm-plan.md) §5 |
 | **pretext 排版引擎** | P1-P5 全竣工 + P4c 远景三档；**余 P2a 对齐 A\|B 环待实机拍板** | 从高度计算器升级为纸面排版引擎（lift 遮罩 / rich-inline 精确测量 / 来文变宽纸条 / 缩远墨迹 LOD 与小地图真墨）——[`pretext-typography-plan.md`](pretext-typography-plan.md) |
 | **流式渐显渲染** | 1-2 天 | Claude Code 式增量淡入（旧块零动画），识别收在渲染器内部、不动数据管线——[`streaming-fade-render-plan.md`](streaming-fade-render-plan.md)（等拍板方案 A/B + 参数） |
-| **出厂产物归家** | Proposed·Draft（未开工） | 一个产物 = 一个物理目录（魂身合一：实现从内核深处搬进插件包）——[`factory-products-homing-plan.md`](factory-products-homing-plan.md) |
+| **插件化欠账（总账）** | **在办（2026-09-24 立账）** | 「还有多少没拆」的唯一真值 = [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md)：账①通道迁移 ✅ 全清 / 账②物理归家 ❌ 未开工（21 个空壳、≈10,052 行实现仍在内核）/ 账③从未立项面 🤷 无账（≈32,000 行）——合计 ≈42,100 行 ≈ 内核 49%；另确证一缺陷（30 产物源码仍进生产 bundle，§0.1）。守卫与批次见总账 §5/§6；图纸 [`factory-products-homing-plan.md`](factory-products-homing-plan.md) |
 | **v11 分析引擎** | 草案挂起（用户拍板挂起） | 动态边 + 查询预算 + 降噪分级三篇合一——[`v11-analysis-engine-master-plan.md`](v11-analysis-engine-master-plan.md)；D 篇原件 [`dynamic-edge-detection-plan.md`](dynamic-edge-detection-plan.md)（superseded，以主文档为准） |
 | **会话存盘换轨（DSH 参照）** | 未定 | 参照 DSH 的会话持久化审计与移植——[`session-persistence-dsh-port-plan.md`](session-persistence-dsh-port-plan.md) |
 | **钉住与纸条改造** | 未定 | 钉住/纸条 UX 重构 + UI 换装——[`pin-strip-rework-plan.md`](pin-strip-rework-plan.md) |

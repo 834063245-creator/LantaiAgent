@@ -12,8 +12,8 @@
 | `builtin_service_plugins` | 内核插件数（BUILTIN_PLUGINS 表） | **13** | `src-ui/src/plugins/loader.ts` |
 | `factory_products` | 出厂产物数（builtin-roster.json） | **30** | `src-ui/src/plugins/builtin-roster.json` |
 | `tool_domains` | 兰台应用侧域工具数（src-ui DOMAIN_SPECS） | **11** | `src-ui/src/agent/tools/domains.ts` |
-| `open_surface_contract_version` | 开放面契约版本 | **45** | `src-ui/src/composition/contract-version.ts` |
-| `engine_contract_version` | 引擎开放面契约版本 | **7** | `engine/src/contract.rs` |
+| `open_surface_contract_version` | 开放面契约版本 | **47** | `src-ui/src/composition/contract-version.ts` |
+| `engine_contract_version` | 引擎开放面契约版本 | **9** | `engine/src/contract.rs` |
 | `engine_shell_methods` | 引擎壳专属方法数 | **11** | `engine/src/contract.rs` |
 | `engine_visible_tools` | 引擎模型可见默认工具数（域 + 未折叠） | **7** | `engine/src/tools/mod.rs` |
 | `engine_default_tools` | 引擎可寻址工具数（DEFAULT_MCP_TOOLS，tools/call 原名） | **36** | `engine/src/tools/mod.rs` |
