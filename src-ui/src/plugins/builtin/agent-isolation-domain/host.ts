@@ -1,4 +1,10 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-export { createAgentIsolationTools } from '../../../agent/tools/coding';
+// agent-isolation-domain · 宿主依赖面 · 开发/测试域。
+//
+// 2026-09-24 批 4c-2 归家：本族工具已搬进本包（原 agent/tools/coding.ts 的族段）
+// ⇒ 本文件从「桥工厂」翻面成**桥它仍住内核的依赖面**。
+
+export type { Tool, ToolExecutor } from '../../../agent/tool';
+export { defineTool } from '../../../agent/tools/define-tool';

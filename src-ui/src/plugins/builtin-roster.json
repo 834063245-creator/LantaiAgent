@@ -199,8 +199,7 @@
     "description": "隔离工作树域工具（create/diff/merge/discard/status）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/coding.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "ask-domain",
@@ -208,8 +207,7 @@
     "description": "ask_user 工具（向用户提问）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/coding.ts", "agent/session-context.ts", "agent/tools/structured-error.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "skill-domain",

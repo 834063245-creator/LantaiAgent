@@ -37,12 +37,8 @@ import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '.
 import { createSkillTool, scanSkills } from '../../agent/skills';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { createTaskTools } from '../../agent/task';
-import {
-  createAgentIsolationTools,
-  createAskUserTools,
-  createFsTools,
-  createShellTools,
-} from '../../agent/tools/coding';
+import { createFsTools, createShellTools } from '../../agent/tools/coding';
+// 批 4c-2 归家：agent-isolation / ask 两族进包 ⇒ 撤工厂桥；两族只余 defineTool/类型面。
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { parseStructuredError } from '../../agent/tools/structured-error';
@@ -523,8 +519,6 @@ const faceDeps = {
   // S3 工具域真源产物运行时依赖（经宿主桥 mods.faceDeps 取用）
   createFsTools,
   createShellTools,
-  createAgentIsolationTools,
-  createAskUserTools,
   createSkillTool,
   createMemoryTools,
   createTaskTools,

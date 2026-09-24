@@ -1,5 +1,5 @@
 {
-  "fingerprint": "103bd3cd",
+  "fingerprint": "2a43fa3e",
   "keys": [
     "ANCHOR",
     "ApiError",
@@ -53,9 +53,7 @@
     "classifyStreamError",
     "clearPaperMeasureCache",
     "collapseToolGroups",
-    "createAgentIsolationTools",
     "createAgentStatusTool",
-    "createAskUserTools",
     "createAssetTools",
     "createBlockMeasureCache",
     "createFsTools",
