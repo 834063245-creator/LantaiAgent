@@ -776,6 +776,12 @@ asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 share
   **6 产物 / 14 → 11 文件 / 4,494 → 3,983 行**；灰区 64 → **61 文件 / 19,186 → 18,388 行**；
   空壳集 **5 条（4 纯壳 + 1 半壳）**。行为变更：无（三工具同名 / 同 schema / 同输出、
   工具表条目原位不动，convergence 双轨零漂移）。
+  **真机验收**（重建 exe + CDP，2026-09-26）：宿主面 **307 键**（与源码派生的键集逐一对上）、
+  13 个 asset-domain 探针键类型全对且 `createAssetTools` 键已撤、`asset-domain/entry.js`
+  **555 KB** 动态 import 成功且含三工具真身、`face.json` 的 `hostApi` = **f30be5fe**（= 基线指纹）；
+  启动期 console 只剩 4 条 `[bridge] invoke failed`（既有）+ 5 条结构性 404（`plugins.json` /
+  `roster.patch.yml` / 三个无 faceDeps 产物的 `face.json`——prompt-segments 那条正是 9g-1 桥面清零的
+  预期结果），零装载失败、零异常。
 - **9g 余项**（下次直接接）：**只剩 `bundled-engine` 186**（B暂，前置 = 引擎链路真机验收）。
   `i18n` 清**已在批 0c 完成**（98 → 22 行，本次复核）；`asset-kinds` 内容表拆分**已随 9g-2 判定撤回**
   （判内核共享，见 §4-10 行）。
