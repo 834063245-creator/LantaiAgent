@@ -1,18 +1,14 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 上下文压缩域 — 折叠状态机 / 触发判定 / 摘要管线调度 / 自动调优。
-// 从 agent.ts 机械搬移（11c），零逻辑改动。
-// 宿主模式：Agent 类经受控转换（as unknown as CompactionHost）传入本模块。
+// 上下文压缩域（**归家后真源**，2026-09-24 批 6d-2）——折叠状态机 / 触发判定 /
+// 摘要管线调度 / 自动调优。
+// 来历：原 `agent/agent-compaction.ts` 整件移出（更早从 agent.ts 机械搬移，11c，
+// 零逻辑改动）。宿主模式不变：Agent 类经受控转换（as unknown as CompactionHost）传入。
+// 内核依赖改走包内宿主面（./host）：契约面（CompactionHost / CompactionConfig /
+// SummaryCall / SummaryRun / COMPACTION_NOTICE_MARK）与记账面（compaction-tracker）
+// 留内核，经 faceDeps 取用。
 
-import { streamWithIdleTimeout } from '../provider/idle-stream';
-import type { Message, Provider, ToolSchema, Usage } from '../provider/types';
-import { ChunkType } from '../provider/types';
-import { kernelReadFile, kernelWriteFile } from '../rpc-contract';
-import { EventKind } from './agent-types';
-// 批 6d-1：宿主面与跨层常量上收契约（实现文件不再自持定义）
-import { COMPACTION_NOTICE_MARK, type CompactionHost } from './compaction-contract';
-import type { CompactionConfig } from './compaction-model';
 import { maybeTune } from './compaction-model';
 import {
   buildCompactionInstruction,
@@ -25,36 +21,36 @@ import {
   SUMMARY_MIN_INPUT,
   SUMMARY_PROMPT_BUDGET,
 } from './compaction-summarize';
-// 批 6d-1：账类型归记账面（compaction-tracker.ts）
-import type { CompactionEvent } from './compaction-tracker';
-import { log } from './logger';
-import { buildCompactedSummaryMessage } from './session-log';
-import { countMessage, countMessages, countText } from './token-counter';
-import { foldToolResults, nextFoldBoundary } from './tool-fold';
+import {
+  buildCompactedSummaryMessage,
+  ChunkType,
+  COMPACTION_NOTICE_MARK,
+  type CompactionConfig,
+  type CompactionEvent,
+  type CompactionHost,
+  countMessage,
+  countMessages,
+  countText,
+  EventKind,
+  foldToolResults,
+  kernelReadFile,
+  kernelWriteFile,
+  log,
+  type Message,
+  nextFoldBoundary,
+  type Provider,
+  type SummaryCall,
+  type SummaryRun,
+  streamWithIdleTimeout,
+  type ToolSchema,
+  type Usage,
+} from './host';
 
 // ── 摘要调用账（cap + usage）──
 // 2026-09-23：摘要调用的 usage 此前被整条丢弃（只收 Text 块），发出的 cap 也无处可查
 // ——「摘要为什么返回空」只能猜。下列形状对齐 DSH `SummaryResult`（provider/model/
 // maxTokens/usage）；本仓摘要模型恒为主模型，provider/model 不入账。
-
-/** 单次摘要调用的产物。usage 缺省 = 提供方未回报（该次调用不可归因）。 */
-export interface SummaryCall {
-  text: string;
-  /** 写进本次请求的输出上限（= 摘要 cap；适配器另按模型 maxTokens 钳制） */
-  maxTokens: number;
-  usage?: Usage;
-}
-
-/** 摘要区段（summarizeRegion / mergePartials）的产物。 */
-export interface SummaryRun {
-  text: string;
-  /** 有环节降级为机械提取 / 拼接（机械提取是兜底，但降级必须可见且可归因） */
-  degraded: boolean;
-  /** 降级原因（degraded=true 时非空） */
-  failure?: string;
-  /** 本次区段的全部调用账（**含失败那次** —— 空返回的 usage 正是归因核心） */
-  calls: SummaryCall[];
-}
+// （批 6d-2：形状上收内核契约 `agent/compaction-contract.ts`，本文件经 ./host 取用。）
 
 /** cap/usage 单行摘要 —— 日志与错误消息共用同一口径（不两处各写一份）。 */
 function capStats(call: SummaryCall): string {

@@ -317,5 +317,13 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": []
+  },
+  {
+    "dir": "compaction",
+    "buildOrder": 33,
+    "description": "上下文压缩域（折叠状态机 / 摘要管线 / 自动调优 / 压缩工具面）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": []
   }
 ]

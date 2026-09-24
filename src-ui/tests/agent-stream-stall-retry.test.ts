@@ -14,6 +14,11 @@
 //   ③ 预算判定 / 挂起分类 / 时长格式的纯函数语义（快、不依赖时钟）。
 
 import { describe, expect, it, vi } from 'vitest';
+// 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
+// service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。
+import { installCompactionForTest } from './helpers/compaction-impl';
+
+installCompactionForTest();
 
 const mockRpc = vi.fn();
 vi.mock('../src/bridge', () => ({

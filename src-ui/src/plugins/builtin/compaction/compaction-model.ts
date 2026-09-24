@@ -16,21 +16,18 @@
 //   NetBenefit = |R|·c_in·(T-1) - |S|·c_out - L·avg_turn_cost
 
 import { z } from 'zod';
-import type { CompactionSessionStats, CompactionTracker } from './compaction-tracker';
-import { DEFAULT_C_IN, DEFAULT_C_OUT, LOSS_FACTOR_PER_EVENT } from './compaction-tracker';
-import type { Tool } from './tool';
-import { defineTool } from './tools/define-tool';
+import {
+  type CompactionConfig,
+  type CompactionSessionStats,
+  type CompactionTracker,
+  DEFAULT_C_IN,
+  DEFAULT_C_OUT,
+  defineTool,
+  LOSS_FACTOR_PER_EVENT,
+  type Tool,
+} from './host';
 
-// ── 压缩经济参数（2026-09 迭代真源；消费方 agent.ts / agent-compaction.ts）──
-
-/** 尾部保留的 token 预算，占 contextWindow 的比例（对齐 DSH retainRatio 0.16）。
- *  computeCompactRegionImpl 从尾部往回累计 token 到 ≥ 此比例×窗口，
- *  再钳制到完整回合边界 — 工具密集会话里保证模型手里有足够近期工作现场，
- *  而不是旧实现 max(4, recentKeep) 那样只留几条消息。 */
-export const DEFAULT_RETAIN_RATIO = 0.16;
-
-/** 正常触发水位（占 contextWindow 比例；agent.ts 构造缺省同源）。 */
-export const DEFAULT_COMPACT_RATIO = 0.8;
+// ── 压缩经济参数（2026-09 迭代真源；批 6d-2 起 DEFAULT_* 两个比例上收内核契约）──
 
 // ── 压缩成本模型 ──
 
@@ -191,19 +188,7 @@ export function optimalCompactRatio(
 // ── CompactionTracker — 监测 agent.ts ──
 
 // ── 自动调优：跨会话持久化最优参数 ──
-
-export interface CompactionConfig {
-  compactRatio: number;
-  recentKeep: number;
-  /** 摘要调用的输出上限（token）——缺省 = SUMMARY_OUTPUT_BUDGET（8192，对齐 DSH）。
-   *  手写此文件即可改；自动调优只透传，不改写它。 */
-  summaryMaxTokens?: number;
-  tunedAt: number; // 上次调优时间戳
-  sampleCount: number; // 使用的压缩事件数量
-  avgCompressionRatio: number;
-  avgLossFactor: number;
-  reasoning: string; // 人类可读的说明
-}
+// （批 6d-2：`CompactionConfig` 形状上收内核契约 `agent/compaction-contract.ts`。）
 
 const MIN_SAMPLES_FOR_TUNE = 5;
 

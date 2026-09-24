@@ -29,6 +29,11 @@ import { installStateHooksForTest } from './helpers/state-hooks-impl';
 
 installStateHooksForTest();
 
+// 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；service 类 ⇒ 缺实现 fail-loud。
+import { installCompactionForTest } from './helpers/compaction-impl';
+
+installCompactionForTest();
+
 installPlanModeForTest();
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);

@@ -12,6 +12,11 @@
 //   6. _injectedMsgIds 防死循环
 
 import { describe, expect, it, vi } from 'vitest';
+// 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
+// service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。
+import { installCompactionForTest } from './helpers/compaction-impl';
+
+installCompactionForTest();
 
 // 单测环境无真实引擎图 — 关闭 merge 门禁的图检查（merge.ts 预留旁路）
 (globalThis as any).__LANTAI_MERGE_GATE__ = { graph: false };

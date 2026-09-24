@@ -12,6 +12,12 @@
 // T3 契约快照：session-projection.trace.json — 固定场景（文本轮 + 工具轮 +
 //   compaction + retract）的事件流与逐步派生载荷，冻结双写等价的字节契约。
 import { readFileSync } from 'node:fs';
+// 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
+// service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。
+import { installCompactionForTest } from '../../helpers/compaction-impl';
+
+installCompactionForTest();
+
 import path from 'node:path';
 import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';

@@ -21,8 +21,9 @@ import { shellServicePlugin } from '../../src/composition/shell-service';
 import { subagentsServicePlugin } from '../../src/composition/subagent-service';
 import { Context } from '../../src/cordis';
 import { agentLoopServicePlugin } from '../../src/plugins/builtin/agent-loop-service';
-import { builtinFsPlugin } from '../../src/plugins/builtin/fs-builtin';
 // 批 6b：goal 循环实现归产物包（内核 Agent.runGoal/resumeGoal 查登记表取用）
+import { compactionPlugin } from '../../src/plugins/builtin/compaction';
+import { builtinFsPlugin } from '../../src/plugins/builtin/fs-builtin';
 import { goalModePlugin } from '../../src/plugins/builtin/goal-mode';
 import { llmAdaptersPlugin } from '../../src/plugins/builtin/llm-adapters';
 // 批 6a：plan 模式实现归产物包（内核 blueprint 的两条 capability 查登记表取用）
@@ -55,6 +56,7 @@ export async function ensureProductionChannelsBooted(): Promise<Context> {
   await root.plugin(agentLoopServicePlugin);
   await root.plugin(planModePlugin);
   await root.plugin(goalModePlugin);
+  await root.plugin(compactionPlugin);
   bootRoot = root;
   return root;
 }

@@ -18,7 +18,7 @@ import { assembleSystemPrompt, type PromptSection } from '../../composition/prom
 import { factoryComposition } from '../../composition/roster';
 import type { BuiltinToolRow, ToolRowContext } from '../../composition/tool-rows';
 import type { Agent } from '../agent';
-import { createCompactionTools } from '../compaction-model';
+import { requireCompactionImplementation } from '../compaction-impl';
 import type { ToolExecutor } from '../tool';
 import { agentInvoke, ToolRegistry } from '../tool';
 import { convergeRegistry } from '../tools/domains';
@@ -179,7 +179,7 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
 // ── Compaction tools ──
 
 export function registerCompactionTools(agent: Agent, reg: ToolRegistry): void {
-  for (const tool of createCompactionTools(
+  for (const tool of requireCompactionImplementation().createCompactionTools(
     () => agent.getCompactionTracker(),
     () => ({
       compactRatio: agent.getCompactRatio(),

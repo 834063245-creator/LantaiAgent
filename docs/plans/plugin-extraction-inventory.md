@@ -333,7 +333,7 @@ manifest.json —— 包内合计 30～110 行。
 
 | 项 | 路径（物理行） | 应去哪 | 主障碍 |
 |---|---|---|---|
-| 上下文压缩 | `agent-compaction.ts` 1059 + `compaction-model.ts` 644 + `compaction-summarize.ts` 327 = **2,030** | 新包 `compaction/` | 🟡 **批 6d-1 已落结构切分**：记账面 → 新 `agent/compaction-tracker.ts`（`CompactionTracker` + 三账类型 + 费率三常量，留内核）；契约面 → 新 `agent/compaction-contract.ts`（`CompactionHost` + `COMPACTION_NOTICE_MARK` + `SUMMARY_OUTPUT_BUDGET`）；`agent-loop/types.ts` 一行导入改指 ⇒ 开放面契约 47→48。**6d-2（搬进产物包）施工单见 [`capability-impl-seam-design.md`](capability-impl-seam-design.md) §3**（16 项实现面 + 17 调用点 + 11 faceDeps 键） |
+| 上下文压缩 | ~~`agent-compaction.ts` 1059 + `compaction-model.ts` 644 + `compaction-summarize.ts` 327 = **2,030**~~ | 新包 `compaction/` | ✅ **批 6d 已全落**（6d-1 结构切分 + 6d-2 搬进产物包）：**进包 1,773 行**（`agent-compaction` 1016 + `compaction-model` 策略 425 + `compaction-summarize` 332）+ 包内壳 166 行；**留内核 414 行**——记账面 `agent/compaction-tracker.ts` 206（压缩账 + 卷级持久化）· 契约面 `agent/compaction-contract.ts` 156（`CompactionHost` + 配置/摘要账形状 + 跨层常量 + `CompactionImplementation` 16 项）· 登记表 `agent/compaction-impl.ts` 52。`Agent` 16 调用点改查表（service 语义：缺实现调用点 fail-loud） |
 | 多 Agent 通信族 | `message-bus.ts` 605 + `message-types.ts` 137 + `message-store.ts` 129 + `topology.ts` 80 + `tools/communication.ts` 159 + `tools/request.ts` 94 = **1,204** | 新包 `multiagent-comm/`（或并入 agent-domain） | MessageBus 是 runtime 级单例；**13 个测试直连** |
 | 子代理运行时 | `coordinator.ts` 420 + `lifecycle-manager.ts` 217 + `tools/merge.ts` 215 + `subagent-activity.ts` 96 + `file-ownership.ts` 73 + `tools/merge-gate.ts` 55 + `isolation-queue.ts` 13 = **1,089** | `subagent-in-process/`（与 §1.2 同批实心化） | `SubAgentPool` 由 `workspace.ts` 构造；**21 个测试直连 coordinator** |
 | token 计量（**分类缺口**） | `token-meter/**` 874 + `token-counter.ts` 89 = **963** | **待裁**：立 `ctx.tokenMeter` service 或判内核 | 既不在 13 个 service，也不是任何 feature 产物 |
@@ -468,12 +468,12 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 6c 后重测）：红 **11 产物 / 25 文件 / 8,283 行**（§1 的 9 条 +
+**2026-09-24 基线**（批 6d-2 后重测）：红 **11 产物 / 25 文件 / 8,283 行**（§1 的 9 条 +
 §2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`；文件按**认领计数**——`coding.ts` 曾被 fs/shell
 两条认领故按 2 计。批 6a/6c 后 8,265 → 8,283 的 +18 全是 `agent/blueprint.ts` 与
-`agent/subagent-spawn.ts` 的登记表取用改写，不是新欠账）；绿 111 平台 + **79 已认领**；
-灰 **120 文件 / 35,213 行**（plan 三件 302 行随 6a、goal-loop 317 行随 6b、hooks 里 ≈200 行
-随 6c 出灰区）。
+`agent/subagent-spawn.ts` 的登记表取用改写，不是新欠账）；绿 111 平台 + **87 已认领**；
+灰 **112 文件 / 32,234 行**（plan 三件 302 行随 6a、goal-loop 317 行随 6b、hooks ≈200 行随 6c、
+压缩域 1,773 行随 6d）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -488,7 +488,7 @@ manifest.json —— 包内合计 30～110 行。
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | ✅ **批 3a 已落 3 件**（wait 102 · office 576 · cordis 200 = 878 行；桥位仅 9 运行时 + 7 类型）。**memory/skill/task 复核后改期**：它们的类是内核构造的（`workspace.ts` new MemoryManager/SkillRegistry、runtime 用 TaskBoard 11 处）⇒ 整件搬会造宿主→插件反向依赖（仓库禁反），改随批 7 / 批 9 |
 | **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | ✅ **已全落**：4a `browser.ts`（912）· 4b `manifest-tools` 按域拆（187+169，search/web 各归其包）· 4c `coding.ts`（998，一文件载五族）拆完 **整文件退役**——4c-1 git · 4c-2 ask/agent-isolation · 4c-3 fs/shell（顺带上收 `ownerIdOf`/`ownerSeamView` 进 `composition/seam-scope.ts`）。随行件去向：`sticky-cwd` 并入包内族段，`git-porcelain` 126 / `session-context` 122 / `structured-error` 24 因内核消费者**留内核桥** |
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
-| **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | 🟡 **6a plan-mode（302 行）+ 6b goal-mode（317 行）+ 6c state-hooks（≈200 行）已落**：三项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝，capability 条目原位不动、**convergence 基线零改动**（表序零漂移的证明）。余 6d compaction（2,022 行），施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
+| **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | `ctx.subagents` seam 已在位；障碍是 runtime 单例与 21+13 个测试 |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈2,500 | 依赖批 5/6 落地；同批消掉 hljs 两处内联 |
 | **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 需先有通道（§4-3/4/9）与归属裁定（§4-1/5/6/11/12/13） |
@@ -668,6 +668,24 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
 - **真机验收**（重建 exe + CDP）：faceDeps **244 键**（+7 全部为 function）；`/plugins/hologram/state-hooks/entry.js`
   7.3 KB 在场且动态 import 成功（含 `board-file-tracking` 真身）；state-hooks 的 `face.json` 7 键、
   指纹 `9eb85fdc`（保险丝 a 覆盖 33/33）。
+
+**批 6d-2 落地（2026-09-24，压缩域搬进产物包；批 6 收官）**：
+- **进包 1,773 行** → `plugins/builtin/compaction/`：`agent-compaction.ts`（1016，折叠状态机/触发
+  判定/摘要管线调度）· `compaction-model.ts`（425，策略：经济参数/最优保留点/调优/报告/工具面）·
+  `compaction-summarize.ts`（332，分块/机械摘要/prompt 构建）+ `implementation.ts` / `index.ts` /
+  host 双面（166 行）。
+- **留内核 414 行**：`agent/compaction-tracker.ts`（206，压缩账 + 卷级持久化）·
+  `agent/compaction-contract.ts`（156，含新增 `CompactionConfig` / `SummaryCall` / `SummaryRun` /
+  两个比例默认 / `CompactionImplementation` 16 项）· `agent/compaction-impl.ts`（52，登记表）。
+- **16 个调用点改查表**：`Agent` 15 处 + `agent-builder` 的 `createCompactionTools`；
+  service 语义 ⇒ 调用点 fail-loud（测试面 16 个文件补常驻登记腰 `tests/helpers/compaction-impl.ts`）。
+- **faceDeps +19 键**（登记表 + 数据源/常量）⇒ 指纹 `9eb85fdc → 5a542fb9`；产物 `face.json` 24 键
+  （保险丝 a 覆盖 34/34）。
+- **测试面教训**：一度把常驻登记收进 `tests/setup.ts`（全局 setup）——**不可行**：setup 先于测试
+  文件的 `vi.mock` 提升执行，预载 `rpc-contract` 等内核模块会架空 mock（实测 `plan-outcome` 等
+  全线红）。正确形态 = 腰文件按文件显式 import（in-band，受同一套 hoisting 管辖）。
+- **验收**：vitest 406 文件 / 4,309 用例全绿 · build + build:builtin-plugins（34 产物自包含）·
+  biome ci 0/0 · **convergence 双轨基线零改动** · doc-sync + doc-check 全绿。
 
 ## 7. 决策路由（**把「找」与「拍」分家**）
 

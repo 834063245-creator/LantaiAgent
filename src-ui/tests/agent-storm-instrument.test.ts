@@ -7,6 +7,11 @@
 //   2. compaction instrumentation: recordToolCall / recordFileRead feeding the tracker
 
 import { describe, expect, it, vi } from 'vitest';
+// 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
+// service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。
+import { installCompactionForTest } from './helpers/compaction-impl';
+
+installCompactionForTest();
 
 const mockRpc = vi.fn();
 vi.mock('../src/bridge', () => ({

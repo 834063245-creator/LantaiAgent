@@ -28,15 +28,21 @@ import { EventKind } from '../../agent/agent-types';
 // 运行时值（faceDeps 取用面）。（z（engine-domain 运行时取用）随图谱退役
 // 移除，2026-09-09。）
 import { firstPartyCapabilities } from '../../agent/blueprint';
+import { COMPACTION_NOTICE_MARK, DEFAULT_COMPACT_RATIO, DEFAULT_RETAIN_RATIO } from '../../agent/compaction-contract';
+import { registerCompactionImplementation } from '../../agent/compaction-impl';
+import { DEFAULT_C_IN, DEFAULT_C_OUT, LOSS_FACTOR_PER_EVENT } from '../../agent/compaction-tracker';
 // 批 3a 归家：wait/office/cordis 三域工厂已随包 ⇒ 撤桥，改桥它们仍住内核的依赖面。
 import { SubAgentStatus } from '../../agent/coordinator';
 import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-service';
+import { extractFilePath, WRITE_TOOLS } from '../../agent/file-ownership';
 import { parseGitLogCommits, parseGitStatusPorcelain } from '../../agent/git-porcelain';
 import { registerGoalImplementation } from '../../agent/goal-impl';
-import { errText } from '../../agent/loop-helpers';
+import { log } from '../../agent/logger';
+import { errText, parseFilePathArg } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
 import { registerPlanImplementation } from '../../agent/plan/plan-impl';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
+import { buildCompactedSummaryMessage } from '../../agent/session-log';
 import { createSkillTool, scanSkills } from '../../agent/skills';
 import { registerStateHooksImplementation } from '../../agent/state-hooks-impl';
 import {
@@ -48,9 +54,12 @@ import {
 } from '../../agent/state-inject';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { createTaskTools } from '../../agent/task';
+import { countMessage, countMessages, countText } from '../../agent/token-counter';
+import { foldToolResults, nextFoldBoundary } from '../../agent/tool-fold';
 import { hasImageRefs } from '../../agent/tool-images';
 // 批 4c-2 归家：agent-isolation / ask 两族进包 ⇒ 撤工厂桥；两族只余 defineTool/类型面。
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
+import { resolveGuardToolName } from '../../agent/tools/domains';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { parseStructuredError } from '../../agent/tools/structured-error';
 import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
@@ -170,6 +179,7 @@ import {
 } from '../../provider/catalog';
 import { resolveApiKey } from '../../provider/credentials';
 import { classifyProviderError } from '../../provider/error-catalog';
+import { streamWithIdleTimeout } from '../../provider/idle-stream';
 import { modelEntries, parseModelEntry } from '../../provider/model-meta';
 // provider 配置文件通道（2026-09-24 配方改文件批）：设置页路径/错误/写盘面
 import {
@@ -290,6 +300,7 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./plan-mode/host'), unknown> &
   Record<keyof typeof import('./goal-mode/host'), unknown> &
   Record<keyof typeof import('./state-hooks/host'), unknown> &
+  Record<keyof typeof import('./compaction/host'), unknown> &
   Record<keyof typeof import('./agent-loop-service/host'), unknown>;
 
 /** 四面组件共享依赖（bundle 域真实例）。key = 产物 host.aliased 取用名。 */
@@ -586,6 +597,26 @@ const faceDeps = {
   hasImageRefs,
   invalidateBlameEntry,
   refreshGitBlame,
+  // 批 6d-2 归家：压缩域实现进包 ⇒ 桥登记表 + 数据源/常量（kernelReadFile/ChunkType/defineTool/EventKind 已在册）
+  registerCompactionImplementation,
+  streamWithIdleTimeout,
+  log,
+  buildCompactedSummaryMessage,
+  countMessage,
+  countMessages,
+  countText,
+  foldToolResults,
+  nextFoldBoundary,
+  extractFilePath,
+  WRITE_TOOLS,
+  parseFilePathArg,
+  resolveGuardToolName,
+  DEFAULT_C_IN,
+  DEFAULT_C_OUT,
+  LOSS_FACTOR_PER_EVENT,
+  DEFAULT_COMPACT_RATIO,
+  DEFAULT_RETAIN_RATIO,
+  COMPACTION_NOTICE_MARK,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

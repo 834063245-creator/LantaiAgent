@@ -1,15 +1,20 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 上下文压缩 — 分块 / 机械摘要 / prompt 构建。从 agent.ts 机械搬移（11c），零逻辑改动。
-// 消费方：agent.ts 的 summarizeRegion / mergePartials / callSummaryLLM 管线。
+// 上下文压缩（**归家后真源**，2026-09-24 批 6d-2）——分块 / 机械摘要 / prompt 构建。
+// 来历：原 `agent/compaction-summarize.ts` 整件移出（更早从 agent.ts 机械搬移，11c，
+// 零逻辑改动）；内核依赖改走包内宿主面（./host）。
 
-import type { Message } from '../provider/types';
-import { extractFilePath, WRITE_TOOLS } from './file-ownership';
-import { parseFilePathArg } from './loop-helpers';
-import { countMessage, countText } from './token-counter';
-import type { ToolRegistry } from './tool';
-import { resolveGuardToolName } from './tools/domains';
+import {
+  countMessage,
+  countText,
+  extractFilePath,
+  type Message,
+  parseFilePathArg,
+  resolveGuardToolName,
+  type ToolRegistry,
+  WRITE_TOOLS,
+} from './host';
 
 /** 摘要调用的输出预算（token）— 缺省输出上限。配合 chunkCap 保证
  *  每次调用 输入+输出 严格小于摘要模型窗口（"永不塞爆"的硬上界）。

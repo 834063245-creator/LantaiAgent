@@ -75,7 +75,8 @@ describe('builtin-roster（名册单一真源守卫）', () => {
     // plan-mode 新增（2026-09-24 批 6a：规划模式实现归产物）：30 → 31
     // goal-mode 新增（2026-09-24 批 6b：goal 循环实现归产物）：31 → 32
     // state-hooks 新增（2026-09-24 批 6c：出厂 hook 四工厂归产物）：32 → 33
-    expect(roster.size).toBe(33);
+    // compaction 新增（2026-09-24 批 6d-2：压缩域实现归产物）：33 → 34
+    expect(roster.size).toBe(34);
   });
 
   it('名册 buildOrder 连续 0..N-1 无重复（防序号断裂/误插）', () => {

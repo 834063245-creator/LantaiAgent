@@ -20,24 +20,6 @@ import type {
   Usage,
 } from '../provider/types';
 import { ApiError, apiErrorSummary, ChunkType } from '../provider/types';
-import {
-  applyAutoTuneConfigImpl,
-  callSummaryLLMImpl,
-  compactIfNeededImpl,
-  compactNowImpl,
-  computeCompactRegionImpl,
-  foldHead,
-  loadCompactionConfigImpl,
-  loadCompactionTrackerImpl,
-  maybeCompactImpl,
-  mergePartialsImpl,
-  payloadMessagesImpl,
-  type SummaryCall,
-  type SummaryRun,
-  setCompactionConfigPathImpl,
-  summarizeRegionImpl,
-  summaryProviderImpl,
-} from './agent-compaction';
 import { defaultAgentLoop } from './agent-loop/default-loop';
 import { attachFirstPartyLoopObservability } from './agent-loop/observability';
 import type { AgentLoop, AgentLoopHost } from './agent-loop/types';
@@ -46,8 +28,16 @@ import type { AgentRecord, AgentStore } from './agent-store';
 import { type AgentEvent, type AgentUINotifier, EventKind, type EventSink, type ToolEvent } from './agent-types';
 import { generateAssetId } from './asset-kinds';
 import { rebuildAssetsFromSession } from './asset-store';
-import { type CompactionHost, SUMMARY_OUTPUT_BUDGET } from './compaction-contract';
-import { type CompactionConfig, DEFAULT_COMPACT_RATIO, DEFAULT_RETAIN_RATIO } from './compaction-model';
+import {
+  type CompactionConfig,
+  type CompactionHost,
+  DEFAULT_COMPACT_RATIO,
+  DEFAULT_RETAIN_RATIO,
+  SUMMARY_OUTPUT_BUDGET,
+  type SummaryCall,
+  type SummaryRun,
+} from './compaction-contract';
+import { requireCompactionImplementation } from './compaction-impl';
 import { type CompactionSessionStats, CompactionTracker } from './compaction-tracker';
 import type { AgentContext } from './context';
 import {
@@ -989,28 +979,28 @@ export class Agent {
     if (!state?.summary || state.tailStart < 0) return;
     this._compactSummary = state.summary;
     // 钳制与 applyCompactState 同规：头部偏移以下 / 会话长度以上都不是合法折叠点。
-    const head = foldHead(this as unknown as CompactionHost);
+    const head = requireCompactionImplementation().foldHead(this as unknown as CompactionHost);
     this._compactTailStart = Math.max(head, Math.min(state.tailStart, this.session.length));
   }
 
   /** 设置自动调优压缩配置的持久化路径（委托 agent-compaction.ts）。 */
   setCompactionConfigPath(projectPath: string): void {
-    setCompactionConfigPathImpl(this as unknown as CompactionHost, projectPath);
+    requireCompactionImplementation().setCompactionConfigPath(this as unknown as CompactionHost, projectPath);
   }
 
   /** E5: 从磁盘加载持久化的 tracker 状态。 */
   async loadCompactionTracker(): Promise<void> {
-    return loadCompactionTrackerImpl(this as unknown as CompactionHost);
+    return requireCompactionImplementation().loadCompactionTracker(this as unknown as CompactionHost);
   }
 
   /** 尝试加载持久化的压缩配置。无保存则返回 null。 */
   async loadCompactionConfig(): Promise<CompactionConfig | null> {
-    return loadCompactionConfigImpl(this as unknown as CompactionHost);
+    return requireCompactionImplementation().loadCompactionConfig(this as unknown as CompactionHost);
   }
 
   /** 应用自动调优的压缩参数。返回应用的配置。 */
   async applyAutoTuneConfig(): Promise<CompactionConfig | null> {
-    return applyAutoTuneConfigImpl(this as unknown as CompactionHost);
+    return requireCompactionImplementation().applyAutoTuneConfig(this as unknown as CompactionHost);
   }
 
   /** 撤回一轮: 从 sessionIndex 开始移除用户消息 + 后续的 assistant + tool 消息。
@@ -2311,42 +2301,47 @@ export class Agent {
 
   /** session 头部偏移: 若第一条是 system prompt 则为 1，否则为 0。 */
   _foldHead(): number {
-    return foldHead(this as unknown as CompactionHost);
+    return requireCompactionImplementation().foldHead(this as unknown as CompactionHost);
   }
 
   /** 发送给 LLM 的载荷 — 完整历史 + 压缩折叠 + 工具结果滚动折叠。 */
   payloadMessages(): Message[] {
-    return payloadMessagesImpl(this as unknown as CompactionHost);
+    return requireCompactionImplementation().payloadMessages(this as unknown as CompactionHost);
   }
 
   /** 计算本次要折叠的中间区域。返回 null = 无可折叠内容（stuck）。 */
   computeCompactRegion(): { region: Message[]; tailStart: number; priorSummary: string | null } | null {
-    return computeCompactRegionImpl(this as unknown as CompactionHost);
+    return requireCompactionImplementation().computeCompactRegion(this as unknown as CompactionHost);
   }
 
   /** 手动压缩触发器（来自 /compact 命令）。返回摘要文本或错误。 */
   async compactNow(signal: AbortSignal): Promise<string> {
-    return compactNowImpl(this as unknown as CompactionHost, signal);
+    return requireCompactionImplementation().compactNow(this as unknown as CompactionHost, signal);
   }
 
   /** 自动压缩入口（step 前 pre-flight 调用）— 尾部按 retainRatio token 预算
    *  保留完整 user 回合（DSH 自动压力路径语义）。返回摘要文本或 'stuck'。 */
   async compactIfNeeded(signal: AbortSignal): Promise<string> {
-    return compactIfNeededImpl(this as unknown as CompactionHost, signal);
+    return requireCompactionImplementation().compactIfNeeded(this as unknown as CompactionHost, signal);
   }
 
   maybeCompact(usage: Usage | undefined): void {
-    maybeCompactImpl(this as unknown as CompactionHost, usage);
+    requireCompactionImplementation().maybeCompact(this as unknown as CompactionHost, usage);
   }
 
   /** 对消息区域生成摘要 — map-reduce 分块管线（测试经 as any 调用）。 */
   async summarizeRegion(signal: AbortSignal, msgs: Message[], priorSummary: string | null = null): Promise<SummaryRun> {
-    return summarizeRegionImpl(this as unknown as CompactionHost, signal, msgs, priorSummary);
+    return requireCompactionImplementation().summarizeRegion(
+      this as unknown as CompactionHost,
+      signal,
+      msgs,
+      priorSummary,
+    );
   }
 
   /** 摘要模型解析 — 固定主模型（价格表拆除后摘要不再跨家比价）。 */
   async summaryProvider(): Promise<{ prov: Provider; window: number }> {
-    return summaryProviderImpl(this as unknown as CompactionHost);
+    return requireCompactionImplementation().summaryProvider(this as unknown as CompactionHost);
   }
 
   /** 单次摘要 LLM 调用 — 空闲超时守卫；返回文本 + 发出的 cap + 提供方 usage。
@@ -2356,7 +2351,7 @@ export class Agent {
     messages: Message[],
     shape: { replay: boolean; tools?: ToolSchema[] } = { replay: false },
   ): Promise<SummaryCall> {
-    return callSummaryLLMImpl(this as unknown as CompactionHost, signal, messages, shape);
+    return requireCompactionImplementation().callSummaryLLM(this as unknown as CompactionHost, signal, messages, shape);
   }
 
   /** 滚动合并分段摘要（含 priorSummary）。 */
@@ -2366,7 +2361,13 @@ export class Agent {
     partials: string[],
     budgetTokens: number,
   ): Promise<SummaryRun> {
-    return mergePartialsImpl(this as unknown as CompactionHost, signal, priorSummary, partials, budgetTokens);
+    return requireCompactionImplementation().mergePartials(
+      this as unknown as CompactionHost,
+      signal,
+      priorSummary,
+      partials,
+      budgetTokens,
+    );
   }
 
   private toolReadOnly(name: string): boolean {

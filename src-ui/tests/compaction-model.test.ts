@@ -5,6 +5,7 @@
 // Regression guard: if netBenefit / optimalRecentKeep / breakevenTurns breaks, CI catches it.
 
 import { describe, expect, it } from 'vitest';
+import { CompactionTracker } from '../src/agent/compaction-tracker';
 import {
   breakevenTurns,
   estimateLoss,
@@ -12,8 +13,7 @@ import {
   netBenefit,
   optimalRecentKeep,
   tailCost,
-} from '../src/agent/compaction-model';
-import { CompactionTracker } from '../src/agent/compaction-tracker';
+} from '../src/plugins/builtin/compaction/compaction-model';
 
 // ── netBenefit ──
 
