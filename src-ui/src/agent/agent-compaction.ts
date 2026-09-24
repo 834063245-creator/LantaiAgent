@@ -168,6 +168,16 @@ function fmtTokens(n: number): string {
   return n.toLocaleString();
 }
 
+/** 压缩类通知的卷内落痕标记 —— UI 按此前缀落**卷内贴黄**（与 `STALL_NOTICE_MARK` 同规，
+ *  见 ui/chat-stream.ts 的 handleAgentNotice）。为何必须带：toast 只活 6.4 秒，而压缩是
+ *  30 秒–3 分钟的长杆；info 级通知 UI 更默认丢弃 ⇒ 2026-09-24 真机实测：压缩成功落地
+ *  （压前 295,017 → 压后 22,281、outcome=summary），用户界面上却「什么都没看到」，
+ *  当场手动停止运行 —— 与 2026-09-22 读图挂起事故同形（长杆无痕 = 用户读成挂了）。 */
+export const COMPACTION_NOTICE_MARK = '[上下文压缩]';
+
+/** 压缩域通知文案（统一带上卷内落痕标记 —— 这一域的动作都是「用户要等」的长杆）。 */
+const noticeText = (text: string): string => `${COMPACTION_NOTICE_MARK} ${text}`;
+
 // ── 折叠视图（根治核心）──
 
 /** session 头部偏移: 若第一条是 system prompt 则为 1，否则为 0。 */
@@ -490,7 +500,9 @@ export async function runCompactionImpl(
       host._sink({
         kind: EventKind.Notice,
         level: 'warn',
-        text: `压缩失败，本次跳过（完整历史仍保留）。${hardFailure ? `原因：${hardFailure}。` : ''}可继续对话或用 /new 开启新会话。`,
+        text: noticeText(
+          `压缩失败，本次跳过（完整历史仍保留）。${hardFailure ? `原因：${hardFailure}。` : ''}可继续对话或用 /new 开启新会话。`,
+        ),
       });
       return 'stuck';
     }
@@ -524,7 +536,7 @@ export async function runCompactionImpl(
         host._sink({
           kind: EventKind.Notice,
           level: 'warn',
-          text: '压缩未能减少上下文（摘要不小于被压缩内容），本次跳过。建议用 /new 开启新会话。',
+          text: noticeText('压缩未能减少上下文（摘要不小于被压缩内容），本次跳过。建议用 /new 开启新会话。'),
         });
         return 'stuck';
       }
@@ -557,9 +569,11 @@ export async function runCompactionImpl(
     host._sink({
       kind: EventKind.Notice,
       level: 'info',
-      text: `上下文已压缩: ${region.length} 条消息 → ${result.degraded ? '机械摘要（LLM 摘要降级）' : '摘要'} (保留最近 ${
-        host.session.length - tailStart
-      } 条，完整历史仍保留)；压前 ${fmtTokens(preEstimate)} → 压后 ${fmtTokens(postTokens)}`,
+      text: noticeText(
+        `上下文已压缩: ${region.length} 条消息 → ${result.degraded ? '机械摘要（LLM 摘要降级）' : '摘要'} (保留最近 ${
+          host.session.length - tailStart
+        } 条，完整历史仍保留)；压前 ${fmtTokens(preEstimate)} → 压后 ${fmtTokens(postTokens)}`,
+      ),
     });
     return summary;
   } finally {
@@ -750,7 +764,7 @@ export async function summarizeRegionImpl(
   host._sink({
     kind: EventKind.Notice,
     level: 'info',
-    text: `压缩中 · 共 ${chunks.length} 块（约 ${(countMessages(msgs) / 10_000).toFixed(1)} 万 token）`,
+    text: noticeText(`压缩中 · 共 ${chunks.length} 块（约 ${(countMessages(msgs) / 10_000).toFixed(1)} 万 token）`),
   });
 
   // 单块 — 与旧行为一致：一次调用，priorSummary 直接嵌入 prompt
@@ -760,7 +774,7 @@ export async function summarizeRegionImpl(
       const call = await callSummaryLLMImpl(host, signal, buildSummaryPrompt(priorSummary), renderTranscript(msgs));
       calls.push(call);
       assertUsableSummary(call);
-      host._sink({ kind: EventKind.Notice, level: 'info', text: chunkDoneText(1, 1, startedAt) });
+      host._sink({ kind: EventKind.Notice, level: 'info', text: noticeText(chunkDoneText(1, 1, startedAt)) });
       return { text: call.text, degraded: false, calls };
     } catch (e) {
       if (signal.aborted) throw e; // 用户中止 — 不兜底，直接传播
@@ -769,7 +783,7 @@ export async function summarizeRegionImpl(
       host._sink({
         kind: EventKind.Notice,
         level: 'warn',
-        text: `压缩降级 · ${reason} —— 本次改用机械提取（完整历史仍保留）`,
+        text: noticeText(`压缩降级 · ${reason} —— 本次改用机械提取（完整历史仍保留）`),
       });
       return { text: digestMessages(msgs), degraded: true, failure: reason, calls };
     }
@@ -798,7 +812,11 @@ export async function summarizeRegionImpl(
       calls.push(call);
       assertUsableSummary(call);
       partials.push(call.text);
-      host._sink({ kind: EventKind.Notice, level: 'info', text: chunkDoneText(i + 1, chunks.length, startedAt) });
+      host._sink({
+        kind: EventKind.Notice,
+        level: 'info',
+        text: noticeText(chunkDoneText(i + 1, chunks.length, startedAt)),
+      });
     } catch (e) {
       if (signal.aborted) throw e;
       const reason = errMessage(e);
@@ -806,7 +824,7 @@ export async function summarizeRegionImpl(
       host._sink({
         kind: EventKind.Notice,
         level: 'warn',
-        text: `压缩中 · 第 ${i + 1}/${chunks.length} 块失败（${reason}）—— 该块改用机械提取`,
+        text: noticeText(`压缩中 · 第 ${i + 1}/${chunks.length} 块失败（${reason}）—— 该块改用机械提取`),
       });
       partials.push(digestMessages(chunks[i], host.tools));
       failures.push(reason);
@@ -926,7 +944,7 @@ export async function mergePartialsImpl(
       host._sink({
         kind: EventKind.Notice,
         level: 'warn',
-        text: `压缩降级 · 分段摘要合并失败（${reason}）—— 已直接拼接`,
+        text: noticeText(`压缩降级 · 分段摘要合并失败（${reason}）—— 已直接拼接`),
       });
       texts = [group.join('\n\n---\n\n'), ...rest];
       failures.push(reason);

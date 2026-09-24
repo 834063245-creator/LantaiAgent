@@ -50,6 +50,7 @@ vi.mock('../src/provider/catalog', async (importOriginal) => {
 });
 
 import type { Agent } from '../src/agent/agent';
+import { COMPACTION_NOTICE_MARK } from '../src/agent/agent-compaction';
 import { SUMMARY_OUTPUT_BUDGET, SUMMARY_PROMPT_BUDGET } from '../src/agent/compaction-summarize';
 import { createExecState } from '../src/agent/execution-state';
 import { countMessages, countText } from '../src/agent/token-counter';
@@ -541,6 +542,8 @@ describe('compaction pipeline E2E', () => {
     expect(warns).toHaveLength(1);
     expect(warns[0].text).toContain('truncated at the token cap');
     expect(warns[0].text).toContain('机械提取');
+    // 降级通知同样要带标记 —— 这正是用户最需要看见的那条（走 UI 卷内贴黄）
+    expect(warns[0].text.startsWith(COMPACTION_NOTICE_MARK)).toBe(true);
   });
 
   it('14. 压缩过程可见：首拍块数 → 每块完成（含用时）→ 收尾带压前→压后', async () => {
@@ -553,14 +556,17 @@ describe('compaction pipeline E2E', () => {
     await agent.compactNow(new AbortController().signal);
 
     const texts = events.map((e) => String(e.text ?? ''));
-    // 首拍：块数 + 区域规模（压缩期间此前 1–3 分钟毫无提示，像挂死）
-    const head = /^压缩中 · 共 (\d+) 块（约 [\d.]+ 万 token）$/.exec(texts[0]);
+    // 首拍：块数 + 区域规模（压缩期间此前 1–3 分钟毫无提示，像挂死）。
+    // 标记前缀 = UI 落「卷内贴黄」的判据（COMPACTION_NOTICE_MARK）：不带它，info 级
+    // 通知会被 chat-stream 的通知政策整条丢弃（2026-09-24 真机事故：压缩成功、界面无痕）。
+    expect(texts[0].startsWith(COMPACTION_NOTICE_MARK)).toBe(true);
+    const head = /共 (\d+) 块（约 [\d.]+ 万 token）$/.exec(texts[0]);
     expect(head).not.toBeNull();
     const total = Number(head![1]);
     expect(total).toBeGreaterThan(1);
     // 逐块完成（长杆唯一可读的真进度：第 i/N 块 + 已用秒数）
     const seq = texts
-      .map((t) => /^压缩中 · 第 (\d+)\/(\d+) 块完成（用时 \d+s）$/.exec(t))
+      .map((t) => /第 (\d+)\/(\d+) 块完成（用时 \d+s）$/.exec(t))
       .filter((m): m is RegExpExecArray => m !== null)
       .map((m) => [Number(m[1]), Number(m[2])]);
     expect(seq.length).toBeGreaterThan(1);
@@ -568,6 +574,7 @@ describe('compaction pipeline E2E', () => {
     expect(new Set(seq.map(([, n]) => n))).toEqual(new Set([total])); // 与首拍同一个 N
     // 收尾：压前 → 压后（同口径千分位；压前读数取自折叠**之前**）
     const final = texts.at(-1)!;
+    expect(final.startsWith(COMPACTION_NOTICE_MARK)).toBe(true);
     expect(final).toContain('上下文已压缩');
     const nums = /压前 ([\d,]+) → 压后 ([\d,]+)/.exec(final);
     expect(nums).not.toBeNull();

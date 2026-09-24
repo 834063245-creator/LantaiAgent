@@ -6,6 +6,7 @@
 // 无面板级消息数组，无 sessionMessageModels 缓存，无手动同步。
 // 流式写入直接指向会话的 store — 无论哪个标签页活跃都始终正确。
 
+import { COMPACTION_NOTICE_MARK } from '../agent/agent-compaction';
 import type { TurnPair } from '../agent/agent-session-state';
 import type { AgentEvent, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
@@ -17,7 +18,15 @@ import { refreshPinnedAssetSnapshots } from '../state/canvas-store';
 import { showToast, TOAST_HOLD_MS, TOAST_LONG_HOLD_MS } from '../state/toast-store';
 import { autoTitleSessionIfDefault } from './chat-session';
 import { bumpChat, getChatStore, msgStoreFor } from './chat-store';
-import type { AssistantMessage, ChatMessage, FileAttachment, MessageId, PlanPart, UserMessage } from './message-model';
+import type {
+  AssistantMessage,
+  ChatMessage,
+  FileAttachment,
+  MessageId,
+  NoticeMessage,
+  PlanPart,
+  UserMessage,
+} from './message-model';
 import { createAssistantMessage, createNoticeMessage, createUserMessage } from './message-model';
 import { applyAssetUpdateToExistingParts, applyEventToParts } from './part-mutator';
 import { isSubagentSpawnTool } from './tool-semantics';
@@ -198,7 +207,8 @@ export function markTurnError(ctx: StreamContext, text: string, level: 'warn' | 
 
 /** Agent 层系统通知（EventKind.Notice）分流（2026-08-31 贴黄拆迁）：
  *  - error → 回合墓碑（贴当前回合尾）
- *  - warn  → toast 长显（说完即走）+ **挂起类另落卷内贴黄**（见下）
+ *  - 长杆类（压缩 / 挂起，见下）→ **卷内贴黄**（持久、贴回合）
+ *  - warn  → toast 长显（说完即走）
  *  - info  → 丢弃。agent 侧日志已记；goal 轮播/操作反馈是噪音，且 goal
  *            终结结果由 UI 层 _notifyGoalResult 单独播报，不重复。
  *
@@ -206,10 +216,21 @@ export function markTurnError(ctx: StreamContext, text: string, level: 'warn' | 
  *  而 toast 只活 6.4s——用户看到的是「转圈 + 无任何解释」，实测被读成「Agent 挂了」
  *  并两次手动停止。故 stall 类通知额外**落一条卷内贴黄**（持久、贴回合）：
  *  卷案是用户唯一会回头看的地方。同回合只落一条（判据 = 本回合来文之后已有带
- *  标记的贴黄），后续重试仍只走 toast（不刷屏）。 */
+ *  标记的贴黄），后续重试仍只走 toast（不刷屏）。
+ *
+ *  ⚡ 2026-09-24 压缩同形事故：压缩是 30 秒–3 分钟的长杆，其进度通知是 info 级
+ *  ⇒ 被上面这条「info 丢弃」整条吃掉，用户「什么都没看到」并在压缩成功后手动停止
+ *  运行（事件账里 outcome=summary、压前 295,017 → 压后 22,281）。故
+ *  `COMPACTION_NOTICE_MARK` 类通知一律落卷内贴黄（每块一条 —— 那正是用户要的
+ *  心跳；这一域动作稀有且昂贵，不适用挂起的「只落一条」去重）。 */
 export function handleAgentNotice(ctx: StreamContext, text: string, level: string): void {
   if (level === 'error') {
     markTurnError(ctx, text || '未知错误', 'error');
+    return;
+  }
+  if (text.startsWith(COMPACTION_NOTICE_MARK)) {
+    appendVolumeNotice(ctx, text, level === 'info' ? 'info' : 'warn');
+    if (level === 'warn') showToast(text, 'warn', TOAST_LONG_HOLD_MS);
     return;
   }
   if (level !== 'warn') return;
@@ -227,13 +248,21 @@ function hasStallNoticeThisTurn(msgs: readonly ChatMessage[]): boolean {
   return false;
 }
 
-/** 挂起贴黄落卷：插在流式助手之前（本轮读序 = 来文 → 贴黄 → 正文）。 */
+/** 挂起贴黄落卷：同回合只一条（重试不刷屏）。 */
 function appendStallNotice(ctx: StreamContext, text: string): void {
   const sid = ctx.getStreamingAssistantId();
   const target = _resolveSessionTarget(ctx, sid);
   const msgs = target ? target.messages : ctx.getActiveMessages();
   if (hasStallNoticeThisTurn(msgs)) return;
-  const notice = createNoticeMessage(text, 'warn');
+  appendVolumeNotice(ctx, text, 'warn');
+}
+
+/** 卷内贴黄落卷：插在流式助手之前（本轮读序 = 来文 → 贴黄 → 正文）。 */
+function appendVolumeNotice(ctx: StreamContext, text: string, level: NoticeMessage['level']): void {
+  const sid = ctx.getStreamingAssistantId();
+  const target = _resolveSessionTarget(ctx, sid);
+  const msgs = target ? target.messages : ctx.getActiveMessages();
+  const notice = createNoticeMessage(text, level);
   const assistantIdx = sid ? msgs.findIndex((m) => m.role === 'assistant' && m._id === sid) : -1;
   msgs.splice(assistantIdx >= 0 ? assistantIdx : msgs.length, 0, notice);
   if (target) {

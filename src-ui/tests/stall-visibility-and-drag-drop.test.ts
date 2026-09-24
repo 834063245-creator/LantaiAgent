@@ -31,6 +31,7 @@ vi.mock('@tauri-apps/api/webview', () => ({
   }),
 }));
 
+import { COMPACTION_NOTICE_MARK } from '../src/agent/agent-compaction';
 import { STALL_NOTICE_MARK } from '../src/agent/retry';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
@@ -112,6 +113,70 @@ describe('挂起通知的卷内留痕（2026-09-22）', () => {
     handleAgentNotice(ctx, '上下文过长，自动压缩后重试…', 'warn');
     expect(notices(ctx.getSessionMessages(1))).toHaveLength(0);
     expect(useToastStore.getState().toasts.length).toBeGreaterThan(0);
+  });
+});
+
+// ── ①b 压缩通知的卷内留痕（2026-09-24 压缩无痕事故）──
+//
+// 事故现场（假卷 37，真机）：压缩真跑了、也真成功了（事件账 outcome=summary、
+// 压前 295,017 → 压后 22,281），但界面上「什么都没看到」——因为压缩进度通知是
+// info 级，而上面那条政策把 info 整条丢弃；开头那条 warn 只活 6.4 秒 toast。
+// 用户等了一分钟无反馈，当场手动停止运行（与①的挂起同形）。
+// 判据 = agent 侧给压缩通知加 COMPACTION_NOTICE_MARK 前缀，UI 按前缀落卷内贴黄。
+
+describe('压缩通知的卷内留痕（2026-09-24）', () => {
+  beforeEach(() => {
+    useToastStore.setState({ toasts: [] });
+  });
+
+  it('压缩进度（info）→ 落卷内贴黄，且不刷 toast', () => {
+    const { msgs, assistantId, ctx } = turn();
+    handleAgentNotice(ctx, `${COMPACTION_NOTICE_MARK} 压缩中 · 共 2 块（约 27.3 万 token）`, 'info');
+    const found = notices(ctx.getSessionMessages(1));
+    expect(found).toHaveLength(1);
+    expect(found[0]?.text).toContain('共 2 块');
+    expect((found[0] as { level?: string }).level).toBe('info');
+    // 读序 = 来文 → 贴黄 → 正文
+    const seq = ctx.getSessionMessages(1).map((m) => (m._id === assistantId ? 'assistant' : m.role));
+    expect(seq).toEqual(['user', 'notice', 'assistant']);
+    expect(notices(msgs)).toHaveLength(1); // 写入的是同一份卷数组
+    expect(useToastStore.getState().toasts).toHaveLength(0); // 进度不刷 toast
+  });
+
+  it('每块一条贴黄（进度心跳不去重）——挂起的「同回合只一条」不适用', () => {
+    const { ctx } = turn();
+    handleAgentNotice(ctx, `${COMPACTION_NOTICE_MARK} 压缩中 · 共 3 块（约 60.0 万 token）`, 'info');
+    handleAgentNotice(ctx, `${COMPACTION_NOTICE_MARK} 压缩中 · 第 1/3 块完成（用时 41s）`, 'info');
+    handleAgentNotice(ctx, `${COMPACTION_NOTICE_MARK} 压缩中 · 第 2/3 块完成（用时 38s）`, 'info');
+    handleAgentNotice(ctx, `${COMPACTION_NOTICE_MARK} 压缩中 · 第 3/3 块完成（用时 44s）`, 'info');
+    const texts = notices(ctx.getSessionMessages(1)).map((m) => (m as { text: string }).text);
+    expect(texts).toHaveLength(4);
+    expect(texts.filter((t) => t.includes('块完成'))).toHaveLength(3);
+  });
+
+  it('降级 / 失败（warn）→ 贴黄 + toast（失败要看见，也要留痕）', () => {
+    const { ctx } = turn();
+    handleAgentNotice(
+      ctx,
+      `${COMPACTION_NOTICE_MARK} 压缩降级 · summary truncated at the token cap (max_tokens=8192) —— 本次改用机械提取（完整历史仍保留）`,
+      'warn',
+    );
+    const found = notices(ctx.getSessionMessages(1));
+    expect(found).toHaveLength(1);
+    expect(found[0]?.text).toContain('truncated at the token cap');
+    expect(useToastStore.getState().toasts.length).toBeGreaterThan(0);
+  });
+
+  it('收尾（info）→ 贴黄带压前/压后读数', () => {
+    const { ctx } = turn();
+    handleAgentNotice(
+      ctx,
+      `${COMPACTION_NOTICE_MARK} 上下文已压缩: 83 条消息 → 摘要；压前 295,017 → 压后 22,281`,
+      'info',
+    );
+    const found = notices(ctx.getSessionMessages(1));
+    expect(found).toHaveLength(1);
+    expect(found[0]?.text).toContain('压前 295,017 → 压后 22,281');
   });
 });
 
