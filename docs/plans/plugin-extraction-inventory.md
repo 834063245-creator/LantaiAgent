@@ -317,7 +317,7 @@ manifest.json —— 包内合计 30～110 行。
 
 | 块 | 路径（物理行） | 备注 |
 |---|---|---|
-| Provider 控制台家族 8 件 | `app/panels/settings/`：ProviderPage 721 · ProviderDetail 784 · AddProviderSheet 802 · ProviderList 85 · ProviderAdvanced 102 · ProviderDocCard 161 · protocol 35 · status 50 = **2,740** | 最大单块；依赖内核 `provider/**`(5,418) + `settings.ts`。**批 1 后这是 settings-domain 名册 `impl` 的登记面（红区）** |
+| Provider 控制台家族 8 件 | ~~`app/panels/settings/`：ProviderPage 721 · ProviderDetail 784 · AddProviderSheet 802 · ProviderList 85 · ProviderAdvanced 102 · ProviderDocCard 161 · protocol 35 · status 50 = **2,740**~~ | ✅ **批 9d 已归家**（2026-09-26）：8 件整组 `git mv` 进 `plugins/builtin/settings-domain/`；有状态内核依赖面走包内桥（+23 faceDeps 键：`createProvider` / `activeLlmAdapters` / catalog 五值 / credentials 三值 / oauth 四值 / `loadProvidersDoc` / settings 三值 / `mountDialogFocus` / `Overlay`），纯模块（types / vendor-templates / thinking / custom-headers）随包内联；名册 `impl` 8 条与 NOTES 条目一并销账 ⇒ 红区 9 → **8 产物 / 23 → 15 文件 / 7,478 → 4,738 行** |
 | 内核侧样式表 | `app/panels/dock-panels/provider-settings.css` **1,346** | 与包内那份是**两套装载面**（`main.ts` 全局 vs 产物 `loadCss`） |
 | MCP / 插件 / 技能三页 | McpPage 449 · PluginsPage 377 · SkillsPage 277 = **1,103** | ✅ **批 1 已归家**（含 `preset-authoring` 192）；`PluginsPage` 反引 `plugins/loader` 经 faceDeps 运行期取用 |
 | 面板确认弹层（归属待裁） | ConfirmDialog 102 | `paper-shell` 与 `ExitConfirmDialog` 都在用 ⇒ 跨插件原语住错目录（§4-3 判内核共享原语，随批 9 挪位） |
@@ -468,12 +468,11 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-26 基线**（批 9c-1~3 后重测）：红 **9 产物 / 23 文件 / 7,478 行**（§1 的 7 条 +
-§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`；批 8 新产物 `paper-renderers` 零 impl 认领 ⇒ 红区不动）；
-绿 119 平台 + **106 已认领**；灰 **78 文件 / 22,072 行**（批 8 把渲染面判据层收成 `shared`：
+**2026-09-26 基线**（批 9d 后重测）：红 **8 产物 / 15 文件 / 4,738 行**（§1 的 7 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行）；
+绿 119 平台 + **112 已认领**；灰 **64 文件 / 19,186 行**（批 8 把渲染面判据层收成 `shared`：
 `markdown` / `marks` / `tool-text` / `fold` / `translate` 五件进 paper-renderers 与 renderers 的
 shared 名单；批 9a 把 token-meter / acp 登记进平台白名单，9c-1~3 把 selection / virtualize /
-group 三件实现随 paper-shell 包）。
+group 三件实现随 paper-shell 包，9d 把 Provider 控制台 8 件随 settings-domain 包）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -492,7 +491,7 @@ group 三件实现随 paper-shell 包）。
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
-| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」。余：9c 拆分组五件 → 9d provider 控制台 → 9e 常驻面（含 `ctx.overlays` 新槽，开工前问一次）→ 9f `settings.ts` + `workspace.ts` → 9g 收尾。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
+| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9d 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」。余：9c 拆分组五件 → 9d provider 控制台 → 9e 常驻面（含 `ctx.overlays` 新槽，开工前问一次）→ 9f `settings.ts` + `workspace.ts` → 9g 收尾。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -735,6 +734,15 @@ group 三件实现随 paper-shell 包）。
   `inkSourcesFor`/`measureSignature`（墨迹走查与块级测高同一台引擎）⇒ **9c-4 的切法据此重画**：
   内核留「墨迹路径 + 实测回写账（`clearObservedHeightsForSession`）+ 它们用到的 token 子集」，
   随包走「块级测高 API + 镜像常量 + 卷首测高 + `injectPaperTokens`」。
+- **9d Provider 控制台归家**（`9868a5f4`，2026-09-26）：8 件 2,740 行（ProviderPage 721 ·
+  ProviderDetail 784 · AddProviderSheet 802 · ProviderList 85 · ProviderAdvanced 102 ·
+  ProviderDocCard 161 · protocol 35 · status 50）整组 `git mv` 进 `settings-domain/`；
+  桥面按「有状态走桥、纯模块内联」切（+23 faceDeps 键 ⇒ 279 → **297**，撤 `ProviderPage` 键；
+  纯模块 provider/types · vendor-templates · thinking · custom-headers 随包内联，不制造第二份状态）；
+  名册 `impl` 8 条 + NOTES 条目销账（半壳只剩 paper-shell）⇒ 红区 **9 → 8 产物 / 23 → 15 文件 /
+  7,478 → 4,738 行**、灰区 **78 → 64 文件 / 22,072 → 19,186 行**。
+  **真机验收**（重建 exe + CDP）：faceDeps **297 键**、11 个探针键类型全对（`ProviderPage` 键已撤）、
+  `settings-domain/entry.js` **881 KB** 动态 import 成功且含 `AddProviderSheet` / `createProvider` 真身。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
