@@ -266,7 +266,7 @@ manifest.json —— 包内合计 30～110 行。
 | `browser-desktop-domain` | `agent/tools/browser.ts` **912** | ✅ **批 4a 已归家**（桥位仅 5 运行时 + 1 类型） |
 | `search-domain`·`web-domain` | `agent/tools/manifest-tools.ts` 187 | ✅ **批 4b 已归家**（按域拆两半：`search-domain/search-tools.ts` + `web-domain/web-tools.ts`；随行 `tools/search-assembly.ts` 169 随 search 走——**一个文件不能同时住两个包，故按域拆**） |
 | `agent-domain` | ~~`agent/tools/subagent.ts` 265~~ | ✅ **批 7a 已归家**（2026-09-24）：三个工具工厂进包 `plugins/builtin/agent-domain/subagent-tools.ts`；`SubAgentSpawner` 类型上收内核契约 `agent/subagent-tools-contract.ts`（装配输入，内核面先于产物）；登记表 `agent/subagent-tools-impl.ts`（feature 语义）；**退役 `agent/tool.ts:244` 的值 re-export**（4c 裁定① 同款）；13 个测试改指包内 |
-| `asset-domain` | `agent/tools/show-asset.ts` 294 | `asset-store.ts` 137 · `confirm-registry.ts` 80 |
+| `asset-domain` | ✅ **批 9g-2 已归家**（2026-09-26）：`agent/tools/show-asset.ts` 294 `git mv` 成 `plugins/builtin/asset-domain/asset-tools.ts`（逐字搬移；`index.ts` 直连，不再经桥取工厂）；桥面翻面成**内生依赖面** 13 个 faceDeps 键（asset-kinds 7 值 + asset-store 4 值 + confirm-registry 1 值 + `defineTool`，`Tool` 是类型不需键） | `asset-store.ts` 137 · `confirm-registry.ts` 80 · `asset-kinds.ts` 581 三条转 `shared`（都是内核 agent / executor / UI 同读同写的**有状态单例**，内联 = 副本状态分裂；§4-10 的 kind **内容表拆分仍欠**） |
 | `wait-domain` | `agent/tools/wait.ts` 102 | — |
 | `office-domain` | `agent/tools/office.ts` 576 | — |
 | `cordis-domain` | `agent/tools/cordis.ts` 200 | — |
@@ -274,7 +274,7 @@ manifest.json —— 包内合计 30～110 行。
 | `skill-domain` | `agent/skills.ts` 377 + `agent/builtin-skills.ts` **358（出厂技能内容）** | — |
 | `task-domain` | `agent/task.ts` 178 + `agent/task-board.ts` 319 | `board-persistence.ts` 121 · `tools/board-status.ts` 78 |
 | `capability-segments` | `agent/blueprint.ts` 389（14 项 capability 定义；`AgentBlueprint` 类=机制留内核） | — |
-| `prompt-segments` | `composition/prompt-sections.ts` 244（**9 段**文案真源——实测 id 数，旧记「13 段」是合并前的数；**拼装序 = 字节契约**） | — |
+| `prompt-segments` | ✅ **批 9g-1 已归家**（2026-09-26）：`composition/prompt-sections.ts` 244 按「内容 vs 机制」切开——9 段文案（+ helpers `hasProject`/`noProject`/`modelIdentityLines`/`memoryText`/`envText` + `firstPartyPromptSections`）**195 行进包** `plugins/builtin/prompt-segments/sections.ts`，数组序原样（序 = 拼装序 = 字节契约） | 内核 95 行留契约与拼装：`PromptSectionContext` / `PromptSection` 类型 + `assembleSystemPrompt`（+ `activePromptContributions` 取面）；桥面清零（该包 host.ts 零 faceDeps 需求） |
 
 ### 1.2 半壳（3）：插件对象已进包，provider 实现仍在内核 —— 2,928 行
 
@@ -326,7 +326,7 @@ manifest.json —— 包内合计 30～110 行。
 
 | 内容 | 路径（行数） | 应去哪 |
 |---|---|---|
-| 出厂资产 kind 表 | `agent/asset-kinds.ts` **581** | `asset-domain`（被 `renderer-service`+`paper/measure` 共享，见 §4） |
+| 出厂资产 kind 表 | `agent/asset-kinds.ts` **581** | `asset-domain`（被 `renderer-service`+`paper/measure` 共享，见 §4） | 🟡 **批 9g-2 判内核共享**（名册转 `shared`，桥出 7 值）：注册表机制与 kind 内容表同处一文件、8 处内核消费者（`agent.ts` · `streaming-executor` · `asset-store` · `renderer-service` · `paper/measure` …）⇒ 按 §4-10 只搬**内容表**，**拆分仍欠**（留下个子批） |
 | 域折叠表 `DOMAIN_SPECS` | `agent/tools/domains.ts` **665** | 各域产物（折叠算法留内核） |
 
 ### 2.3 `agent/**` 里的整块能力（18 之外，连空壳都没有）—— ≈8,025 行
@@ -468,11 +468,12 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-26 基线**（批 9d 后重测）：红 **8 产物 / 15 文件 / 4,738 行**（§1 的 7 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行）；
-绿 119 平台 + **112 已认领**；灰 **64 文件 / 19,186 行**（批 8 把渲染面判据层收成 `shared`：
+**2026-09-26 基线**（批 9g-2 后重测）：红 **6 产物 / 11 文件 / 3,983 行**（§1 的 5 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80）；
+绿 119 平台 + **114 已认领**；灰 **61 文件 / 18,388 行**（批 8 把渲染面判据层收成 `shared`：
 `markdown` / `marks` / `tool-text` / `fold` / `translate` 五件进 paper-renderers 与 renderers 的
 shared 名单；批 9a 把 token-meter / acp 登记进平台白名单，9c-1~3 把 selection / virtualize /
-group 三件实现随 paper-shell 包，9d 把 Provider 控制台 8 件随 settings-domain 包）。
+group 三件实现随 paper-shell 包，9d 把 Provider 控制台 8 件随 settings-domain 包，9g-2 把
+asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 shared）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -491,7 +492,7 @@ group 三件实现随 paper-shell 包，9d 把 Provider 控制台 8 件随 setti
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
-| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9d 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」。余：9c 拆分组五件 → 9d provider 控制台 → 9e 常驻面（含 `ctx.overlays` 新槽，开工前问一次）→ 9f `settings.ts` + `workspace.ts` → 9g 收尾。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
+| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9d / 9g-1~2 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）⇒ 红区 8 → **6 产物 / 11 文件 / 3,983 行**、灰区 64 → **61 文件**。余：9c-4 判定已出（测量引擎接缝，另立设计件）→ 9e 常驻面（含 `ctx.overlays` 新槽，开工前问一次）→ 9f `settings.ts` + `workspace.ts` → 9g 余项（`asset-kinds` 内容表拆 · `i18n` 清 · `bundled-engine` B暂）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -706,9 +707,9 @@ group 三件实现随 paper-shell 包，9d 把 Provider 控制台 8 件随 setti
 类型 + `PromptShelfHost`）· provider 控制台 8 件 2,740（红区已列）· 内核产品件 `workspace.ts` 1,076
 （8 个内核 import 方）· `settings.ts` 705（**29 个** import 方）· `ui/lsp-client.ts` 655（§4-13）。
 
-**子批切分**（施工单 §3）：9a 账目登记 + 双写收口 + `ConfirmDialog` 挪位 → 9b `ctx.lsp` 入内核清单（13→14）→ 9c 拆分组五件（3,475）→ 9d provider 控制台（2,740）→ 9e 常驻面（≈2,660，含 `ctx.overlays`
+**子批切分**（施工单 §3）：9a 账目登记 + 双写收口 + `ConfirmDialog` 挪位 → 9b `ctx.lsp` 入内核清单（13→14）→ 9c 拆分组五件（3,475；9c-4 判定见下）→ 9d provider 控制台（2,740）→ 9e 常驻面（≈2,660，含 `ctx.overlays`
 **新槽**——按 §7 路由属「新增通道」层，开工前问一次）→ 9f `settings.ts` + `workspace.ts`（≈1,780）
-→ 9g `asset-kinds` 拆 / `i18n` 清 / `prompt-sections` 文案段 / `bundled-engine`（B暂，前置=引擎链路真机验收）。
+→ 9g `asset-kinds` 内容表拆 / `i18n` 清 / `prompt-sections` 文案段（✅ 9g-1）/ `show-asset` 三工具（✅ 9g-2，随行 `asset-kinds` 判 shared）/ `bundled-engine`（B暂，前置=引擎链路真机验收）。
 
 **9a / 9b / 9c-1~3 落地（2026-09-26）**：
 
@@ -754,6 +755,29 @@ group 三件实现随 paper-shell 包，9d 把 Provider 控制台 8 件随 setti
   `paper/ink.ts` / `minimap-core.ts` / `state/messages-store.ts` 改走 seam 取用；引擎（含 tokens）整件
   随 paper-shell 包，并把 paper-shell 标 `required`（引擎缺席 = 纸面高度全崩）。代价：一次契约面变更 +
   三处内核读面改指 + 产物 required 语义；收益：**改版式 token 不再重建 exe**（taste-ledger 那条现状消失）。
+
+- **9g-1 prompt 段文案随包**（`c1ddac47`，2026-09-26）：`composition/prompt-sections.ts` 244 按
+  「内容 vs 机制」切开——helpers + 9 段定义 + `firstPartyPromptSections()` **195 行**进包
+  `plugins/builtin/prompt-segments/sections.ts`（逐字搬移、**数组序原样** = 拼装序 = 字节契约）；
+  内核留 95 行（`PromptSectionContext` / `PromptSection` 类型 + `assembleSystemPrompt` +
+  `activePromptContributions` 取面）。该包桥面**清零**（host.ts 零 faceDeps 需求）⇒ 宿主面
+  297 → **296 键**；名册 impl 销账 + NOTES 删除 ⇒ 红区 8 → 7 产物 / 15 → 14 文件 /
+  4,738 → 4,494 行；空壳集 6 条（5 纯壳 + 1 半壳）。段清单、段序、拼装输出逐字不变
+  （convergence 双轨基线零改动为证）。
+- **9g-2 asset 域三工具随包**（`ff6c3315`，2026-09-26）：`agent/tools/show-asset.ts` 294 `git mv`
+  成 `plugins/builtin/asset-domain/asset-tools.ts`（逐字搬移；`index.ts` 直连，不再经桥取工厂）；
+  桥面从「桥一个工厂」翻面成**内生依赖面 13 键**（asset-kinds 7 值 · asset-store 4 值 ·
+  confirm-registry 1 值 · `defineTool`——`Tool` 是类型不需键），撤 `createAssetTools` 键 ⇒
+  宿主面 296 → **307 键**（指纹 414f1382 → **f30be5fe**）。判据：这三者都是内核
+  agent / streaming-executor / UI **同读同写的单例**，内联 = 副本状态分裂（工具写副本、
+  界面读内核那份）⇒ 名册三条转 `shared`（§4-10 的 kind **内容表拆分仍欠**）。红区 7 →
+  **6 产物 / 14 → 11 文件 / 4,494 → 3,983 行**；灰区 64 → **61 文件 / 19,186 → 18,388 行**；
+  空壳集 **5 条（4 纯壳 + 1 半壳）**。行为变更：无（三工具同名 / 同 schema / 同输出、
+  工具表条目原位不动，convergence 双轨零漂移）。
+- **9g 余项**（下次直接接）：`asset-kinds` 581 的 **kind 内容表拆**（机制留内核 + 内容随包，
+  需一次登记面设计；现判 `shared`）· `i18n.ts` 半尸体清（98 → 21）· `bundled-engine` 186（B暂，
+  前置 = 引擎链路真机验收）。9e（常驻面，含 `ctx.overlays` 新槽）/ 9f（`settings.ts` + `workspace.ts`）
+  仍在队首。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
