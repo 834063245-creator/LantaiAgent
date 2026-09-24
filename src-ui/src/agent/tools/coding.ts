@@ -17,7 +17,7 @@ import { seamScopeOf } from '../../composition/seam-scope';
 import { activeShellProviders, type ShellAction } from '../../composition/shell-service';
 import { parseGitLogCommits, parseGitStatusPorcelain } from '../git-porcelain';
 import { stickyCwdOf } from '../session-context';
-import type { Tool, ToolExecutor } from '../tool';
+import type { CodingToolsUI, Tool, ToolExecutor } from '../tool';
 import { defineTool, toInputJsonSchema } from './define-tool';
 
 /** 发起方身份 = executor 注入的 `_owner_id`（bus id），缺失回退 `_agent_id`
@@ -81,35 +81,10 @@ export function shellExecute(
   return provider.execute(action, args, { dispatch: exec, onProgress, signal });
 }
 
-/** ask_user 单条问题（单问表单或批量 questions 数组元素）。 */
-export interface AskUserQuestionItem {
-  question: string;
-  header?: string;
-  options?: { label: string; description: string }[];
-  multiSelect?: boolean;
-}
-
-/** ask_user 工具的 UI 请求 — 由 workspace 注入的回调转发到 UI 总线。
- *  保持 agent 层不 import ui/ 模块。
- *  单问：question/options/multiSelect + callback(answer)；
- *  批量：questions 一次推全部 + callback(answers)（与 questions 对齐，未答/跳过为 null）。
- *  并发会话（2026-08-26）：agentId = 发起 Agent 的 bus id（executor 注入
- *  _owner_id，主 Agent 即 main-<ts>-<rand>）——UI 据此路由到所属卷的提问卡。 */
-export interface AskUserRequest {
-  id: string;
-  agentId?: string;
-  question?: string;
-  header?: string;
-  options?: { label: string; description: string }[];
-  multiSelect?: boolean;
-  /** 批量多问：完整题目列表，UI 分页收集后一次性返回 */
-  questions?: AskUserQuestionItem[];
-  callback: (answer: string[] | null | (string[] | null)[]) => void;
-}
-
-export interface CodingToolsUI {
-  askUser?: (req: AskUserRequest) => void;
-}
+// ── UI 依赖面**类型**已上收内核契约（2026-09-24 批 4c 前置）──
+// `AskUserQuestionItem` / `AskUserRequest` / `CodingToolsUI` 三件现定义在
+// `agent/tool.ts`（消费方住内核：agent-builder / tool-rows / ask-store）；
+// 五族各归其包时，各包只需 `import type { … } from '<内核>'`，不构成反向依赖。
 
 // ═══════════════════════════════════════════════════════════════
 // fs 域模型族 zod 真源（kernel-capability-c3-design.md fs 域收口 R3-b 后，

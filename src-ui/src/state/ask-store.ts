@@ -16,7 +16,7 @@
 
 import { create } from 'zustand';
 import { agentSessionState } from '../agent/agent-session-state';
-import type { AskUserRequest } from '../agent/tools/coding';
+import type { AskUserRequest } from '../agent/tool';
 
 /** ask_user 的一次提问请求（callback 由 agent 侧持有，答案经其回传）。
  *  单问 → string[] | null；批量 → (string[] | null)[] | null（对齐 questions）。 */

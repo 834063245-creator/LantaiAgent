@@ -201,5 +201,43 @@ export async function agentInvoke<T = string>(name: string, args: Record<string,
 // Tool 实现已移至 agent/tools/
 // ═══════════════════════════════════════════════════════
 
+// ── UI 依赖面契约（2026-09-24 批 4c 前置：类型上收内核）──
+// 这三件原定义在 `agent/tools/coding.ts`（一文件载五族），而它们的**消费方住内核**
+// （`agent/runtime/agent-builder.ts` 的 onAskUser 回调 · `composition/tool-rows.ts` 的
+// 装配 UI 袋 · `state/ask-store.ts` 的提问卡）⇒ 五族各归其产物包之前，先把**类型面**
+// 上收为本文件的内核契约（类型面不构成「宿主→插件」反向依赖，值面才是）。
+// 语义不变：只是搬家，字段逐字保留。
+
+/** ask_user 单条问题（单问表单或批量 questions 数组元素）。 */
+export interface AskUserQuestionItem {
+  question: string;
+  header?: string;
+  options?: { label: string; description: string }[];
+  multiSelect?: boolean;
+}
+
+/** ask_user 工具的 UI 请求 — 由 workspace 注入的回调转发到 UI 总线。
+ *  保持 agent 层不 import ui/ 模块。
+ *  单问：question/options/multiSelect + callback(answer)；
+ *  批量：questions 一次推全部 + callback(answers)（与 questions 对齐，未答/跳过为 null）。
+ *  并发会话（2026-08-26）：agentId = 发起 Agent 的 bus id（executor 注入
+ *  _owner_id，主 Agent 即 main-<ts>-<rand>）——UI 据此路由到所属卷的提问卡。 */
+export interface AskUserRequest {
+  id: string;
+  agentId?: string;
+  question?: string;
+  header?: string;
+  options?: { label: string; description: string }[];
+  multiSelect?: boolean;
+  /** 批量多问：完整题目列表，UI 分页收集后一次性返回 */
+  questions?: AskUserQuestionItem[];
+  callback: (answer: string[] | null | (string[] | null)[]) => void;
+}
+
+/** 工具族装配期注入的 UI 袋（当前只有 ask_user 回调）。 */
+export interface CodingToolsUI {
+  askUser?: (req: AskUserRequest) => void;
+}
+
 export { createCodingTools } from './tools/coding';
 export { createSubAgentTool, type SubAgentSpawner } from './tools/subagent';

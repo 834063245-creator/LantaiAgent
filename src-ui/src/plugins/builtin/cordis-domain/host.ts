@@ -9,6 +9,5 @@
 
 export type { DynamicApproval } from '../../../agent/dynamic-runner/dynamic-runner-service';
 export { activeDynamicRunner } from '../../../agent/dynamic-runner/dynamic-runner-service';
-export type { Tool } from '../../../agent/tool';
-export type { CodingToolsUI } from '../../../agent/tools/coding';
+export type { CodingToolsUI, Tool } from '../../../agent/tool';
 export { defineTool } from '../../../agent/tools/define-tool';

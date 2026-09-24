@@ -36,8 +36,7 @@ import type { SubAgentPool } from '../agent/coordinator';
 import type { MemoryManager } from '../agent/memory';
 import type { SkillRegistry } from '../agent/skills';
 import type { TaskManager } from '../agent/task';
-import type { Tool, ToolExecutor } from '../agent/tool';
-import type { CodingToolsUI } from '../agent/tools/coding';
+import type { CodingToolsUI, Tool, ToolExecutor } from '../agent/tool';
 import type { SubAgentSpawner } from '../agent/tools/subagent';
 
 /** 行装配上下文 — buildToolRegistry 提供的全部运行时依赖。
