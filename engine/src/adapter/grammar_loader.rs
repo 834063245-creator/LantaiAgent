@@ -1,18 +1,40 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// GrammarLoader — 通过 .dll/.so 动态加载 tree-sitter 语法。
+// GrammarLoader — 通过 .dll/.so/.dylib 动态加载 tree-sitter 语法。
 // 静态语法（核心语言）通过 register_static() 预注册。
 // 动态语法在首次使用时从 <engine_dir>/grammars/ 惰性加载。
 //
-// ponytail: 约定优于配置。DLL 命名为 tree-sitter-{name}.dll，
-// 符号为 tree_sitter_{name}。扩展名映射使用内置的小型映射表。
+// ponytail: 约定优于配置。共享库命名为 tree-sitter-{name}.<平台后缀>
+// （Windows .dll / Linux .so / macOS .dylib），符号为 tree_sitter_{name}。
+// 扩展名映射使用内置的小型映射表。
+//
+// 平台后缀的**真源**是 `native_shared_lib_exts()`：扫描与 `build.ps1` /
+// `build.sh` 的产物后缀都必须从它取值，不得各写一份——历史上扫描只认
+// `.dll`/`.so` 两档而 macOS 产物是 `.dylib`，导致 macOS 上动态语法**静默
+// 全部失效**（scan_dir 一个都不命中，不报错、不留痕）。新增平台时改这一处。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tree_sitter::Language;
 use tree_sitter_language::LanguageFn;
+
+/// 当前平台 tree-sitter 语法共享库的后缀候选（按优先级排序，取首个命中）。
+///
+/// 只列本平台真会产出的后缀：Windows 上不存在 `.so`/`.dylib`，把它们留在
+/// 候选里只会让 `tree-sitter-markdown.dylib.bak` 这类文件被误当语法登记。
+/// 与 `grammars/build.ps1`（Windows → .dll）和 `grammars/build.sh`
+/// （Darwin → .dylib / 其他 → .so）逐一对应。
+fn native_shared_lib_exts() -> &'static [&'static str] {
+    if cfg!(target_os = "windows") {
+        &[".dll"]
+    } else if cfg!(target_os = "macos") {
+        &[".dylib"]
+    } else {
+        &[".so"]
+    }
+}
 
 /// 已加载的语法：持有 Library 句柄以保持 Language 有效。
 /// 静态链接语法为 `None`（数据位于 .text 段，无需卸载）。
@@ -225,8 +247,11 @@ impl GrammarLoader {
         exts
     }
 
-    /// 扫描 grammars/ 目录中的 tree-sitter-*.dll 文件。
-    /// 返回 扩展名 → 可发现语法（DLL 全路径 + 符号 + 扩展名组）映射。
+    /// 扫描 grammars/ 目录中的 tree-sitter-* 共享库。
+    /// 返回 扩展名 → 可发现语法（共享库全路径 + 符号 + 扩展名组）映射。
+    ///
+    /// 后缀由 `native_shared_lib_exts()` 决定（Windows .dll / Linux .so /
+    /// macOS .dylib）——与构建脚本产物一一对应。
     fn scan_dir(dir: &Path) -> HashMap<String, AvailableGrammar> {
         let mut map: HashMap<String, AvailableGrammar> = HashMap::new();
 
@@ -240,13 +265,13 @@ impl GrammarLoader {
                 continue;
             };
 
-            // 匹配：tree-sitter-{name}.dll 或 tree-sitter-{name}.so
-            let stem = if cfg!(windows) {
-                name.strip_suffix(".dll")
-            } else {
-                name.strip_suffix(".so")
+            // 匹配 tree-sitter-{name}{本平台后缀}；异平台后缀不参与匹配。
+            let Some(stem) = native_shared_lib_exts()
+                .iter()
+                .find_map(|ext| name.strip_suffix(ext))
+            else {
+                continue;
             };
-            let Some(stem) = stem else { continue };
             let Some(grammar_name) = stem.strip_prefix("tree-sitter-") else {
                 continue;
             };

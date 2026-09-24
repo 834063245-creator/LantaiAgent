@@ -410,7 +410,12 @@ impl McpServer {
             },
             "serverInfo": {
                 "name": "hologram-engine",
-                "version": "4.0.0",
+                // 取自 crate 版本（Cargo.toml），不再硬编码。
+                // 原来这里写死 "4.0.0"，而 CLI `--version` 走的是
+                // env!("CARGO_PKG_VERSION")（当时 1.0.1）——同一个二进制的
+                // 版本号从两条路报出两个值，宿主做诊断时只会更糊涂。
+                // 单一真源 = Cargo.toml。
+                "version": env!("CARGO_PKG_VERSION"),
                 "author": "Wenbing Jing",
                 "license": "MIT",
                 "homepage": "https://github.com/834063245-creator/HoloGram"

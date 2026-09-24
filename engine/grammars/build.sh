@@ -52,6 +52,12 @@ build_grammar() {
         "${src_files[@]}"
     )
 
+    # markdown 的 C++ scanner 需要这个 flag（见本脚本头部注释与 build.ps1）。
+    # 纯 C 的 kotlin / toml 不受影响，只出 unused-function 警告。
+    if [ "$lang" = "markdown" ]; then
+        gcc_args+=(-DTREE_SITTER_MARKDOWN_AVOID_CRASH)
+    fi
+
     echo "  gcc ${gcc_args[*]}"
     gcc "${gcc_args[@]}"
 

@@ -55,6 +55,12 @@ function Build-Grammar($lang) {
         "-static-libgcc", "-static-libstdc++"
     ) + $srcFiles
 
+    # markdown 的 C++ scanner 需要这个 flag（见文件头注释）。纯 C 的
+    # kotlin / toml 不受影响，只出 unused-function 警告。
+    if ($lang -eq "markdown") {
+        $gccArgs += "-DTREE_SITTER_MARKDOWN_AVOID_CRASH"
+    }
+
     Write-Host "  gcc $($gccArgs -join ' ')"
     & gcc @gccArgs
 

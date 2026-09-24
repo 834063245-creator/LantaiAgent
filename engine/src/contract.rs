@@ -81,7 +81,40 @@
 /// 连带记一条本地门禁的裂缝：CI 的 `actions-rust-lang/setup-rust-toolchain@v1` 默认塞
 /// `RUSTFLAGS=-D warnings`，本机 `.cargo/config.toml` 没有这条——于是同一个文件本地是
 /// warning、CI 是 error；**本地 `cargo test` 全绿并不代表 CI 绿**。
-pub const ENGINE_CONTRACT_VERSION: u32 = 7;
+/// v8（macOS 动态语法面修复）：**模型工具面形状零变更**——工具名 / schema /
+/// 输出形态 / 壳方法清单照旧，消费方无需跟改；本版修的是**非 MCP 面**的
+/// 一条 macOS 静默失效路径，因 `grammar_loader.rs` 属契约面（语法加载能力
+/// 是「同一二进制跨宿主消费」承诺的一部分）而连带升版。
+///   ① `GrammarLoader::scan_dir` 的平台后缀判定原本只有两档——`cfg!(windows)`
+///      → `.dll`，其余 → `.so`。而 `grammars/build.sh` 在 Darwin 上产出的后缀是
+///      `.dylib`（该脚本自身的 case 分支与注释都如此声明）。两者对不上，后果是
+///      **macOS 上动态语法一个都扫不到**：`kotlin` / `markdown` / `toml` 三个
+///      动态语法全部静默退化为「无语法」，既不报错也不留痕，只表现为解析质量
+///      下降。本版把后缀真源收敛到新增的 `native_shared_lib_exts()`
+///      （Windows .dll / macOS .dylib / 其余 .so），扫描与构建脚本约定同源。
+///   ② 候选只列**本平台真会产出**的后缀：Windows 上不把 `.so`/`.dylib` 留在
+///      候选里，否则 `tree-sitter-x.dylib.bak` 之类的旁支文件会被误登记为语法。
+///   ③ `grammars/build.sh` 补上 markdown 语法必需的 `-DTREE_SITTER_MARKDOWN_AVOID_CRASH`
+///      ——`build.ps1` 的文件头注释早已声明该 flag 必需，但两个脚本都只在注释里
+///      提，实际编译命令都没带；纯 C 的 kotlin / toml 不受影响（解析器自洽，
+///      编译期只出 unused-function 警告），markdown 的 C++ scanner 才真正依赖它。
+///   备注：本版**不改变** `find_grammar_dir()` 的目录发现顺序，
+///   `HOLOGRAM_GRAMMAR_DIR` 仍为最高优先级；独立分发时把 `grammars/` 放在
+///   二进制同级的约定也不变，只是该目录内 macOS 产物现在能被真正加载。
+/// v9（MCP 握手版本号单一真源）：**模型工具面形状零变更**——工具名 / schema /
+/// 输出形态 / 壳方法清单一律照旧。修的是 `initialize` 响应里 `serverInfo.version`
+/// 的取值来源：
+///   · 原实现硬编码字符串 `"4.0.0"`，而同一个二进制的 CLI `--version` 走
+///     `env!("CARGO_PKG_VERSION")`（彼时 1.0.1）——**同一个引擎从两条路报出两个
+///     版本号**。宿主侧诊断、问题反馈、兼容性判断都会读到这个字段，取值不一致
+///     只会让归因更难，Rust 侧实测定为：`--version` → "HoloGram Engine 1.0.1"，
+///     MCP `initialize` → serverInfo.version "4.0.0"。
+///   · 现改为 `env!("CARGO_PKG_VERSION")`，单一真源 = `engine/Cargo.toml`
+///     的 `package.version`，与 `--version`、以及插件侧下载产物所用的
+///     Release tag（`v<version>`）三处自此同源。
+///   消费方无需跟改：`serverInfo.version` 本来就是自由字符串，本版只是让它
+///   从「错的常量」变成「对的值」。
+pub const ENGINE_CONTRACT_VERSION: u32 = 9;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard（本文件的
 /// `contract_face_fingerprint_matches`）对拍 `CONTRACT_FACE_FINGERPRINT`：
@@ -106,7 +139,7 @@ pub const ENGINE_CONTRACT_FILES: &[&str] = &[
 /// 实现细节：换行归一（CRLF→LF）——工作树 EOL 因 `.gitattributes` 归一而可能
 /// 与索引不同，指纹必须跟着**仓库内容**走；contract.rs 自身在哈希前剔除本行
 /// （自指），其余内容照常参与。
-pub const CONTRACT_FACE_FINGERPRINT: &str = "6e9f1b09a493301a";
+pub const CONTRACT_FACE_FINGERPRINT: &str = "a7bb41aeb712a0f3";
 
 /// 壳专属方法参数（最小形状；Phase 1 接线时并入 dispatch）。
 pub struct ShellParam {
