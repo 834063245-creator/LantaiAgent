@@ -587,6 +587,9 @@ manifest.json —— 包内合计 30～110 行。
   multiagent-comm 同一处），convergence phase-1 快照因此零改动。
 - **验收**：vitest 406 文件 / 4,305 用例全绿 · build + build:builtin-plugins · biome ci 0/0 ·
   **convergence 双轨基线零改动** · doc-sync + doc-check 全绿。
+- **真机验收**（重建 exe + CDP）：faceDeps **276 键**（+4）、5 个探针键类型全对；
+  `/plugins/hologram/subagent-in-process/entry.js` 554 KB 且动态 import 成功（含 `agent_merge` /
+  `agent_discover` / `runCompileTest` 真身）；`face.json` 7 键带指纹 `6cd49b33`（保险丝 a 覆盖 35/35）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
