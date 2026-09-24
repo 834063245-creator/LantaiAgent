@@ -639,6 +639,9 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
 - **验收**：**convergence 双轨基线零改动**（goal 不经 capability/tool 通道 ⇒ 表序与工具面不动）；
   vitest / build / biome ci / doc-sync（`event-catalog` 随文件路径迁移重生成 + facts）/
   doc-check 全绿。
+- **真机验收**（重建 exe + CDP）：faceDeps **237 键**（+1）、`registerGoalImplementation` 为 function；
+  `/plugins/hologram/goal-mode/entry.js` 556 KB 在场且动态 import 成功（含 `goal_report` 真身与
+  `MAX_GOAL_ITERATIONS` 常量）；goal-mode 的 `face.json` 带当前指纹 `f84e6c5c`。
 
 ## 7. 决策路由（**把「找」与「拍」分家**）
 
