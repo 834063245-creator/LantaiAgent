@@ -613,6 +613,10 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
   `tests/helpers/plan-mode-impl.ts::installPlanModeForTest()` 复现「装载器已装载」的常驻登记态）。
 - **验收**：**convergence 双轨基线零改动**（表序零漂移的证据）；vitest / build / biome ci /
   doc-sync（`docs/facts.generated.md` 重生成：first_party_plugins 43→44）+ doc-check 全绿。
+- **真机验收**（重建 `target/release/lantai.exe` + CDP）：faceDeps **236 键**（+2）、
+  `registerPlanImplementation` 为 function、`EventKind` 在册；`/plugins/hologram/plan-mode/entry.js`
+  555 KB 在场且页面内动态 import 成功（含 enter/exit_plan_mode 真身）；plan-mode 与 fs-domain 的
+  `face.json` 均带当前指纹 `1f16f24d`（保险丝 a 已武装）。
 
 ## 7. 决策路由（**把「找」与「拍」分家**）
 
