@@ -333,7 +333,7 @@ manifest.json —— 包内合计 30～110 行。
 
 | 项 | 路径（物理行） | 应去哪 | 主障碍 |
 |---|---|---|---|
-| 上下文压缩 | `agent-compaction.ts` 1051 + `compaction-model.ts` 644 + `compaction-summarize.ts` 327 = **2,022** | 新包 `compaction/` | Agent 类 host 模式（`as unknown as CompactionHost`）；`ui/chat-stream.ts` 直引跨层常量 |
+| 上下文压缩 | `agent-compaction.ts` 1059 + `compaction-model.ts` 644 + `compaction-summarize.ts` 327 = **2,030** | 新包 `compaction/` | 🟡 **批 6d-1 已落结构切分**：记账面 → 新 `agent/compaction-tracker.ts`（`CompactionTracker` + 三账类型 + 费率三常量，留内核）；契约面 → 新 `agent/compaction-contract.ts`（`CompactionHost` + `COMPACTION_NOTICE_MARK` + `SUMMARY_OUTPUT_BUDGET`）；`agent-loop/types.ts` 一行导入改指 ⇒ 开放面契约 47→48。**6d-2（搬进产物包）施工单见 [`capability-impl-seam-design.md`](capability-impl-seam-design.md) §3**（16 项实现面 + 17 调用点 + 11 faceDeps 键） |
 | 多 Agent 通信族 | `message-bus.ts` 605 + `message-types.ts` 137 + `message-store.ts` 129 + `topology.ts` 80 + `tools/communication.ts` 159 + `tools/request.ts` 94 = **1,204** | 新包 `multiagent-comm/`（或并入 agent-domain） | MessageBus 是 runtime 级单例；**13 个测试直连** |
 | 子代理运行时 | `coordinator.ts` 420 + `lifecycle-manager.ts` 217 + `tools/merge.ts` 215 + `subagent-activity.ts` 96 + `file-ownership.ts` 73 + `tools/merge-gate.ts` 55 + `isolation-queue.ts` 13 = **1,089** | `subagent-in-process/`（与 §1.2 同批实心化） | `SubAgentPool` 由 `workspace.ts` 构造；**21 个测试直连 coordinator** |
 | token 计量（**分类缺口**） | `token-meter/**` 874 + `token-counter.ts` 89 = **963** | **待裁**：立 `ctx.tokenMeter` service 或判内核 | 既不在 13 个 service，也不是任何 feature 产物 |

@@ -90,12 +90,27 @@ agent/blueprint.ts 的两条 capability **原位置、原 id、原 phase**，
 `state-inject.ts`（231）+ `cache-store.ts`（107）**判内核共享面留内核**（消费者 `workspace.ts:17,30` /
 `runtime.ts:43` / `blueprint.ts:56` 都在内核；随批 9 workspace 拆分再动）。
 
-### 6d compaction（= 2,022 行待拆）
+### 6d compaction（= 2,030 行：1,059 + 644 + 327）
 
-先把 `agent-compaction.ts` 里 `as unknown as CompactionHost` 的宿主面写实（现在靠类型断言），
-再按「策略 vs 记账」切：`compaction-model.ts`（阈值/自动调优/工具面）+ `compaction-summarize.ts`
-（摘要提示与预算）进包，`CompactionTracker` 记账留内核（loop 契约 `agent-loop/types.ts:18` 引用）。
-`ui/chat-stream.ts:9` 的 `COMPACTION_NOTICE_MARK` 上收内核契约（跨层常量不许逆向）。
+**已落 6d-1（2026-09-24，结构切分，commit `a6fd4d9b`）**：记账面切出 → `agent/compaction-tracker.ts`
+（`CompactionTracker` + 三账类型 + 费率三常量，留内核）；策略面留 `agent/compaction-model.ts`；
+契约面上收 → `agent/compaction-contract.ts`（`CompactionHost` 逐字搬 + `COMPACTION_NOTICE_MARK` +
+`SUMMARY_OUTPUT_BUDGET`）；`agent-loop/types.ts` 一行类型导入改指 ⇒ 开放面契约 47 → **48**
+（四步流程走完）。
+
+**6d-2 施工单（实测清单，下一轮直接执行；原子操作——中途不可分两次 commit）**：
+
+| # | 动作 | 目标 |
+|---|---|---|
+| 1 | 建包 | `plugins/builtin/compaction/`：`agent-compaction.ts`（1,020 行，`git mv` 后导入改走 `./host`）· `compaction-summarize.ts`（≈327，git mv）· `compaction-strategy.ts`（= 现 `compaction-model.ts` 的策略面，git mv + 改指 `./compaction-tracker`→`./host`） |
+| 2 | 契约面补 `CompactionImplementation` | `compaction-contract.ts` 增接口：16 项——`foldHead` · `payloadMessages` · `setCompactionConfigPath` · `loadCompactionTracker` · `loadCompactionConfig` · `applyAutoTuneConfig` · `computeCompactRegion` · `compactNow` · `compactIfNeeded` · `runCompaction` · `maybeCompact` · `summarizeRegion` · `summaryProvider` · `callSummaryLLM` · `mergePartials` · `createCompactionTools`；并把 `DEFAULT_COMPACT_RATIO` / `DEFAULT_RETAIN_RATIO` 一并上收契约（agent.ts 初始化就读它们） |
+| 3 | 登记表 | `agent/compaction-impl.ts`（与 plan/goal/state-hooks 同款栈语义；**service 语义**：`requireCompactionImplementation()` 缺实现抛具名错误——但**只在调用点**求值，装配期不炸 ⇒ 测试面代价远小于 6c） |
+| 4 | 内核消费点 | `agent.ts` **17 处**调用改 `requireCompaction().xxx(this as unknown as CompactionHost, …)`（脚本可批量：现形态统一为 `<name>Impl(this as unknown as CompactionHost`）；`agent-builder.ts` 的 `createCompactionTools` 同改；`agent.ts` 的 `CompactionConfig` / `DEFAULT_*` 导入按第 2 步改指契约 |
+| 5 | 包内 | `implementation.ts`（16 项对象）+ `index.ts`（`inject: []`，apply 期登记）+ `host.ts` / `host.aliased.ts` |
+| 6 | faceDeps 新增键（11） | `registerCompactionImplementation` · `streamWithIdleTimeout` · `ChunkType` · `kernelWriteFile` · `log` · `buildCompactedSummaryMessage` · `countMessage` · `countMessages` · `countText` · `foldToolResults` · `nextFoldBoundary`（`kernelReadFile` / `EventKind` 已在册）；基线指纹重生成 + 重建 exe |
+| 7 | 测试面 | 新腰 `tests/helpers/compaction-impl.ts`（常驻登记，供触发压缩的用例）；`compaction-model.test.ts` 改指包内策略文件；`compaction-pipeline.test.ts` 的 `SUMMARY_PROMPT_BUDGET` 改指包内（另两个符号留契约）；`audit-fix-round2` / `agent-storm-instrument` 留内核 tracker（已是）；`tests/helpers/composition-boot.ts` 加插件 |
+| 8 | 登记与文档 | 名册 + `firstPartyCapabilityPlugins()`（blueprint 的 compaction 工具面经 agent-builder 读，与 capability 同族）或直接列表（按实测：`createCompactionTools` 在 agent-builder = 装配期，选**能力族清单**）；计数快照三处 + facts + `PLUGINS.md` / `docs/plugins/README.md` |
+| 9 | 验收 | vitest 全量 · build（含 build:builtin-plugins，34 产物自包含）· biome ci · convergence 双轨（基线应零改动——压缩不进工具/能力表）· doc-sync / doc-check · 真机 exe + CDP（新产物 entry.js 在场、faceDeps 键数对拍） |
 
 ## 4. 爆破半径（施工前必须逐条验过）
 
