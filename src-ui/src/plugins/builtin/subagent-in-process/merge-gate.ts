@@ -10,9 +10,7 @@
 //  已随图谱功能全量退役删除，2026-09-09——兰台侧零引擎接线后无 run_check
 //  可轮询；merge 验证面只剩编译测试 gate。）
 
-import { errText } from '../loop-helpers';
-import { execStreamedShell } from '../runtime/queued-shell';
-import type { BoardEntry } from '../task-board';
+import { type BoardEntry, errText, execStreamedShell } from './host';
 
 export interface MergeGateOptions {
   /** 项目根路径（merge 发生在主仓） */

@@ -12,11 +12,19 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 import { beforeAll } from 'vitest';
 
 beforeAll(async () => {
-  const [{ registerMultiagentComm }, { multiagentCommImplementation }] = await Promise.all([
+  const [
+    { registerMultiagentComm },
+    { multiagentCommImplementation },
+    { registerSubagentRuntime },
+    { mergeToolsImplementation, discoveryToolsImplementation },
+  ] = await Promise.all([
     import('../src/agent/multiagent-impl'),
     import('../src/plugins/builtin/multiagent-comm/implementation'),
+    import('../src/agent/subagent-runtime-impl'),
+    import('../src/plugins/builtin/subagent-in-process/implementation'),
   ]);
   registerMultiagentComm(multiagentCommImplementation);
+  registerSubagentRuntime({ mergeTools: mergeToolsImplementation, discoveryTools: discoveryToolsImplementation });
 });
 
 // jsdom 不实现 CSS.escape（react-aria ListKeyboardDelegate 依赖它拼 [data-key] 选择器）。

@@ -19,4 +19,18 @@ function requireHost(): PluginHostBridge {
 const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
+export const enqueueIsolationOp = impl.enqueueIsolationOp;
+export const errText = impl.errText;
+export const execStreamedShell = impl.execStreamedShell;
+export const parseIsolationDiff = impl.parseIsolationDiff;
+export const defineTool = impl.defineTool;
+export const registerSubagentRuntime = impl.registerSubagentRuntime;
 export const spawnSubAgentImpl = impl.spawnSubAgentImpl;
+
+export type BoardEntry = import('./host').BoardEntry;
+export type DiscoveryBoard = import('./host').DiscoveryBoard;
+export type DiscoveryToolsImplementation = import('./host').DiscoveryToolsImplementation;
+export type MergeToolsImplementation = import('./host').MergeToolsImplementation;
+export type TaskBoard = import('./host').TaskBoard;
+export type Tool = import('./host').Tool;
+export type ToolExecutor = import('./host').ToolExecutor;

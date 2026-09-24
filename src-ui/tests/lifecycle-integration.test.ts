@@ -29,10 +29,10 @@ import { SubAgentPool } from '../src/agent/coordinator';
 import { AgentLifecycleManager } from '../src/agent/lifecycle-manager';
 import { TaskBoard } from '../src/agent/task-board';
 import type { ToolExecutor } from '../src/agent/tool';
-import { createMergeTool } from '../src/agent/tools/merge';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
 import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
 import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
+import { createMergeTool } from '../src/plugins/builtin/subagent-in-process/merge-tools';
 
 // ═══════════════════════════════════════════════════════
 // Helpers

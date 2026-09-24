@@ -37,6 +37,7 @@ import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-s
 import { extractFilePath, WRITE_TOOLS } from '../../agent/file-ownership';
 import { parseGitLogCommits, parseGitStatusPorcelain } from '../../agent/git-porcelain';
 import { registerGoalImplementation } from '../../agent/goal-impl';
+import { enqueueIsolationOp } from '../../agent/isolation-queue';
 import { log } from '../../agent/logger';
 import { errText, parseFilePathArg } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
@@ -48,10 +49,12 @@ import {
 } from '../../agent/message-contract';
 import { registerMultiagentComm } from '../../agent/multiagent-impl';
 import { registerPlanImplementation } from '../../agent/plan/plan-impl';
+import { execStreamedShell } from '../../agent/runtime/queued-shell';
 import { assertSupportedSchema, extractJsonObject, validateObjectJsonSchema } from '../../agent/schema-validate';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
 import { buildCompactedSummaryMessage } from '../../agent/session-log';
 import { createSkillTool, scanSkills } from '../../agent/skills';
+import { parseIsolationDiff } from '../../agent/spill';
 import { registerStateHooksImplementation } from '../../agent/state-hooks-impl';
 import {
   buildPreReadBlock,
@@ -61,6 +64,7 @@ import {
   refreshGitBlame,
 } from '../../agent/state-inject';
 import { getSubAgentActivity, STUCK_THRESHOLD_S } from '../../agent/subagent-activity';
+import { registerSubagentRuntime } from '../../agent/subagent-runtime-impl';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { registerSubAgentTools } from '../../agent/subagent-tools-impl';
 import { createTaskTools } from '../../agent/task';
@@ -639,6 +643,11 @@ const faceDeps = {
   InboxFullError,
   MessageNotFoundError,
   TopologyDeniedError,
+  // 批 7c-1 归家：merge / discovery 两工具族进 subagent-in-process 包 ⇒ 桥登记表 + 隔离队列/编译腰
+  enqueueIsolationOp,
+  execStreamedShell,
+  parseIsolationDiff,
+  registerSubagentRuntime,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

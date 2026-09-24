@@ -7,9 +7,7 @@
 //   闭包捕获 board 和 getAgentId，不捕获 Agent 实例。
 
 import { z } from 'zod';
-import type { DiscoveryBoard } from '../discovery-board';
-import type { Tool } from '../tool';
-import { defineTool } from './define-tool';
+import { type DiscoveryBoard, defineTool, type Tool } from './host';
 
 export function createDiscoveryTools(board: DiscoveryBoard, getAgentId: () => string): Tool[] {
   return [

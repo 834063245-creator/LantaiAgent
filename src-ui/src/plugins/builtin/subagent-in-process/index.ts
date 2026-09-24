@@ -7,7 +7,8 @@
 
 import type { SubagentProvider } from '../../../composition/subagent-service';
 import type { Context } from '../../../cordis';
-import { spawnSubAgentImpl } from './host';
+import { registerSubagentRuntime, spawnSubAgentImpl } from './host';
+import { discoveryToolsImplementation, mergeToolsImplementation } from './implementation';
 
 /** 默认 in-process 子代理 provider（id 'builtin/in-process'）。 */
 export const inProcessSubagentProvider: SubagentProvider = {
@@ -33,6 +34,12 @@ export const inProcessSubagentPlugin = {
   name: 'hologram/subagent-in-process',
   inject: ['subagents'],
   apply(ctx: Context) {
+    // 批 7c-1：merge / discovery 两族实现登记进内核登记表（blueprint 两条 capability 查表取用）
+    ctx.effect(
+      () =>
+        registerSubagentRuntime({ mergeTools: mergeToolsImplementation, discoveryTools: discoveryToolsImplementation }),
+      'subagent-in-process-tools',
+    );
     ctx.effect(() => ctx.subagents.register(inProcessSubagentProvider), 'subagent-in-process');
   },
 };

@@ -22,10 +22,10 @@ import type { PlanStateManager } from './plan/plan-state';
 import { buildOutputSchemaInstruction } from './schema-validate';
 import { activeStateHooksImplementation } from './state-hooks-impl';
 import { removeSubAgentActivity, wrapSubAgentSink } from './subagent-activity';
+import { activeDiscoveryTools } from './subagent-runtime-impl';
 import type { TaskBoard } from './task-board';
 import type { Tool } from './tool';
 import { ToolRegistry } from './tool';
-import { createDiscoveryTools } from './tools/discovery';
 import { convergeRegistry } from './tools/domains';
 
 /** 子 Agent 派生对宿主 Agent 的最小状态面（成员与 Agent 类声明逐字对齐）。 */
@@ -159,7 +159,9 @@ export async function spawnSubAgentImpl(
   // archive() 永远匹配不上（onFinish 传的是子 Agent 的模型可见 id）。
   if (ag._discoveryBoard) {
     const subDiscId = agentIdOverride ?? `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    for (const tool of createDiscoveryTools(ag._discoveryBoard, () => subDiscId)) {
+    // 批 7c-1：discovery 工具族实现在产物包 subagent-in-process，经内核登记表取用
+    const discoveryTools = activeDiscoveryTools();
+    for (const tool of discoveryTools ? discoveryTools.createDiscoveryTools(ag._discoveryBoard, () => subDiscId) : []) {
       subTools.unregister(tool.name());
       subTools.register(tool);
     }

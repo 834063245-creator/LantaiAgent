@@ -16,12 +16,16 @@
 // - 同轮并发 agent_merge 串行化，消除「第二个 merge 撞假冲突」。
 
 import { z } from 'zod';
-import { enqueueIsolationOp } from '../isolation-queue';
-import { errText } from '../loop-helpers';
-import { parseIsolationDiff } from '../spill';
-import type { BoardEntry, TaskBoard } from '../task-board';
-import type { Tool, ToolExecutor } from '../tool';
-import { defineTool } from './define-tool';
+import {
+  type BoardEntry,
+  defineTool,
+  enqueueIsolationOp,
+  errText,
+  parseIsolationDiff,
+  type TaskBoard,
+  type Tool,
+  type ToolExecutor,
+} from './host';
 import { runCompileTest } from './merge-gate';
 
 // ── Merge 门禁配置 ──
