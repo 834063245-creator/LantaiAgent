@@ -656,9 +656,12 @@ export function PaperPanel() {
    * 边 = 一丝朱砂引线：**枝卷卷首 → 父卷的那个节点**（不是「父卷」这个整体）。
    * 与出处引导**同一支笔**（`tetherAnchorsAt` + `tetherPath`：屏幕坐标 / 恒定墨宽 /
    * 定种子相位 / 起笔留白 + 收笔朱点）——一屏一语言，不新造一种线。
-   * 与钉那条腿的两处不同（各记理由）：
-   *   ① **常显**——树是结构不是瞬时手势，且线要能点着溯源（hover 才出现的线点不到）；
-   *   ② **可点**——命中的是一条加粗透明「受墨带」，墨仍是那一丝（见 CSS 注）。
+   * 与钉那条腿的一处不同（记理由）：**常显**——树是结构不是瞬时手势。
+   * **2026-09-24 第二刀：纯指示·不可点**——原实现另有一处不同（受墨带承接点击、点线飞回
+   * 父卷分叉节点），账上无用户拍板依据（`session-tree-plan.md` §9「已拍板」表里没有它）
+   * ⇒ 连同受墨带 / role / tabIndex / 焦点态整批摘除。**这条腿的「常显」理由原本写着
+   * 「线要能点着溯源（hover 才出现的线点不到）」——该理由随第二刀作废**；常显仍成立，
+   * 因为血缘是结构读数（一屏几枝时线是底噪，读的是「谁从谁来」）。
    * 父节点不在视口内时线照样出屏（同款判据：锚点在世界里定、投到屏上落墨）。
    * 数据来自 `core.branchEdge`（**零 I/O**：血缘在卷日志头行里，attach 时已带入内存）。
    *
@@ -722,18 +725,6 @@ export function PaperPanel() {
     }
     return out;
   }, [branchTargets, regions, view]);
-
-  /** 点引线 = 溯源：飞到父卷那个节点（落节点中线）+ 节点点名一拍（同钉那条腿）。 */
-  const onBranchTrace = useCallback(
-    (parentSid: number, blockId: string) => {
-      const parent = regionsRef.current.find((r) => r.sessionNum === parentSid);
-      const hole = parent?.flowGeom.find((g) => g.id === blockId);
-      if (!parent || !hole) return;
-      setTracedPinId(blockId);
-      flyToPoint(String(parentSid), hole.y + hole.h / 2, parent.anchor.anchorX);
-    },
-    [flyToPoint],
-  );
 
   /* 手动接管视口（拖块用）：取消在途定位飞行 + 清挂起定位——与滚轮/拖画布/
    *  缩放同纪律（use-paper-viewport 内联同款三行）。拖块时指针贴缘自动滚屏，
@@ -943,7 +934,14 @@ export function PaperPanel() {
    * 笔 = 同一支（`.pp-tether` 的墨）；与既有两条腿两处不同（各记理由）：
    *   ① 锚面外法向（匣顶朝上 / 卷底边朝下——判例原文就是「锚面法向」，前两条腿因锚面
    *      皆竖面才写死水平）+ 臂长下限（防近水平时笔道退化成贴着弦的一条直线）；
-   *   ② **常显且可点**（结构不是瞬时手势，同枝边那一条）。
+   *   ② **常显·纯指示**（结构不是瞬时手势，同枝边那一条）。
+   * **归因更正（2026-09-24）**：本线落地时被做成**可点**（透明受墨带 + `role="button"` +
+   * `tabIndex` + 点线飞到纸脚），账上记为「同日拍板 可点溯源」——用户 2026-09-24 否认：
+   * 「我从来也没有拍板过引线本体要做成按钮」。线只负责指示「这一匣对着这一卷」，
+   * 指针与键盘都不该选中它 ⇒ 受墨带 / 点击 / 焦点态同批摘除（账本订正见 taste-ledger
+   * 同日条）。**同族两条腿一并收口**：枝边那条腿（P3 会话树）原也带受墨带，2026-09-24
+   * 第二刀同样摘除——引线一律「指示不是控件」（代价：屏幕上的「跳回父卷分叉节点」入口
+   * 随之消失，见该层注释）。
    * 无活卷 / 案头态（匣退、钮本就不画）⇒ **不画线**；「活卷在场上但流区还没落位」
    * （新卷出生后落位 effect 之前那一帧）同样不画——宁可没有线，也不指错（锚点批同款判据）。 */
   const dockTether = useMemo(() => {
@@ -956,23 +954,13 @@ export function PaperPanel() {
       regionTop: region.regionTop,
       regionHeight: region.regionHeight,
     });
-    return {
-      sid: activeSessionKey,
-      foot,
-      art: tetherPath(
-        composer.anchor,
-        worldToScreen(view, foot.x, foot.y),
-        selSeedOf(`${DOCK_TETHER_SEED}-${activeSessionKey}`),
-        DOCK_TETHER_PEN,
-      ),
-    };
+    return tetherPath(
+      composer.anchor,
+      worldToScreen(view, foot.x, foot.y),
+      selSeedOf(`${DOCK_TETHER_SEED}-${activeSessionKey}`),
+      DOCK_TETHER_PEN,
+    );
   }, [activeSessionKey, regions, view, composer.anchor]);
-
-  /** 点线 = 溯源：飞到线的那一头（本卷纸脚）——与枝边/出处引导同一语义。 */
-  const onDockTrace = useCallback(() => {
-    if (!dockTether) return;
-    flyToPoint(dockTether.sid, dockTether.foot.y, dockTether.foot.x);
-  }, [dockTether, flyToPoint]);
 
   /* 拖拽回流判据（渲染面）：与松手定夺共用 `blockReturnsToFlow`（据来源原位量）
    * ——视觉与规则同一把尺子：预览说「回槽」就必须真的回槽（2026-09-17 修正） */
@@ -1446,30 +1434,18 @@ export function PaperPanel() {
           )}
 
           {/* 枝边层（P3 会话树「枝」）：**常显**的一丝朱砂引线——枝卷卷首 → 父卷那个节点。
-              同一支笔（.pp-tether 的墨），同一层位（屏幕坐标）。与钉那条腿的差别只有两点：
-              ① 常显（树是结构）；② 可点——墨仍是那一丝，命中的是叠在其上的加粗透明
-              「受墨带」（.pp-tether-hit，见 CSS 注：不给墨本身加粗，一屏一语言）。
+              同一支笔（`.pp-tether` 的墨），同一层位（屏幕坐标）。与钉那条腿的差别只有
+              「常显（树是结构）」——**线不是控件**（2026-09-24 第二刀，同匣脚那条腿）：
+              本层原带受墨带（role=button + tabIndex + 点线飞回父卷节点），账上无用户拍板
+              依据（`session-tree-plan.md` §9 已拍板表里没有它）；用户「我从来也没有拍板过
+              引线本体要做成按钮」⇒ 受墨带 / 点击 / 焦点态整批摘除，整层 aria-hidden。
+              **代价明账**：屏幕上的「跳回父卷分叉节点」入口随之消失（枝卷卷首眉行那枚
+              「枝」缀字是纯文本、无动作）——要恢复须另立一个**真控件**入口，不复活引线按钮。
               节点不在视口内时线照样出屏（同款判据）。 */}
           {branchTethers.length > 0 && (
-            <svg className="pp-tether-layer pp-branch-layer" aria-label="会话树的枝（引线连回父卷的分叉节点）">
+            <svg className="pp-tether-layer pp-branch-layer" aria-hidden="true">
               {branchTethers.map((t) => (
                 <g key={t.childSid}>
-                  {/* 受墨带：命中的是它，墨仍是那一丝（.pp-tether-hit 注） */}
-                  {/* biome-ignore lint/a11y/useSemanticElements: 引线是 SVG 笔道——<button> 进不了 SVG 坐标系（受墨带必须与墨同形）；role/tabIndex/Enter 已补 */}
-                  <path
-                    className="pp-tether-hit"
-                    d={t.d}
-                    role="button"
-                    tabIndex={0}
-                    aria-label="回到这一枝的来处：父卷的分叉节点"
-                    onClick={() => onBranchTrace(t.parentSid, t.blockId)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onBranchTrace(t.parentSid, t.blockId);
-                      }
-                    }}
-                  />
                   <path className="pp-tether pp-branch-tether" d={t.d} />
                   <circle className="pp-tether-origin" cx={t.origin.x} cy={t.origin.y} r={2.2} />
                   <circle className="pp-tether-bead" cx={t.bead.x} cy={t.bead.y} r={2.2} />
@@ -1480,31 +1456,18 @@ export function PaperPanel() {
 
           {/* 匣脚引线（2026-09-22）：**常显**的一丝朱砂——坞的版口钮 → 活卷的纸脚。
               两端都扎在实体上（坞顶左端那枚 56×3 朱短横 / 纸的材料底缘），线只是把
-              「这一匣对着这一卷」画出来。可点（受墨带，同枝边）：飞到线的那一头
-              （本卷纸脚）。坞在 z 6 之上、线在 z 4 ⇒ 线不盖家具，坞端起点那枚朱点
-              落在钮上。坞被拖走 / 切卷 / 平移缩放都随几何重算（两端各自单一真源）。
-              无活卷 / 案头态 ⇒ 整层不在场。 */}
+              「这一匣对着这一卷」画出来。坞在 z 6 之上、线在 z 4 ⇒ 线不盖家具，坞端
+              起点那枚朱点落在钮上。坞被拖走 / 切卷 / 平移缩放都随几何重算（两端各自
+              单一真源）。无活卷 / 案头态 ⇒ 整层不在场。
+              **纯指示·不可点**（2026-09-24 归因更正）：本层曾带受墨带（`role="button"`
+              + tabIndex + 点线飞到纸脚），账上记为用户拍板，实为 agent 自记——用户原话
+              「我从来也没有拍板过引线本体要做成按钮」。线不是控件：不吃指针、不进 Tab 序
+              ⇒ 整层 `aria-hidden`（同 `.pp-pin-layer` 那条瞬时腿）。 */}
           {dockTether && (
-            <svg className="pp-tether-layer pp-dock-layer" aria-label="匣脚引线：创作坞 → 当前活跃卷的纸脚">
-              {/* 受墨带：命中的是它，墨仍是那一丝（.pp-tether-hit 注） */}
-              {/* biome-ignore lint/a11y/useSemanticElements: 引线是 SVG 笔道——<button> 进不了 SVG 坐标系（受墨带必须与墨同形）；role/tabIndex/Enter 已补 */}
-              <path
-                className="pp-tether-hit"
-                d={dockTether.art.d}
-                role="button"
-                tabIndex={0}
-                aria-label="回到创作坞正写着的那一卷（纸脚）"
-                onClick={onDockTrace}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onDockTrace();
-                  }
-                }}
-              />
-              <path className="pp-tether pp-dock-tether" d={dockTether.art.d} />
-              <circle className="pp-tether-origin" cx={dockTether.art.origin.x} cy={dockTether.art.origin.y} r={2.2} />
-              <circle className="pp-tether-bead" cx={dockTether.art.bead.x} cy={dockTether.art.bead.y} r={2.2} />
+            <svg className="pp-tether-layer pp-dock-layer" aria-hidden="true">
+              <path className="pp-tether pp-dock-tether" d={dockTether.d} />
+              <circle className="pp-tether-origin" cx={dockTether.origin.x} cy={dockTether.origin.y} r={2.2} />
+              <circle className="pp-tether-bead" cx={dockTether.bead.x} cy={dockTether.bead.y} r={2.2} />
             </svg>
           )}
 

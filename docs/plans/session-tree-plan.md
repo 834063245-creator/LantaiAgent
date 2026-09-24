@@ -353,8 +353,8 @@ P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批�
 | `app/chat/session-branch.ts` | `branchOriginOf`（血缘读面，**零 I/O**）+ `branchNodeMessageId`（切点 → 父卷里承载它的界面消息：投影锚点 + 用户轮桥，与 `resolveBranchPoint` 同一条链、方向相反） |
 | `app/chat/chat-core.ts` | `branchOrigin(sessionId)`（血缘读面，零 I/O——侧栏/书脊/卷首那枚「枝」标读它）+ `branchEdge(sessionId)`（父卷 + 那个节点；null = 无句柄/落不到节点 ⇒ 不画线） |
 | `paper/provenance.ts` | `tetherAnchorsAt`（锚高由调用方给）——`tetherAnchors` 变成它 + 钉锚高，**选边/留白/收笔规则只有一份**（不新造一种线） |
-| `paper-shell/PaperPanel.tsx` + `.css` | 枝边层：常显的一丝朱砂（卷首中线 → 节点缘）+ **受墨带**（加粗透明描边承接点击，墨本身仍是那一丝）+ 点线溯源（飞节点 + 点名一拍）；卷首眉行缀「枝」（§5「书脊与卷首标枝」的卷首那半；眉行 line-height 是定值 15px，缀字不改卷首高契约） |
-| `tests/session-tree-canvas.test.tsx`（新） | 挂真 PaperPanel：无枝边不落笔（卷首也不缀枝）/ 卷首标「枝」/ 起笔在卷首左缘且朱点落在**父卷那个节点**的缘上 / 点线飞到节点（视口对准父卷中轴）/ 父节点在屏外时线出屏 |
+| `paper-shell/PaperPanel.tsx` + `.css` | 枝边层：常显的一丝朱砂（卷首中线 → 节点缘）+ ~~**受墨带**（加粗透明描边承接点击，墨本身仍是那一丝）+ 点线溯源（飞节点 + 点名一拍）~~ ⇒ **2026-09-24 第二刀摘除**（线不是控件；账上无用户拍板依据，用户「我从来也没有拍板过引线本体要做成按钮」——见 [taste-ledger](paper-shell/taste-ledger.md) 2026-09-24 条）；卷首眉行缀「枝」（§5「书脊与卷首标枝」的卷首那半；眉行 line-height 是定值 15px，缀字不改卷首高契约） |
+| `tests/session-tree-canvas.test.tsx`（新） | 挂真 PaperPanel：无枝边不落笔（卷首也不缀枝）/ 卷首标「枝」/ 起笔在卷首左缘且朱点落在**父卷那个节点**的缘上 **+ 线不是控件**（层内无 `[role=button], [tabindex]`、整层 aria-hidden）/ ~~点线飞到节点（视口对准父卷中轴）~~（**2026-09-24 随行为退役删除**）/ 父节点在屏外时线出屏 |
 | `tests/session-branch.test.ts` +1 / `tests/paper-provenance.test.ts` +1 | `branchEdge` 真卷三例（根卷无边 / 来文节点 / 回复节点）；同一支笔的锚高等价式 |
 
 **两处实现裁定**（留痕，防回漂）：
@@ -363,7 +363,8 @@ P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批�
   （实测：`branchEdge` 返回 null）。
 - **枝边常显、钉引线 hover**：树是**结构**不是瞬时手势，且线要能点着溯源（hover 才出现的线点不到）；
   一屏一语言指的是**同一支笔**（屏幕坐标 / 恒定墨宽 / 定种子相位 / 起笔留白 + 收笔朱点），不是同一条触发纪律。
-  常显故墨退半档（.55，hover 受墨带时抬回 .9）——防「一纸十几枝」时线成面条。
+  常显故墨退半档（.55）——防「一纸十几枝」时线成面条。（**2026-09-24 补注**：「线要能点着溯源」这条
+  理由本身随第二刀作废——点线溯源是 agent 自记物，用户从未拍板；现为纯指示、无 hover 档。）
 - **出屏的诚实边界**：父卷整个在屏外时线照样出屏，但仅限**卸载余量**（`use-paper-regions` 的
   STUB_MX 900 / STUB_MY 1200）之内——超出即该流区连几何都卸载了（与出处引导同一条边界，不是本批新引入的）。
 
@@ -470,7 +471,7 @@ P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批�
 | `tests/paper-block-branch-op.test.tsx` +1 例 | 握把可见性 = 同一张判据表（全通过 ⇒ 两个对话块都有；未落定 ⇒ 只有切点在它之前的那个有；判据表缺席 ⇒ 一个都没有） |
 
 **既有手势零回归**（考官原样）：`paper-viewport-ux`（滚轮/拖块/拖选自动滚屏/悬停即滚）、
-`perf-paper-pan`（平移帧）、`session-tree-canvas`（枝边引线 + 点线溯源）、`paper-visual-decisions`
+`perf-paper-pan`（平移帧）、`session-tree-canvas`（枝边引线；点线溯源用例已随行为退役删除）、`paper-visual-decisions`
 （CSS 钉值）全绿。
 
 **门禁**：`npm run build` ✓；`npx vitest run` 348 文件 / **3561** 通过（本批 +5 例）✓；

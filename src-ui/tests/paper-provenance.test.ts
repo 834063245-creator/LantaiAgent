@@ -425,14 +425,26 @@ describe('接线与样式钉值（防回漂）', () => {
   /* 匣脚引线（2026-09-22）：坞的版口钮 → 活卷的纸脚。
    * 卷端落点**二版改档**（用户打回一版「你挂在第一条用户输入那不是乱了套了」）：天头那枚
    * 钮是「哪一卷活跃」的标记，位置又压在标题与第一条来文的接缝上；二版改接纸脚（纸的
-   * 材料缘、没有任何字，且它才是「这一卷写到哪儿」的那一端）。 */
-  it('匣脚引线：常显半档 + 可点（受墨带）、坞端＝坞顶左端版口钮、卷端＝活卷纸脚', () => {
-    // 墨阶：常显半档 .55（同枝边——一屏一线不抢正文），hover 受墨带抬回 .9
+   * 材料缘、没有任何字，且它才是「这一卷写到哪儿」的那一端）。
+   * **2026-09-24 归因更正（两刀）**：两条腿原都带受墨带承接点击（账上记为「同日拍板
+   * 可点溯源」，实为 agent 自记——用户「我从来也没有拍板过引线本体要做成按钮」）⇒
+   * 受墨带 / role / tabIndex / 点击 / 抬墨两档整批摘除，本用例随之由「可点」**反转**
+   * 为「不可点」，并按**族**钉死（受墨带规则全仓不得复活）。 */
+  it('两条引线腿：常显半档 + **一律不可点**（无受墨带、不进 Tab 序）、坞端＝坞顶左端版口钮、卷端＝活卷纸脚', () => {
+    // 墨阶：常显半档 .55（同枝边——一屏一线不抢正文）；**没有 hover/聚焦抬墨档**（不是控件）
     expect(ruleBody(PANEL_CSS, '.pp-dock-tether {')).toContain('opacity: 0.55');
-    expect(PANEL_CSS).toContain('.pp-tether-hit:hover ~ .pp-dock-tether');
-    // 层位不变（z 4 在坞 z 6 之下——引线不盖家具），可点靠受墨带（墨本身仍是那一丝）
+    // 引线一律不可点（2026-09-24 两刀）：受墨带那族规则已无消费面、整族删除。注释里提到
+    // 选择器名是留痕，故按「规则开头 + 两个伪类档」三处钉，不按裸字符串钉（会钉到注释）。
+    expect(PANEL_CSS).not.toContain('.pp-tether-hit {');
+    expect(PANEL_CSS).not.toContain('.pp-tether-hit:hover');
+    expect(PANEL_CSS).not.toContain('.pp-tether-hit:focus-visible');
+    expect(PANEL_TSX).not.toContain('pp-tether-hit');
+    // 层位不变（z 4 在坞 z 6 之下——引线不盖家具），且整层不吃指针、不进无障碍树
     expect(PANEL_TSX).toContain('className="pp-tether pp-dock-tether"');
-    expect(PANEL_TSX).toContain('className="pp-tether-layer pp-dock-layer"');
+    expect(PANEL_TSX).toContain('className="pp-tether-layer pp-dock-layer" aria-hidden="true"');
+    // 枝边那条腿同批收口（DOM 面断言在 session-tree-canvas：层内无 [role=button], [tabindex]）
+    expect(PANEL_TSX).toContain('className="pp-tether-layer pp-branch-layer" aria-hidden="true"');
+    expect(PANEL_TSX).not.toContain('onBranchTrace');
     // 坞端锚点：版口钮的**起端中点**——坞位/实测尺寸在槽主人手里
     expect(COMPOSER_FLOAT_TS).toContain('export function composerAnchorOf(');
     expect(COMPOSER_FLOAT_TS).toContain('COMPOSER_TICK_TOP + COMPOSER_TICK_H / 2');
@@ -444,7 +456,9 @@ describe('接线与样式钉值（防回漂）', () => {
     // 无活卷 / 流区尚未落位 ⇒ 不画线（宁可没有线，也不指错）
     expect(PANEL_TSX).toContain('if (activeSessionKey === null) return null;');
     expect(PANEL_TSX).toContain('if (!region) return null;');
-    // 点线 = 溯源：飞到线的那一头（纸脚）——同枝边/出处引导那条判例
-    expect(PANEL_TSX).toContain('flyToPoint(dockTether.sid, dockTether.foot.y, dockTether.foot.x)');
+    // 引线不是控件：不得再有「点线 = 溯源」那两条接线（退役留痕，见两个 harness 头注）
+    expect(PANEL_TSX).not.toContain('flyToPoint(dockTether.sid');
+    expect(PANEL_TSX).not.toContain('aria-label="回到创作坞正写着的那一卷');
+    expect(PANEL_TSX).not.toContain('aria-label="回到这一枝的来处');
   });
 });

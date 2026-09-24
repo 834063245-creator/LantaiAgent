@@ -7,7 +7,11 @@
 //   ① 边 = 一丝朱砂引线：**枝卷卷首 → 父卷的那个节点**——复用出处引导那一支笔
 //      （`tetherAnchorsAt` + `tetherPath`：屏幕坐标 / 恒定墨宽 / 定种子相位 /
 //      起笔留白 + 收笔朱点），**不新造一种线**；
-//   ② 点引线 = 溯源：飞到父卷那个节点；
+//   ② ~~点引线 = 溯源：飞到父卷那个节点~~ ⇒ **线不是控件**（2026-09-24 第二刀）：
+//      受墨带 / 点击 / 焦点态整批摘除，本层 aria-hidden；该行为用例**同批删除**
+//      （行为退役 ⇒ 测试同批删除，不改造后放回原位），改由「枝边引线常显」例尾巴钉
+//      「层内无可命中/可聚焦子件」。归因见 `docs/plans/paper-shell/taste-ledger.md`
+//      2026-09-24 条（用户：「我从来也没有拍板过引线本体要做成按钮」）。
 //   ③ 父节点不在视口内时线仍出屏（出处引导同款判据：锚点在世界里定、投到屏上落墨）。
 //
 // 挂真实 PaperPanel 穿全层（与 paper-viewport-ux ⑪ 同 harness）。`core.branchEdge` 是
@@ -277,24 +281,13 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
     const bead = container?.querySelector('.pp-branch-layer .pp-tether-bead');
     expect(bead).not.toBeNull();
     expect(Number(bead?.getAttribute('cx'))).toBeCloseTo(worldToScreen(v, node.x + node.w, 0).x, 6);
-  }, 30_000);
 
-  it('点引线 = 溯源：飞到父卷那个节点（视口对准父卷中轴）', async () => {
-    await mountTwoVolumes('a1-1');
-    const hit = container?.querySelector('.pp-tether-hit');
-    expect(hit).not.toBeNull();
-    const before = useCanvasViewStore.getState().view;
-    await act(async () => {
-      (hit as Element).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 400)); // 飞行 240ms
-    });
-    const after = useCanvasViewStore.getState().view;
-    // 父卷在 x=0（流区中轴）⇒ 视口宽 1200 的中心对到它
-    expect(after.panX).toBeCloseTo(600, 3);
-    // 纵向确实飞了（父节点在父卷流内，不在当前视野）
-    expect(Math.abs(after.panY - before.panY)).toBeGreaterThan(1);
+    // **线不是控件**（2026-09-24 第二刀，同匣脚那条腿）：层内没有可命中/可聚焦的子件
+    //（受墨带已摘），整层不进无障碍树——「点线跳回父卷分叉节点」这条捷径随之退役，
+    // 原行为用例同批删除（见文件尾注）。
+    const layerEl = container?.querySelector('.pp-branch-layer');
+    expect(layerEl?.querySelector('[role="button"], [tabindex]')).toBeNull();
+    expect(layerEl?.getAttribute('aria-hidden')).toBe('true');
   }, 30_000);
 
   it('父节点不在视口内：线照样出屏（锚点在世界里定、投到屏上落墨）', async () => {

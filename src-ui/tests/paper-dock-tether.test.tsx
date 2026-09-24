@@ -15,7 +15,12 @@
 //   ② 切卷 ⇒ 线改指（种子随卷换，笔道整条重画）；
 //   ③ 坞被拖走 ⇒ 线随坞（锚点是槽主人的几何，不是写死的坞位）；
 //   ④ 无活卷 / 案头态 ⇒ **不画线**；活卷在屏外 ⇒ 线照样出屏（方向即来路）；
-//   ⑤ 点线 = 溯源：飞到线的那一头（活卷纸脚）。
+//   ⑤ **纯指示·不可点**（2026-09-24 归因更正）：层内没有任何可命中/可聚焦的子件——
+//      线不吃指针、不进 Tab 序、整层 aria-hidden（线只指示「这一匣对着这一卷」，不是控件）。
+//      退役留痕：本文件原有第 7 例「点线 = 溯源（飞到活卷纸脚）」随受墨带**同批删除**
+//      ——行为退役 ⇒ 测试同批删除，不改造后放回原位。归因与答复见
+//      `docs/plans/paper-shell/taste-ledger.md` 2026-09-24 条（用户：「我从来也没有拍板过
+//      引线本体要做成按钮」）。
 //
 // 注：「活卷在场上但流区缺席」在本架构里只存在于**落位 effect 之前那一帧**（会话集 =
 // 摊开会话集，落位 effect 幂等补齐），故它不做行为用例——那是 memo 里的防御分支。
@@ -303,10 +308,10 @@ describe('匣脚引线（坞的版口钮 → 活卷的纸脚）', () => {
     // （2026-09-22 二版：用户判一版「挂在第一条用户输入」乱了套）
     const folioBottom = worldToScreen(v, foot.x, regionTopOf(2)).y;
     expect(Number(bead?.getAttribute('cy'))).toBeGreaterThan(folioBottom);
-    // 常显不是装饰：可点（受墨带）+ 有名字（无障碍读面）
-    const hit = layer()?.querySelector('.pp-tether-hit');
-    expect(hit?.getAttribute('role')).toBe('button');
-    expect(hit?.getAttribute('aria-label')).toContain('创作坞');
+    // 纯指示（2026-09-24 归因更正）：层内没有可命中/可聚焦的子件（受墨带已摘除），
+    // 整层不进无障碍树——线只是把「这一匣对着这一卷」画出来
+    expect(layer()?.querySelector('[role="button"], [tabindex]')).toBeNull();
+    expect(layer()?.getAttribute('aria-hidden')).toBe('true');
   }, 30_000);
 
   it('切卷 ⇒ 线改指（同一支笔重画；种子随卷换 = 同卷恒同线、异卷异线）', async () => {
@@ -360,21 +365,5 @@ describe('匣脚引线（坞的版口钮 → 活卷的纸脚）', () => {
     expect(bead).not.toBeNull();
     // 朱点落在视口右缘之外（世界 ~556 × pan 600）——线仍在，只是出了屏
     expect(Number(bead?.getAttribute('cx'))).toBeGreaterThan(VW);
-  }, 30_000);
-
-  it('点线 = 溯源：飞到线的那一头（活卷纸脚）', async () => {
-    await mount({});
-    const hit = layer()?.querySelector('.pp-tether-hit');
-    expect(hit).not.toBeNull();
-    const foot = regionFoot(2);
-    await act(async () => {
-      (hit as Element).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 400)); // 飞行 240ms
-    });
-    const after = useCanvasViewStore.getState().view;
-    expect(after.panX).toBeCloseTo(VW / 2 - foot.x, 3);
-    expect(after.panY).toBeCloseTo(VH / 2 - foot.y, 3);
   }, 30_000);
 });
