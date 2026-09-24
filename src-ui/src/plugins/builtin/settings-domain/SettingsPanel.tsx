@@ -22,15 +22,11 @@ import {
   autoUpdateCheckEnabled,
   ConfirmDialog,
   canvasWheelMode,
-  compositionDir,
-  createPresetFromTemplate,
   iconHtml,
   loadSettings,
   loadSettingsWithSecrets,
-  McpPage,
   notifyAgentConfigChanged,
   onProvidersDocChange,
-  PluginsPage,
   ProviderPage,
   persistSecrets,
   projectProvidersErrors,
@@ -38,9 +34,7 @@ import {
   providersDocStatus,
   providersFilePath,
   removeSecret,
-  rescanPresets,
   retryProvidersPath,
-  SkillsPage,
   saveProvidersDoc,
   saveSettings,
   selectPreset,
@@ -50,6 +44,11 @@ import {
   usePresetStore,
   useUpdateStore,
 } from './host';
+// 批 1 归家：三页与作者面已是包内实现（不再经宿主面整页桥）。
+import { McpPage } from './McpPage';
+import { PluginsPage } from './PluginsPage';
+import { compositionDir, createPresetFromTemplate, rescanPresets } from './preset-authoring';
+import { SkillsPage } from './SkillsPage';
 
 type Tab = 'provider' | 'agent' | 'display' | 'plugins' | 'skills' | 'mcp' | 'about';
 

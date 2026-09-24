@@ -45,7 +45,6 @@ const COMPOSITION_MANIFEST = [
   'patch-loader.ts',
   'plugin-tool-rows.ts',
   'preset-assembly.ts',
-  'preset-authoring.ts',
   'preset-discovery.ts',
   'presets.ts',
   'prompt-sections.ts',
@@ -86,13 +85,13 @@ const PLUGINS_MANIFEST = [
 ];
 
 /** 已知该搬出特权区的条目（账本裁定；搬完即从 manifest 与这里同时销账）。
- *  批 9「§2.6 内核产品件」= 清单四件 + 新建组合实现。 */
+ *  批 9「§2.6 内核产品件」= 清单四件。
+ *  （`preset-authoring.ts` 已于批 1 归家进 `plugins/builtin/settings-domain/`——销账。） */
 const KNOWN_DEBT = [
   'composition/first-party-tools.ts',
   'composition/first-party-prompts.ts',
   'composition/first-party-capabilities.ts',
   'composition/with-first-party-channel.ts',
-  'composition/preset-authoring.ts',
 ];
 
 function zoneFiles(dir: string): string[] {

@@ -16,9 +16,16 @@
 // 用户级读沙箱放行（Commit 3），用户级写刻意锁（防任意写跨项目资产）。
 
 import { useCallback, useEffect, useState } from 'react';
-import { type SkillDef, scanSkills } from '../../../agent/skills';
-import { kernelCreateDirectory, kernelDeleteFile, kernelWriteFile } from '../../../rpc-contract';
-import { useShellStore } from '../../shell-store';
+// 内核依赖经包内宿主面取用（2026-09-24 批 1 归家：本页已迁
+// plugins/builtin/settings-domain/；scanSkills 由内核 skills 域经 faceDeps 提供）。
+import {
+  kernelCreateDirectory,
+  kernelDeleteFile,
+  kernelWriteFile,
+  type SkillDef,
+  scanSkills,
+  useShellStore,
+} from './host';
 
 /** 技能卡片。 */
 function SkillCard({

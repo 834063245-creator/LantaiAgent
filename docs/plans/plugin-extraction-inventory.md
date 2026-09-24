@@ -214,6 +214,21 @@ error 态时快照会停在旧产物），`_assemblyKey` 随之取 `compositionI
 ——**通道/工厂层**读数，而缺陷在工厂产物**进注册表的时点**上。教训（验收判据纪律）：
 验收必须读**消费端真值**（Agent 的注册表 / 模型可见工具面），通道层自证不算数。
 
+**同一病灶的通用面（同日追查，用户问「第三方 MCP 到底能不能用」）**：缺陷②不是引擎
+专属——凡声明 `restart` / `lifecycle` 的**第三方 server**（受治档：插件 manifest 的
+`mcpServers` 或用户级 `~/.lantai/mcp.json` 任一声明即入档）都命中「装配期未就绪 ⇒ 空集
+⇒ 而共享注册表没有下次装配」⇒ 工具**永久**进不了模型工具面，用户侧只有 console 一行
+warn。旧形态条目（两字段皆缺席）因为在装配期自己连接并 await，故一直是对的——这也是
+「第三方 MCP 平时能用」的来源。修法 = 装配期**有界等待就绪**（`mcp-bridge` 的
+`ASSEMBLY_READY_WAIT_MS = 10s`，等待即拉起触发；失败仍空集 + 可见 warn，真因照抄治理器
+原文），随包引擎的接线等待改为共用同一常量（不再各写一份）。回归
+`tests/third-party-mcp-assembly.test.ts`（旧形态 / `restart:on-crash` / `lifecycle:lazy`
+三条 × 真 Workspace 装配腰，判据 = Agent 注册表里有 `mcp__*`）；
+`tests/mcp-bridge-governance.test.ts` 两条按新语义改写（装配不再「非阻塞返回空集」）。
+**仍未做（如实记）**：用户侧没有「这个 server 的工具到底进没进工具面」的回执面（引擎有
+`bundled-engine-store`，第三方 server 一片空白）——「既无法证实也无法证伪」的同一个病，
+列为下一批候选。
+
 ## 1. 账②：转发空壳 21 个 —— 10,052 行实现仍在内核
 
 **形态**：`plugins/builtin/<name>/` 只有 `index.ts`（注册贡献行）+ `host.ts`（**一行
@@ -253,14 +268,25 @@ manifest.json —— 包内合计 30～110 行。
 
 ### 2.1 包已有、实现留内核：`settings-domain` 半迁移 —— 5,291 行
 
+> **2026-09-24 批 1 落地**：**MCP / 插件 / 技能三页（1,103 行）已归家**进包
+> （`git mv` 进 `plugins/builtin/settings-domain/`，内核依赖改走包内 `./host`
+> 逐符号桥：新增 24 个 faceDeps 键，`host-surface.baseline.json` 已重生成）。
+> 顺带把 `composition/preset-authoring.ts`（192）也搬进同包（0c 第三件并入本批——
+> 同一处 host 面只 churn 一次）；其 YAML 序列化留内核（`preset-discovery.stringifyPatchYaml`）
+> 经 faceDeps 取用——**产物不得裸 import**（`yaml` 是裸包，自包含契约）。
+> **CSS 面无需动**：三页 20 个 class 里 17 个本就在包内 `settings-panel.css`
+> （产物 `loadCss` 面），另 3 个（`pp-btn-danger`/`pp-error-banner`/`pp-error-text`）
+> 属内核 `provider-settings.css`（壳 bundle，provider 家族回迁时一并处理）。
+> 剩余 = 下表 Provider 家族 8 件 + 那份内核侧样式表（**批 9**）。
+
 包内只有「门牌 + 面板壳 971 行 + 自己那份 CSS 958 行」；页面与另一份 CSS 全在内核：
 
 | 块 | 路径（物理行） | 备注 |
 |---|---|---|
-| Provider 控制台家族 8 件 | `app/panels/settings/`：ProviderPage 721 · ProviderDetail 784 · AddProviderSheet 802 · ProviderList 85 · ProviderAdvanced 102 · ProviderDocCard 161 · protocol 35 · status 50 = **2,740** | 最大单块；依赖内核 `provider/**`(5,418) + `settings.ts` |
+| Provider 控制台家族 8 件 | `app/panels/settings/`：ProviderPage 721 · ProviderDetail 784 · AddProviderSheet 802 · ProviderList 85 · ProviderAdvanced 102 · ProviderDocCard 161 · protocol 35 · status 50 = **2,740** | 最大单块；依赖内核 `provider/**`(5,418) + `settings.ts`。**批 1 后这是 settings-domain 名册 `impl` 的登记面（红区）** |
 | 内核侧样式表 | `app/panels/dock-panels/provider-settings.css` **1,346** | 与包内那份是**两套装载面**（`main.ts` 全局 vs 产物 `loadCss`） |
-| MCP / 插件 / 技能三页 | McpPage 449 · PluginsPage 377 · SkillsPage 277 = **1,103** | 内核依赖最少，**最小可行首块**；`PluginsPage` 反向引用 `plugins/loader` |
-| 面板确认弹层（归属待裁） | ConfirmDialog 102 | `paper-shell` 与 `ExitConfirmDialog` 都在用 ⇒ 跨插件原语住错目录 |
+| MCP / 插件 / 技能三页 | McpPage 449 · PluginsPage 377 · SkillsPage 277 = **1,103** | ✅ **批 1 已归家**（含 `preset-authoring` 192）；`PluginsPage` 反引 `plugins/loader` 经 faceDeps 运行期取用 |
+| 面板确认弹层（归属待裁） | ConfirmDialog 102 | `paper-shell` 与 `ExitConfirmDialog` 都在用 ⇒ 跨插件原语住错目录（§4-3 判内核共享原语，随批 9 挪位） |
 
 ### 2.2 内核里的「出厂内容表」（5 张；3 张已计入 §1.1，本处只加 2 张）—— 1,246 行
 
@@ -392,19 +418,21 @@ manifest.json —— 包内合计 30～110 行。
 
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
-**绿** = 平台白名单 112 文件 + 已被产物认领的共享面 75 文件，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**：红 24 产物 / 49 文件 / 17,408 行（§1 的 21 条 + §2.1 settings 三页 + §2.5 两包独占件）；
-灰 145 文件 / 39,984 行（`agent/` 87 · `app/` 32 · `ui/` 9）——**灰区 ⊇ 账③**：除 §2 已认领的面之外，
-还含内核自身的 app/agent 编排件（归属判定未做），故灰区数字大于 §2 的 32,018。
+**绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
+**2026-09-24 基线**（批 1 后重测）：红 24 产物 / **54 文件 / 19,045 行**（§1 的 21 条 + §2.1 Provider
+家族 8 件 + §2.5 两包独占件）；绿 111 平台 + 72 已认领；灰 145 文件 / 39,984 行
+（`agent/` 87 · `app/` 32 · `ui/` 9）——**灰区 ⊇ 账③**：除 §2 已认领的面之外，还含内核自身的
+app/agent 编排件（归属判定未做），故灰区数字大于 §2 的 32,018。
+（红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
 
 | 批 | 内容 | 量 | 状态 / 为什么这个次序 |
 |---|---|---|---|
 | **0a** | **修 §0.1 缺陷**：序真源换名册（上窗）+ 构建期置换产物清单模块 + 构建期断言 | — | ✅ **已落**（2026-09-24）：产物 JS −1.32 MB（−25.5%）；「配置 DCE 两条路都无效」的实测记在 §0.1 |
-| **0b** | 立账 + 三条守卫 + 常驻对账报告 | — | ✅ **已落**：归家账（名册 `impl`）/ 特权区冻结（31+17 文件 + 行数水位线）/ dist 文案与 CSS 面断言 / `plugin-home:report` |
-| **0c** | 顺手三清：删 `composition/asset-renderers.tsx`（49，真源已迁）· 收缩 `i18n.ts`（98→21，半尸体）· 清 `preset-authoring.ts`（192）归 settings-domain | 339 | ✅ 前两件已落；**第三件并入批 1**——它要动的正是 settings-domain 的 host/faceDeps 面，与三页归家同一处 churn，合并只付一次 baseline 重生成 + exe 重建成本 |
-| **1** | settings 三页归家（McpPage/PluginsPage/SkillsPage）+ 小步 CSS 装载面 | 1,103 + | 内核依赖最少，先把「页面进包 + 三处 host 同步 + 产物构建 + 热更 + faceDeps 指纹重建 exe」链路走通 |
+| **0b** | 立账 + 三条守卫 + 常驻对账报告 | — | ✅ **已落**：归家账（名册 `impl`）/ 特权区冻结（31+17 文件 ⊇ 基线 + 销账制）/ dist 文案与 CSS 面断言 / `plugin-home:report` |
+| **0c** | 顺手三清：删 `composition/asset-renderers.tsx`（49，真源已迁）· 收缩 `i18n.ts`（98→21，半尸体）· 清 `preset-authoring.ts`（192）归 settings-domain | 339 | ✅ 全清（第三件并入批 1）——它要动的正是 settings-domain 的 host/faceDeps 面，与三页归家同一处 churn，合并只付一次 baseline 重生成 + exe 重建成本 |
+| **1** | settings 三页归家（McpPage/PluginsPage/SkillsPage）+ `preset-authoring` 随迁 | 1,103 + 192 | ✅ **已落**（2026-09-24）：三页 `git mv` 进包、内核依赖改走包内 `./host` 逐符号桥（+24 faceDeps 键，baseline 重生成）、产物自包含校验过、CSS 面无需动（三页 class 本就在包内 `settings-panel.css`）；链路（页面进包 + host 三处同步 + 产物构建 + faceDeps 指纹）已走通 |
 | **2** | seam provider 实心化：`llm-adapters`（三适配器 + 两个私有 helper）+ `subagent-in-process` | 1,916 + 543 | 通道现成（`ctx.llm`/`ctx.subagents`），零契约风险；**收益最大**——LLM 适配器从此可热更 |
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | 转发链最短、先例现成（`fs-builtin` 自包含形态）；先定「包内经 faceDeps 取实例 vs 装配期经 rowCtx 注入」 |
 | **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | 硬骨头：一文件载五族；9+5+2 个测试直连；search 输出形状须与 Rust 逐字节等价 |

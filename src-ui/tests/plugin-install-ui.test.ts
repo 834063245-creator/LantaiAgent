@@ -28,7 +28,7 @@ vi.mock('../src/plugins/loader', () => ({
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { PluginsPage } from '../src/app/panels/settings/PluginsPage';
+import { PluginsPage } from '../src/plugins/builtin/settings-domain/PluginsPage';
 import { usePluginPrefs } from '../src/state/plugin-prefs';
 import { usePluginStore } from '../src/state/plugin-store';
 

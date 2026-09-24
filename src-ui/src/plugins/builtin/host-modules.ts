@@ -28,7 +28,7 @@ import { agentSessionState } from '../../agent/agent-session-state';
 // 移除，2026-09-09。）
 import { firstPartyCapabilities } from '../../agent/blueprint';
 import { createMemoryTools } from '../../agent/memory';
-import { createSkillTool } from '../../agent/skills';
+import { createSkillTool, scanSkills } from '../../agent/skills';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { createTaskTools } from '../../agent/task';
 import { createBrowserTools, createDesktopTools } from '../../agent/tools/browser';
@@ -53,10 +53,9 @@ import { Icon } from '../../app/Icon';
 import { useDialogEscape } from '../../app/overlay';
 import { PluginBoundary } from '../../app/PluginBoundary';
 import { ConfirmDialog } from '../../app/panels/settings/ConfirmDialog';
-import { McpPage } from '../../app/panels/settings/McpPage';
-import { PluginsPage } from '../../app/panels/settings/PluginsPage';
+// 批 1 归家：McpPage / PluginsPage / SkillsPage 已迁 plugins/builtin/settings-domain/
+// （改为逐符号桥，见下方「批 1」段）；ProviderPage 家族仍在内核（批 9）。
 import { ProviderPage } from '../../app/panels/settings/ProviderPage';
-import { SkillsPage } from '../../app/panels/settings/SkillsPage';
 import { useShellStore } from '../../app/shell-store';
 import { WinControls } from '../../app/WinControls';
 import { onTopbarDoubleClick, onTopbarPointerDown } from '../../app/window-drag';
@@ -65,8 +64,9 @@ import { isMockMode, watchFileDragDrop } from '../../bridge';
 import { activationConflict, activationSkipped } from '../../composition/activation';
 import { ContributionChannel } from '../../composition/contribution-channel';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
-import { selectPreset } from '../../composition/preset-assembly';
-import { compositionDir, createPresetFromTemplate, rescanPresets } from '../../composition/preset-authoring';
+import { reapplyComposition, selectPreset } from '../../composition/preset-assembly';
+import { discoverPresets, stringifyPatchYaml } from '../../composition/preset-discovery';
+import { builtinPresets, isValidPresetId } from '../../composition/presets';
 import { firstPartyPromptSections } from '../../composition/prompt-sections';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
 import { activeSpace } from '../../composition/space-service';
@@ -148,6 +148,18 @@ import { buildTocInkBuckets } from '../../paper/toc-ink';
 import { collapseToolGroups, translateMessagesCached } from '../../paper/translate';
 import { injectPaperTokens } from '../../paper/type-tokens';
 import { viewportWorldRect, visibleFlowWindow, visiblePinnedIds } from '../../paper/virtualize';
+// 批 1 归家（2026-09-24）：三页进包后的逐符号桥面——引擎开关 / 装卸面 /
+// MCP 声明与用户级 mcp.json / 插件与偏好 store。装卸面与 loader 的循环为
+// 运行期取用（组件按钮回调），无初始化期解引用，ESM 循环安全（见文件头注）。
+import {
+  isBundledEngineEnabled,
+  onBundledEnginePrefChanged,
+  probeBundledEngine,
+  setBundledEngineEnabled,
+} from '../../plugins/bundled-engine';
+import { activateExternalPlugin, deactivateExternalPlugin } from '../../plugins/loader';
+import { McpServerDeclSchema } from '../../plugins/types';
+import { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../plugins/user-mcp';
 import { createAnthropicProvider } from '../../provider/anthropic';
 import {
   findModels,
@@ -176,12 +188,16 @@ import { createResponsesProvider } from '../../provider/responses';
 import { thinkingOptionsFor, thinkingOptionsOrDefault } from '../../provider/thinking';
 import {
   kernelAppendFileDurable,
+  kernelCreateDirectory,
   kernelDeleteFile,
   kernelListDirectory,
+  kernelReadFile,
   kernelReadFileRaw,
   kernelTruncateFile,
   kernelWriteFile,
+  parseJson,
   typedJsonRpc,
+  typedRpc,
 } from '../../rpc-contract';
 import {
   autoUpdateCheckEnabled,
@@ -202,12 +218,15 @@ import { leaveToHome } from '../../shell/rows/workspace';
 import { notifyAgentConfigChanged } from '../../state/agent-config-store';
 import { useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
+import { describeReceipt, useBundledEngineStore } from '../../state/bundled-engine-store';
 import { blockFromSnapshot, getCanvasStore, scheduleCanvasSave, snapshotFromBlock } from '../../state/canvas-store';
 import { useCanvasViewStore } from '../../state/canvas-view-store';
 import { getComposeStore, resolveNewSessionDefault } from '../../state/compose-store';
 import { useCompositionStore } from '../../state/composition-store';
 import { useDockStore } from '../../state/dock-store';
 import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../state/mode-store';
+import { usePluginPrefs } from '../../state/plugin-prefs';
+import { usePluginStore } from '../../state/plugin-store';
 import { usePresetStore } from '../../state/preset-store';
 import { useSessionVolumesStore } from '../../state/session-volumes-store';
 import { useUpdateStore } from '../../state/update-store';
@@ -264,10 +283,14 @@ const faceDeps = {
   resolveAssetBlock,
   resolveRenderer,
   selectPreset,
-  // P-1 authoring 环境（2026-09-14）：设置面板「组合」节的作者动作
-  compositionDir,
-  createPresetFromTemplate,
-  rescanPresets,
+  // 批 1 归家（2026-09-24）：作者面三件（compositionDir/createPresetFromTemplate/
+  // rescanPresets）已随 preset-authoring 进包 ⇒ 从 faceDeps 撤桥；改桥它们仍留内核的
+  // 机制依赖（重扫应用 / 发现 / 内置表 / id 围栏 / patch 序列化）。
+  reapplyComposition,
+  discoverPresets,
+  stringifyPatchYaml,
+  builtinPresets,
+  isValidPresetId,
   // provider 配置文件通道（2026-09-24 配方改文件批）：路径 / 逐节错误 / 写盘
   saveProvidersDoc,
   providersFilePath,
@@ -415,10 +438,27 @@ const faceDeps = {
   /* 离开工作区回首页（2026-09-08）：paper-shell 确认弹层确认后触发——运行时
    * 真关工作区在壳层 workspace 流（host.ts 出口与 faceDeps 同步）。 */
   leaveToHome,
-  McpPage,
-  PluginsPage,
   ProviderPage,
-  SkillsPage,
+  // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面
+  scanSkills,
+  isBundledEngineEnabled,
+  onBundledEnginePrefChanged,
+  probeBundledEngine,
+  setBundledEngineEnabled,
+  activateExternalPlugin,
+  deactivateExternalPlugin,
+  McpServerDeclSchema,
+  isUserMcpMissingError,
+  parseUserMcpJson,
+  resolveUserMcpJsonPath,
+  describeReceipt,
+  useBundledEngineStore,
+  usePluginPrefs,
+  usePluginStore,
+  kernelCreateDirectory,
+  kernelReadFile,
+  parseJson,
+  typedRpc,
   // 设置 / provider / rpc / i18n
   autoUpdateCheckEnabled,
   canvasWheelMode,

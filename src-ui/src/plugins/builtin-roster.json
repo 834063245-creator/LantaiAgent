@@ -95,14 +95,19 @@
   {
     "dir": "settings-domain",
     "buildOrder": 7,
-    "description": "设置面板 + 命令双通道",
+    "description": "设置面板 + 命令双通道（Provider 控制台家族仍在内核——账本 §2.1）",
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["panels", "commands"],
     "impl": [
-      "app/panels/settings/McpPage.tsx",
-      "app/panels/settings/PluginsPage.tsx",
-      "app/panels/settings/SkillsPage.tsx"
+      "app/panels/settings/ProviderPage.tsx",
+      "app/panels/settings/ProviderDetail.tsx",
+      "app/panels/settings/AddProviderSheet.tsx",
+      "app/panels/settings/ProviderList.tsx",
+      "app/panels/settings/ProviderAdvanced.tsx",
+      "app/panels/settings/ProviderDocCard.tsx",
+      "app/panels/settings/protocol.ts",
+      "app/panels/settings/status.ts"
     ],
     "face": true
   },

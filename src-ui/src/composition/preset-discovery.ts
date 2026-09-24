@@ -18,7 +18,7 @@
 // 本文件只发现不解析组合：产出的 PresetEntry.patch 是 zod 校验后的
 // 增量，组合解析在 presets.ts 的 resolvePresetComposition（纯函数）。
 
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getProxyPort } from '../provider/transport';
 import { usePresetStore } from '../state/preset-store';
 import { builtinPresets, isValidPresetId, type PresetEntry, type PresetMetadata } from './presets';
@@ -134,6 +134,16 @@ async function resolveOrigin(): Promise<string> {
   const port = await getProxyPort();
   if (!port) return '';
   return presetsIndexOrigin(port);
+}
+
+/** patch 增量 → YAML 文本（**作者面**模板生成用；与 discovery 的解析同源同包）。
+ *
+ *  为什么在核心里：`settings-domain` 的「新建组合」作者面已随批 1 归家进产物包，
+ *  而**产物不得裸 import**（自包含契约——`yaml` 是裸包），故序列化留内核、
+ *  经 faceDeps 取用（与 roster 解析同一份 yaml 依赖，编码/缩进语义单点）。
+ *  手拼 YAML 是明确否掉的旧路：转义/缩进差异会造出不可解析的 patch 文件。 */
+export function stringifyPatchYaml(patch: unknown): string {
+  return `${stringifyYaml(patch, { lineWidth: 0 }).trimEnd()}\n`;
 }
 
 /** 取索引 JSON 数组；不可用返回 null（404/非数组/异常统一非错误）。 */

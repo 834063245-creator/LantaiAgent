@@ -15,10 +15,23 @@
 // IO 注入（`PresetAuthoringIo`）：生产走 RPC；测试注入假件——本模块因此零网络
 // 依赖，落盘语义（拒覆盖 / 模板内容 / 路径拼接）全部可单测。
 
-import { kernelCreateDirectory, kernelReadFile, kernelWriteFile, typedRpc } from '../rpc-contract';
-import { reapplyComposition } from './preset-assembly';
-import { type DiscoverPresetsOptions, discoverPresets } from './preset-discovery';
-import { builtinPresets, isValidPresetId, type PresetEntry } from './presets';
+// ⚠ 2026-09-24 批 1 归家：本文件已迁 `plugins/builtin/settings-domain/preset-authoring.ts`
+// （唯一消费者是设置面板「组合」节的作者动作）。此处的内核依赖经包内 `./host`
+// 取用（产物域走 faceDeps 宿主桥——产物不得裸 import）。
+
+import {
+  builtinPresets,
+  type DiscoverPresetsOptions,
+  discoverPresets,
+  isValidPresetId,
+  kernelCreateDirectory,
+  kernelReadFile,
+  kernelWriteFile,
+  type PresetEntry,
+  reapplyComposition,
+  stringifyPatchYaml,
+  typedRpc,
+} from './host';
 
 /** 作者面文件（固定两名——与发现层约定的目录形态一致）。 */
 export const PATCH_FILENAME = 'roster.patch.yml';
@@ -89,7 +102,7 @@ export type TemplateSource = 'standard' | 'minimal';
  *  （告诉作者五个域各写什么形状，但不给任何生效的增量——不给"改坏也没关系"
  *   的假安全感）。
  *  minimal：直接把内置 minimal 的启用增量写成 YAML（现成范例）。 */
-export async function templatePatchYaml(from: TemplateSource): Promise<string> {
+export function templatePatchYaml(from: TemplateSource): string {
   const entry = builtinPresets().find((p) => p.id === from);
   const header = [
     '# 兰台组合补丁（preset 本体）——由「复制内置为模板」生成。',
@@ -114,10 +127,9 @@ export async function templatePatchYaml(from: TemplateSource): Promise<string> {
     // 空骨架：注释即文档，零生效增量。
     return `${header}tools: []\n`;
   }
-  // 现成范例：把内置 minimal 的增量序列化成 YAML（用 yaml 包的 stringify 而不是
-  // 手拼——避免转义/缩进差异造出不可解析的文件）。
-  const { stringify } = await import('yaml');
-  return `${header}${stringify(entry.patch, { lineWidth: 0 }).trimEnd()}\n`;
+  // 现成范例：把内置 minimal 的增量序列化成 YAML（序列化留内核、经 host 取用
+  // ——产物不得裸 import 'yaml'；语义单点，避免转义/缩进差异造出不可解析的文件）。
+  return `${header}${stringifyPatchYaml(entry.patch)}`;
 }
 
 /** 元数据文件（纯展示；坏元数据降级为无元数据不拒载——发现层语义）。 */
@@ -174,7 +186,7 @@ export async function createPresetFromTemplate(
 
   try {
     await io.makeDir(dir);
-    await io.writeFile(`${dir}/${PATCH_FILENAME}`, await templatePatchYaml(from));
+    await io.writeFile(`${dir}/${PATCH_FILENAME}`, templatePatchYaml(from));
     await io.writeFile(`${dir}/${META_FILENAME}`, templateMetaYaml(trimmed, from));
   } catch (e) {
     return { ok: false, error: `写盘失败：${errText(e)}` };

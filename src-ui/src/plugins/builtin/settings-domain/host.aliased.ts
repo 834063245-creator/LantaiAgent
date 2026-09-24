@@ -6,6 +6,9 @@
 // tsc 测试域（esbuild onResolve 把 './host' 重定向到这里）；类型面以
 // `typeof import('./host')` 对拍。jsx / jsxs / Fragment：esbuild automatic
 // JSX 注入面。
+//
+// 2026-09-24 批 1 归家：三页 + preset-authoring 进包 ⇒ 新增下面的逐符号桥
+// （删掉整页桥 McpPage/PluginsPage/SkillsPage 与作者面三件——它们已是包内实现）。
 
 /* eslint-disable */
 import type { ComponentType, ReactNode } from 'react';
@@ -36,9 +39,6 @@ const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const selectPreset = impl.selectPreset;
-export const compositionDir = impl.compositionDir;
-export const createPresetFromTemplate = impl.createPresetFromTemplate;
-export const rescanPresets = impl.rescanPresets;
 // provider 配置文件通道（2026-09-24 配方改文件批）
 export const saveProvidersDoc = impl.saveProvidersDoc;
 export const providersFilePath = impl.providersFilePath;
@@ -68,14 +68,47 @@ export const usePresetStore = impl.usePresetStore;
 export const useUpdateStore = impl.useUpdateStore;
 export const iconHtml = impl.iconHtml;
 export const ConfirmDialog = impl.ConfirmDialog as ComponentType;
-export const McpPage = impl.McpPage as ComponentType;
-export const PluginsPage = impl.PluginsPage as ComponentType;
 export const ProviderPage = impl.ProviderPage as ComponentType;
-export const SkillsPage = impl.SkillsPage as ComponentType;
+
+// ── 批 1 逐符号桥（归家页面的内核依赖面）──
+export const Icon = impl.Icon as ComponentType;
+export const useShellStore = impl.useShellStore;
+export const scanSkills = impl.scanSkills;
+export const isBundledEngineEnabled = impl.isBundledEngineEnabled;
+export const onBundledEnginePrefChanged = impl.onBundledEnginePrefChanged;
+export const probeBundledEngine = impl.probeBundledEngine;
+export const setBundledEngineEnabled = impl.setBundledEngineEnabled;
+export const activateExternalPlugin = impl.activateExternalPlugin;
+export const deactivateExternalPlugin = impl.deactivateExternalPlugin;
+export const McpServerDeclSchema = impl.McpServerDeclSchema;
+export const isUserMcpMissingError = impl.isUserMcpMissingError;
+export const parseUserMcpJson = impl.parseUserMcpJson;
+export const resolveUserMcpJsonPath = impl.resolveUserMcpJsonPath;
+export const describeReceipt = impl.describeReceipt;
+export const useBundledEngineStore = impl.useBundledEngineStore;
+export const usePluginPrefs = impl.usePluginPrefs;
+export const usePluginStore = impl.usePluginStore;
+export const reapplyComposition = impl.reapplyComposition;
+export const discoverPresets = impl.discoverPresets;
+export const stringifyPatchYaml = impl.stringifyPatchYaml;
+export const builtinPresets = impl.builtinPresets;
+export const isValidPresetId = impl.isValidPresetId;
+export const kernelCreateDirectory = impl.kernelCreateDirectory;
+export const kernelDeleteFile = impl.kernelDeleteFile;
+export const kernelReadFile = impl.kernelReadFile;
+export const kernelWriteFile = impl.kernelWriteFile;
+export const parseJson = impl.parseJson;
+export const typedRpc = impl.typedRpc;
 
 export type AppSettings = import('./host').AppSettings;
 export type ConnectionProbe = import('./host').ConnectionProbe;
 export type ProviderId = import('./host').ProviderId;
+export type BundledEngineInfo = import('./host').BundledEngineInfo;
+export type McpServerDecl = import('./host').McpServerDecl;
+export type PluginRecord = import('./host').PluginRecord;
+export type SkillDef = import('./host').SkillDef;
+export type DiscoverPresetsOptions = import('./host').DiscoverPresetsOptions;
+export type PresetEntry = import('./host').PresetEntry;
 
 // ── esbuild automatic JSX 注入面（--jsx=automatic --jsx-import-source=./host）──
 

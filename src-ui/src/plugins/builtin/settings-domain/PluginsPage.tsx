@@ -14,11 +14,18 @@
 // 顶部安装输入框 + 常驻供应链警告条（完全信任模型原文——不做「已审核」标记）。
 
 import { useState } from 'react';
-import { activateExternalPlugin, deactivateExternalPlugin } from '../../../plugins/loader';
-import { parseJson, typedRpc } from '../../../rpc-contract';
-import { usePluginPrefs } from '../../../state/plugin-prefs';
-import { type PluginRecord, usePluginStore } from '../../../state/plugin-store';
-import { Icon } from '../../Icon';
+// 内核依赖经包内宿主面取用（2026-09-24 批 1 归家：本页已迁
+// plugins/builtin/settings-domain/；loader 的装卸面按既有循环注记运行期取用）。
+import {
+  activateExternalPlugin,
+  deactivateExternalPlugin,
+  Icon,
+  type PluginRecord,
+  parseJson,
+  typedRpc,
+  usePluginPrefs,
+  usePluginStore,
+} from './host';
 
 /** 状态标签（对应 PluginStatus）。 */
 function statusBadge(s: PluginRecord['status']): { text: string; color: string } {

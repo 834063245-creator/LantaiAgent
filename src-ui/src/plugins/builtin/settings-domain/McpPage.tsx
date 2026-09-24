@@ -16,17 +16,24 @@
 // 用户级直配。生效时机：mcp.json 变更后需重启应用重新装载（boot 期读取）。
 
 import { useCallback, useEffect, useState } from 'react';
+// 内核依赖经包内宿主面取用（2026-09-24 批 1 归家：本页已迁
+// plugins/builtin/settings-domain/；产物域走 faceDeps 宿主桥）。
 import {
   type BundledEngineInfo,
+  describeReceipt,
   isBundledEngineEnabled,
+  isUserMcpMissingError,
+  kernelReadFile,
+  kernelWriteFile,
+  type McpServerDecl,
+  McpServerDeclSchema,
   onBundledEnginePrefChanged,
+  parseUserMcpJson,
   probeBundledEngine,
+  resolveUserMcpJsonPath,
   setBundledEngineEnabled,
-} from '../../../plugins/bundled-engine';
-import { type McpServerDecl, McpServerDeclSchema } from '../../../plugins/types';
-import { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../../plugins/user-mcp';
-import { kernelReadFile, kernelWriteFile } from '../../../rpc-contract';
-import { describeReceipt, useBundledEngineStore } from '../../../state/bundled-engine-store';
+  useBundledEngineStore,
+} from './host';
 
 /** 展示用标签（人看的写法）。**实际读写一律用 `resolveUserMcpJsonPath()` 的绝对路径**：
  *  字面量 `~` 曾因 fs 层不展开波浪号而让本页读写全链路静默失败（2026-09-13 修，见
@@ -299,7 +306,8 @@ function BundledEngineSection() {
 
       <div className="sp-hint-sub" style={{ marginTop: 6 }}>
         生效时机：下次打开工作区（每个工作区按各自的根启动一个引擎进程；离开工作区即停）。
-        {enabled && ' 引擎首次分析较慢，可用引擎自带的状态查询看进度。'}
+        {enabled &&
+          ' 打开工作区时会等引擎就绪（健康引擎约 0.1–1s；超时 10s 则本次装配不挂工具，原因写在回执里）。引擎首次分析较慢，可用引擎自带的状态查询看进度。'}
       </div>
     </div>
   );

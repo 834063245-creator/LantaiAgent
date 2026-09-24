@@ -31,6 +31,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = join(HERE, '..');
 const SRC = join(UI_ROOT, 'src');
 const BUILTIN_SRC = join(SRC, 'plugins', 'builtin');
+const sep = process.platform === 'win32' ? '\\' : '/';
 const DIST_ASSETS = join(UI_ROOT, 'dist', 'assets');
 const DIST_PLUGINS = join(UI_ROOT, 'dist-plugins', 'builtin', 'hologram');
 const VITE_CONFIG = join(UI_ROOT, 'vite.config.ts');
@@ -88,13 +89,19 @@ const indexJs = existsSync(DIST_ASSETS)
 const d = indexJs.length > 0 ? describe : describe.skip;
 
 d('产物源码不进壳 bundle（dist 在场：JS 面）', () => {
-  /** 内核源码全文（产物包之外）——用于判定某个字符串是否**只可能**来自产物源码。 */
-  const kernelText = walkFiles(SRC, (n) => /\.(ts|tsx|css|json)$/.test(n) && !n.endsWith('.json'))
-    .filter((f) => !f.startsWith(BUILTIN_SRC))
+  /** 内核侧全文（产物包之外的一切**会被打进 bundle 的东西**——ts/tsx/css/**json**）。
+   *  ⚠ json 必须在内：`builtin-roster.json` 是内核数据模块（`impl`/`shared` 里的路径串
+   *  会随 roster 进 bundle），漏掉它会把 roster 自己的字符串当「产物独有串」误报。
+   *  ⚠ 前缀判据必须带分隔符：`plugins/builtin` 是 `plugins/builtin-roster.json` 的
+   *  字符串前缀（少一个 `sep` 就把名册误判成包内文件——2026-09-24 实测踩过）。 */
+  const kernelText = walkFiles(SRC, (n) => /\.(ts|tsx|css|json)$/.test(n))
+    .filter((f) => !f.startsWith(BUILTIN_SRC + sep))
     .map(read)
     .join('\n');
 
   it('每个产物的**独有串**都不在壳产物体内（探针从产物源码派生，新产物自动纳入）', () => {
+    // 载荷读一次（每个 ~4 MB × 30 产物 = 120 MB 的重复读会让本用例在满载下超 5s 默认超时）
+    const bundles = indexJs.map((js) => ({ js, body: read(js) }));
     const hits: string[] = [];
     let probed = 0;
     for (const entry of BUILTIN_ROSTER) {
@@ -106,8 +113,7 @@ d('产物源码不进壳 bundle（dist 在场：JS 面）', () => {
       const probes = [...new Set(literals)].slice(0, 5);
       if (probes.length === 0) continue; // 无独有串的产物：由 ③/其他用例兜底
       probed += 1;
-      for (const js of indexJs) {
-        const body = read(js);
+      for (const { js, body } of bundles) {
         for (const probe of probes) {
           if (body.includes(probe)) hits.push(`${entry.dir} → ${probe}（命中 ${relative(UI_ROOT, js)}）`);
         }
@@ -118,7 +124,7 @@ d('产物源码不进壳 bundle（dist 在场：JS 面）', () => {
       `壳 bundle 里出现产物源码独有串（构建期置换插件失效或产物被静态 import 回来了）：\n${hits.join('\n')}`,
     ).toEqual([]);
     expect(probed, '守卫自检：至少要能从产物源码派生出独有串探针（否则本用例是空转）').toBeGreaterThanOrEqual(20);
-  });
+  }, 30_000);
 
   it('dist 在场但置换未生效的典型指纹：产物清单本体的错误串不得出现', () => {
     // factory-products.ts 的两句 fail-loud 文案只存在于该模块 ⇒ 它进 bundle 即命中

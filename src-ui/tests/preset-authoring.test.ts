@@ -12,6 +12,9 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import { type FetchTextLike, presetsIndexOrigin } from '../src/composition/preset-discovery';
+import { builtinPresets } from '../src/composition/presets';
+import { factoryComposition, parseCompositionPatch } from '../src/composition/roster';
 import {
   createPresetFromTemplate,
   type PresetAuthoringIo,
@@ -19,10 +22,7 @@ import {
   rescanPresets,
   templateMetaYaml,
   templatePatchYaml,
-} from '../src/composition/preset-authoring';
-import { type FetchTextLike, presetsIndexOrigin } from '../src/composition/preset-discovery';
-import { builtinPresets } from '../src/composition/presets';
-import { factoryComposition, parseCompositionPatch } from '../src/composition/roster';
+} from '../src/plugins/builtin/settings-domain/preset-authoring';
 import { useCompositionStore } from '../src/state/composition-store';
 import { usePresetStore } from '../src/state/preset-store';
 
