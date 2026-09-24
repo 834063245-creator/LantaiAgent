@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+// office-domain · 宿主依赖面 · 构建产物域（与 host.ts 同形状镜像；类型面以
+// `typeof import('./host')` 对拍）。
+
 /* eslint-disable */
 interface PluginHostBridge {
   mods: { faceDeps: Record<string, unknown> };
@@ -11,4 +14,11 @@ function requireHost(): PluginHostBridge {
   return host;
 }
 const impl = requireHost().mods.faceDeps as unknown as typeof import('./host');
-export const createOfficeTools = impl.createOfficeTools;
+
+export const isAbsolutePath = impl.isAbsolutePath;
+export const ownerContext = impl.ownerContext;
+export const resolveAgainstRoot = impl.resolveAgainstRoot;
+export const stickyCwdOf = impl.stickyCwdOf;
+export const defineTool = impl.defineTool;
+export type Tool = import('./host').Tool;
+export type ToolExecutor = import('./host').ToolExecutor;

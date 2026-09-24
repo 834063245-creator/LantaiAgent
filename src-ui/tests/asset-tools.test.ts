@@ -490,7 +490,7 @@ describe('executor 资产通道 — assetChannel 工具的事件路由', () => {
 
   it('非资产通道工具回归：ToolProgress 照常（Asset 事件缺席）', async () => {
     const registry = new ToolRegistry();
-    const { createWaitTool } = await import('../src/agent/tools/wait');
+    const { createWaitTool } = await import('../src/plugins/builtin/wait-domain/wait');
     registry.register(createWaitTool());
     const events: AgentEvent[] = [];
     const executor = makeExecutor(events, registry);

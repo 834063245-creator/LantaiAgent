@@ -11,7 +11,7 @@
 
 import type { Context } from '../../../cordis';
 import { familyContributions, registerFamily } from '../contribution-helpers';
-import { createOfficeTools } from './host';
+import { createOfficeTools } from './office';
 
 /** office 域插件——贡献 1 工具（`office`，12 动作）。 */
 export const officeDomainPlugin = {

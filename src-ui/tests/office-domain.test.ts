@@ -28,7 +28,7 @@ import {
   parseShellExit,
   splitOfficeBatchItems,
   validateOfficeBatchItems,
-} from '../src/agent/tools/office';
+} from '../src/plugins/builtin/office-domain/office';
 
 const identity = (p: string) => p.replace(/\\/g, '/');
 

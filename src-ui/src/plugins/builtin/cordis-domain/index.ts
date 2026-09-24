@@ -5,7 +5,7 @@
 
 import type { Context } from '../../../cordis';
 import { noCacheContributions, registerFamily } from '../contribution-helpers';
-import { CORDIS_TOOL_NAMES, createCordisTools } from './host';
+import { CORDIS_TOOL_NAMES, createCordisTools } from './cordis';
 
 /** cordis 域插件（平台化 Phase 4 · D7，2026-08-27）——动态插件 define/run/
  *  stop/undefine/inspect 六工具。装配期真值族：cordis_run 的审批通道

@@ -264,8 +264,7 @@
     "description": "wait 工具（人工等待/确认）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/wait.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "cordis-domain",
@@ -273,8 +272,7 @@
     "description": "运行时插件域工具（define/run/stop/inspect）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/cordis.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "asset-domain",
@@ -309,7 +307,6 @@
     "description": "office 域工具（office(action,…)——OfficeCLI 一等域：读写 .docx/.xlsx/.pptx，经 shell seam 受沙箱 spawn）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/office.ts"]
+    "inject": ["tools"]
   }
 ]

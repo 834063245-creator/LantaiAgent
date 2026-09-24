@@ -13,11 +13,8 @@
 // = 插件归属会话，跨会话不可见/不可操作。
 
 import { z } from 'zod';
-import type { DynamicApproval } from '../dynamic-runner/dynamic-runner-service';
-import { activeDynamicRunner } from '../dynamic-runner/dynamic-runner-service';
-import type { Tool } from '../tool';
-import type { CodingToolsUI } from './coding';
-import { defineTool } from './define-tool';
+import type { CodingToolsUI, DynamicApproval, Tool } from './host';
+import { activeDynamicRunner, defineTool } from './host';
 
 /** 会话归属（executor 注入的 _agent_id；缺失路径回退 root——与所有权
  *  隔离语义一致：缺 id 的调用方只能看到 root 命名空间）。 */

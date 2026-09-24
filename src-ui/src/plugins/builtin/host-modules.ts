@@ -27,7 +27,11 @@ import { agentSessionState } from '../../agent/agent-session-state';
 // 运行时值（faceDeps 取用面）。（z（engine-domain 运行时取用）随图谱退役
 // 移除，2026-09-09。）
 import { firstPartyCapabilities } from '../../agent/blueprint';
+// 批 3a 归家：wait/office/cordis 三域工厂已随包 ⇒ 撤桥，改桥它们仍住内核的依赖面。
+import { SubAgentStatus } from '../../agent/coordinator';
+import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-service';
 import { createMemoryTools } from '../../agent/memory';
+import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
 import { createSkillTool, scanSkills } from '../../agent/skills';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { createTaskTools } from '../../agent/task';
@@ -39,12 +43,10 @@ import {
   createGitTools,
   createShellTools,
 } from '../../agent/tools/coding';
-import { CORDIS_TOOL_NAMES, createCordisTools } from '../../agent/tools/cordis';
+import { defineTool } from '../../agent/tools/define-tool';
 import { createSearchTools, createWebTools } from '../../agent/tools/manifest-tools';
-import { createOfficeTools } from '../../agent/tools/office';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
-import { createWaitTool } from '../../agent/tools/wait';
 import { useCoreStore } from '../../app/chat/core-instance';
 import { extractImageFiles, previewUrlFor } from '../../app/chat/image-intake';
 import { filterCommands, listCommands, slashOnly } from '../../app/commands/command-catalog';
@@ -565,18 +567,19 @@ const faceDeps = {
   createTaskTools,
   createSubAgentTool,
   createAgentStatusTool,
-  createWaitTool,
-  createCordisTools,
-  CORDIS_TOOL_NAMES,
+  // 批 3a 归家（2026-09-24）：wait/office/cordis 三域的工具工厂已随包 ⇒ 撤桥；
+  // 改用它们仍住内核的依赖面（defineTool / Tool 类型 / 域私有内核函数）。
+  SubAgentStatus,
+  defineTool,
+  isAbsolutePath,
+  ownerContext,
+  resolveAgainstRoot,
+  stickyCwdOf,
+  activeDynamicRunner,
   // 标题栏交互（2026-09-14 app-region 退役）：顶部浮件拖拽/双击最大化的原生实现
   onTopbarPointerDown,
   onTopbarDoubleClick,
   createAssetTools,
-  // office 域（2026-09-13 C 路）——**漏登记会让产物域 impl.createOfficeTools = undefined
-  // → apply 期 TypeError → boot gate fail-loud 挂住 → chat 壳行不起（表现为
-  // 「会话核心未初始化，无法绑定目录」）**。本文件顶部的 FaceBridgeSeal 是编译期守卫：
-  // 新域漏登记 = tsc 红（本条即那次事故的补登记）。
-  createOfficeTools,
   firstPartyPromptSections,
   firstPartyCapabilities,
   // S5b agent-loop-service 产物运行时依赖

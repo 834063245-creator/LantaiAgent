@@ -337,7 +337,7 @@ imageChannel 门控 / 角色口径 / 预算与 user 共用）、`tests/provider-
 
 ## 15. 域工具不要借 shell 命令串过闸：argv 里含 `/` 的 token 会被权限引擎当文件系统路径
 
-**文件**: `src-tauri/src/permissions/bash.rs`（`check` 步骤 3 路径提取）、`src-tauri/src/commands/process_cap.rs`（`office_exec`）、`src-tauri/src/tools/mod.rs`（`OfficeTool`）、`src-ui/src/agent/tools/office.ts`
+**文件**: `src-tauri/src/permissions/bash.rs`（`check` 步骤 3 路径提取）、`src-tauri/src/commands/process_cap.rs`（`office_exec`）、`src-tauri/src/tools/mod.rs`（`OfficeTool`）、`src-ui/src/plugins/builtin/office-domain/office.ts`（2026-09-24 批 3a 归家进产物包；不变量语义不变）
 
 ```
 ⚠️ INVARIANT：要给模型暴露的能力，别把它的 argv 拼成一条 **shell 命令串** 再走 Bash 家族闸

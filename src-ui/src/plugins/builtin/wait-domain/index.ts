@@ -5,7 +5,7 @@
 
 import type { Context } from '../../../cordis';
 import { noCacheContributions, registerFamily } from '../contribution-helpers';
-import { createWaitTool } from './host';
+import { createWaitTool } from './wait';
 
 /** wait 域插件——常驻 wait（依赖当次装配的 subAgentPool）。 */
 export const waitDomainPlugin = {

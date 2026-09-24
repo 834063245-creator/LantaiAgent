@@ -231,6 +231,15 @@ warn。旧形态条目（两字段皆缺席）因为在装配期自己连接并 
 
 ## 1. 账②：转发空壳 21 个 —— 10,052 行实现仍在内核
 
+> **进度（2026-09-24）**：21 条已销 **4** —— `llm-adapters`（批 2a）· `wait-domain` ·
+> `office-domain` · `cordis-domain`（批 3a）；空壳判据随之校准为三条合一
+> （薄 + **包内自有实现为空** + 转发内核实现）——只看「有逃出包外的 import」会把
+> 刚搬完的包（仍依赖 `defineTool`/`Tool` 平台面）重新判成空壳。
+> **批 3 复核发现三件（memory/skill/task）不能整件搬**：它们的类是**内核构造的**
+> （`workspace.ts` new `MemoryManager` / `SkillRegistry`、runtime 用 `TaskBoard` 11 处）
+> ⇒ 整件搬会造「宿主→插件」反向依赖（仓库明文禁反）。改随批 7（子代理/多 Agent 族）
+> 与批 9（`workspace.ts`）一起搬。
+
 **形态**：`plugins/builtin/<name>/` 只有 `index.ts`（注册贡献行）+ `host.ts`（**一行
 `export { … } from '../../../<内核>'`**）+ `host.aliased.ts`（产物域宿主桥）+ 构建期生成的
 manifest.json —— 包内合计 30～110 行。
@@ -430,8 +439,8 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 2a 后重测）：红 **23 产物 / 49 文件 / 17,129 行**（§1 的 20 条 +
-§2.1 Provider 家族 8 件 + §2.5 两包独占件）；绿 111 平台 + 72 已认领；灰 140 文件 / 39,135 行
+**2026-09-24 基线**（批 3a 后重测）：红 **20 产物 / 46 文件 / 16,251 行**（§1 的 17 条 +
+§2.1 Provider 家族 8 件 + §2.5 两包独占件）；绿 111 平台 + 73 已认领；灰 136 文件 / 38,052 行
 （`agent/` 87 · `app/` 32 · `ui/` 9）——**灰区 ⊇ 账③**：除 §2 已认领的面之外，还含内核自身的
 app/agent 编排件（归属判定未做），故灰区数字大于 §2 的 32,018。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
@@ -445,7 +454,7 @@ app/agent 编排件（归属判定未做），故灰区数字大于 §2 的 32,0
 | **0c** | 顺手三清：删 `composition/asset-renderers.tsx`（49，真源已迁）· 收缩 `i18n.ts`（98→21，半尸体）· 清 `preset-authoring.ts`（192）归 settings-domain | 339 | ✅ 全清（第三件并入批 1）——它要动的正是 settings-domain 的 host/faceDeps 面，与三页归家同一处 churn，合并只付一次 baseline 重生成 + exe 重建成本 |
 | **1** | settings 三页归家（McpPage/PluginsPage/SkillsPage）+ `preset-authoring` 随迁 | 1,103 + 192 | ✅ **已落**（2026-09-24）：三页 `git mv` 进包、内核依赖改走包内 `./host` 逐符号桥（+24 faceDeps 键，baseline 重生成）、产物自包含校验过、CSS 面无需动（三页 class 本就在包内 `settings-panel.css`）；链路（页面进包 + host 三处同步 + 产物构建 + faceDeps 指纹）已走通 |
 | **2** | seam provider 实心化：`llm-adapters`（三适配器 + 两个私有 helper）；`subagent-in-process` 并入批 7 | 1,916 | ✅ **llm-adapters 已落**（2026-09-24 批 2a）：1,916 行进包、端点真源上收内核、16 个运行时桥位、产物 2.6 KB→41.6 KB（**适配器自此可热更**）。`subagent-in-process`（543）复核后并入批 7——它要同一片 `agent.ts`/context/message-bus 面（16 桥位），那批本就要整片搬 |
-| **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | 转发链最短、先例现成（`fs-builtin` 自包含形态）；先定「包内经 faceDeps 取实例 vs 装配期经 rowCtx 注入」 |
+| **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | ✅ **批 3a 已落 3 件**（wait 102 · office 576 · cordis 200 = 878 行；桥位仅 9 运行时 + 7 类型）。**memory/skill/task 复核后改期**：它们的类是内核构造的（`workspace.ts` new MemoryManager/SkillRegistry、runtime 用 TaskBoard 11 处）⇒ 整件搬会造宿主→插件反向依赖（仓库禁反），改随批 7 / 批 9 |
 | **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | 硬骨头：一文件载五族；9+5+2 个测试直连；search 输出形状须与 Rust 逐字节等价 |
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | 纯搬运；直接消灭「改版式 token 必须重建 exe」 |
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | 通道现成；工作量在拆 loop 契约耦合与 host 模式 |

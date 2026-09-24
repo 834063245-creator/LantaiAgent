@@ -66,9 +66,8 @@
 //   结果：项目内目标不弹卡；项目外/敏感路径仍要问，且「始终允许」真的生效。
 
 import { z } from 'zod';
-import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../session-context';
-import type { Tool, ToolExecutor } from '../tool';
-import { defineTool } from './define-tool';
+import type { Tool, ToolExecutor } from './host';
+import { defineTool, isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from './host';
 
 /** 动作面（收窄）——**只收真会用的**：读（view/get/query/validate）、写（create/set/
  *  add/remove/batch）、交付（merge/screenshot）。CLI 的 raw/raw-set/add-part/refresh/

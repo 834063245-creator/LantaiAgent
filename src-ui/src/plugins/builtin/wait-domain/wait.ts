@@ -14,10 +14,8 @@
 // 事件驱动 + 超时兜底才是"等"，bash_wait 已验证这个模式。
 
 import { z } from 'zod';
-import type { SubAgentPool } from '../coordinator';
-import { SubAgentStatus } from '../coordinator';
-import type { Tool } from '../tool';
-import { defineTool } from './define-tool';
+import type { SubAgentPool, Tool } from './host';
+import { defineTool, SubAgentStatus } from './host';
 
 const MAX_WAIT_MS = 600_000; // 10 分钟上限，对齐 SHELL_TIMEOUT
 const POLL_INTERVAL_MS = 500;

@@ -22,7 +22,7 @@
 // 修复纪律（照 tests/paper-interaction-handoff.test.ts 的 KNOWN_DEAD）：搬一个，销一条。
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_ROSTER } from '../src/plugins/builtin-roster';
@@ -56,12 +56,12 @@ const NOTES: Record<string, string> = {
   'web-domain': '同上（同文件两域）',
   'agent-domain': 'agent/tools/subagent.ts 265 行',
   'asset-domain': '294 行；随行 asset-store.ts 137 · confirm-registry.ts 80',
-  'wait-domain': '102 行',
-  'office-domain': '576 行',
-  'cordis-domain': '200 行',
-  'memory-domain': '733 行；随行 memory-bundle-client.ts 134',
-  'skill-domain': 'skills.ts 377 + builtin-skills.ts 358（出厂技能内容）',
-  'task-domain': 'task.ts 178 + task-board.ts 319；随行 board-persistence.ts 121 · tools/board-status.ts 78',
+  'memory-domain':
+    '733 行；随行 memory-bundle-client.ts 134（批 3 复核：内核 `workspace.ts` 构造 MemoryManager ⇒ 宿主→插件方向禁反，待批 9）',
+  'skill-domain':
+    'skills.ts 377 + builtin-skills.ts 358（出厂技能内容；批 3 复核：内核 runtime/agent-builder/workspace 用 SkillRegistry ⇒ 待批 7/9）',
+  'task-domain':
+    'task.ts 178 + task-board.ts 319；随行 board-persistence.ts 121 · tools/board-status.ts 78（批 3 复核：TaskBoard 11 处内核消费者 ⇒ 待批 7）',
   'capability-segments': '389 行（14 项 capability 定义；AgentBlueprint 类=机制留内核）',
   'prompt-segments': '244 行（9 段文案真源；拼装序 = 字节契约）',
   'subagent-in-process': '543 行；搬前须先解 agent.ts 的值 re-export 桥（批 2 复核后并入批 7 同族一次搬完）',
@@ -121,14 +121,28 @@ function packageExternalImports(dir: string): Set<string> {
   return out;
 }
 
-/** 机械判据：这个包是「薄 + 转发内核实现」的空壳吗？ */
+/** 包内**自有实现**行数（排除注册面 `index.ts` / 两张宿主面 / 生成的 manifest.json / CSS）
+ *  ——空壳的实质判据：一个包自己一行实现都没有，实现只可能在别处。 */
+const BRIDGE_FILES = new Set(['index.ts', 'index.tsx', 'host.ts', 'host.aliased.ts', 'manifest.json']);
+function selfImplLines(dir: string): number {
+  return pkgTsFiles(dir)
+    .filter((f) => !BRIDGE_FILES.has(basename(f)))
+    .reduce((a, f) => a + physicalLines(f), 0);
+}
+
+/** 机械判据：这个包是「薄 + 自有实现为空 + 转发内核实现」的空壳吗？
+ *  ⚠ 三条缺一不可（2026-09-24 批 3a 校准）：归家后的包**仍会**依赖内核平台面
+ *  （`defineTool` / `Tool` 类型 / `rpc-contract`）——只看「有逃出包外的 import」
+ *  会把 wait-domain 这类**刚搬完**的包重新判成空壳。 */
 function looksLikeShell(dir: string): { shell: boolean; why: string } {
   const files = pkgTsFiles(dir);
   const lines = files.reduce((a, f) => a + physicalLines(f), 0);
   if (lines >= THIN_LINES) return { shell: false, why: `包内 ${lines} 行（≥ ${THIN_LINES}，不是薄包）` };
+  const self = selfImplLines(dir);
+  if (self > 0) return { shell: false, why: `薄（${lines} 行）但自有实现 ${self} 行（= 已实心化）` };
   const implTargets = [...packageExternalImports(dir)].filter((t) => !PLATFORM_TARGETS.some((re) => re.test(t)));
-  if (implTargets.length === 0) return { shell: false, why: `薄（${lines} 行）但无内核实现依赖` };
-  return { shell: true, why: `薄（${lines} 行）+ 转发 ${implTargets.join(', ')}` };
+  if (implTargets.length === 0) return { shell: false, why: `薄（${lines} 行）且自有实现为空，但只桥平台面` };
+  return { shell: true, why: `薄（${lines} 行）+ 自有实现为空 + 转发 ${implTargets.join(', ')}` };
 }
 
 /** 名册里的归家认领（impl 非空 = 该产物仍有实现留在内核）。 */
@@ -140,9 +154,12 @@ const CLAIMS = BUILTIN_ROSTER.filter((e) => (e.impl?.length ?? 0) > 0).map((e) =
 const SHELL_DIRS = CLAIMS.filter((c) => c.isShell).map((c) => c.dir);
 
 describe('产物归家账（销账制：搬一个销一条，清空即全绿）', () => {
-  it('机械判据自检：真空壳命中、合格样板不命中（防守卫自身失灵）', () => {
+  it('机械判据自检：真空壳命中、已归家/合格样板不命中（防守卫自身失灵）', () => {
     expect(looksLikeShell('fs-domain').shell, 'fs-domain 应判为空壳').toBe(true);
-    expect(looksLikeShell('office-domain').shell, 'office-domain 应判为空壳').toBe(true);
+    expect(looksLikeShell('memory-domain').shell, 'memory-domain 应判为空壳').toBe(true);
+    expect(looksLikeShell('wait-domain').shell, 'wait-domain 批 3a 已归家（自有实现 102 行）').toBe(false);
+    expect(looksLikeShell('office-domain').shell, 'office-domain 批 3a 已归家（自有实现 576 行）').toBe(false);
+    expect(looksLikeShell('llm-adapters').shell, 'llm-adapters 批 2a 已归家').toBe(false);
     expect(looksLikeShell('fs-builtin').shell, 'fs-builtin 是合格样板（provider 本体在包内）').toBe(false);
     expect(looksLikeShell('shell-builtin').shell, 'shell-builtin 同上').toBe(false);
     expect(looksLikeShell('sessions-builtin').shell, 'sessions-builtin 同上（只桥 rpc-contract 强制层）').toBe(false);
@@ -194,10 +211,10 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     expect(done, `这些包的实现已不在内核（搬运完成）——请从名册该条目的 impl 销账：\n${done.join('\n')}`).toEqual([]);
   });
 
-  it('账本口径自洽：空壳 20 条（18 纯壳 + 2 半壳），且每条都有备注文本', () => {
-    // 口径：账本 §1 立账 21 条；批 2a 实心化 `llm-adapters` ⇒ 销一条（19 仍是薄包，
-    // 加上实心包里的两处残余认领另有断言守）。数字再变 = 要么又销了账（改这条），要么漏登记。
-    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 1 = 20`).toBe(20);
+  it('账本口径自洽：空壳 17 条（15 纯壳 + 2 半壳），且每条都有备注文本', () => {
+    // 口径：账本 §1 立账 21 条；批 2a 实心化 `llm-adapters`、批 3a 实心化
+    // wait/office/cordis 三域 ⇒ 销 4 条。数字再变 = 要么又销了账（改这条），要么漏登记。
+    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 4 = 17`).toBe(17);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();
     // 反向：备注表不许留已销账的条目（防文本腐烂）
     const ghost = Object.keys(NOTES).filter((d) => !CLAIMS.some((c) => c.dir === d));
