@@ -11,10 +11,10 @@
 // workspace-session-ownership-rework（2026-08-27）：占位工作区（path=''）退役，
 // 低层构造改 public——测试用真实路径轻量实例（不触 RPC，同占位语义）。
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { Context } from '../src/cordis';
-import { LspService } from '../src/ui/lsp-client';
+import { LspService, requireLspService } from '../src/ui/lsp-client';
 import { Workspace } from '../src/workspace';
 import { getWorkspaceEpoch } from '../src/workspace-scope';
 
@@ -77,11 +77,15 @@ describe('Workspace fiber 生命周期（P1）', () => {
     expect(() => ws.cordisCtx.effect(() => {}, 'late')).toThrow();
   });
 
-  it('LSP 子系统服务挂工作区 fiber（P3）— 随 fiber 生命周期收尾', async () => {
+  it('LSP 服务是内核单例（批 9b §4-13）— 工作区只登记「工作区级清态」', async () => {
     const ws = makeWs();
+    // 单例：内核 service 本体（loader 装载；`requireLspService()` 的同一实例）
     expect(ws.lsp).toBeInstanceOf(LspService);
+    expect(ws.lsp).toBe(requireLspService());
+    // deactivate（= 工作区 fiber dispose）必须走「工作区级清态」——服务本体不随工作区销毁
+    const reset = vi.spyOn(ws.lsp, 'resetWorkspaceState');
     await ws.deactivate(fakeChatPanel());
-    // 服务随工作区 fiber dispose 收尾（H1：旧项目诊断缓存不带入新工作区）
-    expect(ws.lsp.disposed).toBe(true);
+    expect(reset).toHaveBeenCalled();
+    expect(ws.lsp.disposed).toBe(false);
   });
 });

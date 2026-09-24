@@ -19,7 +19,7 @@
 
 import type { editor, IDisposable, IRange, languages } from 'monaco-editor';
 import { listen } from '../bridge';
-import { Context, Service } from '../cordis';
+import { type Context, Service } from '../cordis';
 import { kernelLspCall, kernelLspRequest } from '../rpc-contract';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 
@@ -167,10 +167,10 @@ function mapCompletionItem(item: LspCompletionItem, monaco: typeof import('monac
 /** 活跃 LSP 服务指针 — 最近构造者胜。生产路径 Workspace 构造先于任何 LSP 调用，
  *  恒为工作区挂载实例；服务随挂载 fiber dispose 时摘除（见 _teardown）。 */
 let activeLsp: LspService | null = null;
-/** 游离兜底 fiber（单测/无工作区路径）— 进程生命周期，永不 dispose。 */
-let fallbackFiber: ReturnType<Context['plugin']> | null = null;
-/** 游离兜底服务实例（复用，避免多次 provide 叠加）。 */
-let fallbackSvc: LspService | null = null;
+/** 内核兜底服务实例（**由 loader 装载的 `lspServicePlugin` 在根 Context 上建**——
+ *  批 9b §4-13：此前这里自建第二个根 Context（绕过 `initCordisKernel()`），既不受
+ *  「内核不可禁用」覆盖也不进 boot 审计；现在兜底 = 内核 service 本体）。 */
+let kernelLspSvc: LspService | null = null;
 
 /** LSP 子系统服务 — 原 lsp-client 的模块级可变单例状态（会话表/provider 数组/
  *  诊断缓存/监听器）收进服务实例，由 Workspace 挂在工作区 fiber 上。
@@ -201,15 +201,15 @@ export class LspService extends Service {
     );
   }
 
-  /** 服务是否已随挂载 fiber 释放（游离兜底实例永为 false）。 */
+  /** 服务是否已随挂载 fiber 释放（内核 service 常驻，生产路径永为 false）。 */
   get disposed(): boolean {
     return this._disposed;
   }
 
-  /** 挂载 fiber dispose 时的同步收尾（lsp_stop 发后即忘）。 */
-  private _teardown(): void {
-    this._disposed = true;
-    if (activeLsp === this) activeLsp = null;
+  /** **工作区级清态**（批 9b §4-13）：内核 service 常驻 ⇒ 工作区切换不再靠「dispose 服务实例」
+   *  收尾，改由工作区 fiber 的 effect 调本方法（清 provider/监听器/缓存/会话表，会话逐个
+   *  `lsp_stop` 发后即忘）。服务本体与 `activeLsp` 指针保留（它是内核面，不随工作区生灭）。 */
+  resetWorkspaceState(): void {
     for (const p of this.completionProviders) p.dispose();
     for (const p of this.hoverProviders) p.dispose();
     for (const p of this.definitionProviders) p.dispose();
@@ -226,6 +226,13 @@ export class LspService extends Service {
       void kernelLspCall('lsp_stop', { session_id: sid }).catch(() => {});
     }
     this.lspSessions.clear();
+  }
+
+  /** 挂载 fiber dispose 时的同步收尾（lsp_stop 发后即忘）：置 disposed + 清态 + 摘指针。 */
+  private _teardown(): void {
+    this._disposed = true;
+    if (activeLsp === this) activeLsp = null;
+    this.resetWorkspaceState();
   }
 
   /** 查询某语言的 LSP 会话 ID（单一事实源 — file-viewer 不再自建第二张会话表，H2）。
@@ -573,19 +580,35 @@ export class LspService extends Service {
 
 // ── 模块级薄转发（兼容面：消费方零改动）──
 
-/** 取活跃 LSP 服务：工作区挂载实例优先；无挂载时惰性建/复用游离兜底实例
- *  （单测路径 — 行为与旧模块全局态等价，进程生命周期）。 */
-function ensureLspService(): LspService {
+/** 取活跃 LSP 服务（内核 service 本体；`lspServicePlugin` 由 loader 装载时建）。
+ *  未装载 = 装配断层，当场抛具名错误——**不再自建第二个根 Context**（批 9b §4-13）。 */
+export function requireLspService(): LspService {
   if (activeLsp && !activeLsp.disposed) return activeLsp;
-  if (fallbackSvc && !fallbackSvc.disposed) {
-    activeLsp = fallbackSvc;
-    return fallbackSvc;
+  if (kernelLspSvc && !kernelLspSvc.disposed) {
+    activeLsp = kernelLspSvc;
+    return kernelLspSvc;
   }
-  fallbackFiber ??= new Context().plugin({ name: 'hologram/lsp-fallback', apply() {} });
-  fallbackSvc = new LspService(fallbackFiber.ctx);
-  activeLsp = fallbackSvc;
-  return fallbackSvc;
+  throw new Error('LSP 服务不可用：内核 hologram/lsp-service 未装载（检查 loadBuiltinPlugins / BUILTIN_PLUGINS 表）。');
 }
+
+function ensureLspService(): LspService {
+  return requireLspService();
+}
+
+/** 内核 LSP service 插件（批 9b §4-13：14 个内核 service 之一，由 loader 装载）。
+ *
+ *  所有权模型（与 cordis-migration P3 的差异，本批显式变更）：LSP 服务**进程级单例**
+ *  （挂内核根 Context，随 loader 装载、不可禁用），工作区不再各建一个实例——`ctx.lsp`
+ *  在 cordis 的 reflect 里同链重名会被拒（实测 `service "lsp" has been registered at
+ *  <…>`），而且「游离兜底 + 工作区实例」两份状态本身就是 P3 之前的老问题。
+ *  工作区切换的状态隔离改由 `Workspace` 在自身 fiber 上登记 `resetWorkspaceState()`
+ *  （工作区级清态，语义与旧的「服务随 fiber dispose」逐条等价）。 */
+export const lspServicePlugin = {
+  name: 'hologram/lsp-service',
+  apply(ctx: Context) {
+    kernelLspSvc = new LspService(ctx);
+  },
+};
 
 export function getLspSession(language: string): number | undefined {
   return ensureLspService().getLspSession(language);

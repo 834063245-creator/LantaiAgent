@@ -29,6 +29,7 @@ import { sessionPersistenceServicePlugin } from '../composition/session-persiste
 import { shellServicePlugin } from '../composition/shell-service';
 import { spaceServicePlugin } from '../composition/space-service';
 import { subagentsServicePlugin } from '../composition/subagent-service';
+import { lspServicePlugin } from '../ui/lsp-client';
 import type { LantaiPlugin } from './types';
 
 /** 内核 service 表项：插件对象 + 清单文案（UI 展示）。 */
@@ -38,7 +39,9 @@ export interface ServicePluginEntry {
   description: string;
 }
 
-/** 13 个内核 service（**表序 = 装载序 = 字节契约**；加/删只许动本表）。 */
+/** 14 个内核 service（**表序 = 装载序 = 字节契约**；加/删只许动本表）。
+ *  第 14 位 `lsp-service`（批 9b §4-13）：此前游离在清单外（`ui/lsp-client.ts` 自建第二个根
+ *  Context 当兜底）⇒ 不受「内核不可禁用」覆盖、不进 boot 审计；现由 loader 装载。 */
 export const SERVICE_PLUGINS: readonly ServicePluginEntry[] = [
   {
     plugin: compositionServicesPlugin,
@@ -56,4 +59,5 @@ export const SERVICE_PLUGINS: readonly ServicePluginEntry[] = [
   { plugin: capabilitiesServicePlugin, description: '会话级能力贡献注册表（第八通道）' },
   { plugin: codeRuntimePlugin, description: 'code_execution 执行腰沙箱' },
   { plugin: dynamicRunnerPlugin, description: '运行时插件定义/执行（cordis 域，approval + 半沙箱）' },
+  { plugin: lspServicePlugin, description: '语言服务（LSP）会话与 provider 注册（工作区 fiber 挂载 + 内核兜底实例）' },
 ];

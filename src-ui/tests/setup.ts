@@ -19,6 +19,8 @@ beforeAll(async () => {
     { subagentRuntimeImplementation },
     { registerMarkdownBody },
     { MarkdownBody },
+    { initCordisKernel },
+    { lspServicePlugin },
   ] = await Promise.all([
     import('../src/agent/multiagent-impl'),
     import('../src/plugins/builtin/multiagent-comm/implementation'),
@@ -26,6 +28,8 @@ beforeAll(async () => {
     import('../src/plugins/builtin/subagent-in-process/implementation'),
     import('../src/paper/markdown-body-seam'),
     import('../src/plugins/builtin/paper-renderers/renderers'),
+    import('../src/cordis/boot'),
+    import('../src/ui/lsp-client'),
   ]);
   registerMultiagentComm(multiagentCommImplementation);
   // 批 7c-2：子代理运行时（池 / 生命周期 / 派生 + 两工具族）整体登记——与产物包 index.ts 同源。
@@ -33,6 +37,9 @@ beforeAll(async () => {
   // 批 8b：markdown 体渲染（纸面块渲染器产物 paper-renderers 的 apply 期登记项）——
   // 重查看器（ipynb / markdown-doc）复用面，测试域复现「产物已装载」的常驻态。
   registerMarkdownBody(MarkdownBody);
+  // 批 9b §4-13：`ctx.lsp` 入内核清单后，**兜底实例由内核 service 提供**（此前是自建第二个
+  // 根 Context）——测试域复现「loader 已跑过」：在内核根 Context 上挂 lspServicePlugin。
+  initCordisKernel().plugin(lspServicePlugin);
 });
 
 // jsdom 不实现 CSS.escape（react-aria ListKeyboardDelegate 依赖它拼 [data-key] 选择器）。

@@ -70,7 +70,7 @@ import { showToast, TOAST_LONG_HOLD_MS } from './state/toast-store';
 import { pullShellWork, setOwnerSessionResolver, useWorkLedgerStore } from './state/work-ledger-store';
 import { useAgentPanelStore } from './ui/agent-panel-store';
 import { resetSessionState } from './ui/chat-session';
-import { getDiagnosticsForFile, LspService } from './ui/lsp-client';
+import { getDiagnosticsForFile, type LspService, requireLspService } from './ui/lsp-client';
 import { createBuilderDeps, createRuntimeAdapter } from './ui/runtime-adapter';
 import { bumpWorkspaceEpoch, getWorkspaceEpoch, isCurrentEpoch } from './workspace-scope';
 
@@ -164,7 +164,10 @@ export class Workspace {
    *  每次调用打包为一个 DisposerBag、作为单个 effect 登记（组内串行逆序不变）。
    *  deactivate/forceClearState 统一走 fiber.dispose()（dispose-to-quiescence）。 */
   private readonly _fiber: Fiber;
-  /** LSP 子系统服务（cordis-migration P3）— 状态与生命周期挂工作区 fiber。 */
+  /** LSP 子系统服务（批 9b §4-13）：**内核单例**（`lspServicePlugin` 由 loader 装载）——
+   *  工作区不再各建实例（同链重名会被 cordis reflect 拒），改在自身 fiber 上登记
+   *  「工作区级清态」（`resetWorkspaceState()`）：与旧的「服务随 fiber dispose」逐条等价
+   *  （provider/监听器/诊断缓存/会话表全清 —— H1 不带入新工作区）。 */
   private readonly _lspService: LspService;
 
   /** 工作区级装配材料（builderDeps + agentRef + 装配时组合快照 + chatPanel）
@@ -209,9 +212,15 @@ export class Workspace {
     // 工作区 scope fiber — 挂在根 Context 上（initCordisKernel 幂等：生产路径
     // main.ts 已引导，复用既有根；测试路径首次调用自动建根）。
     this._fiber = initCordisKernel().plugin(workspaceScopePlugin);
-    // cordis-migration P3：LSP 子系统服务挂工作区 fiber — 状态收进服务实例，
-    // 生命周期随 fiber（deactivate/forceClear → provider/监听器/缓存/会话全清）。
-    this._lspService = new LspService(this._fiber.ctx);
+    // 批 9b §4-13：LSP 服务是内核单例（loader 装载，不可禁用）——工作区只登记**清态**：
+    // fiber dispose（deactivate / forceClear）时清 provider/监听器/缓存/会话表。
+    this._lspService = requireLspService();
+    this._fiber.ctx.effect(
+      () => () => {
+        this._lspService.resetWorkspaceState();
+      },
+      'lsp-workspace-state',
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════

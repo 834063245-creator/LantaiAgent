@@ -10,7 +10,8 @@
 > **平台化 Phase 3-6（2026-08-27/28）：本文件为插件面唯一人类契约。**
 > **2026-08-31（增补四）：kind='feature' 全量通道化（23 个产物 + 位移机制）。**
 > **2026-09-03（plugin-bundle-retirement S2-S5 竣工）：bundle 双轨拆除**——
-> 43 个第一方插件分家为 **13 内核**（exe 编译态：11 注册表/运行时 +
+
+> 43 个第一方插件分家为 **内核 service**（exe 编译态：注册表/运行时 +
 > agent-loop-service 暂缓）+ **出厂产物**（磁盘通道：6 供应商 + 5 既有 +
 > 16 工具域 + 2 段贡献，真源全部在 plugins/builtin/&lt;name&gt;/ 目录）——
 > 当时 29 条，**现计数见 `docs/facts.generated.md`**。
@@ -108,7 +109,7 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
 `check:builtin-plugins` / 设置面板「重新加载」）与三条仍需重建 exe 的边界见
 `docs/dev-workflow.md`「生产包热更」。
 
-- **装载形态（S5 后单一）**：产物从磁盘通道装载（exe 只留 13 内核装配台——
+- **装载形态（S5 后单一）**：产物从磁盘通道装载（exe 只留内核 service 装配台（计数见 docs/facts.generated.md）——
   displace 位移机制已退役，产物是唯一装载面，无 bundle 兜底行）。装载序 =
   `factoryProductPlugins()` 表序（贡献注册序 = 原 bundle 序——组合快照/
   前缀缓存依赖此序），用户插件按索引序殿后。
