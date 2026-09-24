@@ -172,7 +172,22 @@ n-gram）。分析后按项目语言**异步预热**原生 LSP，查询按需调
 适配层（不自带产品资产），Windows x64，装后重启 `dsh web`，图查询工具进 agent 工具箱
 （`mcp__hologram__*`）。原先随包的 3D 星图已随主仓图谱渲染内核退役拆除，**包内只发引擎 + MCP 工具面**。
 
-### 引擎 CLI（从源码构建，Linux / Windows 均可）
+### 引擎 CLI
+
+**预编译产物**——每个 `v*` tag 的 [Releases](https://github.com/834063245-creator/LantaiAgent/releases)
+附件，解包后二进制与 `grammars/` 同级（后者是 kotlin / markdown / toml 三个动态语法，引擎按
+二进制同级目录自动加载）：
+
+| 平台 | 附件 |
+|---|---|
+| Linux x64 | `hologram-engine-linux-x64.tar.gz` |
+| macOS（Apple Silicon / arm64） | `hologram-engine-macos-arm64.tar.gz` |
+| Windows x64 | `hologram-engine-windows-x64.zip` |
+
+Intel Mac 没有预编译产物，走下面的源码构建（或 arm64 产物 + Rosetta）。浏览器下载的 macOS 二进制
+未签名，被 Gatekeeper 拦下时 `xattr -d com.apple.quarantine hologram-engine` 解。
+
+**从源码构建**（三平台均可）：
 
 ```bash
 cd engine && cargo build --release

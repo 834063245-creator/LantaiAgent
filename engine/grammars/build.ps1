@@ -33,14 +33,27 @@ function Build-Grammar($lang) {
         $ErrorActionPreference = $prev
     }
 
-    # Find parser.c — handles monorepos (markdown) and flat repos (kotlin, toml)
-    $parserC = Get-ChildItem -Path $repoDir -Filter "parser.c" -Recurse -File | Select-Object -First 1
-    if (-not $parserC) {
-        Write-Host "  ERROR: no parser.c found in $repoDir" -ForegroundColor Red
-        return
+    # Find parser.c — flat repos (kotlin, toml) 递归找即可；markdown 是 monorepo，
+    # 里面有**两个**语法（block 与 inline），导出符号不同名
+    # （tree_sitter_markdown vs tree_sitter_markdown_inline），而产物文件名一律是
+    # tree-sitter-markdown.dll —— 引擎按 `tree_sitter_{grammar}` 找符号，选中 inline
+    # 就等于发一个永远加载不上的库。递归枚举顺序不保证，故钉死 block（与 build.sh 同源）。
+    if ($lang -eq "markdown") {
+        $parserC = Join-Path $repoDir "tree-sitter-markdown\src\parser.c"
+        if (-not (Test-Path $parserC)) {
+            Write-Host "  ERROR: no parser.c found at $parserC" -ForegroundColor Red
+            return
+        }
+        $srcDir = Split-Path -Parent $parserC
+    } else {
+        $found = Get-ChildItem -Path $repoDir -Filter "parser.c" -Recurse -File | Select-Object -First 1
+        if (-not $found) {
+            Write-Host "  ERROR: no parser.c found in $repoDir" -ForegroundColor Red
+            return
+        }
+        $srcDir = $found.Directory.FullName
+        $parserC = $found.FullName
     }
-    $srcDir = $parserC.Directory.FullName
-    $parserC = $parserC.FullName
     $scannerC = Join-Path $srcDir "scanner.c"
     $scannerCC = Join-Path $srcDir "scanner.cc"
 

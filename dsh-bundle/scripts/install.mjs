@@ -7,7 +7,7 @@
 //   win32-x64 → 下载 hologram-engine-win32-x64.exe
 //   其他平台   → 明确报"暂不支持"（安装失败，用户看到可读信息）
 //
-// 下载源：https://github.com/834063245-creator/HoloGram/releases/download/<tag>/<asset>
+// 下载源：https://github.com/834063245-creator/LantaiAgent/releases/download/<tag>/<asset>
 // tag 与 npm 版本对应：发布流程 = 打 v<version> tag（触发 CI 构建引擎传 Release）→ npm publish
 // （install 脚本读包根 package.json 的 version 拼 tag，保证二进制与包版本一致）
 
@@ -22,7 +22,10 @@ const BIN_DIR = join(BUNDLE_ROOT, 'bin')
 // 版本唯一真源 = 包根 package.json（engine 侧用 CARGO_PKG_VERSION 是同一模式）。
 // 历史教训：硬编码 fallback 在 10.2.0 与 10.3.0 两次发版时忘改，CI 连红——不要再加回来。
 const PKG_VERSION = JSON.parse(readFileSync(join(BUNDLE_ROOT, 'package.json'), 'utf8')).version
-const REPO = '834063245-creator/HoloGram'
+// 仓库名 = 改名后的现名（LantaiAgent）。曾写作旧名 HoloGram：GitHub 的改名 301 重定向
+// 目前还兜着它，但那是**别人的**重定向——同账号下再出现一个叫 HoloGram 的仓库就会顶掉，
+// 届时这里静默 404（与 tauri updater 端点当年写成 /Lantai/ 是同一类病）。
+const REPO = '834063245-creator/LantaiAgent'
 const TAG = 'v' + PKG_VERSION
 
 function assetNameFor(platform, arch) {

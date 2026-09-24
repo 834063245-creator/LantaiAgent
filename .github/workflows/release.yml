@@ -125,7 +125,7 @@ jobs:
           cp engine/grammars/tree-sitter-*.dll staging/grammars/
           cd staging && 7z a -tzip ../${{ matrix.artifact }}.zip .
 
-      # 构建产物自检：语法库必须真的编出来了。
+      # 构建产物自检：语法库必须真的编出来了，且**符号对得上**。
       # 少了它，「build.ps1 静默没编出东西」会一路滑到用户侧才以「解析质量下降」
       # 的形式暴露——那是最难归因的一类失败，所以在发版这一步就钉死。
       - name: Verify grammar artifacts
@@ -142,6 +142,27 @@ jobs:
           if [ "$actual" -lt "$expected" ]; then
             echo "::error::动态语法产物缺失（期望 $expected 个 .$ext，实得 $actual）"
             exit 1
+          fi
+
+          # 数量够 ≠ 能用（2026-09-24 实测）：引擎按**文件名**反推符号名
+          # （grammar_loader：`tree_sitter_{grammar}`，'-'→'_'），找不符号只留一行
+          # 日志、纯退化不报错。而 markdown 的 monorepo 里有 block / inline 两个
+          # 语法，inline 导出的是 `tree_sitter_markdown_inline`，产物文件名却一样
+          # 叫 tree-sitter-markdown.<ext> ⇒ 上面那条数量检查照样全绿，用户侧
+          # markdown 却永远加载不上。故这里按同样的规则逐库验符号。
+          # nm 缺失时只告警跳过——不拿工具缺席判红。
+          if command -v nm >/dev/null 2>&1; then
+            for lib in engine/grammars/tree-sitter-*.$ext; do
+              lang=$(basename "$lib" ".$ext" | sed 's/^tree-sitter-//')
+              sym=tree_sitter_$(echo "$lang" | tr '-' '_')
+              if ! nm -g "$lib" 2>/dev/null | grep -qE "(^|[^a-zA-Z0-9])${sym}$"; then
+                echo "::error::$lib 未定义符号 $sym —— 该语法库引擎加载不上（静默退化）"
+                exit 1
+              fi
+              echo "  符号 OK: $sym  ←  $lib"
+            done
+          else
+            echo "::warning::nm 不可用，跳过语法符号自检"
           fi
 
       # 为什么不用 `git cliff --current`（2026-09-22 实测翻案）：

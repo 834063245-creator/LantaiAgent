@@ -33,8 +33,20 @@ build_grammar() {
     fi
 
     local parser_c
-    parser_c=$(find "$repo_dir" -name "parser.c" -type f | head -1)
-    if [ -z "$parser_c" ]; then
+    # ⚠ markdown 是 monorepo，里面有**两个**语法：block（tree-sitter-markdown/）
+    # 与 inline（tree-sitter-markdown-inline/）。两者导出符号不同名
+    # （tree_sitter_markdown vs tree_sitter_markdown_inline），而本脚本产出的文件名
+    # 一律是 tree-sitter-markdown.<ext>，引擎按文基名找符号
+    # （grammar_loader：`tree_sitter_{grammar}`）——选中 inline 就等于发一个
+    # **永远加载不上**的语法库，且只留一行日志、不报错。
+    # 而 `find | head -1` 选谁全看目录遍历顺序（2026-09-24 实测：同一份脚本
+    # ubuntu 腿选到 inline、macOS 腿选到 block；ext4 的 hashed dir 顺序本就不保证），
+    # 故 markdown 钉死在 block（与 build.ps1、仓库里那份 tree-sitter-markdown.dll 同源）。
+    case "$lang" in
+        markdown) parser_c="$repo_dir/tree-sitter-markdown/src/parser.c" ;;
+        *)        parser_c=$(find "$repo_dir" -name "parser.c" -type f | head -1) ;;
+    esac
+    if [ ! -f "$parser_c" ]; then
         echo -e "\033[31m  ERROR: no parser.c found in $repo_dir\033[0m"
         return 1
     fi
