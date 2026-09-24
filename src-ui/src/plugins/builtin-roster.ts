@@ -32,6 +32,14 @@ export interface BuiltinRosterEntry {
   /** 依赖的 ctx service 名（cordis 注入面——各 builtin/index.ts 插件对象的
    *  inject 必须与此对拍；产物 manifest 的 inject 由此生成）。 */
   inject: string[];
+  /** **尚未归家的实现真源**（相对 `src/` 的物理路径）——「已认领却不在包内」的
+   *  机器可读账（插件化欠账总账 §1/§2）：非空 = 该产物是转发空壳/半壳。
+   *  搬一条删一条，清空即实心化。消费方：`scripts/plugin-home-check.cjs`
+   *  （红区）+ `tests/plugin-home-ledger.test.ts`（销账制守卫）。 */
+  impl?: string[];
+  /** **有意留内核的共享面**（相对 `src/` 的物理路径）——跨产物契约/判据层
+   *  （账本 §2.5 契约层、§3 零欠账面）：登记它 = 该模块留在内核是决定，不是漏网。 */
+  shared?: string[];
   /** UI 面（产物需注入 entry.css 产物标记；仅 canvas-nav/paper-shell/
    *  settings-domain/compose-dock/paper-minimap 五面）。 */
   face?: boolean;

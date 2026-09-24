@@ -5,7 +5,8 @@
 // （grid/chart/metric/media/graph/tree/html/form/board/timeline/citation/chem）
 // 的唯一真源。
 //
-// 原位置 src-ui/src/composition/asset-renderers.tsx（已迁移，薄壳 re-export）。
+// 原位置 src-ui/src/composition/asset-renderers.tsx（P1 已迁本文件；那层 re-export
+// 兼容薄壳 2026-09-24 批 0c 整删——真实 import 方早已消失，别再复活）。
 // 双走查设计：
 //   - 测试/开发域：直接 import 本组件（经 renderer-host 直连 react/overlay/rpc）；
 //   - 生产/插件产物域：esbuild 构建时 alias renderer-host → host 桥取用面，

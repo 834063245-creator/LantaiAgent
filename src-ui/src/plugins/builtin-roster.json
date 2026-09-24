@@ -5,7 +5,15 @@
     "description": "LLM 协议方言适配（seam/llm 默认实现）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["llm"]
+    "inject": ["llm"],
+    "impl": [
+      "provider/anthropic.ts",
+      "provider/openai.ts",
+      "provider/responses.ts",
+      "provider/shared.ts",
+      "provider/retry.ts"
+    ],
+    "shared": ["provider/types.ts"]
   },
   {
     "dir": "subagent-in-process",
@@ -13,7 +21,8 @@
     "description": "进程内子代理默认实现",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["subagents"]
+    "inject": ["subagents"],
+    "impl": ["agent/subagent-spawn.ts"]
   },
   {
     "dir": "fs-builtin",
@@ -46,6 +55,7 @@
     "entry": "index.tsx",
     "hostModule": "renderer-host",
     "inject": ["renderers"],
+    "shared": ["paper/block-model.ts", "paper/plate-sign.ts", "paper/viewer-exts.ts"],
     "face": true,
     "define": {
       "globalThis.__LANTAI_RENDERER_ROW_PREFIX__": "\"plugin/hologram/renderers\""
@@ -58,6 +68,28 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["panels", "commands"],
+    "impl": [
+      "paper/type-tokens.ts",
+      "paper/provenance.ts",
+      "paper/sel-ink.ts",
+      "paper/focus-flight.ts",
+      "paper/sheet.ts"
+    ],
+    "shared": [
+      "paper/block-model.ts",
+      "paper/region-view.ts",
+      "paper/overlay-context.ts",
+      "paper/canvas-math.ts",
+      "paper/space.ts",
+      "paper/minimap-core.ts",
+      "paper/ink.ts",
+      "paper/measure.ts",
+      "paper/group.ts",
+      "paper/virtualize.ts",
+      "paper/selection.ts",
+      "paper/asset-rack.ts",
+      "paper/plate-sign.ts"
+    ],
     "face": true
   },
   {
@@ -67,6 +99,11 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["panels", "commands"],
+    "impl": [
+      "app/panels/settings/McpPage.tsx",
+      "app/panels/settings/PluginsPage.tsx",
+      "app/panels/settings/SkillsPage.tsx"
+    ],
     "face": true
   },
   {
@@ -76,6 +113,7 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["panels", "commands", "space"],
+    "shared": ["paper/canvas-math.ts", "paper/space.ts"],
     "face": true
   },
   {
@@ -85,6 +123,14 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["overlays", "commands", "space"],
+    "impl": ["paper/toc.ts", "paper/toc-ink.ts", "paper/ime.ts"],
+    "shared": [
+      "paper/block-model.ts",
+      "paper/ink.ts",
+      "paper/overlay-context.ts",
+      "paper/asset-rack.ts",
+      "paper/plate-sign.ts"
+    ],
     "face": true
   },
   {
@@ -94,6 +140,7 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["overlays"],
+    "shared": ["paper/minimap-core.ts", "paper/block-model.ts", "paper/overlay-context.ts", "paper/region-view.ts"],
     "face": true
   },
   {
@@ -102,7 +149,8 @@
     "description": "Agent 主循环（seam/agentLoop 默认实现）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": []
+    "inject": [],
+    "impl": ["agent/agent-loop/default-loop.ts"]
   },
   {
     "dir": "web-domain",
@@ -110,7 +158,8 @@
     "description": "web 域工具（web_fetch）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/manifest-tools.ts", "agent/tools/search-assembly.ts"]
   },
   {
     "dir": "browser-desktop-domain",
@@ -118,7 +167,8 @@
     "description": "浏览器/桌面自动化域工具（browser_*/desktop_*）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/browser.ts"]
   },
   {
     "dir": "git-domain",
@@ -126,7 +176,8 @@
     "description": "git 域工具（status/diff/log/stage/commit…）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/coding.ts", "agent/git-porcelain.ts", "agent/sticky-cwd.ts"]
   },
   {
     "dir": "search-domain",
@@ -134,7 +185,8 @@
     "description": "搜索域工具（search_content）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/manifest-tools.ts", "agent/tools/search-assembly.ts"]
   },
   {
     "dir": "fs-domain",
@@ -142,7 +194,8 @@
     "description": "文件域工具（读改写/目录）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/coding.ts"]
   },
   {
     "dir": "shell-domain",
@@ -150,7 +203,8 @@
     "description": "命令域工具（run_shell/bash_*）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/coding.ts"]
   },
   {
     "dir": "agent-isolation-domain",
@@ -158,7 +212,8 @@
     "description": "隔离工作树域工具（create/diff/merge/discard/status）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/coding.ts"]
   },
   {
     "dir": "ask-domain",
@@ -166,7 +221,8 @@
     "description": "ask_user 工具（向用户提问）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/coding.ts", "agent/session-context.ts", "agent/tools/structured-error.ts"]
   },
   {
     "dir": "skill-domain",
@@ -174,7 +230,8 @@
     "description": "技能域工具（Skill）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/skills.ts", "agent/builtin-skills.ts"]
   },
   {
     "dir": "memory-domain",
@@ -182,7 +239,8 @@
     "description": "记忆域工具（memory_*）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/memory.ts", "agent/memory-bundle-client.ts"]
   },
   {
     "dir": "task-domain",
@@ -190,7 +248,8 @@
     "description": "任务域工具（task_*）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/task.ts", "agent/task-board.ts", "agent/board-persistence.ts", "agent/tools/board-status.ts"]
   },
   {
     "dir": "agent-domain",
@@ -198,7 +257,8 @@
     "description": "子代理域工具（spawn/kill/status/通信）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/subagent.ts"]
   },
   {
     "dir": "wait-domain",
@@ -206,7 +266,8 @@
     "description": "wait 工具（人工等待/确认）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/wait.ts"]
   },
   {
     "dir": "cordis-domain",
@@ -214,7 +275,8 @@
     "description": "运行时插件域工具（define/run/stop/inspect）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/cordis.ts"]
   },
   {
     "dir": "asset-domain",
@@ -222,7 +284,8 @@
     "description": "资产块域工具（show_asset/update_asset/list_block_kinds——Agent 生成可引用/更新的资产块）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/show-asset.ts", "agent/asset-store.ts", "agent/confirm-registry.ts"]
   },
   {
     "dir": "prompt-segments",
@@ -230,7 +293,8 @@
     "description": "出厂 system-prompt 段（12 段；禁用 = Agent 无出厂提示词）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["prompts"]
+    "inject": ["prompts"],
+    "impl": ["composition/prompt-sections.ts"]
   },
   {
     "dir": "capability-segments",
@@ -238,7 +302,8 @@
     "description": "出厂会话级能力（15 项；禁用 = 出厂能力消失）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["capabilities"]
+    "inject": ["capabilities"],
+    "impl": ["agent/blueprint.ts"]
   },
   {
     "dir": "office-domain",
@@ -246,6 +311,7 @@
     "description": "office 域工具（office(action,…)——OfficeCLI 一等域：读写 .docx/.xlsx/.pptx，经 shell seam 受沙箱 spawn）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"]
+    "inject": ["tools"],
+    "impl": ["agent/tools/office.ts"]
   }
 ]

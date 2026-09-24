@@ -275,7 +275,7 @@ const DIFF_PRE_PAD_V = CHROME_TOKENS.diff.prePadV;
  * 资产块此前测高恒 80、签名不含 payload——媒体图 320 / JSON 兜底 400+ /
  * html 卡 1000 的体格全被按成 80 → 绝对定位流里下一块压字（画图族等资产
  * 卡片溢出、会话流渲染乱成一团的根因）。此处按表现原语逐款镜像
- * asset-renderers.tsx 的结构（改表现组件两处同步）；加载/上报/交互类动态高
+ * `plugins/builtin/renderers/components.tsx` 的结构（改表现组件两处同步）；加载/上报/交互类动态高
  * （图片、iframe、拟策反馈框）由壳层 ResizeObserver 实测回写桥兜底。
  * token 化：数值全归一在 type-tokens.ts ASSET_DERIVED，本区零公式。 */
 const JSON_VIEW_PAD_V = ASSET_DERIVED.jsonViewPadV; // .pp-json padding 10 + 2

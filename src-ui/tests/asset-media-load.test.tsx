@@ -47,7 +47,7 @@ function mediaBlock(payload: unknown): SourcedBlock {
   };
 }
 
-describe('composition/asset-renderers — 媒体图片经 read_file_base64 加载', () => {
+describe('plugins/builtin/renderers/components — 媒体图片经 read_file_base64 加载', () => {
   let container: HTMLDivElement;
   let root: Root | null = null;
 

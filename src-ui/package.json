@@ -12,6 +12,7 @@
     "build:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs",
     "watch:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs --watch",
     "check:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs --check",
+    "plugin-home:report": "node ../scripts/plugin-home-check.cjs",
     "format": "biome format --write .",
     "lint": "biome check --fix .",
     "check": "biome ci .",

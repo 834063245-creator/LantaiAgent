@@ -43,20 +43,37 @@
 （`builtin-roster.test.ts` 已断言「序 == buildOrder」⇒ 名册本来就是序的唯一真源）。
 守卫建议：构建期断言产物体内不含 `plugins/builtin/` 源码串（见 §5）。
 
-> **2026-09-24 批 0a 落地（一半）**：`loader.ts` 的装载序真源已换成名册
-> `BUILTIN_ROSTER.map(builtinScopeName)`，`factoryProductNames()` 亦收进 DEV 分支
-> ——生产路径**不再有对 `factory-products.ts` 的活引用**（`tsc` 0 错、装载器/名册/
-> 引擎测试 63/63 绿、装载序不变=字节契约不动）。
-> **但实测重建 `dist` 后产物串仍全部命中**（体积仅差 448 B）——因为 rollup 的
-> `moduleSideEffects` 默认为真：静态 import 的模块即使绑定只出现在死分支里，
-> 也会为「可能的副作用」整份保留。
-> **为什么不能顺手把 product 模块标成无副作用**：产物包里有 **21 处顶层 CSS
-> import**（`paper-shell/PaperPanel.tsx` · `renderers/viewers/*.tsx` · `canvas-nav/*`
-> · `compose-dock/*` · `settings-domain/*`…），而 `main.ts` 只显式引了 **5 份**产品
-> CSS ⇒ 剪掉这些模块会连带改**首帧 CSS 面**（landmine H2/H5 同族）。
-> **故 §0.1 的完整修法 = 两步**：① 装载器侧（已落）；② 构建侧 `treeshake.moduleSideEffects`
-> 策略 **+ 一份「哪些产品 CSS 必须留在壳 bundle」的清单**（先审后剪，并配构建期断言）。
-> 我先前的「修法很小」是乐观了——如实记在此。
+> **2026-09-24 批 0a 落地（完整）**——三步，前两步都是**实测无效后推翻重做**的（留证防后人重走）：
+> ① **装载器侧**（上窗已落，commit `084b8184`）：序真源换名册 `BUILTIN_ROSTER.map(builtinScopeName)`
+> + `factoryProductPlugins()/factoryProductNames()` 收进 DEV 分支（装载序不变 = 字节契约不动）。
+> ② **配置侧 DCE —— 两条路都无效**：(a) `build.rollupOptions.treeshake.moduleSideEffects`
+> 谓词：Vite 内置 resolve 插件对**每个**相对 import 都回 `moduleSideEffects: <最近 package.json
+> 的 sideEffects 字段>`（壳包未声明 ⇒ 恒 true），插件回值**优先于**该选项 ⇒ 谓词被逐模块覆盖
+> （取证：谓词换成 `() => false` 重建，产物连尺寸都一样）；(b) `load` 钩子逐模块回
+> `moduleSideEffects: false`（钩子优先级更高，实测命中 125 模块，含 `factory-products.ts`）
+> ——**依然无效**：`loadExternalPlugins` 里 `devSourceDomain ? factoryProductNames() : null`
+> 那句**没被折死**（初始化依赖 `(import.meta.env as …).VITE_FORCE_PRODUCT_CHANNEL` 这类动态形态，
+> rollup 不当字面常量）⇒ **活引用**在，`moduleSideEffects` 只对「无人引用的模块」生效，轮不到它。
+> **病灶是「活引用」，不是「副作用标记」——这条是本节最值钱的结论。**
+> ③ **正解**（`vite.config.ts::stubFactoryProductsInBuild`）：构建期把装载链那处
+> `./factory-products` **置换成语义等价空壳**（`factoryProductPlugins()→[]`、`factoryProductNames()→`
+> 名册派生全集`，逐名等价）⇒ 30 个产物源码**根本不进 rollup 解析面**，不赌任何折叠。
+> **实测收益**：`dist/assets/index-*.js` 5,155,362 → **3,838,924 B（−1.32 MB / −25.5%）**，
+> 壳 CSS 237,673 → 199,115 B；产物独有串（`hologram/settings-domain` · `pp-minimap` · `sr-rack` …）
+> 与 `factory-products.ts` 函数体（`出厂产物名撞车`）**全清**。dev/vitest 不受影响（`apply: 'build'`）。
+>
+> **壳 CSS 面清单（先审后剪的产物——剪枝只改了 JS，产品 CSS 的去留是**独立**决定）**：
+> 壳 bundle **留 4 份**（= `main.ts` 显式声明的首帧面）：`paper-shell/PaperPanel.css`（539 选择器）·
+> `paper-shell/status-line.css`（16）· `settings-domain/settings-panel.css`（81）·
+> `compose-dock/model-selector.css`（23）。其余 **17 份**（`canvas-nav/*` 2 · `compose-dock/composition-chip.css` ·
+> `paper-minimap/minimap.css` · `paper-shell/ToastHost.css` · `renderers/viewers/*` 12）改由**产物
+> `entry.css` 在装载期注入**。**安全性两处取证**：① 注入点在产物模块顶层（`face-css.ts` 的
+> `injectFaceArtifactCss()` 于 `index.ts` 模块求值即调）⇒ 发生在 `loadExternalPlugins` 内、
+> **早于 `bootShell()`** 与任何面板渲染；② 产物装载前的可见面只有 `SessionsHome`（内核 CSS 面），
+> 实测它与 17 份里的类名交集 = 0（唯一同名 `sh-section-title` 定义在 `foundation.css`）。
+> 落盘对账（`plugin-home:report` 同批守卫）：**21 份产品 CSS 零未覆盖选择器**——要么在壳 CSS、
+> 要么在本产物 `entry.css`。守卫 `tests/product-source-not-in-bundle.test.ts` 三段钉住
+> （配置插件在场 / 产物体内无产物独有串（探针**从产物源码派生**，新产物自动纳入）/ 上述 CSS 面两条）。
 
 ### 0.2 实机缺陷「随包引擎开关拨不开」——**已修**（2026-09-24，用户实机报）
 
@@ -162,6 +179,40 @@ tools/list 已就位。回收不变：工作区 fiber dispose ⇒ 子 fiber disp
 构建于 16:16 ⇒ 那条「还是没有」的回报其实是在**不含修复的构建**上做的。
 **纪律**：让用户验收前先确认「他手上的产物是否已含该修复」（构建时间 vs 改动时间），
 或干脆像本节这样自跑——用户不该当编译-验证回路。
+
+### 0.5 实机缺陷「进程起了、接线正常，Agent 手里却没图谱工具」——**已修**（2026-09-24，同一路径第四处）
+
+**症状**（用户实机报，第三次回报）：设置页「已接线」、任务管理器有 `hologram-engine.exe`
+（`serve --project-root D:/HoloGramHG`，PPID = lantai），但 Agent 的工具面里没有
+`mcp__hologram__*`。
+
+**根因（两处，都在「通道 → 注册表」那一段；0.4 只修到「进程不起」为止）**：
+1. **组合产物取在引擎行注册之前**——`workspace.ts` 的 `_setupAgentInner` 在接线**之前**
+   就取走 `composition-store` 的快照（供 `new AgentRuntime(...)` 与
+   `_buildRegistryLocked(...)` 共用），而引擎的工具行是接线时才注册的 ⇒ 那份快照里
+   没有这一行 ⇒ 注册表不含引擎工具（runtime 的激活 retain 也看不见它）。0.4 的注释只
+   要求「在 `_buildRegistryLocked` 之前」，而快照在更上面就取走了。
+2. **工具面在进程就绪前被冻结**——行工厂按 `governor.toolFace()` 快照产出，而 0.4 的
+   预热是 fire-and-forget；装配只花微秒级、经 Rust `protocol_bridge` 起进程要数百毫秒
+   ⇒ 首个（也是唯一）装配读到空集。空集不缓存 = 「下次装配重试」，而**共享注册表路径
+   没有下次装配**（会话工厂判身份相等即复用）。
+
+**修法**：① `workspace.ts`：接线移到取产物之前，且产物改为**重新解析**
+（`effectiveComposition()`——不再赌 store 是否被贡献监听刷新过：监听未武装或 store 处
+error 态时快照会停在旧产物），`_assemblyKey` 随之取 `compositionIdentity()`；
+② `bundled-engine.ts`：接线**有界等待就绪**（`PREHEAT_BUDGET_MS = 10s`，实测引擎冷启动
+32ms + 握手 2ms，余量 ~300×），超时/拉起失败/工具面为空一律**如实上报**
+（`wired:false` + 具名原因）而不是继续报「已接线」；`mcp-bridge` 的激活面补 `toolCount()`
+（回执据此报「N 个引擎工具在册」）。
+
+**回归**：`tests/bundled-engine-assembly.test.ts`（**真 Workspace 装配腰** + 真 MCP 行协议
++ 就绪闸门）——判据落在用户可见面：**Agent 的注册表里必须有 `mcp__hologram__*`**，
+且回执 `wired + toolCount` 一致。既有 `bundled-engine-probe-shape.test.ts` 的一条按新语义
+改写（拉起失败从「隐式 wired:true」改为「如实 failed」，这是**有意行为变更**）。
+
+**为什么 0.4 的真机验收没拦住**：那条验收读的是「工具行在册 + 行 factory 产出 7 个工具」
+——**通道/工厂层**读数，而缺陷在工厂产物**进注册表的时点**上。教训（验收判据纪律）：
+验收必须读**消费端真值**（Agent 的注册表 / 模型可见工具面），通道层自证不算数。
 
 ## 1. 账②：转发空壳 21 个 —— 10,052 行实现仍在内核
 
@@ -325,22 +376,34 @@ manifest.json —— 包内合计 30～110 行。
 | 无「13 service 必须由 loader 装载」检查 | `ctx.lsp` / `ctx.agentLoop` 这类游离服务无人发现（§4-13） |
 | 无「生产 bundle 不含 builtin/ 源码」断言 | §0.1 的缺陷（30 产物源码进 exe）无人发现 |
 
-**治法**（三条，照仓库既有范式抄）：
+**治法**（三条，照仓库既有范式抄）——**2026-09-24 批 0b 全落**：
 
-1. **产物归家账（销账制）**——照 `paper-interaction-handoff.test.ts` 的 `KNOWN_DEAD` 机制：
-   新增 `src-ui/tests/plugin-home-ledger.test.ts`；`KNOWN_SHELLS` = §1 的 21 个包（附实现真源备注），
-   实际「薄包」集 ⊆ 清单；某个包一旦实心化 ⇒ 用例红、必须删该条 ——「搬一个销一条」，账清即全绿。
-2. **特权区文件集冻结**——照 `eventbus-zero-and-ui-split.test.ts` 的 59 文件 manifest 范式，
-   加一份「`composition/**` + `plugins/` 顶层 ⊆ 冻结基线」，把纪律变成门禁。
-3. **构建期断言**——产物体内不得含 `plugins/builtin/` 源码串（§0.1 的修法配套）。
+1. **产物归家账（销账制）**——真源 = 名册 `builtin-roster.json` 各条目的 `impl`
+   （尚未归家的实现真源，相对 `src/`；搬一条删一条，清空即实心化）；守卫
+   `src-ui/tests/plugin-home-ledger.test.ts` 只做机制：**磁盘实测的空壳集必须已登记 impl**、
+   登记的必须仍真的是空壳/仍被引用（实心化不销账 = 红）、登记路径必须还在（账不腐）。
+   （原计划的 `KNOWN_SHELLS` 常量表改成名册字段——人读备注留测试内的 `NOTES`，防「两处真源」。）
+2. **特权区文件集冻结**——`src-ui/tests/privileged-zone-freeze.test.ts`：
+   `composition/**`（31 文件）+ `plugins/` 顶层（17 文件）⊆ 冻结基线，基线每条必须在磁盘（销账制），
+   另加**行数水位线**（composition 4,985 / plugins 4,238，只减不增）与 `KNOWN_DEBT` 登记
+   （清单四件 + `preset-authoring.ts`，搬完两处一起销）。
+3. **构建期断言**——`src-ui/tests/product-source-not-in-bundle.test.ts`（dist 在场才跑）：
+   产物体内无产物源码独有串（探针从产物源码派生）+ 壳/产物两侧 CSS 面无未覆盖选择器。见 §0.1。
+
+**常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
+`--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
+**绿** = 平台白名单 112 文件 + 已被产物认领的共享面 75 文件，**灰** = 无产物认领也不在白名单。
+**2026-09-24 基线**：红 24 产物 / 49 文件 / 17,408 行（§1 的 21 条 + §2.1 settings 三页 + §2.5 两包独占件）；
+灰 145 文件 / 39,984 行（`agent/` 87 · `app/` 32 · `ui/` 9）——**灰区 ⊇ 账③**：除 §2 已认领的面之外，
+还含内核自身的 app/agent 编排件（归属判定未做），故灰区数字大于 §2 的 32,018。
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
 
-| 批 | 内容 | 量 | 为什么这个次序 |
+| 批 | 内容 | 量 | 状态 / 为什么这个次序 |
 |---|---|---|---|
-| **0a** | **修 §0.1 缺陷**：`factoryProductPlugins()` 收进 DEV 分支 + 序真源改用名册 `buildOrder` + 构建期断言 | — | 一行级的因果链，收益立竿见影（exe 不再带 30 份产物死副本） |
-| **0b** | 立账 + 三条守卫（§5） | — | 零风险；先让欠账可见，此后每批自动销账 |
-| **0c** | 顺手三清：删 `composition/asset-renderers.tsx`（49，真源已迁）· 删/收缩 `i18n.ts`（98，半尸体）· 清 `preset-authoring.ts`（192）归 settings-domain | 339 | 都是「唯一消费者已消失/单一消费者」的死件，零风险 |
+| **0a** | **修 §0.1 缺陷**：序真源换名册（上窗）+ 构建期置换产物清单模块 + 构建期断言 | — | ✅ **已落**（2026-09-24）：产物 JS −1.32 MB（−25.5%）；「配置 DCE 两条路都无效」的实测记在 §0.1 |
+| **0b** | 立账 + 三条守卫 + 常驻对账报告 | — | ✅ **已落**：归家账（名册 `impl`）/ 特权区冻结（31+17 文件 + 行数水位线）/ dist 文案与 CSS 面断言 / `plugin-home:report` |
+| **0c** | 顺手三清：删 `composition/asset-renderers.tsx`（49，真源已迁）· 收缩 `i18n.ts`（98→21，半尸体）· 清 `preset-authoring.ts`（192）归 settings-domain | 339 | ✅ 前两件已落；**第三件并入批 1**——它要动的正是 settings-domain 的 host/faceDeps 面，与三页归家同一处 churn，合并只付一次 baseline 重生成 + exe 重建成本 |
 | **1** | settings 三页归家（McpPage/PluginsPage/SkillsPage）+ 小步 CSS 装载面 | 1,103 + | 内核依赖最少，先把「页面进包 + 三处 host 同步 + 产物构建 + 热更 + faceDeps 指纹重建 exe」链路走通 |
 | **2** | seam provider 实心化：`llm-adapters`（三适配器 + 两个私有 helper）+ `subagent-in-process` | 1,916 + 543 | 通道现成（`ctx.llm`/`ctx.subagents`），零契约风险；**收益最大**——LLM 适配器从此可热更 |
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | 转发链最短、先例现成（`fs-builtin` 自包含形态）；先定「包内经 faceDeps 取实例 vs 装配期经 rowCtx 注入」 |
