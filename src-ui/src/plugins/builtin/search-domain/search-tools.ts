@@ -1,27 +1,24 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// manifest-tools — search/web 两域模型族工具的家（schema zod 真源 + 编排）。
+// search 域模型族工具（**归家后真源**，2026-09-24 批 4b）。
 //
-// 工具面单一真源的演进（R2 试点，kernel-capability-r2-search-pilot.md）：
+// 来历：原 `agent/tools/manifest-tools.ts`（历史名）一文件载 search/web 两域——
+// 而两域是两个产物包 ⇒ 一个文件不可能同时住在两个包里。本批按域拆开：
+// search 半边进本包（含随行编排件 `./search-assembly`），web 半边进 `web-domain`。
+//
+// schema 真源演进（R2 试点，kernel-capability-r2-search-pilot.md）：
 // - Phase 1（P0-2 脚手架）：真源 = Rust manifest（manifest.json → generated 镜像）。
 // - R2-d(1)（2026-09-04）：search 域 schema 真源**回 TS zod**（INVARIANTS #8
-//   原版语义——R2 试点域先回；R5 全量拆 manifest 脚手架时其余域同迁）。search_content
-//   不再从 kernel-manifests 镜像取 schema，改由域内 zod 转录（逐字节等价于退役前
-//   manifest 发射，收敛零漂移）。
+//   原版语义）；search_content 不再从 kernel-manifests 镜像取 schema，改由域内 zod
+//   转录（逐字节等价于退役前 manifest 发射，收敛零漂移）。
 // - R2-d(2)（2026-09-05）：编排同域——search_cap 能力口收窄为纯扫描（统一原始
-//   命中集 + max_matches/max_files 收窄键），三形态组装/分页/行号显示回本域
-//   search-assembly.ts 重建（schema 真源 + 编排同域，r2-search-pilot §8）。
-// - execute 走 search_cap 能力口直呼（R2-a 信封换直呼：不经 tool_call 信封）。
-// - R4-4（2026-09-05）：web 域 zod 转录 + web_cap 直呼；R5（2026-09-05）：
-//   kernel-manifests 镜像 / tool_call 信封（含 tool_call:progress 进度事件）
-//   脚手架整拆——全模型族 schema 真源已在 TS zod（fs/git/shell/editor/
-//   constraints 在 coding.ts，browser/uia 在 browser.ts），文件名 manifest-tools
-//   为历史名。
+//   命中集 + max_matches/max_files 收窄键），三形态组装/分页/行号显示由
+//   `./search-assembly` 重建。
+// - execute 走 search_cap 能力口直呼（不经 tool_call 信封）。
 
 import { z } from 'zod';
-import type { Tool, ToolExecutor } from '../tool';
-import { toInputJsonSchema } from './define-tool';
+import { type Tool, type ToolExecutor, toInputJsonSchema } from './host';
 import { assembleSearchOutput, parseScanOutput, type SearchToolArgs, toScanParams } from './search-assembly';
 
 /** search 域工具族（R2 试点）——schema 真源 = 下方 zod 转录（R2-d(1)，
@@ -31,13 +28,6 @@ import { assembleSearchOutput, parseScanOutput, type SearchToolArgs, toScanParam
 export function createSearchTools(exec: ToolExecutor): Tool[] {
   return [searchCapTool(exec)];
 }
-
-// ═══════════════════════════════════════════════════════════════
-// 能力口工具（R2 试点，kernel-capability-r2-search-pilot.md）——
-// execute 直呼 search_cap 能力口（不经 tool_call 信封 / PluginRegistry）。
-// R2 语义：编排未迁前，能力口输出与 builtin.search 完全同形状，纯执行通道
-// 换轨；权限真权路径同 resolve_read_dispatch（Agent 过闸 / UI 只解析）。
-// ═══════════════════════════════════════════════════════════════
 
 /**
  * search_content schema — R2-d(1) zod 真源转录（2026-09-04）。
@@ -105,7 +95,7 @@ const SEARCH_CONTENT_DESCRIPTION =
  *  kernel-manifests 镜像 / manifest spec 查找；execute 直呼 search_cap。
  *  is_agent 由 executor 层 agentInvoke 注入（与 tool_call 同款）。
  *  R2-d(2)（r2-search-pilot §8）：编排同域——能力口收窄为纯扫描（统一原始
- *  命中集），三形态组装/分页/行号显示在本域 search-assembly.ts 重建。 */
+ *  命中集），三形态组装/分页/行号显示在本域 `./search-assembly` 重建。 */
 export function searchCapTool(exec: ToolExecutor): Tool {
   const parameters = toInputJsonSchema(searchContentSchema.passthrough());
   return {
@@ -128,60 +118,4 @@ export function searchCapTool(exec: ToolExecutor): Tool {
       return assembleSearchOutput(args as SearchToolArgs, parseScanOutput(raw));
     },
   };
-}
-
-// ═══════════════════════════════════════════════════════════════
-// web 域模型族 zod 真源（kernel-capability-d4-handle-design.md R4-4 小面
-// 清偿，2026-09-05）：builtin.web 插件退役，2 工具 schema 真源回 TS zod
-// （逐键等价退役前 manifest 发射）；execute 换 web_cap 能力口直呼
-// （maxResults→max_results 顶层映射；口内 WebFetchTool 闸 + SSRF）。
-// ═══════════════════════════════════════════════════════════════
-
-const webSearchSchema = z.object({
-  query: z.string().describe('Search keywords'),
-  maxResults: z.number().int().min(1).max(10).default(10).describe('Number of results to return (default 10, max 10)'),
-});
-
-const webFetchSchema = z.object({
-  url: z.string().describe('The URL to fetch (HTTPS or HTTP only)'),
-});
-
-/** web 域动作 → zod schema（schema 真源表）。 */
-const WEB_CAP_SCHEMA = { web_search: webSearchSchema, web_fetch: webFetchSchema } as const;
-
-/** web 域动作 → 模型面 description（manifest 字节转录）。 */
-const WEB_CAP_DESCRIPTION: Record<keyof typeof WEB_CAP_SCHEMA, string> = {
-  web_search:
-    'Search the internet for real-time information. Uses a free anonymous search API first; if it fails, automatically falls back to Bing/DuckDuckGo scraping. No API key required.',
-  web_fetch:
-    'Fetch a URL and return its text content. HTML pages are reduced to readable text (scripts, styles, tags stripped). JSON / plain text / markdown pass through verbatim. Use to read documentation, API responses, or source files hosted on the web. 15s timeout, 1 MiB max.',
-};
-
-/** web_cap 直呼（maxResults 顶层映射 snake；meta 键原样透传）。 */
-function webCapCall(
-  exec: ToolExecutor,
-  action: keyof typeof WEB_CAP_SCHEMA,
-  args: Record<string, unknown>,
-): Promise<string> {
-  const out: Record<string, unknown> = { action };
-  for (const [k, v] of Object.entries(args)) {
-    out[k === 'maxResults' ? 'max_results' : k] = v;
-  }
-  return exec('web_cap', out);
-}
-
-/** web 域工具族（R4-4 起 zod 真源，不查 builtin.web 镜像）；TS 工具名保持
- *  历史名（模型面契约）；表序不变。 */
-export function createWebTools(exec: ToolExecutor): Tool[] {
-  const capTool = (action: keyof typeof WEB_CAP_SCHEMA): Tool => {
-    const parameters = toInputJsonSchema(WEB_CAP_SCHEMA[action].passthrough());
-    return {
-      name: () => action,
-      description: () => WEB_CAP_DESCRIPTION[action],
-      parameters: () => parameters,
-      readOnly: () => true,
-      execute: (args) => webCapCall(exec, action, args),
-    };
-  };
-  return [capTool('web_search'), capTool('web_fetch')];
 }

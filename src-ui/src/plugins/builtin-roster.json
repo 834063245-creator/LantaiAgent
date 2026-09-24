@@ -149,8 +149,7 @@
     "description": "web 域工具（web_fetch）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/manifest-tools.ts", "agent/tools/search-assembly.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "browser-desktop-domain",
@@ -175,8 +174,7 @@
     "description": "搜索域工具（search_content）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/manifest-tools.ts", "agent/tools/search-assembly.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "fs-domain",

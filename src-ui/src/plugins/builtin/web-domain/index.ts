@@ -6,7 +6,7 @@
 
 import type { Context } from '../../../cordis';
 import { familyContributions, registerFamily } from '../contribution-helpers';
-import { createWebTools } from './host';
+import { createWebTools } from './web-tools';
 
 /** web 域插件（①b 迁入，2026-08-23）——贡献 web_search + web_fetch 双工具。 */
 export const webDomainPlugin = {

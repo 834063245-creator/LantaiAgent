@@ -51,8 +51,6 @@ const NOTES: Record<string, string> = {
   'git-domain': '同上；随行 git-porcelain.ts 126 · sticky-cwd.ts 138',
   'ask-domain': '同上；随行 session-context.ts 122 · structured-error.ts 24',
   'agent-isolation-domain': '同上（coding.ts 五族之一）',
-  'search-domain': 'manifest-tools 187；随行 tools/search-assembly.ts 169；输出形状须与 Rust 逐字节等价',
-  'web-domain': '同上（同文件两域）',
   'agent-domain': 'agent/tools/subagent.ts 265 行',
   'asset-domain': '294 行；随行 asset-store.ts 137 · confirm-registry.ts 80',
   'memory-domain':
@@ -210,10 +208,11 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     expect(done, `这些包的实现已不在内核（搬运完成）——请从名册该条目的 impl 销账：\n${done.join('\n')}`).toEqual([]);
   });
 
-  it('账本口径自洽：空壳 16 条（14 纯壳 + 2 半壳），且每条都有备注文本', () => {
+  it('账本口径自洽：空壳 14 条（12 纯壳 + 2 半壳），且每条都有备注文本', () => {
     // 口径：账本 §1 立账 21 条；批 2a 销 `llm-adapters`、批 3a 销 wait/office/cordis、
-    // 批 4a 销 `browser-desktop-domain` ⇒ 销 5 条。数字再变 = 要么又销了账（改这条），要么漏登记。
-    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 5 = 16`).toBe(16);
+    // 批 4a 销 `browser-desktop-domain`、批 4b 销 search/web 两域 ⇒ 销 7 条。
+    // 数字再变 = 要么又销了账（改这条），要么漏登记。
+    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 7 = 14`).toBe(14);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();
     // 反向：备注表不许留已销账的条目（防文本腐烂）
     const ghost = Object.keys(NOTES).filter((d) => !CLAIMS.some((c) => c.dir === d));

@@ -13,7 +13,8 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Tool, ToolExecutor } from '../src/agent/tool';
-import { createSearchTools, createWebTools } from '../src/agent/tools/manifest-tools';
+import { createSearchTools } from '../src/plugins/builtin/search-domain/search-tools';
+import { createWebTools } from '../src/plugins/builtin/web-domain/web-tools';
 
 function captureExec(reply = '{"ok":1}'): {
   calls: Array<{ name: string; args: Record<string, unknown> }>;

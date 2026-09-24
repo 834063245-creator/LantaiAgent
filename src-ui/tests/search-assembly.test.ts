@@ -13,7 +13,7 @@ import {
   parseScanOutput,
   type ScanOutput,
   toScanParams,
-} from '../src/agent/tools/search-assembly';
+} from '../src/plugins/builtin/search-domain/search-assembly';
 
 function scanOf(overrides: Partial<ScanOutput> = {}): ScanOutput {
   return {

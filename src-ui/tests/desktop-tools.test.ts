@@ -9,8 +9,8 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
 });
 
 import { ToolRegistry } from '../src/agent/tool';
-import { createBrowserTools, createDesktopTools } from '../src/plugins/builtin/browser-desktop-domain/browser';
 import { convergeRegistry } from '../src/agent/tools/domains';
+import { createBrowserTools, createDesktopTools } from '../src/plugins/builtin/browser-desktop-domain/browser';
 import { typedRpc } from '../src/rpc-contract';
 
 function buildRegistry(): ToolRegistry {

@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c39c0774",
+  "fingerprint": "0fbc0916",
   "keys": [
     "ANCHOR",
     "ApiError",
@@ -62,12 +62,10 @@
     "createGitTools",
     "createInkCache",
     "createMemoryTools",
-    "createSearchTools",
     "createShellTools",
     "createSkillTool",
     "createSubAgentTool",
     "createTaskTools",
-    "createWebTools",
     "deactivateExternalPlugin",
     "defaultAgentLoop",
     "defaultFolded",

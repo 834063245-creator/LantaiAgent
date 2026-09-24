@@ -25,7 +25,6 @@ import { SubAgentPool } from '../src/agent/coordinator';
 import { TaskManager } from '../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry, ToolRowContext } from '../src/agent/tool';
 import { createAgentIsolationTools, createFsTools, createGitTools, createShellTools } from '../src/agent/tools/coding';
-import { createSearchTools, createWebTools } from '../src/agent/tools/manifest-tools';
 import { fsServicePlugin } from '../src/composition/fs-service';
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import { activeToolContributions, compositionServicesPlugin } from '../src/composition/services';
@@ -40,12 +39,14 @@ import { fsDomainPlugin } from '../src/plugins/builtin/fs-domain';
 import { gitDomainPlugin } from '../src/plugins/builtin/git-domain';
 import { memoryDomainPlugin } from '../src/plugins/builtin/memory-domain';
 import { searchDomainPlugin } from '../src/plugins/builtin/search-domain';
+import { createSearchTools } from '../src/plugins/builtin/search-domain/search-tools';
 import { builtinShellPlugin } from '../src/plugins/builtin/shell-builtin';
 import { shellDomainPlugin } from '../src/plugins/builtin/shell-domain';
 import { skillDomainPlugin } from '../src/plugins/builtin/skill-domain';
 import { taskDomainPlugin } from '../src/plugins/builtin/task-domain';
 import { waitDomainPlugin } from '../src/plugins/builtin/wait-domain';
 import { webDomainPlugin } from '../src/plugins/builtin/web-domain';
+import { createWebTools } from '../src/plugins/builtin/web-domain/web-tools';
 
 /** web 族工具名序（①b 迁入，双工具：搜索 + 抓取）。 */
 const WEB_TOOL_ORDER = ['web_search', 'web_fetch'];

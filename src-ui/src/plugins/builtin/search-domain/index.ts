@@ -5,7 +5,7 @@
 
 import type { Context } from '../../../cordis';
 import { familyContributions, registerFamily } from '../contribution-helpers';
-import { createSearchTools } from './host';
+import { createSearchTools } from './search-tools';
 
 /** search 域插件——贡献 search_content 单工具。 */
 export const searchDomainPlugin = {

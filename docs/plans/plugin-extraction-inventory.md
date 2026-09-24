@@ -263,7 +263,7 @@ manifest.json —— 包内合计 30～110 行。
 |---|---|---|
 | `fs-domain`·`shell-domain`·`git-domain`·`ask-domain`·`agent-isolation-domain` | `agent/tools/coding.ts` **998**（**一文件载五族，须先按域拆**） | `git-porcelain.ts` 126 · `sticky-cwd.ts` 138 · `session-context.ts` 122 · `tools/structured-error.ts` 24 |
 | `browser-desktop-domain` | `agent/tools/browser.ts` **912** | ✅ **批 4a 已归家**（桥位仅 5 运行时 + 1 类型） |
-| `search-domain`·`web-domain` | `agent/tools/manifest-tools.ts` 187 | `tools/search-assembly.ts` 169 |
+| `search-domain`·`web-domain` | `agent/tools/manifest-tools.ts` 187 | ✅ **批 4b 已归家**（按域拆两半：`search-domain/search-tools.ts` + `web-domain/web-tools.ts`；随行 `tools/search-assembly.ts` 169 随 search 走——**一个文件不能同时住两个包，故按域拆**） |
 | `agent-domain` | `agent/tools/subagent.ts` 265 | — |
 | `asset-domain` | `agent/tools/show-asset.ts` 294 | `asset-store.ts` 137 · `confirm-registry.ts` 80 |
 | `wait-domain` | `agent/tools/wait.ts` 102 | — |
@@ -456,8 +456,8 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 4a 后重测）：红 **18 产物 / 38 文件 / 14,377 行**（§1 的 16 条 +
-§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`）；绿 111 平台 + 67 已认领；灰 134 文件 / 37,966 行。
+**2026-09-24 基线**（批 4b 后重测）：红 **16 产物 / 34 文件 / 13,665 行**（§1 的 14 条 +
+§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`）；绿 111 平台 + 66 已认领；灰 133 文件 / 37,797 行。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -470,7 +470,7 @@ manifest.json —— 包内合计 30～110 行。
 | **1** | settings 三页归家（McpPage/PluginsPage/SkillsPage）+ `preset-authoring` 随迁 | 1,103 + 192 | ✅ **已落**（2026-09-24）：三页 `git mv` 进包、内核依赖改走包内 `./host` 逐符号桥（+24 faceDeps 键，baseline 重生成）、产物自包含校验过、CSS 面无需动（三页 class 本就在包内 `settings-panel.css`）；链路（页面进包 + host 三处同步 + 产物构建 + faceDeps 指纹）已走通 |
 | **2** | seam provider 实心化：`llm-adapters`（三适配器 + 两个私有 helper）；`subagent-in-process` 并入批 7 | 1,916 | ✅ **llm-adapters 已落**（2026-09-24 批 2a）：1,916 行进包、端点真源上收内核、16 个运行时桥位、产物 2.6 KB→41.6 KB（**适配器自此可热更**）。`subagent-in-process`（543）复核后并入批 7——它要同一片 `agent.ts`/context/message-bus 面（16 桥位），那批本就要整片搬 |
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | ✅ **批 3a 已落 3 件**（wait 102 · office 576 · cordis 200 = 878 行；桥位仅 9 运行时 + 7 类型）。**memory/skill/task 复核后改期**：它们的类是内核构造的（`workspace.ts` new MemoryManager/SkillRegistry、runtime 用 TaskBoard 11 处）⇒ 整件搬会造宿主→插件反向依赖（仓库禁反），改随批 7 / 批 9 |
-| **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | 🟡 **批 4a 已落 `browser.ts`（912 行，零内核消费者）**；余 `coding.ts` 五族拆分与 `manifest-tools`（**search/web 两域共用一个文件**，须先按域拆再各归其位）与 `search-assembly`。硬点：9+5+2 个测试直连；search 输出形状须与 Rust 逐字节等价 |
+| **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | 🟡 **4a 已落 `browser.ts`（912）· 4b 已落 `manifest-tools` 按域拆（187+169，search/web 各归其包）**；余 `coding.ts`（998，一文件载五族：fs/shell/git/ask/agent-isolation）与随行私有件（git-porcelain 126 · sticky-cwd 138 · session-context 122 · structured-error 24）。硬点：9+5+2 个测试直连 |
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | 通道现成；工作量在拆 loop 契约耦合与 host 模式 |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | `ctx.subagents` seam 已在位；障碍是 runtime 单例与 21+13 个测试 |

@@ -44,7 +44,6 @@ import {
   createShellTools,
 } from '../../agent/tools/coding';
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
-import { createSearchTools, createWebTools } from '../../agent/tools/manifest-tools';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { parseStructuredError } from '../../agent/tools/structured-error';
 import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
@@ -522,9 +521,7 @@ const faceDeps = {
   isMockMode,
   watchFileDragDrop,
   // S3 工具域真源产物运行时依赖（经宿主桥 mods.faceDeps 取用）
-  createWebTools,
   createGitTools,
-  createSearchTools,
   createFsTools,
   createShellTools,
   createAgentIsolationTools,
@@ -534,6 +531,8 @@ const faceDeps = {
   createTaskTools,
   createSubAgentTool,
   createAgentStatusTool,
+  // 批 4b 归家（2026-09-24）：search/web 两域实现进包（原 manifest-tools 按域拆）
+  // ⇒ 撤这两个工厂键；两域只余平台面（toInputJsonSchema / Tool 类型）。
   // 批 3a 归家（2026-09-24）：wait/office/cordis 三域的工具工厂已随包 ⇒ 撤桥；
   // 改用它们仍住内核的依赖面（defineTool / Tool 类型 / 域私有内核函数）。
   SubAgentStatus,
