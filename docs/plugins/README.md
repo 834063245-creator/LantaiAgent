@@ -410,6 +410,13 @@ patch/preset 可寻址禁用单个 server（组合均匀性不破）。**不需�
   装配 factory 走重连/重建（受治面 restart:on-crash 指数退避自动重启）。
 - **stdio command 解析**：相对路径（含分隔符）相对插件目录（`plugin_dir`
   RPC 解析锚点）；裸名走 PATH。`args` 原样透传（相对路径不解析）。
+  ⚠ **Windows 上裸名不认 `.cmd` shim**（2026-09-24 用 Rust `std::process::Command`
+  实测，与应用 `spawn_process` 同款 API）：`"command": "npx"` → `program not found`
+  （Rust 只补 `.exe`），而 `"command": "npx.cmd"` ✅ 正常起（显式后缀走 PATHEXT +
+  CreateProcess 的 shim 关联）。**故 Windows 上配 npx 型 server 请写 `npx.cmd`**，
+  或 `"command": "cmd", "args": ["/c", "npx", …]`，或 `"command": "node"` + 脚本
+  绝对路径（`notes-app` 范本即此形态）。裸名照抄网上教程会在 Windows 上静默拿不到
+  工具（失败只落一行 warn）。
 - **只读语义（P0，2026-09-13；契约 v27）**：远端工具的 `readOnly` = 条目级
   声明 `mcpServers[].readOnly` > 远端 `annotations.readOnlyHint === true` >
   **缺省 false（fail-closed）**。判定真源 =
