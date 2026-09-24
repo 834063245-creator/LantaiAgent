@@ -87,7 +87,7 @@ export interface AgentConfig {
   subAgentPool?: SubAgentPool;
   /** 子 Agent 派生函数 — 由调用者注入；createAgent 内会用绑定本 Agent 的版本替换
    *  agent_spawn 工具（修复多会话下 spawn 路由到错误 Agent 实例的错位） */
-  subAgentSpawner?: import('../tools/subagent').SubAgentSpawner;
+  subAgentSpawner?: import('../subagent-tools-contract').SubAgentSpawner;
   /** 执行状态实例 */
   execState?: ExecStateInstance;
   /** 事件接收器（Agent 事件流） */

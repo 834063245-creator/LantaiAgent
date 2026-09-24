@@ -240,8 +240,7 @@
     "description": "子代理域工具（spawn/kill/status/通信）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/tools/subagent.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "wait-domain",

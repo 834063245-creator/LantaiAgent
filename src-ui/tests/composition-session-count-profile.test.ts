@@ -32,13 +32,13 @@ installCompactionForTest();
 import { SubAgentPool } from '../src/agent/coordinator';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';
-import type { SubAgentSpawner } from '../src/agent/tools/subagent';
 import { activationStates, clearActivationsForTest, declareActivation } from '../src/composition/activation';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
 import { factoryComposition, type ResolvedComposition } from '../src/composition/roster';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
+import type { SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
 import type { Provider } from '../src/provider/types';
 
 function stubProvider(): Provider {

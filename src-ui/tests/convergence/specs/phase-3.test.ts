@@ -23,7 +23,7 @@ import { SubAgentPool } from '../../../src/agent/coordinator';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { type AgentConfig, ASSEMBLY_INPUT_KEYS, pickAssemblyInputs } from '../../../src/agent/runtime/types';
 import { ToolRegistry } from '../../../src/agent/tool';
-import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
+import type { SubAgentSpawner } from '../../../src/plugins/builtin/agent-domain/subagent-tools';
 import { fsDomainTool, readOnlyTool, scriptedProvider } from '../helpers/fixtures';
 import { stableStringify } from '../helpers/normalize';
 import { extractRuntimeMethodWiring, extractRuntimeWiring } from '../helpers/wiring';

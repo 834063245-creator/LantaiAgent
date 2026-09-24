@@ -1,17 +1,23 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
+//
+// subagent 工具族（**归家后真源**，2026-09-24 批 7a）：agent_spawn / agent_kill / agent_status
+// 三个工厂。来历：原 `agent/tools/subagent.ts` 整件移出；内核依赖改走包内宿主面（./host）。
 
 import { z } from 'zod';
-import type { SubAgentPool } from '../coordinator';
 import {
   assertSupportedSchema,
+  defineTool,
   extractJsonObject,
+  getSubAgentActivity,
   type JsonSchema,
+  STUCK_THRESHOLD_S,
+  type SubAgentPool,
+  type SubAgentSpawner,
+  type Tool,
+  type ToolExecutor,
   validateObjectJsonSchema,
-} from '../schema-validate';
-import { getSubAgentActivity, STUCK_THRESHOLD_S } from '../subagent-activity';
-import type { Tool, ToolExecutor } from '../tool';
-import { defineTool } from './define-tool';
+} from './host';
 
 // ═══════════════════════════════════════════════════════════════
 // Sub-Agent 工具 — 派发子 Agent 执行并行/委派任务
@@ -27,18 +33,7 @@ import { defineTool } from './define-tool';
 // 用户侧停止走 ChatPanel.abort → Agent.cascadeAbort → pool.stopAll。
 // ═══════════════════════════════════════════════════════════════
 
-export type SubAgentSpawner = (
-  description: string,
-  prompt: string,
-  onProgress?: (chunk: string) => void,
-  mode?: 'fork' | 'fresh',
-  toolAllowlist?: string[] | null,
-  signal?: AbortSignal, // pool 的中断信号 — 停/超时通过它杀死子Agent
-  asyncMode?: boolean, // true = 非阻塞，立即返回 agentId，结果通过 bus 回来
-  agentIdOverride?: string, // 显式指定子 Agent ID（异步模式必须，保证 LLM 拿到的 ID 与 board/bus 一致）
-  outputSchema?: Record<string, unknown> | null, // 结构化返回 schema（仅同步模式）
-) => Promise<{ text: string; err?: string }>;
-
+// 批 7a：`SubAgentSpawner` 类型上收内核契约（agent/subagent-tools-contract.ts），经 ./host 取用。
 export function createSubAgentTool(spawner: SubAgentSpawner, pool: SubAgentPool): Tool {
   return defineTool({
     name: 'agent_spawn',

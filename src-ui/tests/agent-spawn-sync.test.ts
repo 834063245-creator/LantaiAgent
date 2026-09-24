@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { SubAgentPool } from '../src/agent/coordinator';
-import { createSubAgentTool, type SubAgentSpawner } from '../src/agent/tools/subagent';
+import { createSubAgentTool, type SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
 
 function makeSpawner(result: { text: string; err?: string }, delayMs = 5): SubAgentSpawner {
   return async () => {

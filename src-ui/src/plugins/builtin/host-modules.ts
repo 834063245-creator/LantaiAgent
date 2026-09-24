@@ -41,6 +41,7 @@ import { log } from '../../agent/logger';
 import { errText, parseFilePathArg } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
 import { registerPlanImplementation } from '../../agent/plan/plan-impl';
+import { assertSupportedSchema, extractJsonObject, validateObjectJsonSchema } from '../../agent/schema-validate';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
 import { buildCompactedSummaryMessage } from '../../agent/session-log';
 import { createSkillTool, scanSkills } from '../../agent/skills';
@@ -52,7 +53,9 @@ import {
   invalidateBlameEntry,
   refreshGitBlame,
 } from '../../agent/state-inject';
+import { getSubAgentActivity, STUCK_THRESHOLD_S } from '../../agent/subagent-activity';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
+import { registerSubAgentTools } from '../../agent/subagent-tools-impl';
 import { createTaskTools } from '../../agent/task';
 import { countMessage, countMessages, countText } from '../../agent/token-counter';
 import { foldToolResults, nextFoldBoundary } from '../../agent/tool-fold';
@@ -62,7 +65,6 @@ import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
 import { resolveGuardToolName } from '../../agent/tools/domains';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { parseStructuredError } from '../../agent/tools/structured-error';
-import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
 import { useCoreStore } from '../../app/chat/core-instance';
 import { extractImageFiles, previewUrlFor } from '../../app/chat/image-intake';
 import { filterCommands, listCommands, slashOnly } from '../../app/commands/command-catalog';
@@ -301,6 +303,7 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./goal-mode/host'), unknown> &
   Record<keyof typeof import('./state-hooks/host'), unknown> &
   Record<keyof typeof import('./compaction/host'), unknown> &
+  Record<keyof typeof import('./agent-domain/host'), unknown> &
   Record<keyof typeof import('./agent-loop-service/host'), unknown>;
 
 /** 四面组件共享依赖（bundle 域真实例）。key = 产物 host.aliased 取用名。 */
@@ -548,8 +551,6 @@ const faceDeps = {
   createSkillTool,
   createMemoryTools,
   createTaskTools,
-  createSubAgentTool,
-  createAgentStatusTool,
   // 批 4b 归家（2026-09-24）：search/web 两域实现进包（原 manifest-tools 按域拆）
   // ⇒ 撤这两个工厂键；两域只余平台面（toInputJsonSchema / Tool 类型）。
   // 批 3a 归家（2026-09-24）：wait/office/cordis 三域的工具工厂已随包 ⇒ 撤桥；
@@ -617,6 +618,13 @@ const faceDeps = {
   DEFAULT_COMPACT_RATIO,
   DEFAULT_RETAIN_RATIO,
   COMPACTION_NOTICE_MARK,
+  // 批 7a 归家：subagent 工具族进包 ⇒ 撤两工厂键；桥 schema 校验 / 子代理活动账 / 登记表
+  registerSubAgentTools,
+  assertSupportedSchema,
+  extractJsonObject,
+  validateObjectJsonSchema,
+  getSubAgentActivity,
+  STUCK_THRESHOLD_S,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

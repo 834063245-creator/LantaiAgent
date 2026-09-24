@@ -16,7 +16,7 @@ import { SubAgentPool } from '../../../src/agent/coordinator';
 import { HookRegistry, PreflightHookRegistry } from '../../../src/agent/hooks';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { type Tool, ToolRegistry } from '../../../src/agent/tool';
-import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
+import type { SubAgentSpawner } from '../../../src/plugins/builtin/agent-domain/subagent-tools';
 // 批 6a：plan 工具实现在产物包 hologram/plan-mode，装配期经内核登记表取用。
 // 生产 = 装载器（main.ts → loadBuiltinPlugins）先于组合链且 fiber 常驻；本 spec 用
 // 裸 AgentRuntime + 通道腰（腰是瞬时的），故显式复现「装载器已装载」的常驻登记态
@@ -32,8 +32,13 @@ import { installCompactionForTest } from '../../helpers/compaction-impl';
 
 installCompactionForTest();
 
+// 批 7a：subagent 工具族实现由 agent-domain 产物在装载期常驻登记；
+// 本 spec 用裸 AgentRuntime，须先复现该登记态（否则运行时工具面少 agent_kill/spawn 替换版）。
+import { installSubAgentToolsForTest } from '../../helpers/subagent-tools-impl';
 import { scriptedProvider } from '../helpers/fixtures';
 import { snapshot } from '../helpers/snapshot';
+
+installSubAgentToolsForTest();
 
 installPlanModeForTest();
 

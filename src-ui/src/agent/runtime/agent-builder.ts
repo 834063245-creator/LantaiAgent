@@ -107,8 +107,8 @@ export interface ToolRegistryOptions {
 import type { SubAgentPool } from '../coordinator';
 import type { MemoryManager } from '../memory';
 import type { SkillRegistry } from '../skills';
+import type { SubAgentSpawner } from '../subagent-tools-contract';
 import type { TaskManager } from '../task';
-import type { SubAgentSpawner } from '../tools/subagent';
 
 export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<ToolRegistry> {
   const { deps, memoryManager: mm, skillRegistry, taskManager, subAgentPool, subAgentSpawner, toolRows } = opts;

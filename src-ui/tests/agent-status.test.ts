@@ -11,7 +11,7 @@ import {
   removeSubAgentActivity,
   STUCK_THRESHOLD_S,
 } from '../src/agent/subagent-activity';
-import { createAgentStatusTool } from '../src/agent/tools/subagent';
+import { createAgentStatusTool } from '../src/plugins/builtin/agent-domain/subagent-tools';
 
 const T0 = 1_700_000_000_000;
 

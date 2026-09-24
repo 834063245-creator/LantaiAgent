@@ -265,7 +265,7 @@ manifest.json —— 包内合计 30～110 行。
 | `git-domain` | ~~`agent/tools/coding.ts` 的 git 段（318）+ `git-porcelain.ts` 126~~ | ✅ **批 4c-1 已归家**（族段整段移出进包；`git-porcelain` 因内核 `state-inject` 消费而**留内核桥**，随批 6 走） |
 | `browser-desktop-domain` | `agent/tools/browser.ts` **912** | ✅ **批 4a 已归家**（桥位仅 5 运行时 + 1 类型） |
 | `search-domain`·`web-domain` | `agent/tools/manifest-tools.ts` 187 | ✅ **批 4b 已归家**（按域拆两半：`search-domain/search-tools.ts` + `web-domain/web-tools.ts`；随行 `tools/search-assembly.ts` 169 随 search 走——**一个文件不能同时住两个包，故按域拆**） |
-| `agent-domain` | `agent/tools/subagent.ts` 265 | — |
+| `agent-domain` | ~~`agent/tools/subagent.ts` 265~~ | ✅ **批 7a 已归家**（2026-09-24）：三个工具工厂进包 `plugins/builtin/agent-domain/subagent-tools.ts`；`SubAgentSpawner` 类型上收内核契约 `agent/subagent-tools-contract.ts`（装配输入，内核面先于产物）；登记表 `agent/subagent-tools-impl.ts`（feature 语义）；**退役 `agent/tool.ts:244` 的值 re-export**（4c 裁定① 同款）；13 个测试改指包内 |
 | `asset-domain` | `agent/tools/show-asset.ts` 294 | `asset-store.ts` 137 · `confirm-registry.ts` 80 |
 | `wait-domain` | `agent/tools/wait.ts` 102 | — |
 | `office-domain` | `agent/tools/office.ts` 576 | — |
@@ -468,12 +468,9 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-24 基线**（批 6d-2 后重测）：红 **11 产物 / 25 文件 / 8,283 行**（§1 的 9 条 +
-§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`；文件按**认领计数**——`coding.ts` 曾被 fs/shell
-两条认领故按 2 计。批 6a/6c 后 8,265 → 8,283 的 +18 全是 `agent/blueprint.ts` 与
-`agent/subagent-spawn.ts` 的登记表取用改写，不是新欠账）；绿 111 平台 + **87 已认领**；
-灰 **112 文件 / 32,234 行**（plan 三件 302 行随 6a、goal-loop 317 行随 6b、hooks ≈200 行随 6c、
-压缩域 1,773 行随 6d）。
+**2026-09-24 基线**（批 7a 后重测）：红 **10 产物 / 24 文件 / 8,023 行**（§1 的 8 条 +
+§2.1 Provider 家族 8 件 + §2.5 的 `type-tokens`；批 7a 销 `agent-domain` 265 行）；
+绿 111 平台 + **90 已认领**；灰 **110 文件 / 31,911 行**。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）

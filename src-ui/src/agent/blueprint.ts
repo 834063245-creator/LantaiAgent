@@ -47,6 +47,7 @@ import { registerCompactionTools } from './runtime/agent-builder';
 import type { AgentAssemblyInputs } from './runtime/types';
 import { activeStateHooksImplementation } from './state-hooks-impl';
 import type { DiagnosticsSource } from './state-inject';
+import { activeSubAgentTools } from './subagent-tools-impl';
 import { createTaskTools, TaskManager } from './task';
 import type { ToolRegistry } from './tool';
 import { createBoardStatusTool } from './tools/board-status';
@@ -55,7 +56,6 @@ import { createDiscoveryTools } from './tools/discovery';
 import { convergeRegistry } from './tools/domains';
 import { createMergeTool } from './tools/merge';
 import { createRequestTool } from './tools/request';
-import { createAgentKillTool, createSubAgentTool } from './tools/subagent';
 
 // ── 装配视图 ──
 
@@ -231,7 +231,10 @@ export function firstPartyCapabilities(): AgentCapability[] {
           }),
         );
         scope.tools.register(createBoardStatusTool(taskProxy, () => agent.id));
-        scope.tools.register(createAgentKillTool(subPool, scope.deps.isolationExec));
+        // 批 7a：工具族实现在产物包 hologram/agent-domain，经内核登记表取用
+        // （feature 类——未登记/被禁用 = 静默不装）
+        const subagentTools = activeSubAgentTools();
+        if (subagentTools) scope.tools.register(subagentTools.createAgentKillTool(subPool, scope.deps.isolationExec));
       },
     },
     {
@@ -253,9 +256,11 @@ export function firstPartyCapabilities(): AgentCapability[] {
         const subPool = scope.ctx.get('subAgentPool');
         const spawner = scope.inputs.subAgentSpawner;
         if (!subPool || !spawner) return;
+        const subagentTools = activeSubAgentTools();
+        if (!subagentTools) return;
         scope.tools.unregister('agent_spawn');
         scope.tools.register(
-          createSubAgentTool(
+          subagentTools.createSubAgentTool(
             (desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema) =>
               agent.spawnSubAgent(desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema),
             subPool,

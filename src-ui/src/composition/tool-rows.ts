@@ -35,9 +35,9 @@
 import type { SubAgentPool } from '../agent/coordinator';
 import type { MemoryManager } from '../agent/memory';
 import type { SkillRegistry } from '../agent/skills';
+import type { SubAgentSpawner } from '../agent/subagent-tools-contract';
 import type { TaskManager } from '../agent/task';
 import type { CodingToolsUI, Tool, ToolExecutor } from '../agent/tool';
-import type { SubAgentSpawner } from '../agent/tools/subagent';
 
 /** 行装配上下文 — buildToolRegistry 提供的全部运行时依赖。
  *  可选字段的缺席 = 该行/贡献产出空集（族内工具按依赖存在性条件注册，

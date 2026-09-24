@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { SubAgentPool } from '../src/agent/coordinator';
 import { TaskManager } from '../src/agent/task';
 import type { ToolExecutor } from '../src/agent/tool';
-import type { SubAgentSpawner } from '../src/agent/tools/subagent';
 import { factoryComposition } from '../src/composition/roster';
 import type { ToolRowContext } from '../src/composition/tool-rows';
+import type { SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
 
 // ── 行装配自检（S1-3 装配末端；①b 收官 2026-08-23：builtin 行表退役）──
 // 行真源 = factoryComposition().tools = pluginToolRows()（十四族全量经

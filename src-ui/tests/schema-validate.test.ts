@@ -12,7 +12,7 @@ import {
   extractJsonObject,
   validateObjectJsonSchema,
 } from '../src/agent/schema-validate';
-import { createSubAgentTool, type SubAgentSpawner } from '../src/agent/tools/subagent';
+import { createSubAgentTool, type SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
 
 function _makeSpawner(result: { text: string; err?: string }): SubAgentSpawner {
   return async () => result;
