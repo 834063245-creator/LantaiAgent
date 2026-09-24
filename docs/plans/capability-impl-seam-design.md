@@ -75,10 +75,20 @@ agent/blueprint.ts 的两条 capability **原位置、原 id、原 phase**，
 
 ### 6c state-hooks（= 332 行进包）
 
-出厂 hook 实现（`hooks/board-tracking-hook.ts` 31 + `hooks.ts` 里的第一方 hook 部分）进包；
-`HookRegistry` 类（机制）留内核；`state-inject.ts`（231）+ `cache-store.ts`（107）**判内核共享面留内核**
-（消费者 `workspace.ts` / `runtime.ts` / `blueprint.ts` 都在内核，随批 9 workspace 拆分再动）。
-`blueprint.ts:358-365` 的 `board-tracking-hook` capability 改查登记表（service 类 ⇒ fail-loud）。
+**2026-09-24 实测切分**（施工时直接用）：`agent/hooks.ts` **301 行**里只有后半是产品件——
+1–136 行 = `Hook` / `PreflightHook` 接口 + `HookRegistry` / `PreflightHookRegistry` 两类（**机制留内核**，
+七处内核消费）；137–301 行 = 三个出厂 hook 工厂（`createStateReadHook` 137–165 ·
+`createStatePreflightHook` 166–189 · `createBuildResultHook` 190–241）+ `parseBuildOutput` 242–301
+（≈165 行）**进包**，加上 `hooks/board-tracking-hook.ts` 31 行 = **≈196 行进包 / 136 行留内核**。
+
+接缝同 6a/6b：内核侧新 `agent/state-hooks-impl.ts` 登记表（`createStateReadHook` /
+`createStatePreflightHook` / `createBuildResultHook` / `createBoardTrackingHook` 四个工厂），
+`blueprint.ts` 的 `state-hooks`（:348-357）与 `board-tracking-hook`（:362-366）两条 capability
+**原位不动**、只把 install 体换成查表。分类 = **service**（用户拍板）：未登记时 **fail-loud**
+（装配期抛「state-hooks 产物未装载」——hook 管道是内核语义，缺了就是装歪，不许静默降级）。
+
+`state-inject.ts`（231）+ `cache-store.ts`（107）**判内核共享面留内核**（消费者 `workspace.ts:17,30` /
+`runtime.ts:43` / `blueprint.ts:56` 都在内核；随批 9 workspace 拆分再动）。
 
 ### 6d compaction（= 2,022 行待拆）
 
