@@ -273,7 +273,7 @@ manifest.json —— 包内合计 30～110 行。
 | `memory-domain` | `agent/memory.ts` 733 | `memory-bundle-client.ts` 134 |
 | `skill-domain` | `agent/skills.ts` 377 + `agent/builtin-skills.ts` **358（出厂技能内容）** | — |
 | `task-domain` | `agent/task.ts` 178 + `agent/task-board.ts` 319 | `board-persistence.ts` 121 · `tools/board-status.ts` 78 |
-| `capability-segments` | `agent/blueprint.ts` 389（14 项 capability 定义；`AgentBlueprint` 类=机制留内核） | — |
+| `capability-segments` | ✅ **批 9h-1 已归家**（2026-09-26）：`agent/blueprint.ts` 410 按「内容 vs 机制」切开——十四项 capability 定义（+ 表内私有 helper `requireAgent` / `STATE_HOOKS_UNAVAILABLE`）**281 行进包** `plugins/builtin/capability-segments/segments.ts`（逐字搬移、**数组序原样** = 注册序 = 工具面表序） | 内核 158 行留形状与机制：`AgentCapability` / `BlueprintScope` / `BlueprintDeps` / `CapabilityPhase` + `AgentBlueprint` 类；桥面翻面成取用面 12 键（批 6/7 登记表读面 6 + 内核工具工厂/域折叠表 6） |
 | `prompt-segments` | ✅ **批 9g-1 已归家**（2026-09-26）：`composition/prompt-sections.ts` 244 按「内容 vs 机制」切开——9 段文案（+ helpers `hasProject`/`noProject`/`modelIdentityLines`/`memoryText`/`envText` + `firstPartyPromptSections`）**195 行进包** `plugins/builtin/prompt-segments/sections.ts`，数组序原样（序 = 拼装序 = 字节契约） | 内核 95 行留契约与拼装：`PromptSectionContext` / `PromptSection` 类型 + `assembleSystemPrompt`（+ `activePromptContributions` 取面）；桥面清零（该包 host.ts 零 faceDeps 需求） |
 
 ### 1.2 半壳（3）：插件对象已进包，provider 实现仍在内核 —— 2,928 行
@@ -468,14 +468,17 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-26 基线**（批 9e-3 后重测）：红 **6 产物 / 11 文件 / 3,983 行**（§1 的 5 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80）；
-绿 **120 平台 + 115 已认领**；灰 **58 文件 / 17,000 行**（批 8 把渲染面判据层收成 `shared`：
+**2026-09-26 基线**（批 9h-1 后重测）：红 **5 产物 / 10 文件 / 3,573 行**（§1 的 5 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80 · 9h-1 销 `blueprint.ts` 410）；
+绿 **120 平台 + 119 已认领**；灰 **54 文件 / 16,353 行**（批 8 把渲染面判据层收成 `shared`：
 `markdown` / `marks` / `tool-text` / `fold` / `translate` 五件进 paper-renderers 与 renderers 的
 shared 名单；批 9a 把 token-meter / acp 登记进平台白名单，9c-1~3 把 selection / virtualize /
 group 三件实现随 paper-shell 包，9d 把 Provider 控制台 8 件随 settings-domain 包，9g-2 把
 asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 shared；**9e 新增第 15 个
 内核 service `composition/root-views-service.ts`（平台 +1）**，并把首页 593 + 首页 CSS 851 行 +
-ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 行）。
+ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 行；**9h-1 capability 内容表
+随包** ⇒ 四个内核件转被认领（`agent/code-run/host` 269 · `agent/runtime/agent-builder` 195 ·
+`agent/code-run/code-execution-tool` 105 · `agent/tools/board-status` 78）⇒ 灰区 58 → 54 文件 /
+17,000 → 16,353 行、已认领 115 → 119）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -494,7 +497,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
-| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9d / 9e / 9g-1~2 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）· **9e 常驻面归家**（用户裁定 A）：立**第 15 个内核 service** `ctx.rootViews`（'home'/'overlay' 双槽，App 外壳按槽渲染）+ 新产物 `sessions-home`（593 + 首页 CSS 851 行）与 `ask-cards`（776 + Host 30 + css 412），两产物均 `required` 不可禁用 ⇒ 红区 8 → **6 产物 / 11 文件 / 3,983 行**、灰区 84 → **58 文件 / 17,000 行**、清单 50 → **53**（15 service + 38 产物）。余：9c-4 判定已出（测量引擎接缝，另立设计件）→ 9f **侦察已出、判定细化**（`workspace.ts` 并入批 10 通道设计；`settings.ts` 拆「应用配置核心 + Provider 数据面」，与 `provider/**` 同件设计，需先出施工单）→ 9g 余项（`bundled-engine` B暂）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
+| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9d / 9e / 9g-1~2 / 9h-1 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）· **9e 常驻面归家**（用户裁定 A）：立**第 15 个内核 service** `ctx.rootViews`（'home'/'overlay' 双槽，App 外壳按槽渲染）+ 新产物 `sessions-home`（593 + 首页 CSS 851 行）与 `ask-cards`（776 + Host 30 + css 412），两产物均 `required` 不可禁用 · **9h-1 capability 内容表随包**（`agent/blueprint.ts` 410 → 158，包内 `segments.ts` 281 = 十四项定义，逐字号原样）⇒ 红区 8 → **5 产物 / 10 文件 / 3,573 行**、灰区 84 → **54 文件 / 16,353 行**、清单 50 → **53**（15 service + 38 产物）。余：9c-4 判定已出（测量引擎接缝，另立设计件）→ 9f **侦察已出、判定细化**（`workspace.ts` 并入批 10 通道设计；`settings.ts` 拆「应用配置核心 + Provider 数据面」，与 `provider/**` 同件设计，需先出施工单）→ 9h 余项（红区四件：`agent-loop-service` 469 / `skill-domain` 735 / `memory-domain` 867 / `task-domain` 696，皆按批 6/7 的「内核登记表 + 产物登记实现」接缝走）→ 9g 余项（`bundled-engine` B暂）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -828,6 +831,15 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
     `answerActiveText` 真身；css 8 KB）；**DOM 实证**：App 根出现 `.sh-root` / `.sh-head`
     （首页确实经 `ctx.rootViews` 'home' 槽渲染，非硬编码）；启动期 console 与批 9e 前逐条相同
     （4 条既有 `[bridge] invoke failed` + 结构性 404），零装载失败、零异常。
+
+- **9h-1 capability 内容表随包**（`2ae54739`，2026-09-26）：`agent/blueprint.ts` 410 按「内容 vs
+  机制」切开——十四项 capability 定义（+ 表内私有 `requireAgent` / `STATE_HOOKS_UNAVAILABLE`）
+  **281 行进包** `plugins/builtin/capability-segments/segments.ts`（逐字搬移、数组序原样 = 注册序
+  = 工具面表序）；内核留 158 行（形状 + `AgentBlueprint` 类）。桥面从「一个 `firstPartyCapabilities`
+  键」翻面成**取用面 12 键**（批 6/7 登记表读面 6 + 内核工具工厂/域折叠表 6）⇒ 宿主面 313 → **323 键**。
+  名册 `impl` 销账（空壳集 5 → **4 条 = 3 纯壳 + 1 半壳**）。红区 6 → **5 产物 / 3,983 → 3,573 行**；
+  灰区 58 → **54 文件 / 17,000 → 16,353 行**（四个内核件转被认领）；已认领 115 → **119**。
+  行为零变更（convergence 双轨零漂移为证）。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
