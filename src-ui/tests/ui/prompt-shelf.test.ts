@@ -10,13 +10,13 @@
 import { act, createElement, type ReactRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  type AskBatchPrompt,
-  type AskPrompt,
-  type AskQuestionItem,
-  PromptShelf,
-  type PromptShelfHandle,
-} from '../../src/app/chat/PromptShelf';
+import type {
+  AskBatchPrompt,
+  AskPrompt,
+  AskQuestionItem,
+  PromptShelfHandle,
+} from '../../src/app/chat/ask-card-contract';
+import { PromptShelf } from '../../src/plugins/builtin/ask-cards/PromptShelf';
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;

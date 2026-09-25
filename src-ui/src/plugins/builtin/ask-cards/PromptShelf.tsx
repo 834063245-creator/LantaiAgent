@@ -4,14 +4,26 @@
 // PromptShelf — 消息和输入框之间的统一提示区
 // 同时处理 ask_user 卡片和权限审批。
 // 不在消息数组内 — 独立的 React root。
+//
+// 批 9e-3（2026-09-26）：实现随产物包 `ask-cards`（旧 `app/chat/PromptShelf.tsx`）；
+// **形状留内核契约** `app/chat/ask-card-contract.ts`（三个 prompt 类型 + `PromptData`
+// + `PromptShelfHandle` 五动词）——内核 `chat-core` 是消费侧，铁律禁内核 import 产物源码。
 
 import type React from 'react';
 import type { ReactNode } from 'react';
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
-import { iconSvg } from '../../ui/icons';
+import {
+  type AskBatchPrompt,
+  type AskPrompt,
+  iconSvg,
+  type PermissionPrompt,
+  type PromptData,
+  type PromptOwner,
+  type PromptShelfHandle,
+} from './host';
 import './prompt-shelf.css';
 
-// ── 类型 ──
+// ── 图标 ──
 
 /** 内联 SVG 图标 — 单点色 dangerousHTML（iconSvg 返回自有静态图标库字符串，
  *  非用户输入，无 XSS 面）；全部使用点经此组件，豁免只留这一处。 */
@@ -20,54 +32,6 @@ function Icon({ name, size = 12 }: { name: string; size?: number }): React.React
   // biome-ignore lint/security/noDangerouslySetInnerHtml: 自有静态图标库字符串（ui/icons.ts），非用户输入
   return <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconSvg(name, size) }} />;
 }
-
-/** 批量多问的单条题目 */
-export interface AskQuestionItem {
-  question: string;
-  header?: string;
-  options?: { label: string; description: string }[];
-  multiSelect?: boolean;
-}
-
-export interface AskPrompt {
-  type: 'ask';
-  id: string;
-  question: string;
-  header: string;
-  options: { label: string; description: string }[];
-  multiSelect: boolean;
-}
-
-/** 批量多问：一次推全部 questions，UI 分页收集后一次性提交全部答案 */
-export interface AskBatchPrompt {
-  type: 'ask-batch';
-  id: string;
-  /** 批次标签（卡片 tag 显示；缺省"提问"） */
-  header?: string;
-  questions: AskQuestionItem[];
-}
-
-export interface PermissionPrompt {
-  type: 'permission';
-  id: string;
-  toolName: string;
-  reason: string;
-  subject: string;
-  /** 高危操作标签，如 "ForceRecursiveRoot"。有值时显示红色警告卡片 */
-  danger?: string;
-}
-
-/** 卡片归属面（2026-09-10 ask 用户侧完备化）：
- *  - ownerSid：归属卷号（null = 面板级/无归属）——停止语义按卷杀卡
- *    （dismissByOwner），切卷/停他卷不再一刀切清全架；
- *  - badge：归属卷名徽标（多卷并发时「替哪卷作答」），独立 chip 渲染
- *    （此前与 header 拼串后按 12 字截断——徽标把真 header 吃掉）。 */
-export interface PromptOwner {
-  ownerSid?: number | null;
-  badge?: string | null;
-}
-
-export type PromptData = (AskPrompt | AskBatchPrompt | PermissionPrompt) & PromptOwner;
 
 // ── 图标 ──（svgIcon 包装已删 — Icon 组件直用 iconSvg）
 
@@ -614,27 +578,7 @@ const PermCard: React.FC<{
   );
 };
 
-// ── 暴露的命令式 API（core 注册接口签名不变 + 2026-09-10 完备化两面）──
-
-export interface PromptShelfHandle {
-  readonly active: PromptData | null;
-  /** 显示询问提示。返回 Promise，解析为选中的标签或 null（取消时）。 */
-  showAsk(prompt: AskPrompt & PromptOwner): Promise<string[] | null>;
-  /** 显示批量多问（分页收集）。返回 Promise，解析为对齐 questions 的答案数组或 null（取消时）。 */
-  showAskBatch(prompt: AskBatchPrompt & PromptOwner): Promise<(string[] | null)[] | null>;
-  /** 显示权限提示。返回 Promise，解析为 allow/remember。 */
-  showPermission(prompt: PermissionPrompt & PromptOwner): Promise<{ allow: boolean; remember: boolean }>;
-  /** 关闭当前提示（取消挂起的 Promise）。 */
-  dismiss(): void;
-  /** 按归属卷关闭（2026-09-10 完备化）：停 A 卷只杀 A 卷的卡——
-   *  切卷/停他卷不再一刀切清全架（别的卷在等答案的提问卡曾被误杀，
-   *  Agent 收「用户取消」而用户没答过）。ownerSid 匹配 ownerSid ?? null。 */
-  dismissByOwner(ownerSid: number | null): void;
-  /** 主输入作答（2026-09-10 完备化）：架头是提问卡时以 text 作答——
-   *  单问卡整卡提交（自定义回答）；批量卡填当前页并翻页。
-   *  返回 false = 架头不是提问卡（权限卡/空架），调用方走常规发送路径。 */
-  answerActiveText(text: string): boolean;
-}
+// ── 命令式 API（core 注册接口签名——形状真源 = 内核 app/chat/ask-card-contract.ts）──
 
 // ── Shelf 组件（P2′-2b：直接挂 ChatBeacon 树，Controller 包装已删）──
 // FIFO 队列：同轮多个 ask_user / 权限请求排队展示，不再互相顶掉

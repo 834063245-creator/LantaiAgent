@@ -13,7 +13,6 @@ import './app/fonts';
 import './app/tokens.css';
 import './app/foundation.css';
 import './app/shell.css';
-import './app/chat/prompt-shelf.css';
 import './app/panels/dock-panels/provider-settings.css';
 import './app/plugin-windows/plugin-windows.css';
 import './plugins/builtin/compose-dock/model-selector.css';

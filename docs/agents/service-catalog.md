@@ -69,7 +69,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 | `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `paper` · `settings` | 3 文件 |
 | `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | — | 1 文件 |
 | `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | — | 6 文件 |
-| `ctx.rootViews` | `RootViewsService` | `src/composition/root-views-service.ts` | `sessions-home` | 1 文件 |
+| `ctx.rootViews` | `RootViewsService` | `src/composition/root-views-service.ts` | `ask-cards` · `sessions-home` | 2 文件 |
 | `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `communication-tools` · `compaction-tools` · `converge-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `merge-tools` · `request-tool` · `spawn-tool` | 4 文件 |
 
 ### `ctx.capabilities` — CapabilitiesService（贡献通道）
@@ -133,8 +133,8 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 App 外壳视图槽通道（批 9e）：首页（slot:'home'）与根浮层（slot:'overlay'） 由产物贡献，App.tsx 按槽渲染。
 
 - owner：`src/composition/root-views-service.ts`
-- 默认实现 / 贡献者 id：`sessions-home`
-- 消费面（1）：`src/plugins/builtin/sessions-home/index.tsx`
+- 默认实现 / 贡献者 id：`ask-cards` · `sessions-home`
+- 消费面（2）：`src/plugins/builtin/ask-cards/index.tsx` · `src/plugins/builtin/sessions-home/index.tsx`
 
 ### `ctx.tools` — ToolsService（贡献通道）
 

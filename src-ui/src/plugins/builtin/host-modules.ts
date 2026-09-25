@@ -323,7 +323,8 @@ import {
   useWorkLedgerStore,
 } from '../../state/work-ledger-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
-import { iconHtml } from '../../ui/icons';
+// 批 9e-3 归家：ask / 权限卡架进产物 ⇒ 桥它的图标库（自有静态图标，卡片小图标）
+import { iconHtml, iconSvg } from '../../ui/icons';
 
 /** 宿主桥供面封蜡（2026-09-02 划词白屏事故立法）：faceDeps 此前是手抄清单，
  *  host.ts 加出口漏注册时 tsc/测试全绿（两域测试都直连真身）、exe 里才炸
@@ -517,6 +518,8 @@ const faceDeps = {
   pickFolder,
   workspaceFlow,
   shellRefs,
+  // 批 9e-3 归家（2026-09-26）：ask / 权限卡架进产物 ⇒ 桥图标库（卡片小图标）
+  iconSvg,
   // 批 2a 归家（2026-09-24）：llm-adapters 的端点真源（内核协议默认端点表）
   PROVIDER_PROTOCOL_DEFAULTS,
   // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面

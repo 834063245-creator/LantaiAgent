@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b3cc88de",
+  "fingerprint": "283bf40c",
   "keys": [
     "ANCHOR",
     "Agent",
@@ -135,6 +135,7 @@
     "hasDynamicFetchInflight",
     "hasImageRefs",
     "iconHtml",
+    "iconSvg",
     "injectPaperTokens",
     "inkBarColorOf",
     "inkBarsFor",

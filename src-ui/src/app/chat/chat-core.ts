@@ -52,6 +52,7 @@ import { type ChatMessage, resetMsgIdCounter, type UserMessage } from '../../ui/
 import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
 import { listCommands, parseSlashInput } from '../commands/command-catalog';
 import { ensureSkillCatalog } from '../commands/skill-catalog';
+import type { PromptShelfHandle } from './ask-card-contract';
 import {
   admitImageBlob,
   admitImageFromPath,
@@ -59,7 +60,6 @@ import {
   MAX_MESSAGE_IMAGE_BYTES,
   splitIntakePaths,
 } from './image-intake';
-import type { PromptShelfHandle } from './PromptShelf';
 import * as Branch from './session-branch';
 import * as SessionComposition from './session-composition';
 

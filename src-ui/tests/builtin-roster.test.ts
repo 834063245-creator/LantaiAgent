@@ -79,7 +79,8 @@ describe('builtin-roster（名册单一真源守卫）', () => {
     // multiagent-comm 新增（2026-09-24 批 7b：通信族归产物）：34 → 35
     // paper-renderers 新增（2026-09-25 批 8b：纸面块渲染器归产物，required 不可禁用）：35 → 36
     // sessions-home 新增（2026-09-26 批 9e：案卷首页归产物，required 不可禁用——应用唯一入口页）：36 → 37
-    expect(roster.size).toBe(37);
+    // ask-cards 新增（2026-09-26 批 9e-3：ask/权限卡架归产物，required 不可禁用——唯一承接面）：37 → 38
+    expect(roster.size).toBe(38);
   });
 
   it('名册 buildOrder 连续 0..N-1 无重复（防序号断裂/误插）', () => {

@@ -5,8 +5,8 @@
 // 自 main.ts 426-511 机械迁移（S2）；只保留权限请求桥——它服务
 // Agent 会话编排（与视图无关）。
 //
-// 权限卡承接面：chat-core.showPermissionCard → PromptShelf（V5 起经
-// App 根的 PromptShelfHost 独立挂载，不再依赖旧聊天面板）。
+// 权限卡承接面：chat-core.showPermissionCard → 卡架（批 9e-3 起 = 产物 `ask-cards`
+// 经 `ctx.rootViews` 的 'overlay' 槽挂载；此前是 App 根的 PromptShelfHost）。
 //
 // 并发会话（2026-08-26）：权限卡按 agentId 归属卷路由——Rust 送来的
 // agentId（主 Agent = main-<ts>-<rand>，子 Agent = sub-*）经注册表解析到

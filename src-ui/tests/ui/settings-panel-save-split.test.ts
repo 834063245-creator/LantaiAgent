@@ -26,7 +26,7 @@ vi.mock('../../src/i18n', () => ({ setLang: vi.fn() }));
 vi.mock('../../src/state/agent-config-store', () => ({
   notifyAgentConfigChanged: (...args: unknown[]) => mockConfigChanged(...args),
 }));
-vi.mock('../../src/ui/icons', () => ({ iconHtml: () => '' }));
+vi.mock('../../src/ui/icons', () => ({ iconHtml: () => '', iconSvg: () => '' }));
 
 import { SettingsPanel } from '../../src/plugins/builtin/settings-domain/SettingsPanel';
 import { loadSettings, saveSettings } from '../../src/settings';

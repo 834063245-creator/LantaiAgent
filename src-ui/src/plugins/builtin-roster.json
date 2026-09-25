@@ -350,5 +350,15 @@
     "inject": ["rootViews"],
     "required": true,
     "face": true
+  },
+  {
+    "dir": "ask-cards",
+    "buildOrder": 37,
+    "description": "ask / 权限提示卡架（唯一承接面；不可禁用——缺席即 showPermissionCard 兜底拒绝）",
+    "entry": "index.tsx",
+    "hostModule": "host",
+    "inject": ["rootViews"],
+    "required": true,
+    "face": true
   }
 ]

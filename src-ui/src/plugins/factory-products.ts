@@ -28,6 +28,7 @@ import { firstPartyCapabilityPlugins } from '../composition/first-party-capabili
 import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
 import { agentLoopServicePlugin } from './builtin/agent-loop-service';
+import { askCardsPlugin } from './builtin/ask-cards';
 import { canvasNavPlugin } from './builtin/canvas-nav';
 import { composeDockPlugin } from './builtin/compose-dock';
 import { builtinFsPlugin } from './builtin/fs-builtin';
@@ -70,6 +71,8 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     paperRenderersPlugin,
     // 批 9e（2026-09-26）：案卷首页归产物（名册 required——应用唯一入口页），经 ctx.rootViews 'home' 槽贡献
     sessionsHomePlugin,
+    // 批 9e-3（2026-09-26）：ask / 权限卡架归产物（名册 required——唯一承接面），经 'overlay' 槽贡献
+    askCardsPlugin,
     paperPlugin,
     settingsPlugin,
     canvasNavPlugin,

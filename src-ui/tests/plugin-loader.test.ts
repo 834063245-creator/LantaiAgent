@@ -833,7 +833,7 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     usePluginStore.getState().setPlugins([]);
   });
 
-  it('装载后写入 plugin-store：52 条 builtin 记录 + 元数据 + 状态 active', async () => {
+  it('装载后写入 plugin-store：53 条 builtin 记录 + 元数据 + 状态 active', async () => {
     const root = new Context();
     loadBuiltinPlugins(root);
     // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
@@ -846,7 +846,8 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     // state-hooks 新增（2026-09-24 批 6c：出厂 hook 四工厂归产物）：45 → 46
     // composition-root-views 新增（2026-09-26 批 9e：App 外壳视图槽通道 = 内核 service）：50 → 51
     // sessions-home 新增（2026-09-26 批 9e：案卷首页归产物）：51 → 52
-    expect(ALL_PLUGINS.length).toBe(52);
+    // ask-cards 新增（2026-09-26 批 9e-3：ask/权限卡架归产物）：52 → 53
+    expect(ALL_PLUGINS.length).toBe(53);
     expect(plugins.every((p) => p.builtin === true)).toBe(true);
     expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
     expect(plugins.every((p) => p.status === 'active')).toBe(true);
