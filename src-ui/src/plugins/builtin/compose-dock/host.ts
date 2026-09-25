@@ -8,6 +8,12 @@
 // re-export，不改写任何实现。
 
 export { agentSessionState } from '../../../agent/agent-session-state';
+/* §4-6 A（2026-09-26）：token 计量升为内核第 16 个 service `ctx.tokenMeter`——墨量册的
+ * 分桶代数（`billedInputTokens` / 两个格式化 / `totalTokens`）从「直接 import 内核实现
+ * 文件」（构建期被 esbuild 内联成第二份副本）改为经本桥取内核唯一实例；读数类型从契约面
+ * `agent/token-meter/contract` 取（类型面经宿主桥零成本，运行面才需 faceDeps 键）。 */
+export type { TokenMeasurement } from '../../../agent/token-meter/contract';
+export { tokenAlgebra } from '../../../agent/token-meter/service';
 export { useCoreStore } from '../../../app/chat/core-instance';
 export { extractImageFiles, previewUrlFor } from '../../../app/chat/image-intake';
 // 命令目录（2026-09-19 command-surface-rework）：斜杠命令与命令面板的唯一合流点

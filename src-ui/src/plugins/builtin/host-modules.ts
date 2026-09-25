@@ -108,6 +108,9 @@ import { activeDiscoveryTools, activeMergeTools, registerSubagentRuntime } from 
 import { activeSubAgentTools, registerSubAgentTools } from '../../agent/subagent-tools-impl';
 import { createTaskTools, TaskManager } from '../../agent/task';
 import { countMessage, countMessages, countText } from '../../agent/token-counter';
+// §4-6 A（2026-09-26）：分桶代数真源 = 内核第 16 个 service `ctx.tokenMeter` 的 usage 面
+// ——创作坞墨量册此前直接 import 内核实现文件（构建期内联第二份副本），改经本桥取唯一实例。
+import { tokenAlgebra } from '../../agent/token-meter/service';
 import { ToolRegistry } from '../../agent/tool';
 import { foldToolResults, nextFoldBoundary } from '../../agent/tool-fold';
 import { hasImageRefs } from '../../agent/tool-images';
@@ -797,6 +800,9 @@ const faceDeps = {
   // （markdown 体渲染由 paper-renderers 产物登记；产物域不得相对 import 那个叶模块——会被
   //  esbuild 内联成另一份实例，读不到内核那份登记）
   activeMarkdownBody,
+  // §4-6 A（2026-09-26）：token 计量升为内核第 16 个 service `ctx.tokenMeter` ⇒ 分桶代数
+  // 经本键取内核唯一实例（创作坞墨量册的读数面；产物域自建副本 = 口径漂移入口）。
+  tokenAlgebra,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

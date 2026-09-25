@@ -18,6 +18,7 @@
 
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { dynamicRunnerPlugin } from '../agent/dynamic-runner/dynamic-runner-service';
+import { tokenMeterServicePlugin } from '../agent/token-meter/service';
 import { capabilitiesServicePlugin } from '../composition/capability-service';
 import { fsServicePlugin } from '../composition/fs-service';
 import { hooksServicePlugin } from '../composition/hook-service';
@@ -40,11 +41,15 @@ export interface ServicePluginEntry {
   description: string;
 }
 
-/** 15 个内核 service（**表序 = 装载序 = 字节契约**；加/删只许动本表）。
+/** 16 个内核 service（**表序 = 装载序 = 字节契约**；加/删只许动本表）。
  *  第 14 位 `lsp-service`（批 9b §4-13）：此前游离在清单外（`ui/lsp-client.ts` 自建第二个根
  *  Context 当兜底）⇒ 不受「内核不可禁用」覆盖、不进 boot 审计；现由 loader 装载。
  *  第 15 位 `composition-root-views`（批 9e）：App 外壳视图槽通道（'home' 主区 / 'overlay' 浮层）
- *  ——首页与 ask 卡产物经它贡献，App.tsx 按槽渲染（用户 2026-09-26 裁定 A）。 */
+ *  ——首页与 ask 卡产物经它贡献，App.tsx 按槽渲染（用户 2026-09-26 裁定 A）。
+ *  第 16 位 `token-meter`（§4-6 A，用户 2026-09-25 裁定）：token 计量面此前既不在清单、
+ *  也无产物认领（消费方只能 import 内核实现文件）；立 service 后每卷账本由
+ *  `ctx.tokenMeter.createLedger()/restoreLedger()` 制造、分桶代数经 `ctx.tokenMeter.usage`
+ *  取用——**录入点仍唯一 = `Agent.streamOnce`**。 */
 export const SERVICE_PLUGINS: readonly ServicePluginEntry[] = [
   {
     plugin: compositionServicesPlugin,
@@ -67,4 +72,8 @@ export const SERVICE_PLUGINS: readonly ServicePluginEntry[] = [
   { plugin: codeRuntimePlugin, description: 'code_execution 执行腰沙箱' },
   { plugin: dynamicRunnerPlugin, description: '运行时插件定义/执行（cordis 域，approval + 半沙箱）' },
   { plugin: lspServicePlugin, description: '语言服务（LSP）会话与 provider 注册（工作区 fiber 挂载 + 内核兜底实例）' },
+  {
+    plugin: tokenMeterServicePlugin,
+    description: 'token 计量（每卷账本工厂 + 分桶代数真源；录入点唯一 = Agent.streamOnce）',
+  },
 ];

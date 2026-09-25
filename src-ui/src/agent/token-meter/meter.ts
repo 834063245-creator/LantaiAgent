@@ -18,6 +18,7 @@
 // （snapshot/restore）走卷文件落盘，等价达成「重启不丢账」。
 
 import type { Usage } from '../../provider/types';
+import type { TokenLedger } from './contract';
 import type {
   ContextBreakdown,
   TokenBuckets,
@@ -36,8 +37,9 @@ import {
   ZERO_BUCKETS,
 } from './usage';
 
-/** 每卷 token 计量器（纯状态机，无 IO、无 React）。 */
-export class SessionTokenMeter {
+/** 每卷 token 计量器（纯状态机，无 IO、无 React）。
+ *  形状 = 契约面 `TokenLedger`（`contract.ts`；§4-6 A 起消费方读契约不读本文件）。 */
+export class SessionTokenMeter implements TokenLedger {
   private _totals: TokenBuckets = { ...ZERO_BUCKETS };
   private _attempts = 0;
   private _turnSlots = new Map<number, TurnTokens>();

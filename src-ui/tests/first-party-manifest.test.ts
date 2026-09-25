@@ -45,7 +45,8 @@ describe('first-party-manifest（清单完备性守护）', () => {
     // composition-root-views 新增（2026-09-26 批 9e：App 外壳视图槽通道——内核 service）：50 → 51
     // sessions-home 新增（2026-09-26 批 9e：案卷首页归产物）：51 → 52
     // ask-cards 新增（2026-09-26 批 9e-3：ask/权限卡架归产物，required 不可禁用）：52 → 53
-    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(53);
+    // token-meter 新增（2026-09-26 §4-6 A：token 计量升为内核第 16 个 service）：53 → 54
+    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(54);
   });
 
   it('两类都有存量：service 平台服务（常驻）与 feature 功能插件（可禁用）', () => {
@@ -55,7 +56,7 @@ describe('first-party-manifest（清单完备性守护）', () => {
 
   it('§4-15 单一真源（批 9a）：内核 service 名单只在 service-plugins.ts 写一次', () => {
     const names = SERVICE_PLUGINS.map((e) => e.plugin.name);
-    expect(names).toHaveLength(15);
+    expect(names).toHaveLength(16);
     // loader 表由本表派生（对象同一，不是「两份名单碰巧一样」）
     expect(BUILTIN_PLUGINS.map((p) => p.name)).toEqual(names);
     expect(BUILTIN_PLUGINS.map((p) => p.name)).toEqual(SERVICE_PLUGINS.map((e) => e.plugin.name));

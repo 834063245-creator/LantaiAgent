@@ -40,7 +40,7 @@
 | 4-3 | `ConfirmDialog`（102） | 现住 `app/ConfirmDialog.tsx` | ✅ 批 9a 判内核共享原语 |
 | 4-4 | `CommandPalette`（204） | `app/CommandPalette.tsx` 204 | 🟢 判内核（跨插件命令面消费者） |
 | 4-5 | MessageBus / TaskBoard / DiscoveryBoard | `message-bus.ts` **已不存在**；`task-board.ts` 319 在；`discovery-board.ts` 228 在 | ✅ 前两件已归家 / 已排期（账② `task-domain`）；🟢 余 `DiscoveryBoard` 判内核 shared |
-| 4-6 | `token-meter`（963） | `agent/token-meter/` 6 件 874 + `token-counter.ts` 89 | ✅ **用户 2026-09-25 裁定 A：立 `ctx.tokenMeter`** |
+| 4-6 | `token-meter`（963） | `agent/token-meter/` 6 件 874 + `token-counter.ts` 89 | ✅ **用户 2026-09-25 裁定 A：立 `ctx.tokenMeter`** —— **2026-09-26 已落**（第 16 个内核 service，契约 v52） |
 | 4-7 | `agent/acp/**`（306） | `acp/server.ts` 306 | 🟢 退役（实现零运行时消费者） |
 | 4-8 | `viewer-exts` 226 + 五件（2,226） | `viewer-exts.ts` 226 在；五件批 8 已判 shared | 🟢 余一件判内核 shared（有真内核读点） |
 | 4-9 | 壳行贡献通道缺口 | 仍缺（`builtinShellRows()` 硬编码数组） | ✅ **裁定：立，与批 10 同窗**（见 §2.2） |
@@ -71,6 +71,13 @@
 > `usage.ts` 的分桶代数与 `meter.ts` 的每卷账本形状上收为契约面；**录入点仍唯一**（`Agent.streamOnce`）
 > —— 不得因为立 service 而新增第二个录入点（那会破 `CLAUDE.md` 的口径纪律）。
 > **排期**：不依赖任何前置，可随时插入（不必等通道 —— 见 §4 的「修正」）。
+>
+> **✅ 已落（2026-09-26）**：内核第 16 个 service `ctx.tokenMeter`（`agent/token-meter/service.ts`）
+> + 契约载体 `agent/token-meter/contract.ts`（`TokenLedger` / `TokenAlgebra` /
+> `TokenMeterImplementation`；契约 v51 → **v52**）。每卷账本由 `requireTokenMeter().createLedger()` /
+> `.restoreLedger()` 制造（缺服务具名 fail-loud），**录入点仍唯一 = `Agent.streamOnce`**；
+> 消费改道：创作坞墨量册经包内宿主桥取代数唯一实例（宿主面 329 → **330 键**）。
+> 落地记录（含真机验收）见总账 §6.5。
 
 ### 2.2 §4-9 壳行贡献通道 —— ✅ **已裁定：立，与批 10 同窗**
 
@@ -127,10 +134,10 @@
 
 | 顺序 | 批次 | 前置 | 风险 | 收益 |
 |---|---|---|---|---|
-| **0（立即）** | **随包引擎四条真机验收**（重建 exe） | 无 | — | 解锁批 10；清「随包图谱引擎端到端」欠账 |
+| **0（立即）** | **随包引擎四条真机验收**（重建 exe） | 无 | — | ✅ **已通过**（2026-09-25，四条全通；解锁批 10） |
 | 1 | 9h-5 `task-domain`（在跑） | — | 低 | 账② −696 |
 | 2 | 9c-4 `measure` / `type-tokens` | — | 中（拆分型） | **账② 清零**；版式 token 免重建 exe |
-| 3 | §4-6 `token-meter` 立 service（已拍） | — | 中（契约） | 分类缺口清零 |
+| 3 | §4-6 `token-meter` 立 service（已拍） | — | 中（契约） | ✅ **已落**（2026-09-26）：第 16 个内核 service `ctx.tokenMeter`，契约 v51 → v52；分类缺口清零 |
 | 4 | 9f `settings` / provider 数据面 | 需施工单 | 中高 | 账③ −700 |
 | 5 | **批 10 + §4-9（同窗）** | **真机验收通过** | **高** | −600~800；两条宿主生命周期通道 |
 | 6 | §4 自裁项收尾（4-7 退役等） | — | 低 | −306；账目转 `shared` |

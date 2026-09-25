@@ -22,6 +22,7 @@ beforeAll(async () => {
     { initCordisKernel },
     { lspServicePlugin },
     { agentLoopServicePlugin },
+    { tokenMeterServicePlugin },
     { registerSkillImplementation },
     { skillImplementation },
     { registerMemoryImplementation },
@@ -36,6 +37,7 @@ beforeAll(async () => {
     import('../src/cordis/boot'),
     import('../src/ui/lsp-client'),
     import('../src/plugins/builtin/agent-loop-service'),
+    import('../src/agent/token-meter/service'),
     import('../src/agent/skill-impl'),
     import('../src/plugins/builtin/skill-domain'),
     import('../src/agent/memory-impl'),
@@ -55,6 +57,10 @@ beforeAll(async () => {
   // fail-loud）⇒ 测试域复现装载态：在同一个内核根 Context 上挂 agent-loop-service 产物
   // （构造期登记 `builtin/default` 并写活动面）。
   kernel.plugin(agentLoopServicePlugin);
+  // §4-6 A（2026-09-26）：token 计量升为内核第 16 个 service 后，Agent 构造期经
+  // `requireTokenMeter().createLedger()` 造每卷账本（缺服务 = 具名 fail-loud）⇒
+  // 测试域同一根 Context 上挂 tokenMeterServicePlugin，复现「loader 已跑过」。
+  kernel.plugin(tokenMeterServicePlugin);
   // 批 9h-3：技能域实现随 skill-domain 包后，内核 `createSkillRegistry` / `scanSkills`
   // 门面缺实现即 fail-loud ⇒ 测试域登记同一份实现对象（与包 index.ts 同源）。
   registerSkillImplementation(skillImplementation);

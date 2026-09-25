@@ -25,8 +25,10 @@
 //   - 逐轮用量按「一次用户输入 = 一轮」分组。
 
 import { memo } from 'react';
-import type { TokenMeasurement } from '../../../agent/token-meter/types';
-import { billedInputTokens, formatExactTokens, formatTokens, totalTokens } from '../../../agent/token-meter/usage';
+// §4-6 A（2026-09-26）：读数类型取内核契约面、分桶代数取内核唯一实例（本包宿主桥）——
+// 此前直接从 `agent/token-meter/{types,usage}` import：产物构建期会把代数内联成第二份
+// 副本（口径单点被撕开），且「产品 import 内核实现文件」正是归家账上的欠账形态。
+import { type TokenMeasurement, tokenAlgebra } from './host';
 
 /** 构成三段的墨阶（浓 → 淡；纸墨体系只有墨，不引第三色）。 */
 const SEGMENTS = [
@@ -90,7 +92,9 @@ export const InkLedger = memo(function InkLedger({
   const estimated = stats?.usedSource === 'surface';
   const totals = stats?.totals;
   const grandTotal =
-    totals !== undefined && totals.outputTokens + billedInputTokens(totals) > 0 ? totalTokens(totals) : 0;
+    totals !== undefined && totals.outputTokens + tokenAlgebra.billedInputTokens(totals) > 0
+      ? tokenAlgebra.totalTokens(totals)
+      : 0;
   const shownTotal = grandTotal > 0 ? grandTotal : fallbackTotal;
   const lastTurn = stats?.turns[stats.turns.length - 1];
   const breakdown = stats?.breakdown;
@@ -132,13 +136,13 @@ export const InkLedger = memo(function InkLedger({
           <p className="pp-ink-note">
             {used === undefined || window === undefined
               ? '窗口未知——设为该模型声明的上下文窗口后才有百分比'
-              : `${estimated ? '~' : ''}${formatTokens(used)} / ${formatTokens(window)} tok`}
+              : `${estimated ? '~' : ''}${tokenAlgebra.formatTokens(used)} / ${tokenAlgebra.formatTokens(window)} tok`}
             {stats?.projectedTokens !== undefined && (
               <>
                 <span className="pp-ink-note-sep" aria-hidden="true">
                   ·
                 </span>
-                下一请求预计 ~{formatTokens(stats.projectedTokens)}
+                下一请求预计 ~{tokenAlgebra.formatTokens(stats.projectedTokens)}
               </>
             )}
           </p>
@@ -164,7 +168,7 @@ export const InkLedger = memo(function InkLedger({
                 <li key={seg.key} title={seg.title}>
                   <i className={`pp-ink-swatch ${seg.cls}`} aria-hidden="true" />
                   <span className="pp-ink-legend-label">{seg.label}</span>
-                  <span className="pp-ink-legend-value">~{formatTokens(breakdown[seg.key])}</span>
+                  <span className="pp-ink-legend-value">~{tokenAlgebra.formatTokens(breakdown[seg.key])}</span>
                 </li>
               ))}
             </ul>
@@ -174,13 +178,13 @@ export const InkLedger = memo(function InkLedger({
           <dl className="pp-ink-ledger">
             {totals && (
               <>
-                <Line label="未缓存输入" value={formatExactTokens(totals.uncachedInputTokens)} />
-                <Line label="缓存读" value={formatExactTokens(totals.cacheReadTokens)} />
-                <Line label="缓存写" value={formatExactTokens(totals.cacheWriteTokens)} />
-                <Line label="输出" value={formatExactTokens(totals.outputTokens)} />
+                <Line label="未缓存输入" value={tokenAlgebra.formatExactTokens(totals.uncachedInputTokens)} />
+                <Line label="缓存读" value={tokenAlgebra.formatExactTokens(totals.cacheReadTokens)} />
+                <Line label="缓存写" value={tokenAlgebra.formatExactTokens(totals.cacheWriteTokens)} />
+                <Line label="输出" value={tokenAlgebra.formatExactTokens(totals.outputTokens)} />
               </>
             )}
-            <Line label="合计" value={formatExactTokens(shownTotal)} strong />
+            <Line label="合计" value={tokenAlgebra.formatExactTokens(shownTotal)} strong />
             <Line
               label="缓存命中"
               value={stats?.cacheHitPercent == null ? '—' : `${stats.cacheHitPercent}%`}
@@ -197,7 +201,7 @@ export const InkLedger = memo(function InkLedger({
             />
             <Line
               label={lastTurn ? `第 ${lastTurn.turn} 轮` : '最新一轮'}
-              value={lastTurn ? formatExactTokens(lastTurn.totalTokens) : '—'}
+              value={lastTurn ? tokenAlgebra.formatExactTokens(lastTurn.totalTokens) : '—'}
               title={lastTurn ? `${lastTurn.steps} 步请求` : undefined}
             />
           </dl>

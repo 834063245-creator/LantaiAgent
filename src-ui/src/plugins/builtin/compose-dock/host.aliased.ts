@@ -94,6 +94,8 @@ export const pullShellWork = impl.pullShellWork;
 export const killShellWork = impl.killShellWork;
 export const selectSessionWork = impl.selectSessionWork;
 export const setOwnerSessionResolver = impl.setOwnerSessionResolver;
+// §4-6 A（2026-09-26）：分桶代数（内核 service ctx.tokenMeter 的 usage 面唯一实例）
+export const tokenAlgebra = impl.tokenAlgebra;
 
 export type StoredThinking = import('./host').StoredThinking;
 export type ThinkingMode = import('./host').ThinkingMode;
@@ -117,6 +119,7 @@ export type WorkEntry = import('./host').WorkEntry;
 export type WorkKind = import('./host').WorkKind;
 export type WorkState = import('./host').WorkState;
 export type SessionWorkView = import('./host').SessionWorkView;
+export type TokenMeasurement = import('./host').TokenMeasurement;
 
 // ── esbuild automatic JSX 注入面（--jsx=automatic --jsx-import-source=./host）──
 

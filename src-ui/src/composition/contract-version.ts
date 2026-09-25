@@ -22,9 +22,23 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 51;
+export const OPEN_SURFACE_CONTRACT_VERSION = 52;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v52（2026-09-26）**token 计量升为内核第 16 个 service `ctx.tokenMeter`**（§4-6 A，
+ *  用户 2026-09-25 裁定；总账 §4-6 分类缺口）：新增契约载体
+ *  `agent/token-meter/contract.ts`——`TokenLedger`（每卷一本账的形状，
+ *  实现 = `meter.ts` 的 `SessionTokenMeter`）· `TokenAlgebra`（分桶代数形状，
+ *  实现 = `usage.ts`）· `TokenMeterImplementation`（造账本 / 恢复账本 / 代数），
+ *  并把 `types.ts` 的六个读数类型在本文件重出口（对外类型入口唯一）。
+ *  **对外可感知**：Agent 侧每卷账本改由 `ctx.tokenMeter.createLedger()` /
+ *  `restoreLedger()` 制造（缺 service = 具名 `TOKEN_METER_UNAVAILABLE` fail-loud，
+ *  不静默建游离账本）；产品读用量读数经 `ctx.tokenMeter.usage` 或自家宿主桥取
+ *  唯一实例（创作坞墨量册同批改道，此前直接 import 内核实现文件 = 构建期内联第二
+ *  份副本）。**录入点仍唯一 = `Agent.streamOnce`**，口径不变：四桶互不重叠且加总恒
+ *  等于提供方 `prompt_tokens`、压力只算 prompt 侧、缓存部分命中不四舍五入成 100%
+ *  ——本版对读数逐字无影响（读数只换了制造者）。service 表序追加末位（内核 service
+ *  全部先于产物装载）。
  *  v51（2026-09-26）**出厂默认 agent loop 归产物包**（批 9h-2，契约形状零变更）：
  *  `agent/agent-loop/default-loop.ts` 整件移入 `plugins/builtin/agent-loop-service/`
  *  （与注册表 `AgentLoopService` 同包、同一次装载），本清单该行随之改指新路径；
@@ -318,4 +332,8 @@ export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   // exclusive 持有表与冲突检测 + 诊断读面 activationSkipped/activationConflict）
   'src/composition/activation.ts',
   'src/composition/activation-service.ts',
+  // token 计量契约（v52 §4-6 A：`ctx.tokenMeter` 第 16 个内核 service 的消费面
+  // ——每卷账本形状 TokenLedger + 分桶代数 TokenAlgebra + 实现面；录入点仍唯一 =
+  // Agent.streamOnce，service 只出「造账本 / 恢复账本 / 读代数」）
+  'src/agent/token-meter/contract.ts',
 ];

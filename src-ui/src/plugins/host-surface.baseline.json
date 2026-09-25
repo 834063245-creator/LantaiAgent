@@ -1,5 +1,5 @@
 {
-  "fingerprint": "e7c9c69a",
+  "fingerprint": "d173a7ea",
   "keys": [
     "ANCHOR",
     "Agent",
@@ -294,6 +294,7 @@
     "thinkingOptionsFor",
     "thinkingOptionsOrDefault",
     "toInputJsonSchema",
+    "tokenAlgebra",
     "translateMessagesCached",
     "typedJsonRpc",
     "typedRpc",

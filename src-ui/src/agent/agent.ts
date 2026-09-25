@@ -102,15 +102,9 @@ import type { StreamingToolExecutor } from './streaming-executor';
 import { parseAssetEventOutput } from './streaming-executor';
 import type { SubAgentSpawnHost } from './subagent-runtime-contract';
 import { countMessages, countTexts, countToolSchemas } from './token-counter';
-import {
-  countImageTokens,
-  type EnvelopeMeasure,
-  measureEnvelope,
-  SessionTokenMeter,
-  type TokenLedgerSnapshot,
-  type TokenMeasurement,
-  type TokenRequestRecord,
-} from './token-meter';
+import { countImageTokens, type EnvelopeMeasure, measureEnvelope } from './token-meter';
+import type { TokenLedger, TokenLedgerSnapshot, TokenMeasurement, TokenRequestRecord } from './token-meter/contract';
+import { requireTokenMeter } from './token-meter/service';
 import type { ToolRegistry } from './tool';
 import { createStableSchemaSelector, type StableSchemaSelector, userContext } from './tool-select';
 import { resolveGuardToolName } from './tools/domains';
@@ -237,8 +231,10 @@ export class Agent {
   /** Phase 5：会话事件溯源日志 — 模型可见事实先入日志，this.session 为投影。 */
   private _sessionLog: SessionLog;
   /** token 计量器（2026-09-13）：每卷一本账 — 分桶用量 / 压力 / 投影占用 /
-   *  构成 / 逐轮。录入点 = streamOnce（请求信封 + 用量），读数面 = UI。 */
-  private _tokenMeter = new SessionTokenMeter();
+   *  构成 / 逐轮。录入点 = streamOnce（请求信封 + 用量），读数面 = UI。
+   *  §4-6 A（2026-09-26）：账本由内核 service `ctx.tokenMeter` 制造（缺服务 =
+   *  具名 fail-loud；不在此自建实例——那正是「计量面无 owner」的旧账）。 */
+  private _tokenMeter: TokenLedger = requireTokenMeter().createLedger();
   /** 轮次序号（run() 入口递增）——逐轮用量的分组键。 */
   private _turnSeq = 0;
   /** 最近一次请求的信封测量（构成细分的单一 tokenization 通道：计量与
@@ -958,7 +954,7 @@ export class Agent {
 
   /** 从卷文件恢复账本（毒化数据降级为缺省，绝不抛）。 */
   restoreTokenLedger(snapshot: TokenLedgerSnapshot | null | undefined): void {
-    this._tokenMeter = SessionTokenMeter.restore(snapshot);
+    this._tokenMeter = requireTokenMeter().restoreLedger(snapshot);
     this._tokenMeter.setContextWindow(this.contextWindow);
   }
 
@@ -1277,7 +1273,7 @@ export class Agent {
     this.compactionTracker.reset();
     this._transientReminders = [];
     // token 账本随新会话归零（与 cacheHitTotal/lastUsage 同批——旧账不跨卷）
-    this._tokenMeter = new SessionTokenMeter();
+    this._tokenMeter = requireTokenMeter().createLedger();
     this._tokenMeter.setContextWindow(this.contextWindow);
     this._sink({ kind: EventKind.Notice, level: 'info', text: '已开启新会话' });
   }
