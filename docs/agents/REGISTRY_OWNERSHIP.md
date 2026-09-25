@@ -14,7 +14,7 @@
 | 注册点 | owner | 清理点 | 自动清理 |
 |---|---|---|---|
 | `composition/tool-rows.ts`（①c 后 2 内置族行表 web/browser-desktop，S1-3 起 builder 循环装配；行内重名装载期拒绝。S4-4 甲：行表与插件贡献行同经 factoryComposition 快照进组合解析域——单循环装配） | `buildToolRegistry` → 调用方（workspace/Runtime） | registry 本身无全局状态，随 Agent 实例 GC | ✅ 随实例 |
-| `plugins/builtin/*/index.ts` + `composition/first-party-tools.ts`（清单单一真源；十二族工具经 `ctx.tools` 贡献。**缓存分家与逐族归属以 `CONVENTIONS.md` §1.7 为准，此处不复述防漂移**；`composition/plugin-tool-rows.ts` 折算行；S4-4 甲起经 factoryComposition 快照进组合解析域，buildToolRegistry 单循环统一装配） | 插件 fiber `ctx.effect`（loader 装载期注册） | fiber dispose → 贡献注销 + 实例缓存清空 | ✅ 显式 |
+| `plugins/builtin/*/index.ts` + `composition/first-party-tools.ts`（清单单一真源；**全部工具族**经 `ctx.tools` 贡献——族数以 `CONVENTIONS.md` §1.7 与生成物 `docs/agents/service-catalog.md` 为准，本文件不复述。**缓存分家与逐族归属以 `CONVENTIONS.md` §1.7 为准，此处不复述防漂移**；`composition/plugin-tool-rows.ts` 折算行；S4-4 甲起经 factoryComposition 快照进组合解析域，buildToolRegistry 单循环统一装配） | 插件 fiber `ctx.effect`（loader 装载期注册） | fiber dispose → 贡献注销 + 实例缓存清空 | ✅ 显式 |
 | `runtime/agent-builder.ts:269`（compaction 工具，`registerCompactionTools`） | createAgent | 同上 | ✅ 随实例 |
 | `mcp/registry.ts` `registerMcpTools` | builder/调用方；`unregisterMcpTools` 已提供对称清理 | 当前调用方（builder:256）未调用——随 registry GC | ✅ 随实例（豁免：批量注册，整体释放） |
 | `runtime/runtime.ts:632`（registry 克隆循环） | createAgent → Agent 实例 | 随 Agent 实例 | ✅ 随实例 |

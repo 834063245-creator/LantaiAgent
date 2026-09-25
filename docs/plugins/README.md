@@ -53,7 +53,7 @@
 全开——Rust/engine 只是默认 provider。本文件 + 生成物目录（`docs/agents/`）+
 cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台的人类契约。
 
-### 贡献通道（十二 +）
+### 贡献通道（清单以生成物 `docs/agents/service-catalog.md` 为准）
 
 | ctx 通道 | 贡献形状 | 生效时机 | 真源 |
 |---|---|---|---|
@@ -66,13 +66,15 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 | `ctx.capabilities` | AgentCapability（会话级） | 下次装配 | composition/capability-service.ts |
 | `ctx.overlays` | 画布覆盖层 | 即时 | composition/overlay-service.ts |
 | `ctx.rootViews` | App 外壳视图槽（`'home'` 主区 / `'overlay'` 根浮层——批 9e） | 即时 | composition/root-views-service.ts |
+| `ctx.workspaces` | 工作区接线贡献（`onActivate(hook)`——工作区打开时按注册序**串行**回调；批 10） | 工作区激活期 | composition/workspaces-service.ts |
+| `ctx.shellRows` | 壳行贡献（`register({ id, boot })`——boot 期内核行之后按注册序执行；批 10） | 启动期 `bootShell` | composition/shell-rows-service.ts |
 | `ctx.llm` | LlmAdapterContribution（协议适配器；同 kind 后注册胜） | 请求期解析 | composition/services.ts |
 
 ### swappable seam（能力契约层——可换实现）
 
 | ctx seam | 默认 provider | 消费面 | patch 域 |
 |---|---|---|---|
-| `ctx.llm`（**同时是上表的第九条贡献通道**——同一个注册表，消费语义不同） | `builtin/anthropic` · `builtin/openai` | createProvider | `seam/llm` |
+| `ctx.llm`（**同时是上表的一条贡献通道**——同一个注册表，消费语义不同；位置随通道增删变动，勿按序号引用） | `builtin/anthropic` · `builtin/openai` | createProvider | `seam/llm` |
 | `ctx.subagents` | `builtin/in-process` | Agent.spawnSubAgent | `seam/subagents` |
 | `ctx.fs` | `builtin/rust-fs` | fsExecute（fs 域 11 动作） | `seam/fs` |
 | `ctx.shell` | `builtin/rust-shell` | shellExecute（shell 域四动作；subprocess 并入） | `seam/shell` |
@@ -156,7 +158,7 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
 | 概念 | 是什么 | 真源 |
 |---|---|---|
 | 插件 | 自包含 ESM 模块（`{ name, inject?, apply(ctx) }`） | 本文档 |
-| 贡献通道 | **十条贡献通道**：`ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3）/ `ctx.renderers`（块渲染器，V3b）/ `ctx.overlays`（画布覆盖层）/ `ctx.rootViews`（App 外壳视图槽，批 9e）——**同一个注册表内核**（`contribution-channel.ts` 的 `ContributionChannel`，2026-09-14 M1 收口；`timing` 声明生效时机）；**五条 seam provider 注册表**：`ctx.subagents` / `ctx.fs` / `ctx.shell`（subprocess 并入）/ `ctx.sessionPersistence` / `ctx.agentLoop`（后端替换，平台化 Phase 1/2）；`ctx.graph` seam 随图谱功能全量退役（2026-09-09） | `src-ui/src/composition/contribution-channel.ts`（内核）+ `services.ts` / `renderer-service.tsx` / `prompt-service.ts` / `hook-service.ts` / `capability-service.ts` / `overlay-service.ts` / `root-views-service.ts` / `subagent-service.ts` / `fs-service.ts` / `shell-service.ts` / `session-persistence-service.ts`（各通道；**权威清单以生成物 `docs/agents/service-catalog.md` 为准**） |
+| 贡献通道 | **全部贡献通道**（计数以生成物 `docs/agents/service-catalog.md` 为准）：`ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3）/ `ctx.renderers`（块渲染器，V3b）/ `ctx.overlays`（画布覆盖层）/ `ctx.rootViews`（App 外壳视图槽，批 9e）/ `ctx.workspaces`（工作区接线贡献，批 10）/ `ctx.shellRows`（壳行贡献，批 10）——**同一个注册表内核**（`contribution-channel.ts` 的 `ContributionChannel`，2026-09-14 M1 收口；`timing` 声明生效时机）；**五条 seam provider 注册表**：`ctx.subagents` / `ctx.fs` / `ctx.shell`（subprocess 并入）/ `ctx.sessionPersistence` / `ctx.agentLoop`（后端替换，平台化 Phase 1/2）；`ctx.graph` seam 随图谱功能全量退役（2026-09-09） | `src-ui/src/composition/contribution-channel.ts`（内核）+ `services.ts` / `renderer-service.tsx` / `prompt-service.ts` / `hook-service.ts` / `capability-service.ts` / `overlay-service.ts` / `root-views-service.ts` / `subagent-service.ts` / `fs-service.ts` / `shell-service.ts` / `session-persistence-service.ts`（各通道；**权威清单以生成物 `docs/agents/service-catalog.md` 为准**） |
 | 行（row） | 组合的最小单元——工具族/prompt 段/capability/壳行各有 id | `src-ui/src/composition/*` |
 | preset | 命名的行组合叠加层（standard/minimal 内置 + 用户目录） | §8 + `docs/composition/README.md` |
 | patch | 四域行的增量数据（禁用/覆盖/插入） | `docs/composition/README.md` |
@@ -715,13 +717,54 @@ manifest.version——升级 = 原子换装（备份→rename，失败回滚）�
 开放面契约的版本机制见 `docs/agents/open-surface-contract.md`（契约文件变更
 未升版 = 守护测试红）。
 
+### ctx.workspaces —— 工作区接线贡献（批 10，2026-09-26）
+
+```ts
+// 产物 apply(ctx) 内（一次性登记；每次工作区激活按注册序回调）
+ctx.effect(
+  () =>
+    ctx.workspaces.onActivate(async (scope) => {
+      // scope.root       —— 工作区根（绝对路径）
+      // scope.ctx        —— 该工作区的 fiber ctx（挂它的一切随 fiber dispose 回收，无需自写 teardown）
+      // scope.report(r)  —— 接线回执（{ status: 'wired' | 'failed' | 'off', reason?, toolCount? }）
+      await mountMyStuff(scope);
+    }),
+  'acme/workspace-hook',
+);
+```
+
+- **调用时机**：工作区激活点、组合快照 / 注册表构建**之前**（工具行必须先于装配进注册表）；
+  切换工作区 = 旧 fiber dispose → 新工作区重新回调；
+- **调用序**：注册序**串行 await**；前一个抛错不影响后一个；
+- **失败隔离**：贡献抛错**不阻断工作区打开**，错误经 `scope.report({status:'failed', reason})` 具名可见；
+- **子 Agent 不自动继承**（与 hooks / capabilities 同款语义）；
+- 真源 `composition/workspaces-service.ts`；守卫 `tests/host-lifecycle-channels.test.ts`。
+
+### ctx.shellRows —— 壳行贡献通道（批 10，2026-09-26）
+
+```ts
+// boot 期副作用的落点（登记 ≠ 立即执行；由 bootShell 在内核行之后按注册序执行）
+ctx.effect(
+  () => ctx.shellRows.register({ id: 'plugin/acme/warm-cache', boot: (refs) => warmCache(refs) }),
+  'acme/shell-row',
+);
+```
+
+- **纪律**：boot 期代码走**产物 apply 期登记**、`bootShell` 期执行；行 id 自带命名空间
+  （`plugin/<包名>/<行 id>`，与工具行同寻址惯例）；
+- **引导序**：内核行（表序）→ 贡献行（注册序）；单行抛错不阻断后续行（与内核行同款失败隔离）；
+- **kill switch**：贡献行的产物可经插件禁用面整体关闭（apply 不跑 = 行不登记）；
+  **逐行 patch 寻址**（把贡献行并入组合 `shell` 域）尚未做——见 §9 未决项；
+- 真源 `composition/shell-rows-service.ts` + `shell/boot.ts`。
+
 ### 第一方插件在插件列表（2026-08-29）
 
-编译期 bundle 内的 43 个第一方插件同样进入设置面板「插件」tab——按三组陈列：
+第一方插件同样进入设置面板「插件」tab——按三组陈列（**各组计数以生成物
+[`docs/facts.generated.md`](../facts.generated.md) 为准，本文件不复述**）：
 
-- **平台服务**（kind=`service`，21）：组合层 service / seam provider / 运行体
+- **平台服务**（kind=`service`）：组合层 service / seam provider / 运行体
   本体——常驻，不提供禁用开关（禁了应用就散架）；
-- **内置插件**（kind=`feature`，22）：功能插件（域工具族 / 面板 / 段贡献）——
+- **内置插件**（kind=`feature`）：出厂产物（域工具族 / 面板 / 段贡献 / 引擎接线）——
   可启用/禁用；
 - **已安装**：第三方磁盘通道插件（D6 运行时生效）。
 
@@ -899,6 +942,10 @@ factory（出厂表，代码真源）
 
 ## 9. 未决项（如实声明）
 
+- **贡献壳行的逐行 patch 寻址**（2026-09-26 如实记）：`ctx.shellRows` 的贡献行目前
+  **只能随产物整体禁用**（kill switch = 插件禁用面），尚未并入组合 `shell` 域 ⇒
+  不能在 preset/patch 里按行 id 单独禁用/启用；内核行（`hologram/shell-*`）照旧可寻址。
+
 - ~~**插件 prompt-section 贡献通道**~~ ✅ 已落地（P4 A-1，2026-08-23）：
   `ctx.prompts`（`composition/prompt-service.ts`）——段贡献经
   factoryComposition 快照进组合解析域，下次装配生效；§3。
@@ -981,7 +1028,7 @@ factory（出厂表，代码真源）
 **维护注**：本文件是插件面的人类契约——通道 API / 生效语义 / 信任模型
 变更时必须同步更新（规则与代码现状同步铁律）。机器可读的真源：
 `src-ui/src/plugins/types.ts`（manifest schema）、
-`src-ui/src/composition/services.ts`（四 service）、
+`src-ui/src/composition/services.ts`（组合层 service 本体：panels/commands/tools/llm/activation）、
 `src-ui/src/composition/renderer-service.tsx`（块渲染器）、
 `src-ui/src/composition/prompt-service.ts`（prompt 段）、
 `src-ui/src/composition/hook-service.ts`（管道钩子）、

@@ -5,12 +5,15 @@
 > 状态词：In progress（干着）/ Proposed·Draft（立项未开工）/ 搁置（等条件）。
 > 维护纪律：**竣工即归档**（CONVENTIONS §4）——`npm run doc-check` 的 archive 查已上牙：plans/ 下挂竣工横幅 = 门禁红。
 
-## 一句话现状（2026-09-22）
+## 一句话现状（2026-09-26）
 
 **兰台（Lantai）= 纸壳（注疏案卷工作台）为唯一主界面的桌面 Agent 软件**；HoloGram 图谱引擎是随包配套的
 独立进程（应用内默认关），不再是应用内的主叙事。**九月的建设高峰（内核能力口收口 / 插件 bundle 退役 / 组合层
 S0-S7 / 图谱退役 / 会话存盘换轨 / 文档面 P0-P3）已过，当前在办以「真机体感验收」为最大宗**——下表真机欠账
-多为 09-17～09-21 代码已落地、门禁全绿、只差实机勾销的项；此外四条活跃线：paper-shell R5 打磨环 · 画布支
+多为 09-17～09-21 代码已落地、门禁全绿、只差实机勾销的项。**2026-09-26 两件大事**：① **插件化欠账程序收官**
+（账② 物理归家清零：红区 0 产物 / 0 文件 / 0 行，纯壳集 21 → 0；批 0~10 + §4 各项全落，见
+[`plugin-extraction-inventory.md`](plugin-extraction-inventory.md)）；② **随包图谱引擎端到端真机四条全通**
+（重建 exe，含批 10 把接线搬进产物后的复跑）。此外四条活跃线：paper-shell R5 打磨环 · 画布支
 Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 A+B（09-21 开工）。已竣工线的权威叙事全在
 [`docs/archive/`](../archive/README.md)（组合架构 S0-S7、平台化 Phase 0-6、引擎插件化、bundle 退役、内核
 能力口收口…）；**跨文档数字一律看 [`docs/facts.generated.md`](../facts.generated.md)，本页不复述**。
@@ -46,7 +49,7 @@ Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 
 | **会话流版式语法（stream-rhythm）** | 五批全落地；**余真机验收五项 + D1/D2 终审** | 事件语义分类 + 工作单元 + 节奏渲染（族边界切单元）+ 目次带阶段导航——见 [`stream-rhythm-plan.md`](stream-rhythm-plan.md) §5 |
 | **pretext 排版引擎** | P1-P5 全竣工 + P4c 远景三档；**余 P2a 对齐 A\|B 环待实机拍板** | 从高度计算器升级为纸面排版引擎（lift 遮罩 / rich-inline 精确测量 / 来文变宽纸条 / 缩远墨迹 LOD 与小地图真墨）——[`pretext-typography-plan.md`](pretext-typography-plan.md) |
 | **流式渐显渲染** | 1-2 天 | Claude Code 式增量淡入（旧块零动画），识别收在渲染器内部、不动数据管线——[`streaming-fade-render-plan.md`](streaming-fade-render-plan.md)（等拍板方案 A/B + 参数） |
-| **插件化欠账（总账）** | **在办（2026-09-24 立账）** | 「还有多少没拆」的唯一真值 = [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md)：账①通道迁移 ✅ 全清 / 账②物理归家 ❌ 未开工（21 个空壳、≈10,052 行实现仍在内核）/ 账③从未立项面 🤷 无账（≈32,000 行）——合计 ≈42,100 行 ≈ 内核 49%；另确证一缺陷（30 产物源码仍进生产 bundle，§0.1）。守卫与批次见总账 §5/§6；图纸 [`factory-products-homing-plan.md`](factory-products-homing-plan.md) |
+| **插件化欠账（总账）** | ✅ **已完成（2026-09-26；2026-09-24 立账）** | 「还有多少没拆」的唯一真值 = [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md)：账①通道迁移 ✅ 全清 / **账② 物理归家 ✅ 清零**（红区 0 产物 / 0 文件 / 0 行；纯壳集 21 → 0）/ 账③ 逐项判定完毕（判内核平台/共享面者已入名册 `shared` 与白名单）；§0.1 的「30 产物源码进 bundle」守卫同批落。**用户裁定六项排期全落**（真机验收 → 9h-5 → 9c-4 → §4-6 → 9f → 批 10 + §4-9 → §4 自裁项收尾）；三色实测见总账 §5，批次表 §6 |
 | **v11 分析引擎** | 草案挂起（用户拍板挂起） | 动态边 + 查询预算 + 降噪分级三篇合一——[`v11-analysis-engine-master-plan.md`](v11-analysis-engine-master-plan.md)；D 篇原件 [`dynamic-edge-detection-plan.md`](dynamic-edge-detection-plan.md)（superseded，以主文档为准） |
 | **会话存盘换轨（DSH 参照）** | 未定 | 参照 DSH 的会话持久化审计与移植——[`session-persistence-dsh-port-plan.md`](session-persistence-dsh-port-plan.md) |
 | **钉住与纸条改造** | 未定 | 钉住/纸条 UX 重构 + UI 换装——[`pin-strip-rework-plan.md`](pin-strip-rework-plan.md) |
@@ -78,7 +81,7 @@ Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 
 | **stream-rhythm 真机验收五项** | 代码五批全落地（2026-09-03，门禁全绿），待实机：① 长回合读起来是几个工作单元 + 换气；② Error 处明显转折（前置放空）且 Retry 紧贴；③ 流式活尾重排不引起视口上方跳动；④ 折叠组展开后判别量可见 + 「✓ 阶段完成」锚位置正确；⑤ 旧卷回放渲染正常、滚动不退——另带 **D1 间距三档（32/64/96）、D2 阶段细线形态与刀5 新词汇终审**——见 [`stream-rhythm-plan.md`](stream-rhythm-plan.md) §5 |
 | **内核能力口收口 R3+R4 真机四项** | 代码十一插件全退役 + 十一能力口在产（2026-09-05）：① browser 全链路（含 sensitive 二次 Ask 与 audit）；② desktop 全链路（不抢焦点 / input lease 串行 / INVARIANTS #13 链路不变）；③ shell 粘性 cwd + bg 三件；④ 编辑（edit_file diff 快照与权限 Ask）——~~约束读写~~（**作废 2026-09-09**：constraints_cap 随图谱整口删除）——owner：用户 |
 | **多模态图片线真机验收六项** | 代码 B1-B5 全落地（2026-09-09，门禁全绿）：① vision 模型贴截图 → 模型描述内容；② 非 vision 模型入口隐藏 + 强行含图不炸；③ 三入口齐验（粘贴/拖放/夹选）；④ 重启后缩略仍显示；⑤ 多图大图预算降级；⑥ 远端图回渲染 + 非白名单降级 alt——见 [`../archive/multimodal-image-plan.md`](../archive/multimodal-image-plan.md) §5——owner：用户 |
-| **随包图谱引擎端到端** | 代码已落地（`engine-bundled-mcp-distribution`，2026-09-16）。2026-09-24 用户第三次实机报「勾了开关 + 接线显示正常 + 进程也起来了，Agent 手里没有图谱工具」——根因两处**装配时点**缺陷（组合产物取在引擎行注册之前 + 工具面在进程就绪前被冻结），当天已修：接线先于取产物、接线有界等就绪（≤10s）、回执改报「N 个引擎工具在册」——回归 `tests/bundled-engine-assembly.test.ts`（真 Workspace 装配腰，判据 = Agent 注册表里有 `mcp__hologram__*`）。欠（**须重建 exe** 后验收）：① 拨开关 → 重开工作区 → 回执写「N 个引擎工具在册」；② 工具面出现 `mcp__hologram__*`；③ 离开工作区进程真停（一进程一根）——owner：用户 |
+| ~~**随包图谱引擎端到端**~~ | ✅ **已实跑（2026-09-25 / 2026-09-26 各一轮，重建 exe）四条全通**：开关可用 + 探测读到引擎；进工作区回执「N 个引擎工具在册」；引擎进程挂 `lantai.exe` 下（一进程一根）；离开工作区引擎真停、lantai 存活。批 10 把接线搬进 `plugins/builtin/bundled-engine/` 后又复跑一轮。证据 = [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md) §7 + 账本 §6.5；回归 `tests/bundled-engine-assembly.test.ts`。 |
 | **创作坞浮动化手感** | 代码已落地（2026-09-17，门禁全绿，见 [`../design/lantai-design-spec.md`](../design/lantai-design-spec.md) §9.2）；jsdom 测不到的手感欠四项：① 按住坞书眉行拖动是否跟手（拖动期 PaperPanel 每帧重渲，真机帧率未测）；② 磁吸四锚位（左右缘 / 版心中轴 / 底带 / 最底缘）的吸附距离 24px 是否顺手；③ **双击坞头复位**在 WebView2 真触发（刻意没 `preventDefault` pointerdown，正为它让路）；④ 坞拖离底带后让位件（目次带映射区 / 小地图默认位 / 递牒卡 / 插件 dock）的视觉是否合意——owner：用户 |
 | **顶部浮件（标题栏拆除）手感** | 代码已落地（2026-09-17，门禁全绿，见 [`../design/lantai-design-spec.md`](../design/lantai-design-spec.md) §14）；jsdom 测不到的手感欠四项：① **上缘边缘滚动**在真机是否终于顺手（指针甩到屏顶即滚）；② 浮件落位/宽度（右上、右距 120=目次带宽 104+16、宽约 470）在正文之上是否碍眼、是否压到你想看的内容；③ 浮件本体那段 x 区间**不滚**（它是「别的面」）能否接受——不爽可改「背后照滚」（`.pp-chrome` 进 `HOVER_ALLOW_DOCKS`）；④ 窗口拖动只剩浮件抓手（`画布` 二字 + 件间空白）是否够用——owner：用户 |
 | **斜杠命令面重做** | 代码已落地（2026-09-19，门禁全绿；契约 v42，见 [`command-surface-rework-plan.md`](command-surface-rework-plan.md)）——待用户体感确认四件：① `/` 面板里 `/settings` `/paper` `/sidebar` `/dock` 是否都在、点了是否生效；② `/trail` 与图分析族（`/fragile` `/cycle` `/impact` `/path`）不再出现；③ 既有命令（`/new` `/compact` `/export` `/memory`）与带参命令（`/remember 事实` · `/goal resume`）照常；④ Ctrl+K 面板里会话内建命令与 `/` 面板一致——owner：用户 |

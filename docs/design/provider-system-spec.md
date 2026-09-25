@@ -782,7 +782,7 @@ interface ModelMeta {        // provider/model-meta.ts —— 端点真披露的
   「从 API 拉取」经方言的宽容解析层（`provider/model-meta.parseModelEntry`）把端点
   真披露的字段（`context_length` / `name` / `architecture.input_modalities` /
   `supported_parameters` / `inputTokenLimit` / Ollama `capabilities`+`model_info.*`）
-  解析出来，由 `provider/model-sync.applyFetchedModels` 单一入口落进暂存 → 保存持久化。
+  解析出来，由 `plugins/builtin/settings-domain/model-sync.applyFetchedModels`（批 9f-1 起随包；此前 `provider/model-sync.ts`）单一入口落进暂存 → 保存持久化。
   此前只落 id 列表，元数据随进程消失，聚合网关的模型重启后一律吃 200K 假默认。
   **四层解析链（单一权威源 `settings.ts`）**：`modelOverrides` ?? `modelMeta` ??
   目录 seed ?? 默认。消费面全部走链：`modelContextWindow` / `modelMaxTokens` /
@@ -966,7 +966,7 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
    原 `openai.guessReasoning` 迁入 + anthropic/responses 两条既有内联判定收编）
    只在端点未披露时生效，且**不进落盘元数据表**（猜测不是证据）。
 2. **持久化面** `ProviderSettings.modelMeta`：Provider 新增 `lastModelMeta()`（工厂闭包
-   side-channel，live 层回指同一次拉取的内层实例），落盘经 `provider/model-sync.ts`
+   side-channel，live 层回指同一次拉取的内层实例），落盘经 `plugins/builtin/settings-domain/model-sync.ts`（批 9f-1 起随包）
    的 `applyFetchedModels` **单一写入口**（字段级合并，未披露字段保留 last-good；
    空壳元数据不落盘）。
 3. **四层解析链**（`settings.ts` 单一权威源）：`modelOverrides` ?? `modelMeta` ??

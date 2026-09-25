@@ -5,6 +5,10 @@
 > **实施摘要（本文件作者落地）**
 > - §3 MCP server 补全：`engine/src/mcp.rs` 已补 notifications/initialized、notifications/cancelled、notifications/progress（长任务 analyze/validate）、prompts/list+get、能力协商；未知工具改返回规范 JSON-RPC 错误（-32000），不再 `_isDegraded` 假冒成功；工具失败用 `result.isError`。`cargo test --lib` 全绿。
 > - §4 MCP client：新增 `src-ui/src/agent/mcp/`（client/transport/registry/tauri-io + index），stdio / streamable-http / 回环三传输，`mcp__<server>__<name>` 命名，支持进度与取消；接入 `agent-builder.ts` 的 buildToolRegistry（`mcpClients` 选项）。测试 `tests/mcp-client.test.ts`。
+> ⚠ **§5 的 ACP server 已于 2026-09-26 按死代码退役**（§4-7 裁定：生产零消费者、唯一引用是类型 + 自身测试）
+> ——`src-ui/src/agent/acp/server.ts` 306 行、其专属测试与 `agent/mcp/tauri-io.ts` 的 ACP 行 IO 均已删除。
+> 下文 §5 保留为**历史设计记录**（当年形态），不要再按它找文件。
+>
 > - §5 ACP server：新增 `src-ui/src/agent/acp/`（server + index），initialize / session/new / session/prompt(流式 agent_message_chunk) / session/cancel / session/delete / 权限通道；行 I/O 与 Agent 工厂注入，可测。测试 `tests/acp-server.test.ts`。
 > - Tauri stdio 桥：新增 `src-tauri/src/commands/protocol_bridge.rs`（spawn/write/kill）+ rpc 分发 + `rpc-contract.ts` 方法/事件 + `tauri-io.ts` 适配，webview 里 MCP/ACP 可驱动真实子进程。`cargo build`(src-tauri) 通过。
 > - **测试分三层（不只单测）**：① 单测（回环/内存，协议语义）→ `mcp-client.test.ts` / `acp-server.test.ts` / `engine mcp.rs` 14 用例；② **真实 stdio 进程集成** → `mcp-client-stdio.test.ts`（Node 起 fixture MCP server 子进程，真握手/调工具/收进度）；③ **跨组件互测** → `mcp-interop-engine.test.ts`（TS client 连真实 `engine.exe serve`，真握手 + tools/list 全量 + 真图查询）。全套 `vitest` 972 通过。
@@ -73,7 +77,7 @@
 |------|------|---------------------|
 | **MCP server** | Rust engine（engine/src/mcp.rs 扩展） | 要暴露的能力(graph/图查询)在 Rust；现有实现已在这 |
 | **MCP client** | TS agent 层（新增 src-ui/src/agent/mcp/client.ts） | 它是**消费者**，agent 在 TS；调外部工具要进入 ToolRegistry，而 ToolRegistry 在 TS |
-| **ACP server** | TS agent 层（新增 src-ui/src/agent/acp/server.ts） | ACP 驱动的"对话实体"Agent 在 TS，不在 Rust |
+| ~~**ACP server**~~ | ~~TS agent 层（新增 src-ui/src/agent/acp/server.ts）~~ —— ✅ **已退役（2026-09-26，§4-7）** | ~~ACP 驱动的"对话实体"Agent 在 TS，不在 Rust~~ |
 
 > 铁律：**不要**为了对称而在 Rust 里硬造 ACP，去驱动一个"不存在的 Rust 对话实体"——对话状态机在你 TS 的 Agent 里。落点必须在 TS。
 
@@ -158,7 +162,7 @@
 
 ---
 
-## 5. ACP server（TS，新增 src-ui/src/agent/acp/server.ts）
+## 5. ACP server（TS，新增 src-ui/src/agent/acp/server.ts）— ⚠ **已退役（2026-09-26，§4-7）**，以下为历史设计
 
 ### 5.1 职责
 让外部程序把兰台的 **Agent** 当驱动对象：发 prompt、收流式输出、取消、处理权限请求。

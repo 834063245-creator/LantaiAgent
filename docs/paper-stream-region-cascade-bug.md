@@ -55,7 +55,7 @@ NaN 的 y 进虚拟化二分（`visibleFlowWindow`，依赖 y/bottom 单调）�
 
 ### 刀一 `f02cd543` — 会话销毁清理实测残留
 
-- **问题**：`paper/measure.ts` 的 `observedHeights`（RO 实测高回写表）是**模块级
+- **问题**：`plugins/builtin/paper-shell/measure.ts`（批 9c-4 起随包；此前 `paper/measure.ts`）的 `observedHeights`（RO 实测高回写表）是**模块级
   Map、跨会话存活、合卷时不清**（生产代码零清理，只在测试里清）。会话重建后
   块 id 复用（撞号），`measureBlockHeightCached` 的实测优先路径（**无签名守卫**）
   会无条件吃旧会话旧块的实测高 → 布局错乱。
@@ -129,7 +129,7 @@ NaN 的 y 进虚拟化二分（`visibleFlowWindow`，依赖 y/bottom 单调）�
 | 文件 | 角色 |
 |---|---|
 | `src/paper/canvas-math.ts` `layoutFlow` | 布局累积（NaN 级联发生地，已兜底） |
-| `src/paper/measure.ts` `observedHeights` / `measureBlockHeightCached` | 实测高表（无签名守卫，撞号污染源，已随会话清理） |
+| `src/plugins/builtin/paper-shell/measure.ts`（此前 `src/paper/measure.ts`）`observedHeights` / `measureBlockHeightCached` | 实测高表（无签名守卫，撞号污染源，已随会话清理） |
 | `src/paper/virtualize.ts` `visibleFlowWindow` | 二分窗口（y 单调前提；NaN 即失效） |
 | `src/state/canvas-store.ts` `loadCanvas` | 磁盘恢复入口（脏数据防火墙，已加） |
 | `src/plugins/builtin/paper-shell/PaperPanel.tsx` `adaptBlocks` | 块宽适配（运行态防火墙，已加） |

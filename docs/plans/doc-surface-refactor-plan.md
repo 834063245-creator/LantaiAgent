@@ -80,7 +80,7 @@
 
 - **事实更正**（子代理实测推翻我 P0/P1 简报里的两条，已在 L0 同步）：
   ① `engine_transport.rs` **已随图谱退役删除**（2026-09-09）——壳只做二进制只读探测，拉起由前端
-  `plugins/bundled-engine.ts` → `mcp-bridge.ts` 受治进程 → Rust `protocol_bridge` stdio，**默认关、一进程一根**；
+  `plugins/builtin/bundled-engine/`（接线产物，经内核 `ctx.workspaces` 贡献；探测/开关留 `plugins/bundled-engine-prefs.ts`）→ `mcp-bridge.ts` 受治进程 → Rust `protocol_bridge` stdio，**默认关、一进程一根**；
   ② `src-ui/src/scene/` 目录**已整个删除**（`graph-types.ts` 不存在），L0 不再引用它。
 - 复核纠正一处子代理结论：权限裁决是**四态**（`PermissionResult` = Allow / Deny / Ask / Passthrough，
   真源 `src-tauri/src/permissions/mod.rs:111`），README 已按四态写。

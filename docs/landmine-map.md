@@ -150,7 +150,7 @@
 
 | # | 位置 | 雷 | 触发 → 后果 | 状态 |
 |---|------|----|------------|------|
-| B2 | `src-tauri/tauri.conf.json` 的 `bundle.resources` / `beforeBuildCommand` | **退役只删消费侧接线，没回头清分发侧打包**——资产继续随包（体积白烧），但已无任何代码知道它在哪、更不会启动它；用户拿到一个「神秘 196MB」 | 2026-09-09 同日两刀：凌晨 `30fd7bd8` 为修「首页点不进工作区」把引擎塞进包（**当时正确**，壳还在消费）；下午 `51047f99` 图谱全量退役删 `engine_transport.rs`（682 行，含 `engine_exe_path()` 定位 + 每工作区 spawn），**而 `git show 51047f99 -- tauri.conf.json` 为空** ⇒ 分发包留着、自动接线删了。此后一周无人察觉（`grep Command::new \| grep engine` 零命中，UI 从不提及引擎，文档那句「或安装目录下的同名文件」成化石）。危害是**隐性**的：不炸（无僵尸产物，与 B1 不同），但 (a) 安装包白涨 196MB、(b) 每次构建白编译引擎、(c) 用户/Agent 排查时被过期注释带偏（`app/mod.rs` 头部仍在描述已删的「每工作区持一个引擎传输」） | ✅ 已收口（engine-bundled-mcp-distribution，2026-09-16）：接线补回（前端 `plugins/bundled-engine.ts` 走既有 MCP 受治进程通道，按工作区注册）+ 定位面（`engine_assets.rs` 只读探测 + `engine_bundled_info` RPC）+ 设置面板可见可开关（**默认关**，尊重 09-09 退役决策）+ 过期注释/文档同批真相化。打包清单**有意保留**（引擎确实要随包——这正是该计划的前提） |
+| B2 | `src-tauri/tauri.conf.json` 的 `bundle.resources` / `beforeBuildCommand` | **退役只删消费侧接线，没回头清分发侧打包**——资产继续随包（体积白烧），但已无任何代码知道它在哪、更不会启动它；用户拿到一个「神秘 196MB」 | 2026-09-09 同日两刀：凌晨 `30fd7bd8` 为修「首页点不进工作区」把引擎塞进包（**当时正确**，壳还在消费）；下午 `51047f99` 图谱全量退役删 `engine_transport.rs`（682 行，含 `engine_exe_path()` 定位 + 每工作区 spawn），**而 `git show 51047f99 -- tauri.conf.json` 为空** ⇒ 分发包留着、自动接线删了。此后一周无人察觉（`grep Command::new \| grep engine` 零命中，UI 从不提及引擎，文档那句「或安装目录下的同名文件」成化石）。危害是**隐性**的：不炸（无僵尸产物，与 B1 不同），但 (a) 安装包白涨 196MB、(b) 每次构建白编译引擎、(c) 用户/Agent 排查时被过期注释带偏（`app/mod.rs` 头部仍在描述已删的「每工作区持一个引擎传输」） | ✅ 已收口（engine-bundled-mcp-distribution，2026-09-16）：接线补回（前端 `plugins/builtin/bundled-engine/` 走既有 MCP 受治进程通道，按工作区注册——2026-09-26 批 10 产物化，经 `ctx.workspaces` 贡献；探测/开关留 `plugins/bundled-engine-prefs.ts`）+ 定位面（`engine_assets.rs` 只读探测 + `engine_bundled_info` RPC）+ 设置面板可见可开关（**默认关**，尊重 09-09 退役决策）+ 过期注释/文档同批真相化。打包清单**有意保留**（引擎确实要随包——这正是该计划的前提） |
 
 ### B3（2026-09-16 补记）— 退役删了资产、没删打包引用 =「发布通道断链」
 
@@ -169,7 +169,7 @@
 
 | # | 位置 | 雷 | 触发 → 后果 | 状态 |
 |---|------|----|------------|------|
-| B4 | `McpPage.tsx` 的 `BundledEngineSection`（设置 → MCP）+ `workspace.ts` 的接线回执 | B2 的第三形态：资产在包里、接线也补齐了，但**入口排在页面最底部**（用户级 server 列表 + 新建表单之后），且**接线结果只进 console**——用户侧既找不到开关、也无从判断"挂上没有" | 用户打包后实机跑：「好像图谱 engine 根本没挂上，说是默认关，但开关在哪呢？」。CDP 只读取证（2026-09-16）定性：① `engine_bundled_info` → `available: true`（引擎就在 `lantai.exe` 同级，**探测链路本来就是通的**）；② `lantai.bundledEngine.enabled` = `null`（其余 `lantai.*` 偏好都在）⇒ **开关从未被拨过**；③ 接线 `wired/reason` 只进 `console.log/warn`，UI 无回执。「引擎没接上」因此既无法证实也无法证伪 | ✅ **已修（2026-09-16）**：① 区块**置顶**（宿主自有能力排本页首位）；② 三态同屏——探测（实路径 / 未检测到时写明「须与 `lantai.exe` 同目录」并**保留置灰开关**，不让开关凭空消失）+ 开关 + **接线回执**（新建 `state/bundled-engine-store.ts`，`workspace.ts` 写入，设置面板读；wired/failed/off/idle 四态各有具名文案，「开关已拨但本工作区未重开」单独成句）；③ 失败同时进状态栏（`pushStatus`，错误不静默）。**端到端仍欠**：拨开关→引擎真拉起→工具面出图工具，见 `docs/plans/README.md` 真机欠账表 |
+| B4 | `McpPage.tsx` 的 `BundledEngineSection`（设置 → MCP）+ `workspace.ts` 的接线回执 | B2 的第三形态：资产在包里、接线也补齐了，但**入口排在页面最底部**（用户级 server 列表 + 新建表单之后），且**接线结果只进 console**——用户侧既找不到开关、也无从判断"挂上没有" | 用户打包后实机跑：「好像图谱 engine 根本没挂上，说是默认关，但开关在哪呢？」。CDP 只读取证（2026-09-16）定性：① `engine_bundled_info` → `available: true`（引擎就在 `lantai.exe` 同级，**探测链路本来就是通的**）；② `lantai.bundledEngine.enabled` = `null`（其余 `lantai.*` 偏好都在）⇒ **开关从未被拨过**；③ 接线 `wired/reason` 只进 `console.log/warn`，UI 无回执。「引擎没接上」因此既无法证实也无法证伪 | ✅ **已修（2026-09-16）**：① 区块**置顶**（宿主自有能力排本页首位）；② 三态同屏——探测（实路径 / 未检测到时写明「须与 `lantai.exe` 同目录」并**保留置灰开关**，不让开关凭空消失）+ 开关 + **接线回执**（新建 `state/bundled-engine-store.ts`，`workspace.ts` 写入，设置面板读；wired/failed/off/idle 四态各有具名文案，「开关已拨但本工作区未重开」单独成句）；③ 失败同时进状态栏（`pushStatus`，错误不静默）。**2026-09-26 批 10**：回执写入者由 `workspace.ts` 改为 `bundled-engine` 产物（经 `ctx.workspaces` 贡献），载体仍是 `state/bundled-engine-store.ts`。**端到端仍欠**：拨开关→引擎真拉起→工具面出图工具，见 `docs/plans/README.md` 真机欠账表 |
 
 **教训（B4 一句话）**：**「默认关」是一种产品承诺，不是免责声明**——默认关的能力必须同时交付
 「开关在哪」与「拨了之后发生了什么」；否则用户看到的现象与「功能没做」完全一样。
@@ -349,7 +349,7 @@ CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**—
 ### 教训（记给下一轮文档校准）
 
 **最危险的文档漂移是「机制级事实」的漂移，因为没人会去读代码验证它。** 本批实测两例：
-① 文档（ARCHITECTURE / CLAUDE / AGENTS）一致写着「壳经 `engine_transport` 每工作区 spawn 一个 `engine serve` 子进程」，而 `src-tauri/src/engine_transport.rs` **2026-09-09 已随图谱退役删除**、壳内零 spawn 引擎代码（现状：壳只做二进制位置只读探测 `engine_assets.rs`，拉起由前端 `plugins/bundled-engine.ts` → MCP 受治进程通道 `plugins/mcp-bridge.ts` → Rust `commands/protocol_bridge.rs` stdio）；
+① 文档（ARCHITECTURE / CLAUDE / AGENTS）一致写着「壳经 `engine_transport` 每工作区 spawn 一个 `engine serve` 子进程」，而 `src-tauri/src/engine_transport.rs` **2026-09-09 已随图谱退役删除**、壳内零 spawn 引擎代码（现状：壳只做二进制位置只读探测 `engine_assets.rs`，拉起由前端 `plugins/builtin/bundled-engine/`（2026-09-26 批 10 起随包）→ MCP 受治进程通道 `plugins/mcp-bridge.ts` → Rust `commands/protocol_bridge.rs` stdio）；
 ② `AgentConfig` 字段数 28 在 AGENTS/CLAUDE 已更正、ARCHITECTURE 两处与根 README 仍写 31。
 ⇒ 这正是 `npm run doc-check`（事实对拍 + 静态结构查）与 `docs/facts.generated.md`（单一真源）要解决的问题：
 **规则写在文档里靠自觉会漂，必须由门禁兜底。**

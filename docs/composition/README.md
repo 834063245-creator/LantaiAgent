@@ -48,10 +48,10 @@ prompt:
 
 | 域 | 行 id 举例 | 寻址对象 |
 |---|---|---|
-| `tools` | `plugin/hologram/web-domain/web_fetch`、`plugin/hologram/shell-domain/run_shell`、`plugin/hologram/engine-domain/tools`… | 插件贡献行（`ctx.tools` 通道折算，①b 起为唯一行源——git/search/fs/shell/agent-isolation/web + wait/ask/memory/skill/task/agent/hologram/browser-desktop 十四族；粒度 = 单工具行或 hologram/browser-desktop 整族行） |
+| `tools` | `plugin/hologram/web-domain/web_fetch`、`plugin/hologram/shell-domain/run_shell`、`plugin/hologram/browser-desktop-domain/*`… | 插件贡献行（`ctx.tools` 通道折算，①b 起为唯一行源——git/search/fs/shell/agent-isolation/web + wait/ask/memory/skill/task/agent/browser-desktop 各族；`engine-domain` 随图谱退役；粒度 = 单工具行或 hologram/browser-desktop 整族行） |
 | `prompt` | 第一方段 id（`behavior-rules`、`multi-agent`…）、已插入段 id、插件段贡献 id | system prompt 段（真源 `prompt-sections.ts` `firstPartyPromptSections()`——13 段经 `ctx.prompts` 通道贡献；S4-4 甲起全量进寻址域：disable/text 覆盖/insert 锚定第一方段 id 均合法） |
-| `capabilities` | `plan-tools`、`converge-tools`、`state-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = `AgentCapability.id`（2026-09-14 前叫 `key`，已退役）） |
-| `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |
+| `capabilities` | `plan-tools`、`converge-tools`、`state-hooks`… | 会话级工具/hook（**内容表真源 = `plugins/builtin/capability-segments/segments.ts`**（批 9h-1 随包）；机制与形状留内核 `agent/blueprint.ts`；id = `AgentCapability.id`（2026-09-14 前叫 `key`，已退役）） |
+| `shell` | `hologram/shell-cold-start`… | 壳引导行（**内核行**真源 `composition/shell-rows.ts`，表序 = 引导序；行实现 `src-ui/src/shell/rows/*`）。批 10（§4-9）起产物可经 `ctx.shellRows` 贡献行——**贡献行追加在内核行之后**（注册序），可寻址集 = 内核行（贡献行逐行寻址见 `docs/plugins/README.md` §9 未决项） |
 
 > **寻址域（S4-4 甲 + ①b，2026-08-23）**：patch/preset 的组合解析域 =
 > **当前通道贡献快照**（`factoryComposition()` 读取时点收编——插件工具行

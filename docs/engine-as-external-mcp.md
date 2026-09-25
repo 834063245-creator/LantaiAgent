@@ -26,7 +26,7 @@
   **离开工作区即停**（切工作区 = 按新根另起实例，这是引擎「一进程一根」契约决定的）
 - **数据落点**：工作区根下 `.hologram/`（引擎自管；与兰台 `.lantai/` 分居）
 - 开关存 `localStorage`，探测走 `engine_bundled_info` RPC（**只读探测，不启动进程**）
-- 实现：`src-ui/src/plugins/bundled-engine.ts` + `src-tauri/src/engine_assets.rs`
+- 实现：`src-ui/src/plugins/builtin/bundled-engine/`（接线产物，经内核 `ctx.workspaces` 贡献；探测/开关留 `src-ui/src/plugins/bundled-engine-prefs.ts`）+ `src-tauri/src/engine_assets.rs`
 
 手动配置（一/二）仍然可用——适合引擎在别处、想连多个项目、或想指定独立实例的场景。
 

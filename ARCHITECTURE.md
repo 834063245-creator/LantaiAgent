@@ -66,7 +66,7 @@ flowchart TD
   RPC --> APP
   APP --> CAP
   APP --> GUARD
-  AGENT -- "bundled-engine.ts 注册工具行 → mcp-bridge.ts 受治进程" --> RPC
+  AGENT -- "bundled-engine 产物经 ctx.workspaces 注册工具行 → mcp-bridge.ts 受治进程" --> RPC
   RPC --> PB
   PB -- "stdio MCP" --> ENGINE
   RPC -- "会话卷 / 附图 / 记忆（经 seam provider 与能力口）" --> WS
@@ -79,8 +79,10 @@ flowchart TD
   壳侧只有一个 `#[tauri::command] rpc(method, params)`（`src-tauri/src/rpc.rs`），命令实现是薄壳，业务编排在
   `src-tauri/src/app/`。
 - **壳不拉起引擎**：壳内零 `spawn engine` 代码（`engine_transport.rs` 已删），对引擎的全部知识 =
-  二进制位置只读探测（`engine_assets.rs` 的 `engine_bundled_info`）+ MCP 协议。启用态由前端
-  `src-ui/src/plugins/bundled-engine.ts` 经既有 MCP 受治进程通道（`mcp-bridge.ts` 的 `ServerGovernor`）拉起，
+  二进制位置只读探测（`engine_assets.rs` 的 `engine_bundled_info`）+ MCP 协议。启用态由前端产物
+  `src-ui/src/plugins/builtin/bundled-engine/`（经内核 `ctx.workspaces` 的工作区接线贡献面，批 10）
+  经既有 MCP 受治进程通道（`mcp-bridge.ts` 的 `ServerGovernor`）拉起——探测与开关（`probeBundledEngine` /
+  `isBundledEngineEnabled`，设置面板取用）留内核 `src-ui/src/plugins/bundled-engine-prefs.ts`；
   工具面折算为一条工具行贡献（行 id `plugin/hologram-engine/mcp/hologram`，工具名 `mcp__hologram__*`），
   可被 roster.patch / preset 禁用。
 - **数据分居**：引擎数据独占 `<root>/.hologram/`（真源 `hologram-graph/src/paths.rs`），宿主数据落
@@ -614,20 +616,29 @@ src-tauri/src/
 ```
 src-ui/src/
 ├── app/            # React 根与界面：chat/（会话与创作坞）+ panels/ + paper/（纸壳视图）+ plugin-windows/
-├── paper/          # 纸壳内核：block-model / measure / markdown / virtualize / region-view / space / ink / toc …
-├── agent/          # Agent 系统：agent.ts / coordinator / message-bus / streaming-executor / session-log /
-│                   #   blueprint（capability 表）/ hooks / compaction / memory / skills / goal-manager /
-│                   #   tools/（域工具真源 domains.ts）/ agent-loop/（流式循环契约与默认实现）/
-│                   #   runtime/（AgentRuntime + AgentBuilder）/ plan/ / code-run/ / token-meter/ /
-│                   #   dynamic-runner/ / mcp/（MCP 客户端 + tauri-io 桥）/ acp/
+├── paper/          # 纸壳内核（形状/共享面）：block-model / markdown / ink / region-view / space / overlay-context…
+│                   #   （测高引擎 measure / 版式 token 已随 paper-shell 产物，批 9c-4）
+├── agent/          # Agent 系统内核（形状 + 机制 + 登记表）：agent.ts / streaming-executor / session-log /
+│                   #   blueprint（capability 机制与形状——内容表已随 capability-segments 产物）/ 各域 *.ts
+│                   #   契约（skill-contract / memory-contract / task-contract…）+ 门面（*-impl.ts）/
+│                   #   tools/（域工具真源 domains.ts + define-tool）/ agent-loop/（流式循环契约；默认实现
+│                   #   随 agent-loop-service 产物）/ runtime/（AgentRuntime + AgentBuilder）/ plan/ /
+│                   #   code-run/ / token-meter/（ctx.tokenMeter 服务 + 契约）· dynamic-runner/ ·
+│                   #   mcp/（MCP 客户端 + tauri-io 桥）· state-hooks-impl / subagent-*-impl（各域登记表）
+│                   #   （coordinator / message-bus / memory / skills / task / acp 已随产物或退役）
 ├── composition/    # 组合层：contribution-channel（内核单源）/ services / tool-rows / prompt-sections /
-│                   #   roster + patch-loader + presets + preset-discovery/assembly / seam-scope / activation
-├── plugins/        # 插件层：loader / boot-gate / types / manifest 派生（first-party-manifest、builtin-roster）/
-│                   #   builtin/（出厂产物真源目录）/ mcp-bridge / bundled-engine / window-bridge / host-surface.baseline.json
+│                   #   roster + patch-loader + presets + preset-discovery/assembly / seam-scope / activation /
+│                   #   root-views-service（ctx.rootViews）· workspaces-service（ctx.workspaces）·
+│                   #   shell-rows-service（ctx.shellRows）——宿主生命周期贡献面（批 9e / 批 10）
+├── plugins/        # 插件层：loader / service-plugins（内核 service 单一真源）/ boot-gate / types /
+│                   #   manifest 派生（first-party-manifest、builtin-roster、factory-products）/ builtin/（出厂产物真源目录）/ 
+│                   #   mcp-bridge / bundled-engine-prefs（引擎探测 + 开关；接线已随产物）/ window-bridge /
+│                   #   host-surface.baseline.json
 ├── cordis/         # vendored cordis 内核（Context / Fiber / Service；禁就地改）
 ├── state/          # zustand 状态层（领域 store + 面板 store + scoped-store 注册表 + prefs）
 ├── shell/          # 壳行引导：boot.ts + rows/（persistence / chat / keyguard / platform / workspace / cold-start …）
-├── provider/       # LLM Provider 抽象 + catalog/（内核 seed 目录）+ thinking / model-sync / oauth
+├── provider/       # LLM Provider 抽象 + catalog（内核 seed 目录）+ thinking / credentials / oauth /
+│                   #   providers-doc·store（配方改文件批）——平台数据面（判据见 provider-data-face-homing-design.md）
 ├── ui/             # chat 编排域核心 + 旧层命令式基础设施（只减不增；契约见 ui/README.md）
 ├── lifecycle/      # WorkspaceStateMachine + 超时
 ├── assets/         # 字体与纸纹素材（MiSans-VF.ttf / paper-*.jpg / seal-*.jpg）

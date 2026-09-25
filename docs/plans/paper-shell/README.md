@@ -27,7 +27,7 @@
 ## 铁律（活规则，历史细节见 HISTORY）
 
 - 原型代码不进生产；视觉只从设计契约转录。
-- 测量镜像纪律：`paper/measure.ts` + `ui/pretext-cache.ts` 的字体/行高/内边距常数必须随渲染 CSS 同步改（两处一起动，否则布局漂移）。
+- 测量镜像纪律：`plugins/builtin/paper-shell/measure.ts`（批 9c-4 起随包；此前 `paper/measure.ts`）+ `ui/pretext-cache.ts` 的字体/行高/内边距常数必须随渲染 CSS 同步改（两处一起动，否则布局漂移）。
 - 纸壳的面板/命令贡献走组合层通道（paper-plugin / renderer-service），不自建旁路。
 - 纸面板贡献形状：`paper/paper-plugin.ts`（id `paper`，side:null 全屏，unmountOnClose——「关卷」回案卷首页）。
 - 已判死的视觉决定不复活；翻案在 taste-ledger 显式立账。
