@@ -40,7 +40,26 @@
 | **9h-2** | `agent-loop-service` 半壳收口：`default-loop.ts` 整件随包 | 469 | ① **契约面流程**：`default-loop.ts` 在 `composition/contract-version.ts` 的契约文件清单里 ⇒ 改路径 + 版本 51 → 52 + `docs/agents/open-surface-contract.md` 行 + `npm run gen:contract-fingerprint`（18 文件）同 commit；② `agent-loop-active.ts` 的 `resolveAgentLoop()` 去掉 `defaultAgentLoop` 兜底 ⇒ 无服务时 fail-loud（具名错误 + 装载提示），`tests/setup.ts` 复现「loader 已跑过」（照 9b 的 LSP 先例）；③ 名册标 `required: true`（loop 缺席 = 一个会话都跑不起来）；④ 桥位仅 3 个新键（`typedRpcWithTimeout` / `finishReasonMessage` / `StreamingToolExecutor`），其余 6 个已在宿主面 |
 | **9h-3** | `skill-domain`：`skills.ts` 377 + `builtin-skills.ts` 358 随包 | 735 | ① `SkillRegistry` 类被 `workspace.ts` 构造 ⇒ 契约面出 `SkillRegistry` 接口 + `SkillImplementation.createRegistry(...)`；② `runtime.ts` 的 `scanSkills`（读出厂技能目录）与 `settings-domain` SkillsPage 走同一面 ⇒ 登记表读面 + 桥；③ 出厂技能内容（`BUILTIN_SKILLS`）随包 = 改技能免重建 exe |
 | **9h-4** | `memory-domain`：`memory.ts` 733 + `memory-bundle-client.ts` 134 随包 | 867 | ① `MemoryManager` 接口化 + 工厂；`memoryBundleIngest`（workspace 单点调用）走同一实现面；② 内核 `agent/context.ts` / `runtime/types.ts` 只类型 import ⇒ 指契约文件；③ 拆包时注意 `memory-bundle-client` 的 MCP/引擎附属依赖（当前只 workspace 消费） |
-| **9h-5** | `task-domain`：`task.ts` 178 + `task-board.ts` 319 + `board-persistence.ts` 121（+ 已认领的 `board-status.ts`） | 696 | ① `TaskBoard` 出现在两条**契约文件**（`state-hooks-contract.ts` / `subagent-runtime-contract.ts`）与 `ui/agent-panel-store.ts` ⇒ 契约面要留 `TaskBoard` 接口（含 `TaskBoardProxy` 形状），实现随包；② runtime 的 per-Agent 实例与 proxy 生命周期留在内核装配层（`ctx.effect`），实现只提供工厂；③ 风险最高，放最后 |
+| **9h-5** | `task-domain`：`task.ts` 178 + `task-board.ts` 319 + `board-persistence.ts` 121（+ 已认领的 `board-status.ts`） | 696 | ① `TaskBoard` 出现在两条**契约文件**（`state-hooks-contract.ts` / `subagent-runtime-contract.ts`）与 `ui/agent-panel-store.ts` ⇒ 契约面要留 `TaskBoard` 接口（含 `TaskBoardProxy` 形状），实现随包；② runtime 的 per-Agent 实例与 proxy 生命周期留在内核装配层（`ctx.effect`），实现只提供工厂；③ 风险最高，放最后。**建议再切两刀**：**9h-5a** 只收 `task.ts` 179（管理器 + 四件工具，单类单工厂）→ **9h-5b** 再收 board 三件（320 + 121 + 78）。**一刀切会把「红账部分销账」与守卫的半成品态撞在一起**（见 §3.1） |
+
+### 3.1 9h-5a 首次尝试的实测结论（2026-09-26，**已整段回退，不 commit 半成品**）
+
+按四件套把 `task.ts` 搬进包（`agent/task-contract.ts` + `agent/task-impl.ts` 门面 + capability-segments
+改走门面）后，门禁红在三处，其中**两处是「部分搬迁」这一形态本身的产物**，不是实现错误：
+
+1. **`plugin-home-ledger` 的「每条登记的实现真源仍被该包引用」会红**：该守卫要求包**至少引用一条**
+   自己名册 `impl` 条目；`task.ts` 搬走后包不再引用任何一条（余下 board 三件是**内核侧红账**，
+   包从来只经 `agent/tools/board-status.ts` 的桥间接用其中一件，而那件由 capability-segments 桥）
+   ⇒ 守卫按「全部不再引用 = 已搬完」判红。**结论：该守卫与「包自持实现 + 余账未搬」的中间态不兼容**
+   ——要么一次搬完整包（9h-5a+5b 同批），要么先改判据（不建议：守卫的口径本身没错）。
+2. **装配腰环境缺实现登记**：`capability-segments` 的 `task-tools` capability 在**每次 Agent 装配**
+   调 `createTaskManager()`；而 `tests/convergence/helpers/fixtures.ts`（convergence gate 直接跑它，
+   **不经 `tests/setup.ts`**）此前靠「内联 `new TaskManager()`」自足 ⇒ 改走门面后缺登记即 fail-loud。
+   **教训（对 9h-5b 与后续批次通用）**：凡把「内核构造」改成「门面取实现」，就必须**同时**在
+   `tests/setup.ts` **与** convergence 夹具里登记实现（后者是独立进程入口）；这条要在搬运前先做，
+   而不是等门禁红。
+3. 最小切口建议：**一次搬完整包**（`task.ts` + board 三件 + `board-status.ts`），或**先只搬
+   `board-status.ts`**（它已被 capability-segments 桥、包侧有真实引用），两者都能让守卫口径自洽。
 
 **顺序理由**：9h-2 最便宜且是「最后一个半壳」（§1.2 收口，账本可整节销账）；9h-3/9h-4 是同一形状
 （类 + 出厂内容）的中等件；9h-5 牵两条契约文件，最后做。
