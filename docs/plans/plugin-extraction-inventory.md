@@ -350,9 +350,9 @@ manifest.json —— 包内合计 30～110 行。
 |---|---|---|---|
 | 会话流块渲染器 11 kind + `'*'` 兜底 | ~~`app/paper/builtin-renderers.tsx` **1,020**~~ | 新产物 `paper-renderers/`（**required 不可禁用**） | ✅ **批 8b 已归家**（2026-09-25）：整件 `git mv` 进 `plugins/builtin/paper-renderers/renderers.tsx`，注册点移到产物 apply（`ctx.renderers`，双走查前缀 `builtin/<kind>` ↔ `plugin/hologram/paper-renderers/<kind>`）；内核 `renderer-service` 回归纯通道；产物体积 955 KB（hljs + katex 内联） |
 | mermaid 围栏渲染器 | `app/paper/mermaid-block.tsx` 312 + css 48 = **360** | 同上 | ✅ **批 8b 已处置**：**认领 + 降级随包**（`MdCodeBlock` 里 `lang === 'mermaid'` 那一段），**组件本体留应用 bundle**（`import('mermaid')` 是动态裸 import，产物构建闸拒绝）——经 faceDeps 桥 `MermaidBlock` 取用，判据写进 `docs/plugins/README.md` §3（§4-2 文档契约化） |
-| ask/权限卡架 | `PromptShelf.tsx` 776 + Host 30 + css 412 = **1,218** | 新产物 `ask-cards/` | `ctx.overlays` **需新槽**（现槽位闭集渲染在 PaperPanel 内部）；`chat-core` 持 ref 句柄 |
-| 案卷首页 | `app/SessionsHome.tsx` **593** | 新产物 `sessions-home/` | `ctx.panels` 无「常驻」语义；顶栏与窗口壳件同体须切分 |
-| 首页样式 | `app/foundation.css` 首页区段 **≈800** | 随上项进包 | 与全局 `body::before/after` 氛围层同文件交织，须逐段切 |
+| ask/权限卡架 | ✅ **批 9e-3 已归家**（2026-09-26）：`PromptShelf.tsx` 776 + Host 30 + css 412 整组 `git mv` 进 `plugins/builtin/ask-cards/`（Host 随包正名 `AskCardsHost`） | 通道裁定 = **立统一 `ctx.rootViews`（'overlay' 槽）**，非给 `ctx.overlays` 加槽（用户 2026-09-26 裁定 A）；**形状留内核** `app/chat/ask-card-contract.ts`（三个 prompt 类型 + `PromptData` + `PromptShelfHandle` 五动词——`chat-core` 是消费侧）；名册 `required`（不可禁用：缺席即 `chat-core.ts:438` 兜底拒绝 = Agent 写操作静默全否） |
+| 案卷首页 | ✅ **批 9e-2 已归家**（2026-09-26）：`app/SessionsHome.tsx` 593 → `plugins/builtin/sessions-home/`（+5 行导入桥） | 通道裁定 = `ctx.rootViews` 的 **`'home'` 槽**（App 外壳按槽渲染；`ctx.panels` 的「可开关面板」语义确实不合用）；桥面 12 个 faceDeps 键（RPC 三值 / `pickFolder` / `workspaceFlow` / `shellRefs` / 三 store / `WinControls` / 两 window-drag）；名册 `required`（应用唯一入口页） |
+| 首页样式 | ✅ **批 9e-2 已随包**（2026-09-26）：`app/foundation.css` 1003 行里 **851 行**逐段切进 `sessions-home/home.css`（`.sh-*` 全谱 + `sh-stamp`/`sh-rise` 两关键帧 + 印章遮罩 png 随包） | 壳侧 `foundation.css` 只留**全局面** 230 行（重置 / 选区政策 / 滚动条 / 全局浮层关键帧 / 纸张纹理 `body::before|after` / 可访问性）——纹理层挂 body 是文档级唯一实例，与首页不同生共死 |
 | ipynb 查看器 | ~~`app/paper/viewers/ipynb.tsx` 516 + css 148 = **664**~~ | `renderers/viewers/` 内联（撤 `heavy`） | ✅ **批 8c 已内联**（2026-09-25）：本体 + css 迁进 `plugins/builtin/renderers/viewers/`（def 与组件同文件，`heavy:'ipynb'` → `component` 直挂）；markdown 单元格经宿主桥 `rendererActiveMarkdownBody()` 复用纸面渲染器 |
 | markdown 独立查看器 | ~~`markdown-doc.tsx` 263 + css 147 = **410**~~ | 同上 | ✅ **批 8c 已内联**：同 ipynb（重依赖障碍由 8b 的 markdown 体渲染登记表拆掉） |
 | 查看器装载面 | `app/paper/viewers/index.ts` **46** | 随上项收窄（仅 pdf/model3d 留白名单） | ✅ **批 8c 已收窄**（2026-09-25）：目录只剩 `pdf.tsx` + `model3d.tsx`（+ 各自 css）——「目录即白名单」自动生效，`viewer-registry.test` 的 heavy 双向全等守卫零改动即绿；**内核↔产物类型环同批解开**（批 8a：形状上收 `paper/viewer-contract.ts`） |
@@ -468,12 +468,14 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-26 基线**（批 9g-2 后重测）：红 **6 产物 / 11 文件 / 3,983 行**（§1 的 5 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80）；
-绿 119 平台 + **114 已认领**；灰 **61 文件 / 18,388 行**（批 8 把渲染面判据层收成 `shared`：
+**2026-09-26 基线**（批 9e-3 后重测）：红 **6 产物 / 11 文件 / 3,983 行**（§1 的 5 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80）；
+绿 **120 平台 + 115 已认领**；灰 **58 文件 / 17,000 行**（批 8 把渲染面判据层收成 `shared`：
 `markdown` / `marks` / `tool-text` / `fold` / `translate` 五件进 paper-renderers 与 renderers 的
 shared 名单；批 9a 把 token-meter / acp 登记进平台白名单，9c-1~3 把 selection / virtualize /
 group 三件实现随 paper-shell 包，9d 把 Provider 控制台 8 件随 settings-domain 包，9g-2 把
-asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 shared）。
+asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 shared；**9e 新增第 15 个
+内核 service `composition/root-views-service.ts`（平台 +1）**，并把首页 593 + 首页 CSS 851 行 +
+ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 行）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -492,7 +494,7 @@ asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 share
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
-| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9d / 9g-1~2 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）⇒ 红区 8 → **6 产物 / 11 文件 / 3,983 行**、灰区 64 → **61 文件**。余：9c-4 判定已出（测量引擎接缝，另立设计件）→ 9e 常驻面（含 App 外壳落点，**方案已上交待裁**）→ 9f **侦察已出、判定细化**（`workspace.ts` 并入批 10 通道设计；`settings.ts` 拆「应用配置核心 + Provider 数据面」，与 `provider/**` 同件设计，需先出施工单）→ 9g 余项（`bundled-engine` B暂）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
+| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9d / 9e / 9g-1~2 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）· **9e 常驻面归家**（用户裁定 A）：立**第 15 个内核 service** `ctx.rootViews`（'home'/'overlay' 双槽，App 外壳按槽渲染）+ 新产物 `sessions-home`（593 + 首页 CSS 851 行）与 `ask-cards`（776 + Host 30 + css 412），两产物均 `required` 不可禁用 ⇒ 红区 8 → **6 产物 / 11 文件 / 3,983 行**、灰区 84 → **58 文件 / 17,000 行**、清单 50 → **53**（15 service + 38 产物）。余：9c-4 判定已出（测量引擎接缝，另立设计件）→ 9f **侦察已出、判定细化**（`workspace.ts` 并入批 10 通道设计；`settings.ts` 拆「应用配置核心 + Provider 数据面」，与 `provider/**` 同件设计，需先出施工单）→ 9g 余项（`bundled-engine` B暂）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -707,8 +709,7 @@ asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 share
 类型 + `PromptShelfHost`）· provider 控制台 8 件 2,740（红区已列）· 内核产品件 `workspace.ts` 1,076
 （8 个内核 import 方）· `settings.ts` 705（**29 个** import 方）· `ui/lsp-client.ts` 655（§4-13）。
 
-**子批切分**（施工单 §3）：9a 账目登记 + 双写收口 + `ConfirmDialog` 挪位 → 9b `ctx.lsp` 入内核清单（13→14）→ 9c 拆分组五件（3,475；9c-4 判定见下）→ 9d provider 控制台（2,740）→ 9e 常驻面（≈2,660，含 `ctx.overlays`
-**新槽**——按 §7 路由属「新增通道」层，开工前问一次）→ 9f `settings.ts` + `workspace.ts`（≈1,780）
+**子批切分**（施工单 §3）：9a 账目登记 + 双写收口 + `ConfirmDialog` 挪位 → 9b `ctx.lsp` 入内核清单（13→14）→ 9c 拆分组五件（3,475；9c-4 判定见下）→ 9d provider 控制台（2,740）→ 9e 常驻面（✅ 已落：立 `ctx.rootViews` 双槽——用户 2026-09-26 裁定 A）→ 9f `settings.ts` + `workspace.ts`（≈1,780；侦察见下）
 → 9g `asset-kinds` 内容表拆（**9g-2 判定撤回**，见 §4-10）/ `i18n` 清（✅ 批 0c 已收 98 → 22）/ `prompt-sections` 文案段（✅ 9g-1）/ `show-asset` 三工具（✅ 9g-2，随行 `asset-kinds` 判 shared）/ `bundled-engine`（B暂，前置=引擎链路真机验收）。
 
 **9a / 9b / 9c-1~3 落地（2026-09-26）**：
@@ -795,10 +796,36 @@ asset-kinds / asset-store / confirm-registry 三件收成 asset-domain 的 share
   `ui/chat-session` · `preset-assembly` · `provider/**` 7 件）⇒ 拆成「应用配置核心（留内核）」+
   「Provider 数据面（随包，内核读点走登记接缝）」；后者与核内 `provider/**` 16 件 3,502 行同属
   **provider 数据面归家**，需一份施工单（下一轮先出设计件再动刀）。
-- **9e 常驻面待裁（问题已上交用户）**：`SessionsHome` 593 + 首页 CSS ≈850 + `PromptShelf` 776 + Host 30 +
-  css 412 ⇒ 两者都要「App 外壳渲染产物组件」的落点（`ctx.overlays` 现只有 `composer`/`right-edge` 两槽、
-  且渲染在 PaperPanel 内部；`ctx.panels` 无「常驻」语义）；按 §7 路由属**新增通道**层，开工前问一次
-  （方案：A 统一 `ctx.rootViews` 双槽 / B 只立浮层槽 / C 两者留内核判平台）。
+- ~~**9e 常驻面待裁**~~ ⇒ **已裁定并落地**（用户 2026-09-26 选 A：立统一 `ctx.rootViews` 双槽，
+  两件都随包）——落点方案原文：`SessionsHome` 593 + 首页 CSS ≈850 + `PromptShelf` 776 + Host 30 +
+  css 412 都需要「App 外壳渲染产物组件」的落点（`ctx.overlays` 现只有 `composer`/`right-edge`
+  两槽且渲染在 PaperPanel 内部；`ctx.panels` 无「常驻」语义）。落地记录见下一条。
+
+- **9e 常驻面归家**（`54541861` 9e-1/9e-2 · `6e17bdc3` 9e-3，2026-09-26）——**用户裁定 A**（立统一
+  内核通道，两件都随包）：
+  - **9e-1 通道**：新第 15 个内核 service `composition/root-views-service.ts` —— `ctx.rootViews`
+    两槽（`'home'` 主区 / `'overlay'` 根浮层），注册表内核走 `ContributionChannel`（与
+    overlay-service 同款）；App 外壳按槽渲染活动贡献行（订阅即时重取），**槽空 = 该层零渲染**
+    （不兜底、不内联）。选它而非给 `ctx.overlays` 加槽：后者两槽渲染在 paper-shell 产物内部
+    （只在工作区内存在），而首页与 ask 卡都要在**工作区之外**在场；也不合 `ctx.panels` 的
+    「可开关面板」语义。
+  - **9e-2 首页**：`app/SessionsHome.tsx` 593 → 新产物 `sessions-home`（名册 `required` 不可禁用
+    ——它是应用唯一入口页）；桥面 12 个 faceDeps 键；**首页 CSS 851 行**自 `app/foundation.css`
+    逐段切出随包（`.sh-*` 全谱 + 两个首页关键帧 + 印章遮罩 png），壳侧只留全局面 1003 → 230 行
+    ——纹理层 `body::before/after` 是文档级唯一实例，与首页不同生共死。
+  - **9e-3 卡架**：`PromptShelf.tsx` 776 + css 412 + Host 30 → 新产物 `ask-cards`（`required`：
+    缺席即 `chat-core.ts:438` 权限兜底拒绝 = Agent 写操作静默全否）；**形状留内核**
+    `app/chat/ask-card-contract.ts`（`PromptData` 三型 + `PromptShelfHandle` 五动词——消费侧
+    `chat-core` 在内核，铁律禁内核 import 产物源码）；Host 随包正名 `AskCardsHost`、`core` 改从
+    `useCoreStore` 自取（注册时序逐字不变）。
+  - **数字**：红区不变 **6 产物 / 11 文件 / 3,983 行**；灰区 61 → **58 文件 / 18,388 → 17,000 行**；
+    平台白名单 119 → **120**（新通道本体）；已认领共享面 114 → **115**（新契约文件）；
+    清单 50 → **53**（15 内核 service + 38 出厂产物）。
+  - **真机验收**：见下方 9e 真机条目。
+- **9e 常驻面真机验收**（重建 exe + CDP，2026-09-26）：宿主面 **313 键**（源码派生键集逐一对上）、
+  两产物动态 import 成功（`sessions-home/entry.js` 含首页真身 + `entry.css` 覆盖全部 `.sh-*`；
+  `ask-cards/entry.js` 含卡架真身）、`face.json` 的 `hostApi` = 基线指纹、启动期 console 只剩
+  既有 4 条 `[bridge] invoke failed` + 结构性 404，零装载失败、零异常。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
@@ -1021,6 +1048,8 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
 | 11 | 随包引擎（`bundled-engine.ts` 186）产物化 | 缺口三件（2026-09-24 复核）：**① 产物拿不到工作区生命周期**——现由 `workspace.ts:813` 以**工作区 fiber ctx** 调 `registerBundledEngineTools(ctx, root)`，插件无此 hook（结构性，与 §4-9 壳行通道同族）；② 产物拿不到 MCP 桥（`registerMcpServerTools`/`McpBridgeIO` 只在装载链内）；③ 声明静态——是①的推论。**不要扩 manifest 声明面**（会破坏「声明=可审数据 / 机器桥纯声明面」纪律） | **B（暂）**，解锁路径 = 补①一处「工作区生命周期 + scoped ctx」贡献面 + ②经 faceDeps 暴露 MCP 桥（第一方专用面）⇒ 运行期注册，无需给 manifest 加动态语义。**前置**：该链路真机从未跑通（`plans/README.md` 欠账表），先验收再定型 | 一处新契约面 + baseline 重生成 + 契约升版 + 重建 exe。**设计件 + 验收清单 = [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)**（2026-09-24） |
 | 12 | 用户级 `mcp.json`（142）第二通道 | **现行契约已 sanction**（`plugins/README.md:416-420`）；张力来自**已归档**计划的旧 Non-goals | **B** 承认并**登记为合法用户级配置面**（它不是「插件格式」） | 仅账目登记 |
 | 13 | ~~游离 `ctx.lsp`（655）~~ | `LspService extends Service` + `super(ctx,'lsp')`；`lsp-client.ts:584` 自建**第二个根 Context**（绕过 `initCordisKernel()`）；不在 13 清单 ⇒ 不受「内核不可禁用」覆盖、不进 boot 审计 | **A** 纳入内核清单（13→14）由 loader 装载 + 去掉 fallback 根 Context | ✅ **批 9b 已落**（2026-09-26）：第 14 个内核 service = `ui/lsp-client.ts` 的 `lspServicePlugin`（loader 装载 + 清单登记 + boot 审计 + 不可禁用）；服务改**进程级单例**（同链重名会被 cordis reflect 拒——实测）、工作区改登记「工作区级清态」`resetWorkspaceState()`（与旧的「服务随 fiber dispose」逐条等价）；自建第二个根 Context 删除 |
+
+| 14 | 批 9e 常驻面（`SessionsHome` 593 + 首页 CSS ≈850 / `PromptShelf` 776 + Host 30 + css 412）的落点 | `ctx.overlays` 仅 `composer` / `right-edge` 两槽且渲染点在 **paper-shell 产物内部**（只在工作区内存在）；`ctx.panels` 是「可开关面板」语义；两件都需**工作区之外**的 App 外壳落点 | **A** 立统一 `ctx.rootViews`（第 15 个内核 service，两槽 `'home'` / `'overlay'`），两件都随包；另两案 = B 只立浮层槽（首页留内核）/ C 两者留内核判平台 | ✅ **批 9e 已落**（2026-09-26）：`root-views-service.ts` + 产物 `sessions-home` / `ask-cards`（均 `required`）；首页 CSS 851 行随包、壳侧只留全局面；清单 50 → 53 |
 
 其余 7 条（§4-2/3/4/8/10/14/15）Agent 自裁并在此记录理由，不占用用户决策额度：
 §4-2 重查看器例外写进 `docs/plugins/README.md` §3（文档契约化）· §4-3 `ConfirmDialog` 判**内核共享原语**
