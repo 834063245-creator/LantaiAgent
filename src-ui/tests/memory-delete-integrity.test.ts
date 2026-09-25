@@ -36,7 +36,8 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
   return { ...actual, ...H.kernelFs.overrides };
 });
 
-import { createMemoryTools, MemoryManager } from '../src/agent/memory';
+// 批 9h-4：记忆域实现随 memory-domain 产物包（原 src/agent/memory.ts）
+import { createMemoryTools, MemoryManager } from '../src/plugins/builtin/memory-domain/memory';
 
 const ROOT = 'D:/proj';
 const MEM_DIR = `${ROOT}/.lantai/memory`;

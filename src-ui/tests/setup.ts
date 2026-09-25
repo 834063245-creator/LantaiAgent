@@ -24,6 +24,8 @@ beforeAll(async () => {
     { agentLoopServicePlugin },
     { registerSkillImplementation },
     { skillImplementation },
+    { registerMemoryImplementation },
+    { memoryImplementation },
   ] = await Promise.all([
     import('../src/agent/multiagent-impl'),
     import('../src/plugins/builtin/multiagent-comm/implementation'),
@@ -36,6 +38,8 @@ beforeAll(async () => {
     import('../src/plugins/builtin/agent-loop-service'),
     import('../src/agent/skill-impl'),
     import('../src/plugins/builtin/skill-domain'),
+    import('../src/agent/memory-impl'),
+    import('../src/plugins/builtin/memory-domain'),
   ]);
   registerMultiagentComm(multiagentCommImplementation);
   // 批 7c-2：子代理运行时（池 / 生命周期 / 派生 + 两工具族）整体登记——与产物包 index.ts 同源。
@@ -54,6 +58,9 @@ beforeAll(async () => {
   // 批 9h-3：技能域实现随 skill-domain 包后，内核 `createSkillRegistry` / `scanSkills`
   // 门面缺实现即 fail-loud ⇒ 测试域登记同一份实现对象（与包 index.ts 同源）。
   registerSkillImplementation(skillImplementation);
+  // 批 9h-4：记忆域实现随 memory-domain 包后，内核 `createMemoryManager` / `memoryBundleIngest`
+  // 门面缺实现即 fail-loud ⇒ 测试域登记同一份实现对象（与包 index.ts 同源）。
+  registerMemoryImplementation(memoryImplementation);
 });
 
 // jsdom 不实现 CSS.escape（react-aria ListKeyboardDelegate 依赖它拼 [data-key] 选择器）。

@@ -1,5 +1,5 @@
 {
-  "fingerprint": "e6e03064",
+  "fingerprint": "2578f632",
   "keys": [
     "ANCHOR",
     "Agent",
@@ -92,6 +92,7 @@
     "clearPaperMeasureCache",
     "clearWorkspaceListCache",
     "collapseToolGroups",
+    "consumeFactAuthorization",
     "convergeRegistry",
     "countMessage",
     "countMessages",
@@ -102,7 +103,6 @@
     "createExecState",
     "createInkCache",
     "createLiveProvider",
-    "createMemoryTools",
     "createProvider",
     "createTaskTools",
     "deactivateExternalPlugin",
@@ -165,6 +165,7 @@
     "kernelListDirectoryFlat",
     "kernelReadFile",
     "kernelReadFileRaw",
+    "kernelReadMemoryBatch",
     "kernelTruncateFile",
     "kernelWriteFile",
     "killShellWork",

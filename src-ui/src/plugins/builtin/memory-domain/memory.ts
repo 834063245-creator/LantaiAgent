@@ -12,32 +12,23 @@
 //   background — 用于调整回复风格和语气，不需要在回复中提及
 //   suppressed — 不给 LLM 看到
 //   Agent 自己主动存的记忆最高只能给 reference。fact 级别只有用户通过 /remember 明确要求时才能使用。
+//
+// 批 9h-4（2026-09-26）：本件随 `memory-domain` 产物包（原 `agent/memory.ts`）——形状上收内核契约
+// `agent/memory-contract.ts`；**事实保存授权旗标改由内核持有**（`agent/memory-impl.ts` 的
+// `consumeFactAuthorization`——跨模块一次性状态留内核、产物经宿主桥取用，不造副本状态）。
 
 import { z } from 'zod';
 import {
+  consumeFactAuthorization,
+  defineTool,
   kernelCreateDirectory,
   kernelDeleteFile,
   kernelReadFile,
   kernelReadMemoryBatch,
   kernelWriteFile,
-} from '../rpc-contract';
-import type { Tool } from './tool';
-import { defineTool } from './tools/define-tool';
-
-// ── Fact 保存授权（自消费哨兵） ──
-// /remember 命令设置此标志；下一次 hologram_memory_save 会消费它。
-// Agent 无法调用 authorizeFactSave() — 只有 chat.ts 的 /remember 处理器可以。
-let _factAuthorized = false;
-/** 由 /remember 处理器在发送保存提示给 Agent 之前调用。 */
-export function authorizeFactSave(): void {
-  _factAuthorized = true;
-}
-/** 消费授权。每次 /remember 仅返回一次 true。 */
-function consumeFactAuthorization(): boolean {
-  const was = _factAuthorized;
-  _factAuthorized = false;
-  return was;
-}
+  type MemoryManagerFace,
+  type Tool,
+} from './host';
 
 // ── 类型 ──
 
@@ -101,7 +92,7 @@ function enqueueIndexWrite<T>(key: string, task: () => Promise<T>): Promise<T> {
 
 // ── MemoryManager ──
 
-export class MemoryManager {
+export class MemoryManager implements MemoryManagerFace {
   private _projectDirReady = false;
   private _globalDirReady = false;
   private globalDirPath: string | null = null;
@@ -582,8 +573,10 @@ function scoreMemoryRelevance(mf: MemoryFile, graphNodes: string[]): number {
 
 // ── Agent 工具 ──
 
-/** 创建记忆操作的 Agent 工具。所有工具都基于指定的 MemoryManager。 */
-export function createMemoryTools(mm: MemoryManager): Tool[] {
+/** 创建记忆操作的 Agent 工具。所有工具都基于指定的 MemoryManager。
+ *  批 9h-4：入参取**内核契约面** `MemoryManagerFace`（工具行材料经 `composition/tool-rows.ts`
+ *  把工作区建好的实例交进来；实现只需面里的 8 个成员）。 */
+export function createMemoryTools(mm: MemoryManagerFace): Tool[] {
   return [
     defineTool({
       name: 'hologram_memory_list',

@@ -92,7 +92,7 @@ ${skillCatalog}`;
 
 export interface ToolRegistryOptions {
   deps: BuilderDeps;
-  memoryManager?: MemoryManager;
+  memoryManager?: MemoryManagerFace;
   skillRegistry?: SkillRegistryFace;
   taskManager: TaskManager;
   subAgentPool: SubAgentPool;
@@ -104,7 +104,7 @@ export interface ToolRegistryOptions {
   toolRows?: BuiltinToolRow[];
 }
 
-import type { MemoryManager } from '../memory';
+import type { MemoryManagerFace } from '../memory-contract';
 import type { SkillRegistryFace } from '../skill-contract';
 import type { SubAgentPool } from '../subagent-runtime-contract';
 import type { SubAgentSpawner } from '../subagent-tools-contract';

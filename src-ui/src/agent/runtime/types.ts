@@ -11,7 +11,7 @@ import type { AgentStore } from '../agent-store';
 import type { AgentEvent, EventSink } from '../agent-types';
 import type { ExecStateInstance } from '../execution-state';
 import type { GoalManager } from '../goal-manager';
-import type { MemoryManager } from '../memory';
+import type { MemoryManagerFace } from '../memory-contract';
 import type { SubAgentPool } from '../subagent-runtime-contract';
 import type { TaskBoard } from '../task-board';
 import type { ToolRegistry } from '../tool';
@@ -78,7 +78,7 @@ export interface AgentConfig {
   /** 工具注册表（已按权限过滤） */
   tools: ToolRegistry;
   /** 记忆管理器 */
-  memoryManager?: MemoryManager;
+  memoryManager?: MemoryManagerFace;
   /** 目标管理器 */
   goalManager?: GoalManager;
   /** Agent 持久化存储 */

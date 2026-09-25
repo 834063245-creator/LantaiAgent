@@ -18,8 +18,9 @@ import { resetAgentCaches } from './agent/cache-store';
 import { GoalManager } from './agent/goal-manager';
 import { DisposerBag } from './agent/lifecycle';
 import { initLogger, log } from './agent/logger';
-import { MemoryManager } from './agent/memory';
-import { memoryBundleIngest } from './agent/memory-bundle-client';
+import type { MemoryManagerFace } from './agent/memory-contract';
+// 批 9h-4：记忆域实现随 memory-domain 包 ⇒ 装配点走内核登记表门面（缺实现 fail-loud）
+import { createMemoryManager, memoryBundleIngest } from './agent/memory-impl';
 import { WIRE_IMAGE_CAPS } from './agent/request-images';
 import { type BuilderDeps, buildToolRegistry } from './agent/runtime/agent-builder';
 // ── 运行时层（替代 bootstrap.ts）──
@@ -138,7 +139,7 @@ export class Workspace {
   private _lastRawAgent: Agent | null = null;
   prov: Provider | null = null;
   registry: ToolRegistry | null = null;
-  memoryManager: MemoryManager | null = null;
+  memoryManager: MemoryManagerFace | null = null;
   taskManager: TaskManager = new TaskManager();
   skillRegistry: SkillRegistryFace | null = null;
   agentStore: AgentStore | null = null;
@@ -623,7 +624,7 @@ export class Workspace {
       },
       'setupAgent-teardown',
     );
-    this.memoryManager = new MemoryManager(this.path, globalDir);
+    this.memoryManager = createMemoryManager(this.path, globalDir);
     // 获取即登记：停用时释放记忆。
     teardown.add(() => {
       this.memoryManager = null;

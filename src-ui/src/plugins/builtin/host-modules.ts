@@ -56,7 +56,10 @@ import { log } from '../../agent/logger';
 // 批 9h-2 归家（2026-09-26）：出厂默认 loop 实现进 agent-loop-service 包 ⇒
 // `defaultAgentLoop` 桥键撤除；改桥该包新的取用面（循环依赖面 3 个缺失键）。
 import { errText, finishReasonMessage, parseFilePathArg } from '../../agent/loop-helpers';
-import { createMemoryTools } from '../../agent/memory';
+// 批 9h-4 归家（2026-09-26）：记忆域实现随 memory-domain 包 ⇒ 撤 `createMemoryTools` 桥键
+// （该包自持实现，经 `agent/memory-impl.ts` 登记表反向登记）；改桥「事实保存授权」消费口
+// （跨模块一次性状态留内核、产物只取用）。
+import { consumeFactAuthorization } from '../../agent/memory-impl';
 import {
   AgentNotFoundError,
   InboxFullError,
@@ -281,6 +284,7 @@ import {
   kernelListDirectoryFlat,
   kernelReadFile,
   kernelReadFileRaw,
+  kernelReadMemoryBatch,
   kernelTruncateFile,
   kernelWriteFile,
   parseJson,
@@ -593,6 +597,11 @@ const faceDeps = {
   kernelReadFileRaw,
   kernelListDirectory,
   kernelWriteFile,
+  // 批 9h-4 归家：记忆域实现随包 ⇒ 桥它的内核依赖面（记忆文件 IO 五值 ——
+  // `kernelCreateDirectory` / `kernelDeleteFile` / `kernelReadFile` 早已在册 —— 与
+  // 「事实保存授权」消费口）
+  kernelReadMemoryBatch,
+  consumeFactAuthorization,
   // Phase 1 事件日志（2026-09-15 DSH 参照移植）：durable append 进宿主桥
   // （append_events 动作的落盘面——fsync 版 kernel helper）。
   kernelAppendFileDurable,
@@ -622,7 +631,6 @@ const faceDeps = {
   watchFileDragDrop,
   // S3 工具域真源产物运行时依赖（经宿主桥 mods.faceDeps 取用）
   // 批 9h-3：`createSkillTool` 随 skill-domain 包（该包自持实现）⇒ 键已撤
-  createMemoryTools,
   createTaskTools,
   // 批 9h-3 归家：技能域实现随包 ⇒ 桥扫描器读面（内核 RPC；纯读无状态）
   kernelGlobalMemoryDir,

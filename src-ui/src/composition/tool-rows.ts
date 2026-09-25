@@ -32,7 +32,7 @@
 // 解析域——patch/preset 寻址 'plugin/<插件名>/<工具名>' 行（builtin/<族>
 // 行 id 已随行表退役终结，不复存在）。
 
-import type { MemoryManager } from '../agent/memory';
+import type { MemoryManagerFace } from '../agent/memory-contract';
 import type { SkillRegistryFace } from '../agent/skill-contract';
 import type { SubAgentPool } from '../agent/subagent-runtime-contract';
 import type { SubAgentSpawner } from '../agent/subagent-tools-contract';
@@ -47,7 +47,7 @@ export interface ToolRowContext {
   /** ask_user 的 UI 回调（builder 从 BuilderDeps.onAskUser 注入）。 */
   ui?: CodingToolsUI;
   skillRegistry?: SkillRegistryFace;
-  memoryManager?: MemoryManager;
+  memoryManager?: MemoryManagerFace;
   taskManager: TaskManager;
   subAgentPool: SubAgentPool;
   subAgentSpawner?: SubAgentSpawner;

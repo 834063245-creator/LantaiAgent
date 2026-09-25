@@ -24,7 +24,7 @@ import type { ExecStateInstance } from './execution-state';
 import type { GoalManager } from './goal-manager';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import { type Disposer, DisposerBag, runInContext } from './lifecycle';
-import type { MemoryManager } from './memory';
+import type { MemoryManagerFace } from './memory-contract';
 import type { MessageBus } from './message-contract';
 import type { PlanStateManager } from './plan/plan-state';
 import type { SessionLog } from './session-log';
@@ -64,7 +64,7 @@ export interface AgentServices {
   /** 执行状态实例 — 缺省由 runtime 物化 createExecState() */
   execState?: ExecStateInstance;
   /** 记忆管理器 — system prompt 记忆段来源 */
-  memoryManager?: MemoryManager;
+  memoryManager?: MemoryManagerFace;
   /** 会话事件溯源日志 — Phase 5 双写：模型可见事实 append 为事件，Message[] 成为投影
    *  （deriveMessages/derivePayload 见 session-log.ts）。缺省由 runtime 物化（每 Agent
    *  独立实例）；child() 白名单不继承 — 子 Agent 各自持有。 */

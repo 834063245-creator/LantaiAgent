@@ -207,11 +207,10 @@
   {
     "dir": "memory-domain",
     "buildOrder": 21,
-    "description": "记忆域工具（memory_*）",
+    "description": "记忆域（memory_* 工具 + 管理器 + 记忆束客户端；批 9h-4 整包实心化）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "impl": ["agent/memory.ts", "agent/memory-bundle-client.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "task-domain",

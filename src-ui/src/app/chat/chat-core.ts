@@ -18,6 +18,8 @@ import type { ChatAgentHandle, GoalRunResult } from '../../agent/chat-agent-hand
 import { createExecState, type ExecStateInstance, type RunKind } from '../../agent/execution-state';
 import { GoalManager, type GoalRecord } from '../../agent/goal-manager';
 import { log } from '../../agent/logger';
+// 批 9h-4：事实保存授权旗标住内核登记表（记忆实现已随 memory-domain 产物包）
+import { authorizeFactSave } from '../../agent/memory-impl';
 import { isRunDeadlineExceeded } from '../../agent/run-watchdog';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { totalTokens } from '../../agent/token-meter/usage';
@@ -1817,7 +1819,8 @@ export class ChatCore {
       showToast('用法: /remember 要记住的内容', 'info');
       return;
     }
-    void import('../../agent/memory.js').then((m) => m.authorizeFactSave());
+    // 批 9h-4：事实保存授权旗标住内核（记忆实现已随 memory-domain 包）——门面同步导入
+    authorizeFactSave();
     void this.sendAgentText(
       `请将以下事实保存到记忆库：${fact}\n\n使用 memory 工具 action="save"，type 取 user/feedback/project/reference 之一；起一个简短的 kebab-case 名称，写清楚 description。`,
       `/remember ${fact}`,
