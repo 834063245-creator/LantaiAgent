@@ -167,7 +167,7 @@ pub const DOMAIN_SPECS: &[DomainSpec] = &[
         actions: &[
             DomainAction { action: "validate", tool: "validate_project", hint: "full constraint validation: re-analyze + baseline diff + every structural check → violations AND passing rules (全面检查/有没有违规？); for a lighter first pass use analysis(blindspots)" },
             DomainAction { action: "health", tool: "project_health", hint: "health snapshot: coupling density 0-100, recent trends, top-changed files, most-interconnected modules — the score is coupling density, not code quality (项目最近怎么样？)" },
-            DomainAction { action: "status", tool: "engine_status", hint: "engine status: loading phase, node/edge counts, storage, uptime, contract version, per-tool call counts — call this when tools return empty or before trusting the graph (引擎就绪了吗？)" },
+            DomainAction { action: "status", tool: "engine_status", hint: "engine status: loading phase, node/edge counts, active read index, vector-index lag (semantic index stale?), uptime, contract version, per-tool call counts — call this when tools return empty or before trusting the graph (引擎就绪了吗？)" },
             DomainAction { action: "diff", tool: "graph_diff", hint: "diff the current graph against a baseline JSON snapshot (added/removed/modified nodes, edge-count deltas) — NOT a git diff; for file-level changes use the git tool" },
         ],
     },
@@ -1216,7 +1216,7 @@ fn all_schemas() -> &'static [ToolSchema] {
         },
         ToolSchema {
             name: "engine_status",
-            description: "Engine status and memory stats: loading phase, node/edge counts, storage type, uptime. Use when tools return empty results or Agent needs to confirm the graph is ready. \"引擎就绪了吗？\" → this.",
+            description: "Engine status and memory stats: loading phase, node/edge counts, active read index, uptime, vector-index lag. Use when tools return empty results or Agent needs to confirm the graph is ready. `vector_index.stale` / `warnings` flag a semantic index that lags the graph (semantic search would run on an old snapshot). \"引擎就绪了吗？\" → this.",
             params: &[],
             required: &[],
             read_only: true,

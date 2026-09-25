@@ -124,6 +124,23 @@ impl LspProcess {
         Self::write_message_static(&self.stdin, body)
     }
 
+    /// 冷启动提示（#7）：spawn 后的 `cold_window` 内服务器多在索引整个项目，
+    /// **空结果不代表「这个位置没有东西」**。返回 Some(原因) = 别把空结果当真。
+    ///
+    /// 为什么放在这里：首次查询会触发 lazy warm（实测 432ms 拉起 rust-analyzer，
+    /// 但它随后要索引几分钟），此时 `textDocument/definition` 如实回空——旧行为
+    /// 让这次必然的空结果一路降级成「去装 LSP 服务器」，把「索引中」说成「缺东西」。
+    fn cold_start_note(&self) -> Option<String> {
+        let elapsed = self.spawned_at.elapsed();
+        if elapsed >= self.cold_window {
+            return None;
+        }
+        Some(format!(
+            "LSP busy: server still indexing (cold start, {:.0}s elapsed) — empty result is not conclusive, retry later",
+            elapsed.as_secs()
+        ))
+    }
+
     /// 发送 JSON-RPC 请求并等待响应。
     ///
     /// LSP 服务器会在请求/响应周期之间异步发送诊断和日志通知——
@@ -663,6 +680,73 @@ pub struct LspManager {
     /// 宿主拉起失败负缓存（root → 上次尝试时刻）：
     /// 未装 hologram-lspd 的环境不逐 op 重试拉起。
     daemon_ensure: RwLock<HashMap<String, std::time::Instant>>,
+}
+
+/// 单个语言服务器的状态（#5 分流真源）——engine_status 与工具降级文案**同源**。
+///
+/// 立此枚举的由来（2026-09-25 实测）：旧的兜底把「装了但从没试过 / 正在拉起 /
+/// 拉起失败」三种完全不同的状态糊成一句
+/// `warm in progress or silent failure — retry if persists`——把排查者引向
+/// 「它坏了」，而最常见的那种（懒加载的正常初态：这门语言还没人用过）根本不是故障。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LspServerState {
+    /// 池中有活进程——查询能真正得到应答。
+    Ready,
+    /// 已尝试拉起、暂无进程、也无失败记录（spawn 在途 / 握手未完成）。
+    Warming,
+    /// 装了但本进程从未尝试拉起这门语言——**懒加载的正常初态，不是故障**。
+    NeverWarmed,
+    /// 拉起/握手/存活失败（含内存门禁、spawn 后快速崩溃），带原因。
+    Failed(String),
+    /// PATH 上找不到该服务器。
+    NotInstalled,
+}
+
+impl LspServerState {
+    /// 机器可读状态名（引擎状态面 / 工具 details 共用一套词）。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Warming => "warming",
+            Self::NeverWarmed => "never-warmed",
+            Self::Failed(_) => "failed",
+            Self::NotInstalled => "not-installed",
+        }
+    }
+}
+
+/// 状态判据（纯函数——事实由 [`LspManager::server_state`] 收集）。
+///
+/// 顺序即优先级：池中活进程 > 池中死壳 > **没装** > 有失败记录 > 尝试过（在途）
+/// > 装了但从未尝试。
+///
+/// 「没装」排在「失败」前：命令不在 PATH 上时唯一可行动作是安装，报 spawn 错误
+/// 只会把人引偏。「从未尝试」不是故障——懒加载的正常初态（#5 的由来）。
+fn classify_server_state(
+    pool_alive: Option<bool>,
+    on_path: bool,
+    error: Option<String>,
+    attempted: bool,
+) -> LspServerState {
+    match pool_alive {
+        Some(true) => return LspServerState::Ready,
+        // 死壳（with_process 判死把进程置 None，Arc 还留在池里）——下次查询重建
+        Some(false) => {
+            return LspServerState::Failed("server process exited — will be rebuilt on next query".into());
+        }
+        None => {}
+    }
+    if !on_path {
+        return LspServerState::NotInstalled;
+    }
+    if let Some(e) = error {
+        return LspServerState::Failed(e);
+    }
+    if attempted {
+        LspServerState::Warming
+    } else {
+        LspServerState::NeverWarmed
+    }
 }
 
 impl LspManager {
@@ -1642,7 +1726,15 @@ impl LspManager {
         let source = source.to_string();
         Self::with_process(&server_arc, |process| {
             let _ = process.open_file(&uri, &source, lang_id);
-            process.definition(&uri, line, column)
+            let locs = process.definition(&uri, line, column)?;
+            // #7：冷窗口内的空结果不算数（服务器还在索引项目）——如实回 busy，
+            // 工具层的指引才会是「稍后重试」而不是「去装 LSP 服务器」。
+            if locs.is_empty() {
+                if let Some(note) = process.cold_start_note() {
+                    return Err(note);
+                }
+            }
+            Ok(locs)
         })
     }
 
@@ -1663,7 +1755,14 @@ impl LspManager {
         let source = source.to_string();
         Self::with_process(&server_arc, |process| {
             let _ = process.open_file(&uri, &source, &lang_id);
-            process.hover(&uri, line, column)
+            let hover = process.hover(&uri, line, column)?;
+            // #7：冷窗口内的空 hover 同样不算数（服务器还在索引）。
+            if hover.is_empty() {
+                if let Some(note) = process.cold_start_note() {
+                    return Err(note);
+                }
+            }
+            Ok(hover)
         })
     }
 
@@ -1684,7 +1783,14 @@ impl LspManager {
         let source = source.to_string();
         Self::with_process(&server_arc, |process| {
             let _ = process.open_file(&uri, &source, &lang_id);
-            process.implementation(&uri, line, column)
+            let locs = process.implementation(&uri, line, column)?;
+            // #7：冷窗口内的空结果不算数（服务器还在索引）。
+            if locs.is_empty() {
+                if let Some(note) = process.cold_start_note() {
+                    return Err(note);
+                }
+            }
+            Ok(locs)
         })
     }
 
@@ -1705,7 +1811,15 @@ impl LspManager {
         let source = source.to_string();
         Self::with_process(&server_arc, |process| {
             let _ = process.open_file(&uri, &source, &lang_id);
-            process.references(&uri, line, column)
+            let locs = process.references(&uri, line, column)?;
+            // #7：冷窗口内的空结果不算数（服务器还在索引）——免得「正在索引」
+            // 被读成「这个符号没有引用」。
+            if locs.is_empty() {
+                if let Some(note) = process.cold_start_note() {
+                    return Err(note);
+                }
+            }
+            Ok(locs)
         })
     }
 
@@ -1747,6 +1861,28 @@ impl LspManager {
         Self::global().last_warm_errors.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
+    /// 单命令状态（#5 五态；判据顺序即优先级）。
+    ///
+    /// 事实收集在这里，判据在 [`classify_server_state`]（纯函数——可穷举测试）。
+    pub fn server_state(cmd: &str) -> LspServerState {
+        let mgr = Self::global();
+        let pool_alive = mgr
+            .pool
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(cmd)
+            .map(|arc| arc.lock().map(|g| g.is_some()).unwrap_or(false));
+        let error = mgr.last_warm_errors.read().unwrap_or_else(|e| e.into_inner()).get(cmd).cloned();
+        let attempted = mgr.last_spawn.read().unwrap_or_else(|e| e.into_inner()).contains_key(cmd);
+        classify_server_state(pool_alive, Self::find_on_path(cmd), error, attempted)
+    }
+
+    /// 按扩展名取状态；None = 这门语言**没有适配器**（连配置表都没有）。
+    pub fn server_state_for_ext(ext: &str) -> Option<LspServerState> {
+        let cfg = SERVER_CONFIGS.iter().find(|c| c.extensions.contains(&ext))?;
+        Some(Self::server_state(cfg.command))
+    }
+
     /// 在文件系统上解析命令的完整路径。
     ///
     /// Windows 上优先检查 .exe/.cmd/.bat——npm 全局工具
@@ -1783,33 +1919,33 @@ impl LspManager {
 
     /// 完整的 LSP 状态，供设置面板 / engine_status 使用。
     ///
-    /// 返回每个服务器的可用性 + 安装提示。
-    /// `installed` 通过 PATH 检查——即使 warm() 未运行也可用。
+    /// 每项：`state`（`LspServerState::as_str()` 五态——**单一归因源**）、
+    /// `available`（池中有活进程）、`installed`（PATH 检查）、`error`（仅失败/在途有值）。
+    ///
+    /// 修（#5，2026-09-25）：旧版在「已安装 + 未就绪 + 无错误 + 已 mark_initialized」
+    /// 时填 `warm in progress or silent failure — retry if persists`——把
+    /// 「从未 warm（懒加载正常初态）/ 正在 warm / warm 静默失败」三种状态糊成一句，
+    /// 且措辞把人引向「它坏了」。现在四态分开、文案各说各的实际含义。
     pub fn lsp_status() -> Vec<Value> {
-        let mgr = Self::global();
-        let errors = mgr.last_warm_errors.read().unwrap_or_else(|e| e.into_inner()).clone();
-        let pool = mgr.pool.read().unwrap_or_else(|e| e.into_inner());
         SERVER_CONFIGS
             .iter()
             .map(|cfg| {
-                let available = pool.get(cfg.command)
-                    .and_then(|arc| arc.lock().ok().map(|g| g.is_some()))
-                    .unwrap_or(false);
-                let error = errors.get(cfg.command).cloned();
-                // 始终检查 PATH——独立于 warm 状态
+                let state = Self::server_state(cfg.command);
+                let available = state == LspServerState::Ready;
                 let installed = available || Self::find_on_path(cfg.command);
-                // 兜底：已安装但不可用且无错误记录 → warm 可能在进行中或静默失败
-                let error = if installed && !available && error.is_none()
-                    && *mgr.initialized.read().unwrap_or_else(|e| e.into_inner())
-                {
-                    Some("warm in progress or silent failure — retry if persists".to_string())
-                } else {
-                    error
+                let error = match &state {
+                    LspServerState::Failed(e) => Some(e.clone()),
+                    // 在途不是错误（懒加载的正常中间态）——如实标注，别叫「silent failure」
+                    LspServerState::Warming => {
+                        Some("warm in progress — server is being started (retry shortly, not a failure)".to_string())
+                    }
+                    _ => None,
                 };
                 json!({
                     "command": cfg.command,
                     "language_id": cfg.language_id,
                     "extensions": cfg.extensions,
+                    "state": state.as_str(),
                     "available": available,
                     "installed": installed,
                     "error": error,
@@ -2041,6 +2177,59 @@ time.sleep(0.2)
         assert!(!LspManager::err_preserves_server("LSP read error: read header: failed to fill whole buffer"));
         assert!(!LspManager::err_preserves_server("LSP reader lost after cold window — server will be recreated"));
         assert!(!LspManager::err_preserves_server("parse: expected value"));
+    }
+
+    // ── #5 五态分类（纯判据穷举）──
+
+    #[test]
+    fn test_server_state_classification_is_five_way() {
+        use LspServerState::*;
+        // 池中活进程 ⇒ Ready（与 PATH / 历史错误无关）
+        assert_eq!(classify_server_state(Some(true), false, Some("x".into()), true), Ready);
+        // 死壳 ⇒ Failed（下次查询重建）
+        assert!(matches!(
+            classify_server_state(Some(false), true, None, true),
+            Failed(_)
+        ));
+        // **没装优先于失败过**：唯一可行动作是安装，报 spawn 错误只会把人引偏
+        assert_eq!(
+            classify_server_state(None, false, Some("spawn: program not found".into()), true),
+            NotInstalled
+        );
+        // 装了 + 失败记录 ⇒ Failed（带原因，engine_status 可见）
+        assert_eq!(
+            classify_server_state(None, true, Some("gate: low system memory".into()), true),
+            Failed("gate: low system memory".into())
+        );
+        // 装了 + 尝试过 + 无错误 ⇒ Warming（在途——旧文案叫它 "silent failure"）
+        assert_eq!(classify_server_state(None, true, None, true), Warming);
+        // 装了 + 从未尝试 ⇒ NeverWarmed（**懒加载的正常初态，不是故障**——#5 的由来）
+        assert_eq!(classify_server_state(None, true, None, false), NeverWarmed);
+    }
+
+    #[test]
+    fn test_server_state_names_are_stable() {
+        // 状态名是引擎状态面的机器可读契约（设置面板 / engine_status / 工具 details 同源）
+        assert_eq!(LspServerState::Ready.as_str(), "ready");
+        assert_eq!(LspServerState::Warming.as_str(), "warming");
+        assert_eq!(LspServerState::NeverWarmed.as_str(), "never-warmed");
+        assert_eq!(LspServerState::Failed(String::new()).as_str(), "failed");
+        assert_eq!(LspServerState::NotInstalled.as_str(), "not-installed");
+    }
+
+    // ── #7 冷启动空结果不算数 ──
+
+    #[test]
+    fn test_cold_start_note_flags_unreliable_empty_results() {
+        let mut process = spawn_hanging_process();
+        // 刚起来（冷窗口内）：空结果不许当真，且必须是 busy 类（工具层才给「稍后重试」、
+        // 且 with_process 保留进程不误杀）
+        let note = process.cold_start_note().expect("young server must be flagged cold");
+        assert!(note.starts_with("LSP busy"), "cold note must be busy-class: {note}");
+        assert!(LspManager::err_preserves_server(&note), "cold note must not destroy the server");
+        // 冷窗口过期：空结果可信（None = 别拿冷启动当借口）
+        process.cold_window = std::time::Duration::ZERO;
+        assert!(process.cold_start_note().is_none());
     }
 
     #[test]

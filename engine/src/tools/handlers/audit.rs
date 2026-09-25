@@ -73,18 +73,30 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
             (crate::lsp_manager::LspManager::lsp_status(), false)
         }
     };
-    let lsp_available: Vec<&str> = lsp.iter()
-        .filter(|s| s["available"].as_bool().unwrap_or(false))
+    // #5 同源纪律：`missing` 只装**真的用不上**的（没装 / 起不来）。
+    // 「装了但从没被用过」是懒加载的正常初态（`never-warmed`）——把它算进 missing
+    // 就会让读的人（含模型）去装一个已经装好的服务器（2026-09-25 实测病灶）。
+    let lsp_available: Vec<&str> = lsp
+        .iter()
+        .filter(|s| s["state"].as_str() == Some("ready"))
         .map(|s| s["language_id"].as_str().unwrap_or(""))
         .collect();
-    let lsp_missing: Vec<&str> = lsp.iter()
-        .filter(|s| !s["available"].as_bool().unwrap_or(false))
+    let lsp_missing: Vec<&str> = lsp
+        .iter()
+        .filter(|s| matches!(s["state"].as_str(), Some("not-installed") | Some("failed")))
+        .map(|s| s["language_id"].as_str().unwrap_or(""))
+        .collect();
+    let lsp_installed_idle: Vec<&str> = lsp
+        .iter()
+        .filter(|s| matches!(s["state"].as_str(), Some("never-warmed") | Some("warming")))
         .map(|s| s["language_id"].as_str().unwrap_or(""))
         .collect();
     let lsp_data = json!({
         "shared_fleet": fleet_shared,
         "available": lsp_available,
         "missing": lsp_missing,
+        // 装了但本进程还没用上（懒加载正常初态）——**不是**缺件，别据此去装东西
+        "installed_idle": lsp_installed_idle,
         "servers": lsp,
     });
 
@@ -107,14 +119,28 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
                     .map(|(_, slots)| slots.read().unwrap_or_else(|e| e.into_inner()).len())
                     .unwrap_or(0)
             } else { 0 };
+            // #8：向量索引滞后告警——把 `nodes` 与 `vectors` 两个数**显式比对**。
+            // 此前两数并列摆着却不报警：没有任何人知道语义搜索在旧快照上跑
+            // （2026-09-25 实测：图 22244 / 索引 21760，差 484 无人发现）。
+            let (vi_lag, vi_warnings) = vector_lag_warnings(phase, nodes, vi_exists, vi_count);
             ToolResponse::Success(json!({
                 "phase": phase,
-                "store": "MemoryIndex",
+                // 改名（原 "store"）：旧名易被读成「图只在内存」——它实际指**当前活跃读索引**；
+                // 图持久化在 SQLite（`<data_dir>/hologram.db`），索引只是加速读的内存结构。
+                "active_index": "MemoryIndex",
                 "nodes": nodes,
                 "edges": edges,
                 "has_aux_indexes": has_aux,
                 "is_watching": is_watching,
-                "vector_index": { "exists": vi_exists, "vectors": vi_count, "backend": hologram_vector::backend_id() },
+                "vector_index": {
+                    "exists": vi_exists,
+                    "vectors": vi_count,
+                    "lag_nodes": vi_lag,
+                    "stale": vi_lag != 0,
+                    "backend": hologram_vector::backend_id(),
+                },
+                // 空数组 = 无告警（异常才非空——「错误不静默」）
+                "warnings": vi_warnings,
                 "lsp": lsp_data,
                 // 图工具使用率观测：Agent 是否真的在用图（装饰品检测）
                 "tool_call_counts": crate::tools::tool_call_counts(),
@@ -125,15 +151,54 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
         }
         Err(_) => ToolResponse::Success(json!({
             "phase": "empty",
-            "store": "none",
+            "active_index": "none",
             "nodes": 0,
             "edges": 0,
             "lsp": lsp_data,
+            "warnings": [],
             "tool_call_counts": crate::tools::tool_call_counts(),
             "contract": crate::contract::engine_contract_info(),
             "extensions": crate::plugins::extensions_status(),
         })),
     }
+}
+
+/// 向量索引滞后判定（#8）——返回 `(lag_nodes, warnings)`。
+///
+/// 判据：`图节点数 − 索引向量数`。>0 = 索引落后（语义搜索跑在旧快照上）；
+/// <0 = 索引比图新（图被重建/清空过而索引没跟上）；0 = 对齐。
+///
+/// `phase != ready` 时滞后**是预期**（analyze 的后台重建线程在跑）——照实报数，
+/// 但文案说明「分析中，属预期」，避免把正常中间态报成故障。
+fn vector_lag_warnings(phase: &str, nodes: usize, vi_exists: bool, vi_count: usize) -> (i64, Vec<String>) {
+    if !vi_exists {
+        return (
+            nodes as i64,
+            vec![
+                "vector index file missing — semantic search has no index yet; it is built in the \
+                 background after analyze_project finishes"
+                    .to_string(),
+            ],
+        );
+    }
+    let lag = nodes as i64 - vi_count as i64;
+    if lag == 0 {
+        return (0, Vec::new());
+    }
+    let warn = if phase != "ready" {
+        format!(
+            "vector index lags the graph by {lag} nodes while analysis is in progress (phase={phase}) \
+             — expected; re-check after the analysis finishes"
+        )
+    } else {
+        format!(
+            "semantic search is running on a STALE snapshot: graph has {nodes} nodes but vectors.usearch \
+             holds {vi_count} (lag {lag}). The index rebuilds in the background after analyze_project — if \
+             this persists, the rebuild did not finish (the engine process may have been recycled mid-build; \
+             see engine logs)"
+        )
+    };
+    (lag, vec![warn])
 }
 
 pub(crate) fn handler_policy_check(args: &Value) -> ToolResponse {
@@ -354,4 +419,38 @@ pub(crate) fn handler_unused(args: &Value) -> ToolResponse {
         "lsp_verified_removed": lsp_verified_removed,
         "unused": verified,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::vector_lag_warnings;
+
+    /// #8：`nodes` 与 `vectors` 不一致必须**出告警**。
+    ///
+    /// 此前 ops(status) 把两个数并列摆着却不报警——没有任何人知道语义搜索
+    /// 在旧快照上跑（2026-09-25 实测：图 22244 / 索引 21760，差 484 无人发现）。
+    #[test]
+    fn vector_lag_warns_when_index_and_graph_disagree() {
+        // 对齐 → 无告警（空数组 = 健康，不是「没检查」）
+        assert_eq!(vector_lag_warnings("ready", 100, true, 100), (0, Vec::<String>::new()));
+        // 索引落后（实测形状）：lag>0 + 告警带上两个数与差值
+        let (lag, w) = vector_lag_warnings("ready", 22244, true, 21760);
+        assert_eq!(lag, 484);
+        assert_eq!(w.len(), 1);
+        assert!(w[0].contains("STALE"), "{}", w[0]);
+        assert!(w[0].contains("22244") && w[0].contains("21760"), "{}", w[0]);
+        // 索引比图新（图被重建/清空过）同样是不一致——负 lag 也要报
+        let (lag, w) = vector_lag_warnings("ready", 10, true, 20);
+        assert_eq!(lag, -10);
+        assert_eq!(w.len(), 1);
+        // 分析中：照实报数，但文案说明属预期（别把正常中间态报成故障）
+        let (lag, w) = vector_lag_warnings("analyzing", 100, true, 10);
+        assert_eq!(lag, 90);
+        assert!(w[0].contains("expected") && w[0].contains("analyzing"), "{}", w[0]);
+        assert!(!w[0].contains("STALE"), "分析中不该报 STALE：{}", w[0]);
+        // 索引文件缺席 → 告警且 lag = 全部节点
+        let (lag, w) = vector_lag_warnings("ready", 100, false, 0);
+        assert_eq!(lag, 100);
+        assert!(w[0].contains("missing"), "{}", w[0]);
+    }
 }

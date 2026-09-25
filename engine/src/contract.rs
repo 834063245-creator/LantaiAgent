@@ -114,7 +114,25 @@
 ///     Release tag（`v<version>`）三处自此同源。
 ///   消费方无需跟改：`serverInfo.version` 本来就是自由字符串，本版只是让它
 ///   从「错的常量」变成「对的值」。
-pub const ENGINE_CONTRACT_VERSION: u32 = 9;
+/// v10（LSP 归因 + 向量索引滞后告警，2026-09-25 实测事故三修）：**模型可见面
+/// 有形状变更**——本版动的是 `ops(status)` 的输出键与 `lsp`/`resolve*` 的文案，
+/// 消费方（读 status JSON 的宿主/模型）需按下述跟改：
+///   ① **`status.store` 改名 `status.active_index`**（值同：当前活跃读索引类型，
+///      如 "MemoryIndex"）。旧名被读成「图只在内存」——图其实持久化在 SQLite
+///      （`hologram.db`），索引只是加速读的内存结构。全仓无消费方读旧键。
+///   ② **`status.vector_index` 增 `lag_nodes` / `stale`** + 顶层**新增 `warnings`
+///      数组**：图节点数与索引向量数不一致时显式告警（此前两数并列摆着不报警，
+///      语义搜索在旧快照上跑无人知晓；实测 22244 vs 21760 差 484）。`phase != ready`
+///      时文案标注「分析中，属预期」。
+///   ③ **`status.lsp.missing` 语义收窄**：只收 `not-installed` / `failed`；
+///      「装了但本进程还没用过」（懒加载正常初态）改挂新增的
+///      **`lsp.installed_idle`**——旧口径把正常初态算成缺件，会把人（含模型）
+///      引去装一个已经装好的服务器。每个 server 条目新增 `state`
+///      （`ready` / `warming` / `never-warmed` / `failed` / `not-installed`）。
+///   ④ **`resolve*` / `find_references` 降级文案按归因分流**：LSP 答了但空
+///      （位置错）不再说 `Install an LSP server`；冷启动窗口内的空结果改报
+///      `LSP busy`（服务器还在索引）；只有真没装才给安装指引。
+pub const ENGINE_CONTRACT_VERSION: u32 = 10;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard（本文件的
 /// `contract_face_fingerprint_matches`）对拍 `CONTRACT_FACE_FINGERPRINT`：
@@ -139,7 +157,7 @@ pub const ENGINE_CONTRACT_FILES: &[&str] = &[
 /// 实现细节：换行归一（CRLF→LF）——工作树 EOL 因 `.gitattributes` 归一而可能
 /// 与索引不同，指纹必须跟着**仓库内容**走；contract.rs 自身在哈希前剔除本行
 /// （自指），其余内容照常参与。
-pub const CONTRACT_FACE_FINGERPRINT: &str = "a7bb41aeb712a0f3";
+pub const CONTRACT_FACE_FINGERPRINT: &str = "8203f0638f22dcb2";
 
 /// 壳专属方法参数（最小形状；Phase 1 接线时并入 dispatch）。
 pub struct ShellParam {

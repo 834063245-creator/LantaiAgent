@@ -52,6 +52,9 @@ pub(crate) fn lsp_has_real_reference(location: &str, name: &str) -> LspCheck {
     };
     // find_references 内部 includeDeclaration=false（不含定义本身），
     // 非空结果 = 有真实使用点。
+    //
+    // 冷启动窗口内的空结果已由 LSP 层转成 Err（#7：服务器还在索引 ⇒ 空结果不算数）
+    // ⇒ 这里归 Unavailable（保持原判断），不会把「还在索引」误判成「确认死代码」。
     match crate::lsp_manager::LspManager::find_references(path, &source, line, column, ext) {
         Ok(locs) if !locs.is_empty() => LspCheck::HasReference,
         Ok(_) => LspCheck::NoReference,
@@ -166,6 +169,73 @@ fn lsp_degraded_details(ext: &str, lsp_error: Option<String>) -> Value {
     details
 }
 
+/// LSP 无结果时的降级响应——**#6 的分流真源**（三种「没结果」说三句话）。
+///
+/// 修的是什么（2026-09-25 实测）：此前 `Ok(空列表)` 不记 error，于是
+/// 「服务器答了、只是这个位置没有结果」一路落进「路径 2：无原生 LSP 可用」，
+/// 吐出 `Install an LSP server for .rs`——同一秒 `missing_lsp` 是空表、日志里躺着
+/// `lazy warm succeeded`，三处自相矛盾。讽刺的是本文件 `lsp_degraded_details`
+/// 上面的注释**明确想防这个**，但防逻辑写成 `if let Some(e) = lsp_error`，
+/// 只覆盖「有 error」那条路，空结果绕过去了。
+///
+/// 判据（`answered_empty` = LSP 层真的答了）：
+///   ① 答了但空 → 位置问题（核对 line/column），**不是**缺服务器；
+///   ② 忙/冷启动（`LSP busy`）→ 稍后重试，别装东西；
+///   ③ 拉起失败（装了但起不来）→ 看原因，重装没用；
+///   ④ 没装 / 无适配器 → 安装指引（这才是「去装 LSP」唯一成立的场合）。
+fn lsp_degraded(ext: &str, what: &str, answered_empty: bool, lsp_error: Option<String>) -> ToolResponse {
+    use crate::lsp_manager::{LspManager, LspServerState};
+    let state = LspManager::server_state_for_ext(ext);
+    let busy = lsp_error
+        .as_deref()
+        .map(crate::lsp_manager::LspManager::err_is_busy)
+        .unwrap_or(false);
+    let mut details = lsp_degraded_details(ext, lsp_error);
+    details["server_state"] = json!(state.as_ref().map(|s| s.as_str()).unwrap_or("no-adapter"));
+    if answered_empty {
+        details["note"] = json!(
+            "LSP server answered but returned no result at this position — this is not a missing-server problem"
+        );
+        return ToolResponse::Degraded {
+            guidance: format!("LSP answered with no result for {} at that position (.{})", what, ext),
+            fallback: format!(
+                "Not an install problem — the .{} server is running. Re-check line/column (schema says 0-based) against the actual symbol position and retry.",
+                ext
+            ),
+            details,
+        };
+    }
+    if busy {
+        return ToolResponse::Degraded {
+            guidance: format!("LSP server for .{} is starting/busy — {} not resolved yet", ext, what),
+            fallback: format!(
+                "Retry in a moment: the .{} server is coming up or still indexing the project. Do not install anything.",
+                ext
+            ),
+            details,
+        };
+    }
+    if let Some(LspServerState::Failed(e)) = state {
+        details["lsp_error"] = json!(e);
+        return ToolResponse::Degraded {
+            guidance: format!("No usable LSP server for .{} — {} skipped", ext, what),
+            fallback: format!(
+                "The .{} server is installed but did not start (see details.lsp_error) — reinstalling will not help; check engine_status and engine logs.",
+                ext
+            ),
+            details,
+        };
+    }
+    ToolResponse::Degraded {
+        guidance: format!("No LSP server available for .{} — {} skipped.", ext, what),
+        fallback: format!(
+            "Install an LSP server for .{} to enable precise {}. Check engine_status for details.",
+            ext, what
+        ),
+        details,
+    }
+}
+
 /// 通过原生 LSP 按需进行类型感知的调用解析。
 /// LSP 服务器未安装时优雅降级。
 pub(crate) fn handler_resolve_call(args: &Value) -> ToolResponse {    let file_path = args.get("file").and_then(|v| v.as_str()).unwrap_or("");
@@ -200,52 +270,47 @@ pub(crate) fn handler_resolve_call(args: &Value) -> ToolResponse {    let file_p
 
     // 尝试原生 LSP（如果池已预热）——真实错误透传给降级详情，
     // 服务器忙/冷启动时 agent 才能拿到「稍后重试」的正确指引。
+    if line == 0 && column == 0 {
+        return ToolResponse::Degraded {
+            guidance: "line/column required for LSP call resolution".into(),
+            fallback: "Provide the 0-based line (and column) of the call site to resolve it via LSP.".into(),
+            details: lsp_degraded_details(&ext, None),
+        };
+    }
     let mut lsp_error: Option<String> = None;
-    let lsp_result = if line > 0 || column > 0 {
-        match crate::lsp_manager::LspManager::resolve_definition(
-            &path_str, &source, line, column, &ext,
-        ) {
-            Ok(locs) => Some(
-                locs.iter()
-                    .map(|loc| json!({
+    let mut answered_empty = false;
+    match crate::lsp_manager::LspManager::resolve_definition(&path_str, &source, line, column, &ext) {
+        // 有定义：P1-2 回写（命中的 calls 边标记 lsp_resolved=true 并落库）
+        Ok(locs) if !locs.is_empty() => {
+            let mapped = locs
+                .iter()
+                .map(|loc| {
+                    json!({
                         "file": crate::lsp_manager::uri_to_path(&loc.uri),
                         "line": loc.range_start_line,
                         "column": loc.range_start_char,
                         "backend": "native_lsp",
-                    }))
-                    .collect::<Vec<_>>()
-            ),
-            Err(e) => {
-                lsp_error = Some(e);
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    if let Some(ref locs) = lsp_result {
-        if !locs.is_empty() {
-            // P1-2 回写：LSP 解析命中的 calls 边标记 lsp_resolved=true 并落库，
-            // 结果在 graph_summary.lsp_resolution 中可统计、逐边可追溯。
-            let write_back = write_back_lsp_resolution(&path_str, func_name, line, locs);
+                    })
+                })
+                .collect::<Vec<_>>();
+            let write_back = write_back_lsp_resolution(&path_str, func_name, line, &mapped);
             return ToolResponse::Success(json!({
                 "file": path_str,
                 "function": func_name,
                 "backend": "native_lsp",
-                "definitions": locs,
+                "definitions": mapped,
                 "note": "resolved via real LSP server",
                 "write_back": write_back,
             }));
         }
+        // #6：服务器**答了**（空 = 这个位置没有可解析的定义，如行列填错）——
+        // 不是「无原生 LSP 可用」，不许落进安装指引。
+        Ok(_) => answered_empty = true,
+        Err(e) => lsp_error = Some(e),
     }
 
-    // ── 路径 2：无原生 LSP 可用 → 降级 ──
-    ToolResponse::Degraded {
-        guidance: format!("Native LSP unavailable for .{} — call resolution skipped.", ext),
-        fallback: format!("Install an LSP server for .{} to enable precise call resolution. Check engine_status for details.", ext),
-        details: lsp_degraded_details(&ext, lsp_error),
-    }
+    // ── 路径 2：无结果 → 按归因分流（#6：空结果 / 忙 / 起不来 / 没装 各说各的）──
+    lsp_degraded(&ext, "call resolution", answered_empty, lsp_error)
 }
 
 /// 解析指定位置符号的类型。
@@ -266,6 +331,7 @@ pub(crate) fn handler_resolve_type(args: &Value) -> ToolResponse {
 
     // 尝试原生 LSP
     let mut lsp_error: Option<String> = None;
+    let mut answered_empty = false;
     match crate::lsp_manager::LspManager::resolve_type(&path_str, &source, line, column, &ext) {
         Ok(hover) if !hover.is_empty() => {
             return ToolResponse::Success(json!({
@@ -274,16 +340,13 @@ pub(crate) fn handler_resolve_type(args: &Value) -> ToolResponse {
                 "type_info": hover,
             }));
         }
-        Ok(_) => {}
+        // #6：服务器答了（空 hover = 该位置没有可解析类型）——不是「缺 LSP 服务器」
+        Ok(_) => answered_empty = true,
         Err(e) => lsp_error = Some(e),
     }
 
-    // ── 路径 2：无原生 LSP 可用 → 降级 ──
-    ToolResponse::Degraded {
-        guidance: format!("Native LSP unavailable for .{} — type resolution skipped.", ext),
-        fallback: format!("Install an LSP server for .{} to enable precise type resolution. Check engine_status for details.", ext),
-        details: lsp_degraded_details(&ext, lsp_error),
-    }
+    // ── 路径 2：无结果 → 按归因分流（#6）──
+    lsp_degraded(&ext, "type resolution", answered_empty, lsp_error)
 }
 
 /// 查找指定位置接口/trait/抽象类的所有实现。
@@ -304,6 +367,7 @@ pub(crate) fn handler_find_implementations(args: &Value) -> ToolResponse {
 
     // 尝试原生 LSP
     let mut lsp_error: Option<String> = None;
+    let mut answered_empty = false;
     match crate::lsp_manager::LspManager::find_implementations(&path_str, &source, line, column, &ext) {
         Ok(locs) if !locs.is_empty() => {
             return ToolResponse::Success(json!({
@@ -317,16 +381,13 @@ pub(crate) fn handler_find_implementations(args: &Value) -> ToolResponse {
                 "count": locs.len(),
             }));
         }
-        Ok(_) => {}
+        // #6：服务器答了（空 = 该位置没有实现）——不是「缺 LSP 服务器」
+        Ok(_) => answered_empty = true,
         Err(e) => lsp_error = Some(e),
     }
 
-    // 回退：无原生 LSP → 降级
-    ToolResponse::Degraded {
-        guidance: format!("Native LSP unavailable for .{} — implementation search skipped.", ext),
-        fallback: format!("Install an LSP server for .{} to enable interface implementation search.", ext),
-        details: lsp_degraded_details(&ext, lsp_error),
-    }
+    // 回退：无结果 → 按归因分流（#6）
+    lsp_degraded(&ext, "interface implementation search", answered_empty, lsp_error)
 }
 
 /// 查找指定位置符号的所有引用。
@@ -347,22 +408,24 @@ pub(crate) fn handler_find_references(args: &Value) -> ToolResponse {
     let _include_decl = args.get("includeDeclaration").and_then(|v| v.as_bool()).unwrap_or(false);
 
     // 尝试原生 LSP
-    let lsp_err: Option<String> = match crate::lsp_manager::LspManager::find_references(&path_str, &source, line, column, &ext) {
-        Ok(locs) if !locs.is_empty() => {
-            return ToolResponse::Success(json!({
-                "file": path_str, "line": line, "column": column,
-                "backend": "native_lsp",
-                "references": locs.iter().map(|l| json!({
-                    "file": crate::lsp_manager::uri_to_path(&l.uri),
-                    "line": l.range_start_line,
-                    "column": l.range_start_char,
-                })).collect::<Vec<_>>(),
-                "count": locs.len(),
-            }));
-        }
-        Ok(_) => None, // 无引用 — 正常
-        Err(e) => Some(e), // 记录错误供诊断
-    };
+    let (lsp_err, lsp_answered): (Option<String>, bool) =
+        match crate::lsp_manager::LspManager::find_references(&path_str, &source, line, column, &ext) {
+            Ok(locs) if !locs.is_empty() => {
+                return ToolResponse::Success(json!({
+                    "file": path_str, "line": line, "column": column,
+                    "backend": "native_lsp",
+                    "references": locs.iter().map(|l| json!({
+                        "file": crate::lsp_manager::uri_to_path(&l.uri),
+                        "line": l.range_start_line,
+                        "column": l.range_start_char,
+                    })).collect::<Vec<_>>(),
+                    "count": locs.len(),
+                }));
+            }
+            // 答了、但没有引用 = 正常（不是「没用上 LSP」——#6 同一归因纪律）
+            Ok(_) => (None, true),
+            Err(e) => (Some(e), false), // 记录错误供诊断
+        };
 
     // 回退：使用图查找入边引用
     match engine::engine_read(|idx| {
@@ -380,10 +443,16 @@ pub(crate) fn handler_find_references(args: &Value) -> ToolResponse {
             "file": path_str, "line": line, "column": column,
             "backend": "graph",
             "native_lsp_available": crate::lsp_manager::LspManager::is_available(&ext),
+            "native_lsp_answered": lsp_answered,
             "note": "Graph-based fallback — use native LSP for precise symbol references. Provide line+column for precise resolution.",
             "references": refs,
             "count": refs.len(),
         });
+        if lsp_answered {
+            out["note"] = json!(
+                "Native LSP answered with no references at that position; showing graph edges instead (re-check line/column if unexpected)."
+            );
+        }
         if let Some(e) = &lsp_err {
             out["lsp_error"] = json!(e);
         }

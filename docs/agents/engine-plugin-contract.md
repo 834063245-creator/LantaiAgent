@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | 9 |
+| 当前版本 | 10 |
 | 模型可见工具数（`tools/list` 缺省面） | 7（4 域 + 3 未折叠） |
 | 可寻址工具数（`tools/call` 原名直达） | 36 |
 | 壳专属方法数 | 11 |
@@ -75,7 +75,7 @@
 
 - `validate`（`validate_project`）：full constraint validation: re-analyze + baseline diff + every structural check → violations AND passing rules (全面检查/有没有违规？); for a lighter first pass use analysis(blindspots)
 - `health`（`project_health`）：health snapshot: coupling density 0-100, recent trends, top-changed files, most-interconnected modules — the score is coupling density, not code quality (项目最近怎么样？)
-- `status`（`engine_status`）：engine status: loading phase, node/edge counts, storage, uptime, contract version, per-tool call counts — call this when tools return empty or before trusting the graph (引擎就绪了吗？)
+- `status`（`engine_status`）：engine status: loading phase, node/edge counts, active read index, vector-index lag (semantic index stale?), uptime, contract version, per-tool call counts — call this when tools return empty or before trusting the graph (引擎就绪了吗？)
 - `diff`（`graph_diff`）：diff the current graph against a baseline JSON snapshot (added/removed/modified nodes, edge-count deltas) — NOT a git diff; for file-level changes use the git tool
 
 ### 未折叠工具（写操作留在顶层）
