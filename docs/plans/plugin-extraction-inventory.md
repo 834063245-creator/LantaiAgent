@@ -482,6 +482,17 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 15,711 行；**9h-3 技能域整件随包** ⇒ 灰区 53 → **52 文件 / 15,355 行**、已认领 119 → 120；**9h-4 记忆域整件随包** ⇒ 灰区 52 → **51 文件 / 15,224 行**、已认领 120 → 121）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
+> **§0.6 现场缺陷（2026-09-25 真机验收时发现并修掉）**：批 9h-3/9h-4 给 skill/memory 两域立的
+> 「实现登记表」在产物侧把登记口**直连内核模块路径**（`agent/skill-impl` / `agent/memory-impl`），
+> 而产物域 esbuild 会把该内核模块整件内联成**副本** ⇒ 产物 apply 登记进副本、内核读的是原件
+> ⇒ 实机表现为**打开工作区即失败**（`MEMORY_DOMAIN_UNAVAILABLE`，`[switchWorkspace] setupAgent failed`；
+> 测试域因 `tests/setup.ts` 显式登记而全绿，故此前门禁无法发现）。修复 = 登记口经**包内宿主桥**
+> （`./host` → faceDeps）落到内核同一份登记表（与 `registerMultiagentComm` / `registerSubagentRuntime`
+> 先例一致），宿主面 +4 键（`registerMemoryImplementation` / `clearMemoryImplementation` /
+> `registerSkillImplementation` / `clearSkillImplementation`）。修复提交 `56b40086` + 格式收口。
+> **教训入施工单**：凡是「产物登记实现」的接缝，登记口**必须**走 `./host`——直连内核路径 =
+> 副本登记，实机必炸而单测全绿。
+
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
 
 
