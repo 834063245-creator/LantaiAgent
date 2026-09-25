@@ -821,11 +821,13 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   - **数字**：红区不变 **6 产物 / 11 文件 / 3,983 行**；灰区 61 → **58 文件 / 18,388 → 17,000 行**；
     平台白名单 119 → **120**（新通道本体）；已认领共享面 114 → **115**（新契约文件）；
     清单 50 → **53**（15 内核 service + 38 出厂产物）。
-  - **真机验收**：见下方 9e 真机条目。
-- **9e 常驻面真机验收**（重建 exe + CDP，2026-09-26）：宿主面 **313 键**（源码派生键集逐一对上）、
-  两产物动态 import 成功（`sessions-home/entry.js` 含首页真身 + `entry.css` 覆盖全部 `.sh-*`；
-  `ask-cards/entry.js` 含卡架真身）、`face.json` 的 `hostApi` = 基线指纹、启动期 console 只剩
-  既有 4 条 `[bridge] invoke failed` + 结构性 404，零装载失败、零异常。
+  - **真机验收**（重建 exe + CDP，2026-09-26）：宿主面 **313 键**（= 源码派生键集 = 基线指纹
+    `283bf40c`）、13 个探针键类型全对；两产物动态 import 成功——`sessions-home/entry.js` **24 KB**
+    （含首页真身；`entry.css` 3.99 MB，自包含内联 jpg/png 资产，与 paper-shell 3.30 MB /
+    canvas-nav 2.64 MB 同一既有形态）+ `ask-cards/entry.js` **24 KB**（含 `showPermission` /
+    `answerActiveText` 真身；css 8 KB）；**DOM 实证**：App 根出现 `.sh-root` / `.sh-head`
+    （首页确实经 `ctx.rootViews` 'home' 槽渲染，非硬编码）；启动期 console 与批 9e 前逐条相同
+    （4 条既有 `[bridge] invoke failed` + 结构性 404），零装载失败、零异常。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 
