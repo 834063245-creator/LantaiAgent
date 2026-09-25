@@ -791,6 +791,11 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   `i18n` 清**已在批 0c 完成**（98 → 22 行，本次复核）；`asset-kinds` 内容表拆分**已随 9g-2 判定撤回**
   （判内核共享，见 §4-10 行）。
   9e（常驻面，含 `ctx.overlays` 新槽）/ 9f（`settings.ts` + `workspace.ts`）仍在队首。
+- **9c-4 施工单已出**（2026-09-26，[`measure-engine-seam-design.md`](measure-engine-seam-design.md)）：
+  依据账本 9c-4 判定 + 本轮实测消费者表（`measure.ts` 2,016 / `type-tokens.ts` 807 / `ink.ts` 375），
+  给出「测量引擎整体接缝化」的三子批路径（9c-4a 契约+门面 → 9c-4b 引擎整件随包 + `paper-shell`
+  标 `required` → 9c-4c 测试面/真机），并把 **观察高度账留内核**（跨模块记账面）写成纪律。
+  解锁后红区最后一件（`paper-shell/type-tokens` 806 + `measure` 2,016）可销。
 
 - **9f 侦察（2026-09-26，未施工——下次从这条接）**：`settings.ts` + `workspace.ts` **都不是单文件搬迁**。
   ① `workspace.ts` 1,076：生命周期宿主在壳行（`shell/rows/workspace.ts` 惰性 import + `WorkspaceCls.open`），
