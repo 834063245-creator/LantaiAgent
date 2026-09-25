@@ -41,7 +41,7 @@
 | 4-4 | `CommandPalette`（204） | `app/CommandPalette.tsx` 204 | 🟢 判内核（跨插件命令面消费者） |
 | 4-5 | MessageBus / TaskBoard / DiscoveryBoard | `message-bus.ts` **已不存在**；`task-board.ts` 319 在；`discovery-board.ts` 228 在 | ✅ 前两件已归家 / 已排期（账② `task-domain`）；🟢 余 `DiscoveryBoard` 判内核 shared |
 | 4-6 | `token-meter`（963） | `agent/token-meter/` 6 件 874 + `token-counter.ts` 89 | ✅ **用户 2026-09-25 裁定 A：立 `ctx.tokenMeter`** —— **2026-09-26 已落**（第 16 个内核 service，契约 v52） |
-| 4-7 | `agent/acp/**`（306） | `acp/server.ts` 306 | 🟢 退役（实现零运行时消费者） |
+| 4-7 | `agent/acp/**`（306） | ~~`acp/server.ts` 306~~ | ✅ **已退役**（2026-09-26）：零生产者 + 零运行时消费者（唯一引用是 `tauri-io` 的类型与自身测试）⇒ 整件删 + 专属测试删 + `createTauriAcpLineIO`（28 行）删 |
 | 4-8 | `viewer-exts` 226 + 五件（2,226） | `viewer-exts.ts` 226 在；五件批 8 已判 shared | 🟢 余一件判内核 shared（有真内核读点） |
 | 4-9 | 壳行贡献通道缺口 | 仍缺（`builtinShellRows()` 硬编码数组） | ✅ **裁定：立，与批 10 同窗**（见 §2.2）；**施工设计已出**（`workspace-activation-channel-design.md` **§9**：`ctx.shellRows` 第 17 个 service + `update-check` 随包） |
 | 4-10 | `asset-kinds.ts`（581） | 581 在 | ✅ 批 9g-2 判内核 shared（禁用产物会让旧卷资产块降级） |
@@ -150,7 +150,7 @@
 | 3 | §4-6 `token-meter` 立 service（已拍） | — | 中（契约） | ✅ **已落**（2026-09-26）：第 16 个内核 service `ctx.tokenMeter`，契约 v51 → v52；分类缺口清零 |
 | 4 | 9f `settings` / provider 数据面 | 需施工单 | 中高 | 账③ −700 |
 | 5 | **批 10 + §4-9（同窗）** | **真机验收通过** | **高** | ✅ **已落**（2026-09-26）：两条通道（`ctx.workspaces` / `ctx.shellRows`）+ `update-check` 随包 + 引擎接线产物化（名册 39 / 清单 57 / 宿主面 331）；真机四条验收全通 |
-| 6 | §4 自裁项收尾（4-7 退役等） | — | 低 | −306；账目转 `shared` |
+| 6 | §4 自裁项收尾（4-7 退役等） | — | 低 | ✅ **已落**（2026-09-26）：`agent/acp/**` 306 行按死代码退役（+ 其专属测试 + `tauri-io` 的 ACP 行 IO 28 行）；其余六条判据已在仓内 |
 
 **为什么批 10 排第 5 而不是第 1**：①它只解锁剩余盘子的 ≈8%，却是风险最高的一批（新生命周期契约面
 + 用户可见的引擎开关）；②**它的消费者从未被验证跑通过** —— 总账 §0.2–§0.5 记着 09-24 一天连修

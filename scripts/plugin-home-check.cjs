@@ -56,12 +56,13 @@ const PLATFORM = [
   // ── 批 9a 账目登记三件（§7 已拍板：§4-6 / §4-7 / §4-12）──
   // 三条都不是「欠账」，而是**分类缺口**（既非 service 产物、也无 feature 归属）：
   // 判定留内核后在此登记，灰区不再重复报警。
+  // §4-7（2026-09-26 落地）：`agent/acp/**` 零生产者 + 零运行时消费者 ⇒ 按死代码**整件退役**
+  //（306 行 + 其专属测试 + `agent/mcp/tauri-io.ts` 的 ACP 行 IO）⇒ 白名单条目一并撤销（文件已不在）。
   // §4-6 用户 2026-09-25 裁定 A（2026-09-26 落地）：token 计量升为内核第 16 个 service
   // `ctx.tokenMeter`（`agent/token-meter/service.ts`）——内核 service 实现住内核是本仓
   // 常态（对齐 `composition/` 通道内核与 `agent/code-run/runtime-service.ts`），
   // 消费面 = `ctx.tokenMeter.createLedger()/restoreLedger()/usage`，故本前缀留白名单。
   { prefix: 'agent/token-meter/', why: '§4-6 A：第 16 个内核 service ctx.tokenMeter（账本工厂 + 分桶代数，内核不可禁用）' },
-  { prefix: 'agent/acp/', why: '§4-7 B：ACP 协议面 = 平台（当前零产线消费者，仅测试 + 类型 import）' },
 ];
 
 const lines = (p) => {

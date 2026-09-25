@@ -6,7 +6,6 @@
 //! 与 base transport / acp 解耦（它们保持纯逻辑、可测），本文件只在 Tauri 宿主组装。
 
 import { typedListen, typedRpc } from '../../rpc-contract';
-import type { AcpLineIO } from '../acp/server';
 import type { ProcIO } from './transport';
 
 /** 用 Rust protocol_bridge 起子进程并返回 ProcIO（webview 用）。spawn 完成后 resolve。
@@ -66,36 +65,6 @@ export async function createTauriProcIO(
     kill: () => {
       close();
       void typedRpc('protocol_bridge_kill', { id: bridgeId });
-    },
-  };
-}
-
-/** 用 Rust protocol_bridge 构造 ACP 行 I/O（webview 用）。 */
-export async function createTauriAcpLineIO(bridgeId: string, command: string, args: string[]): Promise<AcpLineIO> {
-  const proc = await createTauriProcIO(bridgeId, command, args);
-  const pending: Array<(line: string) => void> = [];
-  let eof = false;
-  proc.onStdoutLine((line) => {
-    const cb = pending.shift();
-    if (cb) cb(line);
-  });
-  proc.onExit(() => {
-    eof = true;
-    for (const cb of pending.splice(0)) cb('__eof__');
-  });
-  return {
-    readLine() {
-      // 2026-09-01 审计：EOF 后再 readLine 原本永久 pending（EOF 只 flush 当时
-      // 在途队列）——现在 eof 旗标让后续读取立即返回 null（流终语义）。
-      if (eof) return Promise.resolve(null);
-      return new Promise<string | null>((resolve) => {
-        pending.push((line) => {
-          resolve(line === '__eof__' ? null : line);
-        });
-      });
-    },
-    writeLine(line) {
-      proc.writeLine(line);
     },
   };
 }

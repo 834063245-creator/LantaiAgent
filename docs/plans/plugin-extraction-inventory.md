@@ -354,7 +354,7 @@ manifest.json —— 包内合计 30～110 行。
 | 附图与资产事件通道 | `request-images.ts` 259 + `tool-images.ts` 91 = **350** | 随 asset-domain（归属待裁） | 工具结果管道 vs 资产域功能 |
 | state-hooks 数据源 | `state-inject.ts` 231 + `cache-store.ts` 107 = **338** | 随 `state-hooks` 包（或判共享留内核） | ✅ **批 6c 判内核共享面留内核**：消费者 `workspace.ts:17,30` / `runtime.ts:43` / `blueprint.ts:56` 全在内核（随批 9 workspace 拆分再动） |
 | 第一方工具管道 hook | `hooks.ts` 301 + `hooks/` 31 = **332** | 新包 `state-hooks/` | 🟡 **批 6c 已落 ≈200 行**：`hooks.ts` 137–301（四工厂 + 构建输出解析器）与 `hooks/board-tracking-hook.ts` 进包；**留内核 136**：`Hook`/`PreflightHook` 接口 + `HookRegistry`/`PreflightHookRegistry` 两类（机制，七处内核消费）。登记表 + service 类 fail-loud（见 §6.2） |
-| ACP server（**疑似死代码**） | `agent/acp/` = **306** | 新包 `acp-server/` 或**退役** | 生产零消费者（唯一引用是类型 + 自身测试） |
+| ~~ACP server~~ | ~~`agent/acp/` = 306~~ | ✅ **退役**（2026-09-26，§4-7） | 实测确认零生产者 + 零运行时消费者（唯一引用：`agent/mcp/tauri-io.ts` 的 `AcpLineIO` 类型 + 自身测试）⇒ 整件删；连带删 `createTauriAcpLineIO`（28 行，其唯一用途就是伺候该 server）与 `tests/acp-server.test.ts` |
 
 ### 2.4 UI 面 12 项 —— 10,402 行（`app/**`+`ui/**` 共 22,901 行的 45%）
 
@@ -434,7 +434,7 @@ manifest.json —— 包内合计 30～110 行。
 | 4 | `CommandPalette`（204） | 「命令通道消费面 = 应用框架件」判留内核；严格读法（功能 UI 一律插件化）则应插件化 |
 | 5 | MessageBus / TaskBoard / DiscoveryBoard（合计 ≈1,309） | 「多产物共享的平台基础」可辩护留内核；判欠账的理由是它们只服务多 Agent 一族且已在 capability 清单里 |
 | 6 | token-meter（963） | **分类缺口**：既不在 13 个 kernel service，也不是 feature 产物 ⇒ 是否立 `ctx.tokenMeter` service（DSH 有） |
-| 7 | `agent/acp/**`（306） | 生产零消费者 ⇒ 拆包还是按死代码退役 |
+| 7 | `agent/acp/**`（306） | ✅ **退役**（2026-09-26）：零生产者 + 零消费者（含 `tauri-io` 的 ACP 行 IO 28 行）——死代码不拆包 |
 | 8 | `paper/viewer-exts.ts` 226 + `tool-text/markdown/marks/fold/translate` 2,226 | 判定随「`app/paper/**` 归属」翻转——第 1 条裁定后须重判 |
 | 9 | **壳行贡献通道缺口** | 插件无法贡献 boot 行（`builtinShellRows()` 是硬编码数组）⇒ `update-check` 一类「产物需要 boot 期副作用」的需求全卡住；需立 `ctx.shellRows` 一类通道 |
 | 10 | `asset-kinds.ts`（581） | 被 `composition/renderer-service.tsx` 与 `paper/measure.ts` 共享：随 asset-domain 迁 or 判「注册表机制」留内核 | ✅ **批 9g-2 裁定：判内核共享面（名册 `shared`），不再拆内容表**——两个内核读点（`renderer-service.tsx:127` `resolveAssetBlock` · `paper/measure.ts:751` `assetPresentationOf`）**每次渲染/测高**都要读 `presentations` 白名单 + `defaultPresentation`；asset-domain 是**可禁用** feature ⇒ 内容表随包后，禁用该产物会让旧卷里的资产块整片降级成 `'*'` JSON 兜底（用户可见回归）；改走「产物登记 + `required`」则代价是把禁用手柄收走。收益（改 kind 表免重建 exe）不抵这两笔 ⇒ 维持单一真源留内核 |
@@ -491,7 +491,9 @@ manifest.json —— 包内合计 30～110 行。
 （两条通道本体落 `composition/` 平台白名单；壳行 11 → 10 + 贡献行 1）。
 **批 10 部件二 + 引擎产物化后（2026-09-26 重测）**：红 **0** · 绿 **123 平台 + 121 已认领**
 （内核 `plugins/bundled-engine-prefs.ts` 转被认领）· 灰 **49 文件 / 15,002 行**（原 `plugins/bundled-engine.ts`
-移出后：接线随包、平台面拆分留内核）。历史：§4-6 后为红 2 产物 / 5 文件 / 1,502 行（§1 的 4 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80 · 9h-1 销 `blueprint.ts` 410 · 9h-2 销 `default-loop.ts` 469 · 9h-3 销 `skills.ts` 377 + `builtin-skills.ts` 358 · 9h-4 销 `memory.ts` 733 + `memory-bundle-client.ts` 134）；
+移出后：接线随包、平台面拆分留内核）。
+**§4-7 退役后（2026-09-26 重测）**：红 **0** · 绿 **122 平台 + 121 已认领**（`agent/acp/` 白名单条目随退役撤销）·
+灰 **49 文件 / 15,002 行**（被删的是死代码，本就不在灰区）。历史：§4-6 后为红 2 产物 / 5 文件 / 1,502 行（§1 的 4 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80 · 9h-1 销 `blueprint.ts` 410 · 9h-2 销 `default-loop.ts` 469 · 9h-3 销 `skills.ts` 377 + `builtin-skills.ts` 358 · 9h-4 销 `memory.ts` 733 + `memory-bundle-client.ts` 134）；
 绿 **122 平台 + 121 已认领**；灰 **53 文件 / 15,355 行**（批 8 把渲染面判据层收成 `shared`：
 `markdown` / `marks` / `tool-text` / `fold` / `translate` 五件进 paper-renderers 与 renderers 的
 shared 名单；批 9a 把 token-meter / acp 登记进平台白名单，9c-1~3 把 selection / virtualize /
@@ -855,6 +857,13 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   `type-tokens.ts` 807）整件随 paper-shell 包 + 该产物标 `required` + `KERNEL_DEFAULT` 换
   `null`（fail-loud）+ 宿主面键集按实测补齐。
 
+- **§4-7 ACP 协议面按死代码退役**（2026-09-26；用户 2026-09-25 裁定 B「判据已在仓内，Agent 顺手做」）：
+  `agent/acp/server.ts` **306 行**整件删 + `tests/acp-server.test.ts` 删 + `agent/mcp/tauri-io.ts` 的
+  `createTauriAcpLineIO`（28 行）删 + 该文件的 `AcpLineIO` 类型导入删（`tauri-io.ts` 102 → 71 行）。
+  判据实测：`createAcpServer` 唯一引用是自身测试；`createTauriAcpLineIO` 零消费者（其唯一用途就是
+  伺候该 server）；无生产路径。`plugin-home-check.cjs` 的 `agent/acp/` 白名单条目一并撤销（文件已不在）。
+  **对账**：红 0 · 平台 123 → **122** · 已认领 121 · 灰 49 / 15,002（死代码本不在灰区）。
+  **至此用户裁定的六项排期全部落完**（验收 → 9h-5 → 9c-4 → §4-6 → 9f → 批 10 + §4-9 → §4 自裁项收尾）。
 - **批 10 部件二 + 引擎接线产物化**（2026-09-26，设计件 §4.2/§4.3）：`plugins/bundled-engine.ts` 292 行按
   「接线 vs 平台面」切开——**接线**（`bundledEngineDecl` + `registerBundledEngineTools`，≈190 行）随
   `plugins/builtin/bundled-engine/`（`wiring.ts` + `index.ts`：经 `ctx.workspaces.onActivate` 复现原内联接线
