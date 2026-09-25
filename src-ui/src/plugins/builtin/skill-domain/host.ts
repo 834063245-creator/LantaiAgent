@@ -15,5 +15,7 @@
 export type { SkillDef, SkillImplementation, SkillRegistryFace, SkillScan } from '../../../agent/skill-contract';
 export type { Tool } from '../../../agent/tool';
 export { defineTool } from '../../../agent/tools/define-tool';
+// 登记口（产物 apply 用；产物域经 faceDeps 落到内核同一份登记表——见 host.aliased 注）
+export { clearSkillImplementation, registerSkillImplementation } from '../../../agent/skill-impl';
 export type { DirEntry } from '../../../rpc-contract';
 export { kernelGlobalMemoryDir, kernelListDirectoryFlat, kernelReadFile } from '../../../rpc-contract';

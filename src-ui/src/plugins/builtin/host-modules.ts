@@ -59,7 +59,12 @@ import { errText, finishReasonMessage, parseFilePathArg } from '../../agent/loop
 // 批 9h-4 归家（2026-09-26）：记忆域实现随 memory-domain 包 ⇒ 撤 `createMemoryTools` 桥键
 // （该包自持实现，经 `agent/memory-impl.ts` 登记表反向登记）；改桥「事实保存授权」消费口
 // （跨模块一次性状态留内核、产物只取用）。
-import { consumeFactAuthorization } from '../../agent/memory-impl';
+import {
+  clearMemoryImplementation,
+  consumeFactAuthorization,
+  registerMemoryImplementation,
+} from '../../agent/memory-impl';
+import { clearSkillImplementation, registerSkillImplementation } from '../../agent/skill-impl';
 import {
   AgentNotFoundError,
   InboxFullError,
@@ -602,6 +607,13 @@ const faceDeps = {
   // 「事实保存授权」消费口）
   kernelReadMemoryBatch,
   consumeFactAuthorization,
+  // 批 9h-3/9h-4 现场修复（2026-09-25）：产物 apply 的**登记口**必须经 faceDeps 落到内核同一份
+  // 登记表——产物域直连内核模块路径会被 esbuild 内联成副本，登记进副本 = 内核读不到
+  // （实机病灶：workspace 打开报 MEMORY_DOMAIN_UNAVAILABLE）。
+  registerMemoryImplementation,
+  clearMemoryImplementation,
+  registerSkillImplementation,
+  clearSkillImplementation,
   // Phase 1 事件日志（2026-09-15 DSH 参照移植）：durable append 进宿主桥
   // （append_events 动作的落盘面——fsync 版 kernel helper）。
   kernelAppendFileDurable,

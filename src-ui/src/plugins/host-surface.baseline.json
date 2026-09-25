@@ -1,5 +1,5 @@
 {
-  "fingerprint": "2578f632",
+  "fingerprint": "e7c9c69a",
   "keys": [
     "ANCHOR",
     "Agent",
@@ -89,7 +89,9 @@
     "classifyError",
     "classifyProviderError",
     "classifyStreamError",
+    "clearMemoryImplementation",
     "clearPaperMeasureCache",
+    "clearSkillImplementation",
     "clearWorkspaceListCache",
     "collapseToolGroups",
     "consumeFactAuthorization",
@@ -242,8 +244,10 @@
     "registerCompactionImplementation",
     "registerCompactionTools",
     "registerGoalImplementation",
+    "registerMemoryImplementation",
     "registerMultiagentComm",
     "registerPlanImplementation",
+    "registerSkillImplementation",
     "registerStateHooksImplementation",
     "registerSubAgentTools",
     "registerSubagentRuntime",

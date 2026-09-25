@@ -13,7 +13,11 @@
 //     `agent/memory-contract.ts`。
 
 export type { MemoryManagerFace, MemorySavedInfo } from '../../../agent/memory-contract';
-export { consumeFactAuthorization } from '../../../agent/memory-impl';
+export {
+  clearMemoryImplementation,
+  consumeFactAuthorization,
+  registerMemoryImplementation,
+} from '../../../agent/memory-impl';
 export type { Tool } from '../../../agent/tool';
 export { defineTool } from '../../../agent/tools/define-tool';
 export {
