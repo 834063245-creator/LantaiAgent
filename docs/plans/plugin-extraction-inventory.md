@@ -861,6 +861,12 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   （复现装载态，同 9b 的 LSP 先例）。红区 5 → **4 产物 / 3,573 → 3,104 行**；灰区 54 →
   **53 文件 / 16,353 → 15,711 行**；空壳集 4 → **3 条（2 纯壳 + 1 半壳）**。行为零变更
   （convergence 双轨零漂移为证）。
+  **真机验收**（重建 exe + CDP，2026-09-26）：宿主面运行时 **323 键**（= 基线键集 = 指纹
+  `faade5dd`）、11 个探针键类型全对且 `defaultAgentLoop` 键已撤；`agent-loop-service/entry.js`
+  **14.5 KB** 动态 import 成功，含 `builtin/default` / `AgentLoopService` / 默认 loop 的
+  sessionLog 钩子（`flushPersistence`）真身；名册 `required` 经 `FirstPartyPluginMeta` 生效
+  （loader 两条禁用路径直接跳过——`loader.ts:744/756`）；启动期 console 与前一批逐条相同，
+  零装载失败、零异常。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）
 **件**：`agent/tools/coding.ts` **998** + 随行私有件 `git-porcelain.ts` 126 · `sticky-cwd.ts` 138 ·
