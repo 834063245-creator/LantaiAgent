@@ -836,7 +836,13 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   机制」切开——十四项 capability 定义（+ 表内私有 `requireAgent` / `STATE_HOOKS_UNAVAILABLE`）
   **281 行进包** `plugins/builtin/capability-segments/segments.ts`（逐字搬移、数组序原样 = 注册序
   = 工具面表序）；内核留 158 行（形状 + `AgentBlueprint` 类）。桥面从「一个 `firstPartyCapabilities`
-  键」翻面成**取用面 12 键**（批 6/7 登记表读面 6 + 内核工具工厂/域折叠表 6）⇒ 宿主面 313 → **323 键**。
+  键」翻面成**取用面 12 键**（批 6/7 登记表读面 6 + 内核工具工厂/域折叠表 6）⇒ 宿主面
+  313 → **321 键**（基线指纹 `283bf40c` → **`40d6680c`**）。
+  **真机验收**（重建 exe + CDP，2026-09-26）：宿主面运行时 **321 键**（= 基线键集）、12 个新桥键
+  类型全对且 `firstPartyCapabilities` 键已撤、`capability-segments/entry.js` **10 KB** 含十四项
+  内容表真身（`plan-tools` / `communication-tools` / `discovery-tools` / `merge-tools` /
+  `state-hooks` / `code-execution` 探针全中）、`face.json` 的 `hostApi` = 基线指纹；启动期 console
+  与前一批逐条相同，零装载失败、零异常。
   名册 `impl` 销账（空壳集 5 → **4 条 = 3 纯壳 + 1 半壳**）。红区 6 → **5 产物 / 3,983 → 3,573 行**；
   灰区 58 → **54 文件 / 17,000 → 16,353 行**（四个内核件转被认领）；已认领 115 → **119**。
   行为零变更（convergence 双轨零漂移为证）。
