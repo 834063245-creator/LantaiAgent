@@ -8,11 +8,11 @@
 // 内核登记表（`agent/memory-impl.ts`，service 语义：缺实现 fail-loud），内核 `workspace.ts` 不再
 // `new MemoryManager`，改走门面 `createMemoryManager` / `memoryBundleIngest`。
 
+import type { Context } from '../../../cordis';
+import { noCacheContributions, registerFamily } from '../contribution-helpers';
 // 登记函数**必须经包内宿主桥**取：产物域 esbuild 会把内核模块整件内联成副本，直连内核路径
 // = 登记进副本（内核看不到）——实机 2026-09-25 现场取证：workspace 打开报 MEMORY_DOMAIN_UNAVAILABLE。
 import { clearMemoryImplementation, registerMemoryImplementation } from './host';
-import type { Context } from '../../../cordis';
-import { noCacheContributions, registerFamily } from '../contribution-helpers';
 import { createMemoryTools, MemoryManager } from './memory';
 import { memoryBundleIngest } from './memory-bundle-client';
 

@@ -8,11 +8,11 @@
 // （`agent/skill-impl.ts`，service 语义：缺实现 fail-loud），内核 `workspace.ts` 不再
 // `new SkillRegistry`、`runtime.ts` 不再直接调 `scanSkills`，改走登记表门面。
 
+import type { Context } from '../../../cordis';
+import { noCacheContributions, registerFamily } from '../contribution-helpers';
 // 登记函数**必须经包内宿主桥**取：产物域 esbuild 会把内核模块整件内联成副本，直连内核路径
 // = 登记进副本（内核看不到）——与 memory-domain 同款实机缺陷（2026-09-25 现场取证）。
 import { clearSkillImplementation, registerSkillImplementation } from './host';
-import type { Context } from '../../../cordis';
-import { noCacheContributions, registerFamily } from '../contribution-helpers';
 import { createSkillTool, SkillRegistry, scanSkills } from './skills';
 
 /** 技能域实现面（登记项；与包内实现同源——`tests/setup.ts` 复现装载态用同一对象）。 */

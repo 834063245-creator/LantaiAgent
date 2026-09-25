@@ -64,7 +64,6 @@ import {
   consumeFactAuthorization,
   registerMemoryImplementation,
 } from '../../agent/memory-impl';
-import { clearSkillImplementation, registerSkillImplementation } from '../../agent/skill-impl';
 import {
   AgentNotFoundError,
   InboxFullError,
@@ -86,7 +85,7 @@ import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '.
 import { buildCompactedSummaryMessage } from '../../agent/session-log';
 // 批 9h-3 归家（2026-09-26）：技能域实现随 skill-domain 包 ⇒ 撤 `createSkillTool` 桥；
 // `scanSkills` 改经内核登记表门面（settings-domain 的 SkillsPage 列表源读它）。
-import { scanSkills } from '../../agent/skill-impl';
+import { clearSkillImplementation, registerSkillImplementation, scanSkills } from '../../agent/skill-impl';
 import { parseIsolationDiff } from '../../agent/spill';
 import { activeStateHooksImplementation, registerStateHooksImplementation } from '../../agent/state-hooks-impl';
 import {
