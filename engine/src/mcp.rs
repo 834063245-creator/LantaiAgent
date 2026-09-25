@@ -418,7 +418,7 @@ impl McpServer {
                 "version": env!("CARGO_PKG_VERSION"),
                 "author": "Wenbing Jing",
                 "license": "MIT",
-                "homepage": "https://github.com/834063245-creator/HoloGram"
+                "homepage": "https://github.com/834063245-creator/LantaiAgent"
             },
             "instructions": instructions
         }))

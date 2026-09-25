@@ -1,0 +1,148 @@
+# 发版前平台预检（手动触发，常驻）。
+#
+# ── 为什么需要它（2026-09-24 v1.0.2 实拍）──────────────────────────────────────
+# engine-cli 的三条平台腿**只在打 `v*` tag 时才会被编译/执行一次**（release.yml）。
+# 于是任何平台相关的破损都攒到发版当天才第一次暴露，而那时 Release 已经被部分创建：
+#   · v1.0.2 ubuntu 腿 —— `./build.sh: Permission denied`（exit 126，可执行位只活在索引里）
+#   · v1.0.2 macOS 腿  —— 引擎在 macOS 上根本编译不过（`libc::prctl` 是 Linux 专有，
+#                          却圈在 `#[cfg(unix)]` 里；该腿是当天新加的，第一次被 macOS 编译）
+#   · 顺带查出的第三处 —— markdown 语法在 Linux 上选到 inline parser（导出符号名对不上，
+#                          产物永远加载不上，而发版自检当时只数文件个数，照样全绿）
+# 三条都属于「平台腿从没被跑过」这一类，本地 Windows 全绿也照样漏。
+#
+# ── 怎么用 ────────────────────────────────────────────────────────────────────
+# 打 tag **之前**手动跑一次：Actions → 本 workflow → Run workflow（可选分支/ref）。
+# 三平台并行，全绿再打 tag；红了就在普通分支上修，不必拿发版去赌。
+# 手动触发是刻意的：不占 push/PR 的常态开销（本仓 CI 的既定取向 = 只留必过的常态门禁）。
+#
+# ── 与 release.yml 的关系 ─────────────────────────────────────────────────────
+# 本 workflow 的每一步都是 release.yml `engine-cli` 腿的**镜像**（同名步骤、同命令），
+# 只多两样：① `Assert build.sh exec bit`（预检专属，把索引里的 100755 摆到台面上）；
+# ② 末尾上传产物，方便真机手测。**改 release.yml 那条腿时，同步改这里**——它俩一旦漂移，
+# 预检的「绿」就不再能预测发版。
+name: Engine platform preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engine-cli:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: hologram-engine-linux-x64
+          - os: macos-latest
+            artifact: hologram-engine-macos-arm64
+          - os: windows-latest
+            artifact: hologram-engine-windows-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      RUSTC_WRAPPER: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential g++ pkg-config
+
+      # build.sh 的可执行位只活在索引里（本仓主力开发机是 Windows，core.fileMode=false），
+      # 从 Windows 侧重入库一次就会静默抹掉 —— 2026-09-24 v1.0.2 ubuntu 腿就是这么红的。
+      - name: Assert build.sh exec bit survived checkout
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ ! -x engine/grammars/build.sh ]; then
+            echo "::error::engine/grammars/build.sh 检出后不可执行（索引里的 100755 没生效）——\
+            先跑 git update-index --chmod=+x engine/grammars/build.sh 并提交"
+            exit 1
+          fi
+          ls -l engine/grammars/build.sh
+
+      - name: Build engine
+        run: cargo build --release -p hologram-engine
+
+      - name: Build dynamic grammars (Linux/macOS)
+        if: runner.os != 'Windows'
+        working-directory: engine/grammars
+        run: bash ./build.sh --all
+
+      - name: Build dynamic grammars (Windows)
+        if: runner.os == 'Windows'
+        working-directory: engine/grammars
+        shell: pwsh
+        run: ./build.ps1 -All
+
+      # 与 release.yml 的 Verify grammar artifacts 同构：数量 + 符号两道。
+      # 数量够 ≠ 能用 —— markdown 的 monorepo 里 block / inline 两个语法导出符号不同名，
+      # 选错那个产物文件名一样、数量检查全绿，用户侧却永远加载不上。
+      - name: Verify grammar artifacts
+        shell: bash
+        run: |
+          expected=$(grep -v '^#' engine/grammars/grammars.txt | grep -v '^[[:space:]]*$' | wc -l | tr -d ' ')
+          case "${{ runner.os }}" in
+            Windows) ext=dll ;;
+            macOS)   ext=dylib ;;
+            *)       ext=so ;;
+          esac
+          actual=$(ls -1 engine/grammars/tree-sitter-*.$ext 2>/dev/null | wc -l | tr -d ' ')
+          echo "grammars.txt 声明 $expected 个，实际产出 $actual 个 .$ext"
+          if [ "$actual" -lt "$expected" ]; then
+            echo "::error::动态语法产物缺失（期望 $expected 个 .$ext，实得 $actual）"
+            exit 1
+          fi
+          if command -v nm >/dev/null 2>&1; then
+            for lib in engine/grammars/tree-sitter-*.$ext; do
+              lang=$(basename "$lib" ".$ext" | sed 's/^tree-sitter-//')
+              sym=tree_sitter_$(echo "$lang" | tr '-' '_')
+              if ! nm -g "$lib" 2>/dev/null | grep -qE "(^|[^a-zA-Z0-9])${sym}$"; then
+                echo "::error::$lib 未定义符号 $sym —— 该语法库引擎加载不上（静默退化）"
+                exit 1
+              fi
+              echo "  符号 OK: $sym  ←  $lib"
+            done
+          else
+            echo "::warning::nm 不可用，跳过语法符号自检"
+          fi
+
+      - name: Smoke test binary
+        shell: bash
+        run: |
+          exe=./target/release/hologram-engine
+          [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
+          "$exe" --version
+          "$exe" --help | head -5
+
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          mkdir -p staging/grammars
+          case "${{ runner.os }}" in
+            Windows)
+              cp target/release/hologram-engine.exe staging/
+              cp engine/grammars/tree-sitter-*.dll staging/grammars/
+              cd staging && 7z a -tzip ../${{ matrix.artifact }}.zip . ;;
+            macOS)
+              cp target/release/hologram-engine staging/
+              cp engine/grammars/tree-sitter-*.dylib staging/grammars/
+              tar -czf ${{ matrix.artifact }}.tar.gz -C staging . ;;
+            *)
+              cp target/release/hologram-engine staging/
+              cp engine/grammars/tree-sitter-*.so staging/grammars/
+              tar -czf ${{ matrix.artifact }}.tar.gz -C staging . ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip

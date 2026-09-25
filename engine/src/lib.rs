@@ -16,12 +16,6 @@
 // Copyright (c) 2026 Wenbing Jing.
 // ═══════════════════════════════════════════════════════════════
 
-/// 所有输出中嵌入的规范生成器签名。
-///
-/// 这是结构性水印——从一处移除不会影响其他地方。
-/// 它出现在 MCP 响应、分析输出、CLI --version 和服务器握手中。
-pub const GENERATOR: &str = "HoloGram v4.0 — Copyright (c) 2026 Wenbing Jing — MIT License — github.com/834063245-creator/HoloGram";
-
 /// SPDX 许可证标识符，用于机器可读的合规性检查。
 pub const SPDX_LICENSE: &str = "MIT";
 

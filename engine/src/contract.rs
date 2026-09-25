@@ -114,7 +114,18 @@
 ///     Release tag（`v<version>`）三处自此同源。
 ///   消费方无需跟改：`serverInfo.version` 本来就是自由字符串，本版只是让它
 ///   从「错的常量」变成「对的值」。
-/// v10（LSP 归因 + 向量索引滞后告警，2026-09-25 实测事故三修）：**模型可见面
+/// v10（仓库改名收口）：**模型工具面形状零变更**——工具名 / schema / 输出形态 /
+/// 壳方法清单一律照旧，消费方无需跟改。本版清的是嵌在握手信息里的旧仓库名：
+/// `initialize` 的 `serverInfo.homepage` 原写作 `github.com/…/HoloGram`（2026-09
+/// 仓库已改名 LantaiAgent），现按现名钉死。旧路径目前仍靠 GitHub 的改名 301
+/// 重定向兜着，但那是**会消失**的兜底（同账号下再出现一个叫 HoloGram 的仓库即
+/// 失效，届时宿主诊断与用户反馈看到的链接静默 404），而 homepage 本就是给人看的
+/// 规范地址，不该赌别人的重定向。
+///   连带（非契约面，同一 commit）：CLI `--version` 打印的仓库地址、`SECURITY.md`
+///   的私密报告链接同步改现名；`lib.rs` 那个从未被任何代码引用、版本号还冻在
+///   v4.0（引擎实为 1.0.2），且注释自称「所有输出里的水印」（实际各处输出各自
+///   硬编码）的 `GENERATOR` 常量按死代码删除。
+/// v11（LSP 归因 + 向量索引滞后告警，2026-09-25 实测事故三修）：**模型可见面
 /// 有形状变更**——本版动的是 `ops(status)` 的输出键与 `lsp`/`resolve*` 的文案，
 /// 消费方（读 status JSON 的宿主/模型）需按下述跟改：
 ///   ① **`status.store` 改名 `status.active_index`**（值同：当前活跃读索引类型，
@@ -132,7 +143,9 @@
 ///   ④ **`resolve*` / `find_references` 降级文案按归因分流**：LSP 答了但空
 ///      （位置错）不再说 `Install an LSP server`；冷启动窗口内的空结果改报
 ///      `LSP busy`（服务器还在索引）；只有真没装才给安装指引。
-pub const ENGINE_CONTRACT_VERSION: u32 = 10;
+///   ⑤ 版本号说明：本版原拟 v10，与远端「仓库改名收口」撞号（后者已推送，
+///      属既成事实），故本版重编号为 v11。
+pub const ENGINE_CONTRACT_VERSION: u32 = 11;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard（本文件的
 /// `contract_face_fingerprint_matches`）对拍 `CONTRACT_FACE_FINGERPRINT`：
@@ -157,7 +170,7 @@ pub const ENGINE_CONTRACT_FILES: &[&str] = &[
 /// 实现细节：换行归一（CRLF→LF）——工作树 EOL 因 `.gitattributes` 归一而可能
 /// 与索引不同，指纹必须跟着**仓库内容**走；contract.rs 自身在哈希前剔除本行
 /// （自指），其余内容照常参与。
-pub const CONTRACT_FACE_FINGERPRINT: &str = "8203f0638f22dcb2";
+pub const CONTRACT_FACE_FINGERPRINT: &str = "486df19d832bcc98";
 
 /// 壳专属方法参数（最小形状；Phase 1 接线时并入 dispatch）。
 pub struct ShellParam {
