@@ -56,11 +56,11 @@
   {
     "dir": "paper-shell",
     "buildOrder": 6,
-    "description": "纸壳面板（写作视图 + toggle 命令）",
+    "description": "纸壳面板（写作视图 + toggle 命令；测量引擎已随包，批 9c-4b）",
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["panels", "commands"],
-    "impl": ["paper/type-tokens.ts"],
+    "required": true,
     "shared": [
       "paper/block-model.ts",
       "paper/region-view.ts",
@@ -69,7 +69,6 @@
       "paper/space.ts",
       "paper/minimap-core.ts",
       "paper/ink.ts",
-      "paper/measure.ts",
       "paper/group.ts",
       "paper/virtualize.ts",
       "paper/selection.ts",

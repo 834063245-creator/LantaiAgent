@@ -15,7 +15,6 @@ import {
   ANCHOR,
   canvasWheelMode,
   getCanvasStore,
-  injectPaperTokens,
   loadSettings,
   lodActive,
   lodFarActive,
@@ -29,6 +28,7 @@ import {
   zoomAt,
 } from './host';
 import { panForAnchor } from './landing';
+import { injectPaperTokens } from './type-tokens';
 import type { PaperCore } from './use-paper-sessions';
 import { isEditableSurface } from './use-paper-strips';
 import { viewportWorldRect } from './virtualize';

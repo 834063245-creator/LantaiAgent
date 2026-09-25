@@ -28,7 +28,8 @@
 
 import type { Context } from '../../../cordis';
 import { injectFaceArtifactCss } from '../face-css';
-import { useDockStore } from './host';
+import { clearMeasureImplementation, registerMeasureImplementation, useDockStore } from './host';
+import { measureImplementation } from './measure-implementation';
 import { PaperPanel } from './PaperPanel';
 
 /** 纸壳插件——面板贡献（即时生效语义）+ toggle 命令贡献（S3）。
@@ -39,6 +40,15 @@ export const paperPlugin = {
   inject: ['panels', 'commands'],
   apply(ctx: Context) {
     injectFaceArtifactCss();
+    /* 批 9c-4b（2026-09-26）：测量引擎（measure.ts + type-tokens.ts）随本包 ⇒ 装载期把
+     * 实现登记进内核接缝 `paper/measure-seam.ts`（内核读点 = paper/ink.ts 墨迹走查 +
+     * state/messages-store.ts 切卷清态）。登记口经 `./host` 取用（产物域 = faceDeps 真实例；
+     * 直连内核路径会被 esbuild 内联成副本 ⇒ 登记落副本、实机炸，见账本 §0.6）。
+     * 对称释放：fiber dispose ⇒ 弹出本层登记（引擎缺席 = 纸面高度全崩，故本产物 required）。 */
+    ctx.effect(() => {
+      registerMeasureImplementation(measureImplementation);
+      return () => clearMeasureImplementation();
+    }, 'paper-measure-impl');
     ctx.effect(
       () =>
         ctx.panels.register({

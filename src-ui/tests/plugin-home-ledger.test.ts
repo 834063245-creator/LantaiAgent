@@ -58,8 +58,9 @@ const NOTES: Record<string, string> = {
   // NOTES 与名册 impl 一并销账（内核 workspace 改走 `agent/memory-impl.ts` 门面；授权旗标留内核）。
   // 半迁移（实心包里的残余——不是薄包，故不进空壳集，但同样按 impl 销账）
   // 批 9d（2026-09-26）：settings-domain 的 Provider 控制台 8 件（2,740 行）已随包 ⇒ NOTES 与名册 impl 一并销账。
-  'paper-shell':
-    '批 5a 已收 4 件（provenance/sel-ink/focus-flight/sheet）；余 `paper/type-tokens.ts` 806 行——它被内核 `paper/measure.ts` 引用（宿主→插件禁反）⇒ 随批 9',
+  // 批 9c-4b（2026-09-26）：paper-shell 的测量引擎已随包（`measure.ts` 2,016 + 版式 token
+  // `type-tokens.ts` 807）⇒ NOTES 与名册 impl 一并销账，**红区清零**（名册 `impl` 全空）。
+  // 该产物同批标 `required`（不可禁用：引擎缺席 = 纸面高度全崩）。
 };
 
 // ── 磁盘判据 ──

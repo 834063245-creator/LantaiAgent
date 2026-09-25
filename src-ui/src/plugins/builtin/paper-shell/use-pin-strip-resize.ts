@@ -8,7 +8,8 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getCanvasStore, STREAM_REGION, USER_SHRINK_MIN_W } from './host';
+import { getCanvasStore, STREAM_REGION } from './host';
+import { USER_SHRINK_MIN_W } from './measure';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 宽度手调域（paper-panel-split C4，自 PaperPanel 2603-2648 域内原样搬入）。 */

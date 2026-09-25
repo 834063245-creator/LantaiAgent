@@ -30,8 +30,8 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 }));
 
 import { parseCircledSegments } from '../src/paper/marks';
-import { measureBlockHeight } from '../src/paper/measure';
 import { translateMessages } from '../src/paper/translate';
+import { measureBlockHeight } from '../src/plugins/builtin/paper-shell/measure';
 import type { UserMessage } from '../src/ui/message-model';
 
 function userMsg(files?: Array<{ path: string; name: string; size: number }>): UserMessage {

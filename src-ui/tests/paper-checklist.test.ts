@@ -32,8 +32,8 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 
 import { createBlock, resetBlockIdCounterForTests, type SourcedBlock } from '../src/paper/block-model';
 import { type MdBlock, parseMarkdown } from '../src/paper/markdown';
-import { clearPaperMeasureCache, measureBlockHeight } from '../src/paper/measure';
 import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
+import { clearPaperMeasureCache, measureBlockHeight } from '../src/plugins/builtin/paper-shell/measure';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });

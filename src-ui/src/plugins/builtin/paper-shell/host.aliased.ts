@@ -64,17 +64,10 @@ export const INK_SIL_MASS_ALPHA = impl.INK_SIL_MASS_ALPHA;
 export const INK_SIL_ACCENT_ALPHA = impl.INK_SIL_ACCENT_ALPHA;
 export const INK_LABEL_MIN_PX = impl.INK_LABEL_MIN_PX;
 export const INK_LABEL_ALPHA = impl.INK_LABEL_ALPHA;
-export const clearPaperMeasureCache = impl.clearPaperMeasureCache;
-export const createBlockMeasureCache = impl.createBlockMeasureCache;
-export const measureBlockHeightCached = impl.measureBlockHeightCached;
-export const measureFolioHeadHeight = impl.measureFolioHeadHeight;
-export const needsObservedHeight = impl.needsObservedHeight;
-export const observedKeyOf = impl.observedKeyOf;
-export const MARGINALIA_TOP = impl.MARGINALIA_TOP;
-export const reportObservedBlockHeight = impl.reportObservedBlockHeight;
-export const reportObservedSidecarExtent = impl.reportObservedSidecarExtent;
-export const subscribeObservedBlockHeights = impl.subscribeObservedBlockHeights;
-export const USER_SHRINK_MIN_W = impl.USER_SHRINK_MIN_W;
+// 批 9c-4b（2026-09-26）：测量引擎随包 ⇒ 12 个 measure/type-tokens 键撤销（包内直接取），
+// 本桥改为桥登记口（引擎由 apply 登记进内核接缝）。
+export const registerMeasureImplementation = impl.registerMeasureImplementation;
+export const clearMeasureImplementation = impl.clearMeasureImplementation;
 export const PaperDockContext = impl.PaperDockContext;
 export const PaperRegionContext = impl.PaperRegionContext;
 export { sheetCharacter } from './sheet';
@@ -87,7 +80,7 @@ export const STREAM_REGION = impl.STREAM_REGION;
 export const usePresetStore = impl.usePresetStore;
 export const collapseToolGroups = impl.collapseToolGroups;
 export const translateMessagesCached = impl.translateMessagesCached;
-export const injectPaperTokens = impl.injectPaperTokens;
+// 批 9c-4b：`injectPaperTokens` 随 `type-tokens.ts` 进包 ⇒ 包内直接 `from './type-tokens'`
 export const blockFromSnapshot = impl.blockFromSnapshot;
 export const getCanvasStore = impl.getCanvasStore;
 export const scheduleCanvasSave = impl.scheduleCanvasSave;
@@ -122,7 +115,7 @@ export const leaveToHome = impl.leaveToHome;
 export type SourcedBlock = import('./host').SourcedBlock;
 export type BlockInk = import('./host').BlockInk;
 export type InkCache = import('./host').InkCache;
-export type BlockMeasureCache = import('./host').BlockMeasureCache;
+// 批 9c-4b：`BlockMeasureCache` 类型随 `measure.ts` 进包 ⇒ 包内直接取类型
 export type RegionView = import('./host').RegionView;
 export type StreamRegionState = import('./host').StreamRegionState;
 export type MessageTranslateCache = import('./host').MessageTranslateCache;

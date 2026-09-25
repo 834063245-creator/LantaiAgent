@@ -14,7 +14,6 @@ import type { FlowGeom, PinnedGeom } from '../../../paper/region-geom-contract';
 import { volumeDisplayName } from '../../../state/volume-name';
 import { groupWorkUnits, rhythmAssign, sealedMessageIdsOf } from './group';
 import type {
-  BlockMeasureCache,
   CanvasStore,
   ChatMessage,
   MessageTranslateCache,
@@ -24,18 +23,21 @@ import type {
 } from './host';
 import {
   collapseToolGroups,
-  createBlockMeasureCache,
   createInkCache,
   defaultRegionFor,
   EMPTY_REGION_CONTENT_H,
   layoutRegion,
-  measureBlockHeightCached,
-  measureFolioHeadHeight,
   REGION_CONTENT_MARGIN,
   translateMessagesCached,
-  USER_SHRINK_MIN_W,
   writingBlockIdOf,
 } from './host';
+import {
+  type BlockMeasureCache,
+  createBlockMeasureCache,
+  measureBlockHeightCached,
+  measureFolioHeadHeight,
+  USER_SHRINK_MIN_W,
+} from './measure';
 import type { SelectionDragState } from './use-paper-viewport';
 import { visibleFlowWindow, visiblePinnedIds } from './virtualize';
 

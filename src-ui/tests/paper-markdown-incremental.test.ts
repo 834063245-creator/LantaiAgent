@@ -30,7 +30,7 @@ import {
   createBlockMeasureCache,
   measureBlockHeight,
   measureBlockHeightCached,
-} from '../src/paper/measure';
+} from '../src/plugins/builtin/paper-shell/measure';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });

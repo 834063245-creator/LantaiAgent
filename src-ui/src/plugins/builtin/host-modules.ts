@@ -192,19 +192,9 @@ import {
   lodTierOf,
 } from '../../paper/ink';
 import { activeMarkdownBody } from '../../paper/markdown-body-seam';
-import {
-  clearPaperMeasureCache,
-  createBlockMeasureCache,
-  MARGINALIA_TOP,
-  measureBlockHeightCached,
-  measureFolioHeadHeight,
-  needsObservedHeight,
-  observedKeyOf,
-  reportObservedBlockHeight,
-  reportObservedSidecarExtent,
-  subscribeObservedBlockHeights,
-  USER_SHRINK_MIN_W,
-} from '../../paper/measure';
+// 批 9c-4b（2026-09-26）：测量引擎（measure.ts + type-tokens.ts）整件随 paper-shell 包
+// ⇒ 撤 12 个键（包内直接取用），改桥该包的**登记口**两键（引擎 apply 期登记进内核接缝）。
+import { clearMeasureImplementation, registerMeasureImplementation } from '../../paper/measure-seam';
 import { clampViewportFrame, inkBarsFor, minimapProject, regionFrame } from '../../paper/minimap-core';
 import { PaperDockContext, PaperRegionContext, usePaperDock, usePaperRegion } from '../../paper/overlay-context';
 import {
@@ -217,7 +207,6 @@ import {
   STREAM_REGION,
 } from '../../paper/space';
 import { collapseToolGroups, translateMessagesCached } from '../../paper/translate';
-import { injectPaperTokens } from '../../paper/type-tokens';
 // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面——引擎开关 / 装卸面 /
 // MCP 声明与用户级 mcp.json / 插件与偏好 store。装卸面与 loader 的循环为
 // 运行期取用（组件按钮回调），无初始化期解引用，ESM 循环安全（见文件头注）。
@@ -468,17 +457,6 @@ const faceDeps = {
   INK_SIL_ACCENT_ALPHA,
   INK_LABEL_MIN_PX,
   INK_LABEL_ALPHA,
-  clearPaperMeasureCache,
-  createBlockMeasureCache,
-  measureBlockHeightCached,
-  measureFolioHeadHeight,
-  MARGINALIA_TOP,
-  needsObservedHeight,
-  observedKeyOf,
-  reportObservedBlockHeight,
-  reportObservedSidecarExtent,
-  subscribeObservedBlockHeights,
-  USER_SHRINK_MIN_W,
   PaperDockContext,
   PaperRegionContext,
   usePaperDock,
@@ -494,7 +472,6 @@ const faceDeps = {
   STREAM_REGION,
   collapseToolGroups,
   translateMessagesCached,
-  injectPaperTokens,
   // 状态层（zustand 真实例——影子 store 禁止）
   blockFromSnapshot,
   getCanvasStore,
@@ -819,6 +796,10 @@ const faceDeps = {
   // §4-6 A（2026-09-26）：token 计量升为内核第 16 个 service `ctx.tokenMeter` ⇒ 分桶代数
   // 经本键取内核唯一实例（创作坞墨量册的读数面；产物域自建副本 = 口径漂移入口）。
   tokenAlgebra,
+  // 批 9c-4b（2026-09-26）：测量引擎随 paper-shell 包 ⇒ 撤 12 个 measure/type-tokens 键
+  // （包内直接取用），改桥该包的登记口两键（apply 期登记进内核接缝 paper/measure-seam）。
+  registerMeasureImplementation,
+  clearMeasureImplementation,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ASSET_TOKENS, CHROME_TOKENS, injectPaperTokens } from '../src/paper/type-tokens';
+import { ASSET_TOKENS, CHROME_TOKENS, injectPaperTokens } from '../src/plugins/builtin/paper-shell/type-tokens';
 
 /** 走 injectPaperTokens 的真实注入路径，捕获全部键值（木桩 root.style.setProperty）。 */
 function captureInjectedTokens(): Map<string, string> {

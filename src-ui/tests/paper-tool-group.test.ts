@@ -22,9 +22,9 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 import { EventKind } from '../src/agent/agent-types';
 import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { defaultFolded, foldLabel, isFoldable } from '../src/paper/fold';
-import { measureBlockHeight, measureSignature } from '../src/paper/measure';
 import { hasArgsToShow, toolDigest } from '../src/paper/tool-text';
 import { collapseToolGroups, translateMessages } from '../src/paper/translate';
+import { measureBlockHeight, measureSignature } from '../src/plugins/builtin/paper-shell/measure';
 import type { AssistantMessage, SubAgentPart, ToolCallPart } from '../src/ui/message-model';
 import { applyEventToParts } from '../src/ui/part-mutator';
 

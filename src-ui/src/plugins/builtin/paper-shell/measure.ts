@@ -22,8 +22,8 @@ import {
   prepareRichInline,
   type RichInlineItem,
 } from '@chenglou/pretext/rich-inline';
-import { assetKinds } from '../agent/asset-kinds';
-import type { BlockKind, SourcedBlock } from './block-model';
+import { assetKinds } from '../../../agent/asset-kinds';
+import type { BlockKind, SourcedBlock } from '../../../paper/block-model';
 import {
   type MdBlock,
   type MdInline,
@@ -32,10 +32,10 @@ import {
   mdPlainText,
   parseMarkdown,
   parseMarkdownIncremental,
-} from './markdown';
-import { parseCircledSegments } from './marks';
-import { codeDisplay, hasArgsToShow, hasPayloadToShow, toolDisplay } from './tool-text';
-import { VIEWER_BOX_CLASSES, viewerClassOf } from './viewer-exts';
+} from '../../../paper/markdown';
+import { parseCircledSegments } from '../../../paper/marks';
+import { codeDisplay, hasArgsToShow, hasPayloadToShow, toolDisplay } from '../../../paper/tool-text';
+import { VIEWER_BOX_CLASSES, viewerClassOf } from '../../../paper/viewer-exts';
 
 /* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
  * 2026-09-10 三体换代：宋/楷/等宽退役，三栈统一 MiSans（文类语义键 song/kai/mono
@@ -1262,9 +1262,9 @@ export const USER_SHRINK_MIN_W = 320;
  *  「文字位置跳变」的直接病灶）。纵向位置现在只有**一个**产出者：测高走查。 */
 // 批 9c-4a（2026-09-26）：`InkSource` 形状上收内核契约 `paper/measure-contract.ts`
 // （内核读面 `paper/ink.ts` 与产物面读同一份形状；9c-4b 起引擎整件随 paper-shell 包）。
-export type { InkSource } from './measure-contract';
+export type { InkSource } from '../../../paper/measure-contract';
 
-import type { InkSource } from './measure-contract';
+import type { InkSource } from '../../../paper/measure-contract';
 
 /** 把一组墨源整体下移 dy（块级 chrome：题签/花押/折叠行/段头/语言行）。 */
 function inkShifted(sources: InkSource[], dy: number): InkSource[] {

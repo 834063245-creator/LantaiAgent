@@ -35,7 +35,8 @@
 // 有消费面（无活卷 / 案头态 ⇒ 不画线；线只指示「这一匣对着这一卷」）。订正见
 // `docs/plans/paper-shell/taste-ledger.md` 同日条。
 
-import { folioHeadWidthFor } from '../../../paper/measure';
+// 批 9c-4b（2026-09-26）：`folioHeadWidthFor` 随 `measure.ts` 进本包 ⇒ 包内直接取。
+import { folioHeadWidthFor } from './measure';
 import { TETHER_SPLINE_MIN, type TetherPen } from './provenance';
 
 /** 引线种子前缀（seed 取 `版口-<卷号>`）：**同卷恒同线**，重渲染/平移不闪——与

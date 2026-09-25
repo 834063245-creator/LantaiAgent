@@ -26,6 +26,7 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 }));
 
 import type { SourcedBlock } from '../src/paper/block-model';
+import { translateMessage } from '../src/paper/translate';
 import {
   clearPaperMeasureCache,
   createBlockMeasureCache,
@@ -38,9 +39,8 @@ import {
   observedSidecarExtentOf,
   reportObservedBlockHeight,
   reportObservedSidecarExtent,
-} from '../src/paper/measure';
-import { translateMessage } from '../src/paper/translate';
-import { injectPaperTokens } from '../src/paper/type-tokens';
+} from '../src/plugins/builtin/paper-shell/measure';
+import { injectPaperTokens } from '../src/plugins/builtin/paper-shell/type-tokens';
 import type { AssistantMessage } from '../src/ui/message-model';
 
 function asstMsg(parts: AssistantMessage['parts']): AssistantMessage {

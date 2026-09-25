@@ -68,8 +68,8 @@
 | 子批 | 内容 | 出口判据 |
 |---|---|---|
 | **9c-4a** ✅ **已落**（`2268bd64`，2026-09-26） | 新 `paper/measure-contract.ts`（**只上收内核真读三动词**：`inkSourcesFor` / `measureSignature` / `clearObservedHeightsForSession` + `InkSource` 形状逐字上收）+ 新 `paper/measure-seam.ts`（`register/active/clear` + 三个同名门面；**过渡态** = `KERNEL_DEFAULT` 静态取 `./measure` 三动词的派发，无环）；内核读点 `paper/ink.ts` / `state/messages-store.ts` 改指门面；`measure.ts` 的 `InkSource` 改为契约再出口 | ✅ 达成：vitest **407/4,307** 全绿 · biome 0/0 · **convergence 双轨零漂移** · 红区数字**不动** 2 产物 / 5 文件 / 1,502 行（引擎未搬，符合本子批判据） |
-| **9c-4b** | `measure.ts` + `type-tokens.ts` 整件随包；`paper-shell` 标 `required`；`KERNEL_DEFAULT` → `null`（fail-loud）；宿主面键集按实测补齐并重生成基线 | `plugin-home:report` 红区 2 → **1 产物**（`type-tokens` 806 销账；`measure` 2,016 随迁）；产物自包含校验过 |
-| **9c-4c** | 测试面改指包内（`tests/paper-*.test.ts` 读 measure/type-tokens 的面）+ DOC/账本同 commit + 真机验收 | 重建 exe + CDP：纸面测高面活性（流区高度、卷首高度、墨迹走查）+ 启动零装载失败 |
+| **9c-4b** ✅ **已落**（2026-09-26） | `measure.ts` 2,016 + `type-tokens.ts` 807 整件随包；`paper-shell` 标 `required`；`KERNEL_DEFAULT` 删除（缺实现具名 `PAPER_MEASURE_UNAVAILABLE`）；宿主面 **334 → 324 键**（撤 12 个 measure/type-tokens 键、补登记口 2 键，指纹 `29f87402`） | ✅ 达成：`plugin-home:report` 红区 **0 产物 / 0 文件 / 0 行**（账② 清零）；产物自包含校验过；真机 `paper-shell` 装载 `apply=2.0ms [active]`、`entry.js` 475,128 B 含引擎真身 |
+| **9c-4c** ✅ **已落**（2026-09-26） | 测试面 29 件 + `scripts/` 改指包内（含 `paper-visual-decisions` 的源文件断言点）；DOC/账本同 commit；真机验收 | ✅ 达成：重建 exe + CDP——宿主面运行时 324 键 = 基线、`face.json` 需求键 = 新桥面；进工作区纸面渲染在场（`.pp-root` + 卷首题字 + 4 块），零 `PAPER_MEASURE_UNAVAILABLE`；perf 台 `commits=60 avg=4.07ms p95=4.79ms fillRect=0`（小地图墨迹零重画） |
 
 每批门禁照旧：`npm run build` · `npx vitest run` · `npx biome ci .` · `npm run verify:convergence` ·
 `npm run build:builtin-plugins` · `npm run gen:host-surface`（改宿主面时）+ 再跑产物构建 ·

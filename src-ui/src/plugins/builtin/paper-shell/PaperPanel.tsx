@@ -52,8 +52,6 @@ import {
   Icon,
   isFoldable,
   leaveToHome,
-  needsObservedHeight,
-  observedKeyOf,
   onTopbarDoubleClick,
   onTopbarPointerDown,
   PaperDockContext,
@@ -72,6 +70,7 @@ import {
   worldToScreen,
 } from './host';
 import { InkLayer } from './InkLayer';
+import { needsObservedHeight, observedKeyOf } from './measure';
 import {
   type ProvenanceState,
   provenanceText,

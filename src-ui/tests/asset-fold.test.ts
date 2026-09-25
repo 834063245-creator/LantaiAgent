@@ -39,7 +39,7 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
 import { defaultFolded, foldLabel, isFoldable } from '../src/paper/fold';
-import { FOLD_ROW_H, measureBlockHeight, measureSignature } from '../src/paper/measure';
+import { FOLD_ROW_H, measureBlockHeight, measureSignature } from '../src/plugins/builtin/paper-shell/measure';
 
 const SRC = join(__dirname, '..', 'src');
 const PANEL_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');

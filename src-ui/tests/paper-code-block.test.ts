@@ -21,9 +21,9 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 }));
 
 import { createBlock } from '../src/paper/block-model';
-import { measureBlockHeight } from '../src/paper/measure';
 import { translateMessages } from '../src/paper/translate';
 import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
+import { measureBlockHeight } from '../src/plugins/builtin/paper-shell/measure';
 import type { AssistantMessage } from '../src/ui/message-model';
 
 function toolMsg(name: string, args: string, status: 'running' | 'done' | 'error', output?: string, err?: string) {

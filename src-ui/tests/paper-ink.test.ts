@@ -70,7 +70,7 @@ import {
   lodTierOf,
   regionLabelTopWorld,
 } from '../src/paper/ink';
-import { clearPaperMeasureCache, PAPER_USER_LINE_HEIGHT } from '../src/paper/measure';
+import { clearPaperMeasureCache, PAPER_USER_LINE_HEIGHT } from '../src/plugins/builtin/paper-shell/measure';
 import {
   CHROME_DERIVED,
   CHROME_TOKENS,
@@ -78,7 +78,7 @@ import {
   LIMIT_TOKENS,
   MD_TOKENS,
   PAPER_TYPE,
-} from '../src/paper/type-tokens';
+} from '../src/plugins/builtin/paper-shell/type-tokens';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });

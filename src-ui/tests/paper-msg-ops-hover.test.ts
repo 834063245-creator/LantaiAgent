@@ -28,7 +28,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ANCHOR } from '../src/paper/canvas-math';
-import { CHROME_TOKENS } from '../src/paper/type-tokens';
+import { CHROME_TOKENS } from '../src/plugins/builtin/paper-shell/type-tokens';
 
 const SRC = join(__dirname, '..', 'src');
 const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');

@@ -19,7 +19,7 @@ import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/ren
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
-import { ASSET_DERIVED, ASSET_TOKENS } from '../src/paper/type-tokens';
+import { ASSET_DERIVED, ASSET_TOKENS } from '../src/plugins/builtin/paper-shell/type-tokens';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import {
   chartLayout,
@@ -446,7 +446,7 @@ describe('chart 数据归一 — 三种合法形状', () => {
 describe('chart 测高镜像 — 与渲染同判据（D9）', () => {
   // 走真实入口 measureBlockHeight（导出名）；块形状按 SourcedBlock 最小面构造
   const mk = async (payload: unknown): Promise<number> => {
-    const { measureBlockHeight } = await import('../src/paper/measure');
+    const { measureBlockHeight } = await import('../src/plugins/builtin/paper-shell/measure');
     const block = {
       ...createBlock('chart', payload as never, { messageId: 'm1', part: null }),
       id: 'pb:m1:0',

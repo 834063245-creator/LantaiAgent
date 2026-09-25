@@ -25,6 +25,7 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 
 import { createBlock, DEFAULT_BLOCK_WIDTH, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { layoutFlow, panBy, zoomAt } from '../src/paper/canvas-math';
+import { composerSubmitOnKey } from '../src/plugins/builtin/compose-dock/ime';
 import {
   CIRCLE_EXTRA,
   CODE_OUT_TEXT_MAX,
@@ -43,9 +44,7 @@ import {
   PRE_MAX_H,
   SEC_HEAD_GAP,
   SEC_HEAD_H,
-} from '../src/paper/measure';
-import { cssUsedPx } from '../src/paper/type-tokens';
-import { composerSubmitOnKey } from '../src/plugins/builtin/compose-dock/ime';
+} from '../src/plugins/builtin/paper-shell/measure';
 import {
   makeStrip,
   moveStrip,
@@ -54,6 +53,7 @@ import {
   sliceSelection,
   tryMakeStripFromSelection,
 } from '../src/plugins/builtin/paper-shell/selection';
+import { cssUsedPx } from '../src/plugins/builtin/paper-shell/type-tokens';
 import {
   type FlowGeom,
   type PinnedGeom,

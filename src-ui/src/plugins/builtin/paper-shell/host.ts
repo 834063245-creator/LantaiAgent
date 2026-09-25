@@ -69,20 +69,13 @@ export {
   lodFarActive,
   lodTierOf,
 } from '../../../paper/ink';
-export type { BlockMeasureCache } from '../../../paper/measure';
-export {
-  clearPaperMeasureCache,
-  createBlockMeasureCache,
-  MARGINALIA_TOP,
-  measureBlockHeightCached,
-  measureFolioHeadHeight,
-  needsObservedHeight,
-  observedKeyOf,
-  reportObservedBlockHeight,
-  reportObservedSidecarExtent,
-  subscribeObservedBlockHeights,
-  USER_SHRINK_MIN_W,
-} from '../../../paper/measure';
+/* 批 9c-4b（2026-09-26）：测量引擎（`measure.ts` 2,016 + 版式 token `type-tokens.ts` 807）
+ * 整件随本包 ⇒ 原先经本桥取内核 measure / type-tokens 的 **12 个键全部撤销**（包内组件
+ * 直接 `from './measure'` / `from './type-tokens'`）。本桥改为桥**登记口**：引擎随包后由
+ * 本包 apply 登记进内核接缝 `paper/measure-seam.ts`（内核读点 = `paper/ink.ts` 墨迹走查 +
+ * `state/messages-store.ts` 切卷清态）。登记口**必须经宿主桥**取用——直连内核模块路径会被
+ * esbuild 内联成副本，登记落副本 = 实机炸（账本 §0.6 的 memory-domain 先例）。 */
+export { clearMeasureImplementation, registerMeasureImplementation } from '../../../paper/measure-seam';
 export { PaperDockContext, PaperRegionContext } from '../../../paper/overlay-context';
 export type { RegionView } from '../../../paper/region-view';
 export type { StreamRegionState } from '../../../paper/space';
@@ -96,7 +89,7 @@ export {
 } from '../../../paper/space';
 export type { MessageTranslateCache } from '../../../paper/translate';
 export { collapseToolGroups, translateMessagesCached } from '../../../paper/translate';
-export { injectPaperTokens } from '../../../paper/type-tokens';
+// 批 9c-4b：`injectPaperTokens` 随 `type-tokens.ts` 进包 ⇒ 包内直接 `from './type-tokens'`
 // 设置读面（2026-09-08 缩放舒适度批）：滚轮行为 canvasWheelMode + 保存广播
 // onSettingsSaved——视口域滚轮语义随设置即时换轨（ref 缓存 + 广播刷新）。
 export { canvasWheelMode, loadSettings, onSettingsSaved } from '../../../settings';

@@ -93,7 +93,7 @@ import {
   measureBlockHeightCached,
   observedBlockHeightOf,
   observedKeyOf,
-} from '../src/paper/measure';
+} from '../src/plugins/builtin/paper-shell/measure';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { getCanvasStore } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
@@ -223,7 +223,7 @@ describe('夹注实测回写接线（2026-09-19 叠字批）', () => {
     const block = { id: collapsedKey.split('|')[0], w: 619, kind: 'reasoning' as const };
     expect(observedBlockHeightOf(collapsedKey, block.w)).toBeUndefined();
     // 壳层按展开态键回写 → 测高按同一键取用（两端同源）
-    const { reportObservedBlockHeight } = await import('../src/paper/measure');
+    const { reportObservedBlockHeight } = await import('../src/plugins/builtin/paper-shell/measure');
     reportObservedBlockHeight(expandedKey, block.w, 1234);
     expect(observedBlockHeightOf(expandedKey, block.w)).toBe(1234);
     expect(observedBlockHeightOf(collapsedKey, block.w)).toBeUndefined();
@@ -252,7 +252,7 @@ describe('夹注实测回写接线（2026-09-19 叠字批）', () => {
       w: 619,
       source: { messageId: 'm', part: null },
     };
-    const { reportObservedBlockHeight } = await import('../src/paper/measure');
+    const { reportObservedBlockHeight } = await import('../src/plugins/builtin/paper-shell/measure');
     reportObservedBlockHeight(observedKeyOf(b, false, true, false), b.w, 900);
     expect(measureBlockHeightCached(b, cache, false, true, false)).toBe(900);
     // 折叠态无记录 → 回落静态镜像（折叠行 + 一行预览），不是 900

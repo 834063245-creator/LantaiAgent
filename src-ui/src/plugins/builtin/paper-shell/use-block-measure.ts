@@ -12,7 +12,7 @@ import {
   reportObservedBlockHeight,
   reportObservedSidecarExtent,
   subscribeObservedBlockHeights,
-} from './host';
+} from './measure';
 
 /** 块实测回写（paper-panel-split C1，自 PaperPanel 903-966 域内原样搬入）。
  *  - measureTick：字体加载（webfont 到位前 canvas 量的是回退字体宽度）→ 清全

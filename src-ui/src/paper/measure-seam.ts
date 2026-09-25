@@ -1,65 +1,58 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// paper/measure-seam — 测量引擎接缝（批 9c-4a，2026-09-26）。
+// paper/measure-seam — 测量引擎接缝（批 9c-4a 立，9c-4b 收口，2026-09-26）。
 //
-// 形状照抄批 6/7/8 的接缝：契约面住 `paper/measure-contract.ts`，实现在 9c-4b 之后由
-// `plugins/builtin/paper-shell/` 的 apply 登记；**内核读点**（`paper/ink.ts` 与
-// `state/messages-store.ts`）改走下方门面，于是「引擎住哪」对它们透明。
+// 形状照抄批 6/7/8 的接缝：契约面住 `paper/measure-contract.ts`，实现由
+// `plugins/builtin/paper-shell/` 的 apply 登记（登记口经包内宿主桥取用——§0.6 实机事故纪律）；
+// **内核读点**（`paper/ink.ts` 的墨迹走查 + `state/messages-store.ts` 的切卷清态）走下方门面，
+// 于是「引擎住哪」对它们透明：改版式 token / 测高算法从此免重建 exe。
 //
-// 9c-4a 期的过渡态（**9c-4b 会删掉这两处**，判据写在施工单 §4）：
-//   1. `KERNEL_DEFAULT` = 内核 `./measure` 的三个动词——引擎此刻仍在内核，故接缝先做**派发**
-//      （产物登记的实现优先，否则用内核默认）；9c-4b 把 `KERNEL_DEFAULT` 换成 `null` +
-//      fail-loud，同时引擎整件进包。
-//   2. 本文件静态 import `./measure`：**无环**（measure 不反向 import 本文件），且保住了
-//      「内核读点在引擎未登记时仍可用」的现状语义。
+// 9c-4b 收口（本版）：`KERNEL_DEFAULT` 已删——引擎整件随 `paper-shell` 包
+// （`measure.ts` 2,016 + `type-tokens.ts` 807），无登记 = 具名 fail-loud
+// （`PAPER_MEASURE_UNAVAILABLE`）。该产物名册标 `required`（不可禁用：引擎缺席 = 纸面高度全崩）。
 //
-// 为什么单列接缝而不是直接调 `./measure`：9c-4b 的搬运只动本文件的三行 + 一次 `git mv`，
-// 内核读点零改动（批 6/7 的同类批次实测：接缝先行的搬运不会把调用点卷进 diff）。
+// 登记表是**栈**（后注册胜 + 对称弹出，对齐 `composition/contribution-channel.ts` 的行语义）：
+// 装配腰（`withFirstParty*Channel`）会加载并 dispose 贡献者 fiber，单值登记会被那次 dispose
+// 抹掉（9h-5 实测）⇒ 常驻登记（`tests/setup.ts`）不被后来者的弹出波及。
 
-import {
-  clearObservedHeightsForSession as kernelClearObservedHeightsForSession,
-  inkSourcesFor as kernelInkSourcesFor,
-  measureSignature as kernelMeasureSignature,
-} from './measure';
 import type { MeasureImplementation } from './measure-contract';
 
 export type { InkSource, MeasureImplementation } from './measure-contract';
 
-/** 9c-4a 过渡态的内核默认实现（9c-4b 删除 → `null` + fail-loud）。 */
-const KERNEL_DEFAULT: MeasureImplementation = {
-  inkSourcesFor: kernelInkSourcesFor,
-  measureSignature: kernelMeasureSignature,
-  clearObservedHeightsForSession: kernelClearObservedHeightsForSession,
-};
+const _impls: MeasureImplementation[] = [];
 
-let _impl: MeasureImplementation | null = KERNEL_DEFAULT;
-
-/** 产物登记实现（9c-4b 起由 `paper-shell` 的 apply 调用；测试域可复现装载态）。 */
+/** 产物登记实现（`paper-shell` 包 apply 期调用；测试域由 `tests/setup.ts` 复现装载态）。 */
 export function registerMeasureImplementation(impl: MeasureImplementation): void {
-  _impl = impl;
+  _impls.push(impl);
 }
 
-/** 当前实现（未登记 = `KERNEL_DEFAULT`；9c-4b 后为 null）。 */
+/** 当前实现 = 栈顶（未登记 = null——诊断/测试面读用）。 */
 export function activeMeasureImplementation(): MeasureImplementation | null {
-  return _impl;
+  return _impls.at(-1) ?? null;
 }
 
-/** 撤销登记（产物 fiber dispose 与测试复位共用；9c-4a 期回落内核默认）。 */
+/** 对称撤销（产物 fiber dispose）：弹出**本 fiber 注册的那一层**，不波及更早的登记。 */
 export function clearMeasureImplementation(): void {
-  _impl = KERNEL_DEFAULT;
+  _impls.pop();
 }
 
-/** 缺实现时的具名错误（9c-4b 起会真正抛出：引擎缺席 = 纸面高度全崩）。 */
+/** 测试复位（清空整栈；生产不调用）。 */
+export function resetMeasureImplementationForTests(): void {
+  _impls.length = 0;
+}
+
+/** 缺实现时的具名错误（引擎缺席 = 纸面高度全崩，不静默降级）。 */
 const PAPER_MEASURE_UNAVAILABLE =
   'PAPER_MEASURE_UNAVAILABLE: 纸面测量引擎缺席——请确认内置产物 hologram/paper-shell 已装载' + '（该产物不可禁用）。';
 
 function requireImpl(): MeasureImplementation {
-  if (!_impl) throw new Error(PAPER_MEASURE_UNAVAILABLE);
-  return _impl;
+  const impl = activeMeasureImplementation();
+  if (!impl) throw new Error(PAPER_MEASURE_UNAVAILABLE);
+  return impl;
 }
 
-// ── 门面（内核读面；签名与 `./measure` 同名同形，调用点零改写成本）──
+// ── 门面（内核读面；签名与包内 `./measure` 同名同形，调用点零改写成本）──
 
 /** 块墨迹走查（`paper/ink.ts` 的缓存未命中路径）。 */
 export function inkSourcesFor(block: Parameters<MeasureImplementation['inkSourcesFor']>[0], folded: boolean) {

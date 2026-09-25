@@ -33,13 +33,14 @@ const PANEL_TSX = readdirSync(join(SRC, 'plugins', 'builtin', 'paper-shell'))
   .map((f) => readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', f), 'utf8'))
   .join('\n');
 const ICONS_TS = readFileSync(join(SRC, 'ui', 'icons.ts'), 'utf8');
-const MEASURE_TS = readFileSync(join(SRC, 'paper', 'measure.ts'), 'utf8');
+// 批 9c-4b：测量引擎随 paper-shell 产物 ⇒ 断言点随迁产物源文件。
+const MEASURE_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'measure.ts'), 'utf8');
 const CANVAS_MATH_TS = readFileSync(join(SRC, 'paper', 'canvas-math.ts'), 'utf8');
 // 批 9c-3：group 实现随 paper-shell 产物（形状契约留内核）——断言点随迁产物源文件。
 const GROUP_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'group.ts'), 'utf8');
 // 批 9c-3：WorkUnit 形状（含节律族字段）上收内核契约——形状断言查契约文件。
 const GROUP_CONTRACT_TS = readFileSync(join(SRC, 'paper', 'group-contract.ts'), 'utf8');
-const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8');
+const TYPE_TOKENS_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'type-tokens.ts'), 'utf8');
 const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
 /** 互斥两态的两块板（2026-09-21 侧栏纸面批：板面纹理三个消费面同源） */
 const SIDEBAR_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'canvas-nav', 'session-sidebar.css'), 'utf8');

@@ -39,8 +39,12 @@ import {
   parseMarkdown,
   textHasMath,
 } from '../src/paper/markdown';
-import { clearPaperMeasureCache, measureBlockHeight, needsObservedHeight } from '../src/paper/measure';
 import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
+import {
+  clearPaperMeasureCache,
+  measureBlockHeight,
+  needsObservedHeight,
+} from '../src/plugins/builtin/paper-shell/measure';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });

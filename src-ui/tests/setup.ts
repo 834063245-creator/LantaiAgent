@@ -25,6 +25,8 @@ let registerMemoryImplementation: (impl: unknown) => void;
 let memoryImplementation: unknown;
 let registerTaskImplementation: (impl: unknown) => void;
 let taskImplementation: unknown;
+let registerMeasureImplementation: (impl: unknown) => void;
+let measureImplementation: unknown;
 
 beforeAll(async () => {
   const [
@@ -44,6 +46,8 @@ beforeAll(async () => {
     { memoryImplementation: memoryImpl },
     { registerTaskImplementation: taskReg },
     { taskImplementation: taskImpl },
+    { registerMeasureImplementation: measureReg },
+    { measureImplementation: measureImpl },
   ] = await Promise.all([
     import('../src/agent/multiagent-impl'),
     import('../src/plugins/builtin/multiagent-comm/implementation'),
@@ -61,6 +65,8 @@ beforeAll(async () => {
     import('../src/plugins/builtin/memory-domain'),
     import('../src/agent/task-impl'),
     import('../src/plugins/builtin/task-domain/implementation'),
+    import('../src/paper/measure-seam'),
+    import('../src/plugins/builtin/paper-shell/measure-implementation'),
   ]);
   registerMultiagentComm(multiagentCommImplementation);
   // 批 7c-2：子代理运行时（池 / 生命周期 / 派生 + 两工具族）整体登记——与产物包 index.ts 同源。
@@ -88,9 +94,15 @@ beforeAll(async () => {
   memoryImplementation = memoryImpl;
   registerTaskImplementation = taskReg;
   taskImplementation = taskImpl;
+  registerMeasureImplementation = measureReg;
+  measureImplementation = measureImpl;
   registerSkillImplementation(skillImplementation);
   registerMemoryImplementation(memoryImplementation);
   registerTaskImplementation(taskImplementation);
+  // 批 9c-4b：测量引擎随 paper-shell 包后，内核接缝 `paper/measure-seam` 缺实现即 fail-loud
+  // （内核读点 = paper/ink.ts 墨迹走查 + state/messages-store.ts 切卷清态）⇒ 测试域登记
+  // 同一份实现对象（与包 apply 期登记同源）。
+  registerMeasureImplementation(measureImplementation);
 });
 
 // 装配腰会 dispose 贡献者 fiber（连带撤销上述登记）⇒ 每个用例前重新断言（见文件头注）。
@@ -98,6 +110,7 @@ beforeEach(() => {
   registerSkillImplementation?.(skillImplementation);
   registerMemoryImplementation?.(memoryImplementation);
   registerTaskImplementation?.(taskImplementation);
+  registerMeasureImplementation?.(measureImplementation);
 });
 
 // jsdom 不实现 CSS.escape（react-aria ListKeyboardDelegate 依赖它拼 [data-key] 选择器）。

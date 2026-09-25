@@ -34,7 +34,11 @@ import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/ren
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { createBlock, resetBlockIdCounterForTests, type SourcedBlock } from '../src/paper/block-model';
-import { clearPaperMeasureCache, measureBlockHeight, measureSignature } from '../src/paper/measure';
+import {
+  clearPaperMeasureCache,
+  measureBlockHeight,
+  measureSignature,
+} from '../src/plugins/builtin/paper-shell/measure';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 
 async function withRenderers(fn: () => void | Promise<void>): Promise<void> {
@@ -160,7 +164,7 @@ describe('paper/measure — grid 大表虚拟镜像', () => {
   });
 
   it('grid 属资产族 → needsObservedHeight 恒 true（RO 实测兜底）', async () => {
-    const { needsObservedHeight } = await import('../src/paper/measure');
+    const { needsObservedHeight } = await import('../src/plugins/builtin/paper-shell/measure');
     expect(needsObservedHeight('table', true)).toBe(true);
   });
 

@@ -42,7 +42,7 @@ import {
   measureBlockHeight,
   measureSignature,
   needsObservedHeight,
-} from '../src/paper/measure';
+} from '../src/plugins/builtin/paper-shell/measure';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import { buildEchartsOption } from '../src/plugins/builtin/renderers/components';
 

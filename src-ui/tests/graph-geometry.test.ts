@@ -18,7 +18,7 @@ import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/ren
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
-import { ASSET_DERIVED } from '../src/paper/type-tokens';
+import { ASSET_DERIVED } from '../src/plugins/builtin/paper-shell/type-tokens';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import { fitGraphLabel, graphLabelPx, graphLayout } from '../src/plugins/builtin/renderers/components';
 

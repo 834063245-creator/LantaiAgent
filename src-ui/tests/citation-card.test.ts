@@ -40,8 +40,8 @@ import {
   measureBlockHeight,
   measureSignature,
   needsObservedHeight,
-} from '../src/paper/measure';
-import { ASSET_DERIVED } from '../src/paper/type-tokens';
+} from '../src/plugins/builtin/paper-shell/measure';
+import { ASSET_DERIVED } from '../src/plugins/builtin/paper-shell/type-tokens';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 
 async function withRenderers(fn: () => void | Promise<void>): Promise<void> {

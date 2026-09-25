@@ -18,9 +18,9 @@ import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/ren
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
-import { measureBlockHeight } from '../src/paper/measure';
-import { ASSET_DERIVED } from '../src/paper/type-tokens';
 import { viewerClassOf } from '../src/paper/viewer-exts';
+import { measureBlockHeight } from '../src/plugins/builtin/paper-shell/measure';
+import { ASSET_DERIVED } from '../src/plugins/builtin/paper-shell/type-tokens';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import { viewerRegistry } from '../src/plugins/builtin/renderers/viewer-registry';
 import { registerBuiltinViewers } from '../src/plugins/builtin/renderers/viewers';

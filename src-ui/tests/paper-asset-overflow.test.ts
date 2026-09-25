@@ -37,8 +37,8 @@ import {
   reportObservedBlockHeight,
   splitObservedKey,
   subscribeObservedBlockHeights,
-} from '../src/paper/measure';
-import { ASSET_DERIVED } from '../src/paper/type-tokens';
+} from '../src/plugins/builtin/paper-shell/measure';
+import { ASSET_DERIVED } from '../src/plugins/builtin/paper-shell/type-tokens';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object): SourcedBlock {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });

@@ -368,8 +368,11 @@ manifest.json —— 包内合计 30～110 行。
 |---|---|---|
 | 契约层（2–4 个产物 + 内核共享） | `block-model.ts` 240 · `region-view.ts` 68 · `overlay-context.ts` 91 · `canvas-math.ts` 234 · `space.ts` 165 · `minimap-core.ts` 180 · `ink.ts` 374 | **留内核**（跨产物同实例/契约） |
 | 判据层（有意上移的单一真源） | `asset-rack.ts` 46 · `plate-sign.ts` 38 | **留内核**（头注有案：宿主→插件方向禁反） |
-| **产物私有排版引擎** | paper-shell 独占 5 件：`type-tokens.ts` **806** · ~~provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36~~；compose-dock 独占 3 件：~~toc 275 · toc-ink 103 · ime 37~~ | **7 件已归家**（批 5a，962 行：paper-shell 4 + compose-dock 3）；余 `type-tokens.ts` |
-| 拆分件 | ~~`measure.ts` **2015** · `group.ts` 306 · `virtualize.ts` 155 · `selection.ts` 193~~ | 类型/账本留内核，实现进 paper-shell | ✅ **批 9c 已落三件**（2026-09-26）：`selection.ts`（9c-1）· `virtualize.ts`（9c-2）· `group.ts`（9c-3）实现整件随包，形状分别上收内核契约 `paper/selection-contract.ts` / `region-geom-contract.ts` / `group-contract.ts`；faceDeps 291 → **279 键**（-12）。余 **9c-4**：`measure.ts` + `type-tokens.ts`——**实测修正账本口径**：内核消费者不止 `clearObservedHeightsForSession` 一个，`paper/ink.ts` 还要 `inkSourcesFor` / `measureSignature`（墨迹走查 = 同一台 markdown 测高引擎）⇒ 切法须「墨迹路径 + 实测回写账留内核、块级测高/镜像常量/卷首/`injectPaperTokens` 随包」 |
+| **产物私有排版引擎** | paper-shell 独占 5 件：~~`type-tokens.ts` 806~~ · ~~provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36~~；compose-dock 独占 3 件：~~toc 275 · toc-ink 103 · ime 37~~ | ✅ **8 件全归家**：批 5a 收 7 件（962 行）；**批 9c-4b 收 `type-tokens.ts`**（807 行，与 `measure.ts` 2,016 同批随 `paper-shell`）——**账② 至此清零** |
+| 拆分件 | ~~`measure.ts` **2015** · `group.ts` 306 · `virtualize.ts` 155 · `selection.ts` 193~~ | 类型/账本留内核，实现进 paper-shell | ✅ **批 9c 已落三件**（2026-09-26）：`selection.ts`（9c-1）· `virtualize.ts`（9c-2）· `group.ts`（9c-3）实现整件随包，形状分别上收内核契约 `paper/selection-contract.ts` / `region-geom-contract.ts` / `group-contract.ts`；faceDeps 291 → **279 键**（-12）。✅ **批 9c-4 全落**（2026-09-26）：9c-4a 接缝先行（`paper/measure-contract.ts` + `paper/measure-seam.ts`，`2268bd64`）；
+  **9c-4b** `measure.ts` 2,016 + `type-tokens.ts` 807 整件随 `paper-shell`（`KERNEL_DEFAULT` 删除 ⇒ 缺实现具名
+  fail-loud；名册标 `required`；宿主面 334 → **324 键**：撤 12 个 measure/type-tokens 键、补登记口 2 键）；
+  **9c-4c** 测试面 29 件改指包内 + 真机验收（见 §6.5）。原口径**实测修正**：内核消费者不止 `clearObservedHeightsForSession` 一个，`paper/ink.ts` 还要 `inkSourcesFor` / `measureSignature`（墨迹走查 = 同一台 markdown 测高引擎）⇒ 切法须「墨迹路径 + 实测回写账留内核、块级测高/镜像常量/卷首/`injectPaperTokens` 随包」 |
 
 **最痛的一条**：`paper/type-tokens.ts` 是 paper-shell 独占，却住在内核 ⇒
 `docs/plans/paper-shell/taste-ledger.md` 已把它记成现状：「属**壳域** ⇒ 改版式 token 必须重建 exe」——
@@ -468,7 +471,8 @@ manifest.json —— 包内合计 30～110 行。
 **常驻对账**：`npm --prefix src-ui run plugin-home:report`（`scripts/plugin-home-check.cjs`，
 `--json` 机器可读）——三色清单：**红** = 名册 `impl` 仍在内核（逐产物逐文件列行数），
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
-**2026-09-26 基线**（§4-6 `ctx.tokenMeter` 后重测）：红 **2 产物 / 5 文件 / 1,502 行**（§1 的 4 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80 · 9h-1 销 `blueprint.ts` 410 · 9h-2 销 `default-loop.ts` 469 · 9h-3 销 `skills.ts` 377 + `builtin-skills.ts` 358 · 9h-4 销 `memory.ts` 733 + `memory-bundle-client.ts` 134）；
+**2026-09-26 基线**（批 9c-4b 后重测）：红 **0 产物 / 0 文件 / 0 行（账②清零）**；绿 **122 平台 + 121 已认领**；
+灰 **50 文件 / 15,103 行**（`paper` 段两件转被认领）。历史：§4-6 后为红 2 产物 / 5 文件 / 1,502 行（§1 的 4 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80 · 9h-1 销 `blueprint.ts` 410 · 9h-2 销 `default-loop.ts` 469 · 9h-3 销 `skills.ts` 377 + `builtin-skills.ts` 358 · 9h-4 销 `memory.ts` 733 + `memory-bundle-client.ts` 134）；
 绿 **122 平台 + 121 已认领**；灰 **53 文件 / 15,355 行**（批 8 把渲染面判据层收成 `shared`：
 `markdown` / `marks` / `tool-text` / `fold` / `translate` 五件进 paper-renderers 与 renderers 的
 shared 名单；批 9a 把 token-meter / acp 登记进平台白名单，9c-1~3 把 selection / virtualize /
@@ -484,9 +488,11 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 **§4-6 `ctx.tokenMeter` 落地** ⇒ 内核 service 16 个、清单 54 条，`agent/token-meter/` 由「§4-6 B 白名单」改为
 「§4-6 A 内核 service」口径（平台 120 → 122：该前缀下新增 `contract.ts` / `service.ts` 两件），**灰区与红区零变化**——本批是分类收口不是搬迁）。
 **9h-5 `task-domain` 整件随包**（2026-09-26）⇒ 红区 2 产物 / 5 文件 / 1,502 行 → **1 产物 / 1 文件 / 806 行**
-（余 `paper-shell` 的 `paper/type-tokens.ts`，待 9c-4b）；灰区 53 → **52 文件 / 15,234 行**（销 `agent/board-persistence.ts`
-转共享认领 −121 行，加回 `runtime.ts` 改写 +1 行）；平台 122 不变、已认领 121 不变（三件实现出内核、两个新契约件进内核，恰好抵平）。
-**2026-09-26 纯壳集清零**：账本 §1 立账 21 条（18 纯壳 + 3 半壳）全部销完，半壳余 `paper-shell` 一条（自有实现数千行 ⇒ 从不进空壳判据，走名册 `impl` 半迁移账）。
+；**9c-4b 测量引擎随 `paper-shell`** ⇒ 红区 1 → **0**（`type-tokens` 806 销账、`measure` 2,016 随迁）、
+灰区 52 → **50 文件 / 15,103 行**（`paper/measure-contract.ts` + `paper/measure-seam.ts` 两件转被认领）。
+平台 122 不变、已认领 121 不变（9h-5 三件实现出内核、两个新契约件进内核恰好抵平；9c-4b 两件出内核、两件转被认领亦然）。
+**2026-09-26 纯壳集清零 + 账② 清零**：账本 §1 立账 21 条（18 纯壳 + 3 半壳）全部销完，`impl` 名册字段全空
+——「实现仍留内核」这一整本账**归零**，此后新欠账只可能以「新造空壳未登记」的形态出现（守卫钉住）。
 （红区数字涨不是倒退：批 1 把 §2.1 那 2,740 行从「隐性欠账」认领成了显性红账。）
 
 > **§0.6 现场缺陷（2026-09-25 真机验收时发现并修掉）**：批 9h-3/9h-4 给 skill/memory 两域立的
@@ -523,7 +529,8 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 | **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
-| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~3 / 9c-4a / 9d / 9e / 9g-1~2 / 9h-1~5 / §4-6 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）· **9e 常驻面归家**（用户裁定 A）：立**第 15 个内核 service** `ctx.rootViews`（'home'/'overlay' 双槽，App 外壳按槽渲染）+ 新产物 `sessions-home`（593 + 首页 CSS 851 行）与 `ask-cards`（776 + Host 30 + css 412），两产物均 `required` 不可禁用 · **9h-1 capability 内容表随包**（`agent/blueprint.ts` 410 → 158，包内 `segments.ts` 281 = 十四项定义，逐字号原样）· **9h-2 出厂默认 loop 随包**（`agent/agent-loop/default-loop.ts` 469 整件进 `agent-loop-service` 包，内核 `resolveAgentLoop()` 去兜底改 fail-loud；契约 v50 → **v51**）· **9h-3 技能域随包**（`skills.ts` 377 + `builtin-skills.ts` 358 进 `skill-domain` 包；形状上收 `agent/skill-contract.ts` + 登记表门面 `agent/skill-impl.ts`）· **9h-4 记忆域随包**（`memory.ts` 733 + `memory-bundle-client.ts` 134 进 `memory-domain` 包；形状上收 `agent/memory-contract.ts` + 门面 `agent/memory-impl.ts`，授权旗标留内核）· **9c-4a 测量接缝先行**（`paper/measure-contract.ts` + `paper/measure-seam.ts`，`2268bd64`）· **§4-6 token 计量升内核第 16 个 service `ctx.tokenMeter`**（裁定 A；契约 **v52**，墨量册改道宿主桥，宿主面 330 键；真机验收见 §6.5）· **9h-5 task 域整件随包**（`task.ts` 178 + `task-board.ts` 319 + `board-status.ts` 78 进 `task-domain` 包；形状上收 `agent/task-contract.ts` + 门面 `agent/task-impl.ts`；`board-persistence.ts` 121 判内核 `shared`；**纯壳集清零**，宿主面 334 键；真机验收见 §6.5）⇒ 红区 8 → **1 产物 / 1 文件 / 806 行**、灰区 84 → **52 文件 / 15,234 行**、清单 50 → **54**（16 service + 38 产物）。余：9c-4b/4c（`measure.ts` 2,016 + `type-tokens.ts` 807 整件随 `paper-shell` ⇒ 账②清零）→ 9f **侦察已出、判定细化**（`workspace.ts` 并入批 10 通道设计；`settings.ts` 拆「应用配置核心 + Provider 数据面」，与 `provider/**` 同件设计，需先出施工单）→ 9g 余项（`bundled-engine` 随批 10）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
+| **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~4 / 9d / 9e / 9g-1~2 / 9h-1~5 / §4-6 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）· **9e 常驻面归家**（用户裁定 A）：立**第 15 个内核 service** `ctx.rootViews`（'home'/'overlay' 双槽，App 外壳按槽渲染）+ 新产物 `sessions-home`（593 + 首页 CSS 851 行）与 `ask-cards`（776 + Host 30 + css 412），两产物均 `required` 不可禁用 · **9h-1 capability 内容表随包**（`agent/blueprint.ts` 410 → 158，包内 `segments.ts` 281 = 十四项定义，逐字号原样）· **9h-2 出厂默认 loop 随包**（`agent/agent-loop/default-loop.ts` 469 整件进 `agent-loop-service` 包，内核 `resolveAgentLoop()` 去兜底改 fail-loud；契约 v50 → **v51**）· **9h-3 技能域随包**（`skills.ts` 377 + `builtin-skills.ts` 358 进 `skill-domain` 包；形状上收 `agent/skill-contract.ts` + 登记表门面 `agent/skill-impl.ts`）· **9h-4 记忆域随包**（`memory.ts` 733 + `memory-bundle-client.ts` 134 进 `memory-domain` 包；形状上收 `agent/memory-contract.ts` + 门面 `agent/memory-impl.ts`，授权旗标留内核）· **9c-4 测量引擎整件随包**（9c-4a 接缝 `2268bd64`；9c-4b `measure.ts` 2,016 + `type-tokens.ts` 807 进 `paper-shell`
+（`required`；宿主面 324 键）；9c-4c 测试面 29 件改指包内 + 真机验收——**账② 清零**，见 §6.5）· **§4-6 token 计量升内核第 16 个 service `ctx.tokenMeter`**（裁定 A；契约 **v52**，墨量册改道宿主桥，宿主面 330 键；真机验收见 §6.5）· **9h-5 task 域整件随包**（`task.ts` 178 + `task-board.ts` 319 + `board-status.ts` 78 进 `task-domain` 包；形状上收 `agent/task-contract.ts` + 门面 `agent/task-impl.ts`；`board-persistence.ts` 121 判内核 `shared`；**纯壳集清零**，宿主面 334 键；真机验收见 §6.5）⇒ 红区 8 → **0 产物 / 0 文件 / 0 行**、灰区 84 → **50 文件 / 15,103 行**、清单 50 → **54**（16 service + 38 产物）。余：9f **侦察已出、判定细化**（`workspace.ts` 并入批 10 通道设计；`settings.ts` 拆「应用配置核心 + Provider 数据面」，与 `provider/**` 同件设计，需先出施工单）→ 9g 余项（`bundled-engine` 随批 10）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -1002,6 +1009,28 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   `TaskManager` / `TaskBoard` / `TaskBoardProxy` / `task_create` / `agent_board` /
   `registerTaskImplementation` / `BoardPersistence` 真身；进工作区（恢复卷）一次通过
   （`[Workspace.open] all done`），**零** `TASK_DOMAIN_UNAVAILABLE`、零装载失败。
+
+- **9c-4 测量引擎整件随包（账② 清零）**（2026-09-26，施工单 [`measure-engine-seam-design.md`](measure-engine-seam-design.md) §4）：
+  **9c-4a**（`2268bd64`）接缝先行——新 `paper/measure-contract.ts`（内核真读三动词 + `InkSource` 形状）+ `paper/measure-seam.ts`
+  （登记表 + 三门面；过渡态 `KERNEL_DEFAULT` 静态取内核三动词）。**9c-4b**：`paper/measure.ts` 2,016 +
+  `paper/type-tokens.ts` 807 两件 `git mv` 进 `plugins/builtin/paper-shell/`；`KERNEL_DEFAULT` 删除 ⇒ 缺实现具名
+  `PAPER_MEASURE_UNAVAILABLE`；名册标 **`required: true`**（引擎缺席 = 纸面高度全崩）+ `impl` 清空（**红区 0**）+
+  `shared` 撤 `paper/measure.ts` 一条；登记表照 9h-5 的栈式纪律（register push / clear pop）。**宿主面 334 → 324 键**
+  （指纹 `29f87402`）：撤 12 个 measure/type-tokens 键（`clearPaperMeasureCache` / `createBlockMeasureCache` /
+  `measureBlockHeightCached` / `measureFolioHeadHeight` / `MARGINALIA_TOP` / `needsObservedHeight` / `observedKeyOf` /
+  `reportObservedBlockHeight` / `reportObservedSidecarExtent` / `subscribeObservedBlockHeights` / `USER_SHRINK_MIN_W` /
+  `injectPaperTokens`——包内组件直接 `from './measure'` / `from './type-tokens'`）、补登记口 2 键。**9c-4c**：测试面
+  29 件 + `scripts/` 改指包内；`paper-visual-decisions` 的源文件断言点随迁。**包内新件**：`measure-implementation.ts`
+  （三动词按契约面组装）+ `host.ts`/`host.aliased.ts` 桥面翻面为登记口。红区 1 → **0**；灰区 52 → **50 文件 /
+  15,103 行**；平台 122 / 已认领 121 不变。
+  **真机验收**（重建 exe + CDP，2026-09-26）：宿主面运行时 **324 键**（= 基线键集 = 指纹 `29f87402`），
+  `registerMeasureImplementation` / `clearMeasureImplementation` 在场、12 个旧键已撤；装载日志
+  `hologram/paper-shell manifest=43ms face=43ms import=269ms apply=2.0ms [active]`；`entry.js` **475,128 B** 含
+  `measureBlockHeightCached` / `measureFolioHeadHeight` / `observedKeyOf` / `injectPaperTokens` / `FOLIO_TOKENS` /
+  `registerMeasureImplementation` 真身；`face.json` 需求键 = 新桥面、`hostApi` = 当前基线；进工作区纸面渲染在场
+  （`.pp-root` + 卷首题字 + 4 块），**零** `PAPER_MEASURE_UNAVAILABLE`——即「墨迹走查 → 接缝 → 包内引擎」真路径活着。
+  **性能对拍**（设计件 §5 的判据）：`tests/perf-paper-pan.test.tsx` = `commits=60 avg=4.07ms p95=4.79ms max=5.79ms
+  fillRect=0`（60 帧纯平移、小地图墨迹零重画）——门面只做一次模块级解引用，热路径无可测回退。
 
 ### 6.1 批 4c 施工侦察（`coding.ts` 五族拆分，2026-09-24 实测，下一轮直接用）**件**：`agent/tools/coding.ts` **998** + 随行私有件 `git-porcelain.ts` 126 · `sticky-cwd.ts` 138 ·
 `session-context.ts` 122 · `tools/structured-error.ts` 24。

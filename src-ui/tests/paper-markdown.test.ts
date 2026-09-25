@@ -42,8 +42,8 @@ import {
   PAPER_REASONING_LINE_HEIGHT,
   SEC_HEAD_GAP,
   SEC_HEAD_H,
-} from '../src/paper/measure';
-import { CHROME_DERIVED } from '../src/paper/type-tokens';
+} from '../src/plugins/builtin/paper-shell/measure';
+import { CHROME_DERIVED } from '../src/plugins/builtin/paper-shell/type-tokens';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });

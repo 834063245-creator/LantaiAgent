@@ -29,8 +29,8 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
   measureRichInlineStats: vi.fn(() => ({ lineCount: 1, maxLineWidth: 0 })),
 }));
 
-const { measureFolioHeadHeight } = await import('../src/paper/measure');
-const { FOLIO_TOKENS } = await import('../src/paper/type-tokens');
+const { measureFolioHeadHeight } = await import('../src/plugins/builtin/paper-shell/measure');
+const { FOLIO_TOKENS } = await import('../src/plugins/builtin/paper-shell/type-tokens');
 
 /** 每字宽 = 题字号（全角汉字 ≈ 1em）。 */
 const GLYPH_W = FOLIO_TOKENS.titleSize;
