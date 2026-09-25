@@ -15,8 +15,10 @@
 // 随包引擎开关面（McpPage 卡片）、loader 装卸面（PluginsPage 按钮，运行期取用）、
 // `stringifyPatchYaml`（作者面 YAML 序列化留内核——产物不得裸 import）。
 
-// 技能域（SkillsPage 列表源；`agent/skills.ts` 归 skill-domain 见账本批 3）
-export { type SkillDef, scanSkills } from '../../../agent/skills';
+export type { SkillDef } from '../../../agent/skill-contract';
+// 技能域（SkillsPage 列表源）——批 9h-3（2026-09-26）：实现随 skill-domain 包 ⇒
+// 列表源改走内核登记表门面 `scanSkills`（`agent/skill-impl.ts`），形状从契约文件取。
+export { scanSkills } from '../../../agent/skill-impl';
 export { ConfirmDialog } from '../../../app/ConfirmDialog';
 // 批 9d（2026-09-26）：Provider 控制台 8 件归家 ⇒ 桥它们的**有状态**内核依赖面
 // （纯模块——vendor-templates / thinking / custom-headers / types——随包内联，不桥）。

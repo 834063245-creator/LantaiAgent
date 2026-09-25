@@ -33,7 +33,7 @@
 // 行 id 已随行表退役终结，不复存在）。
 
 import type { MemoryManager } from '../agent/memory';
-import type { SkillRegistry } from '../agent/skills';
+import type { SkillRegistryFace } from '../agent/skill-contract';
 import type { SubAgentPool } from '../agent/subagent-runtime-contract';
 import type { SubAgentSpawner } from '../agent/subagent-tools-contract';
 import type { TaskManager } from '../agent/task';
@@ -46,7 +46,7 @@ export interface ToolRowContext {
   codingExec: ToolExecutor;
   /** ask_user 的 UI 回调（builder 从 BuilderDeps.onAskUser 注入）。 */
   ui?: CodingToolsUI;
-  skillRegistry?: SkillRegistry;
+  skillRegistry?: SkillRegistryFace;
   memoryManager?: MemoryManager;
   taskManager: TaskManager;
   subAgentPool: SubAgentPool;

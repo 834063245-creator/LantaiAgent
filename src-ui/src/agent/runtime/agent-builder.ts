@@ -93,7 +93,7 @@ ${skillCatalog}`;
 export interface ToolRegistryOptions {
   deps: BuilderDeps;
   memoryManager?: MemoryManager;
-  skillRegistry?: SkillRegistry;
+  skillRegistry?: SkillRegistryFace;
   taskManager: TaskManager;
   subAgentPool: SubAgentPool;
   /** 子 Agent spawn 函数 — 由 Runtime 注入 */
@@ -105,7 +105,7 @@ export interface ToolRegistryOptions {
 }
 
 import type { MemoryManager } from '../memory';
-import type { SkillRegistry } from '../skills';
+import type { SkillRegistryFace } from '../skill-contract';
 import type { SubAgentPool } from '../subagent-runtime-contract';
 import type { SubAgentSpawner } from '../subagent-tools-contract';
 import type { TaskManager } from '../task';

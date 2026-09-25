@@ -24,7 +24,8 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
   return { ...actual, ...H.kernelFs.overrides };
 });
 
-import { createSkillTool, SkillRegistry, scanSkills } from '../src/agent/skills';
+// 批 9h-3：技能域实现随 skill-domain 产物包（原 src/agent/skills.ts）
+import { createSkillTool, SkillRegistry, scanSkills } from '../src/plugins/builtin/skill-domain/skills';
 
 const PROJ = '/proj';
 /** MockFs 的 kernelGlobalMemoryDir 固定返回 ~/.lantai/global_memory → 用户根 ~/.lantai/skills。 */

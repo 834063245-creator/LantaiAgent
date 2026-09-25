@@ -39,7 +39,9 @@ export function ensureSkillCatalog(path: string | null): void {
 
 async function scanFor(path: string): Promise<void> {
   try {
-    const { scanSkills } = await import('../../agent/skills');
+    // 批 9h-3：技能域实现随 skill-domain 包 ⇒ 走内核登记表门面（缺实现 fail-loud，
+    // 由本函数 catch 兜成「候选为空 + 留痕」的既有降级语义）
+    const { scanSkills } = await import('../../agent/skill-impl');
     const scan = await scanSkills(path);
     if (_scannedPath !== path) return; // 键已换代（工作区又切了）——本结果作废
     _skills = scan.skills.map((s) => ({ name: s.name, description: s.description }));

@@ -48,13 +48,13 @@ const PLATFORM_TARGETS: RegExp[] = [
 const NOTES: Record<string, string> = {
   'memory-domain':
     '733 行；随行 memory-bundle-client.ts 134（批 3 复核：内核 `workspace.ts` 构造 MemoryManager ⇒ 宿主→插件方向禁反，待批 9）',
-  'skill-domain':
-    'skills.ts 377 + builtin-skills.ts 358（出厂技能内容；批 3 复核：内核 runtime/agent-builder/workspace 用 SkillRegistry ⇒ 待批 7/9）',
   'task-domain':
     'task.ts 178 + task-board.ts 319；随行 board-persistence.ts 121 · tools/board-status.ts 78（批 3 复核：TaskBoard 11 处内核消费者 ⇒ 待批 7）',
   // 批 9h-1（2026-09-26）：capability-segments 的十四项定义已随包（segments.ts）⇒ NOTES 与名册 impl 一并销账。
   // 批 9h-2（2026-09-26）：agent-loop-service 的出厂默认 loop 已随包（default-loop.ts，469 行）⇒
   // NOTES 与名册 impl 一并销账（内核 `resolveAgentLoop()` 改 fail-loud，名册标 required）。
+  // 批 9h-3（2026-09-26）：skill-domain 的扫描器 + 出厂技能内容已随包（skills.ts / builtin-skills.ts）⇒
+  // NOTES 与名册 impl 一并销账（内核 workspace/runtime 改走 `agent/skill-impl.ts` 登记表门面）。
   // 半迁移（实心包里的残余——不是薄包，故不进空壳集，但同样按 impl 销账）
   // 批 9d（2026-09-26）：settings-domain 的 Provider 控制台 8 件（2,740 行）已随包 ⇒ NOTES 与名册 impl 一并销账。
   'paper-shell':
@@ -143,7 +143,10 @@ const SHELL_DIRS = CLAIMS.filter((c) => c.isShell).map((c) => c.dir);
 
 describe('产物归家账（销账制：搬一个销一条，清空即全绿）', () => {
   it('机械判据自检：真空壳命中、已归家/合格样板不命中（防守卫自身失灵）', () => {
-    expect(looksLikeShell('skill-domain').shell, 'skill-domain 应判为空壳').toBe(true);
+    expect(
+      looksLikeShell('skill-domain').shell,
+      'skill-domain 批 9h-3 已归家（包内 skills.ts 扫描器 + builtin-skills.ts 出厂内容）',
+    ).toBe(false);
     expect(looksLikeShell('memory-domain').shell, 'memory-domain 应判为空壳').toBe(true);
     expect(looksLikeShell('fs-domain').shell, 'fs-domain 批 4c-3 已归家（自有实现 284 行）').toBe(false);
     expect(looksLikeShell('shell-domain').shell, 'shell-domain 批 4c-3 已归家（自有实现 172 行）').toBe(false);
@@ -201,7 +204,7 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     expect(done, `这些包的实现已不在内核（搬运完成）——请从名册该条目的 impl 销账：\n${done.join('\n')}`).toEqual([]);
   });
 
-  it('账本口径自洽：空壳 3 条（2 纯壳 + 1 半壳），且每条都有备注文本', () => {
+  it('账本口径自洽：空壳 2 条（1 纯壳 + 1 半壳），且每条都有备注文本', () => {
     // 口径：账本 §1 立账 21 条；批 2a 销 `llm-adapters`、批 3a 销 wait/office/cordis、
     // 批 4a 销 `browser-desktop-domain`、批 4b 销 search/web 两域、批 4c 销
     // git/ask/agent-isolation/fs/shell 五域、批 6 四项、批 7a agent-domain ⇒ 销 13 条；
@@ -217,7 +220,7 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     // 批 9h-2：agent-loop-service 的出厂默认 loop 随包（包内 default-loop.ts 469 行 = 自有实现）
     // ⇒ 出空壳集、销账（内核只留活动面 + 查表；该产物标 required）。
     // 数字再变 = 要么又销了账（改这条），要么漏登记。
-    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 18 = 3`).toBe(3);
+    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 19 = 2`).toBe(2);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();
     // 反向：备注表不许留已销账的条目（防文本腐烂）
     const ghost = Object.keys(NOTES).filter((d) => !CLAIMS.some((c) => c.dir === d));

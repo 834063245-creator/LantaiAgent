@@ -25,7 +25,9 @@ import { type BuilderDeps, buildToolRegistry } from './agent/runtime/agent-build
 // ── 运行时层（替代 bootstrap.ts）──
 import { AgentRuntime } from './agent/runtime/runtime';
 import type { AgentHandle } from './agent/runtime/types';
-import { SkillRegistry } from './agent/skills';
+import type { SkillRegistryFace } from './agent/skill-contract';
+// 批 9h-3：技能域实现随 skill-domain 包 ⇒ 装配点改走内核登记表门面（缺实现 fail-loud）
+import { createSkillRegistry } from './agent/skill-impl';
 import { buildTurnStartBlock, refreshGitStatus } from './agent/state-inject';
 import type { SubAgentPool } from './agent/subagent-runtime-contract';
 import { requireSubagentRuntime } from './agent/subagent-runtime-impl';
@@ -138,7 +140,7 @@ export class Workspace {
   registry: ToolRegistry | null = null;
   memoryManager: MemoryManager | null = null;
   taskManager: TaskManager = new TaskManager();
-  skillRegistry: SkillRegistry | null = null;
+  skillRegistry: SkillRegistryFace | null = null;
   agentStore: AgentStore | null = null;
   goalManager: GoalManager | null = null;
 
@@ -644,7 +646,7 @@ export class Workspace {
     this.agentStore = new AgentStore();
     this.goalManager = new GoalManager(this.path, broadcastGoalRecord);
     this.goalManager.adoptOrphans().catch((e) => console.warn('[workspace] goal adoption failed:', e));
-    this.skillRegistry = new SkillRegistry(this.path);
+    this.skillRegistry = createSkillRegistry(this.path);
 
     if (memorySection.trim()) {
       const memLines = memorySection.split('\n').filter((l) => l.startsWith('- ')).length;

@@ -76,7 +76,9 @@ import {
 } from '../../agent/schema-validate';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
 import { buildCompactedSummaryMessage } from '../../agent/session-log';
-import { createSkillTool, scanSkills } from '../../agent/skills';
+// 批 9h-3 归家（2026-09-26）：技能域实现随 skill-domain 包 ⇒ 撤 `createSkillTool` 桥；
+// `scanSkills` 改经内核登记表门面（settings-domain 的 SkillsPage 列表源读它）。
+import { scanSkills } from '../../agent/skill-impl';
 import { parseIsolationDiff } from '../../agent/spill';
 import { activeStateHooksImplementation, registerStateHooksImplementation } from '../../agent/state-hooks-impl';
 import {
@@ -274,7 +276,9 @@ import {
   kernelAppendFileDurable,
   kernelCreateDirectory,
   kernelDeleteFile,
+  kernelGlobalMemoryDir,
   kernelListDirectory,
+  kernelListDirectoryFlat,
   kernelReadFile,
   kernelReadFileRaw,
   kernelTruncateFile,
@@ -617,9 +621,12 @@ const faceDeps = {
   isMockMode,
   watchFileDragDrop,
   // S3 工具域真源产物运行时依赖（经宿主桥 mods.faceDeps 取用）
-  createSkillTool,
+  // 批 9h-3：`createSkillTool` 随 skill-domain 包（该包自持实现）⇒ 键已撤
   createMemoryTools,
   createTaskTools,
+  // 批 9h-3 归家：技能域实现随包 ⇒ 桥扫描器读面（内核 RPC；纯读无状态）
+  kernelGlobalMemoryDir,
+  kernelListDirectoryFlat,
   // 批 9h-1 归家（2026-09-26）：capability 十四项内容表进 capability-segments 包 ⇒
   // 桥它的取用面（批 6/7 的登记表读面 + 内核工具工厂 / 域折叠表）；`firstPartyCapabilities` 键已撤
   createCodeExecutionTool,

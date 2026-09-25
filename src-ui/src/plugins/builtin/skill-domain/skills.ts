@@ -20,38 +20,29 @@
 // 可用）。优先级：项目 > 用户 > 出厂（同名去重，用户可用同名覆盖出厂版）。
 //
 // 接口面：SkillDef / scanSkills / SkillRegistry(reload/.names) / createSkillTool。
+//
+// 批 9h-3（2026-09-26）：本件随 `skill-domain` 产物包（原 `agent/skills.ts`）——
+// **形状上收内核契约** `agent/skill-contract.ts`（`SkillDef` / `SkillScan` /
+// `SkillRegistryFace` / `SkillImplementation`），内核调用点改走登记表门面
+// （`agent/skill-impl.ts` 的 `createSkillRegistry` / `scanSkills`，缺实现 fail-loud）。
+// `yaml` / `zod` 是裸包，产物构建期整包内联（自包含契约：产物 entry.js 零静态 import）。
 
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import type { DirEntry } from '../rpc-contract';
-import { kernelGlobalMemoryDir, kernelListDirectoryFlat, kernelReadFile } from '../rpc-contract';
 import { BUILTIN_SKILLS } from './builtin-skills';
-import type { Tool } from './tool';
-import { defineTool } from './tools/define-tool';
+import {
+  type DirEntry,
+  defineTool,
+  kernelGlobalMemoryDir,
+  kernelListDirectoryFlat,
+  kernelReadFile,
+  type SkillDef,
+  type SkillRegistryFace,
+  type SkillScan,
+  type Tool,
+} from './host';
 
-/** 技能条目（模型可见面）。 */
-export interface SkillDef {
-  name: string;
-  description: string;
-  prompt: string;
-  /** 附加元数据（原样保留，发现注入展示用）。 */
-  whenToUse?: string;
-  /** 技能目录绝对路径（${LANTAI_SKILL_DIR} 展开锚；出厂技能无盘上目录）。 */
-  dir?: string;
-  /** 来源根：'project' | 'user' | 'builtin'。 */
-  source: 'project' | 'user' | 'builtin';
-  /** 装载诊断（坏档时填充；正常为空）。 */
-  error?: string;
-}
-
-/** 一次扫描的完整产出（目录 + 诊断）。 */
-export interface SkillScan {
-  skills: SkillDef[];
-  /** 跳过/损坏的技能条目（带 error reason）——坏档不静默。 */
-  skipped: Array<{ name: string; reason: string; dir: string }>;
-  /** 目录内容的稳定摘要（发现注入 digest——不变则注入方不重发）。 */
-  digest: string;
-}
+export type { SkillDef, SkillScan };
 
 // ── 技能名规约（对齐 Agent Skills 标准：小写 kebab-case）──
 
@@ -286,7 +277,7 @@ function stableDigest(input: string): string {
 
 // ── SkillRegistry — hot-loading skill manager ──
 
-export class SkillRegistry {
+export class SkillRegistry implements SkillRegistryFace {
   private projectPath: string;
   /** 用户级 .lantai 目录（缺省 null = 内部经 kernelGlobalMemoryDir 推导）。 */
   private userDirOverride: string | null | undefined;
@@ -333,8 +324,10 @@ export class SkillRegistry {
 
 // ── Skill tool factory ──
 
-/** 创建 Skill 工具（registry 每次调用热装载）。 */
-export function createSkillTool(registry: SkillRegistry): Tool {
+/** 创建 Skill 工具（registry 每次调用热装载）。
+ *  批 9h-3：入参取**内核契约面** `SkillRegistryFace`（装配面传入的是门面类型，
+ *  实现只需 `reload()` / `lastScan` 两个成员）。 */
+export function createSkillTool(registry: SkillRegistryFace): Tool {
   return defineTool({
     name: 'Skill',
     description:

@@ -38,7 +38,9 @@ import type { MessageBus } from '../message-contract';
 import { requireMultiagentComm } from '../multiagent-impl';
 import { PlanStateManager } from '../plan/plan-state';
 import { SessionLog } from '../session-log';
-import { scanSkills } from '../skills';
+// 批 9h-3：技能扫描随 skill-domain 包 ⇒ 走内核登记表门面（缺实现 = 具名 fail-loud；
+// 调用点外层 catch 保住「技能目录读不到不炸装配」的既有降级语义）
+import { scanSkills } from '../skill-impl';
 import type { DiagnosticsSource } from '../state-inject';
 import type { AgentLifecycleManager } from '../subagent-runtime-contract';
 import { requireSubagentRuntime } from '../subagent-runtime-impl';
