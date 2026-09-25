@@ -51,7 +51,6 @@ import type { SeamDisabledMap } from './composition/seam-resolution';
 import { activateWorkspaceContributions } from './composition/workspaces-service';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
-import { registerBundledEngineTools } from './plugins/bundled-engine';
 import { formatDeferredWakeNote, registerDeferredWakeHandler } from './plugins/deferred';
 import { markDynamicFetchStart, mergeDynamicModels, recordDynamicFetchResult } from './provider/catalog';
 import { resolveApiKey } from './provider/credentials';
@@ -68,7 +67,6 @@ import {
   type ProviderSettings,
 } from './settings';
 import type { AgentConfigChangeReason } from './state/agent-config-store';
-import { useBundledEngineStore } from './state/bundled-engine-store';
 import { getComposeStore, resolveComposeEffective } from './state/compose-store';
 import { broadcastGoalRecord } from './state/goal-store';
 import { getPanelStore } from './state/panel-store';
@@ -721,52 +719,11 @@ export class Workspace {
       },
     });
 
-    // ── 随包图谱引擎接线（engine-bundled-mcp-distribution，2026-09-16）──
-    // **必须在下面取组合快照之前**——理由有两条，都是实机缺陷（2026-09-24）：
-    //   ① 引擎的工具行是**接线时才注册**进组合层的：接线前取的那份快照里没有这一行
-    //      ⇒ `_buildRegistryLocked(composition)` 装配出来的注册表不含引擎工具，
-    //      且 `new AgentRuntime(..., composition)` 的激活 retain 也看不见它。
-    //      （此前注释只要求「在 _buildRegistryLocked 之前」，而那已经太晚：快照在
-    //      更上面就取走了。）
-    //   ② 接线现在**有界等待引擎就绪**（`registerBundledEngineTools` 内的
-    //      PREHEAT_BUDGET_MS）——工具面在装配时点冻结，必须等它物化完再建注册表。
-    //
-    // 生命周期归属：工具行挂 `this._fiber.ctx`（工作区 fiber）⇒ 离开/切换
-    // 工作区随 fiber.dispose 自动摘行 + 治理器杀进程树，**不需要额外清理代码**。
-    //
-    // 引擎契约「一进程一工作区根」（ensure_ready 异根拒绝）：注册粒度 =
-    // 工作区，root 进 `args` 的 `--project-root`。切工作区 = 旧 fiber 释放
-    // 进程 + 新 fiber 按新 root 重注册（= engine_init 说的「换整个实例」）。
-    //
-    // 默认关（方案乙）：未启用时立即返回，零行为变更。
-    //
-    // 回执（2026-09-16 用户实机报缺陷后补；2026-09-24 补工具数）：结果写
-    // `state/bundled-engine-store`（设置面板「随包图谱引擎」区块读）+ 状态栏一行
-    // ——此前只进 console，用户侧「引擎到底挂上没有」无从查证。判别口径 =
-    // **工具面真的在册**（wired + toolCount），不是「行注册成功」。
-    try {
-      const wiring = await registerBundledEngineTools(this._fiber.ctx, this.path);
-      const report = useBundledEngineStore.getState().report;
-      if (wiring.wired) {
-        report({ status: 'wired', workspacePath: this.path, toolCount: wiring.toolCount });
-        console.log(`[Workspace] 随包图谱引擎已接线：${this.path}（${wiring.toolCount ?? 0} 个工具在册）`);
-        useShellStore.getState().pushStatus(`随包图谱引擎已接线（${wiring.toolCount ?? 0} 个工具）`);
-      } else if (wiring.reason) {
-        // 启用了但接不上 = 可见降级（不静默——错误不静默纪律）
-        report({ status: 'failed', workspacePath: this.path, reason: wiring.reason });
-        console.warn('[Workspace] 随包图谱引擎未接线:', wiring.reason);
-        useShellStore.getState().pushStatus(`⚠️ 随包图谱引擎未接线：${wiring.reason}`);
-      } else {
-        // 开关未启用 = 用户意图（不打扰；回执留给设置面板显示）
-        report({ status: 'off', workspacePath: this.path });
-      }
-    } catch (e) {
-      // 接线失败不得阻断工作区打开（引擎工具面是增强，非核心路径）
-      const reason = e instanceof Error ? e.message : String(e);
-      useBundledEngineStore.getState().report({ status: 'failed', workspacePath: this.path, reason });
-      console.warn('[Workspace] 随包图谱引擎接线失败:', e);
-      useShellStore.getState().pushStatus(`⚠️ 随包图谱引擎接线失败：${reason}`);
-    }
+    // ── 随包图谱引擎接线（批 10 部件三，2026-09-26）：**已迁入产物** ──
+    // `plugins/builtin/bundled-engine/` 经 `ctx.workspaces.onActivate` 贡献——由上方那条
+    // `activateWorkspaceContributions(...)` 在**同一位置**（组合快照之前）按注册序执行；
+    // 三态回执（wired / failed + 具名原因 / off）由该产物写 `useBundledEngineStore` + 状态栏。
+    // 本文件不再持有引擎知识（禁用该产物 = 引擎天然 kill switch）。
 
     // ── 创建 Runtime + UI 适配器（旧 runtime 的拆除已在上方 P0-10 处完成）──
     // cordis-migration P2：runtime 挂在工作区 fiber 下 — 每个 Agent 在 cordis 树上

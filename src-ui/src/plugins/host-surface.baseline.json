@@ -1,7 +1,8 @@
 {
-  "fingerprint": "28da6bf5",
+  "fingerprint": "3a333622",
   "keys": [
     "ANCHOR",
+    "ASSEMBLY_READY_WAIT_MS",
     "Agent",
     "AgentNotFoundError",
     "ApiError",
@@ -105,6 +106,7 @@
     "createProvider",
     "createTaskManager",
     "createTaskTools",
+    "createTauriProcIO",
     "deactivateExternalPlugin",
     "defaultBaseUrl",
     "defaultFolded",
@@ -242,6 +244,7 @@
     "registerCompactionImplementation",
     "registerCompactionTools",
     "registerGoalImplementation",
+    "registerMcpServerTools",
     "registerMeasureImplementation",
     "registerMemoryImplementation",
     "registerMultiagentComm",
@@ -320,6 +323,7 @@
     "viewFocusRegion",
     "viewportCenterWorld",
     "waitForConfirm",
+    "waitWithin",
     "watchFileDragDrop",
     "wheelFactor",
     "workspaceFlow",

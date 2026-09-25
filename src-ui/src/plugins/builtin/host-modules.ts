@@ -57,6 +57,7 @@ import { log } from '../../agent/logger';
 // 批 9h-2 归家（2026-09-26）：出厂默认 loop 实现进 agent-loop-service 包 ⇒
 // `defaultAgentLoop` 桥键撤除；改桥该包新的取用面（循环依赖面 3 个缺失键）。
 import { errText, finishReasonMessage, parseFilePathArg } from '../../agent/loop-helpers';
+import { createTauriProcIO } from '../../agent/mcp/tauri-io';
 // 批 9h-4 归家（2026-09-26）：记忆域实现随 memory-domain 包 ⇒ 撤 `createMemoryTools` 桥键
 // （该包自持实现，经 `agent/memory-impl.ts` 登记表反向登记）；改桥「事实保存授权」消费口
 // （跨模块一次性状态留内核、产物只取用）。
@@ -208,13 +209,17 @@ import { collapseToolGroups, translateMessagesCached } from '../../paper/transla
 // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面——引擎开关 / 装卸面 /
 // MCP 声明与用户级 mcp.json / 插件与偏好 store。装卸面与 loader 的循环为
 // 运行期取用（组件按钮回调），无初始化期解引用，ESM 循环安全（见文件头注）。
+// 批 10 部件三（2026-09-26）：接线随 bundled-engine 包 ⇒ 内核只剩「探测 + 开关」两件
+// （`plugins/bundled-engine-prefs.ts`，设置面板经本桥取用）；台账 store 独立成键。
 import {
   isBundledEngineEnabled,
   onBundledEnginePrefChanged,
   probeBundledEngine,
   setBundledEngineEnabled,
-} from '../../plugins/bundled-engine';
+} from '../../plugins/bundled-engine-prefs';
 import { activateExternalPlugin, deactivateExternalPlugin } from '../../plugins/loader';
+// 批 10 部件三（部件二落地）：MCP 受治桥面对第一方产物可见（设计件 §4.2 方案 A）
+import { ASSEMBLY_READY_WAIT_MS, registerMcpServerTools, waitWithin } from '../../plugins/mcp-bridge';
 import { McpServerDeclSchema } from '../../plugins/types';
 import { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../plugins/user-mcp';
 import { createProvider } from '../../provider';
@@ -806,6 +811,12 @@ const faceDeps = {
   // （包内直接取用），改桥该包的登记口两键（apply 期登记进内核接缝 paper/measure-seam）。
   registerMeasureImplementation,
   clearMeasureImplementation,
+  // 批 10 部件三（2026-09-26 部件二）：MCP 受治桥面对第一方产物可见（设计件 §4.2 方案 A
+  // ——不新开公开通道；第三方仍只有 manifest.mcpServers 声明面）+ 引擎接线所需 IO 工厂。
+  registerMcpServerTools,
+  waitWithin,
+  ASSEMBLY_READY_WAIT_MS,
+  createTauriProcIO,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

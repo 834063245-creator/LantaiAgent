@@ -155,7 +155,7 @@ App 外壳视图槽通道（批 9e）：首页（slot:'home'）与根浮层（sl
 | `ctx.lsp` | `LspService` | `src/ui/lsp-client.ts` | — | 0 文件 |
 | `ctx.shellRows` | `ShellRowsService` | `src/composition/shell-rows-service.ts` | `plugin/hologram/settings-domain/shell-update-check` | 1 文件 |
 | `ctx.space` | `SpaceService` | `src/composition/space-service.ts` | — | 1 文件 |
-| `ctx.workspaces` | `WorkspacesService` | `src/composition/workspaces-service.ts` | — | 0 文件 |
+| `ctx.workspaces` | `WorkspacesService` | `src/composition/workspaces-service.ts` | — | 1 文件 |
 
 ### `ctx.activation` — ActivationService（服务）
 
@@ -217,5 +217,5 @@ agent loop 注册表（平台化 Phase 5 · D13；S5b 产物化后类本体在 p
 
 - owner：`src/composition/workspaces-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面：—（无直接 import/ctx 引用——运行时通道注入）
+- 消费面（1）：`src/plugins/builtin/bundled-engine/index.ts`
 

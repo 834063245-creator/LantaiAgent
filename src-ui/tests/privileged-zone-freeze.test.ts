@@ -22,6 +22,8 @@
 // `asset-renderers.tsx` 后 31；plugins 顶层 17 → 批 9a §4-15 收单一真源新增
 // `service-plugins.ts` 后 18）。批 9e（2026-09-26）：新增内核通道
 // `composition/root-views-service.ts`（App 外壳视图槽——用户裁定 A，特权区内的**通道本体**）→ 32。
+// 批 10 部件三（2026-09-26）：`bundled-engine.ts` 的**接线**随 `plugins/builtin/bundled-engine/`
+// ⇒ 顶层条目改记拆分后的内核件 `bundled-engine-prefs.ts`（探测 + 开关，设置面板经 faceDeps 取用）。
 // 批 10 同窗（2026-09-26）：两条**宿主生命周期贡献面**本体入区——`composition/workspaces-service.ts`
 // （`ctx.workspaces`）与 `composition/shell-rows-service.ts`（`ctx.shellRows`）；用户 2026-09-25 裁定 A
 // （§4-9 与工作区接线同窗），契约 v52 → v53 → 34 文件。
@@ -76,7 +78,7 @@ const PLUGINS_MANIFEST = [
   'boot-gate.ts',
   'builtin-roster.json',
   'builtin-roster.ts',
-  'bundled-engine.ts',
+  'bundled-engine-prefs.ts',
   'data-fs.ts',
   'deferred.ts',
   'factory-products.ts',

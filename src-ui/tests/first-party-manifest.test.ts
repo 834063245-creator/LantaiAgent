@@ -48,7 +48,8 @@ describe('first-party-manifest（清单完备性守护）', () => {
     // token-meter 新增（2026-09-26 §4-6 A：token 计量升为内核第 16 个 service）：53 → 54
     // composition-workspaces / composition-shell-rows 新增（2026-09-26 批 10 同窗：两条宿主生命周期
     // 贡献面，用户 2026-09-25 裁定 A）：54 → 56
-    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(56);
+    // bundled-engine 新增（2026-09-26 批 10 部件三：引擎接线产物化）：56 → 57
+    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(57);
   });
 
   it('两类都有存量：service 平台服务（常驻）与 feature 功能插件（可禁用）', () => {

@@ -39,14 +39,15 @@ export {
 export { builtinPresets, isValidPresetId, type PresetEntry } from '../../../composition/presets';
 export { activeLlmAdapters } from '../../../composition/services';
 export { setLang } from '../../../i18n';
-// 随包引擎开关面（McpPage「随包图谱引擎」卡片）
+// 随包引擎开关面（McpPage「随包图谱引擎」卡片）——批 10 部件三起，内核只剩探测 + 开关两件
+// （接线已随 `bundled-engine` 产物）
 export {
   type BundledEngineInfo,
   isBundledEngineEnabled,
   onBundledEnginePrefChanged,
   probeBundledEngine,
   setBundledEngineEnabled,
-} from '../../../plugins/bundled-engine';
+} from '../../../plugins/bundled-engine-prefs';
 // 装卸面（PluginsPage 的启用/禁用/卸载按钮；与 loader 的循环为运行期取用，见
 // host-modules.ts 头注）
 export { activateExternalPlugin, deactivateExternalPlugin } from '../../../plugins/loader';

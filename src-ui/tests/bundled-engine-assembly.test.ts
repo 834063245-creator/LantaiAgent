@@ -162,7 +162,11 @@ import { firstPartyCapabilityPlugins } from '../src/composition/first-party-capa
 import { firstPartyToolPlugins } from '../src/composition/first-party-tools';
 import { applyDefaultPreset, clearUserPatch } from '../src/composition/preset-assembly';
 import { compositionServicesPlugin } from '../src/composition/services';
+// 批 10 部件一/三：引擎接线改由 bundled-engine 产物经 ctx.workspaces 贡献 ⇒ 腰里同挂
+//（生产 = loader 挂 SERVICE_PLUGINS + 产物通道装载）。
+import { workspacesServicePlugin } from '../src/composition/workspaces-service';
 import { initCordisKernel } from '../src/cordis/boot';
+import { bundledEnginePlugin } from '../src/plugins/builtin/bundled-engine';
 import type { LantaiPlugin } from '../src/plugins/types';
 import { useBundledEngineStore } from '../src/state/bundled-engine-store';
 import { useCompositionStore } from '../src/state/composition-store';
@@ -191,6 +195,9 @@ async function withKernelComposition<T>(run: () => Promise<T>): Promise<T> {
   const fibers: Array<Awaited<ReturnType<typeof root.plugin>>> = [];
   try {
     fibers.push(await root.plugin(compositionServicesPlugin));
+    // 批 10 部件一/三：接线由产物经 ctx.workspaces 贡献 ⇒ 腰里同挂 service + 产物
+    fibers.push(await root.plugin(workspacesServicePlugin));
+    fibers.push(await root.plugin(bundledEnginePlugin));
     fibers.push(await root.plugin(capabilitiesServicePlugin));
     for (const plugin of [...firstPartyToolPlugins(), ...firstPartyCapabilityPlugins()] as LantaiPlugin[]) {
       fibers.push(await root.plugin(plugin));
@@ -244,7 +251,7 @@ describe('随包引擎 → Agent 工具面（装配面端到端）', () => {
 
   it('启用引擎 + 开工作区：Agent 的注册表里必须有 mcp__hologram__*，回执如实报工具数', async () => {
     localStorage.setItem('lantai.bundledEngine.enabled', 'true');
-    const { resetBundledEngineForTests } = await import('../src/plugins/bundled-engine');
+    const { resetBundledEngineForTests } = await import('../src/plugins/bundled-engine-prefs');
     resetBundledEngineForTests();
 
     await withKernelComposition(async () => {

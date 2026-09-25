@@ -19,15 +19,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Context } from '../src/cordis';
+import { bundledEngineDecl, registerBundledEngineTools } from '../src/plugins/builtin/bundled-engine/wiring';
 import {
-  bundledEngineDecl,
   isBundledEngineEnabled,
   onBundledEnginePrefChanged,
   probeBundledEngine,
-  registerBundledEngineTools,
   resetBundledEngineForTests,
   setBundledEngineEnabled,
-} from '../src/plugins/bundled-engine';
+} from '../src/plugins/bundled-engine-prefs';
 import { describeReceipt, useBundledEngineStore } from '../src/state/bundled-engine-store';
 
 /** 直接构造一个「已探测」的 info（测试内不触发真 RPC）。 */

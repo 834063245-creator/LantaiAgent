@@ -30,11 +30,8 @@ vi.mock('../src/bridge', async (importOriginal) => {
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
-import {
-  probeBundledEngine,
-  registerBundledEngineTools,
-  resetBundledEngineForTests,
-} from '../src/plugins/bundled-engine';
+import { registerBundledEngineTools } from '../src/plugins/builtin/bundled-engine/wiring';
+import { probeBundledEngine, resetBundledEngineForTests } from '../src/plugins/bundled-engine-prefs';
 import type { McpBridgeIO } from '../src/plugins/mcp-bridge';
 
 /** 引擎就位时 Rust 侧 `serde_json::json!({path,dir,available})` 的线形。 */

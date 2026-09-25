@@ -91,6 +91,7 @@
     "entry": "index.ts",
     "hostModule": "host",
     "shared": [
+      "plugins/bundled-engine-prefs.ts",
       "provider/types.ts",
       "provider/catalog.ts",
       "provider/credentials.ts",
@@ -377,5 +378,14 @@
     "inject": ["rootViews"],
     "required": true,
     "face": true
+  },
+  {
+    "dir": "bundled-engine",
+    "buildOrder": 38,
+    "description": "随包图谱引擎接线（探测/开关留内核；接线随包——禁用 = 引擎天然 kill switch）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["workspaces"],
+    "shared": ["plugins/bundled-engine-prefs.ts"]
   }
 ]

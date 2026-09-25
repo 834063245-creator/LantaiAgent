@@ -29,6 +29,7 @@ import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
 import { agentLoopServicePlugin } from './builtin/agent-loop-service';
 import { askCardsPlugin } from './builtin/ask-cards';
+import { bundledEnginePlugin } from './builtin/bundled-engine';
 import { canvasNavPlugin } from './builtin/canvas-nav';
 import { composeDockPlugin } from './builtin/compose-dock';
 import { builtinFsPlugin } from './builtin/fs-builtin';
@@ -80,6 +81,9 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     paperMinimapPlugin,
     agentLoopServicePlugin,
     goalModePlugin,
+    // 批 10 部件三（2026-09-26）：随包图谱引擎接线产物（可禁用——引擎天然 kill switch；
+    // 探测/开关仍在内核 `plugins/bundled-engine-prefs.ts`）
+    bundledEnginePlugin,
     // ② 经 composition 通道函数取得的产物（薄层各自 import 自己的 builtin——
     //    这层间接是破环用的：settings-domain → SettingsPanel → PluginsPage →
     //    loader → factory-products 的直接环会让 settingsPlugin 在 BUILTIN_PLUGINS

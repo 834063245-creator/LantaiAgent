@@ -72,14 +72,26 @@ ctx.effect(
 **推荐命名**：`ctx.workspaces`（服务名 `workspaces`）。备选 `ctx.workspace`——单数读起来像「取当前工作区」，
 而本面是**贡献面**不是查询面；当前工作区查询已有 `workspace-scope.ts` / `app/shell-store`。
 
-### 4.2 部件二：MCP 桥对第一方产物可见（推荐 faceDeps，不新开公开面）
+### 4.2 部件二：MCP 桥对第一方产物可见（推荐 faceDeps，不新开公开面）✅ **已落（2026-09-26）**
+
+> 落地：`host-modules.faceDeps` +4 键（`registerMcpServerTools` / `waitWithin` / `ASSEMBLY_READY_WAIT_MS` /
+> `createTauriProcIO`）——宿主面 327 → **331**（指纹 `3a333622`）；第三方面零变化（仍只有
+> `manifest.mcpServers` 声明面）。
 
 | 方案 | 形态 | 取舍 |
 |---|---|---|
 | **A（推荐）** | `host-modules.ts` 的 faceDeps 加 `registerMcpServerTools`（需要时加默认 IO 工厂）；产物经 `host.ts`（dev/测试）/`host.aliased.ts`（产物域）取用 | 零新公开通道；第三方面零变化（仍只有 `manifest.mcpServers` 声明面）；契约载体 = `host-surface.baseline.json`（已有封印 + 指纹守卫） |
 | B | 新 ctx 服务 `ctx.mcp.mount({ owner, decls, io })` | 第三方也能运行期挂 server ⇒ 削弱「声明=可审数据」；文档/契约面扩大。**不建议** |
 
-### 4.3 第一消费者：`plugins/builtin/bundled-engine/`（产物化）
+### 4.3 第一消费者：`plugins/builtin/bundled-engine/`（产物化）✅ **已落（2026-09-26）**
+
+> 落地（含**口径更正**）：`plugins/bundled-engine.ts` 292 行按「接线 vs 平台面」切开——**接线**
+> （`bundledEngineDecl` + `registerBundledEngineTools`，约 190 行）随 `plugins/builtin/bundled-engine/`
+> （`wiring.ts` + `index.ts`：经 `ctx.workspaces.onActivate` 复现 `workspace.ts` 原内联接线与三态回执）；
+> **探测 + 开关**（`probeBundledEngine` / `isBundledEngineEnabled` / `setBundledEngineEnabled` /
+> `onBundledEnginePrefChanged`，约 100 行）留内核 `plugins/bundled-engine-prefs.ts`——设置面板是**另一产物**
+> 且其取用面经 faceDeps，随包会让设置页跨产物取用（本仓无此通道）。内核 `workspace.ts` 的内联接线删除。
+> 名册 38 → **39**（`feature`，可禁用 = 引擎天然 kill switch）；清单 56 → **57**；内核 service 18 不变。
 
 - 搬 `plugins/bundled-engine.ts`（186 行：探测 + 声明构造 + 开关 + 回执订阅）进包；
 - 包内 `index.ts` 用 `ctx.workspaces.onActivate` 复现今日 `workspace.ts:813` 的行为（含三态回执）；
@@ -103,7 +115,7 @@ ctx.effect(
 | 批 | 内容 | 交付判据 |
 |---|---|---|
 | 1 | 部件一（通道 + 守卫 + 文档） | 工作区激活路径零行为变更（无贡献者时）；新守卫全绿 |
-| 2 | 部件二（faceDeps 暴露）+ 引擎产物化 | 名册 31 条；启用开关后行为与今日逐位一致（三态回执、一进程一根、离开即停） |
+| 2 ✅ **已落**（2026-09-26） | 部件二（faceDeps 暴露 +4 键）+ 引擎接线产物化（探测/开关留内核） | ✅ 名册 **39 条**；真机四条验收**全通**（见 §7 与账本 §6.5：开关面/回执/进程挂 lantai/离开即停） |
 | 3 | 真机验收（§7）+ 文档收尾（`ARCHITECTURE.md` 引擎段 / 插件指南） | 四条验收全勾 |
 
 ## 7. 真机验收清单（**先跑这个，再定稿设计**）
