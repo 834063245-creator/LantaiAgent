@@ -73,6 +73,23 @@ export interface BundledEngineWiring {
  *  server 同一语义、同一上限）。此处只做别名，防两处数字各自漂移。 */
 const PREHEAT_BUDGET_MS = ASSEMBLY_READY_WAIT_MS;
 
+/** 引擎空闲回收预算（ms）——覆写受治面缺省的 5 分钟。
+ *
+ *  为什么引擎要**更长**：受治面的空闲计时只认「MCP 调用在途」（mcp-bridge 的
+ *  inFlight 计数），而引擎的长尾工作跑在**调用之后**——向量索引重建是流水线
+ *  里的后台线程（`engine/src/engine/pipeline.rs` 的 `std::thread::spawn`），
+ *  最后一次调用返回时它才刚起步。
+ *
+ *  实测（2026-09-25）：嵌入吞吐 ≈26.5 节点/秒 ⇒ 21798 节点全量重建 ≈13.7 分钟，
+ *  而缺省预算 5 分钟——实测 `18:56:55` 起跑、`19:01:28` 到 7168/21798 被回收
+ *  （进程静默消失），落盘索引永久滞后于图（21760 vs 22244）= 语义搜索一直在
+ *  旧快照上跑。且嵌入缓存是**进程内**的（`hologram-vector` 的 VECTOR_CACHE）
+ *  ——被杀 = 缓存清零，下次从零重来（实测命中率仅 2%）。
+ *
+ *  30 分钟 = 上述全量重建 ×2 余量；**仍有上界**（不是永不回收）——预算用完仍会
+ *  回收内存，只是不再把一次正常重建砍在半路。 */
+export const ENGINE_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
 /** 注册随包引擎工具（**须在 Agent 装配前调用**——工具行先于装配进注册表）。
  *
  *  @param ctx   工作区 fiber ctx（工具行挂它 ⇒ 随 fiber dispose 自动摘）
@@ -124,7 +141,10 @@ export async function registerBundledEngineTools(
       // manifest.mcpServers 的插件补的那两条同款）。
       inject: ['tools', 'activation'],
       apply: async (c: Context) => {
-        const registered = await registerMcpServerTools(c, OWNER, [bundledEngineDecl(root, exePath)], engineIo);
+        const registered = await registerMcpServerTools(c, OWNER, [bundledEngineDecl(root, exePath)], engineIo, {
+          // 引擎的空闲预算比受治面缺省长（长尾后台重建——见 ENGINE_IDLE_TIMEOUT_MS）。
+          timing: { idleTimeoutMs: ENGINE_IDLE_TIMEOUT_MS },
+        });
         if (!registered) return;
         holder.face = registered;
         // 声明激活（**登记 ≠ 激活**）——loader 对 manifest 插件做的那一步，

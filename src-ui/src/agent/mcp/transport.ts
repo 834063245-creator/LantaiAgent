@@ -31,8 +31,10 @@ export interface ProcIO {
   onStdoutLine(cb: (line: string) => void): () => void;
   /** 子进程退出/连接关闭。 */
   onExit(cb: (code: number | null) => void): () => void;
-  /** 关闭子进程。 */
-  kill(): void;
+  /** 关闭子进程。reason = 宿主侧停止原因（诊断面用；Node 宿主无汇点可忽略，
+   *  Tauri 桥把它写进 `.lantai/logs/bridge.log`——见 mcp-bridge 的
+   *  GovernorStopReason）。 */
+  kill(reason?: string): void;
 }
 
 /** Node child_process 模块的最小形状（避免全量 @types/node 依赖）。 */

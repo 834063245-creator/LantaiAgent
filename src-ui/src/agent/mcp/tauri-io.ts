@@ -43,7 +43,7 @@ export async function createTauriProcIO(
   const unsubExit = await typedListen('protocol-bridge:exit', (payload) => {
     if (payload.id !== bridgeId) return;
     close(); // 自然退出也解除监听（泄漏修复：见 close 上方注释）
-    for (const cb of exitCbs) cb(0);
+    for (const cb of exitCbs) cb(payload.code);
   });
   unsubs.push(unsubExit);
   return {
@@ -62,9 +62,9 @@ export async function createTauriProcIO(
         exitCbs.delete(cb);
       };
     },
-    kill: () => {
+    kill: (reason) => {
       close();
-      void typedRpc('protocol_bridge_kill', { id: bridgeId });
+      void typedRpc('protocol_bridge_kill', { id: bridgeId, reason });
     },
   };
 }

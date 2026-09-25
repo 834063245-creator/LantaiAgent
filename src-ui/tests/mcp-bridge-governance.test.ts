@@ -57,6 +57,8 @@ interface FakeProcHandle {
   proc: ProcIO;
   crash(): void;
   killed: boolean;
+  /** kill 请求带的原因（#2：原因必须到达 ProcIO → Rust bridge.log）。 */
+  killReasons: Array<string | undefined>;
 }
 
 interface SpawnRecord {
@@ -68,8 +70,8 @@ interface SpawnRecord {
 
 /** 注入 IO：记录 spawn 参数（含 env）+ 返回受控 fake。
  *  silent = 不应答（就绪超时路径）；initializeDelayMs = 握手应答延迟
- *  （拉宽 starting 状态窗）。 */
-function makeFakeIO(opts: { silent?: boolean; initializeDelayMs?: number } = {}): {
+ *  （拉宽 starting 状态窗）；callDelayMs = tools/call 应答延迟（拉宽在途窗）。 */
+function makeFakeIO(opts: { silent?: boolean; initializeDelayMs?: number; callDelayMs?: number } = {}): {
   io: McpBridgeIO;
   spawns: SpawnRecord[];
   procs: FakeProcHandle[];
@@ -83,6 +85,7 @@ function makeFakeIO(opts: { silent?: boolean; initializeDelayMs?: number } = {})
       const exitCbs = new Set<(code: number | null) => void>();
       const handle: FakeProcHandle = {
         killed: false,
+        killReasons: [],
         crash: () => {
           for (const cb of exitCbs) cb(1);
         },
@@ -116,7 +119,9 @@ function makeFakeIO(opts: { silent?: boolean; initializeDelayMs?: number } = {})
               });
             } else if (msg.method === 'tools/call') {
               const name = (msg.params?.name as string) ?? '';
-              respond({ content: [{ type: 'text', text: `[${name}] ok` }], isError: false });
+              const reply = () => respond({ content: [{ type: 'text', text: `[${name}] ok` }], isError: false });
+              if (opts.callDelayMs) setTimeout(reply, opts.callDelayMs);
+              else reply();
             } else {
               respond({});
             }
@@ -133,8 +138,9 @@ function makeFakeIO(opts: { silent?: boolean; initializeDelayMs?: number } = {})
               exitCbs.delete(cb);
             };
           },
-          kill: () => {
+          kill: (reason?: string) => {
             handle.killed = true;
+            handle.killReasons.push(reason);
             for (const cb of exitCbs) cb(0);
           },
         },
@@ -377,6 +383,60 @@ describe('受治进程治理（S2）：c) 卸载回收 + d) fail-fast 未就绪�
     await sleep(80);
     expect(spawns).toHaveLength(1); // 不复活
     notifyPluginWindowClosed('acme/tools'); // 计数归零清态
+    await root[Symbol.asyncDispose]?.();
+  });
+});
+
+// ── #1 总闸 + #2 眼睛（2026-09-25 实测事故回归）──
+// #1：续期口原本只在**调用发起**那一刻（acquireForCall → touch），任务跑起来之后
+//    再没人摁计时器 ⇒ 一次跑赢 idleTimeoutMs 的调用会被自家空闲回收砍在半路。
+// #2：stop() 原本一行日志都没有 ⇒ 进程消失只能靠时间戳反推。
+describe('受治进程治理：#1 在途调用保护 / #2 停止留痕带因', () => {
+  beforeEach(() => {
+    resetMcpGovernorForTests();
+  });
+
+  it('#1 在途调用跨过空闲预算不被回收；调用 settle 后才重新起算', async () => {
+    const { io, procs } = makeFakeIO({ callDelayMs: 260 });
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, {
+      timing: { startupDeadlineMs: 2000, idleTimeoutMs: 60, restartBackoffMs: 40 },
+    });
+    const tools = await waitForTools();
+    const echo = first(tools);
+    const call = echo.execute({ text: 'slow' });
+    // 在途期间跨过 4 轮空闲预算（60ms × 4）：进程必须在
+    // 破测：去掉 armIdle 的 inFlight 判据 → 60ms 到点即 stop → 本用例红
+    await sleep(250);
+    expect(procs[0].killed).toBe(false);
+    expect(await call).toBe('[echo] ok');
+    // settle（release）后才重新起算空闲回收——「空闲」= 真的没人用
+    expect(await pollUntil(() => procs[0].killed === true, 1000)).toBe(true);
+    await cleanup(root, fiber);
+  });
+
+  it('#2 空闲回收：日志带原因 + 原因透传到 ProcIO（→ Rust bridge.log）', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { io, procs } = makeFakeIO();
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, {
+      timing: { startupDeadlineMs: 2000, idleTimeoutMs: 60, restartBackoffMs: 40 },
+    });
+    await waitForTools();
+    expect(await pollUntil(() => procs[0]?.killed === true, 1000)).toBe(true);
+    expect(procs[0].killReasons[0]).toBe('idle-timeout');
+    expect(warnSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n')).toContain('原因=idle-timeout');
+    warnSpy.mockRestore();
+    await cleanup(root, fiber);
+  });
+
+  it('#2 卸载回收：原因=plugin-unloaded（切工作区/卸载同一路径）', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { io, procs } = makeFakeIO();
+    const { root, fiber } = await bootGoverned([{ ...STDIO_BASE, lifecycle: 'lazy' }], io, { timing: TIMING });
+    await waitForTools();
+    await fiber.dispose();
+    expect(procs[0].killReasons[0]).toBe('plugin-unloaded');
+    expect(warnSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n')).toContain('原因=plugin-unloaded');
+    warnSpy.mockRestore();
     await root[Symbol.asyncDispose]?.();
   });
 });

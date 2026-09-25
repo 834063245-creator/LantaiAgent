@@ -19,7 +19,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Context } from '../src/cordis';
-import { bundledEngineDecl, registerBundledEngineTools } from '../src/plugins/builtin/bundled-engine/wiring';
+import {
+  bundledEngineDecl,
+  ENGINE_IDLE_TIMEOUT_MS,
+  registerBundledEngineTools,
+} from '../src/plugins/builtin/bundled-engine/wiring';
 import {
   isBundledEngineEnabled,
   onBundledEnginePrefChanged,
@@ -82,6 +86,14 @@ describe('② 声明形状（引擎契约：一进程一根，root 进 args）',
     const decl = bundledEngineDecl('D:/proj', EXE);
     expect(decl.readOnly).toBeUndefined();
     // 破测：加 readOnly: true → 本用例红（会让写工具绕过 plan 门禁，INVARIANTS 记过洞）
+  });
+
+  it('空闲预算显著长于受治面缺省：后台向量重建（实测 ≈14 分钟/22k 节点）不被砍半', () => {
+    // #1 配套（2026-09-25 实测事故）：引擎的向量索引重建跑在**最后一次 MCP 调用
+    // 之后**（pipeline.rs 后台线程），在途计数保护不到——只能靠更长的空闲预算。
+    // 缺省 5 分钟 ⇒ 实测 7168/21798 处被回收、索引永久滞后。
+    expect(ENGINE_IDLE_TIMEOUT_MS).toBeGreaterThanOrEqual(20 * 60 * 1000);
+    // 破测：把常量改回缺省 5 分钟 → 本用例红
   });
 });
 

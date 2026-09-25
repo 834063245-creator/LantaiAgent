@@ -625,7 +625,9 @@ async fn dispatch_rpc(
         }
         "protocol_bridge_kill" => {
             let id = req_str(&params, "id", "protocol_bridge_kill")?;
-            commands::protocol_bridge::protocol_bridge_kill(id)
+            // 停止原因（#2）：宿主具名原因落 bridge.log——进程「为什么没的」可查。
+            let reason = opt_str(&params, "reason");
+            commands::protocol_bridge::protocol_bridge_kill(id, reason)
         }
 
         // ═══════════════════════════════════════════════════════

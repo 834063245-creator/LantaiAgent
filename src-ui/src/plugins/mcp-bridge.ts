@@ -294,6 +294,19 @@ export function notifyPluginWindowClosed(pluginName: string): void {
   for (const g of governedByPlugin.get(pluginName) ?? []) g.onWindowClosed();
 }
 
+/** 受治进程停止原因（#2 可观测性：停止必须留痕且带因）。
+ *
+ *  为什么是**必填参数**而不是可选注释：2026-09-25 实测事故——引擎/LSP 在长任务
+ *  跑到一半时消失，`stop()` 里一行日志都没有（不 warn、不 emit、不落盘），
+ *  排查只能靠「最后一条 MCP 调用 + 5 分钟」反推 + 「没有 shutdown 告别」推断是
+ *  硬杀。把原因做成类型面 ⇒ 新增停止路径时不填原因编译不过（错误不静默）。 */
+export type GovernorStopReason =
+  | 'idle-timeout'
+  | 'window-closed'
+  | 'activation-released'
+  | 'plugin-unloaded'
+  | 'startup-failed';
+
 /** 受治进程的**激活面**（S6 P3d）——把「装配期拉起 / 引用归零停止」交给激活账
  *  （`ctx.activation`），只对 manifest 声明了 `activation` 的插件接线。
  *
@@ -326,7 +339,7 @@ function governedActivationFace(governors: readonly ServerGovernor[]): GovernedA
       for (const g of lazy) await g.start();
     },
     stopLazy: () => {
-      for (const g of lazy) g.stop();
+      for (const g of lazy) g.stop('activation-released');
     },
     toolCount: () => lazy.reduce((n, g) => n + g.toolFace().length, 0),
   };
@@ -358,6 +371,18 @@ class ServerGovernor {
   private crashAttempts = 0;
   private disposed = false;
   private stopping = false;
+  /** 在途调用计数（#1 总闸）：>0 时**不布防**空闲回收。
+   *
+   *  病灶（2026-09-25 实测）：续期口 `touch()` 全文件唯一调用点 = `acquireForCall()`
+   *  ——调用**发起**那一刻。任务跑起来之后再没有人摁过计时器，于是 `idleTimeoutMs`
+   *  （缺省 5 分钟）到点无条件 `stop()`：一次跑 8 分钟的 `analyze_project` 会被
+   *  自家空闲回收砍在半路，且（修 #2 之前）零日志。
+   *
+   *  **它保护不了的东西**（别把这条当万能药）：受治进程内部的**后台线程**（如引擎
+   *  的向量索引重建，`engine/pipeline.rs` 的 `std::thread::spawn`）在最后一次 MCP
+   *  调用**返回之后**仍在跑——那时在途计数已归零。那类长尾由声明方给本进程更长的
+   *  空闲预算承担（先例：随包引擎 `wiring.ts` 的 ENGINE_IDLE_TIMEOUT_MS）。 */
+  private inFlight = 0;
 
   constructor(
     readonly pluginName: string,
@@ -429,7 +454,7 @@ class ServerGovernor {
       // 挂壁进程；状态回落 not-running（lazy 下次调用/装配再拉起）
       connectP?.catch(() => {});
       this.failStart = null;
-      this.teardownProc();
+      this.teardownProc('startup-failed');
       this.state = 'not-running';
       throw e;
     } finally {
@@ -503,17 +528,28 @@ class ServerGovernor {
     this.ensureStarted();
   }
 
-  /** 调用期就绪口：ready → 当前 client（记活跃）；否则**捕获调用时状态**后
-   *  触发拉起并返回 notReady（触发会把状态同步翻成 starting——报错必须
-   *  报调用时真因，不报副作用）。 */
-  acquireForCall(): { client: McpClient } | { notReady: GovernorState } {
+  /** 调用期就绪口：ready → 当前 client（记活跃 + 记在途）；否则**捕获调用时状态**
+   *  后触发拉起并返回 notReady（触发会把状态同步翻成 starting——报错必须
+   *  报调用时真因，不报副作用）。
+   *
+   *  **所有权成对**：拿到 client 的调用方必须在该次调用 settle（成功/失败/中止
+   *  ——用 `try/finally`）时调 `release()`；未归零即在途，空闲回收不布防。 */
+  acquireForCall(): { client: McpClient; release: () => void } | { notReady: GovernorState } {
     if (this.state === 'ready' && this.client) {
-      this.touch();
-      return { client: this.client };
+      this.inFlight += 1;
+      this.clearIdle();
+      return { client: this.client, release: () => this.releaseCall() };
     }
     const statusAtCall = this.state;
     this.requestFromCall();
     return { notReady: statusAtCall };
+  }
+
+  /** 调用结束（唯一出口：`acquireForCall()` 返回的 `release`）。归零即重新起算
+   *  空闲回收——计时器在途期间本就不在武装状态，故这里只补一次布防。 */
+  private releaseCall(): void {
+    this.inFlight = Math.max(0, this.inFlight - 1);
+    if (this.inFlight === 0) this.armIdle();
   }
 
   /** 工具面快照（factory 产出源——never-connected 期为空集，装配空集不缓存
@@ -556,19 +592,17 @@ class ServerGovernor {
     }, delay);
   }
 
-  /** 记活跃（调用/交互）——lazy 空闲回收从现在重新起算。 */
-  private touch(): void {
-    this.armIdle();
-  }
-
-  /** lazy 空闲回收布防：ready 且无窗才计时；窗开/停机即撤。 */
+  /** lazy 空闲回收布防：ready、无窗、**无在途调用**才计时；窗开/停机即撤。 */
   private armIdle(): void {
     this.clearIdle();
     if (this.disposed || this.lifecycle !== 'lazy' || this.state !== 'ready') return;
     if (windowOpenCount(this.pluginName) > 0) return;
+    // 在途调用未归零 ⇒ 不布防（#1 病灶：任务跑到一半被自家空闲回收砍掉）。
+    // 归零时由 releaseCall 重新布防——「空闲」的判据是**真的没人用**。
+    if (this.inFlight > 0) return;
     this.idleTimer = setTimeout(() => {
       this.idleTimer = null;
-      this.stop();
+      this.stop('idle-timeout');
     }, this.timing.idleTimeoutMs);
   }
 
@@ -583,35 +617,43 @@ class ServerGovernor {
   onWindowClosed(): void {
     if (this.disposed) return;
     if (this.lifecycle === 'with-window' && windowOpenCount(this.pluginName) <= 0) {
-      this.stop();
+      this.stop('window-closed');
     } else if (this.state === 'ready') {
       this.armIdle();
     }
   }
 
-  /** 意图停止（空闲回收 / 关窗 / 卸载）：杀进程，状态回落 not-running。 */
-  stop(): void {
+  /** 意图停止（空闲回收 / 关窗 / 激活账归零 / 卸载）：杀进程，状态回落
+   *  not-running，**并留痕**（原因必填——#2：停止路径不许静默）。 */
+  stop(reason: GovernorStopReason): void {
     this.clearTimers();
     if (this.state === 'not-running') {
       this.stopping = false;
       return;
     }
+    const stateBefore = this.state;
     this.stopping = true;
     this.failStart?.(new Error(`受治进程 "${this.server.name}"（${this.pluginName}）启动被停止`));
-    this.teardownProc();
+    this.teardownProc(reason);
     this.state = 'not-running';
+    console.warn(
+      `[mcp-bridge] 受治进程 "${this.server.name}"（${this.pluginName}）停止：原因=${reason}` +
+        `（停止前 state=${stateBefore}，在途调用=${this.inFlight}）`,
+    );
   }
 
   /** 卸载（插件 fiber dispose）：终态——杀进程 + 出注册表（不可再拉起）。 */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.stop();
+    this.stop('plugin-unloaded');
     this.schemas = [];
     removeGovernor(this);
   }
 
-  private teardownProc(): void {
+  /** 拆桥（kill）：原因透传到 Rust 桥（`protocol-bridge:kill` 落 bridge.log）——
+   *  进程「为什么没的」在**持久日志面**可查，不只活在 webview 控制台里。 */
+  private teardownProc(reason: GovernorStopReason): void {
     this.unsubExit?.();
     this.unsubExit = null;
     this.unsubNotify?.();
@@ -620,10 +662,12 @@ class ServerGovernor {
     const proc = this.proc;
     this.client = null;
     this.proc = null;
+    // 先带原因直杀，再清 client 侧（transport close 会再 kill 一次——幂等：
+    // Rust 侧第一次 kill 就把该 id 从 PROCS 摘掉，第二次 no-op）。顺序反了则
+    // 原因丢失（第一次杀由 transport 发起、不带因）。直杀同时是挂壁防线：
+    // connect 未完成时 McpClient.disconnect 早退不杀，就绪超时清场必须杀掉它。
+    proc?.kill(reason);
     if (client) void client.ownedDisposer()(); // connected：断开 + transport close + proc.kill
-    // 兜底直杀：connect 未完成时 McpClient.disconnect 早退不杀（挂壁防线——
-    // 就绪超时清场必须杀掉挂壁进程；已杀时 ProcIO 幂等）
-    proc?.kill();
   }
 
   private clearTimers(): void {
@@ -675,11 +719,16 @@ function governedTool(governor: ServerGovernor, schema: McpToolSchema): Tool {
         ? bindMcpDeferredToken({ ownerId, plugin: governor.pluginName, tool: qualified })
         : undefined;
       const token = dfToken ?? (onProgress ? `tok-${rawName}-${Date.now()}` : undefined);
-      const res = await client.callTool(rawName, args, signal, token);
-      if (res.isError) {
-        return `[MCP ${qualified} ERROR] ${res.text}`;
+      try {
+        // 在途期间空闲回收不布防（#1）——release 必走到（成功/失败/中止同路）。
+        const res = await client.callTool(rawName, args, signal, token);
+        if (res.isError) {
+          return `[MCP ${qualified} ERROR] ${res.text}`;
+        }
+        return res.text;
+      } finally {
+        acquired.release();
       }
-      return res.text;
     },
   };
 }

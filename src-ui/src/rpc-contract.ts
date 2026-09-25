@@ -594,7 +594,13 @@ export interface RpcContract {
     result: string;
   };
   protocol_bridge_kill: {
-    params: { id: string };
+    params: {
+      id: string;
+      /** 停止原因（#2 可观测性）：宿主侧具名原因（idle-timeout / window-closed /
+       *  plugin-unloaded / activation-released / startup-failed）——Rust 落
+       *  `.lantai/logs/bridge.log`，让「进程为什么没的」有持久证据。 */
+      reason?: string;
+    };
     result: string;
   };
 }
@@ -624,8 +630,8 @@ export interface EventContract {
   'pty-output': { session_id: number; data: string };
   /** MCP/ACP stdio 桥 stdout 行 */
   'protocol-bridge:output': { id: string; line: string };
-  /** MCP/ACP stdio 桥子进程退出 */
-  'protocol-bridge:exit': { id: string };
+  /** MCP/ACP stdio 桥子进程退出（code = 真实退出码，null = 无码/被终结） */
+  'protocol-bridge:exit': { id: string; code: number | null };
   /** 后台任务有新通知（完成/停滞）— utils/bg_jobs.rs 监视线程发射；
    *  owner = 发起该 job 的 agent id，null 表示用户/UI 发起（不投给任何 agent）。
    *  前端监听后排干该 owner 的通知并经 MessageBus systemNotify 唤醒 idle agent。 */
