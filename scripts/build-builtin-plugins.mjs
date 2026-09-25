@@ -202,7 +202,8 @@ async function buildPlugin(spec) {
     define,
     // 面组件 CSS 引二进制资产（材质批：paper-sheet.jpg 流区纸纹）——dataurl 内联，
     // 保产物自包含契约；bundle 域同文件走 vite 自有 jpg loader，两域互不依赖
-    loader: { '.jpg': 'dataurl' },
+    // （批 9e：sessions-home 的印章 alpha 遮罩是 png，同规内联）
+    loader: { '.jpg': 'dataurl', '.png': 'dataurl' },
     metafile: true,
     logLevel: 'warning',
   });

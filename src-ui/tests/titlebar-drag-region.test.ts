@@ -47,6 +47,7 @@ const CSS_FILES = [
   ['canvas-nav/session-sidebar.css', read(SRC, 'plugins', 'builtin', 'canvas-nav', 'session-sidebar.css')],
   ['paper-minimap/minimap.css', read(SRC, 'plugins', 'builtin', 'paper-minimap', 'minimap.css')],
   ['app/foundation.css', read(SRC, 'app', 'foundation.css')],
+  ['sessions-home/home.css', read(SRC, 'plugins', 'builtin', 'sessions-home', 'home.css')],
   ['app/shell.css', read(SRC, 'app', 'shell.css')],
 ] as const;
 
@@ -67,7 +68,7 @@ describe('标题栏触发范围：页面不声明 app-region，命中范围由�
 
   it('两个标题栏（画布顶部浮件 + 首页顶栏）都接共享实现', () => {
     const panel = read(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx');
-    const home = read(SRC, 'app', 'SessionsHome.tsx');
+    const home = read(SRC, 'plugins', 'builtin', 'sessions-home', 'SessionsHome.tsx');
     expect(panel).toContain('onPointerDown={onTopbarPointerDown}');
     expect(panel).toContain('onDoubleClick={onTopbarDoubleClick}');
     expect(home).toContain('onPointerDown={onTopbarPointerDown}');

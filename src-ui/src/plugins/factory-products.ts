@@ -38,6 +38,7 @@ import { paperRenderersPlugin } from './builtin/paper-renderers';
 import { paperPlugin } from './builtin/paper-shell';
 import { builtinRenderersPlugin } from './builtin/renderers';
 import { builtinSessionsPlugin } from './builtin/sessions-builtin';
+import { sessionsHomePlugin } from './builtin/sessions-home';
 import { settingsPlugin } from './builtin/settings-domain';
 import { builtinShellPlugin } from './builtin/shell-builtin';
 import { inProcessSubagentPlugin } from './builtin/subagent-in-process';
@@ -67,6 +68,8 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     builtinRenderersPlugin,
     // 批 8b（2026-09-25）：纸面块渲染器十一 kind 全谱归产物（名册 required——不可禁用）
     paperRenderersPlugin,
+    // 批 9e（2026-09-26）：案卷首页归产物（名册 required——应用唯一入口页），经 ctx.rootViews 'home' 槽贡献
+    sessionsHomePlugin,
     paperPlugin,
     settingsPlugin,
     canvasNavPlugin,

@@ -52,10 +52,15 @@ const read = (p: string): string => readFileSync(p, 'utf8');
 /** 去掉 CSS 注释（注释里大量出现**已退役**的旧类名，留着会把守卫变成噪声源）。 */
 const stripCssComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, ' ');
 
-/** CSS 文本里的类选择器全集。 */
+/** CSS 文本里的类选择器全集。
+ *  ⚠ 先抹掉 `url(...)` 里的资源路径与字符串字面量：批 9e 起产物 CSS 引二进制资产
+ *  （`url("./sh-seal-mask.png")`），旧写法会把 `.png` 当成类名 ⇒ 假红。 */
 function cssClasses(css: string): string[] {
   const set = new Set<string>();
-  for (const m of stripCssComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) set.add(m[1]!);
+  const decls = stripCssComments(css)
+    .replace(/url\([^)]*\)/g, ' ')
+    .replace(/"[^"\n]*"|'[^'\n]*'/g, ' ');
+  for (const m of decls.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) set.add(m[1]!);
   return [...set];
 }
 

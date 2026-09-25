@@ -24,6 +24,7 @@ import { hooksServicePlugin } from '../composition/hook-service';
 import { overlayServicePlugin } from '../composition/overlay-service';
 import { promptsServicePlugin } from '../composition/prompt-service';
 import { rendererServicePlugin } from '../composition/renderer-service';
+import { rootViewsServicePlugin } from '../composition/root-views-service';
 import { compositionServicesPlugin } from '../composition/services';
 import { sessionPersistenceServicePlugin } from '../composition/session-persistence-service';
 import { shellServicePlugin } from '../composition/shell-service';
@@ -39,9 +40,11 @@ export interface ServicePluginEntry {
   description: string;
 }
 
-/** 14 个内核 service（**表序 = 装载序 = 字节契约**；加/删只许动本表）。
+/** 15 个内核 service（**表序 = 装载序 = 字节契约**；加/删只许动本表）。
  *  第 14 位 `lsp-service`（批 9b §4-13）：此前游离在清单外（`ui/lsp-client.ts` 自建第二个根
- *  Context 当兜底）⇒ 不受「内核不可禁用」覆盖、不进 boot 审计；现由 loader 装载。 */
+ *  Context 当兜底）⇒ 不受「内核不可禁用」覆盖、不进 boot 审计；现由 loader 装载。
+ *  第 15 位 `composition-root-views`（批 9e）：App 外壳视图槽通道（'home' 主区 / 'overlay' 浮层）
+ *  ——首页与 ask 卡产物经它贡献，App.tsx 按槽渲染（用户 2026-09-26 裁定 A）。 */
 export const SERVICE_PLUGINS: readonly ServicePluginEntry[] = [
   {
     plugin: compositionServicesPlugin,
@@ -53,6 +56,10 @@ export const SERVICE_PLUGINS: readonly ServicePluginEntry[] = [
   { plugin: sessionPersistenceServicePlugin, description: '会话持久化服务注册表（seam/sessionPersistence）' },
   { plugin: spaceServicePlugin, description: '空间服务（工作区/会话空间）' },
   { plugin: overlayServicePlugin, description: '覆盖层服务' },
+  {
+    plugin: rootViewsServicePlugin,
+    description: 'App 外壳视图槽（首页主区 / 根浮层——产物按槽贡献）',
+  },
   { plugin: rendererServicePlugin, description: '块渲染器注册表（第五贡献通道，后注册胜）' },
   { plugin: promptsServicePlugin, description: 'system-prompt 段贡献注册表（第六通道）' },
   { plugin: hooksServicePlugin, description: '工具管道钩子注册表（第七通道）' },

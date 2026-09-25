@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 
 const src = readFileSync(path.resolve(process.cwd(), 'src/workspace.ts'), 'utf8');
 const rowsWs = readFileSync(path.resolve(process.cwd(), 'src/shell/rows/workspace.ts'), 'utf8');
-const homeSrc = readFileSync(path.resolve(process.cwd(), 'src/app/SessionsHome.tsx'), 'utf8');
+const homeSrc = readFileSync(path.resolve(process.cwd(), 'src/plugins/builtin/sessions-home/SessionsHome.tsx'), 'utf8');
 
 /** 截取从 anchor 开始、长度为 span 的源码窗口做断言。 */
 function windowOf(anchor: string, span = 4000): string {

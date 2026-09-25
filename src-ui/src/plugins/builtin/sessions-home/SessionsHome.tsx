@@ -18,15 +18,22 @@
 // 版式对齐 prototype/lantai.html 案卷首页（2026-08-23 视觉迭代）。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { WorkspaceSummary } from '../rpc-contract';
-import { clearWorkspaceListCache, typedRpc, workspaceListCached } from '../rpc-contract';
-import { pickFolder, workspaceFlow } from '../shell/rows/workspace';
-import { shellRefs } from '../shell/runtime';
-import { useDockStore } from '../state/dock-store';
-import { useUpdateStore } from '../state/update-store';
-import { useShellStore } from './shell-store';
-import { WinControls } from './WinControls';
-import { onTopbarDoubleClick, onTopbarPointerDown } from './window-drag';
+import './home.css';
+import {
+  clearWorkspaceListCache,
+  onTopbarDoubleClick,
+  onTopbarPointerDown,
+  pickFolder,
+  shellRefs,
+  typedRpc,
+  useDockStore,
+  useShellStore,
+  useUpdateStore,
+  WinControls,
+  type WorkspaceSummary,
+  workspaceFlow,
+  workspaceListCached,
+} from './host';
 
 /** 已知工作区行（Rust WorkspaceSummary 同形——类型由 workspace_list schema 推导）。 */
 type KnownWorkspace = WorkspaceSummary;

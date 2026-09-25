@@ -19,7 +19,10 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname, '..', 'src');
 const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
-const HOME_CSS = readFileSync(join(SRC, 'app', 'foundation.css'), 'utf8');
+/** 首页样式面（批 9e 起随 `sessions-home` 产物走）；壳文件只剩全局面（重置/纹理层/选区）。 */
+const HOME_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'sessions-home', 'home.css'), 'utf8');
+/** 壳全局样式面（body::before/after 纹理层、可访问性、字号交还——与首页不同生共死）。 */
+const FOUNDATION_CSS = readFileSync(join(SRC, 'app', 'foundation.css'), 'utf8');
 /** 纸壳源面（paper-panel-split 后）：PaperPanel.tsx + 同目录拆出的 use-*.ts
  *  hook 文件全量拼接——拆解把域逻辑（拖块/纸条/布局核心/消息操作…）物理
  *  移入 hook 文件，扫描面跟随代码物理位置；断言零改动（对齐
@@ -534,18 +537,18 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
   it('纸层次（2026-09-01 真纸化）：真纹理双资产乘印 + SVG 微颗粒 + 顶光边沉帘纹（body 文档级 before/after）', () => {
     // 真纸纹理资产接线（feTurbulence 程序噪声退役——真纤维/斑点，cover 免接缝；
     // 挂 body 文档级——2026-09-01 实机打回：错挂 .sh-root 时纹理被困首页，画布/面板无纹理）
-    expect(HOME_CSS).toContain('../assets/paper/paper-grain.jpg');
-    expect(HOME_CSS).toContain('../assets/paper/paper-fiber.jpg');
-    expect(HOME_CSS).toContain('background-blend-mode: normal, multiply, multiply');
-    expect(HOME_CSS).toContain('mix-blend-mode: multiply');
-    expect(HOME_CSS).toContain('body::after');
+    expect(FOUNDATION_CSS).toContain('../assets/paper/paper-grain.jpg');
+    expect(FOUNDATION_CSS).toContain('../assets/paper/paper-fiber.jpg');
+    expect(FOUNDATION_CSS).toContain('background-blend-mode: normal, multiply, multiply');
+    expect(FOUNDATION_CSS).toContain('mix-blend-mode: multiply');
+    expect(FOUNDATION_CSS).toContain('body::after');
     // 极弱 SVG 微颗粒保留（抗色带）
-    expect(HOME_CSS).toContain("opacity='0.05'");
+    expect(FOUNDATION_CSS).toContain("opacity='0.05'");
     // 纸层次：顶光 + 帘纹 + 边沉
-    expect(HOME_CSS).toContain('body::before');
-    expect(HOME_CSS).toContain('var(--light-fall)');
-    expect(HOME_CSS).toContain('var(--laid-lines)');
-    expect(HOME_CSS).toContain('var(--vignette)');
+    expect(FOUNDATION_CSS).toContain('body::before');
+    expect(FOUNDATION_CSS).toContain('var(--light-fall)');
+    expect(FOUNDATION_CSS).toContain('var(--laid-lines)');
+    expect(FOUNDATION_CSS).toContain('var(--vignette)');
     expect(TOKENS_CSS).toContain('--light-fall: linear-gradient');
   });
 
@@ -564,7 +567,7 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
   it('材质批（2026-09-01）：印章印泥分材质 + 墨迹洇边', () => {
     // 印泥：全局「局部禁挂纹理」的唯一例外——印泥≠纸，中性灰纹理乘 --seal 实色
     const seal = ruleBody(HOME_CSS, '.sh-seal {');
-    expect(seal).toContain('url("../assets/paper/seal-paste.jpg")');
+    expect(seal).toContain('url("../../../assets/paper/seal-paste.jpg")');
     expect(seal).toContain('background-blend-mode: multiply');
     expect(seal).toContain('background-color: var(--seal)');
     // 洇边：重墨大字墨渗（同 folio-title 的 ink-solid alpha 残影手法）
@@ -597,18 +600,18 @@ describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
   // 三层固定纹：body::after 颗粒 / body::before 帘纹 / （已被材质批移除的流区自纹缺失）。
 
   it('文档级颗粒层画布退役：body:has(.pp-root)::after 隐去（fixed 纹理 = 不动之纹，出卖拖动）', () => {
-    const retire = ruleBody(HOME_CSS, 'body:has(.pp-root)::after');
+    const retire = ruleBody(FOUNDATION_CSS, 'body:has(.pp-root)::after');
     expect(retire).toContain('display: none');
     // 文档级配方本体保留（首页/面板照旧）
-    expect(ruleBody(HOME_CSS, 'body::after {')).toContain('mix-blend-mode: multiply');
+    expect(ruleBody(FOUNDATION_CSS, 'body::after {')).toContain('mix-blend-mode: multiply');
   });
 
   it('帘纹归属：画布态 body::before 只剩光照类（顶光+边沉，光滑无纹）；非画布态保留完整三件', () => {
-    const before = ruleBody(HOME_CSS, 'body::before');
+    const before = ruleBody(FOUNDATION_CSS, 'body::before');
     expect(before).toContain('var(--light-fall)');
     expect(before).toContain('var(--vignette)');
     expect(before).not.toContain('var(--laid-lines)');
-    const home = ruleBody(HOME_CSS, 'body:not(:has(.pp-root))::before');
+    const home = ruleBody(FOUNDATION_CSS, 'body:not(:has(.pp-root))::before');
     expect(home).toContain('var(--laid-lines)');
     expect(home).toContain('var(--light-fall)');
     expect(home).toContain('var(--vignette)');
@@ -616,15 +619,15 @@ describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
 
   it('模态面板豁免（2026-09-10 两场景统一）：设置遮罩在场恢复文档级材质——工作区开设置不再被画布态连坐剥光', () => {
     // 纹理层恢复（id 特异性压过画布态退役的 display:none）
-    const modal = ruleBody(HOME_CSS, 'body:has(#settings-panel-overlay)::after');
+    const modal = ruleBody(FOUNDATION_CSS, 'body:has(#settings-panel-overlay)::after');
     expect(modal).toContain('display: block');
     // 帘纹+顶光+边沉三件齐回（与首页开设置同观感）
-    const before = ruleBody(HOME_CSS, 'body:has(#settings-panel-overlay)::before');
+    const before = ruleBody(FOUNDATION_CSS, 'body:has(#settings-panel-overlay)::before');
     expect(before).toContain('var(--laid-lines)');
     expect(before).toContain('var(--light-fall)');
     expect(before).toContain('var(--vignette)');
     // 画布态退役本体不受影响（设置关掉即回画布无纹态）
-    const retire = ruleBody(HOME_CSS, 'body:has(.pp-root)::after');
+    const retire = ruleBody(FOUNDATION_CSS, 'body:has(.pp-root)::after');
     expect(retire).toContain('display: none');
   });
 
@@ -1218,7 +1221,7 @@ describe('机读位字体与 pre>code 交还（2026-09-24）', () => {
   });
 
   it('pre 里的 code 把字体交还父层（UA 对 code 有直接 font-family:monospace——直接规则压继承）', () => {
-    expect(ruleBody(HOME_CSS, 'pre code {')).toContain('font: inherit');
+    expect(ruleBody(FOUNDATION_CSS, 'pre code {')).toContain('font: inherit');
     // 三个消费面都靠父层声明 var(--f-mono)（父层没声明 → code 落 UA 等宽 = 老 bug）
     expect(ruleBody(PANEL_CSS, '.pp-md-code {')).toContain('font-family: var(--f-mono)');
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-diff pre {')).toContain('font-family: var(--f-mono)');

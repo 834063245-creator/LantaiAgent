@@ -65,6 +65,7 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 | `ctx.hooks` | Hook 贡献（enrich/preflight） | 下次装配 | composition/hook-service.ts |
 | `ctx.capabilities` | AgentCapability（会话级） | 下次装配 | composition/capability-service.ts |
 | `ctx.overlays` | 画布覆盖层 | 即时 | composition/overlay-service.ts |
+| `ctx.rootViews` | App 外壳视图槽（`'home'` 主区 / `'overlay'` 根浮层——批 9e） | 即时 | composition/root-views-service.ts |
 | `ctx.llm` | LlmAdapterContribution（协议适配器；同 kind 后注册胜） | 请求期解析 | composition/services.ts |
 
 ### swappable seam（能力契约层——可换实现）
@@ -94,7 +95,7 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 
 ### 第四形态：第一方出厂产物（磁盘通道真源，S5 竣工 2026-09-03）
 
-兰台的 36 个出厂插件（7 seam 供应商 + 5 既有 + 16 工具域 + 2 段贡献 + plan-mode + goal-mode + state-hooks + compaction + multiagent-comm + paper-renderers）——
+兰台的 37 个出厂插件（7 seam 供应商 + 5 既有 + 16 工具域 + 2 段贡献 + plan-mode + goal-mode + state-hooks + compaction + multiagent-comm + paper-renderers + sessions-home）——
 真源在仓库 `src-ui/src/plugins/builtin/<name>/` 目录，构建管线（esbuild，
 `scripts/build-builtin-plugins.mjs`，接入 `npm run build`）产出 ESM 产物 +
 manifest，随包携带（`tauri.conf.json` resources 目录映射
@@ -155,7 +156,7 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
 | 概念 | 是什么 | 真源 |
 |---|---|---|
 | 插件 | 自包含 ESM 模块（`{ name, inject?, apply(ctx) }`） | 本文档 |
-| 贡献通道 | **九条贡献通道**：`ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3）/ `ctx.renderers`（块渲染器，V3b）/ `ctx.overlays`（画布覆盖层）——**同一个注册表内核**（`contribution-channel.ts` 的 `ContributionChannel`，2026-09-14 M1 收口；`timing` 声明生效时机）；**五条 seam provider 注册表**：`ctx.subagents` / `ctx.fs` / `ctx.shell`（subprocess 并入）/ `ctx.sessionPersistence` / `ctx.agentLoop`（后端替换，平台化 Phase 1/2）；`ctx.graph` seam 随图谱功能全量退役（2026-09-09） | `src-ui/src/composition/contribution-channel.ts`（内核）+ `services.ts` / `renderer-service.tsx` / `prompt-service.ts` / `hook-service.ts` / `capability-service.ts` / `overlay-service.ts` / `subagent-service.ts` / `fs-service.ts` / `shell-service.ts` / `session-persistence-service.ts`（各通道） |
+| 贡献通道 | **十条贡献通道**：`ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3）/ `ctx.renderers`（块渲染器，V3b）/ `ctx.overlays`（画布覆盖层）/ `ctx.rootViews`（App 外壳视图槽，批 9e）——**同一个注册表内核**（`contribution-channel.ts` 的 `ContributionChannel`，2026-09-14 M1 收口；`timing` 声明生效时机）；**五条 seam provider 注册表**：`ctx.subagents` / `ctx.fs` / `ctx.shell`（subprocess 并入）/ `ctx.sessionPersistence` / `ctx.agentLoop`（后端替换，平台化 Phase 1/2）；`ctx.graph` seam 随图谱功能全量退役（2026-09-09） | `src-ui/src/composition/contribution-channel.ts`（内核）+ `services.ts` / `renderer-service.tsx` / `prompt-service.ts` / `hook-service.ts` / `capability-service.ts` / `overlay-service.ts` / `root-views-service.ts` / `subagent-service.ts` / `fs-service.ts` / `shell-service.ts` / `session-persistence-service.ts`（各通道；**权威清单以生成物 `docs/agents/service-catalog.md` 为准**） |
 | 行（row） | 组合的最小单元——工具族/prompt 段/capability/壳行各有 id | `src-ui/src/composition/*` |
 | preset | 命名的行组合叠加层（standard/minimal 内置 + 用户目录） | §8 + `docs/composition/README.md` |
 | patch | 四域行的增量数据（禁用/覆盖/插入） | `docs/composition/README.md` |

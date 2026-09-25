@@ -4,7 +4,7 @@
 > 从组合层源码机械推导生成 — 勿手改；服务面变更后重新生成并同 commit。
 > 不含时间戳：字节稳定是 `--check`（doc-sync 门禁）的前提。
 
-共 19 个 ctx 服务：seam 5 · 贡献通道 8 · 服务 6。
+共 20 个 ctx 服务：seam 5 · 贡献通道 9 · 服务 6。
 kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution.ts 单一真源）= seam；
 类体含 `register(def: *Contribution)` = 贡献通道；其余 = 服务。
 
@@ -69,6 +69,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 | `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `paper` · `settings` | 3 文件 |
 | `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | — | 1 文件 |
 | `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | — | 6 文件 |
+| `ctx.rootViews` | `RootViewsService` | `src/composition/root-views-service.ts` | `sessions-home` | 1 文件 |
 | `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `communication-tools` · `compaction-tools` · `converge-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `merge-tools` · `request-tool` · `spawn-tool` | 4 文件 |
 
 ### `ctx.capabilities` — CapabilitiesService（贡献通道）
@@ -126,6 +127,14 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 - owner：`src/composition/renderer-service.tsx`
 - 默认实现 / 贡献者 id：—
 - 消费面（6）：`src/plugins/builtin/host-modules.ts` · `src/plugins/builtin/paper-renderers/index.tsx` · `src/plugins/builtin/paper-shell/host.ts` · `src/plugins/builtin/renderers/components.tsx` · `src/plugins/builtin/renderers/index.tsx` · `src/plugins/service-plugins.ts`
+
+### `ctx.rootViews` — RootViewsService（贡献通道）
+
+App 外壳视图槽通道（批 9e）：首页（slot:'home'）与根浮层（slot:'overlay'） 由产物贡献，App.tsx 按槽渲染。
+
+- owner：`src/composition/root-views-service.ts`
+- 默认实现 / 贡献者 id：`sessions-home`
+- 消费面（1）：`src/plugins/builtin/sessions-home/index.tsx`
 
 ### `ctx.tools` — ToolsService（贡献通道）
 

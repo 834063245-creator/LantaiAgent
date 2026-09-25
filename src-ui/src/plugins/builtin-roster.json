@@ -340,5 +340,15 @@
     "define": {
       "globalThis.__LANTAI_PAPER_RENDERER_ROW_PREFIX__": "\"plugin/hologram/paper-renderers\""
     }
+  },
+  {
+    "dir": "sessions-home",
+    "buildOrder": 36,
+    "description": "案卷首页（工作区清单 / 新建 / 改名 / 移除 / 进画布；不可禁用——应用唯一入口页）",
+    "entry": "index.tsx",
+    "hostModule": "host",
+    "inject": ["rootViews"],
+    "required": true,
+    "face": true
   }
 ]

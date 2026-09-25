@@ -46,7 +46,8 @@ const FILES = walk(SRC).map((abs) => ({
 /** 生效时机四档闭集（与 ContributionTiming 同源；此处手写是为了让漂移在此红）。 */
 const TIMINGS = ['immediate', 'next-assembly', 'request', 'frame'];
 
-/** 14 个 service 的通道构造点：九条贡献通道 + 五条 seam provider 注册表。 */
+/** 15 个 service 的通道构造点：十条贡献通道 + 五条 seam provider 注册表。
+ *  批 9e（2026-09-26）新增第十条：`rootViews`（App 外壳视图槽——首页 / 根浮层）。 */
 const EXPECTED_KINDS = [
   'panels',
   'commands',
@@ -57,6 +58,7 @@ const EXPECTED_KINDS = [
   'hooks',
   'capabilities',
   'overlays',
+  'rootViews',
   'fs',
   'shell',
   'sessionPersistence',
@@ -107,11 +109,11 @@ describe('贡献通道内核单源（M1 终态守护）', () => {
     expect(hits, '被收编的手抄注册表复活了——请改用 contribution-channel 的 ContributionChannel').toEqual([]);
   });
 
-  it('③ 14 个 service 各有一个通道构造点，且都在 composition 层（agent-loop 经宿主桥）', () => {
+  it('③ 15 个 service 各有一个通道构造点，且都在 composition 层（agent-loop 经宿主桥）', () => {
     const sites = constructionSites();
     const kinds = sites.map((s) => s.kind).sort();
     expect(kinds).toEqual([...EXPECTED_KINDS].sort());
-    // 构造点归属：13 处在 composition/，1 处（agentLoop）在产物域
+    // 构造点归属：14 处在 composition/，1 处（agentLoop）在产物域
     const outside = sites.filter((s) => !s.rel.startsWith('composition/')).map((s) => `${s.rel}(${s.kind})`);
     expect(outside).toEqual(['plugins/builtin/agent-loop-service/index.ts(agentLoop)']);
   });

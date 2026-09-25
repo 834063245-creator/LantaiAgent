@@ -264,6 +264,7 @@ import {
   sanitizeToolPairing,
 } from '../../provider/types';
 import {
+  clearWorkspaceListCache,
   kernelAppendFileDurable,
   kernelCreateDirectory,
   kernelDeleteFile,
@@ -275,6 +276,7 @@ import {
   parseJson,
   typedJsonRpc,
   typedRpc,
+  workspaceListCached,
 } from '../../rpc-contract';
 import {
   addProvider,
@@ -295,7 +297,9 @@ import {
   removeSecret,
   saveSettings,
 } from '../../settings';
-import { leaveToHome } from '../../shell/rows/workspace';
+import { leaveToHome, pickFolder, workspaceFlow } from '../../shell/rows/workspace';
+// 批 9e 归家：案卷首页进产物 ⇒ 桥它的壳层句柄（工作区/切区状态机读数——壳行 workspace 流的宿主面）
+import { shellRefs } from '../../shell/runtime';
 import { notifyAgentConfigChanged } from '../../state/agent-config-store';
 import { useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
@@ -505,6 +509,14 @@ const faceDeps = {
   /* 离开工作区回首页（2026-09-08）：paper-shell 确认弹层确认后触发——运行时
    * 真关工作区在壳层 workspace 流（host.ts 出口与 faceDeps 同步）。 */
   leaveToHome,
+  // 批 9e 归家（2026-09-26）：案卷首页进产物 ⇒ 桥它的数据源与壳层入口
+  // （workspace_list 强制层 RPC + 写代缓存 · 系统目录选择器 · 切区/强制重置函数族 ·
+  //  壳层工作区句柄读数）
+  clearWorkspaceListCache,
+  workspaceListCached,
+  pickFolder,
+  workspaceFlow,
+  shellRefs,
   // 批 2a 归家（2026-09-24）：llm-adapters 的端点真源（内核协议默认端点表）
   PROVIDER_PROTOCOL_DEFAULTS,
   // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面

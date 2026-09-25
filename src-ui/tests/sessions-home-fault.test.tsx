@@ -27,7 +27,7 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { SessionsHome } from '../src/app/SessionsHome';
+import { SessionsHome } from '../src/plugins/builtin/sessions-home/SessionsHome';
 
 /** workspace_list 合法行（Rust WorkspaceSummary 同形，结构化 Value——真机出口形态）。 */
 const VALID_ROW = {
