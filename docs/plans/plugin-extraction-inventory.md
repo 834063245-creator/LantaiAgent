@@ -796,6 +796,13 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   给出「测量引擎整体接缝化」的三子批路径（9c-4a 契约+门面 → 9c-4b 引擎整件随包 + `paper-shell`
   标 `required` → 9c-4c 测试面/真机），并把 **观察高度账留内核**（跨模块记账面）写成纪律。
   解锁后红区最后一件（`paper-shell/type-tokens` 806 + `measure` 2,016）可销。
+- **9c-4a 已落**（`2268bd64`，2026-09-26）：测量接缝先行 —— 新 `paper/measure-contract.ts`
+  （上收内核真读三动词 + `InkSource` 形状）+ `paper/measure-seam.ts`（门面 + 9c-4a 过渡态
+  `KERNEL_DEFAULT` 派发），内核读点 `paper/ink.ts` / `state/messages-store.ts` 改指门面。
+  出口判据达成：vitest 407/4,307 · biome 0/0 · convergence 双轨零漂移 · 红区数字不动
+  （**2 产物 / 5 文件 / 1,502 行**）。下一步 **9c-4b**：引擎（`measure.ts` 2,016 +
+  `type-tokens.ts` 807）整件随 paper-shell 包 + 该产物标 `required` + `KERNEL_DEFAULT` 换
+  `null`（fail-loud）+ 宿主面键集按实测补齐。
 
 - **9f 侦察（2026-09-26，未施工——下次从这条接）**：`settings.ts` + `workspace.ts` **都不是单文件搬迁**。
   ① `workspace.ts` 1,076：生命周期宿主在壳行（`shell/rows/workspace.ts` 惰性 import + `WorkspaceCls.open`），

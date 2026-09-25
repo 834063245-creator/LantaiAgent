@@ -67,8 +67,8 @@
 
 | 子批 | 内容 | 出口判据 |
 |---|---|---|
-| **9c-4a** | 契约面 + 登记表 + 门面；三个内核读点改门面；`paper/measure.ts` 仍在内核（先登记「内核默认实现」） | vitest 全绿 + convergence 双轨**零漂移** + biome 0/0；红区数字**不动**（还没搬） |
-| **9c-4b** | `measure.ts` + `type-tokens.ts` 整件随包；`paper-shell` 标 `required`；宿主面键集按实测补齐并重生成基线 | `plugin-home:report` 红区 2 → **1 产物**（`type-tokens` 806 + `measure` 2,016 销账）；产物自包含校验过 |
+| **9c-4a** ✅ **已落**（`2268bd64`，2026-09-26） | 新 `paper/measure-contract.ts`（**只上收内核真读三动词**：`inkSourcesFor` / `measureSignature` / `clearObservedHeightsForSession` + `InkSource` 形状逐字上收）+ 新 `paper/measure-seam.ts`（`register/active/clear` + 三个同名门面；**过渡态** = `KERNEL_DEFAULT` 静态取 `./measure` 三动词的派发，无环）；内核读点 `paper/ink.ts` / `state/messages-store.ts` 改指门面；`measure.ts` 的 `InkSource` 改为契约再出口 | ✅ 达成：vitest **407/4,307** 全绿 · biome 0/0 · **convergence 双轨零漂移** · 红区数字**不动** 2 产物 / 5 文件 / 1,502 行（引擎未搬，符合本子批判据） |
+| **9c-4b** | `measure.ts` + `type-tokens.ts` 整件随包；`paper-shell` 标 `required`；`KERNEL_DEFAULT` → `null`（fail-loud）；宿主面键集按实测补齐并重生成基线 | `plugin-home:report` 红区 2 → **1 产物**（`type-tokens` 806 销账；`measure` 2,016 随迁）；产物自包含校验过 |
 | **9c-4c** | 测试面改指包内（`tests/paper-*.test.ts` 读 measure/type-tokens 的面）+ DOC/账本同 commit + 真机验收 | 重建 exe + CDP：纸面测高面活性（流区高度、卷首高度、墨迹走查）+ 启动零装载失败 |
 
 每批门禁照旧：`npm run build` · `npx vitest run` · `npx biome ci .` · `npm run verify:convergence` ·
