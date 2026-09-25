@@ -30,7 +30,9 @@ import {
   walkRichInlineLineRanges,
 } from '@chenglou/pretext/rich-inline';
 import type { SourcedBlock } from './block-model';
-import { type InkSource, inkSourcesFor, measureSignature } from './measure';
+// 批 9c-4a：内核读点改走测量接缝（引擎住哪对墨迹走查透明；9c-4b 引擎整件随包）
+import type { InkSource } from './measure-contract';
+import { inkSourcesFor, measureSignature } from './measure-seam';
 
 /** 单根墨条。text = 行原文（空串 = 桩条：折叠/空块画短矩形）。
  *  富行内行（frags 在场）没有单一字体/单一字符串：text 为空串、逐片段直绘。 */

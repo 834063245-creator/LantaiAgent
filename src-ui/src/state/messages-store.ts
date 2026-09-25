@@ -5,7 +5,8 @@
 // 从 chat-store.ts 拆分（god store → 领域存储）。
 
 import { create } from 'zustand';
-import { clearObservedHeightsForSession } from '../paper/measure';
+// 批 9c-4a：内核读点改走测量接缝（观察高度账的清态入口）
+import { clearObservedHeightsForSession } from '../paper/measure-seam';
 import type { AssistantMessage, ChatMessage, MessageId } from '../ui/message-model';
 import { createScopedStore } from './scoped-store';
 

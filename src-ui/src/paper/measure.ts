@@ -1260,23 +1260,11 @@ export const USER_SHRINK_MIN_W = 320;
  *  margin(14)/列表项 liGap(6)/标题 pt·pb/引用·代码内距全部丢失——误差逐元素
  *  累加，实测一个 478px 的 markdown 块在越 LOD 阈时正文整体上移 68px（用户报
  *  「文字位置跳变」的直接病灶）。纵向位置现在只有**一个**产出者：测高走查。 */
-export interface InkSource {
-  text: string;
-  font: string;
-  lineHeight: number;
-  /** 横向内缩（世界单位——墨条起点 = 块左缘 + inset） */
-  inset: number;
-  /** 纵向偏移（世界单位——源顶距块顶，含块级 chrome 与元素间间距） */
-  y: number;
-  /** 行条上限（pre/output 族按 PRE_MAX_H/OUT 族镜像，缺省不封顶） */
-  cap?: number;
-  /** 富行内片段（2026-09-20 富行内折行批）：**仅当测高走查走的是富行内路径**
-   *  （`mdHasRichInline(inl)`）时在场——加粗/斜体/行内码/行内公式的字体与字宽
-   *  与纯文本不同，按 text 走查会得到与 DOM 不同的折行点。在场时墨迹改走
-   *  `walkRichInlineLineRanges` 逐片段落墨（片段各自字体直绘），折行点与
-   *  测高（measureRichItemsHeight）**同一把尺子**。 */
-  rich?: RichInlineItem[];
-}
+// 批 9c-4a（2026-09-26）：`InkSource` 形状上收内核契约 `paper/measure-contract.ts`
+// （内核读面 `paper/ink.ts` 与产物面读同一份形状；9c-4b 起引擎整件随 paper-shell 包）。
+export type { InkSource } from './measure-contract';
+
+import type { InkSource } from './measure-contract';
 
 /** 把一组墨源整体下移 dy（块级 chrome：题签/花押/折叠行/段头/语言行）。 */
 function inkShifted(sources: InkSource[], dy: number): InkSource[] {
