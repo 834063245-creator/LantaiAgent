@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：52
+当前版本：53
 
-<!-- contract-fingerprint: 1037f5b693a81c4bff5d3b553a6c9798a53a7bdc38e24ce7f8fa63b522d8ca45 -->
+<!-- contract-fingerprint: 6b44f97620e1172d2ed3c7001af4ef793cbd90b7e05d077e28f7ed31e1895178 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -110,6 +110,7 @@
 
 | 49 | 2026-09-24 | **通信族归产物包（批 7b，契约形状零变更）**：`MessageBus` 实现（总线 605 行 / JSON 存储 / 三种拓扑 / 通信与请求两个工具族）进 `plugins/builtin/multiagent-comm/`；类型与四个错误类升格为内核契约 `src/agent/message-contract.ts`（原 `message-types.ts` 整件改名），并新增 **`MessageBus` 接口**与 **`MultiagentCommImplementation`** 工厂面（`createBus` / `createJsonStore` / 两个工具族工厂）——内核 `runtime.ts` 不再 `new MessageBus`，改查登记表（service 语义：缺实现 fail-loud）。本清单里只有 `agent-loop/types.ts` 动了一行：`MessageBus` 类型导入改指新契约文件，**`AgentLoopHost` 成员与形状逐字未动**。**对外可感知**：第三方 loop / 插件零影响；消息类型名称与语义不变。 | 账本 §2.3「多 Agent 通信族」行 + [`multiagent-extraction-design.md`](../plans/multiagent-extraction-design.md) §3（7b）；convergence 双轨零漂移 + `tests/message-bus.test.ts` 等直连测试改指包内后全绿 |
 
+| 53 | 2026-09-26 | **宿主生命周期贡献面（批 10 同窗，用户 2026-09-25 裁定 A）**：新增两条内核 service 契约载体——`composition/workspaces-service.ts`（`ctx.workspaces`：产物 apply 期 `onActivate(hook)` 登记，工作区激活点按注册序**串行 await**、单个抛错**不阻断工作区打开**（具名回执），`scope.ctx` = 工作区 fiber ctx，贡献者无需写 teardown）与 `composition/shell-rows-service.ts`（`ctx.shellRows`：产物登记 boot 期壳行，`bootShell` 追加在**内核行之后**（注册序）——首消费者 `shell-update-check` 恰为原末位行 ⇒ 引导序**逐位复现**、零行为漂移）。**对外可感知**：第三方产物从此能贡献「工作区打开时要接的线」与「boot 期副作用」；**无贡献者 = 两条路径零行为变更**（无服务环境 = 空贡献面）。内核 service 16 → **18**、第一方清单 54 → **56**；宿主面**零新 faceDeps 键**（指纹不变）。 | 账本 §2.3「工作区级 Agent 装配编排」行 + [workspace-activation-channel-design.md](../plans/workspace-activation-channel-design.md) §4/§9；守卫 = tests/host-lifecycle-channels.test.ts |
 | 52 | 2026-09-26 | **token 计量升为内核第 16 个 service `ctx.tokenMeter`（§4-6 A，用户 2026-09-25 裁定；总账 §4-6 分类缺口）**：新增契约载体 `src/agent/token-meter/contract.ts`——`TokenLedger`（每卷一本账的形状，实现 = `meter.ts` 的 `SessionTokenMeter`，类上 `implements TokenLedger`）· `TokenAlgebra`（分桶代数形状，实现 = `usage.ts`）· `TokenMeterImplementation`（`createLedger` / `restoreLedger` / `usage`），并把 `types.ts` 的六个读数类型在本文件重出口（对外类型入口唯一）。内核读点 `agent/agent.ts` 不再 `new SessionTokenMeter()`，改 `requireTokenMeter().createLedger()` / `.restoreLedger(snapshot)`（缺 service = 具名 `TOKEN_METER_UNAVAILABLE` fail-loud，不静默建游离账本）；装载面 = `plugins/service-plugins.ts` 表序**追加末位**（内核 service 全部先于产物装载，表序 = 字节契约不动），名册同批 53 → 54 条。**对外可感知**：产品读用量读数改经 `ctx.tokenMeter.usage` 或自家宿主桥取唯一实例——创作坞墨量册（`compose-dock`）同批改道（此前直接 import 内核实现文件，产物构建期被 esbuild 内联成第二份副本），宿主面新增 1 键 `tokenAlgebra`（`host-modules.faceDeps`，指纹随之重录）。**录入点仍唯一 = `Agent.streamOnce`**；口径逐字不变（四桶互不重叠且加总恒等于提供方 `prompt_tokens`、压力只算 prompt 侧、缓存部分命中不四舍五入成 100%）——**读数零漂移**（只换了账本的制造者），`tests/token-meter.test.ts` 等对拍测试零改动。 | 账本 §4-6 + [`plugin-extraction-decisions.md`](../plans/plugin-extraction-decisions.md) §2.1（裁定 A）；`tests/first-party-manifest.test.ts`（16 service / 54 总）· `tests/setup.ts`（复现装载态）· `npm run plugin-home:report`（`agent/token-meter/` 白名单理由改写） |
 | 51 | 2026-09-26 | **出厂默认 agent loop 归产物包（批 9h-2，契约形状零变更）**：`agent/agent-loop/default-loop.ts`（469 行）整件移入 `plugins/builtin/agent-loop-service/`——与注册表 `AgentLoopService` 同包、同一次装载（原文件不再存在）；内核 `agent/agent-loop/agent-loop-active.ts` 去掉 `defaultAgentLoop` 兜底 ⇒ `resolveAgentLoop()` 无服务时**具名 fail-loud**（`AGENT_LOOP_UNAVAILABLE`），名册同批把该产物标 `required`（不可禁用）。**对外可感知**：第三方 loop（`ctx.agentLoop.register`）零影响；`AgentLoop` / `AgentLoopHost` 形状逐字未动，`builtin/default` 仍可寻址；行为逐字节不变（convergence 双轨零漂移）。 | 账本 §1.2「agent-loop-service」行 + [`batch-9h-agent-domain-seam-design.md`](../plans/batch-9h-agent-domain-seam-design.md) §3（9h-2）；`tests/agent-loop-seam.test.ts` ②「回落默认」按行为退役改写为 fail-loud 断言 + `tests/setup.ts` 复现装载态 |
 

@@ -46,7 +46,7 @@ const WEB_FETCH_ROW = 'plugin/hologram/web-domain/web_fetch';
 const BROWSER_DESKTOP_ROW = 'plugin/hologram/browser-desktop-domain/tools';
 
 describe('composition/roster（S2-0 组合引擎）', () => {
-  it('factoryComposition 聚合三张出厂表 + 壳行表（无通道 = 空行表 + 空段表 + 空能力表）', () => {
+  it('factoryComposition 聚合三张出厂表 + 壳行表（无通道 = 空行表 + 空段表 + 空能力表；§4-9 起壳行 = 内核 10 行）', () => {
     const f = factoryComposition();
     // ①b 后 builtin 行表退役——无通道环境 tools 域 = 空行表（行真源全在
     // 插件通道贡献，通道内快照见下一用例）
@@ -70,7 +70,8 @@ describe('composition/roster（S2-0 组合引擎）', () => {
       'hologram/shell-actions',
       'hologram/shell-workspace',
       'hologram/shell-cold-start',
-      'hologram/shell-update-check',
+      // §4-9（批 10 同窗，2026-09-26）：shell-update-check 随 settings-domain 包 ⇒ 内核行 11 → 10，
+      // 贡献行由 bootShell 经 ctx.shellRows 追加在内核行之后（本表 = 内核行表，故不含它）。
     ]);
   });
 

@@ -47,6 +47,8 @@ import {
 } from './composition/preset-assembly';
 import type { ResolvedComposition } from './composition/roster';
 import type { SeamDisabledMap } from './composition/seam-resolution';
+// 批 10 部件一：工作区接线贡献面（产物 apply 期登记 → 激活点串行回调）
+import { activateWorkspaceContributions } from './composition/workspaces-service';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
 import { registerBundledEngineTools } from './plugins/bundled-engine';
@@ -698,6 +700,26 @@ export class Workspace {
     }
     // 清注入缓存登记在 runtime 之前 → 逆序释放时晚于 runtime.disposeAll（先拆 Agent 再清缓存）。
     teardown.add(() => resetAgentCaches(), 'reset-agent-caches');
+
+    // ── 工作区接线贡献面（批 10 部件一，2026-09-26）──
+    // 产物在 apply 期经 `ctx.workspaces.onActivate` 登记「工作区打开时要接的线」；
+    // 此处按注册序**串行 await**，位置在组合快照 / `_buildRegistryLocked` **之前**
+    // （工具行必须先于注册表构建）。贡献抛错不阻断工作区打开（失败隔离 + 具名回执）。
+    // ⚠ 本批（部件一）先立通道：`bundled-engine` 的接线仍是内联调用，**部件三**把它
+    // 迁成第一个贡献者（届时这段内联接线删除）。
+    await activateWorkspaceContributions({
+      root: this.path,
+      ctx: this._fiber.ctx,
+      report: (r) => {
+        // 通用回执面：状态栏一行 + 日志（贡献者自己的诊断 store 由它自己写）
+        if (r.status === 'wired') {
+          useShellStore.getState().pushStatus(r.toolCount != null ? `已接线（${r.toolCount} 项在册）` : '已接线');
+        } else if (r.status === 'failed') {
+          useShellStore.getState().pushStatus(`⚠️ 接线未完成：${r.reason ?? '原因未给出'}`);
+          console.warn('[Workspace] 接线贡献未完成:', r.reason);
+        }
+      },
+    });
 
     // ── 随包图谱引擎接线（engine-bundled-mcp-distribution，2026-09-16）──
     // **必须在下面取组合快照之前**——理由有两条，都是实机缺陷（2026-09-24）：

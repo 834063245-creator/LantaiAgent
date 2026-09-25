@@ -4,7 +4,7 @@
 > 从组合层源码机械推导生成 — 勿手改；服务面变更后重新生成并同 commit。
 > 不含时间戳：字节稳定是 `--check`（doc-sync 门禁）的前提。
 
-共 20 个 ctx 服务：seam 5 · 贡献通道 9 · 服务 6。
+共 22 个 ctx 服务：seam 5 · 贡献通道 9 · 服务 8。
 kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution.ts 单一真源）= seam；
 类体含 `register(def: *Contribution)` = 贡献通道；其余 = 服务。
 
@@ -153,7 +153,9 @@ App 外壳视图槽通道（批 9e）：首页（slot:'home'）与根浮层（sl
 | `ctx.codeRuntime` | `CodeRuntimeService` | `src/agent/code-run/runtime-service.ts` | — | 0 文件 |
 | `ctx.dynamicRunner` | `DynamicRunnerService` | `src/agent/dynamic-runner/dynamic-runner-service.ts` | — | 0 文件 |
 | `ctx.lsp` | `LspService` | `src/ui/lsp-client.ts` | — | 0 文件 |
+| `ctx.shellRows` | `ShellRowsService` | `src/composition/shell-rows-service.ts` | `plugin/hologram/settings-domain/shell-update-check` | 1 文件 |
 | `ctx.space` | `SpaceService` | `src/composition/space-service.ts` | — | 1 文件 |
+| `ctx.workspaces` | `WorkspacesService` | `src/composition/workspaces-service.ts` | — | 0 文件 |
 
 ### `ctx.activation` — ActivationService（服务）
 
@@ -193,6 +195,14 @@ agent loop 注册表（平台化 Phase 5 · D13；S5b 产物化后类本体在 p
 - 默认实现 / 贡献者 id：—
 - 消费面：—（无直接 import/ctx 引用——运行时通道注入）
 
+### `ctx.shellRows` — ShellRowsService（服务）
+
+壳行贡献通道（§4-9）：产物 apply 期 `register({ id, boot })` 登记， `bootShell` 在内置行之后按注册序执行。
+
+- owner：`src/composition/shell-rows-service.ts`
+- 默认实现 / 贡献者 id：`plugin/hologram/settings-domain/shell-update-check`
+- 消费面（1）：`src/plugins/builtin/settings-domain/index.ts`
+
 ### `ctx.space` — SpaceService（服务）
 
 画布空间 API（Stage-2）：读画布状态 + 订阅 + 空间命令。
@@ -200,4 +210,12 @@ agent loop 注册表（平台化 Phase 5 · D13；S5b 产物化后类本体在 p
 - owner：`src/composition/space-service.ts`
 - 默认实现 / 贡献者 id：—
 - 消费面（1）：`src/plugins/builtin/compose-dock/index.ts`
+
+### `ctx.workspaces` — WorkspacesService（服务）
+
+工作区接线贡献面（批 10）：产物 apply 期 `onActivate` 登记， 工作区激活点按注册序串行回调。
+
+- owner：`src/composition/workspaces-service.ts`
+- 默认实现 / 贡献者 id：—
+- 消费面：—（无直接 import/ctx 引用——运行时通道注入）
 

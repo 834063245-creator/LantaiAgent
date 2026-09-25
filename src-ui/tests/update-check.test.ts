@@ -134,7 +134,7 @@ describe('update-store 状态机', () => {
   });
 });
 
-describe('壳行 bootUpdateCheck（shell/rows/update-check.ts）', () => {
+describe('壳行 bootUpdateCheck（§4-9 起随 settings-domain 包：settings-domain/update-check.ts）', () => {
   beforeEach(() => {
     vi.resetModules();
     resetStore();
@@ -144,13 +144,14 @@ describe('壳行 bootUpdateCheck（shell/rows/update-check.ts）', () => {
   });
 
   it('开关开：延迟后触发一次自动检查（fake timers）', async () => {
-    vi.useFakeTimers();
     let checkCalls = 0;
-    vi.doMock('../src/settings', () => ({
+    // 部分 mock：随包后 update-check 经包内 ./host 取值，而该桥会连带取用 settings 的多个
+    // 真实出口（PROVIDER_PROTOCOL_DEFAULTS 等）⇒ 只覆盖这两函数、其余保留真身。
+    // 随包后本单元只经包内宿主桥取 settings / 更新台账两个面 ⇒ 直接 mock 桥
+    // （mock 内核路径会让桥的其余取用面连带进来，重且易卡）。
+    vi.doMock('../src/plugins/builtin/settings-domain/host', () => ({
       loadSettings: () => ({ updates: { autoCheck: true } }),
       autoUpdateCheckEnabled: () => true,
-    }));
-    vi.doMock('../src/state/update-store', () => ({
       useUpdateStore: {
         getState: () => ({
           checkForUpdates: () => {
@@ -160,7 +161,9 @@ describe('壳行 bootUpdateCheck（shell/rows/update-check.ts）', () => {
         }),
       },
     }));
-    const { bootUpdateCheck } = await import('../src/shell/rows/update-check');
+    const { bootUpdateCheck } = await import('../src/plugins/builtin/settings-domain/update-check');
+    // 随包后 import 链更重（经包内 ./host）——fake timers 必须在 import 之后开，否则 import 卡死
+    vi.useFakeTimers();
     bootUpdateCheck();
     expect(checkCalls).toBe(0); // boot 立即返回（不阻塞引导序）
     await vi.advanceTimersByTimeAsync(8000);
@@ -168,13 +171,14 @@ describe('壳行 bootUpdateCheck（shell/rows/update-check.ts）', () => {
   });
 
   it('开关关（settings.updates.autoCheck=false）：不检查', async () => {
-    vi.useFakeTimers();
     let checkCalls = 0;
-    vi.doMock('../src/settings', () => ({
+    // 部分 mock：随包后 update-check 经包内 ./host 取值，而该桥会连带取用 settings 的多个
+    // 真实出口（PROVIDER_PROTOCOL_DEFAULTS 等）⇒ 只覆盖这两函数、其余保留真身。
+    // 随包后本单元只经包内宿主桥取 settings / 更新台账两个面 ⇒ 直接 mock 桥
+    // （mock 内核路径会让桥的其余取用面连带进来，重且易卡）。
+    vi.doMock('../src/plugins/builtin/settings-domain/host', () => ({
       loadSettings: () => ({ updates: { autoCheck: false } }),
       autoUpdateCheckEnabled: () => false,
-    }));
-    vi.doMock('../src/state/update-store', () => ({
       useUpdateStore: {
         getState: () => ({
           checkForUpdates: () => {
@@ -184,7 +188,9 @@ describe('壳行 bootUpdateCheck（shell/rows/update-check.ts）', () => {
         }),
       },
     }));
-    const { bootUpdateCheck } = await import('../src/shell/rows/update-check');
+    const { bootUpdateCheck } = await import('../src/plugins/builtin/settings-domain/update-check');
+    // 随包后 import 链更重（经包内 ./host）——fake timers 必须在 import 之后开，否则 import 卡死
+    vi.useFakeTimers();
     bootUpdateCheck();
     await vi.advanceTimersByTimeAsync(60000);
     expect(checkCalls).toBe(0);

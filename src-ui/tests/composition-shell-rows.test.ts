@@ -7,7 +7,9 @@
 // 竣工时只有行实现各自的功能测试，表序/失败隔离/编排语义从未有专门钉面）。
 //
 // 覆盖（S2 设计件 §2.6 验收）：
-//   1. 表序 = 引导序（V5 拆除后 9 行 + shell-update-check + shell-drag-drop = 11 行硬序——字节契约）；
+//   1. 表序 = 引导序（V5 拆除后 9 行 + shell-drag-drop = 10 行硬序——字节契约）；
+//      §4-9（批 10 同窗，2026-09-26）：shell-update-check 随 settings-domain 包，内核行 11 → 10，
+//      贡献行由 bootShell 经 ctx.shellRows 追加在**内核行之后**（末位语义逐位保持）。
 //   2. 行 id 唯一（roster shell 域寻址面）；
 //   3. workspace 流 deps：actions 行的涟漪语义（deps 缺席 → 跳过注册，warn 可见）；
 //   4. bootShell 失败隔离：单行 boot 抛错 → 后续行照常执行；
@@ -31,7 +33,8 @@ const EXPECTED_ROW_IDS = [
   'hologram/shell-actions',
   'hologram/shell-workspace',
   'hologram/shell-cold-start',
-  'hologram/shell-update-check',
+  // §4-9（批 10 同窗，2026-09-26）：shell-update-check 随 settings-domain 包 ⇒ 内核行 11 → 10；
+  // 贡献行由 bootShell 经 ctx.shellRows 追加在内核行之后（末位语义逐位保持）。
 ];
 
 /** 无副作用的 flow deps 桩（boot 调用签名兼容即可）。 */
@@ -43,7 +46,7 @@ function stubFlowDeps(): WorkspaceFlowDeps {
 }
 
 describe('S2-3/S2-4 壳行表（composition/shell-rows.ts）', () => {
-  it('表序 = 引导序（V5 拆除后 9 行 + shell-update-check + shell-drag-drop = 11 行硬序——字节契约，错位即返工）', () => {
+  it('表序 = 引导序（V5 拆除后 9 行 + shell-drag-drop = 10 行硬序——字节契约，错位即返工）', () => {
     expect(builtinShellRows().map((r) => r.id)).toEqual(EXPECTED_ROW_IDS);
   });
 

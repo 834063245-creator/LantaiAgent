@@ -38,7 +38,11 @@
 
 ## 4. 设计
 
-### 4.1 部件一：工作区接线贡献面（新通道，公开）
+### 4.1 部件一：工作区接线贡献面（新通道，公开）✅ **已落（2026-09-26）**
+
+> 落地：`composition/workspaces-service.ts`（`ctx.workspaces`，内核第 17 个 service）；激活点 = `workspace.ts`
+> 组合快照之前；守卫 = `tests/host-lifecycle-channels.test.ts`（串行 / 失败隔离 / disposer / 无服务=空面）。
+> 契约 **v52 → v53**（与部件三同一次升版）；内核 service 16 → 18、第一方清单 54 → 56。
 
 ```ts
 // 产物 apply(ctx) 内（一次性登记；每次工作区激活按注册序回调）
@@ -157,7 +161,11 @@ ctx.effect(
 （`update-check` 这类 27 行的产品件只能永久留内核）。且因为 `shell-update-check` 恰是**最后一行**，
 「产物贡献行**追加在末尾**」这一条最简语义就能**逐位复现**今日引导序（零行为漂移）。
 
-### 9.2 设计：`ctx.shellRows`（第 17 个内核 service）
+### 9.2 设计：`ctx.shellRows`（内核第 18 个 service）✅ **已落（2026-09-26）**
+
+> 落地：`composition/shell-rows-service.ts` + `shell/boot.ts` 末位追加贡献行；首消费者 `shell-update-check`
+> 已随 `settings-domain`（内核壳行 11 → 10，贡献行 1）——引导序逐位复现。**逐行 patch 寻址**未做
+> （kill switch = 产物禁用面；见该 service 头注），后续可按需精化。
 
 ```ts
 // 产物 apply(ctx) 内（一次性登记；bootShell 期按注册序串行 await）

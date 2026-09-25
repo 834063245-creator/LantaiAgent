@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { ACTION_CONTRIBUTION_ALIASES, runAction } from '../src/app/actions';
 import { PANEL_DEFS, panelDefs } from '../src/app/panels/panel-def';
 import { compositionServicesPlugin } from '../src/composition/services';
+import { shellRowsServicePlugin } from '../src/composition/shell-rows-service';
 import { Context } from '../src/cordis';
 import { paperPlugin } from '../src/plugins/builtin/paper-shell';
 import { settingsPlugin } from '../src/plugins/builtin/settings-domain';
@@ -22,6 +23,9 @@ async function bootWith(plugin: { name: string; inject: string[]; apply: (ctx: C
   const root = new Context();
   const f1 = root.plugin(compositionServicesPlugin);
   await f1;
+  // §4-9（批 10 同窗）：settings-domain 现在 inject 'shellRows'（贡献 update-check 壳行）
+  // ⇒ 生产镜像（SERVICE_PLUGINS 常驻）下该 service 必在，测试域同挂。
+  await root.plugin(shellRowsServicePlugin);
   const f2 = root.plugin(plugin as never);
   await f2;
   return { root, f1, f2 };

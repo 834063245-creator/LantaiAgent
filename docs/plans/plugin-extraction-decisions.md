@@ -95,9 +95,13 @@
 >
 > **施工设计（2026-09-26 补）**：`workspace-activation-channel-design.md` **§9**——实测后定形 =
 > `ctx.shellRows`（第 17 个内核 service，`register({ id, boot })`）+ 引导序「内置 11 行 → 贡献行（注册序）」
-> + 行 id `plugin/<包名>/<行 id>` 可经 roster patch 禁用；第一消费者 = `shell-update-check`（27 行）随
-> `settings-domain` 包（它恰是今日**最后一行** ⇒ 追加语义逐位复现引导序，零行为漂移）；与 `ctx.workspaces`
-> **同一次契约升版**（v52 → v53）。
+> + 行 id `plugin/<包名>/<行 id>`；第一消费者 = `shell-update-check`（27 行）随 `settings-domain` 包
+> （它恰是今日**最后一行** ⇒ 追加语义逐位复现引导序，零行为漂移）；与 `ctx.workspaces` **同一次契约升版**
+> （v52 → v53）。
+>
+> ✅ **两条通道均已落（2026-09-26）**：`ctx.workspaces`（内核第 17 service，激活点 = 组合快照前）+ `ctx.shellRows`
+> （第 18 service，`bootShell` 末位追加；内核壳行 11 → 10 + 贡献行 1）；守卫 = `tests/host-lifecycle-channels.test.ts`。
+> **逐行 patch 寻址未做**（kill switch = 产物禁用面）——与设计件 §9.2 注记一致。
 
 ### 2.3 §4-11 `bundled-engine.ts`（292 行）—— ✅ **已裁定：先验真机，批 10 一并产物化**
 

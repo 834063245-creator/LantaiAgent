@@ -29,6 +29,8 @@ import { onPromptContributionsChanged } from '../composition/prompt-service';
 import type { ResolvedComposition } from '../composition/roster';
 import { onToolContributionsChanged } from '../composition/services';
 import { type ShellRow, type WorkspaceFlowDeps, workspaceFlow } from '../composition/shell-rows';
+// §4-9（批 10 同窗）：壳行贡献通道——产物登记的行追加在内置行之后（注册序）
+import { activeShellRows } from '../composition/shell-rows-service';
 import { setLang } from '../i18n';
 import { armProvidersWatcher, bootstrapProvidersDoc, ensureProvidersDir } from '../provider/providers-store';
 import { typedListen } from '../rpc-contract';
@@ -134,7 +136,11 @@ export async function bootShell(
     //    测试注入面（生产一律走 store；factory 态 = 出厂表全等）。
     const resolved = useCompositionStore.getState().resolved;
     const rows: ShellRow[] = composition?.shell ?? resolved.shell;
-    for (const row of rows) {
+    // §4-9（批 10 同窗）：贡献行**追加在内置行之后**（注册序）——`shell-update-check`
+    // 恰是今日最后一行，故该语义逐位复现引导序（零行为漂移）。无 `ctx.shellRows`
+    // 的环境（工具/单测）= 空集。逐行 patch 寻址是后续精化（见该 service 头注）。
+    const contributed: ShellRow[] = activeShellRows().map((r) => ({ id: r.id, boot: r.boot }));
+    for (const row of [...rows, ...contributed]) {
       try {
         await row.boot(shellRefs, flowDeps);
       } catch (err) {

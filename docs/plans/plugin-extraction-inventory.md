@@ -403,7 +403,8 @@ manifest.json —— 包内合计 30～110 行。
 
 | 项 | 路径（物理行） | 判定 |
 |---|---|---|
-| 工作区级 Agent 装配编排 | `workspace.ts` **1,076** | **产品**（唯一持有工作区生命周期的装配点；直接 new Agent/AgentStore/SubAgentPool/GoalManager/MemoryManager/SkillRegistry + 内联调起 user-mcp/bundled-engine） | 🟡 **批 9f 侦察（2026-09-26，判定细化）**：装配点**本体是内核平台**——`shell/rows/workspace.ts:33,108` 惰性 `import('../../workspace')` 并 `WorkspaceCls.open(folder)`，`shell/runtime.ts:29` 持 `Workspace` 句柄：**工作区生命周期宿主在壳行**，整件不可随包（内核 ↛ 产物源码）。真欠账 = 文件里**内联的产品装配**（new 五件管理器 + 拉起 user-mcp / bundled-engine）⇒ 解锁路径 = 批 10 的 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)（工作区接线贡献面），**不在批 9 内可搬** |
+| 工作区级 Agent 装配编排 | `workspace.ts` **1,076** | **产品**（唯一持有工作区生命周期的装配点；直接 new Agent/AgentStore/SubAgentPool/GoalManager/MemoryManager/SkillRegistry + 内联调起 user-mcp/bundled-engine） | 🟡 **批 9f 侦察（2026-09-26，判定细化）**：装配点**本体是内核平台**——`shell/rows/workspace.ts:33,108` 惰性 `import('../../workspace')` 并 `WorkspaceCls.open(folder)`，`shell/runtime.ts:29` 持 `Workspace` 句柄：**工作区生命周期宿主在壳行**，整件不可随包（内核 ↛ 产物源码）。真欠账 = 文件里**内联的产品装配**（new 五件管理器 + 拉起 user-mcp / bundled-engine）⇒ 解锁路径 = 批 10 的 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)（工作区接线贡献面），**不在批 9 内可搬**。**2026-09-26 部件一已落**：`ctx.workspaces`（内核第 17 service）——
+`workspace.ts` 在组合快照前按注册序串行回调贡献者、失败隔离不阻断打开；`bundled-engine` 的内联接线由**部件三**迁成第一个贡献者（未做）。 |
 | provider 设置数据层 | `settings.ts` **703** | **产品**（settings-domain 只载了 UI，数据/存储/凭据层留内核；`preset-assembly.ts:41` 还反向依赖它） | 🟡 **批 9f 侦察（2026-09-26，判定细化）**：实测 **28 个 import 方**（内核 16：`shell/boot.ts:35` 启动即 `loadSettings` · `shell/rows/{persistence,drag-drop,update-check}` · `state/{compose-store,mode-store}` · `ui/chat-session` · `composition/preset-assembly.ts:41` · `provider/**` 7 件 · `workspace.ts`；产物/桥 12）⇒ **整件不可随包**。真拆法 = ①**应用配置核心留内核**（`AppSettings` 四节 + `loadSettings`/`saveSettings`/`onSettingsSaved` + `canvasWheelMode`/`autoUpdateCheckEnabled`）；②**Provider 数据面随包**（L100–199 模型 helpers + `PROVIDER_PROTOCOL_DEFAULTS`/`defaultBaseUrl`/`isFactoryBaseUrl` + runtime 投影 + 四个 CRUD + `parseRpcString`），内核读点（compose-store / chat-session / provider 残件）走登记接缝 ⇒ 与核内 `provider/**`（16 件 3,502 行）**是同一件设计**，另立施工单 |
 | 第一方清单/腰四件 | `first-party-tools.ts` 86 + `first-party-prompts.ts` 43 + `first-party-capabilities.ts` 48 + `with-first-party-channel.ts` 51 = **228** | 清单→可由名册 `buildOrder` 派生（序真源其实已在名册）；`with-first-party-channel` 自述**只服务测试/无 UI 引导环境** ⇒ 应落 `tests/helpers/` |
 | 「新建组合」实现 | `preset-authoring.ts` **192** | **产品**（唯一消费者是 `settings-domain/host.ts:18`） |
@@ -485,7 +486,9 @@ manifest.json —— 包内合计 30～110 行。
 **绿** = 平台白名单 + 已被产物认领的共享面，**灰** = 无产物认领也不在白名单。
 **2026-09-26 基线**（批 9c-4b 后重测）：红 **0 产物 / 0 文件 / 0 行（账②清零）**；绿 **122 平台 + 121 已认领**；
 灰 **50 文件 / 15,103 行**（`paper` 段两件转被认领；**9f-1 后不变**——`settings.ts` 是半迁移件，仍在灰区/被认领面）。
-**9f-1 后重测**：红 **0** · 绿 **122 平台 + 120 已认领**（`provider/model-sync.ts` 随包 ⇒ 该认领销账）· 灰 **50 / 15,103**。历史：§4-6 后为红 2 产物 / 5 文件 / 1,502 行（§1 的 4 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80 · 9h-1 销 `blueprint.ts` 410 · 9h-2 销 `default-loop.ts` 469 · 9h-3 销 `skills.ts` 377 + `builtin-skills.ts` 358 · 9h-4 销 `memory.ts` 733 + `memory-bundle-client.ts` 134）；
+**9f-1 后重测**：红 **0** · 绿 **122 平台 + 120 已认领**（`provider/model-sync.ts` 随包 ⇒ 该认领销账）· 灰 **50 / 15,103**。
+**批 10 部件一/三后（2026-09-26 重测）**：红 **0** · 绿 **123 平台 + 120 已认领** · 灰 **50 文件 / 15,103 行**
+（两条通道本体落 `composition/` 平台白名单；壳行 11 → 10 + 贡献行 1）。三色与 9f-1 相比仅平台 +1。历史：§4-6 后为红 2 产物 / 5 文件 / 1,502 行（§1 的 4 条 + §2.5 的 `type-tokens`；批 9d 销 Provider 家族 8 件 2,740 行 · 9g-1 销 `prompt-sections` 244 · 9g-2 销 `show-asset` 294 + `asset-store` 137 + `confirm-registry` 80 · 9h-1 销 `blueprint.ts` 410 · 9h-2 销 `default-loop.ts` 469 · 9h-3 销 `skills.ts` 377 + `builtin-skills.ts` 358 · 9h-4 销 `memory.ts` 733 + `memory-bundle-client.ts` 134）；
 绿 **122 平台 + 121 已认领**；灰 **53 文件 / 15,355 行**（批 8 把渲染面判据层收成 `shared`：
 `markdown` / `marks` / `tool-text` / `fold` / `translate` 五件进 paper-renderers 与 renderers 的
 shared 名单；批 9a 把 token-meter / acp 登记进平台白名单，9c-1~3 把 selection / virtualize /
@@ -543,7 +546,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
 | **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~4 / 9d / 9e / 9g-1~2 / 9h-1~5 / §4-6 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）· **9e 常驻面归家**（用户裁定 A）：立**第 15 个内核 service** `ctx.rootViews`（'home'/'overlay' 双槽，App 外壳按槽渲染）+ 新产物 `sessions-home`（593 + 首页 CSS 851 行）与 `ask-cards`（776 + Host 30 + css 412），两产物均 `required` 不可禁用 · **9h-1 capability 内容表随包**（`agent/blueprint.ts` 410 → 158，包内 `segments.ts` 281 = 十四项定义，逐字号原样）· **9h-2 出厂默认 loop 随包**（`agent/agent-loop/default-loop.ts` 469 整件进 `agent-loop-service` 包，内核 `resolveAgentLoop()` 去兜底改 fail-loud；契约 v50 → **v51**）· **9h-3 技能域随包**（`skills.ts` 377 + `builtin-skills.ts` 358 进 `skill-domain` 包；形状上收 `agent/skill-contract.ts` + 登记表门面 `agent/skill-impl.ts`）· **9h-4 记忆域随包**（`memory.ts` 733 + `memory-bundle-client.ts` 134 进 `memory-domain` 包；形状上收 `agent/memory-contract.ts` + 门面 `agent/memory-impl.ts`，授权旗标留内核）· **9c-4 测量引擎整件随包**（9c-4a 接缝 `2268bd64`；9c-4b `measure.ts` 2,016 + `type-tokens.ts` 807 进 `paper-shell`
-（`required`；宿主面 324 键）；9c-4c 测试面 29 件改指包内 + 真机验收——**账② 清零**，见 §6.5）· **§4-6 token 计量升内核第 16 个 service `ctx.tokenMeter`**（裁定 A；契约 **v52**，墨量册改道宿主桥，宿主面 330 键；真机验收见 §6.5）· **9h-5 task 域整件随包**（`task.ts` 178 + `task-board.ts` 319 + `board-status.ts` 78 进 `task-domain` 包；形状上收 `agent/task-contract.ts` + 门面 `agent/task-impl.ts`；`board-persistence.ts` 121 判内核 `shared`；**纯壳集清零**，宿主面 334 键；真机验收见 §6.5）⇒ 红区 8 → **0 产物 / 0 文件 / 0 行**、灰区 84 → **50 文件 / 15,103 行**、清单 50 → **54**（16 service + 38 产物）。余：**批 10 + §4-9 同窗**（[设计件](workspace-activation-channel-design.md) §4/§9 齐备、验收四条全通）· 9f ✅ **全落**（编辑面 129 行随包 · 宿主面 327 键 · `shared` 认领 17 件 · 真机复核零异常）（[`provider-data-face-homing-design.md`](provider-data-face-homing-design.md)：`provider/**` 判内核平台 15 件 / 随包面实测 −205；子批 9f-1~3 全落） → 9g `bundled-engine` 随批 10。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
+（`required`；宿主面 324 键）；9c-4c 测试面 29 件改指包内 + 真机验收——**账② 清零**，见 §6.5）· **§4-6 token 计量升内核第 16 个 service `ctx.tokenMeter`**（裁定 A；契约 **v52**，墨量册改道宿主桥，宿主面 330 键；真机验收见 §6.5）· **9h-5 task 域整件随包**（`task.ts` 178 + `task-board.ts` 319 + `board-status.ts` 78 进 `task-domain` 包；形状上收 `agent/task-contract.ts` + 门面 `agent/task-impl.ts`；`board-persistence.ts` 121 判内核 `shared`；**纯壳集清零**，宿主面 334 键；真机验收见 §6.5）⇒ 红区 8 → **0 产物 / 0 文件 / 0 行**、灰区 84 → **50 文件 / 15,103 行**、清单 50 → **54**（16 service + 38 产物）。余：**批 10 部件二/三**（MCP 桥 faceDeps + `bundled-engine` 产物化）——部件一（`ctx.workspaces`）与部件三通道（`ctx.shellRows` + `update-check` 随包）✅ **已落**；9f ✅ **全落**（编辑面 129 行随包 · 宿主面 327 键 · `shared` 认领 17 件 · 真机复核零异常）（[`provider-data-face-homing-design.md`](provider-data-face-homing-design.md)：`provider/**` 判内核平台 15 件 / 随包面实测 −205；子批 9f-1~3 全落） → 9g `bundled-engine` 随批 10。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -849,6 +852,23 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   `type-tokens.ts` 807）整件随 paper-shell 包 + 该产物标 `required` + `KERNEL_DEFAULT` 换
   `null`（fail-loud）+ 宿主面键集按实测补齐。
 
+- **批 10 部件一 + 部件三：两条宿主生命周期贡献面**（2026-09-26，设计件 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md) §4.1/§9；用户 2026-09-25 裁定 A）：
+  新 `composition/workspaces-service.ts`（`ctx.workspaces`，内核第 17 service）——产物 apply 期 `onActivate(hook)`
+  登记，`workspace.ts` 在**组合快照之前**按注册序**串行 await**，单个抛错**不阻断工作区打开**（具名回执经
+  `scope.report`），`scope.ctx` = 工作区 fiber ctx（挂它的东西随 dispose 回收）；新 `composition/shell-rows-service.ts`
+  （`ctx.shellRows`，第 18 service）——`bootShell` 在内核行之后**追加**贡献行（注册序）；首消费者
+  `shell/rows/update-check.ts`（27 行）随 `settings-domain` 包（内核壳行 **11 → 10** + 贡献行 1 ⇒ 引导序逐位复现）。
+  **契约 v52 → v53**（两条载体同一次升版）；内核 service 16 → **18**、第一方清单 54 → **56**；宿主面**零新键**
+  （327 / `28da6bf5` 不变）。守卫 = `tests/host-lifecycle-channels.test.ts`（串行序 / 失败隔离 / disposer 摘行 /
+  无服务=空面 / 贡献行追加末位）；`privileged-zone-freeze` 基线 32 → **34**（两条通道本体入区，裁定 A 授权）。
+  **对账**：红 0 · 平台 122 → **123**（实测）· 已认领 120 · 灰 50 / 15,103。
+  **真机验收**（重建 exe + CDP，2026-09-26）：启动期 57 条 fiber 全 `[active]`（`settings-domain`
+  `apply=2.4ms`）、`[boot-timing] auditBoot settle：57 条 fiber 整树 0.1ms`、**零装载失败/零壳行 boot 失败**；
+  宿主面运行时 **327 键**（两条通道零新 faceDeps 键，`workspaces` / `shellRows` 均不在面内 ✓ 内核专用）；
+  进工作区一次通过（`.pp-root` + 卷首题字）——即**工作区接线通道真路径**零异常；
+  **贡献壳行真跑了的实证**：设置「关于」页读数 **「更新 已是最新版本」**（该文案只在一次检查**完成后**出现）；
+  内核表已无该行（守卫断言内核 10 行、末位 `shell-cold-start`）⇒ 该检查只可能来自 `settings-domain`
+  经 `ctx.shellRows` 登记的贡献行 ⇒ **引导序末位语义在真机成立**。
 - **9f-1 Provider 编辑面随 `settings-domain`**（2026-09-26，施工单 [`provider-data-face-homing-design.md`](provider-data-face-homing-design.md)）：
   `provider/model-sync.ts` 73 → 包内 `model-sync.ts`；`settings.ts` 的 7 个产品专属值符号
   （`isFactoryBaseUrl` / `persistSecrets` / `removeSecret` / `addProvider` / `removeProvider` + 两个类型再出口）

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // 壳行表（S2-3 填充；S2-4 迁入；V5 拆除 2026-08-22 缩至 9 行；2026-08-24
-// 增 shell-update-check 行至 10 行；2026-09-22 增 shell-drag-drop 行至 11 行）
+// 增 shell-update-check 行至 10 行；2026-09-22 增 shell-drag-drop 行至 11 行；
+// §4-9（批 10 同窗，2026-09-26）shell-update-check 随 settings-domain 包 ⇒ 内核行 11 → 10
+// ——贡献行经 ctx.shellRows 登记、由 bootShell 追加在内核行之后（末位语义逐位保持））
 // —— 壳装配的组合数据源。
 //
 // 壳行 = 启动接线单元（S2 设计件 §2.6）：main.ts init() 既有执行序切成
@@ -34,7 +36,6 @@ import { bootKeyguard } from '../shell/rows/keyguard';
 import { bootPersistence } from '../shell/rows/persistence';
 import { bootPlatform } from '../shell/rows/platform';
 import { bootSandboxProbe } from '../shell/rows/sandbox-probe';
-import { bootUpdateCheck } from '../shell/rows/update-check';
 import { bootWorkspace, workspaceFlow } from '../shell/rows/workspace';
 import type { ShellRefs } from '../shell/runtime';
 
@@ -69,7 +70,6 @@ export function builtinShellRows(): ShellRow[] {
     },
     { id: 'hologram/shell-workspace', boot: (refs) => bootWorkspace(refs) },
     { id: 'hologram/shell-cold-start', boot: (refs) => bootColdStart(refs) },
-    { id: 'hologram/shell-update-check', boot: () => bootUpdateCheck() },
   ];
 }
 

@@ -22,9 +22,17 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 52;
+export const OPEN_SURFACE_CONTRACT_VERSION = 53;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v53（2026-09-26）**宿主生命周期贡献面**（批 10 同窗，用户 2026-09-25 裁定 A）：新增两条内核
+ *  service 契约载体——`composition/workspaces-service.ts`（`ctx.workspaces`：产物 apply 期
+ *  `onActivate(hook)` 登记，工作区激活点按注册序串行 await、失败隔离不阻断打开、`scope.ctx` =
+ *  工作区 fiber ctx）与 `composition/shell-rows-service.ts`（`ctx.shellRows`：产物登记 boot 期
+ *  壳行，`bootShell` 追加在内核行之后——首消费者 `shell-update-check` 恰为原末位行 ⇒ 引导序
+ *  逐位复现）。**对外可感知**：第三方产物从此能贡献「工作区打开时要接的线」与「boot 期副作用」；
+ *  无贡献者 = 两条路径零行为变更（无服务环境 = 空贡献面）。内核 service 16 → 18，第一方清单
+ *  54 → 56。
  *  v52（2026-09-26）**token 计量升为内核第 16 个 service `ctx.tokenMeter`**（§4-6 A，
  *  用户 2026-09-25 裁定；总账 §4-6 分类缺口）：新增契约载体
  *  `agent/token-meter/contract.ts`——`TokenLedger`（每卷一本账的形状，
@@ -336,4 +344,10 @@ export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   // ——每卷账本形状 TokenLedger + 分桶代数 TokenAlgebra + 实现面；录入点仍唯一 =
   // Agent.streamOnce，service 只出「造账本 / 恢复账本 / 读代数」）
   'src/agent/token-meter/contract.ts',
+  // 宿主生命周期贡献面（批 10 同窗，2026-09-26；用户 2026-09-25 裁定 A）：两条新内核 service
+  // ——工作区接线贡献面（产物 apply 期 onActivate 登记 → 激活点按注册序串行回调、失败隔离）
+  // 与壳行贡献通道（产物登记 boot 期壳行 → bootShell 追加在内核行之后）。第三方产物可经
+  // ctx.* 贡献（裁定：敏感面 = MCP 桥，走 faceDeps 留第一方）。
+  'src/composition/workspaces-service.ts',
+  'src/composition/shell-rows-service.ts',
 ];

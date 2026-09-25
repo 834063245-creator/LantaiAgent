@@ -22,12 +22,23 @@ import type { Context } from '../../../cordis';
 import { injectFaceArtifactCss } from '../face-css';
 import { useDockStore } from './host';
 import { SettingsPanel } from './SettingsPanel';
+import { bootUpdateCheck } from './update-check';
 
 /** settings 域插件 — 面板贡献（即时生效）+ toggle 命令贡献。 */
 export const settingsPlugin = {
   name: 'hologram/settings-domain',
-  inject: ['panels', 'commands'],
+  inject: ['panels', 'commands', 'shellRows'],
   apply(ctx: Context) {
+    /* §4-9（批 10 同窗）：壳行贡献——启动期自动检查更新（原内核 shell-update-check 行）。
+     * 行 id 用 plugin/ 前缀（对齐工具行先例）；boot 期由 bootShell 在内置行之后按注册序执行。 */
+    ctx.effect(
+      () =>
+        ctx.shellRows.register({
+          id: 'plugin/hologram/settings-domain/shell-update-check',
+          boot: () => bootUpdateCheck(),
+        }),
+      'shell-update-check',
+    );
     injectFaceArtifactCss();
     ctx.effect(
       () =>

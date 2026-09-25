@@ -28,9 +28,11 @@ import { rendererServicePlugin } from '../composition/renderer-service';
 import { rootViewsServicePlugin } from '../composition/root-views-service';
 import { compositionServicesPlugin } from '../composition/services';
 import { sessionPersistenceServicePlugin } from '../composition/session-persistence-service';
+import { shellRowsServicePlugin } from '../composition/shell-rows-service';
 import { shellServicePlugin } from '../composition/shell-service';
 import { spaceServicePlugin } from '../composition/space-service';
 import { subagentsServicePlugin } from '../composition/subagent-service';
+import { workspacesServicePlugin } from '../composition/workspaces-service';
 import { lspServicePlugin } from '../ui/lsp-client';
 import type { LantaiPlugin } from './types';
 
@@ -41,11 +43,14 @@ export interface ServicePluginEntry {
   description: string;
 }
 
-/** 16 个内核 service（**表序 = 装载序 = 字节契约**；加/删只许动本表）。
+/** 18 个内核 service（**表序 = 装载序 = 字节契约**；加/删只许动本表）。
  *  第 14 位 `lsp-service`（批 9b §4-13）：此前游离在清单外（`ui/lsp-client.ts` 自建第二个根
  *  Context 当兜底）⇒ 不受「内核不可禁用」覆盖、不进 boot 审计；现由 loader 装载。
  *  第 15 位 `composition-root-views`（批 9e）：App 外壳视图槽通道（'home' 主区 / 'overlay' 浮层）
  *  ——首页与 ask 卡产物经它贡献，App.tsx 按槽渲染（用户 2026-09-26 裁定 A）。
+ *  第 17/18 位 `composition-workspaces` / `composition-shell-rows`（批 10，2026-09-26）：两条
+ *  **宿主生命周期贡献面**（用户 2026-09-25 裁定 A，§4-9 与工作区接线同窗）——产物 apply 期登记、
+ *  工作区激活点 / bootShell 期执行；同一批走一次契约升版（v52 → v53）。
  *  第 16 位 `token-meter`（§4-6 A，用户 2026-09-25 裁定）：token 计量面此前既不在清单、
  *  也无产物认领（消费方只能 import 内核实现文件）；立 service 后每卷账本由
  *  `ctx.tokenMeter.createLedger()/restoreLedger()` 制造、分桶代数经 `ctx.tokenMeter.usage`
@@ -72,6 +77,8 @@ export const SERVICE_PLUGINS: readonly ServicePluginEntry[] = [
   { plugin: codeRuntimePlugin, description: 'code_execution 执行腰沙箱' },
   { plugin: dynamicRunnerPlugin, description: '运行时插件定义/执行（cordis 域，approval + 半沙箱）' },
   { plugin: lspServicePlugin, description: '语言服务（LSP）会话与 provider 注册（工作区 fiber 挂载 + 内核兜底实例）' },
+  { plugin: workspacesServicePlugin, description: '工作区接线贡献面（产物 apply 期登记 → 激活点按注册序串行回调）' },
+  { plugin: shellRowsServicePlugin, description: '壳行贡献通道（产物登记 boot 期壳行 → 追加在内核行之后）' },
   {
     plugin: tokenMeterServicePlugin,
     description: 'token 计量（每卷账本工厂 + 分桶代数真源；录入点唯一 = Agent.streamOnce）',

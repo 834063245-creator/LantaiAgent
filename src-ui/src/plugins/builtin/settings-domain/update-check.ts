@@ -13,8 +13,10 @@
 // 开关：settings.updates.autoCheck（缺省开，autoUpdateCheckEnabled 容错读取）；
 // 关闭/行禁用涟漪 = 不自动检查（设置面板手动检查不受影响）。
 
-import { autoUpdateCheckEnabled, loadSettings } from '../../settings';
-import { useUpdateStore } from '../../state/update-store';
+// ⚠ 随包后**不得直连内核模块**：`settings.ts`（有状态）与 `state/update-store`（zustand 单例）
+// 直连会被产物域 esbuild 内联成副本 ⇒ 影子 store / 状态分裂（§0.6 同族）。三个取用面都是
+// 既有 faceDeps 键，经包内宿主桥取真实例。
+import { autoUpdateCheckEnabled, loadSettings, useUpdateStore } from './host';
 
 export function bootUpdateCheck(): void {
   if (!autoUpdateCheckEnabled(loadSettings())) return;

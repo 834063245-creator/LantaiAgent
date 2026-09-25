@@ -22,6 +22,9 @@
 // `asset-renderers.tsx` 后 31；plugins 顶层 17 → 批 9a §4-15 收单一真源新增
 // `service-plugins.ts` 后 18）。批 9e（2026-09-26）：新增内核通道
 // `composition/root-views-service.ts`（App 外壳视图槽——用户裁定 A，特权区内的**通道本体**）→ 32。
+// 批 10 同窗（2026-09-26）：两条**宿主生命周期贡献面**本体入区——`composition/workspaces-service.ts`
+// （`ctx.workspaces`）与 `composition/shell-rows-service.ts`（`ctx.shellRows`）；用户 2026-09-25 裁定 A
+// （§4-9 与工作区接线同窗），契约 v52 → v53 → 34 文件。
 
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -58,12 +61,14 @@ const COMPOSITION_MANIFEST = [
   'services.ts',
   'session-persistence-service.ts',
   'shell-rows.ts',
+  'shell-rows-service.ts',
   'root-views-service.ts',
   'shell-service.ts',
   'space-service.ts',
   'subagent-service.ts',
   'tool-rows.ts',
   'with-first-party-channel.ts',
+  'workspaces-service.ts',
 ];
 
 /** 特权区 ②：`plugins/` 顶层（装载链 / 平台类型 / 名册）。`builtin/**` 是产物包本体，不在本区。 */
