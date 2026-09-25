@@ -16,9 +16,9 @@
 //   全进创作坞下拉」，配置面失去了「挑」这一步（用户实测报告）。现在拉取只刷新
 //   目录与元数据；启用集只由用户在目录里勾选/取消（Provider 页）或添加弹层勾选改变。
 
-import type { AppSettings, ProviderSettings } from '../settings';
-import { type ModelMeta, metaHasContent } from './model-meta';
-import type { ModelDescriptor } from './types';
+import { type ModelMeta, metaHasContent } from '../../../provider/model-meta';
+import type { ModelDescriptor } from '../../../provider/types';
+import type { AppSettings, ProviderSettings } from '../../../settings';
 
 /** 一次 /models 拉取的完整产物：描述符（内存目录用）+ 元数据（落盘用）。
  *  meta 只含端点**真披露**的字段——descriptor 上的启发式兜底（reasoning 猜测、

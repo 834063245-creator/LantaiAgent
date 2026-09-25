@@ -192,8 +192,6 @@ import {
   lodTierOf,
 } from '../../paper/ink';
 import { activeMarkdownBody } from '../../paper/markdown-body-seam';
-// 批 9c-4b（2026-09-26）：测量引擎（measure.ts + type-tokens.ts）整件随 paper-shell 包
-// ⇒ 撤 12 个键（包内直接取用），改桥该包的**登记口**两键（引擎 apply 期登记进内核接缝）。
 import { clearMeasureImplementation, registerMeasureImplementation } from '../../paper/measure-seam';
 import { clampViewportFrame, inkBarsFor, minimapProject, regionFrame } from '../../paper/minimap-core';
 import { PaperDockContext, PaperRegionContext, usePaperDock, usePaperRegion } from '../../paper/overlay-context';
@@ -226,6 +224,8 @@ import { createProvider } from '../../provider';
 import {
   clampMaxTokens,
   findModels,
+  getCatalogVendors,
+  getDefaultModel,
   getDynamicFetchFailure,
   getDynamicFetchInflight,
   getModel,
@@ -246,8 +246,8 @@ import { classifyProviderError } from '../../provider/error-catalog';
 import { streamWithIdleTimeout } from '../../provider/idle-stream';
 import { createLiveProvider } from '../../provider/live';
 import { modelEntries, parseModelEntry } from '../../provider/model-meta';
-import { applyFetchedModels } from '../../provider/model-sync';
 import { buildOauthHeaders, oauthAccounts, oauthLogout, runDeviceLogin } from '../../provider/oauth';
+import { intentOf } from '../../provider/providers-doc';
 // provider 配置文件通道（2026-09-24 配方改文件批）：设置页路径/错误/写盘面
 import {
   ensureProvidersDir,
@@ -279,6 +279,7 @@ import {
   retryAfterSeconds,
   sanitizeToolPairing,
 } from '../../provider/types';
+import { findVendorTemplate, getVendorTemplateVendors, VENDOR_TEMPLATES } from '../../provider/vendor-templates';
 import {
   clearWorkspaceListCache,
   kernelAppendFileDurable,
@@ -298,8 +299,9 @@ import {
   typedRpcWithTimeout,
   workspaceListCached,
 } from '../../rpc-contract';
+// 批 9c-4b（2026-09-26）：测量引擎（measure.ts + type-tokens.ts）整件随 paper-shell 包
+// ⇒ 撤 12 个键（包内直接取用），改桥该包的**登记口**两键（引擎 apply 期登记进内核接缝）。
 import {
-  addProvider,
   autoUpdateCheckEnabled,
   canvasWheelMode,
   defaultBaseUrl,
@@ -309,12 +311,11 @@ import {
   modelContextWindow,
   modelDescriptor,
   modelInput,
+  modelMaxTokens,
   modelThinking,
   onSettingsSaved,
   PROVIDER_PROTOCOL_DEFAULTS,
-  persistSecrets,
   providerId,
-  removeSecret,
   saveSettings,
 } from '../../settings';
 import { leaveToHome, pickFolder, workspaceFlow } from '../../shell/rows/workspace';
@@ -565,8 +566,6 @@ const faceDeps = {
   modelDescriptor,
   modelThinking,
   onSettingsSaved,
-  persistSecrets,
-  removeSecret,
   saveSettings,
   getModel,
   findModels,
@@ -757,8 +756,6 @@ const faceDeps = {
   Agent,
   activeStateHooksImplementation, // 批 9d 归家：Provider 控制台 8 件进 settings-domain 包 ⇒ 桥它们的有状态内核依赖面
   activeLlmAdapters,
-  addProvider,
-  applyFetchedModels,
   buildOauthHeaders,
   createLiveProvider,
   createProvider,
@@ -796,6 +793,15 @@ const faceDeps = {
   // §4-6 A（2026-09-26）：token 计量升为内核第 16 个 service `ctx.tokenMeter` ⇒ 分桶代数
   // 经本键取内核唯一实例（创作坞墨量册的读数面；产物域自建副本 = 口径漂移入口）。
   tokenAlgebra,
+  // 批 9f-1（2026-09-26）：Provider 编辑面随 settings-domain 包 ⇒ 撤 4 键（applyFetchedModels /
+  // addProvider / persistSecrets / removeSecret）；补留内核的邻居 5 键（该包 host.ts 有注）。
+  findVendorTemplate,
+  VENDOR_TEMPLATES,
+  getCatalogVendors,
+  getDefaultModel,
+  modelMaxTokens,
+  getVendorTemplateVendors,
+  intentOf,
   // 批 9c-4b（2026-09-26）：测量引擎随 paper-shell 包 ⇒ 撤 12 个 measure/type-tokens 键
   // （包内直接取用），改桥该包的登记口两键（apply 期登记进内核接缝 paper/measure-seam）。
   registerMeasureImplementation,

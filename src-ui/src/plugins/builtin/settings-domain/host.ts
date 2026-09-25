@@ -54,6 +54,8 @@ export { type McpServerDecl, McpServerDeclSchema } from '../../../plugins/types'
 export { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../../plugins/user-mcp';
 export { createProvider } from '../../../provider';
 export {
+  getCatalogVendors,
+  getDefaultModel,
   getDynamicFetchFailure,
   getModel,
   markDynamicFetchStart,
@@ -63,8 +65,8 @@ export {
 } from '../../../provider/catalog';
 export { invalidateCredentialCache, invalidateOauthCache, resolveOauthToken } from '../../../provider/credentials';
 export { createLiveProvider } from '../../../provider/live';
-export { applyFetchedModels } from '../../../provider/model-sync';
 export { buildOauthHeaders, oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
+export { intentOf } from '../../../provider/providers-doc';
 // provider 配置文件通道（2026-09-24 配方改文件批）：设置页显示路径与逐节错误、
 // 打开目录、保存时写盘——意图的唯一权威是那份 YAML，这里是它的界面面。
 export {
@@ -79,6 +81,11 @@ export {
   retryProvidersPath,
   saveProvidersDoc,
 } from '../../../provider/providers-store';
+// 批 9f-1（2026-09-26）：Provider 编辑面 7 个符号随本包（`provider-data.ts` / `model-sync.ts`）⇒ 上述
+// 四个键销账；下面四个是**留内核的邻居**（`modelMaxTokens` 被内核 `modelDescriptor` 自用；vendor/catalog
+// 三个读面供包内 `provider-data.ts` 的 `isFactoryBaseUrl` / `addProvider` 使用——原先它们被 .tsx 直接
+// import 内核 `settings.ts`/`provider/*`，产物域会把内核模块连状态一起内联成副本，本批一并消除）。
+export { findVendorTemplate, getVendorTemplateVendors, VENDOR_TEMPLATES } from '../../../provider/vendor-templates';
 // 强制层 fs 口 + RPC 面（两页 + 作者面的 IO）
 export {
   kernelCreateDirectory,
@@ -89,17 +96,22 @@ export {
   typedJsonRpc,
   typedRpc,
 } from '../../../rpc-contract';
-export type { AppSettings, ConnectionProbe, ProviderId } from '../../../settings';
+export type { AppSettings, ConnectionProbe, ProbeOutcome, ProviderId, ProviderSettings } from '../../../settings';
+// 批 9f-1 续：包内 `provider-data.ts` 与 Provider 三页需要的其余内核读面（均已是 faceDeps 键，
+// 只是本文件此前没出口——原先三页直接 import 内核路径，产物域因此把 `settings.ts` 连状态一起内联）。
 export {
-  addProvider,
   autoUpdateCheckEnabled,
   canvasWheelMode,
   defaultBaseUrl,
+  effectiveModels,
   loadSettings,
   loadSettingsWithSecrets,
-  persistSecrets,
+  modelContextWindow,
+  modelDescriptor,
+  modelInput,
+  modelMaxTokens,
+  PROVIDER_PROTOCOL_DEFAULTS,
   providerId,
-  removeSecret,
   saveSettings,
 } from '../../../settings';
 export { notifyAgentConfigChanged } from '../../../state/agent-config-store';

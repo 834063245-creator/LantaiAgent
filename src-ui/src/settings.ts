@@ -4,12 +4,17 @@
 // Settings — API Key 管理、模型选择、provider 配置
 // 存储在 localStorage 中，在可用时由 Tauri store 插件支持
 
-import { getCatalogVendors, getDefaultModel, getModel } from './provider/catalog';
+import { getDefaultModel, getModel } from './provider/catalog';
 import type { ModelMeta } from './provider/model-meta';
 import type { StoredThinking, ThinkingEffort } from './provider/thinking';
 import type { CoreProtocol, ModelDescriptor, Protocol } from './provider/types';
-import { findVendorTemplate, VENDOR_TEMPLATES } from './provider/vendor-templates';
+// 批 9f-1：`getCatalogVendors` / `VENDOR_TEMPLATES` 的读者（`isFactoryBaseUrl`）已随
+// settings-domain 包 ⇒ 本文件不再需要这两个导入（`findVendorTemplate` 仍供 `defaultBaseUrl` 用）。
+import { findVendorTemplate } from './provider/vendor-templates';
 
+/** Provider 身份（CONTEXT.md「ProviderId」）：唯一不可变，同时是系统凭据键与
+ *  动态模型合并键（三合一）。运行时就是 string（存储兼容零迁移），
+ *  仅在类型层面与普通字符串隔离——禁止拿任意字符串当 ProviderId 用。 */
 /** 连接探针的结果（CONTEXT.md「ConnectionProbe」）— 非敏感，随 localStorage 持久化。 */
 export type ProbeOutcome = 'ok' | 'fail';
 
@@ -22,9 +27,6 @@ export interface ConnectionProbe {
   message?: string;
 }
 
-/** Provider 身份（CONTEXT.md「ProviderId」）：唯一不可变，同时是系统凭据键与
- *  动态模型合并键（三合一）。运行时就是 string（存储兼容零迁移），
- *  仅在类型层面与普通字符串隔离——禁止拿任意字符串当 ProviderId 用。 */
 export type ProviderId = string & { readonly __brand?: 'ProviderId' };
 
 /** 在输入边界把已验证的字符串提升为 ProviderId（唯一受信任的构造入口）。 */
@@ -296,20 +298,6 @@ export function defaultBaseUrl(name: string, kind: ProviderSettings['kind']): st
   return getDefaultModel(name)?.baseUrl ?? PROVIDER_PROTOCOL_DEFAULTS[kind as CoreProtocol];
 }
 
-/** 是否仍是「出厂默认」Base URL（协议默认、模板默认或目录厂商默认）——
- *  设置面板模型切换时的 baseUrl 自动填充判定（用户自定义过就不覆盖）。 */
-export function isFactoryBaseUrl(url: string): boolean {
-  const defaults = new Set<string>(Object.values(PROVIDER_PROTOCOL_DEFAULTS));
-  for (const tpl of VENDOR_TEMPLATES) {
-    if (tpl.baseUrl) defaults.add(tpl.baseUrl);
-  }
-  for (const name of getCatalogVendors()) {
-    const u = getDefaultModel(name)?.baseUrl;
-    if (u) defaults.add(u);
-  }
-  return defaults.has(url);
-}
-
 const DEFAULTS: AppSettings = {
   activeProvider: providerId('deepseek'),
   providers: [
@@ -537,60 +525,6 @@ export function onSettingsSaved(cb: () => void): () => void {
   };
 }
 
-/** 将 API Key 持久化到系统加密存储（DPAPI on Windows），防止 localStorage 被清丢 Key。
- *  ⚡ 2026-08-04：apiKey 唯一权威在此 — 保存设置时同步写入凭据。
- *  ⚡ 2026-08-07 修正：空 key **不再执行 delete**——state 与凭据可能因异步回填
- *  暂时不同步（restoreSecrets 未完成时遍历会把未回填的 provider 误删）。
- *  删除凭据只走两个明确场景：removeProvider（removeSecret）与用户主动清空
- *  输入框（手动落盘后保存空 key 不会删凭据——清空需走 removeProvider）。 */
-export async function persistSecrets(s: AppSettings): Promise<string[]> {
-  const failed: string[] = [];
-  const withKey = s.providers.filter((p) => {
-    const k = (p.apiKey || '').trim();
-    return k && k !== 'null';
-  });
-  try {
-    const { typedRpc } = await import('./rpc-contract');
-    for (const p of withKey) {
-      // withKey 过滤保证 apiKey 非空；双重守卫防漏
-      const rawKey = p.apiKey;
-      if (!rawKey) continue;
-      const key = rawKey.trim();
-      // 「null」字面量护栏：毒化残留的 apiKey:"null" 绝非真 key，绝不写入凭据库
-      try {
-        await typedRpc('credential_store', { provider: p.name, key });
-      } catch (e) {
-        // 雷区地图 P0-7：写失败必须上抛给 UI——「失败报已保存」会让用户重启丢 key
-        console.warn(`[settings] credential_store(${p.name}) 失败:`, e);
-        failed.push(p.name);
-      }
-    }
-    // Phase C（2026-08-24）：写穿失效凭据内存缓存——live provider 每请求按名
-    // 现解析（provider/credentials.ts），不失效则保存后仍读到旧值。动态 import
-    // 防环（credentials → settings 静态依赖，此处反向只可运行时引）。
-    const { invalidateCredentialCache } = await import('./provider/credentials');
-    for (const p of withKey) invalidateCredentialCache(p.name);
-  } catch (e) {
-    console.warn('[settings] bridge 不可用，凭据未落盘:', e);
-    failed.push(...withKey.map((p) => p.name));
-  }
-  return failed;
-}
-
-/** 删除指定 provider 的 API Key from 系统加密存储（DPAPI）。
- *  调用时机：保存「删除 Provider」或「清除已保存 Key」的暂存操作时。 */
-export async function removeSecret(providerName: ProviderId): Promise<void> {
-  try {
-    const { typedRpc } = await import('./rpc-contract');
-    await typedRpc('credential_delete', { provider: providerName });
-    // Phase C：写穿失效凭据缓存（同 persistSecrets——见上注释）
-    const { invalidateCredentialCache } = await import('./provider/credentials');
-    invalidateCredentialCache(providerName);
-  } catch {
-    /* 无加密存储或 Key 未找到 — 非关键 */
-  }
-}
-
 /** 解析 rpc 返回值中的字符串。rpc 返回 JSON 编码字符串（`"sk-xxx"` 或 `null`），
  *  调用方普遍需 JSON.parse；此处兼容两种形态：
  *  - `"sk-xxx"`（JSON 编码）→ 解析出 `sk-xxx`
@@ -670,36 +604,4 @@ export function updateProvider(s: AppSettings, name: string, patch: Partial<Prov
     ...s,
     providers: s.providers.map((p) => (p.name === name ? { ...p, ...patch } : p)),
   };
-}
-
-export function addProvider(s: AppSettings, name: ProviderId, kind: Protocol): AppSettings {
-  if (s.providers.find((p) => p.name === name)) {
-    throw new Error(`提供方 "${name}" 已存在`);
-  }
-  const baseUrl = defaultBaseUrl(name, kind);
-  return {
-    ...s,
-    activeProvider: name,
-    providers: [
-      ...s.providers,
-      {
-        kind,
-        name,
-        apiKey: '',
-        // 模板/目录命中 = 出厂默认端点；未知协议无模板 = 空串（两步式添加的
-        // onAdd 随后会带真实 baseUrl 覆盖；直接 addProvider 时需手填）。
-        baseUrl: baseUrl ?? '',
-        model: '',
-      },
-    ],
-  };
-}
-
-export function removeProvider(s: AppSettings, name: string): AppSettings {
-  const idx = s.providers.findIndex((p) => p.name === name);
-  if (idx < 0) throw new Error(`提供方 "${name}" 不存在`);
-  if (s.providers.length <= 1) throw new Error('至少保留一个提供方');
-  const next = s.providers.filter((p) => p.name !== name);
-  const active = s.activeProvider === name ? next[0].name : s.activeProvider;
-  return { ...s, activeProvider: active, providers: next };
 }

@@ -11,17 +11,14 @@ import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
 import type { AppSettings, ConnectionProbe } from '../../../settings';
 import {
-  addProvider,
   defaultBaseUrl,
   getActiveProvider,
   type ProviderId,
   type ProviderSettings,
-  removeProvider,
   updateProvider,
 } from '../../../settings';
 import { type AddProviderEntry, AddProviderSheet } from './AddProviderSheet';
 import {
-  applyFetchedModels,
   ConfirmDialog,
   createLiveProvider,
   createProvider,
@@ -34,8 +31,10 @@ import {
   recordDynamicFetchResult,
   runDeviceLogin,
 } from './host';
+import { applyFetchedModels } from './model-sync';
 import { type ProbeUiState, ProviderDetail, type ProviderField } from './ProviderDetail';
 import { ProviderList } from './ProviderList';
+import { addProvider, removeProvider } from './provider-data';
 import { formatLatency } from './status';
 
 interface ProviderPageProps {

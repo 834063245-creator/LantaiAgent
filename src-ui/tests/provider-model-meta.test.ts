@@ -39,11 +39,11 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
+import { applyFetchedModels, mergeIntoProvider } from '../src/plugins/builtin/settings-domain/model-sync';
 import { createProvider } from '../src/provider';
 import { _resetCredentialCacheForTests } from '../src/provider/credentials';
 import { createLiveProvider } from '../src/provider/live';
 import { metaHasContent, modelEntries, parseModelEntry } from '../src/provider/model-meta';
-import { applyFetchedModels, mergeIntoProvider } from '../src/provider/model-sync';
 import { resetProxyPort } from '../src/provider/transport';
 import { ChunkType, type Request } from '../src/provider/types';
 import {

@@ -9,18 +9,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { type StoredThinking, thinkingModeLabel, thinkingOptionsOrDefault } from '../../../provider/thinking';
 import {
   effectiveModels,
-  isFactoryBaseUrl,
+  getDynamicFetchFailure,
+  getModel,
   modelContextWindow,
   modelDescriptor,
   modelInput,
   modelMaxTokens,
+  onDynamicFetchChange,
   type ProbeOutcome,
   type ProviderSettings,
-} from '../../../settings';
-import { getDynamicFetchFailure, getModel, onDynamicFetchChange } from './host';
+} from './host';
 import { ProviderAdvanced } from './ProviderAdvanced';
 import { ProviderDocCard } from './ProviderDocCard';
 import { protocolLabel } from './protocol';
+import { isFactoryBaseUrl } from './provider-data';
 import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
 
 export type ProviderField = 'apiKey' | 'baseUrl' | 'model' | 'thinking';

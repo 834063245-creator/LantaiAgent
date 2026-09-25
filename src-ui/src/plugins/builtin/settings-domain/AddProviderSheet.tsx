@@ -31,13 +31,14 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ModelMeta } from '../../../provider/model-meta';
 import type { ModelDescriptor, Provider } from '../../../provider/types';
 import { CORE_PROTOCOLS, type Protocol } from '../../../provider/types';
-import { findVendorTemplate, getVendorTemplateVendors } from '../../../provider/vendor-templates';
 import type { ProviderId, ProviderSettings } from '../../../settings';
 import {
   activeLlmAdapters,
   buildOauthHeaders,
   createProvider,
   defaultBaseUrl,
+  findVendorTemplate,
+  getVendorTemplateVendors,
   invalidateOauthCache,
   mountDialogFocus,
   Overlay,

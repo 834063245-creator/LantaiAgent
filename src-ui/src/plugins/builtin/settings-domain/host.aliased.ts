@@ -58,8 +58,6 @@ export const autoUpdateCheckEnabled = impl.autoUpdateCheckEnabled;
 export const canvasWheelMode = impl.canvasWheelMode;
 export const loadSettings = impl.loadSettings;
 export const loadSettingsWithSecrets = impl.loadSettingsWithSecrets;
-export const persistSecrets = impl.persistSecrets;
-export const removeSecret = impl.removeSecret;
 export const saveSettings = impl.saveSettings;
 export const notifyAgentConfigChanged = impl.notifyAgentConfigChanged;
 export const useCompositionStore = impl.useCompositionStore;
@@ -74,8 +72,6 @@ export const Icon = impl.Icon as ComponentType;
 export const useShellStore = impl.useShellStore;
 export const scanSkills = impl.scanSkills;
 export const activeLlmAdapters = impl.activeLlmAdapters;
-export const addProvider = impl.addProvider;
-export const applyFetchedModels = impl.applyFetchedModels;
 export const buildOauthHeaders = impl.buildOauthHeaders;
 export const createLiveProvider = impl.createLiveProvider;
 export const createProvider = impl.createProvider;
@@ -121,9 +117,26 @@ export const kernelReadFile = impl.kernelReadFile;
 export const kernelWriteFile = impl.kernelWriteFile;
 export const parseJson = impl.parseJson;
 export const typedRpc = impl.typedRpc;
+// 批 9f-1（2026-09-26）：Provider 编辑面随本包（`provider-data.ts` / `model-sync.ts`）⇒
+// 撤四键（applyFetchedModels / addProvider / persistSecrets / removeSecret，见 host.ts 注），
+// 补留内核的邻居键（包内 `provider-data.ts` 与 Provider 三页取用）。
+export const findVendorTemplate = impl.findVendorTemplate;
+export const getVendorTemplateVendors = impl.getVendorTemplateVendors;
+export const VENDOR_TEMPLATES = impl.VENDOR_TEMPLATES;
+export const getCatalogVendors = impl.getCatalogVendors;
+export const getDefaultModel = impl.getDefaultModel;
+export const modelMaxTokens = impl.modelMaxTokens;
+export const effectiveModels = impl.effectiveModels;
+export const modelContextWindow = impl.modelContextWindow;
+export const modelDescriptor = impl.modelDescriptor;
+export const modelInput = impl.modelInput;
+export const PROVIDER_PROTOCOL_DEFAULTS = impl.PROVIDER_PROTOCOL_DEFAULTS;
+export const intentOf = impl.intentOf;
 
 export type AppSettings = import('./host').AppSettings;
 export type ConnectionProbe = import('./host').ConnectionProbe;
+export type ProbeOutcome = import('./host').ProbeOutcome;
+export type ProviderSettings = import('./host').ProviderSettings;
 export type ProviderId = import('./host').ProviderId;
 export type BundledEngineInfo = import('./host').BundledEngineInfo;
 export type McpServerDecl = import('./host').McpServerDecl;

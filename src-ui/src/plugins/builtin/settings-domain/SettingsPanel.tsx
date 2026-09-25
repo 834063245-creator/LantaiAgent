@@ -12,9 +12,10 @@
 import { getVersion } from '@tauri-apps/api/app';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-// 配方文档纯函数面（意图抽取——写盘补丁的形状真源；纯计算，不经宿主桥）
-import { intentOf, type ProviderIntent } from '../../../provider/providers-doc';
+import type { ProviderIntent } from '../../../provider/providers-doc';
 import type { AppSettings, ConnectionProbe, ProviderId } from './host';
+// 配方文档纯函数面（意图抽取——写盘补丁的形状真源；纯计算，不经宿主桥）
+import { intentOf } from './host';
 import './settings-panel.css';
 import {
   activationConflict,
@@ -27,12 +28,10 @@ import {
   loadSettingsWithSecrets,
   notifyAgentConfigChanged,
   onProvidersDocChange,
-  persistSecrets,
   projectProvidersErrors,
   projectProvidersFatal,
   providersDocStatus,
   providersFilePath,
-  removeSecret,
   retryProvidersPath,
   saveProvidersDoc,
   saveSettings,
@@ -48,6 +47,7 @@ import { McpPage } from './McpPage';
 import { PluginsPage } from './PluginsPage';
 import { ProviderPage } from './ProviderPage';
 import { compositionDir, createPresetFromTemplate, rescanPresets } from './preset-authoring';
+import { persistSecrets, removeSecret } from './provider-data';
 import { SkillsPage } from './SkillsPage';
 
 type Tab = 'provider' | 'agent' | 'display' | 'plugins' | 'skills' | 'mcp' | 'about';

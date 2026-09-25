@@ -18,13 +18,15 @@ Provider 数据面随包（内核读点走登记接缝）」，并注明**与 `p
 
 | 桶 | 个数 | 导出 |
 |---|---|---|
-| **A. 内核零消费者**（可随包） | 13 | `ProbeOutcome` · `ConnectionProbe` · `effectiveModels`\* · `modelMaxTokens` · `canvasWheelMode` · `PROVIDER_PROTOCOL_DEFAULTS` · `defaultBaseUrl` · `isFactoryBaseUrl` · `onSettingsSaved`\* · `persistSecrets` · `removeSecret` · `addProvider` · `removeProvider` |
+| **A. 可随包**（内核零消费者 **且单产物取用**） | 9 | `ProbeOutcome` · `ConnectionProbe` · `modelMaxTokens` · `defaultBaseUrl` · `isFactoryBaseUrl` · `persistSecrets` · `removeSecret` · `addProvider` · `removeProvider` |
 | **B. 仅内核用**（判内核平台） | 6 | `ModelOverrides` · `ProviderRuntime` · `installProvidersProjection` · `installProvidersFileReadyCheck` · `storedProviderRows` · `parseRpcString` |
 | **C. 两侧都用**（拆点） | 14 | 形状三件（`AppSettings` / `ProviderSettings` / `ProviderId`）· 配置核心（`loadSettings` **内核 12** · `saveSettings` 内核 4 · `autoUpdateCheckEnabled`）· provider 读点（`getActiveProvider` 内核 3 · `updateProvider` · `modelContextWindow` · `modelInput` · `modelThinking` · `modelDescriptor` · `providerId` · `loadSettingsWithSecrets`） |
 
-\* 标记者**表面在 A 桶、实为跨产物**：`effectiveModels` 被 `settings-domain` 与 `compose-dock`
-两个产物用、`onSettingsSaved` 被 `settings-domain` / `compose-dock` / `paper-shell` 三个产物用
-（都经各自宿主桥）⇒ 按「**≥2 个产物需要 ⇒ 必须留内核共享面**」判据，二者归 C 桶（留内核）。
+> **A 桶复核（2026-09-26 二次实测，判据：看「产物包 host 面」而非 `host-modules.ts`——后者是内核桥
+> 注册表不是消费者）**：原列 13 个里 4 个实为跨产物/内核表 ⇒ 归 C 桶：`effectiveModels`（`compose-dock` +
+> `settings-domain`）· `canvasWheelMode`（`paper-shell` + `settings-domain`）· `onSettingsSaved`
+> （`compose-dock` + `paper-shell`）· `PROVIDER_PROTOCOL_DEFAULTS`（`llm-adapters` 单产物取用，但它是
+> `defaultBaseUrl` 与适配器的**端点真源单点**、内核表 ⇒ 留内核，照批 2a 的注记）。
 
 **C 桶的内核读点在哪**：`shell/boot.ts`（启动即 `loadSettings` 读语言/字号）· `shell/rows/{persistence,drag-drop,update-check}` ·
 `state/{compose-store,mode-store}` · `ui/chat-session` · `composition/preset-assembly.ts`（preset 选择写读）·
@@ -62,23 +64,23 @@ Provider 数据面随包（内核读点走登记接缝）」，并注明**与 `p
    **不造登记接缝**（接缝是给「内核需要、产物持有」的场景；此处内核自己就是唯一真源）。
 2. **真正随包的只有两处**（内核零消费者）：
    - `provider/model-sync.ts` **73**（拉取结果落盘层，唯一写入口；消费者 = `settings-domain` 一域）；
-   - `settings.ts` 的**产品专属编辑面**：`ProbeOutcome` / `ConnectionProbe` / `PROVIDER_PROTOCOL_DEFAULTS` /
-     `defaultBaseUrl` / `isFactoryBaseUrl` / `modelMaxTokens` / `addProvider` / `removeProvider` /
-     `persistSecrets` / `removeSecret` ≈ **220 行**（消费者 = `settings-domain` 一域；经宿主桥的键
-     随之销账）。
+   - `settings.ts` 的**产品专属编辑面**：`ProbeOutcome` / `ConnectionProbe` / `modelMaxTokens` /
+     `defaultBaseUrl` / `isFactoryBaseUrl` / `addProvider` / `removeProvider` / `persistSecrets` /
+     `removeSecret` ≈ **132 行**（消费者 = `settings-domain` 一域；经宿主桥的键随之销账）。
 3. **`settings.ts` 余部（≈ 480 行）留内核**：应用配置核心（`AppSettings` 四节 +
    `loadSettings` / `saveSettings` / `onSettingsSaved` / `canvasWheelMode` / `autoUpdateCheckEnabled`）
    + provider 数据面内核读点（`getActiveProvider` / `updateProvider` / 五个 model helper / 形状三件）
    ——**它们有 1~12 个内核读点**，且 `effectiveModels` / `onSettingsSaved` 被多产物共用 ⇒ 按判据留内核。
 4. **口径更正（写给账本）**：账本 §2.1 原估「settings.ts 703 + provider 3,502 ⇒ 9f ≈ −700」偏大；
-   实测切完 = **−293 行**（73 + 220），其余 3,900+ 行**有内核平台读点** ⇒ 判共享，不做接缝。
+   两次实测后切完 = **−205 行**（`model-sync.ts` 73 + 产品专属编辑面 132），其余 4,000 行**有内核平台
+   读点或跨产物取用** ⇒ 判共享，不做接缝。
    与 §4-10（`asset-kinds` 581 判共享）同一条判据。
 
 ## 4. 子批切分与出口判据
 
 | 子批 | 内容 | 出口判据 |
 |---|---|---|
-| **9f-1** | `provider/model-sync.ts`（73）→ `plugins/builtin/settings-domain/model-sync.ts`；`settings.ts` 的产品专属编辑面 10 个符号 → 包内 `provider-data.ts`；`settings-domain` 内消费点改指包内；宿主面销该批键 | `plugin-home:report` 三色数字不变（半迁移不进三色账）；`settings-domain/entry.js` 含 `applyFetchedModels` / `isFactoryBaseUrl` 真身；`settings.ts` 物理行 705 → ≈ 490 |
+| **9f-1** ✅ **已落**（2026-09-26） | `provider/model-sync.ts`（73）→ 包内 `model-sync.ts`；`settings.ts` 的产品专属编辑面 **7 个值符号 + 2 个类型再出口**（`provider-data.ts` 129 行）——类型两件（`ProbeOutcome` / `ConnectionProbe`）留内核（`ProviderSettings.lastTest` 自用、类型零成本）；`settings.ts` 706 → **607 行**；顺带消除三处 .tsx **直连内核 `settings.ts` 取值**的副本病灶；宿主面 324 → **327 键**（撤 4 补 7：`applyFetchedModels`/`addProvider`/`persistSecrets`/`removeSecret` 销账；补 `findVendorTemplate`/`getVendorTemplateVendors`/`VENDOR_TEMPLATES`/`getCatalogVendors`/`getDefaultModel`/`modelMaxTokens`/`intentOf`）| `plugin-home:report` 三色数字不变（半迁移不进三色账）；`settings-domain/entry.js` 含 `applyFetchedModels` / `isFactoryBaseUrl` 真身；`settings.ts` 物理行 705 → ≈ 570 |
 | **9f-2** | 账目登记：名册 `settings-domain` 加 `shared`（15 件 provider 平台件）+ 账本 §2.1 / §5 / §6.5 落账；`provider/**` 判据一行 | `plugin-home:report` 灰区不变、已认领 +15（provider 件转被认领）；`doc-check` 绿 |
 | **9f-3** | 真机验收：重建 exe + CDP——设置页 Provider 面（列表/详情/添加/OAuth/拉取模型）与「配方改文件」写读路径活性；启动零装载失败 | 四条探针（键数 / 产物真身 / 设置页 DOM / 零异常） |
 

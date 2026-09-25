@@ -11,10 +11,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as bridge from '../src/bridge';
+// 批 9f-1：`isFactoryBaseUrl` 随 settings-domain 包（Provider 编辑面）
+import { isFactoryBaseUrl } from '../src/plugins/builtin/settings-domain/provider-data';
 import {
   canvasWheelMode,
   defaultBaseUrl,
-  isFactoryBaseUrl,
   loadSettings,
   loadSettingsWithSecrets,
   onSettingsSaved,
@@ -22,7 +23,13 @@ import {
   saveSettings,
 } from '../src/settings';
 
-vi.mock('../src/bridge', () => ({ rpc: vi.fn() }));
+// 批 9f-1：`isFactoryBaseUrl` 随 settings-domain 包 ⇒ 该包 `./host`（开发域 = 内核真身）
+// 会连带取用 `bridge` 的若干出口（`isMockMode` / `watchFileDragDrop` …）⇒ 本 mock 由
+// 「只给 rpc」改为**部分 mock**（保留真实出口，只替换 rpc）。
+vi.mock('../src/bridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/bridge')>();
+  return { ...actual, rpc: vi.fn() };
+});
 
 const STORAGE_KEY = 'hologram_settings';
 

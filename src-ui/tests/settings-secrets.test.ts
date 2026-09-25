@@ -11,9 +11,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as bridge from '../src/bridge';
-import { loadSettings, parseRpcString, persistSecrets, restoreSecrets } from '../src/settings';
+// 批 9f-1：凭据写面（persistSecrets / removeSecret）随 settings-domain 包
+import { persistSecrets } from '../src/plugins/builtin/settings-domain/provider-data';
+import { loadSettings, parseRpcString, restoreSecrets } from '../src/settings';
 
-vi.mock('../src/bridge', () => ({ rpc: vi.fn() }));
+// 批 9f-1：`persistSecrets` 随 settings-domain 包 ⇒ 该包 `./host`（开发域 = 内核真身）
+// 连带取用 `bridge` 的多个出口（`isMockMode` / `watchFileDragDrop` …）⇒ 本 mock 由
+// 「只给 rpc」改为**部分 mock**（保留真实出口，只替换 rpc）。
+vi.mock('../src/bridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/bridge')>();
+  return { ...actual, rpc: vi.fn() };
+});
 
 describe('parseRpcString', () => {
   it('unwraps JSON-encoded string (双引号回归)', () => {
