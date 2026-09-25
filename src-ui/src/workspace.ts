@@ -32,7 +32,8 @@ import { createSkillRegistry } from './agent/skill-impl';
 import { buildTurnStartBlock, refreshGitStatus } from './agent/state-inject';
 import type { SubAgentPool } from './agent/subagent-runtime-contract';
 import { requireSubagentRuntime } from './agent/subagent-runtime-impl';
-import { TaskManager } from './agent/task';
+import type { TaskManagerFace } from './agent/task-contract';
+import { createTaskManager } from './agent/task-impl';
 import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
 import { readAttachmentForWire } from './app/chat/image-intake';
@@ -140,7 +141,7 @@ export class Workspace {
   prov: Provider | null = null;
   registry: ToolRegistry | null = null;
   memoryManager: MemoryManagerFace | null = null;
-  taskManager: TaskManager = new TaskManager();
+  taskManager: TaskManagerFace = createTaskManager();
   skillRegistry: SkillRegistryFace | null = null;
   agentStore: AgentStore | null = null;
   goalManager: GoalManager | null = null;

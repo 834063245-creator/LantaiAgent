@@ -45,7 +45,7 @@ export type {
 } from '../../../agent/subagent-runtime-contract';
 export { SubAgentStatus } from '../../../agent/subagent-runtime-contract';
 export { registerSubagentRuntime } from '../../../agent/subagent-runtime-impl';
-export type { BoardEntry, TaskBoard } from '../../../agent/task-board';
+export type { BoardEntry, TaskBoardFace as TaskBoard } from '../../../agent/task-contract';
 export type { Tool, ToolExecutor } from '../../../agent/tool';
 export { ToolRegistry } from '../../../agent/tool';
 export { defineTool } from '../../../agent/tools/define-tool';

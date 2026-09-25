@@ -15,25 +15,17 @@
 //
 // 持久化：flush() / restore() 将 entries 序列化到 .lantai/taskboard.json。
 // 状态变更后通过 debounced flush 延迟批量写入，避免频繁 I/O。
+//
+// 批 9h-5（2026-09-26）：整件随 `task-domain` 包。形状真源迁内核契约
+// `agent/task-contract.ts`；`BoardPersistence`（内核共享面，与 `discovery-board.ts` 共用）
+// 经包内宿主桥取真实例——本文件不再相对 import 内核实现文件。
 
-import { BoardPersistence } from './board-persistence';
+import type { BoardEntry, TaskBoardFace, TaskBoardProxyFace } from '../../../agent/task-contract';
+import { BoardPersistence } from './host';
 
-export type BoardStatus = 'running' | 'completed' | 'failed' | 'stopped' | 'merged';
+export type { BoardEntry, BoardStatus } from '../../../agent/task-contract';
 
-export interface BoardEntry {
-  agentId: string;
-  parentAgentId: string;
-  description: string;
-  status: BoardStatus;
-  isolationId: string | null;
-  filesTouched: string[];
-  summary?: string;
-  diff?: string;
-  startedAt: number;
-  finishedAt?: number;
-}
-
-export class TaskBoard {
+export class TaskBoard implements TaskBoardFace {
   private entries = new Map<string, BoardEntry>();
   private _store: BoardPersistence;
 
@@ -244,20 +236,20 @@ export class TaskBoard {
 /** Proxy that delegates to a swappable target TaskBoard.
  *  每个 Agent 一个 — 会话 id 在 createAgent 后才分配，
  *  由 bindSession 一次性换 target 完成静态绑定。 */
-export class TaskBoardProxy {
-  private _target: TaskBoard;
+export class TaskBoardProxy implements TaskBoardProxyFace {
+  private _target: TaskBoardFace;
 
-  constructor(target: TaskBoard) {
+  constructor(target: TaskBoardFace) {
     this._target = target;
   }
 
   /** Swap the underlying board — called by bindSession to statically bind
    *  this agent's session board */
-  setTarget(board: TaskBoard): void {
+  setTarget(board: TaskBoardFace): void {
     this._target = board;
   }
 
-  get target(): TaskBoard {
+  get target(): TaskBoardFace {
     return this._target;
   }
 

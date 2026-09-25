@@ -11,11 +11,14 @@
 // 注意：这不是 task_list（TaskManager 的任务系统）— 那是主 Agent 自己的待办，
 // 与子 Agent 共享状态板无关。
 
+// 批 9h-5（2026-09-26）：随 `task-domain` 包（原 `agent/tools/board-status.ts`）。
+// 形状真源迁内核契约 `agent/task-contract.ts`；内核依赖（`defineTool` / 溢写两函数）
+// 经包内宿主桥取真实例。
+
 import { z } from 'zod';
-import { parseIsolationDiff, spillToFile } from '../spill';
-import type { BoardEntry, TaskBoard } from '../task-board';
-import type { Tool } from '../tool';
-import { defineTool } from './define-tool';
+import type { BoardEntry, TaskBoardReadFace } from '../../../agent/task-contract';
+import type { Tool } from '../../../agent/tool';
+import { defineTool, parseIsolationDiff, spillToFile } from './host';
 
 const DIFF_LIMIT = 500;
 const SUMMARY_LIMIT = 200;
@@ -40,7 +43,7 @@ async function formatDiffLine(entry: BoardEntry, projectPath: string): Promise<s
   return `diff: ${out.display}`;
 }
 
-export function createBoardStatusTool(board: TaskBoard, getParentId: () => string): Tool {
+export function createBoardStatusTool(board: TaskBoardReadFace, getParentId: () => string): Tool {
   return defineTool({
     name: 'agent_board',
     description:

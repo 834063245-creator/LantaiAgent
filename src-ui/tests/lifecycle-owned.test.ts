@@ -3,12 +3,12 @@
 import { describe, expect, it } from 'vitest';
 import { McpClient } from '../src/agent/mcp/client';
 import { createLoopbackTransport } from '../src/agent/mcp/transport';
-import { TaskBoard } from '../src/agent/task-board';
 import type { ToolExecutor } from '../src/agent/tool';
 import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
 import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 import { AgentLifecycleManager } from '../src/plugins/builtin/subagent-in-process/lifecycle-manager';
+import { TaskBoard } from '../src/plugins/builtin/task-domain/task-board';
 
 function makeManager(): AgentLifecycleManager {
   const pool = new SubAgentPool();

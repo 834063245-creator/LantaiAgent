@@ -21,7 +21,6 @@
 // 无状态族名序钉（手写清单对拍声明序）在本文件；①c 族名序同此。
 
 import { describe, expect, it } from 'vitest';
-import { TaskManager } from '../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry, ToolRowContext } from '../src/agent/tool';
 import { fsServicePlugin } from '../src/composition/fs-service';
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
@@ -47,6 +46,7 @@ import { createShellTools } from '../src/plugins/builtin/shell-domain/shell-tool
 import { skillDomainPlugin } from '../src/plugins/builtin/skill-domain';
 import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 import { taskDomainPlugin } from '../src/plugins/builtin/task-domain';
+import { TaskManager } from '../src/plugins/builtin/task-domain/task';
 import { waitDomainPlugin } from '../src/plugins/builtin/wait-domain';
 import { webDomainPlugin } from '../src/plugins/builtin/web-domain';
 import { createWebTools } from '../src/plugins/builtin/web-domain/web-tools';

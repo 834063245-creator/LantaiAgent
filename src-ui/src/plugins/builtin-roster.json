@@ -215,11 +215,11 @@
   {
     "dir": "task-domain",
     "buildOrder": 22,
-    "description": "任务域工具（task_*）",
+    "description": "任务域工具（task_*；三件实现已随包，批 9h-5）",
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["tools"],
-    "impl": ["agent/task.ts", "agent/task-board.ts", "agent/board-persistence.ts", "agent/tools/board-status.ts"]
+    "shared": ["agent/board-persistence.ts"]
   },
   {
     "dir": "agent-domain",

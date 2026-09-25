@@ -26,7 +26,6 @@ vi.mock('../src/bridge', () => ({
 import type { Agent } from '../src/agent/agent';
 import { FileOwnership } from '../src/agent/file-ownership';
 import { enqueueIsolationOp } from '../src/agent/isolation-queue';
-import { TaskBoard } from '../src/agent/task-board';
 import { type ToolExecutor, ToolRegistry } from '../src/agent/tool';
 import { convergeRegistry, createDomainTools } from '../src/agent/tools/domains';
 import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
@@ -34,6 +33,7 @@ import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 import { AgentLifecycleManager } from '../src/plugins/builtin/subagent-in-process/lifecycle-manager';
 import { createMergeTool } from '../src/plugins/builtin/subagent-in-process/merge-tools';
+import { TaskBoard } from '../src/plugins/builtin/task-domain/task-board';
 import type { Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 import { createTestAgent } from './helpers/agent';

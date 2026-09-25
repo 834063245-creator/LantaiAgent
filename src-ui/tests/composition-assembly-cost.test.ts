@@ -26,7 +26,6 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { buildToolRegistry } from '../src/agent/runtime/agent-builder';
-import { TaskManager } from '../src/agent/task';
 import type { Tool, ToolRegistry } from '../src/agent/tool';
 import {
   activationPlan,
@@ -45,6 +44,7 @@ import { registerSeamScope, seamScopeOf } from '../src/composition/seam-scope';
 import { activeToolContributions } from '../src/composition/services';
 import type { BuiltinToolRow } from '../src/composition/tool-rows';
 import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
+import { TaskManager } from '../src/plugins/builtin/task-domain/task';
 
 /** 计数用包装行：记调用次数，原样转发给真实 factory。 */
 function countingRows(rows: BuiltinToolRow[]): { rows: BuiltinToolRow[]; calls: Map<string, number> } {

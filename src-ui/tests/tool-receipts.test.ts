@@ -13,10 +13,10 @@
 // 说成成功（也不许说成失败）。
 
 import { describe, expect, it } from 'vitest';
-import { createTaskTools, TaskManager } from '../src/agent/task';
 import type { ToolExecutor } from '../src/agent/tool';
 import { createFsTools } from '../src/plugins/builtin/fs-domain/fs-tools';
 import { createGitTools } from '../src/plugins/builtin/git-domain/git-tools';
+import { createTaskTools, TaskManager } from '../src/plugins/builtin/task-domain/task';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 function toolOf<T extends { name(): string }>(tools: T[], name: string): T {

@@ -75,12 +75,17 @@ function distinctiveProbe(lit: string): boolean {
   return /^[a-z]{14,}$/.test(lit);
 }
 
-/** 产物源码里出现的字符串字面量（长度 ≥ 6、无模板插值）——探针候选。 */
+/** 产物源码里出现的字符串字面量（长度 ≥ 6、无模板插值）——探针候选。
+ *  ⚠ 只留**内容串**（词 / 路径 / 文案），剔掉含代码标点的片段：批 9h-5 实测——
+ *  多行源码里两个撇号之间会跨行凑出 `).describe(` 一类**通用代码文本**（zod 链在
+ *  壳 bundle 里到处都是）⇒ 假红。判据：含 `( ) { } ; = < > + * | & % $ # ! ? [ ] " ' ,`
+ *  之一即弃（中文文案、路径、标识符都不含这些）。 */
+const CODE_PUNCT = /[(){};=<>+*|&%$#!?[\]"',]/;
 function stringLiterals(src: string): string[] {
   const out = new Set<string>();
   for (const m of src.matchAll(/'([^'\\\n]{6,})'|"([^"\\\n]{6,})"|`([^`$\\\n]{6,})`/g)) {
     const lit = m[1] ?? m[2] ?? m[3];
-    if (lit) out.add(lit);
+    if (lit && !CODE_PUNCT.test(lit)) out.add(lit);
   }
   return [...out];
 }

@@ -36,7 +36,7 @@ import type { MemoryManagerFace } from '../agent/memory-contract';
 import type { SkillRegistryFace } from '../agent/skill-contract';
 import type { SubAgentPool } from '../agent/subagent-runtime-contract';
 import type { SubAgentSpawner } from '../agent/subagent-tools-contract';
-import type { TaskManager } from '../agent/task';
+import type { TaskManagerFace } from '../agent/task-contract';
 import type { CodingToolsUI, Tool, ToolExecutor } from '../agent/tool';
 
 /** 行装配上下文 — buildToolRegistry 提供的全部运行时依赖。
@@ -48,7 +48,7 @@ export interface ToolRowContext {
   ui?: CodingToolsUI;
   skillRegistry?: SkillRegistryFace;
   memoryManager?: MemoryManagerFace;
-  taskManager: TaskManager;
+  taskManager: TaskManagerFace;
   subAgentPool: SubAgentPool;
   subAgentSpawner?: SubAgentSpawner;
 }

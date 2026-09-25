@@ -21,10 +21,10 @@ import {
   convergeRegistry,
   createBoardStatusTool,
   createCodeExecutionTool,
+  createTaskManager,
   createTaskTools,
   registerCompactionTools,
   requireMultiagentComm,
-  TaskManager,
 } from './host';
 
 // ── 表内 helper（原样随迁：仅本表使用）──
@@ -154,7 +154,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
       id: 'task-tools',
       phase: 'agent',
       install: (scope) => {
-        const perAgentTaskManager = new TaskManager();
+        const perAgentTaskManager = createTaskManager();
         for (const taskTool of createTaskTools(perAgentTaskManager)) {
           scope.tools.unregister(taskTool.name());
           scope.tools.register(taskTool);

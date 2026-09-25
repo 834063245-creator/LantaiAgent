@@ -5,28 +5,25 @@
 // Five tools: task_create, task_update, task_list, task_get, task_stop.
 // Pure TypeScript, no Tauri invoke needed. 数据在内存，按 Agent 实例隔离。
 //
-// 隔离：每个会话的主 Agent 一个实例（runtime.createAgent 里 new 一个专属 TaskManager，
-// 并把该 Agent 的 task_* 工具绑定到它），实例之间互不可见 → 每会话独立托盘。
+// 隔离：每个会话的主 Agent 一个实例（runtime.createAgent 里经内核门面造一个专属
+// TaskManager，并把该 Agent 的 task_* 工具绑定到它），实例之间互不可见 → 每会话独立托盘。
 //
 // UI 落点：TasksPanel 经 runtime.getAgentTaskManager(agentId) 拿到该 Agent 的实例，
 // 通过 subscribe() 订阅变更 + 用 create/update/stop 操作 —— 与 Agent 工具读写同一份。
 // 本文件不 import 任何 ui/ 模块（agent 层依赖边界：agent → ui 单向，反之不许）。
+//
+// 批 9h-5（2026-09-26）：整件随 `task-domain` 包。形状真源迁内核契约
+// `agent/task-contract.ts`（`Task` / `TaskStatus` / `TaskManagerFace`），内核依赖
+// （`defineTool`）经包内宿主桥取真实例——本文件不再相对 import 内核实现文件。
 
 import { z } from 'zod';
-import type { Tool } from './tool';
-import { defineTool } from './tools/define-tool';
+import type { Task, TaskManagerFace, TaskStatus } from '../../../agent/task-contract';
+import type { Tool } from '../../../agent/tool';
+import { defineTool } from './host';
 
-export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type { Task, TaskStatus } from '../../../agent/task-contract';
 
-export interface Task {
-  id: number;
-  title: string;
-  status: TaskStatus;
-  detail: string;
-  ts: number; // created timestamp
-}
-
-export class TaskManager {
+export class TaskManager implements TaskManagerFace {
   private tasks = new Map<number, Task>();
   private nextId = 1;
   private listeners = new Set<() => void>();
@@ -87,7 +84,7 @@ export class TaskManager {
   }
 }
 
-export function createTaskTools(mgr: TaskManager): Tool[] {
+export function createTaskTools(mgr: TaskManagerFace): Tool[] {
   return [
     defineTool({
       name: 'task_create',

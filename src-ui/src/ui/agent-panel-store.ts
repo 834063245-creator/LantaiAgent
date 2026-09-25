@@ -13,7 +13,7 @@ import { create } from 'zustand';
 import type { DiscoveryEntry } from '../agent/discovery-board';
 import type { AgentMessage } from '../agent/message-contract';
 import type { AgentSummary } from '../agent/runtime/types';
-import type { BoardEntry } from '../agent/task-board';
+import type { BoardEntry } from '../agent/task-contract';
 
 export interface AgentPanelEntry extends AgentSummary {
   children: AgentPanelEntry[];
@@ -58,8 +58,8 @@ interface AgentPanelState {
     getTaskBoard: (sessionId?: string) => { getAllEntries: () => BoardEntry[] };
     getDiscoveryBoard: (sessionId?: string) => { getAll: () => DiscoveryEntry[] };
     setCurrentSession?: (sessionId: string) => void;
-    /** 返回某 Agent 实例专属的待办 TaskManager（TasksPanel 订阅/读写当前会话主 Agent）。 */
-    getAgentTaskManager?: (agentId: string) => import('../agent/task').TaskManager | null;
+    /** 返回某 Agent 实例专属的待办 TaskManagerFace（TasksPanel 订阅/读写当前会话主 Agent）。 */
+    getAgentTaskManager?: (agentId: string) => import('../agent/task-contract').TaskManagerFace | null;
   } | null;
 
   /** 当前活跃会话 ID — 用于 session-scoped board 查询 */

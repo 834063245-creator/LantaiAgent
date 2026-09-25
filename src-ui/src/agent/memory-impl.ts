@@ -13,21 +13,30 @@
 
 import type { MemoryImplementation, MemoryManagerFace } from './memory-contract';
 
-let _impl: MemoryImplementation | null = null;
+// 登记表是**栈**（后注册胜 + 对称弹出，对齐 `composition/contribution-channel.ts` 的行语义）：
+// 批 9h-5 实测——测试域的装配腰（`withFirstParty*Channel`）会加载并 dispose 贡献者 fiber，
+// 单值登记会被那次 dispose 抹掉，导致同一测试里「腰跑完之后」的装配撞 fail-loud；
+// 栈式登记下，常驻登记（tests/setup.ts）不会被后来者的弹出波及。
+const _impls: MemoryImplementation[] = [];
 
 /** 产物登记实现（`memory-domain` 包 apply 期调用；测试域由 `tests/setup.ts` 复现）。 */
 export function registerMemoryImplementation(impl: MemoryImplementation): void {
-  _impl = impl;
+  _impls.push(impl);
 }
 
-/** 当前实现（未登记 = null——诊断/测试面读用）。 */
+/** 当前实现 = 栈顶（未登记 = null——诊断/测试面读用）。 */
 export function activeMemoryImplementation(): MemoryImplementation | null {
-  return _impl;
+  return _impls.at(-1) ?? null;
 }
 
-/** 撤销登记（产物 fiber dispose 与测试复位共用；对称释放，不留悬空实现）。 */
+/** 对称撤销（产物 fiber dispose）：弹出**本 fiber 注册的那一层**，不波及更早的登记。 */
 export function clearMemoryImplementation(): void {
-  _impl = null;
+  _impls.pop();
+}
+
+/** 测试复位（清空整栈；生产不调用）。 */
+export function resetMemoryImplementationForTests(): void {
+  _impls.length = 0;
 }
 
 /** 缺实现时的具名错误（fail-loud：不静默当成「无记忆」）。 */
@@ -36,8 +45,9 @@ const MEMORY_DOMAIN_UNAVAILABLE =
   '（它由 loader 从产物通道装载）。';
 
 function requireImpl(): MemoryImplementation {
-  if (!_impl) throw new Error(MEMORY_DOMAIN_UNAVAILABLE);
-  return _impl;
+  const impl = activeMemoryImplementation();
+  if (!impl) throw new Error(MEMORY_DOMAIN_UNAVAILABLE);
+  return impl;
 }
 
 /** 门面：建工作区级记忆管理器（`workspace.ts` 装配期调用）。 */

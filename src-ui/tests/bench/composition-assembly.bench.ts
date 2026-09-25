@@ -34,7 +34,6 @@ import { afterAll, beforeAll, bench, describe } from 'vitest';
 import { AgentContext } from '../../src/agent/context';
 import { buildToolRegistry } from '../../src/agent/runtime/agent-builder';
 import { AgentRuntime } from '../../src/agent/runtime/runtime';
-import { TaskManager } from '../../src/agent/task';
 import { type Tool, ToolRegistry } from '../../src/agent/tool';
 import { withFirstPartyCapabilityChannel } from '../../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../../src/composition/first-party-tools';
@@ -44,6 +43,7 @@ import { factoryComposition, type ResolvedComposition, resolveRoster } from '../
 import { registerSeamScope, seamScopeOf } from '../../src/composition/seam-scope';
 import { createFsTools } from '../../src/plugins/builtin/fs-domain/fs-tools';
 import { SubAgentPool } from '../../src/plugins/builtin/subagent-in-process/coordinator';
+import { TaskManager } from '../../src/plugins/builtin/task-domain/task';
 import { readOnlyTool, scriptedProvider } from '../convergence/helpers/fixtures';
 import { ensureProductionChannelsBooted } from '../helpers/composition-boot';
 

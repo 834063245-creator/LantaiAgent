@@ -39,10 +39,10 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
 });
 
 import { AgentRuntime } from '../src/agent/runtime/runtime';
-import { TaskBoard } from '../src/agent/task-board';
 import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
 import { JsonMessageStore } from '../src/plugins/builtin/multiagent-comm/message-store';
 import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
+import { TaskBoard } from '../src/plugins/builtin/task-domain/task-board';
 
 // ═══════════════════════════════════════════════════════
 // 内存文件系统 helper（fs 域走共享 kernel-fs mock）

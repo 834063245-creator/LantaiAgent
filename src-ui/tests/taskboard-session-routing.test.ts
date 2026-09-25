@@ -26,8 +26,8 @@ vi.mock('../src/bridge', () => ({
 import type { DiscoveryBoardProxy } from '../src/agent/discovery-board';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import type { AgentHandle } from '../src/agent/runtime/types';
-import type { TaskBoardProxy } from '../src/agent/task-board';
 import { ToolRegistry } from '../src/agent/tool';
+import type { TaskBoardProxy } from '../src/plugins/builtin/task-domain/task-board';
 
 function mockProvider(): any {
   return { name: () => 'mock-provider' };

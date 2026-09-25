@@ -94,7 +94,7 @@ export interface ToolRegistryOptions {
   deps: BuilderDeps;
   memoryManager?: MemoryManagerFace;
   skillRegistry?: SkillRegistryFace;
-  taskManager: TaskManager;
+  taskManager: TaskManagerFace;
   subAgentPool: SubAgentPool;
   /** 子 Agent spawn 函数 — 由 Runtime 注入 */
   subAgentSpawner?: SubAgentSpawner;
@@ -108,7 +108,7 @@ import type { MemoryManagerFace } from '../memory-contract';
 import type { SkillRegistryFace } from '../skill-contract';
 import type { SubAgentPool } from '../subagent-runtime-contract';
 import type { SubAgentSpawner } from '../subagent-tools-contract';
-import type { TaskManager } from '../task';
+import type { TaskManagerFace } from '../task-contract';
 
 export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<ToolRegistry> {
   const { deps, memoryManager: mm, skillRegistry, taskManager, subAgentPool, subAgentSpawner, toolRows } = opts;

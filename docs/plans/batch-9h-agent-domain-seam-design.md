@@ -40,7 +40,7 @@
 | **9h-2** | `agent-loop-service` 半壳收口：`default-loop.ts` 整件随包 | 469 | ① **契约面流程**：`default-loop.ts` 在 `composition/contract-version.ts` 的契约文件清单里 ⇒ 改路径 + 版本 51 → 52 + `docs/agents/open-surface-contract.md` 行 + `npm run gen:contract-fingerprint`（18 文件）同 commit；② `agent-loop-active.ts` 的 `resolveAgentLoop()` 去掉 `defaultAgentLoop` 兜底 ⇒ 无服务时 fail-loud（具名错误 + 装载提示），`tests/setup.ts` 复现「loader 已跑过」（照 9b 的 LSP 先例）；③ 名册标 `required: true`（loop 缺席 = 一个会话都跑不起来）；④ 桥位仅 3 个新键（`typedRpcWithTimeout` / `finishReasonMessage` / `StreamingToolExecutor`），其余 6 个已在宿主面 |
 | **9h-3** | `skill-domain`：`skills.ts` 377 + `builtin-skills.ts` 358 随包 | 735 | ① `SkillRegistry` 类被 `workspace.ts` 构造 ⇒ 契约面出 `SkillRegistry` 接口 + `SkillImplementation.createRegistry(...)`；② `runtime.ts` 的 `scanSkills`（读出厂技能目录）与 `settings-domain` SkillsPage 走同一面 ⇒ 登记表读面 + 桥；③ 出厂技能内容（`BUILTIN_SKILLS`）随包 = 改技能免重建 exe |
 | **9h-4** | `memory-domain`：`memory.ts` 733 + `memory-bundle-client.ts` 134 随包 | 867 | ① `MemoryManager` 接口化 + 工厂；`memoryBundleIngest`（workspace 单点调用）走同一实现面；② 内核 `agent/context.ts` / `runtime/types.ts` 只类型 import ⇒ 指契约文件；③ 拆包时注意 `memory-bundle-client` 的 MCP/引擎附属依赖（当前只 workspace 消费） |
-| **9h-5** | `task-domain`：`task.ts` 178 + `task-board.ts` 319 + `board-persistence.ts` 121（+ 已认领的 `board-status.ts`） | 696 | ① `TaskBoard` 出现在两条**契约文件**（`state-hooks-contract.ts` / `subagent-runtime-contract.ts`）与 `ui/agent-panel-store.ts` ⇒ 契约面要留 `TaskBoard` 接口（含 `TaskBoardProxy` 形状），实现随包；② runtime 的 per-Agent 实例与 proxy 生命周期留在内核装配层（`ctx.effect`），实现只提供工厂；③ 风险最高，放最后。**建议再切两刀**：**9h-5a** 只收 `task.ts` 179（管理器 + 四件工具，单类单工厂）→ **9h-5b** 再收 board 三件（320 + 121 + 78）。**一刀切会把「红账部分销账」与守卫的半成品态撞在一起**（见 §3.1） |
+| **9h-5** | ✅ **已落（2026-09-26，整包一次搬完）**：`task-domain`：`task.ts` 178 + `task-board.ts` 319 + `board-status.ts` 78 随包；`board-persistence.ts` 121 判**内核共享面** | 575 | ① `TaskBoard` 出现在两条**契约文件**（`state-hooks-contract.ts` / `subagent-runtime-contract.ts`）与 `ui/agent-panel-store.ts` ⇒ 契约面留 `TaskBoardFace` / `TaskBoardProxyFace` / `TaskBoardReadFace`（实现随包）；② runtime 的 per-session 板与 proxy 生命周期留在内核装配层，实现只提供工厂 ✓；③ 风险最高、放最后 ✓。**§3.1 的结论生效**：不切 5a/5b，一次搬完整包；**`board-persistence.ts` 判共享**（内核 `discovery-board.ts` 与包内 `task-board.ts` 共用，随包会让内核反向依赖产物源码）⇒ 名册 `shared` 认领，红区 696 → 575 行 |
 
 ### 3.1 9h-5a 首次尝试的实测结论（2026-09-26，**已整段回退，不 commit 半成品**）
 
@@ -61,8 +61,22 @@
 3. 最小切口建议：**一次搬完整包**（`task.ts` + board 三件 + `board-status.ts`），或**先只搬
    `board-status.ts`**（它已被 capability-segments 桥、包侧有真实引用），两者都能让守卫口径自洽。
 
+#### 3.1.1 正式落地时的两条新实测结论（2026-09-26，9h-5 落）
+
+4. **登记表必须是「栈」**：装配腰（`withFirstParty*Channel`）在每个块结束时逆序 dispose 贡献者
+   fiber，而三域（skill/memory/task）的实现在 `ctx.effect` 里注册、dispose 时撤销 ⇒ **单值登记**
+   会被那次 dispose 抹掉：同一个测试里「腰跑完之后」再装配 Agent 就撞 fail-loud（`composition-wiring`
+   / `composition-preset-assembly` / `composition-session-count-profile` / `phase-1` 四文件实测红）。
+   修法 = 三张登记表改**栈式**（`register` push / `clear` pop / `active` 读栈顶，对齐
+   `composition/contribution-channel.ts` 的「后注册胜 + 对称释放」语义）⇒ 常驻登记（`tests/setup.ts`）
+   不再被后来者的弹出波及。**通用纪律：凡「产物 apply 期登记 + dispose 期撤销」的登记表，都用栈。**
+5. **`board-persistence.ts` 判内核共享面**（不随包）：它是 `TaskBoard`（包内）与 `DiscoveryBoard`
+   （内核，§4-5 判 shared）**共用**的面板持久化基础件；随包会让内核反向依赖产物源码（批 8a 立的
+   「内核 ↛ 产物源码」守卫钉死）⇒ 名册 `shared: ["agent/board-persistence.ts"]` 认领，包内经宿主桥
+   取真实例。红区因此 696 → **575 行**（余 `paper-shell` 806）。
+
 **顺序理由**：9h-2 最便宜且是「最后一个半壳」（§1.2 收口，账本可整节销账）；9h-3/9h-4 是同一形状
-（类 + 出厂内容）的中等件；9h-5 牵两条契约文件，最后做。
+（类 + 出厂内容）的中等件；9h-5 牵两条契约文件，最后做 ✓（**已全部落完**）。
 
 ## 4. 每批门禁（不得跳过）
 

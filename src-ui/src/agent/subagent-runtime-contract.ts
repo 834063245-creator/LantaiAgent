@@ -15,13 +15,13 @@ import type { FileOwnership } from './file-ownership';
 import type { Disposer } from './lifecycle';
 import type { MessageBus } from './message-contract';
 import type { PlanStateManager } from './plan/plan-state';
-import type { BoardEntry, TaskBoard } from './task-board';
+import type { BoardEntry, TaskBoardFace } from './task-contract';
 import type { Tool, ToolExecutor, ToolRegistry } from './tool';
 
 /** merge 工具族实现面（含编译门禁）。 */
 export interface MergeToolsImplementation {
   createMergeTool(
-    board: TaskBoard,
+    board: TaskBoardFace,
     getAgentId: () => string,
     exec?: ToolExecutor,
     options?: { projectPath: string },
@@ -105,7 +105,7 @@ export interface SubAgentSpawnHost {
   readonly _ctx: AgentContext;
   readonly _planState: PlanStateManager | null;
   readonly _discoveryBoard: DiscoveryBoard | null;
-  readonly _taskBoard: TaskBoard | null;
+  readonly _taskBoard: TaskBoardFace | null;
   readonly _bus: MessageBus | null;
   readonly _ui: AgentUINotifier;
   readonly _uiSessionId: number;
@@ -124,7 +124,7 @@ export interface SubagentRuntimeImplementation {
   createPool(maxConcurrent?: number, defaultTimeoutMs?: number): SubAgentPool;
   createLifecycleManager(
     pool: SubAgentPool,
-    board: TaskBoard,
+    board: TaskBoardFace,
     bus: MessageBus,
     exec: ToolExecutor,
     sink: EventSink,

@@ -44,8 +44,8 @@ import { scanSkills } from '../skill-impl';
 import type { DiagnosticsSource } from '../state-inject';
 import type { AgentLifecycleManager } from '../subagent-runtime-contract';
 import { requireSubagentRuntime } from '../subagent-runtime-impl';
-import type { TaskManager } from '../task';
-import { TaskBoard, TaskBoardProxy } from '../task-board';
+import type { TaskBoardFace, TaskBoardProxyFace, TaskManagerFace } from '../task-contract';
+import { createTaskBoard, createTaskBoardProxy } from '../task-impl';
 import type { TokenLedgerSnapshot } from '../token-meter';
 import { agentInvoke, ToolRegistry } from '../tool';
 import { buildSystemPrompt } from './agent-builder';
@@ -226,12 +226,12 @@ export class AgentRuntime implements RuntimePort {
   private notifier: RuntimeNotifier | null = null;
   /** 全局 MessageBus 实例 */
   private _bus: MessageBus;
-  /** 会话级 TaskBoard 实例 — 按 sessionId 隔离 */
-  private _taskBoards = new Map<string, TaskBoard>();
+  /** 会话级 TaskBoardFace 实例 — 按 sessionId 隔离 */
+  private _taskBoards = new Map<string, TaskBoardFace>();
   /** 会话级 DiscoveryBoard 实例 — 按 sessionId 隔离 */
   private _discoveryBoards = new Map<string, DiscoveryBoard>();
   /** 每个 Agent 的 board proxies — bindSession 时重定向到其会话的 board */
-  private _agentProxies = new Map<string, { task: TaskBoardProxy; discovery: DiscoveryBoardProxy }>();
+  private _agentProxies = new Map<string, { task: TaskBoardProxyFace; discovery: DiscoveryBoardProxy }>();
   /** 已 restore 的会话集合 — 避免重复 restore */
   private _restoredSessions = new Set<string>();
   /** 项目路径 — 用于持久化 */
@@ -242,8 +242,8 @@ export class AgentRuntime implements RuntimePort {
   private _readyPromise: Promise<void>;
   /** agentId → sessionId 映射 — _disposeAgent 时知道清理哪个会话的 board */
   private _agentSessions = new Map<string, string>();
-  /** agentId → 该 Agent 实例专属的待办 TaskManager（每会话主 Agent 一个实例） */
-  private _agentTaskManagers = new Map<string, TaskManager>();
+  /** agentId → 该 Agent 实例专属的待办 TaskManagerFace（每会话主 Agent 一个实例） */
+  private _agentTaskManagers = new Map<string, TaskManagerFace>();
   /** cordis 挂载父 ctx（cordis-migration P2）— AgentContext 身份 fiber 的挂载点。 */
   private _cordisParent?: Context;
   /** 组合解析产物（S2-1 组合外化）— capability 表（蓝图默认来源）与
@@ -284,8 +284,8 @@ export class AgentRuntime implements RuntimePort {
     return this._bus;
   }
 
-  /** 获取指定会话的 TaskBoard — 不存在则创建 */
-  getTaskBoard(sessionId?: string): TaskBoard {
+  /** 获取指定会话的 TaskBoardFace — 不存在则创建 */
+  getTaskBoard(sessionId?: string): TaskBoardFace {
     return this._getOrCreateTaskBoard(sessionId ?? 'default');
   }
 
@@ -294,11 +294,11 @@ export class AgentRuntime implements RuntimePort {
     return this._getOrCreateDiscoveryBoard(sessionId ?? 'default');
   }
 
-  /** 获取或创建会话级 TaskBoard */
-  private _getOrCreateTaskBoard(sessionId: string): TaskBoard {
+  /** 获取或创建会话级 TaskBoardFace */
+  private _getOrCreateTaskBoard(sessionId: string): TaskBoardFace {
     let board = this._taskBoards.get(sessionId);
     if (!board) {
-      board = new TaskBoard(this._projectPath || undefined, sessionId);
+      board = createTaskBoard(this._projectPath || undefined, sessionId);
       this._taskBoards.set(sessionId, board);
     }
     return board;
@@ -371,8 +371,8 @@ export class AgentRuntime implements RuntimePort {
 
   /** 重启收养：重挂旧父 id 条目 + 注册磁盘孤儿 worktree（best-effort，不阻塞会话）。
    *  Rust 侧已在 workspace_activate 重建 isolation 注册表，这里把状态接回
-   *  TaskBoard 使 agent_board / agent_merge 恢复可见可用。 */
-  private async _adoptRestartOrphans(rootAgentId: string, tb: TaskBoard): Promise<void> {
+   *  TaskBoardFace 使 agent_board / agent_merge 恢复可见可用。 */
+  private async _adoptRestartOrphans(rootAgentId: string, tb: TaskBoardFace): Promise<void> {
     try {
       let adopted = 0;
       // 1. 旧父 id 条目重挂（父进程已消亡，条目还挂在死 id 上）
@@ -607,11 +607,11 @@ export class AgentRuntime implements RuntimePort {
       const discoveryBoard = this._getOrCreateDiscoveryBoard(sessionId);
       // Proxy 静态绑定到该 Agent 所属会话的 board — 句柄即所有权，
       // 一个 Agent 终生只属于一个会话，不再随会话切换动态重定向。
-      const taskProxy = new TaskBoardProxy(taskBoard);
+      const taskProxy = createTaskBoardProxy(taskBoard);
       const discoveryProxy = new DiscoveryBoardProxy(discoveryBoard);
       this._agentProxies.set(ctx.agentId, { task: taskProxy, discovery: discoveryProxy });
       this._agentSessions.set(ctx.agentId, sessionId);
-      ctx.set('taskBoard', taskProxy as unknown as TaskBoard);
+      ctx.set('taskBoard', taskProxy as unknown as TaskBoardFace);
       ctx.set('discoveryBoard', discoveryProxy as unknown as DiscoveryBoard);
     }
     if (!ctx.get('planState')) ctx.set('planState', new PlanStateManager());
@@ -650,7 +650,7 @@ export class AgentRuntime implements RuntimePort {
     const taskProxy = ctx.resolve('taskBoard');
     const discoveryProxy = ctx.resolve('discoveryBoard');
 
-    // Phase 4：TaskBoard 条目注销的对称清理归 ctx 所有权（proxy 转发到该 Agent
+    // Phase 4：TaskBoardFace 条目注销的对称清理归 ctx 所有权（proxy 转发到该 Agent
     // 终生绑定的会话板）。discoveryBoard 维持现状——旧 dispose 路径本就不注销它。
     ctx.effect(() => () => taskProxy.unregister(agentId), 'board-unregister');
 
@@ -826,7 +826,7 @@ export class AgentRuntime implements RuntimePort {
       // 批 7c-2：生命周期巡检器实现在产物包 subagent-in-process，经登记表造
       const lifecycle = requireSubagentRuntime().createLifecycleManager(
         subPool,
-        taskProxy as unknown as TaskBoard,
+        taskProxy as unknown as TaskBoardFace,
         this._bus,
         isolationExec,
         wrappedSink,
@@ -880,9 +880,9 @@ export class AgentRuntime implements RuntimePort {
     return this._agentSessions.get(agentId) ?? 'default';
   }
 
-  /** 返回某 Agent 实例专属的待办 TaskManager（每会话主 Agent 一个实例）。
+  /** 返回某 Agent 实例专属的待办 TaskManagerFace（每会话主 Agent 一个实例）。
    *  UI 的 TasksPanel 用它订阅 / 读写当前会话主 Agent 的待办清单。 */
-  getAgentTaskManager(agentId: string): TaskManager | null {
+  getAgentTaskManager(agentId: string): TaskManagerFace | null {
     return this._agentTaskManagers.get(agentId) ?? null;
   }
 

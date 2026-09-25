@@ -100,7 +100,7 @@ describe('S2-1 穿线：buildToolRegistry(toolRows)', () => {
   it('传禁用后的行表 → wait 不在册；通道贡献行随组合面装配（解析须在通道内）', async () => {
     const { buildToolRegistry } = await import('../src/agent/runtime/agent-builder');
     const { SubAgentPool } = await import('../src/plugins/builtin/subagent-in-process/coordinator');
-    const { TaskManager } = await import('../src/agent/task');
+    const { TaskManager } = await import('../src/plugins/builtin/task-domain/task');
     const { withFirstPartyToolChannel } = await import('../src/composition/first-party-tools');
     const { FIXED_GRAPH_DATA } = await import('./convergence/helpers/fixtures');
     // S4-4 甲 + ①c：组合解析域含通道贡献快照——样本须在通道腰内解析
@@ -128,7 +128,7 @@ describe('S2-1 穿线：buildToolRegistry(toolRows)', () => {
   it('S4-4 甲：plugin/<贡献 id> 行可被 patch 寻址禁用（寻址域恢复）', async () => {
     const { buildToolRegistry } = await import('../src/agent/runtime/agent-builder');
     const { SubAgentPool } = await import('../src/plugins/builtin/subagent-in-process/coordinator');
-    const { TaskManager } = await import('../src/agent/task');
+    const { TaskManager } = await import('../src/plugins/builtin/task-domain/task');
     const { withFirstPartyToolChannel } = await import('../src/composition/first-party-tools');
     const { factoryComposition, resolveRoster } = await import('../src/composition/roster');
     const { FIXED_GRAPH_DATA } = await import('./convergence/helpers/fixtures');

@@ -4,16 +4,33 @@
 // 内容：录制型 ToolExecutor、标准工具注册表、合成门禁工具、脚本化 Provider。
 
 import { buildToolRegistry } from '../../../src/agent/runtime/agent-builder';
-import { TaskManager } from '../../../src/agent/task';
+import { registerTaskImplementation } from '../../../src/agent/task-impl';
 import type { Tool, ToolExecutor, ToolRegistry } from '../../../src/agent/tool';
 import { withFirstPartyCapabilityChannel } from '../../../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../../../src/composition/first-party-tools';
 import type { BuiltinToolRow } from '../../../src/composition/tool-rows';
 import type { SubAgentSpawner } from '../../../src/plugins/builtin/agent-domain/subagent-tools';
 import { SubAgentPool } from '../../../src/plugins/builtin/subagent-in-process/coordinator';
+import { taskImplementation } from '../../../src/plugins/builtin/task-domain/implementation';
+import { TaskManager } from '../../../src/plugins/builtin/task-domain/task';
 import type { Chunk, Provider, Usage } from '../../../src/provider/types';
 import { ChunkType } from '../../../src/provider/types';
 import type { ToolContribution } from './presets';
+
+// ── task 域实现登记（批 9h-5，2026-09-26）──
+//
+// 病灶（§3.1 实测教训）：`capability-segments` 的 task-tools capability 在**每次装配**
+// 经内核门面 `createTaskManager()` / `createTaskTools()` 取实现；而本夹具是
+// **独立进程入口**（`scripts/gen-tool-contract-md.ts` 等直接 import 它，不经
+// `tests/setup.ts`）⇒ 不登记就具名 fail-loud（`TASK_DOMAIN_UNAVAILABLE`）。
+// 惰性登记（不在模块顶层）：静态顶层 import 会先于测试文件的 `vi.mock` 提升执行，
+// 把内核模块预载进模块图——与 `tests/setup.ts` 的 beforeAll + 动态 import 同一条纪律。
+let _taskDomainRegistered = false;
+export function ensureTaskDomainRegistered(): void {
+  if (_taskDomainRegistered) return;
+  registerTaskImplementation(taskImplementation);
+  _taskDomainRegistered = true;
+}
 
 // ── 录制型执行器：不触 Tauri，记录调用并返回空串 ──
 
@@ -42,6 +59,7 @@ export async function buildStandardRegistry(
   contributions: ToolContribution[] = [],
   toolRows?: BuiltinToolRow[] | (() => BuiltinToolRow[]),
 ): Promise<ToolRegistry> {
+  ensureTaskDomainRegistered();
   const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
   return withFirstPartyToolChannel(() =>
     withFirstPartyCapabilityChannel(async () => {

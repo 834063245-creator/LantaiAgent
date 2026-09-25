@@ -9,7 +9,22 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // 顶层的静态 import 先于测试文件的 `vi.mock` 提升执行，会把 `rpc-contract` 等内核模块
 // 预载进模块图、架空 mock（批 6d-2 实测：`plan-outcome` 等全线红）。beforeAll 在测试
 // 文件的 import 与 mock 注册之后运行，动态 import 因此落在同一套 mock 图上。
-import { beforeAll } from 'vitest';
+//
+// 批 9h-5 补充（2026-09-26）：三条「内核登记表」接缝（skill / memory / task）的实现在
+// **fiber dispose 时对称撤销**，而 `withFirstParty*Channel` 装配腰（测试/夹具专用）每个块
+// 结束都会逆序 dispose 其贡献者 ⇒ 一个装载过这些域的腰块跑完，登记就被清空，后续任何
+// Agent 装配（`runtime._getOrCreateTaskBoard` → `createTaskBoard` 门面）都会撞
+// `TASK_DOMAIN_UNAVAILABLE`。生产不受影响（loader 装载的 fiber 常驻到进程结束）。
+// 故测试域在**每个用例前重新断言登记**（赋值幂等），让「腰内装载」与「常驻装载态」两种
+// 测试形态都能跑。
+import { beforeAll, beforeEach } from 'vitest';
+
+let registerSkillImplementation: (impl: unknown) => void;
+let skillImplementation: unknown;
+let registerMemoryImplementation: (impl: unknown) => void;
+let memoryImplementation: unknown;
+let registerTaskImplementation: (impl: unknown) => void;
+let taskImplementation: unknown;
 
 beforeAll(async () => {
   const [
@@ -23,10 +38,12 @@ beforeAll(async () => {
     { lspServicePlugin },
     { agentLoopServicePlugin },
     { tokenMeterServicePlugin },
-    { registerSkillImplementation },
-    { skillImplementation },
-    { registerMemoryImplementation },
-    { memoryImplementation },
+    { registerSkillImplementation: skillReg },
+    { skillImplementation: skillImpl },
+    { registerMemoryImplementation: memoryReg },
+    { memoryImplementation: memoryImpl },
+    { registerTaskImplementation: taskReg },
+    { taskImplementation: taskImpl },
   ] = await Promise.all([
     import('../src/agent/multiagent-impl'),
     import('../src/plugins/builtin/multiagent-comm/implementation'),
@@ -42,6 +59,8 @@ beforeAll(async () => {
     import('../src/plugins/builtin/skill-domain'),
     import('../src/agent/memory-impl'),
     import('../src/plugins/builtin/memory-domain'),
+    import('../src/agent/task-impl'),
+    import('../src/plugins/builtin/task-domain/implementation'),
   ]);
   registerMultiagentComm(multiagentCommImplementation);
   // 批 7c-2：子代理运行时（池 / 生命周期 / 派生 + 两工具族）整体登记——与产物包 index.ts 同源。
@@ -61,12 +80,24 @@ beforeAll(async () => {
   // `requireTokenMeter().createLedger()` 造每卷账本（缺服务 = 具名 fail-loud）⇒
   // 测试域同一根 Context 上挂 tokenMeterServicePlugin，复现「loader 已跑过」。
   kernel.plugin(tokenMeterServicePlugin);
-  // 批 9h-3：技能域实现随 skill-domain 包后，内核 `createSkillRegistry` / `scanSkills`
-  // 门面缺实现即 fail-loud ⇒ 测试域登记同一份实现对象（与包 index.ts 同源）。
+  // 批 9h-3 / 9h-4 / 9h-5：三域实现随包后，内核门面缺实现即 fail-loud ⇒ 测试域登记
+  // 同一份实现对象（与包 index.ts 同源；convergence 夹具另有一处独立入口登记）。
+  registerSkillImplementation = skillReg;
+  skillImplementation = skillImpl;
+  registerMemoryImplementation = memoryReg;
+  memoryImplementation = memoryImpl;
+  registerTaskImplementation = taskReg;
+  taskImplementation = taskImpl;
   registerSkillImplementation(skillImplementation);
-  // 批 9h-4：记忆域实现随 memory-domain 包后，内核 `createMemoryManager` / `memoryBundleIngest`
-  // 门面缺实现即 fail-loud ⇒ 测试域登记同一份实现对象（与包 index.ts 同源）。
   registerMemoryImplementation(memoryImplementation);
+  registerTaskImplementation(taskImplementation);
+});
+
+// 装配腰会 dispose 贡献者 fiber（连带撤销上述登记）⇒ 每个用例前重新断言（见文件头注）。
+beforeEach(() => {
+  registerSkillImplementation?.(skillImplementation);
+  registerMemoryImplementation?.(memoryImplementation);
+  registerTaskImplementation?.(taskImplementation);
 });
 
 // jsdom 不实现 CSS.escape（react-aria ListKeyboardDelegate 依赖它拼 [data-key] 选择器）。

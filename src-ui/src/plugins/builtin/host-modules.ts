@@ -34,6 +34,7 @@ import {
   validatePayload,
 } from '../../agent/asset-kinds';
 import { findAssetByContent, getAsset, listAssets, upsertAsset } from '../../agent/asset-store';
+import { BoardPersistence } from '../../agent/board-persistence';
 // S3：工具域/段贡献插件对象导入已拆除——产物域真源自带；此处只导工具工厂
 // 运行时值（faceDeps 取用面）。（z（engine-domain 运行时取用）随图谱退役
 // 移除，2026-09-09。）
@@ -86,7 +87,7 @@ import { buildCompactedSummaryMessage } from '../../agent/session-log';
 // 批 9h-3 归家（2026-09-26）：技能域实现随 skill-domain 包 ⇒ 撤 `createSkillTool` 桥；
 // `scanSkills` 改经内核登记表门面（settings-domain 的 SkillsPage 列表源读它）。
 import { clearSkillImplementation, registerSkillImplementation, scanSkills } from '../../agent/skill-impl';
-import { parseIsolationDiff } from '../../agent/spill';
+import { parseIsolationDiff, spillToFile } from '../../agent/spill';
 import { activeStateHooksImplementation, registerStateHooksImplementation } from '../../agent/state-hooks-impl';
 import {
   buildPreReadBlock,
@@ -106,7 +107,16 @@ import {
 import { SubAgentStatus } from '../../agent/subagent-runtime-contract';
 import { activeDiscoveryTools, activeMergeTools, registerSubagentRuntime } from '../../agent/subagent-runtime-impl';
 import { activeSubAgentTools, registerSubAgentTools } from '../../agent/subagent-tools-impl';
-import { createTaskTools, TaskManager } from '../../agent/task';
+// 批 9h-5（2026-09-26）：task 三件实现随 task-domain 包 ⇒ 撤 `TaskManager` 类键（改
+// `createTaskManager` 门面）、`createTaskTools` / `createBoardStatusTool` 改指内核门面
+// `agent/task-impl`，并补该包的登记口 + 两个新内核依赖（`BoardPersistence` / `spillToFile`）。
+import {
+  clearTaskImplementation,
+  createBoardStatusTool,
+  createTaskManager,
+  createTaskTools,
+  registerTaskImplementation,
+} from '../../agent/task-impl';
 import { countMessage, countMessages, countText } from '../../agent/token-counter';
 // §4-6 A（2026-09-26）：分桶代数真源 = 内核第 16 个 service `ctx.tokenMeter` 的 usage 面
 // ——创作坞墨量册此前直接 import 内核实现文件（构建期内联第二份副本），改经本桥取唯一实例。
@@ -114,7 +124,6 @@ import { tokenAlgebra } from '../../agent/token-meter/service';
 import { ToolRegistry } from '../../agent/tool';
 import { foldToolResults, nextFoldBoundary } from '../../agent/tool-fold';
 import { hasImageRefs } from '../../agent/tool-images';
-import { createBoardStatusTool } from '../../agent/tools/board-status';
 // 批 4c-2 归家：agent-isolation / ask 两族进包 ⇒ 撤工厂桥；两族只余 defineTool/类型面。
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
 import { convergeRegistry, resolveGuardToolName } from '../../agent/tools/domains';
@@ -660,7 +669,14 @@ const faceDeps = {
   activeSubAgentTools,
   createBoardStatusTool,
   convergeRegistry,
-  TaskManager,
+  // 批 9h-5 归家（2026-09-26）：task 三件实现随 task-domain 包 ⇒ 撤 `TaskManager` 类键
+  // （改 `createTaskManager` 门面，形状 = 契约面 `agent/task-contract`）；同批补该包的
+  // 登记口两键与两个内核依赖（`BoardPersistence` 共享件 / `spillToFile` 溢写）。
+  createTaskManager,
+  registerTaskImplementation,
+  clearTaskImplementation,
+  BoardPersistence,
+  spillToFile,
   // 批 4b 归家（2026-09-24）：search/web 两域实现进包（原 manifest-tools 按域拆）
   // ⇒ 撤这两个工厂键；两域只余平台面（toInputJsonSchema / Tool 类型）。
   // 批 3a 归家（2026-09-24）：wait/office/cordis 三域的工具工厂已随包 ⇒ 撤桥；

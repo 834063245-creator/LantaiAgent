@@ -13,7 +13,7 @@ import type { ExecStateInstance } from '../execution-state';
 import type { GoalManager } from '../goal-manager';
 import type { MemoryManagerFace } from '../memory-contract';
 import type { SubAgentPool } from '../subagent-runtime-contract';
-import type { TaskBoard } from '../task-board';
+import type { TaskBoardFace } from '../task-contract';
 import type { ToolRegistry } from '../tool';
 
 // ── Agent 状态 ──
@@ -236,8 +236,8 @@ export interface RuntimePort {
   disposeAll(): void;
   /** 获取所有 Agent 概况 */
   listAgents(): AgentSummary[];
-  /** 获取指定会话的 TaskBoard（UI 面板用） */
-  getTaskBoard(sessionId?: string): TaskBoard;
+  /** 获取指定会话的 TaskBoardFace（UI 面板用） */
+  getTaskBoard(sessionId?: string): TaskBoardFace;
   /** 获取指定会话的 DiscoveryBoard（UI 面板用） */
   getDiscoveryBoard(sessionId?: string): import('../discovery-board').DiscoveryBoard;
   /** 销毁会话级 board 并删除持久化文件 */

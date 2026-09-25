@@ -7,12 +7,12 @@
 
 import type { Hook, PreflightHook } from './hooks';
 import type { DiagnosticsSource } from './state-inject';
-import type { TaskBoard } from './task-board';
+import type { TaskBoardFace } from './task-contract';
 
 /** 出厂 hook 实现面——产物包在 apply 期经 `registerStateHooksImplementation` 登记。 */
 export interface StateHooksImplementation {
   createStateReadHook(projectPath: string, diagSource: DiagnosticsSource): Hook;
   createStatePreflightHook(diagSource: DiagnosticsSource): PreflightHook;
   createBuildResultHook(): Hook;
-  createBoardTrackingHook(agentId: string, board: TaskBoard): Hook;
+  createBoardTrackingHook(agentId: string, board: TaskBoardFace): Hook;
 }

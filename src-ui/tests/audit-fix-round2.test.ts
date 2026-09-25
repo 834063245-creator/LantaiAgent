@@ -14,8 +14,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { DiscoveryBoard } from '../src/agent/discovery-board';
-import { TaskBoard } from '../src/agent/task-board';
 import { JsonMessageStore } from '../src/plugins/builtin/multiagent-comm/message-store';
+import { TaskBoard } from '../src/plugins/builtin/task-domain/task-board';
 
 const H = vi.hoisted(() => ({
   kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,

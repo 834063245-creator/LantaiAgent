@@ -46,8 +46,9 @@ const PLATFORM_TARGETS: RegExp[] = [
 
 /** 账本 §1 的备注（人读；键 = 产物 dir）。与名册 impl 一起构成归家账。 */
 const NOTES: Record<string, string> = {
-  'task-domain':
-    'task.ts 178 + task-board.ts 319；随行 board-persistence.ts 121 · tools/board-status.ts 78（批 3 复核：TaskBoard 11 处内核消费者 ⇒ 待批 7）',
+  // 批 9h-5（2026-09-26）：task-domain 的三件实现已随包（task.ts 178 / task-board.ts 319 /
+  // board-status.ts 78）⇒ NOTES 与名册 impl 一并销账（余 `agent/board-persistence.ts` 121 判
+  // **内核共享面**——`discovery-board.ts`（内核）与 `task-board.ts`（包内）共用，名册 `shared` 认领）。
   // 批 9h-1（2026-09-26）：capability-segments 的十四项定义已随包（segments.ts）⇒ NOTES 与名册 impl 一并销账。
   // 批 9h-2（2026-09-26）：agent-loop-service 的出厂默认 loop 已随包（default-loop.ts，469 行）⇒
   // NOTES 与名册 impl 一并销账（内核 `resolveAgentLoop()` 改 fail-loud，名册标 required）。
@@ -207,7 +208,7 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     expect(done, `这些包的实现已不在内核（搬运完成）——请从名册该条目的 impl 销账：\n${done.join('\n')}`).toEqual([]);
   });
 
-  it('账本口径自洽：空壳 1 条（0 纯壳 + 1 半壳），且每条都有备注文本', () => {
+  it('账本口径自洽：空壳 0 条（纯壳全销；半壳余 paper-shell 走名册 impl 账），且每条都有备注文本', () => {
     // 口径：账本 §1 立账 21 条；批 2a 销 `llm-adapters`、批 3a 销 wait/office/cordis、
     // 批 4a 销 `browser-desktop-domain`、批 4b 销 search/web 两域、批 4c 销
     // git/ask/agent-isolation/fs/shell 五域、批 6 四项、批 7a agent-domain ⇒ 销 13 条；
@@ -222,8 +223,12 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     // 自 agent/blueprint.ts 逐字搬移）⇒ 出空壳集、销账（内核 `agent/blueprint.ts` 只剩机制与形状）。
     // 批 9h-2：agent-loop-service 的出厂默认 loop 随包（包内 default-loop.ts 469 行 = 自有实现）
     // ⇒ 出空壳集、销账（内核只留活动面 + 查表；该产物标 required）。
+    // 批 9h-3 / 9h-4：skill-domain / memory-domain 两域实现随包 ⇒ 出空壳集、销账。
+    // 批 9h-5（2026-09-26）：task-domain 三件实现随包（task.ts 178 + task-board.ts 319 +
+    // board-status.ts 78）⇒ **纯壳集清零**（立账 21 条全部销完）；半壳余 paper-shell 一条，
+    // 它不是薄包（自有实现数千行）⇒ 从不进 SHELL_DIRS，走名册 impl + NOTES 半迁移账。
     // 数字再变 = 要么又销了账（改这条），要么漏登记。
-    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 20 = 1`).toBe(1);
+    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 21 = 0`).toBe(0);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();
     // 反向：备注表不许留已销账的条目（防文本腐烂）
     const ghost = Object.keys(NOTES).filter((d) => !CLAIMS.some((c) => c.dir === d));

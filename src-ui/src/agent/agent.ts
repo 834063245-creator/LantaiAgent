@@ -116,7 +116,7 @@ import { truncateToolOutput } from './truncate';
 import type { DiscoveryBoard } from './discovery-board';
 import type { FileOwnership } from './file-ownership';
 import type { MessageBus } from './message-contract';
-import type { TaskBoard } from './task-board';
+import type { TaskBoardFace } from './task-contract';
 
 export { type AgentEvent, EventKind, type EventSink, type ToolEvent };
 
@@ -165,8 +165,8 @@ export interface AgentOptions {
   ui?: AgentUINotifier;
   /** 通信总线（可选 — 无则为 headless 无通信能力） */
   messageBus?: MessageBus;
-  /** TaskBoard — 共享状态区，追踪异步子 Agent 的工作状态 */
-  taskBoard?: TaskBoard;
+  /** TaskBoardFace — 共享状态区，追踪异步子 Agent 的工作状态 */
+  taskBoard?: TaskBoardFace;
   /** DiscoveryBoard — 共享发现区，Agent 间交换探索结果 */
   discoveryBoard?: DiscoveryBoard;
   /** agent loop 实现（平台化 Phase 5 · D13）——缺省 = builtin/default
@@ -505,9 +505,9 @@ export class Agent {
    *  try 段：起 watch 时挂上、finally 里摘掉（只摘自己那面）。 */
   private _runFence: RunPulse | null = null;
 
-  // TaskBoard — 异步子 Agent 追踪的共享状态区
+  // TaskBoardFace — 异步子 Agent 追踪的共享状态区
   // （子 Agent 派生域经宿主接口读取 — 11c 拆分）
-  _taskBoard: TaskBoard | null = null;
+  _taskBoard: TaskBoardFace | null = null;
 
   // DiscoveryBoard — Agent 间知识共享的共享发现区
   // （子 Agent 派生域经宿主接口读取 — 11c 拆分）

@@ -46,7 +46,7 @@ import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import type { MessageBus } from './message-contract';
 import type { AgentAssemblyInputs } from './runtime/types';
 import type { DiagnosticsSource } from './state-inject';
-import type { TaskManager } from './task';
+import type { TaskManagerFace } from './task-contract';
 import type { ToolRegistry } from './tool';
 
 // ── 装配视图 ──
@@ -64,8 +64,8 @@ export interface BlueprintDeps {
   diagnosticsSource?: DiagnosticsSource;
   /** plan 模式变更通知（runtime notifier 路由；缺省静默）。 */
   onPlanModeChange?: (active: boolean, planFilePath: string | null) => void;
-  /** 登记 per-Agent TaskManager（UI TasksPanel 经 runtime 读取）。 */
-  registerTaskManager?: (tm: TaskManager) => void;
+  /** 登记 per-Agent TaskManagerFace（UI TasksPanel 经 runtime 读取）。 */
+  registerTaskManager?: (tm: TaskManagerFace) => void;
 }
 
 /** capability 安装时拿到的装配视图（只读材料 + 写入面）。 */

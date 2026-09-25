@@ -25,7 +25,6 @@ vi.mock('../src/bridge', () => ({
 
 import type { AgentEvent } from '../src/agent/agent-types';
 import { EventKind } from '../src/agent/agent-types';
-import { TaskBoard } from '../src/agent/task-board';
 import type { ToolExecutor } from '../src/agent/tool';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
 import { MessageBus } from '../src/plugins/builtin/multiagent-comm/message-bus';
@@ -33,6 +32,7 @@ import { MeshTopology } from '../src/plugins/builtin/multiagent-comm/topology';
 import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
 import { AgentLifecycleManager } from '../src/plugins/builtin/subagent-in-process/lifecycle-manager';
 import { createMergeTool } from '../src/plugins/builtin/subagent-in-process/merge-tools';
+import { TaskBoard } from '../src/plugins/builtin/task-domain/task-board';
 
 // ═══════════════════════════════════════════════════════
 // Helpers

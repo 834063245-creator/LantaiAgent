@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { TaskManager } from '../src/agent/task';
 import type { ToolExecutor } from '../src/agent/tool';
 import { factoryComposition } from '../src/composition/roster';
 import type { ToolRowContext } from '../src/composition/tool-rows';
 import type { SubAgentSpawner } from '../src/plugins/builtin/agent-domain/subagent-tools';
 import { SubAgentPool } from '../src/plugins/builtin/subagent-in-process/coordinator';
+import { TaskManager } from '../src/plugins/builtin/task-domain/task';
 
 // ── 行装配自检（S1-3 装配末端；①b 收官 2026-08-23：builtin 行表退役）──
 // 行真源 = factoryComposition().tools = pluginToolRows()（十四族全量经

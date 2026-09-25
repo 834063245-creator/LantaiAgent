@@ -18,5 +18,5 @@ export {
   invalidateBlameEntry,
   refreshGitBlame,
 } from '../../../agent/state-inject';
-export type { TaskBoard } from '../../../agent/task-board';
+export type { TaskBoardFace as TaskBoard } from '../../../agent/task-contract';
 export { hasImageRefs } from '../../../agent/tool-images';

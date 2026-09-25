@@ -55,13 +55,25 @@ async function buildStandardRegistry() {
   // 批 7c-2 归家：SubAgentPool 实现进产物包（内核不再有 `agent/coordinator`）。
   // 本脚本与 convergence fixtures 同款纪律——直接取包内实现类（内核装配面只认
   // `agent/subagent-runtime-contract.ts` 的 SubAgentPool 接口，包外引用不回流内核）。
-  const [{ SubAgentPool }, { TaskManager }, { withFirstPartyToolChannel }, { withFirstPartyCapabilityChannel }] =
-    await Promise.all([
-      import('../src/plugins/builtin/subagent-in-process/coordinator'),
-      import('../src/agent/task'),
-      import('../src/composition/first-party-tools'),
-      import('../src/composition/first-party-capabilities'),
-    ]);
+  const [
+    { SubAgentPool },
+    { TaskManager },
+    { taskImplementation },
+    { registerTaskImplementation },
+    { withFirstPartyToolChannel },
+    { withFirstPartyCapabilityChannel },
+  ] = await Promise.all([
+    import('../src/plugins/builtin/subagent-in-process/coordinator'),
+    import('../src/plugins/builtin/task-domain/task'),
+    import('../src/plugins/builtin/task-domain/implementation'),
+    import('../src/agent/task-impl'),
+    import('../src/composition/first-party-tools'),
+    import('../src/composition/first-party-capabilities'),
+  ]);
+  // 批 9h-5：task 三件实现随包后，capability-segments 的 task-tools capability 在装配期
+  // 经内核门面 `createTaskManager()` 取实现 ⇒ 本脚本（独立入口，不经 tests/setup.ts）
+  // 必须先登记，否则具名 fail-loud（TASK_DOMAIN_UNAVAILABLE）。
+  registerTaskImplementation(taskImplementation);
   const { buildToolRegistry } = await import('../src/agent/runtime/agent-builder');
   const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
   return withFirstPartyToolChannel(() =>

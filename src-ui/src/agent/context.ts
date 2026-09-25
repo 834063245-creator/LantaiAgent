@@ -29,7 +29,7 @@ import type { MessageBus } from './message-contract';
 import type { PlanStateManager } from './plan/plan-state';
 import type { SessionLog } from './session-log';
 import type { SubAgentPool } from './subagent-runtime-contract';
-import type { TaskBoard } from './task-board';
+import type { TaskBoardFace } from './task-contract';
 import type { ToolRegistry } from './tool';
 
 // ── 服务表 ──
@@ -49,8 +49,8 @@ export interface AgentServices {
   preflightHooks?: PreflightHookRegistry;
   /** Agent 间通信总线 */
   messageBus?: MessageBus;
-  /** TaskBoard — 会话级共享状态区（经 proxy 静态绑定） */
-  taskBoard?: TaskBoard;
+  /** TaskBoardFace — 会话级共享状态区（经 proxy 静态绑定） */
+  taskBoard?: TaskBoardFace;
   /** DiscoveryBoard — 会话级共享发现区（经 proxy 静态绑定） */
   discoveryBoard?: DiscoveryBoard;
   /** Plan 模式状态机（运行时 enter/exit） */
