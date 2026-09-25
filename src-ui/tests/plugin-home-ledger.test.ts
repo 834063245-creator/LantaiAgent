@@ -52,7 +52,7 @@ const NOTES: Record<string, string> = {
     'skills.ts 377 + builtin-skills.ts 358（出厂技能内容；批 3 复核：内核 runtime/agent-builder/workspace 用 SkillRegistry ⇒ 待批 7/9）',
   'task-domain':
     'task.ts 178 + task-board.ts 319；随行 board-persistence.ts 121 · tools/board-status.ts 78（批 3 复核：TaskBoard 11 处内核消费者 ⇒ 待批 7）',
-  'capability-segments': '389 行（14 项 capability 定义；AgentBlueprint 类=机制留内核）',
+  // 批 9h-1（2026-09-26）：capability-segments 的十四项定义已随包（segments.ts）⇒ NOTES 与名册 impl 一并销账。
   'agent-loop-service':
     '469 行；搬前须先解 agent.ts 的 opts.agentLoop ?? defaultAgentLoop 内核回落（agent-loop-active.ts 是内核桥，留）',
   // 半迁移（实心包里的残余——不是薄包，故不进空壳集，但同样按 impl 销账）
@@ -201,7 +201,7 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     expect(done, `这些包的实现已不在内核（搬运完成）——请从名册该条目的 impl 销账：\n${done.join('\n')}`).toEqual([]);
   });
 
-  it('账本口径自洽：空壳 5 条（4 纯壳 + 1 半壳），且每条都有备注文本', () => {
+  it('账本口径自洽：空壳 4 条（3 纯壳 + 1 半壳），且每条都有备注文本', () => {
     // 口径：账本 §1 立账 21 条；批 2a 销 `llm-adapters`、批 3a 销 wait/office/cordis、
     // 批 4a 销 `browser-desktop-domain`、批 4b 销 search/web 两域、批 4c 销
     // git/ask/agent-isolation/fs/shell 五域、批 6 四项、批 7a agent-domain ⇒ 销 13 条；
@@ -212,8 +212,10 @@ describe('产物归家账（销账制：搬一个销一条，清空即全绿）'
     // 批 9g-1：prompt-segments 的段文案真源随包（包内 sections.ts 195 行 = 自有实现）⇒ 出空壳集、销账。
     // 批 9g-2：asset-domain 的三工具随包（包内 asset-tools.ts 294 行 = 自有实现）⇒ 出空壳集、
     // 余下 asset-store / confirm-registry / asset-kinds 三件判内核共享（有状态单例，经桥取用）。
+    // 批 9h-1：capability-segments 的十四项 capability 定义随包（包内 segments.ts = 自有实现，
+    // 自 agent/blueprint.ts 逐字搬移）⇒ 出空壳集、销账（内核 `agent/blueprint.ts` 只剩机制与形状）。
     // 数字再变 = 要么又销了账（改这条），要么漏登记。
-    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 16 = 5`).toBe(5);
+    expect(SHELL_DIRS.length, `空壳集 = ${SHELL_DIRS.join(', ')}；立账 21 − 已销 17 = 4`).toBe(4);
     for (const dir of SHELL_DIRS) expect(NOTES[dir], `${dir} 缺账本备注`).toBeTruthy();
     // 反向：备注表不许留已销账的条目（防文本腐烂）
     const ghost = Object.keys(NOTES).filter((d) => !CLAIMS.some((c) => c.dir === d));

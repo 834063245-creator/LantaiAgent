@@ -36,7 +36,7 @@ import { installCompactionForTest } from './helpers/compaction-impl';
 
 installCompactionForTest();
 
-import { AgentBlueprint, type AgentCapability, firstPartyCapabilities } from '../src/agent/blueprint';
+import { AgentBlueprint, type AgentCapability } from '../src/agent/blueprint';
 import {
   activeCapabilityContributions,
   type CapabilityContribution,
@@ -45,6 +45,8 @@ import {
 import { factoryComposition, resolveRoster } from '../src/composition/roster';
 import { Context } from '../src/cordis';
 import { capabilitySegmentsPlugin } from '../src/plugins/builtin/capability-segments';
+// 批 9h-1：十四项内容表随 capability-segments 产物（内核只留 AgentBlueprint 机制与形状）
+import { firstPartyCapabilities } from '../src/plugins/builtin/capability-segments/segments';
 
 const firstPartyKeys = (): string[] => firstPartyCapabilities().map((c) => c.id);
 

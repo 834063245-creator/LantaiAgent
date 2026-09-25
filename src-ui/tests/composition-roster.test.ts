@@ -22,7 +22,6 @@
 // withFirstPartyCapabilityChannel 腰内。
 
 import { describe, expect, it } from 'vitest';
-import { firstPartyCapabilities } from '../src/agent/blueprint';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
@@ -35,6 +34,7 @@ import {
   resolveRoster,
 } from '../src/composition/roster';
 import { builtinShellRows } from '../src/composition/shell-rows';
+import { firstPartyCapabilities } from '../src/plugins/builtin/capability-segments/segments';
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 const capKeys = (): string[] => firstPartyCapabilities().map((c) => c.id);

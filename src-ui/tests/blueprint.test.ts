@@ -23,15 +23,12 @@ import { installCompactionForTest } from './helpers/compaction-impl';
 
 installCompactionForTest();
 
-import {
-  AgentBlueprint,
-  type AgentCapability,
-  type BlueprintScope,
-  firstPartyCapabilities,
-} from '../src/agent/blueprint';
+import { AgentBlueprint, type AgentCapability, type BlueprintScope } from '../src/agent/blueprint';
 import type { DiagnosticsSource } from '../src/agent/state-inject';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { factoryComposition } from '../src/composition/roster';
+// 批 9h-1：十四项内容表随 capability-segments 产物（内核只留 AgentBlueprint 机制与形状）
+import { firstPartyCapabilities } from '../src/plugins/builtin/capability-segments/segments';
 
 /** 最小 capability 构造（install 记录调用序）。 */
 function cap(id: string, phase: 'context' | 'agent', order: string[], when?: AgentCapability['when']): AgentCapability {

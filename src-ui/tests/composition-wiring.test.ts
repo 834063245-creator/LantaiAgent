@@ -9,7 +9,7 @@
 // AgentBlueprint.fromRoster / AgentRuntime(composition) + composition-store。
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AgentBlueprint, firstPartyCapabilities } from '../src/agent/blueprint';
+import { AgentBlueprint } from '../src/agent/blueprint';
 import { AgentContext } from '../src/agent/context';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import type { AgentHandle } from '../src/agent/runtime/types';
@@ -19,6 +19,7 @@ import { withFirstPartyPromptChannel } from '../src/composition/first-party-prom
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
 import { assembleSystemPrompt } from '../src/composition/prompt-sections';
 import { factoryComposition, type ResolvedComposition, resolveRoster } from '../src/composition/roster';
+import { firstPartyCapabilities } from '../src/plugins/builtin/capability-segments/segments';
 import { firstPartyPromptSections } from '../src/plugins/builtin/prompt-segments/sections';
 import { useCompositionStore } from '../src/state/composition-store';
 import { buildStandardRegistry, readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';

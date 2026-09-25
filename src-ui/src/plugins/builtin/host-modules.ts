@@ -38,7 +38,9 @@ import { findAssetByContent, getAsset, listAssets, upsertAsset } from '../../age
 // S3：工具域/段贡献插件对象导入已拆除——产物域真源自带；此处只导工具工厂
 // 运行时值（faceDeps 取用面）。（z（engine-domain 运行时取用）随图谱退役
 // 移除，2026-09-09。）
-import { firstPartyCapabilities } from '../../agent/blueprint';
+// 批 9h-1 归家（2026-09-26）：capability 十四项内容表进 capability-segments 包 ⇒
+// `firstPartyCapabilities` 桥键撤除；该包新的取用面（登记表读面 + 工具工厂）在此供面。
+import { createCodeExecutionTool } from '../../agent/code-run/code-execution-tool';
 import { COMPACTION_NOTICE_MARK, DEFAULT_COMPACT_RATIO, DEFAULT_RETAIN_RATIO } from '../../agent/compaction-contract';
 import { registerCompactionImplementation } from '../../agent/compaction-impl';
 import { DEFAULT_C_IN, DEFAULT_C_OUT, LOSS_FACTOR_PER_EVENT } from '../../agent/compaction-tracker';
@@ -60,9 +62,10 @@ import {
   MessageNotFoundError,
   TopologyDeniedError,
 } from '../../agent/message-contract';
-import { registerMultiagentComm } from '../../agent/multiagent-impl';
-import { registerPlanImplementation } from '../../agent/plan/plan-impl';
+import { registerMultiagentComm, requireMultiagentComm } from '../../agent/multiagent-impl';
+import { activePlanImplementation, registerPlanImplementation } from '../../agent/plan/plan-impl';
 import { planRegistry } from '../../agent/plan/plan-registry';
+import { registerCompactionTools } from '../../agent/runtime/agent-builder';
 import { execStreamedShell } from '../../agent/runtime/queued-shell';
 import {
   assertSupportedSchema,
@@ -90,13 +93,14 @@ import {
 } from '../../agent/subagent-activity';
 // 批 3a 归家：wait/office/cordis 三域工厂已随包 ⇒ 撤桥，改桥它们仍住内核的依赖面。
 import { SubAgentStatus } from '../../agent/subagent-runtime-contract';
-import { registerSubagentRuntime } from '../../agent/subagent-runtime-impl';
-import { registerSubAgentTools } from '../../agent/subagent-tools-impl';
-import { createTaskTools } from '../../agent/task';
+import { activeDiscoveryTools, activeMergeTools, registerSubagentRuntime } from '../../agent/subagent-runtime-impl';
+import { activeSubAgentTools, registerSubAgentTools } from '../../agent/subagent-tools-impl';
+import { createTaskTools, TaskManager } from '../../agent/task';
 import { countMessage, countMessages, countText } from '../../agent/token-counter';
 import { ToolRegistry } from '../../agent/tool';
 import { foldToolResults, nextFoldBoundary } from '../../agent/tool-fold';
 import { hasImageRefs } from '../../agent/tool-images';
+import { createBoardStatusTool } from '../../agent/tools/board-status';
 // 批 4c-2 归家：agent-isolation / ask 两族进包 ⇒ 撤工厂桥；两族只余 defineTool/类型面。
 import { defineTool, toInputJsonSchema } from '../../agent/tools/define-tool';
 import { convergeRegistry, resolveGuardToolName } from '../../agent/tools/domains';
@@ -613,6 +617,18 @@ const faceDeps = {
   createSkillTool,
   createMemoryTools,
   createTaskTools,
+  // 批 9h-1 归家（2026-09-26）：capability 十四项内容表进 capability-segments 包 ⇒
+  // 桥它的取用面（批 6/7 的登记表读面 + 内核工具工厂 / 域折叠表）；`firstPartyCapabilities` 键已撤
+  createCodeExecutionTool,
+  requireMultiagentComm,
+  activePlanImplementation,
+  registerCompactionTools,
+  activeDiscoveryTools,
+  activeMergeTools,
+  activeSubAgentTools,
+  createBoardStatusTool,
+  convergeRegistry,
+  TaskManager,
   // 批 4b 归家（2026-09-24）：search/web 两域实现进包（原 manifest-tools 按域拆）
   // ⇒ 撤这两个工厂键；两域只余平台面（toInputJsonSchema / Tool 类型）。
   // 批 3a 归家（2026-09-24）：wait/office/cordis 三域的工具工厂已随包 ⇒ 撤桥；
@@ -640,7 +656,6 @@ const faceDeps = {
   upsertAsset,
   validatePayload,
   waitForConfirm,
-  firstPartyCapabilities,
   // S5b agent-loop-service 产物运行时依赖
   ContributionChannel,
   Service,
@@ -739,7 +754,6 @@ const faceDeps = {
   removeSubAgentActivity,
   wrapSubAgentSink,
   ToolRegistry,
-  convergeRegistry,
   FileOwnership,
   // 批 8b 归家：纸面块渲染器进 paper-renderers 包 ⇒ 桥应用层依赖面
   // （MermaidBlock 是重依赖例外：组件本体留应用 bundle，产物只做认领 + 降级）

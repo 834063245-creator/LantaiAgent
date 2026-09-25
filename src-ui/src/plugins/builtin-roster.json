@@ -267,11 +267,10 @@
   {
     "dir": "capability-segments",
     "buildOrder": 28,
-    "description": "出厂会话级能力（15 项；禁用 = 出厂能力消失）",
+    "description": "出厂会话级能力（15 项内容表已随包，批 9h-1；禁用 = 出厂能力消失）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["capabilities"],
-    "impl": ["agent/blueprint.ts"]
+    "inject": ["capabilities"]
   },
   {
     "dir": "office-domain",
