@@ -43,7 +43,7 @@
 | 4-6 | `token-meter`（963） | `agent/token-meter/` 6 件 874 + `token-counter.ts` 89 | ✅ **用户 2026-09-25 裁定 A：立 `ctx.tokenMeter`** —— **2026-09-26 已落**（第 16 个内核 service，契约 v52） |
 | 4-7 | `agent/acp/**`（306） | `acp/server.ts` 306 | 🟢 退役（实现零运行时消费者） |
 | 4-8 | `viewer-exts` 226 + 五件（2,226） | `viewer-exts.ts` 226 在；五件批 8 已判 shared | 🟢 余一件判内核 shared（有真内核读点） |
-| 4-9 | 壳行贡献通道缺口 | 仍缺（`builtinShellRows()` 硬编码数组） | ✅ **裁定：立，与批 10 同窗**（见 §2.2） |
+| 4-9 | 壳行贡献通道缺口 | 仍缺（`builtinShellRows()` 硬编码数组） | ✅ **裁定：立，与批 10 同窗**（见 §2.2）；**施工设计已出**（`workspace-activation-channel-design.md` **§9**：`ctx.shellRows` 第 17 个 service + `update-check` 随包） |
 | 4-10 | `asset-kinds.ts`（581） | 581 在 | ✅ 批 9g-2 判内核 shared（禁用产物会让旧卷资产块降级） |
 | 4-11 | `bundled-engine.ts`（292） | 292 在 | ✅ **裁定：先验真机，批 10 一并产物化**（见 §2.3） |
 | 4-12 | `user-mcp.ts`（142） | 142 在 | 🟢 承认并登记（现行契约已 sanction） |
@@ -92,6 +92,12 @@
 > ✅ **用户 2026-09-25 裁定：A，与批 10 的工作区接线通道同窗设计** —— 两条是同一类问题
 > （**宿主生命周期贡献面**），一起设计只付一次契约变更。注意这是**新能力**不是搬迁，
 > 必须走契约四步流程，不能顺手塞。
+>
+> **施工设计（2026-09-26 补）**：`workspace-activation-channel-design.md` **§9**——实测后定形 =
+> `ctx.shellRows`（第 17 个内核 service，`register({ id, boot })`）+ 引导序「内置 11 行 → 贡献行（注册序）」
+> + 行 id `plugin/<包名>/<行 id>` 可经 roster patch 禁用；第一消费者 = `shell-update-check`（27 行）随
+> `settings-domain` 包（它恰是今日**最后一行** ⇒ 追加语义逐位复现引导序，零行为漂移）；与 `ctx.workspaces`
+> **同一次契约升版**（v52 → v53）。
 
 ### 2.3 §4-11 `bundled-engine.ts`（292 行）—— ✅ **已裁定：先验真机，批 10 一并产物化**
 

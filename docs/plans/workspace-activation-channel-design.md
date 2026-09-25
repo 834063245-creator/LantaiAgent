@@ -132,3 +132,75 @@ ctx.effect(
    统一转状态栏 + 诊断面，避免每个贡献者自带 store（本批只需支撑引擎三态）。
 3. 是否允许第三方产物用本面：推荐**允许**（通道一旦公开就开；真正敏感的是 MCP 桥，它走 faceDeps 留第一方）。
 4. 贡献超时阈值：现引擎路径无显式超时（`await` 直等）。建议本面给一个可配上限（缺省不设，避免行为变更）。
+
+**用户裁定（2026-09-25）**：1/2/4 按上表推荐值走；**3 = 允许第三方产物用本面**
+（理由：真正敏感的是 MCP 桥，它走 faceDeps **留第一方** ⇒ 敏感面并未打开；且宪法第五条
+「能换实现 ⇒ 开放面」，第三方早已能经 `ctx.*` 贡献工具/面板/渲染器/命令，属同一档）。
+
+## 9. 同窗部件三：壳行贡献通道（§4-9，2026-09-26 补设计）
+
+> 用户 2026-09-25 裁定 A：**立**，与批 10 **同窗**（两条同属「宿主生命周期贡献面」，
+> 一起设计只付一次契约变更）。本节 = 该条的施工依据。
+
+### 9.1 实测事实（file:line）
+
+| 事实 | 位置 |
+|---|---|
+| 壳行表是**硬编码数组**（11 行，表序 = 引导序） | `composition/shell-rows.ts:50` `builtinShellRows()`（`ShellRow = { id, boot(refs, flowDeps?) }`，:44） |
+| 壳行 = **纯 boot 时序**单元（无服务注册、无 disposer 诉求；根 fiber 生命周期 = 应用生命周期） | 同文件头注 :8-12 |
+| 行 id 经 roster patch 的 `shell` 域可寻址禁用 | `composition/roster.ts:270`（`shell: builtinShellRows()`） |
+| **装载序早于 bootShell**（⇒ 产物 apply 期登记的壳行来得及被收集） | `main.ts:49` `loadBuiltinPlugins(...)` → `:78` `await bootShell()` |
+| 唯一「需要 boot 期副作用」的现存实例 = `shell-update-check`（**最后一行**） | `shell-rows.ts:72` → `shell/rows/update-check.ts` 27 行（`bootUpdateCheck()`） |
+| 该行开关真源在内核 settings（`updates.autoCheck`），面板手动检查共用 `useUpdateStore` | `shell/rows/update-check.ts:16`；`settings-domain/SettingsPanel.tsx:190,901` |
+
+**结论**：缺口不是「行表不够用」，而是**行表是内核特权数据**——产物无法贡献 boot 期副作用
+（`update-check` 这类 27 行的产品件只能永久留内核）。且因为 `shell-update-check` 恰是**最后一行**，
+「产物贡献行**追加在末尾**」这一条最简语义就能**逐位复现**今日引导序（零行为漂移）。
+
+### 9.2 设计：`ctx.shellRows`（第 17 个内核 service）
+
+```ts
+// 产物 apply(ctx) 内（一次性登记；bootShell 期按注册序串行 await）
+ctx.effect(
+  () => ctx.shellRows.register({ id: 'update-check', boot: (refs) => bootUpdateCheck(refs) }),
+  'acme/shell-row',
+);
+```
+
+| 面 | 规定 |
+|---|---|
+| 装载序 | 内核 `SERVICE_PLUGINS` 表**追加末位**（第 17 个 service）；`builtinShellRows()` 留在内核（11 行不动） |
+| 行 id | 贡献行的寻址 id = `plugin/<产物包名>/<行 id>`（对齐 `plugin/hologram/<pkg>/<name>` 先例）⇒ roster patch 的 `shell` 域可禁用（禁用行 = 不接线，调用一致失败——与内置行同涟漪纪律） |
+| 引导序 | **内置 11 行（表序）→ 贡献行（注册序）**；`bootShell` 逐行 `await`，行内失败**隔离**（与内置行同款：不阻断后续行、错误可见） |
+| 生命周期 | 登记经 `ctx.effect`（fiber dispose 即摘行）；行本身无 teardown（与内置行同款——根 fiber 生命周期 = 应用生命周期） |
+| 缺服务 | 无 `ctx.shellRows` 的环境（工具/单测）= 空贡献面，引导序零行为变更 |
+| 诊断 | boot 审计行（`plugins/boot-gate`）增加「贡献壳行 N 行（具名）」；被禁用/失败的贡献行具名入账 |
+
+**为什么不是扩 manifest 声明面**：与 §3 同一条理由——壳行是**代码**（boot 闭包）不是数据，
+manifest 只能声明数据；且第三方若要在 boot 期跑代码，正路是插件本体（apply 期），
+本面就是给「apply 期登记、boot 期执行」这一步的落点。
+
+### 9.3 第一消费者：`shell-update-check` 随包
+
+- `shell/rows/update-check.ts`（27）→ `plugins/builtin/settings-domain/update-check.ts`
+  （该包已桥 `useUpdateStore` / `autoUpdateCheckEnabled` / `loadSettings` ⇒ 零新键）；
+- `settings-domain/index.ts` 的 apply 用 `ctx.shellRows.register(...)` 复现今日行为（含 `manual` 开关判定）；
+- 内核 `shell-rows.ts` 删该行（11 → 10 行），`shell/rows/update-check.ts` 删除；
+- 出口判据：`builtinShellRows()` 10 行 + 贡献行 1 行 = 引导序与今日**逐位一致**（末位仍是 update-check）。
+
+### 9.4 要动的契约面与守卫（与部件一同一次升版）
+
+| 对象 | 动作 |
+|---|---|
+| `composition/contract-version.ts` | 契约清单增 `composition/shell-rows-service.ts`；版本 **v52 → v53**（与 `ctx.workspaces` 同一次升版） |
+| `docs/agents/open-surface-contract.md` | 一条变更记录覆盖两条通道（工作区接线 + 壳行） |
+| `src/plugins/host-surface.baseline.json` | 本部件**零 faceDeps 新键**（update-check 只用既有键）⇒ 指纹不变 |
+| 新增守护测试 | ①面存在且 `builtinShellRows()` 仍是 10 行 + ②贡献行追加在末尾（引导序 = 内置→贡献）· ③行 id 可经 roster patch 禁用 · ④贡献行抛错不阻断后续行 · ⑤fiber dispose 摘行 |
+| `docs/plugins/README.md` | §3 加「ctx.shellRows」段（含「boot 期代码 = 产物 apply 期登记」的纪律） |
+
+### 9.5 批次（并入批 10 的 §6 表）
+
+| 批 | 内容 | 交付判据 |
+|---|---|---|
+| 4（与批 10 同窗） | 部件三（通道 + 守卫 + 文档）+ `shell-update-check` 随包 | 引导序逐位一致（10 + 1）；设置面板「自动检查更新」开关与面板手动检查仍共用同一状态面；真机：启动自动检查失败/成功回执与今日同形 |
+| 5 | 真机验收（并入 §7 清单，追加两条：贡献壳行在场 + 禁用该行后不检查） | 追加两条全勾 |
