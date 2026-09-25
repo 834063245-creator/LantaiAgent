@@ -126,11 +126,11 @@
   {
     "dir": "agent-loop-service",
     "buildOrder": 11,
-    "description": "Agent 主循环（seam/agentLoop 默认实现）",
+    "description": "Agent 主循环注册表 + 出厂默认实现（seam/agentLoop；批 9h-2 整包实心化。不可禁用——loop 缺席即无会话可跑）",
     "entry": "index.ts",
     "hostModule": "host",
     "inject": [],
-    "impl": ["agent/agent-loop/default-loop.ts"]
+    "required": true
   },
   {
     "dir": "web-domain",

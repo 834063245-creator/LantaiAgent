@@ -5,23 +5,34 @@
 // 第一方默认实现。机械迁移自 agent.ts runLoop（行为逐字节一致）：
 //   - `this.X` → `host.X`（宿主面 = AgentLoopHost，由 Agent._loopHost()
 //     以闭包构建——私有成员不出类，活性由引用/get·set 闭包保证）；
-//   - 模块级依赖（typedRpc / EventKind / StreamingToolExecutor /
+//   - 模块级依赖（typedRpcWithTimeout / EventKind / StreamingToolExecutor /
 //     finishReasonMessage / resolveGuardToolName / parseFilePathArg / log）
-//     随体迁入本模块 import；
+//     经包内宿主桥 `./host` 取用；
 //   - 行为钉子：convergence phase-5 session-projection trace + phase-2
 //     trace fixture + 全量 agent 测试组（turn/step/request 事件序、
 //     session 溯源、压缩埋点、storm breaker 语义不变）。
 //
 // 替换契约：ctx.agentLoop 注册表后注册胜——替换实现只需满足 AgentLoop
 // 接口（拿到同一宿主面即可接管全生命周期）。
+//
+// 批 9h-2（2026-09-26）：本件随 `agent-loop-service` 产物包（原
+// `agent/agent-loop/default-loop.ts` 整件搬移）——注册表（`AgentLoopService`）
+// 与本实现在同包；内核 `agent-loop-active.ts` 只留活动面 + `resolveAgentLoop()`
+// 查表（无服务 = 具名 fail-loud，内核不再持有兜底实现）。
 
-import { kernelReadFile, typedRpcWithTimeout } from '../../rpc-contract';
-import { type AgentEvent, EventKind } from '../agent-types';
-import { log } from '../logger';
-import { finishReasonMessage, parseFilePathArg } from '../loop-helpers';
-import { StreamingToolExecutor } from '../streaming-executor';
-import { resolveGuardToolName } from '../tools/domains';
-import type { AgentLoopHost } from './types';
+import {
+  type AgentEvent,
+  type AgentLoop,
+  type AgentLoopHost,
+  EventKind,
+  finishReasonMessage,
+  kernelReadFile,
+  log,
+  parseFilePathArg,
+  resolveGuardToolName,
+  StreamingToolExecutor,
+  typedRpcWithTimeout,
+} from './host';
 
 /** 默认实现寻址 id（ctx.agentLoop 注册表；后注册的替换实现胜出）。 */
 export const DEFAULT_AGENT_LOOP_ID = 'builtin/default';
@@ -52,7 +63,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 /** 默认 agent loop（出厂实现——AgentOptions 缺省 + ctx.agentLoop 构造期登记）。 */
-export const defaultAgentLoop: import('./types').AgentLoop = {
+export const defaultAgentLoop: AgentLoop = {
   id: DEFAULT_AGENT_LOOP_ID,
   run: runDefaultLoop,
 };

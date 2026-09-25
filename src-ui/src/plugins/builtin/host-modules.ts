@@ -22,7 +22,6 @@
 
 import { Agent } from '../../agent/agent';
 import { setActiveAgentLoop } from '../../agent/agent-loop/agent-loop-active';
-import { defaultAgentLoop } from '../../agent/agent-loop/default-loop';
 import { agentSessionState } from '../../agent/agent-session-state';
 import { EventKind } from '../../agent/agent-types';
 import {
@@ -54,7 +53,9 @@ import { HookRegistry } from '../../agent/hooks';
 import { enqueueIsolationOp } from '../../agent/isolation-queue';
 import { once } from '../../agent/lifecycle';
 import { log } from '../../agent/logger';
-import { errText, parseFilePathArg } from '../../agent/loop-helpers';
+// 批 9h-2 归家（2026-09-26）：出厂默认 loop 实现进 agent-loop-service 包 ⇒
+// `defaultAgentLoop` 桥键撤除；改桥该包新的取用面（循环依赖面 3 个缺失键）。
+import { errText, finishReasonMessage, parseFilePathArg } from '../../agent/loop-helpers';
 import { createMemoryTools } from '../../agent/memory';
 import {
   AgentNotFoundError,
@@ -85,6 +86,7 @@ import {
   invalidateBlameEntry,
   refreshGitBlame,
 } from '../../agent/state-inject';
+import { StreamingToolExecutor } from '../../agent/streaming-executor';
 import {
   getSubAgentActivity,
   removeSubAgentActivity,
@@ -280,6 +282,7 @@ import {
   parseJson,
   typedJsonRpc,
   typedRpc,
+  typedRpcWithTimeout,
   workspaceListCached,
 } from '../../rpc-contract';
 import {
@@ -659,8 +662,12 @@ const faceDeps = {
   // S5b agent-loop-service 产物运行时依赖
   ContributionChannel,
   Service,
-  defaultAgentLoop,
   setActiveAgentLoop,
+  // 批 9h-2 归家：出厂默认 loop 随包 ⇒ 桥循环依赖面（`defaultAgentLoop` 键已撤；
+  // `parseFilePathArg` 早已在册）
+  finishReasonMessage,
+  StreamingToolExecutor,
+  typedRpcWithTimeout,
   // 批 4a 归家（2026-09-24）：browser/desktop 实现进包 ⇒ 撤工厂桥，改桥依赖面
   errText,
   toInputJsonSchema,

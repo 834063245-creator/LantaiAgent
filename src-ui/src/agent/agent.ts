@@ -20,7 +20,7 @@ import type {
   Usage,
 } from '../provider/types';
 import { ApiError, apiErrorSummary, ChunkType } from '../provider/types';
-import { defaultAgentLoop } from './agent-loop/default-loop';
+import { resolveAgentLoop } from './agent-loop/agent-loop-active';
 import { attachFirstPartyLoopObservability } from './agent-loop/observability';
 import type { AgentLoop, AgentLoopHost } from './agent-loop/types';
 import type { AgentRecord, AgentStore } from './agent-store';
@@ -552,8 +552,10 @@ export class Agent {
     this._sink = opts.eventSink ?? ctx.get('eventSink') ?? (() => {});
     this._ui = opts.ui ?? {};
     this._agentOpts = opts;
-    // D13：loop 实现 = 显式注入优先，缺省 = builtin/default（逐字节一致）
-    this._loop = opts.agentLoop ?? defaultAgentLoop;
+    // D13：loop 实现 = 显式注入优先，缺省 = ctx.agentLoop 注册表当前实现
+    // （批 9h-2：出厂默认实现已随 agent-loop-service 包，内核不再持兜底引用；
+    //  无服务 = 具名 fail-loud，见 agent-loop-active.ts）
+    this._loop = opts.agentLoop ?? resolveAgentLoop();
     // 附图读取器（multimodal-image-plan B3）：请求期 ref→base64 的 IO 腰；
     // 缓存按 id 键控——同图跨回合零重读。子 Agent 经 spawn 继承读取器。
     this._imageReader = opts.imageReader ?? null;

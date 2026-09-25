@@ -105,7 +105,11 @@ describe('触发点 B：工具副作用前检查点', () => {
 
   it('生产接线（T0 源码断言）：default-loop 用 host.sessionLog.flushPersistence 作钩子', () => {
     // 第一方默认 loop 是唯一构造执行器的地方（第三方 loop 自管工具执行）
-    const src = readFileSync(path.resolve(process.cwd(), 'src/agent/agent-loop/default-loop.ts'), 'utf8');
+    // 批 9h-2：默认 loop 实现随 agent-loop-service 产物包（原 agent/agent-loop/default-loop.ts）
+    const src = readFileSync(
+      path.resolve(process.cwd(), 'src/plugins/builtin/agent-loop-service/default-loop.ts'),
+      'utf8',
+    );
     expect(src).toContain('new StreamingToolExecutor(');
     expect(src).toContain('host.sessionLog.flushPersistence()');
   });

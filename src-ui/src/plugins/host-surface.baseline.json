@@ -1,5 +1,5 @@
 {
-  "fingerprint": "40d6680c",
+  "fingerprint": "faade5dd",
   "keys": [
     "ANCHOR",
     "Agent",
@@ -42,6 +42,7 @@
     "STREAM_REGION",
     "STUCK_THRESHOLD_S",
     "Service",
+    "StreamingToolExecutor",
     "SubAgentStatus",
     "THINKING_EFFORT_BUDGETS",
     "TaskManager",
@@ -106,7 +107,6 @@
     "createSkillTool",
     "createTaskTools",
     "deactivateExternalPlugin",
-    "defaultAgentLoop",
     "defaultBaseUrl",
     "defaultFolded",
     "defaultRegionFor",
@@ -126,6 +126,7 @@
     "filterCommands",
     "findAssetByContent",
     "findModels",
+    "finishReasonMessage",
     "foldLabel",
     "foldToolResults",
     "formatDiagnostics",
@@ -290,6 +291,7 @@
     "translateMessagesCached",
     "typedJsonRpc",
     "typedRpc",
+    "typedRpcWithTimeout",
     "upsertAsset",
     "useAskStore",
     "useBgAlertStore",

@@ -22,9 +22,16 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 50;
+export const OPEN_SURFACE_CONTRACT_VERSION = 51;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v51（2026-09-26）**出厂默认 agent loop 归产物包**（批 9h-2，契约形状零变更）：
+ *  `agent/agent-loop/default-loop.ts` 整件移入 `plugins/builtin/agent-loop-service/`
+ *  （与注册表 `AgentLoopService` 同包、同一次装载），本清单该行随之改指新路径；
+ *  内核 `agent/agent-loop/agent-loop-active.ts` 去掉 `defaultAgentLoop` 兜底 ——
+ *  `resolveAgentLoop()` 无服务时具名 fail-loud（该产物同批标 `required`，生产中不会缺席）。
+ *  **对外可感知**：第三方 loop 实现（`ctx.agentLoop.register`）零影响；`AgentLoop` /
+ *  `AgentLoopHost` 形状逐字未动，`builtin/default` 仍是可寻址的出厂实现。
  *  v50（2026-09-24）**子代理运行时归产物包**（批 7c-2，契约形状零变更）：池 / 生命周期
  *  巡检 / 派生（`SubAgentPool` / `AgentLifecycleManager` / `spawnSubAgent`）三件进
  *  `plugins/builtin/subagent-in-process/`，形状上收内核契约
@@ -298,7 +305,7 @@ export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   'src/agent/dynamic-runner/sandbox.ts',
   // agent loop seam（D13——AgentLoop/AgentLoopHost 契约 + 默认实现 + 活动面）
   'src/agent/agent-loop/types.ts',
-  'src/agent/agent-loop/default-loop.ts',
+  'src/plugins/builtin/agent-loop-service/default-loop.ts',
   'src/agent/agent-loop/agent-loop-active.ts',
   // 插件 manifest 契约（loader 装载面；v38 起含 activation 块）
   'src/plugins/types.ts',

@@ -5,12 +5,18 @@
 // 原 agent/agent-loop/agent-loop-service.ts 整体迁入；类本体 + 挂载插件
 // 在产物域，模块级 _activeService 活动面留内核（agent-loop-active.ts，
 // runtime.ts 读它）。运行时依赖（Service/ContributionChannel/
-// defaultAgentLoop/setActiveAgentLoop）经宿主桥 mods.faceDeps 取用——
-// setActiveAgentLoop 是内核函数引用（闭包桥接），产物构造器调用它写内核态。
+// setActiveAgentLoop）经宿主桥 mods.faceDeps 取用——setActiveAgentLoop 是
+// 内核函数引用（闭包桥接），产物构造器调用它写内核态。
+//
+// 批 9h-2（2026-09-26）：**出厂默认实现也随包**（`./default-loop`，原
+// `agent/agent-loop/default-loop.ts` 整件搬移）——注册表与本实现在同包、
+// 同一次装载；内核 `resolveAgentLoop()` 不再有兜底实现（无服务 = 具名
+// fail-loud），名册因此标 `required`（loop 缺席 = 一个会话都跑不起来）。
 
 import type { AgentLoop } from '../../../agent/agent-loop/types';
 import type { Context } from '../../../cordis';
-import { ContributionChannel, defaultAgentLoop, Service, setActiveAgentLoop } from './host';
+import { defaultAgentLoop } from './default-loop';
+import { ContributionChannel, Service, setActiveAgentLoop } from './host';
 
 /** agent loop 注册表服务（S5b 产物域本体）。 */
 export class AgentLoopService extends Service {

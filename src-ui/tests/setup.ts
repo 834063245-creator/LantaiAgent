@@ -21,6 +21,7 @@ beforeAll(async () => {
     { MarkdownBody },
     { initCordisKernel },
     { lspServicePlugin },
+    { agentLoopServicePlugin },
   ] = await Promise.all([
     import('../src/agent/multiagent-impl'),
     import('../src/plugins/builtin/multiagent-comm/implementation'),
@@ -30,6 +31,7 @@ beforeAll(async () => {
     import('../src/plugins/builtin/paper-renderers/renderers'),
     import('../src/cordis/boot'),
     import('../src/ui/lsp-client'),
+    import('../src/plugins/builtin/agent-loop-service'),
   ]);
   registerMultiagentComm(multiagentCommImplementation);
   // 批 7c-2：子代理运行时（池 / 生命周期 / 派生 + 两工具族）整体登记——与产物包 index.ts 同源。
@@ -39,7 +41,12 @@ beforeAll(async () => {
   registerMarkdownBody(MarkdownBody);
   // 批 9b §4-13：`ctx.lsp` 入内核清单后，**兜底实例由内核 service 提供**（此前是自建第二个
   // 根 Context）——测试域复现「loader 已跑过」：在内核根 Context 上挂 lspServicePlugin。
-  initCordisKernel().plugin(lspServicePlugin);
+  const kernel = initCordisKernel();
+  kernel.plugin(lspServicePlugin);
+  // 批 9h-2：出厂默认 agent loop 随包后，内核 `resolveAgentLoop()` 不再兜底（无服务 = 具名
+  // fail-loud）⇒ 测试域复现装载态：在同一个内核根 Context 上挂 agent-loop-service 产物
+  // （构造期登记 `builtin/default` 并写活动面）。
+  kernel.plugin(agentLoopServicePlugin);
 });
 
 // jsdom 不实现 CSS.escape（react-aria ListKeyboardDelegate 依赖它拼 [data-key] 选择器）。

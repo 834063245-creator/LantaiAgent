@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：50
+当前版本：51
 
-<!-- contract-fingerprint: 1b0f4ef3c62d42117c7cc8c9294e89ced1adc88438b1d2fa5c731e8cceecbecd -->
+<!-- contract-fingerprint: 25e379fa1d3132f30ce27db6827b133d9a72c909b0a2275e66d854899e8d39d5 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -32,7 +32,7 @@
 | `src/composition/activation.ts` | **激活账**（v38 新增）：`ActivationSpec`（插件在 apply 期登记的形状——`{ resources?, exclusive?, start, stop? }`）+ 引用计数账（retain/release/plan，键 = 插件名）；叶模块（零项目内运行时依赖） |
 | `src/composition/activation-service.ts` | `ctx.activation`（v38 新增第五个组合层 service）：`declare` / `planFor` / `retainForComposition` / `releaseAll` / `states`——插件面声明与装配面记账的契约载体 |
 | `src/agent/agent-loop/types.ts` | AgentLoop/AgentLoopHost（D13 loop seam 契约）。**v44 起新增 `stepBoundary` / `abandonedError` / `isAbandoned` 三成员**（运行看门狗：步骤边界脉搏 + 硬截止栅栏 + 具名作废错误） |
-| `src/agent/agent-loop/default-loop.ts` | 默认 loop 实现（行为逐字节一致，D13）。**v44 起每步入场调 `host.stepBoundary(signal)`**，为 false 即抛 `host.abandonedError(signal)` 停步；分发前审计补落加同款栅栏 |
+| src/plugins/builtin/agent-loop-service/default-loop.ts（原 `src/agent/agent-loop/default-loop.ts`，批 9h-2 整件随包） | 默认 loop 实现（行为逐字节一致，D13；**v51 起本体在产物包**，与注册表同包、同一次装载）。**v44 起每步入场调 `host.stepBoundary(signal)`**，为 false 即抛 `host.abandonedError(signal)` 停步；分发前审计补落加同款栅栏 |
 | src/agent/agent-loop/agent-loop-service.ts → `src/plugins/builtin/agent-loop-service/index.ts` | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜；S5b 起本体在产物域，活动面留 `agent-loop-active.ts`——**清单真源以 `contract-version.ts` 为准，本行同步实况**） |
 
 （`graph-service.ts` / `ctx.graph` seam 随图谱功能全量退役移除，2026-09-09。）
@@ -109,6 +109,8 @@
 | 48 | 2026-09-24 | **压缩域结构切分（批 6d-1，行为零变更）**：① 记账面从 `agent/compaction-model.ts` 切到新 `src/agent/compaction-tracker.ts`——`CompactionTracker` + `CompactionEvent` / `CompactionSessionStats` / `SummaryUsageTotals` + 费率三常量（`DEFAULT_C_IN` / `DEFAULT_C_OUT` / `LOSS_FACTOR_PER_EVENT`，策略侧反向 import）。留内核的理由：它是 **Agent 私有账本**（每 Agent 一份）+ loop 契约只读面 + 卷级 `serializeState` 持久化。② 宿主接口 `CompactionHost` 与两个**跨层常量**（`COMPACTION_NOTICE_MARK`、`SUMMARY_OUTPUT_BUDGET`）上收新 `src/agent/compaction-contract.ts`——UI（`ui/chat-stream.ts` 识别压缩提示）不再直引实现文件。③ 本清单里只有 `agent-loop/types.ts` 动了一行：`CompactionTracker` 类型导入改指记账面文件，**契约形状零变更**（`AgentLoopHost.compactionTracker` 成员与其结构子集逐字未动）。**对外可感知**：第三方 loop / 插件零影响（无成员增删、无载荷变化、事件序列不变）。 | 账本 `plugin-extraction-inventory.md` §2.3「上下文压缩」行 + [`capability-impl-seam-design.md`](../plans/capability-impl-seam-design.md) §3（6d 切分：策略进包 / 记账留内核）；convergence 双轨零漂移 + `tests/compaction-model.test.ts` 等 6 文件 65 用例 |
 
 | 49 | 2026-09-24 | **通信族归产物包（批 7b，契约形状零变更）**：`MessageBus` 实现（总线 605 行 / JSON 存储 / 三种拓扑 / 通信与请求两个工具族）进 `plugins/builtin/multiagent-comm/`；类型与四个错误类升格为内核契约 `src/agent/message-contract.ts`（原 `message-types.ts` 整件改名），并新增 **`MessageBus` 接口**与 **`MultiagentCommImplementation`** 工厂面（`createBus` / `createJsonStore` / 两个工具族工厂）——内核 `runtime.ts` 不再 `new MessageBus`，改查登记表（service 语义：缺实现 fail-loud）。本清单里只有 `agent-loop/types.ts` 动了一行：`MessageBus` 类型导入改指新契约文件，**`AgentLoopHost` 成员与形状逐字未动**。**对外可感知**：第三方 loop / 插件零影响；消息类型名称与语义不变。 | 账本 §2.3「多 Agent 通信族」行 + [`multiagent-extraction-design.md`](../plans/multiagent-extraction-design.md) §3（7b）；convergence 双轨零漂移 + `tests/message-bus.test.ts` 等直连测试改指包内后全绿 |
+
+| 51 | 2026-09-26 | **出厂默认 agent loop 归产物包（批 9h-2，契约形状零变更）**：gent/agent-loop/default-loop.ts（469 行）整件移入 plugins/builtin/agent-loop-service/——与注册表 AgentLoopService 同包、同一次装载（原文件不再存在）；内核 gent/agent-loop/agent-loop-active.ts 去掉 defaultAgentLoop 兜底 ⇒ esolveAgentLoop() 无服务时**具名 fail-loud**（AGENT_LOOP_UNAVAILABLE），名册同批把该产物标 equired（不可禁用）。**对外可感知**：第三方 loop（ctx.agentLoop.register）零影响；AgentLoop / AgentLoopHost 形状逐字未动，uiltin/default 仍可寻址；行为逐字节不变（convergence 双轨零漂移）。 | 账本 §1.2「agent-loop-service」行 + [atch-9h-agent-domain-seam-design.md](../plans/batch-9h-agent-domain-seam-design.md) §3（9h-2）；	ests/agent-loop-seam.test.ts ②「回落默认」按行为退役改写为 fail-loud 断言 + 	ests/setup.ts 复现装载态 |
 
 | 50 | 2026-09-24 | **子代理运行时归产物包（批 7c-2，契约形状零变更）**：池（420 行）/ 生命周期巡检（217 行）/ 派生（551 行）三件从内核整件移入 `plugins/builtin/subagent-in-process/`（原 `agent/coordinator.ts` · `agent/lifecycle-manager.ts` · `agent/subagent-spawn.ts` 不再存在），形状上收内核契约 `src/agent/subagent-runtime-contract.ts`——`SubAgentStatus` / `SubAgentHandle` / `SpawnedAgent` / `SubAgentPool` / `AgentLifecycleManager` / `SubAgentSpawnHost` / `SpawnAgentFn` / `SubagentRuntimeImplementation`，运行时登记表因此扩三个工厂成员（`createPool` / `createLifecycleManager` / `spawnSubAgent`；service 语义：缺实现 fail-loud）——内核 `workspace.ts` 不再 `new SubAgentPool`、`runtime.ts` 不再 `new AgentLifecycleManager`，改查登记表。本清单里只有 `composition/subagent-service.ts` 动了一行：`SubAgentSpawnHost` 类型导入改指新契约文件，**`SubagentProvider` 与 spawn 参数/返回形状逐字未动**。**对外可感知**：第三方 subagent provider / loop / 插件零影响（进程内 provider 行为、工具面与事件序列不变）。 | 账本 §2.3「子代理运行时」行 + [`multiagent-extraction-design.md`](../plans/multiagent-extraction-design.md) §3（7c-2）；convergence 双轨零漂移 + `tests/coordinator.test.ts` · `tests/lifecycle-*.test.ts` · `tests/agent-spawn-sync.test.ts` 等 24 文件改指包内后全绿 |
 
