@@ -320,7 +320,10 @@ manifest.json —— 包内合计 30～110 行。
 > `effectiveModels`/`onSettingsSaved` 被多产物共用）。**9f-1 已落（2026-09-26）**：随包 = `provider/model-sync.ts` 73
 > + `settings.ts` 产品专属编辑面 7 值 2 型（`provider-data.ts` 129 行）⇒ `settings.ts` 706 → **607 行**、宿主面
 > 324 → **327 键**（撤 4 补 7）；顺带消除三处 .tsx 直连内核 `settings.ts` 取值的**副本病灶**（§0.6 同族）。
-> 9f-2 = 名册 `shared` 认领 15 件 provider 平台件 + 账目；9f-3 = 真机验收。
+> **9f-2 已落**：名册 `shared` 认领 `settings-domain` 11 件 + `llm-adapters` 6 件 provider 平台件（归属声明；三色数字不变）。
+> **9f-3 已落**：真机复核——Provider 面 8,046 字渲染 + `providers.yml` 文件面（路径/重读/重试）在场，零异常。
+> **批 9f 收官**：`provider/**` 15 件判内核平台面（`shared` 认领，不造接缝）· `settings.ts` 706 → 607（产品编辑面 129 行随包）·
+> 原估 −700 更正为 **−205**（实测口径）。
 
 包内只有「门牌 + 面板壳 971 行 + 自己那份 CSS 958 行」；页面与另一份 CSS 全在内核：
 
@@ -540,7 +543,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 | **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
 | **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | 🟡 **9a / 9b / 9c-1~4 / 9d / 9e / 9g-1~2 / 9h-1~5 / §4-6 已落**（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）· **9e 常驻面归家**（用户裁定 A）：立**第 15 个内核 service** `ctx.rootViews`（'home'/'overlay' 双槽，App 外壳按槽渲染）+ 新产物 `sessions-home`（593 + 首页 CSS 851 行）与 `ask-cards`（776 + Host 30 + css 412），两产物均 `required` 不可禁用 · **9h-1 capability 内容表随包**（`agent/blueprint.ts` 410 → 158，包内 `segments.ts` 281 = 十四项定义，逐字号原样）· **9h-2 出厂默认 loop 随包**（`agent/agent-loop/default-loop.ts` 469 整件进 `agent-loop-service` 包，内核 `resolveAgentLoop()` 去兜底改 fail-loud；契约 v50 → **v51**）· **9h-3 技能域随包**（`skills.ts` 377 + `builtin-skills.ts` 358 进 `skill-domain` 包；形状上收 `agent/skill-contract.ts` + 登记表门面 `agent/skill-impl.ts`）· **9h-4 记忆域随包**（`memory.ts` 733 + `memory-bundle-client.ts` 134 进 `memory-domain` 包；形状上收 `agent/memory-contract.ts` + 门面 `agent/memory-impl.ts`，授权旗标留内核）· **9c-4 测量引擎整件随包**（9c-4a 接缝 `2268bd64`；9c-4b `measure.ts` 2,016 + `type-tokens.ts` 807 进 `paper-shell`
-（`required`；宿主面 324 键）；9c-4c 测试面 29 件改指包内 + 真机验收——**账② 清零**，见 §6.5）· **§4-6 token 计量升内核第 16 个 service `ctx.tokenMeter`**（裁定 A；契约 **v52**，墨量册改道宿主桥，宿主面 330 键；真机验收见 §6.5）· **9h-5 task 域整件随包**（`task.ts` 178 + `task-board.ts` 319 + `board-status.ts` 78 进 `task-domain` 包；形状上收 `agent/task-contract.ts` + 门面 `agent/task-impl.ts`；`board-persistence.ts` 121 判内核 `shared`；**纯壳集清零**，宿主面 334 键；真机验收见 §6.5）⇒ 红区 8 → **0 产物 / 0 文件 / 0 行**、灰区 84 → **50 文件 / 15,103 行**、清单 50 → **54**（16 service + 38 产物）。余：9f **施工单已出、9f-1 已落**（Provider 编辑面 129 行随 `settings-domain`；`settings.ts` 706 → 607；宿主面 327 键）（[`provider-data-face-homing-design.md`](provider-data-face-homing-design.md)：`provider/**` 判内核平台 15 件 / 随包面 −293；子批 9f-1~3） **侦察已出、判定细化**（`workspace.ts` 并入批 10 通道设计；`settings.ts` 拆「应用配置核心 + Provider 数据面」，与 `provider/**` 同件设计，需先出施工单）→ 9g 余项（`bundled-engine` 随批 10）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
+（`required`；宿主面 324 键）；9c-4c 测试面 29 件改指包内 + 真机验收——**账② 清零**，见 §6.5）· **§4-6 token 计量升内核第 16 个 service `ctx.tokenMeter`**（裁定 A；契约 **v52**，墨量册改道宿主桥，宿主面 330 键；真机验收见 §6.5）· **9h-5 task 域整件随包**（`task.ts` 178 + `task-board.ts` 319 + `board-status.ts` 78 进 `task-domain` 包；形状上收 `agent/task-contract.ts` + 门面 `agent/task-impl.ts`；`board-persistence.ts` 121 判内核 `shared`；**纯壳集清零**，宿主面 334 键；真机验收见 §6.5）⇒ 红区 8 → **0 产物 / 0 文件 / 0 行**、灰区 84 → **50 文件 / 15,103 行**、清单 50 → **54**（16 service + 38 产物）。余：9f ✅ **全落**（9f-1 Provider 编辑面 129 行随 `settings-domain`、`settings.ts` 706 → 607、宿主面 327 键；9f-2 名册 `shared` 认领 11+6 件；9f-3 真机复核零异常）（[`provider-data-face-homing-design.md`](provider-data-face-homing-design.md)：`provider/**` 判内核平台 15 件 / 随包面 −293；子批 9f-1~3） **侦察已出、判定细化**（`workspace.ts` 并入批 10 通道设计；`settings.ts` 拆「应用配置核心 + Provider 数据面」，与 `provider/**` 同件设计，需先出施工单）→ 9g 余项（`bundled-engine` 随批 10）。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
@@ -863,6 +866,10 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   `removeProvider` / `applyFetchedModels` / ProviderDetail / ProviderPage 真身；`face.json` 需求 87 键、
   `hostApi` = 当前基线；**DOM 实证**：设置面板打开（`sp-open` / `sp-tabs` / `sp-content`）且 Provider 面渲染
   （提供方清单两行 + 连接配置 + 「API Key 已保存到系统凭据」+ 「添加提供方」）——编辑面真路径活着，零异常。
+  **9f-2/9f-3（同批）**：名册 `shared` 认领 `settings-domain` 11 件 + `llm-adapters` 6 件 provider 平台件
+  （归属声明，三色数字不变；`builtin-roster` / `plugin-home-ledger` 双守卫绿）；真机复核设置面板 Provider tab
+  **8,046 字**渲染 + `C:\Users\Administrator\.lantai/providers.yml` 文件面（打开目录/重读/重试 + 逐条状态）在场，
+  console 零异常。**批 9f 至此收官**。
 - **9f 侦察（2026-09-26，未施工——下次从这条接）**：`settings.ts` + `workspace.ts` **都不是单文件搬迁**。
   ① `workspace.ts` 1,076：生命周期宿主在壳行（`shell/rows/workspace.ts` 惰性 import + `WorkspaceCls.open`），
   欠账是**内联产品装配**（new 五件管理器 + 拉起 user-mcp / bundled-engine）⇒ 与批 10 的

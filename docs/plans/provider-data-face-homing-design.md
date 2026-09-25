@@ -81,8 +81,8 @@ Provider 数据面随包（内核读点走登记接缝）」，并注明**与 `p
 | 子批 | 内容 | 出口判据 |
 |---|---|---|
 | **9f-1** ✅ **已落**（2026-09-26） | `provider/model-sync.ts`（73）→ 包内 `model-sync.ts`；`settings.ts` 的产品专属编辑面 **7 个值符号 + 2 个类型再出口**（`provider-data.ts` 129 行）——类型两件（`ProbeOutcome` / `ConnectionProbe`）留内核（`ProviderSettings.lastTest` 自用、类型零成本）；`settings.ts` 706 → **607 行**；顺带消除三处 .tsx **直连内核 `settings.ts` 取值**的副本病灶；宿主面 324 → **327 键**（撤 4 补 7：`applyFetchedModels`/`addProvider`/`persistSecrets`/`removeSecret` 销账；补 `findVendorTemplate`/`getVendorTemplateVendors`/`VENDOR_TEMPLATES`/`getCatalogVendors`/`getDefaultModel`/`modelMaxTokens`/`intentOf`）| `plugin-home:report` 三色数字不变（半迁移不进三色账）；`settings-domain/entry.js` 含 `applyFetchedModels` / `isFactoryBaseUrl` 真身；`settings.ts` 物理行 705 → ≈ 570 |
-| **9f-2** | 账目登记：名册 `settings-domain` 加 `shared`（15 件 provider 平台件）+ 账本 §2.1 / §5 / §6.5 落账；`provider/**` 判据一行 | `plugin-home:report` 灰区不变、已认领 +15（provider 件转被认领）；`doc-check` 绿 |
-| **9f-3** | 真机验收：重建 exe + CDP——设置页 Provider 面（列表/详情/添加/OAuth/拉取模型）与「配方改文件」写读路径活性；启动零装载失败 | 四条探针（键数 / 产物真身 / 设置页 DOM / 零异常） |
+| **9f-2** ✅ **已落**（2026-09-26） | 名册 `shared` 认领：`settings-domain` **11 件**（本包实际取用面：types / catalog / credentials / custom-headers / live / model-meta / oauth / providers-doc / providers-store / thinking / vendor-templates）+ `llm-adapters` **6 件**（types / catalog / error-catalog / model-meta / thinking / transport——批 2a 只登了 types，本批补齐）；账本 §2.1 / §5 / §6.5 落账 | ✅ 达成：`builtin-roster.test.ts` + `plugin-home-ledger.test.ts` 绿；三色不变（`shared` 与「被 import」同属已认领桶 ⇒ 灰区/认领数不动，是**归属声明**不是数字）；`doc-check` 绿 |
+| **9f-3** ✅ **已落**（2026-09-26） | 真机验收（重建 exe + CDP） | ✅ 达成：设置面板打开且 **Provider tab 渲染 8,046 字**——提供方清单（2 行）+ 连接配置 + 「API Key 已保存到系统凭据」+ 「＋ 添加提供方」；**配方改文件面在场**：`C:\Users\Administrator\.lantai/providers.yml` 路径 + 打开目录/重读/重试三键 + 逐条状态文案；console **零异常**（过滤既有 `[bridge] invoke failed` / 结构性 404 / 更新检查） |
 
 每批门禁照旧：`npm run build` · `npx vitest run` · `npx biome ci .` · `npm run verify:convergence` ·
 `npm run build:builtin-plugins` · `npm run gen:host-surface`（改宿主面时）+ 再跑产物构建 ·

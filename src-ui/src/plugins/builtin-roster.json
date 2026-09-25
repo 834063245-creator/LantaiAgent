@@ -5,8 +5,15 @@
     "description": "LLM 协议方言适配（seam/llm 默认实现）——三方言与私有 helper 已随包（批 2a）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["llm"],
-    "shared": ["provider/types.ts"]
+    "shared": [
+      "provider/types.ts",
+      "provider/catalog.ts",
+      "provider/error-catalog.ts",
+      "provider/model-meta.ts",
+      "provider/thinking.ts",
+      "provider/transport.ts"
+    ],
+    "inject": ["llm"]
   },
   {
     "dir": "subagent-in-process",
@@ -83,6 +90,20 @@
     "description": "设置面板 + 命令双通道（Provider 控制台 8 件已随包，批 9d）",
     "entry": "index.ts",
     "hostModule": "host",
+    "shared": [
+      "provider/types.ts",
+      "provider/catalog.ts",
+      "provider/credentials.ts",
+      "provider/custom-headers.ts",
+      "provider/live.ts",
+      "provider/model-meta.ts",
+      "provider/oauth.ts",
+      "provider/providers-doc.ts",
+      "provider/providers-store.ts",
+      "provider/thinking.ts",
+      "provider/vendor-templates.ts"
+    ],
+
     "inject": ["panels", "commands"],
     "face": true
   },
