@@ -425,21 +425,25 @@ jobs:
                 # 极大：最快 8.5MB/s、最慢 <89KB/s ⇒ 单文件几十秒到半小时，日志静默那么久
                 # 会被误判成卡死）。⚠ 判完成用**标记文件**而非 kill -0：子进程结束后变
                 # 僵尸，kill -0 照样返回成功，循环永不退出。
-                rm -f /tmp/up.done /tmp/up.metrics /tmp/up.rc
+                rm -f /tmp/up.done /tmp/up.metrics /tmp/up.rc /tmp/up.progress
                 (
                   RC=0
-                  # 速度闸 + 自动重试：跨境链路慢多半是「节点/时段」问题（同类项目实测同一
-                  # 份产物 164KB/s ↔ 8.5MB/s 都有过），所以不傻等——
-                  #   --speed-limit/--speed-time：连续 120s 平均低于 256KB/s 就主动放弃（几分钟
-                  #     出结论，而不是等满一小时）
-                  #   --retry-all-errors：让上面这种主动放弃也触发重试（默认只重试网络层错误）
-                  curl -sS --fail-with-body --upload-file "$LOCAL" \
-                    --connect-timeout 30 --max-time 3600 \
+                  # 2026-09-26 第一次真实跑之后的三项校准：
+                  #   · 用 `-S` 而**不是** `-sS`：`-s` 会把 curl 的进度表一起静音，日志就只剩
+                  #     「已 Ns」，看不出传到多少（那次瞎等了 240s 只能靠猜）。进度表走 stderr，
+                  #     所以重定向到 /tmp/up.progress，由下面的心跳读最后一行。
+                  #   · `--speed-limit` 对**上传**是否生效**未证实**（curl manual 未明确），只当
+                  #     附加保险；真正的兜底是下面的 max-time 预算。
+                  #   · `--max-time 900` × (1+2 次重试) = 单文件最坏 45 分钟，两枚包 90 分钟，
+                  #     稳在 job 的 180 分钟上限内。此前写的 3600×4 = 4 小时会先被 job 上限杀掉，
+                  #     而且报一个看不出原因的错。
+                  curl -S --fail-with-body --upload-file "$LOCAL" \
+                    --connect-timeout 30 --max-time 900 \
                     --speed-limit 262144 --speed-time 120 \
-                    --retry 3 --retry-all-errors --retry-delay 10 \
+                    --retry 2 --retry-all-errors --retry-delay 10 \
                     "${HDRS[@]}" "$UP_URL" -o /tmp/up.json \
                     -w '%{http_code} %{size_upload} %{speed_upload} %{time_total}' \
-                    > /tmp/up.metrics 2>/dev/null || RC=$?
+                    > /tmp/up.metrics 2>/tmp/up.progress || RC=$?
                   echo "$RC" > /tmp/up.rc
                   : > /tmp/up.done
                 ) &
@@ -447,7 +451,12 @@ jobs:
                 while [ ! -f /tmp/up.done ]; do
                   sleep 30
                   SECS=$((SECS + 30))
-                  [ -f /tmp/up.done ] || echo "  …上传中：已 ${SECS}s / ${LSIZE} 字节"
+                  if [ -f /tmp/up.done ]; then break; fi
+                  # curl 进度表用 \r 原地刷新 → 换行后取最后一行，最后一列就是「当前速度」。
+                  # ⚠ 必须带 `|| true`：脚本开了 pipefail，grep 无匹配会让整条管道非零 → set -e 直接退出。
+                  RAW="$(tr '\r' '\n' < /tmp/up.progress 2>/dev/null | grep -v '^[[:space:]]*$' | grep -v '^curl: ' | tail -n1 || true)"
+                  NOW="$(printf '%s' "$RAW" | awk '{print $NF}' || true)"
+                  echo "  …上传中：已 ${SECS}s / ${LSIZE} 字节   当前速度 ${NOW:-?}   | ${RAW}"
                 done
                 wait || true
                 CODE=""; SENT=""; SPEED=""; TAKEN=""
@@ -458,7 +467,7 @@ jobs:
                 if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
                   head -c 600 /tmp/up.json 2>/dev/null; echo
                   if [ "$RC" = "28" ]; then
-                    echo "::error::上传链路太慢：已按速度闸主动放弃（连续 120s 低于 256KB/s），或达到 max-time。这是**链路问题不是代码问题**——同类项目在好节点上 458MB 都能传完。换时间重跑通常能撞上正常节点；若连续几次都慢，就该换存储出口（见文件头出口 A）。"
+                    echo "::error::上传链路太慢：curl 超时（exit 28）。单文件预算 15 分钟 × 最多 3 次尝试；150MB 在 15 分钟内传不完即 <170KB/s，属**链路问题不是代码问题**——同类项目在好节点上 458MB 都能传完（单文件超时只给 10 分钟）。换时段重跑通常能撞上正常节点；若连续几次都慢，再换存储出口（见文件头出口 A）。"
                   else
                     echo "::error::GitCode 附件上传失败：${ASCII}（HTTP ${CODE}，curl exit ${RC}）"
                   fi
