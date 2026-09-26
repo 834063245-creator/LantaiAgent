@@ -425,13 +425,22 @@ jobs:
                 # 极大：最快 8.5MB/s、最慢 <89KB/s ⇒ 单文件几十秒到半小时，日志静默那么久
                 # 会被误判成卡死）。⚠ 判完成用**标记文件**而非 kill -0：子进程结束后变
                 # 僵尸，kill -0 照样返回成功，循环永不退出。
-                rm -f /tmp/up.done /tmp/up.metrics
+                rm -f /tmp/up.done /tmp/up.metrics /tmp/up.rc
                 (
+                  RC=0
+                  # 速度闸 + 自动重试：跨境链路慢多半是「节点/时段」问题（同类项目实测同一
+                  # 份产物 164KB/s ↔ 8.5MB/s 都有过），所以不傻等——
+                  #   --speed-limit/--speed-time：连续 120s 平均低于 256KB/s 就主动放弃（几分钟
+                  #     出结论，而不是等满一小时）
+                  #   --retry-all-errors：让上面这种主动放弃也触发重试（默认只重试网络层错误）
                   curl -sS --fail-with-body --upload-file "$LOCAL" \
                     --connect-timeout 30 --max-time 3600 \
+                    --speed-limit 262144 --speed-time 120 \
+                    --retry 3 --retry-all-errors --retry-delay 10 \
                     "${HDRS[@]}" "$UP_URL" -o /tmp/up.json \
                     -w '%{http_code} %{size_upload} %{speed_upload} %{time_total}' \
-                    > /tmp/up.metrics 2>/dev/null
+                    > /tmp/up.metrics 2>/dev/null || RC=$?
+                  echo "$RC" > /tmp/up.rc
                   : > /tmp/up.done
                 ) &
                 SECS=0
@@ -443,11 +452,16 @@ jobs:
                 wait || true
                 CODE=""; SENT=""; SPEED=""; TAKEN=""
                 read -r CODE SENT SPEED TAKEN < /tmp/up.metrics || true
+                RC="$(cat /tmp/up.rc 2>/dev/null || echo '?')"
                 CODE="${CODE:-000}"
-                echo "上传结果：HTTP ${CODE}；已发送 ${SENT:-?} 字节；均速 ${SPEED:-?} B/s；耗时 ${TAKEN:-?} s"
+                echo "上传结果：HTTP ${CODE}；curl exit ${RC}；已发送 ${SENT:-?} 字节；均速 ${SPEED:-?} B/s；耗时 ${TAKEN:-?} s"
                 if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
                   head -c 600 /tmp/up.json 2>/dev/null; echo
-                  echo "::error::GitCode 附件上传失败：${ASCII}（HTTP $CODE）"
+                  if [ "$RC" = "28" ]; then
+                    echo "::error::上传链路太慢：已按速度闸主动放弃（连续 120s 低于 256KB/s），或达到 max-time。这是**链路问题不是代码问题**——同类项目在好节点上 458MB 都能传完。换时间重跑通常能撞上正常节点；若连续几次都慢，就该换存储出口（见文件头出口 A）。"
+                  else
+                    echo "::error::GitCode 附件上传失败：${ASCII}（HTTP ${CODE}，curl exit ${RC}）"
+                  fi
                   exit 1
                 fi
                 # 附件是**异步可见**的：轮询到它出现在 release 资产列表里再往下走
