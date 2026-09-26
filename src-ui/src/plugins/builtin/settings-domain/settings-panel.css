@@ -956,3 +956,174 @@ button.sp-btn.sp-btn-ok {
 .sp-install-toggle {
   letter-spacing: 0.24em;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   关于页 · 更新卡片（2026-09-26 可见性重构）：进度 / 来源 / 元信息 /
+   更新说明。纸面语汇：朱砂条 = 进度，弱线 = 分隔，等宽 = 机器读数。
+   ═══════════════════════════════════════════════════════════════ */
+
+.sp-upd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.sp-upd-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* 状态徽标：左侧朱砂短竖（纸面不涂底块） */
+.sp-upd-badge {
+  font-family: var(--f-song);
+  font-size: calc(13px * var(--font-scale));
+  font-weight: 600;
+  color: var(--seal-deep);
+  border-left: 3px solid var(--seal);
+  padding: 1px 0 1px 8px;
+  letter-spacing: 0.04em;
+}
+
+.sp-upd-badge-ok {
+  color: var(--pass);
+  border-left-color: var(--pass);
+}
+
+/* 元信息：双列（左标签 / 右读数） */
+.sp-upd-meta {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 4px 12px;
+  width: 100%;
+  margin: 0;
+  font-size: calc(12px * var(--font-scale));
+}
+
+.sp-upd-meta dt {
+  color: var(--ink-3);
+}
+
+.sp-upd-meta dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
+
+/* 下载直链（来源取证）：整段可选中复制 */
+.sp-upd-url {
+  width: 100%;
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  color: var(--ink-3);
+  background: var(--paper-deep);
+  border: var(--rule-soft);
+  padding: 4px 6px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* 更新说明：默认折叠；展开限高滚动（changelog 可以很长，不许把面板撑爆） */
+.sp-upd-notes {
+  width: 100%;
+  background: var(--paper-deep);
+  border: var(--rule-soft);
+  padding: 6px 8px;
+}
+
+.sp-upd-notes > summary {
+  cursor: pointer;
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
+  letter-spacing: 0.06em;
+}
+
+.sp-upd-notes > pre {
+  margin: 6px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+/* 进度条：细朱砂条 */
+.sp-upd-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--paper-deep);
+  border: var(--rule-soft);
+  overflow: hidden;
+}
+
+.sp-upd-bar-fill {
+  height: 100%;
+  background: var(--seal);
+  transition: width 180ms linear;
+}
+
+/* 总量未知（服务端未给 Content-Length）：不确定条，不假装百分比 */
+.sp-upd-bar-fill.is-unknown {
+  width: 35%;
+  animation: sp-upd-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes sp-upd-slide {
+  0% {
+    margin-left: 0;
+  }
+
+  50% {
+    margin-left: 65%;
+  }
+
+  100% {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sp-upd-bar-fill.is-unknown {
+    width: 100%;
+    animation: none;
+    opacity: 0.45;
+  }
+}
+
+/* 读数行：百分比重、其余等宽 */
+.sp-upd-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
+}
+
+.sp-upd-stat-em {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+
+.sp-upd-ok {
+  color: var(--pass);
+}
+
+.sp-upd-err {
+  color: var(--warn);
+}
+
+/* 开关字段与注疏通栏——外层是 flex-start 对齐的竖列 */
+.sp-upd > .sp-field,
+.sp-upd > .sp-hint-sub {
+  width: 100%;
+}

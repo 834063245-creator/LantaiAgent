@@ -20,7 +20,6 @@ import './settings-panel.css';
 import {
   activationConflict,
   activationSkipped,
-  autoUpdateCheckEnabled,
   ConfirmDialog,
   canvasWheelMode,
   iconHtml,
@@ -49,6 +48,7 @@ import { ProviderPage } from './ProviderPage';
 import { compositionDir, createPresetFromTemplate, rescanPresets } from './preset-authoring';
 import { persistSecrets, removeSecret } from './provider-data';
 import { SkillsPage } from './SkillsPage';
+import { UpdateSection } from './UpdateSection';
 
 type Tab = 'provider' | 'agent' | 'display' | 'plugins' | 'skills' | 'mcp' | 'about';
 
@@ -190,16 +190,10 @@ const SettingsPanelApp: React.FC<{
   // 壳行 shell-update-check 的启动自动检查与面板手动检查共享同一状态面：
   // 自动检查发现的新版本，打开面板即见（不再自持 useState 各写各的）。
   // mount 即 markBadgeSeen：用户已看见，入口角标熄灭。
-  const updateStatus = useUpdateStore((s) => s.status);
-  const updateMsg = useUpdateStore((s) => s.message);
+  // 更新卡片的渲染与进度订阅在 UpdateSection（独立成件——进度按 ~150ms 发布，
+  // 整面板跟着重渲是纯浪费）。
   useEffect(() => {
     useUpdateStore.getState().markBadgeSeen();
-  }, []);
-  const checkUpdate = useCallback(async () => {
-    await useUpdateStore.getState().checkForUpdates({ manual: true });
-  }, []);
-  const doUpdate = useCallback(async () => {
-    await useUpdateStore.getState().downloadAndInstall();
   }, []);
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -842,73 +836,13 @@ const SettingsPanelApp: React.FC<{
                 <span>Wenbing Jing</span>
               </div>
             </div>
-            <div className="sp-section">
-              <div className="sp-section-title">更新</div>
-              <div style={{ marginTop: 8 }}>
-                {updateStatus === 'idle' && (
-                  <button type="button" className="sp-btn sp-btn-save" onClick={checkUpdate}>
-                    检查更新
-                  </button>
-                )}
-                {updateStatus === 'checking' && <span className="sp-hint">检查中…</span>}
-                {updateStatus === 'available' && (
-                  <div>
-                    <div className="sp-hint" style={{ marginBottom: 8 }}>
-                      {updateMsg}
-                    </div>
-                    <button type="button" className="sp-btn sp-btn-save" onClick={doUpdate}>
-                      下载并安装
-                    </button>
-                  </div>
-                )}
-                {updateStatus === 'downloading' && <span className="sp-hint">{updateMsg}</span>}
-                {updateStatus === 'done' && (
-                  <div>
-                    <span className="sp-hint" style={{ color: 'var(--pass)' }}>
-                      {updateMsg}
-                    </span>
-                    <br />
-                    <button
-                      type="button"
-                      className="sp-btn sp-btn-cancel"
-                      style={{ marginTop: 8 }}
-                      onClick={checkUpdate}
-                    >
-                      再检查一次
-                    </button>
-                  </div>
-                )}
-                {updateStatus === 'error' && (
-                  <div>
-                    <span className="sp-hint" style={{ color: 'var(--warn)' }}>
-                      检查失败: {updateMsg}
-                    </span>
-                    <br />
-                    <button
-                      type="button"
-                      className="sp-btn sp-btn-cancel"
-                      style={{ marginTop: 8 }}
-                      onClick={checkUpdate}
-                    >
-                      重试
-                    </button>
-                  </div>
-                )}
-                <div className="sp-field" style={{ marginTop: 12 }}>
-                  <label className="sp-label sp-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={autoUpdateCheckEnabled(settings)}
-                      onChange={(e) => {
-                        commit({ ...settings, updates: { autoCheck: e.target.checked } });
-                      }}
-                    />
-                    启动时自动检查更新
-                  </label>
-                  <div className="sp-hint-sub">发现新版本时在设置入口显示朱砂角标；关闭后仍可手动检查。</div>
-                </div>
-              </div>
-            </div>
+            <UpdateSection
+              currentVersion={appVersion}
+              settings={settings}
+              onAutoCheckChange={(enabled) => {
+                commit({ ...settings, updates: { autoCheck: enabled } });
+              }}
+            />
           </div>
         </div>
 
