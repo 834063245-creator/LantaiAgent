@@ -373,6 +373,14 @@ jobs:
                 "$API/releases/$TAG/upload_url" 2>/dev/null || true
             }
           else
+            # awscli 在 GitHub 托管镜像上是预装的；万一没有就现场装（美国 runner 拉
+            # awscli 官方 zip 很快）。不装的话第一步就是 "aws: command not found" 白跑一轮。
+            if ! command -v aws >/dev/null 2>&1; then
+              echo "镜像里没有 awscli，现场安装…"
+              curl -sS -o /tmp/awscliv2.zip "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+              unzip -q -o /tmp/awscliv2.zip -d /tmp
+              sudo /tmp/aws/install --update >/dev/null
+            fi
             export AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY_ID}"
             export AWS_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY}"
             export AWS_DEFAULT_REGION="${S3_REGION:-auto}"
