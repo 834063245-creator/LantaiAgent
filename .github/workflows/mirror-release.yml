@@ -385,6 +385,11 @@ jobs:
             export AWS_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY}"
             export AWS_DEFAULT_REGION="${S3_REGION:-auto}"
             export AWS_EC2_METADATA_DISABLED=true
+            # awscli ≥ 2.23 默认给 PUT 附带 CRC32 校验头（x-amz-checksum-crc32），
+            # 而 R2 / MinIO 这类 S3 兼容实现会以 NotImplemented 直接拒收 —— 症状是
+            # 「上传失败」但看不出原因。这两个环境变量是官方开关，回落成旧行为。
+            export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
+            export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
             KEY_PREFIX="${S3_PREFIX:-lantai}/${TAG}"
           fi
 
