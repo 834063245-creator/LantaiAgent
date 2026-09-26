@@ -243,6 +243,17 @@ jobs:
           path: staging/hologram-engine-win32-x64.exe
           retention-days: 3
 
+      # npm ci 会跑 postinstall（scripts/install.mjs）——它按版本从 GitHub Release 下载引擎二进制。
+      # 而本文件末尾的 attach-assets 腿才是挂资产的地方（各腿不再自己写 release），
+      # 这一刻 release 上还没有这个附件 ⇒ 先把刚构建好的引擎放进 bundle 的 bin/
+      # （install.mjs 见到该文件就跳过下载）。发布内容不受影响：package.json 的 files 不含 bin/，
+      # 用户装包时仍从 Release 取二进制。
+      - name: Pre-place engine binary for the postinstall step
+        shell: bash
+        run: |
+          mkdir -p dsh-bundle/bin
+          cp target/release/hologram-engine.exe dsh-bundle/bin/hologram-engine.exe
+
       - name: Install plugin build deps
         working-directory: dsh-bundle
         run: npm ci || npm install --no-audit --no-fund
@@ -385,6 +396,9 @@ jobs:
     # release 本体（标题 / changelog 正文 / 签名产物 / latest.json）由 desktop 腿的
     # tauri-action 建，所以这一腿排在它之后。
     needs: [engine-cli, dsh-bundle, desktop]
+    # always()：引擎资产是主线交付物，不能因为 dsh 腿红就整条跳过（那正是 2026-09-26
+    # run #170 的形态：三腿绿、dsh 红 ⇒ attach 被 skip、引擎包一个都没挂上）。
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

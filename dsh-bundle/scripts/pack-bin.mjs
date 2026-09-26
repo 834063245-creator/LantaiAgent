@@ -1,11 +1,12 @@
 // pack-bin.mjs — copy the built HoloGram engine + runtime deps into this
 // bundle's bin/ so they ship with the published package.
 //
-// Sources:
-//   engine/target/release/hologram-engine.exe   (the compiled engine, self-contained)
-//   engine/onnxruntime.dll                      (optional, for MiniLM semantic features)
+// Sources（路径 2026-09-26 校正：根 Cargo.toml 是 workspace，成员产物落**仓库根**
+//  的 target/release/，不是 engine/target/release/）：
+//   target/release/hologram-engine.exe   (the compiled engine, self-contained)
+//   engine/onnxruntime.dll               (optional, for MiniLM semantic features)
 //
-// You must build the engine first: cd engine && cargo build --release
+// You must build the engine first: cargo build --release -p hologram-engine
 import { mkdirSync, copyFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +18,7 @@ const BIN_DIR = join(BUNDLE_ROOT, 'bin')
 const artifacts = [
   {
     label: 'engine binary',
-    src: join(REPO_ROOT, 'engine', 'target', 'release', 'hologram-engine.exe'),
+    src: join(REPO_ROOT, 'target', 'release', 'hologram-engine.exe'),
     dst: join(BIN_DIR, 'hologram-engine.exe'),
     required: true,
   },
