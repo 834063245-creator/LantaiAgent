@@ -1,3 +1,6 @@
+# ⛔ 停放中（2026-09-26）：自动镜像已关闭 —— 跨境上传/下载都传不动大文件，属结构性问题。
+#    现状与恢复条件见下方 `on:` 之前的说明。清单那半（Gitee raw）已实测通过，不动。
+#
 # 国内更新源镜像：GitHub Release（权威源）→ Gitee（更新清单）+ GitCode（安装包）
 #
 # 为什么这么拆（2026-09-26 实测结论，别按直觉改）：
@@ -47,11 +50,31 @@
 name: Mirror Release
 
 on:
-  # Release 工作流（打 v* tag）跑完之后自动镜像
-  workflow_run:
-    workflows: ['Release']
-    types: [completed]
-  # 手动回填历史版本；tag 留空则取仓库最新 release
+  # ⛔ 自动镜像已停放（2026-09-26）——原因与恢复条件见下方说明；恢复只需取消注释 workflow_run。
+  #
+  # workflow_run:
+  #   workflows: ['Release']
+  #   types: [completed]
+  #
+  # ▼ 停放原因（结构性，不是参数问题，别再靠调超时/砍回读去救）：
+  #   · GitHub 的美国 runner → 国内 GitCode 传 161MB，实测 < 89KB/s，撞满我设的
+  #     `--max-time 1800`（运行时长 30m23s 与该上限精确吻合）。
+  #   · 反向也不行：本机实测连不上 GitHub 的 release 资产域（HTTP 000 / SSL 连接失败），
+  #     所以「下载到本地再上传」这条补救路同样不通。
+  #   · 结论：**两个跨境方向都传不动大文件**。只要安装包落在国内主机，从美国 CI 上传就
+  #     必然跨境慢传（换 Gitee 也一样）。
+  #
+  # ▼ 恢复条件：先选定安装包存放位置，三选一（详见对话/后续 ADR）：
+  #   A. 阿里云 OSS 国内 bucket + 传输加速（上传走加速通道、下载国内最快，有流量费）
+  #   B. Cloudflare R2（免费；上传快、国内实测 2.4MB/s；r2.dev 默认域名有速率限制）
+  #   C. 安装包瘦身 86MB（把 model.onnx 移出 bundle.resources 改首用下载）后挂 Gitee
+  #   选定后：取消注释上面的 workflow_run，并把「上传全部资产并逐字节读回校验」那一步
+  #   换成对应存储的客户端（清单仍是 Gitee raw，那半已实测通过，不动）。
+  #
+  # ▼ 停放期间的客户端行为：Gitee 清单不存在（404）⇒ updater 继续试下一个端点 ⇒ 回落
+  #   GitHub —— 与本次改动之前完全一致，**没有任何用户受影响**。
+  #
+  # ▼ 手动触发保留：可用于试通新的存储通道（手动跑才会执行，不会白烧 CI 时间）。
   workflow_dispatch:
     inputs:
       tag:
