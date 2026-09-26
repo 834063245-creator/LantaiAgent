@@ -165,6 +165,12 @@
 「这个资产退役后，还有谁需要它在包里？」答「没人」→ 三面全清；答「用户/外部消费者」→
 ②要留，但**必须留得可见**（设置面板/文档写明它在、怎么用），否则就是 B2 的隐性形态。
 
+### B4（2026-09-26 补记）— 更新链路把唯一源押在境外 = 国内用户「永远已是最新」
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| B4 | `src-tauri/tauri.conf.json` 的 `plugins.updater.endpoints`（原为单条 GitHub `releases/latest/download/latest.json`） | **分发面单点依赖境外**：`endpoints` 只有一条 GitHub 地址，而 release 资产在国内常年超时/被重置 ⇒ 应用内自动更新**静默失效**（`update-store` 是 best-effort：失败只 `console.warn` + error 态，不弹提示）——用户侧表现是「检查更新永远说已是最新」。B2 的第三种形态：**通道还在，只是没人用得上** | ✅ **已拆（2026-09-26）**：`endpoints` 改数组——首位 Gitee raw 清单（`raw/updater-manifest/latest.json`，实测任意路径/类型稳定 200 + `Cache-Control: max-age=60`），GitHub 兜底；前端 `update-store` 补**逐端点** 10s 超时（插件配置**没有** `timeout` 字段，只能在这一层给；不设则被墙端点要先干等系统 TCP 超时 ~21s 才轮到兜底）。镜像链路 = 新增 `.github/workflows/mirror-release.yml`（GitHub Release 仍是权威源 → GitCode 附件存 151MB 安装包 + Gitee raw 存 1KB 清单）。⚠ 两条顺序纪律写在该工作流头注：**清单必须最后上传**（updater 在首个解析成功的端点即 `break`）· **清单缺失必须保持 404**（合法但陈旧的占位清单会遮住 GitHub 兜底）。代价：端点编译在 exe 里，**存量用户必须手动装一次**新版才切得过来 |
+
 ### B4（2026-09-16 · 用户实机报）— 「随包了但找不到开关，拨了也没回执」= 能力的**可发现性/可验证性**断层
 
 | # | 位置 | 雷 | 触发 → 后果 | 状态 |

@@ -10,6 +10,9 @@
 #      以 `--config src-tauri/no-updater.local.json` 覆盖（本地无签名密码，也不需要 updater 产物）。
 #   2. updater 端点（tauri.conf.json `plugins.updater.endpoints`）的**仓库名必须真实存在**：
 #      2026-09 改名曾写成 `/Lantai/`（该仓库不存在）⇒ 端点 404。正确为 `/LantaiAgent/`。
+#      2026-09-26 起 `endpoints` 是**数组**：首位是 Gitee 上的国内镜像清单，GitHub 退为兜底。
+#      镜像链路由 .github/workflows/mirror-release.yml 负责，它会断言首位端点与镜像目标一致
+#      （改地址必须两处一起过，否则镜像整轮判红）。
 #
 # 签名密钥注意：升级签名的私钥密码若已遗失，**不要**贸然重新生成密钥对——已安装的旧客户端
 # 内嵌的是旧 pubkey，用新密钥签名会导致旧客户端校验失败（用户须手动重装一次）。

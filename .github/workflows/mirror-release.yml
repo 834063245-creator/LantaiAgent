@@ -1,0 +1,321 @@
+# 国内更新源镜像：GitHub Release（权威源）→ Gitee（更新清单）+ GitCode（安装包）
+#
+# 为什么这么拆（2026-09-26 实测结论，别按直觉改）：
+#   · 安装包 ~151MB → 只能去 GitCode 发行版附件。Gitee 免费版附件单文件上限 100MB，
+#     装不下；GitCode 实测有人传过 181MB 的包。
+#   · 更新清单 ~1KB → 放 Gitee raw。实测 Gitee raw 对任意路径/任意文件类型都稳定 200
+#     （AGENTS.md / 嵌套 docs/README.md / src-tauri/tauri.conf.json 全通），
+#     且 Cache-Control: public, max-age=60 —— 发布后一分钟内全网可见。
+#     GitCode raw 对新仓库是**渐进可用**的（同一路径先 403 后 200），当更新链路是赌博。
+#
+# 客户端侧（src-tauri/tauri.conf.json 的 plugins.updater.endpoints）：
+#   [0] 本工作流产出的 Gitee 清单   ← 国内优先
+#   [1] GitHub Release latest.json  ← 兜底
+#
+# ⚠ 两条不能违反的顺序纪律：
+#   1. **清单必须最后上传**。tauri-plugin-updater 的 check() 是
+#      `for url in endpoints { ... break }`——第一个「成功解析」的端点就跳出循环。
+#      清单先于安装包可见 = 客户端拿到指针却下不到包。
+#   2. **清单不存在时必须保持 404**，绝不能放一个 version 0.0.0 的占位清单：
+#      404（非 2XX）会让客户端继续试下一个端点 ⇒ 回落 GitHub；
+#      而合法但陈旧的清单会**遮住** GitHub 兜底，用户会静默地「永远已是最新」。
+#
+# 前置（仓库级配置，未配 GITCODE_REPOSITORY 时整轮跳过镜像）：
+#   vars.GITCODE_REPOSITORY        <owner>/<repo>，如 gcw_aU7Q6cqH/LantaiAgent
+#   vars.GITEE_REPOSITORY          <owner>/<repo>，如 jingwen-bing/lantai-agent
+#   secrets.GITCODE_ACCESS_TOKEN   对目标 GitCode 仓库有 Release 写权限的私人令牌
+#   secrets.GITEE_ACCESS_TOKEN     对目标 Gitee 仓库有代码推送权限的私人令牌
+#
+# 失败语义：本工作流失败**不影响** GitHub 上的正式发布（权威源）。
+#   重跑安全：上传后一律公开读回逐字节比对；清单推完轮询等 CDN 生效。
+name: Mirror Release
+
+on:
+  # Release 工作流（打 v* tag）跑完之后自动镜像
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
+  # 手动回填历史版本；tag 留空则取仓库最新 release
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要镜像的 tag（如 v1.0.3）；留空 = 最新 release'
+        required: false
+        type: string
+
+concurrency:
+  group: mirror-release
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITCODE_TOKEN: ${{ secrets.GITCODE_ACCESS_TOKEN }}
+      GITEE_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
+      GITCODE_REPO: ${{ vars.GITCODE_REPOSITORY }}
+      GITEE_REPO: ${{ vars.GITEE_REPOSITORY }}
+      INPUT_TAG: ${{ github.event.inputs.tag }}
+      RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解析 tag 与前置检查
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ -z "${GITCODE_REPO}" ] || [ -z "${GITEE_REPO}" ]; then
+            echo "::notice::未配置 vars.GITCODE_REPOSITORY / vars.GITEE_REPOSITORY —— 跳过国内镜像"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${GITCODE_TOKEN}" ] || [ -z "${GITEE_TOKEN}" ]; then
+            echo "::error::缺少 secrets.GITCODE_ACCESS_TOKEN / secrets.GITEE_ACCESS_TOKEN"
+            exit 1
+          fi
+
+          TAG="${INPUT_TAG:-${RUN_BRANCH:-}}"
+          if [ -z "$TAG" ]; then
+            TAG="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)"
+          fi
+
+          # 清单地址必须与客户端写死的首个端点一致，否则镜像白做
+          ENDPOINT="$(jq -r '.plugins.updater.endpoints[0]' src-tauri/tauri.conf.json)"
+          EXPECTED="https://gitee.com/${GITEE_REPO}/raw/updater-manifest/latest.json"
+          if [ "$ENDPOINT" != "$EXPECTED" ]; then
+            echo "::error::tauri.conf.json 的首个更新端点与镜像目标不一致"
+            echo "  端点: $ENDPOINT"
+            echo "  期望: $EXPECTED"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "manifest=$EXPECTED" >> "$GITHUB_OUTPUT"
+          echo "解析结果：tag=$TAG"
+          echo "清单地址：$ENDPOINT"
+
+      - name: 从 GitHub Release 取件（清单 + 它指向的那个更新包）
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist --pattern latest.json
+
+          # 不猜文件名：直接问清单「windows 的更新包是哪个」。资产名可能是中文
+          # （兰台_1.0.3_x64-setup.exe），而清单里的 url 是百分号编码的，必须先解码。
+          ENC="$(jq -r '.platforms | to_entries[] | select(.key|startswith("windows")) | .value.url' dist/latest.json | head -n1)"
+          if [ -z "$ENC" ] || [ "$ENC" = "null" ]; then
+            echo "::error::latest.json 里没有 windows 平台的 url 条目"
+            cat dist/latest.json
+            exit 1
+          fi
+          ASSET="$(python3 -c 'import sys,urllib.parse,os;print(urllib.parse.unquote(os.path.basename(sys.argv[1])))' "$ENC")"
+          echo "清单指向的更新包：$ASSET"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist --pattern "$ASSET"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist --pattern "$ASSET.sig"
+
+          # 上传到 GitCode 时改用 ASCII 名：附件名会进 URL 路径，中文名要百分号编码，
+          # 国内平台对非 ASCII 路径的处理不一定稳。字节不变 ⇒ 签名依然有效。
+          VER="$(jq -r .version dist/latest.json)"
+          ASCII="Lantai_${VER}_x64-setup.${ASSET##*.}"
+          mv "dist/$ASSET" "dist/$ASCII"
+          mv "dist/$ASSET.sig" "dist/$ASCII.sig"
+          {
+            echo "asset=$ASCII"
+            echo "version=$VER"
+          } >> "$GITHUB_ENV"
+          ls -l dist
+
+      - name: 建（或复用）GitCode 发行版
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          API="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}"
+          auth=(-H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
+
+          curl -sS "${auth[@]}" "$API/releases?per_page=100" -o /tmp/releases.json
+          REL_ID="$(jq -r --arg t "$TAG" '.[]? | select(.tag_name==$t) | .id' /tmp/releases.json | head -n1)"
+          if [ -z "$REL_ID" ] || [ "$REL_ID" = "null" ]; then
+            echo "GitCode 上还没有 $TAG 的发行版，创建（先置 pre，清单推完再提 latest）"
+            jq -n --arg t "$TAG" \
+              '{tag_name:$t, name:$t, body:("镜像自 GitHub Release "+$t+"（字节与签名原样，未重新构建）"), release_status:"pre"}' \
+              > /tmp/create.json
+            curl -sS "${auth[@]}" -H 'Content-Type: application/json' -X POST \
+              --data @/tmp/create.json "$API/releases" -o /tmp/created.json \
+              -w 'create_http=%{http_code}\n' || true
+            head -c 400 /tmp/created.json 2>/dev/null; echo
+            REL_ID="$(jq -r '.id // empty' /tmp/created.json 2>/dev/null || echo '')"
+          else
+            echo "GitCode 上已有 $TAG 的发行版（id=$REL_ID），复用"
+          fi
+          if [ -z "$REL_ID" ]; then
+            echo "::error::拿不到 GitCode 发行版 id"
+            exit 1
+          fi
+          echo "rel_id=$REL_ID" >> "$GITHUB_ENV"
+
+      - name: 上传安装包
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          API="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}"
+          auth=(-H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
+          LOCAL="dist/${asset}"
+
+          # GitCode 文档只成文了「下载附件」端点，上传端点没成文 —— 两种形状都试：
+          # tag 形式（与下载端点同构）/ release id 形式（Gitee v5 的形状）。
+          upload() {
+            curl -sS "${auth[@]}" -X POST -F "file=@${LOCAL}" "$1" \
+              -o /tmp/up.json -w '%{http_code}' || echo '000'
+          }
+          CODE="$(upload "$API/releases/$TAG/attach_files")"
+          echo "上传（tag 形式）HTTP $CODE"
+          if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
+            head -c 400 /tmp/up.json 2>/dev/null; echo
+            CODE="$(upload "$API/releases/$REL_ID/attach_files")"
+            echo "上传（release id 形式）HTTP $CODE"
+          fi
+          if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
+            head -c 600 /tmp/up.json 2>/dev/null; echo
+            echo "::error::GitCode 附件上传失败（两种端点形状都没过）"
+            exit 1
+          fi
+
+      - name: 公开读回逐字节比对，定出安装包 URL
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          LOCAL="dist/${asset}"
+          CANDIDATE="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}/releases/${TAG}/attach_files/${asset}/download"
+          if curl -sfL --retry 3 --retry-delay 5 \
+               -H 'User-Agent: tauri-plugin-updater/2.10.1' "$CANDIDATE" -o /tmp/back.bin; then
+            if cmp -s "$LOCAL" /tmp/back.bin; then
+              echo "公开读回逐字节一致：$CANDIDATE"
+              echo "installer_url=$CANDIDATE" >> "$GITHUB_ENV"
+            else
+              echo "::error::读回内容与本地不一致（$(stat -c%s /tmp/back.bin) vs $(stat -c%s "$LOCAL") 字节）"
+              exit 1
+            fi
+          else
+            echo "::error::公开地址取不到附件：$CANDIDATE"
+            exit 1
+          fi
+
+      - name: 生成镜像清单（只改 url，保住签名）
+        if: steps.resolve.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          python3 - "$asset" "$installer_url" <<'PY'
+          import json, os, sys, urllib.parse
+          asset, new_url = sys.argv[1], sys.argv[2]
+          m = json.load(open('dist/latest.json', encoding='utf-8'))
+          hit = 0
+          for key, val in m.get('platforms', {}).items():
+              if not key.startswith('windows'):
+                  continue
+              name = urllib.parse.unquote(os.path.basename(val.get('url', '')))
+              if name == asset:
+                  val['url'] = new_url
+                  hit += 1
+          if hit == 0:
+              sys.exit(f'清单里没有任何 windows 条目的 url 指向本次上传的资产 {asset}')
+          # version / notes / pub_date / signature 一律原样：签名覆盖的是安装包字节，
+          # 换 URL 不影响校验；重新签名反而会让老客户端校验失败。
+          json.dump(m, open('dist/latest.mirror.json', 'w', encoding='utf-8'),
+                    ensure_ascii=False, indent=2)
+          print(f'改写 {hit} 条 windows 条目')
+          PY
+          cat dist/latest.mirror.json
+
+      - name: 推清单到 Gitee（updater-manifest 分支）
+        if: steps.resolve.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          GITEE_USER="${GITEE_REPO%%/*}"
+          mkdir -p manifest && cd manifest
+          cp ../dist/latest.mirror.json latest.json
+          git init -q -b updater-manifest
+          git add latest.json
+          git -c user.email="mirror@users.noreply.github.com" \
+              -c user.name="lantai-mirror" \
+              -c commit.gpgsign=false \
+              commit -q -m "chore(updater): 镜像 ${version}"
+          # 单文件分支：每次强推一个孤儿 commit，不留历史噪声；不碰 main/master。
+          git push --force \
+            "https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_REPO}.git" \
+            HEAD:refs/heads/updater-manifest
+
+      - name: 验清单已公开可见（无凭据）
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          MANIFEST: ${{ steps.resolve.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          # Gitee raw 有 60s CDN 缓存 —— 清单不是瞬时可见，轮询等它。
+          for i in $(seq 1 20); do
+            if curl -sfL -H 'User-Agent: tauri-plugin-updater/2.10.1' \
+                 -H 'Accept: application/json' "$MANIFEST" -o /tmp/m.json; then
+              V="$(jq -r .version /tmp/m.json 2>/dev/null || echo '')"
+              U="$(jq -r '.platforms | to_entries[0].value.url' /tmp/m.json 2>/dev/null || echo '')"
+              if [ "$V" = "$version" ] && [ "$U" = "$installer_url" ]; then
+                echo "清单已公开可见且指向本次产物（第 ${i} 次探测）"
+                exit 0
+              fi
+              echo "第 ${i} 次：清单仍是旧版（version=$V）—— 等 CDN"
+            else
+              echo "第 ${i} 次：清单还取不到 —— 等 CDN"
+            fi
+            sleep 15
+          done
+          echo "::error::清单 5 分钟内未变成新版本；附件已就位，但客户端暂时读不到新清单"
+          exit 1
+
+      - name: 提为正式发行版
+        if: steps.resolve.outputs.skip != 'true'
+        continue-on-error: true
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          API="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}"
+          # 纯展示面（附件下载不依赖它）—— 失败只告警，不判红整轮。
+          curl -sS -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" -H 'Content-Type: application/json' \
+            -X PATCH --data '{"release_status":"latest"}' "$API/releases/${REL_ID}" \
+            -o /tmp/promote.json -w 'promote_http=%{http_code}\n' || true
+          head -c 200 /tmp/promote.json 2>/dev/null; echo
+
+      - name: 汇总
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          MANIFEST: ${{ steps.resolve.outputs.manifest }}
+        run: |
+          {
+            echo "## 国内更新源镜像完成"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| tag | \`${TAG}\` |"
+            echo "| 版本 | \`${version}\` |"
+            echo "| 更新清单（Gitee raw） | \`${MANIFEST}\` |"
+            echo "| 安装包（GitCode 附件） | \`${installer_url}\` |"
+            echo ""
+            echo "客户端 \`plugins.updater.endpoints\` 首位即上面的清单地址；GitHub 那份保持兜底。"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -55,6 +55,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFFNEQ0NjAxMjNBMkQ1NTMKUldSVDFhSWpBVVpOcmxXc1ZBN3Q4c0pzbEtrb3dWckk4RUU5c1ozNlJ0d1ZvYTZlOWFSTmVqQ0QK",
       "endpoints": [
+        "https://gitee.com/jingwen-bing/lantai-agent/raw/updater-manifest/latest.json",
         "https://github.com/834063245-creator/LantaiAgent/releases/latest/download/latest.json"
       ]
     }
