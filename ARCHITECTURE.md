@@ -677,6 +677,15 @@ src-ui/src/
 老项目 `.lantai` 下的引擎文件（`hologram.db` / `vectors.*`）由引擎启动时的 `migrate_engine_data` 搬迁；
 `.lantai/dataflow/` 等图谱时代目录随内置接线退役，不再是现状。
 
+**卸载期的用户级清理**：卸载器在用户选择「删除应用程序数据」时调 `lantai.exe --purge-user-data`——
+目录清单真源 `src-tauri/src/purge.rs`，挂接点 = NSIS 钩子 `nsis/installer-hooks.nsh`（安装器不复述路径）。
+覆盖 `~/.lantai`、改名老位 `~/.hologram`、以及 `%APPDATA%`/`%LOCALAPPDATA%` 下兰台目录（含旧
+identifier）。**缺省不删**（勾选框缺省不勾；静默/被动卸载与自动更新的 `/UPDATE` 路径勾选态恒为 0，
+脚本化完全卸载走 `uninstall.exe /S /PURGE-DATA`）；**工作区级 `{workspace}/.lantai` 与
+`{workspace}/.hologram` 永不随卸载删除**。MSI 侧当前**没有**这条通路（Tauri 的 WiX fragment 装不进
+自定义动作，实测已发布的 MSI 里从来没有过），MSI 用户走同一条 exe 命令手动清理。见
+[`docs/plans/uninstall-purge-plan.md`](docs/plans/uninstall-purge-plan.md)。
+
 ---
 
 ## 10. 关键设计决策

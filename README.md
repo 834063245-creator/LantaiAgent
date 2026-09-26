@@ -39,6 +39,17 @@
 **1. 装（Windows）**：[Releases](https://github.com/834063245-creator/LantaiAgent/releases) 下载安装包
 （`.msi` / `.exe`）→ 启动。从源码：仓库根 `build.cmd`（会先跑前端构建）。
 
+> **卸载**：设置 → 应用 → 兰台 → 卸载，确认页有「**删除应用程序数据**」勾选框（缺省不勾）。
+> 勾上则一并清除用户级数据：`~/.lantai`（设置 / 全局记忆 / 技能 / 插件与其数据 / 老会话备份）、
+> 改名老位 `~/.hologram`，以及 `%APPDATA%`/`%LOCALAPPDATA%` 下的兰台目录（窗口状态、WebView2
+> 缓存、加密的 API Key）。**不勾 = 一个字节都不删**，重装后原样继续（应用内自动更新走的也是这条
+> 卸载路径，永不删数据）。工作区目录里的 `{项目}/.lantai`（会话正文、附图、画布布局）属于你的
+> 项目文件，卸载器**不会**动它；脚本化完全卸载（GUI 勾选框的等价物）：
+> `uninstall.exe /S /PURGE-DATA`（不带 `/PURGE-DATA` 的静默卸载不删任何数据）。
+> **MSI（`.msi`）安装版当前没有这条卸载清理**——Tauri 的 WiX fragment 装不进自定义动作
+> （[tauri#5970](https://github.com/tauri-apps/tauri/issues/5970)，本机实测 MSI 里从来没有过清理动作）；
+> 需要彻底清理时先跑一次安装目录里的 `lantai.exe --purge-user-data`，再到设置 → 应用里卸载。
+
 **2. 进工作区**：首次启动落在**案卷首页**——新建工作区（默认建在 `~/Documents/兰台/<名字>`），或指定一个
 已有目录：一个工作区就是一张纸。
 

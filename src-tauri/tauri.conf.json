@@ -44,10 +44,13 @@
     },
     "windows": {
       "wix": {
-        "language": "zh-CN",
-        "fragmentPaths": [
-          "wix/cleanup.wxs"
-        ]
+        "language": "zh-CN"
+      },
+      "nsis": {
+        "languages": [
+          "SimpChinese"
+        ],
+        "installerHooks": "nsis/installer-hooks.nsh"
       }
     }
   },

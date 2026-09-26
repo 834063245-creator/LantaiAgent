@@ -43,6 +43,7 @@ mod plugin_assets;
 mod engine_assets;
 mod composition_watcher;
 mod providers_watcher;
+mod purge;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -63,6 +64,15 @@ fn get_active_project(
 }
 
 fn main() {
+    let context = tauri::generate_context!();
+
+    // 卸载期用户数据清理（安装器的代码路径，见 src/purge.rs）：
+    // 命中 `--purge-user-data` 就地清理并退出——**绝不进入任何初始化**，
+    // 否则边删边写（watcher/日志/凭据重建），用户看到的还是「没卸干净」。
+    if let Some(code) = purge::cli_entry(&context.config().identifier) {
+        std::process::exit(code);
+    }
+
     let workspace_state: WorkspaceState = Arc::new(Mutex::new(None));
     // L1 应用层：按工作区实例化的数据上下文注册表（会话 attach 的家）。
     let app_contexts: std::sync::Arc<app::AppContexts> = std::sync::Arc::new(app::AppContexts::new());
@@ -181,7 +191,7 @@ fn main() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error running hologram");
 }
 
