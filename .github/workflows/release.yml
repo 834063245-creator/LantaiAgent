@@ -193,13 +193,18 @@ jobs:
           echo "changelog range: ${RANGE}"
           git cliff "${RANGE}" --tag "${GITHUB_REF_NAME}" --offline > /tmp/changelog.md
 
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+      # 只上传 workflow artifact，**不碰 release**：四腿各自去更新同一个 release 会倒在
+      # "Resource not accessible by integration"（2026-09-26 实测，四腿全红）。
+      # 资产统一由收尾的 attach-assets 腿串行 `gh release upload`（见文件末）。
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          body_path: /tmp/changelog.md
-          files: |
+          name: ${{ matrix.artifact }}
+          path: |
             ${{ matrix.artifact }}.tar.gz
             ${{ matrix.artifact }}.zip
+          if-no-files-found: ignore
+          retention-days: 3
 
   dsh-bundle:
     # hologram-dsh npm 包：构建引擎二进制传 Release + 自动 npm publish
@@ -231,11 +236,12 @@ jobs:
           mkdir -p staging
           cp target/release/hologram-engine.exe staging/hologram-engine-win32-x64.exe
 
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            staging/hologram-engine-win32-x64.exe
+          name: hologram-engine-win32-x64
+          path: staging/hologram-engine-win32-x64.exe
+          retention-days: 3
 
       - name: Install plugin build deps
         working-directory: dsh-bundle
@@ -367,4 +373,32 @@ jobs:
           prerelease: false
           updaterJsonPreferNsis: true
           args: --config '{"build":{"beforeBuildCommand":""}}'
+
+  attach-assets:
+    # 收尾腿：把各腿的产物串行挂到 release 上。
+    #
+    # 为什么拆出来（2026-09-26 实测两次）：engine-cli 三腿 + dsh 腿原先各自用
+    # softprops/action-gh-release@v2 去更新同一个 release，四腿**全部**倒在
+    # `Resource not accessible by integration`（rest/releases#update-a-release）——
+    # 那条路要先 PATCH release 元数据，多腿并发改同一份 release 走不通。
+    # 现在各腿只传 workflow artifact，这里一次性 `gh release upload`（只碰资产）。
+    # release 本体（标题 / changelog 正文 / 签名产物 / latest.json）由 desktop 腿的
+    # tauri-action 建，所以这一腿排在它之后。
+    needs: [engine-cli, dsh-bundle, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach engine binaries to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+          # 本腿没有 checkout，gh 认不出仓库 ⇒ 显式 --repo
+          gh release upload "${GITHUB_REF_NAME}" dist/* --clobber --repo "${GITHUB_REPOSITORY}"
 
