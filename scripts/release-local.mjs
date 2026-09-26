@@ -45,6 +45,8 @@ const GITCODE_API = 'https://api.gitcode.com/api/v5/repos';
 const MANIFEST_URL = `https://gitee.com/${GITEE_REPO}/raw/updater-manifest/latest.json`;
 const UA = 'lantai-release-local/1.0';
 
+class Fatal extends Error {}
+
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const opt = (name, fallback = '') => {
@@ -57,8 +59,9 @@ const WITH_MSI = flag('--with-msi');
 const SKIP_VERIFY = flag('--skip-verify');
 
 const die = (msg) => {
-  console.error(`\n✗ ${msg}\n`);
-  process.exit(1);
+  // 不调 process.exit()：Windows 上带着未关闭的 handle 硬退会触发 libuv 断言
+  // （Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)），把真正的错误信息淹掉。
+  throw new Fatal(msg);
 };
 const step = (msg) => console.log(`\n=== ${msg} ===`);
 
@@ -111,17 +114,25 @@ function findArtifacts(version) {
 
 // ---------------------------------------------------------------- GitCode
 
-const gcHeaders = () => ({ 'PRIVATE-TOKEN': TOKEN, 'User-Agent': UA });
+// GitCode 支持三种认证：`Authorization: Bearer`、`PRIVATE-TOKEN` 头、`access_token` 查询参数。
+// 实测：同一个账号的令牌在头里可能被判 "token not found"（2026-09-26 首跑就是这样），
+// 所以首次 401 自动改走查询参数并记住——不让用户去猜自己手上的令牌属于哪一类。
+let AUTH_MODE = 'header';
 
 async function gcJson(method, suffix, { query = {}, body } = {}) {
   const url = new URL(`${GITCODE_API}/${GITCODE_REPO}${suffix}`);
   for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
-  const res = await fetch(url, {
-    method,
-    headers: body ? { ...gcHeaders(), 'Content-Type': 'application/json' } : gcHeaders(),
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  if (AUTH_MODE === 'query') url.searchParams.set('access_token', TOKEN);
+  const headers = { 'User-Agent': UA };
+  if (AUTH_MODE === 'header') headers['PRIVATE-TOKEN'] = TOKEN;
+  if (body) headers['Content-Type'] = 'application/json';
+  const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const text = await res.text();
+  if (res.status === 401 && AUTH_MODE === 'header') {
+    console.log('  PRIVATE-TOKEN 头未被接受，改用 access_token 查询参数重试…');
+    AUTH_MODE = 'query';
+    return gcJson(method, suffix, { query, body });
+  }
   if (!res.ok) {
     const err = new Error(`GitCode ${method} ${suffix} → HTTP ${res.status}: ${text.slice(0, 400)}`);
     err.status = res.status;
@@ -150,15 +161,10 @@ async function ensureRelease(tag) {
 
 async function uploadDescriptor(tag, fileName) {
   // 官方文档只成文了「下载附件」，上传端点是两步：先取签名描述符，再 PUT。
-  // 认证：先用 PRIVATE-TOKEN 头，拿不到就回退 access_token query。
-  const suffix = `/releases/${encodeURIComponent(tag)}/upload_url`;
-  let desc = null;
-  try {
-    desc = await gcJson('GET', suffix, { query: { file_name: fileName } });
-  } catch {
-    desc = null;
-  }
-  if (!desc?.url) desc = await gcJson('GET', suffix, { query: { file_name: fileName, access_token: TOKEN } });
+  // 认证形式由 gcJson 统一处理（首次 401 会自动从 header 切到 query）。
+  const desc = await gcJson('GET', `/releases/${encodeURIComponent(tag)}/upload_url`, {
+    query: { file_name: fileName },
+  });
   if (!desc?.url) die(`拿不到上传描述符（${fileName}）。API 返回：${JSON.stringify(desc)}`);
   return { url: desc.url, headers: desc.headers || {} };
 }
@@ -337,4 +343,14 @@ async function main() {
   console.log('\n用户侧：应用内「检查更新」会看到新版并自动下载安装。');
 }
 
-main().catch((e) => die(e?.stack || String(e)));
+main().catch((e) => {
+  const msg = e instanceof Fatal ? e.message : e?.stack || String(e);
+  console.error(`\n✗ ${msg}\n`);
+  if (/HTTP 401/.test(msg)) {
+    console.error('令牌没被 GitCode 接受。自检（只打印状态码，不会泄露令牌本体）：');
+    console.error('  curl.exe -s -o NUL -w "%{http_code}\\n" -H "PRIVATE-TOKEN: $env:GITCODE_ACCESS_TOKEN" https://api.gitcode.com/api/v5/user');
+    console.error('  200 = 令牌有效；401 = 令牌无效/已失效/多了引号或空格 —— 去 gitcode.com 重新生成一个（权限勾发行版写）');
+    console.error('  另：环境变量只对「设置它的那个窗口」有效，新开的窗口读不到。\n');
+  }
+  process.exitCode = 1;
+});
