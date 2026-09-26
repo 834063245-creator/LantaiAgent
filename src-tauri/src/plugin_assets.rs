@@ -98,7 +98,9 @@ static BUILTIN_PLUGINS_DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::On
 ///      实际落点：`_up_` 是 bundler 对越界 `../` 路径的转义目录
 ///      （debug 与 release 实测一致落此）。⚠ map 形式的 glob key
 ///      （`**/*`）会压平目录只留文件名——曾把 31 个插件 manifest.json
-///      压进同一目录打爆 MSI ICE30 校验（light 退出码 204），勿回退。
+///      压进同一目录打爆 MSI ICE30 校验（light 退出码 204），勿回退
+///      （MSI 渠道已于 2026-09-26 停发，但压平目录本身也会让插件装载找不到
+///      各自的 manifest ⇒ 这条禁令照旧）。
 /// 命中即锁缓存；**全未命中不锁 None**——保留 builtin_plugins_root 的仓库
 /// 兜底分支可走（早先实现遇 `resource_dir()/builtin` 缺席即 `set(None)`，
 /// 把 OnceLock 钉死 None，令兜底分支沦为死代码——dev 下「重新加载全报错」

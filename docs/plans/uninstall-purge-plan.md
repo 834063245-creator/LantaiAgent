@@ -2,7 +2,7 @@
 
 > 立项 2026-09-26（用户报）· **代码已落地并本机 E2E 通过（2026-09-26）；余真机勾选验收**
 > 真源：`src-tauri/src/purge.rs`（目录清单唯一一份）· 挂接点：`src-tauri/nsis/installer-hooks.nsh`
-> MSI 侧见下「真相」一节（当前**无**通路，已删假通路）
+> Windows 自 2026-09-26 起**只发 NSIS**（用户拍板，见下「MSI 侧的真相」）
 
 ## 要裁什么
 
@@ -39,8 +39,9 @@
    卸载软件不该碰用户的项目文件夹。清理只覆盖用户级（主目录 + AppData）。
 5. **`--purge-user-data` 只走安装器路径**：`main()` 在任何初始化之前分流，命中即清理并退出
    （进入初始化会边删边写，用户看到的还是「没卸干净」）。不给 UI 暴露「一键清空数据」。
-6. **MSI 侧不再挂假通路**（理由见下）：删掉 `wix/cleanup.wxs` 与 `fragmentPaths`，
-   并加反向守卫测试钉住「别再加回来」。
+6. **MSI 渠道停发**（用户 2026-09-26 拍板「只发 NSIS」，见下）：`tauri.windows.conf.json` 写
+   `bundle.targets: ["nsis"]`，base 配置里的 `wix` 段与 `fragmentPaths` 同批删除
+   （`wix/cleanup.wxs` 已删），反向守卫测试钉住「别再加回来」。
 
 ## 默认值与安全
 
@@ -74,10 +75,14 @@ Tauri 文档里 fragment 能带的只有被 `componentRefs` 之类引用到的
 数据目录」（`RemoveFile` 不递归）。**所以 MSI 侧唯一真路 = 整份 `wix.template`。**
 
 **本批裁定：不 vendor 那份模板**（与 tauri-cli 版本强耦合的生成式化石，升一次 CLI 就要人肉对账，
-漂了没有守护能拦），改为如实写边界 + 删掉假通路；要彻底清理的 MSI 用户跑
-`lantai.exe --purge-user-data`（与安装器同一条实现）。「要不要把 MSI 渠道换成 NSIS-only
-（`bundle.targets: ["nsis"]`，所有用户都能在卸载页勾到）」属产品取舍 → 已上交用户裁定
-（裁定结果回写本节）。
+漂了没有守护能拦），改为如实写边界 + 删掉假通路。
+
+**用户裁定（2026-09-26）＝「只发 NSIS，去掉 MSI」**（三选一里选它：① 只发 NSIS ② 保留 MSI 现状 +
+手动命令 ③ vendor 模板）。落地 = `src-tauri/tauri.windows.conf.json` 的 `bundle.targets: ["nsis"]`
+（放平台文件里，避免波及 Linux/macOS 的桌面构建）+ base 配置的 `wix` 段删除。
+**对旧 MSI 用户的后果（如实记）**：他们下一次「应用内更新」或手动装 `.exe` 时，NSIS 安装器会
+自己接管旧 WiX 安装（模板里的 `wix_loop` 会先跑 MSI 的卸载器）——也就是说迁移会自然发生，
+只是**旧 MSI 用户在更新前**若想彻底清理，仍需手跑一次 `lantai.exe --purge-user-data`。
 
 <details>
 <summary>若日后要做 MSI 同款：配方（待用户裁定后再动手）</summary>
@@ -105,6 +110,7 @@ Tauri 文档里 fragment 能带的只有被 `componentRefs` 之类引用到的
 |---|---|---|
 | 单测 | `cargo test -p lantai --bin lantai`：清单真源 · 名字闸 · 真删与邻居不误伤（含只读件）· 幂等 · 参数解析 · 契约守卫（钩子挂上 + 勾选框条件 + `/PURGE-DATA` + `$UpdateMode`）· **反向守卫**（`wix/cleanup.wxs` 与 `fragmentPaths` 不得复活） | ✅ 520 passed（2026-09-26） |
 | 安装器 | 本地重建 NSIS（`languages: ["SimpChinese"]` ⇒ 勾选框与卸载流程全中文）；核对 `target/release/nsis/x64/installer.nsi` 里钩子 `!include` 在第 28 行、`SimpChinese.nsh` 里 `deleteAppData` = 「删除应用程序数据」 | ✅ 构建通过，`兰台_1.0.3_x64-setup.exe` |
+| 渠道 | `cargo tauri build`（不带 `--bundles`）按新配置跑：核对只产出 NSIS、MSI 不再出现；`wix` 段与 `wix/cleanup.wxs` 均已从配置/仓库移除 | ✅ 只产出 `兰台_1.0.3_x64-setup.exe`（2026-09-27 00:19:51），candle/light 两步不再出现；随后对这份成品重跑 E2E-② 仍 `FAILURES = 0` |
 | E2E-① | 临时根播种假数据（含只读件 + 同前缀邻居）→ 真跑 `lantai.exe --purge-user-data --yes` | ✅ exit 0；`removed=5 missing=3 failed=0`；邻居与 `.lantai-old` 保留；日志在场 |
 | E2E-② | 全程沙箱（`USERPROFILE`/`APPDATA`/`LOCALAPPDATA` 重定向到临时树 ⇒ NSIS 的 shell 文件夹随之派生）：`setup.exe /S` → `uninstall.exe /S /PURGE-DATA` | ✅ 安装目录 + `.lantai` + `.hologram` + 两个 AppData 目录全清；注册表两项无残留；**真机 `~/.lantai`（67 109 064 B）与 `%LOCALAPPDATA%\com.lantai.app`（403 360 607 B）字节数前后一致** |
 | 真机 | 装 → 卸载时**勾选**「删除应用程序数据」→ 核对主目录与两个 AppData 根全空（未勾选时应一个字节都不删）——owner：用户 | ⏳ |
@@ -116,4 +122,5 @@ Tauri 文档里 fragment 能带的只有被 `componentRefs` 之类引用到的
 - 若用户先手删了安装目录里的 `lantai.exe`，钩子调不动清理（DetailPrint 会说明）——数据留在原位，
   这是安全方向。
 - 工作区级数据（`{项目}/.lantai`）永不随卸载删除，需用户自己清（README 已写明）。
-- MSI 侧无通路（见上）；`--purge-user-data` 是 MSI 用户当前唯一的一键清理入口。
+- 旧 `.msi` 安装（2026-09-26 起不再提供）没有清理通路：那批用户要先跑
+  `lantai.exe --purge-user-data` 才能连数据一起清；装新版 `.exe` 时安装器会自动接管旧 MSI 安装。

@@ -682,9 +682,10 @@ src-ui/src/
 覆盖 `~/.lantai`、改名老位 `~/.hologram`、以及 `%APPDATA%`/`%LOCALAPPDATA%` 下兰台目录（含旧
 identifier）。**缺省不删**（勾选框缺省不勾；静默/被动卸载与自动更新的 `/UPDATE` 路径勾选态恒为 0，
 脚本化完全卸载走 `uninstall.exe /S /PURGE-DATA`）；**工作区级 `{workspace}/.lantai` 与
-`{workspace}/.hologram` 永不随卸载删除**。MSI 侧当前**没有**这条通路（Tauri 的 WiX fragment 装不进
-自定义动作，实测已发布的 MSI 里从来没有过），MSI 用户走同一条 exe 命令手动清理。见
-[`docs/plans/uninstall-purge-plan.md`](docs/plans/uninstall-purge-plan.md)。
+`{workspace}/.hologram` 永不随卸载删除**。Windows 自 2026-09-26 起**只发 NSIS**
+（`tauri.windows.conf.json` 的 `bundle.targets`，用户拍板）：旧 `.msi` 从来没有过清理通路
+（Tauri 的 WiX fragment 装不进自定义动作，实测已发布的 MSI 里从没出现过），也不再产出新的 `.msi`。
+见 [`docs/plans/uninstall-purge-plan.md`](docs/plans/uninstall-purge-plan.md)。
 
 ---
 

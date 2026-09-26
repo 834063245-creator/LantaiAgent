@@ -9,15 +9,17 @@
 //! （上游模板内建，见 target/release/nsis/x64/installer.nsi 的 `$DeleteAppDataCheckboxState` 段），
 //! 主目录那两处没有任何人管 —— 用户看到的就是「没卸干净」。
 //!
-//! **设计：目录清单只有这一份**，两个安装器都不复述路径：
+//! **设计：目录清单只有这一份**，安装器只负责「何时问、何时调」，不复述任何路径：
 //!
-//! | 安装器 | 触发点 | 调用 |
+//! | 挂接点 | 触发 | 调用 |
 //! |---|---|---|
-//! | NSIS（含应用内自动更新的那一条路） | 卸载确认页勾选框为真 | `lantai.exe --purge-user-data --yes`（钩子文件 `nsis/installer-hooks.nsh`） |
-//! | MSI/WiX（WixUI 固定，卸载页无处挂勾选框） | 延迟自定义动作 | `lantai.exe --purge-user-data` → 本模块弹一次「是/否」（`wix/cleanup.wxs`） |
+//! | NSIS（Windows 唯一在发的安装包） | 卸载确认页勾选框为真，或卸载器带 `/PURGE-DATA` | `lantai.exe --purge-user-data --yes`（钩子文件 `nsis/installer-hooks.nsh`） |
 //!
-//! 勾选框即用户同意 ⇒ NSIS 侧带 `--yes` 不再二次询问；MSI 侧无勾选框 ⇒ 由本模块问。
-//! 两条路都走 [`purge`]，删除范围 / 只读位处理 / 失败可见性因此只有一处。
+//! 勾选框 / `/PURGE-DATA` 即用户同意 ⇒ 安装器带 `--yes` 不再二次询问；不带 `--yes` 手工执行时
+//! （老 MSI 安装的用户、排障现场）本模块先弹一次「是/否」——卸载清理是删数据，缺省必须先问。
+//!
+//! MSI（`.msi`）渠道 2026-09-26 已停发（用户拍板「只发 NSIS」）：WiX fragment 装不进自定义动作，
+//! 旧 MSI 从来没有过清理通路，理由与证据见 `docs/plans/uninstall-purge-plan.md`。
 //!
 //! **边界**：只清**用户级**数据（主目录 + AppData）。工作区里的 `{项目}/.lantai`
 //! 与 `{项目}/.hologram` 是用户自己目录里的数据，卸载软件不该动它们。
@@ -259,7 +261,8 @@ fn message_box(text: &str, caption: &str, flags: u32) -> i32 {
     r.0
 }
 
-/// 无勾选框的调用方（MSI）在删之前问一次。
+/// 安装器之外的手工调用（老 MSI 安装的用户、排障现场）在删之前问一次 ——
+/// 这是删数据的命令，缺省必须先问，`--yes` 才是「调用方已经问过了」。
 #[cfg(windows)]
 fn confirm(list: &[Target]) -> bool {
     let mut text = String::from("是否同时删除兰台的用户数据？\n\n将删除：\n");
@@ -521,29 +524,33 @@ mod tests {
         assert!(hooks.contains("$UpdateMode"), "更新（/UPDATE）路径不得清数据");
     }
 
-    /// 反向守卫：**MSI 侧不得再挂「fragment 里塞自定义动作」这类假通路**。
+    /// 反向守卫：**MSI 渠道不得复活**（2026-09-26 用户拍板「Windows 只发 NSIS」），
+    /// 也不得再挂「fragment 里塞自定义动作」这类假通路。
     ///
-    /// 2026-09-26 实测：`wix/cleanup.wxs` 那个 fragment 从 1.0.0 起就没有进过任何一版发布的
-    /// MSI（反编译 1.0.0 / 1.0.3 / 1.0.4 三版，CustomAction 表里都没有它，序列里也没有对应行）
-    /// —— MSI 用户此前的卸载其实**没有任何清理动作**，那段 base64 PowerShell 弹窗一次也没弹过。
-    /// 根因不在 Tauri 少传 wixobj：手工把 `main.wixobj + cleanup.wixobj` 一起交给 `light.exe`
-    /// 重链、再做一个最小复现（Product + Fragment 两文件，CA 与序列都写在 Fragment 里），
-    /// 结果一样只有 File 行、没有 CustomAction 行 —— **WiX v3 的 sequence / CustomAction 是
-    /// Product 级元素，写在 Fragment 里会被 light 丢掉**（上游 issue tauri#5970 同源）。
-    ///
-    /// 所以本仓不再留那份假通路；要动 MSI 只有一条真路 = 整份替换 `wix.template`
-    /// （配方见 docs/plans/uninstall-purge-plan.md），那是要用户裁定的取舍，不是顺手能加的。
+    /// 依据（本机 2026-09-26 实测）：`wix/cleanup.wxs` 那个 fragment 从 1.0.0 起就没进过任何一版
+    /// 发布的 MSI —— 反编译 1.0.0 / 1.0.3 / 1.0.4 三版，CustomAction 表里都没有它，
+    /// `InstallExecuteSequence` 里也没有对应行；那段 base64 PowerShell 弹窗一次也没弹过。
+    /// 手工把 `main.wixobj + cleanup.wixobj` 一起交给 `light.exe` 重链、再做最小复现
+    /// （Product + Fragment 两文件，CA 与序列都写在 Fragment 里）结果一样：只有 File 行、
+    /// 没有 CustomAction 行 —— **WiX v3 的 sequence / CustomAction 是 Product 级元素，
+    /// 写在 Fragment 里会被 light 丢掉**（上游 issue tauri#5970 同源）。
+    /// MSI 侧唯一真路 = 整份替换 `wix.template`（配方留在计划件里），要复活渠道先过用户。
     #[test]
-    fn msi_fragment_cleanup_stays_removed() {
+    fn windows_ships_nsis_only() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         assert!(
             !root.join("wix/cleanup.wxs").exists(),
-            "MSI fragment 装不进自定义动作（见本测试头注）：要恢复 MSI 清理请走 wix.template"
+            "MSI fragment 装不进自定义动作（见本测试头注）：别再把它加回来"
         );
         let conf = std::fs::read_to_string(root.join("tauri.conf.json")).unwrap();
         assert!(
-            !conf.contains("fragmentPaths"),
-            "别再挂 fragmentPaths —— 里面的自定义动作不会进 MSI"
+            !conf.contains("fragmentPaths") && !conf.contains("\"wix\""),
+            "MSI 已停发：base 配置不得再有 wix 段 / fragmentPaths"
+        );
+        let win = std::fs::read_to_string(root.join("tauri.windows.conf.json")).unwrap();
+        assert!(
+            win.contains("\"nsis\"") && !win.contains("\"msi\""),
+            "Windows 只发 NSIS（用户 2026-09-26 拍板）"
         );
     }
 }

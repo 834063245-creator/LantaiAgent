@@ -43,9 +43,6 @@
       "../src-ui/dist-plugins": "_up_/src-ui/dist-plugins/"
     },
     "windows": {
-      "wix": {
-        "language": "zh-CN"
-      },
       "nsis": {
         "languages": [
           "SimpChinese"

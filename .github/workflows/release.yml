@@ -1,6 +1,8 @@
 # 打 v* tag 自动发版。
 #   engine-cli: 双平台 engine 二进制 + CLI 安装脚本
-#   desktop:    Windows 桌面应用 (MSI/NSIS)
+#   desktop:    Windows 桌面应用（NSIS setup.exe；2026-09-26 起只发 NSIS、不再出 .msi，
+#               见 src-tauri/tauri.windows.conf.json 的 bundle.targets 与
+#               docs/plans/uninstall-purge-plan.md）
 #
 # ⚠ 自动更新的两根命脉（2026-09-22 修复，两者曾同时断掉）：
 #   1. `src-tauri/tauri.conf.json` 的 `bundle.createUpdaterArtifacts` **必须为 true**，
