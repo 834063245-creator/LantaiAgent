@@ -84,10 +84,30 @@ jobs:
         id: resolve
         run: |
           set -euo pipefail
+          # 本工作流的唯一职责就是镜像；配不全 = 没干活 = 失败。**不许静默跳过**：
+          # 2026-09-26 实测教训——原实现做成 ::notice:: + skip，于是「Variables 页签漏配」
+          # 表现为一次全绿的空跑，白耗一轮往返（CONVENTIONS 的「错误不静默」同样约束 CI）。
           if [ -z "${GITCODE_REPO}" ] || [ -z "${GITEE_REPO}" ]; then
-            echo "::notice::未配置 vars.GITCODE_REPOSITORY / vars.GITEE_REPOSITORY —— 跳过国内镜像"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            MISSING=""
+            [ -z "${GITCODE_REPO}" ] && MISSING="${MISSING} GITCODE_REPOSITORY"
+            [ -z "${GITEE_REPO}" ] && MISSING="${MISSING} GITEE_REPOSITORY"
+            echo "::error::国内镜像未配置，缺少仓库变量：${MISSING}"
+            {
+              echo "### 国内镜像未配置，本轮没有做任何事"
+              echo ""
+              echo "缺少仓库变量：\`${MISSING# }\`"
+              echo ""
+              echo "请在 **Settings → Secrets and variables → Actions → Variables 页签**"
+              echo "（⚠ 是 **Variables**，不是 Secrets——\`vars.*\` 读不到 Secrets）添加："
+              echo ""
+              echo "| Name | Value |"
+              echo "|---|---|"
+              echo "| \`GITCODE_REPOSITORY\` | \`gcw_aU7Q6cqH/LantaiAgent\` |"
+              echo "| \`GITEE_REPOSITORY\` | \`jingwen-bing/lantai-agent\` |"
+              echo ""
+              echo "变量必须是 **Repository** 级（Environment 级的 \`vars\` 在无 environment 的 job 里读不到）。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
           if [ -z "${GITCODE_TOKEN}" ] || [ -z "${GITEE_TOKEN}" ]; then
             echo "::error::缺少 secrets.GITCODE_ACCESS_TOKEN / secrets.GITEE_ACCESS_TOKEN"
@@ -114,7 +134,6 @@ jobs:
           echo "清单地址：$ENDPOINT"
 
       - name: 从 GitHub Release 取件（清单 + 它引用的全部资产）
-        if: steps.resolve.outputs.skip != 'true'
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
@@ -193,7 +212,6 @@ jobs:
           cat dist/files.tsv
 
       - name: 建（或复用）GitCode 发行版
-        if: steps.resolve.outputs.skip != 'true'
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
@@ -223,7 +241,6 @@ jobs:
           echo "rel_id=$REL_ID" >> "$GITHUB_ENV"
 
       - name: 上传全部资产并逐字节读回校验
-        if: steps.resolve.outputs.skip != 'true'
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
@@ -281,7 +298,6 @@ jobs:
           cat dist/uploaded.tsv
 
       - name: 生成镜像清单（只改 url，保住签名）
-        if: steps.resolve.outputs.skip != 'true'
         run: |
           set -euo pipefail
           # 按「原 url → GitCode url」映射改写（而不是按文件名匹配）。version / notes /
@@ -322,7 +338,6 @@ jobs:
           cat dist/latest.mirror.json
 
       - name: 推清单到 Gitee（updater-manifest 分支）
-        if: steps.resolve.outputs.skip != 'true'
         run: |
           set -euo pipefail
           GITEE_USER="${GITEE_REPO%%/*}"
@@ -340,7 +355,6 @@ jobs:
             HEAD:refs/heads/updater-manifest
 
       - name: 验清单已公开可见且全部条目指向 GitCode（无凭据）
-        if: steps.resolve.outputs.skip != 'true'
         env:
           MANIFEST: ${{ steps.resolve.outputs.manifest }}
         run: |
@@ -365,7 +379,6 @@ jobs:
           exit 1
 
       - name: 提为正式发行版
-        if: steps.resolve.outputs.skip != 'true'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -377,7 +390,6 @@ jobs:
           head -c 200 /tmp/promote.json 2>/dev/null; echo
 
       - name: 汇总
-        if: steps.resolve.outputs.skip != 'true'
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
           MANIFEST: ${{ steps.resolve.outputs.manifest }}
