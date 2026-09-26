@@ -81,34 +81,6 @@
 
 禁止用 `cargo build --release` 代替桌面发布验证。**实测基线数字与测试运行纪律（含 `cargo` 假挂规避、`hologram-engine.exe` 禁杀、`NODE_ENV=production` 两刀）见 `CONVENTIONS.md` §3 + §3 尾注**——数字会漂移，以重新实测为准。
 
-## 发版（2026-09-26 起：本机构建 + 本机分发）
-
-**为什么不是 CI 自动分发**：GitHub 的美国 runner 往国内传大文件实测只有 **29 KB/s**（161MB 四次重试完全一致，属系统性；同类项目 7 月还能传 458MB，平台行为已变）。所以**国内分发改走本机**（国内链路，几 MB/s），CI 只负责 GitHub 侧的正式发布（海外 + 备份）。踩坑全过程与报错对照表见 `docs/dev-workflow.md`。
-
-```powershell
-# ① 提版本号（一次改齐 9 个文件；别手改，旧 bump-version.ps1 已废）
-node scripts/bump-version.mjs 1.0.4
-
-# ② 带签名构建（约半小时）
-$env:TAURI_SIGNING_PRIVATE_KEY = "D:\keys\lantai.key"
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<密码>"
-cd src-tauri ; cargo tauri build ; cd ..
-
-# ③ 上传国内 + 出更新清单（传 GitCode → 生成清单 → 推 Gitee → 公开读回校验，全自动）
-node scripts/release-local.mjs --notes "本次更新内容"
-```
-
-**四条硬约束（违反任一条用户就装不上）**：
-
-1. **禁止用 `build.cmd` 发版**——它带 `--config src-tauri/no-updater.local.json`，会关掉 updater 产物（没有 `.sig`，客户端签名校验一律拒绝）。发版必须裸跑 `cargo tauri build` 并带上上面两个环境变量。
-2. **签名私钥只在开发者本机**（`D:\keys\lantai.key` + 密码，两处离线备份）。**它是不可再生的**：丢了就再也签不出老客户端认可的更新，所有已安装用户只能手动重装。公钥写死在 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`——**换私钥 = 换公钥 = 存量用户全部失联一次**。
-3. **更新清单必须最后可见**：脚本已保证顺序（传安装包 → 校验 → 最后推清单）。**清单缺失时必须保持 404**——合法但陈旧的清单会**遮住** GitHub 兜底，用户会静默地「永远已是最新」。
-4. `GITCODE_ACCESS_TOKEN` 只在设置它的那个 shell 生效（令牌需**发行版写**权限）；Gitee 侧走已配好的 SSH，**不需要令牌**。
-
-**两个发布通道并存（推荐两个都跑）**：CI（推 `v*` tag 触发）负责 GitHub 侧——引擎三平台二进制 + npm 包 `@a834063245/hologram-dsh` + GitHub Release（海外用户 + 备份）；**本地流程负责国内自动更新**。两边用**同一把密钥**签名，客户端**优先读 Gitee 清单**，所以不打架：先推 tag 也不会让国内用户误报（Gitee 清单还停在旧版时，客户端只显示「已是最新」）。**唯一纪律：两边必须从同一个 commit 出发**——先 `git commit`，再构建/发版，最后 `git tag v<x.y.z> && git push origin v<x.y.z>`（顺带 `git push gitee/gitcode v<x.y.z>` 同步版本标记）。只跑本地 = 丢掉引擎包 / npm / GitHub 下载页；只跑 CI = 国内更新不通。
-
-**首次例外**：2026-09-26 轮换过签名密钥（旧 `AE4D460123A2D553` → 新 `2DF02C823A4DE227`），**存量客户端必须手动重装一次**；此后才是纯自动更新。
-
 ## 项目快照
 
 - **定位**：兰台（Lantai）= 以「纸壳·注疏案卷」为唯一主界面的桌面 Agent 软件（Tauri 2 壳 + TypeScript/React 19 前端）。**HoloGram 代码图谱引擎是随包配套的独立进程与独立产品面**（`engine serve`，stdio MCP；**应用内默认关**，由前端经 MCP 受治进程通道拉起，一进程一根），不再是应用内的主叙事。

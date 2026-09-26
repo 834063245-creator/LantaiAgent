@@ -14,19 +14,6 @@
 
 import { create } from 'zustand';
 
-/** 更新检查的**逐端点**请求超时（毫秒）。
- *
- * 为什么必须有：端点列表首位是国内清单（Gitee raw），GitHub 兜底。tauri-plugin-updater
- * 在 `check()` 的 `for url in endpoints` 循环里**每个端点各设一次**超时，而插件配置
- * (`plugins.updater`) **没有 timeout 字段**（Config 只认 endpoints、pubkey、dangerous
- * 系列与 windows），所以只能在这一层给。不设的话，首位端点一旦被墙成 TCP 黑洞，会先
- * 干等系统级 TCP 超时（Windows 实测 ~21s）才轮到兜底端点——用户看到的就是「启动后卡很久」。
- * 10s × 2 端点 = 最坏 20s；自动检查是后台 best-effort，手动检查面板可见。
- *
- * 为什么下载（downloadAndInstall）不设超时：reqwest 的 timeout 覆盖**整个响应体读取**，
- * 151MB 的安装包在慢链路上会被直接误杀。下载挂起是另一类故障，不该用检查超时兜。 */
-const CHECK_TIMEOUT_MS = 10000;
-
 export type UpdateStatus =
   | 'idle' // 未检查（启动早期 / 检查失败后重置）
   | 'checking' // 检查中
@@ -68,7 +55,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     set({ status: 'checking', message: '' });
     try {
       const { check: checkUpdate } = await import('@tauri-apps/plugin-updater');
-      const update = await checkUpdate({ timeout: CHECK_TIMEOUT_MS });
+      const update = await checkUpdate();
       if (update) {
         const prev = get();
         // 同版本号重查且用户已看过 → 角标保持熄灭；新版本号 → 重新亮起
@@ -96,7 +83,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       // 安装前重查一次（与既有手动路径同款语义：拿到当前可用的 Update 句柄，
       // 避免陈旧的 Update 对象指向已被覆盖的发布产物）
       const { check: checkUpdate } = await import('@tauri-apps/plugin-updater');
-      const update = await checkUpdate({ timeout: CHECK_TIMEOUT_MS });
+      const update = await checkUpdate();
       if (!update) {
         set({ status: 'error', message: '更新信息已过期' });
         return;

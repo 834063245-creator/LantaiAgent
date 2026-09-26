@@ -1,7 +1,7 @@
 {
   "productName": "兰台",
   "identifier": "com.lantai.app",
-  "version": "1.0.4",
+  "version": "1.0.3",
   "build": {
     "frontendDist": "../src-ui/dist",
     "devUrl": "http://127.0.0.1:1420",
@@ -55,7 +55,6 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJERjAyQzgyM0E0REUyMjcKUldRbjRrMDZnaXp3TGZydWZVbzloa2xZNzdPQjBLbDM1Zlhldzk2K2dUVjMvMnUzZ3RhQ1VINXAK",
       "endpoints": [
-        "https://gitee.com/jingwen-bing/lantai-agent/raw/updater-manifest/latest.json",
         "https://github.com/834063245-creator/LantaiAgent/releases/latest/download/latest.json"
       ]
     }
