@@ -69,7 +69,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     permissions:
       contents: read
       actions: read
@@ -304,12 +304,33 @@ jobs:
               HDRS=()
               while IFS= read -r h; do [ -n "$h" ] && HDRS+=(-H "$h"); done \
                 < <(jq -r '.headers // {} | to_entries[] | "\(.key): \(.value)"' <<<"$DESC")
-              echo "上传 ${ASCII}（$(stat -c%s "$LOCAL") 字节，签名头 ${#HDRS[@]} 个）"
-              CODE="$(curl -sS --fail-with-body --upload-file "$LOCAL" \
-                        --connect-timeout 30 --max-time 1800 \
-                        "${HDRS[@]}" "$UP_URL" -o /tmp/up.json -w '%{http_code}' 2>/dev/null)" || true
+              SIZE="$(stat -c%s "$LOCAL")"
+              echo "上传 ${ASCII}（${SIZE} 字节，签名头 ${#HDRS[@]} 个）—— 每 30s 打一次心跳"
+              # curl 放后台、前台打心跳。理由：GitHub 的 runner 在美国，往 GitCode 传
+              # 100+MB 实测速度波动极大（同一份产物最快 8.5MB/s、最慢 164KB/s ⇒ 单文件
+              # 几十秒到半小时），日志静默那么久会被误判成卡死。
+              # ⚠ 不能用 `kill -0 $PID` 判活：子进程结束后变僵尸，kill -0 照样成功，
+              #   循环永不退出。用完成标记文件。
+              rm -f /tmp/up.done /tmp/up.metrics
+              (
+                curl -sS --fail-with-body --upload-file "$LOCAL" \
+                  --connect-timeout 30 --max-time 3600 \
+                  "${HDRS[@]}" "$UP_URL" -o /tmp/up.json \
+                  -w '%{http_code} %{size_upload} %{speed_upload} %{time_total}' \
+                  > /tmp/up.metrics 2>/dev/null
+                : > /tmp/up.done
+              ) &
+              SECS=0
+              while [ ! -f /tmp/up.done ]; do
+                sleep 30
+                SECS=$((SECS + 30))
+                [ -f /tmp/up.done ] || echo "  …上传中：已 ${SECS}s / ${SIZE} 字节"
+              done
+              wait || true
+              CODE=""; SENT=""; SPEED=""; TAKEN=""
+              read -r CODE SENT SPEED TAKEN < /tmp/up.metrics || true
               CODE="${CODE:-000}"
-              echo "上传 HTTP $CODE"
+              echo "上传结果：HTTP ${CODE}；已发送 ${SENT:-?} 字节；均速 ${SPEED:-?} B/s；耗时 ${TAKEN:-?} s"
               if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
                 head -c 600 /tmp/up.json 2>/dev/null; echo
                 echo "::error::GitCode 附件上传失败：${ASCII}（HTTP $CODE）"
