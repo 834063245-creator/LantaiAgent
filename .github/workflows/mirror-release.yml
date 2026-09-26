@@ -12,7 +12,7 @@
 #   [0] 本工作流产出的 Gitee 清单   ← 国内优先
 #   [1] GitHub Release latest.json  ← 兜底
 #
-# ⚠ 三条不能违反的纪律：
+# ⚠ 四条不能违反的纪律：
 #   1. **清单必须最后上传**。tauri-plugin-updater 的 check() 是
 #      `for url in endpoints { ... break }`——第一个「成功解析」的端点就跳出循环。
 #      清单先于安装包可见 = 客户端拿到指针却下不到包。
@@ -25,6 +25,12 @@
 #      所以统一「按 id 优先、按解码后的文件名兜底」反查 release 资产——2026-09-26 飞行
 #      前检查实测：v1.0.3 的清单就是 API 资产形态，且资产名被截断成 `_1.0.3_x64-setup.exe`
 #      （`兰台` 前缀没了）。两条都说明「猜文件名」必错。
+#   4. **GitCode 附件上传是「两步」，不是 multipart POST**：① `GET /releases/{tag}/upload_url
+#      ?file_name=X` 拿**签名上传描述符** `{url, headers}`；② 把文件 **PUT** 到那个 url，带上
+#      描述符给的 headers。官方 API 文档**缺这一页**（只有「下载附件」成文），本工作流第一版
+#      按 Gitee 的形状写成 `POST /attach_files -F file=@...`，2026-09-26 实跑必失败——症状是
+#      GitCode 上发行版建出来了（还带 4 个自动生成的源码包）、**附件一个都没有**，而 Gitee
+#      清单始终 404。机制由同构项目 Sakura 的 tools/release/gitcode_mirror.py 取证。
 #
 # 镜像范围：清单里所有 `windows-*` 条目引用到的**全部**资产都要镜像（当前 = NSIS setup
 #   + MSI，两枚包对应三个条目）。只镜像 NSIS 会让「当初用 MSI 装的用户」永远回落 GitHub。
@@ -219,10 +225,19 @@ jobs:
           API="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}"
           auth=(-H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
-          curl -sS "${auth[@]}" "$API/releases?per_page=100" -o /tmp/releases.json
-          REL_ID="$(jq -r --arg t "$TAG" '.[]? | select(.tag_name==$t) | .id' /tmp/releases.json | head -n1)"
-          if [ -z "$REL_ID" ] || [ "$REL_ID" = "null" ]; then
-            echo "GitCode 上还没有 $TAG 的发行版，创建（先置 pre，清单推完再提 latest）"
+          # 一律按 **tag** 寻址（不用 release id）：GitCode 的 PATCH /releases/{tag} 与
+          # upload_url 都以 tag 为路径参数 ⇒ 省掉一次 id 解析 = 少一个失败面。
+          # 用 -w '%{http_code}' + 兜底 '000'，**不要**用 `|| echo 000`——curl 在 HTTP 错误时
+          # 仍会写出状态码，两者叠加会得到 "403\n000" 这种非数字，后面整数比较直接炸。
+          rel_code() {
+            curl -sS "${auth[@]}" "$API/releases/tags/$TAG" -o /tmp/rel.json -w '%{http_code}' 2>/dev/null || true
+          }
+          CODE="$(rel_code)"
+          CODE="${CODE:-000}"
+          if [ "$CODE" = "200" ]; then
+            echo "GitCode 上已有 $TAG 的发行版，复用"
+          else
+            echo "GitCode 上还没有 $TAG 的发行版（HTTP $CODE），创建（先置 pre，清单推完再提 latest）"
             jq -n --arg t "$TAG" \
               '{tag_name:$t, name:$t, body:("镜像自 GitHub Release "+$t+"（字节与签名原样，未重新构建）"), release_status:"pre"}' \
               > /tmp/create.json
@@ -230,15 +245,14 @@ jobs:
               --data @/tmp/create.json "$API/releases" -o /tmp/created.json \
               -w 'create_http=%{http_code}\n' || true
             head -c 400 /tmp/created.json 2>/dev/null; echo
-            REL_ID="$(jq -r '.id // empty' /tmp/created.json 2>/dev/null || echo '')"
-          else
-            echo "GitCode 上已有 $TAG 的发行版（id=$REL_ID），复用"
+            CODE="$(rel_code)"
+            CODE="${CODE:-000}"
+            if [ "$CODE" != "200" ]; then
+              echo "::error::创建后仍读不到 $TAG 的发行版（HTTP $CODE）"
+              head -c 400 /tmp/rel.json 2>/dev/null; echo
+              exit 1
+            fi
           fi
-          if [ -z "$REL_ID" ]; then
-            echo "::error::拿不到 GitCode 发行版 id"
-            exit 1
-          fi
-          echo "rel_id=$REL_ID" >> "$GITHUB_ENV"
 
       - name: 上传全部资产并逐字节读回校验
         env:
@@ -249,36 +263,67 @@ jobs:
           auth=(-H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
           # 已存在的附件名单（幂等：重跑不重复上传）
-          curl -sS "${auth[@]}" "$API/releases?per_page=100" -o /tmp/grel_list.json
-          jq -r --arg t "$TAG" '.[]? | select(.tag_name==$t) | .assets[]?.name' /tmp/grel_list.json \
-            > /tmp/have.txt || true
+          curl -sS "${auth[@]}" "$API/releases/tags/$TAG" -o /tmp/rel.json
+          jq -r '.assets[]?.name' /tmp/rel.json > /tmp/have.txt 2>/dev/null || true
           echo "=== GitCode 上已有的附件 ==="
           cat /tmp/have.txt
+
+          # GitCode 的附件上传是**两步**（官方文档缺这一页；2026-09-26 由同构项目 Sakura
+          # 的实现取证）：① GET /releases/{tag}/upload_url?file_name=X 拿**签名上传描述符**
+          # {url, headers}；② 把文件 **PUT** 到那个 url，带上描述符给的头。
+          # **不是** multipart POST 到 /attach_files —— 本工作流第一版那样写，实测必失败
+          # （GitCode 上出现了发行版、附件却一个没有，正是这个原因）。
+          descriptor() {
+            curl -sS "${auth[@]}" --get --data-urlencode "file_name=$1" \
+              "$API/releases/$TAG/upload_url" 2>/dev/null || true
+          }
+          descriptor_qs() {
+            curl -sS --get --data-urlencode "file_name=$1" \
+              --data-urlencode "access_token=${GITCODE_TOKEN}" \
+              "$API/releases/$TAG/upload_url" 2>/dev/null || true
+          }
 
           : > dist/uploaded.tsv
           while IFS=$'\t' read -r AID ASCII ORIG; do
             LOCAL="dist/$ASCII"
-            # GitCode 文档只成文了「下载附件」端点，上传端点没成文 —— 两种形状都试：
-            # tag 形式（与下载端点同构）/ release id 形式（Gitee v5 的形状）。
             if grep -qxF "$ASCII" /tmp/have.txt; then
               echo "附件 ${ASCII} 已存在，跳过上传"
             else
-              upload() {
-                curl -sS "${auth[@]}" -X POST -F "file=@${LOCAL}" "$1" \
-                  -o /tmp/up.json -w '%{http_code}' || echo '000'
-              }
-              CODE="$(upload "$API/releases/$TAG/attach_files")"
-              echo "上传 ${ASCII}（tag 形式）HTTP $CODE"
-              if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
-                head -c 400 /tmp/up.json 2>/dev/null; echo
-                CODE="$(upload "$API/releases/$REL_ID/attach_files")"
-                echo "上传 ${ASCII}（release id 形式）HTTP $CODE"
+              DESC="$(descriptor "$ASCII")"
+              UP_URL="$(jq -r '.url // empty' <<<"$DESC" 2>/dev/null || true)"
+              if [ -z "$UP_URL" ]; then
+                echo "PRIVATE-TOKEN 拿不到描述符，改用 access_token query 重试"
+                DESC="$(descriptor_qs "$ASCII")"
+                UP_URL="$(jq -r '.url // empty' <<<"$DESC" 2>/dev/null || true)"
               fi
-              if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
-                head -c 600 /tmp/up.json 2>/dev/null; echo
-                echo "::error::GitCode 附件上传失败：${ASCII}（两种端点形状都没过）"
+              if [ -z "$UP_URL" ]; then
+                echo "::error::拿不到上传描述符（$ASCII）—— API 原样返回："
+                printf '%s\n' "$DESC" | head -c 600; echo
                 exit 1
               fi
+              HDRS=()
+              while IFS= read -r h; do [ -n "$h" ] && HDRS+=(-H "$h"); done \
+                < <(jq -r '.headers // {} | to_entries[] | "\(.key): \(.value)"' <<<"$DESC")
+              echo "上传 ${ASCII}（$(stat -c%s "$LOCAL") 字节，签名头 ${#HDRS[@]} 个）"
+              CODE="$(curl -sS --fail-with-body --upload-file "$LOCAL" \
+                        --connect-timeout 30 --max-time 1800 \
+                        "${HDRS[@]}" "$UP_URL" -o /tmp/up.json -w '%{http_code}' 2>/dev/null)" || true
+              CODE="${CODE:-000}"
+              echo "上传 HTTP $CODE"
+              if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
+                head -c 600 /tmp/up.json 2>/dev/null; echo
+                echo "::error::GitCode 附件上传失败：${ASCII}（HTTP $CODE）"
+                exit 1
+              fi
+              # 附件是**异步可见**的：轮询到它出现在 release 资产列表里再往下走
+              for _ in $(seq 1 30); do
+                curl -sS "${auth[@]}" "$API/releases/tags/$TAG" -o /tmp/rel2.json
+                if jq -e --arg n "$ASCII" '[.assets[]?.name] | index($n)' /tmp/rel2.json >/dev/null 2>&1; then
+                  echo "  附件已可见：${ASCII}"
+                  break
+                fi
+                sleep 2
+              done
             fi
 
             URL="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}/releases/${TAG}/attach_files/${ASCII}/download"
@@ -380,12 +425,18 @@ jobs:
 
       - name: 提为正式发行版
         continue-on-error: true
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
           API="https://api.gitcode.com/api/v5/repos/${GITCODE_REPO}"
           # 纯展示面（附件下载不依赖它）—— 失败只告警，不判红整轮。
+          # 按 tag 寻址，且把 name/body 一并带上（GitCode 的 PATCH 要求它们在场）。
+          jq -n --arg t "$TAG" \
+            '{name:$t, body:("镜像自 GitHub Release "+$t+"（字节与签名原样，未重新构建）"), release_status:"latest"}' \
+            > /tmp/patch.json
           curl -sS -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" -H 'Content-Type: application/json' \
-            -X PATCH --data '{"release_status":"latest"}' "$API/releases/${REL_ID}" \
+            -X PATCH --data @/tmp/patch.json "$API/releases/$TAG" \
             -o /tmp/promote.json -w 'promote_http=%{http_code}\n' || true
           head -c 200 /tmp/promote.json 2>/dev/null; echo
 
