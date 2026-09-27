@@ -13,6 +13,16 @@ pub enum SandboxResult {
     Denied(String),   // 拒绝原因
 }
 
+impl SandboxResult {
+    /// 转成能力口/调用方的 `Result<PathBuf, String>`（Denied 的原因原样传播）。
+    pub fn into_result(self) -> Result<PathBuf, String> {
+        match self {
+            SandboxResult::Allowed(p) => Ok(p),
+            SandboxResult::Denied(reason) => Err(reason),
+        }
+    }
+}
+
 /// 路径验证 — 规范化、检查符号链接、验证前缀。
 pub struct Sandbox {
     /// 逻辑版项目根（无 Windows verbatim `\\?\` 前缀）— 仅用于前缀比较。
@@ -55,17 +65,61 @@ impl Sandbox {
         logical_path(path).starts_with(&self.project_root)
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // 用户级数据路径的**工作区无关**解析（2026-09-26 真机修）
+    // ═══════════════════════════════════════════════════════════════
+    //
+    // 沙箱对白名单路径（`~/.lantai/**`，见 is_user_data_path /
+    // is_user_data_writable_path）的裁决只取决于 home，**与 project_root 无关**——
+    // `resolve_read` / `resolve_write` 里那两段豁免分支就是这个判据。
+    //
+    // 抽出来的理由（2026-09-26 真机事故，两处同症）：
+    //   壳启动早期要读写用户级配置，而拿到 Sandbox 实例必须先过
+    //   `utils::path_resolve::get_ctx`，那个函数在工作区打开前**恒失败**
+    //   ⇒ 白名单路径反被「未打开工作区，请先打开项目」挡死：
+    //     ① `~/.lantai/providers.yml` 存量迁移写盘（bootShell 第 0 步，
+    //        工作区要到第 3 步壳行才打开）——provider 配方文件永远建不出来，
+    //        设置页显示「写配置文件失败：未打开工作区，请先打开项目」；
+    //     ② `~/.lantai/mcp.json` 读取（main.ts 装载用户级 MCP）——静默降级成 0 个 server。
+    //   两处都发生在工作区打开之前，属于「豁免依赖了它本不该依赖的东西」。
+    //
+    // 边界不放宽：返回 `None` = 不是白名单路径，调用方照旧 `get_ctx` 走工作区沙箱。
+
+    /// 用户级数据路径的读解析（判据 = is_user_data_path）。`None` = 非白名单。
+    pub fn user_data_read(path: &Path) -> Option<SandboxResult> {
+        if !Self::is_user_data_path(path) {
+            return None;
+        }
+        Some(Self::allow_user_data(path))
+    }
+
+    /// 用户级数据路径的写解析（判据 = is_user_data_writable_path；skills 等只读目录不在此列）。
+    /// `None` = 非白名单。
+    pub fn user_data_write(path: &Path) -> Option<SandboxResult> {
+        if !Self::is_user_data_writable_path(path) {
+            return None;
+        }
+        Some(Self::allow_user_data(path))
+    }
+
+    /// 白名单路径的放行体——`resolve_*` 的豁免分支与 `user_data_*` 共用这一处，
+    /// 避免「工作区无关入口」与「实例入口」两份实现漂移。
+    /// 放行不等于不检查：路径仍不许是符号链接/junction。
+    fn allow_user_data(path: &Path) -> SandboxResult {
+        let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        if is_symlink_or_junction(path) {
+            return SandboxResult::Denied("user data path symlinks are not allowed".into());
+        }
+        SandboxResult::Allowed(real)
+    }
+
     /// 验证对 `path` 的读取操作。
     /// 用户级数据（~/.lantai/ 下白名单子目录 + 根级配置文件，见
     /// is_user_data_path_with_home）绕过项目沙箱（与写入相同）。
     pub fn resolve_read(&self, path: &Path) -> SandboxResult {
-        // 用户级数据目录绕过
-        if Self::is_user_data_path(path) {
-            let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-            if is_symlink_or_junction(path) {
-                return SandboxResult::Denied("user data path symlinks are not allowed".into());
-            }
-            return SandboxResult::Allowed(real);
+        // 用户级数据目录绕过（判据与放行体 = user_data_read，同一处实现）
+        if let Some(r) = Self::user_data_read(path) {
+            return r;
         }
 
         let real = match std::fs::canonicalize(path) {
@@ -233,14 +287,10 @@ impl Sandbox {
     /// 写入仍锁项目内，防技能目录被任意写）。
     pub fn resolve_write(&self, path: &Path) -> SandboxResult {
         // 用户级数据写豁免（global_memory + mcp.json + providers.yml；
-        // skills 目录不在豁免——技能安装走项目级 UI 动作，不开放任意写）
-        if Self::is_user_data_writable_path(path) {
-            let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-            // 安全检查仍然适用 — 用户数据路径不允许符号链接
-            if is_symlink_or_junction(path) {
-                return SandboxResult::Denied("user data path symlinks are not allowed".into());
-            }
-            return SandboxResult::Allowed(real);
+        // skills 目录不在豁免——技能安装走项目级 UI 动作，不开放任意写）。
+        // 判据与放行体 = user_data_write，同一处实现。
+        if let Some(r) = Self::user_data_write(path) {
+            return r;
         }
 
         let real = match std::fs::canonicalize(path) {
@@ -589,6 +639,83 @@ mod tests {
         let bak = lantai.join("providers.yml.bak");
         assert!(matches!(sandbox.resolve_read(&bak), SandboxResult::Denied(_)), "providers.yml.bak 读仍拒绝");
         assert!(matches!(sandbox.resolve_write(&bak), SandboxResult::Denied(_)), "providers.yml.bak 写仍拒绝");
+    }
+
+    /// 回归（2026-09-26 真机）：白名单用户级路径的解析**不依赖工作区**。
+    ///
+    /// 病灶：壳启动早期（工作区尚未打开）要读写用户级配置，而实例入口
+    /// `resolve_path_user_read/write` 必须先 `get_ctx` ⇒ 恒失败「未打开工作区，
+    /// 请先打开项目」：
+    ///   ① `~/.lantai/providers.yml` 存量迁移写盘（bootShell 第 0 步；工作区要到
+    ///      第 3 步壳行才打开）——provider 配方文件**永远建不出来**，设置页原文
+    ///      「写配置文件失败：未打开工作区，请先打开项目」；
+    ///   ② `~/.lantai/mcp.json` 读取（main.ts 装载用户级 MCP）——静默降级成 0 个 server。
+    /// 这两条路径的放行判据只看 home、与 project_root 无关，本就不该要工作区。
+    ///
+    /// 边界钉死：非白名单路径必须返回 `None`（调用方照旧 `get_ctx` 走工作区沙箱）。
+    #[test]
+    fn user_data_paths_resolve_without_any_workspace() {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home.is_empty() {
+            return;
+        }
+        let lantai = PathBuf::from(&home).join(".lantai");
+        let providers = lantai.join("providers.yml");
+        assert!(
+            matches!(Sandbox::user_data_read(&providers), Some(SandboxResult::Allowed(_))),
+            "读：~/.lantai/providers.yml 应免工作区放行"
+        );
+        assert!(
+            matches!(Sandbox::user_data_write(&providers), Some(SandboxResult::Allowed(_))),
+            "写：~/.lantai/providers.yml 应免工作区放行"
+        );
+        assert!(
+            matches!(Sandbox::user_data_read(&lantai.join("mcp.json")), Some(SandboxResult::Allowed(_))),
+            "读：~/.lantai/mcp.json 应免工作区放行（main.ts 装载用户级 MCP）"
+        );
+        assert!(
+            matches!(Sandbox::user_data_write(&lantai.join("mcp.json")), Some(SandboxResult::Allowed(_))),
+            "写：~/.lantai/mcp.json 应免工作区放行"
+        );
+
+        // ⚡ 前端真实送来的形态：Rust 返回反斜杠目录 + 前端拼 "/providers.yml"
+        //   （providers-store：`${dir.replace(/[\\/]+$/, '')}/providers.yml`）——
+        //   混合分隔符必须同样命中（Windows 路径比较按组件，不按字节）。
+        #[cfg(windows)]
+        {
+            let mixed = PathBuf::from(format!("{}\\.lantai/providers.yml", home));
+            assert!(
+                matches!(Sandbox::user_data_write(&mixed), Some(SandboxResult::Allowed(_))),
+                "前端拼的混合分隔符形态应同样放行"
+            );
+        }
+
+        // 边界不放宽（一）：写白名单比读窄——相邻名/目录/别的扩展名一律 None
+        for denied in [
+            lantai.join("providers.yml.bak"),
+            lantai.join("providers").join("x.yml"),
+            lantai.join("providers.yaml"),
+        ] {
+            assert!(
+                Sandbox::user_data_write(&denied).is_none(),
+                "写不得免工作区放行 {:?}",
+                denied
+            );
+        }
+        assert!(
+            Sandbox::user_data_write(&lantai.join("skills").join("officecli").join("SKILL.md")).is_none(),
+            "skills 只读：写不豁免（免工作区入口同样不得放行）"
+        );
+        assert!(
+            Sandbox::user_data_read(&lantai.join("skills").join("officecli").join("SKILL.md")).is_some(),
+            "skills 读豁免面照旧"
+        );
+        // 边界不放宽（二）：`.lantai` 之外的普通用户文件两条通道都不得豁免
+        let docs = PathBuf::from(&home).join("Documents");
+        assert!(Sandbox::user_data_read(&docs).is_none(), "普通用户目录读不得免工作区");
+        assert!(Sandbox::user_data_write(&docs.join("x.txt")).is_none(), "普通用户文件写不得免工作区");
     }
 
     #[test]

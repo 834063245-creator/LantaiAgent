@@ -9,7 +9,7 @@ use tauri::Emitter;
 
 use crate::permissions;
 use crate::permissions::{PermissionContext, PermissionDecision, has_permission_to_use_tool, register_ask};
-use crate::sandbox::expand_home;
+use crate::sandbox::{Sandbox, expand_home};
 use crate::tools;
 use crate::workspace;
 
@@ -237,16 +237,31 @@ pub(crate) async fn require_write(file_path: &str, agent_id: Option<&str>, state
 /// ponytail: 用户 UI 操作的路径解析 — 只做 forward-map + sandbox resolve,
 /// 不检查权限规则. 权限系统是给 Agent 的, 用户在 UI 上的操作不受权限限制.
 /// safety check 仍然保留在写路径 (防误操作系统文件).
+///
+/// ⚡ 用户级白名单路径（`~/.lantai/**`，判据见 `Sandbox::user_data_read/write`）
+/// **先于工作区**解析：它们放行与否只看 home，而拿到 `ctx`（Sandbox 实例）必须
+/// 工作区已打开——壳启动早期（provider 配方存量迁移写盘 = bootShell 第 0 步、
+/// 用户级 mcp.json 读取 = main.ts）工作区还没开，豁免会被
+/// 「未打开工作区，请先打开项目」挡死（2026-09-26 真机事故：providers.yml
+/// 永远建不出来）。非白名单路径照旧 `get_ctx`，边界不放宽。
 pub(crate) fn resolve_path_user_read(file_path: &str, state: &tauri::State<'_, WorkspaceState>) -> Result<PathBuf, String> {
+    let expanded = expand_input(file_path);
+    if let Some(r) = Sandbox::user_data_read(&expanded) {
+        return r.into_result();
+    }
     let ctx = get_ctx(state)?;
-    let physical = ctx.forward_map_path(&expand_input(file_path), None);
+    let physical = ctx.forward_map_path(&expanded, None);
     let physical_str = physical.to_string_lossy().to_string();
     ctx.resolve_read(&physical_str)
 }
 
 pub(crate) fn resolve_path_user_write(file_path: &str, state: &tauri::State<'_, WorkspaceState>) -> Result<PathBuf, String> {
+    let expanded = expand_input(file_path);
+    if let Some(r) = Sandbox::user_data_write(&expanded) {
+        return r.into_result();
+    }
     let ctx = get_ctx(state)?;
-    let physical = ctx.forward_map_path(&expand_input(file_path), None);
+    let physical = ctx.forward_map_path(&expanded, None);
     let physical_str = physical.to_string_lossy().to_string();
     ctx.resolve_write(&physical_str)
 }
