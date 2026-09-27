@@ -44,6 +44,18 @@ async function loadRealListen(): Promise<void> {
   }
 }
 
+/** rpc 信封里的真正方法名（`invoke('rpc', { method })`）——其余命令无此字段。
+ *
+ *  ⚡ 2026-09-26 加：此前 invoke 只记 `command:"rpc"`，于是**所有 rpc 在日志里长得
+ *  一模一样**，出事只能看到一串无差别的 `command:"rpc"`（真机排查「provider 配置
+ *  文件到底有没有被写过」就卡死在这：写了 / 没写 / 写失败了，三种情形在日志上
+ *  不可区分，白丢一轮）。
+ *  **只取方法名**——args 里可能有 apiKey 等敏感值，绝不整包落日志。 */
+function rpcMethodOf(cmd: string, args?: Record<string, unknown>): Record<string, unknown> {
+  const m = args?.method;
+  return cmd === 'rpc' && typeof m === 'string' ? { method: m } : {};
+}
+
 /**
  * `invoke`（来自 @tauri-apps/api/core）的直接替代品。
  * 浏览器环境（npm run dev）下路由到 mock 数据。
@@ -52,13 +64,13 @@ async function loadRealListen(): Promise<void> {
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (IS_TAURI) {
     await loadReal();
-    log.debug('bridge', 'invoke', { command: cmd });
+    log.debug('bridge', 'invoke', { command: cmd, ...rpcMethodOf(cmd, args) });
     try {
       if (!_realInvoke) throw new Error('invoke bridge not initialized');
       const result = await _realInvoke(cmd, args);
       return result as T;
     } catch (e) {
-      log.error('bridge', 'invoke failed', { command: cmd, error: String(e) });
+      log.error('bridge', 'invoke failed', { command: cmd, ...rpcMethodOf(cmd, args), error: String(e) });
       throw e;
     }
   }
