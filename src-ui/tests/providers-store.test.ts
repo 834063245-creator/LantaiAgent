@@ -163,6 +163,56 @@ describe('provider 配置文件通道（写盘一半）', () => {
     expect(providersDocStatus().lastError).toBe('');
   });
 
+  // ⚡ 2026-09-26 同族拆弹：**空文档不算文件权威**。
+  // 设计件原文 = 「磁盘上已有内容 ⇒ 文件就是权威」，而旧判据只看通道可用性
+  // ⇒ 文件**还空着**时也报「权威」，投影当场返回**空行表**；此时任何一次
+  // saveSettings 都会把 localStorage 里的意图剥掉 = 配置凭空消失——正是
+  // 2026-09-23 用户报「之前配好的供应商也没了」的形态。
+  // 此前唯一挡住它的是「迁移失败 ⇒ fatal 置位」这条巧合；而重读会把 fatal
+  // 清成 undefined（`state.fatal = doc.fatal`）⇒ 巧合一破就丢配置。
+  // 本用例走的就是这条链：迁移写盘失败 ⇒ fatal 置位 ⇒ 重试路径清掉 fatal，
+  // 而磁盘上**依然没有内容**。
+  it('迁移失败 + 重读清掉 fatal：空文件仍不得算权威（意图必须留在本机）', async () => {
+    seedStored([
+      {
+        kind: 'openai',
+        name: 'opencode',
+        apiKey: '',
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        model: 'deepseek-flash',
+      },
+    ]);
+    // 通道在，但**写盘失败**（例：工作区未就绪 / 磁盘只读）⇒ 迁移失败
+    mockRpc.mockImplementation(async (method, params) => {
+      if (method === 'providers_dir') return 'C:/Users/u/.lantai';
+      if (method === 'fs_cap') {
+        const action = params.action as string;
+        const path = (params.file_path ?? params.path) as string;
+        if (action === 'read') throw new Error(`no such file: ${path}`);
+        if (action === 'write') throw new Error('写盘失败：磁盘只读');
+      }
+      return 'null';
+    });
+    await bootstrapProvidersDoc();
+    expect(providersDocStatus().available).toBe(true);
+    expect(providersDocStatus().fatal).toBeTruthy(); // 迁移失败必须可见
+    expect(providersDocStatus().empty).toBe(true);
+
+    // 用户点「重试路径」（或 watcher 重读）⇒ fatal 被清成 undefined
+    wireRpc();
+    await retryProvidersPath();
+    expect(providersDocStatus().fatal).toBeUndefined();
+    expect(providersDocStatus().empty).toBe(true); // 磁盘上依然没有内容
+
+    // 判据必须仍不成立：意图留在本机，行表走本机回落（不是空行表）
+    const { saveSettings } = await import('../src/settings');
+    saveSettings(loadSettings());
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { providers?: StoredRow[] };
+    expect(raw.providers?.[0]?.baseUrl).toBe('https://opencode.ai/zen/go/v1');
+    expect(raw.providers?.[0]?.model).toBe('deepseek-flash');
+    expect(loadSettings().providers.map((p) => p.name)).toEqual(['opencode']);
+  });
+
   it('通道不可用时保存设置：绝不剥掉 localStorage 里的意图副本（那是唯一来源）', async () => {
     seedStored([
       {
@@ -330,6 +380,61 @@ describe('provider 配置文件通道（写盘一半）', () => {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { providers?: StoredRow[] };
     expect(stored.providers?.[0]).not.toHaveProperty('baseUrl');
     expect(mockConfigChanged).toHaveBeenCalledWith('settings-saved');
+
+    root?.unmount();
+    root = null;
+  });
+
+  // ⚡ 2026-09-26 真机报障：「设置页有时候莫名其妙丢 key」——关掉重开面板又恢复。
+  // 病灶：外部手改文件 → watcher 广播 / 保存后广播 / 「重试路径」三条重读路径
+  // 都用 `loadSettings()`（**永远不含 apiKey**，权威在系统凭据库）把面板的
+  // providers 域**整体替换** ⇒ 内存里刚回填的 Key 被清空。Key 没真丢，是面板
+  // 内存态被冲掉（所以重开就恢复）。守护：重读要换 baseUrl，但 Key 必须留。
+  it('外部改文件触发面板重读：已回填的 Key 不得被清空', async () => {
+    disk.set(DOC_PATH, 'commandcodegoat:\n  kind: openai\n  baseUrl: https://old.example/v1\n  model: m1\n');
+    // 凭据库里有一把 Key——只有 credential_get 拿得到，loadSettings 永不带它
+    mockRpc.mockImplementation(async (method, params) => {
+      if (method === 'providers_dir') return 'C:/Users/u/.lantai';
+      if (method === 'credential_get') return JSON.stringify('sk-real-key');
+      if (method === 'fs_cap') {
+        const action = params.action as string;
+        const path = (params.file_path ?? params.path) as string;
+        if (action === 'read') {
+          const text = disk.get(path);
+          if (text === undefined) throw new Error(`no such file: ${path}`);
+          return JSON.stringify({ path, content: text });
+        }
+        if (action === 'write') {
+          disk.set(path, params.content as string);
+          return JSON.stringify({ path });
+        }
+        if (action === 'create_dir') return JSON.stringify({ path });
+      }
+      return 'null';
+    });
+    await bootstrapProvidersDoc();
+
+    const container = document.createElement('div');
+    document.body.innerHTML = '';
+    document.body.appendChild(container);
+    let root: Root | null = createRoot(container);
+    root.render(createElement(SettingsPanel));
+    await tick();
+    await tick(); // 密钥回填是异步的——等它落定
+
+    const fieldInputs = (): HTMLInputElement[] => [...container.querySelectorAll<HTMLInputElement>('.pp-field input')];
+    const keyInput = (): HTMLInputElement | undefined => fieldInputs().find((i) => i.placeholder.startsWith('sk-'));
+    expect(keyInput()?.value).toBe('sk-real-key');
+
+    // 外部手改文件 → 面板重读（等价于 providers:changed 到达）
+    disk.set(DOC_PATH, 'commandcodegoat:\n  kind: openai\n  baseUrl: https://outside.example/v1\n  model: m1\n');
+    await loadProvidersDoc();
+    await tick();
+
+    // 重读真的发生了（baseUrl 换新）……
+    expect(fieldInputs().find((i) => i.placeholder.includes('https://'))?.value).toBe('https://outside.example/v1');
+    // ……而 Key 必须还在（修前恒为 ''）
+    expect(keyInput()?.value).toBe('sk-real-key');
 
     root?.unmount();
     root = null;

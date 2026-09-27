@@ -94,9 +94,17 @@ function looksLikePath(p: string): boolean {
 }
 
 /** 文件权威是否**已确认**可用（setting.ts 只在这个条件下才敢剥掉 localStorage
- *  里的意图副本——通道没确认之前剥 = 丢掉用户唯一的配置来源）。 */
+ *  里的意图副本——通道没确认之前剥 = 丢掉用户唯一的配置来源）。
+ *
+ *  ⚡ 2026-09-26 补一条：**空文档不算权威**（`!state.empty`）。设计件原文是
+ *  「磁盘上已有内容 ⇒ 文件就是权威」（docs/design/provider-system-spec.md §配方
+ *  改文件），而此前判据只看通道可用性 ⇒ 文件**还空着**（迁移没跑 / 跑了但失败）
+ *  时它也报「权威」，投影当场返回**空行表**。用户 2026-09-23 报「之前配好的
+ *  供应商也没了」正是这个形态。此前唯一挡住它的是「迁移失败 ⇒ state.fatal
+ *  置位」这条**巧合**——而 `retryProvidersPath()` 与 watcher 重读都会把 fatal
+ *  清成 undefined（`state.fatal = doc.fatal`），巧合一破就丢配置。 */
 export function providersFileReady(): boolean {
-  return state.available && state.loaded && !state.fatal;
+  return state.available && state.loaded && !state.fatal && !state.empty;
 }
 /** 运行态读数（provider 名 → 探针结果/目录快照/密钥），localStorage 的作者。 */
 let runtimeMap = new Map<string, ProviderRuntime>();
@@ -388,8 +396,14 @@ export async function bootstrapProvidersDoc(): Promise<void> {
   if (state.empty && stored.length > 0) {
     const res = await seedProvidersDoc(stored);
     if (!res.ok) {
-      // 迁移失败必须可见（否则用户看到「provider 全没了」却不知为什么）
-      state.fatal = `存量 provider 迁移到配置文件失败：${res.error ?? '未知原因'}`;
+      // 迁移失败必须可见（否则用户看到「provider 全没了」却不知为什么）——
+      // 三处一起：设置页 fatal 文案 + console + ui.log。
+      // ⚡ 2026-09-26 真机教训：此前只写内存里的 fatal，ui.log **一个字都没有**，
+      //    于是「文件永远建不出来」藏了两天（同期通道失败那条路写了 14 行日志，
+      //    两相对比，静默的这条才是最难查的）。失败路径不留痕 = 下次还得靠猜。
+      const reason = res.error ?? '未知原因';
+      state.fatal = `存量 provider 迁移到配置文件失败：${reason}`;
+      log.error('provider-doc', '存量 provider 迁移到配置文件失败', { error: reason, path: state.path });
       notify();
       return;
     }

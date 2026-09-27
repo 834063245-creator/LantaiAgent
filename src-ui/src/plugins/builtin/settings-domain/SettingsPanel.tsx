@@ -62,6 +62,24 @@ function errTextOf(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** 用磁盘行表换掉面板的 providers 域——**密钥必须从内存里带过去**。
+ *
+ *  `loadSettings()` **永远不含 apiKey**（唯一权威在系统凭据库，localStorage 无明文，
+ *  见 provider-data.ts 头注）。所以「整体替换 providers 域」= 把面板里刚回填/刚输入的
+ *  Key 全部清空 ⇒ 用户看到 Key 字段莫名变空，而**关掉重开面板又恢复**
+ *  （mount 的 `loadSettingsWithSecrets` 会再回填一次）——2026-09-26 真机报障
+ *  「设置页有时候莫名其妙丢 key」就是这个：Key 没真丢，只是面板内存态被冲掉。
+ *
+ *  三条重读路径（外部手改文件 → watcher 广播 / 保存后 watcher 广播 / 「重试路径」）
+ *  都经这里。只补空位：内存里没有这一行（外部新加的 provider）时保持空，交给回填。 */
+function withCarriedKeys(s: AppSettings, disk: AppSettings['providers']): AppSettings {
+  const carried = new Map(s.providers.map((p) => [p.name, p.apiKey]));
+  return {
+    ...s,
+    providers: disk.map((p) => (p.apiKey ? p : { ...p, apiKey: carried.get(p.name) || '' })),
+  };
+}
+
 const SettingsPanelApp: React.FC<{
   onClose: () => void;
   onSave: (() => void) | null;
@@ -498,15 +516,16 @@ const SettingsPanelApp: React.FC<{
                     return;
                   }
                   setDocStaleHint(false);
-                  // 只换 providers 一域（其余 tab 的暂存改动不牵连）
-                  setSettings((s) => ({ ...s, providers: loadSettings().providers }));
+                  // 只换 providers 一域（其余 tab 的暂存改动不牵连）；
+                  // 密钥随内存带走——见 withCarriedKeys 头注
+                  setSettings((s) => withCarriedKeys(s, loadSettings().providers));
                 },
                 staleHint: docStaleHint,
                 // 通道就绪后不必重启应用：再跑一次取路径（失败从不缓存）
                 onRetryPath: () => {
                   void retryProvidersPath().then(() => {
                     setDocStaleHint(false);
-                    setSettings((s) => ({ ...s, providers: loadSettings().providers }));
+                    setSettings((s) => withCarriedKeys(s, loadSettings().providers));
                     setProvidersDocVersion((v) => v + 1);
                   });
                 },
