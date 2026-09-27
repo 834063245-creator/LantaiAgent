@@ -423,3 +423,22 @@ CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**—
 
 **家族结论**：反代是 CORS 策略的**唯一作者**——上游响应里属于"浏览器协议面"的头（`access-control-*`）一律不得透传；也别再把"透传上游头"当默认正确。**同批欠账（未拆）**：`provider/shared.ts::fetchJsonWithTimeout` 把任何失败折成 `null`，CORS／401／DNS 在 UI 上是同一句话——诊断面若再被追着问"为什么失败"，改这里。
 
+## 第十四批审计（2026-09-26）— provider 配置面家族（用户报「文件建不出来」→「设置页莫名其妙丢 key」）
+
+**用户口径**：问 provider 配置文件在哪 → 紧接着补一句「我怀疑这个文件建不出来呢…我感觉这个东西有问题呢」。**用户的怀疑是对的，而且它已经这样静默了两天**——全盘搜不到 `providers.yml`，而设置页写着「写配置文件失败：未打开工作区，请先打开项目」。
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| Q1 | `rpc.rs` 的 `providers_dir` 分支（`ok_json(r)`，`r: Result<String, _>`） | **String 被序列化成带引号的 JSON 文本**（`"C:\\Users\\…"`），而契约声明 `result: string`、前端按裸串直读（`typedRpc`）⇒ `looksLikePath()` 见首字符是 `"` 判「不是路径」 | 2026-09-23→09-24 之间 provider 文件通道整体降级成内置存储：既不建文件也不迁移。同族 `composition_dir` 先修并**在注释里点名了 `providers_dir`**，却漏改本体 | ✅ 已拆（`3c25f976`，2026-09-24）：裸文本返回。取证 = ui.log 里 14 条 `provider-doc / providers_dir 返回的不是路径`，最后一条 `2026-09-24T10:56:39Z`，与修复 commit（`19:06:25 +0800`）时间严丝合缝 |
+| Q2 | `utils/path_resolve.rs::resolve_path_user_read/write` 的 `get_ctx(state)?` × `sandbox.rs` 的用户级白名单豁免 | **「豁免项目沙箱」被实现成必须先有一个项目**：白名单（`~/.lantai/**`）的裁决只看 home、与 `project_root` 无关，但拿到 `Sandbox` 实例必须先 `get_ctx`，而工作区打开前它**恒失败**（`main.rs` 启动即 `Mutex::new(None)`，唯一写入点是 `workspace_activate`） | 壳启动早期两处用户级配置读写全被「未打开工作区，请先打开项目」挡死：① provider 配方**存量迁移写盘**（bootShell 第 0 步；工作区要到**第 3 步壳行**才打开）⇒ `~/.lantai/providers.yml` **永远建不出来**；② `~/.lantai/mcp.json` 读取（main.ts 装载用户级 MCP）⇒ 被 `isUserMcpMissingError` 判成「非缺失」，静默降级成 0 个 server。指纹正合收录标准：**接缝靠人肉纪律**（「boot 第 0 步会读写用户级文件」这条隐式时序没人守）+ **真因被静默吞掉**（迁移失败只写内存 `fatal`，ui.log 一个字都没有）+ **单测全绿**（`providers-store.test.ts` 的 mock 把 `providers_dir`/`fs_cap` 全接管，`get_ctx` 那一环永远走不到） | ✅ 已拆（2026-09-26）：`sandbox.rs` 抽 `Sandbox::user_data_read/write`（**工作区无关**入口；放行体与 `resolve_read/write` 共用 `allow_user_data` 一处实现，**边界不放宽**——非白名单仍返回 `None`）+ `resolve_path_user_read/write` 先问豁免、再 `get_ctx`；迁移失败补 `log.error`（三处一起：设置页 fatal + console + ui.log）。回归 `sandbox::tests::user_data_paths_resolve_without_any_workspace`（含**前端真实送来的混合分隔符**形态 + 非白名单必须 `None` 的边界钉值）。壳全量 **513 + 集成 1 全绿** |
+| Q3 | `provider/providers-store.ts::providersFileReady()` = `available && loaded && !fatal` | **空文档被当成了权威**——与设计件原文「磁盘上已有内容 ⇒ 文件就是权威」相悖。文件还空着时该判据也报「权威」，投影当场返回**空行表**，此后任何一次 `saveSettings` 都把 localStorage 里的意图剥掉 | 用户 2026-09-23 报「之前配好的供应商也没了」即此形态。此前唯一挡住它的是「迁移失败 ⇒ `state.fatal` 置位」这条**巧合**，而 `retryProvidersPath()`（设置页「重试路径」）与 watcher 重读都会 `state.fatal = doc.fatal` 把它清成 undefined ⇒ 巧合一破就丢配置 | ✅ 已拆（2026-09-26）：判据补 `&& !state.empty`；回归 `tests/providers-store.test.ts`「迁移失败 + 重读清掉 fatal：空文件仍不得算权威」——**先证红**（撤掉该条件即 `expected undefined to be 'https://opencode.ai/zen/go/v1'`，意图真被剥掉）再转绿 |
+
+| Q4 | `settings-domain/SettingsPanel.tsx` 的两条 doc 重读路径（`onReload` / `onRetryPath`）用 `setSettings((s) => ({ ...s, providers: loadSettings().providers }))` | **`loadSettings()` 永远不含 `apiKey`**（唯一权威在系统凭据库，localStorage 无明文）⇒「把整个 providers 域换成它」= 把面板内存里刚回填的 Key 全清空 | 用户报「设置页有时候莫名其妙丢 key」，**关掉重开面板又恢复**（mount 的 `loadSettingsWithSecrets` 再回填一次）——所以 Key 从来没真丢，是面板内存态被冲掉。触发面正是 2026-09-24 配方改文件批新增的三条重读：外部手改文件 → watcher 广播 / **保存后 watcher 广播**（保存把 `providerDirty` 复位 ⇒ 下一次广播不再被 dirty 守卫拦住 ⇒ 刚保存完就可能「丢 key」）/ 「重试路径」。指纹合收录标准：**接缝靠人肉纪律**（“重读行表”看起来与密钥无关）+ **单测全绿**（既有面板测试的 mock 不返回 `credential_get`，Key 本来就是空的，被冲掉也看不出来） | ✅ 已拆（2026-09-26）：抽 `withCarriedKeys(s, disk)`（只补空位、不冲内存里已有的 Key），两条路径都改道它；回归 `tests/providers-store.test.ts`「外部改文件触发面板重读：已回填的 Key 不得被清空」——**先证红**（`expected '' to be 'sk-real-key'`）再转绿。`persistSecrets` 早有「空 key 不写凭据」护栏（2026-08-07），所以**从未真丢过**——本批拆的是显示面 |
+
+**家族结论**：豁免的判据决定了它**能依赖什么**。`~/.lantai/**` 的放行判据只有 home ⇒ 这条路上任何 `get_ctx`（工作区句柄 / 权限 ctx / forward-map）都是**伪依赖**；启动早期调用它 = 自己造一个「工作区还没开就必然失败」的雷。同理，**用户级文件的读写不该排在「打开工作区」之后**——真需要工作区时，该改的是判据，不是调用点。
+
+**第二族结论（Q4）**：**「重读磁盘」≠「重读全部状态」**。`loadSettings()` 是个**投影**（文件行表 + localStorage 运行态），**密钥不在其中**——凡是要用它的产物替换 UI 内存态的地方，都得显式把「不在这份投影里」的字段带过去（本处 = `apiKey`）。同一个文件里既有正确范式（mount 的 `loadSettingsWithSecrets` + 只填空位、不冲用户已输入的），也有反例（两条整体替换）——**范式写对了，不等于每个后来者都抄得到**。
+
+**同族仍未拆（诊断面）**：Q2 的失败此前完全静默，是本批藏了两天的主因；此处已补日志，但「内存态 fatal 不落日志」这种写法在别处是否还有，未逐处清查。
+
+
