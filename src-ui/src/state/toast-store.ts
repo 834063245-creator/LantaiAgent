@@ -13,6 +13,7 @@
 //   - error 级长显（holdMs 6000，信息要读完）；info/warn 默认 3200
 
 import { create } from 'zustand';
+import * as Obs from '../agent/obs';
 
 export type ToastLevel = 'info' | 'warn' | 'error';
 
@@ -57,6 +58,10 @@ export const useToastStore = create<ToastState>((set, get) => ({
       }
     }
     const id = ++toastSeq;
+    // ⚡ 日志可观测性批 1（2026-09-27）：error 级 toast = **用户看见了一次失败**，
+    //   落一条 `ui.toast`（漏斗的兜底面——墓碑之外的第二条呈现路径）。
+    //   位置在去重闸**之后**：没弹出来的不记（日志要如实反映用户所见，不是调用次数）。
+    if (level === 'error') Obs.toast({ text, level });
     // 最多同屏 3 条——满则弃最旧
     set((s) => ({ toasts: [...s.toasts.slice(-2), { id, text, level, holdMs }] }));
     setTimeout(() => get().dismissToast(id), holdMs + TOAST_FADE_MS);

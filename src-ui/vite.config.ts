@@ -1,9 +1,40 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-import { realpathSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
+
+// ── 构建锚（日志可观测性批 1，2026-09-27）──
+//
+// ⚡ 为什么在构建期烙进 define，而不是运行时问壳：事故（2026-09-27 本地模型
+// 调不通）里收到的那份 ui.log **无法定位代码**——只能靠「invoke 有没有 method
+// 字段」反推壳的构建时间。日志必须自带锚：版本 + 提交短哈希。
+//   版本真源 = src-tauri/tauri.conf.json（= 用户看到的 app 版本，与前端
+//   `getVersion()` 同源，不另立一份）；commit 由构建机 git 现取。
+//   取不到一律记 'unknown'——**不抛**：一份日志字段不该让构建失败。
+// 消费方 = src-ui/src/agent/obs.ts 的 boot 事件（裸标识符 + typeof 守卫，
+// 形态与 __LANTAI_FACE_ARTIFACT__ 一致；产物域 esbuild 不走本配置 ⇒ 那里
+// typeof 得 'undefined'，安全降级）。
+function buildAnchor(): { v: string; commit: string } {
+  let v = 'unknown';
+  try {
+    const conf = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8')) as {
+      version?: string;
+    };
+    if (typeof conf.version === 'string') v = conf.version;
+  } catch {
+    // 源码包/裁剪树缺该文件 = 记 unknown
+  }
+  let commit = 'unknown';
+  try {
+    commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
+  } catch {
+    // 非 git 工作树 = 记 unknown
+  }
+  return { v, commit };
+}
 
 // ponytail: Vite html-inline-proxy does case-sensitive file.replace(root, …) on
 // Windows — when Tauri spawns the build with lower-case cwd, the proxy lookup
@@ -82,7 +113,7 @@ export default defineConfig({
   // 安全早退（不产生死 link）。⚠ 键必须是**裸标识符**（esbuild define 按
   // 表达式字面形态匹配）；产物侧同名裸键在 scripts/build-builtin-plugins.mjs，
   // 两处形态由 tests/plugin-css-channel 钉住。
-  define: { __LANTAI_FACE_ARTIFACT__: 'undefined' },
+  define: { __LANTAI_FACE_ARTIFACT__: 'undefined', __LANTAI_BUILD__: JSON.stringify(buildAnchor()) },
   plugins: [stubFactoryProductsInBuild()],
   build: {
     target: 'es2021',

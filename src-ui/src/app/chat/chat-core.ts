@@ -20,6 +20,7 @@ import { GoalManager, type GoalRecord } from '../../agent/goal-manager';
 import { log } from '../../agent/logger';
 // 批 9h-4：事实保存授权旗标住内核登记表（记忆实现已随 memory-domain 产物包）
 import { authorizeFactSave } from '../../agent/memory-impl';
+import * as Obs from '../../agent/obs';
 import { isRunDeadlineExceeded } from '../../agent/run-watchdog';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { totalTokens } from '../../agent/token-meter/usage';
@@ -524,6 +525,35 @@ export class ChatCore {
       },
       getRuntime: () => useAgentPanelStore.getState().runtimeRef as RuntimePort | null,
     };
+  }
+
+  /** 回合失败的**唯一漏斗**（日志可观测性批 1，docs/plans/log-observability-plan.md §2.3）：
+   *  墓碑落定后补一条 `turn.failed`。六处出口共用——同回合同层去重由门面负责（不许刷屏）。
+   *
+   *  ⚡ 为什么在 chat-core 而不在 `Stream.markTurnError` 里：`ui/chat-stream.ts` 是
+   *  冻结文件（CONVENTIONS §1.1），而漏斗需要「哪个卷、哪一轮、哪条运行记录」这三样
+   *  身份——它们只在这里齐（turnSid / turnGen / run.id）。
+   *
+   *  phase/kind 默认由错误**类型**推导（`Obs.classifyTurnFailure`：ApiError 的
+   *  status/kind 优先，文案只用于凭据闸的契约标记）；调用点知道得更准时显式覆盖
+   *  （硬截止作废、目标暂停）。 */
+  private _logTurnFailure(
+    turnSid: number | null,
+    turnGen: number,
+    runId: number,
+    err: unknown,
+    opts: { visible: string; phase?: Obs.ObsPhase; kind?: Obs.TurnFailKind; level?: 'warn' | 'error' },
+  ): void {
+    const cls = Obs.classifyTurnFailure(err);
+    Obs.turnFailed({
+      ids: { session: turnSid, turn: turnGen, run: runId },
+      phase: opts.phase ?? cls.phase,
+      kind: opts.kind ?? cls.kind,
+      status: cls.status,
+      raw: cls.raw,
+      level: opts.level,
+      message: opts.visible,
+    });
   }
 
   /** 会话级流上下文（并发会话，2026-08-26）：sid = 事件流所属卷（工厂绑定
@@ -1172,6 +1202,12 @@ export class ChatCore {
       // 悬空来文，用户只看见「模型不响应」。
       if (msg.includes('paused after')) {
         Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
+        this._logTurnFailure(turnSid, turnGen, run.id, err, {
+          phase: 'stream',
+          kind: 'PAUSED',
+          level: 'warn',
+          visible: msg,
+        });
       } else if (isRunDeadlineExceeded(err)) {
         // ⚡ 硬截止作废（landmine L3，2026-09-20）：**必须**落墓碑，且不能被
         // `!signal.aborted` 挡住——看门狗作废的第一步就是 abort（既有停止语义），
@@ -1184,9 +1220,16 @@ export class ChatCore {
             '可直接重发上一条消息；若反复出现，检查出网链路或服务商状态。',
           'error',
         );
+        this._logTurnFailure(turnSid, turnGen, run.id, err, {
+          phase: 'stream',
+          kind: 'RUN_DEADLINE_EXCEEDED',
+          visible: `本轮超硬截止已作废——${msg}`,
+        });
       } else if (!signal.aborted) {
         const code = apiErrorSummary(err);
-        Stream.markTurnError(this._streamCtxFor(turnSid), `错误: ${msg}${code ? `\n（${code}）` : ''}`, 'error');
+        const visible = `错误: ${msg}${code ? `\n（${code}）` : ''}`;
+        Stream.markTurnError(this._streamCtxFor(turnSid), visible, 'error');
+        this._logTurnFailure(turnSid, turnGen, run.id, err, { visible });
       }
       // 正常中止（用户主动停止）：exec 状态已表达，不另播报
     } finally {
@@ -1194,6 +1237,8 @@ export class ChatCore {
       // 旧实现的 done(signal) 要靠调用方记得带令牌）。发起时刻捕获的 run 与结算
       // 时刻的活跃卷无关——切卷不影响本卷账。
       run.end();
+      // 回合失败去重表随回合结束清理（键控自清理——漏调也不会无界增长，门面另有上限兜底）
+      Obs.endTurn({ session: turnSid, turn: turnGen });
       // 轮次代数守卫（2026-09-03「停止后会话坏掉」次因）：本轮仍是该卷最新
       // 轮次时才 finalize——停止后用户立刻发新消息的窗口里，旧轮 finally 迟到
       // 落地会把新轮刚建立的流式助手误终结。让位时新轮自己的
@@ -1487,6 +1532,12 @@ export class ChatCore {
       // （同 _runAgentTurn 的 catch——两处同款病灶同治）。
       if (msg.includes('paused after')) {
         Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
+        this._logTurnFailure(turnSid, turnGen, run.id, err, {
+          phase: 'stream',
+          kind: 'PAUSED',
+          level: 'warn',
+          visible: msg,
+        });
       } else if (isRunDeadlineExceeded(err)) {
         // 硬截止作废（landmine L3）：墓碑照落——判据是错误类型，不是「signal 是否
         // 中止」（作废的第一步就是 abort，沿用静默分支会把这一轮变成幽灵轮）。
@@ -1496,18 +1547,23 @@ export class ChatCore {
             '可直接重发上一条消息；若反复出现，检查出网链路或服务商状态。',
           'error',
         );
+        this._logTurnFailure(turnSid, turnGen, run.id, err, {
+          phase: 'stream',
+          kind: 'RUN_DEADLINE_EXCEEDED',
+          visible: `本轮超硬截止已作废——${msg}`,
+        });
       } else if (!signal.aborted) {
         const code = apiErrorSummary(err);
-        Stream.markTurnError(
-          this._streamCtxFor(turnSid),
-          `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话${code ? `\n（${code}）` : ''}`,
-          'error',
-        );
+        const visible = `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话${code ? `\n（${code}）` : ''}`;
+        Stream.markTurnError(this._streamCtxFor(turnSid), visible, 'error');
+        this._logTurnFailure(turnSid, turnGen, run.id, err, { visible });
       }
     } finally {
       // 收尾只注销**本轮自己那条**运行记录（v43：按 id 身份；旧实现 done(signal) 靠
       // 调用方记得带令牌）。与结算时刻的活跃卷无关——切卷不影响本卷账。
       run.end();
+      // 回合失败去重表随回合结束清理（键控自清理——漏调也不会无界增长，门面另有上限兜底）
+      Obs.endTurn({ session: turnSid, turn: turnGen });
       // 轮次代数守卫（2026-09-03「停止后会话坏掉」次因）：本轮仍是该卷最新
       // 轮次时才 finalize——停止后用户立刻发新消息的窗口里，旧轮 finally 迟到
       // 落地会把新轮刚建立的流式助手误终结（streamingAssistantId 被清、新轮

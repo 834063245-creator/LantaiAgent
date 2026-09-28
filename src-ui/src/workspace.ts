@@ -21,6 +21,7 @@ import { initLogger, log } from './agent/logger';
 import type { MemoryManagerFace } from './agent/memory-contract';
 // 批 9h-4：记忆域实现随 memory-domain 包 ⇒ 装配点走内核登记表门面（缺实现 fail-loud）
 import { createMemoryManager, memoryBundleIngest } from './agent/memory-impl';
+import * as Obs from './agent/obs';
 import { WIRE_IMAGE_CAPS } from './agent/request-images';
 import { type BuilderDeps, buildToolRegistry } from './agent/runtime/agent-builder';
 // ── 运行时层（替代 bootstrap.ts）──
@@ -55,6 +56,8 @@ import { formatDeferredWakeNote, registerDeferredWakeHandler } from './plugins/d
 import { markDynamicFetchStart, mergeDynamicModels, recordDynamicFetchResult } from './provider/catalog';
 import { resolveApiKey } from './provider/credentials';
 import { createLiveProvider } from './provider/live';
+import { providersFilePath } from './provider/providers-store';
+import { getProxyPort } from './provider/transport';
 import type { Provider } from './provider/types';
 import { kernelGlobalMemoryDir, kernelProcessCall, typedListen, typedRpc } from './rpc-contract';
 import {
@@ -261,7 +264,29 @@ export class Workspace {
       ws.onStatusChange?.(`⚠️ 工作区激活失败（后端桥可能不可用）: ${msg}`);
     });
     console.log('[Workspace.open] step 1: done');
-    initLogger(path);
+    // ⚡ 启动锚（日志可观测性批 1，2026-09-27）：收到的 ui.log 必须自带
+    //   版本/commit/工作区/配置路径/代理端口——事故里这些一个都没有，只能靠
+    //   「invoke 有没有 method 字段」反推壳的构建时间。
+    //   两条时序纪律：① 等 initLogger 落定再报（logPath 在它的 await 之后才赋值，
+    //   抢跑会误报 log_channel:unavailable，且本条会写进**旧工作区**的缓冲）；
+    //   ② 全程 void——锚是诊断副产物，绝不许拖慢或拦住工作区打开。
+    void (async () => {
+      // try/await 而非 .catch()：initLogger 在测试替身里可能返回非 promise
+      //（vi.fn() → undefined），`.catch` 会当场炸——锚是副产物，不许它成为
+      // 工作区打开的失败源。
+      try {
+        await initLogger(path);
+      } catch {
+        // 日志通道初始化失败不拦启动——boot 会如实记 log_channel:unavailable
+      }
+      let port = 0;
+      try {
+        port = await getProxyPort();
+      } catch {
+        // 端口解析失败 = 回退直连（transport 的既有降级语义），记 0
+      }
+      Obs.boot({ workspace: path, providersPath: providersFilePath(), proxyPort: String(port) });
+    })();
 
     console.log('[Workspace.open] all done, returning workspace');
     return ws;
