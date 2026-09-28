@@ -15,6 +15,14 @@
 // 留内核的邻居（判据见施工单）：`loadSettings` / `saveSettings` / `onSettingsSaved` /
 // `canvasWheelMode` / `effectiveModels`（多产物共用）· `defaultBaseUrl` / `modelMaxTokens` /
 // `PROVIDER_PROTOCOL_DEFAULTS`（内核自用或端点真源单点）⇒ 经 `./host` 取用。
+//
+// ⚡ 2026-09-28（真机事故补记）：本文件原用 `await import('../../../rpc-contract')` 与
+// `await import('../../../provider/credentials')` 取这两件。**产物域的宿主桥重定向只认
+// 静态 `./host`**（scripts/build-builtin-plugins.mjs 的 onResolve filter），相对动态
+// import 会被 esbuild 整份内联成**产物私有副本**（自带模块级状态）——凭据缓存的写穿
+// 失效因此打在副本上，内核那份（live.ts 每请求读的）纹丝不动：保存 Key 后该提供方仍恒
+// 报「未配置 API Key」，直到重启进程。现全部改走 `./host`（宿主桥 = 内核同一实例）。
+// 守护：构建脚本禁产物源码里的相对动态 import + tests/artifact-self-contained.test.ts。
 
 import type { Protocol } from '../../../provider/types';
 import type { AppSettings, ProviderId } from '../../../settings';
@@ -24,7 +32,9 @@ import {
   defaultBaseUrl,
   getCatalogVendors,
   getDefaultModel,
+  invalidateCredentialCache,
   PROVIDER_PROTOCOL_DEFAULTS,
+  typedRpc,
   VENDOR_TEMPLATES,
 } from './host';
 
@@ -57,7 +67,6 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
     return k && k !== 'null';
   });
   try {
-    const { typedRpc } = await import('../../../rpc-contract');
     for (const p of withKey) {
       // withKey 过滤保证 apiKey 非空；双重守卫防漏
       const rawKey = p.apiKey;
@@ -77,9 +86,14 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
       }
     }
     // Phase C（2026-08-24）：写穿失效凭据内存缓存——live provider 每请求按名
-    // 现解析（provider/credentials.ts），不失效则保存后仍读到旧值。动态 import
-    // 防环（credentials → settings 静态依赖，此处反向只可运行时引）。
-    const { invalidateCredentialCache } = await import('../../../provider/credentials');
+    // 现解析（provider/credentials.ts），不失效则保存后仍读到旧值。
+    // ⚡ 2026-09-28 修正（真机事故：Key 明明写进凭据库、请求仍恒报「未配置 API Key」）：
+    //   本处原用 `await import('../../../provider/credentials')`，而产物构建的宿主桥
+    //   重定向只认静态 `./host`（scripts/build-builtin-plugins.mjs 的 onResolve）——
+    //   相对动态 import 会被 esbuild **整份内联成产物私有副本**（自带 `_keyCache`），
+    //   于是这里失效的是副本的缓存，内核那份（live.ts 读的）纹丝不动：该 provider 名
+    //   此前解析出的空值被负缓存钉住，**整个进程生命周期**都读不回新 Key（重启才恢复）。
+    //   改走宿主桥出口 = 内核同一实例（host.aliased 的 `impl.invalidateCredentialCache`）。
     for (const p of withKey) invalidateCredentialCache(p.name);
   } catch (e) {
     console.warn('[settings] bridge 不可用，凭据未落盘:', e);
@@ -95,10 +109,9 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
  *  调用时机：保存「删除 Provider」或「清除已保存 Key」的暂存操作时。 */
 export async function removeSecret(providerName: ProviderId): Promise<void> {
   try {
-    const { typedRpc } = await import('../../../rpc-contract');
     await typedRpc('credential_delete', { provider: providerName });
-    // Phase C：写穿失效凭据缓存（同 persistSecrets——见上注释）
-    const { invalidateCredentialCache } = await import('../../../provider/credentials');
+    // Phase C：写穿失效凭据缓存（同 persistSecrets——含 2026-09-28 的产物副本
+    // 修正：必须走宿主桥出口，否则失效的是产物私有副本的缓存）
     invalidateCredentialCache(providerName);
     credRemove({ provider: providerName, ok: true });
   } catch (e) {

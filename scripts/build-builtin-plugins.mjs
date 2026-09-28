@@ -45,6 +45,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from '../src-ui/node_modules/esbuild/lib/main.js';
+import { scanArtifactSources } from './lib/artifact-dynamic-imports.mjs';
 import { extractFaceKeys } from './lib/face-keys.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +55,22 @@ const builtinSrcRoot = join(repoRoot, 'src-ui', 'src', 'plugins', 'builtin');
 const distPluginsRoot = join(repoRoot, 'src-ui', 'dist-plugins');
 const outRoot = join(distPluginsRoot, 'builtin', 'hologram');
 const reactBridge = join(builtinSrcRoot, 'react-bridge.cjs');
+
+/* ── 产物模块图豁免账（2026-09-28 立）──
+ * `artifact-input-baseline.json`：**逐插件**列出「允许被内联进该产物」的插件目录外
+ * 项目内源码（globalInputs = 多个产物共用的那批）。判据 = 逐插件输入集比对：内联了
+ * 不在名单里的新模块 → 构建失败；`stateful` 列出的条目是已知欠账（构建时点名提醒）。
+ * 门禁本体见 buildPlugin 的 outsideInputs 检查。 */
+const artifactInputBaseline = JSON.parse(
+  readFileSync(join(__dirname, 'lib', 'artifact-input-baseline.json'), 'utf8'),
+);
+const ARTIFACT_INPUT_GLOBAL = new Set(artifactInputBaseline.globalInputs);
+const ARTIFACT_INPUT_STATEFUL = new Set(artifactInputBaseline.stateful);
+/** 本插件名义下允许内联的输入集（globalInputs ∪ 该插件块）。 */
+function allowedInputsFor(dir) {
+  const own = artifactInputBaseline.plugins[dir]?.inputs ?? [];
+  return new Set([...ARTIFACT_INPUT_GLOBAL, ...own]);
+}
 
 /* ── 宿主面指纹（保险丝 a′，2026-09-14 立法）──
  * 基线 src/plugins/host-surface.baseline.json 由 `npm run gen:host-surface` 生成、
@@ -171,6 +188,21 @@ async function buildPlugin(spec) {
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
 
+  // 自包含契约的第一道（2026-09-28 真机事故立法）：产物源码里**不许有相对动态
+  // import**——宿主桥重定向只认静态 `./host`，相对动态 import 会被 esbuild 整份
+  // 内联成内核模块的**私有副本**（模块级状态分家）。真机形态 = settings-domain 的
+  // 凭据缓存写穿失效打在副本上，内核那份纹丝不动 ⇒ 保存 Key 后仍恒报「未配置
+  // API Key」。判据与排除项见 scripts/lib/artifact-dynamic-imports.mjs 头注。
+  const dynRelative = scanArtifactSources(srcDir);
+  if (dynRelative.length > 0) {
+    console.error(
+      `[build-builtin-plugins] ${spec.dir} 产物源码含**相对动态 import**（会把内核模块内联成私有副本——模块级状态分家，宿主桥失效）：\n` +
+        dynRelative.map((d) => `  ${relative(repoRoot, d.file)}:${d.line}  import('${d.spec}')`).join('\n') +
+        "\n  改法：静态 `import … from './host'`（宿主桥出口；缺出口先补三处：host.ts + host.aliased.ts + host-modules.ts faceDeps）。",
+    );
+    process.exit(1);
+  }
+
   const define = { ...(spec.define ?? {}) };
   if (spec.face) {
     // 产物域标记：apply 据此注入 entry.css（bundle 域 CSS 由 vite 打进应用）。
@@ -241,6 +273,41 @@ async function buildPlugin(spec) {
   if (dynamicBare) {
     console.error(`[build-builtin-plugins] ${spec.dir} 产物含动态裸 import（自包含契约被破）`);
     process.exit(1);
+  }
+
+  // 自包含校验之二（**模块图级**，2026-09-28 真机事故立法）：产物的输入表里不得
+  // 出现**插件目录之外的项目内源码**。宿主桥（onResolve）只重定向静态 `./host`；
+  // 任何绕过它的引用——静态直引内核路径，或相对动态 import——都会被 esbuild
+  // 内联成**私有副本**：被内联者若带模块级状态（缓存 / 账本 / 注册表 / 发号器），
+  // 跨域调用就是「打在自己的影子上」。真机形态 = settings-domain 的凭据缓存写穿
+  // 失效打在副本上、内核那份纹丝不动 ⇒ 保存 Key 后仍恒报「未配置 API Key」，
+  // 直到重启。判据是**结构**（谁被打了进来）而不是文本，故注释/字符串/类型位一概
+  // 不误伤。豁免账 = scripts/lib/artifact-input-baseline.json（每条带 reason；
+  // 带状态的条目另标 stateful: true = 已知欠账，构建时照旧点名提醒）。
+  const outsideInputs = [
+    ...new Set(
+      Object.keys(result.metafile?.inputs ?? {})
+        .map((k) => relative(repoRoot, resolve(repoRoot, k)).replace(/\\/g, '/'))
+        .filter((rel) => rel.startsWith('src-ui/src/'))
+        .filter((rel) => !rel.startsWith(`src-ui/src/plugins/builtin/${spec.dir}/`)),
+    ),
+  ];
+  const unlisted = outsideInputs.filter((rel) => !allowedInputsFor(spec.dir).has(rel));
+  if (unlisted.length > 0) {
+    console.error(
+      `[build-builtin-plugins] ${spec.dir} 产物的模块图里出现了插件目录**之外**且未登记的源码（宿主桥只认静态 './host'——直引内核路径/相对动态 import 都会把它内联成私有副本，模块级状态分家）：\n` +
+        unlisted.map((rel) => `  ${rel}`).join('\n') +
+        "\n  改法：静态 `import … from './host'`（缺出口先补三处：host.ts + host.aliased.ts + host-modules.ts faceDeps）；" +
+        '确属**无状态**共享件时才登记进 scripts/lib/artifact-input-baseline.json（带状态的必须写 stateful + payoff）。',
+    );
+    process.exit(1);
+  }
+  const statefulUsed = outsideInputs.filter((rel) => ARTIFACT_INPUT_STATEFUL.has(rel));
+  if (statefulUsed.length > 0) {
+    console.warn(
+      `[build-builtin-plugins] ${spec.dir} ⚠ 内联了**带模块级状态**的内核模块（已知欠账，见 artifact-input-baseline.json）：` +
+        statefulUsed.join('、'),
+    );
   }
   const hasCss = readdirSync(outDir).some((f) => f.endsWith('.css'));
   // 产物域标记自检（landmine H2 保险丝，2026-09-19）：面产物若仍残留

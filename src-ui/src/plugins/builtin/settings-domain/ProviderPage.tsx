@@ -30,6 +30,7 @@ import {
   oauthLogout,
   recordDynamicFetchResult,
   runDeviceLogin,
+  typedRpc,
 } from './host';
 import { applyFetchedModels } from './model-sync';
 import { type ProbeUiState, ProviderDetail, type ProviderField } from './ProviderDetail';
@@ -143,7 +144,9 @@ export function ProviderPage({
   const [docMsg, setDocMsg] = useState('');
   const handleOpenDocDir = useCallback(async () => {
     try {
-      const { typedRpc } = await import('../../../rpc-contract');
+      // ⚡ 2026-09-28：typedRpc 走宿主桥出口（原先 `await import('../../../rpc-contract')`
+      //   会被产物构建整份内联成私有副本——副本没有内核的 rpc 插桩/接缝，
+      //   同 provider-data.ts 的凭据缓存病灶一族）。
       await typedRpc('providers_dir', { open: true });
       setDocMsg('');
     } catch (e) {

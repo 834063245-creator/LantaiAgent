@@ -421,7 +421,7 @@ CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**—
 
 **取证路径（CDP attach 运行中的壳——值得复用）**：WebView 是只读可观测面，壳已带 `--remote-debugging-port=9222`；`GET /json/list` 取页面 target → WebSocket 上 `Runtime.evaluate` 在**页面真实上下文**里复现请求（本次：经 `127.0.0.1:14570/proxy` 拉目录）+ `Log.enable` 收 CORS 原文 + `Network.responseReceived` 收成品响应头。两条绕路都不通：PowerShell/curl 不执行 CORS（同一响应 curl 200、浏览器拒收），WebView 里 `headers.get('access-control-allow-origin')` 看不见（未 expose）——**"只有浏览器看得见的那一层"必须问浏览器**。
 
-**家族结论**：反代是 CORS 策略的**唯一作者**——上游响应里属于"浏览器协议面"的头（`access-control-*`）一律不得透传；也别再把"透传上游头"当默认正确。**同批欠账（未拆）**：`provider/shared.ts::fetchJsonWithTimeout` 把任何失败折成 `null`，CORS／401／DNS 在 UI 上是同一句话——诊断面若再被追着问"为什么失败"，改这里。
+**家族结论**：反代是 CORS 策略的**唯一作者**——上游响应里属于"浏览器协议面"的头（`access-control-*`）一律不得透传；也别再把"透传上游头"当默认正确。**同批欠账（2026-09-28 已拆，见第十五批 A3）**：`provider/shared.ts::fetchJsonWithTimeout` 把任何失败折成 `null`，CORS／401／DNS 在 UI 上是同一句话——现已回传 `status`，三方言按「有没有发凭据 + 状态码」分流文案（其余形态沿用原句，零回归）。
 
 ## 第十四批审计（2026-09-26）— provider 配置面家族（用户报「文件建不出来」→「设置页莫名其妙丢 key」）
 
@@ -439,6 +439,23 @@ CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**—
 
 **第二族结论（Q4）**：**「重读磁盘」≠「重读全部状态」**。`loadSettings()` 是个**投影**（文件行表 + localStorage 运行态），**密钥不在其中**——凡是要用它的产物替换 UI 内存态的地方，都得显式把「不在这份投影里」的字段带过去（本处 = `apiKey`）。同一个文件里既有正确范式（mount 的 `loadSettingsWithSecrets` + 只填空位、不冲用户已输入的），也有反例（两条整体替换）——**范式写对了，不等于每个后来者都抄得到**。
 
+## 第十五批审计（2026-09-28）— 无 Key 面家族（用户报「provider 是不是只能在工作区配」→「本地模型填了占位符也连不上」）
+
+**用户口径**：先问「provider 是不是只能在工作区里配置，首页似乎配不了」，再问「provider 是不是严格要求必须填 KEY——调用本地模型时即使填占位符也连不上，或者 key 没被保存下来」。**两句都是真 bug**：第一句 = 第十四批 Q2/Q3 在**已发布 v1.0.4** 上的合流形态（见上「发布缺口」）；第二句拆开是两个独立病灶（A1 缓存打错实例、A2 本地端点被硬闸排除）。
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| A1 | `settings-domain/provider-data.ts`（+ `ProviderPage.tsx`）的 `await import('../../../provider/credentials')` / `('../../../rpc-contract')` × 产物构建 `build-builtin-plugins.mjs` | **相对动态 import 绕过了宿主桥重定向**——onResolve 只认静态 `./host`，于是 esbuild 把内核模块**整份内联成产物私有副本**（自带模块级状态 `_keyCache`） | `persistSecrets` 的写穿失效打在**副本**上，内核那份（`provider/live.ts` 每请求现读的）纹丝不动 ⇒ 该 provider 名此前解析出的空值被负缓存钉住，**整个进程生命周期**读不回新 Key：设置页显示已保存、凭据库确有值、请求却恒报「未配置 API Key」，**重启才恢复**——用户读作「key 好像没保存下来」。触发面天然命中本地模型：先无 Key 建行 → 首次对话把空值写进负缓存 → 之后补 Key 也不生效。同族：`rpc-contract` 副本没有内核的 rpc 插桩，收到的 ui.log 因此答不出「Key 写没写」（第十四批诊断面的半截）。指纹合收录标准：**接缝靠人肉纪律**（「产物里也能 import 内核模块」看着无害）+ **单测全绿**（`settings-secrets.test.ts` 跑在**开发域**，同一动态 import 解析到内核真身 ⇒ 两域形状一致、语义不一致） | ✅ 已拆（2026-09-28）：两处改走 `./host`（宿主桥 = 内核同一实例）；构建脚本加**第一道**自包含检查 `scanArtifactSources`（判据真源 `scripts/lib/artifact-dynamic-imports.mjs`：值位置的相对动态 import 一律拒建，注释与 `typeof import()` 类型位豁免）+ 回归 `tests/artifact-self-contained.test.ts`（名册逐目零命中 + 构建脚本仍挂该检查）。取证 = 产物 `settings-domain/entry.js` 内**两份实现并存**（私有 `_keyCache` / `init_credentials` vs 桥面 `impl.invalidateCredentialCache`），而 `persistSecrets` / `removeSecret` 调的是前者 |
+| A2 | `provider/live.ts` 的空 Key 请求前闸（抛 `MISSING_CREDENTIAL`）+ `settings-domain/ProviderPage.tsx` 两处「请先填写 API Key」（测试 / 刷新目录）+ 三方言无条件发凭据头（`openai.ts` 的 `Bearer ${apiKey}` / `anthropic.ts` 的 `x-api-key`） | **本地端点被结构性排除**：`AddProviderSheet` 写着「API Key（可选——本地端点无需）」、拉取注释也「无 Key 也尝试」，但对话 / 连接测试 / 刷新目录三条路全被空 Key 拦死 ⇒ 本地模型（Ollama / LM Studio / llama.cpp）永远用不了，唯一出路是填个假占位符（而占位符又常被 A1 吃掉） | 用户报「本地模型调不动」即此形态——事故 log 里 `8080` / `127.0.0.1` / `localhost` 出现 **0 次** = 请求根本没发出去（[log-observability-plan.md](plans/log-observability-plan.md) §8） | ✅ 已拆（2026-09-28，用户裁定「空 Key 一律放行，但不许变成静默 401/403」）：撤请求前闸（`prewarm` / `fetchModels` 的空 Key 短路同批删除）；三方言空 Key 时**整条凭据头缺席**（不发空 `Bearer `——空头会被部分网关判成「提供了无效凭据」）；401/403 文案分岔（`classifyError` 的 `keyless` 支：本行没有 API Key / 本地端点核对地址端口、云端去设置填 Key）；状态列「探针通过优先于有没有 Key」。判据 = `llm-adapters/shared.ts::sentCredential(headers)` 读**实际发出的头表**（不靠方言另传标志，改头不会漏同步）。契约升版 v54 |
+| A3 | `llm-adapters/shared.ts::fetchJsonWithTimeout` 把任何失败折成 `null`（第十三批登记的「同批欠账」） | 401／DNS／超时在 UI 上是同一句话 | 空 Key 的云端行点「刷新目录 / 从 API 拉取模型」得到「网络错误或端点无响应」——把人指向查网线而不是去填 Key | ✅ 已拆（2026-09-28）：返回值改 `{ json, status }`，三方言经 `modelsFetchFailure` 分流（无凭据 + 401/403 → 同一句 keyless 文案；其余形态沿用原句，零回归） |
+| A4 | **产物模块图的既有内联面**（A1 同族，本批只登记不拆）：`renderers` / `paper-shell` / `settings-domain` / `compose-dock` / `paper-renderers` 五个面产物各自内联了一批插件目录外的内核模块 | 面产物「直引内核路径」= 那些模块在产物里长第二份（副本）；其中**带模块级状态**的七个是真雷：`paper/block-model.ts`（`let blockSeq` 发号器——产物的 createBlock 与内核各发各的号，块 id `pb{n}` 可能撞）、`bridge.ts` / `rpc-contract.ts`（计数与插桩）、`agent/logger.ts`（`logPath`+buffer——副本未 initLogger ⇒ 面产物这几条日志**丢条**）、`agent/obs.ts`（去重表）、`state/toast-store.ts`（zustand store——副本站的 toast 与内核不是同一张表）、`settings.ts`（投影 + 订阅表） | 审计与逐条销账另批（本批的正确姿势 = 先立门禁再审计：构建期把**逐插件输入集**钉成基线，新内联一律拒建） | ⏳ 已立账（2026-09-28）：`scripts/lib/artifact-input-baseline.json`（快照基线 + `stateful` 欠账清单）+ 构建门禁 `scanArtifactInputs`（`build-builtin-plugins.mjs`：不在名单里的插件目录外输入 → 构建失败；名单里的带状态条目 → 构建时点名）。**销账方向**：能走 `./host` 的走桥（`createBlock` / toast / logger 门面最优先），确认无副作用的逐个登记销账后从基线删除 |
+
+**家族结论**：**「产物域」不是隔离带，是同一进程里的第二份模块图**。同一个 import 说明符在 bundle 域与产物域会落到**两个不同实例**——凡是被内联者带模块级状态（缓存 / 账本 / 注册表 / 计数），跨域调用就是「打在自己的影子上」。宿主桥（`./host` → `faceDeps`）是唯一合法通道，而它**只认静态 import**：动态 import 正是绕过它的后门 ⇒ 这条判据值得做**构建门禁**（已落），不能靠人记。
+
+**第二族结论（A2）**：**「可选」的字段配一条硬闸门 = 产品自相矛盾**。添加弹层说 Key 可选、详情页说本地端点无需，而真值只在 `provider/live.ts` 的请求前闸里——用户读到的每一句都在撒谎；且失败面（`MISSING_CREDENTIAL`）只在**请求根本没发**时出现，正好落进「log 什么都答不出来」的盲区（与日志可观测性批的触发事故同源）。**修法纪律**：放行之后，鉴权失败的**归属**必须由「到底发没发凭据」判定，而不是由「有没有配 Key」判定——前者是事实，后者是猜测。
+
 **同族仍未拆（诊断面）**：Q2 的失败此前完全静默，是本批藏了两天的主因；此处已补日志，但「内存态 fatal 不落日志」这种写法在别处是否还有，未逐处清查。
+
+**⚠️ 发布缺口（2026-09-28 核对）**：本批四颗雷里只有 Q1（`3c25f976`）进了发布线——Q2/Q3/Q4 的修复 commit（`0b75e5d6` / `2730e5bd`）**晚于 `v1.0.4` tag**（`git merge-base --is-ancestor 0b75e5d6 v1.0.4` = 否）。所以用户报「provider 只能在工作区里配置」（= Q2 的沙箱工作区闸 + Q3 的空文档夺权威在**首页**同时发作：读被挡 ⇒ 空文档算权威 ⇒ 行表空；写被挡 ⇒ 保存管道首步失败即中止，Key 也不落凭据库）**在 v1.0.4 上是真实存在的**，用户侧要等下一个发布才消失。取证与判据见本表 Q2/Q3 行。
 
 
