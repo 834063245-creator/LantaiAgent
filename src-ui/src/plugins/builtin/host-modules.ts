@@ -344,6 +344,9 @@ import { usePluginPrefs } from '../../state/plugin-prefs';
 import { usePluginStore } from '../../state/plugin-store';
 import { usePresetStore } from '../../state/preset-store';
 import { useSessionVolumesStore } from '../../state/session-volumes-store';
+// A4 销账第一笔（2026-09-28）：toast store 上宿主面——paper-shell 的 ToastHost 是
+// toast 通道唯一渲染器，直引内核路径会被产物内联成第二份 store（打包态 toast 全不显示）
+import { useToastStore } from '../../state/toast-store';
 import { useUpdateStore } from '../../state/update-store';
 import {
   killShellWork,
@@ -533,6 +536,7 @@ const faceDeps = {
   Icon,
   useDialogEscape,
   useShellStore,
+  useToastStore,
   WinControls,
   PluginBoundary,
   ConfirmDialog,

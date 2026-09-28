@@ -6,10 +6,9 @@
     "src-ui/src/rpc-contract.ts",
     "src-ui/src/agent/logger.ts",
     "src-ui/src/agent/obs.ts",
-    "src-ui/src/state/toast-store.ts",
     "src-ui/src/settings.ts"
   ],
-  "statefulReason": "含模块级可变状态：块发号器 `let blockSeq` / bridge 与 rpc-contract 的计数与插桩 / logger 的 logPath+buffer（副本未 initLogger ⇒ 丢条）/ obs 去重表 / zustand toast store（副本站的 toast 与内核不是同一个表）/ settings 的投影与订阅表。payoff：能走 ./host 的改走桥（如 createBlock / toast / logger 门面），确认无副作用的逐个销账后再从本表删除。",
+  "statefulReason": "含模块级可变状态：块发号器 `let blockSeq` / bridge 与 rpc-contract 的计数与插桩 / logger 的 logPath+buffer（副本未 initLogger ⇒ 丢条）/ obs 去重表 / settings 的投影与订阅表。payoff：能走 ./host 的改走桥，确认无副作用的逐个销账后再从本表删除。**已销账（2026-09-28）**：`state/toast-store.ts`——paper-shell 的 ToastHost 是 toast 唯一渲染器而生产者全在内核侧，直引会造出第二份 zustand store（打包态 toast 全不显示）；已改走宿主桥（host-modules faceDeps + host/host.aliased 三处同步，宿主面指纹 db37f1c5 → 04374de9），故本条从名单删除。",
   "globalInputs": [
     "src-ui/src/plugins/builtin/contribution-helpers.ts",
     "src-ui/src/plugins/builtin/face-css.ts",
@@ -45,8 +44,7 @@
         "src-ui/src/agent/schema-validate.ts",
         "src-ui/src/assets/paper/paper-sheet.jpg",
         "src-ui/src/paper/ink.ts",
-        "src-ui/src/paper/measure-seam.ts",
-        "src-ui/src/state/toast-store.ts"
+        "src-ui/src/paper/measure-seam.ts"
       ]
     },
     "settings-domain": {

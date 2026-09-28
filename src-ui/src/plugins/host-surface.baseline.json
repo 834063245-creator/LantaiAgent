@@ -1,5 +1,5 @@
 {
-  "fingerprint": "db37f1c5",
+  "fingerprint": "04374de9",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -323,6 +323,7 @@
     "usePresetStore",
     "useSessionVolumesStore",
     "useShellStore",
+    "useToastStore",
     "useUpdateStore",
     "useWorkLedgerStore",
     "validateObjectJsonSchema",

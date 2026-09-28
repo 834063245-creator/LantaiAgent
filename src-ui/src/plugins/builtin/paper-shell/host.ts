@@ -107,6 +107,10 @@ export { useDockStore } from '../../../state/dock-store';
  * key（host-modules.ts 的 usePresetStore，compose-dock 在用），故只补本文件与
  * host.aliased.ts 两处 + gen:host-surface 重生成。 */
 export { usePresetStore } from '../../../state/preset-store';
+/* ⚡ 2026-09-28（A4 销账第一笔）：toast store **必须走桥**——ToastHost 是 toast 通道的
+ * 唯一渲染器，而全部生产者在内核侧；直引内核路径会被产物构建内联成第二份 store，
+ * 打包态 toast 一条都不显示（开发域单实例 ⇒ 单测看不出来）。 */
+export { useToastStore } from '../../../state/toast-store';
 export { useUpdateStore } from '../../../state/update-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../../ui/message-model';

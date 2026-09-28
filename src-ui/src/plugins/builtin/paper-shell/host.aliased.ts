@@ -111,6 +111,8 @@ export const agentSessionState = impl.agentSessionState;
 export const PluginBoundary = impl.PluginBoundary;
 export const ConfirmDialog = impl.ConfirmDialog as ComponentType;
 export const leaveToHome = impl.leaveToHome;
+// A4 销账第一笔（2026-09-28）：toast store 经桥取内核同一实例——见 host.ts 同款注记
+export const useToastStore = impl.useToastStore;
 
 export type SourcedBlock = import('./host').SourcedBlock;
 export type BlockInk = import('./host').BlockInk;

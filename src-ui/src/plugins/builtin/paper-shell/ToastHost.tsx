@@ -7,7 +7,12 @@
 
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { useToastStore } from '../../../state/toast-store';
+// ⚡ 2026-09-28（A4 销账第一笔）：本件是 toast 通道的**唯一渲染器**，而全部生产者
+//   （chat-core / chat-session / chat-stream / workspace / session-branch …）都在内核侧
+//   ——原先直引内核路径 `../../../state/toast-store` 会被产物构建内联成**第二份
+//   zustand store**：生产者写内核那份、本件读产物这份 ⇒ 打包态 toast 一条都不显示
+//   （开发/测试域单实例，所以单测全绿也看不出来）。改走宿主桥 = 内核同一实例。
+import { useToastStore } from './host';
 import './ToastHost.css';
 
 export function ToastHost() {
