@@ -130,6 +130,10 @@ export const effectiveModels = impl.effectiveModels;
 export const modelContextWindow = impl.modelContextWindow;
 export const modelDescriptor = impl.modelDescriptor;
 export const modelInput = impl.modelInput;
+// A4 销账 W2（2026-09-28）：ProviderPage 原先直引内核 `settings.ts` 取这两个纯投影
+// （模块本体带投影 + 订阅表 = 有身份）⇒ 改走本桥（键早已在 faceDeps 在册）。
+export const getActiveProvider = impl.getActiveProvider;
+export const updateProvider = impl.updateProvider;
 export const PROVIDER_PROTOCOL_DEFAULTS = impl.PROVIDER_PROTOCOL_DEFAULTS;
 export const intentOf = impl.intentOf;
 // 日志可观测性批 2：凭据写面的事件门面（与 host.ts 同形状镜像）

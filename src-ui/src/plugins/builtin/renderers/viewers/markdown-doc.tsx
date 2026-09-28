@@ -28,10 +28,11 @@
 // 的标题不进树，仍在正文里照常渲染）· 无编辑入口（只读查看）。
 
 import * as React from 'react';
-import { createBlock } from '../../../../paper/block-model';
 import type { ViewerProps } from '../../../../paper/viewer-contract';
 import { VIEWER_MARKDOWN_EXTS } from '../../../../paper/viewer-exts';
-import { rendererActiveMarkdownBody } from '../renderer-host';
+// 建块走宿主桥（A4 销账 W1）：`paper/block-model` 带模块级发号器（`let blockSeq`），
+// 直引会被 esbuild 内联成副本 ⇒ 块 id 与内核各发各的号（画布以 id 为键）。
+import { rendererActiveMarkdownBody, rendererCreateBlock } from '../renderer-host';
 import type { ViewerDef } from '../viewer-registry';
 import './markdown-doc.css';
 
@@ -142,7 +143,7 @@ function MdDocSectionView({
   level: 0 | 1 | 2 | 3;
   sectionRef: (el: HTMLElement | null) => void;
 }) {
-  const block = React.useMemo(() => createBlock('markdown', { text }, { messageId: 'viewer', part: null }), [text]);
+  const block = React.useMemo(() => rendererCreateBlock(text), [text]);
   const MarkdownView = rendererActiveMarkdownBody();
   return (
     <section ref={sectionRef} className={`pp-viewer-mddoc-section pp-viewer-mddoc-section--lv${level}`}>

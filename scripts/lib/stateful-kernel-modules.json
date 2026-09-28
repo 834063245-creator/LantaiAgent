@@ -1,0 +1,13 @@
+{
+  "note": "**带模块级状态的内核模块**欠账清单（2026-09-28 立，W0 账本合一）——产物里被内联的插件目录外源码中，凡带模块级可变状态（缓存 / store / 发号器 / 计数器 / 订阅表 / 账本 / logPath+buffer）者登记于此。构建脚本按本表点名（`npm run build:builtin-plugins` 的 ⚠ 行，exit 0——欠账可见但不拦住合法构建）。**这不是豁免表**：带状态者不得登记进名册 `shared`（`shared` 的语义是「无身份、留在内核的共享面」），唯一合法通道是宿主桥 `./host`。销账 = 改 import 走桥 → 从名册 `shared` 删该行 → 从 `modules` 删条目并把因由写进 `settled`。判据动作：`grep -nE \"^(export )?(let|var) |new Map\\(|new Set\\(|= create\\(\" <模块路径>`，再看导出函数是否读写它。",
+  "modules": {},
+  "settled": {
+    "src-ui/src/paper/block-model.ts": "已销账（2026-09-28，A4-W1）：块发号器 `let blockSeq`——产物内的 createBlock 与内核各发各的号，块 id `pb{n}` 可能撞（画布以 id 为键）。修法 = `createBlock` 挂进 renderers 的桥（`rendererCreateBlock`）+ `paper/translate` 整体改走 paper-renderers 的桥（`isDiffLang`，该模块的值面就是 createBlock）。结构验证：`renderers` 767→766 输入、`paper-renderers` 65→63 输入，两产物 `let blockSeq` / `function createBlock` 命中 0。",
+    "src-ui/src/bridge.ts": "已销账（2026-09-28，A4-W2/W3）：计数与插桩。真相 = 它是**传递闭包**——唯一直引者是 `rpc-contract.ts`，而 `rpc-contract` 只被两个包各一处引（settings-domain/ProviderPage、compose-dock/ComposerDock 的 kernelListDirectory）。修这两处，五个模块一并消失。",
+    "src-ui/src/rpc-contract.ts": "已销账（2026-09-28，A4-W2/W3）：计数与插桩——副本没有内核的 rpc 插桩，ui.log 因此答不出「请求到底发没发/写没写」（landmine 第十四批 Q1 同族）。修法同上（两处消费面改走各包 `./host`）。",
+    "src-ui/src/agent/logger.ts": "已销账（2026-09-28，A4-W2/W3）：`logPath` + 写盘 buffer——副本未 initLogger ⇒ 该产物的这几条日志丢条。经 `bridge.ts → rpc-contract.ts` 闭包带入；随 W2/W3 一并消失（结构验证：两产物 `logPath` 命中 0）。",
+    "src-ui/src/agent/obs.ts": "已销账（2026-09-27 日志可观测性批 2）：去重表（turn.failed 按 (session,turn,phase) 去重）——副本去重是另一本账。修法 = 产物域取门面一律经 faceDeps 的逐事件函数（credStore/llmSend…），不 import 模块本体。",
+    "src-ui/src/settings.ts": "已销账（2026-09-28，A4-W2）：投影 + 订阅表。真相 = 唯一直引者是 settings-domain/ProviderPage.tsx（`defaultBaseUrl` / `getActiveProvider` / `updateProvider` 三个纯投影），改走该包 `./host` 后整份模块退出产物图（settings-domain 121→31 输入）。",
+    "src-ui/src/state/toast-store.ts": "已销账（2026-09-28，commit b7a73a3c）：paper-shell 的 ToastHost 是 toast 通道唯一渲染器而生产者全在内核侧，直引会造出第二份 zustand store（打包态一条都不弹）；已改走宿主桥（host-modules faceDeps + host/host.aliased 三处同步，宿主面指纹 db37f1c5 → 04374de9）。"
+  }
+}

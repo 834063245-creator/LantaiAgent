@@ -37,8 +37,16 @@ export interface BuiltinRosterEntry {
    *  搬一条删一条，清空即实心化。消费方：`scripts/plugin-home-check.cjs`
    *  （红区）+ `tests/plugin-home-ledger.test.ts`（销账制守卫）。 */
   impl?: string[];
-  /** **有意留内核的共享面**（相对 `src/` 的物理路径）——跨产物契约/判据层
-   *  （账本 §2.5 契约层、§3 零欠账面）：登记它 = 该模块留在内核是决定，不是漏网。 */
+  /** **有意留内核的共享面**（相对 `src/` 的物理路径）——**无身份**的共享件（纯函数 /
+   *  只读冻结表 / 类型 / 资产；账本 §2.5 契约层、§3 零欠账面）。**唯一声明面**（2026-09-28
+   *  账本合一）：产物构建门禁的「允许内联」判据 = 两个构建全局件
+   *  （`plugins/builtin/react-bridge.cjs` / `plugins/builtin/face-css.ts`）+ 各产物
+   *  `plugins/builtin/<dir>/` 自身 + `plugins/builtin/contribution-helpers.ts` + 本数组。
+   *  登记它 = 该模块留在内核是决定，不是漏网；**删条目 = 声明本产物不再内联它**，必须
+   *  同时改 import 并验证产物，否则构建立刻红（设计意图，不是意外）。
+   *  ⚠ **带模块级状态者不得登记**（store / 缓存 / 发号器 / 计数器 / 订阅表 / 账本）——
+   *  共享**状态**的唯一合法通道是宿主桥 `./host`；欠账清单见
+   *  `scripts/lib/stateful-kernel-modules.json`。 */
   shared?: string[];
   /** UI 面（产物需注入 entry.css 产物标记；仅 canvas-nav/paper-shell/
    *  settings-domain/compose-dock/paper-minimap 五面）。 */

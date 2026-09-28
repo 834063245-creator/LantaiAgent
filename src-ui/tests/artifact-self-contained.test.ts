@@ -20,8 +20,13 @@
 //
 // 正确姿势：静态 `import … from './host'`（宿主桥出口）。缺出口时按纪律补三处：
 // host.ts + host.aliased.ts + host-modules.ts faceDeps（见 docs/plugins/README.md）。
+//
+// 2026-09-28 账本合一（W0，docs/plans/artifact-inlining-payoff-plan.md）：模块图级
+// 豁免账**单一声明面 = 名册 `shared`**（原先另有一本平行快照账
+// `scripts/lib/artifact-input-baseline.json`，属负债，已删）。本文件的后半段把那本
+// 账的**形状**钉住：全局件恰三个、条目路径形态可解析、带模块级状态者不得登记。
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -30,8 +35,17 @@ import { BUILTIN_ROSTER } from '../src/plugins/builtin-roster';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = join(HERE, '..');
+const REPO_ROOT = join(UI_ROOT, '..');
 const BUILTIN_SRC = join(UI_ROOT, 'src', 'plugins', 'builtin');
-const BUILD_SCRIPT = join(UI_ROOT, '..', 'scripts', 'build-builtin-plugins.mjs');
+const BUILD_SCRIPT = join(REPO_ROOT, 'scripts', 'build-builtin-plugins.mjs');
+/** 带模块级状态的内核模块欠账清单（构建期按此点名）。 */
+const STATEFUL_LEDGER = join(REPO_ROOT, 'scripts', 'lib', 'stateful-kernel-modules.json');
+/** 构建全局件——不属于任何单一产物，故不进名册 `shared`（构建脚本里显式列三个）。 */
+const GLOBAL_INPUTS = [
+  'src-ui/src/plugins/builtin/contribution-helpers.ts',
+  'src-ui/src/plugins/builtin/face-css.ts',
+  'src-ui/src/plugins/builtin/react-bridge.cjs',
+];
 
 describe('提取器：值位置的相对动态 import', () => {
   it('命中 await import(相对路径)（真机病灶形态）', () => {
@@ -90,7 +104,49 @@ describe('产物自包含：全部出厂产物源码零相对动态 import', () 
     expect(cfg, '构建脚本缺 scanArtifactSources 检查').toContain('scanArtifactSources');
     expect(cfg, '构建脚本必须 import 判据真源').toContain("from './lib/artifact-dynamic-imports.mjs'");
     // 模块图级那道（2026-09-28 同批）：输入集比对 + 豁免账，删掉即「新内联无人拦」
-    expect(cfg, '构建脚本缺模块图级检查（artifact-input-baseline.json）').toContain('artifact-input-baseline.json');
-    expect(cfg, '构建脚本缺 allowedInputsFor（逐插件输入集比对）').toContain('allowedInputsFor');
+    expect(cfg, '构建脚本缺逐插件输入集比对（allowedInputsFor）').toContain('allowedInputsFor');
+    // 账本合一（W0）：豁免账只许有一本，且必须读名册 `shared`
+    expect(cfg, '构建脚本的豁免账必须读名册 `shared`').toContain('e.shared ?? []');
+    expect(
+      existsSync(join(REPO_ROOT, 'scripts', 'lib', 'artifact-input-baseline.json')),
+      '平行账 artifact-input-baseline.json 已随 W0 账本合删除（单一声明面 = 名册 shared）——别再建第二本',
+    ).toBe(false);
+  });
+});
+
+describe('产物输入账本：单一声明面 = 名册 shared（2026-09-28 账本合一）', () => {
+  it('构建全局件恰三个（不是单一产物的事，才配留在脚本里）', () => {
+    const cfg = readFileSync(BUILD_SCRIPT, 'utf8');
+    const decl = /const GLOBAL_INPUTS = new Set\(\[([\s\S]*?)\]\);/.exec(cfg);
+    expect(decl, '构建脚本缺 GLOBAL_INPUTS 声明').not.toBeNull();
+    const actual = [...decl![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!).sort();
+    expect(actual, '全局件集变了：只有跨产物的构建件才配留全局，其余一律进名册 shared').toEqual(
+      [...GLOBAL_INPUTS].sort(),
+    );
+  });
+
+  it('名册 shared 全是可解析的 src 相对路径，且不含构建全局件（别把全局件抄进每一条）', () => {
+    const globals = new Set(GLOBAL_INPUTS.map((g) => g.replace(/^src-ui\/src\//, '')));
+    const bad: string[] = [];
+    for (const e of BUILTIN_ROSTER) {
+      for (const s of e.shared ?? []) {
+        if (s.startsWith('src-ui/') || s.startsWith('/')) bad.push(`${e.dir} → ${s}（须是 src/ 相对路径）`);
+        else if (!existsSync(join(UI_ROOT, 'src', s))) bad.push(`${e.dir} → ${s}（文件不存在）`);
+        if (globals.has(s)) bad.push(`${e.dir} → ${s}（构建全局件，不必登记）`);
+      }
+    }
+    expect(bad, `名册 shared 条目形态不合规：\n${bad.join('\n')}`).toEqual([]);
+  });
+
+  it('带模块级状态者不得登记 shared（共享状态的唯一合法通道是宿主桥 ./host）', () => {
+    const stateless = JSON.parse(readFileSync(STATEFUL_LEDGER, 'utf8')).modules as Record<string, unknown>;
+    const stateful = new Set(Object.keys(stateless).map((k) => k.replace(/^src-ui\/src\//, '')));
+    const violations = BUILTIN_ROSTER.flatMap((e) =>
+      (e.shared ?? []).filter((s) => stateful.has(s)).map((s) => `${e.dir} → ${s}`),
+    );
+    expect(
+      violations,
+      '带模块级状态的内核模块被登记成「共享面」——那是副本病灶的种子（应改走宿主桥）：\n' + violations.join('\n'),
+    ).toEqual([]);
   });
 });

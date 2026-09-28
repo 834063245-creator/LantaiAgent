@@ -166,7 +166,9 @@ import { activeShellProviders } from '../../composition/shell-service';
 import { activeSpace } from '../../composition/space-service';
 import { Service } from '../../cordis';
 import { setLang } from '../../i18n';
-import { writingBlockIdOf } from '../../paper/block-model';
+// A4 销账 W1（2026-09-28）：`createBlock` 也经宿主面出（renderers 的双走查查看器建块用）——
+// 该模块带块 id 发号器（`let blockSeq`），产物域随包内联会另起一套号、与画布（以 id 为键）撞车。
+import { createBlock, writingBlockIdOf } from '../../paper/block-model';
 import {
   ANCHOR,
   autoPanVector,
@@ -209,7 +211,7 @@ import {
   REGION_CONTENT_MARGIN,
   STREAM_REGION,
 } from '../../paper/space';
-import { collapseToolGroups, translateMessagesCached } from '../../paper/translate';
+import { collapseToolGroups, isDiffLang, translateMessagesCached } from '../../paper/translate';
 // 批 1 归家（2026-09-24）：三页进包后的逐符号桥面——引擎开关 / 装卸面 /
 // MCP 声明与用户级 mcp.json / 插件与偏好 store。装卸面与 loader 的循环为
 // 运行期取用（组件按钮回调），无初始化期解引用，ESM 循环安全（见文件头注）。
@@ -315,6 +317,7 @@ import {
   canvasWheelMode,
   defaultBaseUrl,
   effectiveModels,
+  getActiveProvider,
   loadSettings,
   loadSettingsWithSecrets,
   modelContextWindow,
@@ -326,6 +329,7 @@ import {
   PROVIDER_PROTOCOL_DEFAULTS,
   providerId,
   saveSettings,
+  updateProvider,
 } from '../../settings';
 import { leaveToHome, pickFolder, workspaceFlow } from '../../shell/rows/workspace';
 // 批 9e 归家：案卷首页进产物 ⇒ 桥它的壳层句柄（工作区/切区状态机读数——壳行 workspace 流的宿主面）
@@ -450,6 +454,10 @@ const faceDeps = {
   // paper 域（几何/墨迹/测量/选择/翻译/虚拟化/上下文）
   viewportCenterWorld,
   writingBlockIdOf,
+  // A4 销账 W1（2026-09-28）：块工厂（renderers 双走查查看器）+ 差分语言判据
+  // （paper-renderers 体渲染）——两处所在模块都带模块级状态，按纪律上桥。
+  createBlock,
+  isDiffLang,
   // paper-minimap 插件（2026-09-05）：minimap-core 纯几何（inkColorOf 已在下）
   clampViewportFrame,
   inkBarsFor,
@@ -579,6 +587,10 @@ const faceDeps = {
   autoUpdateCheckEnabled,
   canvasWheelMode,
   effectiveModels,
+  // A4 销账 W2（2026-09-28）：ProviderPage 原先直引内核 `settings.ts` 取这两个纯投影
+  // （模块本体带投影 + 订阅表）⇒ 上桥。
+  getActiveProvider,
+  updateProvider,
   loadSettings,
   loadSettingsWithSecrets,
   modelContextWindow,

@@ -30,11 +30,12 @@
 // 超过行窗口的笔记本（整份读的代价见 INVARIANTS #11）。
 
 import * as React from 'react';
-import { createBlock } from '../../../../paper/block-model';
 import { sanitizePayloadText } from '../../../../paper/tool-text';
 import type { ViewerProps } from '../../../../paper/viewer-contract';
 import { VIEWER_IPYNB_EXTS } from '../../../../paper/viewer-exts';
-import { rendererActiveMarkdownBody } from '../renderer-host';
+// 建块走宿主桥（A4 销账 W1）：`paper/block-model` 带模块级发号器（`let blockSeq`），
+// 直引会被 esbuild 内联成副本 ⇒ 块 id 与内核各发各的号（画布以 id 为键）。
+import { rendererActiveMarkdownBody, rendererCreateBlock } from '../renderer-host';
 import type { ViewerDef } from '../viewer-registry';
 import { hljs } from './hljs';
 import './ipynb.css';
@@ -361,7 +362,7 @@ export function parseNotebook(text: string): IpyParseResult {
 
 /** markdown 单元格：构造一个 viewer 自己的 markdown 块，交给应用侧渲染器（零第二份解析）。 */
 function MarkdownCell({ text }: { text: string }) {
-  const block = React.useMemo(() => createBlock('markdown', { text }, { messageId: 'viewer', part: null }), [text]);
+  const block = React.useMemo(() => rendererCreateBlock(text), [text]);
   const MarkdownView = rendererActiveMarkdownBody();
   if (!MarkdownView) {
     return (

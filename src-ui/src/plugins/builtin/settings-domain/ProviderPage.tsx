@@ -9,19 +9,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { StoredThinking } from '../../../provider/thinking';
 import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
-import type { AppSettings, ConnectionProbe } from '../../../settings';
-import {
-  defaultBaseUrl,
-  getActiveProvider,
-  type ProviderId,
-  type ProviderSettings,
-  updateProvider,
-} from '../../../settings';
 import { type AddProviderEntry, AddProviderSheet } from './AddProviderSheet';
+// A4 销账 W2（2026-09-28）：`settings.ts` 是**投影 + 订阅表**（有身份）——下面三个值
+// 曾经从这里直引内核路径，产物域会把整份模块连状态一起内联成副本；改走本包宿主桥。
+import type { AppSettings, ConnectionProbe, ProviderId, ProviderSettings } from './host';
 import {
   ConfirmDialog,
   createLiveProvider,
   createProvider,
+  defaultBaseUrl,
+  getActiveProvider,
   invalidateCredentialCache,
   loadProvidersDoc,
   markDynamicFetchStart,
@@ -31,6 +28,7 @@ import {
   recordDynamicFetchResult,
   runDeviceLogin,
   typedRpc,
+  updateProvider,
 } from './host';
 import { applyFetchedModels } from './model-sync';
 import { type ProbeUiState, ProviderDetail, type ProviderField } from './ProviderDetail';

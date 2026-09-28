@@ -56,20 +56,45 @@ const distPluginsRoot = join(repoRoot, 'src-ui', 'dist-plugins');
 const outRoot = join(distPluginsRoot, 'builtin', 'hologram');
 const reactBridge = join(builtinSrcRoot, 'react-bridge.cjs');
 
-/* ── 产物模块图豁免账（2026-09-28 立）──
- * `artifact-input-baseline.json`：**逐插件**列出「允许被内联进该产物」的插件目录外
- * 项目内源码（globalInputs = 多个产物共用的那批）。判据 = 逐插件输入集比对：内联了
- * 不在名单里的新模块 → 构建失败；`stateful` 列出的条目是已知欠账（构建时点名提醒）。
- * 门禁本体见 buildPlugin 的 outsideInputs 检查。 */
-const artifactInputBaseline = JSON.parse(
-  readFileSync(join(__dirname, 'lib', 'artifact-input-baseline.json'), 'utf8'),
+/* ── 名册单一真源（2026-09-06）：39 个内置产物的清单事实唯一在
+ * src-ui/src/plugins/builtin-roster.json（dir/buildOrder/entry/hostModule/face/
+ * define/description/shared）。build 规格从名册派生——本文件不再手抄任何分组/名单。
+ * 旧的分组常量（UI_FACES/TOOL_DOMAINS/SEGMENTS/PROVIDERS/renderers 特例）
+ * 已删除：加/删产物只许改名册一处。
+ * 注：名册在豁免账之前读——`shared` 就是账本本体（见下）。 ── */
+const roster = JSON.parse(readFileSync(join(repoRoot, 'src-ui', 'src', 'plugins', 'builtin-roster.json'), 'utf8'));
+
+/** 插件构建规格表（名册 buildOrder 升序——与装载序字节契约同源）。
+ *  每条含名册完整事实 + 派生 scope 名（产物 manifest 生成用）。 */
+function pluginSpecs() {
+  return [...roster].sort((a, b) => a.buildOrder - b.buildOrder).map((e) => ({ ...e, name: 'hologram/' + e.dir }));
+}
+
+/* ── 产物模块图豁免账（2026-09-28 立；同日账本合一）──
+ * **单一声明面 = 名册**（`shared`）：「允许被内联进该产物」的插件目录外项目内源码
+ * = 名册 `shared` ∪ 构建全局件（react 别名桥 / 面 CSS 探针 / 工具域贡献助手——
+ * 三个都不属于任何单一产物）。判据 = 逐插件输入集比对：内联了不在名单里的新模块
+ * → 构建失败。带模块级状态的条目**不得**登记 `shared`（唯一合法通道是宿主桥
+ * `./host`），欠账清单另在 `lib/stateful-kernel-modules.json`（构建时点名提醒）。
+ * 名册是声明面而非快照：删一条 = 声明本产物不再内联它，构建立刻红——设计意图。
+ * （2026-09-28 之前这里另有一本平行账 `lib/artifact-input-baseline.json`，属负债，
+ *  W0 账本合一已删除。） */
+const GLOBAL_INPUTS = new Set([
+  'src-ui/src/plugins/builtin/react-bridge.cjs',
+  'src-ui/src/plugins/builtin/face-css.ts',
+  'src-ui/src/plugins/builtin/contribution-helpers.ts',
+]);
+const statefulKernelModules = JSON.parse(
+  readFileSync(join(__dirname, 'lib', 'stateful-kernel-modules.json'), 'utf8'),
 );
-const ARTIFACT_INPUT_GLOBAL = new Set(artifactInputBaseline.globalInputs);
-const ARTIFACT_INPUT_STATEFUL = new Set(artifactInputBaseline.stateful);
-/** 本插件名义下允许内联的输入集（globalInputs ∪ 该插件块）。 */
+const STATEFUL_KERNEL = new Set(Object.keys(statefulKernelModules.modules));
+
+/** 该产物名义下允许内联的输入集（构建全局件 ∪ 名册 `shared`）。 */
+const allowedByDir = new Map(
+  roster.map((e) => [e.dir, new Set([...GLOBAL_INPUTS, ...(e.shared ?? []).map((s) => `src-ui/src/${s}`)])]),
+);
 function allowedInputsFor(dir) {
-  const own = artifactInputBaseline.plugins[dir]?.inputs ?? [];
-  return new Set([...ARTIFACT_INPUT_GLOBAL, ...own]);
+  return allowedByDir.get(dir) ?? GLOBAL_INPUTS;
 }
 
 /* ── 宿主面指纹（保险丝 a′，2026-09-14 立法）──
@@ -141,19 +166,6 @@ function warnIfHostSurfaceChanged() {
       .filter(Boolean)
       .join('\n'),
   );
-}
-
-// ── 名册单一真源（2026-09-06）：31 个内置产物的清单事实唯一在
-// src-ui/src/plugins/builtin-roster.json（dir/buildOrder/entry/hostModule/face/
-// define/description）。build 规格从名册派生——本文件不再手抄任何分组/名单。
-// 旧的分组常量（UI_FACES/TOOL_DOMAINS/SEGMENTS/PROVIDERS/renderers 特例）
-// 已删除：加/删产物只许改名册一处。 ──
-const roster = JSON.parse(readFileSync(join(repoRoot, 'src-ui', 'src', 'plugins', 'builtin-roster.json'), 'utf8'));
-
-/** 插件构建规格表（名册 buildOrder 升序——与装载序字节契约同源）。
- *  每条含名册完整事实 + 派生 scope 名（产物 manifest 生成用）。 */
-function pluginSpecs() {
-  return [...roster].sort((a, b) => a.buildOrder - b.buildOrder).map((e) => ({ ...e, name: 'hologram/' + e.dir }));
 }
 
 /** esbuild onResolve 钩子工厂：把指向 `./<hostModule>` 的 import（及其 jsx-runtime
@@ -276,14 +288,14 @@ async function buildPlugin(spec) {
   }
 
   // 自包含校验之二（**模块图级**，2026-09-28 真机事故立法）：产物的输入表里不得
-  // 出现**插件目录之外的项目内源码**。宿主桥（onResolve）只重定向静态 `./host`；
-  // 任何绕过它的引用——静态直引内核路径，或相对动态 import——都会被 esbuild
-  // 内联成**私有副本**：被内联者若带模块级状态（缓存 / 账本 / 注册表 / 发号器），
-  // 跨域调用就是「打在自己的影子上」。真机形态 = settings-domain 的凭据缓存写穿
-  // 失效打在副本上、内核那份纹丝不动 ⇒ 保存 Key 后仍恒报「未配置 API Key」，
+  // 出现**插件目录之外**且未登记的项目内源码。宿主桥（onResolve）只重定向静态
+  // `./host`；任何绕过它的引用——静态直引内核路径，或相对动态 import——都会被
+  // esbuild 内联成**私有副本**：被内联者若带模块级状态（缓存 / 账本 / 注册表 /
+  // 发号器），跨域调用就是「打在自己的影子上」。真机形态 = settings-domain 的凭据
+  // 缓存写穿失效打在副本上、内核那份纹丝不动 ⇒ 保存 Key 后仍恒报「未配置 API Key」，
   // 直到重启。判据是**结构**（谁被打了进来）而不是文本，故注释/字符串/类型位一概
-  // 不误伤。豁免账 = scripts/lib/artifact-input-baseline.json（每条带 reason；
-  // 带状态的条目另标 stateful: true = 已知欠账，构建时照旧点名提醒）。
+  // 不误伤。**豁免账 = 名册 `shared`**（单一声明面，2026-09-28 账本合一；带状态的
+  // 条目另在 lib/stateful-kernel-modules.json 里点名 = 已知欠账）。
   const outsideInputs = [
     ...new Set(
       Object.keys(result.metafile?.inputs ?? {})
@@ -298,15 +310,16 @@ async function buildPlugin(spec) {
       `[build-builtin-plugins] ${spec.dir} 产物的模块图里出现了插件目录**之外**且未登记的源码（宿主桥只认静态 './host'——直引内核路径/相对动态 import 都会把它内联成私有副本，模块级状态分家）：\n` +
         unlisted.map((rel) => `  ${rel}`).join('\n') +
         "\n  改法：静态 `import … from './host'`（缺出口先补三处：host.ts + host.aliased.ts + host-modules.ts faceDeps）；" +
-        '确属**无状态**共享件时才登记进 scripts/lib/artifact-input-baseline.json（带状态的必须写 stateful + payoff）。',
+        `确属**无状态**共享件时才登记进名册（src-ui/src/plugins/builtin-roster.json 的 ${spec.dir}.shared）——带状态的必须走桥。`,
     );
     process.exit(1);
   }
-  const statefulUsed = outsideInputs.filter((rel) => ARTIFACT_INPUT_STATEFUL.has(rel));
+  const statefulUsed = outsideInputs.filter((rel) => STATEFUL_KERNEL.has(rel));
   if (statefulUsed.length > 0) {
     console.warn(
-      `[build-builtin-plugins] ${spec.dir} ⚠ 内联了**带模块级状态**的内核模块（已知欠账，见 artifact-input-baseline.json）：` +
-        statefulUsed.join('、'),
+      `[build-builtin-plugins] ${spec.dir} ⚠ 内联了**带模块级状态**的内核模块（已知欠账，见 scripts/lib/stateful-kernel-modules.json）：` +
+        statefulUsed.join('、') +
+        ' —— 带状态者不得登记名册 shared：唯一合法通道是宿主桥 ./host（缺出口补三处：host.ts + host.aliased.ts + host-modules.ts faceDeps）。',
     );
   }
   const hasCss = readdirSync(outDir).some((f) => f.endsWith('.css'));

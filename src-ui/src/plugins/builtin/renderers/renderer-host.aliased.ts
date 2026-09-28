@@ -63,7 +63,10 @@ const host = requireHost();
 
 /** 宿主面键取用（面键提取器锚定 `var <名> = <桥>.mods.faceDeps` 声明，故**模块顶层**取值；
  *  批 8c 起本产物有 faceDeps 依赖 ⇒ 构建期写 face.json 保险丝 a）。 */
-const impl = host.mods.faceDeps as unknown as { activeMarkdownBody?: () => ComponentType<{ block: never }> | null };
+const impl = host.mods.faceDeps as unknown as {
+  activeMarkdownBody?: () => ComponentType<{ block: never }> | null;
+  createBlock?: (kind: string, payload: unknown, source: unknown) => unknown;
+};
 
 /** React 全量（组件构造面——esbuild define 产物域用到的元素类型不在此受限）。 */
 export const rendererReact = host.react;
@@ -93,6 +96,17 @@ export function rendererLoadViewer(id: string): Promise<ComponentType<never>> {
  *  （产物域若相对 import 那个模块会被 esbuild 内联成另一份实例，读不到内核的登记）。 */
 export function rendererActiveMarkdownBody(): ComponentType<{ block: never }> | null {
   return impl.activeMarkdownBody?.() ?? null;
+}
+
+/** 查看器建 markdown 块（A4 销账 W1，2026-09-28）：块 id 发号器在内核
+ *  （`paper/block-model.ts` 的 `let blockSeq`）——产物域若内联该模块会另起一套号，
+ *  与画布（以块 id 为键）撞车，故走宿主桥取内核同一实例。 */
+export function rendererCreateBlock(text: string): { id: string } {
+  const block = impl.createBlock?.('markdown', { text }, { messageId: 'viewer', part: null });
+  if (!block) {
+    throw new Error('[renderer-host.aliased] 宿主面缺 createBlock 键——宿主与产物版本偏斜（重建 exe）');
+  }
+  return block as { id: string };
 }
 
 // ── esbuild automatic JSX 注入面（--jsx=automatic --jsx-import-source=./renderer-host）──

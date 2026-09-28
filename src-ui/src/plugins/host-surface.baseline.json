@@ -1,5 +1,5 @@
 {
-  "fingerprint": "04374de9",
+  "fingerprint": "251cbd2a",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -98,6 +98,7 @@
     "countMessage",
     "countMessages",
     "countText",
+    "createBlock",
     "createBoardStatusTool",
     "createCodeExecutionTool",
     "createExecState",
@@ -135,6 +136,7 @@
     "foldToolResults",
     "formatDiagnostics",
     "generateAssetId",
+    "getActiveProvider",
     "getAsset",
     "getCanvasStore",
     "getCatalogVendors",
@@ -160,6 +162,7 @@
     "invalidateOauthCache",
     "isAbsolutePath",
     "isBundledEngineEnabled",
+    "isDiffLang",
     "isFoldable",
     "isMockMode",
     "isThinkingMode",
@@ -306,6 +309,7 @@
     "typedJsonRpc",
     "typedRpc",
     "typedRpcWithTimeout",
+    "updateProvider",
     "upsertAsset",
     "useAskStore",
     "useBgAlertStore",

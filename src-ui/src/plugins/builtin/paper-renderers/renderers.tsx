@@ -55,9 +55,10 @@ import {
 } from '../../../paper/tool-text';
 // 差分语言判据（分块与块体渲染的单一真源——转译层把围栏一律拆成抄录块，
 // 块体在这里按语言分流：真差分 → 差分着色；其余 → hljs 代码体）。
-import { isDiffLang } from '../../../paper/translate';
+// A4 销账 W1（2026-09-28）：判据本体住内核 `paper/translate.ts`（带状态——块 id 发号器
+// 经 `createBlock` 落 `paper/block-model.ts` 的 `let blockSeq`），故走本包宿主桥。
 import type { ChatImageRef } from '../../../provider/types';
-import { MermaidBlock, Overlay, previewUrlFor, readAttachmentBase64, useShellStore } from './host';
+import { isDiffLang, MermaidBlock, Overlay, previewUrlFor, readAttachmentBase64, useShellStore } from './host';
 
 /* ── 流式增量渐显（streaming-fade-render-plan 2026-08-30）──
  * 把「新长出来的文本」与「旧文本」分开：旧文本零动画（流式重渲染不闪），

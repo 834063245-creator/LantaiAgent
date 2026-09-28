@@ -5,14 +5,6 @@
     "description": "LLM 协议方言适配（seam/llm 默认实现）——三方言与私有 helper 已随包（批 2a）",
     "entry": "index.ts",
     "hostModule": "host",
-    "shared": [
-      "provider/types.ts",
-      "provider/catalog.ts",
-      "provider/error-catalog.ts",
-      "provider/model-meta.ts",
-      "provider/thinking.ts",
-      "provider/transport.ts"
-    ],
     "inject": ["llm"]
   },
   {
@@ -54,7 +46,7 @@
     "entry": "index.tsx",
     "hostModule": "renderer-host",
     "inject": ["renderers"],
-    "shared": ["paper/block-model.ts", "paper/plate-sign.ts", "paper/viewer-exts.ts"],
+    "shared": ["paper/plate-sign.ts", "paper/tool-text.ts", "paper/viewer-contract.ts", "paper/viewer-exts.ts"],
     "face": true,
     "define": {
       "globalThis.__LANTAI_RENDERER_ROW_PREFIX__": "\"plugin/hologram/renderers\""
@@ -69,18 +61,24 @@
     "inject": ["panels", "commands"],
     "required": true,
     "shared": [
-      "paper/block-model.ts",
-      "paper/region-view.ts",
-      "paper/overlay-context.ts",
-      "paper/canvas-math.ts",
-      "paper/space.ts",
-      "paper/minimap-core.ts",
-      "paper/ink.ts",
-      "paper/group.ts",
-      "paper/virtualize.ts",
-      "paper/selection.ts",
+      "agent/asset-kinds.ts",
+      "agent/schema-validate.ts",
+      "agent/session-context.ts",
+      "agent/tool-images.ts",
+      "agent/tools/domains.ts",
+      "assets/paper/paper-fiber.jpg",
+      "assets/paper/paper-grain.jpg",
+      "assets/paper/paper-sheet.jpg",
       "paper/asset-rack.ts",
-      "paper/plate-sign.ts"
+      "paper/grammar.ts",
+      "paper/ink.ts",
+      "paper/markdown.ts",
+      "paper/marks.ts",
+      "paper/measure-seam.ts",
+      "paper/tool-text.ts",
+      "paper/viewer-exts.ts",
+      "state/volume-name.ts",
+      "ui/tool-semantics.ts"
     ],
     "face": true
   },
@@ -90,21 +88,7 @@
     "description": "设置面板 + 命令双通道（Provider 控制台 8 件已随包，批 9d）",
     "entry": "index.ts",
     "hostModule": "host",
-    "shared": [
-      "plugins/bundled-engine-prefs.ts",
-      "provider/types.ts",
-      "provider/catalog.ts",
-      "provider/credentials.ts",
-      "provider/custom-headers.ts",
-      "provider/live.ts",
-      "provider/model-meta.ts",
-      "provider/oauth.ts",
-      "provider/providers-doc.ts",
-      "provider/providers-store.ts",
-      "provider/thinking.ts",
-      "provider/vendor-templates.ts"
-    ],
-
+    "shared": ["provider/custom-headers.ts", "provider/model-meta.ts", "provider/thinking.ts", "provider/types.ts"],
     "inject": ["panels", "commands", "shellRows"],
     "face": true
   },
@@ -115,7 +99,7 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["panels", "commands", "space"],
-    "shared": ["paper/canvas-math.ts", "paper/space.ts"],
+    "shared": ["assets/paper/paper-fiber.jpg", "assets/paper/paper-grain.jpg", "state/volume-name.ts"],
     "face": true
   },
   {
@@ -125,13 +109,7 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["overlays", "commands", "space"],
-    "shared": [
-      "paper/block-model.ts",
-      "paper/ink.ts",
-      "paper/overlay-context.ts",
-      "paper/asset-rack.ts",
-      "paper/plate-sign.ts"
-    ],
+    "shared": ["paper/asset-rack.ts", "paper/plate-sign.ts", "state/volume-name.ts"],
     "face": true
   },
   {
@@ -141,7 +119,6 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["overlays"],
-    "shared": ["paper/minimap-core.ts", "paper/block-model.ts", "paper/overlay-context.ts", "paper/region-view.ts"],
     "face": true
   },
   {
@@ -239,8 +216,7 @@
     "description": "任务域工具（task_*；三件实现已随包，批 9h-5）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "shared": ["agent/board-persistence.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "agent-domain",
@@ -272,8 +248,7 @@
     "description": "资产块域工具（show_asset/update_asset/list_block_kinds——Agent 生成可引用/更新的资产块）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["tools"],
-    "shared": ["agent/asset-store.ts", "agent/confirm-registry.ts", "agent/asset-kinds.ts"]
+    "inject": ["tools"]
   },
   {
     "dir": "prompt-segments",
@@ -347,12 +322,17 @@
     "hostModule": "host",
     "inject": ["renderers"],
     "shared": [
-      "paper/block-model.ts",
+      "agent/session-context.ts",
+      "agent/tool-images.ts",
+      "agent/tools/domains.ts",
+      "paper/fold.ts",
+      "paper/grammar.ts",
+      "paper/markdown-body-seam.ts",
       "paper/markdown.ts",
       "paper/marks.ts",
+      "paper/plate-sign.ts",
       "paper/tool-text.ts",
-      "paper/fold.ts",
-      "paper/translate.ts"
+      "ui/tool-semantics.ts"
     ],
     "required": true,
     "define": {
@@ -367,7 +347,8 @@
     "hostModule": "host",
     "inject": ["rootViews"],
     "required": true,
-    "face": true
+    "face": true,
+    "shared": ["assets/paper/seal-paste.jpg"]
   },
   {
     "dir": "ask-cards",
@@ -385,7 +366,6 @@
     "description": "随包图谱引擎接线（探测/开关留内核；接线随包——禁用 = 引擎天然 kill switch）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": ["workspaces"],
-    "shared": ["plugins/bundled-engine-prefs.ts"]
+    "inject": ["workspaces"]
   }
 ]

@@ -129,13 +129,28 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
 - **产物形态**：全部产物 = 真源编译（插件对象代码在产物内，不薄重导出——
   S3 已拆薄壳）；UI 面 = 组件源码真迁移（项目内依赖经 `host.ts` /
   `host.aliased.ts` 宿主桥对拍面取**共享真实例**——zustand store/service
-  单例不可内联副本；CSS 抽取为 entry.css 经 `loadCss` 注入（版本号 + 每产品一 link，
+  单例不可内联副本；**无身份的纯函数/资产才随包内联**，名单 = 名册 `shared`，
+  见下「产物模块图账本」；CSS 抽取为 entry.css 经 `loadCss` 注入（版本号 + 每产品一 link，
   见 `docs/dev-workflow.md` 的 CSS 边界段））；供应商/工具
   域 = 运行时依赖（工具工厂/RPC/seam 函数）经 faceDeps 桥取用。
 - 产物构建：`--jsx=automatic --jsx-import-source=./<hostModule>` + onResolve
   重定向到 `*.aliased.ts` + `react` 别名桥（`react-bridge.cjs`——产物内全部
   react import 落到宿主注入的同一份 React，零副本）——产物自包含（零静态
   import / 零动态裸 import，构建断言）。
+- **产物模块图账本（2026-09-28 账本合一）**——产物不是隔离带，是**同一进程里的第二份
+  模块图**：只有静态 `./host` 被 onResolve 重定向，其它引用一律被 esbuild **整份内联成
+  私有副本**（连模块级状态一起）。被内联者带状态（store / 缓存 / 发号器 / 计数器 /
+  订阅表 / 账本）时，跨域调用就是「打在自己的影子上」。三道门禁：
+  ① **源码级**——值位置的相对动态 import 一律拒建（`scripts/lib/artifact-dynamic-imports.mjs`）；
+  ② **模块图级**——产物输入集（esbuild metafile）里出现「插件目录外且未登记」的源码即
+  构建失败，**唯一豁免声明面 = 名册各条目的 `shared`**（无身份共享件：纯函数 / 只读冻结表 /
+  类型 / 资产；另加三个构建全局件 `react-bridge.cjs` / `face-css.ts` / `contribution-helpers.ts`）；
+  ③ **面键级**——`host-surface.baseline.json` + 产物 `face.json` 指纹。
+  带模块级状态的欠账另在 `scripts/lib/stateful-kernel-modules.json`（构建时 ⚠ 点名）；
+  **带状态者不得登记 `shared`**——共享状态的唯一合法通道是宿主桥。名册 `shared` 因此是
+  **声明面而非快照**：删一条 = 声明本产物不再内联它，必须同批改 import 并验证产物字节
+  （`blockSeq` / `logPath` 一类**定义**在产物里命中 0），否则构建立刻红——设计意图。
+  台账与逐条销账见 `docs/landmine-map.md` 第十五批 A4。
 - 宿主桥（P1a + 增补四扩面）：`window.__lantai_plugin_host__` 提供 `react`
   （React 全量）、hooks 全集、`Overlay`、`rpc`、`loadCss`（产物 CSS 注入：URL 带
   版本号、每产品一 link、停用即摘——2026-09-19 起，见 landmine H2/H3）、

@@ -14,11 +14,15 @@
 //   `Overlay`（媒体放大浮层）· `useShellStore`（工程路径）· `previewUrlFor` /
 //   `readAttachmentBase64`（附图回读）· `MermaidBlock`（重依赖例外：内部 `import('mermaid')`
 //   是动态裸 import，产物域构建闸拒绝 ⇒ 组件本体留应用 bundle，产物只做认领 + 降级）。
-// 不桥什么：内核 `paper/*` 判据层（markdown / marks / tool-text / fold / translate）是纯函数，
-// 按名册 `shared` 相对 import 随包内联（同 `viewer-exts` / `block-model` 先例）；
+// 不桥什么：内核 `paper/*` 判据层（markdown / marks / tool-text / fold）是纯函数，
+// 按名册 `shared` 相对 import 随包内联（同 `viewer-exts` 先例）。
+// **例外（A4 销账 W1，2026-09-28）**：`paper/translate.ts` 带状态（块 id 发号器经
+// `createBlock` 落 `paper/block-model.ts` 的 `let blockSeq`）⇒ 不得随包内联；本包唯一
+// 消费面是差分语言判据 `isDiffLang`（体渲染分流），经本桥取内核同一实例。
 // 类型面（`BlockRendererProps` / `MdBlock` / `PlanOptionOutcome` …）编译期擦除，直连即可。
 
 export { previewUrlFor, readAttachmentBase64 } from '../../../app/chat/image-intake';
 export { Overlay } from '../../../app/overlay';
 export { default as MermaidBlock } from '../../../app/paper/mermaid-block';
 export { useShellStore } from '../../../app/shell-store';
+export { isDiffLang } from '../../../paper/translate';

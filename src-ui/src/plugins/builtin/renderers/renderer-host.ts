@@ -20,6 +20,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Overlay } from '../../../app/overlay';
 import { loadHeavyViewer } from '../../../app/paper/viewers';
+import { createBlock, type SourcedBlock } from '../../../paper/block-model';
 import { activeMarkdownBody, type MarkdownBodyComponent } from '../../../paper/markdown-body-seam';
 import { typedRpc } from '../../../rpc-contract';
 import type { ViewerProps } from './viewer-registry';
@@ -28,6 +29,16 @@ export const rendererReact: typeof React = React;
 export const rendererHooks = { useEffect, useMemo, useRef, useState };
 export const rendererOverlay = Overlay;
 export type { OverlayProps } from '../../../app/overlay';
+
+/**
+ * 查看器建 markdown 块出口（A4 销账 W1，2026-09-28）：`paper/block-model.ts` 带**模块级
+ * 发号器**（`let blockSeq`——块 id `pb{n}` 的唯一来源），故不得随包内联：副本会与内核
+ * 各发各的号，而画布以块 id 为键（撞号 = 两块抢一格）。经本桥取内核同一实例的发号器。
+ * 形状刻意收成「双走查实际要的那一种」（markdown 块 + viewer 自造源），不是通用建块面。
+ */
+export function rendererCreateBlock(text: string): SourcedBlock<'markdown'> {
+  return createBlock('markdown', { text }, { messageId: 'viewer', part: null });
+}
 
 /**
  * 纸面 markdown 体渲染取用（批 8c）：实现由产物 `paper-renderers` 在 apply 期登记进**内核**

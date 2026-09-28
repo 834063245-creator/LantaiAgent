@@ -108,6 +108,7 @@ export {
   canvasWheelMode,
   defaultBaseUrl,
   effectiveModels,
+  getActiveProvider,
   loadSettings,
   loadSettingsWithSecrets,
   modelContextWindow,
@@ -117,6 +118,7 @@ export {
   PROVIDER_PROTOCOL_DEFAULTS,
   providerId,
   saveSettings,
+  updateProvider,
 } from '../../../settings';
 export { notifyAgentConfigChanged } from '../../../state/agent-config-store';
 export { describeReceipt, useBundledEngineStore } from '../../../state/bundled-engine-store';

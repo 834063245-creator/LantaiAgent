@@ -38,12 +38,13 @@ import { type ClipboardEvent, memo, useCallback, useEffect, useMemo, useRef, use
 // （esbuild 内联，不涉 JSX），Escape 走宿主桥既有的 useDialogEscape（faceDeps 早已在
 // 册，取用零指纹代价）——遮罩点关语义就地写在下面两处。
 import { createPortal } from 'react-dom';
-import type { DirEntry } from '../../../rpc-contract';
-import { kernelListDirectory } from '../../../rpc-contract';
 import { volumeDisplayName } from '../../../state/volume-name';
 import type {
   ChatImageRef,
   ComposeSessionPrefs,
+  // A4 销账 W3（2026-09-28）：`rpc-contract` 带计数与插桩（有身份）——DirEntry 是
+  // 类型面（编译期擦除），值面 kernelListDirectory 改走本包宿主桥（键已在 faceDeps 在册）。
+  DirEntry,
   PermissionMode,
   ProviderSettings,
   StoredThinking,
@@ -57,6 +58,7 @@ import {
   getChatStore,
   getComposeStore,
   getModel,
+  kernelListDirectory,
   killShellWork,
   listCommands,
   loadSettings,

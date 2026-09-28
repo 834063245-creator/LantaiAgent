@@ -40,6 +40,9 @@ export const agentSessionState = impl.agentSessionState;
 // 消费方直接 `from './<file>'`；本文件只保留内核桥键。
 export const isMockMode = impl.isMockMode;
 export const typedJsonRpc = impl.typedJsonRpc;
+// A4 销账 W3（2026-09-28）：引「」面枚举进卷目录——`rpc-contract` 带计数与插桩，
+// 随包内联的副本会让 ui.log 答不出「请求到底发没发」。
+export const kernelListDirectory = impl.kernelListDirectory;
 export const useDialogEscape = impl.useDialogEscape;
 export const useShellStore = impl.useShellStore;
 export const watchFileDragDrop = impl.watchFileDragDrop;

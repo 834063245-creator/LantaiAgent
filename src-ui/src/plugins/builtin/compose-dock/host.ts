@@ -53,7 +53,10 @@ export { resolveApiKey } from '../../../provider/credentials';
 export type { StoredThinking, ThinkingMode } from '../../../provider/thinking';
 export { thinkingOptionsFor, thinkingOptionsOrDefault } from '../../../provider/thinking';
 export type { ChatImageRef, ModelDescriptor, Protocol } from '../../../provider/types';
-export { typedJsonRpc } from '../../../rpc-contract';
+// 强制层 RPC 面（A4 销账 W3，2026-09-28）：`rpc-contract` 带计数与插桩（有身份，且副本
+// 会让 ui.log 答不出「请求到底发没发」）——引号「」面与目录列举都走本桥。
+export type { DirEntry } from '../../../rpc-contract';
+export { kernelListDirectory, typedJsonRpc } from '../../../rpc-contract';
 export type { ProviderSettings } from '../../../settings';
 export {
   effectiveModels,

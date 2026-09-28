@@ -1,6 +1,27 @@
 # 产物内联销账（artifact-inlining-payoff）施工单
 
-> 状态：**Proposed（2026-09-28 立项）** · 承接 = `landmine-map.md` 第十五批 A4（门禁已落、toast 已销账）
+> **状态：代码全落地（2026-09-28）；余 W4 真机验收在办**（Agent 起不了 GUI——见 §4-W4，判据与
+> 真机步骤照旧）。施工单留 `docs/plans/` 而非归档，供后续「产物域」批取架构上下文。
+>
+> ## ✅ W0–W3 已竣工——账清零
+>
+> 39 产物构建**零 ⚠ 行**、`stateful-kernel-modules.json` 的 `modules` 为空。逐条取证
+> （输入集数字 / 桥面 / 指纹）见 **`docs/landmine-map.md` 第十五批 A4**；单一权威源的叙述与
+> 纪律见 `docs/plugins/README.md`「产物模块图账本」。
+>
+> **三处与本文原案不同的裁定**（留痕，事后可翻案）：
+> 1. **「两个全局件」实际是三个**——`contribution-helpers.ts`（15 个产物共用）与
+>    `react-bridge.cjs` / `face-css.ts` 同性质（跨产物的构建件，不属于任何单一产物）。
+> 2. **全局池取消，`shared` 改为「实际输入集 − 上述三个」**——原 `globalInputs` 那 23 条
+>    是「多产物共用」的池化写法；池化让**逐插件声明面失真**（同一模块被 A 用、B 声明，
+>    A 白拿），门禁也就管不住「谁真的内联了什么」。改逐插件自足后，构建门禁每次都在核账；
+>    顺带暴露并删掉一批化石声明（`paper/group.ts` / `virtualize.ts` / `selection.ts`
+>    三件连内核文件都已不在）。
+> 3. **W2/W3 实为同一条根因**（传递闭包 `bridge → rpc-contract → logger` + `settings`），
+>    且各自只被**一处**值引用（`ProviderPage.tsx` / `ComposerDock.tsx`）——合为一笔交付
+>    （分笔反而会造出两个「构建红着」的中间态）。本单纯前端 + 构建脚本，**未动 `src-tauri/**`**。
+>
+> 承接 = `landmine-map.md` 第十五批 A4（门禁已落、toast 已销账）
 > 执行者：下个窗口。**开工前先读**：`landmine-map.md` 第十五批（三种内联形态 + 家族结论）· [`../plugins/README.md`](../plugins/README.md)（宿主桥纪律）· 本单 §1/§2。
 > 一句话：把「带模块级状态的内核模块被内联进产物」逐条销账——**有身份的走宿主桥，无身份的留在名册 `shared`**。
 
