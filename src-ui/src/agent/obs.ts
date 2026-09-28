@@ -54,7 +54,7 @@ const BUILD: { v: string; commit: string } =
 //   llm.send / llm.first_byte / llm.done / llm.error   出网四相（公共面）
 //   turn.failed              用户可见的回合失败（唯一漏斗，按 (session,turn,phase) 去重）
 //   ui.toast                 error 级 toast 出口（用户看见了）
-//   log.self                 日志器自身健康度（丢条/通道）
+//   log.self                 日志器自身健康度（丢条/通道）——**批 3**，此处只登记名字
 //
 // 字段纪律（**不记**）：apiKey / token 明文、消息正文、请求体全文、URL query、
 // 工具输出全文。只记：长度、存在性、`host:port`、节数、错误原文（经脱敏）。
@@ -347,8 +347,10 @@ export interface ObsSectionError {
 export interface ObsDocSnapshot {
   /** 文件路径（读/写的是哪一个文件——事故里的第一个岔路口）。 */
   path: string;
-  /** 解析出的节数。 */
-  sections: number;
+  /** 文件里解析出的节数（面板路径拿不到就省——那里只有投影行数）。 */
+  sections?: number;
+  /** 投影后的行表条数（用户**实际看到几行**）——与 `sections` 不等正是要暴露的形态。 */
+  rows?: number;
   /** 逐节错误（名 + 原因）。 */
   errors: ReadonlyArray<ObsSectionError>;
   /** 整档 fatal 原因（undefined = 无）。 */
@@ -365,6 +367,7 @@ function docFields(s: ObsDocSnapshot): Record<string, unknown> {
   return {
     path: s.path,
     sections: s.sections,
+    rows: s.rows,
     section_errors: s.errors.map((e) => `${e.name}: ${e.reason}`),
     fatal: s.fatal,
     empty: s.empty,
@@ -385,6 +388,16 @@ function docOut(s: ObsDocSnapshot): string {
   return 'ok';
 }
 
+/** 「几节」的人读表述（节数/行数都可缺——面板路径只有投影行数）。
+ *  `sections` 与 `rows` 不等时两个都报：**文件里有几节**与**用户看到几行**分家
+ *  正是本接缝要暴露的形态（事故里用户说「之前配好的供应商没了」）。 */
+function docCounts(s: ObsDocSnapshot): string {
+  const parts: string[] = [];
+  if (s.sections !== undefined) parts.push(`${s.sections} 节`);
+  if (s.rows !== undefined && s.rows !== s.sections) parts.push(`投影 ${s.rows} 行`);
+  return parts.length > 0 ? parts.join('，') : '读数不可用';
+}
+
 /** provider 文档装载出口——**成功也写**（旧实现只在 fatal 时留痕，于是「配置到底
  *  装进来没有」在日志上不可答）。 */
 export function configLoad(s: ObsDocSnapshot & { ids?: ObsIds }): void {
@@ -392,7 +405,7 @@ export function configLoad(s: ObsDocSnapshot & { ids?: ObsIds }): void {
     docLevel(s),
     'provider',
     'config.load',
-    `provider 配置装载：${s.sections} 节${s.errors.length ? `，${s.errors.length} 节有错` : ''}` +
+    `provider 配置装载：${docCounts(s)}${s.errors.length ? `，${s.errors.length} 节有错` : ''}` +
       `${s.fatal ? `，fatal: ${s.fatal}` : ''}${s.empty ? '（空文档）' : ''}`,
     {
       ids: s.ids,
@@ -410,7 +423,7 @@ export function panelReload(s: ObsDocSnapshot & { trigger: string; ids?: ObsIds 
     docLevel(s),
     'provider',
     'panel.providers_reload',
-    `面板重读 provider 配置（${s.trigger}）：${s.sections} 节，Key 携带 ` +
+    `面板重读 provider 配置（${s.trigger}）：${docCounts(s)}，Key 携带 ` +
       `${s.keysCarried ? `${s.keysCarried.withKey}/${s.keysCarried.total}` : '未知'}`,
     { ids: s.ids, ctx: { ...docFields(s), trigger: s.trigger }, out: docOut(s) },
   );
@@ -472,16 +485,23 @@ export interface ObsLlmBase {
   model: string;
   /** 方言名（openai / anthropic / responses）。 */
   kind: string;
-  /** 目标 `host:port`（**只记这个**——协议面/路径/query 不落盘）。 */
-  target: string;
+  /** 请求 URL（**整条递进来**，门面自己削成 `host:port`——协议面/路径/query
+   *  一律不落盘）。收整条而不是收削好的，是为了让调用点**忘不了**这件事：
+   *  脱敏只有一处（本文件），调用点不需要也不应该知道该削成什么。 */
+  url: string;
   ids?: ObsIds;
+}
+
+/** 身份面的公共 ctx（四处共用，保证四相的字段面一致）。 */
+function llmCtx(f: ObsLlmBase): Record<string, unknown> {
+  return { provider: f.provider, model: f.model, kind: f.kind, target: hostPort(f.url) };
 }
 
 /** 请求发出前（含重试第 n 次）。 */
 export function llmSend(
   f: ObsLlmBase & {
     /** 本轮携带的工具 schema 数。 */
-    tools: number;
+    tools?: number;
     /** prompt 侧 token 估算（构成是估算不是账单——见 token-meter 口径纪律）。 */
     promptEstimate?: number;
     /** 第几次尝试（1 起；>1 = 重试）。 */
@@ -496,15 +516,7 @@ export function llmSend(
     {
       ids: f.ids,
       out: 'ok',
-      ctx: {
-        provider: f.provider,
-        model: f.model,
-        kind: f.kind,
-        target: f.target,
-        tools: f.tools,
-        prompt_est: f.promptEstimate,
-        attempt: f.attempt,
-      },
+      ctx: { ...llmCtx(f), tools: f.tools, prompt_est: f.promptEstimate, attempt: f.attempt },
     },
   );
 }
@@ -515,11 +527,11 @@ export function llmFirstByte(f: ObsLlmBase & { ms: number }): void {
     ids: f.ids,
     dur_ms: f.ms,
     out: 'ok',
-    ctx: { provider: f.provider, model: f.model, kind: f.kind, target: f.target },
+    ctx: llmCtx(f),
   });
 }
 
-/** 请求正常结束。 */
+/** 请求正常结束（流读完 / 无流返回）。 */
 export function llmDone(
   f: ObsLlmBase & {
     ms: number;
@@ -528,6 +540,8 @@ export function llmDone(
     /** 提供方报的 prompt/completion token（有才记）。 */
     promptTokens?: number;
     completionTokens?: number;
+    /** SSE 事件条数（流式路径的「读了多少」读数）。 */
+    events?: number;
   },
 ): void {
   emit(
@@ -540,14 +554,12 @@ export function llmDone(
       dur_ms: f.ms,
       out: 'ok',
       ctx: {
-        provider: f.provider,
-        model: f.model,
-        kind: f.kind,
-        target: f.target,
+        ...llmCtx(f),
         status: f.status,
         finish_reason: f.finishReason,
         prompt_tokens: f.promptTokens,
         completion_tokens: f.completionTokens,
+        events: f.events,
       },
     },
   );
@@ -568,21 +580,17 @@ export function llmError(
     ids: f.ids,
     dur_ms: f.ms,
     out: 'fail',
-    ctx: { provider: f.provider, model: f.model, kind: f.kind, target: f.target, status: f.status },
+    ctx: { ...llmCtx(f), status: f.status },
     err: { kind: f.errorKind ?? 'UNKNOWN', status: f.status ?? null, raw: f.raw },
   });
 }
 
 // ── ⑤ 唯一漏斗：用户可见的回合失败 ──────────────────────────────────
 
-/** 回合失败的机器可读类别（`phase` 之外的第二问：「哪个判据」）。 */
-export type TurnFailKind =
-  | 'MISSING_CREDENTIAL'
-  | 'PROVIDER_ERROR'
-  | 'RUN_DEADLINE_EXCEEDED'
-  | 'PAUSED'
-  | 'ABORTED'
-  | 'UNKNOWN';
+/** 回合失败的机器可读类别（`phase` 之外的第二问：「哪个判据」）。
+ *  ⚠ 用户主动停止**不在**此列——它不是失败（chat-core 的 `!signal.aborted` 分支
+ *  已把它排除在漏斗之外），刻意不设 `ABORTED`：没有生产者的枚举值是死词汇。 */
+export type TurnFailKind = 'MISSING_CREDENTIAL' | 'PROVIDER_ERROR' | 'RUN_DEADLINE_EXCEEDED' | 'PAUSED' | 'UNKNOWN';
 
 /** 预检失败的判据标记（请求**未发出**）。
  *  ⚡ 用标记而非错误类型：`provider/live.ts` 的凭据闸抛的就是带该前缀的普通
@@ -666,18 +674,6 @@ export function toast(f: { text: string; level: string }): void {
   });
 }
 
-// ── log.self：日志器自身健康度 ──────────────────────────────────────
-
-/** 日志通道自述（批 3 健康度；当前只有 boot 消费通道可写性）。 */
-export function self(f: { channel: 'ok' | 'unavailable'; dropped?: number; note?: string }): void {
-  emit(
-    f.channel === 'ok' ? 'info' : 'warn',
-    'boot',
-    'log.self',
-    `日志通道 ${f.channel}${f.dropped ? `（丢 ${f.dropped} 条）` : ''}`,
-    {
-      out: f.channel === 'ok' ? 'ok' : 'fail',
-      ctx: { channel: f.channel, dropped: f.dropped, note: f.note },
-    },
-  );
-}
+// ⚠ `log.self`（日志器自身健康度：丢条计数 / 通道自述）**刻意不在此实现**——
+//   它属于批 3（计划 §2.5），而当下没有生产者：留一个无人调用的门面函数就是死抽象。
+//   事件名已在文件头的事件表登记，批 3 落健康度计数时同处补函数 + 调用点。

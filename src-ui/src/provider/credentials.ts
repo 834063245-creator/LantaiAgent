@@ -13,6 +13,7 @@
 // 模块级可变态归属（CONVENTIONS §1.10）：进程级键控缓存（键 = 提供方名，
 // 生命周期 = 进程），写穿失效保证与系统凭据库一致。
 
+import * as Obs from '../agent/obs';
 import { loadSettings, type ProviderId, type ProviderSettings, parseRpcString } from '../settings';
 
 /** 本机凭据 IPC 的超时上限（2026-09-13）：正常毫秒级（OS 凭据库冷启动可能慢），
@@ -31,7 +32,12 @@ const _inflight = new Map<ProviderId, Promise<string>>();
  *  ⚠ 只有**真解析过**的结果才进缓存（含「确实没有 Key」的空串负缓存）；
  *  解析失败（IPC 抛错/超时）不缓存（2026-09-13 修）——否则一次瞬态 IPC 故障
  *  就被记成「这个提供方没有 Key」，整个进程生命周期恒报 MISSING_CREDENTIAL，
- *  而设置里 Key 明明在（错误不静默的反面：错误被伪装成配置缺失）。 */
+ *  而设置里 Key 明明在（错误不静默的反面：错误被伪装成配置缺失）。
+ *
+ *  ⚡ 日志接缝（2026-09-27 日志可观测性批 2）：`cred.get` 记在**真解析**那一支
+ *  （下面 inflight 闭包内），缓存命中不记——那不是解析，是记忆；每次请求都记
+ *  会把日志淹成噪声，而本事件要答的是「这个 provider 到底有没有 Key、那次
+ *  IPC 是成功还是抛错」这两问（事故里的第二个岔路口）。 */
 export async function resolveApiKey(name: ProviderId): Promise<string> {
   const cached = _keyCache.get(name);
   if (cached !== undefined) return cached;
@@ -46,12 +52,16 @@ export async function resolveApiKey(name: ProviderId): Promise<string> {
         // 无加密存储/解密失败/IPC 卡死 — 本次按无 key 处理（使用点 fail-loud），
         // 但不写缓存：下一次请求重新解析（可能是同一故障窗口，也可能已恢复）。
         console.warn(`[credentials] ${name} 凭据解析失败（不缓存，下次重试）:`, e);
+        // 「IPC 抛错」与「真没配」必须分得开——合成一条就是 2026-09-13 那个病灶
+        Obs.credGet({ provider: name, hit: false, error: e instanceof Error ? e.message : String(e) });
         return '';
       }
       const parsed = parseRpcString(raw);
       // 长度护栏与 restoreSecrets 同规（INVARIANTS #11：>4096 必是毒值，拒收）
       const key = parsed?.trim() && parsed.length <= 4096 ? parsed.trim() : '';
       _keyCache.set(name, key);
+      // 只记长度与存在性——**绝不落明文**
+      Obs.credGet({ provider: name, hit: key.length > 0, len: key.length });
       return key;
     })();
     _inflight.set(name, p);

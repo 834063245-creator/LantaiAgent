@@ -3,7 +3,7 @@
 
 // provider 实现的共享工具函数 — 从 anthropic.ts 和 openai.ts 中提取
 
-import { proxyFetch } from './host';
+import { llmDone, proxyFetch } from './host';
 
 /** 合并自定义请求头与内核必需头（2026-09-17）。
  *
@@ -91,21 +91,38 @@ export interface SseEvent {
   [key: string]: unknown;
 }
 
+/** `sseEvents` 的日志接缝描述面（`llm.done` 用；缺省不记）。 */
+export interface SseLogMeta {
+  model: string;
+  /** 方言名（openai / anthropic / responses）。 */
+  kind: string;
+  /** 请求 URL（门面自己削成 host:port）。 */
+  url: string;
+}
+
 /** 解析 SSE 流并 yield 解码后的 JSON 事件。处理 reader/decoder/buffer
  *  管理和尾部数据刷新。调用方按各 provider 格式处理每个事件。
  *
  *  边界（P0 定稿）：只解析单行 `data:` 事件——所有目标服务商
  *  （Anthropic/DeepSeek/Moonshot/Minimax/Qwen/OpenAI 兼容）均以单行
  *  data 发送 JSON，`[DONE]` 为流结束标记。不支持 `event:` 字段与
- *  多行 data（SSE 规范特性），无需求不做。 */
+ *  多行 data（SSE 规范特性），无需求不做。
+ *
+ *  ⚡ 日志接缝（2026-09-27 批 2）：出网四相的第四相 `llm.done` 落在这里——
+ *  这是「流什么时候读完」的唯一公共面（方言无关，新方言自动继承）。
+ *  前三相（send / first_byte / error）在 `retry.ts` 的 `sendWithRetry`。 */
 export async function* sseEvents<T extends SseEvent = SseEvent>(
   body: ReadableStream<Uint8Array>,
   name: string,
   signal?: AbortSignal,
+  obsMeta?: SseLogMeta,
 ): AsyncGenerator<T> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  const t0 = Date.now();
+  let events = 0;
+  let completed = false;
 
   try {
     while (true) {
@@ -127,6 +144,7 @@ export async function* sseEvents<T extends SseEvent = SseEvent>(
         const data = line.slice(5).trim();
         if (!data || data === '[DONE]') continue;
         try {
+          events += 1;
           yield JSON.parse(data);
         } catch {}
       }
@@ -141,11 +159,25 @@ export async function* sseEvents<T extends SseEvent = SseEvent>(
         const data = line.slice(5).trim();
         if (!data || data === '[DONE]') continue;
         try {
+          events += 1;
           yield JSON.parse(data);
         } catch {}
       }
     }
+    completed = true;
   } finally {
     reader.releaseLock();
+    // ⚡ 只在**正常读完**时报 done：消费者提前 break（`.return()`）、中止、抛错都会
+    //    走到这个 finally——那三种形态报 ✓ 是假账（中止另有 `turn.failed` 收口）。
+    if (completed && obsMeta) {
+      llmDone({
+        provider: name,
+        model: obsMeta.model,
+        kind: obsMeta.kind,
+        url: obsMeta.url,
+        ms: Date.now() - t0,
+        events,
+      });
+    }
   }
 }

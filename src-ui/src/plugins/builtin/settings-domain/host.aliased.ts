@@ -132,6 +132,10 @@ export const modelDescriptor = impl.modelDescriptor;
 export const modelInput = impl.modelInput;
 export const PROVIDER_PROTOCOL_DEFAULTS = impl.PROVIDER_PROTOCOL_DEFAULTS;
 export const intentOf = impl.intentOf;
+// 日志可观测性批 2：凭据写面的事件门面（与 host.ts 同形状镜像）
+export const credStore = impl.credStore;
+export const credRemove = impl.credRemove;
+export const panelReload = impl.panelReload;
 
 export type AppSettings = import('./host').AppSettings;
 export type ConnectionProbe = import('./host').ConnectionProbe;

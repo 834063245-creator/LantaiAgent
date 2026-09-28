@@ -27,6 +27,7 @@
 //   - 写盘 = 读-改-写（先重读磁盘再渲染）：绝不复活陈旧文档、不丢本进程没观察到的兄弟节点。
 
 import { log } from '../agent/logger';
+import * as Obs from '../agent/obs';
 import { activeLlmAdapters } from '../composition/services';
 import {
   applyProvidersDoc,
@@ -215,6 +216,33 @@ export function installProvidersDocProjection(): void {
   installProvidersFileReadyCheck(providersFileReady);
 }
 
+/** 装载读数快照（`obs.configLoad` 的载荷）。
+ *
+ *  ⚡ 为什么值得单列一条事件：事故（2026-09-27）里第一个岔路口就是「这行 provider
+ *  存不存在、从哪来」——旧实现只在 fatal 时留痕，**成功不留**，于是「配置到底装进来
+ *  没有」在日志上不可答。这里把「读到哪个文件、几节、哪几节坏了、投影来自文件还是
+ *  本机副本、有多少行带着 Key」一次说清。
+ *
+ *  `rows` 取 `loadSettings().providers` = **用户实际看到的那张行表**（经投影），
+ *  而不是文件里的节数——两者不等正是要暴露的形态。 */
+function docSnapshotForObs(): Obs.ObsDocSnapshot {
+  const rows = loadSettings().providers;
+  const ready = providersFileReady();
+  return {
+    path: state.path,
+    sections: lastSections.length,
+    rows: rows.length,
+    errors: state.errors.map((e) => ({ name: e.name, reason: e.message })),
+    fatal: state.fatal,
+    empty: state.empty,
+    source: ready ? 'file' : 'localStorage',
+    keysCarried: {
+      withKey: rows.filter((r) => (r.apiKey ?? '').trim().length > 0).length,
+      total: rows.length,
+    },
+  };
+}
+
 /** 装载一次用户级文档（boot / watcher / 保存后重读三处共用）。
  *  @param opts.reloadRuntime - true = 同时从 localStorage 重取运行态读数。
  *  @returns 是否读到（fatal 也算读到了——错误在 status 里，由设置页点名显示）。 */
@@ -235,6 +263,9 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
         state.lastError = `配置文件通道不可用（providers_dir 返回的不是路径：${String(dir)}）——本机仍按内置存储工作`;
         log.error('provider-doc', 'providers_dir 返回的不是路径', { got: String(dir) });
         notify();
+        // 通道不可用也是**装载结果**——必须可答（事故里 87 条 error 全是路径噪声，
+        // 却没有一条说「provider 配置根本没装进来」）
+        Obs.configLoad({ ...docSnapshotForObs(), fatal: state.lastError });
         return false;
       }
     } catch (e) {
@@ -245,6 +276,7 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
       // 读不出原因的冷话，事后连 ui.log 都查不到。落 console + ui.log 两处。
       log.error('provider-doc', '取配置文件路径失败（providers_dir）', { error: errText(e) });
       notify();
+      Obs.configLoad({ ...docSnapshotForObs(), fatal: state.lastError });
       return false;
     }
   }
@@ -269,6 +301,9 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
   cachedRows = null; // 强制重算
   refreshRows();
   notify();
+  // **成功也写**（本接缝的要点）：成功与失败在日志上必须长得不一样，
+  // 否则「配置装进来了吗」只能靠推断
+  Obs.configLoad(docSnapshotForObs());
   return true;
 }
 

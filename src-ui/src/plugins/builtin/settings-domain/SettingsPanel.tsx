@@ -27,6 +27,7 @@ import {
   loadSettingsWithSecrets,
   notifyAgentConfigChanged,
   onProvidersDocChange,
+  panelReload,
   projectProvidersErrors,
   projectProvidersFatal,
   providersDocStatus,
@@ -78,6 +79,30 @@ function withCarriedKeys(s: AppSettings, disk: AppSettings['providers']): AppSet
     ...s,
     providers: disk.map((p) => (p.apiKey ? p : { ...p, apiKey: carried.get(p.name) || '' })),
   };
+}
+
+/** 面板重读的日志接缝（日志可观测性批 2，2026-09-27）。
+ *
+ *  ⚡ 为什么这条不可省：事故（2026-09-27）里「面板冲键 vs 凭据库真没 Key」是判不出
+ *  来的岔路口——两条重读路径此前**完全无痕**。这里把「谁触发的重读、读到哪个文件、
+ *  投影几行、多少行带 Key」一次记下（Key 只记**条数**，绝不落明文）。
+ *  `sections` 在面板侧拿不到（那是文件里的节数，只有装载面知道）⇒ 只报投影行数。 */
+function logPanelReload(trigger: string): void {
+  const st = providersDocStatus();
+  const rows = loadSettings().providers;
+  panelReload({
+    path: providersFilePath(),
+    rows: rows.length,
+    errors: st.errors.map((e) => ({ name: e.name, reason: e.message })),
+    fatal: st.fatal,
+    empty: st.empty,
+    source: st.available && st.loaded && !st.fatal && !st.empty ? 'file' : 'localStorage',
+    keysCarried: {
+      withKey: rows.filter((p) => (p.apiKey ?? '').trim().length > 0).length,
+      total: rows.length,
+    },
+    trigger,
+  });
 }
 
 const SettingsPanelApp: React.FC<{
@@ -513,9 +538,11 @@ const SettingsPanelApp: React.FC<{
                 onReload: () => {
                   if (providerDirty) {
                     setDocStaleHint(true);
+                    logPanelReload('external-change(暂存中，只标提示不替换)');
                     return;
                   }
                   setDocStaleHint(false);
+                  logPanelReload('external-change');
                   // 只换 providers 一域（其余 tab 的暂存改动不牵连）；
                   // 密钥随内存带走——见 withCarriedKeys 头注
                   setSettings((s) => withCarriedKeys(s, loadSettings().providers));
@@ -525,6 +552,7 @@ const SettingsPanelApp: React.FC<{
                 onRetryPath: () => {
                   void retryProvidersPath().then(() => {
                     setDocStaleHint(false);
+                    logPanelReload('retry-path');
                     setSettings((s) => withCarriedKeys(s, loadSettings().providers));
                     setProvidersDocVersion((v) => v + 1);
                   });

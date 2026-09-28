@@ -364,6 +364,23 @@ DOM 所有权按层划分，不要跨层抢 DOM：
    fiber dispose 无法撤销，代际校验是唯一正确防护。）
 ```
 
+### 1.11 日志事件面（2026-09-27 立规；规格 = `docs/design/log-observability-spec.md`）
+
+```
+✅ 用户可见的失败必须留痕：墓碑 / error toast / 面板 fatal 出口 → `agent/obs.ts` 的
+   `turn.failed`（唯一漏斗，按 (session,turn,phase) 去重）/ `ui.toast`
+✅ 新增接缝 = 在 `agent/obs.ts` 加一个事件函数（事件名与字段表在文件头定死），
+   不散点、不改旧 `log.*` 调用（旧面零迁移）
+✅ 脱敏**只在** `agent/obs.ts` 一处（唯一审查点）：apiKey/token 明文、消息正文、
+   请求体全文、请求头、URL query 永不落盘；只记长度/存在性/`host:port`/节数。
+   端点一律把**整条 URL** 递给门面（`url` 字段），由门面削成 `host:port`
+✅ `ids` 由**调用点显式给**（多卷并发下模块级 ambient 上下文会串卷——INVARIANTS #1 同族）
+✅ 产物域取门面经宿主面 `./host` + `host-modules.ts` 的 `faceDeps` 登记
+   （漏登记 tsc 红；改 faceDeps 须同 commit 跑 `npm run gen:host-surface`）
+❌ 禁止：在接缝里自己拼日志对象、自己抹凭据、用中文句子当事件名
+❌ 禁止：日志链路抛错打断用户动作（门面 `safeWrite` 兜底——丢条可见但不炸链路）
+```
+
 ## 2. 后端 Rust（`engine/` + `src-tauri/`）
 
 ### 2.1 模块组织

@@ -19,6 +19,8 @@
 import type { Protocol } from '../../../provider/types';
 import type { AppSettings, ProviderId } from '../../../settings';
 import {
+  credRemove,
+  credStore,
   defaultBaseUrl,
   getCatalogVendors,
   getDefaultModel,
@@ -64,9 +66,13 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
       // 「null」字面量护栏：毒化残留的 apiKey:"null" 绝非真 key，绝不写入凭据库
       try {
         await typedRpc('credential_store', { provider: p.name, key });
+        // 日志可观测性批 2：**逐 provider** 记 ok/err——「保存了但没写进凭据库」
+        // 与「写进去了」在日志上必须长得不一样（只记长度，绝不落明文）
+        credStore({ provider: p.name, ok: true });
       } catch (e) {
         // 雷区地图 P0-7：写失败必须上抛给 UI——「失败报已保存」会让用户重启丢 key
         console.warn(`[settings] credential_store(${p.name}) 失败:`, e);
+        credStore({ provider: p.name, ok: false, error: e instanceof Error ? e.message : String(e) });
         failed.push(p.name);
       }
     }
@@ -77,6 +83,9 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
     for (const p of withKey) invalidateCredentialCache(p.name);
   } catch (e) {
     console.warn('[settings] bridge 不可用，凭据未落盘:', e);
+    // 整批失败也要逐 provider 留痕——否则「哪些 key 没写进去」只能靠 failed 数组推断
+    const msg = e instanceof Error ? e.message : String(e);
+    for (const p of withKey) credStore({ provider: p.name, ok: false, error: msg });
     failed.push(...withKey.map((p) => p.name));
   }
   return failed;
@@ -91,8 +100,11 @@ export async function removeSecret(providerName: ProviderId): Promise<void> {
     // Phase C：写穿失效凭据缓存（同 persistSecrets——见上注释）
     const { invalidateCredentialCache } = await import('../../../provider/credentials');
     invalidateCredentialCache(providerName);
-  } catch {
-    /* 无加密存储或 Key 未找到 — 非关键 */
+    credRemove({ provider: providerName, ok: true });
+  } catch (e) {
+    // 「无加密存储或 Key 未找到」是既有语义的**非关键**路径（调用方不关心），
+    // 但日志必须留一条——用户看到的「删掉了」与凭据库里的实际状态要能对上账
+    credRemove({ provider: providerName, ok: false, error: e instanceof Error ? e.message : String(e) });
   }
 }
 

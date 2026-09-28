@@ -16,9 +16,29 @@ import {
   classifyError,
   classifyProviderError,
   errorCodeFromBody,
+  llmError,
+  llmFirstByte,
+  llmSend,
   proxyFetch,
   retryAfterSeconds,
 } from './host';
+
+/** 出网日志接缝的描述面（日志可观测性批 2，2026-09-27）。
+ *
+ *  ⚡ 为什么把「模型/方言」放在这里而不是让 retry 自己去猜：`RetryConfig.body`
+ *  是请求体 JSON，**绝不落日志**（可能含消息正文），从它反解模型名等于把请求体
+ *  拖进日志路径。让调用方顺手把已知的身份面递下来最诚实。
+ *  新增方言填上它，四相日志**自动继承**——这就是计划里「不穷举字段、只覆盖接缝」
+ *  的机制本身。缺省 = 只记 provider 名 + host:port，不炸。 */
+export interface RetryLogMeta {
+  model: string;
+  /** 方言名（openai / anthropic / responses）。 */
+  kind: string;
+  /** 本轮携带的工具 schema 数。 */
+  tools?: number;
+  /** prompt 侧 token 估算。 */
+  promptEstimate?: number;
+}
 
 export interface RetryConfig {
   url: string;
@@ -26,6 +46,8 @@ export interface RetryConfig {
   body: string;
   signal: AbortSignal;
   name: string;
+  /** 日志接缝的描述面（可选——缺省降级为 provider 名 + host:port）。 */
+  meta?: RetryLogMeta;
 }
 
 /** 重试策略参数（可选覆盖；缺省值即生产行为）。测试用微小值驱动真实重试序列。 */
@@ -68,16 +90,37 @@ export function computeBackoffMs(
 
 /** POST 按分类重试，指数退避；服务商明示 retry-after 时优先于自猜退避。
  *  抛出分类后的 ApiError（挂 status/code/retryAfter/raw/kind——墓碑可显示原始码，
- *  上层可读 kind 语义分流）。 */
+ *  上层可读 kind 语义分流）。
+ *
+ *  ⚡ 日志接缝（2026-09-27 批 2）：本函数是**出网四相里的三相**（send / first_byte /
+ *  error）的唯一落点——方言无关，新方言自动继承。第四相 `done`（流读完）在
+ *  `shared.ts` 的 `sseEvents`（那里才知道流什么时候结束）。
+ *  ⚠ 只记 `host:port`：整条 URL 交给门面削（`agent/obs.ts` 是唯一脱敏点），
+ *  请求头与请求体**一律不进日志**。 */
 export async function sendWithRetry(cfg: RetryConfig, opts: RetryOptions = {}): Promise<Response> {
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   let lastErr: ClassifiedProviderError | undefined;
+  // 身份面（四相共用）：provider 名 + 方言 + 模型 + 端点。meta 缺席也不炸。
+  const base = {
+    provider: cfg.name,
+    model: cfg.meta?.model ?? '<未知>',
+    kind: cfg.meta?.kind ?? 'unknown',
+    url: cfg.url,
+  };
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) {
       await new Promise((r) => setTimeout(r, computeBackoffMs(lastErr, attempt, opts)));
     }
     if (cfg.signal.aborted) throw new Error(`${cfg.name}: aborted`);
+
+    llmSend({
+      ...base,
+      tools: cfg.meta?.tools,
+      promptEstimate: cfg.meta?.promptEstimate,
+      attempt: attempt + 1,
+    });
+    const t0 = Date.now();
 
     let resp: Response;
     try {
@@ -94,13 +137,19 @@ export async function sendWithRetry(cfg: RetryConfig, opts: RetryOptions = {}): 
         new ApiError(classifyError(cfg.name, 0, '', e.message), { status: 0, raw: e.message }),
         cfg.name,
       );
+      // 网络层错误没有 HTTP 状态；raw = 原始错误文本（门面脱敏）
+      llmError({ ...base, ms: Date.now() - t0, errorKind: netErr.kind, raw: e.message });
       // 网络层永久错（DNS 解析失败 / Key·URL 含非法字符）与响应路径同路由：不重试
       if (netErr.kind === 'auth_or_param' || netErr.kind === 'context_overflow') throw netErr;
       lastErr = netErr;
       continue;
     }
 
-    if (resp.ok) return resp;
+    // 响应头到达 = 首字节到达（挂起判定的分水岭：有 send 无 first_byte = 服务商零字节）
+    if (resp.ok) {
+      llmFirstByte({ ...base, ms: Date.now() - t0 });
+      return resp;
+    }
 
     const msg = await resp.text().catch(() => '');
     const retryAfter = retryAfterSeconds(resp.headers.get('retry-after'));
@@ -113,6 +162,13 @@ export async function sendWithRetry(cfg: RetryConfig, opts: RetryOptions = {}): 
       }),
       cfg.name,
     );
+    llmError({
+      ...base,
+      ms: Date.now() - t0,
+      status: resp.status,
+      errorKind: statusErr.kind,
+      raw: msg || `HTTP ${resp.status}`,
+    });
     if (statusErr.kind === 'auth_or_param' || statusErr.kind === 'context_overflow') throw statusErr;
     lastErr = statusErr;
   }

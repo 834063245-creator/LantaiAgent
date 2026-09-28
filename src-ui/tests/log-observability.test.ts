@@ -116,15 +116,14 @@ describe('日志可观测性 · 事件门面（obs.ts）', () => {
     obs.credGet({ provider: 'p', hit: true, len: 12, ids });
     obs.credStore({ provider: 'p', ok: true, ids });
     obs.credRemove({ provider: 'p', ok: true, ids });
-    obs.llmSend({ provider: 'p', model: 'm', kind: 'openai', target: 'h:1', tools: 0, ids });
-    obs.llmFirstByte({ provider: 'p', model: 'm', kind: 'openai', target: 'h:1', ms: 5, ids });
-    obs.llmDone({ provider: 'p', model: 'm', kind: 'openai', target: 'h:1', ms: 9, ids });
-    obs.llmError({ provider: 'p', model: 'm', kind: 'openai', target: 'h:1', raw: 'boom', ids });
+    obs.llmSend({ provider: 'p', model: 'm', kind: 'openai', url: 'http://h:1/v1', tools: 0, ids });
+    obs.llmFirstByte({ provider: 'p', model: 'm', kind: 'openai', url: 'http://h:1/v1', ms: 5, ids });
+    obs.llmDone({ provider: 'p', model: 'm', kind: 'openai', url: 'http://h:1/v1', ms: 9, ids });
+    obs.llmError({ provider: 'p', model: 'm', kind: 'openai', url: 'http://h:1/v1', raw: 'boom', ids });
     obs.turnFailed({ ids, phase: 'stream', kind: 'UNKNOWN', raw: 'boom', message: '错误: boom' });
     obs.toast({ text: '出错了', level: 'error' });
-    obs.self({ channel: 'ok' });
     const all = (await drain()).filter((e) => typeof e.event === 'string');
-    expect(all.length).toBeGreaterThanOrEqual(13);
+    expect(all.length).toBeGreaterThanOrEqual(12);
     for (const e of all) {
       expect(String(e.event)).toMatch(/^[a-z][a-z_]*(\.[a-z][a-z_]*)*$/);
       // 每条事件都必须带构建锚与可读 message（门面的公共字段契约）
@@ -147,8 +146,8 @@ describe('日志可观测性 · 事件门面（obs.ts）', () => {
       provider: 'local',
       model: 'qwen',
       kind: 'openai',
-      // 即便调用点把整条 URL 当 target 递进来，query 也必须被削掉
-      target: 'http://127.0.0.1:8080/v1/chat?api-key=QUERYSECRET0123',
+      // 接缝递整条 URL 进来（门面负责削成 host:port）——query 里的 key 必须被削掉
+      url: 'http://127.0.0.1:8080/v1/chat?api-key=QUERYSECRET0123',
       raw:
         'HTTP 401: {"error":{"message":"Incorrect API key provided: sk-live-ABCDEFGHIJKLMNOP"}} ' +
         'Authorization: Bearer BEARERSECRET0123456789 x-api-key: XAPIKEYSECRET',
@@ -162,7 +161,8 @@ describe('日志可观测性 · 事件门面（obs.ts）', () => {
       expect(file).not.toContain(secret);
     }
     const e = byEvent(all, 'llm.error')[0];
-    expect(String((e.ctx as Record<string, unknown>).target)).toBe('http://127.0.0.1:8080/v1/chat?<redacted>');
+    // 端点只留 host:port（协议面/路径/query 一律不进日志）
+    expect(String((e.ctx as Record<string, unknown>).target)).toBe('127.0.0.1:8080');
     expect(e.out).toBe('fail');
     expect(e.err).toMatchObject({ kind: 'auth_or_param', status: 401 });
   });
@@ -172,7 +172,7 @@ describe('日志可观测性 · 事件门面（obs.ts）', () => {
       provider: 'p',
       model: 'm',
       kind: 'openai',
-      target: 'h:1',
+      url: 'http://h:1/v1',
       ms: 3,
       promptTokens: 1234,
       completionTokens: 56,

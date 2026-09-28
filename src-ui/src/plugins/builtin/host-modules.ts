@@ -73,6 +73,10 @@ import {
   TopologyDeniedError,
 } from '../../agent/message-contract';
 import { registerMultiagentComm, requireMultiagentComm } from '../../agent/multiagent-impl';
+// 日志可观测性批 2：产物域的事件门面出口（settings-domain 的凭据写面 +
+// llm-adapters 的出网四相）。obs 的**函数无模块状态**（除键控自清理的去重表），
+// 故桥函数引用即可——产物与内核写的是同一本日志。
+import { credRemove, credStore, llmDone, llmError, llmFirstByte, llmSend, panelReload } from '../../agent/obs';
 import { activePlanImplementation, registerPlanImplementation } from '../../agent/plan/plan-impl';
 import { planRegistry } from '../../agent/plan/plan-registry';
 import { registerCompactionTools } from '../../agent/runtime/agent-builder';
@@ -426,6 +430,17 @@ const faceDeps = {
   projectProvidersErrors,
   projectProvidersFatal,
   retryProvidersPath,
+  // 日志可观测性批 2（2026-09-27）：事件门面（唯一脱敏点）对产物域的出口面。
+  //   settings-domain → 凭据写面（credStore/credRemove）
+  //   llm-adapters    → 出网四相（llmSend/llmFirstByte/llmDone/llmError）
+  // 面在 `agent/obs.ts`（内核，不可禁）；产物只经宿主桥取用，不裸 import 内核。
+  credStore,
+  credRemove,
+  panelReload,
+  llmSend,
+  llmFirstByte,
+  llmDone,
+  llmError,
   // S6 P3b：激活诊断读面（第四栏「被跳过」= 激活失败的插件 + 原因；独占冲突回看）
   activationSkipped,
   activationConflict,

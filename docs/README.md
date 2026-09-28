@@ -66,7 +66,7 @@
 |---|---|---|
 | [`adr/`](adr/README.md) | 架构决策记录（宪法 + 编号 ADR + 主题 ADR） | 8 篇，入口 [`adr/README.md`](adr/README.md) |
 | [`agents/`](agents/) | Agent 操作/事故/对比文档 | [dsh 对比](agents/dsh-harness-comparison.md) · [并发事故](agents/platform-bugs-2026-08-13.md) · [cordis 动态插件事故](agents/platform-bugs-cordis-dynamic-runner.md) · [事件目录](agents/event-catalog.md)（生成物） · [服务目录](agents/service-catalog.md)（生成物） · [rpc 契约](agents/frontend-rpc-contract.md)（生成物） · [引擎契约](agents/engine-plugin-contract.md)（生成物） |
-| [`design/`](design/) | 设计定稿与探索 | [provider 体系](design/provider-system-spec.md) · [墨铜视觉语言](design/visual-language-ink-brass.md) · [一张纸交互形态](design/一张纸-Agent软件交互形态设计.md) · [MCP/ACP 协议支持](design/mcp-acp-protocol-support.md) · [纸壳设计规格](design/lantai-design-spec.md) · [rpc 运行时校验](design/rpc-runtime-validation-design.md) |
+| [`design/`](design/) | 设计定稿与探索 | [provider 体系](design/provider-system-spec.md) · [墨铜视觉语言](design/visual-language-ink-brass.md) · [一张纸交互形态](design/一张纸-Agent软件交互形态设计.md) · [MCP/ACP 协议支持](design/mcp-acp-protocol-support.md) · [纸壳设计规格](design/lantai-design-spec.md) · [rpc 运行时校验](design/rpc-runtime-validation-design.md) · [日志可观测性规格](design/log-observability-spec.md) |
 | [`cookbook/`](cookbook/README.md) | 各 seam 的动手指南 | 8 篇，入口 [`cookbook/README.md`](cookbook/README.md) |
 | [`plans/`](plans/) | 待执行/进行中的计划与实验；**竣工即归档** | 入口 [`plans/README.md`](plans/README.md)（现状全景）+ [`plans/HISTORY.md`](plans/HISTORY.md)（里程碑时间轴） |
 | [`research/`](research/README.md) | 调研证据与决策（冻结层） | 入口 [`research/README.md`](research/README.md) |

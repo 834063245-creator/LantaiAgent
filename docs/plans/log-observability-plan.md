@@ -1,13 +1,17 @@
 # 日志可观测性（log-observability）计划
 
-> 状态：**Proposed（立项未开工，等用户开工）**——用户已批准范围 = 批 0–2（见 §4），开工前先处理批 0 的四项未提交修复。
+> 状态：**批 0–2 已落地（2026-09-27）· 余批 3/4 + 真机验收（§5 六条）**。
+> 落地：批 1 = `06fadbe2`（公共字段 + `agent/obs.ts` 门面 + 唯一漏斗 + `boot`）；批 2 = 本批（`config.load` /
+> `panel.providers_reload` / `cred.*` / `llm.*` 四相接缝 + 事件表进长期规范）。批 0 四项经核对**已全部在 HEAD**，
+> 无需重做。**规格面已定稿** → [`../design/log-observability-spec.md`](../design/log-observability-spec.md)
+> （事件名与字段表的长期规范；本文件此后只是立项与取证记录）。
 > 一句话：消灭「**失败默认无痕**」这个类别——让任何让用户看见的失败，日志里至少留一条带层与原始文本的记录。
 > 触发事故：2026-09-27，用户报「本地模型（baseUrl `http://127.0.0.1:8080/v1`）配好了却一直无法调用」，附 `ui.log` 一份。
 > 事故结论：**那份 log 对该问题的可答信息 = 0 条**——1158 行里 1024 行是同一条无 `method` 的 `invoke`（88%）；87 条
 > error 全是路径噪声（找不到目录 / 父目录不存在 / 未打开工作区 / 日志写到项目根外被拒）；provider 痕迹只有
 > deepseek 的**成功**日记（2 条 `turn started` + 14 条 `llm response`）；`8080` / `127.0.0.1` / `localhost` 出现 0 次。
 > 相关技术债：本改造与 [`../landmine-map.md`](../landmine-map.md) 第十四批（provider 配置面家族）同域——该批四个雷的修复
-> 目前**只存在于未提交工作区**，是本次事故的直接相关面。
+> 已在 HEAD（批 0 核对确认），是本次事故的直接相关面。
 
 ## 0. 为什么做（问题不是"缺日志"，是"失败默认无痕"）
 
@@ -152,11 +156,15 @@ logger 级别过滤与写失败计数、`config.load`（成功 / 逐节错误 / 
 | 一次做太大 | 分 4 批，批 1 即有覆盖性收益 |
 | 与未提交改动打架 | 批 0 先提交（§3） |
 
-## 7. 决议点
+## 7. 决议点（2026-09-27 用户裁定，三项全定）
 
-1. **范围**：已定 = 批 0–2。
-2. `obs.ts` 归属：建议**内核** `src-ui/src/agent/`（非插件贡献面）——未最终确认。
-3. 事件名与字段表是否同步进 `docs/`（`docs/facts.generated.md` 或 INVARIANTS）作为长期规范——未定。
+1. **范围**：已定 = 批 0–2（批 0 经核对已在 HEAD；批 1/2 已落地）。
+2. `obs.ts` 归属：**内核** `src-ui/src/agent/obs.ts`（用户裁定——基础设施，不该可被禁用）。
+   产物域经宿主面 `./host` + `faceDeps` 取用（`host-modules.ts` 登记；改面须同 commit
+   跑 `npm run gen:host-surface`）。
+3. 事件名与字段表：**做长期规范**——落 [`../design/log-observability-spec.md`](../design/log-observability-spec.md)
+   （L2 现状层定稿），规则指针在 `CONVENTIONS.md` §1.11。不重复进 `facts.generated.md`
+   （那里只放跨文档复述的标量）。
 
 ## 8. 证据索引（本次事故的可复核事实）
 

@@ -35,6 +35,7 @@ import {
   mergeHeaders,
   prewarmEndpoint,
   type SseEvent,
+  type SseLogMeta,
   sseEvents,
 } from './shared';
 
@@ -127,8 +128,9 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
         req.imageData,
         describe(model),
       );
+      const url = `${baseUrl}/chat/completions`;
       const response = await sendWithRetry({
-        url: `${baseUrl}/chat/completions`,
+        url,
         headers: mergeHeaders(customHeaders, {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
@@ -137,11 +139,13 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
         body: JSON.stringify(body),
         signal,
         name,
+        // 日志接缝（批 2）：出网四相的身份面（模型/方言/工具数）
+        meta: { model, kind: 'openai', tools: req.tools?.length },
       });
 
       if (!response.body) throw new Error(`${name}: no response body`);
 
-      yield* readSSE(response.body, name, signal);
+      yield* readSSE(response.body, name, signal, { model, kind: 'openai', url });
     },
 
     prewarm(): void {
@@ -404,11 +408,16 @@ export function buildChatRequest(
 
 // ---- SSE 流解析 ----
 
-async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?: AbortSignal): AsyncGenerator<Chunk> {
+async function* readSSE(
+  body: ReadableStream<Uint8Array>,
+  name: string,
+  signal?: AbortSignal,
+  obsMeta?: SseLogMeta,
+): AsyncGenerator<Chunk> {
   const toolsByIndex = new Map<number, { id: string; name: string; arguments: string }>();
   let usage: Chunk['usage'];
 
-  for await (const ev of sseEvents<OpenAiSseEvent>(body, name, signal)) {
+  for await (const ev of sseEvents<OpenAiSseEvent>(body, name, signal, obsMeta)) {
     // 来自 OpenAI 兼容 API 的流内错误（DeepSeek 过载、限流等）
     if (ev.error) {
       const raw = ev.error.message || JSON.stringify(ev.error);

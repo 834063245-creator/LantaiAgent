@@ -9,6 +9,10 @@
 // 错误分类（error-catalog）· 思考档（thinking）· 传输（transport）· 协议默认端点表（settings）。
 // 产物域经宿主桥 mods.faceDeps 取用（host.aliased.ts 同形状镜像）。
 
+// 日志可观测性批 2（2026-09-27）：出网四相的事件门面（retry.ts / shared.ts 用）。
+// 内核不可禁的基础设施，经宿主桥取用（产物不得裸 import 内核模块——会把内核状态
+// 连副本一起内联，见 settings-domain/provider-data.ts 头注的同族病灶）。
+export { llmDone, llmError, llmFirstByte, llmSend } from '../../../agent/obs';
 export { clampMaxTokens, getModel } from '../../../provider/catalog';
 export { type ClassifiedProviderError, classifyProviderError } from '../../../provider/error-catalog';
 export type { ModelMeta } from '../../../provider/model-meta';

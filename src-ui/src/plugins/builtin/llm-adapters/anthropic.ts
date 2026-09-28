@@ -33,6 +33,7 @@ import {
   mergeHeaders,
   prewarmEndpoint,
   type SseEvent,
+  type SseLogMeta,
   sseEvents,
 } from './shared';
 
@@ -119,8 +120,9 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
         req.imageData,
         desc,
       );
+      const url = `${baseUrl}/v1/messages`;
       const response = await sendWithRetry({
-        url: `${baseUrl}/v1/messages`,
+        url,
         headers: mergeHeaders(customHeaders, {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
@@ -130,11 +132,13 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
         body: JSON.stringify(body),
         signal,
         name,
+        // 日志接缝（批 2）：出网四相的身份面（模型/方言/工具数）
+        meta: { model, kind: 'anthropic', tools: req.tools?.length },
       });
 
       if (!response.body) throw new Error(`${name}: no response body`);
 
-      yield* readSSE(response.body, name, signal);
+      yield* readSSE(response.body, name, signal, { model, kind: 'anthropic', url });
     },
 
     prewarm(): void {
@@ -434,7 +438,12 @@ export function buildRequest(
 
 // ---- SSE 流解析 ----
 
-async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?: AbortSignal): AsyncGenerator<Chunk> {
+async function* readSSE(
+  body: ReadableStream<Uint8Array>,
+  name: string,
+  signal?: AbortSignal,
+  obsMeta?: SseLogMeta,
+): AsyncGenerator<Chunk> {
   const toolsByIndex = new Map<number, { id: string; name: string; arguments: string }>();
   let inTok = 0;
   let outTok = 0;
@@ -443,7 +452,7 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
   let finishReason = '';
   let haveUsage = false;
 
-  for await (const ev of sseEvents<AnthropicSseEvent>(body, name, signal)) {
+  for await (const ev of sseEvents<AnthropicSseEvent>(body, name, signal, obsMeta)) {
     switch (ev.type) {
       case 'message_start':
         if (ev.message?.usage) {

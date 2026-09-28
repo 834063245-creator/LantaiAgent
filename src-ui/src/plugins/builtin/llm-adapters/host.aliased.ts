@@ -41,6 +41,11 @@ export const isThinkingMode = impl.isThinkingMode;
 export const THINKING_EFFORT_BUDGETS = impl.THINKING_EFFORT_BUDGETS;
 export const thinkingCapability = impl.thinkingCapability;
 export const proxyFetch = impl.proxyFetch;
+// 日志可观测性批 2：出网四相的事件门面（与 host.ts 同形状镜像）
+export const llmSend = impl.llmSend;
+export const llmFirstByte = impl.llmFirstByte;
+export const llmDone = impl.llmDone;
+export const llmError = impl.llmError;
 
 export type ChatImageRef = import('./host').ChatImageRef;
 export type Chunk = import('./host').Chunk;

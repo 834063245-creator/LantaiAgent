@@ -49,6 +49,7 @@ import {
   mergeHeaders,
   prewarmEndpoint,
   type SseEvent,
+  type SseLogMeta,
   sseEvents,
 } from './shared';
 
@@ -154,17 +155,20 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
         // apiKey 空 = oauth 注入路径（extraHeaders 已带 Authorization）——不发空 Bearer
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       });
+      const url = `${baseUrl}/responses`;
       const response = await sendWithRetry({
-        url: `${baseUrl}/responses`,
+        url,
         headers,
         body: JSON.stringify(body),
         signal,
         name,
+        // 日志接缝（批 2）：出网四相的身份面（模型/方言/工具数）
+        meta: { model, kind: 'responses', tools: req.tools?.length },
       });
 
       if (!response.body) throw new Error(`${name}: no response body`);
 
-      yield* readSSE(response.body, name, signal);
+      yield* readSSE(response.body, name, signal, { model, kind: 'responses', url });
     },
 
     prewarm(): void {
@@ -427,7 +431,12 @@ export function buildResponsesRequest(
 
 // ---- SSE 流解析 ----
 
-async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?: AbortSignal): AsyncGenerator<Chunk> {
+async function* readSSE(
+  body: ReadableStream<Uint8Array>,
+  name: string,
+  signal?: AbortSignal,
+  obsMeta?: SseLogMeta,
+): AsyncGenerator<Chunk> {
   // function_call 累积：output_index → {id, name, arguments}
   const toolsByIndex = new Map<number, { id: string; name: string; arguments: string }>();
   // 本轮 output items 留档（reasoning 项的回放真源）：**只收 `output_item.done`**
@@ -444,7 +453,7 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
     return [...itemsByIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, item]) => item);
   };
 
-  for await (const ev of sseEvents<ResponsesSseEvent>(body, name, signal)) {
+  for await (const ev of sseEvents<ResponsesSseEvent>(body, name, signal, obsMeta)) {
     switch (ev.type) {
       case 'response.output_item.added': {
         const item = ev.item;
