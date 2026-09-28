@@ -383,6 +383,10 @@ interface Provider {
   杜绝「清空后重开面板 Key 复活」。输入新 Key 自动取消清除暂存。
 - **Base URL placeholder / 重置** 按当前 provider 的 catalog 默认值计算，不再写死 deepseek。
 - **模型刷新无 Key** 时明确提示「请先填写 API Key」，不再伪装成「未获取到新模型」。
+  ⚡ **已被 2026-09-28 无 Key 放行批取代**：空 Key 不再拦在拉取/测试/对话之前（本地端点
+  Ollama / LM Studio 本不需要 Key）——拉取照发、端点真要鉴权时由 401/403 的分类文案
+  点名「本行没有 API Key」（`classifyError` 的 `keyless` 支；契约 v54，见
+  [open-surface-contract](../agents/open-surface-contract.md) 变更记录）。
 
 ### 组件拆分（SettingsPanel 单文件瘦身）
 

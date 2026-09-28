@@ -41,18 +41,34 @@ describe('sendWithRetry — 按 kind 路由', () => {
     vi.restoreAllMocks();
   });
 
-  it('401 → 不重试直接抛（auth_or_param）', async () => {
+  it('401（带凭据）→ 不重试直接抛（auth_or_param）', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response('{"error":{"message":"invalid api key","type":"invalid_request_error","code":"invalid_api_key"}}', {
         status: 401,
       }),
     );
 
-    const err = await rejectKind(sendWithRetry(cfg(), fastOpts));
+    const err = await rejectKind(sendWithRetry(cfg({ headers: { Authorization: 'Bearer sk-x' } }), fastOpts));
 
     expect(err.kind).toBe('auth_or_param');
     expect(err.message).toContain('[密钥错误]');
+    expect(err.message).toContain('API Key 无效'); // 发了凭据 → 既有文案（零回归）
     expect(err.status).toBe(401);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+  });
+
+  // ⚡ 2026-09-28 无 Key 放行批：没发凭据时的 401 不是「Key 无效」而是「本行没有
+  //   API Key」——判据 = 实际发出的头表里有没有凭据（sentCredential），
+  //   不靠方言另传标志（方言改头时不会漏同步）。
+  it('401（没发凭据）→ 文案点名「本行没有 API Key」', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('{"error":"missing api key"}', { status: 401 }));
+
+    const err = await rejectKind(sendWithRetry(cfg(), fastOpts));
+
+    expect(err.kind).toBe('auth_or_param'); // 路由不变：仍然不重试
+    expect(err.message).toContain('本行没有 API Key');
+    expect(err.message).not.toContain('API Key 无效');
     expect(fetch).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
   });

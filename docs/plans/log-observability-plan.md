@@ -138,7 +138,10 @@ logger 级别过滤与写失败计数、`config.load`（成功 / 逐节错误 / 
 **Rust 测**：现有假上游用例扩展——上游连接失败时断言落盘日志字段（必要时把日志出口做成可注入 sink）。
 
 **端到端真机验收（最终判据）**：
-1. 空 Key 的 provider → `cred.get(miss)` + `turn.failed{phase:preflight, kind:MISSING_CREDENTIAL}`；
+1. 空 Key 的 provider（2026-09-28 无 Key 放行批后语义）：**本地端点** → 请求照发，
+   日志三相连号（`llm.send/first_byte/done`，无凭据头）；**云端端点** → `cred.get(miss)` +
+   `turn.failed{phase:'stream', kind:'PROVIDER_ERROR', status:401, raw:'…本行没有 API Key…'}`
+   （请求**发出后被拒**，故 phase 记 stream；判据文本由 `classifyError` 的 keyless 支生成）；
 2. 起 `127.0.0.1:8080` mock OpenAI 端点 → `llm.send/first_byte/done` 三条齐全；
 3. 关掉 mock → `llm.error{target:"127.0.0.1:8080", status:502}`；
 4. 慢速 mock（首个 token 等 60s）→ 空闲守卫超时 + 重试链 + `turn.failed{phase:stream}` 可见；
@@ -170,4 +173,11 @@ logger 级别过滤与写失败计数、`config.load`（成功 / 逐节错误 / 
 
 - 用户 log 全量读数：`ui.log` 1158 行；模块 `bridge` 1111 / `agent` 43 / `runtime` 4；error 87 条（43× `stat … 系统找不到指定的文件`、21× `parent directory not found`、10× `未打开工作区，请先打开项目`、2× `ui.log … denied: outside project root`）；`8080` / `127.0.0.1` / `localhost` / `http` 各 0 次。
 - 唯一一条服务商侧异常：`2026-09-16T09:19:18.507Z` `stream retry 1 in 1048ms`，`error:"[响应超时] 30 秒内未收到服务商任何数据…"`，`elapsed_ms:67827`，provider 仍是 deepseek。
-- 硬门禁位置：`provider/live.ts`（`MISSING_CREDENTIAL` 拦在请求前）、`plugins/builtin/settings-domain/ProviderPage.tsx:356`（`请先填写 API Key` 读面板内存）、`provider/idle-stream.ts`（`STREAM_IDLE_TIMEOUT_MS = 30_000` 硬编码）。
+- 硬门禁位置（**2026-09-28 已改**：空 Key 的请求前闸撤除 = 本地端点放行，见 §9）：
+  `provider/live.ts`（原 `MISSING_CREDENTIAL` 拦在请求前）、
+  `plugins/builtin/settings-domain/ProviderPage.tsx`（原「请先填写 API Key」读面板内存，
+  两处已删）、`provider/idle-stream.ts`（`STREAM_IDLE_TIMEOUT_MS = 30_000` 硬编码）。
+- §9 无 Key 放行批（2026-09-28，本批落地）：`provider/types.ts::classifyError` 增可选
+  `keyless` 参 → 401/403 文案分岔（「本行没有 API Key」vs「Key 无效」）；判据 =
+  `llm-adapters/shared.ts::sentCredential`（读实际发出的头表）。**本计划验收第 1 条的
+  形态随之变更**（见 §5）。

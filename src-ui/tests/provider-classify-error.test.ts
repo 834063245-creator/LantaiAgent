@@ -53,6 +53,30 @@ describe('classifyError', () => {
     expect(msg).toContain('[权限不足]');
   });
 
+  // ── 无凭据请求的鉴权拒绝（2026-09-28 无 Key 放行批）────────────────────
+  // 空 Key 不再拦在请求前 ⇒ 端点要求鉴权时必须是**准确**文案：本行没发凭据，
+  // 说「API Key 无效」是错话（用户压根没填），且会把人指向错误动作。
+  it('keyless + 401 → 点名「本行没有 API Key」（不是「Key 无效」）', () => {
+    const msg = classifyError(name, 401, 'Unauthorized', undefined, true);
+    expect(msg).toContain('[密钥错误]');
+    expect(msg).toContain('本行没有 API Key');
+    expect(msg).toContain('本地端点');
+    expect(msg).not.toContain('API Key 无效');
+  });
+
+  it('keyless + 403 → 同一支（不发凭据时 403 也不是「权限不足」）', () => {
+    const msg = classifyError(name, 403, 'Forbidden', undefined, true);
+    expect(msg).toContain('本行没有 API Key');
+    expect(msg).not.toContain('[权限不足]');
+  });
+
+  it('keyless 缺省 false：带凭据的 401/403 文案逐字不变（零回归）', () => {
+    expect(classifyError(name, 401, 'Unauthorized')).toContain('API Key 无效');
+    expect(classifyError(name, 403, 'Forbidden')).toContain('[权限不足]');
+    // 非鉴权状态码不受 keyless 影响（429 仍是限流）
+    expect(classifyError(name, 429, 'Too Many Requests', undefined, true)).toContain('[服务商限流]');
+  });
+
   it('classifies 429 as rate limit', () => {
     const msg = classifyError(name, 429, 'Too Many Requests');
     expect(msg).toContain('[服务商限流]');

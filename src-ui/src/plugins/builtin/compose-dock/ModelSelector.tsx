@@ -237,8 +237,10 @@ export function ModelSelector({
   }, [results, compact]);
 
   /* ── B3（2026-08-27）：无 Key 厂商分组头标注——选中即全局切到无 Key 行，
-   *    下一条消息就 MISSING_CREDENTIAL，选择器必须给预警。resolveApiKey
-   *    有内存缓存（首个 promise 后零 IPC），Key 状态变化走写穿失效重解析。 ── */
+   *    下一条消息会被端点以 401/403 拒（2026-09-28 无 Key 放行批后文案 =「本行
+   *    没有 API Key」；此前是请求前的 MISSING_CREDENTIAL），选择器仍须给预警
+   *    ——本地端点（Ollama / LM Studio 等）无 Key 是常态，故标注只是提示不是禁令。
+   *    resolveApiKey 有内存缓存（首个 promise 后零 IPC），Key 状态变化走写穿失效重解析。 ── */
   const [noKeyVendors, setNoKeyVendors] = useState<Set<string>>(new Set());
   const headerVendors = useMemo(
     () => [...new Set(displayRows.filter((r) => r.type === 'header').map((r) => (r as { vendor: string }).vendor))],

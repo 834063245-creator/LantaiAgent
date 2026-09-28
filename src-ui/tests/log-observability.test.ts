@@ -278,7 +278,9 @@ describe('日志可观测性 · 事件门面（obs.ts）', () => {
 
   // ── classifyTurnFailure：phase 判定靠**类型**不靠文案 ────────────
 
-  it('classifyTurnFailure：凭据闸契约标记 → preflight；带 status 的错误 → stream', () => {
+  it('classifyTurnFailure：预检契约标记 → preflight；带 status 的错误 → stream', () => {
+    // 标记表保留为防御面（2026-09-28 无 Key 放行批后 live.ts 不再抛它；第三方/未来
+    // 路径抛同名标记时仍按「请求未发出」归类）。
     const cred = obs.classifyTurnFailure(
       new Error('MISSING_CREDENTIAL: 提供方「本地」未配置 API Key——设置 → Provider 填写并保存后直接重试'),
     );
@@ -287,6 +289,17 @@ describe('日志可观测性 · 事件门面（obs.ts）', () => {
 
     const httpErr = Object.assign(new Error('[服务商故障] upstream 502'), { status: 502 });
     expect(obs.classifyTurnFailure(httpErr)).toMatchObject({ phase: 'stream', kind: 'PROVIDER_ERROR', status: 502 });
+
+    // 无 Key 放行后的真机形态：请求发出、端点 401 拒 → phase 记 stream（不冒充 preflight）
+    const keyless401 = Object.assign(new Error('[密钥错误] "本地" 的端点要求鉴权（HTTP 401），而本行没有 API Key：…'), {
+      status: 401,
+      kind: 'auth_or_param',
+    });
+    expect(obs.classifyTurnFailure(keyless401)).toMatchObject({
+      phase: 'stream',
+      kind: 'PROVIDER_ERROR',
+      status: 401,
+    });
 
     expect(obs.classifyTurnFailure(new Error('说不清的错'))).toMatchObject({ phase: 'stream', kind: 'UNKNOWN' });
   });

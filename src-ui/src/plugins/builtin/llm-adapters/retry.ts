@@ -22,6 +22,7 @@ import {
   proxyFetch,
   retryAfterSeconds,
 } from './host';
+import { sentCredential } from './shared';
 
 /** 出网日志接缝的描述面（日志可观测性批 2，2026-09-27）。
  *
@@ -100,6 +101,8 @@ export function computeBackoffMs(
 export async function sendWithRetry(cfg: RetryConfig, opts: RetryOptions = {}): Promise<Response> {
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   let lastErr: ClassifiedProviderError | undefined;
+  // 本次请求有没有发凭据（决定 401/403 的文案归属——见 sentCredential 头注）
+  const keyless = !sentCredential(cfg.headers);
   // 身份面（四相共用）：provider 名 + 方言 + 模型 + 端点。meta 缺席也不炸。
   const base = {
     provider: cfg.name,
@@ -154,7 +157,7 @@ export async function sendWithRetry(cfg: RetryConfig, opts: RetryOptions = {}): 
     const msg = await resp.text().catch(() => '');
     const retryAfter = retryAfterSeconds(resp.headers.get('retry-after'));
     const statusErr = classifyProviderError(
-      new ApiError(classifyError(cfg.name, resp.status, msg), {
+      new ApiError(classifyError(cfg.name, resp.status, msg, undefined, keyless), {
         status: resp.status,
         code: errorCodeFromBody(msg),
         retryAfter,

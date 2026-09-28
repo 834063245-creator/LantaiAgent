@@ -5,7 +5,9 @@
 
 // Live Provider 行为守护（Phase C，2026-08-24 工作区归属根治——配置在使用点
 // 解析）。钉住 DSH 形态的核心行为：
-//   ① 缺 Key → stream 响亮报 MISSING_CREDENTIAL（不静默回退；会话/Agent 不动）
+//   ① 缺 Key → **请求照发且不发凭据头**（2026-09-28 无 Key 放行批：本地端点
+//      Ollama / LM Studio 本就不需要 Key）；端点真要鉴权时由 401/403 的分类文案
+//      点名「本行没有 API Key」（不静默、不误报「Key 无效」）
 //   ② 配置在使用点解析：改 settings（baseUrl/model）+ 凭据失效后，**同一个**
 //      provider 实例的下一次请求即用新配置（无需换引用/重启——恒 swap 退役
 //      的前提）
@@ -182,12 +184,31 @@ describe('provider/credentials — 凭据缓存 + 按名解析', () => {
 });
 
 describe('createLiveProvider — 配置在使用点解析', () => {
-  it('缺 Key → stream 响亮报 MISSING_CREDENTIAL（不静默回退）', async () => {
-    seedSettings();
+  // ⚡ 2026-09-28 无 Key 放行批（用户报「本地模型填了占位符也连不上」）：
+  //   空 Key 不再拦在请求前——本地端点（Ollama / LM Studio 等）本就不需要 Key。
+  //   旧行为「缺 Key → 请求前抛 MISSING_CREDENTIAL（一个请求都不发）」**退役**，
+  //   原用例同批删除（不是改造后放回原位：那条断言的语义正是本批要推翻的）。
+  it('缺 Key → 请求照发，且不发凭据头（本地端点无鉴权）', async () => {
+    seedSettings({ baseUrl: 'http://127.0.0.1:11434/v1' });
     const prov = createLiveProvider('p1');
-    await expect(collectText(prov)).rejects.toThrow(/MISSING_CREDENTIAL.*p1/);
-    // 未发出任何网络请求
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await collectText(prov)).toBe('hi');
+    expect(fetchCalls).toHaveLength(1);
+    expect(fetchCalls[0].url).toBe('http://127.0.0.1:11434/v1/chat/completions');
+    // 空 `Bearer ` 会被部分网关判成「提供了无效凭据」——必须整条头缺席
+    expect(fetchCalls[0].authorization).toBeNull();
+  });
+
+  it('缺 Key 的云端端点被 401 拒 → 文案点名「本行没有 API Key」（不静默、不误报 Key 无效）', async () => {
+    seedSettings();
+    fetchMock.mockImplementationOnce(async (url: string, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string> | undefined;
+      fetchCalls.push({ url, authorization: headers?.Authorization ?? null, body: {} });
+      return new Response('{"error":"missing api key"}', { status: 401 });
+    });
+    const prov = createLiveProvider('p1');
+    // 鉴权类不重试（error-catalog 的 auth_or_param 路由）——一次请求即抛
+    await expect(collectText(prov)).rejects.toThrow(/本行没有 API Key/);
+    expect(fetchCalls).toHaveLength(1);
   });
 
   it('有 Key → 透传 baseUrl/model/key（同一实例）', async () => {
@@ -242,13 +263,33 @@ describe('createLiveProvider — 配置在使用点解析', () => {
     await expect(collectText(prov)).rejects.toThrow(/LIVE_PROVIDER.*p1/);
   });
 
-  it('fetchModels 无 Key → 空数组（不报错刷屏）；prewarm 无 Key → 不发请求', async () => {
-    seedSettings();
+  // ⚡ 2026-09-28 无 Key 放行批：fetchModels / prewarm 的「无 Key 直接返回空/短路」
+  //   行为**退役**（旧断言同批删除）——本地端点（无鉴权）也要能拉目录、能预热。
+  it('fetchModels 无 Key → 照常拉取（本地端点无鉴权），且不发凭据头', async () => {
+    seedSettings({ baseUrl: 'http://127.0.0.1:11434/v1' });
+    const modelsOk = async (url: string, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string> | undefined;
+      fetchCalls.push({ url, authorization: headers?.Authorization ?? null, body: {} });
+      return new Response(JSON.stringify({ data: [{ id: 'llama3' }] }), { status: 200 });
+    };
+    fetchMock.mockImplementationOnce(modelsOk).mockImplementationOnce(modelsOk);
+
     const prov = createLiveProvider('p1');
-    expect(await prov.fetchModels?.()).toEqual([]);
+    const models = await prov.fetchModels?.();
+    expect(models?.map((m) => m.id)).toEqual(['llama3']);
+    expect(fetchCalls[0]?.url).toBe('http://127.0.0.1:11434/v1/models');
+    expect(fetchCalls[0]?.authorization).toBeNull();
+
     prov.prewarm?.();
-    await new Promise((r) => setTimeout(r, 20));
-    expect(fetchMock).not.toHaveBeenCalled();
+    for (let i = 0; i < 20 && fetchCalls.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(fetchCalls.length).toBe(2); // 预热照发（不再因缺 Key 短路）
+  });
+
+  it('fetchModels 无 Key + 云端端点 401 → 文案点名「本行没有 API Key」（不伪装成网络错）', async () => {
+    seedSettings();
+    fetchMock.mockImplementationOnce(async () => new Response('{"error":"missing api key"}', { status: 401 }));
+    const prov = createLiveProvider('p1');
+    await expect(prov.fetchModels?.()).rejects.toThrow(/本行没有 API Key/);
   });
 });
 

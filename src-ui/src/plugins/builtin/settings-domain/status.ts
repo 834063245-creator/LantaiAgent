@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Provider 页「提供方状态」推导 — 唯一事实源：
-// 无 Key = 未配置；有 Key 且最近测试通过 = 正常；有 Key 且最近测试失败 = 异常；
+// 无 Key 且从未测通 = 未配置；有 Key 且最近测试通过 = 正常；有 Key 且最近测试失败 = 异常；
 // 有 Key 但从未测试（或测试结果丢失）= 已配置。
+//
+// ⚡ 2026-09-28 无 Key 放行批：**测通优先于有没有 Key**（空 Key 也能是正常行——
+// 本地端点本不需要 Key；顺序见 providerStatus）。
 //
 // ⚡ oauth 订阅（2026-09）：authMode='oauth' 的 provider 无 apiKey——登录态 =
 // 运行期系统 grant（oauthLoggedIn 由调用方从账号清单得出）。已登录且测试通过
@@ -31,8 +34,12 @@ export function providerStatus(
     if (p.lastTest?.status === 'fail') return 'fail';
     return 'configured';
   }
-  if (!p.apiKey?.trim()) return 'unconfigured';
+  // ⚡ 2026-09-28 无 Key 放行批：**探针通过优先于「有没有 Key」**——空 Key 也能
+  //   是正常行（本地端点本不需要 Key），测通了却显示「未配置」是自相矛盾的读数
+  //   （用户报「本地模型是不是必须填 Key」的一半来源）。没测过的空 Key 行仍显示
+  //   「未配置」：那如实说的是「这行还没有 Key」，不是「不能用」。
   if (p.lastTest?.status === 'ok') return 'ok';
+  if (!p.apiKey?.trim()) return 'unconfigured';
   if (p.lastTest?.status === 'fail') return 'fail';
   return 'configured';
 }

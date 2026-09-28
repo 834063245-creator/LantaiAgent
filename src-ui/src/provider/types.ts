@@ -286,8 +286,15 @@ function reasonlessModelRejection(status: number, body: string): string | undefi
   return reasons.some((r) => typeof r === 'string' && r.length > 0) ? undefined : model;
 }
 
-/** 把 raw error 映射成人能看懂的分类和操作建议。 */
-export function classifyError(name: string, status: number, body: string, fetchErr?: string): string {
+/** 把 raw error 映射成人能看懂的分类和操作建议。
+ *
+ *  @param keyless 本次请求**没带凭据头**（本行没有 API Key）。
+ *  缺省 false = 带了凭据（既有语义逐字不变）。⚡ 2026-09-28 无 Key 放行批：
+ *  空 Key 不再拦在请求前，改为照发（本地端点如 Ollama / LM Studio 本就不需要
+ *  Key）——于是「这个 401 是不是因为没配 Key」必须由文案回答：本行没发凭据时
+ *  说「API Key 无效」是错话（用户压根没填），且会把人指向错误的动作
+ *  （去换 Key 而不是去填 Key / 去核对本地端点）。 */
+export function classifyError(name: string, status: number, body: string, fetchErr?: string, keyless = false): string {
   const b = body.toLowerCase();
 
   // 网络层
@@ -304,6 +311,12 @@ export function classifyError(name: string, status: number, body: string, fetchE
   }
 
   // 鉴权
+  // ⚡ 无凭据优先判（2026-09-28 无 Key 放行批）：请求没带凭据头时，401/403 的
+  //   事实是「这个端点要鉴权，而本行没配 Key」——两态各自点名到可行动处
+  //   （本地端点：核对地址/端口；云端：去设置填 Key）。判据窄：只有调用方
+  //   确证「没发凭据头」才走这支（`keyless`），发了凭据的 401/403 逐字不变。
+  if (keyless && (status === 401 || status === 403))
+    return `[密钥错误] "${name}" 的端点要求鉴权（HTTP ${status}），而本行没有 API Key：本地端点（Ollama / LM Studio 等）本不需要 Key——请确认地址与端口指向的是它；云端提供方请在 设置 → Provider 填写 Key 并保存后重试。`;
   if (status === 401 || (status === 403 && b.includes('invalid')))
     return `[密钥错误] "${name}" API Key 无效或已过期。请在设置中更换 Key。`;
   if (status === 403) return `[权限不足] "${name}" 拒绝了请求。请检查账户权限或 Key 的访问范围。`;

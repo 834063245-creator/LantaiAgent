@@ -31,9 +31,11 @@ import {
   extractWritePreview,
   fetchJsonWithTimeout,
   mergeHeaders,
+  modelsFetchFailure,
   prewarmEndpoint,
   type SseEvent,
   type SseLogMeta,
+  sentCredential,
   sseEvents,
 } from './shared';
 
@@ -126,7 +128,10 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
         headers: mergeHeaders(customHeaders, {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
-          'x-api-key': apiKey,
+          // ⚡ 空 Key 不发 x-api-key（2026-09-28 无 Key 放行批，同 openai.ts）：
+          //   本地/自建 Anthropic 兼容端点可能不需要鉴权，发空头会被判成
+          //   「提供了无效凭据」而不是「没提供」。
+          ...(apiKey ? { 'x-api-key': apiKey } : {}),
           'anthropic-version': ANTHROPIC_VERSION,
         }),
         body: JSON.stringify(body),
@@ -145,25 +150,23 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
       prewarmEndpoint(
         `${baseUrl}/v1/models`,
         mergeHeaders(customHeaders, {
-          'x-api-key': apiKey,
+          ...(apiKey ? { 'x-api-key': apiKey } : {}),
           'anthropic-version': ANTHROPIC_VERSION,
         }),
       );
     },
 
     async fetchModels(): Promise<ModelDescriptor[]> {
-      const json = await fetchJsonWithTimeout(
-        `${baseUrl}/v1/models`,
-        mergeHeaders(customHeaders, {
-          'x-api-key': apiKey,
-          'anthropic-version': ANTHROPIC_VERSION,
-        }),
-        10000,
-      );
+      const headers = mergeHeaders(customHeaders, {
+        ...(apiKey ? { 'x-api-key': apiKey } : {}),
+        'anthropic-version': ANTHROPIC_VERSION,
+      });
+      const { json, status } = await fetchJsonWithTimeout(`${baseUrl}/v1/models`, headers, 10000);
       // C5（2026-08-27）：目录失败面——同 openai.ts，失败不再伪装成「无模型」，
       // 上抛让调用面可见（选择器分组头标注 / 手动刷新报真实原因）；静态目录 +
-      // last-good 动态模型兜底。
-      if (!json) throw new Error(`${name}: 模型目录获取失败（网络错误或端点无响应）`);
+      // last-good 动态模型兜底。无 Key 行被 401/403 拒 → 文案点名「本行没有
+      // API Key」（2026-09-28）。
+      if (!json) throw new Error(modelsFetchFailure(name, status, !sentCredential(headers)));
       // 宽容解析（provider-model-meta）：官方端点目前只给 id/display_name/created_at，
       // 第三方 Anthropic 兼容端点若披露窗口/模态则照收——未披露字段保持「未知」
       // 语义（contextWindow 0 / input ['text']），不编造。

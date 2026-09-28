@@ -66,8 +66,12 @@
 - `stream` 出网 → 首字节 → 中止；
 - `tool` 工具层。
 
-判定靠**类型**不靠文案：`ApiError` 的 `status` / `kind` 优先；只有凭据闸的契约标记
-（`MISSING_CREDENTIAL` 等，`provider/live.ts` 对外公布的）才用文本匹配。
+判定靠**类型**不靠文案：`ApiError` 的 `status` / `kind` 优先；只有具名契约标记
+（`MISSING_CREDENTIAL` / `PROVIDER_NOT_FOUND` / `PROTOCOL_UNSUPPORTED`——历史形态是
+`provider/live.ts` 的凭据闸抛的普通 Error，该闸已于 2026-09-28 无 Key 放行批撤除，
+标记表保留为防御面）才用文本匹配。⚠ 空 Key 之后的鉴权失败走**响应侧**：带 HTTP
+status 的 401/403（文案「本行没有 API Key」）按类型判为 `phase: stream`——请求真
+发出去了，不得记成 `preflight`。
 
 ## 3. 不记什么（唯一脱敏审查点）
 

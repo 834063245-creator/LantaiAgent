@@ -47,9 +47,11 @@ import {
   extractWritePreview,
   fetchJsonWithTimeout,
   mergeHeaders,
+  modelsFetchFailure,
   prewarmEndpoint,
   type SseEvent,
   type SseLogMeta,
+  sentCredential,
   sseEvents,
 } from './shared';
 
@@ -185,8 +187,10 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
         ...extraHeaders,
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       });
-      const json = await fetchJsonWithTimeout(`${baseUrl}/models`, headers, 10000);
-      if (!json) throw new Error(`${name}: 模型目录获取失败（网络错误或端点无响应）`);
+      const { json, status } = await fetchJsonWithTimeout(`${baseUrl}/models`, headers, 10000);
+      // 无凭据行（api-key 空且无 oauth 注入头）被 401/403 拒 → 文案点名「本行没有
+      // API Key」（2026-09-28 无 Key 放行批）；其余形态沿用既有文案。
+      if (!json) throw new Error(modelsFetchFailure(name, status, !sentCredential(headers)));
       // 宽容解析（provider-model-meta）：官方 Responses 端点不披露窗口/模态时保持
       // 「未知」语义不编造；披露了则照收（含 provider 级落盘元数据）。
       const ctx = { kind: 'responses', vendor: name, baseUrl };

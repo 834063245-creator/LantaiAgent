@@ -9,7 +9,9 @@
 // 现解析（resolveProviderRuntime：settings 同步读 + 凭据内存缓存，见
 // provider/credentials.ts）。效果：
 //   - Agent/会话的构造与存在性彻底与 Key 无关——无 Key 冷启动照样装配；
-//     缺 Key 的表现 = 请求期 MISSING_CREDENTIAL 响亮报错（不静默回退）
+//     空 Key 也**不再拦在请求前**（2026-09-28 无 Key 放行批：本地端点本不需要
+//     Key）——请求照发且不发凭据头，端点真要鉴权时由 401/403 的分类文案点名
+//     「本行没有 API Key」（provider/types.ts 的 classifyError keyless 支）
 //   - 设置保存后即刻生效（无需换引用/重启）
 //
 // 方案甲（2026-08-27）：会话级模型/思考真生效。live provider 增加
@@ -125,11 +127,13 @@ export function createLiveProvider(
       if (!rt) {
         throw new Error(`LIVE_PROVIDER: 提供方「${name}」已不在设置中——请在设置 → Provider 检查后重试`);
       }
-      // OAuth provider 无 apiKey——凭据 = 系统 OAuth grant（resolveOauthToken）
-      const needsOauth = rt.provider.authMode === 'oauth';
-      if (!rt.apiKey && !needsOauth) {
-        throw new Error(`MISSING_CREDENTIAL: 提供方「${name}」未配置 API Key——设置 → Provider 填写并保存后直接重试`);
-      }
+      // ⚡ 2026-09-28 无 Key 放行批：**空 Key 不再拦在请求前**——本地端点
+      //   （Ollama / LM Studio 等）本就不需要 Key，此前这里抛 MISSING_CREDENTIAL
+      //   让它们永远用不了（用户唯一出路是填一个假占位符，且填了还常因缓存
+      //   失效打错实例而不生效）。改后：请求照发、**不发凭据头**；端点真的要
+      //   鉴权时由 401/403 的**分类文案**点名「本行没有 API Key」
+      //   （`classifyError` 的 keyless 支）——既不静默，也不再把「没配 Key」
+      //   误报成「Key 无效」。
       const inner = await buildInner(rt);
       yield* inner.stream(signal, req);
     },
@@ -137,8 +141,6 @@ export function createLiveProvider(
       void resolve()
         .then(async (rt) => {
           if (!rt) return;
-          const needsOauth = rt.provider.authMode === 'oauth';
-          if (!rt.apiKey && !needsOauth) return; // 无 Key 不预热（无谓的 401 噪音）
           const inner = await buildInner(rt);
           inner.prewarm?.();
         })
@@ -149,8 +151,6 @@ export function createLiveProvider(
     async fetchModels(): Promise<ModelDescriptor[]> {
       const rt = await resolve();
       if (!rt) return [];
-      const needsOauth = rt.provider.authMode === 'oauth';
-      if (!rt.apiKey && !needsOauth) return [];
       const inner = await buildInner(rt);
       const models = await (inner.fetchModels?.() ?? []);
       lastFetched = inner; // 同一次拉取的元数据 side-channel（lastModelMeta 读它）

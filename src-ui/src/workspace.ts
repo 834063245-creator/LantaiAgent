@@ -393,8 +393,9 @@ export class Workspace {
    * 「每次信号重建 provider 换引用」把新配置带进在用 Agent——枚举漂移的旧雷
    * （_agentRebuildKey 手工 diff）曾靠它根治。live provider 把配置面整体移到
    * 使用点后，换引用只剩「提供方换人」一个场景；Key 清空不再拆除 Agent/会话
-   * （下一次请求经 live 现解析出空 Key → MISSING_CREDENTIAL 响亮报错，会话
-   * 照常显示）——DSH 形态的「配置断了 → 会话在，发送时报错」。
+   * （下一次请求经 live 现解析出空 Key → 照发且不发凭据头；端点要鉴权时按
+   * 401/403 的分类文案点名「本行没有 API Key」，会话照常显示）——DSH 形态的
+   * 「配置断了 → 会话在，发送时报错」。
    */
   async applyAgentConfig(chatPanel: ChatCore, reason: AgentConfigChangeReason, sessionId?: number): Promise<void> {
     // 规划模式切换 — 运行时状态切换（raw Agent 引用承担——接口层无 setPlanMode；
@@ -553,8 +554,9 @@ export class Workspace {
    *  provider 对象 = 无状态协议适配器——baseUrl/model/apiKey/thinking/maxTokens
    *  每次使用点按提供方名现解析（createLiveProvider → provider/credentials.ts
    *  凭据缓存 + 写穿失效）。_setupAgentInner 与会话工厂共用此入口，保证两处
-   *  构建永不分叉。Agent 的构造与存在性因此与 Key 无关（缺 Key = 请求期
-   *  MISSING_CREDENTIAL 报错）；「强制关闭思考」的旁路（翻译/压缩）仍用
+   *  构建永不分叉。Agent 的构造与存在性因此与 Key 无关（空 Key = 照发、不发
+   *  凭据头；端点要鉴权时由 401/403 的分类文案点名「本行没有 API Key」）；
+   *  「强制关闭思考」的旁路（翻译/压缩）仍用
    *  显式构造的 createProvider，不经此入口。 */
   private _buildProvider(settings: AppSettings): Provider {
     // S6 P2b：这里**不传 seamView** 是有意的——工作区默认 provider 的组合上下文
@@ -901,8 +903,8 @@ export class Workspace {
     // 零漂移。子 Agent 经 ctx composition 服务继承 → 与父同面。
     const factory = async (sessionId: number): Promise<AgentHandle | null> => {
       // Phase C（2026-08-24 工作区归属根治）：Agent 恒可构造——Key 缺失不再拒绝
-      // 装配。凭据/baseUrl/apiKey 全部在使用点经 live provider 按名现解析（缺
-      // Key = 请求期 MISSING_CREDENTIAL 报错，会话不动）。定价/窗口出自同步
+      // 装配。凭据/baseUrl/apiKey 全部在使用点经 live provider 按名现解析（空
+      // Key = 照发、不发凭据头，会话不动）。定价/窗口出自同步
       // settings 快照（零 IPC），后续变更由 applyAgentConfig 热同步。
       // 方案甲（2026-08-27）：按会话生效配置装配——有覆盖的卷用会话的
       // provider/model/thinking，未改过的卷 = 裸 live（实时跟随全局默认）。

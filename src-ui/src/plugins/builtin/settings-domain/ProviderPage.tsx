@@ -277,7 +277,10 @@ export function ProviderPage({
       if (!p.oauthProvider) throw new Error('该订阅缺 oauth 登录配置——请重新添加');
       prov = createLiveProvider(p.name, {});
     } else {
-      if (!p.apiKey?.trim()) throw new Error('请先填写 API Key');
+      // ⚡ 2026-09-28 无 Key 放行批：空 Key 不再拦在拉取前——本地端点
+      //   （Ollama / LM Studio 等）本就不需要 Key；端点真要鉴权时，
+      //   拉取失败的真实原因（含「本行没有 API Key」）会经 recordDynamicFetchResult
+      //   就地显示（错误不静默）。
       prov = createProvider(p);
     }
     // C5（2026-08-27）：手动刷新记目录失败面（compact 选择器分组头同步可见）；
@@ -355,10 +358,9 @@ export function ProviderPage({
   const handleTest = useCallback(async () => {
     const name = selectedProvider.name;
     const isOAuth = selectedProvider.authMode === 'oauth';
-    if (!isOAuth && !selectedProvider.apiKey?.trim()) {
-      setTests((t) => new Map(t).set(name, { phase: 'fail', msg: '请先填写 API Key' }));
-      return;
-    }
+    // ⚡ 2026-09-28 无 Key 放行批：空 Key 不再拦在测试前（此前直接回「请先填写
+    //   API Key」，本地端点永远测不了）。现在照发：不需要 Key 的端点直接测通；
+    //   需要鉴权的端点由 401/403 的分类文案点名「本行没有 API Key」。
     if (!selectedProvider.model?.trim()) {
       setTests((t) => new Map(t).set(name, { phase: 'fail', msg: '请先填写模型名称' }));
       return;

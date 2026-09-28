@@ -69,7 +69,8 @@ describe('workspace provider 配置 — 使用点解析（Phase C + 方案甲会
     expect(body).not.toContain('chatPanel.setAgent(null)');
     expect(body).not.toContain('this.agent = null');
     expect(body).not.toContain('this.prov = null');
-    // Key 缺失仅诊断呈现（请求期由 live provider 报 MISSING_CREDENTIAL）
+    // Key 缺失仅诊断呈现（2026-09-28 无 Key 放行批后请求照发、不发凭据头；
+    // 端点要鉴权时由 401/403 的分类文案点名）
     expect(body).toContain('setDiag');
   });
 

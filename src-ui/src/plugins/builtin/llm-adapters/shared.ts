@@ -3,7 +3,7 @@
 
 // provider 实现的共享工具函数 — 从 anthropic.ts 和 openai.ts 中提取
 
-import { llmDone, proxyFetch } from './host';
+import { classifyError, llmDone, proxyFetch } from './host';
 
 /** 合并自定义请求头与内核必需头（2026-09-17）。
  *
@@ -68,21 +68,53 @@ export function prewarmEndpoint(url: string, headers: Record<string, string>): v
   proxyFetch(url, { headers, signal: ctrl.signal }).catch(() => {});
 }
 
-/** 带超时的 JSON 获取。任何失败均返回 null（非 ok、网络错误、超时）。 */
+/** 带超时的 JSON 获取结果：`json` = 载荷（非 ok / 网络错误 / 超时 / 非 JSON 皆 null）；
+ *  `status` = HTTP 状态码（0 = 网络层失败/超时，没有拿到响应）。 */
+export interface JsonFetchOutcome {
+  json: unknown | null;
+  status: number;
+}
+
+/** 带超时的 JSON 获取。任何失败 json 均为 null（非 ok、网络错误、超时）。
+ *  ⚡ 2026-09-28 无 Key 放行批：status 一并回给调用方——无 Key 行被 401/403 拒时
+ *  说「网络错误或端点无响应」是误导（用户会去查网线而不是去填 Key）。 */
 export async function fetchJsonWithTimeout(
   url: string,
   headers: Record<string, string>,
   timeoutMs: number,
-): Promise<unknown | null> {
+): Promise<JsonFetchOutcome> {
   const ctrl = new AbortController();
   setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const resp = await proxyFetch(url, { headers, signal: ctrl.signal });
-    if (!resp.ok) return null;
-    return await resp.json();
+    if (!resp.ok) return { json: null, status: resp.status };
+    return { json: await resp.json(), status: resp.status };
   } catch {
-    return null;
+    return { json: null, status: 0 };
   }
+}
+
+/** 这组请求头里有没有凭据（`Authorization` / `x-api-key` 非空）。
+ *
+ *  ⚡ 2026-09-28 无 Key 放行批：空 Key 不再拦在请求前（本地端点无 Key 是常态），
+ *  于是 401/403 的文案归属必须由「到底发没发凭据」回答——没发 = 这行没配 Key
+ *  （`classifyError` 的 keyless 支），发了 = Key 无效（既有文案）。
+ *  判据取自**实际要发出的头表**（而非各方言另传一个标志）：方言改头时不会漏同步；
+ *  自定义请求头里带了 `x-api-key` 的行也如实算「发了凭据」（保守，宁窄勿宽）。 */
+export function sentCredential(headers: Record<string, string>): boolean {
+  for (const [name, value] of Object.entries(headers)) {
+    const k = name.toLowerCase();
+    if ((k === 'authorization' || k === 'x-api-key') && value.trim() !== '') return true;
+  }
+  return false;
+}
+
+/** `/models` 拉取失败的文案（三方言共用）。
+ *  无 Key 行被端点以 401/403 拒 → 走 `classifyError` 的 keyless 支（与对话路径
+ *  同一句文案——唯一真源）；其余形态（网络错 / 超时 / 其它状态码）沿用既有文案。 */
+export function modelsFetchFailure(name: string, status: number, keyless: boolean): string {
+  if (keyless && (status === 401 || status === 403)) return classifyError(name, status, '', undefined, true);
+  return `${name}: 模型目录获取失败（网络错误或端点无响应）`;
 }
 
 /** SSE 事件基类型 — 各 provider 方言按 type 判别，其余字段由调用方接口细化。 */

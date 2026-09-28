@@ -593,8 +593,11 @@ export function llmError(
 export type TurnFailKind = 'MISSING_CREDENTIAL' | 'PROVIDER_ERROR' | 'RUN_DEADLINE_EXCEEDED' | 'PAUSED' | 'UNKNOWN';
 
 /** 预检失败的判据标记（请求**未发出**）。
- *  ⚡ 用标记而非错误类型：`provider/live.ts` 的凭据闸抛的就是带该前缀的普通
- *  Error（MISSING_CREDENTIAL 是它对外公布的契约标记，见该文件头注）。 */
+ *  ⚡ 用标记而非错误类型：这些是**具名契约标记**——历史上 `provider/live.ts` 的
+ *  凭据闸就抛带 `MISSING_CREDENTIAL` 前缀的普通 Error（2026-09-28 无 Key 放行批
+ *  已撤除该闸：空 Key 照发，鉴权失败改由 `classifyError` 的 keyless 支在**响应侧**
+ *  点名——那条路带 HTTP status，故按下方判据记 `stream` 而非 `preflight`）。
+ *  标记表保留为**防御面**：第三方/未来路径抛同名标记时仍按预检归类。 */
 const PREFLIGHT_MARKERS = ['MISSING_CREDENTIAL', 'PROVIDER_NOT_FOUND', 'PROTOCOL_UNSUPPORTED'];
 
 /** 从任意错误推导 `{phase, kind, status, raw}`——调用点不知道更细时用这个。 */

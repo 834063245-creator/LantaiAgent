@@ -22,9 +22,20 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 53;
+export const OPEN_SURFACE_CONTRACT_VERSION = 54;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v54（2026-09-28）**无 Key 放行 + 鉴权文案分岔**（`provider/types.ts`）：
+ *  `classifyError` 新增**可选**第 5 参 `keyless`（= 本次请求没带凭据头）。为 true 且
+ *  401/403 时返回专用文案（「本行没有 API Key」：本地端点请核对地址/端口，云端请去
+ *  设置填 Key），不再把「没配 Key」误报成「Key 无效」；缺省 false = 既有文案逐字不变。
+ *  **动机（真机事故 2026-09-27）**：用户报「本地模型（`127.0.0.1:8080/v1`）配好了却
+ *  一直无法调用」——`provider/live.ts` 的凭据闸把空 Key 拦在请求前，本地端点因此
+ *  永远用不了（用户唯一出路是填个假占位符）。本版同批把闸门改成「照发、不发凭据头」，
+ *  于是「这个 401 是不是因为没配 Key」必须由文案回答（判据 = `shared.ts::sentCredential`
+ *  读实际发出的头表，不靠各方言另传标志）。
+ *  **对外可感知**：第三方 adapter 只要经 `classifyError` 造文案即自动继承；不传第 5 参
+ *  行为逐字不变；空 Key 的行从此发出请求（不再抛 `MISSING_CREDENTIAL`，该标记随之退役）。
  *  v53（2026-09-26）**宿主生命周期贡献面**（批 10 同窗，用户 2026-09-25 裁定 A）：新增两条内核
  *  service 契约载体——`composition/workspaces-service.ts`（`ctx.workspaces`：产物 apply 期
  *  `onActivate(hook)` 登记，工作区激活点按注册序串行 await、失败隔离不阻断打开、`scope.ctx` =

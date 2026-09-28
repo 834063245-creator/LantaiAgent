@@ -33,9 +33,11 @@ import {
   extractWritePreview,
   fetchJsonWithTimeout,
   mergeHeaders,
+  modelsFetchFailure,
   prewarmEndpoint,
   type SseEvent,
   type SseLogMeta,
+  sentCredential,
   sseEvents,
 } from './shared';
 
@@ -134,7 +136,10 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
         headers: mergeHeaders(customHeaders, {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
-          Authorization: `Bearer ${apiKey}`,
+          // ⚡ 空 Key 不发 Authorization（2026-09-28 无 Key 放行批）：本地端点
+          //   （Ollama / LM Studio 等）无鉴权，而空 `Bearer ` 会被部分网关判成
+          //   「提供了无效凭据」（401）而不是「没提供」——不发才是诚实的形态。
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         }),
         body: JSON.stringify(body),
         signal,
@@ -149,21 +154,23 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
     },
 
     prewarm(): void {
-      prewarmEndpoint(`${baseUrl}/models`, mergeHeaders(customHeaders, { Authorization: `Bearer ${apiKey}` }));
+      prewarmEndpoint(
+        `${baseUrl}/models`,
+        mergeHeaders(customHeaders, { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) }),
+      );
     },
 
     async fetchModels(): Promise<ModelDescriptor[]> {
-      const json = await fetchJsonWithTimeout(
-        `${baseUrl}/models`,
-        mergeHeaders(customHeaders, { Authorization: `Bearer ${apiKey}` }),
-        10000,
-      );
+      const headers = mergeHeaders(customHeaders, { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) });
+      const { json, status } = await fetchJsonWithTimeout(`${baseUrl}/models`, headers, 10000);
       // C5（2026-08-27）：目录失败面——fetchJsonWithTimeout 对非 ok/网络/超时
-      // 一律返回 null，此前被静默当成「无模型」（调用面 .catch(() => {}) 永不
+      // 一律给 null，此前被静默当成「无模型」（调用面 .catch(() => {}) 永不
       // 触发，用户完全无感）。上抛让调用面可记失败（compact 选择器分组头标注 /
       // 手动刷新报真实原因）；静态目录 + 已合并的 last-good 动态模型兜底，不因
       // 失败丢失。
-      if (!json) throw new Error(`${name}: 模型目录获取失败（网络错误或端点无响应）`);
+      // ⚡ 2026-09-28：无 Key 行被 401/403 拒 → 文案点名「本行没有 API Key」
+      //   （modelsFetchFailure 的 keyless 支）；其余形态沿用既有文案。
+      if (!json) throw new Error(modelsFetchFailure(name, status, !sentCredential(headers)));
       // 宽容解析（provider-model-meta）：端点披露什么就填什么——OpenAI 兼容族
       // 的方言差异极大（官方仅 id；聚合网关给 name + context_length；OpenRouter
       // 系给 architecture.input_modalities + supported_parameters）。未披露的字段
