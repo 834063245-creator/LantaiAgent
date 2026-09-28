@@ -54,7 +54,7 @@ function PluginCard({
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: badge.color }}>
-        <Icon name={plugin.status === 'error' || plugin.status === 'blocked' ? 'alert-circle' : 'agent'} />
+        <Icon name={plugin.status === 'error' || plugin.status === 'blocked' ? 'alert-circle' : 'plugin'} />
       </span>
       <div className="sp-lsp-card-body">
         <div className="sp-lsp-card-header">
@@ -132,7 +132,7 @@ function FirstPartyCard({
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: badge.color }}>
-        <Icon name="agent" />
+        <Icon name="plugin" />
       </span>
       <div className="sp-lsp-card-body">
         <div className="sp-lsp-card-header">

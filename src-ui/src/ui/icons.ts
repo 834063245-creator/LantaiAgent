@@ -7,11 +7,20 @@
 //   viewBox:   0 0 24 24
 //   stroke:    1.5px · round caps/joins
 //   图元:      圆 · 弧 · 直线 · 点 — 不用 polygon 拟物
-//   fill:      仅用于"恒星"点 (小圆), 其余纯 stroke
+//   fill:      两档——**点 / 状态块**用实心（`dot` / `stop`）；**面填充**走低透明度
+//              （0.1~0.5，`alert` 0.1 / `mode-minimal` 0.15 / `display` 0.5 的明暗对照），
+//              其余一律纯 stroke。透明度不得超过 0.5（过 0.5 就从「着色」变成「实心块」，
+//              在 11px 档会把轮廓吃掉）。
 //   网格:      坐标对齐到整数或 .5
 //   视觉重量:  外环 r=7~9 · 内环 r=3~4 · 点 r=0.8~1.5
 //   中心:      (12, 12)
 //   色彩:      currentColor, 由 CSS 控制
+//
+// 尺寸档纪律（2026-09-28 设置页签图标重画批立）：
+//   11px = 页签/行内最小档 · 15px = 默认档（iconSvg 缺省）· 24px+ = 面板/空态档。
+//   **11px 档只留 1~3 个图元，且至少一个「重」元素（实心点 / 通到边缘的长线）**——
+//   0.8~1.2r 的小点在 11px 下不到半个像素、直接糊掉。旧 `agent` 的双眼点与旧
+//   `info` 的 i 点即此形态：缩到 11px 后前者读成棒棒糖、后者读成电源符号。
 
 interface IconDef {
   /** SVG inner HTML (paths only, no <svg> wrapper) */
@@ -192,9 +201,12 @@ const icons: Record<string, IconDef> = {
   },
 
   // ── AI / Agent ──
+  // 2026-09-28 重画（设置页签图标批）：旧形 = 头圈 + 躯干 + 底座 + 双眼点，缩到页签的
+  // 11px 档后眼点糊掉、整体读成棒棒糖。新形 = **主星 + 两颗卫星 + 连线**（一个带从属的
+  // 主体）——三团实心点在任何尺寸都立得住，且语义正好是本仓的「主 Agent 与子 Agent」。
   agent: {
     label: 'AI Agent',
-    path: '<circle cx="12" cy="8" r="5"/><line x1="12" y1="13" x2="12" y2="19"/><line x1="8" y1="19" x2="16" y2="19"/><circle cx="10" cy="8" r="0.8" fill="currentColor"/><circle cx="14" cy="8" r="0.8" fill="currentColor"/>',
+    path: '<circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="9.5" y1="10.3" x2="6.9" y2="8.5"/><line x1="14.5" y1="13.7" x2="17.1" y2="15.5"/><circle cx="5.5" cy="7.5" r="1.7" fill="currentColor"/><circle cx="18.5" cy="16.5" r="1.7" fill="currentColor"/>',
   },
   task: {
     label: '待办',
@@ -216,9 +228,11 @@ const icons: Record<string, IconDef> = {
     label: '聚焦',
     path: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21"/><line x1="3" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21" y2="12"/>',
   },
+  // 2026-09-28 重画（设置页签图标批）：i 的点从 0.8r 加粗到 1.2r、竖笔两端各让出半格
+  // ——旧形在 11px 档读成「圆 + 一竖」= 电源符号，与「关闭」「阻止」同形。
   info: {
     label: '信息',
-    path: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="8" r="0.8" fill="currentColor"/><line x1="12" y1="11" x2="12" y2="17"/>',
+    path: '<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="8" r="1.2" fill="currentColor"/><line x1="12" y1="11.2" x2="12" y2="16.5"/>',
   },
 
   // ── People ──
@@ -374,6 +388,38 @@ const icons: Record<string, IconDef> = {
     label: '规划',
     path: '<rect x="4" y="3" width="16" height="18" rx="1"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/><line x1="10" y1="8" x2="10" y2="16"/>',
   },
+
+  // ── 设置域（2026-09-28 页签图标重画批）──
+  // 由来：设置面板七个页签里四个共用 `agent` 一个图标，而叫「Agent」那页反而借了
+  // `code`、「显示」借了画布的 `mode-standard`——一列看过去四把一样的伞。本批给每个
+  // 页签画一朵自己的形，并按上方的「尺寸档纪律」按 11px 档设计（页签只画 11px）。
+  // 七形互不同类：弧簇 / 主从点 / 方框明暗 / 点阵 / 星芒 / 环柄星 / 圆圈记。
+  /** 提供方：星源辐射（实心星 + 两道向上张开的弧）——「你从中取用的那一头」。 */
+  provider: {
+    label: '提供方',
+    path: '<circle cx="12" cy="17.5" r="2.2" fill="currentColor"/><path d="M7.8 12.7 A6.5 6.5 0 0 1 16.2 12.7"/><path d="M4.2 9.6 A11.5 11.5 0 0 1 19.8 9.6"/>',
+  },
+  /** 显示：方框 + 右半明暗（对比/明暗 = 外观设置）。用方框而非圆盘，是为了在 11px
+   *  一列里同 `info`（圆 + 记）与 `plugin`（点阵）拉开轮廓差。 */
+  display: {
+    label: '显示',
+    path: '<rect x="3.5" y="5" width="17" height="14" rx="1"/><path d="M12 5 H19.5 A1 1 0 0 1 20.5 6 V18 A1 1 0 0 1 19.5 19 H12 Z" fill="currentColor" fill-opacity="0.5"/>',
+  },
+  /** 插件：四宫格点阵，右下实心（一格里亮着 = 可启停的模块格）。 */
+  plugin: {
+    label: '插件',
+    path: '<circle cx="7" cy="7" r="2.8"/><circle cx="17" cy="7" r="2.8"/><circle cx="7" cy="17" r="2.8"/><circle cx="17" cy="17" r="2.8" fill="currentColor"/>',
+  },
+  /** 技能：六射星芒（三线过心）——通到边缘的长线是 11px 档里最立得住的「重」元素。 */
+  skill: {
+    label: '技能',
+    path: '<line x1="12" y1="4" x2="12" y2="20"/><line x1="5.1" y1="8" x2="18.9" y2="16"/><line x1="18.9" y1="8" x2="5.1" y2="16"/>',
+  },
+  /** MCP：环（外部工具服务）— 柄 — 实心星（本机接上的那一头）。 */
+  mcp: {
+    label: 'MCP',
+    path: '<circle cx="6.5" cy="12" r="4.5"/><line x1="11" y1="12" x2="16.5" y2="12"/><circle cx="18.5" cy="12" r="1.9" fill="currentColor"/>',
+  },
 };
 
 /**
@@ -393,4 +439,10 @@ export function iconSvg(name: string, size = 15, cls = ''): string {
  */
 export function iconHtml(name: string, size = 15): string {
   return iconSvg(name, size);
+}
+
+/** 在册图标名（只读快照）。消费方 = 守卫测试：界面写的图标名必须真在册
+ *  （拼错时 `iconSvg` 会静默退化成红问号，肉眼很难发现——2026-09-28 立）。 */
+export function iconNames(): string[] {
+  return Object.keys(icons);
 }

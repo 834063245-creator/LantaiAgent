@@ -49,9 +49,11 @@ import { ProviderPage } from './ProviderPage';
 import { compositionDir, createPresetFromTemplate, rescanPresets } from './preset-authoring';
 import { persistSecrets, removeSecret } from './provider-data';
 import { SkillsPage } from './SkillsPage';
+import { SETTINGS_TABS, type SettingsTabId } from './settings-tabs';
 import { UpdateSection } from './UpdateSection';
 
-type Tab = 'provider' | 'agent' | 'display' | 'plugins' | 'skills' | 'mcp' | 'about';
+// 页签 id 类型的真源在 `settings-tabs.ts`（表与类型同处——加页签只动那一处）。
+type Tab = SettingsTabId;
 
 // （「语言依赖」标签页（引擎 LSP 舰队状态探测）随图谱全量退役删除，2026-09-09——
 //  数据源 hologram_call(engine_status) 属引擎接线，兰台侧零引擎后无源。）
@@ -484,17 +486,7 @@ const SettingsPanelApp: React.FC<{
 
         {/* 标签页 */}
         <div className="sp-tabs">
-          {(
-            [
-              ['provider', 'agent', '提供方'],
-              ['agent', 'code', 'Agent'],
-              ['display', 'mode-standard', '显示'],
-              ['plugins', 'agent', '插件'],
-              ['skills', 'agent', '技能'],
-              ['mcp', 'agent', 'MCP'],
-              ['about', 'info', '关于'],
-            ] as const
-          ).map(([id, icon, label]) => (
+          {SETTINGS_TABS.map(({ id, icon, label }) => (
             <button
               type="button"
               key={id}
