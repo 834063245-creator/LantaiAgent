@@ -3107,7 +3107,11 @@
 .pp-composer-settings .pp-work-trigger.open {
   color: var(--seal-deep);
 }
-/* 役点：在役信号——空档灰墨点，有活转石青（机=石青），开着时呼吸 */
+/* 役点：在役信号——空档灰墨点，有活转石青并呼吸（机=石青）。呼吸走既有运行态
+ * 动效族（pp-ink-live，与落笔点/行走秒/呼吸线同拍 1.6s；动效敏感用户由
+ * foundation.css 全局豁免成静态）。与册页开合无关——触发器恒驻设置行，
+ * 「有活」在册页关着时也要看得见（2026-10-07：此前是 JS 翻转且只在册页
+ * 开着时走，关着时只亮不喘）。 */
 .pp-work-trigger-dot {
   width: 6px;
   height: 6px;
@@ -3118,9 +3122,7 @@
 }
 .pp-composer-settings .pp-work-trigger.live .pp-work-trigger-dot {
   background: var(--indigo);
-}
-.pp-composer-settings .pp-work-trigger.live .pp-work-trigger-dot.on {
-  opacity: 0.35;
+  animation: pp-ink-live 1.6s ease-in-out infinite;
 }
 .pp-composer-settings .pp-work-trigger:hover .pp-work-trigger-dot,
 .pp-composer-settings .pp-work-trigger.open .pp-work-trigger-dot {

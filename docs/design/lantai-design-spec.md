@@ -319,12 +319,14 @@
 | 项 | 定案 |
 |---|---|
 | 名字 | **役**（使役/差役＝派出去替你干的活）。与「墨」并列成对：墨＝耗，役＝工 |
-| 触发器 | 设置行行尾，**役内墨外**（`pp-work-sel` 紧邻墨量册内侧、`pp-ink-sel` 仍收最右）——§9.1 对墨「读数件居行最右＝拟文印正下方的读点」的判据逐字保留。有活跃卷才渲染（同墨量册的无主待命纪律）。读数：空档 `役 —`、有活 `役 N`、他卷另计 `N+M`；有活时墨点转**石青**并呼吸（机＝石青铁律；不点朱——朱砂是人的动作，这里的「有活」不是预警） |
+| 触发器 | 设置行行尾，**役内墨外**（`pp-work-sel` 紧邻墨量册内侧、`pp-ink-sel` 仍收最右）——§9.1 对墨「读数件居行最右＝拟文印正下方的读点」的判据逐字保留。有活跃卷才渲染（同墨量册的无主待命纪律）。读数：空档 `役 —`、有活 `役 N`、他卷另计 `N+M`；有活时墨点转**石青**并呼吸（机＝石青铁律；不点朱——朱砂是人的动作，这里的「有活」不是预警）。**读数恒活（2026-10-07 修）**：对账**不随册页开合**，触发器挂载即 3s 一轮快照——触发器恒驻设置行，它的读数就是「还有多少活在跑」，不能是「点开才补齐」；役点呼吸收编既有运行态动效族 `pp-ink-live`（CSS，与落笔点/行走秒/呼吸线同拍 1.6s，动效敏感用户经 `foundation.css` 全局豁免成静态），不再是 JS 翻转（旧法只在册页开着时喘，且绕过动效豁免） |
 | 册页 | 向上开（坞贴屏底），几何与 `.pp-ink-panel` 逐字同源（`right:0` / `bottom: calc(100% + 6px)` / `z 85` / 宽 300 / `max-height: min(70vh,520px)`）。三段：**在役**（本卷，逐条带时长与旁注，shell 条目带「停」）→ **他卷**（条件段，标卷名不裸报号）→ **已了**（终态，按结束倒序，至多 8 条）。排印沿墨量册的册页语言（段题＝方墨锚点 + 字距题字；读数当全册唯一题字） |
 | 互斥 | 并入坞的浮层互斥（原四层 → §9.1 墨量册五层 → 本批**六层**）；切卷清本地态照旧 |
 | 归属 | 坞是视图不是容器（铁律不动）：台账真源在 `state/work-ledger-store`（由 Agent 侧观察点喂），本册只读 |
 
 **数据面（为什么 UI 侧要自建一本账）**：Agent 侧三本账都读不出「按会话的在役清单」——① `SubAgentPool` 是**工作区级**单例，句柄无 session/parent 字段，`listRunning()` 只能给「本工作区全部子 Agent」；② `subagent-activity` 键＝子 Agent id、**终态即删**、无订阅，唯一读者是 `agent_status` 模型工具；③ Rust `BG_JOBS` 的 `bg_jobs_snapshot()` **只返回仍在跑的 job**（`try_wait()==Ok(None)`），已完成待读 / `try_wait` 出错 / 已移除三者同形，且 exit code 从未落进 `BgJob` 字段——而 `bg:note` 在 job **完成时**才发，那一刻它已查不到。故「记录」这半边只能由 UI 在**观察点**上自记：子 Agent 走 `AgentUINotifier` 的 `subAgentSpawn`/`subAgentFinished`（全仓唯一带 `sessionId` + `parentAgentId` 的派生观察点，`runtime.ts:957-968` 补的父身份），shell 走 `background_activity` 快照对账（在役集合）+ `bg:note`（终态时点，`workspace.ts` 的既有监听点里加一跳，且**先于** owner 守卫——`owner=null` 的用户任务也要落账）。
+
+**对账恒跑（2026-10-07 修）**：快照对账是 shell 在役集合的**唯一**可靠来源，故它随触发器挂载恒跑，不再只在册页打开期间——会话侧没有「job 已启动」事件；唯一的终态事件 `bg:note` 也会漏（job 被 `bash_output`/`bash_wait`/`kill_bg` 提前移除时，`bg_jobs.rs` 监视线程下一拍 `jobs.get_mut` 拿到 `None` 直接 return，那一跳随 job 一起没了）⇒ 靠事件画不出在役清单。恒跑的代价由台账自己收口：**空转引用守卫**（快照与账上逐项一致 ⇒ 返回原 state 对象，zustand 的 `Object.is` 早退让订阅面整轮不重渲；既往的读取错误仍照清，不被空转吞掉）。
 
 **口径纪律**：① **只读**——对账绝不调 `bash_output`（那个 action 的增量游标是所有读方共用的，且读到终态即 `jobs.remove()`，UI 读一次等于吃掉模型随后要用的输出并销毁 job，`bg_jobs.rs:474-479`）；② **终态不编造**——shell 的终态由「从在役集合消失」外推，只写中性「已了」+ 旁注「已结束」，**不报退出码、不外推成败**；③ **不落盘**——纯内存、按面板隔离、退出即空（与 `SubAgentPart` 同命运；要持久记录是 Agent 侧 TaskBoard 的事）；④ **失败可见**——账本读取失败写进册页页脚，停止动作失败走提示条（两件事两个面，互不抹除）。
 
@@ -332,7 +334,7 @@
 
 **边界（诚实栏）**：① **子代理条目无逐条停止**——池对 UI 不可达（`ChatAgentHandle` 只暴露 `runningSubAgentCount` / `stopAllSubAgents`），逐条停需另开只读/控制通道，本批不做；② **shell 终态无退出码**（账本不回流，见上）；③ `background_activity` 混着**前台**正在跑的命令（`BgJob` 无 fg/bg 字段，外部不可观测），故册页叫「役」不叫「后台任务」；④ 记录**不落盘**，重开即空；⑤ **「算不算在跑」= 用户裁定「不计入」**（**拍板日 2026-09-20**，留痕 `tests/async-return-delivery.test.ts` 头注；landmine L5 状态格当时漏记，2026-09-22 用户复述后补记）：**后台活体不计入**——本卷 Agent 就是空闲的、可继续交互，呼吸线 / 停钮 / 侧栏状态点 / 行卷中 / 退出守卫一律保持只读运行账。役册不是补在那个判据上，而是**另立一个面**：「Agent 忙不忙」读运行账，「还有什么在跑」读役册。**接受的代价**：在役后台任务不升起退出确认，关窗即被 lifecycle 终止。
 
-**证据**：`tests/work-ledger-store.test.ts`（21 例：spawn/finished 记账、未观察到的收尾 no-op、起算反推稳定、消失即结转中性终态、按面板×卷切分与排序、终态配额淘汰不吃在役、**只读纪律**（对账只打 `background_activity`）、形状坏/传输错都写 error 不静默、`bash_kill` 不带 owner＝用户路径）+ `tests/composer-dock-work-ledger.test.tsx`（10 例：触发器读数与空态、无活跃卷整枚不出现、册页三段与空态诚实、逐条停止只出 shell 条目、停止走 `bash_kill` 后立刻落「已了」、六层互斥、切卷清本地态）+ `tests/composer-dock-settings-pair.test.tsx`（**显式规格变更**：行尾由单枚仪表扩为「役 | 墨」两枚读数件，成对契约与「读数不插进策略对」不变）。
+**证据**：`tests/work-ledger-store.test.ts`（**24 例**（2026-10-07 加 3 例空转纪律：逐项一致⇒引用不变、真有变化照常换引用、既往错误照清）：spawn/finished 记账、未观察到的收尾 no-op、起算反推稳定、消失即结转中性终态、按面板×卷切分与排序、终态配额淘汰不吃在役、**只读纪律**（对账只打 `background_activity`）、形状坏/传输错都写 error 不静默、`bash_kill` 不带 owner＝用户路径）+ `tests/composer-dock-work-ledger.test.tsx`（**12 例**（2026-10-07 加 2 例**恒活**：册页关着时后台任务起来⇒触发器当轮自亮、停了⇒当轮自灭并结转终态）：触发器读数与空态、无活跃卷整枚不出现、册页三段与空态诚实、逐条停止只出 shell 条目、停止走 `bash_kill` 后立刻落「已了」、六层互斥、切卷清本地态）+ `tests/composer-dock-settings-pair.test.tsx`（**显式规格变更**：行尾由单枚仪表扩为「役 | 墨」两枚读数件，成对契约与「读数不插进策略对」不变）。
 
 **部署面（诚实栏）**：本批**动了宿主面**——`faceDeps` 新增 5 键（`useWorkLedgerStore` / `selectSessionWork` / `pullShellWork` / `killShellWork` / `setOwnerSessionResolver`），且两个观察点接线（`ui/runtime-adapter.ts` 的 spawn/finished、`workspace.ts` 的归属解析注入与 `bg:note` 对账）都在宿主代码里 ⇒ **不能只换产物热更，须重建 exe**；`src-ui/src/plugins/host-surface.baseline.json` 已同批重生成（封印测试 `tests/host-surface-seal.test.ts` 是这条纪律的考官）。
 

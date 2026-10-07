@@ -158,6 +158,50 @@ describe('役台账 · shell 快照对账', () => {
   });
 });
 
+describe('役台账 · 恒跑对账的空转纪律', () => {
+  it('快照与账上逐项一致 ⇒ 状态引用不变（页面挂着的对账不按秒惊动订阅面）', () => {
+    const s = useWorkLedgerStore.getState();
+    s.noteShells(P, [shell(7)], () => 2);
+    const before = useWorkLedgerStore.getState().entries;
+    const seen = vi.fn();
+    const unsub = useWorkLedgerStore.subscribe(seen);
+
+    // 同一条 job 再来一轮：只有单调时钟差值在涨（账不存 elapsed ⇒ 不是变化）
+    useWorkLedgerStore.getState().noteShells(P, [shell(7, { elapsedSecs: 9 })], () => 2);
+
+    expect(useWorkLedgerStore.getState().entries).toBe(before);
+    expect(seen).not.toHaveBeenCalled();
+    unsub();
+  });
+
+  it('真有变化照常换引用：新 job 进来、停滞转旁注、归属改判都算', () => {
+    const s = useWorkLedgerStore.getState();
+    s.noteShells(P, [shell(7)], () => 2);
+    const seen = vi.fn();
+    const unsub = useWorkLedgerStore.subscribe(seen);
+
+    useWorkLedgerStore.getState().noteShells(P, [shell(7, { stalled: true }), shell(8)], () => 2);
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(listOf(P, 2).map((e) => e.id)).toEqual(['job-7', 'job-8']);
+    expect(listOf(P, 2).find((e) => e.id === 'job-7')?.note).toBe('停滞');
+    unsub();
+  });
+
+  it('空转但既往有错 ⇒ 只清错也要换引用（错误不得被空转吞掉）', async () => {
+    kernelProcessCall.mockRejectedValueOnce(new Error('boom'));
+    await pullShellWork(P);
+    expect(useWorkLedgerStore.getState().error[P]).toBe('boom');
+
+    const seen = vi.fn();
+    const unsub = useWorkLedgerStore.subscribe(seen);
+    kernelProcessCall.mockResolvedValueOnce(snap([]));
+    await pullShellWork(P); // 空快照 + 无条目 = 逐项一致
+    expect(useWorkLedgerStore.getState().error[P] ?? null).toBeNull();
+    expect(seen).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+});
+
 describe('役台账 · 切分与排序', () => {
   it('按面板隔离：别的面板的条目看不见', () => {
     const s = useWorkLedgerStore.getState();

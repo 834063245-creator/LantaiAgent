@@ -208,12 +208,27 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
     set((s) => {
       const entries = { ...s.entries };
       const seen = new Set<string>();
+      let changed = false;
 
       for (const job of shells) {
         const id = `job-${job.jobId}`;
         const key = keyOf(panelId, 'shell', id);
         seen.add(key);
+        const sessionId = resolveSession(job.agent);
+        const note = job.stalled ? '停滞' : null;
         const prev = entries[key];
+        /* 同一 job 的稳定字段逐项对表——全等即原样留用（引用不动 ⇒ 下面能整轮
+         * 判空）。`elapsedSecs` 故意不参与：账不存它（起算只反推一次，见下），
+         * 每轮都在涨的单调时钟差值不是「变化」。 */
+        if (
+          prev &&
+          prev.state === 'running' &&
+          prev.label === job.label &&
+          prev.sessionId === sessionId &&
+          prev.note === note
+        ) {
+          continue;
+        }
         entries[key] = {
           id,
           kind: 'shell',
@@ -223,10 +238,11 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
           startedAt: prev?.startedAt ?? now - job.elapsedSecs * 1000,
           endedAt: null,
           state: 'running',
-          sessionId: resolveSession(job.agent),
+          sessionId,
           parentAgentId: null,
-          note: job.stalled ? '停滞' : null,
+          note,
         };
+        changed = true;
       }
 
       // 在役集合里消失 = 已结束。账本不回流退出码，故只写中性终态 +
@@ -236,6 +252,17 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
         if (!key.startsWith(panelId + '\u0000')) continue;
         if (seen.has(key)) continue;
         entries[key] = { ...e, state: 'done', endedAt: now, note: '已结束' };
+        changed = true;
+      }
+
+      /* 空转（快照与账上逐项一致）：**返回原 state 对象**——zustand 的 Object.is
+       * 早退让订阅面（坞上的触发器与册页）整轮不重渲。对账自 2026-10-07 起恒跑
+       * （触发器恒驻设置行，读数不能等点开——见 WorkLedger 头注），每 3s 惊动
+       * 一次订阅面是白烧帧。但既往的读取错误仍要清（那是「账本读不出」的位，
+       * 不许被空转吞掉）——这一支照常换引用。 */
+      if (!changed) {
+        if (s.error[panelId] == null) return s;
+        return { error: { ...s.error, [panelId]: null } };
       }
 
       evictTerminal(entries, panelId);

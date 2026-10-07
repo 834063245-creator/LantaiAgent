@@ -31,9 +31,12 @@ import { memo, useEffect, useState } from 'react';
 import type { WorkEntry, WorkKind } from './host';
 import { pullShellWork, selectSessionWork, useWorkLedgerStore } from './host';
 
-/** 在役呼吸点翻转周期（与状态字同族）。 */
-const PULSE_MS = 900;
-/** 册页打开期间的后台对账周期——只读 `background_activity`（纯元数据，不吃输出）。 */
+/** 册页里在役时长读数的心跳——只有册页开着才走（关着不烧帧：计时只服务册页条目）。 */
+const ELAPSED_TICK_MS = 900;
+/* 后台对账周期——只读 `background_activity`（纯元数据，不吃输出）。**恒跑**，
+ * 不随册页开合：触发器恒驻设置行，它的读数就是「本卷还有多少活在跑」，
+ * 对账不能是「点开才发生」的事（2026-10-07 修用户报「后台任务起停后非得点一下
+ * 才计数」）。 */
 export const WORK_PULL_MS = 3000;
 
 /** 条目在役时长：`12s` / `3m05s` / `1h07m`（机读小字，不做自然语言）。 */
@@ -130,26 +133,30 @@ export const WorkLedger = memo(function WorkLedger({
   const entries = useWorkLedgerStore((s) => s.entries);
   const error = useWorkLedgerStore((s) => s.error[panelId] ?? null);
   const [now, setNow] = useState(() => Date.now());
-  const [pulse, setPulse] = useState(false);
 
-  // 在役计时 + 呼吸点：只在册页打开时走（关着不烧帧）。
-  useEffect(() => {
-    if (!open) return;
-    const t = window.setInterval(() => {
-      setNow(Date.now());
-      setPulse((p) => !p);
-    }, PULSE_MS);
-    return () => window.clearInterval(t);
-  }, [open]);
-
-  // 打开即对账一次（节点外发生的变化靠它补齐）。
+  // 在役计时：只在册页打开时走（关着不烧帧——`now` 只喂册页里的时长读数）。
   useEffect(() => {
     if (!open) return;
     setNow(Date.now());
+    const t = window.setInterval(() => setNow(Date.now()), ELAPSED_TICK_MS);
+    return () => window.clearInterval(t);
+  }, [open]);
+
+  /* 对账恒跑（不随 `open`）：触发器恒驻设置行，「还有多少活在跑」是它自己的读数
+   * ——台上起停一条后台命令，指示器必须自己亮/灭。此前这一跳只在册页打开时发生，
+   * 册页外的变化只能靠用户点一下补齐（2026-10-07 用户报的病灶）。
+   *
+   * 为什么是轮询而不是等事件：会话侧**没有**「job 已启动」事件；唯一的终态事件
+   * `bg:note` 也会漏——job 被 `bash_output`/`bash_wait`/`kill_bg` 提前移除时
+   * （bg_jobs.rs:475/526/572），监视线程下一拍 `jobs.get_mut` 拿到 None 直接
+   * return，那一跳随 job 一起没了 ⇒ 快照对账是本账在役集合的唯一来源
+   * （口径见 `state/work-ledger-store` 头注）。空转那一轮由台账自己做引用守卫，
+   * 不惊动本组件的订阅面。 */
+  useEffect(() => {
     void pullShellWork(panelId);
     const t = window.setInterval(() => void pullShellWork(panelId), WORK_PULL_MS);
     return () => window.clearInterval(t);
-  }, [open, panelId]);
+  }, [panelId]);
 
   // 读面走 store 的**同一个选择器**（纯函数，与测试/其他消费面同一把尺子；
   // entries 只是响应式触发切片）。
@@ -174,7 +181,11 @@ export const WorkLedger = memo(function WorkLedger({
         aria-expanded={open}
         onClick={onToggle}
       >
-        <span className={`pp-work-trigger-dot${pulse && running.length > 0 ? ' on' : ''}`} aria-hidden="true" />
+        {/* 役点 = 在役信号：空档灰墨点，有活转石青并呼吸——呼吸走 CSS 族
+            （pp-ink-live，与落笔点/呼吸线同拍，动效敏感用户由 foundation.css
+            全局豁免成静态）。此前是 JS 翻转且只在册页开着时走，于是关着时
+            「有活」只亮不喘，还绕过了动效豁免。 */}
+        <span className="pp-work-trigger-dot" aria-hidden="true" />
         <span className="pp-work-trigger-label">
           役 {running.length > 0 ? running.length + (elsewhere > 0 ? `+${elsewhere}` : '') : '—'}
         </span>

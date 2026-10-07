@@ -9,7 +9,9 @@
 // 有活 `役 N`，他卷另计 `N+M`）；② 点开是册页：在役 / 他卷 / 已了三段，
 // 空态诚实（「本卷无在役」）；③ 逐条停止**只出在 shell 条目上**（子代理侧
 // 暂无 UI 可达的池通道，见台账头注）；④ 并入浮层互斥（开役册关墨量册，
-// 反之亦然）；⑤ 切卷清本地态（册页不跨卷残留）。
+// 反之亦然）；⑤ 切卷清本地态（册页不跨卷残留）；⑥ **触发器恒活**——对账是
+// 触发器自己的事，不随册页开合（2026-10-07 修：此前只在点开后对账，用户报
+// 「后台任务起停后非得点一下才计数」）。
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -27,6 +29,7 @@ import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
 import { ComposerDock } from '../src/plugins/builtin/compose-dock/ComposerDock';
+import { WORK_PULL_MS } from '../src/plugins/builtin/compose-dock/WorkLedger';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { resetComposeStoresForTests } from '../src/state/compose-store';
 import { resetWorkLedgerForTests, setOwnerSessionResolver, useWorkLedgerStore } from '../src/state/work-ledger-store';
@@ -120,6 +123,52 @@ describe('役册（创作坞后台工作监视装置）', () => {
     expect(trigger()?.className).toContain('live');
     expect(trigger()?.title).toContain('本卷在役 1 条');
     expect(trigger()?.title).toContain('另 1 条在他卷');
+  });
+
+  it('册页关着也恒对账：后台任务起来 ⇒ 触发器当轮自亮（读数不是点开的副作用）', async () => {
+    vi.useFakeTimers();
+    try {
+      await mountDock();
+      expect(triggerText()).toBe('役 —');
+      expect(trigger()?.className).not.toContain('live');
+
+      // 节点外发生的事：Rust 账本里多了一条在役 job（册页始终没开）
+      withShellJob(7, 'cargo test --workspace');
+      await act(async () => {
+        vi.advanceTimersByTime(WORK_PULL_MS);
+      });
+
+      expect(container.querySelector('.pp-work-panel')).toBeNull(); // 仍然关着
+      expect(triggerText()).toBe('役 1');
+      expect(trigger()?.className).toContain('live');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('后台任务停了 ⇒ 触发器当轮自灭（终态结转不用点开）', async () => {
+    withShellJob(7, 'watch');
+    vi.useFakeTimers();
+    try {
+      await mountDock();
+      await act(async () => {
+        vi.advanceTimersByTime(WORK_PULL_MS);
+      });
+      expect(triggerText()).toBe('役 1');
+
+      shells.length = 0; // 节点外：job 结束，快照里查不到它了
+      await act(async () => {
+        vi.advanceTimersByTime(WORK_PULL_MS);
+      });
+
+      expect(triggerText()).toBe('役 —');
+      expect(trigger()?.className).not.toContain('live');
+      // 消失 = 结转中性终态（口径纪律②：账本没有退出码，不外推成败）
+      const settled = Object.values(useWorkLedgerStore.getState().entries).find((e) => e.id === 'job-7');
+      expect(settled?.state).toBe('done');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('点开是对账后的册页：在役段列条目（时长 + 旁注），读数与条目同源', async () => {
