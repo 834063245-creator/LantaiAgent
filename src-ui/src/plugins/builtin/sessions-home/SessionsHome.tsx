@@ -312,13 +312,12 @@ export function SessionsHome() {
 
   return (
     <div className="sh-root">
-      {/* 顶部书眉：印章 + 兰台 wordmark + tagline · 右侧设置入口 + 窗口控制 */}
+      {/* 顶部书眉：印章 + 兰台 wordmark · 右侧设置入口 + 窗口控制 */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏） */}
       <header className="sh-head" onPointerDown={onTopbarPointerDown} onDoubleClick={onTopbarDoubleClick}>
         <div className="sh-brand">
           <span className="sh-seal" role="img" aria-label="印章：蘭臺"></span>
           <span className="sh-wordmark">兰台</span>
-          <span className="sh-tagline">档案 · 工作台</span>
         </div>
         <div className="sh-head-right">
           <button
@@ -333,15 +332,13 @@ export function SessionsHome() {
         </div>
       </header>
 
-      {/* 主区：kicker + 大标题 + 描述 + 工作区管理列表 + 绑定入口 */}
+      {/* 主区：题字 + 工作区列表 + 新建入口。
+       * 极简批（2026-10-07）：kicker「兰台 · 档案」与整段导语退役——首页只说一件事
+       * 「择纸开卷」，其余全是可点的实体（品牌行全页只留书眉一处，不再三处重复）。 */}
       <main className="sh-main">
-        <p className="sh-kicker">兰台 · 档案</p>
         <h1 className="sh-h1">
-          与 Agent 协作，应当像在纸上书写<span className="sh-ju">。</span>
+          择纸开卷<span className="sh-ju">。</span>
         </h1>
-        <p className="sh-lead">
-          一个工作区就是一张纸：新建或指定一个目录，摊开多少卷都在同一片纸上——可对照、可钉住、可追溯。
-        </p>
 
         <div className="sh-section-title">
           <span className="t">工作区</span>
@@ -454,7 +451,7 @@ export function SessionsHome() {
             })}
           </div>
         ) : (
-          <p className="sh-empty-hint">还没有工作区——新建或指定一个目录，从一卷新案卷开始。</p>
+          <p className="sh-empty-hint">还没有工作区。</p>
         )}
         {notice && <p className="sh-notice">{notice}</p>}
         {/* 卡死逃生口（2026-09-09 事故立法）：仅 STUCK_SWITCH_MS 超时后亮——
@@ -590,9 +587,8 @@ export function SessionsHome() {
         </div>
       )}
 
-      {/* 底部 footer：左 brand 右当前案卷状态 */}
+      {/* 底部 footer：只报本机案卷数（品牌行已在书眉——此处不再复述） */}
       <footer className="sh-foot">
-        <span>兰台 · 档案</span>
         <span>{totalVolumes > 0 ? `${totalVolumes} 卷案卷 · 就绪` : '尚无案卷'}</span>
       </footer>
     </div>

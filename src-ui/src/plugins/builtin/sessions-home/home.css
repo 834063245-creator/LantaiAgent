@@ -91,12 +91,6 @@
   letter-spacing: -0.01em;
   color: var(--ink-1);
 }
-.sh-tagline {
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.18em;
-  color: var(--ink-3);
-}
 .sh-head-right {
   display: flex;
   align-items: center;
@@ -180,7 +174,7 @@
   outline-offset: 2px;
 }
 
-/* ── 主区：kicker + 大标题 + 描述 + 案卷列表 + 新建按钮 ── */
+/* ── 主区：题字 + 案卷列表 + 新建按钮（极简批 2026-10-07：kicker 与导语退役） ── */
 .sh-main {
   flex: 1;
   max-width: 880px;
@@ -188,20 +182,14 @@
   padding: 72px 48px 96px;
   width: 100%;
 }
-.sh-kicker {
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.28em;
-  color: var(--ink-3);
-  text-transform: uppercase;
-}
+/* 题字：全页唯一一句文案（四字 + 朱砂句读），下距直接让给节题与列表 */
 .sh-h1 {
   font-family: var(--f-song);
   font-weight: var(--weight-display); /* 浸墨：题字极端档 */
   font-size: clamp(40px, 5.4vw, calc(66px * var(--font-scale)));
   line-height: 1.14;
   letter-spacing: -0.015em;
-  margin: 22px 0 24px;
+  margin: 0 0 56px;
   max-width: 18ch;
   color: var(--ink-1);
   /* 材质批（2026-09-01）：重墨题字洇边——900 重墨压纸，墨沿笔画外渗 1.5px */
@@ -210,14 +198,6 @@
 /* 句读点朱（浸墨）：题字句号落朱砂——古籍句读遗意，全页唯一红字 */
 .sh-h1 .sh-ju {
   color: var(--seal);
-}
-.sh-lead {
-  color: var(--ink-2);
-  font-size: calc(16px * var(--font-scale));
-  line-height: 1.8;
-  max-width: 52ch;
-  margin-bottom: 60px;
-  font-family: var(--f-song);
 }
 
 .sh-section-title {
@@ -733,32 +713,26 @@
   gap: 14px;
   margin-top: 28px;
 }
-/* ── 卷首入场编排（2026-08-30）：kicker→标题→导语→列表→动作逐层浮现 ──
- * sh-rise 单关键帧（to=静态位）；每层只调 delay。首页是低频全屏页，
- * 挂载重放即「回到卷首」的仪式感；reduced-motion 全局豁免已兜底。 */
+/* ── 卷首入场编排（2026-08-30；极简批 2026-10-07 重排——层少了，拍子收紧）──
+ * 题字→列表→动作逐层浮现：sh-rise 单关键帧（to=静态位）；每层只调 delay。
+ * 首页是低频全屏页，挂载重放即「回到卷首」的仪式感；reduced-motion 全局豁免已兜底。 */
 @keyframes sh-rise {
   from {
     opacity: 0;
     transform: translateY(14px);
   }
 }
-.sh-kicker {
-  animation: sh-rise 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.05s both;
-}
 .sh-h1 {
-  animation: sh-rise 0.55s cubic-bezier(0.23, 1, 0.32, 1) 0.12s both;
-}
-.sh-lead {
-  animation: sh-rise 0.55s cubic-bezier(0.23, 1, 0.32, 1) 0.2s both;
+  animation: sh-rise 0.55s cubic-bezier(0.23, 1, 0.32, 1) 0.05s both;
 }
 .sh-section-title {
-  animation: sh-rise 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.3s both;
+  animation: sh-rise 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.16s both;
 }
 .sh-workspaces {
-  animation: sh-rise 0.55s cubic-bezier(0.23, 1, 0.32, 1) 0.36s both;
+  animation: sh-rise 0.55s cubic-bezier(0.23, 1, 0.32, 1) 0.22s both;
 }
 .sh-actions {
-  animation: sh-rise 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.44s both;
+  animation: sh-rise 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.28s both;
 }
 
 /* ── 底部 footer ── */
@@ -766,7 +740,7 @@
   border-top: var(--rule-hard); /* 浸墨：脚线升硬线 */
   padding: 18px 48px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end; /* 极简批：左 brand 退役，只余案卷读数（与书眉右簇同侧） */
   color: var(--ink-2); /* B3 环1 拍板：页脚档号=信息承载，提墨 ink-3→ink-2 */
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
