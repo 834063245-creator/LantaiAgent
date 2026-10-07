@@ -2295,6 +2295,7 @@ dependencies = [
  "hyper-util",
  "ignore",
  "libloading 0.9.0",
+ "log",
  "portable-pty",
  "regex",
  "reqwest",

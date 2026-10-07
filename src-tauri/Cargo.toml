@@ -35,6 +35,9 @@ http-body-util = "0.1"
 http-body = "1"
 libloading = "0.9"
 tracing = "0.1"
+# 启动期诊断日志门面（boot_log.rs）：tauri/wry/tao/webview2-com 的失败只走 log::error!，
+# 不装 logger 就是静默。见 boot_log.rs 头注（2026-10-07 事故立法）。
+log = "0.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
 base64 = "0.22"

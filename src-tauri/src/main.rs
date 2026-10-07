@@ -22,6 +22,7 @@ mod sandbox;
 mod audit;
 mod credential;
 mod logging;
+mod boot_log;
 pub(crate) mod os_sandbox;
 mod workspace;
 mod ignored_paths;
@@ -64,6 +65,11 @@ fn get_active_project(
 }
 
 fn main() {
+    // 启动期诊断日志（2026-10-07 事故立法）：tauri-runtime-wry 的窗口/webview 创建失败
+    // 只走 `log::error!` 且不回传调用方——不装 logger 就会静默成「双击后什么都不发生」。
+    // 必须最先执行：早于 generate_context / 任何可能失败的初始化。
+    boot_log::init();
+
     let context = tauri::generate_context!();
 
     // 卸载期用户数据清理（安装器的代码路径，见 src/purge.rs）：
