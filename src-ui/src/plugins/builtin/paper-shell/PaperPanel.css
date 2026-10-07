@@ -1394,11 +1394,13 @@
   background: color-mix(in oklch, var(--fail) 8%, transparent);
 }
 
-/* ── 远端图（B4 multimodal-image-plan D-9）：独立行 ![alt](http/https) ──
- * 固定盒高（--pp-md-imgBoxH，chem boxH 先例；border 计入盒高——全局
- * box-sizing: border-box）——加载/失败态都不改版面，measure 静态镜像即
- * 精确（不触发 RO）。协议白名单过在解析层（remoteImageSrc——非 http/https
- * 已降级 alt 文本，不进此通道）；加载失败换 alt 行（mono 弱墨，错误不静默）。 */
+/* ── 正文图（B4 multimodal-image-plan D-9；2026-10 本地路径扩展 + 点击放大）──
+ * 独立行 ![alt](http/https 或本地绝对路径)，固定盒高（--pp-md-imgBoxH，chem
+ * boxH 先例；border 计入盒高——全局 box-sizing: border-box）——加载/失败态
+ * 都不改版面，measure 静态镜像即精确（不触发 RO）。源分类过在解析层
+ * （imageSrcRef）；加载失败换 mono 弱墨行（错误不静默）。点击看大图：盒内
+ * 图包 zoom 按钮（重置装饰 + 光标 zoom-in）→ 用户气泡/资产卡同款全局浮层
+ * （pp-media-preview-overlay）。 */
 .pp-md-imgbox {
   box-sizing: border-box;
   display: flex;
@@ -1415,6 +1417,20 @@
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+/* 点击放大入口（2026-10）：按钮吃满固定盒（100%×100%），img 的 max-width/
+ * height 100% 相对它有解（按钮自身不参与收缩，防 img 按自然尺寸撑破盒）。
+ * 无装饰重置；光标 zoom-in 是可达性外的手感提示（读屏语义在 aria-label）。 */
+.pp-md-img-zoom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: zoom-in;
 }
 .pp-md-img-alt {
   max-width: 100%;

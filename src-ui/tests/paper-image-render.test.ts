@@ -462,4 +462,37 @@ describe('B4 渲染 — UserBody 附图缩略行 + MdImage', () => {
     expect(line?.textContent).toBe('图片不可读：bad.png');
     expect(line?.getAttribute('title')).toContain('解码失败');
   });
+
+  it('远端图点击 → 放大浮层（.pp-media-preview-overlay；Esc 关闭）', () => {
+    const md = block('markdown', { text: '![大图](https://example.com/big.png)' });
+    act(() => {
+      root?.render(createElement(rendererFor('markdown'), { block: md }));
+    });
+    expect(document.querySelector('.pp-media-preview-overlay')).toBeNull();
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.pp-md-img-zoom')?.click();
+    });
+    const overlay = document.querySelector('.pp-media-preview-overlay');
+    expect(overlay).not.toBeNull();
+    expect(overlay!.querySelector('img')?.getAttribute('src')).toBe('https://example.com/big.png');
+    // Esc 关闭（Overlay 原语统一语义）
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(document.querySelector('.pp-media-preview-overlay')).toBeNull();
+  });
+
+  it('本地图点击 → 放大浮层（同一 data URI，不二次读取）', async () => {
+    const md = block('markdown', { text: '![本地图](D:/shots/a.png)' });
+    act(() => {
+      root?.render(createElement(rendererFor('markdown'), { block: md }));
+    });
+    await act(async () => {});
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.pp-md-img-zoom')?.click();
+    });
+    const overlay = document.querySelector('.pp-media-preview-overlay');
+    expect(overlay).not.toBeNull();
+    expect(overlay!.querySelector('img')?.getAttribute('src')).toBe(`data:image/png;base64,${btoa('stub-bytes')}`);
+  });
 });

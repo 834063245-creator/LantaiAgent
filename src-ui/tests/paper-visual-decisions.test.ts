@@ -1010,12 +1010,18 @@ describe('B4 多模态附图渲染面（multimodal-image-plan D-9，2026-09）',
     expect(Number(dialogZ)).toBeGreaterThan(Number(rootZ));
   });
 
-  it('md 远端图固定盒：高走 --pp-md-imgBoxH token（D-9 钉值 160），border 计入盒高', () => {
+  it('md 正文图固定盒：高走 --pp-md-imgBoxH token（D-9 钉值 160），border 计入盒高', () => {
     const box = ruleBody(PANEL_CSS, '.pp-md-imgbox');
     expect(box).toContain('height: var(--pp-md-imgBoxH)');
     expect(box).toContain('margin: 0 0 var(--pp-md-imgGap)');
     expect(box).toContain('border: var(--pp-md-imgBorder) solid var(--rule-soft-ink)');
     expect(box).toContain('overflow: hidden');
+    // 点击放大入口（2026-10）：按钮吃满盒（100%×100%）+ 光标手势 + 无装饰重置
+    const zoom = ruleBody(PANEL_CSS, '.pp-md-img-zoom');
+    expect(zoom).toContain('width: 100%');
+    expect(zoom).toContain('height: 100%');
+    expect(zoom).toContain('cursor: zoom-in');
+    expect(zoom).toContain('border: none');
     expect(TYPE_TOKENS_TS).toContain('imgBoxH: 160'); // D-9 裁定钉值
     expect(TYPE_TOKENS_TS).toContain('imgGap: 12');
     expect(TYPE_TOKENS_TS).toContain('userImages: { thumb: 64, gap: 8, marginTop: 10 }');
@@ -1030,10 +1036,13 @@ describe('B4 多模态附图渲染面（multimodal-image-plan D-9，2026-09）',
     expect(md).toContain('fileUrlToLocalPath');
     // 降级路径：alt 文本段落 / alt 空整行不产块（data: 巨串不灌纸面）
     expect(md).toContain("blocks.push({ t: 'p', inl: parseInline(img[1]) })");
-    // 渲染端图盒只出分类幸存者；本地图字节经 fs_cap 用户口渲染期回读（块只携路径）
+    // 渲染端图盒只出分类幸存者；本地图字节经 fs_cap 用户口渲染期回读（块只携路径）；
+    // 点击看大图入口（2026-10）：zoom 按钮 + 用户气泡/资产卡同款全局浮层
     expect(RENDERER_TS).toContain('pp-md-imgbox');
     expect(RENDERER_TS).toContain('referrerPolicy="no-referrer"');
     expect(RENDERER_TS).toContain("typedRpc('fs_cap'");
+    expect(RENDERER_TS).toContain('pp-md-img-zoom');
+    expect(RENDERER_TS).toContain('pp-media-preview-overlay');
   });
 
   it('INVARIANTS #14 渲染面：块只携引用，data URI 只在渲染期出现', () => {

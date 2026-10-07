@@ -272,19 +272,48 @@ function MdCodeBlock({ el, tail }: { el: Extract<MdBlock, { t: 'code' }>; tail?:
   return codeBlock;
 }
 
-/* ── 正文图（B4 multimodal-image-plan · D-9；2026-10 本地图扩展）──
+/* ── 正文图（B4 multimodal-image-plan · D-9；2026-10 本地图扩展 + 点击放大）──
  * 独立行 ![alt](http/https 或本地绝对路径)，固定盒高（--pp-md-imgBoxH token，
  * chem boxH 先例）——加载/失败态都不改版面（measure 静态镜像即精确）；失败
  * 换 mono 弱墨行（盒界常在，错误不静默）。src 已在解析层分类（imageSrcRef
  * 单一真源）：远端 = 浏览器直载；本地 = 渲染期经 fs_cap read_base64（用户
- * 路径，8MiB 源上限）回读字节成 data URI——块/卷只携路径（INVARIANTS #14 同族）。 */
+ * 路径，8MiB 源上限）回读字节成 data URI——块/卷只携路径（INVARIANTS #14 同族）。
+ * 点击看大图：盒内图包 ZoomTrigger 按钮 → MdImageOverlay 全局模态（用户气泡/
+ * 资产卡同款 .pp-media-preview-overlay；Esc/遮罩点关由 Overlay 原语提供）。 */
 function MdImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?: ReactNode }) {
   return el.local === true ? <MdLocalImage el={el} tail={tail} /> : <MdRemoteImage el={el} tail={tail} />;
 }
 
-/** 远端图（浏览器直载）：加载失败换 alt 行（盒高不变，错误不静默）。 */
+/** 点击放大入口（2026-10）：按钮包图——尺寸与装饰重置在 .pp-md-img-zoom（CSS），
+ *  读屏语义与悬停提示在此（键盘 Enter/Space 原生可达，光标在 CSS 侧 zoom-in）。 */
+function ZoomTrigger({ label, onOpen, children }: { label: string; onOpen: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      className="pp-md-img-zoom"
+      title="点击看大图"
+      aria-label={`放大查看：${label || '图片'}`}
+      onClick={onOpen}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** 正文图放大浮层（点击看大图）：用户气泡/资产卡同款全局模态（Esc/遮罩点关）。 */
+function MdImageOverlay({ src, alt, onClose }: { src: string | null; alt: string; onClose: () => void }) {
+  return (
+    <Overlay open={src !== null} onClose={onClose} portal className="pp-media-preview-overlay">
+      {src !== null && <img className="pp-media-preview" src={src} alt={alt || '图'} />}
+    </Overlay>
+  );
+}
+
+/** 远端图（浏览器直载）：加载失败换 alt 行（盒高不变，错误不静默）；
+ *  点击 → 放大浮层（同一 URL，走浏览器缓存不重读）。 */
 function MdRemoteImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?: ReactNode }) {
   const [failed, setFailed] = useState(false);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   return (
     <>
       <div className="pp-md-imgbox">
@@ -293,17 +322,20 @@ function MdRemoteImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?
             {el.alt || el.src}
           </span>
         ) : (
-          <img
-            className="pp-md-img"
-            src={el.src}
-            alt={el.alt}
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            onError={() => setFailed(true)}
-          />
+          <ZoomTrigger label={el.alt} onOpen={() => setPreviewSrc(el.src)}>
+            <img
+              className="pp-md-img"
+              src={el.src}
+              alt={el.alt}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onError={() => setFailed(true)}
+            />
+          </ZoomTrigger>
         )}
       </div>
+      <MdImageOverlay src={previewSrc} alt={el.alt} onClose={() => setPreviewSrc(null)} />
       {/* 流式尾块续写兜底：同表格先例——图盒固定不接行内，增量独立跟随 */}
       {tail}
     </>
@@ -317,9 +349,11 @@ type LocalImageState =
   | { status: 'error'; reason: string };
 
 /** 本地图：fs_cap read_base64（用户路径）→ data URI。读取失败与解码失败都换
- *  可读行「图片不可读：<文件名>」（title 带全路径与原因——不静默、盒界常在）。 */
+ *  可读行「图片不可读：<文件名>」（title 带全路径与原因——不静默、盒界常在）；
+ *  就绪态可点击 → 放大浮层（同一 data URI，不二次读取）。 */
 function MdLocalImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?: ReactNode }) {
   const [state, setState] = useState<LocalImageState>({ status: 'loading' });
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     setState({ status: 'loading' });
@@ -340,19 +374,22 @@ function MdLocalImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?:
     <>
       <div className="pp-md-imgbox">
         {state.status === 'ready' ? (
-          <img
-            className="pp-md-img"
-            src={state.dataUri}
-            alt={el.alt}
-            decoding="async"
-            onError={() => setState({ status: 'error', reason: '字节不是可显示的图片（解码失败）' })}
-          />
+          <ZoomTrigger label={el.alt} onOpen={() => setPreviewSrc(state.dataUri)}>
+            <img
+              className="pp-md-img"
+              src={state.dataUri}
+              alt={el.alt}
+              decoding="async"
+              onError={() => setState({ status: 'error', reason: '字节不是可显示的图片（解码失败）' })}
+            />
+          </ZoomTrigger>
         ) : state.status === 'error' ? (
           <span className="pp-md-img-alt" title={`${el.src} — ${state.reason}`}>
             图片不可读：{baseNameOf(el.src)}
           </span>
         ) : null}
       </div>
+      <MdImageOverlay src={previewSrc} alt={el.alt} onClose={() => setPreviewSrc(null)} />
       {/* 流式尾块续写兜底：同表格先例——图盒固定不接行内，增量独立跟随 */}
       {tail}
     </>
