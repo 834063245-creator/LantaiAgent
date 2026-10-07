@@ -52,7 +52,14 @@ import type { ConfirmCardResponse } from '../../../agent/agent-types';
 import type { BlockRendererProps } from '../../../composition/renderer-service';
 // 物类签真源（2026-09-23 图版架批上移宿主层；本件取用 + 原样转出，见下方题签段注）
 import { plateSignOf } from '../../../paper/plate-sign';
-import { rendererHooks, rendererLoadViewer, rendererOverlay, rendererReact, rendererRpc } from './renderer-host';
+import {
+  rendererAssetState,
+  rendererHooks,
+  rendererLoadViewer,
+  rendererOverlay,
+  rendererReact,
+  rendererRpc,
+} from './renderer-host';
 import { normalizeExt, type ViewerBytes, type ViewerProps, viewerRegistry } from './viewer-registry';
 import { registerBuiltinViewers } from './viewers';
 
@@ -1556,6 +1563,10 @@ const HTML_CARD_MAX_BYTES = 512 * 1024;
 const HTML_CARD_HEIGHT_CAP = 1000;
 const HTML_CARD_NS = 'lantai.card-resize';
 const HTML_CARD_PING = 'lantai.card-ping';
+/** 状态桥协议（2026-10-07 asset-state）：子 → 父 {type, req, op, patch?}；
+ *  父 → 子 {type, req, ok, state?|error?}。req 由卡自增配对，2s 超时 reject。 */
+const HTML_CARD_STATE_NS = 'lantai.card-state';
+const HTML_CARD_STATE_TIMEOUT_MS = 2000;
 
 /** html 卡 capability 行（WO-8/A2）：v1 网络口全 never；ask/allow 挂权限引擎留待后需。 */
 export const HTML_CARD_CAPABILITY = { id: 'builtin/html', network: 'never' } as const;
@@ -1583,6 +1594,7 @@ ${safeCode}
 <script>
 (function () {
   var NS = '${HTML_CARD_NS}';
+  var STATE_NS = '${HTML_CARD_STATE_NS}';
   var last = 0;
   function report() {
     var h = document.documentElement.scrollHeight;
@@ -1591,32 +1603,103 @@ ${safeCode}
   if (document.readyState === 'complete') report();
   else window.addEventListener('load', report);
   new ResizeObserver(function () { report(); }).observe(document.body);
+  // 状态桥（2026-10-07 asset-state）：window.lantai.state = 本卡的「存盘口」——
+  // 卡里发生的一切（输入/勾选/拖拽）默认对宿主是黑箱（沙箱无 same-origin、CSP
+  // connect-src 'none'），本口是唯一的回传通道。
+  //   get()      → Promise，读回已存状态（无 = {}）；
+  //   patch(obj) → Promise，浅合并写入（只写你给的键，别的键不动）；
+  // 拒绝（reject）的两种情形：宿主拒绝（超限 / 值不可序列化 / 本卡没有会话
+  // 上下文）与宿主无响应（2s 超时）。
+  var reqSeq = 0;
+  var pending = {};
+  function stateRequest(op, patch) {
+    return new Promise(function (resolve, reject) {
+      var req = ++reqSeq;
+      var timer = setTimeout(function () {
+        delete pending[req];
+        reject(new Error('宿主无响应（状态 ' + op + ' 超时）'));
+      }, ${HTML_CARD_STATE_TIMEOUT_MS});
+      pending[req] = { resolve: resolve, reject: reject, timer: timer };
+      var msg = { type: STATE_NS, req: req, op: op };
+      if (op === 'patch') msg.patch = patch;
+      window.parent.postMessage(msg, '*');
+    });
+  }
   window.addEventListener('message', function (e) {
-    if (e.data === '${HTML_CARD_PING}') { last = 0; report(); }
+    var d = e.data;
+    if (d === '${HTML_CARD_PING}') { last = 0; report(); return; }
+    if (d && typeof d === 'object' && d.type === STATE_NS && typeof d.req === 'number' && pending[d.req]) {
+      var p = pending[d.req];
+      delete pending[d.req];
+      clearTimeout(p.timer);
+      if (d.ok) p.resolve(d.state);
+      else p.reject(new Error(typeof d.error === 'string' ? d.error : '状态存储拒绝'));
+    }
   });
+  window.lantai = window.lantai || {};
+  window.lantai.state = {
+    get: function () { return stateRequest('get'); },
+    patch: function (patch) { return stateRequest('patch', patch); }
+  };
 })();
 </script>
 </body>
 </html>`;
 }
 
-function HtmlBody({ block }: BlockRendererProps) {
+function HtmlBody({ block, sessionProjectPath, sessionId }: BlockRendererProps) {
   const p = block.payload as { code?: string };
   const code = typeof p.code === 'string' ? p.code : '';
+  const assetId = block.asset?.assetId;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState<number | null>(null);
   const srcDoc = buildHtmlCardDocument(code);
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      if (e.source !== iframeRef.current?.contentWindow) return;
-      if (e.data?.type !== HTML_CARD_NS) return;
-      const h = Number(e.data.height);
-      if (Number.isFinite(h) && h > 0) setHeight(Math.min(h, HTML_CARD_HEIGHT_CAP));
+      const win = iframeRef.current?.contentWindow;
+      if (!win || e.source !== win) return;
+      const data = e.data as { type?: unknown; height?: unknown; req?: unknown; op?: unknown; patch?: unknown } | null;
+      if (!data || typeof data !== 'object') return;
+      if (data.type === HTML_CARD_NS) {
+        const h = Number(data.height);
+        if (Number.isFinite(h) && h > 0) setHeight(Math.min(h, HTML_CARD_HEIGHT_CAP));
+        return;
+      }
+      if (data.type !== HTML_CARD_STATE_NS || typeof data.req !== 'number') return;
+      // 状态桥（2026-10-07 asset-state）：卡片 window.lantai.state 的唯一应答面——
+      // 同步处理、立即回执；会话定位（两个字符串）由纸壳递下，缺席 = 如实报错。
+      const req = data.req;
+      const reply = (payload: { ok: boolean; state?: unknown; error?: string }) =>
+        win.postMessage({ type: HTML_CARD_STATE_NS, req, ...payload }, '*');
+      if (!assetId) {
+        reply({ ok: false, error: '状态存储不可用：本块没有资产身份' });
+        return;
+      }
+      if (!sessionProjectPath || !sessionId) {
+        reply({ ok: false, error: '状态存储不可用：本卡不在已打开的案卷里' });
+        return;
+      }
+      const bridge = rendererAssetState();
+      if (!bridge) {
+        reply({ ok: false, error: '状态存储不可用：宿主桥缺 assetState 面（产物与宿主版本偏斜）' });
+        return;
+      }
+      const key = { projectPath: sessionProjectPath, sessionId };
+      if (data.op === 'get') {
+        reply({ ok: true, state: bridge.get(key, assetId) ?? {} });
+        return;
+      }
+      if (data.op === 'patch') {
+        const r = bridge.patch(key, assetId, (data.patch ?? {}) as Record<string, unknown>);
+        reply(r.ok ? { ok: true } : { ok: false, error: r.error });
+        return;
+      }
+      reply({ ok: false, error: `未知状态操作 '${String(data.op)}'` });
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, []);
+  }, [sessionProjectPath, sessionId, assetId]);
 
   const onLoad = () => {
     iframeRef.current?.contentWindow?.postMessage(HTML_CARD_PING, '*');

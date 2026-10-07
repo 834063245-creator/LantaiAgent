@@ -1,5 +1,5 @@
 {
-  "fingerprint": "251cbd2a",
+  "fingerprint": "8ac3c19a",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -138,6 +138,7 @@
     "generateAssetId",
     "getActiveProvider",
     "getAsset",
+    "getAssetState",
     "getCanvasStore",
     "getCatalogVendors",
     "getChatStore",
@@ -182,6 +183,7 @@
     "killShellWork",
     "layoutRegion",
     "leaveToHome",
+    "listAssetStateSummaryForOwner",
     "listAssets",
     "listCommands",
     "llmDone",
@@ -234,6 +236,7 @@
     "parseModelEntry",
     "parseStructuredError",
     "parseUserMcpJson",
+    "patchAssetState",
     "pickDropAnchor",
     "pickFolder",
     "planRegistry",

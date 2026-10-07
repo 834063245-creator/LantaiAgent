@@ -23,6 +23,7 @@ export const requireKind = impl.requireKind;
 export const requirePresentation = impl.requirePresentation;
 export const upsertAsset = impl.upsertAsset;
 export const validatePayload = impl.validatePayload;
+export const listAssetStateSummaryForOwner = impl.listAssetStateSummaryForOwner;
 export const waitForConfirm = impl.waitForConfirm;
 export const defineTool = impl.defineTool;
 export type Tool = import('./host').Tool;

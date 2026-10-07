@@ -40,6 +40,7 @@ Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 
 | **会话树（枝）** | [`session-tree-plan.md`](session-tree-plan.md) | **全批已落地（2026-09-19）；2026-09-22 按块定位修正（§12.13）；余真机手感** | 消息动作行「立枝」+ **空间手势立枝**（块上「枝」握把拖出引线、松手落在纸上就地立枝）；切点 = **该块所在那一步的末尾**（2026-09-22 从「整轮末尾」修正——用户报「复制了一整个会话」）；侧栏树形 + 书脊/卷首「枝」标 + 未落定置灰；删父卷**连坐整棵子树**；画布上朱砂引线连回父卷分叉节点（**纯指示；点线溯源已于 2026-09-24 摘除**——线不是控件）。**旧枝考古不做**（用户裁定，§9）。裁定见 §9、施工记录见 §12 |
 | **卷日志的抹除（判定件）** | [`session-log-erasure-plan.md`](session-log-erasure-plan.md) | **A 案已落地（2026-09-19）** | 「改 / 重发」之后旧内容**从 `.ndjson` 里物理抹除**（撤回即压实：整份原子重写 + 头行 `erased` 账声明空洞；投影/词表/载荷零改动 ⇒ 零 BCR）；无落盘面不压实（旧语义），写失败 = 未落定 + 下个检查点重试。设计与证据见 [`session-tree-plan.md`](session-tree-plan.md) §12.9/§12.10 |
 | **卸载残留清理** | [`uninstall-purge-plan.md`](uninstall-purge-plan.md) | **代码已落地 + 本机 E2E 通过（2026-09-26）；余真机勾选验收** | NSIS 卸载页勾选「删除应用程序数据」即清干净：钩子只负责「何时问」、删除清单真源在应用里（`src-tauri/src/purge.rs`）——覆盖 `~/.lantai`、改名老位 `~/.hologram` 与两个 AppData 根（旧 identifier 一并）；工作区里的 `.lantai` 永不随卸载删；缺省不勾 = 保数据，自动更新（`/UPDATE`）永不删，静默完全卸载走 `/PURGE-DATA`。**顺带查明旧 MSI 的 fragment 通路从第一版起就没进过 MSI（WiX 限制 + tauri#5970）⇒ 用户拍板 Windows 只发 NSIS，`.msi` 渠道停发（假通路同批删）** |
+| **资产状态（html 卡存档线）** | [`asset-state-plan.md`](asset-state-plan.md) | **代码已落地（2026-10-07）；余真机验收** | 沙箱 html 卡的交互态（卡里输入/勾选/拖拽）经 postMessage 桥写回内核，按会话落 `.lantai/asset-state/<sessionId>.json`；Agent 侧 `list_block_kinds` 读状态摘要（键数/字节）。键系 = (工作区路径, 会话号)×assetId（同 TaskBoard 会话板形态）；合卷保留、删卷清理；两处设计修订见施工单 §8。**须重建 exe**（宿主面 +3 键：getAssetState / patchAssetState / listAssetStateSummaryForOwner） |
 
 ## 待执行但已立项（按成本排）
 

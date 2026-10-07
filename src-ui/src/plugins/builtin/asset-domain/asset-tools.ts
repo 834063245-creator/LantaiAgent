@@ -20,6 +20,7 @@ import {
   findAssetByContent,
   generateAssetId,
   getAsset,
+  listAssetStateSummaryForOwner,
   listAssets,
   requireKind,
   requirePresentation,
@@ -272,15 +273,23 @@ export function createListBlockKindsTool(): Tool {
       // 这段给的就是**已入库内容的派生读数**，是那条迷信的终结面。
       const mine = listAssets(scopeOf(args));
       const shown = mine.slice(0, ASSET_LIST_CAP);
+      // 状态摘要（2026-10-07 asset-state）：html 卡的用户互动态（卡里输入/勾选/拖拽）
+      // 关在沙箱 iframe 里、不进消息——这里是它的**唯一回读面**。无状态的行不加后缀
+      // （省略而非「0 键」噪声）；解析不出会话（零目录工作区等）= 全部省略。
+      const ownerArg = (args as { _owner_id?: unknown })._owner_id;
+      const ownerId = typeof ownerArg === 'string' ? ownerArg : undefined;
+      const stateByAsset = new Map(listAssetStateSummaryForOwner(ownerId).map((s) => [s.assetId, s] as const));
       const inventory =
         mine.length === 0
           ? '本会话暂无资产（show_asset 建的第一个会出现在这里）。'
           : `本会话已有资产（${mine.length} 个${mine.length > shown.length ? `，只列前 ${shown.length}` : ''}）` +
             `——已入库内容的派生读数，要核对/回读看这里：\n` +
             shown
-              .map(
-                (a) => `- ${a.assetId} ${a.kind}${a.title ? ` 「${a.title}」` : ''}：${assetDigest(a.kind, a.payload)}`,
-              )
+              .map((a) => {
+                const st = stateByAsset.get(a.assetId);
+                const stateText = st ? `（用户状态 ${st.keys} 键 / ${st.bytes} 字节）` : '';
+                return `- ${a.assetId} ${a.kind}${a.title ? ` 「${a.title}」` : ''}：${assetDigest(a.kind, a.payload)}${stateText}`;
+              })
               .join('\n');
       return (
         '可用资产 kind（' +
@@ -291,7 +300,9 @@ export function createListBlockKindsTool(): Tool {
         inventory +
         '\n规则：kind 决定语义（update 不可换 kind）；presentation 决定画法（kind 白名单内可选，缺省用默认）。' +
         '\n回执语义：show_asset 的 receipt.summary 是**已入库内容**的派生读数（可直接与你的入参核对）——' +
-        '不要用重发同一条来验证；同 kind + title 的重发是原位替换（不新增卡片），改已有块内容用 update_asset。'
+        '不要用重发同一条来验证；同 kind + title 的重发是原位替换（不新增卡片），改已有块内容用 update_asset。' +
+        '\n状态读数：行尾的「用户状态 N 键 / B 字节」= 用户在 html 卡里操作后存下的交互态（卡内输入/勾选等）' +
+        '规模读数——看到它就说明用户在这张卡上留过东西；状态内容不在本工具返回里（v1 只给规模）。'
       );
     },
   });

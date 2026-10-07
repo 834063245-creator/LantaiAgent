@@ -6,6 +6,7 @@
 // 所有函数接收 SessionContext，而非访问 `this`。
 
 import { agentSessionState, type OwnedAgentHandle, type TurnPair } from '../agent/agent-session-state';
+import { removeAssetStateSession } from '../agent/asset-state';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import type { ExecStateInstance } from '../agent/execution-state';
 import { log } from '../agent/logger';
@@ -2126,6 +2127,10 @@ export async function deleteSessionFile(
   // 卷已彻底删除：摊开集合移除该卷位置；公共物（钉住块/纸条）是工作区级
   // 宿主、不连坐——钉块以快照继续显示在纸上（钉到拔为止，Stage-5）。
   getCanvasStore(ctx.storeId).getState().removeRegion(String(sessionId));
+  // 资产状态表随卷消亡（2026-10-07 asset-state）：**真删除**才清（内存 + 落盘文件）
+  // ——合卷（从画布收走、卷仍在盘上）不清，续开时从磁盘恢复。best-effort 不阻塞
+  // 删除流程（对齐 board 销毁的尽力而为语义）。
+  void removeAssetStateSession(projectPath, String(sessionId)).catch(() => {});
   // 若该会话在标签页中打开，则关闭该标签页
   const idx = getChatStore(ctx.storeId)
     .sess.getState()

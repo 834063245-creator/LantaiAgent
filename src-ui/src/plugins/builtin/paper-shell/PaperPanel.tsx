@@ -199,6 +199,8 @@ const BlockView = memo(function BlockView({
   provTitle,
   provTraceable = false,
   onProvClick,
+  sessionProjectPath,
+  sessionId,
 }: {
   block: SourcedBlock;
   /** 文类签机读序号（卷内流水号，三位补零） */
@@ -239,6 +241,10 @@ const BlockView = memo(function BlockView({
    *  **传稳定回调 + 由本组件回传 id**——调用点若传内联箭头会击穿 memo
    *  （平移/流式帧全块重渲，§1.9 性能纪律）。 */
   onProvClick?: (id: string) => void;
+  /** 状态桥定位（2026-10-07 asset-state）：原样递给块体渲染器——HtmlBody 的沙箱卡
+   *  存盘口据此定位 `.lantai/asset-state/<sessionId>.json`（其他渲染器不用可忽略）。 */
+  sessionProjectPath?: string;
+  sessionId?: string;
 }) {
   const p = block.payload;
   const Body = block.asset
@@ -328,6 +334,8 @@ const BlockView = memo(function BlockView({
             onSidecarPinMouseDown={onSidecarPinMouseDown}
             sidecarOut={sidecarOut}
             onSidecarRestore={onSidecarRestore}
+            sessionProjectPath={sessionProjectPath}
+            sessionId={sessionId}
           />
         </PluginBoundary>
       ) : (
@@ -1245,6 +1253,10 @@ export function PaperPanel() {
                   >
                     <BlockView
                       block={snapshotBlock}
+                      /* 状态桥定位（2026-10-07 asset-state）：源卷未删才给会话键——
+                         已删卷不写（写了会给已删的卷重建状态文件）；无工作区 = 不传。 */
+                      sessionProjectPath={projectPath || undefined}
+                      sessionId={source && !deadOrphanPinIds.has(pinId) ? String(source.sessionId) : undefined}
                       seq="PIN"
                       ops={EMPTY_OPS}
                       folded={foldedOf(snapshotBlock)}
@@ -1328,6 +1340,10 @@ export function PaperPanel() {
                         {r.unitLeadIds.has(b.id) && <span className="pp-unit-rule" aria-hidden="true" />}
                         <BlockView
                           block={b}
+                          /* 状态桥定位（2026-10-07 asset-state）：本块所属卷的工作区根
+                             + 会话号（两个字符串，天然稳定——不新建对象击穿 memo）。 */
+                          sessionProjectPath={projectPath || undefined}
+                          sessionId={r.sessionId}
                           seq={r.seq.get(b.id) ?? '000'}
                           ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
                           folded={foldedOf(b)}
@@ -1384,6 +1400,9 @@ export function PaperPanel() {
                       >
                         <BlockView
                           block={b}
+                          /* 状态桥定位（2026-10-07 asset-state）：同流内块。 */
+                          sessionProjectPath={projectPath || undefined}
+                          sessionId={r.sessionId}
                           seq={r.seq.get(b.id) ?? '000'}
                           ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
                           folded={foldedOf(b)}

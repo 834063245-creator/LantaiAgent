@@ -33,6 +33,10 @@ import {
   requirePresentation,
   validatePayload,
 } from '../../agent/asset-kinds';
+// asset-state（2026-10-07 html 卡状态桥）：渲染层经 renderer-host 取读写两键；
+// Agent 读口（asset-domain 的 list_block_kinds）取 owner 解析面。带模块级状态
+// （会话表 + 落盘句柄）——必须走桥，禁止随包内联。
+import { getAssetState, listAssetStateSummaryForOwner, patchAssetState } from '../../agent/asset-state';
 import { findAssetByContent, getAsset, listAssets, upsertAsset } from '../../agent/asset-store';
 import { BoardPersistence } from '../../agent/board-persistence';
 // S3：工具域/段贡献插件对象导入已拆除——产物域真源自带；此处只导工具工厂
@@ -848,6 +852,12 @@ const faceDeps = {
   waitWithin,
   ASSEMBLY_READY_WAIT_MS,
   createTauriProcIO,
+  // asset-state（2026-10-07 html 卡状态桥）：renderers 的 HtmlBody 经 renderer-host
+  // 取读写（get/patch）；asset-domain 的 list_block_kinds 取 owner→会话解析面。
+  // 带模块级状态（会话表 + 落盘句柄）——必须走桥。
+  getAssetState,
+  patchAssetState,
+  listAssetStateSummaryForOwner,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

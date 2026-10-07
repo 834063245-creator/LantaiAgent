@@ -19,6 +19,9 @@ export {
   requirePresentation,
   validatePayload,
 } from '../../../agent/asset-kinds';
+// 资产状态摘要（2026-10-07 asset-state）：list_block_kinds 的「用户在这张卡上做过什么」
+// 读面——按 owner（_owner_id）解析所属会话后取派生读数（键数 / 字节数）。
+export { listAssetStateSummaryForOwner } from '../../../agent/asset-state';
 export type { AssetRecord } from '../../../agent/asset-store';
 export { findAssetByContent, getAsset, listAssets, upsertAsset } from '../../../agent/asset-store';
 export { waitForConfirm } from '../../../agent/confirm-registry';

@@ -66,6 +66,14 @@ const host = requireHost();
 const impl = host.mods.faceDeps as unknown as {
   activeMarkdownBody?: () => ComponentType<{ block: never }> | null;
   createBlock?: (kind: string, payload: unknown, source: unknown) => unknown;
+  /** asset-state 读写面（2026-10-07）：html 卡状态桥——模块级状态在内核，
+   *  产物域不得内联（写进副本 = Agent 读不到），故经宿主面取。 */
+  getAssetState?: (key: { projectPath: string; sessionId: string }, assetId: string) => Record<string, unknown> | null;
+  patchAssetState?: (
+    key: { projectPath: string; sessionId: string },
+    assetId: string,
+    patch: Record<string, unknown>,
+  ) => { ok: true } | { ok: false; error: string };
 };
 
 /** React 全量（组件构造面——esbuild define 产物域用到的元素类型不在此受限）。 */
@@ -96,6 +104,23 @@ export function rendererLoadViewer(id: string): Promise<ComponentType<never>> {
  *  （产物域若相对 import 那个模块会被 esbuild 内联成另一份实例，读不到内核的登记）。 */
 export function rendererActiveMarkdownBody(): ComponentType<{ block: never }> | null {
   return impl.activeMarkdownBody?.() ?? null;
+}
+
+/** html 卡状态桥（2026-10-07 asset-state）：从宿主面取内核 asset-state 读写函数
+ *  （同 rendererActiveMarkdownBody 纪律——带状态的模块不得随包内联）。
+ *  面缺（宿主/产物版本偏斜）= null，消费方如实拒绝而不是假装成功。 */
+export function rendererAssetState(): {
+  get(key: { projectPath: string; sessionId: string }, assetId: string): Record<string, unknown> | null;
+  patch(
+    key: { projectPath: string; sessionId: string },
+    assetId: string,
+    patch: Record<string, unknown>,
+  ): { ok: true } | { ok: false; error: string };
+} | null {
+  const get = impl.getAssetState;
+  const patch = impl.patchAssetState;
+  if (!get || !patch) return null;
+  return { get, patch };
 }
 
 /** 查看器建 markdown 块（A4 销账 W1，2026-09-28）：块 id 发号器在内核

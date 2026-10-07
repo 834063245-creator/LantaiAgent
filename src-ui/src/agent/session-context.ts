@@ -105,6 +105,42 @@ export function setStickyCwd(ownerId: string | undefined | null, physicalPath: s
   if (c) c.stickyCwd = physicalPath;
 }
 
+// ── owner → 会话号（asset-state 读口，2026-10-07）──
+//
+// 用途：agent 侧模块（asset-state 的 listAssetStateSummaryForOwner）要经 owner
+// （= executor 注入的 _owner_id，agent bus id）反查「本会话」——会话号是本仓库
+// 会话级资源的通用键（TaskBoard / DiscoveryBoard / BoardPersistence 同源）。
+//
+// 为什么是独立一张表而不是 OwnerContext 的字段：会话绑定由 runtime 在
+// `_bindAgentSession` / `_materializeSessionServices` 两处写入，而 OwnerContext
+// 的注册条件是「有 projectPath」（零目录工作区不注册）——挂一起会让会话号解析
+// 陪着 projectPath 一起缺席。两表各自独立、各自完备；消费方（asset-state）
+// 按「两者齐备才可用」自行合取。
+const sessionByOwner = new Map<string, string>();
+
+/** runtime 会话绑定（AgentHandle.bindSession / 子 Agent 物化）时写入；
+ *  同一 owner 重绑 = 覆盖（会话号归属会话层，随其重绑语义）。
+ *  对称清理 = runtime `_disposeAgent`（与 _agentSessions 同命）。 */
+export function setOwnerSessionId(ownerId: string, sessionId: string): void {
+  sessionByOwner.set(ownerId, sessionId);
+}
+
+/** 读 owner 的会话号（未登记 = undefined——消费方如实降级，不造默认值）。 */
+export function ownerSessionIdOf(ownerId: string | undefined | null): string | undefined {
+  if (!ownerId) return undefined;
+  return sessionByOwner.get(ownerId);
+}
+
+/** 清理单条（runtime _disposeAgent 调用——与 _agentSessions.delete 同点）。 */
+export function clearOwnerSessionId(ownerId: string): void {
+  sessionByOwner.delete(ownerId);
+}
+
+/** 测试隔离辅助——清空全部记录（生产代码禁用）。 */
+export function clearOwnerSessionsForTest(): void {
+  sessionByOwner.clear();
+}
+
 /** 绝对性判定：盘符（C:\ / C:/）、UNC（\\srv\share）、根相对（/x 或 \x）。
  *  纯文本判定，不做任何 IO / 规范化。 */
 export function isAbsolutePath(p: string): boolean {

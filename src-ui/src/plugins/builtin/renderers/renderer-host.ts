@@ -18,6 +18,12 @@
 import type { ComponentType } from 'react';
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type AssetStateKey,
+  type AssetStatePatchResult,
+  getAssetState,
+  patchAssetState,
+} from '../../../agent/asset-state';
 import { Overlay } from '../../../app/overlay';
 import { loadHeavyViewer } from '../../../app/paper/viewers';
 import { createBlock, type SourcedBlock } from '../../../paper/block-model';
@@ -47,6 +53,23 @@ export function rendererCreateBlock(text: string): SourcedBlock<'markdown'> {
  */
 export function rendererActiveMarkdownBody(): MarkdownBodyComponent | null {
   return activeMarkdownBody();
+}
+
+/** 渲染器侧的状态桥面（asset-state 的读/写两函数；HtmlBody 消费）。 */
+export interface RendererAssetStateFace {
+  get(key: AssetStateKey, assetId: string): Record<string, unknown> | null;
+  patch(key: AssetStateKey, assetId: string, patch: Record<string, unknown>): AssetStatePatchResult;
+}
+
+/**
+ * html 卡状态桥（2026-10-07 asset-state）：读写面真源 = 内核模块 `agent/asset-state.ts`
+ * ——产物域不得相对 import 该模块（会被 esbuild 内联成另一份实例，模块级状态分家：
+ * 卡片写进副本、Agent 读内核那份，永不互通），故经本宿主桥取值。
+ * 产物域（`renderer-host.aliased.ts`）面缺（宿主/产物版本偏斜）= null，
+ * 消费方（HtmlBody）如实拒绝而不是假装成功。
+ */
+export function rendererAssetState(): RendererAssetStateFace | null {
+  return { get: getAssetState, patch: patchAssetState };
 }
 
 /**

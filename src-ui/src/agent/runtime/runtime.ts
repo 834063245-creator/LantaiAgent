@@ -25,6 +25,7 @@ import { Agent } from '../agent';
 import { resolveAgentLoop } from '../agent-loop/agent-loop-active';
 import type { AgentUINotifier, EventSink } from '../agent-types';
 import { EventKind } from '../agent-types';
+import { prewarmAssetStateSession } from '../asset-state';
 import { AgentBlueprint, type BlueprintScope } from '../blueprint';
 import { AgentContext } from '../context';
 import { DiscoveryBoard, DiscoveryBoardProxy } from '../discovery-board';
@@ -37,6 +38,9 @@ import { log } from '../logger';
 import type { MessageBus } from '../message-contract';
 import { requireMultiagentComm } from '../multiagent-impl';
 import { PlanStateManager } from '../plan/plan-state';
+// asset-state 读口（2026-10-07）：owner（bus id）→ 会话号——会话绑定时写入、
+// 销毁时与 _agentSessions 同点清理；渲染侧不经过本表（它直接拿会话号）。
+import { clearOwnerSessionId, setOwnerSessionId } from '../session-context';
 import { SessionLog } from '../session-log';
 // 批 9h-3：技能扫描随 skill-domain 包 ⇒ 走内核登记表门面（缺实现 = 具名 fail-loud；
 // 调用点外层 catch 保住「技能目录读不到不炸装配」的既有降级语义）
@@ -360,6 +364,10 @@ export class AgentRuntime implements RuntimePort {
     // 更新会话映射 — 子 Agent 经 _agentSessions.get(parentId) 继承正确会话，
     // _disposeAgent 据此清理正确会话的 board
     this._agentSessions.set(agentId, sessionId);
+    // asset-state 读口（同上时点）：owner → 会话号可解析；顺带预热该会话的状态表
+    // （提前触发读盘恢复，收窄「html 卡首读为空」的窗口——文件读快，通常先于渲染完成）。
+    setOwnerSessionId(agentId, sessionId);
+    prewarmAssetStateSession(this._projectPath, sessionId);
     // 重启收养：根 Agent 绑定会话板后，认领上次进程遗留的条目与 worktree
     // （子 Agent 完成时父已退出 → 旧父 id 死账；Rust isolation 注册表内存态
     // → 磁盘 worktree 死账。两侧都收养后 agent_merge 恢复可用。）
@@ -611,6 +619,10 @@ export class AgentRuntime implements RuntimePort {
       const discoveryProxy = new DiscoveryBoardProxy(discoveryBoard);
       this._agentProxies.set(ctx.agentId, { task: taskProxy, discovery: discoveryProxy });
       this._agentSessions.set(ctx.agentId, sessionId);
+      // asset-state 读口的初始绑定：子 Agent（继承父会话）创建即写入；
+      // 主 Agent 此刻可能还是 'default' 哨兵（数字 id 创建后才分配）——跳过，
+      // 由会话层 bindSession 重绑真号（同 _agentSessions 的重绑语义）。
+      if (sessionId !== 'default') setOwnerSessionId(ctx.agentId, sessionId);
       ctx.set('taskBoard', taskProxy as unknown as TaskBoardFace);
       ctx.set('discoveryBoard', discoveryProxy as unknown as DiscoveryBoard);
     }
@@ -859,6 +871,7 @@ export class AgentRuntime implements RuntimePort {
       () => () => {
         this._agentProxies.delete(agentId);
         this._agentSessions.delete(agentId);
+        clearOwnerSessionId(agentId);
         this._agentTaskManagers.delete(agentId);
         this.agents.delete(agentId);
       },

@@ -54,6 +54,14 @@ export interface BlockRendererProps {
   sidecarOut?: boolean;
   /** 眉批恢复：拔掉 `:sc` 快照钉，夹注回眉批栏（占位点击手势的语义端） */
   onSidecarRestore?: (block: SourcedBlock) => void;
+  /** 本块所属会话的落盘定位（2026-10-07 asset-state，壳层渲染时填）：
+   *  工作区根 + 会话号字符串（runtime bindSession 的同一把尺子）——html 沙箱卡的
+   *  状态桥据此定位 `.lantai/asset-state/<sessionId>.json`。拿不到（孤儿钉快照 /
+   *  无工作区）不填 = 该块状态读写不可用（卡片如实报错，不造假设）。
+   *  用两个**字符串**而非对象：Props 比对新旧，字符串天然稳定——对象字面量
+   *  会在每次渲染换引用，击穿 BlockView 的 memo（纸面平移帧全块重渲）。 */
+  sessionProjectPath?: string;
+  sessionId?: string;
 }
 
 /** 渲染器贡献：一个 kind 一个渲染器（body 渲染组件）。 */
