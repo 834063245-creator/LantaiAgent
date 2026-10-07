@@ -474,6 +474,8 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 - **`window` 不得当全局注册表用（2026-09-17 修）**：`src/state/scoped-store.ts` 原以 `window[key]` 存 store Map，而该文件经 `canvas-store.ts` → `app/chat/chat-core.ts` 在**模块装配期**求值——`window` 在 node 下未定义，一个词把 136 个测试文件连带绑死在 jsdom 上。已改 `globalThis`（浏览器/jsdom 下 `window === globalThis`，vitest jsdom 环境源码里就是 `global.window = global`，语义恒等）。新增全局注册表一律 `globalThis`。
 - **测试运行纪律（2026-08-29 立规，实测踩坑 2 小时；2026-09-16 自 AGENTS.md §10 迁入）**：cargo 测试一律 `--no-run` 先链接 → 前台直跑测试二进制 → 输出直写文件；**禁止 `| tail` / `Select-String` 挂在长 cargo 命令尾部**（管道缓冲全程无输出 + 收尾假挂，会把「冷链接 2-10 分钟」误判成 hang）。最可靠姿势 = `Start-Process -RedirectStandardOutput log -NoNewWindow` + 独立命令轮询日志；小输出直接由工具捕获，大输出走 `cmd /c "exe > log 2>&1"`（PowerShell `>` 对原生命令另有「收尾假挂」变体）。**`hologram-engine.exe` 是用户 DSH 应用的子进程，绝不能 taskkill**（崩溃自动重启，杀了只会误导排障）。另三条续窗实测：① cdp e2e 报「端口 Ns 内未就绪」先清 `D:\tmp\hologram-browser-profile*` 僵尸 chrome + 残留 profile（失败 panic 不清浏览器树，自续污染后续每一轮）；② vitest 全量报 1 error（Worker exited unexpectedly / heap OOM）但计数全过 = 有测试文件在用例体内自旋，**别调大堆**，用文件列表二分（列表必须落盘后 `(Get-Content 列表)` 传参）；③ 构建报 os error 32（文件被占用）先查 IDE rust-analyzer 残留句柄（`handle.exe`）——它是语言服务器，杀进程会被 IDE 立刻重启并重新锁上，用 `handle.exe -c <句柄号> -p <pid> -y` 关句柄。
 
+- **构建临时目录（2026-10-07 实测）**：`vite build` 报 `[commonjs--resolver] remove D:\Temp\user\esbuild-<hex>: Access is denied` **不是代码错**——esbuild 对 **>1MB 的 transform 输入**改走「Node 写临时文件 → Go 读后 `os.Remove`」（`esbuild/lib/main.js:774-777` 的 inputFS 路径），而本机沙箱只允许在**项目树内**删（实测：项目外临时目录 5/5 失败，`C:\Users\…\Temp` 同病；项目内 3/3 通过；给目标目录 Everyone 全开 ACL 也不翻绿 ⇒ 不是目标目录权限，node 自己删同一文件反而成功）。`src-ui/vite.config.ts` 已把构建期 `TEMP/TMP` 收进 `node_modules/.vite-tmp/` 根治（dev / build / vitest 三条 vite 入口一次覆盖）——**别再往系统 TEMP 迁就**；同族报错再现先看这条。
+
 ## 4. 文档维护
 
 - **四层形态（2026-09-16 文档面重构立规；施工单 `docs/plans/doc-surface-refactor-plan.md`）**：

@@ -2,9 +2,29 @@
 // SPDX-License-Identifier: MIT
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
+
+// ── 构建期临时目录收进项目树（2026-10-07）──
+//
+// 病灶：esbuild 对 **>1MB 的 transform 输入**改走「Node 写临时文件 → Go 读后
+// `os.Remove`」的 inputFS 路径（`esbuild/lib/main.js:774-777`）。本机对**项目树
+// 以外**的临时目录会拒绝那次删除 —— 最小复现（同一条 >1MB transform）：
+// `TEMP=D:\Temp\user` / `D:\ProbeTempHG` / `C:\Users\…\Temp` 一律
+// `remove …: Access is denied.`（给目标目录 Everyone 全开 ACL 也不翻绿；node 自己
+// 删同一个文件反而成功 ⇒ 不是目标目录权限，是沙箱写入边界），`TEMP=<项目内>`
+// 3/3 通过。后果：`vite build`（含 tauri 的 beforeBuildCommand）整批挂在
+// monaco 那几个 >1MB 的模块上，报 `[commonjs--resolver] remove …: Access is denied`。
+//
+// 治法：把**本进程树**（vite 及其拉起的 esbuild 服务）的 TEMP/TMP 指到项目内
+// `node_modules/.vite-tmp/`（同 vite 自己的依赖缓存 `node_modules/.vite` 的先例，
+// 天然不进 git）。改的是本进程的环境，不动用户系统设置；dev / build / vitest
+// 三条 vite 入口一次覆盖。副作用仅「构建临时文件不落系统 TEMP」。
+const esbuildTmp = fileURLToPath(new URL('./node_modules/.vite-tmp/', import.meta.url));
+mkdirSync(esbuildTmp, { recursive: true });
+process.env.TEMP = esbuildTmp;
+process.env.TMP = esbuildTmp;
 
 // ── 构建锚（日志可观测性批 1，2026-09-27）──
 //
