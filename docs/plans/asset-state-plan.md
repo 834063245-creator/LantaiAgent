@@ -182,6 +182,7 @@ Agent 读口因此需要一个「owner（`_owner_id`）→ 会话号」的解析
 - 壳：`src/composition/renderer-service.tsx`（Props 两字段）；`src/plugins/builtin/paper-shell/PaperPanel.tsx`（三处填值）
 - 面：`src/plugins/builtin/host-modules.ts`（faceDeps +3 键）+ `host-surface.baseline.json` 重生成（指纹 `251cbd2a → 8ac3c19a`）
 - 读口：`src/plugins/builtin/asset-domain/*`（list_block_kinds 行尾状态摘要）
+- 教学（第二 commit `4ba106d8`）：`src/agent/asset-kinds.ts` —— html kind 描述带出 `window.lantai.state` 用法（patch/get + 上限 + 状态读数可见）。**机制若不被卡作者（模型）知道，对模型生成的卡等于空转**；kind 描述是模型写卡前唯一的发现面（已验证非契约面：convergence 快照与生成物均不含 kind 描述）
 - 清理：`src/ui/chat-session.ts`（`deleteSessionFile` 一处）
 - 测试：`tests/asset-state.test.ts`（14 例）、`tests/html-card-state-bridge.test.tsx`（5 例）
 
@@ -189,5 +190,5 @@ Agent 读口因此需要一个「owner（`_owner_id`）→ 会话号」的解析
 
 1. 卡里输入 → 滚走再滚回：值还在（同一卷）；
 2. 卡里输入 → 切走工作区再回来 / 重启应用：值还在（重启后首帧可能先空一拍——读盘恢复完成前读到 null 是既定语义）；
-3. 让 Agent `list_block_kinds`：行尾出现「用户状态 N 键 / B 字节」；
+3. 让 Agent 做一张带输入/勾选的 html 卡（kind 描述已教它用 `window.lantai.state`）→ 操作后 `list_block_kinds` 行尾出现「用户状态 N 键 / B 字节」；
 4. **删卷**（侧栏删除）→ `.lantai/asset-state/<该卷号>.json` 消失；**合卷** → 文件保留、续开恢复。
