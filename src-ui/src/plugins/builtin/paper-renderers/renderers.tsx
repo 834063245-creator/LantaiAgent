@@ -53,12 +53,23 @@ import {
   type ToolTone,
   toolDisplay,
 } from '../../../paper/tool-text';
+// 本地图 data URI 的 MIME/扩展名取用（imageSrcRef 分类已保证图片扩展名）——
+// 表与判据住内核 `paper/viewer-exts.ts`（纯常量，随包内联；名册 shared 已登记）。
+import { fileExtOf, VIEWER_IMAGE_MIMES } from '../../../paper/viewer-exts';
 // 差分语言判据（分块与块体渲染的单一真源——转译层把围栏一律拆成抄录块，
 // 块体在这里按语言分流：真差分 → 差分着色；其余 → hljs 代码体）。
 // A4 销账 W1（2026-09-28）：判据本体住内核 `paper/translate.ts`（带状态——块 id 发号器
 // 经 `createBlock` 落 `paper/block-model.ts` 的 `let blockSeq`），故走本包宿主桥。
 import type { ChatImageRef } from '../../../provider/types';
-import { isDiffLang, MermaidBlock, Overlay, previewUrlFor, readAttachmentBase64, useShellStore } from './host';
+import {
+  isDiffLang,
+  MermaidBlock,
+  Overlay,
+  previewUrlFor,
+  readAttachmentBase64,
+  typedRpc,
+  useShellStore,
+} from './host';
 
 /* ── 流式增量渐显（streaming-fade-render-plan 2026-08-30）──
  * 把「新长出来的文本」与「旧文本」分开：旧文本零动画（流式重渲染不闪），
@@ -261,11 +272,18 @@ function MdCodeBlock({ el, tail }: { el: Extract<MdBlock, { t: 'code' }>; tail?:
   return codeBlock;
 }
 
-/* ── 远端图（B4 multimodal-image-plan · D-9）：独立行 ![alt](http/https) ──
- * 固定盒高（--pp-md-imgBoxH token，chem boxH 先例）——加载/失败态都不改
- * 版面（measure 静态镜像即精确）；加载失败换 alt 行（mono 弱墨，盒界常在，
- * 错误不静默）。src 已在解析层过协议白名单（remoteImageSrc）。 */
+/* ── 正文图（B4 multimodal-image-plan · D-9；2026-10 本地图扩展）──
+ * 独立行 ![alt](http/https 或本地绝对路径)，固定盒高（--pp-md-imgBoxH token，
+ * chem boxH 先例）——加载/失败态都不改版面（measure 静态镜像即精确）；失败
+ * 换 mono 弱墨行（盒界常在，错误不静默）。src 已在解析层分类（imageSrcRef
+ * 单一真源）：远端 = 浏览器直载；本地 = 渲染期经 fs_cap read_base64（用户
+ * 路径，8MiB 源上限）回读字节成 data URI——块/卷只携路径（INVARIANTS #14 同族）。 */
 function MdImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?: ReactNode }) {
+  return el.local === true ? <MdLocalImage el={el} tail={tail} /> : <MdRemoteImage el={el} tail={tail} />;
+}
+
+/** 远端图（浏览器直载）：加载失败换 alt 行（盒高不变，错误不静默）。 */
+function MdRemoteImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?: ReactNode }) {
   const [failed, setFailed] = useState(false);
   return (
     <>
@@ -290,6 +308,81 @@ function MdImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?: Reac
       {tail}
     </>
   );
+}
+
+/** 本地图三态：读取中（空盒）→ data URI 直出｜可读错误行（读取/解码失败同形）。 */
+type LocalImageState =
+  | { status: 'loading' }
+  | { status: 'ready'; dataUri: string }
+  | { status: 'error'; reason: string };
+
+/** 本地图：fs_cap read_base64（用户路径）→ data URI。读取失败与解码失败都换
+ *  可读行「图片不可读：<文件名>」（title 带全路径与原因——不静默、盒界常在）。 */
+function MdLocalImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?: ReactNode }) {
+  const [state, setState] = useState<LocalImageState>({ status: 'loading' });
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: 'loading' });
+    readLocalImageBase64(el.src)
+      .then((b64) => {
+        if (cancelled) return;
+        const mime = VIEWER_IMAGE_MIMES[fileExtOf(el.src)] ?? 'application/octet-stream';
+        setState({ status: 'ready', dataUri: `data:${mime};base64,${b64}` });
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setState({ status: 'error', reason: e instanceof Error ? e.message : String(e) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [el.src]);
+  return (
+    <>
+      <div className="pp-md-imgbox">
+        {state.status === 'ready' ? (
+          <img
+            className="pp-md-img"
+            src={state.dataUri}
+            alt={el.alt}
+            decoding="async"
+            onError={() => setState({ status: 'error', reason: '字节不是可显示的图片（解码失败）' })}
+          />
+        ) : state.status === 'error' ? (
+          <span className="pp-md-img-alt" title={`${el.src} — ${state.reason}`}>
+            图片不可读：{baseNameOf(el.src)}
+          </span>
+        ) : null}
+      </div>
+      {/* 流式尾块续写兜底：同表格先例——图盒固定不接行内，增量独立跟随 */}
+      {tail}
+    </>
+  );
+}
+
+/** 本地图字节读（fs_cap read_base64 用户口直呼——typedRpc 已在宿主面 faceDeps）。
+ *  双形态解析（结构化对象 / JSON 字符串）同 fs-cap 既有纪律；空读上抛（不静默）。 */
+async function readLocalImageBase64(filePath: string): Promise<string> {
+  const raw: unknown = await typedRpc('fs_cap', { action: 'read_base64', file_path: filePath, is_agent: false });
+  let b64 = '';
+  if (raw !== null && typeof raw === 'object') {
+    const v = (raw as { base64?: unknown }).base64;
+    b64 = typeof v === 'string' ? v : '';
+  } else {
+    try {
+      const parsed = JSON.parse(String(raw)) as { base64?: unknown };
+      b64 = typeof parsed.base64 === 'string' ? parsed.base64 : '';
+    } catch {
+      b64 = String(raw);
+    }
+  }
+  if (b64 === '') throw new Error('读取为空（文件为空、超过 8MiB 通道上限或不可读）');
+  return b64;
+}
+
+/** 尾段文件名（错误行显示用；两种分隔符都认）。 */
+function baseNameOf(p: string): string {
+  const seg = p.split(/[\\/]/).pop();
+  return seg !== undefined && seg !== '' ? seg : p;
 }
 
 function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {

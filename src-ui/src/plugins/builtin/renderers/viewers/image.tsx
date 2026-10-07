@@ -5,19 +5,11 @@
 // （图片 7 种：png/jpg/jpeg/gif/webp/bmp/svg），**行为等价**：流内是点击放大的缩略图，
 // 放大态是同一 src 的大图（浮层本体由宿主渲染，查看器只触发 onOpenOverlay）。
 
-import { VIEWER_IMAGE_EXTS } from '../../../../paper/viewer-exts';
+import { VIEWER_IMAGE_EXTS, VIEWER_IMAGE_MIMES } from '../../../../paper/viewer-exts';
 import type { ViewerDef, ViewerProps } from '../viewer-registry';
 
-/** ext → MIME（原 MEDIA_MIME 表的图片段，逐字迁入——data URI 字符串零变化）。 */
-export const IMAGE_MIMES: Readonly<Record<string, string>> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  bmp: 'image/bmp',
-  svg: 'image/svg+xml',
-};
+/* ext → MIME 表（原本文件 IMAGE_MIMES，2026-10 随正文本地图批上移至
+ * `paper/viewer-exts.ts`——md 本地图 data URI 与本站共用一处，表内容逐字未动）。 */
 
 function ImageViewer({ label, bytes, mode, onOpenOverlay }: ViewerProps) {
   const src = bytes?.kind === 'data-uri' ? bytes.value : undefined;
@@ -32,7 +24,7 @@ function ImageViewer({ label, bytes, mode, onOpenOverlay }: ViewerProps) {
 export const imageViewer: ViewerDef = {
   id: 'image',
   exts: VIEWER_IMAGE_EXTS,
-  mimes: IMAGE_MIMES,
+  mimes: VIEWER_IMAGE_MIMES,
   needsBytes: true,
   component: ImageViewer,
 };

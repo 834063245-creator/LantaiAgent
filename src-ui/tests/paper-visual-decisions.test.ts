@@ -1021,15 +1021,19 @@ describe('B4 多模态附图渲染面（multimodal-image-plan D-9，2026-09）',
     expect(TYPE_TOKENS_TS).toContain('userImages: { thumb: 64, gap: 8, marginTop: 10 }');
   });
 
-  it('白名单在解析层（remoteImageSrc 单一真源）+ 非白名单不产图盒', () => {
+  it('图源分类在解析层（imageSrcRef 单一真源：远端白名单 + 本地图）+ 非白名单不产图盒', () => {
     const md = readFileSync(join(SRC, 'paper', 'markdown.ts'), 'utf8');
-    expect(md).toContain('export function remoteImageSrc');
+    expect(md).toContain('export function imageSrcRef');
     expect(md).toContain("protocol === 'http:' || protocol === 'https:'");
+    // 本地图判据：绝对路径形态 + 图片扩展名白名单（VIEWER_IMAGE_EXTS 单一表）
+    expect(md).toContain('VIEWER_IMAGE_EXTS');
+    expect(md).toContain('fileUrlToLocalPath');
     // 降级路径：alt 文本段落 / alt 空整行不产块（data: 巨串不灌纸面）
     expect(md).toContain("blocks.push({ t: 'p', inl: parseInline(img[1]) })");
-    // 渲染端图盒只出白名单幸存者
+    // 渲染端图盒只出分类幸存者；本地图字节经 fs_cap 用户口渲染期回读（块只携路径）
     expect(RENDERER_TS).toContain('pp-md-imgbox');
     expect(RENDERER_TS).toContain('referrerPolicy="no-referrer"');
+    expect(RENDERER_TS).toContain("typedRpc('fs_cap'");
   });
 
   it('INVARIANTS #14 渲染面：块只携引用，data URI 只在渲染期出现', () => {

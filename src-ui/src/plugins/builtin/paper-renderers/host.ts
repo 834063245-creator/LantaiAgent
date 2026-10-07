@@ -26,3 +26,6 @@ export { Overlay } from '../../../app/overlay';
 export { default as MermaidBlock } from '../../../app/paper/mermaid-block';
 export { useShellStore } from '../../../app/shell-store';
 export { isDiffLang } from '../../../paper/translate';
+/** RPC 直呼（本包唯一消费 = MdLocalImage 的 fs_cap read_base64 本地图字节读）。
+ *  `typedRpc` 是**既有宿主面键**（faceDeps / 基线在册）——沿用关门、不新增封面。 */
+export { typedRpc } from '../../../rpc-contract';

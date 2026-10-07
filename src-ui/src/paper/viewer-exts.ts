@@ -20,6 +20,27 @@
 /** 图片（`<img>`，保守占满上限高——加载后由 RO 实测收敛）。 */
 export const VIEWER_IMAGE_EXTS: readonly string[] = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
 
+/** 图片扩展名 → MIME（data URI 用）。原 `renderers/viewers/image.tsx` 的 IMAGE_MIMES
+ *  表，2026-10 正文本地图批上移——md 本地图与图片查看器共用一处（表内容逐字未动，
+ *  data URI 字符串零变化）。 */
+export const VIEWER_IMAGE_MIMES: Readonly<Record<string, string>> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+};
+
+/** 路径/URL 尾段扩展名（小写无点；`a/b.PNG` → `'png'`；无扩展名/隐藏文件 → `''`）。
+ *  正文本地图源分类（markdown.ts）与本地图 data URI MIME 取用（paper-renderers）共此一处。 */
+export function fileExtOf(pathOrUrl: string): string {
+  const seg = pathOrUrl.split(/[\\/]/).pop() ?? '';
+  const dot = seg.lastIndexOf('.');
+  return dot > 0 ? seg.slice(dot + 1).toLowerCase() : '';
+}
+
 /** 视频（`<video>`；测高沿用 B1 前模型 = 文件行 + RO 实测收敛，本批不动）。 */
 export const VIEWER_VIDEO_EXTS: readonly string[] = ['mp4', 'webm', 'ogg', 'mov'];
 

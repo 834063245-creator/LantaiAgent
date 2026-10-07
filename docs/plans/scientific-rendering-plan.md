@@ -1,6 +1,6 @@
 # 科研渲染（scientific-rendering）计划
 
-> 状态：**In progress：4A 正文 LaTeX 完成且真机验收通过（2026-09-07 用户实机确认效果良好）；4B 引用卡完成且真机验收通过（2026-09 用户实机确认 §7 项 3-5 全过）；#5 代码高亮 + #15 任务列表 checkbox 已落地（2026-09，§5.6 批次推进）；#10 化学式 kind chem 已落地待真机验收（2026-09，B 通道批次开推）；#16 交互图表 interactive 表现已落地待真机验收（2026-09，ECharts 进场用户拍板）；#11 大表虚拟滚动已落地待真机验收（2026-09，@tanstack/react-virtual 已在依赖）；#7 markdown 远端图已落地待真机验收（2026-09-09，multimodal-image B4——独立行 ![alt](http/https) 白名单块型 + 固定盒 160px + measure 镜像；对拍表 ✅13/⚠️5/❌2）；#20 嵌入 PDF/Office 用户拍板暂缓（依赖 WebView data: PDF 真机验证）**
+> 状态：**In progress：4A 正文 LaTeX 完成且真机验收通过（2026-09-07 用户实机确认效果良好）；4B 引用卡完成且真机验收通过（2026-09 用户实机确认 §7 项 3-5 全过）；#5 代码高亮 + #15 任务列表 checkbox 已落地（2026-09，§5.6 批次推进）；#10 化学式 kind chem 已落地待真机验收（2026-09，B 通道批次开推）；#16 交互图表 interactive 表现已落地待真机验收（2026-09，ECharts 进场用户拍板）；#11 大表虚拟滚动已落地待真机验收（2026-09，@tanstack/react-virtual 已在依赖）；#7 markdown 远端图已落地待真机验收（2026-09-09，multimodal-image B4——独立行 ![alt](http/https) 白名单块型 + 固定盒 160px + measure 镜像；对拍表 ✅13/⚠️5/❌2）+ 本地路径直出（2026-10-07——本地绝对路径/`file://` 经 `imageSrcRef` 分类 + `fs_cap read_base64` 回读，仅图片扩展名；待真机）；#20 嵌入 PDF/Office 用户拍板暂缓（依赖 WebView data: PDF 真机验证）**
 > 一句话：按「科研 Agent 渲染 20 种清单」倒查兰台现状，确立**双通道决策模型**（正文 markdown 通道 / 产物资产通道），前置治理渲染↔测量人肉镜像债，首期并行落地 **正文 LaTeX 数学** 与 **引用卡资产 kind** 两条通道样板。
 > 决策记录：2026-09 用户拍板——文档范围=完整立项；镜像策略=**优先重构收口镜像**（不是"先上新渲染再补债"）；首期=**数学（markdown 通道）+ 引用卡（资产通道）两项并行**；D1=**不保守（行内 `$...$` 直接上）**；D2=**KaTeX 进场**。**4B 回卷（2026-09）：引用卡链接打开不在本回合考虑**——DOI/PMID/arXiv 以 mono 纯文本标识呈现，等 opener RPC 机制落地再链接化。
 > 施工史：2026-09-06 4A 落地——markdown.ts 数学单一解析（块级 `$$` fence 流式容忍 + 行内 `$...$` 界约束不误伤货币/变量/转义）+ renderer-service KaTeX renderToString（.pp-md-math 块级 / .pp-md-math-inline 行内原子，throwOnError:false 错误可见不崩块）+ type-tokens 数学版式 token + measure 静态预算（显式行数 × maxLines 封顶）+ **含公式 markdown 挂 RO**（needsObservedHeight 内容感知，三参向后兼容）+ KaTeX CSS 集中 main.ts 导入。新增 `tests/paper-math-rendering.test.ts` 17 用例（parse/render/measure 三侧对拍）。门禁：vitest 2627 passed · convergence 0 漂移 · biome 0/0 · build ✓（KaTeX 字体资产正确打包）。
@@ -40,7 +40,7 @@
 | 4 | **LaTeX 数学** | ❌ | 解析无 `$`/`$$`/`\(\)` 分支，公式字面量进纸；无 KaTeX/MathJax 依赖。**4A 首期** |
 | 5 | **代码块 + 语法高亮** | ✅ | 围栏码渲染 ✅（markdown.ts:314）；**lang 捕获并消费（2026-09 #5）**——hljs `lib/common` + 补科研语言，`.pp-md-code` 内 token span（墨色协调），measure 零改动；无 lang/未知 lang 纯 mono 原文 |
 | 6 | 表格 | ✅ | markdown GFM 表格 + 资产 grid 双通道 |
-| 7 | **图片** | ✅ | 资产 media 表现 ✅（本地文件 base64 data URI，components.tsx:299）；**markdown `![]()` ✅（2026-09-09，multimodal-image B4）**——独立行 `![alt](http/https)` 新块型：协议白名单在解析层（remoteImageSrc，非 http/https 降级 alt 文本/空 alt 整行不产块）+ 固定盒 160px（chem 先例，加载/失败不改版面）+ measure 镜像 + 失败态换 alt 行；行内混排走既有 `!`+链接语义（与 DSH 降级同族） |
+| 7 | **图片** | ✅ | 资产 media 表现 ✅（本地文件 base64 data URI，components.tsx:299）；**markdown `![]()` ✅（2026-09-09，multimodal-image B4；2026-10-07 本地路径扩展）**——独立行 `![alt](…)` 新块型：图源分类在解析层（`imageSrcRef`：http/https 远端 + 本地绝对路径（盘符/UNC/POSIX/`file://` 归一，仅图片扩展名——渲染期经 fs_cap read_base64 回读成 data URI），其余降级 alt 文本/空 alt 整行不产块）+ 固定盒 160px（chem 先例，加载/失败不改版面）+ measure 镜像 + 失败态换可读行（远端=alt、本地=「图片不可读：文件名」带原因）；行内混排走既有 `!`+链接语义（与 DSH 降级同族） |
 | 8 | **引用块 / 提示框** | ⚠️ | blockquote ✅（`pp-md-quote`）；**callout/警告箱 ❌**——notice kind 只承载会话事件（压缩等），非模型正文可产出 |
 
 ### 二、科研增强渲染（7 种，决定"是否真懂科研"）
@@ -67,7 +67,7 @@
 
 ### 对拍小结
 
-- ✅ 已覆盖 13：文本、富文本、LaTeX（4A ✅）、表格、**图片（#7 ✅——markdown 远端图 2026-09-09 multimodal-image B4）**、参考文献/引用卡（4B ✅）、折叠截断、**代码高亮（#5 ✅）**、**任务列表 checkbox（#15 ✅ 部分）**、**化学式/反应式（#10 ✅）**、**交互式图表（#16 ✅）**、**数据预览/大表虚拟滚动（#11 ✅）**、（统计表半满足）
+- ✅ 已覆盖 13：文本、富文本、LaTeX（4A ✅）、表格、**图片（#7 ✅——markdown 远端图 2026-09-09 + 本地路径直出 2026-10-07）**、参考文献/引用卡（4B ✅）、折叠截断、**代码高亮（#5 ✅）**、**任务列表 checkbox（#15 ✅ 部分）**、**化学式/反应式（#10 ✅）**、**交互式图表（#16 ✅）**、**数据预览/大表虚拟滚动（#11 ✅）**、（统计表半满足）
 - ⚠️ 半覆盖 5：结构、提示框、流程图、widget、嵌入
 - ❌ 硬缺口 2：分子查看器、地理图（#10/#16/#11/#7 已从缺口/半覆盖转 ✅）
 

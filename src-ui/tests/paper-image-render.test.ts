@@ -33,18 +33,29 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 
 // 盘上附件回读慢径：kernelReadFileBase64 按路径出桩值（deadbeef 桩 = 读失败
 // 空串 → readAttachmentBase64 上抛「附图读取失败」——错误不静默钉面）。
+// typedRpc（2026-10 本地图）：md 本地图经 fs_cap read_base64 回读——按路径出桩：
+//   nope → 沙箱式拒绝（读取失败行）；empty-file → 空读（上抛）；余 → JSON 字符串载包。
 vi.mock('../src/rpc-contract', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/rpc-contract')>();
   return {
     ...actual,
     kernelReadFileBase64: vi.fn(async (filePath: string) => (filePath.includes('deadbeef') ? '' : btoa('stub-bytes'))),
+    typedRpc: vi.fn(async (method: string, params: Record<string, unknown>) => {
+      if (method === 'fs_cap' && params.action === 'read_base64') {
+        const fp = String(params.file_path ?? '');
+        if (fp.includes('nope')) throw new Error(`path "${fp}" is outside project directory`);
+        if (fp.includes('empty-file')) return JSON.stringify({ path: fp, base64: '' });
+        return JSON.stringify({ path: fp, base64: btoa('stub-bytes') });
+      }
+      throw new Error(`unexpected rpc: ${method}/${String(params.action ?? '')}`);
+    }),
   };
 });
 
 import { previewUrlFor, seedPreviewUrl } from '../src/app/chat/image-intake';
 import { useShellStore } from '../src/app/shell-store';
 import { createBlock } from '../src/paper/block-model';
-import { parseMarkdown, parseMarkdownIncremental, remoteImageSrc } from '../src/paper/markdown';
+import { imageSrcRef, parseMarkdown, parseMarkdownIncremental } from '../src/paper/markdown';
 import { translateMessages } from '../src/paper/translate';
 import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
 import { measureBlockHeight, measureMdBlocks, userImagesRowHeight } from '../src/plugins/builtin/paper-shell/measure';
@@ -86,23 +97,38 @@ function userMsg(images?: ChatImageRef[]): UserMessage {
   };
 }
 
-/* ═══ markdown 远端图 — 白名单 + 解析 ═══ */
+/* ═══ 正文图 — 图源分类（imageSrcRef：远端白名单 + 本地绝对路径）═══ */
 
-describe('paper/markdown — 远端图协议白名单（remoteImageSrc）', () => {
-  it('http/https 绝对 URL 放行', () => {
-    expect(remoteImageSrc('https://example.com/a.png')).toBe('https://example.com/a.png');
-    expect(remoteImageSrc('http://example.com/b.jpg')).toBe('http://example.com/b.jpg');
+describe('paper/markdown — 图源分类（imageSrcRef）', () => {
+  it('http/https 绝对 URL → remote 原样（不查扩展名）', () => {
+    expect(imageSrcRef('https://example.com/a.png')).toEqual({ src: 'https://example.com/a.png', local: false });
+    expect(imageSrcRef('http://example.com/b.jpg')).toEqual({ src: 'http://example.com/b.jpg', local: false });
+    expect(imageSrcRef('https://example.com/img?id=1')).toEqual({ src: 'https://example.com/img?id=1', local: false });
   });
-  it('data:/file:/ftp:/mailto: 一律拒绝', () => {
-    expect(remoteImageSrc('data:image/png;base64,AAAA')).toBeUndefined();
-    expect(remoteImageSrc('file:///D:/x.png')).toBeUndefined();
-    expect(remoteImageSrc('ftp://host/x.png')).toBeUndefined();
-    expect(remoteImageSrc('mailto:a@b.c')).toBeUndefined();
+  it('本地绝对路径（盘符两种拼写 / UNC / POSIX）→ local（扩展名大小写不敏感）', () => {
+    expect(imageSrcRef('D:/shots/a.png')).toEqual({ src: 'D:/shots/a.png', local: true });
+    expect(imageSrcRef('D:\\shots\\a.PNG')).toEqual({ src: 'D:\\shots\\a.PNG', local: true });
+    expect(imageSrcRef('\\\\srv\\share\\x.jpg')).toEqual({ src: '\\\\srv\\share\\x.jpg', local: true });
+    expect(imageSrcRef('/home/u/x.webp')).toEqual({ src: '/home/u/x.webp', local: true });
   });
-  it('相对路径拒绝（new URL 无基址即拒）', () => {
-    expect(remoteImageSrc('./rel.png')).toBeUndefined();
-    expect(remoteImageSrc('/abs/path.png')).toBeUndefined();
-    expect(remoteImageSrc('pic.png')).toBeUndefined();
+  it('file:// URI → local（归一为路径；%XX 解码；盘符去前导斜杠）', () => {
+    expect(imageSrcRef('file:///D:/shots/x.png')).toEqual({ src: 'D:/shots/x.png', local: true });
+    expect(imageSrcRef('file:///D:/My%20Shots/a%2Bb.gif')).toEqual({ src: 'D:/My Shots/a+b.gif', local: true });
+  });
+  it('本地非图扩展名 → 拒（维持降级，不产盒）', () => {
+    expect(imageSrcRef('D:/notes.txt')).toBeUndefined();
+    expect(imageSrcRef('file:///D:/doc.pdf')).toBeUndefined();
+    expect(imageSrcRef('/etc/hosts')).toBeUndefined();
+  });
+  it('data:/ftp:/mailto: 一律拒绝', () => {
+    expect(imageSrcRef('data:image/png;base64,AAAA')).toBeUndefined();
+    expect(imageSrcRef('ftp://host/x.png')).toBeUndefined();
+    expect(imageSrcRef('mailto:a@b.c')).toBeUndefined();
+  });
+  it('相对路径拒绝（裸名/前缀相对都不进图通道）', () => {
+    expect(imageSrcRef('./rel.png')).toBeUndefined();
+    expect(imageSrcRef('assets/x.png')).toBeUndefined();
+    expect(imageSrcRef('pic.png')).toBeUndefined();
   });
 });
 
@@ -126,11 +152,24 @@ describe('paper/markdown — 独立行图块解析（B4 D-9）', () => {
     expect(blocks[0]).toMatchObject({ t: 'img', alt: '图', src: 'https://example.com/c.png' });
   });
 
-  it('白名单拒绝路径一：file:/data: 源降级 alt 文本段落', () => {
+  it('本地图路径一：file:// URI → local img 块（路径归一，不再降级）', () => {
     const blocks = parseMarkdown('![本地截图](file:///D:/shots/x.png)');
     expect(blocks).toHaveLength(1);
-    const p = blocks[0] as Extract<(typeof blocks)[number], { t: 'p' }>;
-    expect(p.inl.map((s) => s.text).join('')).toBe('本地截图');
+    expect(blocks[0]).toMatchObject({ t: 'img', alt: '本地截图', src: 'D:/shots/x.png', local: true });
+  });
+
+  it('本地图路径二：盘符绝对路径直出 → local img 块（前后段落独立）', () => {
+    const blocks = parseMarkdown('看图\n\n![图](D:/shots/a.png)');
+    expect(blocks.map((b) => b.t)).toEqual(['p', 'img']);
+    expect(blocks[1]).toMatchObject({ t: 'img', src: 'D:/shots/a.png', local: true });
+  });
+
+  it('非图扩展名 / 相对路径 / data: 源仍降级 alt 文本段落（2026-10 分类）', () => {
+    for (const src of ['D:/notes.txt', './rel.png', 'data:image/png;base64,AAAA']) {
+      const blocks = parseMarkdown(`![说明](${src})`);
+      const p = blocks[0] as Extract<(typeof blocks)[number], { t: 'p' }>;
+      expect(p.inl.map((s) => s.text).join(''), src).toBe('说明');
+    }
   });
 
   it('白名单拒绝路径二：相对路径降级 alt 文本段落', () => {
@@ -180,6 +219,11 @@ describe('paper/measure — md img 固定盒（B4 D-9）', () => {
   it('img 块高 = 固定盒（末元素无 gap）', () => {
     const blocks = parseMarkdown('![图](https://example.com/a.png)');
     // measureMdBlocks 返回 { h, ink }（2026-09-20：墨迹几何与测高同趟产出）
+    expect(measureMdBlocks(blocks, W).h).toBe(MD_TOKENS.imgBoxH);
+  });
+
+  it('本地图同盒（remote/local 几何无差——分类只决定渲染源，不动测高）', () => {
+    const blocks = parseMarkdown('![本地](D:/shots/a.png)');
     expect(measureMdBlocks(blocks, W).h).toBe(MD_TOKENS.imgBoxH);
   });
 
@@ -349,13 +393,13 @@ describe('B4 渲染 — UserBody 附图缩略行 + MdImage', () => {
     expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer');
   });
 
-  it('markdown 非白名单源：不产图盒（降级 alt 文本在段内）', () => {
-    const md = block('markdown', { text: '![本地](file:///D:/x.png)' });
+  it('markdown 非白名单源（相对路径）：不产图盒（降级 alt 文本在段内）', () => {
+    const md = block('markdown', { text: '![相对](./x.png)' });
     act(() => {
       root?.render(createElement(rendererFor('markdown'), { block: md }));
     });
     expect(container!.querySelector('.pp-md-imgbox')).toBeNull();
-    expect(container!.querySelector('.pp-md-p')?.textContent).toBe('本地');
+    expect(container!.querySelector('.pp-md-p')?.textContent).toBe('相对');
   });
 
   it('远端图加载失败：onError → 盒内换 alt 行（盒高不变，错误不静默）', () => {
@@ -373,5 +417,49 @@ describe('B4 渲染 — UserBody 附图缩略行 + MdImage', () => {
     expect(alt?.textContent).toBe('断图');
     // 盒仍在（固定盒不塌——版面稳定）
     expect(container!.querySelector('.pp-md-imgbox')).not.toBeNull();
+  });
+
+  it('本地图：fs_cap read_base64 → data URI 直出（JSON 字符串双形态载包）', async () => {
+    const md = block('markdown', { text: '![本地图](D:/shots/a.png)' });
+    act(() => {
+      root?.render(createElement(rendererFor('markdown'), { block: md }));
+    });
+    await act(async () => {});
+    const box = container!.querySelector('.pp-md-imgbox');
+    expect(box).not.toBeNull();
+    const img = box!.querySelector('img');
+    expect(img?.getAttribute('src')).toBe(`data:image/png;base64,${btoa('stub-bytes')}`);
+    expect(img?.getAttribute('alt')).toBe('本地图');
+  });
+
+  it('本地图读取失败：盒内可读错误行「图片不可读」（title 带路径与原因，不静默）', async () => {
+    const md = block('markdown', { text: '![断图](D:/nope/x.png)' });
+    act(() => {
+      root?.render(createElement(rendererFor('markdown'), { block: md }));
+    });
+    await act(async () => {});
+    expect(container!.querySelector('.pp-md-img')).toBeNull();
+    const line = container!.querySelector('.pp-md-img-alt');
+    expect(line?.textContent).toBe('图片不可读：x.png');
+    expect(line?.getAttribute('title')).toContain('outside project directory');
+    // 盒仍在（固定盒不塌——版面稳定）
+    expect(container!.querySelector('.pp-md-imgbox')).not.toBeNull();
+  });
+
+  it('本地图解码失败：onError → 错误行（同盒同形，错误不静默）', async () => {
+    const md = block('markdown', { text: '![坏图](D:/shots/bad.png)' });
+    act(() => {
+      root?.render(createElement(rendererFor('markdown'), { block: md }));
+    });
+    await act(async () => {});
+    const img = container!.querySelector<HTMLImageElement>('.pp-md-img');
+    expect(img).not.toBeNull();
+    act(() => {
+      img!.dispatchEvent(new Event('error'));
+    });
+    expect(container!.querySelector('.pp-md-img')).toBeNull();
+    const line = container!.querySelector('.pp-md-img-alt');
+    expect(line?.textContent).toBe('图片不可读：bad.png');
+    expect(line?.getAttribute('title')).toContain('解码失败');
   });
 });

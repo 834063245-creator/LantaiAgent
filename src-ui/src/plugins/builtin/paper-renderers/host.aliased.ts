@@ -33,6 +33,8 @@ export const Overlay = impl.Overlay;
 export const previewUrlFor = impl.previewUrlFor;
 export const readAttachmentBase64 = impl.readAttachmentBase64;
 export const useShellStore = impl.useShellStore;
+/** RPC 直呼（MdLocalImage 的 fs_cap read_base64）：既有宿主面键（faceDeps），沿用关门。 */
+export const typedRpc = impl.typedRpc;
 /** 差分语言判据（A4 销账 W1，2026-09-28）：实现住内核 `paper/translate.ts`，而该模块带
  *  状态（块 id 发号器经 `createBlock` 落 `paper/block-model.ts` 的 `let blockSeq`）——
  *  随包内联 = 第二套发号器与内核撞号，故经宿主桥取内核同一实例。 */

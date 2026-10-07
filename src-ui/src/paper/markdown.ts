@@ -13,10 +13,12 @@
 // react-markdown（package.json 既有依赖）黑盒渲染无法镜像测量。
 //
 // 覆盖子集（agent 产出的常见面）：ATX 标题 1-4 / 段落 / 有序无序列表（一层
-// 嵌套递归）/ 引用 / 围栏码 / GFM 表格 / 分隔线 / 远端图（独立行
-// `![alt](http/https)`——B4 D-9，协议白名单 + 固定盒）/ 行内：加粗·斜体·删除线·
-// 行内码·链接。流式容忍：未闭合围栏按已闭合产出（块随 token 生长）；
-// 未配对的强调标记按字面量保留。超出子集的行→段落兜底，不丢字。
+// 嵌套递归）/ 引用 / 围栏码 / GFM 表格 / 分隔线 / 正文图（独立行 `![alt](…)`
+// ——远端 http/https + 本地绝对路径，B4 D-9 / 2026-10 本地图扩展，解析层分类
+// + 固定盒）/ 行内：加粗·斜体·删除线·行内码·链接。流式容忍：未闭合围栏按已闭合
+// 产出（块随 token 生长）；未配对的强调标记按字面量保留。超出子集的行→段落兜底，不丢字。
+
+import { fileExtOf, VIEWER_IMAGE_EXTS } from './viewer-exts';
 
 /** 行内片段：text 恒有；标志位任一为真 = 富行内（测量端按偏窄宽度保守计高）。 */
 export interface MdInline {
@@ -45,10 +47,13 @@ export type MdBlock =
   | { t: 'math'; text: string }
   | { t: 'hr' }
   | { t: 'table'; head: MdInline[][]; rows: MdInline[][][] }
-  /** 远端图（B4 · D-9）：独立行 `![alt](http/https)` 专用块型——src 已过协议
-   *  白名单；非白名单源（data:/file:/相对路径等）在解析层降级 alt 文本，
-   *  不产本块型。渲染/测高共用固定盒（measure 镜像），加载态不改版面。 */
-  | { t: 'img'; alt: string; src: string };
+  /** 正文图（B4 · D-9；2026-10 本地图扩展）：独立行 `![alt](…)` 专用块型——
+   *  src 已过解析层分类（imageSrcRef）：远端 http/https URL，或本地绝对路径
+   *  （`local:true`）；非白名单源（data:/相对路径/非图扩展名）在解析层降级
+   *  alt 文本，不产本块型。渲染/测高共用固定盒（measure 镜像），加载态不改
+   *  版面。本地源块只携路径引用——字节渲染期经 fs_cap read_base64 回读
+   *  （INVARIANTS #14 同族：字节永不进块/卷）。 */
+  | { t: 'img'; alt: string; src: string; local?: boolean };
 
 export interface MdListItem {
   inl: MdInline[];
@@ -265,16 +270,53 @@ const TABLE_SEP_RE = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
  *  alt 允许空（`![](url)` 常见）；url 不含空白/括号（对齐 parseInline 链接段）。 */
 const IMG_LINE_RE = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/;
 
-/** 远端图协议白名单（B4 · D-9，抄 DSH remoteImageUrl 纪律）：仅 http/https 绝对
- *  URL 放行；其余协议（data:/file:/javascript:）与相对路径（new URL 无基址即拒）
- *  一律 undefined → 解析层降级 alt 文本。白名单过在解析层而非渲染层——
- *  measure 与 render 消费同一结构，拒绝路径不产生待测盒。 */
-export function remoteImageSrc(url: string): string | undefined {
+/** 图源分类（B4 · D-9 远端白名单；2026-10 本地图扩展）——独立行 `![alt](…)` 的
+ *  destination → 渲染源：
+ *  - remote：http/https 绝对 URL 原样（浏览器直载，不查扩展名）；
+ *  - local：本地绝对路径（盘符 `D:\\`/`D:/`、UNC `\\\\`、POSIX `/`）、`file://` URI
+ *    （归一为路径、%XX 解码）——**仅图片扩展名**（VIEWER_IMAGE_EXTS，大小写不敏感），
+ *    src 即本地路径，渲染期经 fs_cap read_base64 回读字节（INVARIANTS #14 同族）。
+ *  其余（data:/javascript:/相对路径/非图扩展名）undefined → 解析层降级 alt 文本。
+ *  分类过在解析层而非渲染层——measure 与 render 消费同一结构，拒绝路径不产生待测盒。 */
+export function imageSrcRef(raw: string): { src: string; local: boolean } | undefined {
+  let protocol: string | null = null;
   try {
-    const protocol = new URL(url).protocol;
-    return protocol === 'http:' || protocol === 'https:' ? url : undefined;
+    protocol = new URL(raw).protocol;
   } catch {
-    // 非绝对 URL（相对路径等）——与不允许协议同拒（new URL 无基址仅此一种失败）
+    // 非绝对 URL（相对路径/裸文件名）。`D:/…` 这类会被 URL 解析读成 scheme `d:`，
+    // 同落下面的本地判定——故此处不提前拒绝，只记协议。
+  }
+  if (protocol === 'http:' || protocol === 'https:') return { src: raw, local: false };
+  if (protocol === 'file:') {
+    const p = fileUrlToLocalPath(raw);
+    return p !== undefined && isLocalImagePath(p) ? { src: p, local: true } : undefined;
+  }
+  return isLocalImagePath(raw) ? { src: raw, local: true } : undefined;
+}
+
+/** 本地图路径判据：绝对路径形态（盘符/UNC/POSIX）+ 图片扩展名。 */
+function isLocalImagePath(p: string): boolean {
+  const absolute = /^[A-Za-z]:[\\/]/.test(p) || p.startsWith('\\\\') || p.startsWith('/');
+  return absolute && VIEWER_IMAGE_EXTS.includes(fileExtOf(p));
+}
+
+/** `file://` URI → 本地路径（%XX 解码；Windows 盘符形态 `/D:/x` 去前导斜杠；
+ *  带主机名 = UNC）。非 file: 或畸形 → undefined。 */
+function fileUrlToLocalPath(url: string): string | undefined {
+  try {
+    const u = new URL(url);
+    let p: string;
+    try {
+      p = decodeURIComponent(u.pathname);
+    } catch {
+      p = u.pathname; // 畸形 %XX——原样交付（读取端自会报错，不在此静默丢）
+    }
+    if (u.host !== '' && u.host !== 'localhost') {
+      return `\\\\${u.host}${p.replace(/\//g, '\\')}`;
+    }
+    if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1);
+    return p === '' ? undefined : p;
+  } catch {
     return undefined;
   }
 }
@@ -475,14 +517,14 @@ function parseDetailed(text: string): MdDetailed {
       i++;
       continue;
     }
-    // 独立行图（B4 D-9）：![alt](http/https) → 固定盒 img 块；非白名单源
-    // 降级 alt 文本段落（DSH 同语义；alt 空则整行不产块——data: 巨串不灌纸面，
-    // 本地路径/data URI 不进图通道，资产通道（show_asset）既有职责不重叠）。
+    // 独立行图（B4 D-9；2026-10 本地图扩展）：![alt](http/https 或本地绝对路径)
+    // → 固定盒 img 块；非白名单源降级 alt 文本段落（DSH 同语义；alt 空则整行不
+    // 产块——data: 巨串不灌纸面；本地源仅图片扩展名放行，其余维持降级）。
     const img = IMG_LINE_RE.exec(trimmed);
     if (img) {
-      const src = remoteImageSrc(img[2]);
-      if (src !== undefined) {
-        blocks.push({ t: 'img', alt: img[1], src });
+      const ref = imageSrcRef(img[2]);
+      if (ref !== undefined) {
+        blocks.push({ t: 'img', alt: img[1], src: ref.src, ...(ref.local ? { local: true } : {}) });
         starts.push(blockStart);
       } else if (img[1] !== '') {
         blocks.push({ t: 'p', inl: parseInline(img[1]) });
