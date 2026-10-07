@@ -309,7 +309,11 @@ export function registerBuiltinAssetKinds(): void {
 
   assetKinds.register({
     id: 'html',
-    description: '任意 HTML/SVG 片段（沙箱 iframe 渲染——逃生舱，Agent 现场发明视觉）',
+    description:
+      '任意 HTML/SVG 片段（沙箱 iframe 渲染——逃生舱，Agent 现场发明视觉）。' +
+      '交互卡存用户操作用 window.lantai.state：patch(obj) 浅合并写入（宿主持久化，' +
+      '重挂载/重启后仍在）、get() 读回；值为 JSON 可序列化、单卡上限 64 KiB。' +
+      '用户留下的内容经 list_block_kinds 的状态读数可见。',
     schema: objectSchema({ code: { type: 'string', description: '内容片段（禁 DOCTYPE/html/head/body 包裹）' } }, [
       'code',
     ]),
