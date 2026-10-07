@@ -11,3 +11,29 @@ rustflags = ["-C", "link-args=-static-libgcc"]
 # warms the cache; subsequent worktrees hit it instantly.
 [build]
 rustc-wrapper = "sccache"
+
+# ── 构建期临时目录收进项目树（2026-10-07）────────────────────────────────
+# 病灶：本机 TEMP（D:\Temp\user）对「经 gcc-wrap 链起的子进程」不可用 —— gcc
+# 建不出临时文件，于是**链接静默失败却仍退出 0**（rustc 误判成功、编译器不报
+# 错），cargo 随后在别处炸：`could not execute process …build-script-build
+# (never executed)` / `系统找不到指定的文件 (os error 2)`；库编译那一侧则表现为
+# `process didn't exit successfully: sccache … (exit code: 0xfffffffe)`。
+# 实测矩阵（各 3 轮，见 `engine/grammars/gcc-wrap.c` 同族注记）：
+#   TEMP=D:\Temp\user + gcc-wrap → FAIL 3/3（"Cannot create temporary file in
+#   D:\Temp\user\: Permission denied"）；TEMP=<项目内> + gcc-wrap → OK 3/3；
+#   裸 gcc 两种 TEMP 都 OK ⇒ 分界在「进程树 + 临时目录位置」，不在代码。
+# `target` 由 cargo 在任何 rustc 之前建好，故不需要额外 mkdir；它已随
+# target/ 忽略，不产生新 ignore 条目。force = true 必须有：TEMP/TMP 在环境里
+# 恒存在，cargo 默认不覆盖已存在的变量。
+# 同族：前端侧 `src-ui/vite.config.ts` 把 vite/esbuild 的 TEMP 收进
+# `node_modules/.vite-tmp/`（两条一起才覆盖「整条 cargo tauri build」）。
+[env]
+TEMP = { value = "target", relative = true, force = true }
+TMP = { value = "target", relative = true, force = true }
+# sccache 缓存落 D:（2026-10-07）。默认位置在 C 盘（`%LOCALAPPDATA%\Mozilla\
+# sccache\cache`），而本机 C 盘只剩 0.5 GB ⇒ 缓存写入会在「写一半」处失败，表现为
+# sccache 记一笔 `Cache errors (Rust)`、并把那次 rustc 调用判失败（cargo 侧看到
+# `process didn't exit successfully: sccache … (exit code: 0xfffffffe)`），也可能
+# 留下「只有 .d 没有 .exe」的半截产物让后续构建连环炸。D 盘是本机其余缓存
+# （cargo / npm / uv / go-build）已有的落点，语义上也是「跨 worktree 共享」。
+SCCACHE_DIR = "D:\\Cache\\sccache"

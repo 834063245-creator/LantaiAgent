@@ -476,6 +476,8 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 
 - **构建临时目录（2026-10-07 实测）**：`vite build` 报 `[commonjs--resolver] remove D:\Temp\user\esbuild-<hex>: Access is denied` **不是代码错**——esbuild 对 **>1MB 的 transform 输入**改走「Node 写临时文件 → Go 读后 `os.Remove`」（`esbuild/lib/main.js:774-777` 的 inputFS 路径），而本机沙箱只允许在**项目树内**删（实测：项目外临时目录 5/5 失败，`C:\Users\…\Temp` 同病；项目内 3/3 通过；给目标目录 Everyone 全开 ACL 也不翻绿 ⇒ 不是目标目录权限，node 自己删同一文件反而成功）。`src-ui/vite.config.ts` 已把构建期 `TEMP/TMP` 收进 `node_modules/.vite-tmp/` 根治（dev / build / vitest 三条 vite 入口一次覆盖）——**别再往系统 TEMP 迁就**；同族报错再现先看这条。
 
+- **Rust 链接静默失败（2026-10-07 实测，上一条的 Rust 侧）**：`cargo build` / `cargo tauri build` 报 `could not execute process …build-script-build (never executed)` + `系统找不到指定的文件 (os error 2)`，或 `process didn't exit successfully: sccache … (exit code: 0xfffffffe)` —— **先查 TEMP，不要先怀疑代码**。取证链：那条 `--crate-type bin --emit=dep-info,link` 只留下 `.d`、`.exe` 不在盘上（rustc 退出 0，编译器一声不吭）；矩阵探针（各 3 轮）钉死 `TEMP=D:\Temp\user` + 经 `engine/grammars/gcc-wrap.exe` 链接 → **FAIL 3/3**，gcc 自报 `Cannot create temporary file in D:\Temp\user\: Permission denied`（**链接失败仍退出 0** ⇒ rustc 误判成功、cargo 在别处炸）；`TEMP=<项目内>` → OK 3/3；裸 gcc 两种 TEMP 都 OK ⇒ 分界是「进程树 × 临时目录位置」。治法已落 `.cargo/config.toml` 的 `[env]`：`TEMP/TMP = { value = "target", relative = true, force = true }`（**force 必须有**——TEMP 恒存在于环境，cargo 默认不覆盖已存在变量）；同批把 `SCCACHE_DIR` 挪到 `D:\Cache\sccache`（C 盘只剩 0.5 GB 时缓存写入会半截失败，那是 `0xfffffffe` 与「只有 .d 没有 .exe」的另一半来源）。
+
 ## 4. 文档维护
 
 - **四层形态（2026-09-16 文档面重构立规；施工单 `docs/plans/doc-surface-refactor-plan.md`）**：
