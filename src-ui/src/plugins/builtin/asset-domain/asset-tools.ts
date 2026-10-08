@@ -44,8 +44,11 @@ function utf8Bytes(s: string): number {
   return new TextEncoder().encode(s).length;
 }
 
-/** 状态内容渲染：预算内全给；超限逐键纳入到预算，剩余键只计数不展示。 */
-function renderStateContent(state: Record<string, unknown>, budget: number): string {
+/** 状态内容渲染：预算内全给；超限逐键纳入到预算，剩余键只计数不展示。
+ *  state 缺席 = 宿主实现过旧（只热更了产物、没重建 exe——face 指纹不变时热更不会被拦）：
+ *  如实说明，绝不把 undefined 渲染成内容。 */
+function renderStateContent(state: Record<string, unknown> | undefined, budget: number): string {
+  if (!state || typeof state !== 'object') return '（内容不可读：宿主实现未同步——重建 exe 后可见）';
   const full = JSON.stringify(state);
   const fullBytes = utf8Bytes(full);
   if (fullBytes <= budget) return full;
