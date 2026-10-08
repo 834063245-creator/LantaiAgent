@@ -1,5 +1,8 @@
 # 引擎-宿主逻辑全断（engine-host-severance）
 
+> **已归档（2026-10-08 · 文档面收尾）**——代码竣工（2026-09-08，五 commit：壳零 `hologram-*` crate 依赖）；余真机四项。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
 > 立项 2026-09-08。状态：In progress。
 > 背景：用户审计诉求「图谱 engine 与兰台宿主关系太复杂，想把所有逻辑全断、engine 整个拆出来」。
 > 拍板（2026-09-08，用户文字回复为准）：

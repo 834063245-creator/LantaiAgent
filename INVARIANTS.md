@@ -159,7 +159,7 @@ manifest 例外通道（tool_call 信封 + kernel-manifests 镜像 + 生成器�
 脚手架拆除整清——单一真源回到「TS zod」，全域无例外（十一能力口模型族 schema
 均为域内 zod 转录：fs/git/shell/editor/constraints 在 coding.ts、search/web
 在 manifest-tools.ts、browser/uia 在 browser.ts）。历史形态见
-docs/plans/kernel-plugin-runtime-plan.md（历史记录）。
+docs/archive/kernel-tooling-line/kernel-plugin-runtime-plan.md（历史记录）。
 ```
 
 **为什么**: 字段名契约曾靠人肉三处同步（schema key ↔ execute key ↔ Rust camelCase），出过 isAgent 静默失败事故（见第 7 条）。zod 单一来源后，schema key 就是唯一事实。
@@ -361,7 +361,7 @@ imageChannel 门控 / 角色口径 / 预算与 user 共用）、`tests/provider-
    里也是真路径）；也不要"改一行 BIN_RESOLVE"——DOM 路径与 JSON 载荷各自独立触发同一判定。
 ```
 
-**炸过**: 2026-09-15（真机复盘；事故与修复全过程见 `docs/plans/office-cli-integration-plan.md` §11，
+**炸过**: 2026-09-15（真机复盘；事故与修复全过程见 `docs/archive/kernel-tooling-line/office-cli-integration-plan.md` §11，
 修复 commit `f207e5f4`「强制层改动 + 宪法审查」）。
 
 **守护**: Rust `tools::office_permission_tests::office_permission_matrix`（项目内目标 → passthrough，

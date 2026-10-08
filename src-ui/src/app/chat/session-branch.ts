@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // 会话树「枝」——从某个切点另起一卷（P1：从卷尾立枝）。
-// 立项件：`docs/plans/session-tree-plan.md`。
+// 立项件：`docs/archive/session-line/session-tree-plan.md`。
 //
 // 形态（plan §1/§2）：**节点自包含**——枝卷 = 父卷前缀的**复制**（seq ≤ 切点）
 // + 自己的后续事件；**边落头行**——`SessionLogHeader.parent{id, atSeq}`

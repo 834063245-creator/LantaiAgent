@@ -2,7 +2,7 @@
 
 > **状态**：未开工（2026-09-26 立项，等另开窗口施工）。施工面 = `hologram-vector`（+ 可选一行状态面）。
 > **由来**：`#1 idle 误杀`修完之后暴露的**下一个瓶颈**——进程内缓存在每次进程重启时归零。
-> **前置阅读**：[`engine-lsp-runtime-hardening-plan.md`](engine-lsp-runtime-hardening-plan.md)（本件的立账处）。
+> **前置阅读**：[`docs/archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md`](../archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md)（本件的立账处）。
 
 ## 一、裁定（先看这个）
 

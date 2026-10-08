@@ -83,7 +83,7 @@ const WIDTH_KEY = 'lantai.sidebar.width';
 const FOLDS_KEY = 'lantai.sidebar.folds';
 const VIEW_KEY = 'lantai.sidebar.view';
 
-/** 视角（2026-09-20 用户拍板「双视角」，立案 `docs/plans/sidebar-two-views-plan.md`）：
+/** 视角（2026-09-20 用户拍板「双视角」，立案 `docs/archive/session-line/sidebar-two-views-plan.md`）：
  *  `case` = 案卷（纯时间序扁平列表 + 血缘记号）/ `tree` = 枝（森林 + 引线）。
  *  **默认 `case`**——日常找卷的动线零漂移；视角只影响列表区。 */
 type SidebarView = 'case' | 'tree';

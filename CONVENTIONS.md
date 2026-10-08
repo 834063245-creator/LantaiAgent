@@ -433,7 +433,7 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 ### 2.4 内核工具面与能力口（现状，2026-09-14 M5 核准；2026-09-16 自 AGENTS.md §7 迁入）
 
 - **`tool_call` 信封已全线退役**：`src-tauri/src/adapter.rs` 的该类型**不是**待拆脚手架，而是强制层的闸构造形状；`src-tauri/src/tools/` 是内核能力层（`mod.rs` 的 ReadTool / EditTool / BashTool / GitTool / BrowserTool / DesktopTool / WebFetchTool …），各族另有 `*_cap.rs` **能力口直呼**入口（fs_cap / process_cap / search_cap / web_cap / git_cap / browser_cap / uia_cap / lsp_cap / pty_cap / editor_cap）——各文件头注一致声明「不经 tool_call 信封 / PluginRegistry / PluginToolAdapter」。
-- **`src-tauri/src/tool_plugins/` 目录不存在**（kernel-plugin-runtime 的「新工具 = 插件目录 + manifest + ToolPlugin」已被能力口直呼取代），勿按旧描述新建；`docs/plans/kernel-plugin-runtime-plan.md` 是历史阶段记录，**不是现状依据**。
+- **`src-tauri/src/tool_plugins/` 目录不存在**（kernel-plugin-runtime 的「新工具 = 插件目录 + manifest + ToolPlugin」已被能力口直呼取代），勿按旧描述新建；`docs/archive/kernel-tooling-line/kernel-plugin-runtime-plan.md` 是历史阶段记录，**不是现状依据**。
 - **前端工具面真源** = ToolRegistry 装配产物（生成物 `docs/agents/model-tool-contract.md`）+ `src-ui/src/agent/tools/manifest-tools.ts`（search/web 两域 schema 的 zod 真源与编排，execute 经 `search_cap` 能力口直呼——**不是** manifest 生成的镜像表）。
 - 新增模型工具 = `defineTool` + zod 入 `agent/tools/**`，装配面经行表/贡献通道（§1.7）——**不需要**新建 Rust 侧插件目录。
 

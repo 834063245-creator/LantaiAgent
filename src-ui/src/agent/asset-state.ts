@@ -15,7 +15,7 @@
 // 同源（runtime 按 sessionId 建板 + BoardPersistence 按 sessionId 落文件），且写入方
 // 是渲染层（iframe 桥知道工作区路径与会话号，拿不到 bus id）。
 //
-// 语义（v1 定案，施工单 docs/plans/asset-state-plan.md 的 D1-D7，两处按实况修订：
+// 语义（v1 定案，施工单 docs/archive/render-paper-line/asset-state-plan.md 的 D1-D7，两处按实况修订：
 // ① 键系由 owner scope 改为会话键；② 「删卷清文件」挂真删除路径而非合卷）：
 //   - 写入 = 浅合并 patch（输入框只写自己那格），值必须 JSON 可序列化（深校验 + 环检测）；
 //   - 单资产上限 64 KiB（合并后序列化字节数；超限整笔拒绝，绝不半写）；

@@ -338,7 +338,7 @@ export const ASSET_TOKENS = {
     // 旧模型：viewBox 宽 = 30 + 柱数×40 + 10、高恒 180，CSS width:100%/height:auto
     // ⇒ 3 根柱的图在 720 版心里被 meet 缩成约 213×240 居中、两侧各空 253px；20 根柱
     // 又是另一比例、8px 字被缩到 6.5px（同一 kind 只换条数，字号差 39%）。实测读数见
-    // docs/plans/tool-image-context-plan.md §6 与 prototype/asset-cards-ab.NOTES.md。
+    // docs/archive/render-paper-line/tool-image-context-plan.md §6 与 prototype/asset-cards-ab.NOTES.md。
     // 新模型：**宽高都由版心定**——SVG 的 viewBox 宽 = 卡片内容宽（用户单位 == CSS px，
     // 故任何文字都不再被缩放），高按类目数分三档（少/中/多），柱槽宽由「版心宽 ÷ 条数」
     // 反推（条数少则柱更宽，而不是图更小）。

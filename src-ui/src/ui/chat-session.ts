@@ -808,7 +808,7 @@ export async function scanMaxSessionId(projectPath: string): Promise<number> {
 // 病根：号 = 身份（落盘文件名主体 / 血缘 `parent` / 每卷账本键），而发号器只在内存
 // （`session-store.nextSessionId`）——重启按「磁盘现存最大号 + 1」对账 ⇒ **删掉高位卷后
 // 旧号会被重新发出**。复用正是「死卷冒充新卷」那一族事故的根（真机：三个子卷顶着 9/6
-// 死卷的卷名，且不会自愈——见 docs/plans/session-tree-plan.md §12）。
+// 死卷的卷名，且不会自愈——见 docs/archive/session-line/session-tree-plan.md §12）。
 //
 // 治法：**号一经发出即记账**——账落盘、单调、只增不减 ⇒ 号永不复用。形状抄
 // `_index.json`（下划线保留名 + 同一 seam `read_volume`/`save_volume`：零 Rust 变更、

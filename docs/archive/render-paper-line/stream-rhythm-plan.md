@@ -1,5 +1,8 @@
 # 会话流版式语法（stream-rhythm）计划
 
+> **已归档（2026-10-08 · 文档面收尾）**——五刀全落地（2026-09-03，三批连推）+ 尸检批（09-06 两根因）；余真机五项 + D1/D2 终审。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
 > 状态：**In progress——刀1-刀4 + 刀5（族节奏批）全部落地（2026-09-03 三批连推），门禁全绿；真机验收五项 + D1 间距值 / D2 细线形态终审待用户跑；2026-09-06 尸检批两渲染病灶已修（施工史续三）**
 > 一句话：把会话流从「等价块瀑布」变成有节奏的工作记录——事件语义分类 + 跨块工作单元 + 版式语法表（数据化）+ 节奏渲染 + 封口纪律。
 > 施工史：2026-09-03 刀1+刀2 一窗完成——刀1：`paper/grammar.ts`（classifyTool 派生族：领域名经 resolveSemanticToolName 反查旧名入族表，run_shell 按 command 判验证族，未知名 readOnly 兜底）+ `paper/group.ts`（工作单元封套 pass；两宪法落地：封口纪律 + 跨消息前瞻禁止）+ tests/paper-stream-rhythm.test.ts 25 用例（含封口不变性专项——tsc 抓到首版「散块永不成组」真 bug、测试抓到「跨消息后向并入破坏封口」真问题，均以「单元不跨消息，消息边界即收口」修法收口）。刀2：canvas-math 节奏档（ANCHOR 增 intraUnitGap 32 / unitGap 64 / recoveryLeadGap 96 / stageGap 96 + rhythmGap 表驱动；B1 基线保留为无节奏调用面兜底，上方是 user 恒尾距 8）+ PaperPanel 接线（regionCoreCache memo 内 groupWorkUnits→unitMembership→rhythm 喂布局栈；host 三处同步 host.ts / host.aliased.ts / host-modules.ts faceDeps）+ 阶段细线（`.pp-stage-lead::before` 弱线 --rule-soft 落 stageGap 中线）+ taste-ledger 落账 + 规格书 §4.2 立法 + paper-visual-decisions 钉值三断言。

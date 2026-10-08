@@ -342,7 +342,7 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
 `agent/asset-state.ts`（按 assetId 索引的单例；浅合并 patch、值须 JSON 可序列化、单资产 64 KiB 上限）
 → 按会话防抖落盘 `.lantai/asset-state/{sessionId}.json`（复用 `BoardPersistence`）。**状态不进会话日志**
 （与消息真源平行，互不污染）；Agent 读口 v1 只读——`list_block_kinds` 的资产清单带状态摘要（键数 / 字节数）。
-宿主桥面键经三处同步（见 §10.8）。见 `docs/plans/asset-state-plan.md`。
+宿主桥面键经三处同步（见 §10.8）。见 `docs/archive/render-paper-line/asset-state-plan.md`。
 
 ---
 
@@ -441,7 +441,7 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
 解析失败把原始字节带进错误；超时分级（30s → 5s 快速失败）；回复服务器请求；死壳自愈。
 **归因面（2026-09-25 加固）**：`LspServerState` 五态为单一归因源（`missing` 只装真用不上的：没装 / 起不来）；
 空结果四路分流（答了但空 / 忙·冷启动 / 装了起不来 / 真没装）；冷窗口（spawn 后 150s）内空结果转 busy。
-见 `docs/plans/engine-lsp-runtime-hardening-plan.md`。
+见 `docs/archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md`。
 
 ### 5.8 增量更新与存储层
 
@@ -713,7 +713,7 @@ identifier）。**缺省不删**（勾选框缺省不勾；静默/被动卸载�
 `{workspace}/.hologram` 永不随卸载删除**。Windows 自 2026-09-26 起**只发 NSIS**
 （`tauri.windows.conf.json` 的 `bundle.targets`，用户拍板）：旧 `.msi` 从来没有过清理通路
 （Tauri 的 WiX fragment 装不进自定义动作，实测已发布的 MSI 里从没出现过），也不再产出新的 `.msi`。
-见 [`docs/plans/uninstall-purge-plan.md`](docs/plans/uninstall-purge-plan.md)。
+见 [`docs/archive/kernel-tooling-line/uninstall-purge-plan.md`](docs/archive/kernel-tooling-line/uninstall-purge-plan.md)。
 
 ---
 

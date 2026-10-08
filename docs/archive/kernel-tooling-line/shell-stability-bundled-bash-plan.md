@@ -1,5 +1,9 @@
 # Shell 稳定性收口：捆绑 MSYS2 bash + dsh 式执行纪律
 
+> **已归档（2026-10-08 · 文档面收尾）**——P0-P5 全部落地并已实跑（2026-08-22：os_sandbox 17/17 绿）。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
+
 > 状态：2026-08-15 **P0-P5 全部落地**（`0f843f0` / `03468b0` / `1a16ea1` / `e9e62bb` / P5 提交见 shell 系列 commit）；P5 形态 = `shell(run, interpreter:"pwsh")` 参数而非新动作
 > **✅ Windows 真机实跑已毕（2026-08-22 自主段）**：§4 基线全绿——`cargo test os_sandbox::` 17/17（含新增 repo vendor 三连测试，捆绑解释器主路径首次被真机验证）、`cargo test commands::shell` 绿、src-ui `npx tsc --noEmit` 绿。实跑暴露并修正一处布局雷：init_bundled 开发态兑底与测试的 root 原写 `CARGO_MANIFEST_DIR/vendor`，但 `BUNDLED_BASH_REL = "vendor/usr/bin/bash.exe"` 自带 vendor/ 前缀（对齐打包态 resource_dir 布局），再拼一层指向不存在的 `vendor/vendor/`——已改为 root = CARGO_MANIFEST_DIR 本身（commit c9b1d490）。其它测试打「using system Git Bash」告警属预期（不经 init_bundled）
 > 动机：shell 能力不稳定（解释器探测分叉 / PATH 继承随机 / 编码无契约 / taskkill 杀树不可靠）

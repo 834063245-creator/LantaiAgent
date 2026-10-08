@@ -1,5 +1,8 @@
 # 动态边检测（Dynamic Edge Detection）迭代 Plan
 
+> **已归档（2026-10-08 · 文档面收尾）**——superseded（2026-08-24）——动态边已并入 v11 分析引擎主文档。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
 > 状态：**superseded**（2026-08-24）——本 plan 已并入
 > `v11-analysis-engine-master-plan.md` 第三篇章（D 篇），以主文档为准。
 > 本文件保留作历史参考。

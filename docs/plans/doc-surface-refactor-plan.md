@@ -114,7 +114,7 @@
 | `docs/plans/README.md` | 122 行 · 最长行 4979 · 最长单元格 1988 | **127 行 · 最长行 462 · 最长单元格 373**（骨架保留；真机欠账 12 行逐行保留；竣工线压成「点名 + archive 指针」） |
 | `docs/plans/HISTORY.md` | 最长单元格 945（8 处 >500） | 最长单元格 492（8 处全压，里程碑语义保留 + 指针） |
 
-**长行拆分（内容零改动）**：`taste-ledger.md` 15 行 · `scientific-rendering-plan.md` 1 行（4714 字符）· `stream-rhythm-plan.md` 1 行——
+**长行拆分（内容零改动）**：`taste-ledger.md` 15 行 · `docs/archive/render-paper-line/scientific-rendering-plan.md` 1 行（4714 字符）· `docs/archive/render-paper-line/stream-rhythm-plan.md` 1 行——
 在句界 / `**标签**：` 边界插换行 + 缩进；校验法 = 从 `git show HEAD:<file>` 取原文、重跑同一拆分算法，
 **与工作区逐字节比对相等**（工作区 = 原文 + 仅换行缩进，3 份文件全等）。
 

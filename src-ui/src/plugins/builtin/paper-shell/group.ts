@@ -3,7 +3,7 @@
 
 // paper-shell/group — 工作单元封套 pass（**批 9c-3 归家**：原 paper/group.ts 整件移入产物包；
 // 形状面 UnitKind / WorkUnit 上收内核 paper/group-contract.ts——内核 region-view 与
-// compose-dock 的阶段锚派生都用它）（stream-rhythm 刀1：docs/plans/stream-rhythm-plan.md §2）。
+// compose-dock 的阶段锚派生都用它）（stream-rhythm 刀1：docs/archive/render-paper-line/stream-rhythm-plan.md §2）。
 //
 // 版式语法表的执行面：translate 产出的块序列 → 工作单元（WorkUnit[]）。
 // 单元 = 一次具有内在关系的 Agent 工作行为（原方案 §二第二层），是节奏渲染

@@ -27,7 +27,7 @@ interface RawMcpSchema {
  *  优先级：条目级显式声明（`manifest.mcpServers[].readOnly` / 用户 `~/.lantai/mcp.json`
  *  同名字段）> 远端 `annotations.readOnlyHint === true` > **缺省 false（fail-closed）**。
  *
- *  为什么 fail-closed（2026-09-13 P0，见 docs/plans/office-cli-integration-plan.md §5）：
+ *  为什么 fail-closed（2026-09-13 P0，见 docs/archive/kernel-tooling-line/office-cli-integration-plan.md §5）：
  *  旧实现两处硬编码 `readOnly: () => true`（注释「写入型由调用方按需覆盖」，实际全仓
  *  零调用方覆盖）——于是**任何写型 MCP 工具在兰台都被当只读**：plan 模式放行写动作
  *  （`plan/plan-registry.ts` 首行 `if (tool.readOnly()) return null;`）、并入只读并行组、

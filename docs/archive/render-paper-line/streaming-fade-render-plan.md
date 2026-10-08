@@ -1,5 +1,8 @@
 # 流式渐显渲染（streaming-fade-render）计划
 
+> **已归档（2026-10-08 · 文档面收尾）**——Phase 1-3 已落地（2026-08-30，方案 B）；余真机验收。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
 > 状态：**In progress：Phase 1-3 已落地（2026-08-30），真机验收待用户跑**
 > 一句话：给兰台流式文本装上 Claude Code 桌面端式的「增量淡入」，覆盖 markdown 正文 / reasoning / notice / user 全文本 kind，正文与夹注统一，不割裂。
 > 施工史：2026-08-30 Phase 1-3 一次性施工（方案 B）——渲染器 ref 增量识别（startsWith 判追加，零数据层侵入）+ 三级切分（稳定段零动画 / 行内续写接末块 / 换行后成新块）+ `pp-ink-delta` CSS（0.72→1 起墨、--glide 0.3s）；新测试 `tests/paper-streaming-fade.test.tsx` 7 用例 + taste-ledger 落账；门禁 tsc / biome 0-0 / convergence 通过 / 渲染相关 73+7 全绿。**真机验收清单见 §5，等用户跑**。

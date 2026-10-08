@@ -1,5 +1,8 @@
 # OfficeCLI 集成计划（兰台 × iOfficeAI/OfficeCLI）
 
+> **已归档（2026-10-08 · 文档面收尾）**——工程完成（2026-09-13：P0 权限判定 + 四处病灶全修）；余用户真机验收。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
 > **状态：工程完成，待用户验收**（2026-09-13 十窗连续施工；`goal` 已 blocked/disarmed，等用户动作）
 >
 > **2026-09-15 更新（真机复盘，见 §11）**：「待验收」这个口径被实测推翻——用户那次真机测试里，
@@ -12,8 +15,8 @@
 > **本文件是现状合集**——十窗逐日流水已压成 §7 一张表；正文只留"现在是什么样"。
 > 上游目标物：[iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)（Apache-2.0；
 > 本计划 pin 版本 **v1.0.149**，win-x64 **31.87 MB**，SHA256 `abd82dae…31e2`）。
-> 相关计划：[`scientific-rendering-plan.md`](scientific-rendering-plan.md)（#20 PDF/Office 内嵌暂缓项）、
-> [`multimodal-image-plan.md`](../archive/multimodal-image-plan.md)（媒体/图片通道）、
+> 相关计划：[`scientific-rendering-plan.md`](../render-paper-line/scientific-rendering-plan.md)（#20 PDF/Office 内嵌暂缓项）、
+> [`multimodal-image-plan.md`](../multimodal-image-plan.md)（媒体/图片通道）、
 > [`app-shell-software-plugin-plan.md`](app-shell-software-plugin-plan.md)（软件级插件四件套）。
 
 **读法**：§0 拍板与现状 → §1 实测事实 → §2 落地形态 → §3 平台改动 → §4 分发 → §5 坑账 → §6 你的验收清单 → §7 施工史一览 → §8 剩余。

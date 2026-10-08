@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// paper/grammar — 事件语义分类（stream-rhythm 刀1：docs/plans/stream-rhythm-plan.md §2.3）。
+// paper/grammar — 事件语义分类（stream-rhythm 刀1：docs/archive/render-paper-line/stream-rhythm-plan.md §2.3）。
 //
 // 版式语法表的事件词表是「推导」不是「数据」：会话流里只有 tool call
 // （name + args），读 / 写 / 验证 / 提交四族由分类器从名字面 + 参数推导：

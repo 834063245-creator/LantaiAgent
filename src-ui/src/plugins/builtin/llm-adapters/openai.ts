@@ -284,7 +284,7 @@ export function buildChatRequest(
   }
   const chatMsgs: ChatMessage[] = [];
 
-  // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：OpenAI 兼容 chat 的
+  // 工具附图通道 P0a（docs/archive/render-paper-line/tool-image-context-plan.md）：OpenAI 兼容 chat 的
   // tool role 不接收图片 → 把工具附图汇成该轮 tool 组**之后**的一条合成 user 消息
   // （组尾最稳：不在 tool 序列中间插 user，兼容性最好）。无图时一行都不产生
   // （D-6：无图路径 wire 形态逐字节不变）。

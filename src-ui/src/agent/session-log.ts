@@ -145,7 +145,7 @@ export function buildCompactedSummaryMessage(summary: string): Message {
 interface ProjectionState {
   messages: Message[];
   /** **每条投影消息的「来源事件 seq」**（与 messages 同长同序）——会话树「枝」的
-   *  切点锚（docs/plans/session-tree-plan.md §4）：从某个节点立枝时，切点 = 该节点的
+   *  切点锚（docs/archive/session-line/session-tree-plan.md §4）：从某个节点立枝时，切点 = 该节点的
    *  来源 seq（**含该节点**），因为由前缀事件重放一定能得到同样的内容。
    *  与 messages 同步推进的三种变异：push（新消息）/ reset（整段替换或 adopt 换头）/
    *  retract（区间 splice）——两数组必须同生共死，长度不等即是 bug。 */
@@ -326,7 +326,7 @@ export class SessionLog {
    * 抹掉，**盘上留着原文**。新语义：把该区间的**来源事件**（连同区间内的审计事件）从日志里
    * **物理抹除**，并整写盘面 ⇒ 「旧消息直接抹掉」在文件上也成立。
    *
-   * 三条纪律（设计件 `docs/plans/session-tree-plan.md` §12.9）：
+   * 三条纪律（设计件 `docs/archive/session-line/session-tree-plan.md` §12.9）：
    *   ① **压实的目标是盘面**：未接落盘面 / 写面无整写能力位 ⇒ 不压实（退回旧语义，
    *      与 `flushPersistence` 的「未接落盘面 = no-op」同一降级纪律）；
    *   ② **seq 保留原值、留空洞**（不重编号——重编号会让枝卷头行的 `parent.atSeq` 指针错位）；
@@ -387,7 +387,7 @@ export class SessionLog {
 
   /**
    * **每条投影消息的来源事件 seq**（与 `deriveMessages()` 同长同序）——会话树「枝」的
-   * 切点锚（docs/plans/session-tree-plan.md §4）。
+   * 切点锚（docs/archive/session-line/session-tree-plan.md §4）。
    *
    * 用途：从某个节点（UI 消息/块）立枝时，切点 = 该节点的来源 seq（**含该节点**）；
    * 因为是「前缀重放 ⇒ 同样的内容」，锚点必须**由同一个 fold 产出**——另起一份重算

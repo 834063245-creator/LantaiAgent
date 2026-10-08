@@ -1,7 +1,7 @@
 # office-cli —— OfficeCLI × 兰台（C 路：一等 office 域工具）
 
 > 上游：[iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)（Apache-2.0，单二进制 Office 套件）。
-> 计划与实测数据：[`docs/plans/office-cli-integration-plan.md`](../../docs/plans/office-cli-integration-plan.md)。
+> 计划与实测数据：[`docs/archive/kernel-tooling-line/office-cli-integration-plan.md`](../../docs/archive/kernel-tooling-line/office-cli-integration-plan.md)。
 >
 > **形态（2026-09-13 C 路改判；2026-09-15 R3 重构）**：读写能力由兰台**内置 office 域工具**
 > `office(action,…)` 承担（zod 真源；经 `process_cap` 的 `office_exec` 动作受控 spawn——

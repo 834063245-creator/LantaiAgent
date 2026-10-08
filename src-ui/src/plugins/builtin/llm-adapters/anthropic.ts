@@ -305,7 +305,7 @@ export function buildRequest(
         break;
       case 'tool': {
         const content = m.content || '(no output)';
-        // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：图随 tool_result
+        // 工具附图通道 P0a（docs/archive/render-paper-line/tool-image-context-plan.md）：图随 tool_result
         // 的 content 数组进上下文（文本在前，图按引用序 join；读失败图自然跳过）。
         // 无图 tool 消息仍是纯字符串 content —— wire 形态逐字节不变（D-6）。
         if (m.images !== undefined && m.images.length > 0 && imageData !== undefined) {

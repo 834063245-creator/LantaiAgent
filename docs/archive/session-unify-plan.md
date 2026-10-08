@@ -2,7 +2,7 @@
 
 > ⚠ **已被推翻（2026-08-27，用户拍板）**：本计划的「全局会话池 + workspace 元数据标签」
 > 方向在实机上炸出新病灶（跨工作区撞号覆写 / 焦点投影串味）。方向整体反转为
-> 「会话物理归属工作区」，见 [`docs/plans/workspace-session-ownership-rework.md`](../plans/workspace-session-ownership-rework.md)
+> 「会话物理归属工作区」，见 [`docs/plans/workspace-session-ownership-rework.md`](session-line/workspace-session-ownership-rework.md)
 > （P1-P3 已落地：存储位 `{ws}/.lantai/sessions/`、焦点/绑定/全局列表全退役）。
 > 本文档 §2 的诊断（双存储位/首页指针单点/ledger 隔离）仍然有效——新模型的设计约束直接继承。
 

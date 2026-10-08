@@ -37,7 +37,7 @@ import {
 
 /** 展示用标签（人看的写法）。**实际读写一律用 `resolveUserMcpJsonPath()` 的绝对路径**：
  *  字面量 `~` 曾因 fs 层不展开波浪号而让本页读写全链路静默失败（2026-09-13 修，见
- *  docs/plans/office-cli-integration-plan.md §5 坑账）——不再赌波浪号。 */
+ *  docs/archive/kernel-tooling-line/office-cli-integration-plan.md §5 坑账）——不再赌波浪号。 */
 const USER_MCP_LABEL = '~/.lantai/mcp.json';
 
 /** server 卡片。 */

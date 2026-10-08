@@ -5,7 +5,7 @@
 // office 域（C 路）——OfficeCLI 一等域工具
 // ═══════════════════════════════════════════════════════════════
 // 为什么不再走 MCP 挂接（2026-09-13 改判，过程见
-// docs/plans/office-cli-integration-plan.md §10）：MCP 挂接把 OfficeCLI 原样搬成
+// docs/archive/kernel-tooling-line/office-cli-integration-plan.md §10）：MCP 挂接把 OfficeCLI 原样搬成
 // 「一个收命令行字符串的工具」——它绕开兰台的强制面（MCP 子进程是全权用户进程：
 // 不经 fs_cap、不受 os_sandbox 约束）、参数无类型、整块被标成一个写动作（plan 模式
 // 连 view 都被拦）。本域把同一能力做成兰台原生形状：
@@ -56,7 +56,7 @@
 // （bash.rs 步骤 3 → 4）⇒「始终允许」写进去也不生效。只在 yolo 下不可见（用户那次测试
 // 正是 yolo，所以完全没暴露）。**"改一行 BIN_RESOLVE"不够**——DOM 路径与 JSON 载荷各自
 // 独立触发同一判定。
-// 修法（强制层重构，见 docs/plans/office-cli-integration-plan.md §11.3）：
+// 修法（强制层重构，见 docs/archive/kernel-tooling-line/office-cli-integration-plan.md §11.3）：
 //   · 本工具不再拼 shell 命令串 ⇒ 命令、二进制定位、引号、环境钉扎搬进 Rust
 //     （`commands/process_cap.rs::office_exec`）；
 //   · 门禁换成 `tools::OfficeTool`（同批新增）：**只审 officeTargets 声明的目标文件**

@@ -30,7 +30,7 @@ export interface Tool {
    *  （Asset/AssetDelta）广播（协议 docs/archive/agent-asset-blocks.md §2.3）；executor 据此前
    *  路由 onProgress 增量与终值解析，ToolDispatch/ToolResult 照常（管道审计完整）。 */
   assetChannel?: boolean;
-  /** 工具附图通道标记（P0a，docs/plans/tool-image-context-plan.md）：工具输出
+  /** 工具附图通道标记（P0a，docs/archive/render-paper-line/tool-image-context-plan.md）：工具输出
    *  JSON 里可带 `image`/`images` 引用描述，executor 经 parseToolImageOutput
    *  取出引用挂到本次工具结果的消息上（字节在 {ws}/.lantai/attachments/，
    *  卷里只有引用——INVARIANTS #14）。文本模型/无 image 声明的模型由请求期

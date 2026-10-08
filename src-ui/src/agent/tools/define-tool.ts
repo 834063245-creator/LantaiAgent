@@ -57,7 +57,7 @@ export interface DefineToolOpts<S extends z.ZodObject<z.ZodRawShape>> {
   /** 资产通道标记——透传到 Tool.assetChannel（executor 据此前路由 Asset 事件） */
   assetChannel?: boolean;
   /** 工具附图通道标记——透传到 Tool.imageChannel（executor 据此前把输出里的
-   *  image 引用挂到工具结果消息上；docs/plans/tool-image-context-plan.md） */
+   *  image 引用挂到工具结果消息上；docs/archive/render-paper-line/tool-image-context-plan.md） */
   imageChannel?: boolean;
   /** 接收 parse 后的类型化参数(default 已注入, 校验失败会抛错而非静默兜底)。
    *  meta key(_callId/_agent_id/_forceGate) 不在类型内 — 需要时用 (args as { _callId?: string })._callId。

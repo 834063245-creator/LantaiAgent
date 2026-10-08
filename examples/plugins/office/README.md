@@ -7,7 +7,7 @@
 > **内置 office 域工具**（`office(action,…)`）承担——经 `process_cap` 的 `office_exec` 动作在
 > 沙箱里 spawn（命令由 Rust 拼装；权限只审声明的目标文件 `file`/`out`）+ 审计 + plan 按 action 分档。
 > 本插件只负责"看"。
-> 完整计划与实测数据：[`docs/plans/office-cli-integration-plan.md`](../../../docs/plans/office-cli-integration-plan.md) §10（C 路）与 §11（真机复盘 + R3 重构）。
+> 完整计划与实测数据：[`docs/archive/kernel-tooling-line/office-cli-integration-plan.md`](../../../docs/archive/kernel-tooling-line/office-cli-integration-plan.md) §10（C 路）与 §11（真机复盘 + R3 重构）。
 
 ## 1. 装
 

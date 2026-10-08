@@ -39,12 +39,20 @@
   只换数据源）、`dsh-viewer-phase2-integration.md`（client-plugin 集成规格 + `/hologram` 自托管形态）——
   该视图随主仓图谱渲染内核退役（2026-08-19 → 09-09 三步）从 `dsh-bundle` 拆除，包自此只发「引擎 + MCP 工具面」；
   两份顶部均已加归档横幅，其中 client-plugin 机制一节仍是可复用的机制事实。
-- **2026-10-07 归档（插件化欠账清账）**：`plugin-extraction/`（目录，8 件）——「插件化欠账」线（2026-09-04 立账 → 2026-09-26 清零）的
+- **2026-10-08 归档（插件化欠账清账）**：`plugin-extraction/`（目录，8 件）——「插件化欠账」线（2026-09-04 立账 → 2026-09-26 清零）的
   施工单与设计件：出厂产物归家总图纸 · 批 9 / 9h / 9c-4 / 9f / 批 6 / 批 7 施工单 · 工作区接线贡献面设计件（批 10）。
   这批**原头部写着「待施工 / Proposed」，而批次早已全落**——属「头部状态过期」，下次翻计划的人会把它们重新算进「没做」，
   故按 CONVENTIONS §4 归档；各件顶部已加归档横幅 + 现状指针，族索引见 [`plugin-extraction/README.md`](plugin-extraction/README.md)。
-  账目与三色基线仍在 [`../plans/plugin-extraction-inventory.md`](../plans/plugin-extraction-inventory.md)；**图版架仍留在 `docs/plans/`**（真机验收在办）。
+   账目与三色基线仍在 [`../plans/plugin-extraction-inventory.md`](../plans/plugin-extraction-inventory.md)。（图版架当时暂留 `docs/plans/`，2026-10-08 已随第二批归档至 `render-paper-line/`。）
   引用面（`docs/agents/open-surface-contract.md` · `ARCHITECTURE.md` · 账本 · 源码注释）已同步到 `docs/archive/plugin-extraction/…`。
+- **2026-10-08 归档大扫（第二批 · 23 份）**：把「代码已完成、只欠真机验收（或已作废）」的**过程文档**整批移出 `docs/plans/`，
+  按线分三个族目录（各带族 README）：
+  - `session-line/`（4）——会话树 · 卷日志抹除 · 侧栏双视角 · 会话归属反转。
+  - `render-paper-line/`（8）——渲染面补全 · stream-rhythm · 流式渐显 · 科研渲染 · 工具附图 · 出处引导 · 资产状态 · 图版架。
+  - `kernel-tooling-line/`（11）——捆绑 bash · 斜杠命令 · 产物内联 · 引擎-宿主断开 · 引擎/LSP 加固 · OfficeCLI · 卸载清理 · 软件级插件，
+    外加三份**已作废**（内核插件运行时 ×2 · 动态边检测）。
+  **判据** = CONVENTIONS §4「**过程文档是否还活着，不是验收跑没跑完**」；**真机欠账一行未删**，全在 `docs/plans/README.md` 欠账表。
+  引用面约 120 处同步（含 `CONVENTIONS.md` / `INVARIANTS.md` / `ARCHITECTURE.md` / 源码注释 8 处）。
 
 ## 使用规则
 

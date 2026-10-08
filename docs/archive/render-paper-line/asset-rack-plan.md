@@ -1,9 +1,12 @@
 # 图版架（资产收纳面）· 施工单
 
+> **已归档（2026-10-08 · 文档面收尾）**——B1-B3 已落（2026-09-23，见 §8 施工回执）；余 §6 九条真机验收。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
 > 立项 2026-09-23 · 状态：**B1-B3 已落（2026-09-23，见 §8 施工回执）；余 §6 九条真机验收（owner：用户）**
 > ——验收过后移入 `docs/archive/`（CONVENTIONS §4 归档纪律）并补 `docs/plans/HISTORY.md`。
-> 设计真源：[`../design/lantai-design-spec.md`](../design/lantai-design-spec.md) §9.5（几何、三案对照、语汇、归属、判据）
-> 原型真源：[`../../prototype/asset-rack-v2.html`](../../prototype/asset-rack-v2.html) + [`asset-rack-v2.NOTES.md`](../../prototype/asset-rack-v2.NOTES.md)（真样式台，真几何读数）
+> 设计真源：[`../design/lantai-design-spec.md`](../../design/lantai-design-spec.md) §9.5（几何、三案对照、语汇、归属、判据）
+> 原型真源：[`../../prototype/asset-rack-v2.html`](../../../prototype/asset-rack-v2.html) + [`asset-rack-v2.NOTES.md`](../../../prototype/asset-rack-v2.NOTES.md)（真样式台，真几何读数）
 > 触发原话：「Agent 产出的 kind 资产直接渲染到聊天流里，其实不好用……我觉得放在创作坞是对的，
 > 我觉得需要单独再设计一个收纳的地方，不然全部挤在右下角也不是很舒服」→「再做一版把横架放在坞下面的」→ 拍板丙。
 

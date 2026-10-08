@@ -121,8 +121,8 @@ Agent 的二跳查询路径必须在 summary 返回体里自描述。
 
 ## 第三篇章：动态边检测（D 篇）——补静态盲区
 
-> 本篇章即原 dynamic-edge-detection-plan.md 的内容并入。原独立文件
-> `docs/plans/dynamic-edge-detection-plan.md` 保留但标记 superseded，以本文为准。
+> 本篇章即原 docs/archive/kernel-tooling-line/dynamic-edge-detection-plan.md 的内容并入。原独立文件
+> `docs/archive/kernel-tooling-line/dynamic-edge-detection-plan.md` 保留但标记 superseded，以本文为准。
 
 ### D1. 数据模型扩展
 
@@ -245,4 +245,4 @@ D2(L1 影子边) ─1周──┘   （与 P 共享 edge_priority）      │
 - dataflow_engine 17 语言配置矩阵直接服务 D 篇与 P 篇的 trace_dataflow
 - MCP 注册走 `tools/mod.rs` 既有 match 表（HOLOGRAM_MCP_TOOLS 开关沿用）
 - provenance 落 edge.rs，测试对齐 `test_edge_serde_roundtrip` 家族
-- 文档唯一落点：本文档；原 dynamic-edge-detection-plan.md 标记 superseded
+- 文档唯一落点：本文档；原 docs/archive/kernel-tooling-line/dynamic-edge-detection-plan.md 标记 superseded

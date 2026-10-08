@@ -1,6 +1,6 @@
 # 插件化欠账（plugin-extraction）— 已归档施工单与设计件
 
-> **已归档（2026-10-07 · 文档面收尾）**——本目录收「插件化欠账」线（2026-09-04 立账 → 2026-09-26 清零）
+> **已归档（2026-10-08 · 文档面收尾）**——本目录收「插件化欠账」线（2026-09-04 立账 → 2026-09-26 清零）
 > 的八份过程文档。**账② 物理归家已清零**：红区 **0 产物 / 0 文件 / 0 行**，纯壳集 21 → 0。
 > **现状与在办真值**：[`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §5（三色基线）/ §6（批次表）
 > ＋ [`docs/plans/README.md`](../../plans/README.md)；规则承接 [`PLUGINS.md`](../../../PLUGINS.md) 与 [`docs/plugins/README.md`](../../plugins/README.md)。
@@ -24,5 +24,5 @@
 **头部状态过期会骗人**：下次翻计划的人（含 Agent）会把它们重新算进「还剩多少没做」。
 按 CONVENTIONS §4「竣工即归档」搬入此处，每份顶部留归档横幅 + 现状指针。
 
-同线的**图版架**（`asset-rack-plan.md`）**不在本目录**：它代码已落但 §6 九条真机验收仍在办，
-故留在 `docs/plans/`（其头部状态已订正为「B1-B3 已落 · 余真机验收」）。
+同线的**图版架**（`asset-rack-plan.md`）当时暂留 `docs/plans/`（代码已落、§6 九条真机验收在办）；
+**2026-10-08 已随第二批归档**（判据一致：验收欠账不构成在办标记）——见 [`../render-paper-line/`](../render-paper-line/README.md)。

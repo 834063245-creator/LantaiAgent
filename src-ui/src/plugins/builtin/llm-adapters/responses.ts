@@ -305,7 +305,7 @@ export function buildResponsesRequest(
   for (const m of msgs) {
     if (m.role === 'system') continue;
     if (m.role === 'tool') {
-      // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：本协议
+      // 工具附图通道 P0a（docs/archive/render-paper-line/tool-image-context-plan.md）：本协议
       // function_call_output 支持内容项数组 → 图随工具结果进上下文。
       // 无图 tool 仍是字符串 output（纯文本 wire 逐字节不变，D-6）。
       const parts: Array<{ type: 'input_text' | 'input_image'; text?: string; image_url?: string }> = [];

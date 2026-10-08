@@ -1,5 +1,8 @@
 # 卸载残留清理（uninstall purge）
 
+> **已归档（2026-10-08 · 文档面收尾）**——代码已落地 + 本机 E2E 通过（2026-09-26）；余真机勾选验收。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
 > 立项 2026-09-26（用户报）· **代码已落地并本机 E2E 通过（2026-09-26）；余真机勾选验收**
 > 真源：`src-tauri/src/purge.rs`（目录清单唯一一份）· 挂接点：`src-tauri/nsis/installer-hooks.nsh`
 > Windows 自 2026-09-26 起**只发 NSIS**（用户拍板，见下「MSI 侧的真相」）

@@ -1,5 +1,8 @@
 # 会话树（枝）——从任意节点开枝
 
+> **已归档（2026-10-08 · 文档面收尾）**——P1/P1′/P0 修/P2/P3/P4-①/③ 全落地（2026-09-18/19）；余真机手感。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
 > 立项：2026-09-18（用户提「想做会话分支」；追问后裁定 **要的是会话树**——理由「画布式交互契合树状会话」）。
 > 性质：**数据结构 + 交互新增**。app 层为主；**不动事件词表、不动 phase-5 投影契约**；头行加可选字段，旧卷照读。
 > 状态：**P1 + P1′ + P0 修 + P2 + P3 + P4-③ + P4-① 已落地（2026-09-18 / 09-19，施工记录见 §12）；
@@ -353,7 +356,7 @@ P2/P3 未动 `agent/**` 与 `composition/**`（只新增 import），仍逐批�
 | `app/chat/session-branch.ts` | `branchOriginOf`（血缘读面，**零 I/O**）+ `branchNodeMessageId`（切点 → 父卷里承载它的界面消息：投影锚点 + 用户轮桥，与 `resolveBranchPoint` 同一条链、方向相反） |
 | `app/chat/chat-core.ts` | `branchOrigin(sessionId)`（血缘读面，零 I/O——侧栏/书脊/卷首那枚「枝」标读它）+ `branchEdge(sessionId)`（父卷 + 那个节点；null = 无句柄/落不到节点 ⇒ 不画线） |
 | `paper/provenance.ts` | `tetherAnchorsAt`（锚高由调用方给）——`tetherAnchors` 变成它 + 钉锚高，**选边/留白/收笔规则只有一份**（不新造一种线） |
-| `paper-shell/PaperPanel.tsx` + `.css` | 枝边层：常显的一丝朱砂（卷首中线 → 节点缘）+ ~~**受墨带**（加粗透明描边承接点击，墨本身仍是那一丝）+ 点线溯源（飞节点 + 点名一拍）~~ ⇒ **2026-09-24 第二刀摘除**（线不是控件；账上无用户拍板依据，用户「我从来也没有拍板过引线本体要做成按钮」——见 [taste-ledger](paper-shell/taste-ledger.md) 2026-09-24 条）；卷首眉行缀「枝」（§5「书脊与卷首标枝」的卷首那半；眉行 line-height 是定值 15px，缀字不改卷首高契约） |
+| `paper-shell/PaperPanel.tsx` + `.css` | 枝边层：常显的一丝朱砂（卷首中线 → 节点缘）+ ~~**受墨带**（加粗透明描边承接点击，墨本身仍是那一丝）+ 点线溯源（飞节点 + 点名一拍）~~ ⇒ **2026-09-24 第二刀摘除**（线不是控件；账上无用户拍板依据，用户「我从来也没有拍板过引线本体要做成按钮」——见 [taste-ledger](../../plans/paper-shell/taste-ledger.md) 2026-09-24 条）；卷首眉行缀「枝」（§5「书脊与卷首标枝」的卷首那半；眉行 line-height 是定值 15px，缀字不改卷首高契约） |
 | `tests/session-tree-canvas.test.tsx`（新） | 挂真 PaperPanel：无枝边不落笔（卷首也不缀枝）/ 卷首标「枝」/ 起笔在卷首左缘且朱点落在**父卷那个节点**的缘上 **+ 线不是控件**（层内无 `[role=button], [tabindex]`、整层 aria-hidden）/ ~~点线飞到节点（视口对准父卷中轴）~~（**2026-09-24 随行为退役删除**）/ 父节点在屏外时线出屏 |
 | `tests/session-branch.test.ts` +1 / `tests/paper-provenance.test.ts` +1 | `branchEdge` 真卷三例（根卷无边 / 来文节点 / 回复节点）；同一支笔的锚高等价式 |
 

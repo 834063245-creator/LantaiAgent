@@ -2,7 +2,7 @@
 
 > **状态**：未开工（2026-09-26 立项，等另开窗口施工）。施工面 = `engine`（`lsp_manager.rs` + `Cargo.toml`）。
 > **由来**：2026-09-24 实测孤儿 `rust-analyzer.exe` PID 7160（当日 18:07 起，跨日存活）；同一轮实测
-> rust-analyzer 常驻 2.9GB。**前置阅读**：[`engine-lsp-runtime-hardening-plan.md`](engine-lsp-runtime-hardening-plan.md)。
+> rust-analyzer 常驻 2.9GB。**前置阅读**：[`docs/archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md`](../archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md)。
 
 ## 一、裁定（先看这个）
 

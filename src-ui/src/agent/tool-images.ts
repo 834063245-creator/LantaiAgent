@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// tool-images — 工具附图通道（P0a，docs/plans/tool-image-context-plan.md）。
+// tool-images — 工具附图通道（P0a，docs/archive/render-paper-line/tool-image-context-plan.md）。
 //
 // 问题：工具产出的图片（截图族）此前永远进不了模型上下文——附图通道只认 user
 // 消息（INVARIANTS #14 的「仅 user 携带」），于是模型只能拿到一个 PNG 路径，

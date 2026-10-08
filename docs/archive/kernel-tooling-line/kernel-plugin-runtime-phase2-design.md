@@ -1,5 +1,8 @@
 # 内核插件运行时 Phase 2 设计件 —— 工具域全量批次拆解 + tool_call:progress 进度流 + Tool::name() 放宽
 
+> **已归档（2026-10-08 · 文档面收尾）**——已作废——同上（v3 拆除令）。
+> 现状与在办真值见 [`plans/README.md`](../../plans/README.md) 真机欠账表与 [族索引](../README.md)。
+
 > 状态：**自查模式设计件**（2026-09-04；按 2026-08-24 拍板 #4 纪律——agent 对代码库逐条自查设计断言，用户面只保留白话摘要，不产待批长文）。
 > 性质：kernel-plugin-runtime-plan §4 Phase 2 前置设计。前批先例：builtin.search（Phase 1）/ builtin.web（Phase 1 续，4778cd5f）——本件沿用其全部已验证模式，只裁决新面。
 > 范围：Phase 2 = 工具域全量迁移（2026-09-04 拍板合并原 Phase 2/3——fs/git/shell/editor/constraints/browser/uia/pty/lsp 九域同质工作按风险排序，域界即批界）。P2-5/P2-6（browser/uia/pty/lsp）只立批位，权限形状增补节起工前补。

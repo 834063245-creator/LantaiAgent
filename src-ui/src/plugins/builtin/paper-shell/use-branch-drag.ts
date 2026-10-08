@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // 空间手势立枝域（P4-①，2026-09-19）——按住块上的「枝」握把**拖出一条引线、松手落在纸上**
-// = 就地立枝（枝卷落在松手的位置）。立项件 `docs/plans/session-tree-plan.md` §5 / §12.8。
+// = 就地立枝（枝卷落在松手的位置）。立项件 `docs/archive/session-line/session-tree-plan.md` §5 / §12.8。
 //
 // 判据（为什么不与既有三条手势打架，见 plan §5）：握把是块 hover 才出现的**独立小把手**，
 // 落在块体**之外**的底间距带里（右对齐，与动作行同一条带）：

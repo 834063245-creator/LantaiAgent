@@ -3,7 +3,7 @@
 对位基本插件范本 [`examples/plugins/hello/`](../hello/)（贡献零件：面板/命令/
 工具），本示例是「**软件级插件**」的范本：完整软件以插件形态住进兰台——
 装载即给数据地盘、开窗即视图、工具驱动即干活、卸载即整体回收（app shell
-四件套闭环，`docs/plans/app-shell-software-plugin-plan.md`）。
+四件套闭环，`docs/archive/kernel-tooling-line/app-shell-software-plugin-plan.md`）。
 
 ```
 notes-app/

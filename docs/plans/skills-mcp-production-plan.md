@@ -95,7 +95,7 @@
   - 删除/禁用（禁用 = 元数据标或移目录——定稿）
   - slash 菜单接通 setSkillProvider（修 command-registry 断线）
     ↳ 现状（2026-09-19）：command-registry 已整文件退役（斜杠命令面重做，
-      见 command-surface-rework-plan.md）——技能候选改由 app/commands/skill-catalog
+      见 docs/archive/kernel-tooling-line/command-surface-rework-plan.md）——技能候选改由 app/commands/skill-catalog
       按工作区路径键控提供，`/` 面板与 Ctrl+K 面板消费同一份合流清单
 ```
 
