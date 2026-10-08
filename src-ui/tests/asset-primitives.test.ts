@@ -415,6 +415,20 @@ describe('html 沙箱文档（WO-8）', () => {
     const html = buildHtmlCardDocument('x'.repeat(600 * 1024));
     expect(html.length).toBeLessThan(600 * 1024);
   });
+
+  it('框视觉并入纸面（2026-10-08 用户报「像嵌套在框里」）：无边框、无纸底，卡底留投影场域', () => {
+    const css = readFileSync(
+      join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
+      'utf8',
+    );
+    const at = css.indexOf('.pp-html-frame {');
+    expect(at).toBeGreaterThan(-1);
+    const rule = css.slice(at, css.indexOf('}', at));
+    expect(rule).toContain('border: 0');
+    expect(rule).toContain('background: transparent');
+    // 投影场域：底部留白只钉「在」——数值是审美数字，真机可调
+    expect(buildHtmlCardDocument('<b>hi</b>')).toMatch(/body \{ padding: 8px 12px \d+px;/);
+  });
 });
 
 // ── 图版题签行（B 图版签主干，2026-09-17）──

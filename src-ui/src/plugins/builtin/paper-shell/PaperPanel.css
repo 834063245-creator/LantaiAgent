@@ -5672,11 +5672,16 @@
 .pp-html {
   padding: var(--pp-asset-html-padV) 0;
 }
+/* 沙箱框视觉并入纸面（2026-10-08 用户报「像把生成产物嵌套在框里」）：
+   去 1px 边框与纸色底——iframe 不再是「浅色盒子」，生成卡直接坐纸上。
+   去边框同时消掉 box-sizing: border-box 下 iframe 视口恒少 2px（上报高度 =
+   边框盒高）导致的**常驻竖滚动条**（内容明明放得下也出滚动条）。
+   限高语义（flow 1000px / pinned 不限）留在原位不动。 */
 .pp-html-frame {
   width: 100%;
   height: var(--pp-asset-html-frameDefaultH);
-  border: var(--rule-soft);
-  background: var(--paper);
+  border: 0;
+  background: transparent;
   /* flow 限高 1000px 可滚动（A3）；pinned 不限高由 .pp-pinned 覆盖 */
   max-height: 1000px;
   overflow: auto;

@@ -1561,6 +1561,10 @@ function GraphLayeredBody({ block }: BlockRendererProps) {
 
 const HTML_CARD_MAX_BYTES = 512 * 1024;
 const HTML_CARD_HEIGHT_CAP = 1000;
+/** 卡片底部呼吸（阴影场域，2026-10-08）：生成卡常带大投影（如 `0 18px 60px`），
+ *  iframe 视口底缘会把投影硬裁成一条截断线（用户报「像被框底切断」——「嵌套感」
+ *  的另一半来源）；留出「偏移 18 + 模糊 60」的理论外沿，投影完整晕在纸上。 */
+const HTML_CARD_BOTTOM_BREATH = 72;
 const HTML_CARD_NS = 'lantai.card-resize';
 const HTML_CARD_PING = 'lantai.card-ping';
 /** 状态桥协议（2026-10-07 asset-state）：子 → 父 {type, req, op, patch?}；
@@ -1585,7 +1589,7 @@ export function buildHtmlCardDocument(code: string): string {
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { background: transparent; }
-body { padding: 8px 12px; font-family: var(--f-song, serif); color: var(--ink-1, #26221c); }
+body { padding: 8px 12px ${HTML_CARD_BOTTOM_BREATH}px; font-family: var(--f-song, serif); color: var(--ink-1, #26221c); }
 svg { display: block; max-width: 100%; }
 </style>
 </head>
