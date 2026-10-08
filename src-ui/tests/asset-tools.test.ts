@@ -316,6 +316,53 @@ describe('资产回执与幂等 — 2026-09-16 真机事故回归（"怀疑就�
     expect(chunks.length).toBeGreaterThan(1);
   });
 
+  it('回读面：用户在 html 卡里留下的内容直接可读（不再只剩字节数）', async () => {
+    const sa = await import('../src/agent/asset-state');
+    const sc = await import('../src/agent/session-context');
+    const t = JSON.parse(await run('show_asset', { kind: 'html', payload: { code: '<div>hi</div>' } })) as {
+      assetId: string;
+    };
+    const disposeCtx = sc.registerOwnerContext(SCOPE, '/proj');
+    sc.setOwnerSessionId(SCOPE, '7');
+    // 先让恢复落定：patch 才走常规防抖路径（本用例周期内不会真触发落盘写，不惊动 rpc mock）
+    sa.prewarmAssetStateSession('/proj', '7');
+    await new Promise((r) => setTimeout(r, 0));
+    sa.patchAssetState({ projectPath: '/proj', sessionId: '7' }, t.assetId, { notes: 3, last: 'B4' });
+    try {
+      const out = await run('list_block_kinds', {});
+      expect(out).toContain(t.assetId);
+      expect(out).toContain('用户状态 2 键');
+      expect(out).toContain('↳ {"notes":3,"last":"B4"}');
+    } finally {
+      sa.clearAssetStateForTests();
+      disposeCtx();
+    }
+  });
+
+  it('回读面：状态超单卡预算 → 只给放得下的键 + 省略计数（不给半截 JSON）', async () => {
+    const sa = await import('../src/agent/asset-state');
+    const sc = await import('../src/agent/session-context');
+    const t = JSON.parse(await run('show_asset', { kind: 'html', payload: { code: '<i></i>' } })) as {
+      assetId: string;
+    };
+    const huge = 'x'.repeat(3000);
+    const disposeCtx = sc.registerOwnerContext(SCOPE, '/proj');
+    sc.setOwnerSessionId(SCOPE, '7');
+    sa.prewarmAssetStateSession('/proj', '7');
+    await new Promise((r) => setTimeout(r, 0));
+    sa.patchAssetState({ projectPath: '/proj', sessionId: '7' }, t.assetId, { small: 'ok', huge });
+    try {
+      const out = await run('list_block_kinds', {});
+      expect(out).toContain('用户状态 2 键'); // 规模读数照旧（如实说有多少）
+      expect(out).toContain('"small":"ok"'); // 放得下的键给内容
+      expect(out).not.toContain(huge); // 放不下的键不整段灌进来
+      expect(out).toContain('因体积省略');
+    } finally {
+      sa.clearAssetStateForTests();
+      disposeCtx();
+    }
+  });
+
   it('回读面：list_block_kinds 列出本会话已有资产 + 派生读数 + 回执语义', async () => {
     const t = JSON.parse(await run('show_asset', { kind: 'table', title: 'inv', payload: TABLE })) as {
       assetId: string;

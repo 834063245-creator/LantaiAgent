@@ -160,21 +160,45 @@ describe('asset-state — 真删卷：内存与文件一起走', () => {
   });
 });
 
-describe('asset-state — Agent 读口（摘要）', () => {
-  it('摘要 = 键数 + 字节数；该资产出现且只有它', () => {
+describe('asset-state — Agent 读口（规模 + 内容）', () => {
+  it('读数 = 键数 + 字节数 + 内容本身；该资产出现且只有它', () => {
     patchAssetState(KEY, 'as_1', { a: 1, b: 'x' });
     const sum = listAssetStateSummary(KEY);
     expect(sum).toHaveLength(1);
     expect(sum[0]?.assetId).toBe('as_1');
     expect(sum[0]?.keys).toBe(2);
     expect(sum[0]?.bytes).toBeGreaterThan(0);
+    expect(sum[0]?.state).toEqual({ a: 1, b: 'x' });
   });
 
-  it('owner 解析：绑定了会话的 agent 读得到本会话摘要', () => {
+  it('用户在卡里分两次留下的字段 → 两条内容一起读回（不只剩一个规模数）', () => {
+    patchAssetState(KEY, 'as_1', { notes: 3 });
+    patchAssetState(KEY, 'as_1', { last: 'B4' });
+    expect(listAssetStateSummary(KEY)[0]?.state).toEqual({ notes: 3, last: 'B4' });
+  });
+
+  it('没碰过状态的资产不进读数（不造空条目）', () => {
+    patchAssetState(KEY, 'as_1', { a: 1 });
+    expect(listAssetStateSummary(KEY).map((s) => s.assetId)).toEqual(['as_1']);
+  });
+
+  it('重启后内容照样读得到——走落盘恢复，不靠内存', async () => {
+    patchAssetState(KEY, 'as_1', { notes: 7, last: 'C5' });
+    await flushAssetStateSession(KEY);
+
+    restart();
+    expect(getAssetState(KEY, 'as_1')).toBeNull(); // 恢复在途：先如实读到 null
+    await flushAssetStateSession(KEY); // 等恢复落定
+    expect(listAssetStateSummary(KEY)[0]?.state).toEqual({ notes: 7, last: 'C5' });
+  });
+
+  it('owner 解析：绑定了会话的 agent 读得到本会话读数（含内容）', () => {
     patchAssetState(KEY, 'as_1', { a: 1 });
     const dispose = registerOwnerContext('main-1', '/proj');
     setOwnerSessionId('main-1', '7');
-    expect(listAssetStateSummaryForOwner('main-1').map((s) => s.assetId)).toEqual(['as_1']);
+    const rows = listAssetStateSummaryForOwner('main-1');
+    expect(rows.map((s) => s.assetId)).toEqual(['as_1']);
+    expect(rows[0]?.state).toEqual({ a: 1 });
     dispose();
   });
 

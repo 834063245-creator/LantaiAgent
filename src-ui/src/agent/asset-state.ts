@@ -7,7 +7,8 @@
 // 文档级 CSP `connect-src 'none'`）——卡里的输入/勾选/拖拽对宿主是黑箱：既读不回，
 // 也无法被 Agent 看到。本模块给这类卡配**存档线**：卡内经既有 postMessage 桥写回
 // 键值表；表按会话防抖落盘（`.lantai/asset-state/<sessionId>.json`），Agent 侧在
-// `list_block_kinds` 的资产清单里读摘要（`listAssetStateSummaryForOwner`）。
+// `list_block_kinds` 的资产清单里读**内容**（`listAssetStateSummaryForOwner`）——内容如实
+// 交出，给模型看的体积预算由消费方（工具输出层）决定。
 //
 // 键系（(projectPath, sessionId) × assetId）——刻意**不用** `agent/asset-store` 的
 // owner scope（bus id）：bus id 是「本轮装配实例」的 id（重启/重建句柄即换），而状态
@@ -44,11 +45,14 @@ export interface AssetStateKey {
 
 export type AssetStatePatchResult = { ok: true } | { ok: false; error: string };
 
-/** Agent 读口的一行（派生读数：键数 + 序列化字节数）。 */
-export interface AssetStateSummary {
+/** Agent 读口的一行：派生读数（键数 + 序列化字节数）+ 内容本身。
+ *  内容在这里如实交出、不裁剪——「给模型看的体积预算」是消费方（工具输出层）的事。 */
+export interface AssetStateReading {
   assetId: string;
   keys: number;
   bytes: number;
+  /** 该卡的用户状态内容（深拷贝）。没碰过状态的卡不出现在清单里。 */
+  state: Record<string, unknown>;
 }
 
 interface SessionEntry {
@@ -259,22 +263,30 @@ export function clearAssetState(key: AssetStateKey, assetId: string): void {
   scheduleFlush(entry);
 }
 
-/** 状态摘要清单（Agent 读口内层；表序 = 首见序）。 */
-export function listAssetStateSummary(key: AssetStateKey): AssetStateSummary[] {
+/** 状态读数清单（Agent 读口内层；表序 = 首见序）：规模 + 内容。 */
+export function listAssetStateSummary(key: AssetStateKey): AssetStateReading[] {
   if (!usableKey(key)) return [];
   const entry = sessions.get(sessionKeyOf(key));
   if (!entry) return [];
-  const out: AssetStateSummary[] = [];
+  const out: AssetStateReading[] = [];
   for (const [assetId, state] of entry.states) {
-    out.push({ assetId, keys: Object.keys(state).length, bytes: jsonBytes(JSON.stringify(state)) });
+    out.push({
+      assetId,
+      keys: Object.keys(state).length,
+      bytes: jsonBytes(JSON.stringify(state)),
+      state: cloneJson(state),
+    });
   }
   return out;
 }
 
-/** Agent 读口整合面：owner（agent id）→ (工作区根, 会话号) → 摘要。
+/** Agent 读口整合面：owner（agent id）→ (工作区根, 会话号) → 读数（规模 + 内容）。
  *  解析不出来（零目录工作区 / 未绑会话 / 该卷没碰过状态）= 空表——
- *  调用方如实省略读数，不造假设。 */
-export function listAssetStateSummaryForOwner(ownerId: string | undefined | null): AssetStateSummary[] {
+ *  调用方如实省略读数，不造假设。
+ *
+ *  函数名与返回值的**键位**同属宿主面封印（`host-surface.baseline.json` 只钉键集与指纹）：
+ *  本函数加字段（state）不换键集、不动指纹——壳侧实现与插件产物因此可以分头演进。 */
+export function listAssetStateSummaryForOwner(ownerId: string | undefined | null): AssetStateReading[] {
   const ctx = ownerContext(ownerId);
   const sessionId = ownerSessionIdOf(ownerId);
   if (!ctx || !sessionId) return [];

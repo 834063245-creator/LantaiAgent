@@ -341,7 +341,9 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
 写回内核：卡内 `window.lantai.state.get() / patch(obj)`（协议 `lantai.card-state`）→ 内核
 `agent/asset-state.ts`（按 assetId 索引的单例；浅合并 patch、值须 JSON 可序列化、单资产 64 KiB 上限）
 → 按会话防抖落盘 `.lantai/asset-state/{sessionId}.json`（复用 `BoardPersistence`）。**状态不进会话日志**
-（与消息真源平行，互不污染）；Agent 读口 v1 只读——`list_block_kinds` 的资产清单带状态摘要（键数 / 字节数）。
+（与消息真源平行，互不污染）；Agent 读口只读——`list_block_kinds` 的资产清单带**状态读数**（键数 / 字节数 +
+内容本身，以 `↳` 子行给出）。内容受体积预算约束（单卡 2 KB / 全部合计 8 KB）：放不下的键只计数不展示，
+绝不截成半截 JSON；预算在工具输出层——内核的 `AssetStateReading` 如实交出内容、不做裁剪。
 宿主桥面键经三处同步（见 §10.8）。见 `docs/archive/render-paper-line/asset-state-plan.md`。
 
 ---
