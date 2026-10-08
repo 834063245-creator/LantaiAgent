@@ -24,8 +24,9 @@ export function useFoldState() {
       return { ...prev, [b.id]: !cur };
     });
   }, []);
-  /** 显式**展开**（幂等，非翻转）：架上签条单击后「连展开」用——图版卡默认收起
-   *  （paper/fold 规则），架上报的块若还收着，飞过去看到的只是一行签条，等于没到。
+  /** 显式**展开**（幂等，非翻转）：架上签条单击后「连展开」用——块若还收着，飞过去
+   *  看到的只是一行签条，等于没到。图版卡自 2026-10-08 起默认张开（paper/fold 规则），
+   *  故本能力位现在的触发面 = **用户自己收起过的**那块。
    *  写的是**用户覆盖**（与点折叠行同一条路）⇒ 之后不会被状态翻转自动收回。 */
   const expandBlock = useCallback((b: SourcedBlock) => {
     setFoldOv((prev) => (prev[b.id] === false ? prev : { ...prev, [b.id]: false }));

@@ -18,12 +18,13 @@
 //     完整分发（running）与结果（done）近乎背靠背，展开只闪一帧，用户
 //     看到的是「折叠→完成时展开→又折叠」的抽搐；与 toolgroup/subagent
 //     组语义对齐（组内 running 子卡从不自动展开）后主灶消除；
-//   - **资产块**（带 asset 元数据的块 —— 图版卡族）：默认**收起成一行签条**
-//     （折叠行 = 物类签 + 题名），点开就地展开；两条豁免——**钉住态**（钉是人工
-//     挑出来的收藏，默认该张着）与**活确认卡**（`asset._confirm` 在 = 等用户决议，
-//     可操作卡不可被折叠藏住）。这是 2026-09-23 图版架批对现行规则的**显式规格变更**
-//     ——原文是「其余 kind（来文/正文/抄录/拟策/贴黄）不可折叠」；改的理由：架上
-//     已有一份收纳面，流里再摊一整张卡＝同一张图版两处各一份（§9.5「流内配套」）。
+//   - **资产块**（带 asset 元数据的块 —— 图版卡族）：**默认张开**（2026-10-08 用户
+//     拍板 —— **显式规格变更**，撤销 2026-09-23 图版架批的「默认收起成一行签条」；
+//     用户原话「默认折叠很奇怪」）。**仍可折叠**：点折叠行即收起长卡（折叠行 =
+//     物类签 + 题名），但那不是默认态——默认态与来文/正文同族：内容留面。
+//     历史注：收起态当年的理由是「架上已有一份收纳面，流里再摊一整张卡＝同一张图版
+//     两处各一份（§9.5「流内配套」）」——该理由随本次拍板作废：流里那张 = **上下文
+//     原位的一份**，架上签条 = **本卷收纳读数**，两处并存就是现行形态。
 //     判据 = **块带 asset 元数据**（kind 是开放面，资产身份在 asset 上，不认 kind 名）；
 //   - 其余 kind（来文/正文/抄录/拟策/贴黄——**未带 asset 元数据**的那些）不可折叠。
 // 用户显式点开/收起写入壳层覆盖表（foldOv），覆盖默认——
@@ -36,7 +37,9 @@ import { codeSections, hasArgsToShow, toolDigest } from './tool-text';
 
 /** 可折叠 kind（渲染器与测量端共用判据）。
  *  `block` 缺省 = 只看 kind 面（非资产）；生产调用点一律传块——资产身份在
- *  `block.asset` 上，不看 kind 名（开放 kind 面）。 */
+ *  `block.asset` 上，不看 kind 名（开放 kind 面）。
+ *  **可折叠 ≠ 默认折叠**：资产（图版卡）自 2026-10-08 起默认张开，但仍可手动
+ *  收起（见 defaultFolded）。 */
 export function isFoldable(kind: BlockKind, block?: SourcedBlock): boolean {
   if (block?.asset != null) return true;
   return kind === 'reasoning' || kind === 'tool' || kind === 'code' || kind === 'toolgroup' || kind === 'subagent';
@@ -45,13 +48,12 @@ export function isFoldable(kind: BlockKind, block?: SourcedBlock): boolean {
 /** 默认折叠态：无用户覆盖时的规则面。 */
 export function defaultFolded(kind: BlockKind, payload: unknown, block?: SourcedBlock): boolean {
   if (block?.asset != null) {
-    // 资产（图版卡）：默认收起；两条豁免——
-    // ① **钉住态**：钉是人工挑出来的收藏，默认该张着（见文件头注）；
-    // ② **活确认卡**（`asset._confirm` 在 = 等用户决议的实时卡）：可操作卡不可被
-    //    折叠藏住——同 subagent 组「子拟策待审批 ⇒ 张开」那条（判据形状也同源：
-    //    看活回调在不在，不看决议终态）。藏住它 = 用户看不见问题、Agent 空等。
-    if (block.asset._confirm != null) return false;
-    return block.state !== 'pinned';
+    // 资产（图版卡）：**默认张开**（2026-10-08 用户拍板「默认折叠很奇怪」）。
+    // 折叠能力位保留——用户点折叠行即可收起长卡（写进覆盖表）。
+    // 历史：2026-09-23 起此处返 `block.state !== 'pinned'`（默认收起），另给两条
+    // 豁免（钉住态 / 活确认卡）。默认态翻成张开后两条豁免一并作废：张开的卡
+    // 无所谓"豁免折叠"——保留它们只会让判据多两条读不出来的分支。
+    return false;
   }
   if (kind === 'reasoning') return true;
   if (kind === 'toolgroup') {

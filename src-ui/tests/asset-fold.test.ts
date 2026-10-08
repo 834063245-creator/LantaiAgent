@@ -1,19 +1,24 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// asset-fold.test.ts — 流内图版卡**默认收成一行签条**（2026-09-23 图版架批）。
+// asset-fold.test.ts — 流内图版卡**默认张开**、仍可手动收起（2026-10-08 用户拍板）。
 //
-// 这是对 `paper/fold.ts` 现行规则（「其余 kind（来文/正文/抄录/拟策/贴黄）不可折叠」）
-// 的**显式规格变更**（设计真源 = 规格书 §9.5「流内配套」/ 施工单 D3）：
-//   ① 资产块（带 `asset` 元数据）纳入折叠族——判据认**资产身份**，不认 kind 名
-//      （kind 是开放面；`show_asset` 可以拿任意注册 kind 建块）；
-//   ② 默认收起；**钉住态豁免**（钉是人工挑出来的收藏，默认该张着）；
-//   ③ 折叠行 = 「物类签 + 题名」（`plateSignOf` + `asset.title`，与架上签条同一枚签）；
+// 这是对 2026-09-23 图版架批规则（「资产块默认收成一行签条：`defaultFolded` 对
+// `asset != null` ⇒ `state !== 'pinned'`，钉住 / 活确认两条豁免」）的**显式规格变更**
+// （用户原话「默认折叠很奇怪」）。现行规则：
+//   ① 资产块（带 `asset` 元数据）**仍在折叠族内**——判据认**资产身份**，不认 kind 名
+//      （kind 是开放面；`show_asset` 可以拿任意注册 kind 建块）⇒ 用户可点折叠行收起；
+//   ② **默认张开**（`defaultFolded` 对 `asset != null` 恒 `false`）——旧的两条豁免
+//      （钉住态张着 / 活确认卡不可藏）随默认态翻转**一并作废**：张开的卡无所谓
+//      「豁免折叠」，留着只会多两条读不出来的分支；
+//   ③ 折叠行（用户收起后）= 「物类签 + 题名」（`plateSignOf` + `asset.title`，与架上
+//      签条同一枚签）——这条能力位随②保留，只是不再是默认可见面；
 //   ④ 测高：资产折叠态 = `FOLD_ROW_H`（折叠行即本体，块体不渲染）；
 //   ⑤ 折叠位入 measureSignature（否则折叠/展开互相吃到对方的缓存高）；
-//   ⑥ **接线在册**：三处生产调用点都传块（判据要看块身份，漏传 = 资产永不折叠）。
+//   ⑥ **接线在册**：三处生产调用点都传块（判据要看块身份，漏传 = 资产不受折叠控制）。
 //
-// 旧行为的证伪力：把 `block?.asset != null` 那几条判据去掉，①-⑤ 全红；
+// 旧行为的证伪力：把 `block?.asset != null` 那几条判据去掉，①③④⑤ 全红；
+// 把 `defaultFolded` 的资产分支改回 `state !== 'pinned'`，② 红；
 // 把调用点的末参去掉，⑥ 红（而 ①-⑤ 仍绿——所以⑥必须单独钉）。
 //
 // @vitest-environment node
@@ -64,7 +69,7 @@ function assetBlock(kind = 'table', opts?: { pinned?: boolean; title?: string })
   );
 }
 
-describe('资产块纳入折叠族（显式规格变更）', () => {
+describe('资产块在折叠族内但默认张开（显式规格变更）', () => {
   it('①判据认资产身份：带 asset 的块可折叠（**不看 kind 名**——kind 是开放面）', () => {
     expect(isFoldable('table', assetBlock())).toBe(true);
     // 连「正文/来文」这类原本不可折叠的 kind，做成资产块后也进族（资产身份优先）
@@ -74,14 +79,15 @@ describe('资产块纳入折叠族（显式规格变更）', () => {
     expect(isFoldable('table')).toBe(false);
   });
 
-  it('②默认收起；两条豁免：**钉住态**张着 / **活确认卡**不可被藏住', () => {
+  it('②默认张开；旧的钉住/活确认两条豁免随默认态翻转一并作废', () => {
     const b = assetBlock('table', { title: '图版 1' });
-    expect(defaultFolded('table', b.payload, b)).toBe(true);
+    expect(defaultFolded('table', b.payload, b)).toBe(false);
+    // 钉住态同样张开——豁免是「收起的例外」，收起本身没了 ⇒ 例外无处可挂
     const pinned = assetBlock('table', { title: '图版 1', pinned: true });
     expect(pinned.state).toBe('pinned');
     expect(defaultFolded('table', pinned.payload, pinned)).toBe(false);
-    // 活确认卡（executor 预发卡的 onResponse 回调挂在 asset._confirm 上）：待决议
-    // 期间必须张着——藏住它 = 用户看不见问题、Agent 空等（同 subagent 子拟策纪律）
+    // 活确认卡（executor 预发卡的 onResponse 回调挂在 asset._confirm 上）也张开：
+    // 「可操作卡不可被折叠藏住」这条纪律现在由默认态自己兜住
     const live = createBlock(
       'confirm',
       { title: '要不要删这三卷？' },
@@ -89,9 +95,9 @@ describe('资产块纳入折叠族（显式规格变更）', () => {
       { asset: { assetId: 'as-c', presentation: '', finalised: true, _confirm: () => {} } },
     );
     expect(defaultFolded('confirm', live.payload, live)).toBe(false);
-    // 历史卡（回调随快照/重载消失）回落默认收起，与普通图版一致
+    // 历史卡（回调随快照/重载消失）同样张开，与普通图版一致
     const history = assetBlock('confirm', { title: '要不要删这三卷？' });
-    expect(defaultFolded('confirm', history.payload, history)).toBe(true);
+    expect(defaultFolded('confirm', history.payload, history)).toBe(false);
   });
 
   it('②回归：非资产块的默认态逐值不变（夹注恒折 / 脚注按状态 / 来文正文不折）', () => {
@@ -103,6 +109,7 @@ describe('资产块纳入折叠族（显式规格变更）', () => {
   });
 
   it('③折叠行 = 物类签 + 题名（与架上签条同一枚签）；无题名只出签（签恒在）', () => {
+    // 折叠行只在**用户手动收起**后现身（默认张开），但文案口径与架上签条同源
     const b = assetBlock('table', { title: '图版 1' });
     expect(foldLabel('table', b.payload, true, b)).toBe('▸ 表 图版 1');
     expect(foldLabel('table', b.payload, false, b)).toBe('▾ 收起 表 图版 1');
@@ -128,7 +135,7 @@ describe('资产块纳入折叠族（显式规格变更）', () => {
     const expanded = measureBlockHeight(b, false);
     expect(expanded).not.toBe(FOLD_ROW_H);
     expect(expanded).toBeGreaterThan(FOLD_ROW_H); // 表体（题签 + 表头 + 行）
-    // 非资产块不受影响（对照：夹注折叠 = 折叠行 + 预览一行）
+    // 钉住态（同样默认张开）的折叠高同源
     expect(measureBlockHeight(assetBlock('table', { title: 'x', pinned: true }), true)).toBe(FOLD_ROW_H);
   });
 
@@ -140,7 +147,7 @@ describe('资产块纳入折叠族（显式规格变更）', () => {
     expect(measureSignature(assetBlock('table', { title: '另一张' }), true)).toBe('open|table|grid|1');
   });
 
-  it('⑥接线在册：生产三处调用点都**传块**（漏传 = 资产永不折叠，而①-⑤仍绿）', () => {
+  it('⑥接线在册：生产三处调用点都**传块**（漏传 = 资产不受折叠控制，而①-⑤仍绿）', () => {
     expect(PANEL_TSX).toContain('isFoldable(block.kind, block)');
     expect(PANEL_TSX).toContain('foldLabel(block.kind, p, folded, block)');
     // 折叠态**不渲染块体**（折叠行即本体——与 ToolBody 的 `if (folded) return null` 同义）
@@ -148,10 +155,13 @@ describe('资产块纳入折叠族（显式规格变更）', () => {
     expect(FOLD_STATE_TS).toContain('defaultFolded(b.kind, b.payload, b)');
   });
 
-  it('文件头现行规则行已同批改写：资产那条规则在册，且**明写这是显式规格变更**', () => {
-    expect(FOLD_TS).toContain('**资产块**（带 asset 元数据的块 —— 图版卡族）：默认**收起成一行签条**');
-    expect(FOLD_TS).toContain('显式规格变更');
-    // 「其余 kind 不可折叠」那条不再以**现状口吻**笼统在册——已限定为「未带 asset 的那些」
+  it('文件头现行规则行已同批改写：资产那条规则在册（默认**张开**），且**明写这是显式规格变更**', () => {
+    expect(FOLD_TS).toContain('**资产块**（带 asset 元数据的块 —— 图版卡族）：**默认张开**');
+    expect(FOLD_TS).toContain('**显式规格变更**');
+    // 旧口径（「默认**收起成一行签条**」+ 两条豁免）不得再以现状口吻在册
+    expect(FOLD_TS).not.toContain('默认**收起成一行签条**');
+    expect(FOLD_TS).not.toContain('挑出来的收藏');
+    // 「其余 kind 不可折叠」那条的限定（未带 asset 元数据的那些）照旧
     expect(FOLD_TS).toContain('其余 kind（来文/正文/抄录/拟策/贴黄——**未带 asset 元数据**的那些）不可折叠。');
     expect(FOLD_TS).not.toContain('//   - 其余 kind（来文/正文/抄录/拟策/贴黄）不可折叠。');
   });

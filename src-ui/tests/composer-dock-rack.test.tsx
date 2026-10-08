@@ -344,9 +344,20 @@ describe('图版架（坞下横架 · 丙案）', () => {
      * 对同卷会拒播（focus-flight 的既守卫），故先等它跑完再点（240ms 动画）。 */
     await settle();
     const target = chipIds()[1];
-    const worldY = blockWorldY(target);
-    // 图版卡**默认收成一行签条**（D3：签 + 题名）
+    // 图版卡**默认张开**（2026-10-08 用户拍板撤销「默认收成一行签条」）——
+    // 折叠行此时报「▾ 收起 …」（展开态文案）
+    expect(blockEl(target)?.querySelector('.pp-fold')?.textContent).toBe('▾ 收起 表 图版 2');
+    // 先造「用户手动收起」这一步（点折叠行）——这才是 expandBlock 能力位现在
+    // 要办的事：经用户意志收起的卡，飞过去会落在一行签条上等于没到
+    await act(async () => {
+      blockEl(target)
+        ?.querySelector('.pp-fold')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
     expect(blockEl(target)?.querySelector('.pp-fold')?.textContent).toBe('▸ 表 图版 2');
+    // 收起改变块高 ⇒ 下游块整体上移，世界 y 必须**收起后**重读（layout 是位置唯一真源）
+    await settle();
+    const worldY = blockWorldY(target);
     const chip = chips()[1];
     await act(async () => {
       chip.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -354,8 +365,8 @@ describe('图版架（坞下横架 · 丙案）', () => {
     await settle();
     const view = useCanvasViewStore.getState().view;
     expect(view.panY).toBeCloseTo(VH / 2 - worldY, 3);
-    // 收起态连展开：折叠行由「▸ 表 图版 2」翻成「▾ 收起 …」（图版卡默认收成一行签条，
-    // 飞到一块还收着的卡等于没到——这正是 expandBlock 能力位要办的事）。
+    // 收起态连展开：折叠行由「▸ 表 图版 2」翻成「▾ 收起 …」（飞到一块还收着的卡
+    // 等于没到——这正是 expandBlock 能力位要办的事）。
     // 注：块体（.pp-plate/.pp-grid-table）归**渲染器产物**（本测试只装 compose-dock，
     // 表现注册表为空 ⇒ Body 回落空 .pp-body），故此处只考折叠态本身（用户可见面）。
     expect(blockEl(target)?.querySelector('.pp-fold')?.textContent).toBe('▾ 收起 表 图版 2');

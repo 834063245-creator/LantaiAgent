@@ -394,16 +394,19 @@
 **零 `faceDeps` 新增**：架只消费既有上下文（`usePaperRegion().regions` 取块与 `asset` 元数据、
 `usePaperDock().flyToPoint` 跳转）⇒ **只换产物热更即可，不必重建 exe**。
 
-**流内配套（同批）**：流里的图版卡**默认收成一行签条**（否则架上一份、流里一大坨 = 双份）。
-这是对 `paper/fold.ts` 现行规则（「其余 kind（来文/正文/抄录/拟策/贴黄）不可折叠」）的**显式规格变更**：
-把资产 kind 纳入 `isFoldable`，`defaultFolded` 对 `asset != null` 返 `true`，`foldLabel` 出「签 + 题名」，
-measure 加资产折叠分支（`FOLD_ROW_H` 现成）；**钉住态豁免默认收起**（钉是人工挑出来的收藏，默认该张着）。
+**流内配套（2026-10-08 用户拍板：撤销默认收起）**：流里的图版卡**默认张开**——原文是「默认收成一行
+签条（否则架上一份、流里一大坨 = 双份）」，用户原话「**默认折叠很奇怪**」，该理由随之作废：流里那张 =
+**上下文原位的一份**，架上签条 = **本卷收纳读数**，两处并存即现行形态。变更面对 `paper/fold.ts`：
+资产块**仍在折叠族内**（`isFoldable` 认 `asset` 元数据；用户点折叠行即可收起长卡），而
+`defaultFolded` 对 `asset != null` 恒返 `false`；旧的两条豁免（**钉住态**张着 / **活确认卡**不可藏）
+随默认态翻转**一并作废**——张开的卡无所谓"豁免折叠"，而"可操作卡不可被藏住"这条纪律由默认态自己兜住。
+`foldLabel`（「签 + 题名」）与 measure 的资产折叠分支（`FOLD_ROW_H`）为**用户手动收起**这条路径原样保留。
 
 **证据（本批施工判据）**：`tests/composer-dock-rack.test.tsx`（真 PaperPanel 挂载：架是 `.pp-composer` 的
 兄弟且 `top:100%`／`.pp-composer-slot` 实测高**不含架**⇒让位带 227 不变／空态（架内零张）零渲染／6 张 + 「另 N 张」／
 单击 → `flyToPoint` 到该块／更新广播出石青点／**钉出 ⇒ 该签条离架且「另 N 张」计数随之**／**拔钉 ⇒ 签条回架**／
 **全钉出 ⇒ 整条退场**）+ `tests/composer-float.test.ts`（吸附表：架在 ⇒ `[46, 96]`，
-架不在 ⇒ `[8, 96]`，逐值）+ `tests/asset-fold.test.ts`（资产纳入折叠族：默认收起／钉住豁免／foldLabel 出签与题名／
+架不在 ⇒ `[8, 96]`，逐值）+ `tests/asset-fold.test.ts`（资产在折叠族内且**默认张开**／可手动收起／foldLabel 出签与题名／
 measure 折叠高 = `FOLD_ROW_H`）+ `prototype/asset-rack-v2.html`（真样式台，三案对照与诊断层）。
 
 ---

@@ -1817,7 +1817,8 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       return TOOL_PAD_TOP + FOLD_ROW_H;
     default:
       // 资产/开放 kind：按表现原语镜像计高（旧固定 80 是画图族卡片溢出的根因）。
-      // 折叠态（2026-09-23 图版架批）：资产块默认收成一行签条 ⇒ 块高 = 折叠行本身
+      // 折叠态（2026-09-23 图版架批；2026-10-08 默认态翻成张开后，本分支服务
+      // **用户手动收起**的卡）：资产折叠 ⇒ 块高 = 折叠行本身
       // （.pp-fold 高 14 + 下距 6 = FOLD_ROW_H；块的文类签是页边注、绝对定位不占高，
       // 壳层折叠态不渲染块体 —— 与 toolgroup/subagent「头即本体」同构）。
       if (b.asset != null && folded) return FOLD_ROW_H;
@@ -1895,7 +1896,7 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
     default:
       // 资产/开放 kind：表现名入签；payload 变化由 RO 实测驱动（静态镜像
       // 只服务未挂载块的虚拟化窗口估高，不逐 payload 入签省 stringify）。
-      // 折叠位入签（2026-09-23 图版架批）：资产块默认收起——折叠/展开是两个高
+      // 折叠位入签（2026-09-23 图版架批）：资产块可收起（默认张开）——折叠/展开是两个高
       // （FOLD_ROW_H vs 体高），不入签就会吃到另一态的缓存高（同 2026-09-19
       // 渲染态签名的病灶，observedKeyOf 的 renderStateKey 已含折叠位，本处补齐）。
       return `open|${b.kind}|${b.asset?.presentation ?? ''}|${f}`;
