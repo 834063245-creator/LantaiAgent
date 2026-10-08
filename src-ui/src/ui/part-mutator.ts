@@ -170,7 +170,10 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
 
 /* ── 资产块路由（协议 docs/archive/agent-asset-blocks.md §2.2/§2.3）── */
 
-function applyAssetFinal(parts: AssistantPart[], asset: AssetEventData): boolean {
+/** 资产终值应用（两条路径共用同一块构造，防形状漂移）：
+ *  实时 = applyEventToParts 的 Asset 分支；卷重建 = rebuildMessagesFromMessages
+ *  经此补回 BlockPart（2026-10-08 卷重建丢卡根治）。 */
+export function applyAssetFinal(parts: AssistantPart[], asset: AssetEventData): boolean {
   const part: BlockPart = {
     type: 'block',
     assetId: asset.assetId,

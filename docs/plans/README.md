@@ -86,6 +86,8 @@ Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 
 | **provider「刷新目录」CORS 修复** | landmine N1 **已拆**（2026-09-23，门禁全绿：`cargo test` 494 + 1，协议级回归先证红后转绿；见 [`../landmine-map.md`](../landmine-map.md) 第十三批）——上游自带的 `access-control-*` 不再透传（此前成品响应带两条 ACAO，浏览器按 CORS 规范拒收整条响应 ⇒ 凡经代理的调用全废，配了自定义请求头的行 100% 失败）。**须重建 exe**（壳域改动，前端未动）：重建后验收 = 设置 → Provider → opencode 行点「刷新目录」应出目录（此前必报「模型目录获取失败（网络错误或端点无响应）」）；顺带可核对 `commandcodegoat` 行走的是代理而不是静默直连兜底。**已用替身代理在真机页面带真实凭据预验**（2026-09-23：opencode 33 / commandcodegoat 80 个模型，上游皆 200），余 = 重建后点按钮的确认——owner：用户 |
 | **图版架（资产收纳面）手感** | 代码已落地（2026-09-23，B1-B3；施工单 §8 施工回执，原计划头部「待施工」已订正）——待用户体感确认 §6 九条：① 架位（坞下一条、正文一字不遮）；② 匣拖最底时架不被屏缘切；③ 匣拖离时架跟随、让位带与其他家具不抖；④ 点签条飞到流内那块并展开；⑤ 拖签条到纸上成钉、签条随即离架且递补无残影；⑥ 钉住张着 + 拔钉回架原位；⑦ 全钉出时整条退场；⑧ 流内图版卡默认一行签条、钉住默认张着；⑨ 空卷时整条不出现（坞位与让位带逐像素同今日）。真源 [`docs/archive/render-paper-line/asset-rack-plan.md`](../archive/render-paper-line/asset-rack-plan.md) §6——owner：用户 |
 
+| **卷重建丢卡根治（session-rebuild-recovery）** | 代码已落地（2026-10-08，门禁全绿：vitest 416 文件 / 4429 用例 + build + biome 0/0；见 [`../archive/session-line/session-rebuild-recovery-plan.md`](../archive/session-line/session-rebuild-recovery-plan.md)）——待用户体感确认两件：① 打开 51 号卷：3 张表格卡 + 1 张拟策卡恢复出现（拟策只读态）；② 「开卷 → 不操作 → 关」循环后重开：卡片仍在（快照已对齐，不再判陈旧）——owner：用户 |
+
 ## 已完成并归档（点名即可，详情勿读）
 
 **2026-10-08 归档大扫（第二批 · 23 份）**：把「代码已完成、只欠真机验收（或已作废）」的**过程文档**整批移出 `docs/plans/`——
@@ -93,6 +95,7 @@ Stage-6（UI/UX 专项）· 文档面重构 P4（索引收尾）· 卷号治理 
 **内核工具平台线 11**（[`kernel-tooling-line/`](../archive/kernel-tooling-line/README.md)）。判据 = **「过程文档是否还活着」，不是「验收跑没跑完」**
 （CONVENTIONS §4：「待实机 / 验收 / 欠账」不算在办标记）——**真机欠账一行未删，全在本页欠账表**。
 同日早些时候已归档 8 份插件化欠账施工单（[`plugin-extraction/`](../archive/plugin-extraction/README.md)）。
+**同日追加（2026-10-08 深夜）**：会话线 `session-line/` +1——[`session-rebuild-recovery-plan.md`](../archive/session-line/session-rebuild-recovery-plan.md)（卷重建丢卡根治：资产/拟策块自工具回执恢复 + 开卷落盘断循环；案卷 51 真机取证立案，当日施工当日归档）。
 
 **2026-09-16 P3 归档批**（全文在 [`docs/archive/`](../archive/README.md)，索引见 [`../archive/README.md`](../archive/README.md)）：
 组合架构 S0-S6 全树（[`composition-architecture/`](../archive/composition-architecture/README.md)——S6 设计件

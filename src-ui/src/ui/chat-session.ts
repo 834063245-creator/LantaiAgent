@@ -6,6 +6,7 @@
 // 所有函数接收 SessionContext，而非访问 `this`。
 
 import { agentSessionState, type OwnedAgentHandle, type TurnPair } from '../agent/agent-session-state';
+import { parseAssetEventOutput } from '../agent/asset-kinds';
 import { removeAssetStateSession } from '../agent/asset-state';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import type { ExecStateInstance } from '../agent/execution-state';
@@ -31,7 +32,15 @@ import { deriveVolumeLabel, isUnnamedVolumeLabel, volumeDisplayName } from '../s
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
-import type { AssistantMessage, BlockPart, ChatMessage, MessageId, SubAgentPart, UserMessage } from './message-model';
+import type {
+  AssistantMessage,
+  BlockPart,
+  ChatMessage,
+  MessageId,
+  PlanPart,
+  SubAgentPart,
+  UserMessage,
+} from './message-model';
 import {
   adoptRestoredMessages,
   createAssistantMessage,
@@ -40,6 +49,7 @@ import {
   nextMsgId,
   resetMsgIdCounter,
 } from './message-model';
+import { applyAssetFinal } from './part-mutator';
 import { isSubagentSpawnTool } from './tool-semantics';
 
 // ── 模块级会话状态 ──
@@ -1972,6 +1982,12 @@ export async function loadSessionFromDisk(
       console.error('[chat] loadSessionFromDisk: render 崩溃', e);
       showToast(`案卷已加载但渲染失败: ${label}`, 'error', TOAST_LONG_HOLD_MS);
     }
+    // 开卷落盘（2026-10-08 卷重建丢卡根治配套）：开卷动作推进了日志（adopt
+    // reset）却不写快照 ⇒ 快照落后 ⇒ 下次开卷判陈旧 → 重建循环（51 号卷丢卡
+    // 链的触发条件）。落盘把快照 seq 追上当前日志（采信/重建产物固化）。
+    // 调用前代际校验：在途期间切走工作区则不发起（saveSessionById 取数据是同步
+    // 段、写盘在 await 之后——起点必须落在原代际，防「W2 内容写进 W1 目录」）。
+    if (isCurrentEpoch(epoch)) void saveSessionById(ctx, projectPath, sid);
   } else {
     // 无句柄：内容层照常摊开（历史卷可见；句柄拟文时补建）
     if (hasUiSnapshot && uiSnapshot) {
@@ -2213,6 +2229,9 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
   // （丢了 ⇒ 「立枝」等按节点定位的读面直接落空，见 `app/chat/session-branch`）。
   let turnUserId: MessageId | null = null;
   let sessionIdx = 0;
+  // 拟策恢复的跨消息游标（2026-10-08 卷重建丢卡根治）：enter_plan_mode 的结果
+  // 里带计划文件路径——exit_plan_mode 恢复正文时取用（两事件常分属不同消息）。
+  let lastPlanFilePath: string | null = null;
 
   for (const m of msgs) {
     const idx = sessionIdx++;
@@ -2259,6 +2278,7 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
           // preservedSubAgents 中保留并重新挂载）— 不重建 ToolCard，
           // 否则恢复/撤回重建后同一 spawn 会同时出现两种卡片。
           if (isSubagentSpawnTool(tc.name, tc.arguments || undefined)) continue;
+          const output = toolResults.get(tc.id);
           am.parts.push({
             type: 'tool',
             toolId: tc.id,
@@ -2267,8 +2287,27 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
             label: tc.name,
             readOnly: false,
             status: 'done',
-            output: toolResults.get(tc.id),
+            output,
           });
+
+          // 资产块恢复（2026-10-08 卷重建丢卡根治）：资产工具的回执里带完整
+          // 资产 JSON——parseAssetEventOutput 与 executor 终值事件同一解析真源；
+          // 解析成功由 applyAssetFinal 补回 BlockPart（此刻 push 到 parts 末尾 =
+          // 紧跟该工具卡之后；update 的原位置换语义天然成立）。
+          if ((tc.name === 'show_asset' || tc.name === 'update_asset') && output) {
+            const asset = parseAssetEventOutput(output);
+            if (asset) applyAssetFinal(am.parts, asset);
+          }
+
+          // 拟策块恢复（同根治）：exit_plan_mode 的结果文本带计划全文（批准/
+          // 自动批准路径），解析后补回 PlanPart；宁缺勿造（无全文不产卡）。
+          if (tc.name === 'exit_plan_mode' && output) {
+            const plan = planPartFromExitResult(output, lastPlanFilePath, tc.arguments || '');
+            if (plan) am.parts.push(plan);
+          }
+          if (tc.name === 'enter_plan_mode' && output) {
+            lastPlanFilePath = planFilePathFromEnterResult(output) ?? lastPlanFilePath;
+          }
         }
       }
 
@@ -2319,6 +2358,66 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
   msgStoreFor(storeId, sessionId).getState().setMessages(rebuilt);
   rebuildAssetTableFromMessages(storeId, sessionId, rebuilt);
   bumpSession(storeId, sessionId);
+}
+
+// ── 卷重建的块恢复辅助（2026-10-08 session-rebuild-recovery-plan）──
+//
+// 重建只重造 reasoning/text/tool——资产块与拟策块由此从工具回执/结果恢复，
+// 否则「快照判陈旧」一次就整体丢失（案卷 51 事故）。以下解析依赖 plan-tools.ts
+// 生成的结果文案，由 tests/session-rebuild-recovery.test.ts 钉住；文案变更 = 测试红。
+
+/** 从 enter_plan_mode 结果解析计划文件路径（`计划文件路径：${path}`）。失败 → null。 */
+function planFilePathFromEnterResult(result: string): string | null {
+  const m = /计划文件路径：([^\n]+)/.exec(result);
+  return m ? m[1].trim() : null;
+}
+
+/** 从 exit_plan_mode 结果恢复拟策卡。仅「含计划全文」的结果可恢复（批准执行 /
+ *  无 UI 自动批准——marker 即 plan-tools.ts 的两个模板前缀）；修改/拒绝/超时/
+ *  留档的结果不含正文 = null（宁缺勿造，不铺半截卡）。status 保持 'pending'：
+ *  对齐实时行为（审批不写回 part——52 号卷实时快照实证）。 */
+function planPartFromExitResult(result: string, planFilePath: string | null, args: string): PlanPart | null {
+  const markers = ['## 已批准计划：\n', '## 计划：\n'];
+  for (const marker of markers) {
+    const idx = result.indexOf(marker);
+    if (idx < 0) continue;
+    const content = result.slice(idx + marker.length);
+    if (!content.trim()) continue;
+    const options = planOptionsFromArgs(args);
+    return {
+      type: 'plan',
+      planId: `plan-card-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      planFilePath: planFilePath ?? '',
+      content,
+      ...(options ? { options } : {}),
+      status: 'pending',
+    };
+  }
+  return null;
+}
+
+/** 从 exit_plan_mode 调用参数恢复备选方案（形状不完整 = 省略，不铺半截）。 */
+function planOptionsFromArgs(args: string): PlanPart['options'] | undefined {
+  try {
+    const parsed: unknown = JSON.parse(args);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    const raw = (parsed as { options?: unknown }).options;
+    if (!Array.isArray(raw)) return undefined;
+    const options: NonNullable<PlanPart['options']> = [];
+    for (const o of raw) {
+      if (!o || typeof o !== 'object') continue;
+      const { label, description, outcome } = o as { label?: unknown; description?: unknown; outcome?: unknown };
+      if (typeof label !== 'string' || typeof description !== 'string') continue;
+      options.push({
+        label,
+        description,
+        ...(outcome === 'execute' || outcome === 'archive' ? { outcome } : {}),
+      });
+    }
+    return options.length > 0 ? options : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** 包装器：解析活跃 agent 的会话并委托给 rebuildMessagesFromMessages。 */

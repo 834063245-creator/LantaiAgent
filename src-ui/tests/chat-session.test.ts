@@ -1776,6 +1776,42 @@ describe('ChatPanel session persistence', () => {
       return factory;
     }
 
+    it('开卷落盘（session-rebuild-recovery 配套）：打开卷后快照被刷新——seq 追上，判陈旧循环断链', async () => {
+      // 病灶（案卷 51 丢卡链的触发条件）：开卷动作推进日志（adopt）却不写快照
+      // ⇒ 快照永远落后 ⇒ 下次打开判陈旧 → 重建。本用例钉住：打开即落盘。
+      const files = mockDualDirDisk({
+        [`${PROJ}/.lantai/sessions/7.ndjson`]: logText(7, [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '历史内容' },
+        ]),
+        [`${PROJ}/.lantai/sessions/7.json`]: cacheText(7, { seq: 1, uiMessages: [{ id: 'stale' }] }),
+      });
+      // 桩：闭包持有会话（setSession 生效——历史并入后非空，saveSessionById 不落 skipped-empty）；
+      // sessionLog 模拟生产句柄的日志能力位（快照 seq 落盘取它的 lastSeq）。
+      let agentSession: any[] = [{ role: 'system', content: 'sys' }];
+      const factory = async () => ({
+        getSession: () => agentSession,
+        setSession: (msgs: any[]) => {
+          agentSession = msgs;
+        },
+        dispose: vi.fn(),
+        bindSession: vi.fn(),
+        sessionLog: { lastSeq: 2 },
+      });
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgentFactory(factory as never);
+
+      await panel.loadSessionFromDisk(PROJ, 7);
+
+      // 落盘是 fire-and-forget（写链在途）——poll 等快照刷新
+      await vi.waitFor(() => {
+        const parsed = JSON.parse(files[`${PROJ}/.lantai/sessions/7.json`] ?? 'null');
+        expect(parsed?.seq).toBe(2);
+        expect(Array.isArray(parsed?.uiMessages)).toBe(true);
+      });
+    });
+
     it('**同代校验**：上一代残留的 {id}.json 不是本卷的缓存——卷名/账本/UI 快照全不采信', async () => {
       mockDualDirDisk({
         // 本卷：今天立卷（头行 createdAt 是 write-once 真源）

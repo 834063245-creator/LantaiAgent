@@ -53,6 +53,9 @@
     外加三份**已作废**（内核插件运行时 ×2 · 动态边检测）。
   **判据** = CONVENTIONS §4「**过程文档是否还活着，不是验收跑没跑完**」；**真机欠账一行未删**，全在 `docs/plans/README.md` 欠账表。
   引用面约 120 处同步（含 `CONVENTIONS.md` / `INVARIANTS.md` / `ARCHITECTURE.md` / 源码注释 8 处）。
+- **2026-10-08 归档（会话线追加 · 当日立案当日竣工）**：`session-line/session-rebuild-recovery-plan.md`（卷重建丢卡根治——
+  资产/拟策块经工具回执恢复 + 开卷落盘断「判陈旧 → 重建」循环；案卷 51 真机取证，门禁全绿后归档；
+  真机验收两条在 [`../plans/README.md`](../plans/README.md) 欠账表）。
 
 ## 使用规则
 
