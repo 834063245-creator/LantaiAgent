@@ -1,8 +1,8 @@
 # 兰台（Lantai）— 核心能力与技术架构
 
 > © 2026 Wenbing Jing. MIT License.
-> 最后更新：2026-09-16（文档面重构 P2：现状层按代码真源逐条校准——跨文档数字改为指针，目录结构 / 数据流 /
-> 引擎能力面 / 验证基线四处清单重建）。
+> 最后更新：2026-10-08（现状层校准：9-27 后新增面——日志可观测性事件门面 / 资产状态存档线 / 产物内联面宿主桥，
+> 受治进程治理与 LSP 归因补录，CI 现状更正）。
 > 本页是**现状层（L2）**：回答「系统现在是什么样」。规则见 `CONVENTIONS.md` / `INVARIANTS.md`，
 > 最高约定见 `docs/adr/project-constitution.md`；现在在哪、还剩什么见 `docs/plans/README.md`；
 > 历史（不是现状）见 `docs/archive/`。
@@ -179,6 +179,12 @@ Passthrough   → 交引擎兜底
 `hologram-*-audit-YYYYMMDD.jsonl`（按日轮转，可经工具查询）；宿主结构化日志落
 `.lantai/logs/ui.log`（NDJSON）。会话的事件日志即真相（`.lantai/sessions/{id}.ndjson`，见 §9）。
 
+**日志可观测性（2026-09-27 立规）**：ui.log 的写入统一经事件门面 `agent/obs.ts`——唯一脱敏审查点，
+事件名 = ASCII 点分稳定名（不再用中文句子当事件名），每条带构建锚（版本 + commit）与公共字段
+（`dur_ms` / `out` / `err` 等）。纪律 = 「任何让用户看见的失败，日志里至少留一条带层与原始文本的记录」
+（唯一漏斗 = `turn.failed`，按 (session, turn, phase) 去重）；事件名与字段表规范见
+`docs/design/log-observability-spec.md`。
+
 ### 3.5 技能系统（Hot-Loading Skills）
 
 技能是目录包：`<workspace>/.lantai/skills/<name>/SKILL.md` 与用户级 `~/.lantai/skills/<name>/SKILL.md`
@@ -259,6 +265,12 @@ Tool Results → 注入会话 → 下一轮 LLM Stream（循环至最终回答�
 **压缩只作用于发送载荷**，会话永远是完整历史（见 §10.7）。配置与统计落
 `.lantai/compaction-config.json`、`.lantai/compaction-tracker.json`。
 
+**用量计量（token-meter，创作坞「墨量册」）**：真源 = `agent/token-meter/`（分桶代数 `usage.ts` / 构成测量
+`estimate.ts` / 每卷账本 `SessionTokenMeter`），录入点唯一 = `Agent.streamOnce`，落盘 = 卷文件 `tokens` 字段
+（旧卷无此字段 = 从空开始）。口径纪律（沿 DSH token-meter，禁漂移）：分桶互不重叠且加总恒等于提供方
+`prompt_tokens`、压力只算 prompt 侧、占用 = 投影（夹零）、构成是估算不是账单。册面与 UI 契约见
+`docs/design/lantai-design-spec.md` §9.1。
+
 ### 4.6 Hooks 系统
 
 两类 hook 注入 Harness 逻辑（`src-ui/src/agent/hooks.ts`）：
@@ -316,11 +328,21 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
 - **插件装载**：`~/.lantai/plugins/<name>/` 自包含 ESM，webview 动态 import（无包管理器、无 import map），
   宿主桥 `window.__lantai_plugin_host__`；manifest 支持 `tools`（声明 + `toolHandlers` 命名导出）与
   `mcpServers`（MCP 机器桥：stdio 经 Rust `protocol_bridge`，工具名 `mcp__<server>__*`，治理三档
-  lifecycle / 崩溃指数退避重启 / 空闲回收 / 进程树终止）。
+  lifecycle / 崩溃指数退避重启 / 空闲回收 / 进程树终止；2026-09-25 加固：在途调用计数保护长任务、
+  引擎静默预算 `ENGINE_IDLE_TIMEOUT_MS` = 30 min、停止原因必填并落 `.lantai/logs/bridge.log`）。
 - **权限三层**：manifest `permissions` 声明（read / edit / bash / git / web 闭集）→ `plugins.json` `granted` 段
   授予门禁（装载期一票否决，未授权不 import 插件代码）→ Rust 命令咽喉逐调用强制。
 - **契约文档**：`docs/plugins/README.md`（插件面人类契约）+ `docs/composition/README.md`（roster 语法）+
   convergence 门禁（三层表序 = 字节契约）。
+
+### 4.10 资产状态（沙箱卡交互态）
+
+沙箱 html 卡（iframe，`sandbox="allow-scripts"` 无 `allow-same-origin`）的交互态经既有 postMessage 桥
+写回内核：卡内 `window.lantai.state.get() / patch(obj)`（协议 `lantai.card-state`）→ 内核
+`agent/asset-state.ts`（按 assetId 索引的单例；浅合并 patch、值须 JSON 可序列化、单资产 64 KiB 上限）
+→ 按会话防抖落盘 `.lantai/asset-state/{sessionId}.json`（复用 `BoardPersistence`）。**状态不进会话日志**
+（与消息真源平行，互不污染）；Agent 读口 v1 只读——`list_block_kinds` 的资产清单带状态摘要（键数 / 字节数）。
+宿主桥面键经三处同步（见 §10.8）。见 `docs/plans/asset-state-plan.md`。
 
 ---
 
@@ -417,6 +439,9 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
 `infer_type`、`find_implementations`、`find_references`；`lsp_daemon.rs` + `bin/lspd.rs` 提供常驻守护形态。
 **手写协议纪律**（见 `INVARIANTS.md` #6）：帧边界按字节流扫描定界（不可 `read_line`——JSON body 内可能含 `\n`）；
 解析失败把原始字节带进错误；超时分级（30s → 5s 快速失败）；回复服务器请求；死壳自愈。
+**归因面（2026-09-25 加固）**：`LspServerState` 五态为单一归因源（`missing` 只装真用不上的：没装 / 起不来）；
+空结果四路分流（答了但空 / 忙·冷启动 / 装了起不来 / 真没装）；冷窗口（spawn 后 150s）内空结果转 busy。
+见 `docs/plans/engine-lsp-runtime-hardening-plan.md`。
 
 ### 5.8 增量更新与存储层
 
@@ -454,8 +479,9 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
 `docs/agents/frontend-rpc-contract.md` 为准**（`scripts/gen-rpc-contract-md.cjs` 再生），本页不复述。
 
 命令族（按目录可指）：应用层（工作区数据上下文）、能力口（`commands/*_cap.rs`：search / fs / git / process /
-browser / uia / web / pty / lsp / editor）、MCP / ACP stdio 桥（`protocol_bridge.rs`）、身份与权限、OAuth 订阅面、
-插件安装通道（`plugin_install.rs` / `plugin_data.rs`）、隔离与工作区、浏览器与桌面、组合（`composition.rs`）。
+browser / uia / web / pty / lsp / editor）、stdio 进程桥（`protocol_bridge.rs`，现役消费者 = MCP；ACP 前端面
+2026-09-25 已退役）、身份与权限、OAuth 订阅面、插件安装通道（`plugin_install.rs` / `plugin_data.rs`）、
+隔离与工作区、浏览器与桌面、组合（`composition.rs`）。
 
 ### 7.2 ResourceLedger（统一生命周期）
 
@@ -465,8 +491,8 @@ drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable）。
 ### 7.3 凭据与外部进程
 
 - `credential.rs`：加密凭证存储（libloading FFI 模式）+ 权限 Ask 应答校验（allow / remember / rule_to_add）
-- `protocol_bridge.rs`：MCP / ACP 子进程的 stdio 桥（spawn / write / kill——kill 连进程树终止）；前端经
-  `agent/mcp/tauri-io.ts` 消费
+- `protocol_bridge.rs`：通用 stdio 子进程桥（spawn / write / kill——kill 连进程树终止）；前端经
+  `agent/mcp/tauri-io.ts` 消费，现役消费者 = MCP 桥（ACP 前端面 2026-09-25 已退役）
 - `engine_assets.rs`：随包引擎二进制**只读探测**（多候选梯 + `LANTAI_ENGINE_EXE` 覆盖；只在命中时写缓存）
 - `plugin_assets.rs` / `commands/plugin_data.rs`：插件与数据目录位置（含 `.trash` 回收）
 - `composition_watcher.rs`：组合层文件监听 → `composition:changed` 事件
@@ -619,6 +645,7 @@ src-ui/src/
 ├── paper/          # 纸壳内核（形状/共享面）：block-model / markdown / ink / region-view / space / overlay-context…
 │                   #   （测高引擎 measure / 版式 token 已随 paper-shell 产物，批 9c-4）
 ├── agent/          # Agent 系统内核（形状 + 机制 + 登记表）：agent.ts / streaming-executor / session-log /
+│                   #   obs（日志事件门面）/ asset-state（沙箱卡交互态）/
 │                   #   blueprint（capability 机制与形状——内容表已随 capability-segments 产物）/ 各域 *.ts
 │                   #   契约（skill-contract / memory-contract / task-contract…）+ 门面（*-impl.ts）/
 │                   #   tools/（域工具真源 domains.ts + define-tool）/ agent-loop/（流式循环契约；默认实现
@@ -633,7 +660,7 @@ src-ui/src/
 ├── plugins/        # 插件层：loader / service-plugins（内核 service 单一真源）/ boot-gate / types /
 │                   #   manifest 派生（first-party-manifest、builtin-roster、factory-products）/ builtin/（出厂产物真源目录）/ 
 │                   #   mcp-bridge / bundled-engine-prefs（引擎探测 + 开关；接线已随产物）/ window-bridge /
-│                   #   host-surface.baseline.json
+│                   #   host-modules（宿主桥面键表）/ host-surface.baseline.json
 ├── cordis/         # vendored cordis 内核（Context / Fiber / Service；禁就地改）
 ├── state/          # zustand 状态层（领域 store + 面板 store + scoped-store 注册表 + prefs）
 ├── shell/          # 壳行引导：boot.ts + rows/（persistence / chat / keyguard / platform / workspace / cold-start …）
@@ -660,6 +687,7 @@ src-ui/src/
 ├── skills/<name>/SKILL.md # 项目级技能（热加载）
 ├── taskboard/{sessionId}.json    # 子 Agent 任务状态板（按卷隔离）
 ├── discoveries/{sessionId}.json  # 探索发现板（按卷隔离）
+├── asset-state/{sessionId}.json  # 沙箱卡交互态（按卷隔离；不进会话日志）
 ├── worktrees/{isolationId}/      # 子 Agent 隔离工作树（git worktree --detach）
 ├── spill/                        # 大 diff / 超长输出溢写
 ├── logs/ui.log                   # 宿主结构化日志（NDJSON）
@@ -739,6 +767,10 @@ EventBus 只覆盖不到一半通信，存在孤儿 emit 与三层通信混用�
 不存在「内置旁路」）；解耦收益对内外均匀（patch / preset 可禁用第一方行）；**字节契约由清单序保住**
 （第一方贡献序 = 迁移前出厂表序，convergence 按构造钉零漂移）。dev 模式经 `import.meta.env.DEV` 走源码路径
 （vite HMR），产物仅发布形态；装载调度 = cordis fiber PENDING + `plugins/boot-gate.ts` 全 ACTIVE 审计（不带病运行）。
+**产物内联面纪律（2026-09-28 销账）**：构建只把静态 `./host` 重定向到宿主桥，其余内核引用会被 esbuild
+整份内联成私有副本（连模块级状态一起）；带状态模块不得登记 `shared`、不得内联
+（`scripts/lib/stateful-kernel-modules.json` 构建时点名），共享状态的唯一合法通道 = 宿主桥
+（`*.aliased.ts` 三处同步：`host.ts` / `host.aliased.ts` / `host-modules.ts`）。细则见 `docs/plugins/README.md` §4。
 
 ---
 
@@ -753,4 +785,8 @@ EventBus 只覆盖不到一半通信，存在孤儿 emit 与三层通信混用�
 | 生成物文档与源码逐字节对拍 | `cd src-ui && npm run doc-sync` |
 | 文档面门禁（逐查清单见 `scripts/doc-check.cjs` 头注） | `cd src-ui && npm run doc-check` |
 
-前提不变：CI（`.github/workflows/ci.yml`）只做编译 + 测试，不可修改；**门禁不过不交付、不 commit**。
+工作流现状（`.github/workflows/` 五条）：`ci.yml` 只覆盖前端构建（`npm ci` + `npm run build`；2026-09-22
+用户授权收敛为「必过的最简 CI」，此后改动仍须先问）；`release.yml` = 推 `v*` tag 自动发版；
+`convergence.yml` = Agent Core 契约快照比对（按路径触发）；`engine-preflight.yml` = 发版前平台预检
+（手动触发）；`catalog-refresh.yml` = 模型目录日更（开 PR，永不自动合并）。CI 面规则与测试运行纪律见
+`CONVENTIONS.md` §3。**门禁不过不交付、不 commit**。
