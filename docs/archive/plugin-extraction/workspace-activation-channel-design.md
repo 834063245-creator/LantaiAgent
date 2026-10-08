@@ -1,7 +1,9 @@
 # 工作区接线贡献面（+ 随包引擎产物化作为第一消费者）· 最小设计件
 
+> **已归档（2026-09-26 竣工）**——部件一 `ctx.workspaces` + 部件三 `ctx.shellRows` 落地；随包图谱引擎端到端真机四条全通（2026-09-25 / 2026-09-26 各一轮，重建 exe）。现状指针：账本 §6.5 + [`plans/README.md`](../../plans/README.md)。
+
 > 状态：**Proposed·Draft（2026-09-24 立项，等真机验收结果定稿）**
-> 缘起：[`plugin-extraction-inventory.md`](plugin-extraction-inventory.md) §7 第 11 条——
+> 缘起：[`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §7 第 11 条——
 > 随包引擎（`plugins/bundled-engine.ts`，186 行）是内核里最后一处「非插件目录的产品接线」。
 > 复核后判定：卡住它的**不是** MCP 声明面缺动态语义，而是两件更基础的事（§2）。
 > 前置：该链路真机从未跑通（`plans/README.md` 欠账表），**先验收再定型**（§7 清单）。

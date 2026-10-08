@@ -3,7 +3,7 @@
 
 // paper/measure-contract — 测量引擎**契约面**（批 9c-4a，2026-09-26）。
 //
-// 背景（账本 §6.5 的 9c-4 判定 + 施工单 `measure-engine-seam-design.md`）：`paper/measure.ts`
+// 背景（账本 §6.5 的 9c-4 判定 + 施工单 `docs/archive/plugin-extraction/measure-engine-seam-design.md`）：`paper/measure.ts`
 // （2,016 行）与 `paper/type-tokens.ts`（807 行）是**同一台机器**——墨迹走查路径引用了 25 个镜像
 // 常量里的 23 个、十张 token 表在测高里出现 200+ 次 ⇒ **机械切分不成立**；唯一可行路径是把整台
 // 引擎做成产物登记的实现（批 6/7/8 同款接缝）。

@@ -1,6 +1,7 @@
 # 图版架（资产收纳面）· 施工单
 
-> 立项 2026-09-23 · 状态：**设计已拍板（丙 · 匣下横架），待施工**
+> 立项 2026-09-23 · 状态：**B1-B3 已落（2026-09-23，见 §8 施工回执）；余 §6 九条真机验收（owner：用户）**
+> ——验收过后移入 `docs/archive/`（CONVENTIONS §4 归档纪律）并补 `docs/plans/HISTORY.md`。
 > 设计真源：[`../design/lantai-design-spec.md`](../design/lantai-design-spec.md) §9.5（几何、三案对照、语汇、归属、判据）
 > 原型真源：[`../../prototype/asset-rack-v2.html`](../../prototype/asset-rack-v2.html) + [`asset-rack-v2.NOTES.md`](../../prototype/asset-rack-v2.NOTES.md)（真样式台，真几何读数）
 > 触发原话：「Agent 产出的 kind 资产直接渲染到聊天流里，其实不好用……我觉得放在创作坞是对的，

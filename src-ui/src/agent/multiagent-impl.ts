@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 通信域实现登记表（批 7b，2026-09-24；capability-impl-seam-design.md §2 同款接缝）。
+// 通信域实现登记表（批 7b，2026-09-24；docs/archive/plugin-extraction/capability-impl-seam-design.md §2 同款接缝）。
 //
 // 分类 = `service`（用户 2026-09-24 拍板）：`runtime.ts` 在构造期就要造会话级 bus/store
 // （每个 AgentRuntime 一份），缺实现 = 装歪了 ⇒ 构造点 fail-loud（`requireMultiagentComm`）。

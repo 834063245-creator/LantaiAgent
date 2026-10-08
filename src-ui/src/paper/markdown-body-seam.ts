@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // 纸面 markdown 体渲染登记表（批 8b，2026-09-25）——**内核侧登记表 + 产物登记实现**
-// （同 `agent/plan/plan-impl.ts` 接缝，`capability-impl-seam-design.md` §2）。
+// （同 `agent/plan/plan-impl.ts` 接缝，`docs/archive/plugin-extraction/capability-impl-seam-design.md` §2）。
 //
 // 为什么需要它：块渲染器十一 kind 归产物 `paper-renderers/`（批 8b），其中 markdown 体渲染
 // 是**跨产物的复用面**——`renderers` 产物的 ipynb / markdown-doc 两个查看器要复用同一份

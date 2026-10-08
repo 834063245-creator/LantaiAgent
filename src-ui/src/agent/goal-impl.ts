@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// goal 模式实现登记表（批 6b，2026-09-24；capability-impl-seam-design.md §2 同款接缝）。
+// goal 模式实现登记表（批 6b，2026-09-24；docs/archive/plugin-extraction/capability-impl-seam-design.md §2 同款接缝）。
 //
 // 为什么需要它：`Agent.runGoal/resumeGoal`（宿主类方法）必须调用循环实现，而实现要进
 // 产物包 `plugins/builtin/goal-mode/`——两者只能靠一张**内核侧登记表**对接：内核查表、

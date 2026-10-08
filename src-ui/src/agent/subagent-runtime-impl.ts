@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 子代理运行时实现登记表（批 7c-1，2026-09-24；capability-impl-seam-design.md §2 同款接缝）。
+// 子代理运行时实现登记表（批 7c-1，2026-09-24；docs/archive/plugin-extraction/capability-impl-seam-design.md §2 同款接缝）。
 //
 // 分类 = `feature`（产物 subagent-in-process 是 feature）：未登记 ⇒ blueprint 的
 // merge-tool / discovery-tools 两条 capability 静默不装（与包内既有「缺帐即空集」语义同向）。

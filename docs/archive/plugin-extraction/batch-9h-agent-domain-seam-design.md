@@ -1,6 +1,8 @@
 # 批 9h 施工单 —— agent 域四件红账的接缝化归家（agent-loop-service / skill-domain / memory-domain / task-domain）
 
-> 状态：**Proposed（2026-09-26 立，实测侦察已附）**。真值账本 = [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md)
+> **已归档（2026-09-26 竣工）**——9h-1~9h-5 全落（capability-segments · agent-loop-service · skill-domain · memory-domain · task-domain 五件归家；契约 v50 → v51）。现状指针：账本 [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §1.2 + §6.5。
+
+> 状态：**Proposed（2026-09-26 立，实测侦察已附）**。真值账本 = [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md)
 > （本文件只是施工单；数字以账本 §5 与 `npm --prefix src-ui run plugin-home:report` 重测为准）。
 >
 > 缘起：批 9 前九笔（9a/9b/9c-1~3/9d/9e/9g-1~2/9h-1）已把红区压到 **5 产物 / 10 文件 / 3,573 行**

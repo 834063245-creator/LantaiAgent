@@ -1,7 +1,9 @@
 # provider 数据面归家 · 施工单（批 9f）
 
+> **已归档（2026-09-26 竣工）**——9f 全落（编辑面 129 行随包 · `provider/**` 判内核平台 15 件 · 子批 9f-1~3 全落 · 真机复核零异常）。现状指针：账本 §6.5。
+
 > 状态：**侦察已完成、判定已出（2026-09-26）**；本文件 = 施工依据（真源账本 = 
-> [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md) §2.1 / §6.5 的 9f 条）。
+> [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §2.1 / §6.5 的 9f 条）。
 > 口径：物理行（`(Get-Content).Count`）；消费者矩阵 = 全树 `import` 实测（脚本口径：按
 > specifier 解析后比对相对 `src/` 的 posix 路径，内核 = `plugins/builtin/` 之外）。
 

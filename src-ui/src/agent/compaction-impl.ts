@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 压缩域实现登记表（批 6d-2，2026-09-24；capability-impl-seam-design.md §3）。
+// 压缩域实现登记表（批 6d-2，2026-09-24；docs/archive/plugin-extraction/capability-impl-seam-design.md §3）。
 //
 // 为什么需要它：`Agent` 的压缩方法 + `agent-builder` 的工具注册都要调用实现，而实现归
 // 产物包 `plugins/builtin/compaction/`——两者靠一张**内核侧登记表**对接：内核查表、

@@ -1,7 +1,9 @@
 # 出厂产物归家 — 施工图纸（魂身合一：实现物理搬进插件包）
 
+> **已归档（2026-09-26 竣工）**——账② 物理归家清零（红区 **0 产物 / 0 文件 / 0 行**；纯壳集 21 → 0）。现状指针：账本 [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §5 / §6。
+
 > 状态：**Proposed·Draft（2026-09-04 立项，未开工；等用户拍板施工批次）**
-> **账在 [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md)**（2026-09-24 改判：
+> **账在 [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md)**（2026-09-24 改判：
 > 本文 §1.1 的 A 类 18 个空壳仍成立，但 D 类「合格」是误判——`llm-adapters` /
 > `subagent-in-process` / `agent-loop-service` 的 provider 实现也在内核；`settings-domain`
 > 属 E 类同样魂身分裂。计数与行数以总账为准）。

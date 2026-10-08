@@ -4,7 +4,7 @@
 // settings-domain · Provider 编辑面数据（批 9f-1，2026-09-26）。
 //
 // 来源：内核 `settings.ts` 里**只有本产物取用**的七个符号（施工单
-// docs/plans/provider-data-face-homing-design.md §2.1 A 桶，符号级矩阵实测）——
+// docs/archive/plugin-extraction/provider-data-face-homing-design.md §2.1 A 桶，符号级矩阵实测）——
 // 逐字搬移、零改写。搬它的两个理由：
 //   ① 「provider 编辑面」是产品内容（设置页的探针/默认端点判定/增删提供方/凭据写面），
 //      随包后改这些逻辑免重建 exe；

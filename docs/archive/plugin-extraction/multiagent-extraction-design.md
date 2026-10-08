@@ -1,7 +1,9 @@
 # 多 Agent 协作域归家设计（批 7：子代理运行时 + 通信族 + discovery）
 
+> **已归档（2026-09-24 竣工）**——批 7 全落（7a agent-domain · 7b 通信族 1,093 进包 · 7c-1/7c-2 运行时本体 1,169 进包 · 7d 账目清账，实测 ≈3,177 行）。现状指针：账本 [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §6.3。
+
 > 状态：**7a / 7b / 7c 已落（2026-09-24）· 7d 待施工**（实测与真机数字见账本 §6.3 对应小段）；
-> 账本 [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md) §6.3 是它的侦察记录。
+> 账本 [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §6.3 是它的侦察记录。
 > 承接批 6 的接缝（内核登记表 + 产物登记实现，见
 > [`capability-impl-seam-design.md`](capability-impl-seam-design.md) §2），本批是它的**重型应用**：
 > 多数实现是**内核构造的类**（`workspace.ts` new `SubAgentPool`、`runtime.ts` new `MessageBus` /

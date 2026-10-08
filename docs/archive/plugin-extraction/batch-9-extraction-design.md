@@ -1,6 +1,8 @@
 # 批 9 施工单：拆分件 + 常驻面 + 内核产品件（≈11,000 行）
 
-> 状态：**施工单（2026-09-26 实测）· 待施工**；账本 [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md)
+> **已归档（2026-09-26 竣工）**——批 9 全落（9a/9b/9c-1~4/9d/9e/9f/9g-1~2/9h-1~5 + §4 各项 + 批 10；红区 8 → **0 产物 / 0 文件 / 0 行**，纯壳集清零）。现状指针：账本 [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §6.5 + [`plans/README.md`](../../plans/README.md)。
+
+> 状态：**施工单（2026-09-26 实测）· 待施工**；账本 [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md)
 > §6.5 是它的侦察记录。**前置裁定已全部在位**（用户 2026-09-24 拍板 §7 八条：§4-5 A · §4-6 B ·
 > §4-7 B · §4-9 B · §4-11 B暂 · §4-12 B · §4-13 A）；其余七条 Agent 自裁条见账本 §7 尾注。
 > 本批是本账最大的剩余面：**灰区 84 文件 / 23,124 行的主体 + 红区最后 9 条账**都在这里。

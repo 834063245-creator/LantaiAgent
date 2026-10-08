@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// subagent 工具族实现登记表（批 7a，2026-09-24；capability-impl-seam-design.md §2 同款接缝）。
+// subagent 工具族实现登记表（批 7a，2026-09-24；docs/archive/plugin-extraction/capability-impl-seam-design.md §2 同款接缝）。
 //
 // 分类 = `feature`（产物名册条目 kind 派生）：产物未装载/被禁用 ⇒ blueprint 的两条
 // capability 静默不装（与包内 `subAgentSpawner 缺帐 ⇒ 空集` 的既有语义同向）。

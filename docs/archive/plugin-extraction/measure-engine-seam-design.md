@@ -1,7 +1,9 @@
 # 批 9c-4 施工单 —— 测量引擎接缝化（`paper/type-tokens.ts` 806 行归家的唯一可行路径）
 
+> **已归档（2026-09-26 竣工）**——9c-4 全落（接缝 9c-4a `2268bd64`；`measure.ts` 2,016 + `type-tokens.ts` 807 随 `paper-shell` 包）⇒ **账② 清零**。现状指针：账本 §6.5 + §5 基线。
+
 > 状态：**Proposed（2026-09-26 立，依据 = 账本 §6.5 的 9c-4 判定 + 本轮实测消费者表）**。
-> 真值账本 = [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md)（红区最后两件之一）。
+> 真值账本 = [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md)（红区最后两件之一）。
 >
 > 缘起：账本 §2.5 原判「`type-tokens.ts` 806 行随 paper-shell 包」，**机械切分判定不成立**
 > （9c-4，证据见下）。本单给出真正解锁路径：**把测量引擎整体做成产物登记的实现**（批 6/7/8 同款

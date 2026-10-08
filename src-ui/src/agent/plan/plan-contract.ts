@@ -6,7 +6,7 @@
 // agent-builder / agent-types）与 UI（message-model / block-model / builtin-renderers）
 // 引用本件即可，**不必反向依赖产物包**（宿主→插件禁反）。
 //
-// 三条边界（与账本 §6.2 / capability-impl-seam-design.md 一致）：
+// 三条边界（与账本 §6.2 / docs/archive/plugin-extraction/capability-impl-seam-design.md 一致）：
 //   - 审批三件（PlanReviewRequest / PlanApprovalResponse / PlanOptionOutcome）=
 //     聊天流卡片与工具之间的数据契约；
 //   - PlanReminderInjector = loop 只读面（getReminder/resetOnUserInput）；

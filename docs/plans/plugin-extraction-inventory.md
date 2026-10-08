@@ -10,7 +10,7 @@
 > 来源：本页由全树机械盘点 + **四份只读深审**（`agent/**` · `app/**`+`ui/**` ·
 > `paper/**`+`state/**`+`provider/**`+`shell/**` · `composition/**`+`cordis/**`+装载链）合并；
 > 每条数字都有 file:line 级证据，明细见 §7。
-> 账②的施工图纸在 [`factory-products-homing-plan.md`](factory-products-homing-plan.md)（本文是账，那份是图纸）。
+> 账②的施工图纸在 [`../archive/plugin-extraction/factory-products-homing-plan.md`](../archive/plugin-extraction/factory-products-homing-plan.md)（本文是账，那份是图纸）。
 
 ## 0. 为什么「搞不清」——三本账被混着读
 
@@ -313,7 +313,7 @@ manifest.json —— 包内合计 30～110 行。
 > 属内核 `provider-settings.css`（壳 bundle，provider 家族回迁时一并处理）。
 > 剩余 = 下表 Provider 家族 8 件 + 那份内核侧样式表（**批 9**）。
 >
-> **2026-09-26 批 9f 施工单已出**（[`provider-data-face-homing-design.md`](provider-data-face-homing-design.md)）：
+> **2026-09-26 批 9f 施工单已出**（[`../archive/plugin-extraction/provider-data-face-homing-design.md`](../archive/plugin-extraction/provider-data-face-homing-design.md)）：
 > 符号级消费者矩阵实测后**口径更正**——`provider/**` 16 件里 15 件（3,429 行）有内核平台读点
 > （启动链 / 壳行 / 工作区装配 / agent 运行时）⇒ **判内核平台面**（名册 `shared` 认领，照 §4-10 先例）；
 > `settings.ts` 705 行里 **C 桶（两侧都用）14 个导出留内核**（`loadSettings` 内核读点 12 个 ·
@@ -403,7 +403,7 @@ manifest.json —— 包内合计 30～110 行。
 
 | 项 | 路径（物理行） | 判定 |
 |---|---|---|
-| 工作区级 Agent 装配编排 | `workspace.ts` **1,076** | **产品**（唯一持有工作区生命周期的装配点；直接 new Agent/AgentStore/SubAgentPool/GoalManager/MemoryManager/SkillRegistry + 内联调起 user-mcp/bundled-engine） | 🟡 **批 9f 侦察（2026-09-26，判定细化）**：装配点**本体是内核平台**——`shell/rows/workspace.ts:33,108` 惰性 `import('../../workspace')` 并 `WorkspaceCls.open(folder)`，`shell/runtime.ts:29` 持 `Workspace` 句柄：**工作区生命周期宿主在壳行**，整件不可随包（内核 ↛ 产物源码）。真欠账 = 文件里**内联的产品装配**（new 五件管理器 + 拉起 user-mcp / bundled-engine）⇒ 解锁路径 = 批 10 的 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)（工作区接线贡献面），**不在批 9 内可搬**。**2026-09-26 部件一已落**：`ctx.workspaces`（内核第 17 service）——
+| 工作区级 Agent 装配编排 | `workspace.ts` **1,076** | **产品**（唯一持有工作区生命周期的装配点；直接 new Agent/AgentStore/SubAgentPool/GoalManager/MemoryManager/SkillRegistry + 内联调起 user-mcp/bundled-engine） | 🟡 **批 9f 侦察（2026-09-26，判定细化）**：装配点**本体是内核平台**——`shell/rows/workspace.ts:33,108` 惰性 `import('../../workspace')` 并 `WorkspaceCls.open(folder)`，`shell/runtime.ts:29` 持 `Workspace` 句柄：**工作区生命周期宿主在壳行**，整件不可随包（内核 ↛ 产物源码）。真欠账 = 文件里**内联的产品装配**（new 五件管理器 + 拉起 user-mcp / bundled-engine）⇒ 解锁路径 = 批 10 的 [`../archive/plugin-extraction/workspace-activation-channel-design.md`](../archive/plugin-extraction/workspace-activation-channel-design.md)（工作区接线贡献面），**不在批 9 内可搬**。**2026-09-26 部件一已落**：`ctx.workspaces`（内核第 17 service）——
 `workspace.ts` 在组合快照前按注册序串行回调贡献者、失败隔离不阻断打开；`bundled-engine` 的内联接线由**部件三**迁成第一个贡献者（未做）。 |
 | provider 设置数据层 | `settings.ts` **703** | **产品**（settings-domain 只载了 UI，数据/存储/凭据层留内核；`preset-assembly.ts:41` 还反向依赖它） | 🟡 **批 9f 侦察（2026-09-26，判定细化）**：实测 **28 个 import 方**（内核 16：`shell/boot.ts:35` 启动即 `loadSettings` · `shell/rows/{persistence,drag-drop,update-check}` · `state/{compose-store,mode-store}` · `ui/chat-session` · `composition/preset-assembly.ts:41` · `provider/**` 7 件 · `workspace.ts`；产物/桥 12）⇒ **整件不可随包**。真拆法 = ①**应用配置核心留内核**（`AppSettings` 四节 + `loadSettings`/`saveSettings`/`onSettingsSaved` + `canvasWheelMode`/`autoUpdateCheckEnabled`）；②**Provider 数据面随包**（L100–199 模型 helpers + `PROVIDER_PROTOCOL_DEFAULTS`/`defaultBaseUrl`/`isFactoryBaseUrl` + runtime 投影 + 四个 CRUD + `parseRpcString`），内核读点（compose-store / chat-session / provider 残件）走登记接缝 ⇒ 与核内 `provider/**`（16 件 3,502 行）**是同一件设计**，另立施工单 |
 | 第一方清单/腰四件 | `first-party-tools.ts` 86 + `first-party-prompts.ts` 43 + `first-party-capabilities.ts` 48 + `with-first-party-channel.ts` 51 = **228** | 清单→可由名册 `buildOrder` 派生（序真源其实已在名册）；`with-first-party-channel` 自述**只服务测试/无 UI 引导环境** ⇒ 应落 `tests/helpers/` |
@@ -438,7 +438,7 @@ manifest.json —— 包内合计 30～110 行。
 | 8 | `paper/viewer-exts.ts` 226 + `tool-text/markdown/marks/fold/translate` 2,226 | 判定随「`app/paper/**` 归属」翻转——第 1 条裁定后须重判 |
 | 9 | **壳行贡献通道缺口** | 插件无法贡献 boot 行（`builtinShellRows()` 是硬编码数组）⇒ `update-check` 一类「产物需要 boot 期副作用」的需求全卡住；需立 `ctx.shellRows` 一类通道 |
 | 10 | `asset-kinds.ts`（581） | 被 `composition/renderer-service.tsx` 与 `paper/measure.ts` 共享：随 asset-domain 迁 or 判「注册表机制」留内核 | ✅ **批 9g-2 裁定：判内核共享面（名册 `shared`），不再拆内容表**——两个内核读点（`renderer-service.tsx:127` `resolveAssetBlock` · `paper/measure.ts:751` `assetPresentationOf`）**每次渲染/测高**都要读 `presentations` 白名单 + `defaultPresentation`；asset-domain 是**可禁用** feature ⇒ 内容表随包后，禁用该产物会让旧卷里的资产块整片降级成 `'*'` JSON 兜底（用户可见回归）；改走「产物登记 + `required`」则代价是把禁用手柄收走。收益（改 kind 表免重建 exe）不抵这两笔 ⇒ 维持单一真源留内核 |
-| 11 | 装载链里的产品接线 | `plugins/bundled-engine.ts` 186（随包图谱引擎拉起）做成第一方产物即可进插件列表（天然 kill switch）；障碍：decl 需按**工作区根**动态构造（manifest 声明是静态的）+ 须覆写 `McpBridgeIO.pluginDir`（引擎不是已安装插件名）⇒ 现有声明通道缺这两个注入口。涉及引擎开关语义，须拍板。**最小设计件已立**（2026-09-24）：[`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)——复核后判定卡点不是声明面缺动态语义，而是「产物拿不到工作区生命周期 + 拿不到 MCP 桥」两件更基础的事 |
+| 11 | 装载链里的产品接线 | `plugins/bundled-engine.ts` 186（随包图谱引擎拉起）做成第一方产物即可进插件列表（天然 kill switch）；障碍：decl 需按**工作区根**动态构造（manifest 声明是静态的）+ 须覆写 `McpBridgeIO.pluginDir`（引擎不是已安装插件名）⇒ 现有声明通道缺这两个注入口。涉及引擎开关语义，须拍板。**最小设计件已立**（2026-09-24）：[`../archive/plugin-extraction/workspace-activation-channel-design.md`](../archive/plugin-extraction/workspace-activation-channel-design.md)——复核后判定卡点不是声明面缺动态语义，而是「产物拿不到工作区生命周期 + 拿不到 MCP 桥」两件更基础的事 |
 | 12 | `user-mcp.ts`（142） | 第二套 MCP 声明通道：**现行契约已 sanction**（`plugins/README.md:416-420` 用户级直配段）；张力来自**已归档**的 `agent-platformization-plan.md:360`「不引入第二套插件格式…不加旁路」⇒ 按现行契约应「承认并登记」，而非折并 |
 | 13 | `ui/lsp-client.ts` 的 `ctx.lsp`（655） | **分类缺口（同 token-meter）**：真 cordis Service（`super(ctx,'lsp')`）却**不在 13 service 清单、不经 loader 装载**，还自建第二个根 Context 绕过 `initCordisKernel()` ⇒ 不受「内核不可禁用」声明覆盖、不进 boot 审计。全仓 `extends Service` 共 19 处 / 19 个 ctx 键，而「13」只覆盖其中一部分 |
 | 14 | `composition/space-service.ts`（193） | 零自有状态，只做只读合流 + 命令转发到产品 store：按 canvas 设计件判「平台开放 API」，按宪法第五条「能换实现 ⇒ 开放面」复核则偏产品 |
@@ -531,7 +531,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 > [`plugin-extraction-decisions.md`](plugin-extraction-decisions.md) —— 十五条全部有归宿
 > （8 条已裁 / 7 条判据在仓内），**没有一条还挂在「等用户」**；批次排期见该文件 §5
 > （先跑随包引擎四条真机验收 → 9h-5 → 9c-4 → §4-6 `ctx.tokenMeter` → 9f → 批 10 + §4-9 同窗
-> → §4 自裁项收尾）。引擎验收结论见 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md) §7：
+> → §4 自裁项收尾）。引擎验收结论见 [`../archive/plugin-extraction/workspace-activation-channel-design.md`](../archive/plugin-extraction/workspace-activation-channel-design.md) §7：
 > **四条全通**（2026-09-25 重建 exe）。
 
 ## 6. 建议批次（合并四份深审的次序；每批门禁全绿再下一批）
@@ -547,21 +547,22 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 | **3** | 单文件直连六件：memory · skill · task · wait · office · cordis | ≈1,985（含随行） | ✅ **批 3a 已落 3 件**（wait 102 · office 576 · cordis 200 = 878 行；桥位仅 9 运行时 + 7 类型）。**memory/skill/task 复核后改期**：它们的类是内核构造的（`workspace.ts` new MemoryManager/SkillRegistry、runtime 用 TaskBoard 11 处）⇒ 整件搬会造宿主→插件反向依赖（仓库禁反），改随批 7 / 批 9 |
 | **4** | 大文件按域拆：`coding.ts` 五域 + `browser.ts` + `manifest-tools/search-assembly`（+ 三个域私有编排件） | ≈2,600 | ✅ **已全落**：4a `browser.ts`（912）· 4b `manifest-tools` 按域拆（187+169，search/web 各归其包）· 4c `coding.ts`（998，一文件载五族）拆完 **整文件退役**——4c-1 git · 4c-2 ask/agent-isolation · 4c-3 fs/shell（顺带上收 `ownerIdOf`/`ownerSeamView` 进 `composition/seam-scope.ts`）。随行件去向：`sticky-cwd` 并入包内族段，`git-porcelain` 126 / `session-context` 122 / `structured-error` 24 因内核消费者**留内核桥** |
 | **5** | paper 独占件随包：paper-shell 5 件 + compose-dock 3 件 | 1,765 | ✅ **批 5a 已落 7 件 / 962 行**（provenance 316 · sel-ink 138 · focus-flight 57 · sheet 36 · toc 275 · toc-ink 103 · ime 37；零内核消费者）；`type-tokens.ts` 806 行**复核后改期**——内核 `paper/measure.ts` 直接引用其 token 表（宿主→插件禁反），随批 9 拆分件一起搬 |
-| **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md) |
-| **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md) |
+| **6** | agent/ 能力面新产品：plan-mode · compaction · state-hooks · goal | ≈3,485 | ✅ **批 6 四项全落**：6a plan-mode（302 行）· 6b goal-mode（317 行）· 6c state-hooks（≈200 行）· 6d compaction（1,773 行进包 + 414 行留内核）。四项都**不是**「按域拆」型欠账（实现被内核构造/调用）⇒ 走用户拍板的「内核登记表 + 产物登记实现」接缝：capability/工具表条目原位不动、**convergence 基线全程零改动**（表序零漂移的证明）。分类按拍板：plan/goal = feature（可禁用），state-hooks/compaction = service（缺实现 fail-loud）。施工单 = [`../archive/plugin-extraction/capability-impl-seam-design.md`](../archive/plugin-extraction/capability-impl-seam-design.md) |
+| **7** | 多 Agent 协作域：子代理运行时本体 + 通信族 + discovery | ≈2,293 | ✅ **批 7 全落**（侦察见 §6.3，实测 ≈3,177 行）：7a `agent-domain` 实心化（265）· 7b 通信族（1,093 进包 / 185 留内核契约）· 7c-1 merge/discovery 两工具族（338 进包）· 7c-2 子代理运行时本体（1,169 进包 / 202 留内核契约，**整包实心化、名册销账**）· 7d 账目清账（无代码动作：`file-ownership` / `isolation-queue` / `subagent-activity` 三条判内核共享已写进 §2.3，名册两条销账已兑现）。施工单 = [`../archive/plugin-extraction/multiagent-extraction-design.md`](../archive/plugin-extraction/multiagent-extraction-design.md) |
 | **8** | 渲染面整合：纸面渲染器归家（含 mermaid）+ ipynb/markdown-doc 内联 + 白名单收窄 + 解开内核↔产物类型环 | ≈3,300（侦察实测，原估 2,500） | ✅ **批 8 全落**（2026-09-25，侦察见 §6.4，施工单 [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md)）：8a 类型环解结（形状上收 `paper/viewer-contract.ts` + 新守卫「内核 ↛ 产物源码」）· 8b 新产物 `paper-renderers`（1,020 行，**required 不可禁用** + markdown 体渲染登记表 + mermaid 走重依赖例外）· 8c ipynb/markdown-doc 撤 heavy 内联（1,169 行随包，白名单收窄到 pdf/model3d，hljs 单一真源）· 8d 文档契约化（`docs/plugins/README.md` §3 重依赖判据）。hljs「两处内联」口径 = 应用 bundle 归零（两份都随产物），语言表收成一处 |
 | **9** | 拆分件 + provider 控制台大块 + 常驻面（SessionsHome / PromptShelf）+ §2.6 内核产品件（`workspace.ts` / `settings.ts`） | ≈11,000 | ✅ **全落**：9a / 9b / 9c-1~4 / 9d / 9e / 9f / 9g-1~2 / 9h-1~5 + §4-6 + 批 10（含 §4-9）（2026-09-26）：9a 内核 service 名单收单一真源（新 `plugins/service-plugins.ts`，loader 与清单双向派生；§4-15）+ `ConfirmDialog` 挪内核共享面（§4-3）+ 账目登记三件（§4-6/§4-7/§4-12）⇒ 灰区 84→79 文件 · 9b `ctx.lsp` 入内核 service 清单（13→14，`lspServicePlugin`）并删掉自建第二个根 Context（§4-13 A）——所有权改「进程级单例 + 工作区级清态」· 9g-1 prompt 段文案随包（内核 244→95，该包桥面清零）· 9g-2 asset 三工具随包（桥面翻面 13 键，asset-kinds / asset-store / confirm-registry 判 `shared`）· **9e 常驻面归家**（用户裁定 A）：立**第 15 个内核 service** `ctx.rootViews`（'home'/'overlay' 双槽，App 外壳按槽渲染）+ 新产物 `sessions-home`（593 + 首页 CSS 851 行）与 `ask-cards`（776 + Host 30 + css 412），两产物均 `required` 不可禁用 · **9h-1 capability 内容表随包**（`agent/blueprint.ts` 410 → 158，包内 `segments.ts` 281 = 十四项定义，逐字号原样）· **9h-2 出厂默认 loop 随包**（`agent/agent-loop/default-loop.ts` 469 整件进 `agent-loop-service` 包，内核 `resolveAgentLoop()` 去兜底改 fail-loud；契约 v50 → **v51**）· **9h-3 技能域随包**（`skills.ts` 377 + `builtin-skills.ts` 358 进 `skill-domain` 包；形状上收 `agent/skill-contract.ts` + 登记表门面 `agent/skill-impl.ts`）· **9h-4 记忆域随包**（`memory.ts` 733 + `memory-bundle-client.ts` 134 进 `memory-domain` 包；形状上收 `agent/memory-contract.ts` + 门面 `agent/memory-impl.ts`，授权旗标留内核）· **9c-4 测量引擎整件随包**（9c-4a 接缝 `2268bd64`；9c-4b `measure.ts` 2,016 + `type-tokens.ts` 807 进 `paper-shell`
-（`required`；宿主面 324 键）；9c-4c 测试面 29 件改指包内 + 真机验收——**账② 清零**，见 §6.5）· **§4-6 token 计量升内核第 16 个 service `ctx.tokenMeter`**（裁定 A；契约 **v52**，墨量册改道宿主桥，宿主面 330 键；真机验收见 §6.5）· **9h-5 task 域整件随包**（`task.ts` 178 + `task-board.ts` 319 + `board-status.ts` 78 进 `task-domain` 包；形状上收 `agent/task-contract.ts` + 门面 `agent/task-impl.ts`；`board-persistence.ts` 121 判内核 `shared`；**纯壳集清零**，宿主面 334 键；真机验收见 §6.5）⇒ 红区 8 → **0 产物 / 0 文件 / 0 行**、灰区 84 → **50 文件 / 15,103 行**、清单 50 → **54**（16 service + 38 产物）。余：**批 10 ✅ 全落**（部件一 `ctx.workspaces` · 部件二 MCP 桥 faceDeps +4 键 · 部件三 `ctx.shellRows` + `update-check` 随包 · 引擎接线产物化 `bundled-engine`——名册 39 / 清单 57 / 宿主面 331，真机四条验收全通）· 9f ✅ **全落**（编辑面 129 行随包 · 宿主面 327 键 · `shared` 认领 17 件 · 真机复核零异常）（[`provider-data-face-homing-design.md`](provider-data-face-homing-design.md)：`provider/**` 判内核平台 15 件 / 随包面实测 −205；子批 9f-1~3 全落） → 9g `bundled-engine` 随批 10。侦察见 §6.5，施工单 [`batch-9-extraction-design.md`](batch-9-extraction-design.md) |
+（`required`；宿主面 324 键）；9c-4c 测试面 29 件改指包内 + 真机验收——**账② 清零**，见 §6.5）· **§4-6 token 计量升内核第 16 个 service `ctx.tokenMeter`**（裁定 A；契约 **v52**，墨量册改道宿主桥，宿主面 330 键；真机验收见 §6.5）· **9h-5 task 域整件随包**（`task.ts` 178 + `task-board.ts` 319 + `board-status.ts` 78 进 `task-domain` 包；形状上收 `agent/task-contract.ts` + 门面 `agent/task-impl.ts`；`board-persistence.ts` 121 判内核 `shared`；**纯壳集清零**，宿主面 334 键；真机验收见 §6.5）⇒ 红区 8 → **0 产物 / 0 文件 / 0 行**、灰区 84 → **50 文件 / 15,103 行**、清单 50 → **54**（16 service + 38 产物）。余：**批 10 ✅ 全落**（部件一 `ctx.workspaces` · 部件二 MCP 桥 faceDeps +4 键 ·
+部件三 `ctx.shellRows` + `update-check` 随包 · 引擎接线产物化 `bundled-engine`——名册 39 / 清单 57 / 宿主面 331，真机四条验收全通）· 9f ✅ **全落**（编辑面 129 行随包 · 宿主面 327 键 · `shared` 认领 17 件 · 真机复核零异常）（[`../archive/plugin-extraction/provider-data-face-homing-design.md`](../archive/plugin-extraction/provider-data-face-homing-design.md)：`provider/**` 判内核平台 15 件 / 随包面实测 −205；子批 9f-1~3 全落） → 9g `bundled-engine` 随批 10。侦察见 §6.5，施工单 [`../archive/plugin-extraction/batch-9-extraction-design.md`](../archive/plugin-extraction/batch-9-extraction-design.md) |
 
 **常驻对账（本账的稳态）**：批 0 里一并落 `plugin-home:report`（§5 三色清单）——
 此后「还剩什么」由报告回答，本页只保留结论与批次表；**报告灰区非空即告警**，
 不需要再安排「人肉再验一轮」。
 
 **批 10（单独立项，2026-09-24）**：工作区接线贡献面 + 随包引擎产物化——
-设计件与真机验收清单见 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)；
+设计件与真机验收清单见 [`../archive/plugin-extraction/workspace-activation-channel-design.md`](../archive/plugin-extraction/workspace-activation-channel-design.md)；
 **先跑验收四条，再定稿施工**（该链路从未真机跑通）。
 
-### 6.3 批 7 施工侦察（2026-09-24 实测；施工单 = [`multiagent-extraction-design.md`](multiagent-extraction-design.md)）
+### 6.3 批 7 施工侦察（2026-09-24 实测；施工单 = [`../archive/plugin-extraction/multiagent-extraction-design.md`](../archive/plugin-extraction/multiagent-extraction-design.md)）
 
 **范围（逐文件实测行数）**：通信族 **1,204**（`message-bus` 605 · `message-types` 137 ·
 `message-store` 129 · `topology` 80 · `tools/communication` 159 · `tools/request` 94）·
@@ -746,7 +747,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   含 `parseNotebook` 与 `pp-viewer-mddoc` 类名（撤 heavy 后的两个查看器真身）、`face.json` 1 键；
   启动期 console 无异常（仅结构性的无 face.json 产物 404）。
 
-### 6.5 批 9 施工侦察（拆分件 + 常驻面 + 内核产品件，2026-09-26 实测；施工单 = [`batch-9-extraction-design.md`](batch-9-extraction-design.md)）
+### 6.5 批 9 施工侦察（拆分件 + 常驻面 + 内核产品件，2026-09-26 实测；施工单 = [`../archive/plugin-extraction/batch-9-extraction-design.md`](../archive/plugin-extraction/batch-9-extraction-design.md)）
 
 本批是账上最大一笔（≈11,000 行）：**灰区 84 文件 / 23,124 行的主体 + 红区最后 9 条账**都在这里。
 §7 八条前置裁定全部在位（§4-5 A · §4-6 B · §4-7 B · §4-9 B · §4-11 B暂 · §4-12 B · §4-13 A）。
@@ -844,7 +845,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   `i18n` 清**已在批 0c 完成**（98 → 22 行，本次复核）；`asset-kinds` 内容表拆分**已随 9g-2 判定撤回**
   （判内核共享，见 §4-10 行）。
   9e（常驻面，含 `ctx.overlays` 新槽）/ 9f（`settings.ts` + `workspace.ts`）仍在队首。
-- **9c-4 施工单已出**（2026-09-26，[`measure-engine-seam-design.md`](measure-engine-seam-design.md)）：
+- **9c-4 施工单已出**（2026-09-26，[`../archive/plugin-extraction/measure-engine-seam-design.md`](../archive/plugin-extraction/measure-engine-seam-design.md)）：
   依据账本 9c-4 判定 + 本轮实测消费者表（`measure.ts` 2,016 / `type-tokens.ts` 807 / `ink.ts` 375），
   给出「测量引擎整体接缝化」的三子批路径（9c-4a 契约+门面 → 9c-4b 引擎整件随包 + `paper-shell`
   标 `required` → 9c-4c 测试面/真机），并把 **观察高度账留内核**（跨模块记账面）写成纪律。
@@ -878,7 +879,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   pid 16228 的 `ParentProcessId` = `lantai.exe` pid 18904（一进程一根）；回首页（确认弹层
   `回首页并关闭工作区`）后 `.pp-root` 消失 + **引擎进程消失而 lantai 存活**（离开即停）。
   **对账**：红 0 · 平台 123 · 已认领 121 · 灰 49 / 15,002。
-- **批 10 部件一 + 部件三：两条宿主生命周期贡献面**（2026-09-26，设计件 [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md) §4.1/§9；用户 2026-09-25 裁定 A）：
+- **批 10 部件一 + 部件三：两条宿主生命周期贡献面**（2026-09-26，设计件 [`../archive/plugin-extraction/workspace-activation-channel-design.md`](../archive/plugin-extraction/workspace-activation-channel-design.md) §4.1/§9；用户 2026-09-25 裁定 A）：
   新 `composition/workspaces-service.ts`（`ctx.workspaces`，内核第 17 service）——产物 apply 期 `onActivate(hook)`
   登记，`workspace.ts` 在**组合快照之前**按注册序**串行 await**，单个抛错**不阻断工作区打开**（具名回执经
   `scope.report`），`scope.ctx` = 工作区 fiber ctx（挂它的东西随 dispose 回收）；新 `composition/shell-rows-service.ts`
@@ -895,7 +896,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   **贡献壳行真跑了的实证**：设置「关于」页读数 **「更新 已是最新版本」**（该文案只在一次检查**完成后**出现）；
   内核表已无该行（守卫断言内核 10 行、末位 `shell-cold-start`）⇒ 该检查只可能来自 `settings-domain`
   经 `ctx.shellRows` 登记的贡献行 ⇒ **引导序末位语义在真机成立**。
-- **9f-1 Provider 编辑面随 `settings-domain`**（2026-09-26，施工单 [`provider-data-face-homing-design.md`](provider-data-face-homing-design.md)）：
+- **9f-1 Provider 编辑面随 `settings-domain`**（2026-09-26，施工单 [`../archive/plugin-extraction/provider-data-face-homing-design.md`](../archive/plugin-extraction/provider-data-face-homing-design.md)）：
   `provider/model-sync.ts` 73 → 包内 `model-sync.ts`；`settings.ts` 的 7 个产品专属值符号
   （`isFactoryBaseUrl` / `persistSecrets` / `removeSecret` / `addProvider` / `removeProvider` + 两个类型再出口）
   → 包内 `provider-data.ts`（129 行，逐字搬移）；`settings.ts` 706 → **607 行**。**顺带修一处真病灶**：
@@ -919,12 +920,12 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 - **9f 侦察（2026-09-26，未施工——下次从这条接）**：`settings.ts` + `workspace.ts` **都不是单文件搬迁**。
   ① `workspace.ts` 1,076：生命周期宿主在壳行（`shell/rows/workspace.ts` 惰性 import + `WorkspaceCls.open`），
   欠账是**内联产品装配**（new 五件管理器 + 拉起 user-mcp / bundled-engine）⇒ 与批 10 的
-  [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md) 同一件工作。
+  [`../archive/plugin-extraction/workspace-activation-channel-design.md`](../archive/plugin-extraction/workspace-activation-channel-design.md) 同一件工作。
   ② `settings.ts` 703：28 个 import 方里内核 16（`shell/boot` 启动即读 · 三条壳行 · 两个 state store ·
   `ui/chat-session` · `preset-assembly` · `provider/**` 7 件）⇒ 拆成「应用配置核心（留内核）」+
   「Provider 数据面（随包，内核读点走登记接缝）」；后者与核内 `provider/**` 16 件 3,502 行同属
   **provider 数据面归家**，需一份施工单（下一轮先出设计件再动刀）。
-  ✅ **施工单已出（2026-09-26）**：[`provider-data-face-homing-design.md`](provider-data-face-homing-design.md)
+  ✅ **施工单已出（2026-09-26）**：[`../archive/plugin-extraction/provider-data-face-homing-design.md`](../archive/plugin-extraction/provider-data-face-homing-design.md)
   ——符号级消费者矩阵实测后**口径更正**：`provider/**` 15 件（3,429 行）有内核平台读点 ⇒ 判内核平台面
   （`shared` 认领、不造接缝）；`settings.ts` 的 C 桶 14 导出（含 `loadSettings` 内核读点 12 个 ·
   `effectiveModels`/`onSettingsSaved` 被多产物共用）留内核；**随包面 = `model-sync.ts` 73 + 产品专属
@@ -1096,7 +1097,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
   `registerTaskImplementation` / `BoardPersistence` 真身；进工作区（恢复卷）一次通过
   （`[Workspace.open] all done`），**零** `TASK_DOMAIN_UNAVAILABLE`、零装载失败。
 
-- **9c-4 测量引擎整件随包（账② 清零）**（2026-09-26，施工单 [`measure-engine-seam-design.md`](measure-engine-seam-design.md) §4）：
+- **9c-4 测量引擎整件随包（账② 清零）**（2026-09-26，施工单 [`../archive/plugin-extraction/measure-engine-seam-design.md`](../archive/plugin-extraction/measure-engine-seam-design.md) §4）：
   **9c-4a**（`2268bd64`）接缝先行——新 `paper/measure-contract.ts`（内核真读三动词 + `InkSource` 形状）+ `paper/measure-seam.ts`
   （登记表 + 三门面；过渡态 `KERNEL_DEFAULT` 静态取内核三动词）。**9c-4b**：`paper/measure.ts` 2,016 +
   `paper/type-tokens.ts` 807 两件 `git mv` 进 `plugins/builtin/paper-shell/`；`KERNEL_DEFAULT` 删除 ⇒ 缺实现具名
@@ -1183,7 +1184,7 @@ ask 卡架 776 + Host 30 随包 ⇒ 灰区 61 → 58 文件 / 18,388 → 17,000 
 每批收尾必做：`vitest` + `build`（含 `build:builtin-plugins`）+ `biome ci` + `verify:convergence` 双轨；
 faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` 并**重建一次 exe**。
 
-### 6.2 批 6 施工侦察（2026-09-24 实测；施工单 = [`capability-impl-seam-design.md`](capability-impl-seam-design.md)）
+### 6.2 批 6 施工侦察（2026-09-24 实测；施工单 = [`../archive/plugin-extraction/capability-impl-seam-design.md`](../archive/plugin-extraction/capability-impl-seam-design.md)）
 
 **结论：批 6 四项不是「按域拆」型欠账——不能照搬批 4c 的 git mv。** 逐项证据（file:line）：
 
@@ -1340,7 +1341,7 @@ faceDeps 键集一变即须重生成 `src/plugins/host-surface.baseline.json` �
 | 6 | token-meter（963）归属 | `SessionTokenMeter` 是 **Agent 私有账本**（`agent.ts:257` 每 Agent new 一个）+ `CLAUDE.md` 口径不变量；非 provider 型 seam | **B** 判**内核度量/审计面**留内核，但**登记分类**（消除「既非 service 又非 feature」的缺口） | 仅账目登记 |
 | 7 | `agent/acp/**`（306）去留 | **不是死代码**：`docs/design/mcp-acp-protocol-support.md` 明确「三个标准角色」且状态「已实现」；当前生产零消费者（仅测试 + 类型 import） | **B** 与 `agent/mcp/**` 同族 ⇒ 判**协议面=平台**留内核，并把「当前零产线消费者」写明认领 | 仅账目认领 |
 | 9 | 壳行贡献通道 `ctx.shellRows` | `composition/shell-rows.ts` 自述壳行=**纯 boot 时序、无 disposer 诉求**；11 行已可按 roster shell 域寻址禁用 | **B** 不立通道（维持既有分工），把「产物不得贡献 boot 期副作用」立成规则；`update-check` 27 行留内核 | 该类需求永久留内核 |
-| 11 | 随包引擎（`bundled-engine.ts` 186）产物化 | 缺口三件（2026-09-24 复核）：**① 产物拿不到工作区生命周期**——现由 `workspace.ts:813` 以**工作区 fiber ctx** 调 `registerBundledEngineTools(ctx, root)`，插件无此 hook（结构性，与 §4-9 壳行通道同族）；② 产物拿不到 MCP 桥（`registerMcpServerTools`/`McpBridgeIO` 只在装载链内）；③ 声明静态——是①的推论。**不要扩 manifest 声明面**（会破坏「声明=可审数据 / 机器桥纯声明面」纪律） | **B（暂）**，解锁路径 = 补①一处「工作区生命周期 + scoped ctx」贡献面 + ②经 faceDeps 暴露 MCP 桥（第一方专用面）⇒ 运行期注册，无需给 manifest 加动态语义。**前置**：该链路真机从未跑通（`plans/README.md` 欠账表），先验收再定型 | 一处新契约面 + baseline 重生成 + 契约升版 + 重建 exe。**设计件 + 验收清单 = [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md)**（2026-09-24） |
+| 11 | 随包引擎（`bundled-engine.ts` 186）产物化 | 缺口三件（2026-09-24 复核）：**① 产物拿不到工作区生命周期**——现由 `workspace.ts:813` 以**工作区 fiber ctx** 调 `registerBundledEngineTools(ctx, root)`，插件无此 hook（结构性，与 §4-9 壳行通道同族）；② 产物拿不到 MCP 桥（`registerMcpServerTools`/`McpBridgeIO` 只在装载链内）；③ 声明静态——是①的推论。**不要扩 manifest 声明面**（会破坏「声明=可审数据 / 机器桥纯声明面」纪律） | **B（暂）**，解锁路径 = 补①一处「工作区生命周期 + scoped ctx」贡献面 + ②经 faceDeps 暴露 MCP 桥（第一方专用面）⇒ 运行期注册，无需给 manifest 加动态语义。**前置**：该链路真机从未跑通（`plans/README.md` 欠账表），先验收再定型 | 一处新契约面 + baseline 重生成 + 契约升版 + 重建 exe。**设计件 + 验收清单 = [`../archive/plugin-extraction/workspace-activation-channel-design.md`](../archive/plugin-extraction/workspace-activation-channel-design.md)**（2026-09-24） |
 | 12 | 用户级 `mcp.json`（142）第二通道 | **现行契约已 sanction**（`plugins/README.md:416-420`）；张力来自**已归档**计划的旧 Non-goals | **B** 承认并**登记为合法用户级配置面**（它不是「插件格式」） | 仅账目登记 |
 | 13 | ~~游离 `ctx.lsp`（655）~~ | `LspService extends Service` + `super(ctx,'lsp')`；`lsp-client.ts:584` 自建**第二个根 Context**（绕过 `initCordisKernel()`）；不在 13 清单 ⇒ 不受「内核不可禁用」覆盖、不进 boot 审计 | **A** 纳入内核清单（13→14）由 loader 装载 + 去掉 fallback 根 Context | ✅ **批 9b 已落**（2026-09-26）：第 14 个内核 service = `ui/lsp-client.ts` 的 `lspServicePlugin`（loader 装载 + 清单登记 + boot 审计 + 不可禁用）；服务改**进程级单例**（同链重名会被 cordis reflect 拒——实测）、工作区改登记「工作区级清态」`resetWorkspaceState()`（与旧的「服务随 fiber dispose」逐条等价）；自建第二个根 Context 删除 |
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// state-hooks 实现登记表（批 6c，2026-09-24；capability-impl-seam-design.md §2 同款接缝）。
+// state-hooks 实现登记表（批 6c，2026-09-24；docs/archive/plugin-extraction/capability-impl-seam-design.md §2 同款接缝）。
 //
 // 分类 = `service`（用户 2026-09-24 拍板）：hook 管道是内核语义（prompt 注入 / 诊断 /
 // 构建结果缓存），缺实现 = 装配歪了 ⇒ 消费点（blueprint 两条 capability）**fail-loud**，

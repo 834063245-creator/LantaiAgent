@@ -665,7 +665,7 @@ src-ui/src/
 ├── state/          # zustand 状态层（领域 store + 面板 store + scoped-store 注册表 + prefs）
 ├── shell/          # 壳行引导：boot.ts + rows/（persistence / chat / keyguard / platform / workspace / cold-start …）
 ├── provider/       # LLM Provider 抽象 + catalog（内核 seed 目录）+ thinking / credentials / oauth /
-│                   #   providers-doc·store（配方改文件批）——平台数据面（判据见 provider-data-face-homing-design.md）
+│                   #   providers-doc·store（配方改文件批）——平台数据面（判据见 docs/archive/plugin-extraction/provider-data-face-homing-design.md）
 ├── ui/             # chat 编排域核心 + 旧层命令式基础设施（只减不增；契约见 ui/README.md）
 ├── lifecycle/      # WorkspaceStateMachine + 超时
 ├── assets/         # 字体与纸纹素材（MiSans-VF.ttf / paper-*.jpg / seal-*.jpg）

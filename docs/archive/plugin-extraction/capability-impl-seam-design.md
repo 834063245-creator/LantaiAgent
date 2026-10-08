@@ -1,7 +1,9 @@
 # capability 实现接缝设计（批 6：plan / goal / compaction / state-hooks 归家）
 
+> **已归档（2026-09-24~26 竣工）**——批 6 四项全落（6a plan-mode · 6b goal-mode · 6c state-hooks · 6d compaction 1,773 行进包 / 414 行留内核）；convergence 基线全程零改动。现状指针：账本 §6.2。
+
 > 状态：**已拍板（2026-09-24，用户选 A）· 待施工**；本件是批 6 的施工单，账本
-> [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md) §6.2 是它的侦察记录。
+> [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §6.2 是它的侦察记录。
 > 落地顺序 = 6a plan-mode → 6b goal-mode → 6c state-hooks → 6d compaction；每批门禁全绿再下一批。
 
 ## 1. 为什么不能照搬批 4c 的「按域拆 + git mv」

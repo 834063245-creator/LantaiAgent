@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// plan 模式实现登记表（批 6a，2026-09-24；capability-impl-seam-design.md §2）。
+// plan 模式实现登记表（批 6a，2026-09-24；docs/archive/plugin-extraction/capability-impl-seam-design.md §2）。
 //
 // 为什么需要它：plan 的两条 capability 住在内核 `agent/blueprint.ts` 的**字节序表**里
 // （贡献序 = 注册序 = capability 表序），条目位置不可动；而实现（两个工具工厂 +
