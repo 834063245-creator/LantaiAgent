@@ -35,8 +35,9 @@
 // 有消费面（无活卷 / 案头态 ⇒ 不画线；线只指示「这一匣对着这一卷」）。订正见
 // `docs/plans/paper-shell/taste-ledger.md` 同日条。
 
-// 批 9c-4b（2026-09-26）：`folioHeadWidthFor` 随 `measure.ts` 进本包 ⇒ 包内直接取。
-import { folioHeadWidthFor } from './measure';
+// 批 9c-4b（2026-09-26）：版心宽函数随 `measure.ts` 进本包 ⇒ 包内直接取。
+// 2026-10-08：随版心改式（「墨占纸半」）由 `folioHeadWidthFor` 改名 `columnWidthFor`。
+import { columnWidthFor } from './measure';
 import { TETHER_SPLINE_MIN, type TetherPen } from './provenance';
 
 /** 引线种子前缀（seed 取 `版口-<卷号>`）：**同卷恒同线**，重渲染/平移不闪——与
@@ -54,9 +55,9 @@ export const DOCK_TETHER_PEN: TetherPen = {
 
 /** **卷侧锚点**（世界坐标）：活卷的**纸脚**——（版心左缘, 卷底边）。
  *
- *  - 版心左缘 = `regionLeft + (width − 版心宽) / 2`，版心宽走 `measure.folioHeadWidthFor`
- *    （**单一真源**：左右内距 16×2 与版心封顶 720 都在那一式里——调用点禁手写
- *    `width − 32`；本式与 `16 + (width − 32 − 版心宽) / 2` 恒等）。选版心左缘而不是
+ *  - 版心左缘 = `regionLeft + (width − 版心宽) / 2`，版心宽走 `measure.columnWidthFor`
+ *    （**单一真源**：版心 = 纸半，2026-10-08「墨占纸半」改式、原封顶 720 退役——
+ *    调用点禁手写宽度换算）。选版心左缘而不是
  *    纸的左缘：坞端那枚钮也在坞自己的版心左缘（坞身 880 版心 = 它的盒宽）——**版口对
  *    版口**，默认位（两厢都居中）下这条线近乎垂直。
  *  - 卷底边（纸脚）= `regionTop + regionHeight`——**纸的材料底缘**（受光/背光缘与裱边带
@@ -70,7 +71,7 @@ export function regionFootAnchorOf(region: {
 }): { x: number; y: number } {
   const regionLeft = region.anchorX - region.width / 2;
   return {
-    x: regionLeft + (region.width - folioHeadWidthFor(region.width)) / 2,
+    x: regionLeft + (region.width - columnWidthFor(region.width)) / 2,
     y: region.regionTop + region.regionHeight,
   };
 }

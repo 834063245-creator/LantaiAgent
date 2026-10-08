@@ -27,16 +27,15 @@ import {
   defaultRegionFor,
   EMPTY_REGION_CONTENT_H,
   layoutRegion,
-  REGION_CONTENT_MARGIN,
   translateMessagesCached,
   writingBlockIdOf,
 } from './host';
 import {
   type BlockMeasureCache,
+  columnWidthFor,
   createBlockMeasureCache,
   measureBlockHeightCached,
   measureFolioHeadHeight,
-  USER_SHRINK_MIN_W,
 } from './measure';
 import type { SelectionDragState } from './use-paper-viewport';
 import { visibleFlowWindow, visiblePinnedIds } from './virtualize';
@@ -44,9 +43,14 @@ import { visibleFlowWindow, visiblePinnedIds } from './virtualize';
 /** 流内占位符高度（pinned 块在流原序位的洞——设计文档 §2.3）——regions memo
  *  与渲染层 ghost 按钮共用。 */
 export const GHOST_H = 32;
-/** 块宽兜底（2026-09-03 级联防御）：流区宽脏/NaN 时回落默认版心宽
- *  （与 paper/block-model DEFAULT_BLOCK_WIDTH 同值，本地不引 host）。 */
-const FALLBACK_BLOCK_W = 720;
+/** 块宽基准（2026-10-08 起兼作缩放比的分母）：块模型给的 w 是「相对 720 的设计值」
+ *  （720 满版心 / 619 夹注 0.86 / 560 来文 / 640 工具族），缩放按 `w ÷ 本值` 换算；
+ *  流区宽脏/NaN 兜底时也回落本值（与 paper/block-model DEFAULT_BLOCK_WIDTH 同值，
+ *  本地不引 host）。 */
+const BASE_BLOCK_W = 720;
+/** 流区宽兜底（2026-10-08）：regionW 脏/NaN 时回落默认流区宽 1440
+ *  （= paper/space.ts STREAM_REGION.width 本地镜像）——经 columnWidthFor 得默认版心。 */
+const FALLBACK_REGION_W = 1440;
 /** 视口虚拟化输入：可见窗口外扩余量（px，世界单位）。 */
 const OVERSCAN = 200;
 
@@ -213,21 +217,28 @@ export function usePaperRegions(params: {
    * 建钉/拔钉时占位切换与块高重测同帧生效。 */
   const sidecarOutOf = useCallback((b: SourcedBlock) => pinsMap[`${b.id}:sc`] != null, [pinsMap]);
 
-  /* P2a+P6 宽度自由：块宽适配流区——先 clamp 到流区内容宽（窄流区压版心，
-   * 宽流区不放宽：版心有可读上限 720）。2026-08-30 来文标题化：来文不再收缩
-   * 宽（纸条隐喻退役），与其他块同走版心宽——标题居中吃版心。WeakMap 以
-   * 「源对象 + 目标宽」记忆——resize 拖动中逐帧换宽不破 React.memo 身份。 */
+  /* P2a+P6 宽度自由（2026-10-08「墨占纸半」重定）：块宽随流区宽**同比缩放**——块
+   * 模型的 w 是「相对 720 基准的设计值」，此处按 columnWidthFor(流区宽) 等比映射
+   * （720 满版心；夹注/来文/工具族按 0.86/0.78/0.89 同步收窄）。旧行为「宽流区
+   * 不放宽：版心封顶 720」已退役（用户实机反馈「拉宽流区时内容宽度上限太低」）。
+   * **钉住块跳过缩放**：钉块在桌面上（已脱离流区），宽由 pin.w / 钉出时的块宽定格，
+   * 不随流区宽变（旧公式下窄流区会把钉块一起压扁，同批修正）。
+   * 2026-08-30 来文标题化：来文不再收缩宽（纸条隐喻退役），与其他块同走版心比例
+   * ——标题居中吃版心。WeakMap 以「源对象 + 目标宽」记忆——resize 拖动中逐帧换宽
+   * 不破 React.memo 身份。 */
   const shrinkCopyCacheRef = useRef(new WeakMap<SourcedBlock, { w: number; copy: SourcedBlock }>());
   const adaptBlocks = useCallback((blocks: SourcedBlock[], regionW: number): SourcedBlock[] => {
     const cache = shrinkCopyCacheRef.current;
     // ⚠ 防御（2026-09-03 级联排查）：regionW 非有限数（流区宽脏/NaN）会让本卷
     // 全部块宽变 NaN → 测高 NaN → 布局级联打碎。实测优先无签名守卫，宁可回落
-    // 默认版心宽，也不让 NaN 进测量链。
-    const safeRegionW = Number.isFinite(regionW) && regionW > 0 ? regionW : FALLBACK_BLOCK_W + REGION_CONTENT_MARGIN;
-    const contentW = Math.max(USER_SHRINK_MIN_W, safeRegionW - REGION_CONTENT_MARGIN);
+    // 默认流区宽（版心 720），也不让 NaN 进测量链。
+    const safeRegionW = Number.isFinite(regionW) && regionW > 0 ? regionW : FALLBACK_REGION_W;
+    const colW = columnWidthFor(safeRegionW);
     return blocks.map((b) => {
-      const cappedW = Math.min(b.w, contentW);
-      const targetW = Number.isFinite(cappedW) && cappedW > 0 ? cappedW : FALLBACK_BLOCK_W;
+      if (b.state === 'pinned') return b;
+      const scaled = (b.w / BASE_BLOCK_W) * colW;
+      const cappedW = Math.min(scaled, colW);
+      const targetW = Number.isFinite(cappedW) && cappedW > 0 ? cappedW : BASE_BLOCK_W;
       if (targetW === b.w) return b;
       const hit = cache.get(b);
       if (hit && hit.w === targetW) return hit.copy;

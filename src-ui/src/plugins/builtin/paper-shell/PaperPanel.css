@@ -406,8 +406,8 @@
  *
  * 现在的构图 = 原型的「钤印居中于天头」手势，但居中于**版心**：玉徽 / 眉行 /
  * 题字 / 档行四行同轴居中，底部硬规线也只画版心宽（不再横贯整纸）。
- * 结构常量的测高镜像在 paper/measure.ts（FOLIO_TOKENS 为单一真源——改一处必改多处，
- * 见 measure.ts folioHeadWidthFor 的版心封顶说明）。
+ * 结构常量的测高镜像在 paper/measure.ts（FOLIO_TOKENS 为单一真源；版心宽不是常量——
+ * 2026-10-08 起真源 = measure.ts columnWidthFor，CSS 镜像是 .pp-folio-inner 的 50%）。
  *
  * pointer-events none——点击穿透流区背景，激活语义不变；组合芯片单独放开本子树。
  * 原浮动标签带退役：卷首即卷名。 */
@@ -416,18 +416,19 @@
   top: 0;
   left: 0;
   right: 0;
-  /* 左右内距 16 是测高镜像的一端（measure.ts folioHeadWidthFor 里的 −32）；
+  /* 左右内距 0（2026-10-08「墨占纸半」）：版心 = 纸半，永无贴纸缘之虞（最小纸 720
+     下左右各留 180）——旧式左右 16 是「regionWidth − 32」镜像的一端，随版心改式退役。
      下内距 0——底距由版心内层的 padding-bottom 承担（规线随之内缩） */
-  padding: 24px 16px 0;
+  padding: 24px 0 0;
   pointer-events: none;
 }
 /* 版心内层（2026-09-16 新增）：卷首四行 + 硬规线 + 版口钮的**唯一版心盒**。
- * width = min(720px, 100%)（100% 已扣掉外层左右内距）——宽流区封顶 720 与正文
- * 块同宽同轴，窄流区自动收为「流区宽 − 32」。测高镜像取 measure.ts
- * folioHeadWidthFor(regionWidth)（同一式子，勿在此手改数值）。 */
+ * width = 50%（= 流区宽一半；2026-10-08「墨占纸半」重定——原 min(720px, 100%) 的
+ * 封顶退役）：与正文块同宽同轴（正文块版心基准见 use-paper-regions 的 adaptBlocks）。
+ * 测高镜像取 paper/measure.ts columnWidthFor(regionWidth)（同一式，勿在此手改数值）。 */
 .pp-folio-inner {
   position: relative;
-  width: min(720px, 100%);
+  width: 50%;
   margin: 0 auto;
   padding-bottom: 22px;
   border-bottom: var(--rule-hard);

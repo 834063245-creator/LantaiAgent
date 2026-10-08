@@ -150,7 +150,11 @@ function createCanvasStoreImpl() {
     setRegion: (sessionId, region) =>
       set((s) => {
         const cur = s.spread[sessionId];
-        if (cur && cur.anchorX === region.anchorX && cur.anchorY === region.anchorY) return s;
+        // 同值短路（防无谓的 spread 重建 → 无谓 paperTick/落盘）——2026-10-08 补
+        // width：旧式只比 anchorX/Y，纯宽度变更（anchor 不动）会被静默吞掉。
+        if (cur && cur.anchorX === region.anchorX && cur.anchorY === region.anchorY && cur.width === region.width) {
+          return s;
+        }
         return { spread: { ...s.spread, [sessionId]: region } };
       }),
 

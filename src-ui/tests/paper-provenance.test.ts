@@ -448,9 +448,9 @@ describe('接线与样式钉值（防回漂）', () => {
     // 坞端锚点：版口钮的**起端中点**——坞位/实测尺寸在槽主人手里
     expect(COMPOSER_FLOAT_TS).toContain('export function composerAnchorOf(');
     expect(COMPOSER_FLOAT_TS).toContain('COMPOSER_TICK_TOP + COMPOSER_TICK_H / 2');
-    // 卷端锚点：版心左缘 × **卷底边（纸脚）**（版心宽走 measure.folioHeadWidthFor）
+    // 卷端锚点：版心左缘 × **卷底边（纸脚）**（版心宽走 measure.columnWidthFor，2026-10-08 改名）
     expect(DOCK_TETHER_TS).toContain('export function regionFootAnchorOf(');
-    expect(DOCK_TETHER_TS).toContain('folioHeadWidthFor(region.width)');
+    expect(DOCK_TETHER_TS).toContain('columnWidthFor(region.width)');
     expect(DOCK_TETHER_TS).toContain('region.regionTop + region.regionHeight');
     expect(PANEL_TSX).toContain('regionFootAnchorOf({');
     // 无活卷 / 流区尚未落位 ⇒ 不画线（宁可没有线，也不指错）

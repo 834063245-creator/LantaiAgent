@@ -45,8 +45,11 @@ export function clampRegionW(w: number): number {
   return Math.min(REGION_MAX_W, Math.max(REGION_MIN_W, w));
 }
 
-/** 块宽跟随流区的缓冲（两侧各 120——块恒窄于界栏不贴栏；
- *  窄流区压版心：块 w = min(kindW, regionW - REGION_CONTENT_MARGIN)）。 */
+/** 块宽跟随流区的缓冲（两侧各 120——块恒窄于界栏不贴栏）。
+ *  ⚠ 2026-10-08「墨占纸半」：版心改「流区宽 × 0.5」（真源 = measure.columnWidthFor）
+ *  后本常量不再被生产代码消费——旧式「块 w = min(kindW, regionW − 本值)」随
+ *  宽流区不放宽一并退役。因宿主面指纹封印（删键 ⇒ 产物热更拒载，须随 exe 重建批次
+ *  拆除）暂留导出，勿在新代码里引用。 */
 export const REGION_CONTENT_MARGIN = 240;
 
 /** 流区锚点（世界坐标）：anchorX = 流区中轴，anchorY = 最新块底边（流向上长）。 */

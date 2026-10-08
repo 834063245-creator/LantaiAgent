@@ -107,7 +107,7 @@ import { useCoreStore } from '../src/app/chat/core-instance';
 import { useShellStore } from '../src/app/shell-store';
 import { worldToScreen } from '../src/paper/canvas-math';
 import { COMPOSER_POS_KEY } from '../src/plugins/builtin/paper-shell/composer-float';
-import { folioHeadWidthFor, measureFolioHeadHeight } from '../src/plugins/builtin/paper-shell/measure';
+import { columnWidthFor, measureFolioHeadHeight } from '../src/plugins/builtin/paper-shell/measure';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { getCanvasStore } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
@@ -265,7 +265,7 @@ describe('匣脚引线（坞的版口钮 → 活卷的纸脚）', () => {
     const width = Number.parseFloat(el.style.width);
     const left = Number.parseFloat(el.style.left);
     const footY = Number.parseFloat(el.style.top) + Number.parseFloat(el.style.height);
-    return { x: left + (width - folioHeadWidthFor(width)) / 2, y: footY };
+    return { x: left + (width - columnWidthFor(width)) / 2, y: footY };
   }
 
   /** 某卷的**卷首底线**（世界 y）= 流区盒顶 + 卷首高（measure 同一把尺子）——

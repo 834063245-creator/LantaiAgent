@@ -356,16 +356,19 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录 → 2026-09-16「�
   // 眉行/题字/档行却左齐于纸缘内距 16px，正文块居中于 720 版心（左缘 x=360）
   // ——题字比正文左缘还左 344px、组合芯片比版心右缘还右 326px：一块卷首三个轴。
   // 新形态：卷首收进版心内层，四行同轴居中，硬规线与版口钮一并锁版心宽。
+  // 2026-10-08「墨占纸半」二次改写：版心封顶 720 退役——版心宽 = 流区宽 × 0.5
+  // （真源 = measure.ts columnWidthFor；CSS 镜像 = .pp-folio-inner 的 50%）。
   it('卷首结构：版心内层（四行同轴）+ 硬规线锁版心 + 朱砂版口钮挂规线左端', () => {
     const head = ruleBody(PANEL_CSS, '.pp-folio-head {');
     // 硬规线已移出版心内层之外的外盒（随之上移到 .pp-folio-inner）——外盒只剩内距
+    // （2026-10-08：左右内距 16 随版心改式退役——版心 = 纸半）
     expect(head).not.toContain('border-bottom');
-    expect(head).toContain('padding: 24px 16px 0');
+    expect(head).toContain('padding: 24px 0 0');
     // pointer-events none：点击穿透流区背景，激活语义不变
     expect(head).toContain('pointer-events: none');
     // 版心内层：宽 min(720, 100%) 居中 + 硬规线 + 居中排印（= 与正文块同轴同宽）
     const inner = ruleBody(PANEL_CSS, '.pp-folio-inner {');
-    expect(inner).toContain('width: min(720px, 100%)');
+    expect(inner).toContain('width: 50%'); // 版心 = 纸半（2026-10-08）
     expect(inner).toContain('margin: 0 auto');
     expect(inner).toContain('border-bottom: var(--rule-hard)');
     expect(inner).toContain('text-align: center');
@@ -448,7 +451,8 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录 → 2026-09-16「�
     expect(TYPE_TOKENS_TS).toContain('titleMarginTop: 14');
     expect(TYPE_TOKENS_TS).toContain('subMarginTop: 14');
     expect(TYPE_TOKENS_TS).toContain('headGap: 28');
-    expect(TYPE_TOKENS_TS).toContain('colW: 720');
+    // colW 不再是 token（2026-10-08）：版心宽 = 流区宽 × COLUMN_RATIO——真源在 measure.ts
+    expect(TYPE_TOKENS_TS).not.toContain('colW');
     // ── CSS ↔ token 逐项对映（每项都要在对应规则体内找到字面量）──
     const head = ruleBody(PANEL_CSS, '.pp-folio-head {');
     const inner = ruleBody(PANEL_CSS, '.pp-folio-inner {');
@@ -456,21 +460,22 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录 → 2026-09-16「�
     const eyebrow = ruleBody(PANEL_CSS, '.pp-folio-eyebrow');
     const title = ruleBody(PANEL_CSS, '.pp-folio-title');
     const sub = ruleBody(PANEL_CSS, '.pp-folio-sub');
-    expect(head).toContain('padding: 24px 16px 0'); // padTop 24 + 左右内距 16×2
+    expect(head).toContain('padding: 24px 0 0'); // padTop 24（左右内距 16×2 随版心改式退役）
     expect(inner).toContain('padding-bottom: 22px'); // padBottom 24 = 22 + rule-hard 2
-    expect(inner).toContain('width: min(720px, 100%)'); // colW 720
+    expect(inner).toContain('width: 50%'); // 版心 = 纸半（measure.ts COLUMN_RATIO 的 CSS 镜像）
     expect(yuwei).toContain('width: 26px'); // yuweiH 40 = 26 + margin 14
     expect(yuwei).toContain('margin: 0 auto 14px');
     expect(eyebrow).toContain('line-height: 15px'); // eyebrowH 15
     expect(sub).toContain('line-height: 15px'); // subH 15
     expect(title).toContain('margin-top: 14px'); // titleMarginTop 14
     expect(sub).toContain('margin-top: 14px'); // subMarginTop 14
-    // 测高侧：入参 = **流区宽**，版心封顶在函数内算清（调用点不再手写 −32）
+    // 测高侧：入参 = **流区宽**，版心宽（纸半）在函数内算清（调用点不再手写换算）
     expect(MEASURE_TS).toContain('FOLIO_TOKENS.titleSize');
-    expect(MEASURE_TS).toContain('export const FOLIO_COL_W = FOLIO_TOKENS.colW');
+    expect(MEASURE_TS).toContain('export const COLUMN_RATIO = 0.5');
+    expect(MEASURE_TS).toContain('export function columnWidthFor(regionWidth: number)');
+    expect(MEASURE_TS).toContain('return regionWidth * COLUMN_RATIO');
     expect(MEASURE_TS).toContain('export function measureFolioHeadHeight(title: string, regionWidth: number)');
-    expect(MEASURE_TS).toContain('Math.min(FOLIO_COL_W, regionWidth - 32)');
-    // 行为面（版心封顶真的生效、换行真的计入高度）见 tests/paper-folio-height.test.ts
+    // 行为面（版心随流区宽同比、换行真的计入高度）见 tests/paper-folio-height.test.ts
     expect(ICONS_TS).toContain('lantai: {');
     expect(ICONS_TS).toContain('M4 9.2 L12 3.4 L20 9.2');
   });

@@ -292,10 +292,13 @@ describe('会话树「枝」的画布承接（P3：枝边引线 + 点线溯源�
 
   it('父节点不在视口内：线照样出屏（锚点在世界里定、投到屏上落墨）', async () => {
     await mountTwoVolumes('a1-1');
-    // 把视口挪到枝卷一侧：父卷整个在屏外，但仍在**卸载余量**（STUB_MX 900）之内
-    // ⇒ 几何照旧在场，线出屏（方向即来路）
+    // 把视口再朝枝卷挪一步（挂载位 −1000 → −1050）：父卷整个在屏外，但仍在**卸载
+    // 余量**（STUB_MX 900）之内 ⇒ 几何照旧在场，线出屏（方向即来路）。
+    // ⚠ 边界算式（2026-10-08 版心改「纸半」后复核——块宽随流区缩放到 360）：不 stub
+    // 需「父卷 extent 右缘 180 + 余量 900 = 1080 ≥ 视口左缘 = −panX」；旧值 −1100 下
+    // 1080 < 1100 已出余量（块宽 480→360 把这条 60px 的余裕吃掉了），故 −1050。
     await act(async () => {
-      useCanvasViewStore.getState().setView((v) => ({ ...v, panX: -1100 }));
+      useCanvasViewStore.getState().setView((v) => ({ ...v, panX: -1050 }));
     });
     expect(container?.querySelector('.pp-branch-tether')).not.toBeNull();
     const bead = container?.querySelector('.pp-branch-layer .pp-tether-bead');

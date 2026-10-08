@@ -445,8 +445,8 @@ export function measureTextHeight(
  * 结构常量逐字镜像 PaperPanel.css 卷首族规则
  * （源规格：prototype/lantai.html .folio-head / .yuwei / .folio-eyebrow / .folio-title / .folio-sub）。
  * 标题随换行实测（measureTextHeight），其余为固定结构高度。
- * 2026-09-16「版心天头」重排：卷首收进 colW 版心居中，题字可用宽由
- * folioHeadWidthFor 单点派生（别再在调用点手算 −32）。 */
+ * 2026-09-16「版心天头」重排：卷首收进版心居中；2026-10-08 版心重定为「纸半」
+ * （columnWidthFor——原封顶 720 拆除），题字可用宽仍由单点派生，调用点禁手算。 */
 export const FOLIO_TITLE_FONT = `700 ${FOLIO_TOKENS.titleSize}px ${SONG_STACK}`;
 export const FOLIO_TITLE_LINE_HEIGHT = FOLIO_TOKENS.titleSize * FOLIO_TOKENS.titleLh; // 题字 line-height
 
@@ -459,27 +459,31 @@ export const FOLIO_TITLE_MARGIN_TOP = FOLIO_TOKENS.titleMarginTop;
 export const FOLIO_SUB_MARGIN_TOP = FOLIO_TOKENS.subMarginTop;
 /** 卷头与首块的呼吸距（原型 .folio-head margin-bottom 28） */
 export const FOLIO_HEAD_GAP = FOLIO_TOKENS.headGap;
-/** 卷首版心宽（**唯一真源** = FOLIO_TOKENS.colW）。CSS 端有两条镜像：
- *  内层盒 `width: min(720px, 100%)` 与卷首左右内距 16×2——改一处必改三处。 */
-export const FOLIO_COL_W = FOLIO_TOKENS.colW;
-/** 卷首**版心宽**（= 题字/规线可用宽）：内层盒 `width: min(720px, 100%)` 落在左右
- *  内距 16×2 之内，两条都在本式一次算清。**单一真源**——调用点禁手写 `width − 32`
- *  （2026-09-16 前正是那么散的：宽流区下漏掉版心封顶，长题字永不换行）。
- *  CSS 端两条镜像 = `PaperPanel.css` 的 `.pp-folio-head` `padding: 24px 16px 0` 与
- *  `.pp-folio-inner` `width: min(720px, 100%)`（改一处必改三处）。
- *  消费面：卷首测高（本文件）+ **版口引线的卷侧锚点**（卷首规线左端那枚版口钮的起端
- *  = 版心左缘，见 paper-shell/dock-tether.ts）。 */
-export function folioHeadWidthFor(regionWidth: number): number {
-  return Math.min(FOLIO_COL_W, regionWidth - 32);
+/** 版心比例（2026-10-08「墨占纸半」重定）：版心宽 = 流区宽 × 本值。
+ *  来由：初始定案（2026-08-25 stage-2）「流区宽 1440 = 720×2」正是本比例在默认纸上的
+ *  实例，但 2026-09-16 卷首收版心时把它写成了**封顶 720**——宽流区下正文与卷首都
+ *  不再放宽（一律 720），只有窄流区才收缩。用户实机反馈「手动拉宽流区时内容宽度
+ *  上限太低」⇒ 封顶拆除，改为比例守恒：纸拉多宽、版心同比放多宽（拉满 2160 →
+ *  版心 1080；最小 720 → 版心 360）。上下限随流区宽 clamp 自然收敛，不再另行封顶。 */
+export const COLUMN_RATIO = 0.5;
+/** 版心宽（**单一真源**，2026-10-08 由 `folioHeadWidthFor` 升格——消费面已从卷首
+ *  扩到正文块）：题字/规线可用宽 · 正文块宽基准 · 版口引线的卷侧锚点三处共用同一式。
+ *  CSS 镜像 = `PaperPanel.css` 的 `.pp-folio-inner` `width: 50%`；外盒左右内距 16×2
+ *  （旧式 `regionWidth − 32` 的一端）随本批退役——版心 = 纸半时永无贴纸缘之虞
+ *  （最小纸 720 下左右各留 180）。
+ *  消费面：卷首测高（本文件 measureFolioHeadHeight）· 正文块宽（use-paper-regions.ts
+ *  adaptBlocks）· 版口引线的卷侧锚点（卷首规线左端那枚版口钮的起端 = 版心左缘，
+ *  见 paper-shell/dock-tether.ts）。 */
+export function columnWidthFor(regionWidth: number): number {
+  return regionWidth * COLUMN_RATIO;
 }
 
 /** 卷首头整体高度（世界单位）：题字按可用宽实测行数，其余固定。
- *  入参 = **流区宽**（不是题字可用宽）：左右内距 16×2 与版心封顶 720 都在本函数内
- *  一次算清。2026-09-16 前由调用点手写 `regionWidth - 32`，宽流区下漏掉版心封顶
- *  ——默认 1440 宽流区实得「可用宽 1408」，长题字永不换行、卷首高度恒等于一行
- *  （题字实际按 720 版心换行 → 实测值与渲染值不符，卷级几何偏矮）。本次收口。 */
+ *  入参 = **流区宽**（不是题字可用宽）：版心宽（纸半，见 columnWidthFor）在本函数内
+ *  一次算清——调用点禁手写宽度换算（2026-09-16 前由调用点手写 `regionWidth - 32`，
+ *  与渲染的换行不符、卷级几何偏矮；教训在案）。 */
 export function measureFolioHeadHeight(title: string, regionWidth: number): number {
-  const availWidth = folioHeadWidthFor(regionWidth);
+  const availWidth = columnWidthFor(regionWidth);
   const titleH = measureTextHeight(title, availWidth, FOLIO_TITLE_FONT, FOLIO_TITLE_LINE_HEIGHT);
   return (
     FOLIO_PAD_TOP +

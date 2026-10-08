@@ -1094,8 +1094,9 @@ export function PaperPanel() {
                      * 重排前的病灶：玉徽居中于整张纸（1440 流区中轴）、眉行/题字/档行却左齐
                      * 于纸缘内距 16px，而正文块居中于 720 版心——题字比正文左缘还左 344px
                      * （实测见 prototype/folio-head-ab.html 读数栏）。
-                     * 版心盒 = 内层 div（width min(720, 100%)），测高镜像见 measure.ts
-                     * folioHeadWidthFor。框体向上扩展包住卷首（界栏护持）。
+                     * 版心盒 = 内层 div（width 50% = 纸半；2026-10-08「墨占纸半」重定——
+                     * 原 min(720, 100%) 封顶退役），测高镜像见 measure.ts columnWidthFor。
+                     * 框体向上扩展包住卷首（界栏护持）。
                      * pointer-events none——点击穿透流区背景，激活语义不变；
                      * 原浮动标签带退役（卷首即卷名，不重复播报）。
                      * 远档（P4c 三档）退场：缩糊的 DOM 卷首不如无——卷名由
