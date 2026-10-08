@@ -39,8 +39,8 @@
   只换数据源）、`dsh-viewer-phase2-integration.md`（client-plugin 集成规格 + `/hologram` 自托管形态）——
   该视图随主仓图谱渲染内核退役（2026-08-19 → 09-09 三步）从 `dsh-bundle` 拆除，包自此只发「引擎 + MCP 工具面」；
   两份顶部均已加归档横幅，其中 client-plugin 机制一节仍是可复用的机制事实。
-- **2026-10-08 归档（插件化欠账清账）**：`plugin-extraction/`（目录，8 件）——「插件化欠账」线（2026-09-04 立账 → 2026-09-26 清零）的
-  施工单与设计件：出厂产物归家总图纸 · 批 9 / 9h / 9c-4 / 9f / 批 6 / 批 7 施工单 · 工作区接线贡献面设计件（批 10）。
+- **2026-10-08 归档（插件化欠账清账）**：`plugin-extraction/`（目录，9 件）——「插件化欠账」线（2026-09-04 立账 → 2026-09-26 清零）的
+  施工单与设计件：出厂产物归家总图纸 · 批 6 / 批 7 / 批 8 / 批 9 / 9h / 9c-4 / 9f 施工单 · 工作区接线贡献面设计件（批 10）。
   这批**原头部写着「待施工 / Proposed」，而批次早已全落**——属「头部状态过期」，下次翻计划的人会把它们重新算进「没做」，
   故按 CONVENTIONS §4 归档；各件顶部已加归档横幅 + 现状指针，族索引见 [`plugin-extraction/README.md`](plugin-extraction/README.md)。
    账目与三色基线仍在 [`../plans/plugin-extraction-inventory.md`](../plans/plugin-extraction-inventory.md)。（图版架当时暂留 `docs/plans/`，2026-10-08 已随第二批归档至 `render-paper-line/`。）

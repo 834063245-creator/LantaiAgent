@@ -5,7 +5,7 @@
 > **现状与在办真值**：[`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §5（三色基线）/ §6（批次表）
 > ＋ [`docs/plans/README.md`](../../plans/README.md)；规则承接 [`PLUGINS.md`](../../../PLUGINS.md) 与 [`docs/plugins/README.md`](../../plugins/README.md)。
 
-## 本目录文件（8）
+## 本目录文件（9）
 
 | 件 | 是什么 | 竣工 |
 |---|---|---|
@@ -17,6 +17,7 @@
 | [`capability-impl-seam-design.md`](capability-impl-seam-design.md) | 批 6 施工单（plan / goal / compaction / state-hooks 的「内核登记表 + 产物登记实现」接缝） | 2026-09-24~26 |
 | [`multiagent-extraction-design.md`](multiagent-extraction-design.md) | 批 7 施工单（子代理运行时 + 通信族 + discovery） | 2026-09-24 |
 | [`workspace-activation-channel-design.md`](workspace-activation-channel-design.md) | 批 10 设计件（`ctx.workspaces` / `ctx.shellRows` 两条宿主生命周期贡献面）+ 随包引擎产物化 | 2026-09-26 |
+| [`renderer-face-extraction-design.md`](renderer-face-extraction-design.md) | 批 8 施工单（纸面块渲染器 + 重查看器白名单 + 类型环 ⇒ 新产物 `paper-renderers/`） | 2026-09-25 |
 
 ## 为什么归档
 

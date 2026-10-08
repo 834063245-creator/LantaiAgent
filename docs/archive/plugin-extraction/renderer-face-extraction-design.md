@@ -1,7 +1,9 @@
 # 渲染面整合归家设计（批 8：纸面块渲染器 + 重查看器白名单 + 类型环）
 
+> **已归档（2026-09-25 竣工）**——批 8 全落（8a/8b/8c/8d 四笔各自门禁全绿：纸面块渲染器 + 重查看器白名单 + 类型环；新产物 `paper-renderers/` 标不可禁用）。现状指针：账本 [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §6.4。
+
 > 状态：**已落（2026-09-25，8a/8b/8c/8d 四笔各自门禁全绿；落地数字见账本 §6.4 末段）**；账本
-> [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md) §6.4 是它的侦察记录（含逐条 file:line）。
+> [`plugin-extraction-inventory.md`](../../plans/plugin-extraction-inventory.md) §6.4 是它的侦察记录（含逐条 file:line）。
 > 依据裁定：§4-1 **A**（实现搬进新产物 `paper-renderers/`，该产物标**不可禁用**）；
 > §4-2 自裁条（重依赖留 bundle 的例外写进 `docs/plugins/README.md` §3）；
 > §4-8 自裁条（`viewer-exts` + 5 个 `paper/*` 件随 §4-1 联动重判 —— 本件即那次重判）。
