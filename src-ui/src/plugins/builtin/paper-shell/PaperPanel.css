@@ -5993,13 +5993,13 @@ button.pp-form-option:disabled {
   word-break: break-word;
 }
 .pp-chem-box {
-  /* box-sizing: border-box → 盒高恒 boxH（含 border），与 measure 预算一致 */
+  /* box-sizing: border-box → 盒高恒 boxH（无 border 后内容区即为盒高），与 measure 预算一致 */
   box-sizing: border-box;
   height: var(--pp-asset-chem-boxH);
-  border: var(--pp-asset-chem-boxBorder) solid var(--rule-soft-ink);
-  background: color-mix(in oklch, var(--paper-deep) 30%, transparent);
+  /* 去周框与浅底（2026-10-08 用户报「chem 类卡片也有类似的问题」——与 html 沙箱框同族）：
+     结构图直接落在纸面上，不再被浅色盒子包住。 */
   margin-bottom: var(--pp-asset-chem-boxMarginB);
-  /* 内边距避免分子贴框（smiles-drawer 自带 padding 8，此处置零防双 padding） */
+  /* 内边距归零：呼吸由 viewBox 侧承担（drawer padding + 适配外扩），防双 padding */
   padding: 0;
   display: flex;
   align-items: center;

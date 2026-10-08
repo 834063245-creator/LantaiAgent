@@ -483,7 +483,6 @@ export const ASSET_TOKENS = {
     nameLine: 20,
     nameMarginB: 6, // .pp-chem-name margin-bottom
     boxH: 180, // .pp-chem-box 固定盒高（结构渲染区）
-    boxBorder: 1, // .pp-chem-box border（周框）
     boxMarginB: 6, // .pp-chem-box margin-bottom
     metaSize: 11,
     metaLine: 17, // formula / err 共用行高
@@ -650,7 +649,7 @@ export const ASSET_DERIVED = {
   chemNameFont: `${ASSET_TOKENS.chem.nameSize}px ${FONT_STACKS.song}`,
   chemNameLine: ASSET_TOKENS.chem.nameLine,
   chemNameMarginB: ASSET_TOKENS.chem.nameMarginB, // .pp-chem-name margin-bottom
-  chemBoxH: ASSET_TOKENS.chem.boxH, // .pp-chem-box 固定盒高（含 border——box-sizing）
+  chemBoxH: ASSET_TOKENS.chem.boxH, // .pp-chem-box 固定盒高（border-box）
   chemBoxMarginB: ASSET_TOKENS.chem.boxMarginB, // .pp-chem-box margin-bottom
   chemMetaFont: `${ASSET_TOKENS.chem.metaSize}px ${FONT_STACKS.mono}`,
   chemMetaLine: ASSET_TOKENS.chem.metaLine,

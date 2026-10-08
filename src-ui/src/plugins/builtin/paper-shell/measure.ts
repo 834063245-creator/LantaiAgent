@@ -385,7 +385,7 @@ const CHEM_PAD_V = ASSET_DERIVED.chemPadV; // .pp-chem padding 2×2
 const CHEM_NAME_FONT = ASSET_DERIVED.chemNameFont;
 const CHEM_NAME_LINE = ASSET_DERIVED.chemNameLine;
 const CHEM_NAME_MARGIN_B = ASSET_DERIVED.chemNameMarginB; // .pp-chem-name margin-bottom
-const CHEM_BOX_H = ASSET_DERIVED.chemBoxH; // .pp-chem-box 固定盒高（含 border）
+const CHEM_BOX_H = ASSET_DERIVED.chemBoxH; // .pp-chem-box 固定盒高
 const CHEM_BOX_MARGIN_B = ASSET_DERIVED.chemBoxMarginB; // .pp-chem-box margin-bottom
 const CHEM_META_FONT = ASSET_DERIVED.chemMetaFont;
 const CHEM_META_LINE = ASSET_DERIVED.chemMetaLine;
@@ -937,9 +937,10 @@ function citationBodyH(p: Record<string, unknown>, w: number): number {
 
 /** chem 体高（ChemBody 逐字镜像）：
  *  - name 行：宋体实测（可换行——长名按正文宽折行）→ 实高 = 行数 × nameLine；
- *  - 结构区（.pp-chem-box）：**固定盒高**（boxH 含 border，CSS box-sizing:
- *    border-box）——smiles-drawer SVG 只写 viewBox，盒内 100%×100% meet 居中，
- *    盒高与分子形状无关恒为 boxH → 静态镜像精确（非媒体图那类动态高）；
+ *  - 结构区（.pp-chem-box）：**固定盒高**（boxH，CSS box-sizing: border-box；
+ *    2026-10-08 起去 border/底）——smiles-drawer SVG 只写 viewBox（挂载后按
+ *    分子包围盒适配），盒内 100%×100% meet 居中，盒高与分子形状无关恒为 boxH
+ *    → 静态镜像精确（非媒体图那类动态高）；
  *  - meta（formula）：mono 实测（可换行）；err 静态未知（smiles 解析失败只在
  *    渲染期出现）→ 由挂载后 RO 实测兜底（chem 属资产族恒挂 RO）。 */
 function chemBodyH(p: Record<string, unknown>, w: number): number {

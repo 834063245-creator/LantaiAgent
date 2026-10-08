@@ -1985,6 +1985,28 @@ function CitationBody({ block }: BlockRendererProps) {
  * 错误可见不崩：parse/draw 失败 → 错误行 + formula/name 兜底仍在；smiles
  * 原文只在异常时展示（成功时图即正文，不重复堆原文）。 */
 
+/** 结构图视窗适配（2026-10-08 用户报「chem 卡结构式显得小」）：
+ *  smiles-drawer 的自动 scale 把 viewBox 归一为**外接正方形**（实测 π 盘紫杉醇
+ *  分子 277×189 被装进 289×289 方框），而结构区是**扁横盒**（~718×180）——
+ *  正方形 meet 进扁盒以高为准，横向只用到约四分之一，分子被压小。此处按分子
+ *  真实包围盒（getBBox）重设 viewBox（四周外扩 PAD 作呼吸），把真实宽高比
+ *  交给盒，meet 自动吃满一边（宽分子横向铺、窄分子纵向抵满）。
+ *  getBBox 需真实布局（jsdom/SSR 没有）——不可用或退化值时不处理，
+ *  保持 drawer 原 viewBox（挂载渲染不受影响）。 */
+const CHEM_VIEWBOX_PAD = 10;
+function fitChemViewBox(svg: SVGSVGElement): void {
+  try {
+    const b = svg.getBBox();
+    if (!(b.width > 0) || !(b.height > 0)) return;
+    svg.setAttribute(
+      'viewBox',
+      `${b.x - CHEM_VIEWBOX_PAD} ${b.y - CHEM_VIEWBOX_PAD} ${b.width + CHEM_VIEWBOX_PAD * 2} ${b.height + CHEM_VIEWBOX_PAD * 2}`,
+    );
+  } catch {
+    /* 无布局环境（测试/SSR）：保持原 viewBox */
+  }
+}
+
 function ChemBody({ block }: BlockRendererProps) {
   const p = block.payload as { name?: unknown; formula?: unknown; smiles?: unknown };
   const name = typeof p.name === 'string' ? p.name : '';
@@ -2025,6 +2047,8 @@ function ChemBody({ block }: BlockRendererProps) {
           const drawer = new SmilesDrawer.SvgDrawer(molOpts);
           drawer.draw(tree, svg, 'light');
         }
+        // 视窗适配：方形归一 → 分子真实包围盒（扁横盒内吃满一边；无布局环境跳过）
+        fitChemViewBox(svg);
       } catch (e) {
         onErr(e);
       }

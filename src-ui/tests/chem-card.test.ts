@@ -7,7 +7,7 @@
 //   2. render：chem-body 表现原语（展示名宋体 + SMILES 结构固定盒 + formula
 //      mono 行）；空数据占位；无交互钮（化学式 = 既成事实，只读态与活卡同构）；
 //      smiles 解析失败错误可见不崩（错误行 + formula 兜底仍在）。
-//   3. measure：chem 体高静态镜像——name 行 + 结构固定盒（boxH 含 border）+
+//   3. measure：chem 体高静态镜像——name 行 + 结构固定盒（boxH）+
 //      formula 行；smiles-drawer SVG 只写 viewBox 不写尺寸 → 盒高恒定与分子
 //      无关（非媒体图那类动态高）；空数据占位高。
 //   4. smiles-drawer 真解析（Node 域不碰 DOM）：parse 成功回调能收到解析树
@@ -249,7 +249,7 @@ describe('paper/measure — chem 块测高', () => {
   it('全字段化学卡：pad + name 行（实测折行，mock 36→2 行高 40 + 下距）+ 结构固定盒（含下距）+ formula 行（实测，mock 36→2 行高 34）', () => {
     const h = measureBlockHeight(assetBlock('chem', fullPayload, 'chem'));
     const name = Math.ceil(36 / 20) * 20 + 6; // mock layout 36 / nameLine 20 → 2 行 40 + nameMarginB 6
-    const box = 180 + 6; // boxH 180（含 border）+ boxMarginB 6
+    const box = 180 + 6; // boxH 180 + boxMarginB 6
     const meta = Math.ceil(36 / 17) * 17; // mock 36 / metaLine 17 → 2 行 34
     expect(h).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + name + box + meta, 1); // chemPadV 2×2
   });
