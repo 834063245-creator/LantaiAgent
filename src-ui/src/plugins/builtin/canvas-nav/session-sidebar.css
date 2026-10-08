@@ -5,7 +5,10 @@
  * + 当前卷朱砂左脊。术语铁律：会话→案卷。全份字号接 --font-scale。
  * 浸墨（§10 法则）：书眉/节头实心方墨锚 + 洇边、机读计数朱字、唯一主动作
  * （另起一卷）墨底实色 + --shadow-anchor（拟文印同款 hover 翻朱砂深）。
- * 选中语言（§11 分型）：行型 = --sel-wash 墨洗 + 朱砂左脊（当前卷/多选共用）。
+ * 选中语言（§11 分型）：行型 = --sel-wash 墨洗 + 朱砂左脊（当前卷/整理态勾选共用）。
+ * 整理模式（2026-10-08 丙案，用户报「多选 UX 很奇怪」后拍板）：勾选只发生
+ * 在整理态内（书眉「整理」进入）——常态勾选格不显、状态点不让位（hover 零
+ * 变形）；整理态全显并排 + 单行动作让位；整理条替换「另起一卷」/视角两行。
  * 互斥两态（2026-09-02 拍板）：本栏展开时独占左缘（left:0，书脊整列退场），
  * 宽度右缘可拖（240–420px，localStorage 持久）。
  * 板面纹理（2026-09-21 纸面批，用户报「纯色背景死气沉沉」）：画布态把文档级
@@ -223,10 +226,10 @@
 }
 
 /* ── 列表区（含浮件锚点）：本栏高度流水到此为止 ──
- * 通知条 / 批量条是**浮件**（绝对定位覆盖在列表之上），挂载与撤下都不许改动列表几何。
+ * 通知条是**浮件**（绝对定位覆盖在列表之上），挂载与撤下都不许改动列表几何。
  * 病史（2026-09-20 跳变批，真 Chrome 台架 prototype/sidebar-ops-jump-ab.html 读数）：
- * 两者住在 flex 列里 ⇒ 通知挂载把列表顶推下 49px（列表高 −49px、列表内所有行整体位移），
- * 批量条挂载吃掉列表高 51px——指针底下那一行会跑。 */
+ * 通知条住 flex 列里 ⇒ 挂载把列表顶推下 49px（列表高 −49px、列表内所有行整体位移），
+ * 让指针底下那一行会跑。批量条已随整理模式退役（2026-10-08 丙案，动作移入整理条）。 */
 .ss-list-wrap {
   position: relative;
   flex: 1;
@@ -388,7 +391,7 @@
   width: 3px;
   background: var(--seal);
 }
-/* 多选选中行：同款行型选中语言（墨洗 + 朱砂左脊——状态语汇每件至多一条） */
+/* 整理态勾选行：同款行型选中语言（墨洗 + 朱砂左脊——状态语汇每件至多一条） */
 .ss-row.selected {
   background: var(--sel-wash);
 }
@@ -402,7 +405,9 @@
   background: var(--seal);
 }
 
-/* ── 勾选格（多选）：hover/选中时替换状态点位显形；完工动作 = 墨底反白 ── */
+/* ── 勾选格（整理态专属）：常态不显（hover 也不显——2026-10-08 丙案，
+ *  「黑方块 hover 变中空框」的变形感与同槽让位制一并退役）；整理态全显、
+ *  与状态点并排（见「整理模式」段）。完工动作 = 墨底反白。 ── */
 .ss-check {
   flex: 0 0 auto;
   width: 14px;
@@ -417,12 +422,6 @@
   transition:
     background var(--snap),
     border-color var(--snap);
-}
-/* 勾选格显形（hover/选中）——状态点的让位规则见 .ss-dot 族之后（特异性序） */
-.ss-row:hover .ss-check,
-.ss-row:focus-within .ss-check,
-.ss-row.selected .ss-check {
-  visibility: visible;
 }
 .ss-check:hover {
   border-color: var(--ink-1);
@@ -468,12 +467,8 @@
     opacity: 1;
   }
 }
-/* 勾选格显形 = 状态点让位（一槽一点，防双点并陈；置 .ss-dot 族后保特异性序） */
-.ss-row:hover .ss-dot,
-.ss-row:focus-within .ss-dot,
-.ss-row.selected .ss-dot {
-  display: none;
-}
+/* 状态点让位制已退役（2026-10-08 丙案）：勾选格只在整理态登场、与状态点并排，
+ * hover / 选中一概不动状态点——「黑方块 hover 变中空框」的病灶来源即此。 */
 
 .ss-row-main {
   flex: 1;
@@ -639,80 +634,6 @@
   opacity: 0.6;
 }
 
-/* ── 批量条（多选态脚部）：**浮件**——锚列表区底部，不吃列表高度（旧形态 −51px）；
- *  浮在行上 ⇒ 必须自持纸底（否则文字与行叠印）。计数 + 两击确认删除 + 取消。 ── */
-.ss-batch {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px;
-  background: var(--paper);
-  border-top: var(--rule-soft);
-}
-.ss-batch-n {
-  font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
-  letter-spacing: 0.08em;
-  color: var(--seal-deep);
-}
-.ss-batch-del {
-  flex: 1;
-  min-height: 30px;
-  background: none;
-  border: var(--rule-strong);
-  border-radius: 0;
-  font-family: var(--f-song);
-  font-size: calc(12px * var(--font-scale));
-  color: var(--ink-1);
-  cursor: pointer;
-  transition:
-    background var(--snap),
-    color var(--snap);
-}
-.ss-batch-del:hover {
-  background: var(--ink-1);
-  color: var(--paper);
-}
-.ss-batch-del:focus-visible {
-  outline: 2px solid var(--seal);
-  outline-offset: 1px;
-}
-/* 批量武装态 = 朱砂深底白字（行内 ss-danger 同款语义） */
-.ss-batch-del.ss-danger,
-.ss-batch-del.ss-danger:hover {
-  background: var(--seal-deep);
-  border-color: var(--seal-deep);
-  color: var(--paper);
-}
-.ss-batch-cancel {
-  background: none;
-  border: none;
-  border-radius: 0;
-  min-width: 24px;
-  min-height: 24px;
-  padding: 3px 6px;
-  font-family: var(--f-song);
-  font-size: calc(11px * var(--font-scale));
-  color: var(--ink-3);
-  cursor: pointer;
-  transition:
-    background var(--snap),
-    color var(--snap);
-}
-.ss-batch-cancel:hover {
-  background: var(--ink-1);
-  color: var(--paper);
-}
-.ss-batch-cancel:focus-visible {
-  outline: 2px solid var(--seal);
-  outline-offset: 1px;
-}
-
 /* ── 拖行落位幽灵预览（屏幕坐标浮层——抽卷放桌的即时应答；书脊同款） ── */
 .ss-drag-ghost {
   position: fixed;
@@ -871,9 +792,9 @@
 }
 
 /* ── 枝视图：引线（rails）——轴走左标记列，父行垂线由子行折角接住 ──
- * 标记列 16px：勾选格与状态点**同槽叠放**（沿用现网「显形即让位」那条语义），
- * 于是引线走它的中心（x = 18 + 16·i），每层步进 16px；顺带把现网那 22px
- * 「勾选格列」（常空）收回来 ⇒ 同深度名区不更窄（浅层反而宽 14px）。 */
+ * 标记列常态 16px（整理态 27px，引线轴心随之让位——见「整理模式」段）：引线走
+ * 它的中心（x = 18 + 16·i），每层步进 16px；顺带把现网那 22px「勾选格列」
+ * （常空）收回来 ⇒ 同深度名区不更窄（浅层反而宽 14px）。 */
 .ss-list[data-view="tree"] .ss-row {
   align-items: stretch;
 }
@@ -924,10 +845,10 @@
   width: 1px;
   background: var(--rail);
 }
-/* ── 标记列（两视角**同一形状**）：勾选格与状态点**同槽叠放**（一槽一件，显形即让位）——
- *  让位只许改可见性，**不许摘出流**：旧案卷视图走 `.ss-bare{display:contents}` 两槽制
- *  （勾选格 `visibility` 占位、状态点 `display:none` 不占位），hover 时名区整体平移 16px；
- *  枝视图同语义 0px ⇒ 2026-09-20 跳变批收编为同一份，`.ss-bare` 两槽制退役。 ── */
+/* ── 标记列（两视角**同一形状**）：常态 = 状态点独居（16px 单槽，勾选格不显、
+ *  不改占位）；整理态 = 勾选格 + 状态点并排（27px，见「整理模式」段）。
+ *  让位制已于 2026-10-08 丙案退役（「黑方块 hover 变中空框」的病灶来源）；
+ *  `.ss-bare` 两槽制已于 2026-09-20 跳变批退役——列宽只由模式决定，hover 永不改几何。 ── */
 .ss-mark {
   position: relative;
   flex: 0 0 16px;
@@ -1004,4 +925,144 @@
 .ss-row:hover .ss-tail .ss-actions,
 .ss-row:focus-within .ss-tail .ss-actions {
   pointer-events: auto;
+}
+
+/* ══ 整理模式（2026-10-08 丙案）：选择是模式不是散点——批量操作全部发生在整理态内。
+ *  本段置于**文件末**（在全部基础样式之后）：arranging 作用域规则特异性天然更高，
+ *  堆尾部可免受「特异性降序」告警；段内亦按粗粒度递增排。
+ *  书眉「整理」进入；整理条替换「另起一卷」与视角两行（模式信号 + 动作贴近选择）；
+ *  行首勾选框全显、与状态点并排；单行动作让位（占位隐藏，几何不动）。 ══ */
+.ss-arrange-enter {
+  margin-left: auto;
+  align-self: center;
+  padding: 3px 8px;
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.ss-arrange-enter:hover {
+  border-color: var(--ink-1);
+  color: var(--ink-1);
+}
+.ss-arrange-enter:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+/* 整理条：整理态替换「另起一卷」与视角两行（display 切换——模式换装，
+ *  本来就要整列重排，不属「跳变病灶」管辖）。 */
+.ss-arrange-bar {
+  display: none;
+}
+.ss-arrange-bar .t {
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--seal-deep);
+}
+.ss-arrange-bar .n {
+  margin-right: auto;
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+}
+.ss-arrange-bar button {
+  min-height: 26px;
+  padding: 4px 10px;
+  background: none;
+  border: var(--rule-strong);
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-1);
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.ss-arrange-bar button:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+.ss-arrange-bar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* 武装态 = 朱砂深底白字（行内 ss-danger 同款语义） */
+.ss-arrange-bar .ss-arrange-del.danger {
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper);
+}
+.ss-arrange-bar .ss-arrange-done {
+  border: none;
+  color: var(--ink-2);
+}
+.ss-arrange-bar button:hover:not(:disabled) {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+.ss-arrange-bar .ss-arrange-del.danger:hover {
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper);
+}
+/* 整理态：勾选格全显 + 整理条登场 + 「另起一卷」/视角两行退场 */
+.ss-sidebar.arranging .ss-check {
+  visibility: visible;
+}
+.ss-sidebar.arranging .ss-arrange-enter {
+  visibility: hidden; /* 入口自身退场：模式信号走整理条 */
+}
+.ss-sidebar.arranging .ss-new-row,
+.ss-sidebar.arranging .ss-views {
+  display: none;
+}
+.ss-sidebar.arranging .ss-arrange-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: var(--rule-soft);
+  flex-shrink: 0;
+}
+/* 整理态行首：勾选框全显 + 与状态点并排（14 + 5 + 8 = 27px 槽）——
+ *  行左内距由 12 收到 6，名区起点 36 → 41px（差 5px 属模式换装的整列位移）。 */
+.ss-sidebar.arranging .ss-row {
+  padding-left: 6px;
+}
+.ss-sidebar.arranging .ss-mark {
+  width: 27px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  margin-top: 2px;
+  align-self: flex-start;
+}
+.ss-sidebar.arranging .ss-mark .ss-check {
+  position: static;
+  margin: 0;
+}
+.ss-sidebar.arranging .ss-mark .ss-dot {
+  position: static;
+  margin: 0;
+}
+/* 整理态单行动作让位：占位隐藏（几何不动——名区不被二次挤压） */
+.ss-sidebar.arranging .ss-tail .ss-actions {
+  visibility: hidden;
+}
+/* 整理态行 hover：框加深（可点暗示）——状态点不动 */
+.ss-sidebar.arranging .ss-row:hover .ss-check {
+  border-color: var(--ink-1);
 }

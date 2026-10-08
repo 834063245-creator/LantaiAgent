@@ -294,35 +294,40 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     expect(core.closeSession).toHaveBeenCalledTimes(1); // 闭合卷 C 无效
   });
 
-  it('多选批量删除：勾选两卷 → 批量条两击确认 → 一次连坐删除（各自带子树）', async () => {
+  it('整理模式：书眉「整理」进入 → 勾选两卷 → 整理条两击确认 → 一次连坐删除（各自带子树）', async () => {
     await mount();
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 0 卷'); // 常态零勾选
+    act(() => (container.querySelector('.ss-arrange-enter') as HTMLButtonElement).click());
+    expect(container.querySelector('.ss-sidebar')?.className).toContain('arranging');
     const checks = [...container.querySelectorAll('.ss-check')] as HTMLButtonElement[];
     act(() => checks[0].click()); // Cordis 迁移
     act(() => checks[2].click()); // 盘卷甲
-    expect(container.querySelector('.ss-batch-n')?.textContent).toBe('已选 2 卷');
-    const del = container.querySelector('.ss-batch-del') as HTMLButtonElement;
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 2 卷');
+    const del = container.querySelector('.ss-arrange-del') as HTMLButtonElement;
     expect(del.textContent).toBe('删除所选');
     act(() => del.click()); // 一击：武装
-    const armed = container.querySelector('.ss-batch-del') as HTMLButtonElement;
+    const armed = container.querySelector('.ss-arrange-del') as HTMLButtonElement;
     expect(armed.textContent).toBe('确删 2 卷?');
     expect(deleteSessionsWithBranches).not.toHaveBeenCalled();
     await act(async () => armed.click()); // 再击：执行
     expect(deleteSessionsWithBranches).toHaveBeenCalledTimes(1);
     expect(deleteSessionsWithBranches).toHaveBeenCalledWith([3, 2]);
-    expect(container.querySelector('.ss-new')).not.toBeNull(); // 选择清空 → 脚部复位
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 0 卷'); // 选择清空
+    expect(container.querySelector('.ss-sidebar')?.className).toContain('arranging'); // 留在整理态
   });
 
-  it('批量删除：子树里有运行中的卷的选择卷跳过并报数', async () => {
+  it('整理模式批量删除：子树里有运行中的卷的选择卷跳过并报数', async () => {
     deleteSessionsWithBranches.mockResolvedValue({
       deleted: [2],
       failed: [],
       blocked: [{ id: 3, running: [3] }],
     });
     await mount();
+    act(() => (container.querySelector('.ss-arrange-enter') as HTMLButtonElement).click());
     const checks = [...container.querySelectorAll('.ss-check')] as HTMLButtonElement[];
     act(() => checks[0].click()); // 运行中的 Cordis
     act(() => checks[2].click()); // 闲的盘卷甲
-    const del = container.querySelector('.ss-batch-del') as HTMLButtonElement;
+    const del = container.querySelector('.ss-arrange-del') as HTMLButtonElement;
     act(() => del.click()); // 武装
     // 执行：删除写完才重读清单 + 报数（2026-09-18 起写先落定，见 commitRename 注）
     await act(async () => {
@@ -334,20 +339,50 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     expect(notice).toContain('案卷 3');
   });
 
-  it('Ctrl+A 全选可见 + Esc 清选择复位脚部（不收侧栏）', async () => {
+  it('整理态键盘：Ctrl+A 全选可见；Esc 先解武、再退整理（不收侧栏）', async () => {
     useDockStore.getState().openPanel('canvas-sidebar');
     await mount();
+    act(() => (container.querySelector('.ss-arrange-enter') as HTMLButtonElement).click());
     const list = container.querySelector('.ss-list') as HTMLElement;
     act(() => keydown(list, 'a', { ctrlKey: true }));
-    expect(container.querySelector('.ss-batch-n')?.textContent).toBe('已选 3 卷');
-    // Esc（列表容器上冒泡到根）→ 清选择（不是收侧栏）
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 3 卷');
+    // 武装中 Esc：先解武（选择保留）
+    act(() => (container.querySelector('.ss-arrange-del') as HTMLButtonElement).click());
+    expect((container.querySelector('.ss-arrange-del') as HTMLButtonElement).textContent).toBe('确删 3 卷?');
     act(() => keydown(list, 'Escape'));
-    expect(container.querySelector('.ss-batch')).toBeNull();
-    expect(container.querySelector('.ss-new')).not.toBeNull();
+    expect((container.querySelector('.ss-arrange-del') as HTMLButtonElement).textContent).toBe('删除所选');
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 3 卷');
+    // 再 Esc：退出整理（清选择）——侧栏未收（旧「清选择」级已并入整理态退出）
+    act(() => keydown(list, 'Escape'));
+    expect(container.querySelector('.ss-sidebar')?.className).not.toContain('arranging');
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 0 卷');
     expect(useDockStore.getState().open['canvas-sidebar']).toBe(true); // 侧栏未收
   });
 
-  it('Esc 四级撤退：无武装无选择时收侧栏（互斥两态回书脊）', async () => {
+  it('整理模式：点行 = 勾选（不摊开）；Shift 连选；「完成」退出回常态', async () => {
+    await mount();
+    const loadMock = (core as unknown as { loadSessionFromDisk: Mock }).loadSessionFromDisk;
+    const switchMock = (core as unknown as { switchSession: Mock }).switchSession;
+    // 常态：X 键无效（选择只在整理态发生）
+    act(() => keydown(container.querySelector('.ss-list') as HTMLElement, 'x'));
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 0 卷');
+    act(() => (container.querySelector('.ss-arrange-enter') as HTMLButtonElement).click());
+    const rows = [...container.querySelectorAll('.ss-row')] as HTMLElement[];
+    act(() => rows[2].click()); // 盘卷甲（未摊开）：点行 = 勾选——不读盘、不摊开
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 1 卷');
+    act(() => rows[0].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })));
+    // Shift：锚点（rows[2]）到本行区间连选 → 三行全选
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 3 卷');
+    // 全程零摊开动作：不读盘、不切活跃（整理态里点行不是「摊开/定位」）
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(switchMock).not.toHaveBeenCalled();
+    // 「完成」退出：清选择回常态
+    act(() => (container.querySelector('.ss-arrange-done') as HTMLButtonElement).click());
+    expect(container.querySelector('.ss-sidebar')?.className).not.toContain('arranging');
+    expect(container.querySelector('.ss-arrange-bar .n')?.textContent).toBe('已选 0 卷');
+  });
+
+  it('Esc 撤退（常态）：无武装时收侧栏（互斥两态回书脊）', async () => {
     useDockStore.getState().openPanel('canvas-sidebar');
     await mount();
     const aside = container.querySelector('.ss-sidebar') as HTMLElement;

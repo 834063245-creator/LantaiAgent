@@ -13,11 +13,12 @@
 //     归档语义：老卷不删也出视野）。
 //   - 检索：常驻检索条即输即滤（filterRows 纯函数；Esc 清空）。
 //   - 键盘：↑↓/Home/End 移动游标（roving tabindex + 就近滚动）、Enter/Space
-//     摊开定位、F2 改名、C 合卷、Delete 两击确认删除、X 勾选、Ctrl+A 全选
-//     可见、Esc 四级撤退（解武删除 → 解武批量 → 清选择 → 收侧栏）。
+//     摊开定位、F2 改名、C 合卷、Delete 两击确认删除、Esc 解武 → 收侧栏。
 //   - 行操作：改名 / 合卷（收起，数据保留）/ 删除（两击确认）；热区 ≥24px。
-//   - 多选批量删除：行首勾选格（hover/选中时替换状态点位显形）+ Ctrl+点击
-//     + X 键；脚部批量条两击确认；运行中卷跳过并报数（不可半途 dispose）。
+//   - 整理模式（2026-10-08 丙案，用户报「多选 UX 很奇怪」后拍板）：书眉「整理」
+//     进入——行首勾选框全显（常态不显、hover 不再让位变形）、点行 = 勾选、
+//     Shift = 区间连选、X 勾选、Ctrl+A 全选可见、单行动作让位；顶部整理条
+//     「删除所选」两击确认（运行中卷跳过并报数）；完成 / Esc 退出。
 //   - 行拖放落位：行拖进画布 = 闭合卷「先落位再摊开」（region 先写，装载
 //     即用落点位） / 摊开卷再落位——书脊手势同族（互斥两态下书脊退场，
 //     空间手势由本栏承接）。
@@ -194,9 +195,14 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
   /** 武装时按**磁盘真源**核出的枝数（确认文案「将同时删除 N 枝」——用户据此同意）。 */
   const [deleteBranchCount, setDeleteBranchCount] = useState(0);
-  /** 多选批量删除：已勾选卷 id 集 + 批量钮武装态。 */
+  /** 整理模式（2026-10-08 丙案）：选择是模式不是散点——常态零勾选，
+   *  进入（书眉「整理」）清选择、退出（完成 / Esc）清选择回常态。 */
+  const [arranging, setArranging] = useState(false);
+  /** 整理态已勾选卷 id 集 + 整理条「删除所选」武装态。 */
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchArmed, setBatchArmed] = useState(false);
+  /** 连选锚（整理态 Shift 区间起点；点行 / 点框 / X 时刷新为当行）。 */
+  const selectAnchorRef = useRef<number | null>(null);
   /** 节/桶/族折叠面（默认全展开，「更早」与「独立卷」默认收起）。 */
   const [folds, setFolds] = useState<Record<string, boolean>>(loadFolds);
   /** 视角（案卷 ⇄ 枝）：状态持久化（`VIEW_KEY`），默认案卷。 */
@@ -393,9 +399,25 @@ export const SessionSidebar = memo(function SessionSidebar() {
     return () => document.removeEventListener('mousedown', onOutsideDown, true);
   }, [confirmingDeleteId, disarmAll]);
 
-  /* ── 多选 ── */
+  /* ── 整理模式（2026-10-08 丙案）：选择是模式不是散点——全部勾选动作只在整理态内 ── */
+  /** 进入整理：清一切武装与选择；整理条登场（「另起一卷」/视角两行在其下退场，CSS 管）。 */
+  const enterArrange = useCallback(() => {
+    disarmAll();
+    selectAnchorRef.current = null;
+    setSelectedIds(new Set());
+    setArranging(true);
+  }, [disarmAll]);
+  /** 退出整理（完成 / Esc）：清选择回常态；选中未删的卷不做任何动作（删除要显式点）。 */
+  const exitArrange = useCallback(() => {
+    disarmAll();
+    selectAnchorRef.current = null;
+    setSelectedIds(new Set());
+    setArranging(false);
+  }, [disarmAll]);
+  /** 勾选切换（整理态：点框 / 点行 / X / Enter 同一入口）。 */
   const toggleSelect = useCallback(
     (id: number) => {
+      if (!arranging) return; // 常态零勾选（防御：勾选框不可见不可达，这里只钉边界）
       disarmAll();
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -404,7 +426,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         return next;
       });
     },
-    [disarmAll],
+    [arranging, disarmAll],
   );
 
   /* ── 折叠面 ── */
@@ -466,15 +488,20 @@ export const SessionSidebar = memo(function SessionSidebar() {
 
   /* ── 行拖放落位（书脊手势同族）：闭合卷 = 先落位再摊开（region 先写，
    * 装载即用落点位，不落默认位）；摊开卷 = 再落位。 ── */
-  const onRowMouseDown = useCallback((e: React.MouseEvent, row: SidebarRow) => {
-    if (e.button !== 0) return;
-    // 行内交互子件（勾选格/行操作/改名输入）不承载拖行手势
-    if ((e.target as HTMLElement).closest('.ss-check, .ss-actions, .ss-rename-input')) return;
-    // 压旗复位：拖行结束（mouseup 在行外）不会有 click 落到行上清旗——
-    // 不复位会把下一次真点击误吞
-    suppressClickRef.current = false;
-    dragRef.current = { id: row.id, open: row.open, sx: e.clientX, sy: e.clientY, moved: false };
-  }, []);
+  const onRowMouseDown = useCallback(
+    (e: React.MouseEvent, row: SidebarRow) => {
+      if (e.button !== 0) return;
+      // 整理态 = 选择语境：拖放落位退场（点行语义已是勾选）
+      if (arranging) return;
+      // 行内交互子件（勾选格/行操作/改名输入）不承载拖行手势
+      if ((e.target as HTMLElement).closest('.ss-check, .ss-actions, .ss-rename-input')) return;
+      // 压旗复位：拖行结束（mouseup 在行外）不会有 click 落到行上清旗——
+      // 不复位会把下一次真点击误吞
+      suppressClickRef.current = false;
+      dragRef.current = { id: row.id, open: row.open, sx: e.clientX, sy: e.clientY, moved: false };
+    },
+    [arranging],
+  );
 
   useEffect(() => {
     const move = (e: MouseEvent) => {
@@ -511,35 +538,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
     };
   }, [core, disarmAll]);
 
-  /* ── 行点击：摊开/定位（Ctrl+点击 = 勾选）——键盘 Enter/Space 同入口，
-   *  只取修饰键窄形（MouseEvent/KeyboardEvent 双兼容） ── */
-  const onRowClick = useCallback(
-    (e: { ctrlKey: boolean; metaKey: boolean }, row: SidebarRow) => {
-      if (suppressClickRef.current) {
-        suppressClickRef.current = false;
-        return;
-      }
-      if (!core) return;
-      /* 武装期间「点别处 = 取消」的**键盘半边**（Enter/Space 不走 click 事件，捕获守卫
-       * 罩不到）：这一击只解武、不摊开——与鼠标路径同一句话（见 onArmedClickCapture）。 */
-      if (confirmingDeleteIdRef.current !== null) {
-        disarmAll();
-        return;
-      }
-      disarmAll(); // 点击行 = 其它意图，解除一切武装
-      setCursorId(row.id);
-      if (e.ctrlKey || e.metaKey) {
-        toggleSelect(row.id);
-        return;
-      }
-      const sid = String(row.id);
-      // 摊开/定位统一走 expand（已摊开 = 聚焦 + 飞；未摊开 = 读盘成功才飞）——
-      // 旧实现在调用侧无条件 requestFocus，卷已删/坏档时留下永不兑现的悬空
-      // 定位请求（2026-09-10 收口；expand 内注释详述失败语义）。
-      activeSpace()?.expand(sid);
-    },
-    [core, disarmAll, toggleSelect],
-  );
+  /* ── 行点击 onRowClick 定义在 flat 之后（整理态区间连选要读可见行序）——
+   *  这里只留位置说明，见「可见行」区块。 ── */
 
   /* ── 行操作：改名 / 合卷（收起）/ 删除 ──
    * 磁盘写**先落定再重读**（2026-09-18）：卷清单走写代投影缓存（chat-session
@@ -771,6 +771,58 @@ export const SessionSidebar = memo(function SessionSidebar() {
   }, [forest, folded]);
   /** 可见行（键盘游标 / Ctrl+A / 全选可见都读它）——当前视角那一份。 */
   const flat = view === 'case' ? caseFlat : treeFlat;
+  /** 区间连选（整理态 Shift+点行）：锚点到目标之间**设为选中**（不翻转、不清其余）。 */
+  const rangeSelect = useCallback(
+    (fromId: number, toId: number) => {
+      const i1 = flat.findIndex((r) => r.id === fromId);
+      const i2 = flat.findIndex((r) => r.id === toId);
+      if (i1 < 0 || i2 < 0) return;
+      disarmAll();
+      const [lo, hi] = i1 <= i2 ? [i1, i2] : [i2, i1];
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (let i = lo; i <= hi; i++) next.add(flat[i].id);
+        return next;
+      });
+    },
+    [flat, disarmAll],
+  );
+  /* ── 行点击：常态 = 摊开/定位；整理态 = 勾选（Shift = 区间连选）——
+   *  键盘 Enter/Space 同入口，只取修饰键窄形（MouseEvent/KeyboardEvent 双兼容）。 ── */
+  const onRowClick = useCallback(
+    (e: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }, row: SidebarRow) => {
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
+        return;
+      }
+      if (!core) return;
+      /* 武装期间「点别处 = 取消」的**键盘半边**（Enter/Space 不走 click 事件，捕获守卫
+       * 罩不到）：这一击只解武、不摊开——与鼠标路径同一句话（见 onArmedClickCapture）。 */
+      if (confirmingDeleteIdRef.current !== null) {
+        disarmAll();
+        return;
+      }
+      disarmAll(); // 点击行 = 其它意图，解除一切武装
+      setCursorId(row.id);
+      if (arranging) {
+        // 整理态：点行 = 勾选；Shift = 从锚点到本行的区间连选
+        const anchor = selectAnchorRef.current;
+        if (e.shiftKey && anchor != null && anchor !== row.id) {
+          rangeSelect(anchor, row.id);
+        } else {
+          toggleSelect(row.id);
+          selectAnchorRef.current = row.id;
+        }
+        return;
+      }
+      const sid = String(row.id);
+      // 摊开/定位统一走 expand（已摊开 = 聚焦 + 飞；未摊开 = 读盘成功才飞）——
+      // 旧实现在调用侧无条件 requestFocus，卷已删/坏档时留下永不兑现的悬空
+      // 定位请求（2026-09-10 收口；expand 内注释详述失败语义）。
+      activeSpace()?.expand(sid);
+    },
+    [core, disarmAll, arranging, toggleSelect, rangeSelect],
+  );
   /** 族根查表（hover 整族高亮的判据；坏血缘由 guard 兜底，绝不无限上溯）。 */
   const rootOfRow = useMemo(() => {
     const byId = new Map(rows.map((r) => [r.id, r]));
@@ -865,16 +917,19 @@ export const SessionSidebar = memo(function SessionSidebar() {
     [flat],
   );
 
-  /* ── 列表键盘导航：↑↓/Home/End 移动游标，F2 改名，C 合卷，Delete 两击
-   * 删除，X 勾选，Ctrl+A 全选可见。Enter/Space 交给行自身激活处理。 ── */
+  /* ── 列表键盘导航：↑↓/Home/End 移动游标，F2 改名，C 合卷，Delete 两击删除
+   *（整理态里 F2 / C / Delete 退场——选择语境单一）；X 勾选、Ctrl+A 全选可见
+   *（仅整理态）。Enter/Space 交给行自身激活处理（整理态里同入口即勾选）。 ── */
   const onListKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (renamingId !== null) return; // 改名输入自理（Enter/Escape 已在行内截停）
       if (e.ctrlKey || e.metaKey) {
         if (e.key === 'a' || e.key === 'A') {
           e.preventDefault();
-          disarmAll();
-          setSelectedIds(new Set(flat.map((r) => r.id)));
+          if (arranging) {
+            disarmAll();
+            setSelectedIds(new Set(flat.map((r) => r.id)));
+          }
         }
         return;
       }
@@ -916,7 +971,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
           rowRefs.current.get(row.parentId)?.focus();
         }
         return;
-      } else if (e.key === 'F2' && idx >= 0) {
+      } else if (e.key === 'F2' && idx >= 0 && !arranging) {
         e.preventDefault();
         const row = flat[idx];
         disarmAll();
@@ -925,18 +980,19 @@ export const SessionSidebar = memo(function SessionSidebar() {
         // （否则改一次名就把一个假名字钉进卷文件）——见 state/volume-name 头注。
         setDraftLabel(isUnnamedVolumeLabel(row.label) ? '' : row.label);
         return;
-      } else if ((e.key === 'c' || e.key === 'C') && idx >= 0) {
+      } else if ((e.key === 'c' || e.key === 'C') && idx >= 0 && !arranging) {
         const row = flat[idx];
         if (!row.open) return; // 合卷只对摊开卷有意义
         e.preventDefault();
         disarmAll();
         onCollapse(row.id);
         return;
-      } else if ((e.key === 'x' || e.key === 'X') && idx >= 0) {
+      } else if ((e.key === 'x' || e.key === 'X') && idx >= 0 && arranging) {
         e.preventDefault();
         toggleSelect(flat[idx].id);
+        selectAnchorRef.current = flat[idx].id;
         return;
-      } else if (e.key === 'Delete' && idx >= 0) {
+      } else if (e.key === 'Delete' && idx >= 0 && !arranging) {
         e.preventDefault();
         void onDelete(flat[idx].id);
         return;
@@ -949,25 +1005,29 @@ export const SessionSidebar = memo(function SessionSidebar() {
       rowRefs.current.get(row.id)?.focus();
       rowRefs.current.get(row.id)?.scrollIntoView?.({ block: 'nearest' });
     },
-    [flat, cursorId, renamingId, onDelete, onCollapse, toggleSelect, disarmAll, view, folded, toggleFold],
+    [flat, cursorId, renamingId, onDelete, onCollapse, toggleSelect, disarmAll, view, folded, toggleFold, arranging],
   );
 
-  /* Esc 四级撤退（列表外，如书眉/检索失焦后）：解武删除 → 解武批量 →
-   * 清选择 → 收侧栏（互斥两态：收起回书脊）。改名输入的 Esc 不冒泡。 */
+  /* Esc 撤退（列表外，如书眉/检索失焦后）：整理态 = 解武 → 退出整理；
+   * 常态 = 解武删除 → 收侧栏（互斥两态：收起回书脊）。改名输入的 Esc 不冒泡。 */
   const onRootKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (arranging) {
+        if (batchArmed) {
+          setBatchArmed(false); // 先解武（选择保留），再按一次才退
+          return;
+        }
+        exitArrange();
+        return;
+      }
       if (confirmingDeleteId !== null) {
         disarmAll();
         return;
       }
-      if (selectedIds.size > 0) {
-        setSelectedIds(new Set());
-        return;
-      }
       useDockStore.getState().closePanel('canvas-sidebar');
     },
-    [confirmingDeleteId, selectedIds, disarmAll],
+    [arranging, batchArmed, confirmingDeleteId, disarmAll, exitArrange],
   );
 
   if (!core) return null;
@@ -1030,7 +1090,9 @@ export const SessionSidebar = memo(function SessionSidebar() {
         data-depth={depth}
         title={`${volumeDisplayName(r.label, r.id)}${branch ? ' · 枝（自父卷分出）' : ''}${
           r.orphan ? ' · 父卷已删' : ''
-        }${isCurrent ? ' · 当前卷' : ''} · ${statusLabel(r.status)} · 左键摊开/定位 · 拖动落位`}
+        }${isCurrent ? ' · 当前卷' : ''} · ${statusLabel(r.status)} · ${
+          arranging ? '点=勾选（Shift 连选）' : '左键摊开/定位 · 拖动落位'
+        }`}
         aria-current={isCurrent ? 'true' : undefined}
         aria-expanded={tree && kids > 0 ? !famFolded : undefined}
         onClick={(e) => onRowClick(e, r)}
@@ -1062,10 +1124,12 @@ export const SessionSidebar = memo(function SessionSidebar() {
             className={`ss-check${isSelected ? ' on' : ''}`}
             aria-pressed={isSelected}
             aria-label={`${isSelected ? '取消选择' : '选择'}案卷：${volumeDisplayName(r.label, r.id)}`}
-            title="勾选后可批量删除（Ctrl+点击 / X 键同效）"
+            title="勾选（点行、X 键同效）"
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
               toggleSelect(r.id);
+              selectAnchorRef.current = r.id;
             }}
           />
           <span className={`ss-dot ss-dot-${r.status}`} role="presentation" />
@@ -1266,7 +1330,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
 
   return (
     <aside
-      className="ss-sidebar"
+      className={`ss-sidebar${arranging ? ' arranging' : ''}`}
       style={{ width }}
       aria-label="当前工作区案卷管理"
       onClickCapture={onArmedClickCapture}
@@ -1275,6 +1339,10 @@ export const SessionSidebar = memo(function SessionSidebar() {
       <div className="ss-head">
         <span className="ss-title">案卷</span>
         <span className="ss-count">SESSIONS · {rows.length}</span>
+        {/* 整理入口（2026-10-08 丙案）：显式、常驻、不藏——批量选择全部发生在整理态内 */}
+        <button type="button" className="ss-arrange-enter" title="整理：批量选择与删除" onClick={enterArrange}>
+          整理
+        </button>
         <button
           type="button"
           className="ss-fold"
@@ -1336,8 +1404,29 @@ export const SessionSidebar = memo(function SessionSidebar() {
         </button>
       </div>
 
-      {/* 列表区：**浮件锚点**（通知条 / 批量条绝对定位覆盖在列表之上）——本栏高度流水
-          到此为止：提示与批量条挂载/撤下都不许改动列表几何（旧形态 ±49px / −51px 跳变）。 */}
+      {/* 整理条（2026-10-08 丙案）：整理态替换「另起一卷」与视角两行（CSS arrangement）——
+          模式信号 + 批量动作贴近选择发生处（旧底部批量条退役）。 */}
+      <div className="ss-arrange-bar">
+        <span className="t">整理中</span>
+        <span className="n">已选 {selectedIds.size} 卷</span>
+        <button
+          type="button"
+          className={`ss-arrange-del${batchArmed ? ' danger' : ''}`}
+          disabled={selectedIds.size === 0}
+          title={
+            batchArmed ? '再点一次确认批量删除（不可撤销）；Esc 取消' : '批量删除所选（点两次确认；运行中卷自动跳过）'
+          }
+          onClick={onBatchDelete}
+        >
+          {batchArmed ? `确删 ${selectedIds.size} 卷?` : '删除所选'}
+        </button>
+        <button type="button" className="ss-arrange-done" onClick={exitArrange}>
+          完成
+        </button>
+      </div>
+
+      {/* 列表区：**浮件锚点**（通知条绝对定位覆盖在列表之上）——本栏高度流水
+          到此为止：提示挂载/撤下都不许改动列表几何（旧形态 ±49px 跳变）。 */}
       <div className="ss-list-wrap">
         {(localNotice || loadError) && (
           <div className="ss-notice">
@@ -1442,42 +1531,6 @@ export const SessionSidebar = memo(function SessionSidebar() {
           {rows.length === 0 && <div className="ss-empty">本工作区暂无案卷</div>}
           {rows.length > 0 && flat.length === 0 && <div className="ss-empty">无匹配案卷</div>}
         </div>
-
-        {/* 批量条（浮件）：锚列表区底沿，盖在列表末行之上——不吃列表高度（旧形态 −51px） */}
-        {selectedIds.size > 0 && (
-          <div className="ss-batch">
-            <span className="ss-batch-n">已选 {selectedIds.size} 卷</span>
-            {batchArmed ? (
-              <button
-                type="button"
-                className="ss-batch-del ss-danger"
-                title="再点一次确认批量删除（不可撤销）；Esc 取消"
-                onClick={onBatchDelete}
-              >
-                确删 {selectedIds.size} 卷?
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="ss-batch-del"
-                title="批量删除所选（点两次确认；运行中卷自动跳过）"
-                onClick={onBatchDelete}
-              >
-                删除所选
-              </button>
-            )}
-            <button
-              type="button"
-              className="ss-batch-cancel"
-              onClick={() => {
-                setBatchArmed(false);
-                setSelectedIds(new Set());
-              }}
-            >
-              取消
-            </button>
-          </div>
-        )}
       </div>
 
       {/* 宽度拖拽柄（右缘）：拖拽调宽 + 聚焦后 ←→ 微调 */}

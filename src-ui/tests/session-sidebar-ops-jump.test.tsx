@@ -25,10 +25,12 @@
 //      瞄着折枝点下去，打中的是删除钮；且该钮鼠标**永不可达**（指针进influence行就把它藏了）。
 //
 // 本文件钉的是**纪律**（数值可调，结构不许回退）：
-//   甲 一槽一件：勾选格与状态点共用一枚标记列，**两个视角同一形状**；让位只许改可见性，不许摘出流。
+//   甲 标记列：常态 = 状态点独居（勾选格不显、hover 永不改几何）；整理态 = 勾选框 + 状态点
+//      并排（2026-10-08 丙案，让位制退役——「黑方块 hover 变中空框」病灶的根治形态）。
 //   乙 动作行宽度恒定：武装态只换色（连坐数写进行内机读注记行），不许改文案宽度。
 //   丙 改名态不动骨架：两行式仍在，输入件落在名行**之内**，动作行常驻。
-//   丁 通知条与批量条是**浮件**（绝对定位覆盖），不进本栏高度流水——列表几何与它们无关。
+//   丁 通知条是**浮件**（绝对定位覆盖），不进本栏高度流水；批量条已随整理模式退役
+//      （2026-10-08 丙案，动作移入顶部整理条）。
 //   戊 可点件不许共享同一坐标：折枝汇总与动作行**并排**，不许按 hover 换租客。
 //   己 武装有**代际**：核对在途期间任何其它意图作废旧应答——一击不许被读成「第二次确认」。
 //      （同批顺带根治：`onDelete` 第一击的异步核对应答回来时，用户可能已点到别处，
@@ -132,27 +134,28 @@ describe('案卷侧栏行操作：显隐 / 武装 / 提示不得改变盒模型'
     await click([...container.querySelectorAll('.ss-views button')][1]);
   };
 
-  it('甲 · 两视角同槽：勾选格与状态点共用一枚标记列（`.ss-bare` 两槽制已退役）', async () => {
+  it('甲 · 标记列：常态勾选格不显（hover 零形变），整理态勾选框 + 状态点并排', async () => {
     await mount(fakeCore(SAVED));
-    // 案卷视图（默认）：也是单槽——旧实现走 `.ss-bare{display:contents}`，勾选格与状态点
-    // 各自占一列，hover 时状态点 `display:none` 摘出流 ⇒ 名区整体平移 16px
+    // DOM 面：两视角行首都有勾选格与状态点两件（勾选格常态不可见由 CSS 管）
     expect(container.querySelector('.ss-list')?.getAttribute('data-view')).toBe('case');
     expect(container.querySelectorAll('.ss-bare')).toHaveLength(0);
     expect(rowOf(1).querySelector('.ss-mark .ss-check')).toBeTruthy();
     expect(rowOf(1).querySelector('.ss-mark .ss-dot')).toBeTruthy();
-    // 枝视图同形
     await switchToTree();
-    expect(container.querySelectorAll('.ss-bare')).toHaveLength(0);
     expect(rowOf(1).querySelector('.ss-mark .ss-check')).toBeTruthy();
-    // CSS 面：标记列是**固定宽度的单槽**，两个租客都绝对定位在槽内——谁显谁隐都不改占位
-    // （旧两槽制 `.ss-bare{display:contents}` 把两个租客摊回行内流：勾选格 `visibility` 占位、
-    //   状态点 `display:none` 不占位 ⇒ 让位即改占位）
+    // CSS 面：让位制退役（2026-10-08 丙案）——不再有「hover / focus / 选中即显形 / 让位」
+    // 的规则；`.ss-bare` 两槽制也不回来（列宽只由模式决定，hover 永不改几何）
     expect(CSS_CODE).not.toContain('.ss-bare');
-    const mark = ruleBody(SIDEBAR_CSS, '.ss-mark {');
-    expect(mark).toContain('position: relative');
-    expect(mark).toContain('flex: 0 0 16px');
-    expect(ruleBody(SIDEBAR_CSS, '.ss-mark .ss-check {')).toContain('position: absolute');
-    expect(ruleBody(SIDEBAR_CSS, '.ss-mark .ss-dot {')).toContain('position: absolute');
+    expect(CSS_CODE).not.toContain('\n.ss-row:hover .ss-check');
+    expect(CSS_CODE).not.toContain('\n.ss-row:focus-within .ss-check');
+    expect(CSS_CODE).not.toContain('\n.ss-row.selected .ss-check');
+    expect(CSS_CODE).not.toContain('\n.ss-row:hover .ss-dot');
+    // 形态：常态 = 16px 单槽（状态点独居）；整理态 = 27px 双件并排（框 + 点）
+    expect(ruleBody(CSS_CODE, '\n.ss-mark {')).toContain('flex: 0 0 16px');
+    const arranged = ruleBody(CSS_CODE, '.ss-sidebar.arranging .ss-mark {');
+    expect(arranged).toContain('width: 27px');
+    expect(arranged).toContain('display: flex');
+    expect(ruleBody(CSS_CODE, '.ss-sidebar.arranging .ss-check {')).toContain('visibility: visible');
   });
 
   it('乙 · 「删」钮武装只换色：文案不变（动作行宽度恒定，名区不被压缩）', async () => {
@@ -183,10 +186,13 @@ describe('案卷侧栏行操作：显隐 / 武装 / 提示不得改变盒模型'
     expect(rowOf(1).querySelector('.ss-meta')).toBeTruthy(); // 机读注记行仍在
   });
 
-  it('丁 · 通知条与批量条是浮件：绝对定位覆盖，不进本栏高度流水', () => {
-    // 旧实现两者都在 flex 列里 ⇒ 挂载即挤压列表（实测 ±49px / −51px，列表内容整体位移）
+  it('丁 · 通知条是浮件（不进高度流水）；批量条随整理模式退役、动作移入顶部整理条', () => {
+    // 旧实现通知条住 flex 列里 ⇒ 挂载即挤压列表（实测 ±49px，列表内容整体位移）
     expect(ruleBody(SIDEBAR_CSS, '.ss-notice {')).toContain('position: absolute');
-    expect(ruleBody(SIDEBAR_CSS, '.ss-batch {')).toContain('position: absolute');
+    // 批量条退役（2026-10-08 丙案）：底部浮件不再存在，动作在顶部整理条（流水内件）
+    expect(CSS_CODE).not.toContain('.ss-batch');
+    expect(ruleBody(CSS_CODE, '.ss-arrange-bar {')).toContain('display: none');
+    expect(ruleBody(CSS_CODE, '.ss-sidebar.arranging .ss-arrange-bar {')).toContain('display: flex');
     // 浮件锚在本栏（`.ss-sidebar` 是定位上下文 = 真机上的 position:fixed 已成立，不再依赖它）
     expect(ruleBody(SIDEBAR_CSS, '.ss-sidebar {')).toContain('position: fixed');
   });

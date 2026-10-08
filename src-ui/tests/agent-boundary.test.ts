@@ -9,6 +9,7 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const AGENT_DIR = join(process.cwd(), 'src', 'agent');
@@ -25,13 +26,38 @@ function walk(dir: string): string[] {
 
 // import ... from '../ui/...' or '../../ui/...'
 const UI_IMPORT_RE = /from\s+['"][^'"]*\.\.\/ui\//;
-// browser-only APIs that would make the core un-runnable headless.
-// 只命中"真正调用"形态，避免把英文描述文案里的 "the ... window."（自然语言）
-// 误判成浏览器 API（UIA 工具描述里大量出现，曾导致误报）。匹配：
-//   - requestAnimationFrame(  调用
-//   - window./document. 后紧跟标识符（真实属性访问，如 window.addEventListener）
-//   - window[...] / document[...] 括号访问
-const BROWSER_API_RE = /requestAnimationFrame\(|\b(?:window|document)\.[A-Za-z_$]|\b(?:window|document)\[/;
+/** 浏览器 API 检测走 **AST**（2026-10-08 修：正则版把字面量里的代码示例误判——
+ *  「教模型用状态桥」批把 `window.lantai.state` 写进了 asset-kinds.ts 的 kind
+ *  描述字符串，正则 `window\.[A-Za-z]` 照样命中 ⇒ 红线误报。AST 节点天然区分
+ *  代码与字符串，且检测语义不放松：真调用（属性访问 / 元素访问 / rAF 调用）照旧命中。 */
+function findBrowserApiUsage(file: string, src: string): string | null {
+  const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true);
+  let hit: string | null = null;
+  const visit = (node: ts.Node): void => {
+    if (hit) return;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'requestAnimationFrame'
+    ) {
+      hit = 'requestAnimationFrame(';
+      return;
+    }
+    if (
+      (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+      ts.isIdentifier(node.expression) &&
+      (node.expression.text === 'window' || node.expression.text === 'document')
+    ) {
+      hit = ts.isPropertyAccessExpression(node)
+        ? `${node.expression.text}.${node.name.text}`
+        : `${node.expression.text}[...]`;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return hit;
+}
 
 describe('agent → ui one-way boundary', () => {
   const files = walk(AGENT_DIR);
@@ -45,8 +71,8 @@ describe('agent → ui one-way boundary', () => {
       const src = readFileSync(file, 'utf8');
       const uiHit = src.match(UI_IMPORT_RE);
       expect(uiHit, `ui/ import found: ${uiHit?.[0]}`).toBeNull();
-      const domHit = src.match(BROWSER_API_RE);
-      expect(domHit, `browser API found: ${domHit?.[0]}`).toBeNull();
+      const domHit = findBrowserApiUsage(file, src);
+      expect(domHit, `browser API found: ${domHit}`).toBeNull();
     });
   }
 });
