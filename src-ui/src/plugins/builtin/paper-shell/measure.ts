@@ -308,9 +308,18 @@ const CHART_TITLE_H = ASSET_DERIVED.chartTitleH;
 const CHART_AXIS_NAMES_H = ASSET_DERIVED.chartAxisNamesH;
 
 const METRIC_PAD_V = ASSET_DERIVED.metricPadV; // .pp-metric padding 2×2
-const METRIC_CARD_H = ASSET_DERIVED.metricCardH; // border + padding + label + value
+const METRIC_CARD_BORDER = ASSET_DERIVED.metricCardBorder; // .pp-metric-card border 上下合计
+const METRIC_CARD_PAD_V = ASSET_DERIVED.metricCardPadV; // 卡片 padding 上下合计
+const METRIC_CARD_PAD_H = ASSET_DERIVED.metricCardPadH; // 卡片 padding 左右合计（折行文本宽）
+const METRIC_LABEL_LINE = ASSET_DERIVED.metricCardLabelLine; // label 行（11px×1.8）
+const METRIC_VALUE_LINE = ASSET_DERIVED.metricCardValueLine; // 数值行（20px×1.2）
+const METRIC_COMPARE_LINE = ASSET_DERIVED.metricCompareLine; // 注脚行（11px×1.8）
+const METRIC_COMPARE_MARGIN_T = ASSET_DERIVED.metricCompareMarginT; // 注脚行上距
 const METRIC_GAP = ASSET_DERIVED.metricGap; // .pp-metric-grid gap
 const METRIC_MIN_COL = ASSET_DERIVED.metricMinCol; // minmax(120px, 1fr)
+const METRIC_LABEL_FONT = `${ASSET_TOKENS.metric.cardLabelSize}px ${SONG_STACK}`; // .pp-metric-label
+const METRIC_VALUE_FONT = `${ASSET_TOKENS.metric.cardValueSize}px ${MONO_STACK}`; // .pp-metric-value
+const METRIC_COMPARE_FONT = `${ASSET_TOKENS.metric.cardLabelSize}px ${MONO_STACK}`; // .pp-metric-compare
 
 const GRID_PAD_V = ASSET_DERIVED.gridPadV; // .pp-grid padding 2×2
 const PLATE_HEAD_H = ASSET_DERIVED.plateHeadH; // 图版题签行总高（恒在）
@@ -635,13 +644,40 @@ function chartBodyH(p: { type?: unknown; data?: unknown; config?: unknown }, w: 
   return CHART_PAD_V + CHART_TYPE_H + titleH + svgH + pieLegendH + axisNamesH;
 }
 
-/** metric 体高：caption + auto-fill 网格行（列数镜像 minmax(120,1fr)+gap 8）。 */
+/** metric 体高：题签 + auto-fill 网格（列数镜像 minmax(120,1fr)+gap 8）。
+ *  2026-10-13 注脚行迭代（真机截断反馈）：卡内三层——label 行 / 数值行 / 注脚行
+ *  （compare，可缺）；自由文本（label/compare）允许折行 ⇒ 逐卡按文本宽实测行数。
+ *  同一网格行卡片 stretch 等高 ⇒ 行高取本行最高卡，跨行累加；空卡组不占格
+ *  （旧 max(1) 保守多算退役）。镜像 = PaperPanel.css .pp-metric-* 族
+ *  （padding / line-height / font 逐字同值）。 */
 function metricBodyH(p: { items?: unknown; caption?: unknown }, w: number): number {
   const items = Array.isArray(p.items) ? p.items : [];
+  const head = METRIC_PAD_V + PLATE_HEAD_H; // 题签恒在
+  if (items.length === 0) return head;
   const cols = Math.max(1, Math.floor((w + METRIC_GAP) / (METRIC_MIN_COL + METRIC_GAP)));
-  const rows = Math.max(1, Math.ceil(items.length / cols));
-  // 题签恒在同上
-  return METRIC_PAD_V + PLATE_HEAD_H + rows * METRIC_CARD_H + (rows - 1) * METRIC_GAP;
+  const cardW = (w - (cols - 1) * METRIC_GAP) / cols;
+  const textW = Math.max(1, cardW - METRIC_CARD_BORDER - METRIC_CARD_PAD_H);
+  const linesOf = (text: string, font: string, line: number): number =>
+    text ? Math.max(1, Math.ceil(measureTextHeight(text, textW, font, line) / line)) : 0;
+  const itemH = (raw: unknown): number => {
+    const it = (raw ?? {}) as { label?: unknown; value?: unknown; unit?: unknown; compare?: unknown };
+    const labelH = linesOf(String(it.label ?? ''), METRIC_LABEL_FONT, METRIC_LABEL_LINE) * METRIC_LABEL_LINE;
+    // 数值行：value+unit 同 div（unit 左距 3px 不入预算——近似）；空内容 0 高
+    const valueText = `${String(it.value ?? '')}${String(it.unit ?? '')}`;
+    const valueH = linesOf(valueText, METRIC_VALUE_FONT, METRIC_VALUE_LINE) * METRIC_VALUE_LINE;
+    const compareLines = linesOf(String(it.compare ?? ''), METRIC_COMPARE_FONT, METRIC_COMPARE_LINE);
+    const compareH = compareLines > 0 ? METRIC_COMPARE_MARGIN_T + compareLines * METRIC_COMPARE_LINE : 0;
+    return METRIC_CARD_BORDER + METRIC_CARD_PAD_V + labelH + valueH + compareH;
+  };
+  let h = head;
+  for (let i = 0; i < items.length; i += cols) {
+    const end = Math.min(i + cols, items.length);
+    let rowH = 0;
+    for (let j = i; j < end; j++) rowH = Math.max(rowH, itemH(items[j]));
+    h += rowH;
+    if (end < items.length) h += METRIC_GAP;
+  }
+  return h;
 }
 
 /** grid 表格体高：caption + 逐行文字测量（前 50 行精测、其余单行估——表格列宽

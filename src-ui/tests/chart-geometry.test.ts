@@ -640,10 +640,11 @@ describe('chart 信息面 — 单位与口径', () => {
   });
 });
 
-// ── 信息面第二刀：metric 的 compare（2026-09-17）──
+// ── 信息面第二刀：metric 的 compare（2026-09-17；2026-10-13 注脚行迭代）──
 //
 // 单值没有比较对象就只能当装饰（「上期 88」「目标 100」「阈值 5」）。
-// 渲染在数值同行右侧 ⇒ 零测高；旧 payload 不带它时 markup 逐字不变。
+// 2026-10-13 起渲染为数值下方注脚行（原「同行右侧 + nowrap」长文本被卡片
+// overflow 硬裁，真机截断反馈）；旧 payload 不带它时 markup 逐字不变。
 
 describe('metric 信息面 — 比较对象', () => {
   async function renderMetric(payload: unknown): Promise<string> {
@@ -670,10 +671,14 @@ describe('metric 信息面 — 比较对象', () => {
     }
   }
 
-  it('compare 渲染在数值同行（读者知道这个数是好是坏）', async () => {
+  it('compare 渲染为数值下方的注脚行（读者知道这个数是好是坏）', async () => {
     const html = await renderMetric({ items: [{ label: '覆盖率', value: 82, unit: '%', compare: '目标 90' }] });
     expect(html).toContain('pp-metric-compare');
     expect(html).toContain('目标 90');
+    // 结构：注脚是卡片子元素（数值块闭合之后），不在数值行内
+    const iValue = html.indexOf('pp-metric-value');
+    const iValueClose = html.indexOf('</div>', iValue);
+    expect(html.indexOf('pp-metric-compare')).toBeGreaterThan(iValueClose);
   });
 
   it('不带 compare → markup 里没有该元素（零漂移）', async () => {

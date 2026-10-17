@@ -880,9 +880,9 @@ function MetricBody({ block }: BlockRendererProps) {
             <div className="pp-metric-value">
               {String(it.value ?? '')}
               {it.unit && <span className="pp-metric-unit">{it.unit}</span>}
-              {/* 信息面：比较对象/口径（单值没有比较对象只能当装饰） */}
-              {it.compare && <span className="pp-metric-compare">{it.compare}</span>}
             </div>
+            {/* 信息面（2026-10-13 注脚行迭代）：比较对象/口径独立成注脚行（数值下、可折行） */}
+            {it.compare && <div className="pp-metric-compare">{it.compare}</div>}
           </div>
         ))}
       </div>

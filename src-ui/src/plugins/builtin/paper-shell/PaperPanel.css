@@ -5532,28 +5532,39 @@
 .pp-metric-card {
   border: var(--pp-asset-metric-cardBorder) solid var(--rule-soft-ink);
   background: color-mix(in oklch, var(--paper-deep) 40%, transparent);
-  padding: 8px 10px;
-  /* 信息面的比较对象是自由文本 ⇒ 卡片裁切，防长文本溢到邻卡（零测高） */
+  padding: var(--pp-asset-metric-cardPadV) var(--pp-asset-metric-cardPadH);
+  /* 文本可折行（label/compare 见下）后 overflow 退为最后防线：长不可断 token 兜底
+     （2026-10-13 注脚行迭代；旧「自由文本硬裁」的代价就是截断，已正面解决） */
   overflow: hidden;
 }
 .pp-metric-label {
   font-family: var(--f-song);
   font-size: var(--pp-asset-metric-cardLabelSize);
+  line-height: var(--pp-asset-metric-cardLabelLh); /* 显式化（原隐式继承 .pp-root 1.8，同值） */
   color: var(--ink-3);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 .pp-metric-value {
   font-family: var(--f-mono);
   font-size: var(--pp-asset-metric-cardValueSize);
   line-height: var(--pp-asset-metric-cardValueLh);
   color: var(--ink-1);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
-/* 信息面（2026-09-17）：比较对象/口径——单值没有它就只能当装饰。
-   石青（机器的声音）小字同行显示；nowrap 防它把数值挤成两行（零测高） */
+/* 信息面（2026-09-17；2026-10-13 注脚行迭代）：比较对象/口径/说明——单值没有它
+   就只能当装饰。原「数值同行右侧 + nowrap」在长文本下被卡片 overflow 硬裁（真机
+   截断反馈）⇒ 独立成注脚行（数值下方），允许折行完整显示。石青 = 机器的声音；
+   测高镜像 = measure.metricBodyH（行高/上距/字体逐字同值）。 */
 .pp-metric-compare {
+  display: block;
   font-size: var(--pp-asset-metric-cardLabelSize);
+  line-height: var(--pp-asset-metric-compareLh);
   color: var(--indigo);
-  margin-left: 6px;
-  white-space: nowrap;
+  margin-top: var(--pp-asset-metric-compareMarginT);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 .pp-metric-unit {
   font-size: var(--pp-asset-metric-cardLabelSize);

@@ -357,15 +357,24 @@ export const ASSET_TOKENS = {
     /** 数值标注上限（超过则省略，防重叠——纯性能/可读性语义常量） */
     valueMaxItems: 20,
   },
+  // metric（2026-10-13 注脚行迭代，真机截断反馈）：卡片三层——label / 数值行 /
+  // 注脚行（compare，可缺）。自由文本（label/compare）允许折行 ⇒ 折行宽度与行高
+  // 都要能镜像：cardPad 拆成 V/H 单侧（旧「16」= 上下合计，左右无从取），
+  // cardLabelLh/compareLh 显式化（原 label 隐式继承 .pp-root 1.8，compare 继承
+  // 数值行 1.2——独立成注脚行后与 label 同节奏 1.8）。
   metric: {
     padV: 2,
     captionSize: 13,
     captionMarginB: 6,
     cardBorder: 2,
-    cardPad: 16,
+    cardPadV: 8,
+    cardPadH: 10,
     cardLabelSize: 11,
+    cardLabelLh: 1.8,
     cardValueSize: 20,
     cardValueLh: 1.2,
+    compareLh: 1.8,
+    compareMarginT: 2,
     gap: 8,
     minCol: 120,
   },
@@ -560,12 +569,15 @@ export const ASSET_DERIVED = {
   },
 
   metricPadV: ASSET_TOKENS.metric.padV * 2, // .pp-metric padding 2×2
-  metricCaptionH: ASSET_TOKENS.metric.captionSize * 1.8 + ASSET_TOKENS.metric.captionMarginB,
-  metricCardH:
-    ASSET_TOKENS.metric.cardBorder +
-    ASSET_TOKENS.metric.cardPad +
-    ASSET_TOKENS.metric.cardLabelSize * 1.8 +
-    ASSET_TOKENS.metric.cardValueSize * ASSET_TOKENS.metric.cardValueLh,
+  // 卡高不再是单值——三层结构按文本实测（见 measure.metricBodyH）；本组只出构成量。
+  // 旧 metricCaptionH 零消费、旧 metricCardH 唯一消费面已重写，一并退役。
+  metricCardBorder: ASSET_TOKENS.metric.cardBorder * 2, // .pp-metric-card border 上下合计（旧式只算单侧）
+  metricCardPadV: ASSET_TOKENS.metric.cardPadV * 2, // 卡片 padding 上下合计
+  metricCardPadH: ASSET_TOKENS.metric.cardPadH * 2, // 卡片 padding 左右合计（折行文本宽镜像）
+  metricCardLabelLine: ASSET_TOKENS.metric.cardLabelSize * ASSET_TOKENS.metric.cardLabelLh,
+  metricCardValueLine: ASSET_TOKENS.metric.cardValueSize * ASSET_TOKENS.metric.cardValueLh,
+  metricCompareLine: ASSET_TOKENS.metric.cardLabelSize * ASSET_TOKENS.metric.compareLh,
+  metricCompareMarginT: ASSET_TOKENS.metric.compareMarginT, // 注脚行上距
   metricGap: ASSET_TOKENS.metric.gap,
   metricMinCol: ASSET_TOKENS.metric.minCol,
 

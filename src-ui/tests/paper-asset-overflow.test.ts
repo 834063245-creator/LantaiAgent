@@ -10,7 +10,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { layoutMock, richStatsMock } = vi.hoisted(() => ({
-  layoutMock: vi.fn(() => ({ height: 36, lineCount: 2 })),
+  // 带参签名（2026-10-13）：metric 文本实测用例按 prepared._text / lineHeight 控制行数
+  layoutMock: vi.fn((_prepared?: { _text?: string }, _maxWidth?: number, _lineHeight?: number) => ({
+    height: 36,
+    lineCount: 2,
+  })),
   richStatsMock: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
 }));
 vi.mock('@chenglou/pretext', () => ({
@@ -54,6 +58,8 @@ function assetBlock(kind: string, payload: unknown, presentation = '', w = 720):
 
 describe('measure：资产块按表现原语计高（80px 常量退役）', () => {
   beforeEach(() => {
+    // mockClear 不清实现：逐用例改过的实现每轮由这里统一装回默认（36 → 2 行，旧语义）
+    layoutMock.mockImplementation(() => ({ height: 36, lineCount: 2 }));
     layoutMock.mockClear();
     richStatsMock.mockClear();
     clearPaperMeasureCache();
@@ -128,16 +134,48 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     expect(measureBlockHeight(withAxis)).toBe(8 + (9 * 1.8 + 4) + ASSET_DERIVED.chartSvgH('bar', 2) + (8 * 1.8 + 2));
   });
 
-  it('metric：auto-fill 列数（minmax(120,1fr)+gap8）→ 行数 × 卡高', () => {
-    const payload = { caption: 'kpi', items: Array.from({ length: 5 }, (_, i) => ({ label: `k${i}`, value: i })) };
-    const oneRow = assetBlock('metric', payload);
-    expect(measureBlockHeight(oneRow)).toBe(4 + (13 * 1.8 + 6) + (2 + 16 + 11 * 1.8 + 20 * 1.2));
-    // 12 项 → 3 行（+2 行距 8）
-    const threeRows = assetBlock('metric', {
-      ...payload,
-      items: Array.from({ length: 12 }, (_, i) => ({ label: `k${i}`, value: i })),
+  /* metric 注脚行迭代（2026-10-13）：卡内三层——label / 数值 / 注脚（compare）。
+   * 自由文本按卡片文本宽实测折行；同一网格行卡片 stretch 等高 ⇒ 取本行最高卡。
+   * 旧「固定卡高 61.8」单值假设退役（真机长文本被 overflow 硬裁 + 测高偏矮的根因）。 */
+
+  it('metric：卡内三层文本实测（label / 数值 / 注脚折行，行高取本行最高卡）', () => {
+    // 局部实现：「长」折 3 行，其余单行（layout 第三参 = 行高，height/line 反推行数）
+    layoutMock.mockImplementation((prepared, _w, line) => {
+      const n = prepared?._text === '长' ? 3 : 1;
+      const lh = line ?? 19.8;
+      return { height: lh * n, lineCount: n };
     });
-    expect(measureBlockHeight(threeRows)).toBe(4 + (13 * 1.8 + 6) + 3 * (2 + 16 + 11 * 1.8 + 20 * 1.2) + 2 * 8);
+    const b = assetBlock('metric', {
+      items: [
+        { label: '长', value: '长', compare: '长' },
+        { label: '短', value: 2 },
+      ],
+    });
+    const cardLong = 4 + 16 + 3 * 19.8 + 3 * 24 + (2 + 3 * 19.8);
+    const cardShort = 4 + 16 + 19.8 + 24;
+    expect(cardLong).toBeGreaterThan(cardShort);
+    expect(measureBlockHeight(b)).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + cardLong, 6);
+  });
+
+  it('metric：auto-fill 列数（minmax(120,1fr)+gap 8）→ 行数 × 行高（注脚单行加算）', () => {
+    layoutMock.mockImplementation((_p, _w, line) => ({ height: line ?? 19.8, lineCount: 1 })); // 全单行
+    const card = 4 + 16 + 19.8 + 24; // label + 数值（无注脚）
+    const five = assetBlock('metric', {
+      caption: 'kpi',
+      items: Array.from({ length: 5 }, (_, i) => ({ label: `k${i}`, value: i })),
+    });
+    expect(measureBlockHeight(five)).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + card, 6);
+    // 12 项 → 3 行（+2 行距 8）；带注脚行 = +上距 2 + 注脚行 19.8
+    const twelve = assetBlock('metric', {
+      caption: 'kpi',
+      items: Array.from({ length: 12 }, (_, i) => ({ label: `k${i}`, value: i, compare: '口径' })),
+    });
+    expect(measureBlockHeight(twelve)).toBeCloseTo(4 + ASSET_DERIVED.plateHeadH + 3 * (card + 2 + 19.8) + 2 * 8, 6);
+  });
+
+  it('metric：空卡组不占格（题签 + 上下 padding 即全部）', () => {
+    const b = assetBlock('metric', { items: [] });
+    expect(measureBlockHeight(b)).toBe(4 + ASSET_DERIVED.plateHeadH);
   });
 
   it('grid 表格：表头 + 逐行文字测量（列宽偶分近似）', () => {
