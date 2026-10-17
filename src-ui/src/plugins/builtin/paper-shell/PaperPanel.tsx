@@ -82,6 +82,7 @@ import {
   tetherAnchorsAt,
   tetherPath,
 } from './provenance';
+import { createRegionMotionWindow, stepRegionMotion } from './region-motion';
 import { StatusLine } from './StatusLine';
 import { ToastHost } from './ToastHost';
 import { useBlockMeasure } from './use-block-measure';
@@ -545,7 +546,10 @@ export function PaperPanel() {
   /* ── 流式生命感（2026-08-30）──
    * seenBlocks：已渲染过的块 id 集——pp-enter 入场类只发首见（无 StrictMode，
    * 渲染期标记安全），虚拟化平移重挂不重放动画。
-   * （pp-tail 尾笔已由用户拍板拆除——见 taste-ledger 翻案。） */
+   * （pp-tail 尾笔已由用户拍板拆除——见 taste-ledger 翻案。）
+   * 2026-10-18 卷开合动效批：卷**离场**时把它那些块的印记清掉 ⇒ 重开卷重播墨律；
+   * 卷自己的「落纸」不入本集合而走**窗**（`region-motion.ts` 的落纸窗——单帧发类会被
+   * 同帧后续重渲染摘掉，等于没发）。 */
   const seenBlocksRef = useRef<Set<string>>(new Set());
   /* 域间共享 ref 载体（晚绑定跨域读——原文件内既有范式：viewRef 同族）。 */
   const regionsRef = useRef<RegionView[]>([]);
@@ -590,6 +594,30 @@ export function PaperPanel() {
   });
 
   const { opsByBlock, branchGrips } = useBlockOps({ core, regions, regionsRef, regionMsgs });
+
+  /* ── 卷**开合两窗**（2026-10-18 卷开合动效批；机制与三条纪律见 region-motion.ts 头注）──
+   * 渲染期收敛：本帧消失的卷**当帧**进退场窗、新出场的卷当帧开落纸窗（挪进 effect =
+   * 先拆一帧再挂回来，退场窗里重播入场——DockPanel 相位机 2026-10-16 那条实测判据）。
+   * 离场卷只进**渲染两图**（流区叶 + 块层），不进任何测量/读数面（`regions` 保持活跃卷
+   * 语义不动）。 */
+  const motionWin = useRef(createRegionMotionWindow<RegionView>());
+  const [motionTick, setMotionTick] = useState(0);
+  const { entered: justLeft, nextExpiry: motionExpiry } = stepRegionMotion(motionWin.current, regions, Date.now());
+  for (const gone of justLeft) {
+    /* 首见印记随卷一并清掉 ⇒ 重开卷重播墨律（不清 = 重开无墨，`seenBlocksRef` 老病）。 */
+    for (const b of gone.blocks) seenBlocksRef.current.delete(b.id);
+  }
+  /** 渲染序（流区叶与块层共用同一条）：活跃卷 + 在窗的离场卷（全量快照）。 */
+  const regionRender = [
+    ...regions.map((view) => ({ view, leaving: false })),
+    ...[...motionWin.current.leaving.values()].map((e) => ({ view: e.view, leaving: true })),
+  ];
+  useEffect(() => {
+    void motionTick; // 只作重渲染扳机（依赖声明与闭包语义一致——同既有范式）
+    if (motionExpiry == null) return;
+    const t = window.setTimeout(() => setMotionTick((n) => n + 1), Math.max(0, motionExpiry - Date.now()) + 8);
+    return () => window.clearTimeout(t);
+  }, [motionExpiry, motionTick]);
 
   const { flyToPoint, flyToRegion, glideViewTo } = usePaperFocus({
     core,
@@ -1067,18 +1095,25 @@ export function PaperPanel() {
                 </div>
               )}
 
-              {/* 流区容器（一纸多卷：每会话一块有界流区——边缘拖动移动整区） */}
-              {regions.map((r) => {
-                if (!visibleRegionIds.has(r.sessionId)) return null;
-                const isActive = r.sessionId === activeSessionKey;
+              {/* 流区容器（一纸多卷：每会话一块有界流区——边缘拖动移动整区）。
+                  2026-10-18 卷开合动效批：本图渲染「活跃卷 + 在窗的离场卷」——
+                  离场卷（`data-leaving`）**绕开虚拟化**（否则一卷刚飞出视口就被裁掉，
+                  退场动画只看得到半截），且不接活跃/带显形/手势与落纸入场。 */}
+              {regionRender.map(({ view: r, leaving }) => {
+                if (!leaving && !visibleRegionIds.has(r.sessionId)) return null;
+                const isActive = !leaving && r.sessionId === activeSessionKey;
+                /* 落纸入场（纸淡入）：在**落纸窗**内即挂类（窗满由 region-motion 摘）。
+                 * 离场卷不挂（它在起纸）。 */
+                const isSpread = !leaving && motionWin.current.spread.has(r.sessionId);
                 const sheet = sheetCharacter(r.sessionId);
                 return (
                   // biome-ignore lint/a11y/noStaticElementInteractions: 流区是可点击交互面（点背景激活流区）
                   <div
                     key={r.sessionId}
                     className={`pp-region${isActive ? ' pp-region-active' : ''}${
-                      bandSessionId === r.sessionId ? ' pp-region--band' : ''
-                    }`}
+                      isSpread ? ' pp-spread' : ''
+                    }${!leaving && bandSessionId === r.sessionId ? ' pp-region--band' : ''}`}
+                    {...(leaving ? ({ 'data-leaving': '', inert: true } as const) : null)}
                     style={
                       {
                         left: r.anchor.anchorX - r.anchor.width / 2,
@@ -1091,10 +1126,14 @@ export function PaperPanel() {
                       } as CSSProperties
                     }
                     data-session-id={r.sessionId}
-                    onMouseDown={(e) => {
-                      if (e.button !== 0) return;
-                      if (e.target === e.currentTarget) activateRegion(r.sessionId);
-                    }}
+                    onMouseDown={
+                      leaving
+                        ? undefined
+                        : (e) => {
+                            if (e.button !== 0) return;
+                            if (e.target === e.currentTarget) activateRegion(r.sessionId);
+                          }
+                    }
                   >
                     {/* 卷首（folio-head，2026-08-30 自 prototype/lantai.html .folio-head 转录；
                      * 2026-09-16「版心天头」重排，用户拍板 B 案）：玉徽（亭台线稿）居中钤印
@@ -1298,14 +1337,17 @@ export function PaperPanel() {
 
               {/* 流序列：每流区块按序渲染（视口窗口化——视口外不进 DOM）。
                   2026-09-07 LOD 例外（用户拍板）：远缩档流块 DOM 仍退场（InkLayer
-                  墨迹接管），但**钉住块不退**——LOD 不再隐藏钉在画布上的卡片。 */}
-              {regions.map((r) =>
+                  墨迹接管），但**钉住块不退**——LOD 不再隐藏钉在画布上的卡片。
+                  2026-10-18 卷开合动效批：与流区叶同走 `regionRender`——离场卷的块
+                  挂 `pp-leaving`（起纸：淡去 + 墨随纸沉 8px），且**不发首见印记**
+                  （印记已在卷离场时清掉；离场期若写回，重开卷就再没有墨）。 */}
+              {regionRender.map(({ view: r, leaving }) =>
                 r.blocks.map((b) => {
                   const slot = r.layout.get(b.id);
                   if (!slot || !r.visibleIds.has(b.id)) return null;
                   if (b.state === 'flow') {
                     if (lod) return null; // P4 缩远墨迹：流块 DOM 退场，InkLayer 接管
-                    const firstSeen = !seenBlocksRef.current.has(b.id);
+                    const firstSeen = !leaving && !seenBlocksRef.current.has(b.id);
                     if (firstSeen) seenBlocksRef.current.add(b.id);
                     /* 湿墨尾点（2026-09-06）：正在书写的块（writingBlockIdOf
                      * 派生——source part 未干墨）挂 pp-writing，::after 落
@@ -1326,6 +1368,8 @@ export function PaperPanel() {
                       <div
                         key={b.id}
                         className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}${
+                          leaving ? ' pp-leaving' : ''
+                        }${
                           isDragged ? ' pp-dragging' : ''
                         }${inBand ? ' pp-drag-returning' : ''}${r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''}${
                           r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''

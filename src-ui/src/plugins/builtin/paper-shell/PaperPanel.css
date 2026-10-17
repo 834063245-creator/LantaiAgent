@@ -372,6 +372,60 @@
     inset 0 0 0 7px var(--sheet-band),
     var(--shadow-sheet-lift);
 }
+/* ── 卷开合（2026-10-18 卷开合动效批；用户拍板「甲 · 入场 + 退场对称」）──
+ * 病灶（用户：「卷的展开收起……现在纯粹是闪现」）：开卷 = 纸与字**同一帧**出现
+ * （本件基座只有 box-shadow 过渡，纸零入场），合卷 = 区域当帧卸载（零退场）。
+ * §15 的换景收口账收的是「侧栏↔书脊 / 设置页签 / 首页↔画布 / 会话换主」，卷开合
+ * 从来没立过项。
+ *
+ * 入场（**落纸**）= 纸淡入（本类，窗内发放——同 pp-enter 的首见纪律）+ 墨微升
+ * 8px（既有块的 pp-enter 入场，档 `--m-ink`：墨比纸快半拍，两件各按自己的距离律
+ * 档，不是漏写）。**刻意不用 `@starting-style`**：流区随虚拟化卸载/重挂
+ * （`visibleRegionIds`），挂首帧入场 = 平移时纸面反复「凭空浮现」——§15「首页→画布」
+ * 候选做法那条判据已钉死这条路。类由壳层按落纸窗发放，重挂不重放。
+ * 纸律：整叶**只动 opacity**——`.pp-region` 不得声明 transform/translate（纸纹
+ * background-position 与 InkLayer 对位红线，见 pp-region-take 注）。 */
+.pp-region.pp-spread {
+  animation: pp-spread-in var(--m-sheet) backwards;
+}
+@keyframes pp-spread-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* 摊开 = 摊上画布 + 设为活卷 ⇒ 「拿纸过冲」与「落纸」两条动画同时在位。
+ * `animation` 是**整表替换不是合并**：这里必须把两条都写上，缺一条就丢一条。 */
+.pp-region.pp-spread.pp-region-active {
+  animation:
+    pp-region-take var(--m-sheet),
+    pp-spread-in var(--m-sheet) backwards;
+}
+/* 退场（**起纸**）= 入场逆写，窗满才由壳层真卸载（`region-leave.ts` 的
+ * `REGION_LEAVE_MS` = `--m-sheet`；窗内重开 = 属性摘掉、按当下值掉头回场）。
+ * 档写在**退场规则**里——CSS Transitions 取「变更后」样式那张表（批 3b 判据）。
+ * 退场期一律不接点击（约束律②：动效永不阻塞交互，正在消失的面也不许吃点击）。 */
+.pp-region[data-leaving] {
+  opacity: 0;
+  transition: opacity var(--m-sheet);
+  pointer-events: none;
+}
+.pp-block.pp-leaving {
+  opacity: 0;
+  /* 墨随纸沉 8px 走**独立 `translate` 属性**，绝不写 `transform`——块定位用内联
+   * `transform: translate(x,y)`，任何一帧声明 transform 都会把块钉到左上角
+   * （2026-09-03 生产事故，pp-enter 注有案）。起纸是一件事（整叶一起走），故墨的沉
+   * 与纸的淡同档 `--m-sheet`。transition 整表替换 ⇒ 必须带上 transform（让位常驻位，
+   * motion-contract 有牙）。 */
+  translate: 0 8px;
+  transition:
+    transform var(--m-sheet),
+    translate var(--m-sheet),
+    opacity var(--m-sheet);
+  pointer-events: none;
+}
 /* ── 桌垫（材质批修复 2026-09-01：贴纸语义两刀之二）──
  * 真因不是「画不出」（实机活体验证：荧光绿/品红桌面双盲均画得出）——是纹理
  * 归属错位：①文档级颗粒层 body::after 钉死视口，拖动时纸走纹不走，材质被判属
