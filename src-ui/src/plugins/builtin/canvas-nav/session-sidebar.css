@@ -32,8 +32,22 @@
   border-right: var(--rule-strong);
   z-index: var(--z-paper-sidebar);
   font-family: var(--f-song);
-  /* 展场动画：从左缘滑入 + 内容级联浮现（sh-rise 曲线家族） */
-  animation: ss-slide-in var(--m-ink);
+  /* 入场（2026-10-16 由 keyframes 改为**起手式 + 过渡**，见 @starting-style）：
+   * 与出场是同一条过渡机制的两个方向 ⇒ 「入场播到一半就收」时过渡按**当下值**
+   * 掉头滑回（CSS Transitions 的抢占语义）；keyframes 版本做不到——同一属性上
+   * 动画压过渡，收的请求起不来，面会先滑到 0/1 再一帧弹回 (−20px, 0)。
+   * 入场档 = `--m-ink`（单件登场，0.16s，与拆除前的 keyframes 同长同曲线）。 */
+  transition:
+    transform var(--m-ink),
+    opacity var(--m-ink);
+}
+/* 首帧入场起手式（唯一起手点）：从左缘 20px 外淡入归位——与拆除前的 `ss-slide-in`
+ * from 帧逐字同值，观感零变化（`@starting-style` 正是为「元素首次出现」设计的）。 */
+@starting-style {
+  .ss-sidebar {
+    transform: translateX(-20px);
+    opacity: 0;
+  }
 }
 /* 板面纹理层（见头注；绝对定位 ⇒ 不是 flex 项，不参与本栏排版）。
  * ⚠ 四层配方**内联**（2026-09-21 教训）：本文件是**插件产物**（磁盘通道热更，换产物
@@ -59,24 +73,12 @@
   background-blend-mode: normal, multiply, multiply, multiply;
   filter: brightness(1.05); /* 提亮只提纹理层，不连字一起提亮 */
 }
-@keyframes ss-slide-in {
-  from {
-    transform: translateX(-20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
 /* 出场（§15 退场对称，2026-10-15 批 3b）：本面板声明了 `animateExit`，DockPanel
  * 关闭时给本子树挂 `[data-panel-leaving]` 并保留 260ms（= `--m-sheet`，与壳层常量
  * `PANEL_LEAVE_MS` 同值、由 motion-contract 钉死），窗满才真卸载。
- * **入场的逆写**（`ss-slide-in` 的 from 帧）。transition 只写在本规则里是刻意的：
- * 过渡的起手判据看的是**变更后样式**的 transition-property（CSS Transitions L1），
- * 故「加类同时给 transition + 目标值」即可成局，不必污染基座。
- * 退场期不接点击。 */
+ * **入场的逆写**（基座 `@starting-style` 的 from 值）。本规则还宣告**出场档**
+ * = `--m-sheet`：入场档 `--m-ink`（0.16s）不够 260ms 的窗，而 transition 取的是
+ * **变更后样式**那张表 ⇒ 两向档不同的场合必须逐向写（回场那一向由基座表接住）。 */
 [data-panel-leaving] .ss-sidebar {
   pointer-events: none;
   transform: translateX(-20px);

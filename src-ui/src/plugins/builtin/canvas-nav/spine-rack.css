@@ -68,17 +68,19 @@
    * 书缝上滚 → 0→0 ✗（命中元素是画布那侧）。改 auto 后三处皆滚。 */
   pointer-events: auto;
   font-family: var(--f-song);
-  /* 互斥两态回场（2026-09-02）：侧栏收起 → 书脊重挂载，从左缘轻滑入 */
-  animation: sr-slide-in var(--m-ink);
+  /* 回场（2026-09-02 立；2026-10-16 由 keyframes 改为**起手式 + 过渡**）：侧栏收起
+   * → 书脊重挂载，从左缘轻滑入。改成过渡的动因与 .ss-sidebar 同：互斥两态是快切，
+   * 入场播到一半就可能被要求退场，而 keyframes 会压住过渡（收的请求起不来，面先
+   * 滑到 0/1 再一帧弹到 −12px）；过渡则按当下值掉头。入场档 = `--m-ink`。 */
+  transition:
+    transform var(--m-ink),
+    opacity var(--m-ink);
 }
-@keyframes sr-slide-in {
-  from {
+/* 首帧入场起手式：与旧 `sr-slide-in` 的 from 帧逐字同值（观感零变化）。 */
+@starting-style {
+  .sr-rack {
     transform: translateX(-12px);
     opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
   }
 }
 
@@ -86,6 +88,8 @@
  * 关闭时给本子树挂 `[data-panel-leaving]` 并保留 260ms（= `--m-sheet`，与壳层常量
  * `PANEL_LEAVE_MS` 同值、由 motion-contract 钉死），窗满才真卸载。
  * **入场的逆写**——互斥两态换态此前是「侧栏滑入 + 书脊凭空消失」，现在两端对称。
+ * 出场档 `--m-sheet` 写在本规则里（transition 取**变更后样式**那张表；回场那一向
+ * 由基座的 `--m-ink` 表接住）。
  * 退场期不接点击（板是整块命中面，见上方 pointer-events 注，别让它吃掉正在
  * 落到画布上的那一击）。 */
 [data-panel-leaving] .sr-rack {

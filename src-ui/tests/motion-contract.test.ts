@@ -279,6 +279,11 @@ describe('§15 动效契约（散写时长守卫）', () => {
     expect(DOCK_TSX).toContain("display: 'contents'");
     expect(DOCK_TSX).toContain("useState<'open' | 'leaving' | 'closed'>");
     expect(DOCK_TSX).toContain("canLeave ? 'leaving' : 'closed'");
+    // **相位收敛必须在渲染期**（2026-10-16）：`mounted` 判据在渲染期读相位，挪回
+    // useEffect ⇒ 收面那一趟相位还是 'open' ⇒ 面被拆掉、effect 再把它当新元素挂回来
+    // （入场动画在退场窗里重播 + 窗满一帧到位 = 真机报的「侧栏收藏时跳变」）。
+    // 行为面判据 = tests/dock-panel-leave.test.tsx（DOM 节点身份 + 真挂载计数）。
+    expect(DOCK_TSX).toContain("if (open && phase !== 'open') setPhase('open');");
 
     // 三个面：声明（壳层供钩）+ 各自的出场规则（产物消费）——两边都必须在
     expect(SETTINGS_INDEX_TS).toContain('animateExit: true');
@@ -302,16 +307,28 @@ describe('§15 动效契约（散写时长守卫）', () => {
         `${name} 的出场规则必须把面淡出（opacity: 0）`,
       ).toBe(true);
     }
-    // 侧栏/书脊把 transition 写在**退场规则里**（CSS Transitions L1：起手判据看的是
-    // 「变更后样式」的 transition-property，故「加属性同时给 transition + 目标值」成局）。
-    // 设置面板的 transition 在基座（入场/出场共用一条），已由上一例钉死。
-    for (const [name, css] of [
-      ['spine-rack', SPINE_CSS],
-      ['session-sidebar', SIDEBAR_CSS],
+    // 侧栏/书脊的入场走**起手式 + 过渡**（2026-10-16 归位，原为 keyframes 入场）：
+    // keyframes 与出场过渡抢同一属性时**动画压过渡** ⇒ 「入场播到一半就收」的请求
+    // 起不来过渡，面继续滑到 0/1，动画一结束又一帧弹到退场目标（台架实测
+    // Δx=−20px/帧）。过渡可被抢占（按当下值掉头），且入场/出场两向档不同
+    // （ink / sheet）——transition 取的是**变更后样式**那张表，故逐向写。
+    for (const [name, css, sel] of [
+      ['spine-rack', SPINE_CSS, '.sr-rack {'],
+      ['session-sidebar', SIDEBAR_CSS, '.ss-sidebar {'],
     ] as const) {
-      const leaving = /\[data-panel-leaving\][\s\S]*?\}/.exec(stripCssComments(css));
+      const code = stripCssComments(css);
+      const base = ruleBody(css, sel);
+      expect(base, `${name} 基座缺入场档过渡（回场那一向靠它）`).toContain('transform var(--m-ink)');
+      expect(base, `${name} 基座缺淡入过渡`).toContain('opacity var(--m-ink)');
+      expect(base, `${name} 基座不得再挂 keyframes 入场动画（同一属性上动画压过渡，收的请求起不来）`).not.toContain(
+        'animation:',
+      );
+      expect(code, `${name} 缺 @starting-style 首帧起手式`).toMatch(/@starting-style\s*\{[\s\S]*?opacity:\s*0/);
+      // 出场档 + 目标值写在退场规则里（窗长 = --m-sheet ↔ PANEL_LEAVE_MS）
+      const leaving = /\[data-panel-leaving\][\s\S]*?\}/.exec(code);
       expect(leaving, `${name} 缺退场规则`).not.toBeNull();
-      expect((leaving as RegExpExecArray)[0], `${name} 退场时长必须走 --m-sheet`).toContain('var(--m-sheet)');
+      expect((leaving as RegExpExecArray)[0], `${name} 退场规则缺出场档 --m-sheet`).toContain('var(--m-sheet)');
+      expect((leaving as RegExpExecArray)[0], `${name} 退场规则必须把面藏起来`).toContain('opacity: 0');
     }
   });
 
