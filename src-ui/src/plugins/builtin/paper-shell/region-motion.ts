@@ -11,11 +11,13 @@
 //
 // 两个窗（都住槽主人的一个 ref 里，逐帧就地推进）：
 //   - **退场窗**（起纸）：卷消失的当帧进窗，窗满才真卸载——入场逆写的落点。
-//   - **落纸窗**（落纸）：新出场的卷挂 `.pp-spread`（纸淡入）**满一窗**才摘类。
-//     为什么不是「发一帧类、下一帧就摘」（`pp-enter` 那种写法）：**同帧后续重渲染
-//     会把类连同动画一起摘掉**（落位 effect / 焦点 effect / 高度回写都在同一批
-//     commit 里），届时浏览器根本没见到那个类——「声明存在但不生效」那一族。
-//     窗内平移重挂会重放一次落纸（260ms 内的一过性代价），换来的是「一定播得到」。
+//   - **落纸窗**（落纸）：**首次真在视口里**且没落过纸的卷挂 `.pp-spread`（纸淡入）
+//     **满一窗**才摘类。两条判据都是实机反馈逼出来的（2026-10-18 用户：「实机看了一下，
+//     动效好像不太明显」）：
+//       ① **可见**而不是「活跃」：开卷 = 摊开 + 视角飞过去（260ms 飞行）⇒ 按「首次活跃」
+//          发类会在**屏外**播完，镜头到了纸已稳稳摊着 = 用户读作「还是闪现」；
+//       ② **窗**而不是一帧（`pp-enter` 那种写法）：同一批 commit 里后续重渲染会把类连同
+//          动画一起摘掉（落位/焦点/测高回写），浏览器根本没见到那个类。
 //
 // 三条机制纪律（全从既有判例抄来，不是新发明）：
 //   ① **渲染期收敛**：卷消失的那一帧就要有快照。挪进 `useEffect` ⇒ 先拆（一帧空白）
@@ -47,31 +49,48 @@ export interface RegionLeaveEntry<T> {
 export interface RegionMotionWindow<T> {
   /** 退场窗：卷 id → 快照与到期时刻。 */
   leaving: Map<string, RegionLeaveEntry<T>>;
-  /** 上一帧的活跃卷（退场快照源 + 「新出场」判据）。 */
+  /** 上一帧的活跃卷（退场快照源）。 */
   lastLive: Map<string, T>;
   /** 落纸窗：卷 id → 摘 `.pp-spread` 的时刻。 */
   spread: Map<string, number>;
+  /** **已落过纸**的卷（冷启动整批 + 真播过的）——落纸窗只给「没落过且这帧真在视口里」的卷。 */
+  played: Set<string>;
   /** 首帧整批算「已落纸」——冷启动/恢复工作区时满屏纸一起淡入会被读成一次闪
    *  （同 §15 批 1「块自己挪位」那条实机验收顾虑）；此后只有**用户驱动**的摊开落纸。 */
   primed: boolean;
 }
 
 export function createRegionMotionWindow<T>(): RegionMotionWindow<T> {
-  return { leaving: new Map(), lastLive: new Map(), spread: new Map(), primed: false };
+  return { leaving: new Map(), lastLive: new Map(), spread: new Map(), played: new Set(), primed: false };
+}
+
+/**
+ * 卷是否真在视口里（纵向）——`visibleRegionIds`（use-paper-regions）只管**横向**
+ * （那是渲染虚拟化的口径：横向离场才卸载 DOM），而「落纸」要给**用户看得见**的那一刻
+ * 发。横向 + 纵向都过才算可见。
+ */
+export function regionOnScreen(topY: number, bottomY: number, viewY0: number, viewY1: number): boolean {
+  return topY <= viewY1 && bottomY >= viewY0;
 }
 
 /**
  * 推进两个窗（**渲染期**调用；就地改 `win`）：
  *   ① 退场窗内重开 → 撤销（live 里又有它了）；
  *   ② 本帧消失的卷 → 按 `lastLive` 快照**当帧**进退场窗（`entered` 回报给调用方去清
- *      「首见」印记——不清则重开卷没有墨）；
- *   ③ 本帧**新出场**的卷（首帧之后）→ 开落纸窗；
+ *      「首见」印记——不清则重开卷没有墨）；同时把它从「已落纸」里摘掉 ⇒ 重开重播；
+ *   ③ **这帧真在视口里且没落过纸**的卷 → 开落纸窗（首帧整批除外——见 `primed` 注）。
+ *      ⚠ 判据是**「首次可见」而不是「首次活跃」**（2026-10-18 实机反馈「不太明显」
+ *      的第一因）：开卷 = 摊开 **+ 视角飞过去**（`space.expand` → `requestFocus`，
+ *      260ms 飞行）——远卷落地时压根不在视口里，按「首次活跃」发的落纸类会**在屏外
+ *      播完**，等镜头到了纸已经稳稳摊着 = 用户读作「还是闪现」。故改按可见判定：
+ *      镜头一带到它，落纸才起手。
  *   ④ 两个窗满 → 摘除。
  * 返回 `nextExpiry` = 最早到期时刻（调用方据此排一次重渲染把满窗的摘掉）；无窗 = null。
  */
 export function stepRegionMotion<T extends { sessionId: string }>(
   win: RegionMotionWindow<T>,
   live: T[],
+  visible: ReadonlySet<string>,
   now: number,
 ): { entered: T[]; nextExpiry: number | null } {
   const liveIds = new Set(live.map((r) => r.sessionId));
@@ -81,22 +100,27 @@ export function stepRegionMotion<T extends { sessionId: string }>(
     if (liveIds.has(sid)) win.leaving.delete(sid);
   }
 
-  // ② 本帧消失的卷当帧进退场窗（晚一趟 = 先拆后挂）
+  // ② 本帧消失的卷当帧进退场窗（晚一趟 = 先拆后挂）+ 清「已落纸」⇒ 重开重播
   const entered: T[] = [];
   for (const [sid, view] of win.lastLive) {
     if (liveIds.has(sid) || win.leaving.has(sid)) continue;
     win.leaving.set(sid, { view, until: now + REGION_MOTION_MS });
+    win.played.delete(sid);
     entered.push(view);
   }
 
-  // ③ 新出场的卷开落纸窗（首帧整批除外——见 primed 注）
+  // ③ 首次**可见**的卷开落纸窗（首帧整批算已落纸——见 primed 注）
   if (win.primed) {
     for (const r of live) {
-      if (win.lastLive.has(r.sessionId) || win.spread.has(r.sessionId)) continue;
+      if (!visible.has(r.sessionId) || win.played.has(r.sessionId)) continue;
+      win.played.add(r.sessionId);
       win.spread.set(r.sessionId, now + REGION_MOTION_MS);
     }
-  } else {
+  } else if (live.length > 0) {
+    /* 冷启动/恢复：第一批量（非空）整批算「已落纸」。
+     * 空首帧不 prime——恢复是异步的，别把「第一批真数据」当成用户摊开。 */
     win.primed = true;
+    for (const r of live) win.played.add(r.sessionId);
   }
 
   // ④ 两窗统一摘除 + 记最早到期

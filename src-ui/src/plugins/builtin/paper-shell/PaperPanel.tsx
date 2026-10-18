@@ -82,7 +82,7 @@ import {
   tetherAnchorsAt,
   tetherPath,
 } from './provenance';
-import { createRegionMotionWindow, stepRegionMotion } from './region-motion';
+import { createRegionMotionWindow, regionOnScreen, stepRegionMotion } from './region-motion';
 import { StatusLine } from './StatusLine';
 import { ToastHost } from './ToastHost';
 import { useBlockMeasure } from './use-block-measure';
@@ -602,7 +602,24 @@ export function PaperPanel() {
    * 语义不动）。 */
   const motionWin = useRef(createRegionMotionWindow<RegionView>());
   const [motionTick, setMotionTick] = useState(0);
-  const { entered: justLeft, nextExpiry: motionExpiry } = stepRegionMotion(motionWin.current, regions, Date.now());
+  /* 「真在视口里」= 横向（渲染虚拟化口径 `visibleRegionIds`）+ **纵向**（那个口径只看 x）
+   * ——落纸要给**用户看得见**的那一刻发（见 region-motion.ts 头注：远卷的摊开带着 260ms
+   * 飞行，按「首次活跃」发类会在屏外播完，镜头到了纸已稳稳摊着 = 读作还是闪现）。 */
+  const onScreenIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of regions) {
+      if (!visibleRegionIds.has(r.sessionId)) continue;
+      if (!regionOnScreen(r.regionTop - r.folioH, r.regionTop + r.regionHeight, viewRect.y0, viewRect.y1)) continue;
+      s.add(r.sessionId);
+    }
+    return s;
+  }, [regions, visibleRegionIds, viewRect]);
+  const { entered: justLeft, nextExpiry: motionExpiry } = stepRegionMotion(
+    motionWin.current,
+    regions,
+    onScreenIds,
+    Date.now(),
+  );
   for (const gone of justLeft) {
     /* 首见印记随卷一并清掉 ⇒ 重开卷重播墨律（不清 = 重开无墨，`seenBlocksRef` 老病）。 */
     for (const b of gone.blocks) seenBlocksRef.current.delete(b.id);
