@@ -624,10 +624,15 @@ export function PaperPanel() {
     /* 首见印记随卷一并清掉 ⇒ 重开卷重播墨律（不清 = 重开无墨，`seenBlocksRef` 老病）。 */
     for (const b of gone.blocks) seenBlocksRef.current.delete(b.id);
   }
-  /** 渲染序（流区叶与块层共用同一条）：活跃卷 + 在窗的离场卷（全量快照）。 */
+  /** 渲染序（流区叶与块层共用同一条）：活跃卷 + 在窗的离场卷（全量快照）。
+   *  `spreading` = 在**落纸窗**内（纸淡入 + 墨自 18px 落下，见 PaperPanel.css 卷开合段）。 */
   const regionRender = [
-    ...regions.map((view) => ({ view, leaving: false })),
-    ...[...motionWin.current.leaving.values()].map((e) => ({ view: e.view, leaving: true })),
+    ...regions.map((view) => ({
+      view,
+      leaving: false,
+      spreading: motionWin.current.spread.has(view.sessionId),
+    })),
+    ...[...motionWin.current.leaving.values()].map((e) => ({ view: e.view, leaving: true, spreading: false })),
   ];
   useEffect(() => {
     void motionTick; // 只作重渲染扳机（依赖声明与闭包语义一致——同既有范式）
@@ -1116,12 +1121,12 @@ export function PaperPanel() {
                   2026-10-18 卷开合动效批：本图渲染「活跃卷 + 在窗的离场卷」——
                   离场卷（`data-leaving`）**绕开虚拟化**（否则一卷刚飞出视口就被裁掉，
                   退场动画只看得到半截），且不接活跃/带显形/手势与落纸入场。 */}
-              {regionRender.map(({ view: r, leaving }) => {
+              {regionRender.map(({ view: r, leaving, spreading }) => {
                 if (!leaving && !visibleRegionIds.has(r.sessionId)) return null;
                 const isActive = !leaving && r.sessionId === activeSessionKey;
                 /* 落纸入场（纸淡入）：在**落纸窗**内即挂类（窗满由 region-motion 摘）。
                  * 离场卷不挂（它在起纸）。 */
-                const isSpread = !leaving && motionWin.current.spread.has(r.sessionId);
+                const isSpread = !leaving && spreading;
                 const sheet = sheetCharacter(r.sessionId);
                 return (
                   // biome-ignore lint/a11y/noStaticElementInteractions: 流区是可点击交互面（点背景激活流区）
@@ -1355,10 +1360,11 @@ export function PaperPanel() {
               {/* 流序列：每流区块按序渲染（视口窗口化——视口外不进 DOM）。
                   2026-09-07 LOD 例外（用户拍板）：远缩档流块 DOM 仍退场（InkLayer
                   墨迹接管），但**钉住块不退**——LOD 不再隐藏钉在画布上的卡片。
-                  2026-10-18 卷开合动效批：与流区叶同走 `regionRender`——离场卷的块
-                  挂 `pp-leaving`（起纸：淡去 + 墨随纸沉 8px），且**不发首见印记**
-                  （印记已在卷离场时清掉；离场期若写回，重开卷就再没有墨）。 */}
-              {regionRender.map(({ view: r, leaving }) =>
+                  2026-10-18 卷开合动效批：与流区叶同走 `regionRender`——落纸窗内的块
+                  挂 `pp-drop`（墨自 18px 落下，**取代** `pp-enter`：同一属性两条动画
+                  是整表替换）；离场卷的块挂 `pp-leaving`（起纸：淡去 + 墨随纸沉 18px），
+                  且**不发首见印记**（印记已在卷离场时清掉；离场期若写回，重开卷就再没墨）。 */}
+              {regionRender.map(({ view: r, leaving, spreading }) =>
                 r.blocks.map((b) => {
                   const slot = r.layout.get(b.id);
                   if (!slot || !r.visibleIds.has(b.id)) return null;
@@ -1366,6 +1372,9 @@ export function PaperPanel() {
                     if (lod) return null; // P4 缩远墨迹：流块 DOM 退场，InkLayer 接管
                     const firstSeen = !leaving && !seenBlocksRef.current.has(b.id);
                     if (firstSeen) seenBlocksRef.current.add(b.id);
+                    /* 落纸窗内的块走 `pp-drop`（墨自 18px 落下，`--m-sheet`/io）——
+                     * 与 `pp-enter`（8px/`--m-ink`）二选一：同一属性上两条动画是整表替换。 */
+                    const dropping = !leaving && spreading && b.state === 'flow';
                     /* 湿墨尾点（2026-09-06）：正在书写的块（writingBlockIdOf
                      * 派生——source part 未干墨）挂 pp-writing，::after 落
                      * 石青方点在续墨行位。 */
@@ -1384,9 +1393,9 @@ export function PaperPanel() {
                       // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
                       <div
                         key={b.id}
-                        className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}${
-                          leaving ? ' pp-leaving' : ''
-                        }${
+                        className={`pp-block pp-${b.kind}${firstSeen && !dropping ? ' pp-enter' : ''}${
+                          dropping ? ' pp-drop' : ''
+                        }${leaving ? ' pp-leaving' : ''}${
                           isDragged ? ' pp-dragging' : ''
                         }${inBand ? ' pp-drag-returning' : ''}${r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''}${
                           r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''

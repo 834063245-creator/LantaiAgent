@@ -280,10 +280,16 @@ describe('卷开合动效（落纸入场 + 起纸退场）', () => {
     const back = region(2);
     expect(back, '重开卷该回到画布上').not.toBeNull();
     expect(back?.classList.contains('pp-spread'), '重开卷要重播落纸（纸淡入）').toBe(true);
+    /* 力度定案「丙」后：落纸窗内块走 `pp-drop`（墨自 18px 落下，`--m-sheet`/io），
+     * **取代** `pp-enter`（8px/`--m-ink`）——同一属性上两条动画是整表替换。 */
+    expect(
+      container?.querySelectorAll('.pp-block.pp-drop[data-session-id="2"]').length,
+      '重开卷要重播墨律（块 pp-drop：墨自 18px 落下）',
+    ).toBeGreaterThan(0);
     expect(
       container?.querySelectorAll('.pp-block.pp-enter[data-session-id="2"]').length,
-      '重开卷要重播墨律（块 pp-enter）',
-    ).toBeGreaterThan(0);
+      '落纸窗内不得同时挂 pp-enter（同一属性两条动画会互相替换）',
+    ).toBe(0);
 
     /* 窗的判据（本批实测踩过的那一脚）：摊开卷之后同帧还会来好几趟重渲染（落位/焦点/
      * 测高回写），类**不许**被中途摘掉——按帧发放 = 浏览器根本没见到那个类。 */

@@ -452,7 +452,7 @@ describe('§15 动效契约（散写时长守卫）', () => {
     expect(offenseOf('animation: foo 0.5s var(--m-ease-out)')).not.toBeNull();
   });
 
-  it('卷开合两窗（2026-10-18）：窗长镜像 --m-sheet + 入场走窗内类 + 纸律只动 opacity/translate', () => {
+  it('卷开合两窗（2026-10-18，力度定案「丙 · io ＋ 墨 18px」）：窗长镜像 + 两向走 io + 纸律只动 opacity', () => {
     // 窗长 = --m-sheet（CSS 播 260ms，壳层就留 260ms——留短了动画被卸载掐断）
     const ms = /export const REGION_MOTION_MS = (\d+);/.exec(REGION_MOTION_TS);
     expect(ms, 'region-motion.ts 缺 REGION_MOTION_MS').not.toBeNull();
@@ -462,12 +462,14 @@ describe('§15 动效契约（散写时长守卫）', () => {
 
     // 入场（落纸）：**窗内类**驱动的一次性淡入——不许用 `@starting-style`（流区随
     // 虚拟化卸载/重挂，挂首帧入场 = 平移时纸面反复「凭空浮现」，§15 已钉）。
+    // 曲线必须是 **io**：ease-out 把 80% 的变化压在头 30%（台架实测入场可见变化
+    // 1.65 vs 3.99——「力度定案」的实测依据，写在 CSS 注释里）。
     const spread = ruleBody(PANEL_CSS, '.pp-region.pp-spread {');
-    expect(spread, '缺落纸入场规则').toContain('pp-spread-in var(--m-sheet)');
+    expect(spread, '缺落纸入场规则').toContain('pp-spread-in var(--m-sheet) var(--m-ease-io)');
     expect(css, '落纸 keyframes 缺位').toContain('@keyframes pp-spread-in');
     // 摊开 = 摊上画布 + 设活卷：两条动画同时在位（animation 是整表替换不是合并）
     expect(css, '摊开+活卷时两条动画必须都写').toMatch(
-      /\.pp-region\.pp-spread\.pp-region-active\s*\{[^}]*pp-region-take[^}]*pp-spread-in/,
+      /\.pp-region\.pp-spread\.pp-region-active\s*\{[^}]*pp-region-take[^}]*pp-spread-in var\(--m-sheet\) var\(--m-ease-io\)/,
     );
     // 纸律：整叶只动 opacity——落纸规则的 keyframes 只碰 opacity，且规则本体不得
     // 声明 transform/translate/left/top/height（纸纹 background-position 与 InkLayer 对位红线）
@@ -476,21 +478,33 @@ describe('§15 动效契约（散写时长守卫）', () => {
     expect((spreadIn as RegExpExecArray)[1]).toContain('opacity: 0');
     expect(spread).not.toMatch(/\b(transform|translate|left|top|height)\b/);
 
-    // 退场（起纸）：[data-leaving] 淡出 + 不接点击；墨随纸沉走**独立 translate**
+    // 落纸的**墨**：卷首 + 块自 18px 落下，同档同曲线（8px 在实机读不出来——台架实测
+    // 落幅 8→28px 只再 +10%，故取 18px 这一档）；走独立 translate，绝不写 transform
+    const drop = /@keyframes pp-drop-in\s*\{([\s\S]*?)\n\}/.exec(css);
+    expect(drop, '缺落纸的墨 keyframes（pp-drop-in）').not.toBeNull();
+    expect((drop as RegExpExecArray)[1]).toContain('translate: 0 18px');
+    expect(css).toMatch(/\.pp-block\.pp-drop\s*\{[^}]*pp-drop-in var\(--m-sheet\) var\(--m-ease-io\)/);
+    expect(css, '卷首要与块同落').toMatch(/\.pp-region\.pp-spread \.pp-folio-head\s*\{[^}]*pp-drop-in/);
+
+    // 退场（起纸）：[data-leaving] 淡出 + 不接点击，曲线同为 io；墨随纸沉走**独立 translate**
     // （块定位用内联 transform——任何一帧声明 transform 会把块钉到左上角，2026-09-03 事故）
     const regionLeave = /\.pp-region\[data-leaving\]\s*\{([^}]*)\}/.exec(css);
     expect(regionLeave, '缺流区退场规则').not.toBeNull();
     expect((regionLeave as RegExpExecArray)[1]).toContain('opacity: 0');
     expect((regionLeave as RegExpExecArray)[1]).toContain('pointer-events: none');
+    expect((regionLeave as RegExpExecArray)[1]).toContain('var(--m-ease-io)');
     const blockLeave = /\.pp-block\.pp-leaving\s*\{([^}]*)\}/.exec(css);
     expect(blockLeave, '缺离场块的起纸规则').not.toBeNull();
     const body = (blockLeave as RegExpExecArray)[1];
-    expect(body).toContain('translate: 0 8px');
+    expect(body).toContain('translate: 0 18px'); // 与入场同幅（退场逆写）
     expect(body, '离场块的 transition 必须带上 transform（让位常驻位）').toContain('transform var(--m-sheet)');
+    expect(body).toContain('var(--m-ease-io)');
     expect(body).not.toMatch(/(^|[^e])transform\s*:/); // 不得写 transform（只能写 transition 里的那项）
+    expect(css, '卷首退场与块同沉').toMatch(/\.pp-region\[data-leaving\] \.pp-folio-head\s*\{[^}]*translate: 0 18px/);
 
-    // 壳层真读了这两窗（不只是 CSS 写了规则）
+    // 壳层真读了这两窗（不只是 CSS 写了规则）：落纸窗 + 离场窗 + 块的落纸类
     expect(PANEL_TSX).toContain('stepRegionMotion');
     expect(PANEL_TSX).toContain('data-leaving');
+    expect(PANEL_TSX).toContain("' pp-drop'");
   });
 });

@@ -378,15 +378,23 @@
  * §15 的换景收口账收的是「侧栏↔书脊 / 设置页签 / 首页↔画布 / 会话换主」，卷开合
  * 从来没立过项。
  *
- * 入场（**落纸**）= 纸淡入（本类，窗内发放——同 pp-enter 的首见纪律）+ 墨微升
- * 8px（既有块的 pp-enter 入场，档 `--m-ink`：墨比纸快半拍，两件各按自己的距离律
- * 档，不是漏写）。**刻意不用 `@starting-style`**：流区随虚拟化卸载/重挂
+ * **力度定案（2026-10-18 实机反馈「不太明显」→ 台架五案实测）**：主因不是幅度而是
+ * **曲线**——`--m-ease-out` 把 80% 的变化压在头 30%（t=.2 走完 65%、t=.45 走完 94%），
+ * 名义 260ms 的动效实感只有 ~90ms。台架 `prototype/region-open-close-ab.html` 逐案量
+ * 「与落定帧的平均可见变化」（0~255）：甲 ease-out + 墨 8px = **1.65**；只换 io =
+ * **3.99（+142%）**；io + 墨 18px = 4.30；io + 墨 28px = 4.37（落幅 8→28 只再 +10%）。
+ * ⇒ 取「io 曲线 + 墨落 18px」：**开合两向都走 `--m-ease-io`**（"对开"曲线本是给开合备的，
+ * 只是 §15 旧判据把它限定给「两侧同时动」——本批按实测扩到「纸的出现/抽走」），墨的
+ * 落幅 8 → **18px**（局部读得出来的最小加力）。
+ *
+ * 入场（**落纸**）= 纸淡入（本类，窗内发放——同 pp-enter 的首见纪律）+ 墨（卷首 + 块）
+ * 自 18px 落下（见 pp-drop-in）。**刻意不用 `@starting-style`**：流区随虚拟化卸载/重挂
  * （`visibleRegionIds`），挂首帧入场 = 平移时纸面反复「凭空浮现」——§15「首页→画布」
  * 候选做法那条判据已钉死这条路。类由壳层按落纸窗发放，重挂不重放。
  * 纸律：整叶**只动 opacity**——`.pp-region` 不得声明 transform/translate（纸纹
  * background-position 与 InkLayer 对位红线，见 pp-region-take 注）。 */
 .pp-region.pp-spread {
-  animation: pp-spread-in var(--m-sheet) backwards;
+  animation: pp-spread-in var(--m-sheet) var(--m-ease-io) backwards;
 }
 @keyframes pp-spread-in {
   from {
@@ -396,34 +404,57 @@
     opacity: 1;
   }
 }
+/* 落纸的**墨**：卷首与块自 18px 落下（`--m-sheet` / io，与纸同档同曲线 = 一次动作）。
+ * 走**独立 `translate` 属性**：块定位用内联 `transform: translate(x,y)`，任何一帧声明
+ * transform 都会把块钉到左上角（2026-09-03 生产事故，pp-enter 注有案）。
+ * `.pp-block.pp-drop` 由壳层在落纸窗内发放，并**取代**该块的 `pp-enter`
+ * （同一属性上两条动画是整表替换，只能二选一）。 */
+@keyframes pp-drop-in {
+  from {
+    translate: 0 18px;
+    opacity: 0;
+  }
+  to {
+    translate: 0 0;
+    opacity: 1;
+  }
+}
+.pp-block.pp-drop {
+  animation: pp-drop-in var(--m-sheet) var(--m-ease-io) backwards;
+}
+/* 卷首的落纸/起纸两条规则**不住这里**：`.pp-region.pp-spread .pp-folio-head`
+ * 特异度 (0,3,0) 高于基座 `.pp-folio-head` (0,1,0)，写在本段会触发 biome
+ * noDescendingSpecificity（真机上仍生效，但顺序失真会让后来者误判）——
+ * 它们迁到 `.pp-folio-head` 基座之后（搜「卷首随纸落/沉」）。 */
 /* 摊开 = 摊上画布 + 设为活卷 ⇒ 「拿纸过冲」与「落纸」两条动画同时在位。
- * `animation` 是**整表替换不是合并**：这里必须把两条都写上，缺一条就丢一条。 */
+ * `animation` 是**整表替换不是合并**：这里必须把两条都写上，缺一条就丢一条。
+ * 拿纸过冲保留它自己的既有曲线（产品原样），只给落纸挂 io。 */
 .pp-region.pp-spread.pp-region-active {
   animation:
     pp-region-take var(--m-sheet),
-    pp-spread-in var(--m-sheet) backwards;
+    pp-spread-in var(--m-sheet) var(--m-ease-io) backwards;
 }
-/* 退场（**起纸**）= 入场逆写，窗满才由壳层真卸载（`region-leave.ts` 的
- * `REGION_LEAVE_MS` = `--m-sheet`；窗内重开 = 属性摘掉、按当下值掉头回场）。
+/* 退场（**起纸**）= 入场逆写（同档 `--m-sheet`、同曲线 io），窗满才由壳层真卸载
+ * （`region-motion.ts` 的 `REGION_MOTION_MS` = `--m-sheet`；窗内重开 = 属性摘掉、
+ * 按当下值掉头回场）。
  * 档写在**退场规则**里——CSS Transitions 取「变更后」样式那张表（批 3b 判据）。
  * 退场期一律不接点击（约束律②：动效永不阻塞交互，正在消失的面也不许吃点击）。 */
 .pp-region[data-leaving] {
   opacity: 0;
-  transition: opacity var(--m-sheet);
+  transition: opacity var(--m-sheet) var(--m-ease-io);
   pointer-events: none;
 }
 .pp-block.pp-leaving {
   opacity: 0;
-  /* 墨随纸沉 8px 走**独立 `translate` 属性**，绝不写 `transform`——块定位用内联
-   * `transform: translate(x,y)`，任何一帧声明 transform 都会把块钉到左上角
-   * （2026-09-03 生产事故，pp-enter 注有案）。起纸是一件事（整叶一起走），故墨的沉
-   * 与纸的淡同档 `--m-sheet`。transition 整表替换 ⇒ 必须带上 transform（让位常驻位，
-   * motion-contract 有牙）。 */
-  translate: 0 8px;
+  /* 墨随纸沉 18px（与入场同幅）走**独立 `translate` 属性**，绝不写 `transform`
+   * （同上：块定位用内联 transform）。起纸是一件事（整叶一起走），故墨的沉与纸的淡
+   * 同档 `--m-sheet` / 同曲线 io。transition 整表替换 ⇒ 必须带上 transform
+   * （让位常驻位，motion-contract 有牙）。 */
+  translate: 0 18px;
   transition:
     transform var(--m-sheet),
-    translate var(--m-sheet),
-    opacity var(--m-sheet);
+    translate var(--m-sheet) var(--m-ease-io),
+    opacity var(--m-sheet) var(--m-ease-io);
   pointer-events: none;
 }
 /* ── 桌垫（材质批修复 2026-09-01：贴纸语义两刀之二）──
@@ -489,6 +520,17 @@
      下内距 0——底距由版心内层的 padding-bottom 承担（规线随之内缩） */
   padding: 24px 0 0;
   pointer-events: none;
+}
+/* 卷首随纸落 / 沉（2026-10-18 卷开合动效批「丙」）：与块层同一族 keyframes/过渡 —— 落纸
+ * = 自 18px 落下（`--m-sheet` / io），起纸 = 沉 18px 并随整叶淡去（退场逆写）。
+ * ⚠ 两条住在这里（基座 `.pp-folio-head` 之后）是**特异度阶梯**要求：它们 (0,3,0)
+ * 高于基座 (0,1,0)，写在卷开合段（前面）会触发 noDescendingSpecificity。 */
+.pp-region.pp-spread .pp-folio-head {
+  animation: pp-drop-in var(--m-sheet) var(--m-ease-io) backwards;
+}
+.pp-region[data-leaving] .pp-folio-head {
+  translate: 0 18px;
+  transition: translate var(--m-sheet) var(--m-ease-io);
 }
 /* 版心内层（2026-09-16 新增）：卷首四行 + 硬规线 + 版口钮的**唯一版心盒**。
  * width = 50%（= 流区宽一半；2026-10-08「墨占纸半」重定——原 min(720px, 100%) 的
