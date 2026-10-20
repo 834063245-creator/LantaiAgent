@@ -51,6 +51,9 @@ export interface TocInkBucket {
   width: number;
   /** 墨量：TOC_INK_ALPHA_FLOOR + (1−floor) × √(桶内面积 / 全带最大桶面积) */
   alpha: number;
+  /** 墨量的**原始比**（0..1，√ 归一，不含 alpha 下限）——渲染端按族增益再定深浅
+   *  （v4：alpha 是「下限 + 比」的成品读数，density 才是数据；两者不要反推）。 */
+  density: number;
   /** 族色：定形那行的块 kind */
   kind: string;
   /** 桶内任一行报错 */
@@ -90,11 +93,13 @@ export function buildTocInkBuckets(
     const top = range.stripTop + k * bucket;
     const height = Math.min(bucket, range.stripBottom - top);
     if (height <= 0) continue; // 桶落在带底之下 → 不出（带外不画）
+    const density = Math.sqrt(v.area / maxArea);
     out.push({
       top,
       height,
       width: v.w,
-      alpha: TOC_INK_ALPHA_FLOOR + (1 - TOC_INK_ALPHA_FLOOR) * Math.sqrt(v.area / maxArea),
+      alpha: TOC_INK_ALPHA_FLOOR + (1 - TOC_INK_ALPHA_FLOOR) * density,
+      density,
       kind: v.kind,
       err: v.err,
     });

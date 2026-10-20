@@ -236,7 +236,7 @@ export function buildStageAnchors(units: StageUnitInput[], range: TocRange): Sta
       blockId: u.blockId,
       stripY: map(worldY),
       worldY,
-      preview: (u.preview ?? '').slice(0, 24) || `阶段 ${stageIndex}`,
+      preview: (u.preview ?? '').slice(0, 40) || `阶段 ${stageIndex}`,
     });
   }
   return out;

@@ -260,11 +260,10 @@ describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => 
     expect(marks).toHaveLength(3);
     const tops = marks.map((m) => Number.parseFloat(m.style.top));
     // 带体坐标：带体从屏顶起（两坐标重合），「不越出带体」= 带内一切 top ≥ 0。
-    // 最上一枚刻痕盒顶 = STRIP_TOP − MARK_HALF = 0（旧旧实现 = 页面 52 < 56：
-    // 那 4px 命中归书眉＝拖窗口，点刻痕点不中）
+    // v4.1：映射区顶 = 顶部浮件带高 56（上下都留空隙）；最上一枚刻痕盒顶 = 52。
     expect(Math.min(...tops)).toBeGreaterThanOrEqual(0);
-    expect(STRIP_TOP).toBe(MARK_HALF); // 映射区顶 = 刻痕半高（带体坐标）
-    expect(STRIP_TOP - MARK_HALF).toBe(0);
+    expect(STRIP_TOP).toBe(TOP_CHROME_BAND); // 映射区顶 = 顶部浮件带高（上下留白同族）
+    expect(STRIP_TOP - MARK_HALF).toBe(52);
     const slider = container!.querySelector('.pp-toc-slider') as HTMLElement;
     expect(Number.parseFloat(slider.style.top)).toBeGreaterThanOrEqual(STRIP_TOP);
   });

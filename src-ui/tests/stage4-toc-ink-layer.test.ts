@@ -94,6 +94,16 @@ describe('paper/toc-ink 桶聚合', () => {
     if (errored && plain) expect(errored.alpha).toBeCloseTo(plain.alpha, 6);
   });
 
+  it('density：原始 √ 归一（0..1），最大桶 = 1；alpha 仍是「下限 + 比」的成品读数', () => {
+    const buckets = buildTocInkBuckets(volume(), RANGE);
+    expect(Math.max(...buckets.map((b) => b.density))).toBeCloseTo(1, 6);
+    for (const b of buckets) {
+      expect(b.density).toBeGreaterThanOrEqual(0);
+      expect(b.density).toBeLessThanOrEqual(1);
+      expect(b.alpha).toBeCloseTo(TOC_INK_ALPHA_FLOOR + (1 - TOC_INK_ALPHA_FLOOR) * b.density, 6);
+    }
+  });
+
   it('四通道判据（差分断言）：空行率 0 / 覆盖 ≥80% —— v2 的每块首行细条做不到', () => {
     const buckets = buildTocInkBuckets(volume(), RANGE);
     const covered = buckets.reduce((n, b) => n + b.height, 0);

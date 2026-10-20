@@ -248,14 +248,23 @@ describe('目次带 v3 — 阶段锚可点 / 装饰刻痕不参与命中', () =>
     act(() => {
       nav.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientY: tickY }));
     });
-    expect(container!.querySelector('.pp-toc-card')?.textContent).toBe('读文件');
+    // v4 卡片 = eyebrow（语色）+ 正文；文本不再把「工具」并进正文
+    const toolCard = container!.querySelector('.pp-toc-card') as HTMLElement;
+    expect(toolCard.querySelector('.pp-toc-eyebrow')?.textContent).toBe('工具');
+    expect(toolCard.textContent).toContain('读文件');
+    expect(toolCard.classList.contains('is-tone-tool')).toBe(true);
     expect(container!.querySelector('.pp-toc-mark.is-tool.is-hover')).not.toBeNull(); // 卡片所示即高亮所在
 
-    // 阶段锚命中盒内（锚 y 与刻痕相隔 ≫ 半高）→ 卡片报阶段序
+    // 阶段锚命中盒内（锚 y 与刻痕相隔 ≫ 半高）→ 卡片报阶段序（eyebrow）
     const anchorTop = Number.parseFloat((container!.querySelector('.pp-toc-anchor') as HTMLElement).style.top);
     act(() => {
       nav.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientY: anchorTop + STAGE_HIT_H / 2 }));
     });
-    expect(container!.querySelector('.pp-toc-card')?.textContent).toContain('阶段 1 ·');
+    const stageCard = container!.querySelector('.pp-toc-card') as HTMLElement;
+    expect(stageCard.querySelector('.pp-toc-eyebrow')?.textContent).toBe('阶段 1');
+    expect(stageCard.textContent).toContain('第一轮来文');
+    expect(stageCard.classList.contains('is-tone-stage')).toBe(true);
+    // 锚同步提墨（编号在 34px 盒外，靠 is-hover 而不是 :hover）
+    expect(container!.querySelector('.pp-toc-anchor.is-hover')).not.toBeNull();
   });
 });
