@@ -273,7 +273,9 @@ pub(crate) mod registry {
     }
 
     /// 已知工作区清单：注册表条目全量列出（含空工作区）；每个工作区的
-    /// 会话计数/最近时间扫**自己的会话根** `{path}/.lantai/sessions/`。
+    /// 卷数/最近时间扫**自己的会话根** `{path}/.lantai/sessions/`——认卷口径
+    /// 见 `filesystem::scan_sessions_dir`（卷本体 = `.ndjson`，空卷按清单投影
+    /// `_index.json` 剔除，与画布侧栏同源）。
     /// workspace-session-ownership-rework（2026-08-27）：会话物理归属工作区，
     /// 不再有「全局位按 workspace 字段推导」的回退臂；排序 = 固定优先 →
     /// lastOpenedAt 降序。
@@ -281,21 +283,16 @@ pub(crate) mod registry {
         let reg = read_registry();
         let mut out: Vec<WorkspaceSummary> = Vec::new();
         for e in &reg.workspaces {
-            let sessions = crate::commands::filesystem::scan_sessions_dir(
+            let scan = crate::commands::filesystem::scan_sessions_dir(
                 &crate::commands::filesystem::workspace_sessions_root(&e.path),
             );
-            let latest = sessions
-                .iter()
-                .map(|s| s.saved_at.clone())
-                .filter(|s| !s.is_empty())
-                .max();
             out.push(WorkspaceSummary {
                 path: e.path.clone(),
                 name: e.name.clone(),
                 last_opened_at: e.last_opened_at.clone(),
                 pinned: e.pinned,
-                session_count: sessions.len(),
-                latest_saved_at: latest,
+                session_count: scan.count,
+                latest_saved_at: scan.latest_saved_at,
                 dir_exists: std::path::Path::new(&e.path).exists(),
             });
         }
@@ -416,54 +413,112 @@ pub(crate) mod registry {
         }
 
         #[test]
-        fn list_counts_per_workspace_sessions() {
-            // workspace-session-ownership-rework：会话计数扫各工作区自己的
-            // 会话根（{ws}/.lantai/sessions/）——工作区根用临时目录真实落盘，
-            // 注册表读写走 with_temp_home 隔离。
-            let ws_empty = std::env::temp_dir().join(format!(
-                "lantai_ws_list_empty_{}",
-                crate::audit::now_iso().replace([':', '.'], "-")
-            ));
-            let ws_full = std::env::temp_dir().join(format!(
-                "lantai_ws_list_full_{}",
-                crate::audit::now_iso().replace([':', '.'], "-")
-            ));
-            let _ = std::fs::remove_dir_all(&ws_empty);
-            let _ = std::fs::remove_dir_all(&ws_full);
-            // 空工作区也真实落盘（绑定过的目录必然在盘上——dir_exists 语义的前提）
+        fn list_counts_volumes_from_ndjson_and_catalog() {
+            // 卷集真源 = 事件日志 `.ndjson`（Phase 3b 权威翻转 2026-09-15）。
+            // 旧口径按 `.json` 数卷：删光会话后仍报「2 卷」（真机 2026-10-20 的
+            // 6.json / 10.json 两份残留），且漏掉只有 `.ndjson` 的真实卷。
+            // 空卷（建卷后没说过话）在清单投影 `_index.json` 无行、画布侧栏也不列
+            // → 不计数；清单缺席/版本不认则退回「目录里有就算」。
+            let temp_ws = |tag: &str| {
+                let dir = std::env::temp_dir().join(format!(
+                    "lantai_ws_list_{tag}_{}",
+                    crate::audit::now_iso().replace([':', '.'], "-")
+                ));
+                let _ = std::fs::remove_dir_all(&dir);
+                dir
+            };
+            let put = |path: &std::path::Path, body: &str| {
+                crate::utils::write_atomic(&path.to_string_lossy(), body).unwrap();
+            };
+
+            let ws_empty = temp_ws("empty");
             std::fs::create_dir_all(&ws_empty).unwrap();
             let empty_str = ws_empty.to_string_lossy().replace('\\', "/");
+
+            // 满工作区：11/12 = 真卷；14 = 空壳（清单无行）；13.json = 旧化石/删除残留
+            let ws_full = temp_ws("full");
+            std::fs::create_dir_all(&ws_full).unwrap();
             let full_str = ws_full.to_string_lossy().replace('\\', "/");
             let sessions_dir = crate::commands::filesystem::workspace_sessions_root(&full_str);
             std::fs::create_dir_all(&sessions_dir).unwrap();
-            crate::utils::write_atomic(
-                &sessions_dir.join("11.json").to_string_lossy(),
-                r#"{"id":11,"label":"a","savedAt":"2026-08-26T00:00:00Z"}"#,
-            )
-            .unwrap();
-            crate::utils::write_atomic(
-                &sessions_dir.join("12.json").to_string_lossy(),
-                r#"{"id":12,"label":"b","savedAt":"2026-08-26T01:00:00Z"}"#,
-            )
-            .unwrap();
+            put(
+                &sessions_dir.join("11.ndjson"),
+                r#"{"type":"session","version":1,"id":11}"#,
+            );
+            put(
+                &sessions_dir.join("12.ndjson"),
+                r#"{"type":"session","version":1,"id":12}"#,
+            );
+            put(
+                &sessions_dir.join("14.ndjson"),
+                r#"{"type":"session","version":1,"id":14}"#,
+            );
+            put(
+                &sessions_dir.join("13.json"),
+                r#"{"id":13,"label":"fossil","savedAt":"2026-09-19T17:08:38Z"}"#,
+            );
+            put(
+                &sessions_dir.join("_index.json"),
+                r#"{"ver":2,"rows":{"11":{"label":"a","savedAt":"2026-08-26T00:00:00Z","msgCount":3},"12":{"label":"b","savedAt":"2026-08-26T01:00:00Z","msgCount":4}}}"#,
+            );
+
+            // 旧工作区：只有 Phase 3b 之前的 `.json` 化石（画布也读不出来）→ 0 卷
+            let ws_legacy = temp_ws("legacy");
+            std::fs::create_dir_all(&ws_legacy).unwrap();
+            let legacy_str = ws_legacy.to_string_lossy().replace('\\', "/");
+            let legacy_dir = crate::commands::filesystem::workspace_sessions_root(&legacy_str);
+            std::fs::create_dir_all(&legacy_dir).unwrap();
+            put(
+                &legacy_dir.join("5.json"),
+                r#"{"id":5,"label":"old","savedAt":"2026-09-01T00:00:00Z"}"#,
+            );
+
+            // 清单缺席的工作区：退回文件口径（ndjson 在盘上就算），最近取 mtime
+            let ws_no_index = temp_ws("noindex");
+            std::fs::create_dir_all(&ws_no_index).unwrap();
+            let no_index_str = ws_no_index.to_string_lossy().replace('\\', "/");
+            let no_index_dir = crate::commands::filesystem::workspace_sessions_root(&no_index_str);
+            std::fs::create_dir_all(&no_index_dir).unwrap();
+            put(
+                &no_index_dir.join("31.ndjson"),
+                r#"{"type":"session","version":1,"id":31}"#,
+            );
 
             with_temp_home(|| {
-                register(&empty_str, None).unwrap();
-                register(&full_str, None).unwrap();
+                for p in [&empty_str, &full_str, &legacy_str, &no_index_str] {
+                    register(p, None).unwrap();
+                }
 
                 let list = list().unwrap();
+                let find = |path: &str| list.iter().find(|w| w.path == path).unwrap();
+
                 // 空工作区也在列（注册表来源，计数 0）
-                let empty = list.iter().find(|w| w.path == empty_str).unwrap();
+                let empty = find(&empty_str);
                 assert_eq!(empty.session_count, 0, "空工作区可见且计数 0");
                 assert!(empty.dir_exists, "真实落盘的工作区 dir_exists=true");
-                // 会话计数扫本工作区会话根 + 最近正确
-                let full = list.iter().find(|w| w.path == full_str).unwrap();
-                assert_eq!(full.session_count, 2);
-                assert_eq!(full.latest_saved_at.as_deref(), Some("2026-08-26T01:00:00Z"));
+
+                // 真卷计数 = 2（13.json 化石不算、14.ndjson 空壳不算）；最近取清单行
+                let full = find(&full_str);
+                assert_eq!(full.session_count, 2, ".ndjson 真卷才算卷");
+                assert_eq!(
+                    full.latest_saved_at.as_deref(),
+                    Some("2026-08-26T01:00:00Z"),
+                    "最近落盘时间取清单投影 savedAt"
+                );
                 assert!(full.dir_exists);
+
+                // 只有旧 `.json` 化石 = 0 卷（画布同样不认）
+                assert_eq!(find(&legacy_str).session_count, 0, "旧 .json 化石不算卷");
+                assert_eq!(find(&legacy_str).latest_saved_at, None);
+
+                // 清单缺席：退回文件口径（不至于把历史工作区显示成 0 卷）
+                let no_index = find(&no_index_str);
+                assert_eq!(no_index.session_count, 1, "清单缺席时按 .ndjson 计数");
+                assert!(no_index.latest_saved_at.is_some(), "清单缺席时最近取 mtime");
             });
-            let _ = std::fs::remove_dir_all(&ws_empty);
-            let _ = std::fs::remove_dir_all(&ws_full);
+            for d in [&ws_empty, &ws_full, &ws_legacy, &ws_no_index] {
+                let _ = std::fs::remove_dir_all(d);
+            }
         }
 
         #[test]
@@ -482,8 +537,8 @@ pub(crate) mod registry {
                 // {ws}/.lantai/sessions/ 下——删除 = 删该目录
                 let sessions_dir = crate::commands::filesystem::workspace_sessions_root(&ws_str);
                 std::fs::create_dir_all(&sessions_dir).unwrap();
-                std::fs::write(sessions_dir.join("21.json"), r#"{"id":21,"label":"a"}"#).unwrap();
-                std::fs::write(sessions_dir.join("22.json"), r#"{"id":22,"label":"b"}"#).unwrap();
+                std::fs::write(sessions_dir.join("21.ndjson"), r#"{"type":"session","version":1,"id":21}"#).unwrap();
+                std::fs::write(sessions_dir.join("22.ndjson"), r#"{"type":"session","version":1,"id":22}"#).unwrap();
 
                 remove(&ws_str).unwrap();
 
