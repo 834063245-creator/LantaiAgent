@@ -3483,6 +3483,14 @@
   color: var(--ink-2);
   letter-spacing: 0.04em;
 }
+/* 2026-10-22 P2：空态第二行 = 去处说明（不是第二个读数）；与主句同字号、退一档墨。 */
+.pp-work-empty-sub {
+  margin: 2px 0 0;
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
 .pp-work-foot {
   margin: 8px 0 0;
   font-family: var(--f-song);
@@ -4001,6 +4009,35 @@
   padding-bottom: 6px;
   border-bottom: 1px solid var(--rule-soft-ink);
   margin-bottom: 2px;
+}
+.pp-help-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+/* 2026-10-22 P2：组与组之间用一条弱线分开（同册页段题语言），组题复刻
+ * 8px 实心方墨锚点 + 10px/600/字距题字。 */
+.pp-help-group + .pp-help-group {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule-soft-ink);
+}
+.pp-help-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: 0.18em;
+}
+.pp-help-group-title::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--ink-1);
+  flex: 0 0 auto;
 }
 .pp-help-row {
   display: flex;

@@ -494,3 +494,9 @@
   **选**：① 模型菜单 name 12/600/ink-1、id 10/ink-3、分组题 11/600/ink-2（song、去全大写/0.2em 字距）；「视」8→9；律册键 12/ink-2、引路径 11/ink-2、文件签 11、脚注/图例/账目副行 10→11；设置行全部吃 scale。② 厂商章改纸色底 + ink-2 字 + 1px ink-4 框（分组头 14 同款）——红只留人的动作/身份件。③ 输入行 DOM 重排：`textarea → 附件/附图 → 引/夹 → 拟文`（翰/引浮层仍 absolute，不入轴）。④ 模型触发器 150→215，名称抬 600/ink-1。⑤ 文件签改纸签（11 mono/ink-2/发丝框/纸色底，hover 转朱砂）；律册键与翰快捷键去石青；组合芯片只读 ink-3→ink-2。
   **弃（留 P2）**：不动版心/三行制/设置行归堆/朱砂主动作；不重排翰/律/役 的 IA；模型菜单 300×260 几何不动（内容变高后照常滚）。
   **钉值**：`tests/composer-p1-polish.test.ts` 8 例（字号/主次/红蓝/缩放/焦点）+ `composer-dock-row-order.test.tsx` P1 左轴 1 例（textarea 首个布局件、引/夹在其右、拟文最右）+ `model-selector-compact.test.tsx` 目录外 provider-scoped id 去前缀 1 例。**部署面**：模型菜单/组合芯片/ComposerDock 产物可热更；`PaperPanel.css` 在壳 bundle ⇒ 真机看字号/纸签/左轴/厂商章须重建 exe。
+
+- 2026-10-22 · **创作坞 P2 信息架构：翰归全局面板 / 律分组 / 役空态收口**（用户 P1 验收后「开P2」）·
+  **病灶**：① **翰是第二份命令清单**——坞内 `.pp-slash` 无搜索框、无分组、只列 slash 命令，而 Ctrl+K 全局面板已有搜索 + 分组 + 动作/插件命令；两处同源（listCommands/executeCommand）却两套呈现，用户点翰得到的比 Ctrl+K 少。② **全局面板是观测台材质**——`--glass-hi` + `backdrop-filter: blur(16px)`，与纸壳「不透明纸 + 发丝线 + 墨影」不是同一个世界。③ **律 13 行等权平铺**——键位/释义不分场景，读起来像一张表单。④ **役空态说了三遍「在役」**——`0 在役 · 0 已了` / 大号 `0` + 在役 / 段题「在役」/「本卷无在役」。
+  **选**：① 翰只做 `setPaletteOpen(true)`（全局面板 = 搜索/分组/动作与插件命令）；坞内 `menuOpen`/`effectiveSlashQuery` 整组删除，`/` 仍走内联斜杠面板；全局面板回纸（去 glass/blur，`--paper` + `--rule-head` 头线，组题 11/600 去大写，行 13，脚/kbd 11）。② 律分四组（输入/附卷/画布/纸面），组题 = 6px 方墨 + 10px/600/0.18em，组间弱线；行数据逐字保留。③ 役零在役只出「本卷无在役」+ 一行「子代理与后台命令会在这里出现」；大号读数/计数/段题只在 `running > 0` 时渲染；头部计数只在有在役或已了时出现。
+  **弃**：未改 `/` 内联面板的键盘路径；未改翰/律/役 触发钮与热区；未改全局面板的动作源（listActions + session commands + plugin contributions）。
+  **钉值**：`composer-dock-desk.test.tsx` 14 例（翰只开全局面板、不再生 `.pp-slash`；`/` 仍走内联并执行；律四组题名）+ `composer-dock-work-ledger.test.tsx` 12 例（空态一句 + 去处说明 + 无大号 0/无「在役」段题）+ `composer-p2-ia.test.ts` 5 例（pal-box 回纸/去 blur、组题/行/脚字号、翰接线、役空态接线）。**部署面**：ComposerDock/WorkLedger 产物可热更；`shell.css` 与 `PaperPanel.css` 在壳 bundle ⇒ 全量真机须重建 exe。

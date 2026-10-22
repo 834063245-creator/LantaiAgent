@@ -478,6 +478,34 @@ measure 折叠高 = `FOLD_ROW_H`）+ `prototype/asset-rack-v2.html`（真样式�
 **部署面**：模型菜单/组合芯片/ComposerDock 为 `compose-dock` 产物（可热更）；`PaperPanel.css`
 在壳 bundle ⇒ 真机看字号/纸签/左轴/厂商章须重建 exe。
 
+### 9.8 翰/律/役 信息架构（2026-10-22 P2）
+
+**来由**：P1 后用户「开P2」——不动输入体验，只修三个面板的「读法」。
+
+1. **翰 = 全局命令面板（Ctrl+K 同一份）**：旧翰在坞内维护第二份内联斜杠清单（无搜索框、无分组、
+   只有 slash 命令），与 Ctrl+K 的全局面板（搜索 + 分组 + 动作/插件命令）重复。现翰只做一件事：
+   `setPaletteOpen(true)`；`/` 触发词仍走内联 `.pp-slash`（查询词在正文里，只列 slash 命令）。
+   坞内 `menuOpen` / `effectiveSlashQuery` 整组删除（翰不再是坞的本地浮层，不入「思考/律/引/墨/役」
+   互斥族）。**全局面板同时回纸**：`--glass-hi` + `backdrop-filter` 退役（那是观测台材质），改
+   `--paper` 不透明底 + `--rule-head` 头线；组题 11/600 去大写 mono，行 13，脚 11，kbd 11。
+2. **律 = 四组**：13 行等权平铺 → **输入 / 附卷 / 画布 / 纸面**；组题复刻册页段题（6px 实心方墨 +
+   10px/600/0.18em 题字），组间一条弱线。行数据原样保留（键位/释义逐字未动）。
+3. **役 = 空态一句话**：旧空态把「在役」说了三遍（`0 在役 · 0 已了` / 大号 `0` + 在役 / 段题「在役」
+   / 本卷无在役）。现零在役时**只出**「本卷无在役」+ 一行去处说明「子代理与后台命令会在这里出现」；
+   大号读数、子代理/后台命令计数、段题「在役」全部只在 `running.length > 0` 时渲染。头部计数
+   也只在「有在役或有已了」时出现（不全零空报）。
+
+**边界**：`/` 内联面板的键盘/执行路径逐字未动；翰/律/役 的触发钮/热区/aria-label 不动；
+全局面板的动作源（listActions + session commands + plugin contributions）不动。
+
+**证据**：`tests/composer-dock-desk.test.tsx`（翰只开全局面板、不再生 `.pp-slash`；`/` 仍走内联面板并执行；
+律四组题名；14 例）+ `tests/composer-dock-work-ledger.test.tsx`（空态一句 + 去处说明 + 无大号 0/无「在役」
+段题；12 例）+ `tests/composer-p2-ia.test.ts`（pal-box 回纸/去 blur、组题/行/脚字号、翰接线、役空态接线；
+5 例）+ `tests/composer-dock-keyboard.test.tsx`（斜杠键盘 6 例零改动）。
+
+**部署面**：`ComposerDock` / `WorkLedger` 为 `compose-dock` 产物（可热更）；`shell.css` 的 `.pal-*`
+与 `PaperPanel.css` 的 `.pp-help-*` / `.pp-work-*` 在壳 bundle ⇒ 真机看全量须重建 exe。
+
 ---
 
 ## 10. 浸墨法则（2026-08-31 全局视觉立宪 · 用户拍板 B）

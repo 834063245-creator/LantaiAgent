@@ -200,37 +200,46 @@ export const WorkLedger = memo(function WorkLedger({
         <div className="pp-work-panel" role="dialog" aria-label="役册">
           <div className="pp-work-head">
             <span className="pp-work-head-title">役 · {sessionLabel}</span>
-            <span className="pp-work-head-figures">
-              {running.length} 在役 · {settled.length} 已了
-            </span>
-          </div>
-
-          {/* 读数（全册唯一题字）：在役条数——石青 = 机/运行态 */}
-          <div className="pp-work-reading">
-            <span className={`pp-work-count${running.length > 0 ? ' live' : ''}`}>{running.length}</span>
-            <span className="pp-work-reading-label">在役</span>
-          </div>
-          <p className="pp-work-note">
-            子代理 {subCount} · 后台命令 {shellCount}
-            {elsewhere > 0 && (
-              <>
-                <span className="pp-work-note-sep" aria-hidden="true">
-                  ·
-                </span>
-                他卷 {elsewhere}
-              </>
+            {(running.length > 0 || settled.length > 0) && (
+              <span className="pp-work-head-figures">
+                {running.length} 在役 · {settled.length} 已了
+              </span>
             )}
-          </p>
+          </div>
 
-          <Section title="在役" />
-          {running.length === 0 ? (
-            <div className="pp-work-empty">本卷无在役</div>
+          {/* 空态（2026-10-22 P2）：旧态把「在役」说了三遍（0 在役 · 0 已了 / 大号 0 /
+              段题「在役」/ 本卷无在役）。现在零在役时只留一句 + 一行去处说明；读数与
+              段题只在真有活时出现。 */}
+          {running.length > 0 ? (
+            <>
+              {/* 读数（全册唯一题字）：在役条数——石青 = 机/运行态 */}
+              <div className="pp-work-reading">
+                <span className="pp-work-count live">{running.length}</span>
+                <span className="pp-work-reading-label">在役</span>
+              </div>
+              <p className="pp-work-note">
+                子代理 {subCount} · 后台命令 {shellCount}
+                {elsewhere > 0 && (
+                  <>
+                    <span className="pp-work-note-sep" aria-hidden="true">
+                      ·
+                    </span>
+                    他卷 {elsewhere}
+                  </>
+                )}
+              </p>
+              <Section title="在役" />
+              <ul className="pp-work-list">
+                {running.map((e) => (
+                  <Item key={`${e.kind}:${e.id}`} entry={e} now={now} onStop={onStop} />
+                ))}
+              </ul>
+            </>
           ) : (
-            <ul className="pp-work-list">
-              {running.map((e) => (
-                <Item key={`${e.kind}:${e.id}`} entry={e} now={now} onStop={onStop} />
-              ))}
-            </ul>
+            <>
+              <div className="pp-work-empty">本卷无在役</div>
+              <p className="pp-work-empty-sub">子代理与后台命令会在这里出现</p>
+            </>
           )}
 
           {elsewhere > 0 && (

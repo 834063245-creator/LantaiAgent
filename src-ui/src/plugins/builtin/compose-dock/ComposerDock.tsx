@@ -165,21 +165,45 @@ function isSubsequence(needle: string, haystack: string): boolean {
   return i === needle.length;
 }
 
-/** 律（快捷键总览）行表——键在前、义在后。 */
-const HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
-  ['Enter', '发送'],
-  ['Shift+Enter', '换行'],
-  ['↑ / ↓', '输入历史'],
-  ['/ 或 翰', '命令面板'],
-  ['引 · 夹', '附文件入卷'],
-  ['拖文件到坞', '界栏松手入卷'],
-  ['Alt+↑↓', '块间移动'],
-  ['Alt+←→', '卷间移动'],
-  ['Home', '画布回原点'],
-  ['拖文类签', '移出钉住'],
-  ['拖流区边缘', '移动流区'],
-  ['拖流区四角', '调整宽度'],
-  ['拖选区', '抽纸条'],
+/** 律（快捷键总览）——2026-10-22 P2 分组：输入 / 附卷 / 画布 / 纸面。
+ *  13 行等权平铺时代结束；组题沿用册页的「方墨锚点 + 字距题字」语言。 */
+const HELP_GROUPS: ReadonlyArray<{
+  title: string;
+  rows: ReadonlyArray<readonly [string, string]>;
+}> = [
+  {
+    title: '输入',
+    rows: [
+      ['Enter', '发送'],
+      ['Shift+Enter', '换行'],
+      ['↑ / ↓', '输入历史'],
+      ['/ 或 翰', '命令面板'],
+    ],
+  },
+  {
+    title: '附卷',
+    rows: [
+      ['引 · 夹', '附文件入卷'],
+      ['拖文件到坞', '界栏松手入卷'],
+    ],
+  },
+  {
+    title: '画布',
+    rows: [
+      ['Alt+↑↓', '块间移动'],
+      ['Alt+←→', '卷间移动'],
+      ['Home', '画布回原点'],
+    ],
+  },
+  {
+    title: '纸面',
+    rows: [
+      ['拖文类签', '移出钉住'],
+      ['拖流区边缘', '移动流区'],
+      ['拖流区四角', '调整宽度'],
+      ['拖选区', '抽纸条'],
+    ],
+  },
 ];
 
 /** 历史导航眉批：一次性提示旗标（localStorage，毒化容忍——读写全包 try）。 */
@@ -224,9 +248,10 @@ export const ComposerDock = memo(function ComposerDock() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  /* ── 创作坞 v2（2026-08-31）本地态：翰（命令面板）/ 律（快捷键）/ 引（文件）
+  /** 全局命令面板开合（2026-10-22 P2：翰 = 打开 Ctrl+K 同一面板，不再维护第二份内联清单）。 */
+  const paletteOpen = useShellStore((s) => s.paletteOpen);
+  /* ── 创作坞 v2（2026-08-31）本地态：律（快捷键）/ 引（文件）
    *    / 拖放入卷界栏 / 历史眉批。── */
-  const [menuOpen, setMenuOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [yinOpen, setYinOpen] = useState(false);
   const [yinQuery, setYinQuery] = useState('');
@@ -321,12 +346,11 @@ export const ComposerDock = memo(function ComposerDock() {
 
   /* ── C2（2026-08-27）：切卷清理本地态——localNotice 与思考展开面板
    *    不跨会话残留（A 卷的提示/展开状态带到 B 卷是认知噪音）。
-   *    v2 增补：翰/律/引面板同属本地态，一并清。 ── */
+   *    v2 增补：律/引面板同属本地态，一并清。 ── */
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeSessionId 是刻意的「切卷触发器」——正是要响应它变化清本地态
   useEffect(() => {
     setLocalNotice(null);
     setSettingsOpen(false);
-    setMenuOpen(false);
     setHelpOpen(false);
     setYinOpen(false);
     setInkOpen(false);
@@ -575,12 +599,12 @@ export const ComposerDock = memo(function ComposerDock() {
   const compLocked = activeSessionId != null && !compBlank;
   const compLabel = compInfo.presetId;
 
-  /* ── 斜杠命令 ＋ 翰 入口（v2 2026-08-31；2026-09-19 command-surface-rework）：
+  /* ── 斜杠命令（v2 2026-08-31；2026-09-19 command-surface-rework；2026-10-22 P2 翰解耦）：
    *    命令清单真源 = app/commands/command-catalog 合流点（本卷内建命令 +
    *    ctx.commands 贡献 + 技能候选）——旧 CommandRegistry 单例已退役。
-   *    命令面板不再只靠盲打 / 发现：设置行「翰」按钮开同一层面板（空查询 =
-   *    全量，含无斜杠触发词的键位命令）。打字优先：手输即散翰面板，
-   *    / 触发词接管过滤（只列斜杠触达的命令）。 ── */
+   *    **翰 = 全局命令面板（Ctrl+K 同一份）**：带搜索框、分组、动作/插件命令，不再在坞里
+   *    维护第二份内联清单；`/` 触发词仍走本内联面板（只列斜杠触达的命令、查询词就在
+   *    正文里，↑↓/Enter/Esc 照旧）。两处共用 listCommands/filterCommands 与执行面。 ── */
   const slashQuery = useMemo(() => {
     const v = inputText;
     if (!v) return null;
@@ -589,25 +613,22 @@ export const ComposerDock = memo(function ComposerDock() {
     if (last > 0 && v[last - 1] !== ' ' && v[last - 1] !== '\n') return null;
     return v.slice(last + 1);
   }, [inputText]);
-  /** 生效查询：/ 触发词优先；无触发词且翰面板开着 = 空查询（全量）。 */
-  const effectiveSlashQuery = slashQuery ?? (menuOpen ? '' : null);
   const slashCommands = useMemo(() => {
-    if (effectiveSlashQuery === null) return [];
-    const all = listCommands(core);
-    return filterCommands(slashQuery !== null ? slashOnly(all) : all, effectiveSlashQuery);
-  }, [effectiveSlashQuery, slashQuery, core]);
+    if (slashQuery === null) return [];
+    return filterCommands(slashOnly(listCommands(core)), slashQuery);
+  }, [slashQuery, core]);
   /* 面板打开即确保技能候选新鲜（工作区切换后无需重挂）——同步读缓存，
    * 键变了则后台重扫（见 app/commands/skill-catalog）。 */
   useEffect(() => {
-    if (effectiveSlashQuery === null) return;
+    if (slashQuery === null) return;
     ensureSkillCatalog(useShellStore.getState().projectPath);
-  }, [effectiveSlashQuery]);
+  }, [slashQuery]);
   /* ── C3（2026-08-27）：斜杠面板键盘导航（↑↓ 选、Enter 执行、Esc 关）。 ── */
   const [slashIdx, setSlashIdx] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: effectiveSlashQuery 是刻意的「查询词变化」触发器——正是要响应它复位高亮（含翰面板开合）
+  // biome-ignore lint/correctness/useExhaustiveDependencies: slashQuery 是刻意的「查询词变化」触发器——正是要响应它复位高亮
   useEffect(() => {
     setSlashIdx(0); // 查询词变化 → 高亮复位首项
-  }, [effectiveSlashQuery]);
+  }, [slashQuery]);
   const slashActive = slashCommands.length > 0;
 
   /* ── 附件 ── */
@@ -691,7 +712,6 @@ export const ComposerDock = memo(function ComposerDock() {
     if (!yinOpen) return;
     setYinQuery('');
     setYinIdx(0);
-    setMenuOpen(false);
     setHelpOpen(false);
     if (yinFiles.length === 0) void loadYinFiles();
     yinInputRef.current?.focus();
@@ -852,12 +872,12 @@ export const ComposerDock = memo(function ComposerDock() {
     };
   }, [core, attachPaths]);
 
-  /* ── 浮层互斥（2026-09-01 审计）：思考/翰/律/引 四浮层同屏只开一个——
+  /* ── 浮层互斥（2026-09-01 审计）：思考/律/引 三浮层同屏只开一个——
    *    此前各 onClick 只关自己认识的兄弟面板，思考菜单与引面板可叠开（截图实证）。
-   *    2026-09-13 墨量册、2026-09-22 役册并入（两枚读数件的册页同属浮层族）。 ── */
-  const toggleLayer = useCallback((layer: 'thinking' | 'menu' | 'help' | 'yin' | 'ink' | 'work') => {
+   *    2026-09-13 墨量册、2026-09-22 役册并入（两枚读数件的册页同属浮层族）。
+   *    2026-10-22 P2：翰改开全局命令面板（模态、自带互斥），不在此列。 ── */
+  const toggleLayer = useCallback((layer: 'thinking' | 'help' | 'yin' | 'ink' | 'work') => {
     setSettingsOpen(layer === 'thinking' ? (v) => !v : false);
-    setMenuOpen(layer === 'menu' ? (v) => !v : false);
     setHelpOpen(layer === 'help' ? (v) => !v : false);
     setYinOpen(layer === 'yin' ? (v) => !v : false);
     setInkOpen(layer === 'ink' ? (v) => !v : false);
@@ -905,12 +925,12 @@ export const ComposerDock = memo(function ComposerDock() {
           )}
           <button
             type="button"
-            className={`pp-tool-btn${menuOpen ? ' open' : ''}`}
-            title="翰——案卷命令（等价输入 /）"
-            aria-label="翰——打开发卷命令面板"
-            aria-haspopup="listbox"
-            aria-expanded={menuOpen}
-            onClick={() => toggleLayer('menu')}
+            className={`pp-tool-btn${paletteOpen ? ' open' : ''}`}
+            title="翰——命令面板（Ctrl+K 同一份：搜索 / 分组 / 动作与插件命令）"
+            aria-label="翰——打开命令面板"
+            aria-haspopup="dialog"
+            aria-expanded={paletteOpen}
+            onClick={() => useShellStore.getState().setPaletteOpen(true)}
           >
             翰
           </button>
@@ -927,10 +947,15 @@ export const ComposerDock = memo(function ComposerDock() {
           {helpOpen && (
             <div className="pp-help-sheet" role="dialog" aria-label="快捷键总览">
               <div className="pp-help-head">律 · 快捷键</div>
-              {HELP_ROWS.map(([key, desc]) => (
-                <div key={key} className="pp-help-row">
-                  <span className="pp-help-key">{key}</span>
-                  <span className="pp-help-desc">{desc}</span>
+              {HELP_GROUPS.map((g) => (
+                <div key={g.title} className="pp-help-group">
+                  <div className="pp-help-group-title">{g.title}</div>
+                  {g.rows.map(([key, desc]) => (
+                    <div key={key} className="pp-help-row">
+                      <span className="pp-help-key">{key}</span>
+                      <span className="pp-help-desc">{desc}</span>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -986,7 +1011,6 @@ export const ComposerDock = memo(function ComposerDock() {
                 className={`pp-slash-item${i === slashIdx ? ' active' : ''}`}
                 onMouseEnter={() => setSlashIdx(i)}
                 onClick={() => {
-                  setMenuOpen(false);
                   core?.executeCommand(c);
                 }}
               >
@@ -1066,7 +1090,7 @@ export const ComposerDock = memo(function ComposerDock() {
         {/* 2026-10-22 P1 左轴：textarea 必须是输入行的**第一个布局件**——书眉卷名、
             设置行、输入正文自此共用一条左缘（旧序把 引/夹 放前面，正文被顶开 88px，
             同一张坞三条左缘）。引/夹/附件/附图一律排到它右侧（靠近拟文印 = 落笔前
-            顺手的动作）。浮层（翰/引）是 absolute，不参与这条轴。 */}
+            顺手的动作）。浮层（引）是 absolute，不参与这条轴。 */}
         <textarea
           ref={composerRef}
           rows={1}
@@ -1075,7 +1099,6 @@ export const ComposerDock = memo(function ComposerDock() {
           onPaste={onComposerPaste}
           onChange={(e) => {
             setInputText(e.target.value);
-            setMenuOpen(false); // 手输接管：翰面板散（/ 触发词自然接管过滤）
             // 手输 = 退出历史浏览（浏览下标复位；草稿槽保留到下次进入时覆写）
             if (core) {
               const input = getChatStore(core.panelId).input.getState();
@@ -1099,22 +1122,17 @@ export const ComposerDock = memo(function ComposerDock() {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 const cmd = slashCommands[slashIdx];
-                setMenuOpen(false);
                 core?.executeCommand(cmd);
                 return;
               }
               if (e.key === 'Escape') {
                 e.preventDefault();
-                if (slashQuery !== null) {
-                  // / 触发词开着 = 关面板保留查询词（去行首斜杠）
-                  const live = core ? getChatStore(core.panelId).input.getState() : null;
-                  if (live) {
-                    const v = live.inputText;
-                    const last = v.lastIndexOf('/');
-                    if (last >= 0) setInputText(v.slice(0, last) + v.slice(last + 1));
-                  }
-                } else {
-                  setMenuOpen(false); // 翰面板（无触发词）= 直接散
+                // / 触发词开着 = 关面板保留查询词（去行首斜杠）
+                const live = core ? getChatStore(core.panelId).input.getState() : null;
+                if (live) {
+                  const v = live.inputText;
+                  const last = v.lastIndexOf('/');
+                  if (last >= 0) setInputText(v.slice(0, last) + v.slice(last + 1));
                 }
                 return;
               }

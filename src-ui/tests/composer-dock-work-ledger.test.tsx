@@ -192,6 +192,10 @@ describe('役册（创作坞后台工作监视装置）', () => {
     act(() => trigger()?.click());
     await act(async () => {});
     expect(container.querySelector('.pp-work-empty')?.textContent).toBe('本卷无在役');
+    // 2026-10-22 P2：空态收成一句 + 一行去处说明；大号 0 / 段题「在役」同批退场
+    expect(container.querySelector('.pp-work-empty-sub')?.textContent).toBe('子代理与后台命令会在这里出现');
+    expect(container.querySelector('.pp-work-count')).toBeNull();
+    expect([...container.querySelectorAll('.pp-work-section-title')].map((el) => el.textContent)).not.toContain('在役');
   });
 
   it('他卷段与已了段：他卷标卷名，终态标状态字', async () => {

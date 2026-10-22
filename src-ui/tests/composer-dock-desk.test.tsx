@@ -12,6 +12,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
+import { useShellStore } from '../src/app/shell-store';
 import type { CommandContribution } from '../src/composition/services';
 import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
 import { ComposerDock, flattenDirEntries, fuzzyMatchFiles } from '../src/plugins/builtin/compose-dock/ComposerDock';
@@ -132,6 +133,7 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
   beforeEach(() => {
     resetComposeStoresForTests();
     resetCanvasStoresForTests();
+    useShellStore.setState({ paletteOpen: false });
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -139,10 +141,11 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
     act(() => root?.unmount());
     container.remove();
     root = null;
+    useShellStore.setState({ paletteOpen: false });
   });
 
-  it('点翰开面板（空查询 = 全量命令）；再点散；执行命令即散面板', async () => {
-    const core = await mountDock(
+  it('点翰 = 打开全局命令面板（Ctrl+K 同源），不再生内联斜杠清单', async () => {
+    await mountDock(
       'han-open',
       container,
       {},
@@ -151,26 +154,18 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
       },
       CMDS,
     );
-    // 点翰 → 面板现身（无 / 触发词）
+    expect(useShellStore.getState().paletteOpen).toBe(false);
     act(() => {
       [...container.querySelectorAll<HTMLButtonElement>('.pp-tool-btn')].find((b) => b.textContent === '翰')?.click();
     });
     await act(async () => {});
-    const items = [...container.querySelectorAll<HTMLButtonElement>('.pp-slash-item')];
-    expect(items.length).toBeGreaterThan(0);
-
-    // 点命令项 → executeCommand 调用 + 面板散
-    act(() => {
-      items[0]?.click();
-    });
-    await act(async () => {});
-    expect(core.executeCommand).toHaveBeenCalled();
+    expect(useShellStore.getState().paletteOpen).toBe(true);
     expect(container.querySelector('.pp-slash')).toBeNull();
   });
 
-  it('手输即散翰面板（打字接管，/ 触发词自然接管过滤）', async () => {
-    await mountDock(
-      'han-type',
+  it('/ 触发词仍走内联斜杠面板（翰解耦不伤 / 路径）', async () => {
+    const core = await mountDock(
+      'han-slash',
       container,
       {},
       (r) => {
@@ -178,20 +173,20 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
       },
       CMDS,
     );
-    act(() => {
-      [...container.querySelectorAll<HTMLButtonElement>('.pp-tool-btn')].find((b) => b.textContent === '翰')?.click();
-    });
-    await act(async () => {});
-    expect(container.querySelector('.pp-slash')).not.toBeNull();
-
-    const ta = container.querySelector<HTMLTextAreaElement>('.pp-composer-row textarea');
+    const ta = container.querySelector<HTMLTextAreaElement>('.pp-composer-row textarea')!;
     const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
     act(() => {
-      setter.call(ta!, '落笔');
-      ta!.dispatchEvent(new Event('input', { bubbles: true }));
+      setter.call(ta, '/gam');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await act(async () => {});
-    expect(container.querySelector('.pp-slash')).toBeNull();
+    const items = [...container.querySelectorAll<HTMLButtonElement>('.pp-slash-item')];
+    expect(items.length).toBeGreaterThan(0);
+    act(() => {
+      items[0]?.click();
+    });
+    await act(async () => {});
+    expect(core.executeCommand).toHaveBeenCalled();
   });
 });
 
@@ -224,6 +219,13 @@ describe('创作坞 v2：律（快捷键总览）', () => {
     expect(sheet?.textContent).toContain('发送');
     expect(sheet?.textContent).toContain('换行');
     expect(sheet?.textContent).toContain('输入历史');
+    // 2026-10-22 P2：13 行等权平铺 → 四组（输入/附卷/画布/纸面）
+    expect([...sheet!.querySelectorAll('.pp-help-group-title')].map((el) => el.textContent)).toEqual([
+      '输入',
+      '附卷',
+      '画布',
+      '纸面',
+    ]);
     act(() => {
       [...container.querySelectorAll<HTMLButtonElement>('.pp-tool-btn')].find((b) => b.textContent === '律')?.click();
     });
