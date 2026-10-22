@@ -161,6 +161,17 @@ export function composerGeomOf(pos: ComposerPos | null, dockH: number): Composer
   return { bottom: pos?.bottom ?? COMPOSER_RISE, height: dockH };
 }
 
+/**
+ * 浮层朝向（2026-10-21 P0）：坞可被拖到画布任意高度，而坞内所有浮层都向上开
+ * ——坞停在上半屏时，墨量册实测顶部 -159px（内容直接出屏）。判据 = 坞顶在上半屏
+ * ⇒ 向下开（下方空间更大），否则向上。两侧余量由槽主人另算（`--dock-room-*`），
+ * 面板 max-height 随余量收，内容照常滚动；不做「面板高度参与朝向」的逐件测量。
+ */
+export function composerPopSide(slotTop: number, viewportHeight: number): 'up' | 'down' {
+  if (!Number.isFinite(slotTop) || !Number.isFinite(viewportHeight)) return 'up';
+  return slotTop < viewportHeight / 2 ? 'down' : 'up';
+}
+
 /* ── 版口钮（坞侧锚点，2026-09-22 版口引线批）──────────────────────────────
  * 坞顶左端那枚朱砂短横（`.pp-composer::before`）本来就是坞的「版口钮」——全坞唯一
  * 暖色件，与**活卷**卷首规线左端那枚版口钮同名同形同墨（那一枚只挂活跃卷：

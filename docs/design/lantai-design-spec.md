@@ -409,6 +409,75 @@
 架不在 ⇒ `[8, 96]`，逐值）+ `tests/asset-fold.test.ts`（资产在折叠族内且**默认张开**／可手动收起／foldLabel 出签与题名／
 measure 折叠高 = `FOLD_ROW_H`）+ `prototype/asset-rack-v2.html`（真样式台，三案对照与诊断层）。
 
+### 9.6 创作坞 P0 精修（2026-10-21）
+
+**来由**：用户判「基本 UI/UX 已经不错，但停留在不精致」——逐状态实机体检（默认/多行/附件/六浮层/880 窄窗/坞拖上半屏）后，
+先落五条**不涉及审美口径**的硬缺陷；视觉系统（字号下限/红色预算/左轴）留 P1。
+
+1. **输入框原生滚动条根治**：`autoGrow` 在 `box-sizing: border-box` 下只写 `scrollHeight`，单行少 1px
+   （实测 `scrollHeight 39 / clientHeight 38`）⇒ 滚动条常驻；同时 `foundation.css` 的 `* { scrollbar-width: thin }`
+   在 Chromium 121+ 压过 `::-webkit-scrollbar`，全应用退回原生白条。修法 = `autoGrow` 补 `offsetHeight - clientHeight`
+   （边框高）再夹 144；输入框 `scrollbar-width: none` + `::-webkit-scrollbar { display: none }`（长文仍可滚轮/键盘滚）；
+   删全局 standard 属性侧，纸面自定义滚动条真正生效。
+2. **空输入 = 未蘸墨的印**：旧态空输入时「拟文」仍是全坞最重黑块，`onSend` 却直接 return（假主动作）。
+   现 `disabled={!inputText.trim()}`：空心描边（`--ink-4` 边 + `--ink-3` 字、无 `--shadow-anchor`）、`title` 改「先落笔，再拟文」；
+   有字即回墨印。运行中空输入仍由停钮接管（三态不变）。
+3. **浮层随坞位换向**：坞浮动化后可停上半屏，而八本浮层全部写死向上开（实测坞在 y=120 时墨量册 `top:-159px`）。
+   槽主人按坞顶下发 `data-pop-side`（坞顶在上半屏 = `down`）与 `--dock-room-up/down`（两侧余量）；
+   CSS 统一换向（原 4/6/8 间隙分组保留）+ `max-height: min(70vh, 原上限, 所选侧余量)`，面板自身 overflow 照常滚。
+   **坞本体（compose-dock）一字不知**——判据与余量都在槽主人（`composerPopSide` 纯函数 + `useComposerFloat`）。
+4. **模型菜单选中态归队**：`.ms-item.selected` 旧为 `--seal-soft` 粉洗（§11 明令退役的第三种选中语言），
+   改 `--sel-wash` + `inset 2px 0 var(--seal)` 朱砂左脊；`selected:hover/active` 仍走 `--paper-deep` + 左脊（两层信号）。
+5. **热区与无障碍名**：单字工具钮 21×23、读数件高 22 偏小——伪元素 `inset:-4px` 撑命中面（视觉尺寸不变；
+   `.pp-dock-tools` gap 6→8，相邻盒边相接不叠压）；模型触发器 `min-height: 28px`；移/翰/律补 `aria-label`，
+   墨/役触发器补读数型 `aria-label`（可见文本不变）。
+
+**边界**：本批不动坞的版心/三行制/朱砂红预算/字号下限/左轴（P1 再议）；`composer-dock` 产物可热更，
+`PaperPanel.css`/`foundation.css` 在壳 bundle ⇒ 真机看新样式须重建 exe。
+
+**证据**：`tests/composer-p0-polish.test.ts`（CSS/接线钉值 9 例）+ `tests/composer-dock-rework.test.tsx`
+（空印禁用/点空不发消息/有字即启用）+ `tests/paper-composer-float.test.tsx`（默认 up、上移后 down + 两侧余量）
++ `tests/composer-float.test.ts`（朝向纯函数 2 例）。
+
+### 9.7 创作坞 P1 视觉系统（2026-10-22）
+
+**来由**：P0 落完后用户真机重建验收「看起来没啥问题」，继续取 P1——「不精致」的视觉口径，不是缺陷。
+五件定案（agent 自定，未再打断用户；两条曾预告需拍板的项按下述取舍落地）：
+
+1. **字号下限 + 主次反转**：模型菜单旧态机器 id 10px > 人读名 9px（主次倒置，且 9px 是
+   「瞎眼档」）。现 name **12/600/ink-1**、id **10/ink-3**、分组题 **11/600/ink-2**（去全大写
+   mono，字体换 song）；「视」徽 8→9。律册键位 11→12/ink-2（去石青），引面板路径 10→11/ink-2，
+   文件签 10→11、脚注/图例/账目副行 10→11。设置行（模型/权限/思考/墨/役）全部吃
+   `--font-scale`（此前写死 px，字号缩放只作用于输入框/标题）。
+2. **红色预算（厂商标记转纸）**：厂商 = 机器身份，不是人的动作。16px 实心朱砂方块改为
+   **纸色底 + ink-2 字 + 1px ink-4 框**（分组头 14px 同款）——坞内最响的红回到「全放」底线 /
+   拟文印 / 版口钮 / 匣脚引线。朱砂语义不再被品牌章稀释。
+3. **左侧轴线（输入行重排）**：旧序 `引/夹 → 附件 → textarea` 把正文顶开 **88px**（标题/设置行
+   x=911，正文 x=997——同一张坞三条左缘）。现序 = `textarea → 附件/附图 → 引/夹 → 拟文`：
+   正文与书眉卷名、设置行共用一条左缘；引/夹/附件靠近拟文印（落笔前动作）。翰/引浮层仍
+   **absolute 不参与这条轴**。
+4. **模型触发器 150→215**：150px 把「DeepSeek V4.1 Flash (latest)」截成「DeepSeek V4.1 Fl...」；
+   215px 给名称列 **173px**（实机 scrollWidth），整名读全；窄窗仍容得下整行
+   （215+100+123+103+57+69+48=715 < 788 内容宽）。名称抬 600/ink-1。
+5. **文件签 = 纸签（去装饰蓝）**：10px 石青框是「浏览器 tag」语汇；改 11px mono / ink-2 /
+   1px ink-4 框 / 纸色底，hover 才转朱砂（取下 = 人的动作）。同理律册键位、翰快捷键去石青
+   （石青只留「机器在跑 / 语义引注」），组合芯片只读态 ink-3→ink-2（只读不等于读不清）。
+   透明文字控件（工具 / 引夹 / 模式 / 模型 / 组合 / 思考 / 墨 / 役）的 `:focus-visible` 改
+   **朱砂底线**（`inset 0 -2px 0 var(--seal)`），不再画 2px 红框——200px 的模型触发器被红框
+   圈住像报错；实心印（拟文/停）保留全局红框。
+
+**边界**：不动坞的版心/三行制/设置行归堆/朱砂主动作；不重排翰/律/役的信息架构（P2）；
+模型菜单 300px 宽与 260px 封高不动（内容变高后照常滚）。
+
+**证据**：`tests/composer-p1-polish.test.ts`（字号/主次/红蓝/缩放/焦点钉值 8 例）+
+`tests/composer-dock-row-order.test.tsx`（textarea 是输入行第一个布局件，引/夹在其右、拟文最右；
+4 例含 P1 新增 1 例）+ `tests/model-selector-compact.test.tsx`（目录外 provider-scoped id 去前缀 1 例）
++ 真机 CDP：模型菜单 name 12/600 与 id 10/ink-3、厂商章 computed
+`paper-deep + ink-2 + ink-4`、模型触发器 215、文本左缘与标题同 x。
+
+**部署面**：模型菜单/组合芯片/ComposerDock 为 `compose-dock` 产物（可热更）；`PaperPanel.css`
+在壳 bundle ⇒ 真机看字号/纸签/左轴/厂商章须重建 exe。
+
 ---
 
 ## 10. 浸墨法则（2026-08-31 全局视觉立宪 · 用户拍板 B）

@@ -33,6 +33,7 @@ import {
   clampComposerPos,
   composerAnchorOf,
   composerGeomOf,
+  composerPopSide,
   isComposerDragSurface,
   loadComposerPos,
   loadComposerUnlocked,
@@ -53,7 +54,8 @@ export interface ComposerFloatOpts {
 export interface ComposerFloat {
   /** 槽元素 callback ref（React 19 清理式：量实测宽高，供夹紧/几何用）。 */
   slotRef: (el: HTMLDivElement | null) => (() => void) | undefined;
-  /** 槽内联位置（undefined = 无覆盖，走 CSS 默认位）。 */
+  /** 槽内联样式：浮层余量恒有（`--dock-room-*`）；位置字段只在用户拖过坞时才有
+   *  （无 left/bottom = CSS 默认版心坐底）。 */
   style: CSSProperties | undefined;
   /** 拖动中（CSS 抓手手感：grabbing）。 */
   dragging: boolean;
@@ -66,6 +68,9 @@ export interface ComposerFloat {
   /** **坞侧锚点**（屏幕坐标；2026-09-22 版口引线的起笔）= 坞顶左端版口钮的起端中点。
    *  引用稳定（只在坞位/坞实测尺寸变时换新）——平移/缩放帧不重算，线不闪。 */
   anchor: { x: number; y: number };
+  /** 浮层朝向（2026-10-21 P0）：坞在上半屏 ⇒ down，否则 up。槽以 data-pop-side 下发，
+   *  CSS 据此把坞内所有向上开的浮层换向（见 PaperPanel.css「浮层随坞位换向」）。 */
+  popSide: 'up' | 'down';
   /** 槽 pointerdown（锁定态直接放行；解锁态按拖动面判据）。 */
   onPointerDown: (e: React.PointerEvent) => void;
   /** 槽 dblclick（解锁态双击坞体 = 复位到版心居中坐底）。 */
@@ -81,6 +86,8 @@ export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
   /* 坞位（null = 无覆盖）——懒初始化读盘：挂载即回到用户上次摆的位置。 */
   const [pos, setPos] = useState<ComposerPos | null>(loadComposerPos);
   const [box, setBox] = useState<ComposerBox>({ w: 0, h: 0 });
+  /** 槽实测顶（屏幕坐标）：浮层朝向的唯一输入。0/未测 = 用坞几何估算。 */
+  const [slotTop, setSlotTop] = useState<number | null>(null);
   const [vp, setVp] = useState<ComposerViewport>(() => ({
     w: window.innerWidth,
     h: window.innerHeight,
@@ -99,19 +106,26 @@ export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
 
   /* 视口尺寸（拖拽夹紧 + 存量坞位的读侧夹紧都按它算）。 */
   useEffect(() => {
-    const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    const onResize = () => {
+      setVp({ w: window.innerWidth, h: window.innerHeight });
+      /* 坞顶随视口变（浮层朝向按它判）——窗口变化后补一次实测。 */
+      const r = slotEl.current?.getBoundingClientRect();
+      if (r && r.height > 0) setSlotTop(r.top);
+    };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
   /* 槽实测宽高：坞高随内容变（思考展开/附件/墨量册），宽随窗口变——
-   * ResizeObserver 一处跟上（jsdom 无 RO：只量首帧，测试自铺桩）。 */
+   * ResizeObserver 一处跟上（jsdom 无 RO：只量首帧，测试自铺桩）。
+   * 同一笔测量顺带记槽顶（浮层朝向用；只读一次，不进拖动帧）。 */
   const slotRef = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
     slotEl.current = el;
     const measure = () => {
       const r = el.getBoundingClientRect();
       setBox((prev) => (prev.w === r.width && prev.h === r.height ? prev : { w: r.width, h: r.height }));
+      setSlotTop((prev) => (prev === r.top ? prev : r.top));
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return undefined;
@@ -139,6 +153,21 @@ export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
    * ——否则窗口缩小后线会离坞）。引用稳定纪律同 dock：平移/缩放帧不重算。 */
   const anchor = useMemo(() => composerAnchorOf(effective, vp, box), [effective, vp, box]);
   const band = dock.bottom + dock.height;
+
+  /* 拖动结束补一次槽顶实测：RO 只管尺寸不管位移，松手后坞顶变了、浮层朝向也要跟上。
+   * 只在 dragging=false 的提交后跑一次，不进拖动帧（2026-10-18 性能批纪律）。 */
+  useEffect(() => {
+    if (dragging) return;
+    const r = slotEl.current?.getBoundingClientRect();
+    if (r && r.height > 0) setSlotTop((prev) => (prev === r.top ? prev : r.top));
+  }, [dragging]);
+
+  /* 浮层朝向 + 两侧余量（2026-10-21 P0）：坞可被拖到上半屏，浮层不能永远向上开。
+   * 未实测时用坞几何估算（默认位 = 版心坐底）——只影响首帧，RO 一到即修正。 */
+  const popTop = slotTop ?? vp.h - (dock.bottom + dock.height);
+  const popSide = composerPopSide(popTop, vp.h);
+  const popRoomUp = Math.max(120, Math.round(popTop - 8));
+  const popRoomDown = Math.max(120, Math.round(vp.h - popTop - box.h - 8));
 
   /* 让位带下发（消费面：递牒卡宿主 `.psh-host` / 插件造物坞 `.pw-dock` 读
    * `var(--composer-band, 静态兜底算式)`）。
@@ -176,10 +205,21 @@ export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
     };
   }, [box.h]);
 
-  const style = useMemo<CSSProperties | undefined>(
-    () => (effective ? { left: `${effective.left}px`, bottom: `${effective.bottom}px`, transform: 'none' } : undefined),
-    [effective],
-  );
+  /* 坞位 + 浮层余量（CSS 自定义属性随槽下发；位置字段仍只在有覆盖时写——
+   * 默认位保持「无内联 left/bottom」，CSS 版心坐底不动）。 */
+  const style = useMemo<CSSProperties>(() => {
+    const popVars = {
+      '--dock-room-up': `${popRoomUp}px`,
+      '--dock-room-down': `${popRoomDown}px`,
+    } as CSSProperties;
+    if (!effective) return popVars;
+    return {
+      ...popVars,
+      left: `${effective.left}px`,
+      bottom: `${effective.bottom}px`,
+      transform: 'none',
+    };
+  }, [effective, popRoomUp, popRoomDown]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -234,6 +274,13 @@ export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
     posRef.current = null;
     setPos(null);
     saveComposerPos(null);
+    /* 复位后坞回 CSS 默认位——下一帧补测槽顶（浮层朝向跟着回上半屏判据）。 */
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => {
+        const r = slotEl.current?.getBoundingClientRect();
+        if (r && r.height > 0) setSlotTop((prev) => (prev === r.top ? prev : r.top));
+      });
+    }
   }, []);
 
   const toggleUnlocked = useCallback(() => {
@@ -244,5 +291,16 @@ export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
     });
   }, []);
 
-  return { slotRef, style, dragging, unlocked, toggleUnlocked, dock, anchor, onPointerDown, onDoubleClick };
+  return {
+    slotRef,
+    style,
+    dragging,
+    unlocked,
+    toggleUnlocked,
+    dock,
+    anchor,
+    popSide,
+    onPointerDown,
+    onDoubleClick,
+  };
 }

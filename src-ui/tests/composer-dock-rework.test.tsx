@@ -210,6 +210,29 @@ describe('钤印单钮三态（2026-09-03：运行态按钮随输入翻转）', 
     agentSessionState.removeExec('seal', 1);
   });
 
+  it('空闲且空输入：拟文印禁用（不再是无反应的假主动作）；有字即启用', async () => {
+    await mountDock('seal', container, (r) => {
+      root = r;
+    });
+    const send = () => container?.querySelector<HTMLButtonElement>('.pp-send');
+    expect(send()?.disabled).toBe(true);
+
+    const core = useCoreStore.getState().core;
+    act(() => {
+      send()?.click();
+    });
+    await act(async () => {});
+    expect(core?.sendMessage).not.toHaveBeenCalled();
+
+    const ta = container?.querySelector<HTMLTextAreaElement>('textarea');
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(ta, '有字');
+      ta?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {});
+    expect(send()?.disabled).toBe(false);
+  });
+
   it('空闲 = 拟文；运行中空输入 = 停；打字立即翻回拟文且点它走 sendMessage（插话路径）', async () => {
     const exec = createExecState();
     exec.beginRun('turn'); // v43：运行态 = 账上的活记录

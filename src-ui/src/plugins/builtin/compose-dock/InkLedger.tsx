@@ -106,6 +106,11 @@ export const InkLedger = memo(function InkLedger({
       <button
         type="button"
         className={`pp-ink-trigger${open ? ' open' : ''}${nearFull ? ' full' : ''}`}
+        aria-label={
+          percent === undefined
+            ? '墨量册——本卷 token 账'
+            : `墨量册——上下文已用 ${percent}%${estimated ? '（估算）' : ''}`
+        }
         title={
           percent === undefined
             ? '墨量册——本卷 token 账（尚无占用读数）'

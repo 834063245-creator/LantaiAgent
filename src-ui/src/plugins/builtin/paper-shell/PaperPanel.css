@@ -2573,9 +2573,9 @@
  *  ⚠ 不用 !important：用更精确的复合选择器压过 .pp-composer button 通配。 */
 .pp-composer .pp-attach {
   flex: 0 0 auto;
-  margin-right: 6px;
+  margin-right: 0;
   font-family: var(--f-song);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   letter-spacing: 0;
   padding: 8px 6px;
   color: var(--ink-2);
@@ -2605,18 +2605,21 @@
 .pp-attach-count {
   flex-shrink: 0;
   font-family: var(--f-mono);
-  font-size: 10px;
-  color: var(--ink-3);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
   letter-spacing: 0.06em;
   padding-left: 2px;
 }
 .pp-attach-chip {
   flex-shrink: 0;
   font-family: var(--f-mono);
-  font-size: 10px;
-  color: var(--indigo);
-  border: 1px solid color-mix(in oklch, var(--indigo) 32%, transparent);
-  background: transparent;
+  /* 2026-10-22 P1：10px 石青框是「浏览器 tag」语汇，和纸墨打架。改纸签：
+   * 11px / ink-2 / 发丝框 / 纸色底；hover 才转朱砂（取下 = 人的动作）。
+   * 文件名是机读件，保留 mono，但不再用石青当装饰色。 */
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
+  border: 1px solid var(--ink-4);
+  background: var(--paper);
   padding: 4px 8px;
   cursor: pointer;
   max-width: 180px;
@@ -2971,7 +2974,7 @@
   height: 22px;
   padding: 0 2px;
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   letter-spacing: 0.06em;
   border: none;
   border-radius: 0;
@@ -3056,8 +3059,8 @@
 }
 .pp-ink-head-figures {
   font-family: var(--f-song);
-  font-size: calc(10px * var(--font-scale));
-  color: var(--ink-3);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
   letter-spacing: 0.2em; /* 「回报 / 估算」= 来源徽记，非读数 */
   white-space: nowrap;
 }
@@ -3116,7 +3119,7 @@
 .pp-ink-note {
   margin: 5px 0 0;
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: calc(11px * var(--font-scale));
   line-height: 1.5;
   color: var(--ink-2);
   letter-spacing: 0.02em;
@@ -3147,13 +3150,13 @@
 }
 .pp-ink-legend-label {
   font-family: var(--f-song);
-  font-size: calc(10px * var(--font-scale));
-  color: var(--ink-3);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
   letter-spacing: 0.08em;
 }
 .pp-ink-legend-value {
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--ink-2);
 }
 /* 段题：方墨锚点 + 字距题字（首页 .sh-section-title 的册页缩影） */
@@ -3201,7 +3204,7 @@
 .pp-ink-line > dd {
   margin: 0;
   font-family: var(--f-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-variant-numeric: tabular-nums;
   color: var(--ink-1);
   text-align: right;
@@ -3218,15 +3221,15 @@
   font-weight: 600;
 }
 .pp-ink-line.strong > dd {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 600;
 }
 .pp-ink-foot {
   margin: 8px 0 0;
   font-family: var(--f-song);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-2);
   letter-spacing: 0.02em;
 }
 
@@ -3247,7 +3250,7 @@
   height: 22px;
   padding: 0 2px;
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   letter-spacing: 0.06em;
   border: none;
   border-radius: 0;
@@ -3330,8 +3333,8 @@
 }
 .pp-work-head-figures {
   font-family: var(--f-song);
-  font-size: calc(10px * var(--font-scale));
-  color: var(--ink-3);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
   letter-spacing: 0.2em;
   white-space: nowrap;
 }
@@ -3363,7 +3366,7 @@
 .pp-work-note {
   margin: 5px 0 0;
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: calc(11px * var(--font-scale));
   line-height: 1.5;
   color: var(--ink-2);
   letter-spacing: 0.02em;
@@ -3445,8 +3448,8 @@
 }
 .pp-work-sub {
   font-family: var(--f-mono);
-  font-size: 10px;
-  color: var(--ink-3);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
@@ -3460,7 +3463,7 @@
 }
 .pp-work-stop {
   font-family: var(--f-song);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   border: none;
   border-radius: 0;
   background: transparent;
@@ -3477,15 +3480,15 @@
   margin: 4px 0 0;
   font-family: var(--f-song);
   font-size: calc(11px * var(--font-scale));
-  color: var(--ink-3);
+  color: var(--ink-2);
   letter-spacing: 0.04em;
 }
 .pp-work-foot {
   margin: 8px 0 0;
   font-family: var(--f-song);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-2);
   letter-spacing: 0.02em;
 }
 
@@ -3627,7 +3630,7 @@
 /* 复合选择器压 .pp-composer button 通配（印章语言基类）——三档走文字线语言 */
 .pp-composer .pp-mode-opt {
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   letter-spacing: 0.06em;
   padding: 3px 8px 4px;
   border: none;
@@ -3735,7 +3738,7 @@
   height: 22px;
   padding: 0 2px; /* 2026-09-01 重皮：盒→线——思考走纯文字，与权限三档同语言 */
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   letter-spacing: 0.06em;
   border: none;
   border-radius: 0;
@@ -3818,18 +3821,18 @@
 }
 .pp-composer-settings .pp-thinking-opt-label {
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
 .pp-composer-settings .pp-thinking-opt-desc {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   letter-spacing: 0.02em;
-  color: var(--ink-3);
+  color: var(--ink-2);
   white-space: nowrap;
 }
 .pp-composer-settings .pp-thinking-opt.selected .pp-thinking-opt-desc {
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 .pp-composer input,
 .pp-composer textarea {
@@ -3854,6 +3857,14 @@
   max-height: 144px;
   /* 多行时把 composer 撑高——容器是 flex 恒高，改由内容推 */
   align-self: center;
+  /* 2026-10-21 P0：单行时 autoGrow 曾差 1px（39/38）⇒ 无字也挂原生滚动条；
+   * 全局 `scrollbar-width: thin` 又会盖掉 WebKit 自定义纸面滚动条。此处显式隐藏
+   * ——长文仍可滚轮 / ↑↓ / PageUp 滚，视觉不再破纸。 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pp-composer textarea::-webkit-scrollbar {
+  display: none;
 }
 .pp-composer input:hover,
 .pp-composer textarea:hover {
@@ -3893,6 +3904,16 @@
   background: var(--seal);
   border-color: var(--seal);
 }
+/* 2026-10-21 P0：空输入 = 未蘸墨的印（描边空心，无硬投影）——不再让一个点不动的
+ * 黑块冒充「每屏唯一主动作」。有字即回墨印；运行中空输入那一位由停钮接管。 */
+.pp-composer .pp-send:disabled,
+.pp-composer .pp-send:disabled:hover {
+  background: transparent;
+  border-color: var(--ink-4);
+  color: var(--ink-3);
+  box-shadow: none;
+  cursor: default;
+}
 
 /* ── 翰 / 律（创作坞 v2 2026-08-31）：设置行右端工具对──
  * 翰 = 命令面板入口（/ 的可发现性——不再只靠盲打发现斜杠）；
@@ -3900,7 +3921,7 @@
 .pp-dock-tools {
   position: relative;
   display: inline-flex;
-  gap: 6px;
+  gap: 8px; /* 2026-10-21 P0：给 ±4px 命中面留缝（21×23 的实机热区偏小） */
   flex: 0 0 auto;
 }
 .pp-composer .pp-dock-tools .pp-tool-btn {
@@ -3921,13 +3942,48 @@
   background: transparent;
   transform: translateY(1px);
 }
+/* 2026-10-21 P0：命中面 ≥28×28（视觉尺寸不变）——单字钮 21×23、读数件高 22
+ * 真机上偏难瞄。伪元素只扩命中盒，不参与排印；相邻件按 8px 间距各让 4px，
+ * 盒边相接不叠压。拖拽锁/翰/律与引/夹、组合/思考/役/墨同族。 */
+.pp-composer .pp-dock-tools .pp-tool-btn,
+.pp-composer .pp-attach,
+.pp-composer-settings .pp-comp-pill,
+.pp-composer-settings .pp-thinking-pill,
+.pp-composer-settings .pp-ink-trigger,
+.pp-composer-settings .pp-work-trigger {
+  position: relative;
+}
+.pp-composer .pp-dock-tools .pp-tool-btn::after,
+.pp-composer .pp-attach::after,
+.pp-composer-settings .pp-comp-pill::after,
+.pp-composer-settings .pp-thinking-pill::after,
+.pp-composer-settings .pp-ink-trigger::after,
+.pp-composer-settings .pp-work-trigger::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+/* 2026-10-22 P1：透明文字控件的键盘焦点 = 朱砂底线（与输入框同一支笔），不画
+ * 2px 红框——200px 的模型触发器被红框圈住像报错。实心印（拟文/停）仍保留
+ * 全局红框（块面件的焦点语言）。 */
+.pp-composer .pp-dock-tools .pp-tool-btn:focus-visible,
+.pp-composer .pp-attach:focus-visible,
+.pp-composer .pp-mode-opt:focus-visible,
+.pp-composer-settings .ms-trigger:focus-visible,
+.pp-composer-settings .pp-comp-pill:focus-visible,
+.pp-composer-settings .pp-thinking-pill:focus-visible,
+.pp-composer-settings .pp-ink-trigger:focus-visible,
+.pp-composer-settings .pp-work-trigger:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--seal);
+}
 /* 律册（快捷键总览浮层）：向上开，右对齐工具对 */
 .pp-help-sheet {
   position: absolute;
   right: 0;
   bottom: calc(100% + 6px);
   z-index: 90;
-  min-width: 250px;
+  min-width: 270px;
   background: var(--paper);
   border: 1px solid var(--rule-soft-ink);
   box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
@@ -3939,7 +3995,7 @@
 }
 .pp-help-head {
   font-family: var(--f-mono);
-  font-size: 9px;
+  font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.2em;
   color: var(--ink-3);
   padding-bottom: 6px;
@@ -3954,8 +4010,10 @@
 }
 .pp-help-key {
   font-family: var(--f-mono);
-  font-size: 11px;
-  color: var(--indigo);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 600;
+  /* 2026-10-22 P1：键位不是「机器在跑」（石青语义），也不是链接；归二级墨。 */
+  color: var(--ink-2);
   white-space: nowrap;
 }
 .pp-help-desc {
@@ -4030,8 +4088,8 @@
 }
 .pp-yin-path {
   font-family: var(--f-mono);
-  font-size: 10px;
-  color: var(--ink-3);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4345,11 +4403,12 @@
 }
 .pp-slash-shortcut {
   font-family: var(--f-mono);
-  font-size: 12px;
-  color: var(--indigo);
+  font-size: calc(12px * var(--font-scale));
+  /* 2026-10-22 P1：键位提示去石青（蓝=机器在跑/语义引注，不是按键）。 */
+  color: var(--ink-2);
 }
 .pp-slash-label {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   color: var(--ink-2);
 }
 
@@ -5302,7 +5361,10 @@
 /* 创作坞设置行内的 ModelSelector 压缩（2026-09-06 收口：定宽 150——开合/
    换模型名不推挤同行控件，「固定住不跳动」；超长名触发器内截断，全名在 title） */
 .pp-composer-settings .ms-container {
-  flex: 0 0 150px;
+  /* 2026-10-22 P1：150 → 215。150 把「DeepSeek V4.1 Flash (latest)」截成
+   * 「DeepSeek V4.1 Fl...」；215 给名称列 173px（实机 scrollWidth），整名读全，
+   * 窄窗仍容得下整行（215+100+123+103+57+69+48=715 < 788 内容宽）。 */
+  flex: 0 0 215px;
 }
 .pp-composer-settings .ms-input-wrap input {
   font-size: 12px;
@@ -5330,7 +5392,7 @@
   width: 100%; /* 2026-09-06 收口：填满定宽容器——pill 宽恒定 */
   min-width: 0;
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   padding: 2px 2px;
   border: none;
   border-radius: 0;
@@ -5355,8 +5417,12 @@
   font-family: var(--f-mono);
   font-size: 10px;
   line-height: 1;
-  color: var(--paper);
-  background: var(--seal);
+  /* 2026-10-22 P1 红色预算：厂商 = 机器身份，不是人的动作。旧实心朱砂方块是坞内
+   * 最响的红之一，把「全放」底线/拟文印/版口钮的朱砂语义冲淡。改纸色底 + 墨字 +
+   * 发丝框——读作一枚小签，不抢朱砂。 */
+  color: var(--ink-2);
+  background: var(--paper-deep);
+  border: 1px solid var(--ink-4);
   border-radius: 0; /* 2026-08-29 走查：3px 圆角违例（印刷品无圆角） */
 }
 .pp-composer-settings .ms-trigger-name {
@@ -5364,6 +5430,10 @@
   text-overflow: ellipsis;
   flex: 1 1 auto;
   min-width: 0;
+  /* 2026-10-22 P1：模型名是设置行里唯一的「值」，抬到 600 + 正文墨；厂商章/
+   * caret 仍 400/ink-3——同一行里读出「谁（章）· 什么模型（名）· 可换（箭头）」。 */
+  color: var(--ink-1);
+  font-weight: 600;
 }
 .pp-composer-settings .ms-trigger-caret {
   flex: 0 0 auto;
@@ -5390,12 +5460,15 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--f-mono);
-  font-size: 9px;
-  letter-spacing: 0.2em;
-  color: var(--ink-3);
-  padding: 6px 12px 2px;
-  text-transform: uppercase;
+  font-family: var(--f-song);
+  /* 2026-10-22 P1：9px 全大写 mono 是「机读标签」语汇，放在这是一句人读的
+   * 厂商分组题；抬到 11px/600 + 正文墨，去大写与 0.2em 字距。 */
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  padding: 8px 12px 3px;
+  text-transform: none;
 }
 .pp-composer-settings .ms-dropdown .ms-group-head .ms-group-mark {
   flex: 0 0 14px;
@@ -5405,7 +5478,7 @@
   border-radius: 0;
 }
 .pp-composer-settings .ms-dropdown .ms-group-head .ms-group-name {
-  letter-spacing: 0.2em;
+  letter-spacing: 0.02em;
 }
 /* B3（2026-08-27）：无 Key 厂商标注——选中即 MISSING_CREDENTIAL 的预警 */
 .pp-composer-settings .ms-dropdown .ms-group-head .ms-group-nokey {
@@ -6575,4 +6648,99 @@ button.pp-form-option:disabled {
 .pp-grid-virtual-row.pp-grid-row-emphasis > td:first-child,
 .pp-grid-table tr.pp-grid-row-emphasis > td:first-child {
   box-shadow: inset 2px 0 0 var(--indigo);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   浮层随坞位换向（2026-10-21 P0）
+   ════════════════════════════════════════════════════════════════
+   坞浮动化后可以停在上半屏，而坞内八本浮层（模型/组合/思考/墨/役/律/引/翰）
+   全部写死 `bottom: calc(100% + N)` 向上开——实测坞在 y=120 时墨量册 `top:-159px`，
+   标题与读数直接出屏。槽主人按坞顶位置下发 `data-pop-side` + 两侧余量
+   （`--dock-room-up/down`），本块把浮层换向并限高；面板自己的 overflow 照常滚。
+   选择器前缀带 `.pp-composer-slot[data-pop-side]`（0,4,0），压过产物 CSS 里
+   同名规则（模型/组合的规则在 compose-dock，后加载也能赢）。 */
+
+/* 各面板原本的高度上限收进一个变量，供下方统一限高（逐件原值，不齐一） */
+.pp-composer-slot .pp-composer .ms-container .ms-dropdown {
+  --pp-pop-max: 260px;
+}
+.pp-composer-slot .pp-composer .pp-comp-sel .pp-comp-menu {
+  --pp-pop-max: 280px;
+}
+.pp-composer-slot .pp-composer .pp-thinking-sel .pp-thinking-menu {
+  --pp-pop-max: 280px;
+}
+.pp-composer-slot .pp-composer .pp-ink-sel .pp-ink-panel,
+.pp-composer-slot .pp-composer .pp-work-sel .pp-work-panel {
+  --pp-pop-max: 520px;
+}
+.pp-composer-slot .pp-composer .pp-dock-tools .pp-help-sheet,
+.pp-composer-slot .pp-composer .pp-yin-panel {
+  --pp-pop-max: 520px;
+}
+.pp-composer-slot .pp-composer .pp-slash {
+  --pp-pop-max: 240px;
+}
+
+/* 向下开：贴触发件下缘（保持各件原有 4/6/8 间隙），bottom 解除 */
+.pp-composer-slot[data-pop-side="down"] .pp-composer :is(.ms-dropdown, .pp-comp-menu, .pp-thinking-menu) {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+.pp-composer-slot[data-pop-side="down"] .pp-composer :is(.pp-ink-panel, .pp-work-panel, .pp-help-sheet) {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+.pp-composer-slot[data-pop-side="down"] .pp-composer :is(.pp-yin-panel, .pp-slash) {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+/* 向下开 = 墨自锚点侧落下（与向上开同一支笔，方向相反） */
+.pp-composer-slot[data-pop-side="down"] .pp-composer
+  :is(
+    .ms-dropdown,
+    .pp-comp-menu,
+    .pp-thinking-menu,
+    .pp-ink-panel,
+    .pp-work-panel,
+    .pp-help-sheet,
+    .pp-yin-panel,
+    .pp-slash
+  ) {
+  animation: pop-down var(--m-ink);
+}
+
+/* 限高：原上限 ∩ 视口 70% ∩ 所选侧余量。坞在正中时两侧都装不满，面板缩到余量、
+ * 内容照常滚——总比顶部被裁掉看不见强。 */
+.pp-composer-slot[data-pop-side="up"] .pp-composer
+  :is(
+    .ms-dropdown,
+    .pp-comp-menu,
+    .pp-thinking-menu,
+    .pp-ink-panel,
+    .pp-work-panel,
+    .pp-help-sheet,
+    .pp-yin-panel,
+    .pp-slash
+  ) {
+  max-height: min(70vh, var(--pp-pop-max, 520px), var(--dock-room-up, 70vh));
+}
+.pp-composer-slot[data-pop-side="down"]
+  .pp-composer
+  :is(
+    .ms-dropdown,
+    .pp-comp-menu,
+    .pp-thinking-menu,
+    .pp-ink-panel,
+    .pp-work-panel,
+    .pp-help-sheet,
+    .pp-yin-panel,
+    .pp-slash
+  ) {
+  max-height: min(70vh, var(--pp-pop-max, 520px), var(--dock-room-down, 70vh));
+}
+
+/* 2026-10-21 P0：模型触发器高 20px 偏小——抬到 28px（视觉仍纯文字，行内居中） */
+.pp-composer-settings .ms-container .ms-trigger {
+  min-height: 28px;
 }

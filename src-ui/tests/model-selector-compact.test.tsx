@@ -50,6 +50,23 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     expect(trigger?.title).toContain('deepseek'); // 厂商身份在 title 可见
   });
 
+  it('目录外 provider-scoped id：收起态去厂商前缀（215px 不被 deepseek/ 吃掉）', () => {
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'gateway/unknown-model-x',
+          providerName: 'gateway',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    const trigger = container!.querySelector<HTMLButtonElement>('.ms-trigger');
+    expect(trigger?.textContent).toContain('unknown-model-x');
+    expect(trigger?.textContent).not.toContain('gateway/');
+  });
+
   it('展开：按 vendor 分组；选择模型触发 onChange', async () => {
     const onChange = vi.fn();
     act(() => {

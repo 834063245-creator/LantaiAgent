@@ -208,13 +208,19 @@
 }
 
 .ms-item.selected {
-  background: var(--seal-soft);
+  /* 2026-10-21 P0：选中语言统一回 --sel-wash + 朱砂左脊（旧 seal-soft 粉洗是
+   * §11「全产品只许两种选中语言」明令退役的第三种）。选中行恒走这套——
+   * 即使键盘游标正停在它上面（active 也不再把它改成 paper-deep），否则
+   * 「当前模型」在打开弹层的默认态就永远读不出墨洗。 */
+  background: var(--sel-wash);
+  box-shadow: inset 2px 0 0 var(--seal);
 }
 
 .ms-item-id {
   font-family: var(--f-mono);
+  /* 2026-10-22 P1：机器 id 退到 10px 三级墨——它是副信息；人读名（下条）才是主读物。 */
   font-size: calc(10px * var(--font-scale));
-  color: var(--ink-1);
+  color: var(--ink-3);
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
@@ -229,14 +235,27 @@
   padding: 1px 4px;
   border: 1px solid color-mix(in oklch, var(--indigo) 40%, transparent);
   font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
+  font-size: calc(9px * var(--font-scale));
   line-height: 1.2;
   color: var(--indigo);
 }
 
+/* 2026-10-22 P1：名 + 「视」徽同处第一行；id 退到第二行（仅当与名不同）。 */
+.ms-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
 .ms-item-name {
-  font-size: calc(9px * var(--font-scale));
-  color: var(--ink-1); /* 2026-09-01 轻重批：行内主读物提墨，与注记分阶 */
+  /* 2026-10-22 P1：9 → 12px / 600 + 正文墨。旧态人读名比机器 id 还小（9 < 10），
+   * 主次倒置；现在 id 10/ink-3 退后，名字 12/600 读得清。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;

@@ -86,11 +86,11 @@ body {
   background: transparent;
 }
 
-/* Firefox 等标准属性侧（WebKit 走上面的伪元素；元素级 scrollbar-width:none 会自然覆盖） */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--ink-4) var(--paper);
-}
+/* 滚动条：**只用 WebKit 伪元素**（本应用唯一运行时 = WebView2/Chromium）。
+ * 2026-10-21 P0：此前这里有一条 `scrollbar-width: thin` 的「Firefox 兜底」，
+ * 但 Chromium 121+ 起标准属性会压过 `::-webkit-scrollbar` ⇒ 全应用退回原生白条
+ * （输入框 1px 溢出时尤其刺眼）。删掉标准属性侧，纸面自定义滚动条才真正生效。
+ * 元素级 `scrollbar-width: none`（如创作坞输入框）仍按需覆盖。 */
 
 ::selection {
   background: var(--seal-soft);

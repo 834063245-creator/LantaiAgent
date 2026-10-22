@@ -338,7 +338,11 @@ export const ComposerDock = memo(function ComposerDock() {
     const el = composerRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 144) + 'px';
+    /* box-sizing: border-box 下 scrollHeight 不含上下边框：只写 scrollHeight 会让
+     * 单行的 clientHeight 比内容少 1px（实测 39/38）⇒ 滚动条常驻（2026-10-21 P0 病灶）。
+     * 补上 border 高度再夹上限；上限之外才真滚动。 */
+    const border = el.offsetHeight - el.clientHeight;
+    el.style.height = `${Math.min(el.scrollHeight + border, 144)}px`;
   }, []);
 
   useEffect(() => {
@@ -888,6 +892,7 @@ export const ComposerDock = memo(function ComposerDock() {
               type="button"
               className={`pp-tool-btn${composerLock.unlocked ? ' open' : ''}`}
               aria-pressed={composerLock.unlocked}
+              aria-label={composerLock.unlocked ? '锁定创作坞' : '解锁创作坞（可拖动）'}
               title={
                 composerLock.unlocked
                   ? '移·已解锁——按住坞体任意空白处拖动，双击坞体复位；点此重新锁定'
@@ -902,6 +907,7 @@ export const ComposerDock = memo(function ComposerDock() {
             type="button"
             className={`pp-tool-btn${menuOpen ? ' open' : ''}`}
             title="翰——案卷命令（等价输入 /）"
+            aria-label="翰——打开发卷命令面板"
             aria-haspopup="listbox"
             aria-expanded={menuOpen}
             onClick={() => toggleLayer('menu')}
@@ -912,6 +918,7 @@ export const ComposerDock = memo(function ComposerDock() {
             type="button"
             className={`pp-tool-btn${helpOpen ? ' open' : ''}`}
             title="律——快捷键总览"
+            aria-label="律——快捷键总览"
             aria-expanded={helpOpen}
             onClick={() => toggleLayer('help')}
           >
@@ -1022,76 +1029,6 @@ export const ComposerDock = memo(function ComposerDock() {
             </div>
           </div>
         )}
-        <button
-          type="button"
-          className={`pp-attach pp-yin-btn${yinOpen ? ' open' : ''}`}
-          title="引——引用工作区文件入卷"
-          aria-label="引：引用文件"
-          onClick={() => toggleLayer('yin')}
-        >
-          引
-        </button>
-        <button
-          type="button"
-          className="pp-attach"
-          title="拾遗——附文件入卷"
-          aria-label="拾遗：附加文件"
-          onClick={onAttach}
-        >
-          夹
-        </button>
-        {attachedFiles.length > 0 && (
-          <div className="pp-attach-list">
-            {attachedFiles.map((f, i) => (
-              <button
-                key={f.path}
-                type="button"
-                className="pp-attach-chip"
-                title={`${f.path}（点击移除）`}
-                onClick={() => onRemoveAttached(i)}
-              >
-                {f.name} ✕
-              </button>
-            ))}
-            {attachedFiles.length > 3 && <span className="pp-attach-count">共 {attachedFiles.length} 件</span>}
-          </div>
-        )}
-        {/* 附图 rail（B2 multimodal-image-plan）：缩略图 + 移除 + 点击放大。
-            预览 URL 为进程内存态（准入时种——seedPreviewUrl），未命中降级为占位盒。 */}
-        {attachedImages.length > 0 && (
-          <div className="pp-image-rail">
-            {attachedImages.map((img, i) => {
-              const url = previewUrlFor(img.id);
-              return (
-                <div key={img.id} className="pp-image-thumb-wrap">
-                  <button
-                    type="button"
-                    className="pp-image-thumb"
-                    title={img.name ?? '附图'}
-                    aria-label={`预览附图：${img.name ?? img.id.slice(0, 8)}`}
-                    onClick={() => setImagePreview(img)}
-                  >
-                    {url ? (
-                      <img src={url} alt={img.name ?? '附图'} loading="lazy" />
-                    ) : (
-                      <span className="pp-image-thumb-fallback">{img.name ?? img.id.slice(0, 8)}</span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="pp-image-remove"
-                    title={`移除附图：${img.name ?? ''}`}
-                    aria-label={`移除附图 ${i + 1}`}
-                    onClick={() => onRemoveAttachedImage(i)}
-                  >
-                    ✕
-                  </button>
-                </div>
-              );
-            })}
-            {attachedImages.length > 1 && <span className="pp-attach-count">共 {attachedImages.length} 图</span>}
-          </div>
-        )}
         {/* 附图预览（B2）：大图浮层——点击缩略图开、点遮罩/Esc 关。
             ⚡ 2026-09-22 病灶修复：原先这里是坞内一个裸 `position: fixed` 的 div，
             症状是**收不回也看不全**（用户报「点开图整个创作坞被图糊住，撤回不了」）。
@@ -1126,6 +1063,10 @@ export const ComposerDock = memo(function ComposerDock() {
             </div>,
             document.body,
           )}
+        {/* 2026-10-22 P1 左轴：textarea 必须是输入行的**第一个布局件**——书眉卷名、
+            设置行、输入正文自此共用一条左缘（旧序把 引/夹 放前面，正文被顶开 88px，
+            同一张坞三条左缘）。引/夹/附件/附图一律排到它右侧（靠近拟文印 = 落笔前
+            顺手的动作）。浮层（翰/引）是 absolute，不参与这条轴。 */}
         <textarea
           ref={composerRef}
           rows={1}
@@ -1219,6 +1160,76 @@ export const ComposerDock = memo(function ComposerDock() {
             }
           }}
         />
+        <button
+          type="button"
+          className={`pp-attach pp-yin-btn${yinOpen ? ' open' : ''}`}
+          title="引——引用工作区文件入卷"
+          aria-label="引：引用文件"
+          onClick={() => toggleLayer('yin')}
+        >
+          引
+        </button>
+        <button
+          type="button"
+          className="pp-attach"
+          title="拾遗——附文件入卷"
+          aria-label="拾遗：附加文件"
+          onClick={onAttach}
+        >
+          夹
+        </button>
+        {attachedFiles.length > 0 && (
+          <div className="pp-attach-list">
+            {attachedFiles.map((f, i) => (
+              <button
+                key={f.path}
+                type="button"
+                className="pp-attach-chip"
+                title={`${f.path}（点击移除）`}
+                onClick={() => onRemoveAttached(i)}
+              >
+                {f.name} ✕
+              </button>
+            ))}
+            {attachedFiles.length > 3 && <span className="pp-attach-count">共 {attachedFiles.length} 件</span>}
+          </div>
+        )}
+        {/* 附图 rail（B2 multimodal-image-plan）：缩略图 + 移除 + 点击放大。
+            预览 URL 为进程内存态（准入时种——seedPreviewUrl），未命中降级为占位盒。 */}
+        {attachedImages.length > 0 && (
+          <div className="pp-image-rail">
+            {attachedImages.map((img, i) => {
+              const url = previewUrlFor(img.id);
+              return (
+                <div key={img.id} className="pp-image-thumb-wrap">
+                  <button
+                    type="button"
+                    className="pp-image-thumb"
+                    title={img.name ?? '附图'}
+                    aria-label={`预览附图：${img.name ?? img.id.slice(0, 8)}`}
+                    onClick={() => setImagePreview(img)}
+                  >
+                    {url ? (
+                      <img src={url} alt={img.name ?? '附图'} loading="lazy" />
+                    ) : (
+                      <span className="pp-image-thumb-fallback">{img.name ?? img.id.slice(0, 8)}</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="pp-image-remove"
+                    title={`移除附图：${img.name ?? ''}`}
+                    aria-label={`移除附图 ${i + 1}`}
+                    onClick={() => onRemoveAttachedImage(i)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+            {attachedImages.length > 1 && <span className="pp-attach-count">共 {attachedImages.length} 图</span>}
+          </div>
+        )}
         {running && !inputText.trim() ? (
           <button
             type="button"
@@ -1233,7 +1244,14 @@ export const ComposerDock = memo(function ComposerDock() {
           <button
             type="button"
             className="pp-send"
-            title={running ? '插入进行中的回合（Agent 运行中，下轮生效）' : '发送本轮输入'}
+            disabled={!inputText.trim()}
+            title={
+              running
+                ? '插入进行中的回合（Agent 运行中，下轮生效）'
+                : inputText.trim()
+                  ? '发送本轮输入'
+                  : '先落笔，再拟文'
+            }
             onClick={onSend}
           >
             拟文

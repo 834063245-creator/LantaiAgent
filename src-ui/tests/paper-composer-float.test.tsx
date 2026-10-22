@@ -404,6 +404,22 @@ describe('创作坞浮动化（槽主人链路：坞位 + 让位带 + 手势）'
     expect(bandVar()).toBe('');
   });
 
+  it('浮层朝向随坞位：默认底带向上开；坞拖到上半屏 → data-pop-side=down（2026-10-21 P0）', async () => {
+    const slot = await mount();
+    /* 默认位（坐底抬高 96）——坞顶在下半屏，浮层向上开。 */
+    expect(slot.dataset.popSide).toBe('up');
+
+    /* 把槽钉到上半屏（bottom=250 ⇒ top=140），RO 重测后翻转。 */
+    slot.getBoundingClientRect = () => rectOf(CENTER_LEFT, 250, DOCK_W, DOCK_H);
+    await act(async () => {
+      FakeResizeObserver.flushComposerSlot();
+    });
+    expect(slot.dataset.popSide).toBe('down');
+    /* 两侧余量也随槽下发（CSS 用 min(...) 限高；不是写死 70vh）。 */
+    expect(Number.parseFloat(slot.style.getPropertyValue('--dock-room-down'))).toBeGreaterThan(0);
+    expect(Number.parseFloat(slot.style.getPropertyValue('--dock-room-up'))).toBeGreaterThan(0);
+  });
+
   it('解锁态：坞内交互件仍不承载拖坞手势（翰钮/输入框）', async () => {
     const slot = await mount();
     unlock(slot);

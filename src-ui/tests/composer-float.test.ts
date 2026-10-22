@@ -34,6 +34,7 @@ import {
   clampComposerPos,
   composerAnchorOf,
   composerGeomOf,
+  composerPopSide,
   isComposerDragSurface,
   loadComposerPos,
   loadComposerUnlocked,
@@ -409,5 +410,19 @@ describe('创作坞浮动化 · 拖动锁记忆（默认锁定）', () => {
   it('毒化值一律当锁定（读侧容忍，不炸）', () => {
     localStorage.setItem(COMPOSER_UNLOCK_KEY, 'yes');
     expect(loadComposerUnlocked()).toBe(false);
+  });
+});
+
+describe('创作坞浮动化 · 浮层朝向（2026-10-21 P0：坞在上半屏改向下开）', () => {
+  it('坞顶在上半屏 = down（下方空间更大）；下半屏 = up', () => {
+    expect(composerPopSide(120, 1400)).toBe('down');
+    expect(composerPopSide(699, 1400)).toBe('down');
+    expect(composerPopSide(700, 1400)).toBe('up');
+    expect(composerPopSide(1054, 1400)).toBe('up');
+  });
+
+  it('未知/非法几何保守向上（默认位口径，不因缺测量把浮层翻下去）', () => {
+    expect(composerPopSide(Number.NaN, 1400)).toBe('up');
+    expect(composerPopSide(200, Number.POSITIVE_INFINITY)).toBe('up');
   });
 });

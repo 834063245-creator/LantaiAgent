@@ -1677,6 +1677,7 @@ export function PaperPanel() {
             }${composer.unlocked ? ' pp-composer-unlocked' : ''}`}
             ref={composer.slotRef}
             style={composer.style}
+            data-pop-side={composer.popSide}
             onPointerDown={composer.onPointerDown}
             onDoubleClick={composer.onDoubleClick}
           >

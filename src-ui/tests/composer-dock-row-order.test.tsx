@@ -96,4 +96,16 @@ describe('创作坞行序（2026-09-06 收口：设置行下沉到输入行之�
     const row = container.querySelector('.pp-composer-row')!;
     expect(row.querySelector('.pp-send')).not.toBeNull();
   });
+
+  it('P1 左轴：textarea 是输入行第一个布局件，引/夹在它右侧、拟文最右', async () => {
+    await mountDock('row-order-axis');
+    const row = container.querySelector('.pp-composer-row')!;
+    const kids = [...row.children];
+    const taIdx = kids.indexOf(row.querySelector('textarea')!);
+    const yinIdx = kids.indexOf(row.querySelector('.pp-yin-btn')!);
+    const sendIdx = kids.indexOf(row.querySelector('.pp-send')!);
+    expect(taIdx).toBe(0); // 正文与书眉卷名/设置行同一条左缘
+    expect(yinIdx).toBeGreaterThan(taIdx);
+    expect(sendIdx).toBeGreaterThan(yinIdx);
+  });
 });

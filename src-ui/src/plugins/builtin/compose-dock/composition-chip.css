@@ -28,7 +28,7 @@
   height: 22px;
   padding: 0 2px;
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   letter-spacing: 0.06em;
   border: none;
   border-radius: 0;
@@ -46,9 +46,11 @@
   color: var(--seal-deep);
 }
 
-/* 跑过一轮 = 只读标签（span 形态，不再是按钮；hover 不改色以示不可拨） */
+/* 跑过一轮 = 只读标签（span 形态，不再是按钮；hover 不改色以示不可拨）
+ * 2026-10-22 P1：ink-3 → ink-2——只读不等于读不清；去掉可拨暗示靠 cursor/no hover，
+ * 不靠把字淡成背景。 */
 .pp-composer-settings .pp-comp-pill[data-locked] {
-  color: var(--ink-3);
+  color: var(--ink-2);
   cursor: default;
 }
 

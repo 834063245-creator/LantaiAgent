@@ -170,6 +170,11 @@ export const WorkLedger = memo(function WorkLedger({
       <button
         type="button"
         className={`pp-work-trigger${open ? ' open' : ''}${running.length > 0 ? ' live' : ''}`}
+        aria-label={
+          running.length > 0
+            ? `役册——本卷在役 ${running.length} 条${elsewhere > 0 ? `，另 ${elsewhere} 条在他卷` : ''}`
+            : '役册——本卷在役与已了的后台工作'
+        }
         title={
           running.length > 0
             ? `役册——本卷在役 ${running.length} 条（子 ${subCount} · 命 ${shellCount}）${

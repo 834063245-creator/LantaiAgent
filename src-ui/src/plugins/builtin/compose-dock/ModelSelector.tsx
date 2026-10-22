@@ -207,8 +207,15 @@ export function ModelSelector({
   );
   const { listBoxProps } = useListBox({ ...comboboxListBoxProps }, state, listBoxRef);
 
-  /** 收起态人类可读名（rework P2-1：不再只露 model id）。 */
-  const selectedHumanName = useMemo(() => getModel(value)?.name ?? value, [value]);
+  /** 收起态人类可读名（rework P2-1：不再只露 model id）。
+   *  2026-10-22 P1：目录外 provider-scoped id（如 `deepseek/deepseek-v4.1-flash`）
+   *  去厂商前缀再露——厂商章已经表明是谁家，215px 里不该先花 9 个字符在 `deepseek/`。 */
+  const selectedHumanName = useMemo(() => {
+    const known = getModel(value)?.name;
+    if (known) return known;
+    const slash = value.lastIndexOf('/');
+    return slash >= 0 ? value.slice(slash + 1) : value;
+  }, [value]);
   /** 收起态标签（DSH model.notSelected 语义）：有值 = 人类可读名；空 = 显式未选择。 */
   const triggerLabel = value ? selectedHumanName || value : '选择模型';
 
@@ -599,13 +606,15 @@ function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; 
       title={title}
       className={`ms-item${isFocused ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
     >
-      <span className="ms-item-id">{m.id}</span>
-      {m.input.includes('image') && (
-        <span className="ms-item-vision" title="视觉模型——支持图片输入（目录声明或参数面板覆盖）">
-          视
-        </span>
-      )}
-      {m.name !== m.id && <span className="ms-item-name">{m.name}</span>}
+      <span className="ms-item-title">
+        <span className="ms-item-name">{m.name}</span>
+        {m.input.includes('image') && (
+          <span className="ms-item-vision" title="视觉模型——支持图片输入（目录声明或参数面板覆盖）">
+            视
+          </span>
+        )}
+      </span>
+      {m.name !== m.id && <span className="ms-item-id">{m.id}</span>}
     </button>
   );
 }
