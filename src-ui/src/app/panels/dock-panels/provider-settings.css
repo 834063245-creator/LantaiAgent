@@ -756,6 +756,50 @@
   font-size: calc(8px * var(--font-scale));
   color: var(--ink-3);
 }
+/* per-model 自定义推理等级（2026-10-22 对齐 DSH）：开关 + 档位/API 参数值行。 */
+.pp-model-reasoning {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding-top: 6px;
+  border-top: 1px dashed var(--rule-soft-ink);
+}
+.pp-model-reasoning-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pp-model-reasoning-head .pp-model-param-src {
+  cursor: help;
+}
+.pp-model-reasoning-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+.pp-model-reasoning-row .sp-select,
+.pp-model-reasoning-row .sp-input {
+  min-width: 0;
+  width: 100%;
+}
+.pp-model-reasoning-cols {
+  align-items: center;
+  padding: 0 1px;
+}
+.pp-model-reasoning-error {
+  font-size: calc(8px * var(--font-scale));
+  color: var(--fail);
+}
+.pp-model-reasoning-add {
+  align-self: flex-start;
+}
+.pp-model-reasoning .pp-model-params-hint {
+  flex-basis: auto;
+}
 .pp-models-add {
   display: flex;
   align-items: center;

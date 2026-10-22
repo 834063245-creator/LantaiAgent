@@ -1,5 +1,5 @@
 {
-  "fingerprint": "2feaa599",
+  "fingerprint": "1a61bdcc",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -308,6 +308,7 @@
     "thinkingCapability",
     "thinkingOptionsFor",
     "thinkingOptionsOrDefault",
+    "thinkingWireFor",
     "toInputJsonSchema",
     "tokenAlgebra",
     "translateMessagesCached",

@@ -29,7 +29,14 @@ import { Document, isMap, parseDocument, type YAMLMap, type Node as YamlNode } f
 import type { ProviderId, ProviderSettings } from '../settings';
 import { type HeaderEntry, headerEntryError, MAX_CUSTOM_HEADERS } from './custom-headers';
 import type { ModelMeta } from './model-meta';
-import { isThinkingMode, type StoredThinking, THINKING_MODES, type ThinkingEffort } from './thinking';
+import {
+  isThinkingMode,
+  type StoredThinking,
+  THINKING_EFFORTS,
+  THINKING_MODES,
+  type ThinkingEffort,
+  type ThinkingLevelMap,
+} from './thinking';
 import { CORE_PROTOCOLS } from './types';
 
 /** 配置文件里一节 provider 的全部字段（= 用户意图；身份在键名里）。 */
@@ -93,6 +100,9 @@ export const PROVIDERS_DOC_HEADER = [
   '#     deepseek-v4.1-flash:',
   '#       contextWindow: 1000000',
   '#       maxTokens: 384000',
+  '#       reasoningEfforts:                         # 本模型的推理等级（档位 → API 参数值；可选）',
+  '#         off: null                               # null = 该档不发送参数',
+  '#         high: deep                              # 默认发送档位原名，这里改成厂商要求的值',
 ].join('\n');
 
 /** 是否本文件格式（扩展名围栏）——只认 .yml / .yaml。 */
@@ -153,6 +163,50 @@ function readHeaders(raw: unknown, errors: string[]): Record<string, string> | u
   return Object.keys(clean).length > 0 ? clean : undefined;
 }
 
+/** 校验 per-model 自定义推理等级（DSH `reasoningEfforts` 形状）。 */
+function readReasoningEfforts(raw: unknown, field: string, errors: string[]): false | ThinkingLevelMap | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === false) return false;
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    errors.push(`${field} 必须是「档位 → API 参数值」的对象，或 false（声明该模型不推理）`);
+    return undefined;
+  }
+  const entries = Object.entries(raw as Record<string, unknown>);
+  if (entries.length === 0) {
+    errors.push(`${field} 不能是空对象——至少声明一个档位（关闭之外还要有思考档位）`);
+    return undefined;
+  }
+  const out: ThinkingLevelMap = {};
+  let thinking = 0;
+  for (const [level, value] of entries) {
+    if (level !== 'off' && !(THINKING_EFFORTS as readonly string[]).includes(level)) {
+      errors.push(`${field} 含未知档位「${level}」（可用：off / ${THINKING_EFFORTS.join(' / ')}）`);
+      continue;
+    }
+    if (level === 'off') {
+      if (value === null) {
+        out.off = null;
+      } else if (typeof value === 'string' && value.trim()) {
+        out.off = value.trim();
+      } else {
+        errors.push(`${field}.off 只能是 null（不发送参数）或非空字符串`);
+      }
+      continue;
+    }
+    if (typeof value !== 'string' || !value.trim()) {
+      errors.push(`${field}.${level} 必须是非空字符串（请求里发送的 API 参数值）`);
+      continue;
+    }
+    out[level as ThinkingEffort] = value.trim();
+    thinking++;
+  }
+  if (thinking === 0) {
+    errors.push(`${field} 至少要有一个 off 之外的思考档位（不需要思考请整个字段设为 false）`);
+    return undefined;
+  }
+  return out;
+}
+
 /** 校验 per-model 覆盖（只认已知字段；形状不对点名报错）。 */
 function readModelOverrides(raw: unknown, errors: string[]): ProviderSettings['modelOverrides'] | undefined {
   if (raw === undefined) return undefined;
@@ -197,12 +251,19 @@ function readModelOverrides(raw: unknown, errors: string[]): ProviderSettings['m
         );
       }
     }
+    // per-model 自定义推理等级（2026-10-22 对齐 DSH）：档位 → 请求里发送的 API 参数值。
+    if (ov.reasoningEfforts !== undefined) {
+      const reasoningEfforts = readReasoningEfforts(
+        ov.reasoningEfforts,
+        `modelOverrides「${id}」.reasoningEfforts`,
+        errors,
+      );
+      if (reasoningEfforts !== undefined) next.reasoningEfforts = reasoningEfforts;
+    }
     out[id] = next;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
-
-const THINKING_EFFORTS: readonly ThinkingEffort[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 /** 校验 per-model 拉取元数据（app 也会写这段——形状错点名报错）。 */
 function readModelMeta(raw: unknown, errors: string[]): Record<string, ModelMeta> | undefined {

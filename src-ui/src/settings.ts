@@ -6,7 +6,7 @@
 
 import { getDefaultModel, getModel } from './provider/catalog';
 import type { ModelMeta } from './provider/model-meta';
-import type { StoredThinking, ThinkingEffort } from './provider/thinking';
+import { type StoredThinking, THINKING_EFFORTS, type ThinkingEffort, type ThinkingLevelMap } from './provider/thinking';
 import type { CoreProtocol, ModelDescriptor, Protocol } from './provider/types';
 // 批 9f-1：`getCatalogVendors` / `VENDOR_TEMPLATES` 的读者（`isFactoryBaseUrl`）已随
 // settings-domain 包 ⇒ 本文件不再需要这两个导入（`findVendorTemplate` 仍供 `defaultBaseUrl` 用）。
@@ -95,6 +95,11 @@ export interface ModelOverrides {
    *  ——「自动」是真实选择，不是缺省）。消费面 = `modelThinking` 一把尺子
    *  （live provider 请求期 / 设置页参数面板 / 创作坞 pill）。 */
   thinking?: StoredThinking;
+  /** 本模型的推理等级声明（2026-10-22 对齐 DSH `reasoningEfforts`）：
+   *  键 = canonical 档位，值 = 请求里发送的 API 参数值（null 只允许 off）。
+   *  缺省 = 沿用 API 拉取/目录的档位声明（原值恒等映射）；`false` = 显式声明
+   *  该模型不推理（清掉目录声明的能力，YAML 手写可用，设置页开关关掉 = 缺省）。 */
+  reasoningEfforts?: false | ThinkingLevelMap;
 }
 
 /** 解析某提供方的「可用模型」id 列表：显式 models 优先，缺省回落 [model]
@@ -141,19 +146,39 @@ export function modelInput(p: ProviderSettings | undefined, modelId: string): ('
 }
 
 /** 某模型是否支持推理/思考（拉取元数据 ?? 目录声明；皆无 = undefined 未知）。
- *  未知不编造——UI 不据此显示任何能力徽标。 */
+ *  未知不编造——UI 不据此显示任何能力徽标。用户声明了推理等级 = 明确支持；
+ *  声明 `false` = 明确不支持（清掉目录里的推理能力）。 */
 export function modelReasoning(p: ProviderSettings | undefined, modelId: string): boolean | undefined {
+  const declared = p?.modelOverrides?.[modelId]?.reasoningEfforts;
+  if (declared === false) return false;
+  if (declared !== undefined) return true;
   return p?.modelMeta?.[modelId]?.reasoning ?? getModel(modelId)?.reasoning;
 }
 
-/** 某模型声明的思考档位（拉取元数据 ?? 目录声明；皆无 = undefined）。
- *  现实：当前主流端点均不披露档位清单——缺省即「无声明」，UI 不显示档位选择器、
- *  请求不发 effort 参数（P14 能力协商）。 */
+/** 某模型声明的思考档位（用户自定义声明 ?? 拉取元数据 ?? 目录声明；皆无 = undefined）。
+ *  自定义声明的键按 canonical 顺序排列（off 不算「可选档位」——它是关闭）。 */
 export function modelThinkingEfforts(
   p: ProviderSettings | undefined,
   modelId: string,
 ): readonly ThinkingEffort[] | undefined {
+  const declared = p?.modelOverrides?.[modelId]?.reasoningEfforts;
+  if (declared === false) return undefined;
+  if (declared !== undefined) return THINKING_EFFORTS.filter((effort) => declared[effort] !== undefined);
   return p?.modelMeta?.[modelId]?.thinkingEfforts ?? getModel(modelId)?.thinkingEfforts;
+}
+
+/** 某模型声明的「档位 → API 参数值」表（仅用户显式声明；false/缺省 = undefined）。 */
+export function modelThinkingLevelMap(p: ProviderSettings | undefined, modelId: string): ThinkingLevelMap | undefined {
+  const declared = p?.modelOverrides?.[modelId]?.reasoningEfforts;
+  return declared === undefined || declared === false ? undefined : declared;
+}
+
+/** 某模型的「关闭」档是否可表达（自定义声明含 off 键 / 拉取元数据 / 目录声明）。 */
+export function modelThinkingOff(p: ProviderSettings | undefined, modelId: string): boolean | undefined {
+  const declared = p?.modelOverrides?.[modelId]?.reasoningEfforts;
+  if (declared === false) return false;
+  if (declared !== undefined) return Object.hasOwn(declared, 'off');
+  return p?.modelMeta?.[modelId]?.thinkingOff ?? getModel(modelId)?.thinkingOff;
 }
 
 /** 某模型生效的思考档位**值**（与 modelThinkingEfforts 的**能力**面对偶，
@@ -171,18 +196,23 @@ export function modelThinking(p: ProviderSettings | undefined, modelId: string):
 /** 拉取元数据与静态目录 seed + 用户覆盖合并成完整 ModelDescriptor——
  *  方言请求期（thinkingCapability / clampMaxTokens）读它而非全局 getModel，
  *  使 provider 级的拉取元数据与覆盖真正抵达 wire 层。
- *  seed 与 meta 皆无 = undefined（调用面落回「目录外模型」语义，不编造）。
+ *  seed / meta / 用户覆盖皆无 = undefined（调用面落回「目录外模型」语义，不编造）；
+ *  只有用户覆盖（自定义模型补声明）也生成描述符——推理等级/视觉/窗口都靠它生效。
  *  kind/vendor/baseUrl 由连接配置补齐（provider 名即 vendor，见 ModelSelector
  *  「写错家 400」同族纪律）。 */
 export function modelDescriptor(p: ProviderSettings, modelId: string): ModelDescriptor | undefined {
   const seed = getModel(modelId);
   const meta = p.modelMeta?.[modelId];
-  if (!seed && !meta) return undefined;
+  const override = p.modelOverrides?.[modelId];
+  if (!seed && !meta && !override) return undefined;
   const input = modelInput(p, modelId);
   const contextWindow = modelContextWindow(p, modelId, 0);
   const maxTokens = modelMaxTokens(p, modelId);
   const reasoning = modelReasoning(p, modelId);
   const thinkingEfforts = modelThinkingEfforts(p, modelId);
+  const thinkingLevelMap = modelThinkingLevelMap(p, modelId);
+  const thinkingOff = modelThinkingOff(p, modelId);
+  const reasoningDisabled = p.modelOverrides?.[modelId]?.reasoningEfforts === false;
   return {
     id: modelId,
     name: meta?.name ?? seed?.name ?? modelId,
@@ -194,7 +224,9 @@ export function modelDescriptor(p: ProviderSettings, modelId: string): ModelDesc
     contextWindow,
     maxTokens,
     ...(thinkingEfforts !== undefined ? { thinkingEfforts } : {}),
-    ...(seed?.thinkingOff !== undefined ? { thinkingOff: seed.thinkingOff } : {}),
+    ...(thinkingLevelMap !== undefined ? { thinkingLevelMap } : {}),
+    ...(thinkingOff !== undefined ? { thinkingOff } : {}),
+    ...(reasoningDisabled ? { reasoningDisabled: true } : {}),
     ...(seed?.deepseekThinking !== undefined ? { deepseekThinking: seed.deepseekThinking } : {}),
   };
 }

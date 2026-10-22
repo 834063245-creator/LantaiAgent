@@ -31,9 +31,10 @@ _Avoid_: 模型名、model id、LLM
 _Avoid_: model、模型名
 
 **ThinkingPolicy**:
-用户对「模型作答前推理多少」的配置。统一档位（自动/低/中/高/极限/关闭）是 UI 与存储形态；
-wire 参数按 EffortVendor 适配（Anthropic budget_tokens、DeepSeek reasoning_effort high/max、
-OpenAI 官方 low/medium/high、其余厂商不发送），映射唯一事实源在 provider/thinking.ts。
+用户对「模型作答前推理多少」的配置。统一档位（自动/浅/低/中/高/较深/极限/关闭）是 UI 与
+存储形态；每个模型还可声明自己提供哪些档位、每档请求里发送什么 API 参数值
+（`ModelOverrides.reasoningEfforts`，对齐 DSH），wire 参数按声明值发送（缺省 = 档位原名；
+Anthropic 无声明时走 budget_tokens）。映射唯一事实源在 provider/thinking.ts。
 区别于模型能力（是否支持推理）与响应中的思维链内容。
 _Avoid_: thinking、深度思考、reasoning（作设置名）
 

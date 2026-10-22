@@ -25,8 +25,8 @@ import {
   type Role,
   type StoredThinking,
   sanitizeToolPairing,
-  type ThinkingEffort,
   thinkingCapability,
+  thinkingWireFor,
 } from './host';
 import { sendWithRetry } from './retry';
 import {
@@ -240,7 +240,7 @@ interface ChatRequest {
   stream: true;
   stream_options?: { include_usage: true };
   thinking?: { type: 'enabled' | 'disabled' };
-  reasoning_effort?: ThinkingEffort | 'none';
+  reasoning_effort?: string;
 }
 
 export function buildChatRequest(
@@ -270,10 +270,19 @@ export function buildChatRequest(
   //    OpenAI 官方 5.1+ reasoning_effort:'none'；未声明关闭的模型不发参数
   //    （目录外模型无从关闭——不编造，模型默认即最终行为）。
   const stored = thinking || '';
-  const level = isThinkingMode(stored) ? stored : '';
+  // reasoningDisabled（用户显式声明不推理）时，行级默认档位也不得下发。
+  const level = isThinkingMode(stored) && resolved?.reasoningDisabled !== true ? stored : '';
+  const declaredWire = thinkingWireFor(resolved, level);
   let thinkingBlock: ChatRequest['thinking'];
   let effort: ChatRequest['reasoning_effort'];
-  if (level === 'off') {
+  if (declaredWire !== undefined) {
+    // 用户自定义推理等级（2026-10-22 对齐 DSH）：值即请求里的 API 参数原样；
+    // off:null = 该档不发送参数（不编造包裹）。
+    if (declaredWire !== null) {
+      if (level !== 'off' && cap.deepseekWrap) thinkingBlock = { type: 'enabled' };
+      effort = declaredWire;
+    }
+  } else if (level === 'off') {
     if (cap.off) {
       if (cap.deepseekWrap) thinkingBlock = { type: 'disabled' };
       else effort = 'none';

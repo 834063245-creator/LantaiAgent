@@ -30,6 +30,7 @@ import {
   classifyProviderError,
   classifyStreamError,
   getModel,
+  isThinkingMode,
   type Message,
   type ModelDescriptor,
   type ModelMeta,
@@ -41,6 +42,7 @@ import {
   type StoredThinking,
   sanitizeToolPairing,
   thinkingCapability,
+  thinkingWireFor,
 } from './host';
 import { sendWithRetry } from './retry';
 import {
@@ -423,10 +425,15 @@ export function buildResponsesRequest(
   const desired = maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS;
   r.max_output_tokens = cap && cap > 0 ? Math.min(desired, cap) : desired;
 
-  // reasoning.effort：命名档位 → canonical 原值；'off'/''/数字遗留 → 不下发
-  // （Responses 无关闭方言——模型默认；不编造）
+  // reasoning.effort：自定义推理等级优先（值原样下发；off:null = 不下发）；
+  // 无自定义声明时沿用旧语义——命名档位 → canonical 原值，'off'/''/数字遗留不下发
+  // （Responses 无关闭方言——模型默认；不编造）。
   const stored = thinkingCfg || '';
-  if (stored !== 'off' && stored !== '' && !/^\d+$/.test(stored)) {
+  const level = isThinkingMode(stored) && desc?.reasoningDisabled !== true ? stored : '';
+  const declaredWire = thinkingWireFor(desc, level);
+  if (declaredWire !== undefined) {
+    if (declaredWire !== null) r.reasoning = { effort: declaredWire };
+  } else if (desc?.reasoningDisabled !== true && stored !== 'off' && stored !== '' && !/^\d+$/.test(stored)) {
     r.reasoning = { effort: stored };
   }
 

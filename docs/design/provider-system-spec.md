@@ -763,6 +763,7 @@ interface ModelOverrides {
   maxTokens?: number;
   input?: ('text' | 'image')[]; // 输入模态声明（multimodal-image B5 · D-8①）
   thinking?: StoredThinking;    // per-model 思考档位（2026-09-23 思考下沉）
+  reasoningEfforts?: false | Partial<Record<ReasoningLevel, string | null>>; // 自定义推理等级（2026-10-22，DSH 对齐）
 }
 interface ModelMeta {        // provider/model-meta.ts —— 端点真披露的字段（不编造）
   name?: string; contextWindow?: number; maxTokens?: number;
@@ -814,6 +815,31 @@ interface ModelMeta {        // provider/model-meta.ts —— 端点真披露的
   的模型给「自动/关闭」协议安全兜底（assertEffortDeclared 对 ''/off 不拦），不再整控件
   消失。现实：当前主流端点均不披露档位清单——`thinkingEfforts` 在拉取面只认端点显式
   给出的数组（过 canonical 词表），未披露即不显示档位选择器（不编造）。
+
+### 追裁：自定义推理等级（2026-10-22，对齐 DSH `reasoningEfforts`）
+
+> 动机：DSH 的模型设置已允许每个模型声明「提供哪些推理档位 + 每档请求里发送什么
+> API 参数值」。兰台此前只有能力声明（档位子集）与固定的 canonical 映射：网关要求
+> `high → "deep"`、`off → "none"` 这类拼写时无配置面可改。
+
+- **数据形态**：`ModelOverrides.reasoningEfforts?: false | ThinkingLevelMap`。
+  `ThinkingLevelMap` 键 = canonical 档位（含 `off`），值 = 请求里发送的 API 参数值；
+  `null` 只允许 `off`（= 该档不发送参数）；`false` = 显式声明该模型不推理
+  （descriptor 带 `reasoningDisabled: true`；`reasoning: false` 本身也可能是「未知」，
+  adapter 不得据此拦请求）。存储真源仍是 `~/.lantai/providers.yml` 的
+  `modelOverrides.<id>.reasoningEfforts`（设置页只是编辑器；关闭开关 = 删除字段、
+  回落 API 拉取/目录声明）。
+- **合并链**：override ?? `modelMeta` ?? 静态目录 seed（沿用四层链）。有声明时
+  `modelThinkingEfforts` 由声明的键派生、`thinkingLevelMap` 随 `ModelDescriptor`
+  进方言；声明外档位仍由 `assertEffortDeclared` 在 I/O 前响亮报错，绝不静默替换。
+- **wire**：OpenAI chat = `reasoning_effort`、Responses = `reasoning.effort`，值原样
+  发送；`off:null` 不发、`off:string` 原样发（如 OpenAI 5.1+ 的 `none`）。Anthropic
+  自定义声明：数字 = `thinking.budget_tokens`，非数字 = `thinking:{type:'adaptive'}`
+  + `output_config.effort`（无自定义声明时仍走既有 canonical budget 表，零漂移）。
+- **UI（设置 → Provider → 可用模型 → 参数 → 推理等级）**：开关 + 每档一行
+  「档位 / API 参数值」。打开时从模型已有档位播种（无则 off/low/medium/high）；
+  API 值默认档位名；删除至少保留一个 off 以外的档位；关闭开关重开会重新播种，
+  不携带上一模型的编辑态（DSH a0a041 同款修复）。
 
 ### 退役清单（本 Phase 删除）
 

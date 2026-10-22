@@ -450,6 +450,72 @@ describe('ProviderPage — 暂存流程', () => {
     expect(select().value).toBe('__inherit__');
   });
 
+  // 2026-10-22 自定义推理等级（DSH `reasoningEfforts` 对齐）：per-model 开关 + 档位行。
+  it('推理等级：开关播种档位、改 API 参数值、添加/删除档位、关闭后重新播种', async () => {
+    await render(makeSettings());
+    const paramBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-param')].find((b) =>
+      b.title.includes('上下文窗口'),
+    )!;
+    await click(paramBtn);
+    const reasoning = () => document.querySelector<HTMLElement>('.pp-model-reasoning');
+    const switchEl = () => reasoning()!.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    const rows = () => [...reasoning()!.querySelectorAll('.pp-model-reasoning-row:not(.pp-model-reasoning-cols)')];
+    const valueInput = (level: string) =>
+      reasoning()!.querySelector<HTMLInputElement>(`input[aria-label="${level} API 参数值"]`)!;
+
+    expect(reasoning()).not.toBeNull();
+    expect(switchEl().getAttribute('aria-checked')).toBe('false');
+    expect(rows()).toHaveLength(0);
+
+    // 打开：按该模型已声明的档位播种（deepseek-v4-pro = low/high/max + off）。
+    await click(switchEl());
+    expect(switchEl().getAttribute('aria-checked')).toBe('true');
+    expect(rows()).toHaveLength(4);
+    expect(valueInput('high').value).toBe('high');
+
+    // 改 API 参数值：原样落进声明（high → deep）。
+    await setInputValue(valueInput('high'), 'deep');
+    expect(valueInput('high').value).toBe('deep');
+
+    // 添加档位：最高档 max 之上没有空位 → 回落最早未用的 minimal。
+    await click(reasoning()!.querySelector('.pp-model-reasoning-add'));
+    expect(rows()).toHaveLength(5);
+    expect([...reasoning()!.querySelectorAll<HTMLSelectElement>('select')].at(-1)!.value).toBe('minimal');
+
+    // 删除刚加的 minimal（有 off 以外的档位可留，允许删）。
+    await click(reasoning()!.querySelector('button[aria-label="删除档位 minimal"]'));
+    expect(rows()).toHaveLength(4);
+
+    // 关闭 = 删除声明；再打开从声明/目录重新播种（不携带上次编辑的 deep）。
+    await click(switchEl());
+    expect(rows()).toHaveLength(0);
+    await click(switchEl());
+    expect(rows()).toHaveLength(4);
+    expect(valueInput('high').value).toBe('high');
+  });
+
+  it('推理等级：新声明不再包含当前档位时清掉 thinking 覆盖', async () => {
+    const base = makeSettings();
+    await render(
+      makeSettings({
+        providers: [
+          { ...base.providers[0]!, modelOverrides: { 'deepseek-v4-pro': { thinking: 'max' } } },
+          base.providers[1]!,
+        ],
+      }),
+    );
+    const paramBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-param')].find((b) =>
+      b.title.includes('上下文窗口'),
+    )!;
+    await click(paramBtn);
+    const reasoning = () => document.querySelector<HTMLElement>('.pp-model-reasoning')!;
+    await click(reasoning().querySelector('[role="switch"]'));
+    // 播种后 max 仍在声明内，删除 max = 新声明不再提供 max → thinking 覆盖清回「随本家默认」。
+    await click(reasoning().querySelector('button[aria-label="删除档位 max"]'));
+    const thinkingSelect = document.querySelector<HTMLSelectElement>('.pp-model-params > .pp-model-param > select');
+    expect(thinkingSelect?.value).toBe('__inherit__');
+  });
+
   it('oauth 订阅（codex chip）：未登录不能确认添加——先弹层内登录（device-flow）→ seed 模型 → 确认添加', async () => {
     await render(makeSettings({ providers: [makeSettings().providers[1]] }));
     await click(document.querySelector('.pp-rail-add'));

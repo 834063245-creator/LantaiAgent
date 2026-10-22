@@ -6,7 +6,12 @@
 
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { type StoredThinking, thinkingModeLabel, thinkingOptionsOrDefault } from '../../../provider/thinking';
+import {
+  type StoredThinking,
+  type ThinkingLevelMap,
+  thinkingModeLabel,
+  thinkingOptionsOrDefault,
+} from '../../../provider/thinking';
 import {
   effectiveModels,
   getDynamicFetchFailure,
@@ -19,6 +24,7 @@ import {
   type ProbeOutcome,
   type ProviderSettings,
 } from './host';
+import { ModelReasoningLevels } from './ModelReasoningLevels';
 import { ProviderAdvanced } from './ProviderAdvanced';
 import { ProviderDocCard } from './ProviderDocCard';
 import { protocolLabel } from './protocol';
@@ -102,6 +108,9 @@ export interface ProviderDetailActions {
   onModelOverride: (modelId: string, field: 'contextWindow' | 'maxTokens', value: number) => void;
   /** per-model 思考档位覆盖（2026-09-23 思考下沉）：undefined = 清覆盖回本家默认。 */
   onModelThinking: (modelId: string, value: StoredThinking | undefined) => void;
+  /** per-model 推理等级声明（2026-10-22 对齐 DSH）：undefined = 删除声明回落到目录/
+   *  API 拉取；false = 显式声明不推理（YAML 手写面保留语义）。 */
+  onModelReasoning: (modelId: string, value: false | ThinkingLevelMap | undefined) => void;
   /** 视觉声明覆盖（B5 · D-8①）：on = ['text','image'] 强制开；off = 清覆盖回落目录。 */
   onModelVisionToggle: (modelId: string, on: boolean) => void;
   /** 高级连接配置（2026-09-17）：请求头编辑的整行回填（名字与密钥保持本行）。 */
@@ -162,6 +171,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     onSetEnabledModels,
     onModelOverride,
     onModelThinking,
+    onModelReasoning,
     onModelVisionToggle,
     onAdvancedChange,
     doc,
@@ -548,6 +558,13 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                             {provider.modelOverrides?.[id]?.thinking !== undefined ? '手动设置' : '默认'}
                           </span>
                         </label>
+                        {/* 推理等级声明（2026-10-22 对齐 DSH）：本模型提供哪些档位、
+                         *  每档请求里发送什么参数值。关闭 = 回落 API 拉取/目录声明。 */}
+                        <ModelReasoningLevels
+                          efforts={modelDescriptor(provider, id)?.thinkingEfforts}
+                          value={provider.modelOverrides?.[id]?.reasoningEfforts}
+                          onChange={(next) => onModelReasoning(id, next)}
+                        />
                         <span className="pp-model-params-hint">
                           留空 = 用 API 拉取/目录值（都没有则上下文按未知处理、输出不钳制）；视觉生效 = 覆盖 ?? API 拉取
                           ?? 目录；思考档位缺省 = 本家默认档位

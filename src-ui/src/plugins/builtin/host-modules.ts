@@ -283,6 +283,7 @@ import {
   thinkingCapability,
   thinkingOptionsFor,
   thinkingOptionsOrDefault,
+  thinkingWireFor,
 } from '../../provider/thinking';
 import { proxyFetch } from '../../provider/transport';
 import {
@@ -657,6 +658,7 @@ const faceDeps = {
   isThinkingMode,
   THINKING_EFFORT_BUDGETS,
   thinkingCapability,
+  thinkingWireFor,
   proxyFetch,
   classifyError,
   classifyStreamError,

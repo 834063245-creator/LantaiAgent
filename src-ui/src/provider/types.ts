@@ -4,7 +4,7 @@
 // Provider 抽象层 — 统一 Message / Chunk / ToolCall，抹平 Anthropic 和 OpenAI 的 API 差异
 
 import type { ModelMeta } from './model-meta';
-import type { StoredThinking, ThinkingEffort } from './thinking';
+import type { StoredThinking, ThinkingEffort, ThinkingLevelMap } from './thinking';
 
 /** 模型 API 的线上方言（CONTEXT.md「Protocol」）。
  *  注意：ProviderSettings/ModelDescriptor 上的持久化字段名仍叫 `kind`（存储遗留名），
@@ -237,6 +237,13 @@ export interface ModelDescriptor {
   /** 声明支持的思考档位（canonical 词表子集）。缺省 = 档位未知，UI 不显示选择器，
    *  请求永不发送 effort 参数。 */
   thinkingEfforts?: readonly ThinkingEffort[];
+  /** 用户自定义的「档位 → API 参数值」声明（2026-10-22 对齐 DSH `reasoningEfforts`）：
+   *  出现时 `thinkingEfforts` 由它的键派生，请求按这里写的值发送；缺省 = 无自定义
+   *  声明（canonical 原值 / 目录声明）。 */
+  thinkingLevelMap?: ThinkingLevelMap;
+  /** 用户显式声明该模型不推理（`ModelOverrides.reasoningEfforts: false`）。
+   *  缺省 = 未声明（`reasoning: false` 也可能是「未知」，不得据它拦请求）。 */
+  reasoningDisabled?: boolean;
   /** 「关闭」档是否可表达（openai 协议：DeepSeek 方言发 thinking:{type:'disabled'}，
    *  OpenAI 官方 5.1+ 发 reasoning_effort:'none'；anthropic 协议不发 thinking 块）。 */
   thinkingOff?: boolean;

@@ -248,6 +248,54 @@ describe('buildResponsesRequest（Responses 协议请求形状）', () => {
     expect(buildResponsesRequest([{ role: 'user', content: 'hi' }], [], 'm', 100, '8000').reasoning).toBeUndefined();
   });
 
+  it('自定义推理等级：声明值原样进 reasoning.effort（off:null 不下发）', () => {
+    const desc = {
+      id: 'm',
+      name: 'M',
+      kind: 'responses',
+      vendor: 'gw',
+      baseUrl: 'https://gw.test/v1',
+      reasoning: true,
+      input: ['text'] as ('text' | 'image')[],
+      contextWindow: 1000,
+      maxTokens: 100,
+      thinkingEfforts: ['low', 'high'] as const,
+      thinkingLevelMap: { off: null, low: 'minimal', high: 'deep' },
+    };
+    expect(
+      buildResponsesRequest([{ role: 'user', content: 'hi' }], [], 'm', 100, 'high', undefined, undefined, desc)
+        .reasoning,
+    ).toEqual({ effort: 'deep' });
+    expect(
+      buildResponsesRequest([{ role: 'user', content: 'hi' }], [], 'm', 100, 'low', undefined, undefined, desc)
+        .reasoning,
+    ).toEqual({ effort: 'minimal' });
+    expect(
+      buildResponsesRequest([{ role: 'user', content: 'hi' }], [], 'm', 100, 'off', undefined, undefined, desc)
+        .reasoning,
+    ).toBeUndefined();
+  });
+
+  it('自定义 off 字符串 = 原样下发（如 OpenAI 的 none）', () => {
+    const desc = {
+      id: 'm',
+      name: 'M',
+      kind: 'responses',
+      vendor: 'gw',
+      baseUrl: 'https://gw.test/v1',
+      reasoning: true,
+      input: ['text'] as ('text' | 'image')[],
+      contextWindow: 1000,
+      maxTokens: 100,
+      thinkingEfforts: ['high'] as const,
+      thinkingLevelMap: { off: 'none', high: 'deep' },
+    };
+    expect(
+      buildResponsesRequest([{ role: 'user', content: 'hi' }], [], 'm', 100, 'off', undefined, undefined, desc)
+        .reasoning,
+    ).toEqual({ effort: 'none' });
+  });
+
   it('max_output_tokens：maxTok 缺省回落默认上限', () => {
     const req = buildResponsesRequest([{ role: 'user', content: 'hi' }], [], 'm', 0, undefined);
     expect(req.max_output_tokens).toBeGreaterThan(0);

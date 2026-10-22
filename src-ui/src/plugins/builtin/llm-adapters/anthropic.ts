@@ -12,6 +12,7 @@ import {
   classifyProviderError,
   classifyStreamError,
   getModel,
+  isThinkingMode,
   type Message,
   type ModelDescriptor,
   type ModelMeta,
@@ -25,6 +26,7 @@ import {
   sanitizeToolPairing,
   THINKING_EFFORT_BUDGETS,
   thinkingCapability,
+  thinkingWireFor,
 } from './host';
 import { sendWithRetry } from './retry';
 import {
@@ -237,6 +239,8 @@ interface AnthRequest {
   messages: AnthMessage[];
   tools?: AnthTool[];
   thinking?: { type: string; display?: string; budget_tokens?: number };
+  /** 自适应思考的 effort（2026-10-22 自定义推理等级：非数字 API 参数值走这里）。 */
+  output_config?: { effort: string };
   stream: boolean;
 }
 
@@ -417,7 +421,25 @@ export function buildRequest(
     stream: true,
   };
 
-  if (thinkingCfg && thinkingCfg !== 'off') {
+  const level = isThinkingMode(thinkingCfg) && desc?.reasoningDisabled !== true ? thinkingCfg : '';
+  const declaredWire = thinkingWireFor(desc, level);
+  if (declaredWire !== undefined) {
+    // 用户自定义推理等级（2026-10-22 对齐 DSH）：
+    //  - 数字 = budget_tokens（旧版 Anthropic 思考预算的直给面）；
+    //  - 其余字符串 = adaptive thinking 的 output_config.effort（新版 Claude）；
+    //  - off:null = 不发 thinking 块；off:string = 声明可关闭，发 thinking:{type:'disabled'}。
+    if (level === 'off') {
+      if (declaredWire !== null) r.thinking = { type: 'disabled' };
+    } else if (declaredWire !== null) {
+      if (/^\d+$/.test(declaredWire)) {
+        const budget = Number.parseInt(declaredWire, 10);
+        if (budget > 0) r.thinking = { type: 'enabled', budget_tokens: Math.min(budget, 32000) };
+      } else {
+        r.thinking = { type: 'adaptive', display: 'summarized' };
+        r.output_config = { effort: declaredWire };
+      }
+    }
+  } else if (thinkingCfg && thinkingCfg !== 'off' && desc?.reasoningDisabled !== true) {
     // 努力等级 → budget tokens 映射（唯一事实源在 provider/thinking.ts）
     const effortBudget = THINKING_EFFORT_BUDGETS[thinkingCfg.toLowerCase() as keyof typeof THINKING_EFFORT_BUDGETS];
     if (effortBudget) {

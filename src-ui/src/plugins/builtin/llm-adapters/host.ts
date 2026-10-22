@@ -23,6 +23,7 @@ export {
   isThinkingMode,
   THINKING_EFFORT_BUDGETS,
   thinkingCapability,
+  thinkingWireFor,
 } from '../../../provider/thinking';
 export { proxyFetch } from '../../../provider/transport';
 export type {

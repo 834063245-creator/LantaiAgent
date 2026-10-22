@@ -22,9 +22,18 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 57;
+export const OPEN_SURFACE_CONTRACT_VERSION = 58;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v58（2026-10-22）**模型级自定义推理等级**（`provider/types.ts`）：`ModelDescriptor`
+ *  新增可选 `thinkingLevelMap`（canonical 档位 → 请求里发送的 API 参数值；对齐 DSH
+ *  `reasoningEfforts`）与可选 `reasoningDisabled`（用户显式声明不推理；`reasoning:false`
+ *  本身可能是「未知」，不能据此拦请求）。出现 `thinkingLevelMap` 时 `thinkingEfforts`
+ *  由它的键派生、`thinkingOff` 由是否含 `off` 键裁决；缺省 = 无自定义声明，canonical
+ *  原值 / 目录声明的旧行为逐字节不变。第三方 adapter 不读本字段 = 零影响；读它即可按
+ *  声明值发 wire（或继续走自有映射）。
+ *  **对外可感知**：设置页可给每个模型声明档位与 API 参数值（存储于
+ *  `providers.yml` 的 `modelOverrides.<id>.reasoningEfforts`）。
  *  v57（2026-10-15）**面板贡献面增可选 `animateExit`（§15 退场对称批）**：
  *  ① `composition/services.ts` 的 `PanelContribution` 与 `app/panels/panel-def.ts`
  *  的 `PanelDef` 各增**可选** `animateExit?: boolean`（两处形状是「贡献面 / 消费面」

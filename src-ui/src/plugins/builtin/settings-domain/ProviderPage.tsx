@@ -6,7 +6,7 @@
 // 添加/删除/清除 Key 均为「暂存」，保存时统一落盘 + 写/删凭据 + 重建 Agent。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { StoredThinking } from '../../../provider/thinking';
+import type { StoredThinking, ThinkingLevelMap } from '../../../provider/thinking';
 import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
 import { type AddProviderEntry, AddProviderSheet } from './AddProviderSheet';
@@ -257,6 +257,32 @@ export function ProviderPage({
     [settings, onCommitProvider],
   );
 
+  /** per-model 推理等级声明（2026-10-22 对齐 DSH）：写 modelOverrides.reasoningEfforts。
+   *  新声明不再包含当前选中的档位时清掉 thinking 覆盖（回落本家默认），避免保存后
+   *  下一轮请求撞上 `assertEffortDeclared` 的「声明外档位」硬错。 */
+  const handleModelReasoning = useCallback(
+    (name: string, modelId: string, value: false | ThinkingLevelMap | undefined) => {
+      const p = settings.providers.find((x) => x.name === name);
+      const cur = p?.modelOverrides?.[modelId] ?? {};
+      let thinking = cur.thinking;
+      if (value !== undefined && value !== false) {
+        const declared = Object.keys(value).filter((level) => level !== 'off');
+        const inherited = thinking === undefined;
+        const effective = inherited ? p?.thinking : thinking;
+        const named = effective !== undefined && effective !== '' && effective !== 'off' && !/^\d+$/.test(effective);
+        const invalid = effective === 'off' ? !Object.hasOwn(value, 'off') : named && !declared.includes(effective);
+        // 显式选择失效 → 回「随本家默认」（undefined）；继承值失效 → 钉成显式自动（''），
+        // 否则下一轮请求会带着本家默认撞上声明外档位的硬错。
+        if (invalid) thinking = inherited ? '' : undefined;
+      }
+      const nextOverrides = {
+        ...(p?.modelOverrides ?? {}),
+        [modelId]: { ...cur, thinking, reasoningEfforts: value },
+      };
+      onCommitProvider(updateProvider(settings, name, { modelOverrides: nextOverrides }));
+    },
+    [settings, onCommitProvider],
+  );
   /** 高级连接配置（2026-09-17）：请求头编辑 / 配方导入的整行回填——名字与密钥
    *  由 ProviderAdvanced 保持本行值；此处按既有 onChange 即时落盘惯例提交。 */
   const handleAdvancedChange = useCallback(
@@ -644,6 +670,7 @@ export function ProviderPage({
               handleModelOverride(selectedProvider.name, modelId, field, value),
             onModelVisionToggle: (modelId, on) => handleModelVisionToggle(selectedProvider.name, modelId, on),
             onModelThinking: (modelId, value) => handleModelThinking(selectedProvider.name, modelId, value),
+            onModelReasoning: (modelId, value) => handleModelReasoning(selectedProvider.name, modelId, value),
             onAdvancedChange: (next) => handleAdvancedChange(selectedProvider.name, next),
             doc: {
               path: providersDoc.path,

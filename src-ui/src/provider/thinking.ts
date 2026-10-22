@@ -20,6 +20,19 @@ import type { ModelDescriptor, Protocol } from './types';
  *  存储值即此词表成员，新增档位向后兼容（旧存储子集不受影响）。 */
 export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
+/** 档位名（用户可选的 grade id；off = 关闭）。 */
+export type ReasoningLevel = ThinkingEffort | 'off';
+
+/** canonical 档位顺序（不含 off）——声明校验、排序、编辑器「添加档位」共用。 */
+export const THINKING_EFFORTS: readonly ThinkingEffort[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+/** per-model 自定义推理等级声明（DSH `reasoningEfforts` 对齐）：
+ *  键 = 档位，值 = 该档请求里发送的 API 参数值。
+ *  - `null` 只允许 off：该档不发送参数（多数提供方的「不思考」= 参数缺席）；
+ *  - 其余档位必须是**非空字符串**（如 high → "deep"）；
+ *  - 档位不在表内 = 该模型不提供这一档。 */
+export type ThinkingLevelMap = Partial<Record<ReasoningLevel, string | null>>;
+
 export type ThinkingMode = '' | 'off' | ThinkingEffort;
 
 /** ProviderSettings.thinking 的完整存储形态：命名档位 + 历史遗留数字预算。 */
@@ -85,16 +98,44 @@ export interface ThinkingCapability {
   off: boolean;
   /** DeepSeek 思考方言：effort 参数需 thinking:{type} 包裹（仅 openai 协议消费）。 */
   deepseekWrap: boolean;
+  /** 用户为该模型声明的「档位 → API 参数值」；缺省 = 无自定义声明，走 canonical 原值。 */
+  levelMap?: ThinkingLevelMap;
 }
 
 /** 从模型描述符提炼思考能力声明。
  *  描述符缺省（目录外/动态模型）= 无声明：不编造档位、不编造关闭语义。 */
 export function thinkingCapability(desc: ModelDescriptor | undefined): ThinkingCapability {
+  const map = desc?.thinkingLevelMap;
+  if (desc?.reasoningDisabled === true) {
+    return {
+      efforts: [],
+      off: false,
+      deepseekWrap: desc.deepseekThinking === true,
+      ...(map !== undefined ? { levelMap: { ...map } } : {}),
+    };
+  }
+  const efforts = desc?.thinkingEfforts
+    ? [...desc.thinkingEfforts]
+    : map !== undefined
+      ? THINKING_EFFORTS.filter((effort) => map[effort] !== undefined)
+      : [];
   return {
-    efforts: desc?.thinkingEfforts ? [...desc.thinkingEfforts] : [],
-    off: desc?.thinkingOff === true,
+    efforts,
+    off: desc?.thinkingOff === true || Object.hasOwn(map ?? {}, 'off'),
     deepseekWrap: desc?.deepseekThinking === true,
+    ...(map !== undefined ? { levelMap: { ...map } } : {}),
   };
+}
+
+/** 自定义声明下某档位应发送的 API 参数值。
+ *  - `undefined` = 该模型没有自定义声明（调用方走既有 canonical 行为）；
+ *  - `null` = 该档不发送参数（仅 off 合法）；
+ *  - `string` = 发送该值（openai: reasoning_effort / responses: reasoning.effort /
+ *    anthropic: 数字 = budget_tokens，其余 = adaptive effort）。 */
+export function thinkingWireFor(desc: ModelDescriptor | undefined, level: ThinkingMode): string | null | undefined {
+  if (level === '' || desc?.thinkingLevelMap === undefined) return undefined;
+  const map = desc.thinkingLevelMap;
+  return Object.hasOwn(map, level) ? map[level] : undefined;
 }
 
 /** 声明驱动的 UI 档位表（替代退役的 thinkingModesFor 嗅探）：
