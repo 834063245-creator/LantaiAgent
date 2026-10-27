@@ -10,7 +10,6 @@ import type { Message, Provider } from '../../provider/types';
 import type { AgentStore } from '../agent-store';
 import type { AgentEvent, EventSink } from '../agent-types';
 import type { ExecStateInstance } from '../execution-state';
-import type { GoalManager } from '../goal-manager';
 import type { MemoryManagerFace } from '../memory-contract';
 import type { SubAgentPool } from '../subagent-runtime-contract';
 import type { TaskBoardFace } from '../task-contract';
@@ -79,8 +78,6 @@ export interface AgentConfig {
   tools: ToolRegistry;
   /** 记忆管理器 */
   memoryManager?: MemoryManagerFace;
-  /** 目标管理器 */
-  goalManager?: GoalManager;
   /** Agent 持久化存储 */
   agentStore?: AgentStore;
   /** 子 Agent 池 */

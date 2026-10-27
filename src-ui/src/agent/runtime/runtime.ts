@@ -112,11 +112,8 @@ class AgentHandleImpl implements AgentHandle {
   run(signal: AbortSignal, input: string, images?: ChatImageRef[]): Promise<void> {
     return this._agent.run(signal, input, images);
   }
-  runGoal(signal: AbortSignal, goal: string) {
-    return this._agent.runGoal(signal, goal);
-  }
-  resumeGoal(signal: AbortSignal, id?: string) {
-    return this._agent.resumeGoal(signal, id);
+  runGoalRound(signal: AbortSignal) {
+    return this._agent.runGoalRound(signal);
   }
   compactNow(signal: AbortSignal) {
     return this._agent.compactNow(signal);
@@ -588,7 +585,6 @@ export class AgentRuntime implements RuntimePort {
         eventSink: config.eventSink,
         memoryManager: config.memoryManager,
         agentStore: config.agentStore,
-        goalManager: config.goalManager,
         subAgentPool: config.subAgentPool,
         execState: config.execState,
         messageBus: this._bus,

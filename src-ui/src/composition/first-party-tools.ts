@@ -30,6 +30,7 @@ import { browserDesktopDomainPlugin } from '../plugins/builtin/browser-desktop-d
 import { cordisDomainPlugin } from '../plugins/builtin/cordis-domain';
 import { fsDomainPlugin } from '../plugins/builtin/fs-domain';
 import { gitDomainPlugin } from '../plugins/builtin/git-domain';
+import { goalModePlugin } from '../plugins/builtin/goal-mode';
 import { memoryDomainPlugin } from '../plugins/builtin/memory-domain';
 import { officeDomainPlugin } from '../plugins/builtin/office-domain';
 import { searchDomainPlugin } from '../plugins/builtin/search-domain';
@@ -74,13 +75,17 @@ export function firstPartyToolPlugins(): LantaiPlugin[] {
     assetDomainPlugin,
     // office 域（C 路，2026-09-13——OfficeCLI 一等域工具；表尾追加 = 前缀缓存友好）
     officeDomainPlugin,
+    // goal 域（2026-10-23 DSH 式目标域——goal 工具 + 目标提示段；表尾追加）
+    goalModePlugin,
   ];
 }
 
 /** 在第一方工具插件通道激活期间执行 run（通道随调用拆卸）。
  *  四 service 先装载（清单插件的 inject ['tools'] 依赖可解析）；拆卸逆序。
  *  M4 收口：装配体已上收 withFirstPartyChannel（三条通道腰的唯一实现，
- *  纪律见该文件头注）——本文件只负责清单。 */
+ *  纪律见该文件头注）——本文件只负责清单。
+ *  2026-10-23：goal-mode 只贡献工具行（目标提示段是可选面，经 ctx.get('prompts')
+ *  取用——无 prompts 的腰里跳过，不把 prompt 服务塞进工具腰）。 */
 export function withFirstPartyToolChannel<T>(run: () => Promise<T>): Promise<T> {
   return withFirstPartyChannel([compositionServicesPlugin], firstPartyToolPlugins(), run);
 }

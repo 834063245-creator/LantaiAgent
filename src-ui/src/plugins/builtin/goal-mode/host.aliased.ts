@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // goal-mode · 宿主依赖面 · 构建产物域（与 host.ts 同形状镜像；类型面以
-// typeof import('./host') 对拍）。
+// typeof import('./host') 对拍——漏键在装载期被 face.json 键集闸拦下）。
 
 /* eslint-disable */
 interface PluginHostBridge {
@@ -16,20 +16,19 @@ function requireHost(): PluginHostBridge {
 const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
-export const EventKind = impl.EventKind;
-export const registerGoalImplementation = impl.registerGoalImplementation;
-export const errText = impl.errText;
+export const blockGoal = impl.blockGoal;
+export const completeGoal = impl.completeGoal;
+export const createGoal = impl.createGoal;
+export const DEFAULT_BLOCKED_MIN_ROUNDS = impl.DEFAULT_BLOCKED_MIN_ROUNDS;
 export const defineTool = impl.defineTool;
+export const editGoal = impl.editGoal;
+export const GoalError = impl.GoalError;
+export const goalHostOf = impl.goalHostOf;
+export const isTopLevelHost = impl.isTopLevelHost;
+export const pauseGoal = impl.pauseGoal;
+export const readGoal = impl.readGoal;
+export const resumeGoal = impl.resumeGoal;
 
-export type AgentEvent = import('./host').AgentEvent;
-export type AgentUINotifier = import('./host').AgentUINotifier;
-export type ExecStateInstance = import('./host').ExecStateInstance;
-export type GoalLoopHost = import('./host').GoalLoopHost;
-export type GoalManager = import('./host').GoalManager;
-export type GoalModeImplementation = import('./host').GoalModeImplementation;
-export type GoalRecord = import('./host').GoalRecord;
-export type GoalRunResult = import('./host').GoalRunResult;
-export type Message = import('./host').Message;
-export type SessionResetReason = import('./host').SessionResetReason;
+export type GoalHost = import('./host').GoalHost;
+export type GoalView = import('./host').GoalView;
 export type Tool = import('./host').Tool;
-export type ToolRegistry = import('./host').ToolRegistry;

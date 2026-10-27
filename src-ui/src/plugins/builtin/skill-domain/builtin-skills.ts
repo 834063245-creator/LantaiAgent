@@ -579,7 +579,7 @@ const LANTAI_GUIDE_PROMPT = `# 兰台——产品地图与操作手册（Agent �
 
 - **Ctrl+K** 命令面板（全部命令，可搜索）；**\`/\`** 斜杠命令面板（同一份清单的斜杠子集）。
 - **Ctrl+P** 纸视图开合（回案卷首页）；**Ctrl+,** 设置面板；**Esc** 逐层关闭。
-- 内建斜杠命令：\`/new\`（新开一卷 / 重置当前案卷）· \`/compact\`（压缩上下文）· \`/compact-stats\`（压缩统计）· \`/export\`（导出案卷为 Markdown）· \`/goal\`（自主目标：\`status\`/\`resume\`/\`cancel\`）· \`/memory\`（列出记忆）· \`/remember <事实>\`（存一条事实）。
+- 内建斜杠命令：\`/new\`（新开一卷 / 重置当前案卷）· \`/compact\`（压缩上下文）· \`/compact-stats\`（压缩统计）· \`/export\`（导出案卷为 Markdown）· \`/goal <目标描述>\`（自主目标，Agent 循环直到达成；裸 \`/goal\` 查看状态，\`pause\` / \`resume\` / \`clear\` 控制）· \`/memory\`（列出记忆）· \`/remember <事实>\`（存一条事实）。
 - 面板命令：\`/settings\`（设置）· \`/paper\`（纸视图）· \`/sidebar\`（案卷侧边栏开合）· \`/dock\`（创作坞）。
 
 ## 2. 设置页（八个页签，用户配置的唯一入口）

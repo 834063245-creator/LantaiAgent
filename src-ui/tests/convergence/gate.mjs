@@ -76,7 +76,7 @@ const T0_RULES = [
     label: 'phase-6 T0: AgentConfig 字段面冻结 + 装配本体零组合面直调',
     check: () => {
       const failures = [];
-      // AgentConfig 字段面冻结（23）——组合扩展走 blueprint capability，不再扩 config
+      // AgentConfig 字段面冻结（22，2026-10-23 goal 域移植移除 goalManager）——组合扩展走 blueprint capability，不再扩 config
       // （c7866c32 拆除 AURA 语义记忆后字段 31→30；2026-09-06 模型价格表拆除删
       //  pricing 后 30→29；2026-09-09 multimodal-image B3 加 imageReader IO 注入腰
       //  后 29→30——非工具/hook 面，登记 agent-platformization-plan.md §6 字段台账；
@@ -92,7 +92,7 @@ const T0_RULES = [
           failures.push('未找到 AgentConfig interface（runtime/types.ts）');
         } else {
           const count = (m[0].match(/^\s+[A-Za-z_][A-Za-z0-9_]*\??:/gm) || []).length;
-          if (count !== 23) {
+          if (count !== 22) {
             failures.push(
               `AgentConfig 字段数 ${count}（冻结 23）——新增工具/hook 走 blueprint capability；` +
                 '确需新增 config 字段须登记豁免并更新 specs/phase-6 断言',

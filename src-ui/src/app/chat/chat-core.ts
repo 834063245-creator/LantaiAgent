@@ -14,9 +14,22 @@
 
 import { agentSessionState, type OwnedAgentHandle } from '../../agent/agent-session-state';
 import type { AgentEvent } from '../../agent/agent-types';
-import type { ChatAgentHandle, GoalRunResult } from '../../agent/chat-agent-handle';
+import type { ChatAgentHandle } from '../../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance, type RunKind } from '../../agent/execution-state';
-import { GoalManager, type GoalRecord } from '../../agent/goal-manager';
+import { parseGoalCommand } from '../../agent/goal/command';
+import {
+  blockGoal,
+  clearGoal,
+  createGoal,
+  disarmGoal,
+  editGoal,
+  type GoalHost,
+  pauseGoal,
+  readGoal,
+  resumeGoal,
+} from '../../agent/goal/service';
+import { goalHostOf } from '../../agent/goal/session-registry';
+import type { GoalView } from '../../agent/goal/types';
 import { log } from '../../agent/logger';
 // 批 9h-4：事实保存授权旗标住内核登记表（记忆实现已随 memory-domain 产物包）
 import { authorizeFactSave } from '../../agent/memory-impl';
@@ -35,7 +48,6 @@ import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
 import { getCanvasStore, loadCanvasFromDisk, saveCanvasToDisk } from '../../state/canvas-store';
 import { useDockStore } from '../../state/dock-store';
-import { broadcastGoalRecord, useGoalStore } from '../../state/goal-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import { bumpTurnDone } from '../../state/turn-done-store';
 import { deriveVolumeLabel, isUnnamedVolumeLabel, volumeDisplayName } from '../../state/volume-name';
@@ -52,7 +64,6 @@ import {
 } from '../../ui/chat-store';
 import * as Stream from '../../ui/chat-stream';
 import { type ChatMessage, resetMsgIdCounter, type UserMessage } from '../../ui/message-model';
-import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
 import { listCommands, parseSlashInput } from '../commands/command-catalog';
 import { ensureSkillCatalog } from '../commands/skill-catalog';
 import type { PromptShelfHandle } from './ask-card-contract';
@@ -130,6 +141,9 @@ export class ChatCore {
    *  TurnStarted/finally。无会话（null sid）共用 -1 槽。 */
   private _turnGenBySid = new Map<number, number>();
 
+  /** 目标续行调度合并位（微任务去重——同一收尾窗口只排一次下一轮）。 */
+  private _goalDriveScheduled = false;
+
   private get messages(): ChatMessage[] {
     const store = msgStoreForActive(this.panelId);
     return store?.getState().messages ?? [];
@@ -174,15 +188,8 @@ export class ChatCore {
         }
       }),
     );
-    // ── Goal strip：状态迁移驱动显隐；切换工作区后重载 ──
-    // P1 总线归零：goal:state → state/goal-store（GoalManager 回调直写，此处订阅）
-    _globalStoreUnsubs.push(
-      useGoalStore.subscribe((s, prev) => {
-        if (s.tick !== prev.tick && s.record !== null) this._updateGoalRecord(s.record);
-      }),
-    );
+    // ── Goal strip：切换工作区/卷后重载（状态真源 = 本卷会话日志）──
     // P1 总线归零：workspace:switched → state/workspace-switch-store
-    //（跨工作区触发：_refreshGoalRecord 在途结果按 INVARIANTS #12 epoch 守卫）
     _globalStoreUnsubs.push(
       useWorkspaceSwitchStore.subscribe((s, prev) => {
         if (s.switchedTick !== prev.switchedTick) {
@@ -190,11 +197,11 @@ export class ChatCore {
           //（卡片 callback 指向旧工作区已 dispose 的 Agent——按卷杀卡够不到
           // 他卷残留，漂到新工作区只能是死回答回调；2026-09-10 ask 完备化）
           this._promptShelf?.dismiss();
-          void this._refreshGoalRecord();
+          this._refreshGoalView();
         }
       }),
     );
-    this._refreshGoalRecord();
+    this._refreshGoalView();
 
     // ⚡ ExecutionState → store 同步：订阅活动会话的 execState。
     // 重绑触发面（2026-09-06 运行态同步根治）：会话切换（sess 表）+ exec
@@ -666,14 +673,18 @@ export class ChatCore {
 
   switchSession(idx: number): void {
     Session.switchSession(this._sessionCtx(), idx);
+    // 目标状态是卷级的：切卷后重读本卷日志（句柄惰性补建 → 排到微任务后）
+    queueMicrotask(() => this._refreshGoalView());
   }
   closeSession(idx: number): void {
     Session.closeSession(this._sessionCtx(), idx);
+    queueMicrotask(() => this._refreshGoalView());
   }
   async createNewSession(): Promise<void> {
     // S6 P4：模块入口返回新卷 id（程序入口判成败用）——本编排面包装器不承载该值
     // （程序入口 = app/chat/session-composition 的模块函数，UI 之外的调用者直接调它）。
     await Session.createNewSession(this._sessionCtx());
+    this._refreshGoalView();
   }
 
   /** **立枝**（会话树，2026-09-18）：从某条消息（节点）另起一枝——**枝含该节点**，
@@ -1069,85 +1080,174 @@ export class ChatCore {
     });
   }
 
-  /** 恢复先前暂停的目标。 */
-  async runGoalResume(): Promise<void> {
-    const agent = this.agent;
-    if (!agent) return;
-    await this._runAgentTurn({
-      userText: '/goal resume',
-      bubbleLabel: '🔄 恢复目标',
-      runKind: 'goal',
-      drive: (signal) => agent.resumeGoal(signal),
-      onResult: (r) => this._notifyGoalResult(r),
+  // ── Goal（2026-10-23 DSH 式目标域：状态在会话日志，驱动器在本层）──
+
+  /** 本卷目标宿主（Agent 在 goal 注册表里的登记）；Agent 未就绪 = undefined。 */
+  private _goalHost(): GoalHost | undefined {
+    return goalHostOf(this.agent?.id);
+  }
+
+  /** 读本卷目标；日志损坏 = 具名 toast + undefined（普通会话不受影响）。 */
+  private _goalView(): GoalView | undefined {
+    const host = this._goalHost();
+    if (!host) return undefined;
+    try {
+      return readGoal(host);
+    } catch (e) {
+      showToast(`目标状态不可用：${e instanceof Error ? e.message : String(e)}`, 'warn', TOAST_LONG_HOLD_MS);
+      return undefined;
+    }
+  }
+
+  /** 把目标视图写进面板 store（状态条数据源）。 */
+  private _refreshGoalView(): void {
+    getChatStore(this.panelId)
+      .panel.getState()
+      .setGoalView(this._goalView() ?? null);
+  }
+
+  /** 空闲时排一次目标续行（微任务合并，避免在 turn finally 里递归起轮）。 */
+  private _scheduleGoalDrive(): void {
+    if (this._goalDriveScheduled) return;
+    this._goalDriveScheduled = true;
+    queueMicrotask(() => {
+      this._goalDriveScheduled = false;
+      void this._driveGoal();
     });
   }
 
-  private async runGoal(goal: string): Promise<void> {
+  /** 目标续行驱动器：active + armed + 还有轮预算 + 本卷空闲 → 跑一轮。
+   *  单轮怎么结束（完成/受阻/暂停/异常）由 `_settleGoalRound` 裁决。 */
+  private async _driveGoal(): Promise<void> {
     const agent = this.agent;
-    if (!agent) return;
+    const host = this._goalHost();
+    if (!agent || !host) return;
+    if (this._activeExec().isRunning) return;
+    let view: GoalView | undefined;
+    try {
+      view = readGoal(host);
+    } catch {
+      return; // 损坏已在 _goalView 报过；驱动器不重复刷屏
+    }
+    this._refreshGoalView();
+    if (view === undefined || view.phase !== 'active' || view.activation !== 'armed') return;
+    if (view.roundsStarted >= view.maxGoalRounds) {
+      try {
+        blockGoal(
+          host,
+          { id: view.id, revision: view.revision },
+          {
+            code: 'round-limit',
+            message: `Goal reached its configured limit of ${view.maxGoalRounds} rounds.`,
+          },
+        );
+      } catch {
+        /* 已终结/被改：下一轮读形自会收敛 */
+      }
+      this._refreshGoalView();
+      showToast(`🚧 目标达到轮上限（${view.maxGoalRounds}），已停止续行。`, 'warn', TOAST_LONG_HOLD_MS);
+      return;
+    }
     await this._runAgentTurn({
-      userText: `/goal ${goal}`,
-      bubbleLabel: `🎯 ${goal}`,
       runKind: 'goal',
-      drive: (signal) => agent.runGoal(signal, goal),
-      onResult: (r) => this._notifyGoalResult(r),
+      drive: (signal) => agent.runGoalRound(signal),
+      onSettled: (info) => this._settleGoalRound(info),
     });
   }
 
-  /** /goal status — 显示活体目标 + 最近历史。 */
-  private async showGoalStatus(): Promise<void> {
-    const path = useShellStore.getState().projectPath;
-    if (!path) return;
-    const mgr = new GoalManager(path, broadcastGoalRecord);
-    const active = await mgr.getActive();
-    const history = (await mgr.list()).filter(
-      (r) => r.status !== 'active' && r.status !== 'paused' && r.status !== 'blocked',
-    );
-    if (!active && history.length === 0) {
-      showToast('当前没有目标。用法: /goal 目标描述 — Agent 会自主循环直到完成', 'info');
+  /** 一轮结束后的裁决：用户停止 = 暂停；异常 = 停用续行；正常 = 排下一轮。 */
+  private _settleGoalRound(info: { aborted: boolean; error?: unknown }): void {
+    const host = this._goalHost();
+    if (!host) return;
+    let view: GoalView | undefined;
+    try {
+      view = readGoal(host);
+    } catch {
       return;
     }
-    // /goal status 是查询命令——结果以单条多行 toast 呈现（读完即走，不入流）
-    const lines: string[] = [];
-    if (active) {
-      const label = active.status === 'paused' ? '已暂停' : active.status === 'blocked' ? '已受阻' : '进行中';
-      const hint = active.status === 'paused' || active.status === 'blocked' ? ' — /goal resume 继续' : '';
-      lines.push(`🎯 ${active.text.slice(0, 60)} · ${label} · 第 ${active.iteration + 1} 轮${hint}`);
+    this._refreshGoalView();
+    if (view === undefined) return;
+    if (info.aborted) {
+      try {
+        pauseGoal(host, { id: view.id, revision: view.revision });
+      } catch {
+        /* 已不在 active：不必重复暂停 */
+      }
+      this._refreshGoalView();
+      showToast('⏸️ 目标已暂停 — /goal resume 继续', 'info');
+      return;
     }
-    for (const r of history.slice(-3).reverse()) {
-      const icon =
-        r.status === 'completed' ? '✅' : r.status === 'failed' ? '❌' : r.status === 'blocked' ? '🚧' : '🚫';
-      lines.push(`${icon} ${r.text.slice(0, 50)} — ${(r.summary || r.status).slice(0, 60)}`);
+    if (info.error !== undefined) {
+      disarmGoal(host);
+      this._refreshGoalView();
+      const msg = info.error instanceof Error ? info.error.message : String(info.error);
+      showToast(`目标轮失败，自动续行已停用：${msg.slice(0, 160)}`, 'warn', TOAST_LONG_HOLD_MS);
+      return;
     }
-    if (lines.length > 0) showToast(lines.join('\n'), 'info', TOAST_LONG_HOLD_MS);
+    if (view.phase === 'complete') {
+      showToast(`✅ 目标达成: ${view.objective.slice(0, 80)}`, 'info');
+      return;
+    }
+    if (view.phase === 'blocked') {
+      showToast(`🚧 目标受阻: ${(view.blockedReason?.message ?? '').slice(0, 120)}`, 'warn', TOAST_LONG_HOLD_MS);
+      return;
+    }
+    if (view.phase === 'active' && view.activation === 'armed') this._scheduleGoalDrive();
   }
 
-  /** /goal cancel — 取消活体目标(运行中需先停止)。 */
-  async cancelGoal(): Promise<void> {
-    const path = useShellStore.getState().projectPath;
-    if (!path) return;
-    if (this._activeExec().isRunning) {
-      showToast('目标运行中 — 请先点击停止(或状态条上的暂停),再 /goal cancel', 'warn');
+  /** `/goal` 状态渲染（无目标 = 用法；有目标 = 阶段/轮数/续行/可用命令）。 */
+  private showGoalStatus(): void {
+    const view = this._goalView();
+    if (view === undefined) {
+      showToast(
+        '当前没有目标。用法: /goal 目标描述 — Agent 会自主循环直到完成；/goal pause · resume · clear 控制当前目标',
+        'info',
+        TOAST_LONG_HOLD_MS,
+      );
       return;
     }
-    const mgr = new GoalManager(path, broadcastGoalRecord);
-    const active = await mgr.getActive();
-    if (!active) {
-      showToast('没有可取消的目标', 'info');
-      return;
+    const phaseLabel =
+      view.phase === 'active'
+        ? '进行中'
+        : view.phase === 'paused'
+          ? '已暂停'
+          : view.phase === 'blocked'
+            ? '已受阻'
+            : '已完成';
+    const lines = [
+      `🎯 ${view.objective.slice(0, 80)}`,
+      `状态: ${phaseLabel} · 第 ${view.roundsStarted}/${view.maxGoalRounds} 轮 · 续行: ${view.activation === 'armed' ? '已启用' : '已停用'}`,
+    ];
+    if (view.phase === 'blocked' && view.blockedReason) {
+      lines.push(`受阻: ${view.blockedReason.code} — ${view.blockedReason.message.slice(0, 120)}`);
     }
-    await mgr.cancel(active.id);
-    showToast(`🚫 已取消目标: ${active.text.slice(0, 50)}`, 'info');
+    const hints =
+      view.phase === 'complete'
+        ? '/goal <新目标> 替换 · /goal clear 清除'
+        : view.phase === 'active'
+          ? view.activation === 'armed'
+            ? '/goal pause 暂停 · /goal edit <新目标> · /goal clear 清除'
+            : '/goal resume 继续 · /goal edit <新目标> · /goal clear 清除'
+          : '/goal resume 继续 · /goal edit <新目标> · /goal clear 清除';
+    lines.push(`可用: ${hints}`);
+    showToast(lines.join('\n'), 'info', TOAST_LONG_HOLD_MS);
+  }
+
+  /** 当前目标 ref（命令面 CAS 用）；无目标 = null。 */
+  private _goalRef(): { id: string; revision: number } | null {
+    const view = this._goalView();
+    return view === undefined ? null : { id: view.id, revision: view.revision };
   }
 
   /** Agent 轮次的共享脚手架。 */
   private async _runAgentTurn(opts: {
     userText?: string;
     bubbleLabel?: string;
-    /** 运行种类（运行账的记录标签：诊断 + 读面策略）——目标循环传 'goal'。 */
+    /** 运行种类（运行账的记录标签：诊断 + 读面策略）——目标自动轮传 'goal'。 */
     runKind?: RunKind;
     drive: (signal: AbortSignal) => Promise<unknown>;
-    onResult?: (result: GoalRunResult) => void;
+    /** 本轮收尾裁决（目标驱动器用）：中止/异常如实上报，供暂停或停用续行。 */
+    onSettled?: (info: { aborted: boolean; error?: unknown }) => void;
   }): Promise<void> {
     // 并发会话（2026-08-26）：闸门拆除——后台卷运行不再阻止本卷新轮次；
     // 仅本卷自身在跑时拒发（Enter 插话路径由 sendMessage 处理）。
@@ -1190,10 +1290,11 @@ export class ChatCore {
       this.agent.setUiSessionId(turnSid);
     }
 
+    let settleError: unknown;
     try {
-      const result = await opts.drive(signal);
-      if (result) opts.onResult?.(result as GoalRunResult);
+      await opts.drive(signal);
     } catch (err: unknown) {
+      settleError = err;
       // 2026-08-31 贴黄拆迁：回合错误改记入回合自身（墓碑），不再播黄纸条
       const msg = err instanceof Error ? err.message : String(err);
       // 用户停止的判据是**事实**（2026-09-14 拆文本猜测）：本轮 signal 是否被中止。
@@ -1249,22 +1350,13 @@ export class ChatCore {
         Stream.finishTurn(this._streamCtxFor(turnSid));
       }
       bumpTurnDone(turnSid ?? undefined);
-    }
-  }
-
-  private _notifyGoalResult(result: GoalRunResult): void {
-    // 2026-08-31 贴黄拆迁：goal 终结播报改 toast（说完即走），goal 状态条
-    // 持续显示运行态——终结结果一句话即可，不留进案卷。
-    if (result.status === 'completed') {
-      showToast(`✅ 目标达成: ${result.summary.slice(0, 120)}`, 'info');
-    } else if (result.status === 'paused') {
-      showToast(`⏸️ ${result.summary}`, 'info');
-    } else if (result.status === 'blocked') {
-      showToast(`🚧 目标受阻: ${result.summary.slice(0, 120)}。条件解除后 /goal resume 继续。`, 'warn');
-    } else if (result.status === 'failed') {
-      showToast(`❌ 目标失败: ${result.summary.slice(0, 120)}`, 'warn');
-    } else {
-      showToast('目标被中断', 'warn');
+      // 收尾裁决：目标轮交给驱动器自己的结算；普通轮收尾后看一眼目标是否该续行
+      // （工具在直人轮里创建了目标时，第 1 轮就从这个窗口开出去）。
+      if (opts.onSettled) {
+        opts.onSettled({ aborted: signal.aborted, ...(settleError === undefined ? {} : { error: settleError }) });
+      } else {
+        this._scheduleGoalDrive();
+      }
     }
   }
 
@@ -1333,32 +1425,6 @@ export class ChatCore {
     if (!shelf.answerActiveText(text)) return false;
     showToast('已作为提问回答提交', 'info');
     return true;
-  }
-
-  // ── Goal 状态记录 → panel-store.goalRecord（GoalStrip 组件渲染）──
-
-  private _updateGoalRecord(record: GoalRecord): void {
-    const p = getChatStore(this.panelId).panel.getState();
-    if (record.status === 'active' || record.status === 'paused' || record.status === 'blocked') {
-      p.setGoalRecord(record);
-    } else if (p.goalRecord?.id === record.id) {
-      p.setGoalRecord(null); // 终态 — 收起状态条
-    }
-  }
-
-  private async _refreshGoalRecord(): Promise<void> {
-    const path = useShellStore.getState().projectPath;
-    if (!path) return;
-    // INVARIANTS #12：跨工作区 fire-and-forget —— 在途 resolve 后校验代际，过期丢弃
-    const epoch = getWorkspaceEpoch();
-    try {
-      const rec = await new GoalManager(path, broadcastGoalRecord).getActive();
-      if (!isCurrentEpoch(epoch)) return;
-      getChatStore(this.panelId).panel.getState().setGoalRecord(rec);
-    } catch (e) {
-      // fire-and-forget 路径：goal 状态条读取失败不应当让未处理的 rejection 外泄
-      console.error('[chat] _refreshGoalRecord failed:', e);
-    }
   }
 
   async sendMessage(): Promise<void> {
@@ -1803,7 +1869,7 @@ export class ChatCore {
       {
         id: 'goal',
         label: '自主目标',
-        description: 'Agent 自主循环直到完成目标 —— /goal · /goal status · /goal resume · /goal cancel',
+        description: '自主目标 —— 发 /goal 目标描述 开始；裸 /goal 查看状态；pause · resume · clear 控制',
         group: '案卷',
         slash: '/goal',
         action: { type: 'local', handler: (arg) => void this.goalCommand(arg) },
@@ -1883,13 +1949,108 @@ export class ChatCore {
     );
   }
 
-  /** /goal 命令面 —— 参数由命令目录解析后传入（status/resume/cancel/目标文本）。 */
+  /** `/goal` 命令面（DSH `command-goal` 语法，2026-10-23）：
+   *  - 裸 `/goal` = 状态/用法（不发起运行、不查历史——旧实现把空参当 status 是 bug）；
+   *  - `<objective>` = 创建并 arm，空闲则立刻开第 1 轮；
+   *  - `pause` / `resume` / `clear` / `edit <objective>` = 生命周期。
+   *  控制词只在**整条输入**等于控制词时生效；其余非空后缀一律是目标原文
+   *  （`/goal pause after x` 创建该字面目标——与 DSH 同规）。 */
   private async goalCommand(arg: string): Promise<void> {
-    const a = arg.trim();
-    if (a === '' || a === 'status') return this.showGoalStatus();
-    if (a === 'resume') return this.runGoalResume();
-    if (a === 'cancel') return this.cancelGoal();
-    return this.runGoal(a);
+    const host = this._goalHost();
+    if (!host) {
+      showToast('目标宿主未就绪（Agent 尚未创建）', 'warn');
+      return;
+    }
+    const command = parseGoalCommand(arg);
+    const fail = (e: unknown): void => {
+      const msg = e instanceof Error ? e.message : String(e);
+      showToast(`目标操作失败：${msg.slice(0, 160)}`, 'warn', TOAST_LONG_HOLD_MS);
+    };
+    const currentRef = (): { id: string; revision: number } | null => {
+      const current = this._goalRef();
+      if (!current) this.showGoalStatus();
+      return current;
+    };
+
+    switch (command.kind) {
+      case 'show':
+        this.showGoalStatus();
+        return;
+      case 'invalid-edit':
+        showToast('用法: /goal edit <新目标>', 'info');
+        return;
+      case 'pause': {
+        const current = currentRef();
+        if (!current) return;
+        try {
+          pauseGoal(host, current);
+          this._refreshGoalView();
+          showToast('⏸️ 目标已暂停 — /goal resume 继续', 'info');
+        } catch (e) {
+          fail(e);
+        }
+        return;
+      }
+      case 'resume': {
+        if (this._activeExec().isRunning) {
+          showToast('当前回合仍在运行 — 先停止（或等它结束）再 /goal resume', 'warn');
+          return;
+        }
+        const current = currentRef();
+        if (!current) return;
+        try {
+          resumeGoal(host, current);
+          this._refreshGoalView();
+          showToast('▶️ 目标已恢复，自动续行继续', 'info');
+          this._scheduleGoalDrive();
+        } catch (e) {
+          fail(e);
+        }
+        return;
+      }
+      case 'clear': {
+        const current = this._goalRef();
+        if (!current) {
+          showToast('没有可清除的目标', 'info');
+          return;
+        }
+        try {
+          clearGoal(host, current);
+          this._refreshGoalView();
+          showToast('目标已清除', 'info');
+        } catch (e) {
+          fail(e);
+        }
+        return;
+      }
+      case 'edit': {
+        const current = currentRef();
+        if (!current) return;
+        try {
+          editGoal(host, current, { objective: command.objective });
+          this._refreshGoalView();
+          showToast('✏️ 目标已更新', 'info');
+        } catch (e) {
+          fail(e);
+        }
+        return;
+      }
+      case 'create': {
+        if (this._activeExec().isRunning) {
+          showToast('当前回合仍在运行 — 目标需在空闲时创建（先停止或等它结束）', 'warn');
+          return;
+        }
+        try {
+          const view = createGoal(host, { objective: command.objective });
+          this._refreshGoalView();
+          showToast(`🎯 目标已创建（${view.maxGoalRounds} 轮上限），开始第 1 轮`, 'info');
+          this._scheduleGoalDrive();
+        } catch (e) {
+          fail(e);
+        }
+        return;
+      }
+    }
   }
 
   /** 执行命令 —— 斜杠面板 / 命令面板 / 文本解析三入口的唯一执行面（四型全语义）。

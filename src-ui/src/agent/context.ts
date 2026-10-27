@@ -21,7 +21,6 @@ import type { AgentStore } from './agent-store';
 import type { EventSink } from './agent-types';
 import type { DiscoveryBoard } from './discovery-board';
 import type { ExecStateInstance } from './execution-state';
-import type { GoalManager } from './goal-manager';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import { type Disposer, DisposerBag, runInContext } from './lifecycle';
 import type { MemoryManagerFace } from './memory-contract';
@@ -55,8 +54,6 @@ export interface AgentServices {
   discoveryBoard?: DiscoveryBoard;
   /** Plan 模式状态机（运行时 enter/exit） */
   planState?: PlanStateManager;
-  /** Goal 管理器 — 主 Agent 专属，子 Agent 不继承 */
-  goalManager?: GoalManager;
   /** Agent 持久化存储 */
   agentStore?: AgentStore;
   /** 子 Agent 池 — 主 Agent 专属，子 Agent 不继承 */

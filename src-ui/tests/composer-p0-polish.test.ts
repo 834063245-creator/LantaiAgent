@@ -98,7 +98,7 @@ describe('创作坞 P0 · 热区与无障碍名', () => {
   });
 
   it('单字工具钮有完整无障碍名', () => {
-    expect(DOCK_TSX).toContain('aria-label="翰——打开发卷命令面板"');
+    expect(DOCK_TSX).toContain('aria-label="翰——打开命令面板"');
     expect(DOCK_TSX).toContain('aria-label="律——快捷键总览"');
     expect(DOCK_TSX).toContain('解锁创作坞（可拖动）');
   });

@@ -15,7 +15,6 @@ import type { Agent } from './agent/agent';
 import { agentSessionState } from './agent/agent-session-state';
 import { AgentStore } from './agent/agent-store';
 import { resetAgentCaches } from './agent/cache-store';
-import { GoalManager } from './agent/goal-manager';
 import { DisposerBag } from './agent/lifecycle';
 import { applyLogLevelFromShell, initLogger, log } from './agent/logger';
 import type { MemoryManagerFace } from './agent/memory-contract';
@@ -71,7 +70,6 @@ import {
 } from './settings';
 import type { AgentConfigChangeReason } from './state/agent-config-store';
 import { getComposeStore, resolveComposeEffective } from './state/compose-store';
-import { broadcastGoalRecord } from './state/goal-store';
 import { getPanelStore } from './state/panel-store';
 import { showToast, TOAST_LONG_HOLD_MS } from './state/toast-store';
 import { pullShellWork, setOwnerSessionResolver, useWorkLedgerStore } from './state/work-ledger-store';
@@ -147,7 +145,6 @@ export class Workspace {
   taskManager: TaskManagerFace = createTaskManager();
   skillRegistry: SkillRegistryFace | null = null;
   agentStore: AgentStore | null = null;
-  goalManager: GoalManager | null = null;
 
   // ── 运行时 ──
   runtime: AgentRuntime | null = null;
@@ -678,11 +675,8 @@ export class Workspace {
       console.error('[setupAgent] loadPromptSection failed:', err);
     }
 
-    // 初始化 Agent 状态持久化 + goal 生命周期 + skill 注册表
-    // 2026-09-01：AgentStore 已内存化（不再落盘 .lantai/agents，见 agent-store.ts 头注）
+    // 初始化 Agent 状态持久化 + skill 注册表\r\n    // 2026-09-01：AgentStore 已内存化（不再落盘 .lantai/agents，见 agent-store.ts 头注）
     this.agentStore = new AgentStore();
-    this.goalManager = new GoalManager(this.path, broadcastGoalRecord);
-    this.goalManager.adoptOrphans().catch((e) => console.warn('[workspace] goal adoption failed:', e));
     this.skillRegistry = createSkillRegistry(this.path);
 
     if (memorySection.trim()) {
@@ -1011,7 +1005,6 @@ export class Workspace {
             provider: sessProv,
             tools: sessionRegistry,
             memoryManager: this.memoryManager ?? undefined,
-            goalManager: this.goalManager ?? undefined,
             agentStore: this.agentStore ?? undefined,
             subAgentPool: this.subAgentPool,
             // 并发会话（2026-08-26）：事件入口按会话绑定——事件天生携带所属卷

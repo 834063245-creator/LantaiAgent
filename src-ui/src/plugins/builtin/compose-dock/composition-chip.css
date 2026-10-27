@@ -22,6 +22,10 @@
 
 /* 收起态：纯文字 pill（与思考档位同高度、同字体、同色阶） */
 .pp-composer-settings .pp-comp-pill {
+  /* 2026-10-23 归属收口：命中面/焦点三条规则原住 paper-shell 的通用组合列表，
+   * 与本文件选择器重复（跨产品同名选择器 = 到达序决定胜者）。chip 属本产品，
+   * 规则随 chip 走——paper-shell 侧的引用同批删除。 */
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -44,6 +48,18 @@
 .pp-composer-settings .pp-comp-pill:hover,
 .pp-composer-settings .pp-comp-pill.open {
   color: var(--seal-deep);
+}
+
+/* 命中面 ≥28×28 与键盘焦点（2026-10-23 从 paper-shell 迁来，见主规则注）:
+ * 伪元素只扩命中盒、不参与排印；焦点 = 朱砂底线（与输入框同一支笔）。 */
+.pp-composer-settings .pp-comp-pill::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+.pp-composer-settings .pp-comp-pill:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--seal);
 }
 
 /* 跑过一轮 = 只读标签（span 形态，不再是按钮；hover 不改色以示不可拨）

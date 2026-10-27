@@ -285,10 +285,10 @@
   {
     "dir": "goal-mode",
     "buildOrder": 31,
-    "description": "目标模式（自主多轮 goal 循环 + goal_report；禁用 = /goal 不可用）",
+    "description": "目标域（每卷一个持久目标：goal 工具 get/create/update + 空闲自动续行轮；禁用 = 模型无目标工具与目标提示段）",
     "entry": "index.ts",
     "hostModule": "host",
-    "inject": []
+    "inject": ["tools"]
   },
   {
     "dir": "state-hooks",

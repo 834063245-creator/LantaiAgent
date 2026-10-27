@@ -27,6 +27,7 @@
 //      的边界钳制兜底）。
 
 import type { Message, ToolCall } from '../provider/types';
+import type { GoalChangeData, GoalRoundData } from './goal/types';
 import type { Disposer } from './lifecycle';
 import { foldToolResults, nextFoldBoundary } from './tool-fold';
 
@@ -37,7 +38,9 @@ import { foldToolResults, nextFoldBoundary } from './tool-fold';
  *  是覆盖既有会话变异点（替换/撤回/goal 清场）的必要补充；preset/selected
  *  是 S4-1b 的创建时点事实（首事件方案——见 baseline-change-request.md）；
  *  tool/code-dispatch-start 与 tool/code-dispatch 是 P2 执行原语（code_execution）
- *  的子分发审计对（D5：子分发全记录、外层结果才进历史——两 kind 均无消息投影）。 */
+ *  的子分发审计对（D5：子分发全记录、外层结果才进历史——两 kind 均无消息投影）；
+ *  goal/change 与 goal/round 是目标域持久事件（2026-10-23 DSH goal 栈移植）——
+ *  无消息投影，折叠在 agent/goal/fold.ts。 */
 export type SessionEventKind =
   | 'turn/start'
   | 'user/message'
@@ -50,7 +53,9 @@ export type SessionEventKind =
   | 'session/retract'
   | 'preset/selected'
   | 'tool/code-dispatch-start'
-  | 'tool/code-dispatch';
+  | 'tool/code-dispatch'
+  | 'goal/change'
+  | 'goal/round';
 
 /** kind 封闭集合（运行时枚举，冻结）。 */
 export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
@@ -66,6 +71,8 @@ export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
   'preset/selected',
   'tool/code-dispatch-start',
   'tool/code-dispatch',
+  'goal/change',
+  'goal/round',
 ]);
 
 /** session/reset 的来源标注（审计用；不影响投影——**除 'adopt'**，见下）。 */
@@ -110,6 +117,12 @@ export interface SessionEventDataMap {
     isError: boolean;
     output: string;
   };
+  /** 目标变更（2026-10-23：DSH goal 栈移植 P1）——完整快照或 clear 墓碑。
+   *  无消息投影；状态唯一来源 = `agent/goal/fold.ts` 的 foldGoal（严格回放）。 */
+  'goal/change': GoalChangeData;
+  /** 目标轮准入（同批）——`<goal_round>` 消息进入会话时追加一条；
+   *  `roundsStarted` 只由它推进（连续 +1，见 foldGoal）。 */
+  'goal/round': GoalRoundData;
 }
 
 /** 一条会话事件。seq 由日志分配、只增不减；ts 为 append 时刻。 */
@@ -494,7 +507,9 @@ export class SessionLog {
         case 'preset/selected':
         case 'tool/code-dispatch-start':
         case 'tool/code-dispatch':
-          break; // 边界/审计/创建时点记录，无消息投影
+        case 'goal/change':
+        case 'goal/round':
+          break; // 边界/审计/创建时点/目标状态记录，无消息投影
       }
     }
     return state;

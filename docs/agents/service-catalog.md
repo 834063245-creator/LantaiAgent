@@ -67,11 +67,11 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 | `ctx.hooks` | `HooksService` | `src/composition/hook-service.ts` | `plan-injector` | 0 文件 |
 | `ctx.overlays` | `OverlayService` | `src/composition/overlay-service.ts` | `asset-rack` · `compose-dock` · `paper-minimap` · `toc-strip` | 2 文件 |
 | `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `my-panel` · `paper` · `settings` | 4 文件 |
-| `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | `my/section` | 2 文件 |
+| `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | `goal` · `my/section` | 2 文件 |
 | `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | `my/kind` | 7 文件 |
 | `ctx.rootViews` | `RootViewsService` | `src/composition/root-views-service.ts` | `ask-cards` · `sessions-home` | 2 文件 |
 | `ctx.steps` | `StepsService` | `src/composition/steps-service.ts` | — | 0 文件 |
-| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `communication-tools` · `compaction-tools` · `converge-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `merge-tools` · `my/dynamic-tool` · `my/query` · `request-tool` · `spawn-tool` | 5 文件 |
+| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `communication-tools` · `compaction-tools` · `converge-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `merge-tools` · `my/dynamic-tool` · `my/query` · `request-tool` · `spawn-tool` | 6 文件 |
 
 ### `ctx.capabilities` — CapabilitiesService（贡献通道）
 
@@ -118,7 +118,7 @@ capability 贡献注册表（A-3 第八贡献通道）——贡献注册 → dis
 system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → disposer； 下次 Agent 装配生效。
 
 - owner：`src/composition/prompt-service.ts`
-- 默认实现 / 贡献者 id：`my/section`
+- 默认实现 / 贡献者 id：`goal` · `my/section`
 - 消费面（2）：`src/plugins/builtin/prompt-segments/index.ts` · `src/plugins/builtin/skill-domain/builtin-skills.ts`
 
 ### `ctx.renderers` — RenderersService（贡献通道）
@@ -151,7 +151,7 @@ App 外壳视图槽通道（批 9e）：首页（slot:'home'）与根浮层（sl
 
 - owner：`src/composition/services.ts`
 - 默认实现 / 贡献者 id：`communication-tools` · `compaction-tools` · `converge-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `merge-tools` · `my/dynamic-tool` · `my/query` · `request-tool` · `spawn-tool`
-- 消费面（5）：`src/plugins/builtin/browser-desktop-domain/index.ts` · `src/plugins/builtin/contribution-helpers.ts` · `src/plugins/builtin/skill-domain/builtin-skills.ts` · `src/plugins/mcp-bridge.ts` · `src/plugins/tool-declarations.ts`
+- 消费面（6）：`src/plugins/builtin/browser-desktop-domain/index.ts` · `src/plugins/builtin/contribution-helpers.ts` · `src/plugins/builtin/goal-mode/index.ts` · `src/plugins/builtin/skill-domain/builtin-skills.ts` · `src/plugins/mcp-bridge.ts` · `src/plugins/tool-declarations.ts`
 
 ## 服务
 

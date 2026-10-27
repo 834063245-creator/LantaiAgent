@@ -3955,7 +3955,6 @@
  * 盒边相接不叠压。拖拽锁/翰/律与引/夹、组合/思考/役/墨同族。 */
 .pp-composer .pp-dock-tools .pp-tool-btn,
 .pp-composer .pp-attach,
-.pp-composer-settings .pp-comp-pill,
 .pp-composer-settings .pp-thinking-pill,
 .pp-composer-settings .pp-ink-trigger,
 .pp-composer-settings .pp-work-trigger {
@@ -3963,7 +3962,6 @@
 }
 .pp-composer .pp-dock-tools .pp-tool-btn::after,
 .pp-composer .pp-attach::after,
-.pp-composer-settings .pp-comp-pill::after,
 .pp-composer-settings .pp-thinking-pill::after,
 .pp-composer-settings .pp-ink-trigger::after,
 .pp-composer-settings .pp-work-trigger::after {
@@ -3978,7 +3976,6 @@
 .pp-composer .pp-attach:focus-visible,
 .pp-composer .pp-mode-opt:focus-visible,
 .pp-composer-settings .ms-trigger:focus-visible,
-.pp-composer-settings .pp-comp-pill:focus-visible,
 .pp-composer-settings .pp-thinking-pill:focus-visible,
 .pp-composer-settings .pp-ink-trigger:focus-visible,
 .pp-composer-settings .pp-work-trigger:focus-visible {

@@ -20,7 +20,6 @@
 | `runtime/runtime.ts:632`（registry 克隆循环） | createAgent → Agent 实例 | 随 Agent 实例 | ✅ 随实例 |
 | `blueprint.ts` capability install 块（plan 工具/通信/discovery/merge/board/kill/request/spawn 替换/task 替换；`runtime.ts` 662-683 按表序执行） | createAgent → Agent 实例 | 随 Agent 实例 | ✅ 随实例 |
 | `agent.ts:68,2389-2430`（子 Agent 工具克隆，`convergeRegistry` 重建） | 子 Agent 实例 | 随子 Agent | ✅ 随实例 |
-| `agent.ts:983`（goal_report） | Agent goal loop | `agent.ts:923,951` unregister（对称存在） | ✅ 显式 |
 | `tool.ts:150`（subset 临时 registry） | 调用方作用域 | 作用域结束 GC | ✅ 随作用域 |
 
 ## HookRegistry / PreflightHookRegistry.register（订阅型）

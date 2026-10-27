@@ -53,7 +53,19 @@ import { activeDynamicRunner } from '../../agent/dynamic-runner/dynamic-runner-s
 import { createExecState } from '../../agent/execution-state';
 import { extractFilePath, FileOwnership, WRITE_TOOLS } from '../../agent/file-ownership';
 import { parseGitLogCommits, parseGitStatusPorcelain } from '../../agent/git-porcelain';
-import { registerGoalImplementation } from '../../agent/goal-impl';
+import {
+  blockGoal,
+  completeGoal,
+  createGoal,
+  DEFAULT_BLOCKED_MIN_ROUNDS,
+  editGoal,
+  isTopLevelHost,
+  pauseGoal,
+  readGoal,
+  resumeGoal,
+} from '../../agent/goal/service';
+import { goalHostOf } from '../../agent/goal/session-registry';
+import { GoalError } from '../../agent/goal/types';
 import { HookRegistry } from '../../agent/hooks';
 import { enqueueIsolationOp } from '../../agent/isolation-queue';
 import { once } from '../../agent/lifecycle';
@@ -746,8 +758,19 @@ const faceDeps = {
   // 批 6a 归家：plan 模式实现进包 ⇒ 桥内核登记表 + 事件枚举（kernelReadFile 早已在册）
   registerPlanImplementation,
   EventKind,
-  // 批 6b 归家：goal 循环实现进包 ⇒ 桥内核登记表（errText/defineTool 早已在册）
-  registerGoalImplementation,
+  // 批 6b → 2026-10-23 goal 域移植：旧「goal 循环实现登记表」整撤；改桥内核目标
+  // 服务（会话日志事件溯源 + CAS + activation）与宿主登记表——产物只贡献工具行。
+  readGoal,
+  createGoal,
+  editGoal,
+  pauseGoal,
+  resumeGoal,
+  completeGoal,
+  blockGoal,
+  isTopLevelHost,
+  goalHostOf,
+  GoalError,
+  DEFAULT_BLOCKED_MIN_ROUNDS,
   // 批 6c 归家：出厂 hook 四工厂进包 ⇒ 桥登记表 + 数据源（诊断/blame/构建缓存/附图判定）
   registerStateHooksImplementation,
   buildPreReadBlock,

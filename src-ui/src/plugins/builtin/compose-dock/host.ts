@@ -14,6 +14,7 @@ export { agentSessionState } from '../../../agent/agent-session-state';
  * `agent/token-meter/contract` 取（类型面经宿主桥零成本，运行面才需 faceDeps 键）。 */
 export type { TokenMeasurement } from '../../../agent/token-meter/contract';
 export { tokenAlgebra } from '../../../agent/token-meter/service';
+export type { ChatCore } from '../../../app/chat/chat-core';
 export { useCoreStore } from '../../../app/chat/core-instance';
 export { extractImageFiles, previewUrlFor } from '../../../app/chat/image-intake';
 // 命令目录（2026-09-19 command-surface-rework）：斜杠命令与命令面板的唯一合流点

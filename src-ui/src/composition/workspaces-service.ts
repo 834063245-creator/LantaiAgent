@@ -4,7 +4,7 @@
 // composition/workspaces-service — 工作区接线贡献面（批 10 部件一，2026-09-26）。
 //
 // 病灶（账本 §2.3 `workspace.ts` 行）：工作区激活点里**内联着产品装配**
-// （`new Agent/AgentStore/SubAgentPool/GoalManager/MemoryManager/SkillRegistry` +
+// （`new Agent/AgentStore/SubAgentPool/MemoryManager/SkillRegistry` +
 // 拉起 user-mcp / bundled-engine）——产物无法贡献「工作区打开时要做的事」，
 // 于是每个这样的需求都只能把代码写进内核 `workspace.ts`（`bundled-engine` 292 行即此）。
 //

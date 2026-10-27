@@ -6,16 +6,10 @@
 // Agent 类已结构性实现此接口，无需额外 adapter。
 
 import type { StoredThinking } from '../provider/thinking';
-// 批 6b：GoalRunResult 单一真源 = agent/goal-contract.ts（原此处自持一份同形声明）。
-import type { GoalRunResult } from './goal-contract';
-
-export type { GoalRunResult };
 
 import type { ChatImageRef, Message, Provider } from '../provider/types';
 import type { ExecStateInstance } from './execution-state';
 import type { TokenLedgerSnapshot, TokenMeasurement } from './token-meter/types';
-
-/** 目标运行结果 — runGoal / resumeGoal 的统一返回 */
 
 export interface ChatAgentHandle {
   /** 该 Agent 实例的唯一标识 — 会话层按会话登记，UI 据此定位其专属待办等。 */
@@ -25,11 +19,9 @@ export interface ChatAgentHandle {
    *  （multimodal-image-plan B3——随用户消息入 session，字节永不进卷）。 */
   run(signal: AbortSignal, input: string, images?: ChatImageRef[]): Promise<void>;
 
-  /** 自主多轮目标执行。status 新增 'paused' — 用户中断时保存检查点，可通过 resumeGoal 继续。 */
-  runGoal(signal: AbortSignal, goal: string): Promise<GoalRunResult>;
-
-  /** 恢复暂停(或崩溃遗留)的目标;不传 id 时恢复唯一活体目标 */
-  resumeGoal(signal: AbortSignal, id?: string): Promise<GoalRunResult>;
+  /** 跑一轮自动续行（goal 驱动器专用）：落 `goal/round` 准入事件 + `<goal_round>`
+   *  用户消息，再驱动工具循环。轮番推进/暂停/上限由 chat-core 的驱动器裁决。 */
+  runGoalRound(signal: AbortSignal): Promise<void>;
 
   /** 手动触发上下文压缩，返回摘要文本 */
   compactNow(signal: AbortSignal): Promise<string>;

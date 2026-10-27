@@ -1,5 +1,5 @@
 {
-  "count": 15,
+  "count": 16,
   "schemas": [
     {
       "description": "Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s).",
@@ -783,6 +783,65 @@
             "description": "一句话的用户可读目的",
             "maxLength": 500,
             "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Long-running session goal (one current goal per session): get / create / update. The goal persists in the session log and keeps working across automatic goal rounds; goal(create) may infer intent from a direct human request (not for single-turn work), goal(get) returns the goal_id and revision that goal(update) requires, and goal(update, update_action=edit|pause|resume|complete|blocked) drives the lifecycle. complete/blocked are also allowed from the goal's own automatic round (blocked needs the same blocking condition across at least 3 rounds); a paused goal can only be resumed by the human /goal command.",
+      "name": "goal",
+      "parameters": {
+        "properties": {
+          "action": {
+            "description": "Which operation to perform.",
+            "enum": [
+              "get",
+              "create",
+              "update"
+            ],
+            "type": "string"
+          },
+          "blocked_reason": {
+            "description": "仅 blocked：连续多轮存在、会话内无法自行解除的具体阻塞条件。",
+            "minLength": 1,
+            "type": "string"
+          },
+          "goal_id": {
+            "description": "goal_get 返回的精确 id。",
+            "minLength": 1,
+            "type": "string"
+          },
+          "max_goal_rounds": {
+            "description": "可选的自动续行轮上限。 (action: create); 仅 edit：替换轮上限。 (action: update)",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "objective": {
+            "description": "从直人请求推断出的具体完成目标。 (action: create); 仅 edit：替换目标原文。 (action: update)",
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "description": "goal_get 返回的精确 revision。",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "update_action": {
+            "description": "要执行的变更。",
+            "enum": [
+              "edit",
+              "pause",
+              "resume",
+              "complete",
+              "blocked"
+            ],
             "type": "string"
           }
         },

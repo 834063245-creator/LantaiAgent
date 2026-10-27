@@ -470,4 +470,54 @@
 
 - 风险面极小：`inline` 是一个**从未被默认打开**的参数；唯一消费者是模型自己（描述里教它用）。
   删除后模型若仍传 `inline`，zod schema 是 `.passthrough()` ⇒ 参数被忽略而非报错（**不炸链路**）。
-- 回滚 = 还原两个 baseline 文件 + 恢复参数（本变更不涉数据/存储，无迁移）。
+- 回滚 = 还原两个 baseline 文件 + 恢复参数（本变更不涉数据/存储，无迁移）。---
+
+# Baseline 变更申请 — phase-0/tool-schemas.full.json + phase-0/tool-schemas.plan.json（新增 goal 域工具）
+
+> 申请日期：2026-10-23 · 申请人：编码助手（goal 域 DSH 栈移植）
+> 状态：**已批准** —— 用户 2026-10-23 明确下达「先看看 dsh 的 goal 是怎么做的，预期修修补补，
+> 不如接着抄别人的」，即本次目标域重做的开工授权；本文件按模板登记变更对象与证据。
+> 模型可见表面：**有变更**（新增工具 `goal`）——这正是本申请的对象（+1 工具，不改既有条目）。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.full.json`（`count` 17 → 18）
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.plan.json`（`count` 19 → 20）
+- 变更内容：两个快照的 `schemas` 数组**各追加一条 `goal` 工具的 schema**
+  （动作 `get` / `create` / `update` + 参数表），其余条目逐字节不变、顺序不变
+  （新域追加在表尾 = 前缀缓存友好）。
+- plan 面只含 `goal(get)`（域 readOnlyActions = `['get']`），与既有按 action 分档同规。
+
+## 2. 为什么必须变
+
+- 旧的 `goal-loop` + `goal_report` 一套被整件拆除（状态与会话卷脱钩、失败不可恢复、
+  每轮动态注册工具、无轮记账）；按 DSH `packages/goal/` 重做为**每卷一个持久目标**：
+  状态住会话日志（`goal/change` + `goal/round` 事件，严格折叠）、模型工具面是常驻的
+  `goal(get/create/update)`、空闲自动续行轮由 chat-core 驱动。
+- 工具面新增一域 ⇒ 两个快照必然新增一条：这是**新增**而非**改动**，不触碰既有工具的任何字节。
+- `AgentConfig` 字段面同步 23 → 22（移除 `goalManager`——目标状态不再由 config 携带，
+  改住会话日志），phase-6 静态门禁与 spec 断言已同批更新。
+
+## 3. 证据
+
+- `tests/goal-fold.test.ts`（18 例）：严格回放（revision 连续、阶段转移、blocked 原因、轮连续与上限、坏事件 fail-closed）。
+- `tests/goal-service.test.ts`（14 例）：CAS、阶段机、进程本地 activation、轮记账、损坏拒绝。
+- `tests/goal-tools.test.ts`（11 例）：直人授权、目标轮 complete/blocked、blocked ≥3 轮、paused 不可模型 resume、陈旧 revision 拒绝。
+- `tests/goal-command.test.ts`（5 例）：控制词只认整条输入、其余为目标原文。
+- `tests/goal-round.test.ts`（3 例）：准入事件 + `<goal_round>` 消息 + 轮号推进。
+- 生成物：`npm run gen:tool-contract` 已把 `goal` 收录进 `docs/agents/model-tool-contract.md`；
+  `gen:doc-facts` 的 `tool_domains` 11 → 12。
+
+## 4. 拟议变更
+
+采纳 record 快照：两文件各 +1 条 `goal` schema 条目 + `count` +1；其余零变更。
+
+## 5. 落地步骤
+
+1. ✅ goal 域内核（session-log 事件 + fold + service + 宿主登记）；
+2. ✅ goal 工具产物（goal-mode 重写：3 工具 + prompt 段）+ 名册 inject 更新；
+3. ✅ chat-core `/goal` 语法与空闲续行驱动器；旧 goal-manager/impl/contract/store 整删；
+4. ✅ 守护测试 51 例（上述五文件）；
+5. ✅ 本文件登记 + 授权依据；
+6. ⬜ `record:convergence`（双轨）独立步骤执行；
+7. ⬜ 门禁四连 + doc-sync/doc-check 收口。

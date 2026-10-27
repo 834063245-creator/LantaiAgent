@@ -464,6 +464,22 @@ export const DOMAIN_SPECS: DomainSpec[] = [
       inspect_self: 'cordis_inspect_self',
     },
   },
+  {
+    name: 'goal',
+    description:
+      'Long-running session goal (one current goal per session): get / create / update. ' +
+      'The goal persists in the session log and keeps working across automatic goal rounds; ' +
+      'goal(create) may infer intent from a direct human request (not for single-turn work), ' +
+      'goal(get) returns the goal_id and revision that goal(update) requires, and ' +
+      'goal(update, update_action=edit|pause|resume|complete|blocked) drives the lifecycle. ' +
+      "complete/blocked are also allowed from the goal's own automatic round (blocked needs the same " +
+      'blocking condition across at least 3 rounds); a paused goal can only be resumed by the human /goal command.',
+    actions: {
+      get: 'goal_get',
+      create: 'goal_create',
+      update: 'goal_update',
+    },
+  },
 ];
 
 function buildDomainTool(registry: ToolRegistry, spec: DomainSpec): Tool | null {

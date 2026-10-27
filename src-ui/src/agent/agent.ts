@@ -50,9 +50,10 @@ import {
   type LoopEventPayload,
 } from './events';
 import { createExecState, type ExecStateInstance, type RunHandle, type RunKind } from './execution-state';
-import type { GoalLoopHost, GoalRunResult } from './goal-contract';
-import { activeGoalImplementation } from './goal-impl';
-import type { GoalManager } from './goal-manager';
+import { renderGoalRoundPrompt } from './goal/prompt';
+import { readGoal, recordGoalRound } from './goal/service';
+import { registerGoalHost } from './goal/session-registry';
+import { GoalError } from './goal/types';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import type { Disposer } from './lifecycle';
 import { log } from './logger';
@@ -250,7 +251,7 @@ export class Agent {
   /** agent loop 实现（D13）——构造期解析（显式注入优先，缺省 = builtin/default）。 */
   private readonly _loop: AgentLoop;
 
-  // 装配 context — 身份/服务唯一来源；setBus/setSubAgentPool/setGoalManager
+  // 装配 context — 身份/服务唯一来源；setBus/setSubAgentPool
   // 经 write-through 把后续注入同步回 ctx（ctx 是服务真源）。
   private _ctx: AgentContext;
 
@@ -314,14 +315,10 @@ export class Agent {
   readonly id: string;
   readonly parentId: string | null;
   private agentStore: AgentStore | null = null;
-  /** Goal 管理器 — goal-loop.ts 经 GoalLoopHost 接口读取（11c 拆分后跨模块消费）。 */
-  goalManager: GoalManager | null = null;
 
   // 子 Agent 的隔离 ID — 注入到工具参数中，使 Rust 后端
   // 能通过 forward_map_path 解析 worktree 路径。
   _isolationId?: string;
-
-  // Goal 循环实现已迁 goal-loop.ts（MAX_GOAL_ITERATIONS / MAX_STALL_ROUNDS 随迁）
   // PreToolUse hooks — 用图上下文增强工具结果
   private hooks: HookRegistry | null = null;
 
@@ -511,6 +508,10 @@ export class Agent {
    *  try 段：起 watch 时挂上、finally 里摘掉（只摘自己那面）。 */
   private _runFence: RunPulse | null = null;
 
+  /** 当前运行的种类（2026-10-23 goal 域移植）：goal 工具的直人/目标轮授权判据。
+   *  生命周期 = `run()` / `runGoalRound()` 的 try/finally（同一时刻至多一种）。 */
+  private _activeRunKind: RunKind | null = null;
+
   // TaskBoardFace — 异步子 Agent 追踪的共享状态区
   // （子 Agent 派生域经宿主接口读取 — 11c 拆分）
   _taskBoard: TaskBoardFace | null = null;
@@ -601,7 +602,6 @@ export class Agent {
     this._taskBoard = ctx.get('taskBoard') ?? opts.taskBoard ?? null;
     this._discoveryBoard = ctx.get('discoveryBoard') ?? opts.discoveryBoard ?? null;
     this.agentStore = ctx.get('agentStore') ?? null;
-    this.goalManager = ctx.get('goalManager') ?? null;
     this._subAgentPool = ctx.get('subAgentPool') ?? null;
     this._composition = ctx.get('composition') ?? null;
     // S6 P2a：本 Agent 的组合裁剪面灌进自己的 loop 事件总线——emit 调用点
@@ -639,6 +639,10 @@ export class Agent {
     if (ctx.projectPath) {
       ctx.effect(() => registerOwnerContext(this.id, ctx.projectPath), 'session-context');
     }
+    // Goal 宿主登记（2026-10-23 goal 域移植）：goal 工具在产物包里只拿得到
+    // `_owner_id`（bus id）；目标状态住本 Agent 的会话日志 ⇒ 键 = owner id 的
+    // 登记表是唯一桥。对称清理归 ctx 所有权（session-context 同款）。
+    ctx.effect(() => registerGoalHost(this), 'goal-host');
     // S6 P2a：装配期登记本 Agent 的组合裁剪面（键 = owner id = 上面同一个
     // this.id）——工具族在请求期按 executor 注入的 _owner_id 查表取「本卷的
     // seam 视图」（composition/seam-scope.ts；携带路径的裁定与证据见该文件头注）。
@@ -797,6 +801,12 @@ export class Agent {
    *  append 只发生在运行时边界（下方三个双写入口），外部不得直写。 */
   getSessionLog(): SessionLog {
     return this._sessionLog;
+  }
+
+  /** 当前运行种类（2026-10-23 goal 域移植）：goal 工具的授权判据——
+   *  空闲 = null；`turn` = 直人轮；`goal` = 自动续行轮；`subagent` = 子 Agent。 */
+  currentRunKind(): RunKind | null {
+    return this._activeRunKind;
   }
 
   // ── Phase 5 双写入口：模型可见事实先 append 事件，同一消息对象进 session 投影 ──
@@ -1120,11 +1130,6 @@ export class Agent {
     this.agentStore = store;
   }
 
-  setGoalManager(mgr: GoalManager): void {
-    this.goalManager = mgr;
-    this._ctx.set('goalManager', mgr);
-  }
-
   /** 将当前身份状态保存到内存注册表（2026-09-01 起不再落盘——见
    *  agent-store.ts 头注；会话全文由父会话消息层持久化）。Best-effort。 */
   async saveState(status: AgentRecord['status'] = 'running'): Promise<void> {
@@ -1306,6 +1311,9 @@ export class Agent {
     // 收尾只注销自己这条（`end()` 按 id 身份）——`this.isRunning` 也派生于此。
     // 子 Agent（自己那本私账）记 kind='subagent'，会话主 Agent 记 'turn'——读面据种类分策略。
     const myRun = this._claimRun(signal, this._subagentDepth > 0 ? 'subagent' : 'turn');
+    // goal 域授权判据（2026-10-23）：记下本轮种类（认领方已起的记录优先——
+    // wake/外部驱动面传进来的 signal 也是同一本账上的事实）。
+    this._activeRunKind = this._execState.runFor(signal)?.kind ?? (this._subagentDepth > 0 ? 'subagent' : 'turn');
     // ⚡ 运行看门狗（2026-09-20 landmine L3 拆弹）：硬截止落点 = 本函数的收尾——
     //   哪怕 `runLoop` 挂在「不认 signal 的 await」上永不返回，`deadline` 仍会
     //   以 `RunDeadlineExceededError` 拒绝，本函数的 finally 照常跑完（saveState /
@@ -1391,6 +1399,7 @@ export class Agent {
       // 旧实现 saveState 在 await runLoop 之后，throw 路径直接绕过。
       this.saveState('running').catch(() => {});
       myRun?.end();
+      this._activeRunKind = null;
       // 作废轮不补唤醒（2026-09-20）：被硬截止作废的那一轮，inbox 里未注入的
       // 消息**留待下次**（用户重发 / 下一条唤醒）——由一条「结果未知」的作废轮
       // 顺手叫起新轮，等于把不知情的后续工作接到一个不知死活的上下文后面。
@@ -1498,36 +1507,34 @@ export class Agent {
   }
 
   // ══════════════════════════════════════════════════════
-  // Goal 循环 — 自主多轮执行（实现已归产物包 hologram/goal-mode，经登记表取用）
+  // Goal 自动续行轮（2026-10-23 DSH goal 栈移植：目标状态在会话日志，
+  // 驱动器在 chat-core；本类只提供「跑一轮」的执行原语）
   // ══════════════════════════════════════════════════════
 
-  /** 目标模式不可用时的具名失败原因（feature 语义：插件被禁用/未装载 = 显式降解）。 */
-  private static readonly GOAL_MODE_UNAVAILABLE =
-    '目标模式不可用：hologram/goal-mode 产物未装载或被禁用（设置 → 插件可重新启用）。';
-
-  /** 自主运行目标: 规划 → 执行 → 验证 → 循环直到 goal_report。
-   *  实现经 `agent/goal-impl.ts` 登记表取自产物包（feature 语义：未登记 = 具名失败，
-   *  不静默——`/goal` 命令可见原因）。 */
-  async runGoal(signal: AbortSignal, goal: string): Promise<GoalRunResult> {
-    const run = this._claimRun(signal, 'goal');
-    try {
-      const impl = activeGoalImplementation();
-      if (!impl) return { status: 'failed', summary: Agent.GOAL_MODE_UNAVAILABLE };
-      return await impl.runGoal(this as unknown as GoalLoopHost, signal, goal);
-    } finally {
-      run?.end();
-      this._wakeIfInboxHasNew(signal);
+  /** 跑一轮自动续行：先落 `goal/round` 准入事件，再追加 `<goal_round>` 用户消息，
+   *  然后驱动工具循环。调用方（chat-core 的 goal 驱动器）负责决定开不开下一轮。
+   *
+   *  为什么计数与消息在同一段代码：`roundsStarted` 的唯一推进源是准入事件，
+   *  而模型看见这轮提示是同一事实的另一面——两者必须同生共死（foldGoal 严格校验）。 */
+  async runGoalRound(signal: AbortSignal): Promise<void> {
+    const view = readGoal(this);
+    if (view === undefined) throw new GoalError('no current goal', 'GOAL_NOT_FOUND');
+    if (view.phase !== 'active' || view.activation !== 'armed') {
+      throw new GoalError('goal is not armed for automatic continuation', 'GOAL_INVALID_TRANSITION');
     }
-  }
-
-  /** 恢复活跃目标（暂停/受阻的，或崩溃遗留的活跃记录）。返回类型与 runGoal 相同。 */
-  async resumeGoal(signal: AbortSignal, id?: string): Promise<GoalRunResult> {
+    if (view.roundsStarted >= view.maxGoalRounds) {
+      throw new GoalError('goal has no rounds left', 'GOAL_ROUND_EXHAUSTED');
+    }
+    const round = view.roundsStarted + 1;
     const run = this._claimRun(signal, 'goal');
+    this._activeRunKind = 'goal';
     try {
-      const impl = activeGoalImplementation();
-      if (!impl) return { status: 'failed', summary: Agent.GOAL_MODE_UNAVAILABLE };
-      return await impl.resumeGoal(this as unknown as GoalLoopHost, signal, id);
+      recordGoalRound(this, round);
+      this._appendMessage('user/message', { role: 'user', content: renderGoalRoundPrompt(view, round) });
+      await this.runLoop(signal);
+      this.saveState('running').catch(() => {});
     } finally {
+      this._activeRunKind = null;
       run?.end();
       this._wakeIfInboxHasNew(signal);
     }

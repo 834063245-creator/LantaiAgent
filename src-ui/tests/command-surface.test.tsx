@@ -14,7 +14,9 @@
 //      随图谱内置接线退役整删）；
 //   ③ 带参命令走目录解析（`/goal resume` → arg='resume'），发送面不再硬编码分支；
 //   ④ 内建命令 handler 绑本卷实例（旧 `_wireCommandHandlers` 就地把 handler
-//      写进模块级全局表 = 多面板互相覆盖的形状，已拆）。
+//      写进模块级全局表 = 多面板互相覆盖的形状，已拆）；
+//   ⑤ 需要参数的命令**点选/裸回车不执行**——无参 `/goal` 补全提示词并聚焦
+//      （旧实现把空参当 status，点一下就弹一条历史目标 toast，2026-10-22 用户报）。
 
 import { describe, expect, it, vi } from 'vitest';
 import { ChatCore } from '../src/app/chat/chat-core';
@@ -221,13 +223,22 @@ describe('执行面参数贯通', () => {
     expect(inputOf(b).inputText).toBe('b-草稿');
   });
 
-  it('带参 /goal 在无工作区时安静返回（不抛、不清他卷）', async () => {
+  it('无参 /goal 不填词、不发起运行（裸调用交给命令面渲染状态/用法）', () => {
     const core = new ChatCore();
     const goal = core.builtinCommands().find((c) => c.id === 'goal');
     expect(goal).toBeDefined();
-    const spy = vi.fn();
-    expect(() => core.executeCommand(goal!, 'status')).not.toThrow();
-    expect(spy).not.toHaveBeenCalled();
-    await Promise.resolve(); // 让 handler 内的 async 分支落地（无工作区即早返回）
+    const run = vi.spyOn(core as unknown as { _runAgentTurn: (opts: unknown) => Promise<void> }, '_runAgentTurn');
+
+    core.executeCommand(goal!);
+
+    expect(inputOf(core).inputText).toBe('');
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('带参 /goal 在无宿主时安静返回（不抛、不清他卷）', () => {
+    const core = new ChatCore();
+    const goal = core.builtinCommands().find((c) => c.id === 'goal');
+    expect(goal).toBeDefined();
+    expect(() => core.executeCommand(goal!, 'pause')).not.toThrow();
   });
 });

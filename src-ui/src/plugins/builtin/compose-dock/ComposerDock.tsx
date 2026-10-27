@@ -26,7 +26,16 @@
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享
 // 真实例，react 经构建期别名桥。
 
-import { type ClipboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ClipboardEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 // 浮层 portal（2026-09-22 附图预览案）：坞内两处**全局模态**（附图大图预览 /
 // 全放二次确认）必须挂到 body，理由见下方附图预览处病灶注。
 // ⚠ 为什么是裸 `createPortal` 而不是 app/overlay 的 Overlay 原语：**产物域装不下它**
@@ -40,6 +49,7 @@ import { type ClipboardEvent, memo, useCallback, useEffect, useMemo, useRef, use
 import { createPortal } from 'react-dom';
 import { volumeDisplayName } from '../../../state/volume-name';
 import type {
+  ChatCore,
   ChatImageRef,
   ComposeSessionPrefs,
   // A4 销账 W3（2026-09-28）：`rpc-contract` 带计数与插桩（有身份）——DirEntry 是
@@ -86,6 +96,7 @@ import {
 } from './host';
 import { composerSubmitOnKey } from './ime';
 import './composition-chip.css';
+import './goal-strip.css';
 import { InkLedger } from './InkLedger';
 import { ModelSelector } from './ModelSelector';
 import { WorkLedger } from './WorkLedger';
@@ -1000,6 +1011,9 @@ export const ComposerDock = memo(function ComposerDock() {
       {/* 历史眉批（一次性，6s 自散）：提示长在功能所在处，不常驻占位符 */}
       {histHint && <div className="pp-eyebrow-hint">↑ 可回取上文 · ↓ 返回草稿</div>}
 
+      {/* 目标状态条（2026-10-23 DSH 式目标域）：有目标才出现；暂停/恢复/清除走同一命令面 */}
+      <GoalStrip core={core} />
+
       {/* 输入行（原 composer 主体） */}
       <div className="pp-composer-row">
         {slashCommands.length > 0 && (
@@ -1517,3 +1531,62 @@ export const ComposerDock = memo(function ComposerDock() {
     </div>
   );
 });
+
+/** 目标状态条 —— 有目标才渲染（无目标零占位）。数据源 = panel-store.goalView
+ *  （chat-core 在命令 / 轮次收尾 / 切卷时刷新）；控制动作走同一 `/goal` 命令面，
+ *  不新造第二条写路径。 */
+function GoalStrip({ core }: { core: ChatCore | null }) {
+  if (!core) return null;
+  return <GoalStripLive core={core} />;
+}
+
+function GoalStripLive({ core }: { core: ChatCore }) {
+  const panel = getChatStore(core.panelId).panel;
+  const goal = useSyncExternalStore(
+    panel.subscribe,
+    () => panel.getState().goalView,
+    () => null,
+  );
+  if (!goal) return null;
+  const run = (arg: string) => {
+    const cmd = core.builtinCommands().find((c) => c.id === 'goal');
+    if (cmd) core.executeCommand(cmd, arg);
+  };
+  const phase =
+    goal.phase === 'active'
+      ? '进行中'
+      : goal.phase === 'paused'
+        ? '已暂停'
+        : goal.phase === 'blocked'
+          ? '已受阻'
+          : '已完成';
+  return (
+    <div className="pp-goal-strip" role="status" aria-live="polite">
+      <span className="pp-goal-strip__mark" aria-hidden="true">
+        🎯
+      </span>
+      <span className="pp-goal-strip__text" title={goal.objective}>
+        {goal.objective}
+      </span>
+      <span className="pp-goal-strip__meta">
+        {phase} · 第 {goal.roundsStarted}/{goal.maxGoalRounds} 轮
+        {goal.phase === 'active' && goal.activation === 'disarmed' ? ' · 续行已停' : ''}
+      </span>
+      {goal.phase === 'active' && goal.activation === 'armed' && (
+        <button type="button" className="pp-goal-strip__btn" onClick={() => run('pause')}>
+          暂停
+        </button>
+      )}
+      {(goal.phase === 'paused' || goal.phase === 'blocked') && (
+        <button type="button" className="pp-goal-strip__btn" onClick={() => run('resume')}>
+          继续
+        </button>
+      )}
+      {goal.phase !== 'complete' && (
+        <button type="button" className="pp-goal-strip__btn pp-goal-strip__btn--quiet" onClick={() => run('clear')}>
+          清除
+        </button>
+      )}
+    </div>
+  );
+}

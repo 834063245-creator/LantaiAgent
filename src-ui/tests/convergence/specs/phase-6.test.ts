@@ -1,11 +1,11 @@
 // Phase 6 — 组合层收尾的结构门禁与验收实证（主计划 §6 Phase 6）。
 //
 // T0 静态：
-//   - AgentConfig 字段面冻结（23 字段，AST 取 PropertySignature；2026-09-06 模型
+//   - AgentConfig 字段面冻结（22 字段，AST 取 PropertySignature；2026-09-06 模型
 //     价格表拆除删 pricing 后 30→29；2026-09-09 multimodal-image B3 加 imageReader
 //     IO 注入腰后 29→30；同日图谱退役删 graphData/graphContext 后 30→28；
 //     2026-09-19 死字段清理删 skillRegistry/taskManager/messageBus/taskBoard/
-//     discoveryBoard 后 28→23——五者真源在 AgentContext 服务表（board 由
+//     discoveryBoard 后 28→23，2026-10-23 goal 域移植移除 goalManager 后 22——真源在 AgentContext 服务表（board 由
 //     _materializeSessionServices 物化），config 面声明零消费者——
 //     非工具/hook 面，登记见 docs/archive/agent-platformization-plan.md）——组合扩展走
 //     blueprint capability，新增 config 字段必须显式改此断言并登记 progress.md；
@@ -92,10 +92,10 @@ const FORBIDDEN_COMPOSITION = [
 ];
 
 describe('phase-6 T0 结构门禁 — 组合面收敛到 blueprint capability 表', () => {
-  it('AgentConfig 字段面冻结（23 字段 — 新增工具/hook 不再扩 config）', () => {
+  it('AgentConfig 字段面冻结（22 字段 — 新增工具/hook 不再扩 config）', () => {
     expect(
       agentConfigFieldNames(),
-      'AgentConfig 字段面漂移——组合扩展走 blueprint capability；确需新增 config 字段须改此断言并登记 progress.md',
+      'AgentConfig 字段面漂移——组合扩展走 blueprint capability；确需新增 config 字段须改此断言并在 docs/plans 登记',
     ).toEqual([
       'agentId',
       'parentId',
@@ -105,7 +105,6 @@ describe('phase-6 T0 结构门禁 — 组合面收敛到 blueprint capability �
       'provider',
       'tools',
       'memoryManager',
-      'goalManager',
       'agentStore',
       'subAgentPool',
       'subAgentSpawner',

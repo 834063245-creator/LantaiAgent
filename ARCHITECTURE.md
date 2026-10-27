@@ -246,8 +246,12 @@ Tool Results → 注入会话 → 下一轮 LLM Stream（循环至最终回答�
 
 - **Plan**（`src-ui/src/agent/plan/`）：只读工具 + 计划文件写权限；`exit_plan_mode` 提交计划给用户审批
   （可带多方案）；计划文件落 `.lantai/plans/{id}.md`。
-- **Goal**（`goal-manager.ts` + `goal-loop.ts`）：显式生命周期对象（active → paused → completed / failed /
-  cancelled），迭代计数与停滞检测；存储隔离于 `.lantai/goals/{id}/`，不与会话历史混淆。
+- **Goal**（`src-ui/src/agent/goal/` + 产物 `plugins/builtin/goal-mode/`）：DSH 式每卷一个持久目标——
+  状态住会话日志（`goal/change` / `goal/round` 事件，严格折叠），修订 CAS，阶段
+  `active / paused / blocked / complete` + 进程本地 `activation`；模型面 = `goal(get/create/update)`
+  域工具，空闲自动续行轮由 `app/chat/chat-core.ts` 的驱动器调度（轮上限、停止=暂停、
+  异常停用续行）；人 `/goal` 命令走同一内核服务（裸调用=状态，`<目标>`=创建，
+  edit/pause/resume/clear 控制）。旧 `.lantai/goals/` 记录目录不再读取（归档）。
 
 ### 4.4 上下文记忆
 
