@@ -21,18 +21,17 @@ import { firstPartyPromptSections } from '../src/plugins/builtin/prompt-segments
  *  ——agent 要能自己配 provider，不必请用户去点设置页）。 */
 const SECTION_IDS = [
   'identity-brief',
-  'memory-brief',
   'env-brief',
   'identity',
   'env',
   'model-identity',
   'provider-config',
-  'memory',
   'claude-md',
 ];
 
-/** 有目录面段（表序第 4 段起——前 3 段是零目录面 *-brief）。 */
-const FULL_FACE_IDS = SECTION_IDS.slice(3);
+/** 有目录面段（表序第 3 段起——前 2 段是零目录面 *-brief；memory-brief 已随
+ *  2026-10-28 卷首字节稳定性批摘除）。 */
+const FULL_FACE_IDS = SECTION_IDS.slice(2);
 
 describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯插件面）', () => {
   it('section id 唯一且稳定：第一方面 9 段（清单序 = 迁移前出厂表序 − graph-snapshot + provider-config）', () => {
@@ -45,7 +44,6 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
     // 带 memory/env 内容让条件段全部参与，验证的是面分流而非条件门
     // （provider-config 段同款：给路径才参与——见下一条用例的条件面）
     const full = {
-      memorySection: 'mem',
       claudeMdSection: 'md',
       shellEnvSection: 'env-line',
       providerConfigPath: '/home/u/.lantai/providers.yml',
@@ -56,7 +54,7 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
     const noProjectIds = firstPartyPromptSections()
       .filter((s) => !s.applicable || s.applicable({ projectPath: '/p', hasProject: false, ...full }))
       .map((s) => s.id);
-    expect(noProjectIds).toEqual(['identity-brief', 'memory-brief', 'env-brief']);
+    expect(noProjectIds).toEqual(['identity-brief', 'env-brief']);
 
     const withProjectIds = firstPartyPromptSections()
       .filter((s) => !s.applicable || s.applicable({ projectPath: '/p', ...full }))
@@ -66,7 +64,6 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
 
   it('有目录面装配：目录段注入、模型身份带项目路径、无零目录面假话', async () => {
     const full = {
-      memorySection: 'mem',
       claudeMdSection: 'md',
       shellEnvSection: 'env-line',
       providerConfigPath: '/home/u/.lantai/providers.yml',
@@ -90,13 +87,13 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
       const assembled = assembleSystemPrompt({
         projectPath: '/projects/demo',
         hasProject: true,
-        memorySection: 'mem',
         claudeMdSection: 'md',
         providerName: 'deepseek',
         shellEnvSection: 'env-line',
         providerConfigPath: '/home/u/.lantai/providers.yml',
       });
-      expect(assembled).toContain('## 记忆库\nmem');
+      // 2026-10-28 卷首字节稳定性：记忆库**不进卷首**（改走对话尾部注入）
+      expect(assembled).not.toContain('## 记忆库');
       expect(assembled).toContain('## 项目规范\nmd');
       expect(assembled).toContain('项目: `/projects/demo`');
       expect(assembled).toContain('## provider 配置');
@@ -132,7 +129,6 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
       {
         projectPath: '/p',
         hasProject: true,
-        memorySection: 'mem',
         claudeMdSection: 'md',
         providerName: 'deepseek',
         shellEnvSection: 'env-line',
@@ -143,7 +139,6 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
       expect(
         assembleSystemPrompt({
           projectPath: '/p',
-          memorySection: 'mem',
           claudeMdSection: 'md',
           providerName: 'deepseek',
           shellEnvSection: 'env-line',
@@ -156,18 +151,13 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
     await withFirstPartyPromptChannel(async () => {
       const withAll = assembleSystemPrompt({
         projectPath: '/p',
-        memorySection: 'mem',
         claudeMdSection: 'md',
         shellEnvSection: 'env-line',
       });
       expect(withAll).toContain('## 运行环境\nenv-line');
-      expect(withAll).toContain('## 记忆库\nmem');
       expect(withAll).toContain('## 项目规范\nmd');
-      // 尾部两段顺序：memory → claude-md（贡献序 = 迁移前表尾序
-      // ——字节零漂移的序面证据）
-      const memIdx = withAll.indexOf('## 记忆库');
-      const mdIdx = withAll.indexOf('## 项目规范');
-      expect(memIdx).toBeLessThan(mdIdx);
+      // 卷首恒不含记忆库（2026-10-28 起改走对话尾部）
+      expect(withAll).not.toContain('## 记忆库');
 
       const withoutOptional = assembleSystemPrompt({
         projectPath: '/p',
@@ -181,14 +171,12 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
   it('壳函数与拼装器一致：buildSystemPrompt === assembleSystemPrompt（同输入，无技能目录）', async () => {
     await withFirstPartyPromptChannel(async () => {
       const projectPath = '/projects/demo';
-      const memorySection = 'mem';
       const claudeMdSection = 'md';
       const providerName = 'deepseek';
       const shellEnvSection = '- OS: win32';
-      const viaBuilder = buildSystemPrompt(projectPath, memorySection, claudeMdSection, providerName, shellEnvSection);
+      const viaBuilder = buildSystemPrompt(projectPath, claudeMdSection, providerName, shellEnvSection);
       const viaSections = assembleSystemPrompt({
         projectPath,
-        memorySection,
         claudeMdSection,
         providerName,
         shellEnvSection,
@@ -197,18 +185,23 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
     });
   });
 
-  it('零目录面记忆库参与条件保留原差异：trim 判空（有目录面是真值判空）', async () => {
+  it('记忆库**永不在卷首**（2026-10-28 卷首字节稳定性批）', async () => {
     await withFirstPartyPromptChannel(async () => {
-      // 零目录面：空白-only memory 不参与（显式 hasProject:false）
-      const briefBlank = assembleSystemPrompt({
+      // 两面前提下都不出现：记忆随增删变字节，坐卷首会打穿其后的**全部对话**前缀。
+      // 它改由 Agent 每轮以 transient reminder 注入对话尾部（agent.ts memoryDigest，
+      // 永不落历史）——旧卷也能看到新写的记忆。
+      const brief = assembleSystemPrompt({ projectPath: '', hasProject: false });
+      expect(brief).not.toContain('## 记忆库');
+      const full = assembleSystemPrompt({
         projectPath: '/p',
-        hasProject: false,
-        memorySection: '   ',
+        hasProject: true,
+        claudeMdSection: 'md',
       });
-      expect(briefBlank).not.toContain('## 记忆库');
-      // 有目录面：空白-only memory 仍参与（原 if (memorySection) 真值判断）
-      const fullBlank = assembleSystemPrompt({ projectPath: '/p', memorySection: '   ' });
-      expect(fullBlank).toContain('## 记忆库');
+      expect(full).not.toContain('## 记忆库');
+      // 段表里也不该再有这两个 id——防止有人「顺手加回来」
+      const ids = firstPartyPromptSections().map((s) => s.id);
+      expect(ids).not.toContain('memory');
+      expect(ids).not.toContain('memory-brief');
     });
   });
 });

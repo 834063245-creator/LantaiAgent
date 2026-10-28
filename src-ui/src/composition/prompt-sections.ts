@@ -54,7 +54,9 @@ export interface PromptSectionContext {
   projectPath: string;
   /** 绑定了项目目录：true = 有目录面，false = 零目录面。 */
   hasProject?: boolean;
-  memorySection?: string;
+  /** ⚠️ 2026-10-28 起**没有 memorySection**：记忆库不进卷首（它随记忆增删变字节，
+   *  会打穿其后的全部对话前缀——实测 99% → 0.6%）。记忆改由 Agent 每轮以
+   *  transient reminder 注入对话尾部（agent.ts 的 memoryDigest）。 */
   claudeMdSection?: string;
   providerName?: string;
   /** provider 配置文件绝对路径（2026-09-24 配方改文件批）——空 = 不注入配置段。 */

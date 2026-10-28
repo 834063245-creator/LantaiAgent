@@ -667,6 +667,18 @@ export class Workspace {
       this._lastRawAgent?.notifyMemorySaved(
         `记忆已更新: **${info.description || info.name}** (${info.confidence || 'reference'})`,
       );
+      // 2026-10-28 卷首字节稳定性：记忆已不进 system prompt，新内容必须重灌进
+      // Agent 的每轮尾部快照——否则「写完记忆要重启才生效」正是旧卷首方案的病灶。
+      const agent = this._lastRawAgent;
+      if (!agent) return;
+      void (async () => {
+        try {
+          const text = await this.memoryManager?.loadPromptSection();
+          if (text !== undefined) agent.setMemoryDigest(text);
+        } catch (err) {
+          console.warn('[Workspace] 刷新记忆快照失败（记忆已保存，下一轮可能仍是旧快照）:', err);
+        }
+      })();
     };
     try {
       // 记忆召回锚点：原为图谱 top 枢纽名，图谱退役（2026-09-09）后回退无锚形态。

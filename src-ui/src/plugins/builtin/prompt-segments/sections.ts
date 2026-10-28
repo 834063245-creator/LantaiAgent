@@ -37,12 +37,6 @@ function modelIdentityLines(providerName?: string): { negation: string; identity
   return { negation, identity };
 }
 
-/** 记忆库段（两面的格式一致；参与条件按原 if 分支保留差异：
- *  简短面判 trim() 非空，完整面判真值——机械重述，不统一）。 */
-function memoryText(memorySection: string): string {
-  return `\n\n## 记忆库\n${memorySection}`;
-}
-
 /** 运行环境段（两面格式一致：内容 trim 后拼入）。 */
 function envText(shellEnvSection: string): string {
   return `\n\n## 运行环境\n${shellEnvSection.trim()}`;
@@ -69,11 +63,10 @@ const IDENTITY_BRIEF: PromptSection = {
   },
 };
 
-const MEMORY_BRIEF: PromptSection = {
-  id: 'memory-brief',
-  applicable: (ctx) => noProject(ctx) && !!ctx.memorySection?.trim(),
-  render: (ctx) => memoryText(ctx.memorySection ?? ''),
-};
+// memory-brief 段已删除（2026-10-28 卷首字节稳定性批）：记忆库不再进卷首——
+// 它随记忆增删而变，一字节变化就打穿其后的全部对话前缀（实测 99% → 0.6%，
+// 一次 34.7 万 token 全价）。改由对话尾部的 transient reminder 每轮注入
+// （agent.ts 的 memoryDigest），记忆始终最新且不动前缀。
 
 const ENV_BRIEF: PromptSection = {
   id: 'env-brief',
@@ -112,11 +105,7 @@ const MODEL_IDENTITY: PromptSection = {
 
 // graph-snapshot 段已删除（2026-09-09）：随图谱功能全量退役。
 
-const MEMORY: PromptSection = {
-  id: 'memory',
-  applicable: (ctx) => hasProject(ctx) && !!ctx.memorySection,
-  render: (ctx) => memoryText(ctx.memorySection ?? ''),
-};
+// memory 段已删除（2026-10-28 卷首字节稳定性批）：同 memory-brief，见上。
 
 const CLAUDE_MD: PromptSection = {
   id: 'claude-md',
@@ -167,5 +156,7 @@ apiKey 权威在本机系统凭据库（用户可在 设置 → 提供方 的 Ke
  *  S4-4 甲：清单段经通道进 roster 解析域（factoryComposition prompt 域
  *  快照）——patch/preset 可寻址段 id（disable/text/锚定）。 */
 export function firstPartyPromptSections(): PromptSection[] {
-  return [IDENTITY_BRIEF, MEMORY_BRIEF, ENV_BRIEF, IDENTITY, ENV, MODEL_IDENTITY, PROVIDER_CONFIG, MEMORY, CLAUDE_MD];
+  // 2026-10-28：MEMORY_BRIEF / MEMORY 两段摘除（记忆改走对话尾部注入）——
+  // 卷首只剩随装配冻结的段，记忆增删不再打穿前缀缓存。
+  return [IDENTITY_BRIEF, ENV_BRIEF, IDENTITY, ENV, MODEL_IDENTITY, PROVIDER_CONFIG, CLAUDE_MD];
 }

@@ -23,7 +23,6 @@ import { Context } from '../src/cordis';
 
 const CTX = {
   projectPath: '/proj',
-  memorySection: '',
   graphSnapshot: '',
   claudeMdSection: '',
   providerName: 'deepseek',

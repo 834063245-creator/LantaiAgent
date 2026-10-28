@@ -667,16 +667,20 @@ export class AgentRuntime implements RuntimePort {
 
     // 1. 构建 system prompt（如果没预构建）
     let sysPrompt = inputs.systemPrompt;
-    if (!sysPrompt) {
-      let memSection = '';
+    // 记忆库不进卷首（2026-10-28 卷首字节稳定性批）：记忆随增删变字节，坐卷首会
+    // 打穿其后的**全部对话**前缀（实测命中率 99% → 0.6%，一次 34.7 万 token 全价）。
+    // 改由 Agent 每轮以 transient reminder 注入**对话尾部**——前缀稳定，且记忆始终最新
+    // （旧卷也能看到新写的记忆，不受「快照冻结」影响）。
+    let memoryDigest = '';
+    {
       const memoryManager = ctx.get('memoryManager');
       if (memoryManager) {
         try {
-          // 记忆召回锚点：原为图谱 top 枢纽名（extractGraphNodeNames），
-          // 图谱退役（2026-09-09）后回退无锚形态。
-          memSection = await memoryManager.loadPromptSection();
+          memoryDigest = await memoryManager.loadPromptSection();
         } catch {}
       }
+    }
+    if (!sysPrompt) {
       let claudeMd = '';
       try {
         claudeMd = await kernelReadFile(`${ctx.projectPath}/CLAUDE.md`);
@@ -712,7 +716,6 @@ export class AgentRuntime implements RuntimePort {
 
       sysPrompt = buildSystemPrompt(
         ctx.projectPath,
-        memSection,
         claudeMd,
         ctx.resolve('provider').name(),
         shellEnvSection,
@@ -797,6 +800,9 @@ export class AgentRuntime implements RuntimePort {
       // 缺省语义一致（agent.ts 构造 `opts.agentLoop ?? defaultAgentLoop`）。
       agentLoop: resolveAgentLoop(),
     });
+    // 记忆快照交给 Agent（2026-10-28）：每轮作为 transient reminder 拼在对话**尾部**，
+    // 不进卷首、不落历史。空串 = 无记忆环境，行为与改动前等价（不追加任何东西）。
+    newAgent.setMemoryDigest(memoryDigest);
 
     // 5. agent 阶段 capability — 注册序 = 表序（通信/discovery/merge/request/
     //    spawn/task/compaction/converge + hooks + plan 接线 + pre-run + 自动调优）。

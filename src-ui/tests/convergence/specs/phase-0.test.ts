@@ -53,15 +53,17 @@ describe('phase-0 契约快照', () => {
     // buildStandardRegistry 先例；贡献序 = 出厂表序，快照零漂移按构造）。
     // 两面（2026-09-09 图谱退役后）：hasProject = projectPath 非空——
     // 原三面（withGraph/engineOff/noGraph）随 graphData/引擎开关行为删除，
-    // 夹具改两面：project（有目录面：path 非空，memory/claudeMd/shellEnv/
-    // providerName 齐备——identity → env → model-identity → memory →
-    // claude-md 按序拼装）与 noProject（零目录面：path=''，其余空——
-    // identity-brief 独段，"当前没有加载项目"在此面才是真话）。
+    // 夹具改两面：project（有目录面：path 非空，claudeMd/shellEnv/
+    // providerName 齐备——identity → env → model-identity → claude-md 按序拼装）
+    // 与 noProject（零目录面：path=''，其余空——identity-brief 独段，
+    // "当前没有加载项目"在此面才是真话）。
+    // 2026-10-28 卷首字节稳定性批：**记忆库段已从卷首摘除**（改走对话尾部的
+    // transient reminder，见 agent.ts 的 buildTransientMessages）——夹具不再有
+    // memory 输入，且断言反转为「卷首必须不含记忆库」。
     await withFirstPartyPromptChannel(async () => {
-      // 有目录面：memory/claudeMd/shellEnv/providerName 全注入。
+      // 有目录面：claudeMd/shellEnv/providerName 全注入。
       const project = buildSystemPrompt(
         '/projects/demo',
-        '### 固定记忆段落\n- 记忆条目 A',
         '### CLAUDE.md 固定内容\n- 规范条目 A',
         'deepseek',
         '- OS: win32\n- Shell: bash (Git Bash)',
@@ -69,13 +71,15 @@ describe('phase-0 契约快照', () => {
       // 零目录面：占位工作区装配真值（path='' → hasProject=false）。
       const noProject = buildSystemPrompt('');
       // 面内实况断言（对照 prompt-sections.ts 的 IDENTITY/IDENTITY_BRIEF/
-      // ENV/MODEL_IDENTITY/MEMORY/CLAUDE_MD 段渲染）——不依赖 baseline，
+      // ENV/MODEL_IDENTITY/CLAUDE_MD 段渲染）——不依赖 baseline，
       // 两面的段位与关键内容直接钉死：
       expect(project.startsWith('你是兰台的编码 Agent。')).toBe(true);
       expect(project).toContain('\n\n## 运行环境\n- OS: win32\n- Shell: bash (Git Bash)');
       expect(project).toContain('## 模型身份');
       expect(project).toContain('- 项目: `/projects/demo`');
-      expect(project).toContain('## 记忆库\n### 固定记忆段落\n- 记忆条目 A');
+      // 记忆库不进卷首（2026-10-28）：卷首字节里不许出现它——否则记忆一改，
+      // 其后的全部对话前缀按未缓存计费。
+      expect(project).not.toContain('## 记忆库');
       expect(project).toContain('## 项目规范\n### CLAUDE.md 固定内容\n- 规范条目 A');
       expect(project).not.toContain('当前没有加载项目');
       expect(noProject.startsWith('你是兰台的 AI 编码助手。当前没有加载项目。')).toBe(true);

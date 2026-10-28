@@ -8,9 +8,10 @@
 //   3. 注册面依赖：无通道环境缺省拼装 = 空提示词——收官后出厂面全依赖
 //      通道（obstacle ③），convergence 夹具必须经 withFirstPartyPromptChannel
 //      复现生产装配面；
-//   4. 段语义保留：applicable 直收 PromptSectionContext——空 memorySection/
-//      claudeMdSection 时迁移段跳过（与表内时代逐字同行为，无实例缓存障碍）；
-//      （graph-snapshot 段随图谱退役删除，2026-09-09）
+//   4. 段语义保留：applicable 直收 PromptSectionContext——空 claudeMdSection 时
+//      迁移段跳过（与表内时代逐字同行为，无实例缓存障碍）；
+//      （graph-snapshot 段随图谱退役删除 2026-09-09；memory/memory-brief 两段
+//       随卷首字节稳定性摘除 2026-10-28——记忆改走对话尾部 transient reminder）
 //   5. 通道腰生命周期：run 期间贡献在册，run 返回后读取面归零（prompt 是
 //      字节敏感面，拆卸不残留）。
 
@@ -24,7 +25,6 @@ import { firstPartyPromptSections } from '../src/plugins/builtin/prompt-segments
 
 const FULL_CTX = {
   projectPath: '/p',
-  memorySection: 'mem',
   claudeMdSection: 'md',
   providerName: 'deepseek',
   shellEnvSection: 'env-line',
@@ -57,14 +57,13 @@ describe('第一方 prompt 段插件（P4 B④ 收官）', () => {
     expect(out).toBe('');
   });
 
-  it('段语义保留：applicable 收装配期真值——空白 memory/claudeMd 跳过', async () => {
+  it('段语义保留：applicable 收装配期真值——空白 claudeMd 跳过；记忆段已退役', async () => {
     const root = new Context();
     const svcFiber = await root.plugin(promptsServicePlugin);
     const segFiber = await root.plugin(promptSegmentsPlugin);
     try {
       const out = assembleSystemPrompt({
         projectPath: '/p',
-        memorySection: '',
         claudeMdSection: '',
         shellEnvSection: 'env-line',
       });
@@ -72,7 +71,8 @@ describe('第一方 prompt 段插件（P4 B④ 收官）', () => {
       expect(out).not.toContain('## 项目规范');
       // 命中条件时参与（通道内贡献 render 直收 PromptSectionContext）
       const hit = assembleSystemPrompt(FULL_CTX);
-      expect(hit).toContain('## 记忆库\nmem');
+      // 记忆库自 2026-10-28 起不在卷首（改走对话尾部）：钉死「加回来会红」
+      expect(hit).not.toContain('## 记忆库');
       expect(hit).toContain('## 项目规范\nmd');
       // graph-snapshot 段已随图谱退役（无「项目架构快照」渲染面）
       expect(hit).not.toContain('## 项目架构快照');

@@ -521,3 +521,61 @@
 5. ✅ 本文件登记 + 授权依据；
 6. ⬜ `record:convergence`（双轨）独立步骤执行；
 7. ⬜ 门禁四连 + doc-sync/doc-check 收口。
+
+---
+
+# Baseline 变更申请 — phase-0/system-prompt.fixture.json（记忆库段退出卷首）
+
+> 申请日期：2026-10-28 · 申请人：编码助手（卷首字节稳定性批；用户当日明确要求「卷首字节稳定性 +
+> 嵌入缓存持久化这两项现在就开」，即本变更的开工授权）
+> 状态：**已批准** —— 依据同上行用户指令；本文件按模板登记变更对象与证据。
+> 模型可见表面：**有变更**（system prompt 少一段记忆库；记忆改从请求尾部进入，内容语义不变）
+> —— 这正是本申请的对象。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-0/system-prompt.fixture.json`
+- `src-ui/tests/convergence/baseline/preset-minimal/phase-0/system-prompt.fixture.json`
+- 变更内容：两面夹具（有目录 / 零目录）的 `project` / `noProject` 文本**各少一段**——
+  有目录面去掉 `## 记忆库 …`（原在 model-identity 之后、claude-md 之前）；
+  零目录面去掉 `## 记忆库 …`（原在 identity-brief 之后、env-brief 之前）。
+  其余字节逐字不变（段序、分隔符、其余段文本零改动），`projectLength` 相应变短。
+- 夹具输入同步收窄：`buildSystemPrompt` 的 `memorySection` 形参退役（签名少一位）。
+
+## 2. 为什么必须变
+
+- 记忆库是 system prompt 里**唯一随用户操作变化**的内容：写一条记忆 ⇒ 卷首文本变一字节
+  ⇒ 其后**整个对话**按未缓存计费。实测（2026-09-18，卷 7）：重启后首个请求
+  `prompt=349,407 / hit=2,176`（命中率 99% → 0.6%），其后十次 99.8–99.95%。
+- 前缀缓存命中 = 与新请求的**最长公共前缀**；卷首在对话之前，改卷首 = 整卷重算。
+  已验算过的「把记忆段挪到卷首末尾」只省 2.8%（不改变性质），故只能整段移出卷首。
+- 移出后记忆改由 `Agent` 每轮拼在请求载荷**最后一条**（`buildTransientMessages`，
+  transient reminder，不落历史）：已缓存前缀照常命中，且记忆始终最新——旧卷也能看到
+  新写的记忆，优于「快照冻结」案。
+
+## 3. 证据
+
+- `tests/memory-tail-injection.test.ts`（3 例，新增）：① 有记忆 ⇒ 快照是最后一条且排在
+  全部临时提醒之后；② 无记忆 ⇒ 不追加任何东西（载荷与改动前一致，零回归）；
+  ③ 每轮重拼 ⇒ 记忆改了下一轮就带上新的（不需要重启）。
+- `tests/composition-prompt-sections.test.ts`（改）：段清单去 `memory` / `memory-brief`；
+  新增「记忆库永不在卷首」守护（两面前提 + 段表 id 反查，防止有人顺手加回来）。
+- `tests/prompt-segments-plugin.test.ts`（改）：段语义断言反转为「卷首不含记忆库」。
+- `tests/convergence/specs/phase-0.test.ts`（改）：夹具输入去 memory，断言改为
+  `expect(project).not.toContain('## 记忆库')`。
+- `record:convergence` 双轨已跑：`git diff` 只含两份 `system-prompt.fixture.json`
+  （+ 夹具 spec 与生产代码），无其他 baseline 漂移。
+
+## 4. 拟议变更
+
+采纳 record 快照：两份 fixture 的 `project` / `noProject` 去掉记忆段文本，其余零变更。
+
+## 5. 落地步骤
+
+1. ✅ 段表摘除 `memory` / `memory-brief`（`plugins/builtin/prompt-segments/sections.ts`）；
+2. ✅ `PromptSectionContext.memorySection` 退役 + `buildSystemPrompt` 签名单位收窄；
+3. ✅ `Agent.setMemoryDigest` + `buildTransientMessages`（请求尾部注入）；
+4. ✅ `workspace` 的 `onSaved` 刷新快照（写完记忆下一轮生效，不必重启）；
+5. ✅ 守护测试（上述三文件）+ 夹具改写；
+6. ✅ `record:convergence`（双轨）——本提交即 baseline 审批提交；
+7. ⬜ 门禁四连（vitest / build / biome / convergence）+ doc-check 收口。

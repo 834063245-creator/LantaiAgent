@@ -57,7 +57,6 @@ export interface BuilderDeps {
 
 export function buildSystemPrompt(
   projectPath: string,
-  memorySection = '',
   claudeMdSection = '',
   providerName?: string,
   shellEnvSection = '',
@@ -69,7 +68,6 @@ export function buildSystemPrompt(
     {
       projectPath,
       hasProject: projectPath !== '',
-      memorySection,
       claudeMdSection,
       providerName,
       shellEnvSection,

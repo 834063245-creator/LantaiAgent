@@ -525,6 +525,14 @@ export class Agent {
   // 但不持久化到 this.session。每个 runLoop 步骤开始时清除。
   // 保持会话历史干净以获得稳定的缓存前缀。
   private _transientReminders: string[] = [];
+  /** 记忆库快照（2026-10-28 卷首字节稳定性批）。
+   *
+   *  **不进 system prompt**——记忆随增删变字节，坐卷首会打穿其后的全部对话前缀
+   *  （实测命中率 99% → 0.6%，一次 34.7 万 token 全价）。改为每轮作为 transient
+   *  reminder 拼在对话**尾部**：前缀稳定；不落历史（记忆文件本身是持久层）；
+   *  且始终是**最新**的（记忆一改，下一轮就带上，不用等重启换卷首）。
+   *  空串 = 无记忆环境（不追加任何内容，载荷逐字节同改动前）。 */
+  private _memoryDigest = '';
 
   // 文件所有权 — 并行子 Agent 的运行时写保护。
   // 仅 fresh 子 Agent（无 worktree 隔离）受声明约束。
@@ -659,6 +667,12 @@ export class Agent {
    *  下一个安全边界作为 system-reminder 注入。 */
   notifyMemorySaved(text: string): void {
     this._pendingMemoryUpdates.push(text);
+  }
+
+  /** 设置/刷新记忆库快照（装配期一次；记忆保存后再刷一次 —— workspace 的 onSaved）。
+   *  2026-10-28 起记忆**不进 system prompt**：从这里每轮进对话尾部。 */
+  setMemoryDigest(text: string): void {
+    this._memoryDigest = text;
   }
 
   setHooks(hooks: HookRegistry): void {
@@ -1881,10 +1895,7 @@ export class Agent {
     // 将临时提醒作为 user 消息追加到末尾 — 它们
     // 本轮对 LLM 可见但不持久化到 this.session。
     // 载荷 = 完整历史的折叠视图（若已压缩）+ 临时提醒。
-    const transientMsgs: Message[] = this._transientReminders.map((content) => ({
-      role: 'user' as const,
-      content,
-    }));
+    const transientMsgs: Message[] = buildTransientMessages(this._transientReminders, this._memoryDigest);
     const payload = this.payloadMessages();
     // 工具 schema 本请求只解析一次（选择器带锁存，但没必要调两遍）——
     // 请求体与 token 计量共用同一份。
@@ -2428,3 +2439,22 @@ export class Agent {
 
 // 隔离合并/丢弃的序列化在 isolation-queue.ts 中
 // （与 merge.ts 共享 — 并发 git 操作会争抢 index lock）。
+
+/** 请求尾部的 transient 消息（**不落历史**，本轮可见，每轮重拼）。
+ *
+ *  2026-10-28 卷首字节稳定性批：记忆库快照从 system prompt 搬到这里——它随记忆
+ *  增删变字节，坐卷首会打穿其后的**全部对话**前缀（实测命中率 99% → 0.6%，一次
+ *  34.7 万 token 全价）；放在载荷最后则只影响未缓存的新尾部，已缓存前缀照常命中。
+ *
+ *  顺序 = [临时提醒…, 记忆库快照]（记忆恒在最后）；空 digest 不追加任何东西
+ *  —— 无记忆环境的载荷与改动前逐字节相同。导出供测试钉住这个顺序契约。 */
+export function buildTransientMessages(reminders: string[], memoryDigest: string): Message[] {
+  const out: Message[] = reminders.map((content) => ({ role: 'user', content }));
+  if (memoryDigest) {
+    out.push({
+      role: 'user',
+      content: `<system-reminder>\n## 记忆库\n${memoryDigest}\n</system-reminder>`,
+    });
+  }
+  return out;
+}

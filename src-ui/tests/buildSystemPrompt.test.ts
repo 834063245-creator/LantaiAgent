@@ -69,7 +69,8 @@ describe('buildSystemPrompt — skillCatalog 追加', () => {
   it('缺省/空 skillCatalog：输出与无技能环境逐字节一致', async () => {
     await withFirstPartyPromptChannel(async () => {
       const base = buildSystemPrompt('');
-      const withEmpty = buildSystemPrompt('', '', '', undefined, '', undefined, '');
+      // 2026-10-28：memorySection 形参已退役（记忆不再进卷首）——签名少一位。
+      const withEmpty = buildSystemPrompt('', '', undefined, '', undefined, '');
       expect(withEmpty).toBe(base);
     });
   });
@@ -77,7 +78,6 @@ describe('buildSystemPrompt — skillCatalog 追加', () => {
   it('非空 skillCatalog：尾部追加「可用技能」段（name + description + when_to_use）', async () => {
     await withFirstPartyPromptChannel(async () => {
       const prompt = buildSystemPrompt(
-        '',
         '',
         '',
         undefined,

@@ -160,7 +160,6 @@ describe('S2-1 穿线：buildSystemPrompt / assembleSystemPrompt(sections)', () 
   const ctxArgs = {
     graphData: { nodes: [] },
     projectPath: '/p',
-    memorySection: '',
     graphSnapshot: '',
     claudeMdSection: '',
     providerName: 'mock',
