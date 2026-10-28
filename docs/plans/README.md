@@ -20,7 +20,7 @@
 重建过的了，不需要重建」——⇒ 累计 24 组「代码完成、待实机勾销」的验收项**一律视为通过**，不再占在办行
 （判据转登记册，见下「真机验收登记册」）；exe 已重建完毕，本页不再出现「须重建 exe」类待办。
 
-**当前真正的在办**：① 六件已立项待排期的代码（见「待执行但已立项」）；② 文档面重构收尾（P0-P4 全落，余归档）；
+**当前真正的在办**：① 四件已立项待排期的代码（见「待执行但已立项」）；② 文档面重构收尾（P0-P4 全落，余归档）；
 ③ 画布支 Stage-6。已竣工线的权威叙事全在 [`docs/archive/`](../archive/README.md)；**跨文档数字一律看
 [`docs/facts.generated.md`](../facts.generated.md)，本页不复述**。
 
@@ -41,12 +41,10 @@
 | **pretext 排版引擎** | P1-P5 全竣工 + P4c 远景三档；**余 P2a 对齐环未开工**（方向 A\|B 未定 ⇒ 待排期） | 从高度计算器升级为纸面排版引擎（lift 遮罩 / rich-inline 精确测量 / 来文变宽纸条 / 缩远墨迹 LOD 与小地图真墨）——[`pretext-typography-plan.md`](pretext-typography-plan.md) |
 | **日志可观测性（失败可见 P0）** | 批 0–4 **已落地**（批 1/2 = 2026-09-27：`06fadbe2` + `bf4c910b`；批 3/4 = 2026-10-12：级别开关 + 健康度 + 前情缓冲 + Rust 出网留痕 + **轮转/保留窗口** + **设置页「诊断」签（级别开关 UI + 诊断包导出）**）；验收默认通过（2026-10-28 口径） | 消灭「失败默认无痕」：事件门面 `agent/obs.ts`（唯一脱敏审查点）+ 用户可见失败唯一漏斗 + 五条接缝（boot / config.load / cred / llm / turn.failed）插桩 + `logger.ts` 的级别过滤（默认 info，**debug 进内存前情缓冲，失败时自动连现场落盘**——用户不必记得开开关）与丢条补偿；三份日志同规轮转（8 MiB / 保 2 代，失败不静默）；诊断包导出（单文件，带可信度段：通道可用性/断档/丢条/字段来源标签）。规格 [`../design/log-observability-spec.md`](../design/log-observability-spec.md)，计划与事故取证 [`log-observability-plan.md`](log-observability-plan.md)（触发 = 2026-09-27 用户报本地模型调不动，其 log 对该故障的可答信息 0 条） |
 | **插件化欠账（总账）** | ✅ **已完成（2026-09-26；2026-09-24 立账）** | 「还有多少没拆」的唯一真值 = [`plugin-extraction-inventory.md`](plugin-extraction-inventory.md)：账①通道迁移 ✅ 全清 / **账② 物理归家 ✅ 清零**（红区 0 产物 / 0 文件 / 0 行；纯壳集 21 → 0）/ 账③ 逐项判定完毕（判内核平台/共享面者已入名册 `shared` 与白名单）；§0.1 的「30 产物源码进 bundle」守卫同批落。**用户裁定六项排期全落**（真机验收 → 9h-5 → 9c-4 → §4-6 → 9f → 批 10 + §4-9 → §4 自裁项收尾）；三色实测见总账 §5，批次表 §6 |
-| **嵌入缓存持久化** | 中（`hologram-vector` 单文件 + 单测；不动引擎契约面） | `VECTOR_CACHE` 是进程内 static ⇒ 跨重启命中率 0（实测 2%，全量重建 13.7 分钟/22k 节点）。裁定 = 落 `<data_dir>/vectors.embed.cache`（内容哈希键，头带 backend/dim，不匹配整份丢弃），只写本轮向量故天然有界（~34MB）——[`embedding-cache-persistence-design.md`](embedding-cache-persistence-design.md) |
 | **LSP 舰队孤儿回收（Windows）** | 中（`engine` 加 windows-sys + 一个 job 守卫；**第 0 步是复现不是改码**） | Windows 侧没有 die-with-parent（unix 有 PDEATHSIG）⇒ 硬杀/断链时舰队残留（实测 r-a 孤儿跨日存活）。裁定 = Job Object `KILL_ON_JOB_CLOSE`，句柄持在**拉舰队的那个进程**（lspd 仍要独立于引擎）；不做按名字清理——[`lsp-fleet-orphan-reaping-design.md`](lsp-fleet-orphan-reaping-design.md) |
 | **v11 分析引擎** | 草案挂起（用户拍板挂起） | 动态边 + 查询预算 + 降噪分级三篇合一——[`v11-analysis-engine-master-plan.md`](v11-analysis-engine-master-plan.md)；D 篇原件 [`docs/archive/kernel-tooling-line/dynamic-edge-detection-plan.md`](../archive/kernel-tooling-line/dynamic-edge-detection-plan.md)（superseded，以主文档为准） |
 | **会话存盘换轨（DSH 参照）** | 未定 | 参照 DSH 的会话持久化审计与移植——[`session-persistence-dsh-port-plan.md`](session-persistence-dsh-port-plan.md) |
 | **钉住与纸条改造** | 未定 | 钉住/纸条 UX 重构 + UI 换装——[`pin-strip-rework-plan.md`](pin-strip-rework-plan.md) |
-| **卷首字节稳定性（前缀缓存）** | 中（动段表 + 基线重录双轨） | 记忆库坐卷首第 ~2.5k token ⇒ 每次「重启 + 记忆变动」整卷重算（实测 34.7 万 token 全价、命中率 99%→0.6%）；「把记忆段挪到卷首末尾」已验算**无效**（只省 2.8%）——[`prompt-prefix-stability-plan.md`](prompt-prefix-stability-plan.md) |
 | agent-plugin **P4** 插件化全集 | 持续 | **D9 换轨：不等 DSH、自研为主**；存量拆解全清，剩 C12 dsh-compat 合法挂起 + 新能力走通道——[`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md) |
 
 ## 等外部条件（挂着不动）
@@ -73,6 +71,8 @@
 | 开发侧自测 | 运行看门狗真机复现（临时压阈值 + 假 provider，取 `ui.log` 两条 `log.warn`） | [`../landmine-map.md`](../landmine-map.md) L3——**唯一仍算开发侧欠账的一行**，不占用户时间 |
 
 ## 已完成并归档（点名即可，详情勿读）
+
+**2026-10-28 双竣工**：卷首字节稳定性（记忆库退出卷首、改走对话尾部注入——[`prompt-prefix-stability-plan.md`](../archive/prompt-prefix-stability-plan.md)）· 嵌入缓存持久化（跨重启免去 22k 节点 13.7 分钟重算——[`embedding-cache-persistence-design.md`](../archive/kernel-tooling-line/embedding-cache-persistence-design.md)）。
 
 **2026-10-08 归档大扫（第二批 · 23 份）**：把「代码已完成、只欠真机验收（或已作废）」的**过程文档**整批移出 `docs/plans/`——
 **会话线 4**（[`session-line/`](../archive/session-line/README.md)）· **渲染纸面线 8**（[`render-paper-line/`](../archive/render-paper-line/README.md)）·

@@ -1,8 +1,13 @@
 # 嵌入缓存持久化（设计件 · Proposed）
 
-> **状态**：未开工（2026-09-26 立项，等另开窗口施工）。施工面 = `hologram-vector`（+ 可选一行状态面）。
+> **已归档（2026-10-28 竣工）** —— 施工 commit `2a37b524`。现状指针：`hologram-vector/src/index.rs`
+> 的 `read_disk_cache` / `persist_embed_cache`（LVEC v1）+ `BuildStats`；守护 `tests 22 例`
+> （含「重启后第二次 build misses == 0」核心断言）。本文件此后是历史设计记录，不作现状依据。
+>
+
+> **状态**：**已竣工（2026-10-28）**。施工面 = `hologram-vector`（未动引擎契约面，无需升 `ENGINE_CONTRACT_VERSION`）。
 > **由来**：`#1 idle 误杀`修完之后暴露的**下一个瓶颈**——进程内缓存在每次进程重启时归零。
-> **前置阅读**：[`docs/archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md`](../archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md)（本件的立账处）。
+> **前置阅读**：[`docs/archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md`](engine-lsp-runtime-hardening-plan.md)（本件的立账处）。
 
 ## 一、裁定（先看这个）
 
@@ -19,7 +24,7 @@
 
 - 实测（2026-09-25）：嵌入吞吐 ≈ **26.5 节点/秒** ⇒ 21798 节点全量重建 ≈ **13.7 分钟**；该轮缓存命中
   **446/22244 = 2%**。
-- 为什么只有 2%：`VECTOR_CACHE` 是**进程级 `static`**（[index.rs:257](../../hologram-vector/src/index.rs)），
+- 为什么只有 2%：`VECTOR_CACHE` 是**进程级 `static`**（[index.rs:257](../../../hologram-vector/src/index.rs)），
   进程一死就清零。那一轮正是**刚重启的进程**在跑全量重建。
 - `#1` 修完后，**同进程内**后续重建近乎全命中（watcher 每次保存触发的全量 build 只嵌入变更节点）；
   **跨重启仍是 0**——而重启是常态：切工作区、30 分钟静默预算到点、崩溃退避重启、用户重开应用。
@@ -39,10 +44,10 @@ entries : count × { u64 hash(LE) + dim × f32(LE) }
 ```
 
 **为什么必须带 backend**：`embed()` / `embed_batch()` **每次调用都可能翻后端**
-（MiniLM 推理失败即回退 n-gram，[embed.rs:15-52](../../hologram-vector/src/embed.rs)）。
+（MiniLM 推理失败即回退 n-gram，[embed.rs:15-52](../../../hologram-vector/src/embed.rs)）。
 MiniLM 向量与 n-gram 向量**不在同一空间**，混用 = 语义搜索静默变垃圾。
 既有 `slots.json` 已经是同一纪律的先例（写 `dim` + `model`，load 时不匹配就拒用并 warn，
-[index.rs:225-230](../../hologram-vector/src/index.rs)）——**照抄这个模式，别发明新的**。
+[index.rs:225-230](../../../hologram-vector/src/index.rs)）——**照抄这个模式，别发明新的**。
 
 **哈希强度**：`snippet_hash` = `DefaultHasher`（64 位 SipHash）。22k 条目碰撞概率 ~1e-11，可接受；
 真要消掉概率就得存原文（34MB → 100MB+），不值。
