@@ -3,13 +3,13 @@
 > **本目录阅读顺序**：① 本 README（现状与规则）→ ② [`r5-polish-backlog.md`](r5-polish-backlog.md)（剩余工作逐项清单——**最常看**）→ ③ [`taste-ledger.md`](taste-ledger.md)（视觉决定账本——新会话开工前必读，翻案需显式理由）→ ④ [`walkthrough.md`](walkthrough.md)/[`interviews/`](interviews/)（历史访谈，按需）→ ⑤ [`HISTORY.md`](HISTORY.md)（V0-V5 施工史档案）。
 > **代码入口**：`src-ui/src/paper/README.md`（块模型/转译/画布数学分层说明 + 拍板决定映射）。
 
-> 立项：2026-08-20 · 状态：**V5 竣工（2026-08-22 深夜）**——纸壳（注疏案卷工作台）是唯一主界面；**当前在办 = R5 打磨环**（剩余工作逐项见 `r5-polish-backlog.md`，本目录不归档）
+> 立项：2026-08-20 · 状态：**V5 竣工（2026-08-22 深夜）**——纸壳（注疏案卷工作台）是唯一主界面；**R5 打磨环已全账清零（2026-08-29）**；**当前在办 = 创作坞精修线**（P0/P1/P2，2026-10-21/22，设计规格 §9；真机验收按 2026-10-28 口径默认通过）
 > 设计契约：`docs/design/lantai-design-spec.md` + 黄金样本 `prototype/lantai.html`（视觉真相的唯一准绳）
 > 结构工程：[`paper-panel-split-plan.md`](../../archive/paper-shell/paper-panel-split-plan.md)（2026-09-06 立项当日竣工——PaperPanel 3253 行巨型组件按域拆 16 个 hook 文件，纯行为保持机械批，JSX 尾逐字节对拍 430/431 行一致）
 
 ## 现状一句话
 
-旧观测台前端已整体拆除（详见总控 [`../README.md`](../README.md) 与 [`HISTORY.md`](HISTORY.md) V5 节）。纸壳是产品的全部用户面；剩余工作全部在 [`r5-polish-backlog.md`](r5-polish-backlog.md) 的 B 段（审美循环）与 C 段（产品化/拆除欠账）。
+旧观测台前端已整体拆除（详见总控 [`../README.md`](../README.md) 与 [`HISTORY.md`](HISTORY.md) V5 节）。纸壳是产品的全部用户面。**R5 polish backlog（A/B/C/D 四段）已于 2026-08-29 全账清零**，该文件转作历史判据；十月在办 = 创作坞精修（P0 硬缺陷 / P1 视觉系统 / P2 信息架构，见设计规格 §9 与 [`HISTORY.md`](HISTORY.md) 10-21/10-22 条）。
 
 ## 本工程的性质（写给所有 agent——先校准预期）
 

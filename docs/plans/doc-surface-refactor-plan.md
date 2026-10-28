@@ -1,7 +1,7 @@
 # 文档面大重构（打磨收尾）— 施工单
 
 > 立项 2026-09-16（用户拍板根 README 对外定位 = 乙：桌面 Agent 工作台为主、引擎降配套）。
-> 状态：**P0-P3 已落地**；P4 在推（P4a ADR/cookbook/research 三索引已落，余 docs/README 唯一入口重写）。
+> 状态：**P0-P4 全部落地**（P4a 三索引 + docs/README 两轴唯一入口已重写；孤儿 23 → 0）；余项 = 本文档自身归档。
 > 门禁：`cd src-ui && npm run doc-check`（非零即拦）；`npm run doc-check:report` 看全量漂移清单。
 > 真源：`scripts/doc-facts.cjs`（事实导出）+ `scripts/doc-check.cjs`（六查）+ `scripts/doc-check-exemptions.json`（在册豁免账）。
 
