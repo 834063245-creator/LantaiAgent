@@ -44,7 +44,6 @@
 | **LSP 舰队孤儿回收（Windows）** | 中（`engine` 加 windows-sys + 一个 job 守卫；**第 0 步是复现不是改码**） | Windows 侧没有 die-with-parent（unix 有 PDEATHSIG）⇒ 硬杀/断链时舰队残留（实测 r-a 孤儿跨日存活）。裁定 = Job Object `KILL_ON_JOB_CLOSE`，句柄持在**拉舰队的那个进程**（lspd 仍要独立于引擎）；不做按名字清理——[`lsp-fleet-orphan-reaping-design.md`](lsp-fleet-orphan-reaping-design.md) |
 | **v11 分析引擎** | 草案挂起（用户拍板挂起） | 动态边 + 查询预算 + 降噪分级三篇合一——[`v11-analysis-engine-master-plan.md`](v11-analysis-engine-master-plan.md)；D 篇原件 [`docs/archive/kernel-tooling-line/dynamic-edge-detection-plan.md`](../archive/kernel-tooling-line/dynamic-edge-detection-plan.md)（superseded，以主文档为准） |
 | **会话存盘换轨（DSH 参照）** | 未定 | 参照 DSH 的会话持久化审计与移植——[`session-persistence-dsh-port-plan.md`](session-persistence-dsh-port-plan.md) |
-| **钉住与纸条改造** | 未定 | 钉住/纸条 UX 重构 + UI 换装——[`pin-strip-rework-plan.md`](pin-strip-rework-plan.md) |
 | agent-plugin **P4** 插件化全集 | 持续 | **D9 换轨：不等 DSH、自研为主**；存量拆解全清，剩 C12 dsh-compat 合法挂起 + 新能力走通道——[`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md) |
 
 ## 等外部条件（挂着不动）
@@ -73,6 +72,8 @@
 ## 已完成并归档（点名即可，详情勿读）
 
 **2026-10-28 双竣工**：卷首字节稳定性（记忆库退出卷首、改走对话尾部注入——[`prompt-prefix-stability-plan.md`](../archive/prompt-prefix-stability-plan.md)）· 嵌入缓存持久化（跨重启免去 22k 节点 13.7 分钟重算——[`embedding-cache-persistence-design.md`](../archive/kernel-tooling-line/embedding-cache-persistence-design.md)）。
+
+**2026-10-28 取消**：**钉住与纸条改造**（[`pin-strip-rework-plan.md`](../archive/pin-strip-rework-plan.md)）——用户裁定「不做，这一项取消」；该单剩余项不再执行，2026-09-05 已落地的交互修订照常保留。
 
 **2026-10-08 归档大扫（第二批 · 23 份）**：把「代码已完成、只欠真机验收（或已作废）」的**过程文档**整批移出 `docs/plans/`——
 **会话线 4**（[`session-line/`](../archive/session-line/README.md)）· **渲染纸面线 8**（[`render-paper-line/`](../archive/render-paper-line/README.md)）·
