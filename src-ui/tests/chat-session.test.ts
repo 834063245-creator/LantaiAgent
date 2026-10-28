@@ -109,13 +109,23 @@ import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 // fs_cap 能力口直呼。本文件 mock 面在 bridge.rpc 层（真 helper → fs_cap →
 // mockInvoke）——下方 fsCapAware 把 fs_cap 调用翻译回各用例旧 (method, params)
 // 形状交给 impl（旧 if 链零改动），使 mock 分派面理解当前真实 RPC 通道。
-// 等价返回形状：fs_cap read 真实现返 {path,content}（kernelReadFileRaw 对非
-// {content} 回退原文）；本层只翻译参数不包装返回——impl 的原文返回被
-// kernel* helper 的解析兜底接受（非 JSON/无 content 字段 → 原文直通）。
+// 等价返回形状（2026-09-26 单形态化后**必须包装**）：fs_cap 真实现恒返结构化
+// 对象（read={path,content} / 写系={path} / list={entries}），而 helper 不再接受
+// 「裸原文兜底」——旧写法把 impl 的裸返回直接透传，如今会当场违形。本层因此
+// 承担两件事：参数翻译（向下兼容旧 if 链）+ 返回形状包装（对齐真机出口）。
+/** JSON 字符串 → 解析值；解析失败原样返回（调用方按形状兜错）。 */
+function tryParseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return raw;
+  }
+}
+
 function fsCapAware(
   impl: (cmd: string, payload: { method: string; params?: Record<string, unknown> }) => unknown,
 ): (cmd: string, payload: { method: string; params?: Record<string, unknown> }) => unknown {
-  return (cmd: string, payload: { method: string; params?: Record<string, unknown> }) => {
+  return async (cmd: string, payload: { method: string; params?: Record<string, unknown> }) => {
     const { method, params } = payload;
     if (method !== 'fs_cap') return impl(cmd, payload);
     const action = (params?.action as string | undefined) ?? '';
@@ -134,7 +144,32 @@ function fsCapAware(
     void _action;
     void _isAgent;
     void _agentId;
-    return impl(cmd, { method: name, params: rest });
+    // **必须 await 后再包装**：impl 一律返回 Promise（含 hangRead 的永挂 Promise
+    // ——挂死卷用例靠它），不 await 会把 Promise 本身当成"已是对象"透传。
+    const out = await impl(cmd, { method: name, params: rest });
+    const path = ((params?.file_path ?? params?.path) as string | undefined) ?? '';
+    // 旧 impl 的裸返回 → fs_cap 真实现形状。
+    // read：旧返回就是**文件原文**（内容本身可能就是 JSON），绝不可 parse——
+    //   原样裹进 content 即可；已是信封对象则透传。
+    // list：旧返回可能是 DirEntry[] 本身或其 JSON 字符串（用例普遍如此写）——
+    //   解析后裹进 entries。
+    // 写系：旧返回是落点路径（或省略）——裹进 path。
+    if (action === 'read') {
+      if (out !== null && typeof out === 'object') return out;
+      return { path, content: typeof out === 'string' ? out : '' };
+    }
+    if (action === 'list') {
+      // 只包装**可识别**的旧形状（DirEntry[] 或其 JSON 字符串）。
+      // 认不出来就原样透传——绝不兜底成 `{entries: []}`：那会把「列表失败」
+      // 伪装成「空目录」，而摊开集剪枝正是靠「失败 → 不剪枝」保守语义吃饭的
+      // （restoreCanvasSpread 的幽灵卷保护）。违形必须让 helper 喊出来。
+      const parsed = typeof out === 'string' ? tryParseJson(out) : out;
+      if (Array.isArray(parsed)) return { entries: parsed };
+      if (parsed !== null && typeof parsed === 'object') return parsed;
+      return out;
+    }
+    if (out !== null && typeof out === 'object') return out;
+    return { path: typeof out === 'string' && out !== '' ? out : path };
   };
 }
 
@@ -197,14 +232,16 @@ describe('ChatPanel session persistence', () => {
 
     it('returns max numeric ID from entries', async () => {
       panel = createChatPanel();
-      mockInvoke.mockResolvedValue(
-        JSON.stringify([
+      // 通道形状（2026-09-26 单形态化）：list 走 fs_cap，真机返 {entries}
+      // 结构化对象——不再是裸数组的 JSON 字符串。
+      mockInvoke.mockResolvedValue({
+        entries: [
           { name: '1.ndjson', path: '/sessions/1.ndjson', is_dir: false, children: null },
           { name: '71.ndjson', path: '/sessions/71.ndjson', is_dir: false, children: null },
           { name: '_active.json', path: '/sessions/_active.json', is_dir: false, children: null },
           { name: 'not-json.txt', path: '/sessions/not-json.txt', is_dir: false, children: null },
-        ]),
-      );
+        ],
+      });
 
       const result = await scanMaxSessionId('D:/test');
       expect(result).toBe(71);
@@ -212,13 +249,13 @@ describe('ChatPanel session persistence', () => {
 
     it('skips directories and non-json files', async () => {
       panel = createChatPanel();
-      mockInvoke.mockResolvedValue(
-        JSON.stringify([
+      mockInvoke.mockResolvedValue({
+        entries: [
           { name: 'sub', path: '/sessions/sub', is_dir: true, children: [] },
           { name: '3.ndjson', path: '/sessions/3.ndjson', is_dir: false, children: null },
           { name: 'readme.md', path: '/sessions/readme.md', is_dir: false, children: null },
-        ]),
-      );
+        ],
+      });
 
       const result = await scanMaxSessionId('D:/test');
       expect(result).toBe(3);
@@ -227,7 +264,7 @@ describe('ChatPanel session persistence', () => {
     it('resolves within 100ms (no hang)', async () => {
       panel = createChatPanel();
       // Simulate a slow but not hung backend
-      mockInvoke.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(JSON.stringify([])), 10)));
+      mockInvoke.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ entries: [] }), 10)));
 
       const start = Date.now();
       const result = await scanMaxSessionId('D:/test');
@@ -1372,7 +1409,10 @@ describe('ChatPanel session persistence', () => {
           }) as any,
       );
       mockInvoke.mockReset();
-      mockInvoke.mockResolvedValue('ok');
+      // 走 fsCapAware：单一 'ok' 兜底在单形态化后不再合法（写系要 {path}、
+      // read 要 {path,content}）——本包装把同一个 'ok' 摊成各 action 的真形状，
+      // 保持「无盘内容 = 读不到 / 删得掉」的旧语义。
+      mockInvoke.mockImplementation(fsCapAware(() => Promise.resolve('ok')));
       await panel.createNewSession();
       const sid = Session.getSessions(panel.panelId)[0].id;
       expect(Session.getSessions(panel.panelId)).toHaveLength(1);
@@ -1399,7 +1439,10 @@ describe('ChatPanel session persistence', () => {
           }) as any,
       );
       mockInvoke.mockReset();
-      mockInvoke.mockResolvedValue('ok');
+      // 走 fsCapAware：单一 'ok' 兜底在单形态化后不再合法（写系要 {path}、
+      // read 要 {path,content}）——本包装把同一个 'ok' 摊成各 action 的真形状，
+      // 保持「无盘内容 = 读不到 / 删得掉」的旧语义。
+      mockInvoke.mockImplementation(fsCapAware(() => Promise.resolve('ok')));
       await panel.createNewSession();
       const sid = Session.getSessions(panel.panelId)[0].id;
       // 模拟该卷有一个钉住块（源指向本卷）

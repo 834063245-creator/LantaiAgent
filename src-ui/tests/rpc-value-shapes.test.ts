@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// rpc Value 化第二步（2026-08-22）：消费面双形态契约守护。
+// rpc Value 化第二步（2026-08-22）+ 形态单一化（2026-09-26）：消费面形态契约。
 // Rust 出口（rpc.rs rpc_result_shape 表）对 JsonValue 形态命令返回真结构化
 // Value；Text 形态仍返字节精确 string。前端两个入口的形态语义在这里钉死：
-//   typedJsonRpc —— 结构化透传 / 字符串 parse（浏览器 mock 与真机旧形态兼容）
+//   typedJsonRpc —— 只认结构化；字符串线形 = 出口分类错位，违形即 throw
 //   agentInvoke  —— 结构化回卷 JSON 字符串（agent 工具链 string 世界零改动）
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,12 +20,12 @@ vi.mock('../src/bridge', () => ({
 import { agentInvoke } from '../src/agent/tool';
 import { parseJson, typedJsonRpc } from '../src/rpc-contract';
 
-describe('rpc Value 化第二步：typedJsonRpc 双形态', () => {
+describe('rpc 形态单一化：typedJsonRpc 只认结构化', () => {
   beforeEach(() => {
     mockRpc.mockReset();
   });
 
-  it('结构化 Value（真机第二步形态）经 schema 校验返回', async () => {
+  it('结构化 Value（出口已展开）经 schema 校验返回', async () => {
     const shape = { available: true, degraded: false, reason: '' };
     mockRpc.mockResolvedValueOnce(shape);
     const out = await typedJsonRpc('sandbox_status', {});
@@ -33,20 +33,25 @@ describe('rpc Value 化第二步：typedJsonRpc 双形态', () => {
     expect(mockRpc).toHaveBeenCalledWith('sandbox_status', {});
   });
 
-  it('字符串（浏览器 mock / 表外 JSON 命令）走 parse 慢路径', async () => {
-    // （原 shell_env 小样已随 builtin.shell 迁 tool_call 退役——P2-4；
-    //  sandbox_status 接任慢路径小样，同走 rpcResultSchemas 表内校验）
+  it('字符串线形（= 出口 rpc_result_shape 漏登记）→ throw，且错误点名该诊断', async () => {
+    // 行为变更（2026-09-26）：旧版在这里走 `JSON.parse` 慢路径「照常工作」，
+    // 于是一条出口分类错误可以静默潜伏（engine_bundled_info 假阳性 8 天）。
+    // 现在字符串不给兜底——错误信息直接指到 rpc_result_shape()。
     mockRpc.mockResolvedValueOnce('{"available":true,"degraded":false,"reason":"mock"}');
-    const out = await typedJsonRpc('sandbox_status', {});
-    expect(out).toEqual({ available: true, degraded: false, reason: 'mock' });
+    await expect(typedJsonRpc('sandbox_status', {})).rejects.toThrow(/rpc_result_shape/);
   });
 
   it('result 违形即 throw（错误不静默——错误信息带方法名）', async () => {
-    mockRpc.mockResolvedValueOnce('{"degraded":"yes"}');
+    mockRpc.mockResolvedValueOnce({ degraded: 'yes' });
     await expect(typedJsonRpc('sandbox_status', {})).rejects.toThrow(/sandbox_status/);
   });
 
-  it('parseJson 语义不变："null" → null', () => {
+  it('schema 期待标量的命令仍接受字符串线形（get_last_project 的 Option<String>）', async () => {
+    mockRpc.mockResolvedValueOnce('D:/works/x');
+    await expect(typedJsonRpc('get_last_project')).resolves.toBe('D:/works/x');
+  });
+
+  it('parseJson 语义不变："null" → null（Text 命令消费方自用）', () => {
     expect(parseJson<null>('null')).toBeNull();
   });
 });

@@ -95,8 +95,10 @@ fn str_to_value(s: String) -> Value {
 // 铁律：
 // 1) 贴错标签 = 字节级破坏——Text 命令误标 JsonValue 会在出口 parse「长得像
 //    JSON 的文本」上炸（read_file_content 读 .json 文件的回归测试钉死）；
-//    JsonValue 命令误标 Text 只会让前端 typedJsonRpc 走兜底 parse string（慢
-//    路径），不破坏正确性——错误方向只有一侧致命，分类偏保守。
+//    JsonValue 命令误标 Text 会让前端 typedJsonRpc 当场违形报错（2026-09-26
+//    起不再有字符串慢路径兜底——错误信息直接点回本表），于是分类错误在第一个
+//    调用点就可见，而不是静默走慢路径潜伏（engine_bundled_info 假阳性 8 天
+//    即此形态）。两个方向都失效可见，只是破坏面不同。
 // 2) 本表只认命令不认内容——同一命令返回形态必须恒定；动态形态命令
 //    （exec_command 流式 started 响应等）一律 Text 由消费方自行 parse。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -210,12 +212,15 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // ── 随包图谱引擎探测（engine-bundled-mcp-distribution）──
         // engine_bundled_info：serde_json::json!({path,dir,available}) 恒合法 JSON。
         // **2026-09-24 补登记**：此前漏登记 ⇒ 落默认臂 Text ⇒ 出口把 JSON 当**字符串**
-        // 直通，而前端 `plugins/bundled-engine.ts` 的 probeBundledEngine 用 typedRpc
-        // （直通、不 parse；双形态 shim 在 typedJsonRpc）读 `raw.available` ⇒ 恒 false
-        // ⇒ 设置页「随包图谱引擎」开关置灰、**拨不开**（实机缺陷，用户 2026-09-24 报）。
-        // 09-16 的 CDP 探针读到的是那条 JSON 字符串本身（文本里写着 "available":true）
-        // ⇒ 假阳性，把该缺陷掩盖了 8 天。回归钉在
-        // `src-ui/tests/bundled-engine-probe-shape.test.ts`（两种线形都必须判 true）。
+        // 直通，而前端 `plugins/bundled-engine.ts` 的 probeBundledEngine 读
+        // `raw.available` ⇒ 恒 false ⇒ 设置页「随包图谱引擎」开关置灰、**拨不开**
+        // （实机缺陷，用户 2026-09-24 报）。09-16 的 CDP 探针读到的是那条 JSON
+        // 字符串本身（文本里写着 "available":true）⇒ 假阳性，把该缺陷掩盖了 8 天。
+        // **2026-09-26 起消费面已单形态化**：字符串线形不再被 parse 回来，而是
+        // 当场违形 ⇒ 探测降级 + warn 留痕。本条目若再被删掉，症状是「开关置灰
+        // 且 ui.log 里有一条点名 rpc_result_shape 的报错」，不再是一声不响。
+        // 回归钉在 `src-ui/tests/bundled-engine-probe-shape.test.ts`（真形状必须
+        // 判 true；字符串线形必须显式降级）。
         "engine_bundled_info" => RpcResultShape::JsonValue,
 
         // ── 日志轮转（日志可观测性批 4）──

@@ -396,7 +396,7 @@ beforeEach(() => {
   resetProxyPort();
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) =>
-    Promise.resolve(payload.method === 'credential_get' ? JSON.stringify('sk-test') : null),
+    Promise.resolve(payload.method === 'credential_get' ? 'sk-test' : null),
   );
 });
 

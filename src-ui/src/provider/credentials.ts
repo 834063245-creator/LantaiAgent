@@ -48,10 +48,10 @@ export async function resolveApiKey(name: ProviderId): Promise<string> {
   let p = _inflight.get(name);
   if (!p) {
     p = (async () => {
-      let raw: string;
+      let raw: string | null;
       try {
-        const { typedRpcWithTimeout } = await import('../rpc-contract');
-        raw = await typedRpcWithTimeout('credential_get', { provider: name }, CREDENTIAL_RPC_TIMEOUT_MS);
+        const { typedJsonRpcWithTimeout } = await import('../rpc-contract');
+        raw = await typedJsonRpcWithTimeout('credential_get', { provider: name }, CREDENTIAL_RPC_TIMEOUT_MS);
       } catch (e) {
         // 无加密存储/解密失败/IPC 卡死 — 本次按无 key 处理（使用点 fail-loud），
         // 但不写缓存：下一次请求重新解析（可能是同一故障窗口，也可能已恢复）。

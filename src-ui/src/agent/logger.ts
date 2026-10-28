@@ -121,8 +121,9 @@ export function logLevel(): { level: LogLevel; source: LogLevelSource } {
 async function shellLevelHint(): Promise<string> {
   try {
     const { typedRpc } = await import('../rpc-contract');
-    const raw = await typedRpc('log_level_hint', {});
-    return typeof raw === 'string' ? raw : '';
+    // log_level_hint 是 Text 形态命令（rpc_result_shape 默认臂）——出口恒
+    // Value::String，读到的一定是 string，无需形态判断。
+    return await typedRpc('log_level_hint', {});
   } catch {
     return '';
   }

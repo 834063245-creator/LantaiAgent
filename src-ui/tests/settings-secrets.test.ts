@@ -4,9 +4,14 @@
 // SPDX-License-Identifier: MIT
 
 // restoreSecrets / parseRpcString 回归测试。
-// 背景（2026-08-07 实锤）：rpc 返回 JSON 编码字符串（"sk-xxx" 带引号），
-// restoreSecrets 曾直接 trim 导致 key 前后残留双引号——provider 读 KEY 链路断裂。
+// 背景（2026-08-07 实锤）：rpc 曾返回 JSON 编码字符串（"sk-xxx" 带引号），
+// restoreSecrets 直接 trim 导致 key 前后残留双引号——provider 读 KEY 链路断裂。
 // 2026-08-04 治理后 localStorage 不再存明文，此路径才首次真正被走到。
+//
+// ⚡ 2026-09-26 形态单一化：出口已把 `Option<String>` 展开成裸串，凭据读取走
+// typedJsonRpc（形状边界收编）。于是「解引号」这一层行为**整体退役**：
+// parseRpcString 只剩语义护栏（空 / null / 真发生过的毒值字面量）。
+// 本文件原先钉住的两条解引号断言随之删除——行为退役，测试不陪葬也不装没看见。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,28 +28,24 @@ vi.mock('../src/bridge', async (importOriginal) => {
   return { ...actual, rpc: vi.fn() };
 });
 
-describe('parseRpcString', () => {
-  it('unwraps JSON-encoded string (双引号回归)', () => {
-    expect(parseRpcString('"sk-abc123"')).toBe('sk-abc123');
-  });
-
-  it('passes through plain string (Tauri 行为变化的兼容形态)', () => {
+describe('parseRpcString（语义护栏，不含形态解析）', () => {
+  it('passes through plain string（唯一线形：出口已展开）', () => {
     expect(parseRpcString('sk-abc123')).toBe('sk-abc123');
   });
 
-  it('returns null for JSON null / empty / non-string', () => {
+  it('returns null for empty / JSON null / non-string', () => {
     expect(parseRpcString('null')).toBeNull();
     expect(parseRpcString('')).toBeNull();
     expect(parseRpcString(null)).toBeNull();
-    expect(parseRpcString('{}')).toBeNull();
     expect(parseRpcString(123 as unknown)).toBeNull();
   });
 
-  it('returns null for JSON-encoded "null" literal (null 复活回归)', () => {
-    // 凭据库里被写入字面量 "null" 后，rpc 返回带引号的 '"null"'——
-    // parse 出字符串 "null" 必须按 null 处理，否则回填后重新写回、删不掉
+  it('returns null for the "null" poison literals（null 复活回归）', () => {
+    // 凭据库里被写入过字面量 null 的 key：裸 `null` 与旧版带引号的 `"null"`
+    // 都在显式毒值清单里——回填会把垃圾当真 key 再写回去，删不掉。
     expect(parseRpcString('"null"')).toBeNull();
     expect(parseRpcString(' "null" ')).toBeNull();
+    expect(parseRpcString('""')).toBeNull();
   });
 });
 
@@ -53,8 +54,9 @@ describe('restoreSecrets', () => {
     vi.clearAllMocks();
   });
 
-  it('fills apiKey from credential store, unwrapping JSON quotes (读 KEY 链路回归)', async () => {
-    (bridge.rpc as any).mockResolvedValue('"sk-encrypted-key"');
+  it('fills apiKey from credential store（读 KEY 链路回归）', async () => {
+    // 真机线形：出口已把 `Option<String>` 展开成裸串（2026-09-26 单形态）。
+    (bridge.rpc as any).mockResolvedValue('sk-encrypted-key');
     const s = { activeProvider: 'deepseek', providers: [{ name: 'deepseek', apiKey: '' }] } as any;
     const out = await restoreSecrets(s);
     expect(out.providers[0].apiKey).toBe('sk-encrypted-key');
@@ -68,7 +70,8 @@ describe('restoreSecrets', () => {
   });
 
   it('ignores null credential', async () => {
-    (bridge.rpc as any).mockResolvedValue('null');
+    // 真机线形：Value::Null（`Option<String>` 的 None 经出口展开）⇒ 前端拿到 null。
+    (bridge.rpc as any).mockResolvedValue(null);
     const s = { activeProvider: 'deepseek', providers: [{ name: 'deepseek', apiKey: '' }] } as any;
     const out = await restoreSecrets(s);
     expect(out.providers[0].apiKey).toBe('');

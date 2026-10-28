@@ -52,7 +52,7 @@
 ## P2 — 存疑/低危（记录在案，暂不拆）
 
 - `message-bus.ts:158`：unregister 删 inbox 失败 → 死 agent 的 request 消息重启复活（消费路径未证实，存疑）
-- `DataflowPanel.tsx:313-322`：typeof==='string'?parse:原样 的双重编码启发式残留
+- ~~`DataflowPanel.tsx:313-322`：typeof==='string'?parse:原样 的双重编码启发式残留~~ ✅ **已消解（2026-09-26 核实）**：DataflowPanel 随图谱全量退役整件删除，全库零匹配。
 - 87 个死 `#[tauri::command]` 属性（未注册进 invoke_handler——实测 87，非原记 ~30；invoke_handler 只注册 `rpc::rpc` + `get_active_project`）——谁误注册谁把重活带上 UI 主线程；**留待专项核签**：函数可能用 `tauri::State`/`Window` 参数，删注解需逐个验签名（30+ 文件）
 - `agent-identity.test.ts:62` 把「saveState 吞错不抛」**当规格断言固化**——拆 ① 类吞错时需先松绑测试
 
@@ -74,6 +74,13 @@
    - 附带收益：契约注释漂移校正（git_diff 系实际是 git stdout 文本、sandbox_status/read_memory_batch 实际是 JSON）；gen 脚本 singleRe 起点限制在 match 之后（shape 表单行分支同形，曾被误列进契约表）。
    - **真机验证通过（2026-08-22 双轮）**：① CDP 直 invoke——JsonValue 命令（shell_env/get_graph_meta/list_directory/sandbox_status）返结构化 VALUE、Text 命令（read_file_content 带行号原文/llm_proxy_port）返字节精确 STRING、Err 路径人话报错照常 reject；② 用户填 key 真实会话——Agent 全工具链（文件/搜索/git 等）实测通过，回卷链无 [object Object]/双重编码症状。
 ✅ **第三步已竣工（2026-09-01 设计当日施工，commit ea1606b6 合入 main）**：边界 schema——`typedJsonRpc` 的 `JSON.parse(raw) as T` 盲转收进运行时形状校验（UI 全面审计批唯一挂起项，taste-ledger 2026-09-01；设计件 [`design/rpc-runtime-validation-design.md`](design/rpc-runtime-validation-design.md)——zod 同址表定案，初版「重载并存渐进收编」经用户质疑判死改一刀切）。落地：`rpcResultSchemas` 与 `RpcContract` 同址共治（`satisfies` 钉键拼写）+ 签名收紧 `M extends keyof typeof rpcResultSchemas`（未登记命令 = 编译错；泛型盲转 `typedJsonRpc<` 全库零残留，终态守卫钉死不回潮）+ parse 后 safeParse 违形即 throw（错误带方法名 + zod issue 摘要，宪法四）+ 三重守护 `tests/rpc-result-schemas.test.ts`（mock 同源自检 / schema 四态 / `typedJsonRpc<` 残留守卫）；§8 CDP 真机验收降维组件测试 `sessions-home-fault.test.tsx`（违形 → 首页显式报错态，绝不静默落「还没有工作区」空态）。批二长尾按设计无施工日——未来首个调用者被签名强制入表。R 批次演化（2026-09-05）：收编面 12→6 命令——list_directory/list_directory_flat/read_memory_batch 随 fs 域收口迁 fs_cap 助手内联 zod（dirEntryArraySchema）、shell_env/git_status 随 shell/git 域收口迁 process_cap/git_cap 文本路径（aura_init 更早已随 AURA 记忆系统拆除退役），校验面随命令迁移不消失。
+✅ **第四步已竣工（2026-09-26，形态单一化 / 拆除双形态残留）**：前三步把「形状裁定」搬到了 Rust 出口单点，但**双形态分支仍留在前端**——`typedJsonRpc` 的字符串慢路径 + 7 处 fs_cap 助手解包守卫，理由都是「浏览器 mock 且测试 mock 恒返字符串」。代价是双重的：① 每处解包永久背着 `typeof raw === 'string'` 分支；② **出口分类漏登记被慢路径掩盖成「照常工作」**（engine_bundled_info 假阳性 8 天的根因）。本轮把根拔到 mock 层——`mock-data.ts` 改为与 Rust 出口**同形**（JsonValue 命令返真结构化，判据真源 = `rpc_result_shape()` 表），随后整批删除前端形态猜测：
+   - `typedJsonRpc` 只认结构化：拿到字符串 = 出口分类错位，**错误信息直接点名 `rpc_result_shape()`**（不再 parse 兜底）；新增 `typedJsonRpcWithTimeout`（凭据读取用）。
+   - `rpc-contract.ts` 的 fs_cap 七处解包（read / path / log_rotate / list / memory_batch / read_base64 / write_base64）全部改为直接取字段，缺字段即 throw。
+   - `parseRpcString` 退化为**纯语义护栏**（空 / `null` / 真发生过的毒值字面量），不再 `JSON.parse`。
+   - 收编面 +2：`credential_get`（`Option<String>` 展开后就是 string|null）、`log_rotate`——两者此前进 `rpcResultSchemas` 之外，靠手写解包。
+   - 未 mock 的命令不再合成假形状：Unhandled 回退返字符串信封，JsonValue 命令落到这里当场违形（dev 期显式报错胜过静默半死）。
+   - 测试按行为去向处理：`fs-cap-dual-shape.test.ts` → `fs-cap-shape.test.ts`（字符串等价用例退役，改为「字符串线形必须显式违形」）；`rpc-value-shapes` 的慢路径用例改为「点名 rpc_result_shape 的 throw」；`bundled-engine-probe-shape` 的「Text 线形仍判 true」翻案为「**不静默读成 false**：降级 + 可查」。
 📌 **前置已就位（2026-08-12，第二批）**：前端 138 处裸 `rpc` 调用已全量收敛到 `typedRpc`（rpc-contract.ts 单一入口，契约 result 一律 string，biome 禁令防新增）——届时 Value 化只需改 `typedRpc`/`rpc-contract.ts` 单点 + 收敛各调用点的 JSON.parse，不需要再全库扫调用面。
 
 ## 建议拆弹顺序
@@ -81,7 +88,7 @@
 1. **第一批（P0 全部，~1 天）**：12 颗全是 S 级，每颗配回归测试，一次一颗小 commit ✅ 已完成
 2. **第二批（P1 的 16/17/19/22/23，~1 天）**：阻塞持锁与吞错类 ✅ 已完成
 3. **第三批（P1 剩余，按需）**：写放大与竞态类（13/14/15/21），需要设计，别赶工 ✅ 已完成（2026-08-08，cargo 226 · tsc 0 · vitest 798）
-4. **第四批（已立项，待排期）**：rpc 返回值 Value 化（L 级，独立项目，见根治级段）——开工前先清 P2 双重编码残留热身
+4. **第四批（已竣工）**：rpc 返回值 Value 化（L 级，独立项目，见根治级段）——四步全落地：出口 Value 化 → 分派表 → 边界 schema → **形态单一化（2026-09-26，双形态残留清零）**。本清单的 rpc 条目至此全部销账。
 
 ---
 

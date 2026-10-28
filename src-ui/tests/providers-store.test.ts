@@ -57,13 +57,13 @@ function wireRpc(): void {
       if (action === 'read') {
         const text = disk.get(path);
         if (text === undefined) throw new Error(`no such file: ${path}`);
-        return JSON.stringify({ path, content: text });
+        return { path, content: text };
       }
       if (action === 'write') {
         disk.set(path, params.content as string);
-        return JSON.stringify({ path });
+        return { path };
       }
-      if (action === 'create_dir') return JSON.stringify({ path });
+      if (action === 'create_dir') return { path };
     }
     return 'null';
   });
@@ -395,20 +395,20 @@ describe('provider 配置文件通道（写盘一半）', () => {
     // 凭据库里有一把 Key——只有 credential_get 拿得到，loadSettings 永不带它
     mockRpc.mockImplementation(async (method, params) => {
       if (method === 'providers_dir') return 'C:/Users/u/.lantai';
-      if (method === 'credential_get') return JSON.stringify('sk-real-key');
+      if (method === 'credential_get') return 'sk-real-key';
       if (method === 'fs_cap') {
         const action = params.action as string;
         const path = (params.file_path ?? params.path) as string;
         if (action === 'read') {
           const text = disk.get(path);
           if (text === undefined) throw new Error(`no such file: ${path}`);
-          return JSON.stringify({ path, content: text });
+          return { path, content: text };
         }
         if (action === 'write') {
           disk.set(path, params.content as string);
-          return JSON.stringify({ path });
+          return { path };
         }
-        if (action === 'create_dir') return JSON.stringify({ path });
+        if (action === 'create_dir') return { path };
       }
       return 'null';
     });

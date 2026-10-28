@@ -114,7 +114,7 @@ const fsCapCalls: Array<Record<string, unknown>> = [];
 
 function installInvokeStub(opts?: { readFails?: boolean }): void {
   mockInvoke.mockImplementation((_cmd: string, payload: { method: string; params?: Record<string, unknown> }) => {
-    if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-1'));
+    if (payload.method === 'credential_get') return Promise.resolve('sk-1');
     if (payload.method === 'fs_cap') {
       fsCapCalls.push(payload.params ?? {});
       if (payload.params?.action === 'read_base64') {

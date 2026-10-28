@@ -557,27 +557,23 @@ export function onSettingsSaved(cb: () => void): () => void {
   };
 }
 
-/** 解析 rpc 返回值中的字符串。rpc 返回 JSON 编码字符串（`"sk-xxx"` 或 `null`），
- *  调用方普遍需 JSON.parse；此处兼容两种形态：
- *  - `"sk-xxx"`（JSON 编码）→ 解析出 `sk-xxx`
- *  - `sk-xxx`（纯字符串，未来 Tauri 行为变化）→ 原样返回
- *  - `null` / 非法 JSON → null
- *  ⚡ 2026-08-08「null 复活」修复：凭据库里被写入过字面量 "null" 的 key 时，
- *  rpc 返回 `"null"`（带引号）——parse 后仍是字符串 "null"，必须按 null 处理，
- *  否则它会被当成真 key 回填并重新写回凭据库，删不掉。 */
+/** 凭据字符串的**语义护栏**——形态保证已上移到边界（`credential_get` 经
+ *  typedJsonRpc 收编，拿到的一定是 `string | null`）。本函数只管语义：
+ *  - null / 空串 → null（无 key）
+ *  - 毒值字面量 `null` / `"null"` → null（2026-08-08「null 复活」事故：凭据库里
+ *    被写入过字面量 null 的 key 时，回填会把垃圾当真 key 再写回去，删不掉）
+ *  - 其余原样返回
+ *
+ *  ⚡ 2026-09-26 形态单一化：不再 JSON.parse。旧版要兼容 `"sk-xxx"`（JSON 编码）
+ *  与 `sk-xxx`（裸串）两种线形——那是出口 Value 化第一步的遗留；第二步出口已把
+ *  `Option<String>` 展开成裸字符串，于是「解析」这层只剩兜底 parse 与 catch，
+ *  双形态分支的代价（分类漂移被慢路径掩盖）大于收益。毒值判定改为**显式清单**
+ *  ——不猜：列出来的就是真发生过的形态。 */
 export function parseRpcString(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
-  if (trimmed === 'null' || trimmed === '') return null;
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (typeof parsed !== 'string') return null;
-    // 解析结果是字面量 "null"/空串 —— 同样是「无 key」，不是合法 key
-    if (parsed.trim() === 'null' || parsed.trim() === '') return null;
-    return parsed;
-  } catch {
-    return trimmed;
-  }
+  if (trimmed === '' || trimmed === 'null' || trimmed === '"null"' || trimmed === '""') return null;
+  return trimmed;
 }
 
 /** 从系统加密存储恢复 API Key（仅填充 apiKey 为空的 provider）。loadSettings 后用。
@@ -586,20 +582,24 @@ export function parseRpcString(raw: unknown): string | null {
  *  并行 = max(单次)。长度护栏与失败容忍语义不变。 */
 export async function restoreSecrets(s: AppSettings): Promise<AppSettings> {
   try {
-    const { typedRpc } = await import('./rpc-contract');
+    const { typedJsonRpc } = await import('./rpc-contract');
     const needKey = s.providers.filter((p) => !p.apiKey || p.apiKey.trim() === '');
     if (needKey.length > 0) {
       const keys = await Promise.all(
         needKey.map(async (p) => {
           try {
-            const stored = await typedRpc('credential_get', { provider: p.name });
+            // 形状边界收编（2026-09-26）：credential_get 在 rpcResultSchemas 里，
+            // 拿到的一定是 string | null；违形会 throw 而不是被 parseRpcString
+            // 静默读成「无 key」（后者曾把编码 bug 变成「key 莫名丢了」）。
+            const stored = await typedJsonRpc('credential_get', { provider: p.name });
             const key = parseRpcString(stored);
             // 长度护栏：>4096 的「key」必是编码 bug 毒值（2026-08-08 事故：128MiB 毒值
             // 经 IPC 回传 256MB 响应击毁 WebView2）——拒收，按无 key 处理
             if (key?.trim() && key.length <= 4096) return key.trim();
             return null;
-          } catch {
-            /* 无加密存储或解密失败 */
+          } catch (e) {
+            /* 无加密存储 / 解密失败 / 形状违形——按无 key 处理，但留痕 */
+            console.warn(`[settings] 凭据读取失败（${p.name}），按无 key 处理:`, e);
             return null;
           }
         }),

@@ -14,40 +14,43 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { mockInvoke } from '../src/mock-data';
-import { dirEntryArraySchema, parseJson, rpcResultSchemas } from '../src/rpc-contract';
+import { dirEntryArraySchema, rpcResultSchemas } from '../src/rpc-contract';
 
-/** 每个已收编命令的 mock 取样参数（取 mockInvoke 已登记的命令面）。
- *  （list_directory / list_directory_flat / read_memory_batch 已迁 builtin.fs——
- *  走 tool_call 信封 + kernelListDirectory 内的 dirEntryArraySchema 校验，
- *  不再是 rpcResultSchemas 收编面，kernel-plugin-runtime P2-2；git_status
- *  同理随 git 域收口退役——走 git_cap + git-porcelain.ts 解析，R3-c；
- *  shell_env 同理随 shell 域收口退役——走 process_cap 文本路径 + 消费方
- *  parseJson，R3-d。） */
+/** 每个已收编命令的 mock 取样参数（取 mockInvoke 已登记的命令面）。 */
 const MOCK_SAMPLE_PARAMS: Record<keyof typeof rpcResultSchemas, Record<string, unknown>> = {
-  hologram_call: { tool: 'fragile_modules', args: {} },
-  hologram_tools_list: {},
-  load_graph_json: { path: '/mock/nebula-project' },
   get_last_project: {},
   workspace_list: {},
   sandbox_status: {},
   plugin_data_ensure: { name: 'mock-plugin' },
   plugin_data_list: { name: 'mock-plugin', path: '' },
-  // 随包引擎探测（2026-09-24 收编）：无参；mock 返回合成「已检测到」形状。
+  // 随包引擎探测（2026-09-24 收编）：无参；mock 返回合成「未检测到」形状。
   engine_bundled_info: {},
   // 诊断包导出（日志可观测性批 4 收编）：无参；mock 返回合成形状（浏览器 dev 无盘）。
   diag_export: {},
+  // 凭据读（2026-09-26 收编）：mock 无凭据库 ⇒ null（诚实形状）。
+  credential_get: { provider: 'deepseek' },
+  // 日志轮转（2026-09-26 收编）：浏览器 dev 无真实日志文件 ⇒ 「未滚」形状。
+  log_rotate: { path: 'mock://.lantai/logs/ui.log' },
 };
 
 describe('rpc 边界校验层：mock 同源自检（mock ↔ schema 漂移即红）', () => {
   for (const method of Object.keys(rpcResultSchemas) as Array<keyof typeof rpcResultSchemas>) {
     it(`${method}: mockInvoke 返回过 rpcResultSchemas 校验`, () => {
+      // 单一线形：mock 与 Rust 出口同形（2026-09-26 双形态拆除），
+      // 这里直接喂给 schema，不再「字符串先 parse」。
       const raw = mockInvoke(method, MOCK_SAMPLE_PARAMS[method]);
-      const value: unknown = typeof raw === 'string' ? parseJson(raw) : raw;
-      const parsed = rpcResultSchemas[method].safeParse(value);
+      const parsed = rpcResultSchemas[method].safeParse(raw);
       const issues = parsed.success ? '' : JSON.stringify(parsed.error.issues.slice(0, 3));
       expect(parsed.success, `${method} mock 形状漂移: ${issues}`).toBe(true);
     });
   }
+
+  it('mock 未登记的命令不得凭空返回结构化形状（避免骗过校验的假数据）', () => {
+    // Unhandled 回退 = 字符串信封（Text 线形）。JsonValue 命令落到这里应当
+    // 违形（而不是被合成一个"看起来对"的对象）。
+    const raw = mockInvoke('workspace_create_dir', { path: 'D:/x' });
+    expect(typeof raw).toBe('string');
+  });
 });
 
 describe('rpc 边界校验层：schema 四态', () => {

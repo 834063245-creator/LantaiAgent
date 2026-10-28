@@ -14,9 +14,9 @@ type RealInvoke = (cmd: string, args?: Record<string, unknown>) => Promise<unkno
 type RealListen = <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void>;
 let _realInvoke: RealInvoke | null = null;
 let _realListen: RealListen | null = null;
-let _mockInvoke: ((cmd: string, args?: Record<string, unknown>) => string) | undefined;
+let _mockInvoke: ((cmd: string, args?: Record<string, unknown>) => unknown) | undefined;
 
-async function loadMock(): Promise<(cmd: string, args?: Record<string, unknown>) => string> {
+async function loadMock(): Promise<(cmd: string, args?: Record<string, unknown>) => unknown> {
   if (!_mockInvoke) {
     const mock = await import('./mock-data');
     _mockInvoke = mock.mockInvoke;
@@ -74,8 +74,8 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
       throw e;
     }
   }
-  // 浏览器 mock 模式：mock 返回与 Rust 出口同形（JSON 命令返 JSON 字符串、
-  // 文本命令返原文），零转换直通。
+  // 浏览器 mock 模式：mock 与 Rust 出口**同形**（JsonValue 命令返真结构化、
+  // 文本命令返原文），零转换直通——形态单一，两侧不再各自猜测。
   return (await loadMock())(cmd, args) as T;
 }
 
@@ -106,9 +106,10 @@ export function isMockMode(): boolean {
  * 返回值语义（rpc Value 化第二步，2026-08-22，landmine 根治级）：
  * Rust 出口（rpc.rs rpc_result_shape 表）对 JsonValue 形态命令返回真结构化
  * Value（JSON 命令已展开）；Text 形态命令包 Value::String 字节精确直通
- * （read_file_content 读 .json 文件不能被误展开）。消费面：typedJsonRpc
- * 双形态兼容（结构化透传 / 字符串 parse 慢路径——浏览器 mock 返字符串）；
- * agentInvoke 对结构化返回回卷 JSON 字符串（agent 工具链 string 世界零改动）。
+ * （read_file_content 读 .json 文件不能被误展开）。消费面：typedJsonRpc 只认
+ * 结构化（JSON 命令）/ string（Text 命令）两种单一形态——**双形态猜测层已随
+ * 2026-09-26 改造删除**；agentInvoke 对结构化返回回卷 JSON 字符串（agent
+ * 工具链 string 世界零改动）。
  */
 export async function rpc<T>(method: string, params?: Record<string, unknown>): Promise<T> {
   const normalized: Record<string, unknown> = {};

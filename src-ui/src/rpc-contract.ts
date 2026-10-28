@@ -14,13 +14,14 @@
 // 约定：
 // - 参数键一律写 snake_case（与 Rust 端一致）；bridge.rpc() 对已是
 //   snake_case 的键是直通，对 camelCase 键会自动转换，但契约内统一 snake_case。
-// - result（rpc Value 化第二步，2026-08-22）：
+// - result（rpc Value 化第二步，2026-08-22；**形态单一化 2026-09-26**）：
 //     `// JSON`  = JSON 形态。Rust 出口（rpc.rs rpc_result_shape 表）已把表内
-//                 命令展开为真结构化 Value，typedJsonRpc 直接透传；表外 JSON
-//                 命令仍返 JSON 字符串，typedJsonRpc 双形态兼容（string 走 parse）。
+//                 命令展开为真结构化 Value，typedJsonRpc 直接 safeParse——
+//                 **字符串不再被当作可接受的 JSON 线形**（标注了 JSON 却拿到
+//                 字符串 = 出口分类漏登记，当场违形报错，不许慢路径兜住）。
 //     `// text`  = 纯文本（文件内容、base64、git stdout、错误信息等）。
 // - 新增前端一律用 typedRpc / typedListen，接线错误在编译期暴露；JSON 命令
-//   用 typedJsonRpc（双形态 shim 在那里）。
+//   用 typedJsonRpc（形状校验在 schema 表）。
 
 import { z } from 'zod';
 
@@ -700,10 +701,15 @@ export async function typedRpcWithTimeout<M extends RpcMethodName>(
   params: RpcParamsOf<M>,
   timeoutMs: number,
 ): Promise<RpcResultOf<M>> {
+  return raceTimeout(method, typedRpc(method, params), timeoutMs);
+}
+
+/** 超时竞速的实现单点（typedRpcWithTimeout / typedJsonRpcWithTimeout 共用）。 */
+async function raceTimeout<T>(method: string, run: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      typedRpc(method, params),
+      run,
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error(`rpc ${method} 超时（${timeoutMs}ms）`)), timeoutMs);
       }),
@@ -718,29 +724,45 @@ export function parseJson<T>(raw: string): T {
   return JSON.parse(raw) as T;
 }
 
-/** JSON 返回命令的类型化调用（rpc Value 化两步 + 边界运行时校验层，2026-09-01）：
- *  parse 收进本函数（调用点不手写双重编码）；result 形状经 rpcResultSchemas
- *  safeParse，违形即 throw（错误信息带方法名 + zod issue 摘要，宪法四）。
+/** JSON 返回命令的类型化调用（rpc Value 化三步，2026-09-01 边界校验；2026-09-26
+ *  形态单一化）：parse 不再存在——Rust 出口对 JsonValue 命令已展开为真结构化
+ *  Value，本函数直接 safeParse，违形即 throw（错误信息带方法名 + zod issue 摘要，
+ *  宪法四）。
  *  method 收紧为已收编命令集（keyof typeof rpcResultSchemas）——新调用未入表
  *  命令 = 编译错，签名即守卫；`// text` 命令继续 typedRpc 直通。
- *  双形态兼容（Value 化第二步）：JsonValue 形态命令在 Rust 出口已展开为真
- *  结构化 Value，直接校验；浏览器 mock / 表外形态仍返 JSON 字符串，parse
- *  慢路径后同样校验。校验规整后返回新对象——同引用透传属性退役。 */
+ *  **字符串不给兜底**：标注 JSON 却拿到字符串 = 出口 `rpc_result_shape` 表把该
+ *  命令判成了 Text（漏登记 / 新命令未补表），报错里直说这条诊断，别让慢路径
+ *  把分类漂移掩盖成「照常工作」（engine_bundled_info 假阳性 8 天的根因）。 */
 export async function typedJsonRpc<M extends keyof typeof rpcResultSchemas>(
   method: M,
   params?: RpcParamsOf<M>,
 ): Promise<RpcSchemaResultOf<M>> {
   const raw = await rpc<unknown>(method, params ?? {});
-  const value: unknown = typeof raw === 'string' ? parseJson(raw) : raw;
-  const parsed = rpcResultSchemas[method].safeParse(value);
+  const parsed = rpcResultSchemas[method].safeParse(raw);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .slice(0, 3)
       .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
       .join('; ');
-    throw new Error(`rpc ${String(method)}: 返回形状违反契约 — ${issues}`);
+    // 字符串线形单独补一句诊断：JSON 命令收到字符串基本只有一种成因——
+    // 出口 rpc_result_shape() 把它判成了 Text（漏登记 / 新命令未补表）。
+    const hint =
+      typeof raw === 'string'
+        ? '；且拿到字符串线形——查 rpc.rs 的 rpc_result_shape() 是否漏登记（出口判成 Text 了？）'
+        : '';
+    throw new Error(`rpc ${String(method)}: 返回形状违反契约 — ${issues}${hint}`);
   }
   return parsed.data as RpcSchemaResultOf<M>;
+}
+
+/** typedJsonRpc 的超时版：形状校验与 typedRpcWithTimeout 的语义叠加。
+ *  用于「凭据读取」这类既不能无界等待、又不能让形状漂移静默的地方。 */
+export async function typedJsonRpcWithTimeout<M extends keyof typeof rpcResultSchemas>(
+  method: M,
+  params: RpcParamsOf<M>,
+  timeoutMs: number,
+): Promise<RpcSchemaResultOf<M>> {
+  return raceTimeout(method, typedJsonRpc(method, params), timeoutMs);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -780,21 +802,26 @@ export const dirEntryArraySchema = z.array(dirEntrySchema);
 // 出口：fs_cap 能力口直呼（builtin.fs 信封已退役——2026-09-04 fs 域收口）。
 // 参数键 = fs_cap 顶层 snake_case（bridge.rpc() 转换幂等）；调用方一律用户
 // 路径（is_agent=false 显式传——resolve_*_dispatch 只解析不过 Ask）。
-// 返回 = 双形态（2026-09-05 会话列表回归修复）：fs_cap 是 JsonValue 形态
-// 命令——真实 Tauri 运行时 Rust 出口已展开为真结构化 Value（对象）；浏览器
-// mock / 测试 mock 返 JSON 字符串。各 helper 自行解包取字段时必须先判形态
-// （typeof raw === 'string' 才允许 parseJson），禁止对返回值直接 JSON.parse
-// （结构化对象会被 String() 成 "[object Object]" 再炸——712fda8d/8bce6ffb
-// 窗口内会话卷读取全链路静默 null 的根因；回归钉 tests/fs-cap-dual-shape.test.ts）。
+// 返回 = **单一形态：结构化 JSON 对象**（2026-09-26 双形态拆除）。fs_cap 是
+// JsonValue 形态命令——Rust 出口已展开为真结构化 Value，commands/fs_cap.rs
+// 每个 action 都是 `json!` 构造（read={path,content} / write 系={path} /
+// list={entries} / glob={results} / memory_batch=裸映射）。各 helper 直接取
+// 字段；形态不符 = 出口分类或命令实现漂移，当场 throw，**不再有字符串慢路径**
+// （旧双形态分支的两个实际代价：① 每处解包都要写 `typeof raw === 'string'`
+// 守卫；② 出口分类漏登记被「慢路径照常工作」掩盖——engine_bundled_info
+// 假阳性 8 天即此）。
 
-/** fs_cap 能力口直呼（双形态，见上）。is_agent=false = 用户路径。 */
+/** fs_cap 能力口直呼。is_agent=false = 用户路径。 */
 function fsCapCall(params: RpcParamsOf<'fs_cap'>): Promise<unknown> {
   return typedRpc('fs_cap', params);
 }
 
 /** fs_cap read 统一：缺省原文（line_numbers=false）；opts.lineNumbers=true →
  *  cat -n 行号格式（2026-09 工具缺陷报告 Bug 1 拍板：行号 opt-in，payload
- *  不默认混入装饰前缀）。返回解析后的实际文件文本。 */
+ *  不默认混入装饰前缀）。返回解析后的实际文件文本。
+ *
+ *  附图形态（read 读图片 → `image` 键、无 `content` 键）在这里按「无文本内容」
+ *  返回空串——附图消费面走 agent 工具层 parseToolImageOutput，不经本函数。 */
 async function fsCapReadText(
   filePath: string,
   opts?: { lineNumbers?: boolean; offset?: number; limit?: number },
@@ -807,20 +834,11 @@ async function fsCapReadText(
     ...(opts?.limit !== undefined ? { limit: opts.limit } : {}),
     is_agent: false,
   });
-  if (raw !== null && typeof raw === 'object') {
-    // 结构化 Value（真实运行时）：{path, content} 信封取 content。
-    const content = (raw as { content?: unknown }).content;
-    return typeof content === 'string' ? content : '';
+  if (raw === null || typeof raw !== 'object') {
+    throw new Error('fs_cap read: 返回形状违反契约（期待 {path, content} 结构化对象）');
   }
-  // 字符串形态（mock）：{content} 信封取 content；非 JSON / 无 content 字段
-  // （异常文本、原文直通 mock）——原文直通。
-  try {
-    const parsed = parseJson<{ path?: string; content?: unknown }>(raw as string);
-    if (typeof parsed.content === 'string') return parsed.content;
-  } catch {
-    // 非 JSON——直通
-  }
-  return raw as string;
+  const content = (raw as { content?: unknown }).content;
+  return typeof content === 'string' ? content : '';
 }
 
 /** 文本读（offset/limit 行号分页；lineNumbers=true 返回 cat -n 行号格式）。 */
@@ -836,20 +854,15 @@ export function kernelReadFileRaw(filePath: string): Promise<string> {
   return fsCapReadText(filePath);
 }
 
-/** fs_cap 写类 action 返回解析：取 {path} 的 path；非 JSON/无 path（测试 mock
- *  旧文案等）直通 raw——消费端多为 await 丢弃返回，容错直通等价。 */
+/** fs_cap 写类 action 返回解析：取 {path} 的 path，缺即 throw（真机恒
+ *  `json!({path})`；拿不到 path 说明出口/命令漂移，不许静默返回空串让上游
+ *  以为「写到某处了」）。 */
 function fsCapPathOf(raw: unknown): string {
   if (raw !== null && typeof raw === 'object') {
     const p = (raw as { path?: unknown }).path;
-    return typeof p === 'string' ? p : '';
+    if (typeof p === 'string' && p !== '') return p;
   }
-  try {
-    const parsed = parseJson<{ path?: unknown }>(raw as string);
-    if (typeof parsed.path === 'string') return parsed.path;
-  } catch {
-    // 非 JSON——直通
-  }
-  return raw as string;
+  throw new Error('fs_cap 写类 action: 返回形状违反契约（缺 path）');
 }
 
 /** 原子写入（父目录自动创建；fs_cap write 返回解析后路径）。 */
@@ -880,18 +893,10 @@ export async function kernelLogAppend(path: string, content: string): Promise<st
 
 /** 日志轮转触发（日志可观测性批 4）：`log_rotate` 的具名封装——logger.ts 用它
  *  把越限的 ui.log 滚代（上限/代数由壳侧 `logging.rs` 定，本函数只是触发器）。
- *  双形态解包（真实运行时 = 结构化 Value；mock/旧形态 = JSON 字符串）；缺
- *  `rotated` 字段即抛（违形不得静默读成“没滚”）。 */
+ *  结构化取 `{rotated, size_before}`；缺 `rotated` 即抛（违形不得静默读成"没滚"）。 */
 export async function kernelLogRotate(path: string): Promise<{ rotated: boolean; size_before: number }> {
-  const raw = await typedRpc('log_rotate', { path });
-  const payload = raw !== null && typeof raw === 'object' ? raw : parseJson<unknown>(raw as string);
-  if (payload !== null && typeof payload === 'object') {
-    const r = payload as { rotated?: unknown; size_before?: unknown };
-    if (typeof r.rotated === 'boolean') {
-      return { rotated: r.rotated, size_before: typeof r.size_before === 'number' ? r.size_before : 0 };
-    }
-  }
-  throw new Error('kernelLogRotate: 返回形状违反契约（缺 rotated）');
+  const r = await typedJsonRpc('log_rotate', { path });
+  return { rotated: r.rotated, size_before: r.size_before };
 }
 
 /** 追加 + fsync（durable 变体，2026-09-15 会话事件日志换轨）——**返回即已落盘**
@@ -937,61 +942,43 @@ export async function kernelListDirectoryFlat(path: string): Promise<DirEntry[]>
   return parsed.data;
 }
 
-/** list action 返回载荷提取：{entries} 包装取 entries；裸数组（测试 mock /
- *  旧形态）直用。双形态兼容同 fsCapPayloadOf；非 JSON 字符串返回 null
- *  （调用方 zod 校验兜错）。 */
+/** list action 返回载荷提取：真机恒 `{entries}` 包装；缺 entries 返回 null
+ *  （调用方 zod 校验兜错，错误带命令名而非静默空列表）。 */
 function listPayloadOf(raw: unknown): unknown {
-  const unwrap = (parsed: unknown): unknown => {
-    if (Array.isArray(parsed)) return parsed;
-    if (parsed !== null && typeof parsed === 'object') {
-      return (parsed as { entries?: unknown }).entries ?? null;
-    }
-    return null;
-  };
-  if (typeof raw !== 'string') return unwrap(raw);
-  try {
-    return unwrap(parseJson<unknown>(raw));
-  } catch {
-    return null;
+  if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+    return (raw as { entries?: unknown }).entries ?? null;
   }
+  // 裸数组线形不再接受（真机恒 {entries}）；返回 null 让 zod 报违形。
+  return null;
 }
 
-/** read_memory_batch 的 JSON 形状版（.lantai 内多文件批量读）。 */
+/** read_memory_batch 的 JSON 形状版（.lantai 内多文件批量读）。真机返回
+ *  裸映射 {path: content|null}（commands/fs_cap.rs memory_batch 直接 Object）。 */
 export async function kernelReadMemoryBatch(paths: string[]): Promise<Record<string, string | null>> {
   const raw = await fsCapCall({ action: 'memory_batch', paths, is_agent: false });
-  const payload = raw !== null && typeof raw === 'object' ? raw : parseJson<unknown>(raw as string);
-  const parsed = z.record(z.string(), z.nullable(z.string())).safeParse(payload);
+  const parsed = z.record(z.string(), z.nullable(z.string())).safeParse(raw);
   if (!parsed.success) {
     throw new Error(`kernelReadMemoryBatch: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
   }
   return parsed.data;
 }
 
-/** 媒体渲染二进制读（read_file_base64——renderer 消费，8MiB 源上限）。 */
+/** 媒体渲染二进制读（read_file_base64——renderer 消费，8MiB 源上限）。
+ *  真机恒 `{path, base64}`；缺 base64 返回空串（渲染面按「无内容」处理）。 */
 export async function kernelReadFileBase64(filePath: string): Promise<string> {
   const raw = await fsCapCall({ action: 'read_base64', file_path: filePath, is_agent: false });
-  if (raw !== null && typeof raw === 'object') {
-    const b64 = (raw as { base64?: unknown }).base64;
-    return typeof b64 === 'string' ? b64 : '';
+  if (raw === null || typeof raw !== 'object') {
+    throw new Error('fs_cap read_base64: 返回形状违反契约（期待 {path, base64} 结构化对象）');
   }
-  try {
-    const parsed = parseJson<{ base64?: string }>(raw as string);
-    if (typeof parsed.base64 === 'string') return parsed.base64;
-  } catch {
-    // 非 JSON——直通
-  }
-  return raw as string;
+  const b64 = (raw as { base64?: unknown }).base64;
+  return typeof b64 === 'string' ? b64 : '';
 }
 
 /** 附图字节写（fs_cap write_base64——image-intake 消费，multimodal-image-plan
- *  D-13；用户路径 is_agent=false）。content 键承载 base64；返回解析后真实路径
- *  （双形态：结构化对象直取 / JSON 字符串慢路径 parse）。 */
+ *  D-13；用户路径 is_agent=false）。content 键承载 base64；返回解析后真实路径。 */
 export async function kernelWriteFileBase64(filePath: string, base64: string): Promise<string> {
   const raw = await fsCapCall({ action: 'write_base64', file_path: filePath, content: base64, is_agent: false });
-  const payload = typeof raw === 'string' ? parseJson<{ path?: string }>(raw) : (raw as { path?: string });
-  const path = typeof payload === 'object' && payload !== null ? payload.path : undefined;
-  if (typeof path === 'string' && path !== '') return path;
-  throw new Error('kernelWriteFileBase64: 返回形状违反契约（缺 path）');
+  return fsCapPathOf(raw);
 }
 
 // ── git_cap 直呼便捷封装（git 域收口，kernel-capability-c3-design.md R3-c）──
@@ -1122,6 +1109,19 @@ export const rpcResultSchemas = {
       available: z.boolean(),
       degraded: z.boolean(),
       reason: z.string(),
+    })
+    .passthrough(),
+  // 凭据读（2026-09-26 收编）：Rust `Option<String>` serde 后经出口展开 ⇒
+  // 前端拿到的就是 string 或 null，**没有"带引号的 JSON 字符串"这一形态**。
+  // 消费面 settings.restoreSecrets / provider/credentials 经本表校验后再走
+  // parseRpcString 的语义护栏（空串 / 字面量 "null" / 长度）。
+  credential_get: z.nullable(z.string()),
+  // 日志轮转（2026-09-26 收编）：ok_json({rotated, size_before, path}) 恒 JSON。
+  // kernelLogRotate 是本命令唯一消费面，收编后形状漂移当场可见。
+  log_rotate: z
+    .object({
+      rotated: z.boolean(),
+      size_before: z.number(),
     })
     .passthrough(),
   // （shell_env 已随 shell 域收口（R3-d）换 process_cap 直呼——runtime 经

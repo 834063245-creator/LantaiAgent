@@ -43,15 +43,22 @@ beforeEach(() => {
 });
 
 describe('随包引擎探测 · 生产线形（实机「开关拨不开」回归）', () => {
-  it('Rust 出口 Text（JSON 字符串）时仍必须判定 available=true', async () => {
+  it('出口漏登记（字符串线形）时**不静默读成 false**：降级不可用 + 违形可查', async () => {
+    // 行为变更（2026-09-26 单形态化）：这条命令在 `rpc_result_shape()` 表内，
+    // 出口必然展开成结构化 Value。若哪天又漏登记（历史上的实机缺陷），消费面
+    // 不再「双形态兼容」把字符串 parse 回来——而是当场违形 → 探测降级为
+    // 不可用（`available:false`）+ warn 留痕。宁可开关置灰且日志说清，
+    // 也不要把「形态错位」和「二进制真的缺席」混成同一种沉默。
     H.rpc?.mockResolvedValueOnce(JSON.stringify(ENGINE_ON_DISK));
     const info = await probeBundledEngine();
-    expect(info.available, '字符串线形下 available 被读成 false ⇒ 设置页开关置灰').toBe(true);
-    expect(info.path).toBe(ENGINE_ON_DISK.path);
-    expect(info.dir).toBe(ENGINE_ON_DISK.dir);
+    expect(info.available, '字符串线形不得被当作真形状用').toBe(false);
+    expect(info.path).toBeNull();
+    // 失败不缓存：形态恢复后下一次探测必须能翻身
+    H.rpc?.mockResolvedValueOnce({ ...ENGINE_ON_DISK });
+    expect((await probeBundledEngine()).available).toBe(true);
   });
 
-  it('出口已展开为结构化 Value（表内 JsonValue 形态）时同样成立', async () => {
+  it('出口已展开为结构化 Value（表内 JsonValue 形态）时成立', async () => {
     H.rpc?.mockResolvedValueOnce({ ...ENGINE_ON_DISK });
     const info = await probeBundledEngine();
     expect(info.available).toBe(true);
@@ -59,7 +66,7 @@ describe('随包引擎探测 · 生产线形（实机「开关拨不开」回归
   });
 
   it('真未找到（available=false）不得被误判成命中', async () => {
-    H.rpc?.mockResolvedValueOnce(JSON.stringify({ path: null, dir: null, available: false }));
+    H.rpc?.mockResolvedValueOnce({ path: null, dir: null, available: false });
     const info = await probeBundledEngine();
     expect(info.available).toBe(false);
     expect(info.path).toBeNull();
@@ -68,7 +75,7 @@ describe('随包引擎探测 · 生产线形（实机「开关拨不开」回归
   it('RPC 抛错 → 降级为不可用且**不缓存**（下次可重试）', async () => {
     H.rpc?.mockRejectedValueOnce(new Error('RPC 未装配'));
     expect((await probeBundledEngine()).available).toBe(false);
-    H.rpc?.mockResolvedValueOnce(JSON.stringify(ENGINE_ON_DISK));
+    H.rpc?.mockResolvedValueOnce({ ...ENGINE_ON_DISK });
     expect((await probeBundledEngine()).available, '失败结果一旦被缓存，恢复后永不翻身').toBe(true);
   });
 });
@@ -77,7 +84,7 @@ describe('随包引擎接线（实机三连回归，2026-09-24）', () => {
   it('工作区 scope ctx（不声明 inject）下：行注册 + 声明激活 + 尝试拉起；拉起失败如实上报', async () => {
     localStorage.setItem('lantai.bundledEngine.enabled', 'true');
     resetBundledEngineForTests();
-    H.rpc?.mockResolvedValueOnce(JSON.stringify(ENGINE_ON_DISK));
+    H.rpc?.mockResolvedValueOnce({ ...ENGINE_ON_DISK });
 
     const root = new Context();
     await root.plugin(compositionServicesPlugin);

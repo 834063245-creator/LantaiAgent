@@ -17,7 +17,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const mockRpc = vi.fn(async () => JSON.stringify({ base64: '' }));
+// 真机线形（2026-09-26 单形态化）：fs_cap read_base64 出口已展开为结构化对象。
+const mockRpc = vi.fn(async () => ({ base64: '' }));
 vi.mock('../src/bridge', () => ({
   rpc: (...args: unknown[]) => mockRpc(...(args as [])),
   invoke: vi.fn(),
@@ -135,7 +136,7 @@ describe('projectImageForWire', () => {
 
   it('读取腰规整失败 → fail-open 回原字节（不吞图；由 agent 侧预算闸兜底）', async () => {
     const real = bytesToBase64(new Uint8Array(3000));
-    mockRpc.mockResolvedValueOnce(JSON.stringify({ base64: real }));
+    mockRpc.mockResolvedValueOnce({ base64: real });
     // 画布不可用（等价 jsdom / 解码失败）→ encodeAt 抛错 → 兜底路径
     HTMLCanvasElement.prototype.getContext = (() => null) as never;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -144,7 +145,7 @@ describe('projectImageForWire', () => {
     expect(out.data).toBe(real); // 原字节照发——「送不出去」由 agent 侧闸响亮交代
     expect(out.mediaType).toBe('image/png');
     expect(warn).toHaveBeenCalled();
-    mockRpc.mockResolvedValue(JSON.stringify({ base64: '' }));
+    mockRpc.mockResolvedValue({ base64: '' });
   });
 });
 

@@ -93,7 +93,7 @@ describe('② 凭据解析（credential_get）', () => {
     expect(await resolveApiKey(providerId('p1'))).toBe('');
 
     // 故障恢复（Key 一直在设置里）
-    mockRpc.mockResolvedValue(JSON.stringify('sk-real'));
+    mockRpc.mockResolvedValue('sk-real');
     // 旧实现：'' 被写进 _keyCache → 这里恒为 ''，整个进程生命周期报 MISSING_CREDENTIAL
     expect(await resolveApiKey(providerId('p1')), '瞬态 IPC 故障被记成「没有 Key」').toBe('sk-real');
   });

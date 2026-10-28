@@ -159,7 +159,7 @@ describe('provider/credentials — 凭据缓存 + 按名解析', () => {
 
     // 写入凭据 + 写穿失效（persistSecrets 语义）
     mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
-      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-new'));
+      if (payload.method === 'credential_get') return Promise.resolve('sk-new');
       return Promise.resolve(null);
     });
     invalidateCredentialCache(pid);
@@ -176,7 +176,7 @@ describe('provider/credentials — 凭据缓存 + 按名解析', () => {
   it('毒化长 key（>4096）拒收，按无 key 处理', async () => {
     seedSettings();
     mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
-      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('x'.repeat(5000)));
+      if (payload.method === 'credential_get') return Promise.resolve('x'.repeat(5000));
       return Promise.resolve(null);
     });
     expect(await resolveApiKey(providerId('p1'))).toBe('');
@@ -214,7 +214,7 @@ describe('createLiveProvider — 配置在使用点解析', () => {
   it('有 Key → 透传 baseUrl/model/key（同一实例）', async () => {
     seedSettings();
     mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
-      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-1'));
+      if (payload.method === 'credential_get') return Promise.resolve('sk-1');
       return Promise.resolve(null);
     });
     const prov = createLiveProvider('p1');
@@ -230,7 +230,7 @@ describe('createLiveProvider — 配置在使用点解析', () => {
   it('改 settings + 凭据失效后：同一 provider 实例的下一次请求即用新配置（无需换引用）', async () => {
     seedSettings();
     mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
-      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-1'));
+      if (payload.method === 'credential_get') return Promise.resolve('sk-1');
       return Promise.resolve(null);
     });
     const prov = createLiveProvider('p1');
@@ -239,7 +239,7 @@ describe('createLiveProvider — 配置在使用点解析', () => {
     // 用户改 baseUrl/model 并换 Key 保存（persistSecrets 写穿失效语义）
     seedSettings({ baseUrl: 'http://b.test/v1', model: 'm2' });
     mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
-      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-2'));
+      if (payload.method === 'credential_get') return Promise.resolve('sk-2');
       return Promise.resolve(null);
     });
     invalidateCredentialCache(providerId('p1'));
@@ -254,7 +254,7 @@ describe('createLiveProvider — 配置在使用点解析', () => {
   it('提供方已从设置删除 → LIVE_PROVIDER 报错', async () => {
     seedSettings();
     mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
-      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-1'));
+      if (payload.method === 'credential_get') return Promise.resolve('sk-1');
       return Promise.resolve(null);
     });
     const prov = createLiveProvider('p1');
@@ -316,7 +316,7 @@ describe('createLiveProvider — 附图能力声明（发送面已改为先发�
 
   function seedWithKey(): void {
     mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
-      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-1'));
+      if (payload.method === 'credential_get') return Promise.resolve('sk-1');
       return Promise.resolve(null);
     });
   }
@@ -390,7 +390,7 @@ describe('createLiveProvider — 附图能力声明（发送面已改为先发�
 describe('createLiveProvider — 思考档位三层（per-model 覆盖 ?? 行值；会话覆盖最优先）', () => {
   function seedWithKey(over: Partial<AppSettings['providers'][number]> = {}): void {
     mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
-      if (payload.method === 'credential_get') return Promise.resolve(JSON.stringify('sk-1'));
+      if (payload.method === 'credential_get') return Promise.resolve('sk-1');
       return Promise.resolve(null);
     });
     seedSettings(over);

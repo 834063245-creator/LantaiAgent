@@ -41,8 +41,10 @@ beforeEach(() => {
 describe('loadSettingsWithSecrets', () => {
   it('returns defaults with keys filled from credential store', async () => {
     (bridge.rpc as any).mockImplementation(async (method: string, params: any) => {
-      if (method === 'credential_get' && params.provider === 'deepseek') return '"sk-deep"';
-      return 'null';
+      // 真机线形：出口把 Option<String> 展开 ⇒ 命中给裸串、未命中给 null
+      // （2026-09-26 单形态化后不再有带引号的 JSON 编码线形）。
+      if (method === 'credential_get' && params.provider === 'deepseek') return 'sk-deep';
+      return null;
     });
     const s = await loadSettingsWithSecrets();
     const deepseek = s.providers.find((p) => p.name === 'deepseek')!;
@@ -60,7 +62,7 @@ describe('loadSettingsWithSecrets', () => {
         providers: [{ kind: 'openai', name: 'custom', apiKey: '', baseUrl: 'https://x.example/v1', model: 'm1' }],
       }),
     );
-    (bridge.rpc as any).mockResolvedValue('"sk-custom"');
+    (bridge.rpc as any).mockResolvedValue('sk-custom');
     const s = await loadSettingsWithSecrets();
     expect(s.activeProvider).toBe('custom');
     expect(s.providers[0].apiKey).toBe('sk-custom');

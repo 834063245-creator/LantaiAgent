@@ -164,7 +164,15 @@ async function readOffice(filePath: string, argv: readonly string[], step: strin
     // 能力口本身拒绝（权限卡被拒 / 载荷不合法 / 口被摘掉）：原话照给，别只说「失败」
     return { ok: false, error: `「${file}」${step}没走通（process_cap office_exec）：${messageOf(e)}` };
   }
-  const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+  // process_cap 是 Text 形态命令（rpc_result_shape 默认臂，office_exec 的
+  // Rust 签名就是 Result<String, String>）——拿到非字符串说明口/接线漂移，
+  // 报出来而不是 JSON.stringify 猜一份文本（猜出来的东西进 EXIT_RE 只会
+  // 产生误导性结论）。
+  if (typeof raw !== 'string') {
+    const shape = raw === null ? 'null' : typeof raw === 'object' ? '非文本结构' : typeof raw;
+    return { ok: false, error: `「${file}」${step}的返回不是文本形态（process_cap 是 Text 命令，收到 ${shape}）` };
+  }
+  const text = raw;
   const m = EXIT_RE.exec(text);
   if (!m) {
     // 没退出码 = 结果未知：不当作成功，也不把原始载荷当内容渲染（不 JSON 兜底）
