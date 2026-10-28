@@ -1555,6 +1555,11 @@ impl LspManager {
         }
         let mut child = c.spawn()
             .map_err(|e| format!("spawn {}: {}", cfg.command, e))?;
+        // Windows 的 die-with-parent（2026-10-28）：绑进进程级 Job，越早越小——
+        // 实测未绑时存在「spawn 后 ~150ms 内硬杀引擎 ⇒ 孤儿」的窗口。
+        // 与上面 `#[cfg(unix)]` 的 PR_SET_PDEATHSIG 是同一个不变量的两端，删一端就少半边。
+        #[cfg(windows)]
+        child_job::assign(&child);
 
         let stdin = child.stdin.take().ok_or("no stdin")?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
@@ -1959,9 +1964,202 @@ impl LspManager {
 // 测试
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// Windows 子进程 Job 守卫（2026-10-28 · LSP 舰队孤儿回收）
+// ═══════════════════════════════════════════════════════════════
+//
+// **这是 unix 侧 `PR_SET_PDEATHSIG`（见 `spawn_server` 的 `#[cfg(unix)]` 段）的
+// 另一端**：同一个不变量「拉舰队的进程死了，舰队跟着死」，此前只有 unix 有。
+//
+// 为什么需要它（实测证据 2026-10-28 本机）：
+//   · 引擎被 `Stop-Process -Force` 硬杀（Drop 与信号 handler 都跑不到）时，
+//     **spawn 后 ~150ms 窗口内**被拉起的 rust-analyzer 会存活成孤儿；
+//     300ms 之后杀则不残留（那时 r-a 已建好 stdio 读循环，见 EOF 自己退）。
+//     窗口虽窄，但孤儿一旦留下就跨日存活（2026-09-24 实测 PID 7160，常驻 2.9GB）。
+//   · Job Object 不依赖 ParentProcessId ⇒ 也覆盖 `taskkill /T` 追不到的
+//     「孙进程被重新挂靠」场景（npm 的 `.cmd` shim 那类）。
+//
+// 语义：job 句柄由**本进程**持有到进程死亡；内核关闭最后一个句柄时
+// 以 `KILL_ON_JOB_CLOSE` 终结 job 内全部进程 —— 正是 die-with-parent。
+// 注意：`spawn_daemon`（hologram-lspd）**刻意不进 job**——它按设计要活过单个引擎。
+#[cfg(windows)]
+mod child_job {
+    use std::os::windows::io::AsRawHandle;
+    use std::sync::OnceLock;
+
+    extern "system" {
+        fn CreateJobObjectW(attrs: *mut std::ffi::c_void, name: *const u16) -> isize;
+        fn SetInformationJobObject(
+            job: isize,
+            info_class: i32,
+            info: *const std::ffi::c_void,
+            info_len: u32,
+        ) -> i32;
+        fn AssignProcessToJobObject(job: isize, process: isize) -> i32;
+        fn CloseHandle(handle: isize) -> i32;
+    }
+
+    /// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`：最后一个句柄关闭 ⇒ 终结 job 内全部进程。
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+
+    #[repr(C)]
+    struct JobObjectBasicLimitInformation {
+        per_process_user_time_limit: u64,
+        per_job_user_time_limit: u64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    struct IoCounters {
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    struct JobObjectExtendedLimitInformationRaw {
+        basic: JobObjectBasicLimitInformation,
+        io_counters: IoCounters,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    /// 进程级 job 句柄——**必须活到进程死亡**（局部变量一关就等于立刻杀舰队）。
+    /// 进程退出时 OS 自动关闭句柄 ⇒ 触发 KILL_ON_JOB_CLOSE。
+    static JOB: OnceLock<Option<isize>> = OnceLock::new();
+
+    /// 建一个 job 并设上 `KILL_ON_JOB_CLOSE`。失败返回 None（调用方降级，不 fail）。
+    fn create_job() -> Option<isize> {
+        unsafe {
+            let h = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+            if h == 0 {
+                tracing::warn!(
+                    "[lsp_manager] CreateJobObjectW 失败——LSP 子进程本轮无 die-with-parent 保护"
+                );
+                return None;
+            }
+            let mut limits: JobObjectExtendedLimitInformationRaw = std::mem::zeroed();
+            limits.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let ok = SetInformationJobObject(
+                h,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                &limits as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<JobObjectExtendedLimitInformationRaw>() as u32,
+            );
+            if ok == 0 {
+                tracing::warn!("[lsp_manager] SetInformationJobObject 失败——job 守卫不生效");
+                CloseHandle(h);
+                return None;
+            }
+            Some(h)
+        }
+    }
+
+    fn job() -> Option<isize> {
+        *JOB.get_or_init(create_job)
+    }
+
+    /// 把刚 spawn 的 LSP 子进程绑进 job。
+    /// **失败只 warn，不挡查询**（绑不上是降级，不是故障）。
+    /// 注：Win8+ 支持嵌套 job，引擎自身若已被外层 job 收编也能绑；
+    /// 不要给子进程设 `CREATE_BREAKAWAY_FROM_JOB`（那等于自己退出 job）。
+    pub fn assign(child: &std::process::Child) {
+        let Some(job_handle) = job() else { return };
+        let raw = child.as_raw_handle();
+        if raw.is_null() {
+            return;
+        }
+        if unsafe { AssignProcessToJobObject(job_handle, raw as isize) } == 0 {
+            tracing::warn!(
+                pid = child.id(),
+                "[lsp_manager] AssignProcessToJobObject 失败——该子进程无 die-with-parent 保护"
+            );
+        }
+    }
+
+    /// 测试面（`#[cfg(test)]`）：暴露「独立 job 的建立 / 绑定 / 关闭」三点，
+    /// 让测试能**主动关闭句柄**来模拟「父进程死亡」，而不必真去杀测试进程。
+    #[cfg(test)]
+    pub mod test_support {
+        use super::*;
+
+        pub fn create() -> Option<isize> {
+            create_job()
+        }
+
+        pub fn assign(job_handle: isize, child: &std::process::Child) -> bool {
+            let raw = child.as_raw_handle();
+            if raw.is_null() {
+                return false;
+            }
+            unsafe { AssignProcessToJobObject(job_handle, raw as isize) != 0 }
+        }
+
+        /// 关闭句柄 = 进程死亡（内核关最后一个句柄 ⇒ KILL_ON_JOB_CLOSE 生效）。
+        pub fn close(job_handle: isize) {
+            unsafe {
+                CloseHandle(job_handle);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Windows Job 守卫（2026-10-28 · LSP 舰队孤儿回收）：
+    /// 关掉 job 句柄 = 父进程死亡 ⇒ job 内的子进程必须被内核终结。
+    ///
+    /// 为什么用「关句柄」而不是「杀父进程」：语义等价（内核只看最后一个句柄），
+    /// 但不必真去杀测试进程，也不依赖 rust-analyzer 是否安装。
+    /// 真机侧的端到端证据（修前 150ms 窗口残留 / 修后清零）见
+    /// `docs/plans/lsp-fleet-orphan-reaping-design.md` §3。
+    #[cfg(windows)]
+    #[test]
+    fn job_close_kills_assigned_child() {
+        let job = child_job::test_support::create().expect("CreateJobObjectW 应成功");
+        let mut child = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 60 127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn 长睡子进程应成功");
+        assert!(
+            child_job::test_support::assign(job, &child),
+            "子进程应能绑进 job（嵌套 job 在 Win8+ 允许）"
+        );
+
+        // 关句柄 = 父进程死亡（KILL_ON_JOB_CLOSE 生效）
+        child_job::test_support::close(job);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+        let mut gone = false;
+        while std::time::Instant::now() < deadline {
+            if let Ok(Some(_)) = child.try_wait() {
+                gone = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if !gone {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        assert!(gone, "关闭 job 句柄后，job 内的子进程必须被终结（否则孤儿回收不成立）");
+    }
 
     #[test]
     fn test_parse_single_location() {
