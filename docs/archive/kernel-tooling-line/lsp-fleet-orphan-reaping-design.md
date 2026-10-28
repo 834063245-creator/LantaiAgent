@@ -1,15 +1,21 @@
 # LSP 舰队孤儿回收（设计件 · Proposed）
 
-> **状态**：未开工（2026-09-26 立项，等另开窗口施工）。施工面 = `engine`（`lsp_manager.rs` + `Cargo.toml`）。
+> **已归档（2026-10-28 竣工）** —— 施工 commit 见 `git log --grep "LSP 舰队孤儿回收"`。现状指针：
+> `engine/src/lsp_manager.rs` 的 `child_job` 模块（Windows Job Object，`KILL_ON_JOB_CLOSE`）+
+> `spawn_server` 里的 `child_job::assign`；守护 `lsp_manager::tests::job_close_kills_assigned_child`
+> （关句柄 = 父进程死亡 ⇒ 子进程必须被终结）。本文件此后是历史设计记录，不作现状依据。
+
+> **状态**：**已竣工（2026-10-28）**。施工面 = `engine/src/lsp_manager.rs`（新增 `child_job` 模块，**未加新依赖**——
+> 照 `src-tauri/src/os_sandbox.rs` 的裸 `extern "system"` 先例手写四个符号）。
 > **由来**：2026-09-24 实测孤儿 `rust-analyzer.exe` PID 7160（当日 18:07 起，跨日存活）；同一轮实测
-> rust-analyzer 常驻 2.9GB。**前置阅读**：[`docs/archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md`](../archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md)。
+> rust-analyzer 常驻 2.9GB。**前置阅读**：[`docs/archive/kernel-tooling-line/engine-lsp-runtime-hardening-plan.md`](engine-lsp-runtime-hardening-plan.md)。
 
 ## 一、裁定（先看这个）
 
 1. **第 0 步不是改代码，是复现**（§3）：当前有**三条**独立的「谁杀谁」路径，不先钉死孤儿出自哪条，
    任何修法都是猜。**没跑完 §3 的矩阵不许动手**（否则改完无法证明改对了）。
 2. **结构性修法 = Windows 补 Job Object（`KILL_ON_JOB_CLOSE`）**，与 unix 已有的
-   `PR_SET_PDEATHSIG` 对齐（[lsp_manager.rs:1453-1470](../../engine/src/lsp_manager.rs)）——
+   `PR_SET_PDEATHSIG` 对齐（[lsp_manager.rs:1453-1470](../../../engine/src/lsp_manager.rs)）——
    这是**同一个不变量的两端**，现在只有一端。
 3. **不做「启动时按进程名清理陈旧舰队」**：按名字 + 命令行杀别人的进程，会误杀 IDE 自己的
    rust-analyzer / gopls。只有在 §3 证明 Job Object 覆盖不到时才回头评估这一层。
@@ -20,17 +26,17 @@
 
 **干净的出口（都存在，别重复造）：**
 - 引擎正常退出：`LspShutdownGuard` 的 `Drop` → `shutdown_all()`
-  （[main.rs:62-72](../../engine/src/main.rs)）。
+  （[main.rs:62-72](../../../engine/src/main.rs)）。
 - unix 信号路径：SIGINT/SIGTERM handler → `shutdown_all()` → `exit(0)`
-  （[main.rs:76-90](../../engine/src/main.rs)；**`#[cfg(unix)]`，Windows 没有对应物**）。
+  （[main.rs:76-90](../../../engine/src/main.rs)；**`#[cfg(unix)]`，Windows 没有对应物**）。
 - lspd 优雅退出：空闲超时或 `op=shutdown` → `shutdown_all()` → 删端口文件 → 退出
-  （[lsp_daemon.rs:156-174](../../engine/src/lsp_daemon.rs)；集成测试 `test_bind_serve_status_shutdown_roundtrip`）。
+  （[lsp_daemon.rs:156-174](../../../engine/src/lsp_daemon.rs)；集成测试 `test_bind_serve_status_shutdown_roundtrip`）。
 
 **⇒ 泄漏只可能来自「进程没机会跑 shutdown_all」**，即硬杀 / 异常死亡。而三条路径的子进程关系是：
 
 | 进程 | 谁拉起 | die-with-parent？ |
 |---|---|---|
-| `hologram-lspd` | 引擎 `spawn_daemon`（stdio 全 null + CREATE_NO_WINDOW，[lsp_manager.rs:1009-1020](../../engine/src/lsp_manager.rs)） | **故意不设**——同根共享舰队，设计上要活过单个引擎（见 `docs/archive/kernel-tooling-line/lsp-fleet-daemon-plan.md`） |
+| `hologram-lspd` | 引擎 `spawn_daemon`（stdio 全 null + CREATE_NO_WINDOW，[lsp_manager.rs:1009-1020](../../../engine/src/lsp_manager.rs)） | **故意不设**——同根共享舰队，设计上要活过单个引擎（见 `docs/archive/kernel-tooling-line/lsp-fleet-daemon-plan.md`） |
 | 舰队（r-a / gopls / …） | lspd，或引擎的**本地池回退**路径（`spawn_server`） | **unix：有**（PDEATHSIG + ppid 复查）；**Windows：什么都没有** |
 
 **Windows 是唯一缺口**——`spawn_server` 的 `#[cfg(windows)]` 分支只设了 `CREATE_NO_WINDOW`
@@ -40,9 +46,9 @@
 - **H1｜父进程非树杀路径死亡**：`Stop-Process -Force` / 任务管理器结束 / panic abort ——
   Drop 与信号 handler 都不跑；Windows 又无 PDEATHSIG ⇒ 本地池舰队残留。
 - **H2｜`taskkill /T` 追不到被「重新挂靠」的孙进程**：宿主硬杀受治进程走
-  `taskkill /PID <pid> /T /F`（[protocol_bridge.rs](../../src-tauri/src/commands/protocol_bridge.rs)），
+  `taskkill /PID <pid> /T /F`（[protocol_bridge.rs](../../../src-tauri/src/commands/protocol_bridge.rs)），
   而 `/T` 是**按 ParentProcessId 走链**的；npm 全局工具是 `cmd.exe /c <shim>.cmd` → 再拉 node
-  （[lsp_manager.rs:1404-1422](../../engine/src/lsp_manager.rs)），**中间那层 cmd.exe 一退，
+  （[lsp_manager.rs:1404-1422](../../../engine/src/lsp_manager.rs)），**中间那层 cmd.exe 一退，
   孙进程的父 PID 就指向死进程**，`/T` 断链 ⇒ 残留。rust-analyzer 是直接 exe，不受 H2 影响——
   所以 9/24 那个 r-a 孤儿更可能是 H1（或 C 行：lspd 先死）。
 
@@ -57,6 +63,27 @@
 
 **判据**：每次前后各取一次快照，**必须按命令行含项目根过滤**
 （`Get-CimInstance Win32_Process` 读 `CommandLine`）——否则会把 IDE 自己的语言服务器算成孤儿。
+
+### 3.1 实测结果（2026-10-28，本机 Windows，release 引擎 / 修后 debug 引擎复测）
+
+| # | 场景 | 做法 | 修前 | 修后 |
+|---|---|---|---|---|
+| A | 宿主树杀 | 工具链超时触发的进程树终结（等同 `taskkill /T /F`） | 无残留 | — |
+| **B** | **引擎异常死亡（H1）** | `--stress-lsp <临时根> 400 rs` 起引擎，在 spawn 后 **150 / 200 / 300 / 500 / 800 / 1200 / 2000 ms** 七档 `Stop-Process -Force` **只杀引擎**（不树杀） | **150ms 档 1/1 残留**；300ms 及以后 0 残留 | **七档全 0 残留** |
+| C | lspd 异常死亡 | 未单独跑 | — | — |
+| D | `/T` 断链竞态（H2） | 未跑（本机无 npm 类 LSP 服务器） | — | — |
+
+**结论（写给自己与下一个人）**：
+- **H1 成立，且是一个极窄的时间窗口**：`spawn_server` 在 `c.spawn()` 之后有一段 300ms 的快速死亡检测
+  sleep；**在这段 sleep 内**硬杀引擎，rust-analyzer 还是孤儿；sleep 之后杀则不会残留（那时 r-a 已建好
+  stdio 读循环，见管道 EOF 自己退）。窗口虽窄，但孤儿一旦留下就**跨日存活**（2026-09-24 实测 PID 7160，
+  常驻 2.9GB）——所以必须用不依赖时序的机制兜底。
+- **C 行未单独跑的正当理由**：`hologram-lspd` 走的是**同一个** `LspManager::spawn_server`
+  （`lsp_daemon.rs` 只调 `resolve_definition`/`find_references` 等），所以 Job 修复对 lspd 拉起的舰队
+  **自动生效**——lspd 一死，它自己的 job 句柄关闭，舰队随之终结。而 `spawn_daemon`（引擎拉起 lspd）
+  **刻意不 assign**，保住「lspd 活过单个引擎」的设计。
+- **D 行未跑的正当理由**：本机没有 npm 类（`.cmd` shim）LSP 服务器；但 Job Object 按句柄而非
+  ParentProcessId 生效 ⇒ 结构上不依赖父子链完整，断链场景天然覆盖。
 
 > ⚠ **不许拿正在运行的应用开刀**：`hologram-engine.exe` 是用户 DSH 应用的子进程，杀了会自动重启并
 > 误导排障（CONVENTIONS §3 实测纪律）。B/C/D 一律用**自己 spawn 的临时根引擎/lspd**。

@@ -5,7 +5,7 @@
 
 > **状态**：代码已落地（三条 commit，门禁全绿）；**余两件已拆成独立设计件**（等另开窗口施工）——
 > [嵌入缓存持久化](embedding-cache-persistence-design.md)（#3 附带）、
-> [LSP 舰队孤儿回收](../../plans/lsp-fleet-orphan-reaping-design.md)（#4 后果 B）。#9 已按用户裁定**删除**。
+> [LSP 舰队孤儿回收](lsp-fleet-orphan-reaping-design.md)（#4 后果 B）。#9 已按用户裁定**删除**。
 >
 > **由来**：一次排查把四件事串成同一条链——「引擎/LSP 在长任务中途静默消失」+「语义搜索一直在旧快照上跑」
 > +「工具把人引去装一个已经装好的 LSP」+「进程没了却查不出为什么」。共 9 条发现，分三档：
@@ -66,7 +66,7 @@
 - **#4 后果 B 孤儿舰队回收**：本件原判**不做**（产生条件已被 #1 消除、实测孤儿没挡路、按进程名
   清理有误杀风险）。2026-09-26 用户要求出设计件另开窗口做 ⇒ 裁定改为「**先复现再修**」，
   结构性修法 = Windows 补 Job Object（与 unix 已有的 PDEATHSIG 对齐）：
-  [`lsp-fleet-orphan-reaping-design.md`](../../plans/lsp-fleet-orphan-reaping-design.md)。
+  [`lsp-fleet-orphan-reaping-design.md`](lsp-fleet-orphan-reaping-design.md)。
   注：复现矩阵若证明 B/C 两行「修前也不残留」，该件可作为「无需修」结案（如实记录，不硬做）。
 - **#9 `.lantai/` 遗留三件**：2026-09-26 用户裁定**删除**，已执行——`hologram.db`（68MB）/
   `vectors.usearch`（24MB）/ `vectors.slots.json`（1MB）三件已移除；`.hologram/` 活集未动。
