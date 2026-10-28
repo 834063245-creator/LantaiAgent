@@ -28,6 +28,24 @@ pub const VECTOR_DIM: usize = crate::embed::EMBED_DIM;
 // CodeVectorIndex
 // ═══════════════════════════════════════════════════════════════
 
+/// 一次向量重建的读数（2026-10-28 嵌入缓存持久化批新增）。
+///
+/// 存在的唯一理由：单测要断言「重启后第二次 build 不再推理」（misses = 0），
+/// 而设计件明确禁止用日志断言（docs/plans/embedding-cache-persistence-design.md §5.1）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BuildStats {
+    /// 本轮节点数。
+    pub total: usize,
+    /// 进程内缓存命中（VECTOR_CACHE）。
+    pub cache_hits: usize,
+    /// 仅靠磁盘缓存补上的条数（进程内原本没有）。
+    pub disk_hits: usize,
+    /// 真正走推理的条数。
+    pub misses: usize,
+    /// 写入 usearch 的条数（= total，除非中途出错）。
+    pub indexed: usize,
+}
+
 pub struct CodeVectorIndex {
     index: Arc<RwLock<Option<usearch::Index>>>,
     slots: Arc<RwLock<Vec<String>>>,
@@ -62,8 +80,18 @@ impl CodeVectorIndex {
         Ok(())
     }
 
-    /// 从图节点构建向量索引。
+    /// 从图节点构建向量索引（返回写入 usearch 的条数——保持既有调用面不变）。
     pub fn build(&self, nodes: &[Node]) -> Result<usize, String> {
+        Ok(self.build_with_stats(nodes)?.indexed)
+    }
+
+    /// 同 [`build`](Self::build)，另返回读数（缓存命中/磁盘补入/未命中）。
+    pub fn build_with_stats(&self, nodes: &[Node]) -> Result<BuildStats, String> {
+        // 全量重建语义：本实例可能已被 build 过。usearch 的 high-level wrapper
+        // **不允许重复键**（同 slot 二次 add 直接报错），所以先把旧索引丢掉重建。
+        // 2026-10-28 由「重启后零推理」测试暴露（此前生产调用点每次都新建实例，
+        // 故从未显形——藏着「同一实例二次重建必炸」的死路）。
+        *self.index.write().unwrap_or_else(|e| e.into_inner()) = None;
         self.ensure_index(nodes.len())?;
         // 预留容量（始终执行，即使索引已初始化）
         if let Some(ref idx) = *self.index.read().unwrap_or_else(|e| e.into_inner()) {
@@ -82,7 +110,7 @@ impl CodeVectorIndex {
             snippets.push(text);
         }
 
-        if snippets.is_empty() { warn!("[vector] 无节点可嵌入"); return Ok(0); }
+        if snippets.is_empty() { warn!("[vector] 无节点可嵌入"); return Ok(BuildStats::default()); }
 
         let total = snippets.len();
         info!("[vector] 正在嵌入 {} 个节点（{}, {} 维）...", total, crate::embed::backend_id(), VECTOR_DIM);
@@ -92,13 +120,31 @@ impl CodeVectorIndex {
         let hashes: Vec<u64> = snippets.iter().map(|s| snippet_hash(s)).collect();
         let mut vectors: Vec<Option<Arc<Vec<f32>>>> = (0..total).map(|_| None).collect();
         let mut misses: Vec<usize> = Vec::new();
+
+        // 磁盘缓存先读（**锁外**做 IO——CONVENTIONS §2.3 锁内不阻塞 IO）。
+        // 优先级：进程内（最新）> 磁盘（跨进程存活）> 推理。
+        let disk = self.read_disk_cache();
+        let mut cache_hits = 0usize;
+        let mut disk_hits = 0usize;
         {
-            let cache = VECTOR_CACHE.lock().map_err(|e| format!("vector cache lock: {e}"))?;
+            let mut cache = VECTOR_CACHE.lock().map_err(|e| format!("vector cache lock: {e}"))?;
             for (i, h) in hashes.iter().enumerate() {
-                match cache.get(h) {
-                    Some(v) => vectors[i] = Some(v.clone()),
-                    None => misses.push(i),
+                if let Some(v) = cache.get(h).cloned() {
+                    vectors[i] = Some(v);
+                    cache_hits += 1;
+                    continue;
                 }
+                if let Some(v) = disk.get(h).cloned() {
+                    vectors[i] = Some(v.clone());
+                    cache.insert(*h, v);
+                    disk_hits += 1;
+                    continue;
+                }
+                misses.push(i);
+            }
+            // 磁盘里本轮没用到的键也一并补进进程缓存：下次 watcher 触发即可直接命中。
+            for (h, v) in disk {
+                cache.entry(h).or_insert(v);
             }
         }
 
@@ -146,7 +192,21 @@ impl CodeVectorIndex {
         }
 
         info!("[vector] 已索引 {} 个节点", slots.len());
-        Ok(slots.len())
+
+        // 磁盘缓存：只在本轮**真有新嵌入**时写。内容与盘上一致时重写 34MB 是纯浪费；
+        // 节点增删后的收敛由下一次 miss 触发的「全量重写」完成（文件因此恒等于
+        // 「当前索引见过的最新向量表」，只增不减的窗口会在下次 miss 时收拢）。
+        if !misses.is_empty() {
+            let pairs: Vec<(u64, Arc<Vec<f32>>)> = hashes
+                .iter()
+                .zip(vectors.iter())
+                .filter_map(|(h, v)| v.as_ref().map(|v| (*h, v.clone())))
+                .collect();
+            self.persist_embed_cache(&pairs);
+        }
+
+        let indexed = slots.len();
+        Ok(BuildStats { total, cache_hits, disk_hits, misses: misses.len(), indexed })
     }
 
     /// 搜索。返回排序后的 (node_id, 相似度) 对。
@@ -249,6 +309,43 @@ impl CodeVectorIndex {
     }
 
     pub fn exists_on_disk(&self) -> bool { self.path.exists() }
+
+    // ── 磁盘嵌入缓存（2026-10-28）──
+    //
+    // 病灶：VECTOR_CACHE 是进程级 static，进程一死就归零 —— 实测跨重启命中率 2%，
+    // 22k 节点全量重建 13.7 分钟（docs/plans/embedding-cache-persistence-design.md）。
+    // 文件 = 本轮 build 见到的全量 (snippet_hash → 向量)，键是**内容**哈希，
+    // 与路径/mtime/node id 全无关；容量天然有界，不需要 LRU/GC。
+    // 纪律照抄 slots.json：头部带 dim + backend，任一不匹配 ⇒ 整份丢弃（fail-open 重嵌入）。
+    // **缓存是优化不是数据**：读写失败一律 warn，绝不阻断 build（错误可见，但不致命）。
+    fn embed_cache_path(&self) -> PathBuf {
+        self.path.with_extension("embed.cache")
+    }
+
+    /// 读磁盘缓存；任何异常（缺失/损坏/版本或后端不匹配）⇒ 空表 + warn。
+    fn read_disk_cache(&self) -> std::collections::HashMap<u64, Arc<Vec<f32>>> {
+        let path = self.embed_cache_path();
+        if !path.exists() { return std::collections::HashMap::new(); }
+        match read_embed_cache(&path) {
+            Ok(map) => {
+                info!("[vector] 嵌入缓存命中 {} 条（{}）", map.len(), path.display());
+                map
+            }
+            Err(e) => {
+                warn!("[vector] 嵌入缓存不可用（{e}），本轮按空缓存处理");
+                std::collections::HashMap::new()
+            }
+        }
+    }
+
+    /// 原子落盘（`.tmp` → rename_with_retry，与索引/slots 同一套原语）。
+    fn persist_embed_cache(&self, pairs: &[(u64, Arc<Vec<f32>>)]) {
+        let path = self.embed_cache_path();
+        match write_embed_cache(&path, pairs) {
+            Ok(()) => info!("[vector] 嵌入缓存已保存 {} 条 → {}", pairs.len(), path.display()),
+            Err(e) => warn!("[vector] 嵌入缓存保存失败（{e}）——不影响索引可用性"),
+        }
+    }
 }
 
 // ── 进程级向量缓存：snippet 内容哈希 → 嵌入向量 ──
@@ -287,6 +384,114 @@ fn snippet_hash(s: &str) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     s.hash(&mut h);
     h.finish()
+}
+
+// ── 磁盘嵌入缓存格式（LVEC v1）──
+// magic | version u32 | dim u32 | backend(len u32 + bytes) | count u32 | count × {hash u64 + dim × f32}
+// 二进制单文件：22k 节点 ≈ 34MB，比 JSON 小一个量级（f32 直接落字节，不做文本化）。
+const EMBED_CACHE_MAGIC: [u8; 4] = *b"LVEC";
+/// 缓存格式版本——**与 crate 版本无关**，只有本格式改了才 +1。
+const EMBED_CACHE_VERSION: u32 = 1;
+
+fn take<'a>(bytes: &'a [u8], off: &mut usize, n: usize) -> Result<&'a [u8], String> {
+    let end = off.checked_add(n).ok_or_else(|| "offset overflow".to_string())?;
+    if end > bytes.len() {
+        return Err(format!("truncated at {off} (+{n}, len {})", bytes.len()));
+    }
+    let s = &bytes[*off..end];
+    *off = end;
+    Ok(s)
+}
+
+fn take_u32(bytes: &[u8], off: &mut usize) -> Result<u32, String> {
+    let b = take(bytes, off, 4)?;
+    let arr: [u8; 4] = b.try_into().map_err(|_| "u32 slice".to_string())?;
+    Ok(u32::from_le_bytes(arr))
+}
+
+/// 读缓存文件。**任何异常都返回 Err（调用方降级为空表），绝不 panic**——
+/// 缓存文件是"可以被外部改坏"的输入，毒化必须容忍（INVARIANTS #11 同族纪律）。
+fn read_embed_cache(
+    path: &std::path::Path,
+) -> Result<std::collections::HashMap<u64, Arc<Vec<f32>>>, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("read: {e}"))?;
+    let mut off = 0usize;
+
+    if take(&bytes, &mut off, 4)? != EMBED_CACHE_MAGIC {
+        return Err("bad magic".to_string());
+    }
+    let version = take_u32(&bytes, &mut off)?;
+    if version != EMBED_CACHE_VERSION {
+        return Err(format!("version {version} != {EMBED_CACHE_VERSION}"));
+    }
+    let dim = take_u32(&bytes, &mut off)? as usize;
+    if dim != VECTOR_DIM {
+        return Err(format!("dim {dim} != {VECTOR_DIM}"));
+    }
+    let backend_len = take_u32(&bytes, &mut off)? as usize;
+    let backend_bytes = take(&bytes, &mut off, backend_len)?;
+    let backend = std::str::from_utf8(backend_bytes).map_err(|e| format!("backend utf8: {e}"))?;
+    let active = crate::embed::backend_id();
+    if backend != active {
+        // MiniLM 与 n-gram 向量不在同一空间，混用 = 语义搜索静默变垃圾。
+        return Err(format!("backend {backend} != {active}"));
+    }
+
+    let count = take_u32(&bytes, &mut off)? as usize;
+    let entry_len = 8 + dim * 4;
+    let remaining = bytes.len().saturating_sub(off);
+    if remaining != count.saturating_mul(entry_len) {
+        return Err(format!("payload {remaining} != count {count} × {entry_len}"));
+    }
+
+    let mut map = std::collections::HashMap::with_capacity(count);
+    for _ in 0..count {
+        let hash_bytes = take(&bytes, &mut off, 8)?;
+        let hash_arr: [u8; 8] = hash_bytes.try_into().map_err(|_| "hash slice".to_string())?;
+        let mut vec = Vec::with_capacity(dim);
+        for _ in 0..dim {
+            let f = take(&bytes, &mut off, 4)?;
+            let arr: [u8; 4] = f.try_into().map_err(|_| "f32 slice".to_string())?;
+            vec.push(f32::from_le_bytes(arr));
+        }
+        map.insert(u64::from_le_bytes(hash_arr), Arc::new(vec));
+    }
+    Ok(map)
+}
+
+fn write_embed_cache(
+    path: &std::path::Path,
+    entries: &[(u64, Arc<Vec<f32>>)],
+) -> Result<(), String> {
+    let backend = crate::embed::backend_id();
+    let mut buf: Vec<u8> =
+        Vec::with_capacity(16 + backend.len() + 4 + entries.len() * (8 + VECTOR_DIM * 4));
+    buf.extend_from_slice(&EMBED_CACHE_MAGIC);
+    buf.extend_from_slice(&EMBED_CACHE_VERSION.to_le_bytes());
+    buf.extend_from_slice(&(VECTOR_DIM as u32).to_le_bytes());
+    buf.extend_from_slice(&(backend.len() as u32).to_le_bytes());
+    buf.extend_from_slice(backend.as_bytes());
+    buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    for (hash, vec) in entries {
+        if vec.len() != VECTOR_DIM {
+            return Err(format!("vector dim {} != {VECTOR_DIM}", vec.len()));
+        }
+        buf.extend_from_slice(&hash.to_le_bytes());
+        for f in vec.iter() {
+            buf.extend_from_slice(&f.to_le_bytes());
+        }
+    }
+    let tmp = path.with_extension("embed.cache.tmp");
+    std::fs::write(&tmp, &buf).map_err(|e| format!("write tmp: {e}"))?;
+    rename_with_retry(&tmp, path).map_err(|e| format!("rename: {e}"))
+}
+
+/// 清空进程级向量缓存（**测试专用**：模拟「进程重启后的冷缓存」）。
+#[cfg(test)]
+pub fn clear_process_vector_cache() {
+    if let Ok(mut cache) = VECTOR_CACHE.lock() {
+        cache.clear();
+    }
 }
 
 // ── 进程级缓存：加载的向量索引在搜索间复用 ──
@@ -606,5 +811,156 @@ mod tests {
         assert_eq!(results2[0].0, "n3");
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── 磁盘嵌入缓存（2026-10-28：跨重启存活）──
+
+    fn tmp_cache_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("hologram_vi_ec_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// 带唯一标记造三个节点：**测试之间不能共用 snippet**——进程级 VECTOR_CACHE
+    /// 是全局 static，相同 snippet = 相同 hash，会让「冷启动必须真推理」的断言失真。
+    fn three_nodes(tag: &str) -> Vec<Node> {
+        (0..3)
+            .map(|i| {
+                let mut n = Node::new(&format!("{tag}{i}"), &format!("embed_cache_{tag}_fn_{i}"), NodeKind::Function);
+                n.snippet = Some(format!("fn embed_cache_{tag}_fn_{i}() {{ work({i}); }}"));
+                n
+            })
+            .collect()
+    }
+
+    /// round-trip：写进去的 (hash → 向量) 必须原样读回来（f32 逐位相等）。
+    #[test]
+    fn test_embed_cache_round_trip() {
+        let dir = tmp_cache_dir("rt");
+        let path = dir.join("vectors.embed.cache");
+
+        let entries: Vec<(u64, Arc<Vec<f32>>)> = (0..3u64)
+            .map(|i| {
+                let mut v = vec![0.0f32; VECTOR_DIM];
+                v[(i as usize * 7) % VECTOR_DIM] = 1.0 + i as f32;
+                v[1] = -0.5;
+                (i * 1_000_003 + 17, Arc::new(v))
+            })
+            .collect();
+
+        write_embed_cache(&path, &entries).unwrap();
+        assert!(!path.with_extension("embed.cache.tmp").exists(), "原子落盘不应残留 tmp");
+
+        let loaded = read_embed_cache(&path).unwrap();
+        assert_eq!(loaded.len(), entries.len());
+        for (hash, vec) in &entries {
+            let got = loaded.get(hash).expect("round-trip 必须保留每个键");
+            assert_eq!(got.len(), VECTOR_DIM);
+            assert_eq!(**got, **vec, "向量必须逐位相等（f32 不做文本化）");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 头部任一不匹配（version / dim / backend）⇒ 整份丢弃（Err），不静默混用。
+    #[test]
+    fn test_embed_cache_rejects_header_mismatch() {
+        let dir = tmp_cache_dir("hdr");
+        let path = dir.join("vectors.embed.cache");
+        let entries: Vec<(u64, Arc<Vec<f32>>)> =
+            vec![(42, Arc::new(vec![0.25f32; VECTOR_DIM]))];
+        write_embed_cache(&path, &entries).unwrap();
+
+        let good = std::fs::read(&path).unwrap();
+
+        // version（偏移 4..8）
+        let mut bad = good.clone();
+        bad[4..8].copy_from_slice(&(EMBED_CACHE_VERSION + 1).to_le_bytes());
+        std::fs::write(&path, &bad).unwrap();
+        assert!(read_embed_cache(&path).is_err(), "版本不匹配必须判废");
+
+        // dim（偏移 8..12）
+        let mut bad = good.clone();
+        bad[8..12].copy_from_slice(&((VECTOR_DIM + 1) as u32).to_le_bytes());
+        std::fs::write(&path, &bad).unwrap();
+        assert!(read_embed_cache(&path).is_err(), "维度不匹配必须判废");
+
+        // backend（偏移 16 起，长度由 12..16 给出）
+        let mut bad = good.clone();
+        bad[16] = b'X'; // 破坏 backend 首字节
+        std::fs::write(&path, &bad).unwrap();
+        assert!(read_embed_cache(&path).is_err(), "后端不匹配必须判废");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 毒化数据：坏魔数 / 截断 / 空文件 ⇒ 一律 Err，绝不 panic（INVARIANTS #11 同族）。
+    #[test]
+    fn test_embed_cache_tolerates_corruption() {
+        let dir = tmp_cache_dir("poison");
+        let path = dir.join("vectors.embed.cache");
+
+        std::fs::write(&path, b"").unwrap();
+        assert!(read_embed_cache(&path).is_err(), "空文件");
+
+        std::fs::write(&path, b"NOPE").unwrap();
+        assert!(read_embed_cache(&path).is_err(), "坏魔数");
+
+        let entries: Vec<(u64, Arc<Vec<f32>>)> =
+            vec![(7, Arc::new(vec![0.5f32; VECTOR_DIM]))];
+        write_embed_cache(&path, &entries).unwrap();
+        let good = std::fs::read(&path).unwrap();
+        std::fs::write(&path, &good[..good.len() - 7]).unwrap();
+        assert!(read_embed_cache(&path).is_err(), "截断");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **本件的核心断言**：重启后（进程内缓存清空）第二次 build 零推理。
+    #[test]
+    fn test_second_build_needs_no_inference() {
+        let dir = tmp_cache_dir("restart");
+        let idx_path = dir.join("vectors.usearch");
+        let nodes = three_nodes("restart");
+
+        // 生产路径每次重建都新建实例（engine/src/engine/pipeline.rs 与
+        // hologram-storage/src/store.rs 同款）——这里按同一姿势模拟。
+        let first = CodeVectorIndex::new(&idx_path).build_with_stats(&nodes).unwrap();
+        assert_eq!(first.total, 3);
+        assert_eq!(first.misses, 3, "冷启动：三个节点都必须真推理");
+        assert_eq!(first.indexed, 3);
+
+        // 模拟进程重启：清掉进程级 static 缓存
+        clear_process_vector_cache();
+
+        let second = CodeVectorIndex::new(&idx_path).build_with_stats(&nodes).unwrap();
+        assert_eq!(second.misses, 0, "磁盘缓存必须让重启后的重建零推理");
+        assert_eq!(second.disk_hits, 3, "三条全部来自磁盘缓存");
+        assert_eq!(second.cache_hits, 0, "进程内缓存已被清空");
+        assert_eq!(second.indexed, 3);
+
+        // 第三次（磁盘缓存 + 进程内都在）仍然零推理
+        let third = CodeVectorIndex::new(&idx_path).build_with_stats(&nodes).unwrap();
+        assert_eq!(third.misses, 0);
+        assert_eq!(third.cache_hits, 3, "本轮应走进程内缓存");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 同一个实例重建两次都必须成功——usearch high-level wrapper 拒绝重复键，
+    /// 旧代码没有重置索引，二次 build 必炸（2026-10-28 由本批测试暴露的既有死路）。
+    #[test]
+    fn test_rebuild_same_instance_is_ok() {
+        let dir = tmp_cache_dir("reuse");
+        let idx_path = dir.join("vectors.usearch");
+        let vi = CodeVectorIndex::new(&idx_path);
+        let nodes = three_nodes("reuse");
+
+        assert_eq!(vi.build(&nodes).unwrap(), 3);
+        assert_eq!(vi.build(&nodes).unwrap(), 3, "二次重建不应因 usearch 重复键失败");
+        assert!(!vi.search("embed_cache_fn_1", 1).unwrap().is_empty(), "重建后搜索应可用");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
