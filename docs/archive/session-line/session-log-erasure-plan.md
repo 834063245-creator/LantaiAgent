@@ -9,7 +9,7 @@
 > 状态：**已裁定（2026-09-19 用户「那就按A改」）→ A 案已落地**：设计裁定见
 > `docs/plans/session-tree-plan.md` §12.9，落地记录见同件 §12.10。
 > 关联：`docs/plans/session-tree-plan.md` §0/§6/§9（P4-② 不做裁定的落地后果指向本件）；
-> `docs/plans/session-persistence-dsh-port-plan.md` §三「换轨后仍留的口子」第 2 条（同一口子，本件是它的判定）。
+> `docs/archive/session-persistence-dsh-port-plan.md` §三「换轨后仍留的口子」第 2 条（同一口子，本件是它的判定）。
 
 > **落地后的形状与本文档 §3 的一处偏差（留痕）**：动手时查实读路径
 > （`loadSessionLogFile`）要求 **seq 连续**（`ev.seq !== 事件序号` 即判「序号断裂」停止认领），

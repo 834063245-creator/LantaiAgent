@@ -335,7 +335,7 @@ cd D:\HoloGramHG\src-ui; $env:NODE_ENV='test'; npx vitest run tests/chat-session
 ## 9. 换轨后状态（2026-09-15 三期竣工回写）
 
 用户拍板「看别人怎么存盘的」→ 按 DSH 参照换轨（计划与施工记录见
-`docs/plans/session-persistence-dsh-port-plan.md`）。**§2 的机制表在换轨后的命运**：
+`docs/archive/session-persistence-dsh-port-plan.md`）。**§2 的机制表在换轨后的命运**：
 
 | 机制 | 换轨后 | 说明 |
 |---|---|---|
@@ -347,12 +347,17 @@ cd D:\HoloGramHG\src-ui; $env:NODE_ENV='test'; npx vitest run tests/chat-session
 | M6 无句柄 = 静默不落盘 | ✅ 解决 | P0 的 outcome + 可见 warn；且内容真源改为日志后，「句柄在场」不再是落盘前提 |
 | M7 退出时防抖被重挂 | ✅ 解决 | 退出路径改为「取消防抖 + 排空队列」 |
 | M8 空 projectPath 拼错路径 | ✅ 解决 | `workspaceSessionsDir('')` 响亮报错（P0） |
-| M9 读面静默跳过 | 🟡 部分解决 | 卷集改按 `.ndjson` 认卷后，读取失败仍只进 console（可见化未接线） |
+| M9 读面静默跳过 | ✅ 解决（2026-10-29 收口） | 侧栏清单 2026-09-18 已上抛可见；**单卷读失败**同批补齐：`readVolumeLogMessages` 区分「文件不在」与「文件在但读不出」（后者抛），`readVolumeData` 不再把失败吞成 null，画布剪枝/改名/开卷各自保留现场并明示——读失败不再伪装成「卷不存在」 |
 
 **权威面终态**：`.ndjson` 事件日志 = 卷本体与内容真源（扫描 + 断尾修复 + 悬空工具调用
 配平后 replay 投影）；`.json` = 带 `{seq, ver}` 的 UI 投影缓存（陈旧即不采信、重建）。
 契约面随之升到 v33（`delete_volume` 退役 / 新增 `delete_log`）。
 
-**仍留的口子**（详见计划文档末节）：日志体积无压实策略；跨进程多实例并发未裁决。
+**仍留的口子（2026-10-29 全清）**：① 日志体积——源头是「每次开卷重写系统提示全文」，
+已治（同提示开卷 = 零字节事实，见 `agent.adoptSessionLog`），并补尺寸观测（单卷 >8 MiB warn）；
+② 跨进程多实例——**裁「单写者 = 单实例」并强制**（`src-tauri/src/single_instance.rs` 的
+`~/.lantai/instance.lock` 文件锁）；③ 读面没走链——读前排空同卷写后队列（`awaitLogQuiescent`）。
+收口施工单与实测数字：[`plans/session-persistence-closeout-plan.md`](archive/session-persistence-closeout-plan.md)；
+换轨计划文已归档（`docs/archive/session-persistence-dsh-port-plan.md`）。
 （触发点 B 已收官：宣布落盘 → 排空屏障 → 才执行工具体；phase-5 事件序列基线两轨重录，
 CR 见 `docs/archive/agent-core-convergence/baseline-change-request.md`。）

@@ -373,6 +373,41 @@ imageChannel 门控 / 角色口径 / 预算与 user 共用）、`tests/provider-
 
 ---
 
+## 16. 会话卷是单写者：单实例 + 每卷一个写面 + 读前屏障
+
+**文件**: `src-tauri/src/single_instance.rs`（单实例锁）· `src-ui/src/app/chat/session-log-store.ts`
+（`_live` 按路径寻址 · `awaitLogQuiescent`）· `src-tauri/src/confined_fs.rs`（`append_text_durable` /
+`write_text_durable`）
+
+```
+⚠️ INVARIANT：会话事件日志（`.ndjson`）是**单写者**模型，三条缺一不可。
+   1. **一个进程只允许一个实例**（启动期 `~/.lantai/instance.lock` 的 OS 文件锁；拿不到
+      ⇒ 原生提示 + 退出）。每卷一个 seq 游标——两实例并行写同一文件 = 重复/缺号
+      （重放面判「序号断裂」⇒ 打开即截断丢尾）+ 卷号账 `_issue.json` 撞号。
+   2. **每卷同一时刻只有一个写面**（`_live` 键 = 文件路径）：第二个写面接入前必须等
+      旧写面**退休**（排空 → **退订 onEvent** → 断 sink）。两个队列并行写 = 必坏。
+   3. **读盘前先排空该卷写面**（`loadSessionLogFile` 的第一个 await；读面唯一入口
+      `readVolumeLogMessages` / `openSessionLog`）。写后队列是该文件唯一写入面，
+      排空 = 文件静默；否则读者会把「写到一半的末行」判成断尾，随后打开路径的
+      `truncate_log(committedBytes)` 会把在途批次切掉（数据丢失且无信号）。
+
+✅ 正确：读走 `readVolumeLogMessages`/`loadSessionLogFile`（自带屏障）；写只经
+   `SessionLogWriteBehind`（durable append）；销毁走 `detachSessionLogStore`（退订，不只是断 sink）
+❌ 错误：绕过 seam 直读 `.ndjson` 判卷内容；同一卷起第二条写队列；detach 只断 sink 不退订
+   （退役写面仍会自行落盘）；把「读失败」当「卷不存在」（→ 画布剪枝会把真卷当幽灵删掉）
+```
+
+**炸过**: 无单次事故（2026-10-29 换轨收口时按「结构性风险」立规——此前三条全靠「单进程 +
+同卷不并发 open」的隐含假设，代码不强制）。同族既有事故：S3 写面无串行化（v1 覆盖 v2，
+`session-exit-flush.test.ts` 真变红）、M9 读面静默少一卷。
+
+**守护**: `tests/session-log-store.test.ts` 三例（读前屏障 · 退休退订 · 同路径写面接替）·
+`src-tauri/src/single_instance.rs` 的 `second_handle_cannot_lock_the_same_file`（OS 锁语义）·
+`tests/chat-session.test.ts`（读失败不再伪装成卷不存在）· `tests/session-log-adopt.test.ts`
+（同提示开卷零字节事实）。
+
+---
+
 ## 使用方式
 
 每个 Agent prompt 模板里加一行：

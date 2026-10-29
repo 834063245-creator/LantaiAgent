@@ -1,5 +1,10 @@
 # 会话存盘换轨：DSH 参照审计与移植计划（2026-09-15）
 
+> **已归档（2026-10-29 · 换轨收口）**——Phase 1/2/3 + 触发点 B + 撤回即压实全部竣工；
+> §三「换轨后仍留的口子」三条**已全清**（日志体积治源 · 单实例裁决 · 读面屏障），
+> 收口施工单与实测：[`../plans/session-persistence-closeout-plan.md`](session-persistence-closeout-plan.md)。
+> 本文件保留作对照与取证（DSH 七支柱的逐条证据仍有效）；现状以代码 + `INVARIANTS.md` #16 为准。
+
 > 触发：用户拍板「预期在这改来改去，不如看看别人都是怎么存盘的」——去 `D:\useful\deepseek-harness`
 > （HEAD `4e84901e64`）读参照实现。
 > 前置：本仓 `docs/session-persistence-audit.md`（四层缺陷审计）+ commit `d563ce74`（P0 止血）。
