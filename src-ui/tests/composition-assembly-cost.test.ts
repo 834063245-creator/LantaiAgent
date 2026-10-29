@@ -146,7 +146,7 @@ describe('装配成本形态（确定性计数，与机器负载无关）', () =
     const q = resolveRoster(standard, []);
     expect(p).not.toBe(q); // 纯函数不共享产物
     expect(p.tools.map((r) => r.id)).toEqual(q.tools.map((r) => r.id)); // 但序与内容一致
-    expect(p.tools.map((r) => r.id)).toEqual(standard.tools.map((r) => r.id)); // 零 patch = 恒等
+    expect(p.tools.map((r) => r.id)).toEqual(standard.tools.filter((r) => r.defaultOff !== true).map((r) => r.id)); // 零 patch = 恒等（defaultOff 行除外）
   });
 
   it('⑦ seam 作用域查表零拷贝 + 对称清理（P2 装配期值注入的调用期成本形态）', () => {

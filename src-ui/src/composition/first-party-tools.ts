@@ -27,6 +27,7 @@ import { agentIsolationDomainPlugin } from '../plugins/builtin/agent-isolation-d
 import { askDomainPlugin } from '../plugins/builtin/ask-domain';
 import { assetDomainPlugin } from '../plugins/builtin/asset-domain';
 import { browserDesktopDomainPlugin } from '../plugins/builtin/browser-desktop-domain';
+import { compositionDomainPlugin } from '../plugins/builtin/composition-domain';
 import { cordisDomainPlugin } from '../plugins/builtin/cordis-domain';
 import { fsDomainPlugin } from '../plugins/builtin/fs-domain';
 import { gitDomainPlugin } from '../plugins/builtin/git-domain';
@@ -77,6 +78,9 @@ export function firstPartyToolPlugins(): LantaiPlugin[] {
     officeDomainPlugin,
     // goal 域（2026-10-23 DSH 式目标域——goal 工具 + 目标提示段；表尾追加）
     goalModePlugin,
+    // 组合作者面（2026-10 创作者模式最小闭环——composition 工具，defaultOff：
+    // 只由 creator 组合回开；表尾追加 = 前缀缓存友好）
+    compositionDomainPlugin,
   ];
 }
 

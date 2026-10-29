@@ -118,11 +118,15 @@ describe('S6 P1b 选择集语义：defaultOff 行默认不进组合，preset 写
     }
   });
 
-  it('出厂面字节中性：第一方行零声明 defaultOff ⇒ 未选中栏恒空（谁声明谁生效）', async () => {
+  it('出厂面：唯一的 defaultOff 行（composition 工具）默认不进组合——未选中栏只列它', async () => {
+    // 2026-10 创作者模式最小闭环：composition-domain 是 defaultOff 语义的首个生产者
+    // （S6 P1 立语义时注释就写着「此前无生产者」）——本条从「恒空」翻成「只列它」，
+    // 正是「谁声明谁生效」的活证据。
+    const ROW = 'plugin/hologram/composition-domain/composition';
     await withFirstPartyToolChannel(async () => {
       const r = resolveRoster(factoryComposition(), []);
-      expect(r.diagnostics.unselected).toEqual([]);
-      expect(ids(r.tools)).toEqual(ids(factoryComposition().tools));
+      expect(r.diagnostics.unselected).toEqual([ROW]);
+      expect(ids(r.tools)).toEqual(ids(factoryComposition().tools).filter((id) => id !== ROW));
     });
   });
 });

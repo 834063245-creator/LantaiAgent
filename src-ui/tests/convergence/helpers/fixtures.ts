@@ -8,6 +8,7 @@ import { registerTaskImplementation } from '../../../src/agent/task-impl';
 import type { Tool, ToolExecutor, ToolRegistry } from '../../../src/agent/tool';
 import { withFirstPartyCapabilityChannel } from '../../../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../../../src/composition/first-party-tools';
+import { resolvePresetComposition } from '../../../src/composition/presets';
 import type { BuiltinToolRow } from '../../../src/composition/tool-rows';
 import type { SubAgentSpawner } from '../../../src/plugins/builtin/agent-domain/subagent-tools';
 import { SubAgentPool } from '../../../src/plugins/builtin/subagent-in-process/coordinator';
@@ -66,7 +67,12 @@ export async function buildStandardRegistry(
       // S4-4 甲：toolRows 支持惰性 thunk——在通道腰内求值使解析域纳入
       // 当前第一方贡献行（minimal 的减法解析含当前贡献行 + state-hooks
       // capability 行；数组直传兼容）。
-      const rows = typeof toolRows === 'function' ? toolRows() : toolRows;
+      // defaultOff 行（S6 P1）不进标准装配：生产路径走 effectiveComposition()
+      // （resolveRoster 已把 defaultOff 行初始置 disabled），夹具的「缺省 = 出厂
+      // 组合」也必须过同一把尺子——否则 will 出现「夹具可见、生产不可见」的假漂移
+      // （2026-10 creator 行首现时实测：full 18→19 全来自这条绕过）。
+      const explicitRows = typeof toolRows === 'function' ? toolRows() : toolRows;
+      const rows = explicitRows ?? resolvePresetComposition('standard').tools;
       const reg = await buildToolRegistry({
         deps: {},
         taskManager: new TaskManager(),

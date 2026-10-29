@@ -95,7 +95,8 @@ describe('composition/roster（S2-0 组合引擎）', () => {
           expect(f.capabilities.map((c) => c.id)).toEqual(capKeys());
           // 恒等解析在快照面同样成立（空层列表 = 快照全等）
           const r = resolveRoster(f, []);
-          expect(ids(r.tools)).toEqual(ids(f.tools));
+          // defaultOff 行（composition 工具）默认关：恒等 = 快照活行（不是原始表）
+          expect(ids(r.tools)).toEqual(ids(f.tools.filter((row) => row.defaultOff !== true)));
           expect(r.prompt.map((s) => s.id)).toEqual(f.prompt.map((s) => s.id));
           expect(r.capabilities.map((c) => c.id)).toEqual(f.capabilities.map((c) => c.id));
         }),
@@ -142,7 +143,9 @@ describe('composition/roster（S2-0 组合引擎）', () => {
           ],
         },
       ]);
-      const expected = ids(pluginToolRows()).filter((id) => id !== WEB_ROW && id !== BROWSER_DESKTOP_ROW);
+      const expected = ids(resolveRoster(factoryComposition(), []).tools).filter(
+        (id) => id !== WEB_ROW && id !== BROWSER_DESKTOP_ROW,
+      );
       expect(ids(r.tools)).toEqual(expected);
       // 诊断按表序收集（描述终态组合，与 patch 声明序无关——web 行居表首）
       expect(r.diagnostics.disabled).toEqual([WEB_ROW, BROWSER_DESKTOP_ROW]);
@@ -196,7 +199,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
         { tools: [{ id: WEB_ROW, disabled: true }] },
         { tools: [{ id: WEB_ROW, disabled: false }] },
       ]);
-      expect(ids(r.tools)).toEqual(ids(pluginToolRows())); // 全量（web 被重新启用）
+      expect(ids(r.tools)).toEqual(ids(resolveRoster(factoryComposition(), []).tools)); // 全量活行（web 被重新启用；defaultOff 行仍不进）
       expect(r.diagnostics.disabled).toEqual([]);
     });
   });

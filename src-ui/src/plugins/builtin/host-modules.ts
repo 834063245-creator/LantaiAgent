@@ -173,9 +173,16 @@ import { ContributionChannel } from '../../composition/contribution-channel';
 import { activeFsProviders } from '../../composition/fs-service';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { reapplyComposition, selectPreset } from '../../composition/preset-assembly';
-import { discoverPresets, stringifyPatchYaml } from '../../composition/preset-discovery';
+import { discoverPresets, parsePatchYamlText, stringifyPatchYaml } from '../../composition/preset-discovery';
 import { builtinPresets, isValidPresetId } from '../../composition/presets';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
+// 创作者模式最小闭环（2026-10）：composition-domain 的作者面判据（校验/解析/行寻址）
+import {
+  CompositionPatchError,
+  factoryComposition,
+  parseCompositionPatch,
+  resolveRoster,
+} from '../../composition/roster';
 import { ownerIdOf, ownerSeamView } from '../../composition/seam-scope';
 import { activeLlmAdapters } from '../../composition/services';
 import { activeShellProviders } from '../../composition/shell-service';
@@ -417,6 +424,7 @@ type FaceBridgeSeal = Record<string, unknown> &
   Record<keyof typeof import('./cordis-domain/host'), unknown> &
   Record<keyof typeof import('./asset-domain/host'), unknown> &
   Record<keyof typeof import('./office-domain/host'), unknown> &
+  Record<keyof typeof import('./composition-domain/host'), unknown> &
   Record<keyof typeof import('./prompt-segments/host'), unknown> &
   Record<keyof typeof import('./capability-segments/host'), unknown> &
   Record<keyof typeof import('./plan-mode/host'), unknown> &
@@ -445,6 +453,13 @@ const faceDeps = {
   stringifyPatchYaml,
   builtinPresets,
   isValidPresetId,
+  // 创作者模式最小闭环（2026-10）：composition 工具（list/read/validate/write）
+  // 的校验与行寻址面——读写 preset 要的解析真源，产物不裸 import。
+  parsePatchYamlText,
+  factoryComposition,
+  parseCompositionPatch,
+  resolveRoster,
+  CompositionPatchError,
   // provider 配置文件通道（2026-09-24 配方改文件批）：路径 / 逐节错误 / 写盘
   saveProvidersDoc,
   providersFilePath,

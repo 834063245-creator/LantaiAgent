@@ -128,7 +128,9 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
       expect(tools.all().map((t) => t.name())).toContain('enter_plan_mode');
       // 缺省路径：ctx composition 服务 = runtime 组合（Agent 可见自己的装配真源）
       expect(composition).not.toBeNull();
-      expect(ids(composition ? composition.tools : [])).toEqual(ids(factoryComposition().tools)); // factory 组合
+      expect(ids(composition ? composition.tools : [])).toEqual(
+        ids(factoryComposition().tools.filter((row) => row.defaultOff !== true)),
+      ); // factory 组合（defaultOff 行不进）
       h.dispose();
     });
   });
@@ -231,7 +233,7 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
   it('resolveCurrentComposition：standard ≡ factory（无用户层；通道腰内 = 全量行）', async () => {
     await withFirstPartyToolChannel(async () => {
       const r = resolveCurrentComposition('standard');
-      expect(ids(r.tools)).toEqual(ids(factoryComposition().tools));
+      expect(ids(r.tools)).toEqual(ids(factoryComposition().tools.filter((row) => row.defaultOff !== true)));
       expect(ids(r.tools).length).toBeGreaterThan(0); // 通道内 factory = 十四族贡献行
     });
   });
@@ -425,7 +427,7 @@ describe('F1/F1b/F5：preset 层捕获网 + 选择校验 + 立即回写（2026-0
       expect(() => resolveCurrentComposition()).toThrow(/未知行 id/);
       // 生产入口 = 捕获网：回退「只叠用户层」的组合，绝不穿出去
       const r = effectiveComposition();
-      expect(ids(r.tools)).toEqual(ids(factoryComposition().tools));
+      expect(ids(r.tools)).toEqual(ids(factoryComposition().tools.filter((row) => row.defaultOff !== true)));
       expect(usePresetStore.getState().error).toContain('未知行 id');
     });
   });

@@ -22,7 +22,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getProxyPort } from '../provider/transport';
 import { usePresetStore } from '../state/preset-store';
 import { builtinPresets, isValidPresetId, type PresetEntry, type PresetMetadata } from './presets';
-import { parseCompositionPatch } from './roster';
+import { type CompositionPatch, parseCompositionPatch } from './roster';
 
 /** discovery 消费的最小 fetch 文本形状（与 patch-loader 同款，测试可注入）。 */
 export type FetchTextLike = (url: string) => Promise<{
@@ -144,6 +144,19 @@ async function resolveOrigin(): Promise<string> {
  *  手拼 YAML 是明确否掉的旧路：转义/缩进差异会造出不可解析的 patch 文件。 */
 export function stringifyPatchYaml(patch: unknown): string {
   return `${stringifyYaml(patch, { lineWidth: 0 }).trimEnd()}\n`;
+}
+
+/** YAML 文本 → 校验后的 patch（创作者工具 composition(validate/write) 的判据面）。
+ *  与 discovery 的解析同源同包：语法错与 schema 错都**具名返回**、不抛不改写；
+ *  行 id 可寻址性不在这里判（要真解析组合才知道，归 preset-assembly 的尺子）。 */
+export function parsePatchYamlText(text: string): { ok: true; patch: CompositionPatch } | { ok: false; error: string } {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(text);
+  } catch (e) {
+    return { ok: false, error: 'YAML 语法错误: ' + (e instanceof Error ? e.message : String(e)) };
+  }
+  return parseCompositionPatch(parsed);
 }
 
 /** 取索引 JSON 数组；不可用返回 null（404/非数组/异常统一非错误）。 */

@@ -4,7 +4,7 @@
 > 从 `buildToolRegistry` 出厂行表装配产物生成 — 勿手改；工具面变更后重新生成并同 commit。
 > 本文档不含时间戳：字节稳定是 `--check` 构建守护的前提。
 
-可见工具 18 个（域折叠形态 + 常驻件）；隐藏旧名 107 个（附录）。
+可见工具 19 个（域折叠形态 + 常驻件）；隐藏旧名 107 个（附录）。
 
 装配说明：标准注册表 = composition 行表出厂序；**引擎侧工具面不在这里**——图谱引擎
 （`hologram-engine serve`）的可见面由引擎自己决定（契约 v5 = 域 + action 折叠，见
@@ -25,6 +25,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | [`update_asset`](#update_asset) | ✓ | — | Update an existing asset block in-place by assetId (payload/presentation replace; the block id and pin position keep unchanged — pinned copies update live). Rules: kind is NOT changeable (changing semantics means creating a new asset with show_asset); presentation is changeable (skin swap, within the same kind white-list). Errors name what went wrong and what to do instead. |
 | [`list_block_kinds`](#list_block_kinds) | ✓ | — | List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically). |
 | [`office`](#office) | — | 12 | Read, edit, and produce Office files (.docx / .xlsx / .pptx) through OfficeCLI — the same engine as the `officecli` command line, but with typed actions and no quoting on your side. |
+| [`composition`](#composition) | — | 4 | Read and author agent compositions (presets). A preset is a named patch layered on the factory composition: it enables/disables registered rows, replaces or inserts prompt sections, and caps seams. Use composition(list) to see presets and available row ids, composition(validate) to check a patch before writing it, and composition(write) to save a user preset under the composition directory. A preset affects only sessions that select it; an existing session keeps the composition it started with. |
 | [`fs`](#fs) | — | 9 | File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. Path params accept workspace-root-relative paths (e.g. "src/agent/tool.ts"); fs(list)/fs(glob) may omit the path — omitted = the workspace root. fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed). |
 | [`shell`](#shell) | — | 4 | Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. Working directory is sticky per agent (a successful cd persists across calls; results end with a [cwd: ...] line). bash_output returns only NEW bytes since your last read — polling watch modes/dev servers is cheap. Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead. |
 | [`git`](#git) | — | 13 | Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. path may be omitted for every action — omitted = the workspace root. Key semantics: file = one file for diff/discard/blame (omit it on diff = all changes); files = comma-separated list (or "." for all) for stage — commit accepts files too and auto-stages them before committing. |
@@ -139,6 +140,26 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | `page` | — | integer | screenshot 的页号（1-based）。 |
 | `grid` | — | boolean | screenshot 出整册联系表（--grid auto）而不是单页。 |
 | `depth` | — | integer | get 的展开深度。 |
+
+### `composition`
+
+> Read and author agent compositions (presets). A preset is a named patch layered on the factory composition: it enables/disables registered rows, replaces or inserts prompt sections, and caps seams. Use composition(list) to see presets and available row ids, composition(validate) to check a patch before writing it, and composition(write) to save a user preset under the composition directory. A preset affects only sessions that select it; an existing session keeps the composition it started with.
+
+- 只读：否
+- 域：`composition`
+- action 枚举（4）：`list` · `read` · `validate` · `write`
+- 只读 action：`list` · `read` · `validate`
+
+| 参数 | 必选 | 类型 | 说明 |
+|------|------|------|------|
+| `action` | ✓ | `list` / `read` / `validate` / `write` | Which operation to perform. |
+| `id` | — | string | Preset id (read/write): lowercase letters, digits and hyphens. |
+| `yaml` | — | string | Patch YAML text (validate/write): the roster.patch.yml body. |
+| `name` | — | string | Display name written into preset.yml (write). |
+| `description` | — | string | Display description written into preset.yml (write). |
+| `overwrite` | — | boolean | write: replace an existing user preset (default false = refuse). |
+| `rows` | — | boolean | list: include the addressable row ids (tool rows, prompt sections, capabilities, shell rows, seams). |
+| `filter` | — | string | list(rows): only rows whose id contains this substring. |
 
 ### `fs`
 

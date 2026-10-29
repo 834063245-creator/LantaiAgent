@@ -18,7 +18,6 @@
 import { describe, expect, it } from 'vitest';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
-import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import {
   builtinPresetById,
   builtinPresets,
@@ -39,7 +38,7 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     const table = builtinPresets();
     // V5 拆除（2026-08-22）：paper preset 行退役——纸壳是唯一主界面，
     // 主视图落点不再经 preset 分叉。
-    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal']);
+    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator']);
     expect(table.every((p) => p.builtin)).toBe(true);
   });
 
@@ -108,7 +107,7 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
       ];
       const r = resolvePresetComposition('custom', { userPresets });
       expect(ids(r.tools)).not.toContain(WEB_ROW);
-      expect(ids(r.tools)).toEqual(ids(pluginToolRows()).filter((id) => id !== WEB_ROW));
+      expect(ids(r.tools)).toEqual(ids(resolvePresetComposition('standard').tools).filter((id) => id !== WEB_ROW));
     });
   });
 
@@ -134,7 +133,7 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
       const r = resolvePresetComposition('ghost', {
         userPatch: { tools: [{ id: WEB_ROW, disabled: true }] },
       });
-      expect(ids(r.tools)).toEqual(ids(pluginToolRows()).filter((id) => id !== WEB_ROW));
+      expect(ids(r.tools)).toEqual(ids(resolvePresetComposition('standard').tools).filter((id) => id !== WEB_ROW));
     });
   });
 
@@ -142,7 +141,8 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     await withFirstPartyToolChannel(async () => {
       const broken = { id: 'broken', builtin: false, patch: null, error: 'YAML 语法错误: x' };
       const r = resolvePresetComposition('broken', { userPresets: [broken] });
-      expect(ids(r.tools)).toEqual(ids(pluginToolRows()));
+      // defaultOff 行（composition 工具）默认不进任何组合：兜底面 = standard 的活行表
+      expect(ids(r.tools)).toEqual(ids(resolvePresetComposition('standard').tools));
     });
   });
 

@@ -370,5 +370,13 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["workspaces"]
+  },
+  {
+    "dir": "composition-domain",
+    "buildOrder": 39,
+    "description": "组合作者面工具（composition：list/read/validate/write；默认关——只由 creator 组合回开）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
   }
 ]

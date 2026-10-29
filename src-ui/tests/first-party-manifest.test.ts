@@ -36,7 +36,7 @@ describe('first-party-manifest（清单完备性守护）', () => {
     }
   });
 
-  it('计数快照（58 = 19 内核 service + 39 出厂 feature）', () => {
+  it('计数快照（59 = 19 内核 service + 40 出厂 feature）', () => {
     // graph-service / graph-builtin / engine-domain 随图谱功能全量退役（2026-09-09）：45 → 42
     // office-domain 新增（2026-09-13，C 路：OfficeCLI 一等域工具，取代 MCP 挂接）：42 → 43
     // plan-mode 新增（2026-09-24 批 6a：规划模式实现归产物，内核 capability 查登记表）：43 → 44
@@ -51,7 +51,7 @@ describe('first-party-manifest（清单完备性守护）', () => {
     // bundled-engine 新增（2026-09-26 批 10 部件三：引擎接线产物化）：56 → 57
     // pre-step-service 新增（2026-10-13 agent-hooks-plan 一期：步前裁决贡献面）：57 → 58
     // 二期面扩展改名 steps-service（2026-10-13：ctx.preStep → ctx.steps + turn-stopping；计数不变）
-    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(58);
+    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(59);
   });
 
   it('两类都有存量：service 平台服务（常驻）与 feature 功能插件（可禁用）', () => {
