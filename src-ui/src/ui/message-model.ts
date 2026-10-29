@@ -139,13 +139,16 @@ export interface PlanPart {
   planFilePath: string;
   content: string;
   options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
+  /** 审批终态（**决议时写回，随卷持久化**）：卡片重挂载 / 重载后按它保持终态，
+   *  不再长回「待批准」（用户报的状态回退病灶）。pending 之外的取值 = 已处理。 */
   status: 'pending' | 'approved' | 'revise' | 'rejected';
   /** 用户从多种方案中选择时的选项标签。 */
   selectedLabel?: string;
   /** 用户请求修改时的反馈文本。 */
   feedback?: string;
-  /** 解决审批的回调 — 创建时存储，用户点击按钮时调用。 */
-  _callback?: (response: PlanApprovalResponse) => void;
+  /** 解决审批的回调 — 创建时存储，用户点击按钮时调用。
+   *  返回值 = 决议是否真被采纳（false = 审批等待已超时，卡片据此不写终态）。 */
+  _callback?: (response: PlanApprovalResponse) => boolean;
 }
 
 /** 资产块 — Agent 生成的语义资产（show_asset / update_asset 通道，协议

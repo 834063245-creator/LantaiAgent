@@ -124,7 +124,9 @@ export function createExitPlanModeTool(planState: PlanStateManager, eventSink?: 
               planContent,
               options,
               callback: (response) => {
-                if (settled) return;
+                // 返回值 = 决议是否真被采纳：审批等待超时后（timer 已 resolve）再点
+                // 卡面按钮 = 该决议不生效，回 false 让卡片别写「已批准」这类谎。
+                if (settled) return false;
                 settled = true;
                 clearTimeout(timer);
                 switch (response.decision) {
@@ -159,6 +161,7 @@ export function createExitPlanModeTool(planState: PlanStateManager, eventSink?: 
                     resolve('用户拒绝了计划。规划模式仍然激活。可以重新探索并修改计划。');
                     break;
                 }
+                return true;
               },
             },
           });

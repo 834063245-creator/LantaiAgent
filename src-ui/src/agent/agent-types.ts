@@ -52,7 +52,8 @@ export interface PlanReviewEvent {
   planFilePath: string;
   planContent: string;
   options?: { label: string; description: string; outcome?: import('./plan/plan-contract').PlanOptionOutcome }[];
-  callback: (response: import('./plan/plan-contract').PlanApprovalResponse) => void;
+  /** 返回值 = 决议是否真被采纳（false = 审批等待已超时，见 PlanReviewRequest 注）。 */
+  callback: (response: import('./plan/plan-contract').PlanApprovalResponse) => boolean;
 }
 
 /** 确认卡决议（confirm kind，plan 审批语义的资产化泛化）：

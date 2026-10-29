@@ -352,7 +352,7 @@ describe('fold：subagent 组规则 + 折叠行文案', () => {
       description: 'd',
       status: 'done',
       childIds: [],
-      items: [{ type: 'plan', planId: 'p1', planFilePath: '', content: '', status: 'pending', _callback: () => {} }],
+      items: [{ type: 'plan', planId: 'p1', planFilePath: '', content: '', status: 'pending', _callback: () => true }],
     };
     expect(defaultFolded('subagent', planPending)).toBe(false);
   });

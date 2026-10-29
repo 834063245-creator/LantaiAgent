@@ -191,7 +191,10 @@ describe('rebuild — 拟策块恢复', () => {
     expect(plan).toBeDefined();
     expect(plan?.content).toBe(planBody);
     expect(plan?.planFilePath).toBe('D:/ws/.lantai/plans/plan-123.md');
-    expect(plan?.status).toBe('pending');
+    // 2026-10-29 拟策终态批（显式规格变更）：恢复出的卡按结果文本判终态——
+    // 「## 已批准计划：」只出现在计划被采纳之后 ⇒ status = approved（旧断言
+    // 'pending' 是「审批不写回 part」时代的对齐，恰是用户报的状态回退病灶）。
+    expect(plan?.status).toBe('approved');
     expect(plan?.options?.map((o) => o.label)).toEqual(['全量归档', '保守：先归 18 份']);
   });
 

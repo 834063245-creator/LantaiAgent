@@ -34,7 +34,6 @@ import katex from 'katex';
 import type { ReactNode } from 'react';
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../../../agent/plan/plan-contract';
-import type { PlanPart } from '../../../ui/message-model';
 import type { BlockRendererContribution, BlockRendererProps } from '../../../composition/renderer-service';
 import { foldLabel, foldPreviewLine } from '../../../paper/fold';
 import {
@@ -62,6 +61,7 @@ import { fileExtOf, VIEWER_IMAGE_MIMES } from '../../../paper/viewer-exts';
 // A4 销账 W1（2026-09-28）：判据本体住内核 `paper/translate.ts`（带状态——块 id 发号器
 // 经 `createBlock` 落 `paper/block-model.ts` 的 `let blockSeq`），故走本包宿主桥。
 import type { ChatImageRef } from '../../../provider/types';
+import type { PlanPart } from '../../../ui/message-model';
 import {
   isDiffLang,
   MermaidBlock,
@@ -882,7 +882,7 @@ function PlanBody({ block }: BlockRendererProps) {
     /** 转译快照的审批态（重译之后才跟上——**真源是活引用 part**，见下） */
     status?: PlanPart['status'];
     options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
-    _callback?: (response: PlanApprovalResponse) => boolean | void;
+    _callback?: (response: PlanApprovalResponse) => boolean;
   };
   // 拟策内容 = 完整 markdown 体（2026-09-10 拟策卡渲染专项）：标题/列表/加粗/
   // 围栏码/表格按结构渲染（旧 parsePlanItems 剥标记平铺成行号清单——「太毛坯」
@@ -936,7 +936,7 @@ function PlanBody({ block }: BlockRendererProps) {
   const settle = (response: PlanApprovalResponse) => {
     // 先把决议结论交回等待中的工具（返回值 = 是否真被采纳），采纳才写终态——
     // 审批窗口已过的情形卡片说「未生效」，不写一个 agent 从未收到的「已批准」。
-    const accepted = cb(response) !== false;
+    const accepted = cb(response);
     if (accepted && part && part.type === 'plan') {
       part.status = response.decision;
       if (response.decision === 'approved') {

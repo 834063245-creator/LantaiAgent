@@ -79,7 +79,7 @@ function planPartMessage(): AssistantMessage {
         planFilePath: '/p/.lantai/plans/plan-x.md',
         content: '1. 方案',
         status: 'pending',
-        _callback: () => {},
+        _callback: () => true,
       },
     ],
   };

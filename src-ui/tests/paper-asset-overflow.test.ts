@@ -294,7 +294,8 @@ describe('measure：拟策卡精确镜像（固定预算退役）', () => {
   });
 
   it('只读拟策：chrome 31 + 标题实测 36+12 + markdown 体 36（内容走 measureMdBlocks）', () => {
-    const b = block('plan', { planId: 'p', title: 't', content: 'c', status: 's' });
+    // status 必是审批枚举（2026-10-29 拟策终态批）：pending = 没有终态行
+    const b = block('plan', { planId: 'p', title: 't', content: 'c', status: 'pending' });
     expect(measureBlockHeight(b)).toBe(31 + 36 + 12 + 36);
   });
 
@@ -303,15 +304,20 @@ describe('measure：拟策卡精确镜像（固定预算退役）', () => {
       planId: 'p',
       title: 't',
       content: 'c',
-      status: 's',
+      status: 'pending',
       options: [
         { label: 'A', description: '方案一' },
         { label: 'B', description: '方案二' },
       ],
-      _callback: () => {},
+      _callback: () => true,
     });
     const perOption = 14 + 2 + 13 * 1.8 + 2 + 36 + 6; // padding + border + label + desc 间距 + desc 实测 + margin
     expect(measureBlockHeight(b)).toBe(31 + (36 + 12) + 36 + (25 + 2 * perOption) + (13 * 1.8 + 10 + 2 + 14));
+  });
+
+  it('已决议拟策：操作行换终态行（PLAN_DONE_H 37）——决议后不再按按钮高占位', () => {
+    const b = block('plan', { planId: 'p', title: 't', content: 'c', status: 'approved', _callback: () => true });
+    expect(measureBlockHeight(b)).toBe(31 + (36 + 12) + 36 + 37);
   });
 });
 
@@ -357,7 +363,7 @@ describe('实测回写桥（动态高兜底）', () => {
 
   it('记录变化 → 签名变化 → 缓存重测采用新实测（反馈框展开/iframe 上报路径）', () => {
     const cache = createBlockMeasureCache();
-    const b = block('plan', { planId: 'p', title: 't', content: 'c', status: 's', _callback: () => {} });
+    const b = block('plan', { planId: 'p', title: 't', content: 'c', status: 'pending', _callback: () => true });
     reportObservedBlockHeight(observedKeyOf(b, false, false, false), b.w, 500);
     expect(measureBlockHeightCached(b, cache)).toBe(500);
     reportObservedBlockHeight(observedKeyOf(b, false, false, false), b.w, 300);

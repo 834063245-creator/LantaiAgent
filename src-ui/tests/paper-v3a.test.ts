@@ -145,8 +145,13 @@ describe('paper/measure', () => {
     expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(17 + 36);
     // 拟策 2026-09-10 渲染专项：内容走 markdown 体（measureMdBlocks）；
     // 标题实测（mock 36）+ head margin 12——旧固定 39 已退役
-    expect(measureBlockHeight(block('plan', { planId: 'p', title: 't', content: 'c', status: 's' }))).toBe(
+    // 2026-10-29 拟策终态批：status 必是审批枚举（旧夹具写的 's' 是占位串，
+    // 在新判据里等于「已决议」）；待批准 = 无终态行，已决议 = 终态行 PLAN_DONE_H 37。
+    expect(measureBlockHeight(block('plan', { planId: 'p', title: 't', content: 'c', status: 'pending' }))).toBe(
       31 + 36 + 12 + 36,
+    );
+    expect(measureBlockHeight(block('plan', { planId: 'p', title: 't', content: 'c', status: 'approved' }))).toBe(
+      31 + 36 + 12 + 36 + 37,
     );
   });
 

@@ -167,6 +167,14 @@ export const CHROME_TOKENS = {
     actionsLh: 1.8,
     actionsPadV: 5,
     actionsBorder: 1,
+    /* 终态行（.pp-pc-done，2026-10-29 拟策终态批）：决议后卡面只剩这句话——
+     * 操作行不再占位，测高按本组值算（旧 done 行是裸字面量，测高恒按操作行算，
+     * 决议后块底留一条空档）。 */
+    doneMarginTop: 14,
+    donePadTop: 10,
+    doneBorder: 1,
+    doneSize: 12,
+    doneLh: 1,
   },
   notice: { padV: 8, borderBottom: 1, padH: 12 },
   codeSrc: { borderL: 3, padL: 14, padV: 10, maxH: 320 },
@@ -244,6 +252,12 @@ export const CHROME_DERIVED = {
     CHROME_TOKENS.plan.actionsPadV * 2 +
     CHROME_TOKENS.plan.actionsBorder * 2 +
     CHROME_TOKENS.plan.actionsMarginTop,
+  /** 拟策终态行高（决议后卡面只剩这一句——上距 + 上规线 + 内距 + 行盒）。 */
+  planDoneH:
+    CHROME_TOKENS.plan.doneMarginTop +
+    CHROME_TOKENS.plan.donePadTop +
+    CHROME_TOKENS.plan.doneBorder +
+    CHROME_TOKENS.plan.doneSize * CHROME_TOKENS.plan.doneLh,
   noticeChromeH: CHROME_TOKENS.notice.padV * 2 + CHROME_TOKENS.notice.borderBottom,
   noticeTextInset: CHROME_TOKENS.notice.padH * 2,
   codeSrcInset: CHROME_TOKENS.codeSrc.borderL + CHROME_TOKENS.codeSrc.padL,

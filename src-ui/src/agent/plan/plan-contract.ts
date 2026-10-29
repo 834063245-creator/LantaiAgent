@@ -23,7 +23,10 @@ export interface PlanReviewRequest {
   planFilePath: string;
   planContent: string;
   options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
-  callback: (response: PlanApprovalResponse) => void;
+  /** 审批决议回送。**返回值 = 该决议是否真的被采纳**：`false` = 审批等待已超时
+   *  （tool 侧 `settled` 守卫），卡面据此不写「已批准」这类谎（见 PlanBody：终态
+   *  写回 part.status 之前先看有没有被采纳）。回调必须显式回执，不靠 void 推断。 */
+  callback: (response: PlanApprovalResponse) => boolean;
 }
 
 export type PlanApprovalResponse =

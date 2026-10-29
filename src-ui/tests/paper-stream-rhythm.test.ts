@@ -173,7 +173,7 @@ describe('group：单元成型（版式语法表执行面）', () => {
           planFilePath: '',
           content: '- a',
           status: 'pending',
-          _callback: () => {},
+          _callback: () => true,
         },
       ]),
     ]);
