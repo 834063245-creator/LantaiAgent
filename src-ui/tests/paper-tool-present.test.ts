@@ -307,12 +307,12 @@ describe('纪律：解析不了就交回兜底（永不空、永不炸）', () =
 
   it('未登记的远端/插件工具（动态名面）行为与改造前一致：参数与输出照原样结构化', () => {
     const pres = presentTool({
-      name: 'browser',
-      args: JSON.stringify({ action: 'targets' }),
-      output: JSON.stringify({ port: 9223, targets: [{ id: 'ABC', title: 'x', url: 'https://x' }] }),
+      name: 'mcp__hologram__graph',
+      args: JSON.stringify({ action: 'symbols', query: 'presentTool' }),
+      output: JSON.stringify({ nodes: [{ id: 'n1', kind: 'function' }], total: 1 }),
     });
-    expect(pres.sections[0].display.text).toContain('action: "targets"');
-    expect(pres.sections[1].display.text).toContain('port: 9223');
+    expect(pres.sections[0].display.text).toContain('action: "symbols"');
+    expect(pres.sections[1].display.text).toContain('total: 1'); // 通用结构化打印（未投影）
   });
 
   it('错误段照旧单列（错误留面），段序 = 参数 → 结果 → 错误', () => {
@@ -366,5 +366,97 @@ describe('tidyPath：只剥壳不改正文', () => {
     expect(tidyPath('\\\\?\\D:\\ws\\a.md')).toBe('D:/ws/a.md');
     expect(tidyPath('D:\\ws\\b.md')).toBe('D:/ws/b.md');
     expect(tidyPath('relative/path.md')).toBe('relative/path.md');
+  });
+});
+
+describe('批 2（低频域）：检索 / 任务板 / 浏览器目标页', () => {
+  it('web_search：`/query/` + 逐条标题/地址/摘要，而不是 {query,results:[{title,url,snippet}]}', () => {
+    const p = {
+      name: 'web_search',
+      args: JSON.stringify({ query: 'tauri 2 capability 配置', maxResults: 3 }),
+      output: JSON.stringify({
+        query: 'tauri 2 capability 配置',
+        results: [
+          {
+            title: 'Capabilities | Tauri',
+            url: 'https://v2.tauri.app/security/capabilities/',
+            snippet: 'A capability  is  a  set\nof permissions.',
+          },
+          { title: 'ACL', url: 'https://v2.tauri.app/security/', snippet: '' },
+        ],
+      }),
+    };
+    expect(sectionOf(p, 'args').display.text).toBe('/tauri 2 capability 配置/ · 上限 3');
+    expect(sectionOf(p, 'out').display.text).toBe(
+      [
+        '2 条结果',
+        '1. Capabilities | Tauri',
+        '  https://v2.tauri.app/security/capabilities/',
+        '  A capability is a set of permissions.', // 摘要空白归一
+        '2. ACL',
+        '  https://v2.tauri.app/security/',
+      ].join('\n'),
+    );
+    expect(presentTool(p).summary).toBe('2 条结果');
+  });
+
+  it('web_search 空结果：报「没有找到结果」，不倾出 {results:[]}', () => {
+    const p = {
+      name: 'web_search',
+      args: JSON.stringify({ query: 'zzz' }),
+      output: JSON.stringify({ query: 'zzz', results: [], error: 'No results found.' }),
+    };
+    expect(sectionOf(p, 'out').display.text).toBe('没有找到结果 · No results found.');
+  });
+
+  it('task_list：`N 个任务` + `#id 状态 · 标题`（状态译成人话）', () => {
+    const p = {
+      name: 'task',
+      args: JSON.stringify({ action: 'list' }),
+      output: JSON.stringify({
+        count: 2,
+        tasks: [
+          { id: 3, title: '工具卡可读性', status: 'in_progress', detail: '把载荷读成事' },
+          { id: 1, title: '旧任务', status: 'completed', detail: '' },
+        ],
+      }),
+    };
+    expect(sectionOf(p, 'out').display.text).toBe(
+      ['2 个任务', '#3 进行中 · 工具卡可读性', '  把载荷读成事', '#1 已完成 · 旧任务'].join('\n'),
+    );
+    expect(presentTool(p).summary).toBe('2 个任务');
+  });
+
+  it('task_get 单条：`#id 状态 · 标题`（error 形态读成人话）', () => {
+    expect(
+      sectionOf(
+        {
+          name: 'task',
+          args: JSON.stringify({ action: 'get', id: 9 }),
+          output: JSON.stringify({ id: 9, title: 'x', status: 'pending', detail: 'y' }),
+        },
+        'out',
+      ).display.text,
+    ).toBe('#9 待办 · x\n  y');
+    expect(
+      sectionOf({ name: 'task', args: '{"action":"get","id":9}', output: '{"error":"Task 9 not found"}' }, 'out')
+        .display.text,
+    ).toBe('Task 9 not found');
+  });
+
+  it('browser(targets)：`端口 · N 个页面` + 「标题 — url」，32 位 id 不上纸', () => {
+    const p = {
+      name: 'browser',
+      args: JSON.stringify({ action: 'targets' }),
+      output: JSON.stringify({
+        port: 9223,
+        targets: [
+          { id: '54530CF6458519AB188FBBC2387CFAAB', title: 'tool.chinaz.com', url: 'https://tool.chinaz.com/dns/' },
+        ],
+      }),
+    };
+    expect(sectionOf(p, 'out').display.text).toBe('9223 · 1 个页面\ntool.chinaz.com — https://tool.chinaz.com/dns/');
+    expect(presentTool(p).summary).toBe('1 个页面');
+    expect(textOf(p)).not.toContain('54530CF6');
   });
 });

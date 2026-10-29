@@ -120,6 +120,7 @@
 - **参数面去协议键**：`$ <command>` 而不是 `{"action":"run","command":…}`；`fs(edit)` 只报「改哪儿 + 行数变化」（不再倾出 oldString/newString 全文）、`fs(write)` 只报「写哪儿 + 多少行/字符」、`git(status)` 一类纯协议动作**不展示**参数段。
 - **结果面按域读成事**：检索 = ripgrep 形态（`13: 命中行` 实墨 / `12· 上下文行` 注记墨 + `N 处 · M 文件` 头）、目录 = 缩进树（`adr/ 2 项`）、`git(status)` = `main · 领先 2 · 17 个改动` + porcelain 行（` M` / `M ` / `??`）、差分 = 拆掉字面围栏 + 增/删/块头三档着色（`.pp-add/.pp-del/.pp-hunk`）。
 - **三面同源**：渲染（`ToolBody`）/ 测高与墨迹（`measure.ts` 两处）/ 折叠行读数（`foldLabel`）消费**同一个** `sections` 数组与 `text`；投影不改测量模型（仍按文本行计高，`cappedH` + 字体档不变）。
+- **已覆盖的语义名**（表在 `tool-present.ts` 的 `PRESENTERS`）：shell 族 / fs 族（read·write·edit·list·glob）/ search / git 族（status·log·diff·commit）/ web（fetch·search）/ 任务板 `/ browser（目标页）。未登记者走兜底。
 - **纪律**：模型面零改动（只读 payload 串，不碰工具返回值）；形状不认识 ⇒ 该段回落通用结构化打印（原文照旧读得到，远端 MCP / 插件动态名面零风险）；presenter 未消费的参数键收成「其余：k=v」一行（不静默丢）。
 
 守护：`tests/paper-tool-present.test.ts`（真机载荷 → 用户可见文本）；渲染/测高同源见 `tests/paper-tool-payload.test.tsx`、墨迹见 `tests/paper-ink.test.ts`。
@@ -168,6 +169,10 @@
 ## 6. 交互（2026-09-05 起含手势修订）
 
 无限画布 + 钉住 / 收回 + 小地图 + 抽纸条，已在 `PaperPanel.tsx` 与 `paper/` 内核实现。**2026-09-05 pin-strip-rework 批修订**（`docs/archive/pin-strip-rework-plan.md`）：拖块改**松手定夺**（拖动全程纯预览，带外松手落钉 / 带内取消回槽；眉批撕出保留首动建钉——instant 族例外）+ **拖选跨带成条退役**（拖选只做选择；抽纸条唯二入口 = 按住已有选区拖出 + 选中浮钮）+ **带显形**（拖拽中来源流区提落影 `--shadow-sheet-lift`——400px 窄带从暗判变可见边界，落点悬带内块影转「松手回流」态）+ 纸条销毁两击确认 + 可发现性一次性眉批（localStorage 旗标）。钉住手势本体（按住文类签拖出 = 钉、洞点击 / 悬停带内松手 = 收回）与已修过的手感（抓取偏移按实际渲染位反推、防跳变）不变。
+
+**2026-10-29 抽纸条失灵批**（用户报「莫名其妙的失灵」）：三处确定性病灶一起收——① **命中带**：A 路的 mousedown 判据从「逐碎片矩形 ±4px」改成 `selection.ts::selectionHitBands`（按行合并 + 行间空距填满；横向仍只到该行**已选字节的起止**，在未选中的字上按下仍是起新选区）——浏览器 `getClientRects()` 给的是字面盒（16px/1.75 正文实测行盒 20、行距 8），旧判据在行距中段与行尾空白是死区；② **钉住的公共物**（含孤儿钉）不按流带判：拖出卡片即成条、浮钮落**选区右缘**（旧行为是浮钮照弹、点击时 `!sessionId` 直接 return——「看起来有入口、做了却什么都不发生」）；③ **失联即收**（`paper-shell/lost-focus.ts`）：窗口失焦 / 窗外松手之后 in-flight ref 不再永久挂在途（landmine-map V2 未修的另一半），否则下一次抽纸条会被「有手势在途」的守卫静默吞掉。
+
+**拟策卡终态**（2026-10-29）：批准 / 修改 / 拒绝的决议**写回 `PlanPart.status`**（连同 selectedLabel / feedback，纯 JSON 随卷持久化），卡面终态行按它渲染（「已批准 · 选定方案：X」/「已提交修改意见」/「已拒绝此拟策」）——块被虚拟化卸挂、切卷重开、会话重建后**不再长回「待批准」**。审批窗口已过（tool 侧 `settled`）时回调返回 false，卡面如实说「审批已过期，此决定未生效」，不替 agent 记一个它没收到的决议。
 
 **2026-09-18 出处引导批新增**（`docs/archive/render-paper-line/pin-provenance-plan.md`）：钉住块的**来路**成为一等件——病灶是「洞」这条唯一线索是**视口内**的（流自锚点向上生长 ⇒ 洞越漂越远；渲染窗口化 ⇒ 洞离屏时连 DOM 都没有）。三件：
 

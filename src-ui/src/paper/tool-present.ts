@@ -837,6 +837,175 @@ function webArgs(a: Record<string, unknown> | null): ToolDisplay | null {
   return toolDisplayFromLines(lines);
 }
 
+const WEB_SEARCH_KNOWN = ['query', 'maxResults', 'max_results', 'engine', 'backend'];
+
+/** 网页检索面：`/query/`（检索词是判别字段，不是 JSON 的一个键）。 */
+function webSearchArgs(a: Record<string, unknown> | null): ToolDisplay | null {
+  const query = str(a, 'query');
+  if (!query) return null;
+  const parts: ToolSpan[] = [sp(`/${query}/`, 'str')];
+  const max = num(a, 'maxResults', 'max_results');
+  if (max) parts.push(sp(` · 上限 ${max}`, 'note'));
+  const engine = str(a, 'engine', 'backend');
+  if (engine) parts.push(sp(` · ${engine}`, 'note'));
+  const lines = [tl(0, parts)];
+  const rest = residualSpans(a, WEB_SEARCH_KNOWN);
+  if (rest) lines.push(tl(0, rest));
+  return toolDisplayFromLines(lines);
+}
+
+/** 检索结果：`3 条结果` + 逐条 `title` / `url` / `snippet`（缩进一段）。
+ *  原文 `{query, results:[{title,url,snippet}]}`——url 与前缀键都不是人读的顺序。 */
+function webSearchResult(output: string | undefined): PresentedSection[] | null {
+  const parsed = rec(tryJson(output));
+  const results = arrOf(parsed?.results);
+  if (!results) return null;
+  const n = results.length;
+  if (n === 0) {
+    const why = typeof parsed?.error === 'string' && parsed.error ? ` · ${parsed.error}` : '';
+    return [{ label: '结果', display: toolDisplayFromLines([tl(0, [sp(`没有找到结果${why}`, 'note')])]) }];
+  }
+  const lines: ToolLine[] = [tl(0, [sp(`${n} 条结果`, 'note')])];
+  results.forEach((raw, i) => {
+    const r = rec(raw);
+    if (!r) return;
+    const title = typeof r.title === 'string' ? r.title.trim() : '';
+    const url = typeof r.url === 'string' ? r.url.trim() : '';
+    const snippet = typeof r.snippet === 'string' ? r.snippet.replace(/\s+/g, ' ').trim() : '';
+    lines.push(tl(0, [sp(`${i + 1}. `, 'punct'), sp(title || url, 'str')]));
+    if (title && url) lines.push(tl(1, [sp(url, 'note')]));
+    if (snippet) lines.push(tl(1, [sp(snippet)]));
+  });
+  return [{ label: '结果', display: toolDisplayFromLines(lines) }];
+}
+
+function webSearchSummary(output: string | undefined): string | null {
+  const results = arrOf(rec(tryJson(output))?.results);
+  return results ? `${results.length} 条结果` : null;
+}
+
+/* ── 任务板域 ── */
+
+/** 任务状态 → 人话（四个状态是 task-domain 的封闭枚举）。 */
+const TASK_STATUS_ZH: Record<string, string> = {
+  pending: '待办',
+  in_progress: '进行中',
+  completed: '已完成',
+  cancelled: '已取消',
+};
+
+/** 一条任务的读法：`#3 已完成 · 标题` + 说明行（说明是给人看的，不缩成 JSON 值）。 */
+function taskRow(t: Record<string, unknown>): ToolLine[] {
+  const id = typeof t.id === 'number' || typeof t.id === 'string' ? String(t.id) : '';
+  const status = typeof t.status === 'string' ? (TASK_STATUS_ZH[t.status] ?? t.status) : '';
+  const title = typeof t.title === 'string' ? t.title.replace(/\s+/g, ' ').trim() : '';
+  const parts: ToolSpan[] = [];
+  if (id) parts.push(sp(`#${id} `, 'num'));
+  if (status) parts.push(sp(status, 'key'), sp(' · ', 'punct'));
+  parts.push(sp(title || '(无标题)', 'str'));
+  const out: ToolLine[] = [tl(0, parts)];
+  const detail = typeof t.detail === 'string' ? t.detail.replace(/\s+/g, ' ').trim() : '';
+  if (detail) out.push(tl(1, [sp(detail, 'note')]));
+  return out;
+}
+
+const TASK_KNOWN = ['action', 'id', 'status', 'title', 'detail'];
+
+/** 任务参数面：`改 #3 → 进行中` 一类（动作本身在文类签上，不必再抄一遍）。 */
+function taskArgs(a: Record<string, unknown> | null): ToolDisplay | null {
+  const id = typeof a?.id === 'number' || typeof a?.id === 'string' ? String(a?.id) : '';
+  const status = typeof a?.status === 'string' ? (TASK_STATUS_ZH[a.status] ?? a.status) : '';
+  const title = str(a, 'title');
+  const detail = str(a, 'detail');
+  const parts: ToolSpan[] = [];
+  if (id) parts.push(sp(`#${id}`, 'num'));
+  if (status) parts.push(parts.length ? sp(' · ', 'punct') : sp(''), sp(status, 'key'));
+  if (title) parts.push(parts.length ? sp(' · ', 'punct') : sp(''), sp(title, 'str'));
+  if (detail) parts.push(parts.length ? sp(' · ', 'punct') : sp(''), sp(detail, 'note'));
+  if (parts.length === 0) return null;
+  const lines = [tl(0, parts)];
+  const rest = residualSpans(a, TASK_KNOWN);
+  if (rest) lines.push(tl(0, rest));
+  return toolDisplayFromLines(lines);
+}
+
+/** 任务结果：单条 / 列表 / 板（数组）三形态（task.ts 的返回形状）。 */
+function taskResult(output: string | undefined): PresentedSection[] | null {
+  const parsed = tryJson(output);
+  const asArray = arrOf(parsed);
+  if (asArray) {
+    if (asArray.length === 0)
+      return [{ label: '任务', display: toolDisplayFromLines([tl(0, [sp('无任务', 'note')])]) }];
+    const lines: ToolLine[] = [];
+    for (const raw of asArray) {
+      const t = rec(raw);
+      if (!t) return null;
+      lines.push(...taskRow(t));
+    }
+    return [{ label: '任务', display: toolDisplayFromLines(lines) }];
+  }
+  const obj = rec(parsed);
+  if (!obj) return null;
+  if (typeof obj.error === 'string')
+    return [{ label: '任务', display: toolDisplayFromLines([tl(0, [sp(obj.error, 'note')])]) }];
+  const tasks = arrOf(obj.tasks);
+  if (tasks) {
+    const head: ToolSpan[] = [sp(`${tasks.length} 个任务`, 'note')];
+    if (typeof obj.count === 'number' && obj.count !== tasks.length) head.push(sp(` · 共 ${obj.count}`, 'note'));
+    const lines: ToolLine[] = [tl(0, head)];
+    for (const raw of tasks) {
+      const t = rec(raw);
+      if (!t) return null;
+      lines.push(...taskRow(t));
+    }
+    return [{ label: '任务', display: toolDisplayFromLines(lines) }];
+  }
+  if (obj.id === undefined && obj.title === undefined) return null;
+  return [{ label: '任务', display: toolDisplayFromLines(taskRow(obj)), variant: 'result' }];
+}
+
+function taskSummary(output: string | undefined): string | null {
+  const parsed = tryJson(output);
+  const asArray = arrOf(parsed);
+  if (asArray) return `${asArray.length} 个任务`;
+  const obj = rec(parsed);
+  if (!obj) return null;
+  const tasks = arrOf(obj.tasks);
+  if (tasks) return `${tasks.length} 个任务`;
+  if (typeof obj.count === 'number') return `共 ${obj.count} 个任务`;
+  return null;
+}
+
+/* ── browser 域（目标页/会话清单：一次调用就是一张小表） ── */
+
+/** browser(targets)：`9223 · 2 个页面` + 逐页 `标题 — url`。
+ *  原文 `{port, targets:[{id,title,url}]}`——id 长 32 位十六进制，人读的是标题与地址。 */
+function browserTargetsResult(output: string | undefined): PresentedSection[] | null {
+  const parsed = rec(tryJson(output));
+  const targets = arrOf(parsed?.targets);
+  if (!targets) return null;
+  const port = typeof parsed?.port === 'number' ? String(parsed.port) : '';
+  const head: ToolSpan[] = [];
+  if (port) head.push(sp(port, 'num'), sp(' · ', 'punct'));
+  head.push(sp(`${targets.length} 个页面`, 'note'));
+  const lines: ToolLine[] = [tl(0, head)];
+  for (const raw of targets) {
+    const t = rec(raw);
+    if (!t) continue;
+    const title = typeof t.title === 'string' ? t.title.trim() : '';
+    const url = typeof t.url === 'string' ? t.url.trim() : '';
+    const parts: ToolSpan[] = [sp(title || '(无标题)', 'str')];
+    if (url) parts.push(sp(` — ${url}`, 'note'));
+    lines.push(tl(0, parts));
+  }
+  return [{ label: '页面', display: toolDisplayFromLines(lines) }];
+}
+
+function browserTargetsSummary(output: string | undefined): string | null {
+  const targets = arrOf(rec(tryJson(output))?.targets);
+  return targets ? `${targets.length} 个页面` : null;
+}
+
 /* ── 表 ── */
 
 /** 语义名 → presenter（语义名真源 = agent/tools/domains.ts 的 DOMAIN_SPECS 反查）。
@@ -863,6 +1032,16 @@ const PRESENTERS: Record<string, Presenter> = {
   git_commit: { args: gitCommitArgs, argsLabel: '提交', result: gitCommitResult },
   // web
   web_fetch: { args: webArgs, argsLabel: '取件' },
+  web_search: { args: webSearchArgs, argsLabel: '检索', result: webSearchResult, summary: webSearchSummary },
+  // 任务板（task-domain 的四种返回形态：单条 / 列表 / 板数组 / {error}）
+  task_create: { args: taskArgs, argsLabel: '新建', result: taskResult, summary: taskSummary },
+  task_update: { args: taskArgs, argsLabel: '修改', result: taskResult, summary: taskSummary },
+  task_stop: { args: taskArgs, argsLabel: '停止', result: taskResult, summary: taskSummary },
+  task_get: { args: taskArgs, argsLabel: '查看', result: taskResult },
+  task_list: { args: taskArgs, argsLabel: '筛选', result: taskResult, summary: taskSummary },
+  task_board: { args: false, result: taskResult, summary: taskSummary },
+  // browser：目标页清单（id 是 32 位十六进制，人读标题与地址）
+  browser_targets: { args: false, result: browserTargetsResult, summary: browserTargetsSummary },
 };
 
 /* ── 入口 ── */
