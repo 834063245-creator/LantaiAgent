@@ -429,12 +429,12 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       <div className="pp-oauth-accounts">
         {oauthAccountsState.map((acct) => (
           <div key={acct.accountId} className="pp-model-item">
-            <span className="pp-model-chip" title={acct.accountId}>
+            <span className="pp-model-chip" data-tip={acct.accountId}>
               <span className="pp-model-chip-name">{acct.accountId}</span>
               <button
                 type="button"
                 className="pp-model-chip-x"
-                title={`登出 ${acct.accountId}`}
+                data-tip={`登出 ${acct.accountId}`}
                 aria-label={`登出 ${acct.accountId}`}
                 onClick={() => handleOauthLogout(acct.accountId)}
               >
@@ -455,7 +455,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
           <span id={titleId} className="cd-title">
             添加提供方
           </span>
-          <button type="button" className="cd-close" onClick={onClose} title="关闭">
+          <button type="button" className="cd-close" onClick={onClose} data-tip="关闭">
             ✕
           </button>
         </div>
@@ -475,7 +475,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                 type="button"
                 key={provName}
                 className={`pp-cat-chip${used ? ' used' : ''}${name === provName ? ' selected' : ''}`}
-                title={used ? `${provName} 已存在` : `预填 ${tpl.baseUrl}`}
+                data-tip={used ? `${provName} 已存在` : `预填 ${tpl.baseUrl}`}
                 disabled={used}
                 onClick={() => handlePickVendor(provName)}
               >
@@ -644,7 +644,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
               className="sp-btn-sm"
               disabled={fetching || oauthAccountsState.length === 0}
               onClick={() => void handleOauthFetchModels()}
-              title={
+              data-tip={
                 oauthAccountsState.length === 0
                   ? '先完成上方 OAuth 登录，才能拉取该账号可用模型'
                   : '用当前登录账号从提供方拉取可用模型'
@@ -663,7 +663,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
               className="sp-btn-sm"
               disabled={fetching || !hasValidName}
               onClick={handleFetch}
-              title={!hasValidName ? '先填名称（唯一且不重复）' : '从该提供方 /models 端点拉取可用模型'}
+              data-tip={!hasValidName ? '先填名称（唯一且不重复）' : '从该提供方 /models 端点拉取可用模型'}
             >
               {fetching ? '拉取中…' : '从 API 拉取模型'}
             </button>
@@ -701,13 +701,13 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
               {models.map((id) => {
                 const on = enabled.includes(id);
                 return (
-                  <div key={id} className={`pp-pick-model${on ? ' selected' : ''}`} title={id}>
+                  <div key={id} className={`pp-pick-model${on ? ' selected' : ''}`} data-tip={id}>
                     <button
                       type="button"
                       className={`pp-pick-act${on ? ' on' : ''}`}
                       aria-pressed={on}
                       aria-label={on ? `从可用模型移除 ${id}` : `添加 ${id} 到可用模型`}
-                      title={on ? `从可用模型移除 ${id}` : `添加 ${id} 到可用模型`}
+                      data-tip={on ? `从可用模型移除 ${id}` : `添加 ${id} 到可用模型`}
                       onClick={() => toggleEnabled(id)}
                     >
                       {on ? '✓' : '＋'}
@@ -718,7 +718,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                       type="button"
                       className="pp-pick-setdefault"
                       disabled={!on || defaultModel === id}
-                      title={on ? '设为新会话默认模型' : '先点「＋」添加，才能设为默认'}
+                      data-tip={on ? '设为新会话默认模型' : '先点「＋」添加，才能设为默认'}
                       onClick={() => setDefaultModel(id)}
                     >
                       设为默认

@@ -113,7 +113,7 @@ describe('C10 附件链 — UserBody 渲染（内置渲染器）', () => {
     const fileLine = container!.querySelector('.pp-user-file');
     expect(fileLine?.textContent).toContain('CONVENTIONS.md');
     expect(fileLine?.textContent).toContain('附 ·');
-    expect(fileLine?.getAttribute('title')).toBe('D:/HoloGramHG/CONVENTIONS.md');
+    expect(fileLine?.getAttribute('data-tip')).toBe('D:/HoloGramHG/CONVENTIONS.md');
     // 圈点仍工作（C7 不回归）
     expect(container!.querySelector('.pp-circled')?.textContent).toBe('词');
     // 正文不含路径

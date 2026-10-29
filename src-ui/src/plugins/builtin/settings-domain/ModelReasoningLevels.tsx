@@ -115,7 +115,7 @@ export function ModelReasoningLevels({ efforts, value, onChange }: ModelReasonin
           推理等级
           <span
             className="pp-model-param-src"
-            title="API 参数值会写进请求的推理强度字段（如 OpenAI 的 reasoning_effort），默认与档位名相同；如有不同，以模型提供商的 API 文档为准。Off 表示关闭思考，不需要填写参数值。"
+            data-tip="API 参数值会写进请求的推理强度字段（如 OpenAI 的 reasoning_effort），默认与档位名相同；如有不同，以模型提供商的 API 文档为准。Off 表示关闭思考，不需要填写参数值。"
           >
             ?
           </span>
@@ -179,7 +179,7 @@ export function ModelReasoningLevels({ efforts, value, onChange }: ModelReasonin
                 type="button"
                 className="pp-model-chip-x"
                 aria-label={`删除档位 ${level}`}
-                title={
+                data-tip={
                   level !== 'off' && nonOff <= 1
                     ? '至少保留一个 Off 以外的档位；不需要思考请关闭推理等级'
                     : `删除档位 ${level}`

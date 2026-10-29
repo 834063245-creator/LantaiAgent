@@ -1088,7 +1088,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         }`}
         data-id={r.id}
         data-depth={depth}
-        title={`${volumeDisplayName(r.label, r.id)}${branch ? ' · 枝（自父卷分出）' : ''}${
+        data-tip={`${volumeDisplayName(r.label, r.id)}${branch ? ' · 枝（自父卷分出）' : ''}${
           r.orphan ? ' · 父卷已删' : ''
         }${isCurrent ? ' · 当前卷' : ''} · ${statusLabel(r.status)} · ${
           arranging ? '点=勾选（Shift 连选）' : '左键摊开/定位 · 拖动落位'
@@ -1124,7 +1124,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
             className={`ss-check${isSelected ? ' on' : ''}`}
             aria-pressed={isSelected}
             aria-label={`${isSelected ? '取消选择' : '选择'}案卷：${volumeDisplayName(r.label, r.id)}`}
-            title="勾选（点行、X 键同效）"
+            data-tip="勾选（点行、X 键同效）"
             tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
@@ -1178,7 +1178,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
                       className="ss-branch-tag"
                       aria-label="枝：这一卷自父卷分出"
                       aria-expanded={cardId === r.id}
-                      title={`枝：从父卷的某个节点分出（内容自包含）${parentRow ? '' : '；父卷不在场'}`}
+                      data-tip={`枝：从父卷的某个节点分出（内容自包含）${parentRow ? '' : '；父卷不在场'}`}
                       onFocus={() => openCard(r.id)}
                       onBlur={closeCardSoon}
                       onClick={(e) => {
@@ -1247,7 +1247,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
               type="button"
               className="ss-kids"
               aria-expanded={!famFolded}
-              title={famFolded ? '展开这一枝' : '收起这一枝'}
+              data-tip={famFolded ? '展开这一枝' : '收起这一枝'}
               onClick={(e) => {
                 e.stopPropagation();
                 disarmAll();
@@ -1261,7 +1261,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
           <div className="ss-actions">
             <button
               type="button"
-              title="改名"
+              data-tip="改名"
               onClick={(e) => {
                 e.stopPropagation();
                 disarmAll();
@@ -1274,7 +1274,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
             {r.open && (
               <button
                 type="button"
-                title="合卷（收起，数据保留；C 键同效）"
+                data-tip="合卷（收起，数据保留；C 键同效）"
                 onClick={(e) => {
                   e.stopPropagation();
                   disarmAll();
@@ -1289,7 +1289,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
               type="button"
               data-act="del"
               className={armedDelete ? 'ss-danger' : ''}
-              title={armedDelete ? deleteConfirmTitle : '彻底删除（点两次确认）'}
+              data-tip={armedDelete ? deleteConfirmTitle : '彻底删除（点两次确认）'}
               onClick={(e) => {
                 e.stopPropagation();
                 void onDelete(r.id);
@@ -1340,13 +1340,13 @@ export const SessionSidebar = memo(function SessionSidebar() {
         <span className="ss-title">案卷</span>
         <span className="ss-count">SESSIONS · {rows.length}</span>
         {/* 整理入口（2026-10-08 丙案）：显式、常驻、不藏——批量选择全部发生在整理态内 */}
-        <button type="button" className="ss-arrange-enter" title="整理：批量选择与删除" onClick={enterArrange}>
+        <button type="button" className="ss-arrange-enter" data-tip="整理：批量选择与删除" onClick={enterArrange}>
           整理
         </button>
         <button
           type="button"
           className="ss-fold"
-          title="收起侧边栏（回到书脊）"
+          data-tip="收起侧边栏（回到书脊）"
           aria-label="收起侧边栏"
           onClick={onCollapseSidebar}
         >
@@ -1373,7 +1373,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
           className="ss-new"
           onClick={onNew}
           disabled={newBusy}
-          title={newBusy ? '正在创建…' : undefined}
+          data-tip={newBusy ? '正在创建…' : undefined}
         >
           ＋ 另起一卷
         </button>
@@ -1387,7 +1387,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
           role="tab"
           aria-selected={view === 'case'}
           className={view === 'case' ? 'on' : ''}
-          title="案卷：按时间排（最近动过的在上），血缘看每行那枚 ↳ 记号"
+          data-tip="案卷：按时间排（最近动过的在上），血缘看每行那枚 ↳ 记号"
           onClick={() => switchView('case')}
         >
           案卷
@@ -1397,7 +1397,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
           role="tab"
           aria-selected={view === 'tree'}
           className={view === 'tree' ? 'on' : ''}
-          title="枝：按血缘排（一族一卷一棵树），父子不拆"
+          data-tip="枝：按血缘排（一族一卷一棵树），父子不拆"
           onClick={() => switchView('tree')}
         >
           枝
@@ -1413,7 +1413,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
           type="button"
           className={`ss-arrange-del${batchArmed ? ' danger' : ''}`}
           disabled={selectedIds.size === 0}
-          title={
+          data-tip={
             batchArmed ? '再点一次确认批量删除（不可撤销）；Esc 取消' : '批量删除所选（点两次确认；运行中卷自动跳过）'
           }
           onClick={onBatchDelete}

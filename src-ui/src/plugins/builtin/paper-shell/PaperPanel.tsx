@@ -294,7 +294,7 @@ const BlockView = memo(function BlockView({
           <button
             type="button"
             className={`pp-prov${provTraceable ? ' pp-prov--trace' : ''}`}
-            title={provTitle}
+            data-tip={provTitle}
             aria-disabled={!provTraceable}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -349,7 +349,7 @@ const BlockView = memo(function BlockView({
               key={o.key}
               type="button"
               disabled={o.disabled}
-              title={o.title}
+              data-tip={o.title}
               onClick={(e) => {
                 e.stopPropagation();
                 if (o.disabled) return;
@@ -368,7 +368,7 @@ const BlockView = memo(function BlockView({
             // biome-ignore lint/a11y/noStaticElementInteractions: 拖拽握把（拖出立枝）；立枝本身另有按钮入口（键盘路径 = 行内那颗「立枝」）
             <div
               className="pp-branch-grip"
-              title={BRANCH_GRIP_TITLE}
+              data-tip={BRANCH_GRIP_TITLE}
               onMouseDown={(e) => onBranchGripMouseDown(e, block)}
             />
           )}
@@ -378,7 +378,7 @@ const BlockView = memo(function BlockView({
         <button
           type="button"
           className="pp-unpin"
-          title={unpinLabel === '删除' ? '删除孤儿钉（源卷已删，无法收回）' : undefined}
+          data-tip={unpinLabel === '删除' ? '删除孤儿钉（源卷已删，无法收回）' : undefined}
           onClick={(e) => {
             e.stopPropagation();
             onUnpin(block.id);
@@ -449,7 +449,7 @@ function DeskShelf({ core }: { core: PaperCore | null }) {
           key={r.id}
           type="button"
           className="pp-desk-tag"
-          title={`续写「${r.label}」——摊开并定位`}
+          data-tip={`续写「${r.label}」——摊开并定位`}
           onClick={() => onResume(String(r.id))}
         >
           续 · {r.label}
@@ -1221,13 +1221,13 @@ export function PaperPanel() {
                         {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态） */}
                         <div
                           className="pp-region-edge pp-region-edge--l"
-                          title="拖动边缘——移动整个流区"
+                          data-tip="拖动边缘——移动整个流区"
                           onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
                         />
                         {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（同左缘——拖右缘移动整个流区） */}
                         <div
                           className="pp-region-edge pp-region-edge--r"
-                          title="拖动边缘——移动整个流区"
+                          data-tip="拖动边缘——移动整个流区"
                           onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
                         />
                         {/* P6 四角横向缩放柄（角落只开放横向——Y 由内容生长） */}
@@ -1236,7 +1236,7 @@ export function PaperPanel() {
                           <div
                             key={c}
                             className={`pp-region-corner pp-region-corner--${c}`}
-                            title="拖动角柄——调整流区宽度"
+                            data-tip="拖动角柄——调整流区宽度"
                             onMouseDown={(e) => onRegionCornerMouseDown(e, r.sessionId, c)}
                           />
                         ))}
@@ -1266,7 +1266,7 @@ export function PaperPanel() {
                       <button
                         type="button"
                         className={`pp-strip-remove${stripConfirmId === s.id ? ' pp-strip-remove--confirm' : ''}`}
-                        title={stripConfirmId === s.id ? '再击一次确认销毁' : '销毁纸条'}
+                        data-tip={stripConfirmId === s.id ? '再击一次确认销毁' : '销毁纸条'}
                         aria-label={stripConfirmId === s.id ? '再击一次确认销毁纸条' : '销毁纸条'}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
@@ -1611,7 +1611,7 @@ export function PaperPanel() {
               常显、无悬停揭示（见 CSS 头注与 taste-ledger 拖动锁二版教训）。 */}
           {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏） */}
           <div className="pp-chrome" onPointerDown={onTopbarPointerDown} onDoubleClick={onTopbarDoubleClick}>
-            <span className="pp-title" title="按住拖动窗口（双击最大化）">
+            <span className="pp-title" data-tip="按住拖动窗口（双击最大化）">
               画布
             </span>
             {/* 缩放控件（2026-09-08 缩放舒适度拍板）：−/+ 阶梯步进（ZOOM_STEPS
@@ -1619,13 +1619,13 @@ export function PaperPanel() {
                 读数 hover 提示保留画布统计；键盘 +/−/0 同语义。 */}
             <div
               className="pp-zoom-ctl"
-              title={`画布读数：${totalBlocks} 块 · 已钉 ${totalPinned} · 纸条 ${totalStrips} · 滚轮平滚 / Ctrl+滚轮缩放`}
+              data-tip={`画布读数：${totalBlocks} 块 · 已钉 ${totalPinned} · 纸条 ${totalStrips} · 滚轮平滚 / Ctrl+滚轮缩放`}
             >
               <button
                 type="button"
                 className="pp-zoom-btn"
                 aria-label="缩小一档"
-                title="缩小一档（键盘 −）"
+                data-tip="缩小一档（键盘 −）"
                 onClick={() => stepZoom(-1)}
               >
                 −
@@ -1634,7 +1634,7 @@ export function PaperPanel() {
                 type="button"
                 className="pp-zoom-val"
                 aria-label="缩放回到 100%"
-                title="回到 100%（键盘 0）"
+                data-tip="回到 100%（键盘 0）"
                 onClick={resetZoom}
               >
                 {/* 读数微动效（§15 批 5）：`key = zoomTick` ⇒ **离散步进**（−/＋ 或键盘）
@@ -1649,7 +1649,7 @@ export function PaperPanel() {
                 type="button"
                 className="pp-zoom-btn"
                 aria-label="放大一档"
-                title="放大一档（键盘 +）"
+                data-tip="放大一档（键盘 +）"
                 onClick={() => stepZoom(1)}
               >
                 ＋
@@ -1659,7 +1659,7 @@ export function PaperPanel() {
             <button
               type="button"
               className={`pp-settings${updateAvailable ? ' has-update' : ''}`}
-              title={
+              data-tip={
                 updateAvailable && updateVersion ? `设置 (Ctrl+,) · 新版本 ${updateVersion} 可用` : '设置 (Ctrl+,)'
               }
               onClick={() => useDockStore.getState().togglePanel('settings')}

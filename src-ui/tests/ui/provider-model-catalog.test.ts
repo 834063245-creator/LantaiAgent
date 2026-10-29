@@ -142,9 +142,10 @@ describe('Provider 页 — 模型目录 / 可用模型分层（2026-09-23）', (
     [...document.querySelectorAll<HTMLElement>(sel)].find((e) => e.textContent?.includes(text));
 
   /** 可用模型 chip 的 id（chip 文本是人类名，id 在 title）。 */
-  const chipIds = () => [...document.querySelectorAll<HTMLElement>('.pp-model-chip')].map((c) => c.title);
+  const chipIds = () =>
+    [...document.querySelectorAll<HTMLElement>('.pp-model-chip')].map((c) => c.getAttribute('data-tip') ?? '');
   const catalogRows = () => [...document.querySelectorAll<HTMLElement>('.pp-catalog-row')];
-  const rowIds = () => catalogRows().map((r) => r.title);
+  const rowIds = () => catalogRows().map((r) => r.getAttribute('data-tip') ?? '');
   const committedProvider = () => committed.at(-1)?.providers[0];
 
   beforeEach(() => {
@@ -188,7 +189,7 @@ describe('Provider 页 — 模型目录 / 可用模型分层（2026-09-23）', (
     await render(makeSettings({ catalog: ['gw-a', 'gw-b', 'gw-c'] }));
     expect(rowIds()).toEqual(['gw-a', 'gw-b', 'gw-c']);
 
-    const rowOf = (id: string) => catalogRows().find((r) => r.title === id);
+    const rowOf = (id: string) => catalogRows().find((r) => r.getAttribute('data-tip') === id);
     expect(rowOf('gw-b')?.querySelector('.pp-catalog-verb')?.textContent).toBe('添加');
     await click(rowOf('gw-b')?.querySelector('input'));
     expect(chipIds()).toContain('gw-b');

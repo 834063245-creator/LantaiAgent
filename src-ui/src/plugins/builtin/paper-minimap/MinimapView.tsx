@@ -250,7 +250,7 @@ export const MinimapView = memo(function MinimapView() {
       ref={mmBoxRef}
       className="pp-minimap"
       style={{ right: pref.right, bottom: pref.bottom, width: W, height: H }}
-      title="小地图 · 点击跳转 · Home 键回原点 · Alt+↑↓ 走块 · Alt+←→ 走卷 · 拖动移动 · 滚轮缩放"
+      data-tip="小地图 · 点击跳转 · Home 键回原点 · Alt+↑↓ 走块 · Alt+←→ 走卷 · 拖动移动 · 滚轮缩放"
       onPointerDown={onContainerPointerDown}
     >
       <canvas ref={inkCanvasRef} className="pp-mm-ink" />
@@ -259,7 +259,7 @@ export const MinimapView = memo(function MinimapView() {
           key={v.sessionId}
           className={`pp-mm-vol${v.active ? ' pp-mm-vol-active' : ''}`}
           style={{ left: v.frame.x, top: v.frame.y, width: v.frame.w, height: v.frame.h }}
-          title={v.label}
+          data-tip={v.label}
           onPointerDown={(e) => {
             e.stopPropagation();
             // 跳卷：把卷包围盒中心滑到视口中心

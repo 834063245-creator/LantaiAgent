@@ -362,11 +362,12 @@ describe('ProviderPage — 暂存流程', () => {
   it('可用模型：输入添加（默认并入）+ 移除（写进暂存 settings.models）', async () => {
     await render(makeSettings());
     // chip 文本是目录人类名，id 在 title——用 title 断言
-    const chipIds = () => [...document.querySelectorAll<HTMLElement>('.pp-model-chip')].map((c) => c.title);
+    const chipIds = () =>
+      [...document.querySelectorAll<HTMLElement>('.pp-model-chip')].map((c) => c.getAttribute('data-tip') ?? '');
 
     // 添加前：旧数据无 models → 自动视为 [默认模型]（= 新会话默认，带标记）
     expect(chipIds()).toContain('deepseek-v4-pro');
-    expect(document.querySelector('.pp-model-chip.is-default')?.title).toBe('deepseek-v4-pro');
+    expect(document.querySelector('.pp-model-chip.is-default')?.getAttribute('data-tip')).toBe('deepseek-v4-pro');
     expect(document.querySelector('.pp-model-chip-default')?.textContent).toContain('新会话默认');
 
     const addInput = document.querySelector<HTMLInputElement>('#pd-models-input')!;
@@ -380,19 +381,19 @@ describe('ProviderPage — 暂存流程', () => {
     // 默认模型并入 + 新模型追加 → 两个 chip；新会话默认标记仍在 deepseek-v4-pro
     expect(chipIds()).toContain('deepseek-reasoner');
     expect(chipIds()).toContain('deepseek-v4-pro');
-    expect(document.querySelector('.pp-model-chip.is-default')?.title).toBe('deepseek-v4-pro');
+    expect(document.querySelector('.pp-model-chip.is-default')?.getAttribute('data-tip')).toBe('deepseek-v4-pro');
 
     // 移除「新会话默认」→ 自动顶上剩余第一个为默认
     const defaultX = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-x')].find((b) =>
-      b.title.includes('deepseek-v4-pro'),
+      (b.getAttribute('data-tip') ?? '').includes('deepseek-v4-pro'),
     )!;
     await click(defaultX);
     expect(chipIds()).not.toContain('deepseek-v4-pro');
-    expect(document.querySelector('.pp-model-chip.is-default')?.title).toBe('deepseek-reasoner');
+    expect(document.querySelector('.pp-model-chip.is-default')?.getAttribute('data-tip')).toBe('deepseek-reasoner');
 
     // 再移除新加的（已是默认）→ 无剩余，默认清空
     const lastX = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-x')].find((b) =>
-      b.title.includes('deepseek-reasoner'),
+      (b.getAttribute('data-tip') ?? '').includes('deepseek-reasoner'),
     )!;
     await click(lastX);
     expect(document.querySelector('.pp-model-chip')).toBeNull();
@@ -402,7 +403,7 @@ describe('ProviderPage — 暂存流程', () => {
     await render(makeSettings());
 
     const paramBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-param')].find((b) =>
-      b.title.includes('上下文窗口'),
+      (b.getAttribute('data-tip') ?? '').includes('上下文窗口'),
     )!;
     await click(paramBtn);
     const params = document.querySelector<HTMLElement>('.pp-model-params');
@@ -434,7 +435,7 @@ describe('ProviderPage — 暂存流程', () => {
       }),
     );
     const paramBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-param')].find((b) =>
-      b.title.includes('上下文窗口'),
+      (b.getAttribute('data-tip') ?? '').includes('上下文窗口'),
     )!;
     await click(paramBtn);
     const select = () => document.querySelector<HTMLSelectElement>('.pp-model-params select')!;
@@ -454,7 +455,7 @@ describe('ProviderPage — 暂存流程', () => {
   it('推理等级：开关播种档位、改 API 参数值、添加/删除档位、关闭后重新播种', async () => {
     await render(makeSettings());
     const paramBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-param')].find((b) =>
-      b.title.includes('上下文窗口'),
+      (b.getAttribute('data-tip') ?? '').includes('上下文窗口'),
     )!;
     await click(paramBtn);
     const reasoning = () => document.querySelector<HTMLElement>('.pp-model-reasoning');
@@ -505,7 +506,7 @@ describe('ProviderPage — 暂存流程', () => {
       }),
     );
     const paramBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-param')].find((b) =>
-      b.title.includes('上下文窗口'),
+      (b.getAttribute('data-tip') ?? '').includes('上下文窗口'),
     )!;
     await click(paramBtn);
     const reasoning = () => document.querySelector<HTMLElement>('.pp-model-reasoning')!;

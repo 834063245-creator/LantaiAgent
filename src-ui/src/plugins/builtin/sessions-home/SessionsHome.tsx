@@ -324,7 +324,7 @@ export function SessionsHome() {
             type="button"
             className={`sh-btn-text${updateAvailable ? ' has-update' : ''}`}
             onClick={onOpenSettings}
-            title={updateAvailable && updateVersion ? `新版本 ${updateVersion} 可用` : undefined}
+            data-tip={updateAvailable && updateVersion ? `新版本 ${updateVersion} 可用` : undefined}
           >
             设置
           </button>
@@ -404,7 +404,7 @@ export function SessionsHome() {
                         </>
                       )}
                     </span>
-                    <span className="sh-ws-meta" title={w.path}>
+                    <span className="sh-ws-meta" data-tip={w.path}>
                       {isDead
                         ? '目录已丢失 · 无法访问案卷'
                         : w.session_count > 0
@@ -417,7 +417,7 @@ export function SessionsHome() {
                     <div className="sh-ws-actions">
                       <button
                         type="button"
-                        title="重命名"
+                        data-tip="重命名"
                         onClick={() => {
                           setRenamingPath(w.path);
                           setRenameDraft(w.name ?? '');
@@ -427,7 +427,7 @@ export function SessionsHome() {
                       </button>
                       <button
                         type="button"
-                        title={w.pinned ? '取消固定' : '固定（置顶）'}
+                        data-tip={w.pinned ? '取消固定' : '固定（置顶）'}
                         disabled={busy}
                         onClick={() => void onTogglePin(w)}
                       >
@@ -435,7 +435,7 @@ export function SessionsHome() {
                       </button>
                       <button
                         type="button"
-                        title="移除工作区（连带删除其中的全部案卷）"
+                        data-tip="移除工作区（连带删除其中的全部案卷）"
                         disabled={busy}
                         onClick={() => {
                           setRemoveTarget(w);

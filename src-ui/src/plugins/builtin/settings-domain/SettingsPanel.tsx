@@ -904,7 +904,7 @@ const SettingsPanelApp: React.FC<{
         {saveError && (
           <div className="pp-error-banner">
             <span className="pp-error-text">{saveError}</span>
-            <button type="button" className="pp-error-close" onClick={() => setSaveError('')} title="关闭">
+            <button type="button" className="pp-error-close" onClick={() => setSaveError('')} data-tip="关闭">
               ✕
             </button>
           </div>

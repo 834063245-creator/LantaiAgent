@@ -172,19 +172,19 @@ describe('S6 P5a 卷首组合芯片', () => {
     expect(p.tagName).toBe('SPAN');
     expect(p.getAttribute('data-locked')).not.toBeNull();
     expect(container.querySelector('button')).toBeNull();
-    expect(p.getAttribute('title')).toContain('跑过一轮');
-    expect(p.getAttribute('title')).toContain('本卷记录');
+    expect(p.getAttribute('data-tip')).toContain('跑过一轮');
+    expect(p.getAttribute('data-tip')).toContain('本卷记录');
   });
 
   it('③ hover 来源词表：本卷记录 / 全局默认（记录不区分谁写的，不假装能分辨）', async () => {
     const fg = fakeCore({ blank: true, info: INFO_GLOBAL });
     root = await mount(container, fg.core);
-    expect(pill(container)?.getAttribute('title')).toContain('全局默认');
+    expect(pill(container)?.getAttribute('data-tip')).toContain('全局默认');
     act(() => root?.unmount());
 
     const fs = fakeCore({ blank: true, info: INFO_SESSION });
     root = await mount(container, fs.core);
-    expect(pill(container)?.getAttribute('title')).toContain('本卷记录');
+    expect(pill(container)?.getAttribute('data-tip')).toContain('本卷记录');
   });
 
   it('④ 组合不可用原因就地可见（title 带原因，不静默）', async () => {
@@ -193,7 +193,7 @@ describe('S6 P5a 卷首组合芯片', () => {
       info: { presetId: 'ghost', source: 'session', error: '组合「ghost」不在册（已被删除或改名）' },
     });
     root = await mount(container, f.core);
-    const title = pill(container)?.getAttribute('title') ?? '';
+    const title = pill(container)?.getAttribute('data-tip') ?? '';
     expect(title).toContain('不在册');
     expect(title).toContain('已回退用户层组合');
   });

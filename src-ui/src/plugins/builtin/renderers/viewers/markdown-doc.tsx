@@ -238,7 +238,7 @@ export default function MarkdownDocViewer({ label, ext, filePath, bytes, mode }:
                     className={`pp-viewer-mddoc-tocitem pp-viewer-mddoc-lv${h.level}${
                       active === h.section ? ' pp-viewer-mddoc-tocitem--on' : ''
                     }`}
-                    title={h.title || '(无标题)'}
+                    data-tip={h.title || '(无标题)'}
                     onClick={() => jump(h.section)}
                   >
                     {h.title || '(无标题)'}

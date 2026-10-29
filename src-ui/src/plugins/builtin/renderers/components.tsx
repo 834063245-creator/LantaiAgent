@@ -1812,7 +1812,7 @@ function FormBody({ block }: BlockRendererProps) {
               type="button"
               className={`pp-pc-btn${feedbackOpen ? '' : ' pp-pc-btn--primary'}`}
               disabled={!canApprove}
-              title={canApprove ? undefined : '先选择方案'}
+              data-tip={canApprove ? undefined : '先选择方案'}
               onClick={() => settle({ decision: 'approved', ...(selected ? { selectedLabel: selected } : {}) })}
             >
               {p.confirmLabel || '确认'}
@@ -1825,7 +1825,7 @@ function FormBody({ block }: BlockRendererProps) {
                 type="button"
                 className="pp-pc-btn pp-pc-btn--primary"
                 disabled={!canRevise}
-                title={canRevise ? undefined : '先填写修改意见'}
+                data-tip={canRevise ? undefined : '先填写修改意见'}
                 onClick={() => settle({ decision: 'revise', feedback: feedback.trim() })}
               >
                 提交
@@ -1834,7 +1834,7 @@ function FormBody({ block }: BlockRendererProps) {
             <button
               type="button"
               className="pp-pc-btn pp-pc-btn--reject"
-              title="回绝此确认"
+              data-tip="回绝此确认"
               onClick={() => settle({ decision: 'rejected' })}
             >
               拒绝
@@ -2079,7 +2079,7 @@ function ChemBody({ block }: BlockRendererProps) {
         <div className="pp-chem-meta">
           {formula && <div className="pp-chem-formula">{formula}</div>}
           {smiles && err && (
-            <div className="pp-chem-err" title={smiles}>
+            <div className="pp-chem-err" data-tip={smiles}>
               结构解析失败：{err}
             </div>
           )}

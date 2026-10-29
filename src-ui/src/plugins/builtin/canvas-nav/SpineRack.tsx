@@ -447,7 +447,7 @@ export const SpineRack = memo(function SpineRack() {
       <button
         type="button"
         className="sr-sidebar-toggle"
-        title="案卷侧边栏（可折叠）"
+        data-tip="案卷侧边栏（可折叠）"
         onClick={() => useDockStore.getState().togglePanel('canvas-sidebar')}
       >
         <span className="sr-sidebar-toggle-label">案卷</span>
@@ -475,7 +475,7 @@ export const SpineRack = memo(function SpineRack() {
                 role="tab"
                 tabIndex={0}
                 aria-selected={isActive}
-                title={`${s.name}${s.branch ? '（枝）' : ''}${isRunning ? '（运行中）' : ''} — 左键定位 · 拖动落位 · hover 合卷`}
+                data-tip={`${s.name}${s.branch ? '（枝）' : ''}${isRunning ? '（运行中）' : ''} — 左键定位 · 拖动落位 · hover 合卷`}
                 onClick={() => onLocate(s.id)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
@@ -491,7 +491,7 @@ export const SpineRack = memo(function SpineRack() {
                   {fitLabel(s.name, Math.max(SPINE_MIN_ROWS, slot.rows))}
                 </span>
                 {s.branch && (
-                  <span className="sr-branch-tag" title="枝：从父卷的某个节点分出">
+                  <span className="sr-branch-tag" data-tip="枝：从父卷的某个节点分出">
                     枝
                   </span>
                 )}

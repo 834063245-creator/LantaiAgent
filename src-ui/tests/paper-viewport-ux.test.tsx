@@ -1525,7 +1525,7 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     expect(el.querySelector('.pp-kind .pp-prov')).not.toBeNull();
     // 源卷在世 = 可点（不可点态只发生在源卷已删）
     expect(prov?.className).toContain('pp-prov--trace');
-    expect(prov?.title).toContain('回到出处');
+    expect(prov?.getAttribute('data-tip')).toContain('回到出处');
   }, 30_000);
 
   it('引线：hover 钉块才落笔（一屏一线），笔道与朱点投在正确的屏上位置；移出即撤', async () => {

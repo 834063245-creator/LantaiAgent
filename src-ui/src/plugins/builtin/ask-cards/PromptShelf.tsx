@@ -186,7 +186,7 @@ const AskCard: React.FC<{
         <span id={titleId} className="prompt-shelf__question">
           {prompt.question}
         </span>
-        <button className="prompt-shelf__dismiss" onClick={cancel} title="取消 (Esc)" type="button">
+        <button className="prompt-shelf__dismiss" onClick={cancel} data-tip="取消 (Esc)" type="button">
           <Icon name="close" size={14} />
         </button>
       </div>
@@ -419,7 +419,7 @@ const AskBatchCard: React.FC<{
         <span id={titleId} className="prompt-shelf__question">
           {q.question}
         </span>
-        <button className="prompt-shelf__dismiss" onClick={cancel} title="取消整批 (Esc)" type="button">
+        <button className="prompt-shelf__dismiss" onClick={cancel} data-tip="取消整批 (Esc)" type="button">
           <Icon name="close" size={14} />
         </button>
       </div>
@@ -498,7 +498,7 @@ const AskBatchCard: React.FC<{
           className="prompt-shelf__confirm"
           disabled={!anyAnswered}
           onClick={submitAll}
-          title={anyAnswered ? '提交全部答案（未答题按空返回）' : '先作答至少一题'}
+          data-tip={anyAnswered ? '提交全部答案（未答题按空返回）' : '先作答至少一题'}
           type="button"
         >
           {answered || !isLast ? `提交（已答 ${answers.filter((a) => a !== null).length}/${total}）` : '提交回答'}

@@ -40,13 +40,13 @@ export function ProviderDocCard({ doc, myName, onOpenDir, onReload, msg }: Provi
       <div className="pp-field">
         <div className="pp-f-label-row">
           <span className="pp-f-label">provider 配置</span>
-          <button type="button" className="sp-btn-sm" title="用系统文件管理器打开所在目录" onClick={onOpenDir}>
+          <button type="button" className="sp-btn-sm" data-tip="用系统文件管理器打开所在目录" onClick={onOpenDir}>
             打开目录
           </button>
           <button
             type="button"
             className="sp-btn-sm"
-            title="手改过文件后立即重读（改完约 1 秒也会自动生效）"
+            data-tip="手改过文件后立即重读（改完约 1 秒也会自动生效）"
             onClick={onReload}
           >
             重读
@@ -55,14 +55,14 @@ export function ProviderDocCard({ doc, myName, onOpenDir, onReload, msg }: Provi
             <button
               type="button"
               className="sp-btn-sm"
-              title="重新向壳请求配置文件路径（通道刚就绪时不必重启应用）"
+              data-tip="重新向壳请求配置文件路径（通道刚就绪时不必重启应用）"
               onClick={doc.onRetryPath}
             >
               重试路径
             </button>
           )}
         </div>
-        <div className="pp-doc-path" title={doc.path || '（还没读到路径）'}>
+        <div className="pp-doc-path" data-tip={doc.path || '（还没读到路径）'}>
           {doc.path || (doc.status.loaded ? '配置文件路径不可用' : '装载中…')}
         </div>
         {/* 路径拿不到时**必须说清为什么**（2026-09-23 教训：此前只有一句
@@ -122,7 +122,7 @@ export function ProviderDocCard({ doc, myName, onOpenDir, onReload, msg }: Provi
             <span className="pp-chip">{others.length} 个</span>
           </div>
           {others.map((e) => (
-            <div key={`${e.name}-${e.message}`} className="pp-doc-other" title={e.message}>
+            <div key={`${e.name}-${e.message}`} className="pp-doc-other" data-tip={e.message}>
               <span className="pp-doc-other-name">{e.name}</span>
               <span className="pp-doc-other-msg">{e.message.split('\n')[0]}</span>
             </div>
@@ -144,7 +144,7 @@ export function ProviderDocCard({ doc, myName, onOpenDir, onReload, msg }: Provi
             <span className="pp-chip">{doc.projectErrors.length} 个</span>
           </div>
           {doc.projectErrors.map((e) => (
-            <div key={`p-${e.name}-${e.message}`} className="pp-doc-other" title={e.message}>
+            <div key={`p-${e.name}-${e.message}`} className="pp-doc-other" data-tip={e.message}>
               <span className="pp-doc-other-name">{e.name}</span>
               <span className="pp-doc-other-msg">{e.message.split('\n')[0]}</span>
             </div>

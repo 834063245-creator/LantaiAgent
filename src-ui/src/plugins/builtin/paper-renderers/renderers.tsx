@@ -292,7 +292,7 @@ function ZoomTrigger({ label, onOpen, children }: { label: string; onOpen: () =>
     <button
       type="button"
       className="pp-md-img-zoom"
-      title="点击看大图"
+      data-tip="点击看大图"
       aria-label={`放大查看：${label || '图片'}`}
       onClick={onOpen}
     >
@@ -319,7 +319,7 @@ function MdRemoteImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?
     <>
       <div className="pp-md-imgbox">
         {failed ? (
-          <span className="pp-md-img-alt" title={el.src}>
+          <span className="pp-md-img-alt" data-tip={el.src}>
             {el.alt || el.src}
           </span>
         ) : (
@@ -385,7 +385,7 @@ function MdLocalImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?:
             />
           </ZoomTrigger>
         ) : state.status === 'error' ? (
-          <span className="pp-md-img-alt" title={`${el.src} — ${state.reason}`}>
+          <span className="pp-md-img-alt" data-tip={`${el.src} — ${state.reason}`}>
             图片不可读：{baseNameOf(el.src)}
           </span>
         ) : null}
@@ -621,7 +621,7 @@ export function MarkdownBody({
               <button
                 type="button"
                 className="pp-marginalia-pin"
-                title="拖出钉上画布"
+                data-tip="拖出钉上画布"
                 onMouseDown={(e) => onSidecarPinMouseDown?.(e, block)}
               >
                 钉
@@ -724,7 +724,7 @@ function UserImageThumb({ img, onOpen }: { img: ChatImageRef; onOpen: (src: stri
     <button
       type="button"
       className="pp-user-image"
-      title={err ?? label}
+      data-tip={err ?? label}
       aria-label={`预览附图：${label}`}
       onClick={() => {
         if (src !== null) onOpen(src);
@@ -784,7 +784,7 @@ function UserBody({ block }: BlockRendererProps) {
       {files && files.length > 0 && (
         <div className="pp-user-files">
           {files.map((f) => (
-            <div key={f.path} className="pp-user-file" title={f.path}>
+            <div key={f.path} className="pp-user-file" data-tip={f.path}>
               附 · {f.name}
             </div>
           ))}
@@ -987,7 +987,7 @@ function PlanBody({ block }: BlockRendererProps) {
               type="button"
               className={`pp-pc-btn${feedbackOpen ? '' : ' pp-pc-btn--primary'}`}
               disabled={!canApprove}
-              title={canApprove ? undefined : '先选择方案'}
+              data-tip={canApprove ? undefined : '先选择方案'}
               onClick={() => settle({ decision: 'approved', selectedLabel: chosen ?? undefined })}
             >
               批准
@@ -1000,7 +1000,7 @@ function PlanBody({ block }: BlockRendererProps) {
                 type="button"
                 className="pp-pc-btn pp-pc-btn--primary"
                 disabled={!canRevise}
-                title={canRevise ? undefined : '先填写修改意见'}
+                data-tip={canRevise ? undefined : '先填写修改意见'}
                 onClick={() => settle({ decision: 'revise', feedback: feedback.trim() })}
               >
                 提交
@@ -1009,7 +1009,7 @@ function PlanBody({ block }: BlockRendererProps) {
             <button
               type="button"
               className="pp-pc-btn pp-pc-btn--reject"
-              title="回绝此拟策"
+              data-tip="回绝此拟策"
               onClick={() => settle({ decision: 'rejected' })}
             >
               拒绝

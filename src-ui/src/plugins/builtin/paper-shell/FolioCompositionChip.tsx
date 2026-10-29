@@ -111,7 +111,7 @@ export function FolioCompositionChip({ core, sessionId }: FolioCompositionChipPr
         <span
           className="pp-folio-comp-pill"
           data-locked
-          title={
+          data-tip={
             info.error
               ? `本卷组合：${label}（${info.error}——装配时已回退用户层组合）`
               : `本卷组合：${label}（来源：${sourceText}）；已跑过一轮——组合与已发送的对话绑定，不能中途换（另起一卷再选）`
@@ -124,7 +124,7 @@ export function FolioCompositionChip({ core, sessionId }: FolioCompositionChipPr
           <button
             type="button"
             className={`pp-folio-comp-pill${open ? ' open' : ''}`}
-            title={
+            data-tip={
               info.error
                 ? `本卷组合：${label}（${info.error}）`
                 : `本卷组合：${label}（来源：${sourceText}；空白卷可拨，跑过一轮即锁定）`
@@ -148,7 +148,7 @@ export function FolioCompositionChip({ core, sessionId }: FolioCompositionChipPr
                   aria-selected={p.id === label}
                   className={`pp-folio-comp-opt${p.id === label ? ' selected' : ''}`}
                   disabled={p.patch === null}
-                  title={
+                  data-tip={
                     p.patch === null ? `装载失败：${p.error ?? 'roster.patch.yml 不可用'}` : p.metadata?.description
                   }
                   onClick={() => void onPick(p.id)}

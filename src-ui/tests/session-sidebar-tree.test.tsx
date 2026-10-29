@@ -172,9 +172,9 @@ describe('会话树「枝」——侧栏树面（渲染）', () => {
     expect(tags).toHaveLength(1);
     expect(tags[0].textContent).toBe('枝');
     expect(tags[0].querySelector('.ss-tag-src')).toBeNull();
-    expect(tags[0].getAttribute('title')).toContain('从父卷的某个节点分出');
-    expect(tags[0].getAttribute('title')).not.toContain('Nº');
-    expect(rows[0].getAttribute('title')).toContain('枝（自父卷分出）');
+    expect(tags[0].getAttribute('data-tip')).toContain('从父卷的某个节点分出');
+    expect(tags[0].getAttribute('data-tip')).not.toContain('Nº');
+    expect(rows[0].getAttribute('data-tip')).toContain('枝（自父卷分出）');
   });
 
   it('枝视图：族不拆——父子同屏且子行带引线折角 + 父行「▾ N 枝」汇总', async () => {
@@ -222,7 +222,7 @@ describe('会话树「枝」——侧栏树面（渲染）', () => {
     // 牌同样不带号（悬空也一样）：不存在的号不进牌面，靠 orphan 朱砂边 + meta 注记明说；
     // 悬空父卷的号只在**它自己的显示名**里出现（血缘卡「案卷 99（不在场）」，2026-09-21 收显示）
     expect(container.querySelector('.ss-row .ss-tag-src')).toBeNull();
-    expect(container.querySelector('.ss-row .ss-branch-tag')?.getAttribute('title')).toContain('父卷不在场');
+    expect(container.querySelector('.ss-row .ss-branch-tag')?.getAttribute('data-tip')).toContain('父卷不在场');
     expect(container.querySelector('.ss-row')?.className).toContain('orphan');
     // 点开照常（不因血缘悬空被挡）
     await act(async () => {

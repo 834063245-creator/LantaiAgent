@@ -85,7 +85,7 @@ export const StatusLine = memo(function StatusLine({ running = false }: { runnin
       <button
         type="button"
         className={`sl-chip${busy ? ' sl-chip--busy' : ''}${alerting ? ' sl-chip--warn' : ''}`}
-        title={alerting ? `后台警报：${bgAlert?.msg ?? ''}（点击查看最近记录）` : '状态（点击查看最近记录）'}
+        data-tip={alerting ? `后台警报：${bgAlert?.msg ?? ''}（点击查看最近记录）` : '状态（点击查看最近记录）'}
         aria-label={`工作区状态：${alerting ? `后台警报 ${bgAlert?.msg ?? ''}` : running ? '行卷中' : busy ? '分析中' : statusText}`}
         aria-expanded={logOpen}
         onClick={() => setLogOpen((v) => !v)}

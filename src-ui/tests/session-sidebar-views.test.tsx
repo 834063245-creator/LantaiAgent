@@ -131,7 +131,7 @@ describe('案卷侧栏双视角（案卷 ⇄ 枝）', () => {
     // 2026-09-21 卷号收显示：号也从 title 退场——指代归父卷名与血缘卡（设计件 §2）。
     expect(tag.textContent).toBe('枝');
     expect(tag.querySelector('.ss-tag-src')).toBeNull();
-    expect(tag.getAttribute('title')).toContain('从父卷的某个节点分出');
+    expect(tag.getAttribute('data-tip')).toContain('从父卷的某个节点分出');
     expect(container.querySelector('.ss-lineage-card')).toBeNull(); // 常态不出卡
 
     await hover(tag);

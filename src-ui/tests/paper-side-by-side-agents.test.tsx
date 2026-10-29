@@ -235,8 +235,8 @@ describe('S6 P5b 同屏并排两 Agent（序列 B）', () => {
       const chipB = container.querySelector('[data-region="B"] .pp-folio-comp-pill');
       expect(chipA?.textContent).toContain('minimal');
       expect(chipB?.textContent).toContain('standard');
-      expect(chipA?.getAttribute('title')).toContain('本卷记录');
-      expect(chipB?.getAttribute('title')).toContain('全局默认');
+      expect(chipA?.getAttribute('data-tip')).toContain('本卷记录');
+      expect(chipB?.getAttribute('data-tip')).toContain('全局默认');
       // 两枚芯片的作用对象各自是自己的卷（并排 ≠ 共用"当前卷"）
       expect(container.querySelector('[data-region="A"] [data-folio-comp-chip]')?.getAttribute('data-session-id')).toBe(
         String(SID_A),

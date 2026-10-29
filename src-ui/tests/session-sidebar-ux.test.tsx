@@ -266,7 +266,7 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     const meta = closed.querySelector('.ss-meta') as HTMLElement;
     expect(meta.textContent).toContain('同时删除 2 卷（含 1 枝，不可撤销）'); // 本卷 + 1 枝
     expect(meta.className).toContain('ss-meta-confirm');
-    expect(danger?.title).toContain('含 1 枝');
+    expect(danger?.getAttribute('data-tip')).toContain('含 1 枝');
   });
 
   it('键盘 Delete：子树里有运行中的卷 ⇒ 整体拒绝并列出（不武装）', async () => {

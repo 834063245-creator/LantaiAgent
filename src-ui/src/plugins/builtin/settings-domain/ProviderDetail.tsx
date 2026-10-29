@@ -322,12 +322,12 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               <div className="pp-oauth-accounts">
                 {oauthData.accounts.map((acct) => (
                   <div key={acct.accountId} className="pp-model-item">
-                    <span className="pp-model-chip" title={acct.accountId}>
+                    <span className="pp-model-chip" data-tip={acct.accountId}>
                       <span className="pp-model-chip-name">{acct.accountId}</span>
                       <button
                         type="button"
                         className="pp-model-chip-x"
-                        title={`登出 ${acct.accountId}`}
+                        data-tip={`登出 ${acct.accountId}`}
                         aria-label={`登出 ${acct.accountId}`}
                         onClick={() => oauthData?.onLogout(acct.accountId)}
                       >
@@ -397,7 +397,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               <button
                 type="button"
                 className="sp-btn-sm"
-                title={keyVisible ? '隐藏' : '显示'}
+                data-tip={keyVisible ? '隐藏' : '显示'}
                 onClick={onToggleKeyVisible}
               >
                 {keyVisible ? '隐藏' : '显示'}
@@ -406,7 +406,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                 <button
                   type="button"
                   className="sp-btn-sm pp-btn-danger"
-                  title="从系统凭据中删除该 Key"
+                  data-tip="从系统凭据中删除该 Key"
                   onClick={onClearKey}
                 >
                   清除
@@ -434,7 +434,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
           {/* 后台目录拉取的失败原因（2026-09-23）：原因就地显示 + 重试就在上一行
               （此前只在创作坞徽标 hover 里，那儿做不了任何补救） */}
           {catalogFail && (
-            <div className="pp-catalog-fail" title={catalogFail}>
+            <div className="pp-catalog-fail" data-tip={catalogFail}>
               <span>目录拉取失败（后台）：{catalogFail}</span>
               <span className="pp-catalog-fail-hint">已启用的模型不受影响；点上方「刷新目录」重试。</span>
             </div>
@@ -449,17 +449,17 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                 const visionEffective = modelInput(provider, id).includes('image');
                 return (
                   <div key={id} className="pp-model-item">
-                    <span className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} title={id}>
+                    <span className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} data-tip={id}>
                       <span className="pp-model-chip-name">{modelDescriptor(provider, id)?.name ?? id}</span>
                       {visionEffective && (
-                        <span className="pp-model-chip-vision" title="视觉模型（覆盖 / API 拉取 / 目录声明）">
+                        <span className="pp-model-chip-vision" data-tip="视觉模型（覆盖 / API 拉取 / 目录声明）">
                           视
                         </span>
                       )}
                       {id === provider.model && (
                         <span
                           className="pp-model-chip-default"
-                          title="「新会话默认」= 最近在创作坞选用的模型——自动跟从，在此不可改"
+                          data-tip="「新会话默认」= 最近在创作坞选用的模型——自动跟从，在此不可改"
                         >
                           新会话默认
                         </span>
@@ -467,7 +467,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                       <button
                         type="button"
                         className="pp-model-chip-param"
-                        title="上下文窗口 / 最大输出"
+                        data-tip="上下文窗口 / 最大输出"
                         onClick={() => setParamModel(paramModel === id ? null : id)}
                       >
                         {paramModel === id ? '收起' : '参数'}
@@ -475,7 +475,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                       <button
                         type="button"
                         className="pp-model-chip-x"
-                        title={`移除 ${id}`}
+                        data-tip={`移除 ${id}`}
                         aria-label={`移除 ${id}`}
                         onClick={() => onRemoveModel(id)}
                       >
@@ -495,7 +495,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                               onModelOverride(id, 'contextWindow', Number.parseInt(e.target.value, 10) || 0)
                             }
                           />
-                          <span className="pp-model-param-src" title="该值的来源（用户手改 > API 拉取 > 目录）">
+                          <span className="pp-model-param-src" data-tip="该值的来源（用户手改 > API 拉取 > 目录）">
                             {metaSource(provider, id, 'contextWindow')}
                           </span>
                         </label>
@@ -508,7 +508,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                             placeholder={String(modelMaxTokens(provider, id) || '不钳制')}
                             onChange={(e) => onModelOverride(id, 'maxTokens', Number.parseInt(e.target.value, 10) || 0)}
                           />
-                          <span className="pp-model-param-src" title="该值的来源（用户手改 > API 拉取 > 目录）">
+                          <span className="pp-model-param-src" data-tip="该值的来源（用户手改 > API 拉取 > 目录）">
                             {metaSource(provider, id, 'maxTokens')}
                           </span>
                         </label>
@@ -519,7 +519,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                           <button
                             type="button"
                             className={`sp-btn-sm${visionOn ? ' is-on' : ''}`}
-                            title={
+                            data-tip={
                               visionEffective && !visionOn
                                 ? 'API 拉取/目录已声明视觉——覆盖开/关可强制改写（关 = 回落声明值）'
                                 : '未声明视觉——自定义 vision 模型在此补声明（生效面：附图入口 + 请求期图投影 + 选择器「视」徽标）'
@@ -634,7 +634,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                       <button
                         type="button"
                         className="sp-btn-sm"
-                        title="把目录里的模型全部加入可用模型"
+                        data-tip="把目录里的模型全部加入可用模型"
                         onClick={() => onSetEnabledModels([...new Set([...models, ...catalogIds])])}
                       >
                         全部添加
@@ -642,7 +642,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                       <button
                         type="button"
                         className="sp-btn-sm"
-                        title="把目录里的模型全部移出可用模型（手动添加的保留）"
+                        data-tip="把目录里的模型全部移出可用模型（手动添加的保留）"
                         onClick={() => onSetEnabledModels(models.filter((m) => !catalogIds.includes(m)))}
                       >
                         全部移除
@@ -653,7 +653,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                         const on = models.includes(id);
                         const win = modelContextWindow(provider, id, 0);
                         return (
-                          <label key={id} className={`pp-catalog-row${on ? ' on' : ''}`} title={id}>
+                          <label key={id} className={`pp-catalog-row${on ? ' on' : ''}`} data-tip={id}>
                             <input
                               type="checkbox"
                               checked={on}
@@ -661,7 +661,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                             />
                             <span className="pp-catalog-name">{modelDescriptor(provider, id)?.name ?? id}</span>
                             {modelInput(provider, id).includes('image') && (
-                              <span className="pp-model-chip-vision" title="视觉模型（覆盖 / API 拉取 / 目录声明）">
+                              <span className="pp-model-chip-vision" data-tip="视觉模型（覆盖 / API 拉取 / 目录声明）">
                                 视
                               </span>
                             )}
@@ -694,7 +694,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
             <button
               type="button"
               className="sp-btn-sm"
-              title={isFactoryUrl ? '当前已是默认地址' : '恢复出厂默认地址'}
+              data-tip={isFactoryUrl ? '当前已是默认地址' : '恢复出厂默认地址'}
               disabled={isFactoryUrl}
               onClick={onResetBaseUrl}
             >

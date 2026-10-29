@@ -359,7 +359,7 @@ describe('会话树「枝」——空间手势立枝（P4-①：拖出引线、�
     const grip = gripEl(uiUser._id);
     expect(grip.parentElement?.className).toBe('pp-msg-ops');
     expect(grip.textContent).toBe('');
-    expect(grip.title).toContain('立枝');
+    expect(grip.getAttribute('data-tip')).toContain('立枝');
 
     // ① 按下 → 拖动（过阈值）⇒ 纸上出现引线预览，朱点落在**指针**上（落点即所见）
     await dragGrip(uiUser._id, DROP);

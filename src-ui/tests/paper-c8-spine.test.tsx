@@ -147,7 +147,7 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     expect(labels).toEqual(['枝卷', '父卷']);
     const branchSpine = tags[0].closest('.sr-spine');
     expect(branchSpine?.querySelector('.sr-label')?.textContent).toBe('枝卷');
-    expect(branchSpine?.querySelector('.sr-spine-main')?.getAttribute('title')).toContain('（枝）');
+    expect(branchSpine?.querySelector('.sr-spine-main')?.getAttribute('data-tip')).toContain('（枝）');
   });
 
   it('左键 = 定位器：切活跃会话 + 发定位请求（当前卷也飞）', async () => {

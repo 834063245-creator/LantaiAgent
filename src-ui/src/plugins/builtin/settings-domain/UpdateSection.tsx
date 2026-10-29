@@ -108,7 +108,7 @@ export function UpdateSection({ currentVersion, settings, onAutoCheckChange }: U
               <dd>{source?.signed ? 'minisign 签名（内置公钥）' : '内置公钥验签'}</dd>
             </dl>
             {source?.url && (
-              <div className="sp-upd-url" title={source.url}>
+              <div className="sp-upd-url" data-tip={source.url}>
                 {source.url}
               </div>
             )}

@@ -79,7 +79,7 @@ export function ConfirmDialog({
           <span id={titleId} className="cd-title">
             {title}
           </span>
-          <button type="button" className="cd-close" onClick={onCancel} title="关闭 (Esc)">
+          <button type="button" className="cd-close" onClick={onCancel} data-tip="关闭 (Esc)">
             ✕
           </button>
         </div>

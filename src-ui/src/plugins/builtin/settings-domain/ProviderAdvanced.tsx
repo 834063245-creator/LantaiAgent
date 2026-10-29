@@ -68,7 +68,7 @@ export function ProviderAdvanced({ provider, onChange }: ProviderAdvancedProps) 
           <button
             type="button"
             className="sp-btn-sm"
-            title={dirty ? '保存请求头到本提供方' : '没有未保存的改动'}
+            data-tip={dirty ? '保存请求头到本提供方' : '没有未保存的改动'}
             disabled={!dirty}
             onClick={commitHeaders}
           >

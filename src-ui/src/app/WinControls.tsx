@@ -52,13 +52,13 @@ export function WinControls() {
   }, [sync]);
   return (
     <span className="wc-btns">
-      <button type="button" className="wc-btn" title="最小化" onClick={() => winCmd('minimize')}>
+      <button type="button" className="wc-btn" data-tip="最小化" onClick={() => winCmd('minimize')}>
         ─
       </button>
       <button
         type="button"
         className="wc-btn"
-        title={maximized ? '还原' : '最大化'}
+        data-tip={maximized ? '还原' : '最大化'}
         onClick={() => {
           winCmd('toggle_maximize');
           clearTimeout(syncTimerRef.current);
@@ -67,7 +67,7 @@ export function WinControls() {
       >
         {maximized ? '❐' : '□'}
       </button>
-      <button type="button" className="wc-btn wc-btn-close" title="关闭" onClick={() => winCmd('close')}>
+      <button type="button" className="wc-btn wc-btn-close" data-tip="关闭" onClick={() => winCmd('close')}>
         ✕
       </button>
     </span>

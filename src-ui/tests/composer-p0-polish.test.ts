@@ -57,7 +57,7 @@ describe('创作坞 P0 · 空印禁用', () => {
 
   it('按钮由 inputText.trim() 驱动禁用；点空输入不发消息', () => {
     expect(DOCK_TSX).toContain('disabled={!inputText.trim()}');
-    expect(DOCK_TSX).toContain('先落笔，再拟文');
+    expect(DOCK_TSX).toContain('有内容才可拟文');
   });
 });
 

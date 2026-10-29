@@ -366,7 +366,7 @@ describe('B4 渲染 — UserBody 附图缩略行 + MdImage', () => {
     const fallback = container!.querySelector('.pp-user-image-fallback');
     expect(fallback?.textContent).toBe('读取失败');
     const btn = container!.querySelector<HTMLButtonElement>('.pp-user-image');
-    expect(btn?.getAttribute('title')).toContain('附图读取失败');
+    expect(btn?.getAttribute('data-tip')).toContain('附图读取失败');
   });
 
   it('工作区未开：占位盒提示不可读', async () => {
@@ -441,7 +441,7 @@ describe('B4 渲染 — UserBody 附图缩略行 + MdImage', () => {
     expect(container!.querySelector('.pp-md-img')).toBeNull();
     const line = container!.querySelector('.pp-md-img-alt');
     expect(line?.textContent).toBe('图片不可读：x.png');
-    expect(line?.getAttribute('title')).toContain('outside project directory');
+    expect(line?.getAttribute('data-tip')).toContain('outside project directory');
     // 盒仍在（固定盒不塌——版面稳定）
     expect(container!.querySelector('.pp-md-imgbox')).not.toBeNull();
   });
@@ -460,7 +460,7 @@ describe('B4 渲染 — UserBody 附图缩略行 + MdImage', () => {
     expect(container!.querySelector('.pp-md-img')).toBeNull();
     const line = container!.querySelector('.pp-md-img-alt');
     expect(line?.textContent).toBe('图片不可读：bad.png');
-    expect(line?.getAttribute('title')).toContain('解码失败');
+    expect(line?.getAttribute('data-tip')).toContain('解码失败');
   });
 
   it('远端图点击 → 放大浮层（.pp-media-preview-overlay；Esc 关闭）', () => {
