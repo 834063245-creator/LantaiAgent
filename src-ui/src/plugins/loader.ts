@@ -451,9 +451,10 @@ export function resetPluginRuntimeForTests(): void {
 }
 
 /** 增量装载一个外部插件（安装/启用后的运行时生效入口）。
- *  已活跃 = 先 dispose 旧 fiber 再重载（升级重装路径）。装载语义与
- *  loadOne 逐字节一致（manifest 校验 / inject 检查 / 权限门禁 / 失败
- *  隔离——永不 reject，结果写 plugin-store 并返回）。 */
+ *  已活跃 = **先验后拆**：新版过完拒载闸才 dispose 旧 fiber（升级重装路径；
+ *  被拒 = 场上旧版原样继续跑）。装载语义与 boot 装载逐字节一致（manifest
+ *  校验 / inject 检查 / 权限门禁 / 失败隔离——永不 reject，结果写
+ *  plugin-store 并返回）。 */
 export async function activateExternalPlugin(dirId: string): Promise<PluginRecord> {
   if (runtime == null) {
     return errorRecord(dirId, null, '插件运行时未引导（main.ts loadExternalPlugins 未跑）');
@@ -464,12 +465,25 @@ export async function activateExternalPlugin(dirId: string): Promise<PluginRecor
     return errorRecord(dirId, null, SOURCE_DOMAIN_RELOAD_REASON);
   }
   const { root, deps } = runtime;
-  // 重装载路径：旧 fiber 先拆（dispose 链式回收全部贡献）
-  await deactivateExternalPlugin(dirId);
-  bootTiming.length = 0; // 增量装载计时独立汇总（loadOne 会写采集器）
+  bootTiming.length = 0; // 增量装载计时独立汇总（prepareOne / applyPrepared 会写采集器）
   // 权限门禁读最新 granted 段（plugins.json 可被授权流手改——不 boot 缓存）
   const { granted } = await readPluginsState(deps.fetchImpl, deps.origin);
-  const { record, fiber } = await loadOne(root, dirId, { ...deps, disabled: new Set(), granted });
+  // ⚡ 先验后拆（2026-10-29 事故立法）：拒载闸（manifest / face 指纹 / 权限 /
+  // import 形状）必须在拆旧 fiber **之前**跑完。旧实现「先 deactivate 再 loadOne」
+  // 把「拒载」变成「拆掉旧的、新的也不要」——场上那一份直接缺席。
+  // 实机取证：改宿主面（faceDeps 加 5 键）后重建产物，运行中的 exe 仍是旧指纹 ⇒
+  // product-watch 逐个重载 40 个产物，每个都先拆后拒 ⇒ 纸壳/渲染器整面消失、
+  // 界面变白（日志却写「拒载防渲染期整树卸载」，与事实相反）；重启也救不回来
+  // （boot 期同样被拒）。语义正解：**拒绝 = 保持原状**，旧版继续跑。
+  const prepared = await prepareOne(dirId, { ...deps, disabled: new Set(), granted });
+  if (!prepared.ok) {
+    usePluginStore.getState().upsertPlugin(prepared.record);
+    reportBootTiming('activateExternalPlugin(' + dirId + ')');
+    return prepared.record;
+  }
+  // 通过全部闸 ⇒ 才允许换：旧 fiber 先拆（dispose 链式回收全部贡献），再挂新的
+  await deactivateExternalPlugin(dirId);
+  const { record, fiber } = await applyPrepared(root, prepared.prepared, prepared.t0);
   if (fiber) activeExternalFibers.set(record.name, fiber);
   usePluginStore.getState().upsertPlugin(record);
   reportBootTiming('activateExternalPlugin(' + dirId + ')');
@@ -965,29 +979,36 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
   }
 }
 
-/** 装载单个插件（阶段 1→2→3 串行组合；给 activateExternalPlugin 增量装载用）。
- *  任何一步失败 → error 记录（失败隔离，永不抛出）。返回 fiber
- *  （D6 运行时热重载的 dispose 锚点——未装载态为 null）。 */
-async function loadOne(
-  root: Context,
-  dirId: string,
-  deps: LoadOneDeps,
-): Promise<{ record: PluginRecord; fiber: Fiber | null }> {
+/** 阶段 1+2（无副作用）：拉 manifest/face、过全部拒载闸、import 并构造 target。
+ *  与 apply 拆开是为了「先验后拆」——增量重载必须先确认新版**可装**，才允许
+ *  动场上那份（见 activateExternalPlugin 的 2026-10-29 事故注记）。 */
+type PrepareResult = { ok: true; prepared: ModuleStageOk; t0: number } | { ok: false; record: PluginRecord };
+
+async function prepareOne(dirId: string, deps: LoadOneDeps): Promise<PrepareResult> {
   const t0 = performance.now();
   const s1 = await manifestStage(dirId, deps);
   if (!s1.ok) {
     s1.tim.totalMs = performance.now() - t0;
     s1.tim.status = s1.record.status;
     bootTiming.push(s1.tim);
-    return { record: s1.record, fiber: null };
+    return { ok: false, record: s1.record };
   }
   const s2 = await moduleStage(s1, deps);
   if (!s2.ok) {
     s2.tim.totalMs = performance.now() - t0;
     s2.tim.status = s2.record.status;
     bootTiming.push(s2.tim);
-    return { record: s2.record, fiber: null };
+    return { ok: false, record: s2.record };
   }
+  return { ok: true, prepared: s2, t0 };
+}
+
+/** 阶段 3：apply 已备好的 target（注册贡献）。失败 = error 记录（失败隔离）。 */
+async function applyPrepared(
+  root: Context,
+  s2: ModuleStageOk,
+  t0: number,
+): Promise<{ record: PluginRecord; fiber: Fiber | null }> {
   try {
     const tApply = performance.now();
     const fiber = await root.plugin(s2.target);

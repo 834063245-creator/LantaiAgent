@@ -823,6 +823,42 @@ describe('D6 运行时热重载（activateExternalPlugin / deactivateExternalPlu
     expect(record.error).toContain('dev 源码域');
     expect(activeExternalPluginNames()).toEqual([]);
   });
+
+  // ── 2026-10-29 实机事故立法：**拒绝 ≠ 拆掉** ──
+  // 病灶：旧实现 activateExternalPlugin 先 deactivate 再走拒载闸——产物一旦与 exe
+  // 偏斜（宿主面指纹不同），重载就把场上正在跑的旧版拆掉、新版又被拒载 ⇒ 该产物
+  // 整面缺席。实机取证：改了宿主面（faceDeps 加 5 键）后重建 40 个产物，运行中的
+  // app 被 product-watch 逐个重载 ⇒ 纸壳/渲染器/任务域全灭、界面变白（日志却写着
+  // 「拒载防渲染期整树卸载」，与事实相反；重启也救不回来，boot 期同样被拒）。
+  // 正解：**先验后拆**——拒载闸全部通过才允许换，拒绝 = 保持原状。
+  it('⑧ 偏斜产物重载被拒：场上旧版保持在场（先验后拆）', async () => {
+    const root = new Context();
+    const probe = { events: [] as string[] };
+    let skewed = false;
+    const routes: Record<string, unknown> = {
+      [ORIGIN + '/']: ['hello'],
+      [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+      [ORIGIN + '/hello/manifest.json']: HELLO_MANIFEST,
+    };
+    const fetchImpl = async (url: string) => {
+      // 首轮无 face.json（旧产物形态 = 零需求）；重载时换成偏斜指纹（本批动了宿主面）
+      if (url === ORIGIN + '/hello/face.json') {
+        return skewed ? jsonResponse({ faceDeps: [], hostApi: 'deadbeef' }) : notFound();
+      }
+      return url in routes ? jsonResponse(routes[url]) : notFound();
+    };
+    const importModule = async (): Promise<Record<string, unknown>> => hotPluginModule('hello', probe);
+    await loadExternalPlugins(root, { origin: ORIGIN, fetchImpl, importModule });
+    expect(probe.events).toEqual(['hello:setup']);
+
+    skewed = true;
+    const record = await activateExternalPlugin('hello');
+    expect(record.status).toBe('error');
+    expect(record.error).toContain('宿主面版本偏斜');
+    // 判据：旧版**没有被拆**（无 dispose 事件），仍在活跃表里——拒绝 = 保持原状
+    expect(probe.events).toEqual(['hello:setup']);
+    expect(activeExternalPluginNames()).toEqual(['hello']);
+  });
 });
 
 // ── 2026-08-29：第一方插件收编 plugin-store（平台化收尾）──
@@ -852,7 +888,8 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     // 批 10 部件三 bundled-engine 产物：56 → 57
     // pre-step-service 新增（2026-10-13 agent-hooks-plan 一期：步前裁决贡献面）：57 → 58
     // 二期面扩展改名 steps-service（2026-10-13：ctx.preStep → ctx.steps + turn-stopping；计数不变）
-    expect(ALL_PLUGINS.length).toBe(58);
+    // composition-domain 新增（2026-10 创作者模式最小闭环：composition 工具行，defaultOff）：58 → 59
+    expect(ALL_PLUGINS.length).toBe(59);
     expect(plugins.every((p) => p.builtin === true)).toBe(true);
     expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
     expect(plugins.every((p) => p.status === 'active')).toBe(true);

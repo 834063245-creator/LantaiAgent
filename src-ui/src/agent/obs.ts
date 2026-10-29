@@ -41,7 +41,8 @@ import { type LogEntry, log, logChannelState, logLevel } from './logger';
 // 的 __LANTAI_FACE_ARTIFACT__ 一致。
 declare const __LANTAI_BUILD__: { v: string; commit: string } | undefined;
 
-const BUILD: { v: string; commit: string } =
+/** 构建锚（导出：启动诊断面 main.ts → app/BootRecovery 要显示「哪一份代码」）。 */
+export const BUILD: { v: string; commit: string } =
   typeof __LANTAI_BUILD__ === 'undefined' ? { v: 'unknown', commit: 'unknown' } : __LANTAI_BUILD__;
 
 // ── 事件表（事件名 = ASCII 点分稳定名；新增接缝在这里加一行 + 一个函数）──
