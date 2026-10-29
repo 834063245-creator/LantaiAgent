@@ -46,15 +46,38 @@
   box-shadow: var(--elev-raise);
   pointer-events: none;
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(12px);
+  /* 退场：**干脆**——走登场档的短头（`--m-ink` 0.16s / 出相曲线）。
+   * 人眼对「消失」比对「出现」宽容：退场拖长只会挡住视线，不会更好看。 */
   transition:
     opacity var(--m-ink),
     transform var(--m-ink);
 }
 
+/* 翻到目标**下方**时，动画方向要跟着翻：从上往下落（`-12px` → 0），
+ * 而不是仍然从下往上冒。原实现两个方向共用一个 `+8px`，翻转后看起来像
+ * 「从按钮里钻出来」——这是初版的真缺陷，不是审美差异。 */
+.lt-tip[data-side="bottom"] {
+  transform: translateY(-12px);
+}
+
 .lt-tip.is-on {
   opacity: 1;
   transform: translateY(0);
+  /* 入场：**从容**——抬到 `--m-sheet` 档（0.26s）+ 对开曲线 `--m-ease-io`。
+   *
+   * 初版用 `--m-ink`（0.16s + 出相曲线），§15 批 6 对同一条曲线有实测：
+   * 出相在 t=.2 已走完 65%、t=.45 走完 94% ⇒ 60fps 下**约两帧就动完了**，
+   * 眼睛读到的是「出现」而不是「浮现」。那批的结论同样适用于本件：
+   * 曲线换 io 后同帧可感度 +142%（台架五案实测，见 §15 批 6）。
+   *
+   * 曲线用 longhand 覆盖 shorthand 里的 easing（`--m-sheet` 自带出相曲线，
+   * 叠加第二段无法解析）。这样既能拿到 0.26s 的时长、又换成 io 曲线，
+   * **不新增任何字面时长**（motion-contract 的散写时长守护不受影响）。 */
+  transition:
+    opacity var(--m-sheet),
+    transform var(--m-sheet);
+  transition-timing-function: var(--m-ease-io);
 }
 
 .lt-tip-label {
