@@ -514,3 +514,30 @@ describe('抽搐根治：单卡事件时间线（part-mutator → translate → 
     ]);
   });
 });
+
+// 2026-10-29 实机回归：折叠行文本无上限 ⇒ 脏 action（模型把整条命令塞进 action 字段，
+// 真机 512 字符）把折叠行撑到 574 字符（≈3900px），按钮盒子冲出聊天流区。
+// 三层防线里的文本层：foldLabel 出口硬上限（源头在 displayToolName，版面在 .pp-fold）。
+describe('折叠行文本上限（实机回归守护）', () => {
+  it('超长文本截到上限 + 省略号（任何分支都不许把 DOM 文本撑爆）', () => {
+    const cmd = 'cd /d/ws && perl -pi -e "s/a/b/g" && '.repeat(20);
+    const label = foldLabel(
+      'tool',
+      { name: 'shell', label: 'shell', args: JSON.stringify({ action: cmd }), status: 'done' },
+      true,
+    );
+    expect(label.length).toBeLessThanOrEqual(160);
+    expect(label.endsWith('…')).toBe(true);
+    expect(label.startsWith('▸ shell')).toBe(true);
+  });
+
+  it('正常折叠行不受影响（约 60 字符的读数照旧完整）', () => {
+    const label = foldLabel(
+      'tool',
+      { name: 'fs', label: 'fs', args: '{"action":"read","path":"docs/plans/README.md"}', status: 'done', output: 'x' },
+      true,
+    );
+    expect(label.length).toBeLessThan(80);
+    expect(label).not.toContain('…');
+  });
+});

@@ -82,6 +82,17 @@ describe('displayToolName — 领域调用显示名', () => {
     expect(displayToolName('fs', '{}')).toBe('fs');
     expect(displayToolName('glob', undefined)).toBe('glob');
   });
+
+  // 2026-10-29 实机回归：模型偶尔把整条命令塞进 action 字段（真机 512 字符），
+  // 名字位曾因此变成 `shell(<整条命令>)`，把折叠行撑出聊天流区。
+  it('非法 action 形态（命令/路径/超长）一律不拼进名字', async () => {
+    const { displayToolName } = await import('../src/ui/tool-semantics');
+    const cmd = 'cd /d/ws && perl -pi -e "s/a/b/g" tests/x.test.ts && git status --short';
+    expect(displayToolName('shell', JSON.stringify({ action: cmd, command: cmd }))).toBe('shell');
+    expect(displayToolName('fs', JSON.stringify({ action: 'src/a.ts' }))).toBe('fs');
+    expect(displayToolName('fs', JSON.stringify({ action: 'A'.repeat(40) }))).toBe('fs');
+    expect(displayToolName('fs', JSON.stringify({ action: 'write', extra: 1 }))).toBe('fs(write)'); // 合法形态照旧
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════

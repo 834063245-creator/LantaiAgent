@@ -29,11 +29,17 @@ export function resolveSemanticToolName(toolName: string, argsJson?: string): st
   return spec?.actions[action] ?? toolName;
 }
 
+/** 领域动作的**合法形态**：短标识符（snake_case）。模型偶尔把整条命令/路径塞进
+ *  action 字段（2026-10-29 实机取证：`{"action":"cd /d/ws && perl -pi -e …"}`，
+ *  action 长 512 字符）——非法形态一律不拼进显示名，否则折叠行会被撑爆
+ *  （真机症状：折叠行文字冲出聊天流区，见 PaperPanel.css 的 .pp-fold 宽度守卫）。 */
+const ACTION_LABEL_RE = /^[a-z][a-z0-9_]{0,23}$/;
+
 /** 领域工具显示名（fs + write → "fs(write)"），用于工具卡片 / 摘要标题。
- *  非领域工具或 action 缺失时返回原名。 */
+ *  非领域工具、action 缺失或形态非法时返回原名。 */
 export function displayToolName(toolName: string, argsJson?: string): string {
   const action = parseAction(argsJson);
-  if (!action || !DOMAIN_NAMES.has(toolName)) return toolName;
+  if (!action || !ACTION_LABEL_RE.test(action) || !DOMAIN_NAMES.has(toolName)) return toolName;
   return `${toolName}(${action})`;
 }
 

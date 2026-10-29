@@ -115,10 +115,24 @@ function charLabel(n: number): string {
   return String(n);
 }
 
-/** 折叠行文案：折叠态报「有什么可展开」（关键信息 + 字数量化），展开态报「可收起」。
+/** 折叠行文本上限（字符）。
+ *  折叠行是**恒一行**的 10px mono 注记（几何 14px + 6px 下距，见 .pp-fold），超出本来
+ *  由 CSS 省略号收尾。这里再给一层**硬上限**，防的是「脏数据把 DOM 文本撑到几千字符」：
+ *  2026-10-29 实机回归——模型偶尔把整条命令塞进 args.action（真机 512 字符），折叠行
+ *  长到 574 字符（≈3900px），`<button>` 按内容宽撑开盒子，整行文字冲出聊天流区。
+ *  三层防线各司其职：displayToolName 拒收非法 action（源头）/ 本上限（文本）/
+ *  .pp-fold 的 width:100% + ellipsis（版面）。 */
+const FOLD_LABEL_MAX = 160;
+
+/** 折叠行文案（折叠态报「有什么可展开」，展开态报「可收起」）。
  *  资产块（图版卡）出「物类签 + 题名」——与架上签条同一枚签、同一个语汇；
  *  `block` 缺省 = 非资产（旧调用面照旧走 kind 面文案）。 */
 export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean, block?: SourcedBlock): string {
+  const label = foldLabelRaw(kind, payload, folded, block);
+  return label.length > FOLD_LABEL_MAX ? `${label.slice(0, FOLD_LABEL_MAX - 1)}…` : label;
+}
+
+function foldLabelRaw(kind: BlockKind, payload: unknown, folded: boolean, block?: SourcedBlock): string {
   if (block?.asset != null) {
     // 题名取 asset.title（资产身份上的题名，不是 payload 里的业务字段）；空题名
     // 只出签——签恒在，不空着（同图版题签行的规则）。

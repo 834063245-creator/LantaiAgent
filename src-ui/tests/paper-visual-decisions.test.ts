@@ -980,6 +980,18 @@ describe('纸面运行态（2026-09-06——「会话在跑而纸面死寂」根
     expect(ruleBody(PANEL_CSS, '.pp-status.pp-running')).toContain('color: var(--indigo)');
   });
 
+  it('折叠行宽度守卫：按钮恒按父宽（2026-10-29 实机回归——长文本冲出聊天流区）', () => {
+    const fold = ruleBody(PANEL_CSS, '.pp-fold {');
+    // <button> 的 auto 宽度是 fit-content ⇒ 必须显式 100%，否则长文本把盒子撑出纸面
+    expect(fold).toContain('width: 100%');
+    expect(fold).toContain('max-width: 100%');
+    expect(fold).toContain('box-sizing: border-box');
+    // 单行省略号守卫仍在（两件事配套：宽度受限 + 超长走省略号）
+    expect(fold).toContain('white-space: nowrap');
+    expect(fold).toContain('overflow: hidden');
+    expect(fold).toContain('text-overflow: ellipsis');
+  });
+
   it('接线在册：落笔点/湿墨类/运行集进壳层，wet 判定进 block-model', () => {
     expect(PANEL_TSX).toContain('pp-quill');
     expect(PANEL_TSX).toContain("writing ? ' pp-writing'");

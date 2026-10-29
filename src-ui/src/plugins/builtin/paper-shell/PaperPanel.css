@@ -1592,6 +1592,15 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* 宽度守卫（2026-10-29 实机回归修复）：`<button>` 的 auto 宽度是 **fit-content**
+   * （按内容宽），不是撑满父容器——折叠行文本一长，按钮自身盒子就超出纸面，整行
+   * 文字跑到聊天流区之外（上面的 overflow:hidden 只裁内部内容，管不了盒子宽度）。
+   * 脏数据的来路：模型偶尔把整条命令塞进 args.action（真机 512 字符）→ 名字位
+   * `shell(<命令>)`。文本侧已在 ui/tool-semantics 与 paper/fold 各加一道上限，
+   * 这里是不许任何长文本改版面的最后一道。 */
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   transition: color var(--snap);
 }
 .pp-fold:hover {
