@@ -104,6 +104,15 @@ export class SessionLogWriteBehind {
     this.deadlineExpired = false;
   }
 
+  /** **丢弃未落盘事件**（2026-10-29 收口）——只用于「盘面不该再有这些事件」的场景：
+   *  卷被删除前退休写面（排空会把刚删掉的 `.ndjson` 写回来）、测试隔离。
+   *  与「退休先排空」相反，且此后不再自动写（迟到的入队也无意义）。 */
+  discardPending(): void {
+    this.pending = [];
+    this.cancelAutomaticWait();
+    this.automaticPaused = true;
+  }
+
   /** 屏障公共入口（flush = 无 op；rewrite = 持屏障跑整写）。 */
   private runBarrier(op?: () => Promise<void>): Promise<void> {
     if (this.barrier !== undefined) return this.barrier;

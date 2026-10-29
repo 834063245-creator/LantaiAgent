@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-10-12T15:45:18.966Z
-> 方法总数：58（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-10-29T06:18:46.546Z
+> 方法总数：57（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -150,12 +150,6 @@
 | `workspace_toggle_pin` | path | — | `null`（unit） |
 | `workspace_remove` | path | — | `null`（unit） |
 | `workspace_create_dir` | name | — | JSON 字符串 |
-
-## 外部服务
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `agent_session_append` | project_path, agent_id | — | `null`（unit） |
 
 ## 事件（Rust 侧 emit → 前端 listen）
 

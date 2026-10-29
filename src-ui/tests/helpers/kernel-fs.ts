@@ -34,6 +34,7 @@ import { vi } from 'vitest';
 //
 // helper 契约（与 rpc-contract 实现逐字对齐）：
 //   kernelWriteFile(filePath, content)      → path
+//   kernelWriteFileDurable(filePath, content) → path（同记账；真实现多一次 fsync）
 //   kernelCreateDirectory(path)             → path
 //   kernelDeleteFile(path)                  → path
 //   kernelReadFile(p, opts?)                → 原文（mock 不做行号格式）
@@ -155,6 +156,11 @@ export function createKernelFsMock(opts?: { wrapWithSpies?: boolean }): {
     return p;
   };
 
+  /** 写 + fsync（durable 变体，2026-10-29 换轨收口）：与 kernelWriteFile 同记账、
+   *  同失败注入（durable 只在真实现里多一次 sync_all；内存盘不模拟耐久档）。 */
+  const kernelWriteFileDurable = async (filePath: string, content: string): Promise<string> =>
+    kernelWriteFile(filePath, content);
+
   const kernelCreateDirectory = async (path: string): Promise<string> => {
     if (fs.fail.createDir) throw new Error(fs.fail.createDir);
     const p = String(path).replace(/\\/g, '/').replace(/\/+$/, '');
@@ -255,6 +261,7 @@ export function createKernelFsMock(opts?: { wrapWithSpies?: boolean }): {
 
   const overrides: Record<string, unknown> = {
     kernelWriteFile,
+    kernelWriteFileDurable,
     kernelCreateDirectory,
     kernelDeleteFile,
     kernelReadFile,

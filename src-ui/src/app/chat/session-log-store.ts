@@ -33,6 +33,11 @@ import { interruptedToolCallClosers } from '../../agent/session-log-repair';
 import { DEFAULT_WRITE_BATCH_MAX_DELAY_MS, SessionLogWriteBehind } from '../../agent/session-log-write-behind';
 import { sessionExecute } from '../../composition/session-persistence-service';
 
+/** 单卷事件日志尺寸告警阈值（8 MiB，2026-10-29 收口：此前**零尺寸观测**）。
+ *  超阈值只 warn 一次（不自动压缩——日志是 append-only 真相，旧数据不迁移；
+ *  体积的主要源头 = 「每次开卷重复写系统提示全文」，同批已治，见 adopt 去重）。 */
+const LOG_SIZE_WARN_BYTES = 8 * 1024 * 1024;
+
 /** 父卷引用 = 会话树的一条**边**（血缘）。 */
 export interface SessionLogParentRef {
   /** 父卷号（**归一化后**的那一卷——见 `SessionLogHeader.parent` 注）。 */
@@ -152,15 +157,51 @@ export interface SessionLogStore {
   rewrite(erased: SessionLogErasedRange): void;
 }
 
-/** 注册表：SessionLog 实例 → 写面（WeakMap——日志随 Agent 消亡，不留强引用）。 */
-const _stores = new WeakMap<SessionLog, SessionLogStore>();
+/** 注册表：SessionLog 实例 → 在册写面（WeakMap——日志随 Agent 消亡，不留强引用）。 */
+const _stores = new WeakMap<SessionLog, LiveLogStore>();
 
-/** 当前在册写面（退出收尾排空全部——WeakMap 不可枚举，另存一份强引用表）。 */
-const _live = new Set<SessionLogStore>();
+/** 在册写面的一条（2026-10-29 收口：Set → **按文件路径寻址**）。
+ *  寻址化买到的三件事（此前 Set 做不到）：
+ *  ① **读前屏障**——读路径先排空该文件的写后队列（写后队列 = 该文件唯一写入面，
+ *     排空 ⇒ 文件静默），读与在途 append 不会再交错；
+ *  ② **同路径冲突检测**——两个写面并行 = 两份独立 seq 游标写同一文件（必坏），
+ *     装配期直接拒绝（见 attachSessionLogStore）；
+ *  ③ 退出收尾按路径排空（WeakMap 不可枚举，靠这张表）。 */
+interface LiveLogStore {
+  readonly store: SessionLogStore;
+  /** 排空 → 退订 → 断 sink → 从两张表摘除（幂等）。
+   *  `dropPending` = 丢弃未落盘尾巴（卷被删除时用——排空会把已删文件写回来）。 */
+  retire(dropPending?: boolean): Promise<void>;
+}
+
+const _live = new Map<string, LiveLogStore>();
+
+/** 退休中的写面（已摘出 `_live`、排空在途）——退出收尾要等它们结算
+ *  （DSH `retirements` 同义：会话销毁后其缓冲尾巴仍在 drain，读/关不容它失踪）。 */
+const _retiring = new Set<Promise<void>>();
 
 /** 事件日志文件路径（唯一拼接点——消费方（store/加载器）一律经本函数）。 */
 export function sessionLogPath(root: string, id: number): string {
   return `${root}/${id}.ndjson`;
+}
+
+/** 读前屏障：该路径有在册写面 ⇒ 排空它的队列（+ 等在途整写/退休结算）。
+ *  无写面 = no-op（外部写入面不在本表里——那属于「单实例」假设，见 INVARIANTS）。 */
+async function awaitLogQuiescent(root: string, id: number): Promise<void> {
+  const live = _live.get(sessionLogPath(root, id));
+  if (!live) return;
+  await live.store.flush();
+}
+
+/** 卷日志文件是否在目录里（区分「卷不存在」与「读失败」用；枚举本身失败 = 无法判定）。 */
+async function logFilePresent(root: string, id: number): Promise<boolean> {
+  try {
+    const raw = await sessionExecute('list_volumes', { root });
+    const names = JSON.parse(raw) as unknown;
+    return Array.isArray(names) && names.includes(`${id}.ndjson`);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -171,6 +212,11 @@ export function sessionLogPath(root: string, id: number): string {
  */
 export async function loadSessionLogFile(root: string, id: number): Promise<LoadedSessionLog | null> {
   const path = sessionLogPath(root, id);
+  // **读前屏障**（2026-10-29 收口）：该文件有在册写面 ⇒ 先排空它的写后队列。
+  // 写后队列是该文件唯一写入面，排空即「文件静默」——读面从此不会与在途 append
+  // 交错（交错时末行只写了一半会被判成断尾，随后 openSessionLog 的 truncate 会把
+  // 在途批次切掉）。DSH 用 revision 双 stat 达到同一目的；单进程单写面下屏障更直接。
+  await awaitLogQuiescent(root, id);
   let raw: string;
   try {
     raw = await sessionExecute('read_log', { root, id: String(id) });
@@ -304,7 +350,15 @@ export async function readVolumeLogMessages(
   header: SessionLogHeader;
 } | null> {
   const loaded = await loadSessionLogFile(root, id);
-  if (!loaded || loaded.events.length === 0) return null;
+  if (!loaded) {
+    // **「文件在但读不出」≠「卷不存在」**（M9，2026-10-29 收口）：读面失败一律上抛，
+    // 由消费面保留上次结果/明示；只有目录里真没有这个文件才判「卷不存在」。
+    if (await logFilePresent(root, id)) {
+      throw new Error(`案卷 ${id} 的事件日志存在但读取失败（不当作卷不存在；见 ui.log 的 session-log warn）`);
+    }
+    return null;
+  }
+  if (loaded.events.length === 0) return null;
   const { SessionLog } = await import('../../agent/session-log');
   const closers = interruptedToolCallClosers(loaded.events);
   const log = SessionLog.replay(closers.length > 0 ? [...loaded.events, ...closers] : loaded.events);
@@ -314,16 +368,44 @@ export async function readVolumeLogMessages(
 /**
  * 把一条会话日志接到盘上：订阅 `onEvent` → 写后队列 → durable append。
  * 幂等：同一 SessionLog 重复 attach 返回既有写面（不重复订阅、不并发两个队列）。
+ *
+ * **同路径冲突**（2026-10-29 收口）：该文件已有在册写面时**等它真正退休**再挂新的
+ * （retire = 排空 → 退订 → 断 sink）。典型来路是「上一句柄 detach 的排空还在途时的
+ * 快速重开」——两份独立 seq 游标并行写同一文件必坏，序列化是唯一安全解；
+ * 真有两个活 Agent 抢一卷时每次装配都会留一条 warn（可见，不静默）。
  */
-export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessionLogStoreOptions): SessionLogStore {
+export async function attachSessionLogStore(
+  logInstance: SessionLog,
+  opts: AttachSessionLogStoreOptions,
+): Promise<SessionLogStore> {
   const existing = _stores.get(logInstance);
-  if (existing) return existing;
+  if (existing) return existing.store;
 
   const target = sessionLogPath(opts.root, opts.sessionId);
+  const occupying = _live.get(target);
+  if (occupying) {
+    log.warn('session-log', `同一卷的旧写面尚未退休，等待排空后接替：${target}`, {});
+    await occupying.retire();
+  }
   let materialized = opts.adopt === 'continue'; // continue 姿态：头行已在盘上
   let batches = 0;
   let events = 0;
   let failures = 0;
+  /** 本写面写入的字节数（尺寸观测，2026-10-29 收口——此前零观测）。 */
+  let bytes = 0;
+  let sizeWarned = false;
+  /** 记尺寸并在首次越过阈值时 warn（只一次；不自动压缩，见阈值常量注）。 */
+  const noteBytes = (text: string): void => {
+    bytes += new TextEncoder().encode(text).length;
+    if (!sizeWarned && bytes > LOG_SIZE_WARN_BYTES) {
+      sizeWarned = true;
+      log.warn(
+        'session-log',
+        `会话事件日志超过 ${LOG_SIZE_WARN_BYTES / 1024 / 1024} MiB（长卷线性增长，重放/盘点成本随体积走）：${target}`,
+        { bytes },
+      );
+    }
+  };
   /** 抹除账（压实，A 案）：从盘上头行续账，每次压实累加（相邻段合并）。 */
   const erasedRanges: SessionLogErasedRange[] = [...(opts.header.erased ?? [])];
   /** 有待兑现的整写（压实）——`flush` 会重试；`hasWork` 据此让退出收尾等它。 */
@@ -342,6 +424,7 @@ export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessi
       id: String(opts.sessionId),
       data: `${JSON.stringify(header)}\n${body}${body ? '\n' : ''}`,
     });
+    noteBytes(`${JSON.stringify(header)}\n${body}${body ? '\n' : ''}`);
     materialized = true;
     rewritePending = false;
   };
@@ -356,6 +439,7 @@ export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessi
         id: String(opts.sessionId),
         data: body,
       });
+      noteBytes(body);
       events += batch.length;
       batches += 1;
       return;
@@ -374,6 +458,7 @@ export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessi
       id: String(opts.sessionId),
       data: payload,
     });
+    noteBytes(payload);
     materialized = true;
     events += prefix.length;
     batches += 1;
@@ -389,7 +474,9 @@ export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessi
     },
   });
 
-  logInstance.onEvent((ev) => {
+  // 退订句柄必须留下（2026-10-29 收口）：此前丢弃 ⇒ detach 之后事件仍进队列，
+  // 退役写面还能继续往盘上写（违「摘除 = 不再写」）。
+  const disposeSubscription = logInstance.onEvent((ev) => {
     queue.enqueue(ev);
   });
 
@@ -422,9 +509,61 @@ export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessi
   };
   // 落盘面接上日志（agent 层的检查点问日志要屏障——见 SessionLog.flushPersistence）
   logInstance.setPersistenceSink(store);
-  _stores.set(logInstance, store);
-  _live.add(store);
+
+  /** 退休（幂等）：排空 → 退订 → 断 sink → 从两张表摘除。
+   *  先摘 `_live`（新的 attach 才能接替），再排空——排空期间不再有新事件入队。
+   *  `dropPending` = 丢弃未落盘的尾巴（**卷被删除**时用：flush 会把已删文件写回来）。 */
+  const retire = async (dropPending = false): Promise<void> => {
+    if (_live.get(target)?.store !== store) return; // 已被接替过
+    _live.delete(target);
+    const done = (async () => {
+      if (dropPending) queue.discardPending();
+      else {
+        try {
+          await store.flush();
+        } catch (e) {
+          log.warn('session-log', `退休前排空失败（案卷 ${opts.sessionId}）`, { error: String(e) });
+        }
+      }
+      disposeSubscription();
+      logInstance.setPersistenceSink(null);
+      _stores.delete(logInstance);
+    })();
+    _retiring.add(done);
+    try {
+      await done;
+    } finally {
+      _retiring.delete(done);
+    }
+  };
+
+  const record: LiveLogStore = { store, retire };
+  _stores.set(logInstance, record);
+  _live.set(target, record);
   return store;
+}
+
+/** 退休一批写面（测试隔离 / 卷删除）。内部：路径寻址 + 可选丢弃尾巴。 */
+async function retireAll(opts?: { dropPending?: boolean }): Promise<void> {
+  const all = [..._live.values()];
+  await Promise.all(all.map((r) => r.retire(opts?.dropPending ?? false)));
+}
+
+/**
+ * **卷被删除**：把该路径的写面就地退休并**丢弃未落盘尾巴**（2026-10-29 收口）。
+ * 必须**先退休再删文件**——否则 detach 的「先排空」会把刚删掉的 `.ndjson` 写回来
+ * （墓碑都清不掉的复活）。
+ */
+export async function retireSessionLogPath(root: string, id: number): Promise<void> {
+  const live = _live.get(sessionLogPath(root, id));
+  if (!live) return;
+  await live.retire(true);
+}
+
+/** 测试隔离：退休全部在册写面并丢弃尾巴（跨用例共享同一个工作区根时必须调，
+ *  否则上一个用例的活写面会在下一个用例的盘面上把旧内容冲回来）。 */
+export async function resetSessionLogStoresForTests(): Promise<void> {
+  await retireAll({ dropPending: true });
 }
 
 /** 累加抹除账（相邻/重叠段合并——账要能一行读完，且读路径的洞判据是逐 seq 查表）。 */
@@ -443,7 +582,7 @@ function mergeErasedRange(ledger: SessionLogErasedRange[], next: SessionLogErase
 
 /** 取某条日志的写面（未 attach = null）。 */
 export function sessionLogStoreOf(logInstance: SessionLog): SessionLogStore | null {
-  return _stores.get(logInstance) ?? null;
+  return _stores.get(logInstance)?.store ?? null;
 }
 
 /**
@@ -480,36 +619,32 @@ export function inheritedMessageCount(logInstance: SessionLog | null | undefined
 /** 静默点：排空一条日志的队列（未 attach = no-op）。检查点与退出收尾共用。 */
 export async function flushSessionLog(logInstance: SessionLog | null | undefined): Promise<void> {
   if (!logInstance) return;
-  const store = _stores.get(logInstance);
-  if (!store) return;
-  await store.flush();
+  const record = _stores.get(logInstance);
+  if (!record) return;
+  await record.store.flush();
 }
 
-/** 排空全部在册队列（退出收尾：一条 flush 覆盖所有卷，成本 = 未落盘增量）。 */
+/** 排空全部在册队列 + 等在途退休结算（退出收尾：一条 flush 覆盖所有卷，
+ *  成本 = 未落盘增量）。退休中的写面也要等——它们的尾巴可能还在队列里。 */
 export async function flushAllSessionLogs(): Promise<{ flushed: number; failed: number }> {
-  const all = [..._live];
-  const results = await Promise.allSettled(all.map((s) => s.flush()));
+  const all = [..._live.values()].map((r) => r.store);
+  const retiring = [..._retiring];
+  const results = await Promise.allSettled([...all.map((s) => s.flush()), ...retiring]);
   const failed = results.filter((r) => r.status === 'rejected').length;
+  const total = all.length + retiring.length;
   if (failed > 0) {
-    log.error('session-log', `退出排空会话事件日志失败：${failed}/${all.length} 卷`, {
+    log.error('session-log', `退出排空会话事件日志失败：${failed}/${total} 卷`, {
       reasons: results.filter((r): r is PromiseRejectedResult => r.status === 'rejected').map((r) => String(r.reason)),
     });
   }
-  return { flushed: all.length - failed, failed };
+  return { flushed: total - failed, failed };
 }
 
-/** 摘除一条日志的写面（先排空；签卷销毁/切卷时调用）。 */
+/** 摘除一条日志的写面（排空 → 退订 → 断 sink；签卷销毁/切卷时调用）。 */
 export async function detachSessionLogStore(logInstance: SessionLog): Promise<void> {
-  const store = _stores.get(logInstance);
-  if (!store) return;
-  try {
-    await store.flush();
-  } catch (e) {
-    log.warn('session-log', `会话事件日志摘除前排空失败（案卷 ${store.sessionId}）`, { error: String(e) });
-  }
-  logInstance.setPersistenceSink(null);
-  _stores.delete(logInstance);
-  _live.delete(store);
+  const record = _stores.get(logInstance);
+  if (!record) return;
+  await record.retire();
 }
 
 /**
@@ -557,7 +692,7 @@ export async function openSessionLog(
       // 文件头行里，续开时调用方的 header 是新的出生记录、没有它——带错了，
       // 画布上枝卷就找不到父卷（见 SessionLogStore.header 注）。
       logInstance.restoreInPlace(loaded.events);
-      const store = attachSessionLogStore(logInstance, { ...opts, header: loaded.header, adopt: 'continue' });
+      const store = await attachSessionLogStore(logInstance, { ...opts, header: loaded.header, adopt: 'continue' });
       // ③ 补悬空工具调用（崩溃时「宣布了但没结果」的调用）并立刻持久化
       const closers = interruptedToolCallClosers(loaded.events);
       if (closers.length > 0) {
@@ -574,6 +709,6 @@ export async function openSessionLog(
       log.warn('session-log', `事件日志基线不可用，改为重新物化：${path}`, { error: String(e) });
     }
   }
-  attachSessionLogStore(logInstance, { ...opts, adopt: 'materialize' });
+  await attachSessionLogStore(logInstance, { ...opts, adopt: 'materialize' });
   return { adopted: false, events: 0, repaired: false, closers: 0 };
 }

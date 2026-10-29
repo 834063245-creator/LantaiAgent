@@ -900,9 +900,15 @@ export class Agent {
    * 小事件），内存投影 = `deriveMessages()`（磁盘历史 + 本轮 system）。
    *
    * 为什么不复用 setSession：那要把全部消息再写一遍（每次开卷 +1 份全文）。
+   *
+   * **头部逐字节相同 ⇒ 连那一条全文也不写**（2026-10-29 体积治源）：事件只带
+   * `messages: []`（投影侧「头部未变」，见 session-log 的 adopt 分支），单次开卷
+   * 从 ~36KB 降到几十字节。实测：63 号卷 6 次开卷 = 210KB 全是同一系统提示的副本。
    */
   adoptSessionLog(systemPrompt: string): void {
-    this._replaceSession([{ role: 'system', content: systemPrompt }], 'adopt');
+    const head = this._sessionLog.deriveMessages()[0];
+    const unchanged = head?.role === 'system' && typeof head.content === 'string' && head.content === systemPrompt;
+    this._replaceSession(unchanged ? [] : [{ role: 'system', content: systemPrompt }], 'adopt');
     this._compactSummary = null;
     this._compactTailStart = -1;
     this._execState.bumpVersion();

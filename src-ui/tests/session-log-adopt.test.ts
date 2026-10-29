@@ -5,10 +5,12 @@
 // 「整段替换」（那要把全部消息再写一遍：每次开卷 +1 份全文），而是发一条**头部
 // 重设**事件（`session/reset{reason:'adopt'}`）并让内存投影从日志派生。
 //
-// 本文件钉住两件事（Phase 3b 的读路径翻转依赖它们）：
+// 本文件钉住四件事（Phase 3b 的读路径翻转依赖它们）：
 //   ① 投影：adopt 只换/补头部 system，尾部历史原样 —— 且不产全文副本
 //   ② Agent：`adoptSessionLog` 后 in-memory session == deriveMessages()（双写等价）
-//   ③ 既有 reason（init/restore/new-session/goal-*）仍是**整段替换**语义（零漂移）
+//   ③ 既有 reason（init/restore/new-session）仍是**整段替换**语义（零漂移）
+//   ④ 体积治源（2026-10-29 收口）：头部逐字节相同 ⇒ 连那一条全文也不写
+//      （事件 `messages: []`，投影零变化——实测 63 号卷 6 次开卷 = 210KB 副本）
 
 import { describe, expect, it } from 'vitest';
 import { SessionLog } from '../src/agent/session-log';
@@ -101,6 +103,44 @@ describe('Phase 3a 采用原语（adopt）', () => {
     // 只追加了一条事件（不是把 4 条消息写成 reset 全文）
     const appended = agent.getSessionLog().events().slice(-1)[0];
     expect((appended.data as { messages: Message[] }).messages).toHaveLength(1);
+  });
+
+  it('头部逐字节相同 ⇒ 只记零字节事实（体积治源，2026-10-29）', () => {
+    const SYS_SAME = '同一份系统提示（开卷时逐字节相同）';
+    const tools = new ToolRegistry();
+    const agent = createTestAgent(makeProvider(), tools, SYS_SAME, { agentId: 'adopt-same' });
+    // 磁盘真源：init（system = 同一份）+ 历史
+    const diskEvents = [
+      {
+        seq: 1,
+        ts: 1,
+        kind: 'session/reset' as const,
+        data: { messages: [{ role: 'system', content: SYS_SAME }], reason: 'init' as const },
+      },
+      ...history().map((m, i) => ({
+        seq: i + 2,
+        ts: 2 + i,
+        kind: (m.role === 'user' ? 'user/message' : m.role === 'assistant' ? 'assistant/text' : 'tool/result') as
+          | 'user/message'
+          | 'assistant/text'
+          | 'tool/result',
+        data: { message: m },
+      })),
+    ];
+    agent.getSessionLog().restoreInPlace(diskEvents as never);
+    const beforeMsgs = agent.getSessionLog().deriveMessages();
+    const beforeAnchors = agent.getSessionLog().deriveMessageAnchors();
+
+    agent.adoptSessionLog(SYS_SAME);
+
+    // 事件体量：messages: [] —— 不再是 36KB 系统提示的又一份副本
+    const appended = agent.getSessionLog().events().slice(-1)[0];
+    expect((appended.data as { messages: Message[] }).messages).toHaveLength(0);
+    expect(JSON.stringify(appended).length).toBeLessThan(200);
+    // 投影零变化：头、尾部、锚点全部原样（头部锚点仍指向 init 那条）
+    expect(agent.getSessionLog().deriveMessages()).toEqual(beforeMsgs);
+    expect(agent.getSessionLog().deriveMessageAnchors()).toEqual(beforeAnchors);
+    expect(agent.getSession()).toEqual(beforeMsgs);
   });
 
   it('既有 reason 仍是整段替换（零漂移）', () => {

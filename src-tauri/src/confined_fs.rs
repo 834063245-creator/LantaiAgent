@@ -151,6 +151,43 @@ fn write_atomic(file_path: &str, content: &str) -> Result<(), String> {
     }
 }
 
+/// 原子写入 + fsync（durable 变体，2026-10-29 换轨收口批）：
+/// 写临时文件 → `sync_all` → 原子替换。语义对齐 `append_text_durable`：
+/// **返回即已落盘**。用于会话事件日志的**首批物化 / 整写重写**（`write_log`）——
+/// 此前走 `write_atomic`（无 fsync），与 append 面相比 durability 弱一档：
+/// 物化返回后进程死，文件可能尚未落到磁盘。
+///
+/// 与 `write_atomic` 的差异（有意）：不做 `.bak` 备份/回滚（替换语义 = 整份新内容，
+/// 旧内容没有保留价值；日志重写的旧字节正是要丢弃的那一份），失败时清理临时文件。
+pub(crate) fn write_text_durable(real_path: &str, content: &str) -> Result<(), String> {
+    use std::io::Write;
+    static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp_path = format!("{}.tmp.{}", real_path, seq);
+
+    let write_tmp = || -> Result<(), String> {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&tmp_path)
+            .map_err(|e| format!("durable write: cannot open {}: {}", tmp_path, e))?;
+        file.write_all(content.as_bytes())
+            .map_err(|e| format!("durable write: write failed: {}", e))?;
+        file.sync_all()
+            .map_err(|e| format!("durable write: sync failed: {}", e))
+    };
+    if let Err(e) = write_tmp() {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, real_path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!("durable write: rename failed: {}", e));
+    }
+    Ok(())
+}
+
 /// 字节版原子写（write_base64 通道）——与 write_atomic 同 bak/回滚时序，
 /// 载荷是 &[u8]。附图字节落盘用（multimodal-image-plan D-13）。
 fn write_bytes_atomic(file_path: &str, bytes: &[u8]) -> Result<(), String> {
@@ -459,6 +496,62 @@ mod tests {
 
     /// 跨用例唯一化 temp 子目录的序号（同名并发跑测试互不踩）。
     static TMP_TEST_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    fn tmp_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "lantai_{tag}_{}",
+            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// durable 写（write_log 的落盘面）：整份替换 + 无 tmp 残留 + 返回即已落盘。
+    #[test]
+    fn write_text_durable_replaces_and_leaves_no_tmp() {
+        let dir = tmp_dir("durable_write");
+        let p = dir.join("9.ndjson");
+        let ps = p.to_str().unwrap();
+
+        write_text_durable(ps, "头行\n事件1\n").unwrap();
+        assert_eq!(std::fs::read_to_string(ps).unwrap(), "头行\n事件1\n");
+
+        // 整写替换（压实/物化语义）：旧内容不保留，且不留 .tmp.* 残片
+        write_text_durable(ps, "新头行\n").unwrap();
+        assert_eq!(std::fs::read_to_string(ps).unwrap(), "新头行\n");
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n != "9.ndjson")
+            .collect();
+        assert!(leftovers.is_empty(), "整写成功不得留临时文件：{leftovers:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **崩溃注入（真实字节）**：文件尾是「写到一半被杀」的半截记录，且切口落在
+    /// 一个 CJK 字符中间——截断到已认领的完整前缀后，文件必须是合法 UTF-8。
+    /// （TS 侧的内存 mock 只能存字符串，模拟不了半个多字节字符，故这条落在字节层。）
+    #[test]
+    fn truncate_removes_half_written_utf8_record() {
+        let dir = tmp_dir("torn_tail");
+        let p = dir.join("10.ndjson");
+        let complete = "{\"seq\":1}\n{\"seq\":2}\n";
+        let half = "{\"text\":\"汉".as_bytes();
+        let mut bytes = complete.as_bytes().to_vec();
+        bytes.extend_from_slice(&half[..half.len() - 1]); // 去掉末字节 ⇒ 半个 UTF-8 字符
+        std::fs::write(&p, &bytes).unwrap();
+
+        truncate_file(p.to_str().unwrap(), complete.len() as u64).unwrap();
+        let kept = std::fs::read_to_string(&p).unwrap();
+        assert_eq!(kept, complete, "只保留完整前缀（半截记录含半个字符一起丢弃）");
+
+        // 越界拒绝（修复不能变成造洞）
+        assert!(truncate_file(p.to_str().unwrap(), 9999).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     // ── 事件日志写面（Phase 1 换轨，2026-09-15 DSH 参照）──
 
@@ -896,6 +989,7 @@ pub(crate) async fn write_text_cap(
     content: &str,
     is_agent: bool,
     agent_id: Option<&str>,
+    durable: bool,
     state: &tauri::State<'_, WorkspaceState>,
     app: &AppHandle,
 ) -> Result<PathBuf, String> {
@@ -912,7 +1006,13 @@ pub(crate) async fn write_text_cap(
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("无法创建目录: {}", e))?;
     }
-    write_atomic(&rp, content)?;
+    // durable（2026-10-29 换轨收口）：会话事件日志的物化/整写要求「返回即已落盘」，
+    // 与 append_text_durable 同档；其余写入维持旧语义（无 fsync，省 IO）。
+    if durable {
+        write_text_durable(&rp, content)?;
+    } else {
+        write_atomic(&rp, content)?;
+    }
     Ok(real_path)
 }
 

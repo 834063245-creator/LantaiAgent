@@ -245,7 +245,8 @@ export interface RpcContract {
       filter_ignored?: boolean;
       paths?: string[];
       workspace_root?: string;
-      /** append 的 durable 变体（append + fsync，返回即已落盘）——会话事件日志写面。 */
+      /** durable 变体（+ fsync，返回即已落盘）：append → 会话事件日志写面；
+       *  write → 日志物化/压实整写（2026-10-29）。 */
       durable?: boolean;
       /** truncate 的目标字节偏移（断尾修复——扫描器给的 committedBytes）。 */
       truncate_to?: number;
@@ -575,14 +576,10 @@ export interface RpcContract {
   workspace_deactivate: { params: Record<string, never>; result: string }; // "null"
 
   // ── 会话持久化 ───────────────────────────────────────────
-  // （workspace-session-ownership-rework 2026-08-27：chat 会话 NDJSON
-  //  session_append 已拆——只写不读孤儿退役；唯一保留路径 = 工作区会话根
-  //  全量快照（saveActiveSession/saveSessionById）。agent 侧
-  //  session-log.ndjson 是另一条保留路径，见 agent_session_append。）
-  agent_session_append: {
-    params: { project_path: string; agent_id: string; messages: Record<string, unknown>[]; rewrite?: boolean };
-    result: string; // "null"
-  };
+  // 会话持久化**没有专用 RPC**：卷本体（事件日志 `.ndjson`）与投影缓存（`.json`）
+  // 全走 fs_cap 能力口的 write/append（durable 变体）+ truncate/delete，经
+  // ctx.sessionPersistence seam 单点（app/chat/session-log-store.ts）。
+  // （agent_session_append 系 agent-store 时代产物，零产线消费方，2026-10-29 退役。）
 
   // （read_constraints / write_constraints 已随 R4-4（2026-09-05）换 constraints_cap
   //   能力口直呼——builtin.constraints 退役。constraints_cap 本身随图谱全量
@@ -868,6 +865,15 @@ function fsCapPathOf(raw: unknown): string {
 /** 原子写入（父目录自动创建；fs_cap write 返回解析后路径）。 */
 export async function kernelWriteFile(filePath: string, content: string): Promise<string> {
   const raw = await fsCapCall({ action: 'write', file_path: filePath, content, is_agent: false });
+  return fsCapPathOf(raw);
+}
+
+/** 写 + fsync + 原子替换（durable 变体，2026-10-29 换轨收口）——**返回即已落盘**
+ *  （Rust 侧 `confined_fs::write_text_durable`：tmp 写 + `sync_all` + rename）。
+ *  会话事件日志的**首批物化 / 压实整写**用它（`write_log`）：此前走无 fsync 的
+ *  原子写，与 append 面 durability 不同档。 */
+export async function kernelWriteFileDurable(filePath: string, content: string): Promise<string> {
+  const raw = await fsCapCall({ action: 'write', file_path: filePath, content, durable: true, is_agent: false });
   return fsCapPathOf(raw);
 }
 

@@ -15,8 +15,8 @@
 //     零迁移——会话族测试 mock 命中的就是本 provider 走的同一层（D-3 理由 ②，
 //     三命运黄金标准：换轨 commit 测试 diff 零 = 行为零漂移最强证据）。
 // append/appendLog 从动作面删除（D-5——目标 RPC agent_session_append 零 TS
-// 产线调用方）；agent_session_append RPC 本体留 Rust 不动（TS 死链标注，退役
-// 另立——rpc-contract.ts:524-534）。
+// 产线调用方）；该 RPC 已于 2026-10-29 换轨收口批**整条退役**（rpc.rs 的
+// 分支/函数/测试 + RpcContract 条目 + ARCHITECTURE 登记一并删除）。
 
 import type {
   SessionPersistAction,
@@ -30,6 +30,7 @@ import {
   kernelReadFileRaw,
   kernelTruncateFile,
   kernelWriteFile,
+  kernelWriteFileDurable,
 } from './host';
 
 /** 动作 → kernel* helper 的 args 组装。args 已是 snake_case RPC 参数直传
@@ -92,9 +93,10 @@ async function executeViaKernel(action: SessionPersistAction, args: Record<strin
       }
     }
     case 'write_log': {
-      // 整体物化（首批：头行 + 当时全部事件）——原子替换写（tmp→rename），
-      // 崩溃不会留下「已物化但空」的会话。
-      await kernelWriteFile(`${root}/${id}.ndjson`, String(args.data ?? ''));
+      // 整体物化（首批：头行 + 当时全部事件）与压实整写——**原子替换 + fsync**
+      // （durable 变体，2026-10-29 收口：此前走无 fsync 的原子写，与 append 面
+      //  durability 不同档——物化返回后进程死，文件可能尚未落盘）。
+      await kernelWriteFileDurable(`${root}/${id}.ndjson`, String(args.data ?? ''));
       return 'null';
     }
     case 'truncate_log': {

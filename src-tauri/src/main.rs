@@ -46,6 +46,7 @@ mod engine_assets;
 mod composition_watcher;
 mod providers_watcher;
 mod purge;
+mod single_instance;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -81,8 +82,24 @@ fn main() {
     // 卸载期用户数据清理（安装器的代码路径，见 src/purge.rs）：
     // 命中 `--purge-user-data` 就地清理并退出——**绝不进入任何初始化**，
     // 否则边删边写（watcher/日志/凭据重建），用户看到的还是「没卸干净」。
+    // （先于单实例守卫：卸载器应当能在应用还开着时跑。）
     if let Some(code) = purge::cli_entry(&context.config().identifier) {
         std::process::exit(code);
+    }
+
+    // 单实例守卫（2026-10-29 换轨收口）：会话事件日志是**单写者**模型（每卷一份
+    // append-only 日志 + 一条写后队列 + 一个 seq 游标）——同工作区两个实例并行写
+    // = 重复/缺号（重放面判损坏）+ 卷号撞号 + 清单投影互相覆盖。
+    // 锁 = `~/.lantai/instance.lock` 的 OS 文件锁（随进程消亡自动释放，不留 PID 残骸）。
+    match single_instance::try_acquire() {
+        // 拿到锁：句柄必须活到进程结束（drop = 解锁）
+        Ok(Some(lock)) => std::mem::forget(lock),
+        Ok(None) => {
+            single_instance::notify_already_running();
+            std::process::exit(0);
+        }
+        // 锁面不可用（环境怪癖）⇒ 降级放行，但必须留痕（错误不静默）
+        Err(e) => log::warn!("[single-instance] 单实例守卫不可用（降级为不设防）：{e}"),
     }
 
     let workspace_state: WorkspaceState = Arc::new(Mutex::new(None));

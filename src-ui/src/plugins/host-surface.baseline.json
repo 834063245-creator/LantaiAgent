@@ -1,5 +1,5 @@
 {
-  "fingerprint": "5358e3ab",
+  "fingerprint": "3840339f",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -188,6 +188,7 @@
     "kernelReadMemoryBatch",
     "kernelTruncateFile",
     "kernelWriteFile",
+    "kernelWriteFileDurable",
     "killShellWork",
     "layoutRegion",
     "leaveToHome",

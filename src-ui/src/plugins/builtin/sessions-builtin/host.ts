@@ -12,4 +12,5 @@ export {
   kernelReadFileRaw,
   kernelTruncateFile,
   kernelWriteFile,
+  kernelWriteFileDurable,
 } from '../../../rpc-contract';

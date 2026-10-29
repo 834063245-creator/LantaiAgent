@@ -14,6 +14,7 @@
 // ——绝不制造「半个枝」。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetSessionLogStoresForTests } from '../src/app/chat/session-log-store';
 import { SessionPersistenceService } from '../src/composition/session-persistence-service';
 import { Context } from '../src/cordis';
 import { builtinSessionsPlugin } from '../src/plugins/builtin/sessions-builtin';
@@ -178,7 +179,7 @@ function installFactory(storeId: string): void {
 }
 
 describe('会话树「枝」——卷名（真机验收：子卷不得顶着父卷的名）', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     const fs = H.kernelFs?.fs;
     if (fs) {
       fs.files.clear();
@@ -186,6 +187,9 @@ describe('会话树「枝」——卷名（真机验收：子卷不得顶着父�
       fs.writes.length = 0;
       fs.fail = {};
     }
+    // 跨用例共用同一个工作区根：上一个用例的**活写面**必须一起退休（丢弃尾巴），
+    // 否则它会在下一个用例的盘面上把旧内容冲回来（2026-10-29 读前屏障暴露的隔离洞）。
+    await resetSessionLogStoresForTests();
     Session.resetSessionListCacheForTests();
   });
 
@@ -281,7 +285,7 @@ describe('会话树「枝」——卷名（真机验收：子卷不得顶着父�
 });
 
 describe('会话树「枝」——从卷尾立枝', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     const fs = H.kernelFs?.fs;
     if (fs) {
       fs.files.clear();
@@ -289,6 +293,9 @@ describe('会话树「枝」——从卷尾立枝', () => {
       fs.writes.length = 0;
       fs.fail = {};
     }
+    // 跨用例共用同一个工作区根：上一个用例的**活写面**必须一起退休（丢弃尾巴），
+    // 否则它会在下一个用例的盘面上把旧内容冲回来（2026-10-29 读前屏障暴露的隔离洞）。
+    await resetSessionLogStoresForTests();
     Session.resetSessionListCacheForTests();
   });
 
@@ -409,7 +416,7 @@ describe('会话树「枝」——从卷尾立枝', () => {
 });
 
 describe('会话树「枝」——节点定位（消息动作行的入口：枝含该节点）', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     const fs = H.kernelFs?.fs;
     if (fs) {
       fs.files.clear();
@@ -417,6 +424,9 @@ describe('会话树「枝」——节点定位（消息动作行的入口：枝�
       fs.writes.length = 0;
       fs.fail = {};
     }
+    // 跨用例共用同一个工作区根：上一个用例的**活写面**必须一起退休（丢弃尾巴），
+    // 否则它会在下一个用例的盘面上把旧内容冲回来（2026-10-29 读前屏障暴露的隔离洞）。
+    await resetSessionLogStoresForTests();
     Session.resetSessionListCacheForTests();
   });
 
@@ -930,7 +940,7 @@ describe('会话树「枝」——切点纪律的拒态（拒了必须一个字�
 });
 
 describe('会话树「枝」——删除连坐（P2，plan §8/§9：删父卷 = 删整棵子树）', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     const fs = H.kernelFs?.fs;
     if (fs) {
       fs.files.clear();
@@ -938,6 +948,9 @@ describe('会话树「枝」——删除连坐（P2，plan §8/§9：删父卷 =
       fs.writes.length = 0;
       fs.fail = {};
     }
+    // 跨用例共用同一个工作区根：上一个用例的**活写面**必须一起退休（丢弃尾巴），
+    // 否则它会在下一个用例的盘面上把旧内容冲回来（2026-10-29 读前屏障暴露的隔离洞）。
+    await resetSessionLogStoresForTests();
     Session.resetSessionListCacheForTests();
   });
 

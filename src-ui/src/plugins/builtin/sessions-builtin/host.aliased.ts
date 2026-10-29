@@ -26,3 +26,4 @@ export const kernelReadFileRaw = impl.kernelReadFileRaw;
 export const kernelTruncateFile = impl.kernelTruncateFile;
 export const kernelListDirectory = impl.kernelListDirectory;
 export const kernelWriteFile = impl.kernelWriteFile;
+export const kernelWriteFileDurable = impl.kernelWriteFileDurable;

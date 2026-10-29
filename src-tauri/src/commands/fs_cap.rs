@@ -190,7 +190,18 @@ pub(crate) async fn fs_cap(
         "write" => {
             let fp = file_path.or(path).ok_or_else(|| "fs_cap write: missing 'file_path'".to_string())?;
             let c = content.ok_or_else(|| "fs_cap write: missing 'content'".to_string())?;
-            let real = crate::confined_fs::write_text_cap(&fp, &c, is_agent, agent_id.as_deref(), state, app).await?;
+            // durable=true → 写 + fsync + 原子替换（会话事件日志物化/整写用；
+            // 2026-10-29 收口，语义对齐 append 的 durable 变体）。
+            let real = crate::confined_fs::write_text_cap(
+                &fp,
+                &c,
+                is_agent,
+                agent_id.as_deref(),
+                durable.unwrap_or(false),
+                state,
+                app,
+            )
+            .await?;
             let rp = real.to_string_lossy().to_string();
             Ok(json!({ "path": rp }))
         }

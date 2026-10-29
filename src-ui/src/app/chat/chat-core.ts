@@ -927,15 +927,20 @@ export class ChatCore {
     const readResults = await Promise.all(
       [...readTargets].map((sid) =>
         Session.readVolumeData(workspace, sid)
-          .then((data) => ({ sid, data }))
+          .then((data) => ({ sid, data, failed: false }))
           .catch((e) => {
-            console.error('[canvas] 恢复摊开卷预读失败', sid, e);
-            return { sid, data: null as null };
+            // 读失败 ≠ 卷不存在（2026-10-29 收口）：标记 failed，剪枝面据此**保留**该卷
+            console.error('[canvas] 恢复摊开卷预读失败（保留不剪枝）', sid, e);
+            return { sid, data: null as null, failed: true };
           }),
       ),
     );
     const readBySid = new Map<number, import('../../ui/chat-session').StoredSession | null>();
-    for (const { sid, data } of readResults) readBySid.set(sid, data);
+    const readFailed = new Set<number>();
+    for (const { sid, data, failed } of readResults) {
+      readBySid.set(sid, data);
+      if (failed) readFailed.add(sid);
+    }
 
     if (volumeNames) {
       // 文件名级存在性（剪枝面 1）：摊开/钉源卷的**事件日志**（`.ndjson`——Phase 3b
@@ -947,11 +952,14 @@ export class ChatCore {
         const n = parseInt(name.replace('.ndjson', ''), 10);
         if (!Number.isNaN(n)) fileIds.add(n);
       }
-      // 读结果级有效性（剪枝面 2）：文件在但 readVolumeData null = 空卷/坏日志——
-      // 从摊开集剪掉（替代旧 listSavedSessions 的墓碑过滤，不再弹读取失败 toast）
+      // 读结果级有效性（剪枝面 2）：文件在但 readVolumeData null = 空卷——
+      // 从摊开集剪掉（替代旧 listSavedSessions 的墓碑过滤，不再弹读取失败 toast）。
+      // **读失败（readFailed）不剪**：读不出来 ≠ 卷不存在（2026-10-29 收口）——
+      // 剪掉等于把真卷当幽灵从画布上抹掉（还会回写 canvas.json）。
       const phantom = Object.keys(canvasState0.spread).filter((sid) => {
         const n = Number(sid);
         if (openIds.has(n)) return false; // 已在案头 = 有效
+        if (readFailed.has(n)) return false; // 读面异常 = 保留现场，等下次
         return !fileIds.has(n) || readBySid.get(n) === null;
       });
       if (phantom.length > 0) {
@@ -974,6 +982,7 @@ export class ChatCore {
         const src = pin.source?.sessionId;
         if (src == null || openIds.has(src)) continue;
         const read = readBySid.get(src);
+        if (readFailed.has(src)) continue; // 读面异常：不知道源还在不在，别急着标「已删」
         if (read === null || !fileIds.has(src)) dead.add(src);
       }
       if (dead.size > 0) getCanvasStore(this.panelId).getState().replaceDeletedSessionIds(dead);

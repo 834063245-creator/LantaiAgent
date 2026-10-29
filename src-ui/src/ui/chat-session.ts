@@ -17,6 +17,7 @@ import {
   inheritedMessageCount,
   openSessionLog,
   readVolumeLogMessages,
+  retireSessionLogPath,
 } from '../app/chat/session-log-store';
 import { sessionExecute } from '../composition/session-persistence-service';
 import type { Message } from '../provider/types';
@@ -434,8 +435,10 @@ export async function ensureVolumeAgent(ctx: SessionContext, sid: number): Promi
       conv = (data.messages as Message[])?.filter((m) => m.role !== 'system') ?? [];
       ledger = data.tokens;
     }
-  } catch {
-    /* 卷文件缺失/读失败 → 空会话起步（新卷语义） */
+  } catch (e) {
+    // 卷文件缺失 = 空会话起步（新卷语义）；**读失败**要可见（2026-10-29 收口：
+    // 此前两种情形同一个空 catch——读失败会被当成「新卷」，用户看到空白卷）。
+    log.warn('chat', `案卷 ${sid} 读取失败（按空会话起步——若为意外，请查看 ui.log）`, { error: String(e) });
   }
   if (!isCurrentEpoch(epoch)) return false;
 
@@ -1572,7 +1575,14 @@ export async function renameSessionFile(projectPath: string, sessionId: number, 
     showToast('案卷文件不存在，无法改名', 'error');
     return;
   }
-  const born = (await readVolumeLogMessages(workspaceSessionsDir(projectPath), sessionId))?.header.createdAt;
+  let born: string | undefined;
+  try {
+    born = (await readVolumeLogMessages(workspaceSessionsDir(projectPath), sessionId))?.header.createdAt;
+  } catch (e) {
+    // 读日志失败 ≠ 卷不存在（2026-10-29 收口）：改名照常写干净快照（born 缺失
+    // ⇒ cacheOfThisVolume 判「缓存不是本卷的」，只写 label），但失败必须可见。
+    log.warn('chat', `改名：案卷 ${sessionId} 事件日志读取失败（按无缓存处理）`, { error: String(e) });
+  }
   const base: Pick<StoredSession, 'id' | 'label' | 'savedAt' | 'messages' | 'tokensUsed'> = cacheOfThisVolume(
     data,
     born,
@@ -1689,13 +1699,13 @@ function cacheOfThisVolume(cache: StoredSession | null, bornAt: string | undefin
  *    `rebuildMessagesFromMessages` 重建（DSH「possibly stale but never wrong」）。
  *  P0-3（2026-09-02）导出：restoreCanvasSpread 两阶段恢复的并行读面。 */
 export async function readVolumeData(projectPath: string, id: number): Promise<StoredSession | null> {
-  let logRead: Awaited<ReturnType<typeof readVolumeLogMessages>> = null;
-  try {
-    logRead = await readVolumeLogMessages(workspaceSessionsDir(projectPath), id);
-  } catch (e) {
-    console.error('[chat] readVolumeData: 事件日志读取失败', id, e);
-    return null;
-  }
+  // 无工作区 = 无卷（M8 既定降级：空路径响亮报错由 workspaceSessionsDir 承担，
+  // 消费面按「空集/不存在」处理——这里不把它变成异常，见 session-exit-flush 用例）。
+  if (!projectPath) return null;
+  // 读面失败**上抛**（2026-10-29 收口，M9）：此前 catch 成 null ⇒ 上层把「读失败」
+  // 当「卷不存在」（画布剪枝会因此把真卷当幽灵删掉）。缺失 = null（provider 判空），
+  // 失败 = throw——消费面各自选择「保留上次结果 / 明示」。
+  const logRead = await readVolumeLogMessages(workspaceSessionsDir(projectPath), id);
   if (!logRead) return null;
   // 空卷（无任何非系统消息）不进摊开集——与「空卷不落盘」同规
   if (!logRead.messages.some((m) => m.role !== 'system')) return null;
@@ -1838,7 +1848,15 @@ export async function loadSessionFromDisk(
   let data: StoredSession | null = null;
   // 读卷：工作区会话根单读 + 墓碑/空卷过滤。
   // Q-B 后 autoRestore 不再恢复内容，本契约由打开路径（首页点卷）承担。
-  data = await readVolumeData(projectPath, sessionId);
+  try {
+    data = await readVolumeData(projectPath, sessionId);
+  } catch (e) {
+    // 读失败**不得**伪装成「空卷/不存在」（2026-10-29 收口）：明示 + 拒绝打开
+    // （保留磁盘真源，用户重试/看日志，而不是把空白会话摊开再覆盖写）。
+    log.warn('chat', `案卷 ${sessionId} 打开失败（读面异常）`, { error: String(e) });
+    showToast('案卷读取失败（未改动磁盘上的卷——可稍后重试）', 'error');
+    return false;
+  }
   if (!data) {
     showToast('案卷文件读取失败', 'error');
     return false;
@@ -2117,6 +2135,9 @@ export async function deleteSessionFile(
   sessionId: number,
 ): Promise<SessionDeleteResult> {
   const root = workspaceSessionsDir(projectPath);
+  // 先退休该卷的活写面并**丢弃未落盘尾巴**（2026-10-29 收口）：否则删除后
+  // closeSession → detach 的「先排空」会把刚删掉的 `.ndjson` 写回来（卷复活）。
+  await retireSessionLogPath(root, sessionId);
   // 先登记「这一卷已删」再真删文件：本函数尾部的 `closeSession` 会 fire-and-forget 地
   // 写一份合卷快照（C8），在途的防抖自动存同理——不挡就把 `{id}.json` 写回来，成为
   // 下一轮档号复用时的「死卷快照」（见 `_removedVolumes` 注）。
@@ -2374,8 +2395,9 @@ function planFilePathFromEnterResult(result: string): string | null {
 
 /** 从 exit_plan_mode 结果恢复拟策卡。仅「含计划全文」的结果可恢复（批准执行 /
  *  无 UI 自动批准——marker 即 plan-tools.ts 的两个模板前缀）；修改/拒绝/超时/
- *  留档的结果不含正文 = null（宁缺勿造，不铺半截卡）。status 保持 'pending'：
- *  对齐实时行为（审批不写回 part——52 号卷实时快照实证）。 */
+ *  留档的结果不含正文 = null（宁缺勿造，不铺半截卡）。
+ *  status = 'approved'：两个 marker 都只在「计划已被采纳」时出现（实时决议同批
+ *  写回 part.status，见 PlanBody）——重建/重载后卡面保持终态，不长回「待批准」。 */
 function planPartFromExitResult(result: string, planFilePath: string | null, args: string): PlanPart | null {
   const markers = ['## 已批准计划：\n', '## 计划：\n'];
   for (const marker of markers) {
@@ -2390,7 +2412,7 @@ function planPartFromExitResult(result: string, planFilePath: string | null, arg
       planFilePath: planFilePath ?? '',
       content,
       ...(options ? { options } : {}),
-      status: 'pending',
+      status: 'approved',
     };
   }
   return null;

@@ -321,6 +321,7 @@ import {
   kernelReadMemoryBatch,
   kernelTruncateFile,
   kernelWriteFile,
+  kernelWriteFileDurable,
   parseJson,
   typedJsonRpc,
   typedRpc,
@@ -657,6 +658,9 @@ const faceDeps = {
   // Phase 1 事件日志（2026-09-15 DSH 参照移植）：durable append 进宿主桥
   // （append_events 动作的落盘面——fsync 版 kernel helper）。
   kernelAppendFileDurable,
+  // 换轨收口（2026-10-29）：durable 写进宿主桥（write_log 动作的落盘面——
+  // 物化/压实整写返回即已落盘；此前走无 fsync 的 kernelWriteFile）。
+  kernelWriteFileDurable,
   kernelDeleteFile,
   kernelTruncateFile,
   // 批 2a：llm-adapters 归家后的依赖面（工厂已随包，不再桥）

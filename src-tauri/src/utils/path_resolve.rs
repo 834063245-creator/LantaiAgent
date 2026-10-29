@@ -59,18 +59,6 @@ pub(crate) fn workspace_path(state: &WorkspaceState) -> Result<String, String> {
         .ok_or_else(|| "未打开工作区，请先打开项目".into())
 }
 
-/// 拒绝可能用于路径穿越的 ID。
-/// 允许字母数字、连字符、下划线、点、冒号和空格。
-pub(crate) fn sanitize_path_id(id: &str, label: &str) -> Result<(), String> {
-    if id.is_empty() {
-        return Err(format!("{label} 不能为空"));
-    }
-    if id.contains('/') || id.contains('\\') || id.contains("..") || id.contains('\0') {
-        return Err(format!("{label} 包含非法字符"));
-    }
-    Ok(())
-}
-
 /// 验证路径是否在某个项目根目录的 `.lantai` 目录内。
 /// 拒绝 `..` 穿越和 hologram 工作区之外的路径。
 pub(crate) fn validate_hologram_path(path: &str) -> Result<(), String> {

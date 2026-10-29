@@ -75,8 +75,11 @@ export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
   'goal/round',
 ]);
 
-/** session/reset 的来源标注（审计用；不影响投影——**除 'adopt'**，见下）。 */
-export type SessionResetReason = 'init' | 'restore' | 'new-session' | 'goal-resume' | 'goal-parked' | 'adopt';
+/** session/reset 的来源标注（审计用；不影响投影——**除 'adopt'**，见下）。
+ *  2026-10-29 收口：`goal-resume` / `goal-parked` 两个 reason 自 goal 域重做
+ *  （2026-10-27 `6c1da811`）后**零 call site**，已删——旧卷里的这两个值按
+ *  「未被投影识别」处理：走整段替换分支（与它们在旧行为里的等价物一致）。 */
+export type SessionResetReason = 'init' | 'restore' | 'new-session' | 'adopt';
 
 /** 各 kind 的 data 形状。 */
 export interface SessionEventDataMap {
@@ -473,7 +476,12 @@ export class SessionLog {
             // 系统提示可能因组合/设置变化而不同），尾部历史原样保留。
             // 为何不整段替换：整段替换要把全部消息再写一遍（每次开卷 +1 份全文），
             // 与「append-only 增量」背道而驰。
+            // **空 messages = 头部未变**（2026-10-29 体积治源）：开卷时系统提示与
+            // 日志头部逐字节相同 ⇒ 写面只记「这次开卷发生了」这一条零字节事实，
+            // 投影保持原头与原锚点（不重设、不丢头）。实测病灶：63 号卷 6 次开卷
+            // 写了 6 份同一条 36KB 系统提示（占该卷 210KB/580KB）。
             const head = data.messages;
+            if (head.length === 0) break;
             const hasSysHead = state.messages.length > 0 && state.messages[0].role === 'system';
             const tail = hasSysHead ? state.messages.slice(1) : state.messages;
             // 被换掉的头部 system 消息：其内容成为事实的时点 = 本条 adopt 事件

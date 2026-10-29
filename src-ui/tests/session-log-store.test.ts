@@ -192,7 +192,7 @@ describe('Phase 1 事件日志落盘（materialize → durable append）', () =>
     const { attachSessionLogStore } = await import('../src/app/chat/session-log-store');
     const log = await makeLog(3); // 构造期已有 3 条事件
     const target = `${ROOT}/7.ndjson`;
-    const store = attachSessionLogStore(log, { root: ROOT, sessionId: 7, header: HEADER, maxDelayMs: 1000 });
+    const store = await attachSessionLogStore(log, { root: ROOT, sessionId: 7, header: HEADER, maxDelayMs: 1000 });
     expect(store.sessionId).toBe(7);
 
     // 惰性物化（DSH create() 同规：只有首个**新**事件才产生产物）——
@@ -259,7 +259,7 @@ describe('Phase 1 事件日志落盘（materialize → durable append）', () =>
   it('无日志文件：materialize（头行 + 全部事件）；背景写失败可见且不丢事件', async () => {
     const { attachSessionLogStore, flushSessionLog } = await import('../src/app/chat/session-log-store');
     const log = await makeLog(1);
-    const store = attachSessionLogStore(log, {
+    const store = await attachSessionLogStore(log, {
       root: ROOT,
       sessionId: 11,
       header: { ...HEADER, id: 11 },
@@ -296,7 +296,7 @@ describe('Phase 1 事件日志落盘（materialize → durable append）', () =>
 
     // attach 后：flushPersistence 排空队列（与 store.flush 同一屏障）
     const log = await makeLog(1);
-    const store = attachSessionLogStore(log, { root: ROOT, sessionId: 12, header: { ...HEADER, id: 12 } });
+    const store = await attachSessionLogStore(log, { root: ROOT, sessionId: 12, header: { ...HEADER, id: 12 } });
     log.append('user/message', { message: { role: 'user', content: 'before-tool' } });
     await log.flushPersistence();
     expect(fileLines(`${ROOT}/12.ndjson`).length).toBe(3); // 头行 + 2 事件
@@ -308,5 +308,120 @@ describe('Phase 1 事件日志落盘（materialize → durable append）', () =>
     log.append('user/message', { message: { role: 'user', content: 'after-detach' } });
     await log.flushPersistence(); // no-op——不再落盘（句柄消亡后的日志无落盘面）
     expect(fileLines(`${ROOT}/12.ndjson`).length).toBe(3);
+  });
+});
+
+describe('读面屏障与写面退休（2026-10-29 收口）', () => {
+  it('读前屏障：读到的是排空后的完整前缀（不与在途 append 交错）', async () => {
+    const { attachSessionLogStore, detachSessionLogStore, readVolumeLogMessages } = await import(
+      '../src/app/chat/session-log-store'
+    );
+    const log = await makeLog(1);
+    // 超大窗口：队列不会自行落盘 ⇒ 能读到这条只能是屏障的功劳
+    const store = await attachSessionLogStore(log, {
+      root: ROOT,
+      sessionId: 21,
+      header: { ...HEADER, id: 21 },
+      maxDelayMs: 60_000,
+    });
+    log.append('user/message', { message: { role: 'user', content: '在途未落盘' } });
+    expect(fileLines(`${ROOT}/21.ndjson`)).toHaveLength(0); // 窗口内：盘上还没有
+
+    const read = await readVolumeLogMessages(ROOT, 21);
+    expect(read?.messages.at(-1)?.content).toBe('在途未落盘');
+    expect(store.stats().events).toBe(2);
+    await detachSessionLogStore(log); // 收尾：撤掉 60s 窗口，别留悬空 timer
+  });
+
+  it('退休 = **退订**：detach 之后入队事件不再自行落盘（不只是断 sink）', async () => {
+    const { attachSessionLogStore, detachSessionLogStore, sessionLogStoreOf } = await import(
+      '../src/app/chat/session-log-store'
+    );
+    const log = await makeLog(1);
+    const store = await attachSessionLogStore(log, {
+      root: ROOT,
+      sessionId: 22,
+      header: { ...HEADER, id: 22 },
+      maxDelayMs: 5,
+    });
+    await store.flush();
+    const before = fileLines(`${ROOT}/22.ndjson`).length;
+    await detachSessionLogStore(log);
+    expect(sessionLogStoreOf(log)).toBeNull();
+
+    log.append('user/message', { message: { role: 'user', content: '退休后' } });
+    await new Promise((r) => setTimeout(r, 40)); // 超过窗口——若未退订，队列会自己写
+    expect(fileLines(`${ROOT}/22.ndjson`).length).toBe(before);
+  });
+
+  it('写放大 = O(批次) 而不是 O(卷体)：大卷追加只增长一条事件的字节（实测语义）', async () => {
+    const { openSessionLog, sessionLogPath } = await import('../src/app/chat/session-log-store');
+    const target = sessionLogPath(ROOT, 31);
+    // 预置 ~200KB 的卷（40 条 5KB 事件）——真机 66 号卷 1.5MB 的同构缩小版
+    const big = 'x'.repeat(5000);
+    const lines: string[] = [
+      JSON.stringify({ type: 'session', version: 1, id: 31, createdAt: '2026-10-29T00:00:00.000Z' }),
+    ];
+    for (let i = 0; i < 40; i++) {
+      lines.push(
+        JSON.stringify({ seq: i + 1, ts: i, kind: 'user/message', data: { message: { role: 'user', content: big } } }),
+      );
+    }
+    const initial = `${lines.join('\n')}\n`;
+    H.kernelFs!.fs.setFile(target, initial);
+    const initialBytes = new TextEncoder().encode(initial).length;
+
+    const { SessionLog } = await import('../src/agent/session-log');
+    const log = new SessionLog();
+    const opened = await openSessionLog(log, {
+      root: ROOT,
+      sessionId: 31,
+      header: { type: 'session', version: 1, id: 31, createdAt: 'x' },
+    });
+    expect(opened.adopted).toBe(true);
+    expect(opened.events).toBe(40);
+    // 读面零写（打开已有日志不改盘）
+    expect(H.kernelFs!.fs.writes).toHaveLength(0);
+
+    log.append('assistant/text', { message: { role: 'assistant', content: '小回复' } });
+    await log.flushPersistence();
+
+    const after = H.kernelFs!.fs.files.get(target)!;
+    const appendedLines = after.slice(initial.length).split('\n').filter(Boolean);
+    expect(appendedLines).toHaveLength(1); // 追加 = 一行，不是整卷重写
+    const delta = new TextEncoder().encode(after).length - initialBytes;
+    expect(delta).toBe(new TextEncoder().encode(`${appendedLines[0]}\n`).length);
+    expect(delta).toBeLessThan(1000); // 200KB 的卷追加一条 = 百字节级
+    // 写面最后一次写只含这一行（no full-volume rewrite）
+    expect(H.kernelFs!.fs.writes.at(-1)?.content.split('\n').filter(Boolean)).toHaveLength(1);
+  });
+
+  it('同路径第二个写面：等旧写面退休后接替（两份 seq 游标不并行写同一文件）', async () => {
+    const { attachSessionLogStore, sessionLogStoreOf } = await import('../src/app/chat/session-log-store');
+    const a = await makeLog(1);
+    const b = await makeLog(1);
+    const sa = await attachSessionLogStore(a, {
+      root: ROOT,
+      sessionId: 23,
+      header: { ...HEADER, id: 23 },
+      maxDelayMs: 5,
+    });
+    await sa.flush();
+    const sb = await attachSessionLogStore(b, {
+      root: ROOT,
+      sessionId: 23,
+      header: { ...HEADER, id: 23 },
+      maxDelayMs: 5,
+    });
+    expect(sessionLogStoreOf(a)).toBeNull(); // 旧写面已退休
+    expect(sessionLogStoreOf(b)).toBe(sb);
+
+    a.append('user/message', { message: { role: 'user', content: '老写面' } });
+    b.append('user/message', { message: { role: 'user', content: '新写面' } });
+    await sb.flush();
+    await new Promise((r) => setTimeout(r, 40));
+    const joined = fileLines(`${ROOT}/23.ndjson`).join('\n');
+    expect(joined).toContain('新写面');
+    expect(joined).not.toContain('老写面');
   });
 });
