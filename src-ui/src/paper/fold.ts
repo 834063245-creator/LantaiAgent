@@ -30,10 +30,33 @@
 // 用户显式点开/收起写入壳层覆盖表（foldOv），覆盖默认——
 // 状态翻转（running→done）自动收回的是「没有用户意志的默认态」。
 
+import { displayToolName } from '../ui/tool-semantics';
 import type { BlockKind, SourcedBlock } from './block-model';
 import { type RhythmFamily, rhythmFamilyOfTool } from './grammar';
 import { plateSignOf } from './plate-sign';
+import { presentTool } from './tool-present';
 import { codeSections, hasArgsToShow, toolDigest } from './tool-text';
+
+/** 折叠行读数缓存（2026-10-29 语义投影层）。
+ *  归属 = CONVENTIONS §1.10 第 3 类「键控自清理」：WeakMap 以 payload 对象为键，
+ *  随块回收自动消失，无跨工作区所有权问题。命中判据用**字符串引用相等**
+ *  （JS 字符串不可变，引用变了才是内容变了——长度戳会在「同长改写」时撒谎）。 */
+const summaryCache = new WeakMap<object, { args?: string; output?: string; err?: string; summary?: string }>();
+
+function toolSummaryOf(
+  payload: object & { name?: string; args?: string; output?: string; err?: string },
+): string | undefined {
+  const hit = summaryCache.get(payload);
+  if (hit && hit.args === payload.args && hit.output === payload.output && hit.err === payload.err) return hit.summary;
+  const summary = presentTool({
+    name: payload.name,
+    args: payload.args,
+    output: payload.output,
+    err: payload.err,
+  }).summary;
+  summaryCache.set(payload, { args: payload.args, output: payload.output, err: payload.err, summary });
+  return summary;
+}
 
 /** 可折叠 kind（渲染器与测量端共用判据）。
  *  `block` 缺省 = 只看 kind 面（非资产）；生产调用点一律传块——资产身份在
@@ -127,12 +150,16 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean, bl
   if (kind === 'tool') {
     // 2026-08-30 会话流专项：折叠行带「干了什么」（名字 + 参数目标摘要）——
     // 纯字数没有信息量，不展开不知道卡是什么。
-    const who = p.label || p.name || '工具';
+    // 2026-10-29 语义投影层：名字走领域显示名（`fs(read)` 而不是 `fs`），读数走
+    // presentTool 的 summary（「42 行」「9 处 · 1 文件」「17 个改动」）——折叠行是
+    // 用户 95% 时间看到的那一行，读数比字数有用；无 summary 才回落字数。
+    const who = p.name ? displayToolName(p.name, p.args) : p.label || '工具';
     if (!folded) return `▾ 收起 ${who}`;
     // F1（2026-09-01）：`{}` 骨架与空参数同判——都是「还没带东西来」
     if (!hasArgsToShow(p.args) && !p.output && !p.err) return `▸ ${who} · 待执行`;
     const digest = toolDigest(p.args ?? '');
-    return `▸ ${who}${digest ? ` ${digest}` : ''}${outSuffix()}`;
+    const summary = toolSummaryOf(p as object);
+    return `▸ ${who}${digest ? ` ${digest}` : ''}${summary ? ` · ${summary}` : outSuffix()}`;
   }
   if (kind === 'code') {
     const who = p.description || '程序';

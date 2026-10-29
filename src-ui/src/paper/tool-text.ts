@@ -53,6 +53,9 @@ export type ToolTone =
   | 'num' // 数字/布尔/null 字面量
   | 'punct' // 结构符号：花括号/方括号/逗号/列表标记
   | 'note' // 注记：项数、「… 其余 N 行」截断说明
+  | 'add' // 差分新增行（语义投影层，2026-10-29）
+  | 'del' // 差分删除行
+  | 'hunk' // 差分块头（@@）
   | 'plain'; // 原样文本
 
 /** 展示行内片段——渲染逐片着色，文本即展示内容。 */
@@ -460,6 +463,14 @@ function capLines(lines: ToolLine[]): ToolLine[] {
     parts: [{ text: `… 其余 ${total - MAX_LINES} 行未展开（共 ${total} 行）`, tone: 'note' }],
   });
   return kept;
+}
+
+/** 行集 → 展示模型（语义投影层的出口，2026-10-29）：行数封顶 + 文本投影复用
+ *  `capLines` / `toolLinesText` 同一对函数——渲染、测量、墨迹三面读同一串。
+ *  `paper/tool-present` 的 presenter 一律从这里出行（不自拼 text）。 */
+export function toolDisplayFromLines(lines: readonly ToolLine[]): ToolDisplay {
+  const capped = capLines([...lines]);
+  return { text: toolLinesText(capped), lines: capped };
 }
 
 function tryParseJson(text: string): unknown {

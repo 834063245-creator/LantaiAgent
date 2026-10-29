@@ -288,16 +288,19 @@ describe('渲染面 — 分段 + 着色 + 折叠', () => {
     });
   };
 
-  it('参数/输出/错误三段各有段头，段类承载语义（错误段走 pp-sec--err + pp-out--err）', () => {
+  it('三段各有段头，段类承载语义（错误段走 pp-sec--err + pp-out--err）', () => {
+    // 2026-10-29 语义投影层（**故意规格变更**）：段头文案不再是固定的
+    // 「参数/输出/错误」——按工具语义出人话标签（shell 轮询 = 「轮询」，参数面
+    // 是 `任务 #10` 而不是 `{"action":"output","jobId":10}` 的键值塔）。
+    // 段结构本身（三段、段类、错误墨）不变——这正是本用例原本要守的东西。
     renderTool({
       args: JSON.stringify({ action: 'output', jobId: 10 }),
       output: 'done',
       err: 'boom',
     });
     const labels = [...container!.querySelectorAll('.pp-sec-label')].map((el) => el.textContent);
-    expect(labels).toEqual(['参数', '输出', '错误']);
-    // 参数=石青直排盒；输出/错误=滚动盒（错误墨归 CSS 段类——渲染端无 inline style）
-    expect(container!.querySelector('.pp-sec .pp-args')?.textContent).toContain('action: "output"');
+    expect(labels).toEqual(['轮询', '输出', '错误']);
+    expect(container!.querySelector('.pp-sec .pp-args')?.textContent).toContain('任务 #10');
     const outs = container!.querySelectorAll('.pp-out');
     expect(outs).toHaveLength(2);
     expect(outs[1].className).toContain('pp-out--err');
@@ -305,6 +308,16 @@ describe('渲染面 — 分段 + 着色 + 折叠', () => {
     expect(container!.querySelector('.pp-args')?.closest('.pp-sec')?.className).toContain('pp-sec--args');
     expect(outs[0].closest('.pp-sec')?.className).toContain('pp-sec--out');
     expect(outs[1].closest('.pp-sec')?.className).toContain('pp-sec--err');
+  });
+
+  it('未登记的远端/插件工具：段头与载荷维持改造前的通用形态（兜底不倒退）', () => {
+    renderTool({
+      args: JSON.stringify({ action: 'targets' }),
+      output: 'ok',
+    });
+    const labels = [...container!.querySelectorAll('.pp-sec-label')].map((el) => el.textContent);
+    expect(labels).toEqual(['参数', '输出']);
+    expect(container!.querySelector('.pp-sec .pp-args')?.textContent).toContain('action: "targets"');
   });
 
   it('结构化行渲染出分色片段（键/字符串/数字/结构符）', () => {
@@ -350,5 +363,26 @@ describe('测量镜像 — 测高消费展示文本（渲染/测量同源）', (
     const seen = prepareMock.mock.calls.map((c) => String(c[0])).join('\n');
     expect(seen).toContain(`path: "${WIN_PATH}"`);
     expect(seen).not.toContain('\\\\\\\\');
+  });
+
+  it('语义投影层：测高消费的也是投影后的文本（渲染/测高同源，不是两套视图）', () => {
+    prepareMock.mockClear();
+    measureBlockHeight(
+      toolBlock({
+        name: 'git',
+        args: JSON.stringify({ action: 'status' }),
+        status: 'done',
+        output: JSON.stringify({
+          branch: 'main',
+          ahead: 2,
+          behind: 0,
+          files: [{ path: 'a.md', status: 'modified', staged: false }],
+        }),
+      }),
+      false,
+    );
+    const seen = prepareMock.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(seen).toContain('main · 领先 2 · 1 个改动');
+    expect(seen).not.toContain('branch'); // 协议键不上测量面
   });
 });

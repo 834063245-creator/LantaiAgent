@@ -34,7 +34,8 @@ import {
   parseMarkdownIncremental,
 } from '../../../paper/markdown';
 import { parseCircledSegments } from '../../../paper/marks';
-import { codeDisplay, hasArgsToShow, hasPayloadToShow, toolDisplay } from '../../../paper/tool-text';
+import { presentTool } from '../../../paper/tool-present';
+import { codeDisplay, hasPayloadToShow, toolDisplay } from '../../../paper/tool-text';
 import { VIEWER_BOX_CLASSES, viewerClassOf } from '../../../paper/viewer-exts';
 
 /* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
@@ -264,6 +265,7 @@ const DIFF_TEXT_INSET = CHROME_DERIVED.diffTextInset; // border-left 3 + padding
 const PLAN_CHROME_H = CHROME_DERIVED.planChromeH; // .pp-pc border-top 2 + border-bottom 1 + padding 14×2
 const PLAN_TEXT_INSET = CHROME_DERIVED.planTextInset; // 策面横向内缩：石青左线 3 + 内距 16×2（.pp-pc-body 测宽）
 const PLAN_ACTIONS_H = CHROME_DERIVED.planActionsH; // 按钮行
+const PLAN_DONE_H = CHROME_DERIVED.planDoneH; // 决议后的终态行（.pp-pc-done）
 const NOTICE_CHROME_H = CHROME_DERIVED.noticeChromeH; // padding 8×2 + border-bottom 1
 const NOTICE_TEXT_INSET = CHROME_DERIVED.noticeTextInset; // padding 12×2
 /** 贴黄正文上距 = padding-top（chrome 的另一半是 border-bottom 1）——墨迹纵向用。 */
@@ -510,6 +512,8 @@ export function measureFolioHeadHeight(title: string, regionWidth: number): numb
 /* ── 块级测量 ── */
 
 interface PayloadLike {
+  /** 工具名（语义投影层要据 name+args 归一领域动作，2026-10-29）。 */
+  name?: string;
   text?: string;
   content?: string;
   args?: string;
@@ -1396,51 +1400,30 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
         : [];
     case 'tool': {
       if (folded) return [];
+      // 段序 / 段文本 / 段档全部来自 presentTool（2026-10-29 语义投影层）——
+      // 与渲染端 ToolBody、测高 measureBlockHeight 消费同一份产物（三面同源）。
       // 段头（.pp-sec-head 恒一行）在每段之上；首段紧跟折叠行（无上距）。
-      // 逐段推进游标：段高 = 段头 + 内容高（+ 非首段的段头上距）——与
-      // measureBlockHeight 的 argsH/outH/errH 同款累加，两处逐字对齐。
+      const pres = presentTool({ name: p.name, args: p.args, output: p.output, err: p.err });
       const out: InkSource[] = [];
       let y = TOOL_PAD_TOP + FOLD_ROW_H;
-      const showArgs = hasArgsToShow(p.args);
-      const showOut = hasPayloadToShow(p.output);
-      const showErr = hasPayloadToShow(p.err);
-      if (showArgs) {
-        const text = toolDisplay(p.args).text;
+      pres.sections.forEach((sec, i) => {
+        const isArgs = sec.variant === 'args';
+        const lineHeight = isArgs ? PAPER_TOOL_LINE_HEIGHT : PAPER_OUT_LINE_HEIGHT;
+        const maxH = isArgs ? PRE_MAX_H : OUT_MAX_H;
+        const gap = i > 0 ? SEC_HEAD_GAP : 0;
         out.push({
-          text,
-          font: PAPER_TOOL_FONT,
-          lineHeight: PAPER_TOOL_LINE_HEIGHT,
+          text: sec.display.text,
+          font: isArgs ? PAPER_TOOL_FONT : PAPER_OUT_FONT,
+          lineHeight,
           inset: 0,
-          y: y + SEC_HEAD_H,
-          cap: Math.floor(PRE_MAX_H / PAPER_TOOL_LINE_HEIGHT),
-        });
-        y += SEC_HEAD_H + cappedH(text, b.w, PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT, PRE_MAX_H);
-      }
-      if (showOut) {
-        const text = toolDisplay(p.output).text;
-        out.push({
-          text,
-          font: PAPER_OUT_FONT,
-          lineHeight: PAPER_OUT_LINE_HEIGHT,
-          inset: 0,
-          y: y + SEC_HEAD_H + (showArgs ? SEC_HEAD_GAP : 0),
-          cap: Math.floor(OUT_MAX_H / PAPER_OUT_LINE_HEIGHT),
+          y: y + SEC_HEAD_H + gap,
+          cap: Math.floor(maxH / lineHeight),
         });
         y +=
           SEC_HEAD_H +
-          (showArgs ? SEC_HEAD_GAP : 0) +
-          cappedH(text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H);
-      }
-      if (showErr) {
-        out.push({
-          text: toolDisplay(p.err).text,
-          font: PAPER_OUT_FONT,
-          lineHeight: PAPER_OUT_LINE_HEIGHT,
-          inset: 0,
-          y: y + SEC_HEAD_H + (showArgs || showOut ? SEC_HEAD_GAP : 0),
-          cap: Math.floor(OUT_MAX_H / PAPER_OUT_LINE_HEIGHT),
-        });
-      }
+          gap +
+          cappedH(sec.display.text, b.w, isArgs ? PAPER_TOOL_FONT : PAPER_OUT_FONT, lineHeight, maxH);
+      });
       return out;
     }
     case 'code': {
@@ -1781,28 +1764,25 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       return langH + preH;
     }
     case 'tool': {
-      // 折叠机制（fold.ts 同款规则镜像）：折叠态只留折叠行——参数/输出/错误全收。
-      // F1（2026-09-01 三轴审计）：空/无意义参数（`{}` 骨架）渲染端不画 → 测高镜像同判据。
-      // 2026-09-14 工具卡可读性专项：载荷走展示变换（toolDisplay）——测量消费
-      // 展示文本（而非原始串），与渲染行数逐字一致；段头恒一行（SEC_HEAD_H），
-      // 首段不留上距（渲染端同样按「上方有无内容」决定 gap）。
-      const showArgs = !folded && hasArgsToShow(p.args);
-      const showOut = !folded && hasPayloadToShow(p.output);
-      const showErr = !folded && hasPayloadToShow(p.err);
-      const argsH = showArgs
-        ? SEC_HEAD_H + cappedH(toolDisplay(p.args).text, b.w, PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT, PRE_MAX_H)
-        : 0;
-      const outH = showOut
-        ? SEC_HEAD_H +
-          (showArgs ? SEC_HEAD_GAP : 0) +
-          cappedH(toolDisplay(p.output).text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H)
-        : 0;
-      const errH = showErr
-        ? SEC_HEAD_H +
-          (showArgs || showOut ? SEC_HEAD_GAP : 0) +
-          cappedH(toolDisplay(p.err).text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H)
-        : 0;
-      return TOOL_PAD_TOP + FOLD_ROW_H + argsH + outH + errH;
+      // 折叠机制（fold.ts 同款规则镜像）：折叠态只留折叠行——各段全收。
+      // 2026-10-29 语义投影层：「有哪几段、每段多高、段头文案」全部由 presentTool
+      // （paper/tool-present）单一产物决定——渲染端 ToolBody 遍历同一个 sections 数组，
+      // 测高侧不再自带一套 showArgs/showOut/showErr 判据（旧三处重复的消除）。
+      // 字体档按 variant 取：args ⇒ PAPER_TOOL_FONT/PRE_MAX_H，其余（out/result/err）
+      // ⇒ PAPER_OUT_FONT/OUT_MAX_H（与 CSS .pp-args / .pp-out 的类归属逐字对应）。
+      if (folded) return TOOL_PAD_TOP + FOLD_ROW_H;
+      const pres = presentTool({ name: p.name, args: p.args, output: p.output, err: p.err });
+      let h = 0;
+      pres.sections.forEach((sec, i) => {
+        const isArgs = sec.variant === 'args';
+        h +=
+          SEC_HEAD_H +
+          (i > 0 ? SEC_HEAD_GAP : 0) +
+          (isArgs
+            ? cappedH(sec.display.text, b.w, PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT, PRE_MAX_H)
+            : cappedH(sec.display.text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H));
+      });
+      return TOOL_PAD_TOP + FOLD_ROW_H + h;
     }
     case 'code': {
       // 与 tool 同构的封顶测量（P2-A）：程序体 + 输出段 + 错误段。
@@ -1837,6 +1817,7 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       const plan = b.payload as {
         title?: string;
         _callback?: unknown;
+        status?: string;
         options?: Array<{ label?: string; description?: string }>;
       };
       const headH =
@@ -1846,7 +1827,14 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
         plan._callback && (plan.options?.length ?? 0) >= 2
           ? planOptionsH(plan.options ?? [], b.w - PLAN_TEXT_INSET)
           : 0;
-      const actionsH = plan._callback ? PLAN_ACTIONS_H : 0;
+      /* 终态（2026-10-29 拟策终态批）：决议后操作行换成一行终态——高度按
+       * PLAN_DONE_H 算（旧公式恒按操作行，决议完块底空一条按钮高的空档）。
+       * 状态先读**活引用 part**（与渲染端同一真源）：payload 是转译快照，
+       * 决议当帧还没重译，只认 payload 会有一帧按「待批准」量。 */
+      const liveStatus = (b.source.part as { status?: string } | null)?.status;
+      const status = liveStatus ?? plan.status;
+      const resolved = status !== undefined && status !== 'pending';
+      const actionsH = resolved ? PLAN_DONE_H : plan._callback ? PLAN_ACTIONS_H : 0;
       return PLAN_CHROME_H + headH + mdH + optionsH + actionsH;
     }
     case 'toolgroup':
@@ -1923,11 +1911,16 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
       return `tool|${f}|${p.args ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
     case 'code':
       return `code|${f}|${p.code ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
-    case 'plan':
-      // 标题入签（2026-08-30 起标题实测计高——换行变高度）
+    case 'plan': {
+      // 标题入签（2026-08-30 起标题实测计高——换行变高度）；终态位入签
+      // （2026-10-29 拟策终态批）：决议后操作行换终态行 = 两个高，不入签就吃旧缓存。
+      const liveStatus = (b.source.part as { status?: string } | null)?.status;
+      const status = liveStatus ?? (p.status as string | undefined);
+      const resolved = status !== undefined && status !== 'pending';
       return `plan|${p.title ?? ''}|${p.content ?? ''}|${(p.options as unknown[] | undefined)?.length ?? 0}|${
         p._callback ? 1 : 0
-      }`;
+      }|${resolved ? 1 : 0}`;
+    }
     case 'toolgroup':
       // 子卡数入签（流式追加子卡 → 组头重测；头高本身恒定）
       return `toolgroup|${((p.items as unknown[] | undefined) ?? []).length}`;

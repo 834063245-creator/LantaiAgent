@@ -75,6 +75,7 @@
       "paper/markdown.ts",
       "paper/marks.ts",
       "paper/measure-seam.ts",
+      "paper/tool-present.ts",
       "paper/tool-text.ts",
       "paper/viewer-exts.ts",
       "state/volume-name.ts",
@@ -331,6 +332,7 @@
       "paper/markdown.ts",
       "paper/marks.ts",
       "paper/plate-sign.ts",
+      "paper/tool-present.ts",
       "paper/tool-text.ts",
       "paper/viewer-exts.ts",
       "ui/tool-semantics.ts"

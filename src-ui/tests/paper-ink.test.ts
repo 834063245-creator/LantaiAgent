@@ -359,6 +359,24 @@ describe('paper/ink inkForBlock', () => {
     );
   });
 
+  it('脚注墨源跟着语义投影走（2026-10-29：墨迹与渲染读同一份 sections）', () => {
+    const cache = createInkCache();
+    // git status：参数面明确不展示（`{"action":"status"}` 是协议骨架）⇒ 只有结果一段。
+    // 墨条 text 由 materializeLineRange 桩固定（本文件全 mock），故这里钉**段数**：
+    // 旧实现恒有两段（参数 + 输出）⇒ 4 条；投影后 1 段 + 段头占位 = 2 条。
+    const b = block('tool', {
+      toolId: 't',
+      name: 'git',
+      label: 'git',
+      args: '{"action":"status"}',
+      status: 'done',
+      output: '{"branch":"main","ahead":0,"behind":0,"files":[]}',
+    });
+    b.w = 640;
+    const ink = inkForBlock(b, false, cache);
+    expect(ink.bars).toHaveLength(2);
+  });
+
   it('F1 无意义参数不进脚注：args "{}" 只剩 output 源（镜像 hasArgsToShow 判据）', () => {
     const cache = createInkCache();
     const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: '{}', status: 'done', output: 'out' });

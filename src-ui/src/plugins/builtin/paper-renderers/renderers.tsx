@@ -34,6 +34,7 @@ import katex from 'katex';
 import type { ReactNode } from 'react';
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../../../agent/plan/plan-contract';
+import type { PlanPart } from '../../../ui/message-model';
 import type { BlockRendererContribution, BlockRendererProps } from '../../../composition/renderer-service';
 import { foldLabel, foldPreviewLine } from '../../../paper/fold';
 import {
@@ -44,9 +45,9 @@ import {
   parseMarkdownIncremental,
 } from '../../../paper/markdown';
 import { parseCircledSegments } from '../../../paper/marks';
+import { presentTool } from '../../../paper/tool-present';
 import {
   codeDisplay,
-  hasArgsToShow,
   hasPayloadToShow,
   type ToolDisplay,
   type ToolSpan,
@@ -856,12 +857,32 @@ function DiffCodeBody({ text, lang }: { text: string; lang?: string }) {
   );
 }
 
+/** 拟策终态文案（终态行的单一真源）：状态 → 用户看得懂的一句话。
+ *  批准带选定方案名（多方案时「批了哪个」是卡面必须留的事实）；修改带意见首段
+ *  （长意见截断——意见原文在卷里，不铺满卡面）。 */
+function planResolutionText(status: PlanPart['status'], label?: string, feedback?: string): string {
+  switch (status) {
+    case 'approved':
+      return label ? `已批准 · 选定方案：${label}` : '已批准';
+    case 'revise':
+      return feedback
+        ? `已提交修改意见：${feedback.length > 40 ? `${feedback.slice(0, 40)}…` : feedback}`
+        : '已提交修改意见';
+    case 'rejected':
+      return '已拒绝此拟策';
+    default:
+      return '已处理';
+  }
+}
+
 function PlanBody({ block }: BlockRendererProps) {
   const p = block.payload as {
     title: string;
     content: string;
+    /** 转译快照的审批态（重译之后才跟上——**真源是活引用 part**，见下） */
+    status?: PlanPart['status'];
     options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
-    _callback?: (response: PlanApprovalResponse) => void;
+    _callback?: (response: PlanApprovalResponse) => boolean | void;
   };
   // 拟策内容 = 完整 markdown 体（2026-09-10 拟策卡渲染专项）：标题/列表/加粗/
   // 围栏码/表格按结构渲染（旧 parsePlanItems 剥标记平铺成行号清单——「太毛坯」
@@ -877,26 +898,55 @@ function PlanBody({ block }: BlockRendererProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
-  const [done, setDone] = useState(false);
+  /** 本帧已点过（只作即时重渲的触发器——终态真值在 part.status，见下）； */
+  const [, setSettled] = useState(false);
+  /** 决议被 tool 侧忽略（审批等待已超时）——终态不写回，卡面如实说出来。 */
+  const [stale, setStale] = useState(false);
+
+  /* ── 终态读**活引用 part**（单一真源；同 confirm 卡的 confirmResolution 先例）──
+   * payload 是转译快照，而卡片会被重挂载：虚拟化卸挂（滚出视口再滚回）、切卷再
+   * 摊开、会话恢复重建——只认本地 done 态的话，卡片又长回「待批准」（用户报
+   * 「批准/拒绝过的拟策卡状态会回到待批准」，2026-10-29 定位即此）。故决议写回
+   * part 的纯 JSON 字段（status/selectedLabel/feedback，随卷持久化），渲染一律按
+   * part 判终态；本地 setSettled 只负责当帧重渲（函数字段不持久化，历史卡只读）。 */
+  const part = block.source.part as PlanPart | null;
+  const liveStatus = part && part.type === 'plan' ? part.status : undefined;
+  const status = liveStatus ?? p.status;
+  const resolved = status !== undefined && status !== 'pending';
+  const resolutionText = resolved ? planResolutionText(status, part?.selectedLabel, part?.feedback) : null;
+  /** 选项高亮：本帧点选优先，其次 = part 上记着的已选方案（重挂载后仍标出来）。 */
+  const chosen = selected ?? part?.selectedLabel ?? null;
 
   if (!cb) {
-    // 只读态（历史块 / 无审批回调）：维持拟策展示
+    // 只读态（历史块 / 无审批回调）：维持拟策展示；已决议的补终态行（不装没批过）
     return (
       <div className="pp-pc">
         <div className="pp-pc-head">
           <span className="pp-pc-t">{p.title || '拟策'}</span>
         </div>
         {mdBody}
+        {resolutionText && <div className="pp-pc-done">{resolutionText}</div>}
       </div>
     );
   }
 
   const hasOptions = (p.options?.length ?? 0) >= 2;
-  const canApprove = !hasOptions || selected !== null;
+  const canApprove = !hasOptions || chosen !== null;
   const canRevise = feedback.trim().length > 0;
   const settle = (response: PlanApprovalResponse) => {
-    cb(response);
-    setDone(true);
+    // 先把决议结论交回等待中的工具（返回值 = 是否真被采纳），采纳才写终态——
+    // 审批窗口已过的情形卡片说「未生效」，不写一个 agent 从未收到的「已批准」。
+    const accepted = cb(response) !== false;
+    if (accepted && part && part.type === 'plan') {
+      part.status = response.decision;
+      if (response.decision === 'approved') {
+        if (response.selectedLabel) part.selectedLabel = response.selectedLabel;
+      } else if (response.decision === 'revise') {
+        part.feedback = response.feedback;
+      }
+    }
+    setStale(!accepted);
+    setSettled(true);
   };
 
   return (
@@ -911,7 +961,7 @@ function PlanBody({ block }: BlockRendererProps) {
             <button
               key={o.label}
               type="button"
-              className={`pp-pc-option${selected === o.label ? ' pp-pc-option--on' : ''}`}
+              className={`pp-pc-option${chosen === o.label ? ' pp-pc-option--on' : ''}`}
               onClick={() => setSelected(o.label)}
             >
               <span className="pp-pc-option-label">{o.label}</span>
@@ -920,8 +970,10 @@ function PlanBody({ block }: BlockRendererProps) {
           ))}
         </div>
       )}
-      {done ? (
-        <div className="pp-pc-done">已处理</div>
+      {resolutionText ? (
+        <div className="pp-pc-done">{resolutionText}</div>
+      ) : stale ? (
+        <div className="pp-pc-done pp-pc-done--stale">审批已过期，此决定未生效</div>
       ) : (
         <>
           {feedbackOpen && (
@@ -936,7 +988,7 @@ function PlanBody({ block }: BlockRendererProps) {
               className={`pp-pc-btn${feedbackOpen ? '' : ' pp-pc-btn--primary'}`}
               disabled={!canApprove}
               title={canApprove ? undefined : '先选择方案'}
-              onClick={() => settle({ decision: 'approved', selectedLabel: selected ?? undefined })}
+              onClick={() => settle({ decision: 'approved', selectedLabel: chosen ?? undefined })}
             >
               批准
             </button>
@@ -980,13 +1032,17 @@ function PlanBody({ block }: BlockRendererProps) {
  * 展示文本是唯一变换产物——measure.ts 与 inkSourcesFor 消费同一 text，
  * 行数与渲染逐字一致（镜像纪律见 paper/tool-text 头注）。 */
 
-/** 片段语义 → 纸面类（'plain' 无类——直接文本节点）。 */
+/** 片段语义 → 纸面类（'plain' 无类——直接文本节点；差分三档复用抄录块的
+ *  .pp-add/.pp-del/.pp-hunk 墨色，作用域由 PaperPanel.css 的 .pp-out 收口）。 */
 const TONE_CLASS: Record<ToolTone, string> = {
   key: 'pp-tv-k',
   str: 'pp-tv-s',
   num: 'pp-tv-n',
   punct: 'pp-tv-p',
   note: 'pp-tv-c',
+  add: 'pp-add',
+  del: 'pp-del',
+  hunk: 'pp-hunk',
   plain: '',
 };
 
@@ -1024,22 +1080,22 @@ function PayloadText({ display }: { display: ToolDisplay }) {
 }
 
 /** 载荷段（段头 + 盒）。variant 即语义：args=石青直排（机器的输入面）/
- *  out=中性滚动盒 / result=石青段头（程序产出的答案段）/ err=错误墨段。
+ *  out=中性滚动盒 / result=石青段头（答案段）/ err=错误墨段。
  *  段类同时是段头的染色挂点。
- *  useMemo 按原始串记忆展示模型（20–30KB JSON 的解析+摊行不随无关重渲染重跑）。 */
+ *  展示模型由调用方给（2026-10-29 语义投影层：presentTool 产出的段直传进来，
+ *  本组件不再二次 toolDisplay——渲染与测高必须消费同一个 display 对象）。 */
 const PayloadSection = memo(function PayloadSection({
   label,
-  raw,
+  display,
   variant,
   gap,
 }: {
   label: string;
-  raw: string;
+  display: ToolDisplay;
   variant: 'args' | 'out' | 'err' | 'result';
   /** 段头前留空档（首段紧跟折叠行/程序体，不留） */
   gap?: boolean;
 }) {
-  const display = useMemo(() => toolDisplay(raw), [raw]);
   const boxClass = variant === 'err' ? 'pp-out pp-out--err' : variant === 'args' ? 'pp-args' : 'pp-out';
   const body = <PayloadText display={display} />;
   return (
@@ -1052,18 +1108,31 @@ const PayloadSection = memo(function PayloadSection({
   );
 });
 
+/** 脚注（工具调用卡）体。
+ *  2026-10-29 语义投影层：段序/段头/段文本全部来自 `presentTool`（paper/tool-present）——
+ *  同一份投影被 measure.ts 的测高与墨迹消费（三面逐字同源）。此前这里按
+ *  「参数/输出/错误」三段固定拼装，参数面是原始 args JSON、输出面是结构化 JSON 直出，
+ *  用户读到的仍是协议形状（「不是给人看的」）。 */
 function ToolBody({ block, folded }: BlockRendererProps) {
-  const p = block.payload as { args: string; output?: string; err?: string };
-  if (folded) return null; // 折叠态只留壳层折叠行（paper/fold.ts 规则）——参数/输出全收
-  // F1（2026-09-01 三轴审计）：空/无意义参数（`{}` 等 JSON 骨架）不裸奔
-  const showArgs = hasArgsToShow(p.args);
-  const showOut = hasPayloadToShow(p.output);
-  const showErr = hasPayloadToShow(p.err);
+  const p = block.payload as { name?: string; args: string; output?: string; err?: string };
+  // memo 依原始串（20–30KB 载荷的投影不随无关重渲染重跑；display 对象身份稳定）
+  const presentation = useMemo(
+    () => presentTool({ name: p.name, args: p.args, output: p.output, err: p.err }),
+    [p.name, p.args, p.output, p.err],
+  );
+  if (folded) return null; // 折叠态只留壳层折叠行（paper/fold.ts 规则）——各段全收
   return (
     <>
-      {showArgs && <PayloadSection label="参数" raw={p.args} variant="args" />}
-      {showOut && <PayloadSection label="输出" raw={p.output ?? ''} variant="out" gap={showArgs} />}
-      {showErr && <PayloadSection label="错误" raw={p.err ?? ''} variant="err" gap={showArgs || showOut} />}
+      {presentation.sections.map((sec, i) => (
+        <PayloadSection
+          // biome-ignore lint/suspicious/noArrayIndexKey: 段按投影序渲染（段序稳定，无重排身份）
+          key={`${sec.kind}-${i}`}
+          label={sec.label}
+          display={sec.display}
+          variant={sec.variant}
+          gap={i > 0}
+        />
+      ))}
     </>
   );
 }
@@ -1077,7 +1146,7 @@ function CodeBody({ block, folded }: BlockRendererProps) {
   const p = block.payload as { code: string; output?: string; err?: string };
   const showSrc = !folded && !!p.code;
   const secs = useMemo(() => codeDisplay(p.output), [p.output]);
-  const showErr = hasPayloadToShow(p.err);
+  const errDisplay = useMemo(() => (hasPayloadToShow(p.err) ? toolDisplay(p.err) : null), [p.err]);
   return (
     <>
       {showSrc && <pre className="pp-code-src">{p.code}</pre>}
@@ -1086,12 +1155,14 @@ function CodeBody({ block, folded }: BlockRendererProps) {
           // biome-ignore lint/suspicious/noArrayIndexKey: 段按位渲染（信封段序稳定，无重排身份）
           key={`${sec.kind}-${i}`}
           label={sec.label}
-          raw={sec.raw}
+          display={sec.display}
           variant={sec.kind === 'error' ? 'err' : sec.kind === 'result' ? 'result' : 'out'}
           gap={showSrc || i > 0}
         />
       ))}
-      {showErr && <PayloadSection label="错误" raw={p.err ?? ''} variant="err" gap={showSrc || secs.length > 0} />}
+      {errDisplay && (
+        <PayloadSection label="错误" display={errDisplay} variant="err" gap={showSrc || secs.length > 0} />
+      )}
     </>
   );
 }

@@ -1693,6 +1693,19 @@
   color: var(--graphite);
   font-style: italic;
 }
+/* 差分三档墨（2026-10-29 语义投影层）：工具卡里的改动正文（fs(edit) 与 git(diff)）——
+ * 与抄录块 .pp-diff 同色（add 松绿 / del 朱砂深 + 删除线 / hunk 注记墨），作用域收在
+ * 载荷段内（.pp-sec），不外溢到正文；同字体同字号 ⇒ 测高镜像零改动。 */
+.pp-sec .pp-add {
+  color: var(--pass);
+}
+.pp-sec .pp-del {
+  color: var(--seal-deep);
+  text-decoration: line-through;
+}
+.pp-sec .pp-hunk {
+  color: var(--ink-3);
+}
 
 /* ── 脚注（tool）：石青注线小字 ── */
 .pp-block.pp-tool {
@@ -2043,12 +2056,17 @@
   border-color: var(--indigo);
 }
 .pp-pc-done {
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: var(--rule-soft);
+  margin-top: var(--pp-ch-plan-doneMarginTop);
+  padding-top: var(--pp-ch-plan-donePadTop);
+  border-top: var(--pp-ch-plan-doneBorder) solid var(--rule-soft-ink);
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: var(--pp-ch-plan-doneSize);
+  line-height: var(--pp-ch-plan-doneLh);
   color: var(--indigo);
+}
+/* 决议未生效（审批窗口已过）：朱砂——这是一句警告，不是终态 */
+.pp-pc-done--stale {
+  color: var(--seal-deep);
 }
 
 /* ── 贴黄（notice）：系统通知作土黄纸条 ── */
