@@ -906,7 +906,7 @@ export const ComposerDock = memo(function ComposerDock() {
           // hover 文案 = **显示名**（2026-09-21 卷号收显示）：旧实现硬报 `案卷 ${id}`——
           // 对有名卷也报号（同元素下一行就有名字），且裸用 id 绕过了单一真源
           // `volumeDisplayName`（state/volume-name 纪律①：禁在调用点散写）。
-          title={activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '无活跃卷——落笔即另起一卷'}
+          data-tip={activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '落笔即另起一卷'}
         >
           {activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '新卷'}
         </span>
@@ -924,10 +924,9 @@ export const ComposerDock = memo(function ComposerDock() {
               className={`pp-tool-btn${composerLock.unlocked ? ' open' : ''}`}
               aria-pressed={composerLock.unlocked}
               aria-label={composerLock.unlocked ? '锁定创作坞' : '解锁创作坞（可拖动）'}
-              title={
-                composerLock.unlocked
-                  ? '移·已解锁——按住坞体任意空白处拖动，双击坞体复位；点此重新锁定'
-                  : '移·创作坞可拖动：点此解锁后可按住坞体拖动（双击复位）'
+              data-tip={composerLock.unlocked ? '锁定创作坞' : '解锁创作坞'}
+              data-tip-hint={
+                composerLock.unlocked ? '已解锁：按住坞体空白处拖动，双击复位' : '解锁后按住坞体空白处拖动，双击复位'
               }
               onClick={composerLock.toggle}
             >
@@ -937,7 +936,8 @@ export const ComposerDock = memo(function ComposerDock() {
           <button
             type="button"
             className={`pp-tool-btn${paletteOpen ? ' open' : ''}`}
-            title="翰——命令面板（Ctrl+K 同一份：搜索 / 分组 / 动作与插件命令）"
+            data-tip="打开命令面板"
+            data-tip-hint="Ctrl+K 同一份：搜索 / 分组 / 动作与插件命令"
             aria-label="翰——打开命令面板"
             aria-haspopup="dialog"
             aria-expanded={paletteOpen}
@@ -948,7 +948,7 @@ export const ComposerDock = memo(function ComposerDock() {
           <button
             type="button"
             className={`pp-tool-btn${helpOpen ? ' open' : ''}`}
-            title="律——快捷键总览"
+            data-tip="快捷键总览"
             aria-label="律——快捷键总览"
             aria-expanded={helpOpen}
             onClick={() => toggleLayer('help')}
@@ -975,12 +975,13 @@ export const ComposerDock = memo(function ComposerDock() {
         {/* B7（2026-08-27）：后台卷运行指示 + 停止——此前任一后台会话在跑就
             全局阻断发送（chat-core），但创作坞无任何指示、无从停止。 */}
         {bgRunning.length > 0 && (
-          <span className="pp-bg-running" title={bgRunning.map((s) => s.label).join('、')}>
+          <span className="pp-bg-running" data-tip={`后台卷：${bgRunning.map((s) => s.label).join('、')}`}>
             ⟳ 后台 {bgRunning.length} 卷运行中
             <button
               type="button"
               className="pp-bg-stop"
-              title={`停止后台卷：${bgRunning.map((s) => s.label).join('、')}`}
+              data-tip="停止全部后台卷"
+              data-tip-hint={bgRunning.map((s) => s.label).join('、')}
               onClick={() => {
                 if (!core) return;
                 // 停账 + 级联（同 chat-core.abort 语义）：`stopRuns` = 用户停止
@@ -1195,7 +1196,7 @@ export const ComposerDock = memo(function ComposerDock() {
         <button
           type="button"
           className={`pp-attach pp-yin-btn${yinOpen ? ' open' : ''}`}
-          title="引——引用工作区文件入卷"
+          data-tip="引用工作区文件入卷"
           aria-label="引：引用文件"
           onClick={() => toggleLayer('yin')}
         >
@@ -1204,7 +1205,7 @@ export const ComposerDock = memo(function ComposerDock() {
         <button
           type="button"
           className="pp-attach"
-          title="拾遗——附文件入卷"
+          data-tip="附文件入卷"
           aria-label="拾遗：附加文件"
           onClick={onAttach}
         >
@@ -1217,7 +1218,8 @@ export const ComposerDock = memo(function ComposerDock() {
                 key={f.path}
                 type="button"
                 className="pp-attach-chip"
-                title={`${f.path}（点击移除）`}
+                data-tip={f.path}
+                data-tip-hint="点击移除"
                 onClick={() => onRemoveAttached(i)}
               >
                 {f.name} ✕
@@ -1237,7 +1239,7 @@ export const ComposerDock = memo(function ComposerDock() {
                   <button
                     type="button"
                     className="pp-image-thumb"
-                    title={img.name ?? '附图'}
+                    data-tip={img.name ?? '附图'}
                     aria-label={`预览附图：${img.name ?? img.id.slice(0, 8)}`}
                     onClick={() => setImagePreview(img)}
                   >
@@ -1250,7 +1252,8 @@ export const ComposerDock = memo(function ComposerDock() {
                   <button
                     type="button"
                     className="pp-image-remove"
-                    title={`移除附图：${img.name ?? ''}`}
+                    data-tip="移除附图"
+                    data-tip-hint={img.name ?? undefined}
                     aria-label={`移除附图 ${i + 1}`}
                     onClick={() => onRemoveAttachedImage(i)}
                   >
@@ -1266,7 +1269,8 @@ export const ComposerDock = memo(function ComposerDock() {
           <button
             type="button"
             className="pp-stop"
-            title="停止当前回合（级联子 Agent）"
+            data-tip="停止当前回合"
+            data-tip-hint="级联停止子 Agent"
             aria-label="停止"
             onClick={() => core?.abort()}
           >
@@ -1277,13 +1281,8 @@ export const ComposerDock = memo(function ComposerDock() {
             type="button"
             className="pp-send"
             disabled={!inputText.trim()}
-            title={
-              running
-                ? '插入进行中的回合（Agent 运行中，下轮生效）'
-                : inputText.trim()
-                  ? '发送本轮输入'
-                  : '先落笔，再拟文'
-            }
+            data-tip={running ? '插入回合' : inputText.trim() ? '发送本轮输入' : '先落笔'}
+            data-tip-hint={running ? 'Agent 运行中，下轮生效' : inputText.trim() ? undefined : '有内容才可拟文'}
             onClick={onSend}
           >
             拟文
@@ -1319,10 +1318,11 @@ export const ComposerDock = memo(function ComposerDock() {
             <span
               className="pp-comp-pill"
               data-locked
-              title={
+              data-tip={`本卷组合：${compLabel}`}
+              data-tip-hint={
                 compInfo.error
-                  ? `本卷组合：${compLabel}（${compInfo.error}——装配时已回退用户层组合）`
-                  : `本卷组合：${compLabel}（来源：${compInfo.source === 'session' ? '本卷选择' : '全局默认'}）；已跑过一轮——组合与已发送的对话绑定，不能中途换（另起一卷再选）`
+                  ? `${compInfo.error}——装配时已回退用户层组合`
+                  : `来源：${compInfo.source === 'session' ? '本卷选择' : '全局默认'}；已跑过一轮不能中途换（另起一卷再选）`
               }
             >
               <span className="pp-comp-pill-label">组合 · {compLabel}</span>
@@ -1332,12 +1332,13 @@ export const ComposerDock = memo(function ComposerDock() {
               <button
                 type="button"
                 className={`pp-comp-pill${compOpen ? ' open' : ''}`}
-                title={
+                data-tip={activeSessionId == null ? `新卷默认组合：${compLabel}` : `本卷组合：${compLabel}`}
+                data-tip-hint={
                   compInfo.error
-                    ? `本卷组合：${compLabel}（${compInfo.error}）`
+                    ? compInfo.error
                     : activeSessionId == null
-                      ? `新卷出生默认组合：${compLabel}（改这里 = 改全局默认）`
-                      : `本卷组合：${compLabel}（空白卷可拨；跑过一轮即锁定）`
+                      ? '改这里 = 改全局默认'
+                      : '空白卷可拨；跑过一轮即锁定'
                 }
                 aria-haspopup="listbox"
                 aria-expanded={compOpen}
@@ -1358,9 +1359,8 @@ export const ComposerDock = memo(function ComposerDock() {
                       aria-selected={p.id === compLabel}
                       className={`pp-comp-opt${p.id === compLabel ? ' selected' : ''}`}
                       disabled={p.patch === null}
-                      title={
-                        p.patch === null ? `装载失败：${p.error ?? 'roster.patch.yml 不可用'}` : p.metadata?.description
-                      }
+                      data-tip={p.patch === null ? '装载失败' : p.metadata?.description}
+                      data-tip-hint={p.patch === null ? (p.error ?? 'roster.patch.yml 不可用') : undefined}
                       onClick={() => void onCompositionChange(p.id)}
                     >
                       {p.metadata?.name ?? p.id}
@@ -1386,7 +1386,7 @@ export const ComposerDock = memo(function ComposerDock() {
               key={m}
               type="button"
               className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
-              title={MODE_DESCRIPTIONS[m]}
+              data-tip={MODE_DESCRIPTIONS[m]}
               aria-pressed={permissionMode === m}
               onClick={() => selectMode(m)}
             >
@@ -1401,7 +1401,7 @@ export const ComposerDock = memo(function ComposerDock() {
             <button
               type="button"
               className={`pp-thinking-pill${(currentThinking ?? '') === 'off' ? ' off' : ''}${settingsOpen ? ' open' : ''}`}
-              title={`思考档位：${thinkingZhLabel(currentThinking)}`}
+              data-tip={`思考档位：${thinkingZhLabel(currentThinking)}`}
               aria-haspopup="listbox"
               aria-expanded={settingsOpen}
               onClick={() => toggleLayer('thinking')}
@@ -1490,13 +1490,14 @@ export const ComposerDock = memo(function ComposerDock() {
       <div
         className={`pp-inkline${inkRatio > 0.8 ? ' full' : ''}`}
         style={{ opacity: inkWindow > 0 && inkUsed > 0 ? 1 : 0 }}
-        title={
+        data-tip={
           inkWindow > 0 && inkUsed > 0
             ? `墨量 ${inkUsed} / ${inkWindow} tok（${Math.round(inkRatio * 100)}%${
                 tokenStats?.usedSource === 'surface' ? ' · 估算' : ''
               }）`
-            : '墨量——本卷上下文占用占模型窗口比例（点击设置行右端「墨」看账）'
+            : '本卷上下文占用'
         }
+        data-tip-hint={inkWindow > 0 && inkUsed > 0 ? '模型窗口占比' : '点设置行右端「墨」看账'}
       >
         <span style={{ width: `${Math.round(inkRatio * 100)}%` }} />
       </div>
@@ -1565,7 +1566,7 @@ function GoalStripLive({ core }: { core: ChatCore }) {
       <span className="pp-goal-strip__mark" aria-hidden="true">
         🎯
       </span>
-      <span className="pp-goal-strip__text" title={goal.objective}>
+      <span className="pp-goal-strip__text" data-tip={goal.objective}>
         {goal.objective}
       </span>
       <span className="pp-goal-strip__meta">

@@ -1,0 +1,86 @@
+/* 悬停提示（tooltip）—— 全库单点样式。宿主与几何见 tip-host.tsx。 */
+
+/* 形态（2026-10-30 用户拍板「甲 · 纸片」）：
+ * 纸底**提亮一档** + 弱线 + 硬偏移落影。延续纸壳浮件先例（PaperPanel.css `.pp-chrome`）
+ * 的两条判据——① 纸底不透明：半透明会让底下正文与提示文字互相糊字（真机踩过）；
+ * ② 浮起感全来自落影层次（硬偏移 + 一层柔影），不靠大圆角或渐变。
+ *
+ * 动效：墨律（§15 三条物理律之一）——显形 = 淡入 + **微升 8px**，不回弹。
+ * 节点**常驻**、只切 `.is-on`，故 transition 有落点（§15 批 3 判例：transition 挂在
+ * 随开合卸载的元素上 = 声明永不生效——设置面板曾因此整段静默失效）。
+ * 入场与退场同走 `--m-ink`，对称；reduced-motion 由 foundation.css 全局块兜住。
+ *
+ * 定位：fixed + portal 到 body —— 免疫任何 `overflow: hidden` 祖先的裁切。 */
+.lt-tip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--z-tip);
+  box-sizing: border-box;
+  max-width: 260px;
+  padding: 6px 10px;
+  background: color-mix(in oklch, var(--paper) 34%, #fff);
+  color: var(--ink-1);
+  border: 1px solid var(--ink-4);
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  /* 多行提示保住换行（图版架签条那类「题名 / 类型 / 时间 / 操作」四行式说明）——
+     折叠成一行会读成一串逗号连句。空白仍折叠，只有 \n 生效。 */
+  white-space: pre-line;
+  box-shadow:
+    2px 3px 0 rgba(38, 34, 28, 0.1),
+    4px 7px 16px rgba(38, 34, 28, 0.11);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity var(--m-ink),
+    transform var(--m-ink);
+}
+
+.lt-tip.is-on {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lt-tip-label {
+  display: block;
+}
+
+/* 次行（`data-tip-hint`）：把「动作 + 括号解释」的长句拆开，
+ * 不再让整句糊成一个框（原生 title 时代 `停这一条后台命令（级联子代理）`
+ * 这类文案读起来像系统报错）。 */
+.lt-tip-hint {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+/* 箭头：4.5px 菱形，只画朝外的两条边（全边框会读成一个转歪的方块）。
+ * 水平位置由宿主写进 `--tip-arrow-x`——贴边时尖角跟着夹取，
+ * 不会跑到提示框圆角外面去。 */
+.lt-tip::after {
+  content: "";
+  position: absolute;
+  left: var(--tip-arrow-x, 50%);
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.lt-tip[data-side="top"]::after {
+  bottom: -4.5px;
+  border-right: 1px solid var(--ink-4);
+  border-bottom: 1px solid var(--ink-4);
+}
+
+.lt-tip[data-side="bottom"]::after {
+  top: -4.5px;
+  border-top: 1px solid var(--ink-4);
+  border-left: 1px solid var(--ink-4);
+}

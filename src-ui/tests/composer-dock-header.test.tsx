@@ -117,7 +117,7 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     // 锁钮居工具对之首（翰/律 这一对内容入口保持相邻），三枚同排
     expect(tools.map((b) => b.textContent)).toEqual(['移', '翰', '律']);
     expect(tools[0].getAttribute('aria-pressed')).toBe('false');
-    expect(tools[0].title).toContain('点此解锁');
+    expect(tools[0].getAttribute('data-tip')).toContain('解锁创作坞');
     act(() => tools[0].click());
     expect(toggle).toHaveBeenCalledTimes(1); // 写面在槽主人手里，坞只回调
 

@@ -68,7 +68,7 @@ function Section({ title }: { title: string }) {
 /** 账目行（dt 左、dd 右——数值竖排对齐是账本读法）。 */
 function Line({ label, value, strong, title }: { label: string; value: string; strong?: boolean; title?: string }) {
   return (
-    <div className={`pp-ink-line${strong ? ' strong' : ''}`} title={title}>
+    <div className={`pp-ink-line${strong ? ' strong' : ''}`} data-tip={title}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -111,10 +111,11 @@ export const InkLedger = memo(function InkLedger({
             ? '墨量册——本卷 token 账'
             : `墨量册——上下文已用 ${percent}%${estimated ? '（估算）' : ''}`
         }
-        title={
+        data-tip="墨量册"
+        data-tip-hint={
           percent === undefined
-            ? '墨量册——本卷 token 账（尚无占用读数）'
-            : `墨量册——上下文已用 ${percent}%${estimated ? '（估算）' : ''}`
+            ? '本卷 token 账（尚无占用读数）'
+            : `上下文已用 ${percent}%${estimated ? '（估算）' : ''}`
         }
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -170,7 +171,7 @@ export const InkLedger = memo(function InkLedger({
           {breakdown && breakdownTotal > 0 && (
             <ul className="pp-ink-legend">
               {SEGMENTS.map((seg) => (
-                <li key={seg.key} title={seg.title}>
+                <li key={seg.key} data-tip={seg.title}>
                   <i className={`pp-ink-swatch ${seg.cls}`} aria-hidden="true" />
                   <span className="pp-ink-legend-label">{seg.label}</span>
                   <span className="pp-ink-legend-value">~{tokenAlgebra.formatTokens(breakdown[seg.key])}</span>
@@ -193,7 +194,8 @@ export const InkLedger = memo(function InkLedger({
             <Line
               label="缓存命中"
               value={stats?.cacheHitPercent == null ? '—' : `${stats.cacheHitPercent}%`}
-              title="命中前缀缓存的输入 ÷ 全部计费输入——部分命中不四舍五入成 100%"
+              data-tip="缓存命中率"
+              data-tip-hint="命中前缀缓存的输入 ÷ 全部计费输入（部分命中不凑成 100%）"
             />
           </dl>
 
@@ -202,12 +204,12 @@ export const InkLedger = memo(function InkLedger({
             <Line
               label="请求"
               value={`${stats?.attempts ?? 0} 次`}
-              title={stats && stats.turns.length > 0 ? `共 ${stats.turns.length} 轮` : undefined}
+              data-tip={stats && stats.turns.length > 0 ? `共 ${stats.turns.length} 轮` : undefined}
             />
             <Line
               label={lastTurn ? `第 ${lastTurn.turn} 轮` : '最新一轮'}
               value={lastTurn ? tokenAlgebra.formatExactTokens(lastTurn.totalTokens) : '—'}
-              title={lastTurn ? `${lastTurn.steps} 步请求` : undefined}
+              data-tip={lastTurn ? `${lastTurn.steps} 步请求` : undefined}
             />
           </dl>
 

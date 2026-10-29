@@ -446,7 +446,7 @@ export function ModelSelector({
           <button
             type="button"
             className="ms-input-clear"
-            title="清除"
+            data-tip="清除"
             onClick={() => onChange('')}
             // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
             dangerouslySetInnerHTML={{ __html: iconHtml('close', 10) }}
@@ -481,11 +481,8 @@ export function ModelSelector({
             type="button"
             ref={triggerRef}
             className={`ms-trigger${providerUnavailable ? ' ms-trigger-unavailable' : ''}`}
-            title={
-              providerUnavailable
-                ? `⚠ 提供方「${providerName}」不可用（已移除？）——从下拉选择可用模型`
-                : `${providerName} · ${triggerLabel}（点击选择模型）`
-            }
+            data-tip={`${providerName} · ${triggerLabel}`}
+            data-tip-hint={providerUnavailable ? `⚠ 提供方「${providerName}」不可用——请改选可用模型` : '点击选择模型'}
             aria-haspopup="listbox"
             aria-expanded={state.isOpen}
             onMouseDown={(e) => {
@@ -603,13 +600,13 @@ function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; 
       ref={optionRef}
       {...optionProps}
       data-key={key}
-      title={title}
+      data-tip={title}
       className={`ms-item${isFocused ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
     >
       <span className="ms-item-title">
         <span className="ms-item-name">{m.name}</span>
         {m.input.includes('image') && (
-          <span className="ms-item-vision" title="视觉模型——支持图片输入（目录声明或参数面板覆盖）">
+          <span className="ms-item-vision" data-tip="视觉模型" data-tip-hint="支持图片输入（目录声明或参数面板覆盖）">
             视
           </span>
         )}

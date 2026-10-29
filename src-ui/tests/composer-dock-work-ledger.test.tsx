@@ -121,8 +121,8 @@ describe('役册（创作坞后台工作监视装置）', () => {
     await mountDock();
     expect(triggerText()).toBe('役 1+1');
     expect(trigger()?.className).toContain('live');
-    expect(trigger()?.title).toContain('本卷在役 1 条');
-    expect(trigger()?.title).toContain('另 1 条在他卷');
+    expect(trigger()?.getAttribute('data-tip-hint')).toContain('本卷在役 1 条');
+    expect(trigger()?.getAttribute('data-tip-hint')).toContain('另 1 条在他卷');
   });
 
   it('册页关着也恒对账：后台任务起来 ⇒ 触发器当轮自亮（读数不是点开的副作用）', async () => {

@@ -192,7 +192,7 @@ export const AssetRack = memo(function AssetRack() {
             className="pp-rack-chip"
             data-block-id={e.block.id}
             data-asset-id={e.assetId}
-            title={title}
+            data-tip={title}
             aria-label={`${e.sign}${e.title ? ` ${e.title}` : ''}${fresh ? '（有更新）' : ''}`}
             onMouseDown={(ev) => dragBlockOut?.(ev, e.block)}
             onClick={() => onChipClick(e)}

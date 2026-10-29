@@ -169,6 +169,8 @@
   --z-panel-veil: 400; /* settings 遮罩 */
   --z-panel: 401; /* settings 面板体 */
   --z-plugin-window: 460; /* 插件应用窗（app shell 件 A · S3）——软件窗盖面板，让位于牒卡/命令面板 */
+  --z-tip: 480; /* 悬停提示（2026-10-30）——盖过插件窗与面板，但**不得盖过牒卡(500)/命令面板(510)**：
+                   提示永远不该压住一个正在等用户回答的浮层。 */
   --z-panel-modal: 60; /* 面板内模态（ConfirmDialog/AddProviderSheet——纸内档位，只争面板内部） */
   --z-shelf: 500; /* 牒卡浮层（ask/权限） */
   --z-palette: 510; /* 命令面板 */

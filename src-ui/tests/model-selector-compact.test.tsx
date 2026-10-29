@@ -47,7 +47,7 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     expect(trigger?.querySelector('.ms-provider-mark')?.textContent).toBe('D');
     expect(trigger?.textContent).toContain('DeepSeek V4 Pro'); // 人类可读名，不裸露 model id
     expect(container!.querySelector('.ms-trigger-caret')).not.toBeNull(); // 箭头暗示可展开
-    expect(trigger?.title).toContain('deepseek'); // 厂商身份在 title 可见
+    expect(trigger?.getAttribute('data-tip')).toContain('deepseek'); // 厂商身份在提示可见
   });
 
   it('目录外 provider-scoped id：收起态去厂商前缀（215px 不被 deepseek/ 吃掉）', () => {
@@ -462,7 +462,7 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     });
     const trigger = container!.querySelector<HTMLButtonElement>('.ms-trigger');
     expect(trigger?.classList.contains('ms-trigger-unavailable')).toBe(true);
-    expect(trigger?.title).toContain('不可用');
+    expect(trigger?.getAttribute('data-tip-hint')).toContain('不可用');
     expect(trigger?.querySelector('.ms-trigger-unavail')).not.toBeNull();
     // 仍可打开下拉（从有效配置里恢复）
     act(() => {

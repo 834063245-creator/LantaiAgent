@@ -20,6 +20,7 @@ import { CommandPalette } from './CommandPalette';
 import { ExitConfirmDialog } from './ExitConfirmDialog';
 import { DockPanel } from './panels/DockPanel';
 import { PluginWindowsHost } from './plugin-windows/PluginWindowsHost';
+import { TipHost } from './tip';
 import { useDocumentTitle } from './use-document-title';
 import { useGlobalKeys } from './useGlobalKeys';
 
@@ -47,6 +48,9 @@ export function App() {
       ))}
       <PluginWindowsHost />
       <ExitConfirmDialog />
+      {/* 悬停提示宿主（2026-10-30）：全库单点，事件委托读 data-tip / data-tip-hint。
+          常在 = 常驻一个节点（不随悬停挂载卸载），故入场/退场 transition 都有落点。 */}
+      <TipHost />
     </>
   );
 }

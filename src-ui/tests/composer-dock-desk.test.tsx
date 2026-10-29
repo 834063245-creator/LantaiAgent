@@ -262,8 +262,8 @@ describe('创作坞 v2：墨量线', () => {
     expect(line?.style.opacity).toBe('1');
     const bar = line?.querySelector<HTMLElement>('span');
     expect(bar?.style.width).toBe('50%');
-    expect(line?.title).toContain('墨量 500000 / 1000000 tok（50%）');
-    expect(line?.title).toContain('50%');
+    expect(line?.getAttribute('data-tip')).toContain('墨量 500000 / 1000000 tok（50%）');
+    expect(line?.getAttribute('data-tip-hint')).toContain('模型窗口占比');
   });
 
   it('零用量：线隐（opacity 0）——[0] 徽标时代的噪音不再', async () => {
@@ -345,7 +345,7 @@ describe('创作坞 v2：墨量线', () => {
       expect(line?.style.opacity).toBe('1');
       const bar = line?.querySelector<HTMLElement>('span');
       expect(bar?.style.width).toBe('50%');
-      expect(line?.title).toContain('墨量 500000 / 1000000 tok（50%）');
+      expect(line?.getAttribute('data-tip')).toContain('墨量 500000 / 1000000 tok（50%）');
     } finally {
       localStorage.removeItem('hologram_settings');
     }

@@ -97,11 +97,11 @@ function Item({ entry, now, onStop }: { entry: WorkEntry; now: number; onStop?: 
     .join(' · ');
   return (
     <li className={`pp-work-item pp-work-${entry.kind} pp-work-state-${entry.state}`}>
-      <span className="pp-work-mark" title={KIND_TITLE[entry.kind]} aria-hidden="true">
+      <span className="pp-work-mark" data-tip={KIND_TITLE[entry.kind]} aria-hidden="true">
         {KIND_MARK[entry.kind]}
       </span>
       <span className="pp-work-body">
-        <span className="pp-work-label" title={entry.label}>
+        <span className="pp-work-label" data-tip={entry.label}>
           {entry.label || '（无名）'}
         </span>
         <span className="pp-work-sub">{sub}</span>
@@ -109,7 +109,7 @@ function Item({ entry, now, onStop }: { entry: WorkEntry; now: number; onStop?: 
       {/* 停止是人的动作 ⇒ 朱砂。子代理侧暂无逐条停止通道（池对 UI 不可达，
           见台账头注），故只在 shell 条目上出。 */}
       {running && entry.kind === 'shell' && onStop && (
-        <button type="button" className="pp-work-stop" title="停这一条后台命令" onClick={() => onStop(entry)}>
+        <button type="button" className="pp-work-stop" data-tip="停止本条后台命令" onClick={() => onStop(entry)}>
           停
         </button>
       )}
@@ -175,12 +175,13 @@ export const WorkLedger = memo(function WorkLedger({
             ? `役册——本卷在役 ${running.length} 条${elsewhere > 0 ? `，另 ${elsewhere} 条在他卷` : ''}`
             : '役册——本卷在役与已了的后台工作'
         }
-        title={
+        data-tip="役册"
+        data-tip-hint={
           running.length > 0
-            ? `役册——本卷在役 ${running.length} 条（子 ${subCount} · 命 ${shellCount}）${
+            ? `本卷在役 ${running.length} 条（子 ${subCount} · 命 ${shellCount}）${
                 elsewhere > 0 ? `，另 ${elsewhere} 条在他卷` : ''
               }`
-            : '役册——本卷在役与已了的后台工作（子代理 / 后台命令）'
+            : '本卷在役与已了的后台工作'
         }
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -248,11 +249,11 @@ export const WorkLedger = memo(function WorkLedger({
               <ul className="pp-work-list">
                 {others.map((e) => (
                   <li key={`${e.kind}:${e.id}`} className={`pp-work-item pp-work-${e.kind}`}>
-                    <span className="pp-work-mark" title={KIND_TITLE[e.kind]} aria-hidden="true">
+                    <span className="pp-work-mark" data-tip={KIND_TITLE[e.kind]} aria-hidden="true">
                       {KIND_MARK[e.kind]}
                     </span>
                     <span className="pp-work-body">
-                      <span className="pp-work-label" title={e.label}>
+                      <span className="pp-work-label" data-tip={e.label}>
                         {e.label || '（无名）'}
                       </span>
                       <span className="pp-work-sub">
