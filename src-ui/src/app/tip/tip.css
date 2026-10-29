@@ -1,9 +1,20 @@
 /* 悬停提示（tooltip）—— 全库单点样式。宿主与几何见 tip-host.tsx。 */
 
-/* 形态（2026-10-30 用户拍板「甲 · 纸片」）：
- * 纸底**提亮一档** + 弱线 + 硬偏移落影。延续纸壳浮件先例（PaperPanel.css `.pp-chrome`）
- * 的两条判据——① 纸底不透明：半透明会让底下正文与提示文字互相糊字（真机踩过）；
- * ② 浮起感全来自落影层次（硬偏移 + 一层柔影），不靠大圆角或渐变。
+/* 形态（2026-10-30 用户拍板「甲 · 纸片」；同日二批按纸壳规格精修）：
+ * 纸底 + 弱线 + 落影，**刻意不透明**（半透明会让底下正文与提示文字互相糊字，
+ * 同 PaperPanel.css `.pp-chrome` 的判据）。**规格一律照纸壳既有标准件取，
+ * 不自造**——对照件是目次卡 `.pp-toc-card`（纸壳里最讲究的悬停浮件）：
+ *
+ *   字体   `--f-song`（全站正式件都显式声明；不写 = 继承到非纸壳字体，一眼是外挂）
+ *   字号   `× --font-scale`（用户在设置里调字号时全站都跟，提示框不能不跟）
+ *   底色   纸本色提亮一档（2026-10-30 用户选定「再淡一点」——纯纸本色与背景融、
+ *          纯白又像贴上去的塑料片，取中间）
+ *   边框   `--rule-strong`(ink-2)：ink-4 在纸面上立不住
+ *   圆角   0——纸是方的；纸壳浮件一律无圆角
+ *   阴影   `--elev-raise` 令牌（硬偏移 letterpress，不写散值 rgba）
+ *   内距   8/12/9 四边不等（纸壳讲究件的呼吸，不是四边等值的粗放）
+ *   字重   主行 600 立起来、次行 400 小一号淡下去——两行同字重读不出层次
+ *   数字   `tabular-nums`（「墨量 500000 / 1000000 tok」这类读数不留跳宽）
  *
  * 动效：墨律（§15 三条物理律之一）——显形 = 淡入 + **微升 8px**，不回弹。
  * 节点**常驻**、只切 `.is-on`，故 transition 有落点（§15 批 3 判例：transition 挂在
@@ -18,20 +29,21 @@
   z-index: var(--z-tip);
   box-sizing: border-box;
   max-width: 260px;
-  padding: 6px 10px;
-  background: color-mix(in oklch, var(--paper) 34%, #fff);
+  padding: 8px 12px 9px;
+  background: color-mix(in oklch, var(--paper) 75%, #fff);
   color: var(--ink-1);
-  border: 1px solid var(--ink-4);
-  border-radius: 2px;
-  font-size: 12px;
-  line-height: 1.45;
-  letter-spacing: 0.01em;
+  border: var(--rule-strong);
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: calc(12.5px * var(--font-scale));
+  line-height: 1.6;
+  letter-spacing: 0.02em;
   /* 多行提示保住换行（图版架签条那类「题名 / 类型 / 时间 / 操作」四行式说明）——
      折叠成一行会读成一串逗号连句。空白仍折叠，只有 \n 生效。 */
   white-space: pre-line;
-  box-shadow:
-    2px 3px 0 rgba(38, 34, 28, 0.1),
-    4px 7px 16px rgba(38, 34, 28, 0.11);
+  /* 长句换行时避免末行只剩一两个字（Chromium 117+；不认就当没写） */
+  text-wrap: pretty;
+  box-shadow: var(--elev-raise);
   pointer-events: none;
   opacity: 0;
   transform: translateY(8px);
@@ -47,6 +59,8 @@
 
 .lt-tip-label {
   display: block;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 次行（`data-tip-hint`）：把「动作 + 括号解释」的长句拆开，
@@ -54,33 +68,36 @@
  * 这类文案读起来像系统报错）。 */
 .lt-tip-hint {
   display: block;
-  margin-top: 3px;
-  font-size: 10.5px;
+  margin-top: 2px;
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
   color: var(--ink-3);
 }
 
-/* 箭头：4.5px 菱形，只画朝外的两条边（全边框会读成一个转歪的方块）。
- * 水平位置由宿主写进 `--tip-arrow-x`——贴边时尖角跟着夹取，
- * 不会跑到提示框圆角外面去。 */
+/* 箭头：9px 菱形，只画朝外的两条边（全边框会读成一个转歪的方块）。
+ * 尺寸与画法对齐 `.pp-toc-card::after`；水平位置由宿主写进 `--tip-arrow-x`——
+ * 贴边时尖角跟着夹取，不会跑到提示框外面去。 */
 .lt-tip::after {
   content: "";
   position: absolute;
   left: var(--tip-arrow-x, 50%);
-  width: 7px;
-  height: 7px;
-  margin-left: -3.5px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
   background: inherit;
   transform: rotate(45deg);
 }
 
 .lt-tip[data-side="top"]::after {
-  bottom: -4.5px;
-  border-right: 1px solid var(--ink-4);
-  border-bottom: 1px solid var(--ink-4);
+  bottom: -5.5px;
+  border-right: 1px solid var(--ink-2);
+  border-bottom: 1px solid var(--ink-2);
 }
 
 .lt-tip[data-side="bottom"]::after {
-  top: -4.5px;
-  border-top: 1px solid var(--ink-4);
-  border-left: 1px solid var(--ink-4);
+  top: -5.5px;
+  border-top: 1px solid var(--ink-2);
+  border-left: 1px solid var(--ink-2);
 }
