@@ -13,8 +13,9 @@
 
 /** 纸条来源元信息（只记录，不追踪同步——拷贝语义不变） */
 export interface PaperStripSource {
-  /** 源消息 _id */
-  messageId: string;
+  /** 源消息 _id（**可缺**：钉住的公共物捏在手上时源卷可能已不摊开/已删——
+   *  这类纸条只留卷名快照，报头照常渲染，不编造一个不存在的消息锚） */
+  messageId?: string;
   /** 消息内的 part 索引 */
   partIndex?: number;
   /** 选区在该块文本中的起止偏移 */

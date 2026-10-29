@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEdgeAutoScroll } from './edge-scroll';
 import type { RegionView, SourcedBlock } from './host';
 import { ANCHOR, getCanvasStore, screenToWorld, snapshotFromBlock, useCanvasViewStore } from './host';
+import { useLostFocusCancel } from './lost-focus';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击）——纸条拖拽同款（本域导出）。 */
@@ -296,6 +297,24 @@ export function usePaperDrag(params: {
     setBandSessionId,
     setSettleId,
   ]);
+
+  /* 失联即收（2026-10-29）：窗口失焦 / 页面隐藏 / 指针离开文档 ⇒ 手势取消
+   * （docs/landmine-map.md V2「未修的一半」：帧循环早已停，手势态却留在在途——
+   * 拖块停在拖拽态之外，更阴的是 in-flight ref 会静默吞掉下一次抽纸条）。
+   * instant 族（眉批撕出）首动已建钉 ⇒ 取消端拔钉还原占位（与 up 的回槽端同语义）。 */
+  useLostFocusCancel(
+    useCallback(() => {
+      const d = dragRef.current;
+      if (!d) return;
+      dragRef.current = null;
+      stopEdgeScroll();
+      setDraggingId(null);
+      setDragSource(null);
+      setBandSessionId(null);
+      setDragPos(null);
+      if (d.instant) commitPinned(d.sessionId, d.id, null);
+    }, [stopEdgeScroll, setDraggingId, setDragSource, setBandSessionId, setDragPos, commitPinned]),
+  );
 
   /* 收回（即时手势，双向对称）：钉从纸上拔掉（回到流/或孤儿钉直接消失） */
   const onUnpin = useCallback(

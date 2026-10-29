@@ -5,6 +5,17 @@
 // B 选中浮钮）、lift 遮罩手感、划词朱线、纸条拖动/两击销毁。Stage-5：纸条
 // = 工作区级公共物（拷贝语义快照，独立宿主，不挂会话）——落点相对来源流区
 // 计算，但数据本身不再随流区归属。
+//
+// 2026-10-29「抽纸条莫名其妙失灵」批（用户报）：三处确定性病灶一起收——
+//   ① **命中带**：A 路的 mousedown 探针原按逐碎片矩形 ±4px 判，浏览器给的是字面盒
+//      （16px/1.75 下 20px 行盒 + 8px 行距）⇒ 按住「明明选中的那一块」偶发没反应。
+//      改「按行合并 + 行间空档填满」（selection.ts::selectionHitBands，纯函数可测）。
+//   ② **钉住的公共物**：孤儿钉的块没有 data-session-id（源卷已不摊开/已删），
+//      浮钮照弹但点击 `!selAnchor.sessionId` 直接 return、拖出也因 `!lift.sessionId`
+//      静默恢复选区——**看起来有入口、做了却什么都不发生**。现按卡片自身几何判
+//      「拖出卡片即成条」，浮钮落点挪到选区右缘（纸条是工作区级物件，不需要流带）。
+//   ③ **失联即收**：窗口失焦/窗外松手后 mouseup 永不到，in-flight ref 留在在途态，
+//      下一次抽纸条被「有手势在途」的守卫吞掉。手势态清理见 lost-focus.ts。
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -13,20 +24,21 @@ import { volumeDisplayName } from '../../../state/volume-name';
 import { useEdgeAutoScroll } from './edge-scroll';
 import type { RegionView, SourcedBlock } from './host';
 import { ANCHOR, getCanvasStore, screenToWorld, useCanvasViewStore } from './host';
+import { useLostFocusCancel } from './lost-focus';
 import { mergeSelectionLines, selInkPaths, selSeedOf } from './sel-ink';
-import { classifyDropZone, type MaskRect, makeStrip, selectionMaskRects, stashStripPositionAt } from './selection';
+import {
+  classifyDropZone,
+  type MaskRect,
+  makeStrip,
+  pointInHitBands,
+  pointInWorldRect,
+  selectionHitBands,
+  selectionMaskRects,
+  stashStripBesideRight,
+  stashStripPositionAt,
+} from './selection';
 import { DRAG_THRESHOLD } from './use-paper-drag';
 import type { PaperCore } from './use-paper-sessions';
-
-/** 按点是否落在选区几何矩形内（±4px 容差盖住行间边缘）。 */
-function pointInSelectionRects(range: Range, x: number, y: number): boolean {
-  const rects = range.getClientRects();
-  for (let i = 0; i < rects.length; i++) {
-    const r = rects[i];
-    if (x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4) return true;
-  }
-  return false;
-}
 
 /** 输入面判据——**选区消费面共用**：选区落在可编辑控件里 = 用户在自己写字，
  *  不是划纸面正文。块内也长着这些面（准奏卡的「修改意见」textarea、卡内输入件），
@@ -51,12 +63,29 @@ function pressedInProse(target: EventTarget | null): boolean {
   return !!el?.closest('.pp-block');
 }
 
+/** 选区快照（块内才认）：抽出那一刻的文本 + 来源身份 + 判据几何。
+ *  两道守卫缺一不可：起手面（按住才起于正文——挡家具扫入）+ 输入面（挡块内输入件）。 */
+interface SelectionSnapshot {
+  text: string;
+  /** 源消息（钉住的公共物快照没有消息锚——`data-message-id` 缺席） */
+  messageId: string | undefined;
+  /** 源流区（孤儿钉没有——源卷已不摊开/已删） */
+  sessionId: string | undefined;
+  /** 源卷显示名快照（孤儿钉从 `data-source-label` 读；流区块由 regionsRef 现取） */
+  label: string | undefined;
+  /** 源块是否钉住（**钉住的公共物不按流带判据**——它不在任何流带里） */
+  pinned: boolean;
+  /** 选区屏幕矩形（取消端恢复选区；浮钮零矩形时的落位兜底） */
+  rect: DOMRect | null;
+  /** 源块矩形的世界几何（钉住块的「拖出卡片」判据；流带块不用） */
+  blockWorldRect: MaskRect | null;
+}
+
 /** 纸条/选区域（paper-panel-split C4，自 PaperPanel 2264-2602 + 2810-2820
  *  域内原样搬入）。A 拖拽路径的手势守卫读块拖拽/resize 的在途 ref（跨域
- * 握着东西不抢活跃——显式穿参）。 */
+ *  握着东西不抢活跃——显式穿参）。 */
 export function usePaperStrips(params: {
   core: PaperCore | null;
-  view: { zoom: number; panX: number; panY: number };
   canvasRef: MutableRefObject<HTMLDivElement | null>;
   viewRef: MutableRefObject<{ zoom: number; panX: number; panY: number }>;
   regionsRef: MutableRefObject<RegionView[]>;
@@ -78,18 +107,8 @@ export function usePaperStrips(params: {
   } | null>;
   resizeRef: MutableRefObject<{ id: string; kind: 'pin' | 'strip'; startX: number; startW: number } | null>;
 }) {
-  const {
-    core,
-    view,
-    canvasRef,
-    viewRef,
-    regionsRef,
-    canvasStrips,
-    setBandSessionId,
-    setSettleId,
-    dragRef,
-    resizeRef,
-  } = params;
+  const { core, canvasRef, viewRef, regionsRef, canvasStrips, setBandSessionId, setSettleId, dragRef, resizeRef } =
+    params;
 
   /* 边缘滚动子系统（开关/灵敏度/曲线/帧循环全在 edge-scroll.ts）：抽纸条（lift）
    * 与拖纸条两族手势共用同一实例——同一时刻只有一个手势在途。 */
@@ -110,6 +129,12 @@ export function usePaperStrips(params: {
     text: string;
     messageId: string | undefined;
     sessionId: string | undefined;
+    label: string | undefined;
+    /** 源块钉住 = 不看流带、看卡片矩形（见 zoneAt） */
+    pinned: boolean;
+    /** 源块世界矩形（钉住块的「出卡成条」判据；world 坐标 ⇒ 滚屏不漂） */
+    blockWorldRect: MaskRect | null;
+    /** 选区屏幕矩形（取消端恢复选区） */
     rect: DOMRect | null;
     /** 指针最新位（client）：边缘滚动帧据此重算 ghost（指针静止时也要跟手） */
     lastX: number;
@@ -153,20 +178,30 @@ export function usePaperStrips(params: {
   useEffect(() => () => window.clearTimeout(liftFadeTimerRef.current), []);
 
   const spawnStrip = useCallback(
-    (sessionId: string, text: string, messageId: string | undefined, x: number, y: number) => {
-      const trimmed = text.trim();
+    (params: {
+      sessionId: string | undefined;
+      text: string;
+      messageId: string | undefined;
+      /** 源卷名快照（钉住的公共物在 DOM 上没有活流区，只能读 `data-source-label`） */
+      label: string | undefined;
+      x: number;
+      y: number;
+    }) => {
+      const trimmed = params.text.trim();
       if (!trimmed || !core) return;
       /* 纸条 = 工作区级公共物（Stage-5），源会话只作溯源展示：报头的卷名在此
        * **拍快照**（拷贝语义——源卷改名不追改；取自流区显示名，无名卷走
        * volumeDisplayName 的档号兜底，禁在调用点散写 label || …）。 */
-      const region = regionsRef.current.find((r) => r.sessionId === sessionId);
-      const source = messageId
-        ? {
-            messageId,
-            ...(region ? { label: volumeDisplayName(region.label, region.sessionNum) } : {}),
-          }
-        : undefined;
-      const strip = makeStrip(trimmed, x, y, 480, source);
+      const region = params.sessionId ? regionsRef.current.find((r) => r.sessionId === params.sessionId) : undefined;
+      const label = params.label ?? (region ? volumeDisplayName(region.label, region.sessionNum) : undefined);
+      const source =
+        params.messageId || label
+          ? {
+              ...(params.messageId ? { messageId: params.messageId } : {}),
+              ...(label ? { label } : {}),
+            }
+          : undefined;
+      const strip = makeStrip(trimmed, params.x, params.y, 480, source);
       getCanvasStore(core.panelId).getState().addStrip(strip);
       setSettleId(strip.id); // 成条落定「放下」手感（刀3）
       window.setTimeout(() => setSettleId((cur) => (cur === strip.id ? null : cur)), 400);
@@ -189,13 +224,17 @@ export function usePaperStrips(params: {
     [canvasRef],
   );
 
-  /** 选区快照（块内才认）：{ 文本, 来源块 messageId, 来源流区 sessionId } | null。
-   *  两道守卫缺一不可：起手面（按住才起于正文——挡家具扫入）+ 输入面（挡块内输入件）。 */
-  const snapshotBlockSelection = useCallback((): {
-    text: string;
-    messageId: string | undefined;
-    sessionId: string | undefined;
-  } | null => {
+  /** 屏幕矩形 → 世界矩形（判据用；滚屏期间不漂）。 */
+  const toWorldRect = useCallback(
+    (rect: DOMRect | null): MaskRect | null => {
+      const cr = canvasRef.current?.getBoundingClientRect();
+      if (!cr || !rect || rect.width <= 0 || rect.height <= 0) return null;
+      return selectionMaskRects([rect], useCanvasViewStore.getState().view, { x: cr.left, y: cr.top })[0] ?? null;
+    },
+    [canvasRef],
+  );
+
+  const snapshotBlockSelection = useCallback((): SelectionSnapshot | null => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) return null;
     if (!pressInProseRef.current) return null; // 起手不在正文：扫入的选区不算划纸
@@ -206,12 +245,18 @@ export function usePaperStrips(params: {
     if (!blockEl) return null;
     const text = sel.toString();
     if (!text.trim()) return null;
+    const range = sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+    const rect = range?.getBoundingClientRect() ?? null;
     return {
       text,
       messageId: blockEl.getAttribute('data-message-id') ?? undefined,
       sessionId: blockEl.getAttribute('data-session-id') ?? undefined,
+      label: blockEl.getAttribute('data-source-label') ?? undefined,
+      pinned: blockEl.getAttribute('data-block-state') === 'pinned',
+      rect: rect && rect.width > 0 ? rect : null,
+      blockWorldRect: toWorldRect(blockEl.getBoundingClientRect()),
     };
-  }, []);
+  }, [toWorldRect]);
 
   const restoreSelectionByRect = useCallback((rect: DOMRect) => {
     if (rect.width === 0 || rect.height === 0) return;
@@ -239,11 +284,30 @@ export function usePaperStrips(params: {
 
   /* 流区窄带中心（幽灵/落点判据的带中心 = 来源流区中轴） */
   const bandCenterOf = useCallback(
-    (sessionId: string | undefined): number => {
-      if (sessionId == null) return 0;
-      return regionsRef.current.find((r) => r.sessionId === sessionId)?.anchor.anchorX ?? 0;
+    (sessionId: string | undefined): number | null => {
+      if (sessionId == null) return null;
+      return regionsRef.current.find((r) => r.sessionId === sessionId)?.anchor.anchorX ?? null;
     },
     [regionsRef],
+  );
+
+  /** 落点分寸（单一真源，ghost 与松手共用同一把尺子）：
+   *  - 流带里的块：|落点 − 流区中轴| > 半带宽 ⇒ 成条（既有带判据，不动）；
+   *  - **钉住的公共物**（不在任何流带里）：离开卡片矩形即成条——按带算会把
+   *    纸条判成「永远在带内」（孤儿钉没有 region ⇒ 中心 0），用户读作点了没反应。
+   *  返回 null = 指针不在画布内（落点无意义）。 */
+  const zoneAt = useCallback(
+    (lift: NonNullable<typeof liftRef.current>, clientX: number, clientY: number): 'flow' | 'strip' | null => {
+      const w = toWorldInCanvas(clientX, clientY);
+      if (!w) return null;
+      const center = lift.pinned ? null : bandCenterOf(lift.sessionId);
+      if (center != null) return classifyDropZone(w.x - center, ANCHOR.bandHalfWidth);
+      /* 量不到卡片几何（卸载中/无画布矩形）⇒ 判「不成条」：宁可不抽，也不误抽
+       * ——落点判据立不住时不能静默把一次点击变成纸条。 */
+      if (!lift.blockWorldRect) return 'flow';
+      return pointInWorldRect(lift.blockWorldRect, w.x, w.y, 2) ? 'flow' : 'strip';
+    },
+    [bandCenterOf, toWorldInCanvas],
   );
 
   /* A：拖拽路径（mousedown/mousemove/mouseup 全局通道）。2026-09-05 路径 B
@@ -255,13 +319,16 @@ export function usePaperStrips(params: {
      *  重算落点/带判据——滚屏期间指针静止也要复位，否则 ghost 脱手。 */
     const syncGhost = (clientX: number, clientY: number): void => {
       const lift = liftRef.current;
-      const w = toWorldInCanvas(clientX, clientY);
-      if (!w || !lift) {
+      if (!lift) {
         setGhost(null);
         return;
       }
-      const center = bandCenterOf(lift.sessionId);
-      const zone = classifyDropZone(w.x - center, ANCHOR.bandHalfWidth);
+      const w = toWorldInCanvas(clientX, clientY);
+      const zone = zoneAt(lift, clientX, clientY);
+      if (!w || zone == null) {
+        setGhost(null);
+        return;
+      }
       setGhost({ x: w.x, y: w.y, zone });
     };
 
@@ -276,7 +343,9 @@ export function usePaperStrips(params: {
       const snap = snapshotBlockSelection();
       if (!snap) return;
       const range = sel.getRangeAt(0);
-      if (!pointInSelectionRects(range, e.clientX, e.clientY)) return;
+      /* 命中带判据（2026-10-29）：同一选区的行盒合并 + 行间空档填满——按住行距
+       * 中段或行尾空白也算抓住选区（旧逐矩形 ±4px 在这些位置是死区）。 */
+      if (!pointInHitBands(selectionHitBands(range.getClientRects()), e.clientX, e.clientY)) return;
       // 原地遮罩矩形在清选区前捕获（世界坐标快照——渲染层随视口变换跟手）
       const cr = canvasRef.current?.getBoundingClientRect();
       const worldRects = cr
@@ -286,7 +355,10 @@ export function usePaperStrips(params: {
         text: snap.text,
         messageId: snap.messageId,
         sessionId: snap.sessionId,
-        rect: range.getBoundingClientRect(),
+        label: snap.label,
+        pinned: snap.pinned,
+        blockWorldRect: snap.blockWorldRect,
+        rect: snap.rect,
         lastX: e.clientX,
         lastY: e.clientY,
       };
@@ -317,15 +389,23 @@ export function usePaperStrips(params: {
       const lift = liftRef.current;
       liftRef.current = null;
       if (!lift) return;
-      const w = toWorldInCanvas(e.clientX, e.clientY);
-      const center = bandCenterOf(lift.sessionId);
-      if (w && lift.sessionId && classifyDropZone(w.x - center, ANCHOR.bandHalfWidth) === 'strip') {
-        spawnStrip(lift.sessionId, lift.text, lift.messageId, w.x, w.y);
-        completeLiftMask(); // 成条：原地遮罩淡出（揭走动作完成）
-      } else if (lift.rect) {
-        restoreSelectionByRect(lift.rect);
-        clearLiftMask(); // 取消：选区原样恢复，遮罩即撤（无事发生）
+      if (zoneAt(lift, e.clientX, e.clientY) === 'strip') {
+        const w = toWorldInCanvas(e.clientX, e.clientY);
+        if (w) {
+          spawnStrip({
+            sessionId: lift.sessionId,
+            text: lift.text,
+            messageId: lift.messageId,
+            label: lift.label,
+            x: w.x,
+            y: w.y,
+          });
+          completeLiftMask(); // 成条：原地遮罩淡出（揭走动作完成）
+          return;
+        }
       }
+      if (lift.rect) restoreSelectionByRect(lift.rect);
+      clearLiftMask(); // 取消：选区原样恢复，遮罩即撤（无事发生）
     };
 
     window.addEventListener('mousedown', down);
@@ -341,8 +421,8 @@ export function usePaperStrips(params: {
     spawnStrip,
     snapshotBlockSelection,
     toWorldInCanvas,
+    zoneAt,
     restoreSelectionByRect,
-    bandCenterOf,
     showLiftMask,
     completeLiftMask,
     clearLiftMask,
@@ -361,6 +441,10 @@ export function usePaperStrips(params: {
     text: string;
     messageId: string | undefined;
     sessionId: string | undefined;
+    label: string | undefined;
+    pinned: boolean;
+    /** 快照时刻的选区矩形（Range 与 DOM 脱钩时的落位兜底——见 fabPos） */
+    rect: DOMRect | null;
   } | null>(null);
   /* 划词朱线（2026-09-02 视觉迭代）：选区在画布内即记录（不限块级——跨块选区也要有线）；
    * Range 存活期随 DOM 变化自刷新矩形，渲染期现取（同 fabPos 范式）。
@@ -384,8 +468,12 @@ export function usePaperStrips(params: {
       }
       const sel = window.getSelection();
       const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
-      const rect = range?.getBoundingClientRect();
-      if (!range || !rect || rect.width === 0) {
+      if (!range) {
+        setSelAnchor(null);
+        return;
+      }
+      const rect = snap.rect ?? range.getBoundingClientRect();
+      if (rect.width === 0) {
         setSelAnchor(null);
         return;
       }
@@ -394,6 +482,9 @@ export function usePaperStrips(params: {
         text: snap.text,
         messageId: snap.messageId,
         sessionId: snap.sessionId,
+        label: snap.label,
+        pinned: snap.pinned,
+        rect,
       });
     };
     document.addEventListener('selectionchange', onSelChange);
@@ -402,26 +493,48 @@ export function usePaperStrips(params: {
 
   let fabPos: { left: number; top: number } | null = null;
   if (selAnchor) {
-    const fr = selAnchor.range.getBoundingClientRect();
-    if (fr.width > 0) fabPos = { left: fr.right + 8, top: fr.top - 30 };
+    /* 落位优先读**活 Range**（选区随视口刷新——平移帧里按钮跟着字走）；Range 与 DOM
+     * 脱钩（流式改写把文本节点换掉）时退回快照矩形：按钮宁可差几像素，也不能因为
+     * 拿不到矩形就整枚消失（用户读作「抽纸条按钮不见了」）。 */
+    const live = selAnchor.range.getBoundingClientRect();
+    const fr = live.width > 0 ? live : selAnchor.rect;
+    if (fr && fr.width > 0) fabPos = { left: fr.right + 8, top: fr.top - 30 };
   }
 
   const onStripButton = useCallback(() => {
-    if (!selAnchor?.sessionId) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    const selRect = selAnchor.range.getBoundingClientRect();
-    if (!rect || selRect.width === 0) {
+    const anchor = selAnchor;
+    if (!anchor) return;
+    const cr = canvasRef.current?.getBoundingClientRect();
+    if (!cr) {
       setSelAnchor(null);
       return;
     }
-    const worldMidY = screenToWorld(view, 0, selRect.top + selRect.height / 2 - rect.top).y;
-    const region = regionsRef.current.find((r) => r.sessionId === selAnchor.sessionId);
-    const centerX = region?.anchor.anchorX ?? 0;
-    const pos = stashStripPositionAt(worldMidY, canvasStrips, ANCHOR.bandHalfWidth, centerX);
-    spawnStrip(selAnchor.sessionId, selAnchor.text, selAnchor.messageId, pos.x, pos.y);
+    const live = anchor.range.getBoundingClientRect();
+    const selRect = live.width > 0 ? live : anchor.rect;
+    if (!selRect) {
+      setSelAnchor(null);
+      return;
+    }
+    const viewNow = useCanvasViewStore.getState().view;
+    const worldMidY = screenToWorld(viewNow, 0, selRect.top + selRect.height / 2 - cr.top).y;
+    const region = anchor.sessionId ? regionsRef.current.find((r) => r.sessionId === anchor.sessionId) : undefined;
+    /* 流带块落「流区右侧第一档」；钉住的公共物落「选区右缘第一档」——后者不在
+     * 任何流带里（孤儿钉没有 region），按带算会把纸条丢到纸外（点击看着没反应）。 */
+    const pos =
+      !anchor.pinned && region
+        ? stashStripPositionAt(worldMidY, canvasStrips, ANCHOR.bandHalfWidth, region.anchor.anchorX)
+        : stashStripBesideRight(screenToWorld(viewNow, selRect.right - cr.left, 0).x, worldMidY, canvasStrips);
+    spawnStrip({
+      sessionId: anchor.sessionId,
+      text: anchor.text,
+      messageId: anchor.messageId,
+      label: anchor.label,
+      x: pos.x,
+      y: pos.y,
+    });
     window.getSelection()?.removeAllRanges();
     setSelAnchor(null);
-  }, [selAnchor, view, spawnStrip, canvasStrips, canvasRef, regionsRef]);
+  }, [selAnchor, spawnStrip, canvasStrips, canvasRef, regionsRef]);
 
   /* 拖纸条：与拖块同款阈值手势——超阈才跟动，松手一次性写 canvas-store；
    * 边缘滚动同款（拖到很远也跟手，循环归 edge-scroll.ts）。 */
@@ -495,6 +608,29 @@ export function usePaperStrips(params: {
       stopEdgeScroll();
     };
   }, [core, canvasRef, startEdgeScroll, stopEdgeScroll]);
+
+  /* 失联即收（2026-10-29 抽纸条失灵批见文件头注 ③）：窗口失焦 / 页面隐藏 /
+   * 指针离开文档 ⇒ lift 与拖纸条双双回退到「无事发生」。不清的话，一次窗外松手
+   * 就把 in-flight ref 留在在途态，下一次抽纸条被 down 的守卫静默吞掉。 */
+  useLostFocusCancel(
+    useCallback(() => {
+      const lift = liftRef.current;
+      if (lift) {
+        liftRef.current = null;
+        stopEdgeScroll();
+        setGhost(null);
+        setBandSessionId(null);
+        clearLiftMask();
+        if (lift.rect) restoreSelectionByRect(lift.rect); // 取消端语义同 mouseup 的取消路
+      }
+      if (stripDragRef.current) {
+        stripDragRef.current = null;
+        stopEdgeScroll();
+        setDragStripId(null);
+        setStripDragPos(null);
+      }
+    }, [stopEdgeScroll, setBandSessionId, clearLiftMask, restoreSelectionByRect]),
+  );
 
   /* 纸条销毁两击确认（2026-09-05，plan §1.2）：快照语义删了即没了——首击
    * 进确认态（按钮变「确认？」），3s 超时回退，再击才真删。 */

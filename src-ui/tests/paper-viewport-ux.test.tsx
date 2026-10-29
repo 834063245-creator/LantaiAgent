@@ -97,7 +97,7 @@ import { Context } from '../src/cordis';
 import { wheelFactor, worldToScreen } from '../src/paper/canvas-math';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { TETHER_ANCHOR_DY, tetherAnchors } from '../src/plugins/builtin/paper-shell/provenance';
-import { makeStrip } from '../src/plugins/builtin/paper-shell/selection';
+import { makeStrip, pointInHitBands, selectionHitBands } from '../src/plugins/builtin/paper-shell/selection';
 import { blockReturnsToFlow } from '../src/plugins/builtin/paper-shell/use-paper-drag';
 import { isEditableSurface } from '../src/plugins/builtin/paper-shell/use-paper-strips';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
@@ -873,6 +873,170 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     const strips = getCanvasStore(panel.panelId).getState().strips;
     expect(strips.length).toBe(1); // 成条（zone = strip：横向出带）
     expect(Math.abs(strips[0].x - (g as { x: number }).x)).toBeLessThan(30);
+  }, 30_000);
+
+  /* ── ③c 抽纸条失灵批（2026-10-29 用户报「抽纸条莫名其妙失灵」）──
+   * 三条确定性病灶各钉一例：
+   *   ① 命中带：按住两行之间的行距空档（旧逐矩形 ±4px 的死区）也得揭起；
+   *   ② 孤儿钉（源卷未摊开 ⇒ 块上没有 data-session-id）：浮钮照弹就该成条
+   *      （旧实现点了直接 return，用户读作「按钮是假的」）；
+   *   ③ 失联即收：窗外松手后 mouseup 永不到，在途 ref 不许把下一次抽纸条吞掉。 */
+
+  it('抽纸条命中带（纯函数）：行间空档填满、行尾空白不吞、块间大空白不并', () => {
+    // 真机实测形态（16px/1.75）：行盒 20 高、行距空档 8px；末行只到 x=150
+    const bands = selectionHitBands([
+      { left: 100, top: 0, right: 200, bottom: 20, width: 100, height: 20 },
+      { left: 100, top: 28, right: 150, bottom: 48, width: 50, height: 20 },
+    ]);
+    expect(bands).toHaveLength(2);
+    expect(bands[0].bottom).toBe(28); // 行距空档填满
+    expect(pointInHitBands(bands, 120, 24)).toBe(true); // 空档中点也算抓住选区
+    expect(pointInHitBands(bands, 180, 40)).toBe(false); // 末行的行尾空白不在选区内
+    // 块间/段落间大空白（>16px）不并带——按在两个块之间的缝里不算抓住选区
+    const far = selectionHitBands([
+      { left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 },
+      { left: 0, top: 60, right: 100, bottom: 80, width: 100, height: 20 },
+    ]);
+    expect(far).toHaveLength(2);
+    expect(far[0].bottom).toBe(20);
+    expect(pointInHitBands(far, 50, 40)).toBe(false);
+  });
+
+  it('抽纸条：按住两行之间的行距空档也算抓住选区（旧探针在该点是死区）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const block = container?.querySelector<HTMLElement>('.pp-block') as HTMLElement;
+    // 两行选区：行盒 280-300 / 308-328（行距空档 8px）——按在 306（旧 ±4px 判据的死区）
+    installFakeSelection(false, [
+      { left: 860, top: 280, right: 940, bottom: 300 },
+      { left: 860, top: 308, right: 940, bottom: 328 },
+    ]);
+    await act(async () => {
+      fire(block, 'mousedown', { button: 0, clientX: 900, clientY: 306 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 1100, clientY: 780 });
+    });
+    expect(container?.querySelector('.pp-strip-ghost')).not.toBeNull(); // 揭起在途
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 1100, clientY: 780 });
+    });
+    expect(getCanvasStore(panel.panelId).getState().strips.length).toBe(1);
+  }, 30_000);
+
+  it('抽纸条浮钮：孤儿钉（块上无 data-session-id）也成条——落选区右缘，不再是死按钮', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    seedBlockText();
+    const rect = { left: 600, top: 300, right: 700, bottom: 320 };
+    stubRangeRects(rect);
+    installFakeSelection(false, [], rect);
+    const block = container?.querySelector<HTMLElement>('.pp-block') as HTMLElement;
+    // 孤儿钉形态：源卷已不摊开/已删 ⇒ 块上没有 data-session-id
+    block.removeAttribute('data-session-id');
+    await act(async () => {
+      fire(block, 'mousedown', { button: 0, clientX: 650, clientY: 310 });
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    const fab = container?.querySelector<HTMLButtonElement>('.pp-strip-fab');
+    expect(fab).not.toBeNull();
+    await act(async () => {
+      fab?.click();
+    });
+    const strips = getCanvasStore(panel.panelId).getState().strips;
+    expect(strips.length).toBe(1);
+    // 落点 = 选区右缘（世界 x 100）+ 边距 48；y = 选区中点（世界 -290，视口 pan 600）
+    expect(strips[0].x).toBe(148);
+    expect(strips[0].y).toBe(-290);
+  }, 30_000);
+
+  it('抽纸条拖出：钉住的公共物按卡片几何判——拖出卡片即成条（不看流带）', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const block = container?.querySelector<HTMLElement>('.pp-block') as HTMLElement;
+    block.removeAttribute('data-session-id'); // 孤儿钉形态（源卷不摊开）
+    // 卡片屏幕位（视口 pan 600 / zoom 1）→ 世界矩形 (200,-400,400,120)
+    block.getBoundingClientRect = () =>
+      ({
+        left: 800,
+        top: 200,
+        right: 1200,
+        bottom: 320,
+        width: 400,
+        height: 120,
+        x: 800,
+        y: 200,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    installFakeSelection(false, [{ left: 860, top: 240, right: 940, bottom: 280 }]);
+    await act(async () => {
+      fire(block, 'mousedown', { button: 0, clientX: 900, clientY: 260 });
+    });
+    // 拖到卡片外：世界 x=100（离流带中心 0 只有 100——按带判会被当成「带内取消」）
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 700, clientY: 500 });
+    });
+    expect(container?.querySelector('.pp-strip-ghost')).not.toBeNull();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 700, clientY: 500 });
+    });
+    expect(getCanvasStore(panel.panelId).getState().strips.length).toBe(1);
+  }, 30_000);
+
+  it('抽纸条拖出：钉住的公共物上按住没挪（松手仍在卡片内）= 不成条，选区原样恢复', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const block = container?.querySelector<HTMLElement>('.pp-block') as HTMLElement;
+    block.removeAttribute('data-session-id');
+    block.getBoundingClientRect = () =>
+      ({
+        left: 800,
+        top: 200,
+        right: 1200,
+        bottom: 320,
+        width: 400,
+        height: 120,
+        x: 800,
+        y: 200,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    installFakeSelection(false, [{ left: 860, top: 240, right: 940, bottom: 280 }]);
+    await act(async () => {
+      fire(block, 'mousedown', { button: 0, clientX: 900, clientY: 260 });
+    });
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 900, clientY: 260 });
+    });
+    expect(getCanvasStore(panel.panelId).getState().strips.length).toBe(0);
+  }, 30_000);
+
+  it('手势失联（blur 后 mouseup 丢失）自愈：在途 ref 不许吞掉下一次抽纸条', async () => {
+    const canvas = await mountCanvas();
+    stubCanvasRect(canvas);
+    const block = container?.querySelector<HTMLElement>('.pp-block') as HTMLElement;
+    // 造一个在途拖块手势：按文类签起手（dragRef 落值）→ 失焦，mouseup 永不到
+    const handle = block.querySelector<HTMLElement>('.pp-kind');
+    expect(handle).not.toBeNull();
+    await act(async () => {
+      fire(handle as Element, 'mousedown', { button: 0, clientX: 640, clientY: 300 });
+    });
+    await act(async () => {
+      fire(window, 'blur', {});
+    });
+    installFakeSelection(false, [{ left: 860, top: 280, right: 940, bottom: 320 }]);
+    await act(async () => {
+      fire(block, 'mousedown', { button: 0, clientX: 900, clientY: 300 });
+    });
+    await act(async () => {
+      fire(window, 'mousemove', { clientX: 1100, clientY: 780 });
+    });
+    expect(container?.querySelector('.pp-strip-ghost')).not.toBeNull();
+    await act(async () => {
+      fire(window, 'mouseup', { clientX: 1100, clientY: 780 });
+    });
+    expect(getCanvasStore(panel.panelId).getState().strips.length).toBe(1);
   }, 30_000);
 
   it('滚轮行为=缩放画布（设置切换）：plain wheel 直接缩放、不再平移', async () => {

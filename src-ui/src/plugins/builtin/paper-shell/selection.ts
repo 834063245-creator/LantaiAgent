@@ -93,6 +93,74 @@ export function classifyDropZone(worldX: number, bandHalfWidth: number): StripDr
   return Math.abs(worldX) <= bandHalfWidth ? 'flow' : 'strip';
 }
 
+/** 点是否落在世界矩形内（±slack，世界单位）——**钉住的公共物**的拖出判据
+ *  （卡片不在任何流带里，改按卡片自身几何量；用世界坐标是为了滚屏/平移期间
+ *  判据不漂——屏幕矩形在平移帧里会脱手）。 */
+export function pointInWorldRect(
+  rect: { x: number; y: number; w: number; h: number },
+  x: number,
+  y: number,
+  slack = 0,
+): boolean {
+  return x >= rect.x - slack && x <= rect.x + rect.w + slack && y >= rect.y - slack && y <= rect.y + rect.h + slack;
+}
+
+/* ── 选区命中带（2026-10-29「抽纸条莫名其妙失灵」批）──
+ * A 路（按住已有选区拖出）的 mousedown 探针原按**逐碎片矩形 ±4px** 判，而浏览器
+ * `Range.getClientRects()` 给的是**字面盒**：16px/1.75 正文实测行盒高 20、行间空档
+ * 8 ⇒ 行距中段与行尾空白都不在盒内，按住「明明选中的那一块」偶发没反应（用户读作
+ * 随机失灵）。命中带把同一选区的碎片按行合并、并把**相邻行之间的空档填满**：
+ * 竖直方向在选区内部没有死带；横向仍只到该行**已选字节的起止**（在未选中的字上
+ * 按下仍是起新选区，不被旧选区吞掉）。 */
+export interface SelectionHitBand {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** 行间空档并入上限（px）：超此值就不是「行距」而是块间/段落间空白——不并，
+ *  免得按住两个块之间的缝也算抓住选区。 */
+const HIT_LINE_GAP_MAX = 16;
+
+/** 选区碎片矩形 → 命中带（屏幕坐标；空/退化矩形跳过）。 */
+export function selectionHitBands(
+  rects: ArrayLike<{ left: number; top: number; right: number; bottom: number; width: number; height: number }>,
+): SelectionHitBand[] {
+  const frags: SelectionHitBand[] = [];
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i];
+    if (r.width <= 0.5 || r.height <= 0.5) continue;
+    frags.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+  }
+  frags.sort((a, b) => a.top - b.top || a.left - b.left);
+  // ① 同行碎片合并（垂直重叠过半 = 同行，行高自适应——与 sel-ink 同判据）
+  const lines: SelectionHitBand[] = [];
+  for (const f of frags) {
+    const cur = lines[lines.length - 1];
+    if (cur && f.top < cur.bottom - Math.min(cur.bottom - cur.top, f.bottom - f.top) * 0.5) {
+      cur.left = Math.min(cur.left, f.left);
+      cur.right = Math.max(cur.right, f.right);
+      cur.bottom = Math.max(cur.bottom, f.bottom);
+    } else {
+      lines.push({ ...f });
+    }
+  }
+  // ② 相邻行之间的空档填满（行距死带消失；横向仍按各自行）
+  for (let i = 0; i < lines.length - 1; i++) {
+    const cur = lines[i];
+    const next = lines[i + 1];
+    const gap = next.top - cur.bottom;
+    if (gap > 0 && gap <= HIT_LINE_GAP_MAX) cur.bottom = next.top;
+  }
+  return lines;
+}
+
+/** 命中判定（pad = 边缘容差，屏幕 px）。 */
+export function pointInHitBands(bands: readonly SelectionHitBand[], x: number, y: number, pad = 4): boolean {
+  return bands.some((b) => x >= b.left - pad && x <= b.right + pad && y >= b.top - pad && y <= b.bottom + pad);
+}
+
 /** 浮钮路径的纸条落点：流带右侧空地第一档（x = bandHalfWidth + 边距），
  *  y 跟选区几何（选区中点的世界 y）；同档已有纸条则向下叠放（+STRIP_STACK_GAP，
  *  逐条探测直到空档）——「点了就落在看得见的旁边，不压已有纸条」。
@@ -114,6 +182,20 @@ export function stashStripPosition(
   return stashStripPositionAt(selectionMidY, occupied, bandHalfWidth, 0);
 }
 
+/** 同档叠放探测（浮钮两路共用）：给定落点 x 与起始 y，向下找第一条不撞已有纸条的档。 */
+function stackStripY(x: number, y: number, occupied: Array<{ x: number; y: number; w: number }>): number {
+  const w = 480; // 纸条默认宽（makeStrip 缺省）
+  const overlaps = (yy: number): boolean =>
+    occupied.some((o) => Math.abs(o.x - x) < w && yy < o.y + STRIP_H_APPROX && o.y < yy + STRIP_H_APPROX);
+  let out = y;
+  let guard = 0;
+  while (overlaps(out) && guard < 200) {
+    out += STRIP_H_APPROX + STRIP_STACK_GAP;
+    guard += 1;
+  }
+  return out;
+}
+
 /** 浮钮路径的纸条落点（Stage-2 一纸多卷：流区中轴在 centerX——落点相对
  *  该流区右侧空地第一档，x = centerX + bandHalfWidth + 边距）。 */
 export function stashStripPositionAt(
@@ -123,17 +205,19 @@ export function stashStripPositionAt(
   centerX: number,
 ): { x: number; y: number } {
   const x = centerX + bandHalfWidth + STRIP_STASH_GAP;
-  const w = 480; // 纸条默认宽（makeStrip 缺省）
-  let y = selectionMidY;
-  // 同档向下探测：与任一已有纸条 y 区间重叠则再降一档
-  const overlaps = (yy: number): boolean =>
-    occupied.some((o) => Math.abs(o.x - x) < w && yy < o.y + STRIP_H_APPROX && o.y < yy + STRIP_H_APPROX);
-  let guard = 0;
-  while (overlaps(y) && guard < 200) {
-    y += STRIP_H_APPROX + STRIP_STACK_GAP;
-    guard += 1;
-  }
-  return { x, y };
+  return { x, y: stackStripY(x, selectionMidY, occupied) };
+}
+
+/** 无源流带来源（**钉住的公共物**）的浮钮落点：选区右缘空地第一档（同档向下叠放）。
+ *  为什么另开一路：流带落点要「流区中轴 + 半带宽」，而钉住的卡片不在任何流带里——
+ *  按带算会把纸条丢到纸外（用户读作「点了没反应」）。2026-10-29 抽纸条失灵批。 */
+export function stashStripBesideRight(
+  rightWorldX: number,
+  selectionMidY: number,
+  occupied: Array<{ x: number; y: number; w: number }>,
+): { x: number; y: number } {
+  const x = rightWorldX + STRIP_STASH_GAP;
+  return { x, y: stackStripY(x, selectionMidY, occupied) };
 }
 
 /* ── lift 遮罩几何（P1 手感修复 2026-08-30：拖出时原地「被揭起」占位）── */

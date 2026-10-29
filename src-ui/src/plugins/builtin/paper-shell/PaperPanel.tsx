@@ -873,7 +873,6 @@ export function PaperPanel() {
     onStripMouseDown,
   } = usePaperStrips({
     core,
-    view,
     canvasRef,
     viewRef,
     regionsRef,
@@ -1034,9 +1033,17 @@ export function PaperPanel() {
            * 视觉走 .pp-eyebrow-hint 族（6s 淡出自散动画）+ .pp-hint-canvas 落位。 */}
           {pinHint && <div className="pp-eyebrow-hint pp-hint-canvas">按住块左侧文类签，可把任意块拖出钉在案上</div>}
 
-          {/* B 选中浮钮：块内有选区时现身（锚点随视口现算），点击成条（落来源流区右侧空地） */}
+          {/* B 选中浮钮：块内有选区时现身（锚点随视口现算），点击成条（落来源流区右侧空地）。
+              `onMouseDown` 的 preventDefault 是刻意的：不让按下抢焦点/动选区——浮钮长在
+              选区右侧 8px（选区外），原生默认动作会把选区摘掉，这一次点击就白按了。 */}
           {selAnchor && !ghost && fabPos && (
-            <button type="button" className="pp-strip-fab" style={fabPos} onClick={onStripButton}>
+            <button
+              type="button"
+              className="pp-strip-fab"
+              style={fabPos}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={onStripButton}
+            >
               抽纸条
             </button>
           )}
@@ -1318,6 +1325,11 @@ export function PaperPanel() {
                       width: resizePreview?.id === pinId ? resizePreview.w : pin.w,
                     }}
                     data-block-id={pinId}
+                    /* 钉住的公共物：块状态 + 建钉时冻的卷名（抽纸条的「拖出卡片成条」
+                      判据与纸条报头都读这两个属性——孤儿钉没有活流区/消息锚，
+                      只能从 DOM 上看得出它是钉住的、来自哪一卷）。 */
+                    data-block-state="pinned"
+                    data-source-label={source?.label}
                     onDragStart={(e) => e.preventDefault()}
                     onMouseEnter={() => setTetherPinId(pinId)}
                     onMouseLeave={() => setTetherPinId((cur) => (cur === pinId ? null : cur))}
@@ -1404,6 +1416,7 @@ export function PaperPanel() {
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
                         data-block-id={b.id}
+                        data-block-state={b.state}
                         data-block-observed={
                           needsObservedHeight(b.kind, b.asset != null)
                             ? observedKeyOf(b, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
@@ -1468,6 +1481,7 @@ export function PaperPanel() {
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
                         data-block-id={b.id}
+                        data-block-state={b.state}
                         data-block-observed={
                           needsObservedHeight(b.kind, b.asset != null)
                             ? observedKeyOf(b, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))

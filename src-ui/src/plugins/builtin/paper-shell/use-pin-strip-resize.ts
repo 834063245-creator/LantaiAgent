@@ -9,6 +9,7 @@
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCanvasStore, STREAM_REGION } from './host';
+import { useLostFocusCancel } from './lost-focus';
 import { USER_SHRINK_MIN_W } from './measure';
 import type { PaperCore } from './use-paper-sessions';
 
@@ -60,6 +61,16 @@ export function usePinStripResize(params: {
       window.removeEventListener('mouseup', up);
     };
   }, [core, canvasRef, viewRef]);
+
+  /* 失联即收（2026-10-29）：窗外松手 ⇒ mouseup 永不到，resizeRef 留在在途态
+   * （下一次抽纸条被「有手势在途」的守卫静默吞掉）。宽度预览一并撤，不写回。 */
+  useLostFocusCancel(
+    useCallback(() => {
+      resizeRef.current = null;
+      resizeLatestRef.current = null;
+      setResizePreview(null);
+    }, []),
+  );
 
   return { resizeRef, resizePreview, onResizeMouseDown };
 }
