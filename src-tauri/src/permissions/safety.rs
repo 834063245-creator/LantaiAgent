@@ -119,6 +119,14 @@ fn is_hologram_config_path(path: &Path) -> bool {
                 if *sub == "providers.yml" {
                     return false;
                 }
+                // 组合目录（2026-10-30）：`~/.lantai/composition/**` 是内核管理的
+                // 配置面（preset 作者面 + creator 组合的 composition 工具都写它）——
+                // 与 providers.yml 同一理由：每次写弹权限卡等于功能不存在。
+                // 判据 = 「紧跟 `.lantai` 的那一段恰为 composition」，整棵子树；
+                // 相邻路径（composition.bak / compositionX / `.lantai/` 其余内容）照旧受保护。
+                if *sub == "composition" {
+                    return false;
+                }
             }
             return true;
         }

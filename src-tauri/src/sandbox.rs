@@ -173,7 +173,10 @@ impl Sandbox {
     fn is_user_data_path_with_home(path: &Path, home: &str) -> bool {
         // ~/.lantai 下允许项目沙箱外访问的用户数据子目录（只读为主；
         // global_memory 历史含写绕过——skills 设计只读，写仍走项目内）。
-        const USER_DATA_SUBDIRS: &[&str] = &["global_memory", "skills"];
+        // composition（2026-10-30）：组合作者面的内核配置面（preset 目录）——
+        // 设置页作者面与 creator 组合的 composition 工具都写它；不进白名单时
+        // 这条写路径被"工作区外"硬拒（实机：composition(write) 直接失败）。
+        const USER_DATA_SUBDIRS: &[&str] = &["global_memory", "skills", "composition"];
         // 根级数据文件（~/.lantai/<file>——首段即文件名，非子目录）。
         const USER_DATA_FILES: &[&str] = &["mcp.json", "providers.yml"];
         let lantai = logical_path(&PathBuf::from(home).join(".lantai"));
@@ -237,6 +240,32 @@ impl Sandbox {
         Self::is_global_memory_path(path)
             || Self::is_user_mcp_json_path(path)
             || Self::is_user_providers_file_path(path)
+            || Self::is_user_composition_dir_path(path)
+    }
+
+    /// ~/.lantai/composition 判定（组合作者面——读+写豁免，2026-10-30）。
+    /// 判据 = 「紧跟 `.lantai` 的那一段恰为 composition」（整棵子树）——它是内核
+    /// 管理的配置面：设置页「复制为模板」与 creator 组合的 composition 工具都写
+    /// 这里。与 providers.yml 同一理由：写一次弹一次卡等于功能不存在。
+    /// 相邻路径不借道（composition.bak / compositionX / `.lantai/` 其余内容照旧）。
+    fn is_user_composition_dir_path(path: &Path) -> bool {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home.is_empty() {
+            return false;
+        }
+        Self::is_user_composition_dir_path_with_home(path, &home)
+    }
+
+    /// composition 目录判定纯函数（home 注入——测试免 env 污染直测）。
+    fn is_user_composition_dir_path_with_home(path: &Path, home: &str) -> bool {
+        let dir = logical_path(&PathBuf::from(home).join(".lantai").join("composition"));
+        let under = |p: &Path| p == dir || p.starts_with(&dir);
+        under(&logical_path(path))
+            || std::fs::canonicalize(path)
+                .map(|p| under(&logical_path(&p)))
+                .unwrap_or(false)
     }
 
     /// ~/.lantai/mcp.json 判定（用户级 MCP 配置文件——读+写豁免）。
@@ -567,6 +596,38 @@ mod tests {
         );
     }
 
+    /// ~/.lantai/composition（组合作者面，2026-10-30）：读+写豁免；
+    /// 相邻路径不许借道（composition.bak / compositionX / `.lantai/` 其余内容）。
+    #[test]
+    fn user_data_path_composition_allowed_rw() {
+        let home = fake_home();
+        let home_s = home.to_string_lossy().into_owned();
+        let lantai = home.join(".lantai");
+        let preset = lantai
+            .join("composition")
+            .join("presets")
+            .join("readonly-research")
+            .join("roster.patch.yml");
+        assert!(
+            Sandbox::is_user_data_path_with_home(&preset, &home_s),
+            "~/.lantai/composition/** 读应放行"
+        );
+        assert!(
+            Sandbox::is_user_composition_dir_path_with_home(&preset, &home_s),
+            "~/.lantai/composition/** 写应放行"
+        );
+        for adjacent in [
+            lantai.join("composition.bak").join("x.yml"),
+            lantai.join("compositionX").join("x.yml"),
+            lantai.join("settings.json"),
+        ] {
+            assert!(
+                !Sandbox::is_user_composition_dir_path_with_home(&adjacent, &home_s),
+                "写豁免不得放行 {:?}",
+                adjacent
+            );
+        }
+    }
     /// ~/.lantai/providers.yml（provider 配方统管文件）：读+写豁免；
     /// 相邻路径一律不放行——白名单只放行**这一个文件**（providers.yml.bak /
     /// providers/ 子目录 / providers 目录本身都拒绝）。
