@@ -555,6 +555,9 @@ export const ComposerDock = memo(function ComposerDock() {
     error: null,
   });
   const [compBlank, setCompBlank] = useState(true);
+  /** 读面重取触发器（2026-10-29）：写成功后本卷记录已变，但空白卷没有消息事件可等——
+   *  不主动重读就会停在旧标签，用户看到的就是「切了没反应」（卷首芯片同款根因）。 */
+  const [compTick, setCompTick] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: presetRoster 是刻意的重读触发器（「重新扫描」/新建 preset 后本卷身份与可用性要重解析），非 effect 体内直接引用值——与 settingsTick 同款手法
   useEffect(() => {
     let alive = true;
@@ -587,7 +590,7 @@ export const ComposerDock = memo(function ComposerDock() {
       alive = false;
       unsub?.();
     };
-  }, [core, activeSessionId, presetRoster, presetSelected]);
+  }, [core, activeSessionId, presetRoster, presetSelected, compTick]);
   /** 芯片拨动：无主态写全局默认；有卷（空白）写卷级选择——拒绝原因就地可见。 */
   const onCompositionChange = useCallback(
     async (id: string) => {
@@ -603,7 +606,13 @@ export const ComposerDock = memo(function ComposerDock() {
         ok: false,
         reason: '本坞未接到组合写入口（旧句柄）',
       };
-      if (!r.ok) setLocalNotice(`组合未切换：${r.reason}`);
+      if (!r.ok) {
+        setLocalNotice(`组合未切换：${r.reason}`);
+        return;
+      }
+      // 写成功 = 本卷记录已变：主动重取读面（空白卷等不到消息事件）
+      setCompTick((v) => v + 1);
+      setLocalNotice(`本卷组合已切到「${id}」`);
     },
     [activeSessionId, core],
   );

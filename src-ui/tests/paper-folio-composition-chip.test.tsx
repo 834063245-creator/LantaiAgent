@@ -74,15 +74,20 @@ function fakeCore(
   } = {},
 ): { core: FolioChipCore; selectCalls: Array<{ sid: number; id: string }> } {
   const selectCalls: Array<{ sid: number; id: string }> = [];
+  // 读面是**有状态**的：写成功后 sessionComposition 要回新值——否则测不出
+  // 「写成功但芯片不重取」这个真病灶（2026-10-29 用户实测报障）。
+  let info = opts.info ?? INFO_GLOBAL;
   const core: FolioChipCore = {
     panelId: PANEL,
     isSessionBlank: vi.fn(() => opts.blank ?? true),
-    sessionComposition: vi.fn(async () => opts.info ?? INFO_GLOBAL),
+    sessionComposition: vi.fn(async () => info),
   };
   if (!opts.noWriter) {
     core.selectSessionPreset = vi.fn(async (sid: number, id: string) => {
       selectCalls.push({ sid, id });
-      return opts.change ?? { ok: true };
+      const result = opts.change ?? { ok: true };
+      if (result.ok) info = { presetId: id, source: 'session', error: null };
+      return result;
     });
   }
   return { core, selectCalls };
@@ -239,5 +244,28 @@ describe('S6 P5a 卷首组合芯片', () => {
       opt.click();
     });
     expect(f.selectCalls).toEqual([]);
+    // 静默 return 曾让「点了没反应」无可解释——现在必须说出来
+    expect(container.textContent).toContain('还没有会话号');
+  });
+
+  it('⑧ 切成功 → 芯片主动重取读面（标签立刻变）+ 就地确认（2026-10-29 报障回归）', async () => {
+    const f = fakeCore({ blank: true, info: INFO_GLOBAL });
+    root = await mount(container, f.core);
+    expect(pill(container)?.textContent).toContain('standard');
+
+    await act(async () => {
+      (pill(container) as HTMLButtonElement).click();
+    });
+    const creator = [...container.querySelectorAll('.pp-folio-comp-opt')].find((o) =>
+      o.textContent?.includes('creator'),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      creator.click();
+    });
+
+    // 写成功 = 本卷记录已变：芯片必须重读，不能停在旧标签（旧实现就停在这）
+    expect(f.selectCalls).toEqual([{ sid: REGION_SID, id: 'creator' }]);
+    expect(pill(container)?.textContent).toContain('creator');
+    expect(container.textContent).toContain('已切到');
   });
 });

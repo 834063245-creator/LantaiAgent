@@ -61,11 +61,15 @@ export function FolioCompositionChip({ core, sessionId }: FolioCompositionChipPr
   const [info, setInfo] = useState<FolioCompositionInfo>({ presetId: presetSelected, source: 'global', error: null });
   const [blank, setBlank] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
+  /** 读面重取触发器：写成功后本卷记录已变，但空白卷没有消息流事件可等
+   *  （msgStore 订阅只在消息变化时响），不主动重读就会停在旧标签——
+   *  表现为「切了没反应」（2026-10-29 用户实测报障的根因）。 */
+  const [tick, setTick] = useState(0);
 
   const sidNum = sessionId === '' ? Number.NaN : Number(sessionId);
   const sid = Number.isFinite(sidNum) ? sidNum : null;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: presetRoster 是刻意的重读触发器（「重新扫描」/新建 preset 后本卷身份与可用性要重解析）——与创作坞芯片同款手法
+  // biome-ignore lint/correctness/useExhaustiveDependencies: presetRoster / tick 是刻意的重读触发器（「重新扫描」/新建 preset 后本卷身份与可用性要重解析；写成功后主动重取本卷读面）——与创作坞芯片同款手法
   useEffect(() => {
     if (sid === null) return;
     let alive = true;
@@ -86,7 +90,7 @@ export function FolioCompositionChip({ core, sessionId }: FolioCompositionChipPr
       alive = false;
       unsub?.();
     };
-  }, [core, sid, presetRoster, presetSelected]);
+  }, [core, sid, presetRoster, presetSelected, tick]);
 
   const locked = !blank;
   const label = info.presetId;
@@ -97,9 +101,23 @@ export function FolioCompositionChip({ core, sessionId }: FolioCompositionChipPr
     async (id: string) => {
       setOpen(false);
       setNotice(null);
-      if (sid === null || !core?.selectSessionPreset) return;
+      if (sid === null) {
+        // 静默 return 会让「点了没反应」变成一个说不清的故障——说清楚这一步该去哪
+        setNotice('本卷还没有会话号——先在 设置 › Agent › 组合 里选默认，或新建一卷再拨');
+        return;
+      }
+      if (!core?.selectSessionPreset) {
+        setNotice('本卷未接到组合写入口（句柄缺能力位）');
+        return;
+      }
       const r = await core.selectSessionPreset(sid, id);
-      if (!r.ok) setNotice(`组合未切换：${r.reason}`);
+      if (!r.ok) {
+        setNotice(`组合未切换：${r.reason}`);
+        return;
+      }
+      // 写成功 = 本卷记录已变：主动重取读面（空白卷等不到消息事件）
+      setTick((v) => v + 1);
+      setNotice(`本卷组合已切到「${id}」`);
     },
     [core, sid],
   );
