@@ -84,6 +84,26 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
 
   function jsonLen(text) { return byteLen(JSON.stringify(text)); }
 
+  /** 按 UTF-8 字节上限取前缀（P4）：不劈开代理对，超限即停在边界上。
+   *  截断是**结果**不是失败——部分答案通常够模型继续判断。 */
+  function truncateBytes(text, maxBytes) {
+    if (maxBytes <= 0) return '';
+    if (byteLen(text) <= maxBytes) return text;
+    var bytes = 0;
+    var out = '';
+    for (var i = 0; i < text.length; ) {
+      var code = text.charCodeAt(i);
+      var pair = code >= 0xd800 && code <= 0xdbff && i + 1 < text.length;
+      var slice = pair ? text.substr(i, 2) : text.charAt(i);
+      var cost = byteLen(slice);
+      if (bytes + cost > maxBytes) break;
+      bytes += cost;
+      out += slice;
+      i += slice.length;
+    }
+    return out;
+  }
+
   // 日志缓冲：预算内逐条即发；耗尽发 fitting prefix + output-limit 一次
   function pushLog(text) {
     if (limitReported) return;
@@ -261,6 +281,7 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
     budget = typeof m.maxOutputBytes === 'number' && m.maxOutputBytes > 0 ? m.maxOutputBytes : Infinity;
 
     var AsyncFunction = (async function () {}).constructor;
+    var truncatedInfo = null;
     var tools = makeTools(m.names);
     var fn;
     try {
@@ -294,14 +315,17 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
               return;
             }
           }
-          // 完成值与日志共享预算：剩余不足 → output-limit
-          if (jsonLen(text) > budget - usedBytes) {
-            post({ t: 'done', error: { kind: 'output-limit', message: 'outer output exceeded ' + budget + ' bytes' } });
-            return;
+          // 完成值与日志共享预算（P4）：放不下就**截断**并上报截断量——
+          // 旧行为是整段作废（output-limit 失败），一次跑对的程序白跑。
+          var remaining = budget - usedBytes;
+          if (jsonLen(text) > remaining) {
+            var cut = truncateBytes(text, remaining);
+            truncatedInfo = { droppedBytes: jsonLen(text) - jsonLen(cut), valueDropped: cut.length === 0 };
+            text = cut;
           }
           out.value = text;
         }
-        post({ t: 'done', value: out.value });
+        post({ t: 'done', value: out.value, truncated: truncatedInfo });
       },
       function (err) {
         var msg;

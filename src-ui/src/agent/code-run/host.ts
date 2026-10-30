@@ -115,6 +115,21 @@ function utf8Len(s: string): number {
   return new TextEncoder().encode(s).length;
 }
 
+/** 按 UTF-8 字节上限取前缀（P4）：按码点切，不劈开代理对。 */
+function truncateUtf8(text: string, maxBytes: number): string {
+  if (maxBytes <= 0) return '';
+  if (utf8Len(text) <= maxBytes) return text;
+  let bytes = 0;
+  let out = '';
+  for (const ch of text) {
+    const cost = utf8Len(ch);
+    if (bytes + cost > maxBytes) break;
+    bytes += cost;
+    out += ch;
+  }
+  return out;
+}
+
 /** 写调度闸（P2）：读不进闸；写按 lockKey 分片 ——
  *  - `'file:<path>'` 同键串行、异键并行；
  *  - `'*'` 排他：等在途键控写排空 → 阻塞新键控写 → 自己跑 → 放行（跨工具安全网）；
@@ -296,29 +311,34 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
           finish({ logs, error: msg.error });
           return;
         }
-        // 预算已耗（worker 截断或宿主计账超限）：完成值不可信——归一失败。
-        // 对齐 DSH：LogBuffer 截断后 prepareCompletion 报 output-limit。
-        if (outputLimited) {
-          finish({
-            logs,
-            error: { kind: 'output-limit', message: `outer output exceeded ${maxOutputBytes} bytes` },
-          });
-          return;
-        }
-        if (msg.value !== undefined) {
-          const cost = utf8Len(msg.value);
-          if (usedBytes + cost > maxOutputBytes) {
-            finish({
-              logs,
-              error: { kind: 'output-limit', message: `outer output exceeded ${maxOutputBytes} bytes` },
-            });
-            return;
+        // 预算（P4）：超限**不再失败**——按剩余额度截断、记下丢弃量。宿主侧独立计账
+        // （不信 worker 上报），与 worker 的截断取「谁的丢弃量更大」并集。
+        let value = msg.value;
+        let truncated = msg.truncated
+          ? { droppedBytes: msg.truncated.droppedBytes, valueDropped: msg.truncated.valueDropped === true }
+          : undefined;
+        if (value !== undefined) {
+          const remaining = Math.max(0, maxOutputBytes - usedBytes);
+          if (utf8Len(value) > remaining) {
+            const cut = truncateUtf8(value, remaining);
+            const dropped = utf8Len(value) - utf8Len(cut);
+            truncated = {
+              droppedBytes: (truncated?.droppedBytes ?? 0) + dropped,
+              valueDropped: cut.length === 0,
+            };
+            value = cut;
           }
-          usedBytes += cost;
+          usedBytes += utf8Len(value);
         }
         // 等写链排空再收尾——审计完整（结果值不依赖写，但 dispatch-end 事件
         // 必须全部落账后才 finish，否则审计缺口）
-        void gate.drain().then(() => finish({ logs, ...(msg.value !== undefined ? { result: msg.value } : {}) }));
+        void gate.drain().then(() =>
+          finish({
+            logs,
+            ...(value !== undefined ? { result: value } : {}),
+            ...(truncated ? { truncated } : {}),
+          }),
+        );
         return;
       }
     }

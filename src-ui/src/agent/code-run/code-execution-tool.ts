@@ -167,10 +167,23 @@ export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
         // 失败走正常返回（分类文本可读，模型可自我修正）
         return `[code_execution 失败] kind=${result.error.kind}\n${lines.join('\n')}`;
       }
-      if (result.result !== undefined) {
+      if (result.result !== undefined && result.truncated?.valueDropped !== true) {
         lines.push('── result ──');
         // 字符串完成值已是文本本体（worker 侧不再二次编码），原样进段
         lines.push(result.result);
+        // 截断标记走**段内一行**，不改段头：`── result ──` 是展示面解析契约
+        // （paper/tool-text 的 codeSections 逐字匹配段头），改头会毁掉分段。
+        if (result.truncated) {
+          lines.push(
+            `[truncated: 丢弃 ${result.truncated.droppedBytes} 字节 —— 输出超预算；要全量请 return 摘要或分批返回]`,
+          );
+        }
+      } else if (result.truncated?.valueDropped) {
+        // 一点都放不下（日志先耗光预算）：完成值整段丢，但程序本身是成功的
+        lines.push('── result ──');
+        lines.push(
+          `[dropped: 输出超预算，完成值已丢弃 ${result.truncated.droppedBytes} 字节 —— 请 return 摘要或分批返回]`,
+        );
       }
       if (lines.length === 0) return '(程序完成，无输出)';
       return lines.join('\n');

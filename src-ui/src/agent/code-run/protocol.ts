@@ -57,11 +57,14 @@ export interface CodeDoneMessage {
    *  JSON 文本。无返回值/异常时缺省。 */
   value?: string;
   /** 失败分类：exception 程序抛错 / invalid-output 返回值非无损 JSON /
-   *  output-limit 超输出预算（宿主侧超限/超时/中止也归一为同形状）。 */
+   *  timeout、aborted、substrate 宿主侧归类。
+   *  **超输出预算不在其中**（P4，2026-10-30）：截断是**结果**不是失败——见 truncated。 */
   error?: {
-    kind: 'exception' | 'invalid-output' | 'output-limit' | 'timeout' | 'aborted' | 'substrate';
+    kind: 'exception' | 'invalid-output' | 'timeout' | 'aborted' | 'substrate';
     message: string;
   };
+  /** 预算截断（P4）：完成值被切掉多少字节；valueDropped = 一点都放不下。 */
+  truncated?: { droppedBytes: number; valueDropped?: boolean };
 }
 
 /** worker → 宿主全部消息。 */
@@ -81,6 +84,8 @@ export interface CodeRunResult {
   result?: string;
   /** 失败时的分类与消息（成功时缺省）。 */
   error?: { kind: CodeRunErrorKind; message: string };
+  /** 预算截断（P4）：**有值也可能有它**——截断是结果，不是失败。 */
+  truncated?: { droppedBytes: number; valueDropped: boolean };
 }
 
 /** 宿主侧入站消息形状校验 — 敌意流量在这里被拒。

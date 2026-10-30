@@ -133,13 +133,15 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
     ]);
   });
 
-  it('C8-预算超限：日志爆炸 → output-limit 失败，已发日志保留', async () => {
+  it('C8-预算超限：日志爆炸 → 截断是结果不是失败（完成值整段丢，日志保留）', async () => {
     const result = await runCode(`for (let i = 0; i < 100; i++) console.log('x'.repeat(200)); return 'ok';`, {
       createWorker: makeFakeWorker,
       maxOutputBytes: 2000,
       bindings: [],
     });
-    expect(result.error?.kind).toBe('output-limit');
+    // 规格变更（P4，2026-10-30，故意且已声明）：旧行为 = error.kind='output-limit' 整段作废；
+    // 新行为 = 程序算成功，日志按预算截断（完成值放得下就照常给，放不下见下一条宿主层用例）。
+    expect(result.error).toBeUndefined();
     expect(result.logs.length).toBeGreaterThan(0);
     expect(result.logs.length).toBeLessThan(100);
   });
@@ -662,6 +664,69 @@ describe('P3 错误面', () => {
       },
     );
     expect(result.result).toBe('blocked|tool-error');
+  });
+
+  it('P4-完成值超预算：按 UTF-8 边界截断，非失败且记丢弃量', async () => {
+    const result = await runCode(`return 'x'.repeat(5000);`, {
+      createWorker: makeFakeWorker,
+      maxOutputBytes: 1000,
+      bindings: [],
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.result?.length).toBeGreaterThan(0);
+    expect(result.result?.length).toBeLessThan(5000);
+    expect(result.truncated?.droppedBytes).toBeGreaterThan(0);
+    expect(result.truncated?.valueDropped).toBe(false);
+  });
+
+  it('P4-值整段丢也是结果：宿主透传 worker 的截断信息，不出 error', async () => {
+    // 宿主层直测（不等 worker 算到 remaining===0 这种边缘算术）：假装 worker 已判定整段丢
+    const stub: CodeWorkerLike = {
+      postMessage: (msg: unknown) => {
+        if ((msg as { t?: string }).t === 'run') {
+          queueMicrotask(() =>
+            stub.onmessage?.({
+              data: { t: 'done', value: '', truncated: { droppedBytes: 4096, valueDropped: true } },
+            }),
+          );
+        }
+      },
+      terminate: () => {},
+      onmessage: null,
+      onerror: null,
+    };
+    const result = await runCode(`return 'ignored';`, {
+      createWorker: () => stub,
+      bindings: [],
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.truncated).toEqual({ droppedBytes: 4096, valueDropped: true });
+    expect(result.result).toBe('');
+  });
+
+  it('P4-多字节截断不劈字：结果是完整字符的前缀（无 U+FFFD）', async () => {
+    const result = await runCode(`return '中'.repeat(1000);`, {
+      createWorker: makeFakeWorker,
+      maxOutputBytes: 1000,
+      bindings: [],
+    });
+    expect(result.error).toBeUndefined();
+    const text = result.result ?? '';
+    expect(text.length).toBeGreaterThan(0);
+    expect(text).toBe('中'.repeat(text.length)); // 切在码点边界，不留半个字
+    expect(text).not.toContain('\uFFFD');
+  });
+
+  it('P4-信封：截断标记是段内一行，失败段头只留给真失败', async () => {
+    const tool = createCodeExecutionTool({
+      bindings: [],
+      maxOutputBytes: 300,
+      createWorker: makeFakeWorker,
+    });
+    const out = await tool.execute({ code: `return 'y'.repeat(2000);`, description: 'big' });
+    expect(out).toContain('── result ──');
+    expect(out).toContain('[truncated:');
+    expect(out).not.toContain('[code_execution 失败]');
   });
 
   it('协议键放行：await tools / JSON.stringify(tools) / in 探测都不炸', async () => {
