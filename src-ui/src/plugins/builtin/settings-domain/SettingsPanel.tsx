@@ -47,7 +47,13 @@ import {
 import { McpPage } from './McpPage';
 import { PluginsPage } from './PluginsPage';
 import { ProviderPage } from './ProviderPage';
-import { compositionDir, createPresetFromTemplate, rescanPresets } from './preset-authoring';
+import {
+  compositionDir,
+  createPresetFromTemplate,
+  deletePreset,
+  rescanPresets,
+  userPresetsOf,
+} from './preset-authoring';
 import { persistSecrets, removeSecret } from './provider-data';
 import { SkillsPage } from './SkillsPage';
 import { SETTINGS_TABS, type SettingsTabId } from './settings-tabs';
@@ -207,6 +213,22 @@ const SettingsPanelApp: React.FC<{
     setAuthoringMsg({ kind: 'ok', text: `已写出模板：${res.dir}（已重扫，可直接在上方选择它）` });
     setAuthoringBusy(false);
   }, [newPresetId, newPresetFrom]);
+  /** 删除一个用户 preset（2026-10-30 管理面）：内置与「当前全局默认」在删除口本身会拒；
+   *  这里只负责把结果说清楚 + 重扫。 */
+  const handleDeletePreset = useCallback(async (id: string) => {
+    setAuthoringBusy(true);
+    setAuthoringMsg(null);
+    const res = await deletePreset(id);
+    if (!res.ok) {
+      setAuthoringMsg({ kind: 'err', text: res.error ?? '删除失败' });
+      setAuthoringBusy(false);
+      return;
+    }
+    await rescanPresets();
+    setAuthoringMsg({ kind: 'ok', text: `已删除 ${id}（已重扫）` });
+    setAuthoringBusy(false);
+  }, []);
+
   // ⚡ 2026-08-04 状态治理：apiKey 权威在系统加密凭据 —
   // localStorage 无明文，打开面板时异步回填密钥供表单展示。
   // ⚡ 2026-08-07 竞态修复：回填用函数式合并、只填充仍为空的 key——
@@ -663,6 +685,25 @@ const SettingsPanelApp: React.FC<{
                   已存在同名 preset 时拒绝覆盖（绝不抹掉你已写的内容）；行 id 写错不会静默——选中该 preset
                   会被拒绝并说明原因。
                 </div>
+                {userPresetsOf(presetRoster).length > 0 && (
+                  <div className="sp-hint-sub" style={{ marginTop: 8 }}>
+                    用户 preset（删除只动组合目录里的两个文件；内置不可删）：
+                  </div>
+                )}
+                {userPresetsOf(presetRoster).map((p) => (
+                  <div key={p.id} className="sp-key-row" style={{ marginTop: 4 }}>
+                    <code>{p.id}</code>
+                    <button
+                      type="button"
+                      className="sp-btn-sm"
+                      disabled={authoringBusy || presetSelected === p.id}
+                      title={presetSelected === p.id ? '当前全局默认——先切到别的组合再删' : undefined}
+                      onClick={() => void handleDeletePreset(p.id)}
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))}
                 {authoringMsg && (
                   <div
                     className="sp-hint-sub"

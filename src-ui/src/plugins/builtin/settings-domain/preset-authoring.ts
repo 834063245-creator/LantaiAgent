@@ -25,6 +25,7 @@ import {
   discoverPresets,
   isValidPresetId,
   kernelCreateDirectory,
+  kernelDeleteFile,
   kernelReadFile,
   kernelWriteFile,
   type PresetEntry,
@@ -65,6 +66,8 @@ export interface PresetAuthoringIo {
   readFile(path: string): Promise<string | null>;
   writeFile(path: string, content: string): Promise<void>;
   makeDir(path: string): Promise<void>;
+  /** 删一个文件（不存在 → 不报错：删除是幂等的）。 */
+  deleteFile(path: string): Promise<void>;
 }
 
 /** 生产 IO（RPC）。`kernelReadFile` 抛错 = 文件不可读（不存在/无权限）——
@@ -83,6 +86,9 @@ export const rpcAuthoringIo: PresetAuthoringIo = {
   },
   makeDir: async (path) => {
     await kernelCreateDirectory(path);
+  },
+  deleteFile: async (path) => {
+    await kernelDeleteFile(path);
   },
 };
 
@@ -190,6 +196,34 @@ export async function createPresetFromTemplate(
     await io.writeFile(`${dir}/${META_FILENAME}`, templateMetaYaml(trimmed, from));
   } catch (e) {
     return { ok: false, error: `写盘失败：${errText(e)}` };
+  }
+  return { ok: true, dir };
+}
+
+/** 删除一个用户 preset（2026-10-30 管理面）：内置 id 拒删；不在册也照删
+ *  （残留目录 / 发现失败的坏 preset 正是最需要删的）；两个约定文件逐个删
+ *  （不存在不报），roster.patch.yml 一没，发现层即不再认这个目录。 */
+export async function deletePreset(id: string, io: PresetAuthoringIo = rpcAuthoringIo): Promise<CreatePresetResult> {
+  const trimmed = id.trim();
+  if (!isValidPresetId(trimmed)) {
+    return { ok: false, error: `id 不合法：只允许小写字母/数字/连字符（收到 "${trimmed}"）` };
+  }
+  if (builtinPresets().some((p) => p.id === trimmed)) {
+    return { ok: false, error: `"${trimmed}" 是内置 preset（内置不可删除）` };
+  }
+  let root: string;
+  try {
+    root = await io.compositionDir(false);
+  } catch (e) {
+    return { ok: false, error: `取组合目录失败：${errText(e)}` };
+  }
+  const dir = presetDirPath(root, trimmed);
+  try {
+    for (const name of [PATCH_FILENAME, META_FILENAME]) {
+      await io.deleteFile(`${dir}/${name}`);
+    }
+  } catch (e) {
+    return { ok: false, error: `删除失败：${errText(e)}` };
   }
   return { ok: true, dir };
 }

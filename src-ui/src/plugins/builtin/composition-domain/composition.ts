@@ -30,6 +30,7 @@ import {
   factoryComposition,
   isValidPresetId,
   kernelCreateDirectory,
+  kernelDeleteFile,
   kernelReadFile,
   kernelWriteFile,
   type PresetEntry,
@@ -43,7 +44,7 @@ import {
   usePresetStore,
 } from './host';
 
-export const COMPOSITION_ACTIONS = ['list', 'read', 'validate', 'write'] as const;
+export const COMPOSITION_ACTIONS = ['list', 'read', 'validate', 'write', 'delete'] as const;
 export type CompositionAction = (typeof COMPOSITION_ACTIONS)[number];
 
 /** 落盘 / 发现 IO（生产 = RPC；测试注入假件——本模块因此零网络依赖）。 */
@@ -54,6 +55,8 @@ export interface CompositionIo {
   readFile(path: string): Promise<string | null>;
   writeFile(path: string, content: string): Promise<void>;
   makeDir(path: string): Promise<void>;
+  /** 删一个文件（不存在 → 不报错：删除是幂等的）。 */
+  deleteFile(path: string): Promise<void>;
   /** 重扫（discoverPresets + reapplyComposition）。 */
   rescan(): Promise<void>;
 }
@@ -79,6 +82,9 @@ export const rpcCompositionIo: CompositionIo = {
   },
   makeDir: async (path) => {
     await kernelCreateDirectory(path);
+  },
+  deleteFile: async (path) => {
+    await kernelDeleteFile(path);
   },
   rescan: async () => {
     await discoverPresets();
@@ -185,7 +191,7 @@ export function createCompositionTool(override: Partial<CompositionToolDeps> = {
     readOnlyActions: ['list', 'read', 'validate'],
     description:
       'Read and author agent compositions (presets). A preset is a named patch layered on the factory composition: it enables/disables registered rows, replaces or inserts prompt sections, and caps seams. ' +
-      'Use composition(list) to see presets and available row ids, composition(validate) to check a patch before writing it, and composition(write) to save a user preset under the composition directory. ' +
+      'Use composition(list) to see presets and available row ids, composition(validate) to check a patch before writing it, composition(write) to save a user preset under the composition directory, and composition(delete) to remove one. ' +
       'A preset affects only sessions that select it; an existing session keeps the composition it started with.',
     schema,
     async execute(args) {
@@ -230,6 +236,34 @@ export function createCompositionTool(override: Partial<CompositionToolDeps> = {
       if (action === 'validate') {
         if (args.yaml === undefined) return '拒绝：validate 需要 yaml';
         return validateText(args.yaml, deps).text;
+      }
+
+      if (action === 'delete') {
+        if (!args.id) return '拒绝：delete 需要 id';
+        const id = args.id.trim();
+        // id 是路径段：围栏先过（防 `..` 之类把删除挪出组合根）。
+        if (!isValidPresetId(id)) return '拒绝：id 不合法（只允许小写字母/数字/连字符）：' + id;
+        if (builtinPresets().some((p) => p.id === id)) {
+          return '拒绝：「' + id + '」是内置 preset（内置不可删除）';
+        }
+        // 删掉全局默认 = 之后所有新卷都解析不出组合：先让用户切走再删。
+        if (usePresetStore.getState().selected === id) {
+          return '拒绝：「' + id + '」是当前全局默认组合——先在 设置 › Agent › 组合 里切到别的组合再删';
+        }
+        // 不在册也照删：残留目录 / 发现失败的坏 preset 正是最需要删的。
+        const root = await io.dir();
+        const dirPath = presetDirPath(root, id);
+        try {
+          // 两个约定文件都删（不存在不报，删除幂等）：roster.patch.yml 一没，发现层
+          // 就不再认这个目录，preset 当场从清单消失。
+          for (const name of ['roster.patch.yml', 'preset.yml']) {
+            await io.deleteFile(dirPath + '/' + name);
+          }
+          await io.rescan();
+        } catch (e) {
+          return '删除失败：' + (e instanceof Error ? e.message : String(e));
+        }
+        return '已删除 preset「' + id + '」：' + dirPath;
       }
 
       // write

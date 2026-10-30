@@ -60,6 +60,9 @@ function io(fs: FakeFs, root = '/home/u/.lantai/composition'): CompositionIo {
       fs.files.set(p, content);
     },
     makeDir: async () => {},
+    deleteFile: async (p) => {
+      fs.files.delete(p);
+    },
     rescan: async () => {
       fs.rescans += 1;
     },
@@ -158,6 +161,23 @@ describe('composition 工具（创作者模式那双手）', () => {
     expect(overwrite).toContain('已写入');
   });
 
+  it('delete：内置拒删 / 非法 id 拒绝 / 用户 preset 删两件 + 重扫', async () => {
+    const fake: FakeFs = { files: new Map(), rescans: 0 };
+    const tool = createCompositionTool({ io: io(fake), deps: deps() });
+    const yaml = 'tools: []\n';
+    await call(tool, { action: 'write', id: 'tmp-del', yaml });
+    const dir = presetDirPath('/home/u/.lantai/composition', 'tmp-del');
+    expect(fake.files.has(dir + '/roster.patch.yml')).toBe(true);
+
+    expect(await call(tool, { action: 'delete', id: 'standard' })).toContain('内置');
+    expect(await call(tool, { action: 'delete', id: '../evil' })).toContain('不合法');
+
+    const res = await call(tool, { action: 'delete', id: 'tmp-del' });
+    expect(res).toContain('已删除');
+    expect(fake.files.has(dir + '/roster.patch.yml')).toBe(false);
+    expect(fake.files.has(dir + '/preset.yml')).toBe(false);
+    expect(fake.rescans).toBe(2); // write + delete
+  });
   it('resolve 抛 CompositionPatchError 时 validate 回具名原因（F1 同款语义）', async () => {
     const tool = createCompositionTool({
       deps: {

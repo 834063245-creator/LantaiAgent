@@ -21,5 +21,11 @@ export {
   resolveRoster,
 } from '../../../composition/roster';
 export type { BuiltinToolRow } from '../../../composition/tool-rows';
-export { kernelCreateDirectory, kernelReadFile, kernelWriteFile, typedRpc } from '../../../rpc-contract';
+export {
+  kernelCreateDirectory,
+  kernelDeleteFile,
+  kernelReadFile,
+  kernelWriteFile,
+  typedRpc,
+} from '../../../rpc-contract';
 export { usePresetStore } from '../../../state/preset-store';

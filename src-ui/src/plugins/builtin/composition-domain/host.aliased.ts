@@ -29,6 +29,7 @@ export const builtinPresets = impl.builtinPresets;
 export const isValidPresetId = impl.isValidPresetId;
 export const usePresetStore = impl.usePresetStore;
 export const kernelCreateDirectory = impl.kernelCreateDirectory;
+export const kernelDeleteFile = impl.kernelDeleteFile;
 export const kernelReadFile = impl.kernelReadFile;
 export const kernelWriteFile = impl.kernelWriteFile;
 export const typedRpc = impl.typedRpc;
