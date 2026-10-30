@@ -75,14 +75,21 @@ export function isSessionBlank(storeId: string, sessionId: number): boolean {
 /** 本卷组合身份 + 来源（只读面；不写任何状态）。异步 = 解析面动态 import
  *  （见文件头「静态面纪律」——静态可达 store 侧即成环）。 */
 export async function sessionCompositionInfo(storeId: string, sessionId: number): Promise<SessionCompositionInfo> {
+  // 「没有卷级记录」≠「跟随全局默认」：本卷可能早已按**出生时点**的默认装配过，
+  // 此后全局默认再改也影响不到它（设置页的既有承诺：在途案卷保持创建时点的组合）。
+  // 句柄的 presetId 就是这一卷真正在跑的组合（Agent 构造时点读）——读它，
+  // UI 才不会把「旧卷在跑 standard」说成「creator」
+  // （2026-10-29 用户实测：设置里把默认改成 creator 后，非 creator 的旧卷也显示 creator）。
   const recorded = agentSessionState.getRecordedPresetId(storeId, sessionId);
+  const bornWith = recorded ?? agentSessionState.getAgent(storeId, sessionId)?.presetId ?? null;
   const { usePresetStore } = await import('../../state/preset-store');
-  if (recorded === null) {
+  if (bornWith === null) {
+    // 真·未装配（新卷）：出生时会用当前全局默认——显示它是对的
     return { presetId: usePresetStore.getState().selected, source: 'global', error: null };
   }
   const { isPresetKnown, selectionError } = await import('../../composition/preset-assembly');
-  const error = isPresetKnown(recorded) ? selectionError(recorded) : `组合「${recorded}」不在册（已被删除或改名）`;
-  return { presetId: recorded, source: 'session', error };
+  const error = isPresetKnown(bornWith) ? selectionError(bornWith) : `组合「${bornWith}」不在册（已被删除或改名）`;
+  return { presetId: bornWith, source: 'session', error };
 }
 
 /** 卷级选择（UI 芯片 / 程序入口共用）。语义见文件头；返回拒绝原因供控件显示。 */

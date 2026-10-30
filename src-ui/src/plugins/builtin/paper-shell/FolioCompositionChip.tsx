@@ -95,7 +95,7 @@ export function FolioCompositionChip({ core, sessionId }: FolioCompositionChipPr
   const locked = !blank;
   const label = info.presetId;
   const sourceText =
-    info.source === 'session' ? '本卷记录（界面拨动，或程序按组合起卷时写入）' : '全局默认（新卷出生默认）';
+    info.source === 'session' ? '本卷记录（出生时点的组合 / 界面拨动 / 程序指定）' : '全局默认（新卷出生默认）';
 
   const onPick = useCallback(
     async (id: string) => {

@@ -103,6 +103,19 @@ describe('S6 P1c 卷级组合选择', () => {
     usePresetStore.setState({ roster: builtinPresets(), selected: 'standard', error: null });
   });
 
+  it('无卷级记录但句柄在册：读面以句柄 presetId 为准（别把旧卷说成全局默认）', async () => {
+    // 2026-10-29 用户实测：设置里把默认改成 creator 后，非 creator 的旧卷也显示 creator。
+    // 真相 = 句柄 presetId（Agent 构造时点读的组合）——没有卷级记录 ≠ 跟随全局默认。
+    agentSessionState.setAgent(STORE, SID, { ...makeHandle(`h-${SID}`), presetId: 'standard' } as never);
+    usePresetStore.setState({ selected: 'creator' }); // 全局默认已改，旧卷不受影响
+
+    await expect(sessionCompositionInfo(STORE, SID)).resolves.toEqual({
+      presetId: 'standard',
+      source: 'session',
+      error: null,
+    });
+  });
+
   it('新卷（无句柄）选组合：立即登记，不白造句柄，等下次装配生效', async () => {
     await withFirstPartyToolChannel(() =>
       withFirstPartyCapabilityChannel(async () => {
