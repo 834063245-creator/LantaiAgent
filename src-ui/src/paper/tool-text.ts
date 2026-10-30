@@ -465,6 +465,16 @@ function capLines(lines: ToolLine[]): ToolLine[] {
   return kept;
 }
 
+/** 差分行的语义档（统一 diff：`+` 增 / `-` 删 / `@@` 块头 / 其余原样）。**单一判据**：
+ *  脚注的 `git_diff` / `fs(edit)` 结果面与程文的差分视图（`paper/code-view`）都走这里——
+ *  三处各判一份必然漂。渲染端 `DiffBody` 的 `diffLineClass` 是同一判据的 DOM 侧镜像。 */
+export function diffLine(line: string): ToolLine {
+  if (line.startsWith('+')) return { level: 0, parts: [{ text: line, tone: 'add' }] };
+  if (line.startsWith('-')) return { level: 0, parts: [{ text: line, tone: 'del' }] };
+  if (line.startsWith('@@')) return { level: 0, parts: [{ text: line, tone: 'hunk' }] };
+  return { level: 0, parts: [{ text: line, tone: 'plain' }] };
+}
+
 /** 行集 → 展示模型（语义投影层的出口，2026-10-29）：行数封顶 + 文本投影复用
  *  `capLines` / `toolLinesText` 同一对函数——渲染、测量、墨迹三面读同一串。
  *  `paper/tool-present` 的 presenter 一律从这里出行（不自拼 text）。 */

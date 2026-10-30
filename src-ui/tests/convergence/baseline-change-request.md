@@ -1,3 +1,44 @@
+# baseline change request — code_execution 结构化完成值进描述（P5；模型可见面唯一变化 = 描述末句，2026-10-30）
+
+- **日期**: 2026-10-30
+- **请求 Agent**: code_execution 升级 P5 执行 Agent（计划 `docs/plans/code-execution-upgrade-plan.md` §7）
+- **涉及快照**: `baseline/phase-1/tool-schemas.effective.json`（standard 轨）+ `baseline/preset-minimal/phase-1/tool-schemas.effective.json`（minimal 轨，重录时确认）
+- **状态**: **已批准（2026-10-30 用户「来把P5做了」——P5 的触发条件原文即「用户明确要『程序结果直接出表格/图』」）**——standard + minimal 两轨已重录，`verify:convergence` 双轨 exit 0
+
+## 变更内容
+
+模型可见面的唯一变化 = `code_execution` 工具的 `description` **末尾追加一句**（`parameters` 及此后各行逐字不变）：
+
+```
++ Structured result for the paper: `return {__view:"table", columns:[…], rows:[[…]], caption?}` renders as a
+  table and `{__view:"diff", diff:"<unified diff>"}` renders as a diff (the value itself still reaches you as JSON).
+```
+
+## 为什么变
+
+1. **病灶**：程序 `return {…}` 时纸面把整个对象当 JSON 文本倒出来——用户要「程序结果直接出表格」，拿到的是
+   「一坨 JSON」（计划 §7 立项语；本批即该条的落地）。模型不知道有这条路 ⇒ 光有渲染能力等于没能力，
+   所以契约必须进模型面。
+2. **为什么不是协议字段**（初稿曾写「要动 `done.view`」）：`__view` 是程序自己返回值里的键，模型读到的
+   完成值与纸面读的是**同一串 JSON**——再加一条通道就是同一件事的第二份表示（还会出现「通道说 table、
+   JSON 里没有 rows」的自相矛盾态）。视图由纸面从完成值段文本投影（`paper/code-view.ts`）。
+3. **为什么不抄全量 schema**：`__view` 是**约定**不是参数面（`parameters` 零改动）——它属于「程序怎么
+   return」，与工具入参无关。
+
+## 影响面
+
+- **模型可见面**：仅上述描述末句。`parameters` 零变化。
+- **用户可感知行为**：结构化完成值渲染成真表格 / 差分块（此前是 JSON 文本）；折叠行读数由字数换成
+  「表格 4×3」/「差分 +3 −2」。**模型调用面零变化**（不返回 `__view` 的程序行为逐字不变）。
+- **字节稳定性**：描述末句是常量（与绑定目录同一函数、同一顺序）⇒ 卷内不变则字节不变。
+- **测试面**：`tests/code-execution.test.ts` 41 例 / `tests/paper-code-block.test.ts` 6 例 /
+  `tests/paper-code-output.test.tsx` 12 例**零改动**；新增 `tests/paper-code-view.test.tsx` 22 例。
+- **重录动作**：`npm run record:convergence` + `CONVERGENCE_PRESET=minimal npm run record:convergence`，
+  两轨各落文件，**重录单独一个 commit，不夹带代码**。
+- **验收**：`npm run verify:convergence`（双轨）exit 0。
+
+---
+
 # baseline change request — code_execution 绑定目录进描述（P1；模型可见面唯一变化 = 描述文本，2026-10-30）
 
 - **日期**: 2026-10-30

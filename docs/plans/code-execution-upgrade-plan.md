@@ -1,11 +1,11 @@
 # code_execution 执行原语升级（2026-10-29 立项 / 2026-10-30 迭代）
 
-> 状态：**P1-P4 全部落地（2026-10-30）**，P5 待触发 —— 一批一 commit，可单独验收、可单独回退。
+> 状态：**P1-P5 全部落地（2026-10-30）** —— 一批一 commit，可单独验收、可单独回退。
 > 一句话：现行实现是「code mode v1」（字符串程序 + 运行时桥 + 一次性 worker），**能力不缺，
 > 缺四条回路**：模型不知道这一卷里有哪些绑定、也不知道怎么调（P1）· 域工具的只读动作没拿到并发（P2）·
 > 失败只剩一句人话（P3）· 超输出预算 = 整段作废（P4）。
 >
-> **裁定（§0.5，不制造判断题）**：做 **P1-P4**，P5 待触发，类型检查器 / 读面批量 / 基座硬化挂起。
+> **裁定（§0.5，不制造判断题）**：做 **P1-P5**（P5 于 2026-10-30 由用户触发），类型检查器 / 读面批量 / 基座硬化挂起。
 > 依据是下面逐条的代码证据，不是「业界都这么做」——每条都能指到行号，也能被反证推翻。
 > **§11 是外部横向校准**（业界四家实况），只用于验伪/背书，**不是本计划的依据来源**；
 > 它的结论：P1-P4 的方向被外部证据背书，三条业界做法**明确不采纳**（理由在 §11.3）。
@@ -260,17 +260,91 @@ lockKey: (args) => {
 `vitest`（`code-execution`）+ `build` + `biome ci` + `verify:convergence` **零漂移**
 （信封不是 schema，模型可见的工具定义字节不变；若红了说明误动了描述）。
 
-## 7. P5（待触发）——结构化完成值
+## 7. P5 —— 结构化完成值（2026-10-30 用户触发并落地）
 
+**触发**：用户 2026-10-30「来把P5做了」——「程序结果直接出表格」从展示面缺口变成明确要求（本计划的触发条件原文即此）。
 
-**内容**：程序 `return { __view: 'table' | 'diff', … }` 时，纸面把结果段渲成真表格/差异块，而不是一坨 JSON 文本。
+**内容**：程序 `return { __view: 'table' | 'diff', … }` 时，纸面把**完成值段**渲成真表格 / 差分块，
+而不是一坨 JSON 文本。
 
-**触发条件**：用户明确要「程序结果直接出表格/图」时才开工。不进首批的理由：要动协议（`done.view`）、
-纸面判据（`paper/translate.ts` 的 `name === 'code_execution'` 分支）、`paper/block-model.ts` 的 `code` 族，
-三件一起改的验证面远大于 P1-P4 之和，而收益是**展示**不是**能力**。
+### 7.1 形状（施工时比初稿收窄三处，每处都有理由）
 
-（外部对照见 §11：业界的等价物是 MCP 的 `structuredContent` + 生成式 UI，方向一致——但那是**渲染层**
-的活，兰台的纸面本身就是渲染层，比外挂 UI 资源省事，所以它更适合当「有空就做」而不是「等用户开口」。）
+1. **协议不动**（初稿写「要动协议 `done.view`」——实做**否掉**）：`__view` 是程序**自己返回值里的键**，
+   模型读到的完成值与纸面读的是**同一串 JSON**。再加一条 `done.view` 通道 = 同一件事的第二份表示
+   （还会出现「通道说 table、JSON 里没有 rows」这种自相矛盾态）。视图由纸面从**完成值段文本**投影
+   （`paper/code-view.ts` 的 `codeViewOf`）。
+   - 副作用收益：执行路径、host、protocol 一行没动，模型可见面只有描述末句（§7.4）。
+2. **判据落在转译层，不落渲染层**：`translate.ts` 的 `code_execution` 分支（**主路径与子代理路径合并成
+   同一个构造点** `codeBlockPayload`——两处各拼一份 payload 必然漂）从 `part.output` 投影出
+   `payload.view`；`paper/block-model.ts` 的 `code` 族只多一个可选字段。
+   - 为什么不是渲染层现算：块 payload 是消息快照，但翻旧卷 / 重开会话时视图必须还在；转译层是
+     **每次都跑的那一层**（视图随卷自愈）。渲染层现算 = 每帧一次 JSON 解析。
+3. **渲染 / 测高 / 墨迹 / 折叠行四面读同一份视图**：`CodeBody` 换体（表格 → 真 `<table>`，
+   差分 → 三档墨色文本）；`measure.ts` 的 `codeOutSections` 同一判据（视图段不进文本行测量）；
+   墨迹逐行落位；折叠行读数换成「表格 4×3」/「差分 +3 −2」。
+
+**契约**（模型可见，真源 = `code-execution-tool.ts` 描述末句；解析判据 = `paper/code-view.ts`）：
+
+```js
+return { __view: 'table', columns: ['文件', '行数'], rows: [['a.ts', 12]], caption: '盘点' };
+return { __view: 'diff',  diff: '@@ -1 +1 @@\n-a\n+b' };
+```
+
+- 只认**对象**、只认**完成值段**（日志里出现 `__view` 不算程序返回值——同名键不越权）；
+- `columns` 缺省由最宽行派生 `#1..#N`（grid 原语同款兜底）、比行窄补空；`caption` 可缺；
+- `diff` 只有**文本**一项——目标路径由统一 diff 自己的 `--- a/x` / `+++ b/x` 头承担
+  （再开一个 `path` 字段 = 两个位置说同一件事，必然漂）；
+- 上限：**200 行 / 12 列 / 单元格 200 字符**，超出**出注记行**
+  （`其余 N 行未显示（共 M 行）` / `其余 N 列未显示` / `N 格超长已截断`）——不静默丢；
+- 解析不了（非 JSON / 被输出预算截断 / 未知 `__view`）⇒ 照旧渲染 JSON 文本（信息不静默丢）。
+
+### 7.2 测高（本批唯一的新几何面）
+
+表格在 `.pp-out` 盒内（与文本段同一道 200px 滚动闸），几何与**正文表格（GFM）同族**：
+`tableRowH` 同一把尺子 + 均分列宽（CSS `table-layout: fixed` 把列宽钉成 `w/cols`，静态镜像因此**同宽**，
+正文表格是 auto 布局只能近似）。折行点仍是 canvas 与 DOM 的老分歧 ⇒ 有视图的程文**挂 RO 实测**
+（`needsObservedHeight(…, hasView)`；无视图的程文照旧不挂——468/468 零偏差的既有实测不动）。
+
+### 7.3 测试（新增 22 例，全绿）
+
+| 用例 | 命运 |
+|---|---|
+| table 归一：数字/布尔/null/对象成文本；columns 缺省派生、短补空；题签 | **新增** |
+| 上限：200 行 / 12 列 / 200 字符 → dropped 计数 + 注记行文案 | **新增** |
+| diff 归一（尾空行去掉）+ 增删读数；空 diff 不出视图 | **新增** |
+| 只认完成值段（日志里的 `__view` 不算）；未知 `__view` / 非 JSON / 截断 JSON / 数组 → null | **新增** |
+| translate：`payload.view` 进块、`output` 原文一字不动；无视图时 payload 无该字段（零回归） | **新增** |
+| 子代理组内程文块同构（同一构造点） | **新增** |
+| 渲染：真 `<table>`（表头 + 行）、JSON 原文不上纸、题签/注记行、差分三档墨、折叠态视图仍在 | **新增** |
+| 测高：随行数长高 + 超上限封顶（与文本段同闸）+ 每行真占高 + 墨迹逐行 + 实测族判据 | **新增** |
+| 折叠读数：「表格 2×2」/「差分 +2 −1」；无视图仍走字数 | **新增** |
+| 既有 `tests/code-execution.test.ts` 41 例 / `paper-code-block` 6 例 / `paper-code-output` 12 例 | **零改动**（执行路径与信封未动，视图只在纸面派生） |
+
+### 7.4 模型面（唯一可见变化 = 描述末句）
+
+描述追加一句（`code_execution` 的 `description`，**不是** `parameters`）：
+
+> Structured result for the paper: `return {__view:"table", columns:[…], rows:[[…]], caption?}` renders as a
+> table and `{__view:"diff", diff:"<unified diff>"}` renders as a diff (the value itself still reaches you as JSON).
+
+baseline 重录：standard + minimal 两轨的 `phase-1/tool-schemas.effective.json`（审批单第一条，2026-10-30）。
+
+### 7.5 门禁与实测
+
+`vitest`（`paper-code-view` 22 例新增 + 相关面全绿）+ `build` + `biome ci` 0 error +
+`verify:convergence` 双轨（**需重录**，模型可见描述变了）。
+
+**实测（2026-10-30）**：vitest 全量 **445 文件 / 4773 例绿**（其中新增 `paper-code-view.test.tsx` **22 例**；
+`code-execution` 41 / `paper-code-block` 6 / `paper-code-output` 12 / `paper-tool-present` 29 全为零改动通过）
++ `build` ✅（含出厂产物构建闸——`paper/code-view.ts` 已登记两包名册 `shared`）
++ `biome ci` **0 error**（2 条 `use-branch-drag.ts` 的既有 info，非本批文件）
++ convergence 双轨**重录后**对拍绿（`verify:convergence` exit 0，漂移面 = 每个快照里
+`code_execution` 描述那一行，`parameters` 及后续各行逐字不变）+ `doc-check` 绿。
+
+**一处遗留（记在账上，不在本批）**：`__view` 的**形状**没有 schema 校验层（zod 在工具入参侧，
+完成值是运行时值）——解析失败一律回落 JSON 文本，所以「写错形状」的代价是**看不到表**，
+不是错卡/白屏。真正的形状护栏 = `paper/code-view.ts` 的解析判据 + 22 例测试。
+
 
 ## 8. 挂起（明确不做，附理由）
 
@@ -288,8 +362,9 @@ lockKey: (args) => {
 |---|---|
 | P1 | `cd src-ui && npm run build` + `npx vitest run tests/code-execution.test.ts` + `npx biome ci .` + `npm run verify:convergence`（**需先重录**） |
 | P2 / P3 / P4 | 同上（同样在 `src-ui` 下），但 convergence **必须零漂移**（不重录即通过） |
+| P5 | 同上 + `npx vitest run tests/paper-code-view.test.tsx`；convergence **需先重录**（描述末句变了——模型可见面唯一变化） |
 
-**baseline 流程（P1 专有）**：`src-ui/tests/convergence/baseline-change-request.md` 追加一条（变更内容 = 描述里
+**baseline 流程（P1 / P5）**：`src-ui/tests/convergence/baseline-change-request.md` 追加一条（变更内容 = 描述里
 多了绑定目录与一条示例，模型可见面唯一变化；用户可感知行为 = 无）→ 批准 → standard 与 minimal 两轨各重录 →
 `verify:convergence` 双轨绿。**record 永不上 CI**，重录动作单独一个 commit，不夹带代码。
 

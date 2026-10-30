@@ -125,6 +125,23 @@
 
 守护：`tests/paper-tool-present.test.ts`（真机载荷 → 用户可见文本）；渲染/测高同源见 `tests/paper-tool-payload.test.tsx`、墨迹见 `tests/paper-ink.test.ts`。
 
+### 4.1b 程文卡 = 程序语义（`code`，P2-A；2026-10-30 P5 结构化完成值）
+
+程序执行卡（`code`）与脚注卡的分离点：**卡片是程序语义（体 / 出），不是调用语义（参 / 果）**。三段式——
+程序体（等宽，石青左线 + 深纸底，320 封顶）→ 日志 / 完成值 / 错误（信封 `── logs ──` / `── result ──` / `── code run failed (kind) ──`
+由 `paper/tool-text.ts` 的 `codeSections` 解析成真段，段头走 `.pp-sec-head` 同一套）；折叠态收程序体、
+留输出/错误（执行结果一眼可见）。
+
+**结构化完成值（P5）**：程序 `return {__view:'table', columns?, rows, caption?}` / `{__view:'diff', diff}`
+时，**完成值段换体**——表格渲成真 `<table>`（与正文表格同族视觉：等宽 11.5 + 弱规线，列宽均分由
+`table-layout: fixed` 钉死）、差分渲成三档墨文本（`.pp-add/.pp-del/.pp-hunk` 与抄录块同判据）。
+纪律：① 视图从**完成值段文本**投影（`paper/code-view.ts`），**模型面一字不动**（工具返回值照旧 JSON）；
+② 上限 200 行 / 12 列 / 单元格 200 字符，超出**出注记行**（不静默丢）；③ 解析不了 ⇒ 照旧渲染 JSON 文本；
+④ 折叠行读数换成「表格 4×3」/「差分 +3 −2」；⑤ 测高与正文表格同一把尺子（`tableRowH`）+ RO 实测收口
+（`needsObservedHeight(…, hasView)`——无视图的程文照旧不挂）。
+
+守护：`tests/paper-code-view.test.tsx`（解析/归一/上限/渲染/测高/墨迹/折叠读数）+ `tests/paper-code-output.test.tsx`（信封分段）。
+
 **文类签（页边注）**：来文 / 正文 / 夹注 / 脚注 / 抄录 / 拟策（贴黄），配机读码 `USER / AGENT / THINK / TOOL / CODE / PLAN`。
 
 ### 4.2 会话流节奏（2026-09-03 stream-rhythm 立法 · D1 试值待真机终审）

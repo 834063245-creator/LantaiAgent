@@ -1826,6 +1826,32 @@
   color: var(--fail);
 }
 
+/* ── 结构化完成值视图（P5，2026-10-30）：程序 return {__view:'table'|'diff',…} ──
+ * 病根：完成值是 JSON 对象时，纸面把整段当文本倾倒——用户要「程序结果直接出表格」，
+ * 拿到的是「一坨 JSON」。视图段换体：表格走**正文表格同族视觉**（.pp-md-table：
+ * 等宽 11.5 + 弱规线），列宽均分由 table-layout: fixed 钉死（测高镜像按 w/cols 算，
+ * 两侧同宽）；差分走三档墨（.pp-sec .pp-add/.pp-del/.pp-hunk 已收口，不另起一套）。
+ * 体仍在 .pp-out 盒内 ⇒ 滚动上限（200）与文本段同款，测高同闸。
+ * 题签/注记行下距 = measure.ts CODE_VIEW_CAPTION_GAP / CODE_VIEW_NOTE_GAP（改一处同改两处）。 */
+.pp-block.pp-code .pp-code-view-table {
+  table-layout: fixed;
+  margin: 0;
+}
+.pp-block.pp-code .pp-code-view-caption {
+  margin-bottom: 6px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-md-tableSize);
+  line-height: var(--pp-md-tableLh);
+  color: var(--ink-3);
+}
+.pp-block.pp-code .pp-code-view-note {
+  margin-top: 6px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-md-tableSize);
+  line-height: var(--pp-md-tableLh);
+  color: var(--ink-3);
+}
+
 /* ── 抄录（diff）：栏内图版，3px 硬左线 + 上下规线 + 米黄底 ── */
 .pp-block.pp-diff .pp-lang {
   font-family: var(--f-mono);

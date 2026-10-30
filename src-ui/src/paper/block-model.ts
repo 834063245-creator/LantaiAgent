@@ -18,6 +18,7 @@
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-contract';
 import type { ChatImageRef } from '../provider/types';
 import type { AssistantPart, ToolCallPart } from '../ui/message-model';
+import type { CodeView } from './code-view';
 
 export type BlockState = 'flow' | 'pinned';
 
@@ -83,6 +84,11 @@ export interface BlockPayloads {
     err?: string;
     /** 起跑时刻（毫秒）——同 tool 块行走秒。 */
     startedAt?: number;
+    /** 结构化完成值视图（P5，2026-10-30）：程序 `return {__view:'table'|'diff', …}`
+     *  时由转译层从 `output` 的完成值段投影（`paper/code-view`）。命中则渲染面用
+     *  真表格 / 差分取代那段 JSON 文本；**模型面字节不变**（视图只是展示投影）。
+     *  纯 JSON（行/列/文本），随钉住块的内容快照原样落盘。 */
+    view?: CodeView;
   };
   plan: {
     planId: string;

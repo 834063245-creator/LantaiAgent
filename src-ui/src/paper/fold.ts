@@ -32,6 +32,7 @@
 
 import { displayToolName } from '../ui/tool-semantics';
 import type { BlockKind, SourcedBlock } from './block-model';
+import { type CodeView, codeViewReadout } from './code-view';
 import { type RhythmFamily, rhythmFamilyOfTool } from './grammar';
 import { plateSignOf } from './plate-sign';
 import { presentTool } from './tool-present';
@@ -151,6 +152,7 @@ function foldLabelRaw(kind: BlockKind, payload: unknown, folded: boolean, block?
     label?: string;
     name?: string;
     status?: string;
+    view?: CodeView;
     items?: Array<{ name?: string; args?: string; readOnly?: boolean; status?: string }>;
   };
   const outSuffix = (outputLen?: number): string => {
@@ -179,6 +181,9 @@ function foldLabelRaw(kind: BlockKind, payload: unknown, folded: boolean, block?
     const who = p.description || '程序';
     if (!folded) return `▾ 收起 ${who}`;
     if (!p.code && !p.output && !p.err) return `▸ ${who} · 待执行`;
+    // 结构化完成值（P5）：读数换成「表格 12×4」/「差分 +3 −2」——折叠行是用户
+    // 95% 时间看到的那一行，行列/增删比字数有用（与脚注 summary 同一纪律）。
+    if (p.view) return `▸ ${who} · ${codeViewReadout(p.view)}`;
     const contentLen = codeSections(p.output).reduce((n, s) => n + s.raw.length, 0);
     return `▸ ${who}${outSuffix(contentLen)}`;
   }

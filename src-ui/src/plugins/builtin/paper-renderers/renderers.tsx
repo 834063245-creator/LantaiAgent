@@ -35,6 +35,9 @@ import type { ReactNode } from 'react';
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../../../agent/plan/plan-contract';
 import type { BlockRendererContribution, BlockRendererProps } from '../../../composition/renderer-service';
+// 结构化完成值视图（P5 2026-10-30）：解析/归一的判据住内核 `paper/code-view.ts`，
+// 渲染面只消费它的产物（表格行列 / 差分行墨色）——不许在渲染器里再判一次形状。
+import { type CodeTableView, type CodeView, diffViewDisplay, tableViewNote } from '../../../paper/code-view';
 import { foldLabel, foldPreviewLine } from '../../../paper/fold';
 import {
   type MdBlock,
@@ -56,12 +59,12 @@ import {
 // 本地图 data URI 的 MIME/扩展名取用（imageSrcRef 分类已保证图片扩展名）——
 // 表与判据住内核 `paper/viewer-exts.ts`（纯常量，随包内联；名册 shared 已登记）。
 import { fileExtOf, VIEWER_IMAGE_MIMES } from '../../../paper/viewer-exts';
+import type { ChatImageRef } from '../../../provider/types';
+import type { PlanPart } from '../../../ui/message-model';
 // 差分语言判据（分块与块体渲染的单一真源——转译层把围栏一律拆成抄录块，
 // 块体在这里按语言分流：真差分 → 差分着色；其余 → hljs 代码体）。
 // A4 销账 W1（2026-09-28）：判据本体住内核 `paper/translate.ts`（带状态——块 id 发号器
 // 经 `createBlock` 落 `paper/block-model.ts` 的 `let blockSeq`），故走本包宿主桥。
-import type { ChatImageRef } from '../../../provider/types';
-import type { PlanPart } from '../../../ui/message-model';
 import {
   isDiffLang,
   MermaidBlock,
@@ -1087,23 +1090,27 @@ function PayloadText({ display }: { display: ToolDisplay }) {
 const PayloadSection = memo(function PayloadSection({
   label,
   display,
+  body,
   variant,
   gap,
 }: {
   label: string;
-  display: ToolDisplay;
+  /** 文本展示模型（缺省时须给 body——结构化体自带渲染）。 */
+  display?: ToolDisplay;
+  /** 结构化体（P5 程文表格）：替掉文本体，段头/盒类不变（测高仍按 SEC_HEAD_H + 体高）。 */
+  body?: ReactNode;
   variant: 'args' | 'out' | 'err' | 'result';
   /** 段头前留空档（首段紧跟折叠行/程序体，不留） */
   gap?: boolean;
 }) {
   const boxClass = variant === 'err' ? 'pp-out pp-out--err' : variant === 'args' ? 'pp-args' : 'pp-out';
-  const body = <PayloadText display={display} />;
+  const content = body ?? (display ? <PayloadText display={display} /> : null);
   return (
     <div className={`pp-sec pp-sec--${variant}${gap ? ' pp-sec--gap' : ''}`}>
       <div className="pp-sec-head">
         <span className="pp-sec-label">{label}</span>
       </div>
-      {variant === 'args' ? <pre className={boxClass}>{body}</pre> : <div className={boxClass}>{body}</div>}
+      {variant === 'args' ? <pre className={boxClass}>{content}</pre> : <div className={boxClass}>{content}</div>}
     </div>
   );
 });
@@ -1137,16 +1144,59 @@ function ToolBody({ block, folded }: BlockRendererProps) {
   );
 }
 
+/** 结构化完成值 · 表格（P5）：**真表格 DOM**——与正文表格同族视觉（`.pp-md-table`：
+ *  等宽 11.5 + 弱规线），列宽均分（CSS `table-layout: fixed` 与测高镜像同宽）。
+ *  省略量出注记行（行/列/超长单元格）——不静默丢信息。 */
+function CodeViewTable({ view }: { view: CodeTableView }) {
+  const note = tableViewNote(view);
+  return (
+    <div className="pp-code-view">
+      {view.caption && <div className="pp-code-view-caption">{view.caption}</div>}
+      <table className="pp-md-table pp-code-view-table">
+        <thead>
+          <tr>
+            {view.columns.map((c, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 表头按列位渲染（同名列是合法的）
+              <th key={i}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {view.rows.map((row, r) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 表行按位置渲染，行序即身份
+            <tr key={r}>
+              {row.map((cell, c) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 单元格按行列位置渲染
+                <td key={c}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {note && <div className="pp-code-view-note">{note}</div>}
+    </div>
+  );
+}
+
 /** 程序执行卡（P2-A）：三段式——程序体（等宽）→ 日志/完成值（终态写入）。
  *  与 ToolBody 的分离点：code 是程序语义（体/出）而非调用语义（参/果）。
  *  折叠态收程序体、留输出/错误（执行结果一眼可见——测量端同款镜像）。
  *  2026-09-19 换代：输出不再是「一段直出」——信封解析成真段（日志/完成值/错误），
- *  段序与测高由 paper/tool-text 的 codeDisplay 单一真源给出（渲染/测量同源）。 */
+ *  段序与测高由 paper/tool-text 的 codeDisplay 单一真源给出（渲染/测量同源）。
+ *  2026-10-30（P5 结构化完成值）：`payload.view` 存在时**完成值段换体**——表格走
+ *  真表格 DOM、差分走三档墨色文本；JSON 原文仍在卷里（段文本只是不画出来），
+ *  模型面一字未动（视图是展示投影，见 paper/code-view 头注）。 */
 function CodeBody({ block, folded }: BlockRendererProps) {
-  const p = block.payload as { code: string; output?: string; err?: string };
+  const p = block.payload as { code: string; output?: string; err?: string; view?: CodeView };
   const showSrc = !folded && !!p.code;
-  const secs = useMemo(() => codeDisplay(p.output), [p.output]);
+  const view = p.view ?? null;
+  // 视图取代完成值段（同一条信封文本的两种读法——不并列，否则同一份结果画两遍）
+  const secs = useMemo(() => {
+    const all = codeDisplay(p.output);
+    return view ? all.filter((sec) => sec.kind !== 'result') : all;
+  }, [p.output, view]);
   const errDisplay = useMemo(() => (hasPayloadToShow(p.err) ? toolDisplay(p.err) : null), [p.err]);
+  const hasBody = showSrc || secs.length > 0;
   return (
     <>
       {showSrc && <pre className="pp-code-src">{p.code}</pre>}
@@ -1160,9 +1210,13 @@ function CodeBody({ block, folded }: BlockRendererProps) {
           gap={showSrc || i > 0}
         />
       ))}
-      {errDisplay && (
-        <PayloadSection label="错误" display={errDisplay} variant="err" gap={showSrc || secs.length > 0} />
+      {view?.kind === 'diff' && (
+        <PayloadSection label="完成值" variant="result" gap={hasBody} display={diffViewDisplay(view)} />
       )}
+      {view?.kind === 'table' && (
+        <PayloadSection label="完成值" variant="result" gap={hasBody} body={<CodeViewTable view={view} />} />
+      )}
+      {errDisplay && <PayloadSection label="错误" display={errDisplay} variant="err" gap={hasBody || view !== null} />}
     </>
   );
 }

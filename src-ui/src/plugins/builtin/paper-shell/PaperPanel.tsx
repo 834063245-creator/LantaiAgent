@@ -70,7 +70,7 @@ import {
   worldToScreen,
 } from './host';
 import { InkLayer } from './InkLayer';
-import { needsObservedHeight, observedKeyOf } from './measure';
+import { blockHasView, needsObservedHeight, observedKeyOf } from './measure';
 import {
   type ProvenanceState,
   provenanceText,
@@ -1418,7 +1418,7 @@ export function PaperPanel() {
                         data-block-id={b.id}
                         data-block-state={b.state}
                         data-block-observed={
-                          needsObservedHeight(b.kind, b.asset != null)
+                          needsObservedHeight(b.kind, b.asset != null, blockHasView(b))
                             ? observedKeyOf(b, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
                             : undefined
                         }
@@ -1483,7 +1483,7 @@ export function PaperPanel() {
                         data-block-id={b.id}
                         data-block-state={b.state}
                         data-block-observed={
-                          needsObservedHeight(b.kind, b.asset != null)
+                          needsObservedHeight(b.kind, b.asset != null, blockHasView(b))
                             ? observedKeyOf(b, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
                             : undefined
                         }

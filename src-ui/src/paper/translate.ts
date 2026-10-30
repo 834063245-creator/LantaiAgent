@@ -23,8 +23,9 @@
 // version 信号触发重转译，块 id 按消息 id+part 索引稳定重建。
 
 import type { AssistantMessage, ChatMessage, ToolCallPart, UserMessage } from '../ui/message-model';
-import type { SourcedBlock } from './block-model';
+import type { BlockPayloads, SourcedBlock } from './block-model';
 import { createBlock, DEFAULT_BLOCK_WIDTH } from './block-model';
+import { codeViewOf } from './code-view';
 import { type RhythmFamily, rhythmFamilyOfBlock } from './grammar';
 
 /** 稳定块 id：同一消息同一 part 在重转译后得到同一 id（React key 稳定 +
@@ -355,6 +356,33 @@ function emitTextWithFences(
   }
 }
 
+/** 程文块 payload（P2-A 三段式；P5 起带结构化视图）。主路径与子代理路径**共用同一构造**
+ *  ——两处各拼一份必然漂（子代理卡少一个字段就是一条静默的不一致）。
+ *  视图从 `part.output` 的完成值段投影（`paper/code-view`）：模型面字节不变，
+ *  只是纸面把那段 JSON 换成表格 / 差分。 */
+function codeBlockPayload(part: ToolCallPart, descriptionPrefix = ''): BlockPayloads['code'] {
+  let code = '';
+  let description = part.label;
+  try {
+    const parsed = JSON.parse(part.args || '{}') as { code?: string; description?: string };
+    if (typeof parsed.code === 'string') code = parsed.code;
+    if (typeof parsed.description === 'string') description = parsed.description;
+  } catch {
+    /* args 未流完/非 JSON：保持空程序体（终态会被 ToolResult 覆盖） */
+  }
+  const view = codeViewOf(part.output);
+  return {
+    toolId: part.toolId,
+    description: `${descriptionPrefix}${description}`,
+    code,
+    status: part.status,
+    output: part.output,
+    err: part.err,
+    ...(part.startedAt !== undefined ? { startedAt: part.startedAt } : {}),
+    ...(view ? { view } : {}),
+  };
+}
+
 function translateAssistantParts(
   msg: AssistantMessage,
   out: SourcedBlock[],
@@ -420,30 +448,7 @@ function translateAssistantParts(
         // code_execution 专属块（P2-A 拍板）：三段式形态与 tool 单进单出分离；
         // 判据 name === 'code_execution'（常驻名，不进 DOMAIN_SPECS）。
         if (part.name === 'code_execution') {
-          let code = '';
-          let description = part.label;
-          try {
-            const parsed = JSON.parse(part.args || '{}') as { code?: string; description?: string };
-            if (typeof parsed.code === 'string') code = parsed.code;
-            if (typeof parsed.description === 'string') description = parsed.description;
-          } catch {
-            /* args 未流完/非 JSON：保持空程序体（终态会被 ToolResult 覆盖） */
-          }
-          emit(
-            'code',
-            {
-              toolId: part.toolId,
-              description,
-              code,
-              status: part.status,
-              output: part.output,
-              err: part.err,
-              ...(part.startedAt !== undefined ? { startedAt: part.startedAt } : {}),
-            },
-            idx,
-            part,
-            640,
-          );
+          emit('code', codeBlockPayload(part), idx, part, 640);
           break;
         }
         emit(
@@ -542,29 +547,8 @@ function translateAssistantParts(
               case 'tool':
                 // code_execution 专属块同父路径（子 Agent parts 同构）
                 if (sp.name === 'code_execution') {
-                  let subCode = '';
-                  let subDesc = sp.label;
-                  try {
-                    const pp = JSON.parse(sp.args || '{}') as { code?: string; description?: string };
-                    if (typeof pp.code === 'string') subCode = pp.code;
-                    if (typeof pp.description === 'string') subDesc = pp.description;
-                  } catch {
-                    /* 未流完 */
-                  }
                   return {
-                    ...createBlock(
-                      'code',
-                      {
-                        toolId: sp.toolId,
-                        description: `[子] ${subDesc}`,
-                        code: subCode,
-                        status: sp.status,
-                        output: sp.output,
-                        err: sp.err,
-                        ...(sp.startedAt !== undefined ? { startedAt: sp.startedAt } : {}),
-                      },
-                      { messageId: msg._id, part: sp },
-                    ),
+                    ...createBlock('code', codeBlockPayload(sp, '[子] '), { messageId: msg._id, part: sp }),
                     id: subId,
                     w: 640,
                   };

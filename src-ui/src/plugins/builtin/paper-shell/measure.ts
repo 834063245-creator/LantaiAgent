@@ -24,6 +24,7 @@ import {
 } from '@chenglou/pretext/rich-inline';
 import { assetKinds } from '../../../agent/asset-kinds';
 import type { BlockKind, SourcedBlock } from '../../../paper/block-model';
+import { type CodeTableView, type CodeView, diffViewDisplay, tableViewNote } from '../../../paper/code-view';
 import {
   type MdBlock,
   type MdInline,
@@ -520,6 +521,8 @@ interface PayloadLike {
   output?: string;
   err?: string;
   code?: string;
+  /** 结构化完成值视图（P5；转译层从 output 投影，见 paper/code-view）。 */
+  view?: CodeView | null;
 }
 
 /** 封顶测量：真实行高 × 行数，超 maxH 截断（滚动部分不占高）。 */
@@ -1233,9 +1236,19 @@ const BUILTIN_MEASURE_KINDS = new Set<string>([
  *  正文短）；工具 tool / 程文 code 载荷段全部封顶（468/468 零偏差）；工具组/
  *  子代理头是恒高结构块（一行注线 + 折叠行）。省下的 RO 目标是虚拟化窗口里
  *  数量最多的一批。 */
-export function needsObservedHeight(kind: BlockKind, hasAsset: boolean): boolean {
+export function needsObservedHeight(kind: BlockKind, hasAsset: boolean, hasView = false): boolean {
   if (hasAsset || kind === 'plan' || !BUILTIN_MEASURE_KINDS.has(kind)) return true;
+  // 程文的结构化视图表格（P5，2026-10-30）：列宽虽由 table-layout: fixed 钉死，
+  // 折行点仍是 canvas 与 DOM 的老分歧（同正文表格先例）⇒ 挂 RO 收口。
+  // 无视图的程文照旧不挂（载荷段全部封顶，468/468 零偏差的既有实测）。
+  if (kind === 'code') return hasView;
   return kind === 'reasoning' || kind === 'markdown' || kind === 'diff';
+}
+
+/** payload 是否带结构化完成值视图（P5）——实测族判据的入参（纯读，零解析）。
+ *  壳层（PaperPanel 的 data-block-observed）与测高两处同判据，导出一份防漂。 */
+export function blockHasView(b: Pick<SourcedBlock, 'payload'>): boolean {
+  return (b.payload as { view?: unknown } | null | undefined)?.view != null;
 }
 
 /** 测试复位（生产不调用）。 */
@@ -1445,15 +1458,35 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
       }
       secs.forEach((sec, i) => {
         const gap = src || i > 0 ? SEC_HEAD_GAP : 0;
-        out.push({
-          text: sec.text,
-          font: PAPER_OUT_FONT,
-          lineHeight: PAPER_OUT_LINE_HEIGHT,
-          inset: 0,
-          y: y + SEC_HEAD_H + gap,
-          cap: Math.floor(CODE_OUT_TEXT_MAX / PAPER_OUT_LINE_HEIGHT),
-        });
-        y += SEC_HEAD_H + gap + cappedH(sec.text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX);
+        const top = y + SEC_HEAD_H + gap;
+        if (sec.table) {
+          // 表格视图：逐行落位（与 markdown 表格同一墨迹形态——一行一源，
+          // 行高由 tableViewGeometry 一次算清）；越出滚动上限的行不画（看不见）。
+          const g = tableViewGeometry(sec.table, b.w);
+          const cap = top + Math.min(g.h, CODE_OUT_TEXT_MAX);
+          let ry = top + g.bodyTop;
+          [sec.table.columns, ...sec.table.rows].forEach((row, r) => {
+            if (ry >= cap) return;
+            out.push({
+              text: row.join(' '),
+              font: CODE_VIEW_FONT,
+              lineHeight: MD_TABLE_LINE_HEIGHT,
+              inset: 0,
+              y: ry + MD_TABLE_CELL_PAD_V / 2,
+            });
+            ry += g.rowHs[r];
+          });
+        } else {
+          out.push({
+            text: sec.text,
+            font: PAPER_OUT_FONT,
+            lineHeight: PAPER_OUT_LINE_HEIGHT,
+            inset: 0,
+            y: top,
+            cap: Math.floor(CODE_OUT_TEXT_MAX / PAPER_OUT_LINE_HEIGHT),
+          });
+        }
+        y += SEC_HEAD_H + gap + codeSectionBodyH(sec, b.w);
       });
       return out;
     }
@@ -1487,14 +1520,76 @@ function markdownInkSources(text: string, w: number, inset0 = 0, y0 = 0): InkSou
   return measureMdBlocks(parseMarkdown(text), w, y0, inset0).ink;
 }
 
+/** 程文段（测高/墨迹共用的段投影）：文本段，或结构化视图的表格段。 */
+interface CodeOutSection {
+  kind: string;
+  /** 文本段正文（表格段为空串——表体按行列几何另算）。 */
+  text: string;
+  /** 表格视图（P5）：段体高由 tableViewGeometry 给，不走文本行测量。 */
+  table?: CodeTableView;
+}
+
 /** 程文（code）块的分段输出（2026-09-19 换代）：信封段（日志/完成值/错误）
  *  + executor 级错误段。段序 = 信封出现序；段数决定段头与 gap 的累加。
  *  **单一入口**：inkSourcesFor（墨迹 y）与 measureBlockHeight（块高）两处镜像
- *  共用——渲染端 CodeBody 消费同一 codeDisplay（三段逐字对齐）。 */
-function codeOutSections(p: { output?: string; err?: string }): Array<{ kind: string; text: string }> {
-  const secs = codeDisplay(p.output).map((s) => ({ kind: s.kind, text: s.display.text }));
+ *  共用——渲染端 CodeBody 消费同一 codeDisplay（三段逐字对齐）。
+ *  2026-10-30（P5）：`view` 存在时**完成值段换体**——表格段交 markdown 表格同族的
+ *  行几何，差分段落成三档墨色文本（与脚注的 `git_diff` 同判据）。 */
+function codeOutSections(p: PayloadLike): CodeOutSection[] {
+  const view = p.view ?? null;
+  const secs: CodeOutSection[] = codeDisplay(p.output)
+    // 视图取代完成值段——与渲染端 CodeBody 同一判据（同一份结果不画两遍）
+    .filter((s) => !(view && s.kind === 'result'))
+    .map((s) => ({ kind: s.kind, text: s.display.text }));
+  if (view) {
+    secs.push(
+      view.kind === 'table'
+        ? { kind: 'result', text: '', table: view }
+        : { kind: 'result', text: diffViewDisplay(view).text },
+    );
+  }
   if (hasPayloadToShow(p.err)) secs.push({ kind: 'error', text: toolDisplay(p.err).text });
   return secs;
+}
+
+/* ── 结构化完成值视图的几何（P5）──
+ * 表格视图与正文表格（markdown GFM）**同族视觉**：均分列宽 + 单元内距 + 底规线
+ * （`tableRowH` 同一把尺子），外加可选题签行与省略注记行。列宽由 CSS
+ * `table-layout: fixed` 钉成 w/cols ⇒ 静态镜像与 DOM 同宽（正文表格是 auto 布局，
+ * 靠 RO 收口；本视图仍挂 RO——折行点差仍可能差一行，见 needsObservedHeight）。 */
+const CODE_VIEW_FONT = `${MD_TABLE_SIZE}px ${MONO_STACK}`;
+/** 题签行下距 / 注记行上距（CSS .pp-code-view-caption / -note 同值——改一处同改两处）。 */
+const CODE_VIEW_CAPTION_GAP = 6;
+const CODE_VIEW_NOTE_GAP = 6;
+
+interface TableViewGeometry {
+  /** 表体总高（题签 + 表行 + 注记）。 */
+  h: number;
+  /** 逐行高（表头在前；墨迹逐行落位）。 */
+  rowHs: number[];
+  /** 表体起点（题签行之后）。 */
+  bodyTop: number;
+}
+
+/** 视图表格的纵向几何（测高与墨迹**同一趟**走查产出——两处各算一次必然漂）。 */
+function tableViewGeometry(view: CodeTableView, w: number): TableViewGeometry {
+  const cols = Math.max(1, view.columns.length);
+  const cellRows = [view.columns, ...view.rows].map((row) => row.map((t): MdInline[] => [{ text: t }]));
+  const rowHs = cellRows.map((r) => tableRowH(r, cols, w));
+  const caption = view.caption ?? '';
+  const note = tableViewNote(view);
+  const captionH = caption
+    ? measureTextHeight(caption, w, CODE_VIEW_FONT, MD_TABLE_LINE_HEIGHT) + CODE_VIEW_CAPTION_GAP
+    : 0;
+  const noteH = note ? measureTextHeight(note, w, CODE_VIEW_FONT, MD_TABLE_LINE_HEIGHT) + CODE_VIEW_NOTE_GAP : 0;
+  return { h: captionH + rowHs.reduce((a, b) => a + b, 0) + noteH, rowHs, bodyTop: captionH };
+}
+
+/** 段体高：文本段按封顶行高；表格段按表格几何。两者共用 .pp-out 的滚动上限
+ *  （max-height 200 是同一道闸——超出部分滚起来，不占流内高）。 */
+function codeSectionBodyH(sec: CodeOutSection, w: number): number {
+  if (sec.table) return Math.min(tableViewGeometry(sec.table, w).h, CODE_OUT_TEXT_MAX);
+  return cappedH(sec.text, w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX);
 }
 
 /* ── markdown 块测量（渲染 MarkdownBody 的逐字镜像——消费同一 parseMarkdown 模型）── */
@@ -1797,10 +1892,7 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       const codeH = showSrc ? codeSrcH((b.payload as { code?: string }).code ?? p.args ?? '', b.w) : 0;
       let outH = 0;
       secs.forEach((sec, i) => {
-        outH +=
-          SEC_HEAD_H +
-          (showSrc || i > 0 ? SEC_HEAD_GAP : 0) +
-          cappedH(sec.text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX);
+        outH += SEC_HEAD_H + (showSrc || i > 0 ? SEC_HEAD_GAP : 0) + codeSectionBodyH(sec, b.w);
       });
       return TOOL_PAD_TOP + FOLD_ROW_H + codeH + outH;
     }
@@ -1956,7 +2048,7 @@ export function measureBlockHeightCached(
    * 独有**的竖直增量，签名里必须带 state——否则同一块在流/钉两态之间共用一条
    * 缓存，拔钉/钉住后高度照旧（虚拟化剔除矩形错、洞位错）。 */
   if (b.state === 'pinned') return pinnedBlockHeightCached(b, cache, folded, sidecarFolded, sidecarOut);
-  const obsKey = needsObservedHeight(b.kind, b.asset != null)
+  const obsKey = needsObservedHeight(b.kind, b.asset != null, blockHasView(b))
     ? observedKeyOf(b, folded, sidecarFolded, sidecarOut)
     : null;
   const obs = obsKey ? observedBlockHeightOf(obsKey, b.w) : undefined;
@@ -2006,7 +2098,7 @@ function pinnedBlockHeightCached(
   sidecarFolded = false,
   sidecarOut = false,
 ): number {
-  const obsKey = needsObservedHeight(b.kind, b.asset != null)
+  const obsKey = needsObservedHeight(b.kind, b.asset != null, blockHasView(b))
     ? observedKeyOf(b, folded, sidecarFolded, sidecarOut)
     : null;
   const obs = obsKey ? observedBlockHeightOf(obsKey, b.w) : undefined;

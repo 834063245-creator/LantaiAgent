@@ -32,6 +32,7 @@
 
 import { resolveSemanticToolName } from '../ui/tool-semantics';
 import {
+  diffLine,
   hasArgsToShow,
   hasPayloadToShow,
   sanitizePayloadText,
@@ -216,14 +217,6 @@ function handleLine(path: string, notes: string[]): ToolLine {
   const parts: ToolSpan[] = [sp(tidyPath(path), 'str')];
   for (const n of notes) parts.push(sp(` · ${n}`, 'note'));
   return tl(0, parts);
-}
-
-/** 差分行的语义档（与渲染端 DiffBody 的 diffLineClass 同判据，见 paper-renderers）。 */
-function diffLine(line: string): ToolLine {
-  if (line.startsWith('+')) return tl(0, [sp(line, 'add')]);
-  if (line.startsWith('-')) return tl(0, [sp(line, 'del')]);
-  if (line.startsWith('@@')) return tl(0, [sp(line, 'hunk')]);
-  return tl(0, [sp(line)]);
 }
 
 /** 去掉尾部空行（工具输出常以换行收尾，不该多一行空行）。 */

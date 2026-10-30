@@ -110,7 +110,12 @@ const CODE_EXECUTION_DESCRIPTION =
   'Use this for loops, fan-out reads, try/catch retries, and multi-step compositions instead of ' +
   'repeated single tool calls. Concurrency: read-only tools run in parallel; write tools are serialized. ' +
   'Only what you console.log or return is program output — curate it (output budget is capped). ' +
-  'Nested tool calls are audited exactly like direct calls (permissions/plan-mode rules apply).';
+  'Nested tool calls are audited exactly like direct calls (permissions/plan-mode rules apply). ' +
+  // P5（2026-10-30）：结构化完成值——纸面把结果段渲成真表格/差分（视图是展示投影，
+  // 完成值本身照旧以 JSON 文本回到模型）。协议真源 = paper/code-view.ts 的解析判据。
+  'Structured result for the paper: `return {__view:"table", columns:[…], rows:[[…]], caption?}` ' +
+  'renders as a table and `{__view:"diff", diff:"<unified diff>"}` renders as a diff ' +
+  '(the value itself still reaches you as JSON).';
 
 /** 描述（惰性）：基础文案 + 本卷绑定目录。 */
 function buildDescription(deps: CodeExecutionDeps): string {
