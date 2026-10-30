@@ -66,6 +66,15 @@ export interface SessionCompositionInfo {
   error: string | null;
 }
 
+/** 创作者模式入口的开场白（2026-10-30）：只预填、不自动发送——需求由用户补完，
+ *  避免「点一下就开始花钱」。做法部分写死，省得用户每次都要教 Agent 怎么用工具。 */
+export const CREATOR_OPENING_PROMPT = [
+  '我想做一个自定义模式（组合）。需求：',
+  '（在这里写你要的：例如只读、不许改文件、只用命令行、不要联网……）',
+  '',
+  '做法：先 composition(list, rows:true) 看现有组合与可用行 id；写 patch 后用 composition(validate) 校验；再用 composition(write) 保存。保存后告诉我它叫什么、怎么在新卷上使用。',
+].join('\n');
+
 /** 本卷是否空白（未跑过一轮）——**控件锁与写路径二道闸的唯一判据**。
  *  尺子与侧栏卷计数同款（msgStore 的消息数；空卷 = 无内容可丢 = 可安全重装配）。 */
 export function isSessionBlank(storeId: string, sessionId: number): boolean {

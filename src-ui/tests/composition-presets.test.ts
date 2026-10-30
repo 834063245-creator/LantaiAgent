@@ -38,7 +38,7 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     const table = builtinPresets();
     // V5 拆除（2026-08-22）：paper preset 行退役——纸壳是唯一主界面，
     // 主视图落点不再经 preset 分叉。
-    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator']);
+    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator', 'readonly']);
     expect(table.every((p) => p.builtin)).toBe(true);
   });
 
@@ -144,6 +144,28 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
       // defaultOff 行（composition 工具）默认不进任何组合：兜底面 = standard 的活行表
       expect(ids(r.tools)).toEqual(ids(resolvePresetComposition('standard').tools));
     });
+  });
+
+  it('readonly：关 shell/写/删/代码执行，只留读（出厂只读研究档）', async () => {
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyCapabilityChannel(async () => {
+        const r = resolvePresetComposition('readonly');
+        const toolIds = ids(r.tools);
+        // 关掉的面
+        expect(toolIds).not.toContain('plugin/hologram/shell-domain/run_shell');
+        expect(toolIds).not.toContain('plugin/hologram/fs-domain/write_file');
+        expect(toolIds).not.toContain('plugin/hologram/fs-domain/edit_file');
+        expect(toolIds).not.toContain('plugin/hologram/git-domain/git_commit');
+        expect(toolIds).not.toContain('plugin/hologram/office-domain/office');
+        expect(toolIds).not.toContain('plugin/hologram/cordis-domain/cordis_run');
+        // 留下的面
+        expect(toolIds).toContain('plugin/hologram/fs-domain/read_file_content');
+        expect(toolIds).toContain('plugin/hologram/search-domain/search_content');
+        expect(r.capabilities.map((c) => c.id)).not.toContain('code-execution-tool');
+        // 卷首说明段（锚在 claude-md 之后）
+        expect(r.prompt.map((s) => s.id)).toContain('readonly-research/scope');
+      }),
+    );
   });
 
   it('PresetId 围栏规则：合法/非法形态', () => {

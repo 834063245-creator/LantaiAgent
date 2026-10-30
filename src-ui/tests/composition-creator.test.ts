@@ -145,16 +145,16 @@ describe('composition 工具（创作者模式那双手）', () => {
       await call(tool, { action: 'write', id: 'bad-row', yaml: 'tools:\n  - id: ghost/x\n    disabled: true\n' }),
     ).toContain('拒绝写入');
 
-    const first = await call(tool, { action: 'write', id: 'readonly', yaml, name: '只读研究' });
+    const first = await call(tool, { action: 'write', id: 'my-readonly', yaml, name: '只读研究' });
     expect(first).toContain('已写入');
-    const dir = presetDirPath('/home/u/.lantai/composition', 'readonly');
+    const dir = presetDirPath('/home/u/.lantai/composition', 'my-readonly');
     expect(fake.files.get(dir + '/roster.patch.yml')).toContain('fs_read');
     expect(fake.files.get(dir + '/preset.yml')).toContain('只读研究');
     expect(fake.rescans).toBe(1);
 
-    const again = await call(tool, { action: 'write', id: 'readonly', yaml });
+    const again = await call(tool, { action: 'write', id: 'my-readonly', yaml });
     expect(again).toContain('已存在');
-    const overwrite = await call(tool, { action: 'write', id: 'readonly', yaml, overwrite: true });
+    const overwrite = await call(tool, { action: 'write', id: 'my-readonly', yaml, overwrite: true });
     expect(overwrite).toContain('已写入');
   });
 

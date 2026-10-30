@@ -618,6 +618,14 @@ export const ComposerDock = memo(function ComposerDock() {
   );
   const compLocked = activeSessionId != null && !compBlank;
   const compLabel = compInfo.presetId;
+  /** 创作者模式入口（2026-10-30）：起一卷 creator + 预填开场白（不自动发送）。 */
+  const onCreatorDraft = useCallback(async () => {
+    const r = (await core?.createCreatorSession?.()) ?? {
+      ok: false,
+      reason: '本坞未接到创作者入口（旧句柄）',
+    };
+    if (!r.ok) setLocalNotice(`无法进入创作者模式：${r.reason}`);
+  }, [core]);
 
   /* ── 斜杠命令（v2 2026-08-31；2026-09-19 command-surface-rework；2026-10-22 P2 翰解耦）：
    *    命令清单真源 = app/commands/command-catalog 合流点（本卷内建命令 +
@@ -1387,6 +1395,18 @@ export const ComposerDock = memo(function ComposerDock() {
             </>
           )}
         </div>
+        {/* 创作者模式入口（2026-10-30）：一键起一卷 creator，把开场白填进输入框
+            （不自动发送——需求由用户补完）。放在组合芯片右侧：两者是同一件事的
+            「选现成的」与「造一个新的」。 */}
+        <button
+          type="button"
+          className="pp-comp-pill pp-comp-creator"
+          data-tip="让 Agent 帮你做一个模式"
+          data-tip-hint="起一卷 creator（创作者模式）：说完需求，它写出组合并落盘；之后在新卷上选它"
+          onClick={() => void onCreatorDraft()}
+        >
+          ✎ 造模式
+        </button>
         <div className="pp-composer-settings-spacer" />
         {/* rework P2-3：权限三档分段控件（不随 DSH 迁移——权限是工作区级单一真相） */}
         <fieldset className="pp-mode-seg" aria-label="权限模式">

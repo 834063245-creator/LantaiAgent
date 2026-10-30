@@ -687,6 +687,16 @@ export class ChatCore {
     this._refreshGoalView();
   }
 
+  /** 创作者模式入口（2026-10-30）：起一卷 creator，把开场白填进输入框（**不自动发送**
+   *  ——需求由用户补完，避免点一下就开始花钱）。失败原因原样返回给控件显示。 */
+  async createCreatorSession(): Promise<{ ok: boolean; reason?: string }> {
+    const r = await SessionComposition.createSessionWithPreset(this._sessionCtx(), 'creator');
+    if (!r.ok) return { ok: false, reason: r.reason };
+    getChatStore(this.panelId).input.getState().setInputText(SessionComposition.CREATOR_OPENING_PROMPT);
+    this._refreshGoalView();
+    return { ok: true };
+  }
+
   /** **立枝**（会话树，2026-09-18）：从某条消息（节点）另起一枝——**枝含该节点**，
    *  本卷原样保留（字节零变化），新枝复制到此为止的历史并摊到案头。
    *  入口 = 块 hover 动作行（与「改」「重发」同族，见 `use-block-ops`）。

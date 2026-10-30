@@ -148,6 +148,69 @@ const BUILTIN_PRESETS: Array<{
       prompt: [{ insert: [{ id: 'composition-authoring', text: CREATOR_GUIDE }] }],
     },
   },
+  {
+    id: 'readonly',
+    metadata: {
+      name: 'readonly',
+      description: '只读研究：关掉 shell / 文件写入 / git 写 / office 写 / 代码执行，只留读、搜、网与 git 历史',
+    },
+    // 来源（2026-10-30）：creator 模式实测里 Agent 自己造出来的组合，用户跑通后收为出厂——
+    // 不进 creator 也能直接用。行 id 全部取自 composition(list, rows:true) 的现读清单。
+    patch: {
+      tools: [
+        // shell 全域：执行即任意副作用
+        { id: 'plugin/hologram/shell-domain/run_shell', disabled: true },
+        { id: 'plugin/hologram/shell-domain/bash_output', disabled: true },
+        { id: 'plugin/hologram/shell-domain/bash_kill', disabled: true },
+        { id: 'plugin/hologram/shell-domain/bash_wait', disabled: true },
+        // 文件写入面：保留 read_file_content / list_directory / glob
+        { id: 'plugin/hologram/fs-domain/write_file', disabled: true },
+        { id: 'plugin/hologram/fs-domain/edit_file', disabled: true },
+        { id: 'plugin/hologram/fs-domain/delete_file', disabled: true },
+        { id: 'plugin/hologram/fs-domain/create_directory', disabled: true },
+        { id: 'plugin/hologram/fs-domain/move_file', disabled: true },
+        { id: 'plugin/hologram/fs-domain/rename_file', disabled: true },
+        // git 写入面：保留 git_status / git_diff / git_log
+        { id: 'plugin/hologram/git-domain/git_stage', disabled: true },
+        { id: 'plugin/hologram/git-domain/git_commit', disabled: true },
+        { id: 'plugin/hologram/git-domain/git_push', disabled: true },
+        { id: 'plugin/hologram/git-domain/git_pull', disabled: true },
+        { id: 'plugin/hologram/git-domain/git_init', disabled: true },
+        { id: 'plugin/hologram/git-domain/git_checkout', disabled: true },
+        { id: 'plugin/hologram/git-domain/git_create_branch', disabled: true },
+        { id: 'plugin/hologram/git-domain/git_discard', disabled: true },
+        { id: 'plugin/hologram/git-domain/git_stash_push', disabled: true },
+        { id: 'plugin/hologram/git-domain/git_stash_pop', disabled: true },
+        // 其它能改盘 / 能动态执行的口子
+        { id: 'plugin/hologram/office-domain/office', disabled: true },
+        { id: 'plugin/hologram/cordis-domain/cordis_define', disabled: true },
+        { id: 'plugin/hologram/cordis-domain/cordis_run', disabled: true },
+        { id: 'plugin/hologram/cordis-domain/cordis_stop', disabled: true },
+        { id: 'plugin/hologram/cordis-domain/cordis_undefine', disabled: true },
+        { id: 'plugin/hologram/agent-isolation-domain/agent_isolation_merge', disabled: true },
+      ],
+      // 程序执行原语（程序体内可嵌套调工具）——不是读也不是搜索
+      capabilities: [{ id: 'code-execution-tool', disabled: true }],
+      prompt: [
+        {
+          insert: [
+            {
+              id: 'readonly-research/scope',
+              // 刻意不写锚点（2026-10-30）：锚点只存在于 prompt 通道（test 环境 / 用户
+              // 禁用 prompt-segments 时会缺）——缺锚点会让整个 preset 不可解析。追加表尾
+              // 稳且够用（creator 的指南段同理）。
+              text: [
+                '本卷是**只读研究模式**：可以读文件、搜内容、查依赖、读 git 历史、上网查资料，但不得改变工作区——',
+                '没有 shell，没有文件写入/移动/删除，没有 git 写操作，没有代码执行。',
+                '需要改动时，在回答里写清「改哪个文件、改成什么、为什么」，由用户在普通卷执行。',
+                '结论必须可回溯到你实际读到的文件与行号。',
+              ].join('\n'),
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 /** 内置 preset 清单（只读快照；每行返回同一 patch 对象——resolveRoster
