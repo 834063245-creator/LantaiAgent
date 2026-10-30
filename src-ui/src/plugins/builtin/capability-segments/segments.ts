@@ -37,6 +37,25 @@ function requireAgent(scope: BlueprintScope): Agent {
   return scope.agent;
 }
 
+/** 写锁键归一（P2）：工作区相对路径 → 绝对、去 `./`、统一分隔符、小写折叠。
+ *  折叠方向是**过度串行**（Windows 大小写、Linux `Foo`/`foo` 会并成一把锁）——
+ *  安全的错误方向；漏串行才是 race。 */
+function codeWriteKey(projectPath: string, raw: string): string {
+  const unified = raw.replace(/\\/g, '/');
+  const absolute = unified.startsWith('/') || /^[a-zA-Z]:\//.test(unified);
+  const base = projectPath.replace(/\\/g, '/');
+  const parts: string[] = [];
+  for (const seg of (absolute ? unified : `${base}/${unified}`).split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') {
+      parts.pop();
+      continue;
+    }
+    parts.push(seg);
+  }
+  return parts.join('/').toLowerCase();
+}
+
 /** 出厂 hook 实现缺失时的装配期错误（service 类：hook 管道是内核语义，缺了就是装歪）。 */
 const STATE_HOOKS_UNAVAILABLE =
   '出厂 hook 实现缺失：hologram/state-hooks 产物未装载（service 类产物不可禁用）——检查产物通道 / loadBuiltinPlugins。';
@@ -196,6 +215,22 @@ export function firstPartyCapabilities(): AgentCapability[] {
             (t): CodeBindingSpec => ({
               name: t.name(),
               readOnly: t.readOnly(),
+              // 按动作判定只读（P2）：动作白名单从**活注册表**取——域门面是构建期
+              // 快照，闭包捕获 t 会读到过期动作集（计划 §3.4 取证）。
+              readOnlyFor: (args) => {
+                const live = scope.tools.get(t.name());
+                const ro = live?.readOnlyActions?.() ?? [];
+                if (ro.length === 0) return live?.readOnly?.() ?? t.readOnly();
+                const action = typeof args.action === 'string' ? args.action : undefined;
+                return action !== undefined && ro.includes(action);
+              },
+              // 写锁键（P2）：只有明确的单文件动作分片（fs 的 read/write/edit…），
+              // 其余（mv/rm/shell/git…）一律回落排他闸 '*'——路径不明确的分片
+              // 等于把「串行」换成 race。
+              lockKey: (args) => {
+                const p = args.filePath;
+                return typeof p === 'string' && p.length > 0 ? `file:${codeWriteKey(scope.ctx.projectPath, p)}` : '*';
+              },
               invoke: async (args) => {
                 const seq = ++dispatchCounter;
                 sessionLog.append('tool/code-dispatch-start', { seq, name: t.name(), args });

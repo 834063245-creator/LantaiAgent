@@ -524,3 +524,68 @@ describe('P1 绑定目录', () => {
 function several(names: string[]): string[] {
   return names;
 }
+
+// ── P2 并发面（code-execution-upgrade-plan §4）──
+describe('P2 并发面', () => {
+  /** 记录 start/end 序的写绑定：锁键由参数 key 决定（'*' = 排他闸）。 */
+  function keyedBinding(order: string[], readOnlyFor?: (args: Record<string, unknown>) => boolean): CodeBindingSpec {
+    return {
+      name: 'w',
+      readOnly: false,
+      ...(readOnlyFor ? { readOnlyFor } : {}),
+      lockKey: (args) => (typeof args.key === 'string' ? args.key : '*'),
+      invoke: async (args) => {
+        const n = args.n as number;
+        order.push(`start-${n}`);
+        await flushMicrotasks(3);
+        order.push(`end-${n}`);
+        return { output: 'ok', isError: false };
+      },
+    };
+  }
+
+  it('同键写串行：第二个写等第一个写完（start-2 晚于 end-1）', async () => {
+    const order: string[] = [];
+    const result = await runCode(
+      `await Promise.all([tools.w({n:1,key:'file:a'}), tools.w({n:2,key:'file:a'})]); return 'done';`,
+      { createWorker: makeFakeWorker, bindings: [keyedBinding(order)] },
+    );
+    expect(result.error).toBeUndefined();
+    expect(order).toEqual(['start-1', 'end-1', 'start-2', 'end-2']);
+  });
+
+  it('异键写并行：两个写同时在途（start 交错，end 按提交序）', async () => {
+    const order: string[] = [];
+    const result = await runCode(
+      `await Promise.all([tools.w({n:1,key:'file:a'}), tools.w({n:2,key:'file:b'})]); return 'done';`,
+      { createWorker: makeFakeWorker, bindings: [keyedBinding(order)] },
+    );
+    expect(result.error).toBeUndefined();
+    expect(order).toEqual(['start-1', 'start-2', 'end-1', 'end-2']);
+  });
+
+  it("排他闸：'*' 等在途键控写排空，并阻塞其后键控写", async () => {
+    const order: string[] = [];
+    const result = await runCode(
+      `await Promise.all([
+         tools.w({n:1,key:'file:a'}),
+         tools.w({n:2,key:'*'}),
+         tools.w({n:3,key:'file:b'}),
+       ]); return 'done';`,
+      { createWorker: makeFakeWorker, bindings: [keyedBinding(order)] },
+    );
+    expect(result.error).toBeUndefined();
+    expect(order).toEqual(['start-1', 'end-1', 'start-2', 'end-2', 'start-3', 'end-3']);
+  });
+
+  it('域工具只读动作不进写链：readOnlyFor 命中即并行', async () => {
+    const order: string[] = [];
+    const binding = keyedBinding(order, (args) => args.action === 'read');
+    const result = await runCode(
+      `await Promise.all([tools.w({n:1,action:'read'}), tools.w({n:2,action:'read'})]); return 'done';`,
+      { createWorker: makeFakeWorker, bindings: [binding] },
+    );
+    expect(result.error).toBeUndefined();
+    expect(order).toEqual(['start-1', 'start-2', 'end-1', 'end-2']);
+  });
+});

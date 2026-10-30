@@ -1,6 +1,6 @@
 # code_execution 执行原语升级（2026-10-29 立项 / 2026-10-30 迭代）
 
-> 状态：**P1 已落地（2026-10-30），P2-P4 待开工** —— 一批一 commit，可单独验收、可单独回退。
+> 状态：**P1 ✅ / P2 ✅ 已落地（2026-10-30），P3-P4 待开工** —— 一批一 commit，可单独验收、可单独回退。
 > 一句话：现行实现是「code mode v1」（字符串程序 + 运行时桥 + 一次性 worker），**能力不缺，
 > 缺四条回路**：模型不知道这一卷里有哪些绑定、也不知道怎么调（P1）· 域工具的只读动作没拿到并发（P2）·
 > 失败只剩一句人话（P3）· 超输出预算 = 整段作废（P4）。
@@ -106,7 +106,7 @@ Example: const r = await tools.fs({action: "read", filePath: "x.ts"});
 **副作用提醒（P2 施工点）**：`readOnlyFor` 若读快照实例的 `readOnlyActions()` 同样会过期——P2 实现必须按名字
 从活注册表取 Tool（`scope.tools.get(name)`），不要闭包捕获构造期实例。
 
-## 4. P2 —— 并发面：按动作只读 + 键控写锁
+## 4. P2 —— 并发面：按动作只读 + 键控写锁（2026-10-30 已落地）
 
 ### 4.1 形状（`host.ts` + `segments.ts`）
 
@@ -130,31 +130,39 @@ host 侧调度：读类不进任何链（与今天一致）；写类按 `lockKey
 
 `finish()` 改为等在途链全部排空（今天等的是一条 `writeChain`，审计完整性是同一条纪律）。
 
-### 4.2 绑定集声明（`segments.ts`）
+### 4.2 绑定集声明（`segments.ts`，已落地）
 
 ```ts
-readOnlyFor: (t) => {
-  const ro = t.readOnlyActions?.() ?? [];
-  return ro.length > 0
-    ? (args) => typeof args.action === 'string' && ro.includes(args.action)
-    : undefined;
+readOnlyFor: (args) => {
+  const live = scope.tools.get(t.name());          // 活注册表，不是快照实例（§3.4）
+  const ro = live?.readOnlyActions?.() ?? [];
+  if (ro.length === 0) return live?.readOnly?.() ?? t.readOnly();
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  return action !== undefined && ro.includes(action);
 },
 lockKey: (args) => {
-  const p = typeof args.filePath === 'string' ? args.filePath : null;
-  return p ? `file:${p}` : '*';   // 只有明确单文件动作分片，其余全回落排他闸
+  const p = args.filePath;
+  return typeof p === 'string' && p.length > 0
+    ? `file:${codeWriteKey(scope.ctx.projectPath, p)}`   // 归一化见下
+    : '*';
 },
 ```
 
 **保守名单**：只有 `filePath` 键分片（`fs` 的 read/write/edit 等）。`mv`/`rm`/`shell` 一律 `'*'` ——
 路径不明确的分片等于把「串行」换成「race」。
 
-### 4.3 测试
+**键归一化（`codeWriteKey`，施工时补的形状）**：工作区相对 → 绝对（拼 `ctx.projectPath`）、
+去 `./`、`..` 折叠、统一分隔符、**小写折叠**。折叠方向是**过度串行**（`Foo.ts` 与 `foo.ts` 并成一把锁）——
+安全的错误方向；漏串行才是 race。不做归一的话，`x.ts` / `./x.ts` / 绝对路径会被认成三把不同的锁，
+并行写同一文件。
+
+### 4.3 测试（已落地 2026-10-30，4/4 绿）
 
 | 用例 | 命运 |
 |---|---|
 | 现有「读并行写串行：两个写调用的 end 序 = start 序」（`tests/code-execution.test.ts:185`） | **零改动**——写缺省仍是 `'*'`，语义逐字不变（这是本批「零漂移」的证据） |
 | 同键两写串行（锁内 start/end 序） | **新增** |
-| 异键两写并行（end 序 ≠ 提交序） | **新增** |
+| 异键两写并行（start 交错、end 按提交序） | **新增** |
 | 域工具只读动作不进写链（`readOnlyFor` 命中即并行） | **新增** |
 | `'*'` 与键控写互斥（排他闸） | **新增** |
 
@@ -162,6 +170,9 @@ lockKey: (args) => {
 
 `vitest`（`code-execution` + `domains-convergence`）+ `build` + `biome ci` + `verify:convergence` 双轨
 （本批**不动模型可见字节**，convergence 必须零漂移——若红了就是误改了 schema/描述）。
+
+**实测（2026-10-30）**：64 例绿（code-execution 33 + domains-convergence 31，其中「读并行写串行」零改动通过）
++ build ✅ + biome 0 error + convergence 双轨**零漂移**（不重录即通过 ⇒ 未误动 schema/描述）。
 
 ## 5. P3 —— 错误面：可分类的失败
 

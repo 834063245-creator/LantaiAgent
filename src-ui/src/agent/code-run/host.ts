@@ -15,9 +15,14 @@
 //
 // 嵌套执行语义（P3 起）：绑定面 = CodeBindingSpec（name + invoke + readOnly），
 // invoke 闭包持有全部宿主上下文（executor 等价体/审计钩子）——runtime 不知道
-// 工具与会话，消费者自己管（DSH 接缝纪律）。并发契约：同一时刻只允许一个
-// 「写类」调用在途（readOnly === false），读类并行不设限——与
-// streaming-executor 的现行 readOnly 并行规则对齐（计划 C7）。
+// 工具与会话，消费者自己管（DSH 接缝纪律）。
+//
+// 并发契约（P2，2026-10-30 换代）：读类不进任何链（并行不设限）；写类按
+// `lockKey` 分片——`'file:<abs path>'` 同键串行、异键并行；`'*'` 是排他闸
+// （等在途键控写排空 → 阻塞新键控写 → 自己跑 → 放行，跨工具安全网：shell/git）；
+// `null` 不加锁。缺省 `'*'` ⇒ 未声明分片的写行为与旧实现逐字等价（这是本批
+// 「零漂移」的证据，见 tests/code-execution.test.ts 的读并行写串行用例）。
+// 域工具的只读判定走 `readOnlyFor(args)`（按动作），否则回落 `readOnly`。
 
 import { WORKER_BOOTSTRAP_SOURCE } from './bootstrap';
 import { type CodeRunResult, normalizeJsonArgs, parseWorkerMessage, type WorkerToHost } from './protocol';
@@ -28,8 +33,15 @@ import { type CodeRunResult, normalizeJsonArgs, parseWorkerMessage, type WorkerT
 export interface CodeBindingSpec {
   /** 程序内命名空间名（`tools.<name>`）。 */
   name: string;
-  /** 是否只读（可并行）。 */
+  /** 是否只读（可并行）。域工具按动作判定时用 readOnlyFor，本字段是兜底。 */
   readOnly: boolean;
+  /** 按**本次参数**判定是否只读（域工具：`action` 命中只读动作白名单即并行）。
+   *  缺省（undefined）= 回落 `readOnly`。注意：读取必须走**活注册表**
+   *  （域门面是构建期快照，闭包捕获构造期实例会读到过期动作集——计划 §3.4）。 */
+  readOnlyFor?: (args: Record<string, unknown>) => boolean;
+  /** 写锁键：null = 不加锁；'*' = 排他闸；其余 = 键控（同键串行、异键并行）。
+   *  缺省（undefined）= '*'（保守：未声明分片的写仍全局串行）。 */
+  lockKey?: (args: Record<string, unknown>) => string | null;
   /** 执行体：返回 [结果文本, isError]。 */
   invoke: (args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>;
 }
@@ -86,6 +98,88 @@ function utf8Len(s: string): number {
   return new TextEncoder().encode(s).length;
 }
 
+/** 写调度闸（P2）：读不进闸；写按 lockKey 分片 ——
+ *  - `'file:<path>'` 同键串行、异键并行；
+ *  - `'*'` 排他：等在途键控写排空 → 阻塞新键控写 → 自己跑 → 放行（跨工具安全网）；
+ *  - `null` 不加锁（仅测试/显式声明）。
+ *  公平性约定：排他闸一经请求即**同步**计入 pending，其后到达的键控写一律排在它后面
+ *  ——提交序 = 审计序，可预测；代价是排他闸闻到前的一个键控写仍会先跑完（有界）。 */
+interface WriteGate {
+  write(lockKey: string | null, task: () => Promise<void>): Promise<void>;
+  /** 等在途写全部排空（finish 收尾用——审计完整性是同一条纪律）。 */
+  drain(): Promise<void>;
+}
+
+function createWriteGate(): WriteGate {
+  /** 锁键 → 该键的链尾（同键串行）。 */
+  const keyed = new Map<string, Promise<void>>();
+  let activeKeyed = 0;
+  let exclusivePending = 0;
+  let exclusiveRunning = false;
+  let exclusiveChain: Promise<void> = Promise.resolve();
+  const keyedIdle: Array<() => void> = [];
+  const exclusiveIdle: Array<() => void> = [];
+
+  const wake = (list: Array<() => void>): void => {
+    for (const f of list.splice(0)) f();
+  };
+  const keyedIdlePromise = (): Promise<void> =>
+    activeKeyed === 0 ? Promise.resolve() : new Promise<void>((res) => keyedIdle.push(res));
+  const exclusiveIdlePromise = (): Promise<void> =>
+    exclusivePending === 0 && !exclusiveRunning
+      ? Promise.resolve()
+      : new Promise<void>((res) => exclusiveIdle.push(res));
+
+  async function writeKeyed(key: string, task: () => Promise<void>): Promise<void> {
+    while (exclusivePending > 0 || exclusiveRunning) await exclusiveIdlePromise();
+    activeKeyed++;
+    const prev = keyed.get(key) ?? Promise.resolve();
+    const cur = prev
+      .then(task)
+      .catch(() => {})
+      .finally(() => {
+        activeKeyed--;
+        if (activeKeyed === 0) wake(keyedIdle);
+      });
+    keyed.set(key, cur);
+    await cur;
+    if (keyed.get(key) === cur) keyed.delete(key);
+  }
+
+  function writeExclusive(task: () => Promise<void>): Promise<void> {
+    exclusivePending++;
+    const run = exclusiveChain
+      .then(async () => {
+        await keyedIdlePromise();
+        exclusiveRunning = true;
+        try {
+          await task();
+        } finally {
+          exclusiveRunning = false;
+        }
+      })
+      .catch(() => {});
+    exclusiveChain = run;
+    void run.finally(() => {
+      exclusivePending--;
+      if (exclusivePending === 0 && !exclusiveRunning) wake(exclusiveIdle);
+    });
+    return run;
+  }
+
+  return {
+    write(lockKey, task) {
+      if (lockKey === null) return task();
+      if (lockKey === '*') return writeExclusive(task);
+      return writeKeyed(lockKey, task);
+    },
+    async drain() {
+      await exclusiveChain.catch(() => {});
+      await keyedIdlePromise();
+    },
+  };
+}
+
 /** 运行一次 code run。resolve 恒为 CodeRunResult（失败也在 error 字段里，
  *  不 reject——外层工具把 error 归一为结构化失败文本）。 */
 export async function runCode(program: string, opts: CodeRunHostOptions): Promise<CodeRunResult> {
@@ -100,8 +194,8 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
   let outputLimited = false;
   let settled = false;
 
-  // 写类串行门闩：同一时刻至多一个写调用在途
-  let writeChain: Promise<void> = Promise.resolve();
+  // 写调度闸：读不进闸；写按 lockKey 分片（缺省 '*' = 与旧「一条写链」逐字等价）
+  const gate = createWriteGate();
 
   const worker = createWorker(WORKER_BOOTSTRAP_SOURCE);
 
@@ -114,7 +208,7 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
     } catch {
       /* 已死 */
     }
-    void writeChain.catch(() => {}); // 静默化在途写的记账错误（结果已落定）
+    void gate.drain().catch(() => {}); // 静默化在途写的记账错误（结果已落定）
     settledResolve(result);
   };
 
@@ -207,7 +301,7 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
         }
         // 等写链排空再收尾——审计完整（结果值不依赖写，但 dispatch-end 事件
         // 必须全部落账后才 finish，否则审计缺口）
-        void writeChain.then(() => finish({ logs, ...(msg.value !== undefined ? { result: msg.value } : {}) }));
+        void gate.drain().then(() => finish({ logs, ...(msg.value !== undefined ? { result: msg.value } : {}) }));
         return;
       }
     }
@@ -249,12 +343,14 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
           : ({ t: 'reply', id, ok: true, value: outcome.output } as const),
       );
     };
-    if (binding.readOnly) {
+    const isReadOnly = binding.readOnlyFor ? binding.readOnlyFor(args) : binding.readOnly;
+    if (isReadOnly) {
+      // 读类不进任何链（并行不设限）
       void run().catch(() => {});
-    } else {
-      // 写类串行：挂到链尾（保持提交序）
-      writeChain = writeChain.then(run);
+      return;
     }
+    const lockKey = binding.lockKey ? binding.lockKey(args) : '*';
+    void gate.write(lockKey, run).catch(() => {});
   }
 
   // 启动
