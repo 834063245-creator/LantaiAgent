@@ -90,6 +90,8 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     const msIdx = classes.findIndex((c) => c.includes('ms-container'));
     // S6 P1e（2026-09-15）：左端成对——模型（谁的脑子）+ 组合（哪些工具与提示面）
     const compIdx = classes.findIndex((c) => c.includes('pp-comp-sel'));
+    // 2026-10-30：造模式入口（✎）紧跟组合芯片——「选现成的」与「造一个新的」同居左端簇
+    const creatorIdx = classes.findIndex((c) => c.includes('pp-comp-creator'));
     const spacerIdx = classes.indexOf('pp-composer-settings-spacer');
     const permIdx = classes.findIndex((c) => c.includes('pp-mode-seg'));
     const thinkIdx = classes.findIndex((c) => c.includes('pp-thinking-sel'));
@@ -97,7 +99,8 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     const inkIdx = classes.findIndex((c) => c.includes('pp-ink-sel'));
     expect(msIdx).toBe(0);
     expect(compIdx).toBe(msIdx + 1); // 组合紧跟模型（同居「本卷拿什么跑」左端）
-    expect(spacerIdx).toBe(compIdx + 1); // 左端簇与策略对之间隔 spacer——成对被推右
+    expect(creatorIdx).toBe(compIdx + 1); // ✎ 造模式紧邻组合芯片（选现成的 / 造一个新的）
+    expect(spacerIdx).toBe(creatorIdx + 1); // 左端簇与策略对之间隔 spacer——成对被推右
     expect(permIdx).toBe(spacerIdx + 1);
     expect(thinkIdx).toBe(permIdx + 1); // 思考收尾「运行策略」对；权限在组内左侧
     // 2026-09-22：役册紧邻墨量册（两枚读数件成对居行尾），役在内、墨仍收最右

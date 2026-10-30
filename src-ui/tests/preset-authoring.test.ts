@@ -162,8 +162,9 @@ describe('P-1 authoring：免重启重扫', () => {
     });
     expect(res).toBeUndefined();
     const ids = usePresetStore.getState().roster.map((p) => p.id);
-    // creator（2026-10 创作者模式最小闭环）= 第三个内置 preset，排在用户 preset 之前
-    expect(ids).toEqual(['standard', 'minimal', 'creator', 'my-preset']);
+    // creator（2026-10 创作者模式最小闭环）= 第三个内置 preset，readonly（2026-10-30
+    // 只读研究）= 第四个；两者都排在用户 preset 之前
+    expect(ids).toEqual(['standard', 'minimal', 'creator', 'readonly', 'my-preset']);
   });
 
   it('重扫刷新解析错误面：修好/写坏都会立刻反映到 preset-store.error', async () => {

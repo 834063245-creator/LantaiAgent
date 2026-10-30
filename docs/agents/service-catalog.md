@@ -71,7 +71,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 | `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | `my/kind` | 7 文件 |
 | `ctx.rootViews` | `RootViewsService` | `src/composition/root-views-service.ts` | `ask-cards` · `sessions-home` | 2 文件 |
 | `ctx.steps` | `StepsService` | `src/composition/steps-service.ts` | — | 0 文件 |
-| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `communication-tools` · `compaction-tools` · `converge-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `hologram/composition-domain/composition` · `merge-tools` · `my/dynamic-tool` · `my/query` · `request-tool` · `spawn-tool` | 7 文件 |
+| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `communication-tools` · `compaction-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `hologram/composition-domain/composition` · `merge-tools` · `my/dynamic-tool` · `my/query` · `request-tool` · `spawn-tool` | 7 文件 |
 
 ### `ctx.capabilities` — CapabilitiesService（贡献通道）
 
@@ -150,7 +150,7 @@ App 外壳视图槽通道（批 9e）：首页（slot:'home'）与根浮层（sl
 工具注册表（S1-1）——行注册 → disposer；下次 Agent 装配生效语义。
 
 - owner：`src/composition/services.ts`
-- 默认实现 / 贡献者 id：`communication-tools` · `compaction-tools` · `converge-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `hologram/composition-domain/composition` · `merge-tools` · `my/dynamic-tool` · `my/query` · `request-tool` · `spawn-tool`
+- 默认实现 / 贡献者 id：`communication-tools` · `compaction-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `hologram/composition-domain/composition` · `merge-tools` · `my/dynamic-tool` · `my/query` · `request-tool` · `spawn-tool`
 - 消费面（7）：`src/plugins/builtin/browser-desktop-domain/index.ts` · `src/plugins/builtin/composition-domain/index.ts` · `src/plugins/builtin/contribution-helpers.ts` · `src/plugins/builtin/goal-mode/index.ts` · `src/plugins/builtin/skill-domain/builtin-skills.ts` · `src/plugins/mcp-bridge.ts` · `src/plugins/tool-declarations.ts`
 
 ## 服务
