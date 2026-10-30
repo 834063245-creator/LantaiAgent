@@ -52,7 +52,13 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
       if (!entry) return;
       pending.delete(m.id);
       if (m.ok) entry.resolve(m.value);
-      else entry.reject(new Error(m.message || 'tool call failed'));
+      else {
+        // 失败码是**程序内 API**（P3）：catch (e) { if (e.code === 'invalid-args') ... }
+        var err = new Error(m.message || 'tool call failed');
+        if (m.code) err.code = m.code;
+        if (m.hint) err.hint = m.hint;
+        entry.reject(err);
+      }
       return;
     }
     if (m.t === 'run') {
@@ -162,6 +168,41 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
   }
   makeConsole();
 
+  // 可分类失败（P3）：error.code 是程序内契约，error.hint 是「下一步怎么做」
+  function bindErr(text, code, hint) {
+    var e = new Error(text);
+    if (code) e.code = code;
+    if (hint) e.hint = hint;
+    return e;
+  }
+
+  function editDistance(a, b) {
+    var prev = [];
+    for (var j = 0; j <= b.length; j++) prev[j] = j;
+    for (var i = 1; i <= a.length; i++) {
+      var diag = prev[0];
+      prev[0] = i;
+      for (var k = 1; k <= b.length; k++) {
+        var tmp = prev[k];
+        prev[k] = Math.min(prev[k] + 1, prev[k - 1] + 1, diag + (a.charAt(i - 1) === b.charAt(k - 1) ? 0 : 1));
+        diag = tmp;
+      }
+    }
+    return prev[b.length];
+  }
+
+  /** 最近邻（阈值保守：距离 ≤ 2 且 ≤ 名字长度一半；猜错比不说更贵）。 */
+  function nearestName(name, names) {
+    var best = null;
+    var bestD = Infinity;
+    for (var i = 0; i < names.length; i++) {
+      var d = editDistance(name, names[i]);
+      if (d < bestD) { bestD = d; best = names[i]; }
+    }
+    var limit = Math.min(2, Math.floor(name.length / 2));
+    return best !== null && bestD <= Math.max(1, limit) ? best : null;
+  }
+
   // tools 命名空间：null-prototype，绑定名一律 defineProperty（防
   // __proto__/constructor 原型碰撞——DSH 同款纪律）
   function makeTools(names) {
@@ -175,10 +216,14 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
             var norm;
             try {
               var text = JSON.stringify(args === undefined ? {} : args);
-              if (text === undefined) return Promise.reject(new Error('tool arguments must be lossless JSON'));
+              if (text === undefined) {
+                return Promise.reject(bindErr('tool arguments must be lossless JSON', 'invalid-args'));
+              }
               norm = JSON.parse(text);
             } catch (e) {
-              return Promise.reject(new Error('tool arguments must be lossless JSON: ' + (e && e.message)));
+              return Promise.reject(
+                bindErr('tool arguments must be lossless JSON: ' + (e && e.message), 'invalid-args')
+              );
             }
             return new Promise(function (resolve, reject) {
               var id = nextId++;
@@ -189,7 +234,25 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
         });
       })(names[i]);
     }
-    return ns;
+    // 未知绑定（P3）：**抛在调用上，不抛在 get 上**——属性探测（'x' in tools）与
+    // 序列化（JSON.stringify(tools)）保持可用；协议键（then/toJSON/Symbol.*）放行
+    // undefined，否则 await tools 会被当成 thenable 挂死。
+    if (typeof Proxy !== 'function') return ns;
+    return new Proxy(ns, {
+      get: function (target, prop) {
+        if (typeof prop === 'symbol') return undefined;
+        if (prop in target) return target[prop];
+        if (prop === 'then' || prop === 'toJSON' || prop === 'inspect' || prop === 'constructor') return undefined;
+        return function unknownBinding() {
+          var near = nearestName(String(prop), names);
+          throw bindErr(
+            'unknown tool binding "' + prop + '"' + (near ? ' — did you mean "' + near + '"?' : ''),
+            'unknown-binding',
+            'Available bindings: ' + names.join(', ')
+          );
+        };
+      },
+    });
   }
 
   // run 指令处理：一次程序体执行（从分发器调入）

@@ -28,6 +28,7 @@ import type { AgentRecord, AgentStore } from './agent-store';
 import { type AgentEvent, type AgentUINotifier, EventKind, type EventSink, type ToolEvent } from './agent-types';
 import { generateAssetId } from './asset-kinds';
 import { rebuildAssetsFromSession } from './asset-store';
+import type { CodeReplyCode } from './code-run/protocol';
 import {
   type CompactionConfig,
   type CompactionHost,
@@ -380,19 +381,27 @@ export class Agent {
    *  （_agent_id/_owner_id）→ execute → hooks 富化 → 预检警告前置 → 截断。
    *  嵌套调用不豁免任何门禁（P2 施工序 6）；isError 语义靠返回值区分
    *  （false = 成功 output；true = output 即错误文本）。 */
-  dispatchNestedTool(name: string, args: Record<string, unknown>): Promise<{ output: string; isError: boolean }> {
+  dispatchNestedTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<{ output: string; isError: boolean; code?: CodeReplyCode }> {
     const tool = this.tools.get(name);
     if (!tool) {
-      return Promise.resolve({ output: `error: unknown tool "${name}"`, isError: true });
+      return Promise.resolve({ output: `error: unknown tool "${name}"`, isError: true, code: 'unknown-binding' });
     }
     if (this.tools.isHidden(name)) {
-      return Promise.resolve({ output: `[已淘汰] ${name} — 请用领域工具动作。`, isError: true });
+      // 旧名被淘汰 = 绑定名不存在（与未知同码：程序内处置一致——重写程序换名，不是重试）
+      return Promise.resolve({
+        output: `[已淘汰] ${name} — 请用领域工具动作。`,
+        isError: true,
+        code: 'unknown-binding',
+      });
     }
     const guardName = resolveGuardToolName(this.tools, name, args);
 
     // Plan 门禁（嵌套不豁免——与 executor 同规则）
     const blocked = this._planGate(guardName, args, tool);
-    if (blocked) return Promise.resolve({ output: blocked, isError: true });
+    if (blocked) return Promise.resolve({ output: blocked, isError: true, code: 'blocked' });
 
     // 预检钩子（HIGH 风险拦截至 _forceGate 语义——嵌套调用无 _forceGate 通道，
     // 高危写入在 code run 内一律打回：用户应直接调用工具走显式确认）
@@ -408,6 +417,7 @@ export class Agent {
       return Promise.resolve({
         output: `${preflightWarning}\n\n🚫 高风险写入不允许经 code_execution 嵌套执行——请直接调用工具并带 _forceGate: true。`,
         isError: true,
+        code: 'blocked',
       });
     }
 
@@ -463,7 +473,10 @@ export class Agent {
       .catch((e: unknown) => {
         const eMsg = (e as { message?: string })?.message;
         const errMsg = eMsg ? eMsg.split('\n')[0] : String(e);
-        return { output: `error: ${errMsg}`, isError: true };
+        // 全链唯一「靠文本认」的点：zod 校验错误在 defineTool 内抛出（tools/define-tool.ts:97），
+        // 没有类型面把码带出来。前缀是那边的契约——改它同改这里。
+        const code: CodeReplyCode = errMsg.includes('参数校验失败') ? 'invalid-args' : 'tool-error';
+        return { output: `error: ${errMsg}`, isError: true, code };
       });
   }
 

@@ -1,6 +1,6 @@
 # code_execution 执行原语升级（2026-10-29 立项 / 2026-10-30 迭代）
 
-> 状态：**P1 ✅ / P2 ✅ 已落地（2026-10-30），P3-P4 待开工** —— 一批一 commit，可单独验收、可单独回退。
+> 状态：**P1 ✅ / P2 ✅ / P3 ✅ 已落地（2026-10-30），P4 待开工** —— 一批一 commit，可单独验收、可单独回退。
 > 一句话：现行实现是「code mode v1」（字符串程序 + 运行时桥 + 一次性 worker），**能力不缺，
 > 缺四条回路**：模型不知道这一卷里有哪些绑定、也不知道怎么调（P1）· 域工具的只读动作没拿到并发（P2）·
 > 失败只剩一句人话（P3）· 超输出预算 = 整段作废（P4）。
@@ -174,7 +174,7 @@ lockKey: (args) => {
 **实测（2026-10-30）**：64 例绿（code-execution 33 + domains-convergence 31，其中「读并行写串行」零改动通过）
 + build ✅ + biome 0 error + convergence 双轨**零漂移**（不重录即通过 ⇒ 未误动 schema/描述）。
 
-## 5. P3 —— 错误面：可分类的失败
+## 5. P3 —— 错误面：可分类的失败（2026-10-30 已落地）
 
 ### 5.1 形状
 
@@ -183,9 +183,12 @@ lockKey: (args) => {
 2. **bootstrap**：`ok:false` 时构造 Error 后挂 `code`/`hint`（`Object.assign`），message 保持人读文本不变。
 3. **host**：未知绑定 → `unknown-binding` + 最近邻（Levenshtein，阈值保守）+ 可用清单；参数非无损 JSON →
    `invalid-args`。
-4. **segments**：`invoke` 结果分类——`isError` 且文本以 `参数校验失败:` 开头（`defineTool` 的 zod 真源，
-   `tools/define-tool.ts:97`）→ `invalid-args`；含 `[已淘汰]` → `unknown-binding`；planGate / HIGH 预检打回
-   （`agent.ts:394-411`）→ `blocked`；其余 `tool-error`。
+4. **码在源头定（施工时改了计划的分工）**：原计划让 segments 按文本嗅探分类，实做改为
+   `Agent.dispatchNestedTool` 在**每一个失败返回点直接给码**——未知名/已淘汰 → `unknown-binding`；
+   planGate 打回、HIGH 预检打回 → `blocked`；工具抛错 → `invalid-args`（`参数校验失败` 前缀）或
+   `tool-error`。理由：门禁文案会改，嗅探器跟着漂；源头知道自己拦了什么，下游不该再猜。
+   **全链只剩一处文本判据**（zod 校验错误在 `defineTool` 内抛出、没有类型面能带码出来），已在该行注释标明
+   「改前缀同改这里」。segments 只做透传（`invoke` 返回 `CodeBindingOutcome`，含可选 `code`/`hint`）。
 5. **bootstrap 的 `tools` 改 Proxy**：访问未知属性返回「调用即抛」的函数——`e.code='unknown-binding'`，
    message 带最近邻与清单。`then` / `toJSON` / `Symbol.*` 等协议键放行（返回 `undefined`），否则 `await tools`
    或 `JSON.stringify(tools)` 会被误伤。**不抛在 get 上，抛在调用上**——属性探测（`'x' in tools`）保持可用。
@@ -193,7 +196,7 @@ lockKey: (args) => {
 **不加**：`retryable` / `severity` 之类的第二判据——分类信息已经在 `code` + `message` 里，
 多一个布尔字段等于给模型两套互斥的判据，没人会用。
 
-### 5.2 测试
+### 5.2 测试（已落地 2026-10-30，5 绿 + 1 改写）
 
 | 用例 | 命运 |
 |---|---|
@@ -201,11 +204,16 @@ lockKey: (args) => {
 | 未知绑定：宿主侧回 `code`/`hint`（动态 `tools[n]` 路径） | **新增** |
 | `catch (e) { e.code === 'invalid-args' }` 分支可用 | **新增** |
 | `await tools` / `JSON.stringify(tools)` / `'fs' in tools` 不炸 | **新增** |
-| 现有用例 | **零改动**（`e.message` 文本对既有断言不变） |
+| 现有用例 | **1 条改写**（唯一一条）：`敌意校验：未声明绑定名` 原断言 `TypeError: is not a function`，
+现断言 `e.code === 'unknown-binding'` + 仍然零宿主往返——**故意规格变更，commit message 已声明** |
+| 其余现有用例 | **零改动** |
 
 ### 5.3 门禁
 
 `vitest` + `build` + `biome ci` + `verify:convergence`（描述字节不变 ⇒ 应零漂移）。
+
+**实测（2026-10-30）**：68 例绿（code-execution 37 + domains-convergence 31）+ build ✅ + biome 0 error
++ convergence 双轨**零漂移**。
 
 ## 6. P4 —— 输出预算：截断是结果，不是失败
 

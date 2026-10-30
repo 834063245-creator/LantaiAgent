@@ -18,10 +18,15 @@
 // = 本协议的实现质量。工具本体永不进 worker——worker 只拿工具名清单，
 // 调用经 postMessage 桥回宿主侧 executor 语义（门禁/hooks/审计全在宿主）。
 
-/** 宿主 → worker：应答一次嵌套工具调用。 */
+/** 失败分类码（P3）——**程序内 API 的一部分**：`catch (e) { if (e.code === …) }`。
+ *  发布即契约：新增值可以，改名/删值等于破坏程序（同 `done.error.kind` 的待遇）。 */
+export type CodeReplyCode = 'unknown-binding' | 'invalid-args' | 'blocked' | 'tool-error';
+
+/** 宿主 → worker：应答一次嵌套工具调用。
+ *  `code`/`hint` 只在 ok:false 时有意义；两者都缺省时 worker 侧只拿到人读 message。 */
 export type CodeReplyMessage =
   | { t: 'reply'; id: number; ok: true; value: string }
-  | { t: 'reply'; id: number; ok: false; message: string };
+  | { t: 'reply'; id: number; ok: false; message: string; code?: CodeReplyCode; hint?: string };
 
 /** worker → 宿主：一次嵌套工具调用请求。args 为结构化克隆安全的参数对象。 */
 export interface CodeCallMessage {
@@ -109,6 +114,38 @@ export function parseWorkerMessage(data: unknown): WorkerToHost | null {
     default:
       return null;
   }
+}
+
+/** 编辑距离（只用于「你是不是想写 X」的提示——阈值保守，不猜远亲）。 */
+function editDistance(a: string, b: string): number {
+  const prev = new Array<number>(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
+
+/** 候选里最接近 `name` 的那个（阈值：距离 ≤ 2 且 ≤ 名字长度的一半）。
+ *  返回 null = 没有相近的，别硬猜（猜错比不说更贵）。 */
+export function nearestName(name: string, candidates: readonly string[]): string | null {
+  let best: string | null = null;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (const c of candidates) {
+    const d = editDistance(name, c);
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  const limit = Math.min(2, Math.floor(name.length / 2));
+  return best !== null && bestD <= Math.max(1, limit) ? best : null;
 }
 
 /** 无损 JSON 归一 — structured clone 之后的值必须仍能以 JSON 往返。

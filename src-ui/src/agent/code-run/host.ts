@@ -25,7 +25,24 @@
 // 域工具的只读判定走 `readOnlyFor(args)`（按动作），否则回落 `readOnly`。
 
 import { WORKER_BOOTSTRAP_SOURCE } from './bootstrap';
-import { type CodeRunResult, normalizeJsonArgs, parseWorkerMessage, type WorkerToHost } from './protocol';
+import {
+  type CodeReplyCode,
+  type CodeRunResult,
+  nearestName,
+  normalizeJsonArgs,
+  parseWorkerMessage,
+  type WorkerToHost,
+} from './protocol';
+
+/** 绑定调用结果（P3）：`code`/`hint` 会原样进 reply，成为程序内 Error 的属性。 */
+export interface CodeBindingOutcome {
+  output: string;
+  isError: boolean;
+  /** 失败分类；缺省且 isError ⇒ 'tool-error'。 */
+  code?: CodeReplyCode;
+  /** 可行动的提示（"你是不是想写 X" / 可用清单 / 换哪条路走）。 */
+  hint?: string;
+}
 
 /** 绑定声明（P3）：一个可被程序调用的宿主能力。
  *  invoke 闭包持有宿主上下文（executor 等价体/审计）——runtime 不知道
@@ -42,8 +59,8 @@ export interface CodeBindingSpec {
   /** 写锁键：null = 不加锁；'*' = 排他闸；其余 = 键控（同键串行、异键并行）。
    *  缺省（undefined）= '*'（保守：未声明分片的写仍全局串行）。 */
   lockKey?: (args: Record<string, unknown>) => string | null;
-  /** 执行体：返回 [结果文本, isError]。 */
-  invoke: (args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>;
+  /** 执行体：返回结果文本 + 是否失败（+ 可选分类码/提示——P3）。 */
+  invoke: (args: Record<string, unknown>) => Promise<CodeBindingOutcome>;
 }
 
 /** code run 宿主配置。 */
@@ -316,7 +333,16 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
     answeredIds.add(id);
     const binding = bindingMap.get(name);
     if (!binding) {
-      worker.postMessage({ t: 'reply', id, ok: false, message: `unknown tool binding "${name}"` } as const);
+      // 未知名：最近邻 + 可用清单（模型最常犯的错是少个下划线/记成顶层函数）
+      const near = nearestName(name, [...bindingMap.keys()]);
+      worker.postMessage({
+        t: 'reply',
+        id,
+        ok: false,
+        message: `unknown tool binding "${name}"${near ? ` — did you mean "${near}"?` : ''}`,
+        code: 'unknown-binding',
+        hint: `Available bindings: ${[...bindingMap.keys()].join(', ')}`,
+      } as const);
       return;
     }
     const args = normalizeJsonArgs(msg.args);
@@ -326,20 +352,33 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
         id,
         ok: false,
         message: 'tool arguments must be lossless JSON',
+        code: 'invalid-args',
+        hint: 'arguments must be plain JSON (no Date/Map/Set/functions/undefined) — pass primitives or plain objects',
       } as const);
       return;
     }
     const run = async (): Promise<void> => {
-      let outcome: { output: string; isError: boolean };
+      let outcome: CodeBindingOutcome;
       try {
         outcome = await binding.invoke(args);
       } catch (e) {
-        outcome = { output: (e as { message?: string })?.message ?? String(e), isError: true };
+        outcome = {
+          output: (e as { message?: string })?.message ?? String(e),
+          isError: true,
+          code: 'tool-error',
+        };
       }
       if (settled) return; // run 已结束（超时/中止）：不再回话
       worker.postMessage(
         outcome.isError
-          ? ({ t: 'reply', id, ok: false, message: outcome.output } as const)
+          ? ({
+              t: 'reply',
+              id,
+              ok: false,
+              message: outcome.output,
+              code: outcome.code ?? 'tool-error',
+              ...(outcome.hint ? { hint: outcome.hint } : {}),
+            } as const)
           : ({ t: 'reply', id, ok: true, value: outcome.output } as const),
       );
     };

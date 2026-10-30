@@ -244,14 +244,27 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
     expect(result.error?.kind).toBe('aborted');
   });
 
-  it('敌意校验：未声明绑定名 → 命名空间层拦截（undefined 绑定），宿主层双保险', async () => {
-    const result = await runCode(`try { await tools.secret({}); return 'no'; } catch (e) { return e.message; }`, {
-      createWorker: makeFakeWorker,
-      bindings: [binding('read', true, async () => ({ output: '', isError: false }))],
-    });
-    // 命名空间只声明了 read：secret 是 undefined 绑定，TypeError 在程序侧抛出
-    // （宿主层 unknown-tool-binding 拒绝是第二道防线——两者都是敌意防御）
-    expect(result.result).toContain('is not a function');
+  it('敌意校验：未声明绑定名 → 调用即抛 unknown-binding（程序侧拦截，宿主层双保险）', async () => {
+    let hostCalls = 0;
+    const result = await runCode(
+      `try { await tools.secret({}); return 'no'; } catch (e) { return e.code + ':' + e.message; }`,
+      {
+        createWorker: makeFakeWorker,
+        bindings: [
+          binding('read', true, async () => {
+            hostCalls++;
+            return { output: '', isError: false };
+          }),
+        ],
+      },
+    );
+    // 规格变更（P3，2026-10-30，故意且已声明）：旧形态 = 未声明绑定是 undefined 属性，
+    // 调用抛 TypeError「is not a function」；新形态 = 命名空间是 Proxy，未知属性返回
+    // 「调用即抛」的函数 ⇒ e.code = 'unknown-binding'（程序内可分类自纠）。
+    // 拦截面不变：仍在程序侧当场炸，不进宿主（宿主 unknown-tool-binding 拒绝是第二道防线）。
+    expect(result.result).toContain('unknown-binding');
+    expect(result.result).toContain('secret');
+    expect(hostCalls).toBe(0);
   });
 
   it('敌意校验：重复 call id 只应答一次（worker 侧伪造重发）', async () => {
@@ -587,5 +600,78 @@ describe('P2 并发面', () => {
     );
     expect(result.error).toBeUndefined();
     expect(order).toEqual(['start-1', 'start-2', 'end-1', 'end-2']);
+  });
+});
+
+// ── P3 错误面（code-execution-upgrade-plan §5）──
+describe('P3 错误面', () => {
+  it('未知绑定：程序内当场抛（零宿主往返），带 code / 最近邻 / 可用清单', async () => {
+    let hostCalls = 0;
+    const result = await runCode(
+      `try { await tools.fss({}); } catch (e) {
+         return JSON.stringify({ code: e.code, msg: e.message, hint: e.hint });
+       }`,
+      {
+        createWorker: makeFakeWorker,
+        bindings: [
+          binding('fs', true, async () => {
+            hostCalls++;
+            return { output: 'x', isError: false };
+          }),
+        ],
+      },
+    );
+    const got = JSON.parse(result.result ?? '{}') as { code?: string; msg?: string; hint?: string };
+    expect(got.code).toBe('unknown-binding');
+    expect(got.msg).toContain('did you mean "fs"');
+    expect(got.hint).toContain('fs');
+    expect(hostCalls).toBe(0); // 未进宿主：错在 worker 侧当场抛
+  });
+
+  it('参数校验失败：程序内 catch 拿到 invalid-args（宿主 reply 的 code/hint 贯通）', async () => {
+    const result = await runCode(
+      `try { await tools.fs({action:'write'}); } catch (e) { return [e.code, e.hint ?? ''].join('|'); }`,
+      {
+        createWorker: makeFakeWorker,
+        bindings: [
+          binding('fs', false, async () => ({
+            output: '参数校验失败: filePath: Required',
+            isError: true,
+            code: 'invalid-args',
+            hint: 'pass filePath',
+          })),
+        ],
+      },
+    );
+    expect(result.result).toBe('invalid-args|pass filePath');
+  });
+
+  it('门禁打回 = blocked：四类失败可用同一套 e.code 分支处置', async () => {
+    const result = await runCode(
+      `const seen = [];
+       for (const name of ['fs', 'shell']) {
+         try { await tools[name]({}); } catch (e) { seen.push(e.code); }
+       }
+       return seen.join('|');`,
+      {
+        createWorker: makeFakeWorker,
+        bindings: [
+          binding('fs', false, async () => ({ output: '计划模式：不允许写入', isError: true, code: 'blocked' })),
+          binding('shell', false, async () => ({ output: 'boom', isError: true, code: 'tool-error' })),
+        ],
+      },
+    );
+    expect(result.result).toBe('blocked|tool-error');
+  });
+
+  it('协议键放行：await tools / JSON.stringify(tools) / in 探测都不炸', async () => {
+    const result = await runCode(
+      `const t = await tools;
+       const s = JSON.stringify(tools);
+       return [typeof t, s, 'fs' in tools, 'nope' in tools].join('|');`,
+      { createWorker: makeFakeWorker, bindings: [binding('fs', true, async () => ({ output: '', isError: false }))] },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.result).toBe('object|{}|true|false');
   });
 });
