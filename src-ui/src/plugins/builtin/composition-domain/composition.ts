@@ -44,7 +44,7 @@ import {
   usePresetStore,
 } from './host';
 
-export const COMPOSITION_ACTIONS = ['list', 'read', 'validate', 'write', 'delete'] as const;
+export const COMPOSITION_ACTIONS = ['list', 'read', 'validate', 'write', 'delete', 'rename', 'copy'] as const;
 export type CompositionAction = (typeof COMPOSITION_ACTIONS)[number];
 
 /** 落盘 / 发现 IO（生产 = RPC；测试注入假件——本模块因此零网络依赖）。 */
@@ -172,7 +172,11 @@ export function createCompositionTool(override: Partial<CompositionToolDeps> = {
 
   const schema = z.object({
     action: z.enum(COMPOSITION_ACTIONS).describe('Which operation to perform.'),
-    id: z.string().optional().describe('Preset id (read/write): lowercase letters, digits and hyphens.'),
+    id: z
+      .string()
+      .optional()
+      .describe('Preset id (read/write/delete/rename/copy): lowercase letters, digits and hyphens.'),
+    newId: z.string().optional().describe('Target preset id (rename/copy): the new id to create.'),
     yaml: z.string().optional().describe('Patch YAML text (validate/write): the roster.patch.yml body.'),
     name: z.string().optional().describe('Display name written into preset.yml (write).'),
     description: z.string().optional().describe('Display description written into preset.yml (write).'),
@@ -238,6 +242,71 @@ export function createCompositionTool(override: Partial<CompositionToolDeps> = {
         return validateText(args.yaml, deps).text;
       }
 
+      if (action === 'rename' || action === 'copy') {
+        if (!args.id) return '拒绝：' + action + ' 需要 id';
+        const id = args.id.trim();
+        const target = (args.newId ?? '').trim();
+        if (target === '') return '拒绝：' + action + ' 需要 newId（新的组合 id）';
+        if (!isValidPresetId(id)) return '拒绝：id 不合法：' + id;
+        if (!isValidPresetId(target)) return '拒绝：newId 不合法（只允许小写字母/数字/连字符）：' + target;
+        if (id === target) return '拒绝：newId 与 id 相同';
+        const builtinSrc = builtinPresets().find((p) => p.id === id);
+        if (action === 'rename' && builtinSrc) {
+          return '拒绝：内置 preset 不能改名（可以先 composition(copy) 成你自己的 id，再改内容）';
+        }
+        if (builtinPresets().some((p) => p.id === target)) return '拒绝：newId 是内置 id，换一个';
+        if (action === 'rename' && usePresetStore.getState().selected === id) {
+          return '拒绝：「' + id + '」是当前全局默认组合——先在 设置 › Agent › 组合 里切到别的组合再改名';
+        }
+        const root = await io.dir();
+        const srcDir = presetDirPath(root, id);
+        const dstDir = presetDirPath(root, target);
+        for (const name of ['roster.patch.yml', 'preset.yml']) {
+          const existing = await io.readFile(dstDir + '/' + name);
+          if (existing !== null && !(action === 'copy' && args.overwrite === true)) {
+            return '拒绝：目标已存在 ' + dstDir + '/' + name + '（换一个 newId，或 copy 时显式 overwrite:true）';
+          }
+        }
+        let yaml: string | null;
+        let meta: string;
+        if (builtinSrc) {
+          // 内置：patch 是代码常量——序列化成 YAML 给用户当起点
+          yaml = stringifyPatchYaml(builtinSrc.patch);
+          meta = [
+            'name: ' + JSON.stringify(target),
+            'description: ' + JSON.stringify((builtinSrc.metadata?.description ?? '') + '（复制自 ' + id + '）'),
+            '',
+          ].join('\n');
+        } else {
+          // 用户 preset：原样搬字节（保留作者写的注释）
+          yaml = await io.readFile(srcDir + '/roster.patch.yml');
+          if (yaml === null) return '拒绝：preset「' + id + '」的 roster.patch.yml 不可读（不在册或目录不完整）';
+          meta = (await io.readFile(srcDir + '/preset.yml')) ?? ['name: ' + JSON.stringify(target), ''].join('\n');
+        }
+        try {
+          await io.makeDir(dstDir);
+          await io.writeFile(dstDir + '/roster.patch.yml', yaml);
+          await io.writeFile(dstDir + '/preset.yml', meta);
+          if (action === 'rename') {
+            for (const name of ['roster.patch.yml', 'preset.yml']) {
+              await io.deleteFile(srcDir + '/' + name);
+            }
+          }
+          await io.rescan();
+        } catch (e) {
+          return (action === 'rename' ? '改名' : '复制') + '失败：' + (e instanceof Error ? e.message : String(e));
+        }
+        if (action === 'rename') {
+          return (
+            '已改名为「' +
+            target +
+            '」：' +
+            dstDir +
+            '\n注意：已记着旧 id 的卷会显示「不在册」——在新卷上重选该组合即可（或用 composition(list) 确认）。'
+          );
+        }
+        return '已复制为「' + target + '」：' + dstDir;
+      }
       if (action === 'delete') {
         if (!args.id) return '拒绝：delete 需要 id';
         const id = args.id.trim();

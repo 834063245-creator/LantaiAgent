@@ -178,6 +178,26 @@ describe('composition 工具（创作者模式那双手）', () => {
     expect(fake.files.has(dir + '/preset.yml')).toBe(false);
     expect(fake.rescans).toBe(2); // write + delete
   });
+  it('copy / rename：内置可复制；改名搬两件并删源；内置改名拒；目标占用拒', async () => {
+    const fake: FakeFs = { files: new Map(), rescans: 0 };
+    const tool = createCompositionTool({ io: io(fake), deps: deps() });
+
+    const copied = await call(tool, { action: 'copy', id: 'standard', newId: 'std-copy' });
+    expect(copied).toContain('已复制');
+    const dir = presetDirPath('/home/u/.lantai/composition', 'std-copy');
+    expect(fake.files.get(dir + '/roster.patch.yml')).toBeDefined();
+
+    // 目标已存在 → 拒（不带 overwrite）
+    expect(await call(tool, { action: 'copy', id: 'standard', newId: 'std-copy' })).toContain('已存在');
+    // 内置源不能改名
+    expect(await call(tool, { action: 'rename', id: 'standard', newId: 'x-mode' })).toContain('内置');
+
+    const renamed = await call(tool, { action: 'rename', id: 'std-copy', newId: 'std-renamed' });
+    expect(renamed).toContain('已改名');
+    const dir2 = presetDirPath('/home/u/.lantai/composition', 'std-renamed');
+    expect(fake.files.get(dir2 + '/roster.patch.yml')).toBeDefined();
+    expect(fake.files.get(dir + '/roster.patch.yml')).toBeUndefined();
+  });
   it('resolve 抛 CompositionPatchError 时 validate 回具名原因（F1 同款语义）', async () => {
     const tool = createCompositionTool({
       deps: {

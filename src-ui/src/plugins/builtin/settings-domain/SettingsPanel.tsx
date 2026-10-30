@@ -49,8 +49,10 @@ import { PluginsPage } from './PluginsPage';
 import { ProviderPage } from './ProviderPage';
 import {
   compositionDir,
+  copyPreset,
   createPresetFromTemplate,
   deletePreset,
+  renamePreset,
   rescanPresets,
   userPresetsOf,
 } from './preset-authoring';
@@ -213,6 +215,42 @@ const SettingsPanelApp: React.FC<{
     setAuthoringMsg({ kind: 'ok', text: `已写出模板：${res.dir}（已重扫，可直接在上方选择它）` });
     setAuthoringBusy(false);
   }, [newPresetId, newPresetFrom]);
+  /** 复制一份 preset（2026-10-30 管理面）：内置也能复制（patch 序列化成 YAML 当起点）。 */
+  const handleCopyPreset = useCallback(async (id: string) => {
+    const target = window.prompt(`把「${id}」复制为新的 preset id：`, `${id}-copy`);
+    if (target === null) return;
+    setAuthoringBusy(true);
+    setAuthoringMsg(null);
+    const res = await copyPreset(id, target.trim());
+    if (!res.ok) {
+      setAuthoringMsg({ kind: 'err', text: res.error ?? '复制失败' });
+      setAuthoringBusy(false);
+      return;
+    }
+    await rescanPresets();
+    setAuthoringMsg({ kind: 'ok', text: `已复制为 ${target.trim()}（已重扫）` });
+    setAuthoringBusy(false);
+  }, []);
+
+  /** 改名（只动用户 preset）：搬两件文件；已记着旧 id 的卷需在新卷重选。 */
+  const handleRenamePreset = useCallback(async (id: string) => {
+    const target = window.prompt(`把「${id}」改名为：`, id);
+    if (target === null || target.trim() === '' || target.trim() === id) return;
+    setAuthoringBusy(true);
+    setAuthoringMsg(null);
+    const res = await renamePreset(id, target.trim());
+    if (!res.ok) {
+      setAuthoringMsg({ kind: 'err', text: res.error ?? '改名失败' });
+      setAuthoringBusy(false);
+      return;
+    }
+    await rescanPresets();
+    setAuthoringMsg({
+      kind: 'ok',
+      text: `已改名为 ${target.trim()}（已重扫；已记着旧 id 的卷需在新卷重选该组合）`,
+    });
+    setAuthoringBusy(false);
+  }, []);
   /** 删除一个用户 preset（2026-10-30 管理面）：内置与「当前全局默认」在删除口本身会拒；
    *  这里只负责把结果说清楚 + 重扫。 */
   const handleDeletePreset = useCallback(async (id: string) => {
@@ -693,6 +731,23 @@ const SettingsPanelApp: React.FC<{
                 {userPresetsOf(presetRoster).map((p) => (
                   <div key={p.id} className="sp-key-row" style={{ marginTop: 4 }}>
                     <code>{p.id}</code>
+                    <button
+                      type="button"
+                      className="sp-btn-sm"
+                      disabled={authoringBusy}
+                      onClick={() => void handleCopyPreset(p.id)}
+                    >
+                      复制
+                    </button>
+                    <button
+                      type="button"
+                      className="sp-btn-sm"
+                      disabled={authoringBusy || presetSelected === p.id}
+                      title={presetSelected === p.id ? '当前全局默认——先切到别的组合再改名' : undefined}
+                      onClick={() => void handleRenamePreset(p.id)}
+                    >
+                      改名
+                    </button>
                     <button
                       type="button"
                       className="sp-btn-sm"

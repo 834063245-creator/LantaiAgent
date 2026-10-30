@@ -228,6 +228,97 @@ export async function deletePreset(id: string, io: PresetAuthoringIo = rpcAuthor
   return { ok: true, dir };
 }
 
+/** 复制一份 preset（内置或用户）到新的用户 id（2026-10-30 管理面）。
+ *  内置源：patch 是代码常量 → 序列化成 YAML 当起点；用户源：原样搬字节（保住注释）。 */
+export async function copyPreset(
+  id: string,
+  newId: string,
+  io: PresetAuthoringIo = rpcAuthoringIo,
+): Promise<CreatePresetResult> {
+  const src = id.trim();
+  const dst = newId.trim();
+  if (!isValidPresetId(src) || !isValidPresetId(dst)) {
+    return { ok: false, error: 'id 不合法（只允许小写字母/数字/连字符）' };
+  }
+  if (src === dst) return { ok: false, error: '新 id 与原名相同' };
+  if (builtinPresets().some((p) => p.id === dst)) return { ok: false, error: `"${dst}" 是内置 id，换一个` };
+  const builtin = builtinPresets().find((p) => p.id === src);
+  let root: string;
+  try {
+    root = await io.compositionDir(false);
+  } catch (e) {
+    return { ok: false, error: `取组合目录失败：${errText(e)}` };
+  }
+  const dir = presetDirPath(root, dst);
+  for (const name of [PATCH_FILENAME, META_FILENAME]) {
+    if ((await io.readFile(`${dir}/${name}`)) !== null) {
+      return { ok: false, error: `已存在 ${dir}/${name}——不覆盖` };
+    }
+  }
+  let yaml: string | null;
+  let meta: string;
+  if (builtin) {
+    yaml = stringifyPatchYaml(builtin.patch);
+    meta = `name: ${JSON.stringify(dst)}\ndescription: ${JSON.stringify(`${builtin.metadata?.description ?? ''}（复制自 ${src}）`)}\n`;
+  } else {
+    const srcDir = presetDirPath(root, src);
+    yaml = await io.readFile(`${srcDir}/${PATCH_FILENAME}`);
+    if (yaml === null) return { ok: false, error: `源 preset「${src}」的 ${PATCH_FILENAME} 不可读` };
+    meta = (await io.readFile(`${srcDir}/${META_FILENAME}`)) ?? `name: ${JSON.stringify(dst)}\n`;
+  }
+  try {
+    await io.makeDir(dir);
+    await io.writeFile(`${dir}/${PATCH_FILENAME}`, yaml);
+    await io.writeFile(`${dir}/${META_FILENAME}`, meta);
+  } catch (e) {
+    return { ok: false, error: `写盘失败：${errText(e)}` };
+  }
+  return { ok: true, dir };
+}
+
+/** 改名（只动用户 preset）：搬两件文件到新目录后删源；内置源与已占用目标都拒。 */
+export async function renamePreset(
+  id: string,
+  newId: string,
+  io: PresetAuthoringIo = rpcAuthoringIo,
+): Promise<CreatePresetResult> {
+  const src = id.trim();
+  const dst = newId.trim();
+  if (!isValidPresetId(src) || !isValidPresetId(dst)) {
+    return { ok: false, error: 'id 不合法（只允许小写字母/数字/连字符）' };
+  }
+  if (src === dst) return { ok: false, error: '新 id 与原名相同' };
+  if (builtinPresets().some((p) => p.id === src)) return { ok: false, error: `"${src}" 是内置 preset（不可改名）` };
+  if (builtinPresets().some((p) => p.id === dst)) return { ok: false, error: `"${dst}" 是内置 id，换一个` };
+  let root: string;
+  try {
+    root = await io.compositionDir(false);
+  } catch (e) {
+    return { ok: false, error: `取组合目录失败：${errText(e)}` };
+  }
+  const srcDir = presetDirPath(root, src);
+  const dstDir = presetDirPath(root, dst);
+  const yaml = await io.readFile(`${srcDir}/${PATCH_FILENAME}`);
+  if (yaml === null) return { ok: false, error: `源 preset「${src}」的 ${PATCH_FILENAME} 不可读` };
+  for (const name of [PATCH_FILENAME, META_FILENAME]) {
+    if ((await io.readFile(`${dstDir}/${name}`)) !== null) {
+      return { ok: false, error: `已存在 ${dstDir}/${name}——先删掉或换一个 id` };
+    }
+  }
+  const meta = (await io.readFile(`${srcDir}/${META_FILENAME}`)) ?? `name: ${JSON.stringify(dst)}\n`;
+  try {
+    await io.makeDir(dstDir);
+    await io.writeFile(`${dstDir}/${PATCH_FILENAME}`, yaml);
+    await io.writeFile(`${dstDir}/${META_FILENAME}`, meta);
+    for (const name of [PATCH_FILENAME, META_FILENAME]) {
+      await io.deleteFile(`${srcDir}/${name}`);
+    }
+  } catch (e) {
+    return { ok: false, error: `改名失败：${errText(e)}` };
+  }
+  return { ok: true, dir: dstDir };
+}
+
 /** 组合目录里发现的用户 preset（roster 过滤，作者面展示用）。 */
 export function userPresetsOf(roster: PresetEntry[]): PresetEntry[] {
   return roster.filter((p) => !p.builtin);

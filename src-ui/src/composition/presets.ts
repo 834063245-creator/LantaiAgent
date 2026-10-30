@@ -87,7 +87,7 @@ export const CREATOR_GUIDE = [
   '2. 写 patch YAML，composition(validate, yaml) 校验；错误会指出具体行/字段，改完再验。',
   '3. composition(write, id, yaml, name, description) 落盘（写入 ~/.lantai/composition/presets/<id>/，写后自动重扫）。已存在同名预设默认拒写：确需覆盖才带 overwrite:true。内置 id（standard/minimal/creator）不可占用。',
   '4. 告诉用户：在**空白卷**上选择该组合（卷首「组合」芯片或 设置 › Agent › 组合）后生效；跑过一轮的卷不会中途换面（组合决定模型看到的工具与提示面，是字节契约）。',
-  '5. 要删掉一个自己造的组合：composition(delete, id)（内置 standard/minimal/creator/readonly 拒删）。',
+  '5. 管理自己造的组合：composition(delete, id) 删除 / composition(rename, id, newId) 改名 / composition(copy, id, newId) 复制（可从内置复制一份再改）。内置拒删拒改名；当前全局默认拒删拒改名（先在设置里切走）。',
   '',
   '反例（会被拒绝）：新增一个工具、改某个工具的参数、写不存在的行 id、把 standard 改坏。做得对的最小例子：禁掉 shell 域 + 禁掉 fs 的写/编辑工具，得到一个「只读研究」组合。',
 ].join('\n');

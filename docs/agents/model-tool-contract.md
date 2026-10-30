@@ -25,7 +25,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | [`update_asset`](#update_asset) | ✓ | — | Update an existing asset block in-place by assetId (payload/presentation replace; the block id and pin position keep unchanged — pinned copies update live). Rules: kind is NOT changeable (changing semantics means creating a new asset with show_asset); presentation is changeable (skin swap, within the same kind white-list). Errors name what went wrong and what to do instead. |
 | [`list_block_kinds`](#list_block_kinds) | ✓ | — | List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically). |
 | [`office`](#office) | — | 12 | Read, edit, and produce Office files (.docx / .xlsx / .pptx) through OfficeCLI — the same engine as the `officecli` command line, but with typed actions and no quoting on your side. |
-| [`composition`](#composition) | — | 5 | Read and author agent compositions (presets). A preset is a named patch layered on the factory composition: it enables/disables registered rows, replaces or inserts prompt sections, and caps seams. Use composition(list) to see presets and available row ids, composition(validate) to check a patch before writing it, composition(write) to save a user preset under the composition directory, and composition(delete) to remove one. A preset affects only sessions that select it; an existing session keeps the composition it started with. |
+| [`composition`](#composition) | — | 7 | Read and author agent compositions (presets). A preset is a named patch layered on the factory composition: it enables/disables registered rows, replaces or inserts prompt sections, and caps seams. Use composition(list) to see presets and available row ids, composition(validate) to check a patch before writing it, composition(write) to save a user preset under the composition directory, and composition(delete) to remove one. A preset affects only sessions that select it; an existing session keeps the composition it started with. |
 | [`fs`](#fs) | — | 9 | File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. Path params accept workspace-root-relative paths (e.g. "src/agent/tool.ts"); fs(list)/fs(glob) may omit the path — omitted = the workspace root. fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed). |
 | [`shell`](#shell) | — | 4 | Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. Working directory is sticky per agent (a successful cd persists across calls; results end with a [cwd: ...] line). bash_output returns only NEW bytes since your last read — polling watch modes/dev servers is cheap. Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead. |
 | [`git`](#git) | — | 13 | Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. path may be omitted for every action — omitted = the workspace root. Key semantics: file = one file for diff/discard/blame (omit it on diff = all changes); files = comma-separated list (or "." for all) for stage — commit accepts files too and auto-stages them before committing. |
@@ -147,13 +147,14 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 
 - 只读：否
 - 域：`composition`
-- action 枚举（5）：`list` · `read` · `validate` · `write` · `delete`
+- action 枚举（7）：`list` · `read` · `validate` · `write` · `delete` · `rename` · `copy`
 - 只读 action：`list` · `read` · `validate`
 
 | 参数 | 必选 | 类型 | 说明 |
 |------|------|------|------|
-| `action` | ✓ | `list` / `read` / `validate` / `write` / `delete` | Which operation to perform. |
-| `id` | — | string | Preset id (read/write): lowercase letters, digits and hyphens. |
+| `action` | ✓ | `list` / `read` / `validate` / `write` / `delete` / `rename` / `copy` | Which operation to perform. |
+| `id` | — | string | Preset id (read/write/delete/rename/copy): lowercase letters, digits and hyphens. |
+| `newId` | — | string | Target preset id (rename/copy): the new id to create. |
 | `yaml` | — | string | Patch YAML text (validate/write): the roster.patch.yml body. |
 | `name` | — | string | Display name written into preset.yml (write). |
 | `description` | — | string | Display description written into preset.yml (write). |
