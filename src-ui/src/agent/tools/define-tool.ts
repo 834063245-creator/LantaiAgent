@@ -40,8 +40,10 @@ export function toInputJsonSchema(schema: z.ZodType): Record<string, unknown> {
 export interface DefineToolOpts<S extends z.ZodObject<z.ZodRawShape>> {
   /** 机器名, 与 ToolRegistry 注册名一致 */
   name: string;
-  /** 面向模型的描述 */
-  description: string;
+  /** 面向模型的描述。传函数 = **惰性求值**（每次 `description()` 重算）——
+   *  只有「描述内容依赖运行时状态」的工具才需要（如 code_execution 的绑定目录：
+   *  域门面是构建期快照，静态串会在装配期定格成过期名单）。 */
+  description: string | (() => string);
   /** zod schema — 单一事实来源。schema key 必须与现状逐字一致(含 snake_case 风格),
    *  rpc() 的 camelCase→snake 转换 + Rust 端参数名依赖它。 */
   schema: S;
@@ -76,7 +78,7 @@ export function defineTool<S extends z.ZodObject<z.ZodRawShape>>(opts: DefineToo
   const passthroughSchema = schema.passthrough();
   return {
     name: () => name,
-    description: () => description,
+    description: () => (typeof description === 'function' ? description() : description),
     parameters: () => toInputJsonSchema(passthroughSchema),
     readOnly: () => readOnly,
     ...(domain ? { domain: () => domain } : {}),

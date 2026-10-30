@@ -1,6 +1,6 @@
 # code_execution 执行原语升级（2026-10-29 立项 / 2026-10-30 迭代）
 
-> 状态：**Proposed（立项未开工）** —— 一批一 commit，可单独验收、可单独回退。
+> 状态：**P1 已落地（2026-10-30），P2-P4 待开工** —— 一批一 commit，可单独验收、可单独回退。
 > 一句话：现行实现是「code mode v1」（字符串程序 + 运行时桥 + 一次性 worker），**能力不缺，
 > 缺四条回路**：模型不知道这一卷里有哪些绑定、也不知道怎么调（P1）· 域工具的只读动作没拿到并发（P2）·
 > 失败只剩一句人话（P3）· 超输出预算 = 整段作废（P4）。
@@ -69,30 +69,42 @@ Example: const r = await tools.fs({action: "read", filePath: "x.ts"});
 - 只投影三样：**必填键**、`action` 枚举、**名字**。参数**说明**一律不进（那是 schema 的活，抄一份才是真漂）。
 - 体量：约 15 条绑定 × ~50 字符 ≈ 1KB 量级（模型工具契约全文 56KB，不重复它）。
 
-### 3.2 步骤
+### 3.2 步骤（2026-10-30 已落地）
 
-0. **取证（半小时）**：在 `execute` 入口打一条临时日志，对比「install 期快照的可见名」与「调用时的
-   `visibleTools()`」。预期一致（`agent-builder` 已先 `convergeRegistry` 一轮，段内 `converge-tools` 在其后且只隐藏
-   同一批派生名），若一致 ⇒ **保留快照，不上惰性解析**；不一致 ⇒ 本批附带改惰性（`deps.bindings` 换成 getter）。
-   取证结论写回本文件 §3.4。
-1. `host.ts`：`CodeBindingSpec` 增一行 `signature?: string`（缺省 = 只出名字；host 不认识 schema 类型）。
-2. `segments.ts`：构造 binding 时投影 `signature`（`t.parameters()` 的 `required` + `properties.action.enum`
-   + `t.actions()`；域工具与常驻工具同一段代码，无特判）。
-3. `code-execution-tool.ts`：加 `renderBindingCatalog` + description 拼接；导出纯函数供测试。
-4. baseline：description 进 `tool-schemas.effective.json`（standard + minimal 两轨）⇒ 走 §9 的审批与重录。
+0. **取证**：见 §3.4 —— **结论推翻了「预期一致、保留快照」**，所以下面的形状按实测改了。
+1. `tools/define-tool.ts`：`description` 支持 `string | (() => string)`（惰性求值；全仓只有本工具用函数形态）。
+2. `code-run/code-execution-tool.ts`：`CodeExecutionDeps.catalog?: () => Tool[]` + `projectBindingEntry` /
+   `renderBindingCatalog` / `buildDescription`（基础文案 + 目录块）；两个纯函数导出供测试。
+3. `capability-segments/segments.ts`：`catalog: () => scope.tools.visibleTools()` —— **活注册表**，
+   不是上面那个 install 期的 `bindings` 快照。
+4. baseline：standard + minimal 两轨重录（2026-10-30 用户批准；漂移面 = 描述一行，`parameters` 逐字不变）。
 
 ### 3.3 测试
 
 | 用例 | 命运 |
 |---|---|
-| `renderBindingCatalog`：排序稳定 / 空集 / 不含 `code_execution` / 无 `signature` 时退化为纯名字 | **新增** |
-| 投影一致性：catalog 里每个名字的 action 集合 == `tool.actions()`（防投影漂移） | **新增** |
-| 现有 `tests/code-execution.test.ts` 全部 | **零改动**（行为面只多了描述文字，执行路径不动） |
+| 投影只取三样：名字 / 动作枚举 / 必填键（`action` 剔除，参数说明不进） | **新增** |
+| 渲染：空集为空串 / 按名排序 / 动作超上限缩写为 `…` | **新增** |
+| 目录不含 `code_execution` 自身；缺省无 `catalog` 时退化为裸名字（不出空括号） | **新增** |
+| **活注册表刷新**：后注册 + 复收敛的动作，下一次描述里就在（§3.4 取证的行为化断言） | **新增** |
+| 现有 `tests/code-execution.test.ts` 25 例 | **零改动**（执行路径未动） |
 | convergence 双轨 | 重录后对拍（byte 级守护，不需要手写断言） |
 
-### 3.4 取证结论
+### 3.4 取证结论（2026-10-30 实测；临时用例已删）
 
-（开工时回填：快照 vs 调用时的可见名差异 = ?；signature 投影的实际字节数 = ?）
+| 观察 | 结果 |
+|---|---|
+| 装配期快照 vs 最终可见名 | `["fs"]` vs `["fs","agent"]` —— **快照会缺整个域** |
+| 域门面实例的动作集 | 后注册的动作**看不见**（`["spawn"]` 冻结）；复收敛才变（`["spawn","merge"]`） |
+| 反复复收敛 | 只重建同名，名字集合稳定 |
+
+机制：`buildDomainTool`（`tools/domains.ts:486-501`）在构建时把 `actions` / `readOnlyActions` / `parameters`
+算死；`convergeRegistry` 先 unregister 再 register **新实例** ⇒ 旧实例是过期投影。而 `code-execution-tool`
+（段 9）装配在 `converge-tools`（段 10）之前，快照必然晚一次收敛。
+
+结论：**目录与签名都必须在生成描述时读活注册表** ⇒ `defineTool.description` 函数形态 + `deps.catalog`。
+**副作用提醒（P2 施工点）**：`readOnlyFor` 若读快照实例的 `readOnlyActions()` 同样会过期——P2 实现必须按名字
+从活注册表取 Tool（`scope.tools.get(name)`），不要闭包捕获构造期实例。
 
 ## 4. P2 —— 并发面：按动作只读 + 键控写锁
 

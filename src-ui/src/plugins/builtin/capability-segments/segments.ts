@@ -210,7 +210,15 @@ export function firstPartyCapabilities(): AgentCapability[] {
               },
             }),
           );
-        scope.tools.register(createCodeExecutionTool({ bindings }));
+        scope.tools.register(
+          createCodeExecutionTool({
+            bindings,
+            // 目录数据源 = **活注册表**（不是上面那个 install 期快照）：域门面是
+            // 构建期冻结的实例，装配期取会晚一次收敛——计划 §3.4 取证（实测
+            // snapshot=["fs"] vs live=["fs","agent"]）。描述本身惰性求值。
+            catalog: () => scope.tools.visibleTools(),
+          }),
+        );
         agent.setCodeDispatch((name, args) => agent.dispatchNestedTool(name, args));
       },
     },

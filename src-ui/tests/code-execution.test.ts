@@ -8,11 +8,19 @@
 // 与真实 worker 同一份源码，进程内 fake port 跑全链路（DSH bootstrap 哲学）。
 
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { evalBootstrapSource, WORKER_BOOTSTRAP_SOURCE } from '../src/agent/code-run/bootstrap';
-import { createCodeExecutionTool } from '../src/agent/code-run/code-execution-tool';
+import {
+  createCodeExecutionTool,
+  projectBindingEntry,
+  renderBindingCatalog,
+} from '../src/agent/code-run/code-execution-tool';
 import { type CodeBindingSpec, type CodeWorkerLike, runCode } from '../src/agent/code-run/host';
 import { normalizeJsonArgs, parseWorkerMessage } from '../src/agent/code-run/protocol';
 import { codeRuntimePlugin, resetCodeRuntimeForTests, runViaRuntime } from '../src/agent/code-run/runtime-service';
+import { ToolRegistry } from '../src/agent/tool';
+import { defineTool } from '../src/agent/tools/define-tool';
+import { convergeRegistry } from '../src/agent/tools/domains';
 
 /** 绑定集快捷构造（测试）。 */
 function binding(name: string, readOnly: boolean, invoke: CodeBindingSpec['invoke']): CodeBindingSpec {
@@ -428,3 +436,91 @@ describe('codeRuntime 服务（P3 cordis 收口）', () => {
     resetCodeRuntimeForTests();
   });
 });
+
+// ── P1 绑定目录（code-execution-upgrade-plan §3）──
+describe('P1 绑定目录', () => {
+  /** 域门面替身（action 枚举 + 一个必填参数）。 */
+  function domainTool(name: string, actions: string[]) {
+    return defineTool({
+      name,
+      description: name,
+      domain: name,
+      actions,
+      schema: z.object({ action: z.enum(actions as [string, ...string[]]), path: z.string() }),
+      execute: async () => name,
+    });
+  }
+
+  /** 域动作实现（convergeRegistry 靠它们判定域门面是否存在）。 */
+  function actionTool(name: string, readOnly = false) {
+    return defineTool({
+      name,
+      description: name,
+      readOnly,
+      schema: z.object({ filePath: z.string() }),
+      execute: async () => name,
+    });
+  }
+
+  it('投影只取三样：名字 / 动作枚举 / 必填键（action 剔除，参数说明不进）', () => {
+    expect(projectBindingEntry(domainTool('fs', ['read', 'write']))).toEqual({
+      name: 'fs',
+      actions: ['read', 'write'],
+      required: ['path'],
+    });
+  });
+
+  it('渲染：空集为空串 / 按名排序 / 动作超上限缩写为 …', () => {
+    expect(renderBindingCatalog([])).toBe('');
+    const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    const text = renderBindingCatalog([{ name: 'zeta', actions: several(many) }, { name: 'alpha' }]);
+    const lines = text.split('\n').filter((l) => l.startsWith('  '));
+    expect(lines).toEqual(['  alpha', `  zeta(action: a|b|c|d|e|f|…)`]);
+  });
+
+  it('目录不含 code_execution 自身；缺省无 catalog 时退化为裸名字（不出空括号）', () => {
+    const reg = new ToolRegistry();
+    reg.register(actionTool('read_file_content', true));
+    convergeRegistry(reg);
+    reg.register(
+      defineTool({
+        name: 'code_execution',
+        description: 'self',
+        schema: z.object({ code: z.string() }),
+        execute: async () => '',
+      }),
+    );
+    const withCatalog = createCodeExecutionTool({ bindings: [], catalog: () => reg.visibleTools() });
+    expect(withCatalog.description()).toContain('  fs(action: read)');
+    expect(
+      withCatalog
+        .description()
+        .split('\n')
+        .filter((l) => l.includes('code_execution')),
+    ).toEqual([]);
+
+    const fallback = createCodeExecutionTool({
+      bindings: [{ name: 'fs', readOnly: true, invoke: async () => ({ output: '', isError: false }) }],
+    });
+    expect(fallback.description()).toContain('\n  fs');
+    expect(fallback.description()).not.toContain('fs()');
+  });
+
+  it('目录读活注册表：后注册 + 复收敛的动作立刻出现在描述里（域门面是构建期快照）', () => {
+    const reg = new ToolRegistry();
+    reg.register(actionTool('read_file_content', true));
+    convergeRegistry(reg);
+    const tool = createCodeExecutionTool({ bindings: [], catalog: () => reg.visibleTools() });
+    expect(tool.description()).toContain('  fs(action: read)');
+
+    // 装配期之后才出现的动作（域实例不会自更新，必须复收敛——见计划 §3.4 取证）
+    reg.register(actionTool('write_file'));
+    convergeRegistry(reg);
+    expect(tool.description()).toContain('  fs(action: read|write)');
+  });
+});
+
+/** 把 string[] 收窄成 renderBindingCatalog 需要的形态（测试 helper）。 */
+function several(names: string[]): string[] {
+  return names;
+}

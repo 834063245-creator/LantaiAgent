@@ -1,3 +1,49 @@
+# baseline change request — code_execution 绑定目录进描述（P1；模型可见面唯一变化 = 描述文本，2026-10-30）
+
+- **日期**: 2026-10-30
+- **请求 Agent**: code_execution 升级 P1 执行 Agent（计划 `docs/plans/code-execution-upgrade-plan.md` §3）
+- **涉及快照**: `baseline/phase-1/tool-schemas.effective.json`（standard 轨）+ `baseline/preset-minimal/phase-1/tool-schemas.effective.json`（minimal 轨，重录时确认）
+- **状态**: **已批准（2026-10-30 用户拍板「批准」）**——standard + minimal 两轨已重录，`verify:convergence` 双轨 exit 0
+
+## 变更内容
+
+模型可见面的唯一变化 = `code_execution` 工具的 `description` 末尾**追加一段本卷绑定目录**。
+standard 轨实测（`check-2026-10-30T11-44-25-604Z.md`，首个差异第 64 行，`parameters` 及此后各行逐字相同）：
+
+```
++ Available bindings in this session (call as `await tools.<name>(args)`; an action list ending in `…` is
+  abbreviated — each tool's full parameter schema is its own tool definition):
++   agent(action: spawn|kill|message|request|reply|inbox|…)
++   enter_plan_mode
++   exit_plan_mode
++   hologram_compaction_stats
++   task(action: create|get|list|update|stop|board)
+```
+
+## 为什么变
+
+1. **病灶**：描述里没有本卷的绑定清单（`code-run/code-execution-tool.ts` 原是写死字符串），模型写程序时猜名
+   （`tools.fs_write` / `tools.read`），第一次调用才炸——计划 §1 病症 1。
+2. **形状**：名字 + **派生签名**（动作枚举 + 必填键）+ 既有示例。签名由 `Tool.parameters()` / `Tool.actions()`
+   投影，**不是手抄** ⇒ 不是第二真源（计划 §3.1）；参数**说明**不进。
+3. **数据源纪律（本批取证结论，计划 §3.4）**：目录读**活注册表**，不读 install 期快照。取证实测：域门面是
+   构建期冻结实例（`tools/domains.ts:486-501`，actions/parameters 构建后不自更新），装配期取一次会晚一次收敛
+   ——snapshot=`["fs"]` vs live=`["fs","agent"]`。故 `defineTool` 的 `description` 支持函数形态（惰性求值），
+   装配层传 `catalog: () => scope.tools.visibleTools()`。
+
+## 影响面
+
+- **模型可见面**：仅上述描述文本。`parameters` 零变化（已实测同轨 diff 只有这一行）。
+- **用户可感知行为**：无（新增的是文案，不产生新工具、权限或展示面）。
+- **字节稳定性**：目录按名字排序 ⇒ 卷内绑定集不变则字节不变（前缀缓存不抖）。
+- **测试面**：`tests/code-execution.test.ts` 既有 25 例**零改动**（执行路径未动），新增 4 例
+  （投影 / 渲染 / 不含自身 / 活注册表刷新）。
+- **重录动作**：`npm run record:convergence` + `CONVERGENCE_PRESET=minimal npm run record:convergence`，
+  两轨各落文件，**重录单独一个 commit，不夹带代码**。
+- **验收**：`npm run verify:convergence`（双轨）exit 0。
+
+---
+
 # baseline change request — minimal 轨重录（office 域漏录，2026-09-13 起静默漂移）+ verify 门禁改双轨（2026-09-14）
 
 - **日期**: 2026-09-14

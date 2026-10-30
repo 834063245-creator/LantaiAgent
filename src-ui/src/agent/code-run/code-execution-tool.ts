@@ -12,6 +12,15 @@
 // schema 面纪律（计划 D2）：单工具增量=1，不摊平工具面；绑定集不在 schema
 // 里声明（程序体运行时按 registry 可见面物化）。
 //
+// 绑定目录（2026-10-30，计划 P1）：描述里带**本卷的绑定清单 + 派生签名**。
+// 数据源必须是**活注册表**（`deps.catalog`），不是 install 期的
+// `deps.bindings` 快照——域门面是构建期冻结的实例（`tools/domains.ts:486-501`
+// 把 actions/parameters 算好就固定），装配期取一次会晚一次收敛（实测
+// snapshot=["fs"] vs live=["fs","agent"]，见计划 §3.4）。所以描述走
+// `defineTool` 的惰性求值形态（每次 description() 重算）。
+// 签名只投影三样：名字 / 动作枚举 / 必填键——参数**说明**永不进（那是 schema
+// 的活，抄一份才是第二真源）。
+//
 // 嵌套语义（C5/C7）：
 //   - 子分发逐条落 session-log（tool/code-dispatch-start/end）——审计粒度
 //     与直接调用完全一致，只换调用者（D5/R4）；
@@ -35,6 +44,9 @@ import { runViaRuntime } from './runtime-service';
 export interface CodeExecutionDeps {
   /** 绑定集（invoke 闭包持有 executor 等价体 + 审计；不含 code_execution 自身——防自递归）。 */
   bindings: CodeBindingSpec[];
+  /** 目录数据源：**调用时刻**返回当前可见工具（活注册表投影）。缺省 = 退化为
+   *  `bindings` 的名单（只有名字，没有签名）。 */
+  catalog?: () => Tool[];
   /** 输出预算（字节）。缺省 64KB。 */
   maxOutputBytes?: number;
   /** 墙钟上限（ms）。缺省 120s。 */
@@ -43,17 +55,79 @@ export interface CodeExecutionDeps {
   createWorker?: (source: string) => import('./host').CodeWorkerLike;
 }
 
+/** 目录条目 —— 纯投影：名字 / 动作枚举 / 必填键。 */
+export interface BindingCatalogEntry {
+  name: string;
+  /** 域工具的动作枚举（原样；渲染时缩写）。 */
+  actions?: string[];
+  /** JSON Schema 的必填键（已剔除 `action`——它由动作枚举单独表达）。 */
+  required?: string[];
+}
+
+/** 动作列表缩写上限（超出打 `…`；完整枚举在工具自己的 schema 里）。 */
+const ACTION_CAP = 6;
+
+/** 活 Tool → 目录条目。纯函数：不缓存、不猜——同一个 Tool 每次投影结果一致。 */
+export function projectBindingEntry(tool: Tool): BindingCatalogEntry {
+  const actions = tool.actions?.() ?? [];
+  const raw = tool.parameters() as { required?: unknown };
+  const required = Array.isArray(raw.required)
+    ? raw.required.filter((k): k is string => typeof k === 'string' && k !== 'action')
+    : [];
+  return {
+    name: tool.name(),
+    ...(actions.length > 0 ? { actions: [...actions] } : {}),
+    ...(required.length > 0 ? { required } : {}),
+  };
+}
+
+function renderEntry(e: BindingCatalogEntry): string {
+  const rest = (e.required ?? []).join(', ');
+  if (e.actions && e.actions.length > 0) {
+    const shown = e.actions.slice(0, ACTION_CAP).join('|');
+    const more = e.actions.length > ACTION_CAP ? '|…' : '';
+    return `${e.name}(action: ${shown}${more}${rest ? `; ${rest}` : ''})`;
+  }
+  return rest ? `${e.name}(${rest})` : e.name;
+}
+
+/** 目录块（空集 = 空串）。名字排序 ⇒ 绑定集不变则字节不变（前缀缓存不抖）。 */
+export function renderBindingCatalog(entries: BindingCatalogEntry[]): string {
+  if (entries.length === 0) return '';
+  const lines = [...entries]
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .map((e) => `  ${renderEntry(e)}`);
+  return [
+    "Available bindings in this session (call as `await tools.<name>(args)`; an action list ending in `…` is abbreviated — each tool's full parameter schema is its own tool definition):",
+    ...lines,
+  ].join('\n');
+}
+
+const CODE_EXECUTION_DESCRIPTION =
+  'Execute a JavaScript program body against the available tools. `code` is the BODY of an async function: ' +
+  'top-level `await` and `return` work. Call tools as `await tools.<name>(args)` — e.g. ' +
+  '`const r = await tools.fs({action:"read", filePath:"x.ts"}); return r.length;`. ' +
+  'Use this for loops, fan-out reads, try/catch retries, and multi-step compositions instead of ' +
+  'repeated single tool calls. Concurrency: read-only tools run in parallel; write tools are serialized. ' +
+  'Only what you console.log or return is program output — curate it (output budget is capped). ' +
+  'Nested tool calls are audited exactly like direct calls (permissions/plan-mode rules apply).';
+
+/** 描述（惰性）：基础文案 + 本卷绑定目录。 */
+function buildDescription(deps: CodeExecutionDeps): string {
+  const entries = deps.catalog
+    ? deps
+        .catalog()
+        .filter((t) => t.name() !== 'code_execution')
+        .map(projectBindingEntry)
+    : deps.bindings.map((b) => ({ name: b.name }));
+  const catalog = renderBindingCatalog(entries);
+  return catalog ? `${CODE_EXECUTION_DESCRIPTION}\n\n${catalog}` : CODE_EXECUTION_DESCRIPTION;
+}
+
 export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
   return defineTool({
     name: 'code_execution',
-    description:
-      'Execute a JavaScript program body against the available tools. `code` is the BODY of an async function: ' +
-      'top-level `await` and `return` work. Call tools as `await tools.<name>(args)` — e.g. ' +
-      '`const r = await tools.fs({action:"read", filePath:"x.ts"}); return r.length;`. ' +
-      'Use this for loops, fan-out reads, try/catch retries, and multi-step compositions instead of ' +
-      'repeated single tool calls. Concurrency: read-only tools run in parallel; write tools are serialized. ' +
-      'Only what you console.log or return is program output — curate it (output budget is capped). ' +
-      'Nested tool calls are audited exactly like direct calls (permissions/plan-mode rules apply).',
+    description: () => buildDescription(deps),
     schema: z.object({
       code: z
         .string()
