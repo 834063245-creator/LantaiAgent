@@ -238,6 +238,37 @@ Agent →「组合」节的「新建 / 修改 preset」块就是这条路径的�
 - 元数据文件 `preset.yml` 是纯展示（`name`/`description`/`order`），装载失败
   降级为无元数据，不拒载。
 
+## 创作者模式（creator）与 composition 工具（2026-10-30）
+
+**preset 不再只能手写**：内置组合 `creator` 会回开一条默认关的工具行
+`plugin/hologram/composition-domain/composition`——模型因此在**这一个组合里**拿到
+读写组合的能力；standard / minimal / readonly 里它既看不见也调不到（defaultOff，最小权限）。
+
+| 入口 | 做什么 |
+|---|---|
+| 创作坞「✎ 造模式」按钮 | 起一卷 `creator`，把开场白**预填进输入框**（不自动发送——需求由你补完再发） |
+| 设置 › Agent › 组合 / 卷首芯片 | 手动把空白卷拨到 `creator`，然后直接说需求 |
+
+工具动作（`composition`）：
+
+| action | 语义 |
+|---|---|
+| `list`（`rows:true` 带可寻址行） | 看现有组合与全部行 id（行 id 只许从这里抄，写错会报「未知行 id」） |
+| `read` | 读一份组合的 patch（内置回 YAML 文本；用户组合同样） |
+| `validate` | 先校验再写：schema → 行可寻址性，两步都过才算可用 |
+| `write` | 落到 `~/.lantai/composition/presets/<id>/`（`roster.patch.yml` + `preset.yml`），写后自动重扫；同名默认拒写，覆盖要显式 `overwrite:true`；内置 id 拒写 |
+| `delete` | 删一个用户组合（内置拒删；**当前全局默认拒删**——先在设置里切走；不在册也照删，残留/坏目录正需要它） |
+
+**写盘通道与权限**：
+
+- `~/.lantai/composition/**` 是内核管理的配置面，已进沙箱用户级数据白名单（读+写）——
+  与 `providers.yml` 同一条判据，不是「给某个模式开权限」。
+- 工作区外写入不再「一杆子打死」：权限层**只判一次**，批准后沙箱不再二次否决；
+  模式语义 = `ask` 弹卡 / `auto` 对工作区外仍弹卡（不算安全编辑）/ `yolo` 放行（仍进审计）。
+  实机教训：旧实现「门禁问了、落盘又拒」，用户批了也白批。
+
+**出厂组合**（2026-10-30）：`standard`（出厂全量）/ `minimal`（禁联网与浏览器） /
+`creator`（能造组合） / `readonly`（关 shell、文件写入、git 写、office 写、代码执行，只留读/搜/网/git 历史）。
 ## 程序入口（按组合起卷 —— S6 P4，2026-09-16）
 
 UI 之外的程序（评测自举 / 未来的外部协议驱动 / 插件编排）可以**在起卷时直接指定组合**：
