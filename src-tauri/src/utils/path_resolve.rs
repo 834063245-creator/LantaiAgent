@@ -114,10 +114,17 @@ pub(crate) async fn check_permission(
                 Some(f) => f.to_string(),
                 None => tool.name().to_string(),
             };
+            // 越界标记（2026-10-30）：前端 auto 模式的自动放行据此**不**生效——
+            // 「auto = 安全编辑自动放行」不覆盖工作区外写入（它不在项目内，不是安全编辑）。
+            let outside_project = tool
+                .get_path()
+                .map(|p| ctx.sandbox.is_outside_project(&p))
+                .unwrap_or(false);
             let _ = app.emit("permission-ask", serde_json::json!({
                 "requestId": request_id,
                 "tool": ask_tool,
                 "path": tool.get_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                "outsideProject": outside_project,
                 "reason": reason,
                 "danger": danger,
                 "agentId": tool.agent_id(),
@@ -219,7 +226,15 @@ pub(crate) async fn require_write(file_path: &str, agent_id: Option<&str>, state
     let physical_str = physical.to_string_lossy().to_string();
     let tool = tools::EditTool { path: physical_str.clone(), agent_id: agent_id.map(|s| s.to_string()) };
     check_permission(&tool, &ctx, app).await?;
-    ctx.resolve_write(&physical_str)
+    // 权限层已放行（用户确认卡 / yolo 自动放行）——越界写**不再由沙箱二次否决**
+    // （2026-10-30 修：旧实现「批准了仍被沙箱拒」，同一件事判两次）。项目内写零变化；
+    // 符号链接 / junction 拒绝保留（resolve_write_approved 内）。
+    let p = std::path::Path::new(&physical_str);
+    if ctx.sandbox.is_outside_project(p) {
+        ctx.sandbox.resolve_write_approved(p).into_result()
+    } else {
+        ctx.resolve_write(&physical_str)
+    }
 }
 
 /// ponytail: 用户 UI 操作的路径解析 — 只做 forward-map + sandbox resolve,
@@ -320,7 +335,13 @@ pub(crate) fn resolve_write_unchecked(
     let ctx = get_ctx(state)?;
     let agent = if is_agent { agent_id } else { None };
     let physical = ctx.forward_map_path(&expand_input(file_path), agent);
-    ctx.resolve_write(&physical.to_string_lossy())
+    let p = physical.to_string_lossy().to_string();
+    // 免检 = 口内已过闸：agent 的越界写在闸里已拿到 Allow（用户确认 / yolo），
+    // 这里不再由沙箱二次否决（与 require_write 同一语义，2026-10-30）。
+    if is_agent && ctx.sandbox.is_outside_project(std::path::Path::new(&p)) {
+        return ctx.sandbox.resolve_write_approved(std::path::Path::new(&p)).into_result();
+    }
+    ctx.resolve_write(&p)
 }
 
 // （require_git_dispatch / require_git 已随 commands/git_cmds.rs 退役——

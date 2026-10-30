@@ -38,7 +38,8 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
       // 单一真相 = mode-store（C11 重设计，2026-08-22）：app 级单例，
       // 切换时已同步镜像 Rust + 落盘；不再读 per-panel 的旧字段。
       const permMode = useModeStore.getState().permissionMode;
-      if (shouldAutoApprove(permMode, p.tool)) {
+      // 工作区外写入（Rust 侧标记）不走 auto 自动放行——仍弹卡（2026-10-30）
+      if (shouldAutoApprove(permMode, p.tool, p.outsideProject === true)) {
         void typedRpc('permission_ask_response', {
           request_id: p.requestId,
           allow: true,

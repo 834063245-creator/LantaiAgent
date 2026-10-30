@@ -41,6 +41,13 @@ describe('permission-policy 语义', () => {
     expect(shouldAutoApprove('ask', 'Edit')).toBe(false);
     expect(shouldAutoApprove('ask', 'Bash')).toBe(false);
   });
+
+  it('shouldAutoApprove: 工作区外写入不算安全编辑——auto 也弹卡（2026-10-30 权限模型统一）', () => {
+    expect(shouldAutoApprove('auto', 'Edit', true)).toBe(false);
+    expect(shouldAutoApprove('auto', 'Edit', false)).toBe(true);
+    expect(shouldAutoApprove('yolo', 'Edit', true)).toBe(true);
+    expect(shouldAutoApprove('ask', 'Edit', true)).toBe(false);
+  });
 });
 
 describe('permission-policy 单真源守卫', () => {

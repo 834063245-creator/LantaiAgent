@@ -65,6 +65,31 @@ impl Sandbox {
         logical_path(path).starts_with(&self.project_root)
     }
 
+    /// 是否在项目根之外（权限面判据，2026-10-30）。
+    /// 用途：越界写的 Ask 载荷要标 `outsideProject`（auto 模式据此**不**自动放行），
+    /// 与「用户数据白名单」无关——白名单路径照旧算放行面。
+    pub fn is_outside_project(&self, path: &Path) -> bool {
+        if Self::is_user_data_writable_path(path) || Self::is_user_data_path(path) {
+            return false;
+        }
+        !self.contains(path)
+    }
+
+    /// 写入解析——**权限层已放行**后的变体（2026-10-30）。
+    /// 与 `resolve_write` 的差别只有一条：跳过项目根包含检查（用户确认 / yolo
+    /// 自动放行之后，沙箱不再二次裁决——这正是「批准了却仍被沙箱拒」的两层
+    /// 矛盾的老病灶）。符号链接 / junction 拒绝保留（防绕过）。
+    pub fn resolve_write_approved(&self, path: &Path) -> SandboxResult {
+        if let Some(r) = Self::user_data_write(path) {
+            return r;
+        }
+        let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        if is_symlink_or_junction(path) {
+            return SandboxResult::Denied("symlinks and junctions are not allowed".into());
+        }
+        SandboxResult::Allowed(real)
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // 用户级数据路径的**工作区无关**解析（2026-09-26 真机修）
     // ═══════════════════════════════════════════════════════════════
@@ -596,6 +621,26 @@ mod tests {
         );
     }
 
+    /// 权限层已放行后的写入解析（2026-10-30 权限模型统一）：
+    /// 项目内零变化；工作区外「未批准 → 拒」「已批准 → 放行」——
+    /// 修的是「用户确认了仍被沙箱拒」的两层矛盾。
+    #[test]
+    fn approved_write_bypasses_project_root() {
+        let root = std::env::temp_dir().join("lantai-approved-root");
+        let outside = std::env::temp_dir().join("lantai-approved-outside.txt");
+        let sandbox = Sandbox::new(&root);
+        assert!(sandbox.is_outside_project(&outside), "temp 相邻文件应在项目外");
+        assert!(
+            matches!(sandbox.resolve_write(&outside), SandboxResult::Denied(_)),
+            "未批准的越界写仍拒"
+        );
+        assert!(
+            matches!(sandbox.resolve_write_approved(&outside), SandboxResult::Allowed(_)),
+            "已批准的越界写放行"
+        );
+        let inside = root.join("a.txt");
+        assert!(!sandbox.is_outside_project(&inside), "项目内不算越界");
+    }
     /// ~/.lantai/composition（组合作者面，2026-10-30）：读+写豁免；
     /// 相邻路径不许借道（composition.bak / compositionX / `.lantai/` 其余内容）。
     #[test]

@@ -32,7 +32,17 @@ export function autoAllows(toolName: string): boolean {
 }
 
 /** 权限请求的自动旁路总判定（bridges.ts 事件桥短路用）：mode 三档语义——
- *  yolo → 全放；auto → 白名单放行；ask → 不放行（弹卡）。 */
-export function shouldAutoApprove(permMode: 'ask' | 'auto' | 'yolo', toolName: string): boolean {
-  return permMode === 'yolo' || (permMode === 'auto' && autoAllows(toolName));
+ *  yolo → 全放；auto → 白名单放行；ask → 不放行（弹卡）。
+ *
+ *  `outsideProject`（2026-10-30 权限模型统一）：工作区外写入**不算安全编辑**，
+ *  auto 模式也不自动放行——一律弹卡（yolo 仍全放）。载荷标记由 Rust 侧
+ *  `sandbox::is_outside_project` 计算（`permission-ask.outsideProject`）。 */
+export function shouldAutoApprove(
+  permMode: 'ask' | 'auto' | 'yolo',
+  toolName: string,
+  outsideProject = false,
+): boolean {
+  if (permMode === 'yolo') return true;
+  if (outsideProject) return false;
+  return permMode === 'auto' && autoAllows(toolName);
 }

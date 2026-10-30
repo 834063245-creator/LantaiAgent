@@ -641,6 +641,8 @@ export interface EventContract {
     requestId: string;
     tool: string;
     path: string;
+    /** 工作区外写入标记（2026-10-30）：auto 模式据此不自动放行（仍弹卡）。 */
+    outsideProject?: boolean;
     reason: string;
     danger: string;
     agentId: string;
