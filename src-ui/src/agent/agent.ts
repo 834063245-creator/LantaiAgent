@@ -2372,6 +2372,13 @@ export class Agent {
     return requireCompactionImplementation().callSummaryLLM(this as unknown as CompactionHost, signal, messages, shape);
   }
 
+  /** 一次性旁路调用（卷名概括等元数据生成，2026-10-31 B 批）：复用摘要的 provider /
+   *  温度 / 空闲超时，**不入卷账**——旁路调用不是上下文，usage 由调用方落日志。
+   *  能力位见 `ChatAgentHandle.callSideLLM`（不实现 = 该能力不发生）。 */
+  async callSideLLM(signal: AbortSignal, messages: Message[]): Promise<SummaryCall> {
+    return this.callSummaryLLM(signal, messages, { replay: false });
+  }
+
   /** 滚动合并分段摘要（含 priorSummary）。 */
   async mergePartials(
     signal: AbortSignal,

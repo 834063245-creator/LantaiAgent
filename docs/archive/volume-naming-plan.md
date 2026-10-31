@@ -1,7 +1,7 @@
 # 卷名自动命名（A / C / B）· 2026-10-31
 
-> 状态：**A + C 已落地（2026-10-31）；B 未开工（Draft）** —— 用户同日先「先落 PLAN」后「开工」，
-> A/C 两批已完成并过门禁；B（LLM 概括）留待下一批。
+> 状态：**已归档（2026-10-31）** —— A / C / B 三批全部落地并过门禁；本文件是**施工记录，不是现状依据**
+> （现状口径 = `docs/plans/README.md` 与根目录 `CONVENTIONS.md` / `INVARIANTS.md`）。
 > 参照真源：`D:\useful\deepseek-harness\packages\session\session-title\`（DSH 的 log-only 标题服务）。
 > 结论先说：**兰台已经有这条链的 80%**（真源 / 两个命名时点 / 改名 / 落盘 / 枝卷判据 / 改名即钉死），
 > 本计划只补「名字的质量」与「谁起的名字」两件事，**不移植 DSH 的服务架构**。
@@ -55,33 +55,43 @@ writable = isUnnamedVolumeLabel(label) || labelSource === 'derived'
 **落地前再判一次**（异步结果回来时用户可能已改名）。这一条 if 就是 DSH 整套 revision /
 AbortController 在兰台的等价物——不要为它引入 revision 计数或取消控制器。
 
-取值目前只有 `derived` / `user` 两枚（A/C 批只发这两枚，不为未实现的批次预留死值）；
-B 批落地时加第三枚 `refined`（已尝试过自动概括 ⇒ 不再重试），否则派生名会在每轮末重复烧一次调用。
+取值三枚：`derived`（刚派生，允许被概括覆盖）/ `refined`（已**尝试**概括——成功则名字是模型的，
+失败保留派生名；不再重试，否则派生名会在每轮末重复烧一次调用）/ `user`（人手起的名，永不覆盖）。
+缺失 = 来源未知。
 
 ### 3.3 派生面（A 批，已落地）
 
-`state/volume-name.ts` 内新增三个**内部**纯函数（不导出——行为只经 `deriveVolumeLabel` 暴露，不造无消费者的 API）：
+`state/volume-name.ts` 内新增两个**内部**纯函数 + 一个共用规范化函数：
 
 - `cleanVolumeLabelText(raw)`：C0/C1 控制符换空格 → 去方向/零宽控制符 → 折叠所有空白（含换行、制表）为单空格 →
   剥行首排版壳（代码围栏 / `#` 标题 / `>` 引用 / `-`·`*`·`+` 列表 / 有序列表，叠用最多剥四层）→ trim；
 - `truncateVolumeLabel(text, max)`：按 **code point**（`Array.from`）截断，超限补 `…`——代理对不再被劈开；
-- `deriveVolumeLabel = truncate(clean(raw), 28)`（发送时 / 轮末 / 读盘三条路仍是同一把尺子）。
+- `normalizeVolumeLabel(raw) = truncate(clean(raw), 28)`（**导出**）：B 批的模型回包与派生共用同一把尺子，
+  `deriveVolumeLabel` 就是它的别名。
 
 **口径不变**：`VOLUME_LABEL_MAX_CHARS` 仍是 28 **个字符**，`volume-name.test.ts` 既有 28 字断言**零改动**。
 （原计划写「改显示宽度、CJK 按 2 计」——**落地时否决**：中文是本产品主语言，按宽计会把中文卷名拦腰砍成 14 字，
 是可见回归不是精度提升；理由见 §8。）
 
-### 3.4 LLM 概括（B 批）
+### 3.4 LLM 概括（B 批，已落地）
 
-**不新增 LLM 管道**。复用 Agent 已有的旁路能力位 `callSummaryLLM(signal, messages, { replay: false })`
+**不新增 LLM 管道**。复用 Agent 已有的旁路方法 `callSummaryLLM(signal, messages, { replay: false })`
 （内部 = `streamWithIdleTimeout` 包主模型 + 温度 0.3 + 30s 空闲超时 + 每次调用入账日志）。
+对 chat 层暴露的方式 = `ChatAgentHandle` 新增**能力位** `callSideLLM(signal, messages)`（`Agent` 实现即转调上者）；
+旧实现 / 测试桩不实现 = 该能力不发生，链路不炸。
 
 - 新文件 `src-ui/src/state/volume-title.ts`：只放纯逻辑
-  `buildTitlePrompt()` / `parseTitleReply(text)`（取首个非空行 → 剥整行 `**` 强调 → 去控制符 → 空则 `null`）；
-- 调用点：`autoTitleSessionIfDefault` 之后新增 `refineVolumeTitleIfDerived(storeId, sid)`；
-  `void` 发起、不阻塞回合；失败 `log.warn` 一条、保留派生名、**不弹 toast**；
-- 入参：本卷**自己的**首条来文（沿用 `inheritedMessageCount` 判据，禁新写第二套）；
-- 草拟 prompt（B 批实现时以此为准，可调）：
+  `buildVolumeTitlePrompt(text)`（system 指令 + JSON 包裹）与 `parseVolumeTitleReply(reply)`
+  （首个非空行 → 剥整行星号强调 → 去控制符 → 折叠空白；空串 = 本轮回包不可用）；
+  入参按 `VOLUME_TITLE_INPUT_MAX_CHARS`（2000 字符）截断——概括只需要开头。
+- 调用点：`ui/chat-session.ts` 的 `refineVolumeTitleIfDerived(storeId, sessionId)`（导出，便于单独钉值），
+  由 `autoTitleSessionIfDefault` 在「已有名」与「刚派生」两条分支后各调一次；`void` 发起、不阻塞回合；
+  失败 `log.warn` 一条、保留派生名、**不弹 toast**。
+- 发起即记账：先把来源改成 `refined`（= 已尝试），所以同一卷不会重复烧调用；失败也不重试。
+- 落地守卫（三查，缺一不可）：`isCurrentEpoch(epoch)`（INVARIANTS #12）→ 来源仍是 `refined` → 名字仍是
+  发起时那个 `attempted`（用户中途改名 ⇒ 来源变 `user`，结果直接丢）；与现值相同则不写（免版式抖动）。
+- 入参：本卷**自己的**首条来文（沿用 `inheritedMessageCount` 判据，`ownFirstUserText` 与派生共用）。
+- prompt（已按实现落地，改口径只改 `volume-title.ts` 一处）：
 
 ```text
 你为兰台的「案卷」起题名——一句概括本次会话要做什么。
@@ -90,9 +100,9 @@ B 批落地时加第三枚 `refined`（已尝试过自动概括 ⇒ 不再重试
 信息不足时给一个最简短的尽力题名（如「问候」），不要解释。
 ```
 
-- **token 账口径**：本次调用的 usage **不入卷 `tokens`**（那是上下文构成账，标题调用不进上下文），
-  只落 `log.info` 一行（provider / model / prompt_tokens / completion_tokens / elapsed）。
-  这条要写进注释——否则三年后会有人当漏账补上，污染压力读数与压缩预检。
+- **token 账口径**：本次调用的 usage **不入卷 `tokens`**（那是上下文构成账，旁路调用不进上下文），
+  只落 `log.info('chat', 'volume title llm response', …)` 一行（cap / 文本长度 / prompt·completion·cache 命中 / 耗时）。
+  这条写在函数注释里——否则三年后会有人当漏账补上，污染压力读数与压缩预检。
 
 ### 3.5 与版式的接缝
 
@@ -105,9 +115,9 @@ B 批落地时加第三枚 `refined`（已尝试过自动概括 ⇒ 不再重试
 |---|---|---|---|
 | **A** ✅ | 清洗 + code point 截断 | `state/volume-name.ts` | `tests/volume-name.test.ts` +4 例（多行 / 围栏与列表前缀 / 控制符 / emoji 边界），既有 28 字断言零改动 |
 | **C** ✅ | `labelSource` 贯通（**内存态**） | `state/volume-name.ts`（类型）、`state/session-store.ts`（字段 + 写入口缺省）、`ui/chat-session.ts`（轮末派生写 `derived`）、`app/chat/chat-core.ts`（发送时派生写 `derived`） | `tests/volume-naming.test.ts` 补派生 → `derived` / 改名 → `user` / 起卷 → `undefined` / store 写入口缺省 = `user` |
-| **B** | 一次旁路调用 | 新增 `state/volume-title.ts`；`ui/chat-session.ts` 新函数 | 新 `tests/volume-title.test.ts`（纯函数）+ `volume-naming.test.ts` 行为 3 例：覆盖 `derived` / 用户改名后不落地 / 调用失败保留派生名 |
+| **B** ✅ | 一次旁路调用 | 新增 `state/volume-title.ts`；`ui/chat-session.ts` 的 `refineVolumeTitleIfDerived`；`agent/chat-agent-handle.ts` 能力位 + `agent/agent.ts` 转调 | 新 `tests/volume-title.test.ts`（6 例纯函数）+ `volume-naming.test.ts` 行为 4 例：覆盖 `derived` / 用户改名后不落地 / 调用失败保留派生名 / epoch 变了丢弃 |
 
-顺序：**A + C 同批已落地**（2026-10-31，一个工作树）→ **B 单独一批**（唯一引入模型不确定性的改动）。
+顺序：**A + C 同批**（一个 commit）→ **B 单独一批**（唯一引入模型不确定性的改动）——两批均 2026-10-31 落地。
 
 **C 的落地修正**：`labelSource` 不落盘。原计划要带 4 处快照写点（合卷 `:495` / 保存单卷 `:1493` /
 批量保存 `:1531` / 改名 `:1596`）+ 2 处读面，等于去动冻结文件 `ui/chat-session.ts` 的持久化面；
@@ -119,7 +129,7 @@ B 批落地时加第三枚 `refined`（已尝试过自动概括 ⇒ 不再重试
 |---|---|
 | 派生（纯函数）✅ | 多行来文 → 单行；围栏/标题/引用/列表前缀被剥（含叠用）；控制符换空格、方向符去掉；emoji 边界不劈开代理对；28 字边界与全空白断言**零改动** |
 | 来源（行为）✅ | 发送时与轮末派生 → `derived`；用户改名 → `user`；起卷未命名 → `undefined`；store 写入口缺省 = `user` |
-| 概括（行为） | `derived` 名在 LLM 结果回来后被打上 `refined`；**用户改名后飞行中的结果不落地**；调用抛错 → 保留派生名 + 一条 warn |
+| 概括（行为）✅ | `derived` 名在 LLM 结果回来后落地为模型题名（来源 `refined`）；**用户改名后飞行中的结果不落地**；调用抛错 → 保留派生名 + 一条 warn；epoch 变了 → 丢弃；发起后第二轮不再重烧（`volume-naming.test.ts` 4 例） |
 | 枝卷（回归）✅ | 立枝后子卷仍按自己的首条来文命名（`session-branch.test.ts` 既有三例零改动，实测仍绿） |
 
 ## 6. 门禁
@@ -149,6 +159,14 @@ B 批额外：真机看一次「首条来文很长」的卷（A 批已覆盖的�
 - **max_tokens 沿用摘要的 8192 上限**（不是标题专用的 64）：这是复用现成能力位的代价，属已知偏差。
   真要收窄需给 compaction 契约加参数——**第一版不做**（会动 `compaction-contract.ts` 的接口面）。
 - **版式抖动**：见 §3.5，靠「不同才写」兜住；若真机仍可见跳动，退路是只在下一轮开始前落地（不作第一版）。
+- **能力位缺失即不发生**：`callSideLLM` 是可选位——旧实现 / 测试桩不实现，概括整条链静默不发生（不是失败）。
+- **轮末失败路径也会打一次概括调用**：`finishTurn` 在重试耗尽的失败回合同样触发命名 / 概括（fire-and-forget），
+  provider 调用计数因此多 1 次。`chat-send-liveness.test.ts` 的「重试预算 = 首次 + 3」用例改为**预钉卷名**
+  （来源 `user`）——考的是主请求预算，不是总调用数；断言未改，只改夹具（2026-10-31 实测：不钉则 4 → 5）。
+- **event-catalog 生成物随行号漂移**：`agent.ts` 增方法使 `subagent/*` 的 emit 行号后移，
+  `docs/agents/event-catalog.md` 必须同批 `npm run gen:catalogs:event`（2026-10-31 已重生成，4 行漂移）。
+- **max_tokens 继承摘要的 8192**：`callSummaryLLM` 的 cap 来自 `host.summaryMaxTokens`，标题调用沿用。
+  prompt 已把目标压到 8–14 字，8192 只是防跑飞的天花板；要收窄得动 `compaction-contract.ts` 的接口面，本批不做。
 
 ## 9. 已验事实（2026-10-31 取证）
 
@@ -176,3 +194,8 @@ B 批额外：真机看一次「首条来文很长」的卷（A 批已覆盖的�
   两个派生点（`app/chat/chat-core.ts` 发送时、`ui/chat-session.ts` 轮末）各写 `derived`，
   store 写入口缺省 `user`。门禁：`npm run build` ✅ · `npx biome ci .` ✅（exit 0，1099 文件）·
   `npx vitest run` **445 文件 4779 例全绿** · `doc-check` 见 §6。
+- **B 批落地取证（2026-10-31）**：`state/volume-title.ts`（prompt + 回包解析纯函数）；能力位
+  `ChatAgentHandle.callSideLLM` → `Agent.callSideLLM` → `callSummaryLLM`；`ui/chat-session.ts` 的
+  `refineVolumeTitleIfDerived`（发起即记 `refined`、落地三查、usage 只入日志）；`ownFirstUserText` 与派生共用判据。
+  门禁：`npm run build` ✅ · `npx biome ci .` ✅ · `npx vitest run` ✅ · `npm run verify:convergence` 双轨 ✅
+  （动了 `src/agent/**` 故必须过）。

@@ -248,6 +248,9 @@ describe('发送链路活性（反馈环）', () => {
     const { prov, calls } = flakyAbortProvider(Number.MAX_SAFE_INTEGER);
     const panel = panelWith(prov);
     await panel.createNewSession();
+    // 卷名预先钉死（来源 user）：本用例考的是**主请求**的重试预算；未命名卷会在轮末
+    // 多打一次「卷名概括」的旁路调用（2026-10-31 B 批），那一次不属于重试预算。
+    panel.renameSession(1, '发送活性夹具');
 
     vi.useFakeTimers();
     const done = send(panel, '在吗');

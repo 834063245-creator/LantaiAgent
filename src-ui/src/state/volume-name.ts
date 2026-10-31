@@ -29,10 +29,11 @@
 export const VOLUME_LABEL_MAX_CHARS = 28;
 
 /** 卷名来源（**内存态**，不进卷快照）：`user` = 人手起的名，任何自动命名不得覆盖；
- *  `derived` = 本进程内由首条来文自动派生（可被后续自动概括覆盖，B 批消费）；
+ *  `derived` = 本进程内由首条来文自动派生（可被模型概括覆盖，B 批消费）；
+ *  `refined` = 已**尝试**过模型概括（成功则名字是模型的，失败则保留派生名）——不再重试；
  *  缺失 = 来源未知（旧卷 / 读盘卷）——一律按 `user` 对待（宁可不改，不可误改）。
  *  归属：CONVENTIONS §1.10 第 1 类（挂在面板级 session store 的字段上，无模块级态）。 */
-export type VolumeLabelSource = 'derived' | 'user';
+export type VolumeLabelSource = 'derived' | 'refined' | 'user';
 
 /** 旧存档遗留的默认名（历史**写入值**）——识别为「未命名」，不是用户起的名。
  *  旧实现：起卷写「案卷 N」（更早「会话 N」）。 */
@@ -89,7 +90,12 @@ function truncateVolumeLabel(text: string, maxChars: number): string {
   return chars.length > maxChars ? `${chars.slice(0, maxChars).join('')}…` : text;
 }
 
+/** 任意来源的卷名文本 → 合规卷名（清洗 + 28 字截断）。派生与模型概括共用同一把尺子。 */
+export function normalizeVolumeLabel(raw: string): string {
+  return truncateVolumeLabel(cleanVolumeLabelText(raw), VOLUME_LABEL_MAX_CHARS);
+}
+
 /** 首条来文 → 卷名（清洗后前 28 字 + 省略号）。活路径（发送时 / 每轮末）与读盘路径共用。 */
 export function deriveVolumeLabel(firstUserText: string): string {
-  return truncateVolumeLabel(cleanVolumeLabelText(firstUserText), VOLUME_LABEL_MAX_CHARS);
+  return normalizeVolumeLabel(firstUserText);
 }

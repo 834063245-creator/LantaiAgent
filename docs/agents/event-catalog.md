@@ -18,8 +18,8 @@
 | `run/abandoned` | emit | RunAbandonedPayload | `src/agent/events.ts:60` | `src/agent/agent.ts:1486` | — |
 | `step/end` | emit | StepEndPayload | `src/agent/events.ts:54` | `src/plugins/builtin/agent-loop-service/default-loop.ts:432` · `src/plugins/builtin/agent-loop-service/default-loop.ts:548` | — |
 | `step/start` | emit | StepStartPayload | `src/agent/events.ts:53` | `src/plugins/builtin/agent-loop-service/default-loop.ts:131` | — |
-| `subagent/done` | emit | SubagentDonePayload | `src/agent/events.ts:58` | `src/agent/agent.ts:2440` · `src/agent/agent.ts:2448` | — |
-| `subagent/spawn` | emit | SubagentSpawnPayload | `src/agent/events.ts:57` | `src/agent/agent.ts:2422` | — |
+| `subagent/done` | emit | SubagentDonePayload | `src/agent/events.ts:58` | `src/agent/agent.ts:2447` · `src/agent/agent.ts:2455` | — |
+| `subagent/spawn` | emit | SubagentSpawnPayload | `src/agent/events.ts:57` | `src/agent/agent.ts:2429` | — |
 | `tool/around` | waterfall | ToolPipelineContext + string | `src/agent/events.ts:47` | `src/agent/streaming-executor.ts:545` | `src/agent/agent.ts:696` · `src/agent/events.ts:341` |
 | `tool/error` | emit | ToolPipelineContext + string | `src/agent/events.ts:49` | `src/agent/streaming-executor.ts:614` | — |
 | `tool/guard` | waterfall | ToolPipelineContext | `src/agent/events.ts:45` | `src/agent/streaming-executor.ts:217` | `src/agent/agent.ts:587` · `src/agent/events.ts:312` |

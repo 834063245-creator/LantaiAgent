@@ -8,6 +8,7 @@
 import type { StoredThinking } from '../provider/thinking';
 
 import type { ChatImageRef, Message, Provider } from '../provider/types';
+import type { SummaryCall } from './compaction-contract';
 import type { ExecStateInstance } from './execution-state';
 import type { TokenLedgerSnapshot, TokenMeasurement } from './token-meter/types';
 
@@ -25,6 +26,14 @@ export interface ChatAgentHandle {
 
   /** 手动触发上下文压缩，返回摘要文本 */
   compactNow(signal: AbortSignal): Promise<string>;
+
+  // ── 旁路一次性 LLM 调用（2026-10-31 卷名概括 B 批）──
+  // 能力位（可选）：句柄不实现 = 该能力不发生（旧实现 / 测试桩降级不炸）。
+  // **不入卷账**：旁路调用不是上下文的一部分，usage 归调用方落日志。
+
+  /** 一次性旁路调用（给定含 system 的完整 messages）：复用摘要的 provider / 温度 /
+   *  空闲超时，返回纯文本 + 发出的 cap + 提供方 usage。调用方只管 prompt 与解析。 */
+  callSideLLM?(signal: AbortSignal, messages: Message[]): Promise<SummaryCall>;
 
   /** 撤回指定位置的对话轮次 */
   retractTurnAt(sessionIndex: number): void;

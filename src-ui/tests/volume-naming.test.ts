@@ -31,6 +31,7 @@ import { useShellStore } from '../src/app/shell-store';
 import { getSessionStore } from '../src/state/session-store';
 import { volumeDisplayName } from '../src/state/volume-name';
 import * as Session from '../src/ui/chat-session';
+import { bumpWorkspaceEpoch } from '../src/workspace-scope';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 await ensureProductionChannelsBooted();
@@ -188,5 +189,118 @@ describe('卷名收口：一个字段（空 = 未命名），数字名只是显�
     expect(rows.find((r) => r.id === 22)?.label).toBe('有名卷');
     // 侧栏合流后仍由呈现层兜底（数据面留空，显示才有唯一出处）
     expect(volumeDisplayName(rows.find((r) => r.id === 21)?.label, 21)).toBe('案卷 21');
+  });
+});
+
+// ── B 批（2026-10-31）：派生名补一次模型概括 ──
+// 调用面 = ChatAgentHandle 的旁路能力位 `callSideLLM`（用例用可控 deferred 桩，
+// 考的是「在途时用户改名 / epoch 变了 / 调用失败」三条纪律，不是模型质量）。
+
+/** 可控旁路调用：resolve / reject 由用例掌握，考「在途」语义。 */
+function deferredSideCall(): {
+  promise: Promise<{ text: string; maxTokens: number }>;
+  resolve: (value: { text: string; maxTokens: number }) => void;
+  reject: (reason: unknown) => void;
+} {
+  let resolve!: (value: { text: string; maxTokens: number }) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<{ text: string; maxTokens: number }>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** 让 fire-and-forget 的续段（await 之后）跑完。 */
+const flush = (): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+describe('卷名概括（B 批）：derived 名补一次模型概括', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useShellStore.setState({ projectPath: '' });
+    H.kernelFs!.fs.files.clear();
+    H.kernelFs!.fs.dirs.clear();
+    H.kernelFs!.fs.writes.length = 0;
+    H.kernelFs!.fs.fail = {};
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  /** 起一卷 → 手工置「派生名」→ 装可控旁路句柄（首条来文固定，判据不参与本组）。 */
+  async function seedDerived(label: string, sideCall: unknown) {
+    const panel = createPanel();
+    await panel.createNewSession();
+    const sid = Session.getSessions(panel.panelId)[0].id;
+    const store = getSessionStore(panel.panelId);
+    store.getState().renameSession(sid, label, 'derived');
+    agentSessionState.setAgent(panel.panelId, sid, {
+      getSession: () => [{ role: 'user', content: '把卷名收口成一份真源' }],
+      callSideLLM: sideCall,
+    } as never);
+    return { panel, sid, store };
+  }
+
+  it('结果落地换成模型题名；发起即记账，后续轮次不再重试', async () => {
+    const side = deferredSideCall();
+    const sideCall = vi.fn(() => side.promise);
+    const { panel, sid, store } = await seedDerived('把卷名收口成一份真源', sideCall);
+
+    Session.autoTitleSessionIfDefault(panel.panelId, sid);
+    expect(store.getState().sessions[0].labelSource).toBe('refined'); // 尝试即记账
+    Session.autoTitleSessionIfDefault(panel.panelId, sid); // 第二轮不得重烧
+
+    side.resolve({ text: '**卷名收口**\n说明：这次改的是命名派生。', maxTokens: 8192 });
+    await flush();
+
+    expect(sideCall).toHaveBeenCalledTimes(1);
+    expect(store.getState().sessions[0].label).toBe('卷名收口');
+    expect(store.getState().sessions[0].labelSource).toBe('refined');
+  });
+
+  it('飞行中用户改名：结果不落地（user 优先）', async () => {
+    const side = deferredSideCall();
+    const { panel, sid, store } = await seedDerived('派生名', () => side.promise);
+
+    Session.autoTitleSessionIfDefault(panel.panelId, sid);
+    panel.renameSession(sid, '人手改名');
+    side.resolve({ text: '模型题名', maxTokens: 8192 });
+    await flush();
+
+    expect(store.getState().sessions[0].label).toBe('人手改名');
+    expect(store.getState().sessions[0].labelSource).toBe('user');
+  });
+
+  it('调用失败：保留派生名、来源记 refined、不重试', async () => {
+    const side = deferredSideCall();
+    const sideCall = vi.fn(() => side.promise);
+    const { panel, sid, store } = await seedDerived('派生名', sideCall);
+
+    Session.autoTitleSessionIfDefault(panel.panelId, sid);
+    side.reject(new Error('backend down'));
+    await flush();
+
+    expect(store.getState().sessions[0].label).toBe('派生名');
+    expect(store.getState().sessions[0].labelSource).toBe('refined');
+
+    Session.autoTitleSessionIfDefault(panel.panelId, sid);
+    expect(sideCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('跨工作区在途：epoch 变了就丢弃结果（INVARIANTS #12）', async () => {
+    const side = deferredSideCall();
+    const { panel, sid, store } = await seedDerived('派生名', () => side.promise);
+
+    Session.autoTitleSessionIfDefault(panel.panelId, sid);
+    bumpWorkspaceEpoch();
+    side.resolve({ text: '模型题名', maxTokens: 8192 });
+    await flush();
+
+    expect(store.getState().sessions[0].label).toBe('派生名');
+    expect(store.getState().sessions[0].labelSource).toBe('refined');
   });
 });

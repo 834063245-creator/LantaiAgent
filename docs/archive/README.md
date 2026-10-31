@@ -56,6 +56,9 @@
 - **2026-10-08 归档（会话线追加 · 当日立案当日竣工）**：`session-line/session-rebuild-recovery-plan.md`（卷重建丢卡根治——
   资产/拟策块经工具回执恢复 + 开卷落盘断「判陈旧 → 重建」循环；案卷 51 真机取证，门禁全绿后归档；
   真机验收两条在 [`../plans/README.md`](../plans/README.md) 欠账表）。
+- **2026-10-31 归档（卷名自动命名 A/C/B）**：`volume-naming-plan.md` —— 卷名派生清洗（换行 / 排版壳 /
+  代理对劈半）· 名字来源标记（`derived`/`refined`/`user`，内存态）· 一次旁路模型概括（复用 `callSummaryLLM`，
+  usage 不入卷账）。真源仍是 `src-ui/src/state/volume-name.ts` 一个字段；两个命名时点、改名钉死语义、显示兜底未动。
 
 ## 使用规则
 
