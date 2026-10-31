@@ -6,6 +6,7 @@
 
 | 日期 | 里程碑 | 工程 |
 |---|---|---|
+| 2026-10-31 | **v1.0.10 发布 + 卷名自动命名 A/C/B 竣工**——卷名派生清洗（换行 / 排版壳 / 代理对劈半）· 名字来源标记（`derived`/`refined`/`user`，内存态）· 一次旁路模型概括（复用 `callSummaryLLM`，usage 不入卷账，落地三查 = epoch / 来源 / 名字 CAS）；两批各一 commit（`735127ce` / `c165a88d`），门禁全绿（vitest 446 文件 4789 例 · convergence 双轨 · doc-check）；施工单按竣工即归档移入 [`volume-naming-plan.md`](../archive/volume-naming-plan.md) | session / 发布 |
 | 2026-10-29 | **会话存盘换轨收口（八项全清，用户「今天就专门做换轨的收口，目标全清」）**——单实例守卫（`~/.lantai/instance.lock` 文件锁，单写者从假设变强制）· 读前屏障 + 写面退休（detach 真退订；删卷先丢尾巴防复活）· adopt 体积治源（同提示开卷 210KB → 每次 <200B）· 物化/整写 durable（+fsync）· 读失败不再伪装成「卷不存在」· 字节层崩溃注入 + 写放大断言 + 尺寸观测 · 死码两笔（`agent_session_append` RPC / `goal-*` reason）· 文档回写（`INVARIANTS.md` #16 等）。详见 [`session-persistence-closeout-plan.md`](../archive/session-persistence-closeout-plan.md) | session |
 | 2026-10-28 | **LSP 舰队孤儿回收竣工（Windows Job Object）**——第 0 步先复现：`--stress-lsp` 起引擎、spawn 后 150/200/300/500/800/1200/2000ms 七档 `Stop-Process -Force` **只杀引擎** ⇒ **修前 150ms 档 1/1 残留**（300ms 后 r-a 见管道 EOF 自己退所以干净），孤儿一旦留下跨日存活（2026-09-24 实测 2.9GB）。修法 = 照 `os_sandbox.rs` 先例裸 `extern "system"` 建进程级 Job（`KILL_ON_JOB_CLOSE`，**零新依赖**），`spawn_server` 在 `spawn()` 后立刻 assign；`spawn_daemon` 刻意不进 job（lspd 要活过引擎，且它自己的 job 覆盖它拉起的舰队）。**修后七档全 0 残留**；守护 `job_close_kills_assigned_child`（关句柄 = 父进程死亡）| 引擎 |
 | 2026-10-28 | **钉住与纸条改造取消（用户裁定「不做，这一项取消」）**——施工单 `pin-strip-rework-plan.md` 归档并标注「剩余项不再执行」；2026-09-05 当日批已落地的交互修订（松手定夺 / 拖选跨带成条退役 / 带显形 / 纸条两击确认）**照常保留**，设计规格 §10 与 `paper/README` 的现状描述不变 | paper-shell |
