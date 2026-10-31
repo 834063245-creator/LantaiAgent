@@ -1544,7 +1544,8 @@ export class ChatCore {
       const session = Session.getSessions(this.panelId)[Session.getActiveIdx(this.panelId)];
       if (session && isUnnamedVolumeLabel(session.label)) {
         const name = deriveVolumeLabel(text);
-        if (name) getChatStore(this.panelId).sess.getState().renameSession(session.id, name);
+        // 来源 = derived：发送时的自动名可被后续自动概括覆盖（C 批判据）。
+        if (name) getChatStore(this.panelId).sess.getState().renameSession(session.id, name, 'derived');
       }
     }
 

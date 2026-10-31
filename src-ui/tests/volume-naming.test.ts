@@ -28,6 +28,7 @@ vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 import { agentSessionState } from '../src/agent/agent-session-state';
 import { ChatCore } from '../src/app/chat/chat-core';
 import { useShellStore } from '../src/app/shell-store';
+import { getSessionStore } from '../src/state/session-store';
 import { volumeDisplayName } from '../src/state/volume-name';
 import * as Session from '../src/ui/chat-session';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
@@ -99,6 +100,7 @@ describe('卷名收口：一个字段（空 = 未命名），数字名只是显�
     const sessions = Session.getSessions(panel.panelId);
     expect(sessions).toHaveLength(1);
     expect(sessions[0].label).toBe(''); // 真源 = 空；「案卷 N」不进字段
+    expect(sessions[0].labelSource).toBeUndefined(); // 没起过名 ⇒ 来源未知
     expect(volumeDisplayName(sessions[0].label, sessions[0].id)).toBe(`案卷 ${sessions[0].id}`);
   });
 
@@ -114,6 +116,7 @@ describe('卷名收口：一个字段（空 = 未命名），数字名只是显�
     Session.autoTitleSessionIfDefault(panel.panelId, sid);
 
     expect(Session.getSessions(panel.panelId)[0].label).toBe('把卷名收口成一份真源');
+    expect(Session.getSessions(panel.panelId)[0].labelSource).toBe('derived');
   });
 
   it('已命名的卷不被自动命名覆盖（改名是用户的决定）', async () => {
@@ -128,6 +131,21 @@ describe('卷名收口：一个字段（空 = 未命名），数字名只是显�
     Session.autoTitleSessionIfDefault(panel.panelId, sid);
 
     expect(Session.getSessions(panel.panelId)[0].label).toBe('手起的名');
+    expect(Session.getSessions(panel.panelId)[0].labelSource).toBe('user');
+  });
+
+  it('改名来源缺省记 user（自动命名不得越过人手），显式 derived 才是可覆盖的自动名', async () => {
+    const panel = createPanel();
+    await panel.createNewSession();
+    const sid = Session.getSessions(panel.panelId)[0].id;
+    const store = getSessionStore(panel.panelId);
+
+    store.getState().renameSession(sid, '自动派生', 'derived');
+    expect(Session.getSessions(panel.panelId)[0].labelSource).toBe('derived');
+
+    store.getState().renameSession(sid, '人手改名');
+    expect(Session.getSessions(panel.panelId)[0].label).toBe('人手改名');
+    expect(Session.getSessions(panel.panelId)[0].labelSource).toBe('user');
   });
 
   it('重启重开：手起的名（含以「案卷 」开头）不被当成默认名打回', async () => {

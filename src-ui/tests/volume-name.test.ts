@@ -76,3 +76,33 @@ describe('deriveVolumeLabel：首条来文 → 卷名（28 字 + 省略号）', 
     expect(deriveVolumeLabel('   ')).toBe('');
   });
 });
+
+// 2026-10-31 卷名自动命名 A 批：派生先清洗再截断（docs/plans/volume-naming-plan.md）。
+// 收口前 = `trim().slice(0, 28)`：换行原样进卷名（卷首题字按 pre-wrap 实测行数），
+// `slice` 按 UTF-16 单元（第 28 位碰上 emoji 劈开代理对）。
+describe('deriveVolumeLabel：清洗（A 批）', () => {
+  it('多行来文折叠成一行', () => {
+    expect(deriveVolumeLabel('第一行\n第二行\t第三行')).toBe('第一行 第二行 第三行');
+  });
+
+  it('剥行首排版壳：代码围栏 / 标题 / 引用 / 列表（叠用一并剥）', () => {
+    expect(deriveVolumeLabel('```ts\nconst a = 1')).toBe('const a = 1');
+    expect(deriveVolumeLabel('### 标题')).toBe('标题');
+    expect(deriveVolumeLabel('> 引用一句')).toBe('引用一句');
+    expect(deriveVolumeLabel('- 列表项')).toBe('列表项');
+    expect(deriveVolumeLabel('1. 有序项')).toBe('有序项');
+    expect(deriveVolumeLabel('# - 叠用壳')).toBe('叠用壳');
+  });
+
+  it('控制符换成空格、不可见方向符直接去掉', () => {
+    expect(deriveVolumeLabel('a\u0000b')).toBe('a b');
+    expect(deriveVolumeLabel('\u202Egnp.exe')).toBe('gnp.exe');
+  });
+
+  it('截断按 code point：第 28 位是 emoji 时不劈开代理对', () => {
+    const label = deriveVolumeLabel(`${'甲'.repeat(27)}😀😀`);
+    expect(label).toBe(`${'甲'.repeat(27)}😀…`);
+    // 落单的高代理项 = 半个字符（旧实现必现）；
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(label)).toBe(false);
+  });
+});

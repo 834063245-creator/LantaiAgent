@@ -6,10 +6,15 @@
 
 import { create } from 'zustand';
 import { createScopedStore } from './scoped-store';
+import type { VolumeLabelSource } from './volume-name';
 
 export interface ChatSessionMeta {
   id: number;
   label: string;
+  /** 卷名来源（**内存态**，不进卷快照，2026-10-31 卷名自动命名 C 批）。
+   *  缺失 = 来源未知（旧卷 / 读盘卷 / 未命名）⇒ 按 `user` 对待；
+   *  真源与判据在 `state/volume-name.ts` 的 `VolumeLabelSource`。 */
+  labelSource?: VolumeLabelSource;
   /** 立卷时刻（ISO）——卷首档行「日期」的唯一真源（2026-09-16 卷首重排 B 案）。
    *  起卷 = 当场时刻；摊开磁盘卷 = 卷日志头行的 createdAt（卷本体真源，
    *  与投影缓存 savedAt「最后落盘」是两回事，不混用）。旧卷无此字段 = 档行不显日期。 */
@@ -25,8 +30,10 @@ interface SessionStore {
 
   setSessions: (sessions: ChatSessionMeta[]) => void;
   setActiveIdx: (idx: number) => void;
-  /** 改名（C8 书脊题签）：id 定位改 label——仅改内存，落盘走会话保存链。 */
-  renameSession: (id: number, label: string) => void;
+  /** 改名（C8 书脊题签）：id 定位改 label——仅改内存，落盘走会话保存链。
+   *  `source` 缺省 = `user`（人手改名是最常见的调用方，且是安全缺省：
+   *  记错成 `user` 只会让自动命名少改一次，记错成 `derived` 会覆盖人起的名）。 */
+  renameSession: (id: number, label: string, source?: VolumeLabelSource) => void;
   setSessionTokens: (id: number, count: number) => void;
   removeSession: (id: number) => void;
   setNextSessionId: (id: number) => void;
@@ -45,8 +52,10 @@ function createSessionStoreImpl() {
 
     setSessions: (sessions) => set({ sessions }),
     setActiveIdx: (activeIdx) => set({ activeIdx }),
-    renameSession: (id, label) =>
-      set((s) => ({ sessions: s.sessions.map((x) => (x.id === id ? { ...x, label } : x)) })),
+    renameSession: (id, label, source) =>
+      set((s) => ({
+        sessions: s.sessions.map((x) => (x.id === id ? { ...x, label, labelSource: source ?? 'user' } : x)),
+      })),
     setSessionTokens: (id, count) => set((s) => ({ sessionTokens: { ...s.sessionTokens, [id]: count } })),
     removeSession: (id) =>
       set((s) => {

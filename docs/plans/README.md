@@ -33,6 +33,7 @@
 | **paper-shell** | [`paper-shell/README.md`](paper-shell/README.md) | **R5 已结清（2026-08-29 全账清零）；当前 = 创作坞精修线** | R5 逐项清单 [`r5-polish-backlog.md`](paper-shell/r5-polish-backlog.md)（已清零，作历史判据）；视觉决定账本 [`taste-ledger.md`](paper-shell/taste-ledger.md)；管线史 [`HISTORY.md`](paper-shell/HISTORY.md)；走查 [`walkthrough.md`](paper-shell/walkthrough.md)；表面覆盖地图 [`v2-surface-inventory.md`](paper-shell/v2-surface-inventory.md)；访谈 [`interviews/R1-2026-08-20.md`](paper-shell/interviews/R1-2026-08-20.md) |
 | **画布空间模型** | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **Stage-6 进行中**（UI/UX 专项） | 一纸多卷 / 有界流区 / 宿主模型 / 三层导航；阶段件与返工清单见笔记「展开」段；provider+创作坞联合体检 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md) |
 | **agent hooks（生命周期扩展点）** | [`agent-hooks-plan.md`](agent-hooks-plan.md) | **一期/二期已竣工** | 步骤钩子家族已落（`ctx.steps`：pre-step 每步 enter/reject + turn-stopping 停止边界，含 durable/transient 注入、`create` 工厂、发现注入收编）；三期待拍（request 系列 / plan·inbox 收编 / CC 桥） |
+| **卷名自动命名（A/C/B）** | [`volume-naming-plan.md`](volume-naming-plan.md) | **A+C 已落地（2026-10-31）；B 未开工（Draft）** | 补「名字质量」与「谁起的名字」：A 清洗 + code point 截断 ✅ · C `labelSource` 内存态贯通 ✅ · B 一次旁路 LLM 概括（复用 `callSummaryLLM`，不移植 DSH 标题服务）；命名真源、两个命名时点、改名钉死语义一律不动 |
 
 ## 待执行但已立项（按成本排）
 

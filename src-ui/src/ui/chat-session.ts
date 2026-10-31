@@ -27,6 +27,7 @@ import { disposeAssetSessionStore, disposeAssetTables, rebuildAssetTableFromMess
 import { getCanvasStore } from '../state/canvas-store';
 import { type ComposeSessionPrefs, getComposeStore } from '../state/compose-store';
 import { disposeMessagesStores, disposeSessionMessagesStore } from '../state/messages-store';
+import type { ChatSessionMeta } from '../state/session-store';
 import { bumpSessionVolumes } from '../state/session-volumes-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../state/toast-store';
 import { deriveVolumeLabel, isUnnamedVolumeLabel, volumeDisplayName } from '../state/volume-name';
@@ -244,7 +245,11 @@ export function autoTitleSessionIfDefault(storeId: string, sid?: number): void {
 
   const derived = deriveVolumeLabel(firstUser.content);
   if (!derived) return;
-  const updated = sessions.map((x, i) => (i === idx ? { ...x, label: derived } : x));
+  // 来源 = derived（2026-10-31 C 批）：只有本进程内派生出来的名字才允许被后续
+  // 自动概括覆盖；人手改名走 `renameSession` 的同源字段写 `user`。
+  const updated = sessions.map(
+    (x, i): ChatSessionMeta => (i === idx ? { ...x, label: derived, labelSource: 'derived' } : x),
+  );
   getChatStore(storeId).sess.setState({ sessions: updated });
 }
 
