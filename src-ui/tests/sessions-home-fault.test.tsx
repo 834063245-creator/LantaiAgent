@@ -52,6 +52,11 @@ describe('SessionsHome × workspace_list 边界校验接线（§8 验收降维�
     const { clearWorkspaceListCache } = await import('../src/rpc-contract');
     clearWorkspaceListCache();
     mockRpc.mockReset();
+    // 首页挂载期两个读面：workspace_list（主体，用例逐条给 Once）+ get_last_project
+    // （上卷记忆；本组用例不涉及 → 诚实空给定，避免违形噪声）。
+    mockRpc.mockImplementation((method: string) =>
+      method === 'get_last_project' ? Promise.resolve(null) : Promise.resolve([]),
+    );
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -80,12 +85,14 @@ describe('SessionsHome × workspace_list 边界校验接线（§8 验收降维�
     expect(c.textContent).toContain('工作区清单读取失败');
     expect(c.querySelector('.sh-retry')).not.toBeNull();
     expect(c.textContent).not.toContain('还没有工作区');
-    expect(c.querySelector('.sh-ws-card')).toBeNull();
+    expect(c.querySelector('.sh-row')).toBeNull();
   });
 
   it('违形载荷重试仍违形 → 错误态保持（不闪回空态）', async () => {
     const { dir_exists: _stripped, ...broken } = VALID_ROW;
-    mockRpc.mockResolvedValue([broken]);
+    mockRpc.mockImplementation((method: string) =>
+      method === 'get_last_project' ? Promise.resolve(null) : Promise.resolve([broken]),
+    );
     const c = await mountHome();
     expect(c.textContent).toContain('工作区清单读取失败');
     const retry = c.querySelector<HTMLButtonElement>('.sh-retry');
@@ -94,15 +101,17 @@ describe('SessionsHome × workspace_list 边界校验接线（§8 验收降维�
       retry?.click();
     });
     expect(c.textContent).toContain('工作区清单读取失败');
-    expect(c.querySelector('.sh-ws-card')).toBeNull();
+    expect(c.querySelector('.sh-row')).toBeNull();
   });
 
-  it('合法载荷（结构化 Value）→ 正常渲染卡片', async () => {
+  it('合法载荷（结构化 Value）→ 正常渲染登记行', async () => {
     mockRpc.mockResolvedValueOnce([VALID_ROW]);
     const c = await mountHome();
-    expect(c.querySelector('.sh-ws-card')).not.toBeNull();
+    expect(c.querySelector('.sh-row')).not.toBeNull();
     expect(c.textContent).toContain('星云小说');
-    expect(c.textContent).toContain('进入画布');
+    // 行的进入动作 = 主按钮的 aria-label（旧卡片的「进入画布」文字随丁案退役）
+    const enter = c.querySelector('.sh-row-main');
+    expect(enter?.getAttribute('aria-label')).toContain('进入工作区');
     expect(c.textContent).not.toContain('工作区清单读取失败');
   });
 
@@ -111,5 +120,20 @@ describe('SessionsHome × workspace_list 边界校验接线（§8 验收降维�
     const c = await mountHome();
     expect(c.textContent).toContain('还没有工作区');
     expect(c.textContent).not.toContain('工作区清单读取失败');
+  });
+
+  it('上次工作区目录已丢失 → 上卷显式「目录已丢失」，不伪装成「还没有卷」', async () => {
+    // 病灶：fs 层对缺席目录返回空集（不抛）——若上卷按「读面空 = 无卷」显示，
+    // 移走的目录会被伪装成「这张纸还空着」。清单的 dir_exists 才是权威判据。
+    mockRpc.mockImplementation((method: string) => {
+      if (method === 'get_last_project') return Promise.resolve('D:/works/gone');
+      return Promise.resolve([
+        { ...VALID_ROW, path: 'D:/works/gone', name: '旧项目', dir_exists: false, session_count: 0 },
+      ]);
+    });
+    const c = await mountHome();
+    await act(async () => {});
+    expect(c.textContent).toContain('目录已丢失');
+    expect(c.textContent).not.toContain('这张纸还空着');
   });
 });

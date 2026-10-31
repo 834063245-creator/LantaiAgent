@@ -104,8 +104,8 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
   it('B3：信息承载五处 ink-2（tool/code 输出 + 案卷日期/卷号/页脚）', () => {
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-tool .pp-out')).toContain('color: var(--ink-2)');
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-code .pp-out')).toContain('color: var(--ink-2)');
-    expect(ruleBody(HOME_CSS, '.sh-session-row .date')).toContain('color: var(--ink-2)');
-    expect(ruleBody(HOME_CSS, '.sh-session-row .meta')).toContain('color: var(--ink-2)');
+    expect(ruleBody(HOME_CSS, '.sh-date')).toContain('color: var(--ink-2)');
+    expect(ruleBody(HOME_CSS, '.sh-num')).toContain('color: var(--ink-2)');
     expect(ruleBody(HOME_CSS, '.sh-foot')).toContain('color: var(--ink-2)');
   });
 
@@ -496,7 +496,7 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
 
   it('墨阶锚点：首页书眉/列顶/脚线 + 坞顶升硬线，主钮投影（画布书眉底线已随标题栏退役）', () => {
     expect(ruleBody(HOME_CSS, '.sh-head {')).toContain('border-bottom: var(--rule-hard)');
-    expect(ruleBody(HOME_CSS, '.sh-workspaces {')).toContain('border-top: var(--rule-hard)');
+    expect(ruleBody(HOME_CSS, '.sh-section {')).toContain('border-bottom: var(--rule-hard)');
     expect(ruleBody(HOME_CSS, '.sh-foot {')).toContain('border-top: var(--rule-hard)');
     // 画布视图的屏级顶线（旧 .pp-topbar 的书眉底线）随 2026-09-17 标题栏拆除退役：
     // 画布铺满整窗，顶部控制件改为**覆盖件浮件**（弱线 + 浮起，不是分区硬线）——
@@ -568,8 +568,8 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
   });
 
   it('节题墨块锚点（首页）', () => {
-    expect(ruleBody(HOME_CSS, '.sh-section-title .t::before')).toContain('background: var(--ink-1)');
-    expect(ruleBody(HOME_CSS, '.sh-section-title .n')).toContain('var(--seal-deep)');
+    expect(ruleBody(HOME_CSS, '.sh-section .t::before')).toContain('background: var(--ink-1)');
+    expect(ruleBody(HOME_CSS, '.sh-section .n')).toContain('var(--seal-deep)');
   });
 
   it('材质批（2026-09-01）：印章印泥分材质 + 墨迹洇边', () => {
@@ -580,8 +580,8 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(seal).toContain('background-color: var(--seal)');
     // 洇边：重墨大字墨渗（同 folio-title 的 ink-solid alpha 残影手法）
     expect(ruleBody(HOME_CSS, '.sh-h1 {')).toContain('text-shadow: 0 0 1.5px');
-    expect(ruleBody(HOME_CSS, '.sh-section-title .t {')).toContain('text-shadow: 0 0 1px');
-    const anchor = ruleBody(HOME_CSS, '.sh-section-title .t::before');
+    expect(ruleBody(HOME_CSS, '.sh-section .t {')).toContain('text-shadow: 0 0 1px');
+    const anchor = ruleBody(HOME_CSS, '.sh-section .t::before');
     expect(anchor).toContain('box-shadow: 0 0 2px');
   });
 

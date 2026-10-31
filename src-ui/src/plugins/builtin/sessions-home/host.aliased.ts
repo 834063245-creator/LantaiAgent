@@ -41,6 +41,7 @@ const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const clearWorkspaceListCache = impl.clearWorkspaceListCache;
 export const typedRpc = impl.typedRpc;
+export const typedJsonRpc = impl.typedJsonRpc;
 export const workspaceListCached = impl.workspaceListCached;
 export const pickFolder = impl.pickFolder;
 export const workspaceFlow = impl.workspaceFlow;
@@ -48,6 +49,9 @@ export const shellRefs = impl.shellRefs;
 export const useDockStore = impl.useDockStore;
 export const useUpdateStore = impl.useUpdateStore;
 export const useShellStore = impl.useShellStore;
+export const useCoreStore = impl.useCoreStore;
+export const useSessionVolumesStore = impl.useSessionVolumesStore;
+export const activeSpace = impl.activeSpace;
 export const WinControls = impl.WinControls;
 export const onTopbarDoubleClick = impl.onTopbarDoubleClick;
 export const onTopbarPointerDown = impl.onTopbarPointerDown;

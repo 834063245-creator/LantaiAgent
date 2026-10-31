@@ -353,7 +353,7 @@
     "inject": ["rootViews"],
     "required": true,
     "face": true,
-    "shared": ["assets/paper/seal-paste.jpg"]
+    "shared": ["assets/paper/seal-paste.jpg", "state/volume-name.ts"]
   },
   {
     "dir": "ask-cards",

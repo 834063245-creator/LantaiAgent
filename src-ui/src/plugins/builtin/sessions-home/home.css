@@ -1,15 +1,16 @@
 /* ═══════════════════════════════════════════════════════════════
-   sessions-home · 案卷首页样式（批 9e，2026-09-26 自 app/foundation.css 逐段切出）
+   sessions-home · 案卷首页样式（批 9e，2026-09-26 自 app/foundation.css 逐段切出；
+   2026-10-31 丁案重排：案头（上卷 + 登记簿））
 
    切分纪律：**首页专属**选择器（.sh-* 与两个首页关键帧）随产物走；
    全局面（重置 / 选区政策 / 滚动条 / 全局浮层关键帧 / 纸张纹理 body::before|after /
    可访问性）留在壳 foundation.css——纹理层挂 body 是文档级唯一实例，
    与首页不同生共死（2026-09-01 实机打回：错挂 .sh-root 时纹理被困首页）。
+
+   丁案版式（取帧见 prototype/home-audit/direction-d.html）：
+     题签（kicker + 案头。）→ 上卷（最近一卷 + 同区其他卷）→ 登记簿（工作区六栏）
+     → 印版页脚。一轴：版心 1160，书眉左端同轴、窗控仍钉窗右缘。
    ═══════════════════════════════════════════════════════════════ */
-/* ── 案卷首页（workspace-flip 批 1：SessionsHome——D-W1-1 纯会话优先；
- * 2026-08-23 视觉迭代：完全对齐 prototype/lantai.html 案卷首页版式——
- * 顶部书眉 / kicker / 大标题 / 描述 / 案卷列表（日期+标题+leader 点线+
- * #编号·N 块）/ 新建按钮 / 底部 footer）── */
 .sh-root {
   position: fixed;
   inset: 0;
@@ -18,22 +19,29 @@
   z-index: 30;
   background: var(--paper);
   overflow: auto;
+  /* 登记簿六栏（栏头 / 行 / 骨架同用一份轨——改必三处同改） */
+  --row-grid: 56px minmax(0, 1fr) 64px 72px minmax(0, 260px) 24px;
+  --row-gap: 20px;
+  --row-pad: 10px;
 }
+
 /* ── 顶部书眉（品牌 + 设置入口 + 窗口控制）──
  * 2026-09-14：拖动/双击最大化改由 app/window-drag.ts 接管（app-region 全面退役，
- * 见该文件头注：WebView2 行窗只在启动时按当时页面算一次）。 */
+ * 见该文件头注：WebView2 行窗只在启动时按当时页面算一次）。
+ * 2026-10-31 丁案：左端与版心同轴（窗控仍钉窗右缘——那是 OS 记性，不动）。 */
 .sh-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 20px 48px 16px;
-  border-bottom: var(--rule-hard); /* 浸墨：书眉底线升硬线（屏级分区） */
+  border-bottom: var(--rule-hard); /* 屏级分区线：书眉底线 */
   flex-shrink: 0;
 }
 .sh-brand {
   display: flex;
   align-items: center;
   gap: 16px;
+  margin-left: max(0px, calc((100vw - 1160px) / 2 - 48px));
 }
 /* 朱砂印章（蘭臺竖章，微倾——手钤不端正才自然）。
  * D1 印章重制（2026-08-29）：CSS 字排章退役，换生图篆刻资产——mask 即形状
@@ -97,40 +105,30 @@
   gap: 16px;
 }
 
-/* ── 通用文字按钮（墨底反白 hover）── */
+/* 设置入口（2026-10-31 丁案：不再做成第二个「盒子按钮」——首页只留一枚主动作）。
+ * 有新版本待看：字尾朱砂点（朱批语义，来文圈点），不占布局。 */
 .sh-btn-text {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
-  letter-spacing: 0.16em;
-  padding: 8px 18px;
-  border: var(--rule-strong);
-  color: var(--ink-1);
-  background: transparent;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.18em;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
   border-radius: 0;
+  padding: 6px 2px;
   cursor: pointer;
-  transition:
-    background var(--snap),
-    color var(--snap),
-    transform var(--snap);
+  transition: color var(--snap);
 }
 .sh-btn-text:hover {
-  background: var(--ink-1);
-  color: var(--paper);
-}
-.sh-btn-text:active {
-  background: var(--ink-2);
-  transform: translateY(1px);
+  color: var(--seal-deep);
 }
 .sh-btn-text:focus-visible {
   outline: 2px solid var(--seal);
   outline-offset: 2px;
 }
-
-/* 有新版本待看（update-store 角标）：字尾朱砂点——朱批语义（来文圈点），
- * 随 badgeDismissed / 状态变化增删，不影响按钮布局 */
 .sh-btn-text.has-update::after {
   content: "";
   width: 6px;
@@ -138,6 +136,126 @@
   background: var(--seal);
 }
 
+/* ── 版心：页头通栏，主列与页脚同轴 1160 ───────────────────── */
+.sh-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 36px 48px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 题签（kicker + 案头。 + 一行副句） */
+.sh-kicker {
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.32em;
+  color: var(--ink-3);
+}
+.sh-kicker b {
+  color: var(--ink-2);
+  font-weight: 400;
+}
+.sh-h1 {
+  font-family: var(--f-song);
+  font-weight: var(--weight-display); /* 浸墨：题字极端档 */
+  font-size: clamp(36px, 3.8vw, calc(48px * var(--font-scale)));
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin: 6px 0 0;
+  color: var(--ink-1);
+  /* 材质批（2026-09-01）：重墨题字洇边——900 重墨压纸，墨沿笔画外渗 1.5px */
+  text-shadow: 0 0 1.5px color-mix(in oklch, var(--ink-solid) 24%, transparent);
+}
+/* 句读点朱（浸墨）：题字句号落朱砂——古籍句读遗意，全页唯一一处朱砂句读 */
+.sh-h1 .sh-ju {
+  color: var(--seal);
+}
+.sh-lead {
+  margin-top: 10px;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+
+/* ── 上卷：案头那张摊开的纸 ─────────────────────────────────
+ * 纸叠纸：同色纸靠四缘与接触落影读出一张纸（同 .pp-region 口径）：受光缘（上/左）+
+ * 背光缘（下/右）+ 左缘朱砂 3px（活跃卷）+ --shadow-sheet-active。 */
+.sh-hero {
+  position: relative;
+  margin-top: 24px;
+  min-height: 192px;
+  display: flex;
+  align-items: stretch;
+  gap: 44px;
+  padding: 22px 28px 20px 30px;
+  background: var(--paper);
+  border-left: 3px solid var(--seal);
+  box-shadow:
+    inset 0 1px 0 var(--sheet-lit),
+    inset 1px 0 0 var(--sheet-lit),
+    inset 0 -1px 0 var(--sheet-shade),
+    inset -1px 0 0 var(--sheet-shade),
+    var(--shadow-sheet-active);
+}
+.sh-hero-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.sh-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-family: var(--f-mono);
+  font-size: calc(9.5px * var(--font-scale));
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
+}
+.sh-hero-kicker .dot {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  background: var(--seal);
+}
+.sh-hero-kicker b {
+  color: var(--seal-deep);
+  font-weight: 400;
+  letter-spacing: 0.14em;
+}
+.sh-hero-title {
+  margin: 0;
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--f-song);
+  font-size: calc(38px * var(--font-scale));
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+}
+.sh-hero-meta {
+  margin-top: 10px;
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+}
+.sh-hero-acts {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+}
+/* 每屏唯一主动作：墨底实色 + 硬偏移投影（浸墨法则②） */
 .sh-btn-primary {
   display: inline-flex;
   align-items: center;
@@ -145,14 +263,14 @@
   font-family: var(--f-song);
   font-size: calc(13px * var(--font-scale));
   font-weight: 600;
-  letter-spacing: 0.16em;
-  padding: 8px 18px;
+  letter-spacing: 0.12em;
+  padding: 9px 20px;
   border: 1px solid var(--ink-1);
   background: var(--ink-1);
   color: var(--paper);
   border-radius: 0;
   cursor: pointer;
-  box-shadow: var(--shadow-anchor); /* 浸墨：主动作硬偏移投影 */
+  box-shadow: var(--shadow-anchor);
   transition:
     background var(--snap),
     color var(--snap),
@@ -173,337 +291,556 @@
   outline: 2px solid var(--seal);
   outline-offset: 2px;
 }
-
-/* ── 主区：题字 + 案卷列表 + 新建按钮（极简批 2026-10-07：kicker 与导语退役） ── */
-.sh-main {
-  flex: 1;
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 72px 48px 96px;
-  width: 100%;
-}
-/* 题字：全页唯一一句文案（四字 + 朱砂句读），下距直接让给节题与列表 */
-.sh-h1 {
+.sh-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--f-song);
-  font-weight: var(--weight-display); /* 浸墨：题字极端档 */
-  font-size: clamp(40px, 5.4vw, calc(66px * var(--font-scale)));
-  line-height: 1.14;
-  letter-spacing: -0.015em;
-  margin: 0 0 56px;
-  max-width: 18ch;
-  color: var(--ink-1);
-  /* 材质批（2026-09-01）：重墨题字洇边——900 重墨压纸，墨沿笔画外渗 1.5px */
-  text-shadow: 0 0 1.5px color-mix(in oklch, var(--ink-solid) 24%, transparent);
-}
-/* 句读点朱（浸墨）：题字句号落朱砂——古籍句读遗意，全页唯一红字 */
-.sh-h1 .sh-ju {
-  color: var(--seal);
-}
-
-.sh-section-title {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  margin-bottom: 6px;
-}
-/* 浸墨：节题前实心方墨锚点（材质批 2026-09-01：柔晕洇边——墨沿纸纤维晕开） */
-.sh-section-title .t::before {
-  content: "";
-  display: inline-block;
-  width: 11px;
-  height: 11px;
-  background: var(--ink-1);
-  margin-right: 12px;
-  transform: translateY(1px);
-  box-shadow: 0 0 2px 0.5px color-mix(in oklch, var(--ink-solid) 30%, transparent);
-}
-/* 节题字微洇（材质批）：1px 极弱字晕——铅字压印的墨渗，非屏幕锐利感 */
-.sh-section-title .t {
-  font-family: var(--f-song);
-  font-size: calc(19px * var(--font-scale));
+  font-size: calc(12.5px * var(--font-scale));
   font-weight: 600;
-  color: var(--ink-1);
-  text-shadow: 0 0 1px color-mix(in oklch, var(--ink-solid) 20%, transparent);
-}
-.sh-section-title .n {
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  color: var(--seal-deep); /* 浸墨：机读卷号朱字 */
-  letter-spacing: 0.1em;
-}
-
-/* ── 案卷列表（原型 .sessions / .session-row 同款）── */
-.sh-sessions {
-  border-top: var(--rule-strong);
-}
-.sh-session-row {
-  display: flex;
-  align-items: baseline;
-  gap: 20px;
-  width: 100%;
-  padding: 22px 4px;
+  letter-spacing: 0.08em;
+  padding: 10px 20px;
+  border: 1px solid var(--ink-4);
   background: transparent;
-  border: none;
-  border-bottom: var(--rule-soft);
+  color: var(--ink-2);
   border-radius: 0;
   cursor: pointer;
-  position: relative;
-  text-align: left;
   transition:
-    background var(--snap),
-    transform var(--snap);
+    color var(--snap),
+    border-color var(--snap);
 }
-.sh-session-row:hover {
-  background: var(--paper-deep);
-  transform: translateY(-1px);
-}
-.sh-session-row:focus-visible {
-  outline: 2px solid var(--seal);
-  outline-offset: -2px;
-}
-.sh-session-row .date {
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  color: var(--ink-2); /* B3 环1 拍板：卷日期=信息承载，提墨 ink-3→ink-2 */
-  letter-spacing: 0.06em;
-  flex: 0 0 52px;
-}
-.sh-session-row .title {
-  font-family: var(--f-song);
-  font-size: calc(18px * var(--font-scale));
-  font-weight: 600;
+.sh-btn-ghost:hover {
   color: var(--ink-1);
-  flex: 0 0 auto;
+  border-color: var(--ink-1);
 }
-.sh-session-row .leader {
-  flex: 1 1 auto;
-  border-bottom: 1px dotted var(--ink-4);
-  transform: translateY(-4px);
-  min-width: 24px;
-}
-.sh-session-row .meta {
-  flex: 0 0 auto;
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  color: var(--ink-2); /* B3 环1 拍板：卷号·块数=信息承载，提墨 ink-3→ink-2 */
-}
-.sh-session-row .meta b {
-  color: var(--ink-2);
-  font-weight: 600;
-}
-/* 活动案卷左缘朱砂竖条（原型 .session-row.active::before） */
-.sh-session-row.active::before {
-  content: "";
-  position: absolute;
-  left: -16px;
-  top: 22px;
-  bottom: 22px;
-  width: 3px;
-  background: var(--seal);
-}
-/* L1 摊开标记（session-ledger）：已摊开卷的石青小标（机=石青铁律）+
- * 已开卷行整体提一档底色（与 hover 区分：静态的「在案头」状态非悬停） */
-.sh-session-row .open-mark {
+.sh-link {
   font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
-  letter-spacing: 0.08em;
-  color: var(--indigo);
-  margin-right: 10px;
-  border: 1px solid var(--indigo);
-  padding: 1px 6px;
-  border-radius: 0;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 6px 0;
+  transition: color var(--snap);
 }
-.sh-session-row.open .date,
-.sh-session-row.open .title {
-  color: var(--ink-1);
+.sh-link:hover {
+  color: var(--seal-deep);
 }
-/* ── 工作区总览（Stage-2 方案 A：首页 = 工作区列表 + 进入动作）── */
-.sh-workspaces {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
-  border-top: var(--rule-hard); /* 浸墨：列表顶线升硬线 */
-  padding-top: 18px;
+.sh-link:focus-visible,
+.sh-hero-acts .sh-link:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
 }
-.sh-ws-card {
+
+/* 上卷右栏：本工作区其他卷（数据现成——当前工作区会话面已在内存） */
+.sh-hero-side {
+  flex: 0 0 300px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 18px 16px;
-  background: var(--paper);
-  border: var(--rule-soft);
-  border-radius: 0;
-  cursor: pointer;
+  justify-content: center;
+  padding-left: 26px;
+  border-left: var(--rule-soft);
+}
+.sh-side-cap {
+  margin-bottom: 6px;
+  font-family: var(--f-mono);
+  font-size: calc(9px * var(--font-scale));
+  letter-spacing: 0.24em;
+  color: var(--ink-3);
+}
+.sh-side-none {
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.sh-sib {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: 0;
   text-align: left;
-  transition:
-    border-color var(--snap),
-    background var(--snap),
-    transform var(--snap);
+  cursor: pointer;
 }
-.sh-ws-card:hover {
-  border-color: var(--seal);
-  background: color-mix(in oklch, var(--seal) 8%, var(--paper));
-  transform: translateY(-1px);
+.sh-sib-date {
+  flex: 0 0 34px;
+  font-family: var(--f-mono);
+  font-size: calc(9.5px * var(--font-scale));
+  color: var(--ink-3);
 }
-.sh-ws-card:focus-visible {
-  outline: 2px solid var(--seal);
-  outline-offset: -2px;
-}
-.sh-ws-name {
+.sh-sib-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--f-song);
-  font-size: calc(19px * var(--font-scale));
-  font-weight: 600;
+  font-size: calc(12.5px * var(--font-scale));
+  color: var(--ink-2);
+  transition: color var(--snap);
+}
+.sh-sib:hover .sh-sib-title {
   color: var(--ink-1);
 }
-.sh-ws-meta {
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.08em;
+.sh-sib:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+
+/* 上卷三副面孔：骨架 / 读失败 / 本区无卷 */
+.sh-hero--skeleton .sh-hero-main {
+  gap: 12px;
+}
+.sh-skel-line {
+  display: block;
+  height: 9px;
+  background: color-mix(in oklch, var(--ink-1) 7%, transparent);
+}
+.sh-skel-line--kicker {
+  width: 34%;
+  height: 8px;
+}
+.sh-skel-line--title {
+  width: 58%;
+  height: 30px;
+}
+.sh-skel-line--meta {
+  width: 40%;
+  height: 8px;
+}
+.sh-hero--fault {
+  border-left-color: var(--fail);
+}
+.sh-hero-title--fault {
+  font-size: calc(24px * var(--font-scale));
   color: var(--ink-2);
 }
-.sh-ws-enter {
-  margin-top: 6px;
-  font-family: var(--f-song);
-  font-size: calc(12px * var(--font-scale));
-  letter-spacing: 0.1em;
-  color: var(--seal-deep);
+.sh-hero--dead .sh-hero-title--fault {
+  color: var(--ink-1);
 }
-.sh-ws-card:hover .sh-ws-enter {
-  color: var(--seal-deep);
+.sh-hero--blank .sh-hero-title {
+  color: var(--ink-2);
 }
-/* ── 工作区卡 · 管理形态（Stage-5 补尾：主区可点进画布 + 右侧操作）── */
-.sh-ws-card--row {
-  position: relative;
+
+/* ── 登记簿：节题 + 栏头 + 行 ─────────────────────────────── */
+.sh-section {
   display: flex;
-  align-items: stretch;
-  padding: 0;
+  align-items: center;
+  margin-top: 24px;
+  padding-bottom: 10px;
+  border-bottom: var(--rule-hard);
 }
-/* 朱批左条（2026-08-30）：hover/焦点时左缘朱砂条自中央生长——与活动案卷
- * .sh-session-row.active::before 同语言（人的在场标记=朱砂铁律） */
-.sh-ws-card--row::before {
+/* 节题复刻首页节题语言：方墨锚点 + 字距题字（浸墨⑤ 完工动作） */
+.sh-section .t {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--f-song);
+  font-size: calc(15px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+  /* 节题字微洇（材质批）：1px 极弱字晕——铅字压印的墨渗 */
+  text-shadow: 0 0 1px color-mix(in oklch, var(--ink-solid) 20%, transparent);
+}
+.sh-section .t::before {
   content: "";
-  position: absolute;
-  left: 0;
-  top: 16px;
-  bottom: 16px;
-  width: 3px;
-  background: var(--seal);
-  opacity: 0;
-  transform: scaleY(0.3);
-  transition:
-    opacity var(--snap),
-    transform var(--m-sheet);
+  width: 10px;
+  height: 10px;
+  margin-right: 12px;
+  background: var(--ink-1);
+  transform: translateY(-1px);
+  box-shadow: 0 0 2px 0.5px color-mix(in oklch, var(--ink-solid) 30%, transparent);
 }
-.sh-ws-card--row:hover::before,
-.sh-ws-card--row:focus-within::before {
-  opacity: 1;
-  transform: none;
+.sh-section .n {
+  margin-left: 14px;
+  font-family: var(--f-mono);
+  font-size: calc(9.5px * var(--font-scale));
+  letter-spacing: 0.18em;
+  color: var(--seal-deep);
 }
-.sh-ws-card-main {
+.sh-section .sp {
+  flex: 1;
+}
+.sh-section .sh-link {
+  margin-left: 18px;
+}
+
+.sh-cols,
+.sh-row-main {
+  display: grid;
+  grid-template-columns: var(--row-grid);
+  gap: 0 var(--row-gap);
+  align-items: center;
+  padding: 0 var(--row-pad);
+}
+.sh-cols {
+  height: 34px;
+  font-family: var(--f-mono);
+  font-size: calc(9px * var(--font-scale));
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
+  border-bottom: var(--rule-soft);
+}
+.sh-cols .r {
+  text-align: right;
+}
+
+.sh-rows {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 18px 16px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  flex: 1;
-  min-width: 0;
+}
+.sh-row {
+  position: relative;
+  height: 56px;
+  border-bottom: var(--rule-soft);
+  transition:
+    background var(--snap),
+    box-shadow var(--snap);
+}
+/* 悬停沿用侧栏的选中语言：--sel-wash 墨洗 + 朱砂左脊（不是粉底） */
+.sh-row:hover,
+.sh-row:focus-within {
+  background: var(--sel-wash);
+  box-shadow: inset 3px 0 0 var(--seal);
+}
+.sh-row-main {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: none;
+  border: 0;
+  border-radius: 0;
   color: inherit;
   font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.sh-ws-card-main:focus-visible {
+.sh-row-main:focus-visible {
   outline: 2px solid var(--seal);
   outline-offset: -2px;
 }
-.sh-ws-card:focus-within {
-  outline: 2px solid var(--seal);
-  outline-offset: -2px;
+.sh-row-main--dead {
+  cursor: not-allowed;
 }
-.sh-ws-name {
+.sh-no {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: var(--f-song);
-  font-size: calc(19px * var(--font-scale));
-  font-weight: 600;
-  color: var(--ink-1);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sh-ws-pin {
+  min-width: 0;
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(10.5px * var(--font-scale));
   letter-spacing: 0.08em;
-  color: var(--seal-deep);
-  border: var(--rule-soft);
-  padding: 1px 6px;
+  color: var(--ink-3);
 }
-/* 省略号必须落在真实文本盒上：flex 容器自身 text-overflow 不生效，
- * 内层无此盒则长名硬裁、固定徽标被推出卡外不可见（§11 包含轴）。 */
-.sh-ws-name-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.sh-pin,
+.sh-pin-pad {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+.sh-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--seal);
+  color: var(--paper);
+  font-family: var(--f-mono);
+  font-size: 8px;
+  box-shadow: 0 0 1.5px color-mix(in oklch, var(--ink-solid) 22%, transparent);
+}
+.sh-name {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
   min-width: 0;
 }
-.sh-ws-meta {
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.08em;
-  color: var(--ink-2);
-  max-width: 100%;
+/* 省略号必须落在真实文本盒上：flex 容器自身 text-overflow 不生效 */
+.sh-name-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--f-song);
+  font-size: calc(16.5px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
 }
-.sh-ws-rename-input {
+.sh-here {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: calc(9px * var(--font-scale));
+  letter-spacing: 0.1em;
+  color: var(--seal-deep);
+}
+.sh-here::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  background: var(--seal);
+}
+.sh-num {
+  justify-self: end;
+  font-family: var(--f-mono);
+  font-size: calc(12px * var(--font-scale));
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.sh-num.zero {
+  color: var(--ink-4);
+}
+.sh-date {
+  font-family: var(--f-mono);
+  font-size: calc(10.5px * var(--font-scale));
+  color: var(--ink-2);
+  letter-spacing: 0.04em;
+}
+.sh-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  color: var(--ink-3);
+}
+.sh-dead {
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  color: var(--fail);
+}
+.sh-go {
+  justify-self: end;
+  font-family: var(--f-mono);
+  font-size: calc(13px * var(--font-scale));
+  color: var(--ink-3);
+  transition:
+    color var(--snap),
+    transform var(--snap);
+}
+.sh-row:hover .sh-go,
+.sh-row:focus-within .sh-go {
+  color: var(--seal);
+  transform: translateX(2px);
+}
+.sh-row--dead .sh-name-text {
+  color: var(--ink-2);
+}
+
+.sh-rename-input {
+  width: 100%;
+  min-width: 120px;
   font: inherit;
   color: var(--ink-1);
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--seal-deep);
   padding: 0;
-  width: 100%;
-  min-width: 120px;
   outline: none;
 }
-.sh-ws-actions {
-  /* 操作列绝对定位于卡底右带：随排保留 223px 会把主区挤到 161px、meta 行
-   * 必裁字（.sh-main 恒 880 → 恒两列 386）；底部右带与「进入画布 →」对望
-   * 是卡内唯一空地——悬停显形不占几何，卡高回归内容自适应。 */
+
+/* 行尾管理动作：hover/focus 显形（键盘 focus-within 同样显形）；不占几何。
+ * 做成一小枚纸片（纸底 + 弱线 + 浮起）——路径列可能比动作条长，纸片不透明，
+ * 悬停时盖住路径尾巴而不是把字叠在一起（工具提示仍给全路径）。 */
+.sh-ops {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  right: 48px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 8px 10px;
+  padding: 2px;
+  background: var(--paper);
+  border: var(--rule-soft);
+  box-shadow: var(--elev-raise);
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--snap);
 }
-.sh-ws-card:hover .sh-ws-actions,
-.sh-ws-card:focus-within .sh-ws-actions {
+.sh-row:hover .sh-ops,
+.sh-row:focus-within .sh-ops {
   opacity: 1;
+  pointer-events: auto;
 }
-.sh-ws-actions button {
+.sh-ops button {
   font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.06em;
+  font-size: calc(9.5px * var(--font-scale));
+  letter-spacing: 0.08em;
   color: var(--ink-2);
   background: transparent;
-  border: none;
+  border: 0;
+  border-radius: 0;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 7px;
   white-space: nowrap;
+  transition:
+    color var(--snap),
+    background var(--snap);
 }
-.sh-ws-actions button:hover {
+.sh-ops button:hover {
+  color: var(--ink-1);
+  background: color-mix(in oklch, var(--ink-1) 6%, transparent);
+}
+.sh-ops button.danger:hover {
+  color: var(--seal-deep);
+}
+
+/* 载入骨架（静态条——不新起动画，§15 登记表不加项） */
+.sh-skel {
+  display: flex;
+  align-items: center;
+  gap: 60px;
+  height: 56px;
+  padding: 0 var(--row-pad);
+  border-bottom: var(--rule-soft);
+}
+.sh-skel i {
+  display: block;
+  height: 10px;
+  background: color-mix(in oklch, var(--ink-1) 7%, transparent);
+}
+.sh-skel i:nth-child(1) {
+  width: 28px;
+}
+.sh-skel i:nth-child(2) {
+  width: 180px;
+}
+.sh-skel i:nth-child(3) {
+  width: 48px;
+  margin-left: auto;
+}
+
+/* ── 空态：空函套（无工作区） ────────────────────────────── */
+.sh-empty {
+  margin-top: 24px;
+  min-height: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  border: 1px dashed var(--ink-4);
+  background: color-mix(in oklch, var(--ink-1) 1.5%, transparent);
+}
+.sh-empty-big {
+  font-family: var(--f-song);
+  font-size: calc(24px * var(--font-scale));
+  font-weight: 600;
   color: var(--ink-1);
 }
+.sh-empty-sub {
+  margin-top: 12px;
+  font-family: var(--f-mono);
+  font-size: calc(11.5px * var(--font-scale));
+  letter-spacing: 0.04em;
+  line-height: 2;
+  color: var(--ink-2);
+  text-align: center;
+}
+.sh-empty-acts {
+  margin-top: 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── 通知 / 重试（报错态与卡死逃生口共用） ───────────────── */
+.sh-notice {
+  margin-top: 12px;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--seal-deep);
+}
+.sh-notice--error {
+  color: var(--fail);
+}
+.sh-retry {
+  margin-left: 10px;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--ink-1);
+  background: transparent;
+  border: var(--rule-soft);
+  border-radius: 0;
+  cursor: pointer;
+  padding: 2px 10px;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.sh-retry:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+/* 上卷动作行里的重试：贴在同排按钮旁，不再吃通知条的左距 */
+.sh-hero-acts .sh-retry {
+  margin-left: 0;
+}
+
+/* ── 底部印版：本机读数 + colophon ────────────────────────── */
+.sh-foot {
+  flex-shrink: 0;
+  border-top: var(--rule-hard); /* 屏级分区线：脚线 */
+  padding: 16px 48px 18px;
+  /* B3 信息承载墨阶：页脚整体 ink-2（子件按各自墨阶覆盖） */
+  color: var(--ink-2);
+}
+.sh-foot-in {
+  max-width: 1160px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+}
+.sh-stats {
+  display: flex;
+  gap: 48px;
+}
+.sh-stat .lab {
+  margin-bottom: 4px;
+  font-family: var(--f-mono);
+  font-size: calc(9px * var(--font-scale));
+  letter-spacing: 0.24em;
+  color: var(--ink-3);
+}
+.sh-stat .val {
+  font-family: var(--f-mono);
+  font-size: calc(24px * var(--font-scale));
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+.sh-stat .val small {
+  margin-left: 4px;
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+.sh-colophon {
+  text-align: right;
+  font-family: var(--f-mono);
+  font-size: calc(9.5px * var(--font-scale));
+  letter-spacing: 0.16em;
+  line-height: 1.9;
+  color: var(--ink-3);
+}
+.sh-colophon b {
+  color: var(--ink-2);
+  font-weight: 400;
+}
+
 /* ── 首页模态（2026-08-31）：新建工作区 sheet + 移除确认弹窗 ──
  * 纸面美学：圆角恒 0、mono 机读、rule-soft 边框、seal-deep 印章色强调。 */
 .sh-modal-backdrop {
@@ -639,111 +976,85 @@
   letter-spacing: 0.05em;
   color: var(--ink-3);
 }
-/* 目录已丢失的工作区卡（诚实显示 + 禁进） */
-.sh-ws-card--dead {
-  opacity: 0.55;
-}
-.sh-ws-card--dead .sh-ws-card-main {
-  cursor: not-allowed;
-}
 
-.sh-empty-hint {
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.14em;
-  color: var(--ink-3);
-  padding: 22px 4px;
-  border-bottom: var(--rule-soft);
-}
-/* ── 零目录卷退役（Stage-5 拍板 a）── */
-.sh-zero-dir {
-  margin-top: 20px;
-  padding: 14px 16px;
-  border: var(--rule-soft);
-  border-left: 3px solid var(--seal-deep);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.sh-zero-dir-title {
-  font-family: var(--f-song);
-  font-size: calc(14px * var(--font-scale));
-  font-weight: 600;
-  color: var(--ink-1);
-}
-.sh-zero-dir-desc {
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.06em;
-  color: var(--ink-2);
-}
-.sh-zero-dir-actions {
-  display: flex;
-  gap: 10px;
-}
-.sh-notice {
-  margin-top: 12px;
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.08em;
-  color: var(--seal-deep);
-}
-.sh-retry {
-  margin-left: 10px;
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.08em;
-  color: var(--ink-1);
-  background: transparent;
-  border: var(--rule-soft);
-  border-radius: 0;
-  cursor: pointer;
-  padding: 2px 10px;
-  transition:
-    background var(--snap),
-    color var(--snap);
-}
-.sh-retry:hover {
-  background: var(--ink-1);
-  color: var(--paper);
-}
-
-.sh-actions {
-  display: flex;
-  gap: 14px;
-  margin-top: 28px;
-}
-/* ── 卷首入场编排（2026-08-30；极简批 2026-10-07 重排——层少了，拍子收紧）──
- * 题字→列表→动作逐层浮现：sh-rise 单关键帧（to=静态位）；每层只调 delay。
- * 首页是低频全屏页，挂载重放即「回到卷首」的仪式感；reduced-motion 全局豁免已兜底。 */
+/* ── 入场编排（2026-08-30；丁案重排——题签→上卷→登记簿逐层浮现）──
+ * sh-rise 单关键帧（to=静态位）；每层只调 delay。首页是低频全屏页，
+ * 挂载重放即「回到案头」的仪式感；reduced-motion 全局豁免已兜底。 */
 @keyframes sh-rise {
   from {
     opacity: 0;
     transform: translateY(14px);
   }
 }
-.sh-h1 {
-  animation: sh-rise 0.55s var(--m-ease-out) 0.05s both;
+.sh-h1,
+.sh-kicker,
+.sh-lead {
+  animation: sh-rise 0.5s var(--m-ease-out) 0.05s both;
 }
-.sh-section-title {
-  animation: sh-rise 0.5s var(--m-ease-out) 0.16s both;
+.sh-hero {
+  animation: sh-rise 0.55s var(--m-ease-out) 0.12s both;
 }
-.sh-workspaces {
+.sh-section {
+  animation: sh-rise 0.5s var(--m-ease-out) 0.18s both;
+}
+.sh-cols,
+.sh-rows,
+.sh-empty {
   animation: sh-rise 0.55s var(--m-ease-out) 0.22s both;
 }
-.sh-actions {
-  animation: sh-rise 0.5s var(--m-ease-out) 0.28s both;
+
+/* ── 矮窗收排（768 高的小本要能一屏装下：上卷 + 四行登记簿）── */
+@media (max-height: 820px) {
+  .sh-main {
+    padding: 28px 48px 16px;
+  }
+  .sh-h1 {
+    font-size: calc(36px * var(--font-scale));
+  }
+  .sh-hero {
+    min-height: 176px;
+    margin-top: 18px;
+    padding: 18px 24px 16px 26px;
+  }
+  .sh-hero-title {
+    font-size: calc(30px * var(--font-scale));
+  }
+  .sh-hero-acts {
+    margin-top: 12px;
+  }
+  .sh-section {
+    margin-top: 20px;
+  }
+  .sh-row,
+  .sh-skel {
+    height: 48px;
+  }
+  .sh-cols {
+    height: 30px;
+  }
+  .sh-foot {
+    padding: 12px 48px 14px;
+  }
+  .sh-stat .val {
+    font-size: calc(20px * var(--font-scale));
+  }
+  .sh-empty {
+    min-height: 300px;
+    margin-top: 18px;
+    padding: 24px;
+  }
 }
 
-/* ── 底部 footer ── */
-.sh-foot {
-  border-top: var(--rule-hard); /* 浸墨：脚线升硬线 */
-  padding: 18px 48px;
-  display: flex;
-  justify-content: flex-end; /* 极简批：左 brand 退役，只余案卷读数（与书眉右簇同侧） */
-  color: var(--ink-2); /* B3 环1 拍板：页脚档号=信息承载，提墨 ink-3→ink-2 */
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.06em;
-  flex-shrink: 0;
+/* ── 窄窗：上卷右栏退场、路径列让位（仍保六栏语义的其余五栏）── */
+@media (max-width: 960px) {
+  .sh-root {
+    --row-grid: 50px minmax(0, 1fr) 56px 64px 24px;
+  }
+  .sh-hero-side {
+    display: none;
+  }
+  .sh-cols .p,
+  .sh-path {
+    display: none;
+  }
 }
