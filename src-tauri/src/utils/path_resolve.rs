@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: MIT
 // 路径解析 + 权限检查（从 utils.rs 拆出）
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use tauri::Emitter;
 
 use crate::permissions;
 use crate::permissions::{PermissionContext, PermissionDecision, has_permission_to_use_tool, register_ask};
-use crate::sandbox::{Sandbox, expand_home};
+use crate::sandbox::{Sandbox, expand_home, is_symlink_or_junction, logical_path};
 use crate::tools;
 use crate::workspace;
 
@@ -237,6 +237,97 @@ pub(crate) async fn require_write(file_path: &str, agent_id: Option<&str>, state
     }
 }
 
+/// 已登记工作区的 `.lantai/**` 只读解析（2026-11-05 入口 UX 批）。
+///
+/// 为什么需要：首页（案头）要读**每个已登记工作区**的卷目录投影（上卷 / 同区其他卷），
+/// 而它不属于任何一个「正在打开」的工作区。旧路径靠冷启动先把上次工作区激活
+/// （`get_ctx` 要求有活动工作区）——副作用是启动即装配 Agent / 恢复会话，用户从
+/// 首页点进来时还撞上 `isBusy` 被拦。入口改成「进区才物化」后，首页读面必须能在
+/// **不开工作区**的前提下读到这些目录。
+///
+/// 判据（最小豁免，边界不放宽）：
+///   1. 目标真实路径必须落在**注册表里某个工作区根**的 `.lantai/` 子树内
+///      （`~/.lantai/workspaces.json` = 用户绑定过的目录清单，不是任意路径）；
+///   2. 只服务**用户通道只读**（`resolve_path_user_read`）：agent 通道走
+///      `require_read`（权限 + forward-map），写通道 `resolve_path_user_write` 不调用；
+///   3. 与 `Sandbox::resolve_read` 同两件：拒绝符号链接 / junction；返回解析后的真实路径。
+///
+/// 返回 `None` = 不属于任何已登记工作区的 `.lantai`（调用方照旧 `get_ctx` 走工作区沙箱）。
+pub(crate) fn registered_workspace_read(file_path: &Path) -> Option<Result<PathBuf, String>> {
+    let reg = crate::commands::workspace::registry::read_registry();
+    let roots: Vec<&str> = reg.workspaces.iter().map(|e| e.path.as_str()).collect();
+    read_under_workspace_lantai(file_path, &roots)
+}
+
+/// 前缀归属（组件级；Windows 上大小写不敏感——盘符/目录段大小写不作为身份）。
+#[cfg(windows)]
+fn path_under(path: &Path, root: &Path) -> bool {
+    let fold = |p: &Path| -> Vec<String> {
+        logical_path(p)
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+            .collect()
+    };
+    let p = fold(path);
+    let r = fold(root);
+    p.len() >= r.len() && p[..r.len()] == r[..]
+}
+
+#[cfg(not(windows))]
+fn path_under(path: &Path, root: &Path) -> bool {
+    logical_path(path).starts_with(logical_path(root))
+}
+
+/// 判据本体（纯函数——注册表真源在调用方，测试直接给根清单，不碰进程级 home/注册表）。
+fn read_under_workspace_lantai(file_path: &Path, roots: &[&str]) -> Option<Result<PathBuf, String>> {
+    if roots.is_empty() {
+        return None;
+    }
+    // 归属判定 = 逻辑路径（去 Windows verbatim 前缀，与 Sandbox::contains 同规）。
+    // Windows 上大小写不敏感：注册表路径与 `.last_project`/前端拼出的路径可能只有
+    // 盘符或目录段大小写不同，字节比较会误判「不在已登记工作区内」。
+    let mut owned = false;
+    for root in roots {
+        if root.trim().is_empty() {
+            continue;
+        }
+        if path_under(file_path, &Path::new(root).join(".lantai")) {
+            owned = true;
+            break;
+        }
+    }
+    if !owned {
+        return None;
+    }
+    // 归属成立后再规范化：符号链接 / junction 一律不进豁免（与 Sandbox::resolve_read 同判）。
+    if is_symlink_or_junction(file_path) {
+        return Some(Err("user data path symlinks are not allowed".into()));
+    }
+    // 缺失文件按「父目录 + 文件名」解析（首页读 `_index.json` 这类可能缺席的投影缓存）；
+    // 解析不出 = 不是可读目标，交回调用方（照旧 get_ctx）。
+    let real = match std::fs::canonicalize(file_path) {
+        Ok(real) => real,
+        Err(_) => {
+            let parent = file_path.parent()?;
+            let name = file_path.file_name()?;
+            std::fs::canonicalize(parent).ok()?.join(name)
+        }
+    };
+    // 规范化后必须仍在某个已登记工作区的 .lantai 内（防父级 junction 把路径带出边界）。
+    let inside = roots.iter().any(|root| {
+        if root.trim().is_empty() {
+            return false;
+        }
+        let lantai_real = std::fs::canonicalize(Path::new(root).join(".lantai")).ok();
+        lantai_real.is_some_and(|l| path_under(&real, &l))
+    });
+    if inside {
+        Some(Ok(real))
+    } else {
+        None
+    }
+}
+
 /// ponytail: 用户 UI 操作的路径解析 — 只做 forward-map + sandbox resolve,
 /// 不检查权限规则. 权限系统是给 Agent 的, 用户在 UI 上的操作不受权限限制.
 /// safety check 仍然保留在写路径 (防误操作系统文件).
@@ -251,6 +342,10 @@ pub(crate) fn resolve_path_user_read(file_path: &str, state: &tauri::State<'_, W
     let expanded = expand_input(file_path);
     if let Some(r) = Sandbox::user_data_read(&expanded) {
         return r.into_result();
+    }
+    // 已登记工作区的 .lantai/**：首页读面不依赖「哪个工作区正被打开」（见函数注）。
+    if let Some(r) = registered_workspace_read(&expanded) {
+        return r;
     }
     let ctx = get_ctx(state)?;
     let physical = ctx.forward_map_path(&expanded, None);
@@ -407,4 +502,134 @@ pub(crate) fn require_read_sync(file_path: &str, agent_id: Option<&str>, state: 
     check_permission_sync(&tool, &ctx)?;
     std::fs::canonicalize(&physical)
         .map_err(|e| format!("无法解析路径 {}: {}", physical_str, e))
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 临时根（自清理）——判据本体是纯函数，不碰进程级 home / 注册表，故可并行跑。
+    struct TempRoot(std::path::PathBuf);
+
+    impl TempRoot {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "lantai_ws_read_{tag}_{}",
+                crate::audit::now_iso().replace([':', '.', '+'], "-")
+            ));
+            std::fs::create_dir_all(&dir).expect("建临时目录");
+            Self(std::fs::canonicalize(&dir).unwrap_or(dir))
+        }
+
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// 首页读面（2026-11-05 入口 UX 批）：已登记工作区的 .lantai/** 免活动工作区可读。
+    #[test]
+    fn registered_workspace_lantai_reads_without_active_workspace() {
+        let root = TempRoot::new("allow");
+        let ws = root.path().join("ws");
+        let sessions = ws.join(".lantai").join("sessions");
+        std::fs::create_dir_all(&sessions).expect("建会话根");
+        std::fs::write(sessions.join("1.ndjson"), "{\"type\":\"head\"}\n").expect("写卷");
+        let roots = vec![ws.to_string_lossy().to_string()];
+        let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
+
+        // 目录（list_volumes）与已落盘文件都放行。
+        assert!(
+            matches!(read_under_workspace_lantai(&sessions, &roots), Some(Ok(_))),
+            "已登记工作区的会话根应免工作区可读"
+        );
+        assert!(
+            matches!(read_under_workspace_lantai(&sessions.join("1.ndjson"), &roots), Some(Ok(_))),
+            "已登记工作区的卷文件应免工作区可读"
+        );
+        // 缺失的投影缓存（_index.json）按「父目录 + 文件名」解析——首页首启常态。
+        assert!(
+            matches!(read_under_workspace_lantai(&sessions.join("_index.json"), &roots), Some(Ok(_))),
+            "缺失的 _index.json 也应可解析（读失败留到读面）"
+        );
+
+        // 规范化后的真实路径必须落在该工作区的 .lantai 内。
+        let allowed = read_under_workspace_lantai(&sessions.join("1.ndjson"), &roots).unwrap().unwrap();
+        assert!(allowed.starts_with(&ws.canonicalize().unwrap().join(".lantai")));
+    }
+
+    /// 边界不放宽：工作区源码目录 / 未登记的 .lantai / 空注册表一律 None（照旧 get_ctx）。
+    #[test]
+    fn registered_workspace_lantai_denies_everything_else() {
+        let root = TempRoot::new("deny");
+        let ws = root.path().join("ws");
+        let sessions = ws.join(".lantai").join("sessions");
+        std::fs::create_dir_all(&sessions).expect("建会话根");
+        std::fs::create_dir_all(ws.join("src")).expect("建源码目录");
+        std::fs::write(ws.join("src").join("main.rs"), "fn main() {}").expect("写源码");
+        let other = root.path().join("other");
+        std::fs::create_dir_all(other.join(".lantai").join("sessions")).expect("建别家会话根");
+        let roots = vec![ws.to_string_lossy().to_string()];
+        let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
+
+        assert!(
+            read_under_workspace_lantai(&ws.join("src").join("main.rs"), &roots).is_none(),
+            "工作区源码不在 .lantai 内——不放行"
+        );
+        assert!(
+            read_under_workspace_lantai(&other.join(".lantai").join("sessions"), &roots).is_none(),
+            "未登记工作区的 .lantai——不放行"
+        );
+        assert!(
+            read_under_workspace_lantai(&sessions.join("1.ndjson"), &[]).is_none(),
+            "空注册表——不放行"
+        );
+        // 相邻名字（.lantai2）不得冒充 .lantai（Path 组件前缀，不是字符串前缀）。
+        let adjacent = ws.join(".lantai2").join("sessions");
+        assert!(
+            read_under_workspace_lantai(&adjacent, &roots).is_none(),
+            ".lantai2 不是 .lantai 子树——不放行"
+        );
+    }
+
+    /// 符号链接 / junction 一律拒绝（与 Sandbox::resolve_read 同判）——只测得上符号链接的平台。
+    #[cfg(unix)]
+    #[test]
+    fn registered_workspace_lantai_rejects_symlinks() {
+        let root = TempRoot::new("link");
+        let ws = root.path().join("ws");
+        let sessions = ws.join(".lantai").join("sessions");
+        std::fs::create_dir_all(&sessions).expect("建会话根");
+        let link = sessions.join("link.ndjson");
+        std::os::unix::fs::symlink(sessions.join("target.ndjson"), &link).expect("建符号链接");
+        let roots = vec![ws.to_string_lossy().to_string()];
+        let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
+        assert!(
+            matches!(read_under_workspace_lantai(&link, &roots), Some(Err(_))),
+            "符号链接必须拒绝"
+        );
+    }
+
+    /// Windows：注册表路径与前端拼出的路径大小写不同（盘符/目录段）也必须命中
+    /// ——否则首页上卷会退回「未打开工作区」。
+    #[cfg(windows)]
+    #[test]
+    fn registered_workspace_lantai_is_case_insensitive_on_windows() {
+        let root = TempRoot::new("case");
+        let ws = root.path().join("ws");
+        let sessions = ws.join(".lantai").join("sessions");
+        std::fs::create_dir_all(&sessions).expect("建会话根");
+        std::fs::write(sessions.join("1.ndjson"), "{}\n").expect("写卷");
+        let upper = ws.to_string_lossy().to_uppercase();
+        let roots = vec![upper];
+        let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
+        assert!(
+            matches!(read_under_workspace_lantai(&sessions.join("1.ndjson"), &roots), Some(Ok(_))),
+            "Windows 路径归属必须大小写不敏感"
+        );
+    }
 }

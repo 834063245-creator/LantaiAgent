@@ -45,7 +45,6 @@ export const typedJsonRpc = impl.typedJsonRpc;
 export const workspaceListCached = impl.workspaceListCached;
 export const pickFolder = impl.pickFolder;
 export const workspaceFlow = impl.workspaceFlow;
-export const shellRefs = impl.shellRefs;
 export const useDockStore = impl.useDockStore;
 export const useUpdateStore = impl.useUpdateStore;
 export const useShellStore = impl.useShellStore;

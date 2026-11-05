@@ -7,7 +7,6 @@
 //   - `rpc-contract`：`workspace_list` 走强制层 RPC（typedRpc）+ 清单写代缓存（唯一数据源）；
 //   - `shell/rows/workspace`：`pickFolder`（系统目录选择器）与 `workspaceFlow`（切区/强制重置
 //     ——工作区生命周期的唯一入口，宿主在壳行）；
-//   - `shell/runtime`：`shellRefs`（工作区句柄 + 切区状态机读数）；
 //   - 状态：`useShellStore`（项目路径/首页态）· `useDockStore`（开设置面板）
 //     · `useUpdateStore`（更新角标）；
 //   - 上卷数据（丁案）：`useCoreStore` 的 `listSavedSessions`（**上次在案**工作区的
@@ -34,7 +33,6 @@ export {
   workspaceListCached,
 } from '../../../rpc-contract';
 export { pickFolder, workspaceFlow } from '../../../shell/rows/workspace';
-export { shellRefs } from '../../../shell/runtime';
 export { useDockStore } from '../../../state/dock-store';
 export { useSessionVolumesStore } from '../../../state/session-volumes-store';
 export { useUpdateStore } from '../../../state/update-store';

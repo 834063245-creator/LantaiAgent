@@ -1,0 +1,202 @@
+/* paper-shell · 展卷页（2026-11-05 入口 UX 批）
+ *
+ * 语言：与案头/画布同一张纸——纸底、朱砂一点、版心 720 居中。它**不是**遮罩或
+ * 骨架屏：进入工作区是一次「展卷」，页面就用这一页把「正在做什么」说明白
+ * （落位 / 装订 / 展卷 = switchWorkspace 的三段）。
+ * 层：与 .pp-root 同档（280）——展卷页就是纸面本身，门切换后整页换掉，无叠影。 */
+
+.pp-entry {
+  position: fixed;
+  inset: 0;
+  z-index: 280;
+  background: var(--paper);
+  color: var(--ink-1);
+  font-family: var(--f-song);
+  display: grid;
+  place-items: center;
+  /* 纸张颗粒由 foundation.css 的 body::after 承担（同 .pp-root 注，别再自挂一份）。 */
+}
+
+.pp-entry-sheet {
+  width: min(720px, calc(100vw - 96px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  /* 版心天头：视觉重心略高于几何中心（与卷首同一习惯）。 */
+  padding-bottom: 8vh;
+}
+
+.pp-entry-kicker {
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.62em;
+  /* 末字后的字距会把整行推左——用同量 text-indent 抵回来（视觉居中）。 */
+  text-indent: 0.62em;
+  color: var(--ink-3);
+}
+
+.pp-entry-name {
+  margin: 16px 0 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--f-song);
+  font-weight: var(--weight-display);
+  font-size: clamp(26px, 2.5vw, calc(36px * var(--font-scale)));
+  line-height: 1.24;
+  letter-spacing: 0.02em;
+  color: var(--ink-1);
+}
+
+.pp-entry-rule {
+  width: 100%;
+  margin: 22px 0 26px;
+  border-top: var(--rule-soft);
+}
+
+/* ── 三段：落位 → 装订 → 展卷 ─────────────────────────────── */
+
+.pp-entry-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.pp-entry-step {
+  display: grid;
+  grid-template-columns: 14px 3.4em minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 10px;
+  text-align: left;
+  font-family: var(--f-mono);
+  font-size: calc(11.5px * var(--font-scale));
+  letter-spacing: 0.06em;
+  color: var(--ink-4);
+  transition: color var(--m-ink);
+}
+
+.pp-entry-step.is-done {
+  color: var(--ink-3);
+}
+
+.pp-entry-step.is-now {
+  color: var(--ink-1);
+}
+
+.pp-entry-dot {
+  justify-self: center;
+  align-self: center;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.pp-entry-step.is-done .pp-entry-dot {
+  background: var(--ink-3);
+  opacity: 1;
+}
+
+.pp-entry-step.is-now .pp-entry-dot {
+  background: var(--seal);
+  opacity: 1;
+  /* 呼吸 = 与画布/侧栏同一支环境节拍（§15 登记表内的 pp-pulse）——
+   * 不新造一条节奏，也不再散写一条未登记的 keyframes 名。 */
+  animation: pp-pulse 1.6s ease-in-out infinite;
+}
+
+.pp-entry-zh {
+  color: inherit;
+}
+
+.pp-entry-sub {
+  color: inherit;
+  opacity: 0.82;
+}
+
+.pp-entry-note {
+  margin: 26px 0 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--f-mono);
+  font-size: calc(10.5px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.pp-entry-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-4);
+}
+
+/* ── 失败态 / 逃生 ──────────────────────────────────────── */
+
+.pp-entry--fault .pp-entry-kicker {
+  color: var(--fail);
+}
+
+.pp-entry--fault .pp-entry-rule {
+  border-top-color: color-mix(in oklch, var(--fail) 40%, transparent);
+}
+
+.pp-entry-fault {
+  margin: 0;
+  max-width: 100%;
+  font-family: var(--f-mono);
+  font-size: calc(11.5px * var(--font-scale));
+  line-height: 1.9;
+  letter-spacing: 0.03em;
+  color: var(--fail);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.pp-entry-acts {
+  margin-top: 26px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pp-entry-primary {
+  font-family: var(--f-song);
+  font-size: calc(13px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--paper);
+  background: var(--ink-1);
+  border: none;
+  border-radius: 0;
+  padding: 7px 22px;
+  cursor: pointer;
+  transition: background var(--snap);
+}
+
+.pp-entry-primary:hover {
+  background: var(--seal-deep);
+}
+
+.pp-entry-link {
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  border-bottom: var(--rule-soft);
+  border-radius: 0;
+  padding: 2px 1px;
+  cursor: pointer;
+  transition: color var(--snap);
+}
+
+.pp-entry-link:hover {
+  color: var(--seal-deep);
+}

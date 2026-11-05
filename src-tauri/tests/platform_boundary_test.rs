@@ -40,6 +40,11 @@ fn capability_command_modules_are_frozen() {
     let expected = vec![
         "browser_cap",
         "composition",
+        // diag = 强制层诊断（日志可观测性批 4，commit 431d961a：诊断包导出
+        // `diag_export` RPC，只读 UI/bridge/boot 日志——强制层审计面同族）。
+        // 基线补录 2026-11-05：该 commit 漏更本基线致 HEAD 红，按本测试自有
+        // 程序补录，非新授权。
+        "diag",
         "editor_cap",
         "external",
         "filesystem",

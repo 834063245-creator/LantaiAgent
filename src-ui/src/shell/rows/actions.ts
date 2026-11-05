@@ -18,7 +18,7 @@ import type { ShellRefs } from '../runtime';
 
 /** workspace 流函数注入面（workspace 行产出；编排期由 shell/workspace.ts 提供）。 */
 export interface WorkspaceFlowDeps {
-  switchWorkspace: (path?: string, opts?: { graphEngine?: boolean | null }) => Promise<void>;
+  switchWorkspace: (path?: string, opts?: { graphEngine?: boolean | null; name?: string }) => Promise<void>;
   escLayer: () => void;
 }
 

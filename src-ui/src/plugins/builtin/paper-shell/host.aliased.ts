@@ -111,6 +111,10 @@ export const agentSessionState = impl.agentSessionState;
 export const PluginBoundary = impl.PluginBoundary;
 export const ConfirmDialog = impl.ConfirmDialog as ComponentType;
 export const leaveToHome = impl.leaveToHome;
+// 展卷页（2026-11-05 入口 UX 批）：进入态 store + 逃生/重试（必须取内核同一实例）
+export const useWorkspaceEntryStore = impl.useWorkspaceEntryStore;
+export const abortWorkspaceEntry = impl.abortWorkspaceEntry;
+export const retryWorkspaceEntry = impl.retryWorkspaceEntry;
 // A4 销账第一笔（2026-09-28）：toast store 经桥取内核同一实例——见 host.ts 同款注记
 export const useToastStore = impl.useToastStore;
 

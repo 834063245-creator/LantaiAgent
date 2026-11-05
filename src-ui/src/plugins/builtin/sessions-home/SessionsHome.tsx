@@ -7,8 +7,9 @@
 // 2026-10-31 用户「合个第四版」后拍板丁案）：
 // **上半「上卷」**——当前工作区最近落盘的一卷（卷名 / 末次 / 块数），
 //   「继续」= 开画布并摊开该卷；右栏是同工作区其他卷（点 = 摊开该卷）。
-//   数据 = `core.listSavedSessions(projectPath)`——冷启动已恢复工作区、
-//   侧栏卷清单投影已在内存，**零新 RPC / 零新 faceDeps 键**。
+//   数据 = `core.listSavedSessions(projectPath)`——读盘只依赖会话根，**不要求
+//   工作区处于活动态**（2026-11-05 入口 UX 批：冷启动不再预开工作区；Rust 侧给
+//   已登记工作区的 `.lantai/**` 开了用户通道只读豁免）。
 // **下半「登记簿」**——工作区目录：档号 / 工作区 / 案卷 / 最近 / 路径 / 进入。
 //   工作区管理（新建 / 改名 / 固定 / 移除）仍在这里；会话管理仍在画布侧栏。
 // 无工作区 → 「库房还空着」虚线框 + 双路入口；有工作区但本区无卷 → 上卷退化为
@@ -29,7 +30,6 @@ import {
   onTopbarDoubleClick,
   onTopbarPointerDown,
   pickFolder,
-  shellRefs,
   typedJsonRpc,
   typedRpc,
   useCoreStore,
@@ -89,12 +89,6 @@ function shortPath(p: string, max = 36): string {
   return `…\\${segs.slice(-1).join('')}`;
 }
 
-/** 恢复卡死判定阈值（2026-09-09 事故立法）：切区/冷启动恢复 busy 超过
- *  此时长视为挂死——健康恢复链（大工作区实测秒级）远低于此。超阈值后
- *  isBusy 守卫从「请稍候」升级为亮「强制重置」逃生口（workspaceFlow.
- *  stuckRecover），不再把用户锁死在所有工作区外面。 */
-const STUCK_SWITCH_MS = 60_000;
-
 /** 案卷日期列：MM-DD（卷行与上卷 meta 同款）。 */
 function formatSessionDate(iso: string | null | undefined): string {
   if (!iso) return '——';
@@ -134,9 +128,7 @@ export function SessionsHome() {
   const [workspaces, setWorkspaces] = useState<KnownWorkspace[]>([]);
   const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [notice, setNotice] = useState<string | null>(null);
-  /** 卡死逃生口可见位（2026-09-09 事故立法）：isBusy 守卫发现恢复超过
-   *  STUCK_SWITCH_MS 时置位——亮「强制重置」按钮；正常路径复位。 */
-  const [forceReset, setForceReset] = useState(false);
+
   const [busy, setBusy] = useState(false);
   /** 内联改名（一次一行）。 */
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -268,69 +260,48 @@ export function SessionsHome() {
     void refreshWorkspaces();
   }, [refreshVolumes, refreshWorkspaces]);
 
-  /** 切区/恢复守卫（2026-09-09 事故立法）：busy 时拦截，超阈值升级为「强制重置」
-   *  逃生口。返回 true = 可以继续。 */
-  const guardBusy = useCallback((): boolean => {
-    if (!shellRefs.wsMachine.isBusy) {
-      setForceReset(false);
-      return true;
-    }
-    const stuck = shellRefs.wsMachine.busyMs > STUCK_SWITCH_MS;
-    setForceReset(stuck);
-    setNotice(stuck ? '工作区恢复仍未完成（已超过 1 分钟）——疑似卡死' : '工作区正在恢复中，请稍候…');
-    return false;
+  /** 进入工作区：**导航先发生**（2026-11-05 入口 UX 批）——纸壳立刻挂展卷页，
+   *  绑定/装配/展卷（3~5s）由它承接；首页不再有 busy 守卫，点击永不被丢弃。
+   *  摊开集由画布状态文件恢复（Stage-5 拍板 11）；目录已丢失的工作区禁进
+   *  （调用侧守卫——行本身是禁用件）。 */
+  const onEnterWorkspace = useCallback((ws: string, displayName: string) => {
+    setRemoveTarget(null);
+    setNotice(null);
+    void workspaceFlow.switchWorkspace(ws, { name: displayName }).catch((e: unknown) => {
+      console.error('[home] 进入工作区失败:', e);
+      setNotice(`打开失败: ${e instanceof Error ? e.message : String(e)}`);
+    });
   }, []);
 
-  /** 进入工作区画布：打开纸面板 + （必要时）切到该工作区。
-   *  摊开集由画布状态文件恢复（Stage-5 拍板 11）。
-   *  目录已丢失的工作区禁进（调用侧守卫）。 */
-  const onEnterWorkspace = useCallback(
-    (ws: string) => {
-      setRemoveTarget(null);
-      if (!guardBusy()) return;
-      setNotice(null);
-      openPanel('paper');
-      const current = useShellStore.getState().projectPath;
-      if (!isSamePath(ws, current)) {
-        void workspaceFlow.switchWorkspace(ws);
-      }
-    },
-    [guardBusy, openPanel],
-  );
-
-  /** 上卷「继续」/同区其他卷：开画布并摊开指定卷（best-effort 定位）。
-   *  上卷可能是**已关**的工作区（回首页 = 真关工作区）——先切区再定位；
-   *  切区 Promise 落定后空间才在册，故 expand 放到 then 里再逐帧等。 */
+  /** 上卷「继续」/同区其他卷：先进入工作区，落定后摊开指定卷（best-effort 定位）。
+   *  上卷可能是**已关**的工作区（回首页 = 真关工作区）——进入落定后空间才在册，
+   *  故 expand 放到 then 里再逐帧等；进入失败（展卷页已给原因）不发起悬空定位。 */
   const onOpenVolume = useCallback(
     (id: number) => {
-      if (!guardBusy()) return;
       setNotice(null);
       const target = heroPath;
-      const active = useShellStore.getState().projectPath;
-      openPanel('paper');
-      if (target && !isSamePath(target, active)) {
-        void workspaceFlow
-          .switchWorkspace(target)
-          .then(() => expandWhenReady(id, 24))
-          .catch((e: unknown) => {
-            console.error('[home] 续开工作区失败:', e);
-            setNotice(`打开失败: ${e instanceof Error ? e.message : String(e)}`);
-          });
-      } else {
-        expandWhenReady(id);
-      }
+      if (!target) return;
+      const hero = workspaces.find((w) => isSamePath(w.path, target));
+      void workspaceFlow
+        .switchWorkspace(target, { name: hero ? wsDisplayName(hero) : undefined })
+        .then(() => {
+          if (!useShellStore.getState().projectPath) return;
+          expandWhenReady(id, 24);
+        })
+        .catch((e: unknown) => {
+          console.error('[home] 续开工作区失败:', e);
+          setNotice(`打开失败: ${e instanceof Error ? e.message : String(e)}`);
+        });
     },
-    [guardBusy, heroPath, openPanel],
+    [heroPath, workspaces],
   );
 
-  /** 「另起一卷」：开画布后起一卷（纸面板挂载/工厂注册在事件提交之后，故让一拍）。
-   *  建卷是纯数据操作（chat-session 的 DSH 形态），失败可见不静默。 */
+  /** 「另起一卷」：进入工作区、落定后起一卷（纸面板挂载/工厂注册在进入流程里，
+   *  故让一拍）。建卷是纯数据操作（chat-session 的 DSH 形态），失败可见不静默。 */
   const onNewVolume = useCallback(() => {
-    if (!guardBusy()) return;
     setNotice(null);
     const target = heroPath;
-    const active = useShellStore.getState().projectPath;
-    openPanel('paper');
+    if (!target) return;
     const createVolume = () => {
       window.setTimeout(() => {
         const liveCore = useCoreStore.getState().core;
@@ -341,26 +312,18 @@ export function SessionsHome() {
         });
       }, 0);
     };
-    if (target && !isSamePath(target, active)) {
-      void workspaceFlow
-        .switchWorkspace(target)
-        .then(createVolume)
-        .catch((e: unknown) => {
-          console.error('[home] 另起一卷前切区失败:', e);
-          setNotice(`另起一卷失败: ${e instanceof Error ? e.message : String(e)}`);
-        });
-    } else {
-      createVolume();
-    }
-  }, [guardBusy, heroPath, openPanel]);
-
-  /** 强制重置卡死的恢复（workspaceFlow.stuckRecover）：回收在途切区 + 状态机
-   *  复位——用户随后重新点击工作区卡即走全新 switch。 */
-  const onForceReset = useCallback(() => {
-    setForceReset(false);
-    setNotice(null);
-    void workspaceFlow.stuckRecover();
-  }, []);
+    const hero = workspaces.find((w) => isSamePath(w.path, target));
+    void workspaceFlow
+      .switchWorkspace(target, { name: hero ? wsDisplayName(hero) : undefined })
+      .then(() => {
+        if (!useShellStore.getState().projectPath) return;
+        createVolume();
+      })
+      .catch((e: unknown) => {
+        console.error('[home] 另起一卷前进入工作区失败:', e);
+        setNotice(`另起一卷失败: ${e instanceof Error ? e.message : String(e)}`);
+      });
+  }, [heroPath, workspaces]);
 
   /** 新建工作区 sheet：创建/指定双路（2026-08-31 拍板——一个按钮管两件事）。
    *  出生仪式在画布——sheet 只负责把工作区实体立起来（建目录/选目录）。 */
@@ -770,7 +733,7 @@ export function SessionsHome() {
                           <button
                             type="button"
                             className="sh-row-main"
-                            onClick={() => onEnterWorkspace(w.path)}
+                            onClick={() => onEnterWorkspace(w.path, name)}
                             aria-label={`进入工作区：${name}（${w.session_count} 卷）`}
                           >
                             {cells}
@@ -819,16 +782,6 @@ export function SessionsHome() {
         )}
 
         {notice && <p className="sh-notice">{notice}</p>}
-        {/* 卡死逃生口（2026-09-09 事故立法）：仅 STUCK_SWITCH_MS 超时后亮——
-            强制重置走 stuckRecover（全套回收 + 状态机复位），重进即全新 switch */}
-        {forceReset && (
-          <p className="sh-notice">
-            引擎或后端可能无响应。
-            <button type="button" className="sh-retry" onClick={onForceReset}>
-              强制重置
-            </button>
-          </p>
-        )}
       </main>
 
       {/* 底部印版：本机读数 + colophon */}

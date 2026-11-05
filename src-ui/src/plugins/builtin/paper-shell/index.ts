@@ -30,7 +30,7 @@ import type { Context } from '../../../cordis';
 import { injectFaceArtifactCss } from '../face-css';
 import { clearMeasureImplementation, registerMeasureImplementation, useDockStore } from './host';
 import { measureImplementation } from './measure-implementation';
-import { PaperPanel } from './PaperPanel';
+import { PaperEntryGate } from './PaperEntryGate';
 
 /** 纸壳插件——面板贡献（即时生效语义）+ toggle 命令贡献（S3）。
  *  inject 声明是 cordis fiber 属性访问的前提（apply 内访问 ctx.panels
@@ -59,7 +59,8 @@ export const paperPlugin = {
           title: '纸',
           icon: 'file',
           unmountOnClose: true,
-          component: PaperPanel,
+          // 2026-11-05 入口 UX 批：展卷态 → 展卷页；落纸才是第一次画布渲染。
+          component: PaperEntryGate,
         }),
       'paper-panel',
     );

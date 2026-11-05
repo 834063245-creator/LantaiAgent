@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT.
 
 // 壳行（hologram/shell-workspace）：workspace 流函数族 —
-// switchWorkspace / escLayer。
+// switchWorkspace / abortWorkspaceEntry / retryWorkspaceEntry / escLayer / leaveToHome。
 // 自 main.ts 机械迁移（S2-4）；workspace-flip 批 3（打开流两段化）。
 // workspace-session-ownership-rework（2026-08-27）：setupPlaceholderAgent 退役——
 // 零目录会话/占位工作区已随「会话物理归属工作区」移除，无项目不装配 Agent。
@@ -12,8 +12,18 @@
 // graph-updated 监听 / runCheck / workspace_start_watcher（通知泵）随引擎接线
 // 整批移除——switch = 激活 + Agent 装配 + 会话/画布恢复，零引擎依赖。
 //
+// 2026-11-05 入口 UX 批（用户拍板「绑定/物化两段 + 展卷页，落地到第 2 刀」）：
+//   病灶：冷启动在后台替用户物化上次工作区（约 3~5s），落到首页；用户从首页点进
+//   来时撞上状态机 busy，点击被**丢弃**、只换一行状态字；画布那边先闪旧区纸面、
+//   再挂一张空案头（输入条还可点）。三处叠成「割裂」。
+//   定案：① 冷启动不再预开工作区（cold-start.ts 只留启动锚）；② 进入一律先导航
+//   （openPanel + 展卷态在第一个 await 之前）——展卷页接管等待，点击永不被丢弃；
+//   ③ 失败就地落定（具名原因 + 重试/回案头），不再只进状态栏。
+//   首页读面（上卷）随之与「活动工作区」解耦：Rust 侧给已登记工作区的
+//   `.lantai/**` 开了用户通道只读豁免（utils/path_resolve.rs::registered_workspace_read）。
+//
 // 行禁用涟漪（§2.8）：boot 不跑 = flowDeps 未产出 = actions 行跳过注册、
-// 冷启动行调 switchWorkspace 一致地失败（直接 import 本模块调用会炸——
+// 冷启动行不进入工作区（失败隔离）；直接 import 本模块调用一致地失败——
 // 禁用即不可用，文档声明）。
 
 import { useShellStore } from '../../app/shell-store';
@@ -21,6 +31,13 @@ import { withTimeout } from '../../lifecycle/timeout';
 import { loadProjectProvidersDoc } from '../../provider/providers-store';
 import { kernelCreateDirectory } from '../../rpc-contract';
 import { useDockStore } from '../../state/dock-store';
+import {
+  beginWorkspaceEntry,
+  clearWorkspaceEntry,
+  failWorkspaceEntry,
+  setWorkspaceEntryPhase,
+  useWorkspaceEntryStore,
+} from '../../state/workspace-entry-store';
 import { bumpWorkspaceSwitched } from '../../state/workspace-switch-store';
 import { useAgentPanelStore } from '../../ui/agent-panel-store';
 import type { Workspace } from '../../workspace';
@@ -29,7 +46,7 @@ import { pushStatus, type ShellRefs, setLoading, shellRefs } from '../runtime';
 // 惰性取 Workspace 模块（值面）——防组合层环：roster → shell-rows →
 // 本模块 → workspace.ts → composition-store/roster。类型 import 擦除无环；
 // 值（Workspace 类 / isSamePath）在运行时首次调用取（模块系统缓存，零重复
-// 装载）。工作区函数族全部运行时触发（UI 动作/冷启动），惰性装载无时序代价。
+// 装载）。工作区函数族全部运行时触发（UI 动作），惰性装载无时序代价。
 async function wsMod(): Promise<typeof import('../../workspace')> {
   return import('../../workspace');
 }
@@ -48,10 +65,24 @@ export async function pickFolder(): Promise<string | null> {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// switchWorkspace — 统一入口
+// switchWorkspace — 进入工作区的唯一入口（绑定 → 装配 → 展卷）
 // ═══════════════════════════════════════════════════════════════
 
-async function switchWorkspace(path?: string): Promise<void> {
+/** 展卷页最短停留（ms）——秒开时不让展卷页闪一帧（与 `--m-sheet` 同量级）。 */
+const ENTRY_MIN_MS = 320;
+
+/** ——进入工作区（2026-11-05 入口 UX 批，见文件头注）——
+ *  三段与展卷页的三行一一对应：
+ *    绑定（Workspace.open = workspace_activate）→ 装配（setupAgent）
+ *    → 展卷（会话根 + 会话恢复 + 画布摊开集）。
+ *  三处行为差（拍板项）：
+ *    ① 导航先发生：openPanel + beginWorkspaceEntry 在第一个 await 之前——首页点击
+ *      永不被丢弃（旧版 busy 时 return + 一行状态字）；
+ *    ② 失败就地落定：异常 → failWorkspaceEntry(具名原因)，展卷页给「重试/回案头」，
+ *      调用方不再需要 catch（旧版 Workspace.open 抛错只 pushStatus + rethrow）；
+ *    ③ 同区已在案直接返回（不重装）——与旧版一致。
+ *  opts.name = 展卷页标题用的**登记名**（首页行/上卷有登记名；缺省 = 路径末段）。 */
+async function switchWorkspace(path?: string, opts?: { name?: string }): Promise<void> {
   const { workspace, wsMachine } = shellRefs;
   const chatPanel = shellRefs.chatPanel;
   if (!chatPanel) {
@@ -59,11 +90,11 @@ async function switchWorkspace(path?: string): Promise<void> {
     pushStatus('会话核心未初始化，无法绑定目录');
     return;
   }
-  if (wsMachine.isBusy) {
-    pushStatus('正在切换工作区，请稍候…');
-    return;
-  }
+  // 并发守卫：展卷页盖住首页/纸面，正常路径点不到第二次；这条只挡程序性重入。
+  if (wsMachine.isBusy) return;
   wsMachine.transition('switching');
+  const startedAt = Date.now();
+  const dock = useDockStore.getState();
   try {
     const { Workspace: WorkspaceCls, isSamePath } = await wsMod();
     const folder = path || (await pickFolder());
@@ -72,13 +103,19 @@ async function switchWorkspace(path?: string): Promise<void> {
       return;
     }
 
+    // 导航先发生：命令面板「打开工作区…」与首页入口都落到纸面（同区已在案时
+    // 只是打开纸面——下面早退，不重装）。此后的等待由纸壳展卷页承接。
+    dock.openPanel('paper');
+
     if (workspace?.active && isSamePath(workspace.path, folder)) {
       pushStatus('已在当前工作区');
       wsMachine.forceState('active');
       return;
     }
 
-    // 在可能缓慢的 deactivate() await 之前标记加载态。
+    beginWorkspaceEntry(folder, opts?.name);
+    // 展卷期间的关闭守卫归展卷页所有（EnteringSheet 挂载即注册、卸载即摘——
+    // 这里注册会被 PaperPanel 卸载时的 cleanup 一并摘掉，见该文件注）。
     setLoading(true, folder);
 
     // 停用旧工作区 — 设 5 秒超时以防卡死
@@ -96,52 +133,40 @@ async function switchWorkspace(path?: string): Promise<void> {
       shellRefs.workspace = null;
     }
 
-    // 创建新工作区 — 立即传入回调，使 Workspace.open 期间的状态更新可见。
+    // ── ① 绑定（Workspace.open 期间的状态更新可见：onStatusChange 已挂）──
     const onStatusChange = (msg: string) => {
       pushStatus(msg);
     };
     const onLoadingChange = (loading: boolean) => {
       setLoading(loading, loading ? folder : undefined);
     };
-    let ws: Workspace;
-    try {
-      ws = await WorkspaceCls.open(folder, {
-        onStatusChange,
-        onLoadingChange,
-      });
-    } catch (err) {
-      console.error('[switchWorkspace] Workspace.open threw:', err);
-      pushStatus(`打开工作区失败: ${err}`);
-      setLoading(false);
-      wsMachine.forceState('idle');
-      throw err;
-    }
+    // 绑定失败由外层 catch 交展卷页（目录丢失 / 后端桥断是最常见的失败面）。
+    const ws: Workspace = await WorkspaceCls.open(folder, { onStatusChange, onLoadingChange });
     ws.onStatusChange = onStatusChange;
     ws.onLoadingChange = onLoadingChange;
 
     shellRefs.workspace = ws;
-    // 竞态根治（2026-09-02 实机事故）：状态机此前在 open() 返回后即转
-    // 'active'——但 setupAgent + 摊开集恢复还在后面跑数秒。该窗口内 isBusy
-    // = false，第二次点击（用户见画布空/慢再点一次）绕过 #4 守卫触发并发
-    // switchWorkspace：后到的 activate 覆写前一个的根句柄 → 前一个的恢复
-    // 全部越界被拒 + 双方 setupAgent 互拆 runtime/core → 画布/设置面板全死。
-    // 修复：'switching' 持有到整个 switch 完成（含恢复），finally 兜底不变。
-
-    // #2 修复（2026-09-02）：setLoading(false) 原在此处调用——但 setupAgent +
-    // restoreCanvasSpread 尚未完成。用户看到 analyzing 已清除、认为工作区就绪，
-    // 实际卷还在恢复。移到 restoreCanvasSpread 之后。这里保留 pushStatus 进度。
+    // #2 修复（2026-09-02）+ 竞态根治（2026-11-05）：'switching' 持有到整个进入流程
+    // 结束（含恢复）——期间任何程序性重入都被入口守卫拦下；展卷页是它唯一可见面。
     bumpWorkspaceSwitched(); // P1 总线归零：workspace:switched → state/workspace-switch-store
 
     // 项目级 provider 覆盖（2026-09-24 配方改文件批）：`{ws}/.lantai/providers.yml`
     // 同 id 整节覆盖用户级——必须在 setupAgent **之前**装（Agent 装配读的就是
-    // 生效行表）。无该文件 = 常态，零开销。
-    await loadProjectProvidersDoc(folder);
+    // 生效行表）。无该文件 = 常态；装载失败不阻断开卷（可见于状态条 + console）。
+    try {
+      await loadProjectProvidersDoc(folder);
+    } catch (e) {
+      console.warn('[switchWorkspace] 项目 provider 覆盖装载失败（继续开卷）:', e);
+    }
 
+    // ── ② 装配 ──
+    setWorkspaceEntryPhase('assembling');
     try {
       await ws.setupAgent(chatPanel);
     } catch (e) {
       // Phase D（错误不静默）：装配失败必须可见——不只进 console（用户 DevTools
-      // 常被屏蔽，状态条 + 诊断面板是唯一通道）
+      // 常被屏蔽，状态条 + 诊断面板是唯一通道）。装配失败不阻断展卷（会话/画布
+      // 仍可恢复，下一次配置变更会补装配）。
       console.error('[switchWorkspace] setupAgent failed:', e);
       const msg = e instanceof Error ? e.message : String(e);
       pushStatus(`⚠️ Agent 装配失败: ${msg}`);
@@ -149,17 +174,16 @@ async function switchWorkspace(path?: string): Promise<void> {
     }
 
     chatPanel.setProjectPath(folder);
+
+    // ── ③ 展卷（会话根 + 会话 + 画布摊开集）──
+    setWorkspaceEntryPhase('restoring');
     // 会话根目录确保创建（2026-08-28 会话管理专项）：{ws}/.lantai/sessions/ 是
     // 会话唯一存储位。首启工作区目录缺席时 list_directory 报「不是有效目录」，
     // 恢复/剪枝/发号对账全走错误兜底路径；这里 await 建目录（create_dir_all
     // 幂等），使随后的 autoRestoreLastSession 读路径确定性（编号对账可靠）。
     // 建目录失败不阻断进工作区——写路径仍会按需创建父目录，失败 console 可见。
-    // 豁免（session-persistence-seam-wiring-plan 表 1.1 #10）：工作区脚手架结构
-    // op——壳行执行时序早于插件装载，不可依赖 seam；默认 provider save 走
-    // kernelWriteFile 自带父目录自动创建兜底。
     // 超时护栏（2026-09-09 事故立法）：恢复链上的 RPC 一律有界——后端无响应
-    // 时无界 await 会把状态机永锁 'switching'（挂起的 await 不走 finally，
-    // 兜底 forceState 也到不了），首页一切点击被 isBusy 守卫拦截。
+    // 时无界 await 会把状态机永锁 'switching'。
     try {
       await withTimeout(kernelCreateDirectory(`${folder.replace(/[\\/]+$/, '')}/.lantai/sessions`), 5000);
     } catch (e) {
@@ -173,24 +197,77 @@ async function switchWorkspace(path?: string): Promise<void> {
       pushStatus(`⚠️ 会话恢复失败: ${e instanceof Error ? e.message : String(e)}`);
     });
     // Stage-5：进工作区恢复画布——摊开集合 + 各自位置 + 活跃会话（拍板 11：
-    // 展开 = 永远展开，重启恢复；Q-B 在画布语义下不再适用）。
+    // 展开 = 永远展开，重启恢复）。
     await withTimeout(chatPanel.restoreCanvasSpread(folder), 60_000).catch((e) => {
       console.error('[switchWorkspace] restoreCanvasSpread failed:', e);
       pushStatus(`⚠️ 画布布局恢复失败: ${e instanceof Error ? e.message : String(e)}`);
     });
-    // #2 修复：恢复完成后才清除加载态——用户在此前不能进入纸面板（analyzing
-    // 状态仍在，onEnterWorkspace 的 wsMachine.isBusy 守卫也拦截）
+
     setLoading(false);
     pushStatus('✨ 工作区已就绪');
-    // 竞态根治：全部恢复落定后才离开 'switching'（isBusy 期间二次点击
-    // 被 switchWorkspace 入口 + #4 守卫拦截）。
-    wsMachine.transition('active');
+    if (wsMachine.canTransition('active')) wsMachine.transition('active');
+    else wsMachine.forceState('active');
+
+    // 落纸：最短停留（防秒开闪烁）→ 清展卷态（同一 tick：展卷页卸载、画布接管，
+    // 关闭守卫随之从展卷页交回 PaperPanel；先清态会让画布在退场前闪一帧）。
+    const held = Date.now() - startedAt;
+    if (held < ENTRY_MIN_MS) await new Promise((resolve) => setTimeout(resolve, ENTRY_MIN_MS - held));
+    clearWorkspaceEntry();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[switchWorkspace] 开卷失败:', err);
+    pushStatus(`⚠️ 打开工作区失败: ${msg}`);
+    setLoading(false);
+    // 失败不保留半开工作区：同区早退会把半开态当成「已在案」，重试必须全新 open。
+    if (shellRefs.workspace) {
+      try {
+        await shellRefs.workspace.forceClearState();
+      } catch (e) {
+        console.warn('[switchWorkspace] 失败回收 fiber 异常:', e);
+      }
+      shellRefs.workspace = null;
+      useShellStore.getState().setProjectPath('');
+    }
+    failWorkspaceEntry(msg);
+    wsMachine.forceState('idle');
   } finally {
-    // 兜底：异常路径（open 抛错已 forceState('idle')）外不得卡 'switching'
+    // 兜底：不得卡 'switching'（正常路径已在 try 内落 'active'）。
     if (wsMachine.state === 'switching') {
       wsMachine.forceState(shellRefs.workspace ? 'active' : 'idle');
     }
   }
+}
+
+/** 展卷页的出口（回案头）：在途 = 全套强制回收（stuckRecover）；已落定 =
+ *  直接关面板回首页。两者都先摘守卫（本函数是用户显式动作，等同面板确认强关）。 */
+export async function abortWorkspaceEntry(): Promise<void> {
+  const { wsMachine } = shellRefs;
+  useDockStore.getState().unregisterCloseGuard('paper');
+  if (wsMachine.isBusy) {
+    await stuckRecover();
+  } else {
+    await leaveToHome();
+  }
+  clearWorkspaceEntry();
+}
+
+/** 展卷页的失败重试：同目标重开（先清掉半开的工作区——否则同区早退不物化）。 */
+export function retryWorkspaceEntry(): void {
+  const target = useWorkspaceEntryStore.getState().target;
+  if (!target) return;
+  void (async () => {
+    const { workspace } = shellRefs;
+    if (workspace) {
+      try {
+        await workspace.forceClearState();
+      } catch (e) {
+        console.warn('[retryWorkspaceEntry] 清半开工作区失败:', e);
+      }
+      shellRefs.workspace = null;
+      useShellStore.getState().setProjectPath('');
+    }
+    await switchWorkspace(target, { name: useWorkspaceEntryStore.getState().name });
+  })();
 }
 
 // ── 离开工作区回首页（2026-09-08 生命周期修复：回首页 = 真关工作区）──
@@ -218,8 +295,11 @@ export async function leaveToHome(): Promise<void> {
     shellRefs.workspace = null;
     wsMachine.forceState('idle');
   }
+  // 展卷态残留（失败页直接回案头 / 卡死路径）——一并收掉，杜绝「半张展卷页」。
+  clearWorkspaceEntry();
   // projectPath 单一权威 = shell-store（chat-core.setProjectPath 同源）
   useShellStore.getState().setProjectPath('');
+  useDockStore.getState().unregisterCloseGuard('paper');
   useDockStore.getState().closePanel('paper');
   pushStatus('已回首页——工作区已关闭');
 }
@@ -241,18 +321,16 @@ function escLayer(): void {
 // 实机事故：冷启动恢复链在会话/画布恢复段挂死 → 状态机永停 'switching' →
 // 首页 onEnterWorkspace 的 isBusy 守卫拦截一切点击（弹
 // 「工作区正在恢复中，请稍候…」），用户被锁在所有工作区外面且无任何逃生
-// 口。尾部 await 已加 withTimeout 护栏（上方），但护栏防不住未知的挂点
-// （Workspace.open 内部、未来新增的恢复步骤）——本口 = 最后一道人工逃生：
-// 首页守卫发现 busy 超过 STUCK_SWITCH_MS 后向用户亮「强制重置」。
+// 口。2026-11-05 入口 UX 批后：首页不再有守卫（导航先发生），逃生口搬到
+// 纸壳展卷页（超过阈值亮「回案头」）——回收语义不变。
 
 /** 强制回收卡死的切区。非 busy = no-op（防误触）。
  *  语义 = leaveToHome 全套清理（deactivate 5s 超时兜底 + 状态机复位 idle +
- *  清 projectPath + 关 paper）+ 加载态复位（leaveToHome 不动 analyzing——
- *  正常回首页时本就无加载态，卡死路径需要显式清）。
+ *  清 projectPath + 关 paper）+ 加载态/展卷态复位。
  *  先摘 paper 关闭守卫：卡死路径的关面板不该被「回首页？」确认弹层二次
  *  拦截（PaperPanel.forceLeave 同款次序）。在途切区若事后自行苏醒，其尾部
  *  transition 会因非法转移抛错（届时 state 已非 'switching'，finally 的
- *  forceState 分支不触发）——只留 console 噪音；卡死 60s 后的用户逃生权
+ *  forceState 分支不触发）——只留 console 噪音；卡死后的用户逃生权
  *  优先于那个理论上还活着的在途任务。 */
 export async function stuckRecover(): Promise<void> {
   const { wsMachine } = shellRefs;
@@ -268,19 +346,23 @@ export async function stuckRecover(): Promise<void> {
     if (wsMachine.isBusy) wsMachine.forceState('idle');
     setLoading(false);
   }
+  clearWorkspaceEntry();
   pushStatus('已强制回收卡死的恢复——可重新进入工作区');
 }
 
-/** 导出面：冷启动行 + actions 行消费的 workspace 流函数族。 */
+/** 导出面：actions 行 + 纸壳展卷页消费的 workspace 流函数族。 */
 export const workspaceFlow = {
   switchWorkspace,
   escLayer,
   leaveToHome,
   stuckRecover,
+  abortWorkspaceEntry,
+  retryWorkspaceEntry,
 };
 
 /** 壳行 boot：workspace 流本身就是模块级函数族——boot 无接线动作，
- *  仅暴露 flow 导出（编排器经 deps 注入给 actions 行 / 冷启动行）。
+ *  仅暴露 flow 导出（编排器经 deps 注入给 actions 行）。工作区进入由
+ *  首页/命令在用户动作时触发（冷启动行不再预开——2026-11-05）。
  *  模块 import 即行生效（纯函数定义无副作用），boot 保留为空操作以
  *  占住表序（行禁用语义 = 模块仍被 import，flow 调用一致地失败）。 */
 export function bootWorkspace(_refs: ShellRefs): void {

@@ -1,5 +1,5 @@
 {
-  "fingerprint": "d57775e9",
+  "fingerprint": "277a3aaa",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -54,6 +54,7 @@
     "VENDOR_TEMPLATES",
     "WRITE_TOOLS",
     "WinControls",
+    "abortWorkspaceEntry",
     "activateExternalPlugin",
     "activationConflict",
     "activationSkipped",
@@ -298,6 +299,7 @@
     "resumeGoal",
     "retryAfterSeconds",
     "retryProvidersPath",
+    "retryWorkspaceEntry",
     "runDeviceLogin",
     "sanitizeToolPairing",
     "saveProvidersDoc",
@@ -313,7 +315,6 @@
     "setLang",
     "setLogLevelPreference",
     "setOwnerSessionResolver",
-    "shellRefs",
     "slashOnly",
     "snapshotFromBlock",
     "spillToFile",
@@ -352,6 +353,7 @@
     "useToastStore",
     "useUpdateStore",
     "useWorkLedgerStore",
+    "useWorkspaceEntryStore",
     "validateObjectJsonSchema",
     "validatePayload",
     "viewFocusRegion",

@@ -95,7 +95,11 @@ export { collapseToolGroups, translateMessagesCached } from '../../../paper/tran
 export { canvasWheelMode, loadSettings, onSettingsSaved } from '../../../settings';
 /* 离开工作区回首页（2026-09-08）：真关工作区 + 回首页（PaperPanel 确认弹层
  * 确认后调用——workspace 流函数，运行时 deactivate 在壳层）。 */
-export { leaveToHome } from '../../../shell/rows/workspace';
+/* 展卷页（2026-11-05 入口 UX 批）：进入态 store 与两个出口（逃生 / 重试）。
+ * store **必须走桥**——直引内核路径会被产物构建内联成第二份 store，展卷页永远
+ * 收不到阶段推进（打包态白屏先例同族：见 useToastStore 注）。faceDeps 三处同步：
+ * 本文件 / host.aliased.ts / host-modules.ts。 */
+export { abortWorkspaceEntry, leaveToHome, retryWorkspaceEntry } from '../../../shell/rows/workspace';
 export { useBgAlertStore } from '../../../state/bg-alert-store';
 export type { CanvasStore } from '../../../state/canvas-store';
 export { blockFromSnapshot, getCanvasStore, scheduleCanvasSave, snapshotFromBlock } from '../../../state/canvas-store';
@@ -112,6 +116,7 @@ export { usePresetStore } from '../../../state/preset-store';
  * 打包态 toast 一条都不显示（开发域单实例 ⇒ 单测看不出来）。 */
 export { useToastStore } from '../../../state/toast-store';
 export { useUpdateStore } from '../../../state/update-store';
+export { useWorkspaceEntryStore } from '../../../state/workspace-entry-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../../ui/message-model';
 // 批 5a 注意：本包私有件（provenance / sel-ink / focus-flight / sheet）**不进本面**——

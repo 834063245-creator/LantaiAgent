@@ -356,9 +356,13 @@ import {
   saveSettings,
   updateProvider,
 } from '../../settings';
-import { leaveToHome, pickFolder, workspaceFlow } from '../../shell/rows/workspace';
-// 批 9e 归家：案卷首页进产物 ⇒ 桥它的壳层句柄（工作区/切区状态机读数——壳行 workspace 流的宿主面）
-import { shellRefs } from '../../shell/runtime';
+import {
+  abortWorkspaceEntry,
+  leaveToHome,
+  pickFolder,
+  retryWorkspaceEntry,
+  workspaceFlow,
+} from '../../shell/rows/workspace';
 import { notifyAgentConfigChanged } from '../../state/agent-config-store';
 import { useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
@@ -384,6 +388,8 @@ import {
   setOwnerSessionResolver,
   useWorkLedgerStore,
 } from '../../state/work-ledger-store';
+// 展卷页（2026-11-05 入口 UX 批）：进入态 store（纸壳只读）+ 逃生/重试两个出口
+import { useWorkspaceEntryStore } from '../../state/workspace-entry-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 // 批 9e-3 归家：ask / 权限卡架进产物 ⇒ 桥它的图标库（自有静态图标，卡片小图标）
 import { iconHtml, iconSvg } from '../../ui/icons';
@@ -591,7 +597,11 @@ const faceDeps = {
   workspaceListCached,
   pickFolder,
   workspaceFlow,
-  shellRefs,
+  // 2026-11-05 入口 UX 批：展卷页（纸壳）——进入态 store 与两个出口。
+  // 首页不再读切区状态机（入口改为“导航先发生”，busy 守卫整段删除）。
+  useWorkspaceEntryStore,
+  abortWorkspaceEntry,
+  retryWorkspaceEntry,
   // 批 9e-3 归家（2026-09-26）：ask / 权限卡架进产物 ⇒ 桥图标库（卡片小图标）
   iconSvg,
   // 批 2a 归家（2026-09-24）：llm-adapters 的端点真源（内核协议默认端点表）

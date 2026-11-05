@@ -36,7 +36,7 @@ pub struct Sandbox {
 /// 注意：本函数只统一**拼写**，不做跨盘/回溯归约——归属判定后仍会 canonicalize，
 /// 越界路径该拒还是拒。
 #[cfg(windows)]
-fn logical_path(p: &Path) -> PathBuf {
+pub(crate) fn logical_path(p: &Path) -> PathBuf {
     let s = p.to_string_lossy();
     for pre in [r"\\?\", "//?/"] {
         if let Some(rest) = s.strip_prefix(pre) {
@@ -46,7 +46,7 @@ fn logical_path(p: &Path) -> PathBuf {
     p.to_path_buf()
 }
 #[cfg(not(windows))]
-fn logical_path(p: &Path) -> PathBuf {
+pub(crate) fn logical_path(p: &Path) -> PathBuf {
     p.to_path_buf()
 }
 
@@ -420,7 +420,7 @@ fn find_existing_ancestor(path: &Path) -> Option<(PathBuf, PathBuf)> {
 
 /// 检测 Windows 上的 NTFS 符号链接和 junction。
 #[cfg(windows)]
-fn is_symlink_or_junction(path: &Path) -> bool {
+pub(crate) fn is_symlink_or_junction(path: &Path) -> bool {
     use std::os::windows::fs::MetadataExt;
     if let Ok(meta) = path.symlink_metadata() {
         // FILE_ATTRIBUTE_REPARSE_POINT = 0x400
@@ -432,7 +432,7 @@ fn is_symlink_or_junction(path: &Path) -> bool {
 }
 
 #[cfg(not(windows))]
-fn is_symlink_or_junction(path: &Path) -> bool {
+pub(crate) fn is_symlink_or_junction(path: &Path) -> bool {
     path.is_symlink()
 }
 
