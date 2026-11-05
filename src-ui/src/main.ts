@@ -37,6 +37,7 @@ import { initLogger, log } from './agent/logger';
 import { BUILD } from './agent/obs';
 import { App } from './app/App';
 import { BootRecovery } from './app/BootRecovery';
+import { armBootCover, dismissBootCover } from './app/boot-cover';
 import { diagnoseBoot, safeModeFailure, safeModeRequest } from './app/boot-recovery';
 import { activeRootViews } from './composition/root-views-service';
 import { initCordisKernel } from './cordis/boot';
@@ -97,12 +98,16 @@ const appRoot = document.getElementById('app-root');
 if (!appRoot) throw new Error('app-root 挂载点不存在——index.html 被破坏');
 const reactRoot = createRoot(appRoot);
 reactRoot.render(createElement(App));
+// 首帧之后交给启动封面决定揭幕时机（首页 DOM + 样式表 + 字体三件齐；见 boot-cover.ts）。
+armBootCover();
 
 /** 上一次 boot 用的工作区（诊断面要显示「日志写在哪」）。 */
 let bootWorkspace: string | null = null;
 
 /** 渲染内核诊断面（替换 <App/>）。这是「白屏」到「为什么」的唯一出口。 */
 function showRecovery(failure: NonNullable<ReturnType<typeof diagnoseBoot>>): void {
+  // 故障面必须第一眼可见：先揭掉启动封面，再换树（封面 z 在一切之上）。
+  dismissBootCover();
   const logPath = bootWorkspace ? bootWorkspace + '/.lantai/logs/ui.log' : null;
   log.error('main', '[boot-recovery] ' + failure.summary, { kind: failure.kind, evidence: failure.evidence });
   reactRoot.render(

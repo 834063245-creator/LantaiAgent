@@ -6,8 +6,113 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/png" href="/favicon.png" />
   <title>兰台 — Lantai</title>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       启动封面（2026-11-05 冷启动 UX 批）——**内联**是刻意的：
+       这一段必须在一切外部 CSS / 字体 / JS 之前生效。病灶（用户报
+       「启动后首页有一个瞬间毫无排版」）是两段真实的空窗：
+         ① 产物 CSS 是运行时注入的 <link>（异步）——sessions-home 的
+            apply 注册视图与注入样式同拍，React 下一帧就画首页 ⇒ 先出
+            一帧**没有 home.css** 的首页，样式到位后再跳正；
+         ② MiSans-VF 19MB + Noto Mono 15MB 都是 font-display: swap ⇒
+            首帧用回退字体，字体到位后整页换字形。
+       封面把这两个空窗一起盖住：等「首页 DOM 存在 && 首页样式真的
+       生效 + 字体就位（预算内）」再揭幕（见 src/app/boot-cover.ts）。
+       颜色/字号在这里手写一份 = 已知重复（真源仍是 tokens.css），
+       只为「首帧即纸」；窗口底色同批钉成 #ece7dc（tauri.conf.json）。
+       ═══════════════════════════════════════════════════════════════ -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: #ece7dc;
+    }
+    #boot-cover {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483000;
+      display: grid;
+      place-items: center;
+      background: #ece7dc;
+      color: rgba(38, 34, 28, 0.94);
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #boot-cover .bc-in {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      /* 版心天头：视觉重心略高于几何中心（与展卷页/卷首同一习惯）。 */
+      padding-bottom: 7vh;
+    }
+    #boot-cover .bc-seal {
+      width: 72px;
+      height: 72px;
+      /* 印章是白底图：multiply 让白场并进纸里，只留朱砂。 */
+      mix-blend-mode: multiply;
+      opacity: 0.92;
+    }
+    #boot-cover .bc-rule {
+      width: 132px;
+      margin: 26px 0 18px;
+      border-top: 1px solid rgba(38, 34, 28, 0.18);
+    }
+    #boot-cover .bc-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      font-family: "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
+      font-size: 10px;
+      letter-spacing: 0.46em;
+      /* 末字后的字距会把整行推左——同量 text-indent 抵回来（视觉居中）。 */
+      text-indent: 0.46em;
+      color: rgba(38, 34, 28, 0.46);
+    }
+    #boot-cover .bc-dot {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: #a63a2e;
+      /* 与画布/侧栏同一支环境节拍（§15 登记表内的 pp-pulse 同拍 1.6s）。 */
+      animation: bc-breathe 1.6s ease-in-out infinite;
+    }
+    @keyframes bc-breathe {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.28;
+      }
+    }
+    /* 揭幕：与 --m-sheet 同值（0.26s）；JS 侧 260ms 后摘节点（boot-cover.ts 的 FADE_MS）。 */
+    #boot-cover.is-out {
+      opacity: 0;
+      transition: opacity 260ms cubic-bezier(0.23, 1, 0.32, 1);
+      pointer-events: none;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #boot-cover .bc-dot {
+        animation: none;
+      }
+      #boot-cover.is-out {
+        transition: none;
+      }
+    }
+  </style>
 </head>
 <body>
+
+  <!-- 启动封面：与首页同一张纸（印 + 一道线 + 开库中）。内容为装饰性状态面，
+       真正的可读状态在 aria-live 里（「开 库 中」）。 -->
+  <div id="boot-cover" role="status" aria-live="polite">
+    <div class="bc-in">
+      <img class="bc-seal" src="/favicon.png" alt="" draggable="false" />
+      <div class="bc-rule" aria-hidden="true"></div>
+      <div class="bc-note"><i class="bc-dot" aria-hidden="true"></i>开 库 中</div>
+    </div>
+  </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
        APP ROOT — React 壳（V5 拆除后：纸壳唯一主界面）
@@ -17,5 +122,13 @@
   <div id="app-root"></div>
 
   <script type="module" src="/src/main.ts"></script>
+  <script>
+    /* 启动封面兜底（白屏事故纪律，2026-10-29）：主脚本若在 armBootCover 之前就炸，
+       封面最多留 8s——宁可露出真实故障面，也不把用户锁在一张永远不开的纸上。 */
+    setTimeout(() => {
+      const cover = document.getElementById('boot-cover');
+      if (cover?.parentNode) cover.parentNode.removeChild(cover);
+    }, 8000);
+  </script>
 </body>
 </html>

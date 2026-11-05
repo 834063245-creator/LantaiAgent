@@ -19,6 +19,7 @@
         "resizable": true,
         "center": true,
         "decorations": false,
+        "backgroundColor": "#ece7dc",
         "additionalBrowserArgs": "--remote-debugging-port=9222"
       }
     ]
