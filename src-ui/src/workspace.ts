@@ -127,6 +127,16 @@ const workspaceScopePlugin = {
   apply() {},
 };
 
+/** 工作区共享注册表的占位 spawner —— 真实的 `agent_spawn` 由 spawn-tool capability
+ *  在**会话装配期**替换成绑定本 Agent 的版本（blueprint `segments.ts` 的 spawn-tool）。
+ *  走到这里 = 装配缺了那条 capability：必须可见失败，绝不能回落到「最后创建的卷」
+ *  （landmine L4：并发多卷时后者会把子 Agent 派生到别的卷）。 */
+async function unboundSessionSpawner(): Promise<{ text: string; err?: string }> {
+  throw new Error(
+    '[agent_spawn] 未绑定会话：工作区共享注册表不直接派生子 Agent——应由 spawn-tool capability 在会话装配期替换；检查本卷组合是否禁用了 capability-segments / agent-domain。',
+  );
+}
+
 export class Workspace {
   // ── 标识 ──
   readonly path: string;
@@ -174,9 +184,8 @@ export class Workspace {
    *  （provider/监听器/诊断缓存/会话表全清 —— H1 不带入新工作区）。 */
   private readonly _lspService: LspService;
 
-  /** 工作区级装配材料（builderDeps + agentRef + 装配时组合快照 + chatPanel）
+  /** 工作区级装配材料（builderDeps + 装配时组合快照 + chatPanel）
    *  ——_buildRegistryLocked / 会话工厂消费。 */
-  private _agentRef: { current: Agent | null } = { current: null };
   private _builderDeps: BuilderDeps | null = null;
   /** 共享注册表所依据的组合**身份**（S6 P1d）——建注册表时点的
    *  composition-store.resolvedKey 快照（缺席 = 未知 ⇒ 会话一律自建注册表）。
@@ -507,7 +516,7 @@ export class Workspace {
   }
 
   /** 构建/重建共享工具注册表——setupAgent 与会话工厂覆盖路径的共用出口。
-   *  组装材料（deps/agentRef/memoryManager/skillRegistry…）全部工作区级。
+   *  组装材料（deps/memoryManager/skillRegistry…）全部工作区级。
    *
    *  `assemblyKey` = `composition` 那份产物的**输入身份**（`compositionIdentity()`，
    *  调用方与产物同时求出）。不在这里读 composition-store：store 可能落后于本工作区
@@ -520,18 +529,10 @@ export class Workspace {
       skillRegistry: this.skillRegistry ?? undefined,
       taskManager: this.taskManager,
       subAgentPool: this.subAgentPool,
-      subAgentSpawner: async (desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema) =>
-        this._agentRef.current?.spawnSubAgent(
-          desc,
-          prompt,
-          prog,
-          mode,
-          al,
-          sig,
-          asyncMode,
-          agentIdOverride,
-          outputSchema,
-        ) ?? Promise.resolve({ text: '', err: 'agent not available' }),
+      // 共享注册表不持「最后创建的卷」——真实 agent_spawn 由会话装配期 spawn-tool
+      // capability 替换（landmine L4）。占位器只负责让 agent-domain 行注册出
+      // agent_spawn/agent_status；未替换即调用 = 装配缺 capability，可见失败。
+      subAgentSpawner: unboundSessionSpawner,
       // S2-1 组合外化：工具行表穿线（roster 解析产物；缺省 = 出厂表 = 零漂移）
       toolRows: composition.tools,
     });
@@ -663,7 +664,7 @@ export class Workspace {
       this.memoryManager = null;
     }, 'memory-manager-null');
     this.memoryManager.onSaved = (info) => {
-      // raw Agent 引用（agentRef）承担非接口能力面——接口层无 notifyMemorySaved
+      // raw Agent 引用（最近一次工厂产出）承担非接口能力面——接口层无 notifyMemorySaved
       this._lastRawAgent?.notifyMemorySaved(
         `记忆已更新: **${info.description || info.name}** (${info.confidence || 'reference'})`,
       );
@@ -892,11 +893,9 @@ export class Workspace {
     teardown.add(unsubMsg, 'listener:runtime-msg');
 
     // ── 构建工具注册表（通过 agent-builder，零 UI 导入）──
-    // 装配材料提升为实例字段（会话工厂覆盖路径复用同一 deps/agentRef/组合快照）。
+    // 装配材料提升为实例字段（会话工厂覆盖路径复用同一 deps/组合快照）。
     const builderDeps: BuilderDeps = createBuilderDeps(this._storeId);
     this._builderDeps = builderDeps;
-    this._agentRef = { current: null as Agent | null };
-    const agentRef = this._agentRef;
 
     // 随包图谱引擎接线已在上方完成（**必须先于组合快照**：工具行是装配输入，
     // 见该处注释——2026-09-24 实机缺陷①②）。这里只建注册表。
@@ -907,8 +906,11 @@ export class Workspace {
 
     // ── 工厂：每次调用通过 runtime 创建全新 Agent ──
     // 返回 runtime 句柄（含 dispose）— 所有权随句柄交给会话 state
-    // （agentSessionState），会话关闭时由其负责销毁；
-    // agentRef 仅是借用 raw Agent 引用（spawn 闭包、notifyMemorySaved）。
+    // （agentSessionState），会话关闭时由其负责销毁。
+    // raw Agent 引用只保留「最近一次工厂产出」（`_lastRawAgent`，供
+    // notifyMemorySaved 等工作区级能力）；**本会话内**的一切路由（spawn /
+    // turn-start 提醒）只认工厂内的 `sessionAgentRef`，不读工作区共享态
+    // （landmine L4：并发多卷时共享态 = 最后创建的卷）。
     // S4-1a 会话工厂组合覆盖（设计件 §2.2 复审补充的机制位——「无生产 UI
     // 消费、机制完整、选择器留给 V5」）：当前生效组合 ≠ 工作区装配组合时，
     // 工厂为该会话构建会话作用域注册表（deps 全部工作区级可复用）并把组合
@@ -983,6 +985,12 @@ export class Workspace {
       // ⇒ 本会话自建注册表；等同 ⇒ 复用共享注册表（真零重建）。
       const sessionKey = compositionIdentity(recordedPresetId ?? undefined);
       const compositionOverride = sessionKey !== this._assemblyKey ? sessionComposition : undefined;
+
+      // 本会话自己的 raw Agent 槽——createAgent 返回前为空。会话内的路由
+      // （agent_spawn 的 spawner / turn-start 提醒注入）只认这个槽，不读
+      // 工作区共享态（landmine L4：并发多卷时共享态 = 最后创建的卷）。
+      const sessionAgentRef: { current: Agent | null } = { current: null };
+
       // 会话作用域注册表：覆盖存在时按覆盖的 tools 域构建（deps 工作区级复用）
       const sessionRegistry = compositionOverride
         ? await buildToolRegistry({
@@ -992,7 +1000,7 @@ export class Workspace {
             taskManager: this.taskManager,
             subAgentPool: this.subAgentPool,
             subAgentSpawner: async (desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema) =>
-              agentRef.current?.spawnSubAgent(
+              sessionAgentRef.current?.spawnSubAgent(
                 desc,
                 prompt,
                 prog,
@@ -1019,6 +1027,22 @@ export class Workspace {
             memoryManager: this.memoryManager ?? undefined,
             agentStore: this.agentStore ?? undefined,
             subAgentPool: this.subAgentPool,
+            // spawn 绑本会话 Agent —— 这是 spawn-tool capability 的装配输入：
+            // 不传 ⇒ capability 不装（when 为 false），模型只能拿到共享注册表里的
+            // 基础 agent_spawn，多卷并发时会落到「最后创建的卷」（landmine L4 根因）。
+            // 传了 ⇒ capability 把 agent_spawn 换成直接绑 `agent.spawnSubAgent` 的版本。
+            subAgentSpawner: async (desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema) =>
+              sessionAgentRef.current?.spawnSubAgent(
+                desc,
+                prompt,
+                prog,
+                mode,
+                al,
+                sig,
+                asyncMode,
+                agentIdOverride,
+                outputSchema,
+              ) ?? Promise.resolve({ text: '', err: 'agent not available' }),
             // 并发会话（2026-08-26）：事件入口按会话绑定——事件天生携带所属卷
             // 身份，两卷并发流式互不串扰（旧共享 eventSink 靠活跃卷猜测路由）。
             // execState 同步改挂会话级（权限卡/停止语义按卷隔离）。
@@ -1049,11 +1073,13 @@ export class Workspace {
               (async () => {
                 await refreshGitStatus(this.path);
                 // 只消费本 Agent 产生的构建结果（其他会话的留在槽位等本尊）——
-                // 并发会话：用本工厂闭包捕获的 agent（handle 建成即定），不再
-                // 经共享 agentRef.current（最后创建的卷）错路由。
+                // 并发会话：用本工厂闭包捕获的 `sessionAgentRef`（handle 建成即定），
+                // 不读工作区共享态（landmine L4：最后创建的卷会错路由）。
                 const block = buildTurnStartBlock(sessionAgentId);
                 if (block)
-                  agentRef.current?.insertMessage(`<system-reminder>\n${block}\n</system-reminder>`, { silent: true });
+                  sessionAgentRef.current?.insertMessage(`<system-reminder>\n${block}\n</system-reminder>`, {
+                    silent: true,
+                  });
               })().catch(() => {});
             },
           },
@@ -1082,6 +1108,8 @@ export class Workspace {
         this.onStatusChange?.(`⚠️ ${msg}`);
         return null;
       }
+      // 本会话的 raw Agent 就位——此后会话内的 spawn / 提醒注入都走这个槽。
+      sessionAgentRef.current = agent;
       // P1a（S6，2026-09-14）：把**本卷记录的组合**回述给 Agent 镜像。
       // 病灶（探针实证）：Agent 构造期 `_presetId = currentPresetId()` 读的是
       // **全局默认**，而卷落盘写的是 `agent.presetId`（chat-session.ts 两处 save）
@@ -1093,14 +1121,13 @@ export class Workspace {
       // `selectPreset` 追加 preset/selected 事件（newest-wins 重建面同源），且
       // 不触发重装配——组合面在构造时点已按记录冻结（前缀缓存纪律）。
       if (recordedPresetId !== null) agent.selectPreset(recordedPresetId);
-      agentRef.current = agent;
       this._lastRawAgent = agent;
       return handle;
     };
 
     // 注册工厂（DSH 形态，2026-08-25：工厂 = 「知道怎么造」，零成本挂接）。
     // 不再预造初始 Agent——句柄生命周期跟随卷，拟文时 ensureSessionAgent
-    // 经工厂现造；raw Agent 引用面由 factory 内部 agentRef 承担。
+    // 经工厂现造；raw Agent 引用面只保留最近一次产出（`_lastRawAgent`）。
     chatPanel.setAgentFactory(factory);
     this._factoryRegistered = true;
     this.onStatusChange?.('[Agent] ✅ 工厂已就绪（拟文时装配）');

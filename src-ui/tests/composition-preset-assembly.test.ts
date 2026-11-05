@@ -515,7 +515,8 @@ describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码
   it('覆盖经 createAgent 第二参透传（AgentConfig 面冻结不破）', () => {
     const i = src.indexOf(factoryAnchor);
     // P0（2026-09-14）：窗口 6000→7600（工厂读块再后移）
-    const window = src.slice(i, i + 7600);
+    // L4（2026-11-05）：7600→8400（createAgent config 增 subAgentSpawner 装配输入）
+    const window = src.slice(i, i + 8400);
     expect(window).toContain('compositionOverride,');
   });
 });
