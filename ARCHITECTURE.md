@@ -226,21 +226,22 @@ Tool Results → 注入会话 → 下一轮 LLM Stream（循环至最终回答�
 
 ### 4.2 多 Agent 编排
 
-`SubAgentPool`（`src-ui/src/agent/coordinator.ts`）：并发上限 5、队列 20、超时兜底 30 分钟（常量在该文件）；
-两种模式 `fork`（继承父上下文）/ `fresh`；`async: true` 立即返回 agentId，完成后经 MessageBus 回 `result`；
-子 Agent 各自独立 execState（不被兄弟 abort，async 模式不被用户下一条消息杀掉）；文件编辑在 worktree 中
-隔离进行，合并走 `agent_isolation_merge`（范围 cherry-pick）。
+`SubAgentPool`（`src-ui/src/plugins/builtin/subagent-in-process/coordinator.ts`，2026-09-24 批 7c-2 归家）：
+并发上限 5、队列 20、超时兜底 30 分钟（常量在该文件）；两种模式 `fork`（继承父上下文）/ `fresh`；
+`async: true` 立即返回 agentId，完成后经 MessageBus 回 `result`；子 Agent 各自独立 execState（不被兄弟 abort，
+async 模式不被用户下一条消息杀掉）；文件编辑在 worktree 中隔离进行，合并走模型可见的 `agent(isolate_merge)`
+（底层 `agent_isolation_merge`，范围 cherry-pick）。
 
-**通信层**（`message-bus.ts`）：有界 inbox + 背压（满则 drop 防 OOM）、peek + ack 模型、O(1) 消息查找；
-拓扑策略可注入（`topology.ts`：Tree 缺省 / Star / Mesh，越权发送抛 `TopologyDeniedError`）；持久化到
-`.lantai/agents/{id}/inbox.json`（debounced 批量写）。
+**通信层**（`src-ui/src/plugins/builtin/multiagent-comm/message-bus.ts`，批 7b 归家）：有界 inbox + 背压
+（满则 drop 防 OOM）、peek + ack 模型、O(1) 消息查找；拓扑策略可注入（同目录 `topology.ts`：Tree 缺省 /
+Star / Mesh，越权发送抛 `TopologyDeniedError`）；持久化到 `.lantai/agents/{id}/inbox.json`（debounced 批量写）。
 
-**共享状态板**：`TaskBoard`（子 Agent 任务状态 / filesTouched / diff，合并后转 merged）与 `DiscoveryBoard`
-（探索发现，同 key 覆盖），两者按会话隔离——`.lantai/taskboard/{sessionId}.json`、
-`.lantai/discoveries/{sessionId}.json`。
+**共享状态板**：`TaskBoard`（`src-ui/src/plugins/builtin/task-domain/task-board.ts`——子 Agent 任务状态 /
+filesTouched / diff，合并后转 merged）与 `DiscoveryBoard`（`src-ui/src/agent/discovery-board.ts`——探索发现，
+同 key 覆盖），两者按会话隔离——`.lantai/taskboard/{sessionId}.json`、`.lantai/discoveries/{sessionId}.json`。
 
-**生命周期**（`lifecycle-manager.ts` + 壳侧 `agent_isolation.rs`）：空闲判定、worktree 泄漏巡检、TTL 清理、
-启动恢复（restore inbox / board + 孤儿检测 + 崩溃孤儿 worktree 清理）。
+**生命周期**（`src-ui/src/plugins/builtin/subagent-in-process/lifecycle-manager.ts` + 壳侧 `agent_isolation.rs`）：
+空闲判定、worktree 泄漏巡检、TTL 清理、启动恢复（restore inbox / board + 孤儿检测 + 崩溃孤儿 worktree 清理）。
 
 ### 4.3 Plan 模式与目标管理
 
