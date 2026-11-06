@@ -155,9 +155,15 @@
 ### 4.1b 程文卡 = 程序语义（`code`，P2-A；2026-10-30 P5 结构化完成值）
 
 程序执行卡（`code`）与脚注卡的分离点：**卡片是程序语义（体 / 出），不是调用语义（参 / 果）**。三段式——
-程序体（等宽，石青左线 + 深纸底，320 封顶）→ 日志 / 完成值 / 错误（信封 `── logs ──` / `── result ──` / `── code run failed (kind) ──`
+程序体（等宽 + hljs token 层，石青左线 + 深纸底，320 封顶）→ 日志 / 完成值 / 错误（信封 `── logs ──` / `── result ──` / `── code run failed (kind) ──`
 由 `paper/tool-text.ts` 的 `codeSections` 解析成真段，段头走 `.pp-sec-head` 同一套）；折叠态收程序体、
 留输出/错误（执行结果一眼可见）。
+
+**程序体高亮（2026-11-06）**：程序体是模型写给 `code_execution` 的 JavaScript（语言由执行面钉死——
+`code-run/runtime-service.ts` 的 `readonly language = 'javascript'`，不按内容嗅探：猜错比不涂更糟），
+走 hljs token 层，与围栏码 / 抄录块代码体 / 代码查看器共用**同一份**墨阶映射（`.pp-code-src` = 第四个
+消费面；面清单收成 `:is(…)` 十条规则，加面只加清单一项）。高亮只包 span（字符与折行一字不改）⇒
+程序体测高镜像（`measure.ts` 的 `codeSrcH`）零改动；hljs 抛错回落原文（不静默空块）。
 
 **结构化完成值（P5）**：程序 `return {__view:'table', columns?, rows, caption?}` / `{__view:'diff', diff}`
 时，**完成值段换体**——表格渲成真 `<table>`（与正文表格同族视觉：等宽 11.5 + 弱规线，列宽均分由
@@ -167,7 +173,7 @@
 ④ 折叠行读数换成「表格 4×3」/「差分 +3 −2」；⑤ 测高与正文表格同一把尺子（`tableRowH`）+ RO 实测收口
 （`needsObservedHeight(…, hasView)`——无视图的程文照旧不挂）。
 
-守护：`tests/paper-code-view.test.tsx`（解析/归一/上限/渲染/测高/墨迹/折叠读数）+ `tests/paper-code-output.test.tsx`（信封分段）。
+守护：`tests/paper-code-view.test.tsx`（解析/归一/上限/渲染/测高/墨迹/折叠读数）+ `tests/paper-code-output.test.tsx`（信封分段 / 程序体高亮 / 测高输入是原文）+ `tests/paper-visual-decisions.test.ts`（墨阶四消费面同源）。
 
 **文类签（页边注）**：来文 / 正文 / 夹注 / 脚注 / 抄录 / 拟策（贴黄），配机读码 `USER / AGENT / THINK / TOOL / CODE / PLAN`。
 

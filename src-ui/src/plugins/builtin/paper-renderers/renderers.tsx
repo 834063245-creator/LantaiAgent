@@ -1178,6 +1178,29 @@ function CodeViewTable({ view }: { view: CodeTableView }) {
   );
 }
 
+/** 程文程序体（P2-A 的「体」；2026-11-06 补高亮）——模型写给 code_execution 的
+ *  JavaScript 程序。此前裸文本直出：同纸的围栏码 / 抄录块 / 代码查看器三处机器文本
+ *  都有 hljs token 层，程文是唯一例外（用户报「模型输入的代码内容需要一个代码高亮
+ *  渲染」）。纪律与 markdown 围栏码同款：
+ *    · 语言由执行面钉死——`code-run/runtime-service.ts` 的
+ *      `readonly language = 'javascript'`，不猜、不嗅探（猜错比不涂更糟）；
+ *      hljs 抛错回落原文（不静默空块）；
+ *    · **只包 span**（字符/折行/行数一字不改）⇒ measure.ts 的程序体镜像零改动；
+ *    · 折叠态不渲染（`showSrc` 由调用方判），高亮不参与折叠规则。 */
+function CodeSrc({ code }: { code: string }) {
+  const highlighted = useMemo(() => highlightCode(code, 'javascript'), [code]);
+  return (
+    <pre className="pp-code-src">
+      {highlighted !== null ? (
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: hljs 输出为可信本地渲染（非模型 HTML；转义由 hljs 内建）
+        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+      ) : (
+        <code>{code}</code>
+      )}
+    </pre>
+  );
+}
+
 /** 程序执行卡（P2-A）：三段式——程序体（等宽）→ 日志/完成值（终态写入）。
  *  与 ToolBody 的分离点：code 是程序语义（体/出）而非调用语义（参/果）。
  *  折叠态收程序体、留输出/错误（执行结果一眼可见——测量端同款镜像）。
@@ -1199,7 +1222,7 @@ function CodeBody({ block, folded }: BlockRendererProps) {
   const hasBody = showSrc || secs.length > 0;
   return (
     <>
-      {showSrc && <pre className="pp-code-src">{p.code}</pre>}
+      {showSrc && <CodeSrc code={p.code} />}
       {secs.map((sec, i) => (
         <PayloadSection
           // biome-ignore lint/suspicious/noArrayIndexKey: 段按位渲染（信封段序稳定，无重排身份）

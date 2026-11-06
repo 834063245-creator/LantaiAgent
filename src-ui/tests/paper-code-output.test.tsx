@@ -135,6 +135,29 @@ describe('渲染面 — 段头 / 折叠态 / 结构', () => {
     renderCode({ output: '(程序完成，无输出)' });
     expect([...container!.querySelectorAll('.pp-sec-label')].map((el) => el.textContent)).toEqual(['输出']);
   });
+
+  /* 程序体高亮（2026-11-06）——用户报「模型输入的代码内容需要一个代码高亮渲染」：
+   * 程文程序体此前裸文本直出，而同纸其余机器文本（围栏码 / 抄录块 / 查看器）都有
+   * hljs token 层。两条判据：① 真出 token（不是假着色）；② 字符逐字不变（测高与
+   * 墨迹镜像的前提——measure 读的是 payload.code 原文，不是 DOM）。 */
+  it('程序体出 hljs token：关键字/字符串按语义分色，不再裸文本', () => {
+    renderCode({ code: 'const rows = await tools.fs({action:"read"});\nreturn rows;' });
+    const src = container!.querySelector('pre.pp-code-src');
+    expect(src).not.toBeNull();
+    expect(src!.querySelector('.hljs-keyword')?.textContent).toBe('const');
+    expect(src!.querySelector('.hljs-string')).not.toBeNull();
+  });
+
+  it('高亮只包 span：程序体文本逐字不变（含 < & 转义回原字符）', () => {
+    const code = 'const q = "a<b && c";\nif (q.length > 1) return {n: 1};\nreturn out;';
+    renderCode({ code });
+    expect(container!.querySelector('pre.pp-code-src')?.textContent).toBe(code);
+  });
+
+  it('折叠态不出程序体：高亮不改折叠规则（完成即收）', () => {
+    renderCode({ code: 'const a = 1;' }, true);
+    expect(container!.querySelector('pre.pp-code-src')).toBeNull();
+  });
 });
 
 describe('测量镜像 — 段序/段高与渲染同源', () => {
@@ -157,5 +180,13 @@ describe('测量镜像 — 段序/段高与渲染同源', () => {
     const seen = prepareMock.mock.calls.map((c) => String(c[0])).join('\n');
     expect(seen).toContain('audit.jsonl');
     expect(seen).not.toContain('\\n');
+  });
+
+  it('测量输入是程序体原文，不是高亮后的 HTML（镜像不被渲染层污染）', () => {
+    prepareMock.mockClear();
+    measureBlockHeight(codeBlock({ code: 'const a = 1;\nreturn a;' }));
+    const seen = prepareMock.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(seen).toContain('const a = 1;');
+    expect(seen).not.toContain('hljs-');
   });
 });

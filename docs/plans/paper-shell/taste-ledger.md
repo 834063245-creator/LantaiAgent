@@ -531,3 +531,23 @@
   tool 13.8 / mono 15 / md-h1 24 / table 13.8，kind 15 与 folio 36 不动。
   **钉值**：`tests/paper-type-scale.test.ts` 3 例（1.5 → body 25.5 / tool 17.25 / h1 30、行高系数不缩、`paperScaleFrom` 夹取）
   + `tests/ui-type-scale.test.ts` 3 例（index.html 首帧脚本与 `STORAGE_KEY` 同源、`PAPER_TYPE` 无裸字号、node 下 `PAPER_SCALE` = 1）。
+
+- 2026-11-06 · **程文程序体补代码高亮**（用户：「模型输入的代码内容我寻思需要一个代码高亮渲染，你去看看怎么弄」）·
+  **病灶**：码块高亮这条线 2026-09 就立了（科研渲染 #5），围栏码 / 抄录块代码体 / 代码查看器三处消费面都吃
+  `.hljs-*` 墨阶；**唯独程文（`code`，程序执行卡）的程序体是裸文本**——同纸两类机器文本，一类分了词、一类没分。
+  模型写几十行 JS 时，关键字 / 字符串 / 注释与正文同色，整块读作一片墨。
+  **选**：程序体走 hljs（语言 `javascript`，由 `code-run/runtime-service.ts` 的 `readonly language` 钉死，
+  不按内容嗅探——猜错比不涂更糟），DOM 照抄 MarkdownBody 的围栏码路（`<pre class="pp-code-src"><code>` +
+  `dangerouslySetInnerHTML` + `ignoreIllegals` 容错 + 抛错回落原文），`useMemo` 按程序体串缓存；
+  **高亮只包 span**，字符 / 折行 / 行数一字不改 ⇒ `measure.ts` 的 `codeSrcH` 镜像零改动。
+  墨阶映射的**面清单**从三扩到四（加 `.pp-code-src`），顺手把「每类各写三行」的 33 行选择器收成
+  `:is(面清单) :is(语义类)` 十条规则——加面的成本从 ×N 行变成清单加一项（`:is()` 特异性取最高参数，
+  与原 `.面 .hljs-x` 同为 0,2,0；`.hljs-class .hljs-title` 仍 0,3,0）。
+  **弃**：① 按内容嗅探语言（TS/JSON 猜错会把整块涂歪）；② 给程文单独一套配色（同纸机器文本必须同一份映射，
+  各写一份必漂）；③ 程文改走查看器组件（程文是「运行中的程序 + 输出」，查看器是「读文件」——折叠 / 测高 /
+  状态签全不同族）。
+  **钉值**：`paper-code-output.test.tsx` +3（真出 token / 文本逐字不变含 `<`、`&` 转义 / 折叠态不出程序体）
+  +1（测量输入是程序体原文，不是高亮后 HTML）；`paper-visual-decisions.test.ts` 的「hljs 墨阶同源」由三面
+  count 对账改为「每条 hljs 规则的先导里四面全在」（形态变了，判据反而更强）。
+  **交付口径**：`renderers.tsx` 在 paper-renderers 产物可热更；墨阶在 `PaperPanel.css`（`main.ts` 与
+  `PaperPanel.tsx` 双 import ⇒ 也在壳 bundle）⇒ 真机看高亮须 `cargo tauri build --no-bundle`。
