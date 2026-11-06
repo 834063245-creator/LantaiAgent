@@ -729,6 +729,14 @@ export const ASSET_DERIVED = {
   planOptionGap: ASSET_TOKENS.plan.optionGap,
 } as const;
 
+/* ── 创作坞几何（TS 与 CSS 共用一份，2026-11-06 上帝文件治理 P2）──
+ * 此前 RACK_H=38 在 composer-float.ts、38px 在 PaperPanel.css 各写一份，靠
+ * tests/composer-float 的字面量对拍拦漂移——那是「两把尺子互相证明」，不是单一真源。
+ * 现在真源住这里：TS 读 COMPOSER_TOKENS，CSS 读 var(--pp-composer-rackH)。 */
+export const COMPOSER_TOKENS = {
+  rackH: 38, // 图版架高（.pp-rack height）
+} as const;
+
 /* ── 折叠 / 滚动上限 ── */
 export const LIMIT_TOKENS = {
   foldRowH: 20, // 折叠行高（mono 10px + margin-bottom 6）
@@ -848,6 +856,7 @@ function collectCssVars(): VarSpec[] {
   for (const [key, value] of assetFlat) push(key, value);
 
   for (const [k, v] of Object.entries(LIMIT_TOKENS)) push(`lim-${k}`, px(v));
+  for (const [k, v] of Object.entries(COMPOSER_TOKENS)) push(`composer-${k}`, px(v));
   for (const [k, v] of Object.entries(FOLIO_TOKENS)) push(`folio-${k}`, k === 'titleLh' ? String(v) : px(v));
   return out;
 }

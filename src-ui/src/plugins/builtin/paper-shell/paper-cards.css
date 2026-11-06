@@ -1,0 +1,532 @@
+/* paper-shell · cards — graph / board / timeline / citation / chem + 回首页确认弹层
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+/* ── graph 空数据占位（错误不静默——查询式/空 nodes 不画空白 SVG）── */
+.pp-graph-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-graph-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}
+
+/* ── board（看板——列+卡，§2.9 原语补齐）── */
+.pp-board {
+  padding: var(--pp-asset-board-padV) 0;
+  display: flex;
+  gap: var(--pp-asset-board-colGap);
+  overflow-x: auto;
+}
+.pp-board-col {
+  flex: 1 1 0;
+  min-width: var(--pp-asset-board-colMinW);
+  border-top: var(--pp-asset-board-colRule) solid var(--rule-soft-ink);
+  padding-top: 6px;
+}
+.pp-board-col-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-board-colTitleSize);
+  color: var(--ink-3);
+  margin-bottom: var(--pp-asset-board-colTitleMarginB);
+}
+.pp-board-card {
+  border: var(--pp-asset-board-cardBorder) solid var(--rule-soft-ink);
+  background: color-mix(in oklch, var(--paper-deep) 40%, transparent);
+  padding: var(--pp-asset-board-cardPadV) 10px;
+  margin-bottom: var(--pp-asset-board-cardGap);
+}
+.pp-board-card-label {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-board-cardLabelSize);
+  color: var(--ink-1);
+}
+.pp-board-card-body {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-board-cardBodySize);
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.pp-board-card-accent .pp-board-card-label {
+  color: var(--seal-deep);
+}
+.pp-board-card-green .pp-board-card-label {
+  color: var(--pass);
+}
+.pp-board-card-danger .pp-board-card-label {
+  color: var(--fail);
+}
+.pp-board-card-muted .pp-board-card-label {
+  color: var(--ink-3);
+}
+.pp-board-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-board-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}
+
+/* ── timeline（时间轴——事件流，§2.9 原语补齐）──
+ * 结构：三栏网格（节点轨 / 时标 / 正文），竖线接续到下一项节点。 */
+.pp-timeline {
+  padding: var(--pp-asset-timeline-padV) 0;
+}
+.pp-timeline-item {
+  display: grid;
+  grid-template-columns: var(--pp-asset-timeline-railW) var(--pp-asset-timeline-tsW) 1fr;
+  column-gap: var(--pp-asset-timeline-colGap);
+  position: relative;
+  padding-bottom: var(--pp-asset-timeline-itemGap);
+}
+.pp-timeline-item::before {
+  content: "";
+  position: absolute;
+  left: var(--pp-asset-timeline-railMid);
+  top: 8px;
+  bottom: calc(-1 * var(--pp-asset-timeline-itemGap));
+  border-left: var(--pp-asset-timeline-ruleW) solid var(--rule-soft-ink);
+}
+.pp-timeline-item:last-child::before {
+  display: none;
+}
+.pp-timeline-node {
+  width: var(--pp-asset-timeline-nodeSize);
+  height: var(--pp-asset-timeline-nodeSize);
+  margin-left: var(--pp-asset-timeline-nodeOffset);
+  background: var(--paper);
+  border: var(--pp-asset-timeline-nodeBorder) solid var(--indigo);
+  transform: translateY(3px); /* 与标题首行基线对齐 */
+  position: relative; /* 盖在轨线之上 */
+}
+.pp-timeline-ts {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-timeline-tsSize);
+  color: var(--ink-3);
+  padding-top: 1px;
+  word-break: break-all;
+}
+.pp-timeline-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-timeline-titleSize);
+  color: var(--ink-1);
+}
+.pp-timeline-body {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-timeline-bodySize);
+  line-height: 1.7;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+.pp-timeline-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-timeline-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}
+
+/* ── citation（学术引用卡——scientific-rendering 4B，2026-09）──
+ * 引用元数据的结构化呈现。全部行高用 --pp-asset-citation-*Line（显式 px——
+ * asset 组 token 注入带 px 后缀，行高存单位系数会退化成 "1.5px" 绝对值，
+ * 故 citation 不沿用 form/metric 的 *Lh 系数键，CSS ↔ measure 同值钉死）。 */
+.pp-citation {
+  padding: var(--pp-asset-citation-padV) 0;
+}
+.pp-citation-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-citation-titleSize);
+  font-weight: 600;
+  line-height: var(--pp-asset-citation-titleLine);
+  color: var(--ink-1);
+}
+.pp-citation-authors {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-citation-authorSize);
+  line-height: var(--pp-asset-citation-authorLine);
+  color: var(--ink-2);
+  margin-top: var(--pp-asset-citation-authorGap);
+  word-break: break-word;
+}
+.pp-citation-venue {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-citation-venueSize);
+  line-height: var(--pp-asset-citation-venueLine);
+  color: var(--ink-3);
+  margin-top: var(--pp-asset-citation-venueGap);
+  font-style: italic;
+}
+.pp-citation-ids {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 14px;
+  row-gap: 2px;
+  margin-top: var(--pp-asset-citation-idsMarginTop);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-citation-idsSize);
+  line-height: var(--pp-asset-citation-idsLine);
+  color: var(--ink-2);
+}
+.pp-citation-id {
+  word-break: break-all;
+}
+.pp-citation-tag {
+  color: var(--indigo);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-right: 4px;
+  font-size: 0.92em;
+}
+.pp-citation-bib {
+  margin-top: var(--pp-asset-citation-bibMarginTop);
+  border-top: var(--pp-asset-citation-bibBorderTop) solid var(--rule-soft-ink);
+  padding-top: var(--pp-asset-citation-bibPadTop);
+}
+.pp-citation-bib summary {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-citation-summarySize);
+  line-height: var(--pp-asset-citation-summaryLine);
+  color: var(--ink-3);
+  cursor: pointer;
+  user-select: none;
+}
+.pp-citation-bib summary:hover {
+  color: var(--seal-deep);
+}
+.pp-citation-bibtex {
+  margin: var(--pp-asset-citation-bibPreMarginTop) 0 0;
+  padding: var(--pp-asset-citation-bibPadV) var(--pp-asset-citation-bibPadH);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  border-left: 3px solid var(--indigo);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-citation-bibSize);
+  line-height: var(--pp-asset-citation-bibLine);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: var(--pp-asset-citation-bibMaxH);
+  overflow: auto;
+}
+.pp-citation-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-citation-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}
+
+/* ── chem 化学式/反应卡（scientific-rendering #10，2026-09）──
+ * name/formula/smiles 的结构化呈现。结构区 .pp-chem-box 是固定盒
+ * （boxH + border 周框）：smiles-drawer SVG 只写 viewBox、CSS 100%×100% +
+ * 默认 preserveAspectRatio meet → 分子在盒内等比居中，盒高恒定（测量镜像精确，
+ * RO 恒挂仅兜底）。全行高用 --pp-asset-chem-*（显式 px，同 citation 纪律）。 */
+.pp-chem {
+  padding: var(--pp-asset-chem-padV) 0;
+}
+.pp-chem-name {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-chem-nameSize);
+  font-weight: 600;
+  line-height: var(--pp-asset-chem-nameLine);
+  color: var(--ink-1);
+  margin-bottom: var(--pp-asset-chem-nameMarginB);
+  word-break: break-word;
+}
+.pp-chem-box {
+  /* box-sizing: border-box → 盒高恒 boxH（无 border 后内容区即为盒高），与 measure 预算一致 */
+  box-sizing: border-box;
+  height: var(--pp-asset-chem-boxH);
+  /* 去周框与浅底（2026-10-08 用户报「chem 类卡片也有类似的问题」——与 html 沙箱框同族）：
+     结构图直接落在纸面上，不再被浅色盒子包住。 */
+  margin-bottom: var(--pp-asset-chem-boxMarginB);
+  /* 内边距归零：呼吸由 viewBox 侧承担（drawer padding + 适配外扩），防双 padding */
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pp-chem-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.pp-chem-meta {
+  display: block;
+}
+.pp-chem-formula,
+.pp-chem-err {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chem-metaSize);
+  line-height: var(--pp-asset-chem-metaLine);
+  color: var(--ink-2);
+  word-break: break-word;
+}
+.pp-chem-formula {
+  color: var(--indigo);
+}
+.pp-chem-formula + .pp-chem-err {
+  margin-top: var(--pp-asset-chem-metaMarginB);
+}
+.pp-chem-err {
+  color: var(--fail);
+}
+.pp-chem-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-chem-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}
+
+/* ── 回首页确认弹层（2026-09-08）：ConfirmDialog 通用组件样式本在 settings
+ * 域 CSS（provider-settings.css）——paper-shell 产物域不携带，裸渲染不可见。
+ * 这里 scope 在 .pp-root 内补一份（变量全部来自全局 tokens.css）；settings
+ * 面板的 .cd-* 保持原样，二者作用域不重叠。ConfirmDialog 渲染在 pp-root 内，
+ * .cd-overlay 的 absolute 遮罩以 pp-root（fixed）为定位父。 */
+.pp-root .cd-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-panel-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  background: var(--veil);
+}
+.pp-root .cd-sheet {
+  width: 420px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: var(--rule-strong);
+  border-radius: 0;
+  background: var(--paper);
+  box-shadow: var(--elev-raise);
+  padding: 15px 16px;
+  animation: pp-rise var(--m-ink);
+}
+.pp-root .cd-sheet::-webkit-scrollbar {
+  width: 4px;
+}
+.pp-root .cd-sheet::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink-2) 35%, transparent);
+  border-radius: 0;
+}
+.pp-root .cd-danger {
+  border-color: color-mix(in oklch, var(--fail) 45%, transparent);
+  border-top: 2px solid var(--fail);
+}
+.pp-root .cd-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.pp-root .cd-title {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink-1);
+}
+.pp-root .cd-danger .cd-title {
+  color: var(--fail);
+}
+.pp-root .cd-close {
+  background: none;
+  border: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color var(--snap);
+  font-size: var(--fs-body);
+  padding: 0 4px;
+  border-radius: 0;
+}
+.pp-root .cd-close:hover {
+  color: var(--seal-deep);
+  background: var(--paper-deep);
+}
+.pp-root .cd-body {
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  line-height: 1.6;
+  margin-bottom: 16px;
+  font-family: var(--f-song);
+}
+.pp-root .cd-body b {
+  color: var(--ink-1);
+  font-family: var(--f-mono);
+}
+.pp-root .cd-body strong {
+  color: var(--fail);
+}
+.pp-root .cd-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pp-root .cd-btn-danger {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 7px 18px;
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    border-color var(--snap),
+    transform var(--snap);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--seal-deep);
+  color: var(--paper);
+  border: 1px solid var(--seal-deep);
+}
+.pp-root .cd-btn-danger:hover {
+  background: var(--seal);
+  border-color: var(--seal);
+}
+.pp-root .cd-btn-danger:active {
+  transform: translateY(1px);
+}
+.pp-root .cd-actions .sp-btn {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 7px 18px;
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap),
+    border-color var(--snap),
+    transform var(--snap);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pp-root .cd-actions .sp-btn-cancel {
+  background: transparent;
+  color: var(--ink-2);
+  border: none;
+}
+.pp-root .cd-actions .sp-btn-cancel:hover {
+  color: var(--seal-deep);
+}
+
+/* 重点行（grid 信息面，2026-09-17）：石青左条 + 极淡洗底——「几百行一面墙」里
+   让读者一眼看到结论所在的行。纯样式（不改行高、不加行）⇒ 测高零改动。
+   左条走颜色位 --indigo（石青 = 机器的声音），不用朱砂（那是人的批注）。
+   放在文件末尾：本族选择器特异性较高（0,3,1），置尾可避免 noDescendingSpecificity。 */
+.pp-grid-virtual-row.pp-grid-row-emphasis > td,
+.pp-grid-table tr.pp-grid-row-emphasis > td {
+  background: color-mix(in oklch, var(--indigo) 8%, transparent);
+}
+.pp-grid-virtual-row.pp-grid-row-emphasis > td:first-child,
+.pp-grid-table tr.pp-grid-row-emphasis > td:first-child {
+  box-shadow: inset 2px 0 0 var(--indigo);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   浮层随坞位换向（2026-10-21 P0）
+   ════════════════════════════════════════════════════════════════
+   坞浮动化后可以停在上半屏，而坞内八本浮层（模型/组合/思考/墨/役/律/引/翰）
+   全部写死 `bottom: calc(100% + N)` 向上开——实测坞在 y=120 时墨量册 `top:-159px`，
+   标题与读数直接出屏。槽主人按坞顶位置下发 `data-pop-side` + 两侧余量
+   （`--dock-room-up/down`），本块把浮层换向并限高；面板自己的 overflow 照常滚。
+   选择器前缀带 `.pp-composer-slot[data-pop-side]`（0,4,0），压过产物 CSS 里
+   同名规则（模型/组合的规则在 compose-dock，后加载也能赢）。 */
+
+/* 各面板原本的高度上限收进一个变量，供下方统一限高（逐件原值，不齐一） */
+.pp-composer-slot .pp-composer .ms-container .ms-dropdown {
+  --pp-pop-max: 260px;
+}
+.pp-composer-slot .pp-composer .pp-comp-sel .pp-comp-menu {
+  --pp-pop-max: 280px;
+}
+.pp-composer-slot .pp-composer .pp-thinking-sel .pp-thinking-menu {
+  --pp-pop-max: 280px;
+}
+.pp-composer-slot .pp-composer .pp-ink-sel .pp-ink-panel,
+.pp-composer-slot .pp-composer .pp-work-sel .pp-work-panel {
+  --pp-pop-max: 520px;
+}
+.pp-composer-slot .pp-composer .pp-dock-tools .pp-help-sheet,
+.pp-composer-slot .pp-composer .pp-yin-panel {
+  --pp-pop-max: 520px;
+}
+.pp-composer-slot .pp-composer .pp-slash {
+  --pp-pop-max: 240px;
+}
+
+/* 向下开：贴触发件下缘（保持各件原有 4/6/8 间隙），bottom 解除 */
+.pp-composer-slot[data-pop-side="down"] .pp-composer :is(.ms-dropdown, .pp-comp-menu, .pp-thinking-menu) {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+.pp-composer-slot[data-pop-side="down"] .pp-composer :is(.pp-ink-panel, .pp-work-panel, .pp-help-sheet) {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+.pp-composer-slot[data-pop-side="down"] .pp-composer :is(.pp-yin-panel, .pp-slash) {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+/* 向下开 = 墨自锚点侧落下（与向上开同一支笔，方向相反） */
+.pp-composer-slot[data-pop-side="down"] .pp-composer
+  :is(
+    .ms-dropdown,
+    .pp-comp-menu,
+    .pp-thinking-menu,
+    .pp-ink-panel,
+    .pp-work-panel,
+    .pp-help-sheet,
+    .pp-yin-panel,
+    .pp-slash
+  ) {
+  animation: pop-down var(--m-ink);
+}
+
+/* 限高：原上限 ∩ 视口 70% ∩ 所选侧余量。坞在正中时两侧都装不满，面板缩到余量、
+ * 内容照常滚——总比顶部被裁掉看不见强。 */
+.pp-composer-slot[data-pop-side="up"] .pp-composer
+  :is(
+    .ms-dropdown,
+    .pp-comp-menu,
+    .pp-thinking-menu,
+    .pp-ink-panel,
+    .pp-work-panel,
+    .pp-help-sheet,
+    .pp-yin-panel,
+    .pp-slash
+  ) {
+  max-height: min(70vh, var(--pp-pop-max, 520px), var(--dock-room-up, 70vh));
+}
+.pp-composer-slot[data-pop-side="down"]
+  .pp-composer
+  :is(
+    .ms-dropdown,
+    .pp-comp-menu,
+    .pp-thinking-menu,
+    .pp-ink-panel,
+    .pp-work-panel,
+    .pp-help-sheet,
+    .pp-yin-panel,
+    .pp-slash
+  ) {
+  max-height: min(70vh, var(--pp-pop-max, 520px), var(--dock-room-down, 70vh));
+}
+
+/* 2026-10-21 P0：模型触发器高 20px 偏小——抬到 28px（视觉仍纯文字，行内居中） */
+.pp-composer-settings .ms-container .ms-trigger {
+  min-height: 28px;
+}

@@ -1,0 +1,734 @@
+/* paper-shell · composer — 附件行 / 拾遗 / 附图 rail / 创作坞 / 案头 / 书眉 / 读数 / 墨量册
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+/* ── 来文附件行（C10 拾遗）：石青 mono 小行，与楷书正文分家 ── */
+.pp-user-files {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 1px solid var(--rule-soft-ink);
+}
+.pp-user-file {
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  line-height: 16px;
+  letter-spacing: 0.04em;
+  color: var(--indigo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 来文附图缩略行（B4 multimodal-image-plan D-9）：64px 方界 tile + wrap
+ *    多行居中（来文居中版式）；点击放大走 .pp-media-preview-overlay 浮层
+ *    （media 渲染器同款）。几何 token --pp-ch-userImages-*（thumb/gap/
+ *    marginTop），measure.userImagesRowHeight 同源镜像（wrap 行数整除推得）。
+ *    圆角恒 0；规线细框同创作坞附图 rail；未命中预览（进程外恢复）降级
+ *    mono 占位盒。── */
+.pp-user-images {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--pp-ch-userImages-gap);
+  margin-top: var(--pp-ch-userImages-marginTop);
+}
+.pp-user-image {
+  display: block;
+  width: var(--pp-ch-userImages-thumb);
+  height: var(--pp-ch-userImages-thumb);
+  padding: 0;
+  border: 1px solid var(--ink-4);
+  background: transparent;
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: border-color var(--snap);
+}
+.pp-user-image:hover {
+  border-color: color-mix(in oklch, var(--seal) 45%, transparent);
+}
+.pp-user-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pp-user-image-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.3;
+  color: var(--ink-3);
+  overflow: hidden;
+  word-break: break-all;
+  text-align: center;
+}
+
+/* ── 拾遗（C10 附件入口）：夹按钮 + 待发附件条 ──
+ *  ⚠ 不用 !important：用更精确的复合选择器压过 .pp-composer button 通配。 */
+.pp-composer .pp-attach {
+  flex: 0 0 auto;
+  margin-right: 0;
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0;
+  padding: 8px 6px;
+  color: var(--ink-2);
+  border: none; /* 2026-09-01 重皮：盒→线——引/夹走 dock-v3 纯文字语言 */
+  background: transparent;
+}
+.pp-composer .pp-attach:hover {
+  color: var(--seal-deep);
+  border-color: transparent;
+  background: transparent;
+}
+.pp-attach-list {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  max-width: 40%;
+  scrollbar-width: none;
+  /* 右缘渐隐提示可滚（2026-08 UI 大清扫：隐藏滚动条后用户不知道右边还有） */
+  mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+  -webkit-mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+}
+.pp-attach-list::-webkit-scrollbar {
+  display: none;
+}
+.pp-attach-count {
+  flex-shrink: 0;
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  letter-spacing: 0.06em;
+  padding-left: 2px;
+}
+.pp-attach-chip {
+  flex-shrink: 0;
+  font-family: var(--f-mono);
+  /* 2026-10-22 P1：10px 石青框是「浏览器 tag」语汇，和纸墨打架。改纸签：
+   * 11px / ink-2 / 发丝框 / 纸色底；hover 才转朱砂（取下 = 人的动作）。
+   * 文件名是机读件，保留 mono，但不再用石青当装饰色。 */
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  border: 1px solid var(--ink-4);
+  background: var(--paper);
+  padding: 4px 8px;
+  cursor: pointer;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background var(--snap),
+    border-color var(--snap),
+    color var(--snap);
+}
+.pp-attach-chip:hover {
+  color: var(--seal-deep);
+  border-color: color-mix(in oklch, var(--seal) 40%, transparent);
+  background: var(--seal-soft);
+}
+
+/* ── 附图 rail（B2 multimodal-image-plan）——缩略图道，与路径附件 chips 并列。
+ *    圆角恒 0 纪律；缩略 56px 方界（规线细框），hover 露朱砂移除钮；
+ *    未命中预览 URL（进程外恢复场景）降级为 mono 文件名占位盒。 ── */
+.pp-image-rail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 40%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+  -webkit-mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+}
+.pp-image-rail::-webkit-scrollbar {
+  display: none;
+}
+.pp-image-thumb-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.pp-image-thumb {
+  display: block;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--ink-4);
+  background: transparent;
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: border-color var(--snap);
+}
+.pp-image-thumb:hover {
+  border-color: color-mix(in oklch, var(--seal) 45%, transparent);
+}
+.pp-image-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pp-image-thumb-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.3;
+  color: var(--ink-3);
+  overflow: hidden;
+  word-break: break-all;
+}
+.pp-image-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 16px;
+  text-align: center;
+  color: var(--paper);
+  background: var(--seal-deep);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.pp-image-thumb-wrap:hover .pp-image-remove,
+.pp-image-remove:focus-visible {
+  opacity: 1;
+}
+/* 大图浮层：ink-solid 墨罩（lightbox 唯一豁免用墨源实色——alpha 墨罩透字）。
+ * ⚡ 2026-09-22 病灶修复：本件由坞内就地渲染改为 **portal 到 body 的全局模态**
+ * （坞槽 `.pp-composer-slot` 带 `transform: translateX(-50%)` ⇒ 它是 `position:
+ * fixed` 后代的包含块，就地渲染时 `inset: 0` 量的是坞的盒子——预览糊住整个创作坞
+ * 且点坞外收不回；详见 ComposerDock 附图预览处病灶注）。
+ * **层级随之换轨**：就地渲染时 `z-index: 95` 只在坞槽（z-index: 6）的层叠上下文里
+ * 排序；挂到 body 之后要跟 `.pp-root`（z-index: 280）同台比，必须走高阶全局模态档，
+ * 否则整个浮层会被纸壳盖在底下（= 点开一片黑）。与 media 渲染器同款大图预览
+ * `.pp-media-preview-overlay` 同档同位。 */
+.pp-image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: color-mix(in oklch, var(--ink-solid) 78%, transparent);
+  cursor: zoom-out;
+}
+.pp-image-lightbox img {
+  max-width: min(86vw, 1200px);
+  max-height: 78vh;
+  border: var(--rule-soft);
+  background: var(--paper);
+  cursor: default;
+}
+.pp-image-lightbox-meta {
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  color: var(--paper);
+  letter-spacing: 0.04em;
+}
+
+/* ── 底部创作坞（Stage-4：设置行 + 输入行两段；旧 composer 升级）──
+ * v2（2026-08-31）：度量纪律——坞本体锁 880 版心居中。超宽屏全宽输入行
+ * = 光标到「拟文」隔一条银河，可读性基本功（ChatGPT/Claude 同款 ~768-800
+ * 纪律）；纸色坞底与顶边规线仍全幅铺，只有内容锁版心。 */
+.pp-composer {
+  min-height: var(--composer-h);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 24px;
+  background: transparent; /* 2026-09-01 用户拍板：常驻匣退匣——案头直书于纸的形态延伸到常驻态，全态一张皮；分区只留坞顶硬线（浸墨③） */
+  border-top: var(--rule-hard); /* 浸墨：坞顶线升硬线（屏级分区） */
+  /* 斜杠补全面板（施工单 #7）：.pp-slash 绝对定位于此之上 */
+  position: relative;
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+}
+/* 版口钮（浸墨转录 dock-v3）：坞顶左端 56px 朱砂，全坞唯一暖色件 */
+.pp-composer::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -3px;
+  width: 56px;
+  height: 3px;
+  background: var(--seal);
+}
+.pp-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  flex-wrap: wrap; /* rework P3-1：窄窗口下附件条可换行，不溢出 */
+}
+/* rework P3-1：创作坞槽容器（ResizeObserver 量宽高锚点）不参与 flex 压缩
+ * 2026-09-01 用户拍板：全宽布局行判死——槽原是 flex 列里的普通行，占一条
+ * 全宽死区（纸到槽顶被切断，屏幕底部横一条「遮挡」）。两态统一改浮层落座：
+ * 纸铺满到屏底，坞浮在纸上。
+ * 2026-09-02 拍板 C：两态同位——常驻/案头同坐 var(--composer-rise) 固定
+ * 抬高（12vh 退役：坞位不随窗口大小变）；签条架出流悬挂（见 .pp-desk-shelf），
+ * 架出没不推坞位。
+ * **2026-09-17 浮动化**：本规则 = **默认位**（版心居中 + 坐底抬高）。坞被拖动
+ * 后由 use-composer-float 写内联 style（left/bottom + transform:none）接管，
+ * 双击坞头复位 = 撤内联回到本规则（不写死坐标，窗口再变仍居中）。 */
+.pp-composer-slot {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--composer-rise);
+  width: min(880px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  z-index: 6;
+}
+/* 坞浮动（2026-09-17）·拖动期禁选**已由全局选区政策接管**（2026-09-17 收族）：
+ * 坞上按下会带出原生选区，而纸上挂着 document 级 selectionchange（use-paper-strips
+ * 的选中浮钮）——「拖动创作坞 = 纸上划词」是用户报的第一条冲突。当时的修法是拖动期
+ * 往 <html> 挂 `pp-composer-dragging` 做全树禁选；全应用默认不可选之后这条成为空操作
+ * （坞内本就只剩输入件可选，而输入件内的选区不认作划纸），故撤规则留类——
+ * 类仍由 use-composer-float 在拖动期挂/撤，服务下方的抓手光标。 */
+/* 拖动锁（2026-09-17 用户方案）：**按钮本体不在此**——它归坞的书眉工具行
+ * （`.pp-dock-tools` 里的第三枚 `.pp-tool-btn`：`移` ↔ `锁`，与 翰/律 同排同语言），
+ * 由坞本体经 `PaperDockContext.composerLock` 能力位渲染（锁态与写面在槽主人）。
+ * 二版尸体记档：一版是「槽里浮一枚 hover 小钮」——浮在坞外 ⇒ 与坞之间有缝 ⇒
+ * 悬停链一断就再也点不到（用户「还没挪过去就消失了」），且外观不合坞的语言
+ *（用户「太难看了」）。**教训：控件的悬停区必须与它的可见区同盒**，
+ * 否则「揭示」与「命中」互为前提，必死锁。 */
+
+/* 解锁态 = 整坞是抓手：坞体一律抓手光标（坞内文字可选性**不再逐态切换**——全局
+ * 默认已经全树禁选、输入件自证可选，见 foundation.css 选区政策；旧「锁定态文字
+ * 照常可选 / 解锁态禁选」的逐态口径随之退役）。子选择器一律裹 :where() 归零基数：
+ * 本族须压过 .pp-composer 那条 (0,3,0) 的继承规则，但不能把文件后面那些
+ * input/textarea/button 细规（(0,1,1)~(0,2,1)）一并罩死——特异性阶梯纪律，
+ * biome 的 noDescendingSpecificity 守护（3 条警告的由来即此）。 */
+.pp-composer-slot.pp-composer-unlocked .pp-composer {
+  cursor: grab;
+  touch-action: none;
+}
+.pp-composer-slot.pp-composer-unlocked.pp-composer-dragging .pp-composer {
+  cursor: grabbing;
+}
+.pp-composer-slot.pp-composer-unlocked .pp-composer :where(input, textarea, select) {
+  cursor: text;
+}
+.pp-composer-slot.pp-composer-unlocked .pp-composer :where(button, [role="button"]) {
+  cursor: pointer;
+}
+/* ── 案头（创作坞 v2 2026-08-31）：无摊开卷时坞的形态面──
+ * 空态死白的解法：直书于纸 + 签条架陪衬（位置两态恒同，2026-09-02 拍板 C；
+ * React 侧 sessions.length === 0 判定只再切形态类）。
+ * ⚠ 类名刻意用 pp-at-desk 不用 pp-desk——世界层桌垫（.pp-desk，db397238
+ * ±200000px 巨幅）同名撞车：槽带 pp-desk 会被桌垫的 top/height 接管，
+ * bottom 因过约束被忽略 → 坞整体射出屏外（2026-09-02 CDP 实锤 top:-200000）。 */
+/* 案头无匣（dock-v3 转录收尾）：空态直书于纸——退匣（去 deep 底/顶线/版口钮），
+ * 写字行坐基线，纸即界面；落笔发出首句换装常驻匣（位置不动）。 */
+.pp-composer-slot.pp-at-desk .pp-composer {
+  background: transparent;
+  border-top: none;
+  padding: 6px 2px 0;
+}
+.pp-composer-slot.pp-at-desk .pp-composer::before {
+  content: none;
+}
+/* 案头签条架：最近三卷「续写」签条（纸色签 + 楷体批注字，hover 朱砂）。
+ * 出流悬挂于坞下方 14px（2026-09-02 拍板 C 附带）——架只随案头态出没，
+ * 不进槽内布局流：坞位不因架出没而移。 */
+.pp-desk-shelf {
+  position: absolute;
+  top: calc(100% + 14px);
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.pp-desk-tag {
+  font-family: var(--f-kai);
+  font-size: var(--fs-body);
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  background: var(--paper);
+  border: 1px solid var(--rule-soft-ink);
+  border-radius: 0;
+  padding: 6px 16px;
+  cursor: pointer;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    color var(--snap),
+    border-color var(--snap),
+    background var(--snap);
+}
+.pp-desk-tag:hover {
+  color: var(--seal-deep);
+  border-color: var(--seal);
+  background: var(--seal-soft);
+}
+.pp-desk-tag:active {
+  transform: translateY(1px);
+}
+.pp-desk-tag:first-child {
+  transform: rotate(-0.5deg); /* 签条微倾——手置纸签的自然感 */
+}
+.pp-desk-tag:last-child {
+  transform: rotate(0.4deg);
+}
+/* ── 书眉行（2026-09-06 续批：三行制之顶行）——卷名左端 + 翰/律/后台卷指示
+ *    右端；坞的顶行恒是书眉，三控件（模型/权限/思考）归设置行垫底。
+ *    2026-09-17 浮动化：书眉行**不再是唯一抓手**（解锁后整坞可拖，见下方
+ *    .pp-composer-unlocked 族）——本行回到普通 DOM（文字可选、光标照常）。── */
+.pp-composer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  row-gap: 6px;
+  min-height: 30px;
+  flex-wrap: wrap; /* 窄窗口同设置行纪律：换行不溢出 */
+}
+.pp-composer-header > * {
+  min-width: 0;
+}
+.pp-composer-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  row-gap: 6px;
+  min-height: 30px;
+  flex-wrap: wrap; /* rework P3-1：窄窗口下设置项换行不重叠 */
+}
+.pp-composer-settings > * {
+  min-width: 0;
+}
+/* ── 读数件/思考 pill 的行盒相位修正（2026-10-12：用户报「役·墨与同行控件
+ * 不在同一线」）────────────────────────────────────────────────────
+ * 三枚包裹容器此前是普通 block，内嵌的 inline-flex 按钮以**隐式基线**参与
+ * 行盒构造——行高 1.8（.pp-root 继承）的 27px strut 压过 22px 按钮，而按钮
+ * 基线取决于其第一个 flex item（役/墨 = 6px 圆点 ⇒ 距盒底 8px；思考 =
+ * 14px 图标 ⇒ 4px），于是「役」「墨」被整体压低 4px（实机截图逐像素实测
+ * 4.0px）。改为 flex 后按钮按盒居中、不再走行盒；margin 3px 补偿本组 22px
+ * 按钮与模式三档（23px 盒 = padding 3/4 + 2px 朱砂底线，字在盒内偏高
+ * 1.5px）之间的相位差，两族文字归同一条水平线（实测相对偏差 0.0px）。
+ * 相位补偿的 margin-bottom: 3px 在下方三枚 trigger 各自的主规则内；组合
+ * pill（.pp-comp-sel）同族同病（实测 2px），修法见 composition-chip.css。 */
+.pp-composer-settings .pp-thinking-sel,
+.pp-composer-settings .pp-work-sel,
+.pp-composer-settings .pp-ink-sel {
+  display: flex;
+  align-items: center;
+}
+.pp-composer-settings-spacer {
+  flex: 1;
+}
+.pp-composer-target {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  font-weight: 600; /* 浸墨：卷名重墨档 */
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto; /* 2026-09-13：定宽 132px 退役——书眉行右端只有翰/律两枚小钮，
+                     多余空间白白空着，卷名却一律截断在十来个字。
+                     改为「按内容长、封顶 64%」：短名不虚占，长名吃满可读宽度，
+                     换卷/改名仍不推挤右端控件（spacer flex:1 吸收余量）。 */
+  max-width: 64%;
+}
+/* ── 墨量册（2026-09-13）：坞内 token 计量装置 ──
+ * 触发器与思考 pill 同语言（盒→线：纯文字 + 小墨点），面板向上开
+ * （坞贴屏底）；构成三段用墨阶递减（浓 → 淡）——纸墨体系只有墨，
+ * 不引第三色（石青=运行态、朱砂=人的动作，均不占）。 */
+.pp-composer-settings .pp-ink-sel {
+  position: relative;
+  flex: 0 0 auto;
+}
+.pp-composer-settings .pp-ink-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 2px;
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.06em;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--snap);
+  /* 行盒相位补偿（2026-10-12）：见「读数件/思考 pill 的行盒相位修正」注 */
+  margin-bottom: 3px;
+}
+.pp-composer-settings .pp-ink-trigger:hover,
+.pp-composer-settings .pp-ink-trigger.open {
+  color: var(--seal-deep);
+}
+/* 墨点：占用信号（<80% 浓墨点，近满转朱砂——与坞底墨量线同判据） */
+.pp-ink-trigger-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  flex: 0 0 auto;
+}
+.pp-composer-settings .pp-ink-trigger:hover .pp-ink-trigger-dot,
+.pp-composer-settings .pp-ink-trigger.open .pp-ink-trigger-dot {
+  background: var(--seal);
+}
+.pp-composer-settings .pp-ink-trigger.full {
+  color: var(--seal-deep);
+}
+.pp-composer-settings .pp-ink-trigger.full .pp-ink-trigger-dot {
+  background: var(--seal);
+}
+/* 档位词定宽（同思考 pill 纪律）：百分比位数变化不推挤同行控件 */
+.pp-composer-settings .pp-ink-trigger-label {
+  display: inline-block;
+  min-width: 4.5em;
+  text-align: left;
+}
+.pp-composer-settings .pp-ink-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 85;
+  width: 300px;
+  /* 坞贴屏底 + 面板向上开：小窗口（最小 880×600）下整本账可能顶到屏外——
+     封高 + 内部滚动，不裁切也不溢出（同思考菜单的 max-height 纪律）。
+     70vh/520 二选一取小：常规窗口（≥900 高）整本装得下、不滚；矮窗才滚。 */
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong-ink);
+  box-shadow: var(--elev-menu);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  animation: pop-up var(--m-ink);
+}
+/* 滚动 flex 列的子项不得被压扁：封高态下默认 flex-shrink:1 会把占用条
+   挤成 0 高（2026-09-13 实测 getBoundingClientRect().height = 0——数字自
+   查才逮到的坑，肉眼只当「线画得细」）。 */
+.pp-ink-panel > * {
+  flex: 0 0 auto;
+}
+.pp-ink-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: var(--rule-head);
+}
+.pp-ink-head-title {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-ink-head-figures {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  letter-spacing: 0.2em; /* 「回报 / 估算」= 来源徽记，非读数 */
+  white-space: nowrap;
+}
+/* 占用条：总长 = 窗口占比，段宽 = 构成比（估算） */
+.pp-ink-bar {
+  display: flex;
+  height: 6px;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule-soft-ink);
+  overflow: hidden;
+}
+.pp-ink-seg {
+  height: 100%;
+  transition: width 0.4s var(--m-ease-out);
+}
+.pp-ink-seg-system {
+  background: var(--ink-1);
+}
+.pp-ink-seg-tools {
+  background: var(--ink-2);
+}
+.pp-ink-seg-messages {
+  background: var(--ink-3);
+}
+.pp-ink-seg-total {
+  background: var(--ink-1);
+}
+/* ── 册页排印（2026-09-13 二版）─────────────────────────────
+ * 一版是 13 行等重小字（设置表单面孔）——重排为册页：读数当题字（全册唯一
+ * 26px 大字），副行小字距承接分子/分母与预计，账目改两列 grid 且**数值右
+ * 对齐**（账本竖排对齐，眼睛读竖列不读横排），段题复刻首页节题语言
+ * （11px 实心方墨锚点 + 字距题字，浸墨⑤ 完工动作）。 */
+.pp-ink-reading {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: 2px;
+}
+.pp-ink-percent {
+  font-family: var(--f-song);
+  font-size: var(--fs-readout);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-1);
+  letter-spacing: -0.01em;
+}
+.pp-ink-percent.full {
+  color: var(--seal-deep); /* 句读点朱：全册唯一红字 = 近满预警 */
+}
+.pp-ink-reading-label {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  letter-spacing: 0.18em;
+}
+.pp-ink-note {
+  margin: 5px 0 0;
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+.pp-ink-note-sep {
+  padding: 0 5px;
+  color: var(--ink-4);
+}
+/* 构成图例：横排一行（三格），色点与占用条同色相应 */
+.pp-ink-legend {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  gap: 14px;
+}
+.pp-ink-legend > li {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+.pp-ink-swatch {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  transform: translateY(-1px);
+}
+.pp-ink-legend-label {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  letter-spacing: 0.08em;
+}
+.pp-ink-legend-value {
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+}
+/* 段题：方墨锚点 + 字距题字（首页 .sh-section-title 的册页缩影） */
+.pp-ink-section {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule-soft-ink);
+}
+.pp-ink-section-mark {
+  width: 8px;
+  height: 8px;
+  background: var(--ink-1);
+  flex: 0 0 auto;
+}
+.pp-ink-section-title {
+  font-family: var(--f-song);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--ink-1);
+  letter-spacing: 0.26em;
+}
+/* 账目：dt 左 dd 右，数值竖排对齐 */
+.pp-ink-ledger {
+  margin: 5px 0 0;
+  display: flex;
+  flex-direction: column;
+}
+.pp-ink-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0;
+}
+.pp-ink-line > dt {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.pp-ink-line > dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-1);
+  text-align: right;
+  white-space: nowrap;
+}
+/* 合计行：账目收口（字重上提一档 + 上方弱线，仍不占墨底锚点） */
+.pp-ink-line.strong {
+  margin-top: 2px;
+  padding-top: 5px;
+  border-top: 1px solid var(--rule-soft-ink);
+}
+.pp-ink-line.strong > dt {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.pp-ink-line.strong > dd {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.pp-ink-foot {
+  margin: 8px 0 0;
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}

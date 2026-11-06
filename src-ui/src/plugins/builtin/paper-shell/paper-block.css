@@ -1,0 +1,718 @@
+/* paper-shell · block — 块体基础 + 来文 + 正文 + 数学
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+/* ── 块（注疏范式：透明无边框，文类由分体字体与墨色承载）──
+ * 手势分工不变（V3a 待定 #10）：文类签=整块拖出手柄（grab），文本区=原生可选
+ * （选中拖离流 = 抽纸条）。
+ * 可选性的**唯一放开点**（2026-09-17 选区政策全局化）：全应用默认 user-select:none
+ * （见 foundation.css 选区政策条），纸面正文由本规则自证可选——块内的界面件
+ * 再各自撤回（见下条）。 */
+.pp-block {
+  position: absolute;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  color: var(--ink-1);
+  cursor: auto; /* 文本区 I-beam（画布 grab 不再继承进来——「看着能拖实际是选」的观感纠偏） */
+  user-select: text;
+  /* 压在流区容器之上（一纸多卷：流区 z:1，块 z:2——块可交互优先） */
+  z-index: 2;
+  /* ── 让位过渡（2026-09-02 stream-rhythm-smooth 立；2026-10-15 §15 纸律批改为**常驻**）──
+   * 病灶两段：
+   *   ① 旧案只让「流式进行中」（`.pp-stream-live`）的块有过渡——于是 Agent 写字时块
+   *      会滑，而**用户自己**展开折叠行 / 摊开图版 / 改流区宽 / 切卷时，下方块一次性
+   *      瞬移到新位置。实测：一次点击整个人下半屏跳一下——「跳变感」的主犯正是这一类。
+   *   ② 旧案的时长/曲线写 `var(--pp-grow-dur, 200ms)` / `var(--pp-grow-ease, …)`，而
+   *      这两个 token **全仓从无声明**，只剩 fallback 字面量（且因带逗号回退值，
+   *      paper-token-audit 的悬空扫描抓不到）。§15 收编为 `--m-sheet`。
+   * 药方：让位过渡**常驻**——流块/钉块的位置变化一律走 `--m-sheet`（纸被推开，不是
+   * 瞬移）。流式每几字改一次高时浏览器会打断并重定向到新目标（不堆积），与旧案流式
+   * 期间的表现同构，故不是新增风险。
+   * 铁律不变：**只用 transform**（合成器属性，GPU 加速，不触发逐帧排版）——
+   * 绝不挂 left/top/height（流式高频必卡）。手驱动的例外见本文件「让位豁免」段。
+   * 落位说明：本声明放**基座规则内**（而非另立 `.pp-canvas .pp-block`）——后者特异度
+   * (0,2,0) 会压过本文件此前所有的 (0,1,0) `.pp-block` 规则，触发 biome
+   * noDescendingSpecificity；基座内声明天然让所有状态变体（`.pp-block.pp-X`）与
+   * 豁免规则（特异度更高、源序在后）正常覆盖。 */
+  transition: transform var(--m-sheet);
+  transform-origin: center center;
+}
+
+/* 阶段细线（stream-rhythm 刀2，2026-09-03——D2 最素形态：留白 + 细线）：
+ * 来文开新阶段的弱线，落在阶段间距 96 的中线（canvas-math ANCHOR.stageGap/2，
+ * 两处值由 tests/paper-visual-decisions.test.ts 钉值对拍）。线不是装饰——
+ * 阶段边界（计划 §6：线表达关系/时间/阶段边界）。钉值同测。 */
+.pp-block.pp-stage-lead::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -48px;
+  border-top: var(--rule-soft);
+}
+
+/* 单元界短规线（stream-rhythm 刀5 D，2026-09-03）：work 单元首成员上方的
+ * 短线（96px，版心约 1/8——比阶段全宽线弱一档），落在单元间距 64 的中线
+ * （ANCHOR.unitGap/2 = -32）。线语法同族：全宽 = 阶段界，短线 = 单元界，
+ * 无线 = 同单元收紧。只发 work 单元（叙述不碎、转折自宣告），来文后首块
+ * 是 B1 尾距反转区（8px）无线位——rhythmAssign.unitLeadIds 判据在册。
+ * 2026-09-06 尸检改：原 .pp-block.pp-unit-lead::before 与脚注族注线
+ * （.pp-tool/.pp-toolgroup/.pp-code::before——石青 44px 块身份标记）争同
+ * 一伪元素槽：同特异性 (0,2,1) 平手按源序，注线在后必胜——工具族单元首
+ * 块的单元线被静默顶掉，单元界词汇在绝大多数工作包上消失（刀5 D 名存
+ * 实亡）。改实元素（壳层按 unitLeadIds 条件渲染 .pp-unit-rule span）：
+ * 槽位独立、层叠无关、注线与单元线并存。 */
+.pp-unit-rule {
+  position: absolute;
+  left: 0;
+  width: 96px;
+  top: -32px;
+  border-top: var(--rule-soft);
+  pointer-events: none; /* 线区在块外间隙带——装饰不挡指针 */
+}
+
+/* 验证链毕锚（stream-rhythm 刀5 C，2026-09-03）：verify 工作单元链毕的
+ * 「✓ 阶段完成」小字（规则表「验证链毕出标记」原案落地）。ink-3 辅助墨阶
+ * ——最素形态（D2 同判：真机看效果再判升级）；挂在链末块下方、单元间距
+ * 中带，不占块高（测高镜像零变化）。判据 rhythmAssign.verifyDoneIds：
+ * 流式在跑不发、失败转折（后继 recovery）不发——✓ 不说谎。 */
+.pp-block.pp-verify-done::after {
+  content: "✓ 阶段完成";
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 8px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* 块体基础（2026-08-30 间距专项）：pre-wrap 镜像测量——measure.ts 的 pretext
+ * 一律按 whiteSpace:'pre-wrap' 计行，而此处旧缺省 normal 把换行折叠掉，
+ * 「测得多、渲染少」= 绝对定位块之间出现幻影大间距（流内间距不均的根因）。
+ * 长词兜底 break-word：DOM 因此多折行时测高偏矮方向只发生在超长 token
+ * （正文罕见；工具/代码路径本就走 break-all 的 mono pre）。 */
+.pp-body {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* 流式增量渐显（streaming-fade-render-plan 2026-08-30）：新长出的文本段
+ * 淡入（Claude Code 桌面端同款观感）。0.72 起墨（不从 0 全透明——避免
+ * 闪烁感；纸壳正文保持始终可读）。时长走 `--m-sheet`（§15 让位档，0.26s）
+ * 而非 `--m-ink`（0.16s 偏快，流式增量需要一点呼吸）。钉值 tests/paper-visual-decisions.test.ts。 */
+@keyframes pp-ink-enter {
+  from {
+    opacity: 0.72;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.pp-ink-delta {
+  animation: pp-ink-enter var(--m-sheet) both;
+}
+
+/* 结构件/交互件不进选区（2026-09-17 收族）：块是纸面唯一的可选面，而块内长着
+ * 一堆界面注记与控件——文类签 / 状态签 / 收回钮 / 折叠钮 / 宽度手调柄 / 卡内
+ * 按钮与折叠闸（summary）。不逐个撤回就会被跨块扫选与 Ctrl+A 卷进 sel.toString()
+ * （抽出的纸条带签名「NOTE · 003」），或被拖动扫出一片选区。
+ * 旧账是逐类枚举（漏网实证：.pp-resize 宽度手调柄、块内 button/summary 全在
+ * 枚举外），现按「块内一切交互件」一次收口——正文（.pp-body / .pp-md-* /
+ * .pp-code-src…）不在列，照旧可选。
+ * `:where()` 归零基数：本族靠「直陈声明胜过继承」成立，不靠特异性压人。 */
+.pp-block :where(button, summary, .pp-kind, .pp-status, .pp-unpin, .pp-fold, .pp-msg-ops, .pp-branch-grip, .pp-resize) {
+  user-select: none;
+}
+
+/* 文类签（页边注 rubric）：挂块左缘外，右对齐双行 + hairline 连线 */
+.pp-kind {
+  position: absolute;
+  left: -128px;
+  top: 2px;
+  width: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  line-height: 1;
+  cursor: grab;
+  /* 手柄热区外扩（不位移视觉） */
+  padding: 2px 6px;
+  margin: -2px -6px;
+  transition: background var(--snap);
+}
+.pp-kind::after {
+  content: "";
+  position: absolute;
+  right: -18px;
+  top: 10px;
+  /* 14 → 18（2026-09-22 锚点批）：让页边注这条 hairline **接上左缘那枚锚点**
+     （末端由「块缘外 6px」收到 2px，正好抵住半径 2 的圆点）——地标与锚点连成一条链，
+     引线再从锚点出发。钉块的这条仍是 display:none（报头批），故它由右缘那枚锚点承担。 */
+  width: 18px;
+  height: 1px;
+  background: var(--ink-4);
+  transition: background var(--snap);
+}
+.pp-kind .pp-zh {
+  font-family: var(--f-song);
+  font-size: 15px; /* 块内件不吃 font-scale（测量镜像） */
+  font-weight: 600;
+  color: var(--ink-2);
+  transition: color var(--snap);
+}
+.pp-kind .pp-en {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.pp-kind:hover .pp-zh {
+  color: var(--seal-deep);
+}
+/* 手柄可发现性（2026-08 UI 大清扫）：hover 时连线与热区底色同时示意「可拖」 */
+.pp-kind:hover::after {
+  background: var(--seal);
+}
+.pp-kind:hover {
+  background: var(--seal-soft);
+}
+.pp-block.pp-dragging .pp-kind,
+.pp-kind:active {
+  cursor: grabbing;
+}
+
+/* 出处行（2026-09-18 出处引导批）：钉住块的来路——页边注第三行，**常显**。
+ * 病灶：钉块与源块之间只剩流内占位一个**视口内**的记号——流自锚点向上生长，
+ * 洞随新墨越漂越远，视口一离开线索归零（用户报「不知道这东西从哪来的」）。
+ * 出处是页边注的本职（这条注疏对着哪段正文），故不新立浮件、不占版心；常显
+ * 即不依赖任何视口内目标。超长卷名向左出栏（nowrap + 栏右对齐 = 向左溢），
+ * 一行读完，不压正文——卷名截断在纯层（provenanceText）。 */
+.pp-prov {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  white-space: nowrap;
+  cursor: default;
+  transition: color var(--snap);
+}
+/* 可点（源卷在世）= 指针 + hover 朱砂深——与文类签 hover 同族（页边注一族的
+ * 朱砂信号只活在 hover 瞬时态，不占「每屏至多一处红」的常驻名额）。 */
+.pp-prov--trace {
+  cursor: pointer;
+}
+.pp-prov--trace:hover {
+  color: var(--seal-deep);
+}
+
+/* 状态签（tool 行内） */
+.pp-status {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+.pp-status.pp-done {
+  color: var(--pass);
+}
+/* 运行中 = 机器在干活——石青（铁律：石青=机；与书脊运行点/StatusLine 分析点同语义，
+   2026-08 UI 大清扫从 warn 矫正）。 */
+.pp-status.pp-running {
+  color: var(--indigo);
+}
+.pp-status.pp-error {
+  color: var(--fail);
+}
+.pp-status.pp-pending {
+  color: var(--ink-3);
+}
+/* 行走秒（2026-09-06 纸面运行态）：running 态状态签换「行 Ns」并挂呼吸
+ * （ToolStatusChip 渲染）——静止的英文字 'running' 无活气，走秒是「在跑」
+ * 最便宜的体感。 */
+.pp-status.pp-status--live {
+  animation: pp-ink-live 1.6s ease-in-out infinite;
+}
+
+/* 湿墨尾点（2026-09-06 纸面运行态）：正在书写的块（.pp-writing，壳层按
+ * RegionView.writingBlockId 挂类）——续墨行位落一枚石青方点呼吸，块写完
+ * 「墨干」随类摘除退场。落点在块底下方一行的正文左缘（.pp-body 无内距，
+ * left:0 即字口），「下一行从这起」的笔位语义。拖拽回流态让位（::after 槽
+ * 位被回流预览占用）。 */
+.pp-block.pp-writing:not(.pp-drag-returning)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -20px;
+  width: 7px;
+  height: 7px;
+  background: var(--indigo);
+  animation: pp-ink-live 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ── 来文（user）：楷书手迹 + 朱砂批线 ──
+ * 2026-08-30 标题化：来文 = 题。去左批线，正文居中；题签（.pp-kind）从
+ * 左缘外改块顶居中，文字在题签下。花押（asterism）保留收尾。 */
+.pp-block.pp-user {
+  padding-left: 0;
+  border-left: none;
+  text-align: center;
+}
+.pp-block.pp-user .pp-kind .pp-zh {
+  color: var(--seal-deep);
+  font-family: var(--f-kai);
+}
+.pp-block.pp-user .pp-body {
+  font-family: var(--f-kai);
+  font-weight: 400;
+  font-size: var(--pp-type-user-size); /* 2026-08-30 标题化：22px 题 > 正文 17 */
+  line-height: var(--pp-type-user-lh);
+  color: var(--seal-deep);
+  text-align: center;
+}
+
+/* 题签（2026-08-30 标题化）：来文文类签居中置顶，不再挂左缘外；
+ * 拖拽保留（.pp-kind 仍是整块拖出手柄）。结构 = 大字「来 文」+ 小注
+ * 「USER · 序」+ 横线；占高 = label 15 + seqGap 5 + seq 10 + barGap 4
+ * + barH 2 + gap 12 = 48px，镜像 measure.USER_KIND_H。
+ * hover 恢复把手反馈（乙方案：涂底 + 小注转深 + 横线转朱砂）。 */
+.pp-block.pp-user .pp-kind {
+  position: static;
+  left: auto;
+  top: auto;
+  width: auto;
+  display: block;
+  align-items: initial;
+  gap: 0;
+  margin: 0 0 var(--pp-ch-user-kindGap); /* 下距 = kindGap（镜像 USER_KIND_H） */
+  padding: 0;
+  text-align: center;
+  cursor: grab;
+  transition: background var(--snap);
+}
+.pp-block.pp-user .pp-kind::after {
+  display: block; /* 乙方案：横线回归（题签下压着的栏线） */
+  content: "";
+  position: static;
+  width: var(--pp-ch-user-kindBarW);
+  height: var(--pp-ch-user-kindBarH);
+  margin: var(--pp-ch-user-kindBarGap) auto 0; /* barGap（镜像 USER_KIND_H） */
+  background: var(--ink-4);
+  transition: background var(--snap);
+}
+.pp-block.pp-user .pp-kind .pp-zh {
+  display: block;
+  font-size: var(--pp-ch-user-kindLabelSize);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em; /* 末位字距补偿，视觉居中 */
+  margin: 0;
+}
+.pp-block.pp-user .pp-kind .pp-en {
+  display: block; /* 乙方案：小注回归（USER · 序） */
+  margin-top: var(--pp-ch-user-kindSeqGap); /* seqGap（镜像 USER_KIND_H） */
+  font-family: var(--f-mono);
+  font-size: var(--pp-ch-user-kindSeqSize);
+  line-height: 1;
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--snap);
+}
+/* hover 恢复把手反馈（2026-08-30 UX 补缺：标题也是可拖手柄——
+ * 涂朱砂底 + 小注转朱砂深 + 横线转朱砂，整块可发现性回归） */
+.pp-block.pp-user .pp-kind:hover {
+  background: var(--seal-soft);
+}
+.pp-block.pp-user .pp-kind:hover .pp-en {
+  color: var(--seal-deep);
+}
+.pp-block.pp-user .pp-kind:hover::after {
+  background: var(--seal);
+}
+
+/* asterism（B1）：来文收尾三星——卷末花押句号。原型 lantai.html 同款
+ * （margin 30px 0 0 / 14px / 字距 .6em / ink-3）。测量镜像 measure.ts。 */
+.pp-user-asterism {
+  display: block;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: var(--pp-ch-user-asterismLine);
+  line-height: 1;
+  letter-spacing: 0.6em;
+  margin: var(--pp-ch-user-asterismMarginTop) 0 0;
+  user-select: none;
+}
+
+/* 圈点（C7）：来文【词】→ 朱砂椭圆圈。
+   border-radius 50% 是圈点的字形本体（手绘批注手势），不违「圆角恒 0」——
+   那条铁律管的是面板/卡片结构件，不管字形级注记。
+   inline-block = 圈永不拆行：整词挪行，一词一圈永远成立（跨行 slice 会把
+   椭圆腰斩、clone 会一词两圈，均否）；软上限超长不圈在 paper/marks.ts。 */
+.pp-circled {
+  display: inline-block;
+  padding: 0 4px 1px;
+  border: 1.5px solid var(--seal);
+  border-radius: 50%;
+  font-weight: 600;
+}
+
+/* 正文段落间距（2026-08-30 markdown 专项）：.pp-md-p margin-bottom 14
+ * （17px/行距 2.0 下 10px 段距比行距还小、段落黏连——提到 14）。
+ * 测量镜像 measure.ts MD_P_GAP。 */
+
+/* ── 正文（markdown）：宋体主角 + 结构化子版式（2026-08-30 专项）──
+ * 版式常量与 measure.ts MD_* 逐字镜像（改版式两处同步）；
+ * 结构模型与测量共用 paper/markdown.ts 的 parseMarkdown（同源防漂移）。
+ * 纵向量纪律：块元素只用「padding 上下面距 + margin-bottom 块间距」，
+ * 不用 margin-top（首元素 margin 逃逸 .pp-body 会破坏测高）。 */
+.pp-block.pp-markdown .pp-body {
+  font-size: var(--pp-type-body-size);
+  line-height: var(--pp-type-body-lh);
+  color: var(--ink-1);
+}
+
+/* 末元素 margin 归零（测量端镜像：measureMdBlocks 不计末元素 margin） */
+.pp-body > :last-child,
+.pp-pc-body > :last-child,
+.pp-md-quote > :last-child,
+.pp-md-sub > :last-child {
+  margin-bottom: 0;
+}
+
+.pp-md-p {
+  margin: 0 0 var(--pp-md-p-gap);
+}
+
+/* 标题：padding 承担上下距（不入 margin 塌陷），宋体加粗、墨色随级加深 */
+.pp-md-h {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.pp-md-h1 {
+  font-size: var(--pp-md-h1-size);
+  line-height: var(--pp-md-h1-lh);
+  padding: var(--pp-md-h1-pt) 0 var(--pp-md-h1-pb);
+}
+.pp-md-h2 {
+  font-size: var(--pp-md-h2-size);
+  line-height: var(--pp-md-h2-lh);
+  padding: var(--pp-md-h2-pt) 0 var(--pp-md-h2-pb);
+}
+.pp-md-h3 {
+  font-size: var(--pp-md-h3-size);
+  line-height: var(--pp-md-h3-lh);
+  padding: var(--pp-md-h3-pt) 0 var(--pp-md-h3-pb);
+}
+.pp-md-h4 {
+  font-size: var(--pp-md-h4-size);
+  line-height: var(--pp-md-h4-lh);
+  padding: var(--pp-md-h4-pt) 0 var(--pp-md-h4-pb);
+}
+
+/* 列表：标记列绝对定位（不占宽），条目列缩进 26（镜像 MD_LI_INDENT） */
+.pp-md-list {
+  margin: 0 0 var(--pp-md-listGap);
+  padding: 0;
+  list-style: none;
+}
+.pp-md-li {
+  position: relative;
+  margin: 0 0 var(--pp-md-liGap);
+  padding-left: var(--pp-md-liIndent);
+}
+.pp-md-li:last-child {
+  margin-bottom: 0;
+}
+.pp-md-mark {
+  position: absolute;
+  left: 0;
+  top: 12px;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+/* 任务复选框（GFM - [ ] / - [x]，2026-09 #15）：标记列同位（.pp-md-mark 镜像——
+ * li 相对定位，框绝对定在 left 0；top 取正文首行中线，随正文字号走）。
+ * 自绘方框：纸面墨色 + 内钩（完成态朱砂深钩——同圈点/来文朱批语义）；
+ * 无原生控件（禁引入表单外观；只读展示态——勾选写回语义归 task/board）。 */
+.pp-md-check {
+  position: absolute;
+  left: 0;
+  top: 13px;
+  width: 13px;
+  height: 13px;
+  box-sizing: border-box;
+  border: var(--pp-md-checkBorderW) solid var(--ink-3);
+  border-radius: 2px; /* 纸面方框微圆角：是字形级注记（同 .pp-circled 豁免），非面板结构件 */
+  color: var(--seal-deep);
+}
+/* 纯复选框项（- [ ] 无尾文）：框 absolute 不占行盒，li 需最小高一行正文
+ * （否则零高压叠下一块）。min-height = body 行高（calc 乘 var，单源
+ * PAPER_TYPE.body）——measure 侧空 check 项给 PAPER_BODY_LINE_HEIGHT 同值。 */
+.pp-md-li--check {
+  min-height: calc(var(--pp-type-body-size) * var(--pp-type-body-lh));
+}
+.pp-md-check--on::after {
+  content: "";
+  position: absolute;
+  left: 2.5px;
+  top: 0.5px;
+  width: 5px;
+  height: 8px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.pp-md-sub {
+  margin-top: var(--pp-md-subTop);
+  padding-left: var(--pp-md-subIndent);
+}
+
+/* 引用：石墨左线 + 缩进（正文同字号，色降 ink-2） */
+.pp-md-quote {
+  margin: 0 0 var(--pp-md-quoteGap);
+  padding: var(--pp-md-quotePadV) 0 var(--pp-md-quotePadV) var(--pp-md-quotePadL);
+  border-left: var(--pp-md-quoteBorderL) solid color-mix(in oklch, var(--graphite) 45%, transparent);
+  color: var(--ink-2);
+}
+.pp-md-quote .pp-md-p {
+  color: var(--ink-2);
+}
+
+/* 图码（列表/引用内幸存的围栏——独立 diff 块之外的兜底） */
+.pp-md-code {
+  margin: 0 0 var(--pp-md-codeGap);
+  padding: var(--pp-md-codePadV) var(--pp-md-codePadH);
+  border-left: var(--pp-md-codeBorderL) solid var(--indigo);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: var(--pp-lim-preMaxH);
+  overflow: auto;
+}
+/* 代码高亮墨色协调（科研渲染 #5，2026-09；B2 起多消费面共用同一组选择器，
+ * 2026-09-23 加第三个消费面，2026-11-06 加第四个 = 程文程序体）：
+ * hljs 的 .hljs-* 语义类 → 纸面 token（hljs 只产出类名，不装自带主题）。
+ * 消费面 = 流内围栏码 `.pp-md-code`（列表/引用内的嵌套围栏 + mermaid 回落）
+ *          + 代码查看器 `.pp-viewer-code`
+ *          + 抄录块代码体 `.pp-diff-code`（顶层围栏的 hljs 路）
+ *          + 程文程序体 `.pp-code-src`（code_execution 的程序体，2026-11-06）
+ * ——**同一份映射**（单一真源：各处各写一份配色必然漂），作用域限定不污染全局。
+ * 选择器形态 = `:is(面清单) :is(语义类)`：面清单每条规则写一遍（CSS 没有可变的
+ * 选择器变量），语义类按墨色分组——加一个面的成本是「清单加一项」，不是 ×N 行
+ * （旧形态每类各占一行，第四面要补 33 行）。特异性不变：`:is()` 取参数最高者
+ * （单类 = 0,1,0），与原「.面 .hljs-x」同为 0,2,0（`.hljs-class .hljs-title` 那条
+ * 仍为 0,3,0）。
+ * 墨色纪律：正文墨为主，关键字石青（与脚注题一致），字符串石墨降饱和，
+ * 注释用 ink-3 弱化——代码与注疏同纸，不引入高饱和 IDE 配色。 */
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src) :is(.hljs-comment, .hljs-quote) {
+  color: var(--ink-3);
+  font-style: italic;
+}
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src)
+  :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-meta) {
+  color: var(--indigo);
+}
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src) :is(.hljs-string, .hljs-regexp, .hljs-addition) {
+  color: var(--seal-deep);
+}
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src)
+  :is(.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-link) {
+  color: var(--seal);
+}
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src)
+  :is(.hljs-title, .hljs-title.function_, .hljs-section, .hljs-name) {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src)
+  :is(.hljs-built_in, .hljs-type, .hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable) {
+  color: var(--graphite);
+}
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src) .hljs-class .hljs-title {
+  color: var(--graphite);
+}
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src) .hljs-deletion {
+  color: var(--fail);
+}
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src) .hljs-emphasis {
+  font-style: italic;
+}
+:is(.pp-md-code, .pp-viewer-code, .pp-diff-code, .pp-code-src) .hljs-strong {
+  font-weight: 600;
+}
+
+/* 分隔线 */
+.pp-md-hr {
+  border: none;
+  border-top: var(--pp-md-hrBorder) solid var(--rule-soft-ink);
+  margin: var(--pp-md-hrMargin) 0;
+}
+
+/* 表格（GFM）：等宽小字 + 弱规线（.pp-grid-table 同族视觉） */
+.pp-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 var(--pp-md-tableGap);
+  font-family: var(--f-mono);
+  font-size: var(--pp-md-tableSize);
+  line-height: var(--pp-md-tableLh);
+  color: var(--ink-1);
+}
+.pp-md-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-2);
+  padding: var(--pp-md-tableCellPadV) var(--pp-md-tableCellPadH);
+  border-bottom: var(--pp-md-tableRowBorder) solid var(--rule-soft-ink);
+}
+.pp-md-table td {
+  padding: var(--pp-md-tableCellPadV) var(--pp-md-tableCellPadH);
+  border-bottom: var(--pp-md-tableCellBorder) solid color-mix(in oklch, var(--ink-3) 18%, transparent);
+}
+.pp-md-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* 行内：加粗/斜体/删除线/行内码/链接 */
+.pp-md strong {
+  font-weight: 600;
+}
+.pp-md del {
+  color: var(--graphite);
+}
+.pp-md-ci,
+.pp-pc .pp-md-ci {
+  font-family: var(--f-mono);
+  font-size: 0.82em;
+  padding: 1px var(--pp-md-ciPadH);
+  border: var(--pp-md-ciBorder) solid var(--rule-soft-ink);
+  background: color-mix(in oklch, var(--paper-deep) 65%, transparent);
+}
+.pp-md-a,
+.pp-pc .pp-md-a {
+  color: var(--indigo);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--indigo) 45%, transparent);
+  text-underline-offset: 3px;
+}
+.pp-md-a:hover,
+.pp-pc .pp-md-a:hover {
+  color: var(--seal-deep);
+  text-decoration-color: var(--seal);
+}
+
+/* ── 数学（科研 LaTeX，2026-09 scientific-rendering）──
+ * KaTeX 输出 .katex / .katex-display；纸壳只做容器与墨色协调。
+ * 版式数字 token：--pp-md-mathGap（块下距）/--pp-md-mathSizeRatio（字号系数）/
+ * --pp-md-mathDisplayLineH·MaxLines（measure 静态预算，CSS 不用）。 */
+.pp-md-math {
+  /* 块级 display 公式：KaTeX display 自带 margin 1em 0——归零，统一走
+   * margin-bottom: mathGap（与其它 md 块同一「末元素归零」测高模型镜像）。
+   * 超宽长公式横向滚动不增行数（预算与 RO 实测同此假设）。 */
+  margin: 0 0 var(--pp-md-mathGap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: calc(var(--pp-type-body-size) * var(--pp-md-mathSizeRatio));
+}
+.pp-md-math:last-child {
+  margin-bottom: 0;
+}
+.pp-md-math .katex-display {
+  margin: 0;
+  padding: 0.4em 0; /* display 上下呼吸（KaTeX glyph 区之外），预算系数已含 */
+}
+.pp-md-math .katex {
+  color: var(--ink-1); /* 公式墨随正文墨（KaTeX 默认纯黑——纸面协调降为 ink-1） */
+}
+/* 行内公式原子：随行不腰斩（测量侧 break:never 镜像）；垂直对齐中线，
+ * 左右微距与正文呼吸。字号 = body × sizeRatio（KaTeX 内联默认当前字号）。 */
+.pp-md-math-inline {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 0.15em;
+  font-size: calc(var(--pp-type-body-size) * var(--pp-md-mathSizeRatio) * 0.92);
+  white-space: nowrap;
+}
+.pp-md-math-inline .katex {
+  color: var(--ink-1);
+}
+/* KaTeX 错误兜底（throwOnError:false 的 .katex-error）：纸壳给弱朱——流式
+ * 半成型公式可见是「没写完」而非排版故障。 */
+.pp-md-math .katex-error,
+.pp-md-math-inline .katex-error {
+  color: var(--fail);
+  background: color-mix(in oklch, var(--fail) 8%, transparent);
+}
+
+/* ── 正文图（B4 multimodal-image-plan D-9；2026-10 本地路径扩展 + 点击放大）──
+ * 独立行 ![alt](http/https 或本地绝对路径)，固定盒高（--pp-md-imgBoxH，chem
+ * boxH 先例；border 计入盒高——全局 box-sizing: border-box）——加载/失败态
+ * 都不改版面，measure 静态镜像即精确（不触发 RO）。源分类过在解析层
+ * （imageSrcRef）；加载失败换 mono 弱墨行（错误不静默）。点击看大图：盒内
+ * 图包 zoom 按钮（重置装饰 + 光标 zoom-in）→ 用户气泡/资产卡同款全局浮层
+ * （pp-media-preview-overlay）。 */
+.pp-md-imgbox {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--pp-md-imgBoxH);
+  margin: 0 0 var(--pp-md-imgGap);
+  border: var(--pp-md-imgBorder) solid var(--rule-soft-ink);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  overflow: hidden;
+}
+.pp-md-img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+/* 点击放大入口（2026-10）：按钮吃满固定盒（100%×100%），img 的 max-width/
+ * height 100% 相对它有解（按钮自身不参与收缩，防 img 按自然尺寸撑破盒）。
+ * 无装饰重置；光标 zoom-in 是可达性外的手感提示（读屏语义在 aria-label）。 */
+.pp-md-img-zoom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: zoom-in;
+}
+.pp-md-img-alt {
+  max-width: 100%;
+  padding: 6px 10px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

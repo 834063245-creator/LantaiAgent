@@ -7,6 +7,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ASSET_TOKENS, CHROME_TOKENS, injectPaperTokens } from '../src/plugins/builtin/paper-shell/type-tokens';
+import { readPanelCss } from './helpers/panel-css';
 
 /** 走 injectPaperTokens 的真实注入路径，捕获全部键值（木桩 root.style.setProperty）。 */
 function captureInjectedTokens(): Map<string, string> {
@@ -51,13 +52,14 @@ function viewerCssFiles(): string[] {
 
 function usedTokenKeys(): Set<string> {
   const keys = new Set<string>();
-  const files = [
-    resolve(__dirname, '../src/plugins/builtin/paper-shell/PaperPanel.css'),
-    resolve(__dirname, '../src/plugins/builtin/paper-shell/ToastHost.css'),
-    ...viewerCssFiles(),
+  /* 纸壳样式 = 入口 + 12 个分片（2026-11-06 P2 拆分）——经 readPanelCss 拼回一份，
+   * 扫描口径与拆分前一致；查看器各自一份 CSS 照旧并扫。 */
+  const texts = [
+    readPanelCss(),
+    readFileSync(resolve(__dirname, '../src/plugins/builtin/paper-shell/ToastHost.css'), 'utf8'),
+    ...viewerCssFiles().map((f) => readFileSync(f, 'utf8')),
   ];
-  for (const f of files) {
-    const css = readFileSync(f, 'utf8');
+  for (const css of texts) {
     for (const m of css.matchAll(/var\((--pp-[a-z0-9-]+)\)/g)) keys.add(m[1]);
   }
   return keys;

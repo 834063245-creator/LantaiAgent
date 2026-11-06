@@ -22,8 +22,6 @@
 // 注：jsdom 无布局，坞槽实测矩形由桩铺（真值 880×131 见 prototype/asset-rack-v2.NOTES.md）；
 // 「架不进量高盒」在 jsdom 里由 DOM 结构 + CSS 出流声明两证（像素面归真机验收）。
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -115,7 +113,6 @@ import { Context } from '../src/cordis';
 import { RACK_CAP } from '../src/paper/asset-rack';
 import { composeDockPlugin } from '../src/plugins/builtin/compose-dock';
 import { BAND_STYLE_ID } from '../src/plugins/builtin/paper-shell/composer-band';
-import { RACK_H } from '../src/plugins/builtin/paper-shell/composer-float';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { getCanvasStore } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
@@ -123,11 +120,9 @@ import { useDockStore } from '../src/state/dock-store';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 import type { AssistantMessage, ChatMessage, UserMessage } from '../src/ui/message-model';
 import { applyAssetUpdateToExistingParts } from '../src/ui/part-mutator';
+import { readPanelCss } from './helpers/panel-css';
 
-const PANEL_CSS = readFileSync(
-  join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
-  'utf8',
-);
+const PANEL_CSS = readPanelCss();
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——同 paper-provenance 的既有范式）。 */
 function ruleBody(css: string, selector: string): string {
@@ -329,11 +324,13 @@ describe('图版架（坞下横架 · 丙案）', () => {
     expect(rackEl?.parentElement).toBe(slot);
     expect(dockEl?.parentElement).toBe(slot);
     expect(dockEl?.contains(rackEl ?? null)).toBe(false);
-    // 出流声明（CSS 真源）：绝对定位 + top:100% + 高 38（= TS 侧 RACK_H 镜像）
+    // 出流声明（CSS 真源）：绝对定位 + top:100% + 高读 token（2026-11-06 P2 收掉
+    // 「TS 38 ↔ CSS 38px」的字面量镜像：与 composer-float.test 同一条判据）
     const css = ruleBody(PANEL_CSS, '.pp-rack {');
     expect(css).toContain('position: absolute');
     expect(css).toContain('top: 100%');
-    expect(css).toContain(`height: ${RACK_H}px`);
+    expect(css).toContain('height: var(--pp-composer-rackH)');
+    expect(css).not.toContain('height: 38px');
     // 让位带读数（CSS 消费面读的那个数）不含架
     expect(DOCK_H + 96).toBe(227);
     expect(bandVar()).toBe('227px');

@@ -9,8 +9,6 @@
 //
 // 每个 describe 都对应一条可被旧实现证伪的性质（见各 it 注释）。
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -27,12 +25,10 @@ import {
   pieSliceAnnotations,
   pieSlices,
 } from '../src/plugins/builtin/renderers/components';
+import { readPanelCss } from './helpers/panel-css';
 
 /** 纸壳样式（D11 色块/扇区内标注的源码形断言；jsdom 无排版引擎，钉形不钉像素）。 */
-const PAPER_CSS = readFileSync(
-  join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
-  'utf8',
-);
+const PAPER_CSS = readPanelCss();
 
 /** 取某选择器命中的全部规则体（选择器组按逗号拆开逐条匹配；本 CSS 无嵌套）。
  *  返回多段拼接——同一选择器可以出现在多条规则里（共享规则先例：

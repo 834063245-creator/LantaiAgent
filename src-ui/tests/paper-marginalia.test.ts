@@ -5,8 +5,6 @@
 // 紧随 text）/ 回退规则（无正文后继不丢字）/ 复合测高 max(正文, 夹注@侧栏)。
 // measure 依赖 Canvas 2D（jsdom 没有）→ vi.mock pretext 全家（paper-v3a 同款）。
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { layoutMock, richStatsMock } = vi.hoisted(() => ({
@@ -42,6 +40,7 @@ import {
 } from '../src/plugins/builtin/paper-shell/measure';
 import { injectPaperTokens } from '../src/plugins/builtin/paper-shell/type-tokens';
 import type { AssistantMessage } from '../src/ui/message-model';
+import { readPanelCss } from './helpers/panel-css';
 
 function asstMsg(parts: AssistantMessage['parts']): AssistantMessage {
   return { role: 'assistant', _id: 'm-marg', parts, sessionIndex: 0 };
@@ -221,7 +220,7 @@ describe('measure 眉批复合块（P5）', () => {
  * 真机实测 10px 字得 13px 行——正是镜像要算的那一项）。 */
 
 describe('眉批纵向 chrome：CSS 与 token 同源', () => {
-  const CSS = readFileSync(join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
+  const CSS = readPanelCss();
   const ruleOf = (sel: string): string => {
     const i = CSS.indexOf(sel);
     if (i < 0) throw new Error(`选择器缺席：${sel}`);

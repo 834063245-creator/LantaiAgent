@@ -64,6 +64,7 @@ import {
 } from '../src/plugins/builtin/compose-dock/TocStrip';
 import { EDGE_SCROLL } from '../src/plugins/builtin/paper-shell/edge-scroll';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
+import { readPanelCss } from './helpers/panel-css';
 
 /** 流区夹具：2000 世界高、三枚 user 刻痕——最旧块顶 = regionTop，于是最上
  *  一枚刻痕正好落在映射区顶（「刻痕顶到带体顶」的边界现场）。 */
@@ -119,10 +120,7 @@ const TOP_CHROME_BAND = 56;
  *  故不再 + 带体起点；与组件内同式）。 */
 const MAPPED_BOTTOM = CANVAS_SIZE.h - 96 - COMPOSER_DOCK.height;
 /** 纸壳样式（.pp-toc 规则所在）：CSS 契约断言用（同 paper-visual-decisions 口径）。 */
-const PANEL_CSS = readFileSync(
-  join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
-  'utf8',
-);
+const PANEL_CSS = readPanelCss();
 function ruleBody(css: string, selector: string): string {
   const i = css.indexOf(selector);
   if (i < 0) return '';

@@ -1,0 +1,305 @@
+/* paper-shell · motion — 让位豁免 / 流式生命感 / 引线 / 锚点 / 枝边 / 匣脚引线
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+/* ── 让位豁免（§15 手律；2026-10-15 随让位过渡常驻批重写）──
+ * **手指直接驱动的布局变化零缓动 1:1**——缓动只属「系统替用户做」的动作。两条：
+ *   ① 块本体拖拽（流块 / 钉块 / 眉批快照）：transform 逐帧跟手写，带过渡即成橡皮筋；
+ *   ② 整区拖动 / 四角缩放：块体随流区每帧重排，同理必须跟手（类 `pp-live-hand`
+ *      由壳层按 `edgeDragPos || regionCornerPos` 发放，见 PaperPanel.tsx）。
+ * （高特异性规则先行，避免降序覆盖警告；源序也在常驻规则之后，双保险。）
+ * 旧案里的 `.pp-block.pp-ghost` 选择器已删：幽灵占位压根不带 `pp-block` 类
+ * （见 PaperPanel.tsx 的 `.pp-ghost` 渲染），且它用 left/top 定位、从不挂 transform
+ * ——该条从来匹配不到任何元素；而 `.pp-ghost` 自身的 transition 是态变轴的
+ * border-color/color（§15 态变轴），**不可**被一条 transition: none 误杀。 */
+.pp-canvas.pp-live-hand .pp-block,
+.pp-canvas .pp-block.pp-dragging {
+  transition: none;
+}
+
+/* ── 流式生命感（2026-08-30）：首见入场 ──
+ * pp-enter：块首次进流时淡入上浮一次——类发放由壳层首见集合控制（seenBlocks），
+ * 虚拟化平移重挂不重放。
+ * 2026-09-02 换装：块定位改内联 transform 后，keyframes 任何一帧都不得声明
+ * transform——声明即覆盖内联 translate(x,y) 槽位（to 帧 transform:none + both
+ * 填充会把块永久钉在左上角；from 帧 translateY(8px) 会把新块摆到容器左上角
+ * 再飞回槽位——2026-09-03 生产事故：发消息后新块从角落乱飞、文字似消失）。
+ * animation 用 backwards 只保留入场前状态，结束后回落内联值。
+ * 上浮手感改走独立 translate 属性：与 transform 合成（translate 先乘）而非
+ * 覆盖——保住 left/top 时代「相对上浮 8px」的原设计（Chrome 104+）。 */
+.pp-block.pp-enter {
+  animation: pp-enter var(--m-ink) backwards;
+}
+@keyframes pp-enter {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* 收回按钮（D-R2-2：按钮 + 确认）。便条批（2026-09-19）：hover 才显形，
+ * 故留在纸外不占构图（常驻件才收进纸内——报头与方点）。底色随便条纸同族。 */
+.pp-unpin {
+  position: absolute;
+  top: -30px;
+  right: 0;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  background: var(--paper-deep);
+  border: var(--rule-soft);
+  border-radius: 0;
+  padding: 4px 8px;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--snap),
+    color var(--snap),
+    border-color var(--snap);
+}
+.pp-block.pp-pinned:hover .pp-unpin {
+  opacity: 1;
+}
+.pp-unpin:hover {
+  color: var(--seal-deep);
+  border-color: var(--seal);
+}
+/* 竖排「钉住」签（09-05 补抄）已随便条批**退役**（2026-09-19）：它是 hover 才
+ * 显形的纸外挂件，而钉住是常驻状态——身份改由纸内报头的方墨点常显承担，
+ * 且朱砂不占（每屏至多一处红）。旧规则与 JSX 一并删除，不留注释尸体。 */
+
+/* 流内占位（块被拖出后流里留洞——原生 button，点击恢复手势）。2026-09-05
+ * 弱化一档：洞是流内的疤不是主角——虚线语义保留（占位/草稿铁律），墨量
+ * 收一档让位正文节奏（plan：pin-strip-rework 刀2）。 */
+.pp-ghost {
+  position: absolute;
+  border: 1px dashed color-mix(in oklch, var(--ink-4) 62%, transparent);
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
+  color: var(--ink-4);
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  text-align: center;
+  z-index: 2;
+  transition:
+    border-color var(--snap),
+    color var(--snap);
+}
+.pp-ghost:hover {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
+/* 洞点名（出处引导 2026-09-18）：溯源飞行落点——洞位点一拍即散（1.6s 由壳层
+ * 摘类）。只动颜色/不透明度：线级语言不变（不新增框），虚线语义保留。 */
+.pp-ghost--traced {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+  animation: pp-trace-pulse 0.7s ease-in-out 2;
+}
+@keyframes pp-trace-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ── 引线层（2026-09-18 出处引导）：hover/溯源中的钉 → 其源洞 ──
+ * 世界坐标一条发丝——**洞离屏时线照样出屏，方向即来路**（这正是「占位不在视口里
+ * 就起不到引导作用」的答案）。一屏一线（防面条：钉多起来时全画就是一团乱麻），
+ * hover 期瞬时存在。
+ *
+ * **2026-09-18 重做**（用户判「一根直线直连虽然没啥问题，就是感觉有点劣质」）：
+ * 笔墨语法整支改抄**划词朱线**（.pp-sel-ink / paper/sel-ink.ts）——同一支笔的两种
+ * 落墨：逐点正弦微伏 + 定种子相位 + 手绘平滑 + **恒定墨宽**（该判例的明文字律：
+ * **手感来自微伏不来自粗细变化**）。劣质感不在粗细，在「贴死两个盒子 + 一笔到底
+ * 的直线」；故另补四点（几何见 paper/provenance.ts 头注）：① 层改**屏幕坐标**
+ * （墨宽不随缩放变——世界 1px 在 zoom .3 下 = .3px，等于没画）；② 微伏走弦的法向；
+ * ③ 叠一层垂（只吃横向跨度，纯纵向的丝不垂）；④ 起笔留白 6px + 收笔朱点。
+ * 朱砂 = 人（钉住是用户的动作），瞬时态不占「每屏至多一处红」的常驻名额；
+ * 双笔 echo 不抄——划词是短线语汇，长引线上会读成双线/毛边。
+ *
+ * **2026-09-22 三刀**（用户拿 ComfyUI 连线为参照判「观感质感好多了」）：笔道从「直弦 + 微伏」
+ * 换成**切向贝塞尔**（出笔沿锚面水平 + 臂长 = 弦长×0.25，夹上限与净空），选边改「面对面」，
+ * 垂的包络改零斜率。几何见 `paper/provenance.ts` 头注「三刀」；本文件只动墨阶与层序。
+ *
+ * **2026-09-22 锚点批**（用户判「没有一个固定的锚点来连接引线，感觉奇怪」）：每块左右缘各印
+ * 一枚**固定圆点**（`.pp-anchor`），引线两端都接在它上面、两端各落一枚朱点。
+ * 根因是两头都没有实体：起点被 `TETHER_GAP` 推到块缘外的虚空里，而**钉块的 hairline 是
+ * `display: none`**（便条批「页边注随页边一起退役」）、流块的 hairline 又是 1px `--ink-4`
+ * ——地标要么不在、要么看不见。
+/* ── 锚点（2026-09-22 锚点批）：块的左右缘各一枚**固定圆点**，引线两端的落点 ──
+ * 高度 = 块顶下 12px（= 文类签 hairline 那一档；真源 `provenance.TETHER_ANCHOR_DY`，
+ * 两处同值由 tests/paper-provenance 钉住）。**同一个相对位置**是这套锚点的全部意义：
+ * 线因此永远插在东西上，不再有飘在虚空里的起点。
+ * 墨阶与显形：走 `--ink-4`（与 hairline 同阶——它本来就是那条线的「端」），但**非常显**
+ * ——进入块才显形（2026-09-22 用户判「专门加的锚点圆点没必要常显」：静态点是零信息噪声，
+ * 引线本来就会在两端各落一枚朱点）。显形时也不转朱砂：位置由引线层的朱点标，一屏至多一处红不破。
+ * 形制：**圆点**，与「钉住」身份的**方墨点**（`.pp-block.pp-pinned .pp-kind .pp-zh::before`）
+ * 分属两种语言——方 = 状态，圆 = 连接点。 */
+.pp-anchor {
+  position: absolute;
+  top: 12px;
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 50%;
+  background: var(--ink-4);
+  pointer-events: none;
+  /* **不常显**（2026-09-22 用户判「专门加的锚点圆点没必要常显」）：常显是零信息噪声
+     ——引线本来就在两端各落一枚朱点，静态点只是重复它。改**进入块才显形**：与
+     `.pp-kind:hover::after` 那一族「手柄可发现性」同一套语言（hover 即示意「这里可以接」），
+     走 `--snap` 档。**节点恒在 DOM**（只是透明）——引线两端仍按同一个相对位置落点。 */
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.pp-block:hover .pp-anchor {
+  opacity: 1;
+}
+.pp-anchor--l {
+  left: 0;
+  margin-left: -2px;
+}
+.pp-anchor--r {
+  right: 0;
+  margin-right: -2px;
+}
+
+.pp-tether-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  /* 纸与块之上、坞（5）与一切浮件之下——引线不盖家具。
+     2026-09-22 用户拍板**维持块之上**（方案 §2 原案「块之下」由此退役）：`.pp-world` 带
+     transform 即层叠上下文、引线层是它的兄弟，「块之下」那一档拿不到（要拆世界层）；
+     且锚点批把「线接在实体上」做实之后，穿字的代价由锚点与选边共同收窄。 */
+  z-index: 4;
+}
+.pp-tether {
+  fill: none;
+  stroke: var(--seal);
+  /* 比划词朱线（1.7）细半档：引线是「丝」不是「着重」 */
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  opacity: 0.8;
+  /* 出现 = 一笔落下（--snap 档；只动不透明度——世界坐标层禁 transform 的先例） */
+  animation: pp-tether-in var(--snap) ease-out both;
+}
+.pp-tether-bead {
+  fill: var(--seal);
+  opacity: 0.8;
+  animation: pp-tether-in var(--snap) ease-out both;
+}
+/* 起笔锚点上那枚朱点（2026-09-22 锚点批）：与收笔同墨同形——**两端都是「落」**。
+ * 独立成类而不是与 .pp-tether-bead 合并选择器：`.pp-tether-bead` 是「落点」的既有读面
+ * （测试按首个匹配取它），起笔那枚若也挂这个类，会把落点从读面里顶掉。 */
+.pp-tether-origin {
+  fill: var(--seal);
+  opacity: 0.8;
+  animation: pp-tether-in var(--snap) ease-out both;
+}
+@keyframes pp-tether-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ── 枝边层（P3 会话树「枝」，2026-09-18）──
+ * 与钉那条腿**同一支笔同一层位**（.pp-tether 的墨、屏幕坐标），差别只有「**常显**」
+ * ——树是结构，不是瞬时手势。常显故墨退半档（.55）：一屏几枝同时在场时，线是底噪
+ * 不是主角。
+ *
+ * **2026-09-24 第二刀：纯指示·不可点**（同匣脚那条腿；那条的归因更正见本文件坞段）。
+ * 原实现带一条受墨带（`role="button"` + `tabIndex` + 点线飞回父卷分叉节点 + hover/聚焦
+ * 抬回 .9），账上同样**没有用户拍板依据**（`session-tree-plan.md` §9「已拍板」表里
+ * 没有它，只在实现表里出现）⇒ 用户口径「引线是指示不是控件」下整批摘除：受墨带那族
+ * 规则（层内已无消费面）+ 本层的两档抬墨 + 只服务受墨带的 `.pp-branch-layer` 规则
+ * 一并删除，规则整条不留尸体；层位仍走 `.pp-tether-layer`（pointer-events: none）。
+ * **代价明账**：屏幕上的「跳回父卷分叉节点」入口随之消失（卷首眉行那枚「枝」缀字是
+ * 纯文本、无动作）；要恢复须另立一个**真控件**入口，不复活引线按钮。
+ * ⚠ 本次是**删规则**：首帧壳 bundle 里留着插件 CSS 的旧拷贝（`dev-workflow.md` 热更
+ * 「三条边界」条 1），产物热更抹不掉旧拷贝——但受墨带已从 DOM 消失，旧拷贝恒不命中；
+ * 重建 exe 后 CSS 面才彻底干净。 */
+.pp-branch-tether {
+  opacity: 0.55;
+}
+
+/* ── 匣脚引线（2026-09-22）：坞的版口钮 → 活卷的纸脚 ──
+ * 病灶（用户）：「多会话卷的激活态一直没做好」——活卷的信号全在纸上，坞与纸上任何一卷
+ * 之间没有任何可见联系。
+ * 卷端落点**二版改档**（用户打回一版「你这个引线能挂在页尾吗……你挂在第一条用户输入
+ * 那不是乱了套了」）：一版接在卷首规线左端那枚钮上——那枚钮是「哪一卷活跃」的标记，
+ * 位置又压在标题与第一条来文的接缝上，线读起来像在指第一条来文。二版改接**纸脚**
+ * （版心左缘 × 卷底边）：纸的材料缘、没有字，且它才是「这一卷写到哪儿」的那一端。
+ * 坞端不变（坞顶左端那枚 56×3 朱短横 = 匣口）。两处落点规则分别在本文件卷首段与坞段；
+ * 本注释刻意不写选择器字面量——有钉值测试按 `indexOf(选择器)` 截规则体，注释里出现
+ * 同一串会把它截到别处，实测踩过。
+ * 与枝边那条腿同族（常显 = 结构不是瞬时手势），两处不同各记理由：
+ *   ① 锚面外法向（匣顶朝上 / 卷底边朝下——判例原文就是「锚面法向」，前两条腿因锚面
+ *      皆竖面才写死水平）+ 臂长下限——几何与判例依据见 `paper/provenance.ts`
+ *      「版口引线批」与 `dock-tether.ts` 头注；
+ *   ② 层位仍在 z 4（引线层那条规则）：坞在 z 6 之上 ⇒ 线不盖家具；坞端起点那枚朱点
+ *      落在钮上（钮 3px 高、点半径 2.2，露在匣外的部分占九成）——线从匣口「起笔」，
+ *      不从匣身上跨过。
+ * 墨阶：常显走半档 .55（同枝边——一屏一线，不抢正文），**没有 hover 档**。
+ *
+ * **归因更正（2026-09-24）**：本腿落地时带一条透明受墨带（`.pp-tether-hit`，2026-09-24
+ * 随该族规则整族删除）承接点击，并配「hover / 聚焦抬回 .9」两档提升——账上记为
+ * 「同日拍板 可点溯源」，实为 agent
+ * 自记；用户否认：「我从来也没有拍板过引线本体要做成按钮」。**引线是指示不是控件** ⇒ 本腿的
+ * 受墨带与点击整条摘除（DOM 在 `PaperPanel.tsx`），抬墨两档随之删除——规则整条不留尸体。
+ * **同族第二刀**：枝边那条腿的受墨带与本层同日摘除（见上「枝边层」段）⇒ 受墨带那族规则
+ * （`.pp-tether-hit` 等）全仓**已无消费面**，随第二刀一并删除。**引线一律不可点。**
+ * ⚠ 本次是**删规则**：首帧壳 bundle 里留着插件 CSS 的旧拷贝（`dev-workflow.md` 热更
+ * 「三条边界」条 1），产物热更抹不掉旧拷贝——但这两条的被匹配者（本腿的受墨带）已从 DOM
+ * 消失，旧拷贝恒不命中；重建 exe 后 CSS 面才彻底干净。 */
+.pp-dock-tether {
+  opacity: 0.55;
+}
+
+/* 冷启动本地提示（无会话发送防护——UI 层直示，不入消息 store）；贴黄同族 */
+.pp-local-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: color-mix(in oklch, var(--warn) 12%, var(--paper));
+  border-bottom: var(--rule-soft);
+  color: var(--warn);
+  font-size: var(--fs-body);
+  flex-shrink: 0;
+}
+.pp-local-notice button {
+  margin-left: auto;
+  background: none;
+  border: var(--rule-soft);
+  color: var(--ink-2);
+  border-radius: 0;
+  padding: 2px 10px;
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  cursor: pointer;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.pp-local-notice button:hover {
+  color: var(--seal-deep);
+  border-color: var(--seal);
+}

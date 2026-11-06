@@ -14,7 +14,7 @@
 // @vitest-environment node
 
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname, '..', 'src');
@@ -110,11 +110,28 @@ describe('界面字阶 · 字号只准取档', () => {
   });
 });
 
+/** 被别的 CSS @import 的片段（不是产物入口）。
+ *
+ *  2026-11-06 上帝文件治理 P2：PaperPanel.css 拆成 12 个分片后，分片自己不必再
+ *  @import type-scale.css——入口带一次就够；片内再带一次会在产物里把字阶内联 12 遍。
+ *  「产物自包含」的真实判据是**入口**自包含。 */
+function importedFragments(): Set<string> {
+  const out = new Set<string>();
+  for (const file of ALL_CSS) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/@import\s+['"]([^'"]+\.css)['"]/g)) {
+      out.add(resolve(dirname(file), m[1]));
+    }
+  }
+  return out;
+}
+
 describe('界面字阶 · 产物自包含', () => {
   it('用到字阶的产物 CSS 必须 @import type-scale.css（旧 exe + 新产物不塌成继承）', () => {
     const missing: string[] = [];
+    const fragments = importedFragments();
     for (const file of ALL_CSS) {
       if (!file.includes(join('plugins', 'builtin'))) continue;
+      if (fragments.has(file)) continue; // 分片：由入口带入字阶（见 importedFragments 注）
       const css = readFileSync(file, 'utf8');
       if (!css.includes('var(--fs-')) continue;
       if (!css.includes('type-scale.css')) missing.push(relative(SRC, file));

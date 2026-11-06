@@ -13,8 +13,6 @@
 //      aria-label 已报阶段序，编号是重复的可视读数）。
 // 另加滑块抓手（is-dragging）与卡片语色/eyebrow 的行为钉。
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,11 +49,9 @@ import type { RegionView } from '../src/paper/region-view';
 import { STRIP_TOP, TOC_CARD_FLIP_Y, TOC_COL_W, TOC_W, TocStrip } from '../src/plugins/builtin/compose-dock/TocStrip';
 import type { WorkUnit } from '../src/plugins/builtin/paper-shell/group';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
+import { readPanelCss } from './helpers/panel-css';
 
-const PANEL_CSS = readFileSync(
-  join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
-  'utf8',
-);
+const PANEL_CSS = readPanelCss();
 function ruleBody(css: string, selector: string): string {
   const i = css.indexOf(selector);
   if (i < 0) return '';

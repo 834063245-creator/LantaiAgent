@@ -37,12 +37,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readPanelCss } from './helpers/panel-css';
 
 const SRC = join(__dirname, '..', 'src');
 const TAURI_SRC = join(__dirname, '..', '..', 'src-tauri', 'src');
 const read = (...p: string[]) => readFileSync(join(...p), 'utf8');
 const CSS_FILES = [
-  ['paper-shell/PaperPanel.css', read(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css')],
+  ['paper-shell/PaperPanel.css', readPanelCss()],
   ['canvas-nav/spine-rack.css', read(SRC, 'plugins', 'builtin', 'canvas-nav', 'spine-rack.css')],
   ['canvas-nav/session-sidebar.css', read(SRC, 'plugins', 'builtin', 'canvas-nav', 'session-sidebar.css')],
   ['paper-minimap/minimap.css', read(SRC, 'plugins', 'builtin', 'paper-minimap', 'minimap.css')],
@@ -79,7 +80,7 @@ describe('标题栏触发范围：页面不声明 app-region，命中范围由�
 
   it('画布视图的书眉布局行已退役：画布铺满整窗（顶缘 = 屏缘），热区收进顶部浮件', () => {
     const panel = read(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx');
-    const css = read(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css');
+    const css = readPanelCss();
     // 书眉 = 56px 布局行 ⇒ 画布顶缘被推离窗口顶，边缘滚动的「指针甩到屏顶」落空
     expect(panel).not.toContain('"pp-topbar"'); // 注释里的历史沿革不算声明
     expect(declarations(css)).not.toContain('pp-topbar');

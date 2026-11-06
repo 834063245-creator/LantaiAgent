@@ -1,0 +1,561 @@
+/* paper-shell · toc — 目次带 v4.1 + 骨架 + 阶段锚
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+/* ── 目次带 v4.1（2026-10-20：两栏 / 编号 / 纸捻；同日实机修订）──
+ * 结构 = **目次栏（左 64）+ 书口墨影（右 40）**：
+ *   - 左 64 控制列 = 一条 1px 竖脊（x=14）+ 阶段规（朱砂横线）+ 阶段编号
+ *     （mono 9–10px，自适应：与上一枚编号落差 < 12px 就省，当前阶段恒在）
+ *     + 视觉窗口滑块（只留上下两条朱规 + 右缘纸捻抓手）；
+ *   - 右 40 = 识别层（= 缘滚跑道）：行宽剪影**右对齐**贴死屏幕缘、参差朝向栏；
+ *     墨量管深浅，族色直接染剪影（人=朱砂最响 / 工具程文=石青次之 / 图表最弱），
+ *     错另立 4px --fail 短规。**刻意不留「页层缝」**：1x 下 2px 条 + 1px 缝
+ *     读作扫描线噪声（原型实测），整桶实心才像纸口。
+ *   - 材质 = 一枚贴在桌缘的纸捻：纸底（不透明）+ 左缘一道 --rule-strong 硬边
+ *     + 受光/背光缘 + **自带纸纹**（`::before` 四层配方，同书脊列；canvas 态下
+ *     文档级 grain 被 foundation.css 隐去，不自挂纹理就必然读作「纯色底」——
+ *     这是 2026-10-20 实机首版的原话）。
+ *   - 映射区**上下都留空隙**：顶 = 56（顶部浮件带高，同日实机意见），底 = 坞顶线；
+ *     带脚竖排「目次」小签原有一枚，**同日实机意见已摘**。
+ * **翻案（对 2026-09-21「识别层铺满保留」）**：2026-09-19 同日「甲案」把识别层
+ * 铺满 104px（agent 自提；2026-09-21 用户只裁「摘线 + 识别层铺满保留」）。本批
+ * 把识别层收回右 40——铺满不是唯一解：空出来的左 64 由**编号**填，不再靠拉宽
+ * 墨迹；长卷（90 屏）里 104px 满宽墨迹读作一堵墙，40px 纸口才读得出版心。
+ * 理由与证据记入 taste-ledger 2026-10-20 条，**待用户复核**。
+ * 界栏线仍不得复活：本批没有任何「控制列/跑道」分界线，墨影自己的左缘就是界。
+ *
+ * 病史（详见规格书 §13）：v2 右缘窄条 / 屏幕固定 / 内容跟随活跃会话，三层 =
+ * canvas 内容指纹 / 滑块与未读区 / 语义刻痕（user=朱砂横杠、tool=石青、
+ * plan=石墨、error=--fail 实心短刻——朱砂=人铁律，报错走语义状态）。
+ * 2026-09-14（用户二报「标题栏还是和目次带打架」→ 带体整体下移 top: var(--bar-h)）
+ * → **2026-09-17 标题栏拆除批：书眉退役，那 56px 下移取消**——带体回到 `top: 0`，
+ * 从屏顶起（带体坐标与页面坐标自此重合）。v4.1 起映射区顶不再是 4，而是 56
+ * （带体仍从屏顶起，只是顶部留白）；带内一切元素恒 top ≥ 0。
+ *
+ * **2026-09-19 加宽批**（用户「由于边缘滚动的落地，我需要再次加宽我的目次带，
+ * 因为会有误触的问题」）：带体 64 → 104 = 控制列 64 + 缘滚跑道 40，治「用带导航」
+ * 与「贴右缘缘滚」抢同一条带的误触；控制列宽度逐字未动（刻痕/锚/滑块/卡零漂移）。
+ * 同日「甲案」把识别层铺到 104（agent 自提）——**本批翻案收回右 40**，理由见上。
+ * **2026-09-21 摘线**（用户「我从来也没拍板过界栏线」）：甲案原附的 `.pp-toc::after`
+ * 界栏线整条删除，归属更正入 taste-ledger；本批同样不设任何分界线。
+ * 跑道本体**惰性**：无 handler（交互判据在组件里按控制列夹紧）、光标默认、
+ * 点击只被吞掉不做事（不吞就点穿到纸上划词），而悬停照旧算画布 ⇒ 贴屏最右
+ * 照旧缘滚（edge-scroll 的 HOVER_ALLOW_DOCKS）。 */
+.pp-toc {
+  position: fixed;
+  right: 0;
+  top: 0; /* 屏顶——书眉已退役（2026-09-17），带体通栏 */
+  bottom: 0;
+  width: 104px; /* = 控制列 64（.pp-toc-col）+ 缘滚跑道 40；浮件右距按此值让位（+16） */
+  /* 纸捻（2026-10-20 实机修订）：**不透明**纸底 + 左缘硬边 + 受光/背光缘。
+   * 旧版（同日首版）只做到 48% paper-deep，实机读作「纯色底」——本版把纸口
+   * 明度拉开（右缘 78% paper-deep）并给左内 2px 受光 + 右缘 2px 背光 + 10px
+   * 内影；仍是**无纹理**的固定家具（与书脊「小尺寸用线」同法，不加纸纹）。 */
+  border-left: var(--rule-strong);
+  background: linear-gradient(
+    90deg,
+    var(--paper) 0%,
+    color-mix(in oklch, var(--paper-deep) 52%, var(--paper)) 16%,
+    color-mix(in oklch, var(--paper-deep) 78%, var(--paper)) 100%
+  );
+  box-shadow:
+    inset 2px 0 0 var(--sheet-lit),
+    inset -2px 0 0 var(--sheet-shade),
+    inset 10px 0 14px -14px rgba(38, 34, 28, 0.45);
+  z-index: 5; /* 居画布之上、坞槽(z-6)之下；顶部浮件(z-30)居其上并已按带宽让位 */
+  touch-action: none;
+  cursor: default; /* 带体默认光标 = 跑道口径（惰性）；可交互光标在 .pp-toc-col */
+}
+/* 纸面纹理（2026-10-20 实机修订）：canvas 态下 foundation.css 把文档级 grain
+ * 隐去（`body:has(.pp-root)`），固定家具若只有平色就必然读作「纯色底」——书脊列
+ * 早用 `::before` 自挂同一套四层配方（见 canvas-nav/spine-rack.css），目次带同法。
+ * `z-index:-1` 在本带（stacking context）的底色之上、所有子件之下：墨影/编号/卡
+ * 都不吃纹理。**这不是界栏线**（`.pp-toc::after` 已于 2026-09-21 摘除，且仍禁止
+ * 复活）；它只是整条带自己的纸面材质。 */
+.pp-toc::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.55; /* 104px 窄带上比书脊再收一档，防纹理抢墨影 */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    url("../../../assets/paper/paper-grain.jpg"), url("../../../assets/paper/paper-fiber.jpg"), var(--laid-lines);
+  background-size:
+    180px 180px,
+    2048px 2048px,
+    2048px 2048px,
+    auto;
+  background-repeat: repeat;
+  background-blend-mode: normal, multiply, multiply, multiply;
+  filter: brightness(1.05);
+}
+/* 控制列 = 带内**唯一可交互面**（组件把 scrub / hover 卡判据夹在本列内）。
+ * 它同时是控制层子件的**定位父**：滑块/刻痕/锚/卡沿用「left/right 贴列缘」的
+ * 旧写法即自动收在 64px 内，列右（跑道）留给缘滚。识别层不在本列里
+ * （画布在带体右 40，见 .pp-toc-ink）。 */
+.pp-toc-col {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 64px;
+  cursor: pointer;
+}
+/* 识别层画布（v4：**只占右 40** = 缘滚跑道）——组件按 clientWidth 算横向缩放比。
+ * ⚠ **canvas 是 replaced element：`width: auto` 会用固有宽（默认 300），而不是
+ * 解 left/right**——2026-10-20 实机首版就栽在这里：画布实际 300px 宽，组件按
+ * W=300 右对齐画，墨影全画到屏外（用户：「墨影并不存在」）。必须**给死宽**
+ * `TOC_W − TOC_COL_W = 40`（组件常量与 CSS 两处同改）。 */
+.pp-toc-ink {
+  position: absolute;
+  left: 64px;
+  right: auto;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  height: 100%;
+  pointer-events: none;
+}
+/* ── 目次栏的骨架（v4）：一条 1px 竖脊 + 上下端规 ──
+ * 竖脊 x=14：锚/刻痕都挂在它上面（刻痕从脊往右长 2px，锚规从脊往右长 20px）；
+ * 端规标出映射区的首尾（映射区上下都留空隙：顶 = 顶部浮件带 56，底 = 坞顶线）。
+ * 二者都惰性。**带脚竖排「目次」小签已按用户 2026-10-20 实机意见摘除**。 */
+.pp-toc-rail {
+  position: absolute;
+  left: 14px;
+  width: 1px;
+  background: color-mix(in oklch, var(--ink-3) 55%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+.pp-toc-cap {
+  position: absolute;
+  left: 0;
+  width: 64px;
+  height: 1px;
+  background: color-mix(in oklch, var(--ink-3) 42%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+/* 滑块 = 视觉窗口（v4）：只留上下两条朱规 + 右缘一枚纸捻抓手，不再是一只描边空盒。
+ * 抓手在列右缘（贴 seam），hover / 拖动态由组件下发 is-dragging。 */
+.pp-toc-slider {
+  position: absolute;
+  left: 2px;
+  right: 4px;
+  background: color-mix(in oklch, var(--seal) 5%, transparent);
+  border: none;
+  border-top: 1px solid color-mix(in oklch, var(--seal) 32%, transparent);
+  border-bottom: 1px solid color-mix(in oklch, var(--seal) 32%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+.pp-toc-slider.is-fit {
+  background: transparent;
+  border-color: color-mix(in oklch, var(--seal) 16%, transparent);
+}
+.pp-toc-grip {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 2px;
+  height: 18px;
+  transform: translateY(-50%);
+  background: color-mix(in oklch, var(--seal) 52%, transparent);
+  transition:
+    height var(--snap),
+    background var(--snap);
+}
+/* 悬停整条带 = 预抓（抓手吐出一档）；真拖着时再亮一档。 */
+.pp-toc:hover .pp-toc-grip {
+  height: 24px;
+}
+.pp-toc-slider.is-dragging .pp-toc-grip {
+  height: 28px;
+  background: var(--seal);
+}
+.pp-toc-slider.is-fit .pp-toc-grip {
+  display: none; /* fit 态不可拖：没有抓手 */
+}
+/* 未读区：上翻欠账的新内容段（多为机来文 → 石青淡染，非朱砂——朱砂=人铁律）。
+ * v4：与墨迹同住右 40（识别层），不染目次栏的编号。 */
+.pp-toc-unread {
+  position: absolute;
+  left: 64px;
+  right: 0;
+  background: color-mix(in oklch, var(--indigo) 12%, transparent);
+  border-top: 1px solid color-mix(in oklch, var(--indigo) 42%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+/* 语义刻痕 = **装饰/扫读层**（色 + 形双通道：error 实心满高，其余细横杠）：
+ * 不参与命中（pointer-events:none；DOM 侧是 aria-hidden 惰性元素）——目次带
+ * 的可点目标只有阶段锚（见下）。实测病史（2026-09-14）：289 枚刻痕全做命中盒
+ * 时平均间距 3.8px、命中盒 10×8 相互叠压，点自己那枚只有 7.3%。 */
+.pp-toc-mark {
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  pointer-events: none;
+  z-index: 3;
+}
+.pp-toc-mark::before {
+  content: "";
+  position: absolute;
+  left: 14px; /* 挂在竖脊上（v4：x=14 是目次栏的脊） */
+  top: 1px;
+  width: 2px;
+  height: 6px;
+  background: var(--ink-2);
+}
+.pp-toc-mark.is-user::before {
+  background: var(--seal);
+}
+.pp-toc-mark.is-tool::before {
+  background: var(--indigo);
+}
+.pp-toc-mark.is-plan::before {
+  background: var(--graphite);
+}
+.pp-toc-mark.is-error::before {
+  left: 13px;
+  width: 4px;
+  height: 8px;
+  background: var(--fail);
+}
+/* 卡片所示即高亮所在：hover 卡指到哪枚装饰刻痕，那枚提墨一档
+ *  （装饰层 pointer-events:none → :hover 不再可达，改由组件下发 is-hover） */
+.pp-toc-mark.is-hover::before {
+  background: var(--ink-1);
+}
+.pp-toc-mark.is-error.is-hover::before {
+  background: var(--fail);
+}
+/* ── 阶段锚 = 带内**唯一可点目标**（2026-09-14 甲：可点层与装饰层分家）──
+ * 朱砂＝人（阶段由人来文开启）；横规一档宽于刻痕，与流内阶段细线/单元界短规
+ * 同族。命中盒 28px 高（热区纪律 ≥24px；高度值 = TocStrip STAGE_HIT_H 单一
+ * 真源，改动两处同改），视觉规线在盒内居中；盒宽 34px（左缘栏）——带右侧
+ * 留给连续 scrub（滚动条语义），两者不抢同一根指针。
+ * v4：规线从竖脊（x=14）往右长 20px；**阶段编号**在规线右侧（x=36），
+ * hover 展宽一档（24px），当前阶段再高一档（3px + 脊上一枚 3px 方点）。
+ * `is-hover` 由组件按 hover 的 y 下发（不依赖指针是否落在 34px 盒内——
+ * 编号在盒外，靠它才能与卡片同步提墨）。 */
+.pp-toc-anchor {
+  position: absolute;
+  left: 0;
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  cursor: pointer;
+  z-index: 4;
+}
+.pp-toc-anchor::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 2px;
+  background: var(--seal);
+  transition:
+    width var(--snap),
+    background var(--snap);
+}
+.pp-toc-anchor:hover::before,
+.pp-toc-anchor:focus-visible::before,
+.pp-toc-anchor.is-hover::before {
+  width: 24px;
+  background: var(--seal-deep);
+}
+.pp-toc-anchor.is-active::before {
+  width: 24px;
+  height: 3px;
+  background: var(--seal-deep);
+}
+.pp-toc-anchor.is-active::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  transform: translateY(-50%);
+  background: var(--seal-deep);
+}
+/* 阶段编号（v4 的目次感所在）：mono 9px × font-scale、数字等宽、默认 ink-3 弱化；
+ * 当前阶段朱砂加粗，hover 提墨。**自适应**由组件决定（与上一枚落差 < 12px 就省，
+ * 否则长卷里编号会叠成一团）；编号是标签不是靶——命中仍归 34px 的锚盒 + 点带 scrub。 */
+.pp-toc-num {
+  position: absolute;
+  left: 36px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklch, var(--ink-3) 78%, transparent);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.pp-toc-anchor.is-active .pp-toc-num {
+  color: var(--seal-deep);
+  font-weight: 600;
+}
+.pp-toc-anchor.is-hover .pp-toc-num,
+.pp-toc-anchor:hover .pp-toc-num,
+.pp-toc-anchor:focus-visible .pp-toc-num {
+  color: var(--ink-1);
+}
+/* 活线：流式运行 writing head（石青呼吸——机=石青语义，pp-breathe 复用；
+ * 坐标随映射底（坞顶线）由组件内联 top 下发）。v4：仍横贯整条带（含目次栏）——
+ * 它是「流到哪了」的带级读数，不涉命中。 */
+.pp-toc-head {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--indigo);
+  animation: pp-breathe 1.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 4;
+}
+/* hover 预览卡：带左纸感浮层（原生 title 退役）。
+ * **2026-10-20 修 bug**：旧规则只有 `max-width: 260px`、定位用 `right: calc(100% + 10px)`，
+ * 在 64px 控制列里算出**负可用宽**，shrink-to-fit 把卡塌成 36.1×249.1 的一条竖字
+ * （实机同构复现）——所以卡看起来像「一列竖排的字」。现在定宽 268 + border-box，
+ * 宽度不再由定位反推；超出仍走 overflow-wrap。 */
+.pp-toc-card {
+  position: absolute;
+  right: calc(100% + 12px);
+  width: 268px;
+  box-sizing: border-box;
+  transform: translateY(-50%);
+  padding: 9px 12px 10px 14px;
+  background: var(--paper);
+  border: var(--rule-strong);
+  border-radius: 0;
+  box-shadow: var(--elev-menu);
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--ink-1);
+  pointer-events: none;
+  z-index: 80;
+  overflow-wrap: anywhere;
+}
+/* 左侧 2px 语色条（卡片的「族」）+ 右缘缺口（指向带体）。 */
+.pp-toc-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ink-4);
+}
+.pp-toc-card::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  transform: translateY(-50%) rotate(45deg);
+  background: var(--paper);
+  border-top: 1px solid var(--rule-strong-ink);
+  border-right: 1px solid var(--rule-strong-ink);
+}
+.pp-toc-eyebrow {
+  display: block;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+.pp-toc-card.is-tone-stage::before,
+.pp-toc-card.is-tone-human::before {
+  background: var(--seal);
+}
+.pp-toc-card.is-tone-stage .pp-toc-eyebrow,
+.pp-toc-card.is-tone-human .pp-toc-eyebrow {
+  color: var(--seal-deep);
+}
+.pp-toc-card.is-tone-tool::before {
+  background: var(--indigo);
+}
+.pp-toc-card.is-tone-tool .pp-toc-eyebrow {
+  color: var(--indigo);
+}
+.pp-toc-card.is-tone-plan::before {
+  background: var(--graphite);
+}
+.pp-toc-card.is-tone-plan .pp-toc-eyebrow {
+  color: var(--graphite);
+}
+.pp-toc-card.is-tone-error::before {
+  background: var(--fail);
+}
+.pp-toc-card.is-tone-error .pp-toc-eyebrow {
+  color: var(--fail);
+}
+.pp-toc-card.is-tone-text::before {
+  background: var(--ink-4);
+}
+.pp-toc-card.is-tone-text .pp-toc-eyebrow {
+  color: var(--ink-3);
+}
+
+/* 创作坞设置行内的 ModelSelector 压缩（2026-09-06 收口：定宽 150——开合/
+   换模型名不推挤同行控件，「固定住不跳动」；超长名触发器内截断，全名在 title） */
+.pp-composer-settings .ms-container {
+  /* 2026-10-22 P1：150 → 215。150 把「DeepSeek V4.1 Flash (latest)」截成
+   * 「DeepSeek V4.1 Fl...」；215 给名称列 173px（实机 scrollWidth），整名读全，
+   * 窄窗仍容得下整行（215+100+123+103+57+69+48=715 < 788 内容宽）。 */
+  flex: 0 0 215px;
+}
+.pp-composer-settings .ms-input-wrap input {
+  font-size: var(--fs-body);
+}
+.pp-composer-settings .ms-input-row {
+  min-height: 24px;
+}
+/* 创作坞在窗口底部——模型下拉必须向上开，否则 280px 菜单落到屏幕外；
+   2026-08-26 重构：下拉加宽（min-width 300）让模型名整行可见，不再截断 */
+.pp-composer-settings .ms-container .ms-dropdown {
+  top: auto;
+  bottom: calc(100% + 4px);
+  max-height: 260px;
+  z-index: 80;
+  right: 0;
+  min-width: 300px;
+}
+
+/* rework P2-1 + DSH 移植（2026-08-26）：紧凑触发器（收起态 = 厂商 monogram + 人类模型名 + 箭头）
+ * 2026-09-01 重皮：盒→线——触发器走纯文字，与权限三档/思考/翰律同语言 */
+.pp-composer-settings .ms-container .ms-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%; /* 2026-09-06 收口：填满定宽容器——pill 宽恒定 */
+  min-width: 0;
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  padding: 2px 2px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pp-composer-settings .ms-container .ms-trigger:hover {
+  color: var(--ink-1);
+  background: transparent;
+}
+/* DSH ProviderIcon 的 monogram 替代——触发 pill 里的厂商首字 chip */
+.pp-composer-settings .ms-provider-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  /* 2026-10-22 P1 红色预算：厂商 = 机器身份，不是人的动作。旧实心朱砂方块是坞内
+   * 最响的红之一，把「全放」底线/拟文印/版口钮的朱砂语义冲淡。改纸色底 + 墨字 +
+   * 发丝框——读作一枚小签，不抢朱砂。 */
+  color: var(--ink-2);
+  background: var(--paper-deep);
+  border: 1px solid var(--ink-4);
+  border-radius: 0; /* 2026-08-29 走查：3px 圆角违例（印刷品无圆角） */
+}
+.pp-composer-settings .ms-trigger-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 2026-10-22 P1：模型名是设置行里唯一的「值」，抬到 600 + 正文墨；厂商章/
+   * caret 仍 400/ink-3——同一行里读出「谁（章）· 什么模型（名）· 可换（箭头）」。 */
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.pp-composer-settings .ms-trigger-caret {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: var(--fs-micro);
+}
+/* DSH 不可用状态（2026-08-26）：会话模型所属 provider 已不在配置里——warn 字色 + ⚠（重皮后无线可染） */
+.pp-composer-settings .ms-trigger.ms-trigger-unavailable {
+  color: var(--warn);
+}
+.pp-composer-settings .ms-trigger.ms-trigger-unavailable:hover {
+  color: var(--warn);
+  background: transparent;
+}
+.pp-composer-settings .ms-trigger-unavail {
+  flex: 0 0 auto;
+  font-size: var(--fs-micro);
+  line-height: 1;
+  color: var(--warn);
+}
+
+/* rework P2-1：下拉供应商分组头（DSH ProviderGroupHeader 形态：图标 + 名字） */
+.pp-composer-settings .ms-dropdown .ms-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--f-song);
+  /* 2026-10-22 P1：9px 全大写 mono 是「机读标签」语汇，放在这是一句人读的
+   * 厂商分组题；抬到 11px/600 + 正文墨，去大写与 0.2em 字距。 */
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  padding: 8px 12px 3px;
+  text-transform: none;
+}
+.pp-composer-settings .ms-dropdown .ms-group-head .ms-group-mark {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  font-size: var(--fs-micro);
+  border-radius: 0;
+}
+.pp-composer-settings .ms-dropdown .ms-group-head .ms-group-name {
+  letter-spacing: 0.02em;
+}
+/* B3（2026-08-27）：无 Key 厂商标注——选中即 MISSING_CREDENTIAL 的预警 */
+.pp-composer-settings .ms-dropdown .ms-group-head .ms-group-nokey {
+  margin-left: 8px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--warn);
+  border: 1px solid color-mix(in oklch, var(--warn) 40%, var(--paper));
+  padding: 0 4px;
+}
+/* D8（2026-08-29）：目录拉取中标注——机器在干活（石青=机铁律），区别于失败警告黄 */
+.pp-composer-settings .ms-dropdown .ms-group-head .ms-group-fetch {
+  margin-left: 8px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--indigo);
+  border: 1px dashed color-mix(in oklch, var(--indigo) 40%, var(--paper));
+  padding: 0 4px;
+}

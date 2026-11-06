@@ -24,14 +24,12 @@
 //
 // @vitest-environment node
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ANCHOR } from '../src/paper/canvas-math';
 import { CHROME_TOKENS } from '../src/plugins/builtin/paper-shell/type-tokens';
+import { readPanelCss } from './helpers/panel-css';
 
-const SRC = join(__dirname, '..', 'src');
-const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
+const PANEL_CSS = readPanelCss();
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——纸壳 CSS 规则无嵌套），并**剥掉
  *  注释**：本批的规则体内联了「旧写法为什么是死带」的注（`calc(100% + 2px)` 字面

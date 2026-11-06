@@ -39,7 +39,6 @@ const EXTS = /\.(ts|tsx|css|rs)$/;
  *  要改大：同 commit 在 commit message 里写一句为什么（哪条能力非长不可），否则就是
  *  静默长胖；降到 LIMIT 以下请删条目（销账制）。 */
 const DEBT: Record<string, number> = {
-  'src-ui/src/plugins/builtin/paper-shell/PaperPanel.css': 6777,
   'engine/src/lsp_manager.rs': 2641,
   'src-ui/src/agent/agent.ts': 2486,
   'engine/src/adapter/query_adapter.rs': 2447,

@@ -6,8 +6,6 @@
 //   kind → presentation 白名单回落正确；未知 kind 仍走 JSON 兜底。
 // 协议：docs/archive/agent-asset-blocks.md §2.9/§2.11/§3（WO-6）。
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -18,6 +16,7 @@ import { createBlock, type SourcedBlock } from '../src/paper/block-model';
 import { paperRenderersPlugin } from '../src/plugins/builtin/paper-renderers';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import { buildHtmlCardDocument, plateSignOf } from '../src/plugins/builtin/renderers/components';
+import { readPanelCss } from './helpers/panel-css';
 
 async function withRenderers(fn: () => void | Promise<void>): Promise<void> {
   const ctx = new Context();
@@ -417,10 +416,7 @@ describe('html 沙箱文档（WO-8）', () => {
   });
 
   it('框视觉并入纸面（2026-10-08 用户报「像嵌套在框里」）：无边框、无纸底，卡底留投影场域', () => {
-    const css = readFileSync(
-      join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
-      'utf8',
-    );
+    const css = readPanelCss();
     const at = css.indexOf('.pp-html-frame {');
     expect(at).toBeGreaterThan(-1);
     const rule = css.slice(at, css.indexOf('}', at));
@@ -489,10 +485,7 @@ describe('图版题签行', () => {
   });
 
   it('题签规线走颜色位（不是拼坏的整条简写——2026-09-17 的 49 处病灶不得复活）', () => {
-    const css = readFileSync(
-      join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
-      'utf8',
-    );
+    const css = readPanelCss();
     const plate = css.slice(css.indexOf('.pp-plate {'), css.indexOf('.pp-plate-sign'));
     expect(plate).toContain('var(--rule-soft-ink)');
     expect(plate).not.toContain('solid var(--rule-soft)');

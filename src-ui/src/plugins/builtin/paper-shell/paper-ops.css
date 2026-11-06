@@ -1,0 +1,742 @@
+/* paper-shell · ops — 消息动作行 / 握把 / 抽纸条 / 划词朱线 / 遮罩 / 宽度手调 / 缩远墨迹 / 眉批栏 / 四角柄 / 空卷题字
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+/* ── 消息动作行（施工单 #5 → 2026-08-31 修订 → 2026-09-19 悬停可达性批 →
+ *    2026-09-20 造型批）──
+ * 内容：各块恒有「抄录」，可立枝的块再有「立枝」；状态类操作（改写/重发）**只在
+ * 各卷最新一条来文上**出现（过时块深回滚无意义，用户拍板摘除）。hover 浮现，
+ * 隐没态不吃指针。
+ *
+ * 2026-09-19 悬停可达性批（用户报「鼠标还没挪过去就消失」+「来文块的按钮和
+ * 后续文字重合」；真 Chrome 走位台架 prototype/msg-ops-hover-ab.html 复现出数）：
+ *  ① **块底 +2px 视觉缝 = 死带**：缝里既不在块内、也不在按钮上，`.pp-block:hover`
+ *     断链 ⇒ 隐没态 pointer-events:none 让按钮**永不可命中**——揭示靠 hover、
+ *     命中又要靠揭示（互为前提）。实测：指针停在缝里 opacity 0；再挪到按钮
+ *     正上方仍 opacity 0，命中落回下一块正文。治法 = **缝并进容器 padding**
+ *     （顶边贴块底，多出的 2px 是透明桥面）：视觉 2px 呼吸不变，hover 链不断。
+ *  ② **来文块块下只有 8px 机械尾距**（ANCHOR.userTailGap——花押那 30px 视觉
+ *     尾距在块内），动作行塞不进 ⇒ 越出块底压住下一块的题签与首行。治法 = 来文
+ *     块的动作行改落**块内尾带**（花押行之上那 30px 空白）：块体之内 ⇒ 零死带、
+ *     零越界。尾带可容行长 = asterismMarginTop(30) + asterismLine(14) − 行底偏移
+ *     (asterismLine + 2) = 28px；现行行长 24px，余 4px（tests/paper-msg-ops-hover
+ *     按 token 真源算、不手抄数字）。
+ *
+ * 2026-09-20 造型批（用户报「这些按钮真的太丑了」）——**动作行改隶注记族**；
+ * 四栏并排出图出数见 prototype/msg-ops-style-ab.html（同名 .NOTES.md 记诊断与代价）：
+ *  ③ **去框**。`border + paper 底` 是全产品**常驻件**的语法（文类签 .pp-kind /
+ *     眉批钉 .pp-marginalia-pin）；hover 瞬时件一律去框纯文字 + hover 朱砂
+ *     （.pp-fold / .pp-marginalia-toggle / .pp-tool-btn）。四枚方框随 hover 一起
+ *     长出来 ⇒ 与「一方向至多两层框」的版框层级打架，观感是通用工具条而非纸面
+ *     批注。去框的额外收益：命中盒靠**隐形 padding** 从 19px 撑到 24px，而可见
+ *     墨量反而变小（旧写法要加高只能把可见的框画大）。
+ *  ④ **来文块的行居中**：题签/正文/花押全在版心轴上，只有动作行左齐 = 孤儿
+ *     （实测行中心比块中心偏左 281px）；回复块保持左齐（与左齐正文同轴）。
+ *  ⑤ **握把并入行尾**成六点握把：旧形态「行内立枝按钮 + 块右端独立枝方框」是
+ *     一个动作两个词、两处落位；并进行盒后块外落位与 `::before` 桥面补丁**一并
+ *     删除**（行盒之内没有缝）。 */
+.pp-msg-ops {
+  position: absolute;
+  top: 100%; /* 顶边贴块底——`calc(100% + 2px)` 的缝曾是死带（见上 ①） */
+  padding-top: 2px; /* 桥面：视觉仍留 2px 呼吸，那 2px 并进命中盒 */
+  padding-left: 6px; /* 纸色遮罩出血：行越出块底时盖住被越过的字（见下 background） */
+  padding-right: 6px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  /* 纸色底 = **隐形遮罩**（同底同色，不显形）：去框之后 glyph 仍不与被越过的正文
+   * 糊在一起——回复块的行悬在块底之外、正压着下一块的题签。 */
+  background: var(--paper);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--snap);
+  z-index: 5;
+}
+/* 来文块专属落位（见上 ②）：块内尾带——花押行（asterismLine）之上 2px；
+ * 并**居中于版心轴**（见上 ④）——行宽随件数变，靠 shrink-to-fit + translate 收中。 */
+.pp-block.pp-user .pp-msg-ops {
+  top: auto;
+  bottom: calc(var(--pp-ch-user-asterismLine) + 2px);
+  padding-top: 0;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+}
+.pp-block:hover .pp-msg-ops,
+.pp-msg-ops:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+.pp-msg-ops button {
+  /* 无框无底（见上 ③）：盒只剩**隐形热区**——11px 字 + padding 4/7 = 命中盒 26×24
+   * （旧写法 29×19：可见的框把高度顶死了）。行底纸色由容器给，按钮自身透明。 */
+  padding: 4px 7px;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  line-height: 16px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  border-radius: 0;
+  transition:
+    color var(--snap),
+    text-decoration-color var(--snap);
+}
+/* hover 一件 = 它自己开口说话：朱砂 + 一丝朱砂底线（全产品 hover/选中的同一语言；
+ * 朱砂=人——hover 是瞬时态，不占「每屏至多一处红」的常驻名额，同文类签 hover）。
+ * `:not(:disabled)` 必需：禁用件照样吃 `:hover`（旧写法靠内联 opacity 压住，
+ * 现归 `:disabled` 就必须在这里排掉——置灰件不许被 hover 点亮）。 */
+.pp-msg-ops button:not(:disabled):hover {
+  color: var(--seal-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--seal);
+}
+/* 不可用（该轮已不可唯一定位撤回——压缩/漂移）= 墨更淡一档、鼠标不变手。
+ * 2026-09-20 收编：旧写法是 JSX 内联 style{opacity:.4, cursor:default}。 */
+.pp-msg-ops button:disabled {
+  color: var(--ink-4);
+  cursor: default;
+}
+/* 件间分隔点（注疏行读法）：落在 gap 正中——translate 收中，与点的字宽无关；
+ * 点左右各 13px 到字（gap 12 + padding 7），`pointer-events: none` 不吃命中盒。 */
+.pp-msg-ops button + button {
+  position: relative;
+}
+.pp-msg-ops button + button::before {
+  content: "·";
+  position: absolute;
+  left: -6px; /* gap 12 的一半 = 缝正中 */
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--ink-4);
+  pointer-events: none;
+}
+
+/* ── 空间手势立枝的握把（P4-①，2026-09-19 → 2026-09-20 并入动作行行尾）──
+ * 位置 = **动作行行尾**（见上 ⑤）：不再是块右端一枚独立方框 ⇒ 一个动作一个视觉入口、
+ * 一条落位纪律、零桥面特例（旧形态那两段——块外 `top:100%/right:0` 落位与
+ * `.pp-block:not(.pp-user) .pp-branch-grip::before` 的 2px 缝补丁——**已删除**：握把
+ * 进行盒后行内没有缝）。显隐随行（行 opacity），故自身不再持 opacity/pointer-events。
+ * 六点由 `::before` 画：字形无关（不吃字体回退），`cursor: grab` 是拖拽件的手势语言。
+ * 只在可立枝的块上渲染（判据同按钮，见 `use-block-ops` 的 branchGrips）。 */
+.pp-branch-grip {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 16px;
+  padding: 3px 4px;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  cursor: grab;
+  transition: color var(--snap);
+}
+.pp-branch-grip::before {
+  content: "";
+  display: block;
+  width: 2px;
+  height: 2px;
+  /* 笔画级圆点：铁律「圆角恒 0」管结构件，不管字形/笔画（同 .pp-circled 的圈点） */
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow:
+    0 -4px 0 currentColor,
+    0 4px 0 currentColor,
+    5px -4px 0 currentColor,
+    5px 0 0 currentColor,
+    5px 4px 0 currentColor;
+}
+.pp-branch-grip:hover {
+  color: var(--seal-deep);
+}
+/* 按下即「抓住了」——与文类签拖出把手同一手势语言（.pp-kind:active 同款）。
+ * 握把刻意**不可聚焦**：它是拖拽件，键盘路径 = 动作行那颗「立枝」按钮（入口单一）。 */
+.pp-branch-grip:active {
+  cursor: grabbing;
+}
+
+/* 斜杠补全面板（施工单 #7）：行首 '/' 时弹出的可用命令列表 */
+.pp-slash {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 340px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-soft-ink);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
+  z-index: 40;
+  padding: 6px 0;
+  /* 向上开的弹层自锚点侧托起（全局 pop 关键帧在 foundation.css） */
+  animation: pop-up var(--m-ink);
+}
+.pp-slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--f-song);
+  transition:
+    background var(--snap),
+    box-shadow var(--snap);
+}
+.pp-slash-item:hover,
+.pp-slash-item.active {
+  background: var(--sel-wash); /* 2026-09-01 审计：去 indigo 蓝选——统一选中墨洗 */
+}
+/* C3（2026-08-27）：键盘导航选中态——与 hover 同底色 + 左缘朱砂指示 */
+.pp-slash-item.active {
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+.pp-slash-shortcut {
+  font-family: var(--f-mono);
+  font-size: var(--fs-body);
+  /* 2026-10-22 P1：键位提示去石青（蓝=机器在跑/语义引注，不是按键）。 */
+  color: var(--ink-2);
+}
+.pp-slash-label {
+  font-size: var(--fs-body);
+  color: var(--ink-2);
+}
+
+/* ── B7（2026-08-27）：后台卷运行指示 + 停止 ── */
+.pp-bg-running {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-caption);
+  font-family: var(--f-mono);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.pp-bg-stop {
+  border: 1px solid var(--rule-soft-ink);
+  background: none;
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--seal-deep);
+  padding: 1px 8px;
+  cursor: pointer;
+  transition: background var(--snap);
+}
+.pp-bg-stop:hover {
+  background: color-mix(in oklch, var(--seal) 10%, var(--paper));
+}
+
+/* ── 抽纸条交互件（收尾批 II：B 浮钮 + A 幽灵预览）── */
+/* 浮钮：块内选区旁浮现——发现性入口（不依赖手势知识） */
+.pp-strip-fab {
+  position: fixed;
+  z-index: 70; /* 2026-09-01 海拔批：300 散写归浮层带（§11 45-90） */
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  letter-spacing: 0.14em;
+  padding: 4px 10px;
+  border: 1px solid var(--seal);
+  background: var(--paper);
+  color: var(--seal-deep);
+  cursor: pointer;
+  box-shadow: var(--elev-raise);
+  border-radius: 0;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.pp-strip-fab:hover {
+  background: var(--seal);
+  color: var(--paper);
+}
+/* ── 划词朱线（2026-09-02 视觉迭代）：流区选区 = 手写朱笔下划线──
+ * 纸不动、只落墨（圈点句读语汇，朱砂=人）；原生洗底在 .pp-region 内退役。
+ * 固定视口层（client 坐标，Range 活矩形），z 62：纸内件带上沿（60）之上、
+ * 浮钮（70）之下——线随字走，不盖交互。主笔 seal 实线 + echo 淡墨第二笔
+ * （浸墨双笔手法）；粗细 1.7px 恒定，手感来自微伏不来自粗细变化。 */
+.pp-sel-ink {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 62;
+}
+.pp-sel-ink path {
+  fill: none;
+  stroke: var(--seal);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  opacity: 0.88;
+}
+.pp-sel-ink path.pp-sel-ink-echo {
+  stroke-width: 1;
+  opacity: 0.32;
+}
+/* 幽灵预览：拖拽过程反馈——带内灰（不成条）/ 带外朱砂（松手成条） */
+.pp-strip-ghost {
+  position: absolute;
+  z-index: 55;
+  pointer-events: none;
+  border: 1px dashed var(--ink-4);
+  background: color-mix(in oklch, var(--paper) 88%, transparent);
+  padding: 6px 10px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+}
+.pp-strip-ghost--ok {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+  background: color-mix(in oklch, var(--paper) 94%, var(--seal) 6%);
+}
+.pp-strip-ghost-tag {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.24em;
+}
+.pp-strip-ghost-text {
+  font-family: var(--f-song);
+  letter-spacing: 0.1em;
+}
+
+/* ── lift 遮罩（P1 抽纸条手感 2026-08-30：拖出时原地「被揭起」占位）──
+ * 世界层绝对定位随视口变换；纸面遮住原文字 + 朱砂虚线（镜像 .pp-strip
+ * 的 rule-dashed 界栏语言与 .pp-strip-ghost 的纸色面），成条后淡出。 */
+.pp-lift-mask {
+  position: absolute;
+  z-index: 45;
+  pointer-events: none;
+  background: color-mix(in oklch, var(--paper-deep) 94%, transparent);
+  border: 1px dashed var(--seal);
+}
+.pp-lift-mask--done {
+  animation: pp-lift-mask-fade var(--m-ink) forwards;
+}
+@keyframes pp-lift-mask-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+/* ── 宽度手调面（P2b：钉住块/纸条右缘 6px）──
+ * hover 即拖拽态（同流区边缘范式，无显式手柄条）；光标 ew-resize。 */
+.pp-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 5;
+}
+
+/* ── 缩远墨迹层（P4 LOD：远缩档屏幕空间 canvas，画真墨行条骨架）── */
+.pp-ink-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* ── 眉批栏（P5 夹注旁注化）：夹注吸附正文块右侧界栏外——古籍旁批形态。
+ * 左侧被文类签列（.pp-kind -132px）占据，右侧空 margin 放眉批；石墨小字
+ * （夹注同族 13.5px/1.85）+ 弱规线起笔。宽度/内缩镜像 measure.MARGINALIA_W/
+ * MARGINALIA_INSET（测高 max(正文, 夹注@侧栏) 的另一半）。 ── */
+.pp-marginalia {
+  position: absolute;
+  top: var(--pp-ch-marginalia-top); /* 测高镜像另一端：CHROME_DERIVED.marginaliaTop */
+  left: calc(100% + var(--pp-ch-marginalia-offset));
+  width: var(--pp-ch-marginalia-width);
+  font-family: var(--f-song);
+  font-size: var(--pp-type-reasoning-size);
+  line-height: var(--pp-type-reasoning-lh);
+  color: var(--graphite);
+  border-left: var(--pp-ch-marginalia-borderL) solid var(--ink-4);
+  padding-left: var(--pp-ch-marginalia-padL);
+  white-space: pre-wrap;
+}
+/* 眉批折叠切换（P5 夹注恒折拍板延续：默认收起「▸ 思考 N 字」，点击展开）。
+ * 行高**必须显式钉死**（2026-09-19 夹注叠字批）：按钮的 UA 默认是
+ * `line-height: normal`，10px 字得 13px 行（引擎相关）；而块高 = max(正文,
+ * 眉批 extent) 要把这一行算进镜像——留默认值就是让测高去猜引擎。 */
+.pp-marginalia-toggle {
+  display: block;
+  margin: 0 0 var(--pp-ch-marginalia-toggleGap);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: var(--pp-ch-marginalia-toggleH);
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.pp-marginalia-toggle:hover {
+  color: var(--seal-deep);
+}
+/* 眉批拖出钉手柄（P5：拖出 = 独立夹注快照钉上画布——拷贝语义公共物） */
+.pp-marginalia-pin {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: var(--graphite);
+  background: var(--paper);
+  border: var(--rule-soft);
+  padding: 2px 5px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.pp-marginalia:hover .pp-marginalia-pin {
+  opacity: 1;
+}
+.pp-marginalia-pin:hover {
+  color: var(--seal-deep);
+  border-color: var(--seal);
+}
+/* 眉批已钉出占位（2026-08-31 移出语义）：快照钉在画布上后，眉批栏原位留洞
+ * （流内 .pp-ghost 同族——虚线框 + 点击拔钉恢复夹注） */
+.pp-marginalia-out {
+  display: block;
+  width: 100%;
+  border: var(--rule-dashed);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  /* 行高同折叠钮：显式钉死（UA normal 是引擎相关值，测高镜像要的是定值） */
+  line-height: var(--pp-ch-marginalia-outLineH);
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  background: none;
+  cursor: pointer;
+  padding: var(--pp-ch-marginalia-outPadV) 0;
+  text-align: center;
+  transition:
+    border-color var(--snap),
+    color var(--snap);
+}
+.pp-marginalia-out:hover {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
+
+/* ── 流区四角横向缩放柄（P6 宽度自由：角落只开放横向——Y 由内容生长）──
+ * hover 现身的小方柄，压在边缘移动面之上（z-index 更高、命中优先）。 */
+.pp-region-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  z-index: 6;
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.pp-region-corner--nw {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+.pp-region-corner--ne {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+.pp-region-corner--sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+.pp-region-corner--se {
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize;
+}
+.pp-region:hover .pp-region-corner {
+  opacity: 1;
+  background: var(--paper);
+  border: 1.5px solid var(--ink-2);
+}
+
+/* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件；收尾 2026-08-24 完整化）── */
+/* 纸条 = 便条族（2026-09-19 便条批 · 与钉住块同一张纸，用户拍板「甲+丙」）：
+ * 09-05 的「虚线退役换物理缘 + 接触落影」翻案——纸条与钉住块是同一种东西
+ * （从纸上摘下来的纸片），必须同族：实色深纸无纹（--paper-deep）+ 纸内白边
+ * （--pp-ch-strip-padV/padH 由 10/12 提到 18/20：墨占从 95% 收到 92%）+ 贴平
+ * 无落影（§11：纸内件无投影）+ 方墨点身份 + 来源行（.pp-strip-src，取自
+ * source.label 快照——拷贝语义的报头）。
+ * 纸条文本**刻意不放开可选**（2026-09-17 选区政策全局化时复核过）：整张纸条是
+ * 拖拽把手（grab，按住即拖走），放开可选 = 在纸条上按下变成扫选、拖不动纸条
+ * （与「纸面正文可选」不是同一回事：正文不是把手）。要抄纸条文字请用块级「抄」钮
+ * （use-block-ops）——同一条通道，不靠划选。 */
+.pp-strip {
+  position: absolute;
+  background: var(--paper-deep);
+  border-radius: 0;
+  padding: var(--pp-ch-strip-padV) var(--pp-ch-strip-padH);
+  color: var(--ink-2);
+  font-size: var(--pp-ch-strip-size);
+  line-height: var(--pp-ch-strip-lh);
+  cursor: grab;
+  z-index: 40;
+  /* 2026-09-23 质感批：纸条跟钉块**同一套语言**（「钉住块与纸条」换装纪律从 09-19
+   * 延续；只改钉块会让两者读起来是两代东西）。同纹同包边同落影，框取单线
+   * （纸条更窄，双线框在 480px 宽上会过重）。 */
+  background-image: url("../../../assets/paper/paper-sheet.jpg");
+  background-size: 900px 900px;
+  box-shadow:
+    var(--shadow-sheet),
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 1px var(--ink-2);
+}
+.pp-strip.pp-dragging {
+  cursor: grabbing;
+  translate: 0 -2px;
+  box-shadow: var(--elev-raise);
+  z-index: 50;
+}
+/* 落定 settle（放下）：轻落归位（手感批——纸条成条/移位的「放下」一拍）。
+ * 与 pp-settle-pin 同判：影列形状跨族不插值，只声明 translate。 */
+@keyframes pp-settle-drop {
+  from {
+    translate: 0 -2px;
+  }
+}
+.pp-strip.pp-settle {
+  animation: pp-settle-drop var(--m-sheet) both;
+}
+/* 两击销毁确认态（2026-09-05，plan §1.2）：首击变「确认？」——常显（不受
+ * hover 门控）+ 朱砂深（销毁是不可逆的用户动作）；3s 超时回退（JSX 状态
+ * 机）。中文文案走楷体（mono 栈无中文字形——P4 教训）。 */
+.pp-strip-remove--confirm {
+  opacity: 1;
+  font-family: var(--f-kai);
+  font-size: var(--fs-micro);
+  color: var(--seal-deep);
+}
+/* 头部：题签 + 销毁钮（两端对齐——销毁钮只在 hover 时显形，不搅纸面）。
+ * 题签 2026-09-19 便条批：方墨点身份（D2 方点语言，与钉住块报头同族）+
+ * 墨阶回落 ink-3——旧案的 seal-deep 是**常显朱砂**，每多一张纸条就多一处
+ * 常驻红，与规格书 §10 法则 3「每屏至多一处红」相抵（人的动作才用朱砂：
+ * 销毁确认态仍走 seal-deep）。 */
+.pp-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.pp-strip-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.24em;
+  color: var(--ink-3);
+}
+.pp-strip-tag::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  background: var(--ink-2);
+}
+.pp-strip-remove {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  padding: 2px 4px;
+  margin: 0;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--snap),
+    color var(--snap);
+}
+.pp-strip:hover .pp-strip-remove {
+  opacity: 1;
+}
+.pp-strip-remove:hover {
+  color: var(--seal-deep);
+}
+.pp-strip-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* 来源行（2026-09-19 便条批）：纸条的报头——「摘自 卷名」，取自抽取那一刻的
+ * source.label 快照（拷贝语义：剪下来的纸片上印着原纸当时的名字，源卷改名不
+ * 追改；块级钉是活引用，出处行走活卷名优先——两者是两套语义，不是两套待遇）。
+ * 旧存档纸条无 label ⇒ 整行不渲染，不编造来路。 */
+.pp-strip-src {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: var(--rule-soft);
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  color: var(--ink-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 小地图样式已迁出（2026-09-05 插件化）：.pp-minimap 家族 → 
+ * plugins/builtin/paper-minimap/minimap.css（第一方插件自携带）── */
+
+/* 空卷题字（2026-08-30）：零块流区的版心竖排占位——古籍虚卷俟补页 */
+.pp-region-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  writing-mode: vertical-rl;
+  font-family: var(--f-song);
+  font-size: var(--fs-lead);
+  letter-spacing: 0.3em;
+  color: var(--ink-4);
+  pointer-events: none;
+}
+
+/* 落笔点（2026-09-06 纸面运行态）：本卷在跑而尾部无湿墨（模型思考/工具
+ * 执行——运行而纸面静止的「死寂窗口」）→ 锚线下方卷轴线一枚石青方点
+ * 呼吸，示「墨将落此处」。锚线 = 最新块底边（流向上生长，新块底边贴锚），
+ * 容器底 = 锚 + 72（STREAM_REGION 底距），bottom:56 → 点在锚下 9~16px。
+ * 湿墨尾点在场时壳层不渲染本点（双点成噪声）。 */
+.pp-quill {
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  margin-left: -3.5px;
+  width: 7px;
+  height: 7px;
+  background: var(--indigo);
+  animation: pp-ink-live 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.pp-mm-band {
+  position: absolute;
+  background: color-mix(in oklch, var(--ink-1) 8%, transparent);
+}
+
+/* 空态（2026-08-30 卷首化）：机读 kicker + 宋体题字 + 注线 + 指引 + 花押三星。
+ * 纯排印构图——质感走排印纪律（taste-ledger R4 定案：材质模拟路线判死），
+ * 全部墨阶饰件档（ink-3/ink-4）。
+ * 2026-09 修复批：①入场动画换成 pp-empty-in（pp-enter 的 to=transform:none
+ * 会覆盖静态 translate(-50%,-50%)，文字右偏半个块宽——空态独立帧只淡入不动位）；
+ * ②pointer-events 只禁整块，CTA 按钮（.pp-empty-cta）单独开 auto（旧代码整块
+ * none 把新开卷按钮的点击一票否决，完全失灵）。 */
+.pp-empty {
+  /* 案头（2026-08-31）：坞升案头当主角后，空态题字上移让位（36% 居上，
+   * 案头坞在下方 var(--composer-rise)（96px 固定）处——同屏不叠） */
+  position: absolute;
+  /* 材质批修复（2026-09-01）：world 内有了不透明桌垫（.pp-desk），空态在 world
+   * 之前且无 z 会被桌垫盖住——提层到世界单元之上 */
+  z-index: 2;
+  top: 36%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  animation: pp-empty-in var(--m-sheet) 0.08s both;
+}
+/* 空态入场：只淡入，不动位（保住 translate(-50%,-50%) 的居中） */
+@keyframes pp-empty-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.pp-empty-kicker {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.3em;
+  color: var(--ink-4);
+  margin-bottom: 18px;
+}
+.pp-empty-title {
+  font-family: var(--f-song);
+  font-size: var(--fs-head);
+  font-weight: var(--weight-display); /* 浸墨：案头题字极端档 */
+  letter-spacing: 0.06em;
+  color: var(--ink-1);
+}
+.pp-empty-rule {
+  width: 44px;
+  height: 1px;
+  background: var(--ink-4);
+  margin: 16px auto 14px;
+}
+/* 空态 CTA（2026-08-31 拍板 A：显式出生入口；2026-09 修复批：换墨线描边款撑起
+ * 按钮身份 + 开 pointer-events——旧整块 none 让这里完全点不中）。
+ * 墨线描边天然呼应空态题字（宋体 + 墨阶），比印章实底更贴纸面语言：
+ * 印章是钤在成品上的身份戳，不该出现在空白出生入口；hover 朱砂落笔 =
+ * 墨色语义铁律「朱砂=人」——逼近动作才出人铁律，平时墨线待命。 */
+.pp-empty-cta {
+  display: inline-block;
+  font-family: var(--f-kai);
+  font-size: var(--fs-body);
+  letter-spacing: 0.22em;
+  line-height: 1.4;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--ink-3);
+  border-radius: 0;
+  cursor: pointer;
+  padding: 7px 24px;
+  margin: 0 auto 16px;
+  pointer-events: auto; /* 父盒 pointer-events:none，按钮单独恢复命中 */
+  transition:
+    color var(--snap),
+    border-color var(--snap),
+    background var(--snap);
+}
+.pp-empty-cta:hover {
+  color: var(--seal-deep);
+  border-color: var(--seal-deep);
+  background: color-mix(in oklch, var(--seal-soft) 18%, transparent);
+}
+.pp-empty-cta:active {
+  transform: translateY(1px);
+}
+.pp-empty-cta:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: var(--ink-3);
+  border-color: var(--ink-4);
+  background: transparent;
+  pointer-events: auto; /* disabled 仍要可命中——否则无 core 时提示无处到达 */
+}
+.pp-empty-hint {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  line-height: 1.8;
+  color: var(--ink-3);
+}
+.pp-empty-asterism {
+  margin-top: 18px;
+  font-size: var(--fs-body);
+  line-height: 1;
+  letter-spacing: 0.6em;
+  text-indent: 0.6em; /* 星距补偿 text-align 居中偏移 */
+  color: var(--ink-4);
+}

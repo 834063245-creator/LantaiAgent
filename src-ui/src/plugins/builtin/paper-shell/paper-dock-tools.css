@@ -1,0 +1,643 @@
+/* paper-shell · dock-tools — 墨量线 / 钤印拟文 / 翰律 / 引 / 界栏 / 历史眉批 / 停止钮
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+/* ── 墨量线（创作坞 v2 2026-08-31）：坞底 1px 墨线──
+ * 本卷已用 token 占模型目录窗口的比例；裸数字徽标退役（[0] 是噪音），
+ * 读数收进 hover title。近满（>80%）转朱砂预警。 */
+.pp-inkline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  pointer-events: auto;
+  cursor: default;
+  transition: opacity var(--snap);
+}
+.pp-inkline > span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: var(--ink-1); /* 浸墨：已用段为浓墨 */
+  transition: width 0.4s var(--m-ease-out);
+}
+.pp-inkline.full > span {
+  background: var(--seal);
+}
+/* rework P2-3：权限三档分段控件 */
+/* 2026-09-01 重皮（对照 dock-v3 黄金样本）：分段盒退役——三档走纯文字语言，
+ * 选中 = 重墨 + 2px 朱砂底线（权限=人=朱砂语义）。设置行只留「拟文印」一个
+ * 墨底锚点（浸墨法则②：每屏唯一主动作），黑块分段与之争锚是审计判定的
+ * 「盒装语言」残留。 */
+.pp-composer .pp-mode-seg {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  gap: 2px;
+  flex-wrap: nowrap;
+}
+/* 复合选择器压 .pp-composer button 通配（印章语言基类）——三档走文字线语言 */
+.pp-composer .pp-mode-opt {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.06em;
+  padding: 3px 8px 4px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.pp-composer .pp-mode-opt:last-child {
+  border-right: none;
+}
+.pp-composer .pp-mode-opt:hover {
+  background: transparent;
+  color: var(--ink-1);
+}
+.pp-composer .pp-mode-opt.selected {
+  background: transparent;
+  color: var(--ink-1);
+  font-weight: 600; /* 浸墨：选中重墨档（非墨底反白——主动作锚点只留拟文印） */
+  border-bottom-color: var(--seal);
+}
+
+/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞）
+ * ⚡ 2026-09-22：本遮罩改为 **portal 到 body**（同附图预览的病灶修复——坞槽的
+ * transform 是 `position: fixed` 后代的包含块，就地渲染时遮罩只有坞那么大）。
+ * 本级 z-index 本就取全局模态档，port 之后语义正好归位，无数值改动。 */
+.pp-mode-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog); /* 2026-08-29 走查：5000 魔法数收编进 tokens 分层 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklch, var(--ink-1) 25%, transparent);
+  animation: veil-in var(--m-ink);
+}
+.pp-mode-dialog {
+  min-width: 320px;
+  max-width: 420px;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong-ink);
+  box-shadow: var(--elev-raise);
+  padding: 18px 20px;
+  color: var(--ink-1);
+  animation: pop-down var(--m-ink);
+}
+.pp-mode-dialog-title {
+  font-family: var(--f-song);
+  font-size: var(--fs-lead);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.pp-mode-dialog-body {
+  font-size: var(--fs-body);
+  color: var(--ink-2);
+  margin-bottom: 16px;
+  line-height: 1.7;
+}
+.pp-mode-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.pp-mode-dialog-actions button {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.08em;
+  padding: 5px 16px;
+  border: 1px solid var(--rule-strong-ink);
+  background: transparent;
+  color: var(--ink-1);
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap),
+    border-color var(--snap);
+}
+.pp-mode-dialog-actions button:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+.pp-mode-dialog-actions .primary {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
+.pp-mode-dialog-actions .primary:hover {
+  background: var(--seal);
+  color: var(--paper);
+}
+
+/* DSH 移植（2026-08-26）：思考档位 = 图标 pill 下拉（替代旧「思考·档」文本按钮 +
+   展开分段行）。off = 脑图标划横线 + 静默灰；选中档 = seal 强调。菜单开在 pill 上方。 */
+.pp-composer-settings .pp-thinking-sel {
+  position: relative;
+  flex: 0 0 auto;
+}
+.pp-composer-settings .pp-thinking-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 2px; /* 2026-09-01 重皮：盒→线——思考走纯文字，与权限三档同语言 */
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.06em;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--snap);
+  /* 行盒相位补偿（2026-10-12）：见「读数件/思考 pill 的行盒相位修正」注 */
+  margin-bottom: 3px;
+}
+.pp-composer-settings .pp-thinking-pill:hover,
+.pp-composer-settings .pp-thinking-pill.open {
+  color: var(--seal-deep);
+}
+.pp-composer-settings .pp-thinking-pill.off {
+  color: var(--ink-3);
+}
+.pp-composer-settings .pp-thinking-pill.off:hover,
+.pp-composer-settings .pp-thinking-pill.off.open {
+  color: var(--ink-2);
+}
+.pp-composer-settings .pp-thinking-icon {
+  flex: 0 0 auto;
+}
+.pp-composer-settings .pp-thinking-pill-caret {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+}
+/* 2026-09-06 收口：档位词定宽——「低/中/高」单字档与「自动/极限」两字档
+   同宽（min-width 5em 盖住「思考 · 两字」全宽），切档不推挤同行控件 */
+.pp-composer-settings .pp-thinking-pill-label {
+  display: inline-block;
+  min-width: 5em;
+  text-align: left;
+}
+.pp-composer-settings .pp-thinking-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 80;
+  min-width: 168px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong-ink);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
+  animation: pop-up var(--m-ink);
+}
+.pp-composer-settings .pp-thinking-opt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 1px solid var(--rule-soft-ink);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.pp-composer-settings .pp-thinking-opt:last-child {
+  border-bottom: none;
+}
+.pp-composer-settings .pp-thinking-opt:hover {
+  background: var(--paper-deep);
+  color: var(--ink-1);
+}
+.pp-composer-settings .pp-thinking-opt.selected {
+  background: var(--sel-wash); /* 2026-09-01 审计：去 seal-soft 粉选——统一选中墨洗 */
+  color: var(--ink-1);
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+.pp-composer-settings .pp-thinking-opt-label {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.pp-composer-settings .pp-thinking-opt-desc {
+  font-size: var(--fs-caption);
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.pp-composer-settings .pp-thinking-opt.selected .pp-thinking-opt-desc {
+  color: var(--ink-2);
+}
+.pp-composer input,
+.pp-composer textarea {
+  flex: 1;
+  min-height: 34px;
+  background: transparent; /* 2026-09-01 审计：去 paper 55% 半透明——半透明纸叠橄榄舞台出脏粉，走坞底纸色 */
+  border: none;
+  border-bottom: var(--rule-soft);
+  border-radius: 0;
+  padding: 8px 2px;
+  font-family: var(--f-song);
+  /* 块体不吃 font-scale（measure.ts 镜像纪律），但输入条是壳件——吃 */
+  font-size: var(--fs-lead);
+  color: var(--ink-1);
+  outline: none;
+  caret-color: var(--seal-deep);
+}
+.pp-composer textarea {
+  resize: none;
+  line-height: 1.6;
+  overflow-y: auto;
+  max-height: 144px;
+  /* 多行时把 composer 撑高——容器是 flex 恒高，改由内容推 */
+  align-self: center;
+  /* 2026-10-21 P0：单行时 autoGrow 曾差 1px（39/38）⇒ 无字也挂原生滚动条；
+   * 全局 `scrollbar-width: thin` 又会盖掉 WebKit 自定义纸面滚动条。此处显式隐藏
+   * ——长文仍可滚轮 / ↑↓ / PageUp 滚，视觉不再破纸。 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pp-composer textarea::-webkit-scrollbar {
+  display: none;
+}
+.pp-composer input:hover,
+.pp-composer textarea:hover {
+  border-bottom-color: var(--ink-3);
+}
+.pp-composer input:focus,
+.pp-composer textarea:focus {
+  border-bottom: 2px solid var(--seal);
+  padding-bottom: 7px; /* 2px 边框替代 1px：补偿下探 1px，行高不跳 */
+}
+.pp-composer input::placeholder,
+.pp-composer textarea::placeholder {
+  color: var(--ink-3);
+}
+/* 泛 .pp-composer button 框已于包含批（2026-09-01）废除：泛选择器强线框
+   会压过坞内嵌套组件（ms-item 等）自身的三边 none——框中框泄漏源；
+   各钮（mode-opt/tool-btn/attach/send）自带样式，不靠泛框。 */
+
+/* ── 钤印拟文（创作坞 v2 2026-08-31）：发送 = 落款钤印──
+ * 墨色实心方章 + 硬偏移投影（浸墨 --shadow-anchor），hover 翻朱砂——
+ * 人=朱砂语义：这是用户的动作。钤印单钮三态（2026-09-03）：空闲=墨印，
+ * 运行中空输入=朱印（停），运行中有输入=墨印（拟文=插话，下轮生效）——
+ * 两枚印同构（实心 + 硬投影），色相即语义：墨=落款 / 朱=中止。 */
+.pp-composer .pp-send {
+  font-weight: 600;
+  background: var(--ink-1);
+  color: var(--paper);
+  border-color: var(--ink-1);
+  box-shadow: var(--shadow-anchor);
+}
+.pp-composer .pp-send:hover {
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper);
+}
+.pp-composer .pp-send:active {
+  background: var(--seal);
+  border-color: var(--seal);
+}
+/* 2026-10-21 P0：空输入 = 未蘸墨的印（描边空心，无硬投影）——不再让一个点不动的
+ * 黑块冒充「每屏唯一主动作」。有字即回墨印；运行中空输入那一位由停钮接管。 */
+.pp-composer .pp-send:disabled,
+.pp-composer .pp-send:disabled:hover {
+  background: transparent;
+  border-color: var(--ink-4);
+  color: var(--ink-3);
+  box-shadow: none;
+  cursor: default;
+}
+
+/* ── 翰 / 律（创作坞 v2 2026-08-31）：设置行右端工具对──
+ * 翰 = 命令面板入口（/ 的可发现性——不再只靠盲打发现斜杠）；
+ * 律 = 快捷键总览（渐进披露：占位符只留一句，键位收进律册）。 */
+.pp-dock-tools {
+  position: relative;
+  display: inline-flex;
+  gap: 8px; /* 2026-10-21 P0：给 ±4px 命中面留缝（21×23 的实机热区偏小） */
+  flex: 0 0 auto;
+}
+.pp-composer .pp-dock-tools .pp-tool-btn {
+  font-size: var(--fs-body);
+  letter-spacing: 0.1em;
+  padding: 3px 4px;
+  background: transparent;
+  border: none; /* 2026-09-01 重皮：盒→线——翰/律走纯文字 */
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.pp-composer .pp-dock-tools .pp-tool-btn:hover,
+.pp-composer .pp-dock-tools .pp-tool-btn.open {
+  background: transparent;
+  color: var(--seal-deep);
+}
+.pp-composer .pp-dock-tools .pp-tool-btn:active {
+  background: transparent;
+  transform: translateY(1px);
+}
+/* 2026-10-21 P0：命中面 ≥28×28（视觉尺寸不变）——单字钮 21×23、读数件高 22
+ * 真机上偏难瞄。伪元素只扩命中盒，不参与排印；相邻件按 8px 间距各让 4px，
+ * 盒边相接不叠压。拖拽锁/翰/律与引/夹、组合/思考/役/墨同族。 */
+.pp-composer .pp-dock-tools .pp-tool-btn,
+.pp-composer .pp-attach,
+.pp-composer-settings .pp-thinking-pill,
+.pp-composer-settings .pp-ink-trigger,
+.pp-composer-settings .pp-work-trigger {
+  position: relative;
+}
+.pp-composer .pp-dock-tools .pp-tool-btn::after,
+.pp-composer .pp-attach::after,
+.pp-composer-settings .pp-thinking-pill::after,
+.pp-composer-settings .pp-ink-trigger::after,
+.pp-composer-settings .pp-work-trigger::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+/* 2026-10-22 P1：透明文字控件的键盘焦点 = 朱砂底线（与输入框同一支笔），不画
+ * 2px 红框——200px 的模型触发器被红框圈住像报错。实心印（拟文/停）仍保留
+ * 全局红框（块面件的焦点语言）。 */
+.pp-composer .pp-dock-tools .pp-tool-btn:focus-visible,
+.pp-composer .pp-attach:focus-visible,
+.pp-composer .pp-mode-opt:focus-visible,
+.pp-composer-settings .ms-trigger:focus-visible,
+.pp-composer-settings .pp-thinking-pill:focus-visible,
+.pp-composer-settings .pp-ink-trigger:focus-visible,
+.pp-composer-settings .pp-work-trigger:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--seal);
+}
+/* 律册（快捷键总览浮层）：向上开，右对齐工具对 */
+.pp-help-sheet {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 90;
+  min-width: 270px;
+  background: var(--paper);
+  border: 1px solid var(--rule-soft-ink);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  animation: pop-up var(--m-ink);
+}
+.pp-help-head {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.2em;
+  color: var(--ink-3);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule-soft-ink);
+  margin-bottom: 2px;
+}
+.pp-help-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+/* 2026-10-22 P2：组与组之间用一条弱线分开（同册页段题语言），组题复刻
+ * 8px 实心方墨锚点 + 10px/600/字距题字。 */
+.pp-help-group + .pp-help-group {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule-soft-ink);
+}
+.pp-help-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--f-song);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: 0.18em;
+}
+.pp-help-group-title::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--ink-1);
+  flex: 0 0 auto;
+}
+.pp-help-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+}
+.pp-help-key {
+  font-family: var(--f-mono);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  /* 2026-10-22 P1：键位不是「机器在跑」（石青语义），也不是链接；归二级墨。 */
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.pp-help-desc {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  color: var(--ink-2);
+}
+
+/* ── 引（创作坞 v2 2026-08-31）：工作区文件模糊引用面板──
+ * 与 .pp-slash 同款向上开弹层；输入框 + 命中清单（basename 加权靠前）。 */
+.pp-yin-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 440px;
+  max-width: calc(100vw - 96px);
+  background: var(--paper);
+  border: 1px solid var(--rule-soft-ink);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档（raise 硬偏移太弱，浮层弹不起来） */
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  animation: pop-up var(--m-ink);
+}
+.pp-yin-panel > input {
+  border: none;
+  border-bottom: 1px solid var(--rule-soft-ink);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  padding: 9px 14px;
+  color: var(--ink-1);
+}
+.pp-yin-panel > input:focus {
+  outline: none;
+  border-bottom: 2px solid var(--seal);
+  padding-bottom: 8px;
+}
+.pp-yin-panel > input::placeholder {
+  color: var(--ink-3);
+}
+.pp-yin-list {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+.pp-yin-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--f-song);
+  transition: background var(--snap);
+}
+.pp-yin-item:hover,
+.pp-yin-item.active {
+  background: var(--sel-wash); /* 2026-09-01 审计：去 indigo 蓝选——统一选中墨洗 */
+}
+.pp-yin-item.active {
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+.pp-yin-name {
+  font-size: var(--fs-body);
+  color: var(--ink-1);
+}
+.pp-yin-path {
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* 长路径保尾段可见（离根越近越有辨识度） */
+  text-align: left;
+}
+.pp-yin-empty {
+  padding: 12px 14px;
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  color: var(--ink-3);
+}
+/* 引按钮激活态（2026-09-01 重皮：文字语言——朱砂字 + 2px 底线，非盒） */
+.pp-composer .pp-yin-btn.open {
+  color: var(--seal-deep);
+  border-bottom: 2px solid var(--seal);
+  background: transparent;
+}
+
+/* ── 界栏（创作坞 v2 2026-08-31）：拖文件悬停坞体的高亮态──
+ * 双细线界栏 + 纸色加深 + 「松手入卷」批注。命名对齐卷首界栏语义
+ * （框体护持 = 可落入）。 */
+.pp-composer.pp-droptarget {
+  outline: 1px solid var(--seal);
+  outline-offset: -4px;
+  background: color-mix(in oklch, var(--seal) 5%, var(--paper-deep));
+}
+.pp-composer.pp-droptarget::after {
+  content: "松手入卷";
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  font-family: var(--f-kai);
+  font-size: var(--fs-body);
+  color: var(--seal-deep);
+  pointer-events: none;
+}
+
+/* ── 历史眉批（创作坞 v2 2026-08-31）：一次性提示，6s 自散── */
+.pp-eyebrow-hint {
+  font-family: var(--f-kai);
+  font-size: var(--fs-body);
+  color: var(--ink-3);
+  animation: pp-hint-fade 6s both;
+  pointer-events: none;
+}
+/* 钉住可发现性一次性眉批（2026-09-05）：.pp-eyebrow-hint 族的画布落位
+ * ——左缘上角（文类签列所在侧，提示长在功能所在处）。2026-09-17 标题栏拆除批：
+ * 书眉退役 ⇒ 落位从「书眉下缘 + 20」上提到「屏顶 + 20」（浮件在右上，不撞）。 */
+.pp-hint-canvas {
+  position: absolute;
+  left: 28px;
+  top: 20px;
+  z-index: 65;
+}
+@keyframes pp-hint-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  6%,
+  80% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 钤印双款字排基座（2026-09-01 包含批废泛框后自立门户）：拟文/停原寄生
+   `.pp-composer button` 泛框的 padding/边宽/字体，废框后归本钮自持。 */
+.pp-composer .pp-send,
+.pp-composer .pp-stop {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.18em;
+  padding: 10px 26px;
+  border: 1px solid var(--ink-1);
+  border-radius: 0;
+  transition:
+    background var(--snap),
+    color var(--snap),
+    border-color var(--snap),
+    box-shadow var(--snap),
+    transform var(--snap);
+}
+
+/* 停止按钮（施工单 #4 → v2 升级 2026-09-03）：运行中空输入才出现，朱砂钤印——
+ * 与拟文同构（实心方章 + 硬偏移投影），色相即语义：墨印=拟文（落款/插话），
+ * 朱印=停（中止警示）；hover 加深一档（警示加重），active 压印投影塌缩。
+ * 运行中有输入时本钮消失、拟文回来（chat-core 插入路径 = 插话下轮生效）。 */
+.pp-composer .pp-stop {
+  background: var(--seal);
+  border-color: var(--seal);
+  color: var(--paper);
+  box-shadow: var(--shadow-anchor);
+}
+.pp-composer .pp-stop:hover {
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper);
+}
+.pp-composer .pp-stop:active {
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper);
+  transform: translateY(1px);
+  box-shadow: none; /* 压印：投影塌缩，章沉进纸面 */
+}

@@ -15,9 +15,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readPanelCss } from './helpers/panel-css';
 
 const SRC = join(__dirname, '..', 'src');
-const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
+const PANEL_CSS = readPanelCss();
 const MODEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'model-selector.css'), 'utf8');
 const COMP_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'composition-chip.css'), 'utf8');
 

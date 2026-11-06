@@ -1,6 +1,6 @@
 # 上帝文件治理（god-file governance）
 
-> 状态：**P1 已落地（2026-11-06）**——门禁 + 第一刀（chat-session.ts）已进主干；P2 纸壳待开工。
+> 状态：**P1 + P2 已落地（2026-11-06）**——门禁、chat-session 拆解、纸壳分片均已进主干；余 `PaperPanel.tsx` 组件体与 Rust 宽度型文件（登记不拆）。
 > 门禁 = `src-ui/tests/god-file-budget.test.ts`（未登记文件 ≤ 1000 行；已登记只减不增）。
 
 ## 0. 要裁什么（结论在前）
@@ -69,13 +69,48 @@
 模块间存在少量 ESM 环（crud ↔ restore、catalog ↔ save），**只用到函数级**，
 没有模块初始化期取值，运行时等价于原单文件。
 
-### P2 ⏳ 待开工：纸壳
+### P2 ✅ 已落地（2026-11-06）：纸壳
 
-1. 先解 **CSS ↔ `measure.ts` 数值镜像**（`type-tokens.ts` 是同因病灶的补丁，先把它扩成唯一真源）；
-2. `PaperPanel.css` 按 179 个主题段聚成 6–8 个 `@import` 分片（物理拆，不改选择器语义）；
-3. `PaperPanel.tsx` 的单组件体（1278 行）按区域拆 hook 段。
+**① 数值镜像——先验后动，结论是「大头早已收口」**：`type-tokens.ts`（2026-08-30）已经把
+测量侧的字体/行距/chrome 常量收成单一真源，`measure.ts` 的 `CHROME_DERIVED` / `MD_TOKENS` /
+`FOLIO_TOKENS` 全部从它派生，CSS 侧 72 处 `var(--pp-*)` 引用由 `paper-token-audit` 钉住
+「无悬空键」。剩下的裸数字镜像只有一处——`RACK_H = 38`（composer-float.ts）↔
+`.pp-rack { height: 38px }`，靠 `tests/composer-float` 的**字面量对拍**拦漂移（两把尺子互相
+证明，不是单一真源）。本轮收口：真源搬进 `COMPOSER_TOKENS.rackH`，CSS 改读
+`var(--pp-composer-rackH)`，测试从「38 == 38px」改为「两侧同读一颗 token，且 CSS 里不许
+再出现这个数字」。
 
-判据：`tests/paper-visual-decisions.test.ts` + `paper-folio-height` + 视觉决定账本零漂移。
+**② 分片**：`PaperPanel.css` 6778 → **38 行入口 + 12 个主题分片**（`@import` 顺序 = 原文件
+行序 = 层叠序，禁重排）。每片仍是一个可命名的域，不再是「一个文件装整套纸面」：
+
+| 分片 | 行 | 内容 |
+|---|---|---|
+| `paper-base.css` | 487 | 根 / 滚动条 / 顶部浮件 / 缩放 / 画布 / 呼吸线 / 流区 / 卷开合 / 桌垫 |
+| `paper-folio.css` | 303 | 卷首（天头四行）+ 组合芯片 |
+| `paper-block.css` | 715 | 块体基础 + 来文 + 正文 + 数学 |
+| `paper-inline.css` | 684 | 折叠行 / 夹注 / 工具卡 / 脚注 / 工具组 / 程文 / 完成值 / 抄录 / 拟策 / 贴黄 |
+| `paper-motion.css` | 302 | 让位豁免 / 流式生命感 / 引线 / 锚点 / 枝边 / 匣脚引线 |
+| `paper-composer.css` | 731 | 附件行 / 拾遗 / 附图 rail / 创作坞 / 案头 / 书眉 / 读数 / 墨量册 |
+| `paper-dock-jobs.css` | 363 | 役册（后台工作监视） |
+| `paper-dock-tools.css` | 640 | 墨量线 / 钤印 / 翰律 / 引 / 界栏 / 历史眉批 / 停止钮 |
+| `paper-ops.css` | 739 | 消息动作行 / 握把 / 抽纸条 / 划词 / 遮罩 / 宽度 / 缩远 / 眉批栏 / 四角 / 空卷题字 |
+| `paper-toc.css` | 558 | 目次带 v4.1 + 骨架 + 阶段锚 |
+| `paper-assets.css` | 717 | 资产块兜底 / 表现原语（grid / chart / metric / media） |
+| `paper-cards.css` | 529 | graph / board / timeline / citation / chem + 回首页弹层 |
+
+**拆法证据**：12 片正文拼回后与原文件 `git diff --no-index -U0` **只差 7 行**——全部是
+本轮 `RACK_H` 收口涉及的注释与 `height` 一行（其余差异 = 分片文件末空行被 biome 规范化）。
+入口 `@import` 序即层叠序，产物已验：`entry.css` 与 app bundle CSS 都是内联后的完整规则，
+无残留 `@import`。
+
+**③ 断言面**：17 份测试原本按路径 `readFileSync(PaperPanel.css)`——新增
+`tests/helpers/panel-css.ts` 的 `readPanelCss()`（入口 + 按序展开分片）后逐个改读法：
+**断言的对象仍是同一份样式字节**，只是从「一个文件」变成「这份样式」；`paper-token-audit`
+的 `var(--pp-*)` 扫描面同步跟到分片。构建面已验：产物 `entry.css` 与 app bundle CSS 都是
+内联后的完整规则（无残留 `@import`）。
+
+**未做（留给下一批）**：`PaperPanel.tsx` 单组件体 1278 行按区域拆 hook 段——它不属于
+「体量失守」而是「组件形态」，与 P2 判据无关，且改动面在渲染路径上，单独一批更安全。
 
 ### P3 登记不拆（本线不动）
 

@@ -17,11 +17,10 @@
 
 // @vitest-environment node
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readPanelCss } from './helpers/panel-css';
 
-const CSS = readFileSync(join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
+const CSS = readPanelCss();
 
 /** 资产段落（表现原语族）：从 .pp-plate 起到 board/timeline 段结束——用类名前缀圈定。 */
 const ASSET_PREFIXES = [

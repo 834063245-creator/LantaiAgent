@@ -16,9 +16,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readPanelCss } from './helpers/panel-css';
 
 const SRC = join(__dirname, '..', 'src');
-const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
+const PANEL_CSS = readPanelCss();
 /** 首页样式面（批 9e 起随 `sessions-home` 产物走）；壳文件只剩全局面（重置/纹理层/选区）。 */
 const HOME_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'sessions-home', 'home.css'), 'utf8');
 /** 壳全局样式面（body::before/after 纹理层、可访问性、字号交还——与首页不同生共死）。 */

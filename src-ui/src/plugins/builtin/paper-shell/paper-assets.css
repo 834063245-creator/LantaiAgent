@@ -1,0 +1,720 @@
+/* paper-shell · assets — 资产块兜底 JSON / 表现原语（grid / chart / metric / media）
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+/* ── 资产块兜底 JSON 视图（WO-4）：未知 kind / 表现原语未接时保信息保真 ── */
+.pp-json {
+  padding: var(--pp-asset-json-padTop) 0 var(--pp-asset-json-padBottom);
+}
+.pp-json-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: var(--pp-asset-json-headMarginB);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-json-headSize);
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+.pp-json-kind {
+  color: var(--indigo);
+  font-weight: 600;
+}
+.pp-json-pres {
+  color: var(--ink-3);
+}
+.pp-json-title {
+  color: var(--seal-deep);
+}
+.pp-json-pre {
+  margin: 0;
+  padding: var(--pp-asset-json-prePadV) var(--pp-asset-json-prePadH);
+  border-left: var(--pp-asset-json-preBorderL) solid var(--indigo);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-json-preSize);
+  line-height: var(--pp-asset-json-preLh);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: var(--pp-asset-json-preMaxH);
+  overflow: auto;
+}
+
+/* ── 资产表现原语（WO-6）：grid / chart / metric / media / graph / html / form ── */
+
+.pp-grid {
+  padding: var(--pp-asset-grid-padV) 0;
+}
+/* ── 图版题签行（B 图版签主干，2026-09-17）──
+ * 物类签（汉字，机器语汇）+ 题名同行，其下一条极弱规线把题名行与图版身分开。
+ * 高度中性：题签行吃掉原题注行的 6px 下距（5px + 1px 规线 = 6px）⇒ measure 零改动。
+ * 规线走颜色位 --rule-soft-ink（整条简写不能拼局部宽度——2026-09-17 修的 49 处病灶）。 */
+.pp-plate {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pp-asset-plate-gap);
+  border-bottom: var(--pp-asset-plate-ruleW) solid var(--rule-soft-ink);
+  padding-bottom: calc(
+    var(--pp-asset-grid-captionMarginB) -
+    var(--pp-asset-plate-ruleW) -
+    var(--pp-asset-plate-gapBelow)
+  );
+  margin-bottom: var(--pp-asset-plate-gapBelow);
+}
+.pp-plate-sign {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-plate-signSize);
+  line-height: 1;
+  color: var(--indigo);
+  border: var(--pp-asset-plate-signBorder) solid var(--rule-soft-ink);
+  padding: var(--pp-asset-plate-signPadV) var(--pp-asset-plate-signPadH);
+  letter-spacing: 0;
+}
+.pp-grid-caption {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-grid-captionSize);
+  color: var(--ink-2);
+  margin-bottom: var(--pp-asset-grid-captionMarginB);
+}
+.pp-grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-grid-rowSize);
+  color: var(--ink-1);
+}
+.pp-grid-table th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-3);
+  border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft-ink);
+  padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
+}
+.pp-grid-table td {
+  padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
+  border-bottom: var(--pp-asset-grid-rowBorder) solid color-mix(in oklch, var(--ink-3) 18%, transparent);
+}
+.pp-grid-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── grid 大表虚拟滚动（科研渲染 #11，2026-09）──
+ * >1000 行触发（组件常量 GRID_VIRTUAL_THRESHOLD）：table 拆两半——thead 固定
+ * + tbody 滚动区（virtualViewportH）+ 绝对定位虚拟行。table-layout: fixed 列宽
+ * 稳定（两半同款）→ 虚拟行与表头对齐。行高固定（virtualRowH——单行截断 +
+ * 省略号）。小表仍走 .pp-grid-table 全量平铺，不受本款影响。 */
+.pp-grid-virtual-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-grid-rowSize);
+  color: var(--ink-1);
+}
+.pp-grid-virtual-table th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-3);
+  border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft-ink);
+  padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pp-grid-virtual-scroll {
+  overflow-y: auto;
+  height: var(--pp-asset-grid-virtualViewportH);
+}
+.pp-grid-virtual-table--body {
+  /* tbody 滚动区从 0 起：总高行占满可视高，虚拟行 absolute 于 tbody */
+}
+.pp-grid-virtual-tbody {
+  position: relative;
+  display: block;
+}
+.pp-grid-virtual-total {
+  /* 总高占位行（虚拟滚动条高度来源）——不可见 */
+  visibility: hidden;
+  border: none;
+}
+.pp-grid-virtual-table--body .pp-grid-virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--pp-asset-grid-virtualRowH);
+  box-sizing: border-box;
+  display: table;
+  table-layout: fixed;
+}
+.pp-grid-virtual-table--body td {
+  padding: 0 var(--pp-asset-grid-cellPadH);
+  border-bottom: var(--pp-asset-grid-rowBorder) solid color-mix(in oklch, var(--ink-3) 18%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  line-height: var(--pp-asset-grid-virtualRowH);
+}
+
+.pp-chart {
+  padding: var(--pp-asset-chart-padV) 0;
+  /* 扇区色板（D11）：单一真源——扇区填色与图例色块同取这 6 槽 */
+  --pp-chart-c0: var(--indigo);
+  --pp-chart-c1: var(--seal);
+  --pp-chart-c2: color-mix(in oklch, var(--indigo) 70%, var(--seal));
+  --pp-chart-c3: color-mix(in oklch, var(--indigo) 45%, var(--ink-3));
+  --pp-chart-c4: color-mix(in oklch, var(--seal) 60%, var(--ink-2));
+  --pp-chart-c5: color-mix(in oklch, var(--ink-3) 80%, var(--indigo));
+}
+.pp-chart-type {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chart-typeSize);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--pp-asset-chart-typeMarginB);
+}
+/* 信息面（2026-09-17）：单位与口径挂在类型行里——读者判断「这图能不能信」靠它们；
+   零测高改动（行高已由 typeSize 定死）。口径用石青（机器的声音），不另起一行 */
+.pp-chart-unit,
+.pp-chart-source {
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.pp-chart-source {
+  color: var(--indigo);
+}
+.pp-chart-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-chart-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}
+
+/* ── chart interactive（交互图表——scientific-rendering #16，2026-09）──
+ * chart kind 的 presentation='interactive'：ECharts canvas 自绘于固定盒
+ * （.pp-chart-interactive-box 高 = interactiveBoxH token——canvas init 需要
+ * 确定高度；图例/轴/tooltip 全在盒内，不占盒外行 → measure 镜像恒定精确）。 */
+.pp-chart-interactive-box {
+  height: var(--pp-asset-chart-interactiveBoxH);
+  width: 100%;
+  box-sizing: border-box;
+}
+.pp-chart-interactive-err {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--fail);
+  word-break: break-word;
+}
+.pp-chart-svg {
+  display: block;
+  width: 100%;
+  /* 高由几何真源定（chartLayout：viewBox 高 = 版心档位高）；旧实现 height:auto +
+     max-height 会把「条数少」变成 meet 后的 letterbox（实测 3 根柱只占 213px 居中） */
+  height: auto;
+}
+/* 坐标轴（D7）：基线 + 纵轴，与纸面墨色同族（不引入新色值） */
+.pp-chart-axis {
+  stroke: color-mix(in oklch, var(--ink-3) 55%, transparent);
+  stroke-width: 1;
+}
+.pp-chart-bar {
+  fill: var(--indigo);
+}
+.pp-chart-line {
+  fill: none;
+  stroke: var(--seal);
+  stroke-width: 2;
+}
+.pp-chart-dot {
+  fill: var(--seal);
+}
+/* config.title 行（D4）——静态版此前完全忽略 config */
+.pp-chart-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-chart-titleSize);
+  color: var(--ink-1);
+  margin-bottom: var(--pp-asset-chart-titleMarginB);
+}
+/* 数值标注（D7）与分类标签（D8——移入 SVG，与柱体同一坐标系） */
+.pp-chart-value {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chart-valueSize);
+  fill: var(--ink-2);
+}
+.pp-chart-cat {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chart-axisSize);
+  fill: var(--ink-3);
+}
+/* 饼真扇区（D5）——旧实现是 0 宽 conic-gradient 空 span，渲染成空圈 */
+.pp-chart-pie-svg {
+  max-height: var(--pp-asset-chart-pieH);
+}
+.pp-chart-slice {
+  stroke: var(--paper);
+  stroke-width: 1;
+}
+.pp-chart-slice-0 {
+  fill: var(--pp-chart-c0);
+}
+.pp-chart-slice-1 {
+  fill: var(--pp-chart-c1);
+}
+.pp-chart-slice-2 {
+  fill: var(--pp-chart-c2);
+}
+.pp-chart-slice-3 {
+  fill: var(--pp-chart-c3);
+}
+.pp-chart-slice-4 {
+  fill: var(--pp-chart-c4);
+}
+.pp-chart-slice-5 {
+  fill: var(--pp-chart-c5);
+}
+/* 扇区内标注（D11）：文字长在扇区上（此前只活在盒外图例行，与扇区隔着一整个
+   SVG 盒的空白）——扇区填色都是深色，字走纸色（与扇区分隔线同源，读作「从扇区
+   上刻出来」），字号与盒外图例同档。 */
+.pp-chart-slice-label,
+.pp-chart-slice-value {
+  font-family: var(--f-mono);
+  fill: var(--paper);
+}
+.pp-chart-slice-label {
+  font-size: var(--pp-asset-chart-axisSize);
+}
+.pp-chart-slice-value {
+  font-size: var(--pp-asset-chart-valueSize);
+}
+/* 轴名（D4）：config.xName / yName */
+.pp-chart-axis-names {
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chart-axisSize);
+  color: var(--ink-3);
+}
+.pp-chart-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: var(--pp-asset-chart-labelMarginTop);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chart-labelSize);
+  color: var(--ink-3);
+}
+/* 图例色块（D11）：条目前置色块（与扇区同色板）——无块时图例只是版心左下的裸
+   文字列，读不出哪条对哪块扇区。条数 >6 时色板循环（与 .pp-chart-slice-N 同规则）。
+   测高镜像见 measure.ts pieLegendH（每条多占 swatchSize + swatchGap）。 */
+.pp-chart-labels > span::before {
+  content: "";
+  display: inline-block;
+  width: var(--pp-asset-chart-swatchSize);
+  height: var(--pp-asset-chart-swatchSize);
+  margin-right: var(--pp-asset-chart-swatchGap);
+  vertical-align: middle;
+  background: var(--pp-chart-c0);
+}
+.pp-chart-labels > span:nth-child(6n + 2)::before {
+  background: var(--pp-chart-c1);
+}
+.pp-chart-labels > span:nth-child(6n + 3)::before {
+  background: var(--pp-chart-c2);
+}
+.pp-chart-labels > span:nth-child(6n + 4)::before {
+  background: var(--pp-chart-c3);
+}
+.pp-chart-labels > span:nth-child(6n + 5)::before {
+  background: var(--pp-chart-c4);
+}
+.pp-chart-labels > span:nth-child(6n)::before {
+  background: var(--pp-chart-c5);
+}
+
+.pp-metric {
+  padding: var(--pp-asset-metric-padV) 0;
+}
+.pp-metric-caption {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-metric-captionSize);
+  color: var(--ink-2);
+  margin-bottom: var(--pp-asset-metric-captionMarginB);
+}
+
+/* 题签行内的题名不再自带下距（下距归 .pp-plate 的规线，高度中性见 .pp-plate 注） */
+.pp-plate-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-grid-captionSize);
+  color: var(--ink-2);
+}
+.pp-plate .pp-grid-caption,
+.pp-plate .pp-metric-caption {
+  margin-bottom: 0;
+}
+.pp-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--pp-asset-metric-minCol), 1fr));
+  gap: var(--pp-asset-metric-gap);
+}
+.pp-metric-card {
+  border: var(--pp-asset-metric-cardBorder) solid var(--rule-soft-ink);
+  background: color-mix(in oklch, var(--paper-deep) 40%, transparent);
+  padding: var(--pp-asset-metric-cardPadV) var(--pp-asset-metric-cardPadH);
+  /* 文本可折行（label/compare 见下）后 overflow 退为最后防线：长不可断 token 兜底
+     （2026-10-13 注脚行迭代；旧「自由文本硬裁」的代价就是截断，已正面解决） */
+  overflow: hidden;
+}
+.pp-metric-label {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-metric-cardLabelSize);
+  line-height: var(--pp-asset-metric-cardLabelLh); /* 显式化（原隐式继承 .pp-root 1.8，同值） */
+  color: var(--ink-3);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.pp-metric-value {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-metric-cardValueSize);
+  line-height: var(--pp-asset-metric-cardValueLh);
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+/* 信息面（2026-09-17；2026-10-13 注脚行迭代）：比较对象/口径/说明——单值没有它
+   就只能当装饰。原「数值同行右侧 + nowrap」在长文本下被卡片 overflow 硬裁（真机
+   截断反馈）⇒ 独立成注脚行（数值下方），允许折行完整显示。石青 = 机器的声音；
+   测高镜像 = measure.metricBodyH（行高/上距/字体逐字同值）。 */
+.pp-metric-compare {
+  display: block;
+  font-size: var(--pp-asset-metric-cardLabelSize);
+  line-height: var(--pp-asset-metric-compareLh);
+  color: var(--indigo);
+  margin-top: var(--pp-asset-metric-compareMarginT);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.pp-metric-unit {
+  font-size: var(--pp-asset-metric-cardLabelSize);
+  color: var(--ink-3);
+  margin-left: 3px;
+}
+.pp-metric-tone-accent .pp-metric-value {
+  color: var(--seal-deep);
+}
+.pp-metric-tone-green .pp-metric-value {
+  color: var(--pass);
+}
+.pp-metric-tone-danger .pp-metric-value {
+  color: var(--fail);
+}
+.pp-metric-tone-muted .pp-metric-value {
+  color: var(--ink-3);
+}
+
+/* 查看器公共壳（B1 2026-09-23）：题签行（.pp-plate 恒在）+ 题名行 + 内容区 + 降级行。
+   壳负责「按扩展名分发 + 降级」，查看器只管内容——样式分层同此。 */
+.pp-viewer {
+  padding: var(--pp-asset-viewer-padV) 0;
+}
+.pp-viewer-label {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-viewer-labelSize);
+  color: var(--ink-2);
+  margin-bottom: var(--pp-asset-viewer-labelMarginB);
+}
+.pp-viewer-error {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-media-rowSize);
+  color: var(--fail);
+  margin-bottom: var(--pp-asset-viewer-labelMarginB);
+}
+/* 音频查看器（B1）：固定盒高（原生控件高度随 UA 变 ⇒ 静态测高镜像要钉死） + 时长读数行 */
+.pp-viewer-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pp-viewer-audio-el {
+  display: block;
+  width: 100%;
+  height: var(--pp-asset-viewer-audioBoxH);
+}
+.pp-viewer-audio-meta {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+/* 代码查看器（B2）：盒高**上限** + 内部滚动（短文件更矮 ⇒ 静态测高取上限保守，RO 收敛）；
+   行号列 sticky left（横向滚时行号留在原地）；截断横幅 sticky top（盒高不随截断漂）。 */
+.pp-viewer-code {
+  max-height: var(--pp-asset-viewer-codeBoxH);
+  overflow: auto;
+  padding: var(--pp-asset-viewer-codePadV) 0;
+  background: color-mix(in oklch, var(--paper-deep) 45%, var(--paper));
+  border-left: var(--pp-md-codeBorderL) solid var(--indigo);
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--ink-1);
+}
+.pp-viewer-code-note {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  background: inherit;
+  color: var(--seal-deep);
+  white-space: pre;
+}
+.pp-viewer-code-row {
+  display: flex;
+  align-items: stretch;
+}
+.pp-viewer-code-gutter {
+  position: sticky;
+  left: 0;
+  padding-right: var(--pp-asset-viewer-codeGutterPadH);
+  background: inherit;
+  color: var(--ink-3);
+  text-align: right;
+  white-space: pre;
+  user-select: none;
+}
+.pp-viewer-code-pre {
+  margin: 0;
+  padding-right: var(--pp-asset-viewer-codePadH);
+  white-space: pre;
+}
+.pp-viewer-code-pre code {
+  font: inherit;
+}
+.pp-viewer-code-empty {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+/* 盒高类查看器共用容器（P1：表格/树/归档/字体/化学/地理/字幕/邮件）——
+   上限盒 + 内部滚动（静态测高取上限保守，挂载后 RO 收敛）；提示行吸顶。 */
+.pp-viewer-box {
+  max-height: var(--pp-asset-viewer-boxH);
+  overflow: auto;
+  padding: var(--pp-asset-viewer-codePadV) 0;
+  background: color-mix(in oklch, var(--paper-deep) 30%, var(--paper));
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
+  color: var(--ink-1);
+}
+.pp-viewer-note {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  background: inherit;
+  color: var(--seal-deep);
+  white-space: pre-wrap;
+}
+.pp-viewer-empty {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+/* 题名行容器 + 系统打开出口（P2 · B5）：按钮**绝对定位**在行右端——不进高度流水
+   （与组合芯片同一条落位纪律），故静态测高不受影响；题名行自身的规线仍满宽。 */
+.pp-viewer-head {
+  position: relative;
+}
+.pp-viewer-open-system {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.pp-viewer-open-system:hover {
+  color: var(--ink-1);
+  border-bottom: var(--pp-asset-viewer-metaSize) solid var(--seal);
+}
+.pp-media-img {
+  max-width: 100%;
+  max-height: var(--pp-asset-media-imgMaxH);
+  object-fit: contain;
+  border: var(--rule-soft);
+}
+.pp-media-file {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-media-rowSize);
+  color: var(--ink-2);
+}
+.pp-media-ext {
+  color: var(--indigo);
+  text-transform: uppercase;
+}
+.pp-media-path {
+  color: var(--ink-3);
+  word-break: break-all;
+}
+.pp-media-loading {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-media-rowSize);
+  color: var(--ink-3);
+}
+.pp-media-video {
+  display: block;
+  max-width: 100%;
+  max-height: var(--pp-asset-media-imgMaxH);
+  border: var(--rule-soft);
+}
+.pp-media-open {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+/* 点击放大浏览浮层（portal 到 body 的全局模态） */
+.pp-media-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog); /* 2026-09-01 审计：10000 散写收编 token（全局模态档 520） */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklch, var(--ink-solid) 82%, transparent);
+  cursor: zoom-out;
+}
+.pp-media-preview {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  box-shadow: 0 8px 40px color-mix(in oklch, var(--ink-solid) 45%, transparent);
+}
+
+.pp-graph {
+  padding: var(--pp-asset-graph-padV) 0;
+}
+.pp-graph-svg {
+  display: block;
+  width: 100%;
+  /* 高由几何真源定（graphLayout：viewBox 高 = 行数×行高 + 内距，viewBox 宽 = 版心宽）；
+     旧实现 height:auto + max-height 会把「层数少」变成 meet 后的 letterbox + 文字缩放 */
+  height: auto;
+}
+.pp-graph-edge {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+}
+.pp-graph-node-box {
+  fill: var(--paper-deep);
+  stroke: var(--indigo);
+  stroke-width: 1;
+}
+.pp-graph-node-text {
+  fill: var(--ink-1);
+  font-family: var(--f-mono);
+  font-size: 10px;
+}
+
+.pp-html {
+  padding: var(--pp-asset-html-padV) 0;
+}
+/* 沙箱框视觉并入纸面（2026-10-08 用户报「像把生成产物嵌套在框里」）：
+   去 1px 边框与纸色底——iframe 不再是「浅色盒子」，生成卡直接坐纸上。
+   去边框同时消掉 box-sizing: border-box 下 iframe 视口恒少 2px（上报高度 =
+   边框盒高）导致的**常驻竖滚动条**（内容明明放得下也出滚动条）。
+   限高语义（flow 1000px / pinned 不限）留在原位不动。 */
+.pp-html-frame {
+  width: 100%;
+  height: var(--pp-asset-html-frameDefaultH);
+  border: 0;
+  background: transparent;
+  /* flow 限高 1000px 可滚动（A3）；pinned 不限高由 .pp-pinned 覆盖 */
+  max-height: 1000px;
+  overflow: auto;
+}
+.pp-block.pp-pinned .pp-html-frame {
+  max-height: none;
+}
+
+.pp-form {
+  padding: var(--pp-asset-form-padV) 0;
+}
+.pp-form-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-form-titleSize);
+  font-weight: 600;
+  color: var(--ink-1);
+  margin-bottom: var(--pp-asset-form-titleMarginB);
+}
+.pp-form-body {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-form-bodySize);
+  line-height: var(--pp-asset-form-bodyLh);
+  color: var(--ink-2);
+  margin-bottom: var(--pp-asset-form-bodyMarginB);
+}
+.pp-form-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pp-asset-form-optGap);
+  margin-bottom: var(--pp-asset-form-sectionGap);
+}
+.pp-form-option {
+  border: var(--pp-asset-form-optBorder) solid var(--rule-soft-ink);
+  padding: var(--pp-asset-form-optPadV) 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pp-form-option-label {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-form-optLabelSize);
+  color: var(--ink-1);
+}
+.pp-form-option-desc {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-form-optDescSize);
+  color: var(--ink-3);
+}
+/* 选项可交互态（实时确认卡）：button 化 + 选中朱砂框；历史卡（无回调）仍是
+ * 静态 div 行（button.pp-form-option 的 reset 只作用于可点形态）。
+ * 操作区（确认/修改/拒绝钮 + 反馈框 + 已处理）复用拟策卡钤印语言
+ * （.pp-pc-actions / .pp-pc-btn / .pp-pc-feedback / .pp-pc-done）——
+ * 确认卡 = plan 审批模式泛化，同为人手决策同一钮面，零重复实现。 */
+button.pp-form-option {
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--snap),
+    background var(--snap);
+}
+button.pp-form-option:hover {
+  border-color: var(--ink-3);
+}
+button.pp-form-option:disabled {
+  cursor: default;
+}
+.pp-form-option--on {
+  border-color: var(--seal);
+  background: color-mix(in oklch, var(--seal) 5%, var(--paper));
+}
+.pp-form-option--on .pp-form-option-label {
+  color: var(--seal-deep);
+}

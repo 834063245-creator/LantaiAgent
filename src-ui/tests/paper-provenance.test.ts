@@ -35,9 +35,10 @@ import {
   tetherPath,
   tetherPoints,
 } from '../src/plugins/builtin/paper-shell/provenance';
+import { readPanelCss } from './helpers/panel-css';
 
 const SRC = join(__dirname, '..', 'src');
-const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
+const PANEL_CSS = readPanelCss();
 const PANEL_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');
 const DRAG_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'use-paper-drag.ts'), 'utf8');
 const CANVAS_STORE_TS = readFileSync(join(SRC, 'state', 'canvas-store.ts'), 'utf8');

@@ -22,11 +22,12 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readPanelCss } from './helpers/panel-css';
 
 const SRC = join(__dirname, '..', 'src');
 
 const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
-const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
+const PANEL_CSS = readPanelCss();
 const PANEL_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');
 const FOCUS_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'use-paper-focus.ts'), 'utf8');
 const TOAST_STORE_TS = readFileSync(join(SRC, 'state', 'toast-store.ts'), 'utf8');

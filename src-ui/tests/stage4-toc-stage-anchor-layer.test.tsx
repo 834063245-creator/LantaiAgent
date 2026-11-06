@@ -17,8 +17,6 @@
 //   ③ 连续 scrub 归滑块 + 带空白处（滚动条语义）；
 //   ④ hover 卡与命中盒同源：卡片所示即点击所得（锚优先「阶段 N · 首句」）。
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,12 +53,10 @@ import type { RegionView } from '../src/paper/region-view';
 import { STAGE_HIT_H, TocStrip } from '../src/plugins/builtin/compose-dock/TocStrip';
 import type { WorkUnit } from '../src/plugins/builtin/paper-shell/group';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
+import { readPanelCss } from './helpers/panel-css';
 
 /** 纸壳样式（目次带规则所在）：CSS 契约断言用（同 paper-visual-decisions 口径）。 */
-const PANEL_CSS = readFileSync(
-  join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
-  'utf8',
-);
+const PANEL_CSS = readPanelCss();
 function ruleBody(css: string, selector: string): string {
   const i = css.indexOf(selector);
   if (i < 0) return '';

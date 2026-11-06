@@ -1,0 +1,306 @@
+/* paper-shell · folio — 卷首（天头四行）+ 组合芯片
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+/* ── 卷首（folio-head）──
+ * 2026-08-30 自 prototype/lantai.html .folio-head 族转录；**2026-09-16「版心天头」
+ * 重排（用户拍板 B 案）**：卷首收进 720 版心（.pp-folio-inner）与正文块同轴居中。
+ *
+ * 重排前的病灶（实测，见 prototype/folio-head-ab.html 读数栏）：玉徽居中于
+ * **整张纸**（默认 1440 宽流区 → 中轴 x=720），眉行/题字/档行却左齐于纸缘内距
+ * 16px，而正文块居中于 720 版心（左缘 x=360）——题字比正文左缘还左 344px、
+ * 组合芯片比版心右缘还右 326px。一块卷首三个轴（原型里 .folio 整个就是一根
+ * 560px 窄栏，居中钤印与左齐文字只差 250px 故读作手势；搬进宽流区后无人重建
+ * 版心，就散架了）。
+ *
+ * 现在的构图 = 原型的「钤印居中于天头」手势，但居中于**版心**：玉徽 / 眉行 /
+ * 题字 / 档行四行同轴居中，底部硬规线也只画版心宽（不再横贯整纸）。
+ * 结构常量的测高镜像在 paper/measure.ts（FOLIO_TOKENS 为单一真源；版心宽不是常量——
+ * 2026-10-08 起真源 = measure.ts columnWidthFor，CSS 镜像是 .pp-folio-inner 的 50%）。
+ *
+ * pointer-events none——点击穿透流区背景，激活语义不变；组合芯片单独放开本子树。
+ * 原浮动标签带退役：卷首即卷名。 */
+.pp-folio-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* 左右内距 0（2026-10-08「墨占纸半」）：版心 = 纸半，永无贴纸缘之虞（最小纸 720
+     下左右各留 180）——旧式左右 16 是「regionWidth − 32」镜像的一端，随版心改式退役。
+     下内距 0——底距由版心内层的 padding-bottom 承担（规线随之内缩） */
+  padding: 24px 0 0;
+  pointer-events: none;
+}
+/* 卷首随纸落 / 沉（2026-10-18 卷开合动效批「丙」）：与块层同一族 keyframes/过渡 —— 落纸
+ * = 自 18px 落下（`--m-sheet` / io），起纸 = 沉 18px 并随整叶淡去（退场逆写）。
+ * ⚠ 两条住在这里（基座 `.pp-folio-head` 之后）是**特异度阶梯**要求：它们 (0,3,0)
+ * 高于基座 (0,1,0)，写在卷开合段（前面）会触发 noDescendingSpecificity。 */
+.pp-region.pp-spread .pp-folio-head {
+  animation: pp-drop-in var(--m-sheet) var(--m-ease-io) backwards;
+}
+.pp-region[data-leaving] .pp-folio-head {
+  translate: 0 18px;
+  transition: translate var(--m-sheet) var(--m-ease-io);
+}
+/* 版心内层（2026-09-16 新增）：卷首四行 + 硬规线 + 版口钮的**唯一版心盒**。
+ * width = 50%（= 流区宽一半；2026-10-08「墨占纸半」重定——原 min(720px, 100%) 的
+ * 封顶退役）：与正文块同宽同轴（正文块版心基准见 use-paper-regions 的 adaptBlocks）。
+ * 测高镜像取 paper/measure.ts columnWidthFor(regionWidth)（同一式，勿在此手改数值）。 */
+.pp-folio-inner {
+  position: relative;
+  width: 50%;
+  margin: 0 auto;
+  padding-bottom: 22px;
+  border-bottom: var(--rule-hard);
+  text-align: center;
+}
+/* 活跃卷版口钮（2026-09-02 视觉迭代）：朱砂条从「卷卷都挂」改「只挂活跃卷」——
+ * 整屏至多一处红（浸墨法则 3），红在哪卷即活卷；对原型 .folio-head 的主动偏离
+ * （原型先于真纸材质批与一纸多卷定案）。
+ * 2026-09-16 随硬规线一起移进版心内层：钮挂规线左端（版心左缘），不再飘到纸缘。
+ * 朱笔划界（2026-09-10 拍板「拿纸 + 朱笔划界」）：激活瞬间红条从 0 划到 56px
+ * ——落笔划界的书写感，与拿纸影动效同一时刻。宽度动画不走 transform（块级
+ * transform 事故立法同源）；缓动/时长同 pp-enter 家风。 */
+.pp-region-active .pp-folio-inner::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 56px;
+  height: 3px;
+  background: var(--seal);
+  animation: pp-seal-draw 0.24s var(--m-ease-out);
+}
+@keyframes pp-seal-draw {
+  from {
+    width: 0;
+  }
+  to {
+    width: 56px;
+  }
+}
+/* 玉徽（亭台线稿）：居中钤印于版心（2026-09-16 起居中于版心而非整纸——同轴）。 */
+.pp-yuwei {
+  display: block;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 14px;
+  color: var(--ink-1);
+  /* 2026-08-31 浸墨化：印章图标加 0.35px 微模糊——印泥盖纸的渗开感 */
+  filter: blur(0.35px);
+}
+/* 机读眉行（卷次）与档行（立卷日 + 块数）：单族之下层级只剩字号/字重/字距
+ * ——2026-09-16 随三体换代重校：10px→11px（10px 的 MiSans 压纸纹太弱），
+ * 眉行字距 0.26em→0.34em（居中天头要比左齐需要更松的机读感；字距为等宽拉丁
+ * 混排量，换代后收窄会与题字挤在一起，故此处反是加宽），档行 0.14em→0.18em。
+ * 墨阶沿用 ink-3（注记档），line-height 15px（整数——测高镜像不引小数）。 */
+.pp-folio-eyebrow {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 15px;
+  letter-spacing: 0.34em;
+  /* 末字后的字距会把整行视觉左推 → 补同值缩进，居中是真空 */
+  text-indent: 0.34em;
+  color: var(--ink-3);
+}
+.pp-folio-title {
+  font-family: var(--f-song);
+  font-weight: 700; /* 浸墨：卷首档（拍板 B 四级：900/700/600/400） */
+  font-size: 36px;
+  line-height: 1.22;
+  margin-top: 14px;
+  color: var(--ink-1);
+  /* 2026-08-31 浸墨化：大字加 0.4px 渗缘（墨缘毛细扩散模拟，同 alpha 墨第 2 层手法）
+     弱 alpha 残影，正文小字不加——面积大可读性不受损 */
+  text-shadow: 0 0 0.4px color-mix(in oklch, var(--ink-solid) 32%, transparent);
+}
+.pp-folio-sub {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 15px;
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
+  margin-top: 14px;
+  font-variant-numeric: tabular-nums;
+}
+/* ── 卷首组合芯片（S6 P5a）────────────────────────────────────────────
+ * **绝对定位覆盖**在版心右上、与眉行同行、刻意**不进高度流水**：卷首高度是几何
+ * 契约（FOLIO_TOKENS → paper/measure.ts measureFolioHeadHeight → 卷级布局），
+ * 本控件参与进去会牵动所有既有画布的流区几何；覆盖式落位把「一次规格变更」
+ * 降为「一处新增」（WO-S6P5 §7 裁定 3）。
+ * 2026-09-16 随版心重排改锚点：top/right 以**版心**为参照系（原以纸缘为参照系，
+ * 离版心右缘 +326px，孤悬右上角与居中的玉徽成对角）。仍不进流水、不改契约。
+ * 卷首本体是 pointer-events:none（点击穿透流区背景，激活语义不变），
+ * 本子树单独放开 auto。
+ * 与创作坞芯片（compose-dock 的 .pp-comp-*）**同语言不同宿主**——那族规则被
+ * .pp-composer-settings 祖先限定，卷首不能靠 class 复用（WO-S6P5 §1.3）。 */
+.pp-folio-comp {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  pointer-events: auto;
+}
+.pp-folio-comp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid var(--rule-soft-ink);
+  border-radius: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.pp-folio-comp-pill:hover,
+.pp-folio-comp-pill.open {
+  color: var(--seal-deep);
+  border-color: var(--rule-strong);
+}
+/* 跑过一轮 = 只读标签（span 形态，不再是按钮；hover 不改色以示不可拨） */
+.pp-folio-comp-pill[data-locked] {
+  color: var(--ink-3);
+  border-color: transparent;
+  cursor: default;
+}
+.pp-folio-comp-caret {
+  color: var(--ink-3);
+  font-size: var(--fs-micro);
+}
+/* 菜单：向下开（卷首在卷顶，下方是流区，空间足够） */
+.pp-folio-comp-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 80;
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong-ink);
+  box-shadow: var(--elev-menu);
+  animation: pop-down var(--m-ink);
+  transform-origin: top right;
+}
+.pp-folio-comp-opt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 1px solid var(--rule-soft-ink);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.04em;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.pp-folio-comp-opt:last-child {
+  border-bottom: none;
+}
+.pp-folio-comp-opt:hover {
+  background: var(--paper-deep);
+  color: var(--ink-1);
+}
+.pp-folio-comp-opt.selected {
+  background: var(--sel-wash);
+  color: var(--ink-1);
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+.pp-folio-comp-opt:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+/* 说明行（来源/锁定原因/装载失败）——不可点，不参与选中语义 */
+.pp-folio-comp-note {
+  padding: 6px 10px;
+  border-top: 1px solid var(--rule-soft-ink);
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+}
+/* 写入被拒（空白闸二道闸/不可解析）——就地可见，不静默 */
+.pp-folio-comp-toast {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  max-width: 260px;
+  padding: 6px 10px;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong-ink);
+  box-shadow: var(--elev-menu);
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+}
+/* 边缘拖拽面（stage-2 定案：~6px 量级，光标 move；hover 显朱砂提示可抓） */
+.pp-region-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: move;
+  z-index: 3;
+  transition: background var(--snap);
+}
+.pp-region-edge--l {
+  left: -3px;
+}
+.pp-region-edge--r {
+  right: -3px;
+}
+.pp-region-edge:hover {
+  /* 攥边墨洗（2026-09-02 视觉迭代）：朱砂红带退役——边缘随包边走材料语汇，红不进结构缘 */
+  background: color-mix(in oklch, var(--ink-2) 30%, transparent);
+}
+
+/* 原点十字（世界原点方位感 D-R1-1） */
+.pp-origin {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.45; /* 2026-09-01 审计：原点十字降噪——方位感保留，工程感收敛 */
+}
+.pp-origin::before,
+.pp-origin::after {
+  content: "";
+  position: absolute;
+  background: var(--ink-4);
+}
+.pp-origin::before {
+  left: -18px;
+  right: -18px;
+  top: 0;
+  height: 1px;
+}
+.pp-origin::after {
+  top: -18px;
+  bottom: -18px;
+  left: 0;
+  width: 1px;
+}
+.pp-origin-label {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}

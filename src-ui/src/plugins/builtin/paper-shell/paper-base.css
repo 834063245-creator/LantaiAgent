@@ -1,0 +1,491 @@
+/* paper-shell · base — 根 / 滚动条 / 顶部浮件 / 缩放 / 画布 / 呼吸线 / 流区 / 卷开合 / 桌垫
+ * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
+ * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
+
+.pp-root {
+  position: fixed;
+  inset: 0;
+  z-index: 280;
+  background: var(--paper);
+  color: var(--ink-1);
+  font-family: var(--f-song);
+  font-size: 15px;
+  line-height: 1.8;
+  display: flex;
+  flex-direction: column;
+  /* CJK 排印确定性（2026-08-30）：canvas 测高（pretext）只按字体 metrics 计行，
+   * 不含 CSS 文本间距特性——Chromium 123+/128+ 的 text-spacing-trim（行首标点
+   * 修剪）与 text-autospace（中西文自动间距）默认开启会让 DOM 行宽偏离测量
+   * 行宽（测少渲染多 → 绝对定位块重叠）。纸面显式钉死「无修剪/无自动间距」，
+   * 跨 WebView 版本与测量镜像确定性对齐（镜像纪律：measure 是唯一真相）。 */
+  text-autospace: no-autospace;
+  text-spacing-trim: space-all;
+}
+
+/* 纸张颗粒：全局唯一一份，挂 foundation.css body::after（文档级 fixed 全屏 z 9998，
+   首页/纸壳/画布/面板一律被其覆盖；2026-09-01 前错挂 .sh-root——首页自己的层叠
+   上下文，画布/面板实际从未被盖到）。2026-08-31 去重——纸壳曾自挂一份同款 ::after，
+   叠乘成两层云斑（脏）；此处不再自挂，防回潮。 */
+
+.pp-root ::selection {
+  background: var(--seal-soft);
+}
+/* 划词朱线（2026-09-02 视觉迭代）：流区内原生洗底退役——选区以手写朱线呈现
+ * （.pp-sel-ink，PaperPanel 渲染；paper/sel-ink.ts 纯函数）。纸不动、只落墨；
+ * composer/菜单等 UI 面照旧洗底。 */
+.pp-region ::selection {
+  background: transparent;
+}
+.pp-root ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.pp-root ::-webkit-scrollbar-thumb {
+  background: var(--ink-4);
+  border: 3px solid var(--paper);
+}
+.pp-root ::-webkit-scrollbar-track {
+  background: var(--paper);
+}
+
+/* ── 顶部浮件（2026-09-17 标题栏拆除批）──
+ * **书眉整条退役**（旧 `.pp-topbar`：56px 布局行，flex 列的第一行）。病灶不是
+ * 「不好看」而是**结构性挡路**：画布被这条行从窗口顶推开 56px ⇒ 边缘滚动最自然的
+ * 动作（把指针甩到屏顶）永远落在书眉上（不在画布内 ⇒ 悬停档判据直接否掉），
+ * 上缘在用户视角里等于没有边缘滚动；拖块贴顶同此（越出画布只到 56 就到底）。
+ * 现在控制件改成右上**一枚浮件**：覆盖件（`.pp-canvas` 的**兄弟**，不属画布 DOM
+ * ——悬停判据据「画布本体」量，故浮件之上不滚，与目次带同族）、不进布局流
+ * （画布顶缘 = 屏缘）、**常显**（不做悬停揭示：揭示区与命中区一分开就互为前提，
+ * 见 taste-ledger 拖动锁二版教训），且**兼任窗口拖动热区**（decorations:false 的
+ * 标题栏职责，走 app/window-drag.ts 原生通道——`画布` 二字即抓手，带 tooltip）。
+ * 让位：目次带在右缘占 104px（= 内容列 64 + 缘滚跑道 40；`.pp-toc` 的 width，
+ * 同在本文件），浮件右距 = 带宽 + 16（不压导航带、不越出屏）。
+ * 视觉：纸底 + 弱线 + `--elev-raise` 浮起（HUD 化但**不透明**——半透明会让画布
+ * 正文与浮件文字互相糊字，见 taste-ledger「坞底 / HUD 化」条的病根）。
+ *
+ * **几何真源就在下面这几行**（带高 = 屏缘 8 + 浮件 40 + 呼吸 8 = **56**）：
+ * 它与两处 TS 镜像同值——`composer-float.COMPOSER_CHROME_H`（坞上夹紧）、
+ * `MinimapView.TOP_CHROME_H`（小地图默认位）；`right` 让位量 = 目次带宽
+ * （.pp-toc 的 width，同在本文件）。测试 `stage4-toc-top-band` 四值一起钉死。
+ * ⚠ 刻意不落 tokens.css：那是**壳域**（main.ts 打进 bundle），改它必须重建 exe；
+ * 几何留在产地域，本批才能「只换产物热更」（docs/dev-workflow.md）。 */
+.pp-chrome {
+  position: absolute;
+  top: 8px;
+  right: 120px; /* = 目次带宽 104（内容列 64 + 缘滚跑道 40）+ 16 呼吸（不压导航带、不越出屏） */
+  height: 40px; /* = 带高 56 − 上下呼吸 8×2 */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  background: var(--paper);
+  border: var(--rule-soft);
+  box-shadow: var(--elev-raise);
+  z-index: 30; /* 原书眉同档：纸内覆盖件之上、全局面板之下 */
+}
+
+/* 浮件首件 = 「画布」二字（**抓手**：按住拖窗口 / 双击最大化）。浮件上只有它是
+ * 非交互件，故它就是窗口拖动热区的可见落点；窗口另有系统级移动通道
+ * （任务栏 / Win+方向键 / Alt+Space），画布视图不再留整条拖动带。 */
+.pp-chrome .pp-title {
+  font-family: var(--f-song);
+  font-size: var(--fs-lead);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 4px;
+}
+
+/* ── 缩放控件（2026-09-08 缩放舒适度拍板）：−/+ 阶梯步进 + 点读数回 100%。
+ * 沿用旧 .pp-zoom 读数的 mono 墨语言；三键裸面无边框，hover 提墨一档
+ * （ink-3 → ink-2），读数恒 tabular 不跳宽。 */
+.pp-zoom-ctl {
+  display: flex;
+  align-items: center;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.pp-zoom-ctl button {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: color var(--snap);
+}
+.pp-zoom-ctl button:hover {
+  color: var(--ink-2);
+  background: var(--paper-deep);
+}
+.pp-zoom-ctl .pp-zoom-btn {
+  font-size: var(--fs-caption);
+  line-height: 1;
+}
+.pp-zoom-ctl .pp-zoom-val {
+  min-width: 44px;
+  text-align: center;
+}
+
+/* ── 读数微动效（§15 批 5）：离散步进时读数「一跳」 ──
+ * 病灶：−/＋ 钮与键盘 +/−/0 是**离散步进**，读数从 100% 直接变成 150%——三字替换
+ * 没有任何交代，眼要自己去追。治法＝一次极小的位移 + 淡入（2px，`--m-ink` 显形档），
+ * 重播机制走 React key（`.pp-zoom-num` 以 store 的 zoomTick 作 key ⇒ 重挂即重播），
+ * 不用定时器、不用 JS 动画。
+ * **量纲刻意压到 2px**：读数是机读小字（10px mono），位移一大会读成「字在跳」而不是
+ * 「值更新了」；起点透明度取 .72（同 `.pp-ink-delta` 的起墨档——不从 0 全透，避免闪烁）。
+ * 滚轮连续缩放不抬计数 ⇒ 不重播（每帧重播会读成抖动）。 */
+.pp-zoom-num {
+  display: inline-block;
+  animation: pp-readout-tick var(--m-ink);
+}
+
+@keyframes pp-readout-tick {
+  from {
+    opacity: 0.72;
+    translate: 0 2px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+.pp-close {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.1em;
+  color: var(--ink-2);
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition:
+    border-color var(--snap),
+    color var(--snap),
+    background var(--snap);
+}
+.pp-close:hover {
+  border-color: var(--ink-2);
+  color: var(--ink-1);
+  background: var(--paper-deep);
+}
+
+/* 设置入口（顶部浮件——Agent 产品域唯一常驻面板的开关） */
+.pp-settings {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.1em;
+  color: var(--ink-2);
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition:
+    border-color var(--snap),
+    color var(--snap),
+    background var(--snap);
+}
+.pp-settings:hover {
+  border-color: var(--ink-2);
+  color: var(--ink-1);
+  background: var(--paper-deep);
+}
+
+/* 有新版本待看（update-store 角标）：字尾朱砂点——朱批语义，同 .sh-btn-text.has-update。
+ * D2（2026-08-29）：状态点全族方点化（圆角恒 0 收编最后一个豁免族）。 */
+.pp-settings.has-update::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+  background: var(--seal);
+}
+
+/* ── 画布区（世界容器的宿主）──
+ * 空白画布不参与原生扫选——平移手势与文字选择分家（幻影扫选曾借道活选区把
+ * 平移喂进抽纸条通道）。本面**不**再自持 user-select：不可选是全局默认
+ * （foundation.css 选区政策），可选性只由 .pp-block 自证。 */
+.pp-canvas {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+}
+.pp-canvas.pp-panning {
+  cursor: grabbing;
+}
+/* ── 运行呼吸线（创作坞 v2 2026-08-31）：任一卷在跑 → 画布底缘石青细线呼吸──
+ * 机 = 石青（语义铁律）；案上「有活气」的纸感信号，与书脊运行点/坞内停止钮
+ * 同源（runningIds）。 */
+.pp-canvas.pp-stream-live::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--indigo);
+  animation: pp-breathe 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes pp-breathe {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+
+/* ── 纸面运行态动效族（2026-09-06）：落笔点/湿墨尾点/行走秒/在跑折叠行 ──
+ * 同族同律：石青（机=铁律）、方点（D2 圆角恒 0 收编）、1.6s 与 pp-breathe
+ * 同频呼吸（整族同拍不相干）。明度带宽比线条呼吸（0.2↔0.75）亮——点是
+ * 定位信号、行是环境信号。动效敏感用户经 foundation.css 全局豁免成静态。 */
+@keyframes pp-ink-live {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 世界层：transform 由 JS 设置（pan/zoom）
+ * will-change 只在交互期挂（.pp-world--live）——常驻会让浏览器固定合成层
+ * 栅格化分辨率，放大时 GPU 拉伸旧位图导致文字发虚；停止后摘掉 + 强制 reflow
+ * 逼浏览器按当前档位重新栅格化（2026-08-30 文字锐化）。 */
+.pp-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+.pp-world.pp-world--live {
+  will-change: transform;
+}
+
+/* ── 流区（Stage-2 一纸多卷：每会话一块有界流区）──
+ * 一纸多卷定案（stage-2 §3.5）：流区宽 1440 / 线性排比间距 720 / 边缘拖动
+ * 移动整区（宽度不变，无手柄条——hover 即拖拽态）。z 序：流区底、块之上、
+ * 边缘手柄最上（边缘可随时抓）。 */
+/* 界栏（2026-09-02 改档）：旧案 = 规格书 §1 锁定件双线框（2px 半墨 + 飘浮发丝），
+ * 实机判「简陋」且与真纸材质打架——用户拍板读法 B 物理包边（见 .pp-region 规则）。
+ * 墨框退役；版框语义移交「印在纸上的墨」叙事，纸缘交还材料。 */
+/* 流区 = 桌面上的贴纸（材质批 2026-09-01；贴纸纹理批同日修档）：底色不透明——
+ * 纸不透光；纸纹乘印其上，纹随区动（贴纸语义：桌面纹归 .pp-desk，流区纹归本层）。
+ * paper-sheet.jpg 由 fiber 线性扩幅回中派生（a=1.63/b=-.555：振幅 .031→.067 立得
+ * 住、均值 .94 不动纸色——原 k=.7 提白档实机不可见，T2 活体验证；派生走
+ * normalize-paper-texture.ps1 -Sheet）。每卷纸性三参 --sheet-ox/oy/j
+ * （src/paper/sheet.ts，seed=卷 id 哈希）：同卷恒同纸、卷卷不重样。纹理固定
+ * tile 尺寸（1200px 平铺）——cover 会随流区高矮变缩放，两卷颗粒大小不一就
+ * 「不像同一批纸」；相位只在 tile 周期内挪取窗。
+ * 帘纹不进流区（2026-09-02 实机验收：单层纸态过审「横纹消失」——贴纸的纸性
+ * 由 paper-sheet 纤维独自承载，帘纹叠乘后读作屏纹；桌面帘纹照留 .pp-desk）。 */
+/* 物理包边（2026-09-02 视觉迭代·用户拍板读法 B）：界栏墨框退役——纸缘 = 材料
+ * 不是墨。裱边带（纸色深一档）+ 受光缘（上缘一线）+ 背光缘（下缘沉）+ 接触落影。
+ * 版框是「印在纸上的墨」，流区这张「叶」不印框（WebGL 探针 prototype/webgl-paper.html
+ * 判读定案）；纸缘交还给纸。border/outline 全退役，四至回归背景盒。 */
+.pp-region {
+  position: absolute;
+  background-color: color-mix(in oklch, var(--paper-deep) calc(10% + 8% * var(--sheet-j, 0)), var(--paper));
+  background-image: url("../../../assets/paper/paper-sheet.jpg");
+  background-size: 1200px;
+  background-repeat: repeat;
+  background-position: var(--sheet-ox, 0px) var(--sheet-oy, 0px);
+  background-blend-mode: multiply;
+  /* 物理包边（box-shadow 列序前者叠上层）：受光缘（左上，光自左上）→ 背光缘
+   * （右下沉）→ 裱边带（一圈纸色深带，7px——A/B 台定档）→ 接触落影（纸厚，
+   * 同色纸放同色桌全靠它） */
+  box-shadow:
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 7px var(--sheet-band),
+    var(--shadow-sheet);
+  z-index: 1;
+  /* 影随手动（2026-09-10 拿纸动效）：落影三档（平放/在手/lift）间缓退——
+   * 换主时旧卷影不是瞬间消失，拖拽带显形起落也走同一缓动（物理世界纸影
+   * 不瞬移）。只声明 box-shadow 一项，别拖其他属性。 */
+  transition: box-shadow var(--m-sheet);
+}
+/* active 只动 box-shadow——朱砂洗底退役（2026-09-02「变色」判死）：活跃 = 接触
+ * 落影加深一档（手里正拿着的纸，离桌面更高一点），结构墨阶不动纸色；
+ * background 简写仍禁——会抹纸纹层。版口钮独挂 = 另一条活跃门控规则（见卷首段）。
+ * 拿纸动效（2026-09-10 拍板「拿纸 + 朱笔划界」）：显式激活瞬间影子从平放档
+ * 过冲 lift 档（拖拽手势既有最高影档）再落「在手」档——「刚把这张纸拿起来」
+ * 的物理过场；基座 transition 承接缓退，keyframes 承接过冲。class 不变不重放
+ * （幂等再点同卷无动效）。 */
+.pp-region-active {
+  animation: pp-region-take var(--m-sheet);
+  box-shadow:
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 7px var(--sheet-band),
+    var(--shadow-sheet-active);
+}
+/* 拿纸 keyframes：三档影值全字面复用既有 stack（零新魔数）——任何帧不得
+ * 声明 transform（世界坐标换算与 InkLayer 对位红线）与 background（纸纹层）。
+ * 动画终帧 = 静态 active 值，播放完自然回落，无需 fill-mode。 */
+@keyframes pp-region-take {
+  from {
+    box-shadow:
+      inset 3px 4px 5px var(--sheet-lit),
+      inset -2px -3px 6px var(--sheet-shade),
+      inset 0 0 0 7px var(--sheet-band),
+      var(--shadow-sheet);
+  }
+  60% {
+    box-shadow:
+      inset 3px 4px 5px var(--sheet-lit),
+      inset -2px -3px 6px var(--sheet-shade),
+      inset 0 0 0 7px var(--sheet-band),
+      var(--shadow-sheet-lift);
+  }
+  to {
+    box-shadow:
+      inset 3px 4px 5px var(--sheet-lit),
+      inset -2px -3px 6px var(--sheet-shade),
+      inset 0 0 0 7px var(--sheet-band),
+      var(--shadow-sheet-active);
+  }
+}
+/* 带显形（2026-09-05 松手定夺改造）：拖拽进行时来源流区提落影至 lift 档
+ * ——「这张纸是当前手势的领域」（块拖回带内 = 回流；纸条拖出带外 = 成条，
+ * 400px 窄带从暗判变可见边界）。变色判死（09-02 活跃卷先例）：只动落影不动
+ * 纸色；active 与 band 叠加时 lift 档胜出（后者声明序在后）。 */
+.pp-region--band {
+  box-shadow:
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 7px var(--sheet-band),
+    var(--shadow-sheet-lift);
+}
+/* ── 卷开合（2026-10-18 卷开合动效批；用户拍板「甲 · 入场 + 退场对称」）──
+ * 病灶（用户：「卷的展开收起……现在纯粹是闪现」）：开卷 = 纸与字**同一帧**出现
+ * （本件基座只有 box-shadow 过渡，纸零入场），合卷 = 区域当帧卸载（零退场）。
+ * §15 的换景收口账收的是「侧栏↔书脊 / 设置页签 / 首页↔画布 / 会话换主」，卷开合
+ * 从来没立过项。
+ *
+ * **力度定案（2026-10-18 实机反馈「不太明显」→ 台架五案实测）**：主因不是幅度而是
+ * **曲线**——`--m-ease-out` 把 80% 的变化压在头 30%（t=.2 走完 65%、t=.45 走完 94%），
+ * 名义 260ms 的动效实感只有 ~90ms。台架 `prototype/region-open-close-ab.html` 逐案量
+ * 「与落定帧的平均可见变化」（0~255）：甲 ease-out + 墨 8px = **1.65**；只换 io =
+ * **3.99（+142%）**；io + 墨 18px = 4.30；io + 墨 28px = 4.37（落幅 8→28 只再 +10%）。
+ * ⇒ 取「io 曲线 + 墨落 18px」：**开合两向都走 `--m-ease-io`**（"对开"曲线本是给开合备的，
+ * 只是 §15 旧判据把它限定给「两侧同时动」——本批按实测扩到「纸的出现/抽走」），墨的
+ * 落幅 8 → **18px**（局部读得出来的最小加力）。
+ *
+ * 入场（**落纸**）= 纸淡入（本类，窗内发放——同 pp-enter 的首见纪律）+ 墨（卷首 + 块）
+ * 自 18px 落下（见 pp-drop-in）。**刻意不用 `@starting-style`**：流区随虚拟化卸载/重挂
+ * （`visibleRegionIds`），挂首帧入场 = 平移时纸面反复「凭空浮现」——§15「首页→画布」
+ * 候选做法那条判据已钉死这条路。类由壳层按落纸窗发放，重挂不重放。
+ * 纸律：整叶**只动 opacity**——`.pp-region` 不得声明 transform/translate（纸纹
+ * background-position 与 InkLayer 对位红线，见 pp-region-take 注）。 */
+.pp-region.pp-spread {
+  animation: pp-spread-in var(--m-sheet) var(--m-ease-io) backwards;
+}
+@keyframes pp-spread-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* 落纸的**墨**：卷首与块自 18px 落下（`--m-sheet` / io，与纸同档同曲线 = 一次动作）。
+ * 走**独立 `translate` 属性**：块定位用内联 `transform: translate(x,y)`，任何一帧声明
+ * transform 都会把块钉到左上角（2026-09-03 生产事故，pp-enter 注有案）。
+ * `.pp-block.pp-drop` 由壳层在落纸窗内发放，并**取代**该块的 `pp-enter`
+ * （同一属性上两条动画是整表替换，只能二选一）。 */
+@keyframes pp-drop-in {
+  from {
+    translate: 0 18px;
+    opacity: 0;
+  }
+  to {
+    translate: 0 0;
+    opacity: 1;
+  }
+}
+.pp-block.pp-drop {
+  animation: pp-drop-in var(--m-sheet) var(--m-ease-io) backwards;
+}
+/* 卷首的落纸/起纸两条规则**不住这里**：`.pp-region.pp-spread .pp-folio-head`
+ * 特异度 (0,3,0) 高于基座 `.pp-folio-head` (0,1,0)，写在本段会触发 biome
+ * noDescendingSpecificity（真机上仍生效，但顺序失真会让后来者误判）——
+ * 它们迁到 `.pp-folio-head` 基座之后（搜「卷首随纸落/沉」）。 */
+/* 摊开 = 摊上画布 + 设为活卷 ⇒ 「拿纸过冲」与「落纸」两条动画同时在位。
+ * `animation` 是**整表替换不是合并**：这里必须把两条都写上，缺一条就丢一条。
+ * 拿纸过冲保留它自己的既有曲线（产品原样），只给落纸挂 io。 */
+.pp-region.pp-spread.pp-region-active {
+  animation:
+    pp-region-take var(--m-sheet),
+    pp-spread-in var(--m-sheet) var(--m-ease-io) backwards;
+}
+/* 退场（**起纸**）= 入场逆写（同档 `--m-sheet`、同曲线 io），窗满才由壳层真卸载
+ * （`region-motion.ts` 的 `REGION_MOTION_MS` = `--m-sheet`；窗内重开 = 属性摘掉、
+ * 按当下值掉头回场）。
+ * 档写在**退场规则**里——CSS Transitions 取「变更后」样式那张表（批 3b 判据）。
+ * 退场期一律不接点击（约束律②：动效永不阻塞交互，正在消失的面也不许吃点击）。 */
+.pp-region[data-leaving] {
+  opacity: 0;
+  transition: opacity var(--m-sheet) var(--m-ease-io);
+  pointer-events: none;
+}
+.pp-block.pp-leaving {
+  opacity: 0;
+  /* 墨随纸沉 18px（与入场同幅）走**独立 `translate` 属性**，绝不写 `transform`
+   * （同上：块定位用内联 transform）。起纸是一件事（整叶一起走），故墨的沉与纸的淡
+   * 同档 `--m-sheet` / 同曲线 io。transition 整表替换 ⇒ 必须带上 transform
+   * （让位常驻位，motion-contract 有牙）。 */
+  translate: 0 18px;
+  transition:
+    transform var(--m-sheet),
+    translate var(--m-sheet) var(--m-ease-io),
+    opacity var(--m-sheet) var(--m-ease-io);
+  pointer-events: none;
+}
+/* ── 桌垫（材质批修复 2026-09-01：贴纸语义两刀之二）──
+ * 真因不是「画不出」（实机活体验证：荧光绿/品红桌面双盲均画得出）——是纹理
+ * 归属错位：①文档级颗粒层 body::after 钉死视口，拖动时纸走纹不走，材质被判属
+ * 桌面，流区读作「透」（第一刀已由 body:has(.pp-root) 退役文档层）；②桌面与
+ * 流区必须各有其纹——桌面是世界本体（.pp-desk，世界坐标系内随拖动/缩放走），
+ * 流区是贴在桌面上的贴纸（.pp-region 自带 paper-sheet，纹随区动）。本层是
+ * world 第一子：配方与 body::after 同款（微颗粒×grain×fiber 元素内 multiply），
+ * 但只纹理桌面自身、不再乘盖流区/纸条（background-blend-mode 只混自身层，
+ * 无 mix-blend-mode）。±200000px 世界坐标近似无界桌面。 */
+.pp-desk {
+  position: absolute;
+  left: -200000px;
+  top: -200000px;
+  width: 400000px;
+  height: 400000px;
+  pointer-events: none;
+  z-index: 0;
+  /* ⚠ 四层配方**内联**（2026-09-21 教训）：本文件是**插件产物**（磁盘通道热更），
+   * 壳层 CSS 烧在 exe 里——产物依赖「比壳层新的 token」会在旧壳上解析成 none，
+   * 实机症状 = 桌垫纸纹整片消失（只剩流区有纹）。同配方另两份在
+   * .ss-sidebar::before / .sr-rack::before，三份由
+   * tests/paper-visual-decisions 的「同配方」用例钉住。 */
+  filter: brightness(1.05);
+  background-color: var(--paper);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    url("../../../assets/paper/paper-grain.jpg"), url("../../../assets/paper/paper-fiber.jpg"), var(--laid-lines);
+  background-size:
+    180px 180px,
+    2048px 2048px,
+    2048px 2048px,
+    auto;
+  background-repeat: repeat;
+  background-blend-mode: normal, multiply, multiply, multiply;
+}

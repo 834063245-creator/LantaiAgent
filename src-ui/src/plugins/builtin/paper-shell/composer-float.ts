@@ -27,6 +27,8 @@
 // 锁定态即「普通 DOM」，拖动与划词不可能打架；解锁态只在拖动期内全页禁选
 // （见 use-composer-float）。
 
+import { COMPOSER_TOKENS } from './type-tokens';
+
 /** 坞位记忆键（视图偏好，全局非工作区数据——与 lantai.minimap.pref 同族）。 */
 export const COMPOSER_POS_KEY = 'lantai.composer.pos';
 /** 拖动锁记忆键（同一族；默认锁定 = 键缺席）。 */
@@ -44,11 +46,11 @@ export const COMPOSER_EDGE = 8;
 /** 吸附阈（px）——拖到目标位 24px 内即吸附（左右缘/版心中轴/底带/最底缘）。 */
 export const COMPOSER_SNAP = 24;
 
-/** **图版架高**（2026-09-23 丙案）：**镜像** = `PaperPanel.css` 的
- *  `.pp-rack { height: 38px }`——改一处必改两处（由 tests/composer-float 的
- *  字面量对拍钉住，同 COMPOSER_TICK_* 的纪律）。吸附表要用它，故住本文件
- *  （槽主人持吸附表；架的 DOM 与样式分别住 compose-dock 与 PaperPanel.css）。 */
-export const RACK_H = 38;
+/** **图版架高**（2026-09-23 丙案）：单一真源 = `type-tokens.COMPOSER_TOKENS.rackH`
+ *  （2026-11-06 上帝文件治理 P2：此前 TS 38 与 CSS 38px 各写一份、靠字面量对拍拦漂移）。
+ *  样式侧读 `var(--pp-composer-rackH)`（paper-dock-jobs.css 的 `.pp-rack`）。
+ *  吸附表要用它，故本文件转出（槽主人持吸附表；架的 DOM 与样式分别住 compose-dock 与纸壳）。 */
+export const RACK_H = COMPOSER_TOKENS.rackH;
 
 /** 架在时的**屏缘位**（视口底 → 坞下边的最小值）= 屏缘留白 + 架高。
  *

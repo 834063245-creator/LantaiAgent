@@ -44,11 +44,10 @@ import {
   saveComposerUnlocked,
   snapComposerPos,
 } from '../src/plugins/builtin/paper-shell/composer-float';
+import { COMPOSER_TOKENS } from '../src/plugins/builtin/paper-shell/type-tokens';
+import { readPanelCss } from './helpers/panel-css';
 
-const PANEL_CSS = readFileSync(
-  join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
-  'utf8',
-);
+const PANEL_CSS = readPanelCss();
 /** token 真源（坞抬高 96 的出处——TS 侧的 COMPOSER_RISE 是它的镜像）。 */
 const TOKENS_CSS = readFileSync(join(__dirname, '..', 'src', 'app', 'tokens.css'), 'utf8');
 
@@ -182,9 +181,13 @@ describe('创作坞浮动化 · 图版架兜底（架在 ⇒ 最底缘 8 → 46�
     expect(clampComposerPos({ left: -500, bottom: -500 }, VP, box, { rack: true }).left).toBe(COMPOSER_EDGE);
   });
 
-  it('常量与 CSS 对拍：RACK_H = .pp-rack 高（38）；坞抬高 96 与 --composer-rise 同源', () => {
-    expect(RACK_H).toBe(38);
-    expect(ruleBody(PANEL_CSS, '.pp-rack {')).toContain(`height: ${RACK_H}px`);
+  it('单一真源：RACK_H = COMPOSER_TOKENS.rackH，CSS 读 var(--pp-composer-rackH)；坞抬高 96 与 --composer-rise 同源', () => {
+    /* 2026-11-06 P2：此前断言「TS 38 == CSS 38px」——两把尺子互相证明；
+     * 现在断言「两边都读同一颗 token」，CSS 里不再允许出现这个数字。 */
+    expect(RACK_H).toBe(COMPOSER_TOKENS.rackH);
+    const rackRule = ruleBody(PANEL_CSS, '.pp-rack {');
+    expect(rackRule).toContain('height: var(--pp-composer-rackH)');
+    expect(rackRule).not.toContain('height: 38px');
     expect(COMPOSER_RISE).toBe(96);
     expect(TOKENS_CSS).toContain(`--composer-rise: ${COMPOSER_RISE}px`);
   });
