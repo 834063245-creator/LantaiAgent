@@ -21,7 +21,7 @@
 （判据转登记册，见下「真机验收登记册」）；exe 已重建完毕，本页不再出现「须重建 exe」类待办。
 
 **当前真正的在办**：① 三件已立项待排期的代码（见「待执行但已立项」）；② 文档面重构收尾（P0-P4 全落，余归档）；
-③ 画布支 Stage-6。已竣工线的权威叙事全在 [`docs/archive/`](../archive/README.md)；**跨文档数字一律看
+③ 画布支 Stage-6；④ 上帝文件治理 P2（纸壳分片）。已竣工线的权威叙事全在 [`docs/archive/`](../archive/README.md)；**跨文档数字一律看
 [`docs/facts.generated.md`](../facts.generated.md)，本页不复述**。
 
 ## 活跃线（在办）
@@ -32,6 +32,7 @@
 | **文档面重构** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0-P4 全部落地（2026-09-16 起；余归档本文档）** | 四层形态 + 批序 + 豁免账见施工单；门禁 `npm run doc-check`（267 份 0 违规），真源 `scripts/doc-facts.cjs` |
 | **paper-shell** | [`paper-shell/README.md`](paper-shell/README.md) | **R5 已结清（2026-08-29 全账清零）；当前 = 创作坞精修线** | R5 逐项清单 [`r5-polish-backlog.md`](paper-shell/r5-polish-backlog.md)（已清零，作历史判据）；视觉决定账本 [`taste-ledger.md`](paper-shell/taste-ledger.md)；管线史 [`HISTORY.md`](paper-shell/HISTORY.md)；走查 [`walkthrough.md`](paper-shell/walkthrough.md)；表面覆盖地图 [`v2-surface-inventory.md`](paper-shell/v2-surface-inventory.md)；访谈 [`interviews/R1-2026-08-20.md`](paper-shell/interviews/R1-2026-08-20.md) |
 | **画布空间模型** | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **Stage-6 进行中**（UI/UX 专项） | 一纸多卷 / 有界流区 / 宿主模型 / 三层导航；阶段件与返工清单见笔记「展开」段；provider+创作坞联合体检 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md) |
+| **上帝文件治理** | [`god-file-governance.md`](god-file-governance.md) | **P1 已落地（2026-11-06）；P2 纸壳待开工** | 单文件体量门禁（未登记 ≤1000 行 / 已登记只减不增，`tests/god-file-budget.test.ts`）+ 第一刀 `chat-session.ts` 2730→67 行公开面（实现落 `app/chat/session/*`，调用方零改动）；P2 = 先解 CSS↔`measure` 数值镜像再分片 PaperPanel.css |
 | **agent hooks（生命周期扩展点）** | [`agent-hooks-plan.md`](agent-hooks-plan.md) | **一期/二期已竣工** | 步骤钩子家族已落（`ctx.steps`：pre-step 每步 enter/reject + turn-stopping 停止边界，含 durable/transient 注入、`create` 工厂、发现注入收编）；三期待拍（request 系列 / plan·inbox 收编 / CC 桥） |
 
 ## 待执行但已立项（按成本排）

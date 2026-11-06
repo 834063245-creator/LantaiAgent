@@ -10,13 +10,22 @@
 //   - setAgent(null) 收窄：注销工厂 + dispose 句柄，不再清会话列表
 //     （会话存在性脱离 Agent 装配）
 //
-// 冻结文件 chat-session.ts 只做最小外科手术，用 T0 静态断言钉住关键结构；
+// 会话域（原冻结文件 chat-session.ts）只做最小外科手术，用 T0 静态断言钉住关键结构；
 // 行为由现有 chat-session.test.ts / session-ledger.test.ts 回归。
-import { readFileSync } from 'node:fs';
+//
+// 2026-11-06 上帝文件治理：实现已按既有分区拆到 src/app/chat/session/*——断言对象
+// 由单文件改为**跨模块拼读**（函数名在模块间唯一，indexOf 语义不变；断言的仍是
+// 「epoch 记录 → 校验 → 写」这段结构，不是某个文件的行号）。
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const sessionSrc = readFileSync(path.resolve(process.cwd(), 'src/ui/chat-session.ts'), 'utf8');
+const SESSION_DIR = path.resolve(process.cwd(), 'src/app/chat/session');
+const sessionSrc = readdirSync(SESSION_DIR)
+  .filter((f) => f.endsWith('.ts'))
+  .sort()
+  .map((f) => readFileSync(path.join(SESSION_DIR, f), 'utf8'))
+  .join('\n');
 const coreSrc = readFileSync(path.resolve(process.cwd(), 'src/app/chat/chat-core.ts'), 'utf8');
 
 describe('chat-session H5 — 发号对账的 epoch 防护（B·2026-09-21 起 owner = reconcileVolumeIssueFloor）', () => {

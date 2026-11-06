@@ -19,7 +19,7 @@
 
 | 簇 | 文件 | 说明 |
 |---|---|---|
-| 冻结（禁改） | `chat-session.ts` `chat-stream.ts` `part-mutator.ts` | chat 编排域核心；`agent/execution-state.ts`（在 agent/）同列 |
+| 冻结（禁改） | `chat-session.ts`（仅公开面） `chat-stream.ts` `part-mutator.ts` | chat 编排域核心；`agent/execution-state.ts`（在 agent/）同列。**`chat-session.ts` 的实现 2026-11-06 已按既有分区拆到 `src/app/chat/session/`（13 模块），本文件只剩再导出**——改行为去实现模块，别往回写 |
 | chat 编排域 | `chat-store.ts`（聚合入口）`message-model.ts` `tool-semantics.ts` `agent-panel-store.ts` | 面板级 store 四件套在 `src/state/`（scoped/messages/session/panel/input），聚合编排在此 |
 | 命令式基础设施 | `runtime-adapter.ts` `lsp-client.ts` `subagent-sink.ts` `resize-zones.ts` `icons.ts` | imperative-DOM/旧层宿主；LspService 是子系统服务化样板 |
 

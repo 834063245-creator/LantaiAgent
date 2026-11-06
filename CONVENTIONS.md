@@ -54,7 +54,7 @@
 
 - `src-ui/src/app/` — 新观测台壳：单 React 根、chrome、面板注册表、聊天视图。新 UI 功能优先落这里。
 - `src-ui/src/ui/` — 旧层 + 领域逻辑：星图 scene、事件总线、领域 stores、React 岛组件。没有迁移计划时，修改它要沿用该目录现有模式。
-- **冻结文件**：`ui/chat-session.ts`、`ui/chat-stream.ts`、`ui/part-mutator.ts`、`agent/execution-state.ts` — 聊天/流式执行的核心状态机，不是局部需求不要改。
+- **冻结文件**：`ui/chat-session.ts`（仅公开面）、`ui/chat-stream.ts`、`ui/part-mutator.ts`、`agent/execution-state.ts` — 聊天/流式执行的核心状态机，不是局部需求不要改。chat-session 的实现 2026-11-06 按文件内既有分区拆到 `app/chat/session/`（13 个模块），本文件只剩再导出：**冻结面落在实现模块上，别把实现写回公开面**。
 - `src-ui/src/agent/` — Agent 运行时、工具、多 Agent、目标/计划/记忆。
 
 ### 1.2 状态管理：Zustand，不要模块级变量
