@@ -83,6 +83,10 @@ const GLOBAL_INPUTS = new Set([
   'src-ui/src/plugins/builtin/react-bridge.cjs',
   'src-ui/src/plugins/builtin/face-css.ts',
   'src-ui/src/plugins/builtin/contribution-helpers.ts',
+  // 界面字阶（2026-11-06）：产物 CSS 用 @import 把 --fs-* 一并内联进来——
+  // 产物自包含是硬约束（旧 exe + 新产物不得塌成继承），故它是**构建全局件**
+  // 而非某个产物的 shared（同 react 桥：不属于任何单一产物）。
+  'src-ui/src/app/type-scale.css',
 ]);
 const statefulKernelModules = JSON.parse(
   readFileSync(join(__dirname, 'lib', 'stateful-kernel-modules.json'), 'utf8'),

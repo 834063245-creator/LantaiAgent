@@ -34,13 +34,14 @@ describe('创作坞 P2 · 命令面板回纸', () => {
     expect(SHELL_CSS).not.toContain('var(--glass-hi)');
   });
 
-  it('组题 11/600 去大写；行 13；脚 11', () => {
+  // 2026-11-06 字阶批：11/13/11 → 字阶档 caption/body/caption（值由 tests/ui-type-scale 守）。
+  it('组题 caption/600 去大写；行 body；脚 caption', () => {
     const group = ruleBody(SHELL_CSS, '.pal-group {');
-    expect(group).toContain('font-size: 11px');
+    expect(group).toContain('font-size: var(--fs-caption)');
     expect(group).toContain('font-weight: 600');
     expect(group).toContain('text-transform: none');
-    expect(ruleBody(SHELL_CSS, '.pal-row {')).toContain('font-size: 13px');
-    expect(ruleBody(SHELL_CSS, '.pal-foot {')).toContain('font-size: 11px');
+    expect(ruleBody(SHELL_CSS, '.pal-row {')).toContain('font-size: var(--fs-body)');
+    expect(ruleBody(SHELL_CSS, '.pal-foot {')).toContain('font-size: var(--fs-caption)');
   });
 });
 

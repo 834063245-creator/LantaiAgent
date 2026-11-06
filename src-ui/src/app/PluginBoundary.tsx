@@ -45,13 +45,13 @@ export class PluginBoundary extends Component<PluginBoundaryProps, PluginBoundar
           background: 'var(--paper, #f7f2e5)',
           color: 'var(--ink-1, #26221c)',
           fontFamily: 'var(--f-song, serif)',
-          fontSize: 13,
+          fontSize: 'var(--fs-body)',
           lineHeight: 1.9,
           borderTop: '2px solid var(--warn, #8a6d1a)',
         }}
       >
         <div style={{ fontWeight: 600 }}>{this.props.label} 渲染崩溃</div>
-        <div style={{ fontSize: 12, color: 'var(--ink-2, rgba(38,34,28,0.7))', wordBreak: 'break-all' }}>
+        <div style={{ fontSize: 'var(--fs-body)', color: 'var(--ink-2, rgba(38,34,28,0.7))', wordBreak: 'break-all' }}>
           {firstLine}
         </div>
         <button
@@ -61,7 +61,7 @@ export class PluginBoundary extends Component<PluginBoundaryProps, PluginBoundar
             marginTop: 6,
             padding: '2px 12px',
             fontFamily: 'inherit',
-            fontSize: 12,
+            fontSize: 'var(--fs-body)',
             background: 'transparent',
             color: 'var(--seal, #a03c2e)',
             border: 'none',

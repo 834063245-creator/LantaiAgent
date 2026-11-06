@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* paper-shell · 展卷页（2026-11-05 入口 UX 批）
  *
  * 语言：与案头/画布同一张纸——纸底、朱砂一点、版心 720 居中。它**不是**遮罩或
@@ -29,7 +32,7 @@
 
 .pp-entry-kicker {
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.62em;
   /* 末字后的字距会把整行推左——用同量 text-indent 抵回来（视觉居中）。 */
   text-indent: 0.62em;
@@ -44,7 +47,7 @@
   white-space: nowrap;
   font-family: var(--f-song);
   font-weight: var(--weight-display);
-  font-size: clamp(26px, 2.5vw, calc(36px * var(--font-scale)));
+  font-size: clamp(20px, 2.5vw, var(--fs-hero));
   line-height: 1.24;
   letter-spacing: 0.02em;
   color: var(--ink-1);
@@ -75,7 +78,7 @@
   column-gap: 10px;
   text-align: left;
   font-family: var(--f-mono);
-  font-size: calc(11.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   letter-spacing: 0.06em;
   color: var(--ink-4);
   transition: color var(--m-ink);
@@ -127,7 +130,7 @@
   align-items: baseline;
   gap: 10px;
   font-family: var(--f-mono);
-  font-size: calc(10.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   letter-spacing: 0.08em;
   color: var(--ink-3);
 }
@@ -151,7 +154,7 @@
   margin: 0;
   max-width: 100%;
   font-family: var(--f-mono);
-  font-size: calc(11.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   line-height: 1.9;
   letter-spacing: 0.03em;
   color: var(--fail);
@@ -168,7 +171,7 @@
 
 .pp-entry-primary {
   font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   letter-spacing: 0.08em;
   color: var(--paper);
   background: var(--ink-1);
@@ -185,7 +188,7 @@
 
 .pp-entry-link {
   font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   letter-spacing: 0.08em;
   color: var(--ink-2);
   background: transparent;

@@ -268,7 +268,7 @@ export function PluginsPage() {
           padding: '8px 10px',
           marginBottom: 12,
           border: '1px solid var(--warn)',
-          fontSize: 11,
+          fontSize: 'var(--fs-caption)',
           lineHeight: 1.6,
         }}
       >

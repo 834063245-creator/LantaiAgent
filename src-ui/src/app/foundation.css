@@ -56,7 +56,7 @@ body {
   background: var(--paper);
   color: var(--ink-1);
   font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   line-height: 1.5;
   /* ponytail: auto = ClearType on Windows, subpixel on macOS — sharper than antialiased */
   -webkit-font-smoothing: auto;

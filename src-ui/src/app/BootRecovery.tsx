@@ -102,13 +102,17 @@ export function BootRecovery(props: BootRecoveryProps) {
         lineHeight: 1.7,
       },
     },
-    createElement('div', { style: { fontSize: 13, letterSpacing: '0.35em', color: MUTED } }, '兰 台 · 启 动 诊 断'),
+    createElement(
+      'div',
+      { style: { fontSize: 'var(--fs-body)', letterSpacing: '0.35em', color: MUTED } },
+      '兰 台 · 启 动 诊 断',
+    ),
     createElement(
       'h1',
-      { style: { fontSize: 30, margin: '18px 0 6px', fontWeight: 600 } },
+      { style: { fontSize: 'var(--fs-readout)', margin: '18px 0 6px', fontWeight: 600 } },
       failure.kind === 'safe-mode' ? '已进入安全模式' : '兰台没能完成启动',
     ),
-    createElement('p', { style: { fontSize: 16, margin: '0 0 22px', color: ACCENT } }, failure.summary),
+    createElement('p', { style: { fontSize: 'var(--fs-lead)', margin: '0 0 22px', color: ACCENT } }, failure.summary),
     createElement(
       'div',
       {
@@ -119,7 +123,7 @@ export function BootRecovery(props: BootRecoveryProps) {
           padding: '12px 16px',
           borderTop: '1px solid ' + RULE,
           borderBottom: '1px solid ' + RULE,
-          fontSize: 13,
+          fontSize: 'var(--fs-body)',
           color: MUTED,
           marginBottom: 26,
         },
@@ -129,7 +133,11 @@ export function BootRecovery(props: BootRecoveryProps) {
       createElement('span', null, '工作区 ' + (workspace ?? '（未知）')),
       createElement('span', null, '日志 ' + (logPath ?? '（未初始化）')),
     ),
-    createElement('h2', { style: { fontSize: 14, letterSpacing: '0.2em', color: MUTED, margin: '0 0 10px' } }, '证 据'),
+    createElement(
+      'h2',
+      { style: { fontSize: 'var(--fs-lead)', letterSpacing: '0.2em', color: MUTED, margin: '0 0 10px' } },
+      '证 据',
+    ),
     createElement(
       'pre',
       {
@@ -139,7 +147,7 @@ export function BootRecovery(props: BootRecoveryProps) {
           background: '#ebe4d4',
           border: '1px solid ' + RULE,
           fontFamily: '"Cascadia Mono","Noto Sans Mono CJK SC",monospace',
-          fontSize: 12.5,
+          fontSize: 'var(--fs-body)',
           lineHeight: 1.6,
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',
@@ -149,12 +157,12 @@ export function BootRecovery(props: BootRecoveryProps) {
     ),
     createElement(
       'h2',
-      { style: { fontSize: 14, letterSpacing: '0.2em', color: MUTED, margin: '0 0 10px' } },
+      { style: { fontSize: 'var(--fs-lead)', letterSpacing: '0.2em', color: MUTED, margin: '0 0 10px' } },
       '怎 么 修',
     ),
     createElement(
       'ol',
-      { style: { margin: '0 0 30px', paddingLeft: 22, fontSize: 14.5 } },
+      { style: { margin: '0 0 30px', paddingLeft: 22, fontSize: 'var(--fs-lead)' } },
       failure.hints.map((h, i) => createElement('li', { key: i, style: { marginBottom: 6 } }, h)),
     ),
     createElement(
@@ -173,7 +181,7 @@ export function BootRecovery(props: BootRecoveryProps) {
               color: INK,
               border: '1px solid ' + RULE,
               borderRadius: 2,
-              fontSize: 14,
+              fontSize: 'var(--fs-lead)',
               fontFamily: 'inherit',
               cursor: 'pointer',
             },
@@ -184,7 +192,7 @@ export function BootRecovery(props: BootRecoveryProps) {
     ),
     createElement(
       'p',
-      { style: { marginTop: 26, fontSize: 12.5, color: MUTED, maxWidth: 720 } },
+      { style: { marginTop: 26, fontSize: 'var(--fs-body)', color: MUTED, maxWidth: 720 } },
       '这张诊断面由内核渲染——它不依赖任何出厂产物，所以产物全灭时它也出得来。' +
         '同一份信息已在日志里（若日志通道已起）；复制按钮拿到的就是它。',
     ),

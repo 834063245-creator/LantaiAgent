@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* SpineRack — 画布空间导航器（Stage-3 书脊三手势）。
  *
  * 隐喻：案头一摞函套——左缘一列脊，一卷一脊（只列**摊开**的卷），当前卷「抽出一半」。
@@ -149,7 +152,7 @@
 }
 .sr-sidebar-toggle-label {
   writing-mode: vertical-rl;
-  font-size: calc(11px * var(--fs));
+  font-size: var(--fs-caption);
   letter-spacing: 0.3em;
   color: var(--ink-3);
   white-space: nowrap;
@@ -242,7 +245,7 @@
 .sr-label {
   writing-mode: vertical-rl;
   text-orientation: mixed; /* 汉字直立、拉丁侧躺——线装书脊惯例 */
-  font-size: calc(13px * var(--fs));
+  font-size: var(--fs-body);
   line-height: var(--pitch);
   letter-spacing: 0.06em; /* 行内推进（近密排）——栏距由 line-height 管 */
   width: var(--label-w);
@@ -270,7 +273,7 @@
   writing-mode: vertical-rl;
   text-orientation: upright; /* 数字直立叠排（旋转侧躺读不出） */
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--fs));
+  font-size: var(--fs-micro);
   letter-spacing: 0.04em;
   line-height: 1;
   color: var(--ink-3);
@@ -303,7 +306,7 @@
   bottom: 4px;
   left: 1px;
   writing-mode: vertical-rl;
-  font-size: calc(10px * var(--fs));
+  font-size: var(--fs-micro);
   line-height: 1;
   color: var(--seal);
   border: 1px solid var(--seal-soft);
@@ -334,7 +337,7 @@
   padding: 0;
   background: none;
   box-shadow: none;
-  font-size: calc(11.5px * var(--fs));
+  font-size: var(--fs-caption);
   line-height: calc(13px * var(--fs));
   letter-spacing: 0;
   overflow: hidden;
@@ -344,7 +347,7 @@
 }
 .sr-spine.sr-thin .sr-branch-tag {
   writing-mode: horizontal-tb;
-  font-size: calc(9px * var(--fs));
+  font-size: var(--fs-micro);
   line-height: 1;
   padding: 1px 0;
   left: 1px;
@@ -404,7 +407,7 @@
   pointer-events: auto;
 }
 .sr-hover-title {
-  font-size: calc(13.5px * var(--fs));
+  font-size: var(--fs-body);
   font-weight: 600;
   line-height: 1.45;
   color: var(--ink-1);
@@ -412,7 +415,7 @@
 }
 .sr-hover-meta {
   font-family: var(--f-mono);
-  font-size: calc(9.5px * var(--fs));
+  font-size: var(--fs-micro);
   letter-spacing: 0.06em;
   color: var(--ink-3);
   margin: 7px 0 10px;
@@ -420,7 +423,7 @@
 .sr-close-btn {
   width: 100%;
   font-family: var(--f-song);
-  font-size: calc(12px * var(--fs));
+  font-size: var(--fs-body);
   letter-spacing: 0.1em;
   color: var(--ink-2);
   background: none;
@@ -447,7 +450,7 @@
 /* 空列（画布暂无摊开的卷） */
 .sr-empty {
   writing-mode: vertical-rl;
-  font-size: calc(10.5px * var(--fs));
+  font-size: var(--fs-caption);
   letter-spacing: 0.2em;
   color: var(--ink-4);
   white-space: nowrap;
@@ -474,7 +477,7 @@
 .sr-drag-ghost-tag {
   writing-mode: vertical-rl;
   font-family: var(--f-song);
-  font-size: calc(10.5px * var(--fs));
+  font-size: var(--fs-caption);
   letter-spacing: 0.2em;
   color: var(--seal-deep);
   white-space: nowrap;

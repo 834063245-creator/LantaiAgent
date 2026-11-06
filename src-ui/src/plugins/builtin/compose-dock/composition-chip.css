@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* 组合芯片（S6 P1e）——创作坞设置行左端「模型 | 组合」的第二格。
  *
  * 归属：创作坞产品的自有样式（与 model-selector.css 同域），**不复用**
@@ -32,7 +35,7 @@
   height: 22px;
   padding: 0 2px;
   font-family: var(--f-song);
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   letter-spacing: 0.06em;
   border: none;
   border-radius: 0;
@@ -80,7 +83,7 @@
   flex: 0 0 auto;
   color: var(--ink-3);
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: var(--fs-micro);
 }
 
 /* 菜单：开在 pill 上方（与思考档位同款——输入行在下的坞内不向下弹） */
@@ -112,7 +115,7 @@
   cursor: pointer;
   text-align: left;
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: var(--fs-body);
   letter-spacing: 0.04em;
   transition:
     background var(--snap),
@@ -140,6 +143,6 @@
   padding: 6px 10px;
   border-top: 1px solid var(--rule-soft-ink);
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: var(--fs-caption);
   letter-spacing: 0.02em;
 }

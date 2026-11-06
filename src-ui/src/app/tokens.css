@@ -215,9 +215,12 @@
   --glass-hi: color-mix(in oklch, var(--paper) 92%, transparent);
   --line-soft: color-mix(in oklch, var(--ink-4) 55%, transparent);
 
-  /* 运行时字号缩放（settings.display.fontScale，main.ts 注入；默认 1）
-     —— 旧 token 体系唯一保留的非色彩变量，勿删 */
-  --font-scale: 1;
+  /* 运行时字号缩放（settings.display.fontScale，boot.ts 注入；默认 1.2，
+     可接受域 1.0～2.0 由 settings.ts 的 FONT_SCALE_RANGE 夹取）。
+     **它只是字阶的输入**：界面字号一律取 src/app/type-scale.css 的 --fs-* 档
+     （2026-11-06 字阶批；本文件不再被各处直接乘——散写基准值由
+     tests/ui-type-scale.test.ts 拦）。 */
+  --font-scale: 1.2;
 }
 
 /* backdrop-filter 不可用（WebKitGTK <2.46 / 软件渲染）时的降级：

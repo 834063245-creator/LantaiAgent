@@ -56,7 +56,7 @@ function McpServerCard({
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: 'var(--pass)' }}>
-        <span style={{ fontSize: 11, fontFamily: 'var(--f-mono)' }}>MCP</span>
+        <span style={{ fontSize: 'var(--fs-caption)', fontFamily: 'var(--f-mono)' }}>MCP</span>
       </span>
       <div className="sp-lsp-card-body">
         <div className="sp-lsp-card-header">

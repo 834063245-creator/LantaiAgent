@@ -23,7 +23,7 @@
   border: none;
   background: none;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: var(--fs-caption);
   cursor: pointer;
   border-radius: 0;
   transition:
@@ -66,7 +66,7 @@
 /* ── 通用（命令面板 + 提示卡共用的 kbd 语言） ────────────────── */
 .pal-box kbd {
   font-family: var(--f-mono);
-  font-size: 11px;
+  font-size: var(--fs-caption);
   color: var(--ink-2);
   border: 1px solid var(--ink-4);
   background: transparent; /* 2026-09-01 审计：去 paper-deep 橄榄底——kbd 走线不走底 */
@@ -121,7 +121,7 @@
   outline: none;
   color: var(--ink-1);
   font-family: var(--f-song);
-  font-size: 14px;
+  font-size: var(--fs-lead);
 }
 .pal-input input::placeholder {
   color: var(--ink-3);
@@ -133,7 +133,7 @@
 .pal-group {
   padding: 10px 12px 4px;
   font-family: var(--f-song);
-  font-size: 11px;
+  font-size: var(--fs-caption);
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--ink-2);
@@ -149,7 +149,7 @@
   background: none;
   color: var(--ink-2);
   font-family: var(--f-song);
-  font-size: 13px;
+  font-size: var(--fs-body);
   border-radius: 0; /* 印刷品无圆角（2026-08-29 走查：6px 圆角违例拆除） */
   cursor: pointer;
   text-align: left;
@@ -176,7 +176,7 @@
   padding: 8px 14px;
   border-top: 1px solid var(--ink-4);
   font-family: var(--f-mono);
-  font-size: 11px;
+  font-size: var(--fs-caption);
   color: var(--ink-2);
 }
 .pal-foot kbd {

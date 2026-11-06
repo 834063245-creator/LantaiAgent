@@ -8,6 +8,28 @@
   <title>兰台 — Lantai</title>
 
   <!-- ═══════════════════════════════════════════════════════════════
+       首帧字号缩放（2026-11-06 字号批）—— --font-scale 必须在**任何模块求值
+       之前**落定，两个理由：
+         ① 纸面版式在模块装载时读它（paper-shell/type-tokens.ts 的 PAPER_SCALE
+            ——测量镜像与 CSS 共用同一枚因子）；
+         ② 首帧不再「先按 1 排一遍、boot 后再跳 1.2」。
+       读的是与 src/settings.ts 同一份存档（键名 / 夹取范围由
+       tests/ui-type-scale.test.ts 对拍）；取不到或存档损坏 ⇒ 交给 CSS 缺省。
+       ═══════════════════════════════════════════════════════════════ -->
+  <script>
+    var __settings = null;
+    try {
+      __settings = JSON.parse(localStorage.getItem('hologram_settings') || '{}');
+    } catch {
+      /* 存档损坏 = 走 CSS 缺省（1.2），不影响启动 */
+    }
+    var __fontScale = Number(__settings?.display?.fontScale);
+    if (Number.isFinite(__fontScale)) {
+      document.documentElement.style.setProperty('--font-scale', String(Math.min(2, Math.max(1, __fontScale))));
+    }
+  </script>
+
+  <!-- ═══════════════════════════════════════════════════════════════
        启动封面（2026-11-05 冷启动 UX 批）——**内联**是刻意的：
        这一段必须在一切外部 CSS / 字体 / JS 之前生效。病灶（用户报
        「启动后首页有一个瞬间毫无排版」）是两段真实的空窗：
@@ -63,11 +85,13 @@
       align-items: center;
       gap: 9px;
       font-family: "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
-      font-size: 10px;
+      /* 2026-11-06 字号批：10 → 11px（封面这行「开 库 中」是默认缩放也读不动的
+         最小档；封面**不接** --fs-* 字阶——它必须在一切外部 CSS 之前就能画）。 */
+      font-size: 11px;
       letter-spacing: 0.46em;
       /* 末字后的字距会把整行推左——同量 text-indent 抵回来（视觉居中）。 */
       text-indent: 0.46em;
-      color: rgba(38, 34, 28, 0.46);
+      color: rgba(38, 34, 28, 0.55);
     }
     #boot-cover .bc-dot {
       width: 3px;

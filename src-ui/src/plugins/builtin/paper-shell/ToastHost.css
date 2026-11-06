@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* ── toast（2026-08-31 贴黄拆迁）：全局瞬时提示浮层 ──
  * 顶中悬浮条：进场淡入 `--m-ink`（显形档），hold 期满后 `--m-sheet` 淡出
  * （纸片离场——比进场慢一档：渐入快、淡出缓）。**动画总时长 = holdMs +
@@ -24,7 +27,7 @@
   border-bottom: 1.5px solid var(--ink-3);
   padding: 8px 14px;
   font-family: var(--f-song);
-  font-size: 12.5px;
+  font-size: var(--fs-body);
   line-height: 1.7;
   color: var(--ink-2);
   box-shadow: var(--elev-raise);

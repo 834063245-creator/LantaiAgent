@@ -17,6 +17,10 @@
 // 排版实证由无头浏览器做——真实渲染产物 + 逐件 getBoundingClientRect 互压检测
 // （2026-09-18 实测：修前 Agent 页 9 对互压，修后 0 对；其余 6 个 tab 矩形零变化）。
 // 本测试钉的是**产生叠印的那个源码形**，防回漂。
+//
+// 2026-11-06 排版批：注疏落位从「左列标签下」翻案为「控件列之下」——9.18 修的是
+// 同格叠印，11.06 修的是**列选错了**（200px 里折 5 行、长串压到右列控件）。两份
+// 守卫合一：行号仍交给 dense，列恒为 col 2（无标签字段通栏）。
 
 // @vitest-environment node
 
@@ -66,12 +70,22 @@ describe('设置面板注疏行排布（防「多条注疏同格叠印」）', (
     expect(ruleBody('.sp-field')).toMatch(/grid-auto-flow:\s*row\s+dense/);
   });
 
-  it('注疏定列不定行：有真标签 → 左列；无标签 → 通栏', () => {
-    const withLabel = ruleBody('.sp-field:has(> .sp-label:not(.sp-checkbox-label)) > .sp-hint-sub');
-    expect(withLabel).toMatch(/grid-column:\s*1\s*;/);
-    expect(withLabel).not.toMatch(/grid-row\s*:/);
+  // 2026-11-06 排版批翻案（用户报「设置面板文字排版」）：注疏**不再进左列**——
+  // 200px 标签列把一句注疏折成 5 行，且长串直接压到右列控件上（真机实测 Agent 页
+  // 「目录：」mono 路径与「模板」下拉叠印）。现在恒落控件列（col 2），无标签字段通栏。
+  it('注疏落在控件列（col 2），左列只放标签；无标签字段通栏', () => {
+    const hint = ruleBody('.sp-field > .sp-hint-sub');
+    expect(hint).toMatch(/grid-column:\s*2\s*;/);
+    expect(hint).not.toMatch(/grid-row\s*:/);
 
-    const noLabel = ruleBody('.sp-field:not(:has(> .sp-label)) > .sp-hint-sub');
+    // 无标签字段：整行通栏（注疏 / 说明 / 按钮一律从左缘起排）
+    const noLabel = ruleBody('.sp-field:not(:has(> .sp-label)) > *');
     expect(noLabel).toMatch(/grid-column:\s*1\s*\/\s*-1\s*;/);
+
+    // 翻案守卫：任何把注疏塞回第 1 列的规则都算回退（2026-09-18 那条已整条退役）
+    const backToCol1 = all
+      .filter((r) => r.selector.includes('.sp-hint-sub') && /grid-column:\s*1\s*;/.test(r.body))
+      .map((r) => r.selector);
+    expect(backToCol1, `注疏被塞回标签列（200px 里折行 + 长串压到右列控件）：\n${backToCol1.join('\n')}`).toEqual([]);
   });
 });

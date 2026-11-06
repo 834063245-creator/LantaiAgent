@@ -28,18 +28,20 @@ function ruleBody(css: string, selector: string): string {
 }
 
 describe('创作坞 P1 · 模型菜单主次与字号', () => {
-  it('人读名 12/600；机器 id 10/ink-3——主次不再倒置', () => {
+  // 2026-11-06 字阶批：本批把「字号下限」从逐条 calc 提成字阶档位（见 tests/ui-type-scale）。
+  // 这里钉的是**主次关系**（人读名 > 机器 id），档位值由字阶表统一守。
+  it('人读名 body(13)/600；机器 id micro(10)/ink-3——主次不再倒置', () => {
     const name = ruleBody(MODEL_CSS, '.ms-item-name {');
-    expect(name).toContain('calc(12px * var(--font-scale))');
+    expect(name).toContain('font-size: var(--fs-body)');
     expect(name).toContain('font-weight: 600');
     const id = ruleBody(MODEL_CSS, '.ms-item-id {');
-    expect(id).toContain('calc(10px * var(--font-scale))');
+    expect(id).toContain('font-size: var(--fs-micro)');
     expect(id).toContain('--ink-3');
   });
 
-  it('分组题 11px / 正常大小写 / 二级墨（旧 9px 全大写 mono 退役）', () => {
+  it('分组题 caption(11) / 正常大小写 / 二级墨（旧 9px 全大写 mono 退役）', () => {
     const head = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-dropdown .ms-group-head {');
-    expect(head).toContain('calc(11px * var(--font-scale))');
+    expect(head).toContain('font-size: var(--fs-caption)');
     expect(head).toContain('text-transform: none');
     expect(head).toContain('--ink-2');
   });
@@ -47,7 +49,7 @@ describe('创作坞 P1 · 模型菜单主次与字号', () => {
   it('模型触发器 215px + 名称 600 + 吃 font-scale', () => {
     expect(ruleBody(PANEL_CSS, '.pp-composer-settings .ms-container {')).toContain('flex: 0 0 215px');
     const trigger = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-container .ms-trigger {');
-    expect(trigger).toContain('calc(12px * var(--font-scale))');
+    expect(trigger).toContain('font-size: var(--fs-body)');
     const name = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-trigger-name {');
     expect(name).toContain('font-weight: 600');
     expect(name).toContain('--ink-1');
@@ -63,14 +65,14 @@ describe('创作坞 P1 · 红色预算与去装饰蓝', () => {
     expect(mark).not.toContain('background: var(--seal)');
   });
 
-  it('律册键位 / 翰快捷键 / 文件签不再用石青；文件签改 11px 二级墨', () => {
+  it('律册键位 / 翰快捷键 / 文件签不再用石青；文件签改 caption(11) 二级墨', () => {
     const key = ruleBody(PANEL_CSS, '.pp-help-key {');
-    expect(key).toContain('calc(12px * var(--font-scale))');
+    expect(key).toContain('font-size: var(--fs-body)');
     expect(key).toContain('--ink-2');
     expect(key).not.toContain('--indigo');
     expect(ruleBody(PANEL_CSS, '.pp-slash-shortcut {')).not.toContain('--indigo');
     const chip = ruleBody(PANEL_CSS, '.pp-attach-chip {');
-    expect(chip).toContain('calc(11px * var(--font-scale))');
+    expect(chip).toContain('font-size: var(--fs-caption)');
     expect(chip).toContain('--ink-2');
     expect(chip).not.toContain('--indigo');
   });
@@ -83,14 +85,14 @@ describe('创作坞 P1 · 只读件与设置行字号', () => {
     expect(locked).toContain('cursor: default');
   });
 
-  it('设置行主要控件吃 --font-scale（模型/权限/思考/墨/役）', () => {
+  it('设置行主要控件取字阶档（模型/权限/思考/墨/役）——2026-11-06 由 --font-scale 散写收编', () => {
     for (const selector of [
       '.pp-composer .pp-mode-opt {',
       '.pp-composer-settings .pp-thinking-pill {',
       '.pp-composer-settings .pp-ink-trigger {',
       '.pp-composer-settings .pp-work-trigger {',
     ]) {
-      expect(ruleBody(PANEL_CSS, selector)).toContain('var(--font-scale)');
+      expect(ruleBody(PANEL_CSS, selector)).toContain('font-size: var(--fs-');
     }
   });
 

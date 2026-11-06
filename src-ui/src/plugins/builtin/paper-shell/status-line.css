@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* ═══════════════════════════════════════════════════════════════
    StatusLine — 顶部浮件状态字（C12，2026-08-22；原书眉，2026-09-17 标题栏拆除批随浮件迁）
    语言：mono 小字 + 墨三级（与 .pp-zoom-ctl HUD 同语言）；
@@ -17,7 +20,7 @@
   max-width: 320px;
   padding: 5px 9px;
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.08em;
   color: var(--ink-3);
   background: transparent;
@@ -93,14 +96,14 @@
 .sl-alert-msg {
   flex: 1;
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: var(--fs-body);
   line-height: 1.6;
   color: var(--ink-1);
 }
 .sl-alert-ok {
   flex-shrink: 0;
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.08em;
   color: var(--ink-2);
   background: transparent;
@@ -136,7 +139,7 @@
 .sl-log-line {
   padding: 5px 12px;
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   line-height: 1.6;
   letter-spacing: 0.04em;
   color: var(--ink-2);
@@ -153,6 +156,6 @@
 .sl-log-empty {
   padding: 12px;
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: var(--fs-body);
   color: var(--ink-3);
 }

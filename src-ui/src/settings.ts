@@ -330,6 +330,17 @@ export function defaultBaseUrl(name: string, kind: ProviderSettings['kind']): st
   return getDefaultModel(name)?.baseUrl ?? PROVIDER_PROTOCOL_DEFAULTS[kind as CoreProtocol];
 }
 
+/** 界面字号缩放的可接受域（2026-11-06 字阶批）。
+ *  下限 1.0：字阶最小档 = 10px 基准，0.8 只会产出读不动的组合（旧存档被夹回 1.0）。
+ *  上限 2.0：版式（固定行高的壳件、图标档）在 2.0 仍成立，再往上就挤。 */
+export const FONT_SCALE_RANGE = { min: 1, max: 2 } as const;
+
+/** 把任意输入夹成合法字号缩放（缺省/非数 → 出厂默认 1.2）。 */
+export function clampFontScale(v: unknown): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : DEFAULTS.display.fontScale;
+  return Math.min(FONT_SCALE_RANGE.max, Math.max(FONT_SCALE_RANGE.min, n));
+}
+
 const DEFAULTS: AppSettings = {
   activeProvider: providerId('deepseek'),
   providers: [
@@ -408,7 +419,15 @@ export function loadSettings(): AppSettings {
           parsed.providers = DEFAULTS.providers;
         }
         const merged = { ...DEFAULTS, ...parsed };
-        return prefersFileProviders() ? { ...merged, providers: fileProvidersProjection(merged.providers) } : merged;
+        // 界面字号缩放夹回可接受域（2026-11-06 字阶批）：旧存档里的 0.8 会产出
+        // 「10px 基准 × 0.8 = 8px」这种读不动的组合——读侧夹住，界面只提供
+        // 1.00x～2.00x（见 app/type-scale.css 头注 + FONT_SCALE_RANGE）。
+        const display = { ...DEFAULTS.display, ...(merged.display ?? {}) };
+        display.fontScale = clampFontScale(display.fontScale);
+        const normalized = { ...merged, display };
+        return prefersFileProviders()
+          ? { ...normalized, providers: fileProvidersProjection(normalized.providers) }
+          : normalized;
       }
     }
   } catch {

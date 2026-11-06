@@ -674,24 +674,6 @@ const SettingsPanelApp: React.FC<{
                 <label className="sp-label" htmlFor="sp-preset-newid">
                   新建 / 修改 preset（组合目录）
                 </label>
-                <div className="sp-hint-sub">
-                  目录：<code>{compositionPath || '（读取中…）'}</code>{' '}
-                  <button
-                    type="button"
-                    className="sp-btn-sm"
-                    onClick={handleOpenCompositionDir}
-                    disabled={authoringBusy}
-                  >
-                    打开目录
-                  </button>{' '}
-                  <button type="button" className="sp-btn-sm" onClick={handleRescan} disabled={authoringBusy}>
-                    重新扫描
-                  </button>
-                </div>
-                <div className="sp-hint-sub">
-                  每份 preset 是组合目录下的一个子目录（`roster.patch.yml` 本体 + `preset.yml` 元数据）。
-                  直接改文件后点「重新扫描」即可生效，**无需重启**。
-                </div>
                 <input
                   id="sp-preset-newid"
                   className="sp-input"
@@ -718,6 +700,27 @@ const SettingsPanelApp: React.FC<{
                   >
                     复制为模板
                   </button>
+                </div>
+                {/* 注疏落控件之下（2026-11-06 排版批）：此前两条注疏排在输入框**之前**，
+                    而 CSS 把注疏赶进 200px 标签列 ⇒ 长路径与右侧下拉叠印。现在
+                    顺序 = 输入 → 模板行 → 注疏，读起来是「先做，再看说明」。 */}
+                <div className="sp-hint-sub">
+                  目录：<code>{compositionPath || '（读取中…）'}</code>{' '}
+                  <button
+                    type="button"
+                    className="sp-btn-sm"
+                    onClick={handleOpenCompositionDir}
+                    disabled={authoringBusy}
+                  >
+                    打开目录
+                  </button>{' '}
+                  <button type="button" className="sp-btn-sm" onClick={handleRescan} disabled={authoringBusy}>
+                    重新扫描
+                  </button>
+                </div>
+                <div className="sp-hint-sub">
+                  每份 preset 是组合目录下的一个子目录（<code>roster.patch.yml</code> 本体 + <code>preset.yml</code>{' '}
+                  元数据）。直接改文件后点「重新扫描」即可生效，无需重启。
                 </div>
                 <div className="sp-hint-sub">
                   已存在同名 preset 时拒绝覆盖（绝不抹掉你已写的内容）；行 id 写错不会静默——选中该 preset
@@ -830,30 +833,49 @@ const SettingsPanelApp: React.FC<{
           <div className={`sp-tab-content${activeTab === 'display' ? ' is-on' : ''}`} data-tab="display">
             {/* 语言选项已摘除（2026-08 UI 大清扫：i18n 只覆盖已退役的观测台图例，
                 纸面全硬编码中文——假选项误导用户。真有多语言需求时再恢复）。 */}
-            <div className="sp-section" style={{ marginTop: 18 }}>
+            <div className="sp-section">
               <div className="sp-section-title">字体缩放 / Font Scale</div>
               {/* 2026-09-01 三轴面审：原生滑杆回归立法件（sp-slider-row/sp-range——
                   墨规线 + 方形墨钮，--pct 驱动填充）。旧内联 accentColor indigo
-                  压过样式表「原生控件压回墨色」立法，渲染成系统蓝，退役。 */}
-              <div className="sp-slider-row">
-                <input
-                  type="range"
-                  name="fontScale"
-                  className="sp-range"
-                  min={0.8}
-                  max={2.0}
-                  step={0.05}
-                  value={settings.display.fontScale}
-                  style={{ '--pct': `${((settings.display.fontScale - 0.8) / 1.2) * 100}%` } as React.CSSProperties}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    commit({ ...settings, display: { ...settings.display, fontScale: v } });
-                  }}
-                />
-                <span className="sp-slider-end">{settings.display.fontScale.toFixed(2)}x</span>
+                  压过样式表「原生控件压回墨色」立法，渲染成系统蓝，退役。
+                  2026-11-06 排版批：滑杆进 .sp-field（此前裸露在分节里、注疏还是分节
+                  的**兄弟**——中间空出 40px 死区，注疏与滑杆看着不像一件事）；
+                  下限 0.8→1.0（字阶最小档 10px，0.8 只产出读不动的组合，见
+                  app/type-scale.css 头注）；左端补基准刻度，滑杆才有量纲。 */}
+              <div className="sp-field">
+                <label className="sp-label" htmlFor="sp-font-scale">
+                  界面字号
+                </label>
+                <div className="sp-slider-row">
+                  <span className="sp-slider-end">1.00x</span>
+                  <input
+                    id="sp-font-scale"
+                    type="range"
+                    name="fontScale"
+                    className="sp-range"
+                    min={1}
+                    max={2.0}
+                    step={0.05}
+                    value={settings.display.fontScale}
+                    aria-label="界面字号缩放"
+                    style={
+                      {
+                        '--pct': `${((settings.display.fontScale - 1) / 1) * 100}%`,
+                      } as React.CSSProperties
+                    }
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      commit({ ...settings, display: { ...settings.display, fontScale: v } });
+                    }}
+                  />
+                  <span className="sp-slider-end">{settings.display.fontScale.toFixed(2)}x</span>
+                </div>
+                <div className="sp-hint-sub">
+                  缩放全应用字号（1.00x 基准档 · 2.00x 上限）。界面文字保存后立即生效；纸面正文字号（来文 / 正文 / 夹注
+                  / 脚注 / 工具卡）按同一枚因子排版，下次启动生效。终端 / 编辑器里已打开的文件也要重新打开。
+                </div>
               </div>
             </div>
-            <div className="sp-hint">缩放所有界面文字。更改后保存即生效（Terminal / 编辑器需重新打开文件）。</div>
             {/* 画布滚轮行为（2026-09-08 缩放舒适度拍板）：Miro 派（滚轮平滚视角）
                 vs Whimsical 派（滚轮缩放画布）二选一——另一操作恒有
                 Ctrl+滚轮 / 右上浮件缩放控件 / 键盘 +−0 兜底。保存后即时生效
@@ -978,7 +1000,14 @@ const SettingsPanelApp: React.FC<{
               <div className="sp-hint" style={{ marginBottom: 16 }}>
                 一张纸上的 Agent 工作台 · 图谱引擎 HoloGram
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '6px 12px', fontSize: 12 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '80px 1fr',
+                  gap: '6px 12px',
+                  fontSize: 'var(--fs-body)',
+                }}
+              >
                 <span style={{ color: 'var(--ink-2)' }}>版本</span>
                 <span style={{ fontFamily: 'var(--f-mono)' }}>{appVersion}</span>
                 <span style={{ color: 'var(--ink-2)' }}>许可</span>

@@ -35,25 +35,59 @@ export const FONT_STACKS = {
  *  镜像纪律的又一条：测高用的行高必须等于 CSS 的**用值**，不是字面算式值。 */
 export const cssUsedPx = (n: number): number => Math.round(n * 64) / 64;
 
+/* ── 纸面字号缩放（2026-11-06 字号批；用户报「很多地方文字太小看不清」）──
+ * 病灶：纸面正文**不跟** --font-scale（旧口径「纸是独立壳，不随观测台缩放」）——
+ * 设置里把字号调到 1.6，界面文字全变大，正文/夹注/脚注纹丝不动。
+ * 现在纸面正文字号族按**同一枚因子**同比放大：
+ *   · 真源 = 文档根上的 --font-scale（index.html 内联脚本在任何模块求值**之前**
+ *     落定，boot.ts 再落一次、幂等）；
+ *   · node / jsdom 单测无 document 或未注入该变量 ⇒ 1 = 基线，全部测量对拍零漂移；
+ *   · 模块常量在装载时定格 ⇒ 改字号后纸面版式**下次启动**才换（设置页已写明）。
+ * **只缩放字号与由它派生的行高**（来文/正文/夹注/贴黄/抄录/脚注 + markdown 标题
+ * 与表格），不缩内距/边框/盒高——那些是版式几何，跟着字号走会让每个块都变胖。 */
+/** 解析一枚 --font-scale 原始值并夹进可接受域（导出供测试；不碰文档）。 */
+export function paperScaleFrom(raw: string): number {
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(2, Math.max(1, n));
+}
+
+function readPaperScale(): number {
+  /* ⚠ 不能只判 `typeof document`：测试域有**半桩 document**（只挂了 getElementById
+     之类的几个口，documentElement 为 undefined）——判空要落到元素本体上。 */
+  const root = typeof document === 'undefined' ? null : document.documentElement;
+  if (!root || typeof getComputedStyle !== 'function') return 1;
+  /* 先读**行内**（index.html 内联脚本与 boot.ts 都写在行内），再退回计算值
+     （将来若改成 :root 声明照样生效）。 */
+  const inline = root.style?.getPropertyValue('--font-scale') ?? '';
+  return paperScaleFrom(inline || getComputedStyle(root).getPropertyValue('--font-scale'));
+}
+
+/** 纸面字号缩放因子（1 = 基线；node/单测恒 1）。 */
+export const PAPER_SCALE = readPaperScale();
+
+/** 按缩放因子放大一个字号（保留两位小数，避免糖浆数字进测量）。 */
+const sz = (n: number): number => Math.round(n * PAPER_SCALE * 100) / 100;
+
 /* ── 块体字号 / 行高系数（CSS 侧 .pp-block.pp-* .pp-body 镜像）── */
 export const PAPER_TYPE = {
-  user: { size: 22, lh: 1.65, stack: 'kai' as const }, // 来文楷书朱砂深——2026-08-30 标题化：题签居中、正文变大（题 > 正文 17）
-  body: { size: 17, lh: 2.0, stack: 'song' as const }, // 正文宋体墨
-  reasoning: { size: 13.5, lh: 1.85, stack: 'song' as const }, // 夹注石墨
-  notice: { size: 12.5, lh: 1.7, stack: 'song' as const }, // 贴黄
-  mono: { size: 12.5, lh: 1.7, stack: 'mono' as const }, // 抄录图版
-  tool: { size: 11.5, lh: 1.6, stack: 'mono' as const }, // 脚注石青
-  out: { size: 11, lh: 1.5, stack: 'mono' as const }, // 脚注输出/错误
+  user: { size: sz(22), lh: 1.65, stack: 'kai' as const }, // 来文楷书朱砂深——2026-08-30 标题化：题签居中、正文变大（题 > 正文 17）
+  body: { size: sz(17), lh: 2.0, stack: 'song' as const }, // 正文宋体墨
+  reasoning: { size: sz(13.5), lh: 1.85, stack: 'song' as const }, // 夹注石墨
+  notice: { size: sz(12.5), lh: 1.7, stack: 'song' as const }, // 贴黄
+  mono: { size: sz(12.5), lh: 1.7, stack: 'mono' as const }, // 抄录图版
+  tool: { size: sz(11.5), lh: 1.6, stack: 'mono' as const }, // 脚注石青
+  out: { size: sz(11), lh: 1.5, stack: 'mono' as const }, // 脚注输出/错误
 } as const;
 
 /* ── markdown 子版式（CSS 侧 .pp-md-* 镜像）── */
 export const MD_TOKENS = {
   pGap: 14, // .pp-md-p margin-bottom
   h: [
-    { size: 20, lh: 1.5, pt: 22, pb: 10 }, // h1
-    { size: 18, lh: 1.6, pt: 20, pb: 8 }, // h2
-    { size: 16.5, lh: 1.7, pt: 16, pb: 6 }, // h3
-    { size: 15.5, lh: 1.8, pt: 14, pb: 6 }, // h4
+    { size: sz(20), lh: 1.5, pt: 22, pb: 10 }, // h1
+    { size: sz(18), lh: 1.6, pt: 20, pb: 8 }, // h2
+    { size: sz(16.5), lh: 1.7, pt: 16, pb: 6 }, // h3
+    { size: sz(15.5), lh: 1.8, pt: 14, pb: 6 }, // h4
   ] as const,
   listGap: 14, // .pp-md-list margin-bottom
   liGap: 6, // .pp-md-li margin-bottom（末项归零）
@@ -76,7 +110,7 @@ export const MD_TOKENS = {
   tableCellPadV: 4, // th/td 上下 padding
   tableRowBorder: 1, // th 行底规线
   tableCellBorder: 0.5, // td 行底规线
-  tableSize: 11.5,
+  tableSize: sz(11.5),
   tableLh: 1.5,
   ciSizeRatio: 0.82, // 行内码 mono 0.82em
   ciPadH: 5, // 行内码横向 padding

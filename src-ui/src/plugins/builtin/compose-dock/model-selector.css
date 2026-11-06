@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* ── ModelSelector — 模型目录搜索下拉（兰台注疏化重涂，2026-08 UI 大清扫）
    原 P10 暗色观测台样式换装：纸面 / 圆角恒 0 / 兰台 token。
    下拉 = 纸面小菜单（对齐 ModeIndicator 的 mi-model-menu 语言）。
@@ -104,7 +107,7 @@
 
 .ms-refresh-msg {
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  font-size: var(--fs-micro);
   color: var(--ink-3);
   padding: 2px 4px;
 }
@@ -167,7 +170,7 @@
 }
 
 .ms-empty-text {
-  font-size: calc(9px * var(--font-scale));
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 
@@ -219,7 +222,7 @@
 .ms-item-id {
   font-family: var(--f-mono);
   /* 2026-10-22 P1：机器 id 退到 10px 三级墨——它是副信息；人读名（下条）才是主读物。 */
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   color: var(--ink-3);
   max-width: 100%;
   white-space: nowrap;
@@ -235,7 +238,7 @@
   padding: 1px 4px;
   border: 1px solid color-mix(in oklch, var(--indigo) 40%, transparent);
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  font-size: var(--fs-micro);
   line-height: 1.2;
   color: var(--indigo);
 }
@@ -253,7 +256,7 @@
    * 主次倒置；现在 id 10/ink-3 退后，名字 12/600 读得清。 */
   flex: 0 1 auto;
   min-width: 0;
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--ink-1);
   max-width: 100%;
@@ -272,7 +275,7 @@
 
 .ms-catalog-chip {
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  font-size: var(--fs-micro);
   padding: 3px 8px;
   border-radius: 0;
   border: var(--rule-soft);

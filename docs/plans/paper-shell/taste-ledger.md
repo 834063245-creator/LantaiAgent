@@ -511,3 +511,23 @@
   **选**：`index.html` **内联**封面（纸底 + 蘭臺印 + 一道线 + 「开 库 中」+ 1.6s 呼吸点），先于一切外部资源；揭幕 = 首页 DOM 存在 + **首页样式真的生效**（`.sh-root` 的 computedStyle 判据；不等旁的产品 CSS——产物 CSS 共 11MB，其中 paper-shell 的 4.6MB 与首页首帧无关）+ 两套字体（预算 1.2s）+ 最短停留 320ms，总预算 2.5s；`tauri.conf.json` 的 `backgroundColor` 同批钉 `#ece7dc`；主脚本没跑到 `armBootCover` 就炸时 8s 绝对兜底（白屏事故纪律）。
   **弃**：窗口「先隐藏、首帧后再 show」（动窗口生命周期，且与无装饰态/窗口控制耦合，风险大于收益）；用骨架屏代替封面（骨架屏同样买不到「正文字体已就位」那条）。
   **钉值**：`tests/boot-cover.test.ts`（内联/8s 兜底/窗底色/三件时机/三条预算/淡出镜像 260ms/幂等揭幕）。**部署面**：`index.html` 与 `tokens` 无关（内联），但窗底色在 `tauri.conf.json` ⇒ 须重建 exe。
+
+- 2026-11-06 · **界面字阶（全应用字号系统性收口）+ 设置面板排版重排**（用户报「很多地方文字太小看不清」+「设置面板文字排版，或者说是 UX 上的问题」，要系统性解法）·
+  **病灶（全是实测量）**：① **字号没有尺子**——每个文件各写 `calc(Npx * var(--font-scale))`，全仓 **23 个基准值**、**229 条声明**落在 8～11.5px（默认缩放 1.2 下 9.6～13.8px；设置页徽标 8px→9.6、侧栏计数 9px→10.8、模型菜单机器 id 9px、首页眉行 9.5px）；档位过密还造成主次颠倒的温床（创作坞 P1 修过的「id 10 比名 9 大」即同族）。② **设置面板注疏被赶进 200px 标签列**——有标签的字段，`.sp-hint-sub` 被强制落左列：一句「生效时机：新 Agent 装配…」折成 5 行，右列控件旁却空一整片；长串直接叠印（真机：Agent 页「目录：」的 mono 路径压在右侧「模板」下拉与「复制为模板」按钮上）。③ **行距/节距失配**——row-gap 6（密处叠）与 section margin 44（松处空）并存；字号滑杆**裸露在分节里**，注疏是分节的兄弟件，中间 40px 死区。④ **提供方栏 222px 装不下**「名字 + 新会话默认角标 + 状态字」——角标折成「新会话默 / 认」，状态字与角标叠印。⑤ **缩放下限 0.8 产出读不动的组合**（10px 基准 × 0.8 = 8px）。
+  **选**：① **九档语义字阶** `--fs-micro/caption/body/lead/title/head/readout/hero/mega`（真源 `src/app/type-scale.css`，基准 10/11/13/15/17/22/26/36/48，全部 × `--fs-scale`），全仓 **338 条字号收编**（272 条 calc + 66 条字面量 px，其中纸面家具的 9/10/11px 此前连缩放都跟不上）；字号**只准取档**，raw `calc(Npx * var(--font-scale))` 归零。② **注疏落控件之下、右列通栏**（标签列 180px 只放标签），长串 `overflow-wrap: anywhere` + grid 子项 `min-width: 0`；顺手把 Agent 页 preset 字段的注疏从输入框**之前**挪到之后（先做，再看说明）。③ 行距 6→8、节距 44→34、内容内距 36/48/64 → 28/40/44；字号滑杆收进 `.sp-field`（标签「界面字号」+ 左端 1.00x 刻度 + 注疏归位）。④ 提供方栏 222→248，角标与状态字 `nowrap`、名字行允许换行。⑤ **缩放下限 1.0**（滑杆 min + 读侧 `clampFontScale` 夹取，旧存档 0.8 自动回到 1.0）。⑥ 面板题字 12.5→`--fs-title`(17)（旧态题字比页签还小，头部没有题字位）。
+  **弃**：不动**纸面块内版式**（正文/来文/夹注/脚注走 `--pp-*` 测量镜像，另一把尺子）；不动 mono 机器文本的相对字号（`0.92em` / `0.82em` / `calc(var(--pp-type-body-size) * …)`）；不把设置页签改成侧栏导航（8 页签在 900px 内本来放得下，问题不在信息架构而在字号与注疏落位）；不重排提供方页双栏结构。
+  **钉值**：新增 `tests/ui-type-scale.test.ts` 9 例（档位表 = 契约 / 缩放缺省 / 最小档 ≥ 10 / main.ts 先于 tokens 导入 / 全仓零 raw calc / 局部 `--fs` 不用于字号 / 引用档位在册 / 产物自带字阶 / fontScale 域）；`tests/composer-p1-polish.test.ts` 与 `composer-p2-ia.test.ts` 的钉值由 `calc(12px * …)` 字面量改钉档位（`var(--fs-body)` 等，值由字阶表统一守）；`tests/artifact-self-contained.test.ts` 构建全局件 3→4（`src-ui/src/app/type-scale.css`）。
+  **部署面**：`type-scale.css` / `tokens` / `PaperPanel.css` / `shell.css` 都在壳 bundle ⇒ 真机看新字号须重建 exe（`cargo tauri build`）；产物 CSS 经 `@import` **自带**字阶（`entry.css` 内含 `:root` 九档），故产物仍可单独热更——旧 exe + 新产物不会塌成继承。
+
+  **追补（同批，2026-11-06 下午）：纸面正文接进同一枚因子**——用户「做完吧，单开一批就太拖沓了」。
+  此前纸面正文**不跟** `--font-scale`（旧口径「纸是独立壳」），设置调到 1.6 时只有界面文字变大、正文/夹注/脚注纹丝不动。
+  治法：`paper-shell/type-tokens.ts` 的 `PAPER_SCALE` 在**模块装载时**读文档根上的 `--font-scale`（`index.html` 新增一段内联脚本，
+  在任何模块求值之前落定——顺带干掉「首帧按 1 排一遍再跳 1.2」的抖动；`boot.ts` 再落一次、幂等），
+  乘进 `PAPER_TYPE` 七族 + markdown 标题 + 表格字号；CSS 与测量共用这批 token，故放大一处两端一致。
+  **只缩放字号**（及其派生的行高），不缩内距/边框/盒高（跟着字号走会让每块都变胖）；
+  卷首题字 36 / 眉行 11 是测量镜像的另一族，不缩。**代价明账**：纸面是测量排版，模块常量装载即定格 ⇒
+  改字号后纸面版式**下次启动**才换（设置页注疏已写明「纸面按同一枚因子排版，下次启动才换版式」）。
+  node / jsdom 单测无该变量 ⇒ 因子 = 1，既有测量对拍零漂移。实测（dev 浏览器）：`--pp-type-body-size` 20.4 / user 26.4 /
+  tool 13.8 / mono 15 / md-h1 24 / table 13.8，kind 15 与 folio 36 不动。
+  **钉值**：`tests/paper-type-scale.test.ts` 3 例（1.5 → body 25.5 / tool 17.25 / h1 30、行高系数不缩、`paperScaleFrom` 夹取）
+  + `tests/ui-type-scale.test.ts` 3 例（index.html 首帧脚本与 `STORAGE_KEY` 同源、`PAPER_TYPE` 无裸字号、node 下 `PAPER_SCALE` = 1）。

@@ -45,7 +45,7 @@ function SkillCard({
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: 'var(--pass)' }}>
         {/* 静态文本徽标（Icon 组件无 skill 图标——用字符占位） */}
-        <span style={{ fontSize: 11, fontFamily: 'var(--f-mono)' }}>SK</span>
+        <span style={{ fontSize: 'var(--fs-caption)', fontFamily: 'var(--f-mono)' }}>SK</span>
       </span>
       <div className="sp-lsp-card-body">
         <div className="sp-lsp-card-header">
@@ -153,7 +153,7 @@ function NewSkillForm({
       <div className="sp-field">
         <textarea
           className="sp-input"
-          style={{ minHeight: 90, fontFamily: 'var(--f-mono)', fontSize: 11 }}
+          style={{ minHeight: 90, fontFamily: 'var(--f-mono)', fontSize: 'var(--fs-caption)' }}
           placeholder={'技能正文（markdown 指引）。支持 $' + '{LANTAI_SKILL_DIR} 引用技能目录内文件。'}
           value={body}
           onChange={(e) => setBody(e.target.value)}

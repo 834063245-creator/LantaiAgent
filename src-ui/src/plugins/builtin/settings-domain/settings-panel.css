@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* ═══════════════════════════════════════════════════════════════
    兰台 · 设置面板（C2 set-frame 注疏化重排，2026-08-22）
    版式准绳 = prototype/lantai.html #view-settings（.set-frame 语法）：
@@ -103,7 +106,7 @@
 
 .sp-title {
   font-family: var(--f-song);
-  font-size: calc(17px * var(--font-scale));
+  font-size: var(--fs-title);
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--ink-1);
@@ -146,7 +149,7 @@
 
 .sp-tab {
   font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 400; /* 2026-09-01 轻重批：Tab 基底注记档，选中态靠墨底反白 */
   letter-spacing: 0.06em;
   padding: 6px 16px;
@@ -186,7 +189,9 @@
 .sp-content {
   flex: 1;
   overflow-y: auto;
-  padding: 36px 48px 64px;
+  /* 2026-11-06 排版批：上距 36→28、下距 64→44（末行不再被页脚吃掉半截；
+     左右 48→40 把版心让给注疏——注疏改走右列通栏后需要这一圈宽度）。 */
+  padding: 28px 40px 44px;
   min-height: 0;
 }
 
@@ -246,7 +251,9 @@
 
 /* ── 分节：序号 + 强规线（原型 .set-section > h2 语法）── */
 .sp-section {
-  margin-bottom: 44px;
+  /* 2026-11-06 排版批：节距 44→34（节内行距从 6 提到 8 承担分段感——
+     此前是「行挤成一团、节却空一大块」）。 */
+  margin-bottom: 34px;
 }
 
 .sp-section-title {
@@ -254,7 +261,7 @@
   align-items: baseline;
   gap: 12px;
   font-family: var(--f-song);
-  font-size: calc(15px * var(--font-scale));
+  font-size: var(--fs-lead);
   font-weight: 600;
   color: var(--ink-1);
   padding-bottom: 9px;
@@ -266,23 +273,34 @@
   counter-increment: setidx;
   content: "0" counter(setidx);
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   color: var(--ink-3);
   letter-spacing: 0.1em;
 }
 
-/* ── 注疏行：双列（标签 200px / 控件 1fr，原型 .set-row 语法）── */
+/* ── 注疏行：双列（标签 180px / 控件 1fr，原型 .set-row 语法）──
+ * 2026-11-06 排版批（用户报「设置面板文字排版」）。三处实测病灶：
+ *   ① **注疏被塞进 200px 标签列**——有标签的字段，`.sp-hint-sub` 被强制落左列：
+ *      一句「生效时机：新 Agent 装配（新案卷）即用新组合…」在 200px 里折成 5 行，
+ *      右侧控件旁却空着一整片；长串一长就**与右列叠印**（真机实测：Agent 页
+ *      「目录：」那行 mono 路径直接压在右侧「模板」下拉与「复制为模板」按钮上，
+ *      9 对文字矩形互相压印）。注疏是**给控件的注解**，必须跟着控件走。
+ *   ② 行距过密（row-gap 6）与节距过大（margin 44）并存——密处叠、松处空。
+ *   ③ 长串（路径 / 行 id 列表 / JSON 片段）没有断行规则，撑破列宽。
+ * 治法：标签列只放标签（180px）；控件、注疏、行内按钮一律落右列，注疏在控件
+ * 之下、通栏宽（700px+ ⇒ 一句一行半读得动）；长串 anywhere 折断，grid 子项
+ * 补 min-width: 0（默认 auto = 撑破列宽的元凶）。 */
 .sp-field {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: 180px minmax(0, 1fr);
   column-gap: 24px;
-  row-gap: 6px;
+  row-gap: 8px;
   align-items: start;
-  padding: 14px 0;
+  padding: 13px 0;
   border-bottom: var(--rule-soft);
   /* dense 回填（2026-09-18 叠印修复）：缺省 sparse 排布的指针只进不退，注疏
      一落位，其后的控件就被推到下方空行（标签与控件那一列对不上）。dense 让
-     每个件落进「它该在的最早空格」：左列注疏逐条下叠，右列控件自成一路。 */
+     每个件落进「它该在的最早空格」。 */
   grid-auto-flow: row dense;
 }
 
@@ -292,20 +310,20 @@
 
 /* ── 行内基类排版（置于复合布局规则之前，避免降位警告）── */
 .sp-label {
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   color: var(--ink-1);
   white-space: normal;
 }
 
 .sp-val {
   font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--indigo);
   margin-left: 4px;
 }
 
 .sp-checkbox-label {
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   color: var(--ink-1);
   display: flex;
   align-items: center;
@@ -315,36 +333,39 @@
 
 .sp-hint-sub {
   font-weight: 400;
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-3);
-  line-height: 1.7;
+  line-height: 1.65;
+  /* 长串（路径 / 行 id / JSON 片段）在窄列里断行而不是撑破列宽（2026-11-06） */
+  overflow-wrap: anywhere;
 }
 
-/* 控件默认落右列 */
+/* 控件默认落右列（min-width: 0 = 长串能断行的前提；grid 子项默认 auto 会撑破列宽） */
 .sp-field > * {
   grid-column: 2;
+  min-width: 0;
 }
 
 /* 标签钉左列首行 */
 .sp-field > .sp-label {
   grid-column: 1;
   grid-row: 1;
-  padding-top: 4px;
+  padding-top: 3px;
 }
 
-/* 注疏落位（⚠ 2026-09-18 叠印修复，勿回退成写死行号）：
-   有真标签 → 归位左列标签下（原型 .lbl .d 注疏语法），多条**逐条下叠**；
-   无标签 → 通栏铺开。
-   病灶：旧写法给每条注疏都写死 `grid-row: 2` —— 一个字段有多条注疏时
-   （Agent 页「组合」节的组合目录字段有 3 条）三条同占一格 = 字全糊在一起
-   （实测 9 对文字矩形互相压印）。行号一律交给上面的 dense 自动排布自适应，
-   本处只定「哪一列」。 */
-.sp-field:has(> .sp-label:not(.sp-checkbox-label)) > .sp-hint-sub {
-  grid-column: 1;
-  padding-top: 4px;
+/* 注疏落位（⚠ 2026-09-18 叠印修复 + 2026-11-06 排版批）：**恒在控件之下、右列通栏**。
+   多条注疏由上面的 dense 自动排布逐条下叠（旧写法写死 grid-row: 2 会让三条
+   同占一格、字全糊在一起）。左列只放标签——注疏进 200px 窄列是 11-06 批的
+   主病灶（折行成 5 行 + 长串压到右列），勿回退。 */
+.sp-field > .sp-hint-sub {
+  grid-column: 2;
+  overflow-wrap: anywhere;
 }
 
-.sp-field:not(:has(> .sp-label)) > .sp-hint-sub {
+/* 无标签字段（分节说明 / 诊断栏 / 单一动作行）：**整行通栏**——
+   注疏、说明、按钮、输入行都从左缘起排（此前只有注疏通栏、按钮仍落右列，
+   于是「导出诊断包」孤零零地缩进 204px，看着像挂错了行）。 */
+.sp-field:not(:has(> .sp-label)) > * {
   grid-column: 1 / -1;
 }
 
@@ -354,10 +375,16 @@
   grid-column: 1 / -1;
 }
 
-/* 复选框是控件不是标签（类名含 sp-label，后定义胜） */
+/* 开关行（复选框 + 文案 = 整行，不是「标签 + 控件」两列件）：
+   类名含 sp-label，但语义上是**自成一行**的控件——落右列会让开关孤零零地缩进
+   180px（诊断页/显示页实测），故整行通栏，注疏跟着通栏（2026-11-06 排版批）。 */
 .sp-field > .sp-checkbox-label {
-  grid-column: 2;
+  grid-column: 1 / -1;
   grid-row: auto;
+}
+
+.sp-field:has(> .sp-checkbox-label) > .sp-hint-sub {
+  grid-column: 1 / -1;
 }
 
 /* 原生控件压回墨色（禁系统蓝） */
@@ -372,7 +399,7 @@
 .sp-select {
   padding: 7px 2px;
   font-family: var(--f-mono);
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   background: color-mix(in oklch, var(--paper-deep) 35%, transparent);
   color: var(--ink-1);
   border: none;
@@ -454,7 +481,7 @@
 
 .sp-slider-end {
   font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-3);
   flex-shrink: 0;
 }
@@ -532,14 +559,14 @@
 }
 
 .sp-radio-label {
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   color: var(--ink-1);
   font-weight: 400;
 }
 
 /* ── 注记 ── */
 .sp-hint {
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-3);
   padding: 4px 0;
   line-height: 1.6;
@@ -556,7 +583,7 @@
 
 .sp-hint code {
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   background: var(--paper-deep);
   padding: 1px 4px;
   border-radius: 0;
@@ -575,7 +602,7 @@
 
 .sp-btn {
   font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600; /* 2026-09-01 轻重批：动作钮=重墨档 */
   letter-spacing: 0.06em;
   padding: 7px 18px;
@@ -637,7 +664,7 @@ button.sp-btn.sp-btn-ok {
 
 .sp-btn-sm {
   font-family: var(--f-song);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   padding: 4px 10px;
   border-radius: 0;
   cursor: pointer;
@@ -715,26 +742,26 @@ button.sp-btn.sp-btn-ok {
 
 .sp-lsp-card-header .lang-name {
   font-weight: 600;
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
 }
 
 .sp-lsp-card-header .lang-status {
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   font-weight: 400;
 }
 
 .sp-lsp-card-meta {
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-3);
   margin-top: 2px;
 }
 
 .sp-lsp-card-meta code {
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
 }
 
 .sp-lsp-card-err {
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-2);
   margin-top: 4px;
   padding: 4px 8px;
@@ -745,7 +772,7 @@ button.sp-btn.sp-btn-ok {
 
 .sp-install-toggle {
   font-family: var(--f-song);
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600; /* 2026-09-01 轻重批：动作钮=重墨档 */
   letter-spacing: 0.04em;
   color: var(--ink-2);
@@ -774,17 +801,17 @@ button.sp-btn.sp-btn-ok {
   min-width: 80px;
   font-weight: 400;
   flex-shrink: 0;
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
 }
 
 .sp-install-row code {
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
 }
 
 /* ── 数据流图版（df-*）——石青=机读语义 ── */
 .df-card {
   font-family: var(--f-mono);
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   line-height: 1.55;
   color: var(--ink-1);
   display: flex;
@@ -801,7 +828,7 @@ button.sp-btn.sp-btn-ok {
   padding: 6px 12px;
   background: var(--paper-deep);
   font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--indigo);
   border-bottom: var(--rule-soft);
   display: flex;
@@ -831,7 +858,7 @@ button.sp-btn.sp-btn-ok {
   font-weight: 600;
   color: var(--ink-1);
   margin-bottom: 6px;
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   display: flex;
   align-items: center;
   gap: 5px;
@@ -881,7 +908,7 @@ button.sp-btn.sp-btn-ok {
   gap: 2px;
   padding: 2px 7px;
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.2px;
   white-space: nowrap;
 }
@@ -913,12 +940,12 @@ button.sp-btn.sp-btn-ok {
 .df-tag-none {
   color: var(--ink-3);
   font-style: italic;
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
 }
 
 .df-label {
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  font-size: var(--fs-micro);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -943,12 +970,12 @@ button.sp-btn.sp-btn-ok {
   background: var(--paper-deep);
   color: var(--ink-2);
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
 }
 
 .df-flow-arrow {
   color: var(--ink-3);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   margin: 0 2px;
 }
 
@@ -960,7 +987,7 @@ button.sp-btn.sp-btn-ok {
 
 .df-shared-title {
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   font-weight: 600;
   color: var(--indigo);
   margin-bottom: 6px;
@@ -982,13 +1009,13 @@ button.sp-btn.sp-btn-ok {
   display: grid;
   grid-template-columns: 1.2fr 1.5fr 1.5fr;
   gap: 8px;
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   padding: 3px 0;
 }
 
 .df-shared-th {
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.6px;
   color: var(--ink-3);
@@ -1011,7 +1038,7 @@ button.sp-btn.sp-btn-ok {
   color: var(--ink-3);
   font-style: italic;
   padding: 10px 12px;
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1023,7 +1050,9 @@ button.sp-btn.sp-btn-ok {
 /* 混排标题（iconHtml 注入 <span class="zh">设置</span>） */
 .sp-title .zh {
   font-family: var(--f-song);
-  font-size: calc(12.5px * var(--font-scale));
+  /* 面板题字回 17px 档（2026-11-06）：旧案 12.5px 让「设置」比页签还大一点点，
+     整个头部没有题字位——题字档 = --fs-title，与页签/正文拉开层级。 */
+  font-size: var(--fs-title);
   font-weight: 600; /* 2026-09-01 轻重批：面板题字档 */
   letter-spacing: 0.1em;
   text-transform: none;
@@ -1060,7 +1089,7 @@ button.sp-btn.sp-btn-ok {
 /* 状态徽标：左侧朱砂短竖（纸面不涂底块） */
 .sp-upd-badge {
   font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--seal-deep);
   border-left: 3px solid var(--seal);
@@ -1080,7 +1109,7 @@ button.sp-btn.sp-btn-ok {
   gap: 4px 12px;
   width: 100%;
   margin: 0;
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
 }
 
 .sp-upd-meta dt {
@@ -1090,7 +1119,7 @@ button.sp-btn.sp-btn-ok {
 .sp-upd-meta dd {
   margin: 0;
   font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-1);
   overflow-wrap: anywhere;
 }
@@ -1099,7 +1128,7 @@ button.sp-btn.sp-btn-ok {
 .sp-upd-url {
   width: 100%;
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   color: var(--ink-3);
   background: var(--paper-deep);
   border: var(--rule-soft);
@@ -1118,7 +1147,7 @@ button.sp-btn.sp-btn-ok {
 
 .sp-upd-notes > summary {
   cursor: pointer;
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-2);
   letter-spacing: 0.06em;
 }
@@ -1130,7 +1159,7 @@ button.sp-btn.sp-btn-ok {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-family: var(--f-song);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   line-height: 1.7;
   color: var(--ink-2);
 }
@@ -1185,7 +1214,7 @@ button.sp-btn.sp-btn-ok {
   gap: 16px;
   flex-wrap: wrap;
   font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-2);
 }
 

@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* ═══════════════════════════════════════════════════════════════
    PROMPT SHELF — 牒卡（C9 纸面化，2026-08-22）
    隐喻：agent 是当值吏员，写文件/跑命令先递牒请示；人持朱笔。
@@ -47,7 +50,7 @@
   gap: 5px;
   padding: 2px 7px;
   font-family: var(--f-mono);
-  font-size: calc(8.5px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--seal-deep);
@@ -74,7 +77,7 @@
 .prompt-shelf__question {
   flex: 1;
   font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   color: var(--ink-1);
   line-height: 1.55;
 }
@@ -116,7 +119,7 @@
   padding: 8px 10px;
   text-align: left;
   font-family: var(--f-song);
-  font-size: calc(12.5px * var(--font-scale));
+  font-size: var(--fs-body);
   background: transparent;
   border: var(--rule-soft);
   color: var(--ink-1);
@@ -142,7 +145,7 @@
   width: 18px;
   text-align: center;
   font-family: var(--f-mono);
-  font-size: calc(9.5px * var(--font-scale));
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 .prompt-shelf__option--on .prompt-shelf__num {
@@ -158,7 +161,7 @@
 .prompt-shelf__opt-desc {
   display: block;
   margin-top: 2px;
-  font-size: calc(10.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-2);
 }
 .prompt-shelf__check {
@@ -177,7 +180,7 @@
   padding: 5px 10px;
   overflow: hidden;
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   color: var(--ink-2);
   background: var(--paper-deep);
   border-left: 2px solid var(--indigo);
@@ -202,7 +205,7 @@
   min-width: 0;
   padding: 6px 10px;
   font-family: var(--f-song);
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--ink-4);
@@ -227,7 +230,7 @@
 .prompt-shelf__confirm {
   flex: 1;
   padding: 8px;
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600;
   font-family: var(--f-song);
   background: transparent;
@@ -254,7 +257,7 @@
 .prompt-shelf__submit {
   flex-shrink: 0;
   padding: 6px 14px;
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600;
   font-family: var(--f-song);
   background: transparent;
@@ -276,7 +279,7 @@
 
 /* 事由行 */
 .prompt-shelf__perm-reason {
-  font-size: calc(11.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   font-family: var(--f-song);
   color: var(--ink-2);
   margin-bottom: 8px;
@@ -286,7 +289,7 @@
 /* subject 命令块：抄录图版语言（米黄底 mono + 硬左线） */
 .prompt-shelf__perm-subject {
   font-family: var(--f-mono);
-  font-size: calc(10.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-1);
   background: var(--paper-deep);
   border-left: 3px solid var(--indigo);
@@ -307,7 +310,7 @@
   justify-content: center;
   gap: 6px;
   padding: 7px 12px;
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600;
   font-family: var(--f-song);
   border: 1px solid var(--ink-4);
@@ -380,7 +383,7 @@
   flex-shrink: 0;
   padding: 5px 10px;
   font-family: var(--f-mono);
-  font-size: calc(10.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-2);
   background: transparent;
   border: var(--rule-soft);

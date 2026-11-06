@@ -19,6 +19,8 @@
 //   app/boot-recovery.ts（纯函数，测试可穷举）。
 
 import './app/fonts';
+// 字阶先于一切样式（tokens.css 的 --font-scale 是它的输入；界面 CSS 一律引用 --fs-*）
+import './app/type-scale.css';
 import './app/tokens.css';
 import './app/foundation.css';
 import './app/shell.css';

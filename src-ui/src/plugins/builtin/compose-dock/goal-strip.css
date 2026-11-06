@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* 目标状态条（2026-10-23 DSH 式目标域）——创作坞输入行上方的一条薄带。
  *
  * 归属：创作坞产品自有样式（.pp-goal-*）。只写既有纸面 token
@@ -13,7 +16,7 @@
   padding: 0 2px 6px;
   border-bottom: 1px dashed var(--rule);
   font-family: var(--f-song);
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   letter-spacing: 0.04em;
   color: var(--ink-2);
   min-width: 0;

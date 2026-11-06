@@ -321,7 +321,9 @@ DOM 所有权按层划分，不要跨层抢 DOM：
    确有必要时：把 DOM 操作封在对应所有者模块内，加 // ponytail: 说明原因
 
 样式：
-✅ app/ 新样式只用 tokens.css 的 --obs-* 变量（--font-scale 是唯一例外）
+✅ app/ 新样式只用 tokens.css 的兰台 token；**字号一律取 `--fs-*` 字阶档**
+   （`src/app/type-scale.css`，2026-11-06 立：九档语义字阶 + 禁 `calc(Npx * var(--font-scale))` 散写，
+   守护 `tests/ui-type-scale.test.ts`）。--font-scale 只写在那份字阶里，别处不再直用
 ✅ 面板样式落在 src-ui/src/app/panels/dock-panels/ 对应文件
 ❌ 不引入新 CSS 方案/框架；不新增 !important / 降级特异性豁免，除非面板样式同源迁移
 ❌ 不要改 tsconfig.json 的 strict: true

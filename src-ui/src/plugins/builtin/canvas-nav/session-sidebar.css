@@ -1,3 +1,6 @@
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
 /* SessionSidebar — 当前工作区案卷管理侧边栏（2026-08-31 注疏重排 + 2026-09-02
  * UX/浸墨批）。
  * 设计语言：prototype/lantai.html 案卷首页列表（.session-row / .sh-section-title
@@ -130,7 +133,7 @@
   flex-shrink: 0;
 }
 .ss-title {
-  font-size: calc(14px * var(--font-scale));
+  font-size: var(--fs-lead);
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--ink-1);
@@ -149,7 +152,7 @@
 }
 .ss-count {
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.1em;
   color: var(--seal-deep); /* 浸墨：机读计数朱字（对齐首页节头 .n） */
 }
@@ -162,7 +165,7 @@
   border-radius: 0;
   color: var(--ink-3);
   cursor: pointer;
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   line-height: 1;
   transition:
     background var(--snap),
@@ -188,7 +191,7 @@
 }
 .ss-search-lbl {
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.2em;
   color: var(--ink-3);
 }
@@ -201,7 +204,7 @@
   border-radius: 0;
   padding: 4px 2px;
   font-family: var(--f-song);
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   color: var(--ink-1);
   outline: none;
   caret-color: var(--seal-deep);
@@ -227,14 +230,14 @@
   background: var(--paper);
   border: var(--rule-strong);
   border-left: 3px solid var(--warn);
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   color: var(--ink-2);
 }
 .ss-notice button {
   pointer-events: auto;
   margin-top: 4px;
   font-family: var(--f-song);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   color: var(--ink-1);
   background: none;
   border: var(--rule-soft);
@@ -282,7 +285,7 @@
   margin-top: 0;
 }
 .ss-section-head .t {
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--ink-1);
@@ -312,7 +315,7 @@
 }
 .ss-section-head .n {
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   color: var(--seal-deep); /* 浸墨：机读计数朱字 */
 }
@@ -339,7 +342,7 @@
   cursor: pointer;
 }
 .ss-bucket-head .t {
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--ink-2);
@@ -366,7 +369,7 @@
 }
 .ss-bucket-head .n {
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   color: var(--seal-deep);
 }
@@ -505,7 +508,7 @@
 .ss-label {
   flex: 0 1 auto;
   min-width: 0;
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600;
   line-height: 1.6;
   color: var(--ink-1);
@@ -519,7 +522,7 @@
 }
 .ss-meta {
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.05em;
   color: var(--ink-3);
   white-space: nowrap;
@@ -540,7 +543,7 @@
   margin: 0 0 -2px;
   padding: 0;
   font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
+  font-size: var(--fs-body);
   line-height: 1.6;
   color: var(--ink-1);
   background: var(--paper);
@@ -579,7 +582,7 @@
   border: none;
   border-radius: 0;
   font-family: var(--f-song);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   line-height: 1.4;
   color: var(--ink-3);
   cursor: pointer;
@@ -604,7 +607,7 @@
 
 .ss-empty {
   padding: 18px 12px;
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   color: var(--ink-3);
   text-align: center;
 }
@@ -624,7 +627,7 @@
   border: none;
   border-radius: 0;
   font-family: var(--f-song);
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 600;
   letter-spacing: 0.16em;
   color: var(--paper);
@@ -671,7 +674,7 @@
 .ss-drag-ghost-tag {
   writing-mode: vertical-rl;
   font-family: var(--f-song);
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   letter-spacing: 0.2em;
   color: var(--seal-deep);
   white-space: nowrap;
@@ -692,7 +695,7 @@
   border-bottom: 2px solid transparent;
   border-radius: 0;
   font-family: var(--f-song);
-  font-size: calc(11.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   letter-spacing: 0.1em;
   color: var(--ink-3);
   cursor: pointer;
@@ -730,7 +733,7 @@
   border: 1px solid var(--seal-soft);
   border-radius: 0;
   font-family: var(--f-song);
-  font-size: calc(10.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   line-height: 1.5;
   color: var(--seal);
   cursor: pointer;
@@ -763,7 +766,7 @@
   box-shadow: var(--elev-menu);
 }
 .ss-lineage-card .t {
-  font-size: calc(11.5px * var(--font-scale));
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--ink-1);
   line-height: 1.5;
@@ -772,7 +775,7 @@
   display: block;
   margin-top: 4px;
   font-family: var(--f-mono);
-  font-size: calc(9.5px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.05em;
   color: var(--ink-3);
 }
@@ -788,7 +791,7 @@
   border-bottom: 1px solid var(--seal-soft);
   border-radius: 0;
   font-family: var(--f-song);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--seal-deep);
   cursor: pointer;
 }
@@ -804,7 +807,7 @@
 .ss-context-tag {
   flex: 0 0 auto;
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.06em;
   color: var(--ink-4);
 }
@@ -901,7 +904,7 @@
 .ss-folded-note {
   padding: 2px 12px 8px 42px;
   font-family: var(--f-mono);
-  font-size: calc(9.5px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.04em;
   color: var(--ink-3);
 }
@@ -924,7 +927,7 @@
   border: none;
   border-radius: 0;
   font-family: var(--f-mono);
-  font-size: calc(9.5px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.04em;
   color: var(--ink-3);
   white-space: nowrap;
@@ -958,7 +961,7 @@
   border: var(--rule-soft);
   border-radius: 0;
   font-family: var(--f-song);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   font-weight: 600;
   letter-spacing: 0.12em;
   line-height: 1;
@@ -982,7 +985,7 @@
   display: none;
 }
 .ss-arrange-bar .t {
-  font-size: calc(12px * var(--font-scale));
+  font-size: var(--fs-body);
   font-weight: 700;
   letter-spacing: 0.12em;
   color: var(--seal-deep);
@@ -990,7 +993,7 @@
 .ss-arrange-bar .n {
   margin-right: auto;
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
+  font-size: var(--fs-micro);
   letter-spacing: 0.08em;
   color: var(--ink-2);
 }
@@ -1001,7 +1004,7 @@
   border: var(--rule-strong);
   border-radius: 0;
   font-family: var(--f-song);
-  font-size: calc(11px * var(--font-scale));
+  font-size: var(--fs-caption);
   color: var(--ink-1);
   cursor: pointer;
   transition:

@@ -67,7 +67,7 @@
 }
 
 .pw-title {
-  font-size: 13.5px;
+  font-size: var(--fs-body);
   font-weight: 600; /* 卷名档 */
   color: var(--ink-1);
   white-space: nowrap;
@@ -78,7 +78,7 @@
 .pw-title-plugin {
   margin-left: auto;
   font-family: var(--f-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   color: var(--ink-3);
   white-space: nowrap;
 }
@@ -90,7 +90,7 @@
   margin-left: 4px;
   background: transparent;
   border: none;
-  font-size: 13px;
+  font-size: var(--fs-body);
   line-height: 1;
   color: var(--ink-3);
   cursor: pointer;
