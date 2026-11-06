@@ -15,6 +15,7 @@ import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
 import { paperRenderersPlugin } from '../src/plugins/builtin/paper-renderers';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
+import { readPaperSources } from './helpers/panel-source';
 
 async function withRenderers(fn: () => void | Promise<void>): Promise<void> {
   const ctx = new Context();
@@ -86,14 +87,14 @@ describe('composition/renderer-service — 资产块兜底 JSON（WO-4）', () =
 });
 
 describe('PaperPanel 文类签 — 首发资产 kind 有中文签（WO-4）', () => {
-  it('KIND_ZH/KIND_EN 常量覆盖首发资产 kind（防签破版）', async () => {
+  it('KIND_ZH/KIND_EN 常量覆盖首发资产 kind（防签破版）', () => {
     // 常量未导出，但通过源码断言保证回归面；若未来迁出此处同步更新。
-    const src = await import('../src/plugins/builtin/paper-shell/PaperPanel.tsx?raw');
-    expect(src.default).toContain("table: '表格'");
-    expect(src.default).toContain("chart: '图表'");
-    expect(src.default).toContain("metric: '指标'");
-    expect(src.default).toContain("deps_impact: '影响'");
-    expect(src.default).toContain("html: '卡片'");
-    expect(src.default).toContain("confirm: '确认'");
+    const src = readPaperSources();
+    expect(src).toContain("table: '表格'");
+    expect(src).toContain("chart: '图表'");
+    expect(src).toContain("metric: '指标'");
+    expect(src).toContain("deps_impact: '影响'");
+    expect(src).toContain("html: '卡片'");
+    expect(src).toContain("confirm: '确认'");
   });
 });

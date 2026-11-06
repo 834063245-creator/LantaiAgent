@@ -19,6 +19,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PluginBoundary } from '../src/app/PluginBoundary';
+import { readPaperSources } from './helpers/panel-source';
 
 const SRC = join(__dirname, '..', 'src');
 
@@ -128,7 +129,7 @@ describe('PluginBoundary 接线在册（源级钉——三处挂载点 + host �
     const dock = readFileSync(join(SRC, 'app', 'panels', 'DockPanel.tsx'), 'utf8');
     expect(dock).toContain('PluginBoundary');
     expect(dock).toContain('<C />');
-    const paper = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');
+    const paper = readPaperSources();
     // 正则形态：字符串字面量含 ${ 会触发 noTemplateCurlyInString
     expect(paper).toMatch(/label=\{`块 \$\{block\.kind\}`\}/);
     expect(paper).toMatch(/label=\{`覆盖层 \$\{def\.id\}`\}/);

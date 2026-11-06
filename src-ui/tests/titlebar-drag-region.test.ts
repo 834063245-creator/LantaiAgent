@@ -38,6 +38,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readPanelCss } from './helpers/panel-css';
+import { readPaperSources } from './helpers/panel-source';
 
 const SRC = join(__dirname, '..', 'src');
 const TAURI_SRC = join(__dirname, '..', '..', 'src-tauri', 'src');
@@ -68,7 +69,7 @@ describe('标题栏触发范围：页面不声明 app-region，命中范围由�
   });
 
   it('两个标题栏（画布顶部浮件 + 首页顶栏）都接共享实现', () => {
-    const panel = read(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx');
+    const panel = readPaperSources();
     const home = read(SRC, 'plugins', 'builtin', 'sessions-home', 'SessionsHome.tsx');
     expect(panel).toContain('onPointerDown={onTopbarPointerDown}');
     expect(panel).toContain('onDoubleClick={onTopbarDoubleClick}');
@@ -79,7 +80,7 @@ describe('标题栏触发范围：页面不声明 app-region，命中范围由�
   });
 
   it('画布视图的书眉布局行已退役：画布铺满整窗（顶缘 = 屏缘），热区收进顶部浮件', () => {
-    const panel = read(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx');
+    const panel = readPaperSources();
     const css = readPanelCss();
     // 书眉 = 56px 布局行 ⇒ 画布顶缘被推离窗口顶，边缘滚动的「指针甩到屏顶」落空
     expect(panel).not.toContain('"pp-topbar"'); // 注释里的历史沿革不算声明

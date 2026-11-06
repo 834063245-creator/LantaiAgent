@@ -15,13 +15,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readPanelCss } from './helpers/panel-css';
+import { readPaperSources } from './helpers/panel-source';
 
 const SRC = join(__dirname, '..', 'src');
 const PANEL_CSS = readPanelCss();
 const MODEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'model-selector.css'), 'utf8');
 const FOUNDATION_CSS = readFileSync(join(SRC, 'app', 'foundation.css'), 'utf8');
 const DOCK_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'ComposerDock.tsx'), 'utf8');
-const PAPER_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');
+const PAPER_TSX = readPaperSources();
 const FLOAT_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'use-composer-float.ts'), 'utf8');
 const FLOAT_GEOM_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'composer-float.ts'), 'utf8');
 

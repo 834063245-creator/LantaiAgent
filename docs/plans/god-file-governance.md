@@ -1,6 +1,6 @@
 # 上帝文件治理（god-file governance）
 
-> 状态：**P1 + P2 已落地（2026-11-06）**——门禁、chat-session 拆解、纸壳分片均已进主干；余 `PaperPanel.tsx` 组件体与 Rust 宽度型文件（登记不拆）。
+> 状态：**P1 + P2 + P3 已落地（2026-11-06）**——门禁、chat-session 拆解、纸壳分片、PaperPanel 拆解均已进主干；余 Rust 宽度型文件（登记不拆，见 P4）。
 > 门禁 = `src-ui/tests/god-file-budget.test.ts`（未登记文件 ≤ 1000 行；已登记只减不增）。
 
 ## 0. 要裁什么（结论在前）
@@ -30,10 +30,12 @@
 
 - **物理行数**（末尾换行不算一行），与 `plugin-home-ledger.test.ts` 同一把尺子；
 - **未登记文件 ≤ 1000 行**——新文件要长成上帝文件，先拆或先登记；
-- **已登记文件只减不增（ratchet）**——要长，必须同 commit 改大数字，让「它又长胖了」
-  成为一次有记录的决策；降到 1000 行以下必须销账（文件不存在同理）。
+- **已登记文件只减不增（ratchet），但登记值是「上限档」不是当前行数**——实测值向上取整
+  到 100（2026-11-06 用户定调「DEBT 表可以调一下」：原版逐行卡死，日常改一行就红，
+  噪音大于信号）。档内自由，**跨档**才需要同 commit 改数字并写一句为什么；
+  降到 1000 行以下必须销账（文件不存在同理）。
 
-登记表在 `src-ui/tests/god-file-budget.test.ts` 的 `DEBT`，初版 47 条 = 三棵 src 树实测。
+登记表在 `src-ui/tests/god-file-budget.test.ts` 的 `DEBT`，46 条 = 三棵 src 树实测（P1/P2 拆完后的余账）。
 扫描面 = `src-ui/src` + `engine/src` + `src-tauri/src`（不含 tests 与生成物）。
 
 ## 3. 批次
@@ -109,10 +111,27 @@
 的 `var(--pp-*)` 扫描面同步跟到分片。构建面已验：产物 `entry.css` 与 app bundle CSS 都是
 内联后的完整规则（无残留 `@import`）。
 
-**未做（留给下一批）**：`PaperPanel.tsx` 单组件体 1278 行按区域拆 hook 段——它不属于
-「体量失守」而是「组件形态」，与 P2 判据无关，且改动面在渲染路径上，单独一批更安全。
+**`PaperPanel.tsx` 单组件体**当时刻意留在下一批（它不属于「体量失守」而是「组件形态」，改动面在渲染路径上）——见 P3。
 
-### P3 登记不拆（本线不动）
+### P3 ✅ 已落地（2026-11-06）：PaperPanel.tsx
+
+`1739 → 871 行`，拆成三件（只搬代码，不改逻辑）：
+
+| 文件 | 行 | 内容 |
+|---|---|---|
+| `PaperPanel.tsx` | 871 | **视图**：两个 context Provider + 全部 JSX（唯一有 DOM 的一件） |
+| `use-paper-panel.ts` | 703 | **装配根**：16 个 `use-*` 域的调用序、共享 ref 载体、拖拽渲染态、context 组装。**hook 调用序是挂载契约**（split-plan §3 的三对硬约束），本文件内禁重排 |
+| `paper-panel-parts.tsx` | 379 | **表现件**：文类签映射 / ToolStatusChip / BlockView（单块渲染）/ folioSubLine / DeskShelf |
+
+组件本体只剩 `const { …83 项 } = usePaperPanelAssembly(); return (…)`。三件合计 1953 行
+（比原 1739 多 214 = 三份 imports + 头注 + 83 项解构/返回），**逻辑零改动**。
+
+**断言面**：8 份测试原本按路径只读 `PaperPanel.tsx` 做源码级断言，新增
+`tests/helpers/panel-source.ts` 的 `readPaperSources()`（同目录全量拼接，口径与
+`paper-visual-decisions` 的既有聚合一致）后改读法——断言对象仍是这份源码，只是不再
+假设它住在一个文件里。体量账同批销账（`PaperPanel.tsx` 降到 1000 以下，DEBT 删条目）。
+
+### P4 登记不拆（本线不动）
 
 Rust 宽度型大文件（29 个）· 测试巨件（`tests/chat-session.test.ts` 2057 行——P1 拆完它没变，测试面这一批不动）
 · `renderers/components.tsx` / `measure.ts` 这类「广度型」模块（10 个块类型 / 68 个测量导出）
