@@ -47,8 +47,14 @@ describe('创作坞 P1 · 模型菜单主次与字号', () => {
     expect(head).toContain('--ink-2');
   });
 
-  it('模型触发器 215px + 名称 600 + 吃 font-scale', () => {
-    expect(ruleBody(PANEL_CSS, '.pp-composer-settings .ms-container {')).toContain('flex: 0 0 215px');
+  it('模型触发器宽度自适应（封顶 min(340px,42%)）+ 名称 600 + 吃 font-scale', () => {
+    // 2026-11-08：定宽 215px 退役——它是按字阶 1.0 量出来的，而出厂默认 1.2 下
+    // 实测截 39px（1.4 档截 75px 并整行折行）。改自适应后出厂字阶整名读全。
+    // 显式规格变更：本条钉值由「215px 定宽」改为「按内容长 + 封顶」。
+    const box = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-container {');
+    expect(box).toContain('flex: 0 1 auto');
+    expect(box).toContain('max-width: min(340px, 42%)');
+    expect(box).not.toContain('flex: 0 0 215px');
     const trigger = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-container .ms-trigger {');
     expect(trigger).toContain('font-size: var(--fs-body)');
     const name = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-trigger-name {');

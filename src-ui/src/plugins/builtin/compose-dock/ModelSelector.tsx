@@ -369,6 +369,18 @@ export function ModelSelector({
     el?.scrollIntoView?.({ block: 'nearest' });
   }, [state.isOpen, state.selectionManager.focusedKey]);
 
+  /* 打开即把**当前模型**滚进视野（2026-11-08 实量缺陷）：上面那条只在 focusedKey
+   * 变化时滚，而打开那一刻 focusedKey 尚未落下 ⇒ 首屏停在顶部，当前行 top=182 而
+   * 列表高 188、行高 29 —— **只露 6px**（连测三次一致）。滚到视口中央而不是
+   * nearest：nearest 在「刚好贴边」时几乎不滚，仍然只露一条边。 */
+  useEffect(() => {
+    if (!state.isOpen || !compact) return;
+    const el = listRef.current?.querySelector('.ms-item.selected') as HTMLElement | null;
+    // 直接滚，不包 rAF：effect 在 DOM 提交之后跑，节点已挂载且布局可读；
+    // 包一层 rAF 反而让「打开即定位」晚一帧（视觉上先闪一下顶部再跳）。
+    el?.scrollIntoView?.({ block: 'center' });
+  }, [state.isOpen, compact]);
+
   // compact 触发器路径打开后把焦点送入输入框（ARIA combobox 语义：触发弹出 → 焦点在输入；
   // 否则键盘流落在触发器按钮上，react-aria 的 ↑↓/Enter 全部失效）
   useEffect(() => {
@@ -431,8 +443,12 @@ export function ModelSelector({
           type="text"
           className="sp-input ms-input"
           ref={inputRef}
-          placeholder={compact ? '搜索模型…' : undefined}
           {...inputProps}
+          /* 2026-11-08：placeholder 必须写在 `{...inputProps}` **之后**——react-aria 的
+           * inputProps 自带 placeholder:''，展开在前会被它盖掉（真机实测 getAttribute
+           * 为 null，搜索行 39px 却是空的）。设置页字段形态无占位符（isField 收起态显示
+           * 当前 id），保持 undefined。 */
+          placeholder={compact ? '搜索模型…' : undefined}
           value={isField ? (state.isOpen ? state.inputValue : value) : state.inputValue}
           onFocus={(e) => {
             // 对齐旧行为（字段形态）：聚焦预填当前模型 id
@@ -533,9 +549,13 @@ export function ModelSelector({
               }}
               className="ms-dropdown"
             >
-              {/* 2026-11-06 合并：宿主插槽（档位条）钉在弹层顶部、搜索行之上——
-                  换模型与拨档位在同一处完成，不再需要第二枚 pill。 */}
-              {headerSlot != null && <div className="ms-header-slot">{headerSlot}</div>}
+              {/* 2026-11-08 顺序修正：**搜索 → 列表 → 宿主插槽（档位）**。
+               *  旧序把档位条钉在弹层最顶（搜索行之上），而档位表的可选项由当前模型派生
+               *  ——"结果的可选项"摆在"选择器"之前，依赖反了（真机实量：它还占掉 29px，
+               *  列表只剩 4 行）。现在档位落在底部、贴着列表收尾：换模型的主路（搜索→列表）
+               *  不受它影响，删掉它也不影响换模型。
+               *  「当前模型看不见」是另一条缺陷，修法 = 打开时把它滚进视野（见下方 effect）
+               *  ——**不动可选面**（列表恒是配置面全集，搜索当前模型照样搜得到）。 */}
               {renderInput(false)}
               {results.length === 0 ? (
                 <div className="ms-empty">
@@ -553,6 +573,9 @@ export function ModelSelector({
                   {renderRows()}
                 </div>
               )}
+              {/* 宿主插槽（档位条）：落到弹层底部——它是"当前这一项的细节"，
+                  不是"选之前就要拨的东西"（2026-11-08）。 */}
+              {headerSlot != null && <div className="ms-header-slot">{headerSlot}</div>}
             </div>
           )}
         </>
@@ -601,12 +624,19 @@ function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; 
   const key = itemKey(m);
   const { optionProps, isFocused } = useOption({ key, isSelected: m.id === value }, state, optionRef);
   const isDynamic = m.contextWindow <= 0; // 无目录元数据 = 运行时从 /models 动态发现
+  /* 2026-11-08：设定行右缘 vendor 之后，第二行 id 的职责收窄——只在「名字与 id 不同
+   * 且该 id 是本行唯一识别依据」时仍露（例如自定义 provider 的目录外 id）；
+   * 同名不同商不再靠第二行 10px 灰字，靠右缘 vendor。 */
+  const showIdLine = m.name !== m.id && m.vendor !== m.id;
+  /* 2026-11-08 提示收窄：旧提示首项是「当前模型 · <vendor>」/「<vendor>」——而 vendor 现在
+   * 就写在行右缘、当前行有 --sel-wash 左脊，两处都是**复述**。一行 12–15 字的提示框在
+   * 300px 宽的列表上会直接盖住 3 行（真机截图取证），比不提示更妨碍阅读。
+   * 现在只留「列表行里读不到」的机器属性；都没有就**不挂提示**（零悬停噪音）。 */
   const title = [
-    m.id === value ? `当前模型 · ${m.vendor}` : m.vendor,
     m.input.includes('image') ? '支持图片输入' : null,
-    m.reasoning ? '支持推理/思考' : null,
-    m.contextWindow > 0 ? `上下文窗口 ${(m.contextWindow / 1000).toFixed(0)}k` : null,
-    isDynamic ? '运行时从 API 动态发现（无目录元数据）' : null,
+    m.reasoning ? '支持思考' : null,
+    m.contextWindow > 0 ? `上下文 ${(m.contextWindow / 1000).toFixed(0)}k` : null,
+    isDynamic ? '目录外（运行时动态发现）' : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -616,7 +646,7 @@ function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; 
       ref={optionRef}
       {...optionProps}
       data-key={key}
-      data-tip={title}
+      data-tip={title || undefined}
       className={`ms-item${isFocused ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
     >
       <span className="ms-item-title">
@@ -626,8 +656,11 @@ function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; 
             视
           </span>
         )}
+        {/* 2026-11-08：vendor 落行右缘——同名不同商（两个 DeepSeek V4.1 Flash）不再靠
+            第二行 10px 灰字 + 31px 之外的组头去猜。 */}
+        <span className="ms-item-vendor">{m.vendor}</span>
       </span>
-      {m.name !== m.id && <span className="ms-item-id">{m.id}</span>}
+      {showIdLine && <span className="ms-item-id">{m.id}</span>}
     </button>
   );
 }

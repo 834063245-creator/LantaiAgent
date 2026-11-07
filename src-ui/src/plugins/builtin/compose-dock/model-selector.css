@@ -129,6 +129,29 @@
   animation: pop-down var(--m-ink);
 }
 
+/* ── 2026-11-08 弹层两处实量病灶（viewport 2560×1400 / 字阶 1.0，真机 CDP 直读）────
+ *  ① 打开弹层 scrollTop=0、当前选中行 top=182、列表高 188、行高 29 ⇒ **只露 6px**，
+ *     连测三次一致。用户滚一下才知道自己现在用的是什么（修法在 ModelSelector 的
+ *     「打开即滚进视野」effect，不在样式）。
+ *  ② 同名不同商（opencode / shangtang 各有一个 DeepSeek V4.1 Flash）只能靠第二行
+ *     10px 灰字区分，vendor 在 31px 之外的组头上——vendor 现在落每行**右缘**。
+ * 语汇不变：选中行仍是 §11 行型（--sel-wash + 朱砂左脊），本批不新增第三种。
+ * ⚠ 不动「下拉 = 配置面全集」这条既有契约：当前模型照旧在列表里、照旧可搜。 */
+.ms-item-vendor {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 8px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+/* 宿主插槽（思考档位）落到弹层底部——它是当前模型的细节，不是换模型前的必拨项 */
+.ms-container.ms-compact .ms-dropdown .ms-header-slot {
+  border-top: 1px solid var(--rule-soft-ink);
+  border-bottom: none;
+}
+
 /* ── 2026-09-06 收口：compact 弹层 = 搜索行 + 列表滚动区（DSH chip 形态）。
  *  触发器恒驻在行内不被顶替；搜索进弹层且钉顶不随滚动跑——滚动收进
  *  .ms-listbox，弹层本体不滚。── */

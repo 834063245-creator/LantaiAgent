@@ -551,3 +551,10 @@
   count 对账改为「每条 hljs 规则的先导里四面全在」（形态变了，判据反而更强）。
   **交付口径**：`renderers.tsx` 在 paper-renderers 产物可热更；墨阶在 `PaperPanel.css`（`main.ts` 与
   `PaperPanel.tsx` 双 import ⇒ 也在壳 bundle）⇒ 真机看高亮须 `cargo tauri build --no-bundle`。
+
+- 2026-11-08 · **模型弹层 UX：档位归位 / 当前模型可见 / 触发面自适应**（用户「模型选择上拉菜单里面兼容思考强度，这里的 UI/UX 也有问题」；同批用户裁定 **模型弹层不收进「案」**——「模型弹层是一个需要让用户看到『我到底这会用的什么模型，思考强度是什么』」）·
+  **病灶（全是在运行中的 debug 实例上 CDP 直读的实量，viewport 2560×1400 / 字阶 1.0）**：① **当前模型打开时要滚才见**——`scrollTop=0` / 选中行 `top=182` / 列表高 188 / 行高 29 ⇒ **只露 6px**（连测三次一致；根因：滚动跟焦挂在 `focusedKey` 变化上，打开那一刻它还没落下）；② **搜索框 39px 却没有占位符**——`placeholder` 属性实测 `null`（JSX 里写在 `{...inputProps}` 之前，被 react-aria 自带的空串盖掉）；③ **档位条占弹层顶部 29px，而它的可选项由当前模型派生**——「结果的可选项」排在「选择器」之前，依赖反了，列表只剩 4 行；④ **同名不同商**（opencode / shangtang 各一个 DeepSeek V4.1 Flash）只能靠第二行 10px 灰字，vendor 在 31px 之外的组头；⑤ **行悬停提示盖住三行列表**——260px 提示框首项是「当前模型 · vendor」，而这两件事在弹层里都已可见（纯复述）·
+  **选**：① 打开即把当前模型 `scrollIntoView({block:'center'})`（**不动可选面**——剔除当前项会变成 39/40 条的规格变更，且搜索当前模型会搜不到）；② `placeholder` 挪到 `{...inputProps}` **之后**；③ 弹层顺序改 **搜索 → 列表 → 档位**（档位落到最底，换模型主路不再被它挤）；④ 每行右缘露出 vendor，组头保留给多模型的那一家；⑤ 提示只留列表读不到的三项（图片输入 / 思考 / 上下文），都没有就不挂·
+  **弃**：把「当前模型」提到顶部并从列表剔除（规格变更非缺陷修复）；弹层几何（300/260）不动；档位 chip 语汇不动（仍 §11 锚点型）·
+  **钉值**：`model-selector-popover.test.tsx` +3（占位符 / 打开即滚 / 插槽在列表之后）+ `model-selector-compact.test.tsx` +1（提示不复述）+ `composer-p1-polish.test.ts` **显式规格变更**（模型触发器由「215px 定宽」改 `flex:0 1 auto` + `max-width: min(340px, 42%)`——215 是按字阶 1.0 量的，出厂 1.2 档实测截 39px、1.4 档截 75px 且整行折行）。**真机复验**（重建 exe 后 CDP）：占位符 = 搜索模型…、当前行完整可见、子块顺序 = 搜索/列表/档位、触发器 218px / 截 0px、坞高 131 不变。**门禁**：全量 vitest **453 文件 / 4860 例**、tsc 0、biome 0/0、build 过、doc-check 过·
+  **部署面**：`ModelSelector` 与 `model-selector.css` 属 `compose-dock` 产物（可热更）；`paper-toc.css`（触发器宽度）在壳 bundle ⇒ 真机看宽度须重建 exe。

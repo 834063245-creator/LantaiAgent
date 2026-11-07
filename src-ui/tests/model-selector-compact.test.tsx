@@ -157,6 +157,50 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     expect(heads.some((h) => h.includes('openai'))).toBe(false); // 未配置厂商被过滤——杜绝写错行 400
   });
 
+  it('行悬停提示不复述列表已可见的信息（2026-11-08：旧提示盖住三行列表）', async () => {
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'deepseek',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'deepseek',
+            apiKey: '',
+            baseUrl: 'https://api.deepseek.com/v1',
+            model: 'deepseek-v4-pro',
+            models: ['deepseek-v4-pro'],
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    const tips = [...container!.querySelectorAll<HTMLButtonElement>('.ms-item')].map(
+      (el) => el.getAttribute('data-tip') ?? '',
+    );
+    // vendor 已在行右缘、当前行有左脊——提示里不再复述这两件事。
+    expect(tips.every((t) => !t.includes('当前模型'))).toBe(true);
+    // 目录内有元数据的模型：提示只剩机器属性（图片/推理/上下文），不含厂商名复述。
+    expect(tips.every((t) => t === '' || !t.includes('deepseek'))).toBe(true);
+  });
+
   it('B5：vision 模型行带「视」徽标（目录声明 + 覆盖补声明同面亮标）', async () => {
     localStorage.setItem(
       'hologram_settings',
