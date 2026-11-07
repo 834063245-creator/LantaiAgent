@@ -3,11 +3,11 @@
 
 /* 组合芯片（S6 P1e）——创作坞设置行左端「模型 | 组合」的第二格。
  *
- * 归属：创作坞产品的自有样式（与 model-selector.css 同域），**不复用**
- * paper-shell 的 .pp-thinking-pill 类——那会让既有测试的选择器同时命中两枚
- * pill（`.pp-thinking-sel` / `.pp-thinking-pill` 在全仓多处被按类取用），
- * 是「旧实现形状续命」的老毛病。这里独立命名（.pp-comp-*），形状与思考 pill
- * 逐条对齐（同一设置行的同款 pill 语言：纯文字 + 行内 caret）。
+ * 归属：创作坞产品的自有样式（与 model-selector.css 同域），独立命名
+ * （.pp-comp-*）——跨产品同名选择器会让测试与样式互相串命中。
+ * 形状与设置行的同款 pill 语言逐条对齐（纯文字 + 行内 caret）。
+ * 2026-11-06 合并 A：原「思考 pill」已并入模型 pill（档位成为它的后缀），
+ * 本行左端只剩「模型 · 档位 | 组合 | ✎」三件。
  *
  * 只写 --obs-* / 既有权杖 token（根令牌在 app/tokens.css，纸面族 --ink/--paper/
  * --rule/--seal 在 PaperPanel.css 的 :root 段定义——同产品族共用）。 */
@@ -15,10 +15,9 @@
 .pp-composer-settings .pp-comp-sel {
   position: relative;
   flex: 0 0 auto;
-  /* 行盒相位修正（2026-10-12）：与 .pp-thinking-sel / .pp-work-sel / .pp-ink-sel
-   * 同族同病——block 包裹内的 pill（button/span 两形态）以隐式基线参与行盒，
-   * 实测比同行标准线低 2px。flex 化 + 下侧相位补偿（margin 在 .pp-comp-pill
-   * 主规则内）。 */
+  /* 行盒相位修正（2026-10-12）：与 .pp-work-sel / .pp-ink-sel 同族同病——
+   * block 包裹内的 pill（button/span 两形态）以隐式基线参与行盒，实测比同行
+   * 标准线低 2px。flex 化 + 下侧相位补偿（margin 在 .pp-comp-pill 主规则内）。 */
   display: flex;
   align-items: center;
 }

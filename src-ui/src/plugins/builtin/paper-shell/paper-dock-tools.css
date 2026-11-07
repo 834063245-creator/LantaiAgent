@@ -139,115 +139,52 @@
   color: var(--paper);
 }
 
-/* DSH 移植（2026-08-26）：思考档位 = 图标 pill 下拉（替代旧「思考·档」文本按钮 +
-   展开分段行）。off = 脑图标划横线 + 静默灰；选中档 = seal 强调。菜单开在 pill 上方。 */
-.pp-composer-settings .pp-thinking-sel {
-  position: relative;
-  flex: 0 0 auto;
+/* ── 思考档位条（2026-11-06 合并 A：模型 + 思考档位合成一枚 pill）──────────────
+ * 旧形态是本行里一枚独立 pill（脑图标 + 定宽 5em 档位词 + 箭头，≈103px）外加一道
+ * 向上开的菜单——但档位表本身由**当前模型**派生（无档位声明的模型连控件都不出现），
+ * 两件事本来是一个决定的上下两步。现档位条收进模型弹层顶部（.ms-header-slot），
+ * 坞设置行只剩一枚 pill 读完「谁的脑子 · 想到多深」，换模型与拨档位同处完成。
+ * 语言沿用旧菜单，只换形状（竖排列表 → 横排分段）：选中仍走重墨 + 朱砂底线
+ * （与权限三档同一套文字线语言），不新增第三种选中语言（§11）。 */
+.pp-composer-settings .pp-thinking-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  /* fieldset 默认带 2px groove 边框与内距（与同行权限三档同款 reset） */
+  margin: 0;
+  padding: 3px 4px;
+  border: none;
+  border-radius: 0;
 }
-.pp-composer-settings .pp-thinking-pill {
+.pp-composer-settings .pp-thinking-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 22px;
-  padding: 0 2px; /* 2026-09-01 重皮：盒→线——思考走纯文字，与权限三档同语言 */
+  justify-content: center;
+  padding: 3px 9px 4px;
   font-family: var(--f-song);
-  font-size: var(--fs-body);
+  font-size: var(--fs-caption);
   letter-spacing: 0.06em;
   border: none;
+  border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--snap);
-  /* 行盒相位补偿（2026-10-12）：见「读数件/思考 pill 的行盒相位修正」注 */
-  margin-bottom: 3px;
-}
-.pp-composer-settings .pp-thinking-pill:hover,
-.pp-composer-settings .pp-thinking-pill.open {
-  color: var(--seal-deep);
-}
-.pp-composer-settings .pp-thinking-pill.off {
-  color: var(--ink-3);
-}
-.pp-composer-settings .pp-thinking-pill.off:hover,
-.pp-composer-settings .pp-thinking-pill.off.open {
-  color: var(--ink-2);
-}
-.pp-composer-settings .pp-thinking-icon {
-  flex: 0 0 auto;
-}
-.pp-composer-settings .pp-thinking-pill-caret {
-  flex: 0 0 auto;
-  color: var(--ink-3);
-  font-family: var(--f-mono);
-  font-size: var(--fs-micro);
-}
-/* 2026-09-06 收口：档位词定宽——「低/中/高」单字档与「自动/极限」两字档
-   同宽（min-width 5em 盖住「思考 · 两字」全宽），切档不推挤同行控件 */
-.pp-composer-settings .pp-thinking-pill-label {
-  display: inline-block;
-  min-width: 5em;
-  text-align: left;
-}
-.pp-composer-settings .pp-thinking-menu {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
-  z-index: 80;
-  min-width: 168px;
-  max-height: 280px;
-  overflow-y: auto;
-  background: var(--paper);
-  border: 1px solid var(--rule-strong-ink);
-  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
-  animation: pop-up var(--m-ink);
-}
-.pp-composer-settings .pp-thinking-opt {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-bottom: 1px solid var(--rule-soft-ink);
-  background: transparent;
-  color: var(--ink-2);
-  cursor: pointer;
-  text-align: left;
   transition:
-    background var(--snap),
-    color var(--snap);
+    color var(--snap),
+    border-color var(--snap);
 }
-.pp-composer-settings .pp-thinking-opt:last-child {
-  border-bottom: none;
-}
-.pp-composer-settings .pp-thinking-opt:hover {
-  background: var(--paper-deep);
+.pp-composer-settings .pp-thinking-chip:hover {
   color: var(--ink-1);
 }
-.pp-composer-settings .pp-thinking-opt.selected {
-  background: var(--sel-wash); /* 2026-09-01 审计：去 seal-soft 粉选——统一选中墨洗 */
+.pp-composer-settings .pp-thinking-chip.selected {
   color: var(--ink-1);
-  box-shadow: inset 2px 0 0 var(--seal);
+  font-weight: 600; /* 浸墨：选中重墨档（与权限三档同判据） */
+  border-bottom-color: var(--seal);
 }
-.pp-composer-settings .pp-thinking-opt-label {
-  font-family: var(--f-song);
-  font-size: var(--fs-body);
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.pp-composer-settings .pp-thinking-opt-desc {
-  font-size: var(--fs-caption);
-  letter-spacing: 0.02em;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.pp-composer-settings .pp-thinking-opt.selected .pp-thinking-opt-desc {
-  color: var(--ink-2);
-}
+
 .pp-composer input,
 .pp-composer textarea {
   flex: 1;

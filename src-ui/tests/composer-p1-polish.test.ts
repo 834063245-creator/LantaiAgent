@@ -89,7 +89,7 @@ describe('创作坞 P1 · 只读件与设置行字号', () => {
   it('设置行主要控件取字阶档（模型/权限/思考/墨/役）——2026-11-06 由 --font-scale 散写收编', () => {
     for (const selector of [
       '.pp-composer .pp-mode-opt {',
-      '.pp-composer-settings .pp-thinking-pill {',
+      '.pp-composer-settings .pp-thinking-chip {',
       '.pp-composer-settings .pp-ink-trigger {',
       '.pp-composer-settings .pp-work-trigger {',
     ]) {

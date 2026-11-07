@@ -258,7 +258,6 @@ const THINKING_DESC: Record<string, string> = {
 export const ComposerDock = memo(function ComposerDock() {
   const core = useCoreStore((s) => s.core);
   const { activeSessionId, composerLock } = usePaperDock();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   /** 全局命令面板开合（2026-10-22 P2：翰 = 打开 Ctrl+K 同一面板，不再维护第二份内联清单）。 */
@@ -357,13 +356,14 @@ export const ComposerDock = memo(function ComposerDock() {
     return () => core.registerComposer({ focus: () => {}, selectEnd: () => {} });
   }, [core]);
 
-  /* ── C2（2026-08-27）：切卷清理本地态——localNotice 与思考展开面板
+  /* ── C2（2026-08-27）：切卷清理本地态——localNotice 与展开中的浮层面板
    *    不跨会话残留（A 卷的提示/展开状态带到 B 卷是认知噪音）。
-   *    v2 增补：律/引面板同属本地态，一并清。 ── */
+   *    v2 增补：律/引面板同属本地态，一并清。
+   *    2026-11-06 合并 A：思考档位不再是本地展开态——它随模型弹层开合，
+   *    切卷时弹层由 ModelSelector 自己的外点/blur 收合，本表无须代管。 ── */
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeSessionId 是刻意的「切卷触发器」——正是要响应它变化清本地态
   useEffect(() => {
     setLocalNotice(null);
-    setSettingsOpen(false);
     setHelpOpen(false);
     setYinOpen(false);
     setInkOpen(false);
@@ -896,6 +896,39 @@ export const ComposerDock = memo(function ComposerDock() {
     [core, activeSessionId],
   );
 
+  /* ── 思考档位条（2026-11-06 合并 A，用户拍板）────────────────────────
+   * 档位表本身就由**当前模型**派生（thinkingOptionsOrDefault(modelDesc)）——
+   * 换模型 ⇒ 可拨档位表跟着变，两件事本来是一个决定的上下两步。旧形态把它们
+   * 拆成两枚独立 pill：收起态要读两处才知道「这卷拿什么、想多深」，换完模型
+   * 还得再去右边补拨一次档位（且换到档位表更窄的模型时，右边 pill 会短暂挂着
+   * 新模型没有的档位）。现在档位条住进模型弹层顶部：一枚 pill 读完两个值，
+   * 拨档位不关弹层（多半还要接着挑模型）。无档位声明（thinkingOptions 空）
+   * ⇒ 整条不渲染，pill 上也不留后缀。 */
+  const thinkingStrip =
+    thinkingOptions.length > 0 ? (
+      // 语义照抄同行的权限三档（fieldset + aria-pressed）：一组互斥档位不是
+      // 表单控件，radio 语义要配 <input> 才合格（biome useSemanticElements）；
+      // 一组「按下即生效」的切换钮用 aria-pressed 更贴实况。
+      <fieldset className="pp-thinking-strip" aria-label="思考档位">
+        {thinkingOptions.map((o) => {
+          const selected = (currentThinking ?? '') === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={selected}
+              className={`pp-thinking-chip${selected ? ' selected' : ''}`}
+              data-tip={`思考档位：${thinkingZhLabel(o.value)}`}
+              data-tip-hint={THINKING_DESC[o.value] ?? ''}
+              onClick={() => onThinkingChange(o.value)}
+            >
+              {thinkingZhLabel(o.value)}
+            </button>
+          );
+        })}
+      </fieldset>
+    ) : null;
+
   /* ── 让位带上报（旧 --composer-h-live）已于 2026-09-17 拆除 ──
    * 坞可被拖离底带（自由浮动 + 吸附 + 双击复位），「坞高」不再是让位件的尺子
    * ——让位带（视口底 → 坞顶线）是**槽主人 paper-shell 的几何**，现由
@@ -939,12 +972,12 @@ export const ComposerDock = memo(function ComposerDock() {
     };
   }, [core, attachPaths]);
 
-  /* ── 浮层互斥（2026-09-01 审计）：思考/律/引 三浮层同屏只开一个——
-   *    此前各 onClick 只关自己认识的兄弟面板，思考菜单与引面板可叠开（截图实证）。
-   *    2026-09-13 墨量册、2026-09-22 役册并入（两枚读数件的册页同属浮层族）。
-   *    2026-10-22 P2：翰改开全局命令面板（模态、自带互斥），不在此列。 ── */
-  const toggleLayer = useCallback((layer: 'thinking' | 'help' | 'yin' | 'ink' | 'work') => {
-    setSettingsOpen(layer === 'thinking' ? (v) => !v : false);
+  /* ── 浮层互斥（2026-09-01 审计）：律/引/墨/役 浮层同屏只开一个——
+   *    此前各 onClick 只关自己认识的兄弟面板，浮层可叠开（截图实证）。
+   *    2026-10-22 P2：翰改开全局命令面板（模态、自带互斥），不在此列。
+   *    2026-11-06 合并 A：思考档位不再是独立浮层——它随模型弹层开合，
+   *    ModelSelector 的外点关闭/toggle 就是它的收合路径，不参与本表。 ── */
+  const toggleLayer = useCallback((layer: 'help' | 'yin' | 'ink' | 'work') => {
     setHelpOpen(layer === 'help' ? (v) => !v : false);
     setYinOpen(layer === 'yin' ? (v) => !v : false);
     setInkOpen(layer === 'ink' ? (v) => !v : false);
@@ -1355,6 +1388,8 @@ export const ComposerDock = memo(function ComposerDock() {
           compact
           isStreaming={running}
           onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
+          suffix={thinkingOptions.length > 0 ? `· ${thinkingZhLabel(currentThinking)}` : undefined}
+          headerSlot={thinkingStrip}
         />
         {/* 组合芯片（S6 P1e）：与模型同居左端——两者共同定义「本卷拿什么跑」
             （模型 = 谁的脑子，组合 = 哪些工具与提示面）；右端仍归「运行策略」对
@@ -1453,62 +1488,6 @@ export const ComposerDock = memo(function ComposerDock() {
             </button>
           ))}
         </fieldset>
-        {/* DSH 移植（2026-08-26）：思考档位 = 图标 pill 下拉（brain 图标，
-                off 划横线；选项带档位说明），不再是「思考·档」文本按钮 + 展开分段行 */}
-        {thinkingOptions.length > 0 && (
-          <div className="pp-thinking-sel">
-            <button
-              type="button"
-              className={`pp-thinking-pill${(currentThinking ?? '') === 'off' ? ' off' : ''}${settingsOpen ? ' open' : ''}`}
-              data-tip={`思考档位：${thinkingZhLabel(currentThinking)}`}
-              aria-haspopup="listbox"
-              aria-expanded={settingsOpen}
-              onClick={() => toggleLayer('thinking')}
-            >
-              <svg
-                className="pp-thinking-icon"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M9 18h6" />
-                <path d="M10 22h4" />
-                <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5" />
-                {(currentThinking ?? '') === 'off' && <line x1="4" y1="4" x2="20" y2="20" strokeWidth="1.5" />}
-              </svg>
-              <span className="pp-thinking-pill-label">思考 · {thinkingZhLabel(currentThinking)}</span>
-              <span className="pp-thinking-pill-caret" aria-hidden="true">
-                ▾
-              </span>
-            </button>
-            {settingsOpen && (
-              <div className="pp-thinking-menu" role="listbox" aria-label="思考档位">
-                {thinkingOptions.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    role="option"
-                    aria-selected={(currentThinking ?? '') === o.value}
-                    className={`pp-thinking-opt${(currentThinking ?? '') === o.value ? ' selected' : ''}`}
-                    onClick={() => {
-                      onThinkingChange(o.value);
-                      setSettingsOpen(false);
-                    }}
-                  >
-                    <span className="pp-thinking-opt-label">{thinkingZhLabel(o.value)}</span>
-                    <span className="pp-thinking-opt-desc">{THINKING_DESC[o.value] ?? ''}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
         {/* 役册（2026-09-22）：后台工作监视装置——触发器报在役条数，点开是完整
             台账（在役 / 他卷 / 已了，带逐条停止）。与墨量册同为「落笔前该看的
             读数」，同居行尾内侧；墨量册保持最右（拟文印正下方的读点不动）。 */}

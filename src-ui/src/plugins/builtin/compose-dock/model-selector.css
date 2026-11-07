@@ -144,6 +144,13 @@
   padding: 2px 4px;
 }
 
+/* 2026-11-06 合并 A（模型 + 思考档位合一颗 pill）：宿主插槽（思考档位条）
+ * 钉在弹层顶部——不随列表滚动，与搜索行同位阶（flex 0 0 auto）。 */
+.ms-container.ms-compact .ms-dropdown .ms-header-slot {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--rule-soft-ink);
+}
+
 .ms-container.ms-compact .ms-listbox {
   flex: 1 1 auto;
   min-height: 0;

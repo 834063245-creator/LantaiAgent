@@ -436,7 +436,6 @@
  * 1.5px）之间的相位差，两族文字归同一条水平线（实测相对偏差 0.0px）。
  * 相位补偿的 margin-bottom: 3px 在下方三枚 trigger 各自的主规则内；组合
  * pill（.pp-comp-sel）同族同病（实测 2px），修法见 composition-chip.css。 */
-.pp-composer-settings .pp-thinking-sel,
 .pp-composer-settings .pp-work-sel,
 .pp-composer-settings .pp-ink-sel {
   display: flex;

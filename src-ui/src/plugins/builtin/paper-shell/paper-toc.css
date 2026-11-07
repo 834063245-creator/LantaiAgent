@@ -501,6 +501,15 @@
   color: var(--ink-3);
   font-size: var(--fs-micro);
 }
+/* 2026-11-06 合并 A：档位后缀贴模型名之后（宿主给文案，如「· 高」）——
+ * 一枚 pill 读完「谁的脑子 · 想到多深」。模型名先让位（.ms-trigger-name 已
+ * flex 收缩 + 省略号），档位恒完整可读，切档也不推挤同行控件。 */
+.pp-composer-settings .ms-trigger-thinking {
+  flex: 0 0 auto;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  font-weight: 400;
+}
 /* DSH 不可用状态（2026-08-26）：会话模型所属 provider 已不在配置里——warn 字色 + ⚠（重皮后无线可染） */
 .pp-composer-settings .ms-trigger.ms-trigger-unavailable {
   color: var(--warn);

@@ -44,7 +44,7 @@ import { useComboBox } from '@react-aria/combobox';
 import { useListBox, useOption } from '@react-aria/listbox';
 import type { ComboBoxState } from '@react-stately/combobox';
 import { useComboBoxState } from '@react-stately/combobox';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Item } from 'react-stately';
 import type { ModelDescriptor, Protocol } from './host';
 import './model-selector.css';
@@ -79,6 +79,13 @@ interface ModelSelectorProps {
   isStreaming?: boolean;
   /** 运行中被拦时的回调。 */
   onBlocked?: () => void;
+  /** 2026-11-06 合并（用户拍板 A：模型 + 思考档位合成一枚 pill）：落在触发器上、
+   *  模型名之后的档位后缀（宿主给文案，本组件不感知思考语义）。收起态一眼读完
+   *  「谁的脑子 · 想到多深」，不再需要第二枚 pill。仅 compact 渲染；缺省 = 旧形态。 */
+  suffix?: ReactNode;
+  /** 合并形态的弹层顶部插槽：宿主把档位条塞进弹层（搜索行之上、列表之外）。
+   *  缺省不渲染——设置页字段形态零改动。 */
+  headerSlot?: ReactNode;
 }
 
 /** 各已配置 provider 的「可用模型」并集（创作坞可选面，DSH routable 列表语义）。
@@ -132,6 +139,8 @@ export function ModelSelector({
   compact,
   isStreaming,
   onBlocked,
+  suffix,
+  headerSlot,
 }: ModelSelectorProps) {
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -502,6 +511,10 @@ export function ModelSelector({
           >
             <ProviderMark vendor={providerName} className="ms-trigger-mark" />
             <span className="ms-trigger-name">{triggerLabel}</span>
+            {/* 2026-11-06 合并：档位后缀贴模型名之后（宿主给的文案）——一枚 pill
+                读完「谁的脑子 · 想到多深」；模型名先让位（flex 收缩 + 省略号），
+                档位恒完整可读。 */}
+            {suffix != null && <span className="ms-trigger-thinking">{suffix}</span>}
             {providerUnavailable && (
               <span className="ms-trigger-unavail" aria-hidden="true">
                 ⚠
@@ -520,6 +533,9 @@ export function ModelSelector({
               }}
               className="ms-dropdown"
             >
+              {/* 2026-11-06 合并：宿主插槽（档位条）钉在弹层顶部、搜索行之上——
+                  换模型与拨档位在同一处完成，不再需要第二枚 pill。 */}
+              {headerSlot != null && <div className="ms-header-slot">{headerSlot}</div>}
               {renderInput(false)}
               {results.length === 0 ? (
                 <div className="ms-empty">

@@ -78,17 +78,20 @@ describe('创作坞行序（2026-09-06 收口：设置行下沉到输入行之�
     expect(rowIdx).toBeLessThan(settingsIdx); // 输入行在上，设置行在下
   });
 
-  it('三控件归属设置行：模型触发器 / 权限三档 / 思考 pill 都在 .pp-composer-settings 内', async () => {
+  it('控件归属设置行：模型触发器（带档位后缀）/ 权限三档都在 .pp-composer-settings 内', async () => {
     await mountDock('row-order-controls');
     const settings = container.querySelector('.pp-composer-settings')!;
     expect(settings.querySelector('.ms-trigger')).not.toBeNull(); // 模型
+    // 2026-11-06 合并 A：档位不再是独立 pill——它是模型 pill 上的后缀
+    expect(settings.querySelector('.ms-trigger-thinking')).not.toBeNull();
+    expect(settings.querySelector('.pp-thinking-pill')).toBeNull();
+    expect(settings.querySelector('.pp-thinking-sel')).toBeNull();
     expect(settings.querySelector('.pp-mode-seg')).not.toBeNull(); // 权限
-    expect(settings.querySelector('.pp-thinking-pill')).not.toBeNull(); // 思考强度
     // 输入行内不得再藏设置件
     const row = container.querySelector('.pp-composer-row')!;
     expect(row.querySelector('.ms-trigger')).toBeNull();
+    expect(row.querySelector('.ms-trigger-thinking')).toBeNull();
     expect(row.querySelector('.pp-mode-seg')).toBeNull();
-    expect(row.querySelector('.pp-thinking-pill')).toBeNull();
   });
 
   it('行序交换后发送钮仍在输入行内（拟文不随设置行搬动）', async () => {

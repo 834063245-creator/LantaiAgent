@@ -3,10 +3,15 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 创作坞设置行行内排布钉（2026-09-06 续批二）：模型独居左端，权限+思考成对
-// 靠右（组内权限在左、思考收尾）——两件同属「运行策略」成对归堆，不与模型混排。
-// 直接合并成单控件暂缓（权限=工作区级 mode-store、思考=每会话 compose-store，
-// 两真相源硬合会搅浑状态归属）。本文件钉行内 DOM 序防回退。
+// 创作坞设置行行内排布钉（2026-09-06 续批二；2026-11-06 合并 A 改钉）。
+//
+// 现行契约（2026-11-06 用户拍板 A）：思考档位并进**模型 pill**（收起态后缀 +
+// 弹层顶部档位条），设置行不再有独立的思考控件——「谁的脑子 · 想到多深」是
+// 同一个决定，档位表本就由当前模型派生。原先的「权限+思考」成对契约随之退役
+// （权限=工作区级 mode-store、模型/档位=每会话 compose-store，仍是两个真相源，
+// 只是档位归位到它真正的归属面：模型）。新子序 =
+//   模型（带档位后缀）→ 组合 → ✎造模式 → spacer → 权限 → 役 → 墨
+// 本文件钉这条 DOM 序防回退。
 //
 // 2026-09-13 规格变更（墨量册落位）：行尾追加**墨量仪表**（pp-ink-sel）——
 // 读数件不是控件，不进「运行策略」对，独立居行最右（用户动作链末端 = 拟文印
@@ -82,7 +87,7 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     await act(async () => {});
   };
 
-  it('模型+组合居左端、权限+思考成对靠右、读数件收行尾（役内墨外）：子序 = 模型 → 组合 → spacer → 权限 → 思考 → 役 → 墨', async () => {
+  it('子序 = 模型（带档位后缀）→ 组合 → ✎造模式 → spacer → 权限 → 役 → 墨；档位不再独立成件', async () => {
     await mountDock('settings-pair');
     const settings = container.querySelector('.pp-composer-settings')!;
     const classes = [...settings.children].map((el) => el.className);
@@ -94,28 +99,21 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     const creatorIdx = classes.findIndex((c) => c.includes('pp-comp-creator'));
     const spacerIdx = classes.indexOf('pp-composer-settings-spacer');
     const permIdx = classes.findIndex((c) => c.includes('pp-mode-seg'));
-    const thinkIdx = classes.findIndex((c) => c.includes('pp-thinking-sel'));
     const workIdx = classes.findIndex((c) => c.includes('pp-work-sel'));
     const inkIdx = classes.findIndex((c) => c.includes('pp-ink-sel'));
     expect(msIdx).toBe(0);
+    // 2026-11-06 合并 A：档位住在模型 pill 里，设置行不再有独立的思考控件
+    expect(settings.querySelector('.pp-thinking-sel')).toBeNull();
+    expect(settings.querySelector('.pp-thinking-pill')).toBeNull();
+    expect(settings.querySelector('.ms-trigger-thinking')).not.toBeNull();
     expect(compIdx).toBe(msIdx + 1); // 组合紧跟模型（同居「本卷拿什么跑」左端）
     expect(creatorIdx).toBe(compIdx + 1); // ✎ 造模式紧邻组合芯片（选现成的 / 造一个新的）
-    expect(spacerIdx).toBe(creatorIdx + 1); // 左端簇与策略对之间隔 spacer——成对被推右
+    expect(spacerIdx).toBe(creatorIdx + 1); // 左端簇与右端控件之间隔 spacer
     expect(permIdx).toBe(spacerIdx + 1);
-    expect(thinkIdx).toBe(permIdx + 1); // 思考收尾「运行策略」对；权限在组内左侧
     // 2026-09-22：役册紧邻墨量册（两枚读数件成对居行尾），役在内、墨仍收最右
-    expect(workIdx).toBe(thinkIdx + 1);
+    expect(workIdx).toBe(permIdx + 1);
     expect(inkIdx).toBe(workIdx + 1);
     expect(inkIdx).toBe(classes.length - 1);
-  });
-
-  it('策略对成员相邻无模型/仪表插入：权限与思考之间不隔其它控件', async () => {
-    await mountDock('settings-pair-adjacent');
-    const settings = container.querySelector('.pp-composer-settings')!;
-    const children = [...settings.children].map((el) => el.className);
-    const permIdx = children.findIndex((c) => c.includes('pp-mode-seg'));
-    const thinkIdx = children.findIndex((c) => c.includes('pp-thinking-sel'));
-    expect(thinkIdx - permIdx).toBe(1); // 成对相邻
   });
 
   it('墨量仪表有活跃卷才出现（无主待命态不冒充读数）', async () => {

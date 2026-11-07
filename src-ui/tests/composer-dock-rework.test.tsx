@@ -84,16 +84,20 @@ describe('ComposerDock 返工 P2-2（思考档位 pill 下拉，DSH 移植）', 
     root = null;
   });
 
-  it('收起态 pill 显示当前档中文标签（高）——非恒「思考」文本', async () => {
+  it('收起态：档位并进模型 pill——后缀显示当前档中文标签（高）', async () => {
     await mountDock('p22-collapsed', container, (r) => {
       root = r;
     });
-    const pill = container.querySelector<HTMLButtonElement>('.pp-thinking-pill');
-    expect(pill).not.toBeNull();
-    expect(pill?.textContent).toContain('高');
+    const trigger = container.querySelector<HTMLButtonElement>('.ms-trigger');
+    expect(trigger).not.toBeNull();
+    // 2026-11-06 合并 A：一枚 pill 读完「谁的脑子 · 想到多深」
+    expect(trigger?.querySelector('.ms-trigger-thinking')?.textContent).toContain('高');
+    // 设置行不再有第二枚思考 pill（独立控件随合并退役）
+    expect(container.querySelector('.pp-thinking-pill')).toBeNull();
+    expect(container.querySelector('.pp-thinking-sel')).toBeNull();
   });
 
-  it('off 档：pill 带 .off 静默类，脑图标划横线（DSH 语义）', async () => {
+  it('off 档：后缀显示「关闭」——旧脑图标划横线形态随独立 pill 一并退役', async () => {
     await mountDock(
       'p22-off',
       container,
@@ -102,58 +106,56 @@ describe('ComposerDock 返工 P2-2（思考档位 pill 下拉，DSH 移植）', 
       },
       'off',
     );
-    const pill = container.querySelector<HTMLButtonElement>('.pp-thinking-pill');
-    expect(pill?.classList.contains('off')).toBe(true);
-    expect(pill?.querySelector('line')).not.toBeNull(); // 脑图标上的划线
+    expect(container.querySelector('.ms-trigger-thinking')?.textContent).toContain('关闭');
   });
 
-  it('点 pill 打开下拉：纯中文档位 + 说明、选中态正确；选「低」写会话覆盖并关闭', async () => {
+  it('点模型 pill 开弹层：档位条钉在顶部、纯中文、选中态正确；选「低」写覆盖且不收弹层', async () => {
     await mountDock('p22-open', container, (r) => {
       root = r;
     });
     act(() => {
-      container.querySelector<HTMLButtonElement>('.pp-thinking-pill')?.click();
+      container.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
     });
     await act(async () => {});
-    const menu = container.querySelector('.pp-thinking-menu');
-    expect(menu).not.toBeNull();
-    const opts = [...container.querySelectorAll<HTMLButtonElement>('.pp-thinking-opt')];
-    expect(opts.length).toBeGreaterThan(0);
-    // 无中英混排：档位标签与说明行都是中文（thinkingZhLabel / THINKING_DESC）
-    expect(menu?.textContent).not.toMatch(/\(|\)/);
+    const strip = container.querySelector('.pp-thinking-strip');
+    expect(strip).not.toBeNull();
+    const chips = [...container.querySelectorAll<HTMLButtonElement>('.pp-thinking-chip')];
+    expect(chips.length).toBeGreaterThan(0);
+    // 无中英混排：档位标签都是中文（thinkingZhLabel）
+    expect(strip?.textContent).not.toMatch(/\(|\)/);
     // 选中态 = 当前档「高」
-    const selected = opts.find((b) => b.classList.contains('selected'));
+    const selected = chips.find((b) => b.classList.contains('selected'));
     expect(selected?.textContent).toContain('高');
-    // 选「低」→ compose-store 会话覆盖 + 菜单关闭
-    const low = opts.find((b) => b.textContent?.includes('低'));
+    // 选「低」→ compose-store 会话覆盖；弹层不关（接着挑模型是同一趟事）
+    const low = chips.find((b) => b.textContent?.includes('低'));
     act(() => {
       low?.click();
     });
     await act(async () => {});
     expect(getComposeStore('p22-open').getState().getPrefs('1')?.thinking).toBe('low');
-    expect(container.querySelector('.pp-thinking-menu')).toBeNull();
+    expect(container.querySelector('.pp-thinking-strip')).not.toBeNull();
+    // 收起态后缀同步跟上
+    expect(container.querySelector('.ms-trigger-thinking')?.textContent).toContain('低');
   });
 
-  it('无目录声明模型：思考 pill 常驻（带「思考」字样），菜单只给自动/关闭安全兜底', async () => {
+  it('无目录声明模型：档位条仍常驻（自动/关闭安全兜底），后缀显示「自动」', async () => {
     await mountDock('p22-fallback', container, (r) => {
       root = r;
     });
-    // 把会话模型换成目录外模型（无 thinkingEfforts 声明）——思考控件不应消失
+    // 把会话模型换成目录外模型（无 thinkingEfforts 声明）——档位控件不应消失
     getComposeStore('p22-fallback').getState().setModel('1', 'deepseek', 'custom-unknown-model');
     await act(async () => {});
-    const pill = container.querySelector<HTMLButtonElement>('.pp-thinking-pill');
-    expect(pill).not.toBeNull(); // 常驻
-    expect(pill?.textContent).toContain('思考'); // 有「思考」字样可辨识
+    expect(container.querySelector('.ms-trigger-thinking')?.textContent).toContain('自动');
     act(() => {
-      pill?.click();
+      container.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
     });
     await act(async () => {});
-    const opts = [...container.querySelectorAll<HTMLButtonElement>('.pp-thinking-opt')];
-    expect(opts.length).toBeGreaterThan(0);
+    const chips = [...container.querySelectorAll<HTMLButtonElement>('.pp-thinking-chip')];
+    expect(chips.length).toBeGreaterThan(0);
     // 只给「自动/关闭」——不编造命名档位（P14 不破，assertEffortDeclared 对 ''/off 不拦）
-    expect(opts.some((b) => b.textContent?.includes('自动'))).toBe(true);
-    expect(opts.some((b) => b.textContent?.includes('关闭'))).toBe(true);
-    expect(opts.some((b) => b.textContent?.includes('高'))).toBe(false);
+    expect(chips.some((b) => b.textContent?.includes('自动'))).toBe(true);
+    expect(chips.some((b) => b.textContent?.includes('关闭'))).toBe(true);
+    expect(chips.some((b) => b.textContent?.includes('高'))).toBe(false);
   });
 });
 
@@ -465,15 +467,15 @@ describe('ComposerDock 思考档位换源（2026-09-23）', () => {
     ...over,
   });
 
-  it('无会话覆盖：pill 显示该模型生效的档位（per-model 覆盖压过行值）', async () => {
+  it('无会话覆盖：模型 pill 后缀显示该模型生效的档位（per-model 覆盖压过行值）', async () => {
     await mountWithRow('p23-permodel', row({ modelOverrides: { 'deepseek-v4-pro': { thinking: 'max' } } }));
-    const pill = container.querySelector<HTMLButtonElement>('.pp-thinking-pill');
-    expect(pill?.textContent).toContain('极限'); // 覆盖值，而不是行值「低」
+    const suffix = container.querySelector('.ms-trigger-thinking');
+    expect(suffix?.textContent).toContain('极限'); // 覆盖值，而不是行值「低」
   });
 
   it('无覆盖的模型回落行值（本家默认档位）', async () => {
     await mountWithRow('p23-rowvalue', row());
-    expect(container.querySelector<HTMLButtonElement>('.pp-thinking-pill')?.textContent).toContain('低');
+    expect(container.querySelector('.ms-trigger-thinking')?.textContent).toContain('低');
   });
 
   it('档位表来自 provider 作用域：API 拉取元数据声明的档位在坞里可选（此前读全局目录 → 拿不到）', async () => {
@@ -486,9 +488,10 @@ describe('ComposerDock 思考档位换源（2026-09-23）', () => {
       }),
     );
     act(() => {
-      container.querySelector<HTMLButtonElement>('.pp-thinking-pill')?.click();
+      container.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
     });
-    const labels = [...container.querySelectorAll('.pp-thinking-opt-label')].map((e) => e.textContent ?? '');
+    await act(async () => {});
+    const labels = [...container.querySelectorAll('.pp-thinking-chip')].map((e) => e.textContent ?? '');
     expect(labels).toContain('最浅'); // 网关模型自己的声明（目录里没有这个模型）
   });
 });
