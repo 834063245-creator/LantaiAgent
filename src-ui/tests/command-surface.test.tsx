@@ -15,8 +15,10 @@
 //   ③ 带参命令走目录解析（`/goal resume` → arg='resume'），发送面不再硬编码分支；
 //   ④ 内建命令 handler 绑本卷实例（旧 `_wireCommandHandlers` 就地把 handler
 //      写进模块级全局表 = 多面板互相覆盖的形状，已拆）；
-//   ⑤ 需要参数的命令**点选/裸回车不执行**——无参 `/goal` 补全提示词并聚焦
-//      （旧实现把空参当 status，点一下就弹一条历史目标 toast，2026-10-22 用户报）。
+//   ⑤ 需要参数的命令（takesArg）**面板点选/回车只填入待编辑**，不空参执行——
+//      入参语义落在 command-catalog 之外：面板把 `/goal ` 写进输入框，用户补完
+//      参数再回车（2026-11-07 补：此前靠各 handler 自己补救——/goal 弹状态、
+//      /remember 补前缀，插件命令则直接以空参跑掉）。
 
 import { describe, expect, it, vi } from 'vitest';
 import { ChatCore } from '../src/app/chat/chat-core';
@@ -240,5 +242,53 @@ describe('执行面参数贯通', () => {
     const goal = core.builtinCommands().find((c) => c.id === 'goal');
     expect(goal).toBeDefined();
     expect(() => core.executeCommand(goal!, 'pause')).not.toThrow();
+  });
+});
+describe('带参命令的待编辑形态（prepareCommand，2026-11-07）', () => {
+  it('目录里 /goal 与 /remember 标记 takesArg，无参命令不带', () => {
+    const core = new ChatCore();
+    const bySlash = new Map(core.builtinCommands().map((c) => [c.slash, c]));
+    expect(bySlash.get('/goal')?.takesArg).toBe(true);
+    expect(bySlash.get('/remember')?.takesArg).toBe(true);
+    for (const plain of ['/new', '/compact', '/compact-stats', '/export', '/memory']) {
+      expect(bySlash.get(plain)?.takesArg, `${plain} 不该标 takesArg`).toBeFalsy();
+    }
+  });
+
+  it('/goal：只填「/goal 」不执行（不建轮次、不改草稿以外的状态）', () => {
+    const core = new ChatCore();
+    const goal = core.builtinCommands().find((c) => c.id === 'goal');
+    expect(goal).toBeDefined();
+    const run = vi.spyOn(core as unknown as { _runAgentTurn: (opts: unknown) => Promise<void> }, '_runAgentTurn');
+    inputOf(core).setInputText('旧草稿');
+
+    core.prepareCommand(goal!);
+
+    expect(inputOf(core).inputText).toBe('/goal ');
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('/remember：只填「/remember 」不发起保存', () => {
+    const core = new ChatCore();
+    const remember = core.builtinCommands().find((c) => c.id === 'remember');
+    expect(remember).toBeDefined();
+    const send = vi.spyOn(
+      core as unknown as { sendAgentText: (text: string, label?: string) => Promise<void> },
+      'sendAgentText',
+    );
+
+    core.prepareCommand(remember!);
+
+    expect(inputOf(core).inputText).toBe('/remember ');
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('无斜杠词也无键位的贡献命令：不写输入框（不制造一条空命令）', () => {
+    const core = new ChatCore();
+    inputOf(core).setInputText('草稿');
+    expect(() =>
+      core.prepareCommand({ id: 'z', label: 'Z', group: '测试', action: { type: 'local', handler: () => {} } }),
+    ).not.toThrow();
+    expect(inputOf(core).inputText).toBe('草稿');
   });
 });

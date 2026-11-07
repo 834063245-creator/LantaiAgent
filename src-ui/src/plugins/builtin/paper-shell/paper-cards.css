@@ -465,7 +465,7 @@
   --pp-pop-max: 520px;
 }
 .pp-composer-slot .pp-composer .pp-slash {
-  --pp-pop-max: 240px;
+  --pp-pop-max: 330px;
 }
 
 /* 向下开：贴触发件下缘（保持各件原有 4/6/8 间隙），bottom 解除 */

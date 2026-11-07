@@ -1892,6 +1892,7 @@ export class ChatCore {
         description: '自主目标 —— 发 /goal 目标描述 开始；裸 /goal 查看状态；pause · resume · clear 控制',
         group: '案卷',
         slash: '/goal',
+        takesArg: true,
         action: { type: 'local', handler: (arg) => void this.goalCommand(arg) },
       },
       {
@@ -1912,6 +1913,7 @@ export class ChatCore {
         description: '保存一条事实到记忆库',
         group: '记忆',
         slash: '/remember',
+        takesArg: true,
         action: { type: 'local', handler: (arg) => this.rememberFact(arg) },
       },
     ];
@@ -2071,6 +2073,22 @@ export class ChatCore {
         return;
       }
     }
+  }
+
+  /** 带参命令的「待编辑」形态（2026-11-07）：只把 `/cmd ` 填进输入框并聚焦，
+   *  **不执行**。斜杠面板/命令面板点选 `takesArg` 条目时走这里——避免「点一下就以
+   *  空参跑掉」（旧形态对 /goal 是弹状态、对 /remember 是补前缀，两种语义各写各的
+   *  handler，插件命令则直接空参执行）。回车执行路不变：用户补完参数再回车。 */
+  prepareCommand(cmd: CommandContribution): void {
+    const text = `${cmd.slash ?? cmd.kbd ?? ''} `;
+    if (!text.trim()) return; // 既无斜杠词也无键位提示——填什么都是空的，交回调用方
+    getChatStore(this.panelId).input.getState().setInputText(text);
+    const composer = this._composer;
+    if (!composer) return;
+    composer.focus();
+    // 光标落尾要等 DOM 值跟上（同一 tick 里 el.value 还是旧值，selectEnd 会把光标
+    // 落在 0 号位——用户接着打字就打到命令词前面去了）
+    requestAnimationFrame(() => composer.selectEnd());
   }
 
   /** 执行命令 —— 斜杠面板 / 命令面板 / 文本解析三入口的唯一执行面（四型全语义）。

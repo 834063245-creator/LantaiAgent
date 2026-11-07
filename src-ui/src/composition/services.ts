@@ -92,6 +92,10 @@ export interface CommandContribution {
   slash?: string;
   /** 键位提示（如 'ctrl P'）——仅展示，真实绑定在 useGlobalKeys 全局层。 */
   kbd?: string;
+  /** 需要参数（2026-11-07）：面板里点选/回车**不立即执行**，改成把 `/cmd ` 填进
+   *  输入框并聚焦，等用户把参数写完再回车（`/goal <目标>`、`/remember <事实>`）。
+   *  缺省 false = 点选即执行（`/new` `/compact` 这类无参命令）。 */
+  takesArg?: boolean;
   action: CommandAction;
 }
 

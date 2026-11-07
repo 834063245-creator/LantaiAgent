@@ -36,6 +36,11 @@ function commandContributionActions(): AppAction[] {
       icon: undefined,
       kbd: c.kbd || c.slash || undefined,
       run: (arg) => {
+        // 带参命令（takesArg）= 填入「/cmd 」待编辑，不空参执行（与斜杠面板同一条规矩）
+        if (contribution.takesArg) {
+          shellRefs.chatPanel?.prepareCommand(contribution);
+          return;
+        }
         // 折算为 local handler 型 AppAction：run 调用贡献的执行面（§2.3）。
         // local → 直接调 handler；send/fill/skill → 经聊天面板的命令执行面
         //（executeCommand 四型全语义：清输入/聚焦/发文本）。
@@ -64,7 +69,8 @@ function sessionCommandActions(): AppAction[] {
     group: c.group,
     label: c.label,
     kbd: c.slash ?? c.kbd,
-    run: (arg) => panel.executeCommand(c, arg ?? ''),
+    // 带参命令（takesArg）选中 = 填入待编辑；无参命令照旧直接执行
+    run: (arg) => (c.takesArg ? panel.prepareCommand(c) : panel.executeCommand(c, arg ?? '')),
   }));
 }
 

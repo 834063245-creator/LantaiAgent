@@ -57,7 +57,7 @@ const DEBT: Record<string, number> = {
   'src-tauri/src/cdp/session.rs': 2000, // 现 1943
   'engine/src/engine/mod.rs': 1900, // 现 1859
   'engine/src/analysis/di_reflection/langs.rs': 1700, // 现 1660
-  'src-ui/src/plugins/builtin/compose-dock/ComposerDock.tsx': 1700, // 现 1622
+  'src-ui/src/plugins/builtin/compose-dock/ComposerDock.tsx': 1700, // 现 1632（斜杠面板已拆出 slash-panel.tsx）
   'engine/src/graph/import_resolver.rs': 1600, // 现 1555
   'src-ui/src/plugins/builtin/canvas-nav/SessionSidebar.tsx': 1600, // 现 1553
   'engine/src/community/louvain.rs': 1600, // 现 1546

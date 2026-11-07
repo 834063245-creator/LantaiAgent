@@ -51,6 +51,7 @@ import { volumeDisplayName } from '../../../state/volume-name';
 import type {
   ChatCore,
   ChatImageRef,
+  CommandContribution,
   ComposeSessionPrefs,
   // A4 销账 W3（2026-09-28）：`rpc-contract` 带计数与插桩（有身份）——DirEntry 是
   // 类型面（编译期擦除），值面 kernelListDirectory 改走本包宿主桥（键已在 faceDeps 在册）。
@@ -95,6 +96,7 @@ import {
   watchFileDragDrop,
 } from './host';
 import { composerSubmitOnKey } from './ime';
+import { SlashPanel } from './slash-panel';
 import './composition-chip.css';
 import './goal-strip.css';
 import { InkLedger } from './InkLedger';
@@ -639,7 +641,12 @@ export const ComposerDock = memo(function ComposerDock() {
     const last = v.lastIndexOf('/');
     if (last < 0) return null;
     if (last > 0 && v[last - 1] !== ' ' && v[last - 1] !== '\n') return null;
-    return v.slice(last + 1);
+    const q = v.slice(last + 1);
+    /* 参数模式：命令词后面出现空白 = 已经在写参数（`/goal pause`），面板让位。
+     * 没有这条，带参命令填完「/goal 」后查询词变成「goal 」，列表会继续挂着，
+     * 用户接着打的参数再把它顶成「无匹配命令」。 */
+    if (/\s/.test(q)) return null;
+    return q;
   }, [inputText]);
   const slashCommands = useMemo(() => {
     if (slashQuery === null) return [];
@@ -655,9 +662,21 @@ export const ComposerDock = memo(function ComposerDock() {
   const [slashIdx, setSlashIdx] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: slashQuery 是刻意的「查询词变化」触发器——正是要响应它复位高亮
   useEffect(() => {
-    setSlashIdx(0); // 查询词变化 → 高亮复位首项
+    setSlashIdx(0); // 查询词变化 → 高亮复位首项（滚动归零在面板件内）
   }, [slashQuery]);
   const slashActive = slashCommands.length > 0;
+  /** 命中查询词（与 filterCommands 同口径：去首斜杠 + 小写），交给面板标朱。 */
+  const slashHit = (slashQuery ?? '').trim().replace(/^\//, '');
+  /* 点选/回车 = 提交。带参命令（takesArg：/goal <目标> · /remember <事实>）**不执行**，
+   * 改成把「/cmd 」填进输入框等用户补参数——旧形态点一下就 handler('') 空参跑掉。 */
+  const commitSlash = useCallback(
+    (cmd: CommandContribution) => {
+      if (!core) return;
+      if (cmd.takesArg) core.prepareCommand(cmd);
+      else core.executeCommand(cmd);
+    },
+    [core],
+  );
 
   /* ── 附件 ── */
   const onAttach = useCallback(() => {
@@ -1034,23 +1053,14 @@ export const ComposerDock = memo(function ComposerDock() {
 
       {/* 输入行（原 composer 主体） */}
       <div className="pp-composer-row">
-        {slashCommands.length > 0 && (
-          <div className="pp-slash">
-            {slashCommands.map((c, i) => (
-              <button
-                key={c.id}
-                type="button"
-                className={`pp-slash-item${i === slashIdx ? ' active' : ''}`}
-                onMouseEnter={() => setSlashIdx(i)}
-                onClick={() => {
-                  core?.executeCommand(c);
-                }}
-              >
-                <span className="pp-slash-shortcut">{c.slash ?? c.kbd ?? ''}</span>
-                <span className="pp-slash-label">{c.label}</span>
-              </button>
-            ))}
-          </div>
+        {slashQuery !== null && (
+          <SlashPanel
+            commands={slashCommands}
+            activeIdx={slashIdx}
+            query={slashHit}
+            onHover={setSlashIdx}
+            onCommit={commitSlash}
+          />
         )}
         {/* 引（v2）：工作区文件模糊引用——面板 = 查询输入 + 命中清单 */}
         {yinOpen && (
@@ -1154,7 +1164,7 @@ export const ComposerDock = memo(function ComposerDock() {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 const cmd = slashCommands[slashIdx];
-                core?.executeCommand(cmd);
+                if (cmd) commitSlash(cmd);
                 return;
               }
               if (e.key === 'Escape') {

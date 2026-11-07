@@ -22,9 +22,16 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 59;
+export const OPEN_SURFACE_CONTRACT_VERSION = 60;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v60（2026-11-07）**命令贡献面增可选 `takesArg`（「填入待编辑」形态）**：
+ *  `composition/services.ts` 的 `CommandContribution` 新增可选 `takesArg?: boolean`
+ *  ——声明后斜杠面板 / 命令面板**点选或回车不再空参执行**，改成把 `/cmd ` 写进
+ *  输入框并聚焦，等用户把参数写完再回车（首批 = `/goal <目标>` · `/remember <事实>`，
+ *  消费面 `ChatCore.prepareCommand`）。旧形态靠各 handler 自行补救（/goal 弹状态、
+ *  /remember 补前缀），插件命令则直接以空参跑掉。**缺省 = 不声明 ⇒ 既有「点选即执行」
+ *  逐字不变**（纯可选字段，旧插件源码零迁移）。
  *  v58（2026-10-22）**模型级自定义推理等级**（`provider/types.ts`）：`ModelDescriptor`
  *  新增可选 `thinkingLevelMap`（canonical 档位 → 请求里发送的 API 参数值；对齐 DSH
  *  `reasoningEfforts`）与可选 `reasoningDisabled`（用户显式声明不推理；`reasoning:false`

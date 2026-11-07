@@ -14,9 +14,12 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerActions } from '../src/app/actions';
 import { CommandPalette } from '../src/app/CommandPalette';
+import type { ChatCore } from '../src/app/chat/chat-core';
 import { mountDialogFocus } from '../src/app/dialog-focus';
 import { Overlay, useDialogEscape } from '../src/app/overlay';
 import { useShellStore } from '../src/app/shell-store';
+import type { CommandContribution } from '../src/composition/services';
+import { shellRefs } from '../src/shell/runtime';
 
 function Harness({
   open,
@@ -244,5 +247,39 @@ describe('CommandPalette ARIA（档位 A-3）', () => {
     expect(first.id).toBe('pal-opt-0');
     // 组头是 presentation（不在 option 集合里）
     expect(container!.querySelectorAll('.pal-group[role="presentation"]').length).toBeGreaterThan(0);
+  });
+
+  it('带参命令选中 = 填入待编辑，不空参执行（与斜杠面板同一条规矩，2026-11-07）', () => {
+    const prepare = vi.fn();
+    const run = vi.fn();
+    const goal: CommandContribution = {
+      id: 'goal',
+      label: '自主目标',
+      group: '案卷',
+      slash: '/goal',
+      takesArg: true,
+      action: { type: 'local', handler: run },
+    };
+    shellRefs.chatPanel = {
+      builtinCommands: () => [goal],
+      executeCommand: vi.fn(),
+      prepareCommand: prepare,
+    } as unknown as ChatCore;
+    try {
+      act(() => {
+        root?.render(createElement(CommandPalette));
+      });
+      const row = [...container!.querySelectorAll<HTMLButtonElement>('button.pal-row')].find((b) =>
+        b.textContent?.includes('自主目标'),
+      );
+      expect(row).toBeDefined();
+      act(() => {
+        row!.click();
+      });
+      expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ id: 'goal' }));
+      expect(run).not.toHaveBeenCalled();
+    } finally {
+      shellRefs.chatPanel = null;
+    }
   });
 });

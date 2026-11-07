@@ -162,29 +162,52 @@
   cursor: grabbing;
 }
 
-/* 斜杠补全面板（施工单 #7）：行首 '/' 时弹出的可用命令列表 */
+/* 斜杠补全面板 v3（2026-11-07「分组双行」）：行首 '/' 时弹出的可用命令列表。
+ * 形态 = 四案评审后用户拍板的那一案：节头（组名 + 方墨锚点，非按钮）+ 行
+ * （斜杠词 mono + 显示名 600 + 描述 11px 单行省略）。旧形态是「340px 一行两项、
+ * 两栏同色同号」，命令之间全靠短标签区分——/goal 的 pause · resume · clear
+ * 参数语法因此一直不可见（描述字段在 CommandContribution 里现成，没人用）。
+ * 线级：只有外框一条弱线；组头不画线（一个方向至多两层框，§11 嵌套语法②），
+ * 分区靠方墨锚点 + 留白。 */
 .pp-slash {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
-  width: 340px;
-  max-height: 240px;
+  width: 420px;
+  max-height: 330px;
   overflow-y: auto;
   background: var(--paper);
   border: 1px solid var(--rule-soft-ink);
   box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
   z-index: 40;
-  padding: 6px 0;
+  padding: 2px 0 6px;
   /* 向上开的弹层自锚点侧托起（全局 pop 关键帧在 foundation.css） */
   animation: pop-up var(--m-ink);
 }
-.pp-slash-item {
+/* 节头：机读小字 + 实心方墨锚点（§11 法则 5「节题前实心方墨锚点」） */
+.pp-slash-group-head {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px 3px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+}
+.pp-slash-group-head::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  background: var(--ink-1);
+}
+/* 行：两行制——首行「斜杠词 + 显示名」，次行描述。
+ * 主次纪律（§12 判例）：人读名 600/ink-1，机器 id mono 常规/ink-2，不许倒置。 */
+.pp-slash-item {
+  display: block;
   width: 100%;
   text-align: left;
-  padding: 6px 14px;
+  padding: 7px 14px 7px 12px;
   border: none;
   background: none;
   cursor: pointer;
@@ -201,6 +224,11 @@
 .pp-slash-item.active {
   box-shadow: inset 2px 0 0 var(--seal);
 }
+.pp-slash-lead {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
 .pp-slash-shortcut {
   font-family: var(--f-mono);
   font-size: var(--fs-body);
@@ -209,7 +237,32 @@
 }
 .pp-slash-label {
   font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.pp-slash-desc {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pp-slash-item.active .pp-slash-desc {
   color: var(--ink-2);
+}
+/* 命中片段标朱：表达「你打的字落在了这儿」（闭 filterCommands 的命中口径——
+ * 命中可能在斜杠词 / 显示名 / 描述三处之一，不标出来读者不知道为什么这条在列）。 */
+.pp-slash mark {
+  background: none;
+  color: var(--seal-deep);
+  font-weight: 600;
+}
+.pp-slash-empty {
+  padding: 10px 12px;
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
 }
 
 /* ── B7（2026-08-27）：后台卷运行指示 + 停止 ── */
