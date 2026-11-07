@@ -164,9 +164,10 @@ export class ChatCore {
     this.panelId = `cp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     this._exec = createExecState();
 
-    // 斜杠技能候选：同步确保当前工作区的清单（键变了则后台重扫；
-    // 命令清单是同步读取面，见 app/commands/skill-catalog）
-    ensureSkillCatalog(useShellStore.getState().projectPath);
+    // 斜杠技能候选：确保当前工作区的清单（键变了则后台重扫；返回值 = 清单变没变，
+    // 消费面在 compose-dock 的斜杠面板——它「打开即强制重扫」并据此重取。
+    // 详见 app/commands/skill-catalog 头注。）
+    void ensureSkillCatalog(useShellStore.getState().projectPath);
 
     // ── ask_user tool → prompt shelf（视图注册后生效）──
     // P1 总线归零：prompt:ask → state/ask-store（callback-in-store：pending 跨

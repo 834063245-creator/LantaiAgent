@@ -648,15 +648,35 @@ export const ComposerDock = memo(function ComposerDock() {
     if (/\s/.test(q)) return null;
     return q;
   }, [inputText]);
+  /* 技能清单变更信号（2026-11-07 热装载）：扫描完成且清单真变了 → 自增一次，
+   * 让下面的 slashCommands 重取（命令清单是同步读取面，靠 tick 触发重算）。
+   * 产物域不订阅 panel-defs-store（那要动宿主桥 faceDeps、改宿主面指纹），
+   * 改读 ensureSkillCatalog 的返回值——同一条闭环，零新增宿主面键。 */
+  const [skillTick, setSkillTick] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: skillTick 是刻意的「技能清单换代」触发器——命令清单是同步读取面，正是要靠它重算
   const slashCommands = useMemo(() => {
     if (slashQuery === null) return [];
     return filterCommands(slashOnly(listCommands(core)), slashQuery);
-  }, [slashQuery, core]);
-  /* 面板打开即确保技能候选新鲜（工作区切换后无需重挂）——同步读缓存，
-   * 键变了则后台重扫（见 app/commands/skill-catalog）。 */
+  }, [slashQuery, core, skillTick]);
+  /* 面板每次**打开** = 强制重扫技能目录（不只是键变了才扫）：热装载就是在同一个
+   * 工作区里多出 `.lantai/skills/<名>/SKILL.md`（设置页新建 / 手放 / Agent 自己写），
+   * 路径键根本不变——旧实现靠键控检查，「永远不重扫」+「扫完不通知」两处叠加，
+   * 新技能在斜杠面板里就是不出现。
+   * ⚠ 只在「未开 → 已开」那一次扫：slashQuery 随每个按键变，按它无条件扫 =
+   * 打一个 /co 就 list+read 两遍磁盘（每个按键一次全量扫描）。 */
+  const slashOpened = useRef(false);
   useEffect(() => {
-    if (slashQuery === null) return;
-    ensureSkillCatalog(useShellStore.getState().projectPath);
+    const open = slashQuery !== null;
+    const justOpened = open && !slashOpened.current;
+    slashOpened.current = open;
+    if (!justOpened) return;
+    let cancelled = false;
+    void ensureSkillCatalog(useShellStore.getState().projectPath, { force: true }).then((changed) => {
+      if (!cancelled && changed) setSkillTick((v) => v + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [slashQuery]);
   /* ── C3（2026-08-27）：斜杠面板键盘导航（↑↓ 选、Enter 执行、Esc 关）。 ── */
   const [slashIdx, setSlashIdx] = useState(0);
