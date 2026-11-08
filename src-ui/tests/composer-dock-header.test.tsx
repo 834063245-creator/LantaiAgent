@@ -66,32 +66,34 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     await act(async () => {});
   };
 
-  it('书眉行是坞的第一行：pp-composer-header 在输入行之前（两行制，无设置行）', async () => {
+  it('书眉行是坞的第一行；设置行在输入行之后（2026-11-09：模型与权限另起一行）', async () => {
     await mountDock('header-order');
     const dock = container.querySelector('.pp-composer')!;
     const classes = [...dock.children].map((el) => el.className);
     expect(classes[0]).toBe('pp-composer-header'); // 书眉恒居顶
     const headerIdx = classes.indexOf('pp-composer-header');
     const rowIdx = classes.indexOf('pp-composer-row');
+    const settingsIdx = classes.indexOf('pp-composer-settings');
     expect(rowIdx).toBeGreaterThan(headerIdx);
-    // 2026-11-08 丙案：设置行整行退役（坞面 13 件 → 5 件）
-    expect(classes).not.toContain('pp-composer-settings');
+    // 2026-11-09 用户裁定：「模型选择和权限选择还是得另起一行，现在的 UX 好奇怪」
+    // ⇒ 设置行复活，只装模型 + 权限（丁案三行制：账 / 笔 / 怎么跑）
+    expect(settingsIdx).toBeGreaterThan(rowIdx);
   });
 
-  it('卷名 + 模型 归属书眉行；翰/律 已于 2026-11-09 撤出（「案」抽屉里各有一份）', async () => {
+  it('书眉 = 卷名 + 读数 + 移；模型与权限在设置行（2026-11-09 用户裁定）', async () => {
     await mountDock('header-membership');
     const header = container.querySelector('.pp-composer-header')!;
-    expect(header.querySelector('.pp-composer-target')).not.toBeNull(); // 卷名回顶
-    // 2026-11-09 密度批：翰/律 撤出书眉——它们与「案」抽屉「另起」段里的同名行**重复**，
-    // 同一件事在同一个坞里两个入口，读作"挤"。书眉工具带从此只剩「移/锁」（能力位）。
-    expect(header.querySelectorAll('.pp-tool-btn').length).toBe(0);
-    // 2026-11-08 丙案：模型（含档位后缀）也是书眉级身份件
-    expect(header.querySelector('.ms-trigger')).not.toBeNull();
-    // 输入行里不得重复出现书眉件
-    const row = container.querySelector('.pp-composer-row')!;
-    expect(row.querySelector('.pp-composer-target')).toBeNull();
-    expect(row.querySelector('.pp-dock-tools')).toBeNull();
-    expect(row.querySelector('.ms-trigger')).toBeNull();
+    expect(header.querySelector('.pp-composer-target')).not.toBeNull(); // 卷名居首
+    // 翰/律 撤出书眉（「案」抽屉里各有一份）
+    expect([...header.querySelectorAll('.pp-tool-btn')].map((b) => b.textContent)).not.toContain('翰');
+    // 2026-11-09：**模型搬出书眉**——书眉只留「这一卷的账」
+    expect(header.querySelector('.ms-trigger')).toBeNull();
+    expect(header.querySelector('.pp-mode-seg')).toBeNull();
+    // 设置行：模型 + 权限，两件都在
+    const settings = container.querySelector('.pp-composer-settings')!;
+    expect(settings.querySelector('.ms-trigger')).not.toBeNull();
+    expect(settings.querySelector('.ms-trigger-thinking')).not.toBeNull();
+    expect(settings.querySelector('.pp-mode-seg')).not.toBeNull();
   });
 
   it('律册在「案」抽屉里就地展开（2026-11-09：书眉那枚「律」钮撤掉后浮层改挂抽屉）', async () => {

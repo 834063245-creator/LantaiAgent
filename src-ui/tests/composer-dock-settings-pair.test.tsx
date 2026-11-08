@@ -87,23 +87,34 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     await act(async () => {});
   };
 
-  it('丙案书眉行子序 = 卷名 → spacer → 模型（带档位后缀）→ 役 → 墨 → 移/翰/律', async () => {
+  it('书眉行子序 = 卷名 → spacer → 役 → 墨 → 移（2026-11-09：模型已搬出）', async () => {
     await mountDock('settings-pair');
     const header = container.querySelector('.pp-composer-header')!;
     const classes = [...header.children].map((el) => el.className);
     expect(classes[0]).toContain('pp-composer-target'); // 卷名居首
-    const msIdx = classes.findIndex((c) => c.includes('ms-container'));
     const workIdx = classes.findIndex((c) => c.includes('pp-work-sel'));
     const inkIdx = classes.findIndex((c) => c.includes('pp-ink-sel'));
     const toolsIdx = classes.findIndex((c) => c.includes('pp-dock-tools'));
-    // 2026-11-06 合并 A：档位住在模型 pill 里（后缀）——仍然成立
-    expect(header.querySelector('.ms-trigger-thinking')).not.toBeNull();
-    expect(header.querySelector('.pp-thinking-sel')).toBeNull();
-    expect(header.querySelector('.pp-thinking-pill')).toBeNull();
-    expect(msIdx).toBeGreaterThan(0); // 模型在卷名之后（spacer 之后，右端簇之首）
-    expect(workIdx).toBe(msIdx + 1); // 役紧邻模型（两枚读数件居行尾内侧）
+    // 2026-11-09 用户裁定：模型不在书眉（搬去设置行，与权限同处）
+    expect(classes.findIndex((c) => c.includes('ms-container'))).toBe(-1);
+    expect(workIdx).toBeGreaterThan(0);
     expect(inkIdx).toBe(workIdx + 1); // 墨仍收最右
-    expect(toolsIdx).toBe(inkIdx + 1); // 工具对（移/翰/律）收尾
+    expect(toolsIdx).toBe(inkIdx + 1); // 工具带（移/锁）收尾
+  });
+
+  it('设置行子序 = 模型（带档位后缀）→ spacer → 权限三档（2026-11-09）', async () => {
+    await mountDock('settings-pair-row');
+    const settings = container.querySelector('.pp-composer-settings')!;
+    const classes = [...settings.children].map((el) => el.className);
+    const msIdx = classes.findIndex((c) => c.includes('ms-container'));
+    const spacerIdx = classes.indexOf('pp-composer-settings-spacer');
+    const permIdx = classes.findIndex((c) => c.includes('pp-mode-seg'));
+    // 2026-11-06 合并 A：档位住在模型 pill 里（后缀）——仍然成立
+    expect(settings.querySelector('.ms-trigger-thinking')).not.toBeNull();
+    expect(msIdx).toBe(0); // 模型居左
+    expect(spacerIdx).toBe(1); // 余量
+    expect(permIdx).toBe(2); // 权限收右
+    expect(permIdx).toBe(classes.length - 1);
   });
 
   it('丙案：坞面可点件从 13 降到 5（卷名不算，读数/工具各算）', async () => {
@@ -112,9 +123,10 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     const visible = [...dock.querySelectorAll('button')].filter((b) => !b.closest('.pp-scheme-panel'));
     // 模型触发器 + 役 + 墨 + 移 + 翰 + 律 + 引 + 夹 + 案 + 拟文 = 10（无拖动锁能力位则 9）。
     // 判据不是死数字而是**设置行那一排不再常驻**：
-    expect(dock.querySelector('.pp-composer-settings')).toBeNull();
+    // 2026-11-09：设置行复活（只装模型 + 权限两件），坞面可点件随之 +4（模型 + 权限三档）
+    expect(dock.querySelector('.pp-composer-settings')).not.toBeNull();
     expect(dock.querySelector('.pp-scheme-panel')).toBeNull(); // 抽屉关着
-    expect(dock.querySelector('.pp-mode-seg')).toBeNull(); // 权限不常驻
-    expect(visible.length).toBeLessThan(12);
+    expect(dock.querySelector('.pp-mode-seg')).not.toBeNull(); // 权限常驻
+    expect(visible.length).toBeLessThan(16);
   });
 });

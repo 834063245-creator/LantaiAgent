@@ -387,6 +387,33 @@
   margin-left: 10px;
 }
 
+/* ── 设置行（2026-11-09 用户裁定：模型与权限另起一行）──────────────────
+ * 用户原话：「模型选择和权限选择还是得另起一行，现在的 UX 好奇怪」。
+ * 判据翻案（对 2026-11-08 丙案"模型是书眉级身份"）：书眉是**这一卷的账**
+ * （哪一卷 + 还有什么在跑），模型与权限是**动作**——动作跟账挤一行，读起来就是
+ * "卷名右边挂着一串控件"。这一行只装两件，同属「这一趟怎么跑」。
+ * 布局：模型不缩（它是这一行的值），权限收右；窄窗下模型先省略、权限恒在。 */
+.pp-composer-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  flex-wrap: nowrap;
+  /* 行盒相位补偿（2026-10-12）：权限三档盒 23px 与本行 30px 的相位差由各件自己的
+     margin-bottom 3px 承担（既有做法，零改动）。 */
+}
+.pp-composer-settings > * {
+  min-width: 0;
+}
+.pp-composer-settings .ms-container {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(340px, 52%);
+}
+.pp-composer-settings .pp-mode-seg {
+  flex: 0 0 auto;
+}
+
 /* 案 · 分诊抽屉：向上开（坞贴屏底），几何与役册/墨量册同源
    （right/bottom/z/宽/封高），但归**输入行**（它的触发钮住在那儿）。 */
 .pp-composer-row {

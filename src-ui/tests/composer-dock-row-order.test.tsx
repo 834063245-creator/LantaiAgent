@@ -68,36 +68,33 @@ describe('创作坞行序（2026-09-06 收口：设置行下沉到输入行之�
     await act(async () => {});
   };
 
-  it('两行制：书眉行在下沉项之前、设置行整行不存在（2026-11-08 丙案）', async () => {
+  it('三行制（2026-11-09 用户裁定）：账 / 笔 / 怎么跑 —— 书眉 → 输入 → 设置', async () => {
     await mountDock('row-order');
     const dock = container.querySelector('.pp-composer')!;
     expect(dock).not.toBeNull();
     const classes = [...dock.children].map((el) => el.className);
     const headerIdx = classes.indexOf('pp-composer-header');
     const rowIdx = classes.indexOf('pp-composer-row');
-    expect(headerIdx).toBe(0); // 书眉恒居顶
-    expect(rowIdx).toBe(1); // 输入行紧跟其后 —— 两行，没有第三行
-    expect(classes).not.toContain('pp-composer-settings'); // 设置行整行退役
+    const settingsIdx = classes.indexOf('pp-composer-settings');
+    expect(headerIdx).toBe(0); // 书眉恒居顶（这一卷的账）
+    expect(rowIdx).toBeGreaterThan(headerIdx); // 笔
+    expect(settingsIdx).toBeGreaterThan(rowIdx); // 怎么跑（模型 + 权限）
   });
 
-  it('控件归属（丙案）：模型+档位后缀回书眉行；权限三档进「案」抽屉，不常驻', async () => {
+  it('控件归属（2026-11-09）：模型 + 权限同处设置行，书眉不藏它们', async () => {
     await mountDock('row-order-controls');
+    const settings = container.querySelector('.pp-composer-settings')!;
+    expect(settings.querySelector('.ms-trigger')).not.toBeNull();
+    expect(settings.querySelector('.ms-trigger-thinking')).not.toBeNull();
+    expect(settings.querySelector('.pp-thinking-pill')).toBeNull();
+    expect(settings.querySelector('.pp-thinking-sel')).toBeNull();
+    // 权限三档回到坞面常驻（与模型同处一行）
+    expect(settings.querySelector('.pp-mode-seg')).not.toBeNull();
+    // 书眉与输入行都不藏这两件
     const header = container.querySelector('.pp-composer-header')!;
-    // 模型（含档位后缀）现在是书眉级身份件——「本卷拿什么跑」与卷名同级
-    expect(header.querySelector('.ms-trigger')).not.toBeNull();
-    expect(header.querySelector('.ms-trigger-thinking')).not.toBeNull();
-    expect(header.querySelector('.pp-thinking-pill')).toBeNull();
-    expect(header.querySelector('.pp-thinking-sel')).toBeNull();
-    // 权限三档不再常驻坞面：抽屉关着时整枚不存在
-    expect(container.querySelector('.pp-mode-seg')).toBeNull();
-    // 打开「案」→ 权限三档在抽屉里
-    const schemeBtn = container.querySelector('.pp-scheme-btn') as HTMLButtonElement;
-    expect(schemeBtn).not.toBeNull();
-    act(() => schemeBtn.click());
-    await act(async () => {});
-    expect(container.querySelector('.pp-scheme-panel .pp-mode-seg')).not.toBeNull();
-    // 输入行内不藏书眉件（「案」抽屉挂在输入行里，故排除抽屉子树）
     const row = container.querySelector('.pp-composer-row')!;
+    expect(header.querySelector('.ms-trigger')).toBeNull();
+    expect(header.querySelector('.pp-mode-seg')).toBeNull();
     expect(row.querySelector('.ms-trigger')).toBeNull();
     expect(row.querySelector(':scope > .pp-mode-seg')).toBeNull();
   });

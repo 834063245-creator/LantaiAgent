@@ -980,11 +980,11 @@ export const ComposerDock = memo(function ComposerDock() {
 
   return (
     <div className={`pp-composer${dragOver ? ' pp-droptarget' : ''}`} ref={dockRef}>
-      {/* 书眉行（2026-11-08 丙案：**两行制**）——左端卷名，右端「本卷拿什么跑 + 读数 + 案」。
-          设置行整行退役：模型（含档位后缀）与役/墨读数落到本行；权限 / 组合 / 造模式 / 引夹
-          收进「案」分诊抽屉（pp-scheme-panel，坞内唯一浮层）。
-          判据：卷名 =「哪一卷」，模型 =「谁的脑子」，两者都是**书眉级身份**；
-          读数（役/墨）是环境指示、不进控件位；其余都是「落笔前要拨的动作」，归抽屉。 */}
+      {/* 书眉行（2026-11-09 用户裁定：**模型与权限另起一行**）——左端卷名，右端只有读数 + 移。
+          用户原话：「模型选择和权限选择还是得另起一行，现在的 UX 好奇怪」。
+          判据修正（翻 2026-11-08 丙案"模型是书眉级身份"那条）：书眉是**这一卷的账**
+          （哪一卷 + 还有什么在跑），换模型与拨权限是**动作**——动作与账挤在同一行，
+          读起来就是"卷名右边跟着一串控件"。模型+权限回到自成一行（它俩同属"这一趟怎么跑"）。 */}
       <div className="pp-composer-header">
         <span
           className="pp-composer-target"
@@ -1000,20 +1000,6 @@ export const ComposerDock = memo(function ComposerDock() {
             的能力位——宿主不给 composerLock ⇒ 整枚不出现，坞不知道锁态。常显可点、
             不做悬停浮现：前者是用户报的「不知道能拖」，后者是用户报的「还没挪过去
             就消失了」。翰/律 于同日撤出本行（「案」抽屉里已各有一份，书眉那两枚是重复）。 */}
-        {/* 模型（含思考档位后缀）——2026-11-08 丙案：设置行整行退役，模型落到书眉右端。
-            「本卷拿什么跑」是书眉级信息（与卷名同级：谁 + 用什么），与"落笔前要拨的东西"
-            （权限/组合/引夹）不是一类；读数（役/墨）仍居最右。 */}
-        <ModelSelector
-          value={model}
-          onChange={onModelChange}
-          providerName={providerName}
-          kind={providerKind}
-          compact
-          isStreaming={running}
-          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
-          suffix={thinkingOptions.length > 0 ? `· ${thinkingZhLabel(currentThinking)}` : undefined}
-          headerSlot={thinkingStrip}
-        />
         {activeSidNum != null && (
           <WorkLedger
             panelId={core?.panelId ?? ''}
@@ -1086,21 +1072,6 @@ export const ComposerDock = memo(function ComposerDock() {
           </span>
         )}
       </div>
-
-      {localNotice && (
-        <div className="pp-local-notice">
-          {localNotice}
-          <button type="button" onClick={() => setLocalNotice(null)}>
-            知道了
-          </button>
-        </div>
-      )}
-
-      {/* 历史眉批（一次性，6s 自散）：提示长在功能所在处，不常驻占位符 */}
-      {histHint && <div className="pp-eyebrow-hint">↑ 可回取上文 · ↓ 返回草稿</div>}
-
-      {/* 目标状态条（2026-10-23 DSH 式目标域）：有目标才出现；暂停/恢复/清除走同一命令面 */}
-      <GoalStrip core={core} />
 
       {/* 输入行（原 composer 主体） */}
       <div className="pp-composer-row">
@@ -1314,23 +1285,8 @@ export const ComposerDock = memo(function ComposerDock() {
           <div className="pp-scheme-panel" role="dialog" aria-label="案——本卷与引卷">
             <div className="pp-scheme-sec">
               <div className="pp-scheme-title">本卷</div>
-              <div className="pp-scheme-row">
-                <span className="pp-scheme-k">权限</span>
-                <fieldset className="pp-scheme-v pp-mode-seg" aria-label="权限模式">
-                  {PERMISSION_MODES.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
-                      data-tip={MODE_DESCRIPTIONS[m]}
-                      aria-pressed={permissionMode === m}
-                      onClick={() => selectMode(m)}
-                    >
-                      {MODE_LABELS[m]}
-                    </button>
-                  ))}
-                </fieldset>
-              </div>
+              {/* 2026-11-09 用户裁定：**权限回到坞面常驻**（与模型同处设置行）——
+                  抽屉里这一行随之删除。抽屉仍负责组合 / 图版 / 造模式 / 翰 / 律。 */}
               <div className="pp-comp-sel" data-comp-chip>
                 {compLocked ? (
                   <span
@@ -1533,6 +1489,55 @@ export const ComposerDock = memo(function ComposerDock() {
           </button>
         )}
       </div>
+
+      {/* 设置行（2026-11-09 用户裁定：模型与权限**另起一行**）——只放两件：
+          模型（含思考档位后缀）+ 权限三档。它们同属「这一趟怎么跑」，
+          与书眉的「这一卷的账」分家。
+          判据：动作件不跟账挤在一行；行内仍走 §11 锚点型选中（权限 = 重墨 + 朱砂底线），
+          不新增第三种语言。 */}
+      <div className="pp-composer-settings">
+        <ModelSelector
+          value={model}
+          onChange={onModelChange}
+          providerName={providerName}
+          kind={providerKind}
+          compact
+          isStreaming={running}
+          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
+          suffix={thinkingOptions.length > 0 ? `· ${thinkingZhLabel(currentThinking)}` : undefined}
+          headerSlot={thinkingStrip}
+        />
+        <div className="pp-composer-settings-spacer" />
+        <fieldset className="pp-mode-seg" aria-label="权限模式">
+          {PERMISSION_MODES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
+              data-tip={MODE_DESCRIPTIONS[m]}
+              aria-pressed={permissionMode === m}
+              onClick={() => selectMode(m)}
+            >
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </fieldset>
+      </div>
+
+      {localNotice && (
+        <div className="pp-local-notice">
+          {localNotice}
+          <button type="button" onClick={() => setLocalNotice(null)}>
+            知道了
+          </button>
+        </div>
+      )}
+
+      {/* 历史眉批（一次性，6s 自散）：提示长在功能所在处，不常驻占位符 */}
+      {histHint && <div className="pp-eyebrow-hint">↑ 可回取上文 · ↓ 返回草稿</div>}
+
+      {/* 目标状态条（2026-10-23 DSH 式目标域）：有目标才出现；暂停/恢复/清除走同一命令面 */}
+      <GoalStrip core={core} />
 
       {/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞，避免高度/关窗竞态）
           ——同附图预览：坞槽带 transform（版心居中）⇒ 就地渲染的 `position: fixed`

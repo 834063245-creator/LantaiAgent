@@ -375,19 +375,14 @@ describe('ComposerDock 返工 P2-3（权限分段 + 全放模态）', () => {
     root = null;
   });
 
-  it('权限三档在「案」抽屉里：常询/半放/全放，当前档选中高亮（2026-11-08 丙案）', async () => {
+  it('权限三档在设置行（2026-11-09 用户裁定：与模型同处一行、常驻坞面）', async () => {
     await mountDock('p23-seg', container, (r) => {
       root = r;
     });
-    // 丙案：权限不再常驻坞面——坞面那一排收进「案」，用户序列多一步「先点案」
-    expect(container.querySelector('.pp-mode-seg')).toBeNull();
-    act(() => {
-      (container.querySelector('.pp-scheme-btn') as HTMLButtonElement | null)?.click();
-    });
-    await act(async () => {});
-    const seg = container.querySelector('.pp-scheme-panel .pp-mode-seg');
+    const settings = container.querySelector('.pp-composer-settings')!;
+    const seg = settings.querySelector('.pp-mode-seg');
     expect(seg).not.toBeNull();
-    const opts = [...container.querySelectorAll<HTMLButtonElement>('.pp-scheme-panel .pp-mode-opt')];
+    const opts = [...settings.querySelectorAll<HTMLButtonElement>('.pp-mode-opt')];
     expect(opts.map((b) => b.textContent?.trim())).toEqual(['常询', '半放', '全放']);
     expect(opts[0]?.classList.contains('selected')).toBe(true);
   });
@@ -397,11 +392,7 @@ describe('ComposerDock 返工 P2-3（权限分段 + 全放模态）', () => {
       root = r;
     });
     act(() => {
-      (container.querySelector('.pp-scheme-btn') as HTMLButtonElement | null)?.click();
-    });
-    await act(async () => {});
-    act(() => {
-      const yoloBtn = [...container.querySelectorAll<HTMLButtonElement>('.pp-scheme-panel .pp-mode-opt')].find(
+      const yoloBtn = [...container.querySelectorAll<HTMLButtonElement>('.pp-mode-opt')].find(
         (b) => b.textContent?.trim() === '全放',
       );
       yoloBtn?.click();
