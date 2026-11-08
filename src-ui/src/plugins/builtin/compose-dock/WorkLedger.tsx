@@ -170,6 +170,9 @@ export const WorkLedger = memo(function WorkLedger({
       <button
         type="button"
         className={`pp-work-trigger${open ? ' open' : ''}${running.length > 0 ? ' live' : ''}`}
+        /* 2026-11-09 密度批：空档只留役点（同墨量册）——「役 —」61px 只为说明"没有"，
+           而书眉行正缺这点宽度。真值仍在 aria-label / data-tip-hint 里。 */
+        data-empty={running.length === 0 && settled.length === 0 && elsewhere === 0 ? '' : undefined}
         aria-label={
           running.length > 0
             ? `役册——本卷在役 ${running.length} 条${elsewhere > 0 ? `，另 ${elsewhere} 条在他卷` : ''}`

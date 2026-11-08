@@ -78,13 +78,13 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     expect(classes).not.toContain('pp-composer-settings');
   });
 
-  it('卷名 + 翰/律 + 模型 归属书眉行；输入行不得再藏这些', async () => {
+  it('卷名 + 模型 归属书眉行；翰/律 已于 2026-11-09 撤出（「案」抽屉里各有一份）', async () => {
     await mountDock('header-membership');
     const header = container.querySelector('.pp-composer-header')!;
     expect(header.querySelector('.pp-composer-target')).not.toBeNull(); // 卷名回顶
-    const toolBtns = header.querySelectorAll('.pp-tool-btn');
-    expect(toolBtns.length).toBe(2); // 翰 + 律
-    expect([...toolBtns].map((b) => b.textContent)).toEqual(['翰', '律']);
+    // 2026-11-09 密度批：翰/律 撤出书眉——它们与「案」抽屉「另起」段里的同名行**重复**，
+    // 同一件事在同一个坞里两个入口，读作"挤"。书眉工具带从此只剩「移/锁」（能力位）。
+    expect(header.querySelectorAll('.pp-tool-btn').length).toBe(0);
     // 2026-11-08 丙案：模型（含档位后缀）也是书眉级身份件
     expect(header.querySelector('.ms-trigger')).not.toBeNull();
     // 输入行里不得重复出现书眉件
@@ -94,16 +94,26 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     expect(row.querySelector('.ms-trigger')).toBeNull();
   });
 
-  it('律册浮层随翰律长在书眉行：从顶行打开（不随设置行搬动）', async () => {
+  it('律册在「案」抽屉里就地展开（2026-11-09：书眉那枚「律」钮撤掉后浮层改挂抽屉）', async () => {
     await mountDock('header-help-sheet');
-    const header = container.querySelector('.pp-composer-header')!;
-    const lüBtn = [...header.querySelectorAll<HTMLButtonElement>('.pp-tool-btn')].find((b) => b.textContent === '律')!;
+    // 书眉里不再有 律 钮
+    expect(
+      [...container.querySelectorAll('.pp-composer-header .pp-tool-btn')].some((b) => b.textContent === '律'),
+    ).toBe(false);
     act(() => {
-      lüBtn.click();
+      (container.querySelector('.pp-scheme-btn') as HTMLButtonElement).click();
     });
     await act(async () => {});
-    const sheet = header.querySelector('.pp-help-sheet');
-    expect(sheet).not.toBeNull(); // 律册锚在书眉行内的工具对上
+    const panel = container.querySelector('.pp-scheme-panel')!;
+    const lü = [...panel.querySelectorAll<HTMLButtonElement>('.pp-scheme-row')].find((b) =>
+      b.textContent?.includes('律'),
+    )!;
+    expect(lü).not.toBeUndefined();
+    act(() => lü.click());
+    await act(async () => {});
+    const inline = panel.querySelector('.pp-help-inline');
+    expect(inline).not.toBeNull(); // 就地展开，不再是绝对定位浮层
+    expect(inline?.textContent).toContain('Enter'); // 键位在册
   });
 
   /* 2026-09-17 二版：拖动锁那枚单字工具（`移` ↔ `锁`）落**坞自己的工具行**——
@@ -114,8 +124,8 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     const toggle = vi.fn();
     await mountDock('header-lock', { ...DOCK_CONTEXT, composerLock: { unlocked: false, toggle } });
     const tools = [...container.querySelectorAll('.pp-dock-tools .pp-tool-btn')] as HTMLButtonElement[];
-    // 锁钮居工具对之首（翰/律 这一对内容入口保持相邻），三枚同排
-    expect(tools.map((b) => b.textContent)).toEqual(['移', '翰', '律']);
+    // 2026-11-09：瀚/律 撤出后工具带只剩拖动锁这一枚
+    expect(tools.map((b) => b.textContent)).toEqual(['移']);
     expect(tools[0].getAttribute('aria-pressed')).toBe('false');
     expect(tools[0].getAttribute('data-tip')).toContain('解锁创作坞');
     act(() => tools[0].click());
@@ -128,9 +138,9 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     expect(on[0].className).toContain('open'); // 选中语言与翰/律 的 .open 同款
   });
 
-  it('拖动锁能力位缺失（宿主不给）：整枚不出现——旧宿主/只重载坞的版本偏斜窗口不炸', async () => {
+  it('拖动锁能力位缺失（宿主不给）：整枚不出现——工具带此时（翰/律 已撤）为空', async () => {
     await mountDock('header-no-lock'); // DOCK_CONTEXT 无 composerLock
     const tools = [...container.querySelectorAll('.pp-dock-tools .pp-tool-btn')] as HTMLButtonElement[];
-    expect(tools.map((b) => b.textContent)).toEqual(['翰', '律']);
+    expect(tools.length).toBe(0); // 无能力位 + 无 翰/律 ⇒ 整条工具带为空
   });
 });

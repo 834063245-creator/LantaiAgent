@@ -106,6 +106,10 @@ export const InkLedger = memo(function InkLedger({
       <button
         type="button"
         className={`pp-ink-trigger${open ? ' open' : ''}${nearFull ? ' full' : ''}`}
+        /* 2026-11-09 密度批：空档（无占用读数）只留墨点，不写「墨 —」——两个字符
+           换 74px 的行宽，而书眉行正缺这 74px（卷名被截）。真值仍由 aria-label 与
+           data-tip-hint 承载，读屏与 hover 都不丢。 */
+        data-empty={triggerLabel(stats) === '—' ? '' : undefined}
         aria-label={
           percent === undefined
             ? '墨量册——本卷 token 账'

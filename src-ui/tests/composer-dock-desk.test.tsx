@@ -155,8 +155,15 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
       CMDS,
     );
     expect(useShellStore.getState().paletteOpen).toBe(false);
+    // 2026-11-09：翰/律 撤出书眉——入口在「案」抽屉「另起」段
     act(() => {
-      [...container.querySelectorAll<HTMLButtonElement>('.pp-tool-btn')].find((b) => b.textContent === '翰')?.click();
+      (container.querySelector('.pp-scheme-btn') as HTMLButtonElement).click();
+    });
+    await act(async () => {});
+    act(() => {
+      [...container.querySelectorAll<HTMLButtonElement>('.pp-scheme-row')]
+        .find((b) => b.textContent?.includes('翰'))
+        ?.click();
     });
     await act(async () => {});
     expect(useShellStore.getState().paletteOpen).toBe(true);
@@ -206,15 +213,19 @@ describe('创作坞 v2：律（快捷键总览）', () => {
     root = null;
   });
 
-  it('点律开总览浮层：Enter 发送/换行/输入历史等键位在册；再点散', async () => {
+  it('点律在抽屉里就地展开：Enter 发送/换行/输入历史等键位在册；再点收起（2026-11-09）', async () => {
     await mountDock('lv-open', container, {}, (r) => {
       root = r;
     });
     act(() => {
-      [...container.querySelectorAll<HTMLButtonElement>('.pp-tool-btn')].find((b) => b.textContent === '律')?.click();
+      (container.querySelector('.pp-scheme-btn') as HTMLButtonElement).click();
     });
     await act(async () => {});
-    const sheet = container.querySelector('.pp-help-sheet');
+    const lvRow = () =>
+      [...container.querySelectorAll<HTMLButtonElement>('.pp-scheme-row')].find((b) => b.textContent?.includes('律'))!;
+    act(() => lvRow().click());
+    await act(async () => {});
+    const sheet = container.querySelector('.pp-help-inline');
     expect(sheet).not.toBeNull();
     expect(sheet?.textContent).toContain('发送');
     expect(sheet?.textContent).toContain('换行');
@@ -226,11 +237,9 @@ describe('创作坞 v2：律（快捷键总览）', () => {
       '画布',
       '纸面',
     ]);
-    act(() => {
-      [...container.querySelectorAll<HTMLButtonElement>('.pp-tool-btn')].find((b) => b.textContent === '律')?.click();
-    });
+    act(() => lvRow().click());
     await act(async () => {});
-    expect(container.querySelector('.pp-help-sheet')).toBeNull();
+    expect(container.querySelector('.pp-help-inline')).toBeNull();
   });
 });
 

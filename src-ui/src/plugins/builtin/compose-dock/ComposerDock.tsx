@@ -259,8 +259,6 @@ export const ComposerDock = memo(function ComposerDock() {
   const { activeSessionId, composerLock } = usePaperDock();
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  /** 全局命令面板开合（2026-10-22 P2：翰 = 打开 Ctrl+K 同一面板，不再维护第二份内联清单）。 */
-  const paletteOpen = useShellStore((s) => s.paletteOpen);
   /* ── 创作坞 v2（2026-08-31）本地态：律（快捷键）/ 引（文件）
    *    / 拖放入卷界栏 / 历史眉批。── */
   const [schemeOpen, setSchemeOpen] = useState(false);
@@ -998,12 +996,10 @@ export const ComposerDock = memo(function ComposerDock() {
           {activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '新卷'}
         </span>
         <div className="pp-composer-settings-spacer" />
-        {/* v2（2026-08-31）：翰（命令面板入口——/ 的可发现性）+ 律（快捷键总览）。
-            渐进披露：占位符只留一句，键位收进律册在此翻。
-            2026-09-17 续：**移/锁**（创作坞拖动锁，用户方案「桌面歌词式」）也落这一排
-            ——锁态与写面在槽主人（纸壳）手里，坞只渲染这枚单字工具（能力位：
-            宿主不给 composerLock = 整枚不出现）。常显可点、不做悬停浮现：
-            前者是用户报的「不知道能拖」，后者是用户报的「还没挪过去就消失了」。 */}
+        {/* 书眉工具带（2026-11-09 密度批后只剩**移/锁**）：拖动锁是槽主人（纸壳）
+            的能力位——宿主不给 composerLock ⇒ 整枚不出现，坞不知道锁态。常显可点、
+            不做悬停浮现：前者是用户报的「不知道能拖」，后者是用户报的「还没挪过去
+            就消失了」。翰/律 于同日撤出本行（「案」抽屉里已各有一份，书眉那两枚是重复）。 */}
         {/* 模型（含思考档位后缀）——2026-11-08 丙案：设置行整行退役，模型落到书眉右端。
             「本卷拿什么跑」是书眉级信息（与卷名同级：谁 + 用什么），与"落笔前要拨的东西"
             （权限/组合/引夹）不是一类；读数（役/墨）仍居最右。 */}
@@ -1058,44 +1054,10 @@ export const ComposerDock = memo(function ComposerDock() {
               {composerLock.unlocked ? '锁' : '移'}
             </button>
           )}
-          <button
-            type="button"
-            className={`pp-tool-btn${paletteOpen ? ' open' : ''}`}
-            data-tip="打开命令面板"
-            data-tip-hint="Ctrl+K 同一份：搜索 / 分组 / 动作与插件命令"
-            aria-label="翰——打开命令面板"
-            aria-haspopup="dialog"
-            aria-expanded={paletteOpen}
-            onClick={() => useShellStore.getState().setPaletteOpen(true)}
-          >
-            翰
-          </button>
-          <button
-            type="button"
-            className={`pp-tool-btn${helpOpen ? ' open' : ''}`}
-            data-tip="快捷键总览"
-            aria-label="律——快捷键总览"
-            aria-expanded={helpOpen}
-            onClick={() => toggleLayer('help')}
-          >
-            律
-          </button>
-          {helpOpen && (
-            <div className="pp-help-sheet" role="dialog" aria-label="快捷键总览">
-              <div className="pp-help-head">律 · 快捷键</div>
-              {HELP_GROUPS.map((g) => (
-                <div key={g.title} className="pp-help-group">
-                  <div className="pp-help-group-title">{g.title}</div>
-                  {g.rows.map(([key, desc]) => (
-                    <div key={key} className="pp-help-row">
-                      <span className="pp-help-key">{key}</span>
-                      <span className="pp-help-desc">{desc}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
+          {/* 2026-11-09 密度批：**翰/律 撤出书眉**。它们上一批随「案」落地时已经进了抽屉
+              （同一对入口在抽屉「另起」段里各有一行），书眉这两枚是**重复**——同一件事在
+              同一个坞里有两个入口，用户看到的是"挤"。保留抽屉那份：抽屉是"低频动作的家"，
+              而 Ctrl+K 本身就是翰的快捷键，不需要常驻一枚单字钮提醒。 */}
         </div>
         {/* B7（2026-08-27）：后台卷运行指示 + 停止——此前任一后台会话在跑就
             全局阻断发送（chat-core），但创作坞无任何指示、无从停止。 */}
@@ -1463,18 +1425,33 @@ export const ComposerDock = memo(function ComposerDock() {
                 <span className="pp-scheme-k">翰</span>
                 <span className="pp-scheme-v">命令面板（Ctrl+K）</span>
               </button>
+              {/* 2026-11-09：律册从书眉浮层改为**抽屉内就地展开**——书眉那枚「律」钮
+                  已撤（与这里重复），浮层原先靠它定位。现在展开态就在抽屉里继续往下长。 */}
               <button
                 type="button"
-                className="pp-scheme-row"
+                className={`pp-scheme-row${helpOpen ? ' open' : ''}`}
+                aria-expanded={helpOpen}
                 data-tip="快捷键总览"
-                onClick={() => {
-                  setSchemeOpen(false);
-                  toggleLayer('help');
-                }}
+                onClick={() => setHelpOpen((v) => !v)}
               >
                 <span className="pp-scheme-k">律</span>
-                <span className="pp-scheme-v">快捷键总览</span>
+                <span className="pp-scheme-v">{helpOpen ? '收起' : '快捷键总览'}</span>
               </button>
+              {helpOpen && (
+                <section className="pp-help-inline" aria-label="快捷键总览">
+                  {HELP_GROUPS.map((g) => (
+                    <div key={g.title} className="pp-help-group">
+                      <div className="pp-help-group-title">{g.title}</div>
+                      {g.rows.map(([key, desc]) => (
+                        <div key={key} className="pp-help-row">
+                          <span className="pp-help-key">{key}</span>
+                          <span className="pp-help-desc">{desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </section>
+              )}
             </div>
           </div>
         )}

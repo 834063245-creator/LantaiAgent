@@ -493,6 +493,20 @@
   font-size: var(--fs-micro);
 }
 
+/* 律册（快捷键总览）在抽屉内就地展开（2026-11-09）：它原先是锚在书眉工具带上的
+   绝对定位浮层——那枚「律」钮随翰/律 一起撤掉后，浮层改由抽屉里的行控制、就地往下长。
+   排印沿用原样（组题 = 方墨锚点 + 字距题字），只去掉绝对定位与落影。 */
+.pp-help-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 2px 0 6px;
+  padding: 6px 0 2px 8px;
+  border-left: 1px solid var(--rule-soft-ink);
+}
+.pp-help-inline .pp-help-head {
+  display: none;
+}
 /* 组合菜单在抽屉内：不绝对定位（就地展开，抽屉自己滚） */
 .pp-scheme-panel .pp-comp-menu-inline {
   position: static;
@@ -694,6 +708,21 @@
   min-width: 4.5em;
   text-align: left;
 }
+/* 读数空档收成点（2026-11-09 密度批）：役/墨 没有读数时原先仍写「役 —」「墨 —」，
+   两个字符换 135px 的行宽——而书眉行正缺这点宽度（卷名被截成省略号）。空档只留墨点/役点，
+   真值仍由 aria-label 与 data-tip-hint 承载（读屏与 hover 都不丢）。 */
+.pp-composer .pp-ink-trigger[data-empty] .pp-ink-trigger-label,
+.pp-composer .pp-work-trigger[data-empty] .pp-work-trigger-label {
+  display: none;
+}
+/* 空档时那枚点仍是可瞄的按钮：整枚收成 22×22，靠 ::after 撑到 28×28 命中面（既有做法） */
+.pp-composer .pp-ink-trigger[data-empty],
+.pp-composer .pp-work-trigger[data-empty] {
+  width: 22px;
+  justify-content: center;
+  padding: 0;
+}
+
 .pp-composer .pp-ink-panel {
   position: absolute;
   right: 0;

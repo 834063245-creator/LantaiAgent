@@ -99,9 +99,14 @@ describe('创作坞 P0 · 热区与无障碍名', () => {
     expect(PANEL_CSS).toContain('min-height: 28px');
   });
 
-  it('单字工具钮有完整无障碍名', () => {
-    expect(DOCK_TSX).toContain('aria-label="翰——打开命令面板"');
-    expect(DOCK_TSX).toContain('aria-label="律——快捷键总览"');
+  it('单字工具钮有完整无障碍名（2026-11-09：翰/律 撤出书眉后只剩拖动锁一枚单字钮）', () => {
+    // 翰/律 的两枚书眉单字钮随「案」抽屉落地而删除（同一对入口在抽屉里各有一行，
+    // 且抽屉行是完整词形「翰 / 令命面板」「律 / 快捷键总览」，不需要单字 aria 补名）。
+    // 书眉只剩「移/锁」这一枚单字工具，它的无障碍名照旧必须完整。
     expect(DOCK_TSX).toContain('解锁创作坞（可拖动）');
+    expect(DOCK_TSX).toContain('锁定创作坞');
+    // 反证：那两枚单字钮确实不在（防止以后又长回来却没补 aria）
+    expect(DOCK_TSX).not.toContain('aria-label="翰——打开命令面板"');
+    expect(DOCK_TSX).not.toContain('aria-label="律——快捷键总览"');
   });
 });
