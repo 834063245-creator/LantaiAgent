@@ -41,7 +41,7 @@ describe('创作坞 P1 · 模型菜单主次与字号', () => {
   });
 
   it('分组题 caption(11) / 正常大小写 / 二级墨（旧 9px 全大写 mono 退役）', () => {
-    const head = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-dropdown .ms-group-head {');
+    const head = ruleBody(PANEL_CSS, '.pp-composer .ms-dropdown .ms-group-head {');
     expect(head).toContain('font-size: var(--fs-caption)');
     expect(head).toContain('text-transform: none');
     expect(head).toContain('--ink-2');
@@ -51,13 +51,15 @@ describe('创作坞 P1 · 模型菜单主次与字号', () => {
     // 2026-11-08：定宽 215px 退役——它是按字阶 1.0 量出来的，而出厂默认 1.2 下
     // 实测截 39px（1.4 档截 75px 并整行折行）。改自适应后出厂字阶整名读全。
     // 显式规格变更：本条钉值由「215px 定宽」改为「按内容长 + 封顶」。
-    const box = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-container {');
-    expect(box).toContain('flex: 0 1 auto');
+    const box = ruleBody(PANEL_CSS, '.pp-composer .ms-container {');
+    // 2026-11-08 第二批：0 1 auto → 0 0 auto（书眉行里模型与卷名同时可缩时，模型被压到
+    // 116px 而卷名仍占 346px ⇒ 模型名截断、卷名照样省略号，两边都没读全）。卷名承担收缩。
+    expect(box).toContain('flex: 0 0 auto');
     expect(box).toContain('max-width: min(340px, 42%)');
     expect(box).not.toContain('flex: 0 0 215px');
-    const trigger = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-container .ms-trigger {');
+    const trigger = ruleBody(PANEL_CSS, '.pp-composer .ms-container .ms-trigger {');
     expect(trigger).toContain('font-size: var(--fs-body)');
-    const name = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-trigger-name {');
+    const name = ruleBody(PANEL_CSS, '.pp-composer .ms-trigger-name {');
     expect(name).toContain('font-weight: 600');
     expect(name).toContain('--ink-1');
   });
@@ -65,7 +67,7 @@ describe('创作坞 P1 · 模型菜单主次与字号', () => {
 
 describe('创作坞 P1 · 红色预算与去装饰蓝', () => {
   it('厂商章不再实心朱砂（纸色底 + ink-2 字 + ink-4 框）', () => {
-    const mark = ruleBody(PANEL_CSS, '.pp-composer-settings .ms-provider-mark {');
+    const mark = ruleBody(PANEL_CSS, '.pp-composer .ms-provider-mark {');
     expect(mark).toContain('background: var(--paper-deep)');
     expect(mark).toContain('color: var(--ink-2)');
     expect(mark).toContain('border: 1px solid var(--ink-4)');
@@ -87,7 +89,7 @@ describe('创作坞 P1 · 红色预算与去装饰蓝', () => {
 
 describe('创作坞 P1 · 只读件与设置行字号', () => {
   it('组合芯片只读态 ink-2（只读不等于读不清）', () => {
-    const locked = ruleBody(COMP_CSS, '.pp-composer-settings .pp-comp-pill[data-locked] {');
+    const locked = ruleBody(COMP_CSS, '.pp-composer .pp-comp-pill[data-locked] {');
     expect(locked).toContain('--ink-2');
     expect(locked).toContain('cursor: default');
   });
@@ -95,17 +97,17 @@ describe('创作坞 P1 · 只读件与设置行字号', () => {
   it('设置行主要控件取字阶档（模型/权限/思考/墨/役）——2026-11-06 由 --font-scale 散写收编', () => {
     for (const selector of [
       '.pp-composer .pp-mode-opt {',
-      '.pp-composer-settings .pp-thinking-chip {',
-      '.pp-composer-settings .pp-ink-trigger {',
-      '.pp-composer-settings .pp-work-trigger {',
+      '.pp-composer .pp-thinking-chip {',
+      '.pp-composer .pp-ink-trigger {',
+      '.pp-composer .pp-work-trigger {',
     ]) {
       expect(ruleBody(PANEL_CSS, selector)).toContain('font-size: var(--fs-');
     }
   });
 
   it('透明文字控件的键盘焦点 = 朱砂底线（模型触发器不画 2px 红框）', () => {
-    expect(PANEL_CSS).toContain('.pp-composer-settings .ms-trigger:focus-visible');
-    const i = PANEL_CSS.indexOf('.pp-composer-settings .ms-trigger:focus-visible');
+    expect(PANEL_CSS).toContain('.pp-composer .ms-trigger:focus-visible');
+    const i = PANEL_CSS.indexOf('.pp-composer .ms-trigger:focus-visible');
     const block = PANEL_CSS.slice(i, PANEL_CSS.indexOf('}', i));
     expect(block).toContain('outline: none');
     expect(block).toContain('inset 0 -2px 0 var(--seal)');

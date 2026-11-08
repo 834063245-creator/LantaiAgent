@@ -6,6 +6,8 @@
 // S6 P1e：创作坞**组合芯片**（卷级组合选择的 UI 入口）——两态 + 只读锁。
 //
 // 用户序列（与设计件 §2 序列 A/B 对拍）：
+//   0. **先点「案」打开分诊抽屉**（2026-11-08 丙案：设置行整行退役，组合芯片从设置行
+//      左端移进抽屉「本卷」段——坞面可点件 13 → 5。用户序列因此多一步，其余语义不变）；
 //   1. 无主态（无活跃卷）→ 芯片拨的是**新卷出生默认**（全局默认，落 settings）；
 //   2. 有活跃卷且**空白** → 芯片可拨，拨的是**卷级选择**（写路径 core.selectSessionPreset）；
 //   3. 该卷**跑过一轮** → 芯片变**只读标签**（不再有按钮/下拉）；
@@ -78,15 +80,23 @@ describe('S6 P1e 创作坞组合芯片：两态 + 只读锁', () => {
     root = null;
   });
 
-  it('无主态：芯片在设置行左端（紧跟模型），拨动走全局默认入口', async () => {
+  /** 点「案」打开分诊抽屉（2026-11-08 丙案的用户序列第一步）。 */
+  const openScheme = () => {
+    const btn = container.querySelector('.pp-scheme-btn') as HTMLButtonElement | null;
+    expect(btn, '案 入口应常驻输入行').not.toBeNull();
+    act(() => btn!.click());
+  };
+
+  it('无主态：抽屉「本卷」段的组合芯片，拨动走全局默认入口', async () => {
     const { core, selectCalls } = fakeCore('e1');
     useCoreStore.getState().setChatCore(core);
     getChatStore('e1').sess.setState({ sessions: [], activeIdx: -1, sessionTokens: {}, nextSessionId: 1 });
     root = mount(container, ctx(null));
     await act(async () => {});
 
+    openScheme();
     const chip = container.querySelector('[data-comp-chip]')!;
-    expect(chip.querySelector('.pp-comp-pill')?.textContent).toContain('组合 ·');
+    expect(chip.querySelector('.pp-comp-pill')?.textContent).toContain('组合');
     // 无活跃卷：不是卷级写路径（拨的是新卷出生默认）
     expect(core.selectSessionPreset).not.toHaveBeenCalled();
     // 点开 → 菜单列出内置 preset（standard/minimal 之类）
@@ -113,6 +123,7 @@ describe('S6 P1e 创作坞组合芯片：两态 + 只读锁', () => {
     root = mount(container, ctx(String(SID)));
     await act(async () => {});
 
+    openScheme();
     const pill = container.querySelector('[data-comp-chip] .pp-comp-pill') as HTMLButtonElement;
     expect(pill.tagName).toBe('BUTTON'); // 可拨 = 按钮
     act(() => pill.click());
@@ -140,6 +151,7 @@ describe('S6 P1e 创作坞组合芯片：两态 + 只读锁', () => {
     root = mount(container, ctx(String(SID)));
     await act(async () => {});
 
+    openScheme();
     const chip = container.querySelector('[data-comp-chip]')!;
     const label = chip.querySelector('.pp-comp-pill') as HTMLElement;
     expect(label.tagName).toBe('SPAN'); // 只读标签，不是按钮
@@ -165,6 +177,7 @@ describe('S6 P1e 创作坞组合芯片：两态 + 只读锁', () => {
     root = mount(container, ctx(String(SID)));
     await act(async () => {});
 
+    openScheme();
     const pill = container.querySelector('[data-comp-chip] .pp-comp-pill') as HTMLButtonElement;
     act(() => pill.click());
     const minimal = [...container.querySelectorAll('.pp-comp-opt')].find((o) =>

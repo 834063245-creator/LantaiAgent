@@ -5,6 +5,8 @@
 
 // 创作坞行序收口（2026-09-06）：模型/权限/思考强度不再占坞顶行——设置行
 // （pp-composer-settings）下沉到输入行（pp-composer-row）之下的「下方一行」
+// 2026-11-08 规格变更（丙案两行制）：设置行**整行退役**——模型（含档位后缀）回书眉行，
+// 权限/组合/造模式/图版/律 收进「案」抽屉。本文件钉的是新的归属面。
 // （DSH InputBar 同款排布：输入面在上、控件行在下）。本文件钉 DOM 行序与
 // 三控件归属面，防后续回退到顶行形态。
 
@@ -66,32 +68,38 @@ describe('创作坞行序（2026-09-06 收口：设置行下沉到输入行之�
     await act(async () => {});
   };
 
-  it('输入行在设置行之前——模型/权限/思考落位「下方一行」，不占坞顶行', async () => {
+  it('两行制：书眉行在下沉项之前、设置行整行不存在（2026-11-08 丙案）', async () => {
     await mountDock('row-order');
     const dock = container.querySelector('.pp-composer')!;
     expect(dock).not.toBeNull();
     const classes = [...dock.children].map((el) => el.className);
+    const headerIdx = classes.indexOf('pp-composer-header');
     const rowIdx = classes.indexOf('pp-composer-row');
-    const settingsIdx = classes.indexOf('pp-composer-settings');
-    expect(rowIdx).toBeGreaterThanOrEqual(0);
-    expect(settingsIdx).toBeGreaterThanOrEqual(0);
-    expect(rowIdx).toBeLessThan(settingsIdx); // 输入行在上，设置行在下
+    expect(headerIdx).toBe(0); // 书眉恒居顶
+    expect(rowIdx).toBe(1); // 输入行紧跟其后 —— 两行，没有第三行
+    expect(classes).not.toContain('pp-composer-settings'); // 设置行整行退役
   });
 
-  it('控件归属设置行：模型触发器（带档位后缀）/ 权限三档都在 .pp-composer-settings 内', async () => {
+  it('控件归属（丙案）：模型+档位后缀回书眉行；权限三档进「案」抽屉，不常驻', async () => {
     await mountDock('row-order-controls');
-    const settings = container.querySelector('.pp-composer-settings')!;
-    expect(settings.querySelector('.ms-trigger')).not.toBeNull(); // 模型
-    // 2026-11-06 合并 A：档位不再是独立 pill——它是模型 pill 上的后缀
-    expect(settings.querySelector('.ms-trigger-thinking')).not.toBeNull();
-    expect(settings.querySelector('.pp-thinking-pill')).toBeNull();
-    expect(settings.querySelector('.pp-thinking-sel')).toBeNull();
-    expect(settings.querySelector('.pp-mode-seg')).not.toBeNull(); // 权限
-    // 输入行内不得再藏设置件
+    const header = container.querySelector('.pp-composer-header')!;
+    // 模型（含档位后缀）现在是书眉级身份件——「本卷拿什么跑」与卷名同级
+    expect(header.querySelector('.ms-trigger')).not.toBeNull();
+    expect(header.querySelector('.ms-trigger-thinking')).not.toBeNull();
+    expect(header.querySelector('.pp-thinking-pill')).toBeNull();
+    expect(header.querySelector('.pp-thinking-sel')).toBeNull();
+    // 权限三档不再常驻坞面：抽屉关着时整枚不存在
+    expect(container.querySelector('.pp-mode-seg')).toBeNull();
+    // 打开「案」→ 权限三档在抽屉里
+    const schemeBtn = container.querySelector('.pp-scheme-btn') as HTMLButtonElement;
+    expect(schemeBtn).not.toBeNull();
+    act(() => schemeBtn.click());
+    await act(async () => {});
+    expect(container.querySelector('.pp-scheme-panel .pp-mode-seg')).not.toBeNull();
+    // 输入行内不藏书眉件（「案」抽屉挂在输入行里，故排除抽屉子树）
     const row = container.querySelector('.pp-composer-row')!;
     expect(row.querySelector('.ms-trigger')).toBeNull();
-    expect(row.querySelector('.ms-trigger-thinking')).toBeNull();
-    expect(row.querySelector('.pp-mode-seg')).toBeNull();
+    expect(row.querySelector(':scope > .pp-mode-seg')).toBeNull();
   });
 
   it('行序交换后发送钮仍在输入行内（拟文不随设置行搬动）', async () => {

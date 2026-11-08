@@ -337,6 +337,174 @@
 .pp-composer-slot.pp-composer-unlocked .pp-composer :where(button, [role="button"]) {
   cursor: pointer;
 }
+/* ── 丙案两行制（2026-11-08）：设置行整行退役后的书眉工具带与「案」抽屉 ──────
+ * 病灶（用户 2026-11-07「越来越乱越来越挤」；真机 CDP 实测）：坞面 13 个可点件、
+ * 三行平权——卷名（你在哪一卷）与「墨 —」（一个读数）几乎同重。
+ * 治法：**设置行整行消失**。书眉行 = 卷名 …… 模型（含档位后缀） → 役 → 墨 → 移/翰/律；
+ * 权限 / 组合 / 造模式 / 图版 / 律 收进「案」（坞内唯一浮层）。坞面 13 件 → 5 件。
+ * 语汇零新增：读数件仍是纯文字 + 墨点，模型仍是纯文字 pill，案仍是发丝框的册页面板。 */
+
+/* ⚠ 书眉行**不换行**（2026-11-08 实机修正）：旧规则 flex-wrap: wrap 是给
+ * 「书眉行只有卷名 + 翰律」的两件时代定的；现在一行装了卷名 + 模型 + 役 + 墨 + 移翰律，
+ * 真机实测总需求 853px > 内容宽 832px ⇒ **移/翰/律 整组被挤到第二行**，坞高 125→150、
+ * 两行制当场变三行（截图取证）。多行 flex 容器的换行发生在收缩之前，故必须先禁换行、
+ * 再让卷名承担收缩（它就是那条该让位的：短名不虚占、长名吃满可读上限，与 2026-09-13
+ * 同一条判据）。窄窗下卷名退成省略号，右端五件恒在。 */
+.pp-composer-header {
+  flex-wrap: nowrap;
+}
+/* 书眉行承接模型 pill：**模型不缩**（它是本行的"值"），让卷名先让位——
+ * 真机实测：模型与卷名同时可缩时，模型被压到 201px ⇒ 「deepseek-v4.1-…」截断，
+ * 而卷名仍占 346px（名字长了照样省略号，读到的信息更少）。改 0 0 auto 后
+ * 卷名承担全部收缩（它本来就有 ellipsis）。 */
+.pp-composer-header .ms-container {
+  margin-left: auto;
+  flex: 0 0 auto;
+  max-width: min(320px, 40%);
+}
+.pp-composer-header .pp-work-sel,
+.pp-composer-header .pp-ink-sel,
+.pp-composer-header .pp-dock-tools {
+  flex: 0 0 auto;
+}
+.pp-composer-header .ms-container .ms-trigger {
+  min-height: 24px;
+  padding: 0 2px;
+}
+.pp-composer-header .ms-container .ms-trigger-name {
+  font-weight: 600;
+  color: var(--ink-1);
+}
+/* 读数件（役 / 墨）与工具对之间的间距：书眉行用 10px（设置行原用 8px），
+   因为它们现在与模型 pill 同处一行，需要更明确的成组边界。 */
+.pp-composer-header .pp-work-sel {
+  margin-left: 10px;
+}
+.pp-composer-header .pp-ink-sel {
+  margin-left: 8px;
+}
+.pp-composer-header .pp-dock-tools {
+  margin-left: 10px;
+}
+
+/* 案 · 分诊抽屉：向上开（坞贴屏底），几何与役册/墨量册同源
+   （right/bottom/z/宽/封高），但归**输入行**（它的触发钮住在那儿）。 */
+.pp-composer-row {
+  position: relative;
+}
+.pp-scheme-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 86;
+  width: 280px;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong-ink);
+  box-shadow: var(--elev-menu);
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  animation: pop-up var(--m-ink);
+}
+.pp-scheme-panel > * {
+  flex: 0 0 auto;
+}
+.pp-scheme-sec {
+  padding: 4px 12px 6px;
+}
+.pp-scheme-sec + .pp-scheme-sec {
+  border-top: 1px solid var(--rule-soft-ink);
+  margin-top: 2px;
+  padding-top: 8px;
+}
+/* 段题复刻册页语言（方墨锚点 + 字距题字）——与役册/墨量册逐字同源 */
+.pp-scheme-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--f-song);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: 0.18em;
+  margin-bottom: 2px;
+}
+.pp-scheme-title::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--ink-1);
+  flex: 0 0 auto;
+}
+.pp-scheme-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 0;
+  background: transparent;
+  border: none;
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+.pp-scheme-row:hover {
+  color: var(--ink-1);
+}
+.pp-scheme-row:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+.pp-scheme-k {
+  flex: 0 0 auto;
+  letter-spacing: 0.04em;
+}
+.pp-scheme-v {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 权限三档在抽屉里：与坞内同款文字线语言（重墨 + 朱砂底线），只是不再常驻 */
+.pp-scheme-panel .pp-mode-seg {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+}
+/* 抽屉里的组合 pill：值列与其它行同一条右对齐基线（.pp-comp-pill-label 的
+   5em 定宽是设置行时代的"防跳动"，抽屉里值是唯一一段文字，定宽会把值推离右缘）。 */
+.pp-scheme-panel .pp-comp-pill-label {
+  min-width: 0;
+}
+.pp-scheme-panel .pp-comp-pill-caret {
+  color: var(--ink-3);
+  font-size: var(--fs-micro);
+}
+
+/* 组合菜单在抽屉内：不绝对定位（就地展开，抽屉自己滚） */
+.pp-scheme-panel .pp-comp-menu-inline {
+  position: static;
+  min-width: 0;
+  max-height: none;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  animation: none;
+  margin: 2px 0 4px;
+}
+
 /* ── 案头（创作坞 v2 2026-08-31）：无摊开卷时坞的形态面──
  * 空态死白的解法：直书于纸 + 签条架陪衬（位置两态恒同，2026-09-02 拍板 C；
  * React 侧 sessions.length === 0 判定只再切形态类）。
@@ -409,22 +577,18 @@
   gap: 8px;
   row-gap: 6px;
   min-height: 30px;
-  flex-wrap: wrap; /* 窄窗口同设置行纪律：换行不溢出 */
+  /* 2026-11-08 丙案：**禁换行**。旧值 wrap 是「书眉只有卷名 + 翰律」的两件时代定的；
+   * 现在一行装卷名 + 模型 + 役 + 墨 + 移翰律，真机实测需求 906px > 内容宽 832px ⇒
+   * 移/翰/律 整组被挤到第二行、坞高 125→150（截图取证）。多行 flex 容器先换行再收缩，
+   * 故必须禁换行，让卷名承担收缩（2026-09-13 同一条判据：短名不虚占、长名吃满上限）。 */
+  flex-wrap: nowrap;
 }
 .pp-composer-header > * {
   min-width: 0;
 }
-.pp-composer-settings {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  row-gap: 6px;
-  min-height: 30px;
-  flex-wrap: wrap; /* rework P3-1：窄窗口下设置项换行不重叠 */
-}
-.pp-composer-settings > * {
-  min-width: 0;
-}
+/* 2026-11-08 丙案：设置行整行退役——它的容器布局规则（横向 flex + 换行）
+   一并删除。**不要**把它改写成 .pp-composer：坞根本身是纵向 flex，
+   被这条覆盖后输入行会被压成 372px 并居中（真机实测到的病灶）。 */
 /* ── 读数件/思考 pill 的行盒相位修正（2026-10-12：用户报「役·墨与同行控件
  * 不在同一线」）────────────────────────────────────────────────────
  * 三枚包裹容器此前是普通 block，内嵌的 inline-flex 按钮以**隐式基线**参与
@@ -436,13 +600,16 @@
  * 1.5px）之间的相位差，两族文字归同一条水平线（实测相对偏差 0.0px）。
  * 相位补偿的 margin-bottom: 3px 在下方三枚 trigger 各自的主规则内；组合
  * pill（.pp-comp-sel）同族同病（实测 2px），修法见 composition-chip.css。 */
-.pp-composer-settings .pp-work-sel,
-.pp-composer-settings .pp-ink-sel {
+.pp-composer .pp-work-sel,
+.pp-composer .pp-ink-sel {
   display: flex;
   align-items: center;
 }
 .pp-composer-settings-spacer {
-  flex: 1;
+  /* 2026-11-08 两行制：书眉行不换行后，余量全部由它吸收；min-width:0 让它在
+     极端窄窗下也不会反过来撑开行。 */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .pp-composer-target {
   font-family: var(--f-song);
@@ -457,16 +624,19 @@
                      改为「按内容长、封顶 64%」：短名不虚占，长名吃满可读宽度，
                      换卷/改名仍不推挤右端控件（spacer flex:1 吸收余量）。 */
   max-width: 64%;
+  /* 2026-11-08 两行制：书眉行装了模型/役/墨/工具对之后，卷名至少留 5em 可读——
+     余量仍归 spacer，长名照样省略号（不推挤右端五件）。 */
+  min-width: 5em;
 }
 /* ── 墨量册（2026-09-13）：坞内 token 计量装置 ──
  * 触发器与思考 pill 同语言（盒→线：纯文字 + 小墨点），面板向上开
  * （坞贴屏底）；构成三段用墨阶递减（浓 → 淡）——纸墨体系只有墨，
  * 不引第三色（石青=运行态、朱砂=人的动作，均不占）。 */
-.pp-composer-settings .pp-ink-sel {
+.pp-composer .pp-ink-sel {
   position: relative;
   flex: 0 0 auto;
 }
-.pp-composer-settings .pp-ink-trigger {
+.pp-composer .pp-ink-trigger {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -485,8 +655,8 @@
   /* 行盒相位补偿（2026-10-12）：见「读数件/思考 pill 的行盒相位修正」注 */
   margin-bottom: 3px;
 }
-.pp-composer-settings .pp-ink-trigger:hover,
-.pp-composer-settings .pp-ink-trigger.open {
+.pp-composer .pp-ink-trigger:hover,
+.pp-composer .pp-ink-trigger.open {
   color: var(--seal-deep);
 }
 /* 墨点：占用信号（<80% 浓墨点，近满转朱砂——与坞底墨量线同判据） */
@@ -497,23 +667,23 @@
   background: var(--ink-2);
   flex: 0 0 auto;
 }
-.pp-composer-settings .pp-ink-trigger:hover .pp-ink-trigger-dot,
-.pp-composer-settings .pp-ink-trigger.open .pp-ink-trigger-dot {
+.pp-composer .pp-ink-trigger:hover .pp-ink-trigger-dot,
+.pp-composer .pp-ink-trigger.open .pp-ink-trigger-dot {
   background: var(--seal);
 }
-.pp-composer-settings .pp-ink-trigger.full {
+.pp-composer .pp-ink-trigger.full {
   color: var(--seal-deep);
 }
-.pp-composer-settings .pp-ink-trigger.full .pp-ink-trigger-dot {
+.pp-composer .pp-ink-trigger.full .pp-ink-trigger-dot {
   background: var(--seal);
 }
 /* 档位词定宽（同思考 pill 纪律）：百分比位数变化不推挤同行控件 */
-.pp-composer-settings .pp-ink-trigger-label {
+.pp-composer .pp-ink-trigger-label {
   display: inline-block;
   min-width: 4.5em;
   text-align: left;
 }
-.pp-composer-settings .pp-ink-panel {
+.pp-composer .pp-ink-panel {
   position: absolute;
   right: 0;
   bottom: calc(100% + 6px);

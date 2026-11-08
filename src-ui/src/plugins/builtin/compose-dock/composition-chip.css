@@ -12,7 +12,7 @@
  * 只写 --obs-* / 既有权杖 token（根令牌在 app/tokens.css，纸面族 --ink/--paper/
  * --rule/--seal 在 PaperPanel.css 的 :root 段定义——同产品族共用）。 */
 
-.pp-composer-settings .pp-comp-sel {
+.pp-composer .pp-comp-sel {
   position: relative;
   flex: 0 0 auto;
   /* 行盒相位修正（2026-10-12）：与 .pp-work-sel / .pp-ink-sel 同族同病——
@@ -23,7 +23,7 @@
 }
 
 /* 收起态：纯文字 pill（与思考档位同高度、同字体、同色阶） */
-.pp-composer-settings .pp-comp-pill {
+.pp-composer .pp-comp-pill {
   /* 2026-10-23 归属收口：命中面/焦点三条规则原住 paper-shell 的通用组合列表，
    * 与本文件选择器重复（跨产品同名选择器 = 到达序决定胜者）。chip 属本产品，
    * 规则随 chip 走——paper-shell 侧的引用同批删除。 */
@@ -47,19 +47,19 @@
   /* 行盒相位补偿（2026-10-12）：见 .pp-comp-sel 注 */
   margin-bottom: 3px;
 }
-.pp-composer-settings .pp-comp-pill:hover,
-.pp-composer-settings .pp-comp-pill.open {
+.pp-composer .pp-comp-pill:hover,
+.pp-composer .pp-comp-pill.open {
   color: var(--seal-deep);
 }
 
 /* 命中面 ≥28×28 与键盘焦点（2026-10-23 从 paper-shell 迁来，见主规则注）:
  * 伪元素只扩命中盒、不参与排印；焦点 = 朱砂底线（与输入框同一支笔）。 */
-.pp-composer-settings .pp-comp-pill::after {
+.pp-composer .pp-comp-pill::after {
   content: "";
   position: absolute;
   inset: -4px;
 }
-.pp-composer-settings .pp-comp-pill:focus-visible {
+.pp-composer .pp-comp-pill:focus-visible {
   outline: none;
   box-shadow: inset 0 -2px 0 var(--seal);
 }
@@ -67,18 +67,18 @@
 /* 跑过一轮 = 只读标签（span 形态，不再是按钮；hover 不改色以示不可拨）
  * 2026-10-22 P1：ink-3 → ink-2——只读不等于读不清；去掉可拨暗示靠 cursor/no hover，
  * 不靠把字淡成背景。 */
-.pp-composer-settings .pp-comp-pill[data-locked] {
+.pp-composer .pp-comp-pill[data-locked] {
   color: var(--ink-2);
   cursor: default;
 }
 
-.pp-composer-settings .pp-comp-pill-label {
+.pp-composer .pp-comp-pill-label {
   display: inline-block;
   min-width: 5em;
   text-align: left;
 }
 
-.pp-composer-settings .pp-comp-pill-caret {
+.pp-composer .pp-comp-pill-caret {
   flex: 0 0 auto;
   color: var(--ink-3);
   font-family: var(--f-mono);
@@ -86,7 +86,7 @@
 }
 
 /* 菜单：开在 pill 上方（与思考档位同款——输入行在下的坞内不向下弹） */
-.pp-composer-settings .pp-comp-menu {
+.pp-composer .pp-comp-menu {
   position: absolute;
   left: 0;
   bottom: calc(100% + 4px);
@@ -100,7 +100,7 @@
   animation: pop-up var(--m-ink);
 }
 
-.pp-composer-settings .pp-comp-opt {
+.pp-composer .pp-comp-opt {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -120,25 +120,25 @@
     background var(--snap),
     color var(--snap);
 }
-.pp-composer-settings .pp-comp-opt:last-child {
+.pp-composer .pp-comp-opt:last-child {
   border-bottom: none;
 }
-.pp-composer-settings .pp-comp-opt:hover {
+.pp-composer .pp-comp-opt:hover {
   background: var(--paper-deep);
   color: var(--ink-1);
 }
-.pp-composer-settings .pp-comp-opt.selected {
+.pp-composer .pp-comp-opt.selected {
   background: var(--sel-wash);
   color: var(--ink-1);
   box-shadow: inset 2px 0 0 var(--seal);
 }
-.pp-composer-settings .pp-comp-opt:disabled {
+.pp-composer .pp-comp-opt:disabled {
   color: var(--ink-3);
   cursor: default;
 }
 
 /* 说明行（来源/锁定原因/装载失败）——不可点，不参与选中语义 */
-.pp-composer-settings .pp-comp-note {
+.pp-composer .pp-comp-note {
   padding: 6px 10px;
   border-top: 1px solid var(--rule-soft-ink);
   color: var(--ink-3);

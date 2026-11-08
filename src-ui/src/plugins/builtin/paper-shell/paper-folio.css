@@ -133,7 +133,7 @@
  * 卷首本体是 pointer-events:none（点击穿透流区背景，激活语义不变），
  * 本子树单独放开 auto。
  * 与创作坞芯片（compose-dock 的 .pp-comp-*）**同语言不同宿主**——那族规则被
- * .pp-composer-settings 祖先限定，卷首不能靠 class 复用（WO-S6P5 §1.3）。 */
+ * .pp-composer 祖先限定，卷首不能靠 class 复用（WO-S6P5 §1.3）。 */
 .pp-folio-comp {
   position: absolute;
   top: 1px;

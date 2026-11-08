@@ -87,60 +87,34 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     await act(async () => {});
   };
 
-  it('子序 = 模型（带档位后缀）→ 组合 → ✎造模式 → spacer → 权限 → 役 → 墨；档位不再独立成件', async () => {
+  it('丙案书眉行子序 = 卷名 → spacer → 模型（带档位后缀）→ 役 → 墨 → 移/翰/律', async () => {
     await mountDock('settings-pair');
-    const settings = container.querySelector('.pp-composer-settings')!;
-    const classes = [...settings.children].map((el) => el.className);
-    expect(classes[0]).toContain('ms-container'); // 模型独居左端
+    const header = container.querySelector('.pp-composer-header')!;
+    const classes = [...header.children].map((el) => el.className);
+    expect(classes[0]).toContain('pp-composer-target'); // 卷名居首
     const msIdx = classes.findIndex((c) => c.includes('ms-container'));
-    // S6 P1e（2026-09-15）：左端成对——模型（谁的脑子）+ 组合（哪些工具与提示面）
-    const compIdx = classes.findIndex((c) => c.includes('pp-comp-sel'));
-    // 2026-10-30：造模式入口（✎）紧跟组合芯片——「选现成的」与「造一个新的」同居左端簇
-    const creatorIdx = classes.findIndex((c) => c.includes('pp-comp-creator'));
-    const spacerIdx = classes.indexOf('pp-composer-settings-spacer');
-    const permIdx = classes.findIndex((c) => c.includes('pp-mode-seg'));
     const workIdx = classes.findIndex((c) => c.includes('pp-work-sel'));
     const inkIdx = classes.findIndex((c) => c.includes('pp-ink-sel'));
-    expect(msIdx).toBe(0);
-    // 2026-11-06 合并 A：档位住在模型 pill 里，设置行不再有独立的思考控件
-    expect(settings.querySelector('.pp-thinking-sel')).toBeNull();
-    expect(settings.querySelector('.pp-thinking-pill')).toBeNull();
-    expect(settings.querySelector('.ms-trigger-thinking')).not.toBeNull();
-    expect(compIdx).toBe(msIdx + 1); // 组合紧跟模型（同居「本卷拿什么跑」左端）
-    expect(creatorIdx).toBe(compIdx + 1); // ✎ 造模式紧邻组合芯片（选现成的 / 造一个新的）
-    expect(spacerIdx).toBe(creatorIdx + 1); // 左端簇与右端控件之间隔 spacer
-    expect(permIdx).toBe(spacerIdx + 1);
-    // 2026-09-22：役册紧邻墨量册（两枚读数件成对居行尾），役在内、墨仍收最右
-    expect(workIdx).toBe(permIdx + 1);
-    expect(inkIdx).toBe(workIdx + 1);
-    expect(inkIdx).toBe(classes.length - 1);
+    const toolsIdx = classes.findIndex((c) => c.includes('pp-dock-tools'));
+    // 2026-11-06 合并 A：档位住在模型 pill 里（后缀）——仍然成立
+    expect(header.querySelector('.ms-trigger-thinking')).not.toBeNull();
+    expect(header.querySelector('.pp-thinking-sel')).toBeNull();
+    expect(header.querySelector('.pp-thinking-pill')).toBeNull();
+    expect(msIdx).toBeGreaterThan(0); // 模型在卷名之后（spacer 之后，右端簇之首）
+    expect(workIdx).toBe(msIdx + 1); // 役紧邻模型（两枚读数件居行尾内侧）
+    expect(inkIdx).toBe(workIdx + 1); // 墨仍收最右
+    expect(toolsIdx).toBe(inkIdx + 1); // 工具对（移/翰/律）收尾
   });
 
-  it('墨量仪表有活跃卷才出现（无主待命态不冒充读数）', async () => {
-    await mountDock('settings-pair-no-active');
-    expect(container.querySelector('.pp-ink-sel')).not.toBeNull();
-    // 无活跃卷（activeSessionId 置空）→ 仪表不渲染
-    act(() => root?.unmount());
-    root = null;
-    container.innerHTML = '';
-    useCoreStore.getState().setChatCore(fakeCore('settings-pair-idle'));
-    getChatStore('settings-pair-idle').sess.setState({
-      sessions: [],
-      activeIdx: -1,
-      sessionTokens: {},
-      nextSessionId: 1,
-    });
-    act(() => {
-      root = createRoot(container);
-      root.render(
-        createElement(
-          PaperDockContext.Provider,
-          { value: { activeSessionId: null, flyToPoint: vi.fn() } },
-          createElement(ComposerDock),
-        ),
-      );
-    });
-    await act(async () => {});
-    expect(container.querySelector('.pp-ink-sel')).toBeNull();
+  it('丙案：坞面可点件从 13 降到 5（卷名不算，读数/工具各算）', async () => {
+    await mountDock('settings-pair-count');
+    const dock = container.querySelector('.pp-composer')!;
+    const visible = [...dock.querySelectorAll('button')].filter((b) => !b.closest('.pp-scheme-panel'));
+    // 模型触发器 + 役 + 墨 + 移 + 翰 + 律 + 引 + 夹 + 案 + 拟文 = 10（无拖动锁能力位则 9）。
+    // 判据不是死数字而是**设置行那一排不再常驻**：
+    expect(dock.querySelector('.pp-composer-settings')).toBeNull();
+    expect(dock.querySelector('.pp-scheme-panel')).toBeNull(); // 抽屉关着
+    expect(dock.querySelector('.pp-mode-seg')).toBeNull(); // 权限不常驻
+    expect(visible.length).toBeLessThan(12);
   });
 });

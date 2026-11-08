@@ -146,7 +146,7 @@
  * 坞设置行只剩一枚 pill 读完「谁的脑子 · 想到多深」，换模型与拨档位同处完成。
  * 语言沿用旧菜单，只换形状（竖排列表 → 横排分段）：选中仍走重墨 + 朱砂底线
  * （与权限三档同一套文字线语言），不新增第三种选中语言（§11）。 */
-.pp-composer-settings .pp-thinking-strip {
+.pp-composer .pp-thinking-strip {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -157,7 +157,7 @@
   border: none;
   border-radius: 0;
 }
-.pp-composer-settings .pp-thinking-chip {
+.pp-composer .pp-thinking-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -176,10 +176,10 @@
     color var(--snap),
     border-color var(--snap);
 }
-.pp-composer-settings .pp-thinking-chip:hover {
+.pp-composer .pp-thinking-chip:hover {
   color: var(--ink-1);
 }
-.pp-composer-settings .pp-thinking-chip.selected {
+.pp-composer .pp-thinking-chip.selected {
   color: var(--ink-1);
   font-weight: 600; /* 浸墨：选中重墨档（与权限三档同判据） */
   border-bottom-color: var(--seal);
@@ -298,16 +298,16 @@
  * 盒边相接不叠压。拖拽锁/翰/律与引/夹、组合/思考/役/墨同族。 */
 .pp-composer .pp-dock-tools .pp-tool-btn,
 .pp-composer .pp-attach,
-.pp-composer-settings .pp-thinking-pill,
-.pp-composer-settings .pp-ink-trigger,
-.pp-composer-settings .pp-work-trigger {
+.pp-composer .pp-thinking-pill,
+.pp-composer .pp-ink-trigger,
+.pp-composer .pp-work-trigger {
   position: relative;
 }
 .pp-composer .pp-dock-tools .pp-tool-btn::after,
 .pp-composer .pp-attach::after,
-.pp-composer-settings .pp-thinking-pill::after,
-.pp-composer-settings .pp-ink-trigger::after,
-.pp-composer-settings .pp-work-trigger::after {
+.pp-composer .pp-thinking-pill::after,
+.pp-composer .pp-ink-trigger::after,
+.pp-composer .pp-work-trigger::after {
   content: "";
   position: absolute;
   inset: -4px;
@@ -318,10 +318,10 @@
 .pp-composer .pp-dock-tools .pp-tool-btn:focus-visible,
 .pp-composer .pp-attach:focus-visible,
 .pp-composer .pp-mode-opt:focus-visible,
-.pp-composer-settings .ms-trigger:focus-visible,
-.pp-composer-settings .pp-thinking-pill:focus-visible,
-.pp-composer-settings .pp-ink-trigger:focus-visible,
-.pp-composer-settings .pp-work-trigger:focus-visible {
+.pp-composer .ms-trigger:focus-visible,
+.pp-composer .pp-thinking-pill:focus-visible,
+.pp-composer .pp-ink-trigger:focus-visible,
+.pp-composer .pp-work-trigger:focus-visible {
   outline: none;
   box-shadow: inset 0 -2px 0 var(--seal);
 }

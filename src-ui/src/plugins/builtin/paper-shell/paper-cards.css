@@ -497,6 +497,6 @@
 }
 
 /* 2026-10-21 P0：模型触发器高 20px 偏小——抬到 28px（视觉仍纯文字，行内居中） */
-.pp-composer-settings .ms-container .ms-trigger {
+.pp-composer .ms-container .ms-trigger {
   min-height: 28px;
 }

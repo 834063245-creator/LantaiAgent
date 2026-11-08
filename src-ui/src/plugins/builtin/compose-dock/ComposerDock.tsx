@@ -264,6 +264,7 @@ export const ComposerDock = memo(function ComposerDock() {
   const paletteOpen = useShellStore((s) => s.paletteOpen);
   /* ── 创作坞 v2（2026-08-31）本地态：律（快捷键）/ 引（文件）
    *    / 拖放入卷界栏 / 历史眉批。── */
+  const [schemeOpen, setSchemeOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [yinOpen, setYinOpen] = useState(false);
   const [yinQuery, setYinQuery] = useState('');
@@ -977,18 +978,21 @@ export const ComposerDock = memo(function ComposerDock() {
    *    2026-10-22 P2：翰改开全局命令面板（模态、自带互斥），不在此列。
    *    2026-11-06 合并 A：思考档位不再是独立浮层——它随模型弹层开合，
    *    ModelSelector 的外点关闭/toggle 就是它的收合路径，不参与本表。 ── */
-  const toggleLayer = useCallback((layer: 'help' | 'yin' | 'ink' | 'work') => {
+  const toggleLayer = useCallback((layer: 'help' | 'yin' | 'ink' | 'work' | 'scheme') => {
     setHelpOpen(layer === 'help' ? (v) => !v : false);
     setYinOpen(layer === 'yin' ? (v) => !v : false);
     setInkOpen(layer === 'ink' ? (v) => !v : false);
     setWorkOpen(layer === 'work' ? (v) => !v : false);
+    setSchemeOpen(layer === 'scheme' ? (v) => !v : false);
   }, []);
 
   return (
     <div className={`pp-composer${dragOver ? ' pp-droptarget' : ''}`} ref={dockRef}>
-      {/* 书眉行（2026-09-06 续批：三行制之顶行）——卷名左端 + 翰/律/后台卷指示
-          右端，坞的书眉恒居顶行；模型/权限/思考三控件落位输入行之下的设置行，
-          不进此行。 */}
+      {/* 书眉行（2026-11-08 丙案：**两行制**）——左端卷名，右端「本卷拿什么跑 + 读数 + 案」。
+          设置行整行退役：模型（含档位后缀）与役/墨读数落到本行；权限 / 组合 / 造模式 / 引夹
+          收进「案」分诊抽屉（pp-scheme-panel，坞内唯一浮层）。
+          判据：卷名 =「哪一卷」，模型 =「谁的脑子」，两者都是**书眉级身份**；
+          读数（役/墨）是环境指示、不进控件位；其余都是「落笔前要拨的动作」，归抽屉。 */}
       <div className="pp-composer-header">
         <span
           className="pp-composer-target"
@@ -1006,6 +1010,44 @@ export const ComposerDock = memo(function ComposerDock() {
             ——锁态与写面在槽主人（纸壳）手里，坞只渲染这枚单字工具（能力位：
             宿主不给 composerLock = 整枚不出现）。常显可点、不做悬停浮现：
             前者是用户报的「不知道能拖」，后者是用户报的「还没挪过去就消失了」。 */}
+        {/* 模型（含思考档位后缀）——2026-11-08 丙案：设置行整行退役，模型落到书眉右端。
+            「本卷拿什么跑」是书眉级信息（与卷名同级：谁 + 用什么），与"落笔前要拨的东西"
+            （权限/组合/引夹）不是一类；读数（役/墨）仍居最右。 */}
+        <ModelSelector
+          value={model}
+          onChange={onModelChange}
+          providerName={providerName}
+          kind={providerKind}
+          compact
+          isStreaming={running}
+          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
+          suffix={thinkingOptions.length > 0 ? `· ${thinkingZhLabel(currentThinking)}` : undefined}
+          headerSlot={thinkingStrip}
+        />
+        {activeSidNum != null && (
+          <WorkLedger
+            panelId={core?.panelId ?? ''}
+            sessionId={activeSidNum}
+            sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
+            sessionNameOf={sessionNameOf}
+            onStop={(e: WorkEntry) => {
+              if (!core) return;
+              const jobId = Number.parseInt(e.id.replace(/^job-/, ''), 10);
+              if (Number.isFinite(jobId)) void killShellWork(core.panelId, jobId);
+            }}
+            open={workOpen}
+            onToggle={() => toggleLayer('work')}
+          />
+        )}
+        {activeSidNum != null && (
+          <InkLedger
+            stats={tokenStats}
+            sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
+            fallbackTotal={tokenCount}
+            open={inkOpen}
+            onToggle={() => toggleLayer('ink')}
+          />
+        )}
         <div className="pp-dock-tools">
           {composerLock && (
             <button
@@ -1291,6 +1333,157 @@ export const ComposerDock = memo(function ComposerDock() {
         >
           夹
         </button>
+
+        {/* 案（2026-11-08 丙案）：坞内唯一的分诊抽屉入口——权限 / 组合 / 造模式 /
+            图版 / 律 收在这里。它替代的是原设置行那一整排常驻控件（坞面 13 件 → 5 件）。
+            位置：引/夹之后、拟文之前（都是"落笔前的动作"）。 */}
+        <button
+          type="button"
+          className={`pp-attach pp-scheme-btn${schemeOpen ? ' open' : ''}`}
+          data-tip="案 —— 本卷与引卷"
+          data-tip-hint="权限 / 组合 / 造模式 / 图版 / 快捷键，收在这一处"
+          aria-label="案——本卷设置"
+          aria-haspopup="dialog"
+          aria-expanded={schemeOpen}
+          onClick={() => toggleLayer('scheme')}
+        >
+          案
+        </button>
+
+        {/* 案 · 分诊抽屉（2026-11-08 丙案）：坞内唯一的浮层——原设置行那一整排
+            （权限三档 / 组合芯片 / 造模式 / 役册 / 墨量册）与律册收进这里。
+            形状：向上开（坞贴屏底），几何与役册/墨量册同源（right/bottom/z/宽/封高）。
+            语汇：册页段题（方墨锚点 + 字距题字）+ 行型条目，不新增第三种选中语言。 */}
+        {schemeOpen && (
+          <div className="pp-scheme-panel" role="dialog" aria-label="案——本卷与引卷">
+            <div className="pp-scheme-sec">
+              <div className="pp-scheme-title">本卷</div>
+              <div className="pp-scheme-row">
+                <span className="pp-scheme-k">权限</span>
+                <fieldset className="pp-scheme-v pp-mode-seg" aria-label="权限模式">
+                  {PERMISSION_MODES.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
+                      data-tip={MODE_DESCRIPTIONS[m]}
+                      aria-pressed={permissionMode === m}
+                      onClick={() => selectMode(m)}
+                    >
+                      {MODE_LABELS[m]}
+                    </button>
+                  ))}
+                </fieldset>
+              </div>
+              <div className="pp-comp-sel" data-comp-chip>
+                {compLocked ? (
+                  <span
+                    className="pp-scheme-row pp-comp-pill"
+                    data-locked
+                    data-tip={`本卷组合：${compLabel}`}
+                    data-tip-hint={
+                      compInfo.error
+                        ? `${compInfo.error}——装配时已回退用户层组合`
+                        : `来源：${compInfo.source === 'session' ? '本卷选择' : '全局默认'}；已跑过一轮不能中途换（另起一卷再选）`
+                    }
+                  >
+                    <span className="pp-scheme-k">组合</span>
+                    <span className="pp-comp-pill-label pp-scheme-v">{compLabel}</span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className={`pp-scheme-row pp-comp-pill${compOpen ? ' open' : ''}`}
+                    aria-haspopup="listbox"
+                    aria-expanded={compOpen}
+                    data-tip={activeSessionId == null ? `新卷默认组合：${compLabel}` : `本卷组合：${compLabel}`}
+                    data-tip-hint={
+                      compInfo.error
+                        ? compInfo.error
+                        : activeSessionId == null
+                          ? '改这里 = 改全局默认'
+                          : '空白卷可拨；跑过一轮即锁定'
+                    }
+                    onClick={() => setCompOpen((v) => !v)}
+                  >
+                    <span className="pp-scheme-k">组合</span>
+                    <span className="pp-comp-pill-label pp-scheme-v">{compLabel}</span>
+                    <span className="pp-comp-pill-caret" aria-hidden="true">
+                      ▾
+                    </span>
+                  </button>
+                )}
+              </div>
+              {compOpen && !compLocked && (
+                <div className="pp-comp-menu pp-comp-menu-inline" role="listbox" aria-label="组合（preset）">
+                  {presetRoster.map((pr) => (
+                    <button
+                      key={pr.id}
+                      type="button"
+                      role="option"
+                      aria-selected={pr.id === compLabel}
+                      className={`pp-comp-opt${pr.id === compLabel ? ' selected' : ''}`}
+                      disabled={pr.patch === null}
+                      data-tip={pr.patch === null ? '装载失败' : pr.metadata?.description}
+                      data-tip-hint={pr.patch === null ? (pr.error ?? 'roster.patch.yml 不可用') : undefined}
+                      onClick={() => void onCompositionChange(pr.id)}
+                    >
+                      {pr.metadata?.name ?? pr.id}
+                      {pr.patch === null ? '（损坏）' : ''}
+                    </button>
+                  ))}
+                  {presetError && <div className="pp-comp-note">⚠ {presetError}</div>}
+                </div>
+              )}
+              <div className="pp-scheme-row">
+                <span className="pp-scheme-k">图版</span>
+                <span className="pp-scheme-v">{activeSidNum != null ? '架在匣下' : '—'}</span>
+              </div>
+            </div>
+
+            <div className="pp-scheme-sec">
+              <div className="pp-scheme-title">另起</div>
+              <button
+                type="button"
+                className="pp-scheme-row"
+                data-tip="让 Agent 帮你做一个模式"
+                data-tip-hint="起一卷 creator：说完需求，它写出组合并落盘；之后在新卷上选它"
+                onClick={() => {
+                  setSchemeOpen(false);
+                  void onCreatorDraft();
+                }}
+              >
+                <span className="pp-scheme-k">✎ 造模式</span>
+                <span className="pp-scheme-v">起一卷 creator</span>
+              </button>
+              <button
+                type="button"
+                className="pp-scheme-row"
+                data-tip="命令面板"
+                data-tip-hint="Ctrl+K 同一份：搜索 / 分组 / 动作与插件命令"
+                onClick={() => {
+                  setSchemeOpen(false);
+                  useShellStore.getState().setPaletteOpen(true);
+                }}
+              >
+                <span className="pp-scheme-k">翰</span>
+                <span className="pp-scheme-v">命令面板（Ctrl+K）</span>
+              </button>
+              <button
+                type="button"
+                className="pp-scheme-row"
+                data-tip="快捷键总览"
+                onClick={() => {
+                  setSchemeOpen(false);
+                  toggleLayer('help');
+                }}
+              >
+                <span className="pp-scheme-k">律</span>
+                <span className="pp-scheme-v">快捷键总览</span>
+              </button>
+            </div>
+          </div>
+        )}
         {attachedFiles.length > 0 && (
           <div className="pp-attach-list">
             {attachedFiles.map((f, i) => (
@@ -1367,156 +1560,6 @@ export const ComposerDock = memo(function ComposerDock() {
           >
             拟文
           </button>
-        )}
-      </div>
-
-      {/* 设置行（2026-09-06 续批：三行制之末行）——只放模型/权限/思考三控件，
-          落位输入行之下的「下方一行」（DSH InputBar 同款排布：输入面在上、
-          控件行在下）；卷名/翰/律/后台指示归顶行书眉，不随迁。行内排布（续批二）：
-          模型独居左端，权限+思考成对靠右（组内权限在左、思考收尾）——两件同属
-          「运行策略」，成对不与模型混排；直接合并先不做（权限=工作区级 mode-store、
-          思考=每会话 compose-store，两真相源合一个控件会搅浑状态归属）。
-          开口即开卷（2026-08-31）：控件不随活跃卷隐藏——无主态操作「新卷出生默认」。 */}
-      <div className="pp-composer-settings">
-        {/* DSH 移植（2026-08-26）：运行中守卫——本卷在跑时模型下拉打开被拦
-            （DSH onAttemptOpen 语义：流式中不允许切模型），localNotice 提示 */}
-        <ModelSelector
-          value={model}
-          onChange={onModelChange}
-          providerName={providerName}
-          kind={providerKind}
-          compact
-          isStreaming={running}
-          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
-          suffix={thinkingOptions.length > 0 ? `· ${thinkingZhLabel(currentThinking)}` : undefined}
-          headerSlot={thinkingStrip}
-        />
-        {/* 组合芯片（S6 P1e）：与模型同居左端——两者共同定义「本卷拿什么跑」
-            （模型 = 谁的脑子，组合 = 哪些工具与提示面）；右端仍归「运行策略」对
-            （权限/思考），行尾仍是墨量仪表。两态 + 只读锁见上方 comp* 注释。 */}
-        <div className="pp-comp-sel" data-comp-chip>
-          {compLocked ? (
-            // 跑过一轮：只读标签（控件不再可拨）——hover 说明来源与锁定原因
-            <span
-              className="pp-comp-pill"
-              data-locked
-              data-tip={`本卷组合：${compLabel}`}
-              data-tip-hint={
-                compInfo.error
-                  ? `${compInfo.error}——装配时已回退用户层组合`
-                  : `来源：${compInfo.source === 'session' ? '本卷选择' : '全局默认'}；已跑过一轮不能中途换（另起一卷再选）`
-              }
-            >
-              <span className="pp-comp-pill-label">组合 · {compLabel}</span>
-            </span>
-          ) : (
-            <>
-              <button
-                type="button"
-                className={`pp-comp-pill${compOpen ? ' open' : ''}`}
-                data-tip={activeSessionId == null ? `新卷默认组合：${compLabel}` : `本卷组合：${compLabel}`}
-                data-tip-hint={
-                  compInfo.error
-                    ? compInfo.error
-                    : activeSessionId == null
-                      ? '改这里 = 改全局默认'
-                      : '空白卷可拨；跑过一轮即锁定'
-                }
-                aria-haspopup="listbox"
-                aria-expanded={compOpen}
-                onClick={() => setCompOpen((v) => !v)}
-              >
-                <span className="pp-comp-pill-label">组合 · {compLabel}</span>
-                <span className="pp-comp-pill-caret" aria-hidden="true">
-                  ▾
-                </span>
-              </button>
-              {compOpen && (
-                <div className="pp-comp-menu" role="listbox" aria-label="组合（preset）">
-                  {presetRoster.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      role="option"
-                      aria-selected={p.id === compLabel}
-                      className={`pp-comp-opt${p.id === compLabel ? ' selected' : ''}`}
-                      disabled={p.patch === null}
-                      data-tip={p.patch === null ? '装载失败' : p.metadata?.description}
-                      data-tip-hint={p.patch === null ? (p.error ?? 'roster.patch.yml 不可用') : undefined}
-                      onClick={() => void onCompositionChange(p.id)}
-                    >
-                      {p.metadata?.name ?? p.id}
-                      {p.patch === null ? '（损坏）' : ''}
-                    </button>
-                  ))}
-                  {presetError && <div className="pp-comp-note">⚠ {presetError}</div>}
-                  <div className="pp-comp-note">
-                    {activeSessionId == null
-                      ? '无活跃卷：此处拨的是新卷出生默认（全局）'
-                      : '空白卷可拨；跑过一轮的卷锁定为新卷再选'}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-        {/* 创作者模式入口（2026-10-30）：一键起一卷 creator，把开场白填进输入框
-            （不自动发送——需求由用户补完）。放在组合芯片右侧：两者是同一件事的
-            「选现成的」与「造一个新的」。 */}
-        <button
-          type="button"
-          className="pp-comp-pill pp-comp-creator"
-          data-tip="让 Agent 帮你做一个模式"
-          data-tip-hint="起一卷 creator（创作者模式）：说完需求，它写出组合并落盘；之后在新卷上选它"
-          onClick={() => void onCreatorDraft()}
-        >
-          ✎ 造模式
-        </button>
-        <div className="pp-composer-settings-spacer" />
-        {/* rework P2-3：权限三档分段控件（不随 DSH 迁移——权限是工作区级单一真相） */}
-        <fieldset className="pp-mode-seg" aria-label="权限模式">
-          {PERMISSION_MODES.map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
-              data-tip={MODE_DESCRIPTIONS[m]}
-              aria-pressed={permissionMode === m}
-              onClick={() => selectMode(m)}
-            >
-              {MODE_LABELS[m]}
-            </button>
-          ))}
-        </fieldset>
-        {/* 役册（2026-09-22）：后台工作监视装置——触发器报在役条数，点开是完整
-            台账（在役 / 他卷 / 已了，带逐条停止）。与墨量册同为「落笔前该看的
-            读数」，同居行尾内侧；墨量册保持最右（拟文印正下方的读点不动）。 */}
-        {activeSidNum != null && (
-          <WorkLedger
-            panelId={core?.panelId ?? ''}
-            sessionId={activeSidNum}
-            sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
-            sessionNameOf={sessionNameOf}
-            onStop={(e: WorkEntry) => {
-              if (!core) return;
-              const jobId = Number.parseInt(e.id.replace(/^job-/, ''), 10);
-              if (Number.isFinite(jobId)) void killShellWork(core.panelId, jobId);
-            }}
-            open={workOpen}
-            onToggle={() => toggleLayer('work')}
-          />
-        )}
-        {/* 墨量册（2026-09-13）：坞内 token 计量装置——触发器报占用百分比，
-            点开是完整账本（构成 / 压力 / 投影 / 四桶 / 命中率 / 逐轮）。
-            与思考 pill 同隔离级：并入浮层互斥（六层同屏只开一个）。 */}
-        {activeSidNum != null && (
-          <InkLedger
-            stats={tokenStats}
-            sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
-            fallbackTotal={tokenCount}
-            open={inkOpen}
-            onToggle={() => toggleLayer('ink')}
-          />
         )}
       </div>
 

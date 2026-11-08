@@ -8,11 +8,11 @@
  * 保持最右），役 = 已经派了多少活出去。几何（right/bottom/z/宽/封高）
  * 与 `.pp-ink-panel` 逐字同源——两枚读数件的册页必须一样大、一样位置弹。
  * 色：石青 = 机/在役（语义铁律）；朱砂只归人的动作（句读点朱配额不占）。 */
-.pp-composer-settings .pp-work-sel {
+.pp-composer .pp-work-sel {
   position: relative;
   flex: 0 0 auto;
 }
-.pp-composer-settings .pp-work-trigger {
+.pp-composer .pp-work-trigger {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -31,8 +31,8 @@
   /* 行盒相位补偿（2026-10-12）：见「读数件/思考 pill 的行盒相位修正」注 */
   margin-bottom: 3px;
 }
-.pp-composer-settings .pp-work-trigger:hover,
-.pp-composer-settings .pp-work-trigger.open {
+.pp-composer .pp-work-trigger:hover,
+.pp-composer .pp-work-trigger.open {
   color: var(--seal-deep);
 }
 /* 役点：在役信号——空档灰墨点，有活转石青并呼吸（机=石青）。呼吸走既有运行态
@@ -48,21 +48,21 @@
   flex: 0 0 auto;
   transition: background var(--snap);
 }
-.pp-composer-settings .pp-work-trigger.live .pp-work-trigger-dot {
+.pp-composer .pp-work-trigger.live .pp-work-trigger-dot {
   background: var(--indigo);
   animation: pp-ink-live 1.6s ease-in-out infinite;
 }
-.pp-composer-settings .pp-work-trigger:hover .pp-work-trigger-dot,
-.pp-composer-settings .pp-work-trigger.open .pp-work-trigger-dot {
+.pp-composer .pp-work-trigger:hover .pp-work-trigger-dot,
+.pp-composer .pp-work-trigger.open .pp-work-trigger-dot {
   background: var(--seal);
 }
 /* 读数定宽（同墨量册纪律）：条数位数变化不推挤同行控件 */
-.pp-composer-settings .pp-work-trigger-label {
+.pp-composer .pp-work-trigger-label {
   display: inline-block;
   min-width: 3.5em;
   text-align: left;
 }
-.pp-composer-settings .pp-work-panel {
+.pp-composer .pp-work-panel {
   position: absolute;
   right: 0;
   bottom: calc(100% + 6px);
@@ -271,7 +271,7 @@
 
 /* ══ 图版架（2026-09-23 拍板**丙 · 匣下横架**；设计真源 = 规格书 §9.5）══════════
  * 归**产物流**（compose-dock 的 AssetRack）但**样式住本文件**——同 `役册/墨量册`
- * 的先例（`.pp-composer-settings .pp-work-*` 也是给 compose-dock 组件写的样式），
+ * 的先例（`.pp-composer .pp-work-*` 也是给 compose-dock 组件写的样式），
  * 且吸附表（架在 ⇒ 最底缘 8→46）与 `.pp-composer` 几何同住 paper-shell：架与坞的
  * 几何是一件事，分两处写会漂。**高度单一真源 = type-tokens.COMPOSER_TOKENS.rackH**
  * （2026-11-06 上帝文件治理 P2：此前 TS 38 与 CSS 38px 各写一份靠对拍拦漂移；

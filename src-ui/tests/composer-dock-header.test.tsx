@@ -66,32 +66,32 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     await act(async () => {});
   };
 
-  it('书眉行是坞的第一行：pp-composer-header 在输入行/设置行之前', async () => {
+  it('书眉行是坞的第一行：pp-composer-header 在输入行之前（两行制，无设置行）', async () => {
     await mountDock('header-order');
     const dock = container.querySelector('.pp-composer')!;
     const classes = [...dock.children].map((el) => el.className);
     expect(classes[0]).toBe('pp-composer-header'); // 书眉恒居顶
     const headerIdx = classes.indexOf('pp-composer-header');
     const rowIdx = classes.indexOf('pp-composer-row');
-    const settingsIdx = classes.indexOf('pp-composer-settings');
     expect(rowIdx).toBeGreaterThan(headerIdx);
-    expect(settingsIdx).toBeGreaterThan(rowIdx); // 三行制：书眉 → 输入 → 设置
+    // 2026-11-08 丙案：设置行整行退役（坞面 13 件 → 5 件）
+    expect(classes).not.toContain('pp-composer-settings');
   });
 
-  it('卷名 + 翰/律归属书眉行；设置行/输入行不得再藏这些', async () => {
+  it('卷名 + 翰/律 + 模型 归属书眉行；输入行不得再藏这些', async () => {
     await mountDock('header-membership');
     const header = container.querySelector('.pp-composer-header')!;
     expect(header.querySelector('.pp-composer-target')).not.toBeNull(); // 卷名回顶
     const toolBtns = header.querySelectorAll('.pp-tool-btn');
     expect(toolBtns.length).toBe(2); // 翰 + 律
     expect([...toolBtns].map((b) => b.textContent)).toEqual(['翰', '律']);
-    // 两行下不得重复出现书眉件
-    const settings = container.querySelector('.pp-composer-settings')!;
+    // 2026-11-08 丙案：模型（含档位后缀）也是书眉级身份件
+    expect(header.querySelector('.ms-trigger')).not.toBeNull();
+    // 输入行里不得重复出现书眉件
     const row = container.querySelector('.pp-composer-row')!;
-    expect(settings.querySelector('.pp-composer-target')).toBeNull();
-    expect(settings.querySelector('.pp-dock-tools')).toBeNull();
     expect(row.querySelector('.pp-composer-target')).toBeNull();
     expect(row.querySelector('.pp-dock-tools')).toBeNull();
+    expect(row.querySelector('.ms-trigger')).toBeNull();
   });
 
   it('律册浮层随翰律长在书眉行：从顶行打开（不随设置行搬动）', async () => {
