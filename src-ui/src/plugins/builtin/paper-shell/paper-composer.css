@@ -613,7 +613,11 @@
 }
 .pp-composer-target {
   font-family: var(--f-song);
-  font-size: var(--fs-body);
+  /* 2026-11-08 主次重建（B3）：书眉卷名原写 --fs-body（13px）——与模型名**完全同档**
+   * （真机实测：卷名 13/600/0.94、模型名 13/600/0.94），同一行两个"题"，眼睛分不出
+   * 「这一坞叫什么」和「拿什么跑」。卷名是坞的题名，抬到 lead 档（15px）——与正文输入
+   * 同大、但 600 压过正文的 400，题名与内容就此分开。 */
+  font-size: var(--fs-lead);
   font-weight: 600; /* 浸墨：卷名重墨档 */
   color: var(--ink-1);
   white-space: nowrap;
@@ -648,7 +652,9 @@
   border: none;
   border-radius: 0;
   background: transparent;
-  color: var(--ink-2);
+  /* 2026-11-08 B3：读数是**仪器**不是动作——退到三级墨。此前它与 移/翰/律、引/夹/案
+     同为 ink-2，四件平权，书眉行读起来像五个并列按钮。 */
+  color: var(--ink-3);
   cursor: pointer;
   white-space: nowrap;
   transition: color var(--snap);
@@ -671,11 +677,16 @@
 .pp-composer .pp-ink-trigger.open .pp-ink-trigger-dot {
   background: var(--seal);
 }
+/* 2026-11-08 墨线退役（丙案尾项）：坞底那条 2px 墨线**与这枚读数同源同判据**（都用
+ * inkRatio / 同一个 >80% 门槛），撤线之后「快满了」必须还有可见信号——原来线转朱砂是
+ * 唯一的余光提示。现在把近满态抬到触发器本体：字与点一起转朱砂（#full 由组件在
+ * ratio > 0.8 时挂上，与旧 .pp-inkline.full 同判据、同色）。 */
 .pp-composer .pp-ink-trigger.full {
   color: var(--seal-deep);
 }
 .pp-composer .pp-ink-trigger.full .pp-ink-trigger-dot {
   background: var(--seal);
+  animation: pp-ink-live 1.6s ease-in-out infinite;
 }
 /* 档位词定宽（同思考 pill 纪律）：百分比位数变化不推挤同行控件 */
 .pp-composer .pp-ink-trigger-label {

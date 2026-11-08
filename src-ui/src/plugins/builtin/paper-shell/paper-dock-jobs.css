@@ -24,7 +24,8 @@
   border: none;
   border-radius: 0;
   background: transparent;
-  color: var(--ink-2);
+  /* 2026-11-08 B3：同墨量册——仪器档（三级墨），不与动作件（引/夹/案/移翰律）平权。 */
+  color: var(--ink-3);
   cursor: pointer;
   white-space: nowrap;
   transition: color var(--snap);

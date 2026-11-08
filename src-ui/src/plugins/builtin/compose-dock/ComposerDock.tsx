@@ -75,7 +75,6 @@ import {
   loadSettings,
   MODE_DESCRIPTIONS,
   MODE_LABELS,
-  modelContextWindow,
   modelDescriptor,
   modelInput,
   modelThinking,
@@ -493,18 +492,13 @@ export const ComposerDock = memo(function ComposerDock() {
   // modelInput 合并链（B5）：ModelOverrides.input 覆盖 ?? 目录 seed vision 声明；
   // 目录外自定义 vision 模型经设置页参数面板补声明即开。
   const imageCapable = modelInput(provider, model).includes('image');
-  // 墨量线（v2 2026-08-31 → 2026-09-07 分母接线）：分母走 per-model 覆盖 ??
-  // 目录声明（modelContextWindow——与运行时压缩阈值同链，设置页声明的窗口
-  // 对墨条生效；网关命名空间 id 目录不中时由覆盖兜底）。fallback 0 = 不
-  // 编造，未知不显。分子 = 本卷惰性 token 计数（sess store）。
-  // 裸数字徽标退役，读数收进线 hover。
-  // 2026-09-13：分子换轨到 token-meter 读数——旧口径拿「最后一次请求的
-  // total_tokens」（含输出，且是单次请求量）冒充「本卷上下文占用」，两处
-  // 都错；现在用投影占用（提供方 prompt 侧压力 + 采样后载荷增量），无回报
-  // 时回落载荷估算（估计值同样如实标注）。
-  const inkWindow = provider ? modelContextWindow(provider, model, 0) : (modelDesc?.contextWindow ?? 0);
-  const inkUsed = tokenStats?.usedTokens ?? tokenCount;
-  const inkRatio = inkWindow > 0 && inkUsed > 0 ? Math.min(1, inkUsed / inkWindow) : 0;
+  /* 2026-11-08 墨线退役（丙案尾项）：坞底那条 2px 墨线撤了——它与书眉「墨 NN%」
+   * 读数**同源同判据**（同一个 tokenStats.usedTokens / 同一个 >80% 门槛），是同一件事
+   * 画两遍；而且它占着"坞底发丝线"那条位置，而坞是浮在纸上的，底边本来就是纸的边。
+   * 「快满了」的余光信号没有丢：近满态现在挂在触发器本体（.pp-ink-trigger.full →
+   * 字与点一起转朱砂 + 呼吸，见 paper-composer.css），与旧 .pp-inkline.full 同判据。
+   * 分母口径随之整个交回墨量册（它自己算 percent / nearFull，读同一把 token-meter 尺子）：
+   * per-model 覆盖 ?? 目录声明（modelContextWindow，与运行时压缩阈值同链），未知窗口不编造。 */
   const thinkingOptions = useMemo(() => {
     // P14：有声明用声明档位表；无声明给「自动/关闭」协议安全兜底——思考按钮常驻
     // （DSH 语义），不编造命名档位（''/off 在 assertEffortDeclared 不拦、协议层可
@@ -1561,26 +1555,6 @@ export const ComposerDock = memo(function ComposerDock() {
             拟文
           </button>
         )}
-      </div>
-
-      {/* 墨量线（v2）：坞底 1px——本卷上下文占用占模型窗口比例，近满转朱砂。
-          裸数字徽标退役；读数进 hover。窗口未知（0）或零占用不显。
-          2026-09-13：分子换轨 token-meter 的投影占用（旧「最后一次请求的
-          total_tokens」既含输出又只算单次请求，与「已用上下文」不是一回事）；
-          hover 读数同时给出来源（回报/估算）。 */}
-      <div
-        className={`pp-inkline${inkRatio > 0.8 ? ' full' : ''}`}
-        style={{ opacity: inkWindow > 0 && inkUsed > 0 ? 1 : 0 }}
-        data-tip={
-          inkWindow > 0 && inkUsed > 0
-            ? `墨量 ${inkUsed} / ${inkWindow} tok（${Math.round(inkRatio * 100)}%${
-                tokenStats?.usedSource === 'surface' ? ' · 估算' : ''
-              }）`
-            : '本卷上下文占用'
-        }
-        data-tip-hint={inkWindow > 0 && inkUsed > 0 ? '模型窗口占比' : '点设置行右端「墨」看账'}
-      >
-        <span style={{ width: `${Math.round(inkRatio * 100)}%` }} />
       </div>
 
       {/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞，避免高度/关窗竞态）

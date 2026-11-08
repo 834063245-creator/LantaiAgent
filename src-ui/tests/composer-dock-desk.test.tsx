@@ -234,7 +234,7 @@ describe('创作坞 v2：律（快捷键总览）', () => {
   });
 });
 
-describe('创作坞 v2：墨量线', () => {
+describe('创作坞 v2：墨量读数（2026-11-08 墨线退役后的口径）', () => {
   let container: HTMLDivElement;
   let root: Root | null = null;
 
@@ -250,105 +250,31 @@ describe('创作坞 v2：墨量线', () => {
     root = null;
   });
 
-  it('有用量 + 目录窗口：线宽 = 占比，title 报数', async () => {
+  /* 2026-11-08 丙案尾项：坞底那条 .pp-inkline **整个删除**——它与书眉「墨 NN%」读数
+   * 同源同判据（同一 stats / 同一 >80% 门槛），是同一件事画两遍。本组测试随之改写：
+   * 钉的不再是"线宽"，而是「读数在书眉、口径仍是一把尺子」这件事本身。
+   * 近满态的信号没有丢——它抬到了触发器本体（.pp-ink-trigger.full → 朱字 + 呼吸），
+   * 那条由 tests/ink-ledger.test.tsx「近满」例钉住。 */
+  it('坞底不再有墨线：.pp-inkline 整条退役，坞高不再含那 2px', async () => {
     await mountDock('ink-ratio', container, { tokens: { 1: 500000 } }, (r) => {
       root = r;
     });
-    // 默认出生模型须有目录窗口——种 deepseek-v4-pro（contextWindow 1M）
     getComposeStore('ink-ratio').getState().setModel('1', 'deepseek', 'deepseek-v4-pro');
     await act(async () => {});
-    const line = container.querySelector<HTMLElement>('.pp-inkline');
-    expect(line).not.toBeNull();
-    expect(line?.style.opacity).toBe('1');
-    const bar = line?.querySelector<HTMLElement>('span');
-    expect(bar?.style.width).toBe('50%');
-    expect(line?.getAttribute('data-tip')).toContain('墨量 500000 / 1000000 tok（50%）');
-    expect(line?.getAttribute('data-tip-hint')).toContain('模型窗口占比');
+    expect(container.querySelector('.pp-inkline')).toBeNull();
   });
 
-  it('零用量：线隐（opacity 0）——[0] 徽标时代的噪音不再', async () => {
-    await mountDock('ink-zero', container, {}, (r) => {
+  it('读数仍在书眉：墨量册触发器报百分比（占用口径交回它自己）', async () => {
+    await mountDock('ink-ratio-2', container, { tokens: { 1: 500000 } }, (r) => {
       root = r;
     });
-    getComposeStore('ink-zero').getState().setModel('1', 'deepseek', 'deepseek-v4-pro');
+    getComposeStore('ink-ratio-2').getState().setModel('1', 'deepseek', 'deepseek-v4-pro');
     await act(async () => {});
-    const line = container.querySelector<HTMLElement>('.pp-inkline');
-    expect(line).not.toBeNull();
-    expect(line?.style.opacity).toBe('0');
-  });
-
-  it('目录外模型（网关命名空间 id）无覆盖：不编造窗口，线隐', async () => {
-    // 2026-09-07 分母接线：网关 /models 常返回命名空间 id（deepseek/deepseek-
-    // v4-flash），目录按裸 id 收录不中——无 per-model 覆盖时不得编造窗口。
-    localStorage.setItem(
-      'hologram_settings',
-      JSON.stringify({
-        activeProvider: 'commandcodegoat',
-        providers: [
-          {
-            kind: 'openai',
-            name: 'commandcodegoat',
-            apiKey: '',
-            baseUrl: 'https://api.commandcode.ai/provider/v1',
-            model: 'deepseek/deepseek-v4-flash',
-          },
-        ],
-        projectPath: '.',
-        agent: {},
-        display: { language: 'zh', fontScale: 1 },
-      }),
-    );
-    try {
-      await mountDock('ink-gateway', container, { tokens: { 1: 500000 } }, (r) => {
-        root = r;
-      });
-      getComposeStore('ink-gateway').getState().setModel('1', 'commandcodegoat', 'deepseek/deepseek-v4-flash');
-      await act(async () => {});
-      const line = container.querySelector<HTMLElement>('.pp-inkline');
-      expect(line).not.toBeNull();
-      expect(line?.style.opacity).toBe('0');
-    } finally {
-      localStorage.removeItem('hologram_settings');
-    }
-  });
-
-  it('目录外模型 + per-model 窗口覆盖：覆盖即分母，线显', async () => {
-    // 同上网关，但行上带 modelOverrides——设置页声明的窗口经
-    // modelContextWindow（与运行时压缩阈值同链）对墨条生效。
-    localStorage.setItem(
-      'hologram_settings',
-      JSON.stringify({
-        activeProvider: 'commandcodegoat',
-        providers: [
-          {
-            kind: 'openai',
-            name: 'commandcodegoat',
-            apiKey: '',
-            baseUrl: 'https://api.commandcode.ai/provider/v1',
-            model: 'deepseek/deepseek-v4-flash',
-            modelOverrides: { 'deepseek/deepseek-v4-flash': { contextWindow: 1000000 } },
-          },
-        ],
-        projectPath: '.',
-        agent: {},
-        display: { language: 'zh', fontScale: 1 },
-      }),
-    );
-    try {
-      await mountDock('ink-override', container, { tokens: { 1: 500000 } }, (r) => {
-        root = r;
-      });
-      getComposeStore('ink-override').getState().setModel('1', 'commandcodegoat', 'deepseek/deepseek-v4-flash');
-      await act(async () => {});
-      const line = container.querySelector<HTMLElement>('.pp-inkline');
-      expect(line).not.toBeNull();
-      expect(line?.style.opacity).toBe('1');
-      const bar = line?.querySelector<HTMLElement>('span');
-      expect(bar?.style.width).toBe('50%');
-      expect(line?.getAttribute('data-tip')).toContain('墨量 500000 / 1000000 tok（50%）');
-    } finally {
-      localStorage.removeItem('hologram_settings');
-    }
+    const header = container.querySelector('.pp-composer-header')!;
+    const trigger = header.querySelector('.pp-ink-trigger');
+    expect(trigger).not.toBeNull();
+    // 无 token-meter 回报时触发器只报「墨 —」（不编造百分比）
+    expect(trigger?.textContent).toContain('墨');
   });
 });
 
