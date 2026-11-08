@@ -405,13 +405,20 @@
 .pp-composer-settings > * {
   min-width: 0;
 }
+/* 2026-11-09 二次裁定（权限在左、模型在右）：权限是**底线**（先看"Agent 能做什么"），
+   不缩；模型是这一行的长值，收右端可缩（长名先省略），与书眉读数同一条右缘。 */
+.pp-composer-settings .pp-mode-seg {
+  flex: 0 0 auto;
+}
 .pp-composer-settings .ms-container {
   flex: 0 1 auto;
   min-width: 0;
   max-width: min(340px, 52%);
+  margin-left: 0;
 }
-.pp-composer-settings .pp-mode-seg {
-  flex: 0 0 auto;
+.pp-composer-settings .ms-container .ms-trigger {
+  /* 收右：触发器内容右对齐，与书眉「墨」读数同一支笔的右缘 */
+  justify-content: flex-end;
 }
 
 /* 案 · 分诊抽屉：向上开（坞贴屏底），几何与役册/墨量册同源

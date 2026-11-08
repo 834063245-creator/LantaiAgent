@@ -1490,24 +1490,13 @@ export const ComposerDock = memo(function ComposerDock() {
         )}
       </div>
 
-      {/* 设置行（2026-11-09 用户裁定：模型与权限**另起一行**）——只放两件：
-          模型（含思考档位后缀）+ 权限三档。它们同属「这一趟怎么跑」，
-          与书眉的「这一卷的账」分家。
-          判据：动作件不跟账挤在一行；行内仍走 §11 锚点型选中（权限 = 重墨 + 朱砂底线），
-          不新增第三种语言。 */}
+      {/* 设置行（2026-11-09 用户裁定：模型与权限**另起一行**；同日再裁：**权限在左、模型在右**）
+          ——只放两件，它们同属「这一趟怎么跑」，与书眉的「这一卷的账」分家。
+          位置对调（2026-11-09 二次裁定）：**权限居左、模型收右**。
+          判据：权限是**底线**（全放/半放/常询决定 Agent 能做什么），先读它；模型是这一行的
+          长值，收右端与书眉的读数对齐（右缘同一条线），行左留给"这一趟的闸"。
+          行内仍走 §11 锚点型选中（权限 = 重墨 + 朱砂底线），不新增第三种语言。 */}
       <div className="pp-composer-settings">
-        <ModelSelector
-          value={model}
-          onChange={onModelChange}
-          providerName={providerName}
-          kind={providerKind}
-          compact
-          isStreaming={running}
-          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
-          suffix={thinkingOptions.length > 0 ? `· ${thinkingZhLabel(currentThinking)}` : undefined}
-          headerSlot={thinkingStrip}
-        />
-        <div className="pp-composer-settings-spacer" />
         <fieldset className="pp-mode-seg" aria-label="权限模式">
           {PERMISSION_MODES.map((m) => (
             <button
@@ -1522,6 +1511,18 @@ export const ComposerDock = memo(function ComposerDock() {
             </button>
           ))}
         </fieldset>
+        <div className="pp-composer-settings-spacer" />
+        <ModelSelector
+          value={model}
+          onChange={onModelChange}
+          providerName={providerName}
+          kind={providerKind}
+          compact
+          isStreaming={running}
+          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
+          suffix={thinkingOptions.length > 0 ? `· ${thinkingZhLabel(currentThinking)}` : undefined}
+          headerSlot={thinkingStrip}
+        />
       </div>
 
       {localNotice && (

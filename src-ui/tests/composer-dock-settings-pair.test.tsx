@@ -102,19 +102,20 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     expect(toolsIdx).toBe(inkIdx + 1); // 工具带（移/锁）收尾
   });
 
-  it('设置行子序 = 模型（带档位后缀）→ spacer → 权限三档（2026-11-09）', async () => {
+  it('设置行子序 = 权限三档 → spacer → 模型（带档位后缀）——2026-11-09 二次裁定对调', async () => {
     await mountDock('settings-pair-row');
     const settings = container.querySelector('.pp-composer-settings')!;
     const classes = [...settings.children].map((el) => el.className);
-    const msIdx = classes.findIndex((c) => c.includes('ms-container'));
-    const spacerIdx = classes.indexOf('pp-composer-settings-spacer');
     const permIdx = classes.findIndex((c) => c.includes('pp-mode-seg'));
+    const spacerIdx = classes.indexOf('pp-composer-settings-spacer');
+    const msIdx = classes.findIndex((c) => c.includes('ms-container'));
     // 2026-11-06 合并 A：档位住在模型 pill 里（后缀）——仍然成立
     expect(settings.querySelector('.ms-trigger-thinking')).not.toBeNull();
-    expect(msIdx).toBe(0); // 模型居左
+    // 2026-11-09 二次裁定：**权限居左**（它是底线，先读它），**模型收右**（长值、可缩）
+    expect(permIdx).toBe(0);
     expect(spacerIdx).toBe(1); // 余量
-    expect(permIdx).toBe(2); // 权限收右
-    expect(permIdx).toBe(classes.length - 1);
+    expect(msIdx).toBe(2); // 模型收右
+    expect(msIdx).toBe(classes.length - 1);
   });
 
   it('丙案：坞面可点件从 13 降到 5（卷名不算，读数/工具各算）', async () => {
