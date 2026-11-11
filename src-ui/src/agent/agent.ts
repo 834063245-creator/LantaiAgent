@@ -1356,6 +1356,9 @@ export class Agent {
     const myPulse = new RunPulse({
       runId: this._runIdOf(signal),
       kind: this._subagentDepth > 0 ? 'subagent' : 'turn',
+      // 运行主体身份：权限卡等**不持有 signal** 的等待面按它挂起豁免
+      // （Rust permission-ask 事件只带 agentId，不带本轮 signal）。
+      agentId: this.id,
       // 到期动作（顺序要紧）：① 栅栏已由 RunPulse 打上（先于本回调）② abort
       //（既有停止语义，让认 signal 的等待方尽快解旋）③ 记账作废（点名自己的
       // runId —— 绝不误伤后来起的新轮；已被 stopAll 注销 = no-op）。

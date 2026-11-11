@@ -17,6 +17,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  pauseWhileAwaitingAgent,
   pauseWhileAwaitingUser,
   RunPulse,
   runWatchdogThresholds,
@@ -28,11 +29,12 @@ const TICK = 30_000;
 
 const THRESHOLDS = { warnMs: 2_000, abandonMs: 5_000 };
 
-function makePulse(signal: AbortSignal) {
+function makePulse(signal: AbortSignal, agentId?: string) {
   const state = { warned: 0, abandoned: [] as number[] };
   const pulse = new RunPulse({
     runId: 7,
     kind: 'turn',
+    agentId,
     onAbandon: () => state.abandoned.push(1),
     onWarn: () => state.warned++,
   });
@@ -151,5 +153,53 @@ describe('运行看门狗的「等人」豁免', () => {
     expect(pulse.abandoned).toBe(true);
     pulse.suspendForAwait();
     expect(pulse.awaitingUser).toBe(false);
+  });
+
+  // ── 权限卡：不持有 signal 的等待面，按 agentId 寻址（2026-10-31） ──
+
+  it('权限卡按 agentId 寻址：该 Agent 的本轮被挂起，答完恢复后照常计时', () => {
+    const { pulse, state } = makePulse(new AbortController().signal, 'main-1');
+    track(pulse);
+    const resume = pauseWhileAwaitingAgent('main-1');
+    expect(pulse.awaitingUser).toBe(true);
+    vi.advanceTimersByTime(TICK * 6);
+    expect(state.abandoned).toHaveLength(0);
+    resume();
+    expect(pulse.awaitingUser).toBe(false);
+    vi.advanceTimersByTime(TICK);
+    expect(state.abandoned).toHaveLength(1);
+  });
+
+  it('按 agentId 寻址是精确的：A 卷在等批准不豁免 B 卷', () => {
+    const a = makePulse(new AbortController().signal, 'main-a');
+    const b = makePulse(new AbortController().signal, 'main-b');
+    track(a.pulse);
+    track(b.pulse);
+    const resume = pauseWhileAwaitingAgent('main-a');
+    vi.advanceTimersByTime(TICK);
+    expect(a.state.abandoned).toHaveLength(0);
+    expect(b.state.abandoned).toHaveLength(1);
+    resume();
+  });
+
+  it('未登记 / 空 agentId = no-op（子 Agent 未起 run、游离请求 / 恢复期）', () => {
+    expect(() => pauseWhileAwaitingAgent(undefined)()).not.toThrow();
+    expect(() => pauseWhileAwaitingAgent(null)()).not.toThrow();
+    expect(() => pauseWhileAwaitingAgent('nobody')()).not.toThrow();
+  });
+
+  it('轮次收尾后该 agentId 不再指向旧轮（同一 agent 串行起轮不串账）', () => {
+    const first = makePulse(new AbortController().signal, 'main-x');
+    first.pulse.end();
+    const stale = pauseWhileAwaitingAgent('main-x');
+    expect(first.pulse.awaitingUser).toBe(false);
+    stale();
+
+    const second = makePulse(new AbortController().signal, 'main-x');
+    track(second.pulse);
+    const fresh = pauseWhileAwaitingAgent('main-x');
+    expect(second.pulse.awaitingUser).toBe(true);
+    fresh();
+    expect(second.pulse.awaitingUser).toBe(false);
   });
 });

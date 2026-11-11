@@ -129,6 +129,9 @@ export function pulseLabel(kind: PulseKind): string {
 export class RunPulse {
   readonly runId: number;
   readonly kind: RunKindLabel;
+  /** 运行主体身份（主 Agent / 子 Agent 的 id）——权限卡等**不持有 signal** 的等待面
+   *  按它寻址（见 `pauseWhileAwaitingAgent`）。null = 无法寻址（只剩 signal 面）。 */
+  readonly agentId: string | null;
   private _abandoned = false;
   private _lastPulse: PulseKind = 'step';
   private _lastAt = Date.now();
@@ -155,11 +158,15 @@ export class RunPulse {
   constructor(opts: {
     runId: number;
     kind: RunKindLabel;
+    /** 运行主体 id（Agent.id）——权限卡桥按它找本轮脉搏。 */
+    agentId?: string | null;
     onAbandon: (runId: number, signal: AbortSignal) => void;
     onWarn: (info: { runId: number; kind: RunKindLabel; noProgressMs: number; lastPulse: PulseKind }) => void;
   }) {
     this.runId = opts.runId;
     this.kind = opts.kind;
+    this.agentId = opts.agentId ?? null;
+    if (this.agentId) pulsesByAgent.set(this.agentId, this);
     this.onAbandon = opts.onAbandon;
     this.onWarn = opts.onWarn;
     // 永不 resolve 的哨兵：硬截止到期由 `_abandon()` 显式 reject（单点、幂等）。
@@ -277,6 +284,8 @@ export class RunPulse {
       pulseRecords.delete(this._signal);
       this._signal = null;
     }
+    // 只摘自己的条目（同一 agent 串行起轮：后来者已覆盖时不许误删）
+    if (this.agentId && pulsesByAgent.get(this.agentId) === this) pulsesByAgent.delete(this.agentId);
   }
 }
 
@@ -285,6 +294,13 @@ export class RunPulse {
  *  RunHandle），而 signal 是本次运行的唯一身份 —— 与运行账 `runFor(signal)`
  *  同一把钥匙。 */
 const pulseRecords = new WeakMap<AbortSignal, RunPulse>();
+
+/** agentId → 脉搏的登记表（权限卡等不持有 signal 的等待面用）。
+ *  为什么需要第二本登记：权限请求是 Rust 事件驱动（`permission-ask` → 卡片 →
+ *  回 RPC），JS 侧根本没有本轮的 signal —— 唯一能对上号的标识是 agentId
+ *  （与 `agentSessionState.sessionOfAgent` 同一把钥匙）。同一 agent 串行起轮，
+ *  后来者覆盖；收尾只摘自己的条目。 */
+const pulsesByAgent = new Map<string, RunPulse>();
 
 /** 本次 signal 所属运行的脉搏（无 = 该运行未起看门狗，如压缩 / 子 Agent 内轮）。 */
 export function pulseOf(signal: AbortSignal): RunPulse | null {
@@ -307,6 +323,24 @@ export function beatPulse(signal: AbortSignal, kind: PulseKind): void {
  *
  *  边界：无 signal / 该轮未起看门狗（压缩、子 Agent 内轮、无 run 的驱动面）→ no-op，
  *  与 `beatPulse` 同款「不实现 = 零开销」纪律。 */
+/** 同上，按**运行主体 id** 寻址（权限卡路径的唯一入口，2026-10-31）。
+ *
+ *  用法（唯一调用面 = 壳层权限桥 `shell/rows/bridges.ts`）：
+ *  `const resume = pauseWhileAwaitingAgent(p.agentId)` → 卡片展示 / 等用户点头 →
+ *  finally `resume()`。无登记（子 Agent 未起 run / 恢复期的游离请求）= no-op。 */
+export function pauseWhileAwaitingAgent(agentId: string | null | undefined): () => void {
+  if (!agentId) return () => {};
+  const pulse = pulsesByAgent.get(agentId);
+  if (!pulse) return () => {};
+  pulse.suspendForAwait();
+  let resumed = false;
+  return () => {
+    if (resumed) return;
+    resumed = true;
+    pulse.resumeFromAwait();
+  };
+}
+
 export function pauseWhileAwaitingUser(signal: AbortSignal | null | undefined): () => void {
   if (!signal) return () => {};
   const pulse = pulseRecords.get(signal);

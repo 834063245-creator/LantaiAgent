@@ -16,6 +16,7 @@
 // 「请求方 id ≠ 归属卷的主 Agent id」。
 
 import { agentSessionState } from '../../agent/agent-session-state';
+import { pauseWhileAwaitingAgent } from '../../agent/run-watchdog';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { typedListen, typedRpc } from '../../rpc-contract';
 import { useModeStore } from '../../state/mode-store';
@@ -61,8 +62,14 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
       // 子 Agent 权限请求使用更短的超时（60 秒 vs 120 秒）
       const timeoutMs = isSubAgent ? 60_000 : 120_000;
 
+      // 等人点头期间冻结该 Agent 本轮的无进展计时（2026-10-31 用户拍板）——
+      // 权限卡是 Rust 事件驱动的，JS 侧没有本轮 signal，故按 agentId 寻址。
+      // 超时分支也要恢复：到点后 Rust 已按拒绝继续，这一轮不再等这张卡；
+      // 卡片仍留在架上（用户晚点按也走 timedOutRequests 的旧答复丢弃）。
+      const resumeWatchdog = pauseWhileAwaitingAgent(agentId);
       const timeoutId = setTimeout(() => {
         timedOutRequests.add(p.requestId);
+        resumeWatchdog();
         void typedRpc('permission_ask_response', {
           request_id: p.requestId,
           allow: false,
@@ -107,7 +114,8 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
             allow: false,
             remember: false,
           });
-        });
+        })
+        .finally(() => resumeWatchdog());
     });
   } catch {
     /* 浏览器 mock：无 Tauri 事件总线 */
