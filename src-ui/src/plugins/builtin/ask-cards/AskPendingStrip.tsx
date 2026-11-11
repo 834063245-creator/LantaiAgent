@@ -44,7 +44,10 @@ export function AskPendingStrip() {
             data-kind={e.kind}
             data-tip={e.label}
             onClick={() => {
-              if (e.ownerSid != null) core?.switchToSession?.(e.ownerSid);
+              if (e.ownerSid == null) return; // 无归属（面板级）的卡没法定位到卷
+              // 先顶队头再跳卷（顺序同卷首角标：避免中间帧看到别的卷的卡）
+              core?.promoteAskBySession?.(e.ownerSid);
+              core?.switchToSession?.(e.ownerSid);
             }}
           >
             <span className="aps-badge">{e.badge ?? '无卷'}</span>

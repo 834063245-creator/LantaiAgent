@@ -689,6 +689,12 @@ export class ChatCore {
 
   // ── 会话管理（委托给 chat-session.ts）──
 
+  /** 把某卷的第一张在等卡顶到队头（画布多卷审批 A 面「点角标顶队头」）。
+   *  返回 false = 该卷没有在等卡 / 本来就在队头（调用方据此决定要不要只跳卷）。 */
+  promoteAskBySession(sid: number): boolean {
+    return this._promptShelf?.promoteByOwner(sid) ?? false;
+  }
+
   /** 按**卷 id** 切卷（2026-11-11 画布多卷审批 UX：卷首待答角标 / 待答缩略行
    *  手里只有 sid，没有数组下标）。找不到 = no-op（卷已关掉的陈旧点击不炸）。 */
   switchToSession(sid: number): void {

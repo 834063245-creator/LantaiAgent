@@ -58,7 +58,12 @@ export function FolioAskBadge({ core, sessionId }: FolioAskBadgeProps) {
       data-folio-ask-badge
       data-session-id={sessionId}
       data-tip={tip}
-      onClick={() => core?.switchToSession?.(sid)}
+      onClick={() => {
+        // 先顶队头（本卷的卡成为当前卡），再跳过去——顺序反了会先切卷再换卡，
+        // 中间那一帧用户看到的是别的卷的卡。
+        core?.promoteAskBySession?.(sid);
+        core?.switchToSession?.(sid);
+      }}
     >
       {perm > 0 && (
         <span className="pp-folio-ask-part pp-folio-ask-part--perm" data-kind="perm">

@@ -672,6 +672,21 @@ export const PromptShelf = forwardRef<PromptShelfHandle>(function PromptShelf(_p
     if (activeKilled) setActive(remains[0]?.prompt ?? null);
   }, []);
 
+  /** 把某卷的第一张在等卡顶到队头（2026-11-11 画布多卷审批 UX · A 面）。
+   *  返回 true = 发生了移动。边界：该卷没有在等卡 / 本来就在队头 = false（no-op）；
+   *  只重排**顺序**，不动卡的归属与内容。注意：原队头卡会被换下（组件卸载），
+   *  用户在该卡上已填未交的内容随之丢弃——触发源是用户主动点名另一卷，属明确意图。 */
+  const promoteByOwner = useCallback((ownerSid: number | null): boolean => {
+    const q = queueRef.current;
+    const key = ownerSid ?? null;
+    const idx = q.findIndex((it) => (it.prompt.ownerSid ?? null) === key);
+    if (idx <= 0) return false;
+    const [item] = q.splice(idx, 1);
+    q.unshift(item);
+    setActive(q[0].prompt);
+    return true;
+  }, []);
+
   /** 主输入作答：架头是提问卡时以 text 作答（单问整卡提交 / 批量填当前页）。 */
   const answerActiveText = useCallback(
     (text: string): boolean => {
@@ -701,9 +716,10 @@ export const PromptShelf = forwardRef<PromptShelfHandle>(function PromptShelf(_p
       showPermission,
       dismiss: dismissAll,
       dismissByOwner,
+      promoteByOwner,
       answerActiveText,
     }),
-    [showAsk, showAskBatch, showPermission, dismissAll, dismissByOwner, answerActiveText],
+    [showAsk, showAskBatch, showPermission, dismissAll, dismissByOwner, promoteByOwner, answerActiveText],
   );
 
   return (

@@ -77,6 +77,11 @@ export interface PromptShelfHandle {
    *  切卷/停他卷不再一刀切清全架（别的卷在等答案的提问卡曾被误杀，
    *  Agent 收「用户取消」而用户没答过）。ownerSid 匹配 ownerSid ?? null。 */
   dismissByOwner(ownerSid: number | null): void;
+  /** 把**某卷的第一张在等卡**顶到队头（2026-11-11 画布多卷审批 UX · A 面）。
+   *  返回 true = 发生了移动（队头本来就是它 / 该卷没有在等卡 = false）。
+   *  存在理由：多卷并行时用户从卷首角标或待答缩略行「点名」要答哪卷——FIFO 顺序
+   *  不该强制用户先答完前面别的卷的问题。语义只动**顺序**，不动任何卡的归属与内容。 */
+  promoteByOwner(ownerSid: number | null): boolean;
   /** 主输入作答（2026-09-10 完备化）：架头是提问卡时以 text 作答——
    *  单问卡整卡提交（自定义回答）；批量卡填当前页并翻页。
    *  返回 false = 架头不是提问卡（权限卡/空架），调用方走常规发送路径。 */

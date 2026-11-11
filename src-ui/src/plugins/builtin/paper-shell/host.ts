@@ -21,6 +21,8 @@ export { useAskPendingStore } from '../../../state/ask-pending-store';
 /** 角标用到的最小能力位面（能力位缺席 = 无读数，不炸纸面——与 FolioCompositionChip 同款）。 */
 export interface FolioAskBadgeCore {
   switchToSession?(sessionId: number): void;
+  /** 把该卷的第一张在等卡顶到队头（A 面「点名」语义；缺席 = 只跳卷不重排）。 */
+  promoteAskBySession?(sessionId: number): boolean;
 }
 export { Icon } from '../../../app/Icon';
 export { useDialogEscape } from '../../../app/overlay';
