@@ -151,15 +151,15 @@ impl ProjectGenerator {
                     break;
                 }
                 // 密度：每文件 3-8 个类，2-3 个顶层函数
-                let class_count = self.rng.gen_range(3..=8);
-                let top_func_count = self.rng.gen_range(2..=4);
+                let class_count = self.rng.random_range(3..=8);
+                let top_func_count = self.rng.random_range(2..=4);
                 self.file_plan.push((dir.to_string(), file_idx, class_count, top_func_count));
 
                 for c in 0..class_count {
                     let class_name = format!("{}_{}C{}", dir, file_idx, c);
                     self.class_names.push(class_name);
                     // 每类 3-10 个方法
-                    let method_count = self.rng.gen_range(3..=10);
+                    let method_count = self.rng.random_range(3..=10);
                     for m in 0..method_count {
                         self.func_names.push(format!(
                             "{}_{}C{}_m{}",
@@ -197,7 +197,7 @@ impl ProjectGenerator {
             let mut f = fs::File::create(&path).expect("创建生成文件");
 
             // 导入——2-5 个跨模块导入，制造更密集的调用图
-            let import_count = self.rng.gen_range(2..=5);
+            let import_count = self.rng.random_range(2..=5);
             let mut imports: Vec<String> = Vec::new();
             for _ in 0..import_count {
                 if module_names.len() > 1 {
@@ -217,10 +217,10 @@ impl ProjectGenerator {
 
                 writeln!(f, "\nclass {}:", class_name).expect("写入生成文件");
                 // 2-5 个实例属性
-                let attr_count = self.rng.gen_range(2..=5);
+                let attr_count = self.rng.random_range(2..=5);
                 writeln!(f, "    def __init__(self):").expect("写入生成文件");
                 for a in 0..attr_count {
-                    writeln!(f, "        self.attr_{} = {}", a, self.rng.gen_range(0..100)).expect("写入生成文件");
+                    writeln!(f, "        self.attr_{} = {}", a, self.rng.random_range(0..100)).expect("写入生成文件");
                 }
 
                 // 计算此类的方法数（从 func_names 中连续匹配）
@@ -236,15 +236,15 @@ impl ProjectGenerator {
                     let func_name = &func_names[symbol_idx];
                     symbol_idx += 1;
                     // 0-3 个参数
-                    let param_count = self.rng.gen_range(0..=3);
+                    let param_count = self.rng.random_range(0..=3);
                     let params: Vec<String> = (0..param_count).map(|i| format!("p{}", i)).collect();
                     writeln!(f, "    def {}(self, {}):", func_name, params.join(", ")).expect("写入生成文件");
                     // 3-10 行方法体（调用表达式）
-                    for _bl in 0..self.rng.gen_range(3..=10) {
+                    for _bl in 0..self.rng.random_range(3..=10) {
                         writeln!(f, "        {}", self.gen_call_expr(&module_names)).expect("写入生成文件");
                     }
                     // 70% 概率有返回语句
-                    if self.rng.gen_bool(0.7) {
+                    if self.rng.random_bool(0.7) {
                         writeln!(f, "        {}", self.gen_ret_expr(&module_names)).expect("写入生成文件");
                     }
                 }
@@ -254,14 +254,14 @@ impl ProjectGenerator {
             for _tf in 0..*top_func_count {
                 let func_name = &func_names[symbol_idx];
                 symbol_idx += 1;
-                let param_count = self.rng.gen_range(0..=4);
+                let param_count = self.rng.random_range(0..=4);
                 let params: Vec<String> = (0..param_count).map(|i| format!("p{}", i)).collect();
                 writeln!(f, "\ndef {}({}):", func_name, params.join(", ")).expect("写入生成文件");
-                for _bl in 0..self.rng.gen_range(3..=8) {
+                for _bl in 0..self.rng.random_range(3..=8) {
                     writeln!(f, "    {}", self.gen_call_expr(&module_names)).expect("写入生成文件");
                 }
                 // 60% 概率有返回值
-                if self.rng.gen_bool(0.6) {
+                if self.rng.random_bool(0.6) {
                     writeln!(f, "    return {}", self.gen_ret_value()).expect("写入生成文件");
                 }
             }
@@ -282,7 +282,7 @@ impl ProjectGenerator {
     /// 模式分布：类实例化调用(30%)、函数调用(30%)、方法调用(20%)、
     /// 内置函数(10%)、属性链(10%)、赋值语句(10%)。
     fn gen_call_expr(&mut self, _module_names: &[String]) -> String {
-        match self.rng.gen_range(0..=10) {
+        match self.rng.random_range(0..=10) {
             0..=2 => {
                 // 类实例化调用
                 if self.class_names.is_empty() { return "pass".into(); }
@@ -294,7 +294,7 @@ impl ProjectGenerator {
                 if self.func_names.is_empty() { return "pass".into(); }
                 let f = self.func_names.choose(&mut self.rng).expect("名称列表非空");
                 let short = f.rsplit('.').next().unwrap_or(f);
-                let arg_count = self.rng.gen_range(0..=2);
+                let arg_count = self.rng.random_range(0..=2);
                 let args: Vec<String> = (0..arg_count).map(|i| format!("v{}", i)).collect();
                 format!("{}({})", short, args.join(", "))
             }
@@ -310,13 +310,13 @@ impl ProjectGenerator {
                 format!("{}(x)", builtins.choose(&mut self.rng).expect("名称列表非空"))
             }
             9 => "obj.prop.nested.leaf".into(), // 属性链
-            _ => format!("x{} = {}", self.rng.gen_range(0..10), self.rng.gen_range(0..100)), // 赋值
+            _ => format!("x{} = {}", self.rng.random_range(0..10), self.rng.random_range(0..100)), // 赋值
         }
     }
 
     /// 生成随机的返回表达式。
     fn gen_ret_expr(&mut self, _module_names: &[String]) -> String {
-        match self.rng.gen_range(0..=4) {
+        match self.rng.random_range(0..=4) {
             0 => self.gen_ret_value(),           // 随机数值
             1 => {
                 // 函数调用
@@ -332,7 +332,7 @@ impl ProjectGenerator {
 
     /// 生成随机的返回值（0-999 的数字）。
     fn gen_ret_value(&mut self) -> String {
-        format!("{}", self.rng.gen_range(0..1000))
+        format!("{}", self.rng.random_range(0..1000))
     }
 }
 

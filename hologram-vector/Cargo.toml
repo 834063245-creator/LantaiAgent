@@ -20,7 +20,7 @@ usearch = "2"
 tracing = "0.1"
 # ONNX Runtime 绑定（动态加载项目自带 DLL，不下载二进制）——全平台，Windows 也需要
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "api-21"] }
-parking_lot = "0.12"
+parking_lot = "0.13"
 
 [dev-dependencies]
 bincode = "1.3"

@@ -21,7 +21,10 @@ pub(crate) fn store_attachment(
     bytes: &[u8],
     ext: &str,
 ) -> std::io::Result<(String, PathBuf)> {
-    let id = format!("{:x}", Sha256::digest(bytes));
+    // sha2 0.11 的 digest 返回 hybrid `Array`，不再实现 `LowerHex`（0.10 的
+    // GenericArray 可以直接 `{:x}`）——这里显式逐字节转十六进制，产出仍是
+    // 64 位小写 hex（内容寻址 id 的既有形态不变，旧附件目录照旧命中）。
+    let id: String = Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect();
     let dir = Path::new(ws_root).join(".lantai").join("attachments");
     std::fs::create_dir_all(&dir)?;
     let dst = dir.join(format!("{id}.{ext}"));

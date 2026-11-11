@@ -137,10 +137,13 @@ fn local_moving_core(
     adj: &[Vec<(usize, f64)>],
     degrees: &[f64],
     m: f64,
-    rng: &rand::rngs::StdRng,
+    rng: &mut rand::rngs::StdRng,
 ) -> (Vec<Vec<usize>>, Vec<usize>) {
     let _t = std::time::Instant::now();
-    let mut rng = rng.clone();
+    // rand 0.10 的 StdRng 不再实现 Clone（0.8 时可以 `rng.clone()` 拿到独立副本），
+    // 本函数改为直接消耗调用方的可变引用——随机序只影响社区划分的抖动，
+    // 不改变确定性（同 seed 的调用序一致即可复现）。
+    let rng = &mut *rng;
     let mut node_to_comm: Vec<usize> = (0..n).collect();
     let mut comm_nodes: Vec<Vec<usize>> = (0..n).map(|i| vec![i]).collect();
     let mut sigma_tot: Vec<f64> = degrees.to_vec();
@@ -157,7 +160,7 @@ fn local_moving_core(
         improved = false;
         iter += 1;
         let mut order: Vec<usize> = (0..n).collect();
-        order.shuffle(&mut rng);
+        order.shuffle(&mut *rng);
         for &i in &order {
             let old_comm = node_to_comm[i];
             let ki = degrees[i];
@@ -688,7 +691,7 @@ pub fn detect_communities(graph: &Graph, seed: u64) -> Vec<Community> {
         return ids.into_iter().map(|id| vec![id]).collect();
     }
     // 阶段 1：Louvain 局部移动
-    let (comm_nodes, _) = local_moving_core(n, &adj, &degrees, m, &rng);
+    let (comm_nodes, _) = local_moving_core(n, &adj, &degrees, m, &mut rng);
     let p1_comms: Vec<Vec<usize>> = comm_nodes.into_iter().filter(|c| !c.is_empty()).collect();
     // 阶段 2：Leiden 精化
     leiden_refinement(&owned_ids, n, &adj, &degrees, m, &mut rng, &p1_comms)
@@ -720,7 +723,7 @@ pub fn detect_communities_from_index(idx: &MemoryIndex, seed: u64) -> Vec<Commun
     if m == 0.0 {
         return owned_ids.into_iter().map(|id| vec![id]).collect();
     }
-    let (comm_nodes, _) = local_moving_core(n, &adj, &degrees, m, &rng);
+    let (comm_nodes, _) = local_moving_core(n, &adj, &degrees, m, &mut rng);
     let p1_comms: Vec<Vec<usize>> = comm_nodes.into_iter().filter(|c| !c.is_empty()).collect();
     leiden_refinement(&owned_ids, n, &adj, &degrees, m, &mut rng, &p1_comms)
 }
@@ -811,7 +814,7 @@ pub fn detect_communities_and_hierarchy(
         let singleton: Vec<Community> = ids.into_iter().map(|id| vec![id]).collect();
         (singleton.clone(), singleton)
     } else {
-        let (comm_nodes, _) = local_moving_core(n, &adj, &degrees, m, &rng);
+        let (comm_nodes, _) = local_moving_core(n, &adj, &degrees, m, &mut rng);
         let p1_comms: Vec<Vec<usize>> =
             comm_nodes.into_iter().filter(|c| !c.is_empty()).collect();
         let base = leiden_refinement(&owned_ids, n, &adj, &degrees, m, &mut rng, &p1_comms);
