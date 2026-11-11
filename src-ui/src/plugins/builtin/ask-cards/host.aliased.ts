@@ -50,6 +50,8 @@ const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const iconSvg = impl.iconSvg;
 export const useCoreStore = impl.useCoreStore;
+// 待答缩略行（2026-11-11 B 面）：待答账读面，记账在 chat-core
+export const useAskPendingStore = impl.useAskPendingStore;
 
 // 形状面（类型在产物域由内核契约直接给出——契约文件是内核源码，随包内联零状态）
 export type {

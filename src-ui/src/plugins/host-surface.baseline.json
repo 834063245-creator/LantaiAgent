@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b4b3acb1",
+  "fingerprint": "b0a458e6",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -335,6 +335,7 @@
     "typedRpcWithTimeout",
     "updateProvider",
     "upsertAsset",
+    "useAskPendingStore",
     "useAskStore",
     "useBgAlertStore",
     "useBundledEngineStore",

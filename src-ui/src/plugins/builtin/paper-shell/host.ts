@@ -15,6 +15,13 @@
 export { agentSessionState } from '../../../agent/agent-session-state';
 export { ConfirmDialog } from '../../../app/ConfirmDialog';
 export { useCoreStore } from '../../../app/chat/core-instance';
+/* 卷首待答角标（2026-11-11 画布多卷审批 UX · A 面）：待答账读面 = 内核
+ * state/ask-pending-store（chat-core 交付入账 / 答复结账）。角标只读，不写账。 */
+export { useAskPendingStore } from '../../../state/ask-pending-store';
+/** 角标用到的最小能力位面（能力位缺席 = 无读数，不炸纸面——与 FolioCompositionChip 同款）。 */
+export interface FolioAskBadgeCore {
+  switchToSession?(sessionId: number): void;
+}
 export { Icon } from '../../../app/Icon';
 export { useDialogEscape } from '../../../app/overlay';
 /* 保险丝 b（2026-09-03 生产事故立法）：渲染面错误边界——面组件/块渲染器

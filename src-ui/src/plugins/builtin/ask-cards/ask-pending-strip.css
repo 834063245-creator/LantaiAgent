@@ -1,0 +1,95 @@
+/* ask-cards · 待答缩略行（2026-11-11 画布多卷审批 UX · B 面）
+ * 位置：卡架宿主 .psh-host 内部、卡本体的**下方**（宿主 fixed 底部居中，
+ * 本体 pointer-events:none —— 本行单独放开 auto，同卡架纪律）。
+ * 语汇：一行淡墨小签，不是工具栏——无框、无底色，hover 只提墨色 + 一条朱砂底规线
+ *（与纸面 hover 语言一致；禁「一排灰边框按钮」的工具栏化）。 */
+
+.aps {
+  pointer-events: auto;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 6px;
+  padding: 6px 10px 8px;
+  /* 纸面：不加底色块（卡已是浮层，双层面板会糊）——只用一条发丝线压住上缘 */
+  border-top: 1px solid var(--rule-soft-ink);
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+}
+
+.aps-title {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.aps-title-perm {
+  color: var(--seal-deep);
+}
+.aps-title-ask {
+  color: var(--ink-2);
+}
+
+.aps-list {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  min-width: 0;
+}
+
+.aps-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 1px 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--ink-3);
+  cursor: pointer;
+  max-width: 100%;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.aps-item:hover {
+  color: var(--ink-1);
+  border-bottom-color: var(--seal);
+}
+
+.aps-badge {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
+  color: var(--ink-2);
+  max-width: 8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aps-kind {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
+}
+.aps-item[data-kind="perm"] .aps-kind {
+  color: var(--seal-deep);
+}
+.aps-item[data-kind="ask"] .aps-kind {
+  color: var(--indigo);
+}
+.aps-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

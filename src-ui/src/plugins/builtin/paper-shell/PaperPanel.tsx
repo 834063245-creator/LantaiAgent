@@ -40,6 +40,7 @@
 
 import { type CSSProperties, Fragment } from 'react';
 import { volumeDisplayName } from '../../../state/volume-name';
+import { FolioAskBadge } from './FolioAskBadge';
 import { FolioCompositionChip } from './FolioCompositionChip';
 import {
   blockFromSnapshot,
@@ -332,6 +333,9 @@ export function PaperPanel() {
                               （见 FolioCompositionChip 头注）。作用对象 = 本 region 的卷
                               （r.sessionId），不是"当前活跃卷"。 */}
                           <FolioCompositionChip core={core} sessionId={r.sessionId} />
+                          {/* 待答角标（2026-11-11 画布多卷审批 UX · A 面）：本卷有卡在等
+                              → 版心左上挂「待批 N / 待答 N」，点它跳到本卷。零待答不渲染。 */}
+                          <FolioAskBadge core={core} sessionId={r.sessionId} />
                         </div>
                       </div>
                     )}

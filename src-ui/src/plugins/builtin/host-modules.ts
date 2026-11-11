@@ -367,6 +367,8 @@ import {
   workspaceFlow,
 } from '../../shell/rows/workspace';
 import { notifyAgentConfigChanged } from '../../state/agent-config-store';
+// 卷首待答角标读面（2026-11-11 画布多卷审批 UX）：paper-shell 产物经 host.ts 取用。
+import { useAskPendingStore } from '../../state/ask-pending-store';
 import { useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
 import { describeReceipt, useBundledEngineStore } from '../../state/bundled-engine-store';
@@ -919,6 +921,8 @@ const faceDeps = {
   getAssetState,
   patchAssetState,
   listAssetStateSummaryForOwner,
+  // 卷首待答角标（2026-11-11）：paper-shell 的 FolioAskBadge 读待答账
+  useAskPendingStore,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

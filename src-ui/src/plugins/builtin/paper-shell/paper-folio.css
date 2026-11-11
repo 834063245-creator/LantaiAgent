@@ -140,6 +140,56 @@
   right: 0;
   pointer-events: auto;
 }
+/* 卷首待答角标（2026-11-11 画布多卷审批 UX · A 面）——
+ * 与组合芯片**同一条落位纪律**（绝对定位覆盖、不进高度流水、锚点以版心为参照），
+ * 只是换到版心左上：右上是组合芯片的位，两者对角不打架。
+ * 零待答时组件直接不渲染（卷首保持原样，不加常驻噪声）。
+ * 分色守铁律：朱砂 = 人的批改动作（待批），石青 = 机在问人（待答）。 */
+.pp-folio-ask {
+  position: absolute;
+  top: 1px;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  cursor: pointer;
+  pointer-events: auto;
+  white-space: nowrap;
+  transition: color var(--snap);
+}
+.pp-folio-ask:hover {
+  color: var(--ink-1);
+}
+.pp-folio-ask-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pp-folio-ask-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.pp-folio-ask-part--perm {
+  color: var(--seal-deep);
+}
+.pp-folio-ask-part--perm .pp-folio-ask-dot {
+  background: var(--seal);
+}
+.pp-folio-ask-part--ask {
+  color: var(--ink-2);
+}
+.pp-folio-ask-part--ask .pp-folio-ask-dot {
+  background: var(--indigo);
+}
 .pp-folio-comp-pill {
   display: inline-flex;
   align-items: center;

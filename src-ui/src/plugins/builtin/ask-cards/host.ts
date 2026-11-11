@@ -20,4 +20,7 @@ export type {
   PromptShelfHandle,
 } from '../../../app/chat/ask-card-contract';
 export { useCoreStore } from '../../../app/chat/core-instance';
+/* 待答账读面（2026-11-11 画布多卷审批 UX · B 面）：待答缩略行只读，
+ * 记账在 chat-core（交付入账 / 答复结账）。 */
+export { useAskPendingStore } from '../../../state/ask-pending-store';
 export { iconSvg } from '../../../ui/icons';

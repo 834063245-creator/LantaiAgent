@@ -44,6 +44,7 @@ import { activeSpace } from '../../composition/space-service';
 import { pickDropAnchor } from '../../paper/space';
 import type { ChatImageRef } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
+import { clipLabel, useAskPendingStore } from '../../state/ask-pending-store';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
 import { getCanvasStore, loadCanvasFromDisk, saveCanvasToDisk } from '../../state/canvas-store';
@@ -198,6 +199,8 @@ export class ChatCore {
           //（卡片 callback 指向旧工作区已 dispose 的 Agent——按卷杀卡够不到
           // 他卷残留，漂到新工作区只能是死回答回调；2026-09-10 ask 完备化）
           this._promptShelf?.dismiss();
+          // 待答账同步清场（卡架 dismiss 会把每个挂起 Promise 按取消结掉，账本跟着空）
+          useAskPendingStore.getState().reset();
           this._refreshGoalView();
         }
       }),
@@ -225,6 +228,8 @@ export class ChatCore {
         // 用户没答过）。权限卡同理按卷收（enqueuePerm 只管排队态，展示态
         // 的杀卡此前也是一刀切）。
         this._promptShelf?.dismissByOwner(ownerSid);
+        // 待答账按卷清场（A+B 画布多卷审批 UX）：停 A 卷不许把 B 卷的待答痕迹一起抹掉
+        useAskPendingStore.getState().settleByOwner(ownerSid);
         this._composer?.focus();
       }
       for (const cb of this._execListeners) cb();
@@ -452,18 +457,30 @@ export class ChatCore {
     const shelf = this._promptShelf;
     const exec = ownerSid != null ? Session.getSessionExecState(this.panelId, ownerSid) : this._activeExec();
     const sid = ownerSid ?? null;
-    return exec.enqueuePerm(() =>
-      shelf.showPermission({
-        type: 'permission',
-        id: `perm-${toolName}-${Date.now()}`,
-        ownerSid: sid,
-        badge: ownerSid != null ? this._sessionLabelOf(ownerSid) : null,
-        toolName,
-        reason,
-        subject: subject || '',
-        danger,
-      }),
-    );
+    const cardId = `perm-${toolName}-${Date.now()}`;
+    // 待答账（2026-11-11 A+B）：排队期与展示期都算「这卷在等我批」——直到点头/拒绝/超时。
+    useAskPendingStore.getState().upsert({
+      id: cardId,
+      ownerSid: sid,
+      kind: 'perm',
+      label: clipLabel(subject ? `${toolName} · ${subject}` : toolName),
+      badge: ownerSid != null ? this._sessionLabelOf(ownerSid) : null,
+      at: Date.now(),
+    });
+    return exec
+      .enqueuePerm(() =>
+        shelf.showPermission({
+          type: 'permission',
+          id: cardId,
+          ownerSid: sid,
+          badge: ownerSid != null ? this._sessionLabelOf(ownerSid) : null,
+          toolName,
+          reason,
+          subject: subject || '',
+          danger,
+        }),
+      )
+      .finally(() => useAskPendingStore.getState().settle(cardId));
   }
 
   // ── Agent status bar → panel-store（视图渲染）──
@@ -671,6 +688,15 @@ export class ChatCore {
   }
 
   // ── 会话管理（委托给 chat-session.ts）──
+
+  /** 按**卷 id** 切卷（2026-11-11 画布多卷审批 UX：卷首待答角标 / 待答缩略行
+   *  手里只有 sid，没有数组下标）。找不到 = no-op（卷已关掉的陈旧点击不炸）。 */
+  switchToSession(sid: number): void {
+    const st = getChatStore(this.panelId).sess.getState();
+    const idx = st.sessions.findIndex((s) => s.id === sid);
+    if (idx < 0) return;
+    this.switchSession(idx);
+  }
 
   switchSession(idx: number): void {
     Session.switchSession(this._sessionCtx(), idx);
@@ -1404,6 +1430,17 @@ export class ChatCore {
     // 归属卷徽标（哪卷在问——多卷并发时用户需要知道替谁作答）
     const ownerSid = askSessionOf(data);
     const badge = ownerSid != null ? this._sessionLabelOf(ownerSid) : null;
+    // 待答账（2026-11-11 画布多卷审批 UX）：**交付即入账，答复即结账**。
+    // 账本只记事实（哪卷在等 / 等什么），不参与调度——调度仍是 ask-store → 卡架 FIFO。
+    const settleAsk = () => useAskPendingStore.getState().settle(data.id);
+    useAskPendingStore.getState().upsert({
+      id: data.id,
+      ownerSid,
+      kind: 'ask',
+      label: clipLabel(data.question ?? data.questions?.[0]?.question ?? ''),
+      badge,
+      at: Date.now(),
+    });
     // 批量多问（questions 数组）→ 一张分页卡收集；单问 → AskCard
     if (data.questions && data.questions.length > 0) {
       this._promptShelf
@@ -1415,7 +1452,13 @@ export class ChatCore {
           questions: data.questions,
           header: data.header ?? '提问',
         })
-        .then((answers) => data.callback(answers));
+        .then((answers) => {
+          try {
+            data.callback(answers);
+          } finally {
+            settleAsk();
+          }
+        });
       return;
     }
     this._promptShelf
@@ -1429,7 +1472,19 @@ export class ChatCore {
         options: data.options ?? [],
         multiSelect: !!data.multiSelect,
       })
-      .then(data.callback);
+      .then(
+        (answers) => {
+          try {
+            data.callback(answers);
+          } finally {
+            settleAsk();
+          }
+        },
+        (err) => {
+          settleAsk(); // 展示面异常同样结账（不让账本留死条目）
+          throw err;
+        },
+      );
   }
 
   /** 主输入文本作答在途提问卡（2026-09-10 完备化）：架头是提问卡且归属本卷

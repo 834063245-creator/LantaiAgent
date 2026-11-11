@@ -35,6 +35,7 @@ const host = requireHost();
 /** 依赖实现（形状对拍开发域 host.ts——mods.faceDeps 是其超集）。 */
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
+export const useAskPendingStore = impl.useAskPendingStore;
 export const ANCHOR = impl.ANCHOR;
 export const autoPanVector = impl.autoPanVector;
 export const layoutRegion = impl.layoutRegion;

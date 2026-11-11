@@ -16,6 +16,7 @@
 // 此处只保功能不断。
 
 import { useEffect, useRef } from 'react';
+import { AskPendingStrip } from './AskPendingStrip';
 import { type PromptShelfHandle, useCoreStore } from './host';
 import { PromptShelf } from './PromptShelf';
 
@@ -30,6 +31,8 @@ export function AskCardsHost() {
   return (
     <div className="psh-host">
       <PromptShelf ref={shelfRef} />
+      {/* 待答缩略行（2026-11-11 B 面）：队列不透明 → 摊开成一行小签；零待答不渲染 */}
+      <AskPendingStrip />
     </div>
   );
 }
