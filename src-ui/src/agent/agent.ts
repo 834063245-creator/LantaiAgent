@@ -73,6 +73,7 @@ import {
   wireImageChars,
 } from './request-images';
 import {
+  attachRetryFacts,
   backoffDelay,
   formatElapsed,
   INTERRUPTED_MARKER,
@@ -1876,7 +1877,8 @@ export class Agent {
     // 载荷可疑的挂起再多说一句：这类失败重发同一张图不会变好（2026-09-22 事故）。
     const finalMsg = lastErr?.message || '未知错误';
     const finalCode = apiErrorSummary(lastErr);
-    const finalWaited = formatElapsed(Date.now() - startedAt);
+    const finalElapsedMs = Date.now() - startedAt;
+    const finalWaited = formatElapsed(finalElapsedMs);
     const suspectPayload =
       lastErr !== undefined && isStallError(lastErr) && this._wireImageChars >= SUSPECT_PAYLOAD_MIN_WIRE_CHARS;
     const imageMiB = (this._wireImageChars / 4 / 3 / 1024 / 1024).toFixed(1);
@@ -1893,6 +1895,14 @@ export class Agent {
       level: 'error',
       text: `模型调用失败（共 ${attempts} 次尝试，历时 ${finalWaited}）：${finalMsg}。${hint}${finalCode ? `\n（${finalCode}）` : ''}`,
     });
+    // 重试事实随错误上浮（2026-11-11）：墓碑在最显眼处，必须自报「重试 N 次 / 历时」。
+    if (lastErr !== undefined) {
+      attachRetryFacts(lastErr, {
+        attempts,
+        elapsedMs: finalElapsedMs,
+        budget: isStallError(lastErr) ? 'stall' : 'count',
+      });
+    }
     return { text: '', reasoning: '', signature: '', calls: [], usage: undefined, err: lastErr, token: undefined };
   }
 

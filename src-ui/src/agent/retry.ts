@@ -66,6 +66,48 @@ export function isStallError(err: Error): boolean {
   return (err.message || String(err)).includes('[响应超时]');
 }
 
+/** 重试事实 —— 挂在「重试耗尽」的最终错误上，供上层墓碑如实交代
+ *  「已替你重试多少次 / 多久」。
+ *
+ *  Why（2026-11-11 真机事故）：一次链路挂起实跑 20 次重试、14m35s 才放弃，
+ *  但用户看见的墓碑只写「30 秒内未收到服务商任何数据」——第一反应是「不应该
+ *  重试吗」。机制在重试、文案不承认，等于没重试。事实面必须跟错误一起上浮，
+ *  否则每个消费点都要自己去猜（或再算一遍）。
+ *
+ *  口径：`attempts` = **总尝试次数（含首次）**，文案报「重试 attempts-1 次」。 */
+export interface RetryFacts {
+  /** 总尝试次数（含首次）。 */
+  attempts: number;
+  /** 自首次尝试起的墙钟耗时（ms）。 */
+  elapsedMs: number;
+  /** 预算口径：stall = 时间预算（链路挂起），count = 计数预算。 */
+  budget: 'stall' | 'count';
+}
+
+/** 把重试事实挂到错误上并原样返回（与 provider 侧挂 `kind` 同款：结构化字段，
+ *  消费侧不解析文案）。 */
+export function attachRetryFacts(err: Error, facts: RetryFacts): Error {
+  (err as Error & { retryFacts?: RetryFacts }).retryFacts = facts;
+  return err;
+}
+
+/** 读取错误上的重试事实（未挂过 / 形状不对 → undefined，消费侧安全降级）。 */
+export function readRetryFacts(err: unknown): RetryFacts | undefined {
+  if (!err || typeof err !== 'object') return undefined;
+  const facts = (err as { retryFacts?: unknown }).retryFacts;
+  if (!facts || typeof facts !== 'object') return undefined;
+  const f = facts as { attempts?: unknown; elapsedMs?: unknown; budget?: unknown };
+  if (typeof f.attempts !== 'number' || typeof f.elapsedMs !== 'number') return undefined;
+  return { attempts: f.attempts, elapsedMs: f.elapsedMs, budget: f.budget === 'stall' ? 'stall' : 'count' };
+}
+
+/** 墓碑用的重试事实短句 —— `（已自动重试 20 次，历时 14m35s）`；未重试过 = 空串
+ *  （首次尝试就失败时说「重试 0 次」是噪音）。 */
+export function describeRetryFacts(facts: RetryFacts | undefined): string {
+  if (!facts || facts.attempts <= 1) return '';
+  return `（已自动重试 ${facts.attempts - 1} 次，历时 ${formatElapsed(facts.elapsedMs)}）`;
+}
+
 /** 毫秒 → 人读时长（重试提示用；分钟级窗口下比裸秒数易读）。 */
 export function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));

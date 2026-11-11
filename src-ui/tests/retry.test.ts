@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from 'vitest';
-import { backoffDelay, isRetryable, sleepWithAbort } from '../src/agent/retry';
+import {
+  attachRetryFacts,
+  backoffDelay,
+  describeRetryFacts,
+  isRetryable,
+  readRetryFacts,
+  sleepWithAbort,
+} from '../src/agent/retry';
 import { classifyProviderError } from '../src/provider/error-catalog';
 import { ApiError, apiErrorSummary, classifyError, errorCodeFromBody, retryAfterSeconds } from '../src/provider/types';
 
@@ -95,6 +102,33 @@ describe('isRetryable — 结构化永久错（显式 4xx）', () => {
 
   it('keeps the self-heal retry for [未知错误] without an explicit status', () => {
     expect(isRetryable(classifyProviderError(new Error('[未知错误] boom'), 'opencode'))).toBe(true);
+  });
+});
+
+// ═══ 重试事实（2026-11-11 事故：墓碑不承认重试，用户以为一次就放弃）═══
+
+describe('重试事实 RetryFacts', () => {
+  it('attach / read 往返（结构化字段，不解析文案）', () => {
+    const err = new Error('[响应超时] x');
+    const facts = { attempts: 21, elapsedMs: 905_000, budget: 'stall' as const };
+    expect(attachRetryFacts(err, facts)).toBe(err);
+    expect(readRetryFacts(err)).toEqual(facts);
+  });
+
+  it('未挂过 / 非对象 / 形状不对 → undefined（消费侧安全降级）', () => {
+    expect(readRetryFacts(new Error('plain'))).toBeUndefined();
+    expect(readRetryFacts('string')).toBeUndefined();
+    expect(readRetryFacts(undefined)).toBeUndefined();
+    expect(readRetryFacts({ retryFacts: { attempts: 'x', elapsedMs: 1 } })).toBeUndefined();
+  });
+
+  it('describeRetryFacts：未重试 → 空串；重试 → 报「重试次数（含首次减一）+ 历时」', () => {
+    expect(describeRetryFacts(undefined)).toBe('');
+    // attempts = 总尝试次数（含首次）——首次失败不报「重试 0 次」的噪音
+    expect(describeRetryFacts({ attempts: 1, elapsedMs: 30_180, budget: 'count' })).toBe('');
+    expect(describeRetryFacts({ attempts: 21, elapsedMs: 905_000, budget: 'stall' })).toBe(
+      '（已自动重试 20 次，历时 15m05s）',
+    );
   });
 });
 

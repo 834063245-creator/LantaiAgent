@@ -34,6 +34,7 @@ import { log } from '../../agent/logger';
 // 批 9h-4：事实保存授权旗标住内核登记表（记忆实现已随 memory-domain 产物包）
 import { authorizeFactSave } from '../../agent/memory-impl';
 import * as Obs from '../../agent/obs';
+import { describeRetryFacts, readRetryFacts } from '../../agent/retry';
 import { isRunDeadlineExceeded } from '../../agent/run-watchdog';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { totalTokens } from '../../agent/token-meter/usage';
@@ -1380,7 +1381,7 @@ export class ChatCore {
         });
       } else if (!signal.aborted) {
         const code = apiErrorSummary(err);
-        const visible = `错误: ${msg}${code ? `\n（${code}）` : ''}`;
+        const visible = `错误: ${msg}${describeRetryFacts(readRetryFacts(err))}${code ? `\n（${code}）` : ''}`;
         Stream.markTurnError(this._streamCtxFor(turnSid), visible, 'error');
         this._logTurnFailure(turnSid, turnGen, run.id, err, { visible });
       }
@@ -1702,7 +1703,7 @@ export class ChatCore {
         });
       } else if (!signal.aborted) {
         const code = apiErrorSummary(err);
-        const visible = `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话${code ? `\n（${code}）` : ''}`;
+        const visible = `错误: ${msg}${describeRetryFacts(readRetryFacts(err))}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话${code ? `\n（${code}）` : ''}`;
         Stream.markTurnError(this._streamCtxFor(turnSid), visible, 'error');
         this._logTurnFailure(turnSid, turnGen, run.id, err, { visible });
       }

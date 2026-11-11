@@ -28,7 +28,15 @@ vi.mock('../src/bridge', () => ({
 }));
 
 import type { Agent } from '../src/agent/agent';
-import { formatElapsed, isStallError, MAX_RETRIES, STALL_RETRY_BUDGET_MS, withinRetryBudget } from '../src/agent/retry';
+import {
+  describeRetryFacts,
+  formatElapsed,
+  isStallError,
+  MAX_RETRIES,
+  readRetryFacts,
+  STALL_RETRY_BUDGET_MS,
+  withinRetryBudget,
+} from '../src/agent/retry';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
@@ -135,6 +143,35 @@ describe('挂起自愈 — runLoop 集成', () => {
 
       // 首次 + MAX_RETRIES 次重试 = 4 次尝试，一次不多
       expect(calls()).toBe(MAX_RETRIES + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // 2026-11-11 事故：一次链路挂起实跑 20 次重试、14m35s 才放弃，但用户看到的墓碑
+  // 只写「30 秒内未收到服务商任何数据」——第一反应是「不应该重试吗」。修法 = 重试
+  // 事实随错误本体上浮，墓碑自己交代「已重试 N 次 / 历时 X」。
+  it('挂起耗尽后抛出的错误带重试事实（墓碑能自报「重试 N 次 / 历时」）', async () => {
+    // Date 必须一起 fake —— 时间预算按墙钟判，真时钟下这轮会无限重试
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    try {
+      const { prov, calls } = makeFlakyProvider(Number.MAX_SAFE_INTEGER, STALL_MSG);
+      const agent = makeAgent(prov);
+
+      const runPromise = agent.run(new AbortController().signal, 'hi').catch((e: unknown) => e as Error);
+      // 推完整个时间预算（15 分钟）+ 余量：200 × 5s = 16m40s
+      await drainBackoff(200, 5_000);
+      const err = await runPromise;
+
+      expect(isStallError(err)).toBe(true);
+      const facts = readRetryFacts(err);
+      expect(facts).toBeDefined();
+      expect(facts?.budget).toBe('stall');
+      // 总尝试次数 = 实际发出的请求数，且远超计数预算（证明走的是时间预算）
+      expect(facts?.attempts).toBe(calls());
+      expect(facts?.attempts).toBeGreaterThan(MAX_RETRIES + 1);
+      expect(facts?.elapsedMs).toBeGreaterThanOrEqual(STALL_RETRY_BUDGET_MS);
+      expect(describeRetryFacts(facts)).toMatch(/（已自动重试 \d+ 次，历时 \d+m\d\ds）/);
     } finally {
       vi.useRealTimers();
     }
