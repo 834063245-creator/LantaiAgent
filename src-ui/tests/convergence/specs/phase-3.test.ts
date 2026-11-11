@@ -16,7 +16,7 @@
 // 人类审批流程（Phase 3 目的即 wiring 收敛，漂移是预期产物）。
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import * as ts from 'typescript';
+import * as ts from 'typescript-legacy';
 import { describe, expect, it } from 'vitest';
 import { AgentContext } from '../../../src/agent/context';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';

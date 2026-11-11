@@ -9,7 +9,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as ts from 'typescript';
+import * as ts from 'typescript-legacy';
 
 export interface WiringFacts {
   configReads: string[];

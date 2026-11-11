@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite",
-    "build": "node ../scripts/build-builtin-plugins.mjs && tsc --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
+    "build": "node ../scripts/build-builtin-plugins.mjs && node ./node_modules/typescript/bin/tsc --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
     "build:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs",
     "watch:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs --watch",
     "check:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs --check",
@@ -78,7 +78,8 @@
     "cross-env": "^10.1.0",
     "jsdom": "^29.1.1",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
+    "typescript-legacy": "npm:typescript@^6.0.3",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
   },

@@ -23,7 +23,7 @@
 //   既有 baseline，同决策 #14）。
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import * as ts from 'typescript';
+import * as ts from 'typescript-legacy';
 import { describe, expect, it } from 'vitest';
 import { AgentBlueprint } from '../../../src/agent/blueprint';
 import { AgentContext } from '../../../src/agent/context';

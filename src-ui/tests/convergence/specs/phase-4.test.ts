@@ -11,7 +11,7 @@
 //   在同一次 gate check 比对；dispose_steps 变化走 baseline-change-request 审批。
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import * as ts from 'typescript';
+import * as ts from 'typescript-legacy';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { ToolRegistry } from '../../../src/agent/tool';

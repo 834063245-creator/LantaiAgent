@@ -19,7 +19,7 @@ import { installCompactionForTest } from '../../helpers/compaction-impl';
 installCompactionForTest();
 
 import path from 'node:path';
-import * as ts from 'typescript';
+import * as ts from 'typescript-legacy';
 import { describe, expect, it } from 'vitest';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { SESSION_EVENT_KINDS, SessionLog } from '../../../src/agent/session-log';
