@@ -22,6 +22,11 @@
 //     abort」（连接级事实），本模块管「这一轮还有没有在动」（运行级事实）。
 //     两件事混在一起，慢模型会先被 30s 那层误杀，而真正挂死的 await 仍旧没人管。
 //
+//   - **豁免（await）**：`pauseWhileAwaitingUser` —— 提问卡/等人作答期间**冻结**
+//     无进展计时（2026-10-31 用户拍板）。判据不是「有没有脉搏」，而是「这一轮是不是
+//     在等用户」：用户在答题 ≠ 链路卡死。恢复时把挂起时长从计时里扣除（不白送）。
+//     ⚠️ 不许用「打脉搏」冒充豁免——那会把最后进展诊断口径污染成假事实。
+//
 //   - **阈值**：`NO_PROGRESS_WARN_MS`（默认 5min，只报警不动刀）与
 //     `RUN_ABANDON_MS`（默认 20min，硬截止 = 作废该轮）。**无进展**语义而非绝对
 //     截止 —— 每 4 分钟吐一个 token 的慢模型照常活到正常结束（脉搏含 chunk 到达）；
@@ -129,6 +134,11 @@ export class RunPulse {
   private _lastAt = Date.now();
   private _warned = false;
   private _timer: ReturnType<typeof setInterval> | undefined;
+  /** 「本轮在等人」的挂起层数（并发提问可多层，2026-10-31）。> 0 时无进展计时
+   *  **冻结**：用户在答题，不是链路卡死。恢复时把挂起时长从计时里扣除。 */
+  private _awaitDepth = 0;
+  /** 最外层挂起的起点（`_awaitDepth` 0 → 1 时记）。 */
+  private _awaitStartedAt = 0;
   /** 注册键（本次运行的 signal）—— `pulseOf` 按它寻址。 */
   private _signal: AbortSignal | null = null;
   /** 作废收尾钩子（顺序：栅栏 → abort → 记账作废）——见 `Agent.run()` 的注入。 */
@@ -171,7 +181,10 @@ export class RunPulse {
   }
 
   get noProgressMs(): number {
-    return Date.now() - this._lastAt;
+    const now = Date.now();
+    // 挂起中：以「挂起起点」为结算点（等价于到此刻为止都没动）
+    const frozen = this._awaitDepth > 0 ? now - this._awaitStartedAt : 0;
+    return now - this._lastAt - frozen;
   }
 
   /** 绑定本次运行的 signal（登记进 `pulseOf` 的可寻址面）。 */
@@ -193,6 +206,29 @@ export class RunPulse {
     this.pulse(kind);
   }
 
+  /** 进入「等人」态：冻结无进展计时（**引用计数**——同一轮可能有多个提问卡并行）。
+   *  ⚠️ 与脉搏的区别：脉搏说「有东西在动」，挂起说「什么都没有在动，但是在等用户」。
+   *  两者都让看门狗不动刀，语义不同：前者是进展，后者是**豁免**。
+   *  已作废的轮不再挂起（作废是既成事实，冻结也回不来）。 */
+  suspendForAwait(): void {
+    if (this._abandoned) return;
+    if (this._awaitDepth++ === 0) this._awaitStartedAt = Date.now();
+  }
+
+  /** 退出「等人」态：把挂起时长从无进展计时里扣除（幂等——多余调用不欠账）。 */
+  resumeFromAwait(): void {
+    if (this._awaitDepth === 0) return;
+    if (--this._awaitDepth === 0) {
+      this._lastAt += Date.now() - this._awaitStartedAt;
+      this._awaitStartedAt = 0;
+    }
+  }
+
+  /** 本轮此刻是否挂在「等人」上（诊断/测试读口）。 */
+  get awaitingUser(): boolean {
+    return this._awaitDepth > 0;
+  }
+
   /** 硬截止承诺 —— `Agent.run()` 与 `runLoop` 竞速。 */
   get deadline(): Promise<never> {
     return this.done;
@@ -200,6 +236,9 @@ export class RunPulse {
 
   private _tick(): void {
     if (this._abandoned) return;
+    // 等人期间不计无进展（2026-10-31 用户拍板：宁可等，不许替用户判死）。
+    // 这层豁免不产生脉搏——恢复后仍按「挂起前那一刻」继续算，不白送 20 分钟。
+    if (this._awaitDepth > 0) return;
     const quiet = Date.now() - this._lastAt;
     if (quiet >= thresholds.abandonMs) {
       this._abandon(quiet);
@@ -255,6 +294,30 @@ export function pulseOf(signal: AbortSignal): RunPulse | null {
 /** 记一次脉搏（无登记 = no-op —— 不经 `Agent.run()` 的驱动面照旧零开销）。 */
 export function beatPulse(signal: AbortSignal, kind: PulseKind): void {
   pulseRecords.get(signal)?.pulse(kind);
+}
+
+/** 「本轮在等用户」的豁免门面（2026-10-31 用户拍板：宁可等，不许替用户判死）。
+ *
+ *  用法（唯一调用面 = ask 工具）：`const resume = pauseWhileAwaitingUser(signal)` →
+ *  等用户作答 → finally `resume()`。返回的函数**幂等**（重复调用只恢复一次）。
+ *
+ *  为什么这里是豁免而不是脉搏：答题期间**什么都没有在动**是事实，往计里塞假进展会
+ *  把「最后进展」诊断口径污染成「模型数据块到达」——真挂死时读日志的人会被骗。
+ *  豁免只冻结表，不动脉搏种类，恢复后继续按挂起前那一刻计时。
+ *
+ *  边界：无 signal / 该轮未起看门狗（压缩、子 Agent 内轮、无 run 的驱动面）→ no-op，
+ *  与 `beatPulse` 同款「不实现 = 零开销」纪律。 */
+export function pauseWhileAwaitingUser(signal: AbortSignal | null | undefined): () => void {
+  if (!signal) return () => {};
+  const pulse = pulseRecords.get(signal);
+  if (!pulse) return () => {};
+  pulse.suspendForAwait();
+  let resumed = false;
+  return () => {
+    if (resumed) return;
+    resumed = true;
+    pulse.resumeFromAwait();
+  };
 }
 
 /** 是否已被看门狗作废（无登记 = false）。栅栏判据的唯一读法。 */

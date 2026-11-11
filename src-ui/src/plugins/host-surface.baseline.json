@@ -1,5 +1,5 @@
 {
-  "fingerprint": "277a3aaa",
+  "fingerprint": "b4b3acb1",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -253,6 +253,7 @@
     "parseUserMcpJson",
     "patchAssetState",
     "pauseGoal",
+    "pauseWhileAwaitingUser",
     "pickDropAnchor",
     "pickFolder",
     "planRegistry",

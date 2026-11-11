@@ -17,6 +17,7 @@ const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const defineTool = impl.defineTool;
+export const pauseWhileAwaitingUser = impl.pauseWhileAwaitingUser;
 
 export type Tool = import('./host').Tool;
 export type AskUserQuestionItem = import('./host').AskUserQuestionItem;

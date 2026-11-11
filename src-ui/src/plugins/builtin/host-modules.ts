@@ -95,6 +95,9 @@ import { registerMultiagentComm, requireMultiagentComm } from '../../agent/multi
 import { credRemove, credStore, llmDone, llmError, llmFirstByte, llmSend, panelReload } from '../../agent/obs';
 import { activePlanImplementation, registerPlanImplementation } from '../../agent/plan/plan-impl';
 import { planRegistry } from '../../agent/plan/plan-registry';
+// 批 4c-2 归家（ask 族进包）之后的追加面：ask_user 等用户作答期间冻结看门狗计时
+// （2026-10-31 用户拍板）——插件产物经 ask-domain/host.ts 取用。
+import { pauseWhileAwaitingUser } from '../../agent/run-watchdog';
 import { registerCompactionTools } from '../../agent/runtime/agent-builder';
 import { execStreamedShell } from '../../agent/runtime/queued-shell';
 import {
@@ -742,6 +745,7 @@ const faceDeps = {
   // 改用它们仍住内核的依赖面（defineTool / Tool 类型 / 域私有内核函数）。
   SubAgentStatus,
   defineTool,
+  pauseWhileAwaitingUser,
   isAbsolutePath,
   ownerContext,
   resolveAgainstRoot,

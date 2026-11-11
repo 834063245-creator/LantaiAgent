@@ -9,7 +9,7 @@
 // 本族只取类型，不构成宿主→插件反向依赖。
 
 import { z } from 'zod';
-import { type CodingToolsUI, defineTool, type Tool } from './host';
+import { type CodingToolsUI, defineTool, pauseWhileAwaitingUser, type Tool } from './host';
 
 export function createAskUserTools(ui?: CodingToolsUI): Tool[] {
   return [
@@ -77,55 +77,63 @@ export function createAskUserTools(ui?: CodingToolsUI): Tool[] {
           ),
       }),
       readOnly: true,
-      execute: async (args) => {
-        if (!ui?.askUser) {
-          return JSON.stringify({ answer: null, error: 'ask_user 不可用：UI 未接线' });
-        }
-        const batch = Array.isArray(args.questions) && args.questions.length > 0 ? args.questions : null;
-        if (!batch && !args.question) {
-          return JSON.stringify({ error: 'ask_user: 需要提供 question（单问）或 questions（多问）' });
-        }
-        // 发起 Agent 身份（executor 注入的 _owner_id meta key——不在 zod 类型内，
-        // 见 define-tool 注释的 meta key 约定）——UI 路由提问卡到所属卷
-        const agentId =
-          typeof (args as { _owner_id?: unknown })._owner_id === 'string'
-            ? ((args as { _owner_id?: unknown })._owner_id as string)
-            : undefined;
-        // 批量：一次推全部 questions，UI 渲成分页表单一次性收集；取消 → 整批 null
-        if (batch) {
-          const answers = await new Promise<(string[] | null)[] | null>((resolve) => {
+      execute: async (args, _onProgress, signal) => {
+        // 等用户作答期间**冻结看门狗**（2026-10-31 用户拍板：宁可等，不许替用户判死）。
+        // 覆盖整个 execute：本工具从入口到出口的全部工作就是「问人 + 等人答」，
+        // 用户思考多久都算活着；收口点仍是停止本轮 / 切工作区 / 卡架卸载（都按取消回调）。
+        const resumeWatchdog = pauseWhileAwaitingUser(signal);
+        try {
+          if (!ui?.askUser) {
+            return JSON.stringify({ answer: null, error: 'ask_user 不可用：UI 未接线' });
+          }
+          const batch = Array.isArray(args.questions) && args.questions.length > 0 ? args.questions : null;
+          if (!batch && !args.question) {
+            return JSON.stringify({ error: 'ask_user: 需要提供 question（单问）或 questions（多问）' });
+          }
+          // 发起 Agent 身份（executor 注入的 _owner_id meta key——不在 zod 类型内，
+          // 见 define-tool 注释的 meta key 约定）——UI 路由提问卡到所属卷
+          const agentId =
+            typeof (args as { _owner_id?: unknown })._owner_id === 'string'
+              ? ((args as { _owner_id?: unknown })._owner_id as string)
+              : undefined;
+          // 批量：一次推全部 questions，UI 渲成分页表单一次性收集；取消 → 整批 null
+          if (batch) {
+            const answers = await new Promise<(string[] | null)[] | null>((resolve) => {
+              ui.askUser?.({
+                id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                agentId,
+                questions: batch,
+                callback: (res) => resolve(Array.isArray(res) ? (res as (string[] | null)[]) : null),
+              });
+            });
+            if (answers === null) return JSON.stringify({ answer: null });
+            // 返回与 questions 对齐：多选 → label 数组；单选/开放式 → 字符串；未答 → null
+            return JSON.stringify({
+              answers: answers.map((a, i) => {
+                if (a === null) return null;
+                const multi = (batch[i].options?.length ?? 0) > 0 && !!batch[i].multiSelect;
+                return multi ? a : (a[0] ?? null);
+              }),
+            });
+          }
+          // 单问（含开放式：options 省略）
+          const multi = (args.options?.length ?? 0) > 0 && !!args.multiSelect;
+          const ans = await new Promise<string[] | null>((resolve) => {
             ui.askUser?.({
               id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               agentId,
-              questions: batch,
-              callback: (res) => resolve(Array.isArray(res) ? (res as (string[] | null)[]) : null),
+              question: args.question,
+              header: args.header,
+              options: args.options ?? [],
+              multiSelect: multi,
+              callback: (res) => resolve(Array.isArray(res) ? (res as string[]) : null),
             });
           });
-          if (answers === null) return JSON.stringify({ answer: null });
-          // 返回与 questions 对齐：多选 → label 数组；单选/开放式 → 字符串；未答 → null
-          return JSON.stringify({
-            answers: answers.map((a, i) => {
-              if (a === null) return null;
-              const multi = (batch[i].options?.length ?? 0) > 0 && !!batch[i].multiSelect;
-              return multi ? a : (a[0] ?? null);
-            }),
-          });
+          if (ans === null) return JSON.stringify({ answer: null });
+          return JSON.stringify(multi ? { answers: ans } : { answer: ans[0] ?? null });
+        } finally {
+          resumeWatchdog();
         }
-        // 单问（含开放式：options 省略）
-        const multi = (args.options?.length ?? 0) > 0 && !!args.multiSelect;
-        const ans = await new Promise<string[] | null>((resolve) => {
-          ui.askUser?.({
-            id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            agentId,
-            question: args.question,
-            header: args.header,
-            options: args.options ?? [],
-            multiSelect: multi,
-            callback: (res) => resolve(Array.isArray(res) ? (res as string[]) : null),
-          });
-        });
-        if (ans === null) return JSON.stringify({ answer: null });
-        return JSON.stringify(multi ? { answers: ans } : { answer: ans[0] ?? null });
       },
     }),
   ];
