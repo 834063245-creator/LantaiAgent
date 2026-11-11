@@ -54,7 +54,7 @@ jobs:
     env:
       RUSTC_WRAPPER: ''
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0  # git-cliff needs full history to build changelog
 
@@ -197,7 +197,7 @@ jobs:
       # "Resource not accessible by integration"（2026-09-26 实测，四腿全红）。
       # 资产统一由收尾的 attach-assets 腿串行 `gh release upload`（见文件末）。
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -214,11 +214,11 @@ jobs:
     env:
       RUSTC_WRAPPER: ''
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
@@ -237,7 +237,7 @@ jobs:
           cp target/release/hologram-engine.exe staging/hologram-engine-win32-x64.exe
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: hologram-engine-win32-x64
           path: staging/hologram-engine-win32-x64.exe
@@ -298,11 +298,11 @@ jobs:
     env:
       RUSTC_WRAPPER: ''
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0  # git-cliff needs full history to build changelog
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -440,7 +440,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
