@@ -42,7 +42,7 @@
     "bench:assembly:json": "cross-env NODE_ENV=test NODE_OPTIONS=--expose-gc vitest bench --dir tests/bench --outputJson tests/bench/baseline/assembly-baseline.json"
   },
   "dependencies": {
-    "@chenglou/pretext": "^0.0.8",
+    "@chenglou/pretext": "^1.0.0",
     "@react-aria/combobox": "^3.16.1",
     "@react-aria/i18n": "^3.13.1",
     "@react-aria/listbox": "^3.16.1",
