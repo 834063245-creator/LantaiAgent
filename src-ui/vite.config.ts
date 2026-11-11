@@ -141,9 +141,14 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          monaco: ['monaco-editor'],
-          three: ['three'],
+        // vite 8（rolldown 内核）只认函数形式的 manualChunks：
+        // 对象形式（{ monaco: [...], three: [...] }）会直接 build 失败
+        // （`Invalid type: Expected Function but received Object`），
+        // 语义按 id 归类，与原先「整包单独成 chunk」等价。
+        manualChunks(id: string) {
+          if (/[\\/]node_modules[\\/](monaco-editor|monaco-editor-core)[\\/]/.test(id)) return 'monaco';
+          if (/[\\/]node_modules[\\/]three[\\/]/.test(id)) return 'three';
+          return undefined;
         },
       },
     },
