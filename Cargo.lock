@@ -1587,7 +1587,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hologram-engine"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "chrono",
  "hologram-graph",
@@ -1645,7 +1645,7 @@ dependencies = [
 
 [[package]]
 name = "hologram-graph"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "serde",
  "serde_json",
@@ -1653,7 +1653,7 @@ dependencies = [
 
 [[package]]
 name = "hologram-storage"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "bincode",
  "chrono",
@@ -1670,7 +1670,7 @@ dependencies = [
 
 [[package]]
 name = "hologram-vector"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "bincode",
  "hologram-graph",
@@ -2248,7 +2248,7 @@ dependencies = [
 
 [[package]]
 name = "lantai"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "base64 0.22.1",
  "chrono",
