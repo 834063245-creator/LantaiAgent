@@ -119,7 +119,60 @@ if (checkOnly) {
 //
 // 何时跑：显式 `--upstream`（手动查），或 release.yml 里那条 continue-on-error 的提醒步。
 // **刻意不挂进 build.cmd / `--check`**：那样每次构建都要联网，离线构建还得干等超时。
+//
+// ── 通道纪律（2026-11-11 重写：先重定向、后 API）────────────────────────────
+// 此前唯一通道是 GitHub **API**，而它是**按 IP 限量**的匿名接口：受限网络/共享出口下
+// 连续几次就 403 rate limit ⇒ 本开关静默降级成「无法查询…已跳过」，**在最长需要它的
+// 环境里永远不响**（2026-11-11 实测：API 403，而同一台机器上 release 页重定向 302 正常）。
+// 现在首选 **`/releases/latest` 的重定向**（同样表示「最新非预发布版」，不占 API 配额），
+// API 退为备用通道；每条通道各有 node / curl 两种实现（node 自带 CA 包 vs 系统证书库、
+// schannel 吊销检查——本机这类 TLS 怪癖已在下方 --check 段实测记录过）。
 const UPSTREAM_API = 'https://api.github.com/repos/iOfficeAI/OfficeCLI/releases/latest';
+const UPSTREAM_LATEST = 'https://github.com/iOfficeAI/OfficeCLI/releases/latest';
+
+/** 从 `…/releases/tag/v1.0.160` 取 tag；不含 tag 段（如被改写成别的地址）→ null。 */
+function tagFromLocation(location) {
+  const m = /\/releases\/tag\/([^/?#]+)/.exec(location ?? '');
+  if (!m?.[1]) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
+/** 通道 1：node https 读重定向的 Location（**不自动跟随**——跟到底只是一页 HTML）。 */
+function nodeRedirectTag() {
+  return new Promise((res, rej) => {
+    const req = get(
+      UPSTREAM_LATEST,
+      { headers: { 'user-agent': 'lantai-build' }, timeout: 8000 },
+      (r) => {
+        r.resume();
+        const status = r.statusCode ?? 0;
+        const tag =
+          status >= 300 && status < 400 ? tagFromLocation(String(r.headers.location ?? '')) : null;
+        if (tag) res(tag);
+        else rej(new Error(`HTTP ${status}（无 Location tag）`));
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error('连接超时')));
+    req.on('error', rej);
+  });
+}
+
+/** 通道 3：curl 读重定向头（`--ssl-no-revoke` 绕开 schannel 吊销检查——受限网络下的常态）。 */
+function curlRedirectTag() {
+  const out = execFileSync(
+    'curl',
+    ['-sSI', '--ssl-no-revoke', '--max-time', '10', '-A', 'lantai-build', UPSTREAM_LATEST],
+    { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] },
+  );
+  const m = /^location:\s*(\S+)/im.exec(out);
+  const tag = tagFromLocation(m?.[1]);
+  if (!tag) throw new Error('响应头里没有 Location tag');
+  return Promise.resolve(tag);
+}
 
 /** 版本号比较：a 比 b 新则 true（按点分数字段比，**不能按字典序**——'1.0.9' < '1.0.10'）。 */
 function isNewer(a, b) {
@@ -136,70 +189,83 @@ function isNewer(a, b) {
   return false;
 }
 
-/** 取上游最新 tag（返回 tag 字符串；两条通道都失败返回 null——**从不抛**）。 */
-async function latestUpstreamTag() {
-  // 通道 1：node https（自带 CA 包）
-  try {
-    const tag = await new Promise((res, rej) => {
-      const req = get(
-        UPSTREAM_API,
-        { headers: { 'user-agent': 'lantai-build' }, timeout: 8000 },
-        (r) => {
-          if (r.statusCode !== 200) {
-            r.resume();
-            rej(new Error(`HTTP ${r.statusCode}`));
-            return;
+/** 通道 2：node https 读 API 的 `tag_name`（重定向被中间设备改写时兜底；匿名按 IP 限量）。 */
+function nodeApiTag() {
+  return new Promise((res, rej) => {
+    const req = get(
+      UPSTREAM_API,
+      { headers: { 'user-agent': 'lantai-build' }, timeout: 8000 },
+      (r) => {
+        if (r.statusCode !== 200) {
+          r.resume();
+          rej(new Error(`HTTP ${r.statusCode}`));
+          return;
+        }
+        let body = '';
+        r.setEncoding('utf8');
+        r.on('data', (c) => {
+          body += c;
+        });
+        r.on('end', () => {
+          try {
+            const tag = JSON.parse(body).tag_name ?? null;
+            if (tag) res(tag);
+            else rej(new Error('响应里没有 tag_name'));
+          } catch (e) {
+            rej(e);
           }
-          let body = '';
-          r.setEncoding('utf8');
-          r.on('data', (c) => {
-            body += c;
-          });
-          r.on('end', () => {
-            try {
-              res(JSON.parse(body).tag_name ?? null);
-            } catch (e) {
-              rej(e);
-            }
-          });
-        },
-      );
-      req.on('timeout', () => req.destroy(new Error('连接超时')));
-      req.on('error', rej);
-    });
-    if (tag) return { tag, via: 'node' };
-  } catch {
-    // 落到通道 2（常见于本机 TLS 链的根不在 node 自带 CA 包里的情形）
-  }
-  // 通道 2：curl 兜底（`--ssl-no-revoke` 绕开 schannel 吊销检查——受限网络下的常态）
-  try {
-    const out = execFileSync(
-      'curl',
-      [
-        '-sS',
-        '--ssl-no-revoke',
-        '--max-time',
-        '10',
-        '-H',
-        'user-agent: lantai-build',
-        UPSTREAM_API,
-      ],
-      // stderr 一律丢弃：这只是"顺手查一下上游"的提醒通道，它的报错不该在构建日志里
-      // 喧宾夺主（探测失败由下方统一降级为一句「无法查询…已跳过」）。
-      { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] },
+        });
+      },
     );
-    const tag = JSON.parse(out).tag_name ?? null;
-    if (tag) return { tag, via: 'curl' };
-  } catch {
-    // 两条都不通
+    req.on('timeout', () => req.destroy(new Error('连接超时')));
+    req.on('error', rej);
+  });
+}
+
+/** 通道 4：curl 读 API（同 3 的 TLS 规避；配额与 2 同源，纯兜底）。 */
+function curlApiTag() {
+  const out = execFileSync(
+    'curl',
+    ['-sS', '--ssl-no-revoke', '--max-time', '10', '-H', 'user-agent: lantai-build', UPSTREAM_API],
+    // stderr 一律丢弃：这只是"顺手查一下上游"的提醒通道，它的报错不该在构建日志里
+    // 喧宾夺主（探测失败由下方统一降级——但**逐条原因要报出来**，静默即前病灶）。
+    { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] },
+  );
+  const tag = JSON.parse(out).tag_name ?? null;
+  if (!tag) throw new Error('响应里没有 tag_name');
+  return Promise.resolve(tag);
+}
+
+/** 通道梯（**顺序即语义**：不占配额的先跑，受限额/受限网络拖累的兜底放后面）。 */
+const UPSTREAM_CHANNELS = [
+  ['node 重定向', nodeRedirectTag],
+  ['node API', nodeApiTag],
+  ['curl 重定向', curlRedirectTag],
+  ['curl API', curlApiTag],
+];
+
+/** 取上游最新 tag —— 返回 `{ tag, via }`；四条通道全失败返回 `{ tag: null, tried }`（**从不抛**）。
+ *  `tried` 是逐条失败原因：降级提示要把它印出来，否则「查不到」和「查到了没变」在日志里同形。 */
+async function latestUpstreamTag() {
+  const tried = [];
+  for (const [via, probe] of UPSTREAM_CHANNELS) {
+    try {
+      const tag = await probe();
+      if (tag) return { tag, via };
+      tried.push(`${via}: 空响应`);
+    } catch (e) {
+      tried.push(`${via}: ${e?.message ?? e}`);
+    }
   }
-  return null;
+  return { tag: null, tried };
 }
 
 if (upstreamOnly) {
   const found = await latestUpstreamTag();
-  if (!found) {
-    log('无法查询上游最新版（网络 / TLS 均不可达）——已跳过，不影响任何流程。');
+  if (!found.tag) {
+    log('无法查询上游最新版（四条通道全不通）——已跳过，不影响任何流程。');
+    // 逐条原因必须印出来：静默跳过正是本开关之前的病灶（2026-11-11 修）
+    for (const why of found.tried) log(`  · ${why}`);
     log(
       '  · 若报证书类错误，本机可试：node --use-system-ca scripts/fetch-officecli.mjs --upstream',
     );
