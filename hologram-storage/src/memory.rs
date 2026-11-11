@@ -785,7 +785,7 @@ impl MemoryIndex {
     pub fn save_snapshot(&self, project_root: &Path, token: &str) -> Result<(), String> {
         let t = std::time::Instant::now();
         let snap = to_snapshot(self);
-        let payload = bincode::serialize(&snap)
+        let payload = bincode::serde::encode_to_vec(&snap, bincode::config::standard())
             .map_err(|e| format!("snapshot serialize: {}", e))?;
         let mut bytes = crate::snapshot::encode_snapshot_header(token);
         bytes.extend_from_slice(&payload);
@@ -818,8 +818,13 @@ impl MemoryIndex {
         let bytes = std::fs::read(&path)
             .map_err(|e| format!("snapshot read {}: {}", path.display(), e))?;
         let (_token, offset) = crate::snapshot::parse_snapshot_header(&bytes)?;
-        let snap: MemoryIndexSnapshot = bincode::deserialize(&bytes[offset..])
-            .map_err(|e| format!("snapshot deserialize: {}", e))?;
+        // bincode 3 起 serde 集成走显式 API（encode_to_vec / decode_from_slice）：
+        // 1.3 的 `serialize` / `deserialize` 扁平函数已删，且默认编码从定长
+        // little-endian 换成 varint（standard）——**旧快照文件读不进来**，
+        // 下面 Err 会让调用方删快照、回退 SQLite 重建（既有降级路径不变）。
+        let (snap, _consumed): (MemoryIndexSnapshot, usize) =
+            bincode::serde::decode_from_slice(&bytes[offset..], bincode::config::standard())
+                .map_err(|e| format!("snapshot deserialize: {}", e))?;
         let idx = from_snapshot(snap);
         eprintln!(
             "[snapshot] load_snapshot: {:.1}s ({} nodes, {} edges)",

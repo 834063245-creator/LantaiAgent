@@ -389,7 +389,8 @@ mod tests {
         // 无头部旧格式（R9 初版：裸 bincode，开头是 arena 长度 u64）→ Err。
         // 旧文件前 8 字节被当成 token 长度时偶可读出 NUL 串，
         // 形状校验必须把它挡在「损坏」一侧。
-        let legacy = bincode::serialize(&crate::memory::to_snapshot(&idx)).unwrap();
+        let legacy =
+            bincode::serde::encode_to_vec(&crate::memory::to_snapshot(&idx), bincode::config::standard()).unwrap();
         std::fs::write(snapshot_path(&tmp), &legacy).unwrap();
         assert!(
             peek_snapshot_token(&snapshot_path(&tmp)).is_err(),

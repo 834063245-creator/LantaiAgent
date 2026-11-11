@@ -584,8 +584,9 @@ mod tests {
             store.swap_index(small_index());
             store.save().unwrap(); // 小图 < 默认阈值 → SQLite 路径，db 有数据
             // 手写 R9 初版格式：裸 bincode payload（无 token 头部）
-            let legacy = store
-                .read(|idx| bincode::serialize(&crate::memory::to_snapshot(idx)).unwrap());
+            let legacy = store.read(|idx| {
+                bincode::serde::encode_to_vec(&crate::memory::to_snapshot(idx), bincode::config::standard()).unwrap()
+            });
             std::fs::write(snapshot_path(&tmp), &legacy).unwrap();
         }
 
