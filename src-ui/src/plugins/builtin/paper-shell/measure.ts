@@ -91,9 +91,12 @@ export const PAPER_TOOL_LINE_HEIGHT = cssUsedPx(PAPER_TYPE.tool.size * PAPER_TYP
 export const PAPER_OUT_FONT = `${PAPER_TYPE.out.size}px ${FONT_STACKS[PAPER_TYPE.out.stack]}`;
 export const PAPER_OUT_LINE_HEIGHT = cssUsedPx(PAPER_TYPE.out.size * PAPER_TYPE.out.lh);
 
-/** 正文段距（2026-08-30 markdown 专项改版：17px/行距 2.0 下 10px 段距比行距
- *  还小、段落黏连——提到 14px；.pp-md-p margin-bottom 镜像）。 */
+/** 正文段距（2026-11 首行缩进批：14 → 6——段落分隔改由首行缩进 2em 承担，
+ *  缩进与大段距叠加 = 双重留白；.pp-md-p margin-bottom 镜像）。 */
 export const MD_P_GAP = MD_TOKENS.pGap;
+/** 正文段落首行缩进（字符数；token 单一真源 = MD_TOKENS.pIndentEm）。
+ *  只对**正文流**段落生效——引文 / 子列表内的段落归零（CSS 同名排除规则）。 */
+const MD_P_INDENT_CHARS = MD_TOKENS.pIndentEm;
 
 /** 正文字号（PAPER_BODY_FONT 同源拆出——rich 字体合成用）。 */
 const BODY_SIZE = PAPER_TYPE.body.size;
@@ -210,14 +213,30 @@ function mdRichItems(inl: MdInline[], size: number, stack: string): RichInlineIt
   });
 }
 
-function measureInlineHeight(inl: MdInline[], width: number, size: number, stack: string, lineHeight: number): number {
+function measureInlineHeight(
+  inl: MdInline[],
+  width: number,
+  size: number,
+  stack: string,
+  lineHeight: number,
+  firstLineIndentChars = 0,
+): number {
   const text = mdPlainText(inl);
   if (!text) return 0;
   if (mdHasRichInline(inl)) {
-    // P3：富行内逐片段精确——width 原样（不打折）
-    return measureRichItemsHeight(mdRichItems(inl, size, stack), Math.max(80, width), lineHeight);
+    // P3：富行内逐片段精确——width 原样（不打折）。
+    // 首行缩进：rich-inline 没有「首行窄宽」参数 ⇒ 全段按窄宽测（保守高估）。
+    // 富行内段落（加粗/行内码/行内公式）占比低、段长有界，误差方向安全（多算
+    // 空白，不压字）。
+    const richW = firstLineIndentChars > 0 ? width - firstLineIndentChars * size : width;
+    return measureRichItemsHeight(mdRichItems(inl, size, stack), Math.max(80, richW), lineHeight);
   }
-  return measureTextHeight(text, width, `${size}px ${stack}`, lineHeight);
+  // 首行缩进（2026-11 首行缩进批）：文本前缀同值个全角空格——1 个全角 = 1em =
+  // 本字号宽，pretext 按字形折行 ⇒ 前缀与 CSS `text-indent: Nem` 折行行为等价
+  // （首行可用宽自动少这么多，后续行不受影响）。空文本已在上面拦截，不会测出
+  // 「只有缩进」的假高度。
+  const measured = firstLineIndentChars > 0 ? `${'\u3000'.repeat(firstLineIndentChars)}${text}` : text;
+  return measureTextHeight(measured, width, `${size}px ${stack}`, lineHeight);
 }
 
 /* ── 折叠行（2026-08-30 折叠机制；.pp-fold 镜像）── */
@@ -1618,6 +1637,9 @@ function measureMdElement(
   last: boolean,
   y0: number,
   inset0: number,
+  /** 本元素在**正文流**里（true）还是结构化子版式里（false）——
+   *  只影响段落首行缩进：引文与子列表内的段落不缩两字。 */
+  indentFirst: boolean,
 ): { h: number; ink: InkSource[] } {
   const none = { h: 0, ink: [] as InkSource[] };
   /** 纯文本墨源（正文族/标题族共用：走查产出的 y 即元素顶 + 元素内上距）。
@@ -1631,8 +1653,16 @@ function measureMdElement(
   };
   switch (el.t) {
     case 'p': {
-      const h = measureInlineHeight(el.inl, w, BODY_SIZE, SONG_STACK, PAPER_BODY_LINE_HEIGHT);
       if (!el.inl.length || mdPlainText(el.inl).length === 0) return none;
+      // 首行缩进只属于正文流（indentFirst）——引文/子列表内的段落不缩（CSS 同款）。
+      const h = measureInlineHeight(
+        el.inl,
+        w,
+        BODY_SIZE,
+        SONG_STACK,
+        PAPER_BODY_LINE_HEIGHT,
+        indentFirst ? MD_P_INDENT_CHARS : 0,
+      );
       return { h: h + (last ? 0 : MD_P_GAP), ink: piece(el.inl, BODY_SIZE, PAPER_BODY_LINE_HEIGHT, y0, inset0) };
     }
     case 'h': {
@@ -1662,6 +1692,7 @@ function measureMdElement(
             w - MD_LI_INDENT - MD_SUB_INDENT,
             subY + MD_SUB_TOP,
             inset0 + MD_LI_INDENT + MD_SUB_INDENT,
+            false, // 子列表 = 结构化子版式：段落不吃首行缩进（CSS 同款排除）
           );
           ih += MD_SUB_TOP + sub.h;
           ink.push(...sub.ink);
@@ -1675,7 +1706,8 @@ function measureMdElement(
     }
     case 'quote': {
       // 引用：上下内距把内容压低、左内距缩进（DOM .pp-md-quote padding/border）。
-      const sub = measureMdBlocks(el.blocks, w - MD_QUOTE_INSET, y0 + MD_QUOTE_PAD_V, inset0 + MD_QUOTE_INSET);
+      // 引文段落不吃首行缩进（引用原文版式原样保留，CSS 同款排除）。
+      const sub = measureMdBlocks(el.blocks, w - MD_QUOTE_INSET, y0 + MD_QUOTE_PAD_V, inset0 + MD_QUOTE_INSET, false);
       return { h: MD_QUOTE_PAD_V + sub.h + (last ? 0 : MD_QUOTE_GAP), ink: sub.ink };
     }
     case 'code': {
@@ -1760,12 +1792,19 @@ function measureMdElement(
 /** markdown 块序列：总高 + 各元素墨源（同一趟走查——纵向几何单一产出者）。
  *  y0/inset0 = 本序列起点的纵向偏移 / 横向内缩（父级累积，顶层均 0）。
  *  高度语义与旧版逐字一致（墨迹重做不动测高：只多带出一份 y）。 */
-export function measureMdBlocks(blocks: MdBlock[], w: number, y0 = 0, inset0 = 0): { h: number; ink: InkSource[] } {
+export function measureMdBlocks(
+  blocks: MdBlock[],
+  w: number,
+  y0 = 0,
+  inset0 = 0,
+  /** 正文流标记：顶层正文 = true（段落吃首行缩进）；引文/子列表递归时传 false。 */
+  indentFirst = true,
+): { h: number; ink: InkSource[] } {
   let total = 0;
   let y = y0;
   const ink: InkSource[] = [];
   for (let k = 0; k < blocks.length; k++) {
-    const r = measureMdElement(blocks[k], w, k === blocks.length - 1, y, inset0);
+    const r = measureMdElement(blocks[k], w, k === blocks.length - 1, y, inset0, indentFirst);
     total += r.h;
     y += r.h;
     ink.push(...r.ink);

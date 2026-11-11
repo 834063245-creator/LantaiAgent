@@ -82,7 +82,13 @@ export const PAPER_TYPE = {
 
 /* ── markdown 子版式（CSS 侧 .pp-md-* 镜像）── */
 export const MD_TOKENS = {
-  pGap: 14, // .pp-md-p margin-bottom
+  /* 正文段落（2026-11 首行缩进批，用户拍板「书籍式」）：
+   * 中文书籍的段落分隔靠**首行缩两字**承担，段距就该收回去（旧值 14 =
+   * 「顶格 + 大段距」的网页惯例，与纸面的宋体/2.0 行距/注疏案卷气质不符）。
+   * 两者叠加 = 双重留白（缩进 + 14px 空档），整页发散——故同一批里同时改：
+   * 缩进 2em + 段距 14 → 6。 */
+  pGap: 6, // .pp-md-p margin-bottom（首行缩进批：14 → 6）
+  pIndentEm: 2, // .pp-md-p text-indent（2 字符 = 中文书籍首行缩进；em 随正文字号/缩放走）
   h: [
     { size: sz(20), lh: 1.5, pt: 22, pb: 10 }, // h1
     { size: sz(18), lh: 1.6, pt: 20, pb: 8 }, // h2
@@ -783,6 +789,9 @@ function collectCssVars(): VarSpec[] {
     push(`type-${k}-lh`, String(v.lh));
   }
   push('md-p-gap', px(MD_TOKENS.pGap));
+  // 首行缩进用 em（相对当前字号）：字号随 --font-scale 缩放时缩进同比跟随，
+  // 无需在 CSS 里写死 px；测量端用同值个全角空格前缀折行（见 measure.ts）。
+  push('md-p-indent', `${MD_TOKENS.pIndentEm}em`);
   for (const [i, h] of MD_TOKENS.h.entries()) {
     const n = i + 1;
     push(`md-h${n}-size`, px(h.size));

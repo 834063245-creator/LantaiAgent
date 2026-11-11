@@ -53,7 +53,7 @@ import {
   sliceSelection,
   tryMakeStripFromSelection,
 } from '../src/plugins/builtin/paper-shell/selection';
-import { cssUsedPx } from '../src/plugins/builtin/paper-shell/type-tokens';
+import { cssUsedPx, MD_TOKENS, PAPER_TYPE } from '../src/plugins/builtin/paper-shell/type-tokens';
 import {
   type FlowGeom,
   type PinnedGeom,
@@ -170,8 +170,8 @@ describe('paper/measure', () => {
     expect(lay.get('u')?.y).toBe(-100 - 8 - 50);
     // u 头顶（u 顶到 a 底）：blockGap 48 + userLeadGap 24 = 72 → a 顶 = -158 - 72 - 100 = -330
     expect(lay.get('a')?.y).toBe(-100 - 8 - 50 - 48 - 24 - 100);
-    // 双换行分段：两段各 36 + 段距 14（2026-08-30 markdown 专项：10→14）
-    expect(measureBlockHeight(block('markdown', { text: 'p1\n\np2' }))).toBe(36 + 14 + 36);
+    // 双换行分段：两段各 36 + 段距（2026-11 首行缩进批：段落分隔改由缩进承担，14 → 6）
+    expect(measureBlockHeight(block('markdown', { text: 'p1\n\np2' }))).toBe(36 + MD_TOKENS.pGap + 36);
   });
 
   it('PRE_MAX_H/OUT_MAX_H 截断路径：mock 返超高时封顶生效（滚动不占高）', () => {
@@ -492,13 +492,16 @@ describe('paper/measure 富行内（P3）', () => {
     resetBlockIdCounterForTests();
   });
 
-  it('富行内走 rich 路径且宽度不打折（0.96 偏窄系数死刑验证）', () => {
+  it('富行内走 rich 路径且宽度只让首行缩进（0.96 偏窄系数仍死）', () => {
     const b = block('markdown', { text: '一段**加粗**正文' });
     measureBlockHeight(b);
     expect(prepareRichMock).toHaveBeenCalledTimes(1);
     expect(layoutMock).not.toHaveBeenCalled(); // 富标志不再落回纯文本近似路
     const widthArg = richStatsMock.mock.calls[0][1];
-    expect(widthArg).toBe(b.w); // 段落原宽——不再 ×0.96
+    // 原宽 − 首行缩进（2 字符 × 正文字号）。rich-inline 没有「首行窄宽」参数 ⇒
+    // 全段按窄宽保守估（多算空白、不压字）。与已退役的 0.96 系数无关：
+    // 那是**无依据的**全段打折，这里是有据可依的首行让位。
+    expect(widthArg).toBe(b.w - MD_TOKENS.pIndentEm * PAPER_TYPE.body.size);
   });
 
   it('纯文本仍走 prepare+layout 旧路（rich 零接触，存量语义不变）', () => {

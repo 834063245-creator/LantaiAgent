@@ -370,10 +370,6 @@
   font-weight: 600;
 }
 
-/* 正文段落间距（2026-08-30 markdown 专项）：.pp-md-p margin-bottom 14
- * （17px/行距 2.0 下 10px 段距比行距还小、段落黏连——提到 14）。
- * 测量镜像 measure.ts MD_P_GAP。 */
-
 /* ── 正文（markdown）：宋体主角 + 结构化子版式（2026-08-30 专项）──
  * 版式常量与 measure.ts MD_* 逐字镜像（改版式两处同步）；
  * 结构模型与测量共用 paper/markdown.ts 的 parseMarkdown（同源防漂移）。
@@ -395,6 +391,17 @@
 
 .pp-md-p {
   margin: 0 0 var(--pp-md-p-gap);
+  text-indent: var(--pp-md-p-indent);
+}
+
+/* 首行缩进只属于「正文流」：引文与子列表是结构化子版式——
+ * 引文是引用原文（缩进会与石墨左线抢位，原文版式该原样保留）；
+ * 子列表本身已按层级缩进（再缩两字 = 每层各退一格，层级关系糊掉）。
+ * 排除规则而非正向选择器：新容器默认继承「正文流」缩进，漏配时只是多缩一格，
+ * 不会静默变成「该缩的没缩」。 */
+.pp-md-quote .pp-md-p,
+.pp-md-sub .pp-md-p {
+  text-indent: 0;
 }
 
 /* 标题：padding 承担上下距（不入 margin 塌陷），宋体加粗、墨色随级加深 */

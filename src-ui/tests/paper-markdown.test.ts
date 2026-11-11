@@ -43,7 +43,7 @@ import {
   SEC_HEAD_GAP,
   SEC_HEAD_H,
 } from '../src/plugins/builtin/paper-shell/measure';
-import { CHROME_DERIVED } from '../src/plugins/builtin/paper-shell/type-tokens';
+import { CHROME_DERIVED, MD_TOKENS } from '../src/plugins/builtin/paper-shell/type-tokens';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });
@@ -246,9 +246,25 @@ describe('paper/measure — markdown 计高（mock 36/段）', () => {
     resetBlockIdCounterForTests();
   });
 
-  it('单段 = 纯文本高；双段 = 段高 + MD_P_GAP(14) + 段高', () => {
+  it('单段 = 纯文本高；双段 = 段高 + MD_P_GAP + 段高', () => {
     expect(measureBlockHeight(block('markdown', { text: '单段' }))).toBe(36);
-    expect(measureBlockHeight(block('markdown', { text: 'p1\n\np2' }))).toBe(36 + 14 + 36);
+    expect(measureBlockHeight(block('markdown', { text: 'p1\n\np2' }))).toBe(36 + MD_TOKENS.pGap + 36);
+  });
+
+  /* 首行缩进（2026-11 首行缩进批）：CSS 侧 text-indent: 2em，测量侧必须同款——
+   * 前缀两个全角空格（1 全角 = 1em = 本字号宽），折行行为等价。缺了这一半，
+   * 长段落实际换行比测得的多一行 ⇒ 块高压字。 */
+  it('正文段落首行缩进进入测量：文本带两个全角前缀（等价 text-indent: 2em）', () => {
+    measureBlockHeight(block('markdown', { text: '一段正文' }));
+    const texts = prepareMock.mock.calls.map((c) => c[0]);
+    expect(texts).toContain('\u3000\u3000一段正文');
+  });
+
+  it('引文/子列表内的段落不缩：前缀不入测量（CSS 同名排除规则）', () => {
+    measureBlockHeight(block('markdown', { text: '> 引文正文' }));
+    measureBlockHeight(block('markdown', { text: '- 甲\n  - 子项正文' }));
+    const texts = prepareMock.mock.calls.map((c) => c[0]);
+    expect(texts.some((t) => t.startsWith('\u3000'))).toBe(false);
   });
 
   it('标题计 padding 上下 + 文本；列表计条目缩进列与末项归零', () => {
