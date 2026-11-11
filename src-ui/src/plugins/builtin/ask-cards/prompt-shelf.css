@@ -2,13 +2,31 @@
 @import "../../../app/type-scale.css";
 
 /* ═══════════════════════════════════════════════════════════════
-   PROMPT SHELF — 牒卡（C9 纸面化，2026-08-22）
+   PROMPT SHELF — 牒卡（C9 纸面化 2026-08-22；A 方案整合 2026-11-07）
    隐喻：agent 是当值吏员，写文件/跑命令先递牒请示；人持朱笔。
-   权限卡 = 递上来待批的牒（朱砂系，tag「请示 · PERMIT」）；
-   问卡 = 吏员问话（石青系，tag「问询 · ASK」——石青=机）。
-   位置：输入条上方固定浮层（psh-host，bottom:96px），递出动画在
-   .prompt-shelf 上（translateY 12px→0 + 淡入，160ms）。
-   铁律遵守：朱砂=人的批改动作（落印按钮），石青=机器，墨=正文。
+   权限卡 = 递上来待批的牒（朱砂顶线，tag「请示 · 待批」）；
+   问卡 = 吏员问话（石青顶线——石青=机，机器在问人）。
+   位置：输入条上方固定浮层（psh-host，bottom 读 --composer-band），
+   递出动画在 .prompt-shelf 上（translateY 12px→0 + 淡入，--m-ink）。
+   铁律遵守：朱砂=人的批改动作（落印钮/顶线），石青=机器，墨=正文。
+
+   ── 2026-11-07 UI 迭代（用户拍板 A「整合」方向）──────────────
+   病根：信息齐了但层级没排出来——书眉与问题句同号、每个选项一个框、
+   恒高详情条空着、主动作是全卡最弱元素、键位只活在 tooltip 里。
+   治法见 PromptShelf.tsx 头注；本文件是它的版式面。三条硬约束：
+   ① 洗色用 srgb 混合，不用 --sel-wash：该 token 是
+      color-mix(in oklch, ink 7%, paper)，而 --ink-1 是 alpha 墨
+      （rgba(38,34,28,.94)），oklch 里混 alpha 会把色相推向品红——
+      实测渲染 (226,213,216)，纸是 (236,231,220)，铺在选项行上是一层淡紫。
+      本文件统一写 color-mix(in srgb, var(--ink-1) 6%, var(--paper)) = 暖墨洗。
+      （--sel-wash 本身建议另批修，全产品 20 处消费，不在这张卡里改。）
+   ② 高度不许跳：详情并进选项自身后，无悬停态也没有占位空条；
+      确认钮常驻 + disabled，不再未选就消失。
+   ③ 字阶只取 --fs-*，动效只取 --snap / --m-*（ui-type-scale / motion-contract 钉）。
+
+   ⚠ 现状对照（旧实现，保留作判据）：选项 .prompt-shelf__option 曾是
+   1px 全框 + 选中再叠 inset 2px 朱砂脊线（框里套线）；.prompt-shelf__detail
+   曾是恒高 40px 的独立详情条；.prompt-shelf__tag 曾是两个带框 chip。
    ═══════════════════════════════════════════════════════════════ */
 
 @keyframes ps-rise {
@@ -29,66 +47,76 @@
 /* ── 牒卡骨架（纸叠纸）── */
 .prompt-shelf__card {
   background: var(--paper);
-  border: var(--rule-soft);
-  border-top: 2px solid var(--seal);
-  box-shadow: var(--elev-menu); /* 2026-09-01 审计：散写投影收编 token */
-  padding: calc(13px * var(--font-scale)) calc(16px * var(--font-scale));
+  background-image: var(--laid-lines);
+  border: 1px solid var(--ink-4);
+  border-top: 2px solid var(--indigo); /* 石青顶线：机在问人 */
+  box-shadow:
+    var(--shadow-sheet),
+    0 12px 30px rgba(38, 34, 28, 0.1);
+  padding: calc(15px * var(--font-scale)) calc(18px * var(--font-scale)) calc(11px * var(--font-scale));
+}
+/* 待批的牒 = 人的动作：顶线翻朱砂 */
+.prompt-shelf__card--permit {
+  border-top-color: var(--seal);
 }
 
+/* ── 书眉：卷名 · 类型（机读位小字，一行）── */
 .prompt-shelf__head {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 12px;
 }
-
-/* tag：机读码行（mono 小字 + 分隔点） */
-.prompt-shelf__tag {
-  flex-shrink: 0;
-  display: inline-flex;
+.prompt-shelf__kicker {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 7px;
+  gap: 7px;
+  padding-top: 3px;
   font-family: var(--f-mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--seal-deep);
-  border: 1px solid color-mix(in oklch, var(--seal) 36%, transparent);
-  background: var(--seal-soft);
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
 }
-.prompt-shelf__tag--danger {
+.prompt-shelf__kicker-owner {
+  color: var(--ink-2);
+}
+.prompt-shelf__kicker-sep {
+  flex-shrink: 0;
+  width: 3px;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.5;
+}
+.prompt-shelf__kicker-kind--ask {
+  color: var(--indigo);
+}
+.prompt-shelf__kicker-kind--permit {
+  color: var(--seal-deep);
+}
+/* 分页进度（批量卡）：跟着类型色走，读作同一枚章的一部分 */
+.prompt-shelf__kicker-paging {
+  color: var(--ink-2);
+  letter-spacing: 0.1em;
+}
+/* 高危标（danger）：朱砂实底小签，只在有 danger 时出现 */
+.prompt-shelf__danger {
+  padding: 1px 6px 2px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
   color: var(--paper);
   background: var(--seal-deep);
-  border-color: var(--seal-deep);
-}
-/* 问卡 tag = 石青系（机器在问人，铁律：石青=机） */
-.prompt-shelf__tag--ask {
-  color: var(--indigo);
-  border-color: color-mix(in oklch, var(--indigo) 36%, transparent);
-  background: color-mix(in oklch, var(--indigo) 8%, transparent);
-}
-/* 归属卷徽标（2026-09-10 ask 用户侧完备化）：多卷并发「替哪卷答/批」的
- * 卷名 chip——朱砂系但退一档（去底只留边线），从属于类型 tag 不抢主标 */
-.prompt-shelf__tag--owner {
-  background: transparent;
-}
-
-.prompt-shelf__question {
-  flex: 1;
-  font-family: var(--f-song);
-  font-size: var(--fs-body);
-  color: var(--ink-1);
-  line-height: 1.55;
 }
 
 .prompt-shelf__dismiss {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px 0 0;
   padding: 0;
   background: transparent;
-  border: var(--rule-soft);
+  border: none;
   color: var(--ink-3);
   cursor: pointer;
   display: flex;
@@ -96,60 +124,85 @@
   justify-content: center;
   transition:
     background var(--snap),
-    border-color var(--snap),
     color var(--snap);
 }
 .prompt-shelf__dismiss:hover {
-  border-color: var(--ink-2);
   color: var(--ink-1);
-  background: var(--paper-deep);
+}
+/* 关闭钮里的图标自带外环（icons.ts 的 close = 圆环 + 斜线），故按钮本身
+   不再画任何框——旧实现按钮带 --rule-soft 边线，叠在图标圆环上读成「双圈」。 */
+
+/* ── 问题句：主角 ── */
+.prompt-shelf__question {
+  margin: 6px 0 calc(13px * var(--font-scale));
+  font-family: var(--f-song);
+  font-size: var(--fs-lead);
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: var(--ink-1);
+  text-wrap: pretty;
 }
 
-/* ── 问卡选项列表（文件条式）── */
+/* ── 选项：去框成行 + 方印 ── */
 .prompt-shelf__options {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 .prompt-shelf__option {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 11px;
   width: 100%;
-  padding: 8px 10px;
+  padding: calc(9px * var(--font-scale)) 10px calc(9px * var(--font-scale)) 2px;
   text-align: left;
-  font-family: var(--f-song);
-  font-size: var(--fs-body);
   background: transparent;
-  border: var(--rule-soft);
+  border: none;
+  border-top: 1px solid color-mix(in oklch, var(--ink-4) 55%, transparent);
   color: var(--ink-1);
   cursor: pointer;
   transition:
     background var(--snap),
-    border-color var(--snap),
-    box-shadow var(--snap),
-    color var(--snap);
+    box-shadow var(--snap);
 }
-.prompt-shelf__option:hover {
-  background: var(--sel-wash); /* 2026-09-01 审计：统一行型选中语言 */
-  border-color: var(--ink-3);
+.prompt-shelf__options > .prompt-shelf__option:first-child {
+  border-top: none;
+}
+/* 洗色 = 暖墨洗（srgb 混合，理由见文件头注 ①） */
+.prompt-shelf__option:hover,
+.prompt-shelf__option--on {
+  background: color-mix(in srgb, var(--ink-1) 6%, var(--paper));
 }
 .prompt-shelf__option--on {
-  background: var(--sel-wash);
-  border-color: color-mix(in oklch, var(--seal) 40%, transparent);
-  color: var(--ink-1);
   box-shadow: inset 2px 0 0 var(--seal);
 }
-.prompt-shelf__num {
+
+/* 方印：空态=空框；选中=朱砂实印（单选到此为止）。多选多了勾——「能选几个」
+ *  由书眉的「多选」一词承载，不在 14px 里塞小字（8px 汉字在 96 DPI 上是一点糊）。 */
+.prompt-shelf__mark {
   flex-shrink: 0;
-  width: 18px;
-  text-align: center;
-  font-family: var(--f-mono);
-  font-size: var(--fs-micro);
-  color: var(--ink-3);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border: 1px solid var(--ink-4);
+  color: var(--paper);
+  transition:
+    border-color var(--snap),
+    background var(--snap);
 }
-.prompt-shelf__option--on .prompt-shelf__num {
-  color: var(--seal-deep);
+.prompt-shelf__mark--on {
+  border-color: var(--seal);
+  background: var(--seal);
+}
+/* 多选的勾画在印面上（11px 档，icons.ts 的 check 是 3 点折线，够重） */
+.prompt-shelf__mark svg {
+  display: block;
+  width: 11px;
+  height: 11px;
 }
 .prompt-shelf__opt-body {
   flex: 1;
@@ -157,53 +210,54 @@
 }
 .prompt-shelf__opt-label {
   display: block;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+.prompt-shelf__option--on .prompt-shelf__opt-label {
+  font-weight: 600;
 }
 .prompt-shelf__opt-desc {
   display: block;
   margin-top: 2px;
   font-size: var(--fs-caption);
+  line-height: 1.6;
   color: var(--ink-2);
+  text-wrap: pretty;
 }
-.prompt-shelf__check {
+/* 序号退到行尾当注记（旧实现摆在最左，与方印抢同一格） */
+.prompt-shelf__num {
   flex-shrink: 0;
-  color: var(--seal);
-  margin-top: 1px;
-}
-
-/* 悬停详情（抄录小图版样式） */
-.prompt-shelf__detail {
-  margin-top: 6px;
-  /* 固定两行高度（不是 min-height）— 悬停切换选项时描述行数变化
-     会改变卡片总高，卡片上缘随之下移导致鼠标落点漂移 → 振荡抽动 */
-  box-sizing: border-box;
-  height: calc(40px * var(--font-scale));
-  padding: 5px 10px;
-  overflow: hidden;
+  align-self: center;
+  min-width: 14px;
+  text-align: right;
   font-family: var(--f-mono);
   font-size: var(--fs-micro);
-  color: var(--ink-2);
-  background: var(--paper-deep);
-  border-left: 2px solid var(--indigo);
-  line-height: 1.5;
+  color: var(--ink-4);
+  transition: color var(--snap);
 }
-.prompt-shelf__detail-label {
-  color: var(--indigo);
-  margin-right: 8px;
-}
-.prompt-shelf__detail-text {
-  color: var(--ink-2);
+.prompt-shelf__option--on .prompt-shelf__num {
+  color: var(--seal-deep);
 }
 
-/* ── 自由作答输入（纸面底线式）── */
+/* ── 底部：自定义回答行 + 主动作 ── */
+.prompt-shelf__foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: calc(12px * var(--font-scale));
+  padding-top: calc(10px * var(--font-scale));
+  border-top: 1px solid color-mix(in oklch, var(--ink-4) 55%, transparent);
+}
 .prompt-shelf__custom {
-  margin-top: 8px;
+  flex: 1;
+  min-width: 0;
   display: flex;
   gap: 6px;
 }
 .prompt-shelf__custom-input {
   flex: 1;
   min-width: 0;
-  padding: 6px 10px;
+  padding: calc(6px * var(--font-scale)) 10px calc(6px * var(--font-scale)) 2px;
   font-family: var(--f-song);
   font-size: var(--fs-body);
   background: transparent;
@@ -219,44 +273,54 @@
 }
 .prompt-shelf__custom-input::placeholder {
   color: var(--ink-3);
+  font-size: var(--fs-caption);
+  letter-spacing: 0.02em;
 }
 
-/* 多选确认 / 开放问提交 */
-.prompt-shelf__actions {
-  margin-top: 8px;
-  display: flex;
-  gap: 6px;
-}
+/* 主动作：规格书 §10「每屏唯一主动作」= 墨印实色 + 硬偏移投影，hover 翻朱砂。
+   与 .pp-send / .pp-pc-btn--primary 同一配方；disabled = 未蘸墨的空印。 */
 .prompt-shelf__confirm {
-  flex: 1;
-  padding: 8px;
+  flex-shrink: 0;
+  padding: calc(8px * var(--font-scale)) 18px;
   font-size: var(--fs-body);
   font-weight: 600;
   font-family: var(--f-song);
-  background: transparent;
-  border: 1px solid color-mix(in oklch, var(--seal) 40%, transparent);
-  color: var(--seal-deep);
+  letter-spacing: 0.06em;
+  background: var(--ink-1);
+  border: 1px solid var(--ink-1);
+  color: var(--paper);
+  box-shadow: var(--shadow-anchor);
   cursor: pointer;
   transition:
     background var(--snap),
     border-color var(--snap),
-    opacity var(--snap);
+    box-shadow var(--snap),
+    transform var(--snap);
 }
 .prompt-shelf__confirm:hover {
-  background: var(--seal-soft);
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+}
+.prompt-shelf__confirm:active {
+  background: var(--seal);
   border-color: var(--seal);
+  transform: translateY(1px);
+  box-shadow: none;
 }
-.prompt-shelf__confirm:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
+.prompt-shelf__confirm:disabled,
 .prompt-shelf__confirm:disabled:hover {
   background: transparent;
-  border-color: color-mix(in oklch, var(--seal) 40%, transparent);
+  border-color: var(--ink-4);
+  color: var(--ink-3);
+  box-shadow: none;
+  cursor: default;
+  transform: none;
 }
+
+/* 自定义回答提交钮（非空输入才出现）：次级动作，描边 */
 .prompt-shelf__submit {
   flex-shrink: 0;
-  padding: 6px 14px;
+  padding: calc(6px * var(--font-scale)) 14px;
   font-size: var(--fs-body);
   font-weight: 600;
   font-family: var(--f-song);
@@ -273,6 +337,21 @@
   border-color: var(--seal);
 }
 
+/* ── 键位提示：常驻一行（旧实现只写在关闭钮的 data-tip 里）── */
+.prompt-shelf__keyhint {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: calc(9px * var(--font-scale));
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+}
+.prompt-shelf__keyhint--left {
+  justify-content: flex-start;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    权限牒卡（PermCard 专属区）
    ═══════════════════════════════════════════════════════════════ */
@@ -282,8 +361,9 @@
   font-size: var(--fs-caption);
   font-family: var(--f-song);
   color: var(--ink-2);
-  margin-bottom: 8px;
-  line-height: 1.5;
+  margin-bottom: 4px;
+  line-height: 1.7;
+  text-wrap: pretty;
 }
 
 /* subject 命令块：抄录图版语言（米黄底 mono + 硬左线） */
@@ -292,27 +372,33 @@
   font-size: var(--fs-caption);
   color: var(--ink-1);
   background: var(--paper-deep);
-  border-left: 3px solid var(--indigo);
-  padding: 7px 10px;
-  margin-bottom: 8px;
+  box-shadow: inset 3px 0 0 var(--indigo);
+  padding: calc(9px * var(--font-scale)) 12px;
+  margin-bottom: 10px;
   word-break: break-all;
+  line-height: 1.6;
 }
 
-/* 按钮组：落印（允许）= 纸面唯一实色动作；其余描边 */
+/* 三键：驳回（退到最左最轻）· 本卷均准（描边）· 落印准此（朱砂实底 + 硬投影）。
+   2026-11-07 定序：最重的动作长在主路径末端，危险的否定远离回车站位。 */
 .prompt-shelf__perm-btns {
   display: flex;
   gap: 8px;
+  margin-top: calc(14px * var(--font-scale));
+  padding-top: calc(12px * var(--font-scale));
+  border-top: 1px solid color-mix(in oklch, var(--ink-4) 55%, transparent);
 }
 .prompt-shelf__perm-btn {
   flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 7px 12px;
+  gap: 8px;
+  padding: calc(8px * var(--font-scale)) 12px;
   font-size: var(--fs-body);
   font-weight: 600;
   font-family: var(--f-song);
+  letter-spacing: 0.06em;
   border: 1px solid var(--ink-4);
   background: transparent;
   color: var(--ink-2);
@@ -320,7 +406,9 @@
   transition:
     background var(--snap),
     border-color var(--snap),
-    color var(--snap);
+    color var(--snap),
+    box-shadow var(--snap),
+    transform var(--snap);
 }
 .prompt-shelf__perm-btn:hover {
   color: var(--ink-1);
@@ -328,21 +416,28 @@
   background: var(--paper-deep);
 }
 
-/* 允许（Enter）= 落印 — 朱砂实底 */
-.prompt-shelf__perm-btn--once,
-.prompt-shelf__perm-btn--once:hover {
+/* 落印（Enter）= 纸面唯一实色动作 */
+.prompt-shelf__perm-btn--once {
+  flex: 1.3;
   background: var(--seal-deep);
   border-color: var(--seal-deep);
   color: var(--paper);
+  box-shadow: var(--shadow-anchor);
 }
 .prompt-shelf__perm-btn--once:hover {
   background: var(--seal);
+  border-color: var(--seal);
+  color: var(--paper);
+}
+.prompt-shelf__perm-btn--once:active {
+  transform: translateY(1px);
+  box-shadow: none;
 }
 
-/* 本次会话允许 = 朱砂描边次级 */
+/* 本卷均准 = 朱砂描边次级 */
 .prompt-shelf__perm-btn--session {
   color: var(--seal-deep);
-  border-color: color-mix(in oklch, var(--seal) 40%, transparent);
+  border-color: color-mix(in oklch, var(--seal) 42%, transparent);
 }
 .prompt-shelf__perm-btn--session:hover {
   color: var(--seal-deep);
@@ -350,10 +445,11 @@
   border-color: var(--seal);
 }
 
-/* 拒绝 = 石墨（擦掉不批） */
+/* 驳回 = 石墨（擦掉不批），退一档 */
 .prompt-shelf__perm-btn--deny {
+  flex: 0.8;
   color: var(--graphite);
-  border-color: color-mix(in oklch, var(--graphite) 40%, transparent);
+  border-color: color-mix(in oklch, var(--graphite) 45%, transparent);
 }
 .prompt-shelf__perm-btn--deny:hover {
   color: var(--ink-1);
@@ -364,29 +460,22 @@
 /* ═══════════════════════════════════════════════════════════════
    批量多问分页卡（AskBatchCard）
    ═══════════════════════════════════════════════════════════════ */
-.prompt-shelf__pagebar {
+
+/* 翻页行：动作行在其上（提交钮不再挤进这一行当次按钮） */
+.prompt-shelf__pager {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: var(--rule-soft);
-}
-.prompt-shelf__pager {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+  margin-top: calc(10px * var(--font-scale));
 }
 .prompt-shelf__nav {
   flex-shrink: 0;
-  padding: 5px 10px;
+  padding: calc(4px * var(--font-scale)) 9px;
   font-family: var(--f-mono);
   font-size: var(--fs-caption);
   color: var(--ink-2);
   background: transparent;
-  border: var(--rule-soft);
+  border: 1px solid var(--ink-4);
   cursor: pointer;
   transition:
     background var(--snap),
@@ -400,35 +489,40 @@
   border-color: var(--ink-3);
 }
 .prompt-shelf__nav:disabled {
-  opacity: 0.35;
+  opacity: 0.3;
   cursor: default;
 }
 
-/* 进度点：石青实心 = 已答（机器在问），朱砂描边放大 = 当前 */
+/* 进度点：已答 = 实心墨点；当前 = 朱砂描边放大（两信号正交，互相不压） */
 .prompt-shelf__dots {
   flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
 }
 .prompt-shelf__dot {
   flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  background: var(--ink-4);
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--ink-4);
+  background: transparent;
+  transition:
+    background var(--snap),
+    border-color var(--snap),
+    box-shadow var(--snap);
 }
 .prompt-shelf__dot--done {
-  background: var(--indigo);
+  background: var(--ink-3);
+  border-color: var(--ink-3);
 }
 .prompt-shelf__dot--cur {
-  background: var(--seal-soft);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--seal) 30%, transparent);
+  border: 1.5px solid var(--seal);
+  box-shadow: 0 0 0 3px var(--seal-soft);
 }
-
-/* 批量提交按钮：不占满，右侧固定 */
-.prompt-shelf__card--batch .prompt-shelf__confirm {
-  flex: none;
+.prompt-shelf__dot--cur.prompt-shelf__dot--done {
+  background: var(--seal);
+  border-color: var(--seal);
 }

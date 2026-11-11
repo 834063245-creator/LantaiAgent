@@ -8,9 +8,21 @@
 // 批 9e-3（2026-09-26）：实现随产物包 `ask-cards`（旧 `app/chat/PromptShelf.tsx`）；
 // **形状留内核契约** `app/chat/ask-card-contract.ts`（三个 prompt 类型 + `PromptData`
 // + `PromptShelfHandle` 五动词）——内核 `chat-core` 是消费侧，铁律禁内核 import 产物源码。
+//
+// ── UI 迭代（2026-11-07 用户拍板 A「整合」方向）─────────────────────────────
+// 病灶不是信息缺，是**信息之间的关系没排出来**：卷徽标/类型 tag/问题句/关闭钮挤在一行，
+// 问题句与机读 tag 同号；每个选项一个 1px 框、选中再叠朱砂脊线 = 框里套线；为防抖动
+// 恒高 40px 的详情条在没悬停时是一整条空白灰底；主动作是透明底描边（全卡最弱元素）；
+// 键盘答案只活在关闭钮的 tooltip 里。改法：
+//   ① 书眉（卷名 · 类型）降为一行机读小字，问题句升 `--fs-lead` / 600 当主角；
+//   ② 选项去框成行 + 方印标记，洗色走 srgb 混色（oklch 混 alpha 墨会偏紫，见 css 头注）；
+//   ③ 详情并进选项自身（悬停不再有独立详情条，高度天然不抖）；
+//   ④ 主动作按规格书 §10「每屏唯一主动作」：墨印实色 + `--shadow-anchor`，hover 翻朱砂；
+//   ⑤ 键位提示常驻一行；确认钮常驻 + disabled（不再跳进跳出）；
+//   ⑥ 语义色按铁律分家：问卡顶线石青（机在问人），待批权限卡顶线朱砂。
+// 多选与单选共用同一套方印标记（多选在空态标「多」），不再两套语言。
 
 import type React from 'react';
-import type { ReactNode } from 'react';
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
 import {
   type AskBatchPrompt,
@@ -33,39 +45,61 @@ function Icon({ name, size = 12 }: { name: string; size?: number }): React.React
   return <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconSvg(name, size) }} />;
 }
 
-// ── 图标 ──（svgIcon 包装已删 — Icon 组件直用 iconSvg）
-
-// ── 询问卡片（受 Reasonix 启发：键盘导航、悬停预览、多选）──
-// 2026-09-10 ask 用户侧完备化：单选退役 240ms 自动确认——点选只选中，
-// 显式「确认选择」/Enter 提交。自动确认是「没下判断就被回答」的历史病灶
-// （用户实测报「我这实际没有给你下任何判断」：点选以为还能改，卡片已无声
-// 提交）；240ms 反悔窗人类不可感知，等于没有确认环节。
+// ── 共用件 ──
 
 /** 主输入作答回调面（shelf → 激活卡注册；text = 主输入框文本）。
  *  返回 false = 该卡不吃文本作答（权限卡等）。 */
 export type ExternalAnswerFn = (text: string) => boolean;
 
-/** 归属面 chips（badge 卷徽标与类型 tag 分列——徽标不再挤占 header 的 12 字预算） */
-function OwnerChips({
+/** 书眉（卷名 · 类型）——机读位小字，承担旧「双 tag + 12 字截断」的全部信息。
+ *  typeClass 只决定类型段色相：问卡石青（机在问人）/ 待批卡朱砂（人的动作）。 */
+function Kicker({
   badge,
   typeClass,
+  danger,
+  trailing,
   children,
 }: {
   badge?: string | null;
-  typeClass: string;
-  children?: ReactNode;
+  typeClass?: string;
+  danger?: string | null;
+  trailing?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <>
-      {badge ? <span className="prompt-shelf__tag prompt-shelf__tag--owner">{badge}</span> : null}
-      <span className={`prompt-shelf__tag ${typeClass}`}>{children}</span>
-    </>
+    <span className="prompt-shelf__kicker">
+      {badge ? <span className="prompt-shelf__kicker-owner">{badge}</span> : null}
+      {badge ? <span className="prompt-shelf__kicker-sep" /> : null}
+      {danger ? <span className="prompt-shelf__danger">危 · {danger}</span> : null}
+      <span className={`prompt-shelf__kicker-kind ${typeClass ?? ''}`}>{children}</span>
+      {trailing ? <span className="prompt-shelf__kicker-paging">{trailing}</span> : null}
+    </span>
+  );
+}
+
+/** 选项方印：单选 = 空框 → 实心朱点；多选 = 空框 → 勾。
+ *  「多项可选」这个信息不在方印里塞 8px 小字（那是读不动的糊点），改由书眉的
+ *  「多选」一词承载——形状只回答「选了没有」，词回答「能选几个」。 */
+function Mark({ on, multi }: { on: boolean; multi?: boolean }) {
+  return (
+    <span className={`prompt-shelf__mark${on ? ' prompt-shelf__mark--on' : ''}`} aria-hidden="true">
+      {on && multi ? <Icon name="check" size={11} /> : null}
+    </span>
+  );
+}
+
+/** 键位提示行（常驻）——此前只写在关闭钮的 data-tip 里，不悬停就不知道能敲键盘。 */
+function Keyhint({ items, align = 'right' }: { items: string[]; align?: 'left' | 'right' }) {
+  return (
+    <div className={`prompt-shelf__keyhint${align === 'left' ? ' prompt-shelf__keyhint--left' : ''}`}>
+      {items.map((text) => (
+        <span key={text}>{text}</span>
+      ))}
+    </div>
   );
 }
 
 /** 自定义答案提交钮（2026-09-16 修断链）——非空输入才出现。
- *  此前「提交回答」钮只在开放式问题（无选项）时渲染，有选项卡上用户自己
- *  打字后**没有任何可点的提交键**（测试也只走 Enter 路径，故长期未暴露）。
  *  本地 state 跟踪输入内容以控制显隐（无受控 value——保留原生 IME 行为）。 */
 const SubmitCustomButton: React.FC<{
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -96,18 +130,29 @@ const SubmitCustomButton: React.FC<{
   );
 };
 
+// ── 询问卡片 ──
+// 2026-09-10 ask 用户侧完备化：单选退役 240ms 自动确认——点选只选中，
+// 显式「确认选择」/Enter 提交。自动确认是「没下判断就被回答」的历史病灶
+// （用户实测报「我这实际没有给你下任何判断」：点选以为还能改，卡片已无声
+// 提交）；240ms 反悔窗人类不可感知，等于没有确认环节。
+//
+// 2026-11-07 A 方案：详情并进选项自身（旧实现为防抖动留了一条恒高 40px 的
+// 详情条，没悬停时是一整条空白灰底）；确认钮常驻 + disabled（旧实现未选不渲染，
+// 按钮跳进跳出）；键位提示常驻。
+
 const AskCard: React.FC<{
   prompt: AskPrompt & PromptOwner;
   onResolve: (answer: string[] | null) => void;
   registerAnswer?: (fn: ExternalAnswerFn | null) => void;
 }> = ({ prompt, onResolve, registerAnswer }) => {
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const titleId = useId();
+  const hintId = useId();
 
   /** 无 options = 开放式问题（用户输入自由文本回答）。 */
   const hasOptions = prompt.options.length > 0;
+  const selectedCount = selected.size;
 
   const toggle = useCallback(
     (idx: number) => {
@@ -174,77 +219,58 @@ const AskCard: React.FC<{
     return () => document.removeEventListener('keydown', onKey);
   }, [prompt.options.length, toggle, cancel, selected, confirm]);
 
-  const hoveredOption = hoverIdx !== null ? prompt.options[hoverIdx] : null;
-
   return (
-    <div className="prompt-shelf__card" role="dialog" aria-modal="false" aria-labelledby={titleId}>
-      {/* 头部 */}
+    <div
+      className="prompt-shelf__card"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={titleId}
+      aria-describedby={hintId}
+    >
+      {/* 书眉：卷名 · 类型 */}
       <div className="prompt-shelf__head">
-        <OwnerChips badge={prompt.badge} typeClass="prompt-shelf__tag--ask">
+        <Kicker badge={prompt.badge} typeClass="prompt-shelf__kicker-kind--ask">
           {prompt.header.slice(0, 12)}
-        </OwnerChips>
-        <span id={titleId} className="prompt-shelf__question">
-          {prompt.question}
-        </span>
+          {prompt.multiSelect ? ' · 多选' : ''}
+        </Kicker>
         <button className="prompt-shelf__dismiss" onClick={cancel} data-tip="取消 (Esc)" type="button">
           <Icon name="close" size={14} />
         </button>
       </div>
+
+      {/* 问题句：主角 */}
+      <p id={titleId} className="prompt-shelf__question">
+        {prompt.question}
+      </p>
 
       {/* 选项（开放式问题无 options 时隐藏） */}
       {hasOptions && (
         <div className="prompt-shelf__options">
           {prompt.options.map((opt, i) => {
             const on = selected.has(i);
-            const num = i + 1;
             return (
               <button
                 // biome-ignore lint/suspicious/noArrayIndexKey: 选项允许重复 label（自定义回答场景），index 是唯一稳定键
                 key={i}
                 className={`prompt-shelf__option${on ? ' prompt-shelf__option--on' : ''}`}
                 onClick={() => toggle(i)}
-                onMouseEnter={() => setHoverIdx(i)}
-                onMouseLeave={() => setHoverIdx((h) => (h === i ? null : h))}
+                aria-pressed={on}
                 type="button"
               >
-                <span className="prompt-shelf__num">{num <= 9 ? num : ''}</span>
-                <div className="prompt-shelf__opt-body">
+                <Mark on={on} multi={prompt.multiSelect} />
+                <span className="prompt-shelf__opt-body">
                   <span className="prompt-shelf__opt-label">{opt.label}</span>
                   {opt.description && <span className="prompt-shelf__opt-desc">{opt.description}</span>}
-                </div>
-                {on && (
-                  <span className="prompt-shelf__check">
-                    <Icon name="check-circle" size={14} />
-                  </span>
-                )}
+                </span>
+                <span className="prompt-shelf__num">{i + 1 <= 9 ? i + 1 : ''}</span>
               </button>
             );
           })}
         </div>
       )}
 
-      {/* 详情预览 — 始终以固定高度渲染以防抖动 */}
-      {hasOptions && (
-        <div className="prompt-shelf__detail">
-          {hoveredOption?.description ? (
-            <>
-              <span className="prompt-shelf__detail-label">{hoveredOption.label}</span>
-              <span className="prompt-shelf__detail-text">{hoveredOption.description}</span>
-            </>
-          ) : (
-            <span className="prompt-shelf__detail-text" style={{ opacity: 0 }}>
-              &nbsp;
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* 自定义答案提交（2026-09-16 修断链）：**有选项时也出按钮**——
-       *  此前按钮只在 `!hasOptions` 时渲染，有选项卡上用户自己打字后
-       *  找不到任何可点的提交键（只能碰运气按 Enter，或误点选项把选项答案
-       *  提交掉）——「用户填写内容再发送」的链路即断在这里。
-       *  非空输入才出（避免与「确认选择」并排时按钮含义含糊）。 */}
-      <div className="prompt-shelf__custom">
+      {/* 自定义回答行 + 主动作（确认钮常驻——未选时 disabled，不再跳进跳出） */}
+      <div className="prompt-shelf__foot">
         <input
           ref={inputRef}
           className="prompt-shelf__custom-input"
@@ -259,16 +285,27 @@ const AskCard: React.FC<{
             }
           }}
         />
-      </div>
-
-      {/* 底部动作区：自定义提交 + 选项确认并列（各自独立，互不遮蔽） */}
-      <div className="prompt-shelf__actions">
-        <SubmitCustomButton inputRef={inputRef} onResolve={onResolve} />
-        {hasOptions && selected.size > 0 && (
-          <button className="prompt-shelf__confirm" onClick={confirm} type="button">
-            {prompt.multiSelect ? `确认选择 (${selected.size})` : '确认选择'}
+        {hasOptions && (
+          <button className="prompt-shelf__confirm" onClick={confirm} disabled={selectedCount === 0} type="button">
+            {prompt.multiSelect && selectedCount > 0 ? `确认选择 (${selectedCount})` : '确认选择'}
           </button>
         )}
+        <SubmitCustomButton inputRef={inputRef} onResolve={onResolve} />
+      </div>
+
+      {/* 键位提示（常驻） */}
+      <div id={hintId}>
+        <Keyhint
+          items={
+            hasOptions
+              ? [
+                  `1–${prompt.options.length} ${prompt.multiSelect ? '多选' : '选择'}`,
+                  prompt.multiSelect ? 'Enter 确认多选' : 'Enter 确认',
+                  'Esc 取消',
+                ]
+              : ['Enter 提交', 'Esc 取消']
+          }
+        />
       </div>
     </div>
   );
@@ -281,6 +318,24 @@ const AskCard: React.FC<{
  *  文本；提交时才折算回 label（对齐工具契约）。 */
 type BatchPageAnswer = { kind: 'custom'; text: string } | { kind: 'idx'; idxs: number[] } | null;
 
+/** 进度点：已答 = 实心墨点，当前 = 朱砂描边放大（旧实现用石青实心表示已答、
+ *  朱砂淡底表示当前——两套色相互相压过，「当前是第几个」在最该看的地方读不出）。 */
+function ProgressDots({ total, page, answers }: { total: number; page: number; answers: BatchPageAnswer[] }) {
+  return (
+    <span className="prompt-shelf__dots" aria-hidden="true">
+      {Array.from({ length: total }, (_, i) => (
+        <span
+          // biome-ignore lint/suspicious/noArrayIndexKey: 进度点无稳定 id（questions 仅题目文本），index 与页码同构
+          key={i}
+          className={`prompt-shelf__dot${answers[i] !== null ? ' prompt-shelf__dot--done' : ''}${
+            i === page ? ' prompt-shelf__dot--cur' : ''
+          }`}
+        />
+      ))}
+    </span>
+  );
+}
+
 const AskBatchCard: React.FC<{
   prompt: AskBatchPrompt & PromptOwner;
   onResolve: (answers: (string[] | null)[] | null) => void;
@@ -292,15 +347,16 @@ const AskBatchCard: React.FC<{
   const [answers, setAnswers] = useState<BatchPageAnswer[]>(() => prompt.questions.map(() => null));
   const inputRef = useRef<HTMLInputElement | null>(null);
   const titleId = useId();
+  const hintId = useId();
 
   const q = prompt.questions[page];
   const options = q.options ?? [];
   const hasOptions = options.length > 0;
   const multi = hasOptions && !!q.multiSelect;
-  const answered = answers[page] !== null;
   const isLast = page === total - 1;
   /** 有任一题已答即可提前提交（后页未答题按 null 返回） */
   const anyAnswered = answers.some((a) => a !== null);
+  const answeredCount = answers.filter((a) => a !== null).length;
 
   /** 当前页答案写入（覆盖式） */
   const setPageAnswer = useCallback(
@@ -409,20 +465,26 @@ const AskBatchCard: React.FC<{
       role="dialog"
       aria-modal="false"
       aria-labelledby={titleId}
+      aria-describedby={hintId}
     >
-      {/* 头部：进度 + 取消 */}
+      {/* 书眉：卷名 · 类型 · 进度 */}
       <div className="prompt-shelf__head">
-        <OwnerChips badge={prompt.badge} typeClass="prompt-shelf__tag--ask">
-          {total > 1 ? `问 ${page + 1}/${total}` : '问询'}
-          {prompt.header ? ` · ${prompt.header}` : ''}
-        </OwnerChips>
-        <span id={titleId} className="prompt-shelf__question">
-          {q.question}
-        </span>
+        {/* 文案与旧版逐字一致（`问 n/N · header`）——书眉只是换了版式与字号，
+         *  不在这一批里改读法（测试对文案是行为级断言，改文案=改行为，要单独拍板）。 */}
+        <Kicker badge={prompt.badge} typeClass="prompt-shelf__kicker-kind--ask">
+          {`问 ${page + 1}/${total}`}
+          {prompt.header ? ` · ${prompt.header.slice(0, 12)}` : ''}
+          {multi ? ' · 多选' : ''}
+        </Kicker>
         <button className="prompt-shelf__dismiss" onClick={cancel} data-tip="取消整批 (Esc)" type="button">
           <Icon name="close" size={14} />
         </button>
       </div>
+
+      {/* 问题句：主角 */}
+      <p id={titleId} className="prompt-shelf__question">
+        {q.question}
+      </p>
 
       {/* 选项（开放式无 options 隐藏） */}
       {hasOptions && (
@@ -436,26 +498,24 @@ const AskBatchCard: React.FC<{
                 key={i}
                 className={`prompt-shelf__option${on ? ' prompt-shelf__option--on' : ''}`}
                 onClick={() => (multi ? toggleMulti(i) : pickSingle(i))}
+                aria-pressed={on}
                 type="button"
               >
-                <span className="prompt-shelf__num">{i + 1 <= 9 ? i + 1 : ''}</span>
-                <div className="prompt-shelf__opt-body">
+                <Mark on={on} multi={multi} />
+                <span className="prompt-shelf__opt-body">
                   <span className="prompt-shelf__opt-label">{opt.label}</span>
                   {opt.description && <span className="prompt-shelf__opt-desc">{opt.description}</span>}
-                </div>
-                {on && (
-                  <span className="prompt-shelf__check">
-                    <Icon name="check-circle" size={14} />
-                  </span>
-                )}
+                </span>
+                <span className="prompt-shelf__num">{i + 1 <= 9 ? i + 1 : ''}</span>
               </button>
             );
           })}
         </div>
       )}
 
-      {/* 开放式 / 自定义输入 */}
-      <div className="prompt-shelf__custom">
+      {/* 开放式 / 自定义输入 + 整批提交（动作行在上，翻页行在下——旧实现把
+       *  翻页器与提交钮塞进同一条 .pagebar，提交钮被迫缩在右侧当次按钮） */}
+      <div className="prompt-shelf__foot">
         <input
           ref={inputRef}
           className="prompt-shelf__custom-input"
@@ -471,29 +531,6 @@ const AskBatchCard: React.FC<{
             }
           }}
         />
-      </div>
-
-      {/* 底部：分页导航 + 批量提交 */}
-      <div className="prompt-shelf__pagebar">
-        <div className="prompt-shelf__pager">
-          <button className="prompt-shelf__nav" disabled={!prev} onClick={() => setPage(page - 1)} type="button">
-            ← 上一题
-          </button>
-          <span className="prompt-shelf__dots">
-            {prompt.questions.map((_, i) => (
-              <span
-                // biome-ignore lint/suspicious/noArrayIndexKey: 进度点无稳定 id（questions 仅题目文本），index 与页码同构
-                key={i}
-                className={`prompt-shelf__dot${i === page ? ' prompt-shelf__dot--cur' : ''}${
-                  answers[i] !== null ? ' prompt-shelf__dot--done' : ''
-                }`}
-              />
-            ))}
-          </span>
-          <button className="prompt-shelf__nav" disabled={!next} onClick={() => setPage(page + 1)} type="button">
-            下一题 →
-          </button>
-        </div>
         <button
           className="prompt-shelf__confirm"
           disabled={!anyAnswered}
@@ -501,8 +538,31 @@ const AskBatchCard: React.FC<{
           data-tip={anyAnswered ? '提交全部答案（未答题按空返回）' : '先作答至少一题'}
           type="button"
         >
-          {answered || !isLast ? `提交（已答 ${answers.filter((a) => a !== null).length}/${total}）` : '提交回答'}
+          {`提交（已答 ${answeredCount}/${total}）`}
         </button>
+      </div>
+
+      {/* 翻页行 */}
+      {total > 1 && (
+        <div className="prompt-shelf__pager">
+          <button className="prompt-shelf__nav" disabled={!prev} onClick={() => setPage(page - 1)} type="button">
+            ← 上一题
+          </button>
+          <ProgressDots total={total} page={page} answers={answers} />
+          <button className="prompt-shelf__nav" disabled={!next} onClick={() => setPage(page + 1)} type="button">
+            下一题 →
+          </button>
+        </div>
+      )}
+
+      <div id={hintId}>
+        <Keyhint
+          items={[
+            hasOptions ? `1–${options.length} ${multi ? '多选' : '选择'}` : '',
+            multi ? 'Enter 下一页' : 'Enter 提交',
+            'Esc 取消整批',
+          ].filter(Boolean)}
+        />
       </div>
     </div>
   );
@@ -510,10 +570,16 @@ const AskBatchCard: React.FC<{
 
 // ── 权限卡片 ──
 
+/** 权限牒卡：事由在前、命令块居中、决策在尾。
+ *  三键次序（2026-11-07 定）：**驳回退到最左，准此居最右最重**——最重的动作长在
+ *  主路径末端，危险的否定远离回车站位。 */
 const PermCard: React.FC<{
   prompt: PermissionPrompt & PromptOwner;
   onResolve: (result: { allow: boolean; remember: boolean }) => void;
 }> = ({ prompt, onResolve }) => {
+  const titleId = useId();
+  const hintId = useId();
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // 焦点在输入框（聊天输入等）时不触发快捷键，防打字误批准/误拒绝
@@ -538,20 +604,40 @@ const PermCard: React.FC<{
 
   return (
     <div
-      className={`prompt-shelf__card${prompt.danger ? ' prompt-shelf__card--danger' : ''}`}
+      className={`prompt-shelf__card prompt-shelf__card--permit${prompt.danger ? ' prompt-shelf__card--danger' : ''}`}
       role="alertdialog"
       aria-modal="true"
-      aria-label="权限请示"
+      aria-labelledby={titleId}
+      aria-describedby={hintId}
     >
       <div className="prompt-shelf__head">
-        <OwnerChips badge={prompt.badge} typeClass={prompt.danger ? 'prompt-shelf__tag--danger' : ''}>
-          {prompt.danger ? `危 · ${prompt.danger}` : '请示 · PERMIT'}
-        </OwnerChips>
-        <span className="prompt-shelf__question">{prompt.toolName}</span>
+        <Kicker badge={prompt.badge} danger={prompt.danger} typeClass="prompt-shelf__kicker-kind--permit">
+          请示 · 待批
+        </Kicker>
+        <button
+          className="prompt-shelf__dismiss"
+          onClick={() => onResolve({ allow: false, remember: false })}
+          data-tip="驳回 (Esc)"
+          type="button"
+        >
+          <Icon name="close" size={14} />
+        </button>
       </div>
+
+      <p id={titleId} className="prompt-shelf__question">
+        {prompt.toolName}
+      </p>
       {prompt.subject && <div className="prompt-shelf__perm-subject">{prompt.subject}</div>}
       <div className="prompt-shelf__perm-reason">{prompt.reason}</div>
+
       <div className="prompt-shelf__perm-btns">
+        <button
+          className="prompt-shelf__perm-btn prompt-shelf__perm-btn--deny"
+          onClick={() => onResolve({ allow: false, remember: false })}
+          type="button"
+        >
+          驳回
+        </button>
         <button
           className="prompt-shelf__perm-btn prompt-shelf__perm-btn--session"
           onClick={() => onResolve({ allow: true, remember: true })}
@@ -564,15 +650,12 @@ const PermCard: React.FC<{
           onClick={() => onResolve({ allow: true, remember: false })}
           type="button"
         >
-          落印准此 · Enter
+          落印准此
         </button>
-        <button
-          className="prompt-shelf__perm-btn prompt-shelf__perm-btn--deny"
-          onClick={() => onResolve({ allow: false, remember: false })}
-          type="button"
-        >
-          驳回 · Esc
-        </button>
+      </div>
+
+      <div id={hintId}>
+        <Keyhint items={['Enter 落印准此', 'Esc 驳回']} />
       </div>
     </div>
   );

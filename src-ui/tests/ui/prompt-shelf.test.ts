@@ -349,13 +349,19 @@ describe('PromptShelf — 2026-09-10 用户侧完备化', () => {
     await expect(p).resolves.toEqual(['A 方案']);
   });
 
-  it('单选：再点同一项 = 取消选中（确认钮消失）', async () => {
+  // 2026-11-07 显式规格变更（A 方案）：确认钮由「未选不渲染」改为「常驻 + disabled」。
+  // 旧行为的病灶是按钮在光标的行尾跳进跳出（未选时整条动作行不存在，选中后凭空长出）；
+  // 新行为把「还没有可提交的答案」表达为禁用态。断言面因此从「消失」改成「禁用」。
+  it('单选：再点同一项 = 取消选中（确认钮转为禁用，不消失）', async () => {
     showAsk(q({ id: 's2' }));
     await click('.prompt-shelf__option', 0);
     expect(container!.querySelectorAll('.prompt-shelf__option--on').length).toBe(1);
+    expect(container!.querySelector<HTMLButtonElement>('.prompt-shelf__confirm')!.disabled).toBe(false);
     await click('.prompt-shelf__option', 0);
     expect(container!.querySelectorAll('.prompt-shelf__option--on').length).toBe(0);
-    expect(container!.querySelector('.prompt-shelf__confirm')).toBeNull();
+    const confirm = container!.querySelector<HTMLButtonElement>('.prompt-shelf__confirm');
+    expect(confirm).toBeTruthy();
+    expect(confirm!.disabled).toBe(true);
   });
 
   it('数字快选只选中；Enter（焦点不在输入/按钮）提交已选项', async () => {
