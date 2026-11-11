@@ -12,7 +12,7 @@
 
 | 件 | 渠道 | 说明 |
 |---|---|---|
-| 二进制 | **随兰台安装包分发**（宿主 exe 同级，零配置）；开发机 / 源码路径由 `scripts/fetch-officecli.mjs`（或本目录 `install-officecli.ps1`）装到标准位 | pin **v1.0.149**（win-x64 **31.87 MB**，SHA256 `abd82dae…31e2`）；**强制层**定位它（`$OFFICECLI_PATH` → `%USERPROFILE%\.lantai\tools\officecli\officecli.exe` → 随包件（宿主 exe 同级）→ PATH 兜底） |
+| 二进制 | **随兰台安装包分发**（宿主 exe 同级，零配置）；开发机 / 源码路径由 `scripts/fetch-officecli.mjs`（或本目录 `install-officecli.ps1`）装到标准位 | pin **v1.0.160**（win-x64 **31.99 MB**，SHA256 `c590ca9d…5424`）；**强制层**定位它（`$OFFICECLI_PATH` → `%USERPROFILE%\.lantai\tools\officecli\officecli.exe` → 随包件（宿主 exe 同级）→ PATH 兜底） |
 | 技能（手册） | **随兰台出厂**（内置技能 `officecli`，随应用分发，无需安装） | 域工具的权威手册（动作面/铁律/交付门槛覆盖面/四条工作流/坑表），2026-10-13 起收编为出厂技能。若曾按旧文档手动装过 `~/.lantai/skills/officecli/`，**删掉旧副本**——用户级同名会覆盖出厂版（拿不到后续更新） |
 | 活预览窗（可选） | `examples/plugins/office/` 经「设置 → 插件 → 安装目录」装载 | 想边改边看：**你自己**用绝对路径起 `officecli watch <文件>` + 让 Agent 调 `office_preview_open`（Agent 起不了 watch——它的 shell 里没有 officecli；且 watch 占着的文件别再让 Agent 改，见插件 README ⚠️） |
 
@@ -44,7 +44,7 @@
 $dest = "$env:USERPROFILE\.lantai\tools\officecli"
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Copy-Item .\officecli.exe "$dest\officecli.exe" -Force
-& "$dest\officecli.exe" --version            # 期望 1.0.149
+& "$dest\officecli.exe" --version            # 期望 1.0.160
 ```
 
 ## 3. 验证

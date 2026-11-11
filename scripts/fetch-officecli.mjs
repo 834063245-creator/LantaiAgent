@@ -45,8 +45,8 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // ── pin 表（升级此处 = 同改 install-officecli.ps1 的 $PINNED）────────────────────
 // 版本与哈希两处独立来源互证：本表取自 install-officecli.ps1 的 $PINNED，而那份
 // 是该脚本端到端实测过的值；同版本官方 SHA256SUMS 的 win-x64 行亦为此值。
-const PINNED_VERSION = '1.0.149';
-const PINNED_SHA256 = 'abd82dae417b66aae62d1ec8edbf88ba9d5be7442b55be470b34b764f10731e2';
+const PINNED_VERSION = '1.0.160';
+const PINNED_SHA256 = 'c590ca9d464f2b03362825b0f2615efcae33ce3fc0edaeeef29f7ddacb4c5424';
 const ASSET = 'officecli-win-x64.exe';
 const RELEASE_URL =
   `https://github.com/iOfficeAI/OfficeCLI/releases/download/v${PINNED_VERSION}/${ASSET}`;

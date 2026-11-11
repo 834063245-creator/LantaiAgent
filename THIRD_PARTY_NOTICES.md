@@ -297,7 +297,7 @@ engine). Fetched at build time and verified by SHA-256; **not** committed to git
 ### 4.1 OfficeCLI (`officecli.exe`)
 
 - **Source**: <https://github.com/iOfficeAI/OfficeCLI>
-- **Version**: 1.0.149 (pinned)
+- **Version**: 1.0.160 (pinned)
 - **License**: Apache-2.0
 - **Usage**: backend for the built-in `office(action, …)` domain tool — reads and
   writes `.docx` / `.xlsx` / `.pptx`. Fetched by `scripts/fetch-officecli.mjs`
@@ -305,14 +305,25 @@ engine). Fetched at build time and verified by SHA-256; **not** committed to git
   `tauri.conf.json` `bundle.resources`, and installed next to the application
   executable.
 - **Pinned artifact**: `officecli-win-x64.exe`,
-  SHA-256 `abd82dae417b66aae62d1ec8edbf88ba9d5be7442b55be470b34b764f10731e2`
+  SHA-256 `c590ca9d464f2b03362825b0f2615efcae33ce3fc0edaeeef29f7ddacb4c5424`
 - **Full license text**: [`docs/officecli-LICENSE-APACHE-2.0.txt`](docs/officecli-LICENSE-APACHE-2.0.txt)
-- **Copyright / NOTICE**: the copyright notice and any `NOTICE` file of the
-  upstream project are authoritative and live at the source repository above.
-  This repository does not reproduce upstream `NOTICE` contents — it has no
-  verified copy of one (the upstream artifact was fetched over a network this
-  machine cannot reach). **Follow-up: verify upstream `NOTICE`/copyright line
-  when network access is available, and copy it here verbatim.**
+- **Copyright / NOTICE**: upstream `NOTICE` (v1.0.160), reproduced verbatim:
+
+  ```
+  OfficeCLI
+  Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
+
+  Created and maintained by goworm.
+
+  This product is licensed under the Apache License, Version 2.0.
+  You may obtain a copy of the License in the LICENSE file or at
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  This NOTICE file is part of the required attribution under
+  Section 4 of the Apache License, Version 2.0. Redistributions
+  of this work, with or without modification, must retain this
+  notice.
+  ```
 
 ---
 

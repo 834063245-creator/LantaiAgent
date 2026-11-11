@@ -18,7 +18,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Version = '1.0.149',
+  [string]$Version = '1.0.160',
   [int]$WatchPort = 26315,
   [string]$ToolsDir = (Join-Path $env:USERPROFILE '.lantai\tools\officecli'),
   [string]$UserLantaiDir = (Join-Path $env:USERPROFILE '.lantai'),
@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Continue'
 
 # 与 install-officecli.ps1 同一张固定版本表（升级 = 两处同改）
 $PINNED = @{
-  '1.0.149' = 'abd82dae417b66aae62d1ec8edbf88ba9d5be7442b55be470b34b764f10731e2'
+  '1.0.160' = 'c590ca9d464f2b03362825b0f2615efcae33ce3fc0edaeeef29f7ddacb4c5424'
 }
 $BIN = Join-Path $ToolsDir 'officecli.exe'
 $MCP_JSON = Join-Path $UserLantaiDir 'mcp.json'

@@ -40,7 +40,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Version = '1.0.149',
+  [string]$Version = '1.0.160',
   [string]$Dest = "$env:USERPROFILE\.lantai\tools\officecli",
   [string]$FromLocal,
   [string]$FromPluginDir,
@@ -56,7 +56,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 # ── 固定版本表（本仓集成计划 pin 的版本；升级 = 换 tag + 换哈希，同改本文档）──
 $PINNED = @{
-  '1.0.149' = 'abd82dae417b66aae62d1ec8edbf88ba9d5be7442b55be470b34b764f10731e2'
+  '1.0.160' = 'c590ca9d464f2b03362825b0f2615efcae33ce3fc0edaeeef29f7ddacb4c5424'
 }
 $ASSET = 'officecli-win-x64.exe'
 
@@ -138,7 +138,7 @@ else {
     }
     catch {
       # 网络问题必须是**清清楚楚的拒绝**，不是未捕获异常逃逸（实测踩过）
-      Fail "取官方 SHA256SUMS 失败：$($_.Exception.Message)（网络不稳；可改固定版本 -Version 1.0.149 用内嵌哈希，或离线下载 SHA256SUMS 后用 -SumsOverride <文件>）"
+      Fail "取官方 SHA256SUMS 失败：$($_.Exception.Message)（网络不稳；可改固定版本 -Version 1.0.160 用内嵌哈希，或离线下载 SHA256SUMS 后用 -SumsOverride <文件>）"
     }
   }
   $want = $null

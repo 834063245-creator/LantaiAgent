@@ -57,7 +57,7 @@ node scripts\fetch-officecli.mjs                            # 仓库根跑（推
 - **watch 进程不随窗自动停**，且**只能由用户自己起**（Agent 的 shell 里没有 officecli，域工具也没有
   watch 动作）；本插件只开窗。
 - **watch 占着的文件别同时让 Agent 改**（见 §2 的 ⚠️）：两边的 resident 会抢同一个文件。
-- 版本漂移快：二进制按 pin 版本（1.0.149）验证；升版本走安装器换哈希 + 重跑
+- 版本漂移快：二进制按 pin 版本（1.0.160）验证；升版本走安装器换哈希 + 重跑
   `src-ui/tests/office-domain.test.ts` 与 Rust 侧 `process_cap::tests::office_command_real_binary_e2e`。
 
 ## 4. 守护测试
