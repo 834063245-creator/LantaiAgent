@@ -479,14 +479,16 @@
   bottom: auto;
 }
 /* 向下开 = 墨自锚点侧落下（与向上开同一支笔，方向相反） */
-.pp-composer-slot[data-pop-side="down"] .pp-composer
+.pp-composer-slot[data-pop-side="down"]
+  .pp-composer
   :is(.ms-dropdown, .pp-comp-menu, .pp-ink-panel, .pp-work-panel, .pp-help-sheet, .pp-yin-panel, .pp-slash) {
   animation: pop-down var(--m-ink);
 }
 
 /* 限高：原上限 ∩ 视口 70% ∩ 所选侧余量。坞在正中时两侧都装不满，面板缩到余量、
  * 内容照常滚——总比顶部被裁掉看不见强。 */
-.pp-composer-slot[data-pop-side="up"] .pp-composer
+.pp-composer-slot[data-pop-side="up"]
+  .pp-composer
   :is(.ms-dropdown, .pp-comp-menu, .pp-ink-panel, .pp-work-panel, .pp-help-sheet, .pp-yin-panel, .pp-slash) {
   max-height: min(70vh, var(--pp-pop-max, 520px), var(--dock-room-up, 70vh));
 }

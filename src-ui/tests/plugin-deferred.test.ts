@@ -42,14 +42,14 @@ beforeEach(() => {
 
 // ── schema：async 声明字段 ──
 
-describe('S4 唤醒回调：manifest.tools async 字段', () => {
-  const DECL = (async?: boolean): Record<string, unknown> => ({
-    name: 'notes_export',
-    description: '导出',
-    parameters: { type: 'object' },
-    ...(async !== undefined ? { async } : {}),
-  });
+const DECL = (async?: boolean): Record<string, unknown> => ({
+  name: 'notes_export',
+  description: '导出',
+  parameters: { type: 'object' },
+  ...(async !== undefined ? { async } : {}),
+});
 
+describe('S4 唤醒回调：manifest.tools async 字段', () => {
   it('true / false / 缺省均合法；非布尔拒绝（手误不静默）', () => {
     expect(validateManifest({ ...HELLO, tools: [DECL(true)] }).ok).toBe(true);
     expect(validateManifest({ ...HELLO, tools: [DECL(false)] }).ok).toBe(true);

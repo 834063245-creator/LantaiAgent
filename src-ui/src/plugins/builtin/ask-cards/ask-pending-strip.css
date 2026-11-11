@@ -4,6 +4,8 @@
  * 语汇：一行淡墨小签，不是工具栏——无框、无底色，hover 只提墨色 + 一条朱砂底规线
  *（与纸面 hover 语言一致；禁「一排灰边框按钮」的工具栏化）。 */
 
+@import "../../../app/type-scale.css";
+
 .aps {
   pointer-events: auto;
   display: flex;
