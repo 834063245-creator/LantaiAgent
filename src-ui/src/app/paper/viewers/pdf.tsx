@@ -308,7 +308,14 @@ export default function PdfViewer({ label, ext, filePath, bytes, mode, onOpenOve
           }
         }
         const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('此环境取不到 2D 画布上下文（无 canvas 实现）');
+        // ⚠ jsdom 29 → 31 的环境事实变了：jsdom 29 的 `getContext('2d')` 返回 null，
+        // jsdom 31 改成一个**空壳对象**。只判 `!ctx` 会让「无 canvas 实现」的环境
+        // 被当成可绘制——pdfjs 拿着空壳 ctx 去画，错误被它自己吞掉，于是「画布失败行」
+        // 永不出现（viewer-pdf 的用例就是这么挂的）。按 2D 上下文的最小能力位判定：
+        // 真浏览器里 drawImage 必是函数，空壳对象没有。
+        if (!ctx || typeof (ctx as CanvasRenderingContext2D).drawImage !== 'function') {
+          throw new Error('此环境取不到 2D 画布上下文（无 canvas 实现）');
+        }
         const ratio = devicePixelRatioClamped();
         canvas.width = Math.max(1, Math.round(viewport.width * ratio));
         canvas.height = Math.max(1, Math.round(viewport.height * ratio));
