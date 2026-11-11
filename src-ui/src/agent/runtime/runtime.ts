@@ -28,6 +28,7 @@ import type { AgentUINotifier, EventSink } from '../agent-types';
 import { EventKind } from '../agent-types';
 import { prewarmAssetStateSession } from '../asset-state';
 import { AgentBlueprint, type BlueprintScope } from '../blueprint';
+import type { SummaryCall } from '../compaction-contract';
 import { AgentContext } from '../context';
 import { DiscoveryBoard, DiscoveryBoardProxy } from '../discovery-board';
 import { createDiscoveryReminderHook } from '../discovery-reminder-hook';
@@ -210,6 +211,26 @@ class AgentHandleImpl implements AgentHandle {
   /** 销毁此 Agent — 句柄即所有权，幂等（重复调用为 no-op） */
   dispose(): void {
     this._runtime._disposeAgent(this._agent.id);
+  }
+
+  // ── 旁路一次性调用转发（卷名自动概括 B 批，2026-11-11 补接）──
+  // 少接这一跳的后果是**静默的**：`callSideLLM` 是可选能力位（`ChatAgentHandle`
+  // 声明 Optional，语义是「不实现 = 该能力不发生」），所以会话层读到的
+  // `agent.callSideLLM` 恒 undefined ⇒ `refineVolumeTitleIfDerived` 在
+  // `if (!sideCall) return;` 直接返回，**连一条 warn 都不落**。
+  // 实测（2026-11-11 排查）：B 批 2026-10-31 落地后 ui.log 全量 0 条
+  // `volume title llm response` / `自动概括失败`，所有卷名停在首条来文前缀
+  // （28 字 + 「…」）。成因与本文件 run() 的 B3 丢图事故同形：两端都对，
+  // 中间这一跳少写一行。守护 = tests/runtime-handle-forwards.test.ts。
+  callSideLLM(signal: AbortSignal, messages: Message[]): Promise<SummaryCall> {
+    return this._agent.callSideLLM(signal, messages);
+  }
+
+  /** 本卷生效的组合 id（P0 记录闭环读口，2026-11-11 补接）——同样漏接：落盘时
+   *  `agent.presetId` 恒 undefined ⇒ 卷的组合身份退化成「全局默认」（session-save /
+   *  sessionCompositionInfo 都按句柄读这一栏）。 */
+  get presetId(): string {
+    return this._agent.presetId;
   }
 
   /** 直接访问底层 Agent — 仅供内部使用 */
