@@ -44,9 +44,14 @@ impl LanguageAdapter for PythonAdapter {
             let bytes = source.as_bytes();
             let len = bytes.len();
             let t0 = std::time::Instant::now();
-            // tree-sitter C 语义：progress 返回 true=取消（超时）, false=继续
+            // tree-sitter 0.27：progress 回调返回 ControlFlow —— Break(()) 取消解析，
+            // Continue(()) 继续（0.26 及以前的 true/false 语义已删）。
             let mut progress = |_: &tree_sitter::ParseState| {
-                t0.elapsed().as_micros() >= PARSE_TIMEOUT_MICROS as u128
+                if t0.elapsed().as_micros() >= PARSE_TIMEOUT_MICROS as u128 {
+                    std::ops::ControlFlow::Break(())
+                } else {
+                    std::ops::ControlFlow::Continue(())
+                }
             };
             let mut input =
                 |i: usize, _: tree_sitter::Point| (i < len).then(|| &bytes[i..]).unwrap_or_default();

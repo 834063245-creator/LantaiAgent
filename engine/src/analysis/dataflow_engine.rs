@@ -450,7 +450,7 @@ pub fn query_file_dataflow(
 
     let mut captures = cursor.captures(&query, root, source_bytes);
     while let Some((qmatch, cap_idx)) = captures.next() {
-        let capture = &qmatch.captures[*cap_idx];
+        let capture = &qmatch.captures()[*cap_idx];
         let cap_name: &str = query.capture_names()[capture.index as usize];
         let node = capture.node;
         let start = node.start_byte();

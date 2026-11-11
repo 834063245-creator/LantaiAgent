@@ -516,10 +516,16 @@ impl LanguageAdapter for QueryStructureAdapter {
             let bytes = source.as_bytes();
             let len = bytes.len();
             let t0 = std::time::Instant::now();
-            // tree-sitter C 语义：progress 返回 true=取消（超时）, false=继续
+            // tree-sitter 0.27：progress 回调返回 ControlFlow —— Break(()) 取消解析，
+            // Continue(()) 继续（0.26 及以前的 true/false 语义已删）。
             let mut progress = |_: &tree_sitter::ParseState| {
-                t0.elapsed().as_micros()
+                if t0.elapsed().as_micros()
                     >= crate::adapter::tree_sitter::PARSE_TIMEOUT_MICROS as u128
+                {
+                    std::ops::ControlFlow::Break(())
+                } else {
+                    std::ops::ControlFlow::Continue(())
+                }
             };
             let mut input =
                 |i: usize, _: tree_sitter::Point| (i < len).then(|| &bytes[i..]).unwrap_or_default();
@@ -667,7 +673,7 @@ fn process_query(
         let mut primary_cap: Option<(&str, tree_sitter::Node)> = None;
         let mut trait_name: Option<String> = None;
         let mut type_name: Option<String> = None;
-        for capture in qmatch.captures {
+        for capture in qmatch.captures() {
             let cn: &str = query.capture_names()[capture.index as usize];
             match cn {
                 "fn" | "class" | "interface" | "call" | "import" | "inherit"

@@ -1,11 +1,12 @@
 ;; Dart dataflow queries
-;; tree-sitter-dart 0.2
+;; tree-sitter-dart 0.3（0.2 → 0.3 把 `initialized_variable_definition` 改名为
+;; `initialized_variable_declaration`，字段仍是 name/value）
 
 ;; Writes
 ;; x = y  /  x += y
 (assignment_expression left: (assignable_expression (identifier) @write))
 ;; var x = 1  /  int x = 1  /  final x = 1
-(initialized_variable_definition name: (identifier) @write)
+(initialized_variable_declaration name: (identifier) @write)
 ;; Pattern variable declarations (destructuring, switch patterns)
 (variable_pattern name: (identifier) @write)
 ;; static const x = 1
