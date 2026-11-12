@@ -63,15 +63,33 @@ export interface WorkEntry {
   parentAgentId: string | null;
   /** 旁注：`停滞` / `已结束` / 失败原因。只在有话说时非空。 */
   note: string | null;
+  /** 终态退出码（观测面直给；旧的外推路径为 null）。 */
+  exitCode?: number | null;
+  /** 终态原因（人杀 = `cancelled by the user`）。 */
+  detail?: string | null;
+  /** 完整日志文件路径（缺口提示用；没有落盘则为 null）。 */
+  spill?: { stdout: string | null; stderr: string | null };
 }
 
-/** `process_cap('background_activity')` 的 shells 元素（bg_jobs.rs:144-150 逐字）。 */
+/** `process_cap('job_list')` 的一行投影（bg_jobs.rs `job_projection` 逐字）。 */
 export interface ShellSnapshot {
   jobId: number;
   label: string;
   agent: string | null;
-  elapsedSecs: number;
+  elapsedSecs?: number;
   stalled: boolean;
+  /** 2026-11-12 观测面：注册表直接给生命周期与结局，不再靠「从在役集合消失」外推。 */
+  status?: 'running' | 'stopping' | 'completed' | 'killed' | 'failed';
+  exitCode?: number | null;
+  detail?: string | null;
+  startedAt?: number;
+  finishedAt?: number | null;
+  /** 输出坐标 + 完整日志路径（缺口提示与「完整日志」入口用）。 */
+  output?: {
+    stdout: { total: number; earliest: number };
+    stderr: { total: number; earliest: number };
+    spill?: { stdout: string | null; stderr: string | null };
+  };
 }
 
 /** 每个面板保留的终态条目上限（在役条目不吃配额）。 */
@@ -215,17 +233,34 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
         const key = keyOf(panelId, 'shell', id);
         seen.add(key);
         const sessionId = resolveSession(job.agent);
-        const note = job.stalled ? '停滞' : null;
         const prev = entries[key];
-        /* 同一 job 的稳定字段逐项对表——全等即原样留用（引用不动 ⇒ 下面能整轮
-         * 判空）。`elapsedSecs` 故意不参与：账不存它（起算只反推一次，见下），
-         * 每轮都在涨的单调时钟差值不是「变化」。 */
+        const status = job.status ?? 'running';
+        const live = status === 'running' || status === 'stopping';
+        const state: WorkState = live
+          ? 'running'
+          : status === 'killed'
+            ? 'stopped'
+            : status === 'failed'
+              ? 'failed'
+              : 'done';
+        const note = live
+          ? status === 'stopping'
+            ? '停止中'
+            : job.stalled
+              ? '停滞'
+              : null
+          : (job.detail ?? (job.exitCode != null && job.exitCode !== 0 ? `退出码 ${job.exitCode}` : '已结束'));
+        const startedAt = job.startedAt ?? prev?.startedAt ?? now - (job.elapsedSecs ?? 0) * 1000;
+        const endedAt = live ? null : (job.finishedAt ?? now);
+        /* 稳定字段逐项对表——全等即原样留用（引用不动 ⇒ 下面能整轮判空）。 */
         if (
           prev &&
-          prev.state === 'running' &&
+          prev.state === state &&
           prev.label === job.label &&
           prev.sessionId === sessionId &&
-          prev.note === note
+          prev.note === note &&
+          prev.endedAt === endedAt &&
+          prev.exitCode === (job.exitCode ?? null)
         ) {
           continue;
         }
@@ -233,20 +268,20 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
           id,
           kind: 'shell',
           label: job.label,
-          // Rust 只给单调时钟差值（Instant 序列化不出来）⇒ 反推起算时刻。
-          // 已在册则保留首次反推值：每轮重算会随截断误差漂移。
-          startedAt: prev?.startedAt ?? now - job.elapsedSecs * 1000,
-          endedAt: null,
-          state: 'running',
+          startedAt,
+          endedAt,
+          state,
           sessionId,
           parentAgentId: null,
           note,
+          exitCode: job.exitCode ?? null,
+          detail: job.detail ?? null,
+          spill: job.output?.spill ?? { stdout: null, stderr: null },
         };
         changed = true;
       }
 
-      // 在役集合里消失 = 已结束。账本不回流退出码，故只写中性终态 +
-      // 如实标注来源（不编造成败——口径纪律②）。
+      // 名册里彻底消失（历史被淘汰/宿主重启）= 中性收尾，不编造成败。
       for (const [key, e] of Object.entries(entries)) {
         if (e.kind !== 'shell' || e.state !== 'running') continue;
         if (!key.startsWith(panelId + '\u0000')) continue;
@@ -305,43 +340,91 @@ export function setOwnerSessionResolver(panelId: string, resolve: OwnerSessionRe
   else _ownerResolvers.delete(panelId);
 }
 
-/** `background_activity` 返回体的形状校验（rpc.rs 判 `Text`，前端自己 parse）。 */
-function parseShells(raw: unknown): ShellSnapshot[] {
-  if (typeof raw !== 'object' || raw === null) throw new Error('background_activity 返回体不是对象');
-  const shells = (raw as { shells?: unknown }).shells;
-  if (!Array.isArray(shells)) throw new Error('background_activity 缺 shells 数组');
-  return shells.map((v): ShellSnapshot => {
-    if (typeof v !== 'object' || v === null) throw new Error('shells 元素不是对象');
+/** `job_list` 返回体的形状校验（rpc.rs 判 `Text`，前端自己 parse）。 */
+function parseJobs(raw: unknown): ShellSnapshot[] {
+  if (!Array.isArray(raw)) throw new Error('job_list 返回体不是数组');
+  return raw.map((v): ShellSnapshot => {
+    if (typeof v !== 'object' || v === null) throw new Error('job_list 元素不是对象');
     const o = v as Record<string, unknown>;
-    if (typeof o.jobId !== 'number') throw new Error('shells 元素缺 jobId');
+    if (typeof o.id !== 'number') throw new Error('job_list 元素缺 id');
+    const output = (typeof o.output === 'object' && o.output !== null ? o.output : {}) as {
+      stdout?: { total?: unknown; earliest?: unknown };
+      stderr?: { total?: unknown; earliest?: unknown };
+      spill?: { stdout?: unknown; stderr?: unknown };
+    };
+    const coords = (s: { total?: unknown; earliest?: unknown } | undefined) => ({
+      total: typeof s?.total === 'number' ? s.total : 0,
+      earliest: typeof s?.earliest === 'number' ? s.earliest : 0,
+    });
+    const status = o.status;
     return {
-      jobId: o.jobId,
+      jobId: o.id,
       label: typeof o.label === 'string' ? o.label : '',
-      agent: typeof o.agent === 'string' ? o.agent : null,
-      elapsedSecs: typeof o.elapsedSecs === 'number' ? o.elapsedSecs : 0,
+      agent: typeof o.owner === 'string' ? o.owner : null,
       stalled: o.stalled === true,
+      status:
+        status === 'running' ||
+        status === 'stopping' ||
+        status === 'completed' ||
+        status === 'killed' ||
+        status === 'failed'
+          ? status
+          : 'running',
+      exitCode: typeof o.exitCode === 'number' ? o.exitCode : null,
+      detail: typeof o.detail === 'string' ? o.detail : null,
+      startedAt: typeof o.startedAt === 'number' ? o.startedAt : undefined,
+      finishedAt: typeof o.finishedAt === 'number' ? o.finishedAt : null,
+      output: {
+        stdout: coords(output.stdout),
+        stderr: coords(output.stderr),
+        spill: {
+          stdout: typeof output.spill?.stdout === 'string' ? output.spill.stdout : null,
+          stderr: typeof output.spill?.stderr === 'string' ? output.spill.stderr : null,
+        },
+      },
     };
   });
 }
 
+/** 一次观测读取的结果（非消费；游标由调用方持有）。 */
+export interface JobReadResult {
+  stdout: { text: string; next: number; lossy: boolean };
+  stderr: { text: string; next: number; lossy: boolean };
+}
+
 /**
- * 拉一次后台 shell 快照并对账。
+ * 拉一次后台 job 名册并对账。
  *
- * **只读**：绝不调 `bash_output` —— 那个 action 的增量游标是所有读方共用的，且读到
- * 终态即 `jobs.remove()`，UI 读一次等于吃掉模型随后要用的输出并销毁 job
- * （bg_jobs.rs:474-479）。本函数只调 `background_activity`（纯读 + `try_wait`）。
+ * **只读且非消费**：`job_list` 是注册表投影，`job_read_at` 按绝对偏移读同一份环，
+ * 两者都不移动模型游标、不销毁 job（bg_jobs.rs 双读者模型）。
  *
  * 失败不静默：写进 `error[panelId]`，册页页脚显形（宪法四）。
  */
 export async function pullShellWork(panelId: string): Promise<void> {
   const resolve = _ownerResolvers.get(panelId);
   try {
-    const raw = await kernelProcessCall('background_activity');
-    const shells = parseShells(JSON.parse(raw));
+    const raw = await kernelProcessCall('job_list');
+    const shells = parseJobs(JSON.parse(raw));
     useWorkLedgerStore.getState().noteShells(panelId, shells, resolve ?? (() => null));
   } catch (e) {
     useWorkLedgerStore.getState().noteShellsError(panelId, e instanceof Error ? e.message : String(e));
   }
+}
+
+/** 读一条 job 的新增输出（按绝对字节偏移，不消费）。 */
+export async function readJobOutput(jobId: number, stdoutFrom: number, stderrFrom: number): Promise<JobReadResult> {
+  const raw = await kernelProcessCall('job_read_at', {
+    job_id: jobId,
+    stdout_from: stdoutFrom,
+    stderr_from: stderrFrom,
+  });
+  const parsed = JSON.parse(raw) as Partial<JobReadResult>;
+  const normalize = (s: { text?: unknown; next?: unknown; lossy?: unknown } | undefined) => ({
+    text: typeof s?.text === 'string' ? s.text : '',
+    next: typeof s?.next === 'number' ? s.next : 0,
+    lossy: s?.lossy === true,
+  });
+  return { stdout: normalize(parsed.stdout), stderr: normalize(parsed.stderr) };
 }
 
 /** 测试复位：清空全部面板条目、错误与归属解析器。 */
@@ -353,18 +436,18 @@ export function resetWorkLedgerForTests(): void {
 /**
  * 停一条在役后台命令（用户路径）。
  *
- * 所有权：Rust `bash_kill` 的 caller = `owner_id.or(agent_id)`；UI 两个都不带
- * ⇒ caller = None ⇒ 走「用户」分支，**可杀任何 job**（bg_jobs.rs:546-560，
- * 测试 :529-547）——这正是该有的边界：人停自己的机器不需要向 Agent 借身份。
- * 故本处**不**注入 `_owner_id`（那会把 UI 降级成某个 Agent，反倒杀不动别人的）。
+ * 走 `job_kill_human`：Rust 侧不校验 Agent 所有权（人停自己的机器不需要借身份），
+ * 原因记进 detail 并推完成通知——模型知道是用户停的，而不是任务神秘消失。
  *
  * 失败**不写 `error` 槽**：那是「账本读不出」的位（册页页脚），而这是用户的动作
- * 失败——走提示条，且随后的对账不该把它抹掉（两件事两个面）。
- * 杀完立刻对账一次，让条目马上从「在役」落到「已了」（不等下一个轮询周期）。
+ * 失败——走提示条。杀完立刻对账一次，让条目马上落到终态（不等下一个轮询周期）。
  */
 export async function killShellWork(panelId: string, jobId: number): Promise<void> {
   try {
-    await kernelProcessCall('bash_kill', { job_id: jobId });
+    await kernelProcessCall('job_kill_human', {
+      job_id: jobId,
+      reason: 'cancelled by the user',
+    });
   } catch (e) {
     showToast(`停止后台命令失败：${e instanceof Error ? e.message : String(e)}`, 'warn', TOAST_LONG_HOLD_MS);
   }

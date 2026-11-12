@@ -41,7 +41,25 @@ function shell(jobId: number, over: Partial<ShellSnapshot> = {}): ShellSnapshot 
   return { jobId, label: `echo ${jobId}`, agent: 'main-1-aaaa', elapsedSecs: 5, stalled: false, ...over };
 }
 
-const snap = (shells: ShellSnapshot[]) => JSON.stringify({ shells, browsers: [] });
+const snap = (shells: ShellSnapshot[]) =>
+  JSON.stringify(
+    shells.map((s) => ({
+      id: s.jobId,
+      label: s.label,
+      owner: s.agent,
+      status: s.status ?? 'running',
+      stalled: s.stalled,
+      exitCode: s.exitCode ?? null,
+      detail: s.detail ?? null,
+      startedAt: s.startedAt ?? Date.now(),
+      finishedAt: s.finishedAt ?? null,
+      output: s.output ?? {
+        stdout: { total: 0, earliest: 0 },
+        stderr: { total: 0, earliest: 0 },
+        spill: { stdout: null, stderr: null },
+      },
+    })),
+  );
 
 /** 读面走 store 的同一个选择器（组件与测试同一把尺子）。 */
 const view = (panelId: string, sessionId: number | null) =>
@@ -281,7 +299,7 @@ describe('役台账 · 只读对账（pullShellWork / killShellWork）', () => {
     await pullShellWork(P);
     expect(kernelProcessCall).toHaveBeenCalledTimes(2);
     for (const call of kernelProcessCall.mock.calls) {
-      expect(call[0]).toBe('background_activity');
+      expect(call[0]).toBe('job_list');
     }
   });
 
@@ -291,10 +309,10 @@ describe('役台账 · 只读对账（pullShellWork / killShellWork）', () => {
     expect(useWorkLedgerStore.getState().error[P]).toBeTruthy();
   });
 
-  it('缺 shells 数组：按契约破坏报错，不静默当空表', async () => {
+  it('返回体不是数组：按契约破坏报错，不静默当空表', async () => {
     kernelProcessCall.mockResolvedValueOnce(JSON.stringify({ browsers: [] }));
     await pullShellWork(P);
-    expect(useWorkLedgerStore.getState().error[P]).toContain('shells');
+    expect(useWorkLedgerStore.getState().error[P]).toContain('job_list');
   });
 
   it('传输层抛错：写 error（宪法四：失败不静默）', async () => {
@@ -313,11 +331,11 @@ describe('役台账 · 只读对账（pullShellWork / killShellWork）', () => {
   it('killShellWork：走 bash_kill（不带 owner ⇒ 用户路径，可停任何 job），随后立刻对账', async () => {
     kernelProcessCall.mockResolvedValueOnce('killed').mockResolvedValueOnce(snap([]));
     await killShellWork(P, 42);
-    expect(kernelProcessCall.mock.calls[0][0]).toBe('bash_kill');
+    expect(kernelProcessCall.mock.calls[0][0]).toBe('job_kill_human');
     expect(kernelProcessCall.mock.calls[0][1]).toMatchObject({ job_id: 42 });
     // 关键：**不**注入 _owner_id —— 那会把 UI 降级成某个 Agent，反倒杀不动别人的 job
     expect(kernelProcessCall.mock.calls[0][1]).not.toHaveProperty('_owner_id');
-    expect(kernelProcessCall.mock.calls[1][0]).toBe('background_activity');
+    expect(kernelProcessCall.mock.calls[1][0]).toBe('job_list');
   });
 
   it('killShellWork 失败：走提示条（不占册页 error 槽——那是「账本读不出」的位），仍对账一次', async () => {

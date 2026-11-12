@@ -64,7 +64,9 @@ export type ProcessCapAction =
   | 'bash_kill'
   | 'bash_wait'
   | 'shell_env'
-  | 'background_activity'
+  | 'job_list'
+  | 'job_read_at'
+  | 'job_kill_human'
   | 'drain_bg_notifications';
 
 /** browser_cap 能力口 action（R4 browser 域收口）——退役前 builtin.browser 37
@@ -306,6 +308,11 @@ export interface RpcContract {
       };
       job_id?: number;
       wait_timeout_ms?: number;
+      /** job_read_at：观测面按绝对字节偏移非消费读（不移动模型游标）。 */
+      stdout_from?: number;
+      stderr_from?: number;
+      /** job_kill_human：人的停止原因（进 detail，模型收到带原因的完成通知）。 */
+      reason?: string;
       is_agent?: boolean;
       agent_id?: string | null;
       owner_id?: string | null;

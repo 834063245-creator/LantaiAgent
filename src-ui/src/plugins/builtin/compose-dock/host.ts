@@ -87,6 +87,7 @@ export type { SessionWorkView, WorkEntry, WorkKind, WorkState } from '../../../s
 export {
   killShellWork,
   pullShellWork,
+  readJobOutput,
   selectSessionWork,
   setOwnerSessionResolver,
   useWorkLedgerStore,

@@ -78,7 +78,16 @@ describe('役册（创作坞后台工作监视装置）', () => {
 
   /** 后端账本里放一条在役 job（owner 默认 main-1 → 归属解析给会话 1）。 */
   const withShellJob = (jobId: number, label: string, over: Record<string, unknown> = {}) => {
-    shells.push({ jobId, label, agent: 'main-1', elapsedSecs: 5, stalled: false, ...over });
+    const secs = typeof over.elapsedSecs === 'number' ? over.elapsedSecs : 5;
+    shells.push({
+      jobId,
+      label,
+      agent: 'main-1',
+      elapsedSecs: secs,
+      stalled: false,
+      startedAt: Date.now() - secs * 1000,
+      ...over,
+    });
   };
 
   const trigger = () => container.querySelector<HTMLButtonElement>('.pp-work-trigger');
@@ -91,7 +100,26 @@ describe('役册（创作坞后台工作监视装置）', () => {
     shells.length = 0;
     kernelProcessCall.mockReset();
     // 对账读的就是这本替身账（空表 = 后端无在役 job）
-    kernelProcessCall.mockImplementation(async () => JSON.stringify({ shells, browsers: [] }));
+    kernelProcessCall.mockImplementation(async () =>
+      JSON.stringify(
+        shells.map((s) => ({
+          id: s.jobId,
+          label: s.label,
+          owner: s.agent,
+          status: s.status ?? 'running',
+          stalled: s.stalled,
+          exitCode: s.exitCode ?? null,
+          detail: s.detail ?? null,
+          startedAt: s.startedAt ?? Date.now(),
+          finishedAt: s.finishedAt ?? null,
+          output: s.output ?? {
+            stdout: { total: 0, earliest: 0 },
+            stderr: { total: 0, earliest: 0 },
+            spill: { stdout: null, stderr: null },
+          },
+        })),
+      ),
+    );
     // 归属解析：本测试文件不经 workspace 装配，直接注入同形的解析器
     setOwnerSessionResolver(PANEL, (owner) => (owner === 'main-1' ? 1 : null));
     container = document.createElement('div');
@@ -183,7 +211,7 @@ describe('役册（创作坞后台工作监视装置）', () => {
     expect(panel?.querySelector('.pp-work-count')?.textContent).toBe('1');
     expect(panel?.querySelector('.pp-work-label')?.textContent).toBe('cargo test --workspace');
     // 打开即对账一次（补齐节点外发生的变化）——时长由 elapsedSecs 反推
-    expect(kernelProcessCall).toHaveBeenCalledWith('background_activity');
+    expect(kernelProcessCall).toHaveBeenCalledWith('job_list');
     expect(panel?.querySelector('.pp-work-sub')?.textContent).toMatch(/^已 1m0\ds · 停滞$/);
   });
 
@@ -245,9 +273,12 @@ describe('役册（创作坞后台工作监视装置）', () => {
     await act(async () => {});
 
     const actions = kernelProcessCall.mock.calls.map((c) => c[0]);
-    expect(actions).toContain('bash_kill');
-    expect(kernelProcessCall.mock.calls.find((c) => c[0] === 'bash_kill')?.[1]).toEqual({ job_id: 9 });
-    expect(actions).toContain('background_activity');
+    expect(actions).toContain('job_kill_human');
+    expect(kernelProcessCall.mock.calls.find((c) => c[0] === 'job_kill_human')?.[1]).toEqual({
+      job_id: 9,
+      reason: 'cancelled by the user',
+    });
+    expect(actions).toContain('job_list');
     // 立刻落到「已了」——不等下一个轮询周期
     expect(container.querySelector('.pp-work-state-done')).not.toBeNull();
   });

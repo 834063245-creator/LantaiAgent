@@ -27,9 +27,14 @@
 // 「徽 + 主文 + 副行」三层、数值 mono 右对齐。石青 = 机/在役（语义铁律），
 // 朱砂仍只归人的动作（句读点朱配额不占）。
 
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { WorkEntry, WorkKind } from './host';
-import { pullShellWork, selectSessionWork, useWorkLedgerStore } from './host';
+import { pullShellWork, readJobOutput, selectSessionWork, useWorkLedgerStore } from './host';
+
+/** 观测面板的轮询周期：只对**展开的那一行**跑，收起即停（非消费读，安全）。 */
+const OBSERVE_MS = 400;
+/** 客户端保留的渲染尾巴（UTF-16 码元）；超出后从头丢弃并置缺口标记。 */
+const RENDER_TAIL = 128 * 1024;
 
 /** 册页里在役时长读数的心跳——只有册页开着才走（关着不烧帧：计时只服务册页条目）。 */
 const ELAPSED_TICK_MS = 900;
@@ -84,13 +89,80 @@ function Section({ title }: { title: string }) {
   );
 }
 
+/** 展开行的输出面板：400ms 轮询 `job_read_at`（非消费读），收起即卸载停流。 */
+function ShellOutput({ jobId, spill }: { jobId: number; spill?: { stdout: string | null; stderr: string | null } }) {
+  const [text, setText] = useState('');
+  const [gap, setGap] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cursors = useRef({ out: 0, err: 0 });
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async (): Promise<void> => {
+      try {
+        const r = await readJobOutput(jobId, cursors.current.out, cursors.current.err);
+        if (cancelled) return;
+        cursors.current = { out: r.stdout.next, err: r.stderr.next };
+        if (r.stdout.lossy || r.stderr.lossy) setGap(true);
+        const delta = r.stdout.text + (r.stderr.text ? `\n[stderr]\n${r.stderr.text}` : '');
+        if (delta) {
+          setText((prev) => {
+            const next = prev + delta;
+            return next.length > RENDER_TAIL ? next.slice(next.length - RENDER_TAIL) : next;
+          });
+        }
+        setError(null);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    void tick();
+    const t = window.setInterval(() => void tick(), OBSERVE_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [jobId]);
+  const logPath = spill?.stdout ?? spill?.stderr ?? null;
+  return (
+    <div className="pp-work-output-wrap">
+      {(gap || logPath) && (
+        <div className="pp-work-output-note">
+          {gap ? '前面有字节已滚出缓冲' : '完整日志'}
+          {logPath ? (
+            <span className="pp-work-output-path" data-tip={logPath}>
+              {' '}
+              · {logPath}
+            </span>
+          ) : null}
+        </div>
+      )}
+      {error ? <div className="pp-work-output-note">读取失败：{error}</div> : null}
+      <pre className="pp-work-output">{text || '（暂无输出）'}</pre>
+    </div>
+  );
+}
+
 /** 一条役：徽 + 主文（label）+ 副行（时长 · 状态 · 旁注）+ 可选停止钮。 */
-function Item({ entry, now, onStop }: { entry: WorkEntry; now: number; onStop?: (entry: WorkEntry) => void }) {
+function Item({
+  entry,
+  now,
+  onStop,
+  expanded,
+  onToggle,
+}: {
+  entry: WorkEntry;
+  now: number;
+  onStop?: (entry: WorkEntry) => void;
+  expanded?: boolean;
+  onToggle?: () => void;
+}) {
   const ended = entry.endedAt ?? now;
   const running = entry.state === 'running';
+  const observable = entry.kind === 'shell';
   const sub = [
     running ? `已 ${formatElapsed(ended - entry.startedAt)}` : formatElapsed(ended - entry.startedAt),
     running ? null : STATE_LABEL[entry.state],
+    entry.exitCode != null ? `exit ${entry.exitCode}` : null,
     entry.note,
   ]
     .filter((s): s is string => !!s)
@@ -106,6 +178,17 @@ function Item({ entry, now, onStop }: { entry: WorkEntry; now: number; onStop?: 
         </span>
         <span className="pp-work-sub">{sub}</span>
       </span>
+      {observable && onToggle && (
+        <button
+          type="button"
+          className="pp-work-expand"
+          aria-expanded={expanded === true}
+          data-tip={expanded ? '收起输出' : '展开输出'}
+          onClick={onToggle}
+        >
+          {expanded ? '收' : '看'}
+        </button>
+      )}
       {/* 停止是人的动作 ⇒ 朱砂。子代理侧暂无逐条停止通道（池对 UI 不可达，
           见台账头注），故只在 shell 条目上出。 */}
       {running && entry.kind === 'shell' && onStop && (
@@ -113,6 +196,7 @@ function Item({ entry, now, onStop }: { entry: WorkEntry; now: number; onStop?: 
           停
         </button>
       )}
+      {expanded && observable ? <ShellOutput jobId={Number(entry.id.replace('job-', ''))} spill={entry.spill} /> : null}
     </li>
   );
 }
@@ -133,6 +217,8 @@ export const WorkLedger = memo(function WorkLedger({
   const entries = useWorkLedgerStore((s) => s.entries);
   const error = useWorkLedgerStore((s) => s.error[panelId] ?? null);
   const [now, setNow] = useState(() => Date.now());
+  // 展开的 job（一次只开一行：输出面板只对可见行开流，收起即停）。
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   // 在役计时：只在册页打开时走（关着不烧帧——`now` 只喂册页里的时长读数）。
   useEffect(() => {
@@ -235,7 +321,14 @@ export const WorkLedger = memo(function WorkLedger({
               <Section title="在役" />
               <ul className="pp-work-list">
                 {running.map((e) => (
-                  <Item key={`${e.kind}:${e.id}`} entry={e} now={now} onStop={onStop} />
+                  <Item
+                    key={`${e.kind}:${e.id}`}
+                    entry={e}
+                    now={now}
+                    onStop={onStop}
+                    expanded={expandedKey === `${e.kind}:${e.id}`}
+                    onToggle={() => setExpandedKey((k) => (k === `${e.kind}:${e.id}` ? null : `${e.kind}:${e.id}`))}
+                  />
                 ))}
               </ul>
             </>

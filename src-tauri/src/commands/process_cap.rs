@@ -54,14 +54,16 @@ const CWD_MARKER_END: char = '\u{07}';
 const PROMOTE_GRACE_MS: u64 = 10_000;
 
 /// process_cap 全量 action 表（= 退役前 builtin.shell 7 工具名 + office_exec）。
-const PROCESS_CAP_ACTIONS: [&str; 8] = [
+const PROCESS_CAP_ACTIONS: [&str; 10] = [
     "exec_command",
     "office_exec",
     "bash_output",
     "bash_kill",
     "bash_wait",
     "shell_env",
-    "background_activity",
+    "job_list",
+    "job_read_at",
+    "job_kill_human",
     "drain_bg_notifications",
 ];
 
@@ -341,6 +343,11 @@ pub(crate) async fn process_cap(
     // bash_output / bash_kill / bash_wait
     job_id: Option<u32>,
     wait_timeout_ms: Option<u64>,
+    // job_read_at（观测面：按绝对字节偏移非消费读）
+    stdout_from: Option<u64>,
+    stderr_from: Option<u64>,
+    // job_kill_human（人的停止：原因进 detail，模型收到带原因的完成通知）
+    reason: Option<String>,
     // 身份（agent_id 兼容 _agent_id；owner_id 兼容 _owner_id——通知路由身份）
     is_agent: bool,
     agent_id: Option<String>,
@@ -412,10 +419,18 @@ pub(crate) async fn process_cap(
         // runtime 注入 system prompt 经 TS parseJson 消费。
         "shell_env" => Ok(serde_json::to_string(&crate::os_sandbox::shell_env())
             .unwrap_or_else(|_| r#"{"os":"unknown","shell":"unknown","shell_path":"","notes":""}"#.to_string())),
-        "background_activity" => {
-            let shells = crate::utils::bg_jobs_snapshot();
-            let browsers = crate::cdp::cdp_browser_activity();
-            Ok(serde_json::json!({ "shells": shells, "browsers": browsers }).to_string())
+        "job_list" => Ok(serde_json::to_string(&crate::utils::job_list())
+            .unwrap_or_else(|_| "[]".to_string())),
+        "job_read_at" => {
+            let job_id = job_id
+                .ok_or_else(|| "process_cap job_read_at: missing 'job_id'".to_string())?;
+            crate::utils::job_read_at(job_id, stdout_from.unwrap_or(0), stderr_from.unwrap_or(0))
+        }
+        "job_kill_human" => {
+            let job_id = job_id
+                .ok_or_else(|| "process_cap job_kill_human: missing 'job_id'".to_string())?;
+            let reason = reason.as_deref().unwrap_or("cancelled by the user");
+            crate::utils::job_kill_human(job_id, reason, Some(app.clone())).map(|s| s.to_string())
         }
         "drain_bg_notifications" => Ok(crate::utils::drain_bg_notifications(agent_id.as_deref())),
         other => Err(format!(
@@ -564,11 +579,12 @@ async fn exec_command(
         let stdout_reader = child.take_stdout();
         let stderr_reader = child.take_stderr();
 
-        // 共享输出缓冲区 — 管道被 take 后，转后台时 bg job 从这里读。
-        use std::sync::{Arc, Mutex};
+        // 共享输出环 — 管道被 take 后，转后台时 bg job 从这里读；
+        // 观测面按绝对偏移非消费读同一份环（见 utils/bg_jobs.rs 双读者模型）。
+        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
-        let shared_out: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
-        let shared_err: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let shared_out = Arc::new(crate::utils::StreamRing::default());
+        let shared_err = Arc::new(crate::utils::StreamRing::default());
 
         // 输出线程完成计数(0=none, 1=stdout, 2=stderr, 3=both)。
         // join 不能无超时阻塞:bash 退出后孙进程(cargo→rustc/test 子进程)
@@ -613,7 +629,7 @@ async fn exec_command(
                             "chunk": chunk,
                         }));
                     }
-                    crate::utils::append_shared_bounded(&mut *crate::utils::lock_or_recover(&so_clone), &buf[..n]);
+                    so_clone.push(&buf[..n]);
                 }
                 // EOF：清空解码器残余（不完整序列 / GBK 尾）。
                 let tail = dec.finish();
@@ -655,7 +671,7 @@ async fn exec_command(
                             "chunk": chunk,
                         }));
                     }
-                    crate::utils::append_shared_bounded(&mut *crate::utils::lock_or_recover(&se_clone), &buf[..n]);
+                    se_clone.push(&buf[..n]);
                 }
                 let tail = dec.finish();
                 if !tail.is_empty() {
@@ -822,10 +838,10 @@ async fn exec_command(
 
     // P1-21: 前台命令也注册进 ledger（不 spawn monitor — 本路径自己等待并移除）。
     // 工作区切换 kill_all_bg 能终止仍在运行的前台命令，避免跨工作区残留进程。
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     let shared = crate::utils::BgSharedOutput {
-        stdout: Arc::new(Mutex::new(Vec::new())),
-        stderr: Arc::new(Mutex::new(Vec::new())),
+        stdout: Arc::new(crate::utils::StreamRing::default()),
+        stderr: Arc::new(crate::utils::StreamRing::default()),
         drain_done: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     };
     let label: String = command.chars().take(80).collect();
@@ -1033,10 +1049,10 @@ mod tests {
     use super::*;
 
     fn empty_shared() -> crate::utils::BgSharedOutput {
-        use std::sync::{Arc, Mutex};
+        use std::sync::Arc;
         crate::utils::BgSharedOutput {
-            stdout: Arc::new(Mutex::new(Vec::new())),
-            stderr: Arc::new(Mutex::new(Vec::new())),
+            stdout: Arc::new(crate::utils::StreamRing::default()),
+            stderr: Arc::new(crate::utils::StreamRing::default()),
             drain_done: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }

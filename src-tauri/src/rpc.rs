@@ -473,6 +473,11 @@ async fn dispatch_rpc(
                 params.get("office").cloned(),
                 params.get("job_id").and_then(|v| v.as_u64()).map(|n| n as u32),
                 params.get("wait_timeout_ms").and_then(|v| v.as_u64()),
+                // job_read_at：观测面按绝对字节偏移非消费读
+                params.get("stdout_from").and_then(|v| v.as_u64()),
+                params.get("stderr_from").and_then(|v| v.as_u64()),
+                // job_kill_human：人的停止原因
+                opt_str(&params, "reason"),
                 is_agent,
                 agent_id,
                 owner_id,

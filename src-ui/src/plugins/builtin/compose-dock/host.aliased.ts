@@ -96,6 +96,7 @@ export const useCoreStore = impl.useCoreStore;
 export const iconHtml = impl.iconHtml;
 export const useWorkLedgerStore = impl.useWorkLedgerStore;
 export const pullShellWork = impl.pullShellWork;
+export const readJobOutput = impl.readJobOutput;
 export const killShellWork = impl.killShellWork;
 export const selectSessionWork = impl.selectSessionWork;
 export const setOwnerSessionResolver = impl.setOwnerSessionResolver;

@@ -390,6 +390,7 @@ import { useUpdateStore } from '../../state/update-store';
 import {
   killShellWork,
   pullShellWork,
+  readJobOutput,
   selectSessionWork,
   setOwnerSessionResolver,
   useWorkLedgerStore,
@@ -572,6 +573,7 @@ const faceDeps = {
   useWorkLedgerStore,
   selectSessionWork,
   pullShellWork,
+  readJobOutput,
   killShellWork,
   setOwnerSessionResolver,
   /* 卷清单变更信号（2026-09-18 侧栏载入批）：canvas-nav 侧栏/书脊订阅——卷文件
