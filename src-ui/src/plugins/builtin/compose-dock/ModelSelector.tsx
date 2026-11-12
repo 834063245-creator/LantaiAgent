@@ -44,7 +44,7 @@ import { useComboBox } from '@react-aria/combobox';
 import { useListBox, useOption } from '@react-aria/listbox';
 import type { ComboBoxState } from '@react-stately/combobox';
 import { useComboBoxState } from '@react-stately/combobox';
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Item } from 'react-stately';
 import type { ModelDescriptor, Protocol } from './host';
 import './model-selector.css';
@@ -79,14 +79,26 @@ interface ModelSelectorProps {
   isStreaming?: boolean;
   /** 运行中被拦时的回调。 */
   onBlocked?: () => void;
-  /** 2026-11-06 合并（用户拍板 A：模型 + 思考档位合成一枚 pill）：落在触发器上、
-   *  模型名之后的档位后缀（宿主给文案，本组件不感知思考语义）。收起态一眼读完
-   *  「谁的脑子 · 想到多深」，不再需要第二枚 pill。仅 compact 渲染；缺省 = 旧形态。 */
-  suffix?: ReactNode;
-  /** 合并形态的弹层顶部插槽：宿主把档位条塞进弹层（搜索行之上、列表之外）。
-   *  缺省不渲染——设置页字段形态零改动。 */
-  headerSlot?: ReactNode;
+  /** **思考档位面（2026-11-12 DSH 两级菜单移植，用户拍板「去抄 dsh 的 UX」）**：
+   *  菜单根栏第二行「思考」的值 + 点进去的档位表 + 写库回调。**文案仍由宿主给**
+   *  （label/hint 在 props 里，本组件不感知思考语义——''=自动、off=关闭这些约定
+   *  全在 provider/thinking）。缺省 = 菜单只有模型一面（无思考面的宿主/旧调用点）。 */
+  thinking?: ThinkingSeat;
 }
+
+/** 思考档位面（DSH ModelSelect 的 Effort 子面）。 */
+export interface ThinkingSeat {
+  /** 当前档位存储值（`''` = 自动）——标出当前行用。 */
+  value: string;
+  /** 当前档位显示名——触发器后缀与根栏右值。 */
+  label: string;
+  /** 档位表（顺序即展示序；label/hint 宿主给）。 */
+  options: readonly { value: string; label: string; hint?: string }[];
+  onChange: (value: string) => void;
+}
+
+/** 菜单面（DSH `Pane`）：根栏两行 / 模型列表 / 思考档位表——同一时刻只渲染一面。 */
+type Pane = 'root' | 'model' | 'thinking';
 
 /** 各已配置 provider 的「可用模型」并集（创作坞可选面，DSH routable 列表语义）。
  *  来源 = ProviderSettings.models（缺省回落 [model]），不是静态目录全集——
@@ -139,10 +151,15 @@ export function ModelSelector({
   compact,
   isStreaming,
   onBlocked,
-  suffix,
-  headerSlot,
+  thinking,
 }: ModelSelectorProps) {
   const [query, setQuery] = useState('');
+  /* 菜单面（2026-11-12 DSH 两级菜单）：打开落在根栏（模型 / 思考两行），点进去才是
+   * 列表。**为什么不让模型列表当默认面**：思考档位表由当前模型派生，两件事本来就是
+   * 同一个决定的两步，平铺成「列表 + 底下一排 chip」正是用户判「UX 有毛病」的形态
+   * （chip 挤成两行、与列表语义无关、拨档位不关弹层）。DSH 的解法是把它做成同级的
+   * 第二面——结构一致，且档位表再长也不挤模型列表。 */
+  const [pane, setPane] = useState<Pane>('root');
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -306,6 +323,7 @@ export function ModelSelector({
 
   const close = useCallback(() => {
     setQuery('');
+    setPane('root'); // 收起即归位：下次打开仍落在根栏（DSH close() 同款）
     state.setOpen(false);
     // compact：搜索框随弹层卸载 → 无真实 blur 事件 → react-aria 的 isFocused
     // 持高，react-stately「聚焦中 + inputValue 变化」effect 会拿重置后的空查询
@@ -374,26 +392,45 @@ export function ModelSelector({
    * 列表高 188、行高 29 —— **只露 6px**（连测三次一致）。滚到视口中央而不是
    * nearest：nearest 在「刚好贴边」时几乎不滚，仍然只露一条边。 */
   useEffect(() => {
-    if (!state.isOpen || !compact) return;
+    if (!state.isOpen || !compact || pane !== 'model') return;
     const el = listRef.current?.querySelector('.ms-item.selected') as HTMLElement | null;
     // 直接滚，不包 rAF：effect 在 DOM 提交之后跑，节点已挂载且布局可读；
     // 包一层 rAF 反而让「打开即定位」晚一帧（视觉上先闪一下顶部再跳）。
     el?.scrollIntoView?.({ block: 'center' });
-  }, [state.isOpen, compact]);
+  }, [state.isOpen, compact, pane]);
 
-  // compact 触发器路径打开后把焦点送入输入框（ARIA combobox 语义：触发弹出 → 焦点在输入；
-  // 否则键盘流落在触发器按钮上，react-aria 的 ↑↓/Enter 全部失效）
+  // 进模型面才把焦点送入输入框（ARIA combobox 语义：触发弹出 → 焦点在输入；
+  // 否则键盘流落在触发器按钮上，react-aria 的 ↑↓/Enter 全部失效）。
+  // 2026-11-12：根栏/思考面没有输入框，落焦由下一条 effect 按面分派。
   useEffect(() => {
-    if (state.isOpen && compact) inputRef.current?.focus();
-  }, [state.isOpen, compact]);
+    if (state.isOpen && compact && pane === 'model') inputRef.current?.focus();
+  }, [state.isOpen, compact, pane]);
+
+  /* 面切换的落焦（DSH 同款）：进思考面落在「当前档那一行」，回根栏落在第一格——
+   * 键盘流不因换面断掉。模型面由上面那条送焦点进搜索框。 */
+  useEffect(() => {
+    if (!state.isOpen || !compact || pane === 'model') return;
+    const root = popoverRef.current;
+    if (!root) return;
+    const target =
+      pane === 'thinking'
+        ? (root.querySelector<HTMLElement>('[aria-checked="true"]:not([disabled])') ??
+          root.querySelector<HTMLElement>('.ms-item:not([disabled])'))
+        : root.querySelector<HTMLElement>('.ms-cell:not([disabled])');
+    target?.focus();
+  }, [state.isOpen, compact, pane]);
 
   const handleTriggerOpen = useCallback(
     (focusStrategy?: 'first' | 'last') => {
       if (!attemptOpen()) return;
       setQuery('');
+      /* 开面：**有思考面才落在根栏**（两级菜单 = 两个维度）；没有思考面的宿主
+       * （设置页字段形态 / 不开思考的调用点）直接进模型面——单选维度不该多一次点击
+       * （DSH 的 root 也只在模型/强度两件事并存时才有意义）。 */
+      setPane(thinking != null ? 'root' : 'model');
       state.open(focusStrategy, 'manual');
     },
-    [attemptOpen, state],
+    [attemptOpen, state, thinking],
   );
 
   /* ── 2026-09-06 收口：外点关闭。画布空白处 mousedown preventDefault（平移
@@ -419,6 +456,49 @@ export function ModelSelector({
     }
     handleTriggerOpen();
   }, [state.isOpen, close, handleTriggerOpen]);
+
+  /** 面切换：回根栏（Escape / 返回格同一条路）。 */
+  const backToRoot = useCallback(() => setPane('root'), []);
+
+  /** 选档位：写库 → 收起 → 回焦触发器（DSH chooseEffort 同款：选中即完成；
+   *  旧形态「拨完还开着」是把两件事混在一层的副作用）。 */
+  const chooseThinking = useCallback(
+    (next: string) => {
+      thinking?.onChange(next);
+      close();
+      triggerRef.current?.focus();
+    },
+    [thinking, close],
+  );
+
+  /** 根栏 / 思考面的键位（模型面的键位交给 react-aria 的 combobox 输入框）。
+   *  DSH onRootKeyDown 同款：Escape 先退出钻入面、再关；↑↓ 在面内行间走。 */
+  const onPaneKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!compact || e.target instanceof HTMLInputElement) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (pane !== 'root' && thinking != null) {
+        setPane('root');
+        return;
+      }
+      close();
+      triggerRef.current?.focus();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const rows = [
+        ...(popoverRef.current?.querySelectorAll<HTMLElement>(
+          '.ms-back:not([disabled]), [role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled])',
+        ) ?? []),
+      ];
+      if (rows.length === 0) return;
+      e.preventDefault();
+      const at = rows.indexOf(document.activeElement as HTMLElement);
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = at === -1 ? (step > 0 ? 0 : rows.length - 1) : (at + step + rows.length) % rows.length;
+      rows[next]?.focus();
+    }
+  };
 
   /** 空态文案（两形态共用逻辑，落位不同）。 */
   const emptyText = query
@@ -459,6 +539,12 @@ export function ModelSelector({
             if (e.key === 'Escape') {
               // Escape = 取消关闭，不提交自定义值（react-aria 默认 revert 会提交，拦截掉）
               e.preventDefault();
+              if (compact && thinking != null && pane !== 'root') {
+                // 2026-11-12 两级菜单：模型面是**钻入面**——Escape 先退回根栏
+                // （DSH back 语义），根栏再 Escape 才收起。无思考面时没有根栏可退。
+                setPane('root');
+                return;
+              }
               close();
               // 2026-09-06 收口：收起后焦点回触发器（combobox 惯例：取消回到收起态控件）
               if (compact) requestAnimationFrame(() => triggerRef.current?.focus());
@@ -508,7 +594,7 @@ export function ModelSelector({
             className={`ms-trigger${providerUnavailable ? ' ms-trigger-unavailable' : ''}`}
             data-tip={`${providerName} · ${triggerLabel}`}
             data-tip-hint={providerUnavailable ? `⚠ 提供方「${providerName}」不可用——请改选可用模型` : '点击选择模型'}
-            aria-haspopup="listbox"
+            aria-haspopup={thinking != null ? 'menu' : 'listbox'}
             aria-expanded={state.isOpen}
             onMouseDown={(e) => {
               // 防抢焦竞态（DSH ModelSelect 同款注释）：打开态下 mousedown 触发器会
@@ -527,10 +613,9 @@ export function ModelSelector({
           >
             <ProviderMark vendor={providerName} className="ms-trigger-mark" />
             <span className="ms-trigger-name">{triggerLabel}</span>
-            {/* 2026-11-06 合并：档位后缀贴模型名之后（宿主给的文案）——一枚 pill
-                读完「谁的脑子 · 想到多深」；模型名先让位（flex 收缩 + 省略号），
-                档位恒完整可读。 */}
-            {suffix != null && <span className="ms-trigger-thinking">{suffix}</span>}
+            {/* 档位后缀贴模型名之后（DSH triggerEffort 同款：模型名让位、档位恒完整）：
+                一枚 pill 读完「谁的脑子 · 想到多深」；值来自 thinking.label（宿主给文案）。 */}
+            {thinking != null && <span className="ms-trigger-thinking">· {thinking.label}</span>}
             {providerUnavailable && (
               <span className="ms-trigger-unavail" aria-hidden="true">
                 ⚠
@@ -540,42 +625,99 @@ export function ModelSelector({
               ▾
             </span>
           </button>
-          {/* 弹层 = 搜索行 + 列表（2026-09-06 收口）：搜索进弹层，触发 pill 不动
-           *  ——行宽恒定，不推挤同行控件 */}
+          {/* 弹层（2026-11-12 DSH 两级菜单）：**根栏两格 → 点进去才是列表**。
+           *  旧形态把思考档位平铺成 n 枚 chip 塞在模型列表底下（2026-11-06 合并 A），
+           *  用户判「模型思考强度选择这块的 UX 有毛病」：chip 与列表语义无关、档位多
+           *  时换行、拨完不关弹层。DSH 的解法是同级第二面——根栏 模型 / 思考 两格，
+           *  各自点进去是一张清单（模型 = 搜索 + 分组列表；思考 = 档位表 + 当前勾）。
+           *  尺寸不变：根栏两格 ≈ 68px，与旧「搜索 + 4 行列表」同高量级。 */}
           {state.isOpen && (
+            // biome-ignore lint/a11y/noStaticElementInteractions: 键位容器无自身语义——行角色在子层（根栏 role=menu / 模型面 listbox / 档位面 menu），本层只做面内 ↑↓/Escape 分派（DSH MenuSurface 同构）
             <div
               ref={(el) => {
                 popoverRef.current = el;
               }}
-              className="ms-dropdown"
+              className={`ms-dropdown ms-pane-${pane}`}
+              onKeyDown={onPaneKeyDown}
             >
-              {/* 2026-11-08 顺序修正：**搜索 → 列表 → 宿主插槽（档位）**。
-               *  旧序把档位条钉在弹层最顶（搜索行之上），而档位表的可选项由当前模型派生
-               *  ——"结果的可选项"摆在"选择器"之前，依赖反了（真机实量：它还占掉 29px，
-               *  列表只剩 4 行）。现在档位落在底部、贴着列表收尾：换模型的主路（搜索→列表）
-               *  不受它影响，删掉它也不影响换模型。
-               *  「当前模型看不见」是另一条缺陷，修法 = 打开时把它滚进视野（见下方 effect）
-               *  ——**不动可选面**（列表恒是配置面全集，搜索当前模型照样搜得到）。 */}
-              {renderInput(false)}
-              {results.length === 0 ? (
-                <div className="ms-empty">
-                  <span className="ms-empty-text">{emptyText}</span>
-                </div>
-              ) : (
-                <div
-                  ref={(el) => {
-                    listRef.current = el;
-                    listBoxRef.current = el;
-                  }}
-                  className="ms-listbox"
-                  {...listBoxProps}
-                >
-                  {renderRows()}
+              {pane === 'root' && (
+                <div className="ms-cells" role="menu" aria-label="模型与思考档位">
+                  <button type="button" role="menuitem" className="ms-cell" onClick={() => setPane('model')}>
+                    <span className="ms-cell-label">模型</span>
+                    <span className="ms-cell-value">{triggerLabel}</span>
+                    <span className="ms-cell-chevron" aria-hidden="true">
+                      ›
+                    </span>
+                  </button>
+                  {thinking != null && (
+                    <button type="button" role="menuitem" className="ms-cell" onClick={() => setPane('thinking')}>
+                      <span className="ms-cell-label">思考</span>
+                      <span className="ms-cell-value">{thinking.label}</span>
+                      <span className="ms-cell-chevron" aria-hidden="true">
+                        ›
+                      </span>
+                    </button>
+                  )}
                 </div>
               )}
-              {/* 宿主插槽（档位条）：落到弹层底部——它是"当前这一项的细节"，
-                  不是"选之前就要拨的东西"（2026-11-08）。 */}
-              {headerSlot != null && <div className="ms-header-slot">{headerSlot}</div>}
+
+              {pane === 'model' && (
+                <>
+                  {thinking != null && (
+                    <button type="button" className="ms-back" onClick={backToRoot}>
+                      <span aria-hidden="true">‹</span> 模型
+                    </button>
+                  )}
+                  {renderInput(false)}
+                  {results.length === 0 ? (
+                    <div className="ms-empty">
+                      <span className="ms-empty-text">{emptyText}</span>
+                    </div>
+                  ) : (
+                    <div
+                      ref={(el) => {
+                        listRef.current = el;
+                        listBoxRef.current = el;
+                      }}
+                      className="ms-listbox"
+                      {...listBoxProps}
+                    >
+                      {renderRows()}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {pane === 'thinking' && thinking != null && (
+                <>
+                  <button type="button" className="ms-back" onClick={backToRoot}>
+                    <span aria-hidden="true">‹</span> 思考
+                  </button>
+                  {/* 档位面：竖排一张清单（DSH effort pane 同款），当前档走行型选中
+                      —— --sel-wash + 朱砂左脊，与模型行/权限三档同一套语汇（§11），
+                      不新增第三种选中语言。hint 是「这一档有多深」的一句人话。 */}
+                  <div className="ms-listbox" role="menu" aria-label="思考档位">
+                    {thinking.options.map((o) => {
+                      const selected = o.value === thinking.value;
+                      return (
+                        <button
+                          key={o.value}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={selected}
+                          className={`ms-item ms-think-item${selected ? ' selected' : ''}`}
+                          onClick={() => chooseThinking(o.value)}
+                        >
+                          <span className="ms-item-title">
+                            <span className="ms-item-name">{o.label}</span>
+                            {o.hint ? <span className="ms-item-hint">{o.hint}</span> : null}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </>

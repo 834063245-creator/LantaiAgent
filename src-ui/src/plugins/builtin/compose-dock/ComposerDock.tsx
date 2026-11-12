@@ -889,38 +889,25 @@ export const ComposerDock = memo(function ComposerDock() {
     [core, activeSessionId],
   );
 
-  /* ── 思考档位条（2026-11-06 合并 A，用户拍板）────────────────────────
-   * 档位表本身就由**当前模型**派生（thinkingOptionsOrDefault(modelDesc)）——
-   * 换模型 ⇒ 可拨档位表跟着变，两件事本来是一个决定的上下两步。旧形态把它们
-   * 拆成两枚独立 pill：收起态要读两处才知道「这卷拿什么、想多深」，换完模型
-   * 还得再去右边补拨一次档位（且换到档位表更窄的模型时，右边 pill 会短暂挂着
-   * 新模型没有的档位）。现在档位条住进模型弹层顶部：一枚 pill 读完两个值，
-   * 拨档位不关弹层（多半还要接着挑模型）。无档位声明（thinkingOptions 空）
-   * ⇒ 整条不渲染，pill 上也不留后缀。 */
-  const thinkingStrip =
-    thinkingOptions.length > 0 ? (
-      // 语义照抄同行的权限三档（fieldset + aria-pressed）：一组互斥档位不是
-      // 表单控件，radio 语义要配 <input> 才合格（biome useSemanticElements）；
-      // 一组「按下即生效」的切换钮用 aria-pressed 更贴实况。
-      <fieldset className="pp-thinking-strip" aria-label="思考档位">
-        {thinkingOptions.map((o) => {
-          const selected = (currentThinking ?? '') === o.value;
-          return (
-            <button
-              key={o.value}
-              type="button"
-              aria-pressed={selected}
-              className={`pp-thinking-chip${selected ? ' selected' : ''}`}
-              data-tip={`思考档位：${thinkingZhLabel(o.value)}`}
-              data-tip-hint={THINKING_DESC[o.value] ?? ''}
-              onClick={() => onThinkingChange(o.value)}
-            >
-              {thinkingZhLabel(o.value)}
-            </button>
-          );
-        })}
-      </fieldset>
-    ) : null;
+  /* ── 思考档位面（2026-11-12 DSH 两级菜单，用户拍板「去抄 dsh 的 UX」）──────
+   * 旧形态（2026-11-06 合并 A）把档位表平铺成 n 枚 chip 塞在模型弹层底部——用户
+   * 判「模型思考强度选择这块的 UX 有毛病」。DSH 的解法是**同级第二面**：根栏两格
+   * 「模型 / 思考」，点进思考面才是一张竖排档位清单（当前档行型选中）。
+   * 这里只把**数据面**交给 ModelSelector（值/标签/档位表/回调），文案仍由本件给
+   * （档位名在 thinkingZhLabel、说明在 THINKING_DESC），选择器不感知思考语义。 */
+  const thinkingSeat = useMemo(
+    () => ({
+      value: currentThinking ?? '',
+      label: thinkingZhLabel(currentThinking),
+      options: thinkingOptions.map((o) => ({
+        value: o.value,
+        label: thinkingZhLabel(o.value),
+        hint: THINKING_DESC[o.value] ?? '',
+      })),
+      onChange: onThinkingChange,
+    }),
+    [currentThinking, thinkingOptions, onThinkingChange],
+  );
 
   /* ── 让位带上报（旧 --composer-h-live）已于 2026-09-17 拆除 ──
    * 坞可被拖离底带（自由浮动 + 吸附 + 双击复位），「坞高」不再是让位件的尺子
@@ -1520,8 +1507,7 @@ export const ComposerDock = memo(function ComposerDock() {
           compact
           isStreaming={running}
           onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
-          suffix={thinkingOptions.length > 0 ? `· ${thinkingZhLabel(currentThinking)}` : undefined}
-          headerSlot={thinkingStrip}
+          thinking={thinkingSeat}
         />
       </div>
 

@@ -217,34 +217,6 @@ describe('ModelSelector compact 弹层 UX 收口（2026-09-06）', () => {
     }
   });
 
-  it('档位插槽落在列表之后（不是搜索行之上）：headerSlot 是弹层最后一个子块', async () => {
-    act(() => {
-      root?.render(
-        createElement(ModelSelector, {
-          compact: true,
-          value: 'deepseek-v4-pro',
-          providerName: 'deepseek',
-          kind: 'openai',
-          onChange: () => {},
-          headerSlot: createElement('div', { className: 'fc-think-strip' }, '思考：自动 / 极限'),
-        }),
-      );
-    });
-    act(() => {
-      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
-    });
-    await act(async () => {});
-    const dropdown = container!.querySelector('.ms-dropdown')!;
-    const slot = dropdown.querySelector('.ms-header-slot');
-    expect(slot).not.toBeNull();
-    // 顺序判据：列表在插槽之前——档位是"当前模型的细节"，不是"换模型前要先拨的东西"。
-    const kids = [...dropdown.children];
-    expect(kids.indexOf(slot!)).toBe(kids.length - 1);
-    const listIdx = kids.findIndex((el) => el.classList.contains('ms-listbox') || el.classList.contains('ms-empty'));
-    expect(listIdx).toBeGreaterThan(-1);
-    expect(listIdx).toBeLessThan(kids.indexOf(slot!));
-  });
-
   it('非 compact（设置页字段形态）零改动：无触发器、无 .ms-listbox 包装', () => {
     act(() => {
       root?.render(
@@ -259,5 +231,151 @@ describe('ModelSelector compact 弹层 UX 收口（2026-09-06）', () => {
     expect(container!.querySelector('.ms-trigger')).toBeNull(); // 字段形态仍直接是输入框
     expect(container!.querySelector('.ms-input-row .ms-input')).not.toBeNull();
     expect(container!.querySelector('.ms-listbox')).toBeNull();
+  });
+});
+
+// ── 2026-11-12 DSH 两级菜单（用户拍板「去抄一下 dsh 的 UX」）──────────────────
+// 模型与思考是**同一枚 pill 的两个维度** ⇒ 根栏两格「模型 / 思考」，点进去才是各自
+// 清单。旧形态（2026-11-06 合并 A）把档位表平铺成 n 枚 chip 塞在模型列表底下，用户
+// 判「模型思考强度选择这块的 UX 有毛病」：chip 与列表语义无关、档位多时换行、
+// 拨完不关弹层。四条行为从用户操作序列写：开 → 进面 → 选/退。
+describe('ModelSelector 两级菜单（2026-11-12）', () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    localStorage.clear();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container?.remove();
+    root = null;
+  });
+
+  /** 思考面数据（文案由宿主给——选择器不感知思考语义）。 */
+  const THINKING = {
+    value: 'high',
+    label: '高',
+    options: [
+      { value: '', label: '自动', hint: '模型自定推理强度' },
+      { value: 'low', label: '低', hint: '轻度推理' },
+      { value: 'high', label: '高', hint: '深入推理' },
+    ],
+    onChange: () => {},
+  };
+
+  const mount = async (over: Record<string, unknown> = {}) => {
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange: () => {},
+          thinking: THINKING,
+          ...over,
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+  };
+
+  const clickCell = async (label: string) => {
+    const cell = [...container!.querySelectorAll<HTMLButtonElement>('.ms-cell')].find(
+      (c) => c.querySelector('.ms-cell-label')?.textContent === label,
+    );
+    act(() => {
+      cell?.click();
+    });
+    await act(async () => {});
+  };
+
+  it('打开落在根栏：两格「模型 / 思考」各读当前值，不铺清单', async () => {
+    await mount();
+    const cells = [...container!.querySelectorAll<HTMLButtonElement>('.ms-cell')];
+    expect(cells.map((c) => c.querySelector('.ms-cell-label')?.textContent)).toEqual(['模型', '思考']);
+    expect(cells[0]?.querySelector('.ms-cell-value')?.textContent).toContain('DeepSeek V4 Pro');
+    expect(cells[1]?.querySelector('.ms-cell-value')?.textContent).toBe('高');
+    expect(container!.querySelector('.ms-listbox')).toBeNull(); // 根栏不铺清单
+    expect(container!.querySelector('.ms-input')).toBeNull();
+    expect(container!.querySelector('.ms-trigger')?.getAttribute('aria-haspopup')).toBe('menu');
+  });
+
+  it('点「模型」进模型面：搜索 + 模型行；返回格回根栏', async () => {
+    await mount();
+    await clickCell('模型');
+    expect(container!.querySelector('.ms-input')).not.toBeNull();
+    expect(container!.querySelectorAll('.ms-item').length).toBeGreaterThan(0);
+    expect(container!.querySelector('.ms-back')?.textContent).toContain('模型');
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-back')?.click();
+    });
+    await act(async () => {});
+    expect(container!.querySelectorAll('.ms-cell').length).toBe(2);
+  });
+
+  it('点「思考」进档位面：竖排清单 + 当前档 aria-checked；选别的档 → onChange + 收起', async () => {
+    const onChange = vi.fn();
+    await mount({ thinking: { ...THINKING, onChange } });
+    await clickCell('思考');
+    const rows = [...container!.querySelectorAll<HTMLButtonElement>('.ms-think-item')];
+    expect(rows.map((r) => r.querySelector('.ms-item-name')?.textContent)).toEqual(['自动', '低', '高']);
+    expect(rows[2]?.getAttribute('aria-checked')).toBe('true');
+    expect(rows[0]?.getAttribute('aria-checked')).toBe('false');
+    act(() => {
+      rows[1]?.click();
+    });
+    await act(async () => {});
+    expect(onChange).toHaveBeenCalledWith('low');
+    expect(container!.querySelector('.ms-dropdown')).toBeNull(); // 选中即完成
+  });
+
+  it('Escape 从钻入面退回根栏（不收起），根栏再 Escape 才收起', async () => {
+    await mount();
+    await clickCell('思考');
+    act(() => {
+      container!
+        .querySelector<HTMLElement>('.ms-think-item')
+        ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    await act(async () => {});
+    expect(container!.querySelector('.ms-dropdown')).not.toBeNull();
+    expect(container!.querySelectorAll('.ms-cell').length).toBe(2);
+    act(() => {
+      container!
+        .querySelector<HTMLElement>('.ms-cell')
+        ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    await act(async () => {});
+    expect(container!.querySelector('.ms-dropdown')).toBeNull();
+  });
+
+  it('无思考面（不传 thinking）：打开直接进模型面——单选维度不多一次点击', async () => {
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    expect(container!.querySelector('.ms-cell')).toBeNull();
+    expect(container!.querySelector('.ms-back')).toBeNull();
+    expect(container!.querySelector('.ms-input')).not.toBeNull();
+    expect(container!.querySelector('.ms-trigger')?.getAttribute('aria-haspopup')).toBe('listbox');
   });
 });

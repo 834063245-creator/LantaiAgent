@@ -146,10 +146,97 @@
   color: var(--ink-3);
   white-space: nowrap;
 }
-/* 宿主插槽（思考档位）落到弹层底部——它是当前模型的细节，不是换模型前的必拨项 */
-.ms-container.ms-compact .ms-dropdown .ms-header-slot {
-  border-top: 1px solid var(--rule-soft-ink);
+/* ── 2026-11-12 DSH 两级菜单（用户拍板「去抄 dsh 的 UX」）┌────────────────────
+ * 根栏两格（模型 / 思考）→ 点进去才是各自清单。旧形态把思考档位平铺成 n 枚 chip
+ * 塞在模型列表底下，用户判「UX 有毛病」：与列表语义无关、档位多时换行、拨完不关。
+ * 语汇不新增：格子=纯文字行（hover 只换纸色），当前档 = 行型选中（--sel-wash +
+ * 朱砂左脊，与模型行同一条腿，§11 只许两种选中语言）。 */
+
+/* 根栏：每格「标签（左）+ 当前值（右，三级墨）+ 箭头」——DSH .cell 同构 */
+.ms-cells {
+  display: flex;
+  flex-direction: column;
+}
+
+.ms-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  background: none;
+  color: var(--ink-1);
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--snap);
+}
+
+.ms-cell:last-child {
   border-bottom: none;
+}
+
+.ms-cell:hover {
+  background: var(--paper-deep);
+}
+
+.ms-cell-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.ms-cell-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--ink-3);
+}
+
+.ms-cell-chevron {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
+  line-height: 1;
+}
+
+/* 钻入面的返回格（DSH 只留 Escape；纸上这个弹层是鼠标先到的地方，
+   留一枚「‹ 模型」不至于只能靠点外面） */
+.ms-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 10px;
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  background: none;
+  color: var(--ink-3);
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ms-back:hover {
+  color: var(--ink-1);
+}
+
+/* 档位行的说明副文（「这一档有多深」的一句人话；模型行的 id/vendor 同位阶） */
+.ms-item-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
 }
 
 /* ── 2026-09-06 收口：compact 弹层 = 搜索行 + 列表滚动区（DSH chip 形态）。
@@ -162,15 +249,14 @@
   padding: 0;
 }
 
-.ms-container.ms-compact .ms-dropdown .ms-input-row {
+.ms-container.ms-compact .ms-dropdown .ms-input-row,
+.ms-container.ms-compact .ms-dropdown .ms-back {
   flex: 0 0 auto;
   padding: 2px 4px;
 }
 
-/* 2026-11-06 合并 A（模型 + 思考档位合一颗 pill）：宿主插槽（思考档位条）
- * 钉在弹层顶部——不随列表滚动，与搜索行同位阶（flex 0 0 auto）。 */
-.ms-container.ms-compact .ms-dropdown .ms-header-slot {
-  flex: 0 0 auto;
+.ms-container.ms-compact .ms-dropdown .ms-back {
+  padding: 3px 8px;
   border-bottom: 1px solid var(--rule-soft-ink);
 }
 

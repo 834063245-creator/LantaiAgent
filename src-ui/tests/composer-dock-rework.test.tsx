@@ -109,7 +109,7 @@ describe('ComposerDock 返工 P2-2（思考档位 pill 下拉，DSH 移植）', 
     expect(container.querySelector('.ms-trigger-thinking')?.textContent).toContain('关闭');
   });
 
-  it('点模型 pill 开弹层：档位条钉在顶部、纯中文、选中态正确；选「低」写覆盖且不收弹层', async () => {
+  it('点模型 pill 开弹层：根栏两格「模型 / 思考」；进思考面选「低」写覆盖并收起', async () => {
     await mountDock('p22-open', container, (r) => {
       root = r;
     });
@@ -117,28 +117,34 @@ describe('ComposerDock 返工 P2-2（思考档位 pill 下拉，DSH 移植）', 
       container.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
     });
     await act(async () => {});
-    const strip = container.querySelector('.pp-thinking-strip');
-    expect(strip).not.toBeNull();
-    const chips = [...container.querySelectorAll<HTMLButtonElement>('.pp-thinking-chip')];
-    expect(chips.length).toBeGreaterThan(0);
+    // 2026-11-12 DSH 两级菜单：打开落在根栏——两格，各带当前值
+    const cells = [...container.querySelectorAll<HTMLButtonElement>('.ms-cell')];
+    expect(cells.map((c) => c.querySelector('.ms-cell-label')?.textContent)).toEqual(['模型', '思考']);
+    expect(cells[1]?.querySelector('.ms-cell-value')?.textContent).toContain('高');
+    // 点「思考」→ 进档位面：竖排清单，当前档（高）带行型选中
+    act(() => {
+      cells[1]?.click();
+    });
+    await act(async () => {});
+    const rows = [...container.querySelectorAll<HTMLButtonElement>('.ms-think-item')];
+    expect(rows.length).toBeGreaterThan(0);
     // 无中英混排：档位标签都是中文（thinkingZhLabel）
-    expect(strip?.textContent).not.toMatch(/\(|\)/);
-    // 选中态 = 当前档「高」
-    const selected = chips.find((b) => b.classList.contains('selected'));
-    expect(selected?.textContent).toContain('高');
-    // 选「低」→ compose-store 会话覆盖；弹层不关（接着挑模型是同一趟事）
-    const low = chips.find((b) => b.textContent?.includes('低'));
+    expect(rows.map((r) => r.textContent).join('')).not.toMatch(/\(|\)/);
+    const checked = rows.find((r) => r.getAttribute('aria-checked') === 'true');
+    expect(checked?.querySelector('.ms-item-name')?.textContent).toContain('高');
+    // 选「低」→ compose-store 会话覆盖；选中即完成 ⇒ 弹层收起（DSH chooseEffort 语义）
+    const low = rows.find((r) => r.querySelector('.ms-item-name')?.textContent?.includes('低'));
     act(() => {
       low?.click();
     });
     await act(async () => {});
     expect(getComposeStore('p22-open').getState().getPrefs('1')?.thinking).toBe('low');
-    expect(container.querySelector('.pp-thinking-strip')).not.toBeNull();
+    expect(container.querySelector('.ms-dropdown')).toBeNull();
     // 收起态后缀同步跟上
     expect(container.querySelector('.ms-trigger-thinking')?.textContent).toContain('低');
   });
 
-  it('无目录声明模型：档位条仍常驻（自动/关闭安全兜底），后缀显示「自动」', async () => {
+  it('无目录声明模型：思考面仍常驻（自动/关闭安全兜底），后缀显示「自动」', async () => {
     await mountDock('p22-fallback', container, (r) => {
       root = r;
     });
@@ -150,12 +156,19 @@ describe('ComposerDock 返工 P2-2（思考档位 pill 下拉，DSH 移植）', 
       container.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
     });
     await act(async () => {});
-    const chips = [...container.querySelectorAll<HTMLButtonElement>('.pp-thinking-chip')];
-    expect(chips.length).toBeGreaterThan(0);
+    const thinkCell = [...container.querySelectorAll<HTMLButtonElement>('.ms-cell')].find(
+      (c) => c.querySelector('.ms-cell-label')?.textContent === '思考',
+    );
+    act(() => {
+      thinkCell?.click();
+    });
+    await act(async () => {});
+    const names = [...container.querySelectorAll('.ms-think-item .ms-item-name')].map((e) => e.textContent ?? '');
+    expect(names.length).toBeGreaterThan(0);
     // 只给「自动/关闭」——不编造命名档位（P14 不破，assertEffortDeclared 对 ''/off 不拦）
-    expect(chips.some((b) => b.textContent?.includes('自动'))).toBe(true);
-    expect(chips.some((b) => b.textContent?.includes('关闭'))).toBe(true);
-    expect(chips.some((b) => b.textContent?.includes('高'))).toBe(false);
+    expect(names.some((n) => n.includes('自动'))).toBe(true);
+    expect(names.some((n) => n.includes('关闭'))).toBe(true);
+    expect(names.some((n) => n.includes('高'))).toBe(false);
   });
 });
 
@@ -492,7 +505,14 @@ describe('ComposerDock 思考档位换源（2026-09-23）', () => {
       container.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
     });
     await act(async () => {});
-    const labels = [...container.querySelectorAll('.pp-thinking-chip')].map((e) => e.textContent ?? '');
+    const thinkCell = [...container.querySelectorAll<HTMLButtonElement>('.ms-cell')].find(
+      (c) => c.querySelector('.ms-cell-label')?.textContent === '思考',
+    );
+    act(() => {
+      thinkCell?.click();
+    });
+    await act(async () => {});
+    const labels = [...container.querySelectorAll('.ms-think-item .ms-item-name')].map((e) => e.textContent ?? '');
     expect(labels).toContain('最浅'); // 网关模型自己的声明（目录里没有这个模型）
   });
 });

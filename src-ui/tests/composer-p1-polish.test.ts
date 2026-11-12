@@ -94,10 +94,9 @@ describe('创作坞 P1 · 只读件与设置行字号', () => {
     expect(locked).toContain('cursor: default');
   });
 
-  it('设置行主要控件取字阶档（模型/权限/思考/墨/役）——2026-11-06 由 --font-scale 散写收编', () => {
+  it('设置行主要控件取字阶档（模型/权限/墨/役）——2026-11-06 由 --font-scale 散写收编', () => {
     for (const selector of [
       '.pp-composer .pp-mode-opt {',
-      '.pp-composer .pp-thinking-chip {',
       '.pp-composer .pp-ink-trigger {',
       '.pp-composer .pp-work-trigger {',
     ]) {
