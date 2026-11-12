@@ -145,6 +145,8 @@ export class ChatCore {
 
   /** 目标续行调度合并位（微任务去重——同一收尾窗口只排一次下一轮）。 */
   private _goalDriveScheduled = false;
+  /** 「等本卷空闲再排」的一次性订阅（sid → 退订）：同一卷只挂一个，避免重复排程。 */
+  private readonly _goalIdleWait = new Map<number, () => void>();
 
   private get messages(): ChatMessage[] {
     const store = msgStoreForActive(this.panelId);
@@ -163,6 +165,8 @@ export class ChatCore {
     // 上一实例的全局 store 订阅先解除（2026-09-01 审计：重建不累积——
     // 退订函数登记在模块级 _globalStoreUnsubs，声明见类定义上方）
     for (const unsub of _globalStoreUnsubs.splice(0)) unsub();
+    // 上一实例的「等本卷空闲」订阅同样解除（同一执行账会跨实例复用，不解除 = 漏订）
+    for (const off of this._goalIdleWait.values()) off();
     this.panelId = `cp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     this._exec = createExecState();
 
@@ -707,8 +711,13 @@ export class ChatCore {
 
   switchSession(idx: number): void {
     Session.switchSession(this._sessionCtx(), idx);
-    // 目标状态是卷级的：切卷后重读本卷日志（句柄惰性补建 → 排到微任务后）
-    queueMicrotask(() => this._refreshGoalView());
+    // 目标状态是卷级的：切卷后重读本卷日志（句柄惰性补建 → 排到微任务后）。
+    // 切进一卷也可能是「回到一个 active+armed 却在后台停着的目标」——重排一次
+    // 续行，否则它要等用户下一句话的收尾才会被重新捡起（2026-11-12）。
+    queueMicrotask(() => {
+      this._refreshGoalView();
+      this._scheduleGoalDrive();
+    });
   }
   closeSession(idx: number): void {
     Session.closeSession(this._sessionCtx(), idx);
@@ -1159,9 +1168,27 @@ export class ChatCore {
       .setGoalView(this._goalView() ?? null);
   }
 
-  /** 空闲时排一次目标续行（微任务合并，避免在 turn finally 里递归起轮）。 */
-  private _scheduleGoalDrive(): void {
+  /** 空闲时排一次目标续行（微任务合并，避免在 turn finally 里递归起轮）。
+   *
+   *  `sid` = 排程方所属的卷：该卷账上**还在跑**时，这一跳不丢弃，改装到该卷账的
+   *  **空闲转变**上（一次性）。为什么必须这样：`_runAgentTurn` 的 finally 里
+   *  `run.end()` 之后立刻排程，而同一 finally 还要走 finishTurn / bumpTurnDone——
+   *  订阅者可能在这之间再起一条运行（唤醒轮、后台件），驱动器一看「账上在跑」
+   *  就放弃，此后再没有人排它：目标停在 active+armed 不动。 */
+  private _scheduleGoalDrive(sid?: number): void {
     if (this._goalDriveScheduled) return;
+    if (sid != null && Session.getSessionExecState(this.panelId, sid).isRunning) {
+      if (!this._goalIdleWait.has(sid)) {
+        const off = Session.getSessionExecState(this.panelId, sid).onChange(() => {
+          if (Session.getSessionExecState(this.panelId, sid).isRunning) return;
+          this._goalIdleWait.delete(sid);
+          off();
+          this._scheduleGoalDrive();
+        });
+        this._goalIdleWait.set(sid, off);
+      }
+      return;
+    }
     this._goalDriveScheduled = true;
     queueMicrotask(() => {
       this._goalDriveScheduled = false;
@@ -1169,13 +1196,26 @@ export class ChatCore {
     });
   }
 
-  /** 目标续行驱动器：active + armed + 还有轮预算 + 本卷空闲 → 跑一轮。
-   *  单轮怎么结束（完成/受阻/暂停/异常）由 `_settleGoalRound` 裁决。 */
+  /** 目标续行驱动器：active + armed + 还有轮预算 + **目标卷**空闲 → 跑一轮。
+   *
+   *  ⚠ 卷身份（2026-11-12 收口）：目标活在卷里，续行也是给那卷续——一旦抓到开轮条件，
+   *  本轮全过程（Agent 句柄、运行账、收尾裁决、下一轮排队）都钉在**发起时刻的目标卷**，
+   *  绝不跟着「此刻翻开哪卷」走。旧实现每一步都取活跃卷：切卷后目标轮把记录挂到别的卷、
+   *  收尾拿别的卷的相位裁决、下一轮又去驱动另一个卷的目标——三张不同的卷在同一处混用，
+   *  正是「目标停在 active/armed 却再也不跑」与「两卷被交替续行」的根因。 */
   private async _driveGoal(): Promise<void> {
+    const sid = this.activeSessionId;
     const agent = this.agent;
     const host = this._goalHost();
-    if (!agent || !host) return;
-    if (this._activeExec().isRunning) return;
+    if (!agent || !host || sid == null) return;
+    // 本卷账上正在跑（直人轮 / 后台唤醒 / 已在跑的目标轮）：改挂到它的空闲转变上
+    // 再排（`_scheduleGoalDrive(sid)` 自带一次性订阅去重）。为什么不直接 return：
+    // 这一跳可能是**最后一跳**（切卷、/goal resume、切回目标卷都只排这一次），
+    // 放弃就再没人排——正是「目标停在 active+armed 不动」的形状。
+    if (Session.getSessionExecState(this.panelId, sid).isRunning) {
+      this._scheduleGoalDrive(sid);
+      return;
+    }
     let view: GoalView | undefined;
     try {
       view = readGoal(host);
@@ -1184,6 +1224,9 @@ export class ChatCore {
     }
     this._refreshGoalView();
     if (view === undefined || view.phase !== 'active' || view.activation !== 'armed') return;
+    // 卷闸：登记之后、开轮之前用户切了卷 ⇒ 本卷不再是目标卷，这一跳作废
+    //（重排点 = 切回本卷时的 switchSession）。
+    if (this.activeSessionId !== sid) return;
     if (view.roundsStarted >= view.maxGoalRounds) {
       try {
         blockGoal(
@@ -1203,14 +1246,18 @@ export class ChatCore {
     }
     await this._runAgentTurn({
       runKind: 'goal',
+      goalTurn: { sid },
       drive: (signal) => agent.runGoalRound(signal),
-      onSettled: (info) => this._settleGoalRound(info),
+      onSettled: (info) => this._settleGoalRound(sid, info),
     });
   }
 
-  /** 一轮结束后的裁决：用户停止 = 暂停；异常 = 停用续行；正常 = 排下一轮。 */
-  private _settleGoalRound(info: { aborted: boolean; error?: unknown }): void {
-    const host = this._goalHost();
+  /** 一轮结束后的裁决：用户停止 = 暂停；异常 = 停用续行；正常 = 排下一轮。
+   *  `sid` = 本轮所属的**目标卷**（不是收尾时刻的活跃卷）。 */
+  private _settleGoalRound(sid: number, info: { aborted: boolean; error?: unknown }): void {
+    // 目标宿主按卷解析：用户中途切卷时 `_goalHost()` 已经是另一个卷的宿主了，
+    // 拿它裁决本轮的存续 = 把 A 卷的轮记到 B 卷头上（旧实现的第二条混卷路径）。
+    const host = goalHostOf(Session.getSessionAgent(this.panelId, sid)?.id);
     if (!host) return;
     let view: GoalView | undefined;
     try {
@@ -1233,8 +1280,11 @@ export class ChatCore {
     if (info.error !== undefined) {
       disarmGoal(host);
       this._refreshGoalView();
+      // 单轮异常只停**自动续行**（activation 是进程本地授权位）：目标仍是 active，
+      // 人可以 /goal resume 接着推。状态条据此显式标「续行已停」——旧实现只有一条
+      // 会滚走的 toast，用户在状态条上看到的仍是「进行中」。
       const msg = info.error instanceof Error ? info.error.message : String(info.error);
-      showToast(`目标轮失败，自动续行已停用：${msg.slice(0, 160)}`, 'warn', TOAST_LONG_HOLD_MS);
+      showToast(`目标轮失败，自动续行已停用（/goal resume 继续）：${msg.slice(0, 160)}`, 'warn', TOAST_LONG_HOLD_MS);
       return;
     }
     if (view.phase === 'complete') {
@@ -1245,7 +1295,11 @@ export class ChatCore {
       showToast(`🚧 目标受阻: ${(view.blockedReason?.message ?? '').slice(0, 120)}`, 'warn', TOAST_LONG_HOLD_MS);
       return;
     }
-    if (view.phase === 'active' && view.activation === 'armed') this._scheduleGoalDrive();
+    // 下一轮：目标卷仍是活跃卷时本处直接续；已切走则这一跳放弃——不跨卷替
+    // 别的卷开轮（回来后由 switchSession 重排）。
+    if (view.phase === 'active' && view.activation === 'armed' && this.activeSessionId === sid) {
+      this._scheduleGoalDrive(sid);
+    }
   }
 
   /** `/goal` 状态渲染（无目标 = 用法；有目标 = 阶段/轮数/续行/可用命令）。 */
@@ -1301,19 +1355,29 @@ export class ChatCore {
     drive: (signal: AbortSignal) => Promise<unknown>;
     /** 本轮收尾裁决（目标驱动器用）：中止/异常如实上报，供暂停或停用续行。 */
     onSettled?: (info: { aborted: boolean; error?: unknown }) => void;
+    /** 目标自动轮：本轮**恒属于发起时刻的目标卷**，不是"此刻活跃卷"。 */
+    goalTurn?: { sid: number | null };
   }): Promise<void> {
     // 并发会话（2026-08-26）：闸门拆除——后台卷运行不再阻止本卷新轮次；
     // 仅本卷自身在跑时拒发（Enter 插话路径由 sendMessage 处理）。
-    if (!this.agent || this._activeExec().isRunning) return;
-    const exec = this._activeExec();
+    // 目标自动轮例外（2026-11-12）：它挂的是**目标卷**的账，不受"此刻翻开哪卷"影响——
+    // 旧实现取活跃卷账，切卷后目标轮的记录挂到别的卷上（驱动看本卷空闲就再开一轮 →
+    // 同卷两条 loop），轮尾收尾用别人的账判暂停。
+    const exec = opts.goalTurn
+      ? Session.getSessionExecState(this.panelId, opts.goalTurn.sid ?? -1)
+      : this._activeExec();
+    if (!this.agent || exec.isRunning) return;
     // 起一条运行记录（谁起谁收）：signal 由账铸；收尾 `run.end()` 只注销自己这条
     //（v43 起「清掉别人的运行」在类型上不可能——旧实现的 done(signal) 守卫是约定）。
     const run = exec.beginRun(opts.runKind ?? 'turn');
     const signal = run.signal;
     // L2（session-ledger）：本轮跑的是哪卷——头部捕获，finally 随 turn-done
     // 信号发出（后台卷跑完存它自己，不再只存当前翻开的卷）。
+    // 目标自动轮按**发起时刻的目标卷**归属（与上面 exec 账同一身份）。
     let turnSid: number | null = null;
-    {
+    if (opts.goalTurn) {
+      turnSid = opts.goalTurn.sid;
+    } else {
       const sessStore = getChatStore(this.panelId).sess.getState();
       turnSid = sessStore.sessions[sessStore.activeIdx]?.id ?? null;
     }
@@ -1328,7 +1392,7 @@ export class ChatCore {
     // 先铸气泡拿 _id——轮次簿册以它作权威身份（撤回/重发 ID 直达）
     const bubble = opts.bubbleLabel ? this.appendUserBubble(opts.bubbleLabel) : null;
     if (opts.userText) {
-      Session.getTurnPairs(this.panelId, turnSid).push({
+      Session.getTurnPairs(this.panelId, turnSid ?? undefined).push({
         userText: opts.userText,
         uiMsgId: bubble?._id,
         userBubble: null,
@@ -1339,8 +1403,10 @@ export class ChatCore {
     // 3.6: 在 Agent 上设置 UI 会话 ID，使子 Agent 通知能正确路由到对应会话
     //（并发会话：轮次路由身份已由工厂绑定的 eventSinkFor 携带；这里只管
     // 子 Agent 通知路由的 agent._uiSessionId）
-    if (turnSid != null) {
-      this.agent.setUiSessionId(turnSid);
+    // 目标轮按**本轮所属卷**的句柄写（切卷后 this.agent 已是另一卷的句柄）。
+    const turnAgent = opts.goalTurn ? Session.getSessionAgent(this.panelId, turnSid ?? -1) : this.agent;
+    if (turnSid != null && turnAgent) {
+      turnAgent.setUiSessionId(turnSid);
     }
 
     let settleError: unknown;
@@ -1408,7 +1474,8 @@ export class ChatCore {
       if (opts.onSettled) {
         opts.onSettled({ aborted: signal.aborted, ...(settleError === undefined ? {} : { error: settleError }) });
       } else {
-        this._scheduleGoalDrive();
+        // 本轮所属卷（普通轮 = 活跃卷）——排程按**它的**账判空闲。
+        this._scheduleGoalDrive(turnSid ?? undefined);
       }
     }
   }
@@ -1725,6 +1792,12 @@ export class ChatCore {
     // 通知持久化链（P1 总线归零：chat:turn-done → state/turn-done-store 信号；
     // L2：携带跑完的会话 id——谁跑完存谁）
     bumpTurnDone(turnSid ?? undefined);
+    // 直人轮收尾也看一眼目标是否该续行（2026-11-12）：模型可以在**直人轮里**用
+    // goal(create) 建目标（工具的直人授权正是这一条），旧实现在 `_runAgentTurn`
+    // 里排程、却在 sendMessage 这条真发话路径上什么都不做 ⇒ 「/goal 目标」会跑，
+    // 「模型自己建的目标」永远停在 active/armed 第 0 轮，直到用户再发一句话或切卷
+    // 把它捡起来。`_scheduleGoalDrive(sid)` 自带空闲判定与卷身份，重复调用无副作用。
+    this._scheduleGoalDrive(turnSid ?? undefined);
   }
 
   abort(): void {

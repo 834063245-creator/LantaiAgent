@@ -51,7 +51,7 @@ const DEBT: Record<string, number> = {
   'src-tauri/src/os_sandbox.rs': 2200, // 现 2147
   'src-ui/src/plugins/builtin/paper-shell/measure.ts': 2200, // 现 2130
   'src-ui/src/plugins/builtin/renderers/components.tsx': 2200, // 现 2130
-  'src-ui/src/app/chat/chat-core.ts': 2200, // 现 2118
+  'src-ui/src/app/chat/chat-core.ts': 2300, // 现 2268（2026-11-12：goal 驱动器收口——卷身份钉住 + 空闲转变重排，+55 行）
   'src-tauri/src/cdp/actions.rs': 2200, // 现 2115
   'engine/src/tools/mod.rs': 2000, // 现 1987
   'src-tauri/src/cdp/session.rs': 2000, // 现 1943
