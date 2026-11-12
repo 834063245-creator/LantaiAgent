@@ -17,8 +17,10 @@ const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const activeShellProviders = impl.activeShellProviders;
+export const guardShellPoll = impl.guardShellPoll;
 export const ownerIdOf = impl.ownerIdOf;
 export const ownerSeamView = impl.ownerSeamView;
+export const resetShellPollState = impl.resetShellPollState;
 export const stickyCwdOf = impl.stickyCwdOf;
 export const toInputJsonSchema = impl.toInputJsonSchema;
 

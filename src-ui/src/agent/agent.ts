@@ -99,7 +99,7 @@ import {
   watchdogAbandonText,
   watchdogWarnText,
 } from './run-watchdog';
-import { registerOwnerContext } from './session-context';
+import { clearShellPollState, registerOwnerContext } from './session-context';
 import { SessionLog, type SessionResetReason } from './session-log';
 import type { StepsRegistry } from './steps';
 import type { StreamingToolExecutor } from './streaming-executor';
@@ -661,6 +661,7 @@ export class Agent {
     if (ctx.projectPath) {
       ctx.effect(() => registerOwnerContext(this.id, ctx.projectPath), 'session-context');
     }
+    ctx.effect(() => () => clearShellPollState(this.id), 'shell-poll-state'); // shell 忙等哨兵对称清理（键 = owner id）
     // Goal 宿主登记（2026-10-23 goal 域移植）：goal 工具在产物包里只拿得到
     // `_owner_id`（bus id）；目标状态住本 Agent 的会话日志 ⇒ 键 = owner id 的
     // 登记表是唯一桥。对称清理归 ctx 所有权（session-context 同款）。

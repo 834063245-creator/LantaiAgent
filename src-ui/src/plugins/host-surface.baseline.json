@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b0a458e6",
+  "fingerprint": "8ca82abb",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -159,6 +159,7 @@
     "getSubAgentActivity",
     "getVendorTemplateVendors",
     "goalHostOf",
+    "guardShellPoll",
     "hasDynamicFetchInflight",
     "hasImageRefs",
     "iconHtml",
@@ -288,6 +289,7 @@
     "requireKind",
     "requireMultiagentComm",
     "requirePresentation",
+    "resetShellPollState",
     "resolveAgainstRoot",
     "resolveApiKey",
     "resolveAssetBlock",

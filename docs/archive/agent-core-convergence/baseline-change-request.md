@@ -579,3 +579,89 @@
 5. ✅ 守护测试（上述三文件）+ 夹具改写；
 6. ✅ `record:convergence`（双轨）——本提交即 baseline 审批提交；
 7. ⬜ 门禁四连（vitest / build / biome / convergence）+ doc-check 收口。
+
+---
+
+# Baseline 变更申请 — phase-0/tool-schemas.full.json + .plan.json（shell 域描述：掐掉「轮询便宜」的诱导）
+
+> 申请日期：2026-11-12 · 申请人：编码助手（bash_output 滥用批）
+> 状态：**已批准** —— 用户当日指令「好，开工」（承接上一轮「那三层修法一次做完吗」的三选一，
+> 用户先要求核对 DSH / openhanako 的取证、看过取证后拍板开工），即本变更的开工授权。
+> 模型可见表面：**有变更**（shell 域描述 + `runInBackground` 参数描述）——这正是本申请的对象。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.full.json`（`shell` 条目）
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.plan.json`（同条目）
+- `src-ui/tests/convergence/baseline/preset-minimal/phase-0/tool-schemas.full.json`（同条目）
+- `src-ui/tests/convergence/baseline/preset-minimal/phase-0/tool-schemas.plan.json`（同条目）
+- 变更内容（两处文本，工具名/参数表/枚举/事件面零变更）：
+  1. **域描述**去一句、加一句——删
+     `bash_output returns only NEW bytes since your last read — polling watch modes/dev servers is cheap.`，
+     换成「后台任务一律先 `wait`；`output` 只在确实想看一眼中间产物时用一次」；
+  2. **`runInBackground` 参数描述**里 `bash_output(id) to check progress` 的排序反转，
+     把 `bash_wait` 提到首位 + 加「wait 超时后继续 wait，别退化成 output 轮询」。
+
+## 2. 为什么必须变（实测，不是审美）
+
+最近 7 卷 `.lantai/sessions/*.ndjson` 全量统计（132 次 `shell(output)` 调用）：
+
+| 卷 | 步数 | `output` 调用 | 零新增字节的轮询 | 单步纯轮询步 |
+|---|---|---|---|---|
+| 97 | 253 | 74 | 71 | 68（占 27%） |
+| 69 | 300 | 25 | 23 | 25 |
+| 92 | 258 | 10 | 5 | 8 |
+| 71 | 153 | 10 | 9 | 10 |
+| 67 / 70 / 86 | — | 13 | 12 | 12 |
+| **合计** | — | **132** | **120（91%）** | — |
+
+最长的三次：job 185（31 次 / 237s）、job 131（27 次 / 235s）、job 38（21 次 / 333s），
+全程只换回 `[任务运行中, 已运行: Ns]`。卷 97 因此烧掉 265 次模型调用
+（cacheRead 66.4M / uncached 1.27M / output 195k）。
+
+**根因之一就是这两句描述**：它把「字节增量便宜」说成了「反复轮询便宜」——对 token 成立、
+对**轮次**完全不成立（每次轮询 = 一次完整 LLM 调用）。同卷模型自己在推理里写
+「I keep getting memory injections. Let me poll job 131.」，被用户当面质问
+（`97.ndjson` seq 929「为什么你一直在跑output工具」）后才承认是操作毛病，**且当轮又原样复发**。
+
+**参照实现的取证**（同批核过两家）：
+
+- DSH `packages/jobs/tool-jobs/src/index.ts:319` 有一条 system prompt 段明令
+  "do not busy-poll or sleep on one"，且 `bash` 的 `run_in_background` 描述只有
+  "collect with job_output, stop with job_kill. **No timeout applies**"，**没有任何一句**
+  说轮询便宜；
+- openhanako `lib/loop/alarm-service.ts:61-67` 在机制层拒绝轮询：
+  `short_alarm_with_live_work` — "Background work in this session wakes it automatically
+  on completion; **do not schedule alarms to poll it**"（注释：
+  「轮询后台任务这条路在机制层走不通」）。
+
+兰台这一格是反的：**唯一一句提到轮询的文案，说的是它很便宜**。
+
+## 3. 证据
+
+- 统计脚本与逐卷明细见本批 commit message（一次性脚本已删，口径：`[任务运行中…]` 且无增量 = 零字节轮询）；
+- 同批的运行时护栏（同一 job 连续 3 次零增量 → `[poll guard]` 打回）**不碰 baseline**，
+  其回归门见 §5 第 3 步；
+- `record` 后 `git diff` 只含上述 4 个快照文件的 2 处文本 + 本批代码/测试 + 生成物文档。
+
+## 4. 拟议变更
+
+采纳 record 快照：两轨 full/plan 的 `shell` 条目各改 2 处文本，其余条目逐字节不变、
+顺序不变。**参数名、枚举、类型、required、事件顺序、消息投影零漂移**（描述文本不进消息投影）。
+
+## 5. 落地步骤
+
+1. ✅ `plugins/builtin/shell-domain/shell-tools.ts` 的 `SHELL_CAP_DESCRIPTION`（run/output 两条）
+   + `runInBackground` 参数描述改写；
+2. ✅ `agent/tools/domains.ts` 的 `DOMAIN_SPECS` shell 段描述同步；
+3. ✅ 运行时 poll guard（`agent/tool-poll-guard.ts` + 两个 shell 工具接面）+ 回归用例；
+4. ✅ 本文件登记 + 授权依据（用户「好，开工」）；
+5. ⬜ `gen:tool-contract` 重生成 `docs/agents/model-tool-contract.md`；
+6. ⬜ `record:convergence` 双轨（写面实测 = 恰好 4 个 baseline 文件各 2 处文本）；
+7. ⬜ 门禁四连（vitest / build / biome ci / verify:convergence）+ doc-check。
+
+## 6. 风险与回滚
+
+- 风险面只在**提示词引导**：模型若仍自发轮询，第 3 步的运行时护栏兜底（它不依赖描述）；
+  护栏本身是纯记账 + 结果尾部追加一句，失败模式退化为「维持现状」，不引入新挂点。
+- 回滚 = 还原 4 个 baseline 文件 + 还原两处描述（本变更不涉数据/存储，无迁移）。

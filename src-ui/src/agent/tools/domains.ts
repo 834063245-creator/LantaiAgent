@@ -264,7 +264,7 @@ export const DOMAIN_SPECS: DomainSpec[] = [
     description:
       'Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. ' +
       'Working directory is sticky per agent (a successful cd persists across calls; results end with a [cwd: ...] line). ' +
-      'bash_output returns only NEW bytes since your last read — polling watch modes/dev servers is cheap. ' +
+      'After run with runInBackground, WAIT with wait — a timed-out wait is retried with another wait, never with an output poll loop (each poll is a full model round: background completions also arrive as a notice). Use output only for a one-off look at partial output. ' +
       'Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead.',
     actions: {
       run: 'run_shell',

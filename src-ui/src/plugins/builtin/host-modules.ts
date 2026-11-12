@@ -108,6 +108,7 @@ import {
 } from '../../agent/schema-validate';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../../agent/session-context';
 import { buildCompactedSummaryMessage } from '../../agent/session-log';
+import { guardShellPoll, resetShellPollState } from '../../agent/shell-poll-hook';
 // 批 9h-3 归家（2026-09-26）：技能域实现随 skill-domain 包 ⇒ 撤 `createSkillTool` 桥；
 // `scanSkills` 改经内核登记表门面（settings-domain 的 SkillsPage 列表源读它）。
 import { clearSkillImplementation, registerSkillImplementation, scanSkills } from '../../agent/skill-impl';
@@ -752,6 +753,10 @@ const faceDeps = {
   ownerContext,
   resolveAgainstRoot,
   stickyCwdOf,
+  // 2026-11-12 bash_output 滥用批：shell 域忙等护栏随 shell-domain 包消费
+  // （判据在 agent/shell-poll-guard.ts，接面在 agent/shell-poll-hook.ts）。
+  guardShellPoll,
+  resetShellPollState,
   activeDynamicRunner,
   // 标题栏交互（2026-09-14 app-region 退役）：顶部浮件拖拽/双击最大化的原生实现
   onTopbarPointerDown,

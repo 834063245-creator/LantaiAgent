@@ -10,8 +10,10 @@
 import { z } from 'zod';
 import {
   activeShellProviders,
+  guardShellPoll,
   ownerIdOf,
   ownerSeamView,
+  resetShellPollState,
   type ShellAction,
   stickyCwdOf,
   type Tool,
@@ -71,7 +73,7 @@ const runShellSchema = z.object({
     .boolean()
     .default(false)
     .describe(
-      'Set to true to run in background (returns job ID immediately). Use bash_output(id) to check progress, bash_wait(id) to wait for completion, bash_kill(id) to stop.',
+      'Set to true to run in background (returns job ID immediately). Wait for it with bash_wait(id) — a timed-out wait is retried with another bash_wait, never by polling bash_output. Use bash_output(id) only for a one-off look at partial output, and bash_kill(id) to stop it.',
     ),
   interpreter: z
     .enum(['bash', 'pwsh'])
@@ -118,11 +120,11 @@ const SHELL_CAP_SCHEMA: Record<ShellAction, z.ZodObject<z.ZodRawShape>> = {
 
 /** shell 域动作 → 模型面 description（manifest 字节转录）。 */
 const SHELL_CAP_DESCRIPTION: Record<ShellAction, string> = {
-  run: 'Execute a shell command in the bundled bash (Unix syntax) and return stdout + stderr. The working directory is STICKY per agent: a successful `cd` in one call carries over to later calls, and every result ends with a `[cwd: ...]` line showing where you landed. Pass the `cwd` parameter to set the directory explicitly for one call. Do NOT write `cd /d X:\\...` (cmd syntax — fails in bash); write `cd /x/path` or `cd \'X:/path\'`. Default timeout 5 min (max 10 min). Long output is truncated head+tail, but the FULL log is spilled to a file whose path is always printed in the result. To find output the truncation cut (e.g. a buried error), do NOT re-run the command with pipes (`| head`, `| tail`, `| grep`) — that wastes build/test time. Grep the spill file directly with the bundled bash instead (`grep -n -iE "error|failed" <path>`), or read its tail via fs(read) with offset; explicit-path grep bypasses search/glob ignore rules. For long or iterative work (builds, test loops, watch modes) set runInBackground: true and poll with bash_output — it returns ONLY output produced since your last read, so repeated polls cost no extra tokens. Commands run from the current sticky cwd by default. IMPORTANT: Do NOT use run_shell for file search, code search, or git operations — use glob (file patterns), search_content (text search), list_directory (directory listing), and the dedicated git_* tools instead. run_shell is ONLY for building and testing commands (npm test, cargo build, pytest, etc.).',
+  run: 'Execute a shell command in the bundled bash (Unix syntax) and return stdout + stderr. The working directory is STICKY per agent: a successful `cd` in one call carries over to later calls, and every result ends with a `[cwd: ...]` line showing where you landed. Pass the `cwd` parameter to set the directory explicitly for one call. Do NOT write `cd /d X:\\...` (cmd syntax — fails in bash); write `cd /x/path` or `cd \'X:/path\'`. Default timeout 5 min (max 10 min). Long output is truncated head+tail, but the FULL log is spilled to a file whose path is always printed in the result. To find output the truncation cut (e.g. a buried error), do NOT re-run the command with pipes (`| head`, `| tail`, `| grep`) — that wastes build/test time. Grep the spill file directly with the bundled bash instead (`grep -n -iE "error|failed" <path>`), or read its tail via fs(read) with offset; explicit-path grep bypasses search/glob ignore rules. For long or iterative work (builds, test loops, watch modes) set runInBackground: true and then WAIT with bash_wait — not with a poll loop. Commands run from the current sticky cwd by default. IMPORTANT: Do NOT use run_shell for file search, code search, or git operations — use glob (file patterns), search_content (text search), list_directory (directory listing), and the dedicated git_* tools instead. run_shell is ONLY for building and testing commands (npm test, cargo build, pytest, etc.).',
   output:
-    'Read NEW output from a background shell job — only bytes produced since your previous bash_output call are returned (incremental; old output is never re-sent, so repeated polling of watch modes/dev servers is cheap). The header reports whether the job is still running ([任务运行中...]) or finished ([任务已完成, exit code: N...]).',
+    'One-off look at a background shell job — returns only bytes produced since your previous bash_output call (incremental; old output is never re-sent). This is a SNAPSHOT, not a way to wait: each call costs a full model round. Use bash_wait to wait for completion; use bash_output once when you genuinely want partial output (e.g. a watch mode that never ends). The header reports whether the job is still running ([任务运行中...]) or finished ([任务已完成, exit code: N...]).',
   kill: 'Kill a running background shell job and return any accumulated output.',
-  wait: 'Block until a background shell job completes (or timeout), then return full output + exit code. Use after run_shell with runInBackground: true to wait for a long-running task.',
+  wait: 'Block until a background shell job completes (or timeout), then return full output + exit code. This is the primary way to wait for a job started with runInBackground: true — prefer it over repeatedly reading bash_output. A timed-out wait leaves the job running: call bash_wait again (with a larger timeoutMs) instead of polling bash_output.',
 };
 
 /** shell 域动作 → readOnly（manifest 字节转录）。 */
@@ -144,7 +146,12 @@ function withStickyCwd(args: Record<string, unknown>): Record<string, unknown> {
 /** shell 域模型族工具（shell 域收口后 schema/description/readOnly 自持 zod 真源，
  *  不再查 builtin.shell 镜像）；TS 工具名保持历史名（run_shell/bash_output/
  *  bash_kill/bash_wait——模型面契约）；execute 走 shellExecute → provider seam
- *  （平台化 D11 开放面不动——provider 表已换 process_cap 直呼）。 */
+ *  （平台化 D11 开放面不动——provider 表已换 process_cap 直呼）。
+ *
+ *  忙等护栏（2026-11-12 bash_output 滥用批）：`output` 的 execute 多绕一层
+ *  `guardShellPoll`——同一 job 连续 3 次零增量就把这次读换成一次真 `wait`
+ *  （判据与理由见 `agent/shell-poll-guard.ts` 头注）。其余三个动作只负责
+ *  把记账清零（模型换招 = 那段空转结束）。 */
 function shellCapTool(action: ShellAction, localName: string, exec: ToolExecutor): Tool {
   const schema = SHELL_CAP_SCHEMA[action];
   const parameters = toInputJsonSchema(schema.passthrough());
@@ -153,8 +160,25 @@ function shellCapTool(action: ShellAction, localName: string, exec: ToolExecutor
     description: () => SHELL_CAP_DESCRIPTION[action],
     parameters: () => parameters,
     readOnly: () => SHELL_CAP_READONLY[action] ?? false,
-    execute: (args, onProgress, signal) =>
-      shellExecute(action, action === 'run' ? withStickyCwd(args) : args, exec, onProgress, signal),
+    execute: async (args, onProgress, signal) => {
+      const ownerId = ownerIdOf(args);
+      if (action === 'output') {
+        const jobId = Number(args.jobId);
+        const raw = await shellExecute(action, args, exec, onProgress, signal);
+        if (!Number.isFinite(jobId)) return raw;
+        return guardShellPoll({
+          ownerId,
+          jobId,
+          raw,
+          // 打回动作：真跑一次有界 wait（经同一 seam/provider，与工具面语义一致）。
+          waitOnce: (timeoutMs) => shellExecute('wait', { ...args, timeoutMs }, exec, onProgress, signal),
+          signal,
+        });
+      }
+      // 换招（run / wait / kill）⇒ 该段空转结束，记账清零后才落回原路径。
+      resetShellPollState(ownerId);
+      return shellExecute(action, action === 'run' ? withStickyCwd(args) : args, exec, onProgress, signal);
+    },
   };
 }
 

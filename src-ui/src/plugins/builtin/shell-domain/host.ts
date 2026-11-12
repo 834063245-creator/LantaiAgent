@@ -9,6 +9,7 @@
 // 不经本面二次出口——`index.ts` 直连 `./shell-tools`。
 
 export { stickyCwdOf } from '../../../agent/session-context';
+export { guardShellPoll, resetShellPollState } from '../../../agent/shell-poll-hook';
 export type { Tool, ToolExecutor } from '../../../agent/tool';
 export { toInputJsonSchema } from '../../../agent/tools/define-tool';
 export { ownerIdOf, ownerSeamView } from '../../../composition/seam-scope';

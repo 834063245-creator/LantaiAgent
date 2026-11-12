@@ -15,6 +15,8 @@
 //
 // 模块级可变态归类：CONVENTIONS §1.10 第 3 类（activeFsProviders 同款先例）。
 
+import type { ShellPollState } from './shell-poll-guard';
+
 /** desktop 粘性窗口定位器（字段缺省 = 未指定；fill 时逐字段补齐）。 */
 export interface WindowLocator {
   hwnd?: number;
@@ -103,6 +105,43 @@ export function stickyCwdOf(ownerId: string | undefined | null): string | undefi
 export function setStickyCwd(ownerId: string | undefined | null, physicalPath: string): void {
   const c = ownerContext(ownerId);
   if (c) c.stickyCwd = physicalPath;
+}
+
+// ── shell 后台任务「忙等」哨兵（2026-11-12 bash_output 滥用批）──
+//
+// 事实依据：最近 7 卷统计，132 次 `shell(output)` 里 120 次只换回一行
+// `[任务运行中, 已运行: Ns]`（91%），最长一段同 job 连读 31 次 / 237 秒。
+// 每次读都是一整轮模型调用 ⇒ 这不是「便宜」而是最贵的空转。
+//
+// 判据与阈值在叶模块 `shell-poll-guard.ts`（纯函数，可单测）；本表只存
+// 「本 owner 当前盯的是哪个 job、连续空读数几次、是否已喝止过」。
+//
+// 独立一张表（不挂 OwnerContext）的理由与下面的 `sessionByOwner` 同款：
+// OwnerContext 的注册条件是「有 projectPath」，零目录工作区不注册——哨兵
+// 必须在那类工作区里同样生效，否则「无项目也能跑 shell」的卷完全不受保护。
+const shellPolls = new Map<string, ShellPollState>();
+
+/** 读 owner 的忙等哨兵状态（未登记 = 本 owner 还没读过后台任务）。 */
+export function shellPollStateOf(ownerId: string | undefined | null): ShellPollState | undefined {
+  if (!ownerId) return undefined;
+  return shellPolls.get(ownerId);
+}
+
+/** 写 owner 的忙等哨兵状态；`null` = 清除（读到增量/终态/换工具即归零）。 */
+export function setShellPollState(ownerId: string | undefined | null, state: ShellPollState | null): void {
+  if (!ownerId) return;
+  if (state === null) shellPolls.delete(ownerId);
+  else shellPolls.set(ownerId, state);
+}
+
+/** 清理单条（Agent 拆卸时调用——与 bus-unregister 同点对称）。 */
+export function clearShellPollState(ownerId: string): void {
+  shellPolls.delete(ownerId);
+}
+
+/** 测试隔离辅助——清空全部记录（生产代码禁用）。 */
+export function clearShellPollsForTest(): void {
+  shellPolls.clear();
 }
 
 // ── owner → 会话号（asset-state 读口，2026-10-07）──
