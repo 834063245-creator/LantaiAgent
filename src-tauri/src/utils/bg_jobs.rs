@@ -181,6 +181,20 @@ pub(crate) fn drain_bg_notifications(agent_id: Option<&str>) -> String {
 /// 停滞检测阈值 — 超过此时长无输出则触发警告。
 const STALL_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(300);
 
+/// 前台超时转后台时给「监视线程已挂上」用的入口（2026-11-12 DSH `promoted` 对齐批）。
+///
+/// 为什么需要它：`register_fg_child` 有意**不**起 monitor（前台路径自己 wait 并
+/// 负责移除）。转后台之后，「谁在这个 job 终态时释放构建锁、谁推完成通知」就
+/// 没有主了——历史回退（432dcc55）记录的「转后台残留进程继续持构建锁，后续命令
+/// 连锁超时」正是这个空洞，不是「转后台」本身错了。
+///
+/// 本函数只补这一环：对**已在 ledger 里的** job 挂上标准监视线程（与
+/// `spawn_bg_from_child` 同一条收尾路径：终态即释放构建锁 + 推完成通知 + emit
+/// bg:note）。id 不变，因此模型手里的 job_id 与通知里的 id 是同一个。
+pub(crate) fn spawn_monitor_for_existing(id: u32, label: String, app: Option<tauri::AppHandle>) {
+    spawn_monitor(id, label, app);
+}
+
 /// 启动监控线程，每秒轮询子进程状态。
 /// 进程退出时：向 COMPLETED_NOTES 推送完成通知（携带 owner，由对应 agent 排干）。
 /// 停滞时（超过 STALL_THRESHOLD 无输出）：推送停滞警告并重置计时器。

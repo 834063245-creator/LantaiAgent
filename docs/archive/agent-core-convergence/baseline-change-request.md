@@ -665,3 +665,65 @@
 - 风险面只在**提示词引导**：模型若仍自发轮询，第 3 步的运行时护栏兜底（它不依赖描述）；
   护栏本身是纯记账 + 结果尾部追加一句，失败模式退化为「维持现状」，不引入新挂点。
 - 回滚 = 还原 4 个 baseline 文件 + 还原两处描述（本变更不涉数据/存储，无迁移）。
+
+---
+
+# Baseline 变更申请（补记） — shell 域描述：前台超时转后台（promoted）
+
+> 申请日期：2026-11-12 · 申请人：编码助手（DSH `promoted` 对齐批）
+> 状态：**已批准** —— 用户当日对「要不要顺手把 shell(run) 的前台超时转后台也补上」明确回应
+> 「可以补」，即本变更的开工授权。
+> 模型可见表面：**有变更**（shell 域描述一句 + `timeoutMs` 参数描述改写）。
+
+## 1. 变更对象
+
+- 四个 `tool-schemas.{full,plan}.json`（standard + preset-minimal）的 `shell` 条目，各 2 处文本：
+  1. **域描述**增一句：「run is safe to call in the foreground for long commands: on timeout
+     the command is NOT killed, it is promoted to a background job…」；
+  2. **`timeoutMs` 参数描述**由「Timeout in milliseconds (…)」改为「…On expiry the command is
+     NOT killed: it is promoted to a background job (you get its job id back, with the output
+     so far) and keeps running — wait for it with bash_wait. So you do not need to predict in
+     advance whether a command is long.」
+
+工具名 / 参数名 / 类型 / 枚举 / required / 事件顺序 / 消息投影零漂移。
+
+## 2. 为什么必须变
+
+上一批（`ef94c873`）只修掉「轮询便宜」的诱导，但**模型仍要事先猜**「这条命令该不该后台」：
+猜短了 → 超时被杀 → 白跑一遍；猜长了 → 到处 `runInBackground` + wait。
+
+DSH 的做法（`packages/shell/tool-bash/src/index.ts:520-580`，`promoteOnTimeout` **默认 true**）
+是把「该不该后台」这个判断从模型手里拿走：**超时不杀，自动转后台并返回同一个 job id**。
+模型压根不需要预判。
+
+## 3. 证据
+
+- Rust：`src-tauri/src/commands/process_cap.rs` 的流式超时分支由「kill_tree + 报错」
+  改为「宽限窗（10s）后 promote」；`src-tauri/src/utils/bg_jobs.rs` 新增
+  `spawn_monitor_for_existing`（给已登记的 fg job 补挂监视线程 = 构建锁与完成通知的唯一释放点）。
+  **这补的正是历史上回退（432dcc55）的那个空洞**：当年「转后台残留进程继续持构建锁」不是
+  因为转后台错，而是因为转后台后没人释放锁。
+- TS：`agent/runtime/queued-shell.ts` 认 `promotedJobId`，结算文案给三件事实
+  （没失败 / job id / 去 wait）并附已产出的输出。
+- 测试：`tests/shell-done-watchdog.test.ts` 新增 4 例（含「转后台后 bash_kill 打同一个 id」）。
+- `cargo check` exit 0；`git diff --unified=0` 实测 = 4 个基线文件各 2 处。
+
+## 4. 拟议变更
+
+采纳 record 快照：两轨 full/plan 各改 2 处文本，其余逐字节不变。
+
+## 5. 落地步骤
+
+1. ✅ Rust 超时转后台（宽限窗 + 补挂 monitor）；
+2. ✅ TS 侧 `promotedJobId` 结算 + 文案；
+3. ✅ 工具描述与域描述改口（模型不再需要预判长任务）；
+4. ✅ 回归测试 4 例；
+5. ✅ 本文件登记 + record 双轨；
+6. ⬜ 门禁四连（vitest / build / biome / convergence）+ `cargo test`。
+
+## 6. 风险与回滚
+
+- 风险面：转后台的进程若监视线程挂不上，会退化成「残留 + 持锁」——本批用
+  `spawn_monitor_for_existing` 直接复用既有监视线程（同一份 `spawn_monitor`，
+  与 `runInBackground` 起家的 job 逐字节同一路径），没有新增收尾逻辑。
+- 回滚 = 还原 Rust 超时分支 + 4 个基线文件 + 两处描述。

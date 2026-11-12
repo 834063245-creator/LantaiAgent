@@ -57,6 +57,20 @@ function parseResolvedCwd(raw: string): string | null {
   }
 }
 
+/** 「前台超时已转后台」的结果文案（2026-11-12 DSH `promoted` 对齐批）。
+ *
+ *  为什么要有这段文案：转后台之后这条命令**还在跑**，模型最需要的三个事实是
+ *  ①它没有失败 ②它的新身份是 job N ③接下来该怎么等。写清了就不会出现
+ *  「超时了 → 重跑一遍」这种最贵也最常见的误处理（重跑会撞构建锁）。 */
+function promotedText(jobId: number, outputSoFar: string): string {
+  const head =
+    `[命令超时，已转入后台继续运行 —— job ${jobId}（没有失败，不要重跑）]\n` +
+    `接下来：用 bash_wait(${jobId}) 等它结束（超时就再 wait 一次）；` +
+    `完成时也会自动收到通知。`;
+  const body = outputSoFar.trim();
+  return body ? `${head}\n\n──── 目前已产生的输出 ────\n${body}` : head;
+}
+
 /**
  * 执行前台流式 shell 命令。参数 = process_cap 顶层 snake 形（action 已是
  * 'exec_command'；codingExec 的 fg 检测后直入本函数）。
@@ -145,12 +159,23 @@ export async function execStreamedShell(
           onProgress?.(clean);
         }
       });
-      const unDone = await listen<{ streamId: string; exitCode: number; error?: string }>('shell:done', (e) => {
+      const unDone = await listen<{
+        streamId: string;
+        exitCode: number;
+        error?: string;
+        /** 前台超时转后台（2026-11-12 DSH `promoted` 对齐批）：Rust 侧已在
+         *  超时点把这条命令变成 ledger 里的 job（id 与 started 响应给的同号），
+         *  并挂上监视线程（终态释放构建锁 + 推完成通知）。此处把「转后台」这件事
+         *  如实告诉模型——它手里立刻有 job id 可用，不必猜也不必重跑。 */
+        promotedJobId?: number;
+      }>('shell:done', (e) => {
         if (e.payload.streamId !== streamId) return;
         // 流结束：放行截流器挂起的一切（无 marker 的残段——自愈语义）
         const tail = cwdFilter.flush();
         if (tail) appendOutput(tail);
-        if (e.payload.error)
+        if (e.payload.promotedJobId !== undefined) {
+          resolveOnce(withCwdEcho(withTruncationNote(promotedText(e.payload.promotedJobId, fullOutput))));
+        } else if (e.payload.error)
           resolveOnce(
             withCwdEcho(withTruncationNote(`[exit ${e.payload.exitCode}]\n${fullOutput}\n${e.payload.error}`)),
           );

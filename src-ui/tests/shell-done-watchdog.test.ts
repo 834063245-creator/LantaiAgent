@@ -142,3 +142,76 @@ describe('execStreamedShell 的 shell:done 丢失自愈', () => {
     expect(second).toBe(first);
   });
 });
+
+// ── 前台超时转后台（2026-11-12 DSH `promoted` 对齐批）──
+//
+// 语义：超时点之后不急杀，宽限窗用完仍没跑完 ⇒ 这条命令**变成** ledger 里的
+// job（id 与 started 响应同号），监视线程接手（终态释放构建锁 + 推完成通知）。
+// 模型侧唯一要记住的分支就是这段文案：它没失败、它有 job id、它该去 wait。
+describe('前台超时转后台（promoted）', () => {
+  it('promoted 结算：告诉模型「没失败 + job id + 去 wait」，并附已产生输出', async () => {
+    bashScript = [() => '[任务运行中, 已运行: 300s]\n'];
+    const p = execStreamedShell({ command: 'npm run build', _owner_id: 'owner-p1' });
+    await flush();
+    handlers['shell:output']({ payload: { streamId: capturedSid, chunk: 'compiling...\n' } });
+    handlers['shell:done']({
+      payload: { streamId: capturedSid, exitCode: -1, promotedJobId: 42 },
+    });
+    await flush();
+
+    const result = await withSentinel(p);
+    expect(result).not.toBe(NEVER);
+    // 三个必须成立的事实
+    expect(result).toContain('转入后台');
+    expect(result).toContain('job 42');
+    expect(result).toContain('没有失败');
+    expect(result).toContain('不要重跑');
+    // 可操作指引 = wait（不是 output 轮询）
+    expect(result).toContain('bash_wait(42)');
+    expect(result).not.toContain('bash_output(42)');
+    // 已产生的输出照常带上（转后台不等于丢输出）
+    expect(result).toContain('compiling...');
+  });
+
+  it('promoted 无任何输出也结算（空输出不是失败）', async () => {
+    const p = execStreamedShell({ command: 'sleep 900' });
+    await flush();
+    handlers['shell:done']({ payload: { streamId: capturedSid, exitCode: -1, promotedJobId: 7 } });
+    await flush();
+
+    const result = await withSentinel(p);
+    expect(result).not.toBe(NEVER);
+    expect(result).toContain('job 7');
+    expect(result).toContain('bash_wait(7)');
+  });
+
+  it('没带 promotedJobId 的 done 仍走原路径（普通超时/失败文案不变）', async () => {
+    const p = execStreamedShell({ command: 'false' });
+    await flush();
+    handlers['shell:done']({ payload: { streamId: capturedSid, exitCode: 3 } });
+    await flush();
+
+    const result = await withSentinel(p);
+    expect(result).toContain('[exit 3]');
+    expect(result).not.toContain('转入后台');
+  });
+
+  it('转后台后按停止 ⇒ bash_kill 打的是同一个 job id（锁与进程都有人收）', async () => {
+    bashScript = [() => '[任务运行中, 已运行: 300s]\n'];
+    const ac = new AbortController();
+    const p = execStreamedShell({ command: 'npm run build', _owner_id: 'owner-p2' }, undefined, ac.signal);
+    await flush();
+    // 先经历一次 promote（job 7 = started 响应里的同一个 id）
+    handlers['shell:done']({ payload: { streamId: capturedSid, exitCode: -1, promotedJobId: 7 } });
+    await flush();
+    const promoted = await withSentinel(p);
+    expect(promoted).toContain('job 7');
+
+    // 注意：promote 已 resolve 这条 promise（前台调用结束）；后续的停止由模型
+    // 对 job 7 发起 bash_kill —— 这里钉住「id 不变」这条不变量。
+    ac.abort();
+    await flush();
+    // 已经 settle 的 promise 不会被 abort 二次改写（resolveOnce 幂等）
+    expect(promoted).toContain('job 7');
+  });
+});

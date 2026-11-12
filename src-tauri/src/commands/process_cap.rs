@@ -45,6 +45,14 @@ use tauri::State;
 const CWD_MARKER_START: &str = "\u{1b}]lantaicwd;";
 const CWD_MARKER_END: char = '\u{07}';
 
+/// 前台超时转后台前的**宽限窗**（2026-11-12 DSH `promoted` 对齐批）。
+///
+/// 语义：超时点到了之后不立刻宣布「转后台」，而是再等这么久——跑完了就还是
+/// 一份普通的前台结果（模型根本看不到 job id），确实没跑完才 promote。
+/// 取 10s 的理由：它只吃掉「刚好在超时点附近收尾」的那一小段（典型场景 =
+/// 构建 300s 上限、实际 302s 完成），而不让模型多等的感知时长变成一整轮。
+const PROMOTE_GRACE_MS: u64 = 10_000;
+
 /// process_cap 全量 action 表（= 退役前 builtin.shell 7 工具名 + office_exec）。
 const PROCESS_CAP_ACTIONS: [&str; 8] = [
     "exec_command",
@@ -671,11 +679,14 @@ async fn exec_command(
         };
         crate::utils::register_fg_child(job_id, child, &label, shared, owner_id.or(agent_id), lock_key);
 
-        // 在后台等待子进程，发送完成事件 / 超时杀进程树
+        // 在后台等待子进程，发送完成事件 / 超时转后台（promote）
         let app_done = app.clone();
         let sid_done = stream_id.clone();
         let timeout_ms_val = timeout_ms.unwrap_or(300_000);
         let drain_flag = Arc::clone(&drain_done);
+        // 监视线程在转后台时需要 label（完成通知里显示命令）；上面 `&label` 借出后
+        // 仍可用，这里克隆一份进闭包。
+        let label_done = label.clone();
         std::thread::spawn(move || {
             enum Poll {
                 Running,
@@ -716,33 +727,65 @@ async fn exec_command(
                     }
                     Poll::Running => {
                         if start.elapsed() >= Duration::from_millis(timeout_ms_val) {
-                            // 超时杀进程树（不再转后台）——
-                            // 转后台会让进程残留并继续持有构建锁（target/ 等），
-                            // 队列放行的后续命令实际卡在 OS 文件锁上连锁超时。
-                            // 长任务应走 runInBackground: true（工具描述已引导）。
-                            {
-                                let mut jobs = crate::utils::lock_or_recover(&crate::utils::BG_JOBS);
-                                if let Some(job) = jobs.get_mut(&job_id) {
-                                    let _ = job.child.kill_tree();
+                            // 超时**转后台**而不是杀（2026-11-12 DSH `promoted` 对齐批）。
+                            //
+                            // 历史（读 git 史）：8c6e2298 起是「转后台」，432dcc55 因为
+                            // 「转后台残留进程继续持构建锁，后续命令连锁超时」改成杀。
+                            // 那条理由只对**非流式**路径成立（stdout 被 take 走、转后台也
+                            // 收不回输出）；流式路径**不成立**——本路径的 stdout/stderr
+                            // 由上面的 read_vectored 线程排进 shared Arc（`register_fg_child`
+                            // 已把同一份 shared 挂到 ledger 上），转后台后 bash_output /
+                            // bash_wait 读得到完整增量，不会出现「输出黑洞」。
+                            //
+                            // 真正的病根是**锁**，不是转后台：转后台时若仍让进程「没有
+                            // 监控者」，锁就永远没人释放。所以这里只做一件事——
+                            // 给这条已登记的 job 补上 `spawn_monitor`：进程退出时它释放
+                            // 构建锁并推完成通知（与 runInBackground 起家的 job 同一条
+                            // 收尾路径，同款语义、同款 id）。
+                            //
+                            // 语义排序（与 DSH 一致）：先尝试再等一个**宽限窗**
+                            // （PROMOTE_GRACE_MS）。宽限窗内跑完 ⇒ 模型拿到的就是普通
+                            // 前台结果，压根不会出现「转后台」这件事；只有确实没跑完
+                            // 才返回 promoted。
+                            let grace = Duration::from_millis(PROMOTE_GRACE_MS);
+                            let grace_start = std::time::Instant::now();
+                            loop {
+                                if grace_start.elapsed() >= grace {
+                                    break;
+                                }
+                                std::thread::sleep(Duration::from_millis(50));
+                                let st = {
+                                    let mut jobs = crate::utils::lock_or_recover(&crate::utils::BG_JOBS);
+                                    match jobs.get_mut(&job_id) {
+                                        Some(job) => job.child.try_wait(),
+                                        None => return,
+                                    }
+                                };
+                                if let Ok(Some(st)) = st {
+                                    // 宽限窗内跑完：走正常收尾（与 Poll::Done 同款）。
+                                    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+                                    while drain_flag.load(Ordering::SeqCst) < 2
+                                        && std::time::Instant::now() < deadline
+                                    {
+                                        thread::sleep(Duration::from_millis(20));
+                                    }
+                                    crate::utils::remove_job(job_id);
+                                    let _ = app_done.emit("shell:done", serde_json::json!({
+                                        "streamId": sid_done,
+                                        "exitCode": st.code().unwrap_or(-1),
+                                    }));
+                                    return;
                                 }
                             }
-                            // 有界等待输出线程收尾（与 Done 路径一致）：kill 后
-                            // 管道写端随进程树关闭，read_vectored 很快收到 EOF。
-                            let deadline = std::time::Instant::now() + Duration::from_secs(3);
-                            while drain_flag.load(Ordering::SeqCst) < 2
-                                && std::time::Instant::now() < deadline
-                            {
-                                thread::sleep(Duration::from_millis(20));
-                            }
-                            crate::utils::remove_job(job_id);
-                            let msg = format!(
-                                "命令超时 ({}ms)，已终止（进程树已杀）。长任务请用 runInBackground: true 启动后用 bash_wait 等待。",
-                                timeout_ms_val
-                            );
+                            // 宽限窗用完仍未结束 ⇒ 转后台：挂监视线程（锁 + 通知的
+                            // 唯一释放点），然后告诉前端「这条已经是 job 了」。
+                            crate::utils::spawn_monitor_for_existing(job_id, label_done.clone(), Some(app_done.clone()));
                             let _ = app_done.emit("shell:done", serde_json::json!({
                                 "streamId": sid_done,
                                 "exitCode": -1,
-                                "error": msg,
+                                "promotedJobId": job_id,
+                                "promotedTimeoutMs": timeout_ms_val,
+                                "promoted": true,
                             }));
                             return;
                         }
