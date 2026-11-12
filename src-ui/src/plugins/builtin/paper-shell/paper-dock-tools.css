@@ -455,6 +455,18 @@
   animation: pp-hint-fade 6s both;
   pointer-events: none;
 }
+/* 坞内眉批的落位（2026-11-12，与 .pp-local-notice 退役同批）：旧形态是坞内的**布局行**
+ * ——出现时把坞高推高一截、消失再落回去，与坞内提示同一种跳变病。现挂坞上方浮层：
+ * 不占布局、6s 自散、位置跟着坞走。居中用 left/right + text-align（不用 transform：
+ * `pp-hint-fade` 的 keyframes 自己写 transform，两者会互相覆盖）。 */
+.pp-composer > .pp-eyebrow-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  text-align: center;
+  z-index: 30;
+}
 /* 钉住可发现性一次性眉批（2026-09-05）：.pp-eyebrow-hint 族的画布落位
  * ——左缘上角（文类签列所在侧，提示长在功能所在处）。2026-09-17 标题栏拆除批：
  * 书眉退役 ⇒ 落位从「书眉下缘 + 20」上提到「屏顶 + 20」（浮件在右上，不撞）。 */

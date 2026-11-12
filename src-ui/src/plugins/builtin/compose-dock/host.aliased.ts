@@ -57,6 +57,8 @@ export const inkForBlock = impl.inkForBlock;
 export const INK_FAIL = impl.INK_FAIL;
 export const createInkCache = impl.createInkCache;
 export const useCanvasViewStore = impl.useCanvasViewStore;
+// 2026-11-12：坞内提示挂坞上方浮层——toast store 经桥取宿主真实例（见 host.ts 注）
+export const useToastStore = impl.useToastStore;
 export const findModels = impl.findModels;
 export const getDynamicFetchFailure = impl.getDynamicFetchFailure;
 export const getDynamicFetchInflight = impl.getDynamicFetchInflight;

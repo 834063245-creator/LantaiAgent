@@ -21,6 +21,7 @@ import { ComposerDock } from '../src/plugins/builtin/compose-dock/ComposerDock';
 import * as catalog from '../src/provider/catalog';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { getComposeStore, resetComposeStoresForTests } from '../src/state/compose-store';
+import { useToastStore } from '../src/state/toast-store';
 import { getChatStore } from '../src/ui/chat-store';
 
 vi.mock('../src/provider/catalog', async (importOriginal) => {
@@ -65,6 +66,9 @@ const DOCK_CONTEXT: PaperDockContextValue = {
   activeSessionId: '1',
   flyToPoint: vi.fn(),
 };
+
+/** 坞上方提示（composer 落位 toast）——2026-11-12 起坞内提示不再走布局行。 */
+const composerToasts = () => useToastStore.getState().toasts.filter((t) => t.anchor === 'composer');
 
 /** 装配 core + 播种 compose 模型偏好 + 渲染 ComposerDock。返回 fake core。 */
 async function mountDock(model: string, container: HTMLDivElement): Promise<ChatCore> {
@@ -111,6 +115,8 @@ describe('附图粘贴门禁（B2 · D-8②）', () => {
 
   beforeEach(() => {
     vi.mocked(catalog.getModel).mockClear();
+    // 2026-11-12：坞内提示改挂 toast 通道（坞上方浮层）——断言看 store，跨用例清场
+    useToastStore.setState({ toasts: [] });
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -134,10 +140,11 @@ describe('附图粘贴门禁（B2 · D-8②）', () => {
     const files = (core.intakeImageFiles as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as File[];
     expect(files).toHaveLength(2);
     expect(files[0]?.type).toBe('image/png');
-    expect(container.querySelector('.pp-local-notice')).toBeNull();
+    // 无提示：坞内不再有布局行，提示通道（composer 落位）也为空
+    expect(composerToasts()).toEqual([]);
   });
 
-  it('未声明视觉：贴图仍入卷 + localNotice 提示（不再静默丢弃）', async () => {
+  it('未声明视觉：贴图仍入卷 + 坞上方 toast 提示（不再静默丢弃）', async () => {
     // ⚡ 2026-09-19 规格变更：原断言「文本模型贴图不入卷」随旧行为同批退役——
     // 旧行为把图拦在门外（用户意图静默丢失，连路径都不留），与 agent 侧已改的
     // 「先发、被拒再降级」矛盾。现在声明只是提示开关，图一律收。
@@ -146,10 +153,8 @@ describe('附图粘贴门禁（B2 · D-8②）', () => {
     pasteOn(ta as HTMLTextAreaElement, [IMAGE_ITEM]);
     // 图进附图道（不再被丢）
     expect(core.intakeImageFiles).toHaveBeenCalledTimes(1);
-    // 提示照给（用户知情：可能被转述）
-    const notice = container.querySelector('.pp-local-notice');
-    expect(notice).not.toBeNull();
-    expect(notice?.textContent).toContain('图已收');
+    // 提示照给（用户知情：可能被转述）——2026-11-12 起走 toast 浮层，不占坞布局
+    expect(composerToasts().some((t) => t.text.includes('图已收'))).toBe(true);
   });
 
   it('纯文本粘贴零影响：intake 不触发、无提示', async () => {
@@ -157,7 +162,7 @@ describe('附图粘贴门禁（B2 · D-8②）', () => {
     const ta = container.querySelector('textarea');
     pasteOn(ta as HTMLTextAreaElement, [TEXT_ITEM, { kind: 'file', type: 'text/plain' }]);
     expect(core.intakeImageFiles).not.toHaveBeenCalled();
-    expect(container.querySelector('.pp-local-notice')).toBeNull();
+    expect(composerToasts()).toEqual([]);
   });
 
   it('B5：ModelOverrides.input 补声明——目录外自定义 vision 模型贴图放行', async () => {

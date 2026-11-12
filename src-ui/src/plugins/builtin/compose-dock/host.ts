@@ -75,6 +75,11 @@ export type { PermissionMode } from '../../../state/mode-store';
 export { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../../state/mode-store';
 export type { PresetStoreState } from '../../../state/preset-store';
 export { usePresetStore } from '../../../state/preset-store';
+/* 瞬时提示通道（2026-11-12 坞内提示改挂坞上方浮层）：**必须经桥取宿主那一份 store**
+ * ——ToastHost（paper-shell 产物）是唯一渲染器，直引内核路径会被产物构建内联成第二份
+ * zustand store（生产者写内核那份、渲染器读产物这份 ⇒ 打包态一条都不显示）。
+ * 键 `useToastStore` 早已在 faceDeps 在册（paper-shell 用），故取用不新增宿主面键。 */
+export { useToastStore } from '../../../state/toast-store';
 /* 役册（2026-09-22）：后台工作监视装置的数据面。台账是 **zustand 单例**——
  * 必须经本通道取宿主真实例（产物域直接 import 会打包出第二份 store，
  * 与宿主那份永不互通：坞写一份、Rust 观察点喂另一份）。 */

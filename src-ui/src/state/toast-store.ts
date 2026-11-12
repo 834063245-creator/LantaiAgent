@@ -17,17 +17,23 @@ import * as Obs from '../agent/obs';
 
 export type ToastLevel = 'info' | 'warn' | 'error';
 
+/** 落位锚（2026-11-12）：`top` = 全局顶中（系统级结果）；`composer` = **创作坞上方**
+ *  （坞内动作的反馈——用户眼睛在底部，顶中一条 2560px 之外的提示等于没弹）。 */
+export type ToastAnchor = 'top' | 'composer';
+
 export interface ToastItem {
   id: number;
   text: string;
   level: ToastLevel;
   /** 全透明停留时长（毫秒），过后淡出。 */
   holdMs: number;
+  /** 落位（缺省 top；旧调用点零改动）。 */
+  anchor: ToastAnchor;
 }
 
 interface ToastState {
   toasts: ToastItem[];
-  showToast: (text: string, level?: ToastLevel, holdMs?: number) => void;
+  showToast: (text: string, level?: ToastLevel, holdMs?: number, anchor?: ToastAnchor) => void;
   dismissToast: (id: number) => void;
 }
 
@@ -45,10 +51,10 @@ const _recentToasts = new Map<string, number>();
 
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
-  showToast: (text, level = 'info', holdMs = TOAST_HOLD_MS) => {
-    // 同文去重（按 level 与文本）：窗口内跳过——goals 双通道/重复触发不叠加
+  showToast: (text, level = 'info', holdMs, anchor = 'top') => {
+    // 同文去重（按 level / 文本 / 落位）：窗口内跳过——goals 双通道/重复触发不叠加
     const now = Date.now();
-    const key = `${level}:${text}`;
+    const key = `${anchor}:${level}:${text}`;
     const last = _recentToasts.get(key);
     if (last != null && now - last < TOAST_DEDUP_MS) return;
     _recentToasts.set(key, now);
@@ -62,14 +68,24 @@ export const useToastStore = create<ToastState>((set, get) => ({
     //   落一条 `ui.toast`（漏斗的兜底面——墓碑之外的第二条呈现路径）。
     //   位置在去重闸**之后**：没弹出来的不记（日志要如实反映用户所见，不是调用次数）。
     if (level === 'error') Obs.toast({ text, level });
+    /* 停留时长（2026-11-12）：error 级默认加倍——调用点不必再手抄 6400；
+     * 显式传入的 holdMs 一律优先（老调用点零改动）。 */
+    const hold = holdMs ?? (level === 'error' ? TOAST_LONG_HOLD_MS : TOAST_HOLD_MS);
     // 最多同屏 3 条——满则弃最旧
-    set((s) => ({ toasts: [...s.toasts.slice(-2), { id, text, level, holdMs }] }));
-    setTimeout(() => get().dismissToast(id), holdMs + TOAST_FADE_MS);
+    set((s) => ({
+      toasts: [...s.toasts.filter((t) => t.anchor === anchor).slice(-2), { id, text, level, holdMs: hold, anchor }],
+    }));
+    setTimeout(() => get().dismissToast(id), hold + TOAST_FADE_MS);
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
 /** 便捷导出：非组件代码（chat-core / chat-session / chat-stream）触发提示。 */
-export function showToast(text: string, level: ToastLevel = 'info', holdMs = TOAST_HOLD_MS): void {
-  useToastStore.getState().showToast(text, level, holdMs);
+export function showToast(
+  text: string,
+  level: ToastLevel = 'info',
+  holdMs?: number,
+  anchor: ToastAnchor = 'top',
+): void {
+  useToastStore.getState().showToast(text, level, holdMs, anchor);
 }

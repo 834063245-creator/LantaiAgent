@@ -342,8 +342,9 @@ describe('创作坞浮动化 · 让位带载体（性能契约：不许退回 :r
       const css = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
       for (const sel of subjectsReadingBand(css)) found.add(subjectClassOf(sel));
     }
-    // 现网两名消费者都得在（对拍本身有牙：漏登记即红、名册写错也红）
-    expect(found).toEqual(new Set(['.psh-host', '.pw-dock']));
+    // 现网三名消费者都得在（对拍本身有牙：漏登记即红、名册写错也红）
+    // 2026-11-12：+ `.pp-toast-host-composer`（创作坞上方的瞬时提示落位，坞内动作反馈）
+    expect(found).toEqual(new Set(['.psh-host', '.pw-dock', '.pp-toast-host-composer']));
     expect([...found].filter((s) => !registered.has(s))).toEqual([]);
   });
 });

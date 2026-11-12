@@ -49,7 +49,7 @@
 export const COMPOSER_BAND_VAR = '--composer-band';
 
 /** **让位消费面名册**（读 `var(--composer-band)` 的元素选择器；新增消费面必须在此登记）。 */
-export const COMPOSER_BAND_CONSUMERS = '.psh-host, .pw-dock';
+export const COMPOSER_BAND_CONSUMERS = '.psh-host, .pw-dock, .pp-toast-host-composer';
 
 /** 载体的元素 id（单一实例：重载/多实例时按 id 复用，不叠规则）。 */
 export const BAND_STYLE_ID = 'lantai-composer-band';

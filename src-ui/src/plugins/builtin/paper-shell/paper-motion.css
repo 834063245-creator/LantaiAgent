@@ -273,33 +273,7 @@
   opacity: 0.55;
 }
 
-/* 冷启动本地提示（无会话发送防护——UI 层直示，不入消息 store）；贴黄同族 */
-.pp-local-notice {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  background: color-mix(in oklch, var(--warn) 12%, var(--paper));
-  border-bottom: var(--rule-soft);
-  color: var(--warn);
-  font-size: var(--fs-body);
-  flex-shrink: 0;
-}
-.pp-local-notice button {
-  margin-left: auto;
-  background: none;
-  border: var(--rule-soft);
-  color: var(--ink-2);
-  border-radius: 0;
-  padding: 2px 10px;
-  font-family: var(--f-song);
-  font-size: var(--fs-body);
-  cursor: pointer;
-  transition:
-    color var(--snap),
-    border-color var(--snap);
-}
-.pp-local-notice button:hover {
-  color: var(--seal-deep);
-  border-color: var(--seal);
-}
+/* 冷启动本地提示（无会话发送防护——UI 层直示，不入消息 store）已退役（2026-11-12）：
+ * 用户「坞内弹提示会导致整个创作坞跳变，而且必须要点『知道了』才消失」——坞内提示
+ * 改走 toast 通道的 `composer` 落位（坞上方浮层，不占布局、自动消散），样式见
+ * ToastHost.css 的 `.pp-toast-host-composer`。.pp-local-notice 整组删除。 */

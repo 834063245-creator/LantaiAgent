@@ -554,6 +554,43 @@ measure 折叠高 = `FOLD_ROW_H`）+ `prototype/asset-rack-v2.html`（真样式�
 **部署面**：模型菜单/组合芯片/ComposerDock 为 `compose-dock` 产物（可热更）；`PaperPanel.css`
 在壳 bundle ⇒ 真机看字号/纸签/左轴/厂商章须重建 exe。
 
+### 9.15 创作坞提示改挂坞上方浮层（2026-11-12 用户「整坞跳变 + 必须点知道了」）
+
+**来由**：用户「我突然有个小问题，我的创作坞弹提示的方式是不是需要重新思考一下。现在创作坞内
+弹的提示会导致整个创作坞跳变，而且必须要点『知道了』之类的按钮才会消失。感觉不舒服」。
+
+**病灶**：
+
+1. `.pp-local-notice` 是坞内**布局行**（`flex-shrink: 0`）——出现时把坞高撑高一截、消失再落回：
+   **一条提示 = 两次跳变**。
+2. 必须点「知道了」才走——一次性的告知却给了模态的寿命（用户还得为它做一个动作）。
+3. 成功也播报（「本卷组合已切到 X」）——芯片本身已经变了，属重复播报（违 toast 通道的克制纪律：
+   界面状态变化即反馈，成功不弹）。
+4. 同族病灶：`histHint`（历史回取眉批）也是坞内布局行，同样推高坞高。
+
+**定案**：
+
+| # | 定案 | 判据 |
+|---|---|---|
+| 1 | 坞内提示改走 toast 通道的 **`composer` 落位**：坞上方浮层（贴 `--composer-band` 坞顶线），不占布局、自动消散（info/warn 3.2s、error 6.4s） | 提示挂在动作发生处（坞上方），但它是一次性告知，不该有布局后果 |
+| 2 | toast store 增 `anchor: 'top' | 'composer'`（缺省 top ⇒ 老调用点零改动）；error 级默认停留加倍，调用点不再手抄 6400 | 一次性把「落位」和「停留」两条收敛进通道 |
+| 3 | **成功不播报**：删「本卷组合已切到 X」 | 克制纪律：界面状态变化即反馈 |
+| 4 | `histHint` 同批改绝对定位（坞上方，6s 自散），不再推高坞高 | 同一病灶一次修干净 |
+| 5 | `.pp-local-notice` + 「知道了」按钮整组删除；`.pp-toast-host-composer` 登记进让位带消费面名册 | 名册漏登记 = 坞浮起来时提示压住坞（静默） |
+
+**边界（刻意不做）**：① 不做手动关闭 / hover 暂停——提示是一次性告知（要重读去日志 / 设置页），
+给它模态寿命正是本次要修的病灶；② 顶中 toast 面不动（系统级结果仍在顶部）；③ 不改坞槽几何
+（`--composer-h` / 让位带算法一字未动）。
+
+**证据**：`tests/composer-dock-image-paste.test.tsx`（贴图提示看 toast 通道）、
+`tests/composer-dock-rework.test.tsx`（运行中切模型被拦 → composer 落位）、
+`tests/composer-dock-composition-chip.test.tsx`（写路径拒绝原因）三处断言由 `.pp-local-notice`
+改为 toast store；`tests/composer-float.test.ts` 让位带名册第三名消费者；全量 vitest 绿。
+
+**部署面**：`ComposerDock` / `ToastHost` / 两处 CSS 属产物（可热更）；但 **toast store 在内核（exe）里**
+——旧 exe 的 toast 条目没有 `anchor` 字段，ToastHost 用 `t.anchor ?? 'top'` 容缺读（否则两桶皆空、
+**全部 toast 静默消失**）；重建 exe 之前，坞内提示会落在顶中而不是坞上方（降级可接受）。
+
 ### 9.14 模型 + 思考两级菜单（2026-11-12 用户拍板「去抄 dsh 的 UX」）
 
 **来由**：用户「模型思考强度选择这块的UX有毛病。我也不准备设计了，去抄一下dsh的UX」——

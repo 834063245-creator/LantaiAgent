@@ -19,6 +19,7 @@ import { ComposerDock } from '../src/plugins/builtin/compose-dock/ComposerDock';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { getComposeStore, resetComposeStoresForTests } from '../src/state/compose-store';
 import { useModeStore } from '../src/state/mode-store';
+import { useToastStore } from '../src/state/toast-store';
 import { getChatStore } from '../src/ui/chat-store';
 
 function fakeCore(panelId: string): ChatCore {
@@ -189,11 +190,12 @@ describe('ComposerDock 运行中守卫（DSH 移植）', () => {
     agentSessionState.removeExec('guard', 1);
   });
 
-  it('活跃卷运行中：模型下拉打开被拦 + localNotice 提示', async () => {
+  it('活跃卷运行中：模型下拉打开被拦 + 坞上方提示（2026-11-12 起走 toast 浮层）', async () => {
     // 种子运行中的 exec（B7 running 态来源）——须在 mount 前，运行态 effect 才能读到
     const exec = createExecState();
     exec.beginRun('turn'); // v43：运行态 = 账上的活记录
     agentSessionState.setExec('guard', 1, exec);
+    useToastStore.setState({ toasts: [] });
     await mountDock('guard', container, (r) => {
       root = r;
     });
@@ -202,7 +204,10 @@ describe('ComposerDock 运行中守卫（DSH 移植）', () => {
     });
     await act(async () => {});
     expect(container.querySelector('.ms-dropdown')).toBeNull(); // 没打开（DSH onAttemptOpen veto）
-    expect(container.querySelector('.pp-local-notice')?.textContent).toContain('正在运行');
+    // 提示在 toast 通道的 composer 落位：不占坞布局、自动消散、无需「知道了」
+    const composer = useToastStore.getState().toasts.filter((t) => t.anchor === 'composer');
+    expect(composer.some((t) => t.text.includes('正在运行'))).toBe(true);
+    expect(container.querySelector('.pp-local-notice')).toBeNull(); // 坞内布局行已退役
     // 停止 exec 会触发运行态订阅更新——须在 act 内，否则 React 报未包裹更新
     act(() => exec.stopAll());
   });

@@ -92,6 +92,7 @@ import {
   usePaperDock,
   usePresetStore,
   useShellStore,
+  useToastStore,
   watchFileDragDrop,
 } from './host';
 import { composerSubmitOnKey } from './ime';
@@ -257,7 +258,17 @@ const THINKING_DESC: Record<string, string> = {
 export const ComposerDock = memo(function ComposerDock() {
   const core = useCoreStore((s) => s.core);
   const { activeSessionId, composerLock } = usePaperDock();
-  const [localNotice, setLocalNotice] = useState<string | null>(null);
+  /* ── 坞内提示（2026-11-12 重构；用户：「坞内弹提示会导致整个创作坞跳变，而且必须
+   *    要点『知道了』才消失，感觉不舒服」）──────────────────────────────
+   * 旧形态 = 坞内一行 `.pp-local-notice` + 「知道了」按钮：**占布局**（坞高被撑高 ⇒
+   * 整个创作坞跳变一次、关掉再跳一次）+ 必须人点才走。现改挂**坞上方的瞬时浮层**
+   * （toast 通道的 `composer` 落位，贴 `--composer-band` 坞顶线）：不占布局、
+   * 自动消散、位置跟着坞走（坞浮起来也正确）。
+   * 语义分层照旧：成功不播报（界面变化即反馈，见 toast-store 克制纪律），
+   * 只有被拦/失败/需要知情的警示才弹；error 级默认停留加倍。 */
+  const notice = useCallback((text: string, level: 'info' | 'warn' | 'error' = 'warn') => {
+    useToastStore.getState().showToast(text, level, undefined, 'composer');
+  }, []);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   /* ── 创作坞 v2（2026-08-31）本地态：律（快捷键）/ 引（文件）
    *    / 拖放入卷界栏 / 历史眉批。── */
@@ -354,14 +365,14 @@ export const ComposerDock = memo(function ComposerDock() {
     return () => core.registerComposer({ focus: () => {}, selectEnd: () => {} });
   }, [core]);
 
-  /* ── C2（2026-08-27）：切卷清理本地态——localNotice 与展开中的浮层面板
-   *    不跨会话残留（A 卷的提示/展开状态带到 B 卷是认知噪音）。
+  /* ── C2（2026-08-27）：切卷清理本地态——展开中的浮层面板不跨会话残留
+   *    （A 卷的展开状态带到 B 卷是认知噪音）。
    *    v2 增补：律/引面板同属本地态，一并清。
    *    2026-11-06 合并 A：思考档位不再是本地展开态——它随模型弹层开合，
-   *    切卷时弹层由 ModelSelector 自己的外点/blur 收合，本表无须代管。 ── */
+   *    切卷时弹层由 ModelSelector 自己的外点/blur 收合，本表无须代管。
+   *    2026-11-12：坞内提示改挂 toast 浮层（自带消散），切卷不再需要清它。 ── */
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeSessionId 是刻意的「切卷触发器」——正是要响应它变化清本地态
   useEffect(() => {
-    setLocalNotice(null);
     setHelpOpen(false);
     setYinOpen(false);
     setInkOpen(false);
@@ -591,7 +602,7 @@ export const ComposerDock = memo(function ComposerDock() {
     async (id: string) => {
       setCompOpen(false);
       if (activeSessionId == null) {
-        if (!selectPreset(id)) setLocalNotice(`组合「${id}」不可用——原因见设置 → Agent → 组合。`);
+        if (!selectPreset(id)) notice(`组合「${id}」不可用——原因见设置 → Agent → 组合。`, 'error');
         return;
       }
       if (!core) return;
@@ -602,14 +613,14 @@ export const ComposerDock = memo(function ComposerDock() {
         reason: '本坞未接到组合写入口（旧句柄）',
       };
       if (!r.ok) {
-        setLocalNotice(`组合未切换：${r.reason}`);
+        notice(`组合未切换：${r.reason}`, 'error');
         return;
       }
-      // 写成功 = 本卷记录已变：主动重取读面（空白卷等不到消息事件）
+      // 写成功 = 本卷记录已变：主动重取读面（空白卷等不到消息事件）。
+      // 2026-11-12：成功不再播报——芯片本身已变（toast 克制纪律：界面变化即反馈）。
       setCompTick((v) => v + 1);
-      setLocalNotice(`本卷组合已切到「${id}」`);
     },
-    [activeSessionId, core],
+    [activeSessionId, core, notice],
   );
   const compLocked = activeSessionId != null && !compBlank;
   const compLabel = compInfo.presetId;
@@ -619,8 +630,8 @@ export const ComposerDock = memo(function ComposerDock() {
       ok: false,
       reason: '本坞未接到创作者入口（旧句柄）',
     };
-    if (!r.ok) setLocalNotice(`无法进入创作者模式：${r.reason}`);
-  }, [core]);
+    if (!r.ok) notice(`无法进入创作者模式：${r.reason}`, 'error');
+  }, [core, notice]);
 
   /* ── 斜杠命令（v2 2026-08-31；2026-09-19 command-surface-rework；2026-10-22 P2 翰解耦）：
    *    命令清单真源 = app/commands/command-catalog 合流点（本卷内建命令 +
@@ -727,10 +738,10 @@ export const ComposerDock = memo(function ComposerDock() {
       // 收图无条件——发送面会兜底（真被服务商拒 → 记档 + 改文字占位重发）
       void core?.intakeImageFiles(files);
       if (!imageCapable) {
-        setLocalNotice('当前模型未声明图片输入——图已收；若服务商拒收会自动改用文字转述（可在设置行换 vision 模型）');
+        notice('当前模型未声明图片输入——图已收；若服务商拒收会自动改用文字转述（可在设置行换 vision 模型）', 'warn');
       }
     },
-    [core, imageCapable],
+    [core, imageCapable, notice],
   );
 
   /* ── 附图预览（B2）：大图浮层——点击缩略图开；关闭三路 = 点遮罩 / Esc。
@@ -851,14 +862,13 @@ export const ComposerDock = memo(function ComposerDock() {
       const after = getChatStore(core.panelId).sess.getState();
       if (after.activeIdx < 0 || !after.sessions[after.activeIdx]) {
         // 建卷失败（未绑定目录等）——createNewSession 已弹 warn，这里兜底可见
-        setLocalNotice('当前没有活跃会话——请先在首页新建或指定工作区。');
+        notice('当前没有活跃会话——请先在首页新建或指定工作区。', 'warn');
         return;
       }
       getChatStore(core.panelId).input.getState().setInputText(t);
     }
-    setLocalNotice(null);
     await core.sendMessage();
-  }, [core]);
+  }, [core, notice]);
 
   /* ── 热切换：模型 / 思考 ── */
   const onModelChange = useCallback(
@@ -1506,19 +1516,10 @@ export const ComposerDock = memo(function ComposerDock() {
           kind={providerKind}
           compact
           isStreaming={running}
-          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
+          onBlocked={() => notice('Agent 正在运行——本回合结束后才能切换模型。', 'warn')}
           thinking={thinkingSeat}
         />
       </div>
-
-      {localNotice && (
-        <div className="pp-local-notice">
-          {localNotice}
-          <button type="button" onClick={() => setLocalNotice(null)}>
-            知道了
-          </button>
-        </div>
-      )}
 
       {/* 历史眉批（一次性，6s 自散）：提示长在功能所在处，不常驻占位符 */}
       {histHint && <div className="pp-eyebrow-hint">↑ 可回取上文 · ↓ 返回草稿</div>}

@@ -21,6 +21,19 @@
   max-width: min(72vw, 560px);
 }
 
+/* ── 坞上落位（2026-11-12 用户「坞内提示导致整坞跳变、还要点知道了」）────────────
+ * 坞内动作的反馈（切模型被拦 / 组合不可用 / 贴图提示）不再走**坞内布局行**
+ * （旧 `.pp-local-notice` 会把整坞撑高 ⇒ 整个创作坞跳变，且要用户点「知道了」
+ * 才走）。改挂坞**上方**的浮层：不占布局、自动消散、位置跟着坞走。
+ * 贴坞顶的落位量 = 让位带 `--composer-band`（视口底 → 坞顶线；坞浮起来也正确）——
+ * 本类是让位带消费面，已在 `composer-band.ts` 的名册登记（漏登记 = 读到静态兜底）。 */
+.pp-toast-host-composer {
+  top: auto;
+  bottom: calc(var(--composer-band, 96px) + 12px);
+  /* 多条自下而上叠：最新一条贴着坞顶（眼睛固定的位置） */
+  flex-direction: column-reverse;
+}
+
 .pp-toast {
   background: var(--paper);
   border: 0.5px solid var(--rule-soft-ink);

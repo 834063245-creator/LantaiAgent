@@ -23,6 +23,7 @@ import { ComposerDock } from '../src/plugins/builtin/compose-dock/ComposerDock';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { resetComposeStoresForTests } from '../src/state/compose-store';
 import { usePresetStore } from '../src/state/preset-store';
+import { useToastStore } from '../src/state/toast-store';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 
 const SID = 1;
@@ -161,7 +162,7 @@ describe('S6 P1e 创作坞组合芯片：两态 + 只读锁', () => {
     expect(selectCalls).toEqual([]);
   });
 
-  it('写路径拒绝：原因就地可见（localNotice），不静默', async () => {
+  it('写路径拒绝：原因经坞上方 toast 可见（2026-11-12 起不再占坞布局行），不静默', async () => {
     const { core } = fakeCore('e4', {
       blank: true,
       change: { ok: false, reason: '本卷已跑过一轮——组合决定模型看到的工具与提示面，不能中途换（另起一卷再选）' },
@@ -186,7 +187,9 @@ describe('S6 P1e 创作坞组合芯片：两态 + 只读锁', () => {
     act(() => minimal.click());
     await act(async () => {});
 
-    expect(container.textContent).toContain('组合未切换');
-    expect(container.textContent).toContain('跑过一轮');
+    expect(container.textContent).not.toContain('组合未切换'); // 坞内不再有布局行
+    const toasts = useToastStore.getState().toasts.filter((t) => t.anchor === 'composer');
+    expect(toasts.some((t) => t.text.includes('组合未切换'))).toBe(true);
+    expect(toasts.some((t) => t.text.includes('跑过一轮'))).toBe(true);
   });
 });
