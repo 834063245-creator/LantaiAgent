@@ -16,20 +16,6 @@ import { agentSessionState, type OwnedAgentHandle } from '../../agent/agent-sess
 import type { AgentEvent } from '../../agent/agent-types';
 import type { ChatAgentHandle } from '../../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance, type RunKind } from '../../agent/execution-state';
-import { parseGoalCommand } from '../../agent/goal/command';
-import {
-  blockGoal,
-  clearGoal,
-  createGoal,
-  disarmGoal,
-  editGoal,
-  type GoalHost,
-  pauseGoal,
-  readGoal,
-  resumeGoal,
-} from '../../agent/goal/service';
-import { goalHostOf } from '../../agent/goal/session-registry';
-import type { GoalView } from '../../agent/goal/types';
 import { log } from '../../agent/logger';
 // 批 9h-4：事实保存授权旗标住内核登记表（记忆实现已随 memory-domain 产物包）
 import { authorizeFactSave } from '../../agent/memory-impl';
@@ -40,15 +26,12 @@ import type { RuntimePort } from '../../agent/runtime/types';
 import { totalTokens } from '../../agent/token-meter/usage';
 import { useShellStore } from '../../app/shell-store';
 import type { CommandContribution } from '../../composition/services';
-import { sessionExecute } from '../../composition/session-persistence-service';
 import { activeSpace } from '../../composition/space-service';
 import { pickDropAnchor } from '../../paper/space';
 import type { ChatImageRef } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
 import { clipLabel, useAskPendingStore } from '../../state/ask-pending-store';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
-import { useBgAlertStore } from '../../state/bg-alert-store';
-import { getCanvasStore, loadCanvasFromDisk, saveCanvasToDisk } from '../../state/canvas-store';
 import { useDockStore } from '../../state/dock-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import { bumpTurnDone } from '../../state/turn-done-store';
@@ -66,9 +49,12 @@ import {
 } from '../../ui/chat-store';
 import * as Stream from '../../ui/chat-stream';
 import { type ChatMessage, resetMsgIdCounter, type UserMessage } from '../../ui/message-model';
+import { builtinCommands } from '../commands/builtin-commands';
 import { listCommands, parseSlashInput } from '../commands/command-catalog';
 import { ensureSkillCatalog } from '../commands/skill-catalog';
 import type { PromptShelfHandle } from './ask-card-contract';
+import { restoreCanvasSpread, saveCanvasState } from './canvas-restore';
+import { GoalDriver } from './goal-driver';
 import {
   admitImageBlob,
   admitImageFromPath,
@@ -100,12 +86,27 @@ export interface MessagesApi {
  *  先解除再重订；panelId 每实例唯一，全局 store 订阅是唯一跨实例存活的引用面。 */
 const _globalStoreUnsubs: Array<() => void> = [];
 
+// ── 辅助函数（模块级：无 this 依赖，发送面共用）──
+
+/** 附加文件 → 文本前缀。暴露路径以便 Agent 读取（大小不做假：openFilePicker 拿不到真实
+ *  size，旧实现硬编码 0 导致模型看到「0 B」误判空文件；要真大小需 Rust stat 通道）。
+ *  附图不走此处——引用随 agent.run 结构化传递（multimodal-image-plan D-1）。 */
+function buildFocusPrefix(files: readonly { path: string }[]): string {
+  if (files.length === 0) return '';
+  let prefix = '用户附加了以下文件：\n';
+  for (const f of files) prefix += `- \`${f.path}\`\n`;
+  return `${prefix}你可以用 read_file 读取这些文件。\n\n`;
+}
+
 export class ChatCore {
   /** 面板唯一实例 ID。自动生成，用于 store 隔离。 */
   readonly panelId: string;
 
   /** 执行状态 — 面板级实例。 */
   private _exec: ExecStateInstance;
+
+  /** 目标续行驱动器（状态在会话日志，排程/收尾裁决在它自己的模块里）。 */
+  private readonly _goal: GoalDriver;
   /** workspace 接线的公开访问器（面板级兜底 exec——无卷场景）。 */
   get execState(): ExecStateInstance {
     return this._exec;
@@ -127,26 +128,8 @@ export class ChatCore {
   private _promptShelf: PromptShelfHandle | null = null;
   private _chatMessages: MessagesApi | null = null;
 
-  // ── chat-session ctx 的 DOM 桩：分离元素，吸收写入，永不挂载 ──
-  private _stubPanel: HTMLElement = document.createElement('div');
-  private _stubSessionTabs: HTMLElement = document.createElement('div');
-  private _stubTabBar: HTMLElement = document.createElement('div');
-
   // ── exec 状态广播（视图订阅 stop 按钮/运行态）──
   private _execListeners = new Set<() => void>();
-
-  /** 每卷最新轮次代数（sid → gen）——轮次收尾的身份守卫。
-   *  停止后用户立刻发新消息的窗口里，旧轮 finally（abort 传播到挂起工具后
-   *  迟到落地）不得终结新轮刚建立的流式助手（finishTurn 会清
-   *  streamingAssistantId 并把新轮助手标 done——「停止后新输入无响应/劈开」
-   *  的次因）。gen 不匹配 = 该卷已有更新轮次，收尾让位给新轮自己的
-   *  TurnStarted/finally。无会话（null sid）共用 -1 槽。 */
-  private _turnGenBySid = new Map<number, number>();
-
-  /** 目标续行调度合并位（微任务去重——同一收尾窗口只排一次下一轮）。 */
-  private _goalDriveScheduled = false;
-  /** 「等本卷空闲再排」的一次性订阅（sid → 退订）：同一卷只挂一个，避免重复排程。 */
-  private readonly _goalIdleWait = new Map<number, () => void>();
 
   private get messages(): ChatMessage[] {
     const store = msgStoreForActive(this.panelId);
@@ -165,10 +148,22 @@ export class ChatCore {
     // 上一实例的全局 store 订阅先解除（2026-09-01 审计：重建不累积——
     // 退订函数登记在模块级 _globalStoreUnsubs，声明见类定义上方）
     for (const unsub of _globalStoreUnsubs.splice(0)) unsub();
-    // 上一实例的「等本卷空闲」订阅同样解除（同一执行账会跨实例复用，不解除 = 漏订）
-    for (const off of this._goalIdleWait.values()) off();
     this.panelId = `cp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     this._exec = createExecState();
+    // 目标驱动器：宿主能力位注入本类（每卷账 / 活动卷句柄 / 轮次脚手架），
+    // 状态条数据源 = 本面板的 panel store。构造顺序无关——能力位都是方法。
+    this._goal = new GoalDriver(
+      {
+        panelId: this.panelId,
+        activeSessionId: () => this.activeSessionId,
+        agentOf: () => this.agent,
+        activeExecOf: () => this._activeExec(),
+        execStateOf: (sid) => Session.getSessionExecState(this.panelId, sid),
+        agentOfSession: (sid) => Session.getSessionAgent(this.panelId, sid),
+        runAgentTurn: (opts) => this._runAgentTurn(opts),
+      },
+      () => getChatStore(this.panelId).panel.getState(),
+    );
 
     // 斜杠技能候选：确保当前工作区的清单（键变了则后台重扫；返回值 = 清单变没变，
     // 消费面在 compose-dock 的斜杠面板——它「打开即强制重扫」并据此重取。
@@ -206,11 +201,11 @@ export class ChatCore {
           this._promptShelf?.dismiss();
           // 待答账同步清场（卡架 dismiss 会把每个挂起 Promise 按取消结掉，账本跟着空）
           useAskPendingStore.getState().reset();
-          this._refreshGoalView();
+          this.refreshGoalView();
         }
       }),
     );
-    this._refreshGoalView();
+    this.refreshGoalView();
 
     // ⚡ ExecutionState → store 同步：订阅活动会话的 execState。
     // 重绑触发面（2026-09-06 运行态同步根治）：会话切换（sess 表）+ exec
@@ -522,31 +517,14 @@ export class ChatCore {
     const storeId = this.panelId;
     return {
       storeId,
-      panel: this._stubPanel,
-      sessionTabs: this._stubSessionTabs,
-      tabBar: this._stubTabBar,
       getProjectPath: () => useShellStore.getState().projectPath,
-      flushReasoning: () => {},
-      flushText: () => {},
-      clearPendingToolCards: () => {},
-      getRunning: () => this._activeExec().isRunning,
-      abort: () => this.abort(),
-      updateFooter: () => this.updateFooter(),
       getTotalTokensUsed: () => getChatStore(storeId).panel.getState().totalTokensUsed,
       setTotalTokensUsed: (n) => {
         getChatStore(storeId).panel.getState().setTotalTokensUsed(n);
       },
-      clearToolUsage: () => {
-        getChatStore(storeId).panel.getState().clearToolUsage();
-      },
-      clearToolHistory: () => {
-        getChatStore(storeId).panel.getState().clearToolHistory();
-      },
-      getLastUsageText: () => getChatStore(storeId).panel.getState().lastUsageText,
       setLastUsageText: (s) => {
         getChatStore(storeId).panel.getState().setLastUsageText(s);
       },
-      getLastAgentDiag: () => getChatStore(storeId).panel.getState().lastAgentDiag,
       clearInputHistory: () => {
         const s = getChatStore(storeId).input.getState();
         s.setInputHistory([]);
@@ -633,7 +611,6 @@ export class ChatCore {
       },
       getTurnPairs: () => Session.getTurnPairs(this.panelId, ownerSid ?? undefined),
       getAgent: () => (ownerSid != null ? Session.getSessionAgent(this.panelId, ownerSid) : this.agent),
-      updateFooter: () => this.updateFooter(),
       setLastUsageText: (s) => {
         // 用量文本是活跃卷的底栏——后台卷事件不覆盖显示
         if (ownerSid == null || ownerSid === this.activeSessionId) {
@@ -715,19 +692,19 @@ export class ChatCore {
     // 切进一卷也可能是「回到一个 active+armed 却在后台停着的目标」——重排一次
     // 续行，否则它要等用户下一句话的收尾才会被重新捡起（2026-11-12）。
     queueMicrotask(() => {
-      this._refreshGoalView();
-      this._scheduleGoalDrive();
+      this.refreshGoalView();
+      this._goal.scheduleGoalDrive();
     });
   }
   closeSession(idx: number): void {
     Session.closeSession(this._sessionCtx(), idx);
-    queueMicrotask(() => this._refreshGoalView());
+    queueMicrotask(() => this.refreshGoalView());
   }
   async createNewSession(): Promise<void> {
     // S6 P4：模块入口返回新卷 id（程序入口判成败用）——本编排面包装器不承载该值
     // （程序入口 = app/chat/session-composition 的模块函数，UI 之外的调用者直接调它）。
     await Session.createNewSession(this._sessionCtx());
-    this._refreshGoalView();
+    this.refreshGoalView();
   }
 
   /** 创作者模式入口（2026-10-30）：起一卷 creator，把开场白填进输入框（**不自动发送**
@@ -736,7 +713,7 @@ export class ChatCore {
     const r = await SessionComposition.createSessionWithPreset(this._sessionCtx(), 'creator');
     if (!r.ok) return { ok: false, reason: r.reason };
     getChatStore(this.panelId).input.getState().setInputText(SessionComposition.CREATOR_OPENING_PROMPT);
-    this._refreshGoalView();
+    this.refreshGoalView();
     return { ok: true };
   }
 
@@ -932,179 +909,22 @@ export class ChatCore {
     return Session.deleteSessionFile(this._sessionCtx(), projectPath, sessionId);
   }
 
-  /** Stage-5：进工作区恢复画布——读工作区画布状态文件 → 摊开集合落回画布
-   *  （拍板 11：展开 = 永远展开，重启恢复；Q-B 在画布语义下不再适用）。
-   *  自愈（2026-08-28 会话管理专项）：画布摊开集可能引用磁盘上不存在的卷——
-   *  空卷不落盘（saveActiveSession 只存非空卷）/ 卷文件被删 / 早期切换残留，
-   *  直接恢复会每次启动弹「案卷文件读取失败」+ 画布残留幽灵流区。恢复前先探
-   *  真实卷集（在开卷 + 磁盘已落盘卷），剪掉悬空摊开项并回写清理后的画布。
-   *  剪枝只在目录列表**成功**时进行（列表失败 = 保守不剪，避免误删真实卷）。 */
+  /** Stage-5：进工作区恢复画布（实现见 app/chat/canvas-restore）——悬空摊开项
+   *  自愈、两阶段并行恢复、枝线卷句柄水合全在那边；本类只提供宿主能力位。 */
   async restoreCanvasSpread(workspace: string): Promise<void> {
-    await loadCanvasFromDisk(this.panelId, workspace);
-    const st = getChatStore(this.panelId).sess.getState();
-    const openIds = new Set(st.sessions.map((s) => s.id));
-
-    // 磁盘已落盘卷集（目录缺席/列表失败 = 不剪枝，保守）。
-    // P1-1（2026-09-02）：剪枝改为「文件名级 + 读结果级」双面——不再调
-    // listSavedSessions（全量读 T 个卷文件）。文件名在目录里 = 存在；读阶段
-    // readVolumeData null = 墓碑/空卷/坏 JSON（从摊开集剪掉，不弹失败 toast）。
-    // seam（C 定案）：目录枚举换 list_volumes（provider 滤目录——文件名数组，
-    // 目录缺席/读失败 = 不剪枝的保守语义保留）。
-    // root 拼接收敛：workspaceSessionsDir（chat-session 唯一权威——消费方复用）
-    const sessionsDir = Session.workspaceSessionsDir(workspace);
-    let volumeNames: string[] | null = null;
-    try {
-      const raw = await sessionExecute('list_volumes', { root: sessionsDir });
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) volumeNames = parsed.filter((n): n is string => typeof n === 'string');
-    } catch {
-      /* 目录缺席/列表失败 = 不剪枝 */
-    }
-
-    // P0-3 两阶段恢复 + P1-1 去冗余（2026-09-02）：
-    //   读阶段——并行读全部摊开卷 + 钉源卷（readVolumeData 互相独立），
-    //   替代旧「先 listSavedSessions 全量读 T 卷、再恢复循环串行读 spread 卷」
-    //   的双倍 I/O。读结果 null = 墓碑/空卷/缺失（读阶段即发现，不弹 toast）。
-    //   应用阶段——串行 setState/消息重建（并行会触发全局 msgId 计数器重置
-    //   竞态与 sessions append 覆盖）。
-    const canvasState0 = getCanvasStore(this.panelId).getState();
-    const readTargets = new Set<number>();
-    for (const sid of Object.keys(canvasState0.spread)) {
-      const n = Number(sid);
-      if (!openIds.has(n)) readTargets.add(n);
-    }
-    // 钉源卷不在摊开集也要读（孤儿钉「收回/删除」按钮判定需要知道源是否已删）
-    for (const pin of Object.values(canvasState0.pins)) {
-      if (pin.source && !openIds.has(pin.source.sessionId)) readTargets.add(pin.source.sessionId);
-    }
-    const readResults = await Promise.all(
-      [...readTargets].map((sid) =>
-        Session.readVolumeData(workspace, sid)
-          .then((data) => ({ sid, data, failed: false }))
-          .catch((e) => {
-            // 读失败 ≠ 卷不存在（2026-10-29 收口）：标记 failed，剪枝面据此**保留**该卷
-            console.error('[canvas] 恢复摊开卷预读失败（保留不剪枝）', sid, e);
-            return { sid, data: null as null, failed: true };
-          }),
-      ),
+    return restoreCanvasSpread(
+      {
+        panelId: this.panelId,
+        sessionCtx: () => this._sessionCtx(),
+        switchSession: (idx) => this.switchSession(idx),
+      },
+      workspace,
     );
-    const readBySid = new Map<number, import('../../ui/chat-session').StoredSession | null>();
-    const readFailed = new Set<number>();
-    for (const { sid, data, failed } of readResults) {
-      readBySid.set(sid, data);
-      if (failed) readFailed.add(sid);
-    }
-
-    if (volumeNames) {
-      // 文件名级存在性（剪枝面 1）：摊开/钉源卷的**事件日志**（`.ndjson`——Phase 3b
-      // 起卷本体）不在目录里 = 幽灵。`.json` 只是投影缓存，不参与存在性判定。
-      // #1 修复的保守语义保留：目录列表失败 = 不剪枝（避免误删真实卷）。
-      const fileIds = new Set<number>();
-      for (const name of volumeNames) {
-        if (!name.endsWith('.ndjson') || name.startsWith('_')) continue;
-        const n = parseInt(name.replace('.ndjson', ''), 10);
-        if (!Number.isNaN(n)) fileIds.add(n);
-      }
-      // 读结果级有效性（剪枝面 2）：文件在但 readVolumeData null = 空卷——
-      // 从摊开集剪掉（替代旧 listSavedSessions 的墓碑过滤，不再弹读取失败 toast）。
-      // **读失败（readFailed）不剪**：读不出来 ≠ 卷不存在（2026-10-29 收口）——
-      // 剪掉等于把真卷当幽灵从画布上抹掉（还会回写 canvas.json）。
-      const phantom = Object.keys(canvasState0.spread).filter((sid) => {
-        const n = Number(sid);
-        if (openIds.has(n)) return false; // 已在案头 = 有效
-        if (readFailed.has(n)) return false; // 读面异常 = 保留现场，等下次
-        return !fileIds.has(n) || readBySid.get(n) === null;
-      });
-      if (phantom.length > 0) {
-        for (const sid of phantom) getCanvasStore(this.panelId).getState().removeRegion(sid);
-        // 活跃会话指向若落在被剪的幽灵卷 → 一并清掉（不残留失效指向）
-        const curActive = getCanvasStore(this.panelId).getState().activeSessionId;
-        if (curActive != null && phantom.includes(curActive)) {
-          getCanvasStore(this.panelId).getState().setActiveRegion(null);
-        }
-        // 回写清理后的画布（幂等——下次启动已无悬空项，不再重复剪）
-        void saveCanvasToDisk(this.panelId, workspace).catch((e) =>
-          console.warn('[chat-core] 画布回写失败（幽灵卷清理未落盘，下次启动重试）:', e),
-        );
-      }
-      // 已删源会话播种（2026-08-28 会话管理专项）：钉的源卷既不在开卷、也
-      // 读不出有效数据（墓碑/空卷/文件没了）——「收回」语义失效，孤儿钉
-      // 按钮应显示「删除」。deleteSessionFile 运行时另做增量标记。
-      const dead = new Set<number>();
-      for (const pin of Object.values(getCanvasStore(this.panelId).getState().pins)) {
-        const src = pin.source?.sessionId;
-        if (src == null || openIds.has(src)) continue;
-        const read = readBySid.get(src);
-        if (readFailed.has(src)) continue; // 读面异常：不知道源还在不在，别急着标「已删」
-        if (read === null || !fileIds.has(src)) dead.add(src);
-      }
-      if (dead.size > 0) getCanvasStore(this.panelId).getState().replaceDeletedSessionIds(dead);
-    }
-
-    // 应用阶段（P3-1，2026-09-02）：批量铺开——一次 setState 摊全部卷（读数据
-    // 已在 readBySid，不再触盘），随后逐卷填内容层（会话级 store 不触 sess 订阅）。
-    // 替代旧「逐卷 loadSessionFromDisk = N 次 setState append」——sess 订阅
-    // （PaperPanel sessions 同步 + 消息订阅 effect）从 N 次降为 1 次。
-    // 活跃卷句柄：末尾 switchSession 的惰性补建承担（批量应用不造 Agent）。
-    const batchItems: Array<{ sid: number; data: import('../../ui/chat-session').StoredSession }> = [];
-    for (const sid of readTargets) {
-      // 钉源补充读的卷可能不在摊开集（只供孤儿钉判定用）——不摊开
-      if (!Object.hasOwn(canvasState0.spread, String(sid))) continue;
-      // 墓碑/空卷/缺失（read null）——剪枝阶段已从摊开集移除，不进批量
-      const data = readBySid.get(sid);
-      if (data != null) batchItems.push({ sid, data });
-    }
-    const restoreFailed = await Session.batchRestoreSessions(this._sessionCtx(), batchItems);
-    // D5（拍板 C）：恢复失败可见——StatusLine 警告档 + 一次性提示条
-    if (restoreFailed > 0) {
-      useBgAlertStore.getState().pushBgAlert('restore-open', `有 ${restoreFailed} 卷恢复失败——可在左侧栏手动展开`);
-    } else {
-      useBgAlertStore.getState().clearBgAlert('restore-open');
-    }
-    // #6 修复：恢复活跃会话指向——重新取 state（上方剪枝已产生新 state，
-    // 旧 canvas 快照的 activeSessionId 可能已过期）
-    const freshActive = getCanvasStore(this.panelId).getState().activeSessionId;
-    const activeSid = freshActive ? Number(freshActive) : null;
-    if (activeSid != null) {
-      const st2 = getChatStore(this.panelId).sess.getState();
-      const idx = st2.sessions.findIndex((s) => s.id === activeSid);
-      if (idx >= 0 && idx !== st2.activeIdx) this.switchSession(idx);
-    }
-
-    // ── 枝线卷的后台句柄水合（2026-09-19，真机报的「重启后引线消失」）──
-    // 批量恢复刻意不造句柄（P3-1），只有活跃卷由上面那次 switchSession 惰性补建；
-    // 而枝边的画布承接要求**父子卷都有句柄**（血缘在子卷头行、父卷那个节点要走父卷的
-    // 投影与定位桥）⇒ 非活跃的枝卷/父卷重启后一条线都画不出来。
-    // 只为**参与枝边的摊开卷**补建（子卷 + 其父卷，且都在摊开集内）：数量 = 树上的卷
-    // （摊开集按设计只放活跃路径），不是全摊开集。串行补建避免启动期 I/O 突发；
-    // 失败可见（console + warn），不挡冷启动。
-    const spread = getCanvasStore(this.panelId).getState().spread;
-    const edgeSids: number[] = [];
-    for (const s of getChatStore(this.panelId).sess.getState().sessions) {
-      if (!Object.hasOwn(spread, String(s.id))) continue;
-      const parentId = readBySid.get(s.id)?.parentId;
-      if (parentId == null) continue;
-      if (!edgeSids.includes(s.id)) edgeSids.push(s.id);
-      if (Object.hasOwn(spread, String(parentId)) && !edgeSids.includes(parentId)) edgeSids.push(parentId);
-    }
-    if (edgeSids.length > 0) {
-      void (async () => {
-        for (const sid of edgeSids) {
-          if (agentSessionState.getAgent(this.panelId, sid)) continue;
-          try {
-            await Session.ensureVolumeAgent(this._sessionCtx(), sid);
-          } catch (e) {
-            console.error('[chat-core] 枝线卷句柄水合失败', sid, e);
-            log.warn('chat', `案卷 ${sid} 的 Agent 未就绪（枝边引线待其就绪后出现）`, { error: String(e) });
-          }
-        }
-      })();
-    }
   }
 
-  /** Stage-5：显式保存点落盘工作区画布状态（切换/关闭窗口时调用）。 */
+  /** Stage-5：显式保存点落盘工作区画布状态（切换 / 关闭窗口时调用）。 */
   async saveCanvasState(workspace: string): Promise<void> {
-    await saveCanvasToDisk(this.panelId, workspace);
+    return saveCanvasState(this.panelId, workspace);
   }
 
   // ── 轮次撤回定位（委托给 chat-session.ts 沙盒映射，ID 直达）──
@@ -1136,220 +956,26 @@ export class ChatCore {
     const agent = this.agent;
     if (!agent) return;
     await this._runAgentTurn({
-      userText: displayLabel,
-      bubbleLabel: displayLabel,
+      bubble: displayLabel,
       drive: (signal) => agent.run(signal, text),
     });
   }
 
-  // ── Goal（2026-10-23 DSH 式目标域：状态在会话日志，驱动器在本层）──
+  // ── Goal（2026-10-23 DSH 式目标域：状态在会话日志，驱动器在 GoalDriver）──
+  // 读/判/排/收尾全在 app/chat/goal-driver.ts；本类只提供宿主能力位（每卷账、
+  // 活动卷句柄、轮次脚手架）并转发命令面与状态条刷新。
 
-  /** 本卷目标宿主（Agent 在 goal 注册表里的登记）；Agent 未就绪 = undefined。 */
-  private _goalHost(): GoalHost | undefined {
-    return goalHostOf(this.agent?.id);
-  }
-
-  /** 读本卷目标；日志损坏 = 具名 toast + undefined（普通会话不受影响）。 */
-  private _goalView(): GoalView | undefined {
-    const host = this._goalHost();
-    if (!host) return undefined;
-    try {
-      return readGoal(host);
-    } catch (e) {
-      showToast(`目标状态不可用：${e instanceof Error ? e.message : String(e)}`, 'warn', TOAST_LONG_HOLD_MS);
-      return undefined;
-    }
-  }
-
-  /** 把目标视图写进面板 store（状态条数据源）。 */
-  private _refreshGoalView(): void {
-    getChatStore(this.panelId)
-      .panel.getState()
-      .setGoalView(this._goalView() ?? null);
-  }
-
-  /** 空闲时排一次目标续行（微任务合并，避免在 turn finally 里递归起轮）。
-   *
-   *  `sid` = 排程方所属的卷：该卷账上**还在跑**时，这一跳不丢弃，改装到该卷账的
-   *  **空闲转变**上（一次性）。为什么必须这样：`_runAgentTurn` 的 finally 里
-   *  `run.end()` 之后立刻排程，而同一 finally 还要走 finishTurn / bumpTurnDone——
-   *  订阅者可能在这之间再起一条运行（唤醒轮、后台件），驱动器一看「账上在跑」
-   *  就放弃，此后再没有人排它：目标停在 active+armed 不动。 */
-  private _scheduleGoalDrive(sid?: number): void {
-    if (this._goalDriveScheduled) return;
-    if (sid != null && Session.getSessionExecState(this.panelId, sid).isRunning) {
-      if (!this._goalIdleWait.has(sid)) {
-        const off = Session.getSessionExecState(this.panelId, sid).onChange(() => {
-          if (Session.getSessionExecState(this.panelId, sid).isRunning) return;
-          this._goalIdleWait.delete(sid);
-          off();
-          this._scheduleGoalDrive();
-        });
-        this._goalIdleWait.set(sid, off);
-      }
-      return;
-    }
-    this._goalDriveScheduled = true;
-    queueMicrotask(() => {
-      this._goalDriveScheduled = false;
-      void this._driveGoal();
-    });
-  }
-
-  /** 目标续行驱动器：active + armed + 还有轮预算 + **目标卷**空闲 → 跑一轮。
-   *
-   *  ⚠ 卷身份（2026-11-12 收口）：目标活在卷里，续行也是给那卷续——一旦抓到开轮条件，
-   *  本轮全过程（Agent 句柄、运行账、收尾裁决、下一轮排队）都钉在**发起时刻的目标卷**，
-   *  绝不跟着「此刻翻开哪卷」走。旧实现每一步都取活跃卷：切卷后目标轮把记录挂到别的卷、
-   *  收尾拿别的卷的相位裁决、下一轮又去驱动另一个卷的目标——三张不同的卷在同一处混用，
-   *  正是「目标停在 active/armed 却再也不跑」与「两卷被交替续行」的根因。 */
-  private async _driveGoal(): Promise<void> {
-    const sid = this.activeSessionId;
-    const agent = this.agent;
-    const host = this._goalHost();
-    if (!agent || !host || sid == null) return;
-    // 本卷账上正在跑（直人轮 / 后台唤醒 / 已在跑的目标轮）：改挂到它的空闲转变上
-    // 再排（`_scheduleGoalDrive(sid)` 自带一次性订阅去重）。为什么不直接 return：
-    // 这一跳可能是**最后一跳**（切卷、/goal resume、切回目标卷都只排这一次），
-    // 放弃就再没人排——正是「目标停在 active+armed 不动」的形状。
-    if (Session.getSessionExecState(this.panelId, sid).isRunning) {
-      this._scheduleGoalDrive(sid);
-      return;
-    }
-    let view: GoalView | undefined;
-    try {
-      view = readGoal(host);
-    } catch {
-      return; // 损坏已在 _goalView 报过；驱动器不重复刷屏
-    }
-    this._refreshGoalView();
-    if (view === undefined || view.phase !== 'active' || view.activation !== 'armed') return;
-    // 卷闸：登记之后、开轮之前用户切了卷 ⇒ 本卷不再是目标卷，这一跳作废
-    //（重排点 = 切回本卷时的 switchSession）。
-    if (this.activeSessionId !== sid) return;
-    if (view.roundsStarted >= view.maxGoalRounds) {
-      try {
-        blockGoal(
-          host,
-          { id: view.id, revision: view.revision },
-          {
-            code: 'round-limit',
-            message: `Goal reached its configured limit of ${view.maxGoalRounds} rounds.`,
-          },
-        );
-      } catch {
-        /* 已终结/被改：下一轮读形自会收敛 */
-      }
-      this._refreshGoalView();
-      showToast(`🚧 目标达到轮上限（${view.maxGoalRounds}），已停止续行。`, 'warn', TOAST_LONG_HOLD_MS);
-      return;
-    }
-    await this._runAgentTurn({
-      runKind: 'goal',
-      goalTurn: { sid },
-      drive: (signal) => agent.runGoalRound(signal),
-      onSettled: (info) => this._settleGoalRound(sid, info),
-    });
-  }
-
-  /** 一轮结束后的裁决：用户停止 = 暂停；异常 = 停用续行；正常 = 排下一轮。
-   *  `sid` = 本轮所属的**目标卷**（不是收尾时刻的活跃卷）。 */
-  private _settleGoalRound(sid: number, info: { aborted: boolean; error?: unknown }): void {
-    // 目标宿主按卷解析：用户中途切卷时 `_goalHost()` 已经是另一个卷的宿主了，
-    // 拿它裁决本轮的存续 = 把 A 卷的轮记到 B 卷头上（旧实现的第二条混卷路径）。
-    const host = goalHostOf(Session.getSessionAgent(this.panelId, sid)?.id);
-    if (!host) return;
-    let view: GoalView | undefined;
-    try {
-      view = readGoal(host);
-    } catch {
-      return;
-    }
-    this._refreshGoalView();
-    if (view === undefined) return;
-    if (info.aborted) {
-      try {
-        pauseGoal(host, { id: view.id, revision: view.revision });
-      } catch {
-        /* 已不在 active：不必重复暂停 */
-      }
-      this._refreshGoalView();
-      showToast('⏸️ 目标已暂停 — /goal resume 继续', 'info');
-      return;
-    }
-    if (info.error !== undefined) {
-      disarmGoal(host);
-      this._refreshGoalView();
-      // 单轮异常只停**自动续行**（activation 是进程本地授权位）：目标仍是 active，
-      // 人可以 /goal resume 接着推。状态条据此显式标「续行已停」——旧实现只有一条
-      // 会滚走的 toast，用户在状态条上看到的仍是「进行中」。
-      const msg = info.error instanceof Error ? info.error.message : String(info.error);
-      showToast(`目标轮失败，自动续行已停用（/goal resume 继续）：${msg.slice(0, 160)}`, 'warn', TOAST_LONG_HOLD_MS);
-      return;
-    }
-    if (view.phase === 'complete') {
-      showToast(`✅ 目标达成: ${view.objective.slice(0, 80)}`, 'info');
-      return;
-    }
-    if (view.phase === 'blocked') {
-      showToast(`🚧 目标受阻: ${(view.blockedReason?.message ?? '').slice(0, 120)}`, 'warn', TOAST_LONG_HOLD_MS);
-      return;
-    }
-    // 下一轮：目标卷仍是活跃卷时本处直接续；已切走则这一跳放弃——不跨卷替
-    // 别的卷开轮（回来后由 switchSession 重排）。
-    if (view.phase === 'active' && view.activation === 'armed' && this.activeSessionId === sid) {
-      this._scheduleGoalDrive(sid);
-    }
-  }
-
-  /** `/goal` 状态渲染（无目标 = 用法；有目标 = 阶段/轮数/续行/可用命令）。 */
-  private showGoalStatus(): void {
-    const view = this._goalView();
-    if (view === undefined) {
-      showToast(
-        '当前没有目标。用法: /goal 目标描述 — Agent 会自主循环直到完成；/goal pause · resume · clear 控制当前目标',
-        'info',
-        TOAST_LONG_HOLD_MS,
-      );
-      return;
-    }
-    const phaseLabel =
-      view.phase === 'active'
-        ? '进行中'
-        : view.phase === 'paused'
-          ? '已暂停'
-          : view.phase === 'blocked'
-            ? '已受阻'
-            : '已完成';
-    const lines = [
-      `🎯 ${view.objective.slice(0, 80)}`,
-      `状态: ${phaseLabel} · 第 ${view.roundsStarted}/${view.maxGoalRounds} 轮 · 续行: ${view.activation === 'armed' ? '已启用' : '已停用'}`,
-    ];
-    if (view.phase === 'blocked' && view.blockedReason) {
-      lines.push(`受阻: ${view.blockedReason.code} — ${view.blockedReason.message.slice(0, 120)}`);
-    }
-    const hints =
-      view.phase === 'complete'
-        ? '/goal <新目标> 替换 · /goal clear 清除'
-        : view.phase === 'active'
-          ? view.activation === 'armed'
-            ? '/goal pause 暂停 · /goal edit <新目标> · /goal clear 清除'
-            : '/goal resume 继续 · /goal edit <新目标> · /goal clear 清除'
-          : '/goal resume 继续 · /goal edit <新目标> · /goal clear 清除';
-    lines.push(`可用: ${hints}`);
-    showToast(lines.join('\n'), 'info', TOAST_LONG_HOLD_MS);
-  }
-
-  /** 当前目标 ref（命令面 CAS 用）；无目标 = null。 */
-  private _goalRef(): { id: string; revision: number } | null {
-    const view = this._goalView();
-    return view === undefined ? null : { id: view.id, revision: view.revision };
+  /** 本卷目标状态条刷新（切工作区/切卷后重载——状态真源 = 本卷会话日志）。 */
+  refreshGoalView(): void {
+    this._goal.refreshGoalView();
   }
 
   /** Agent 轮次的共享脚手架。 */
   private async _runAgentTurn(opts: {
-    userText?: string;
-    bubbleLabel?: string;
+    /** 本轮来文气泡文本（铸气泡 + 记轮次对）；缺省 = 不起泡（目标自动轮）。 */
+    bubble?: string;
+    /** 本轮回合开始时的一次性动作（发送面清输入框/附件、推历史、起卷命名都在这里）。 */
+    onStart?: () => void;
     /** 运行种类（运行账的记录标签：诊断 + 读面策略）——目标自动轮传 'goal'。 */
     runKind?: RunKind;
     drive: (signal: AbortSignal) => Promise<unknown>;
@@ -1367,6 +993,9 @@ export class ChatCore {
       ? Session.getSessionExecState(this.panelId, opts.goalTurn.sid ?? -1)
       : this._activeExec();
     if (!this.agent || exec.isRunning) return;
+    // 回合开始的一次性动作（发送面的命名/清输入/消费附件）——必须在起运行账之前，
+    // 与插入路径/作答路径的早退语义一致：拒绝起轮就什么都不该动。
+    opts.onStart?.();
     // 起一条运行记录（谁起谁收）：signal 由账铸；收尾 `run.end()` 只注销自己这条
     //（v43 起「清掉别人的运行」在类型上不可能——旧实现的 done(signal) 守卫是约定）。
     const run = exec.beginRun(opts.runKind ?? 'turn');
@@ -1382,19 +1011,21 @@ export class ChatCore {
       turnSid = sessStore.sessions[sessStore.activeIdx]?.id ?? null;
     }
     // 轮次代数 bump —— 本轮成为该卷最新轮次（finally 收尾身份守卫，见下）
-    const turnGen = (this._turnGenBySid.get(turnSid ?? -1) ?? 0) + 1;
-    this._turnGenBySid.set(turnSid ?? -1, turnGen);
+    // 轮次代数 bump（账在 session-registry：跨面板实例复用同一本，见 turnGenOf 头注）
+    const turnGen = Session.bumpTurnGen(this.panelId, turnSid);
 
     // 为新轮次重置自动滚动（视图级状态——只在本轮卷即活跃卷时才有意义；
     // _runAgentTurn 恒由活跃卷发起，turnSid == 活跃卷）
     getChatStore(this.panelId).msg.getState().setUserScrolledUp(false);
 
-    // 先铸气泡拿 _id——轮次簿册以它作权威身份（撤回/重发 ID 直达）
-    const bubble = opts.bubbleLabel ? this.appendUserBubble(opts.bubbleLabel) : null;
-    if (opts.userText) {
+    // 先铸气泡拿 _id——轮次簿册以它作权威身份（撤回/重发 ID 直达）。
+    // 气泡由调用方给（sendMessage 的来文气泡、sendAgentText 的命令标签、目标轮无色），
+    // 本层不管气泡长什么样，只管「谁发起了本轮」。
+    if (opts.bubble) {
+      const bubble = this.appendUserBubble(opts.bubble);
       Session.getTurnPairs(this.panelId, turnSid ?? undefined).push({
-        userText: opts.userText,
-        uiMsgId: bubble?._id,
+        userText: opts.bubble,
+        uiMsgId: bubble._id,
         userBubble: null,
         assistantBubble: null,
       });
@@ -1447,7 +1078,10 @@ export class ChatCore {
         });
       } else if (!signal.aborted) {
         const code = apiErrorSummary(err);
-        const visible = `错误: ${msg}${describeRetryFacts(readRetryFacts(err))}${code ? `\n（${code}）` : ''}`;
+        // 直人发送面的引导句（输入框就在眼前，出错后能立刻重发/压缩/新建卷）；
+        // 目标自动轮没有人守着输入框，引导句只会干扰对「续行为什么停」的判读。
+        const hint = opts.bubble ? '。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话' : '。';
+        const visible = `错误: ${msg}${describeRetryFacts(readRetryFacts(err))}${hint}${code ? `\n（${code}）` : ''}`;
         Stream.markTurnError(this._streamCtxFor(turnSid), visible, 'error');
         this._logTurnFailure(turnSid, turnGen, run.id, err, { visible });
       }
@@ -1463,7 +1097,7 @@ export class ChatCore {
       // 轮次时才 finalize——停止后用户立刻发新消息的窗口里，旧轮 finally 迟到
       // 落地会把新轮刚建立的流式助手误终结。让位时新轮自己的
       // TurnStarted/finally 承担终结（语义无缺口）。
-      if ((this._turnGenBySid.get(turnSid ?? -1) ?? 0) === turnGen) {
+      if (Session.turnGenOf(this.panelId, turnSid) === turnGen) {
         // 轮次收尾按轮次所属卷路由（后台卷跑完 finalize 自己的流式助手 +
         // 自动命名自己；用户中途切走不影响）
         Stream.finishTurn(this._streamCtxFor(turnSid));
@@ -1475,7 +1109,7 @@ export class ChatCore {
         opts.onSettled({ aborted: signal.aborted, ...(settleError === undefined ? {} : { error: settleError }) });
       } else {
         // 本轮所属卷（普通轮 = 活跃卷）——排程按**它的**账判空闲。
-        this._scheduleGoalDrive(turnSid ?? undefined);
+        this._goal.scheduleGoalDrive(turnSid ?? undefined);
       }
     }
   }
@@ -1666,138 +1300,57 @@ export class ChatCore {
     // 并发会话（2026-08-26）：后台卷闸门拆除——本卷不在跑即可发起新轮次，
     // 与后台卷并行流式（事件路由由工厂绑定的 eventSinkFor 承担）。
 
-    // 首条来文即命名（未命名卷）：判据与派生都走 state/volume-name 的**同一把尺子**
-    // （与轮末 autoTitleSessionIfDefault 同规）。旧实现自带一套——只认「会话 」前缀
-    // （术语换代后对新卷恒不命中）、27 字截断（与轮末的 28 字不一致）——是收口前
-    // 的第三个命名写者，已拆。
-    if (Session.getActiveIdx(this.panelId) >= 0) {
-      const session = Session.getSessions(this.panelId)[Session.getActiveIdx(this.panelId)];
-      if (session && isUnnamedVolumeLabel(session.label)) {
-        const name = deriveVolumeLabel(text);
-        // 来源 = derived：发送时的自动名可被后续自动概括覆盖（C 批判据）。
-        if (name) getChatStore(this.panelId).sess.getState().renameSession(session.id, name, 'derived');
-      }
-    }
+    // 附加文件 + 附图（发送即消费掉附件槽）——文本前缀只载路径附件，
+    // 附图引用随 agent.run 结构化传递（multimodal-image-plan D-1）。
+    const filesSnapshot = [...getChatStore(this.panelId).input.getState().attachedFiles];
+    const imagesSnapshot = [...getChatStore(this.panelId).input.getState().attachedImages];
+    const agent = this.agent;
 
-    // 若当前在浮动输入栏中，发送前先唤起完整面板（纸视图打开时除外——纸是输入面）
-    if (getChatStore(this.panelId).panel.getState().panelMode === 'input' && !useDockStore.getState().isOpen('paper')) {
-      this.summonPanel();
-    }
+    // 起轮：轮次脚手架（运行账 / 气泡 / 轮次对 / 收尾守卫 / 续行排程）全在
+    // _runAgentTurn 一处——与目标自动轮、命令驱动轮同一条路，禁止再长第二份。
+    await this._runAgentTurn({
+      bubble: text,
+      onStart: () => {
+        // 首条来文即命名（未命名卷）：判据与派生都走 state/volume-name 的**同一把尺子**
+        // （与轮末 autoTitleSessionIfDefault 同规）。旧实现自带一套——只认「会话 」前缀
+        // （术语换代后对新卷恒不命中）、27 字截断（与轮末的 28 字不一致）——是收口前
+        // 的第三个命名写者，已拆。
+        if (Session.getActiveIdx(this.panelId) >= 0) {
+          const session = Session.getSessions(this.panelId)[Session.getActiveIdx(this.panelId)];
+          if (session && isUnnamedVolumeLabel(session.label)) {
+            const name = deriveVolumeLabel(text);
+            // 来源 = derived：发送时的自动名可被后续自动概括覆盖（C 批判据）。
+            if (name) getChatStore(this.panelId).sess.getState().renameSession(session.id, name, 'derived');
+          }
+        }
 
-    // 推入输入历史
-    getChatStore(this.panelId).input.getState().pushInputHistory(text);
-    getChatStore(this.panelId).input.getState().setDraftText('');
-    getChatStore(this.panelId).input.getState().setInputText('');
+        // 若当前在浮动输入栏中，发送前先唤起完整面板（纸视图打开时除外——纸是输入面）
+        if (
+          getChatStore(this.panelId).panel.getState().panelMode === 'input' &&
+          !useDockStore.getState().isOpen('paper')
+        ) {
+          this.summonPanel();
+        }
 
-    // 起一条运行记录（谁起谁收；v43 起 signal 由账铸、收尾按记录身份注销）
-    const exec = this._activeExec();
-    const run = exec.beginRun('turn');
-    const signal = run.signal;
+        // 推入输入历史 + 清输入面
+        getChatStore(this.panelId).input.getState().pushInputHistory(text);
+        getChatStore(this.panelId).input.getState().setDraftText('');
+        getChatStore(this.panelId).input.getState().setInputText('');
 
-    // 用户气泡（原始文本，焦点上下文仅供 Agent 读取）——先铸气泡拿 _id，
-    // 轮次簿册以它作权威身份（撤回/重发 ID 直达）
-    const files = getChatStore(this.panelId).input.getState().attachedFiles;
-    const filesSnapshot = [...files];
-    const images = getChatStore(this.panelId).input.getState().attachedImages;
-    const imagesSnapshot = [...images];
-    const bubble = this.appendUserBubble(text, filesSnapshot, undefined, imagesSnapshot);
-    const turnSidPre = this.activeSessionId;
-    Session.getTurnPairs(this.panelId, turnSidPre ?? undefined).push({
-      userText: text,
-      uiMsgId: bubble._id,
-      userBubble: null,
-      assistantBubble: null,
+        // 附加文件 — 暴露路径以便 Agent 读取（大小不做假：openFilePicker 拿不到真实
+        // size，旧实现硬编码 0 导致模型看到「0 B」误判空文件；要真大小需 Rust stat 通道）。
+        if (filesSnapshot.length > 0) getChatStore(this.panelId).input.getState().clearAttachedFiles();
+        if (imagesSnapshot.length > 0) getChatStore(this.panelId).input.getState().clearAttachedImages();
+      },
+      drive: (signal) =>
+        agent.run(
+          signal,
+          buildFocusPrefix(filesSnapshot) + text,
+          imagesSnapshot.length > 0 ? imagesSnapshot : undefined,
+        ),
+      // 直人轮收尾的目标续行排程不在这里给——_runAgentTurn 的 finally 缺省就按
+      // **本轮所属卷**排一次（2026-11-12：模型在直人轮里建的目标，该轮收尾就开第 1 轮）。
     });
-
-    // 焦点上下文前缀已随星图/文件查看器焦点链拆除（2026-08-27 死码清扫）——
-    // 仅保留附加文件上下文。
-    let focusPrefix = '';
-
-    // 附加文件 — 暴露路径以便 Agent 读取（大小不做假：openFilePicker 拿不到真实
-    // size，旧实现硬编码 0 导致模型看到「0 B」误判空文件；要真大小需 Rust stat 通道）。
-    // 附图（B3）不走文本前缀——引用随 agent.run 结构化传递（multimodal-image-plan D-1）。
-    if (files.length > 0) {
-      focusPrefix += '用户附加了以下文件：\n';
-      for (const f of files) {
-        focusPrefix += `- \`${f.path}\`\n`;
-      }
-      focusPrefix += '你可以用 read_file 读取这些文件。\n\n';
-      getChatStore(this.panelId).input.getState().clearAttachedFiles();
-    }
-    if (imagesSnapshot.length > 0) {
-      getChatStore(this.panelId).input.getState().clearAttachedImages();
-    }
-
-    // 追踪启动本次运行的会话 — 事件路由身份已由工厂绑定的 eventSinkFor
-    // 携带；这里只管子 Agent 通知路由的 agent._uiSessionId。
-    const turnSid: number | null = this.activeSessionId;
-    // 轮次代数 bump —— 本轮成为该卷最新轮次（finally 收尾身份守卫，见下）
-    const turnGen = (this._turnGenBySid.get(turnSid ?? -1) ?? 0) + 1;
-    this._turnGenBySid.set(turnSid ?? -1, turnGen);
-    if (turnSid != null) {
-      this.agent?.setUiSessionId(turnSid);
-    }
-
-    // 运行 Agent（附图引用随用户消息入 session——B3；文本前缀只载路径附件）
-    try {
-      await this.agent.run(signal, focusPrefix + text, imagesSnapshot.length > 0 ? imagesSnapshot : undefined);
-    } catch (err: unknown) {
-      // 2026-08-31 贴黄拆迁：回合错误写进回合自身（墓碑），不播黄纸条
-      const msg = err instanceof Error ? err.message : String(err);
-      // 用户停止的判据是**事实**（2026-09-14 拆文本猜测）：本轮 signal 是否被中止
-      // （同 _runAgentTurn 的 catch——两处同款病灶同治）。
-      if (msg.includes('paused after')) {
-        Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
-        this._logTurnFailure(turnSid, turnGen, run.id, err, {
-          phase: 'stream',
-          kind: 'PAUSED',
-          level: 'warn',
-          visible: msg,
-        });
-      } else if (isRunDeadlineExceeded(err)) {
-        // 硬截止作废（landmine L3）：墓碑照落——判据是错误类型，不是「signal 是否
-        // 中止」（作废的第一步就是 abort，沿用静默分支会把这一轮变成幽灵轮）。
-        Stream.markTurnError(
-          this._streamCtxFor(turnSid),
-          `本轮超硬截止已作废，结果未知，勿当成功继续——${msg}。` +
-            '可直接重发上一条消息；若反复出现，检查出网链路或服务商状态。',
-          'error',
-        );
-        this._logTurnFailure(turnSid, turnGen, run.id, err, {
-          phase: 'stream',
-          kind: 'RUN_DEADLINE_EXCEEDED',
-          visible: `本轮超硬截止已作废——${msg}`,
-        });
-      } else if (!signal.aborted) {
-        const code = apiErrorSummary(err);
-        const visible = `错误: ${msg}${describeRetryFacts(readRetryFacts(err))}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话${code ? `\n（${code}）` : ''}`;
-        Stream.markTurnError(this._streamCtxFor(turnSid), visible, 'error');
-        this._logTurnFailure(turnSid, turnGen, run.id, err, { visible });
-      }
-    } finally {
-      // 收尾只注销**本轮自己那条**运行记录（v43：按 id 身份；旧实现 done(signal) 靠
-      // 调用方记得带令牌）。与结算时刻的活跃卷无关——切卷不影响本卷账。
-      run.end();
-      // 回合失败去重表随回合结束清理（键控自清理——漏调也不会无界增长，门面另有上限兜底）
-      Obs.endTurn({ session: turnSid, turn: turnGen });
-      // 轮次代数守卫（2026-09-03「停止后会话坏掉」次因）：本轮仍是该卷最新
-      // 轮次时才 finalize——停止后用户立刻发新消息的窗口里，旧轮 finally 迟到
-      // 落地会把新轮刚建立的流式助手误终结（streamingAssistantId 被清、新轮
-      // 响应丢失/劈开）。让位时新轮自己的 TurnStarted/finally 承担终结。
-      if ((this._turnGenBySid.get(turnSid ?? -1) ?? 0) === turnGen) {
-        // 轮次收尾按轮次所属卷路由（用户中途切卷，后台卷 finalize 自己的流）
-        Stream.finishTurn(this._streamCtxFor(turnSid));
-      }
-    }
-    // 通知持久化链（P1 总线归零：chat:turn-done → state/turn-done-store 信号；
-    // L2：携带跑完的会话 id——谁跑完存谁）
-    bumpTurnDone(turnSid ?? undefined);
-    // 直人轮收尾也看一眼目标是否该续行（2026-11-12）：模型可以在**直人轮里**用
-    // goal(create) 建目标（工具的直人授权正是这一条），旧实现在 `_runAgentTurn`
-    // 里排程、却在 sendMessage 这条真发话路径上什么都不做 ⇒ 「/goal 目标」会跑，
-    // 「模型自己建的目标」永远停在 active/armed 第 0 轮，直到用户再发一句话或切卷
-    // 把它捡起来。`_scheduleGoalDrive(sid)` 自带空闲判定与卷身份，重复调用无副作用。
-    this._scheduleGoalDrive(turnSid ?? undefined);
   }
 
   abort(): void {
@@ -1824,13 +1377,6 @@ export class ChatCore {
 
   private renderEvent(ev: AgentEvent): void {
     Stream.renderEvent(this._streamCtxFor(null), ev);
-  }
-
-  // ── Footer — V5 拆除后 ChatFooter 退役；updateFooter 保留为空操作
-  // （StreamContext API 契约，chat-stream/chat-session 冻结文件仍调用）
-
-  private updateFooter(): void {
-    // no-op: ChatFooter 已退役（V5），槽不再需要注册方
   }
 
   // ── 文件附件 ──
@@ -1985,74 +1531,14 @@ export class ChatCore {
   // /cycle · /impact · /path）一并删除——面板不再陈列点不动的命令。
 
   builtinCommands(): CommandContribution[] {
-    return [
-      {
-        id: 'new',
-        label: '重置当前案卷',
-        description: '清空对话历史，保留项目上下文',
-        group: '案卷',
-        slash: '/new',
-        action: { type: 'local', handler: () => void this.createNewSession() },
-      },
-      {
-        id: 'compact',
-        label: '压缩上下文',
-        description: '压缩对话历史以节省 token',
-        group: '案卷',
-        slash: '/compact',
-        action: { type: 'local', handler: () => void this.compactSession() },
-      },
-      {
-        id: 'compact-stats',
-        label: '压缩统计',
-        description: '查看上下文压缩的运行数据',
-        group: '案卷',
-        slash: '/compact-stats',
-        action: {
-          type: 'send',
-          text: '查看上下文压缩的运行状态和数据（使用 hologram_compaction_stats 工具）。',
-          displayLabel: '/compact-stats',
-        },
-      },
-      {
-        id: 'export',
-        label: '导出对话',
-        description: '导出当前案卷为 Markdown',
-        group: '案卷',
-        slash: '/export',
-        action: { type: 'local', handler: () => void this.exportSession() },
-      },
-      {
-        id: 'goal',
-        label: '自主目标',
-        description: '自主目标 —— 发 /goal 目标描述 开始；裸 /goal 查看状态；pause · resume · clear 控制',
-        group: '案卷',
-        slash: '/goal',
-        takesArg: true,
-        action: { type: 'local', handler: (arg) => void this.goalCommand(arg) },
-      },
-      {
-        id: 'memory',
-        label: '查看记忆',
-        description: '列出所有已保存的记忆',
-        group: '记忆',
-        slash: '/memory',
-        action: {
-          type: 'send',
-          text: '列出所有已保存的记忆（使用 memory 工具 action="list"）。',
-          displayLabel: '/memory',
-        },
-      },
-      {
-        id: 'remember',
-        label: '记住一件事',
-        description: '保存一条事实到记忆库',
-        group: '记忆',
-        slash: '/remember',
-        takesArg: true,
-        action: { type: 'local', handler: (arg) => this.rememberFact(arg) },
-      },
-    ];
+    // 清单是数据（app/commands/builtin-commands）——这里只把本面板的能力位注入进去。
+    return builtinCommands({
+      newVolume: () => void this.createNewSession(),
+      compact: () => void this.compactSession(),
+      exportVolume: () => void this.exportSession(),
+      goal: (arg) => void this.goalCommand(arg),
+      remember: (arg) => this.rememberFact(arg),
+    });
   }
 
   /** /compact — 压缩会重写会话，与运行中的轮次竞争会损坏数据（守卫在方法内）。 */
@@ -2107,108 +1593,9 @@ export class ChatCore {
     );
   }
 
-  /** `/goal` 命令面（DSH `command-goal` 语法，2026-10-23）：
-   *  - 裸 `/goal` = 状态/用法（不发起运行、不查历史——旧实现把空参当 status 是 bug）；
-   *  - `<objective>` = 创建并 arm，空闲则立刻开第 1 轮；
-   *  - `pause` / `resume` / `clear` / `edit <objective>` = 生命周期。
-   *  控制词只在**整条输入**等于控制词时生效；其余非空后缀一律是目标原文
-   *  （`/goal pause after x` 创建该字面目标——与 DSH 同规）。 */
-  private async goalCommand(arg: string): Promise<void> {
-    const host = this._goalHost();
-    if (!host) {
-      showToast('目标宿主未就绪（Agent 尚未创建）', 'warn');
-      return;
-    }
-    const command = parseGoalCommand(arg);
-    const fail = (e: unknown): void => {
-      const msg = e instanceof Error ? e.message : String(e);
-      showToast(`目标操作失败：${msg.slice(0, 160)}`, 'warn', TOAST_LONG_HOLD_MS);
-    };
-    const currentRef = (): { id: string; revision: number } | null => {
-      const current = this._goalRef();
-      if (!current) this.showGoalStatus();
-      return current;
-    };
-
-    switch (command.kind) {
-      case 'show':
-        this.showGoalStatus();
-        return;
-      case 'invalid-edit':
-        showToast('用法: /goal edit <新目标>', 'info');
-        return;
-      case 'pause': {
-        const current = currentRef();
-        if (!current) return;
-        try {
-          pauseGoal(host, current);
-          this._refreshGoalView();
-          showToast('⏸️ 目标已暂停 — /goal resume 继续', 'info');
-        } catch (e) {
-          fail(e);
-        }
-        return;
-      }
-      case 'resume': {
-        if (this._activeExec().isRunning) {
-          showToast('当前回合仍在运行 — 先停止（或等它结束）再 /goal resume', 'warn');
-          return;
-        }
-        const current = currentRef();
-        if (!current) return;
-        try {
-          resumeGoal(host, current);
-          this._refreshGoalView();
-          showToast('▶️ 目标已恢复，自动续行继续', 'info');
-          this._scheduleGoalDrive();
-        } catch (e) {
-          fail(e);
-        }
-        return;
-      }
-      case 'clear': {
-        const current = this._goalRef();
-        if (!current) {
-          showToast('没有可清除的目标', 'info');
-          return;
-        }
-        try {
-          clearGoal(host, current);
-          this._refreshGoalView();
-          showToast('目标已清除', 'info');
-        } catch (e) {
-          fail(e);
-        }
-        return;
-      }
-      case 'edit': {
-        const current = currentRef();
-        if (!current) return;
-        try {
-          editGoal(host, current, { objective: command.objective });
-          this._refreshGoalView();
-          showToast('✏️ 目标已更新', 'info');
-        } catch (e) {
-          fail(e);
-        }
-        return;
-      }
-      case 'create': {
-        if (this._activeExec().isRunning) {
-          showToast('当前回合仍在运行 — 目标需在空闲时创建（先停止或等它结束）', 'warn');
-          return;
-        }
-        try {
-          const view = createGoal(host, { objective: command.objective });
-          this._refreshGoalView();
-          showToast(`🎯 目标已创建（${view.maxGoalRounds} 轮上限），开始第 1 轮`, 'info');
-          this._scheduleGoalDrive();
-        } catch (e) {
-          fail(e);
-        }
-        return;
-      }
-    }
+  /** `/goal` 命令面整件在 GoalDriver（app/chat/goal-driver.ts）——本类是它注入的宿主。 */
+  private goalCommand(arg: string): Promise<void> {
+    return this._goal.goalCommand(arg);
   }
 
   /** 带参命令的「待编辑」形态（2026-11-07）：只把 `/cmd ` 填进输入框并聚焦，

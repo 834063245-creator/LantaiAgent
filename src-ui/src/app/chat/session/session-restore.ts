@@ -125,9 +125,6 @@ export async function loadSessionFromDisk(
     : storedLabel;
 
   // ponytail: 消息在会话级 store 中 — 无需 saveCurrentMessages
-  ctx.flushReasoning();
-  ctx.flushText();
-  ctx.clearPendingToolCards();
 
   const sid = data.id || sessionId;
   if (newAgent) {
@@ -230,7 +227,6 @@ export async function loadSessionFromDisk(
   }
 
   ctx.setLastUsageText('');
-  ctx.updateFooter();
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
   return true;
 }
@@ -393,7 +389,6 @@ export async function deleteSessionFile(
     getChatStore(ctx.storeId).sess.setState({ sessions: [], activeIdx: -1 });
     const runtime = ctx.getRuntime?.();
     if (runtime) runtime.destroySessionBoards(String(sessionId)).catch(() => {});
-    ctx.updateFooter();
     return { ok: true };
   }
   closeSession(ctx, idx);

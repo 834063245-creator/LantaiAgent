@@ -74,6 +74,40 @@ export function setAgentFactory(
   agentSessionState.setAgentFactory(storeId, fn);
 }
 
+/** 该卷最新轮次代数（sid → gen）。
+ *
+ *  **轮次收尾的身份守卫**（2026-09-03「停止后会话坏掉」次因，2026-11-12 从 chat-core
+ *  搬到注册表）：停止后用户立刻发新消息的窗口里，旧轮的 finally 迟到落地，不得终结
+ *  新轮刚建立的流式助手（finishTurn 会清 streamingAssistantId 并把新轮助手标 done）。
+ *  gen 不匹配 = 该卷已有更新轮次，收尾让位给新轮自己的 TurnStarted/finally。
+ *
+ *  与 exec 账的 `runEpoch` 刻意分开：`runEpoch` 数的是**全部**运行（含 goal/wake/
+ *  compact），拿它判「有没有更新的**轮次**」会把「后台唤醒起了一条运行」误判成
+ *  「用户发了新消息」，于是本轮不 finalize、流式助手永久停在 streaming。
+ *  语义边界 = 只有 turn 起轮点 bump 这一本。 */
+const _turnGenBySid = new Map<string, number>();
+
+function turnGenKey(storeId: string, sessionId: number | null): string {
+  return `${storeId}:${sessionId ?? -1}`;
+}
+
+export function turnGenOf(storeId: string, sessionId: number | null): number {
+  return _turnGenBySid.get(turnGenKey(storeId, sessionId)) ?? 0;
+}
+
+export function bumpTurnGen(storeId: string, sessionId: number | null): number {
+  const k = turnGenKey(storeId, sessionId);
+  const next = (_turnGenBySid.get(k) ?? 0) + 1;
+  _turnGenBySid.set(k, next);
+  return next;
+}
+
+/** 工作区全量重置时清账（否则同一 storeId 复用会带旧卷代数）。 */
+export function resetTurnGen(storeId: string): void {
+  const prefix = `${storeId}:`;
+  for (const k of [..._turnGenBySid.keys()]) if (k.startsWith(prefix)) _turnGenBySid.delete(k);
+}
+
 /** 获取或创建会话的**账**（运行账 = 每卷一本，「这卷在不在跑」的唯一事实）。
  *  铸造点只有这一处（`agentSessionState.getOrCreateExec`）；读运行态请走
  *  `agentSessionState.runStateOf`，不要各自取实例。 */
@@ -146,4 +180,7 @@ export function resetSessionState(storeId: string): void {
   getComposeStore(storeId).getState().clearAll();
   // 面板级遗留轮次对清空（会话级键由 clearPanelState 随面板全清）
   setTurnPairs(storeId, null, []);
+  // 轮次代数账随之归零——新工作区的卷 id 从 1 重新发号，旧代数会把新卷的首轮
+  // 判成「不是最新轮次」，收尾直接让位（流式助手停在 streaming）。
+  resetTurnGen(storeId);
 }

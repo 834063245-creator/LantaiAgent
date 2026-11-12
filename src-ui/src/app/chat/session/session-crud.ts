@@ -51,9 +51,6 @@ export function switchSession(ctx: SessionContext, idx: number): void {
     getChatStore(storeId).sess.getState().setSessionTokens(sessions[activeIdx].id, ctx.getTotalTokensUsed());
     getChatStore(storeId).input.getState().saveSessionDraft(sessions[activeIdx].id);
   }
-  ctx.flushReasoning();
-  ctx.flushText();
-  ctx.clearPendingToolCards();
   getChatStore(storeId).sess.setState({ activeIdx: idx });
   getChatStore(storeId).input.getState().restoreSessionDraft(sessions[idx].id);
 
@@ -68,7 +65,6 @@ export function switchSession(ctx: SessionContext, idx: number): void {
   // 恢复目标会话的 token 计数
   ctx.setTotalTokensUsed(st.sessionTokens[sessions[idx].id] || 0);
   ctx.setLastUsageText('');
-  ctx.updateFooter();
   // U4/Q1-B：总目记账退役——摊开集重启由磁盘扫描推导，运行时真相 = sess store
   // L0 惰性水合：切到无句柄的卷 → 按需补建（fire-and-forget；失败留
   // sendMessage 的同步唤起兜底，这里不拦换卷交互）
@@ -297,7 +293,6 @@ export function closeSession(ctx: SessionContext, idx: number): void {
     if (runtime) {
       runtime.destroySessionBoards(String(s.id)).catch(() => {});
     }
-    ctx.updateFooter();
     return;
   }
 
@@ -324,7 +319,6 @@ export function closeSession(ctx: SessionContext, idx: number): void {
     getChatStore(ctx.storeId).input.getState().restoreSessionDraft(newSessions[newIdx].id);
   }
   // ponytail: 无需 restoreMessages — React 自动从会话级 store 读取
-  ctx.updateFooter();
 
   // 现在销毁已关闭会话的 board（尽力而为，异步触发）
   if (runtime) {
@@ -413,9 +407,6 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
       getChatStore(ctx.storeId).input.getState().saveSessionDraft(oldSid);
     }
   }
-  ctx.flushReasoning();
-  ctx.flushText();
-  ctx.clearPendingToolCards();
   if (newAgent) {
     // 事件日志接线（换轨 Phase 1）：新卷 = 无日志文件 → materialize
     // （首批把「头行 + 当时全部事件」原子物化；构造期的 reset/preset 一并落盘）。
@@ -452,7 +443,6 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
   }
 
   ctx.setLastUsageText('');
-  ctx.updateFooter();
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
   return id;
 }

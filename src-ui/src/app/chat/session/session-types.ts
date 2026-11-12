@@ -40,34 +40,12 @@ export function isInternalMessage(content: string | undefined): boolean {
 export interface SessionContext {
   storeId: string;
 
-  // DOM 元素
-  panel: HTMLElement;
-  sessionTabs: HTMLElement;
-  tabBar: HTMLElement;
-
   getProjectPath: () => string;
-
-  // 流式辅助
-  flushReasoning: () => void;
-  flushText: () => void;
-  clearPendingToolCards: () => void;
-
-  // 运行状态
-  getRunning: () => boolean;
-  abort: () => void;
-
-  // 通知与底栏
-  updateFooter: () => void;
 
   // Token 用量
   getTotalTokensUsed: () => number;
   setTotalTokensUsed: (n: number) => void;
-  clearToolUsage: () => void;
-  clearToolHistory: () => void;
-
-  getLastUsageText: () => string;
   setLastUsageText: (s: string) => void;
-  getLastAgentDiag: () => string;
 
   clearInputHistory: () => void;
 

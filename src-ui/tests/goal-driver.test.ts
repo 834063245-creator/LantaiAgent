@@ -2,8 +2,9 @@
 
 // 目标续行驱动器（ChatCore）· 卷身份与重排回归（2026-11-12）。
 //
-// 考官对象 = chat-core 的 `_scheduleGoalDrive` / `_driveGoal` / `_settleGoalRound`
-// 与 `_runAgentTurn` / `sendMessage` 的收尾排程。用假 Agent 把「轮」变成可控的
+// 考官对象 = GoalDriver 的 `scheduleGoalDrive` / `driveGoal` / `settleGoalRound`
+// （2026-11-12 自 chat-core 整件搬出，断言面不变）与 `_runAgentTurn` / `sendMessage`
+// 的收尾排程（轮次脚手架仍在 chat-core）。用假 Agent 把「轮」变成可控的
 // promise，逐步结算，观察目标状态机与起轮次数（不依赖真实模型）。
 //
 // 钉住的四条事实（每条都对应一个「目标停在 active 却再也不跑」的真实病灶）：
@@ -184,9 +185,10 @@ async function setup() {
   return { panel, host, sid };
 }
 
-/** 目标驱动器是私有的：测试从排程入口进（与生产调用点同一路径）。 */
+/** 目标驱动器住自己的模块：测试从排程入口进（与生产调用点同一路径）。
+ *  chat-core 只持有一个 GoalDriver 实例，取它即可——不再穿私有字段。 */
 function drive(panel: ChatCore, sid?: number): void {
-  (panel as unknown as { _scheduleGoalDrive(s?: number): void })._scheduleGoalDrive(sid);
+  (panel as unknown as { _goal: { scheduleGoalDrive(s?: number): void } })._goal.scheduleGoalDrive(sid);
 }
 
 function kindSequence(): string {

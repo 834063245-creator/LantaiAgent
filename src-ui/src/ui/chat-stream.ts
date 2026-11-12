@@ -65,7 +65,6 @@ export interface StreamContext {
   getAgent: () => ChatAgentHandle | null;
 
   // ── 回调 ──
-  updateFooter: () => void;
   setLastUsageText: (s: string) => void;
   saveActiveSession: (path: string) => Promise<void>;
   scheduleAutoSave: (path: string) => void;
@@ -473,7 +472,6 @@ export function renderEvent(ctx: StreamContext, ev: AgentEvent): void {
         if (cached > 0) label += ` · ${cached >= 1000 ? (cached / 1000).toFixed(1) + 'k' : cached} cache`;
         if (cached > 0) label += ` · ${hitRate.toFixed(0)}% 命中`;
         ctx.setLastUsageText(label);
-        ctx.updateFooter();
         _streamingBump(ctx);
       }
       break;

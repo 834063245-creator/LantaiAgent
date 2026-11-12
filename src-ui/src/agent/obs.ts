@@ -81,7 +81,7 @@ export type ObsEvent =
 export type ObsPhase = 'preflight' | 'stream' | 'tool';
 
 /** 会话/回合/运行身份。`session` = 卷 id；`turn` = 该卷的轮次代数
- *  （chat-core `_turnGenBySid`）；`run` = 运行记录 id（execution-state）。 */
+ *  （`session-registry.turnGenOf`）；`run` = 运行记录 id（execution-state）。 */
 export interface ObsIds {
   session?: number | null;
   agent?: string;

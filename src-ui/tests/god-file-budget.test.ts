@@ -51,7 +51,7 @@ const DEBT: Record<string, number> = {
   'src-tauri/src/os_sandbox.rs': 2200, // 现 2147
   'src-ui/src/plugins/builtin/paper-shell/measure.ts': 2200, // 现 2130
   'src-ui/src/plugins/builtin/renderers/components.tsx': 2200, // 现 2130
-  'src-ui/src/app/chat/chat-core.ts': 2300, // 现 2268（2026-11-12：goal 驱动器收口——卷身份钉住 + 空闲转变重排，+55 行）
+  'src-ui/src/app/chat/chat-core.ts': 1700, // 现 1529（2026-11-12 治理：DOM 桩/死契约成员删净、sendMessage 并入 _runAgentTurn、goal 驱动器→goal-driver.ts、画布恢复→canvas-restore.ts、命令表→builtin-commands.ts、轮次代数→session-registry）
   'src-tauri/src/cdp/actions.rs': 2200, // 现 2115
   'engine/src/tools/mod.rs': 2000, // 现 1987
   'src-tauri/src/cdp/session.rs': 2000, // 现 1943

@@ -131,6 +131,29 @@
 `paper-visual-decisions` 的既有聚合一致）后改读法——断言对象仍是这份源码，只是不再
 假设它住在一个文件里。体量账同批销账（`PaperPanel.tsx` 降到 1000 以下，DEBT 删条目）。
 
+### P5 ✅ 已落地（2026-11-12）：chat-core 从"有状态上帝类"退回"无状态门面"
+
+**判据不是行数，是私有可变状态**：治理前 ChatCore 持有 8 个私有可变字段，其中 5 个是
+别的域（目标 / 画布 / 流式 / 轮次身份）寄存在它身上的状态；治理后只剩构造期定型的
+`_exec` + 注入的 `_goal`（驱动器实例，本身无跨域状态）+ `_syncTimers` / `_execListeners`。
+
+| 刀 | 动作 | 结果 |
+|---|---|---|
+| ① | 删 3 个 DOM 桩 + `SessionContext` 里 13 个零消费者成员（`panel`/`sessionTabs`/`tabBar`/`flushReasoning`/`flushText`/`clearPendingToolCards`/`updateFooter`/`abort`/`getRunning`/`clearToolUsage`/`clearToolHistory`/`getLastUsageText`/`getLastAgentDiag`） | −69 行，无状态面消失 |
+| ② | `sendMessage`（223 行）并入 `_runAgentTurn`：运行账 / 轮次代数 / 气泡 / catch 三分支 / finally 收尾守卫 / 续行排程各只剩一份 | −167 +72，双份脚手架归零 |
+| ③ | goal 驱动器 9 个方法整件外移 `app/chat/goal-driver.ts`（`GoalDriver` + `GoalDriverHost` 能力位注入）；chat-core 只留 `goalCommand` / `refreshGoalView` 两个转发 | `goal-driver.ts` 369 行 |
+| ④ | `restoreCanvasSpread`（163 行）+ `saveCanvasState` → `app/chat/canvas-restore.ts`；`builtinCommands` 71 行字面量表 → `app/commands/builtin-commands.ts` | 193 + 89 行 |
+| ⑤ | `_turnGenBySid` 私有 Map → `session-registry` 的 `turnGenOf / bumpTurnGen`（跨面板实例共用一本，随 `resetSessionState` 归零） | 状态搬出 chat-core |
+
+`2 273 → 1 529` 行，DEBT 档位由 2300 降到 1700。**测试 diff 形状**：`goal-driver.test.ts`
+只改了取驱动器的入口（`panel._goal.scheduleGoalDrive`），断言一条未动；
+`stop-turn-recovery.test.ts`（轮次代数守卫的考官）**零改动**继续绿。
+
+**为什么 turnGen 不并进 exec 的 `runEpoch`**（本轮核查后的裁定，与事后直觉相反）：
+`runEpoch` 数的是**全部**运行（含 goal/wake/compact），拿它判"有没有更新的**轮次**"会把
+"后台唤醒起了一条运行"误判成"用户发了新消息"，于是本轮不 finalize、流式助手永久停在
+streaming。两者语义边界不同，代数账保持独立、搬去注册表即可。
+
 ### P4 登记不拆（本线不动）
 
 Rust 宽度型大文件（29 个）· 测试巨件（`tests/chat-session.test.ts` 2057 行——P1 拆完它没变，测试面这一批不动）

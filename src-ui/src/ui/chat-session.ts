@@ -33,6 +33,7 @@ export {
 export { listSavedSessions, listVolumeIds, readVolumeData } from '../app/chat/session/session-read';
 export { _rebuildMessagesFromSession, rebuildMessagesFromMessages } from '../app/chat/session/session-rebuild';
 export {
+  bumpTurnGen,
   clearPanelAgents,
   disposePanelMessages,
   getActiveAgent,
@@ -49,6 +50,7 @@ export {
   setNextSessionId,
   setTurnPairs,
   syncActiveSessionTokens,
+  turnGenOf,
 } from '../app/chat/session/session-registry';
 export type { SessionDeleteResult } from '../app/chat/session/session-restore';
 export { batchRestoreSessions, deleteSessionFile, loadSessionFromDisk } from '../app/chat/session/session-restore';
