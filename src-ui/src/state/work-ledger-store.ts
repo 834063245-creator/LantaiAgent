@@ -92,6 +92,61 @@ export interface ShellSnapshot {
   };
 }
 
+/** 一条 job 生命周期事件（写会话日志的载荷，形状与 `SessionEventDataMap` 一致）。 */
+export type JobHistoryEvent =
+  | {
+      kind: 'job/registered';
+      jobId: number;
+      jobKind: string;
+      label: string;
+      owner: string | null;
+      startedAt: number;
+    }
+  | {
+      kind: 'job/settled';
+      jobId: number;
+      status: 'completed' | 'killed' | 'failed';
+      exitCode: number | null;
+      finishedAt: number;
+      detail?: string | null;
+      spill?: { stdout: string | null; stderr: string | null };
+    };
+
+/** 事件落点（会话日志写入面）。装配期由 workspace 注入——面板 runtime 才有 agent 句柄。 */
+export type JobHistorySink = (owner: string | null, event: JobHistoryEvent) => void;
+
+const _historySinks = new Map<string, JobHistorySink>();
+
+/** 装配期注入（`null` = 撤销）。与 `setOwnerSessionResolver` 对称。 */
+export function setJobHistorySink(panelId: string, sink: JobHistorySink | null): void {
+  if (sink) _historySinks.set(panelId, sink);
+  else _historySinks.delete(panelId);
+}
+
+/** 从会话日志投影出来的一条 job 历史（`job/registered` / `job/settled` 的并集形状）。 */
+export interface JobHistoryEntry {
+  kind: 'job/registered' | 'job/settled';
+  jobId: number;
+  label?: string;
+  startedAt?: number;
+  status?: 'completed' | 'killed' | 'failed';
+  exitCode?: number | null;
+  finishedAt?: number;
+  detail?: string | null;
+  spill?: { stdout: string | null; stderr: string | null };
+}
+
+/** 历史读面：按会话 id 取该卷日志里的 `job/*` 事件（装配期注入）。 */
+export type JobHistoryProvider = (sessionId: number) => ReadonlyArray<JobHistoryEntry>;
+
+const _historyProviders = new Map<string, JobHistoryProvider>();
+
+/** 装配期注入（`null` = 撤销）。 */
+export function setJobHistoryProvider(panelId: string, provider: JobHistoryProvider | null): void {
+  if (provider) _historyProviders.set(panelId, provider);
+  else _historyProviders.delete(panelId);
+}
+
 /** 每个面板保留的终态条目上限（在役条目不吃配额）。 */
 const MAX_TERMINAL = 40;
 
@@ -223,6 +278,8 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
 
   noteShells: (panelId, shells, resolveSession) => {
     const now = Date.now();
+    /** 本轮的状态跃迁（写会话日志用）：新 job = registered；running→终态 = settled。 */
+    const transitions: Array<{ owner: string | null; event: JobHistoryEvent }> = [];
     set((s) => {
       const entries = { ...s.entries };
       const seen = new Set<string>();
@@ -279,6 +336,32 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
           spill: job.output?.spill ?? { stdout: null, stderr: null },
         };
         changed = true;
+        if (prev === undefined) {
+          transitions.push({
+            owner: job.agent,
+            event: {
+              kind: 'job/registered',
+              jobId: job.jobId,
+              jobKind: 'bash',
+              label: job.label,
+              owner: job.agent,
+              startedAt,
+            },
+          });
+        } else if (prev.state === 'running' && state !== 'running') {
+          transitions.push({
+            owner: job.agent,
+            event: {
+              kind: 'job/settled',
+              jobId: job.jobId,
+              status: status === 'killed' ? 'killed' : status === 'failed' ? 'failed' : 'completed',
+              exitCode: job.exitCode ?? null,
+              finishedAt: endedAt ?? now,
+              detail: job.detail ?? null,
+              spill: job.output?.spill ?? { stdout: null, stderr: null },
+            },
+          });
+        }
       }
 
       // 名册里彻底消失（历史被淘汰/宿主重启）= 中性收尾，不编造成败。
@@ -303,6 +386,11 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
       evictTerminal(entries, panelId);
       return { entries, error: { ...s.error, [panelId]: null } };
     });
+    // 状态跃迁写会话日志（sink 由 workspace 装配期注入；未注入 = 纯内存模式）。
+    const sink = _historySinks.get(panelId);
+    if (sink && transitions.length > 0) {
+      for (const t of transitions) sink(t.owner, t.event);
+    }
   },
 
   noteShellsError: (panelId, message) => {
@@ -430,7 +518,74 @@ export async function readJobOutput(jobId: number, stdoutFrom: number, stderrFro
 /** 测试复位：清空全部面板条目、错误与归属解析器。 */
 export function resetWorkLedgerForTests(): void {
   _ownerResolvers.clear();
+  _historySinks.clear();
+  _historyProviders.clear();
   useWorkLedgerStore.setState({ entries: {}, error: {} });
+}
+
+/**
+ * 从会话日志恢复这一卷「跑过什么」（重启后仍可查）。
+ *
+ * 折叠规则：`job/registered` 建条目；配对的 `job/settled` 落终态与退出码。
+ * **有注册无结算 ⇒ 标「中断」**（宿主退出/进程消失），绝不编造成成功。
+ * 只补**名册里还没有**的 job（当前进程的实时行优先）。
+ */
+export function loadSessionJobHistory(panelId: string, sessionId: number): void {
+  const provider = _historyProviders.get(panelId);
+  if (!provider) return;
+  let events: ReadonlyArray<JobHistoryEntry>;
+  try {
+    events = provider(sessionId);
+  } catch {
+    return;
+  }
+  if (events.length === 0) return;
+  const byJob = new Map<number, JobHistoryEntry[]>();
+  for (const event of events) {
+    const list = byJob.get(event.jobId);
+    if (list) list.push(event);
+    else byJob.set(event.jobId, [event]);
+  }
+  const restored: Array<[string, WorkEntry]> = [];
+  for (const [jobId, list] of byJob) {
+    const registered = list.find((e) => e.kind === 'job/registered');
+    const settled = [...list].reverse().find((e) => e.kind === 'job/settled');
+    if (!registered) continue;
+    const startedAt = registered.startedAt ?? Date.now();
+    const terminal = settled !== undefined;
+    const state: WorkState = terminal
+      ? settled.status === 'killed'
+        ? 'stopped'
+        : settled.status === 'failed'
+          ? 'failed'
+          : 'done'
+      : 'stopped';
+    restored.push([
+      keyOf(panelId, 'shell', `job-${jobId}`),
+      {
+        id: `job-${jobId}`,
+        kind: 'shell',
+        label: registered.label ?? '',
+        startedAt,
+        endedAt: terminal ? (settled.finishedAt ?? startedAt) : startedAt,
+        state,
+        sessionId,
+        parentAgentId: null,
+        note: terminal ? (settled.detail ?? '已结束') : '中断（宿主退出，结局未知）',
+        exitCode: settled?.exitCode ?? null,
+        detail: settled?.detail ?? null,
+        spill: settled?.spill ?? { stdout: null, stderr: null },
+      },
+    ]);
+  }
+  if (restored.length === 0) return;
+  useWorkLedgerStore.setState((s) => {
+    const entries = { ...s.entries };
+    for (const [key, entry] of restored) {
+      if (entries[key] === undefined) entries[key] = entry;
+    }
+    return { entries };
+  });
 }
 
 /**

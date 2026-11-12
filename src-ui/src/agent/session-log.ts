@@ -55,7 +55,9 @@ export type SessionEventKind =
   | 'tool/code-dispatch-start'
   | 'tool/code-dispatch'
   | 'goal/change'
-  | 'goal/round';
+  | 'goal/round'
+  | 'job/registered'
+  | 'job/settled';
 
 /** kind 封闭集合（运行时枚举，冻结）。 */
 export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
@@ -73,6 +75,8 @@ export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
   'tool/code-dispatch',
   'goal/change',
   'goal/round',
+  'job/registered',
+  'job/settled',
 ]);
 
 /** session/reset 的来源标注（审计用；不影响投影——**除 'adopt'**，见下）。
@@ -126,6 +130,24 @@ export interface SessionEventDataMap {
   /** 目标轮准入（同批）——`<goal_round>` 消息进入会话时追加一条；
    *  `roundsStarted` 只由它推进（连续 +1，见 foldGoal）。 */
   'goal/round': GoalRoundData;
+  /** 后台任务注册（2026-11-12 可观测批）：有主的后台命令启动时一条，无消息投影。
+   *  役册恢复时据此重建「这一卷跑过什么」；未配对 `job/settled` 的区间标记中断。 */
+  'job/registered': {
+    jobId: number;
+    jobKind: string;
+    label: string;
+    owner: string | null;
+    startedAt: number;
+  };
+  /** 后台任务结算：与 `job/registered` 按 jobId 配对，带终态、退出码与完整日志路径。 */
+  'job/settled': {
+    jobId: number;
+    status: 'completed' | 'killed' | 'failed';
+    exitCode: number | null;
+    finishedAt: number;
+    detail?: string | null;
+    spill?: { stdout: string | null; stderr: string | null };
+  };
 }
 
 /** 一条会话事件。seq 由日志分配、只增不减；ts 为 append 时刻。 */

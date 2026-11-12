@@ -86,9 +86,11 @@ export { useToastStore } from '../../../state/toast-store';
 export type { SessionWorkView, WorkEntry, WorkKind, WorkState } from '../../../state/work-ledger-store';
 export {
   killShellWork,
+  loadSessionJobHistory,
   pullShellWork,
   readJobOutput,
   selectSessionWork,
+  setJobHistoryProvider,
   setOwnerSessionResolver,
   useWorkLedgerStore,
 } from '../../../state/work-ledger-store';

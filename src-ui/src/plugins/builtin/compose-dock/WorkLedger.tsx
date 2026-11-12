@@ -29,7 +29,7 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import type { WorkEntry, WorkKind } from './host';
-import { pullShellWork, readJobOutput, selectSessionWork, useWorkLedgerStore } from './host';
+import { loadSessionJobHistory, pullShellWork, readJobOutput, selectSessionWork, useWorkLedgerStore } from './host';
 
 /** 观测面板的轮询周期：只对**展开的那一行**跑，收起即停（非消费读，安全）。 */
 const OBSERVE_MS = 400;
@@ -243,6 +243,12 @@ export const WorkLedger = memo(function WorkLedger({
     const t = window.setInterval(() => void pullShellWork(panelId), WORK_PULL_MS);
     return () => window.clearInterval(t);
   }, [panelId]);
+
+  /* 重启可查：打开/切换卷时，把该卷日志里的 job/* 事件投影进册
+   *（有注册无结算 ⇒ 标「中断」，不编造成功）。只补名册里还没有的行。 */
+  useEffect(() => {
+    if (sessionId != null) loadSessionJobHistory(panelId, sessionId);
+  }, [panelId, sessionId]);
 
   // 读面走 store 的**同一个选择器**（纯函数，与测试/其他消费面同一把尺子；
   // entries 只是响应式触发切片）。

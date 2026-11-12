@@ -389,9 +389,11 @@ import { useToastStore } from '../../state/toast-store';
 import { useUpdateStore } from '../../state/update-store';
 import {
   killShellWork,
+  loadSessionJobHistory,
   pullShellWork,
   readJobOutput,
   selectSessionWork,
+  setJobHistoryProvider,
   setOwnerSessionResolver,
   useWorkLedgerStore,
 } from '../../state/work-ledger-store';
@@ -574,6 +576,8 @@ const faceDeps = {
   selectSessionWork,
   pullShellWork,
   readJobOutput,
+  loadSessionJobHistory,
+  setJobHistoryProvider,
   killShellWork,
   setOwnerSessionResolver,
   /* 卷清单变更信号（2026-09-18 侧栏载入批）：canvas-nav 侧栏/书脊订阅——卷文件

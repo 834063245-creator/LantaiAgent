@@ -72,7 +72,13 @@ import type { AgentConfigChangeReason } from './state/agent-config-store';
 import { getComposeStore, resolveComposeEffective } from './state/compose-store';
 import { getPanelStore } from './state/panel-store';
 import { showToast, TOAST_LONG_HOLD_MS } from './state/toast-store';
-import { pullShellWork, setOwnerSessionResolver, useWorkLedgerStore } from './state/work-ledger-store';
+import {
+  pullShellWork,
+  setJobHistoryProvider,
+  setJobHistorySink,
+  setOwnerSessionResolver,
+  useWorkLedgerStore,
+} from './state/work-ledger-store';
 import { useAgentPanelStore } from './ui/agent-panel-store';
 import { resetSessionState } from './ui/chat-session';
 import { getDiagnosticsForFile, type LspService, requireLspService } from './ui/lsp-client';
@@ -875,6 +881,27 @@ export class Workspace {
       return null;
     };
     setOwnerSessionResolver(this._storeId, resolveOwnerSession);
+    /* 役册历史落点（2026-11-12）：job 注册/结算跃迁写进**该 owner 的会话日志**，
+     * 重启后由日志投影回役册（未配对 settled 的标中断）。owner 无 agent 句柄
+     * （用户直接发起的 job）不落卷——它不属于任何一卷。 */
+    const jobBus = runtime.getBus();
+    /* 役册历史读面（重启可查）：按会话 id 取该卷日志里的 job/* 事件——
+     * 会话句柄的 sessionLog 就是落盘真源（chat-agent-handle.ts 的只读面）。 */
+    setJobHistoryProvider(this._storeId, (sessionId) => {
+      const log = agentSessionState.getAgent(this._storeId, sessionId)?.sessionLog;
+      if (!log) return [];
+      return log
+        .events()
+        .filter((e) => e.kind === 'job/registered' || e.kind === 'job/settled')
+        .map((e) => ({ kind: e.kind, ...(e.data as object) }) as never);
+    });
+    setJobHistorySink(this._storeId, (owner, event) => {
+      if (!owner) return;
+      const agent = jobBus.getAgent(owner) as unknown as {
+        getSessionLog?: () => { append: (kind: string, data: unknown) => void };
+      } | null;
+      agent?.getSessionLog?.().append(event.kind, event);
+    });
     // 获取即登记：停用时清面板 runtime 引用 + currentSessionId（拆 audit 中危#3：
     // 2s 轮询打旧 runtime 建错位 board）+ 清看板列表 + 解役台账归属。
     teardown.add(() => {
@@ -885,6 +912,8 @@ export class Workspace {
       p.setCurrentSessionId('default');
       p.setRuntime(null);
       setOwnerSessionResolver(this._storeId, null);
+      setJobHistorySink(this._storeId, null);
+      setJobHistoryProvider(this._storeId, null);
       useWorkLedgerStore.getState().clearPanel(this._storeId);
     }, 'agent-panel-store-clear');
     const unsubMsg = runtime.getBus().subscribe({}, (msg) => {
