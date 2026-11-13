@@ -1,5 +1,5 @@
 {
-  "fingerprint": "8ca82abb",
+  "fingerprint": "ada4b547",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -205,6 +205,7 @@
     "llmSend",
     "loadProjectProvidersDoc",
     "loadProvidersDoc",
+    "loadSessionJobHistory",
     "loadSettings",
     "loadSettingsWithSecrets",
     "lodActive",
@@ -269,6 +270,7 @@
     "pullShellWork",
     "readAttachmentBase64",
     "readGoal",
+    "readJobOutput",
     "reapplyComposition",
     "recordDynamicFetchResult",
     "refreshGitBlame",
@@ -315,6 +317,7 @@
     "selectSessionWork",
     "setActiveAgentLoop",
     "setBundledEngineEnabled",
+    "setJobHistoryProvider",
     "setLang",
     "setLogLevelPreference",
     "setOwnerSessionResolver",
