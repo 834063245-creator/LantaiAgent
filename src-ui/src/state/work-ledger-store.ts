@@ -78,8 +78,10 @@ export interface ShellSnapshot {
   agent: string | null;
   elapsedSecs?: number;
   stalled: boolean;
-  /** 2026-11-12 观测面：注册表直接给生命周期与结局，不再靠「从在役集合消失」外推。 */
-  status?: 'running' | 'stopping' | 'completed' | 'killed' | 'failed';
+  /** 2026-11-12 观测面：注册表直接给生命周期与结局，不再靠「从在役集合消失」外推。
+   *  终态只有两种来源：进程自己退出（completed）/ 有人终止（killed）。
+   *  **没有 failed**——「命令跑失败了」由 exitCode 表达，不由生命周期表达。 */
+  status?: 'running' | 'stopping' | 'completed' | 'killed';
   exitCode?: number | null;
   detail?: string | null;
   startedAt?: number;
@@ -105,7 +107,7 @@ export type JobHistoryEvent =
   | {
       kind: 'job/settled';
       jobId: number;
-      status: 'completed' | 'killed' | 'failed';
+      status: 'completed' | 'killed';
       exitCode: number | null;
       finishedAt: number;
       detail?: string | null;
@@ -129,7 +131,8 @@ export interface JobHistoryEntry {
   jobId: number;
   label?: string;
   startedAt?: number;
-  status?: 'completed' | 'killed' | 'failed';
+  /** 宽进：历史卷可能存着早期写出的未知终态，读侧不因它崩。 */
+  status?: 'completed' | 'killed' | (string & {});
   exitCode?: number | null;
   finishedAt?: number;
   detail?: string | null;
@@ -293,13 +296,7 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
         const prev = entries[key];
         const status = job.status ?? 'running';
         const live = status === 'running' || status === 'stopping';
-        const state: WorkState = live
-          ? 'running'
-          : status === 'killed'
-            ? 'stopped'
-            : status === 'failed'
-              ? 'failed'
-              : 'done';
+        const state: WorkState = live ? 'running' : status === 'killed' ? 'stopped' : 'done';
         const note = live
           ? status === 'stopping'
             ? '停止中'
@@ -354,7 +351,7 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
             event: {
               kind: 'job/settled',
               jobId: job.jobId,
-              status: status === 'killed' ? 'killed' : status === 'failed' ? 'failed' : 'completed',
+              status: status === 'killed' ? 'killed' : 'completed',
               exitCode: job.exitCode ?? null,
               finishedAt: endedAt ?? now,
               detail: job.detail ?? null,
@@ -451,11 +448,7 @@ function parseJobs(raw: unknown): ShellSnapshot[] {
       agent: typeof o.owner === 'string' ? o.owner : null,
       stalled: o.stalled === true,
       status:
-        status === 'running' ||
-        status === 'stopping' ||
-        status === 'completed' ||
-        status === 'killed' ||
-        status === 'failed'
+        status === 'running' || status === 'stopping' || status === 'completed' || status === 'killed'
           ? status
           : 'running',
       exitCode: typeof o.exitCode === 'number' ? o.exitCode : null,
@@ -553,13 +546,8 @@ export function loadSessionJobHistory(panelId: string, sessionId: number): void 
     if (!registered) continue;
     const startedAt = registered.startedAt ?? Date.now();
     const terminal = settled !== undefined;
-    const state: WorkState = terminal
-      ? settled.status === 'killed'
-        ? 'stopped'
-        : settled.status === 'failed'
-          ? 'failed'
-          : 'done'
-      : 'stopped';
+    // 宽进：不认识的终态（历史卷里的旧值）按「已了」中性档收——不猜成失败、不丢行。
+    const state: WorkState = terminal ? (settled.status === 'killed' ? 'stopped' : 'done') : 'stopped';
     restored.push([
       keyOf(panelId, 'shell', `job-${jobId}`),
       {

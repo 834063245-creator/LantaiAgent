@@ -54,7 +54,6 @@ pub(crate) enum JobStatus {
     Stopping,
     Completed,
     Killed,
-    Failed,
 }
 
 impl JobStatus {
@@ -64,7 +63,6 @@ impl JobStatus {
             JobStatus::Stopping => "stopping",
             JobStatus::Completed => "completed",
             JobStatus::Killed => "killed",
-            JobStatus::Failed => "failed",
         }
     }
 

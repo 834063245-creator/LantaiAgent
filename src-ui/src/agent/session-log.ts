@@ -142,7 +142,8 @@ export interface SessionEventDataMap {
   /** 后台任务结算：与 `job/registered` 按 jobId 配对，带终态、退出码与完整日志路径。 */
   'job/settled': {
     jobId: number;
-    status: 'completed' | 'killed' | 'failed';
+    /** 终态只有两源：进程自己退出 / 有人终止。命令跑没跑成看 exitCode，不看这里。 */
+    status: 'completed' | 'killed';
     exitCode: number | null;
     finishedAt: number;
     detail?: string | null;
