@@ -97,7 +97,7 @@ v3 的六条：
 ### 3.6.0 真机复修（2026-11-15 夜，用户报「题签到真实卷没有好的动画过渡」）
 
 **病灶不是审美，是四条机制性疾病**——全部有真机定帧读数（CDP 台架：触发后暂停全部动画、
-逐帧设 `currentTime` 截图，脚本在 `tmp/film3.cjs`，方法见本节末）：
+逐帧设 `currentTime` 截图，脚本 = `scripts/motion-filmstrip.cjs`，方法见本节末）：
 
 | # | 病灶 | 证据 | 修法 |
 |---|---|---|---|
@@ -125,9 +125,15 @@ v3 的六条：
 
 ![化卷那一拍：改前（左）与改后（右）同一批帧位——0ms / 120–130ms / 280–330ms](../../assets/draft-morph-before-after.jpg)
 
-**台架方法**（可复算）：`node tmp/film3.cjs <outDir> <prep> <trigger> <t,ms,...>` —— prep 里落纸、
-trigger 里点「拟文」，随后 `document.getAnimations()` 全暂停并逐帧设 `currentTime` 截图。
-要点：脚本必须**冻住 `setTimeout(>=150ms)`**（store 的撤纸定时器会把纸提前拆掉）。
+**台架方法**（可复算，脚本已收进仓库）：`node scripts/motion-filmstrip.cjs --times 0,60,120,180,240`
+—— 它自己导航进画布（默认 prep：点「＋」落纸、写一句；默认 trigger：点「拟文」），随后把
+`document.getAnimations()` 全部暂停、逐帧设 `currentTime` 截图，并把**同帧读数**（纸/卷的盒、
+不透明度、卷首文案、块数）一起打出来，截图与读数因此可对拍。
+
+三个要点（都踩过）：① 必须**冻住 `setTimeout(>=150ms)`**（`--keep-timers` 可关）——store 的撤纸
+定时器会把纸提前拆掉，读数就全是 null；② 必须**先重新导航**——拿上一轮遗留的页面状态去跑 prep，
+会读到「纸已经开过」的现场；③ 无头浏览器的 profile 会烂（实测 `ERR_CACHE_READ_FAILURE` 连片、
+整页卡在启动封面），症状是「脚本跑得通但 prep 报 no textarea」——换 `--user-data-dir` 即可。
 
 ### 3.6.1 落地口径（2026-11-15，与 §3.6 的草案不同之处）
 
