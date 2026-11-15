@@ -1,0 +1,10 @@
+# git blame 跳过列表 —— 纯格式化 / 批量重排类 commit（无语义变更）。
+#
+# 用法：`git config blame.ignoreRevsFile .git-blame-ignore-revs`
+#   （GitHub 网页端的 blame 视图会自动读取本文件，无需配置。）
+#
+# 收录标准：整个 commit 只有空白/换行/import 排序变化，逐字节语义不变。
+# 进来之前先确认 `cargo test` 全绿——那是唯一的证据。
+
+# 2026-11-15 全仓 rustfmt 首刷（205 文件，5 crate）
+244654a13103ca502083004121c0cf609359f2ab
