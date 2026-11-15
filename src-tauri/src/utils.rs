@@ -545,30 +545,4 @@ mod tests {
         // 用户（无 agent_id）可 kill 任何任务
         assert!(kill_bg(id2, None).is_ok(), "用户 kill 应放行");
     }
-
-    // ── P1-17：bg 任务读方只碰 shared Arc，永不阻塞读管道 ──
-    #[test]
-    fn bg_job_roundtrip_via_shared_arc() {
-        let id = spawn_bg("echo bg-p117", ".", None, None, None).expect("spawn_bg failed");
-        let out = wait_bg(id, 10_000).expect("wait_bg failed");
-        assert!(out.contains("bg-p117"), "unexpected output: {out}");
-        assert!(out.contains("exit code: 0"), "unexpected output: {out}");
-    }
-
-    /// 无输出的长任务：read_bg_output 必须立即返回快照（修复前 shared=None 分支
-    /// 会持 BG_JOBS 锁阻塞读管道，任务安静时永久卡死）。shared 现为必填字段，
-    /// 该分支已从类型上移除，此测试锁定行为。
-    #[test]
-    fn bg_output_snapshot_quiet_task_returns_fast() {
-        let id = spawn_bg("sleep 5", ".", None, None, None).expect("spawn_bg failed");
-        let start = std::time::Instant::now();
-        let out = read_bg_output(id).expect("read_bg_output failed");
-        assert!(
-            start.elapsed() < std::time::Duration::from_secs(2),
-            "快照读取耗时 {:?}——疑似退化为阻塞管道读",
-            start.elapsed()
-        );
-        assert!(out.contains("任务运行中"), "unexpected output: {out}");
-        kill_bg(id, None).expect("kill_bg failed");
-    }
 }

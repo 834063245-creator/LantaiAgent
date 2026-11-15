@@ -1081,26 +1081,41 @@ mod tests {
     }
 
     /// action 表锚（退役前 tool_plugins/shell/mod.rs manifest 测试同表 + office_exec）：
-    /// 全量无遗漏；bash_kill 非 read_only、五内部/查询动作只读。
+    /// 全量无遗漏；bash_kill 非 read_only、其余内部/查询动作只读。
+    ///
+    /// 观测面三兄弟（job_list / job_read_at / job_kill_human，2026-11-12 加入）：
+    /// 前两个只读（纯元数据 + 非消费读），job_kill_human 改写 job 状态 ⇒ **非**只读，
+    /// 但它受的是「人的停止」语义而不是命令级闸——所以不进 read_only 表。
     #[test]
     fn action_table_matches_retired_manifest() {
         let read_only: [&str; 5] = [
             "bash_output",
             "bash_wait",
             "shell_env",
-            "background_activity",
+            "job_list",
+            "job_read_at",
+        ];
+        const WRITES: [&str; 5] = [
+            "exec_command",
+            "office_exec",
+            "bash_kill",
+            "job_kill_human",
             "drain_bg_notifications",
         ];
+        // 表锚：每个 action 必须落在「只读 / 写 / 内部消费」三形之一，一个不漏。
         for a in PROCESS_CAP_ACTIONS {
-            let known = matches!(a, "exec_command" | "office_exec" | "bash_kill") || read_only.contains(&a);
-            assert!(known, "{a} 必须落在已知权限形状之一");
+            assert!(
+                read_only.contains(&a) || WRITES.contains(&a),
+                "{a} 必须落在已知权限形状之一"
+            );
         }
-        // office_exec 于 2026-09-15（R3）加入：office 域工具专用入口（门禁 = OfficeTool）。
-        assert_eq!(PROCESS_CAP_ACTIONS.len(), 8);
-        // exec_command 非 read_only（写动作）；office_exec 非 read_only（可写）；bash_kill 非 read_only
-        assert!(!read_only.contains(&"exec_command"));
-        assert!(!read_only.contains(&"office_exec"));
-        assert!(!read_only.contains(&"bash_kill"));
+        // 计数锚：动作表就这 10 条（新增/删除都要同批改这里）。
+        assert_eq!(PROCESS_CAP_ACTIONS.len(), 10);
+        // 两条表不重不漏、合起来恰好铺满动作表。
+        for a in read_only {
+            assert!(!WRITES.contains(&a), "{a} 不能同时落在只读与写两形");
+        }
+        assert_eq!(read_only.len() + WRITES.len(), PROCESS_CAP_ACTIONS.len());
     }
 
     /// 动词白名单：office_exec 的命令由口内拼装并跳过 bash::check，所以**必须**在口内

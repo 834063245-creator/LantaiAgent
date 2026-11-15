@@ -1713,7 +1713,7 @@ pub mod imp {
             (String::from_utf8_lossy(&buf).to_string(), ok)
         }
 
-        /// 完整后台链路复现：spawn_bg → drain 线程 → read_bg_output / wait_bg。
+        /// 完整后台链路复现：spawn_bg_from_child → drain 线程 → read_bg_output / wait_bg。
         /// 复现 Agent 跑 `seq 1 5000`（大输出后台任务）的卡死现场。
         /// 只输出诊断，不 assert（避免测试卡死）。
         #[test]
@@ -1721,11 +1721,25 @@ pub mod imp {
         fn test_repro_background_large_output_chain() {
             use std::time::{Duration, Instant};
 
-            // spawn_bg 需要 os_sandbox::init() 的 Job Object? 不需要 — spawn_bg 内部调 spawn_shell
-            let id = match crate::utils::spawn_bg("seq 1 5000", ".", None, None, None) {
+            // Job Object 由 spawn_shell 内部处理；这里只需一条已拉起的子进程 + job id
+            let child = match crate::os_sandbox::spawn_shell("seq 1 5000", ".") {
+                Ok(child) => child,
+                Err(e) => {
+                    eprintln!("[bg-repro] spawn_shell failed: {e}");
+                    return;
+                }
+            };
+            let id = match crate::utils::spawn_bg_from_child(
+                crate::utils::next_job_id(),
+                child,
+                "seq 1 5000",
+                None,
+                None,
+                None,
+            ) {
                 Ok(id) => id,
                 Err(e) => {
-                    eprintln!("[bg-repro] spawn_bg failed: {e}");
+                    eprintln!("[bg-repro] spawn_bg_from_child failed: {e}");
                     return;
                 }
             };

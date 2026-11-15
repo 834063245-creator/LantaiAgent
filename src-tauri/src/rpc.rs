@@ -1026,7 +1026,6 @@ async fn dispatch_rpc(
 #[cfg(test)]
 mod tests {
     use super::{dispatch_result_to_value, guard_panic, panic_to_rpc_error, rpc_result_shape, str_to_value, RpcResultShape};
-    use serde_json::json;
 
     /// 回归（edit 偶发挂死家族）：命令体 panic 必须变成 Err 回包，
     /// 而不是让 panic 逃逸——逃逸时 Tauri resolver 被丢弃，前端

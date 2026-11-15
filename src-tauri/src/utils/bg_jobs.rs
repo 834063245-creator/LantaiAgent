@@ -154,10 +154,6 @@ impl StreamRing {
         (inner.total, inner.dropped)
     }
 
-    pub(crate) fn buffered_len(&self) -> usize {
-        lock_or_recover(&self.inner).buf.len()
-    }
-
     /// 观察者读取：从绝对偏移 `from` 读到当前末尾，**不消费任何东西**。
     pub(crate) fn read_from(&self, from: u64) -> StreamRead {
         let inner = lock_or_recover(&self.inner);
@@ -485,7 +481,7 @@ fn push_history(record: SettledRecord) {
 /// 已结算未读 job 超限时，把最旧的迁进历史（先到先出）。
 fn enforce_settled_cap() {
     let victim = {
-        let mut jobs = lock_or_recover(&BG_JOBS);
+        let jobs = lock_or_recover(&BG_JOBS);
         let terminal: Vec<(u32, u64)> = jobs
             .iter()
             .filter(|(_, j)| j.status.is_terminal())
@@ -673,20 +669,6 @@ pub(crate) fn spawn_bg_from_child(
     spawn_monitor(id, label.to_string(), app.clone());
     emit_job_changed(&app, id);
     Ok(id)
-}
-
-pub(crate) fn spawn_bg(
-    cmd: &str,
-    cwd: &str,
-    owner: Option<String>,
-    lock_key: Option<LockKey>,
-    app: Option<tauri::AppHandle>,
-) -> Result<u32, String> {
-    let child = os_sandbox::spawn_shell(cmd, cwd)
-        .map_err(|e| format!("无法启动后台命令: {e}"))?;
-    let label: String = cmd.chars().take(80).collect();
-    let id = next_job_id();
-    spawn_bg_from_child(id, child, &label, owner, lock_key, app)
 }
 
 /// 带调用方预留 job_id + 显式解释器的后台启动。
@@ -1442,6 +1424,33 @@ mod tests {
             "spawn 失败后 BuildLock 应已释放"
         );
         crate::utils::lock_or_recover(&BUILD_LOCKS).clear();
+    }
+
+    /// 无输出的长任务：read_bg_output 必须立即返回快照（修复前 shared=None 分支
+    /// 会持 BG_JOBS 锁阻塞读管道，任务安静时永久卡死）。shared 现为必填字段，
+    /// 该分支已从类型上移除，此测试锁定行为。
+    #[test]
+    fn bg_output_snapshot_quiet_task_returns_fast() {
+        let _g = serial();
+        let id = spawn_bg_with(
+            next_job_id(),
+            "sleep 30 # quiet-snapshot",
+            ".",
+            crate::os_sandbox::ShellInterpreter::Auto,
+            None,
+            None,
+            None,
+        )
+        .expect("spawn_bg_with failed");
+        let start = std::time::Instant::now();
+        let out = read_bg_output(id).expect("read_bg_output failed");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "快照读取耗时 {:?}——疑似退化为阻塞管道读",
+            start.elapsed()
+        );
+        assert!(out.contains("任务运行中"), "unexpected output: {out}");
+        kill_bg(id, None).expect("kill_bg failed");
     }
 
     #[test]

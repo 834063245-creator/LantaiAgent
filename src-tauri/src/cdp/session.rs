@@ -1622,51 +1622,6 @@ pub(crate) fn cdp_sessions(agent_id: Option<&str>) -> String {
     .to_string()
 }
 
-/// 全局浏览器后台活动快照（状态栏 HUD 用）：跨 agent 汇总所有仍有连接/进程的
-/// 浏览器会话。port=0（已 kill）与 self webview 通道不进入后台列表。
-pub(crate) fn cdp_browser_activity() -> Vec<Value> {
-    enforce_lease();
-    let sessions = lock_sessions();
-    let mut out: Vec<Value> = Vec::new();
-    for (key, sess) in sessions.iter() {
-        if key == SELF_AGENT_ID || sess.port == 0 {
-            continue;
-        }
-        let agent = key
-            .split(SLOT_SEPARATOR)
-            .next()
-            .unwrap_or(DEFAULT_SESSION_KEY)
-            .to_string();
-        let slot = if sess.slot.is_empty() {
-            key.split(SLOT_SEPARATOR)
-                .nth(1)
-                .unwrap_or(DEFAULT_SLOT)
-                .to_string()
-        } else {
-            sess.slot.clone()
-        };
-        out.push(json!({
-            "agent": agent,
-            "slot": slot,
-            "port": sess.port,
-            "chromeRunning": sess.chrome_child.is_some(),
-            "external": sess.chrome_child.is_none(),
-            "attached": sess.target_id.is_some(),
-            "headless": sess.headless,
-            "proxy": sess.proxy,
-            "elapsedSecs": sess.created_at.elapsed().as_secs(),
-        }));
-    }
-    out.sort_by(|a, b| {
-        a["agent"]
-            .as_str()
-            .unwrap_or("")
-            .cmp(b["agent"].as_str().unwrap_or(""))
-            .then_with(|| a["slot"].as_str().unwrap_or("").cmp(b["slot"].as_str().unwrap_or("")))
-    });
-    out
-}
-
 /// 切换当前活跃账号 slot。被切走的受控 Chrome 不会立刻关闭（租约独立计时），
 /// 所以可以来回切换两个已登录账号而不丢登录态。
 pub(crate) fn cdp_switch_session(
