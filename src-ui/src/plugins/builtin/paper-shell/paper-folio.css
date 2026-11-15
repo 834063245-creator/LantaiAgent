@@ -36,11 +36,25 @@
  * ⚠ 两条住在这里（基座 `.pp-folio-head` 之后）是**特异度阶梯**要求：它们 (0,3,0)
  * 高于基座 (0,1,0)，写在卷开合段（前面）会触发 noDescendingSpecificity。 */
 .pp-region.pp-spread .pp-folio-head {
-  animation: pp-drop-in var(--m-sheet) var(--m-ease-io) backwards;
+  animation: pp-drop-in var(--m-sheet) backwards;
+  /* 曲线走 longhand（简写里叠第二段 curve = 非法，见 paper-base.css 的 pp-spread 注） */
+  animation-timing-function: var(--m-ease-io);
 }
 .pp-region[data-leaving] .pp-folio-head {
   translate: 0 18px;
-  transition: translate var(--m-sheet) var(--m-ease-io);
+  transition: translate var(--m-sheet);
+  transition-timing-function: var(--m-ease-io);
+}
+/* **出生即交接**（2026-11-15 化卷批）：待题纸化成的这一卷不重播纸的淡入（纸自己那一窗已经
+ * 讲完了「这张纸从哪来」），留的只有墨，且让一拍（0.1s）等纸先把字撤掉——那一窗里屏上
+ * 永远只有一页字。判据 = `state/draft-sheet-store` 的 `isRiseVolume`（发号前挂账）。
+ * ⚠ 第三条选择器不是冗余：`.pp-region.pp-spread.pp-region-active` 把「拿纸 + 落纸」写成了
+ * 两条动画（特异性 0,3,0），压过本组 (0,2,0)——不补它，交卷那一卷（同时是活跃卷）会拿到
+ * `pp-region-take` 而不是落墨。 */
+.pp-region.pp-rise .pp-folio-head,
+.pp-region.pp-rise.pp-region-active .pp-folio-head {
+  animation: pp-drop-in var(--m-ink) 0.1s backwards;
+  animation-timing-function: var(--m-ease-io);
 }
 /* 版心内层（2026-09-16 新增）：卷首四行 + 硬规线 + 版口钮的**唯一版心盒**。
  * width = 50%（= 流区宽一半；2026-10-08「墨占纸半」重定——原 min(720px, 100%) 的

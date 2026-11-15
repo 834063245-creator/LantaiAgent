@@ -15,6 +15,7 @@ import {
   activeSpace,
   agentSessionState,
   getCanvasStore,
+  isRiseVolume,
   leaveToHome,
   screenToWorld,
   subscribeOverlayContributions,
@@ -28,6 +29,8 @@ import {
 } from './host';
 import { sourceBlockIdOf, TETHER_ANCHOR_DY, tetherAnchors, tetherAnchorsAt, tetherPath } from './provenance';
 import { createRegionMotionWindow, regionOnScreen, stepRegionMotion } from './region-motion';
+/* 出生即交接（2026-11-15 化卷批）：交卷那一卷只落墨、不重播纸淡入。
+ * 账在 state/draft-sheet-store（`beginMorph` 同步登记）——判据必须**渲染期**可读，见该处头注。 */
 import { selSeedOf } from './sel-ink';
 import { useBlockMeasure } from './use-block-measure';
 import { useBlockOps } from './use-block-ops';
@@ -208,6 +211,7 @@ export function usePaperPanelAssembly() {
     regions,
     onScreenIds,
     Date.now(),
+    isRiseVolume,
   );
   for (const gone of justLeft) {
     /* 首见印记随卷一并清掉 ⇒ 重开卷重播墨律（不清 = 重开无墨，`seenBlocksRef` 老病）。 */
@@ -220,8 +224,15 @@ export function usePaperPanelAssembly() {
       view,
       leaving: false,
       spreading: motionWin.current.spread.has(view.sessionId),
+      /* 落墨窗（纸化成的卷）：纸只落一遍墨，不淡第二次——见 region-motion.ts 头注「出生即交接」。 */
+      rising: motionWin.current.rise.has(view.sessionId),
     })),
-    ...[...motionWin.current.leaving.values()].map((e) => ({ view: e.view, leaving: true, spreading: false })),
+    ...[...motionWin.current.leaving.values()].map((e) => ({
+      view: e.view,
+      leaving: true,
+      spreading: false,
+      rising: false,
+    })),
   ];
   useEffect(() => {
     void motionTick; // 只作重渲染扳机（依赖声明与闭包语义一致——同既有范式）

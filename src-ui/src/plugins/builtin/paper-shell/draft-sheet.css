@@ -22,13 +22,24 @@
 
 .pp-draft-sheet {
   z-index: 2;
+  /* 纸性（2026-11-15 化卷批）：**与流区叶同一张纸**——同一张 paper-sheet、同一套水洗三参。
+   * 病灶：纸原先直接用流区基座的默认纸色（不取 --sheet-j），与它化成的那一卷在路上就不像
+   * 同一张纸；交接那一窗（纸淡出 + 卷在位）会把两套水洗同时摆出来。真源 = sheet.ts。 */
+  background-color: color-mix(in oklch, var(--paper-deep) calc(10% + 8% * var(--sheet-j, 0)), var(--paper));
+  background-image: url("../../../assets/paper/paper-sheet.jpg");
+  background-size: 1200px;
+  background-repeat: repeat;
+  background-position: var(--sheet-ox, 0px) var(--sheet-oy, 0px);
+  background-blend-mode: multiply;
   /* 未题完的纸比成卷**低一档影**：它还没落到桌上（同族三档 sheet/active/lift） */
   box-shadow:
     inset 3px 4px 5px var(--sheet-lit),
     inset -2px -3px 6px var(--sheet-shade),
     inset 0 0 0 7px color-mix(in oklch, var(--paper-deep) 30%, transparent),
     var(--shadow-sheet);
-  animation: pp-draft-in var(--m-sheet) var(--m-ease-io) backwards;
+  animation: pp-draft-in var(--m-sheet) backwards;
+  /* 曲线走 longhand：简写里再叠一段 curve 是非法简写（同 paper-base 的 pp-spread 注） */
+  animation-timing-function: var(--m-ease-io);
   display: flex;
   flex-direction: column;
 }
@@ -57,23 +68,63 @@
  *
  * ⚠ **不做**：宽度过渡 / transform: scale（会把纸纹与天头文字一起拉变形——「化」的
  * 语义是纸落到桌上，不是纸被拉伸），也不做交叉淡入（纸没的那一帧卷正好在起手，
- * 读作「换了一件东西」）。 */
+ * 读作「换了一件东西」）。
+ *
+ * **2026-11-15 真机定帧复修（四条）**——上一轮这一拍实际上没播：
+ *   ① 本条简写 `pp-draft-morph var(--m-sheet) var(--m-ease-io)` 是**非法 animation**，
+ *      整条被级联丢弃（--m-sheet 自带一条 bezier，叠第二段即非法）⇒ 纸从不淡出、窗满直接
+ *      跳没。同款共 10 处、8 条动效静默失效（见 paper-base.css 的 pp-spread 注）。
+ *   ② **卷侧不重播纸淡入**：卷的 `.pp-spread` 由壳层发（新卷首次可见即落纸），与纸的淡出
+ *      同时起手 ⇒ 交接窗里两片半透明的纸叠着。交卷那一卷走 `pp-rise`（只落墨，见 base.css）。
+ *   ③ **纸与卷同一张纸**：纸现在吃与流区叶同一套纸性三参（--sheet-ox/oy/j），
+ *      交接窗里两帧是同一张纸的不同时刻，不是两件东西。
+ *   ④ **坞在交接窗内就落座**（壳占位，见下一条）：窗满撤纸那一帧，输入面已经在那儿了。 */
 .pp-draft-sheet.pp-draft-morph {
-  z-index: 1;
+  /* **交接期纸在上面**（2026-11-15 定帧实测）：纸与卷同盒同纹之后，纸若退到卷下面，
+   * 它那张不透明的纸把**卷侧一切都盖住**——「淡出」根本看不见，用户读到的仍是「天头啪一下
+   * 换了字」。留在上层，淡出才是真正的**叠影**：待题的字从真实卷首上退去，同一张纸不变。
+   * （原先写 z-index: 1 的动机是「纸不再是待题纸」，但层级不该表达语义——见上。） */
+  z-index: 3;
   /* 化卷期不再是「待题纸」（低一档影），直接接成卷的落影——影不跳档 */
   box-shadow:
     inset 3px 4px 5px var(--sheet-lit),
     inset -2px -3px 6px var(--sheet-shade),
     inset 0 0 0 7px var(--sheet-band),
     var(--shadow-sheet);
-  animation: pp-draft-morph var(--m-sheet) var(--m-ease-io) forwards;
+  animation: pp-draft-morph var(--m-sheet) forwards;
+  animation-timing-function: var(--m-ease-io);
   pointer-events: none;
 }
 
+/* 纸身：整窗匀速淡（io）——**不许在中途停一段再走**（2026-11-15 定帧实测）：
+ * 停住时纸的字已经先撤完（`pp-draft-core-out`），而纸又不透明 ⇒ 那几帧是**一张白纸**，
+ * 读作「闪一下」。纸与卷是同一张纸、同一个盒、同一套纸性，故纸身每淡一分，底下卷的墨
+ * 就现一分——纸纹在整个交接期是连续的，变的只有**字**。 */
 @keyframes pp-draft-morph {
   from {
     opacity: 1;
   }
+  to {
+    opacity: 0;
+  }
+}
+
+/* 纸自己的字先撤（天头四行 + 天头下那条输入面）——化卷那一拍里它们是**唯一会与卷首撞车
+ * 的东西**：纸身是同纹同盒的一张纸，撤掉无痕；字不行（「待题 · 未开卷 / 案卷 Nº」与
+ * 「案卷 Nº 1 / 题名」叠在一处就是双重曝光）。故先撤字、后撤纸：屏上任何一帧只有一页字。
+ * 输入面一并跟着退（当帧撤会让它凭空消失，而纸还整张在那儿）——退场期不接点击、不吃焦点。 */
+.pp-draft-sheet.pp-draft-morph .pp-folio-inner,
+.pp-draft-sheet.pp-draft-morph .pp-draft-stack {
+  /* ⚠ 曲线走 longhand——本批刚全仓清掉的那类非法简写（时长 token 自带一条 bezier，
+   * 再叠第二段即整条被丢弃）。写下这一行时又踩了一次，故在此留桩。 */
+  /* 曲线取 **io**（对开）而不是出相：出相在 160ms 的头 1/4 就把字推到 65% 没了，而纸身这时
+   * 还几乎不透明（0.93）⇒ 那三四帧屏上是「一张几乎空白、又挡住底下的纸」（定帧实测）。
+   * 两端都交待的 io 让「字先退、纸后走」这个次序读得出来。 */
+  animation: pp-draft-core-out var(--m-ink) forwards;
+  animation-timing-function: var(--m-ease-io);
+  pointer-events: none;
+}
+@keyframes pp-draft-core-out {
   to {
     opacity: 0;
   }

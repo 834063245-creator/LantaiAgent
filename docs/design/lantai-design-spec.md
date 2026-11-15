@@ -1018,7 +1018,9 @@ measure 折叠高 = `FOLD_ROW_H`）+ `prototype/asset-rack-v2.html`（真样式�
 
 **约束律**：① 一次动作至多一个动效主体；② 动效永不阻塞交互（动画只描述，不延迟可点）；③ **一切动效走 CSS animation/transition**——唯一豁免点 = `foundation.css` 的 `prefers-reduced-motion` 块；**JS 帧动画要么删、要么自觉读 `matchMedia`**（先例：相机飞行 `use-paper-focus.ts` 的 rAF 原本绕过该豁免——动效敏感用户唯一还在动的恰好是幅度最大的那个动作）。
 
-**登记表（不受三档约束，但新增必须登记）**：**仪式** = 首页钤印 `sh-stamp` / 列表升起 `sh-rise` / 卷首朱笔划界 `pp-seal-draw`；**环境** = 画布呼吸线 `pp-breathe`、运行态呼吸 `pp-ink-live`、侧栏/书脊运行点 `ss-breathe` `sr-breathe`；**信号** = 探测中 `pp-pulse`、加载旋 `pp-spin` `ms-spin`、溯源一拍 `pp-trace-pulse`、更新条 `sp-upd-slide`；**存活期** = 一次性眉批 `pp-hint-fade`(6s)；**连续读数件** = 墨量线/进度段 `transition: width`、状态点纸晕 `transition: background`。
+**登记表（不受三档约束，但新增必须登记）**：**仪式** = 首页钤印 `sh-stamp` / 列表升起 `sh-rise` / 卷首朱笔划界 `pp-seal-draw`；**环境** = 画布呼吸线 `pp-breathe`、运行态呼吸 `pp-ink-live`、侧栏/书脊运行点 `ss-breathe` `sr-breathe`；**信号** = 探测中 `pp-pulse`、加载旋 `pp-spin` `ms-spin`、溯源一拍 `pp-trace-pulse`、更新条 `sp-upd-slide`；**存活期** = 一次性眉批 `pp-hint-fade`(6s)；**连续读数件** = 墨量线/进度段 `transition: width`、状态点纸晕 `transition: background`；**化卷那一拍（2026-11-15）** = `pp-draft-in`（纸出生）/ `pp-draft-morph`（纸身淡出）/ `pp-draft-core-out`（纸上的字与输入面先退）。
+
+**⚠ 双曲线简写 = 非法声明（2026-11-15 立法）**：`animation: x var(--m-sheet) var(--m-ease-io)` 这种写法**整条被级联丢弃**——`--m-sheet` 的值自带一条 bezier（`0.26s cubic-bezier(…)`），简写里再叠第二段曲线即解析失败；`getAnimations()` 为空、`animationName` 为 none，而 CSS 源码读起来毫无破绽。立法当天全仓实测 10 处、**8 条动效从未播过**（卷开合两窗 / 落纸 / 落墨 / 化卷淡出全躺着），用户读到的是「啪一下」。曲线一律 **longhand**：`animation: x var(--m-sheet) backwards; animation-timing-function: var(--m-ease-io);`（先例 `app/tip/tip.css`）。守护：`motion-contract` 的「双曲线简写不得回潮」一条（全仓扫）。
 
 **本批落地（2026-10-15 批 1）**：① 三档立法 + `--glide` 退役（改名即删，不留双轨）——全仓**散写时长**收编为三档 token、**散写贝塞尔**收编为具名曲线（`--m-ease-out` 由此有了消费面）；② **让位过渡常驻**（落在 `.pp-block` 基座内，非另立高特异度规则——后者会触发 biome `noDescendingSpecificity`）；手驱动例外走新类 `pp-live-hand`（壳层按 `edgeDragPos || regionCornerPos` 发放）与既有 `.pp-dragging`；③ 悬空 token `--pp-grow-dur/ease` 清除；④ 相机飞行 240→`FOCUS_FLIGHT_MS`(260，镜像 `--m-sheet`) + reduced-motion 短路（两处 rAF 飞行都走）；⑤ `TOAST_FADE_MS` 400→260（与 CSS `--m-sheet` 段同值）。
 

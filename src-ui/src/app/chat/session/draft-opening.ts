@@ -21,6 +21,7 @@ import type { StoredThinking } from '../../../provider/thinking';
 import { getCanvasStore } from '../../../state/canvas-store';
 import { useCanvasViewStore } from '../../../state/canvas-view-store';
 import { getComposeStore } from '../../../state/compose-store';
+import { armRiseVolume, clearRiseVolume } from '../../../state/draft-sheet-store';
 import { getChatStore } from '../../../ui/chat-store';
 import { createSessionWithPreset } from '../session-composition';
 import type { SessionContext } from './session-types';
@@ -113,7 +114,12 @@ export async function openDraftVolume(
 ): Promise<DraftOpenResult> {
   const input = getChatStore(panelId).input;
   const pendingText = input.getState().inputText;
+  /* **发号之前**挂「出生即交接」账（2026-11-15 化卷批）：卷开合两窗的判据在**渲染期**跑，
+   * 账晚一步（effect / 发号之后）那一卷就已经被当成普通摊开记进 played，落墨窗再也不开。
+   * 见 state/draft-sheet-store 的 isRiseVolume 头注。 */
+  armRiseVolume();
   const r = await createSessionWithPreset(ctx, opts.presetId ?? undefined);
+  if (!r.ok) clearRiseVolume(); // 起卷失败 = 这一张纸没化成任何卷
   if (!r.ok) return r;
   if (pendingText) input.getState().setInputText(pendingText);
   const sid = String(r.sessionId);

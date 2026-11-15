@@ -1,5 +1,5 @@
 {
-  "fingerprint": "3074157a",
+  "fingerprint": "46da262e",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -126,6 +126,7 @@
     "defineTool",
     "describeReceipt",
     "discoverPresets",
+    "draftSheetSeed",
     "editGoal",
     "effectiveModels",
     "enqueueIsolationOp",
@@ -179,6 +180,7 @@
     "isDiffLang",
     "isFoldable",
     "isMockMode",
+    "isRiseVolume",
     "isThinkingMode",
     "isTopLevelHost",
     "isUserMcpMissingError",
@@ -322,6 +324,7 @@
     "setJobHistoryProvider",
     "setLang",
     "setLogLevelPreference",
+    "setMorphBox",
     "setOwnerSessionResolver",
     "slashOnly",
     "snapshotFromBlock",

@@ -47,6 +47,7 @@ const VIEWPORT_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 
 const REGION_MOTION_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'region-motion.ts'), 'utf8');
 const DRAFT_STORE_TS = readFileSync(join(SRC, 'state', 'draft-sheet-store.ts'), 'utf8');
 const DRAFT_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'draft-sheet.css'), 'utf8');
+const FOLIO_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'paper-folio.css'), 'utf8');
 
 /** 剥 CSS 注释（病灶史注释里点名选择器是留痕，不是使用）——本文件 CSS 断言走它。 */
 const stripCssComments = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -429,7 +430,10 @@ describe('§15 动效契约（散写时长守卫）', () => {
     // 化卷期：一次动作（动画名在册）+ 只碰 opacity
     const rule = /\.pp-draft-sheet\.pp-draft-morph\s*\{([\s\S]*?)\n\}/.exec(sheetCss);
     expect(rule, '缺化卷规则（.pp-draft-sheet.pp-draft-morph）').not.toBeNull();
-    expect((rule as RegExpExecArray)[1]).toContain('pp-draft-morph var(--m-sheet) var(--m-ease-io)');
+    // 曲线走 longhand（2026-11-15）：简写里叠第二段 bezier 是**非法 animation**，整条被丢弃
+    // ——本条正是那个病（纸从不淡出）。判据改为「时长 token + 紧随其后的 longhand 曲线」。
+    expect((rule as RegExpExecArray)[1]).toContain('pp-draft-morph var(--m-sheet) forwards;');
+    expect((rule as RegExpExecArray)[1]).toContain('animation-timing-function: var(--m-ease-io);');
     expect((rule as RegExpExecArray)[1]).not.toMatch(/\b(transform|translate|width|scale)\b/);
     const frames = /@keyframes pp-draft-morph\s*\{([\s\S]*?)\n\}/.exec(sheetCss);
     expect(frames, '缺化卷 keyframes').not.toBeNull();
@@ -439,6 +443,25 @@ describe('§15 动效契约（散写时长守卫）', () => {
     const base = /^\.pp-draft-sheet \{([\s\S]*?)\n\}/m.exec(sheetCss);
     expect(base, '缺纸体基座规则').not.toBeNull();
     expect((base as RegExpExecArray)[1]).not.toMatch(/\b(transform|translate)\b/);
+  });
+
+  it('非法简写不得回潮：`var(--m-*) var(--m-ease-*)` = 整条 animation/transition 被丢弃', () => {
+    // 2026-11-15 实测：`--m-sheet: 0.26s cubic-bezier(...)` 自带一条曲线，简写里再叠第二段
+    // = 解析失败 ⇒ **声明级联丢弃**（不是取前者也不是取后者）。当时全仓 10 处、8 条动效
+    // 静默失效：卷开合/落纸/落墨/化卷淡出全躺着，界面读作「啪一下」。Chrome 里判据是
+    // `el.getAnimations()` 为空、`animationName` 为 none——CSS 源码里却写得整整齐齐。
+    // 曲线一律 longhand（先例 app/tip/tip.css），本测守全仓。
+    const offenders: string[] = [];
+    for (const file of allCssFiles(SRC)) {
+      const css = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const m of css.matchAll(/var\(--m-(?:snap|ink|sheet|scene)\)\s+var\(--m-ease-(?:out|io)\)/g)) {
+        offenders.push(`${file.replace(SRC, 'src')} → ${m[0]}`);
+      }
+    }
+    expect(
+      offenders,
+      '双曲线简写（时长 token 已自带曲线；改用 longhand `animation-timing-function:`）：\n' + offenders.join('\n'),
+    ).toEqual([]);
   });
 
   it('跨语言镜像同值（TS ↔ CSS token）：相机飞行 ↔ --m-sheet、TOAST_FADE_MS ↔ --m-sheet', () => {
@@ -493,11 +516,14 @@ describe('§15 动效契约（散写时长守卫）', () => {
     // 曲线必须是 **io**：ease-out 把 80% 的变化压在头 30%（台架实测入场可见变化
     // 1.65 vs 3.99——「力度定案」的实测依据，写在 CSS 注释里）。
     const spread = ruleBody(PANEL_CSS, '.pp-region.pp-spread {');
-    expect(spread, '缺落纸入场规则').toContain('pp-spread-in var(--m-sheet) var(--m-ease-io)');
+    expect(spread, '缺落纸入场规则').toContain('pp-spread-in var(--m-sheet) backwards;');
+    expect(spread, '落纸的曲线必须 longhand 写（双曲线简写 = 非法，整条被丢弃）').toContain(
+      'animation-timing-function: var(--m-ease-io);',
+    );
     expect(css, '落纸 keyframes 缺位').toContain('@keyframes pp-spread-in');
     // 摊开 = 摊上画布 + 设活卷：两条动画同时在位（animation 是整表替换不是合并）
     expect(css, '摊开+活卷时两条动画必须都写').toMatch(
-      /\.pp-region\.pp-spread\.pp-region-active\s*\{[^}]*pp-region-take[^}]*pp-spread-in var\(--m-sheet\) var\(--m-ease-io\)/,
+      /\.pp-region\.pp-spread\.pp-region-active\s*\{[^}]*pp-region-take[^}]*pp-spread-in var\(--m-sheet\) backwards/,
     );
     // 纸律：整叶只动 opacity——落纸规则的 keyframes 只碰 opacity，且规则本体不得
     // 声明 transform/translate/left/top/height（纸纹 background-position 与 InkLayer 对位红线）
@@ -511,8 +537,20 @@ describe('§15 动效契约（散写时长守卫）', () => {
     const drop = /@keyframes pp-drop-in\s*\{([\s\S]*?)\n\}/.exec(css);
     expect(drop, '缺落纸的墨 keyframes（pp-drop-in）').not.toBeNull();
     expect((drop as RegExpExecArray)[1]).toContain('translate: 0 18px');
-    expect(css).toMatch(/\.pp-block\.pp-drop\s*\{[^}]*pp-drop-in var\(--m-sheet\) var\(--m-ease-io\)/);
+    expect(css).toMatch(/\.pp-block\.pp-drop\s*\{[^}]*pp-drop-in var\(--m-sheet\) backwards/);
     expect(css, '卷首要与块同落').toMatch(/\.pp-region\.pp-spread \.pp-folio-head\s*\{[^}]*pp-drop-in/);
+    /* **出生即交接**（2026-11-15 化卷批）：纸化成的卷不重播纸淡入，落墨还要让纸先撤字——
+     * 判据 = 交卷那一卷挂 `pp-rise`（壳层按 state/draft-sheet-store 的账发放），它的卷首与块
+     * 走同一条墨律但**带 0.1s 编排错峰**（纸 0–160ms 撤字，墨 100ms 才落）。 */
+    // 落墨规则分两处（卷首在 folio 片、块在 base 片——同一族同一条墨律）：两片都要有 `pp-rise` 档
+    for (const [name, source] of [
+      ['paper-base.css', css],
+      ['paper-folio.css', stripCssComments(FOLIO_CSS)],
+    ] as const) {
+      expect(source, `${name} 缺出生即交接的落墨规则（pp-rise）：只落墨、不让纸淡第二次`).toMatch(
+        /\.pp-region\.pp-rise[^{]*\{[^}]*pp-drop-in var\(--m-ink\) 0\.1s backwards/,
+      );
+    }
 
     // 退场（起纸）：[data-leaving] 淡出 + 不接点击，曲线同为 io；墨随纸沉走**独立 translate**
     // （块定位用内联 transform——任何一帧声明 transform 会把块钉到左上角，2026-09-03 事故）

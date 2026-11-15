@@ -52,6 +52,7 @@ import {
   PaperDockContext,
   PaperRegionContext,
   PluginBoundary,
+  setMorphBox,
   useDockStore,
   useDraftSheetStore,
   WinControls,
@@ -81,6 +82,9 @@ export function PaperPanel() {
    * ⚡ 2026-11-15 V2：化卷交接窗（morph）里纸**还在屏上**，故它也算法「纸在」——
    * 判据与装配根（use-paper-panel 的 sheetPresent）同一把尺子，两处一起改。 */
   const sheetPresent = useDraftSheetStore((s) => s.open || s.morph !== null);
+  /** 化卷交接窗（纸已交卷、还在屏上）。坞在这条窗里就落座——见下方坞槽注。 */
+  const draftMorphOpen = useDraftSheetStore((s) => s.morph !== null);
+  const draftMorph = useDraftSheetStore((s) => s.morph);
 
   const {
     core,
@@ -170,6 +174,23 @@ export function PaperPanel() {
     branchGrips,
     onBranchGripMouseDown,
   } = usePaperPanelAssembly();
+
+  /* **交接期锁盒**的回填（2026-11-15 化卷批）：纸在交接窗里必须与新卷同一个盒——
+   * 真源是卷的几何（`regionTop - folioH` / `regionHeight + folioH`），量到就写回 store。
+   * 写在渲染期（不是 effect）：晚一帧纸会先按自己的高长一帧、再被拉回卷的盒；
+   * 同值不重设（setMorphBox 内判等），不会逐帧抖 store。 */
+  if (draftMorph) {
+    const rising = regionRender.find((e) => !e.leaving && e.view.sessionId === draftMorph.sheetId);
+    if (rising) {
+      const v = rising.view;
+      setMorphBox({
+        left: v.anchor.anchorX - v.anchor.width / 2,
+        top: v.regionTop - v.folioH,
+        width: v.anchor.width,
+        height: v.regionHeight + v.folioH,
+      });
+    }
+  }
 
   /* 拖拽回流判据（渲染面）：与松手定夺共用 `blockReturnsToFlow`（据来源原位量）
    * ——视觉与规则同一把尺子：预览说「回槽」就必须真的回槽（2026-09-17 修正） */
@@ -287,19 +308,21 @@ export function PaperPanel() {
                   2026-10-18 卷开合动效批：本图渲染「活跃卷 + 在窗的离场卷」——
                   离场卷（`data-leaving`）**绕开虚拟化**（否则一卷刚飞出视口就被裁掉，
                   退场动画只看得到半截），且不接活跃/带显形/手势与落纸入场。 */}
-              {regionRender.map(({ view: r, leaving, spreading }) => {
+              {regionRender.map(({ view: r, leaving, spreading, rising }) => {
                 if (!leaving && !visibleRegionIds.has(r.sessionId)) return null;
                 const isActive = !leaving && r.sessionId === activeSessionKey;
                 /* 落纸入场（纸淡入）：在**落纸窗**内即挂类（窗满由 region-motion 摘）。
-                 * 离场卷不挂（它在起纸）。 */
+                 * 离场卷不挂（它在起纸）。**出生即交接**的卷挂 `pp-rise` 而不是 `pp-spread`
+                 * ——纸的淡出已经由纸自己那一窗讲完，这里只落墨（见 region-motion.ts 头注）。 */
                 const isSpread = !leaving && spreading;
+                const isRise = !leaving && rising;
                 const sheet = sheetCharacter(r.sessionId);
                 return (
                   // biome-ignore lint/a11y/noStaticElementInteractions: 流区是可点击交互面（点背景激活流区）
                   <div
                     key={r.sessionId}
-                    className={`pp-region${isActive ? ' pp-region-active' : ''}${
-                      isSpread ? ' pp-spread' : ''
+                    className={`pp-region${isActive ? ' pp-region-active' : ''}${isSpread ? ' pp-spread' : ''}${
+                      isRise ? ' pp-rise' : ''
                     }${!leaving && bandSessionId === r.sessionId ? ' pp-region--band' : ''}`}
                     {...(leaving ? ({ 'data-leaving': '', inert: true } as const) : null)}
                     style={
@@ -538,7 +561,7 @@ export function PaperPanel() {
                   挂 `pp-drop`（墨自 18px 落下，**取代** `pp-enter`：同一属性两条动画
                   是整表替换）；离场卷的块挂 `pp-leaving`（起纸：淡去 + 墨随纸沉 18px），
                   且**不发首见印记**（印记已在卷离场时清掉；离场期若写回，重开卷就再没墨）。 */}
-              {regionRender.map(({ view: r, leaving, spreading }) =>
+              {regionRender.map(({ view: r, leaving, spreading, rising }) =>
                 r.blocks.map((b) => {
                   const slot = r.layout.get(b.id);
                   if (!slot || !r.visibleIds.has(b.id)) return null;
@@ -547,8 +570,10 @@ export function PaperPanel() {
                     const firstSeen = !leaving && !seenBlocksRef.current.has(b.id);
                     if (firstSeen) seenBlocksRef.current.add(b.id);
                     /* 落纸窗内的块走 `pp-drop`（墨自 18px 落下，`--m-sheet`/io）——
-                     * 与 `pp-enter`（8px/`--m-ink`）二选一：同一属性上两条动画是整表替换。 */
-                    const dropping = !leaving && spreading && b.state === 'flow';
+                     * 与 `pp-enter`（8px/`--m-ink`）二选一：同一属性上两条动画是整表替换。
+                     * **出生即交接**的卷（纸化成的）走同一条墨律但**不淡纸**：纸的淡出就是它的
+                     * 入场，块只是落墨（见 region-motion.ts 头注「出生即交接」）。 */
+                    const dropping = !leaving && (spreading || rising) && b.state === 'flow';
                     /* 湿墨尾点（2026-09-06）：正在书写的块（writingBlockIdOf
                      * 派生——source part 未干墨）挂 pp-writing，::after 落
                      * 石青方点在续墨行位。 */
@@ -848,8 +873,9 @@ export function PaperPanel() {
               的 isComposerDragSurface）。 */}
           {/* ⚡ 2026-11-15 V2：纸在场时**坞槽整只不渲染**（不是隐藏输入条）——纸替坞。
               判据已订阅（sheetPresent，含化卷交接窗），开纸那一刻坞就退场，不留一帧两层叠着。
-              交接窗里纸还没走完，坞也先不冒头——两件事不抢同一帧。 */}
-          {!sheetPresent && (
+              **化卷交接（2026-11-15）**：交接窗里坞就落座（占位 = 与纸期输入面同形的空壳），
+              窗满纸一撤，坞已在那儿——撤纸与坞落座不再是一前一后两帧。 */}
+          {(!sheetPresent || draftMorphOpen) && (
             // biome-ignore lint/a11y/noStaticElementInteractions: 坞槽承载拖坞手势（拖动面判据在 composer-float.ts 的 isComposerDragSurface——锁定态一律放行）
             <div
               className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}${
@@ -868,6 +894,10 @@ export function PaperPanel() {
                 </PluginBoundary>
               ))}
               {desk && <DeskShelf core={core} />}
+              {/* 化卷交接窗的病根**不在这里**（2026-11-15 实测更正）：坞本就随 `open` 转 false 当帧
+                  挂上（订阅是同步的），空窗并不存在——原判据「两条订阅错拍」是误诊。真问题是
+                  **纸整张盖在坞上**直到窗满（Z 序 + 不透明纸），于是坞那 260ms 的入场看不见。
+                  治法在纸那边：纸撤字、后撤纸，两者同窗收尾（见 draft-sheet.css 化卷段）。 */}
               {/* 拖动锁按钮**不在这里**（2026-09-17 二版）：它归坞的书眉工具行，
                 由坞本体渲染（`PaperDockContext.composerLock` 能力位——锁态与写面在
                 本槽主人手里）。曾试过「槽里浮一枚 hover 小钮」，两个病灶：浮在坞外

@@ -125,7 +125,7 @@ export { useDockStore } from '../../../state/dock-store';
  * 不出输入条（纸还没成立，没有可写的正文）。故必须经桥取宿主那一份 store 单例
  * （直引内核路径会被产物构建内联成第二份 ⇒ 坞永远读不到开合，同 toast-store 先例）。
  * faceDeps 三处同步：本文件 / host.aliased.ts / host-modules.ts。 */
-export { useDraftSheetStore } from '../../../state/draft-sheet-store';
+export { draftSheetSeed, isRiseVolume, setMorphBox, useDraftSheetStore } from '../../../state/draft-sheet-store';
 /* 卷首组合芯片（S6 P5a）读面：preset 清单 / 全局选择态 / 装载失败原因。
  * 写面与空白判据不经本出口——它们走 core 的能力位（sessionComposition /
  * isSessionBlank / selectSessionPreset，与创作坞芯片同一套）。faceDeps 已含该

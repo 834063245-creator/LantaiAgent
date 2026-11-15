@@ -61,10 +61,26 @@ export interface DraftPicks {
   thinking: StoredThinking | undefined;
 }
 
+/** 交接期纸盒（世界坐标，**由卷侧回填**）：化卷那一窗里纸必须与新卷**同一个盒**——
+ *  同宽同锚点早已如此，但高度是内容撑的（卷落进首块后是 552，纸的实测高只有 490），
+ *  两条高度不一致时纸的上缘会在交接那一帧往上跳 62px（真机定帧实测），读作「题签跳了」。
+ *  真源 = PaperPanel 的 rise 卷几何（`regionTop - folioH` / `regionHeight + folioH`），
+ *  窗内逐帧回填，于是纸与卷全程锁在同一个盒里。 */
+export interface DraftMorphBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 /** 化卷那一拍（V2-P3）：纸已化成卷，但**还在屏上**——与新卷的落纸同一窗交接。
- *  `sessionId` = 刚化成的那一卷（纸要「交给」它）；窗满才真撤纸。 */
+ *  `sessionId` = 刚化成的那一卷（纸要「交给」它）；窗满才真撤纸。
+ *  `sheetId` = 交接期里**纸的纸性种子**（= 新卷 id）——见 PaperPanel 里「交接期的纸走本字段」。 */
 export interface DraftMorph {
   sessionId: number;
+  sheetId: string;
+  /** 交接期纸盒（null = 卷几何还没量到，纸按自己的实测盒走）。 */
+  box: DraftMorphBox | null;
 }
 
 export interface DraftSheetState {
@@ -101,6 +117,74 @@ export interface DraftSheetState {
 /** 化卷交接的撤纸定时器（模块级单例：**同一时刻最多一张纸**，故一只表够）。
  *  打开新纸 / 弃纸 / 组件卸载都清它——迟到的定时器不许把新纸的 morph 抹掉。 */
 let _morphTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** **出生即交接**那一卷的账（2026-11-15 化卷批）。
+ *
+ *  判据只有一个问题：**这一卷的入场要不要再淡一次纸？**
+ *    · 普通摊开（侧栏点开 / 恢复 / 立枝 / 程序起卷）：纸是新出现的 —— 淡入 + 落墨；
+ *    · 待题纸化成的那一卷：纸已经在屏上整整一窗、正在同一个盒里淡出。再淡一次 = 两片半透明
+ *      的纸叠着（定帧实测 0/65/130ms 三帧双重影）⇒ 这一卷只**落墨**。
+ *
+ *  ⚠ **必须在这里、必须在 `beginMorph` 里同步登记**：卷开合两窗的判据在**渲染期**跑（
+ *  region-motion 的纪律：卷出现的那一帧就要有快照），而 effect 晚一帧——账在 effect 里写，
+ *  那一卷早被当成普通摊开记进了 `played`，之后再也不会进落墨窗。
+ *
+ *  为什么不放 paper-shell 包内：账只有一个读点（region-motion）与一个写点（beginMorph），
+ *  而写点在这里，跨包只会多一条桥。过期语义 = 一次性：弃纸即清。 */
+let _riseVolume: string | null = null;
+/** 「下一张出现的卷是纸化成的」——发号**之前**挂上（那时还没有卷号可用）。
+ *  第一帧卷出现时（region-motion 的渲染期判据）由 `isRiseVolume` 认领并落账。 */
+let _risePending = false;
+
+/** 发号前挂账（`openDraftVolume` 在起卷前调用）：下一张出现的卷是纸化成的。 */
+export function armRiseVolume(): void {
+  _risePending = true;
+  _riseVolume = null;
+}
+
+/** 这一卷是不是待题纸化成的（region-motion 的落纸/落墨分流判据）。
+ *  ⚠ 会被**渲染期**调用（卷出现的那一帧就要分流），故认领就发生在这儿：挂着账时，
+ *  第一个被问到的卷即认领为那一卷——发号与首帧之间没有第三张卷会经过这里。 */
+export function isRiseVolume(sessionId: string): boolean {
+  if (_riseVolume === sessionId) return true;
+  if (_risePending) {
+    _risePending = false;
+    _riseVolume = sessionId;
+    return true;
+  }
+  return false;
+}
+
+/** 清账（弃纸 / 切工作区）：下一卷按普通摊开处理。 */
+export function clearRiseVolume(): void {
+  _riseVolume = null;
+  _risePending = false;
+}
+
+/** **现在该按哪一张纸取纸性**（单一判据，两个消费面：纸面本体与坞交接位）。
+ *   交接期（morph 在场）⇒ 新卷 id（纸正在化成它，纹必须已经是它的）；
+ *   否则 ⇒ 纸自己的种子（出生面期用固定串，见 DraftSheet 的 SHEET_SEED）。 */
+export function draftSheetSeed(fallback: string): string {
+  const m = useDraftSheetStore.getState().morph;
+  return m ? m.sheetId : fallback;
+}
+
+/** 交接期纸盒回填（卷侧在渲染期量到就写；同值不重设，免得逐帧抖 store）。 */
+export function setMorphBox(box: DraftMorphBox | null): void {
+  const m = useDraftSheetStore.getState().morph;
+  if (!m) return;
+  if (m.box === box) return;
+  if (
+    m.box &&
+    box &&
+    m.box.left === box.left &&
+    m.box.top === box.top &&
+    m.box.width === box.width &&
+    m.box.height === box.height
+  )
+    return;
+  useDraftSheetStore.setState({ morph: { ...m, box } });
+}
 
 /** 清交接定时器（幂等）。 */
 function clearMorphTimer(): void {
@@ -140,8 +224,14 @@ export const useDraftSheetStore = create<DraftSheetState>((set, get) => ({
       return;
     }
     /* 交接期 = open 已 false（**坞立刻可以出现**：它属于新卷）、morph 在场（纸张力上还在）。
-     * 纸的题签与锚点**保留到窗满**——纸还在屏上，突然清空会闪一下空白。 */
-    set({ open: false, morph: { sessionId } });
+     * 纸的题签与锚点**保留到窗满**——纸还在屏上，突然清空会闪一下空白。
+     * `sheetId` 与卷同种子：交接那一窗里纸与卷必须**同一张纸**（纹不变、深浅不变），
+     * 否则交叉淡入的两帧各有各的水洗，读作「换了一件东西」而不是「同一张纸成了卷」。 */
+    /* 账在**这里**登记（不是组件的 effect）：卷开合两窗的判据在渲染期跑，晚一帧就已被当成
+     * 普通摊开记进 played（见 isRiseVolume 头注）。beginMorph = 发号那一刻，早于任何渲染。 */
+    _riseVolume = String(sessionId);
+    _risePending = false;
+    set({ open: false, morph: { sessionId, sheetId: String(sessionId), box: null } });
     _morphTimer = setTimeout(() => {
       _morphTimer = null;
       get().dismiss();

@@ -33,6 +33,10 @@
 // 窗内重开 = **撤销退场**（不重挂）：元素同一个 key，`data-leaving` 一摘即回场，
 // 过渡按**当下值**掉头（CSS Transitions 的抢占语义——批 3b「半路掉头」实测的用法）；
 // 而落纸窗仍在 ⇒ 纸平平地淡回来（不重播一次完整落纸）。
+//
+// **出生即交接**（2026-11-15）：待题纸化成的那一卷不走「落纸」而走「落墨」——纸的淡出
+// 与它是同一个盒里同一张纸的交接（见 draft-sheet.css 化卷段）。`rise` 集合由壳层在装配期
+// 喂一个判据（`isRiseVolume`），它取代 `spread`、只留墨（卷首不落、块自 18px 落）。
 
 /** 卷开合窗长（ms）——**镜像 `--m-sheet`**（0.26s）；退场窗与落纸窗同长。改一处必改
  *  两处，由 `tests/motion-contract.test.ts` 的「跨窗口镜像同值」与 `--m-sheet` 对拍钉住。 */
@@ -55,13 +59,24 @@ export interface RegionMotionWindow<T> {
   spread: Map<string, number>;
   /** **已落过纸**的卷（冷启动整批 + 真播过的）——落纸窗只给「没落过且这帧真在视口里」的卷。 */
   played: Set<string>;
+  /** **出生即交接**的卷（2026-11-15 化卷批）：待题纸化成的那一卷。它的「纸从哪来」已由纸
+   *  自己那一窗讲完（纸在同一个盒里淡出）——再让它播一次纸淡入，交接窗里就是两片半透明的
+   *  纸叠着。这类卷**只落墨**（卷首与首块自 18px 落下），故不进 `spread` 窗、进 `rise`。 */
+  rise: Map<string, number>;
   /** 首帧整批算「已落纸」——冷启动/恢复工作区时满屏纸一起淡入会被读成一次闪
    *  （同 §15 批 1「块自己挪位」那条实机验收顾虑）；此后只有**用户驱动**的摊开落纸。 */
   primed: boolean;
 }
 
 export function createRegionMotionWindow<T>(): RegionMotionWindow<T> {
-  return { leaving: new Map(), lastLive: new Map(), spread: new Map(), played: new Set(), primed: false };
+  return {
+    leaving: new Map(),
+    lastLive: new Map(),
+    spread: new Map(),
+    played: new Set(),
+    rise: new Map(),
+    primed: false,
+  };
 }
 
 /**
@@ -87,11 +102,15 @@ export function regionOnScreen(topY: number, bottomY: number, viewY0: number, vi
  *   ④ 两个窗满 → 摘除。
  * 返回 `nextExpiry` = 最早到期时刻（调用方据此排一次重渲染把满窗的摘掉）；无窗 = null。
  */
+/** 一张卷是否「出生即交接」（待题纸化成的那一卷）——由壳层按交卷账判，见 use-paper-panel。 */
+export type RiseJudge = (sessionId: string) => boolean;
+
 export function stepRegionMotion<T extends { sessionId: string }>(
   win: RegionMotionWindow<T>,
   live: T[],
   visible: ReadonlySet<string>,
   now: number,
+  isRise: RiseJudge = () => false,
 ): { entered: T[]; nextExpiry: number | null } {
   const liveIds = new Set(live.map((r) => r.sessionId));
 
@@ -106,21 +125,33 @@ export function stepRegionMotion<T extends { sessionId: string }>(
     if (liveIds.has(sid) || win.leaving.has(sid)) continue;
     win.leaving.set(sid, { view, until: now + REGION_MOTION_MS });
     win.played.delete(sid);
+    win.rise.delete(sid);
     entered.push(view);
   }
 
   // ③ 首次**可见**的卷开落纸窗（首帧整批算已落纸——见 primed 注）
+  //    **出生即交接**的卷不进落纸窗，改记 `rise`：它的纸已在纸自己那一窗里讲过（见头注）。
   if (win.primed) {
     for (const r of live) {
       if (!visible.has(r.sessionId) || win.played.has(r.sessionId)) continue;
       win.played.add(r.sessionId);
+      if (isRise(r.sessionId)) {
+        win.rise.set(r.sessionId, now + REGION_MOTION_MS);
+        continue;
+      }
       win.spread.set(r.sessionId, now + REGION_MOTION_MS);
     }
   } else if (live.length > 0) {
     /* 冷启动/恢复：第一批量（非空）整批算「已落纸」。
-     * 空首帧不 prime——恢复是异步的，别把「第一批真数据」当成用户摊开。 */
+     * 空首帧不 prime——恢复是异步的，别把「第一批真数据」当成用户摊开。
+     * **例外 = 出生即交接**（2026-11-15 化卷批）：空工作区里落纸、化卷，那一卷就是**第一批**
+     * 的唯一成员——按「整批已落」吞掉的话它一个入场都没有（纸没了、卷早在那里）。故它照样
+     * 开落墨窗：这是冷启动，但它不是「恢复」，是**用户正在看着它出生**。 */
     win.primed = true;
-    for (const r of live) win.played.add(r.sessionId);
+    for (const r of live) {
+      win.played.add(r.sessionId);
+      if (visible.has(r.sessionId) && isRise(r.sessionId)) win.rise.set(r.sessionId, now + REGION_MOTION_MS);
+    }
   }
 
   // ④ 两窗统一摘除 + 记最早到期
@@ -138,6 +169,15 @@ export function stepRegionMotion<T extends { sessionId: string }>(
   for (const [sid, until] of win.spread) {
     if (until <= now) {
       win.spread.delete(sid);
+      continue;
+    }
+    track(until);
+  }
+  /* 落墨窗与落纸窗同长同摘：它只是「不淡纸、只落墨」那一档，摘的时机完全一样。
+   * **重开卷要重播**（同 spread 的 played 语义）：起纸时 rise 已摘，回场按当时判据重判。 */
+  for (const [sid, until] of win.rise) {
+    if (until <= now) {
+      win.rise.delete(sid);
       continue;
     }
     track(until);

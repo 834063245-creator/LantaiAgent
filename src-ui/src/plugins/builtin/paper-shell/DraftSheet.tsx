@@ -30,6 +30,7 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from 're
 import { type DraftSheetCore, draftPlacement, draftScale } from './draft-sheet';
 import {
   activeOverlayContributions,
+  draftSheetSeed,
   EMPTY_REGION_CONTENT_H,
   Icon,
   PluginBoundary,
@@ -41,7 +42,13 @@ import {
   usePresetStore,
 } from './host';
 import { measureFolioHeadHeight } from './measure';
+import { sheetCharacter } from './sheet';
 import './draft-sheet.css';
+
+/** 纸的纸性种子（出生面期）。**必须固定**：纸还不是卷，没有卷 id——用常量串取一套纹理，
+ *  开卷那一刻换成新卷 id（见 store 的 `draftSheetSeed`），交接窗里纸与卷就是同一张纸。
+ *  （随机种子会让每次开纸都是另一张纸——纸纹是材料身份，不是装饰。） */
+const SHEET_SEED = 'draft-sheet';
 
 export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
   const open = useDraftSheetStore((s) => s.open);
@@ -83,6 +90,15 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
   const [, setOverlayTick] = useState(0);
   useEffect(() => subscribeOverlayContributions(() => setOverlayTick((t) => t + 1)), []);
   const sheetOverlays = activeOverlayContributions('draft-sheet');
+
+  /* ── 交接期纸**停止实测**（2026-11-15 定帧实测的真病灶：抖）──
+   * 化卷那一刻发号 + 落位 + 首条来文一起进来：纸的 RO 仍按内容量高，而盒又已锁到卷的几何，
+   * 两条高在几帧内互相追（实测 552 → 425 → 552 的来回），读作「整页纸在地上抖两下」。
+   * 交接期盒由卷**单方面**决定（store 的 morph.box），RO 不再回写。 */
+  useEffect(() => {
+    if (!morph) return;
+    setSheetH(0); // 交出去：本件的实测高不再参与盒
+  }, [morph]);
 
   /* ── 落纸：首帧算锚点（视口中心最近的空位——与流区落位同一把尺子）── */
   useEffect(() => {
@@ -129,6 +145,9 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
   if (!open && morph === null) return null;
 
   const folioH = measureFolioHeadHeight('案卷', STREAM_REGION.width);
+  /* 纸性（2026-11-15 化卷批）：纸与卷**同一张纸**——同一张 paper-sheet 纹、同一套水洗。
+   * 出生面期 = 固定种子；交接期 = 新卷 id（store 的 draftSheetSeed）。 */
+  const sheet = sheetCharacter(draftSheetSeed(SHEET_SEED));
   const scale = draftScale(anchor?.width ?? STREAM_REGION.width);
   /* **纸高垫到「卷的最小盒高」**（2026-11-15 用户报「文字冲出题签背景」）：
    * 病灶 = 纸高由内容实测（输入面多高纸就多高），而卷的盒高恒 ≥
@@ -150,6 +169,10 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
    * 读作「这张纸成了那一卷」而不是「纸没了、别处冒出个卷」。
    * 宽的同一性由 draftPlacement 保证（都用 STREAM_REGION.width 与同一锚点）。 */
   const boxBottom = (anchor?.anchorY ?? 0) + REGION_FOOT_GAP;
+  /* **交接期锁盒**（2026-11-15 化卷批）：交接窗里盒由卷侧回填（store 的 morph.box）——
+   * 纸与卷同宽同锚点早已成立，但高度是各自内容撑的：卷落进首块后 552，纸实测 490，
+   * 不等就跳 62px。窗内一律用卷的盒，纸不自己长。 */
+  const morphBox = morph?.box ?? null;
 
   /* 交接期 = 纸**正在化卷**：嘴上仍是这张纸，但输入面已撤（不能再打字——那句已经发出去了），
    * 天头保留（Title/玉徽还在，读作「这张纸正在变成卷」而不是「纸没了」）。 */
@@ -165,17 +188,24 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
       style={
         anchor
           ? ({
-              left: anchor.anchorX - anchor.width / 2,
+              /* 交接期**整块**交给卷（2026-11-15）：左缘、宽、高、上缘全部取自 morph.box。
+                 只锁高度不够——纸的锚点与世界变换各自独立更新一帧，左缘还会错开半格。 */
+              left: morphBox ? morphBox.left : anchor.anchorX - anchor.width / 2,
+              width: morphBox ? morphBox.width : anchor.width,
               /* 纸以**锚点**为底线向上长（内容高随输入面变化，不写死）：
                  top = 锚点 − 实测高。首帧未测（sheetH=0）= 只画在锚点下方，
                  RO 一到即回填——**绝不用 translate: -100% 代替**：那会参与层叠/
                  纸纹对位（纸律：整叶不得声明 transform，见 base.css 注）。 */
               // 盒底 = 锚点 + 底距（与卷的纸脚同一个尺子）；盒高取「内容实测 vs 卷的最小盒高」
-              top: boxBottom - boxH,
-              width: anchor.width,
-              height: boxH,
+              // 交接期改用**卷的盒**（morphBox）：纸正在化成它，两件必须严丝合缝（见上注）
+              top: morphBox ? morphBox.top : boxBottom - boxH,
+              height: morphBox ? morphBox.height : boxH,
               // 卷首实测高（FOLIO_TOKENS 契约）——正文区按它下移，禁在 CSS 里手写数字
               '--draft-folio-h': `${folioH}px`,
+              // 纸性三参（真源 = sheet.ts）：与流区叶同名同义（见 .pp-region）
+              '--sheet-ox': `${sheet.ox}px`,
+              '--sheet-oy': `${sheet.oy}px`,
+              '--sheet-j': `${sheet.j}`,
             } as CSSProperties)
           : { visibility: 'hidden' }
       }
@@ -187,32 +217,35 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
             <Icon name="lantai" size={26} />
           </span>
           {/* 眉行「待题」而不是卷次：**卷号还没发**——这一行就是「纸还没成立」的机读断言 */}
-          <p className="pp-folio-eyebrow">{morphing ? '已交卷' : '待题 · 未开卷'}</p>
+          {/* 交接期**不改口**（2026-11-15 定帧实测）：改口 = 发送那一瞬天头一个字换成另一个字，
+              而整窗只有 260ms——字一换就落进「啪一下」那一类观感。纸照旧说「待题 · 未开卷」
+              到淡完为止：它表达的是**这张纸从没变过身份**，只是成了卷。 */}
+          <p className="pp-folio-eyebrow">待题 · 未开卷</p>
           <h2 className="pp-folio-title">
             案卷<span className="pp-draft-num">Nº</span>
           </h2>
-          <p className="pp-folio-sub">{morphing ? '纸正在化成卷' : '题签随首句落账 · 卷号于发送时发出'}</p>
+          <p className="pp-folio-sub">题签随首句落账 · 卷号于发送时发出</p>
         </div>
       </div>
 
       {/* 天头之下 = **这张卷的创作坞**（同一个组件，另一次挂载）。
           纸栈走流式、纸高随内容长——v1 按「绝对定位 + 手算每段 top」排，卷首一改高就压线。
-          ⚡ 交接期（morph）**输入面整块撤掉**：那一句已经发出去了，留着它只会让人
-          以为还能再发一次（而且它会吃掉坞的焦点）。天头保留 = 「纸正在变成卷」。 */}
-      {!morphing && (
-        <div className="pp-draft-stack">
-          {sheetOverlays.map((def) => (
-            <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
-              <def.component />
-            </PluginBoundary>
-          ))}
-          {notice && (
-            <div className="pp-draft-error" role="alert">
-              {notice}
-            </div>
-          )}
-        </div>
-      )}
+          ⚡ 交接期（morph）：**留着它、让它跟着纸一起退**（`.pp-draft-core-out`，显形档），
+          而不是当帧撤掉——当帧撤 = 发送那一瞬输入面凭空消失，纸却还整张在那儿（真机帧上
+          读作「啪一下」）。退场期 `pointer-events: none`（见 CSS）：那一句已经发出去了，
+          它不能再被点、也不该吃焦点，但它**不该凭空不见**。 */}
+      <div className="pp-draft-stack">
+        {sheetOverlays.map((def) => (
+          <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
+            <def.component />
+          </PluginBoundary>
+        ))}
+        {notice && (
+          <div className="pp-draft-error" role="alert">
+            {notice}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
