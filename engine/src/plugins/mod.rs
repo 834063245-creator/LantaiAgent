@@ -804,6 +804,21 @@ pub fn extensions_status() -> Value {
 
 #[cfg(test)]
 pub(crate) fn reset_for_tests() {
+    // 先回滚语法注册：manifest 的语言装载把扩展名写进了**进程级** GRAMMAR_LOADER
+    // （LazyLock，终身有效），而四张插件表清不掉它。不回滚 = 同一进程里第二个
+    // 装载同一 manifest 的用例必撞 `extension 'x' already registered`
+    //（实测：test_manifest_end_to_end 之后 test_examples_dir_manifests_parse 恒红）。
+    {
+        let exts: Vec<String> = LANGUAGE_ENTRIES
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .flat_map(|e| e.extensions.clone())
+            .collect();
+        if !exts.is_empty() {
+            crate::engine::GRAMMAR_LOADER.unregister_extensions(&exts);
+        }
+    }
     *LANGUAGE_ENTRIES.write().unwrap_or_else(|e| e.into_inner()) = Vec::new();
     *DATAFLOW_ENTRIES.write().unwrap_or_else(|e| e.into_inner()) = Vec::new();
     *FRAMEWORK_ENTRIES.write().unwrap_or_else(|e| e.into_inner()) = Vec::new();
@@ -1002,6 +1017,10 @@ mod tests {
 
     #[test]
     fn test_manifest_end_to_end() {
+        // 本用例会 engine_init（换全局 ENGINE 槽）+ engine_teardown_global，
+        // 必须与 shell::tests 等同样写全局槽的用例互斥——否则并行时会把对方
+        // 正在分析的引擎换掉，对方报「分析已取消（工作区已切换…）」。
+        let _guard = crate::engine::global_engine_test_guard();
         let base = std::env::temp_dir().join("hologram_test_plugins_e2e");
         let _ = std::fs::remove_dir_all(&base);
         let proj = base.join("proj");
@@ -1115,6 +1134,10 @@ mod tests {
 
     #[test]
     fn test_examples_dir_manifests_parse() {
+        // 本用例改插件全局表（load_from_dir 覆盖 LANGUAGE/DATAFLOW/FRAMEWORK/TOOL 四条），
+        // 与 test_manifest_end_to_end 写的是同一批静态表——必须串行，否则并行时
+        // 一方 reset 会把另一方刚装载的条目清掉。
+        let _global_guard = crate::engine::global_engine_test_guard();
         // 交付的示例扩展目录必须与解析器保持同步（防示例格式漂移成摆设）
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -1133,5 +1156,8 @@ mod tests {
             "loaded: {:?}",
             outcome.state.loaded
         );
+        // 收尾：本用例把示例清单的扩展名写进了进程级 GRAMMAR_LOADER，必须回滚，
+        // 否则同进程后续任何装载同一批 manifest 的用例都会撞 already registered。
+        reset_for_tests();
     }
 }

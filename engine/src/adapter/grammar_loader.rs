@@ -123,6 +123,18 @@ impl GrammarLoader {
             .insert(lang_key.to_string(), grammar);
     }
 
+    /// 注销 manifest 注册的扩展名（**仅测试用**：进程级 loader 是 LazyLock，
+    /// 一旦注册就终身占用；测试之间必须能回滚，否则第二个用例必撞
+    /// `extension already registered`）。只动 loaded，不动 available
+    ///（available 是磁盘扫描面，测试不改它）。
+    #[cfg(test)]
+    pub fn unregister_extensions(&self, extensions: &[String]) {
+        let mut loaded = self.loaded.write().unwrap_or_else(|e| e.into_inner());
+        for ext in extensions {
+            loaded.remove(ext);
+        }
+    }
+
     /// 扩展名是否已被占用（loaded ∪ available）——manifest 装载期冲突检查。
     pub fn is_extension_registered(&self, ext: &str) -> bool {
         if self

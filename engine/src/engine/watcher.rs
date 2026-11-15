@@ -428,10 +428,31 @@ impl Engine {
     /// 增量漂移重算阈值：默认 10 次增量后自动全量重分析，
     /// 可用 HOLOGRAM_INCR_FULL_REANALYZE 覆盖，0 = 禁用。
     pub fn full_reanalyze_threshold() -> u64 {
-        std::env::var("HOLOGRAM_INCR_FULL_REANALYZE")
+        if let Some(v) = std::env::var("HOLOGRAM_INCR_FULL_REANALYZE")
             .ok()
             .and_then(|v| v.trim().parse::<u64>().ok())
-            .unwrap_or(10)
+        {
+            return v;
+        }
+        // ⚠ 测试进程默认禁用「增量漂移 → 自动全量重分析」（2026-11-15）。
+        //
+        // 根因：lib 测试的临时目录会被反复写入，watcher 观测到变更就进
+        // `handle_watcher_changes`，累计漂移满 10 次即升级成全量重分析 —— 与测试
+        // **自己**的 `analyze` 抢同一把 `analyze_lock`。而 `stop_watcher` 只等 2s
+        // 就分离线程（见其文档），孤儿线程仍持锁 ⇒ 整批持全局引擎锁的测试
+        // （shell / flows）永久阻塞、进程 CPU 完全静止。
+        // 实测：626 用例并行跑，6 轮挂 3 轮。
+        //
+        // 只关「升级」这一条：watcher 照常起、照常记事件、照常做增量更新
+        //（`test_engine_workspace_switch_is_new_instance` 依赖它真的在跑）。
+        #[cfg(test)]
+        {
+            0
+        }
+        #[cfg(not(test))]
+        {
+            10
+        }
     }
 
     /// 漂移达标且没有正在进行的分析 → 应触发全量重分析。

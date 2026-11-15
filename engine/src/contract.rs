@@ -149,6 +149,10 @@
 /// 输出形态 / 壳方法清单 / 开关语义一律照旧，消费方无需跟改。本版登记的只是
 /// 契约面文件的**排版**变更：rustfmt 把 8 个契约面载体里的长行拆行、结构体字面量
 /// 展平、`use` 分组重排，内容语义逐字节未动（指纹算法按内容算，排版即变更）。
+///   同批（未发版前）另有**测试隔离**改动落在契约面载体里，同样不动模型可见面：
+///   `adapter/grammar_loader.rs` 增 `#[cfg(test)] unregister_extensions`（进程级
+///   语法表要能在测试间回滚），`plugins/mod.rs` 的 `reset_for_tests` 补语法回滚 +
+///   examples/manifest 两个用例加全局引擎锁。
 ///   为什么仍要升版：指纹 guard 的判据是「契约面文件 → 指纹」，它不区分改动是
 ///   语义还是排版——这个设计是对的（任何内容变动都该经过一次显式确认），所以这里
 ///   按纪律走完整流程，而不是给 guard 开例外。
@@ -177,7 +181,7 @@ pub const ENGINE_CONTRACT_FILES: &[&str] = &[
 /// 实现细节：换行归一（CRLF→LF）——工作树 EOL 因 `.gitattributes` 归一而可能
 /// 与索引不同，指纹必须跟着**仓库内容**走；contract.rs 自身在哈希前剔除本行
 /// （自指），其余内容照常参与。
-pub const CONTRACT_FACE_FINGERPRINT: &str = "7861dec69aabbb8a";
+pub const CONTRACT_FACE_FINGERPRINT: &str = "ef102b9124b672ff";
 
 /// 壳专属方法参数（最小形状；Phase 1 接线时并入 dispatch）。
 pub struct ShellParam {

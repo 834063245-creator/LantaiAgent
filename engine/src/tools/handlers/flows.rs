@@ -330,17 +330,23 @@ mod tests {
     use crate::engine::engine_init;
     use crate::tools::handlers::handler_explore;
 
-    fn init_tmp_project(name: &str) -> std::path::PathBuf {
+    /// 全局 ENGINE 槽的测试互斥锁。**只要本测试模块会 engine_init / teardown
+    /// 全局槽，就必须拿它**——否则并行跑时会把 shell::tests 等模块正在分析的
+    /// 引擎换掉，对方在 analyze 里报「分析已被新的重分析请求取消」或直接挂死。
+    ///
+    /// 这把锁的持有者是 engine::global_engine_test_guard（同一把，跨模块共享）。
+    fn init_tmp_project(name: &str) -> (std::path::PathBuf, std::sync::MutexGuard<'static, ()>) {
+        let guard = crate::engine::global_engine_test_guard();
         let tmp = std::env::temp_dir().join(name);
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         engine_init(&tmp).unwrap();
-        tmp
+        (tmp, guard)
     }
 
     #[test]
     fn explore_requires_symbols_or_query() {
-        let _ = init_tmp_project("hologram_test_explore_degraded");
+        let (_tmp, _guard) = init_tmp_project("hologram_test_explore_degraded");
         match handler_explore(&json!({})) {
             ToolResponse::Degraded { guidance, .. } => {
                 assert!(!guidance.is_empty());
@@ -351,7 +357,7 @@ mod tests {
 
     #[test]
     fn explore_nl_query_without_vector_index_skips_silently() {
-        let _ = init_tmp_project("hologram_test_explore_noidx");
+        let (_tmp, _guard) = init_tmp_project("hologram_test_explore_noidx");
         // 空项目无向量索引 → merge_vector_hits 即发即忘：
         // 主结构完整、不注入 vector 字段、不报错。
         let resp = handler_explore(&json!({
