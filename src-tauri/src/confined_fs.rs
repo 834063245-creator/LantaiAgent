@@ -679,8 +679,12 @@ mod tests {
         );
     }
 
+    /// 夹具树**不能落在 `std::env::temp_dir()`**：`.cargo/config.toml` 把 TEMP/TMP 指到
+    /// `target/`，夹具会落进 `target/confined_fs_*`，而被测的 `glob_entries()` 排除名单
+    /// 恰好含 `/target/` ⇒ 测试树被自己的过滤规则滤掉（glob 恒空）。改落仓库根 `.tmp-test/`。
     fn make_tree(tag: &str) -> std::path::PathBuf {
-        let tmp = std::env::temp_dir().join(format!("confined_fs_{tag}_{}", std::process::id()));
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(".tmp-test");
+        let tmp = root.join(format!("confined_fs_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(tmp.join("sub")).unwrap();
         std::fs::create_dir_all(tmp.join(".git")).unwrap();

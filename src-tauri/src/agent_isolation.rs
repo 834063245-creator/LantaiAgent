@@ -583,13 +583,20 @@ mod tests {
         assert_eq!(result, input); // 已在 worktree 中，不变
     }
 
+    /// run_git 不许吞掉 git 失败（宪法第三条：错误不静默）——只把退出码 0/1 当成功
+    /// （diff 有差异 = 1），>= 2 一律 Err。
+    ///
+    /// ⚠ **原版用「非仓库目录」造失败，2026-11-15 起在本仓恒红**：`.cargo/config.toml`
+    /// 的 `[env]` 把 `TEMP/TMP` 强制指到 `target/`（在仓库树内），git 从那个目录向上
+    /// 找到仓库自己的 `.git` ⇒ 它根本不是「非仓库目录」，`git status` 退出码 0。
+    /// 病根是**夹具位置**不是被测行为，所以换一条同样退出 128、但不依赖 repo 归属的
+    /// 失败：`rev-parse --verify <不存在的 ref>`（在任何目录、任何仓库里都 128）。
     #[test]
-    fn test_run_git_errors_on_non_repo() {
-        // git status 在非仓库目录退出码为 128 → run_git 应返回 Err
-        let tmp = std::env::temp_dir().join("hologram_test_nonrepo");
+    fn test_run_git_errors_on_git_failure() {
+        let tmp = std::env::temp_dir().join("hologram_test_revparse_fail");
         let _ = std::fs::create_dir_all(&tmp);
-        let result = run_git(&tmp, &["status"]);
-        assert!(result.is_err(), "git status on non-repo should error");
+        let result = run_git(&tmp, &["rev-parse", "--verify", "no-such-ref-lantai-test"]);
+        assert!(result.is_err(), "git 退出码 >= 2 必须变成 Err");
         let _ = std::fs::remove_dir(&tmp);
     }
 

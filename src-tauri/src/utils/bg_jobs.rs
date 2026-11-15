@@ -14,9 +14,8 @@
 // `SETTLED_HISTORY`（只留投影 + 输出尾巴 + 日志路径），役册行因此不会凭空消失。
 
 use std::collections::{HashMap, VecDeque};
-use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tauri::Emitter;
@@ -24,15 +23,12 @@ use tauri::Emitter;
 use crate::os_sandbox;
 use crate::utils::build_lock::{BUILD_LOCKS, LockKey};
 use crate::utils::ipc_guard::lock_or_recover;
+use crate::utils::stream_ring::{BgSharedOutput, StreamRing};
 
 // ═══════════════════════════════════════════════════════
 // 常量
 // ═══════════════════════════════════════════════════════
 
-/// 单流内存环上限（UTF-8 字节）。
-const MAX_SHARED_OUTPUT_BYTES: usize = 1024 * 1024;
-/// 单 job 单流全量日志上限；超过后停止落盘（内存环照常滚动）。
-const MAX_SPILL_BYTES: u64 = 256 * 1024 * 1024;
 /// 「已结算但模型还没读」的 job 保留上限；超出把最旧迁入历史。
 const MAX_SETTLED_UNREAD: usize = 50;
 /// 已结算历史保留条数。
@@ -42,7 +38,7 @@ const SETTLED_TAIL_BYTES: usize = 64 * 1024;
 /// 通知队列上限：owner 已消亡的通知永远不会被 drain，防无界增长。
 const MAX_COMPLETED_NOTES: usize = 200;
 /// 停滞检测阈值 — 超过此时长无输出则触发警告。
-const STALL_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(300);
+pub(crate) const STALL_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(300);
 
 // ═══════════════════════════════════════════════════════
 // job 状态
@@ -71,193 +67,6 @@ impl JobStatus {
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// 输出环（每流一个）：有界内存 + 绝对偏移 + 全量日志
-// ═══════════════════════════════════════════════════════
-
-struct RingInner {
-    buf: Vec<u8>,
-    /// 累计写入字节（= 下一个块的绝对偏移）。
-    total: u64,
-    /// 头部已丢弃字节（= 最老保留字节的绝对偏移）。
-    dropped: u64,
-}
-
-/// 单条流的输出环。`push` 由 drain 线程调用；`read_from` 给观察者（非消费）；
-/// 模型侧仍用 StreamDecoder + 自己的游标（见 BgJob）。
-pub(crate) struct StreamRing {
-    inner: Mutex<RingInner>,
-    spill: Mutex<Option<std::fs::File>>,
-    spill_path: Option<PathBuf>,
-    spill_written: AtomicU64,
-    spill_stopped: AtomicBool,
-}
-
-/// 一次观察者读取的结果（绝对偏移语义）。
-pub(crate) struct StreamRead {
-    pub text: String,
-    /// 下一次读取的绝对偏移（落在完整字符边界上；尾部半截序列留待下次）。
-    pub next: u64,
-    /// `from` 早于最老保留字节 ⇒ 中间有字节已丢失。
-    pub lossy: bool,
-    pub earliest: u64,
-    pub total: u64,
-}
-
-impl Default for StreamRing {
-    fn default() -> Self {
-        Self::plain()
-    }
-}
-
-impl StreamRing {
-    fn plain() -> Self {
-        Self {
-            inner: Mutex::new(RingInner { buf: Vec::new(), total: 0, dropped: 0 }),
-            spill: Mutex::new(None),
-            spill_path: None,
-            spill_written: AtomicU64::new(0),
-            spill_stopped: AtomicBool::new(false),
-        }
-    }
-
-    /// 带全量日志落盘的环。
-    pub(crate) fn with_spill(path: PathBuf) -> Self {
-        Self { spill_path: Some(path), ..Self::plain() }
-    }
-
-    pub(crate) fn spill_path(&self) -> Option<&PathBuf> {
-        self.spill_path.as_ref()
-    }
-
-    /// 追加一块原始字节：先落盘（best-effort），再进有界环。
-    pub(crate) fn push(&self, bytes: &[u8]) {
-        if bytes.is_empty() {
-            return;
-        }
-        self.write_spill(bytes);
-        let mut inner = lock_or_recover(&self.inner);
-        inner.total += bytes.len() as u64;
-        inner.buf.extend_from_slice(bytes);
-        if inner.buf.len() > MAX_SHARED_OUTPUT_BYTES {
-            let drop = inner.buf.len() - MAX_SHARED_OUTPUT_BYTES;
-            inner.buf.drain(..drop);
-            inner.dropped += drop as u64;
-        }
-    }
-
-    /// (总写入字节, 最老保留偏移)。
-    pub(crate) fn coords(&self) -> (u64, u64) {
-        let inner = lock_or_recover(&self.inner);
-        (inner.total, inner.dropped)
-    }
-
-    /// 观察者读取：从绝对偏移 `from` 读到当前末尾，**不消费任何东西**。
-    pub(crate) fn read_from(&self, from: u64) -> StreamRead {
-        let inner = lock_or_recover(&self.inner);
-        let total = inner.total;
-        let earliest = inner.dropped;
-        if from >= total {
-            return StreamRead { text: String::new(), next: total, lossy: false, earliest, total };
-        }
-        let (start, lossy) = if from < earliest {
-            (0usize, true)
-        } else {
-            ((from - earliest) as usize, false)
-        };
-        let buf = &inner.buf;
-        let mut start = start.min(buf.len());
-        // 起点落在某个多字节字符中间时，跳到下一个字符起点（不产出半个字）。
-        while start < buf.len() && (buf[start] & 0xC0) == 0x80 {
-            start += 1;
-        }
-        let (text, consumed) = decode_prefix(&buf[start..]);
-        StreamRead {
-            text,
-            next: earliest + start as u64 + consumed as u64,
-            lossy,
-            earliest,
-            total,
-        }
-    }
-
-    /// 模型终读用：整段缓冲区（与 2026-08 起的行为一致）。
-    pub(crate) fn decode_all(&self) -> String {
-        let inner = lock_or_recover(&self.inner);
-        crate::utils::decode_shell_bytes(&inner.buf)
-    }
-
-    /// 历史记录用：保留最后 `cap` 字节的文本 + 其绝对起点。
-    pub(crate) fn tail_text(&self, cap: usize) -> (String, u64) {
-        let inner = lock_or_recover(&self.inner);
-        let buf = &inner.buf;
-        if buf.len() <= cap {
-            return (crate::utils::decode_shell_bytes(buf), inner.total - buf.len() as u64);
-        }
-        let mut start = buf.len() - cap;
-        while start < buf.len() && (buf[start] & 0xC0) == 0x80 {
-            start += 1;
-        }
-        (crate::utils::decode_shell_bytes(&buf[start..]), inner.total - (buf.len() - start) as u64)
-    }
-
-    fn write_spill(&self, bytes: &[u8]) {
-        let Some(path) = &self.spill_path else { return };
-        if self.spill_stopped.load(Ordering::Relaxed) {
-            return;
-        }
-        let written = self.spill_written.load(Ordering::Relaxed);
-        if written + bytes.len() as u64 > MAX_SPILL_BYTES {
-            self.spill_stopped.store(true, Ordering::Relaxed);
-            return;
-        }
-        let mut guard = lock_or_recover(&self.spill);
-        if guard.is_none() {
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            match std::fs::OpenOptions::new().create(true).append(true).open(path) {
-                Ok(f) => *guard = Some(f),
-                Err(_) => {
-                    self.spill_stopped.store(true, Ordering::Relaxed);
-                    return;
-                }
-            }
-        }
-        if let Some(f) = guard.as_mut() {
-            if f.write_all(bytes).is_ok() {
-                self.spill_written.fetch_add(bytes.len() as u64, Ordering::Relaxed);
-            } else {
-                self.spill_stopped.store(true, Ordering::Relaxed);
-            }
-        }
-    }
-}
-
-/// 解码一段以字符边界开头的字节：尾部不完整的多字节序列留待下次；
-/// 确定是 GBK 之类的非 UTF-8 流则整段转码。
-fn decode_prefix(bytes: &[u8]) -> (String, usize) {
-    match std::str::from_utf8(bytes) {
-        Ok(s) => (s.to_string(), bytes.len()),
-        Err(e) => {
-            if e.error_len().is_none() {
-                let valid = e.valid_up_to();
-                (String::from_utf8_lossy(&bytes[..valid]).into_owned(), valid)
-            } else {
-                (crate::utils::decode_shell_bytes(bytes), bytes.len())
-            }
-        }
-    }
-}
-
-/// 共享输出缓冲区。drain 线程写入；读方只碰内存环，永不阻塞读管道（P1-17）。
-#[derive(Clone, Default)]
-pub(crate) struct BgSharedOutput {
-    pub stdout: Arc<StreamRing>,
-    pub stderr: Arc<StreamRing>,
-    /// drain 线程完成计数：0=none, 1=stdout, 2=stderr, 3=both。
-    pub drain_done: Arc<AtomicUsize>,
-}
 
 // ═══════════════════════════════════════════════════════
 // job 记录
@@ -266,19 +75,19 @@ pub(crate) struct BgSharedOutput {
 pub(crate) struct BgJob {
     pub(crate) child: os_sandbox::SandboxedChild,
     /// 模型侧"已交付给 bash_output 的绝对字节偏移"（消费式游标）。
-    stdout_cursor: u64,
-    stderr_cursor: u64,
+    pub(crate) stdout_cursor: u64,
+    pub(crate) stderr_cursor: u64,
     /// 常驻增量解码器 — 跨 read 边界保持 UTF-8/GBK 解码状态。
-    stdout_decoder: crate::utils::StreamDecoder,
-    stderr_decoder: crate::utils::StreamDecoder,
-    start_time: std::time::Instant,
+    pub(crate) stdout_decoder: crate::utils::StreamDecoder,
+    pub(crate) stderr_decoder: crate::utils::StreamDecoder,
+    pub(crate) start_time: std::time::Instant,
     /// epoch ms — 投影给 UI 的绝对时刻（Instant 序列化不出来）。
-    started_ms: u64,
-    label: String,
-    kind: String,
-    last_output_time: std::time::Instant,
+    pub(crate) started_ms: u64,
+    pub(crate) label: String,
+    pub(crate) kind: String,
+    pub(crate) last_output_time: std::time::Instant,
     /// 共享输出缓冲区（必有）：读方只碰内存环，永不阻塞。
-    shared: BgSharedOutput,
+    pub(crate) shared: BgSharedOutput,
     /// 任务发起者：Some(agent_id)=Agent 发起；None=用户/UI 直接发起。
     pub(crate) owner: Option<String>,
     /// 本 job 持有的构建锁（若有）— 随 job 移除时自动释放。
@@ -293,34 +102,34 @@ pub(crate) static BG_JOBS: std::sync::LazyLock<Arc<Mutex<HashMap<u32, BgJob>>>> 
     std::sync::LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// 已结算、已离开 ledger 的 job 历史（投影 + 输出尾巴 + 日志路径）。
-struct SettledRecord {
-    id: u32,
-    kind: String,
-    label: String,
-    owner: Option<String>,
-    status: JobStatus,
-    exit_code: Option<i32>,
-    detail: Option<String>,
-    started_ms: u64,
-    finished_ms: u64,
-    stdout_total: u64,
-    stderr_total: u64,
-    stdout_tail: String,
-    stdout_tail_start: u64,
-    stderr_tail: String,
-    stderr_tail_start: u64,
-    stdout_spill: Option<PathBuf>,
-    stderr_spill: Option<PathBuf>,
+pub(crate) struct SettledRecord {
+    pub(crate) id: u32,
+    pub(crate) kind: String,
+    pub(crate) label: String,
+    pub(crate) owner: Option<String>,
+    pub(crate) status: JobStatus,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) detail: Option<String>,
+    pub(crate) started_ms: u64,
+    pub(crate) finished_ms: u64,
+    pub(crate) stdout_total: u64,
+    pub(crate) stderr_total: u64,
+    pub(crate) stdout_tail: String,
+    pub(crate) stdout_tail_start: u64,
+    pub(crate) stderr_tail: String,
+    pub(crate) stderr_tail_start: u64,
+    pub(crate) stdout_spill: Option<PathBuf>,
+    pub(crate) stderr_spill: Option<PathBuf>,
 }
 
-static SETTLED_HISTORY: std::sync::LazyLock<Mutex<VecDeque<SettledRecord>>> =
+pub(crate) static SETTLED_HISTORY: std::sync::LazyLock<Mutex<VecDeque<SettledRecord>>> =
     std::sync::LazyLock::new(|| Mutex::new(VecDeque::new()));
 
 static NEXT_JOB_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 /// 单条后台通知 — 携带发起者（job owner）实现按 agent 路由投递。
 pub(crate) struct BgNote {
-    pub(crate) owner: Option<String>,
+    owner: Option<String>,
     pub(crate) text: String,
 }
 
@@ -730,7 +539,7 @@ pub(crate) fn register_fg_child(
 fn read_increment(job: &mut BgJob) -> (String, String, Vec<String>) {
     let mut notes = Vec::new();
 
-    let (out_bytes, out_next, out_lossy) = read_raw_abs(&job.shared.stdout, job.stdout_cursor);
+    let (out_bytes, out_next, out_lossy) = job.shared.stdout.raw_from(job.stdout_cursor);
     if out_lossy {
         notes.push("[stdout 输出有丢失：超出滚动缓冲被丢弃]".to_string());
         job.stdout_decoder = crate::utils::StreamDecoder::new();
@@ -738,7 +547,7 @@ fn read_increment(job: &mut BgJob) -> (String, String, Vec<String>) {
     let out_text = job.stdout_decoder.push(&out_bytes);
     job.stdout_cursor = out_next;
 
-    let (err_bytes, err_next, err_lossy) = read_raw_abs(&job.shared.stderr, job.stderr_cursor);
+    let (err_bytes, err_next, err_lossy) = job.shared.stderr.raw_from(job.stderr_cursor);
     if err_lossy {
         notes.push("[stderr 输出有丢失：超出滚动缓冲被丢弃]".to_string());
         job.stderr_decoder = crate::utils::StreamDecoder::new();
@@ -749,24 +558,6 @@ fn read_increment(job: &mut BgJob) -> (String, String, Vec<String>) {
     (out_text, err_text, notes)
 }
 
-/// 取 [from, total) 的原始字节；from 早于最老保留字节时给整段并报 lossy。
-/// 注意：模型游标是精确字节偏移（可能停在多字节字符中间，由 StreamDecoder 持有残余），
-/// 这里**不得**对齐到字符边界——对齐会丢掉补齐用的续字节（实测会把「中」解成 GBK 乱码）。
-fn read_raw_abs(ring: &StreamRing, from: u64) -> (Vec<u8>, u64, bool) {
-    let inner = lock_or_recover(&ring.inner);
-    let total = inner.total;
-    let earliest = inner.dropped;
-    if from >= total {
-        return (Vec::new(), total, false);
-    }
-    let (start, lossy) = if from < earliest {
-        (0usize, true)
-    } else {
-        ((from - earliest) as usize, false)
-    };
-    let start = start.min(inner.buf.len());
-    (inner.buf[start..].to_vec(), total, lossy)
-}
 
 pub(crate) fn read_bg_output(id: u32) -> Result<String, String> {
     // 先看是否已完成；若已完成，先等 drain 收尾再读最终输出（不持锁等待）。
@@ -1017,448 +808,7 @@ pub(crate) fn drain_bg_notifications(agent_id: Option<&str>) -> String {
     mine
 }
 
-// ═══════════════════════════════════════════════════════
-// 观测面（非消费）：名册 + 按偏移读取
-// ═══════════════════════════════════════════════════════
-
-fn ring_coords(ring: &StreamRing) -> (u64, u64) {
-    ring.coords()
-}
-
-fn spill_json(path: Option<&PathBuf>) -> serde_json::Value {
-    match path {
-        Some(p) => serde_json::Value::String(p.display().to_string()),
-        None => serde_json::Value::Null,
-    }
-}
-
-fn job_projection(id: u32, job: &BgJob) -> serde_json::Value {
-    let (out_total, out_earliest) = ring_coords(&job.shared.stdout);
-    let (err_total, err_earliest) = ring_coords(&job.shared.stderr);
-    serde_json::json!({
-        "id": id,
-        "kind": job.kind,
-        "label": job.label,
-        "owner": job.owner,
-        "status": job.status.as_str(),
-        "startedAt": job.started_ms,
-        "finishedAt": job.finished_ms,
-        "exitCode": job.exit_code,
-        "detail": job.detail,
-        "stalled": job.status == JobStatus::Running
-            && job.last_output_time.elapsed() > STALL_THRESHOLD,
-        "output": {
-            "stdout": { "total": out_total, "earliest": out_earliest },
-            "stderr": { "total": err_total, "earliest": err_earliest },
-            "spill": {
-                "stdout": spill_json(job.shared.stdout.spill_path()),
-                "stderr": spill_json(job.shared.stderr.spill_path()),
-            }
-        }
-    })
-}
-
-fn history_projection(rec: &SettledRecord) -> serde_json::Value {
-    serde_json::json!({
-        "id": rec.id,
-        "kind": rec.kind,
-        "label": rec.label,
-        "owner": rec.owner,
-        "status": rec.status.as_str(),
-        "startedAt": rec.started_ms,
-        "finishedAt": rec.finished_ms,
-        "exitCode": rec.exit_code,
-        "detail": rec.detail,
-        "stalled": false,
-        "output": {
-            "stdout": { "total": rec.stdout_total, "earliest": rec.stdout_tail_start },
-            "stderr": { "total": rec.stderr_total, "earliest": rec.stderr_tail_start },
-            "spill": {
-                "stdout": spill_json(rec.stdout_spill.as_ref()),
-                "stderr": spill_json(rec.stderr_spill.as_ref()),
-            }
-        }
-    })
-}
-
-/// 名册：在役 + 已结算（含已归档历史）。纯读，不做任何消费。
-pub(crate) fn job_list() -> Vec<serde_json::Value> {
-    let mut out: Vec<serde_json::Value> = Vec::new();
-    {
-        let jobs = lock_or_recover(&BG_JOBS);
-        for (id, job) in jobs.iter() {
-            out.push(job_projection(*id, job));
-        }
-    }
-    {
-        let history = lock_or_recover(&SETTLED_HISTORY);
-        for rec in history.iter() {
-            out.push(history_projection(rec));
-        }
-    }
-    out.sort_by_key(|v| v["id"].as_u64().unwrap_or(0));
-    out
-}
-
-/// 从历史尾巴里按绝对偏移读（`tail_start` 之前的部分已丢失，如实标 lossy）。
-fn read_tail(tail: &str, tail_start: u64, total: u64, from: u64) -> serde_json::Value {
-    let lossy = from < tail_start;
-    let (text, next) = if from >= total {
-        (String::new(), total)
-    } else if lossy {
-        (tail.to_string(), total)
-    } else {
-        let skip = (from - tail_start) as usize;
-        let bytes = tail.as_bytes();
-        let mut start = skip.min(bytes.len());
-        while start < bytes.len() && (bytes[start] & 0xC0) == 0x80 {
-            start += 1;
-        }
-        (String::from_utf8_lossy(&bytes[start..]).into_owned(), total)
-    };
-    serde_json::json!({ "text": text, "next": next, "lossy": lossy })
-}
-
-/// 观测读取：从两个绝对偏移读各自新增的字节，不消费、不惊动模型。
-pub(crate) fn job_read_at(id: u32, stdout_from: u64, stderr_from: u64) -> Result<String, String> {
-    {
-        let jobs = lock_or_recover(&BG_JOBS);
-        if let Some(job) = jobs.get(&id) {
-            let so = job.shared.stdout.read_from(stdout_from);
-            let se = job.shared.stderr.read_from(stderr_from);
-            return Ok(serde_json::json!({
-                "stdout": { "text": so.text, "next": so.next, "lossy": so.lossy },
-                "stderr": { "text": se.text, "next": se.next, "lossy": se.lossy },
-                "total": { "stdout": so.total, "stderr": se.total },
-                "earliest": { "stdout": so.earliest, "stderr": se.earliest },
-            })
-            .to_string());
-        }
-    }
-    let history = lock_or_recover(&SETTLED_HISTORY);
-    if let Some(rec) = history.iter().find(|r| r.id == id) {
-        return Ok(serde_json::json!({
-            "stdout": read_tail(&rec.stdout_tail, rec.stdout_tail_start, rec.stdout_total, stdout_from),
-            "stderr": read_tail(&rec.stderr_tail, rec.stderr_tail_start, rec.stderr_total, stderr_from),
-            "total": { "stdout": rec.stdout_total, "stderr": rec.stderr_total },
-            "earliest": { "stdout": rec.stdout_tail_start, "stderr": rec.stderr_tail_start },
-        })
-        .to_string());
-    }
-    Err(format!("后台任务不存在: {id}"))
-}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    static BUILD_LOCK_TESTS: Mutex<()> = Mutex::new(());
-
-    /// 测试互斥锁容忍中毒：某个用例断言失败时，其余用例继续跑（否则级联 PoisonError 掩盖真因）。
-    fn serial() -> std::sync::MutexGuard<'static, ()> {
-        BUILD_LOCK_TESTS.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    /// 手工构造 job（无真实进程）：直接操作共享环模拟 drain 线程写入。
-    fn make_idle_job(tag: &str) -> u32 {
-        let id = next_job_id();
-        let child = crate::os_sandbox::spawn_shell(&format!("sleep 30 # {tag}"), ".")
-            .expect("spawn_shell failed");
-        register_fg_child(id, child, tag, BgSharedOutput::default(), None, None);
-        id
-    }
-
-    fn push_shared(id: u32, stream: &str, bytes: &[u8]) {
-        let jobs = lock_or_recover(&BG_JOBS);
-        let job = jobs.get(&id).expect("job exists");
-        if stream == "out" {
-            job.shared.stdout.push(bytes);
-        } else {
-            job.shared.stderr.push(bytes);
-        }
-    }
-
-    fn clear_history() {
-        lock_or_recover(&SETTLED_HISTORY).clear();
-    }
-
-    #[test]
-    fn read_bg_output_returns_only_increment() {
-        let _g = serial();
-        clear_history();
-        let id = make_idle_job("inc");
-        push_shared(id, "out", b"first chunk\n");
-        let r1 = read_bg_output(id).expect("read 1");
-        assert!(r1.contains("first chunk"), "r1: {r1}");
-        assert!(r1.contains("任务运行中"), "r1: {r1}");
-
-        let r2 = read_bg_output(id).expect("read 2");
-        assert!(!r2.contains("first chunk"), "旧输出不得重复下发: {r2}");
-
-        push_shared(id, "out", b"second chunk\n");
-        let r3 = read_bg_output(id).expect("read 3");
-        assert!(r3.contains("second chunk"), "r3: {r3}");
-        assert!(!r3.contains("first chunk"), "r3 不得重发旧输出: {r3}");
-
-        kill_bg(id, None).ok();
-    }
-
-    #[test]
-    fn read_bg_output_incremental_multibyte_across_reads() {
-        let _g = serial();
-        clear_history();
-        let id = make_idle_job("mb");
-        push_shared(id, "out", &b"\xe4\xb8"[..]);
-        let r1 = read_bg_output(id).expect("read 1");
-        assert!(!r1.contains('\u{fffd}'), "跨块不得出 U+FFFD: {r1}");
-        push_shared(id, "out", b"\xad ok\n");
-        let r2 = read_bg_output(id).expect("read 2");
-        assert!(r2.contains("中 ok"), "补齐后应产出完整字: {r2}");
-        kill_bg(id, None).ok();
-    }
-
-    #[test]
-    fn read_bg_output_reports_lost_on_ring_overwrite() {
-        let _g = serial();
-        clear_history();
-        let id = make_idle_job("lost");
-        let big = vec![b'x'; MAX_SHARED_OUTPUT_BYTES + 4096];
-        push_shared(id, "out", &big);
-        // 游标落在已淘汰区（< dropped）→ 必须报 lost 并对齐
-        {
-            let mut jobs = lock_or_recover(&BG_JOBS);
-            let job = jobs.get_mut(&id).expect("job");
-            job.stdout_cursor = 10;
-        }
-        let r = read_bg_output(id).expect("read");
-        assert!(r.contains("输出有丢失"), "环形丢弃必须报 lost: {r}");
-        kill_bg(id, None).ok();
-    }
-
-    // ── 观测面：非消费读 / 绝对偏移 / 结算保留 ──
-
-    #[test]
-    fn read_at_is_non_consuming() {
-        let _g = serial();
-        clear_history();
-        let id = make_idle_job("obs");
-        push_shared(id, "out", b"hello-observable\n");
-        let a = job_read_at(id, 0, 0).expect("read at 1");
-        let b = job_read_at(id, 0, 0).expect("read at 2");
-        assert_eq!(a, b, "同一偏移两次观测必须一致（非消费）");
-        // 模型读仍能拿到全部内容
-        let model = read_bg_output(id).expect("model read");
-        assert!(model.contains("hello-observable"), "模型读被观测读吃掉: {model}");
-        kill_bg(id, None).ok();
-    }
-
-    #[test]
-    fn read_at_reports_absolute_offsets_and_loss() {
-        let _g = serial();
-        clear_history();
-        let id = make_idle_job("abs");
-        push_shared(id, "out", b"0123456789");
-        let r: serde_json::Value =
-            serde_json::from_str(&job_read_at(id, 4, 0).expect("read")).expect("json");
-        assert_eq!(r["stdout"]["text"], "456789");
-        assert_eq!(r["stdout"]["next"], 10);
-        assert_eq!(r["total"]["stdout"], 10);
-
-        // 超限写入 → 头部淘汰；从 0 读必须 lossy
-        let big = vec![b'z'; MAX_SHARED_OUTPUT_BYTES + 1024];
-        push_shared(id, "out", &big);
-        let r2: serde_json::Value =
-            serde_json::from_str(&job_read_at(id, 0, 0).expect("read2")).expect("json");
-        assert_eq!(r2["stdout"]["lossy"], true, "淘汰后从头读必须标 lossy");
-        kill_bg(id, None).ok();
-    }
-
-    #[test]
-    fn settled_job_keeps_projection_after_model_read() {
-        let _g = serial();
-        clear_history();
-        let id = make_idle_job("settle");
-        push_shared(id, "out", b"done-output\n");
-        {
-            let mut jobs = lock_or_recover(&BG_JOBS);
-            let job = jobs.get_mut(&id).expect("job");
-            settle(job, JobStatus::Completed, Some(0), None);
-        }
-        let list_before = job_list();
-        assert!(
-            list_before.iter().any(|v| v["id"] == id && v["status"] == "completed"),
-            "结算后名册必须仍含该 job"
-        );
-        let _ = read_bg_output(id).expect("final read");
-        let list_after = job_list();
-        assert!(
-            list_after.iter().any(|v| v["id"] == id && v["status"] == "completed"),
-            "模型终读后投影必须仍在（历史）"
-        );
-    }
-
-    #[test]
-    fn human_kill_records_reason_and_notifies_owner() {
-        let _g = serial();
-        clear_history();
-        lock_or_recover(&COMPLETED_NOTES).clear();
-        let id = next_job_id();
-        let child = crate::os_sandbox::spawn_shell("sleep 30 # killh", ".").expect("spawn");
-        register_fg_child(id, child, "killh", BgSharedOutput::default(), Some("agent-x".into()), None);
-        assert_eq!(job_kill_human(id, "cancelled by the user", None).unwrap(), "requested");
-        {
-            let jobs = lock_or_recover(&BG_JOBS);
-            let job = jobs.get(&id).expect("job");
-            assert_eq!(job.status, JobStatus::Killed);
-            assert_eq!(job.detail.as_deref(), Some("cancelled by the user"));
-        }
-        let notes = drain_bg_notifications(Some("agent-x"));
-        assert!(notes.contains("已被用户停止"), "owner 必须收到带原因的完成通知: {notes}");
-        // 第二次停同一条 = 已完成
-        assert_eq!(job_kill_human(id, "again", None).unwrap_or("already-finished"), "already-finished");
-        lock_or_recover(&BG_JOBS).remove(&id);
-    }
-
-    #[test]
-    fn projection_carries_spill_paths_and_coords() {
-        let _g = serial();
-        clear_history();
-        let id = make_idle_job("proj");
-        push_shared(id, "out", b"abc");
-        let list = job_list();
-        let row = list.iter().find(|v| v["id"] == id).expect("row");
-        assert_eq!(row["status"], "running");
-        assert_eq!(row["output"]["stdout"]["total"], 3);
-        assert_eq!(row["output"]["stdout"]["earliest"], 0);
-        kill_bg(id, None).ok();
-    }
-
-    #[test]
-    fn spill_file_holds_full_stream() {
-        let _g = serial();
-        clear_history();
-        let id = next_job_id();
-        let path = job_spill_path(id, "stdout");
-        let _ = std::fs::remove_file(&path);
-        let ring = StreamRing::with_spill(path.clone());
-        let big = vec![b's'; MAX_SHARED_OUTPUT_BYTES + 4096];
-        ring.push(&big);
-        let on_disk = std::fs::read(&path).expect("spill exists");
-        assert_eq!(on_disk.len(), big.len(), "全量日志必须包含环外的字节");
-        let _ = std::fs::remove_file(&path);
-    }
-
-    // ── 通知按 owner 路由 ──
-
-    static NOTE_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    #[test]
-    fn bg_notifications_route_by_owner() {
-        let _g = NOTE_TESTS.lock().expect("note tests lock");
-        let mut notes = lock_or_recover(&COMPLETED_NOTES);
-        notes.clear();
-        notes.push(BgNote { owner: Some("agent-a".into()), text: "A1".into() });
-        notes.push(BgNote { owner: Some("agent-b".into()), text: "B1".into() });
-        notes.push(BgNote { owner: None, text: "UI1".into() });
-        drop(notes);
-
-        let a = drain_bg_notifications(Some("agent-a"));
-        assert!(a.contains("A1") && !a.contains("B1") && !a.contains("UI1"), "a: {a}");
-        let b = drain_bg_notifications(Some("agent-b"));
-        assert!(b.contains("B1") && !b.contains("UI1"), "b: {b}");
-        let a2 = drain_bg_notifications(Some("agent-a"));
-        assert!(a2.is_empty(), "a2: {a2}");
-    }
-
-    #[test]
-    fn bg_notification_queue_bounded() {
-        let _g = NOTE_TESTS.lock().expect("note tests lock");
-        lock_or_recover(&COMPLETED_NOTES).clear();
-        for i in 0..(MAX_COMPLETED_NOTES + 50) {
-            push_note(Some("dead-agent".into()), format!("n{i}"));
-        }
-        let drained = drain_bg_notifications(Some("dead-agent"));
-        let lines: Vec<&str> = drained.split('\n').collect();
-        assert!(lines.contains(&"n249"), "最新通知丢失（共 {} 行）", lines.len());
-        assert!(!lines.contains(&"n0"), "最旧通知应已被丢弃");
-        assert_eq!(lines.len(), MAX_COMPLETED_NOTES, "保留数应恰为上限");
-    }
-
-    #[test]
-    fn remove_job_releases_build_lock() {
-        let _g = serial();
-        let id = next_job_id();
-        let k = crate::utils::build_lock::acquire_build_lock("cargo build", "C:/ws-bg-remove", id, None)
-            .unwrap()
-            .unwrap();
-        let child = crate::os_sandbox::spawn_shell("echo x", ".").expect("spawn");
-        register_fg_child(id, child, "test", BgSharedOutput::default(), None, Some(k.clone()));
-        remove_job(id);
-        assert!(
-            !crate::utils::lock_or_recover(&BUILD_LOCKS).contains_key(&k),
-            "remove_job 应释放构建锁"
-        );
-    }
-
-    #[test]
-    fn spawn_bg_with_failure_releases_build_lock() {
-        let _g = serial();
-        let id = next_job_id();
-        let k = crate::utils::build_lock::acquire_build_lock("cargo build", "C:/ws-bg-fail", id, None)
-            .unwrap()
-            .unwrap();
-        let r = spawn_bg_with(
-            id,
-            "cargo build",
-            r"C:\definitely-not-exist-hologram-test",
-            crate::os_sandbox::ShellInterpreter::Auto,
-            None,
-            Some(k.clone()),
-            None,
-        );
-        assert!(r.is_err(), "不存在的 cwd 应导致 spawn 失败: {r:?}");
-        assert!(
-            !crate::utils::lock_or_recover(&BUILD_LOCKS).contains_key(&k),
-            "spawn 失败后 BuildLock 应已释放"
-        );
-        crate::utils::lock_or_recover(&BUILD_LOCKS).clear();
-    }
-
-    /// 无输出的长任务：read_bg_output 必须立即返回快照（修复前 shared=None 分支
-    /// 会持 BG_JOBS 锁阻塞读管道，任务安静时永久卡死）。shared 现为必填字段，
-    /// 该分支已从类型上移除，此测试锁定行为。
-    #[test]
-    fn bg_output_snapshot_quiet_task_returns_fast() {
-        let _g = serial();
-        let id = spawn_bg_with(
-            next_job_id(),
-            "sleep 30 # quiet-snapshot",
-            ".",
-            crate::os_sandbox::ShellInterpreter::Auto,
-            None,
-            None,
-            None,
-        )
-        .expect("spawn_bg_with failed");
-        let start = std::time::Instant::now();
-        let out = read_bg_output(id).expect("read_bg_output failed");
-        assert!(
-            start.elapsed() < std::time::Duration::from_secs(2),
-            "快照读取耗时 {:?}——疑似退化为阻塞管道读",
-            start.elapsed()
-        );
-        assert!(out.contains("任务运行中"), "unexpected output: {out}");
-        kill_bg(id, None).expect("kill_bg failed");
-    }
-
-    #[test]
-    fn spawn_bg_with_uses_given_job_id() {
-        let _g = serial();
-        let id = next_job_id();
-        let kid = spawn_bg_with(id, "echo bg-id-ok", ".", crate::os_sandbox::ShellInterpreter::Auto, None, None, None)
-            .expect("spawn_bg_with failed");
-        assert_eq!(kid, id, "后台 job_id 应与调用方预留 id 一致");
-        let out = wait_bg(id, 10_000).expect("wait_bg failed");
-        assert!(out.contains("bg-id-ok"), "unexpected output: {out}");
-    }
-}
+#[path = "bg_jobs_tests.rs"]
+mod tests;

@@ -45,7 +45,9 @@ pub(crate) mod bg_jobs;
 pub(crate) mod build_lock;
 pub(crate) mod encoding;
 pub(crate) mod ipc_guard;
+pub(crate) mod job_observe;
 pub(crate) mod path_resolve;
+pub(crate) mod stream_ring;
 // （sticky_cwd 已随 shell 域收口退役——2026-09-05，kernel-capability-c3-design.md
 //  R3-d §9 裁定：粘性 cwd 归 TS 编排层（session-context per-owner 注册表 +
 //  agent/sticky-cwd.ts 截流），Rust 口只收 cwd/sticky_cwd 显式参数——
@@ -55,7 +57,9 @@ pub(crate) use bg_jobs::*;
 pub(crate) use build_lock::*;
 pub(crate) use encoding::*;
 pub(crate) use ipc_guard::*;
+pub(crate) use job_observe::*;
 pub(crate) use path_resolve::*;
+pub(crate) use stream_ring::*;
 
 /// 日志守护 — 在首次打开项目时初始化一次，在整个进程生命周期内持有。
 pub(crate) static LOG_GUARD: std::sync::OnceLock<WorkerGuard> = std::sync::OnceLock::new();

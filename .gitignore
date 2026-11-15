@@ -56,6 +56,9 @@ engine/models/**/*.onnx
 
 # Test projects
 test_projects/
+# 壳层测试夹具树（confined_fs 的 make_tree 落在这里——刻意避开 target/，
+# 否则会被 glob_entries 的 /target/ 排除规则连测试树一起滤掉）
+.tmp-test/
 
 # Project-local runtime data (generated per project)
 .lantai/
