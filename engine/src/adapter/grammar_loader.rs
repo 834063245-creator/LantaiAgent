@@ -41,7 +41,6 @@ fn native_shared_lib_exts() -> &'static [&'static str] {
 struct LoadedGrammar {
     _lib: Option<libloading::Library>,
     language: Language,
-
 }
 
 /// 进程级语法加载器。作为 LazyLock 初始化一次。
@@ -126,7 +125,12 @@ impl GrammarLoader {
 
     /// 扩展名是否已被占用（loaded ∪ available）——manifest 装载期冲突检查。
     pub fn is_extension_registered(&self, ext: &str) -> bool {
-        if self.loaded.read().unwrap_or_else(|e| e.into_inner()).contains_key(ext) {
+        if self
+            .loaded
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(ext)
+        {
             return true;
         }
         self.available
@@ -136,7 +140,11 @@ impl GrammarLoader {
     }
 
     /// manifest `builtin:`：把已静态注册的语法按新扩展名登记（Arc 共享）。
-    pub fn register_builtin_grammar(&self, lang_key: &str, extensions: &[String]) -> Result<(), String> {
+    pub fn register_builtin_grammar(
+        &self,
+        lang_key: &str,
+        extensions: &[String],
+    ) -> Result<(), String> {
         let grammar = self
             .named
             .read()
@@ -156,7 +164,12 @@ impl GrammarLoader {
 
     /// manifest `dll:`：登记显式语法 DLL（全路径 + 符号名 + 扩展名组）。
     /// 惰性加载走 get() 慢速路径（与 scan_dir 发现的 DLL 同一机制）。
-    pub fn register_dll(&self, dll_path: PathBuf, symbol: &str, extensions: Vec<String>) -> Result<(), String> {
+    pub fn register_dll(
+        &self,
+        dll_path: PathBuf,
+        symbol: &str,
+        extensions: Vec<String>,
+    ) -> Result<(), String> {
         if !dll_path.is_file() {
             return Err(format!("grammar dll not found: {}", dll_path.display()));
         }
@@ -191,7 +204,11 @@ impl GrammarLoader {
         let (dll_path, symbol_name, extensions) = {
             let available = self.available.read().unwrap_or_else(|e| e.into_inner());
             let ag = available.get(ext)?;
-            (ag.dll_path.clone(), ag.symbol.clone(), ag.extensions.clone())
+            (
+                ag.dll_path.clone(),
+                ag.symbol.clone(),
+                ag.extensions.clone(),
+            )
         };
 
         // 安全性：从我们自己的 grammars/ 目录加载受信任的语法 DLL。
@@ -347,7 +364,6 @@ pub fn find_grammar_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn test_register_static_and_get() {
@@ -405,7 +421,11 @@ mod tests {
     #[test]
     fn test_find_grammar_dir_env() {
         // 使用一个在任何平台上都不存在的路径
-        let fake = if cfg!(windows) { "Z:\\nonexistent_tool_12345" } else { "/nonexistent/hologram_12345" };
+        let fake = if cfg!(windows) {
+            "Z:\\nonexistent_tool_12345"
+        } else {
+            "/nonexistent/hologram_12345"
+        };
         std::env::set_var("HOLOGRAM_GRAMMAR_DIR", fake);
         let dir = find_grammar_dir();
         // 应该回退，因为环境变量路径不存在 — 使用 current_exe 目录或 ./grammars/
@@ -432,7 +452,9 @@ mod tests {
         loader.register_static(lang, "json", &["json"]);
 
         assert!(!loader.is_extension_registered("myj"));
-        loader.register_builtin_grammar("json", &["myj".to_string()]).unwrap();
+        loader
+            .register_builtin_grammar("json", &["myj".to_string()])
+            .unwrap();
         assert!(loader.is_extension_registered("myj"));
         assert!(loader.get("myj").is_some());
 
@@ -461,12 +483,20 @@ mod tests {
 
         // DLL 不存在 → 显式报错
         let err = loader
-            .register_dll(tmp.join("missing.dll"), "tree_sitter_x", vec!["xx".to_string()])
+            .register_dll(
+                tmp.join("missing.dll"),
+                "tree_sitter_x",
+                vec!["xx".to_string()],
+            )
             .unwrap_err();
         assert!(err.contains("not found"), "{err}");
 
         loader
-            .register_dll(dll.clone(), "tree_sitter_fake", vec!["xx".to_string(), "xx2".to_string()])
+            .register_dll(
+                dll.clone(),
+                "tree_sitter_fake",
+                vec!["xx".to_string(), "xx2".to_string()],
+            )
             .unwrap();
         assert!(loader.is_extension_registered("xx"));
         assert!(loader.is_extension_registered("xx2"));

@@ -39,7 +39,10 @@ pub(crate) fn truncate_output_spill(s: &str, label: &str) -> String {
     // 落盘全量（失败则回退旧截断，不丢 head+tail）
     let mut spill_note = "可拆小命令或加窄参数后重试".to_string();
     if let Some(path) = write_shell_spill(s, label) {
-        spill_note = format!("完整输出已落盘: {}（用 fs(read) 读取全量日志）", path.display());
+        spill_note = format!(
+            "完整输出已落盘: {}（用 fs(read) 读取全量日志）",
+            path.display()
+        );
         sweep_shell_spills();
     }
     let half = MAX_TOOL_OUTPUT_CHARS / 2;
@@ -53,7 +56,13 @@ pub(crate) fn truncate_output_spill(s: &str, label: &str) -> String {
 fn write_shell_spill(s: &str, label: &str) -> Option<std::path::PathBuf> {
     let safe: String = label
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let seq = SHELL_SPILL_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(

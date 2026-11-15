@@ -42,8 +42,14 @@ impl Target {
     pub(crate) fn has_any(&self) -> bool {
         self.ref_id.is_some()
             || self.name.as_deref().is_some_and(|s| !s.trim().is_empty())
-            || self.automation_id.as_deref().is_some_and(|s| !s.trim().is_empty())
-            || self.control_type.as_deref().is_some_and(|s| !s.trim().is_empty())
+            || self
+                .automation_id
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty())
+            || self
+                .control_type
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty())
     }
 }
 
@@ -179,14 +185,20 @@ impl WorkerHandle {
     }
 
     /// 发送请求并等待回复（15s 硬超时；worker 挂死不拖垮 Agent 流）。
-    pub(crate) async fn call(&self, build: impl FnOnce(Reply) -> UiaRequest) -> Result<Value, String> {
+    pub(crate) async fn call(
+        &self,
+        build: impl FnOnce(Reply) -> UiaRequest,
+    ) -> Result<Value, String> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.tx
             .send(Msg::Req(build(tx)))
             .map_err(|_| errors::err(errors::codes::INTERNAL, "UIA worker 已停止"))?;
         match tokio::time::timeout(Duration::from_secs(15), rx).await {
             Ok(Ok(r)) => r,
-            Ok(Err(_)) => Err(errors::err(errors::codes::INTERNAL, "UIA worker 内部错误（panic 或通道关闭），可重试一次")),
+            Ok(Err(_)) => Err(errors::err(
+                errors::codes::INTERNAL,
+                "UIA worker 内部错误（panic 或通道关闭），可重试一次",
+            )),
             Err(_) => Err(errors::err(
                 errors::codes::TIMEOUT,
                 "UIA 操作超时（15s）— 目标窗口可能无响应或树过大；可用 all:false 缩小观察面",
@@ -277,11 +289,14 @@ mod tests {
             ..Default::default()
         }
         .has_any());
-        assert!(!Target {
-            name: Some("   ".into()),
-            ..Default::default()
-        }
-        .has_any(), "空白 name 不算定位条件");
+        assert!(
+            !Target {
+                name: Some("   ".into()),
+                ..Default::default()
+            }
+            .has_any(),
+            "空白 name 不算定位条件"
+        );
         assert!(!Target::default().has_any());
     }
 
@@ -295,7 +310,10 @@ mod tests {
     async fn bridge_tree_invalid_hwnd_returns_structured_error() {
         let _g = BRIDGE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let e = request(|reply| UiaRequest::Tree {
-            loc: Locator { hwnd: Some(0xdead_beef), ..Default::default() },
+            loc: Locator {
+                hwnd: Some(0xdead_beef),
+                ..Default::default()
+            },
             all: false,
             offset: 0,
             max_results: 0,
@@ -303,7 +321,10 @@ mod tests {
         })
         .await
         .unwrap_err();
-        assert!(e.starts_with("[UIA_WINDOW_NOT_FOUND]"), "无效 hwnd 应带结构化码: {e}");
+        assert!(
+            e.starts_with("[UIA_WINDOW_NOT_FOUND]"),
+            "无效 hwnd 应带结构化码: {e}"
+        );
     }
 
     #[tokio::test]
@@ -321,15 +342,24 @@ mod tests {
         })
         .await
         .unwrap_err();
-        assert!(e.starts_with("[UIA_ARG_INVALID]"), "未知 ControlType 应先被参数校验拦下: {e}");
+        assert!(
+            e.starts_with("[UIA_ARG_INVALID]"),
+            "未知 ControlType 应先被参数校验拦下: {e}"
+        );
     }
 
     #[tokio::test]
     async fn bridge_wait_invalid_until_rejected() {
         let _g = BRIDGE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let e = request(|reply| UiaRequest::Wait {
-            loc: Locator { hwnd: Some(0xdead_beef), ..Default::default() },
-            target: Target { name: Some("任意".into()), ..Default::default() },
+            loc: Locator {
+                hwnd: Some(0xdead_beef),
+                ..Default::default()
+            },
+            target: Target {
+                name: Some("任意".into()),
+                ..Default::default()
+            },
             until: "vanish".into(),
             value: None,
             timeout_ms: 1000,
@@ -337,14 +367,20 @@ mod tests {
         })
         .await
         .unwrap_err();
-        assert!(e.starts_with("[UIA_ARG_INVALID]"), "非法 until 应带结构化码: {e}");
+        assert!(
+            e.starts_with("[UIA_ARG_INVALID]"),
+            "非法 until 应带结构化码: {e}"
+        );
     }
 
     /// worker 15s 硬超时的可达性：对无响应场景的调用方兜底。
     /// 这里不真实触发挂死（无法注入），只锁定超时错误的构造形状。
     #[test]
     fn timeout_error_shape() {
-        let e = errors::err(errors::codes::TIMEOUT, "UIA 操作超时（15s）— 目标窗口可能无响应或树过大；可用 all:false 缩小观察面");
+        let e = errors::err(
+            errors::codes::TIMEOUT,
+            "UIA 操作超时（15s）— 目标窗口可能无响应或树过大；可用 all:false 缩小观察面",
+        );
         assert!(e.starts_with("[UIA_TIMEOUT]"));
     }
 }

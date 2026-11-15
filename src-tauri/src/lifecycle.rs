@@ -39,7 +39,9 @@ pub struct ResourceLedger {
 
 impl ResourceLedger {
     pub fn new() -> Self {
-        Self { services: Vec::new() }
+        Self {
+            services: Vec::new(),
+        }
     }
 
     pub fn register(&mut self, svc: Box<dyn LifecycleService>) {
@@ -66,13 +68,26 @@ impl ResourceLedger {
 
             match svc.shutdown(svc_deadline) {
                 ShutdownStatus::Clean => {
-                    eprintln!("[lifecycle] {} clean shutdown ({:?})", name, started.elapsed());
+                    eprintln!(
+                        "[lifecycle] {} clean shutdown ({:?})",
+                        name,
+                        started.elapsed()
+                    );
                 }
                 ShutdownStatus::Forced => {
-                    eprintln!("[lifecycle] {} forced shutdown ({:?})", name, started.elapsed());
+                    eprintln!(
+                        "[lifecycle] {} forced shutdown ({:?})",
+                        name,
+                        started.elapsed()
+                    );
                 }
                 ShutdownStatus::Failed(e) => {
-                    eprintln!("[lifecycle] {} failed: {} ({:?})", name, e, started.elapsed());
+                    eprintln!(
+                        "[lifecycle] {} failed: {} ({:?})",
+                        name,
+                        e,
+                        started.elapsed()
+                    );
                 }
                 ShutdownStatus::NotApplicable => {}
             }
@@ -94,12 +109,16 @@ impl Default for ResourceLedger {
 pub struct BgJobsService;
 
 impl LifecycleService for BgJobsService {
-    fn name(&self) -> &'static str { "bg_jobs" }
+    fn name(&self) -> &'static str {
+        "bg_jobs"
+    }
 
     fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
         // 使用 lock() 而非 try_lock() — 在关闭路径中阻塞是可接受的。
         // 从中毒的 mutex 恢复（panic 的监控线程可能导致 mutex 中毒）。
-        let mut jobs = crate::utils::BG_JOBS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut jobs = crate::utils::BG_JOBS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         for (_, job) in jobs.iter_mut() {
             // kill_tree 递归杀子孙进程，避免孤儿进程继续占用资源
             let _ = job.child.kill_tree();
@@ -128,7 +147,9 @@ impl LifecycleService for BgJobsService {
 pub struct PtyService;
 
 impl LifecycleService for PtyService {
-    fn name(&self) -> &'static str { "pty_manager" }
+    fn name(&self) -> &'static str {
+        "pty_manager"
+    }
 
     fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
         crate::pty_manager::kill_all();
@@ -140,7 +161,9 @@ impl LifecycleService for PtyService {
 pub struct LspService;
 
 impl LifecycleService for LspService {
-    fn name(&self) -> &'static str { "lsp_manager" }
+    fn name(&self) -> &'static str {
+        "lsp_manager"
+    }
 
     fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
         crate::lsp_manager::stop_all();
@@ -153,7 +176,9 @@ impl LifecycleService for LspService {
 pub struct UiaService;
 
 impl LifecycleService for UiaService {
-    fn name(&self) -> &'static str { "uia_worker" }
+    fn name(&self) -> &'static str {
+        "uia_worker"
+    }
 
     fn shutdown(&self, deadline: Instant) -> ShutdownStatus {
         if crate::uia::shutdown_worker(deadline) {
@@ -168,10 +193,13 @@ impl LifecycleService for UiaService {
 pub struct MemoryBundleService;
 
 impl LifecycleService for MemoryBundleService {
-    fn name(&self) -> &'static str { "memory_bundle" }
+    fn name(&self) -> &'static str {
+        "memory_bundle"
+    }
 
     fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
-        let mut guard = crate::commands::external::MEMORY_BUNDLE_CHILD.lock()
+        let mut guard = crate::commands::external::MEMORY_BUNDLE_CHILD
+            .lock()
             .unwrap_or_else(|e| e.into_inner());
         if let Some(mut child) = guard.take() {
             let _ = child.kill();
@@ -187,7 +215,9 @@ impl LifecycleService for MemoryBundleService {
 pub struct LlmProxyService;
 
 impl LifecycleService for LlmProxyService {
-    fn name(&self) -> &'static str { "llm_proxy" }
+    fn name(&self) -> &'static str {
+        "llm_proxy"
+    }
 
     fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
         crate::llm_proxy::stop_llm_proxy();
@@ -199,7 +229,9 @@ impl LifecycleService for LlmProxyService {
 pub struct LoggingService;
 
 impl LifecycleService for LoggingService {
-    fn name(&self) -> &'static str { "logging" }
+    fn name(&self) -> &'static str {
+        "logging"
+    }
 
     fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
         // 取出 WorkerGuard 并丢弃以刷新。
@@ -223,7 +255,9 @@ mod tests {
     }
 
     impl LifecycleService for MockService {
-        fn name(&self) -> &'static str { self.name }
+        fn name(&self) -> &'static str {
+            self.name
+        }
         fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
             self.called.store(true, Ordering::SeqCst);
             ShutdownStatus::Clean
@@ -236,8 +270,14 @@ mod tests {
         let called2 = std::sync::Arc::new(AtomicBool::new(false));
 
         let mut ledger = ResourceLedger::new();
-        ledger.register(Box::new(MockService { name: "svc1", called: called1.clone() }));
-        ledger.register(Box::new(MockService { name: "svc2", called: called2.clone() }));
+        ledger.register(Box::new(MockService {
+            name: "svc1",
+            called: called1.clone(),
+        }));
+        ledger.register(Box::new(MockService {
+            name: "svc2",
+            called: called2.clone(),
+        }));
 
         ledger.shutdown_all(Duration::from_secs(5));
 

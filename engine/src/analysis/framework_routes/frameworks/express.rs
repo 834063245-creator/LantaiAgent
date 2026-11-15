@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+use super::super::DetectedRoute;
 use crate::engine::GRAMMAR_LOADER;
 use std::collections::HashSet;
-use super::super::DetectedRoute;
 
 pub(crate) fn is_express_file(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -37,7 +37,10 @@ pub(crate) fn detect_express_routes(file: &str, source: &str) -> Vec<DetectedRou
     // 确定使用哪种 tree-sitter 语言
     let is_ts = file.ends_with(".ts") || file.ends_with(".tsx");
     let ext = if is_ts { "ts" } else { "js" };
-    let lang = match GRAMMAR_LOADER.get(ext) { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get(ext) {
+        Some(l) => l,
+        None => return result,
+    };
 
     let mut parser = tree_sitter::Parser::new();
     if parser.set_language(&lang).is_err() {
@@ -96,9 +99,8 @@ pub(crate) fn detect_express_routes(file: &str, source: &str) -> Vec<DetectedRou
 
                                 if kind == "string" || kind == "template_string" {
                                     if !found_route {
-                                        route_str = text
-                                            .trim_matches(&['\'', '"', '`'][..])
-                                            .to_string();
+                                        route_str =
+                                            text.trim_matches(&['\'', '"', '`'][..]).to_string();
                                         found_route = true;
                                     }
                                     continue;

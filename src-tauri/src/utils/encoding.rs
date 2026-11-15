@@ -33,7 +33,10 @@ pub(crate) struct StreamDecoder {
 
 impl StreamDecoder {
     pub(crate) fn new() -> Self {
-        Self { carry: Vec::new(), gbk: None }
+        Self {
+            carry: Vec::new(),
+            gbk: None,
+        }
     }
 
     /// 喂入一块原始字节，返回可安全发出的文本（可能为空字符串）。
@@ -48,7 +51,10 @@ impl StreamDecoder {
                 let mut dst: Vec<u8> = vec![0u8; cap.max(16)];
                 let (res, read, written, _he) = gbk.decode_to_utf8(remaining, &mut dst, false);
                 out.push_str(std::str::from_utf8(&dst[..written]).unwrap_or(""));
-                if res == encoding_rs::CoderResult::InputEmpty || read == 0 || remaining.len() <= read {
+                if res == encoding_rs::CoderResult::InputEmpty
+                    || read == 0
+                    || remaining.len() <= read
+                {
                     break;
                 }
                 remaining = &remaining[read..];
@@ -187,7 +193,10 @@ mod tests {
         }
         out.push_str(&dec.finish());
         assert!(out.contains("utf8部分正常"), "UTF-8 前缀应完整: {out}");
-        assert!(out.contains("中文报错信息") || out.contains("中文报错"), "GBK 段应被转码: {out}");
+        assert!(
+            out.contains("中文报错信息") || out.contains("中文报错"),
+            "GBK 段应被转码: {out}"
+        );
     }
 
     #[test]

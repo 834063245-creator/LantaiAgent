@@ -1,15 +1,19 @@
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
-use crate::tools::{project_root, with_store};
 use crate::tools::ToolResponse;
+use crate::tools::{project_root, with_store};
+use serde_json::{json, Value};
 
 pub(crate) fn handler_preflight(args: &Value) -> ToolResponse {
     let files: Vec<String> = args
         .get("files")
         .or_else(|| args.get("path"))
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     if files.is_empty() {
         return ToolResponse::Degraded {
@@ -39,7 +43,11 @@ pub(crate) fn handler_preflight(args: &Value) -> ToolResponse {
             .iter()
             .map(|f| {
                 let p = Path::new(f);
-                if p.is_absolute() { p.to_path_buf() } else { root.join(f) }
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    root.join(f)
+                }
             })
             .collect();
         let df_results = crate::analysis::dataflow_engine::query_dataflow_files(&paths);
@@ -60,7 +68,8 @@ pub(crate) fn handler_preflight(args: &Value) -> ToolResponse {
                     }));
                 }
                 for s in &df.scopes {
-                    temporal += s.triggers.len() + s.awaits_callbacks.len() + s.sequence_calls.len();
+                    temporal +=
+                        s.triggers.len() + s.awaits_callbacks.len() + s.sequence_calls.len();
                     for t in &s.triggers {
                         df_signals.push(json!({"level": 4, "file": r.file, "scope": s.name, "target": t, "kind": "trigger"}));
                     }
@@ -70,7 +79,11 @@ pub(crate) fn handler_preflight(args: &Value) -> ToolResponse {
         let structural_risk = file_reports
             .iter()
             .filter_map(|r| r["risk"].as_str())
-            .max_by_key(|r| match *r { "high" => 3, "medium" => 2, _ => 1 })
+            .max_by_key(|r| match *r {
+                "high" => 3,
+                "medium" => 2,
+                _ => 1,
+            })
             .unwrap_or("low");
         let risk_level = if shared_vars > 0 && structural_risk == "low" {
             "medium"
@@ -88,5 +101,3 @@ pub(crate) fn handler_preflight(args: &Value) -> ToolResponse {
         })
     }))
 }
-
-

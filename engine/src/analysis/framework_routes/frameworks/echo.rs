@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+use super::super::DetectedRoute;
 use crate::engine::GRAMMAR_LOADER;
 use std::collections::{HashMap, HashSet};
-use super::super::DetectedRoute;
 
 pub(crate) fn is_echo_candidate(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -28,7 +28,10 @@ pub(crate) fn detect_echo_routes(file: &str, source: &str) -> Vec<DetectedRoute>
     let mut result = Vec::new();
 
     let mut parser = tree_sitter::Parser::new();
-    let lang = match GRAMMAR_LOADER.get("go") { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get("go") {
+        Some(l) => l,
+        None => return result,
+    };
     if parser.set_language(&lang).is_err() {
         return result;
     }
@@ -37,12 +40,10 @@ pub(crate) fn detect_echo_routes(file: &str, source: &str) -> Vec<DetectedRoute>
         None => return result,
     };
 
-    let http_methods: HashSet<&str> = [
-        "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
-    ]
-    .iter()
-    .cloned()
-    .collect();
+    let http_methods: HashSet<&str> = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+        .iter()
+        .cloned()
+        .collect();
 
     let root = tree.root_node();
     let mut cursor = root.walk();
@@ -78,9 +79,18 @@ pub(crate) fn detect_echo_routes(file: &str, source: &str) -> Vec<DetectedRoute>
                     } else if http_methods.contains(method.as_str()) {
                         if let Some(args) = node.child_by_field_name("arguments") {
                             let line = node.start_position().row + 1;
-                            if let Some((m, path, handler)) = extract_echo_route(&args, &method, source) {
-                                let prefix = group_prefixes.get(&operand).cloned().unwrap_or_default();
-                                result.push((m, join_paths(&prefix, &path), handler, file.to_string(), line));
+                            if let Some((m, path, handler)) =
+                                extract_echo_route(&args, &method, source)
+                            {
+                                let prefix =
+                                    group_prefixes.get(&operand).cloned().unwrap_or_default();
+                                result.push((
+                                    m,
+                                    join_paths(&prefix, &path),
+                                    handler,
+                                    file.to_string(),
+                                    line,
+                                ));
                             }
                         }
                     }
@@ -112,18 +122,14 @@ fn record_group_prefix(
         _ => return,
     };
     let var = match right.parent() {
-        Some(d) if d.kind() == "short_var_declaration" => {
-            match d.child_by_field_name("left") {
-                Some(left) => first_identifier_text(&left, source),
-                None => None,
-            }
-        }
-        Some(d) if d.kind() == "var_spec" => {
-            match d.child_by_field_name("name") {
-                Some(name) => first_identifier_text(&name, source),
-                None => None,
-            }
-        }
+        Some(d) if d.kind() == "short_var_declaration" => match d.child_by_field_name("left") {
+            Some(left) => first_identifier_text(&left, source),
+            None => None,
+        },
+        Some(d) if d.kind() == "var_spec" => match d.child_by_field_name("name") {
+            Some(name) => first_identifier_text(&name, source),
+            None => None,
+        },
         _ => None,
     };
     let Some(var) = var else {
@@ -145,9 +151,7 @@ fn first_identifier_text(node: &tree_sitter::Node, source: &str) -> Option<Strin
         return Some(node.utf8_text(source.as_bytes()).unwrap_or("").to_string());
     }
     let mut c = node.walk();
-    let found = node
-        .children(&mut c)
-        .find(|ch| ch.kind() == "identifier");
+    let found = node.children(&mut c).find(|ch| ch.kind() == "identifier");
     found.map(|v| v.utf8_text(source.as_bytes()).unwrap_or("").to_string())
 }
 

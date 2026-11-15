@@ -7,8 +7,8 @@ use tree_sitter::{Language, Parser};
 
 use crate::adapter::traits::LanguageAdapter;
 use crate::adapter::tree_sitter::PARSE_TIMEOUT_MICROS;
-use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 use crate::path_utils::normalize_path;
+use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 
 thread_local! {
     static TS_PARSER: RefCell<Option<Parser>> = const { RefCell::new(None) };
@@ -39,12 +39,32 @@ impl TypeScriptAdapter {
 
 impl LanguageAdapter for TypeScriptAdapter {
     fn extensions(&self) -> Vec<String> {
-        vec!["js".into(), "jsx".into(), "ts".into(), "tsx".into(), "mjs".into(), "cjs".into(), "mts".into(), "cts".into()]
+        vec![
+            "js".into(),
+            "jsx".into(),
+            "ts".into(),
+            "tsx".into(),
+            "mjs".into(),
+            "cjs".into(),
+            "mts".into(),
+            "cts".into(),
+        ]
     }
 
-    fn analyze(&self, file_path: &str, source: &str) -> (Vec<Node>, Vec<Edge>, Option<tree_sitter::Tree>) {
-        let is_ts = file_path.ends_with(".ts") || file_path.ends_with(".tsx") || file_path.ends_with(".mts") || file_path.ends_with(".cts");
-        let lang = if is_ts { self.ts_lang.clone() } else { self.js_lang.clone() };
+    fn analyze(
+        &self,
+        file_path: &str,
+        source: &str,
+    ) -> (Vec<Node>, Vec<Edge>, Option<tree_sitter::Tree>) {
+        let is_ts = file_path.ends_with(".ts")
+            || file_path.ends_with(".tsx")
+            || file_path.ends_with(".mts")
+            || file_path.ends_with(".cts");
+        let lang = if is_ts {
+            self.ts_lang.clone()
+        } else {
+            self.js_lang.clone()
+        };
         let cell = if is_ts { &TS_PARSER } else { &JS_PARSER };
 
         let tree = cell.with(|cell| {
@@ -66,8 +86,9 @@ impl LanguageAdapter for TypeScriptAdapter {
                     std::ops::ControlFlow::Continue(())
                 }
             };
-            let mut input =
-                |i: usize, _: tree_sitter::Point| (i < len).then(|| &bytes[i..]).unwrap_or_default();
+            let mut input = |i: usize, _: tree_sitter::Point| {
+                (i < len).then(|| &bytes[i..]).unwrap_or_default()
+            };
             parser.parse_with_options(
                 &mut input,
                 None,
@@ -77,7 +98,10 @@ impl LanguageAdapter for TypeScriptAdapter {
         let tree = match tree {
             Some(t) => t,
             None => {
-                tracing::warn!(path = file_path, "[parser] parse returned None (timeout or failure), skipping file (病态文件)");
+                tracing::warn!(
+                    path = file_path,
+                    "[parser] parse returned None (timeout or failure), skipping file (病态文件)"
+                );
                 return (vec![], vec![], None);
             }
         };
@@ -102,14 +126,26 @@ impl LanguageAdapter for TypeScriptAdapter {
     }
 }
 
-fn extract_inherits(node: &tree_sitter::Node, source: &str, nid: &str, file_id: &str, counter: &mut u32, edges: &mut Vec<Edge>) {
+fn extract_inherits(
+    node: &tree_sitter::Node,
+    source: &str,
+    nid: &str,
+    file_id: &str,
+    counter: &mut u32,
+    edges: &mut Vec<Edge>,
+) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
             "identifier" | "member_expression" | "property_identifier" => {
                 if let Ok(base) = child.utf8_text(source.as_bytes()) {
                     *counter += 1;
-                    edges.push(Edge::new(format!("inh_{}_{}", file_id, *counter), nid, base, EdgeKind::Inherits));
+                    edges.push(Edge::new(
+                        format!("inh_{}_{}", file_id, *counter),
+                        nid,
+                        base,
+                        EdgeKind::Inherits,
+                    ));
                     return;
                 }
             }
@@ -135,7 +171,12 @@ fn resolve_import_target(import_path: &str, current_file: &str) -> String {
     }
 }
 
-fn walk_ts_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str, file_path: &str) -> (Vec<Node>, Vec<Edge>) {
+fn walk_ts_tree(
+    tree: &tree_sitter::Tree,
+    source: &str,
+    file_id: &str,
+    file_path: &str,
+) -> (Vec<Node>, Vec<Edge>) {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut edge_counter = 0u32;
@@ -150,14 +191,22 @@ fn walk_ts_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str, file_path
 
     while let Some((node, scope_id)) = to_visit.pop() {
         match node.kind() {
-            "function_declaration" | "generator_function_declaration"
-            | "function_expression" | "generator_function_expression"
-            | "method_definition" | "arrow_function" => {
+            "function_declaration"
+            | "generator_function_declaration"
+            | "function_expression"
+            | "generator_function_expression"
+            | "method_definition"
+            | "arrow_function" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
                     if let Ok(name) = name_node.utf8_text(source.as_bytes()) {
                         let nid = format!("{}.{}", file_id, name);
                         edge_counter += 1;
-                        edges.push(Edge::new(format!("def_{}_{}", file_id, edge_counter), file_id, &nid, EdgeKind::Defines));
+                        edges.push(Edge::new(
+                            format!("def_{}_{}", file_id, edge_counter),
+                            file_id,
+                            &nid,
+                            EdgeKind::Defines,
+                        ));
                         nodes.push(Node::new(&nid, name, NodeKind::Function));
                         // 此函数的子节点继承其 scope
                         push_children_with_scope(&node, &nid, &mut to_visit);
@@ -172,17 +221,36 @@ fn walk_ts_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str, file_path
                     if let Ok(name) = name_node.utf8_text(source.as_bytes()) {
                         let nid = format!("{}.{}", file_id, name);
                         edge_counter += 1;
-                        edges.push(Edge::new(format!("def_{}_{}", file_id, edge_counter), file_id, &nid, EdgeKind::Defines));
+                        edges.push(Edge::new(
+                            format!("def_{}_{}", file_id, edge_counter),
+                            file_id,
+                            &nid,
+                            EdgeKind::Defines,
+                        ));
                         nodes.push(Node::new(&nid, name, NodeKind::Class));
 
                         // extends → 继承边
                         // （JS "extends" 嵌套在 "class_heritage" 下，TS 为直接字段）
                         if let Some(extends) = node.child_by_field_name("extends") {
-                            extract_inherits(&extends, source, &nid, file_id, &mut edge_counter, &mut edges);
+                            extract_inherits(
+                                &extends,
+                                source,
+                                &nid,
+                                file_id,
+                                &mut edge_counter,
+                                &mut edges,
+                            );
                         } else {
                             for child in node.children(&mut node.walk()) {
                                 if child.kind() == "class_heritage" {
-                                    extract_inherits(&child, source, &nid, file_id, &mut edge_counter, &mut edges);
+                                    extract_inherits(
+                                        &child,
+                                        source,
+                                        &nid,
+                                        file_id,
+                                        &mut edge_counter,
+                                        &mut edges,
+                                    );
                                 }
                             }
                         }
@@ -196,7 +264,12 @@ fn walk_ts_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str, file_path
                     if let Ok(name) = name_node.utf8_text(source.as_bytes()) {
                         let nid = format!("{}.{}", file_id, name);
                         edge_counter += 1;
-                        edges.push(Edge::new(format!("def_{}_{}", file_id, edge_counter), file_id, &nid, EdgeKind::Defines));
+                        edges.push(Edge::new(
+                            format!("def_{}_{}", file_id, edge_counter),
+                            file_id,
+                            &nid,
+                            EdgeKind::Defines,
+                        ));
                         nodes.push(Node::new(&nid, name, NodeKind::Interface));
                     }
                 }
@@ -206,7 +279,12 @@ fn walk_ts_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str, file_path
                     if let Ok(target) = src_node.utf8_text(source.as_bytes()) {
                         let resolved = resolve_import_target(target, file_path);
                         edge_counter += 1;
-                        let mut e = Edge::new(format!("imp_{}_{}", file_id, edge_counter), file_id, &resolved, EdgeKind::Imports);
+                        let mut e = Edge::new(
+                            format!("imp_{}_{}", file_id, edge_counter),
+                            file_id,
+                            &resolved,
+                            EdgeKind::Imports,
+                        );
                         e.cross_file = true;
                         e.coupling_depth = 2;
                         edges.push(e);
@@ -214,24 +292,32 @@ fn walk_ts_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str, file_path
                 }
             }
             "call_expression" | "new_expression" => {
-                let field = if node.kind() == "new_expression" { "constructor" } else { "function" };
+                let field = if node.kind() == "new_expression" {
+                    "constructor"
+                } else {
+                    "function"
+                };
                 if let Some(func) = node.child_by_field_name(field) {
                     if let Ok(name) = func.utf8_text(source.as_bytes()) {
                         // 对于 member expression（a.b.c()），仅提取最后的
                         // property 以匹配函数定义。否则
                         // `getChatStore(x).input.getState()` 会创建
                         // target 为 "getChatStore(x).input.getState" 的 calls 边 — 永远无法匹配。
-                        let call_target =
-                            if func.kind() == "member_expression" {
-                                func.child_by_field_name("property")
-                                    .and_then(|p| p.utf8_text(source.as_bytes()).ok())
-                                    .map(|c| c.to_string())
-                                    .unwrap_or_else(|| name.to_string())
-                            } else {
-                                name.to_string()
-                            };
+                        let call_target = if func.kind() == "member_expression" {
+                            func.child_by_field_name("property")
+                                .and_then(|p| p.utf8_text(source.as_bytes()).ok())
+                                .map(|c| c.to_string())
+                                .unwrap_or_else(|| name.to_string())
+                        } else {
+                            name.to_string()
+                        };
                         edge_counter += 1;
-                        let mut e = Edge::new(format!("call_{}_{}", file_id, edge_counter), &scope_id, &call_target, EdgeKind::Calls);
+                        let mut e = Edge::new(
+                            format!("call_{}_{}", file_id, edge_counter),
+                            &scope_id,
+                            &call_target,
+                            EdgeKind::Calls,
+                        );
                         e.cross_file = true;
                         e.coupling_depth = 1;
                         edges.push(e);
@@ -248,7 +334,11 @@ fn walk_ts_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str, file_path
 }
 
 /// 将节点的子节点压入遍历栈，每个标记为给定的 scope_id。
-fn push_children_with_scope<'a>(node: &tree_sitter::Node<'a>, scope_id: &str, to_visit: &mut Vec<(tree_sitter::Node<'a>, String)>) {
+fn push_children_with_scope<'a>(
+    node: &tree_sitter::Node<'a>,
+    scope_id: &str,
+    to_visit: &mut Vec<(tree_sitter::Node<'a>, String)>,
+) {
     let mut cursor = node.walk();
     let mut children: Vec<tree_sitter::Node<'a>> = node.children(&mut cursor).collect();
     children.reverse(); // 使第一个子节点先处理（LIFO 栈）
@@ -296,9 +386,15 @@ mod tests {
         let (nodes, edges, _) = adapter.analyze("test.ts", src);
         assert!(nodes.iter().any(|n| n.name == "foo"));
         assert!(nodes.iter().any(|n| n.name == "bar"));
-        let call_edges: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls)).collect();
+        let call_edges: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Calls))
+            .collect();
         assert!(!call_edges.is_empty(), "regular fn call should create edge");
-        assert!(call_edges.iter().any(|e| e.target == "foo"), "should find call to foo");
+        assert!(
+            call_edges.iter().any(|e| e.target == "foo"),
+            "should find call to foo"
+        );
     }
 
     #[test]
@@ -308,11 +404,17 @@ mod tests {
         let src = "function outer() {\n  inner();\n}\nfunction inner() {}";
         let (_nodes, edges, _) = adapter.analyze("scope.ts", src);
         // 查找指向 "inner" 的 call 边
-        let call = edges.iter().find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "inner");
+        let call = edges
+            .iter()
+            .find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "inner");
         assert!(call.is_some(), "should have call to inner");
         let call = call.unwrap();
         // Source 应为 outer 的 node ID，而非文件的 module ID
-        assert!(call.source.contains("outer"), "call source should be 'outer', got '{}'", call.source);
+        assert!(
+            call.source.contains("outer"),
+            "call source should be 'outer', got '{}'",
+            call.source
+        );
     }
 
     #[test]
@@ -324,9 +426,21 @@ mod tests {
         let file_node = nodes.iter().find(|n| matches!(n.kind, NodeKind::File));
         assert!(file_node.is_some());
         let fid = &file_node.unwrap().id;
-        assert!(fid.contains("src"), "file_id should contain dir, got '{}'", fid);
-        assert!(fid.contains("ui"), "file_id should contain subdir, got '{}'", fid);
-        assert!(fid.contains("graph_ts"), "file_id should contain filename, got '{}'", fid);
+        assert!(
+            fid.contains("src"),
+            "file_id should contain dir, got '{}'",
+            fid
+        );
+        assert!(
+            fid.contains("ui"),
+            "file_id should contain subdir, got '{}'",
+            fid
+        );
+        assert!(
+            fid.contains("graph_ts"),
+            "file_id should contain filename, got '{}'",
+            fid
+        );
     }
 
     #[test]
@@ -336,9 +450,23 @@ mod tests {
         let src = "function foo() {}";
         let (nodes_a, _, _) = adapter.analyze("src/a/util.ts", src);
         let (nodes_b, _, _) = adapter.analyze("src/b/util.ts", src);
-        let id_a = nodes_a.iter().find(|n| matches!(n.kind, NodeKind::File)).unwrap().id.clone();
-        let id_b = nodes_b.iter().find(|n| matches!(n.kind, NodeKind::File)).unwrap().id.clone();
-        assert_ne!(id_a, id_b, "different dirs should have different file IDs: {} vs {}", id_a, id_b);
+        let id_a = nodes_a
+            .iter()
+            .find(|n| matches!(n.kind, NodeKind::File))
+            .unwrap()
+            .id
+            .clone();
+        let id_b = nodes_b
+            .iter()
+            .find(|n| matches!(n.kind, NodeKind::File))
+            .unwrap()
+            .id
+            .clone();
+        assert_ne!(
+            id_a, id_b,
+            "different dirs should have different file IDs: {} vs {}",
+            id_a, id_b
+        );
     }
 
     #[test]
@@ -347,14 +475,31 @@ mod tests {
         let adapter = TypeScriptAdapter::new();
         let src = "import { stuff } from './module';\nimport { other } from '../parent/other';";
         let (_, edges, _) = adapter.analyze("src/ui/graph.ts", src);
-        let import_edges: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports)).collect();
+        let import_edges: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Imports))
+            .collect();
         assert_eq!(import_edges.len(), 2);
         // './module' 应解析为包含 'module' 的内容
-        let module_edge = import_edges.iter().find(|e| e.target.contains("module")).unwrap();
-        assert!(!module_edge.target.starts_with("./"), "import target should not be raw './x', got '{}'", module_edge.target);
+        let module_edge = import_edges
+            .iter()
+            .find(|e| e.target.contains("module"))
+            .unwrap();
+        assert!(
+            !module_edge.target.starts_with("./"),
+            "import target should not be raw './x', got '{}'",
+            module_edge.target
+        );
         // '../parent/other' 应解析为包含 'parent' 的内容
-        let parent_edge = import_edges.iter().find(|e| e.target.contains("parent")).unwrap();
-        assert!(!parent_edge.target.starts_with("../"), "import target should not be raw '../x', got '{}'", parent_edge.target);
+        let parent_edge = import_edges
+            .iter()
+            .find(|e| e.target.contains("parent"))
+            .unwrap();
+        assert!(
+            !parent_edge.target.starts_with("../"),
+            "import target should not be raw '../x', got '{}'",
+            parent_edge.target
+        );
     }
 
     #[test]
@@ -363,10 +508,14 @@ mod tests {
         let adapter = TypeScriptAdapter::new();
         let src = "class Foo {}\nfunction bar() { new Foo(); }";
         let (_, edges, _) = adapter.analyze("newtest.ts", src);
-        let calls_to_foo: Vec<_> = edges.iter()
+        let calls_to_foo: Vec<_> = edges
+            .iter()
             .filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "Foo")
             .collect();
-        assert!(!calls_to_foo.is_empty(), "new Foo() should create a call edge");
+        assert!(
+            !calls_to_foo.is_empty(),
+            "new Foo() should create a call edge"
+        );
     }
 
     #[test]
@@ -375,9 +524,14 @@ mod tests {
         let adapter = TypeScriptAdapter::new();
         let src = "function a() {\n  function b() {\n    c();\n  }\n}\nfunction c() {}";
         let (_, edges, _) = adapter.analyze("nested.ts", src);
-        let call_to_c = edges.iter().find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "c");
+        let call_to_c = edges
+            .iter()
+            .find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "c");
         assert!(call_to_c.is_some());
         // 对 c() 的调用在 b() 内部，因此 source 应为 b
-        assert!(call_to_c.unwrap().source.contains("b"), "nested call should be attributed to innermost fn");
+        assert!(
+            call_to_c.unwrap().source.contains("b"),
+            "nested call should be attributed to innermost fn"
+        );
     }
 }

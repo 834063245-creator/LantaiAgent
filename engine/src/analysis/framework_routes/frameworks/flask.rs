@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::engine::GRAMMAR_LOADER;
 use super::super::DetectedRoute;
+use crate::engine::GRAMMAR_LOADER;
 
 pub(crate) fn is_flask_candidate(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -15,7 +15,10 @@ pub(crate) fn detect_flask_routes(file: &str, source: &str) -> Vec<DetectedRoute
     let mut result = Vec::new();
 
     let mut parser = tree_sitter::Parser::new();
-    let lang = match GRAMMAR_LOADER.get("py") { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get("py") {
+        Some(l) => l,
+        None => return result,
+    };
     if parser.set_language(&lang).is_err() {
         return result;
     }
@@ -39,7 +42,10 @@ pub(crate) fn detect_flask_routes(file: &str, source: &str) -> Vec<DetectedRoute
                     "decorator" => decorators.push(child),
                     "function_definition" | "async_function_definition" | "class_definition" => {
                         if let Some(name_node) = child.child_by_field_name("name") {
-                            handler_name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                            handler_name = name_node
+                                .utf8_text(source.as_bytes())
+                                .unwrap_or("")
+                                .to_string();
                         }
                     }
                     _ => {}
@@ -81,7 +87,8 @@ fn extract_flask_decorator(
         return None;
     }
     let mut attr_cursor = func.walk();
-    let last_id = func.children(&mut attr_cursor)
+    let last_id = func
+        .children(&mut attr_cursor)
         .filter(|c| c.kind() == "identifier")
         .last()
         .map(|c| c.utf8_text(source.as_bytes()).unwrap_or("").to_string())?;
@@ -97,8 +104,11 @@ fn extract_flask_decorator(
 
     for child in args.children(&mut args_cursor) {
         if child.kind() == "string" && path.is_empty() {
-            path = child.utf8_text(source.as_bytes()).unwrap_or("")
-                .trim_matches(&['\'', '"', 'r', 'b'][..]).to_string();
+            path = child
+                .utf8_text(source.as_bytes())
+                .unwrap_or("")
+                .trim_matches(&['\'', '"', 'r', 'b'][..])
+                .to_string();
         }
         // 查找 methods=["GET", "POST"] 关键字
         if child.kind() == "keyword_argument" {
@@ -108,10 +118,15 @@ fn extract_flask_decorator(
                 let mut kw_cursor = child.walk();
                 for kw_child in child.children(&mut kw_cursor) {
                     if kw_child.kind() == "string" {
-                        let m = kw_child.utf8_text(source.as_bytes()).unwrap_or("")
-                            .trim_matches(&['\'', '"'][..]).to_uppercase();
+                        let m = kw_child
+                            .utf8_text(source.as_bytes())
+                            .unwrap_or("")
+                            .trim_matches(&['\'', '"'][..])
+                            .to_uppercase();
                         if !m.is_empty() && m != "METHODS" {
-                            if methods.len() == 1 && methods[0] == "GET" { methods.clear(); }
+                            if methods.len() == 1 && methods[0] == "GET" {
+                                methods.clear();
+                            }
                             methods.push(m);
                         }
                     }

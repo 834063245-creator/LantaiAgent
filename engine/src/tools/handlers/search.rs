@@ -1,13 +1,13 @@
 use std::path::Path;
 
-use serde_json::{json, Value};
 use crate::analysis::*;
 use crate::engine;
-use crate::tools::{get_usize, project_root};
 use crate::tools::node_to_value;
-use crate::tools::ToolResponse;
 use crate::tools::with_graph;
 use crate::tools::with_store;
+use crate::tools::ToolResponse;
+use crate::tools::{get_usize, project_root};
+use serde_json::{json, Value};
 
 pub(crate) fn handler_search(args: &Value) -> ToolResponse {
     let query_str = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
@@ -57,31 +57,46 @@ pub(crate) fn handler_search(args: &Value) -> ToolResponse {
 /// 索引不可用 / 为空时返回 None，由调用方决定降级行为。
 /// search_symbols/explore_deps 的边车附加（merge_vector_hits）与 semantic_search
 /// 一等工具共用此路径。
-pub(crate) fn vector_query_hits(root: &Path, query: &str, top_k: usize) -> Option<Vec<(String, f32)>> {
+pub(crate) fn vector_query_hits(
+    root: &Path,
+    query: &str,
+    top_k: usize,
+) -> Option<Vec<(String, f32)>> {
     // 使用缓存的索引 —— 避免每次搜索都从磁盘重新加载 40+ MB
     let (index, slots) = hologram_vector::get_or_load_index(root).ok()?;
     let idx = index.read().unwrap_or_else(|e| e.into_inner());
     let idx = idx.as_ref()?;
     let slot_data = slots.read().unwrap_or_else(|e| e.into_inner());
-    if slot_data.is_empty() { return None; }
+    if slot_data.is_empty() {
+        return None;
+    }
 
     let q_vec = hologram_vector::embed(query);
     let results = idx.search(&q_vec, top_k).ok()?;
 
     // usearch 按距离升序返回 → 相似度降序
-    Some(results.keys.iter().zip(results.distances.iter())
-        .filter_map(|(slot_key, distance)| {
-            let slot = *slot_key as usize;
-            if slot >= slot_data.len() { return None; }
-            let similarity = 1.0 - (*distance).min(2.0).max(0.0);
-            Some((slot_data[slot].clone(), similarity))
-        })
-        .collect())
+    Some(
+        results
+            .keys
+            .iter()
+            .zip(results.distances.iter())
+            .filter_map(|(slot_key, distance)| {
+                let slot = *slot_key as usize;
+                if slot >= slot_data.len() {
+                    return None;
+                }
+                let similarity = 1.0 - (*distance).min(2.0).max(0.0);
+                Some((slot_data[slot].clone(), similarity))
+            })
+            .collect(),
+    )
 }
 
 pub(crate) fn merge_vector_hits(out: &mut Value, query: &str, limit: usize) {
     let root = project_root();
-    if root.as_os_str().is_empty() { return; }
+    if root.as_os_str().is_empty() {
+        return;
+    }
     // 多取候选：阈值过滤与去重会淘汰一部分
     let fetch = (limit * 2).max(20);
     let raw = match vector_query_hits(&root, query, fetch) {
@@ -93,17 +108,23 @@ pub(crate) fn merge_vector_hits(out: &mut Value, query: &str, limit: usize) {
     let max_hits = 5usize.min(limit.max(1));
 
     // 与主结果集去重（FTS/linear 已覆盖的节点不再重复出现）
-    let existing: std::collections::HashSet<&str> = out["results"].as_array()
+    let existing: std::collections::HashSet<&str> = out["results"]
+        .as_array()
         .map(|a| a.iter().filter_map(|v| v["id"].as_str()).collect())
         .unwrap_or_default();
 
     let hits = hologram_vector::filter_hits(&raw, threshold, max_hits, &existing);
-    if hits.is_empty() { return; }
+    if hits.is_empty() {
+        return;
+    }
 
     let top = &hits[0];
     tracing::info!(
         "[vector] {} hits for \"{}\" — top: {} ({:.0}%)",
-        hits.len(), query, top.0, top.1 * 100.0
+        hits.len(),
+        query,
+        top.0,
+        top.1 * 100.0
     );
     let vec_results: Vec<Value> = hits.into_iter()
         .map(|(node_id, score)| json!({"node_id": node_id, "vector_score": (score * 100.0).round() as u32}))
@@ -122,7 +143,12 @@ pub(crate) fn merge_vector_hits(out: &mut Value, query: &str, limit: usize) {
 /// （node_id + 分数，最多 5 条）不同，这是独立工具 —— 按含义找符号，
 /// 返回完整节点信息 + 相似度，top-k 可控。
 pub(crate) fn handler_semantic_search(args: &Value) -> ToolResponse {
-    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let query = args
+        .get("query")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
     let limit = get_usize(args, "limit", 10).clamp(1, 50);
     if query.is_empty() {
         return ToolResponse::Degraded {
@@ -158,10 +184,13 @@ pub(crate) fn semantic_search_at(root: &Path, query: &str, limit: usize) -> Tool
     };
 
     let threshold = hologram_vector::score_threshold();
-    let hits = hologram_vector::filter_hits(&raw, threshold, limit, &std::collections::HashSet::new());
+    let hits =
+        hologram_vector::filter_hits(&raw, threshold, limit, &std::collections::HashSet::new());
     if hits.is_empty() {
         // 阈值全滤掉时不静默空手而归 —— 带 top 候选的降级响应引导换词
-        let preview: Vec<Value> = raw.iter().take(3)
+        let preview: Vec<Value> = raw
+            .iter()
+            .take(3)
             .map(|(id, s)| json!({ "node_id": id, "score": (s * 100.0).round() as u32 }))
             .collect();
         return ToolResponse::Degraded {
@@ -192,24 +221,36 @@ pub(crate) fn semantic_search_at(root: &Path, query: &str, limit: usize) -> Tool
 }
 
 /// 把向量命中解析为完整节点值（附加 vector_score）；未知 id 跳过。
-pub(crate) fn resolve_hits_in_index(idx: &hologram_storage::MemoryIndex, hits: &[(String, f32)]) -> Vec<Value> {
-    hits.iter().filter_map(|(id, score)| {
-        let node = idx.get_node(id)?;
-        let mut v = node_to_value(node);
-        if let Some(obj) = v.as_object_mut() {
-            obj.insert("vector_score".into(), json!((score * 100.0).round() as u32));
-        }
-        Some(v)
-    }).collect()
+pub(crate) fn resolve_hits_in_index(
+    idx: &hologram_storage::MemoryIndex,
+    hits: &[(String, f32)],
+) -> Vec<Value> {
+    hits.iter()
+        .filter_map(|(id, score)| {
+            let node = idx.get_node(id)?;
+            let mut v = node_to_value(node);
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert("vector_score".into(), json!((score * 100.0).round() as u32));
+            }
+            Some(v)
+        })
+        .collect()
 }
 
 pub(crate) fn handler_explore(args: &Value) -> ToolResponse {
     let symbols: Vec<String> = args
         .get("symbols")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
-    let query_str = args.get("query").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let query_str = args
+        .get("query")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     if symbols.is_empty() && query_str.is_none() {
         return ToolResponse::Degraded {
             guidance: "symbols array or query string is required".into(),
@@ -217,7 +258,10 @@ pub(crate) fn handler_explore(args: &Value) -> ToolResponse {
             details: json!({}),
         };
     }
-    let include_source = args.get("includeSource").and_then(|v| v.as_bool()).unwrap_or(true);
+    let include_source = args
+        .get("includeSource")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     let root = project_root();
     ToolResponse::Success(with_graph(|g| {
         let mut out = explore(g, &root, &symbols, query_str.as_deref(), include_source);
@@ -240,7 +284,8 @@ mod tests {
 
     /// 唯一临时根目录（每个用例独立，避免进程级索引缓存串扰）。
     fn tmp_root(tag: &str) -> std::path::PathBuf {
-        let tmp = std::env::temp_dir().join(format!("hologram_semantic_{}_{}", tag, std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("hologram_semantic_{}_{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(hologram_graph::data_dir(&tmp)).unwrap();
         tmp
@@ -261,20 +306,31 @@ mod tests {
         let resp = semantic_search_at(&root, "anything", 5);
         let v = resp.to_mcp_value(&json!(1));
         let text = v["result"]["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("_isDegraded"), "无索引必须降级而非空结果: {}", text);
+        assert!(
+            text.contains("_isDegraded"),
+            "无索引必须降级而非空结果: {}",
+            text
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn test_semantic_search_hits_and_resolution() {
         let root = tmp_root("hit");
-        let mut n1 = Node::new("demo/parser.ts.parse_widget", "parse_widget", NodeKind::Function);
-        n1.snippet = Some("parse the widget configuration from yaml and validate the schema".into());
+        let mut n1 = Node::new(
+            "demo/parser.ts.parse_widget",
+            "parse_widget",
+            NodeKind::Function,
+        );
+        n1.snippet =
+            Some("parse the widget configuration from yaml and validate the schema".into());
         let mut n2 = Node::new("demo/mail.ts.send_email", "send_email", NodeKind::Function);
         n2.snippet = Some("send email notification via smtp to the end user".into());
         let nodes = vec![n1, n2];
 
-        let vi = hologram_vector::CodeVectorIndex::new(hologram_graph::data_dir(&root).join("vectors.usearch"));
+        let vi = hologram_vector::CodeVectorIndex::new(
+            hologram_graph::data_dir(&root).join("vectors.usearch"),
+        );
         vi.build(&nodes).expect("build index");
         vi.save().expect("save index");
 
@@ -290,11 +346,16 @@ mod tests {
         let hits = hologram_vector::filter_hits(&raw, 0.0, 5, &std::collections::HashSet::new());
         let resolved = resolve_hits_in_index(&idx, &hits);
         assert!(!resolved.is_empty());
-        assert!(resolved[0].get("vector_score").is_some(), "结果必须带 vector_score");
+        assert!(
+            resolved[0].get("vector_score").is_some(),
+            "结果必须带 vector_score"
+        );
         let names: Vec<&str> = resolved.iter().filter_map(|v| v["name"].as_str()).collect();
-        assert!(names.contains(&"parse_widget"), "top 命中应含 parse_widget: {:?}", names);
+        assert!(
+            names.contains(&"parse_widget"),
+            "top 命中应含 parse_widget: {:?}",
+            names
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }
-
-

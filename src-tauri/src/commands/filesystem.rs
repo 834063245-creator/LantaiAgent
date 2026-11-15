@@ -17,7 +17,9 @@ pub(crate) fn user_lantai_dir() -> std::path::PathBuf {
 /// 会话**物理归属工作区**——唯一存储位 = `{workspace}/.lantai/sessions/`。
 /// 全局位 ~/.lantai/sessions 已归档，本函数是新模型的唯一存储路径真源。
 pub(crate) fn workspace_sessions_root(ws: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(ws).join(".lantai").join("sessions")
+    std::path::PathBuf::from(ws)
+        .join(".lantai")
+        .join("sessions")
 }
 
 /// 会话清单投影文件名与版本（TS 侧真源：`chat-session.ts` 的 `CATALOG_ID` /

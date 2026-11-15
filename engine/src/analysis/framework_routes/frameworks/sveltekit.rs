@@ -85,7 +85,13 @@ pub(crate) fn detect_sveltekit_routes(file: &str, source: Option<&str>) -> Vec<D
         return result;
     };
     for (m, line) in extract_exported_http_methods(src) {
-        result.push((m.to_string(), url.clone(), format!("{}#{}", file, m), file.to_string(), line));
+        result.push((
+            m.to_string(),
+            url.clone(),
+            format!("{}#{}", file, m),
+            file.to_string(),
+            line,
+        ));
     }
     result
 }

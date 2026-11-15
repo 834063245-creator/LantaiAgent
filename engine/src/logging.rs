@@ -8,7 +8,7 @@
 
 use std::path::Path;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{fmt, layer::SubscriberExt, Layer, EnvFilter, Registry};
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 
 /// 初始化日志系统。返回 `WorkerGuard`，必须在进程生命周期内持有
 /// ——丢弃它会触发 flush 并关闭写入器。
@@ -54,13 +54,10 @@ pub fn init_logging_named(project_root: Option<&Path>, prefix: &str) -> WorkerGu
     };
 
     // 日志级别过滤：优先从环境变量 RUST_LOG 读取，默认 info
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    tracing::subscriber::set_global_default(
-        Registry::default().with(filter).with(layers),
-    )
-    .expect("tracing subscriber already set");
+    tracing::subscriber::set_global_default(Registry::default().with(filter).with(layers))
+        .expect("tracing subscriber already set");
 
     guard
 }

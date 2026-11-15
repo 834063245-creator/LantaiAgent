@@ -25,51 +25,51 @@ pub(crate) type ParseCache = HashMap<String, (String, Option<tree_sitter::Tree>)
 
 // ponytail：重新导出所有检测器函数，供测试模块的 `use super::*` 使用
 #[cfg(test)]
+use frameworks::actix::*;
+#[cfg(test)]
+use frameworks::aspnet::*;
+#[cfg(test)]
+use frameworks::axum::*;
+#[cfg(test)]
+use frameworks::chi::*;
+#[cfg(test)]
 use frameworks::django::*;
+#[cfg(test)]
+use frameworks::echo::*;
 #[cfg(test)]
 use frameworks::express::*;
 #[cfg(test)]
 use frameworks::fastapi::*;
 #[cfg(test)]
+use frameworks::fastify::*;
+#[cfg(test)]
+use frameworks::fiber::*;
+#[cfg(test)]
 use frameworks::flask::*;
-#[cfg(test)]
-use frameworks::rails::*;
-#[cfg(test)]
-use frameworks::spring::*;
 #[cfg(test)]
 use frameworks::gin::*;
 #[cfg(test)]
-use frameworks::nestjs::*;
+use frameworks::hono::*;
 #[cfg(test)]
 use frameworks::koa::*;
 #[cfg(test)]
 use frameworks::laravel::*;
 #[cfg(test)]
+use frameworks::nestjs::*;
+#[cfg(test)]
+use frameworks::nextjs::*;
+#[cfg(test)]
 use frameworks::phoenix::*;
 #[cfg(test)]
-use frameworks::actix::*;
-#[cfg(test)]
-use frameworks::aspnet::*;
-#[cfg(test)]
-use frameworks::sinatra::*;
-#[cfg(test)]
-use frameworks::fiber::*;
-#[cfg(test)]
-use frameworks::fastify::*;
-#[cfg(test)]
-use frameworks::slim::*;
+use frameworks::rails::*;
 #[cfg(test)]
 use frameworks::rocket::*;
 #[cfg(test)]
-use frameworks::axum::*;
+use frameworks::sinatra::*;
 #[cfg(test)]
-use frameworks::hono::*;
+use frameworks::slim::*;
 #[cfg(test)]
-use frameworks::echo::*;
-#[cfg(test)]
-use frameworks::chi::*;
-#[cfg(test)]
-use frameworks::nextjs::*;
+use frameworks::spring::*;
 #[cfg(test)]
 use frameworks::sveltekit::*;
 
@@ -123,7 +123,10 @@ pub fn detect_framework_routes(
             let abs_key = if rel_str.contains(':') {
                 rel_str.clone()
             } else {
-                project_root.join(&rel_str).to_string_lossy().replace('\\', "/")
+                project_root
+                    .join(&rel_str)
+                    .to_string_lossy()
+                    .replace('\\', "/")
             };
             if let Some((s, _)) = parse_cache.get(&abs_key) {
                 source = s.clone();
@@ -172,17 +175,28 @@ pub fn detect_framework_routes(
                 continue; // F1：已被上方文件系统扫描路由
             }
             let rel_str = rel.to_string_lossy().replace('\\', "/");
-            if frameworks::django::is_django_url_file(&rel_str) || frameworks::express::is_express_file(&rel_str)
-                || frameworks::fastapi::is_fastapi_candidate(&rel_str) || frameworks::flask::is_flask_candidate(&rel_str)
-                || frameworks::rails::is_rails_file(&rel_str) || frameworks::spring::is_spring_candidate(&rel_str)
-                || frameworks::gin::is_gin_candidate(&rel_str) || frameworks::nestjs::is_nestjs_candidate(&rel_str)
-                || frameworks::koa::is_koa_candidate(&rel_str) || frameworks::laravel::is_laravel_candidate(&rel_str)
-                || frameworks::phoenix::is_phoenix_candidate(&rel_str) || frameworks::actix::is_actix_candidate(&rel_str)
-                || frameworks::aspnet::is_aspnet_candidate(&rel_str) || frameworks::sinatra::is_sinatra_candidate(&rel_str)
-                || frameworks::fiber::is_fiber_candidate(&rel_str) || frameworks::fastify::is_fastify_candidate(&rel_str)
-                || frameworks::slim::is_slim_candidate(&rel_str) || frameworks::rocket::is_rocket_candidate(&rel_str)
-                || frameworks::axum::is_axum_candidate(&rel_str) || frameworks::hono::is_hono_candidate(&rel_str)
-                || frameworks::echo::is_echo_candidate(&rel_str) || frameworks::chi::is_chi_candidate(&rel_str)
+            if frameworks::django::is_django_url_file(&rel_str)
+                || frameworks::express::is_express_file(&rel_str)
+                || frameworks::fastapi::is_fastapi_candidate(&rel_str)
+                || frameworks::flask::is_flask_candidate(&rel_str)
+                || frameworks::rails::is_rails_file(&rel_str)
+                || frameworks::spring::is_spring_candidate(&rel_str)
+                || frameworks::gin::is_gin_candidate(&rel_str)
+                || frameworks::nestjs::is_nestjs_candidate(&rel_str)
+                || frameworks::koa::is_koa_candidate(&rel_str)
+                || frameworks::laravel::is_laravel_candidate(&rel_str)
+                || frameworks::phoenix::is_phoenix_candidate(&rel_str)
+                || frameworks::actix::is_actix_candidate(&rel_str)
+                || frameworks::aspnet::is_aspnet_candidate(&rel_str)
+                || frameworks::sinatra::is_sinatra_candidate(&rel_str)
+                || frameworks::fiber::is_fiber_candidate(&rel_str)
+                || frameworks::fastify::is_fastify_candidate(&rel_str)
+                || frameworks::slim::is_slim_candidate(&rel_str)
+                || frameworks::rocket::is_rocket_candidate(&rel_str)
+                || frameworks::axum::is_axum_candidate(&rel_str)
+                || frameworks::hono::is_hono_candidate(&rel_str)
+                || frameworks::echo::is_echo_candidate(&rel_str)
+                || frameworks::chi::is_chi_candidate(&rel_str)
             {
                 files.insert(abs_str);
             }
@@ -203,7 +217,7 @@ pub fn detect_framework_routes(
         // 在可用时使用解析缓存；否则回退到磁盘读取
         let source_opt = parse_cache.get(&abs_key).map(|(s, _)| s.clone());
         let source: String;
-        
+
         if let Some(cached) = source_opt {
             source = cached;
         } else {
@@ -246,7 +260,8 @@ pub fn detect_framework_routes(
             let routes = frameworks::rails::detect_rails_routes(file, source_ref);
             added += inject_routes(graph, &routes, "rails");
         } else if frameworks::spring::is_spring_candidate(file) {
-            if source_ref.contains("@GetMapping") || source_ref.contains("@RequestMapping")
+            if source_ref.contains("@GetMapping")
+                || source_ref.contains("@RequestMapping")
                 || source_ref.contains("@PostMapping")
             {
                 let routes = frameworks::spring::detect_spring_routes(file, source_ref);
@@ -265,14 +280,17 @@ pub fn detect_framework_routes(
             let routes = frameworks::chi::detect_chi_routes(file, source_ref);
             added += inject_routes(graph, &routes, "chi");
         } else if frameworks::gin::is_gin_candidate(file) {
-            if source_ref.contains(".GET(") || source_ref.contains(".POST(")
-                || source_ref.contains(".Use(") || source_ref.contains(".Group(")
+            if source_ref.contains(".GET(")
+                || source_ref.contains(".POST(")
+                || source_ref.contains(".Use(")
+                || source_ref.contains(".Group(")
             {
                 let routes = frameworks::gin::detect_gin_routes(file, source_ref);
                 added += inject_routes(graph, &routes, "gin");
             }
         } else if frameworks::nestjs::is_nestjs_candidate(file) {
-            if source_ref.contains("@Controller") || source_ref.contains("@Get")
+            if source_ref.contains("@Controller")
+                || source_ref.contains("@Get")
                 || source_ref.contains("@Post")
             {
                 let routes = frameworks::nestjs::detect_nestjs_routes(file, source_ref);
@@ -280,8 +298,9 @@ pub fn detect_framework_routes(
             }
         } else if frameworks::koa::is_koa_candidate(file) {
             if frameworks::koa::has_koa_content(source_ref)
-                && (source_ref.contains(".get(") || source_ref.contains(".post(")
-                || source_ref.contains(".use("))
+                && (source_ref.contains(".get(")
+                    || source_ref.contains(".post(")
+                    || source_ref.contains(".use("))
             {
                 let routes = frameworks::koa::detect_koa_routes(file, source_ref);
                 added += inject_routes(graph, &routes, "koa");
@@ -310,47 +329,59 @@ pub fn detect_framework_routes(
             let routes = frameworks::actix::detect_actix_routes(file, source_ref);
             added += inject_routes(graph, &routes, "actix");
         } else if frameworks::aspnet::is_aspnet_candidate(file) {
-            if source_ref.contains("[HttpGet") || source_ref.contains("[HttpPost")
-                || source_ref.contains("[HttpPut") || source_ref.contains("[HttpDelete")
+            if source_ref.contains("[HttpGet")
+                || source_ref.contains("[HttpPost")
+                || source_ref.contains("[HttpPut")
+                || source_ref.contains("[HttpDelete")
             {
                 let routes = frameworks::aspnet::detect_aspnet_routes(file, source_ref);
                 added += inject_routes(graph, &routes, "aspnet");
             }
         } else if frameworks::sinatra::is_sinatra_candidate(file) {
-            if source_ref.contains("get '") || source_ref.contains("get \"")
-                || source_ref.contains("post '") || source_ref.contains("post \"")
+            if source_ref.contains("get '")
+                || source_ref.contains("get \"")
+                || source_ref.contains("post '")
+                || source_ref.contains("post \"")
             {
                 let routes = frameworks::sinatra::detect_sinatra_routes(file, source_ref);
                 added += inject_routes(graph, &routes, "sinatra");
             }
         } else if frameworks::fiber::is_fiber_candidate(file) {
-            if source_ref.contains(".Get(") || source_ref.contains(".Post(")
-                || source_ref.contains(".Put(") || source_ref.contains(".Delete(")
+            if source_ref.contains(".Get(")
+                || source_ref.contains(".Post(")
+                || source_ref.contains(".Put(")
+                || source_ref.contains(".Delete(")
             {
                 let routes = frameworks::fiber::detect_fiber_routes(file, source_ref);
                 added += inject_routes(graph, &routes, "fiber");
             }
         } else if frameworks::fastify::is_fastify_candidate(file) {
-            if source_ref.contains(".get(") || source_ref.contains(".post(")
-                || source_ref.contains(".put(") || source_ref.contains(".delete(")
+            if source_ref.contains(".get(")
+                || source_ref.contains(".post(")
+                || source_ref.contains(".put(")
+                || source_ref.contains(".delete(")
             {
                 let routes = frameworks::fastify::detect_fastify_routes(file, source_ref);
                 added += inject_routes(graph, &routes, "fastify");
             }
         } else if frameworks::slim::is_slim_candidate(file) {
-            if source_ref.contains("$app->get") || source_ref.contains("$app->post")
-                || source_ref.contains("$app->put") || source_ref.contains("$app->delete")
+            if source_ref.contains("$app->get")
+                || source_ref.contains("$app->post")
+                || source_ref.contains("$app->put")
+                || source_ref.contains("$app->delete")
             {
                 let routes = frameworks::slim::detect_slim_routes(file, source_ref);
                 added += inject_routes(graph, &routes, "slim");
             }
         } else if frameworks::rocket::is_rocket_candidate(file)
-            && (source_ref.contains("#[get(") || source_ref.contains("#[post(")
-                || source_ref.contains("#[put(") || source_ref.contains("#[delete("))
-            {
-                let routes = frameworks::rocket::detect_rocket_routes(file, source_ref);
-                added += inject_routes(graph, &routes, "rocket");
-            }
+            && (source_ref.contains("#[get(")
+                || source_ref.contains("#[post(")
+                || source_ref.contains("#[put(")
+                || source_ref.contains("#[delete("))
+        {
+            let routes = frameworks::rocket::detect_rocket_routes(file, source_ref);
+            added += inject_routes(graph, &routes, "rocket");
+        }
     }
 
     added
@@ -385,25 +416,33 @@ fn rewrite_fs_route_path(route: DetectedRoute, rel: &str, abs: &str) -> Detected
 pub(crate) fn find_first_string(node: &tree_sitter::Node, source: &str) -> Option<String> {
     if node.kind() == "string_content" {
         let raw = node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
-        if !raw.is_empty() { return Some(raw); }
+        if !raw.is_empty() {
+            return Some(raw);
+        }
     }
     if node.kind() == "string" {
         let mut c = node.walk();
         for child in node.children(&mut c) {
             if child.kind() == "string_content" {
                 let raw = child.utf8_text(source.as_bytes()).unwrap_or("").to_string();
-                if !raw.is_empty() { return Some(raw); }
+                if !raw.is_empty() {
+                    return Some(raw);
+                }
             }
         }
         let raw = node.utf8_text(source.as_bytes()).unwrap_or("");
         let cleaned = raw.trim_matches(&['\'', '"'][..]).to_string();
-        if !cleaned.is_empty() { return Some(cleaned); }
+        if !cleaned.is_empty() {
+            return Some(cleaned);
+        }
     }
     // Ruby 符号：:articles、:users
     if node.kind() == "simple_symbol" || node.kind() == "symbol" {
         let raw = node.utf8_text(source.as_bytes()).unwrap_or("");
         let cleaned = raw.trim_start_matches(':').to_string();
-        if !cleaned.is_empty() { return Some(cleaned); }
+        if !cleaned.is_empty() {
+            return Some(cleaned);
+        }
     }
     let mut c = node.walk();
     for child in node.children(&mut c) {
@@ -419,13 +458,17 @@ pub(crate) fn find_rails_handler(node: &tree_sitter::Node, source: &str) -> Opti
     // 递归搜索包含 '#' 的 'string_content'
     if node.kind() == "string_content" {
         let raw = node.utf8_text(source.as_bytes()).unwrap_or("");
-        if raw.contains('#') { return Some(raw.to_string()); }
+        if raw.contains('#') {
+            return Some(raw.to_string());
+        }
     }
     // 也检查 string 节点文本
     if node.kind() == "string" {
         let raw = node.utf8_text(source.as_bytes()).unwrap_or("");
         let cleaned = raw.trim_matches(&['\'', '"'][..]);
-        if cleaned.contains('#') { return Some(cleaned.to_string()); }
+        if cleaned.contains('#') {
+            return Some(cleaned.to_string());
+        }
     }
     let mut c = node.walk();
     for child in node.children(&mut c) {
@@ -475,7 +518,7 @@ pub(crate) fn inject_routes(graph: &mut Graph, routes: &[DetectedRoute], framewo
             kind: EdgeKind::Calls,
             coupling_depth: 1,
             cross_file: is_cross_file(graph, &handler_node_id, file),
-                        temporal_delay_sec: None,
+            temporal_delay_sec: None,
             lsp_resolved: false,
             is_synthesized: true,
             metadata: Some(serde_json::json!({
@@ -628,10 +671,17 @@ urlpatterns = [
         assert!(!routes.is_empty(), "Should detect path() call");
         let (_method, url, handler, _file, _line) = &routes[0];
         assert_eq!(url, "api/users/");
-        assert!(handler.contains("user_list"), "Handler should reference user_list, got: {}", handler);
+        assert!(
+            handler.contains("user_list"),
+            "Handler should reference user_list, got: {}",
+            handler
+        );
         // 注意：处理函数可能是 "views.user_list" 或 "user_list"，取决于 AST 解析
-        assert!(handler.contains("user_list") || handler == "user_list",
-            "Expected handler to contain 'user_list', got '{}'", handler);
+        assert!(
+            handler.contains("user_list") || handler == "user_list",
+            "Expected handler to contain 'user_list', got '{}'",
+            handler
+        );
     }
 
     #[test]
@@ -720,9 +770,13 @@ app.use('/api/v2', v2Router);
         handler.location = Some("views.py:10".into());
         g.add_node(handler);
 
-        let routes = vec![
-            ("GET".into(), "/api/users".into(), "views.user_list".into(), "urls.py".into(), 5),
-        ];
+        let routes = vec![(
+            "GET".into(),
+            "/api/users".into(),
+            "views.user_list".into(),
+            "urls.py".into(),
+            5,
+        )];
 
         let added = inject_routes(&mut g, &routes, "test");
         assert_eq!(added, 1, "Should add 1 route node");
@@ -744,7 +798,10 @@ app.use('/api/v2', v2Router);
         g.add_node(n);
 
         let found = find_handler_node(&g, "views.user_list", "myapp/urls.py");
-        assert_eq!(found, "myapp.views.user_list", "Should match by last component");
+        assert_eq!(
+            found, "myapp.views.user_list",
+            "Should match by last component"
+        );
     }
 
     // ── FastAPI tests ──
@@ -1087,7 +1144,11 @@ defmodule MyApp.Router do
 end
 "#;
         let routes = detect_phoenix_routes("router.ex", source);
-        assert!(routes.len() >= 2, "Should detect Phoenix routes, got {}", routes.len());
+        assert!(
+            routes.len() >= 2,
+            "Should detect Phoenix routes, got {}",
+            routes.len()
+        );
     }
 
     #[test]
@@ -1115,7 +1176,12 @@ async fn create_user() -> HttpResponse {
 }
 "#;
         let routes = detect_actix_routes("handlers.rs", source);
-        assert_eq!(routes.len(), 2, "Should detect 2 Actix routes, got {}", routes.len());
+        assert_eq!(
+            routes.len(),
+            2,
+            "Should detect 2 Actix routes, got {}",
+            routes.len()
+        );
         assert_eq!(routes[0].0, "GET");
         assert_eq!(routes[1].0, "POST");
     }
@@ -1143,9 +1209,13 @@ async fn health() -> &'static str {
     #[test]
     fn test_actix_content_gate() {
         // F7：真正的 actix 文件总是导入 actix_web
-        assert!(has_actix_content("use actix_web::{get, web, HttpResponse};"));
+        assert!(has_actix_content(
+            "use actix_web::{get, web, HttpResponse};"
+        ));
         // 纯 Rocket 文件——属性拼写相同，不得通过门控
-        assert!(!has_actix_content("#[get(\"/api/users\")]\nfn get_users() {}"));
+        assert!(!has_actix_content(
+            "#[get(\"/api/users\")]\nfn get_users() {}"
+        ));
         // Axum 文件——也不得通过门控
         assert!(!has_actix_content("use axum::{routing::get, Router};"));
     }
@@ -1166,13 +1236,23 @@ public class UserController {
 }
 "#;
         let routes = detect_spring_routes("UserController.java", source);
-        assert_eq!(routes.len(), 2, "Should detect 2 method-level routes, got {}", routes.len());
+        assert_eq!(
+            routes.len(),
+            2,
+            "Should detect 2 method-level routes, got {}",
+            routes.len()
+        );
         // 类级 @RequestMapping 不应产生自己的路由
-        assert!(routes.iter().all(|r| r.2 != "UserController"),
-            "Class-level @RequestMapping should not create a route");
+        assert!(
+            routes.iter().all(|r| r.2 != "UserController"),
+            "Class-level @RequestMapping should not create a route"
+        );
         // 方法路径应与类前缀合并
-        assert!(routes.iter().any(|r| r.1 == "/api/users"),
-            "GET path should be /api/users, got: {:?}", routes.iter().map(|r| &r.1).collect::<Vec<_>>());
+        assert!(
+            routes.iter().any(|r| r.1 == "/api/users"),
+            "GET path should be /api/users, got: {:?}",
+            routes.iter().map(|r| &r.1).collect::<Vec<_>>()
+        );
         assert_eq!(routes[0].0, "GET");
         assert_eq!(routes[1].0, "POST");
     }
@@ -1188,7 +1268,10 @@ public class HealthController {
 "#;
         let routes = detect_spring_routes("HealthController.java", source);
         assert_eq!(routes.len(), 1, "Should detect 1 route");
-        assert_eq!(routes[0].1, "/health", "Path should not have a prefix when no class-level @RequestMapping");
+        assert_eq!(
+            routes[0].1, "/health",
+            "Path should not have a prefix when no class-level @RequestMapping"
+        );
     }
 
     // ── D2: Phoenix scope prefix (strengthened) ──
@@ -1205,12 +1288,21 @@ defmodule MyApp.Router do
 end
 "#;
         let routes = detect_phoenix_routes("router.ex", source);
-        assert_eq!(routes.len(), 2, "Should detect 2 routes, got {}", routes.len());
-        assert!(routes.iter().any(|r| r.1 == "/api/users"),
+        assert_eq!(
+            routes.len(),
+            2,
+            "Should detect 2 routes, got {}",
+            routes.len()
+        );
+        assert!(
+            routes.iter().any(|r| r.1 == "/api/users"),
             "Scope prefix /api should be prepended, got: {:?}",
-            routes.iter().map(|r| &r.1).collect::<Vec<_>>());
-        assert!(routes.iter().all(|r| r.1.starts_with("/api/")),
-            "All routes should have /api/ prefix");
+            routes.iter().map(|r| &r.1).collect::<Vec<_>>()
+        );
+        assert!(
+            routes.iter().all(|r| r.1.starts_with("/api/")),
+            "All routes should have /api/ prefix"
+        );
     }
 
     #[test]
@@ -1240,10 +1332,23 @@ urlpatterns = [
 "#;
         let routes = detect_django_routes("urls.py", source);
         // include() 应产生带 include() 处理函数的路由以保留前缀
-        let include_routes: Vec<_> = routes.iter().filter(|r| r.2.starts_with("include(")).collect();
-        assert!(!include_routes.is_empty(), "include() should preserve prefix as include() route, got: {:?}", routes);
-        assert!(include_routes.iter().all(|r| r.1 == "api/"), "include() route should preserve prefix 'api/'");
-        assert!(routes.iter().any(|r| r.2.contains("user_list")), "Should still detect the real handler");
+        let include_routes: Vec<_> = routes
+            .iter()
+            .filter(|r| r.2.starts_with("include("))
+            .collect();
+        assert!(
+            !include_routes.is_empty(),
+            "include() should preserve prefix as include() route, got: {:?}",
+            routes
+        );
+        assert!(
+            include_routes.iter().all(|r| r.1 == "api/"),
+            "include() route should preserve prefix 'api/'"
+        );
+        assert!(
+            routes.iter().any(|r| r.2.contains("user_list")),
+            "Should still detect the real handler"
+        );
     }
 
     // ── D4: DRF register() CRUD expansion ──
@@ -1257,19 +1362,36 @@ router = DefaultRouter()
 router.register(r'users', UserViewSet)
 "#;
         let routes = detect_django_routes("urls.py", source);
-        assert_eq!(routes.len(), 6, "register() should expand to 6 CRUD routes, got {}", routes.len());
+        assert_eq!(
+            routes.len(),
+            6,
+            "register() should expand to 6 CRUD routes, got {}",
+            routes.len()
+        );
         // 检查方法
         let methods: Vec<&str> = routes.iter().map(|r| r.0.as_str()).collect();
         assert!(methods.contains(&"GET"), "Should have GET (list/retrieve)");
         assert!(methods.contains(&"POST"), "Should have POST (create)");
         assert!(methods.contains(&"PUT"), "Should have PUT (update)");
-        assert!(methods.contains(&"PATCH"), "Should have PATCH (partial_update)");
+        assert!(
+            methods.contains(&"PATCH"),
+            "Should have PATCH (partial_update)"
+        );
         assert!(methods.contains(&"DELETE"), "Should have DELETE (destroy)");
         // 检查 URL
-        assert!(routes.iter().any(|r| r.1 == "/users/"), "Should have list/create route /users/");
-        assert!(routes.iter().any(|r| r.1 == "/users/{id}/"), "Should have detail route /users/{{id}}/");
+        assert!(
+            routes.iter().any(|r| r.1 == "/users/"),
+            "Should have list/create route /users/"
+        );
+        assert!(
+            routes.iter().any(|r| r.1 == "/users/{id}/"),
+            "Should have detail route /users/{{id}}/"
+        );
         // 检查处理函数是否引用 ViewSet
-        assert!(routes.iter().all(|r| r.2.starts_with("UserViewSet.")), "Handlers should be ViewSet.action");
+        assert!(
+            routes.iter().all(|r| r.2.starts_with("UserViewSet.")),
+            "Handlers should be ViewSet.action"
+        );
     }
 
     // ── D5: ASP.NET Core tests ──
@@ -1290,7 +1412,10 @@ public class UsersController : ControllerBase {
         let routes = detect_aspnet_routes("UsersController.cs", source);
         assert!(!routes.is_empty(), "Should detect ASP.NET routes");
         assert_eq!(routes[0].0, "GET");
-        assert!(routes.iter().any(|r| r.0 == "POST"), "Should detect POST route");
+        assert!(
+            routes.iter().any(|r| r.0 == "POST"),
+            "Should detect POST route"
+        );
     }
 
     #[test]
@@ -1319,7 +1444,10 @@ end
         assert!(!routes.is_empty(), "Should detect Sinatra routes");
         assert_eq!(routes[0].0, "GET");
         assert_eq!(routes[0].1, "/api/users");
-        assert!(routes.iter().any(|r| r.0 == "POST"), "Should detect POST route");
+        assert!(
+            routes.iter().any(|r| r.0 == "POST"),
+            "Should detect POST route"
+        );
     }
 
     #[test]
@@ -1348,7 +1476,10 @@ func main() {
         assert!(!routes.is_empty(), "Should detect Fiber routes");
         assert_eq!(routes[0].0, "GET");
         assert_eq!(routes[0].1, "/api/users");
-        assert!(routes.iter().any(|r| r.0 == "POST"), "Should detect POST route");
+        assert!(
+            routes.iter().any(|r| r.0 == "POST"),
+            "Should detect POST route"
+        );
     }
 
     #[test]
@@ -1374,7 +1505,10 @@ app.post('/api/orders', createOrder);
         assert!(!routes.is_empty(), "Should detect Fastify routes");
         assert_eq!(routes[0].0, "GET");
         assert_eq!(routes[0].1, "/api/users");
-        assert!(routes.iter().any(|r| r.0 == "POST"), "Should detect POST route");
+        assert!(
+            routes.iter().any(|r| r.0 == "POST"),
+            "Should detect POST route"
+        );
     }
 
     #[test]
@@ -1402,7 +1536,10 @@ $app->post('/api/orders', function ($req, $res) {
         assert!(!routes.is_empty(), "Should detect Slim routes");
         assert_eq!(routes[0].0, "GET");
         assert_eq!(routes[0].1, "/api/users");
-        assert!(routes.iter().any(|r| r.0 == "POST"), "Should detect POST route");
+        assert!(
+            routes.iter().any(|r| r.0 == "POST"),
+            "Should detect POST route"
+        );
     }
 
     #[test]
@@ -1432,7 +1569,10 @@ fn create_order() -> &'static str {
         assert!(!routes.is_empty(), "Should detect Rocket routes");
         assert_eq!(routes[0].0, "GET");
         assert_eq!(routes[0].1, "/api/users");
-        assert!(routes.iter().any(|r| r.0 == "POST"), "Should detect POST route");
+        assert!(
+            routes.iter().any(|r| r.0 == "POST"),
+            "Should detect POST route"
+        );
     }
 
     #[test]
@@ -1461,9 +1601,13 @@ fn create_order() -> &'static str {
     #[test]
     fn test_c3_inject_routes_framework_property() {
         let mut graph = Graph::new();
-        let routes: Vec<DetectedRoute> = vec![
-            ("GET".to_string(), "/users".to_string(), "index".to_string(), "app.py".to_string(), 3usize),
-        ];
+        let routes: Vec<DetectedRoute> = vec![(
+            "GET".to_string(),
+            "/users".to_string(),
+            "index".to_string(),
+            "app.py".to_string(),
+            3usize,
+        )];
         let added = inject_routes(&mut graph, &routes, "flask");
         assert_eq!(added, 1);
         let route_node = graph
@@ -1487,13 +1631,24 @@ fn create_order() -> &'static str {
         handler.location = Some("views.py:10".to_string());
         graph.add_node(handler);
 
-        let routes: Vec<DetectedRoute> = vec![
-            ("GET".to_string(), "/users".to_string(), "index".to_string(), "urls.py".to_string(), 3usize),
-        ];
+        let routes: Vec<DetectedRoute> = vec![(
+            "GET".to_string(),
+            "/users".to_string(),
+            "index".to_string(),
+            "urls.py".to_string(),
+            3usize,
+        )];
         inject_routes(&mut graph, &routes, "flask");
-        let edge = graph.edges.values().next().expect("route edge should exist");
+        let edge = graph
+            .edges
+            .values()
+            .next()
+            .expect("route edge should exist");
         assert_eq!(edge.target, "handler_views_index");
-        assert!(edge.cross_file, "handler in views.py vs route in urls.py must be cross_file");
+        assert!(
+            edge.cross_file,
+            "handler in views.py vs route in urls.py must be cross_file"
+        );
 
         // 同文件处理函数 → cross_file == false
         let mut graph2 = Graph::new();
@@ -1501,8 +1656,15 @@ fn create_order() -> &'static str {
         handler2.location = Some("urls.py:20".to_string());
         graph2.add_node(handler2);
         inject_routes(&mut graph2, &routes, "flask");
-        let edge2 = graph2.edges.values().next().expect("route edge should exist");
-        assert!(!edge2.cross_file, "handler and route both in urls.py must not be cross_file");
+        let edge2 = graph2
+            .edges
+            .values()
+            .next()
+            .expect("route edge should exist");
+        assert!(
+            !edge2.cross_file,
+            "handler and route both in urls.py must not be cross_file"
+        );
     }
 
     // ── P1: Axum tests ──
@@ -1517,9 +1679,17 @@ fn app() -> Router {
 }
 "#;
         let routes = detect_axum_routes("main.rs", source);
-        assert_eq!(routes.len(), 2, "one route() with two method routers → 2 routes, got {:?}", routes);
+        assert_eq!(
+            routes.len(),
+            2,
+            "one route() with two method routers → 2 routes, got {:?}",
+            routes
+        );
         assert_eq!(routes[0].0, "GET");
-        assert_eq!(routes[0].1, "/users/:id", "axum :id segment preserved as-is");
+        assert_eq!(
+            routes[0].1, "/users/:id",
+            "axum :id segment preserved as-is"
+        );
         assert_eq!(routes[0].2, "get_user");
         assert_eq!(routes[1].0, "POST");
         assert_eq!(routes[1].1, "/users/:id");
@@ -1534,7 +1704,11 @@ Router::new().route("/health", get(|| async { "ok" }))
         let routes = detect_axum_routes("main.rs", source);
         assert_eq!(routes.len(), 1, "got {:?}", routes);
         assert_eq!(routes[0].0, "GET");
-        assert!(routes[0].2.starts_with("<inline@"), "closure handler should be <inline@LINE>, got {}", routes[0].2);
+        assert!(
+            routes[0].2.starts_with("<inline@"),
+            "closure handler should be <inline@LINE>, got {}",
+            routes[0].2
+        );
     }
 
     #[test]
@@ -1547,13 +1721,25 @@ Router::new()
         .route("/users/:id", get(get_user)))
 "#;
         let routes = detect_axum_routes("main.rs", source);
-        assert_eq!(routes.len(), 3, "inline nest router routes get the prefix, got {:?}", routes);
+        assert_eq!(
+            routes.len(),
+            3,
+            "inline nest router routes get the prefix, got {:?}",
+            routes
+        );
         // 输出顺序遵循调用链（最外层 .nest 优先），而非
         // 源码顺序——基于内容断言，而非位置。
-        assert!(routes.iter().any(|r| r.1 == "/health"), "route outside nest keeps its path, got {:?}", routes);
+        assert!(
+            routes.iter().any(|r| r.1 == "/health"),
+            "route outside nest keeps its path, got {:?}",
+            routes
+        );
         assert!(routes.iter().any(|r| r.1 == "/api/users"));
         assert!(routes.iter().any(|r| r.1 == "/api/users/:id"));
-        assert_eq!(routes.iter().filter(|r| r.1.starts_with("/api/")).count(), 2);
+        assert_eq!(
+            routes.iter().filter(|r| r.1.starts_with("/api/")).count(),
+            2
+        );
     }
 
     #[test]
@@ -1564,7 +1750,11 @@ Router::new()
     .merge(other_router)
 "#;
         let routes = detect_axum_routes("main.rs", source);
-        assert!(routes.is_empty(), "identifier nest + merge are not statically resolvable, got {:?}", routes);
+        assert!(
+            routes.is_empty(),
+            "identifier nest + merge are not statically resolvable, got {:?}",
+            routes
+        );
     }
 
     #[test]
@@ -1573,7 +1763,12 @@ Router::new()
 Router::new().route_with_tsr("/users", get(list_users))
 "#;
         let routes = detect_axum_routes("main.rs", source);
-        assert_eq!(routes.len(), 1, "route_with_tsr should be detected, got {:?}", routes);
+        assert_eq!(
+            routes.len(),
+            1,
+            "route_with_tsr should be detected, got {:?}",
+            routes
+        );
         assert_eq!(routes[0].0, "GET");
         assert_eq!(routes[0].1, "/users");
     }
@@ -1583,9 +1778,13 @@ Router::new().route_with_tsr("/users", get(list_users))
         assert!(has_axum_content("use axum::{routing::get, Router};"));
         assert!(has_axum_content("let app = Router::new();"));
         // Actix 文件——不应通过 Axum 内容门控
-        assert!(!has_axum_content("use actix_web::{get, web, HttpResponse};"));
+        assert!(!has_axum_content(
+            "use actix_web::{get, web, HttpResponse};"
+        ));
         // Rocket 文件——不应通过 Axum 内容门控
-        assert!(!has_axum_content("#[get(\"/api/users\")]\nfn get_users() {}"));
+        assert!(!has_axum_content(
+            "#[get(\"/api/users\")]\nfn get_users() {}"
+        ));
         assert!(is_axum_candidate("main.rs"));
         assert!(is_axum_candidate("src/routes.rs"));
         assert!(!is_axum_candidate("main.go"));
@@ -1615,7 +1814,10 @@ app.get('/users/:id', getUser)
         assert_eq!(routes[0].1, "/users");
         assert_eq!(routes[0].2, "listUsers");
         assert_eq!(routes[1].0, "POST");
-        assert_eq!(routes[2].1, "/users/:id", "hono :id segment preserved as-is");
+        assert_eq!(
+            routes[2].1, "/users/:id",
+            "hono :id segment preserved as-is"
+        );
     }
 
     #[test]
@@ -1645,8 +1847,14 @@ app.get('/users', listUsers)
 "#;
         let routes = detect_hono_routes("app.ts", source);
         assert_eq!(routes.len(), 2, "got {:?}", routes);
-        assert_eq!(routes[0].1, "/health", "route before basePath keeps its path");
-        assert_eq!(routes[1].1, "/api/users", "route after basePath gets the prefix");
+        assert_eq!(
+            routes[0].1, "/health",
+            "route before basePath keeps its path"
+        );
+        assert_eq!(
+            routes[1].1, "/api/users",
+            "route after basePath gets the prefix"
+        );
     }
 
     #[test]
@@ -1659,7 +1867,10 @@ app.basePath('/api').get('/users', listUsers)
 "#;
         let routes = detect_hono_routes("app.ts", source);
         assert_eq!(routes.len(), 1, "got {:?}", routes);
-        assert_eq!(routes[0].1, "/api/users", "chained basePath receiver gives the prefix");
+        assert_eq!(
+            routes[0].1, "/api/users",
+            "chained basePath receiver gives the prefix"
+        );
     }
 
     #[test]
@@ -1676,7 +1887,10 @@ app.get('/health', health)
         let routes = detect_hono_routes("app.ts", source);
         assert_eq!(routes.len(), 2, "got {:?}", routes);
         assert_eq!(routes[0].1, "/api/users");
-        assert_eq!(routes[1].1, "/health", "chained basePath must not leak its prefix");
+        assert_eq!(
+            routes[1].1, "/health",
+            "chained basePath must not leak its prefix"
+        );
     }
 
     #[test]
@@ -1732,7 +1946,10 @@ e.DELETE("/users/:id", deleteUser)
         assert_eq!(routes.len(), 3, "got {:?}", routes);
         assert_eq!(routes[0].0, "POST");
         assert_eq!(routes[1].0, "PUT");
-        assert_eq!(routes[1].1, "/users/:id", "echo :id segment preserved as-is");
+        assert_eq!(
+            routes[1].1, "/users/:id",
+            "echo :id segment preserved as-is"
+        );
         assert_eq!(routes[2].0, "DELETE");
     }
 
@@ -1752,7 +1969,12 @@ func main() {
 }
 "#;
         let routes = detect_echo_routes("main.go", source);
-        assert_eq!(routes.len(), 3, "Group itself emits no route, got {:?}", routes);
+        assert_eq!(
+            routes.len(),
+            3,
+            "Group itself emits no route, got {:?}",
+            routes
+        );
         assert_eq!(routes[0].1, "/api/users");
         assert_eq!(routes[0].0, "GET");
         assert_eq!(routes[1].1, "/api/users");
@@ -1828,7 +2050,10 @@ r.Get("/users/{id}", getUser)
 "#;
         let routes = detect_chi_routes("routes.go", source);
         assert_eq!(routes.len(), 1, "got {:?}", routes);
-        assert_eq!(routes[0].1, "/users/{id}", "chi {{id}} style kept as-is — no :id normalization");
+        assert_eq!(
+            routes[0].1, "/users/{id}",
+            "chi {{id}} style kept as-is — no :id normalization"
+        );
     }
 
     #[test]
@@ -1848,8 +2073,16 @@ func main() {
 }
 "#;
         let routes = detect_chi_routes("main.go", source);
-        assert_eq!(routes.len(), 3, "Route itself emits no route, got {:?}", routes);
-        assert_eq!(routes[0].1, "/health", "route outside the closure gets no prefix");
+        assert_eq!(
+            routes.len(),
+            3,
+            "Route itself emits no route, got {:?}",
+            routes
+        );
+        assert_eq!(
+            routes[0].1, "/health",
+            "route outside the closure gets no prefix"
+        );
         assert_eq!(routes[1].1, "/api/users");
         assert_eq!(routes[1].0, "GET");
         assert_eq!(routes[2].1, "/api/users");
@@ -1899,29 +2132,65 @@ func main() {
 
         // 分发互斥：每个文件落入其各自框架的
         // 分支，而非本会吞掉它的其他分支。
-        assert!(!counts.contains_key("express"), "hono app.ts must not become express");
-        assert!(!counts.contains_key("gin"), "echo/chi files must not become gin");
-        for n in graph.nodes.values().filter(|n| n.properties["kind"] == "route") {
+        assert!(
+            !counts.contains_key("express"),
+            "hono app.ts must not become express"
+        );
+        assert!(
+            !counts.contains_key("gin"),
+            "echo/chi files must not become gin"
+        );
+        for n in graph
+            .nodes
+            .values()
+            .filter(|n| n.properties["kind"] == "route")
+        {
             let loc = n.location.clone().unwrap_or_default();
             let fw = n.properties["framework"].as_str().unwrap_or("");
             if loc.contains("app.ts") {
-                assert_eq!(fw, "hono", "app.ts routes must be hono, got {} at {}", fw, loc);
+                assert_eq!(
+                    fw, "hono",
+                    "app.ts routes must be hono, got {} at {}",
+                    fw, loc
+                );
             } else if loc.contains("echo.go") {
-                assert_eq!(fw, "echo", "echo.go routes must be echo, got {} at {}", fw, loc);
+                assert_eq!(
+                    fw, "echo",
+                    "echo.go routes must be echo, got {} at {}",
+                    fw, loc
+                );
             } else if loc.contains("chi.go") {
-                assert_eq!(fw, "chi", "chi.go routes must be chi, got {} at {}", fw, loc);
+                assert_eq!(
+                    fw, "chi",
+                    "chi.go routes must be chi, got {} at {}",
+                    fw, loc
+                );
             } else if loc.contains("main.rs") {
-                assert_eq!(fw, "axum", "main.rs routes must be axum, got {} at {}", fw, loc);
+                assert_eq!(
+                    fw, "axum",
+                    "main.rs routes must be axum, got {} at {}",
+                    fw, loc
+                );
             }
         }
 
         // 前缀传播贯穿了整个管道。
-        let paths: Vec<&str> = graph.nodes.values()
+        let paths: Vec<&str> = graph
+            .nodes
+            .values()
             .filter(|n| n.properties["kind"] == "route")
             .filter_map(|n| n.properties["path"].as_str())
             .collect();
-        assert!(paths.contains(&"/api/users/:id"), "axum nest prefix + :id, got {:?}", paths);
-        assert!(paths.contains(&"/api/users/{id}"), "chi Route prefix + {{id}}, got {:?}", paths);
+        assert!(
+            paths.contains(&"/api/users/:id"),
+            "axum nest prefix + :id, got {:?}",
+            paths
+        );
+        assert!(
+            paths.contains(&"/api/users/{id}"),
+            "chi Route prefix + {{id}}, got {:?}",
+            paths
+        );
     }
 
     // ── P2: Next.js (App Router) filesystem routing ──
@@ -1950,19 +2219,49 @@ func main() {
 
     #[test]
     fn test_nextjs_route_for_path() {
-        assert_eq!(nextjs_route_for_path("app/page.tsx"), Some(("/".into(), false)));
-        assert_eq!(nextjs_route_for_path("app/users/page.tsx"), Some(("/users".into(), false)));
-        assert_eq!(nextjs_route_for_path("app/users/[id]/page.tsx"), Some(("/users/:id".into(), false)));
-        assert_eq!(nextjs_route_for_path("app/docs/[...slug]/page.tsx"), Some(("/docs/*".into(), false)));
-        assert_eq!(nextjs_route_for_path("app/docs/[[...slug]]/page.tsx"), Some(("/docs/*".into(), false)));
+        assert_eq!(
+            nextjs_route_for_path("app/page.tsx"),
+            Some(("/".into(), false))
+        );
+        assert_eq!(
+            nextjs_route_for_path("app/users/page.tsx"),
+            Some(("/users".into(), false))
+        );
+        assert_eq!(
+            nextjs_route_for_path("app/users/[id]/page.tsx"),
+            Some(("/users/:id".into(), false))
+        );
+        assert_eq!(
+            nextjs_route_for_path("app/docs/[...slug]/page.tsx"),
+            Some(("/docs/*".into(), false))
+        );
+        assert_eq!(
+            nextjs_route_for_path("app/docs/[[...slug]]/page.tsx"),
+            Some(("/docs/*".into(), false))
+        );
         // 路由组和并行路由槽从 URL 中省略
-        assert_eq!(nextjs_route_for_path("app/(marketing)/about/page.tsx"), Some(("/about".into(), false)));
-        assert_eq!(nextjs_route_for_path("app/@modal/login/page.tsx"), Some(("/login".into(), false)));
+        assert_eq!(
+            nextjs_route_for_path("app/(marketing)/about/page.tsx"),
+            Some(("/about".into(), false))
+        );
+        assert_eq!(
+            nextjs_route_for_path("app/@modal/login/page.tsx"),
+            Some(("/login".into(), false))
+        );
         // 拦截路由降级为普通段（已知限制）
-        assert_eq!(nextjs_route_for_path("app/feed/(.)photo/page.tsx"), Some(("/feed/photo".into(), false)));
-        assert_eq!(nextjs_route_for_path("app/(..)login/page.tsx"), Some(("/login".into(), false)));
+        assert_eq!(
+            nextjs_route_for_path("app/feed/(.)photo/page.tsx"),
+            Some(("/feed/photo".into(), false))
+        );
+        assert_eq!(
+            nextjs_route_for_path("app/(..)login/page.tsx"),
+            Some(("/login".into(), false))
+        );
         // API 路由文件
-        assert_eq!(nextjs_route_for_path("app/api/users/route.ts"), Some(("/api/users".into(), true)));
+        assert_eq!(
+            nextjs_route_for_path("app/api/users/route.ts"),
+            Some(("/api/users".into(), true))
+        );
         // 保留名称和非目标路径 → None
         assert_eq!(nextjs_route_for_path("app/users/layout.tsx"), None);
         assert_eq!(nextjs_route_for_path("components/Button.tsx"), None);
@@ -2000,7 +2299,10 @@ export const PUT = async () => new Response('ok');
         // F5：名称和 `=` 之间的类型标注被接受。
         let source = "export const GET: RequestHandler = async () => new Response('ok');\n\
                       export const POST = async () => new Response('ok');\n";
-        assert_eq!(extract_exported_http_methods(source), vec![("GET", 1), ("POST", 2)]);
+        assert_eq!(
+            extract_exported_http_methods(source),
+            vec![("GET", 1), ("POST", 2)]
+        );
         // 无赋值的类型化重声明仍不是处理函数
         assert!(extract_exported_http_methods("export const GET: RequestHandler;").is_empty());
     }
@@ -2011,7 +2313,10 @@ export const PUT = async () => new Response('ok');
         assert_eq!(page.len(), 1);
         assert_eq!(page[0].0, "GET");
         assert_eq!(page[0].1, "/users");
-        assert_eq!(page[0].2, "app/users/page.tsx", "page handler is the module file");
+        assert_eq!(
+            page[0].2, "app/users/page.tsx",
+            "page handler is the module file"
+        );
 
         let api_src = "export async function GET() {}\nexport async function POST() {}\n";
         let api = detect_nextjs_routes("app/api/users/route.ts", Some(api_src));
@@ -2047,13 +2352,31 @@ export const PUT = async () => new Response('ok');
 
     #[test]
     fn test_sveltekit_route_for_path() {
-        assert_eq!(sveltekit_route_for_path("src/routes/+page.svelte"), Some(("/".into(), false)));
-        assert_eq!(sveltekit_route_for_path("src/routes/users/[id]/+page.svelte"), Some(("/users/:id".into(), false)));
+        assert_eq!(
+            sveltekit_route_for_path("src/routes/+page.svelte"),
+            Some(("/".into(), false))
+        );
+        assert_eq!(
+            sveltekit_route_for_path("src/routes/users/[id]/+page.svelte"),
+            Some(("/users/:id".into(), false))
+        );
         // 可选参数 [[lang]] → :lang（与 Next 的可选 catch-all → * 不同）
-        assert_eq!(sveltekit_route_for_path("src/routes/[[lang]]/about/+page.svelte"), Some(("/:lang/about".into(), false)));
-        assert_eq!(sveltekit_route_for_path("src/routes/docs/[...rest]/+page.svelte"), Some(("/docs/*".into(), false)));
-        assert_eq!(sveltekit_route_for_path("src/routes/(app)/dashboard/+page.svelte"), Some(("/dashboard".into(), false)));
-        assert_eq!(sveltekit_route_for_path("src/routes/api/users/+server.ts"), Some(("/api/users".into(), true)));
+        assert_eq!(
+            sveltekit_route_for_path("src/routes/[[lang]]/about/+page.svelte"),
+            Some(("/:lang/about".into(), false))
+        );
+        assert_eq!(
+            sveltekit_route_for_path("src/routes/docs/[...rest]/+page.svelte"),
+            Some(("/docs/*".into(), false))
+        );
+        assert_eq!(
+            sveltekit_route_for_path("src/routes/(app)/dashboard/+page.svelte"),
+            Some(("/dashboard".into(), false))
+        );
+        assert_eq!(
+            sveltekit_route_for_path("src/routes/api/users/+server.ts"),
+            Some(("/api/users".into(), true))
+        );
         assert_eq!(sveltekit_route_for_path("src/routes/+layout.svelte"), None);
         assert_eq!(sveltekit_route_for_path("src/lib/utils.ts"), None);
     }
@@ -2080,7 +2403,9 @@ export const PUT = async () => new Response('ok');
         assert_eq!(api.len(), 2);
         assert_eq!(api[0].0, "GET");
         assert_eq!(api[1].0, "POST");
-        assert!(detect_sveltekit_routes("src/routes/api/x/+server.ts", Some("const y = 1;")).is_empty());
+        assert!(
+            detect_sveltekit_routes("src/routes/api/x/+server.ts", Some("const y = 1;")).is_empty()
+        );
     }
 
     // ── P2: fixture integration — Next.js + SvelteKit through the dispatcher ──
@@ -2130,44 +2455,95 @@ export const PUT = async () => new Response('ok');
         assert_eq!(added, 9, "fixture route count mismatch");
 
         let counts = framework_counts(&graph);
-        assert_eq!(counts.get("nextjs"), Some(&9), "nextjs count, got {:?}", counts);
+        assert_eq!(
+            counts.get("nextjs"),
+            Some(&9),
+            "nextjs count, got {:?}",
+            counts
+        );
 
         // 分发互斥：app/api/users/route.ts 匹配
         // is_express_file 的文件名门控，但必须产生零条 express/hono 路由。
-        assert!(!counts.contains_key("express"), "nextjs route.ts must not become express");
-        assert!(!counts.contains_key("hono"), "nextjs route.ts must not become hono");
-        for n in graph.nodes.values().filter(|n| n.properties["kind"] == "route") {
+        assert!(
+            !counts.contains_key("express"),
+            "nextjs route.ts must not become express"
+        );
+        assert!(
+            !counts.contains_key("hono"),
+            "nextjs route.ts must not become hono"
+        );
+        for n in graph
+            .nodes
+            .values()
+            .filter(|n| n.properties["kind"] == "route")
+        {
             let loc = n.location.clone().unwrap_or_default();
             if loc.contains("route.ts") {
-                assert_eq!(n.properties["framework"].as_str().unwrap_or(""), "nextjs",
-                    "route.ts routes must be nextjs, at {}", loc);
+                assert_eq!(
+                    n.properties["framework"].as_str().unwrap_or(""),
+                    "nextjs",
+                    "route.ts routes must be nextjs, at {}",
+                    loc
+                );
             }
         }
 
         // F1 回归测试：app/api/hono/route.ts 导入 hono 并注册
         // app.get('/internal', ...) —— 文件系统扫描必须独占认领该文件，
         // 因此 hono 检测器永远不会在其上运行。
-        let hono_file_routes: Vec<_> = graph.nodes.values()
+        let hono_file_routes: Vec<_> = graph
+            .nodes
+            .values()
             .filter(|n| n.properties["kind"] == "route")
-            .filter(|n| n.location.as_deref().unwrap_or("").contains("api/hono/route.ts"))
+            .filter(|n| {
+                n.location
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("api/hono/route.ts")
+            })
             .collect();
-        assert_eq!(hono_file_routes.len(), 1,
-            "exactly the one exported GET, no hono detector routes");
-        assert!(hono_file_routes.iter().all(|n| n.properties["framework"] == "nextjs"),
-            "every route in the hono-importing file must be nextjs");
+        assert_eq!(
+            hono_file_routes.len(),
+            1,
+            "exactly the one exported GET, no hono detector routes"
+        );
+        assert!(
+            hono_file_routes
+                .iter()
+                .all(|n| n.properties["framework"] == "nextjs"),
+            "every route in the hono-importing file must be nextjs"
+        );
         assert_eq!(hono_file_routes[0].properties["path"], "/api/hono");
-        assert!(!hono_file_routes.iter().any(|n| n.properties["path"] == "/internal"),
-            "the hono-internal app.get must not leak into the graph");
+        assert!(
+            !hono_file_routes
+                .iter()
+                .any(|n| n.properties["path"] == "/internal"),
+            "the hono-internal app.get must not leak into the graph"
+        );
 
-        let paths: Vec<&str> = graph.nodes.values()
+        let paths: Vec<&str> = graph
+            .nodes
+            .values()
             .filter(|n| n.properties["kind"] == "route")
             .filter_map(|n| n.properties["path"].as_str())
             .collect();
         assert!(paths.contains(&"/"), "root page, got {:?}", paths);
         assert!(paths.contains(&"/users/:id"), "[id] page, got {:?}", paths);
-        assert!(paths.contains(&"/docs/*"), "[...slug] page, got {:?}", paths);
-        assert!(paths.contains(&"/about"), "(marketing) group omitted, got {:?}", paths);
-        assert!(paths.contains(&"/dashboard"), "src/app page, got {:?}", paths);
+        assert!(
+            paths.contains(&"/docs/*"),
+            "[...slug] page, got {:?}",
+            paths
+        );
+        assert!(
+            paths.contains(&"/about"),
+            "(marketing) group omitted, got {:?}",
+            paths
+        );
+        assert!(
+            paths.contains(&"/dashboard"),
+            "src/app page, got {:?}",
+            paths
+        );
         assert!(paths.contains(&"/api/users"), "api route, got {:?}", paths);
     }
 
@@ -2188,24 +2564,56 @@ export const PUT = async () => new Response('ok');
         assert_eq!(added, 6, "fixture route count mismatch");
 
         let counts = framework_counts(&graph);
-        assert_eq!(counts.get("sveltekit"), Some(&6), "sveltekit count, got {:?}", counts);
-        assert!(!counts.contains_key("express"), "+server.ts must not become express");
-        assert!(!counts.contains_key("hono"), "+server.ts must not become hono");
-        for n in graph.nodes.values().filter(|n| n.properties["kind"] == "route") {
+        assert_eq!(
+            counts.get("sveltekit"),
+            Some(&6),
+            "sveltekit count, got {:?}",
+            counts
+        );
+        assert!(
+            !counts.contains_key("express"),
+            "+server.ts must not become express"
+        );
+        assert!(
+            !counts.contains_key("hono"),
+            "+server.ts must not become hono"
+        );
+        for n in graph
+            .nodes
+            .values()
+            .filter(|n| n.properties["kind"] == "route")
+        {
             let loc = n.location.clone().unwrap_or_default();
             assert!(!loc.contains("+layout"), "layout produced a route: {}", loc);
-            assert!(!loc.contains("+page.ts"), "load file produced a route: {}", loc);
+            assert!(
+                !loc.contains("+page.ts"),
+                "load file produced a route: {}",
+                loc
+            );
         }
 
-        let paths: Vec<&str> = graph.nodes.values()
+        let paths: Vec<&str> = graph
+            .nodes
+            .values()
             .filter(|n| n.properties["kind"] == "route")
             .filter_map(|n| n.properties["path"].as_str())
             .collect();
         assert!(paths.contains(&"/"), "root page, got {:?}", paths);
         assert!(paths.contains(&"/users/:id"), "[id] page, got {:?}", paths);
-        assert!(paths.contains(&"/:lang/about"), "[[lang]] optional param, got {:?}", paths);
-        assert!(paths.contains(&"/dashboard"), "(app) group omitted, got {:?}", paths);
-        assert!(paths.contains(&"/api/users"), "+server endpoint, got {:?}", paths);
+        assert!(
+            paths.contains(&"/:lang/about"),
+            "[[lang]] optional param, got {:?}",
+            paths
+        );
+        assert!(
+            paths.contains(&"/dashboard"),
+            "(app) group omitted, got {:?}",
+            paths
+        );
+        assert!(
+            paths.contains(&"/api/users"),
+            "+server endpoint, got {:?}",
+            paths
+        );
     }
-
 }

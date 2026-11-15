@@ -18,8 +18,8 @@ use serde_json::{json, Value};
 
 use crate::engine;
 use crate::engine::Engine;
-use crate::tools::{get_bool, get_str, get_usize, project_root};
 use crate::tools::ToolResponse;
+use crate::tools::{get_bool, get_str, get_usize, project_root};
 
 // ═══════════════════════════════════════════════════════════════
 // watcher 订阅（ensure,不重启）
@@ -200,8 +200,8 @@ pub(crate) fn handler_ensure_ready(args: &Value) -> ToolResponse {
             retry: false,
         };
     }
-    let (nodes, edges) = engine::engine_read(|idx| (idx.node_count(), idx.edge_count()))
-        .unwrap_or((0, 0));
+    let (nodes, edges) =
+        engine::engine_read(|idx| (idx.node_count(), idx.edge_count())).unwrap_or((0, 0));
     // watching 不进契约（环境状态而非就绪语义；进程内外形态天然不同）。
     ToolResponse::Success(json!({
         "ready": nodes > 0,
@@ -285,7 +285,9 @@ pub(crate) fn handler_fts_search(args: &Value) -> ToolResponse {
                     })
                 })
                 .collect();
-            ToolResponse::Success(json!({ "query": query, "count": results.len(), "results": results }))
+            ToolResponse::Success(
+                json!({ "query": query, "count": results.len(), "results": results }),
+            )
         }
         Some(Err(e)) => ToolResponse::Fault {
             message: format!("fts_search failed: {e}"),
@@ -311,8 +313,13 @@ pub(crate) fn handler_timeline_record(args: &Value) -> ToolResponse {
     let detail = get_str(args, &["detail", "summary"]);
     let node_id = get_str(args, &["node_id", "nodeId"]);
     let props = args.get("props").cloned().unwrap_or_else(|| json!({}));
-    let summary = if detail.is_empty() { event.as_str() } else { detail.as_str() };
-    match engine::engine_record_timeline_with_props(&event, Some(node_id.as_str()), summary, &props) {
+    let summary = if detail.is_empty() {
+        event.as_str()
+    } else {
+        detail.as_str()
+    };
+    match engine::engine_record_timeline_with_props(&event, Some(node_id.as_str()), summary, &props)
+    {
         Ok(()) => ToolResponse::Success(json!({ "recorded": true, "event": event })),
         Err(e) => ToolResponse::Fault {
             message: format!("timeline_record failed: {e}"),
@@ -351,12 +358,15 @@ pub(crate) fn handler_diff(args: &Value) -> ToolResponse {
         let modified_nodes: Vec<Value> = d
             .modified_nodes
             .iter()
-            .map(|(old, new)| json!({
-                "node_id": new.id, "name": new.name,
-                "old_kind": old.kind.as_str(), "new_kind": new.kind.as_str(),
-            }))
+            .map(|(old, new)| {
+                json!({
+                    "node_id": new.id, "name": new.name,
+                    "old_kind": old.kind.as_str(), "new_kind": new.kind.as_str(),
+                })
+            })
             .collect();
-        let is_empty = added_nodes.is_empty() && removed_nodes.is_empty() && modified_nodes.is_empty();
+        let is_empty =
+            added_nodes.is_empty() && removed_nodes.is_empty() && modified_nodes.is_empty();
         json!({
             "is_empty": is_empty,
             "added_nodes": added_nodes,
@@ -400,7 +410,9 @@ pub(crate) fn handler_watcher_subscribe(_args: &Value) -> ToolResponse {
 /// 时间线记录（quiet/baseline_seed 门，与旧壳侧行为逐语义等价）。
 /// 异根拒绝（进程绑定单根纪律，同 ensure_ready）。
 pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
-    use crate::routing::preflight::{check_timeline_props, load_baseline, run_full_check, save_baseline};
+    use crate::routing::preflight::{
+        check_timeline_props, load_baseline, run_full_check, save_baseline,
+    };
     let requested = get_str(args, &["path"]);
     let root = if requested.is_empty() {
         project_root()
@@ -426,7 +438,11 @@ pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
     let changed_files: Vec<String> = args
         .get("changed_files")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     let root_str = root.to_string_lossy().to_string();
     let before = load_baseline(&root);
@@ -458,12 +474,22 @@ pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
     save_baseline(&root, &after);
 
     // 将有意义的检查记录到时间轴（跳过静默的项目打开轮询）。
-    let quiet = result.get("quiet").and_then(|v| v.as_bool()).unwrap_or(false);
-    let baseline_seed = result.get("baseline_seed").and_then(|v| v.as_bool()).unwrap_or(false);
+    let quiet = result
+        .get("quiet")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let baseline_seed = result
+        .get("baseline_seed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if !quiet || baseline_seed {
         let passed = result["passed"].as_bool().unwrap_or(true);
         let violation_count = result["violation_count"].as_u64().unwrap_or(0);
-        let event_type = if passed { "commit_clean" } else { "commit_violation" };
+        let event_type = if passed {
+            "commit_clean"
+        } else {
+            "commit_violation"
+        };
         let summary = if baseline_seed {
             "基线已建立".to_string()
         } else if passed {
@@ -472,7 +498,8 @@ pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
             format!("简报未通过：{} 条违规", violation_count)
         };
         let props = check_timeline_props(&result);
-        let _ = engine::engine_record_timeline_with_props(event_type, None::<&str>, &summary, &props);
+        let _ =
+            engine::engine_record_timeline_with_props(event_type, None::<&str>, &summary, &props);
     }
     ToolResponse::Success(result)
 }
@@ -481,7 +508,9 @@ pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
 mod tests {
     use super::*;
     use crate::engine::watcher::take_watcher_events;
-    use crate::engine::{engine_bind_global_shared, engine_init, global_engine_test_guard, with_engine};
+    use crate::engine::{
+        engine_bind_global_shared, engine_init, global_engine_test_guard, with_engine,
+    };
     use serde_json::json;
     use std::sync::Arc;
 
@@ -502,7 +531,10 @@ mod tests {
 
     fn resp_text(resp: &ToolResponse) -> String {
         let v = resp.to_mcp_value(&json!(1));
-        v["result"]["content"][0]["text"].as_str().unwrap_or("").to_string()
+        v["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_string()
     }
 
     /// 裸实例换绑全局槽（无 watcher；需要 watcher 的用例自行 start）。
@@ -538,12 +570,19 @@ mod tests {
         );
         let v = serde_json::from_str::<Value>(&resp_text(&handler_graph_snapshot(&json!({}))))
             .expect("snapshot json");
-        assert!(v["node_count"].as_u64().unwrap_or(0) > 0, "非空图必须有节点: {v}");
+        assert!(
+            v["node_count"].as_u64().unwrap_or(0) > 0,
+            "非空图必须有节点: {v}"
+        );
         let kind_sum: u64 = v["kind_counts"]
             .as_object()
             .map(|m| m.values().filter_map(|x| x.as_u64()).sum())
             .unwrap_or(0);
-        assert_eq!(v["node_count"].as_u64(), Some(kind_sum), "kind_counts 求和应等于 node_count");
+        assert_eq!(
+            v["node_count"].as_u64(),
+            Some(kind_sum),
+            "kind_counts 求和应等于 node_count"
+        );
         assert!(v["edge_kind_counts"].is_object());
         assert!(v["top_fan_in"].is_array() && v["top_fan_out"].is_array());
         let _ = std::fs::remove_dir_all(&root);
@@ -575,9 +614,9 @@ mod tests {
             ],
         );
         for arg in ["src/alpha.rs", "src\\alpha.rs"] {
-            let v = serde_json::from_str::<Value>(
-                &resp_text(&handler_file_nodes(&json!({ "file": arg }))),
-            )
+            let v = serde_json::from_str::<Value>(&resp_text(&handler_file_nodes(
+                &json!({ "file": arg }),
+            )))
             .expect("file_nodes json");
             let names: Vec<String> = v["nodes"]
                 .as_array()
@@ -599,9 +638,9 @@ mod tests {
             );
         }
         // beta.rs 不应混入 alpha 查询
-        let v = serde_json::from_str::<Value>(
-            &resp_text(&handler_file_nodes(&json!({ "file": "src/beta.rs" }))),
-        )
+        let v = serde_json::from_str::<Value>(&resp_text(&handler_file_nodes(
+            &json!({ "file": "src/beta.rs" }),
+        )))
         .expect("file_nodes json");
         let names: Vec<String> = v["nodes"]
             .as_array()
@@ -609,11 +648,14 @@ mod tests {
             .iter()
             .filter_map(|n| n["name"].as_str().map(String::from))
             .collect();
-        assert!(!names.is_empty() && names.iter().all(|n| n.to_lowercase().contains("beta")), "beta.rs 查询不得串入 alpha 符号: {names:?}");
+        assert!(
+            !names.is_empty() && names.iter().all(|n| n.to_lowercase().contains("beta")),
+            "beta.rs 查询不得串入 alpha 符号: {names:?}"
+        );
         // 无关文件 → 0 命中而不是错误
-        let v = serde_json::from_str::<Value>(
-            &resp_text(&handler_file_nodes(&json!({ "file": "src/none.rs" }))),
-        )
+        let v = serde_json::from_str::<Value>(&resp_text(&handler_file_nodes(
+            &json!({ "file": "src/none.rs" }),
+        )))
         .expect("file_nodes json");
         assert_eq!(v["count"].as_u64(), Some(0));
         // 缺参 → 降级
@@ -635,7 +677,10 @@ mod tests {
         // 异根 → 拒绝
         let other = tmp_root("ensure_other");
         let refused = handler_ensure_ready(&json!({ "path": other.to_string_lossy() }));
-        assert!(matches!(refused, ToolResponse::Refused { .. }), "异根必须拒绝");
+        assert!(
+            matches!(refused, ToolResponse::Refused { .. }),
+            "异根必须拒绝"
+        );
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&other);
     }
@@ -657,27 +702,37 @@ mod tests {
     fn test_save_and_fts_and_timeline() {
         let _guard = global_engine_test_guard();
         let root = tmp_root("persist");
-        seed_graph(&root, &[("alpha.rs", "fn alpha_one() { let marker = 1; }\n")]);
+        seed_graph(
+            &root,
+            &[("alpha.rs", "fn alpha_one() { let marker = 1; }\n")],
+        );
         // save
-        let v = serde_json::from_str::<Value>(&resp_text(&handler_save(&json!({})))).expect("save json");
+        let v = serde_json::from_str::<Value>(&resp_text(&handler_save(&json!({}))))
+            .expect("save json");
         assert_eq!(v["saved"].as_bool(), Some(true));
         // fts_search（FTS5 内容级；analyze 填充索引后应命中）
-        let v = serde_json::from_str::<Value>(
-            &resp_text(&handler_fts_search(&json!({ "query": "marker", "limit": 5 }))),
-        )
+        let v = serde_json::from_str::<Value>(&resp_text(&handler_fts_search(
+            &json!({ "query": "marker", "limit": 5 }),
+        )))
         .expect("fts json");
         assert!(v["results"].is_array());
         if v["count"].as_u64().unwrap_or(0) > 0 {
             let first = &v["results"][0];
-            assert!(first["id"].is_string() && first["name"].is_string(), "命中项必须带 id/name: {first}");
+            assert!(
+                first["id"].is_string() && first["name"].is_string(),
+                "命中项必须带 id/name: {first}"
+            );
         }
         // timeline_record
-        let v = serde_json::from_str::<Value>(
-            &resp_text(&handler_timeline_record(&json!({ "event": "shell_test", "detail": "记录一条", "node_id": "alpha.rs:1" }))),
-        )
+        let v = serde_json::from_str::<Value>(&resp_text(&handler_timeline_record(
+            &json!({ "event": "shell_test", "detail": "记录一条", "node_id": "alpha.rs:1" }),
+        )))
         .expect("timeline json");
         assert_eq!(v["recorded"].as_bool(), Some(true));
-        assert!(resp_text(&handler_timeline_record(&json!({}))).contains("_isDegraded"), "缺 event 必须降级");
+        assert!(
+            resp_text(&handler_timeline_record(&json!({}))).contains("_isDegraded"),
+            "缺 event 必须降级"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -695,8 +750,13 @@ mod tests {
         with_engine(|e| {
             e.analyze(&root).expect("re-analyze");
         });
-        let v = serde_json::from_str::<Value>(&resp_text(&handler_diff(&json!({})))).expect("diff json");
-        assert_eq!(v["is_empty"].as_bool(), Some(false), "新增 beta_one 后 diff 不应为空: {v}");
+        let v = serde_json::from_str::<Value>(&resp_text(&handler_diff(&json!({}))))
+            .expect("diff json");
+        assert_eq!(
+            v["is_empty"].as_bool(),
+            Some(false),
+            "新增 beta_one 后 diff 不应为空: {v}"
+        );
         assert!(
             v["added_nodes"]
                 .as_array()
@@ -725,7 +785,11 @@ mod tests {
             .expect("watcher json");
         assert_eq!(v["subscribed"].as_bool(), Some(true));
         assert_eq!(v["transport"].as_str(), Some("notifications/message"));
-        assert_eq!(v["watching"].as_bool(), Some(true), "subscribe 后 watcher 必须在跑");
+        assert_eq!(
+            v["watching"].as_bool(),
+            Some(true),
+            "subscribe 后 watcher 必须在跑"
+        );
         // 触发一次真实增量更新（源文件已变更）→ 防抖之后的同一条链路
         std::fs::write(root.join("alpha.rs"), "fn alpha_changed() {}\n").unwrap();
         with_engine(|e| {
@@ -758,11 +822,17 @@ mod tests {
             "changed_files": ["alpha.rs"],
         }))))
         .expect("run_check json");
-        assert!(v["passed"].is_boolean() && v["violation_count"].is_u64(), "CheckResult 形状: {v}");
+        assert!(
+            v["passed"].is_boolean() && v["violation_count"].is_u64(),
+            "CheckResult 形状: {v}"
+        );
         assert_eq!(v["changed_files"], json!(["alpha.rs"]));
         assert_eq!(v["total_changed_files"], 1);
         // 基线已推进（.hologram/baseline.json 落盘）
-        assert!(crate::routing::preflight::baseline_path(&root).exists(), "基线必须落盘");
+        assert!(
+            crate::routing::preflight::baseline_path(&root).exists(),
+            "基线必须落盘"
+        );
         // 无变更 → 静默（quiet=true，不写基线违规轮询）
         let v2 = serde_json::from_str::<Value>(&resp_text(&handler_run_check(&json!({}))))
             .expect("run_check quiet json");
@@ -777,7 +847,10 @@ mod tests {
         bind_test_engine(&root);
         let other = tmp_root("runcheck_other");
         let refused = handler_run_check(&json!({ "path": other.to_string_lossy() }));
-        assert!(matches!(refused, ToolResponse::Refused { .. }), "异根必须拒绝");
+        assert!(
+            matches!(refused, ToolResponse::Refused { .. }),
+            "异根必须拒绝"
+        );
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&other);
     }

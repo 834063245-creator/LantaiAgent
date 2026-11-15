@@ -11,7 +11,9 @@ use super::*;
 use std::process::Command;
 
 fn e2e_enabled() -> bool {
-    let on = std::env::var("HOLOGRAM_UIA_E2E").map(|v| v == "1").unwrap_or(false);
+    let on = std::env::var("HOLOGRAM_UIA_E2E")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     if !on {
         eprintln!("[uia-e2e] 跳过：设置 HOLOGRAM_UIA_E2E=1 启用（需交互桌面会话）");
     }
@@ -83,34 +85,79 @@ async fn target_window_tree_type_read_click_flow() {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
     assert!(!tree.is_empty(), "靶子窗口应在 5s 内可见 Edit 控件");
-    assert!(tree.contains("e2eEdit"), "树应含 automation_id=e2eEdit: {tree}");
+    assert!(
+        tree.contains("e2eEdit"),
+        "树应含 automation_id=e2eEdit: {tree}"
+    );
     assert!(tree.contains("e2eBtn"), "树应含按钮: {tree}");
 
     // find by automation_id → type（pattern-only，不碰焦点）
-    let found = uia_find(Some(TARGET_TITLE), None, None, None, None, Some("e2eEdit"), None)
-        .await
-        .expect("find e2eEdit");
+    let found = uia_find(
+        Some(TARGET_TITLE),
+        None,
+        None,
+        None,
+        None,
+        Some("e2eEdit"),
+        None,
+    )
+    .await
+    .expect("find e2eEdit");
     let v: serde_json::Value = serde_json::from_str(&found).unwrap();
     let edit_ref = v["controls"][0]["ref"].as_u64().expect("Edit ref") as u32;
 
     let marker = format!("hologram-uia-e2e-{}", std::process::id());
-    let typed = uia_type(Some(TARGET_TITLE), None, None, Some(edit_ref), &marker, None, None, None, false)
-        .await
-        .expect("SetValue 输入");
+    let typed = uia_type(
+        Some(TARGET_TITLE),
+        None,
+        None,
+        Some(edit_ref),
+        &marker,
+        None,
+        None,
+        None,
+        false,
+    )
+    .await
+    .expect("SetValue 输入");
     assert!(typed.contains("setvalue"), "应走 ValuePattern: {typed}");
-    assert!(typed.contains(&marker), "world-diff 的 value 读回应含输入内容: {typed}");
+    assert!(
+        typed.contains(&marker),
+        "world-diff 的 value 读回应含输入内容: {typed}"
+    );
 
     // read 回读（单控件复核）
-    let read = uia_read(Some(TARGET_TITLE), None, None, Some(edit_ref), None, None, None)
-        .await
-        .expect("read");
+    let read = uia_read(
+        Some(TARGET_TITLE),
+        None,
+        None,
+        Some(edit_ref),
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("read");
     assert!(read.contains(&marker), "读回应包含输入内容: {read}");
 
     // click 按钮：WinForms Button 支持 InvokePattern（无弹窗副作用——未接事件）
-    let clicked = uia_click(Some(TARGET_TITLE), None, None, None, Some("OK"), None, None, false, false)
-        .await
-        .expect("Invoke 点击");
-    assert!(clicked.contains("\"method\":\"invoke\""), "按钮应走 InvokePattern: {clicked}");
+    let clicked = uia_click(
+        Some(TARGET_TITLE),
+        None,
+        None,
+        None,
+        Some("OK"),
+        None,
+        None,
+        false,
+        false,
+    )
+    .await
+    .expect("Invoke 点击");
+    assert!(
+        clicked.contains("\"method\":\"invoke\""),
+        "按钮应走 InvokePattern: {clicked}"
+    );
 
     drop(target);
 }
@@ -122,7 +169,9 @@ async fn stale_ref_reports_structured_error() {
         return;
     }
     // 不启窗口直接用大 ref → STALE_REF（结构化码可路由）
-    let e = uia_read(None, None, None, Some(99999), None, None, None).await.unwrap_err();
+    let e = uia_read(None, None, None, Some(99999), None, None, None)
+        .await
+        .unwrap_err();
     // 无定位窗口时是 WINDOW_NOT_FOUND；这里给了不存在的 ref 路径，两码皆合法
     assert!(e.starts_with("[UIA_"), "错误应带结构化码: {e}");
 }

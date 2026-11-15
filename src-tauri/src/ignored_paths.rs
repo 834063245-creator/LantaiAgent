@@ -22,14 +22,43 @@
 /// 引擎数据分居后 `.hologram` 归引擎、`.lantai` 归宿主）：用户硬盘上的老项目
 /// 可能任一形态存在，两个都必须继续忽略。
 pub const IGNORED_DIRS: &[&str] = &[
-    ".git", "__pycache__", "node_modules", "venv", ".venv", "env",
-    ".tox", ".mypy_cache", ".pytest_cache", ".hg", ".svn",
-    "dist", "build", "target", ".eggs", "*.egg-info",
-    ".hologram", ".lantai", "htmlcov", ".reasonix", ".codegraph", ".ruff_cache",
-    ".next", ".nuxt", "out", ".angular", ".cache", "coverage",
-    "vendored", "generated", "tests",
-    ".vscode", ".idea", ".fleet", ".cursor",  // 编辑器
-    "Pods", ".gradle",  // CocoaPods 依赖 / Gradle 缓存 — 语义铁定的依赖目录
+    ".git",
+    "__pycache__",
+    "node_modules",
+    "venv",
+    ".venv",
+    "env",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".hg",
+    ".svn",
+    "dist",
+    "build",
+    "target",
+    ".eggs",
+    "*.egg-info",
+    ".hologram",
+    ".lantai",
+    "htmlcov",
+    ".reasonix",
+    ".codegraph",
+    ".ruff_cache",
+    ".next",
+    ".nuxt",
+    "out",
+    ".angular",
+    ".cache",
+    "coverage",
+    "vendored",
+    "generated",
+    "tests",
+    ".vscode",
+    ".idea",
+    ".fleet",
+    ".cursor", // 编辑器
+    "Pods",
+    ".gradle", // CocoaPods 依赖 / Gradle 缓存 — 语义铁定的依赖目录
 ];
 
 /// 目录名是否应被排除（精确名单 + 虚拟环境前缀规则）。
@@ -87,7 +116,9 @@ mod tests {
 
     #[test]
     fn test_is_ignored_path_node_modules() {
-        assert!(is_ignored_path("D:/projects/myapp/node_modules/express/index.js"));
+        assert!(is_ignored_path(
+            "D:/projects/myapp/node_modules/express/index.js"
+        ));
         assert!(is_ignored_path("node_modules/react/index.js"));
     }
 
@@ -103,7 +134,9 @@ mod tests {
         for name in [".venv-lme", ".venv2", "venv-lme", "venv_2"] {
             assert!(is_ignored_dir_name(name), "{name} should be ignored");
             assert!(
-                is_ignored_path(&format!("D:/proj/{name}/Lib/site-packages/pip/_internal/x.py")),
+                is_ignored_path(&format!(
+                    "D:/proj/{name}/Lib/site-packages/pip/_internal/x.py"
+                )),
                 "{name} 整棵依赖树应被排除"
             );
         }

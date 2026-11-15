@@ -60,7 +60,9 @@ pub(crate) async fn fs_cap(
 ) -> Result<Value, String> {
     match action.as_str() {
         "read" => {
-            let fp = file_path.or(path).ok_or_else(|| "fs_cap read: missing 'file_path'".to_string())?;
+            let fp = file_path
+                .or(path)
+                .ok_or_else(|| "fs_cap read: missing 'file_path'".to_string())?;
             let ln = line_numbers.unwrap_or(false);
             let out = crate::confined_fs::read_cap(
                 &fp,
@@ -97,14 +99,22 @@ pub(crate) async fn fs_cap(
             })
         }
         "read_base64" => {
-            let fp = file_path.or(path).ok_or_else(|| "fs_cap read_base64: missing 'file_path'".to_string())?;
-            let b64 = crate::confined_fs::read_base64_cap(&fp, is_agent, agent_id.as_deref(), state, app).await?;
+            let fp = file_path
+                .or(path)
+                .ok_or_else(|| "fs_cap read_base64: missing 'file_path'".to_string())?;
+            let b64 =
+                crate::confined_fs::read_base64_cap(&fp, is_agent, agent_id.as_deref(), state, app)
+                    .await?;
             Ok(json!({ "path": fp, "base64": b64 }))
         }
         // 尺寸预检（P2）：只 stat，不读字节——宿主据此在读取前拦超限档
         "stat" => {
-            let fp = file_path.or(path).ok_or_else(|| "fs_cap stat: missing 'file_path'".to_string())?;
-            let real = crate::utils::resolve_read_dispatch(&fp, is_agent, agent_id.as_deref(), state, app).await?;
+            let fp = file_path
+                .or(path)
+                .ok_or_else(|| "fs_cap stat: missing 'file_path'".to_string())?;
+            let real =
+                crate::utils::resolve_read_dispatch(&fp, is_agent, agent_id.as_deref(), state, app)
+                    .await?;
             let meta = std::fs::metadata(&real).map_err(|e| format!("stat 失败 {}: {}", fp, e))?;
             Ok(json!({
                 "path": real.to_string_lossy(),
@@ -115,12 +125,22 @@ pub(crate) async fn fs_cap(
         // 用系统默认程序打开（P2 · B5）：用户通道专用（agent 侧走 fs/office 域工具）
         "open_with_system" => {
             if is_agent {
-                return Err("fs_cap open_with_system: 仅用户通道（agent 侧请用 fs/office 域工具）".to_string());
+                return Err(
+                    "fs_cap open_with_system: 仅用户通道（agent 侧请用 fs/office 域工具）"
+                        .to_string(),
+                );
             }
-            let fp = file_path.or(path).ok_or_else(|| "fs_cap open_with_system: missing 'file_path'".to_string())?;
-            let real = crate::utils::resolve_read_dispatch(&fp, is_agent, agent_id.as_deref(), state, app).await?;
+            let fp = file_path
+                .or(path)
+                .ok_or_else(|| "fs_cap open_with_system: missing 'file_path'".to_string())?;
+            let real =
+                crate::utils::resolve_read_dispatch(&fp, is_agent, agent_id.as_deref(), state, app)
+                    .await?;
             if !real.exists() {
-                return Err(format!("用系统程序打开失败：文件不存在 {}", real.to_string_lossy()));
+                return Err(format!(
+                    "用系统程序打开失败：文件不存在 {}",
+                    real.to_string_lossy()
+                ));
             }
             shell_open_with_default(&real)?;
             Ok(json!({ "path": real.to_string_lossy() }))
@@ -128,12 +148,22 @@ pub(crate) async fn fs_cap(
         "list" => {
             let p = path.ok_or_else(|| "fs_cap list: missing 'path'".to_string())?;
             let filter = filter_ignored.unwrap_or(true);
-            let entries = crate::confined_fs::list_tree_cap(&p, is_agent, agent_id.as_deref(), state, app, filter).await?;
+            let entries = crate::confined_fs::list_tree_cap(
+                &p,
+                is_agent,
+                agent_id.as_deref(),
+                state,
+                app,
+                filter,
+            )
+            .await?;
             Ok(json!({ "entries": entries }))
         }
         "list_flat" => {
             let p = path.ok_or_else(|| "fs_cap list_flat: missing 'path'".to_string())?;
-            let entries = crate::confined_fs::list_flat_cap(&p, is_agent, agent_id.as_deref(), state, app).await?;
+            let entries =
+                crate::confined_fs::list_flat_cap(&p, is_agent, agent_id.as_deref(), state, app)
+                    .await?;
             Ok(json!({ "entries": entries }))
         }
         "glob" => {
@@ -188,7 +218,9 @@ pub(crate) async fn fs_cap(
             Ok(Value::Object(map))
         }
         "write" => {
-            let fp = file_path.or(path).ok_or_else(|| "fs_cap write: missing 'file_path'".to_string())?;
+            let fp = file_path
+                .or(path)
+                .ok_or_else(|| "fs_cap write: missing 'file_path'".to_string())?;
             let c = content.ok_or_else(|| "fs_cap write: missing 'content'".to_string())?;
             // durable=true → 写 + fsync + 原子替换（会话事件日志物化/整写用；
             // 2026-10-29 收口，语义对齐 append 的 durable 变体）。
@@ -208,28 +240,47 @@ pub(crate) async fn fs_cap(
         "write_base64" => {
             // 附图字节写（multimodal-image-plan D-13）：content 键承载 base64
             // （action-scoped 语义——与 write 的文本 content 同键不同义）。
-            let fp = file_path.or(path).ok_or_else(|| "fs_cap write_base64: missing 'file_path'".to_string())?;
-            let c = content.ok_or_else(|| "fs_cap write_base64: missing 'content' (base64)".to_string())?;
-            let real = crate::confined_fs::write_base64_cap(&fp, &c, is_agent, agent_id.as_deref(), state, app).await?;
+            let fp = file_path
+                .or(path)
+                .ok_or_else(|| "fs_cap write_base64: missing 'file_path'".to_string())?;
+            let c = content
+                .ok_or_else(|| "fs_cap write_base64: missing 'content' (base64)".to_string())?;
+            let real = crate::confined_fs::write_base64_cap(
+                &fp,
+                &c,
+                is_agent,
+                agent_id.as_deref(),
+                state,
+                app,
+            )
+            .await?;
             let rp = real.to_string_lossy().to_string();
             Ok(json!({ "path": rp }))
         }
         "delete" => {
             let p = path.ok_or_else(|| "fs_cap delete: missing 'path'".to_string())?;
-            let real = crate::confined_fs::delete_cap(&p, is_agent, agent_id.as_deref(), state, app).await?;
+            let real =
+                crate::confined_fs::delete_cap(&p, is_agent, agent_id.as_deref(), state, app)
+                    .await?;
             let rp = real.to_string_lossy().to_string();
             Ok(json!({ "path": rp }))
         }
         "rename" => {
-            let f = from.or(file_path).ok_or_else(|| "fs_cap rename: missing 'from'".to_string())?;
+            let f = from
+                .or(file_path)
+                .ok_or_else(|| "fs_cap rename: missing 'from'".to_string())?;
             let t = to.ok_or_else(|| "fs_cap rename: missing 'to'".to_string())?;
-            let (_, real_to) = crate::confined_fs::rename_cap(&f, &t, is_agent, agent_id.as_deref(), state, app).await?;
+            let (_, real_to) =
+                crate::confined_fs::rename_cap(&f, &t, is_agent, agent_id.as_deref(), state, app)
+                    .await?;
             let rp = real_to.to_string_lossy().to_string();
             Ok(json!({ "path": rp }))
         }
         "create_dir" => {
             let p = path.ok_or_else(|| "fs_cap create_dir: missing 'path'".to_string())?;
-            let real = crate::utils::resolve_write_dispatch(&p, is_agent, agent_id.as_deref(), state, app).await?;
+            let real =
+                crate::utils::resolve_write_dispatch(&p, is_agent, agent_id.as_deref(), state, app)
+                    .await?;
             tokio::task::spawn_blocking({
                 let rp = real.clone();
                 move || std::fs::create_dir_all(&rp)
@@ -242,7 +293,9 @@ pub(crate) async fn fs_cap(
         "append" => {
             let p = path.ok_or_else(|| "fs_cap append: missing 'path'".to_string())?;
             let c = content.ok_or_else(|| "fs_cap append: missing 'content'".to_string())?;
-            let real = crate::utils::resolve_write_dispatch(&p, is_agent, agent_id.as_deref(), state, app).await?;
+            let real =
+                crate::utils::resolve_write_dispatch(&p, is_agent, agent_id.as_deref(), state, app)
+                    .await?;
             let rp = real.to_string_lossy().to_string();
             // 会话事件日志换轨（2026-09-15 DSH 参照）：durable=true 走 fsync 变体
             // （append 返回即已落盘——检查点的天花板语义）；缺省仍是旧 log_append
@@ -260,8 +313,11 @@ pub(crate) async fn fs_cap(
         "truncate" => {
             // 断尾修复原语（Phase 2）：把日志截到扫描器给的 committedBytes。
             let p = path.ok_or_else(|| "fs_cap truncate: missing 'path'".to_string())?;
-            let off = truncate_to.ok_or_else(|| "fs_cap truncate: missing 'truncate_to'".to_string())?;
-            let real = crate::utils::resolve_write_dispatch(&p, is_agent, agent_id.as_deref(), state, app).await?;
+            let off =
+                truncate_to.ok_or_else(|| "fs_cap truncate: missing 'truncate_to'".to_string())?;
+            let real =
+                crate::utils::resolve_write_dispatch(&p, is_agent, agent_id.as_deref(), state, app)
+                    .await?;
             let rp = real.to_string_lossy().to_string();
             crate::confined_fs::truncate_file(&rp, off)?;
             Ok(json!({ "path": rp, "truncate_to": off }))
@@ -285,7 +341,9 @@ fn shell_open_with_default(real: &std::path::Path) -> Result<(), String> {
         use windows::Win32::UI::Shell::ShellExecuteW;
         use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-        let wide = |s: &std::ffi::OsStr| -> Vec<u16> { s.encode_wide().chain(std::iter::once(0)).collect() };
+        let wide = |s: &std::ffi::OsStr| -> Vec<u16> {
+            s.encode_wide().chain(std::iter::once(0)).collect()
+        };
         let verb = wide(std::ffi::OsStr::new("open"));
         let file = wide(real.as_os_str());
         // SAFETY: 三个指针都指向本函数栈上、以 NUL 结尾的 UTF-16 缓冲，调用期间存活；
@@ -311,7 +369,11 @@ fn shell_open_with_default(real: &std::path::Path) -> Result<(), String> {
     }
     #[cfg(not(windows))]
     {
-        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        let opener = if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        };
         std::process::Command::new(opener)
             .arg(real)
             .spawn()

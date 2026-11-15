@@ -19,8 +19,8 @@ use parking_lot::RwLock;
 use tracing::info;
 
 use hologram_graph::Graph;
-use hologram_storage::MemoryIndex;
 use hologram_storage::sqlite::{timeline_query, timeline_record, timeline_record_with_props};
+use hologram_storage::MemoryIndex;
 
 // ═══════════════════════════════════════════════════════════════
 // EngineState — 生命周期状态机
@@ -443,15 +443,13 @@ impl Engine {
     }
 
     /// 查询 timeline 事件。使用专用 DB 连接（不阻塞 graph store 锁）。
-    pub fn query_timeline(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<serde_json::Value>, String> {
+    pub fn query_timeline(&self, limit: usize) -> Result<Vec<serde_json::Value>, String> {
         let host = self
             .store_host
             .lock()
             .map_err(|e| format!("Timeline lock poisoned: {}", e))?;
-        timeline_query(&host.timeline_conn, limit).map_err(|e| format!("Timeline query failed: {}", e))
+        timeline_query(&host.timeline_conn, limit)
+            .map_err(|e| format!("Timeline query failed: {}", e))
     }
 
     /// 将当前 MemoryIndex 持久化到 SQLite。
@@ -485,7 +483,9 @@ impl Engine {
             .lock()
             .map_err(|e| format!("Store lock poisoned: {}", e))?;
         let db = &host.store.db;
-        Ok(host.store.read(|idx| idx.fts_search(db, query, limit).unwrap_or_default()))
+        Ok(host
+            .store
+            .read(|idx| idx.fts_search(db, query, limit).unwrap_or_default()))
     }
 
     /// 增量更新（实例版）——先增量，失败回退全量。
@@ -504,7 +504,6 @@ impl Engine {
             &Some(Box::new(watcher::push_watcher_event)),
         )
     }
-
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -698,9 +697,7 @@ pub fn engine_record_timeline_with_props(
 }
 
 /// 从全局引擎查询 timeline 事件。
-pub fn engine_query_timeline(
-    limit: usize,
-) -> Result<Vec<serde_json::Value>, String> {
+pub fn engine_query_timeline(limit: usize) -> Result<Vec<serde_json::Value>, String> {
     let engine = match current_engine() {
         Some(e) => e,
         None => match ENGINE.read().as_ref() {
@@ -736,10 +733,7 @@ pub fn engine_graph_generated_at() -> Result<Option<String>, String> {
 }
 
 /// 在全局引擎上通过 FTS5 全文搜索。
-pub fn engine_fts_search(
-    query: &str,
-    limit: usize,
-) -> Result<Vec<hologram_graph::Node>, String> {
+pub fn engine_fts_search(query: &str, limit: usize) -> Result<Vec<hologram_graph::Node>, String> {
     let engine = match current_engine() {
         Some(e) => e,
         None => match ENGINE.read().as_ref() {
@@ -797,7 +791,9 @@ pub(crate) static GLOBAL_ENGINE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mut
 
 #[cfg(test)]
 pub(crate) fn global_engine_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    GLOBAL_ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    GLOBAL_ENGINE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 #[cfg(test)]
@@ -825,7 +821,10 @@ mod tests {
         assert!(engine.is_ready());
 
         match engine.state() {
-            EngineState::Ready { node_count, edge_count } => {
+            EngineState::Ready {
+                node_count,
+                edge_count,
+            } => {
                 assert_eq!(node_count, 0);
                 assert_eq!(edge_count, 0);
             }
@@ -850,7 +849,11 @@ mod tests {
 
         // 对相同项目的第二次初始化应成功（幂等）
         let result = engine.init(&test_dir);
-        assert!(result.is_ok(), "re-init should be idempotent: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "re-init should be idempotent: {:?}",
+            result.err()
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -869,7 +872,10 @@ mod tests {
         let engine_a = Engine::new_shared(&dir_a).unwrap();
         assert!(engine_a.is_ready());
         assert_eq!(engine_a.project_root(), dir_a);
-        assert!(engine_a.is_watching(), "watcher should be running after open");
+        assert!(
+            engine_a.is_watching(),
+            "watcher should be running after open"
+        );
 
         // 同实例异根 init 必须拒绝（单根纪律）
         assert!(
@@ -879,7 +885,10 @@ mod tests {
 
         let engine_b = Engine::new_shared(&dir_b).unwrap();
         assert_eq!(engine_b.project_root(), dir_b);
-        assert!(engine_b.is_watching(), "watcher should be running for new instance");
+        assert!(
+            engine_b.is_watching(),
+            "watcher should be running for new instance"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -899,27 +908,20 @@ mod tests {
         std::fs::create_dir_all(&dir_b).unwrap();
 
         engine_init(&dir_a).unwrap();
-        assert_eq!(
-            with_engine(|e| e.project_root()).unwrap_or_default(),
-            dir_a
-        );
+        assert_eq!(with_engine(|e| e.project_root()).unwrap_or_default(), dir_a);
 
         // 制造一次源文件变更（watcher 线程在防抖窗口内），随即切换
         std::fs::write(dir_a.join("deadlock_probe.rs"), "fn probe() {}\n").unwrap();
 
         // engine_init 切根 = 换实例（不 join 旧 watcher——2s 超时分离纪律保留）
         let start = std::time::Instant::now();
-        engine_init(&dir_b)
-            .expect("workspace switch must succeed even with watcher active");
+        engine_init(&dir_b).expect("workspace switch must succeed even with watcher active");
         assert!(
             start.elapsed() < std::time::Duration::from_secs(10),
             "workspace switch took {:?} — possible watcher join deadlock",
             start.elapsed()
         );
-        assert_eq!(
-            with_engine(|e| e.project_root()).unwrap_or_default(),
-            dir_b
-        );
+        assert_eq!(with_engine(|e| e.project_root()).unwrap_or_default(), dir_b);
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -958,7 +960,9 @@ mod tests {
         let count = engine.read(|idx| idx.node_count()).unwrap();
         assert_eq!(count, 1);
 
-        let node = engine.read(|idx| idx.get_node("test_node_1").cloned()).unwrap();
+        let node = engine
+            .read(|idx| idx.get_node("test_node_1").cloned())
+            .unwrap();
         assert!(node.is_some());
         assert_eq!(node.unwrap().name, "test_fn");
 
@@ -1006,7 +1010,10 @@ mod tests {
         assert!(r2.is_ok(), "B 分析失败: {:?}", r2.err());
 
         // 互验：各见其标、不见他标
-        for (engine, own, other) in [(&ea, "marker_alpha", "marker_beta"), (&eb, "marker_beta", "marker_alpha")] {
+        for (engine, own, other) in [
+            (&ea, "marker_alpha", "marker_beta"),
+            (&eb, "marker_beta", "marker_alpha"),
+        ] {
             let (own_seen, other_seen) = engine
                 .read(|idx| {
                     (
@@ -1070,7 +1077,8 @@ mod tests {
         assert!(seen_in_closure, "闭包内全局函数必须路由到绑定实例");
 
         // 闭包外：TLS 已清空——engine_read 回落全局（tmp1，无标记节点）
-        let global_has_marker = engine_read(|idx| idx.get_node("tls_marker").is_some()).unwrap_or(false);
+        let global_has_marker =
+            engine_read(|idx| idx.get_node("tls_marker").is_some()).unwrap_or(false);
         assert!(!global_has_marker, "闭包退出后必须回落全局引擎");
 
         // 并行守卫：两线程各绑各的实例，互不可见对方数据（无串写）
@@ -1079,10 +1087,14 @@ mod tests {
             .write(|idx| idx.insert_node(Node::new("other_marker", "O", NodeKind::Function)))
             .unwrap();
         let h1 = std::thread::spawn(move || {
-            with_current(bound, || engine_read(|idx| idx.get_node("other_marker").is_some()).unwrap())
+            with_current(bound, || {
+                engine_read(|idx| idx.get_node("other_marker").is_some()).unwrap()
+            })
         });
         let h2 = std::thread::spawn(move || {
-            with_current(other, || engine_read(|idx| idx.get_node("tls_marker").is_some()).unwrap())
+            with_current(other, || {
+                engine_read(|idx| idx.get_node("tls_marker").is_some()).unwrap()
+            })
         });
         assert!(!h1.join().unwrap(), "bound 实例不得看到 other 的写入");
         assert!(!h2.join().unwrap(), "other 实例不得看到 bound 的写入");
@@ -1097,7 +1109,6 @@ mod tests {
     #[test]
     fn test_incremental_update_path_is_reachable() {
         use crate::pipeline::incremental::IncrementalUpdater;
-        
 
         let tmp = std::env::temp_dir().join("hologram_test_f1_incr");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -1117,31 +1128,37 @@ mod tests {
         assert!(old_node_count > 0);
 
         // 修改文件（模拟 watcher 变更）
-        std::fs::write(tmp.join("main.py"), "def hello():\n    return 'updated'\ndef new_fn(): pass\n").unwrap();
+        std::fs::write(
+            tmp.join("main.py"),
+            "def hello():\n    return 'updated'\ndef new_fn(): pass\n",
+        )
+        .unwrap();
 
         // 尝试增量更新（L2：经 store_host 共享句柄取 store）
         let host = engine.store_host().lock().unwrap();
         let changed: Vec<(PathBuf, &str)> = vec![(tmp.join("main.py"), "modified")];
-        let inc_result = IncrementalUpdater::update(
-            &changed,
-            &host.store.index.read(),
-            &tmp,
-            &host.store.db,
-        );
+        let inc_result =
+            IncrementalUpdater::update(&changed, &host.store.index.read(), &tmp, &host.store.db);
         drop(host);
 
         // 增量更新应成功（不回退到全量分析）
         match inc_result {
             Ok((new_idx, errors)) => {
-                assert!(new_idx.node_count() >= old_node_count,
+                assert!(
+                    new_idx.node_count() >= old_node_count,
                     "incremental update should preserve or add nodes (old={}, new={})",
-                    old_node_count, new_idx.node_count());
+                    old_node_count,
+                    new_idx.node_count()
+                );
                 if errors > 0 {
                     // 解析错误可接受，但节点数不应大幅下降
                 }
             }
             Err(e) => {
-                panic!("F1 regression: incremental update should succeed, got: {}", e);
+                panic!(
+                    "F1 regression: incremental update should succeed, got: {}",
+                    e
+                );
             }
         }
 
@@ -1157,7 +1174,11 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
 
         let engine = Engine::open(&tmp).unwrap();
-        assert_eq!(engine.incremental_since_full(), 0, "fresh project starts at zero drift");
+        assert_eq!(
+            engine.incremental_since_full(),
+            0,
+            "fresh project starts at zero drift"
+        );
 
         engine.record_incremental_success();
         engine.record_incremental_success();
@@ -1174,7 +1195,11 @@ mod tests {
         );
 
         engine2.record_full_analysis();
-        assert_eq!(engine2.incremental_since_full(), 0, "full analysis resets drift");
+        assert_eq!(
+            engine2.incremental_since_full(),
+            0,
+            "full analysis resets drift"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1298,7 +1323,6 @@ mod tests {
         // 占位符：保留测试槽位以供未来原生 LSP E2E 测试使用。
     }
 
-
     /// ponytail: graph_from_index 丢失了边元数据（特别是 cross_file），
     /// 因为 MemoryIndex CSR 不存储这些字段。修复方法是从
     /// 节点位置重新推导 cross_file。
@@ -1332,12 +1356,28 @@ mod tests {
         assert_eq!(g.edge_count(), 2);
 
         // Edge n1→n2：相同文件 → cross_file=false
-        let e1 = g.edges_iter().map(|(_, e)| e).find(|e| e.source == "n1" && e.target == "n2").unwrap();
-        assert!(!e1.cross_file, "n1→n2 should be same-file (both in src/lib.rs), got cross_file={}", e1.cross_file);
+        let e1 = g
+            .edges_iter()
+            .map(|(_, e)| e)
+            .find(|e| e.source == "n1" && e.target == "n2")
+            .unwrap();
+        assert!(
+            !e1.cross_file,
+            "n1→n2 should be same-file (both in src/lib.rs), got cross_file={}",
+            e1.cross_file
+        );
 
         // Edge n1→n3：不同文件 → cross_file=true
-        let e2 = g.edges_iter().map(|(_, e)| e).find(|e| e.source == "n1" && e.target == "n3").unwrap();
-        assert!(e2.cross_file, "n1→n3 should be cross-file (lib.rs vs main.rs), got cross_file={}", e2.cross_file);
+        let e2 = g
+            .edges_iter()
+            .map(|(_, e)| e)
+            .find(|e| e.source == "n1" && e.target == "n3")
+            .unwrap();
+        assert!(
+            e2.cross_file,
+            "n1→n3 should be cross-file (lib.rs vs main.rs), got cross_file={}",
+            e2.cross_file
+        );
     }
 
     /// 没有 location 信息的边应默认 cross_file=false。
@@ -1354,7 +1394,10 @@ mod tests {
 
         let g = graph_from_index(&idx);
         let e = g.edges_iter().next().unwrap().1;
-        assert!(!e.cross_file, "edges without locations should default cross_file=false");
+        assert!(
+            !e.cross_file,
+            "edges without locations should default cross_file=false"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -1378,7 +1421,10 @@ mod tests {
 
         // 当引擎绑定到 dir_a 时 analyze(dir_b) — 必须失败
         let result = engine.analyze(&dir_b);
-        assert!(result.is_err(), "analyze on wrong workspace must return Err");
+        assert!(
+            result.is_err(),
+            "analyze on wrong workspace must return Err"
+        );
         assert!(
             result.unwrap_err().contains("工作区已切换"),
             "error message should mention workspace switch"
@@ -1413,7 +1459,11 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
 
         // 小型多文件 Python 项目以测试完整流水线
-        std::fs::write(tmp.join("main.py"), "import util\ndef main():\n    return util.add(1, 2)\n").unwrap();
+        std::fs::write(
+            tmp.join("main.py"),
+            "import util\ndef main():\n    return util.add(1, 2)\n",
+        )
+        .unwrap();
         std::fs::write(tmp.join("util.py"), "def add(a, b):\n    return a + b\n").unwrap();
 
         let engine = Engine::open(&tmp).unwrap();
@@ -1482,7 +1532,11 @@ mod tests {
         let write_result = engine.write(|idx| {
             idx.insert_node(Node::new("test_n", "Test", NodeKind::Symbol));
         });
-        assert!(write_result.is_ok(), "write after analyze must succeed: {:?}", write_result.err());
+        assert!(
+            write_result.is_ok(),
+            "write after analyze must succeed: {:?}",
+            write_result.err()
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1510,8 +1564,14 @@ mod tests {
         assert!(r1.is_ok(), "engine 1 analyze failed: {:?}", r1.err());
         assert!(r2.is_ok(), "engine 2 analyze failed: {:?}", r2.err());
 
-        assert!(matches!(e1.state(), EngineState::Ready { .. }), "engine 1 state stuck");
-        assert!(matches!(e2.state(), EngineState::Ready { .. }), "engine 2 state stuck");
+        assert!(
+            matches!(e1.state(), EngineState::Ready { .. }),
+            "engine 1 state stuck"
+        );
+        assert!(
+            matches!(e2.state(), EngineState::Ready { .. }),
+            "engine 2 state stuck"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1521,8 +1581,8 @@ mod tests {
     /// parser → structure → coupling → communities → dataflow → persistence。
     #[test]
     fn test_fixture_full_pipeline() {
-        let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/test_project");
+        let fixture =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/test_project");
 
         let engine = Engine::open(&fixture).unwrap();
         let result = engine.analyze(&fixture);
@@ -1531,38 +1591,58 @@ mod tests {
         // ── 结构：节点 + 边存在 ──
         let nc = engine.node_count().unwrap();
         let ec = engine.edge_count().unwrap();
-        assert!(nc >= 8, "expected >=8 nodes (3 py files + 1 js file + functions/classes), got {nc}");
-        assert!(ec >= 5, "expected >=5 edges (calls + imports + inherits), got {ec}");
+        assert!(
+            nc >= 8,
+            "expected >=8 nodes (3 py files + 1 js file + functions/classes), got {nc}"
+        );
+        assert!(
+            ec >= 5,
+            "expected >=5 edges (calls + imports + inherits), got {ec}"
+        );
 
         // ── 边类型存在 ──
-        let (has_calls, has_imports, has_defines, has_inherits) = engine.read(|idx| {
-            let mut calls = false; let mut imports = false;
-            let mut defines = false; let mut inherits = false;
-            for (_src, targets) in idx.edges_iter() {
-                for (_tgt, kind, _depth, _delay) in targets {
-                    match kind {
-                        hologram_graph::EdgeKind::Calls => calls = true,
-                        hologram_graph::EdgeKind::Imports => imports = true,
-                        hologram_graph::EdgeKind::Defines => defines = true,
-                        hologram_graph::EdgeKind::Inherits => inherits = true,
-                        _ => {}
+        let (has_calls, has_imports, has_defines, has_inherits) = engine
+            .read(|idx| {
+                let mut calls = false;
+                let mut imports = false;
+                let mut defines = false;
+                let mut inherits = false;
+                for (_src, targets) in idx.edges_iter() {
+                    for (_tgt, kind, _depth, _delay) in targets {
+                        match kind {
+                            hologram_graph::EdgeKind::Calls => calls = true,
+                            hologram_graph::EdgeKind::Imports => imports = true,
+                            hologram_graph::EdgeKind::Defines => defines = true,
+                            hologram_graph::EdgeKind::Inherits => inherits = true,
+                            _ => {}
+                        }
                     }
                 }
-            }
-            (calls, imports, defines, inherits)
-        }).unwrap();
+                (calls, imports, defines, inherits)
+            })
+            .unwrap();
         assert!(has_calls, "must have Calls edges (e.g. main → connect_db)");
-        assert!(has_imports, "must have Imports edges (Python cross-file imports)");
-        assert!(has_defines, "must have Defines edges (class → module, function → class)");
-        assert!(has_inherits, "must have Inherits edges (PooledConnection → Config)");
+        assert!(
+            has_imports,
+            "must have Imports edges (Python cross-file imports)"
+        );
+        assert!(
+            has_defines,
+            "must have Defines edges (class → module, function → class)"
+        );
+        assert!(
+            has_inherits,
+            "must have Inherits edges (PooledConnection → Config)"
+        );
 
         // ── 社区已检测 ──
-        let community_count = engine.read(|idx| {
-            let ids: std::collections::HashSet<usize> = idx.nodes_iter()
-                .filter_map(|n| n.community_id)
-                .collect();
-            ids.len()
-        }).unwrap();
+        let community_count = engine
+            .read(|idx| {
+                let ids: std::collections::HashSet<usize> =
+                    idx.nodes_iter().filter_map(|n| n.community_id).collect();
+                ids.len()
+            })
+            .unwrap();
         assert!(community_count >= 1, "must detect at least 1 community");
 
         // ── 数据流：查询特定文件 ──
@@ -1573,26 +1653,60 @@ mod tests {
 
         // main.py：应检测到 `main` 和 `fetch_remote` 异步触发器
         let main_df = results[0].result.as_ref().expect("main.py dataflow");
-        let main_fn = main_df.scopes.iter().find(|s| s.name == "main").expect("main function");
-        assert!(main_fn.writes.contains(&"db".into()), "main() writes db, got writes={:?}", main_fn.writes);
-        let fetch_fn = main_df.scopes.iter().find(|s| s.name == "fetch_remote").expect("fetch_remote");
-        assert!(!fetch_fn.triggers.is_empty(), "fetch_remote has await trigger");
+        let main_fn = main_df
+            .scopes
+            .iter()
+            .find(|s| s.name == "main")
+            .expect("main function");
+        assert!(
+            main_fn.writes.contains(&"db".into()),
+            "main() writes db, got writes={:?}",
+            main_fn.writes
+        );
+        let fetch_fn = main_df
+            .scopes
+            .iter()
+            .find(|s| s.name == "fetch_remote")
+            .expect("fetch_remote");
+        assert!(
+            !fetch_fn.triggers.is_empty(),
+            "fetch_remote has await trigger"
+        );
 
         // db.py：`_connection_count` 应被检测为共享状态
         let db_df = results[1].result.as_ref().expect("db.py dataflow");
         // db.py 有共享变量：`host`（Config 构造函数 → connect_db），
         // `db` + `sql`（通过 execute_query → _do_query 传递）。
         let shared_vars: Vec<&str> = db_df.shared.iter().map(|s| s.var.as_str()).collect();
-        assert!(shared_vars.contains(&"db"), "db.py should have shared 'db' var, got shared={:?}", db_df.shared);
-        assert!(shared_vars.contains(&"host"), "db.py should have shared 'host' var, got shared={:?}", db_df.shared);
+        assert!(
+            shared_vars.contains(&"db"),
+            "db.py should have shared 'db' var, got shared={:?}",
+            db_df.shared
+        );
+        assert!(
+            shared_vars.contains(&"host"),
+            "db.py should have shared 'host' var, got shared={:?}",
+            db_df.shared
+        );
 
         // helper.js：异步 + 缓存模式
-        let js_results = crate::analysis::dataflow_engine::query_dataflow_files(&[fixture.join("helper.js")]);
+        let js_results =
+            crate::analysis::dataflow_engine::query_dataflow_files(&[fixture.join("helper.js")]);
         let js_df = js_results[0].result.as_ref().expect("helper.js dataflow");
-        let loader = js_df.scopes.iter().find(|s| s.name == "loadResource").expect("loadResource");
-        assert!(loader.writes.contains(&"data".into()) || loader.writes.contains(&"cached".into()),
-            "loadResource writes something, got writes={:?}", loader.writes);
-        assert!(!loader.triggers.is_empty(), "loadResource has await trigger");
+        let loader = js_df
+            .scopes
+            .iter()
+            .find(|s| s.name == "loadResource")
+            .expect("loadResource");
+        assert!(
+            loader.writes.contains(&"data".into()) || loader.writes.contains(&"cached".into()),
+            "loadResource writes something, got writes={:?}",
+            loader.writes
+        );
+        assert!(
+            !loader.triggers.is_empty(),
+            "loadResource has await trigger"
+        );
 
         // ── 持久化：保存 + 读回 ──
         engine.save().expect("save to SQLite");
@@ -1604,27 +1718,49 @@ mod tests {
     /// 运行时能生成标记节点。
     #[test]
     fn test_blindspot_synthesis_pipeline() {
-        let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/pipeline_test");
+        let fixture =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/pipeline_test");
         let engine = Engine::open(&fixture).unwrap();
         let result = engine.analyze(&fixture).expect("pipeline test failed");
-        let mut has_di = false; let mut has_dyn = false;
-        let mut has_eval = false; let mut has_xlang = false;
+        let mut has_di = false;
+        let mut has_dyn = false;
+        let mut has_eval = false;
+        let mut has_xlang = false;
         for t in &result.stage_timings {
-            if t.name == "DI / Reflection" && t.detail.contains("edges") { has_di = true; }
-            if t.name == "Dynamic Import" && t.detail.contains("markers") { has_dyn = true; }
-            if t.name == "Eval Detection" && t.detail.contains("markers") { has_eval = true; }
-            if t.name == "Cross-Lang" && t.detail.contains("markers") { has_xlang = true; }
+            if t.name == "DI / Reflection" && t.detail.contains("edges") {
+                has_di = true;
+            }
+            if t.name == "Dynamic Import" && t.detail.contains("markers") {
+                has_dyn = true;
+            }
+            if t.name == "Eval Detection" && t.detail.contains("markers") {
+                has_eval = true;
+            }
+            if t.name == "Cross-Lang" && t.detail.contains("markers") {
+                has_xlang = true;
+            }
         }
         assert!(has_di && has_dyn && has_eval && has_xlang,
             "all 4 synthesis stages must be present: DI={has_di} Dyn={has_dyn} Eval={has_eval} XLang={has_xlang}");
-        let names: Vec<String> = engine.read(|idx| {
-            idx.nodes_iter().map(|n| n.name.clone()).collect()
-        }).unwrap();
-        assert!(names.iter().any(|n| n.starts_with("<reflection:")), "DI marker missing");
-        assert!(names.iter().any(|n| n.contains("dynamic-import")), "dyn-import marker missing");
-        assert!(names.iter().any(|n| n.starts_with("<eval")), "eval marker missing");
-        assert!(names.iter().any(|n| n.starts_with("<cross-lang:")), "cross-lang marker missing");
+        let names: Vec<String> = engine
+            .read(|idx| idx.nodes_iter().map(|n| n.name.clone()).collect())
+            .unwrap();
+        assert!(
+            names.iter().any(|n| n.starts_with("<reflection:")),
+            "DI marker missing"
+        );
+        assert!(
+            names.iter().any(|n| n.contains("dynamic-import")),
+            "dyn-import marker missing"
+        );
+        assert!(
+            names.iter().any(|n| n.starts_with("<eval")),
+            "eval marker missing"
+        );
+        assert!(
+            names.iter().any(|n| n.starts_with("<cross-lang:")),
+            "cross-lang marker missing"
+        );
     }
 
     // ── 取消令牌测试 ──────────────────────────────────────────────
@@ -1707,7 +1843,11 @@ mod tests {
 
         // 2. 锁健康 — 可以再次分析
         let result2 = engine.analyze(&tmp);
-        assert!(result2.is_ok(), "second analyze failed: {:?}", result2.err());
+        assert!(
+            result2.is_ok(),
+            "second analyze failed: {:?}",
+            result2.err()
+        );
         assert!(
             engine.cancel_token.read().is_none(),
             "cancel_token must be None after second analysis"
@@ -1758,7 +1898,11 @@ mod tests {
 
         // 第二次分析 — 通过令牌取消第一次
         let result2 = engine.analyze(&tmp);
-        assert!(result2.is_ok(), "second analyze must succeed: {:?}", result2.err());
+        assert!(
+            result2.is_ok(),
+            "second analyze must succeed: {:?}",
+            result2.err()
+        );
         assert!(
             matches!(engine.state(), EngineState::Ready { .. }),
             "state must be Ready after second analysis"
@@ -1809,31 +1953,48 @@ mod tests {
         } else {
             panic!("engine_status should return Success, got: {:?}", status);
         };
-        eprintln!("FULL STATUS: {}", serde_json::to_string_pretty(&status_v).unwrap());
+        eprintln!(
+            "FULL STATUS: {}",
+            serde_json::to_string_pretty(&status_v).unwrap()
+        );
         let lsp = &status_v["lsp"];
-        let servers = lsp["servers"].as_array()
+        let servers = lsp["servers"]
+            .as_array()
             .expect("lsp.servers should be an array; see FULL STATUS above");
-        assert!(!servers.is_empty(),
-            "lsp.servers should list configured servers; full status: {:?}", status_v);
+        assert!(
+            !servers.is_empty(),
+            "lsp.servers should list configured servers; full status: {:?}",
+            status_v
+        );
 
         // ── 测试 2：不支持的语言返回 degraded ──
         let degraded = crate::tools::handlers::handler_resolve_call(&json!({
             "file": "test.sc",
             "function": "foo",
         }));
-        assert!(matches!(degraded, crate::tools::ToolResponse::Degraded { .. }),
-            "Unsupported language .sc should return Degraded, got: {:?}", degraded);
+        assert!(
+            matches!(degraded, crate::tools::ToolResponse::Degraded { .. }),
+            "Unsupported language .sc should return Degraded, got: {:?}",
+            degraded
+        );
 
         // ── 测试 3：缺少 LSP 时 resolve_call 返回 degraded ──
         std::fs::write(test_dir.join("Test.java"), "class Test { void main() {} }").unwrap();
-        let java_path = test_dir.join("Test.java").to_string_lossy().replace('\\', "/");
+        let java_path = test_dir
+            .join("Test.java")
+            .to_string_lossy()
+            .replace('\\', "/");
         let resp = crate::tools::handlers::handler_resolve_call(&json!({
             "file": java_path,
             "function": "main",
         }));
         eprintln!("Java resolve_call (no jdtls): {:?}", resp);
         match resp {
-            crate::tools::ToolResponse::Degraded { ref guidance, ref fallback, .. } => {
+            crate::tools::ToolResponse::Degraded {
+                ref guidance,
+                ref fallback,
+                ..
+            } => {
                 assert!(!guidance.is_empty());
                 assert!(!fallback.is_empty());
                 eprintln!("Degraded -> guidance: {}, fallback: {}", guidance, fallback);

@@ -74,7 +74,10 @@ mod tests {
     use super::*;
 
     fn tmp_root(tag: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("lantai_composition_dir_{tag}_{}", std::process::id()))
+        std::env::temp_dir().join(format!(
+            "lantai_composition_dir_{tag}_{}",
+            std::process::id()
+        ))
     }
 
     /// P-1 核心：目录不存在 → 建出来（含 presets/），返回根路径。

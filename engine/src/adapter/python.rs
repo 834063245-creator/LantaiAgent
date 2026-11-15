@@ -32,7 +32,11 @@ impl LanguageAdapter for PythonAdapter {
         vec!["py".into(), "pyi".into(), "pyx".into()]
     }
 
-    fn analyze(&self, file_path: &str, source: &str) -> (Vec<Node>, Vec<Edge>, Option<tree_sitter::Tree>) {
+    fn analyze(
+        &self,
+        file_path: &str,
+        source: &str,
+    ) -> (Vec<Node>, Vec<Edge>, Option<tree_sitter::Tree>) {
         let tree = PY_PARSER.with(|cell| {
             let mut borrow = cell.borrow_mut();
             let parser = borrow.get_or_insert_with(|| {
@@ -53,8 +57,9 @@ impl LanguageAdapter for PythonAdapter {
                     std::ops::ControlFlow::Continue(())
                 }
             };
-            let mut input =
-                |i: usize, _: tree_sitter::Point| (i < len).then(|| &bytes[i..]).unwrap_or_default();
+            let mut input = |i: usize, _: tree_sitter::Point| {
+                (i < len).then(|| &bytes[i..]).unwrap_or_default()
+            };
             parser.parse_with_options(
                 &mut input,
                 None,
@@ -64,14 +69,15 @@ impl LanguageAdapter for PythonAdapter {
         let tree = match tree {
             Some(t) => t,
             None => {
-                tracing::warn!(path = file_path, "[parser] parse returned None (timeout or failure), skipping file (病态文件)");
+                tracing::warn!(
+                    path = file_path,
+                    "[parser] parse returned None (timeout or failure), skipping file (病态文件)"
+                );
                 return (vec![], vec![], None);
             }
         };
 
-        let file_id = file_path
-            .trim_end_matches(".py")
-            .replace(['/', '\\'], ".");
+        let file_id = file_path.trim_end_matches(".py").replace(['/', '\\'], ".");
 
         let (nodes, edges) = walk_python_tree(&tree, source, &file_id);
         (nodes, edges, Some(tree))
@@ -98,7 +104,11 @@ fn enclosing_symbol(node: &tree_sitter::Node, source: &str, module_id: &str) -> 
 }
 
 /// 遍历 tree-sitter tree 并提取符号和 import 边。
-fn walk_python_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (Vec<Node>, Vec<Edge>) {
+fn walk_python_tree(
+    tree: &tree_sitter::Tree,
+    source: &str,
+    file_id: &str,
+) -> (Vec<Node>, Vec<Edge>) {
     let mut nodes: Vec<Node> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
     let mut edge_counter = 0u32;
@@ -119,7 +129,12 @@ fn walk_python_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (V
                         let node_id = format!("{}.{}", file_id, name);
                         let n = Node::new(&node_id, name, NodeKind::Function);
                         edge_counter += 1;
-                        edges.push(Edge::new(format!("def_{}_{}", file_id, edge_counter), &module_node_id, &node_id, EdgeKind::Defines));
+                        edges.push(Edge::new(
+                            format!("def_{}_{}", file_id, edge_counter),
+                            &module_node_id,
+                            &node_id,
+                            EdgeKind::Defines,
+                        ));
                         nodes.push(n);
                     }
                 }
@@ -130,7 +145,12 @@ fn walk_python_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (V
                         let node_id = format!("{}.{}", file_id, name);
                         let n = Node::new(&node_id, name, NodeKind::Class);
                         edge_counter += 1;
-                        edges.push(Edge::new(format!("def_{}_{}", file_id, edge_counter), &module_node_id, &node_id, EdgeKind::Defines));
+                        edges.push(Edge::new(
+                            format!("def_{}_{}", file_id, edge_counter),
+                            &module_node_id,
+                            &node_id,
+                            EdgeKind::Defines,
+                        ));
 
                         // 提取基类 → 继承边
                         if let Some(bases) = node.child_by_field_name("superclasses") {
@@ -167,7 +187,8 @@ fn walk_python_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (V
                                 name,
                                 EdgeKind::Imports,
                             );
-                            e.coupling_depth = 1; e.cross_file = true;
+                            e.coupling_depth = 1;
+                            e.cross_file = true;
                             edges.push(e);
                         }
                     }
@@ -181,12 +202,26 @@ fn walk_python_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (V
                     }
                 }
                 for child in node.children(&mut cursor) {
-                    if child.kind() == "dotted_name" && child.utf8_text(source.as_bytes()).is_ok_and(|n| n != module_name) {
+                    if child.kind() == "dotted_name"
+                        && child
+                            .utf8_text(source.as_bytes())
+                            .is_ok_and(|n| n != module_name)
+                    {
                         if let Ok(name) = child.utf8_text(source.as_bytes()) {
                             edge_counter += 1;
-                            let target = if module_name.is_empty() { name.to_string() } else { format!("{}.{}", module_name, name) };
-                            let mut e = Edge::new(format!("frm_{}_{}", file_id, edge_counter), &module_node_id, target, EdgeKind::Imports);
-                            e.coupling_depth = 2; e.cross_file = true;
+                            let target = if module_name.is_empty() {
+                                name.to_string()
+                            } else {
+                                format!("{}.{}", module_name, name)
+                            };
+                            let mut e = Edge::new(
+                                format!("frm_{}_{}", file_id, edge_counter),
+                                &module_node_id,
+                                target,
+                                EdgeKind::Imports,
+                            );
+                            e.coupling_depth = 2;
+                            e.cross_file = true;
                             edges.push(e);
                         }
                     }
@@ -198,8 +233,14 @@ fn walk_python_tree(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (V
                         edge_counter += 1;
                         // 查找父级 function/class 上下文
                         let parent_id = enclosing_symbol(&node, source, &module_node_id);
-                        let mut e = Edge::new(format!("call_{}_{}", file_id, edge_counter), &parent_id, name, EdgeKind::Calls);
-                        e.coupling_depth = 1; e.cross_file = true;
+                        let mut e = Edge::new(
+                            format!("call_{}_{}", file_id, edge_counter),
+                            &parent_id,
+                            name,
+                            EdgeKind::Calls,
+                        );
+                        e.coupling_depth = 1;
+                        e.cross_file = true;
                         edges.push(e);
                     }
                 }
@@ -238,8 +279,11 @@ mod tests {
         let source = "import os\nfrom django.http import HttpResponse\n";
         let (_nodes, edges, _) = adapter.analyze("views.py", source);
         // 至少应有 import 语句的边
-        assert!(edges.iter().any(|e| matches!(e.kind, EdgeKind::Imports)),
-            "should create import edges, got {} edges", edges.len());
+        assert!(
+            edges.iter().any(|e| matches!(e.kind, EdgeKind::Imports)),
+            "should create import edges, got {} edges",
+            edges.len()
+        );
     }
 
     #[test]
@@ -247,10 +291,16 @@ mod tests {
         let adapter = PythonAdapter::new();
         let source = "def my_view():\n    render()\n";
         let (nodes, edges, _) = adapter.analyze("views.py", source);
-        assert!(nodes.iter().any(|n| n.name == "my_view"), "should find my_view");
+        assert!(
+            nodes.iter().any(|n| n.name == "my_view"),
+            "should find my_view"
+        );
         // 对 render() 的调用应创建 calls 边
-        assert!(edges.iter().any(|e| matches!(e.kind, EdgeKind::Calls)),
-            "should create call edge, got {} edges", edges.len());
+        assert!(
+            edges.iter().any(|e| matches!(e.kind, EdgeKind::Calls)),
+            "should create call edge, got {} edges",
+            edges.len()
+        );
     }
 
     #[test]

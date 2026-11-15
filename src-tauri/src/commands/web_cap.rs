@@ -56,8 +56,7 @@ fn arg_str(args: &Value, key: &str) -> Option<String> {
 
 /// web_search — AnySearch 免费 API + Bing/DuckDuckGo 抓取兜底。
 async fn web_search(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
-    let query = arg_str(args, "query")
-        .ok_or_else(|| "web_search: missing 'query'".to_string())?;
+    let query = arg_str(args, "query").ok_or_else(|| "web_search: missing 'query'".to_string())?;
     let max_results = args
         .get("max_results")
         .and_then(|v| v.as_u64())
@@ -68,10 +67,20 @@ async fn web_search(gate: &WebGate<'_>, args: &Value) -> Result<String, String> 
     // 权限检查沿用原有搜索页 URL（AnySearch 是后端 API，仍受同一 Web 域权限约束）。
     let backend = search_backend();
     let fallback_url = match backend {
-        "bing" => format!("https://www.bing.com/search?q={}&setlang=en", crate::utils::urlencoding(&query)),
-        _ => format!("https://html.duckduckgo.com/html/?q={}", crate::utils::urlencoding(&query)),
+        "bing" => format!(
+            "https://www.bing.com/search?q={}&setlang=en",
+            crate::utils::urlencoding(&query)
+        ),
+        _ => format!(
+            "https://html.duckduckgo.com/html/?q={}",
+            crate::utils::urlencoding(&query)
+        ),
     };
-    gate.check(&crate::tools::WebFetchTool { url: fallback_url, agent_id: gate.agent_id.clone() }).await?;
+    gate.check(&crate::tools::WebFetchTool {
+        url: fallback_url,
+        agent_id: gate.agent_id.clone(),
+    })
+    .await?;
 
     // 1) 先尝试 AnySearch 匿名免费 API（无需用户配置任何 key）
     // 2) 失败/空结果时自动降级到 Bing / DuckDuckGo 页面抓取
@@ -101,7 +110,10 @@ async fn web_search(gate: &WebGate<'_>, args: &Value) -> Result<String, String> 
 
 /// AnySearch 匿名免费搜索：不需要 API key。
 /// 返回统一 [{ title, url, snippet }] 结构；失败时上层会 fallback。
-fn anysearch_free_search(query: &str, max_results: usize) -> Result<Vec<serde_json::Value>, String> {
+fn anysearch_free_search(
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<serde_json::Value>, String> {
     let body = serde_json::json!({
         "query": query,
         "max_results": max_results,
@@ -112,10 +124,11 @@ fn anysearch_free_search(query: &str, max_results: usize) -> Result<Vec<serde_js
         ureq::config::Config::builder()
             .timeout_per_call(Some(std::time::Duration::from_secs(8)))
             .timeout_global(Some(std::time::Duration::from_secs(15)))
-            .build()
+            .build(),
     );
 
-    let resp = agent.post(ANYSEARCH_SEARCH_URL)
+    let resp = agent
+        .post(ANYSEARCH_SEARCH_URL)
         .header("Content-Type", "application/json")
         .header("User-Agent", CHROME_UA)
         .send(body.to_string())
@@ -123,14 +136,16 @@ fn anysearch_free_search(query: &str, max_results: usize) -> Result<Vec<serde_js
 
     let status = resp.status().as_u16();
     let mut body = resp.into_body();
-    let text = body.read_to_string().map_err(|e| format!("AnySearch read error: {}", e))?;
+    let text = body
+        .read_to_string()
+        .map_err(|e| format!("AnySearch read error: {}", e))?;
 
     if status != 200 {
         return Err(format!("AnySearch API {}", status));
     }
 
-    let data: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| format!("AnySearch parse error: {}", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("AnySearch parse error: {}", e))?;
 
     let items = data
         .get("data")
@@ -142,9 +157,18 @@ fn anysearch_free_search(query: &str, max_results: usize) -> Result<Vec<serde_js
 
     let mut results = Vec::new();
     for item in items.into_iter().take(max_results) {
-        let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let snippet = item.get("content")
+        let title = item
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let url = item
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let snippet = item
+            .get("content")
             .and_then(|v| v.as_str())
             .or_else(|| item.get("description").and_then(|v| v.as_str()))
             .or_else(|| item.get("snippet").and_then(|v| v.as_str()))
@@ -163,27 +187,35 @@ fn anysearch_free_search(query: &str, max_results: usize) -> Result<Vec<serde_js
 }
 
 fn bing_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
-    let url = format!("https://www.bing.com/search?q={}&setlang=en", crate::utils::urlencoding(query));
+    let url = format!(
+        "https://www.bing.com/search?q={}&setlang=en",
+        crate::utils::urlencoding(query)
+    );
 
     let agent = ureq::Agent::new_with_config(
         ureq::config::Config::builder()
             .timeout_per_call(Some(std::time::Duration::from_secs(5)))
             .timeout_global(Some(std::time::Duration::from_secs(10)))
-            .build()
+            .build(),
     );
 
-    let resp = agent.get(&url)
+    let resp = agent
+        .get(&url)
         .header("User-Agent", CHROME_UA)
         .header("Accept-Language", "en-US,en;q=0.9")
         .call()
         .map_err(|e| format!("web_search: request failed: {}", e))?;
 
     let mut body = resp.into_body();
-    let html = body.read_to_string().map_err(|e| format!("web_search: read error: {}", e))?;
+    let html = body
+        .read_to_string()
+        .map_err(|e| format!("web_search: read error: {}", e))?;
 
     let mut results = Vec::new();
-    let block_re = regex::Regex::new(r#"<li[^>]*class="[^"]*b_algo[^"]*"[^>]*>([\s\S]*?)</li>"#).expect("静态正则");
-    let link_re = regex::Regex::new(r#"<h2[^>]*><a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a></h2>"#).expect("静态正则");
+    let block_re = regex::Regex::new(r#"<li[^>]*class="[^"]*b_algo[^"]*"[^>]*>([\s\S]*?)</li>"#)
+        .expect("静态正则");
+    let link_re = regex::Regex::new(r#"<h2[^>]*><a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a></h2>"#)
+        .expect("静态正则");
     let snippet_re = regex::Regex::new(r#"<p[^>]*>([\s\S]*?)</p>"#).expect("静态正则");
     let tag_re = regex::Regex::new(r"<[^>]*>").expect("静态正则");
 
@@ -192,7 +224,8 @@ fn bing_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
         if let Some(lc) = link_re.captures(block) {
             let title = tag_re.replace_all(&lc[2], "").trim().to_string();
             if title.len() > 3 {
-                let snippet = snippet_re.captures_iter(block)
+                let snippet = snippet_re
+                    .captures_iter(block)
                     .map(|c| tag_re.replace_all(&c[1], "").trim().to_string())
                     .find(|s| s.len() > 15)
                     .unwrap_or_default();
@@ -201,7 +234,9 @@ fn bing_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
                     "url": lc[1].to_string(),
                     "snippet": snippet,
                 }));
-                if results.len() >= 10 { break; }
+                if results.len() >= 10 {
+                    break;
+                }
             }
         }
     }
@@ -216,35 +251,41 @@ fn duckduckgo_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
         ureq::config::Config::builder()
             .timeout_per_call(Some(std::time::Duration::from_secs(5)))
             .timeout_global(Some(std::time::Duration::from_secs(10)))
-            .build()
+            .build(),
     );
 
-    let resp = agent.get(&url)
+    let resp = agent
+        .get(&url)
         .header("User-Agent", CHROME_UA)
         .header("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8")
         .call()
         .map_err(|e| format!("web_search: request failed: {}", e))?;
 
     let mut body = resp.into_body();
-    let html = body.read_to_string().map_err(|e| format!("web_search: read error: {}", e))?;
+    let html = body
+        .read_to_string()
+        .map_err(|e| format!("web_search: read error: {}", e))?;
 
     let mut results = Vec::new();
     let title_re = regex::Regex::new(
-        r#"<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a>"#
-    ).expect("静态正则");
-    let snippet_re = regex::Regex::new(
-        r#"<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)</a>"#
-    ).expect("静态正则");
+        r#"<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a>"#,
+    )
+    .expect("静态正则");
+    let snippet_re =
+        regex::Regex::new(r#"<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)</a>"#)
+            .expect("静态正则");
     let tag_re = regex::Regex::new(r"<[^>]*>").expect("静态正则");
 
-    let split_re = regex::Regex::new(r#"<div[^>]*class="[^"]*result[^"]*"[^>]*>"#).expect("静态正则");
+    let split_re =
+        regex::Regex::new(r#"<div[^>]*class="[^"]*result[^"]*"[^>]*>"#).expect("静态正则");
     let blocks: Vec<&str> = split_re.split(&html).collect();
 
     for block in &blocks[1..] {
         if let Some(tc) = title_re.captures(block) {
             let title = tag_re.replace_all(&tc[2], "").trim().to_string();
             if title.len() > 3 {
-                let snippet = snippet_re.captures(block)
+                let snippet = snippet_re
+                    .captures(block)
                     .map(|c| tag_re.replace_all(&c[1], "").trim().to_string())
                     .unwrap_or_default();
                 results.push(serde_json::json!({
@@ -252,7 +293,9 @@ fn duckduckgo_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
                     "url": tc[1].to_string(),
                     "snippet": snippet,
                 }));
-                if results.len() >= 10 { break; }
+                if results.len() >= 10 {
+                    break;
+                }
             }
         }
     }
@@ -260,9 +303,12 @@ fn duckduckgo_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
 }
 /// web_fetch — URL 抓取（SSRF 逐跳复查 + 1 MiB 截断）。网页文本是 Text 结果。
 async fn web_fetch(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
-    let url = arg_str(args, "url")
-        .ok_or_else(|| "web_fetch: missing 'url'".to_string())?;
-    gate.check(&crate::tools::WebFetchTool { url: url.clone(), agent_id: gate.agent_id.clone() }).await?;
+    let url = arg_str(args, "url").ok_or_else(|| "web_fetch: missing 'url'".to_string())?;
+    gate.check(&crate::tools::WebFetchTool {
+        url: url.clone(),
+        agent_id: gate.agent_id.clone(),
+    })
+    .await?;
 
     let parsed = url::Url::parse(&url).map_err(|e| format!("无效 URL: {}", e))?;
     let scheme = parsed.scheme();
@@ -280,29 +326,31 @@ async fn web_fetch(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
             .timeout_per_call(Some(std::time::Duration::from_secs(10)))
             .timeout_global(Some(std::time::Duration::from_secs(30)))
             .max_redirects(0) // 禁用自动重定向 — 每一跳手动重新检查 SSRF
-            .build()
+            .build(),
     );
 
-    let make_request =
-        |ua: &str| -> Result<ureq::http::Response<ureq::Body>, ureq::Error> {
-            agent.get(url.as_str())
+    let make_request = |ua: &str| -> Result<ureq::http::Response<ureq::Body>, ureq::Error> {
+        agent.get(url.as_str())
                 .header("User-Agent", ua)
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,text/markdown;q=0.7,*/*;q=0.1")
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .call()
-        };
+    };
 
     // 手动跟随重定向，在每个 Location 上重新检查 SSRF
     let resp = match make_request(CHROME_UA) {
         Ok(r) if r.status().as_u16() != 403 => r,
         Ok(r) => {
             // 403 — 检查是否为 Cloudflare 验证
-            let is_cf = r.headers().get("cf-mitigated")
+            let is_cf = r
+                .headers()
+                .get("cf-mitigated")
                 .and_then(|v| v.to_str().ok())
                 .map(|v| v == "challenge")
                 .unwrap_or(false);
             if is_cf {
-                make_request("opencode").map_err(|e| format!("请求失败 (Cloudflare blocked): {}", e))?
+                make_request("opencode")
+                    .map_err(|e| format!("请求失败 (Cloudflare blocked): {}", e))?
             } else {
                 r
             }
@@ -317,17 +365,21 @@ async fn web_fetch(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
     const MAX_REDIRECTS: u32 = 5;
     loop {
         let status = current_resp.status().as_u16();
-        if !(300..400).contains(&status) { break; }
+        if !(300..400).contains(&status) {
+            break;
+        }
         if redirects >= MAX_REDIRECTS {
             return Err(format!("重定向次数超限 ({MAX_REDIRECTS})"));
         }
-        let location = current_resp.headers()
+        let location = current_resp
+            .headers()
             .get("location")
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| "重定向响应缺少 Location 头".to_string())?;
         // 相对于当前重定向 URL 解析相对 URL
         let base = url::Url::parse(&current_url).map_err(|e| format!("无效基址 URL: {e}"))?;
-        let next_url = base.join(location)
+        let next_url = base
+            .join(location)
             .map_err(|e| format!("无效重定向 URL: {e}"))?;
         let next_scheme = next_url.scheme();
         if next_scheme != "https" && next_scheme != "http" {
@@ -339,7 +391,8 @@ async fn web_fetch(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
         }
         // 跟随重定向
         current_url = next_url.to_string();
-        current_resp = agent.get(&current_url)
+        current_resp = agent
+            .get(&current_url)
             .header("User-Agent", CHROME_UA)
             .call()
             .map_err(|e| format!("重定向请求失败: {}", e))?;
@@ -347,7 +400,8 @@ async fn web_fetch(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
     }
     let resp = current_resp;
 
-    let content_type = resp.headers()
+    let content_type = resp
+        .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
@@ -361,15 +415,39 @@ async fn web_fetch(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
 
     let result = if content_type.contains("html") {
         let mut s = text;
-        s = regex::Regex::new(r"(?si)<script[^>]*>.*?</script>").unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则")).replace_all(&s, " ").to_string();
-        s = regex::Regex::new(r"(?si)<style[^>]*>.*?</style>").unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则")).replace_all(&s, " ").to_string();
-        s = regex::Regex::new(r"(?s)<!--.*?-->").unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则")).replace_all(&s, " ").to_string();
-        s = regex::Regex::new(r"<[^>]*>").unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则")).replace_all(&s, " ").to_string();
-        s = s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-             .replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'")
-             .replace("&#x27;", "'").replace("&nbsp;", " ");
-        s = regex::Regex::new(r"[ \t]+").unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则")).replace_all(&s, " ").to_string();
-        s = regex::Regex::new(r"\n{3,}").unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则")).replace_all(&s, "\n\n").to_string();
+        s = regex::Regex::new(r"(?si)<script[^>]*>.*?</script>")
+            .unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则"))
+            .replace_all(&s, " ")
+            .to_string();
+        s = regex::Regex::new(r"(?si)<style[^>]*>.*?</style>")
+            .unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则"))
+            .replace_all(&s, " ")
+            .to_string();
+        s = regex::Regex::new(r"(?s)<!--.*?-->")
+            .unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则"))
+            .replace_all(&s, " ")
+            .to_string();
+        s = regex::Regex::new(r"<[^>]*>")
+            .unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则"))
+            .replace_all(&s, " ")
+            .to_string();
+        s = s
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+            .replace("&#x27;", "'")
+            .replace("&nbsp;", " ");
+        s = regex::Regex::new(r"[ \t]+")
+            .unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则"))
+            .replace_all(&s, " ")
+            .to_string();
+        s = regex::Regex::new(r"\n{3,}")
+            .unwrap_or_else(|_| regex::Regex::new(r"").expect("空正则"))
+            .replace_all(&s, "\n\n")
+            .to_string();
         s.trim().to_string()
     } else {
         text
@@ -467,4 +545,3 @@ fn read_capped<R: std::io::Read>(reader: R, cap: usize) -> std::io::Result<(Vec<
     buf.truncate(cap);
     Ok((buf, truncated))
 }
-

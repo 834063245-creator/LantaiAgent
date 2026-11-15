@@ -53,7 +53,7 @@ fn compute_coupling_impl(graph: &mut Graph, incremental: bool) {
                 let tgt_pkg = node_pkg.get(edge.target.as_str());
                 match (src_pkg, tgt_pkg) {
                     (Some(s), Some(t)) if s == t && !s.is_empty() => 1, // L1：同包
-                    _ => 2, // L2：跨包
+                    _ => 2,                                             // L2：跨包
                 }
             }
             EdgeKind::Reads | EdgeKind::Writes | EdgeKind::Shares | EdgeKind::Usage => 3, // L3：数据

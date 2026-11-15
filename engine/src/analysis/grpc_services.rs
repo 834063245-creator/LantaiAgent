@@ -60,7 +60,9 @@ fn collect_proto_files(root: &Path, out: &mut Vec<String>) {
         .filter_entry(|e| !crate::pipeline::discovery::is_ignored_path(&e.path().to_string_lossy()))
     {
         let Ok(entry) = entry else { continue };
-        if !entry.file_type().is_file() { continue; }
+        if !entry.file_type().is_file() {
+            continue;
+        }
         let p = entry.path().to_string_lossy().replace('\\', "/");
         if p.to_lowercase().ends_with(".proto") && seen.insert(p.clone()) {
             out.push(p);
@@ -155,21 +157,19 @@ fn find_file_node(graph: &Graph, file: &str) -> Option<String> {
 fn detect_client_bindings(file: &str, source: &str, bindings: &mut Vec<ClientBinding>) {
     let lower = file.to_lowercase();
     // TS/JS（grpc-js / grpc-web）：const client = new GreeterClient(addr)
-    let ts_re = regex::Regex::new(
-        r#"(?:const|let|var)\s+(\w+)\s*=\s*new\s+(\w+)Client\s*\("#,
-    )
-    .expect("静态正则");
+    let ts_re = regex::Regex::new(r#"(?:const|let|var)\s+(\w+)\s*=\s*new\s+(\w+)Client\s*\("#)
+        .expect("静态正则");
     // Go：client := NewGreeterClient(conn) / client = NewGreeterClient(conn)
     let go_re = regex::Regex::new(r#"(\w+)\s*(?::=|=)\s*New(\w+)Client\s*\("#).expect("静态正则");
     // Rust（tonic）：let mut client = GreeterClient::new(conn)
-    let rust_re = regex::Regex::new(r#"let\s+mut\s+(\w+)\s*=\s*(\w+)Client::new\s*\("#).expect("静态正则");
+    let rust_re =
+        regex::Regex::new(r#"let\s+mut\s+(\w+)\s*=\s*(\w+)Client::new\s*\("#).expect("静态正则");
     // Python（grpcio）：stub = greeter_pb2_grpc.GreeterStub(channel)（可带模块前缀）
     let py_re = regex::Regex::new(r#"(\w+)\s*=\s*([\w.]+)Stub\s*\("#).expect("静态正则");
     // Java（grpc）：final GreeterBlockingStub stub = GreeterGrpc.newBlockingStub(channel);
-    let java_re = regex::Regex::new(
-        r#"(?:final\s+)?(\w+)Stub\s+(\w+)\s*=\s*(\w+)Grpc\.new\w*Stub\s*\("#,
-    )
-    .expect("静态正则");
+    let java_re =
+        regex::Regex::new(r#"(?:final\s+)?(\w+)Stub\s+(\w+)\s*=\s*(\w+)Grpc\.new\w*Stub\s*\("#)
+            .expect("静态正则");
 
     let mut seen: HashSet<(String, String)> = HashSet::new();
     let mut push = |var: &str, svc: &str, bindings: &mut Vec<ClientBinding>| {
@@ -182,15 +182,27 @@ fn detect_client_bindings(file: &str, source: &str, bindings: &mut Vec<ClientBin
     };
     if lower.ends_with(".ts") || lower.ends_with(".tsx") || lower.ends_with(".js") {
         for c in ts_re.captures_iter(source) {
-            push(c.get(1).expect("捕获组 1 必命中").as_str(), c.get(2).expect("捕获组 2 必命中").as_str(), bindings);
+            push(
+                c.get(1).expect("捕获组 1 必命中").as_str(),
+                c.get(2).expect("捕获组 2 必命中").as_str(),
+                bindings,
+            );
         }
     } else if lower.ends_with(".go") {
         for c in go_re.captures_iter(source) {
-            push(c.get(1).expect("捕获组 1 必命中").as_str(), c.get(2).expect("捕获组 2 必命中").as_str(), bindings);
+            push(
+                c.get(1).expect("捕获组 1 必命中").as_str(),
+                c.get(2).expect("捕获组 2 必命中").as_str(),
+                bindings,
+            );
         }
     } else if lower.ends_with(".rs") {
         for c in rust_re.captures_iter(source) {
-            push(c.get(1).expect("捕获组 1 必命中").as_str(), c.get(2).expect("捕获组 2 必命中").as_str(), bindings);
+            push(
+                c.get(1).expect("捕获组 1 必命中").as_str(),
+                c.get(2).expect("捕获组 2 必命中").as_str(),
+                bindings,
+            );
         }
     } else if lower.ends_with(".py") {
         for c in py_re.captures_iter(source) {
@@ -201,7 +213,11 @@ fn detect_client_bindings(file: &str, source: &str, bindings: &mut Vec<ClientBin
         }
     } else if lower.ends_with(".java") {
         for c in java_re.captures_iter(source) {
-            push(c.get(2).expect("捕获组 2 必命中").as_str(), c.get(3).expect("捕获组 3 必命中").as_str(), bindings);
+            push(
+                c.get(2).expect("捕获组 2 必命中").as_str(),
+                c.get(3).expect("捕获组 3 必命中").as_str(),
+                bindings,
+            );
         }
     }
 }
@@ -312,7 +328,9 @@ pub fn detect_grpc_services(
             .map(|(src, _)| src.clone())
             .or_else(|| std::fs::read_to_string(file).ok());
         let Some(source) = source else { continue };
-        if !source.contains("Stub") && !source.contains("stub") && !source.contains("Client")
+        if !source.contains("Stub")
+            && !source.contains("stub")
+            && !source.contains("Client")
             && !source.contains("client")
         {
             continue;
@@ -546,16 +564,12 @@ HelloReply resp = stub.sayHello(req);
 
     #[test]
     fn test_full_detection_fixture() {
-        let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/grpc_services");
+        let fixture =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/grpc_services");
         let mut graph = Graph::new();
 
         // 模拟阶段 1 已解析的实现与客户端函数节点
-        graph.add_node(Node::new(
-            "impl_say_hello",
-            "say_hello",
-            NodeKind::Function,
-        ));
+        graph.add_node(Node::new("impl_say_hello", "say_hello", NodeKind::Function));
         graph.add_node(Node::new(
             "impl_send_email",
             "send_email",
@@ -608,16 +622,28 @@ HelloReply resp = stub.sayHello(req);
         // 实现匹配：say_hello / send_email 各一条合成边（channel grpc）
         let grpc_edges = graph
             .edges_iter()
-            .filter(|(_, e)| e.is_synthesized && e.metadata.as_ref().map_or(false, |m| m["synthesizedBy"] == json!("grpc")))
+            .filter(|(_, e)| {
+                e.is_synthesized
+                    && e.metadata
+                        .as_ref()
+                        .map_or(false, |m| m["synthesizedBy"] == json!("grpc"))
+            })
             .count();
         assert_eq!(grpc_edges, 2, "实现匹配应有 2 条边");
 
         // 客户端调用边：ts + go + py + java（链式 + 变量式）各命中
         let client_edges = graph
             .edges_iter()
-            .filter(|(_, e)| e.metadata.as_ref().map_or(false, |m| m["synthesizedBy"] == json!("grpc-client")))
+            .filter(|(_, e)| {
+                e.metadata
+                    .as_ref()
+                    .map_or(false, |m| m["synthesizedBy"] == json!("grpc-client"))
+            })
             .count();
-        assert_eq!(client_edges, 5, "客户端调用应有 5 条边（ts/go/py/java链式/java变量），实际 {client_edges}");
+        assert_eq!(
+            client_edges, 5,
+            "客户端调用应有 5 条边（ts/go/py/java链式/java变量），实际 {client_edges}"
+        );
 
         assert!(added >= 2 + 2 + 5, "总数应涵盖节点与边，实际 {added}");
     }
@@ -629,8 +655,8 @@ HelloReply resp = stub.sayHello(req);
         let _global_guard = crate::engine::global_engine_test_guard();
         // 真实项目级验证：完整 pipeline 解析 fixture（客户端文件真实解析出节点，
         // 实现/调用匹配走真实 location 与名称）
-        let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/grpc_services");
+        let fixture =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/grpc_services");
         let engine = crate::engine::Engine::open(&fixture).unwrap();
         let result = engine.analyze(&fixture);
         assert!(result.is_ok(), "analyze failed: {:?}", result.err());
@@ -679,7 +705,10 @@ HelloReply resp = stub.sayHello(req);
                     assert_eq!(m["implemented"], true, "{} 应已实现", m["method"]);
                     let sites = m["client_call_sites"].as_u64().unwrap_or(0);
                     if m["method"] == "SayHello" {
-                        assert!(sites >= 4, "SayHello 应有 ≥4 客户端调用点（ts/go/py/java），实际 {sites}");
+                        assert!(
+                            sites >= 4,
+                            "SayHello 应有 ≥4 客户端调用点（ts/go/py/java），实际 {sites}"
+                        );
                     } else {
                         assert_eq!(sites, 0, "SendEmail 在 fixture 中无客户端调用点");
                     }

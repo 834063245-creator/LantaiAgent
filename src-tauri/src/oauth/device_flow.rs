@@ -98,10 +98,7 @@ pub struct DeviceFlowStart {
 }
 
 /// 向 OpenAI 请求 user code（第一步）。
-pub async fn request_user_code(
-    issuer: &str,
-    client_id: &str,
-) -> Result<UserCodeResponse, String> {
+pub async fn request_user_code(issuer: &str, client_id: &str) -> Result<UserCodeResponse, String> {
     let url = format!("{issuer}/api/accounts/deviceauth/usercode");
     let client = reqwest::Client::new();
     let resp = client
@@ -112,7 +109,10 @@ pub async fn request_user_code(
         .await
         .map_err(|e| format!("deviceauth usercode 请求失败: {e}"))?;
     let status = resp.status();
-    let body = resp.text().await.map_err(|e| format!("读取响应失败: {e}"))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {e}"))?;
     if !status.is_success() {
         return Err(format!(
             "deviceauth usercode 失败（HTTP {status}）: {}",
@@ -150,7 +150,10 @@ pub async fn poll_device_token(
                 {
                     return Ok(None);
                 }
-                let body = resp.text().await.map_err(|e| format!("读取响应失败: {e}"))?;
+                let body = resp
+                    .text()
+                    .await
+                    .map_err(|e| format!("读取响应失败: {e}"))?;
                 if !status.is_success() {
                     // expired_token/access_denied 等终态——错误上报
                     return Err(format!(
@@ -200,7 +203,10 @@ pub async fn exchange_code_for_tokens(
         .await
         .map_err(|e| format!("oauth/token 交换失败: {e}"))?;
     let status = resp.status();
-    let body = resp.text().await.map_err(|e| format!("读取响应失败: {e}"))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {e}"))?;
     if !status.is_success() {
         return Err(format!(
             "oauth/token 交换失败（HTTP {status}）: {}",
@@ -231,7 +237,10 @@ pub async fn refresh_tokens(
         .await
         .map_err(|e| format!("oauth/token 刷新失败: {e}"))?;
     let status = resp.status();
-    let body = resp.text().await.map_err(|e| format!("读取响应失败: {e}"))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取响应失败: {e}"))?;
     if !status.is_success() {
         return Err(format!(
             "oauth/token 刷新失败（HTTP {status}）: {}",
@@ -247,7 +256,8 @@ mod tests {
 
     #[test]
     fn user_code_resp_accepts_usercode_alias() {
-        let raw = r#"{"device_auth_id":"da1","usercode":"ABCD-EFGH","interval":"5","expires_at":123}"#;
+        let raw =
+            r#"{"device_auth_id":"da1","usercode":"ABCD-EFGH","interval":"5","expires_at":123}"#;
         let parsed: UserCodeResponse = serde_json::from_str(raw).expect("parse");
         assert_eq!(parsed.device_auth_id, "da1");
         assert_eq!(parsed.user_code, "ABCD-EFGH");
@@ -265,7 +275,8 @@ mod tests {
 
     #[test]
     fn poll_approved_shape() {
-        let raw = r#"{"authorization_code":"auth-code-1","code_challenge":"cc1","code_verifier":"cv1"}"#;
+        let raw =
+            r#"{"authorization_code":"auth-code-1","code_challenge":"cc1","code_verifier":"cv1"}"#;
         let parsed: PollApproved = serde_json::from_str(raw).expect("parse");
         assert_eq!(parsed.authorization_code, "auth-code-1");
         assert_eq!(parsed.code_verifier, "cv1");
@@ -273,7 +284,8 @@ mod tests {
 
     #[test]
     fn token_set_shape() {
-        let raw = r#"{"access_token":"at1","refresh_token":"rt1","id_token":"it1","expires_in":3600}"#;
+        let raw =
+            r#"{"access_token":"at1","refresh_token":"rt1","id_token":"it1","expires_in":3600}"#;
         let parsed: TokenSet = serde_json::from_str(raw).expect("parse");
         assert_eq!(parsed.access_token, "at1");
         assert_eq!(parsed.refresh_token, "rt1");

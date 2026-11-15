@@ -49,7 +49,8 @@ fn lock_path() -> Result<PathBuf, String> {
         .or_else(|_| std::env::var("HOME"))
         .map_err(|_| "无法定位用户主目录（USERPROFILE/HOME 均未设置）".to_string())?;
     let dir = PathBuf::from(home).join(".lantai");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建用户数据目录 {}: {e}", dir.display()))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("无法创建用户数据目录 {}: {e}", dir.display()))?;
     Ok(dir.join("instance.lock"))
 }
 
@@ -86,7 +87,8 @@ mod tests {
     /// 「单写者」的 OS 级证据（Windows = LockFileEx，unix = flock）。
     #[test]
     fn second_handle_cannot_lock_the_same_file() {
-        let dir = std::env::temp_dir().join(format!("lantai_instance_lock_test_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("lantai_instance_lock_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("instance.lock");

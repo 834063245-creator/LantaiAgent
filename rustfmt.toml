@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Wenbing Jing. MIT License.
+# SPDX-License-Identifier: MIT
+#
+# rustfmt 配置（2026-11-15 首次全仓格式化时建立）。
+#
+# 只写 stable 支持的键——nightly-only 选项在这里会直接报错，而本机的
+# toolchain 是 stable，门禁也不该依赖 nightly。
+#
+# edition 必须与各 crate 一致：rustfmt 默认按 2015 解析，会把 2021 的
+# 语法（闭包捕获、into_iter 数组）排版错。
+edition = "2021"

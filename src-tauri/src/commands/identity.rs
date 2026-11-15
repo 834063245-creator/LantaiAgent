@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 // Identity & credentials — permission_ask_response + credential store.
 
-
 #[tauri::command]
 pub(crate) async fn permission_ask_response(
     request_id: String,
@@ -22,13 +21,19 @@ pub(crate) async fn permission_ask_response(
                 tracing::info!(
                     "[perm] session rule added: {} -> {}",
                     rule_str,
-                    if allow { "allowed this operation" } else { "denied this operation" }
+                    if allow {
+                        "allowed this operation"
+                    } else {
+                        "denied this operation"
+                    }
                 );
             } else {
                 tracing::warn!("[perm] remember=true but get_ctx failed — session rule NOT saved");
             }
         } else {
-            tracing::warn!("[perm] remember=true but rule_to_add is None — frontend may have lost suggestions");
+            tracing::warn!(
+                "[perm] remember=true but rule_to_add is None — frontend may have lost suggestions"
+            );
         }
     }
     Ok(())
@@ -49,10 +54,7 @@ pub(crate) fn set_permission_mode(mode: String) -> Result<(), String> {
             tracing::info!("[perm] permission mode -> {}", mode);
             Ok(())
         }
-        other => Err(format!(
-            "无效的权限模式: '{}' (允许: ask/auto/yolo)",
-            other
-        )),
+        other => Err(format!("无效的权限模式: '{}' (允许: ask/auto/yolo)", other)),
     }
 }
 

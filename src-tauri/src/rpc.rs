@@ -14,7 +14,8 @@ use serde_json::Value;
 // ── 参数辅助函数 ──
 
 fn req_str(params: &Value, name: &str, method: &str) -> Result<String, String> {
-    params.get(name)
+    params
+        .get(name)
         .and_then(|v| v.as_str())
         .map(String::from)
         .ok_or_else(|| format!("{method}: missing '{name}'"))
@@ -34,27 +35,39 @@ fn req_bool(params: &Value, name: &str, method: &str) -> Result<bool, String> {
 /// browser 命令的 agent 路由：target="self" 走自家 webview 只读会话，
 
 fn req_strs(params: &Value, name: &str, method: &str) -> Result<Vec<String>, String> {
-    params.get(name)
+    params
+        .get(name)
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .ok_or_else(|| format!("{method}: missing '{name}'"))
 }
 
 /// 可选 env 注入映射（protocol_bridge_spawn，app shell S2）：缺省/Null → None；
 /// 对象逐键值须字符串；键禁空/含 '=' 或 NUL（Windows env 块歧义防线——名字
 /// 里的 '=' 会被系统折进值），值禁 NUL。
-fn opt_str_map(params: &Value, name: &str) -> Result<Option<std::collections::HashMap<String, String>>, String> {
+fn opt_str_map(
+    params: &Value,
+    name: &str,
+) -> Result<Option<std::collections::HashMap<String, String>>, String> {
     match params.get(name) {
         None | Some(Value::Null) => Ok(None),
         Some(v) => {
-            let obj = v.as_object().ok_or_else(|| format!("参数 '{name}' 必须是字符串到字符串的对象"))?;
+            let obj = v
+                .as_object()
+                .ok_or_else(|| format!("参数 '{name}' 必须是字符串到字符串的对象"))?;
             let mut map = std::collections::HashMap::new();
             for (k, val) in obj {
                 let s = val
                     .as_str()
                     .ok_or_else(|| format!("参数 '{name}' 的键 {k} 对应值必须是字符串"))?;
                 if k.is_empty() || k.contains('=') || k.contains('\0') {
-                    return Err(format!("参数 '{name}' 非法 env 键（空/含 '=' 或 NUL）: {k}"));
+                    return Err(format!(
+                        "参数 '{name}' 非法 env 键（空/含 '=' 或 NUL）: {k}"
+                    ));
                 }
                 if s.contains('\0') {
                     return Err(format!("参数 '{name}' 的键 {k} 对应值含 NUL"));
@@ -130,9 +143,7 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // workspace_create_dir：ok_json(归一化路径字符串) 恒 JSON 字符串。
         // （workspace-session-ownership-rework 2026-08-27：user_sessions_list 退役——
         //  首页工作区清单由 workspace_list 承担，计数扫各工作区会话根。）
-        "workspace_list" | "workspace_create_dir" => {
-            RpcResultShape::JsonValue
-        }
+        "workspace_list" | "workspace_create_dir" => RpcResultShape::JsonValue,
 
         // ── 搜索 ──
         // （search_content 已随 builtin.search 退役（R2-c），R2-d(1) schema 回 TS zod；
@@ -190,7 +201,9 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // 字符串值保证转义安全，恒合法 JSON，JsonValue。
         // merge：merge_to_main 返回 git stdout 文本，Text。
         // discard：文案文本，Text。
-        "agent_isolation_create" | "agent_isolation_status" | "agent_isolation_diff" => RpcResultShape::JsonValue,
+        "agent_isolation_create" | "agent_isolation_status" | "agent_isolation_diff" => {
+            RpcResultShape::JsonValue
+        }
 
         // ── 外部服务 ──
         // sandbox_status：json! 构造恒 JSON。其余 MCP 文案文本，Text。
@@ -349,10 +362,19 @@ async fn dispatch_rpc(
                 directory,
                 pattern,
                 opt_str(&params, "file_types"),
-                params.get("max_matches").and_then(|v| v.as_u64()).map(|n| n as usize),
-                params.get("max_files").and_then(|v| v.as_u64()).map(|n| n as usize),
+                params
+                    .get("max_matches")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
+                params
+                    .get("max_files")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
                 opt_bool(&params, "use_regex"),
-                params.get("context_lines").and_then(|v| v.as_u64()).map(|n| n as usize),
+                params
+                    .get("context_lines")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
                 opt_bool(&params, "collect_lines"),
                 opt_str(&params, "glob_filter"),
                 is_agent,
@@ -390,7 +412,9 @@ async fn dispatch_rpc(
                 opt_bool(&params, "line_numbers"),
                 opt_bool(&params, "filter_ignored"),
                 params.get("paths").and_then(|v| v.as_array()).map(|arr| {
-                    arr.iter().filter_map(|x| x.as_str().map(String::from)).collect()
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
                 }),
                 is_agent,
                 agent_id,
@@ -419,7 +443,9 @@ async fn dispatch_rpc(
             let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
             let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
             let files = params.get("files").and_then(|v| v.as_array()).map(|arr| {
-                arr.iter().filter_map(|x| x.as_str().map(String::from)).collect::<Vec<String>>()
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect::<Vec<String>>()
             });
             commands::git_cap::git_cap(
                 action,
@@ -428,7 +454,10 @@ async fn dispatch_rpc(
                 files,
                 opt_str(&params, "message"),
                 opt_str(&params, "branch"),
-                params.get("count").and_then(|v| v.as_u64()).map(|n| n as usize),
+                params
+                    .get("count")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
                 is_agent,
                 agent_id,
                 &state,
@@ -471,7 +500,10 @@ async fn dispatch_rpc(
                 // office_exec 载荷（office 域工具专用：{argv:[…], targets:[{path,write}]}）
                 // ——命令由口内拼装，门禁 = OfficeTool（只审声明的目标文件）。
                 params.get("office").cloned(),
-                params.get("job_id").and_then(|v| v.as_u64()).map(|n| n as u32),
+                params
+                    .get("job_id")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32),
                 params.get("wait_timeout_ms").and_then(|v| v.as_u64()),
                 // job_read_at：观测面按绝对字节偏移非消费读
                 params.get("stdout_from").and_then(|v| v.as_u64()),
@@ -567,8 +599,7 @@ async fn dispatch_rpc(
             let action = req_str(&params, "action", "editor_cap")?;
             let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
             let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
-            commands::editor_cap::editor_cap(action, params, is_agent, agent_id, &state, &app)
-                .await
+            commands::editor_cap::editor_cap(action, params, is_agent, agent_id, &state, &app).await
         }
 
         // ═══════════════════════════════════════════════════════
@@ -601,7 +632,9 @@ async fn dispatch_rpc(
         "permission_ask_response" => {
             let request_id = req_str(&params, "request_id", "permission_ask_response")?;
             let allow = match params.get("allow") {
-                Some(v) => v.as_bool().ok_or_else(|| format!("参数 'allow' 必须是布尔值，收到: {}", v))?,
+                Some(v) => v
+                    .as_bool()
+                    .ok_or_else(|| format!("参数 'allow' 必须是布尔值，收到: {}", v))?,
                 None => return Err("参数 'allow' 缺失 — 必须明确指定允许或拒绝".to_string()),
             };
             // 验证可选参数 — 类型错误时报错，不静默吞掉
@@ -622,14 +655,28 @@ async fn dispatch_rpc(
                     // 验证已知行为值
                     let valid = ["allow", "deny", "ask"];
                     if !valid.contains(&s.as_str()) {
-                        return Err(format!("参数 'rule_behavior' 无效: '{}' (允许: {})", s, valid.join(", ")));
+                        return Err(format!(
+                            "参数 'rule_behavior' 无效: '{}' (允许: {})",
+                            s,
+                            valid.join(", ")
+                        ));
                     }
                     Some(s.clone())
                 }
                 Some(Value::Null) => None,
                 Some(v) => return Err(format!("参数 'rule_behavior' 必须是字符串，收到: {}", v)),
             };
-            ok_unit(commands::identity::permission_ask_response(request_id, allow, remember, rule_to_add, rule_behavior, state).await)
+            ok_unit(
+                commands::identity::permission_ask_response(
+                    request_id,
+                    allow,
+                    remember,
+                    rule_to_add,
+                    rule_behavior,
+                    state,
+                )
+                .await,
+            )
         }
         "set_permission_mode" => {
             let mode = req_str(&params, "mode", "set_permission_mode")?;
@@ -639,23 +686,28 @@ async fn dispatch_rpc(
             let provider = req_str(&params, "provider", "credential_store")?;
             let key = req_str(&params, "key", "credential_store")?;
             // 同步 DPAPI/Keychain/secret-tool 操作 — 移到阻塞线程池，避免卡住异步 runtime
-            let r = tokio::task::spawn_blocking(move || commands::identity::credential_store(provider, key))
-                .await
-                .map_err(|e| format!("credential_store 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::identity::credential_store(provider, key)
+            })
+            .await
+            .map_err(|e| format!("credential_store 任务失败: {e}"))?;
             ok_unit(r)
         }
         "credential_get" => {
             let provider = req_str(&params, "provider", "credential_get")?;
-            let r = tokio::task::spawn_blocking(move || commands::identity::credential_get(provider))
-                .await
-                .map_err(|e| format!("credential_get 任务失败: {e}"))?;
+            let r =
+                tokio::task::spawn_blocking(move || commands::identity::credential_get(provider))
+                    .await
+                    .map_err(|e| format!("credential_get 任务失败: {e}"))?;
             ok_json(r)
         }
         "credential_delete" => {
             let provider = req_str(&params, "provider", "credential_delete")?;
-            let r = tokio::task::spawn_blocking(move || commands::identity::credential_delete(provider))
-                .await
-                .map_err(|e| format!("credential_delete 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::identity::credential_delete(provider)
+            })
+            .await
+            .map_err(|e| format!("credential_delete 任务失败: {e}"))?;
             ok_unit(r)
         }
 
@@ -689,9 +741,11 @@ async fn dispatch_rpc(
         "oauth_logout" => {
             let provider = req_str(&params, "provider", "oauth_logout")?;
             let account_id = req_str(&params, "account_id", "oauth_logout")?;
-            let r = tokio::task::spawn_blocking(move || commands::oauth::oauth_logout(&provider, &account_id))
-                .await
-                .map_err(|e| format!("oauth_logout 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::oauth::oauth_logout(&provider, &account_id)
+            })
+            .await
+            .map_err(|e| format!("oauth_logout 任务失败: {e}"))?;
             ok_unit(r)
         }
         "oauth_refresh" => {
@@ -721,10 +775,16 @@ async fn dispatch_rpc(
             let p = req_str(&params, "path", "log_rotate")?;
             let real = crate::utils::resolve_write_dispatch(&p, false, None, &state, &app).await?;
             if !crate::logging::is_rotatable_log(&real) {
-                return Err(format!("log_rotate: 只接受 .lantai/logs/ 下的 .log 文件（收到 {p}）"));
+                return Err(format!(
+                    "log_rotate: 只接受 .lantai/logs/ 下的 .log 文件（收到 {p}）"
+                ));
             }
             let r = tokio::task::spawn_blocking(move || {
-                crate::logging::rotate_if_large(&real, crate::logging::LOG_MAX_BYTES, crate::logging::LOG_KEEP)
+                crate::logging::rotate_if_large(
+                    &real,
+                    crate::logging::LOG_MAX_BYTES,
+                    crate::logging::LOG_KEEP,
+                )
             })
             .await
             .map_err(|e| format!("log_rotate 任务失败: {e}"))?;
@@ -764,24 +824,30 @@ async fn dispatch_rpc(
             // 本地目录源走复制路径；registry/tarball 走下载+解包路径
             let name = match source {
                 commands::plugin_install::PluginSource::LocalDir(dir) => {
-                    commands::plugin_install::plugin_install_local_dir(dir, expect_name, force).await?
+                    commands::plugin_install::plugin_install_local_dir(dir, expect_name, force)
+                        .await?
                 }
-                other => commands::plugin_install::plugin_install(other, expect_name, force).await?,
+                other => {
+                    commands::plugin_install::plugin_install(other, expect_name, force).await?
+                }
             };
             ok_json(Ok(name))
         }
         "plugin_uninstall" => {
             let name = req_str(&params, "name", "plugin_uninstall")?;
-            let r = tokio::task::spawn_blocking(move || commands::plugin_install::plugin_uninstall(&name))
-                .await
-                .map_err(|e| format!("plugin_uninstall 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::plugin_install::plugin_uninstall(&name)
+            })
+            .await
+            .map_err(|e| format!("plugin_uninstall 任务失败: {e}"))?;
             ok_unit(r)
         }
         "plugin_dir" => {
             let name = req_str(&params, "name", "plugin_dir")?;
-            let r = tokio::task::spawn_blocking(move || commands::plugin_install::plugin_dir(&name))
-                .await
-                .map_err(|e| format!("plugin_dir 任务失败: {e}"))?;
+            let r =
+                tokio::task::spawn_blocking(move || commands::plugin_install::plugin_dir(&name))
+                    .await
+                    .map_err(|e| format!("plugin_dir 任务失败: {e}"))?;
             ok_json(r)
         }
         // 随包图谱引擎探测（engine-bundled-mcp-distribution，2026-09-16）：纯只读
@@ -805,12 +871,16 @@ async fn dispatch_rpc(
         "plugin_set_enabled" => {
             let name = req_str(&params, "name", "plugin_set_enabled")?;
             let enabled = match params.get("enabled") {
-                Some(v) => v.as_bool().ok_or_else(|| format!("参数 'enabled' 必须是布尔值，收到: {v}"))?,
+                Some(v) => v
+                    .as_bool()
+                    .ok_or_else(|| format!("参数 'enabled' 必须是布尔值，收到: {v}"))?,
                 None => return Err("参数 'enabled' 缺失 — 必须明确指定启用或禁用".to_string()),
             };
-            let r = tokio::task::spawn_blocking(move || commands::plugin_install::plugin_set_enabled(&name, enabled))
-                .await
-                .map_err(|e| format!("plugin_set_enabled 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::plugin_install::plugin_set_enabled(&name, enabled)
+            })
+            .await
+            .map_err(|e| format!("plugin_set_enabled 任务失败: {e}"))?;
             ok_unit(r)
         }
         // P-1 authoring 环境（2026-09-14）：组合目录路径 + 按需创建（可选打开）。
@@ -848,41 +918,51 @@ async fn dispatch_rpc(
         // ═══════════════════════════════════════════════════════
         "plugin_data_ensure" => {
             let name = req_str(&params, "name", "plugin_data_ensure")?;
-            let r = tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_ensure(&name))
-                .await
-                .map_err(|e| format!("plugin_data_ensure 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::plugin_data::plugin_data_ensure(&name)
+            })
+            .await
+            .map_err(|e| format!("plugin_data_ensure 任务失败: {e}"))?;
             ok_json(r)
         }
         "plugin_data_list" => {
             let name = req_str(&params, "name", "plugin_data_list")?;
             let path = opt_str(&params, "path").unwrap_or_default();
-            let r = tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_list(&name, &path))
-                .await
-                .map_err(|e| format!("plugin_data_list 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::plugin_data::plugin_data_list(&name, &path)
+            })
+            .await
+            .map_err(|e| format!("plugin_data_list 任务失败: {e}"))?;
             ok_json(r)
         }
         "plugin_data_read" => {
             let name = req_str(&params, "name", "plugin_data_read")?;
             let path = req_str(&params, "path", "plugin_data_read")?;
-            tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_read(&name, &path))
-                .await
-                .map_err(|e| format!("plugin_data_read 任务失败: {e}"))?
+            tokio::task::spawn_blocking(move || {
+                commands::plugin_data::plugin_data_read(&name, &path)
+            })
+            .await
+            .map_err(|e| format!("plugin_data_read 任务失败: {e}"))?
         }
         "plugin_data_write" => {
             let name = req_str(&params, "name", "plugin_data_write")?;
             let path = req_str(&params, "path", "plugin_data_write")?;
             let content = req_str(&params, "content", "plugin_data_write")?;
-            let r = tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_write(&name, &path, &content))
-                .await
-                .map_err(|e| format!("plugin_data_write 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::plugin_data::plugin_data_write(&name, &path, &content)
+            })
+            .await
+            .map_err(|e| format!("plugin_data_write 任务失败: {e}"))?;
             ok_unit(r)
         }
         "plugin_data_delete" => {
             let name = req_str(&params, "name", "plugin_data_delete")?;
             let path = req_str(&params, "path", "plugin_data_delete")?;
-            let r = tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_delete(&name, &path))
-                .await
-                .map_err(|e| format!("plugin_data_delete 任务失败: {e}"))?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::plugin_data::plugin_data_delete(&name, &path)
+            })
+            .await
+            .map_err(|e| format!("plugin_data_delete 任务失败: {e}"))?;
             ok_unit(r)
         }
 
@@ -894,30 +974,38 @@ async fn dispatch_rpc(
         "agent_isolation_create" => {
             let agent_id = req_str(&params, "agent_id", "agent_isolation_create")?;
             let ws = state.inner().clone();
-            tokio::task::spawn_blocking(move || commands::isolation::agent_isolation_create(agent_id, &ws))
-                .await
-                .map_err(|e| format!("agent_isolation_create 任务失败: {e}"))?
+            tokio::task::spawn_blocking(move || {
+                commands::isolation::agent_isolation_create(agent_id, &ws)
+            })
+            .await
+            .map_err(|e| format!("agent_isolation_create 任务失败: {e}"))?
         }
         "agent_isolation_diff" => {
             let agent_id = req_str(&params, "agent_id", "agent_isolation_diff")?;
             let ws = state.inner().clone();
-            tokio::task::spawn_blocking(move || commands::isolation::agent_isolation_diff(agent_id, &ws))
-                .await
-                .map_err(|e| format!("agent_isolation_diff 任务失败: {e}"))?
+            tokio::task::spawn_blocking(move || {
+                commands::isolation::agent_isolation_diff(agent_id, &ws)
+            })
+            .await
+            .map_err(|e| format!("agent_isolation_diff 任务失败: {e}"))?
         }
         "agent_isolation_merge" => {
             let agent_id = req_str(&params, "agent_id", "agent_isolation_merge")?;
             let ws = state.inner().clone();
-            tokio::task::spawn_blocking(move || commands::isolation::agent_isolation_merge(agent_id, &ws))
-                .await
-                .map_err(|e| format!("agent_isolation_merge 任务失败: {e}"))?
+            tokio::task::spawn_blocking(move || {
+                commands::isolation::agent_isolation_merge(agent_id, &ws)
+            })
+            .await
+            .map_err(|e| format!("agent_isolation_merge 任务失败: {e}"))?
         }
         "agent_isolation_discard" => {
             let agent_id = req_str(&params, "agent_id", "agent_isolation_discard")?;
             let ws = state.inner().clone();
-            tokio::task::spawn_blocking(move || commands::isolation::agent_isolation_discard(agent_id, &ws))
-                .await
-                .map_err(|e| format!("agent_isolation_discard 任务失败: {e}"))?
+            tokio::task::spawn_blocking(move || {
+                commands::isolation::agent_isolation_discard(agent_id, &ws)
+            })
+            .await
+            .map_err(|e| format!("agent_isolation_discard 任务失败: {e}"))?
         }
         "agent_isolation_status" => {
             let ws = state.inner().clone();
@@ -928,9 +1016,11 @@ async fn dispatch_rpc(
         "agent_isolation_force_purge" => {
             let agent_id = req_str(&params, "agent_id", "agent_isolation_force_purge")?;
             let ws = state.inner().clone();
-            tokio::task::spawn_blocking(move || commands::isolation::agent_isolation_force_purge(agent_id, &ws))
-                .await
-                .map_err(|e| format!("agent_isolation_force_purge 任务失败: {e}"))?
+            tokio::task::spawn_blocking(move || {
+                commands::isolation::agent_isolation_force_purge(agent_id, &ws)
+            })
+            .await
+            .map_err(|e| format!("agent_isolation_force_purge 任务失败: {e}"))?
         }
 
         // ═══════════════════════════════════════════════════════
@@ -970,24 +1060,29 @@ async fn dispatch_rpc(
         "workspace_rename" => {
             let path = req_str(&params, "path", "workspace_rename")?;
             let name = req_str(&params, "name", "workspace_rename")?;
-            let res = tokio::task::spawn_blocking(move || commands::workspace::registry::rename(&path, name))
-                .await
-                .map_err(|e| format!("workspace_rename 任务失败: {e}"))?;
+            let res = tokio::task::spawn_blocking(move || {
+                commands::workspace::registry::rename(&path, name)
+            })
+            .await
+            .map_err(|e| format!("workspace_rename 任务失败: {e}"))?;
             ok_unit(res)
         }
         "workspace_toggle_pin" => {
             let path = req_str(&params, "path", "workspace_toggle_pin")?;
             let pinned = req_bool(&params, "pinned", "workspace_toggle_pin")?;
-            let res = tokio::task::spawn_blocking(move || commands::workspace::registry::toggle_pin(&path, pinned))
-                .await
-                .map_err(|e| format!("workspace_toggle_pin 任务失败: {e}"))?;
+            let res = tokio::task::spawn_blocking(move || {
+                commands::workspace::registry::toggle_pin(&path, pinned)
+            })
+            .await
+            .map_err(|e| format!("workspace_toggle_pin 任务失败: {e}"))?;
             ok_unit(res)
         }
         "workspace_remove" => {
             let path = req_str(&params, "path", "workspace_remove")?;
-            let res = tokio::task::spawn_blocking(move || commands::workspace::registry::remove(&path))
-                .await
-                .map_err(|e| format!("workspace_remove 任务失败: {e}"))?;
+            let res =
+                tokio::task::spawn_blocking(move || commands::workspace::registry::remove(&path))
+                    .await
+                    .map_err(|e| format!("workspace_remove 任务失败: {e}"))?;
             ok_unit(res)
         }
         // （workspace_set_graph_engine 随图谱全量退役删除，2026-09-09。）
@@ -995,9 +1090,11 @@ async fn dispatch_rpc(
         // ~/Documents/兰台/<名字>，返回归一化路径字符串。
         "workspace_create_dir" => {
             let name = req_str(&params, "name", "workspace_create_dir")?;
-            let res = tokio::task::spawn_blocking(move || commands::workspace::create_default_workspace_dir(&name))
-                .await
-                .map_err(|e| format!("workspace_create_dir 任务失败: {e}"))?;
+            let res = tokio::task::spawn_blocking(move || {
+                commands::workspace::create_default_workspace_dir(&name)
+            })
+            .await
+            .map_err(|e| format!("workspace_create_dir 任务失败: {e}"))?;
             ok_json(res)
         }
 
@@ -1015,9 +1112,6 @@ async fn dispatch_rpc(
         //  .lantai/agents/{agent_id}/session.ndjson，自 agent-store 内存化起零 TS
         //  产线调用方；会话事件日志走 fs_cap append/write 的 durable 变体，
         //  经 ctx.sessionPersistence seam 单点（见 app/chat/session-log-store.ts）。）
-
-
-
         _ => Err(format!("rpc: unknown method '{}'", method)),
     }
 }
@@ -1025,7 +1119,10 @@ async fn dispatch_rpc(
 // ═══════════════════════════════════════════════════════════
 #[cfg(test)]
 mod tests {
-    use super::{dispatch_result_to_value, guard_panic, panic_to_rpc_error, rpc_result_shape, str_to_value, RpcResultShape};
+    use super::{
+        dispatch_result_to_value, guard_panic, panic_to_rpc_error, rpc_result_shape, str_to_value,
+        RpcResultShape,
+    };
 
     /// 回归（edit 偶发挂死家族）：命令体 panic 必须变成 Err 回包，
     /// 而不是让 panic 逃逸——逃逸时 Tauri resolver 被丢弃，前端
@@ -1047,9 +1144,14 @@ mod tests {
 
     #[tokio::test]
     async fn guard_panic_passes_through_ok_and_err() {
-        assert_eq!(guard_panic(async { Ok("ok".to_string()) }).await.unwrap(), "ok");
         assert_eq!(
-            guard_panic(async { Err("业务错误".to_string()) }).await.unwrap_err(),
+            guard_panic(async { Ok("ok".to_string()) }).await.unwrap(),
+            "ok"
+        );
+        assert_eq!(
+            guard_panic(async { Err("业务错误".to_string()) })
+                .await
+                .unwrap_err(),
             "业务错误"
         );
     }
@@ -1073,11 +1175,20 @@ mod tests {
             serde_json::Value::String(r#"{"ok":true,"n":3}"#.to_string())
         );
         // ok_unit 的 "null" 同样原样（前端 typedRpc 负责解）
-        assert_eq!(str_to_value("null".to_string()), serde_json::Value::String("null".to_string()));
+        assert_eq!(
+            str_to_value("null".to_string()),
+            serde_json::Value::String("null".to_string())
+        );
         // 空串、多行文本、带 BOM/控制字符的文本一律字节精确
-        assert_eq!(str_to_value(String::new()), serde_json::Value::String(String::new()));
+        assert_eq!(
+            str_to_value(String::new()),
+            serde_json::Value::String(String::new())
+        );
         let cjk = "中文内容\n第二行";
-        assert_eq!(str_to_value(cjk.to_string()), serde_json::Value::String(cjk.to_string()));
+        assert_eq!(
+            str_to_value(cjk.to_string()),
+            serde_json::Value::String(cjk.to_string())
+        );
     }
 
     /// Value 化第二步（B 路线，2026-08-22）：出口分派——JsonValue 命令 Ok
@@ -1094,7 +1205,10 @@ mod tests {
         //  workspace_list 接任 JsonValue 小样，kernel-plugin-runtime P2-4；
         //  图命令族（load_graph_json 等）已随图谱退役退表，2026-09-09——
         //  get_graph_meta/get_graph_page 断言改为「未列命令默认 Text」的同型小样）
-        assert_eq!(rpc_result_shape("workspace_list"), RpcResultShape::JsonValue);
+        assert_eq!(
+            rpc_result_shape("workspace_list"),
+            RpcResultShape::JsonValue
+        );
         // 随包引擎探测（2026-09-24 补断言）：恒 JSON 对象 ⇒ 必须展开为 Value。
         // 漏登记会把 JSON 当字符串直通，前端读 `raw.available` 恒 false ⇒
         // 设置页开关置灰「拨不开」（实机缺陷；TS 侧对拍守卫见
@@ -1105,15 +1219,20 @@ mod tests {
         );
         assert_eq!(rpc_result_shape("load_graph_json"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("get_graph_snapshot"), RpcResultShape::Text);
-        assert_eq!(rpc_result_shape("hologram_file_nodes"), RpcResultShape::Text);
+        assert_eq!(
+            rpc_result_shape("hologram_file_nodes"),
+            RpcResultShape::Text
+        );
         assert_eq!(rpc_result_shape("get_graph_meta"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("get_graph_page"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("exec_command"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("anything_else"), RpcResultShape::Text);
         // JsonValue 命令：真结构化展开（小样 workspace_list）
-        let v = dispatch_result_to_value("workspace_list", Ok(r#"{"bundled":true}"#.into())).unwrap();
+        let v =
+            dispatch_result_to_value("workspace_list", Ok(r#"{"bundled":true}"#.into())).unwrap();
         assert_eq!(v, json!({"bundled": true}));
-        let v = dispatch_result_to_value("workspace_list", Ok(r#"{"total_nodes":42}"#.into())).unwrap();
+        let v =
+            dispatch_result_to_value("workspace_list", Ok(r#"{"total_nodes":42}"#.into())).unwrap();
         assert_eq!(v, json!({"total_nodes": 42}));
         let bad = dispatch_result_to_value("workspace_list", Ok("not json".into()));
         assert!(bad.is_err(), "JsonValue 命令 Ok 输出非合法 JSON 必须转 Err");

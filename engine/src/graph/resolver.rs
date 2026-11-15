@@ -5,8 +5,8 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
-use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 use crate::engine::GRAMMAR_LOADER;
+use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 
 /// 源码文件扩展名，从 GRAMMAR_LOADER 动态派生。
 /// 自动包含新安装的语法 DLL，无需修改代码。
@@ -47,9 +47,17 @@ fn edge_is_ambiguous(e: &Edge) -> bool {
 fn file_stem(name: &str) -> String {
     let parts: Vec<&str> = name.rsplit(&['/', '\\', '.']).collect();
     if parts.len() >= 2 && is_common_extension(parts[0]) {
-        parts[1].rsplit(&['/', '\\']).next().unwrap_or(parts[1]).to_string()
+        parts[1]
+            .rsplit(&['/', '\\'])
+            .next()
+            .unwrap_or(parts[1])
+            .to_string()
     } else {
-        parts[0].rsplit(&['/', '\\']).next().unwrap_or(parts[0]).to_string()
+        parts[0]
+            .rsplit(&['/', '\\'])
+            .next()
+            .unwrap_or(parts[0])
+            .to_string()
     }
 }
 
@@ -90,7 +98,10 @@ fn build_indexes(graph: &Graph) -> ResolverIndexes {
         idx.lang.insert(id.to_string(), infer_language(id));
 
         let short = short_name(&node.name);
-        idx.name.entry(short.clone()).or_default().push(id.to_string());
+        idx.name
+            .entry(short.clone())
+            .or_default()
+            .push(id.to_string());
 
         // File / Module 节点：也按主干索引以支持 import 边
         if node.kind == hologram_graph::NodeKind::File
@@ -144,10 +155,8 @@ impl CrossFileResolver {
         // 其结果可按 (名称, 语言) 记忆化 —— 同一热名被 E 条边引用
         // 时只做一次候选扫描，而非 E 次。
         let idx = build_indexes(graph);
-        let mut resolve_cache: HashMap<
-            Option<&'static str>,
-            HashMap<String, Option<String>>,
-        > = HashMap::new();
+        let mut resolve_cache: HashMap<Option<&'static str>, HashMap<String, Option<String>>> =
+            HashMap::new();
         // M4: 分段计时 + 结构计数,用于定位内核规模的隐性超线性
         let mut stats = ResolveStats::default();
         let t_loop = std::time::Instant::now();
@@ -159,12 +168,12 @@ impl CrossFileResolver {
         let mut ambiguous_edges: Vec<String> = Vec::new();
 
         // ── 诊断：分类未解析的边 ──
-        let mut diag_no_short: usize = 0;        // short_name 不在任何索引中
-        let mut diag_bare_external: usize = 0;   // 裸名，完全没有候选项
-        let mut diag_dotted_method: usize = 0;   // 包含点号（obj.method 风格）
-        let mut diag_source_missing: usize = 0;  // source 未找到
-        let mut diag_bare_multi: usize = 0;      // 裸名，候选项存在但 best_qualified_match 拒绝（match_len<2）
-        let mut diag_dotted_no_suffix: usize = 0;// 点分名，短名存在但后缀不匹配
+        let mut diag_no_short: usize = 0; // short_name 不在任何索引中
+        let mut diag_bare_external: usize = 0; // 裸名，完全没有候选项
+        let mut diag_dotted_method: usize = 0; // 包含点号（obj.method 风格）
+        let mut diag_source_missing: usize = 0; // source 未找到
+        let mut diag_bare_multi: usize = 0; // 裸名，候选项存在但 best_qualified_match 拒绝（match_len<2）
+        let mut diag_dotted_no_suffix: usize = 0; // 点分名，短名存在但后缀不匹配
         let mut diag_by_kind: HashMap<&'static str, usize> = HashMap::new();
         // M4: infer_language 按 source 记忆化 —— 原实现对每条边
         // 做全串 to_lowercase 分配(内核 17M 边 × 100+ 字符)。
@@ -193,8 +202,15 @@ impl CrossFileResolver {
             let src_id: Option<Cow<'_, str>> = if graph.get_node(&edge.source).is_some() {
                 Some(Cow::Borrowed(edge.source.as_str()))
             } else {
-                cached_resolve_name(&edge.source, src_lang, &mut resolve_cache, &idx, graph, &mut stats)
-                    .map(Cow::Owned)
+                cached_resolve_name(
+                    &edge.source,
+                    src_lang,
+                    &mut resolve_cache,
+                    &idx,
+                    graph,
+                    &mut stats,
+                )
+                .map(Cow::Owned)
             };
 
             // 尝试解析 target（如果不在图中）。
@@ -208,8 +224,15 @@ impl CrossFileResolver {
             let tgt_id: Option<Cow<'_, str>> = if graph.get_node(&edge.target).is_some() {
                 Some(Cow::Borrowed(edge.target.as_str()))
             } else {
-                cached_resolve_name(&edge.target, tgt_lang, &mut resolve_cache, &idx, graph, &mut stats)
-                    .map(Cow::Owned)
+                cached_resolve_name(
+                    &edge.target,
+                    tgt_lang,
+                    &mut resolve_cache,
+                    &idx,
+                    graph,
+                    &mut stats,
+                )
+                .map(Cow::Owned)
             };
 
             let src_ok = src_id.is_some();
@@ -241,8 +264,12 @@ impl CrossFileResolver {
                     let in_stem = idx.stem.contains_key(&file_stem(&edge.target));
                     if !in_index && !in_stem {
                         diag_no_short += 1;
-                        if has_dot { diag_dotted_method += 1; }
-                        if !has_dot { diag_bare_external += 1; }
+                        if has_dot {
+                            diag_dotted_method += 1;
+                        }
+                        if !has_dot {
+                            diag_bare_external += 1;
+                        }
                     } else if !has_dot {
                         diag_bare_multi += 1; // 短名存在，但裸名 → best_qualified_match 拒绝
                     } else {
@@ -273,7 +300,9 @@ impl CrossFileResolver {
             // 未解析边中前 5 种 edge kind
             let mut kind_counts: Vec<(&str, usize)> = diag_by_kind.into_iter().collect();
             kind_counts.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
-            let top_kinds: Vec<String> = kind_counts.iter().take(5)
+            let top_kinds: Vec<String> = kind_counts
+                .iter()
+                .take(5)
                 .map(|(k, c)| format!("{}={}", k, c))
                 .collect();
             eprintln!("[cross-file diag] by kind: {}", top_kinds.join(", "));
@@ -480,7 +509,11 @@ fn filter_by_language<'a>(
         .iter()
         .filter(|c| lang == candidate_lang(c, lang_map))
         .collect();
-    if same_lang.is_empty() { candidates.iter().collect() } else { same_lang }
+    if same_lang.is_empty() {
+        candidates.iter().collect()
+    } else {
+        same_lang
+    }
 }
 
 /// 尝试将名称引用解析为实际的 node ID。
@@ -545,12 +578,11 @@ fn resolve_name(
     // ── 策略 4：规范化路径分隔符 ──
     // 处理 Rust 路径中的 "::" 和 import 目标中混合的 "./\"
     // contains 守卫：无分隔符时不产生 String 分配（热路径）。
-    let normalized: Cow<'_, str> =
-        if name.contains("::") || name.contains(['\\', '/']) {
-            Cow::Owned(name.replace("::", ".").replace(['\\', '/'], "."))
-        } else {
-            Cow::Borrowed(name)
-        };
+    let normalized: Cow<'_, str> = if name.contains("::") || name.contains(['\\', '/']) {
+        Cow::Owned(name.replace("::", ".").replace(['\\', '/'], "."))
+    } else {
+        Cow::Borrowed(name)
+    };
     if normalized.as_ref() != name {
         let short_norm = short_name(&normalized);
         if let Some(candidates) = name_index.get(&short_norm) {
@@ -620,7 +652,8 @@ fn best_qualified_match(name: &str, candidates: &[&String]) -> Option<String> {
         let match_len = name_len.min(cand_len);
         // 语义等价原实现:rsplit 后前 match_len 段(自尾端)全部相等
         if match_len >= 2
-            && name.rsplit('.')
+            && name
+                .rsplit('.')
                 .zip(candidate.rsplit('.'))
                 .take(match_len)
                 .all(|(a, b)| a == b)
@@ -827,7 +860,10 @@ mod tests {
             "usage edge with bare target should be resolved to full node ID"
         );
         if let Some(e) = e {
-            assert_eq!(e.target, "D:.HoloGramHG.src-ui.src.ui.react.AgentsPanel.tsx.AgentsPanel");
+            assert_eq!(
+                e.target,
+                "D:.HoloGramHG.src-ui.src.ui.react.AgentsPanel.tsx.AgentsPanel"
+            );
         }
     }
 
@@ -856,7 +892,12 @@ mod tests {
         g.add_node(Node::new("shop.models.User", "User", NodeKind::Symbol));
         // 引用使用限定名 "models.User"
         g.add_node(Node::new("views.index", "index", NodeKind::Symbol));
-        g.add_edge_unchecked(cross_edge("e1", "views.index", "models.User", EdgeKind::Calls));
+        g.add_edge_unchecked(cross_edge(
+            "e1",
+            "views.index",
+            "models.User",
+            EdgeKind::Calls,
+        ));
 
         let _resolved = CrossFileResolver::resolve(&mut g);
         // 应解析为 auth.models.User（先注册的，或最佳匹配）
@@ -903,7 +944,12 @@ mod tests {
         let mut g = Graph::new();
         g.add_node(Node::new("a", "fn_a", NodeKind::Symbol));
         // 指向不匹配任何内容的 Calls 边 —— 恢复孤儿清理语义
-        g.add_edge_unchecked(cross_edge("e1", "a", "totally_unknown_name", EdgeKind::Calls));
+        g.add_edge_unchecked(cross_edge(
+            "e1",
+            "a",
+            "totally_unknown_name",
+            EdgeKind::Calls,
+        ));
 
         let resolved = CrossFileResolver::resolve(&mut g);
         assert!(g.get_edge("e1").is_none(), "悬空 Calls 边应被删除");
@@ -1022,7 +1068,12 @@ mod tests {
         g.add_node(Node::new("app.views.py", "app/views.py", NodeKind::File));
 
         // Python："from app.models import User" → 边目标 "app.models"
-        g.add_edge_unchecked(cross_edge("e1", "app.views.py", "app.models", EdgeKind::Imports));
+        g.add_edge_unchecked(cross_edge(
+            "e1",
+            "app.views.py",
+            "app.models",
+            EdgeKind::Imports,
+        ));
 
         let resolved = CrossFileResolver::resolve(&mut g);
         assert_eq!(resolved, 1);
@@ -1033,15 +1084,27 @@ mod tests {
     fn test_resolve_python_subpackage_import() {
         let mut g = Graph::new();
 
-        g.add_node(Node::new("utils.helpers.py", "utils/helpers.py", NodeKind::File));
+        g.add_node(Node::new(
+            "utils.helpers.py",
+            "utils/helpers.py",
+            NodeKind::File,
+        ));
         g.add_node(Node::new("main.py", "main.py", NodeKind::File));
 
         // "from utils.helpers import foo" → 目标 "utils.helpers"
-        g.add_edge_unchecked(cross_edge("e1", "main.py", "utils.helpers", EdgeKind::Imports));
+        g.add_edge_unchecked(cross_edge(
+            "e1",
+            "main.py",
+            "utils.helpers",
+            EdgeKind::Imports,
+        ));
 
         let resolved = CrossFileResolver::resolve(&mut g);
         assert_eq!(resolved, 1);
-        assert_eq!(g.get_edge("e1_resolved").unwrap().target, "utils.helpers.py");
+        assert_eq!(
+            g.get_edge("e1_resolved").unwrap().target,
+            "utils.helpers.py"
+        );
     }
 
     #[test]
@@ -1054,11 +1117,16 @@ mod tests {
 
         let resolved = CrossFileResolver::resolve(&mut g);
         // P0-3：无法解析的标准库 import 保留为 unresolved 占位节点（不再静默丢弃）
-        let e = g.get_edge("e1").expect("P0-3: unresolved import must be kept");
+        let e = g
+            .get_edge("e1")
+            .expect("P0-3: unresolved import must be kept");
         assert_eq!(e.target.as_str(), "unresolved:os");
         assert!(g.get_node("unresolved:os").is_some());
         assert!(g.get_edge("e1_resolved").is_none());
-        assert_eq!(resolved, 0, "stdlib import not resolved → kept unresolved, not counted");
+        assert_eq!(
+            resolved, 0,
+            "stdlib import not resolved → kept unresolved, not counted"
+        );
     }
 
     #[test]
@@ -1066,20 +1134,39 @@ mod tests {
         let mut g = Graph::new();
         // 两个节点共享短名 "render"：
         // 一个是 Function，一个是 Variable — Function 应胜出。
-        g.add_node(Node::new("django.shortcuts.render", "render", NodeKind::Function));
-        g.add_node(Node::new("django.views.View.render", "render", NodeKind::Function));
-        g.add_node(Node::new("some.module.render_var", "render", NodeKind::Variable));
+        g.add_node(Node::new(
+            "django.shortcuts.render",
+            "render",
+            NodeKind::Function,
+        ));
+        g.add_node(Node::new(
+            "django.views.View.render",
+            "render",
+            NodeKind::Function,
+        ));
+        g.add_node(Node::new(
+            "some.module.render_var",
+            "render",
+            NodeKind::Variable,
+        ));
         g.add_node(Node::new("views.index", "index", NodeKind::Function));
 
         g.add_edge_unchecked(cross_edge("e1", "views.index", "render", EdgeKind::Calls));
 
         let resolved = CrossFileResolver::resolve(&mut g);
-        assert_eq!(resolved, 1, "bare name with multiple candidates should resolve");
+        assert_eq!(
+            resolved, 1,
+            "bare name with multiple candidates should resolve"
+        );
         let e = g.get_edge("e1_resolved").unwrap();
         // 应选择 Function 节点（kind 优先级 0）且路径最短
         // 两个 Function 节点深度均为 3，因此 HashMap 顺序中第一个胜出
         let target_kind = g.nodes.get(&e.target).map(|n| &n.kind);
-        assert_eq!(target_kind, Some(&NodeKind::Function), "should prefer Function over Variable");
+        assert_eq!(
+            target_kind,
+            Some(&NodeKind::Function),
+            "should prefer Function over Variable"
+        );
     }
 
     #[test]
@@ -1088,17 +1175,26 @@ mod tests {
         // 两个 "clear" 函数：一个 Rust，一个 TypeScript
         g.add_node(Node::new(
             "D:.HoloGramHG.engine.src.graph.graph.rs.Graph.clear",
-            "clear", NodeKind::Function));
+            "clear",
+            NodeKind::Function,
+        ));
         g.add_node(Node::new(
             "D:.HoloGramHG.src-ui.src.ui.events.ts.EventBus.clear",
-            "clear", NodeKind::Function));
+            "clear",
+            NodeKind::Function,
+        ));
         // 一个 TS 文件调用 clear()
         g.add_node(Node::new(
             "D:.HoloGramHG.src-ui.src.ui.chat-store.ts.ChatStore.save",
-            "save", NodeKind::Function));
-        g.add_edge_unchecked(cross_edge("e1",
+            "save",
+            NodeKind::Function,
+        ));
+        g.add_edge_unchecked(cross_edge(
+            "e1",
             "D:.HoloGramHG.src-ui.src.ui.chat-store.ts.ChatStore.save",
-            "clear", EdgeKind::Calls));
+            "clear",
+            EdgeKind::Calls,
+        ));
 
         let _resolved = CrossFileResolver::resolve(&mut g);
         let edge = g.get_edge("e1_resolved").expect("edge should be resolved");
@@ -1114,16 +1210,25 @@ mod tests {
         let mut g = Graph::new();
         g.add_node(Node::new(
             "D:.HoloGramHG.engine.src.engine.pipeline.rs.Pipeline.start",
-            "start", NodeKind::Function));
+            "start",
+            NodeKind::Function,
+        ));
         g.add_node(Node::new(
             "D:.HoloGramHG.src-ui.src.agent.execution-state.ts.createExecState.start",
-            "start", NodeKind::Function));
+            "start",
+            NodeKind::Function,
+        ));
         g.add_node(Node::new(
             "D:.HoloGramHG.engine.src.main.rs.main",
-            "main", NodeKind::Function));
-        g.add_edge_unchecked(cross_edge("e1",
+            "main",
+            NodeKind::Function,
+        ));
+        g.add_edge_unchecked(cross_edge(
+            "e1",
             "D:.HoloGramHG.engine.src.main.rs.main",
-            "start", EdgeKind::Calls));
+            "start",
+            EdgeKind::Calls,
+        ));
 
         let _resolved = CrossFileResolver::resolve(&mut g);
         let edge = g.get_edge("e1_resolved").expect("edge should be resolved");
@@ -1141,24 +1246,29 @@ mod tests {
         // 一个 TS "render" 候选项应被语言过滤排除。
         g.add_node(Node::new(
             "django.shortcuts.py.render",
-            "render", NodeKind::Function));  // 深度 4
+            "render",
+            NodeKind::Function,
+        )); // 深度 4
         g.add_node(Node::new(
-            "flask.render",                    // 深度 2 — 路径更短者胜出
-            "render", NodeKind::Function));
+            "flask.render", // 深度 2 — 路径更短者胜出
+            "render",
+            NodeKind::Function,
+        ));
         // 应被语言过滤排除的跨语言候选项
-        g.add_node(Node::new(
-            "app.tsx.render",
-            "render", NodeKind::Function));
-        g.add_node(Node::new(
+        g.add_node(Node::new("app.tsx.render", "render", NodeKind::Function));
+        g.add_node(Node::new("app.views.py.index", "index", NodeKind::Function));
+        g.add_edge_unchecked(cross_edge(
+            "e1",
             "app.views.py.index",
-            "index", NodeKind::Function));
-        g.add_edge_unchecked(cross_edge("e1",
-            "app.views.py.index",
-            "render", EdgeKind::Calls));
+            "render",
+            EdgeKind::Calls,
+        ));
 
         let _resolved = CrossFileResolver::resolve(&mut g);
-        assert!(g.get_edge("e1_resolved").is_some(),
-            "same-language resolution must still work");
+        assert!(
+            g.get_edge("e1_resolved").is_some(),
+            "same-language resolution must still work"
+        );
     }
 
     #[test]
@@ -1169,15 +1279,23 @@ mod tests {
         g.add_node(Node::new("mod_a.render", "render", NodeKind::Function));
         g.add_node(Node::new("mod_b.render", "render", NodeKind::Function));
         g.add_node(Node::new("caller.py.index", "index", NodeKind::Function));
-        g.add_edge_unchecked(cross_edge("e1",
+        g.add_edge_unchecked(cross_edge(
+            "e1",
             "caller.py.index",
-            "render", EdgeKind::Calls));
+            "render",
+            EdgeKind::Calls,
+        ));
 
         let resolved = CrossFileResolver::resolve(&mut g);
         // 不应解析（平局）— 边应作为歧义保留
         assert_eq!(resolved, 0, "tie should not produce a resolved edge");
-        let edge = g.get_edge("e1").expect("ambiguous edge should be preserved");
-        let meta = edge.metadata.as_ref().expect("ambiguous edge must have metadata");
+        let edge = g
+            .get_edge("e1")
+            .expect("ambiguous edge should be preserved");
+        let meta = edge
+            .metadata
+            .as_ref()
+            .expect("ambiguous edge must have metadata");
         assert_eq!(meta["ambiguous"], true, "ambiguous flag must be set");
     }
 
@@ -1230,7 +1348,15 @@ mod tests {
 
         // 一致性基准：绕过缓存，用同一索引直接调 resolve_name
         let idx = build_indexes(&g);
-        let expected = resolve_name("read", &idx.name, &idx.stem, &idx.lang, &g, Some("rust"), &mut ResolveStats::default());
+        let expected = resolve_name(
+            "read",
+            &idx.name,
+            &idx.stem,
+            &idx.lang,
+            &g,
+            Some("rust"),
+            &mut ResolveStats::default(),
+        );
         assert_eq!(expected.as_deref(), Some("w.rs.read"));
 
         let start = Instant::now();
@@ -1246,7 +1372,9 @@ mod tests {
         // 带缓存的解析结果必须与直接调 resolve_name 一致
         let first = g.get_edge("hot_e0_resolved").expect("first edge resolved");
         assert_eq!(first.target, expected.unwrap());
-        let last = g.get_edge("hot_e19999_resolved").expect("last edge resolved");
+        let last = g
+            .get_edge("hot_e19999_resolved")
+            .expect("last edge resolved");
         assert_eq!(last.target, "w.rs.read");
     }
 }

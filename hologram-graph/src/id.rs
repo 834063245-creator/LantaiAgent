@@ -59,7 +59,13 @@ impl Interner {
         let id = self.strings.len() as u32;
         self.strings.push(Some(Arc::from(s)));
         // clone 只增加引用计数,共享同一块 str 字节
-        self.lookup.insert(self.strings[id as usize].as_ref().expect("intern 刚写入的槽位必为 Some").clone(), id);
+        self.lookup.insert(
+            self.strings[id as usize]
+                .as_ref()
+                .expect("intern 刚写入的槽位必为 Some")
+                .clone(),
+            id,
+        );
         id
     }
 
@@ -114,9 +120,7 @@ fn interner() -> &'static RwLock<Interner> {
 
 /// 驻留字符串,返回稳定 u32 句柄。fast path 只读锁,miss 才取写锁。
 pub fn intern(s: &str) -> u32 {
-    let r = interner()
-        .read()
-        .unwrap_or_else(|e| e.into_inner());
+    let r = interner().read().unwrap_or_else(|e| e.into_inner());
     if let Some(id) = r.handle_of(s) {
         return id;
     }
@@ -153,9 +157,7 @@ pub fn resolve(id: u32) -> &'static str {
     // SAFETY: 见上方说明。驻留器静态存活、只增不删,Arc<str> 堆数据稳定,
     // transmute 缩短引用到 'static 是健全的。
     unsafe {
-        let r = interner()
-            .read()
-            .unwrap_or_else(|e| e.into_inner());
+        let r = interner().read().unwrap_or_else(|e| e.into_inner());
         std::mem::transmute::<&str, &'static str>(r.get(id))
     }
 }
@@ -163,10 +165,7 @@ pub fn resolve(id: u32) -> &'static str {
 /// 当前驻留的唯一字符串数(诊断/测试用)。
 #[allow(dead_code)]
 pub fn interned_count() -> usize {
-    interner()
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .len()
+    interner().read().unwrap_or_else(|e| e.into_inner()).len()
 }
 
 // ── 强类型句柄 ──
@@ -347,7 +346,11 @@ mod tests {
     fn test_handle_of_non_inserting() {
         NodeId::new("present");
         assert_eq!(handle_of("present"), Some(NodeId::new("present").handle()));
-        assert_eq!(handle_of("absent"), None, "non-interning lookup must not create");
+        assert_eq!(
+            handle_of("absent"),
+            None,
+            "non-interning lookup must not create"
+        );
     }
 
     #[test]

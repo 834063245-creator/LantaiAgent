@@ -102,8 +102,8 @@ async fn desktop_probe(gate: &UiaGate<'_>, args: &Value) -> Result<String, Strin
     if !route {
         return Ok(base);
     }
-    let mut v: serde_json::Value = serde_json::from_str(&base)
-        .map_err(|e| format!("desktop_probe: 解析快照失败: {e}"))?;
+    let mut v: serde_json::Value =
+        serde_json::from_str(&base).map_err(|e| format!("desktop_probe: 解析快照失败: {e}"))?;
     let proc_chromium: std::collections::HashMap<u64, bool> = v["processes"]
         .as_array()
         .map(|arr| {
@@ -128,7 +128,11 @@ async fn desktop_probe(gate: &UiaGate<'_>, args: &Value) -> Result<String, Strin
                 continue;
             }
             // UIA 快速探测（预算 50ms/窗；失败归 vision，不阻塞 probe）
-            let probe = if hwnd != 0 { crate::uia::probe_route(hwnd).await } else { Err("no hwnd".into()) };
+            let probe = if hwnd != 0 {
+                crate::uia::probe_route(hwnd).await
+            } else {
+                Err("no hwnd".into())
+            };
             w["route"] = match probe {
                 Ok(p) if p["interactive"].as_u64().unwrap_or(0) >= 3 => serde_json::json!({
                     "channel": "uia",
@@ -203,8 +207,8 @@ async fn desktop_uia_wait(gate: &UiaGate<'_>, args: &Value) -> Result<String, St
     let agent_id = agent_of(gate, args);
     gate.check("uia_wait", agent_id.as_deref()).await?;
     // 只读:轮询等待控件出现/启用/值匹配(超时返回 found:false,不报错)
-    let until = arg_str(args, "until")
-        .ok_or_else(|| "desktop_uia_wait: missing 'until'".to_string())?;
+    let until =
+        arg_str(args, "until").ok_or_else(|| "desktop_uia_wait: missing 'until'".to_string())?;
     crate::uia::uia_wait(
         arg_str(args, "title").as_deref(),
         opt_u32_of(args, "pid"),
@@ -215,7 +219,9 @@ async fn desktop_uia_wait(gate: &UiaGate<'_>, args: &Value) -> Result<String, St
         arg_str(args, "control_type").as_deref(),
         &until,
         arg_str(args, "value").as_deref(),
-        args.get("timeout_ms").and_then(|v| v.as_u64()).unwrap_or(10_000),
+        args.get("timeout_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10_000),
     )
     .await
 }
@@ -242,7 +248,13 @@ async fn desktop_uia_write(gate: &UiaGate<'_>, args: &Value, kind: &str) -> Resu
 
     // 只读解析（分类前置步骤，等同 tree 读取的权限面）
     let res = crate::uia::resolve(
-        title.as_deref(), pid, hwnd, ref_id, name.as_deref(), aid.as_deref(), ctype.as_deref(),
+        title.as_deref(),
+        pid,
+        hwnd,
+        ref_id,
+        name.as_deref(),
+        aid.as_deref(),
+        ctype.as_deref(),
     )
     .await?;
     let res_name = res["name"].as_str().unwrap_or("").to_string();
@@ -255,8 +267,14 @@ async fn desktop_uia_write(gate: &UiaGate<'_>, args: &Value, kind: &str) -> Resu
     let g = |k: &str| res[k].as_bool().unwrap_or(false);
     let target_desc = format!(
         "[{res_type}] \"{res_name}\"{} @ {}",
-        if res_aid.is_empty() { String::new() } else { format!(" id={res_aid}") },
-        res_hwnd.map(|h| format!("hwnd={h}")).unwrap_or_else(|| "window".into())
+        if res_aid.is_empty() {
+            String::new()
+        } else {
+            format!(" id={res_aid}")
+        },
+        res_hwnd
+            .map(|h| format!("hwnd={h}"))
+            .unwrap_or_else(|| "window".into())
     );
 
     let caps = crate::tools::UiaTargetCaps {
@@ -267,9 +285,8 @@ async fn desktop_uia_write(gate: &UiaGate<'_>, args: &Value, kind: &str) -> Resu
         has_scroll: g("has_scroll"),
     };
     let granted = crate::uia::has_grant(agent_id.as_deref(), res_hwnd);
-    let tool_action = crate::tools::classify_uia_action(
-        kind, &res_name, password, cur_value, &caps, granted,
-    );
+    let tool_action =
+        crate::tools::classify_uia_action(kind, &res_name, password, cur_value, &caps, granted);
 
     // 权限（Ask 由 check_permission 内部走异步确认；deny 原文进审计）
     {
@@ -295,40 +312,118 @@ async fn desktop_uia_write(gate: &UiaGate<'_>, args: &Value, kind: &str) -> Resu
             crate::uia::grant(agent_id.as_deref(), h);
         }
     }
-    let allow_physical = matches!(tool_action, "uia_physical" | "uia_click_sensitive" | "uia_type_sensitive");
+    let allow_physical = matches!(
+        tool_action,
+        "uia_physical" | "uia_click_sensitive" | "uia_type_sensitive"
+    );
 
     // 执行（物理兜底路径需先拿全局输入租约）
     let text_v = if kind == "type" {
         Some(arg_str(args, "text").ok_or_else(|| "desktop_uia_type: missing 'text'".to_string())?)
-    } else { None };
+    } else {
+        None
+    };
     let direction = if kind == "scroll" {
-        Some(arg_str(args, "direction").ok_or_else(|| "desktop_uia_scroll: missing 'direction'".to_string())?)
-    } else { None };
+        Some(
+            arg_str(args, "direction")
+                .ok_or_else(|| "desktop_uia_scroll: missing 'direction'".to_string())?,
+        )
+    } else {
+        None
+    };
     let amount = args.get("amount").and_then(|v| v.as_f64());
     let exec = async {
         match kind {
             "click" => {
-                crate::uia::uia_click(title.as_deref(), pid, hwnd, ref_id, name.as_deref(), aid.as_deref(), ctype.as_deref(), false, allow_physical).await
+                crate::uia::uia_click(
+                    title.as_deref(),
+                    pid,
+                    hwnd,
+                    ref_id,
+                    name.as_deref(),
+                    aid.as_deref(),
+                    ctype.as_deref(),
+                    false,
+                    allow_physical,
+                )
+                .await
             }
             "right_click" => {
-                crate::uia::uia_click(title.as_deref(), pid, hwnd, ref_id, name.as_deref(), aid.as_deref(), ctype.as_deref(), true, allow_physical).await
+                crate::uia::uia_click(
+                    title.as_deref(),
+                    pid,
+                    hwnd,
+                    ref_id,
+                    name.as_deref(),
+                    aid.as_deref(),
+                    ctype.as_deref(),
+                    true,
+                    allow_physical,
+                )
+                .await
             }
             "type" => {
-                crate::uia::uia_type(title.as_deref(), pid, hwnd, ref_id, text_v.as_deref().unwrap_or(""), name.as_deref(), aid.as_deref(), ctype.as_deref(), allow_physical).await
+                crate::uia::uia_type(
+                    title.as_deref(),
+                    pid,
+                    hwnd,
+                    ref_id,
+                    text_v.as_deref().unwrap_or(""),
+                    name.as_deref(),
+                    aid.as_deref(),
+                    ctype.as_deref(),
+                    allow_physical,
+                )
+                .await
             }
             "scroll" => {
-                crate::uia::uia_scroll(title.as_deref(), pid, hwnd, ref_id, direction.as_deref().unwrap_or("down"), amount.unwrap_or(1.0), name.as_deref(), aid.as_deref(), ctype.as_deref(), allow_physical).await
+                crate::uia::uia_scroll(
+                    title.as_deref(),
+                    pid,
+                    hwnd,
+                    ref_id,
+                    direction.as_deref().unwrap_or("down"),
+                    amount.unwrap_or(1.0),
+                    name.as_deref(),
+                    aid.as_deref(),
+                    ctype.as_deref(),
+                    allow_physical,
+                )
+                .await
             }
             "select" => {
-                crate::uia::uia_select(title.as_deref(), pid, hwnd, ref_id, name.as_deref(), aid.as_deref(), ctype.as_deref()).await
+                crate::uia::uia_select(
+                    title.as_deref(),
+                    pid,
+                    hwnd,
+                    ref_id,
+                    name.as_deref(),
+                    aid.as_deref(),
+                    ctype.as_deref(),
+                )
+                .await
             }
             _ => {
-                crate::uia::uia_expand(title.as_deref(), pid, hwnd, ref_id, name.as_deref(), aid.as_deref(), ctype.as_deref()).await
+                crate::uia::uia_expand(
+                    title.as_deref(),
+                    pid,
+                    hwnd,
+                    ref_id,
+                    name.as_deref(),
+                    aid.as_deref(),
+                    ctype.as_deref(),
+                )
+                .await
             }
         }
     };
     let outcome = if crate::tools::uia_action_needs_physical(kind, &caps) && allow_physical {
-        match crate::uia::acquire_input_lease(agent_id.as_deref(), std::time::Duration::from_secs(3)).await {
+        match crate::uia::acquire_input_lease(
+            agent_id.as_deref(),
+            std::time::Duration::from_secs(3),
+        )
+        .await
+        {
             Ok(_lease) => exec.await,
             Err(e) => Err(e),
         }
@@ -338,8 +433,18 @@ async fn desktop_uia_write(gate: &UiaGate<'_>, args: &Value, kind: &str) -> Resu
 
     // 逐动作审计（成败都记）
     match &outcome {
-        Ok(s) => crate::uia::desktop_audit_log(agent_id.as_deref(), &format!("desktop_uia_{kind}"), &target_desc, s),
-        Err(e) => crate::uia::desktop_audit_log(agent_id.as_deref(), &format!("desktop_uia_{kind}_failed"), &target_desc, e),
+        Ok(s) => crate::uia::desktop_audit_log(
+            agent_id.as_deref(),
+            &format!("desktop_uia_{kind}"),
+            &target_desc,
+            s,
+        ),
+        Err(e) => crate::uia::desktop_audit_log(
+            agent_id.as_deref(),
+            &format!("desktop_uia_{kind}_failed"),
+            &target_desc,
+            e,
+        ),
     }
     outcome
 }
@@ -348,11 +453,15 @@ async fn desktop_uia_write(gate: &UiaGate<'_>, args: &Value, kind: &str) -> Resu
 async fn desktop_uia_keys(gate: &UiaGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = agent_of(gate, args);
     let title = arg_str(args, "title");
-    let key = arg_str(args, "key")
-        .ok_or_else(|| "desktop_uia_keys: missing 'key'".to_string())?;
-    let modifiers: Vec<String> = args.get("modifiers")
+    let key = arg_str(args, "key").ok_or_else(|| "desktop_uia_keys: missing 'key'".to_string())?;
+    let modifiers: Vec<String> = args
+        .get("modifiers")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     {
         let tool = crate::tools::DesktopTool {
@@ -362,20 +471,44 @@ async fn desktop_uia_keys(gate: &UiaGate<'_>, args: &Value) -> Result<String, St
             window_title: title.clone(),
         };
         if let Err(e) = check_desktop_raw(&tool, gate.state, gate.app).await {
-            crate::uia::desktop_audit_log(agent_id.as_deref(), "desktop_uia_keys_denied", &format!("key={key}"), &e);
+            crate::uia::desktop_audit_log(
+                agent_id.as_deref(),
+                "desktop_uia_keys_denied",
+                &format!("key={key}"),
+                &e,
+            );
             return Err(format!("权限拒绝: {e}"));
         }
     }
-    let lease = crate::uia::acquire_input_lease(agent_id.as_deref(), std::time::Duration::from_secs(3)).await;
+    let lease =
+        crate::uia::acquire_input_lease(agent_id.as_deref(), std::time::Duration::from_secs(3))
+            .await;
     let outcome = match lease {
         Ok(_l) => {
-            crate::uia::uia_keys(title.as_deref(), opt_u32_of(args, "pid"), opt_u64_of(args, "hwnd"), modifiers.clone(), &key).await
+            crate::uia::uia_keys(
+                title.as_deref(),
+                opt_u32_of(args, "pid"),
+                opt_u64_of(args, "hwnd"),
+                modifiers.clone(),
+                &key,
+            )
+            .await
         }
         Err(e) => Err(e),
     };
     match &outcome {
-        Ok(s) => crate::uia::desktop_audit_log(agent_id.as_deref(), "desktop_uia_keys", &format!("mods={modifiers:?} key={key}"), s),
-        Err(e) => crate::uia::desktop_audit_log(agent_id.as_deref(), "desktop_uia_keys_failed", &format!("mods={modifiers:?} key={key}"), e),
+        Ok(s) => crate::uia::desktop_audit_log(
+            agent_id.as_deref(),
+            "desktop_uia_keys",
+            &format!("mods={modifiers:?} key={key}"),
+            s,
+        ),
+        Err(e) => crate::uia::desktop_audit_log(
+            agent_id.as_deref(),
+            "desktop_uia_keys_failed",
+            &format!("mods={modifiers:?} key={key}"),
+            e,
+        ),
     }
     outcome
 }
@@ -393,18 +526,35 @@ async fn desktop_uia_activate(gate: &UiaGate<'_>, args: &Value) -> Result<String
             window_title: title.clone(),
         };
         if let Err(e) = check_desktop_raw(&tool, gate.state, gate.app).await {
-            crate::uia::desktop_audit_log(agent_id.as_deref(), "desktop_uia_activate_denied", &format!("hwnd={hwnd:?}"), &e);
+            crate::uia::desktop_audit_log(
+                agent_id.as_deref(),
+                "desktop_uia_activate_denied",
+                &format!("hwnd={hwnd:?}"),
+                &e,
+            );
             return Err(format!("权限拒绝: {e}"));
         }
     }
-    let lease = crate::uia::acquire_input_lease(agent_id.as_deref(), std::time::Duration::from_secs(3)).await;
+    let lease =
+        crate::uia::acquire_input_lease(agent_id.as_deref(), std::time::Duration::from_secs(3))
+            .await;
     let outcome = match lease {
         Ok(_l) => crate::uia::uia_activate(title.as_deref(), opt_u32_of(args, "pid"), hwnd).await,
         Err(e) => Err(e),
     };
     match &outcome {
-        Ok(s) => crate::uia::desktop_audit_log(agent_id.as_deref(), "desktop_uia_activate", &format!("hwnd={hwnd:?}"), s),
-        Err(e) => crate::uia::desktop_audit_log(agent_id.as_deref(), "desktop_uia_activate_failed", &format!("hwnd={hwnd:?}"), e),
+        Ok(s) => crate::uia::desktop_audit_log(
+            agent_id.as_deref(),
+            "desktop_uia_activate",
+            &format!("hwnd={hwnd:?}"),
+            s,
+        ),
+        Err(e) => crate::uia::desktop_audit_log(
+            agent_id.as_deref(),
+            "desktop_uia_activate_failed",
+            &format!("hwnd={hwnd:?}"),
+            e,
+        ),
     }
     outcome
 }
@@ -428,7 +578,9 @@ async fn desktop_audit(gate: &UiaGate<'_>, args: &Value) -> Result<String, Strin
     gate.check("audit", agent_id.as_deref()).await?;
     Ok(crate::uia::desktop_audit_query(
         agent_id.as_deref(),
-        args.get("limit").and_then(|v| v.as_u64()).map(|l| l as usize),
+        args.get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|l| l as usize),
     ))
 }
 
@@ -436,15 +588,13 @@ async fn desktop_audit(gate: &UiaGate<'_>, args: &Value) -> Result<String, Strin
 async fn desktop_status(gate: &UiaGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = agent_of(gate, args);
     gate.check("probe", agent_id.as_deref()).await?;
-    Ok(
-        serde_json::json!({
-            "grants": crate::uia::list_grants().iter()
-                .map(|(a, h, ttl)| serde_json::json!({ "agent": a, "hwnd": h, "ttl_secs": ttl }))
-                .collect::<Vec<_>>(),
-            "input_lease_holder": crate::uia::lease_holder(),
-        })
-        .to_string(),
-    )
+    Ok(serde_json::json!({
+        "grants": crate::uia::list_grants().iter()
+            .map(|(a, h, ttl)| serde_json::json!({ "agent": a, "hwnd": h, "ttl_secs": ttl }))
+            .collect::<Vec<_>>(),
+        "input_lease_holder": crate::uia::lease_holder(),
+    })
+    .to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════

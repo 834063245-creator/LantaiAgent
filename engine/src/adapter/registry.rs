@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::adapter::traits::LanguageAdapter;
 use crate::adapter::python::PythonAdapter;
-use crate::adapter::typescript::TypeScriptAdapter;
-use crate::adapter::tree_sitter::TreeSitterAdapter;
 use crate::adapter::query_adapter::QueryStructureAdapter;
+use crate::adapter::traits::LanguageAdapter;
+use crate::adapter::tree_sitter::TreeSitterAdapter;
+use crate::adapter::typescript::TypeScriptAdapter;
 use std::collections::HashMap;
 
 pub struct AdapterRegistry {
@@ -21,7 +21,10 @@ impl Default for AdapterRegistry {
 
 impl AdapterRegistry {
     pub fn new() -> Self {
-        let mut registry = Self { adapters: Vec::new(), ext_index: HashMap::new() };
+        let mut registry = Self {
+            adapters: Vec::new(),
+            ext_index: HashMap::new(),
+        };
 
         // ── Query-based adapters — first-registered wins ──
 
@@ -51,8 +54,16 @@ impl AdapterRegistry {
         registry.register(QueryStructureAdapter::new_generic(
             vec!["java".into()],
             include_str!("../../queries/java_structure.scm"),
-            &["method_declaration", "constructor_declaration", "lambda_expression"],
-            &["class_declaration", "interface_declaration", "enum_declaration"],
+            &[
+                "method_declaration",
+                "constructor_declaration",
+                "lambda_expression",
+            ],
+            &[
+                "class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+            ],
         ));
 
         // C — 查询只能用 tree-sitter-c 已有的节点类型（无 class_specifier）
@@ -65,8 +76,14 @@ impl AdapterRegistry {
 
         // C++
         registry.register(QueryStructureAdapter::new_generic(
-            vec!["cpp".into(), "hpp".into(), "cc".into(), "hh".into(),
-                 "cxx".into(), "hxx".into()],
+            vec![
+                "cpp".into(),
+                "hpp".into(),
+                "cc".into(),
+                "hh".into(),
+                "cxx".into(),
+                "hxx".into(),
+            ],
             include_str!("../../queries/cpp_structure.scm"),
             &["function_definition", "lambda_expression"],
             &["class_specifier", "struct_specifier", "union_specifier"],
@@ -76,8 +93,17 @@ impl AdapterRegistry {
         registry.register(QueryStructureAdapter::new_generic(
             vec!["cs".into()],
             include_str!("../../queries/csharp_structure.scm"),
-            &["method_declaration", "constructor_declaration", "lambda_expression"],
-            &["class_declaration", "struct_declaration", "interface_declaration", "enum_declaration"],
+            &[
+                "method_declaration",
+                "constructor_declaration",
+                "lambda_expression",
+            ],
+            &[
+                "class_declaration",
+                "struct_declaration",
+                "interface_declaration",
+                "enum_declaration",
+            ],
         ));
 
         // Ruby
@@ -92,8 +118,16 @@ impl AdapterRegistry {
         registry.register(QueryStructureAdapter::new_generic(
             vec!["php".into()],
             include_str!("../../queries/php_structure.scm"),
-            &["method_declaration", "function_definition", "arrow_function"],
-            &["class_declaration", "interface_declaration", "trait_declaration"],
+            &[
+                "method_declaration",
+                "function_definition",
+                "arrow_function",
+            ],
+            &[
+                "class_declaration",
+                "interface_declaration",
+                "trait_declaration",
+            ],
         ));
 
         // Swift
@@ -101,14 +135,23 @@ impl AdapterRegistry {
             vec!["swift".into()],
             include_str!("../../queries/swift_structure.scm"),
             &["function_declaration", "method_declaration"],
-            &["class_declaration", "struct_declaration", "enum_declaration", "protocol_declaration"],
+            &[
+                "class_declaration",
+                "struct_declaration",
+                "enum_declaration",
+                "protocol_declaration",
+            ],
         ));
 
         // Dart
         registry.register(QueryStructureAdapter::new_generic(
             vec!["dart".into()],
             include_str!("../../queries/dart_structure.scm"),
-            &["function_declaration", "method_declaration", "function_expression"],
+            &[
+                "function_declaration",
+                "method_declaration",
+                "function_expression",
+            ],
             &["class_declaration", "enum_declaration", "mixin_declaration"],
         ));
 
@@ -116,7 +159,11 @@ impl AdapterRegistry {
         registry.register(QueryStructureAdapter::new_generic(
             vec!["scala".into()],
             include_str!("../../queries/scala_structure.scm"),
-            &["function_definition", "method_definition", "lambda_expression"],
+            &[
+                "function_definition",
+                "method_definition",
+                "lambda_expression",
+            ],
             &["class_definition", "object_definition", "trait_definition"],
         ));
 

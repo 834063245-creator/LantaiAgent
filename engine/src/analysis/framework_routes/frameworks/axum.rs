@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::engine::GRAMMAR_LOADER;
 use super::super::DetectedRoute;
+use crate::engine::GRAMMAR_LOADER;
 
 pub(crate) fn is_axum_candidate(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -34,7 +34,10 @@ const METHOD_ROUTERS: [&str; 8] = [
 pub(crate) fn detect_axum_routes(file: &str, source: &str) -> Vec<DetectedRoute> {
     let mut result = Vec::new();
     let mut parser = tree_sitter::Parser::new();
-    let lang = match GRAMMAR_LOADER.get("rs") { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get("rs") {
+        Some(l) => l,
+        None => return result,
+    };
     if parser.set_language(&lang).is_err() {
         return result;
     }
@@ -115,7 +118,13 @@ fn handle_route_call(
     let mut pairs: Vec<(String, String)> = Vec::new();
     extract_method_routers(&router_arg, source, line, &mut pairs);
     for (method, handler) in pairs {
-        result.push((method, join_paths(prefix, &path), handler, file.to_string(), line));
+        result.push((
+            method,
+            join_paths(prefix, &path),
+            handler,
+            file.to_string(),
+            line,
+        ));
     }
 }
 
@@ -139,9 +148,7 @@ fn handle_nest_call(
     let mut stack: Vec<tree_sitter::Node<'_>> = vec![router_arg];
     while let Some(n) = stack.pop() {
         if n.kind() == "call_expression" {
-            if let Some("route") | Some("route_with_tsr") =
-                call_field_name(&n, source).as_deref()
-            {
+            if let Some("route") | Some("route_with_tsr") = call_field_name(&n, source).as_deref() {
                 handle_route_call(&n, &prefix, file, source, result);
             }
         }

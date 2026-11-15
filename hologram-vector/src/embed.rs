@@ -63,13 +63,21 @@ const BACKEND_MINILM: u8 = 1;
 const BACKEND_NGRAM: u8 = 2;
 static BACKEND: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(BACKEND_UNKNOWN);
 
-fn set_backend(b: u8) { BACKEND.store(b, std::sync::atomic::Ordering::Relaxed); }
+fn set_backend(b: u8) {
+    BACKEND.store(b, std::sync::atomic::Ordering::Relaxed);
+}
 
 /// 惰性确定后端（首次调用时探测 MiniLM 可用性）。
 fn resolve_backend() -> u8 {
     let b = BACKEND.load(std::sync::atomic::Ordering::Relaxed);
-    if b != BACKEND_UNKNOWN { return b; }
-    let resolved = if super::minilm::global().is_ok() { BACKEND_MINILM } else { BACKEND_NGRAM };
+    if b != BACKEND_UNKNOWN {
+        return b;
+    }
+    let resolved = if super::minilm::global().is_ok() {
+        BACKEND_MINILM
+    } else {
+        BACKEND_NGRAM
+    };
     set_backend(resolved);
     resolved
 }
@@ -122,10 +130,19 @@ pub fn ngram_embed(text: &str) -> Vec<f32> {
         // 同时添加词边界 bigram 以提升单词匹配效果
         let mut word_start = 0usize;
         for (i, &ch) in chars.iter().enumerate() {
-            if ch == '_' || ch == '.' || ch == ' ' || ch == '(' || ch == ')' || ch == '{' || ch == '}' {
+            if ch == '_'
+                || ch == '.'
+                || ch == ' '
+                || ch == '('
+                || ch == ')'
+                || ch == '{'
+                || ch == '}'
+            {
                 if i > word_start + 2 {
                     // 词首 2-gram：如 "hello" → "#he"
-                    let sow: String = std::iter::once('#').chain(chars[word_start..word_start + 2].iter().copied()).collect();
+                    let sow: String = std::iter::once('#')
+                        .chain(chars[word_start..word_start + 2].iter().copied())
+                        .collect();
                     let h = hash_str(&sow) % EMBED_DIM;
                     vec[h] += 2.0; // 词首标记的加权
                 }
@@ -134,7 +151,9 @@ pub fn ngram_embed(text: &str) -> Vec<f32> {
         }
         // 最后一个词
         if chars.len() > word_start + 2 {
-            let sow: String = std::iter::once('#').chain(chars[word_start..word_start + 2].iter().copied()).collect();
+            let sow: String = std::iter::once('#')
+                .chain(chars[word_start..word_start + 2].iter().copied())
+                .collect();
             let h = hash_str(&sow) % EMBED_DIM;
             vec[h] += 2.0;
         }
@@ -143,7 +162,9 @@ pub fn ngram_embed(text: &str) -> Vec<f32> {
     // 归一化为单位长度
     let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
     if norm > 1e-8 {
-        for v in &mut vec { *v /= norm; }
+        for v in &mut vec {
+            *v /= norm;
+        }
     }
 
     vec
@@ -183,7 +204,10 @@ mod tests {
         eprintln!("sim(payment, transaction) = {:.3}", sim12);
         eprintln!("sim(payment, ui) = {:.3}", sim13);
         // 相似代码模式（Result<(), Error>、f64 类型）应更接近
-        assert!(sim12 > sim13 * 0.8, "payment 应至少与 transaction 有一定接近度");
+        assert!(
+            sim12 > sim13 * 0.8,
+            "payment 应至少与 transaction 有一定接近度"
+        );
     }
 
     #[test]
@@ -202,7 +226,9 @@ mod tests {
         let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
         let na = a.iter().map(|x| x * x).sum::<f32>().sqrt();
         let nb = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if na < 1e-8 || nb < 1e-8 { return 0.0; }
+        if na < 1e-8 || nb < 1e-8 {
+            return 0.0;
+        }
         (dot / (na * nb)).clamp(-1.0, 1.0)
     }
 }

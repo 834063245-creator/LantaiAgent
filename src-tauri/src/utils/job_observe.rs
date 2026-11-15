@@ -6,10 +6,12 @@
 // 不碰通知队列、不移动模型游标。役册（UI）与状态栏据此看「还有什么在跑」，
 // 与「Agent 忙不忙」是两套信号（见 landmine L5 的裁定）。
 
-use std::path::PathBuf;
-use crate::utils::bg_jobs::{BG_JOBS, BgJob, JobStatus, SETTLED_HISTORY, SettledRecord, STALL_THRESHOLD};
+use crate::utils::bg_jobs::{
+    BgJob, JobStatus, SettledRecord, BG_JOBS, SETTLED_HISTORY, STALL_THRESHOLD,
+};
 use crate::utils::ipc_guard::lock_or_recover;
 use crate::utils::stream_ring::StreamRing;
+use std::path::PathBuf;
 // ═══════════════════════════════════════════════════════
 // 观测面（非消费）：名册 + 按偏移读取
 // ═══════════════════════════════════════════════════════

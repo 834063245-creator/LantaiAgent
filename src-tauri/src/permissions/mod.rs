@@ -110,7 +110,9 @@ pub trait Tool: Sync {
 #[derive(Debug)]
 pub enum PermissionResult {
     Allow,
-    Deny { reason: String },
+    Deny {
+        reason: String,
+    },
     Ask {
         reason: String,
         suggestions: Vec<PermissionUpdate>,
@@ -123,7 +125,9 @@ pub enum PermissionResult {
 #[derive(Debug)]
 pub enum PermissionDecision {
     Allow,
-    Deny { reason: String },
+    Deny {
+        reason: String,
+    },
     Ask {
         request_id: String,
         reason: String,
@@ -247,13 +251,12 @@ impl PermissionContext {
 
     /// 获取特定 Agent 隔离状态的克隆。
     pub fn get_isolation(&self, agent_id: Option<&str>) -> Option<AgentIsolation> {
-        agent_id
-            .and_then(|id| {
-                self.isolation
-                    .read()
-                    .ok()
-                    .and_then(|iso| iso.get(id).cloned())
-            })
+        agent_id.and_then(|id| {
+            self.isolation
+                .read()
+                .ok()
+                .and_then(|iso| iso.get(id).cloned())
+        })
     }
 
     /// 获取所有活跃的隔离条目（用于状态列表）。
@@ -323,10 +326,7 @@ impl PermissionContext {
 /// 规则寻址两级（kernel-plugin-runtime P2-0 §3.3）：先 tool.name() 精确名
 /// （"plugin:<id>.<tool>"——插件工具的精确寻址新能力），未中再
 /// rule_fallback_name() 家族名——既有用户规则（"Edit" deny 等）不静默失效。
-pub fn has_permission_to_use_tool(
-    tool: &dyn Tool,
-    ctx: &PermissionContext,
-) -> PermissionDecision {
+pub fn has_permission_to_use_tool(tool: &dyn Tool, ctx: &PermissionContext) -> PermissionDecision {
     let tool_name = tool.name();
     let fallback = tool.rule_fallback_name();
 
@@ -398,7 +398,10 @@ pub fn has_permission_to_use_tool(
             // 工具自检确定此操作安全（例如项目内只读，
             // 且所有 deny/safety/ask 检查已通过）。立即允许
             // — 不落入默认 Ask。
-            let target = tool.get_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+            let target = tool
+                .get_path()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
             ctx.audit_allow(&tool_name, &target);
             return PermissionDecision::Allow;
         }
@@ -418,7 +421,10 @@ pub fn has_permission_to_use_tool(
             .or_else(|| fallback.and_then(|f| rules.find_allow(f, None)))
             .is_some()
         {
-            let target = tool.get_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+            let target = tool
+                .get_path()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
             ctx.audit_allow(&tool_name, &target);
             return PermissionDecision::Allow;
         }
@@ -426,7 +432,10 @@ pub fn has_permission_to_use_tool(
 
     // ⑥ 无规则匹配，工具无意见 (Passthrough) → Allow
     // ponytail: Passthrough 意为"我检查过了，没问题"。不弹窗。
-    let target = tool.get_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+    let target = tool
+        .get_path()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
     ctx.audit_allow(&tool_name, &target);
     PermissionDecision::Allow
 }
@@ -636,12 +645,16 @@ mod smoke {
         ctx.add_session_rule("Bash(npm test:*)", "allow");
         let rules = ctx.read_rules();
         assert!(
-            rules.find_allow("Bash", Some("npm test --filter=foo")).is_some(),
+            rules
+                .find_allow("Bash", Some("npm test --filter=foo"))
+                .is_some(),
             "session allow rule must be findable by content match"
         );
         // 验证它不在 deny 列表中
         assert!(
-            rules.find_deny("Bash", Some("npm test --filter=foo")).is_none(),
+            rules
+                .find_deny("Bash", Some("npm test --filter=foo"))
+                .is_none(),
             "session rule with behavior allow must not appear in deny list"
         );
     }
@@ -686,11 +699,17 @@ mod regression {
         // .lantai/settings.json 有系统 Deny 规则（load_system_rules）
         // 修前 EditTool 不跑 write check → Allow；修后 → Deny
         let tool = EditTool {
-            path: root.join(".lantai/settings.json").to_string_lossy().to_string(),
+            path: root
+                .join(".lantai/settings.json")
+                .to_string_lossy()
+                .to_string(),
             agent_id: None,
         };
         assert!(
-            matches!(has_permission_to_use_tool(&tool, &ctx), PermissionDecision::Deny { .. }),
+            matches!(
+                has_permission_to_use_tool(&tool, &ctx),
+                PermissionDecision::Deny { .. }
+            ),
             "edit must run write check — .lantai/settings.json has system Deny rule"
         );
     }
@@ -930,7 +949,11 @@ mod regression {
             command: "sudo make install".into(),
         };
         let edit = crate::tools::EditTool {
-            path: root.join("..").join("outside.txt").to_string_lossy().to_string(),
+            path: root
+                .join("..")
+                .join("outside.txt")
+                .to_string_lossy()
+                .to_string(),
             agent_id: None,
         };
         // 前置：两个工具在 ask 模式下都应触发 Ask（否则测试无意义）
@@ -971,7 +994,10 @@ mod regression {
         let ctx = PermissionContext::new(&root);
         // .lantai/settings.json 有系统 Deny 规则（与 r1 同源）
         let tool = crate::tools::EditTool {
-            path: root.join(".lantai/settings.json").to_string_lossy().to_string(),
+            path: root
+                .join(".lantai/settings.json")
+                .to_string_lossy()
+                .to_string(),
             agent_id: None,
         };
         // Deny 无论模式
@@ -989,7 +1015,10 @@ mod regression {
     // kernel-plugin-runtime P2-0 回归 — PluginToolAdapter 家族语义
     // ═══════════════════════════════════════════════════════════
 
-    fn plugin_adapter(path: Option<String>, family: Option<&'static str>) -> crate::permissions::adapter::PluginToolAdapter {
+    fn plugin_adapter(
+        path: Option<String>,
+        family: Option<&'static str>,
+    ) -> crate::permissions::adapter::PluginToolAdapter {
         crate::permissions::adapter::PluginToolAdapter {
             full_name: "plugin:builtin.fs.write_file".into(),
             read_only: false,
@@ -1012,7 +1041,11 @@ mod regression {
         let ctx = PermissionContext::new(&root);
         // 项目外写 → Edit 家族语义 = Ask（ask 模式下 sync 路径自动拒绝）
         let adapter = plugin_adapter(
-            Some(root.join("../outside_p20.txt").to_string_lossy().to_string()),
+            Some(
+                root.join("../outside_p20.txt")
+                    .to_string_lossy()
+                    .to_string(),
+            ),
             Some("Edit"),
         );
         set_permission_mode("ask");
@@ -1056,7 +1089,11 @@ mod regression {
         let root = tmp_project();
         let ctx = PermissionContext::new(&root);
         let adapter = plugin_adapter(
-            Some(root.join(".lantai/settings.json").to_string_lossy().to_string()),
+            Some(
+                root.join(".lantai/settings.json")
+                    .to_string_lossy()
+                    .to_string(),
+            ),
             Some("Edit"),
         );
         assert!(
@@ -1068,7 +1105,11 @@ mod regression {
         );
         // 对照：无 family 的 adapter（v1 语义）不拦——真权在插件内路径级授权
         let bare = plugin_adapter(
-            Some(root.join(".lantai/settings.json").to_string_lossy().to_string()),
+            Some(
+                root.join(".lantai/settings.json")
+                    .to_string_lossy()
+                    .to_string(),
+            ),
             None,
         );
         assert!(matches!(

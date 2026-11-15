@@ -24,12 +24,10 @@ pub fn check(url: &str, rules: &PermissionRules) -> PermissionResult {
     if let Some(rule) = rules.find_ask("WebFetch", Some(url)) {
         return PermissionResult::Ask {
             reason: rule.explain(),
-            suggestions: vec![
-                crate::permissions::PermissionUpdate {
-                    rule: format!("WebFetch({})", url),
-                    behavior: "allow".into(),
-                },
-            ],
+            suggestions: vec![crate::permissions::PermissionUpdate {
+                rule: format!("WebFetch({})", url),
+                behavior: "allow".into(),
+            }],
             danger: None,
         };
     }
@@ -77,7 +75,8 @@ mod tests {
         let r = check("https://api.github.com/repos/rust-lang/rust", &rules);
         assert!(
             matches!(r, PermissionResult::Allow),
-            "Allow rule should permit matching URL, got: {:?}", r
+            "Allow rule should permit matching URL, got: {:?}",
+            r
         );
     }
 
@@ -122,7 +121,8 @@ mod tests {
         let r = check("http://127.0.0.1:3000/admin", &rules);
         assert!(
             matches!(r, PermissionResult::Deny { .. }),
-            "Deny rule must take priority over Allow, got: {:?}", r
+            "Deny rule must take priority over Allow, got: {:?}",
+            r
         );
     }
 
@@ -142,10 +142,19 @@ mod tests {
             danger: None,
         });
         // IPv4 回环地址
-        assert!(matches!(check("http://127.0.0.1:8080", &rules), PermissionResult::Deny { .. }));
+        assert!(matches!(
+            check("http://127.0.0.1:8080", &rules),
+            PermissionResult::Deny { .. }
+        ));
         // localhost 主机名
-        assert!(matches!(check("http://localhost:3000/api", &rules), PermissionResult::Deny { .. }));
+        assert!(matches!(
+            check("http://localhost:3000/api", &rules),
+            PermissionResult::Deny { .. }
+        ));
         // 非回环 URL 不受影响
-        assert!(matches!(check("https://example.com", &rules), PermissionResult::Passthrough));
+        assert!(matches!(
+            check("https://example.com", &rules),
+            PermissionResult::Passthrough
+        ));
     }
 }

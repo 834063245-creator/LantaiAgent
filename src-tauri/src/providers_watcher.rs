@@ -48,7 +48,10 @@ impl ProvidersWatcher {
         let running = std::sync::Arc::new(AtomicBool::new(true));
         let flag = running.clone();
         let thread = std::thread::spawn(move || watch_loop(app_handle, flag));
-        Self { running, thread: Some(thread) }
+        Self {
+            running,
+            thread: Some(thread),
+        }
     }
 
     /// 停止 watcher（幂等；2s 优雅退出后分离——composition watcher 同款）。
@@ -106,8 +109,8 @@ mod tests {
     /// 新建 → modified，删除 → removed（同一条通道两种 reason）。
     #[test]
     fn providers_file_change_fires_modified_then_removed() {
-        let tmp = std::env::temp_dir()
-            .join(format!("lantai_providers_watch_{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("lantai_providers_watch_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let file = tmp.join("providers.yml");
@@ -117,20 +120,36 @@ mod tests {
 
         // 人/agent 写入 → 变化当轮不发射，静默满 1s 后发一次 modified
         std::fs::write(&file, b"providers:\n  - id: deepseek\n").unwrap();
-        assert_eq!(s.poll(file_mtime(&file), t0, Duration::from_secs(1)), None, "变化当轮不发射");
         assert_eq!(
-            s.poll(file_mtime(&file), t0 + Duration::from_millis(1100), Duration::from_secs(1)),
+            s.poll(file_mtime(&file), t0, Duration::from_secs(1)),
+            None,
+            "变化当轮不发射"
+        );
+        assert_eq!(
+            s.poll(
+                file_mtime(&file),
+                t0 + Duration::from_millis(1100),
+                Duration::from_secs(1)
+            ),
             Some("modified")
         );
 
         // 删除 → 同样是一条变更，发 removed
         std::fs::remove_file(&file).unwrap();
         assert_eq!(
-            s.poll(file_mtime(&file), t0 + Duration::from_millis(1200), Duration::from_secs(1)),
+            s.poll(
+                file_mtime(&file),
+                t0 + Duration::from_millis(1200),
+                Duration::from_secs(1)
+            ),
             None
         );
         assert_eq!(
-            s.poll(file_mtime(&file), t0 + Duration::from_millis(2400), Duration::from_secs(1)),
+            s.poll(
+                file_mtime(&file),
+                t0 + Duration::from_millis(2400),
+                Duration::from_secs(1)
+            ),
             Some("removed")
         );
         let _ = std::fs::remove_dir_all(&tmp);
@@ -148,7 +167,11 @@ mod tests {
         let t0 = std::time::Instant::now();
         for tick in 0..5 {
             assert_eq!(
-                s.poll(Some(100), t0 + Duration::from_secs(tick), Duration::from_secs(1)),
+                s.poll(
+                    Some(100),
+                    t0 + Duration::from_secs(tick),
+                    Duration::from_secs(1)
+                ),
                 None
             );
         }
@@ -160,16 +183,38 @@ mod tests {
         let mut s = WatchState::new(Some(100));
         let t0 = std::time::Instant::now();
         // t=0：变化发生
-        assert_eq!(s.poll(Some(200), t0, Duration::from_secs(1)), None, "变化当轮不发射");
+        assert_eq!(
+            s.poll(Some(200), t0, Duration::from_secs(1)),
+            None,
+            "变化当轮不发射"
+        );
         // t=0.5s：窗口内（编辑器连发的第二次写——mtime 未再变）
-        assert_eq!(s.poll(Some(200), t0 + Duration::from_millis(500), Duration::from_secs(1)), None);
+        assert_eq!(
+            s.poll(
+                Some(200),
+                t0 + Duration::from_millis(500),
+                Duration::from_secs(1)
+            ),
+            None
+        );
         // t=1.1s：静默期满 → 发射 modified
         assert_eq!(
-            s.poll(Some(200), t0 + Duration::from_millis(1100), Duration::from_secs(1)),
+            s.poll(
+                Some(200),
+                t0 + Duration::from_millis(1100),
+                Duration::from_secs(1)
+            ),
             Some("modified")
         );
         // t=2s：无新变化 → 不再重复发射
-        assert_eq!(s.poll(Some(200), t0 + Duration::from_secs(2), Duration::from_secs(1)), None);
+        assert_eq!(
+            s.poll(
+                Some(200),
+                t0 + Duration::from_secs(2),
+                Duration::from_secs(1)
+            ),
+            None
+        );
     }
 
     /// 删除：mtime → None 也是变化 → 静默后发射 removed。
@@ -179,7 +224,11 @@ mod tests {
         let t0 = std::time::Instant::now();
         assert_eq!(s.poll(None, t0, Duration::from_secs(1)), None);
         assert_eq!(
-            s.poll(None, t0 + Duration::from_millis(1100), Duration::from_secs(1)),
+            s.poll(
+                None,
+                t0 + Duration::from_millis(1100),
+                Duration::from_secs(1)
+            ),
             Some("removed")
         );
     }
@@ -191,7 +240,11 @@ mod tests {
         let t0 = std::time::Instant::now();
         assert_eq!(s.poll(Some(50), t0, Duration::from_secs(1)), None);
         assert_eq!(
-            s.poll(Some(50), t0 + Duration::from_millis(1100), Duration::from_secs(1)),
+            s.poll(
+                Some(50),
+                t0 + Duration::from_millis(1100),
+                Duration::from_secs(1)
+            ),
             Some("modified")
         );
     }
@@ -204,17 +257,29 @@ mod tests {
         // t=0 变化 → t=0.9 再变（窗口重置）→ t=1.5 仍在扩展后的窗口内
         assert_eq!(s.poll(Some(200), t0, Duration::from_secs(1)), None);
         assert_eq!(
-            s.poll(Some(300), t0 + Duration::from_millis(900), Duration::from_secs(1)),
+            s.poll(
+                Some(300),
+                t0 + Duration::from_millis(900),
+                Duration::from_secs(1)
+            ),
             None
         );
         assert_eq!(
-            s.poll(Some(300), t0 + Duration::from_millis(1500), Duration::from_secs(1)),
+            s.poll(
+                Some(300),
+                t0 + Duration::from_millis(1500),
+                Duration::from_secs(1)
+            ),
             None,
             "窗口被重置——1.5s 仍不发射"
         );
         // t=2.0：距最后变化 1.1s → 发射
         assert_eq!(
-            s.poll(Some(300), t0 + Duration::from_millis(2000), Duration::from_secs(1)),
+            s.poll(
+                Some(300),
+                t0 + Duration::from_millis(2000),
+                Duration::from_secs(1)
+            ),
             Some("modified")
         );
     }
@@ -226,20 +291,39 @@ mod tests {
         let t0 = std::time::Instant::now();
         assert_eq!(s.poll(Some(200), t0, Duration::from_secs(1)), None);
         assert_eq!(
-            s.poll(Some(200), t0 + Duration::from_millis(1100), Duration::from_secs(1)),
+            s.poll(
+                Some(200),
+                t0 + Duration::from_millis(1100),
+                Duration::from_secs(1)
+            ),
             Some("modified")
         );
         // 静默期：同 mtime 不发射
         for tick in 2..4 {
             assert_eq!(
-                s.poll(Some(200), t0 + Duration::from_secs(tick), Duration::from_secs(1)),
+                s.poll(
+                    Some(200),
+                    t0 + Duration::from_secs(tick),
+                    Duration::from_secs(1)
+                ),
                 None
             );
         }
         // 新变化 → 全流程重走
-        assert_eq!(s.poll(Some(300), t0 + Duration::from_secs(4), Duration::from_secs(1)), None);
         assert_eq!(
-            s.poll(Some(300), t0 + Duration::from_millis(5100), Duration::from_secs(1)),
+            s.poll(
+                Some(300),
+                t0 + Duration::from_secs(4),
+                Duration::from_secs(1)
+            ),
+            None
+        );
+        assert_eq!(
+            s.poll(
+                Some(300),
+                t0 + Duration::from_millis(5100),
+                Duration::from_secs(1)
+            ),
             Some("modified")
         );
     }

@@ -216,7 +216,11 @@ impl GraphMerger {
 /// 语义与复合键等价（更严格的区分不会产生错误去重）。
 #[inline]
 fn node_key_parts(node: &Node) -> (&str, &str, NodeKind) {
-    (node.location.as_deref().unwrap_or(&node.id), &node.name, node.kind)
+    (
+        node.location.as_deref().unwrap_or(&node.id),
+        &node.name,
+        node.kind,
+    )
 }
 
 impl Default for GraphMerger {
@@ -227,8 +231,8 @@ impl Default for GraphMerger {
 
 #[cfg(test)]
 mod tests {
-    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 
     fn make_node(id: &str, name: &str, loc: &str, kind: NodeKind) -> Node {
         let mut n = Node::new(id, name, kind);
@@ -290,7 +294,11 @@ mod tests {
         g2.add_node(make_node("n2", "handle", "src/main.rs", NodeKind::Symbol));
 
         assert_eq!(merger.merge(g1), 1);
-        assert_eq!(merger.merge(g2), 0, "duplicate loc+name+kind should be skipped");
+        assert_eq!(
+            merger.merge(g2),
+            0,
+            "duplicate loc+name+kind should be skipped"
+        );
         assert_eq!(merger.node_count(), 1);
     }
 
@@ -391,13 +399,17 @@ mod tests {
         let nodes: Vec<Node> = vec![];
         let edges: Vec<Edge> = vec![
             Edge::new("call_1", "a.foo", "b.helper", EdgeKind::Calls),
-            Edge::new("call_2", "a.foo", "b.helper", EdgeKind::Calls),  // 重复：相同 (src, tgt, kind)
-            Edge::new("call_3", "a.foo", "b.helper", EdgeKind::Calls),  // 重复
-            Edge::new("call_4", "a.foo", "c.other", EdgeKind::Calls),   // 不同 target
+            Edge::new("call_2", "a.foo", "b.helper", EdgeKind::Calls), // 重复：相同 (src, tgt, kind)
+            Edge::new("call_3", "a.foo", "b.helper", EdgeKind::Calls), // 重复
+            Edge::new("call_4", "a.foo", "c.other", EdgeKind::Calls),  // 不同 target
         ];
 
         merger.merge_slices(&nodes, &edges);
-        assert_eq!(merger.graph().edge_count(), 2, "should dedup 3 foo→helper calls into 1, keep foo→other");
+        assert_eq!(
+            merger.graph().edge_count(),
+            2,
+            "should dedup 3 foo→helper calls into 1, keep foo→other"
+        );
     }
 
     #[test]
@@ -405,9 +417,15 @@ mod tests {
         // 不同 source → 不同边，不去重
         let mut merger = GraphMerger::new();
 
-        merger.graph.add_node(Node::new("a.foo", "foo", NodeKind::Function));
-        merger.graph.add_node(Node::new("a.bar", "bar", NodeKind::Function));
-        merger.graph.add_node(Node::new("b.helper", "helper", NodeKind::Function));
+        merger
+            .graph
+            .add_node(Node::new("a.foo", "foo", NodeKind::Function));
+        merger
+            .graph
+            .add_node(Node::new("a.bar", "bar", NodeKind::Function));
+        merger
+            .graph
+            .add_node(Node::new("b.helper", "helper", NodeKind::Function));
 
         let nodes: Vec<Node> = vec![];
         let edges: Vec<Edge> = vec![
@@ -416,7 +434,11 @@ mod tests {
         ];
 
         merger.merge_slices(&nodes, &edges);
-        assert_eq!(merger.graph().edge_count(), 2, "different sources should NOT be deduped");
+        assert_eq!(
+            merger.graph().edge_count(),
+            2,
+            "different sources should NOT be deduped"
+        );
     }
 
     #[test]
@@ -424,8 +446,12 @@ mod tests {
         // 相同 (source, target) 但 kind 不同 → 不去重
         let mut merger = GraphMerger::new();
 
-        merger.graph.add_node(Node::new("mod", "mod", NodeKind::File));
-        merger.graph.add_node(Node::new("fn", "fn", NodeKind::Function));
+        merger
+            .graph
+            .add_node(Node::new("mod", "mod", NodeKind::File));
+        merger
+            .graph
+            .add_node(Node::new("fn", "fn", NodeKind::Function));
 
         let nodes: Vec<Node> = vec![];
         let edges: Vec<Edge> = vec![
@@ -434,7 +460,11 @@ mod tests {
         ];
 
         merger.merge_slices(&nodes, &edges);
-        assert_eq!(merger.graph().edge_count(), 2, "different kinds should NOT be deduped");
+        assert_eq!(
+            merger.graph().edge_count(),
+            2,
+            "different kinds should NOT be deduped"
+        );
     }
 
     #[test]
@@ -442,23 +472,32 @@ mod tests {
         // 全局去重：两次 merge_slices 调用中相同 (source, target, kind) → 1 条边
         let mut merger = GraphMerger::new();
 
-        merger.graph.add_node(Node::new("a.foo", "foo", NodeKind::Function));
-        merger.graph.add_node(Node::new("b.helper", "helper", NodeKind::Function));
+        merger
+            .graph
+            .add_node(Node::new("a.foo", "foo", NodeKind::Function));
+        merger
+            .graph
+            .add_node(Node::new("b.helper", "helper", NodeKind::Function));
 
         let nodes1: Vec<Node> = vec![];
-        let edges1: Vec<Edge> = vec![
-            Edge::new("call_1", "a.foo", "b.helper", EdgeKind::Calls),
-        ];
+        let edges1: Vec<Edge> = vec![Edge::new("call_1", "a.foo", "b.helper", EdgeKind::Calls)];
         merger.merge_slices(&nodes1, &edges1);
         assert_eq!(merger.graph().edge_count(), 1);
 
         // 第二个文件（不同的 edge ID，相同的语义边）
         let nodes2: Vec<Node> = vec![];
-        let edges2: Vec<Edge> = vec![
-            Edge::new("call_file2_1", "a.foo", "b.helper", EdgeKind::Calls),
-        ];
+        let edges2: Vec<Edge> = vec![Edge::new(
+            "call_file2_1",
+            "a.foo",
+            "b.helper",
+            EdgeKind::Calls,
+        )];
         merger.merge_slices(&nodes2, &edges2);
-        assert_eq!(merger.graph().edge_count(), 1, "cross-call global dedup: same (src,tgt,kind) should be skipped");
+        assert_eq!(
+            merger.graph().edge_count(),
+            1,
+            "cross-call global dedup: same (src,tgt,kind) should be skipped"
+        );
     }
 
     #[test]
@@ -466,21 +505,27 @@ mod tests {
         // 不同 scope（source）→ 跨调用不去重
         let mut merger = GraphMerger::new();
 
-        merger.graph.add_node(Node::new("a.foo", "foo", NodeKind::Function));
-        merger.graph.add_node(Node::new("a.bar", "bar", NodeKind::Function));
-        merger.graph.add_node(Node::new("b.helper", "helper", NodeKind::Function));
+        merger
+            .graph
+            .add_node(Node::new("a.foo", "foo", NodeKind::Function));
+        merger
+            .graph
+            .add_node(Node::new("a.bar", "bar", NodeKind::Function));
+        merger
+            .graph
+            .add_node(Node::new("b.helper", "helper", NodeKind::Function));
 
         let nodes1: Vec<Node> = vec![];
-        let edges1: Vec<Edge> = vec![
-            Edge::new("call_1", "a.foo", "b.helper", EdgeKind::Calls),
-        ];
+        let edges1: Vec<Edge> = vec![Edge::new("call_1", "a.foo", "b.helper", EdgeKind::Calls)];
         merger.merge_slices(&nodes1, &edges1);
 
         let nodes2: Vec<Node> = vec![];
-        let edges2: Vec<Edge> = vec![
-            Edge::new("call_2", "a.bar", "b.helper", EdgeKind::Calls),
-        ];
+        let edges2: Vec<Edge> = vec![Edge::new("call_2", "a.bar", "b.helper", EdgeKind::Calls)];
         merger.merge_slices(&nodes2, &edges2);
-        assert_eq!(merger.graph().edge_count(), 2, "different sources across calls should NOT be deduped");
+        assert_eq!(
+            merger.graph().edge_count(),
+            2,
+            "different sources across calls should NOT be deduped"
+        );
     }
 }

@@ -119,7 +119,9 @@ pub(crate) async fn git_cap(
     // diff/blame 截断保留（blame --line-porcelain 每行源码约 10 行输出，
     // 中等文件即可达 MB 级——退役前插件同款）。
     Ok(match action.as_str() {
-        "git_diff_unstaged" | "git_diff_staged" | "git_blame" => crate::utils::truncate_output(&out),
+        "git_diff_unstaged" | "git_diff_staged" | "git_blame" => {
+            crate::utils::truncate_output(&out)
+        }
         _ => out,
     })
 }
@@ -193,12 +195,14 @@ fn git_args(
         "git_discard" => Ok(vec![
             "checkout".to_string(),
             "--".to_string(),
-            file.ok_or_else(|| "git_cap git_discard: missing 'file'".to_string())?.to_string(),
+            file.ok_or_else(|| "git_cap git_discard: missing 'file'".to_string())?
+                .to_string(),
         ]),
         "git_blame" => Ok(vec![
             "blame".to_string(),
             "--line-porcelain".to_string(),
-            file.ok_or_else(|| "git_cap git_blame: missing 'file'".to_string())?.to_string(),
+            file.ok_or_else(|| "git_cap git_blame: missing 'file'".to_string())?
+                .to_string(),
         ]),
         other => Err(format!("git_cap: 未知 action '{other}'")),
     }
@@ -212,7 +216,13 @@ mod tests {
     /// Read 家族、无 subcommand（c3 §8「read_only 5 工具走 Read 家族闸分流」）。
     #[test]
     fn read_only_action_table_matches_retired_manifest() {
-        for a in ["git_status", "git_diff_unstaged", "git_diff_staged", "git_log", "git_blame"] {
+        for a in [
+            "git_status",
+            "git_diff_unstaged",
+            "git_diff_staged",
+            "git_log",
+            "git_blame",
+        ] {
             assert!(is_read_only(a), "{a} 应只读");
             assert_eq!(subcommand_of(a), None, "{a} 不应有 subcommand");
         }
@@ -301,7 +311,15 @@ mod tests {
         );
         // 显式 file 原样透传
         assert_eq!(
-            git_args("git_diff_unstaged", Some("src/a.rs"), None, None, None, None).unwrap(),
+            git_args(
+                "git_diff_unstaged",
+                Some("src/a.rs"),
+                None,
+                None,
+                None,
+                None
+            )
+            .unwrap(),
             dot(&["diff", "--", "src/a.rs"])
         );
     }

@@ -50,7 +50,7 @@ pub(crate) fn remediation_command(exe: &std::path::Path) -> String {
 pub(crate) fn query_level() -> Option<u32> {
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::Security::{
-        GetTokenInformation, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TokenIntegrityLevel,
+        GetTokenInformation, TokenIntegrityLevel, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
     };
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 

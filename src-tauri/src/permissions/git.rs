@@ -24,33 +24,26 @@ pub fn check(subcommand: &str, rules: &PermissionRules) -> PermissionResult {
     if let Some(rule) = rules.find_ask("Git", Some(subcommand)) {
         return PermissionResult::Ask {
             reason: rule.explain(),
-            suggestions: vec![
-                crate::permissions::PermissionUpdate {
-                    rule: format!("Git({})", subcommand),
-                    behavior: "allow".into(),
-                },
-            ],
+            suggestions: vec![crate::permissions::PermissionUpdate {
+                rule: format!("Git({})", subcommand),
+                behavior: "allow".into(),
+            }],
             danger: None,
         };
     }
 
     // 4. 安全的只读子命令 → Passthrough（中央引擎将放行）
     match subcommand {
-        "log" | "status" | "diff_unstaged" | "diff_staged" | "blame"
-        | "show" | "file_at_head" | "list_branches" | "stash_list"
-        | "pull" | "fetch" | "stage" | "unstage" | "stage_all" | "init"
-        | "create_branch" | "stash_push" => {
-            PermissionResult::Passthrough
-        }
+        "log" | "status" | "diff_unstaged" | "diff_staged" | "blame" | "show" | "file_at_head"
+        | "list_branches" | "stash_list" | "pull" | "fetch" | "stage" | "unstage" | "stage_all"
+        | "init" | "create_branch" | "stash_push" => PermissionResult::Passthrough,
         // 破坏性子命令 → 默认 Ask
         _ => PermissionResult::Ask {
             reason: format!("Git {} 需要用户确认", subcommand),
-            suggestions: vec![
-                crate::permissions::PermissionUpdate {
-                    rule: format!("Git({})", subcommand),
-                    behavior: "allow".into(),
-                },
-            ],
+            suggestions: vec![crate::permissions::PermissionUpdate {
+                rule: format!("Git({})", subcommand),
+                behavior: "allow".into(),
+            }],
             danger: None,
         },
     }
@@ -64,17 +57,35 @@ mod tests {
     #[test]
     fn test_git_safe_read_commands() {
         let rules = PermissionRules::new();
-        assert!(matches!(check("log", &rules), PermissionResult::Passthrough));
-        assert!(matches!(check("status", &rules), PermissionResult::Passthrough));
-        assert!(matches!(check("blame", &rules), PermissionResult::Passthrough));
+        assert!(matches!(
+            check("log", &rules),
+            PermissionResult::Passthrough
+        ));
+        assert!(matches!(
+            check("status", &rules),
+            PermissionResult::Passthrough
+        ));
+        assert!(matches!(
+            check("blame", &rules),
+            PermissionResult::Passthrough
+        ));
     }
 
     #[test]
     fn test_git_destructive_commands_default_ask() {
         let rules = PermissionRules::new();
-        assert!(matches!(check("push", &rules), PermissionResult::Ask { .. }));
-        assert!(matches!(check("commit", &rules), PermissionResult::Ask { .. }));
-        assert!(matches!(check("checkout", &rules), PermissionResult::Ask { .. }));
+        assert!(matches!(
+            check("push", &rules),
+            PermissionResult::Ask { .. }
+        ));
+        assert!(matches!(
+            check("commit", &rules),
+            PermissionResult::Ask { .. }
+        ));
+        assert!(matches!(
+            check("checkout", &rules),
+            PermissionResult::Ask { .. }
+        ));
     }
 
     // ── E2: 额外的 git 权限测试 ──
@@ -84,9 +95,23 @@ mod tests {
         let rules = PermissionRules::new();
         // 穷举安全只读 / 安全写入子命令
         for cmd in &[
-            "log", "status", "diff_unstaged", "diff_staged", "blame", "show",
-            "file_at_head", "list_branches", "stash_list", "pull", "fetch",
-            "stage", "unstage", "stage_all", "init", "create_branch", "stash_push",
+            "log",
+            "status",
+            "diff_unstaged",
+            "diff_staged",
+            "blame",
+            "show",
+            "file_at_head",
+            "list_branches",
+            "stash_list",
+            "pull",
+            "fetch",
+            "stage",
+            "unstage",
+            "stage_all",
+            "init",
+            "create_branch",
+            "stash_push",
         ] {
             assert!(
                 matches!(check(cmd, &rules), PermissionResult::Passthrough),
@@ -101,8 +126,16 @@ mod tests {
     fn test_git_all_destructive_commands_ask() {
         let rules = PermissionRules::new();
         for cmd in &[
-            "push", "commit", "checkout", "stash_pop", "discard", "reset",
-            "rebase", "merge", "cherry_pick", "revert",
+            "push",
+            "commit",
+            "checkout",
+            "stash_pop",
+            "discard",
+            "reset",
+            "rebase",
+            "merge",
+            "cherry_pick",
+            "revert",
         ] {
             assert!(
                 matches!(check(cmd, &rules), PermissionResult::Ask { .. }),
@@ -122,9 +155,15 @@ mod tests {
             value: parse_rule_value("Git(push)"),
             danger: None,
         });
-        assert!(matches!(check("push", &rules), PermissionResult::Deny { .. }));
+        assert!(matches!(
+            check("push", &rules),
+            PermissionResult::Deny { .. }
+        ));
         // 其他命令不受 deny 规则影响
-        assert!(matches!(check("log", &rules), PermissionResult::Passthrough));
+        assert!(matches!(
+            check("log", &rules),
+            PermissionResult::Passthrough
+        ));
     }
 
     #[test]
@@ -157,7 +196,10 @@ mod tests {
         match r {
             PermissionResult::Ask { suggestions, .. } => {
                 assert!(!suggestions.is_empty(), "Ask must include a suggestion");
-                assert!(suggestions[0].rule.starts_with("Git("), "suggestion should be Git(subcommand)");
+                assert!(
+                    suggestions[0].rule.starts_with("Git("),
+                    "suggestion should be Git(subcommand)"
+                );
             }
             other => panic!("expected Ask, got: {:?}", other),
         }

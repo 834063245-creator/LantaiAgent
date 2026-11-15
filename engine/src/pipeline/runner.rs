@@ -8,12 +8,12 @@ use std::time::Instant;
 use rayon::prelude::*;
 use tracing::info;
 
-use crate::graph::merge::GraphMerger;
-use hologram_graph::Graph;
-use crate::path_utils::normalize_path;
 use crate::engine::GRAMMAR_LOADER;
+use crate::graph::merge::GraphMerger;
+use crate::path_utils::normalize_path;
 use crate::pipeline::discovery::discover_files;
 use crate::pipeline::parser::{FileData, ParallelParser};
+use hologram_graph::Graph;
 
 /// 分析流水线结果。
 pub struct PipelineResult {
@@ -81,7 +81,9 @@ fn analyze_project_with_budget(root: &Path, cache_budget: usize) -> PipelineResu
 
     eprintln!(
         "[pipeline] parsing {} files in batches of {} with {} rayon threads…",
-        file_count, BATCH, rayon::current_num_threads()
+        file_count,
+        BATCH,
+        rayon::current_num_threads()
     );
 
     let mut merger = GraphMerger::with_capacity(file_count * 40, file_count * 150);
@@ -143,16 +145,23 @@ fn analyze_project_with_budget(root: &Path, cache_budget: usize) -> PipelineResu
 
         eprintln!(
             "[pipeline] batch {}/{} files — parse {}ms, merge {}ms | total {} nodes, {} edges",
-            files_parsed + files_failed, file_count,
-            parse_ms, merge_ms,
-            merger.node_count(), merger.graph().edge_count()
+            files_parsed + files_failed,
+            file_count,
+            parse_ms,
+            merge_ms,
+            merger.node_count(),
+            merger.graph().edge_count()
         );
     }
 
     let parse_elapsed = parse_start.elapsed().as_secs_f64();
     eprintln!(
         "[pipeline] parse+merge done in {:.2}s — {} parsed, {} failed, {} nodes, {} edges",
-        parse_elapsed, files_parsed, files_failed, merger.node_count(), merger.graph().edge_count()
+        parse_elapsed,
+        files_parsed,
+        files_failed,
+        merger.node_count(),
+        merger.graph().edge_count()
     );
     if !cache_skipped_files.is_empty() {
         eprintln!(
@@ -192,8 +201,12 @@ fn analyze_project_with_budget(root: &Path, cache_budget: usize) -> PipelineResu
 
     info!(
         "[pipeline] done: {}/{} files parsed ({} failed) → {} nodes, {} edges in {:.2}s",
-        result.files_parsed, result.files_discovered, result.files_failed,
-        result.nodes_total, result.edges_total, result.elapsed_secs
+        result.files_parsed,
+        result.files_discovered,
+        result.files_failed,
+        result.nodes_total,
+        result.edges_total,
+        result.elapsed_secs
     );
 
     result
@@ -213,14 +226,24 @@ mod tests {
         fs::write(tmp.join("app").join("models.py"),
             "from django.db import models\n\nclass User(models.Model):\n    name = models.CharField()\n"
         ).unwrap();
-        fs::write(tmp.join("app").join("views.py"),
-            "from .models import User\n\ndef index():\n    return User.objects.all()\n"
-        ).unwrap();
+        fs::write(
+            tmp.join("app").join("views.py"),
+            "from .models import User\n\ndef index():\n    return User.objects.all()\n",
+        )
+        .unwrap();
 
         let result = analyze_project(&tmp);
         assert!(result.files_parsed >= 2);
-        assert!(result.nodes_total >= 2, "should find User class + index fn, got {}", result.nodes_total);
-        assert!(result.elapsed_secs < 10.0, "small project should parse in <10s, took {:.2}s", result.elapsed_secs);
+        assert!(
+            result.nodes_total >= 2,
+            "should find User class + index fn, got {}",
+            result.nodes_total
+        );
+        assert!(
+            result.elapsed_secs < 10.0,
+            "small project should parse in <10s, took {:.2}s",
+            result.elapsed_secs
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -252,7 +275,10 @@ mod tests {
         let result = analyze_project(&tmp);
         assert!(result.files_parsed >= 1);
         // Rust tree-sitter 应至少找到 main + add
-        assert!(result.nodes_total >= 2, "should find main + add in Rust file");
+        assert!(
+            result.nodes_total >= 2,
+            "should find main + add in Rust file"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -263,9 +289,11 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
 
-        fs::write(tmp.join("main.go"),
-            "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"hello\")\n}\n"
-        ).unwrap();
+        fs::write(
+            tmp.join("main.go"),
+            "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"hello\")\n}\n",
+        )
+        .unwrap();
 
         let result = analyze_project(&tmp);
         assert!(result.files_parsed >= 1);
@@ -281,7 +309,11 @@ mod tests {
         fs::create_dir_all(tmp.join("src").join("utils")).unwrap();
 
         fs::write(tmp.join("src").join("main.py"), "def main(): pass\n").unwrap();
-        fs::write(tmp.join("src").join("utils").join("helpers.py"), "def helper(): pass\n").unwrap();
+        fs::write(
+            tmp.join("src").join("utils").join("helpers.py"),
+            "def helper(): pass\n",
+        )
+        .unwrap();
 
         let result = analyze_project(&tmp);
         assert_eq!(result.files_parsed, 2);
@@ -302,13 +334,23 @@ mod tests {
         let zero = analyze_project_with_budget(&tmp, 0);
         assert_eq!(zero.files_parsed, 2);
         assert!(zero.parse_cache.is_empty(), "预算 0 时缓存应为空");
-        assert_eq!(zero.cache_skipped_files.len(), 2, "跳过清单应记录全部未缓存文件");
+        assert_eq!(
+            zero.cache_skipped_files.len(),
+            2,
+            "跳过清单应记录全部未缓存文件"
+        );
 
         let full = analyze_project(&tmp);
         assert!(full.cache_skipped_files.is_empty(), "预算充足时不应有跳过");
         assert_eq!(full.parse_cache.len(), 2);
-        assert_eq!(full.nodes_total, zero.nodes_total, "图节点数不得因缓存门控改变");
-        assert_eq!(full.edges_total, zero.edges_total, "图边数不得因缓存门控改变");
+        assert_eq!(
+            full.nodes_total, zero.nodes_total,
+            "图节点数不得因缓存门控改变"
+        );
+        assert_eq!(
+            full.edges_total, zero.edges_total,
+            "图边数不得因缓存门控改变"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }

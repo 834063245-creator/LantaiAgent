@@ -7,9 +7,7 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 
-use crate::permissions::{
-    bash, filesystem, git, web, PermissionContext, PermissionResult, Tool,
-};
+use crate::permissions::{bash, filesystem, git, web, PermissionContext, PermissionResult, Tool};
 
 // ═══════════════════════════════════════════════════════════════
 // ReadTool — read_file_content, read_file_base64, list_directory,
@@ -45,7 +43,8 @@ impl Tool for ReadTool {
     fn check_permissions(&self, ctx: &PermissionContext) -> PermissionResult {
         let rules = ctx.read_rules();
         // Phase 3: 反向映射 worktree 路径 → 主仓库路径以进行规则匹配 (spec §5.6)
-        let logical = ctx.reverse_map_path(std::path::Path::new(&self.path), self.agent_id.as_deref());
+        let logical =
+            ctx.reverse_map_path(std::path::Path::new(&self.path), self.agent_id.as_deref());
         let logical_str = logical.to_string_lossy().replace('\\', "/");
         filesystem::check_read_permission(&self.path, &ctx.sandbox, &rules, Some(&logical_str))
     }
@@ -158,7 +157,8 @@ impl Tool for EditTool {
     fn check_permissions(&self, ctx: &PermissionContext) -> PermissionResult {
         let rules = ctx.read_rules();
         // Phase 3: 反向映射 worktree 路径 → 主仓库路径以进行规则匹配 (spec §5.6)
-        let logical = ctx.reverse_map_path(std::path::Path::new(&self.path), self.agent_id.as_deref());
+        let logical =
+            ctx.reverse_map_path(std::path::Path::new(&self.path), self.agent_id.as_deref());
         let logical_str = logical.to_string_lossy().replace('\\', "/");
         filesystem::check_write_permission(&self.path, &ctx.sandbox, &rules, Some(&logical_str))
     }
@@ -235,8 +235,11 @@ impl Tool for GitTool {
     fn check_permissions(&self, ctx: &PermissionContext) -> PermissionResult {
         // 首先检查仓库路径是否可读
         let rules = ctx.read_rules();
-        let path_check = filesystem::check_read_permission(&self.repo_path, &ctx.sandbox, &rules, None);
-        if let PermissionResult::Deny { .. } = path_check { return path_check }
+        let path_check =
+            filesystem::check_read_permission(&self.repo_path, &ctx.sandbox, &rules, None);
+        if let PermissionResult::Deny { .. } = path_check {
+            return path_check;
+        }
         // 然后检查 git 子命令
         git::check(&self.subcommand, &rules)
     }
@@ -264,7 +267,23 @@ impl Tool for BrowserTool {
     fn is_read_only(&self) -> bool {
         matches!(
             self.action.as_str(),
-            "targets" | "discover" | "inspect" | "report" | "status" | "snapshot" | "console" | "network" | "network_detail" | "network_har" | "screenshot" | "audit" | "content" | "wait" | "dialog_query" | "sessions" | "cookies_list"
+            "targets"
+                | "discover"
+                | "inspect"
+                | "report"
+                | "status"
+                | "snapshot"
+                | "console"
+                | "network"
+                | "network_detail"
+                | "network_har"
+                | "screenshot"
+                | "audit"
+                | "content"
+                | "wait"
+                | "dialog_query"
+                | "sessions"
+                | "cookies_list"
         )
     }
 
@@ -297,7 +316,22 @@ impl Tool for BrowserTool {
         //    reload/click/type/press/scroll/select 不再重复弹窗；敏感目标与高危动作除外。
         if matches!(
             self.action.as_str(),
-            "navigate" | "back" | "forward" | "reload" | "click" | "type" | "press" | "scroll" | "select" | "hover" | "dialog" | "upload" | "viewport" | "new_tab" | "close_tab" | "switch_session"
+            "navigate"
+                | "back"
+                | "forward"
+                | "reload"
+                | "click"
+                | "type"
+                | "press"
+                | "scroll"
+                | "select"
+                | "hover"
+                | "dialog"
+                | "upload"
+                | "viewport"
+                | "new_tab"
+                | "close_tab"
+                | "switch_session"
         ) {
             return PermissionResult::Passthrough;
         }
@@ -369,7 +403,13 @@ impl Tool for DesktopTool {
         // screenshot 刻意不在列：高隐私面，走 Ask（第 8 层）。
         matches!(
             self.action.as_str(),
-            "probe" | "uia_tree" | "uia_find" | "uia_read" | "uia_wait" | "uia_window_shot" | "audit"
+            "probe"
+                | "uia_tree"
+                | "uia_find"
+                | "uia_read"
+                | "uia_wait"
+                | "uia_window_shot"
+                | "audit"
         )
     }
 
@@ -389,7 +429,9 @@ impl Tool for DesktopTool {
         let rules = ctx.read_rules();
         // 1. 工具级 Deny — 最高优先级
         if let Some(rule) = rules.find_deny("Desktop", None) {
-            return PermissionResult::Deny { reason: rule.explain() };
+            return PermissionResult::Deny {
+                reason: rule.explain(),
+            };
         }
         // 2. 工具级 Allow
         if rules.find_allow("Desktop", None).is_some() {
@@ -406,7 +448,10 @@ impl Tool for DesktopTool {
         }
         // 5-8. Ask 类：接管授权 / 敏感目标 / 物理输入 / 截图
         let title = self.window_title.as_deref().unwrap_or("未知窗口");
-        let hwnd_note = self.hwnd.map(|h| format!("（hwnd={h}）")).unwrap_or_default();
+        let hwnd_note = self
+            .hwnd
+            .map(|h| format!("（hwnd={h}）"))
+            .unwrap_or_default();
         let reason = match self.action.as_str() {
             "uia_grant" => format!(
                 "Agent 请求接管桌面窗口「{title}」{hwnd_note}。批准后该窗口上的标准控件操作（点击/输入/\
@@ -467,7 +512,11 @@ pub(crate) fn classify_uia_action(
         _ => false,
     };
     if sensitive {
-        if kind == "type" { "uia_type_sensitive" } else { "uia_click_sensitive" }
+        if kind == "type" {
+            "uia_type_sensitive"
+        } else {
+            "uia_click_sensitive"
+        }
     } else if uia_action_needs_physical(kind, caps) {
         "uia_physical"
     } else if granted {
@@ -495,7 +544,8 @@ mod office_permission_tests {
 
     /// 建一个临时项目根 + 可选 `.lantai/permissions.json`，返回 (根, ctx)。
     fn ctx_with_rules(tag: &str, rules_json: Option<&str>) -> (PathBuf, PermissionContext) {
-        let dir = std::env::temp_dir().join(format!("lantai_office_perm_{}_{tag}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("lantai_office_perm_{}_{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join(".lantai")).unwrap();
         std::fs::create_dir_all(dir.join(".git")).unwrap();
@@ -509,7 +559,10 @@ mod office_permission_tests {
     }
 
     fn office(targets: Vec<(String, bool)>) -> OfficeTool {
-        OfficeTool { targets, agent_id: None }
+        OfficeTool {
+            targets,
+            agent_id: None,
+        }
     }
 
     fn kind(r: &PermissionResult) -> &'static str {
@@ -545,9 +598,16 @@ mod office_permission_tests {
             .join("x.xlsx")
             .to_string_lossy()
             .replace('\\', "/");
-        assert_eq!(kind(&office(vec![(outside, true)]).check_permissions(&ctx)), "ask");
+        assert_eq!(
+            kind(&office(vec![(outside, true)]).check_permissions(&ctx)),
+            "ask"
+        );
         // 项目内但受保护路径（.git/config）：系统 Edit deny 规则**硬拒**（比 safety Ask 更严）
-        let protected = root.join(".git").join("config").to_string_lossy().replace('\\', "/");
+        let protected = root
+            .join(".git")
+            .join("config")
+            .to_string_lossy()
+            .replace('\\', "/");
         assert_eq!(
             kind(&office(vec![(protected, true)]).check_permissions(&ctx)),
             "deny",
@@ -617,26 +677,51 @@ mod desktop_permission_tests {
     fn desktop_permission_matrix() {
         let ctx = ctx_empty();
         // 只读 → Passthrough（引擎兜底放行）
-        for a in ["probe", "uia_tree", "uia_find", "uia_read", "uia_wait", "uia_window_shot", "audit"] {
-            assert_eq!(kind(&desktop(a).check_permissions(&ctx)), "passthrough", "{a} 应只读放行");
+        for a in [
+            "probe",
+            "uia_tree",
+            "uia_find",
+            "uia_read",
+            "uia_wait",
+            "uia_window_shot",
+            "audit",
+        ] {
+            assert_eq!(
+                kind(&desktop(a).check_permissions(&ctx)),
+                "passthrough",
+                "{a} 应只读放行"
+            );
         }
         // 已授权窗口 pattern 动作 → Passthrough
-        assert_eq!(kind(&desktop("uia_pattern").check_permissions(&ctx)), "passthrough");
+        assert_eq!(
+            kind(&desktop("uia_pattern").check_permissions(&ctx)),
+            "passthrough"
+        );
         // 首次接管 → Ask（文案含窗口标题）
         match desktop("uia_grant").check_permissions(&ctx) {
             PermissionResult::Ask { reason, .. } => {
-                assert!(reason.contains("测试窗口"), "接管文案应含窗口标题: {reason}");
+                assert!(
+                    reason.contains("测试窗口"),
+                    "接管文案应含窗口标题: {reason}"
+                );
             }
             other => panic!("uia_grant 应 Ask，实际 {}", kind(&other)),
         }
         // 敏感目标 → Ask（文案区分 click/type）
         for a in ["uia_click_sensitive", "uia_type_sensitive"] {
-            assert_eq!(kind(&desktop(a).check_permissions(&ctx)), "ask", "{a} 应 Ask");
+            assert_eq!(
+                kind(&desktop(a).check_permissions(&ctx)),
+                "ask",
+                "{a} 应 Ask"
+            );
         }
         // 物理输入 → Ask（含 hwnd）
         match desktop("uia_physical").check_permissions(&ctx) {
             PermissionResult::Ask { reason, .. } => {
-                assert!(reason.contains("hwnd=1234"), "物理输入文案应含 hwnd: {reason}");
+                assert!(
+                    reason.contains("hwnd=1234"),
+                    "物理输入文案应含 hwnd: {reason}"
+                );
             }
             other => panic!("uia_physical 应 Ask，实际 {}", kind(&other)),
         }
@@ -644,7 +729,10 @@ mod desktop_permission_tests {
         assert_eq!(kind(&desktop("screenshot").check_permissions(&ctx)), "ask");
         // keys/activate → Ask
         assert_eq!(kind(&desktop("uia_keys").check_permissions(&ctx)), "ask");
-        assert_eq!(kind(&desktop("uia_activate").check_permissions(&ctx)), "ask");
+        assert_eq!(
+            kind(&desktop("uia_activate").check_permissions(&ctx)),
+            "ask"
+        );
         // 旧名兜底 → Ask
         assert_eq!(kind(&desktop("whatever").check_permissions(&ctx)), "ask");
         // is_read_only：screenshot 不在列
@@ -658,32 +746,78 @@ mod desktop_permission_tests {
     /// 与 desktop_uia_write 的编排逻辑共享此纯函数，矩阵锁住优先级序。
     #[test]
     fn classify_uia_action_matrix() {
-        let full = UiaTargetCaps { has_invoke: true, has_toggle: true, has_select: true, has_value: true, has_scroll: true };
+        let full = UiaTargetCaps {
+            has_invoke: true,
+            has_toggle: true,
+            has_select: true,
+            has_value: true,
+            has_scroll: true,
+        };
         let bare = UiaTargetCaps::default();
 
         // 普通控件 + 已授权 → pattern 放行
-        assert_eq!(classify_uia_action("click", "OK", false, "", &full, true), "uia_pattern");
+        assert_eq!(
+            classify_uia_action("click", "OK", false, "", &full, true),
+            "uia_pattern"
+        );
         // 普通控件 + 未授权 → 首次接管
-        assert_eq!(classify_uia_action("click", "OK", false, "", &full, false), "uia_grant");
+        assert_eq!(
+            classify_uia_action("click", "OK", false, "", &full, false),
+            "uia_grant"
+        );
         // 敏感词点击：即使已授权也每次单独 Ask（优先级最高）
         for name in ["确认支付", "Pay now", "Delete account"] {
-            assert_eq!(classify_uia_action("click", name, false, "", &full, true), "uia_click_sensitive", "{name}");
+            assert_eq!(
+                classify_uia_action("click", name, false, "", &full, true),
+                "uia_click_sensitive",
+                "{name}"
+            );
         }
         // 右键命中敏感词 → click_sensitive（物理性被敏感性覆盖）
-        assert_eq!(classify_uia_action("right_click", "删除", false, "", &bare, true), "uia_click_sensitive");
+        assert_eq!(
+            classify_uia_action("right_click", "删除", false, "", &bare, true),
+            "uia_click_sensitive"
+        );
         // type：密码框 / 已填值 → sensitive（优先于 has_value 判定）
-        assert_eq!(classify_uia_action("type", "Password", true, "", &full, true), "uia_type_sensitive");
-        assert_eq!(classify_uia_action("type", "搜索", false, "旧值", &full, true), "uia_type_sensitive");
+        assert_eq!(
+            classify_uia_action("type", "Password", true, "", &full, true),
+            "uia_type_sensitive"
+        );
+        assert_eq!(
+            classify_uia_action("type", "搜索", false, "旧值", &full, true),
+            "uia_type_sensitive"
+        );
         // type：普通空输入框 + 已授权 → pattern
-        assert_eq!(classify_uia_action("type", "搜索", false, "", &full, true), "uia_pattern");
+        assert_eq!(
+            classify_uia_action("type", "搜索", false, "", &full, true),
+            "uia_pattern"
+        );
         // 无 pattern 可用 → 物理（已授权也拦不住，执行前要租约）
-        assert_eq!(classify_uia_action("click", "OK", false, "", &bare, true), "uia_physical");
-        assert_eq!(classify_uia_action("right_click", "图标", false, "", &full, true), "uia_physical");
-        assert_eq!(classify_uia_action("type", "画布输入", false, "", &bare, true), "uia_physical");
-        assert_eq!(classify_uia_action("scroll", "列表", false, "", &bare, true), "uia_physical");
+        assert_eq!(
+            classify_uia_action("click", "OK", false, "", &bare, true),
+            "uia_physical"
+        );
+        assert_eq!(
+            classify_uia_action("right_click", "图标", false, "", &full, true),
+            "uia_physical"
+        );
+        assert_eq!(
+            classify_uia_action("type", "画布输入", false, "", &bare, true),
+            "uia_physical"
+        );
+        assert_eq!(
+            classify_uia_action("scroll", "列表", false, "", &bare, true),
+            "uia_physical"
+        );
         // select/expand：pattern-only，永不物理
-        assert_eq!(classify_uia_action("select", "列表项", false, "", &bare, true), "uia_pattern");
-        assert_eq!(classify_uia_action("expand", "组合框", false, "", &bare, false), "uia_grant");
+        assert_eq!(
+            classify_uia_action("select", "列表项", false, "", &bare, true),
+            "uia_pattern"
+        );
+        assert_eq!(
+            classify_uia_action("expand", "组合框", false, "", &bare, false),
+            "uia_grant"
+        );
         assert!(!uia_action_needs_physical("select", &bare));
         assert!(!uia_action_needs_physical("expand", &bare));
     }

@@ -27,6 +27,9 @@ mod tests {
     #[test]
     fn err_formats_code_prefix() {
         assert_eq!(err(codes::INTERNAL, "x"), "[UIA_INTERNAL] x");
-        assert_eq!(err(codes::STALE_REF, "控件已消失"), "[UIA_STALE_REF] 控件已消失");
+        assert_eq!(
+            err(codes::STALE_REF, "控件已消失"),
+            "[UIA_STALE_REF] 控件已消失"
+        );
     }
 }

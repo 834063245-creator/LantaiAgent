@@ -1,11 +1,15 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::analysis::{coupling_report, detect_cycles, dataflow_engine::query_dataflow_files};
+use crate::analysis::{coupling_report, dataflow_engine::query_dataflow_files, detect_cycles};
 use crate::community::louvain::detect_communities;
-use hologram_graph::{Graph, NodeKind};
 use crate::pipeline::discovery::is_ignored_path;
-use crate::routing::{constraints::{ConstraintConfig, check_constraints}, signals::{DataflowSignalCounts, SignalGenerator}, summary::generate_summary};
+use crate::routing::{
+    constraints::{check_constraints, ConstraintConfig},
+    signals::{DataflowSignalCounts, SignalGenerator},
+    summary::generate_summary,
+};
+use hologram_graph::{Graph, NodeKind};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -54,7 +58,8 @@ fn save_violation_ids(project_root: &Path, ids: &[String]) {
 
 /// 从违规 Value 对象切片中提取违规 ID。
 fn extract_violation_ids(violations: &[Value]) -> Vec<String> {
-    violations.iter()
+    violations
+        .iter()
         .filter_map(|v| v["signal"]["violation_id"].as_str().map(String::from))
         .collect()
 }
@@ -121,11 +126,17 @@ fn quiet_check_result(changed_files: &[String], one_line: &str, baseline_seed: b
 }
 
 /// run_full_check — 等价于 Python preflight.py 的 run_full_check()
-pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _project_root: &str) -> Value {
+pub fn run_full_check(
+    before: &Graph,
+    after: &Graph,
+    changed_files: &[String],
+    _project_root: &str,
+) -> Value {
     // 过滤掉被忽略目录（.lantai、.git、node_modules 等）的变更
     // 这些是工具/运行时产物 — 非用户源码 — 不应在简报中
     // 产生约束违规。
-    let changed_files: Vec<String> = changed_files.iter()
+    let changed_files: Vec<String> = changed_files
+        .iter()
         .filter(|f| !is_ignored_path(f))
         .cloned()
         .collect();
@@ -152,12 +163,15 @@ pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _
 
     // ── 数据流：对 changed_files 运行以生成 L3/L4 信号 ──
     let df_counts: Option<DataflowSignalCounts> = if !changed_files.is_empty() {
-        let paths: Vec<std::path::PathBuf> = changed_files.iter()
-            .map(std::path::PathBuf::from)
-            .collect();
+        let paths: Vec<std::path::PathBuf> =
+            changed_files.iter().map(std::path::PathBuf::from).collect();
         let df_results = query_dataflow_files(&paths);
-        let mut l3_shared = 0usize; let mut l3_reads = 0usize; let mut l3_writes = 0usize;
-        let mut l4_triggers = 0usize; let mut l4_awaits = 0usize; let mut l4_seqs = 0usize;
+        let mut l3_shared = 0usize;
+        let mut l3_reads = 0usize;
+        let mut l3_writes = 0usize;
+        let mut l4_triggers = 0usize;
+        let mut l4_awaits = 0usize;
+        let mut l4_seqs = 0usize;
         for r in &df_results {
             if let Ok(df) = &r.result {
                 l3_shared += df.shared.len();
@@ -172,29 +186,45 @@ pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _
         }
         let _df_l4_total = l4_triggers + l4_awaits + l4_seqs;
         Some(DataflowSignalCounts {
-            l3_shared_vars: l3_shared, l3_reads, l3_writes,
-            l4_triggers, l4_awaits, l4_sequences: l4_seqs,
+            l3_shared_vars: l3_shared,
+            l3_reads,
+            l3_writes,
+            l4_triggers,
+            l4_awaits,
+            l4_sequences: l4_seqs,
         })
     } else {
         None
     };
     // 有数据流 L4 计数时使用，否则回退到 graph 边
-    let effective_l4 = df_counts.as_ref()
+    let effective_l4 = df_counts
+        .as_ref()
         .map(|d| d.l4_triggers + d.l4_awaits + d.l4_sequences)
         .unwrap_or(l4_count);
 
-    let signals = SignalGenerator::new().generate(before, after, changed_files, effective_l4, cycle_count, df_counts.as_ref());
+    let signals = SignalGenerator::new().generate(
+        before,
+        after,
+        changed_files,
+        effective_l4,
+        cycle_count,
+        df_counts.as_ref(),
+    );
     let config = ConstraintConfig::from_yaml_file(&PathBuf::from(_project_root));
     let constraint_result = check_constraints(&signals, &config);
-    let violations: Vec<Value> = constraint_result["violations"].as_array().cloned().unwrap_or_default();
+    let violations: Vec<Value> = constraint_result["violations"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let summary = generate_summary(changed_files, &violations, l4_count, cycle_count);
 
     // ── 违规差异：将当前 ID 与上次检查快照对比 ──
     let current_ids: Vec<String> = extract_violation_ids(&violations);
     let previous_ids: HashSet<String> = load_previous_violation_ids(&PathBuf::from(_project_root))
-        .into_iter().collect();
+        .into_iter()
+        .collect();
     let current_set: HashSet<String> = current_ids.iter().cloned().collect();
-    let new_count      = current_set.difference(&previous_ids).count() as u32;
+    let new_count = current_set.difference(&previous_ids).count() as u32;
     let resolved_count = previous_ids.difference(&current_set).count() as u32;
     let persistent_count = current_set.intersection(&previous_ids).count() as u32;
     // 保存当前 ID，以便下次检查可以与此运行计算差异。
@@ -208,7 +238,10 @@ pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _
         let mut seed_nodes: HashSet<&str> = HashSet::new();
         for (_, node) in after.nodes_iter() {
             if let Some(ref loc) = node.location {
-                if changed_files.iter().any(|f| loc.starts_with(f.as_str()) || loc.contains(f.as_str())) {
+                if changed_files
+                    .iter()
+                    .any(|f| loc.starts_with(f.as_str()) || loc.contains(f.as_str()))
+                {
                     seed_nodes.insert(node.id.as_str());
                 }
             }
@@ -227,7 +260,9 @@ pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _
             adj.entry(&edge.target).or_default().push(&edge.source);
         }
         while let Some((cur, depth)) = queue.pop_front() {
-            if depth >= 3 { continue; }
+            if depth >= 3 {
+                continue;
+            }
             if let Some(nbs) = adj.get(cur) {
                 for &nb in nbs {
                     if visited.insert(nb) {
@@ -247,7 +282,8 @@ pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _
             node_to_comm.insert(nid.as_str(), ci);
         }
     }
-    let cross_community_edges = after.edges_iter()
+    let cross_community_edges = after
+        .edges_iter()
         .filter(|(_, e)| {
             let sc = node_to_comm.get(e.source.as_str());
             let tc = node_to_comm.get(e.target.as_str());
@@ -255,7 +291,7 @@ pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _
         })
         .count();
 
-        // ── 线程冲突 ──
+    // ── 线程冲突 ──
     let new_thread_conflicts = 0u32;
 
     // ── api_signature_changes：统计变更的函数/方法节点 ──
@@ -264,7 +300,9 @@ pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _
     } else {
         let mut changed = 0u32;
         for (nid, after_node) in after.nodes_iter() {
-            if !matches!(after_node.kind, NodeKind::Symbol) { continue; }
+            if !matches!(after_node.kind, NodeKind::Symbol) {
+                continue;
+            }
             if let Some(before_node) = before.get_node(nid) {
                 // 入度/出度不同则计为变更
                 if before_node.out_degree != after_node.out_degree
@@ -308,8 +346,8 @@ pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _
 
 #[cfg(test)]
 mod tests {
-    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 
     #[test]
     fn test_preflight_empty_graphs() {
@@ -433,7 +471,10 @@ mod tests {
 
         // 无文件变更 — 应为静默
         let r = run_full_check(&before, &after, &[], ".");
-        assert!(r["passed"].as_bool().unwrap(), "stale baseline without changed_files should pass");
+        assert!(
+            r["passed"].as_bool().unwrap(),
+            "stale baseline without changed_files should pass"
+        );
         assert_eq!(r["violation_count"], 0, "should have zero violations");
         assert_eq!(r["one_line"], "无新变更");
         assert_eq!(r["new_cycles"], 0, "should report 0 new cycles");
@@ -462,9 +503,18 @@ mod tests {
 
         // 有变更文件 → 应仍触发
         let r = run_full_check(&before, &after, &["src/new_module.rs".into()], ".");
-        assert!(!r["passed"].as_bool().unwrap(), "real changes should not pass");
-        assert!(r["violation_count"].as_u64().unwrap() > 0, "should have violations");
-        assert!(r["new_cycles"].as_u64().unwrap() > 0, "should detect new cycles");
+        assert!(
+            !r["passed"].as_bool().unwrap(),
+            "real changes should not pass"
+        );
+        assert!(
+            r["violation_count"].as_u64().unwrap() > 0,
+            "should have violations"
+        );
+        assert!(
+            r["new_cycles"].as_u64().unwrap() > 0,
+            "should detect new cycles"
+        );
     }
 
     /// 回归测试：对 `.hologram/` / `.lantai/` 等被忽略目录的变更不得
@@ -476,15 +526,29 @@ mod tests {
         g.add_node(Node::new("a", "fn_a", NodeKind::Symbol));
 
         // 仅被忽略路径 → 应为静默（无违规）
-        let r = run_full_check(&g, &g, &[
-            ".lantai/baseline.json".into(),
-            ".lantai/memory/context.json".into(),
-            ".git/HEAD".into(),
-            "node_modules/express/index.js".into(),
-        ], ".");
-        assert!(r["passed"].as_bool().unwrap(), "ignored paths should not produce violations");
-        assert_eq!(r["violation_count"], 0, "ignored paths should have zero violations");
-        assert_eq!(r["total_changed_files"], 0, "ignored paths should be filtered out");
+        let r = run_full_check(
+            &g,
+            &g,
+            &[
+                ".lantai/baseline.json".into(),
+                ".lantai/memory/context.json".into(),
+                ".git/HEAD".into(),
+                "node_modules/express/index.js".into(),
+            ],
+            ".",
+        );
+        assert!(
+            r["passed"].as_bool().unwrap(),
+            "ignored paths should not produce violations"
+        );
+        assert_eq!(
+            r["violation_count"], 0,
+            "ignored paths should have zero violations"
+        );
+        assert_eq!(
+            r["total_changed_files"], 0,
+            "ignored paths should be filtered out"
+        );
     }
 
     /// 混合场景：被忽略路径 + 真实源文件 → 仅真实文件被计入。
@@ -493,13 +557,24 @@ mod tests {
         let mut g = Graph::new();
         g.add_node(Node::new("a", "fn_a", NodeKind::Symbol));
 
-        let r = run_full_check(&g, &g, &[
-            ".hologram/baseline.json".into(),  // 被忽略 — 否则会误报 L5
-            "migrations/0001_init.py".into(),   // 真实文件 — 应为 L5
-        ], ".");
+        let r = run_full_check(
+            &g,
+            &g,
+            &[
+                ".hologram/baseline.json".into(), // 被忽略 — 否则会误报 L5
+                "migrations/0001_init.py".into(), // 真实文件 — 应为 L5
+            ],
+            ".",
+        );
         // 仅迁移文件应产生违规
-        assert!(!r["passed"].as_bool().unwrap(), "migration file should produce violation");
-        assert_eq!(r["violation_count"], 1, "only 1 violation from migration, not from .lantai");
+        assert!(
+            !r["passed"].as_bool().unwrap(),
+            "migration file should produce violation"
+        );
+        assert_eq!(
+            r["violation_count"], 1,
+            "only 1 violation from migration, not from .lantai"
+        );
         assert_eq!(r["total_changed_files"], 1, "only 1 real changed file");
     }
 }

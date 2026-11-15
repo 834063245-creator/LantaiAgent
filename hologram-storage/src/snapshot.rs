@@ -45,7 +45,10 @@ pub fn snapshot_tmp_path(project_root: &Path) -> PathBuf {
 /// 未设置或非法值（非 usize 可解析）回退默认 5_000_000。
 pub fn snapshot_min_edges() -> usize {
     match std::env::var("HOLOGRAM_SNAPSHOT_MIN_EDGES") {
-        Ok(v) => v.trim().parse::<usize>().unwrap_or(DEFAULT_SNAPSHOT_MIN_EDGES),
+        Ok(v) => v
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(DEFAULT_SNAPSHOT_MIN_EDGES),
         Err(_) => DEFAULT_SNAPSHOT_MIN_EDGES,
     }
 }
@@ -80,7 +83,11 @@ pub(crate) fn parse_snapshot_header(bytes: &[u8]) -> Result<(String, usize), Str
     if bytes.len() < 8 {
         return Err(format!("snapshot header 截断（{} 字节）", bytes.len()));
     }
-    let len = u64::from_le_bytes(bytes[..8].try_into().expect("长度 ≥ 8 已前置校验，切片必为 8 字节"));
+    let len = u64::from_le_bytes(
+        bytes[..8]
+            .try_into()
+            .expect("长度 ≥ 8 已前置校验，切片必为 8 字节"),
+    );
     if len == 0 || len > MAX_TOKEN_LEN {
         return Err(format!("snapshot token 长度 {} 非法", len));
     }
@@ -141,8 +148,7 @@ impl SnapshotNode {
             kind: node.kind,
             location: node.location.clone(),
             snippet: node.snippet.clone(),
-            properties: serde_json::to_string(&node.properties)
-                .unwrap_or_else(|_| "{}".into()),
+            properties: serde_json::to_string(&node.properties).unwrap_or_else(|_| "{}".into()),
             out_degree: node.out_degree,
             in_degree: node.in_degree,
             non_defines_in_degree: node.non_defines_in_degree,
@@ -228,11 +234,15 @@ pub(crate) static SNAPSHOT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::ne
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hologram_graph::{Edge, Graph, Node, NodeKind};
     use crate::memory::MemoryIndex;
+    use hologram_graph::{Edge, Graph, Node, NodeKind};
 
     fn unique_tmp(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("hologram_test_snap_{}_{}", name, std::process::id()))
+        std::env::temp_dir().join(format!(
+            "hologram_test_snap_{}_{}",
+            name,
+            std::process::id()
+        ))
     }
 
     fn build_rich_index() -> MemoryIndex {
@@ -255,7 +265,13 @@ mod tests {
         e1.coupling_depth = 2;
         e1.temporal_delay_sec = Some(0.5);
         e1.lsp_resolved = true;
-        let e2 = Edge::synthesized("e2", "src/b.rs::fn_b", "src/c.rs::Cls", EdgeKind::Usage, "test-channel");
+        let e2 = Edge::synthesized(
+            "e2",
+            "src/b.rs::fn_b",
+            "src/c.rs::Cls",
+            EdgeKind::Usage,
+            "test-channel",
+        );
         g.add_edge_unchecked(e1);
         g.add_edge_unchecked(e2);
         let (nodes, edges) = g.into_parts();
@@ -282,7 +298,12 @@ mod tests {
         let _guard = SNAPSHOT_ENV_LOCK.lock().unwrap();
         for bad in ["not_a_number", "-1", "", "1.5"] {
             std::env::set_var("HOLOGRAM_SNAPSHOT_MIN_EDGES", bad);
-            assert_eq!(snapshot_min_edges(), 5_000_000, "非法值 {:?} 应回退默认", bad);
+            assert_eq!(
+                snapshot_min_edges(),
+                5_000_000,
+                "非法值 {:?} 应回退默认",
+                bad
+            );
         }
         std::env::remove_var("HOLOGRAM_SNAPSHOT_MIN_EDGES");
     }
@@ -318,7 +339,10 @@ mod tests {
         assert_eq!(n1.location.as_deref(), Some("src/a.rs:10"));
         assert_eq!(n1.community_id, Some(7));
         assert_eq!(n1.position, Some([1.0, 2.0, 3.0]));
-        assert_eq!(n1.properties, serde_json::json!({"role": "entry", "weight": 3}));
+        assert_eq!(
+            n1.properties,
+            serde_json::json!({"role": "entry", "weight": 3})
+        );
 
         // 辅助索引可查
         assert_eq!(loaded.get_nodes_by_name("fn_b").len(), 1);
@@ -360,7 +384,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(hologram_graph::data_dir(&tmp)).unwrap();
         // 垃圾字节 —— bincode 反序列化必须失败
-        std::fs::write(snapshot_path(&tmp), b"\xde\xad\xbe\xef garbage not bincode \x00\x01").unwrap();
+        std::fs::write(
+            snapshot_path(&tmp),
+            b"\xde\xad\xbe\xef garbage not bincode \x00\x01",
+        )
+        .unwrap();
         let result = MemoryIndex::load_snapshot(&tmp);
         assert!(result.is_err(), "损坏快照应返回 Err");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -389,8 +417,11 @@ mod tests {
         // 无头部旧格式（R9 初版：裸 bincode，开头是 arena 长度 u64）→ Err。
         // 旧文件前 8 字节被当成 token 长度时偶可读出 NUL 串，
         // 形状校验必须把它挡在「损坏」一侧。
-        let legacy =
-            bincode::serde::encode_to_vec(&crate::memory::to_snapshot(&idx), bincode::config::standard()).unwrap();
+        let legacy = bincode::serde::encode_to_vec(
+            &crate::memory::to_snapshot(&idx),
+            bincode::config::standard(),
+        )
+        .unwrap();
         std::fs::write(snapshot_path(&tmp), &legacy).unwrap();
         assert!(
             peek_snapshot_token(&snapshot_path(&tmp)).is_err(),

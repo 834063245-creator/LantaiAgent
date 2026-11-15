@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+use super::super::DetectedRoute;
 use crate::engine::GRAMMAR_LOADER;
 use std::collections::HashSet;
-use super::super::DetectedRoute;
 
 pub(crate) fn is_fastapi_candidate(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -16,7 +16,10 @@ pub(crate) fn detect_fastapi_routes(file: &str, source: &str) -> Vec<DetectedRou
     let mut result = Vec::new();
 
     let mut parser = tree_sitter::Parser::new();
-    let lang = match GRAMMAR_LOADER.get("py") { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get("py") {
+        Some(l) => l,
+        None => return result,
+    };
     if parser.set_language(&lang).is_err() {
         return result;
     }
@@ -26,8 +29,17 @@ pub(crate) fn detect_fastapi_routes(file: &str, source: &str) -> Vec<DetectedRou
     };
 
     let http_methods: HashSet<&str> = [
-        "get", "post", "put", "delete", "patch", "head", "options", "trace",
-        "websocket", "api_route", "add_api_route",
+        "get",
+        "post",
+        "put",
+        "delete",
+        "patch",
+        "head",
+        "options",
+        "trace",
+        "websocket",
+        "api_route",
+        "add_api_route",
     ]
     .iter()
     .cloned()
@@ -49,7 +61,10 @@ pub(crate) fn detect_fastapi_routes(file: &str, source: &str) -> Vec<DetectedRou
                     "decorator" => decorators.push(child),
                     "function_definition" | "async_function_definition" | "class_definition" => {
                         if let Some(name_node) = child.child_by_field_name("name") {
-                            handler_name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                            handler_name = name_node
+                                .utf8_text(source.as_bytes())
+                                .unwrap_or("")
+                                .to_string();
                         }
                     }
                     _ => {}
@@ -58,7 +73,8 @@ pub(crate) fn detect_fastapi_routes(file: &str, source: &str) -> Vec<DetectedRou
 
             // 对每个装饰器尝试 HTTP 方法模式匹配
             for deco in &decorators {
-                if let Some((method, path)) = extract_fastapi_decorator(deco, source, &http_methods) {
+                if let Some((method, path)) = extract_fastapi_decorator(deco, source, &http_methods)
+                {
                     let line = node.start_position().row + 1;
                     result.push((method, path, handler_name.clone(), file.to_string(), line));
                 }
@@ -97,7 +113,8 @@ fn extract_fastapi_decorator(
 
     // 提取方法名（属性中的最后一个标识符）
     let mut attr_cursor = func.walk();
-    let method = func.children(&mut attr_cursor)
+    let method = func
+        .children(&mut attr_cursor)
         .filter(|c| c.kind() == "identifier")
         .last()
         .map(|c| c.utf8_text(source.as_bytes()).unwrap_or("").to_uppercase())?;

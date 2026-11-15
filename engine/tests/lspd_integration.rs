@@ -45,7 +45,11 @@ fn test_ensure_daemon_spawns_real_binary_and_serves() {
     // status 往返：全部服务器配置在列（宿主应答，非本地池——本地池为空）
     let status = LspManager::daemon_lsp_status(&root_str)
         .expect("status should come from the spawned daemon");
-    assert!(status.len() >= 9, "all server configs listed, got {}", status.len());
+    assert!(
+        status.len() >= 9,
+        "all server configs listed, got {}",
+        status.len()
+    );
 
     // 端口文件真源可读回端口号；行协议 ping 验证
     let port: u16 = std::fs::read_to_string(lsp_daemon::port_file(&root))

@@ -122,7 +122,9 @@ mod tests {
 
     /// 持锁跑闭包（env 改动与其它用例串行）。
     fn with_env_lock<T>(f: impl FnOnce() -> T) -> T {
-        let _guard = ENGINE_ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENGINE_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         f()
     }
 
@@ -134,8 +136,14 @@ mod tests {
             std::env::set_var(ENGINE_EXE_ENV, marker);
             let cands = engine_exe_candidates();
             std::env::remove_var(ENGINE_EXE_ENV);
-            let first = cands.first().map(|p| p.to_string_lossy().replace('\\', "/"));
-            assert_eq!(first, Some(marker.to_string()), "env 覆盖必须排首位: {cands:?}");
+            let first = cands
+                .first()
+                .map(|p| p.to_string_lossy().replace('\\', "/"));
+            assert_eq!(
+                first,
+                Some(marker.to_string()),
+                "env 覆盖必须排首位: {cands:?}"
+            );
         });
     }
 
@@ -144,10 +152,15 @@ mod tests {
     fn candidates_include_exe_sibling() {
         with_env_lock(|| {
             let cands = engine_exe_candidates();
-            let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf()));
+            let exe_dir = std::env::current_exe()
+                .ok()
+                .and_then(|e| e.parent().map(|d| d.to_path_buf()));
             let Some(dir) = exe_dir else { return };
             let want = dir.join(ENGINE_EXE);
-            assert!(cands.contains(&want), "候选梯必须含宿主 exe 同级 {want:?}: {cands:?}");
+            assert!(
+                cands.contains(&want),
+                "候选梯必须含宿主 exe 同级 {want:?}: {cands:?}"
+            );
         });
     }
 
@@ -156,11 +169,16 @@ mod tests {
     fn candidates_include_exe_parent() {
         with_env_lock(|| {
             let cands = engine_exe_candidates();
-            let parent_cand = std::env::current_exe()
-                .ok()
-                .and_then(|e| e.parent().and_then(|d| d.parent()).map(|p| p.join(ENGINE_EXE)));
+            let parent_cand = std::env::current_exe().ok().and_then(|e| {
+                e.parent()
+                    .and_then(|d| d.parent())
+                    .map(|p| p.join(ENGINE_EXE))
+            });
             if let Some(want) = parent_cand {
-                assert!(cands.contains(&want), "候选梯必须含宿主 exe 上一级 {want:?}: {cands:?}");
+                assert!(
+                    cands.contains(&want),
+                    "候选梯必须含宿主 exe 上一级 {want:?}: {cands:?}"
+                );
             }
         });
     }
@@ -182,7 +200,8 @@ mod tests {
     #[test]
     fn env_override_hits_real_file() {
         with_env_lock(|| {
-            let tmp = std::env::temp_dir().join(format!("lantai_engine_probe_{}", std::process::id()));
+            let tmp =
+                std::env::temp_dir().join(format!("lantai_engine_probe_{}", std::process::id()));
             let _ = std::fs::create_dir_all(&tmp);
             let fake = tmp.join(ENGINE_EXE);
             std::fs::write(&fake, b"stub").unwrap();
@@ -208,7 +227,9 @@ mod tests {
             // 「不存在的 env 目标本身不被当成命中」。
             if let Some(p) = hit {
                 assert!(
-                    !p.to_string_lossy().replace('\\', "/").contains("definitely/not/here"),
+                    !p.to_string_lossy()
+                        .replace('\\', "/")
+                        .contains("definitely/not/here"),
                     "不存在的 env 目标不得被当作命中: {p:?}"
                 );
             }

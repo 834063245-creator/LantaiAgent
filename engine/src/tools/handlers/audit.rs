@@ -1,11 +1,11 @@
-use serde_json::{json, Value};
-use tracing::info;
 use crate::analysis::*;
 use crate::engine;
-use hologram_graph::Node;
-use crate::tools::handlers::{strip_loc_suffix, LspCheck, lsp_has_real_reference};
-use crate::tools::{get_usize, project_root, with_store};
+use crate::tools::handlers::{lsp_has_real_reference, strip_loc_suffix, LspCheck};
 use crate::tools::ToolResponse;
+use crate::tools::{get_usize, project_root, with_store};
+use hologram_graph::Node;
+use serde_json::{json, Value};
+use tracing::info;
 
 pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
     // LSP 舰队治理（2026-09-09 宿主共享化）：
@@ -118,7 +118,9 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
                 hologram_vector::get_or_load_index(&project_root())
                     .map(|(_, slots)| slots.read().unwrap_or_else(|e| e.into_inner()).len())
                     .unwrap_or(0)
-            } else { 0 };
+            } else {
+                0
+            };
             // #8：向量索引滞后告警——把 `nodes` 与 `vectors` 两个数**显式比对**。
             // 此前两数并列摆着却不报警：没有任何人知道语义搜索在旧快照上跑
             // （2026-09-25 实测：图 22244 / 索引 21760，差 484 无人发现）。
@@ -170,7 +172,12 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
 ///
 /// `phase != ready` 时滞后**是预期**（analyze 的后台重建线程在跑）——照实报数，
 /// 但文案说明「分析中，属预期」，避免把正常中间态报成故障。
-fn vector_lag_warnings(phase: &str, nodes: usize, vi_exists: bool, vi_count: usize) -> (i64, Vec<String>) {
+fn vector_lag_warnings(
+    phase: &str,
+    nodes: usize,
+    vi_exists: bool,
+    vi_count: usize,
+) -> (i64, Vec<String>) {
     if !vi_exists {
         return (
             nodes as i64,
@@ -228,7 +235,6 @@ pub(crate) fn handler_policy_check(args: &Value) -> ToolResponse {
     ToolResponse::Success(with_store(|idx| policy_check_from_index(idx, &rules)))
 }
 
-
 fn is_entry_point(node: &Node) -> bool {
     let name = &node.name;
     let raw_loc = node.location.as_deref().unwrap_or("");
@@ -270,9 +276,20 @@ fn is_entry_point(node: &Node) -> bool {
     // 这些函数由框架/CLI/测试运行器调用，
     // 而非通过直接的 CALLS 边 —— 静态分析无法看到它们。
     const ENTRY_PATTERNS: &[&str] = &[
-        "handle", "process", "run", "start", "stop", "serve",
-        "migrate", "setup", "teardown", "bootstrap", "execute",
-        "configure", "initialize", "load",
+        "handle",
+        "process",
+        "run",
+        "start",
+        "stop",
+        "serve",
+        "migrate",
+        "setup",
+        "teardown",
+        "bootstrap",
+        "execute",
+        "configure",
+        "initialize",
+        "load",
     ];
     let name_lower = name.to_lowercase();
     for pat in ENTRY_PATTERNS {
@@ -324,12 +341,31 @@ fn is_framework_base(name: &str) -> bool {
 fn is_lifecycle_method(name: &str) -> bool {
     matches!(
         name,
-        "render" | "componentDidMount" | "componentWillUnmount" | "componentDidUpdate"
-        | "shouldComponentUpdate" | "getDerivedStateFromProps" | "getSnapshotBeforeUpdate"
-        | "mounted" | "created" | "destroyed" | "beforeMount" | "beforeDestroy"
-        | "updated" | "activated" | "deactivated"
-        | "onCreate" | "onDestroy" | "onStart" | "onStop" | "onResume" | "onPause"
-        | "ngOnInit" | "ngOnDestroy" | "ngOnChanges" | "ngAfterViewInit"
+        "render"
+            | "componentDidMount"
+            | "componentWillUnmount"
+            | "componentDidUpdate"
+            | "shouldComponentUpdate"
+            | "getDerivedStateFromProps"
+            | "getSnapshotBeforeUpdate"
+            | "mounted"
+            | "created"
+            | "destroyed"
+            | "beforeMount"
+            | "beforeDestroy"
+            | "updated"
+            | "activated"
+            | "deactivated"
+            | "onCreate"
+            | "onDestroy"
+            | "onStart"
+            | "onStop"
+            | "onResume"
+            | "onPause"
+            | "ngOnInit"
+            | "ngOnDestroy"
+            | "ngOnChanges"
+            | "ngAfterViewInit"
     )
 }
 
@@ -354,24 +390,28 @@ pub(crate) fn handler_unused(args: &Value) -> ToolResponse {
                     && !is_framework_base(&n.name)
                     && !is_lifecycle_method(&n.name)
             })
-            .map(|n| json!({
-                "id": n.id,
-                "name": n.name,
-                "kind": n.kind.as_str(),
-                "location": n.location,
-                "out_degree": n.out_degree,
-                "in_degree": n.in_degree,
-                "non_defines_in_degree": n.non_defines_in_degree,
-                "community_id": n.community_id,
-            }))
+            .map(|n| {
+                json!({
+                    "id": n.id,
+                    "name": n.name,
+                    "kind": n.kind.as_str(),
+                    "location": n.location,
+                    "out_degree": n.out_degree,
+                    "in_degree": n.in_degree,
+                    "non_defines_in_degree": n.non_defines_in_degree,
+                    "community_id": n.community_id,
+                })
+            })
             .collect()
     }) {
         Ok(v) => v,
-        Err(e) => return ToolResponse::Degraded {
-            guidance: format!("cannot access graph: {}", e),
-            fallback: "Ensure the project has been analyzed first".into(),
-            details: json!({}),
-        },
+        Err(e) => {
+            return ToolResponse::Degraded {
+                guidance: format!("cannot access graph: {}", e),
+                fallback: "Ensure the project has been analyzed first".into(),
+                details: json!({}),
+            }
+        }
     };
 
     // LSP 验证：对能定位到源码位置的候选查 references，
@@ -432,7 +472,10 @@ mod tests {
     #[test]
     fn vector_lag_warns_when_index_and_graph_disagree() {
         // 对齐 → 无告警（空数组 = 健康，不是「没检查」）
-        assert_eq!(vector_lag_warnings("ready", 100, true, 100), (0, Vec::<String>::new()));
+        assert_eq!(
+            vector_lag_warnings("ready", 100, true, 100),
+            (0, Vec::<String>::new())
+        );
         // 索引落后（实测形状）：lag>0 + 告警带上两个数与差值
         let (lag, w) = vector_lag_warnings("ready", 22244, true, 21760);
         assert_eq!(lag, 484);
@@ -446,7 +489,11 @@ mod tests {
         // 分析中：照实报数，但文案说明属预期（别把正常中间态报成故障）
         let (lag, w) = vector_lag_warnings("analyzing", 100, true, 10);
         assert_eq!(lag, 90);
-        assert!(w[0].contains("expected") && w[0].contains("analyzing"), "{}", w[0]);
+        assert!(
+            w[0].contains("expected") && w[0].contains("analyzing"),
+            "{}",
+            w[0]
+        );
         assert!(!w[0].contains("STALE"), "分析中不该报 STALE：{}", w[0]);
         // 索引文件缺席 → 告警且 lag = 全部节点
         let (lag, w) = vector_lag_warnings("ready", 100, false, 0);

@@ -31,31 +31,46 @@ mod tests {
 
     #[test]
     fn test_normalize_windows_path() {
-        assert_eq!(normalize_path(r"C:\project\src\main.rs"), "C:/project/src/main.rs");
+        assert_eq!(
+            normalize_path(r"C:\project\src\main.rs"),
+            "C:/project/src/main.rs"
+        );
     }
 
     #[test]
     fn test_normalize_unix_path_idempotent() {
         // Unix 路径不含反斜杠，规范化后应保持不变
-        assert_eq!(normalize_path("/home/user/src/main.rs"), "/home/user/src/main.rs");
+        assert_eq!(
+            normalize_path("/home/user/src/main.rs"),
+            "/home/user/src/main.rs"
+        );
     }
 
     #[test]
     fn test_normalize_mixed() {
         // 混合分隔符也应正确处理
-        assert_eq!(normalize_path(r"C:\project\src/module\file.rs"), "C:/project/src/module/file.rs");
+        assert_eq!(
+            normalize_path(r"C:\project\src/module\file.rs"),
+            "C:/project/src/module/file.rs"
+        );
     }
 
     #[test]
     fn test_normalize_lowercase_drive_letter() {
         // 小写驱动器字母应转换为大写
-        assert_eq!(normalize_path(r"d:\HoloGramHG\src\main.rs"), "D:/HoloGramHG/src/main.rs");
+        assert_eq!(
+            normalize_path(r"d:\HoloGramHG\src\main.rs"),
+            "D:/HoloGramHG/src/main.rs"
+        );
     }
 
     #[test]
     fn test_normalize_uppercase_drive_idempotent() {
         // 大写驱动器字母应保持不变（幂等性）
-        assert_eq!(normalize_path(r"D:\HoloGramHG\src\main.rs"), "D:/HoloGramHG/src/main.rs");
+        assert_eq!(
+            normalize_path(r"D:\HoloGramHG\src\main.rs"),
+            "D:/HoloGramHG/src/main.rs"
+        );
     }
 }
 
@@ -106,7 +121,10 @@ pub fn migrate_engine_data(root: &std::path::Path) -> Result<EngineDataMigrateSt
     let mut moved = 0usize;
     let mut conflicts = 0usize;
 
-    let move_one = |src: &std::path::Path, dst: &std::path::Path, moved: &mut usize, conflicts: &mut usize| {
+    let move_one = |src: &std::path::Path,
+                    dst: &std::path::Path,
+                    moved: &mut usize,
+                    conflicts: &mut usize| {
         if dst.exists() {
             eprintln!(
                 "[engine] 警告：{} 与 .hologram 侧同名文件并存，未搬迁（保数据，请手动合并后删除）。",
@@ -123,8 +141,7 @@ pub fn migrate_engine_data(root: &std::path::Path) -> Result<EngineDataMigrateSt
 
     // db trio：整组判定（组冲突 → 三件全留）
     if old.join("hologram.db").exists() {
-        std::fs::create_dir_all(&new)
-            .map_err(|e| format!("mkdir {}: {e}", new.display()))?;
+        std::fs::create_dir_all(&new).map_err(|e| format!("mkdir {}: {e}", new.display()))?;
         if new.join("hologram.db").exists() {
             eprintln!(
                 "[engine] 警告：{} 与 .hologram 侧 hologram.db 并存，db 三件组不动（wal/shm 属于留在原地的 db）。",
@@ -146,8 +163,7 @@ pub fn migrate_engine_data(root: &std::path::Path) -> Result<EngineDataMigrateSt
         if !src.exists() {
             continue;
         }
-        std::fs::create_dir_all(&new)
-            .map_err(|e| format!("mkdir {}: {e}", new.display()))?;
+        std::fs::create_dir_all(&new).map_err(|e| format!("mkdir {}: {e}", new.display()))?;
         move_one(&src, &new.join(name), &mut moved, &mut conflicts);
     }
 
@@ -157,13 +173,21 @@ pub fn migrate_engine_data(root: &std::path::Path) -> Result<EngineDataMigrateSt
         let new_log_dir = new.join("logs");
         std::fs::create_dir_all(&new_log_dir)
             .map_err(|e| format!("mkdir {}: {e}", new_log_dir.display()))?;
-        move_one(&old_log, &new_log_dir.join("engine.log"), &mut moved, &mut conflicts);
+        move_one(
+            &old_log,
+            &new_log_dir.join("engine.log"),
+            &mut moved,
+            &mut conflicts,
+        );
     }
 
     if moved == 0 && conflicts == 0 {
         return Ok(EngineDataMigrateStatus::NoData);
     }
-    eprintln!("[engine] 引擎数据已从 .lantai 迁至 .hologram（{} 搬迁 / {} 冲突留驻）", moved, conflicts);
+    eprintln!(
+        "[engine] 引擎数据已从 .lantai 迁至 .hologram（{} 搬迁 / {} 冲突留驻）",
+        moved, conflicts
+    );
     Ok(EngineDataMigrateStatus::Migrated)
 }
 
@@ -172,8 +196,8 @@ mod migrate_tests {
     use super::*;
 
     fn tmp(tag: &str) -> std::path::PathBuf {
-        let tmp = std::env::temp_dir()
-            .join(format!("hologram_migrate_{}_{}", tag, std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("hologram_migrate_{}_{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         tmp
@@ -182,7 +206,10 @@ mod migrate_tests {
     #[test]
     fn migrate_no_lantai_data_is_noop() {
         let t = tmp("noop");
-        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::NoData);
+        assert_eq!(
+            migrate_engine_data(&t).unwrap(),
+            EngineDataMigrateStatus::NoData
+        );
         assert!(!t.join(".hologram").exists(), "零数据不建目录");
     }
 
@@ -201,7 +228,10 @@ mod migrate_tests {
         std::fs::write(t.join(".lantai/sessions/1.json"), "{}").unwrap();
         std::fs::write(t.join(".lantai/logs/bridge.log"), "host log").unwrap();
 
-        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::Migrated);
+        assert_eq!(
+            migrate_engine_data(&t).unwrap(),
+            EngineDataMigrateStatus::Migrated
+        );
         // 引擎文件已搬
         assert!(t.join(".hologram/hologram.db").exists());
         assert!(t.join(".hologram/hologram.db-wal").exists());
@@ -225,7 +255,10 @@ mod migrate_tests {
         std::fs::write(t.join(".lantai/hologram.db-wal"), "old wal").unwrap();
         std::fs::write(t.join(".hologram/hologram.db"), "new db").unwrap();
 
-        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::Migrated);
+        assert_eq!(
+            migrate_engine_data(&t).unwrap(),
+            EngineDataMigrateStatus::Migrated
+        );
         // 双侧 db 都不动，wal 也不得单独搬走（组语义——防半套数据库）
         assert_eq!(
             std::fs::read_to_string(t.join(".hologram/hologram.db")).unwrap(),
@@ -235,7 +268,10 @@ mod migrate_tests {
             std::fs::read_to_string(t.join(".lantai/hologram.db")).unwrap(),
             "old db"
         );
-        assert!(t.join(".lantai/hologram.db-wal").exists(), "组冲突时 wal/shm 不单独搬");
+        assert!(
+            t.join(".lantai/hologram.db-wal").exists(),
+            "组冲突时 wal/shm 不单独搬"
+        );
     }
 
     #[test]
@@ -243,9 +279,15 @@ mod migrate_tests {
         let t = tmp("idem");
         std::fs::create_dir_all(t.join(".lantai")).unwrap();
         std::fs::write(t.join(".lantai/hologram.db"), "db").unwrap();
-        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::Migrated);
+        assert_eq!(
+            migrate_engine_data(&t).unwrap(),
+            EngineDataMigrateStatus::Migrated
+        );
         // 二跑：.lantai 已无引擎数据 → NoData，零副作用
-        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::NoData);
+        assert_eq!(
+            migrate_engine_data(&t).unwrap(),
+            EngineDataMigrateStatus::NoData
+        );
         assert_eq!(
             std::fs::read_to_string(t.join(".hologram/hologram.db")).unwrap(),
             "db"

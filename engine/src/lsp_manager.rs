@@ -34,13 +34,13 @@
 //! - **重生退避**：同一命令死亡/失败后至少间隔 30s 才允许再拉，
 //!   防止「查询→失败→重拉→再失败」的风暴被并行查询放大。
 
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, RwLock};
-use serde_json::{json, Value};
 
 // ═══════════════════════════════════════════════════════════════
 // LSP 服务器进程句柄
@@ -101,10 +101,7 @@ struct LspProcess {
     /// 读线程完成后经 channel 把 reader 送回，下次调用收割。
     /// None = 无悬挂请求；Some(Empty) = 旧响应未到（服务器忙/索引中）。
     late_rx: Option<
-        std::sync::mpsc::Receiver<(
-            BufReader<std::process::ChildStdout>,
-            Result<Value, String>,
-        )>,
+        std::sync::mpsc::Receiver<(BufReader<std::process::ChildStdout>, Result<Value, String>)>,
     >,
 }
 
@@ -114,8 +111,12 @@ impl LspProcess {
     fn write_message_static(stdin: &Arc<Mutex<ChildStdin>>, body: &str) -> Result<(), String> {
         let mut stdin = stdin.lock().map_err(|e| format!("stdin lock: {}", e))?;
         let header = format!("Content-Length: {}\r\n\r\n", body.len());
-        stdin.write_all(header.as_bytes()).map_err(|e| format!("write: {}", e))?;
-        stdin.write_all(body.as_bytes()).map_err(|e| format!("write body: {}", e))?;
+        stdin
+            .write_all(header.as_bytes())
+            .map_err(|e| format!("write: {}", e))?;
+        stdin
+            .write_all(body.as_bytes())
+            .map_err(|e| format!("write body: {}", e))?;
         stdin.flush().map_err(|e| format!("flush: {}", e))?;
         Ok(())
     }
@@ -180,7 +181,7 @@ impl LspProcess {
                         ));
                     }
                     return Err(
-                        "LSP reader lost after cold window — server will be recreated".to_string()
+                        "LSP reader lost after cold window — server will be recreated".to_string(),
                     );
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -205,7 +206,9 @@ impl LspProcess {
 
         // 在独立线程中读取响应以实现超时控制
         // LSP 服务器会异步发送诊断/日志通知——跳过这些，等待匹配 id 的响应
-        let mut reader = self.reader.take()
+        let mut reader = self
+            .reader
+            .take()
             .ok_or("LSP reader lost (previous call timed out) — server will be recreated")?;
         // 读线程需要写回复（服务器发来的请求），克隆 stdin 句柄
         let stdin_for_thread = self.stdin.clone();
@@ -229,7 +232,9 @@ impl LspProcess {
                             if response.get("method").and_then(|m| m.as_str()).is_some() {
                                 let reply = json!({"jsonrpc": "2.0", "id": req_id, "result": null});
                                 if let Ok(reply_body) = serde_json::to_string(&reply) {
-                                    if let Err(e) = Self::write_message_static(&stdin_for_thread, &reply_body) {
+                                    if let Err(e) =
+                                        Self::write_message_static(&stdin_for_thread, &reply_body)
+                                    {
                                         tracing::debug!(err = %e, "[lsp_manager] failed to reply to server request");
                                     }
                                 }
@@ -282,14 +287,18 @@ impl LspProcess {
     /// read_line 行边界会错位 → body 读进帧头（曾出现 body 开头是
     /// "Content-Length: 185\r\n\r\n{...}" 的 parse 错误）。
     /// 改按字节流扫描定界符，帧边界精确。
-    fn read_one_message(reader: &mut BufReader<std::process::ChildStdout>) -> Result<(Option<u64>, Value), String> {
+    fn read_one_message(
+        reader: &mut BufReader<std::process::ChildStdout>,
+    ) -> Result<(Option<u64>, Value), String> {
         use std::io::Read;
         // 扫描 header 直到 "\r\n\r\n"，收集 Content-Length。
         let mut header = Vec::with_capacity(256);
         let mut content_length: Option<usize> = None;
         loop {
             let mut byte = [0u8; 1];
-            reader.read_exact(&mut byte).map_err(|e| format!("read header: {}", e))?;
+            reader
+                .read_exact(&mut byte)
+                .map_err(|e| format!("read header: {}", e))?;
             header.push(byte[0]);
             // 检测 "\r\n\r\n" 结尾（header 结束）
             let hlen = header.len();
@@ -309,9 +318,12 @@ impl LspProcess {
                 content_length = val.trim().parse().ok();
             }
         }
-        let len = content_length.ok_or_else(|| format!("missing Content-Length in header: {:?}", header_text))?;
+        let len = content_length
+            .ok_or_else(|| format!("missing Content-Length in header: {:?}", header_text))?;
         let mut body_buf = vec![0u8; len];
-        reader.read_exact(&mut body_buf).map_err(|e| format!("read body: {}", e))?;
+        reader
+            .read_exact(&mut body_buf)
+            .map_err(|e| format!("read body: {}", e))?;
         let msg: Value = serde_json::from_slice(&body_buf).map_err(|e| {
             // 把原始字节带进错误消息 — 定位"服务器发了非 JSON 内容"
             //（typescript-language-server 曾把日志/横幅混进 stdout）。
@@ -342,21 +354,20 @@ impl LspProcess {
                 },
             },
         });
-        let resp = self.send_request("initialize", params)
-            .map_err(|e| {
-                // 尝试读取 stderr 以获取诊断信息
-                let mut extra = String::new();
-                if let Some(ref mut stderr) = self.stderr {
-                    let mut buf = [0u8; 512];
-                    use std::io::Read;
-                    if let Ok(n) = stderr.read(&mut buf) {
-                        if n > 0 {
-                            extra = format!(" stderr: {}", String::from_utf8_lossy(&buf[..n]).trim());
-                        }
+        let resp = self.send_request("initialize", params).map_err(|e| {
+            // 尝试读取 stderr 以获取诊断信息
+            let mut extra = String::new();
+            if let Some(ref mut stderr) = self.stderr {
+                let mut buf = [0u8; 512];
+                use std::io::Read;
+                if let Ok(n) = stderr.read(&mut buf) {
+                    if n > 0 {
+                        extra = format!(" stderr: {}", String::from_utf8_lossy(&buf[..n]).trim());
                     }
                 }
-                format!("{}{}", e, extra)
-            })?;
+            }
+            format!("{}{}", e, extra)
+        })?;
         let _capabilities = resp.get("result").ok_or("no capabilities")?;
 
         // initialized 是通知，不是请求
@@ -372,14 +383,17 @@ impl LspProcess {
     /// 通知服务器打开文件（textDocument/didOpen）。
     fn open_file(&mut self, uri: &str, text: &str, language: &str) -> Result<(), String> {
         // didOpen 是通知——无 id，不期望响应
-        self.send_notification("textDocument/didOpen", json!({
-            "textDocument": {
-                "uri": uri,
-                "languageId": language,
-                "version": 1,
-                "text": text,
-            }
-        }))
+        self.send_notification(
+            "textDocument/didOpen",
+            json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": language,
+                    "version": 1,
+                    "text": text,
+                }
+            }),
+        )
     }
 
     /// 查询指定位置的定义（textDocument/definition）。
@@ -419,12 +433,7 @@ impl LspProcess {
     /// 查询指定位置的悬停信息（textDocument/hover）。
     ///
     /// 用于获取类型信息、文档等。
-    fn hover(
-        &mut self,
-        uri: &str,
-        line: u32,
-        column: u32,
-    ) -> Result<String, String> {
+    fn hover(&mut self, uri: &str, line: u32, column: u32) -> Result<String, String> {
         let params = json!({
             "textDocument": {"uri": uri},
             "position": {"line": line, "character": column},
@@ -438,12 +447,20 @@ impl LspProcess {
         let contents = result.get("contents").cloned().unwrap_or(Value::Null);
         match contents {
             Value::String(s) => Ok(s),
-            Value::Object(ref m) => m.get("value").and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or("no hover value".into()),
+            Value::Object(ref m) => m
+                .get("value")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or("no hover value".into()),
             Value::Array(ref arr) => {
                 // MarkedString[] —— 取第一个带语言标签的
                 for item in arr {
-                    if let Some(s) = item.as_str() { return Ok(s.to_string()); }
-                    if let Some(v) = item.get("value").and_then(|v| v.as_str()) { return Ok(v.to_string()); }
+                    if let Some(s) = item.as_str() {
+                        return Ok(s.to_string());
+                    }
+                    if let Some(v) = item.get("value").and_then(|v| v.as_str()) {
+                        return Ok(v.to_string());
+                    }
                 }
                 Ok(String::new())
             }
@@ -475,7 +492,9 @@ impl Drop for LspProcess {
     fn drop(&mut self) {
         // 尝试优雅关闭：发送 shutdown 请求后 kill 进程
         let _ = self.write_message(
-            json!({"jsonrpc":"2.0","method":"shutdown","params":null}).to_string().as_ref(),
+            json!({"jsonrpc":"2.0","method":"shutdown","params":null})
+                .to_string()
+                .as_ref(),
         );
         let _ = self.process.kill();
     }
@@ -538,14 +557,25 @@ fn parse_definition_results(value: &Value) -> Result<Vec<LspLocation>, String> {
 
 /// 解析 LocationLink（含 targetUri + targetSelectionRange/targetRange）。
 fn parse_location_link(v: &Value) -> Result<LspLocation, String> {
-    let uri = v.get("targetUri").and_then(|u| u.as_str()).ok_or("missing targetUri")?.to_string();
-    let range = v.get("targetSelectionRange").or(v.get("targetRange")).ok_or("missing range")?;
+    let uri = v
+        .get("targetUri")
+        .and_then(|u| u.as_str())
+        .ok_or("missing targetUri")?
+        .to_string();
+    let range = v
+        .get("targetSelectionRange")
+        .or(v.get("targetRange"))
+        .ok_or("missing range")?;
     parse_range(uri, range)
 }
 
 /// 解析单个 Location（含 uri + range）。
 fn parse_one_location(v: &Value) -> Result<LspLocation, String> {
-    let uri = v.get("uri").and_then(|u| u.as_str()).ok_or("missing uri")?.to_string();
+    let uri = v
+        .get("uri")
+        .and_then(|u| u.as_str())
+        .ok_or("missing uri")?
+        .to_string();
     let range = v.get("range").ok_or("missing range")?;
     parse_range(uri, range)
 }
@@ -732,7 +762,9 @@ fn classify_server_state(
         Some(true) => return LspServerState::Ready,
         // 死壳（with_process 判死把进程置 None，Arc 还留在池里）——下次查询重建
         Some(false) => {
-            return LspServerState::Failed("server process exited — will be rebuilt on next query".into());
+            return LspServerState::Failed(
+                "server process exited — will be rebuilt on next query".into(),
+            );
         }
         None => {}
     }
@@ -759,12 +791,20 @@ impl LspManager {
 
     /// 检查 LSP 池是否已初始化（warm 已调用）。
     pub fn is_initialized() -> bool {
-        *Self::global().initialized.read().unwrap_or_else(|e| e.into_inner())
+        *Self::global()
+            .initialized
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     /// 检查项目根目录是否与上次 warm 时不同（工作区切换）。
     pub fn root_changed(new_root: &str) -> bool {
-        match Self::global().project_root.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        match Self::global()
+            .project_root
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
             Some(old) => old != new_root,
             None => true,
         }
@@ -795,11 +835,20 @@ impl LspManager {
         }
         *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = false;
         *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = None;
-        mgr.last_warm_errors.write().unwrap_or_else(|e| e.into_inner()).clear();
+        mgr.last_warm_errors
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         // 换根/清池后退避一并清零：新根的首次 warm 不应被旧根的
         // 失败退避卡住。
-        mgr.last_spawn.write().unwrap_or_else(|e| e.into_inner()).clear();
-        mgr.daemon_ensure.write().unwrap_or_else(|e| e.into_inner()).clear();
+        mgr.last_spawn
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        mgr.daemon_ensure
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         tracing::info!(killed, "[lsp_manager] shutdown_all done");
     }
 
@@ -822,7 +871,8 @@ impl LspManager {
     /// （多窗口并行时 ×N，2026-09-09 内存事故来源之一）。
     pub fn mark_initialized(project_root: &str) {
         let mgr = Self::global();
-        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = Some(project_root.to_string());
+        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) =
+            Some(project_root.to_string());
         *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = true;
     }
 
@@ -1021,7 +1071,11 @@ impl LspManager {
     }
 
     fn lspd_exe_name() -> &'static str {
-        if cfg!(windows) { "hologram-lspd.exe" } else { "hologram-lspd" }
+        if cfg!(windows) {
+            "hologram-lspd.exe"
+        } else {
+            "hologram-lspd"
+        }
     }
 
     /// 一次 op 往返：一行请求 → 一行响应。
@@ -1049,8 +1103,7 @@ impl LspManager {
         if resp.trim().is_empty() {
             return Err("[lspd-transport] empty response".to_string());
         }
-        serde_json::from_str(resp.trim())
-            .map_err(|e| format!("[lspd-transport] parse: {e}"))
+        serde_json::from_str(resp.trim()).map_err(|e| format!("[lspd-transport] parse: {e}"))
     }
 
     /// 四 op 的宿主优先包装：
@@ -1102,9 +1155,10 @@ impl LspManager {
                         .unwrap_or_default();
                     Some(Ok(locs))
                 } else {
-                    Some(Err(
-                        resp["error"].as_str().unwrap_or("lspd op failed").to_string()
-                    ))
+                    Some(Err(resp["error"]
+                        .as_str()
+                        .unwrap_or("lspd op failed")
+                        .to_string()))
                 }
             }
             Err(_) => None, // 传输层失败 → 本地池
@@ -1148,9 +1202,10 @@ impl LspManager {
                 if resp["ok"].as_bool().unwrap_or(false) {
                     Some(Ok(resp["hover"].as_str().unwrap_or("").to_string()))
                 } else {
-                    Some(Err(
-                        resp["error"].as_str().unwrap_or("lspd op failed").to_string()
-                    ))
+                    Some(Err(resp["error"]
+                        .as_str()
+                        .unwrap_or("lspd op failed")
+                        .to_string()))
                 }
             }
             Err(_) => None,
@@ -1170,9 +1225,8 @@ impl LspManager {
     pub fn local_pool_nonempty() -> bool {
         let mgr = Self::global();
         let pool = mgr.pool.read().unwrap_or_else(|e| e.into_inner());
-        pool.values().any(|arc| {
-            arc.lock().map(|g| g.is_some()).unwrap_or(false)
-        })
+        pool.values()
+            .any(|arc| arc.lock().map(|g| g.is_some()).unwrap_or(false))
     }
 
     /// 预热服务器池——并行启动所有已配置的 LSP 服务器。
@@ -1191,15 +1245,14 @@ impl LspManager {
     /// 无条件 spawn 全部 LSP 进程（孤儿进程来源）。
     pub fn warm_filtered(project_root: &str, ext_filter: &[&str]) {
         let mgr = Self::global();
-        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = Some(project_root.to_string());
+        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) =
+            Some(project_root.to_string());
         *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = true;
 
         let root = project_root.to_string();
         for cfg in SERVER_CONFIGS {
             if !ext_filter.is_empty() {
-                let has_match = ext_filter
-                    .iter()
-                    .any(|e| cfg.extensions.contains(e));
+                let has_match = ext_filter.iter().any(|e| cfg.extensions.contains(e));
                 if !has_match {
                     continue;
                 }
@@ -1220,25 +1273,26 @@ impl LspManager {
             }
             let ws_root = Self::resolve_workspace_root(&root, cfg.config_marker);
             let cfg: &'static LspServerConfig = cfg; // const slice → 'static
-            std::thread::spawn(move || {
-                match Self::spawn_server(cfg, &ws_root) {
-                    Ok(process) => {
-                        tracing::info!(cmd, "[lsp_manager] server started");
-                        mgr.pool
-                            .write()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .insert(cmd, Arc::new(Mutex::new(Some(process))));
-                        mgr.last_warm_errors.write().unwrap_or_else(|e| e.into_inner()).remove(cmd);
-                    }
-                    Err(e) => {
-                        let diagnosed = Self::diagnose_error(cmd, &e);
-                        let err_msg = format!("spawn+init {}: {}", cmd, diagnosed);
-                        tracing::error!(cmd, err = %diagnosed, "[lsp_manager] server unavailable");
-                        mgr.last_warm_errors
-                            .write()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .insert(cmd.to_string(), err_msg);
-                    }
+            std::thread::spawn(move || match Self::spawn_server(cfg, &ws_root) {
+                Ok(process) => {
+                    tracing::info!(cmd, "[lsp_manager] server started");
+                    mgr.pool
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(cmd, Arc::new(Mutex::new(Some(process))));
+                    mgr.last_warm_errors
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(cmd);
+                }
+                Err(e) => {
+                    let diagnosed = Self::diagnose_error(cmd, &e);
+                    let err_msg = format!("spawn+init {}: {}", cmd, diagnosed);
+                    tracing::error!(cmd, err = %diagnosed, "[lsp_manager] server unavailable");
+                    mgr.last_warm_errors
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(cmd.to_string(), err_msg);
                 }
             });
         }
@@ -1256,7 +1310,8 @@ impl LspManager {
     /// 如果 `ext_filter` 为空则启动全部。供压力测试按语言过滤使用。
     pub fn warm_blocking_filtered(project_root: &str, ext_filter: &[&str]) -> (usize, usize) {
         let mgr = Self::global();
-        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = Some(project_root.to_string());
+        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) =
+            Some(project_root.to_string());
         *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = true;
 
         let root = project_root.to_string();
@@ -1266,9 +1321,10 @@ impl LspManager {
         for cfg in SERVER_CONFIGS {
             // 应用扩展名过滤
             if !ext_filter.is_empty() {
-                let has_match = ext_filter.iter()
-                    .any(|e| cfg.extensions.contains(e));
-                if !has_match { continue; }
+                let has_match = ext_filter.iter().any(|e| cfg.extensions.contains(e));
+                if !has_match {
+                    continue;
+                }
             }
 
             // 跳过池中已在运行的服务器 —— 与 warm() 行为一致,
@@ -1288,27 +1344,28 @@ impl LspManager {
             let root = Self::resolve_workspace_root(&root, cfg.config_marker);
             let cmd = cfg.command;
             let cfg: &'static LspServerConfig = cfg;
-            let handle = std::thread::spawn(move || {
-                match Self::spawn_server(cfg, &root) {
-                    Ok(process) => {
-                        tracing::info!(cmd, "[lsp_manager] server started (blocking)");
-                        mgr.pool
-                            .write()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .insert(cmd, Arc::new(Mutex::new(Some(process))));
-                        mgr.last_warm_errors.write().unwrap_or_else(|e| e.into_inner()).remove(cmd);
-                        Ok(cmd)
-                    }
-                    Err(e) => {
-                        let diagnosed = Self::diagnose_error(cmd, &e);
-                        let err_msg = format!("spawn+init {}: {}", cmd, diagnosed);
-                        tracing::error!(cmd, err = %diagnosed, "[lsp_manager] server unavailable (blocking)");
-                        mgr.last_warm_errors
-                            .write()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .insert(cmd.to_string(), err_msg);
-                        Err(cmd)
-                    }
+            let handle = std::thread::spawn(move || match Self::spawn_server(cfg, &root) {
+                Ok(process) => {
+                    tracing::info!(cmd, "[lsp_manager] server started (blocking)");
+                    mgr.pool
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(cmd, Arc::new(Mutex::new(Some(process))));
+                    mgr.last_warm_errors
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(cmd);
+                    Ok(cmd)
+                }
+                Err(e) => {
+                    let diagnosed = Self::diagnose_error(cmd, &e);
+                    let err_msg = format!("spawn+init {}: {}", cmd, diagnosed);
+                    tracing::error!(cmd, err = %diagnosed, "[lsp_manager] server unavailable (blocking)");
+                    mgr.last_warm_errors
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(cmd.to_string(), err_msg);
+                    Err(cmd)
                 }
             });
             handles.push(handle);
@@ -1405,7 +1462,8 @@ impl LspManager {
             );
         }
         // rustup 代理缺少实际组件
-        if cmd == "rust-analyzer" && lower.contains("unknown binary") && lower.contains("toolchain") {
+        if cmd == "rust-analyzer" && lower.contains("unknown binary") && lower.contains("toolchain")
+        {
             return format!(
                 "{} — rust-analyzer not installed for your Rust toolchain. Run: rustup component add rust-analyzer",
                 raw,
@@ -1438,14 +1496,23 @@ impl LspManager {
             None => return false,
         };
         let mgr = Self::global();
-        let root = match mgr.project_root.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        let root = match mgr
+            .project_root
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
             Some(r) => r.clone(),
             None => return false,
         };
         let cmd = cfg.command;
         // 重生退避（防御纵深：get_or_warm_server 已查过一次）。
         if let Some(remain) = Self::respawn_cooldown_remaining(cmd) {
-            tracing::debug!(cmd, remain_secs = remain.as_secs(), "[lsp_manager] lazy warm blocked by respawn cooldown");
+            tracing::debug!(
+                cmd,
+                remain_secs = remain.as_secs(),
+                "[lsp_manager] lazy warm blocked by respawn cooldown"
+            );
             return false;
         }
         match Self::spawn_server(cfg, &root) {
@@ -1455,7 +1522,10 @@ impl LspManager {
                     .write()
                     .unwrap_or_else(|e| e.into_inner())
                     .insert(cmd, Arc::new(Mutex::new(Some(process))));
-                mgr.last_warm_errors.write().unwrap_or_else(|e| e.into_inner()).remove(cmd);
+                mgr.last_warm_errors
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(cmd);
                 true
             }
             Err(e) => {
@@ -1488,7 +1558,11 @@ impl LspManager {
         let (program, args_vec) = {
             #[cfg(target_os = "windows")]
             {
-                let ext = exe.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                let ext = exe
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
                 if ext == "cmd" || ext == "bat" {
                     let mut v = vec!["/c".to_string(), exe.to_string_lossy().into_owned()];
                     v.extend(cfg.args.iter().map(|a| a.to_string()));
@@ -1553,7 +1627,8 @@ impl LspManager {
                 });
             }
         }
-        let mut child = c.spawn()
+        let mut child = c
+            .spawn()
             .map_err(|e| format!("spawn {}: {}", cfg.command, e))?;
         // Windows 的 die-with-parent（2026-10-28）：绑进进程级 Job，越早越小——
         // 实测未绑时存在「spawn 后 ~150ms 内硬杀引擎 ⇒ 孤儿」的窗口。
@@ -1595,7 +1670,8 @@ impl LspManager {
             } else {
                 format!(
                     "exited with code {} immediately after spawn: {}",
-                    status, stderr_output.trim(),
+                    status,
+                    stderr_output.trim(),
                 )
             };
             // 进程已死，清理
@@ -1641,27 +1717,43 @@ impl LspManager {
                 .map(|c| c.command);
             if let Some(cmd) = cmd {
                 tracing::warn!(ext, "[lsp_manager] stale dead server removed, rebuilding");
-                mgr.pool.write().unwrap_or_else(|e| e.into_inner()).remove(cmd);
+                mgr.pool
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(cmd);
                 // 重生退避：冷却未过不再拉——防止「查询→失败→重拉→
                 // 再失败」风暴（多窗口 ×N 放大，2026-09-09 事故）。
                 if let Some(remain) = Self::respawn_cooldown_remaining(cmd) {
-                    tracing::debug!(cmd, remain_secs = remain.as_secs(), "[lsp_manager] respawn cooldown active");
+                    tracing::debug!(
+                        cmd,
+                        remain_secs = remain.as_secs(),
+                        "[lsp_manager] respawn cooldown active"
+                    );
                     return Err(format!(
                         "LSP busy: {} respawn cooldown (~{:.0}s left) — retry later",
-                        cmd, remain.as_secs_f32()
+                        cmd,
+                        remain.as_secs_f32()
                     ));
                 }
             }
         }
-        tracing::info!(ext, "[lsp_manager] server not in pool, attempting lazy warm");
+        tracing::info!(
+            ext,
+            "[lsp_manager] server not in pool, attempting lazy warm"
+        );
         // 重生退避：池中无条目（从未 spawn / 已被移除）时同样受冷却约束，
         // 且把原因透传成 busy 类错误——工具层才能给出「稍后重试」指引。
         if let Some(cfg) = SERVER_CONFIGS.iter().find(|c| c.extensions.contains(&ext)) {
             if let Some(remain) = Self::respawn_cooldown_remaining(cfg.command) {
-                tracing::debug!(cmd = cfg.command, remain_secs = remain.as_secs(), "[lsp_manager] respawn cooldown active");
+                tracing::debug!(
+                    cmd = cfg.command,
+                    remain_secs = remain.as_secs(),
+                    "[lsp_manager] respawn cooldown active"
+                );
                 return Err(format!(
                     "LSP busy: {} respawn cooldown (~{:.0}s left) — retry later",
-                    cfg.command, remain.as_secs_f32()
+                    cfg.command,
+                    remain.as_secs_f32()
                 ));
             }
         }
@@ -1711,7 +1803,9 @@ impl LspManager {
         ext: &str,
     ) -> Result<Vec<LspLocation>, String> {
         // 宿主优先：共享舰队在线时走宿主；传输层失败才回退本地池
-        if let Some(result) = Self::try_daemon_locations("definition", file_path, source, line, column, ext) {
+        if let Some(result) =
+            Self::try_daemon_locations("definition", file_path, source, line, column, ext)
+        {
             return result;
         }
         let mgr = Self::global();
@@ -1727,7 +1821,11 @@ impl LspManager {
             format!("{}/{}", root, file_path)
         };
         let uri = format!("file:///{}", abs_path.replace('\\', "/"));
-        let lang_id = SERVER_CONFIGS.iter().find(|c| c.extensions.contains(&ext)).map(|c| c.language_id).unwrap_or(ext);
+        let lang_id = SERVER_CONFIGS
+            .iter()
+            .find(|c| c.extensions.contains(&ext))
+            .map(|c| c.language_id)
+            .unwrap_or(ext);
         let source = source.to_string();
         Self::with_process(&server_arc, |process| {
             let _ = process.open_file(&uri, &source, lang_id);
@@ -1780,7 +1878,9 @@ impl LspManager {
         ext: &str,
     ) -> Result<Vec<LspLocation>, String> {
         // 宿主优先
-        if let Some(result) = Self::try_daemon_locations("implementation", file_path, source, line, column, ext) {
+        if let Some(result) =
+            Self::try_daemon_locations("implementation", file_path, source, line, column, ext)
+        {
             return result;
         }
         let (uri, lang_id) = Self::prepare(file_path, ext)?;
@@ -1808,7 +1908,9 @@ impl LspManager {
         ext: &str,
     ) -> Result<Vec<LspLocation>, String> {
         // 宿主优先
-        if let Some(result) = Self::try_daemon_locations("references", file_path, source, line, column, ext) {
+        if let Some(result) =
+            Self::try_daemon_locations("references", file_path, source, line, column, ext)
+        {
             return result;
         }
         let (uri, lang_id) = Self::prepare(file_path, ext)?;
@@ -1853,9 +1955,7 @@ impl LspManager {
     /// 仅当池中有服务器进程实际运行时返回 true。
     pub fn is_available(ext: &str) -> bool {
         Self::get_server(ext)
-            .and_then(|arc| {
-                arc.lock().ok().map(|guard| guard.is_some())
-            })
+            .and_then(|arc| arc.lock().ok().map(|guard| guard.is_some()))
             .unwrap_or(false)
     }
 
@@ -1863,7 +1963,11 @@ impl LspManager {
     ///
     /// 返回命令名 → 错误消息的映射。
     pub fn warm_errors() -> HashMap<String, String> {
-        Self::global().last_warm_errors.read().unwrap_or_else(|e| e.into_inner()).clone()
+        Self::global()
+            .last_warm_errors
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// 单命令状态（#5 五态；判据顺序即优先级）。
@@ -1877,14 +1981,25 @@ impl LspManager {
             .unwrap_or_else(|e| e.into_inner())
             .get(cmd)
             .map(|arc| arc.lock().map(|g| g.is_some()).unwrap_or(false));
-        let error = mgr.last_warm_errors.read().unwrap_or_else(|e| e.into_inner()).get(cmd).cloned();
-        let attempted = mgr.last_spawn.read().unwrap_or_else(|e| e.into_inner()).contains_key(cmd);
+        let error = mgr
+            .last_warm_errors
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(cmd)
+            .cloned();
+        let attempted = mgr
+            .last_spawn
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(cmd);
         classify_server_state(pool_alive, Self::find_on_path(cmd), error, attempted)
     }
 
     /// 按扩展名取状态；None = 这门语言**没有适配器**（连配置表都没有）。
     pub fn server_state_for_ext(ext: &str) -> Option<LspServerState> {
-        let cfg = SERVER_CONFIGS.iter().find(|c| c.extensions.contains(&ext))?;
+        let cfg = SERVER_CONFIGS
+            .iter()
+            .find(|c| c.extensions.contains(&ext))?;
         Some(Self::server_state(cfg.command))
     }
 
@@ -1941,9 +2056,10 @@ impl LspManager {
                 let error = match &state {
                     LspServerState::Failed(e) => Some(e.clone()),
                     // 在途不是错误（懒加载的正常中间态）——如实标注，别叫「silent failure」
-                    LspServerState::Warming => {
-                        Some("warm in progress — server is being started (retry shortly, not a failure)".to_string())
-                    }
+                    LspServerState::Warming => Some(
+                        "warm in progress — server is being started (retry shortly, not a failure)"
+                            .to_string(),
+                    ),
                     _ => None,
                 };
                 json!({
@@ -2158,7 +2274,10 @@ mod tests {
             let _ = child.kill();
             let _ = child.wait();
         }
-        assert!(gone, "关闭 job 句柄后，job 内的子进程必须被终结（否则孤儿回收不成立）");
+        assert!(
+            gone,
+            "关闭 job 句柄后，job 内的子进程必须被终结（否则孤儿回收不成立）"
+        );
     }
 
     #[test]
@@ -2202,7 +2321,6 @@ mod tests {
     }
 
     // ── 辅助函数 ──
-
 
     /// 启动一个会挂起 60 秒的进程——用于超时测试。
     fn spawn_hanging_process() -> LspProcess {
@@ -2324,7 +2442,11 @@ time.sleep(0.2)
         let (id2, msg2) = LspProcess::read_one_message(&mut reader).expect("frame 2");
         assert_eq!(id2, Some(2));
         let result = msg2.get("result").unwrap();
-        assert!(result.is_array(), "frame2 should be an array, got {:?}", result);
+        assert!(
+            result.is_array(),
+            "frame2 should be an array, got {:?}",
+            result
+        );
         let _ = child.wait();
     }
 
@@ -2339,9 +2461,17 @@ time.sleep(0.2)
         );
         let elapsed = start.elapsed();
         // 不应挂起——必须在 5 秒内返回（超时设为 2 秒）
-        assert!(elapsed < std::time::Duration::from_secs(5),
-            "send_request should not block forever, took {:?}, result: {:?}", elapsed, result);
-        assert!(result.is_err(), "expected error from hanging process, got {:?}", result);
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "send_request should not block forever, took {:?}, result: {:?}",
+            elapsed,
+            result
+        );
+        assert!(
+            result.is_err(),
+            "expected error from hanging process, got {:?}",
+            result
+        );
     }
 
     // ── 生存性三闸回归（2026-09-09 事故）──
@@ -2355,7 +2485,10 @@ time.sleep(0.2)
         assert!(LspManager::spawn_gate_decision(Some(MIN_SPAWN_COMMIT_MB + 1)).is_ok());
         // 不足 → 拒绝且给出可操作的原因
         let err = LspManager::spawn_gate_decision(Some(MIN_SPAWN_COMMIT_MB - 1)).unwrap_err();
-        assert!(err.contains("low system memory"), "gate error should explain: {err}");
+        assert!(
+            err.contains("low system memory"),
+            "gate error should explain: {err}"
+        );
     }
 
     #[test]
@@ -2369,11 +2502,19 @@ time.sleep(0.2)
     #[test]
     fn test_err_preserves_server_classification() {
         // 忙/JSON-RPC error → 保留进程
-        assert!(LspManager::err_preserves_server("LSP busy: timeout after 5s waiting for x(id 1)"));
-        assert!(LspManager::err_preserves_server("LSP error: {\"code\":-32601,...}"));
+        assert!(LspManager::err_preserves_server(
+            "LSP busy: timeout after 5s waiting for x(id 1)"
+        ));
+        assert!(LspManager::err_preserves_server(
+            "LSP error: {\"code\":-32601,...}"
+        ));
         // 流损坏/死亡 → 销毁
-        assert!(!LspManager::err_preserves_server("LSP read error: read header: failed to fill whole buffer"));
-        assert!(!LspManager::err_preserves_server("LSP reader lost after cold window — server will be recreated"));
+        assert!(!LspManager::err_preserves_server(
+            "LSP read error: read header: failed to fill whole buffer"
+        ));
+        assert!(!LspManager::err_preserves_server(
+            "LSP reader lost after cold window — server will be recreated"
+        ));
         assert!(!LspManager::err_preserves_server("parse: expected value"));
     }
 
@@ -2383,7 +2524,10 @@ time.sleep(0.2)
     fn test_server_state_classification_is_five_way() {
         use LspServerState::*;
         // 池中活进程 ⇒ Ready（与 PATH / 历史错误无关）
-        assert_eq!(classify_server_state(Some(true), false, Some("x".into()), true), Ready);
+        assert_eq!(
+            classify_server_state(Some(true), false, Some("x".into()), true),
+            Ready
+        );
         // 死壳 ⇒ Failed（下次查询重建）
         assert!(matches!(
             classify_server_state(Some(false), true, None, true),
@@ -2422,9 +2566,17 @@ time.sleep(0.2)
         let mut process = spawn_hanging_process();
         // 刚起来（冷窗口内）：空结果不许当真，且必须是 busy 类（工具层才给「稍后重试」、
         // 且 with_process 保留进程不误杀）
-        let note = process.cold_start_note().expect("young server must be flagged cold");
-        assert!(note.starts_with("LSP busy"), "cold note must be busy-class: {note}");
-        assert!(LspManager::err_preserves_server(&note), "cold note must not destroy the server");
+        let note = process
+            .cold_start_note()
+            .expect("young server must be flagged cold");
+        assert!(
+            note.starts_with("LSP busy"),
+            "cold note must be busy-class: {note}"
+        );
+        assert!(
+            LspManager::err_preserves_server(&note),
+            "cold note must not destroy the server"
+        );
         // 冷窗口过期：空结果可信（None = 别拿冷启动当借口）
         process.cold_window = std::time::Duration::ZERO;
         assert!(process.cold_start_note().is_none());
@@ -2434,40 +2586,64 @@ time.sleep(0.2)
     fn test_timeout_keeps_young_server_alive() {
         // 杀-重生循环回归：冷窗口内超时不得销毁进程。
         // 旧实现超时即杀 → 冷启动 rust-analyzer 永远活不过索引期。
-        let arc: Arc<Mutex<Option<LspProcess>>> = Arc::new(Mutex::new(Some(spawn_hanging_process())));
+        let arc: Arc<Mutex<Option<LspProcess>>> =
+            Arc::new(Mutex::new(Some(spawn_hanging_process())));
 
         // 第一次请求：2s 超时 → busy（保留进程）
         let e1 = LspManager::with_process(&arc, |p| {
             p.send_request("textDocument/definition", json!({}))
-        }).unwrap_err();
-        assert!(e1.starts_with("LSP busy"), "timeout should be busy-class, got: {e1}");
-        assert!(arc.lock().unwrap().is_some(), "young server must survive a timeout");
+        })
+        .unwrap_err();
+        assert!(
+            e1.starts_with("LSP busy"),
+            "timeout should be busy-class, got: {e1}"
+        );
+        assert!(
+            arc.lock().unwrap().is_some(),
+            "young server must survive a timeout"
+        );
 
         // 第二次请求：回收盒空（挂起进程永不响应）→ 冷窗口内仍 busy、仍保留
         let e2 = LspManager::with_process(&arc, |p| {
             p.send_request("textDocument/definition", json!({}))
-        }).unwrap_err();
-        assert!(e2.starts_with("LSP busy"), "cold-window busy expected, got: {e2}");
-        assert!(arc.lock().unwrap().is_some(), "young server must stay alive while busy");
+        })
+        .unwrap_err();
+        assert!(
+            e2.starts_with("LSP busy"),
+            "cold-window busy expected, got: {e2}"
+        );
+        assert!(
+            arc.lock().unwrap().is_some(),
+            "young server must stay alive while busy"
+        );
     }
 
     #[test]
     fn test_cold_window_expiry_destroys_stuck_server() {
         // 冷窗口耗尽仍收不回 reader → 销毁重建（挂死的服务器不能永久占位）
-        let arc: Arc<Mutex<Option<LspProcess>>> = Arc::new(Mutex::new(Some(spawn_hanging_process())));
+        let arc: Arc<Mutex<Option<LspProcess>>> =
+            Arc::new(Mutex::new(Some(spawn_hanging_process())));
         // 冷窗口归零：下一轮回收失败即判死刑
         arc.lock().unwrap().as_mut().unwrap().cold_window = std::time::Duration::ZERO;
 
         let e1 = LspManager::with_process(&arc, |p| {
             p.send_request("textDocument/definition", json!({}))
-        }).unwrap_err();
+        })
+        .unwrap_err();
         assert!(e1.starts_with("LSP busy"));
 
         let e2 = LspManager::with_process(&arc, |p| {
             p.send_request("textDocument/definition", json!({}))
-        }).unwrap_err();
-        assert!(e2.contains("reader lost"), "expired cold window should be destroy-class, got: {e2}");
-        assert!(arc.lock().unwrap().is_none(), "stuck server must be destroyed after cold window");
+        })
+        .unwrap_err();
+        assert!(
+            e2.contains("reader lost"),
+            "expired cold window should be destroy-class, got: {e2}"
+        );
+        assert!(
+            arc.lock().unwrap().is_none(),
+            "stuck server must be destroyed after cold window"
+        );
     }
 
     #[test]
@@ -2477,8 +2653,13 @@ time.sleep(0.2)
         // python 假服务器：每个请求延迟 1.2s 才应答，请求超时 300ms。
         let mut process = spawn_slow_responder(1.2, std::time::Duration::from_millis(300));
 
-        let e1 = process.send_request("textDocument/definition", json!({})).unwrap_err();
-        assert!(e1.starts_with("LSP busy"), "first request should time out as busy, got: {e1}");
+        let e1 = process
+            .send_request("textDocument/definition", json!({}))
+            .unwrap_err();
+        assert!(
+            e1.starts_with("LSP busy"),
+            "first request should time out as busy, got: {e1}"
+        );
 
         // 轮询等回收盒到货：慢机器上 python 启动 + 全量测试并行时
         // 调度延迟都可能远超 1.5s。回收未到时 send_request 只空转
@@ -2489,13 +2670,24 @@ time.sleep(0.2)
         for _ in 0..40 {
             std::thread::sleep(std::time::Duration::from_millis(250));
             match process.send_request("textDocument/definition", json!({})) {
-                Err(e) if e.contains("LSP busy: timeout") => { e2 = e; break; }
-                Err(e) if e.contains("still answering") => { continue; }
+                Err(e) if e.contains("LSP busy: timeout") => {
+                    e2 = e;
+                    break;
+                }
+                Err(e) if e.contains("still answering") => {
+                    continue;
+                }
                 other => panic!("unexpected result while polling for reclaim: {other:?}"),
             }
         }
-        assert!(!e2.is_empty(), "late response never arrived within poll budget");
-        assert!(!e2.contains("reader lost"), "reader must have been reclaimed, got: {e2}");
+        assert!(
+            !e2.is_empty(),
+            "late response never arrived within poll budget"
+        );
+        assert!(
+            !e2.contains("reader lost"),
+            "reader must have been reclaimed, got: {e2}"
+        );
 
         let _ = process.process.kill();
     }
@@ -2508,15 +2700,22 @@ time.sleep(0.2)
             let mut map = mgr.last_spawn.write().unwrap();
             map.insert(key.to_string(), std::time::Instant::now());
         }
-        assert!(LspManager::respawn_cooldown_remaining(key).is_some(),
-            "fresh spawn attempt must be inside cooldown");
+        assert!(
+            LspManager::respawn_cooldown_remaining(key).is_some(),
+            "fresh spawn attempt must be inside cooldown"
+        );
         // 时间倒推超过冷却 → 放行
         {
             let mut map = mgr.last_spawn.write().unwrap();
-            map.insert(key.to_string(), std::time::Instant::now() - RESPAWN_COOLDOWN - std::time::Duration::from_secs(1));
+            map.insert(
+                key.to_string(),
+                std::time::Instant::now() - RESPAWN_COOLDOWN - std::time::Duration::from_secs(1),
+            );
         }
-        assert!(LspManager::respawn_cooldown_remaining(key).is_none(),
-            "cooldown must expire");
+        assert!(
+            LspManager::respawn_cooldown_remaining(key).is_none(),
+            "cooldown must expire"
+        );
         mgr.last_spawn.write().unwrap().remove(key);
     }
 
@@ -2539,7 +2738,8 @@ time.sleep(0.2)
         // 宿主自连防护：hologram-lspd 进程内的 op 必须永远走本地池，
         // 即使端口文件存在（指向自己）也绝不入客户端路径（防递归）。
         let _guard = crate::engine::global_engine_test_guard();
-        let root = std::env::temp_dir().join(format!("hologram_lsp_selfconn_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("hologram_lsp_selfconn_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&root);
         let pf = crate::lsp_daemon::port_file(&root);
         let _ = std::fs::write(&pf, "1"); // 伪端口：若误入客户端会触发拉起链（慢且错）
@@ -2573,13 +2773,19 @@ time.sleep(0.2)
         LspManager::mark_initialized(&root);
 
         let r = LspManager::try_daemon_locations("definition", "x.rs", "src", 0, 0, "rs");
-        assert!(r.is_none(), "offline daemon must fall through to local pool");
+        assert!(
+            r.is_none(),
+            "offline daemon must fall through to local pool"
+        );
 
         // 还原全局状态
         let mgr = LspManager::global();
         *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = false;
         *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = None;
-        mgr.daemon_ensure.write().unwrap_or_else(|e| e.into_inner()).clear();
+        mgr.daemon_ensure
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -2603,7 +2809,10 @@ time.sleep(0.2)
 
         // 池已清空
         let pool = mgr.pool.read().unwrap_or_else(|e| e.into_inner());
-        assert!(pool.get("__test_shutdown__").is_none(), "pool entry removed");
+        assert!(
+            pool.get("__test_shutdown__").is_none(),
+            "pool entry removed"
+        );
         drop(pool);
 
         // 子进程已死（给 kill 一点时间）
@@ -2626,9 +2835,9 @@ time.sleep(0.2)
         let mut status: libc::c_int = 0;
         let r = unsafe { libc::waitpid(pid as i32, &mut status, libc::WNOHANG) };
         match r {
-            0 => true,                      // 仍在运行
-            p if p == pid as i32 => false,  // 僵尸，已被回收 → 死了
-            _ => false,                     // ECHILD：不存在 → 死了
+            0 => true,                     // 仍在运行
+            p if p == pid as i32 => false, // 僵尸，已被回收 → 死了
+            _ => false,                    // ECHILD：不存在 → 死了
         }
     }
 
@@ -2637,5 +2846,4 @@ time.sleep(0.2)
     // 注意：曾尝试 rust-analyzer E2E 测试，但在 CI 中不可靠：
     // cargo check 的耗时因机器而异波动很大。超时机制已由 test_send_request_timeout 验证；
     // 真实 LSP 调用在每次引擎运行时被测试（索引 + 通过 MCP 工具的 agent 查询）。
-
 }

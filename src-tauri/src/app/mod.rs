@@ -246,12 +246,22 @@ mod tests {
         // 「:: 函数名 (」连续序列；本注释刻意断开书写避免自匹配。
         // 拼接构造避免本测试文件自匹配（模式串不出现连续的 "::engine_read" 字面）。
         let fns = [
-            "engine_" , "read", "|engine_write", "|engine_init",
-            "|engine_state", "|with_engine", "|engine_record_timeline",
-            "|engine_record_timeline_with_props", "|engine_save", "|engine_analyze",
-            "|engine_try_incremental", "|engine_fts_search", "|engine_query_timeline",
+            "engine_",
+            "read",
+            "|engine_write",
+            "|engine_init",
+            "|engine_state",
+            "|with_engine",
+            "|engine_record_timeline",
+            "|engine_record_timeline_with_props",
+            "|engine_save",
+            "|engine_analyze",
+            "|engine_try_incremental",
+            "|engine_fts_search",
+            "|engine_query_timeline",
             "|engine_graph_generated_at",
-        ].concat();
+        ]
+        .concat();
         let pattern = format!("::({fns})\\s*\\(");
         let re = regex_lite(&pattern);
 

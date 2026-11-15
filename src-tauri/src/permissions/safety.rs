@@ -22,21 +22,33 @@ pub fn check_path_safety_read(path: &Path) -> SafetyCheckResult {
     // 1. Windows 可疑路径模式
     #[cfg(windows)]
     if has_suspicious_windows_path(&path_str) {
-        return SafetyCheckResult { safe: false, message: "可疑的 Windows 路径模式".into() };
+        return SafetyCheckResult {
+            safe: false,
+            message: "可疑的 Windows 路径模式".into(),
+        };
     }
 
     // 1b. Linux/macOS — /proc/self/fd/* 可能泄露其他进程的文件描述符
     #[cfg(unix)]
     if is_suspicious_unix_read_path(&path_str) {
-        return SafetyCheckResult { safe: false, message: "受保护的系统路径".into() };
+        return SafetyCheckResult {
+            safe: false,
+            message: "受保护的系统路径".into(),
+        };
     }
 
     // 2. 危险的系统配置文件 — 读取也保护（凭据）
     if is_dangerous_file(path) {
-        return SafetyCheckResult { safe: false, message: "系统配置文件受保护".into() };
+        return SafetyCheckResult {
+            safe: false,
+            message: "系统配置文件受保护".into(),
+        };
     }
 
-    SafetyCheckResult { safe: true, message: String::new() }
+    SafetyCheckResult {
+        safe: true,
+        message: String::new(),
+    }
 }
 
 /// 检查路径是否可以安全写入（或任何操作）。
@@ -136,10 +148,7 @@ fn is_hologram_config_path(path: &Path) -> bool {
 
 /// 危险的系统配置文件 — 永远不允许写入。
 fn is_dangerous_file(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let dangerous_names = &[
         ".bashrc",
         ".zshrc",
@@ -205,11 +214,18 @@ fn has_suspicious_windows_path(path_str: &str) -> bool {
     for (i, &b) in bytes.iter().enumerate() {
         if b == b':' {
             // 位置 1: "C:\..." 盘符
-            if i == 1 && bytes.get(i.wrapping_sub(1)).is_some_and(|b| b.is_ascii_alphabetic()) {
+            if i == 1
+                && bytes
+                    .get(i.wrapping_sub(1))
+                    .is_some_and(|b| b.is_ascii_alphabetic())
+            {
                 continue;
             }
             // 位置 5: "\\?\C:\..." 长路径盘符
-            if i == 5 && path_str.starts_with("\\\\?\\") && bytes.get(4).is_some_and(|b| b.is_ascii_alphabetic()) {
+            if i == 5
+                && path_str.starts_with("\\\\?\\")
+                && bytes.get(4).is_some_and(|b| b.is_ascii_alphabetic())
+            {
                 continue;
             }
             // 其他位置的冒号均可疑 (ADS)
@@ -222,8 +238,8 @@ fn has_suspicious_windows_path(path_str: &str) -> bool {
     }
     // DOS 设备名
     let dos_names = &[
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
-        "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
     for name in dos_names {
         if path_str == *name || path_str.starts_with(&format!("{}.", name)) {
@@ -400,7 +416,10 @@ mod tests {
         // ponytail: .git/config 读取现在允许 — dangerous_dir 检查仅针对写。
         // 文件树需要浏览 .vscode/.idea 等目录而不触发 Ask 弹窗。
         let r = check_path_safety_read(Path::new(".git/config"));
-        assert!(r.safe, ".git/config reads should be allowed (only writes to .git are blocked)");
+        assert!(
+            r.safe,
+            ".git/config reads should be allowed (only writes to .git are blocked)"
+        );
         let r = check_path_safety_read(Path::new(".vscode/settings.json"));
         assert!(r.safe, ".vscode reads should be allowed");
     }
@@ -443,7 +462,10 @@ mod tests {
         let r = check_path_safety(Path::new("/home/test/.lantai/providers.yml"));
         assert!(r.safe, "~/.lantai/providers.yml（POSIX 形态）写应放行");
         let r = check_path_safety(Path::new(r"D:\proj\.lantai\providers.yml"));
-        assert!(r.safe, "项目级 .lantai/providers.yml 写应放行（同一条判定）");
+        assert!(
+            r.safe,
+            "项目级 .lantai/providers.yml 写应放行（同一条判定）"
+        );
     }
 
     /// 豁免收窄：只放行 providers.yml 这**一个文件名**——相邻形态照旧受保护
@@ -459,7 +481,10 @@ mod tests {
             r"C:\Users\test\.lantai\permissions.json",
         ] {
             let r = check_path_safety(Path::new(p));
-            assert!(!r.safe, "{p} 写仍应受保护（豁免只覆盖 providers.yml 一个文件名）");
+            assert!(
+                !r.safe,
+                "{p} 写仍应受保护（豁免只覆盖 providers.yml 一个文件名）"
+            );
         }
     }
 
@@ -534,13 +559,19 @@ mod tests {
     fn test_dangerous_dir_case_insensitive_git() {
         // .GIT 应像 .git 一样被阻止
         let r = check_path_safety(Path::new(".GIT/config"));
-        assert!(!r.safe, ".GIT/config writes should be blocked (case-insensitive)");
+        assert!(
+            !r.safe,
+            ".GIT/config writes should be blocked (case-insensitive)"
+        );
     }
 
     #[test]
     fn test_dangerous_dir_case_insensitive_vscode() {
         let r = check_path_safety(Path::new(".VSCode/settings.json"));
-        assert!(!r.safe, ".VSCode writes should be blocked (case-insensitive)");
+        assert!(
+            !r.safe,
+            ".VSCode writes should be blocked (case-insensitive)"
+        );
     }
 
     #[test]
@@ -552,7 +583,10 @@ mod tests {
     #[test]
     fn test_dangerous_dir_case_insensitive_cursor() {
         let r = check_path_safety(Path::new(".CURSOR/rules.txt"));
-        assert!(!r.safe, ".CURSOR writes should be blocked (case-insensitive)");
+        assert!(
+            !r.safe,
+            ".CURSOR writes should be blocked (case-insensitive)"
+        );
     }
 
     // ── 修复 2: is_suspicious_unix_read_path 额外 /proc/self 路径 ──
@@ -561,7 +595,10 @@ mod tests {
     #[test]
     fn test_unix_read_blocks_proc_maps() {
         let r = check_path_safety_read(Path::new("/proc/self/maps"));
-        assert!(!r.safe, "/proc/self/maps reads should be blocked (ASLR leak)");
+        assert!(
+            !r.safe,
+            "/proc/self/maps reads should be blocked (ASLR leak)"
+        );
     }
 
     #[cfg(unix)]

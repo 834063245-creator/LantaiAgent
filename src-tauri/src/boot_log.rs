@@ -87,7 +87,11 @@ fn open_boot_log() -> Option<Mutex<std::fs::File>> {
     // 轮转统一走 logging 的同一套（批 4）：上限 8 MiB / 保 2 代，与 ui/bridge 同规
     //（旧版是本地单代 4 MiB + `.old` 后缀）。失败不挡启动：继续追加大文件，
     // stderr 留一行说明（失败可见）。
-    if let Err(e) = crate::logging::rotate_if_large(&path, crate::logging::LOG_MAX_BYTES, crate::logging::LOG_KEEP) {
+    if let Err(e) = crate::logging::rotate_if_large(
+        &path,
+        crate::logging::LOG_MAX_BYTES,
+        crate::logging::LOG_KEEP,
+    ) {
         eprintln!("[boot] boot.log 轮转失败（继续追加大文件）：{e}");
     }
     std::fs::OpenOptions::new()
@@ -136,7 +140,10 @@ mod tests {
     #[test]
     fn boot_log_path_lives_under_project_logs_dir() {
         let dir = crate::utils::project_root().join(".lantai").join("logs");
-        assert!(dir.ends_with("logs"), "启动期日志必须落 .lantai/logs 下：{dir:?}");
+        assert!(
+            dir.ends_with("logs"),
+            "启动期日志必须落 .lantai/logs 下：{dir:?}"
+        );
     }
 
     /// 回归（2026-10-07 事故）：装了 logger 之后，`log` 门面的记录**必须真的落盘**。
@@ -152,7 +159,9 @@ mod tests {
             .append(true)
             .open(&path)
             .unwrap();
-        let logger = BootLogger { file: Some(Mutex::new(file)) };
+        let logger = BootLogger {
+            file: Some(Mutex::new(file)),
+        };
         // 测试进程里没人设过级别，缺省 Off 会把记录挡掉——显式放开。
         log::set_max_level(log::LevelFilter::Trace);
         let record = log::Record::builder()

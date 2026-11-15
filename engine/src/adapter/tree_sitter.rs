@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use crate::adapter::traits::LanguageAdapter;
+use crate::engine::GRAMMAR_LOADER;
 use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 use std::cell::RefCell;
-use crate::engine::GRAMMAR_LOADER;
 use tree_sitter::{Language, Parser};
 
 // 线程局部 parser 缓存 — 在同语言文件间复用 parser。
@@ -33,9 +33,15 @@ impl Default for TreeSitterAdapter {
 }
 
 impl TreeSitterAdapter {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
-    fn parse_ext(ext: &str, source: &str, file_id: &str) -> (Vec<Node>, Vec<Edge>, Option<tree_sitter::Tree>) {
+    fn parse_ext(
+        ext: &str,
+        source: &str,
+        file_id: &str,
+    ) -> (Vec<Node>, Vec<Edge>, Option<tree_sitter::Tree>) {
         TL_PARSER.with(|cell| {
             let mut borrow = cell.borrow_mut();
             // ponytail: 在 TL 缓存检查内解析 Language。
@@ -100,7 +106,11 @@ impl LanguageAdapter for TreeSitterAdapter {
         GRAMMAR_LOADER.supported_extensions()
     }
 
-    fn analyze(&self, file_path: &str, source: &str) -> (Vec<Node>, Vec<Edge>, Option<tree_sitter::Tree>) {
+    fn analyze(
+        &self,
+        file_path: &str,
+        source: &str,
+    ) -> (Vec<Node>, Vec<Edge>, Option<tree_sitter::Tree>) {
         let ext = file_path.rsplit('.').next().unwrap_or("");
         Self::parse_ext(ext, source, file_path)
     }
@@ -113,12 +123,23 @@ impl LanguageAdapter for TreeSitterAdapter {
 fn extract_base_names(container: &tree_sitter::Node, source: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut to_visit: Vec<tree_sitter::Node> = vec![*container];
-    let recurse_kinds: &[&str] = &["type", "mixins", "interfaces", "user_type",
-        "type_list", "type_arguments", "scoped_identifier", "qualified_name"];
+    let recurse_kinds: &[&str] = &[
+        "type",
+        "mixins",
+        "interfaces",
+        "user_type",
+        "type_list",
+        "type_arguments",
+        "scoped_identifier",
+        "qualified_name",
+    ];
     while let Some(node) = to_visit.pop() {
         let ck = node.kind();
-        if ck.contains("identifier") || ck.contains("name") || ck == "type_identifier"
-            || ck == "scoped_identifier" || ck == "scoped_type_identifier"
+        if ck.contains("identifier")
+            || ck.contains("name")
+            || ck == "type_identifier"
+            || ck == "scoped_identifier"
+            || ck == "scoped_type_identifier"
         {
             if let Ok(t) = node.utf8_text(source.as_bytes()) {
                 let t = t.trim().to_string();
@@ -139,13 +160,16 @@ fn extract_base_names(container: &tree_sitter::Node, source: &str) -> Vec<String
     if names.is_empty() {
         if let Ok(text) = container.utf8_text(source.as_bytes()) {
             let text = text.trim();
-            let text = text.trim_start_matches("extends ")
+            let text = text
+                .trim_start_matches("extends ")
                 .trim_start_matches("implements ")
                 .trim_start_matches(": ")
                 .trim_start_matches("with ");
             for p in text.split(',') {
                 let t = p.trim();
-                if !t.is_empty() { names.push(t.to_string()); }
+                if !t.is_empty() {
+                    names.push(t.to_string());
+                }
             }
         }
     }
@@ -167,10 +191,18 @@ fn emit_inherits_edges(
     // （例如 C# kind="base_list" 但 field="bases"）。按 kind 遍历
     // 在不同语法版本间更可靠。
     let inherit_container_kinds: &[&str] = &[
-        "base_list", "base_clause", "superclass", "super_classes",
-        "interfaces", "super_interfaces", "supertype_list",
-        "inheritance_specifier", "extends_clause", "implements_clause",
-        "with_clause", "class_heritage",
+        "base_list",
+        "base_clause",
+        "superclass",
+        "super_classes",
+        "interfaces",
+        "super_interfaces",
+        "supertype_list",
+        "inheritance_specifier",
+        "extends_clause",
+        "implements_clause",
+        "with_clause",
+        "class_heritage",
     ];
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -204,12 +236,40 @@ fn generic_walk(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (Vec<N
     // 作用域栈：(node, scope_id) — 追踪外层 function/class 用于准确的 call 归属
     let mut to_visit: Vec<(tree_sitter::Node, String)> = vec![(root, module_id.clone())];
 
-    let func_kinds: &[&str] = &["function_definition","function_declaration","method_definition","function_item","func_declaration",
-        "constructor_declaration","arrow_function","generator_function","function_expression","generator_function_expression"];
-    let class_kinds: &[&str] = &["class_definition","class_declaration","struct_declaration",
-        "interface_declaration","trait_declaration","enum_declaration","type_alias_declaration"];
-    let import_kinds: &[&str] = &["import_statement","import_declaration","use_declaration","include_directive","require_statement"];
-    let call_kinds: &[&str] = &["call_expression","function_call","method_invocation","new_expression"];
+    let func_kinds: &[&str] = &[
+        "function_definition",
+        "function_declaration",
+        "method_definition",
+        "function_item",
+        "func_declaration",
+        "constructor_declaration",
+        "arrow_function",
+        "generator_function",
+        "function_expression",
+        "generator_function_expression",
+    ];
+    let class_kinds: &[&str] = &[
+        "class_definition",
+        "class_declaration",
+        "struct_declaration",
+        "interface_declaration",
+        "trait_declaration",
+        "enum_declaration",
+        "type_alias_declaration",
+    ];
+    let import_kinds: &[&str] = &[
+        "import_statement",
+        "import_declaration",
+        "use_declaration",
+        "include_directive",
+        "require_statement",
+    ];
+    let call_kinds: &[&str] = &[
+        "call_expression",
+        "function_call",
+        "method_invocation",
+        "new_expression",
+    ];
 
     while let Some((node, scope_id)) = to_visit.pop() {
         let kind = node.kind();
@@ -242,7 +302,9 @@ fn generic_walk(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (Vec<N
             let name_node = node.child_by_field_name("name").or_else(|| {
                 let decl = node.child_by_field_name("declarator")?;
                 let mut cursor = decl.walk();
-                let found = decl.children(&mut cursor).find(|c| c.kind() == "identifier");
+                let found = decl
+                    .children(&mut cursor)
+                    .find(|c| c.kind() == "identifier");
                 found
             });
             if let Some(nn) = name_node {
@@ -250,17 +312,38 @@ fn generic_walk(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (Vec<N
                     let nid = format!("{}.{}", module_id, name);
                     let nkind = if func_kinds.contains(&kind) {
                         NodeKind::Function
-                    } else if ["interface_declaration","trait_declaration","type_alias_declaration"].contains(&kind) {
+                    } else if [
+                        "interface_declaration",
+                        "trait_declaration",
+                        "type_alias_declaration",
+                    ]
+                    .contains(&kind)
+                    {
                         NodeKind::Interface
                     } else {
                         NodeKind::Class
                     };
-                    counter+=1; edges.push(Edge::new(format!("def_{}_{}", file_id, counter), &module_id, &nid, EdgeKind::Defines));
+                    counter += 1;
+                    edges.push(Edge::new(
+                        format!("def_{}_{}", file_id, counter),
+                        &module_id,
+                        &nid,
+                        EdgeKind::Defines,
+                    ));
                     let mut n = Node::new(&nid, name, nkind);
                     let row = nn.start_position().row;
                     n.location = Some(format!("{}:{}", file_id, row + 1));
                     nodes.push(n);
-                    emit_inherits_edges(&node, source, ext, &nid, &module_id, file_id, &mut counter, &mut edges);
+                    emit_inherits_edges(
+                        &node,
+                        source,
+                        ext,
+                        &nid,
+                        &module_id,
+                        file_id,
+                        &mut counter,
+                        &mut edges,
+                    );
                     // 子节点继承此 function/class 作为作用域
                     push_children_with_scope(&node, &nid, &mut to_visit);
                     continue;
@@ -271,23 +354,46 @@ fn generic_walk(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (Vec<N
             let mut ec = node.walk();
             for child in node.children(&mut ec) {
                 let ck = child.kind();
-                if ck.contains("string")||ck.contains("path")||ck.contains("name")||ck.contains("identifier")||ck.contains("scoped") {
+                if ck.contains("string")
+                    || ck.contains("path")
+                    || ck.contains("name")
+                    || ck.contains("identifier")
+                    || ck.contains("scoped")
+                {
                     if let Ok(t) = child.utf8_text(source.as_bytes()) {
-                        let t = t.trim_matches(&['\'','"','`','(',')'][..]);
+                        let t = t.trim_matches(&['\'', '"', '`', '(', ')'][..]);
                         if !t.is_empty() && t != file_id {
-                            counter+=1; let mut e = Edge::new(format!("imp_{}_{}", file_id, counter), &module_id, t, EdgeKind::Imports);
-                            e.cross_file=true; edges.push(e);
+                            counter += 1;
+                            let mut e = Edge::new(
+                                format!("imp_{}_{}", file_id, counter),
+                                &module_id,
+                                t,
+                                EdgeKind::Imports,
+                            );
+                            e.cross_file = true;
+                            edges.push(e);
                         }
                     }
                 }
             }
         }
         if call_kinds.contains(&kind) {
-            let field = if kind == "new_expression" { "constructor" } else { "function" };
+            let field = if kind == "new_expression" {
+                "constructor"
+            } else {
+                "function"
+            };
             if let Some(func_node) = node.child_by_field_name(field) {
                 if let Ok(fn_name) = func_node.utf8_text(source.as_bytes()) {
-                    counter+=1; let mut e = Edge::new(format!("call_{}_{}", file_id, counter), &scope_id, fn_name, EdgeKind::Calls);
-                    e.cross_file=true; edges.push(e);
+                    counter += 1;
+                    let mut e = Edge::new(
+                        format!("call_{}_{}", file_id, counter),
+                        &scope_id,
+                        fn_name,
+                        EdgeKind::Calls,
+                    );
+                    e.cross_file = true;
+                    edges.push(e);
                 }
             }
         }
@@ -300,7 +406,12 @@ fn generic_walk(tree: &tree_sitter::Tree, source: &str, file_id: &str) -> (Vec<N
 #[cfg(test)]
 fn dump_ast(node: &tree_sitter::Node, source: &str, depth: usize) {
     let indent = "  ".repeat(depth);
-    let text = node.utf8_text(source.as_bytes()).unwrap_or("?").chars().take(60).collect::<String>();
+    let text = node
+        .utf8_text(source.as_bytes())
+        .unwrap_or("?")
+        .chars()
+        .take(60)
+        .collect::<String>();
     eprintln!("{}[{}] {:?}", indent, node.kind(), text);
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -309,7 +420,11 @@ fn dump_ast(node: &tree_sitter::Node, source: &str, depth: usize) {
 }
 
 /// 将节点的子节点压入遍历栈，每个标记为给定的 scope_id。
-fn push_children_with_scope<'a>(node: &tree_sitter::Node<'a>, scope_id: &str, to_visit: &mut Vec<(tree_sitter::Node<'a>, String)>) {
+fn push_children_with_scope<'a>(
+    node: &tree_sitter::Node<'a>,
+    scope_id: &str,
+    to_visit: &mut Vec<(tree_sitter::Node<'a>, String)>,
+) {
     let mut cursor = node.walk();
     let mut children: Vec<tree_sitter::Node<'a>> = node.children(&mut cursor).collect();
     children.reverse();
@@ -429,7 +544,10 @@ pub fn add(a: i32, b: i32) -> i32 {
         if GRAMMAR_LOADER.is_extension_registered("kt") {
             assert!(!nodes.is_empty(), "动态 kotlin 语法就位时应产出节点");
         } else {
-            assert!(nodes.is_empty(), "kt not yet wired — pending grammar upgrade");
+            assert!(
+                nodes.is_empty(),
+                "kt not yet wired — pending grammar upgrade"
+            );
         }
     }
 
@@ -444,15 +562,32 @@ pub fn add(a: i32, b: i32) -> i32 {
         let src = "int add(int a, int b) { return a + b; }\nint main(void) { return add(1, 2); }";
         let (nodes, edges, tree) = a.analyze("test.c", src);
         eprintln!("C test: {} nodes, {} edges", nodes.len(), edges.len());
-        for n in &nodes { eprintln!("  node: id={} name={} kind={}", n.id, n.name, n.kind.as_str()); }
-        for e in &edges { eprintln!("  edge: {} -> {} kind={}", e.source, e.target, e.kind.as_str()); }
+        for n in &nodes {
+            eprintln!(
+                "  node: id={} name={} kind={}",
+                n.id,
+                n.name,
+                n.kind.as_str()
+            );
+        }
+        for e in &edges {
+            eprintln!(
+                "  edge: {} -> {} kind={}",
+                e.source,
+                e.target,
+                e.kind.as_str()
+            );
+        }
         // 导出 tree-sitter AST 以诊断缺失的 function_definition 节点
         if let Some(tree) = &tree {
             let root = tree.root_node();
             eprintln!("AST root: {} has_error={}", root.kind(), root.has_error());
             dump_ast(&root, src, 0);
         }
-        assert!(nodes.len() >= 3, "should have module + add + main functions");
+        assert!(
+            nodes.len() >= 3,
+            "should have module + add + main functions"
+        );
         assert!(edges.len() >= 3, "should have 2 defines + 1 call edge");
     }
 
@@ -468,11 +603,17 @@ fn outer() {
 }
 "#;
         let (_nodes, edges, _) = a.analyze("main.rs", src);
-        let call = edges.iter().find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "helper");
+        let call = edges
+            .iter()
+            .find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "helper");
         assert!(call.is_some(), "should have call to helper");
         let call = call.unwrap();
         // Source 应为 outer 的 node ID，而非文件的 module ID
-        assert!(call.source.contains("outer"), "call source should be 'outer', got '{}'", call.source);
+        assert!(
+            call.source.contains("outer"),
+            "call source should be 'outer', got '{}'",
+            call.source
+        );
     }
 
     #[test]
@@ -480,10 +621,26 @@ fn outer() {
         let a = TreeSitterAdapter;
         let src = "class Dog: Animal {}";
         let (_, edges, _) = a.analyze("Test.swift", src);
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
-        assert_eq!(inh.len(), 1, "single inheritance should produce 1 edge, got {}", inh.len());
-        assert!(inh[0].source.contains("Dog"), "source should be Dog, got {}", inh[0].source);
-        assert!(inh[0].target.contains("Animal"), "target should be Animal, got {}", inh[0].target);
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
+        assert_eq!(
+            inh.len(),
+            1,
+            "single inheritance should produce 1 edge, got {}",
+            inh.len()
+        );
+        assert!(
+            inh[0].source.contains("Dog"),
+            "source should be Dog, got {}",
+            inh[0].source
+        );
+        assert!(
+            inh[0].target.contains("Animal"),
+            "target should be Animal, got {}",
+            inh[0].target
+        );
     }
 
     #[test]
@@ -491,11 +648,26 @@ fn outer() {
         let a = TreeSitterAdapter;
         let src = "class Dog: Animal, Pettable {}";
         let (_, edges, _) = a.analyze("Test.swift", src);
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
-        assert!(inh.len() >= 2, "multiple inheritance should produce >=2 edges, got {}", inh.len());
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
+        assert!(
+            inh.len() >= 2,
+            "multiple inheritance should produce >=2 edges, got {}",
+            inh.len()
+        );
         let targets: Vec<&str> = inh.iter().map(|e| e.target.as_str()).collect();
-        assert!(targets.iter().any(|t| t.contains("Animal")), "should find Animal in {:?}", targets);
-        assert!(targets.iter().any(|t| t.contains("Pettable")), "should find Pettable in {:?}", targets);
+        assert!(
+            targets.iter().any(|t| t.contains("Animal")),
+            "should find Animal in {:?}",
+            targets
+        );
+        assert!(
+            targets.iter().any(|t| t.contains("Pettable")),
+            "should find Pettable in {:?}",
+            targets
+        );
     }
 
     #[test]
@@ -503,9 +675,21 @@ fn outer() {
         let a = TreeSitterAdapter;
         let src = "class Dog extends Animal {}";
         let (_, edges, _) = a.analyze("Test.dart", src);
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
-        assert_eq!(inh.len(), 1, "Dart extends should produce 1 edge, got {}", inh.len());
-        assert!(inh[0].target.contains("Animal"), "target should be Animal, got {}", inh[0].target);
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
+        assert_eq!(
+            inh.len(),
+            1,
+            "Dart extends should produce 1 edge, got {}",
+            inh.len()
+        );
+        assert!(
+            inh[0].target.contains("Animal"),
+            "target should be Animal, got {}",
+            inh[0].target
+        );
     }
 
     #[test]
@@ -513,9 +697,21 @@ fn outer() {
         let a = TreeSitterAdapter;
         let src = "class Dog implements Pettable {}";
         let (_, edges, _) = a.analyze("Test.dart", src);
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
-        assert_eq!(inh.len(), 1, "Dart implements should produce 1 edge, got {}", inh.len());
-        assert!(inh[0].target.contains("Pettable"), "target should be Pettable, got {}", inh[0].target);
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
+        assert_eq!(
+            inh.len(),
+            1,
+            "Dart implements should produce 1 edge, got {}",
+            inh.len()
+        );
+        assert!(
+            inh[0].target.contains("Pettable"),
+            "target should be Pettable, got {}",
+            inh[0].target
+        );
     }
 
     #[test]
@@ -523,11 +719,26 @@ fn outer() {
         let a = TreeSitterAdapter;
         let src = "class Dog extends Animal with MixinA {}";
         let (_, edges, _) = a.analyze("Test.dart", src);
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
-        assert!(inh.len() >= 2, "extends+with should produce >=2 edges, got {}", inh.len());
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
+        assert!(
+            inh.len() >= 2,
+            "extends+with should produce >=2 edges, got {}",
+            inh.len()
+        );
         let targets: Vec<&str> = inh.iter().map(|e| e.target.as_str()).collect();
-        assert!(targets.iter().any(|t| t.contains("Animal")), "should find Animal in {:?}", targets);
-        assert!(targets.iter().any(|t| t.contains("MixinA")), "should find MixinA in {:?}", targets);
+        assert!(
+            targets.iter().any(|t| t.contains("Animal")),
+            "should find Animal in {:?}",
+            targets
+        );
+        assert!(
+            targets.iter().any(|t| t.contains("MixinA")),
+            "should find MixinA in {:?}",
+            targets
+        );
     }
 
     #[test]
@@ -538,12 +749,24 @@ fn outer() {
         let a = TreeSitterAdapter;
         let src = "class Dog extends Animal implements Pettable with MixinA, MixinB {}";
         let (_, edges, _) = a.analyze("Test.dart", src);
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
         // 语法 bug：MixinA 在 ERROR 节点内。我们得到 Animal + Pettable + MixinB。
-        assert!(inh.len() >= 3, "extends+implements+with should produce >=3 edges, got {}", inh.len());
+        assert!(
+            inh.len() >= 3,
+            "extends+implements+with should produce >=3 edges, got {}",
+            inh.len()
+        );
         let targets: Vec<&str> = inh.iter().map(|e| e.target.as_str()).collect();
         for name in &["Animal", "Pettable"] {
-            assert!(targets.iter().any(|t| t.contains(name)), "should find {} in {:?}", name, targets);
+            assert!(
+                targets.iter().any(|t| t.contains(name)),
+                "should find {} in {:?}",
+                name,
+                targets
+            );
         }
     }
 
@@ -552,9 +775,21 @@ fn outer() {
         let a = TreeSitterAdapter;
         let src = "class Dog extends Animal {}";
         let (_, edges, _) = a.analyze("Test.scala", src);
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
-        assert_eq!(inh.len(), 1, "Scala extends should produce 1 edge, got {}", inh.len());
-        assert!(inh[0].target.contains("Animal"), "target should be Animal, got {}", inh[0].target);
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
+        assert_eq!(
+            inh.len(),
+            1,
+            "Scala extends should produce 1 edge, got {}",
+            inh.len()
+        );
+        assert!(
+            inh[0].target.contains("Animal"),
+            "target should be Animal, got {}",
+            inh[0].target
+        );
     }
 
     #[test]
@@ -562,11 +797,23 @@ fn outer() {
         let a = TreeSitterAdapter;
         let src = "class Dog extends Animal with TraitA with TraitB {}";
         let (_, edges, _) = a.analyze("Test.scala", src);
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
-        assert!(inh.len() >= 3, "extends+with+with should produce >=3 edges, got {}", inh.len());
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
+        assert!(
+            inh.len() >= 3,
+            "extends+with+with should produce >=3 edges, got {}",
+            inh.len()
+        );
         let targets: Vec<&str> = inh.iter().map(|e| e.target.as_str()).collect();
         for name in &["Animal", "TraitA", "TraitB"] {
-            assert!(targets.iter().any(|t| t.contains(name)), "should find {} in {:?}", name, targets);
+            assert!(
+                targets.iter().any(|t| t.contains(name)),
+                "should find {} in {:?}",
+                name,
+                targets
+            );
         }
     }
 
@@ -584,11 +831,26 @@ impl Draw for Circle {
 "#;
         let (_nodes, edges, _) = a.analyze("main.rs", src);
         let inh = edges.iter().find(|e| matches!(e.kind, EdgeKind::Inherits));
-        assert!(inh.is_some(), "impl Draw for Circle should produce Inherits edge, got {:?}",
-            edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).map(|e| format!("{} -> {}", e.source, e.target)).collect::<Vec<_>>());
+        assert!(
+            inh.is_some(),
+            "impl Draw for Circle should produce Inherits edge, got {:?}",
+            edges
+                .iter()
+                .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+                .map(|e| format!("{} -> {}", e.source, e.target))
+                .collect::<Vec<_>>()
+        );
         let inh = inh.unwrap();
-        assert!(inh.source.contains("Circle"), "source should be Circle, got {}", inh.source);
-        assert!(inh.target.contains("Draw"), "target should be Draw, got {}", inh.target);
+        assert!(
+            inh.source.contains("Circle"),
+            "source should be Circle, got {}",
+            inh.source
+        );
+        assert!(
+            inh.target.contains("Draw"),
+            "target should be Draw, got {}",
+            inh.target
+        );
     }
 
     #[test]
@@ -597,10 +859,21 @@ impl Draw for Circle {
         let src = "class Dog extends Animal {}";
         let (_nodes, edges, _) = a.analyze("Test.java", src);
         let inh = edges.iter().find(|e| matches!(e.kind, EdgeKind::Inherits));
-        assert!(inh.is_some(), "class Dog extends Animal should produce Inherits edge");
+        assert!(
+            inh.is_some(),
+            "class Dog extends Animal should produce Inherits edge"
+        );
         let inh = inh.unwrap();
-        assert!(inh.source.contains("Dog"), "source should be Dog, got {}", inh.source);
-        assert!(inh.target.contains("Animal"), "target should be Animal, got {}", inh.target);
+        assert!(
+            inh.source.contains("Dog"),
+            "source should be Dog, got {}",
+            inh.source
+        );
+        assert!(
+            inh.target.contains("Animal"),
+            "target should be Animal, got {}",
+            inh.target
+        );
     }
 
     #[test]
@@ -609,9 +882,16 @@ impl Draw for Circle {
         let src = "class Dog : Animal {}";
         let (_nodes, edges, _) = a.analyze("Test.cs", src);
         let inh = edges.iter().find(|e| matches!(e.kind, EdgeKind::Inherits));
-        assert!(inh.is_some(), "class Dog : Animal should produce Inherits edge");
+        assert!(
+            inh.is_some(),
+            "class Dog : Animal should produce Inherits edge"
+        );
         let inh = inh.unwrap();
-        assert!(inh.target.contains("Animal"), "target should be Animal, got {}", inh.target);
+        assert!(
+            inh.target.contains("Animal"),
+            "target should be Animal, got {}",
+            inh.target
+        );
     }
 
     #[test]
@@ -620,8 +900,15 @@ impl Draw for Circle {
         let src = "<?php class Dog extends Animal {}";
         let (_nodes, edges, _) = a.analyze("Test.php", src);
         let inh = edges.iter().find(|e| matches!(e.kind, EdgeKind::Inherits));
-        assert!(inh.is_some(), "class Dog extends Animal should produce Inherits edge");
+        assert!(
+            inh.is_some(),
+            "class Dog extends Animal should produce Inherits edge"
+        );
         let inh = inh.unwrap();
-        assert!(inh.source.contains("Dog"), "source should be Dog, got {}", inh.source);
+        assert!(
+            inh.source.contains("Dog"),
+            "source should be Dog, got {}",
+            inh.source
+        );
     }
 }

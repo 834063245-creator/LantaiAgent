@@ -1,40 +1,56 @@
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
 use crate::analysis::*;
 use crate::engine;
-use crate::tools::{get_str, get_usize, project_root, with_store};
 use crate::tools::ToolResponse;
+use crate::tools::{get_str, get_usize, project_root, with_store};
+use serde_json::{json, Value};
 
 pub(crate) fn handler_fragile(args: &Value) -> ToolResponse {
     let limit = get_usize(args, "limit", 5).max(1);
     ToolResponse::Success(with_store(|idx| {
-        let mut file_scores: std::collections::HashMap<String, (f64, usize)> = std::collections::HashMap::new();
+        let mut file_scores: std::collections::HashMap<String, (f64, usize)> =
+            std::collections::HashMap::new();
         for node in idx.nodes_iter() {
             let loc = match node.location.as_ref() {
                 Some(l) => l.replace('\\', "/"),
                 None => continue,
             };
-            let file_path = loc.rsplit_once(':').map(|(f, _)| f.to_string()).unwrap_or(loc);
+            let file_path = loc
+                .rsplit_once(':')
+                .map(|(f, _)| f.to_string())
+                .unwrap_or(loc);
 
             let out_raw = idx.outgoing(&node.id, None);
             let incoming_raw = idx.incoming(&node.id, None);
-            let out: Vec<_> = out_raw.into_iter()
+            let out: Vec<_> = out_raw
+                .into_iter()
                 .filter(|(tgt, _, _, _)| !idx.is_edge_synthesized(&node.id, tgt))
                 .collect();
-            let incoming: Vec<_> = incoming_raw.into_iter()
+            let incoming: Vec<_> = incoming_raw
+                .into_iter()
                 .filter(|(src, _, _, _)| !idx.is_edge_synthesized(src, &node.id))
                 .collect();
 
             let fan = (out.len() + incoming.len()) as f64;
-            let coupling_penalty: f64 = out.iter()
+            let coupling_penalty: f64 = out
+                .iter()
                 .map(|(_, _, depth, _)| (*depth as f64).powi(2))
-                .chain(incoming.iter().map(|(_, _, depth, _)| (*depth as f64).powi(2)))
-                .sum::<f64>() / fan.max(1.0);
+                .chain(
+                    incoming
+                        .iter()
+                        .map(|(_, _, depth, _)| (*depth as f64).powi(2)),
+                )
+                .sum::<f64>()
+                / fan.max(1.0);
             let node_score = fan * (1.0 + coupling_penalty);
 
-            file_scores.entry(file_path)
-                .and_modify(|(s, c)| { *s += node_score; *c += 1; })
+            file_scores
+                .entry(file_path)
+                .and_modify(|(s, c)| {
+                    *s += node_score;
+                    *c += 1;
+                })
                 .or_insert((node_score, 1));
         }
 
@@ -46,16 +62,19 @@ pub(crate) fn handler_fragile(args: &Value) -> ToolResponse {
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(limit);
 
-        let result: Vec<serde_json::Value> = scored.iter().map(|(score, file, nodes)| {
-            let short_name = file.rsplit('/').next().unwrap_or(file).to_string();
-            json!({
-                "module": short_name,
-                "file": file,
-                "fragility_score": format!("{:.1}", score),
-                "node_count": nodes,
-                "_score_breakdown": format!("struct={:.1}", score),
+        let result: Vec<serde_json::Value> = scored
+            .iter()
+            .map(|(score, file, nodes)| {
+                let short_name = file.rsplit('/').next().unwrap_or(file).to_string();
+                json!({
+                    "module": short_name,
+                    "file": file,
+                    "fragility_score": format!("{:.1}", score),
+                    "node_count": nodes,
+                    "_score_breakdown": format!("struct={:.1}", score),
+                })
             })
-        }).collect();
+            .collect();
 
         json!({
             "fragile_modules": result,
@@ -69,10 +88,7 @@ pub(crate) fn handler_cycle(args: &Value) -> ToolResponse {
     let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("all");
     ToolResponse::Success(with_store(|idx| {
         let classified = classify_cycles_from_index(idx);
-        let all_cycles: Vec<_> = classified["cycles"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
+        let all_cycles: Vec<_> = classified["cycles"].as_array().cloned().unwrap_or_default();
         let filtered: Vec<_> = match mode {
             "data" => all_cycles
                 .into_iter()
@@ -93,13 +109,12 @@ pub(crate) fn handler_thread_conflicts(_args: &Value) -> ToolResponse {
         use hologram_graph::EdgeKind;
         // 扫描所有 Writes / Shares 边，查找有多个写入者的共享资源。
         // "资源"是任何有 ≥2 个不同源节点写入/共享的图节点。
-        let mut writers: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut writers: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
         for (source, targets) in idx.edges_iter() {
             for (target, kind, _, _) in targets {
                 if matches!(kind, EdgeKind::Writes | EdgeKind::Shares) {
-                    writers.entry(target)
-                        .or_default()
-                        .push(source.clone());
+                    writers.entry(target).or_default().push(source.clone());
                 }
             }
         }
@@ -180,7 +195,8 @@ pub(crate) fn handler_coupling_report(args: &Value) -> ToolResponse {
                 if let Ok(df) = &r.result {
                     for s in &df.scopes {
                         l3 += (s.reads.len() + s.writes.len()) as u32;
-                        l4 += (s.triggers.len() + s.awaits_callbacks.len() + s.sequence_calls.len()) as u32;
+                        l4 += (s.triggers.len() + s.awaits_callbacks.len() + s.sequence_calls.len())
+                            as u32;
                     }
                     l3 += df.shared.len() as u32;
                 }
@@ -206,7 +222,10 @@ pub(crate) fn handler_timeline(args: &Value) -> ToolResponse {
 
 pub(crate) fn handler_blindspots(args: &Value) -> ToolResponse {
     let filter = args.get("filter").and_then(|v| v.as_str()).unwrap_or("all");
-    let detail = args.get("detail").and_then(|v| v.as_bool()).unwrap_or(false);
+    let detail = args
+        .get("detail")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     ToolResponse::Success(with_store(|idx| {
         let l4_total = count_l4_from_index(idx);
         let cycles = detect_cycles_from_index(idx);
@@ -237,8 +256,10 @@ pub(crate) fn handler_grpc_services(_args: &Value) -> ToolResponse {
             .collect();
 
         // 边统计：出边（proto→impl）为实现边；入边（caller→proto）为客户端调用点
-        let mut impl_count: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        let mut client_count: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut impl_count: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        let mut client_count: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         for (source, targets) in idx.edges_iter() {
             for (target, _, _, _) in targets {
                 if grpc_ids.contains(&source) {
@@ -251,7 +272,8 @@ pub(crate) fn handler_grpc_services(_args: &Value) -> ToolResponse {
         }
 
         // 按 service 分组，方法按名排序
-        let mut services: std::collections::BTreeMap<String, serde_json::Value> = std::collections::BTreeMap::new();
+        let mut services: std::collections::BTreeMap<String, serde_json::Value> =
+            std::collections::BTreeMap::new();
         let mut total_methods = 0usize;
         let mut implemented = 0usize;
         let mut missing = 0usize;
@@ -261,17 +283,38 @@ pub(crate) fn handler_grpc_services(_args: &Value) -> ToolResponse {
             .collect();
         nodes.sort_by(|a, b| a.name.cmp(&b.name));
         for node in nodes {
-            let svc = node.properties.get("service").and_then(|v| v.as_str()).unwrap_or("?").to_string();
-            let pkg = node.properties.get("package").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let method = node.properties.get("method").and_then(|v| v.as_str()).unwrap_or(&node.name).to_string();
+            let svc = node
+                .properties
+                .get("service")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string();
+            let pkg = node
+                .properties
+                .get("package")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let method = node
+                .properties
+                .get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&node.name)
+                .to_string();
             let is_impl = impl_count.get(&node.id.to_string()).copied().unwrap_or(0) > 0;
             total_methods += 1;
-            if is_impl { implemented += 1; } else { missing += 1; }
-            let entry = services.entry(svc.clone()).or_insert_with(|| json!({
-                "service": svc,
-                "package": pkg,
-                "methods": Vec::<serde_json::Value>::new(),
-            }));
+            if is_impl {
+                implemented += 1;
+            } else {
+                missing += 1;
+            }
+            let entry = services.entry(svc.clone()).or_insert_with(|| {
+                json!({
+                    "service": svc,
+                    "package": pkg,
+                    "methods": Vec::<serde_json::Value>::new(),
+                })
+            });
             entry["methods"].as_array_mut().expect("methods 必须是数组").push(json!({
                 "method": method,
                 "node": node.id,
@@ -292,5 +335,3 @@ pub(crate) fn handler_grpc_services(_args: &Value) -> ToolResponse {
         })
     }))
 }
-
-

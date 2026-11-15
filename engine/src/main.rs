@@ -19,19 +19,23 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 // ── 引擎内部模块导入 ──
-use hologram_engine::analysis::{fragile_nodes, detect_cycles, coupling_report, graph_summary, find_blindspots};
+use hologram_engine::analysis::{
+    coupling_report, detect_cycles, find_blindspots, fragile_nodes, graph_summary,
+};
 use hologram_engine::community::{detect_communities, detect_hierarchical_communities};
-use hologram_graph::{EdgeKind, Graph};
 use hologram_engine::logging;
-use hologram_engine::routing::preflight::{check_timeline_props, load_baseline, run_full_check, save_baseline};
 use hologram_engine::mcp::{self, McpServer};
+use hologram_engine::routing::preflight::{
+    check_timeline_props, load_baseline, run_full_check, save_baseline,
+};
 use hologram_engine::stress::{self, StressSize};
 use hologram_engine::tools::ToolRegistry;
+use hologram_graph::{EdgeKind, Graph};
 use serde_json::{self, json};
 use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tracing::{info, debug, warn};
+use tracing::{debug, info, warn};
 
 /// 程序入口。根据命令行参数分发到不同运行模式：
 ///
@@ -52,8 +56,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let n_cores = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
-    let is_stress = std::env::args().any(|a| a == "--stress" || a == "--stress-real" || a == "--stress-full" || a == "--stress-dataflow" || a == "--stress-lsp" || a == "--stress-suite");
-    let n_threads = if is_stress { n_cores } else { n_cores.saturating_sub(1).max(1) };
+    let is_stress = std::env::args().any(|a| {
+        a == "--stress"
+            || a == "--stress-real"
+            || a == "--stress-full"
+            || a == "--stress-dataflow"
+            || a == "--stress-lsp"
+            || a == "--stress-suite"
+    });
+    let n_threads = if is_stress {
+        n_cores
+    } else {
+        n_cores.saturating_sub(1).max(1)
+    };
     rayon::ThreadPoolBuilder::new()
         .num_threads(n_threads)
         .build_global()
@@ -76,10 +91,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     {
         tokio::spawn(async move {
-            let mut sigterm = tokio::signal::unix::signal(
-                tokio::signal::unix::SignalKind::terminate(),
-            )
-            .expect("install SIGTERM handler");
+            let mut sigterm =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("install SIGTERM handler");
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {},
                 _ = sigterm.recv() => {},
@@ -100,7 +114,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("HoloGram Engine {} — Code Dependency Topology Analyzer", env!("CARGO_PKG_VERSION"));
+        println!(
+            "HoloGram Engine {} — Code Dependency Topology Analyzer",
+            env!("CARGO_PKG_VERSION")
+        );
         println!("Copyright (c) 2026 Wenbing Jing. MIT License.");
         println!();
         println!("USAGE:");
@@ -112,7 +129,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  engine.exe --stress-real <path> [N]  对真实项目做基准测试（默认 3 轮）");
         println!("  engine.exe --stress-full <path> [N]  完整管线: 结构 + Dataflow + LSP");
         println!("  engine.exe --stress-dataflow <path> [N]  仅 Dataflow 基准测试");
-        println!("  engine.exe --stress-lsp <path> [N] [ext]  仅 LSP 基准测试 (ext: py,rs,ts,go,...)");
+        println!(
+            "  engine.exe --stress-lsp <path> [N] [ext]  仅 LSP 基准测试 (ext: py,rs,ts,go,...)"
+        );
         println!("  engine.exe run <tool> [project_path] [--key value ...]  一次性执行工具");
         println!("  engine.exe run --list                                 列出所有可用工具");
         println!("  engine.exe --version          打印版本和版权信息");
@@ -130,7 +149,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return Ok(());
             }
             None => {
-                eprintln!("[stress] 未知规模 '{}'。可选: small, medium, large, xlarge, 或数字", size_str);
+                eprintln!(
+                    "[stress] 未知规模 '{}'。可选: small, medium, large, xlarge, 或数字",
+                    size_str
+                );
                 std::process::exit(1);
             }
         }
@@ -139,9 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 用法：engine.exe --stress-real <path> [iterations]
     if let Some(pos) = args.iter().position(|a| a == "--stress-real") {
         let path_str = args.get(pos + 1).map(|s| s.as_str()).unwrap_or(".");
-        let iterations: usize = args.get(pos + 2)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(3);
+        let iterations: usize = args.get(pos + 2).and_then(|s| s.parse().ok()).unwrap_or(3);
         let root = PathBuf::from(path_str);
         if !root.exists() {
             eprintln!("[stress] Project path not found: {}", path_str);
@@ -157,10 +177,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 用法：engine.exe --stress-full <path> [iterations] [ext_filter]
     if let Some(pos) = args.iter().position(|a| a == "--stress-full") {
         let path_str = args.get(pos + 1).map(|s| s.as_str()).unwrap_or(".");
-        let iterations: usize = args.get(pos + 2)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(3);
-        let ext_filter: Vec<String> = args.get(pos + 3)
+        let iterations: usize = args.get(pos + 2).and_then(|s| s.parse().ok()).unwrap_or(3);
+        let ext_filter: Vec<String> = args
+            .get(pos + 3)
             .map(|s| s.split(',').map(|e| e.trim().to_string()).collect())
             .unwrap_or_default();
         let ext_slice: Vec<&str> = ext_filter.iter().map(|s| s.as_str()).collect();
@@ -177,7 +196,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let path_str = args.get(pos + 1).map(|s| s.as_str()).unwrap_or(".");
         let iterations: usize = args.get(pos + 2).and_then(|s| s.parse().ok()).unwrap_or(3);
         let root = PathBuf::from(path_str);
-        if !root.exists() { eprintln!("[stress] Project path not found: {}", path_str); std::process::exit(1); }
+        if !root.exists() {
+            eprintln!("[stress] Project path not found: {}", path_str);
+            std::process::exit(1);
+        }
         stress::run_stress_dataflow(&root, iterations);
         return Ok(());
     }
@@ -188,12 +210,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let path_str = args.get(pos + 1).map(|s| s.as_str()).unwrap_or(".");
         let iterations: usize = args.get(pos + 2).and_then(|s| s.parse().ok()).unwrap_or(3);
         // 可选语言过滤：逗号分隔的扩展名，如 "py,rs"
-        let ext_filter: Vec<String> = args.get(pos + 3)
+        let ext_filter: Vec<String> = args
+            .get(pos + 3)
             .map(|s| s.split(',').map(|e| e.trim().to_string()).collect())
             .unwrap_or_default();
         let ext_slice: Vec<&str> = ext_filter.iter().map(|s| s.as_str()).collect();
         let root = PathBuf::from(path_str);
-        if !root.exists() { eprintln!("[stress] Project path not found: {}", path_str); std::process::exit(1); }
+        if !root.exists() {
+            eprintln!("[stress] Project path not found: {}", path_str);
+            std::process::exit(1);
+        }
         stress::run_stress_lsp(&root, iterations, &ext_slice);
         return Ok(());
     }
@@ -236,7 +262,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     warn!("[main] 引擎初始化失败（非致命）: {}", e);
                 }
 
-                info!("engine MCP serve ready — analysis + watcher deferred to first analyze_project");
+                info!(
+                    "engine MCP serve ready — analysis + watcher deferred to first analyze_project"
+                );
 
                 // 向 Tauri McpManager 发送就绪信号
                 // 它期望在发送 initialize + tools/list 之前先收到 {"method":"ready"}
@@ -335,164 +363,201 @@ async fn run_tcp_server() -> Result<(), Box<dyn std::error::Error>> {
         // CPU 密集型工作（analyze、check）通过 spawn_blocking 卸载到阻塞线程池
         tokio::spawn(async move {
             loop {
-            let mut buf = vec![0u8; 4096];
-            let n = match socket.read(&mut buf).await {
-                Ok(0) => { debug!(%addr, "client disconnected"); return; }
-                Ok(n) => n,
-                Err(e) => { debug!(%addr, "read error: {}", e); return; }
-            };
-            let request = String::from_utf8_lossy(&buf[..n]);
-            let req_owned = request.to_string();
-            debug!(request_len = req_owned.len(), "received request");
+                let mut buf = vec![0u8; 4096];
+                let n = match socket.read(&mut buf).await {
+                    Ok(0) => {
+                        debug!(%addr, "client disconnected");
+                        return;
+                    }
+                    Ok(n) => n,
+                    Err(e) => {
+                        debug!(%addr, "read error: {}", e);
+                        return;
+                    }
+                };
+                let request = String::from_utf8_lossy(&buf[..n]);
+                let req_owned = request.to_string();
+                debug!(request_len = req_owned.len(), "received request");
 
-            // ── 根据请求前缀路由到对应的处理函数 ──
-            // 命令格式：<command>[:<args>]
-            let response = if req_owned.starts_with("check:") || req_owned.starts_with("preflight:") || req_owned.starts_with("health:") {
-                // 检查模式：执行提交前预检（preflight check），CPU 密集型，卸载到阻塞线程
-                let req = req_owned.clone();
-                tokio::task::spawn_blocking(move || handle_check(req.trim()))
-                    .await.unwrap_or_else(|_| b"{\"error\":\"check panicked\"}".to_vec())
-            } else if req_owned.starts_with("blindspots") {
-                // 盲点检测：结合耦合报告和环检测，识别架构盲区
-                let arg = req_owned.trim().strip_prefix("blindspots:").unwrap_or("");
-                let threshold: usize = arg.parse().unwrap_or(0);
-                handle_simple("blindspots", arg, move |g, _| {
-                    let c = coupling_report(g, "");
-                    let cycles = detect_cycles(g);
-                    find_blindspots(
-                        if threshold > 0 { threshold } else { c["L4"].as_u64().unwrap_or(0) as usize },
-                        cycles.len(),
-                        0,
-                    )
-                })
-            } else if req_owned.starts_with("timeline") {
-                // 时间线：查询最近 50 条引擎事件记录
-                handle_simple("timeline", req_owned.trim(), |_g, _a| {
-                    json!(hologram_engine::engine::engine_query_timeline(50).unwrap_or_default())
-                })
-            } else if req_owned.starts_with("reanalyze:") {
-                // 强制全量分析（?refresh=1）：忽略存量缓存，解析项目源码重建依赖图
-                let path = req_owned.trim().strip_prefix("reanalyze:").unwrap_or(".").trim().to_string();
-                tokio::task::spawn_blocking(move || handle_reanalyze(&path))
-                    .await.unwrap_or_else(|_| b"{\"error\":\"reanalyze panicked\"}".to_vec())
-            } else if req_owned.starts_with("analyze:") {
-                // 智能分析：存量优先 —— 已加载且缓存未过期则直接返回已有图（秒开），
-                // 否则全量分析（解析源码 → 构建依赖图）
-                let path = req_owned.trim().strip_prefix("analyze:").unwrap_or(".").trim().to_string();
-                tokio::task::spawn_blocking(move || handle_analyze(&path))
-                    .await.unwrap_or_else(|_| b"{\"error\":\"analyze panicked\"}".to_vec())
-            } else if req_owned.starts_with("fragile:") {
-                // 脆弱节点检测：找出高扇入/高扇出的关键节点
-                handle_simple("fragile:", req_owned.trim(), |g, a| json!(fragile_nodes(g, a.parse().unwrap_or(10))))
-            } else if req_owned.starts_with("cycle") {
-                // 环检测：发现依赖图中的循环依赖
-                handle_simple("cycle", req_owned.trim(), |g, _| json!(detect_cycles(g)))
-            } else if req_owned.starts_with("coupling_report:") {
-                // 耦合报告：按层级（L0-L4）统计耦合度
-                handle_simple("coupling_report:", req_owned.trim(), coupling_report)
-            } else if req_owned.starts_with("graph_summary") {
-                // 图摘要：节点/边数量、类型分布等概要信息
-                handle_simple("graph_summary", req_owned.trim(), |g, _| graph_summary(g))
-            } else if req_owned.starts_with("community_report") {
-                // 社区检测报告：使用 Louvain 算法（seed=42）识别模块化社区
-                handle_simple("community_report", req_owned.trim(), |g, _| {
-                    let communities = detect_communities(g, 42);
-                    json!(communities.iter().enumerate().map(|(i,c)| json!({"id":format!("comm_{}",i),"size":c.len(),"node_ids":c})).collect::<Vec<_>>())
-                })
-            } else if req_owned.starts_with("community:") {
-                // 查询指定节点所属的社区，返回同社区节点列表（最多 50 个）
-                handle_simple("community:", req_owned.trim(), |g, a| {
-                    let communities = detect_communities(g, 42);
-                    let found = communities.iter().find(|c| c.contains(&a.to_string()));
-                    json!(found.map(|c| c.iter().take(50).collect::<Vec<_>>()))
-                })
-            } else if req_owned.starts_with("diff:") {
-                // 变更对比：与基线图比较，输出新增/删除/修改的节点和边
-                let baseline_path = req_owned.trim().strip_prefix("diff:").unwrap_or("").trim().to_string();
-                handle_diff(&baseline_path)
-            } else if req_owned.starts_with("history:") {
-                // 节点详情：按 ID 查询节点的名称、类型、入度、出度
-                handle_simple("history:", req_owned.trim(), |g, a| {
-                    g.get_node(a).map(|n| json!({"id":n.id,"name":n.name,"type":n.kind.as_str(),"out_degree":n.out_degree,"in_degree":n.in_degree}))
+                // ── 根据请求前缀路由到对应的处理函数 ──
+                // 命令格式：<command>[:<args>]
+                let response = if req_owned.starts_with("check:")
+                    || req_owned.starts_with("preflight:")
+                    || req_owned.starts_with("health:")
+                {
+                    // 检查模式：执行提交前预检（preflight check），CPU 密集型，卸载到阻塞线程
+                    let req = req_owned.clone();
+                    tokio::task::spawn_blocking(move || handle_check(req.trim()))
+                        .await
+                        .unwrap_or_else(|_| b"{\"error\":\"check panicked\"}".to_vec())
+                } else if req_owned.starts_with("blindspots") {
+                    // 盲点检测：结合耦合报告和环检测，识别架构盲区
+                    let arg = req_owned.trim().strip_prefix("blindspots:").unwrap_or("");
+                    let threshold: usize = arg.parse().unwrap_or(0);
+                    handle_simple("blindspots", arg, move |g, _| {
+                        let c = coupling_report(g, "");
+                        let cycles = detect_cycles(g);
+                        find_blindspots(
+                            if threshold > 0 {
+                                threshold
+                            } else {
+                                c["L4"].as_u64().unwrap_or(0) as usize
+                            },
+                            cycles.len(),
+                            0,
+                        )
+                    })
+                } else if req_owned.starts_with("timeline") {
+                    // 时间线：查询最近 50 条引擎事件记录
+                    handle_simple("timeline", req_owned.trim(), |_g, _a| {
+                        json!(hologram_engine::engine::engine_query_timeline(50).unwrap_or_default())
+                    })
+                } else if req_owned.starts_with("reanalyze:") {
+                    // 强制全量分析（?refresh=1）：忽略存量缓存，解析项目源码重建依赖图
+                    let path = req_owned
+                        .trim()
+                        .strip_prefix("reanalyze:")
+                        .unwrap_or(".")
+                        .trim()
+                        .to_string();
+                    tokio::task::spawn_blocking(move || handle_reanalyze(&path))
+                        .await
+                        .unwrap_or_else(|_| b"{\"error\":\"reanalyze panicked\"}".to_vec())
+                } else if req_owned.starts_with("analyze:") {
+                    // 智能分析：存量优先 —— 已加载且缓存未过期则直接返回已有图（秒开），
+                    // 否则全量分析（解析源码 → 构建依赖图）
+                    let path = req_owned
+                        .trim()
+                        .strip_prefix("analyze:")
+                        .unwrap_or(".")
+                        .trim()
+                        .to_string();
+                    tokio::task::spawn_blocking(move || handle_analyze(&path))
+                        .await
+                        .unwrap_or_else(|_| b"{\"error\":\"analyze panicked\"}".to_vec())
+                } else if req_owned.starts_with("fragile:") {
+                    // 脆弱节点检测：找出高扇入/高扇出的关键节点
+                    handle_simple("fragile:", req_owned.trim(), |g, a| {
+                        json!(fragile_nodes(g, a.parse().unwrap_or(10)))
+                    })
+                } else if req_owned.starts_with("cycle") {
+                    // 环检测：发现依赖图中的循环依赖
+                    handle_simple("cycle", req_owned.trim(), |g, _| json!(detect_cycles(g)))
+                } else if req_owned.starts_with("coupling_report:") {
+                    // 耦合报告：按层级（L0-L4）统计耦合度
+                    handle_simple("coupling_report:", req_owned.trim(), coupling_report)
+                } else if req_owned.starts_with("graph_summary") {
+                    // 图摘要：节点/边数量、类型分布等概要信息
+                    handle_simple("graph_summary", req_owned.trim(), |g, _| graph_summary(g))
+                } else if req_owned.starts_with("community_report") {
+                    // 社区检测报告：使用 Louvain 算法（seed=42）识别模块化社区
+                    handle_simple("community_report", req_owned.trim(), |g, _| {
+                        let communities = detect_communities(g, 42);
+                        json!(communities.iter().enumerate().map(|(i,c)| json!({"id":format!("comm_{}",i),"size":c.len(),"node_ids":c})).collect::<Vec<_>>())
+                    })
+                } else if req_owned.starts_with("community:") {
+                    // 查询指定节点所属的社区，返回同社区节点列表（最多 50 个）
+                    handle_simple("community:", req_owned.trim(), |g, a| {
+                        let communities = detect_communities(g, 42);
+                        let found = communities.iter().find(|c| c.contains(&a.to_string()));
+                        json!(found.map(|c| c.iter().take(50).collect::<Vec<_>>()))
+                    })
+                } else if req_owned.starts_with("diff:") {
+                    // 变更对比：与基线图比较，输出新增/删除/修改的节点和边
+                    let baseline_path = req_owned
+                        .trim()
+                        .strip_prefix("diff:")
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    handle_diff(&baseline_path)
+                } else if req_owned.starts_with("history:") {
+                    // 节点详情：按 ID 查询节点的名称、类型、入度、出度
+                    handle_simple("history:", req_owned.trim(), |g, a| {
+                        g.get_node(a).map(|n| json!({"id":n.id,"name":n.name,"type":n.kind.as_str(),"out_degree":n.out_degree,"in_degree":n.in_degree}))
                         .unwrap_or(json!({"error":"not found"}))
-                })
-            } else if req_owned.starts_with("delayed") {
-                // 延迟边查询：筛选 Triggers/Awaits/Sequences 类型的时序边
-                handle_simple("delayed", req_owned.trim(), |g, _| {
-                    let delayed: Vec<_> = g.edges_iter().filter(|(_, e)| matches!(e.kind, EdgeKind::Triggers|EdgeKind::Awaits|EdgeKind::Sequences))
+                    })
+                } else if req_owned.starts_with("delayed") {
+                    // 延迟边查询：筛选 Triggers/Awaits/Sequences 类型的时序边
+                    handle_simple("delayed", req_owned.trim(), |g, _| {
+                        let delayed: Vec<_> = g.edges_iter().filter(|(_, e)| matches!(e.kind, EdgeKind::Triggers|EdgeKind::Awaits|EdgeKind::Sequences))
                         .map(|(_, e)| json!({"source":e.source,"target":e.target,"type":e.kind.as_str()}))
                         .collect();
-                    json!(delayed)
-                })
-            } else if req_owned.starts_with("neighbors:") {
-                // 邻居查询：获取指定节点的 N 跳邻居
-                handle_query(req_owned.trim(), "neighbors:")
-            } else if req_owned.starts_with("path:") {
-                // 最短路径查询：查找两个节点之间的最短依赖路径
-                handle_query(req_owned.trim(), "path:")
-            } else if req_owned.starts_with("search:") {
-                // 节点搜索：按名称模糊搜索，格式 "search:query:limit"（limit 可选，默认 50）
-                let args = req_owned.trim().strip_prefix("search:").unwrap_or("");
-                let (query_str, limit): (&str, usize) = match args.rfind(':') {
-                    Some(pos) if pos > 0 => {
-                        let (q, l) = args.split_at(pos);
-                        (q, l[1..].parse().unwrap_or(50))
-                    }
-                    _ => (args, 50),
+                        json!(delayed)
+                    })
+                } else if req_owned.starts_with("neighbors:") {
+                    // 邻居查询：获取指定节点的 N 跳邻居
+                    handle_query(req_owned.trim(), "neighbors:")
+                } else if req_owned.starts_with("path:") {
+                    // 最短路径查询：查找两个节点之间的最短依赖路径
+                    handle_query(req_owned.trim(), "path:")
+                } else if req_owned.starts_with("search:") {
+                    // 节点搜索：按名称模糊搜索，格式 "search:query:limit"（limit 可选，默认 50）
+                    let args = req_owned.trim().strip_prefix("search:").unwrap_or("");
+                    let (query_str, limit): (&str, usize) = match args.rfind(':') {
+                        Some(pos) if pos > 0 => {
+                            let (q, l) = args.split_at(pos);
+                            (q, l[1..].parse().unwrap_or(50))
+                        }
+                        _ => (args, 50),
+                    };
+                    handle_simple("search:", query_str, move |g, _| {
+                        let results = g.search_nodes(query_str);
+                        let truncated: Vec<_> = results
+                            .iter()
+                            .take(limit)
+                            .map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()}))
+                            .collect();
+                        json!({"results": truncated, "total": results.len(), "limit": limit})
+                    })
+                } else if req_owned.starts_with("impact:") {
+                    // 影响分析：评估指定节点的变更对周围 N 层节点的影响
+                    handle_query(req_owned.trim(), "impact:")
+                } else if req_owned.starts_with("rename:") {
+                    // 重命名预检：解析 "rename:old_name:new_name:dry_run:node_id"
+                    // dry_run=true 时仅返回匹配结果，不实际执行重命名
+                    let args = req_owned.trim().strip_prefix("rename:").unwrap_or("");
+                    let parts: Vec<&str> = args.splitn(4, ':').collect();
+                    let old_name = parts.first().copied().unwrap_or("");
+                    let new_name = parts.get(1).copied().unwrap_or("");
+                    let dry_run: bool = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(false);
+                    let _node_id = parts.get(3).copied().unwrap_or("");
+                    handle_simple("rename:", old_name, move |g, _| {
+                        let matched: Vec<_> = g
+                            .nodes_iter()
+                            .filter(|(_, n)| n.name == old_name)
+                            .map(|(_, n)| n)
+                            .collect();
+                        if matched.is_empty() {
+                            json!({"error": format!("No nodes match '{}'", old_name)})
+                        } else if dry_run {
+                            json!({"dry_run": true, "matched_count": matched.len(), "matched": matched.iter().map(|n| json!({"id": n.id, "name": n.name})).collect::<Vec<_>>()})
+                        } else {
+                            // TCP 模式下仅支持内存级重命名，完整重命名请使用 MCP 工具
+                            json!({"dry_run": false, "renamed_count": matched.len(), "old_name": old_name, "new_name": new_name, "note": "TCP rename: in-memory only. Use MCP tool for full rename support."})
+                        }
+                    })
+                } else if req_owned.contains("get_graph") {
+                    // 获取完整图数据（节点+边），供前端渲染
+                    handle_get_graph()
+                } else if req_owned.contains("ping") {
+                    // 心跳检测
+                    b"{\"ok\":true}".to_vec()
+                } else {
+                    // 未知命令
+                    b"{\"error\":\"unknown command\"}".to_vec()
                 };
-                handle_simple("search:", query_str, move |g, _| {
-                    let results = g.search_nodes(query_str);
-                    let truncated: Vec<_> = results.iter().take(limit).map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()})).collect();
-                    json!({"results": truncated, "total": results.len(), "limit": limit})
-                })
-            } else if req_owned.starts_with("impact:") {
-                // 影响分析：评估指定节点的变更对周围 N 层节点的影响
-                handle_query(req_owned.trim(), "impact:")
-            } else if req_owned.starts_with("rename:") {
-                // 重命名预检：解析 "rename:old_name:new_name:dry_run:node_id"
-                // dry_run=true 时仅返回匹配结果，不实际执行重命名
-                let args = req_owned.trim().strip_prefix("rename:").unwrap_or("");
-                let parts: Vec<&str> = args.splitn(4, ':').collect();
-                let old_name = parts.first().copied().unwrap_or("");
-                let new_name = parts.get(1).copied().unwrap_or("");
-                let dry_run: bool = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(false);
-                let _node_id = parts.get(3).copied().unwrap_or("");
-                handle_simple("rename:", old_name, move |g, _| {
-                    let matched: Vec<_> = g.nodes_iter()
-                        .filter(|(_, n)| n.name == old_name)
-                        .map(|(_, n)| n)
-                        .collect();
-                    if matched.is_empty() {
-                        json!({"error": format!("No nodes match '{}'", old_name)})
-                    } else if dry_run {
-                        json!({"dry_run": true, "matched_count": matched.len(), "matched": matched.iter().map(|n| json!({"id": n.id, "name": n.name})).collect::<Vec<_>>()})
-                    } else {
-                        // TCP 模式下仅支持内存级重命名，完整重命名请使用 MCP 工具
-                        json!({"dry_run": false, "renamed_count": matched.len(), "old_name": old_name, "new_name": new_name, "note": "TCP rename: in-memory only. Use MCP tool for full rename support."})
-                    }
-                })
-            } else if req_owned.contains("get_graph") {
-                // 获取完整图数据（节点+边），供前端渲染
-                handle_get_graph()
-            } else if req_owned.contains("ping") {
-                // 心跳检测
-                b"{\"ok\":true}".to_vec()
-            } else {
-                // 未知命令
-                b"{\"error\":\"unknown command\"}".to_vec()
-            };
 
-            // 用 4 字节小端长度前缀封装响应并写回
-            let framed = frame_response(&response);
-            if let Err(e) = socket.write_all(&framed).await {
-                debug!(%addr, "write error: {}", e);
-                return;
-            }
+                // 用 4 字节小端长度前缀封装响应并写回
+                let framed = frame_response(&response);
+                if let Err(e) = socket.write_all(&framed).await {
+                    debug!(%addr, "write error: {}", e);
+                    return;
+                }
             } // keep-alive 循环结束
         });
     }
 }
-
 
 /// 处理全量分析请求。
 ///
@@ -520,9 +585,15 @@ fn handle_analyze(path: &str) -> Vec<u8> {
     // ── 存量优先：已有图且缓存未过期 → 直接返回，不重新分析 ──
     let cached_nodes = hologram_engine::engine::engine_read(|idx| idx.node_count()).unwrap_or(0);
     let stale = cache_is_stale(&root);
-    eprintln!("[analyze] cache check: cached_nodes={}, stale={}", cached_nodes, stale);
+    eprintln!(
+        "[analyze] cache check: cached_nodes={}, stale={}",
+        cached_nodes, stale
+    );
     if cached_nodes > 0 && !stale {
-        eprintln!("[analyze] 使用存量图（{} 节点），跳过全量分析", cached_nodes);
+        eprintln!(
+            "[analyze] 使用存量图（{} 节点），跳过全量分析",
+            cached_nodes
+        );
         let mut resp = serde_json::from_slice::<serde_json::Value>(&handle_get_graph())
             .unwrap_or_else(|_| serde_json::json!({"nodes": [], "edges": []}));
         if let Some(obj) = resp.as_object_mut() {
@@ -568,7 +639,10 @@ fn full_analyze_impl(root: &std::path::Path) -> Vec<u8> {
     let _ = hologram_engine::engine::engine_record_timeline(
         "analyze",
         None::<&str>,
-        &format!("全量分析完成：{} 节点, {} 边, {:.1}s", result.node_count, result.edge_count, result.elapsed_secs),
+        &format!(
+            "全量分析完成：{} 节点, {} 边, {:.1}s",
+            result.node_count, result.edge_count, result.elapsed_secs
+        ),
     );
 
     // ── 序列化完整图数据 ──
@@ -578,10 +652,19 @@ fn full_analyze_impl(root: &std::path::Path) -> Vec<u8> {
     let mut resp = serde_json::from_slice::<serde_json::Value>(&handle_get_graph())
         .unwrap_or_else(|_| serde_json::json!({"nodes": [], "edges": []}));
     if let Some(obj) = resp.as_object_mut() {
-        obj.insert("elapsed_secs".into(), serde_json::json!(result.elapsed_secs));
+        obj.insert(
+            "elapsed_secs".into(),
+            serde_json::json!(result.elapsed_secs),
+        );
         obj.insert("node_count".into(), serde_json::json!(result.node_count));
         obj.insert("edge_count".into(), serde_json::json!(result.edge_count));
-        obj.insert("generator".into(), serde_json::json!(format!("HoloGram {} — Copyright (c) 2026 Wenbing Jing — MIT License", env!("CARGO_PKG_VERSION"))));
+        obj.insert(
+            "generator".into(),
+            serde_json::json!(format!(
+                "HoloGram {} — Copyright (c) 2026 Wenbing Jing — MIT License",
+                env!("CARGO_PKG_VERSION")
+            )),
+        );
     }
     serde_json::to_vec(&resp).unwrap_or_default()
 }
@@ -597,16 +680,34 @@ fn cache_is_stale(root: &std::path::Path) -> bool {
     };
 
     const EXTS: &[&str] = &[
-        ".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".go", ".rs", ".java", ".c",
-        ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh", ".rb", ".cs", ".kt", ".kts", ".swift",
-        ".php", ".lua",
+        ".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".go", ".rs", ".java", ".c", ".cpp",
+        ".cc", ".cxx", ".h", ".hpp", ".hh", ".rb", ".cs", ".kt", ".kts", ".swift", ".php", ".lua",
     ];
     const SKIP: &[&str] = &[
-        ".git", "node_modules", "target", "build", "dist", "out", ".venv", "venv",
+        ".git",
+        "node_modules",
+        "target",
+        "build",
+        "dist",
+        "out",
+        ".venv",
+        "venv",
         // .hologram 与 .lantai 双名共存（2026-08-23 改名）：老项目目录仍存在
-        ".hologram", ".lantai", "release-bin", "__pycache__", ".pytest_cache", ".ruff_cache",
-        ".mypy_cache", ".next", ".nuxt", ".svelte-kit", ".turbo", ".cursor",
-        ".idea", ".vscode", ".coverage",
+        ".hologram",
+        ".lantai",
+        "release-bin",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".next",
+        ".nuxt",
+        ".svelte-kit",
+        ".turbo",
+        ".cursor",
+        ".idea",
+        ".vscode",
+        ".coverage",
     ];
 
     for entry in walkdir::WalkDir::new(root)
@@ -626,10 +727,14 @@ fn cache_is_stale(root: &std::path::Path) -> bool {
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        if !path.is_file() { continue; }
+        if !path.is_file() {
+            continue;
+        }
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let ext_dot = format!(".{}", ext);
-        if !EXTS.contains(&ext_dot.as_str()) { continue; }
+        if !EXTS.contains(&ext_dot.as_str()) {
+            continue;
+        }
         if let Ok(meta) = path.metadata() {
             if let Ok(mtime) = meta.modified() {
                 if mtime > baseline {
@@ -645,7 +750,6 @@ fn cache_is_stale(root: &std::path::Path) -> bool {
     false
 }
 
-
 /// 处理提交前预检（preflight check）请求。
 ///
 /// 解析请求格式 `check:<path>` 或 `check:<path>\n<json_files>`，
@@ -654,12 +758,13 @@ fn cache_is_stale(root: &std::path::Path) -> bool {
 fn handle_check(request: &str) -> Vec<u8> {
     // 解析 "check:<path>" 或 "check:<path>\n<变更文件列表JSON>"
     let body = request.strip_prefix("check:").unwrap_or(".");
-    let (path, changed_files): (&str, Vec<String>) = if let Some((p, files_json)) = body.split_once('\n') {
-        let files: Vec<String> = serde_json::from_str(files_json.trim()).unwrap_or_default();
-        (p.trim(), files)
-    } else {
-        (body.trim(), vec![])
-    };
+    let (path, changed_files): (&str, Vec<String>) =
+        if let Some((p, files_json)) = body.split_once('\n') {
+            let files: Vec<String> = serde_json::from_str(files_json.trim()).unwrap_or_default();
+            (p.trim(), files)
+        } else {
+            (body.trim(), vec![])
+        };
     let root = PathBuf::from(path);
 
     // 前置检查：项目路径必须存在
@@ -668,7 +773,9 @@ fn handle_check(request: &str) -> Vec<u8> {
     }
 
     // 如果图尚未加载（节点和边都为 0），自动初始化并分析
-    let has_graph = hologram_engine::engine::engine_read(|idx| idx.node_count() > 0 || idx.edge_count() > 0).unwrap_or(false);
+    let has_graph =
+        hologram_engine::engine::engine_read(|idx| idx.node_count() > 0 || idx.edge_count() > 0)
+            .unwrap_or(false);
     if !has_graph {
         if let Err(e) = hologram_engine::engine::engine_init(&root) {
             tracing::warn!("auto engine_init failed: {e}");
@@ -679,10 +786,11 @@ fn handle_check(request: &str) -> Vec<u8> {
     }
 
     // 获取当前（分析后）的图快照
-    let after = match hologram_engine::engine::engine_read(hologram_engine::engine::graph_from_index) {
-        Ok(g) => g,
-        Err(_) => return b"{\"error\":\"analysis failed\"}".to_vec(),
-    };
+    let after =
+        match hologram_engine::engine::engine_read(hologram_engine::engine::graph_from_index) {
+            Ok(g) => g,
+            Err(_) => return b"{\"error\":\"analysis failed\"}".to_vec(),
+        };
 
     // 加载之前的基线图，运行完整约束检查，然后保存新基线
     let before = load_baseline(&root);
@@ -690,12 +798,22 @@ fn handle_check(request: &str) -> Vec<u8> {
     save_baseline(&root, &after);
 
     // 将检查结果记录到时间线（仅在非静默或首次建立基线时记录）
-    let quiet = result.get("quiet").and_then(|v| v.as_bool()).unwrap_or(false);
-    let baseline_seed = result.get("baseline_seed").and_then(|v| v.as_bool()).unwrap_or(false);
+    let quiet = result
+        .get("quiet")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let baseline_seed = result
+        .get("baseline_seed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if !quiet || baseline_seed {
         let passed = result["passed"].as_bool().unwrap_or(true);
         let violation_count = result["violation_count"].as_u64().unwrap_or(0);
-        let event_type = if passed { "commit_clean" } else { "commit_violation" };
+        let event_type = if passed {
+            "commit_clean"
+        } else {
+            "commit_violation"
+        };
         let summary = if baseline_seed {
             "基线已建立".to_string()
         } else if passed {
@@ -705,7 +823,10 @@ fn handle_check(request: &str) -> Vec<u8> {
         };
         let props = check_timeline_props(&result);
         let _ = hologram_engine::engine::engine_record_timeline_with_props(
-            event_type, None::<&str>, &summary, &props,
+            event_type,
+            None::<&str>,
+            &summary,
+            &props,
         );
     }
 
@@ -717,7 +838,11 @@ fn handle_check(request: &str) -> Vec<u8> {
 /// 从请求中剥离前缀提取参数，检查引擎是否就绪（已加载图数据），
 /// 然后调用闭包 `f` 对图执行操作并返回 JSON 结果。
 /// 引擎未初始化时返回错误提示。
-fn handle_simple<F: FnOnce(&Graph, &str) -> serde_json::Value>(prefix: &str, request: &str, f: F) -> Vec<u8> {
+fn handle_simple<F: FnOnce(&Graph, &str) -> serde_json::Value>(
+    prefix: &str,
+    request: &str,
+    f: F,
+) -> Vec<u8> {
     let arg = request.strip_prefix(prefix).unwrap_or("");
     // 检查引擎状态：Ready 或已加载部分节点时才允许查询
     let state = hologram_engine::engine::engine_state();
@@ -730,9 +855,14 @@ fn handle_simple<F: FnOnce(&Graph, &str) -> serde_json::Value>(prefix: &str, req
         let g = hologram_engine::engine::graph_from_index(idx);
         f(&g, arg)
     }) {
-        Ok(v) if v.is_null() => serde_json::to_vec(&json!({"error": "engine not initialized — run analyze first"})).unwrap_or_default(),
+        Ok(v) if v.is_null() => {
+            serde_json::to_vec(&json!({"error": "engine not initialized — run analyze first"}))
+                .unwrap_or_default()
+        }
         Ok(v) => serde_json::to_vec(&v).unwrap_or_default(),
-        Err(_) => serde_json::to_vec(&json!({"error": "engine not initialized"})).unwrap_or_default(),
+        Err(_) => {
+            serde_json::to_vec(&json!({"error": "engine not initialized"})).unwrap_or_default()
+        }
     }
 }
 
@@ -742,10 +872,11 @@ fn handle_simple<F: FnOnce(&Graph, &str) -> serde_json::Value>(prefix: &str, req
 /// 如果基线文件不存在，则将当前图保存为基线并提示用户。
 fn handle_diff(baseline_path: &str) -> Vec<u8> {
     // 获取当前图快照
-    let current = match hologram_engine::engine::engine_read(hologram_engine::engine::graph_from_index) {
-        Ok(g) if g.node_count() > 0 || g.edge_count() > 0 => g,
-        _ => return b"{\"error\":\"no graph loaded, run analyze first\"}".to_vec(),
-    };
+    let current =
+        match hologram_engine::engine::engine_read(hologram_engine::engine::graph_from_index) {
+            Ok(g) if g.node_count() > 0 || g.edge_count() > 0 => g,
+            _ => return b"{\"error\":\"no graph loaded, run analyze first\"}".to_vec(),
+        };
 
     // 基线路径默认为 .hologram/baseline.json
     let baseline_path = if baseline_path.is_empty() {
@@ -758,19 +889,35 @@ fn handle_diff(baseline_path: &str) -> Vec<u8> {
         Ok(baseline) => {
             // 基线存在：执行 diff 并返回差异
             let d = baseline.diff(&current);
-            let added_nodes: Vec<_> = d.added_nodes.iter().map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()})).collect();
-            let removed_nodes: Vec<_> = d.removed_nodes.iter().map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()})).collect();
-            let modified_nodes: Vec<_> = d.modified_nodes.iter().map(|(old, new)| json!({
-                "node_id": new.id, "name": new.name,
-                "old_kind": old.kind.as_str(), "new_kind": new.kind.as_str(),
-            })).collect();
-            let is_empty = added_nodes.is_empty() && removed_nodes.is_empty() && modified_nodes.is_empty();
+            let added_nodes: Vec<_> = d
+                .added_nodes
+                .iter()
+                .map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()}))
+                .collect();
+            let removed_nodes: Vec<_> = d
+                .removed_nodes
+                .iter()
+                .map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()}))
+                .collect();
+            let modified_nodes: Vec<_> = d
+                .modified_nodes
+                .iter()
+                .map(|(old, new)| {
+                    json!({
+                        "node_id": new.id, "name": new.name,
+                        "old_kind": old.kind.as_str(), "new_kind": new.kind.as_str(),
+                    })
+                })
+                .collect();
+            let is_empty =
+                added_nodes.is_empty() && removed_nodes.is_empty() && modified_nodes.is_empty();
             serde_json::to_vec(&json!({
                 "is_empty": is_empty,
                 "added_nodes": added_nodes, "removed_nodes": removed_nodes,
                 "modified_nodes": modified_nodes,
                 "added_edges": d.added_edges.len(), "removed_edges": d.removed_edges.len(),
-            })).unwrap_or_default()
+            }))
+            .unwrap_or_default()
         }
         Err(_) => {
             // 基线不存在：将当前图保存为基线，提示下次再对比
@@ -779,13 +926,15 @@ fn handle_diff(baseline_path: &str) -> Vec<u8> {
             }
             let graph_json = serde_json::to_string_pretty(&current).unwrap_or_default();
             if let Err(e) = std::fs::write(&baseline_path, &graph_json) {
-                return serde_json::to_vec(&json!({"error": format!("无法创建基线: {}", e)})).unwrap_or_default();
+                return serde_json::to_vec(&json!({"error": format!("无法创建基线: {}", e)}))
+                    .unwrap_or_default();
             }
             serde_json::to_vec(&json!({
                 "is_empty": true,
                 "message": "已创建变更基线，再次点击变更即可比较差异",
                 "baseline_path": baseline_path,
-            })).unwrap_or_default()
+            }))
+            .unwrap_or_default()
         }
     }
 }
@@ -796,10 +945,11 @@ fn handle_diff(baseline_path: &str) -> Vec<u8> {
 /// 所有查询都要求图已加载（节点或边数量 > 0）。
 fn handle_query(request: &str, prefix: &str) -> Vec<u8> {
     let args = request.strip_prefix(prefix).unwrap_or("");
-    let graph = match hologram_engine::engine::engine_read(hologram_engine::engine::graph_from_index) {
-        Ok(g) if g.node_count() > 0 || g.edge_count() > 0 => g,
-        _ => return b"{\"error\":\"no graph loaded, run analyze first\"}".to_vec(),
-    };
+    let graph =
+        match hologram_engine::engine::engine_read(hologram_engine::engine::graph_from_index) {
+            Ok(g) if g.node_count() > 0 || g.edge_count() > 0 => g,
+            _ => return b"{\"error\":\"no graph loaded, run analyze first\"}".to_vec(),
+        };
 
     let result = match prefix {
         "neighbors:" => {
@@ -815,8 +965,9 @@ fn handle_query(request: &str, prefix: &str) -> Vec<u8> {
             // 格式: path:<from>:<to>
             // 查找两个节点之间的最短路径
             let parts: Vec<&str> = args.split(':').collect();
-            if parts.len() < 2 { serde_json::json!({"error":"usage: path:from:to"}) }
-            else {
+            if parts.len() < 2 {
+                serde_json::json!({"error":"usage: path:from:to"})
+            } else {
                 match graph.shortest_path(parts[0], parts[1]) {
                     Some(p) => serde_json::json!({"path": p, "length": p.len()}),
                     None => serde_json::json!({"path": null, "message": "no path found"}),
@@ -851,39 +1002,52 @@ fn handle_query(request: &str, prefix: &str) -> Vec<u8> {
 fn handle_get_graph() -> Vec<u8> {
     match hologram_engine::engine::engine_read(|idx| {
         let g = hologram_engine::engine::graph_from_index(idx);
-        let nodes: Vec<serde_json::Value> = g.nodes_iter().map(|(_, n)| {
-            serde_json::json!({
-                "id": n.id, "name": n.name, "type": n.kind.as_str(),
-                "location": n.location, "in_degree": n.in_degree,
-                "out_degree": n.out_degree, "properties": n.properties,
-                "position": n.position, "community_id": n.community_id,
+        let nodes: Vec<serde_json::Value> = g
+            .nodes_iter()
+            .map(|(_, n)| {
+                serde_json::json!({
+                    "id": n.id, "name": n.name, "type": n.kind.as_str(),
+                    "location": n.location, "in_degree": n.in_degree,
+                    "out_degree": n.out_degree, "properties": n.properties,
+                    "position": n.position, "community_id": n.community_id,
+                })
             })
-        }).collect();
-        let edges: Vec<serde_json::Value> = g.edges_iter().map(|(_, e)| {
-            serde_json::json!({
-                "id": e.id, "source": e.source, "target": e.target,
-                "type": e.kind.as_str(), "coupling_depth": e.coupling_depth,
-                "cross_file": e.cross_file,
-                "temporal_delay_sec": e.temporal_delay_sec,
+            .collect();
+        let edges: Vec<serde_json::Value> = g
+            .edges_iter()
+            .map(|(_, e)| {
+                serde_json::json!({
+                    "id": e.id, "source": e.source, "target": e.target,
+                    "type": e.kind.as_str(), "coupling_depth": e.coupling_depth,
+                    "cross_file": e.cross_file,
+                    "temporal_delay_sec": e.temporal_delay_sec,
+                })
             })
-        }).collect();
+            .collect();
         // viewer 渲染分组需要社区数据（与 handle_analyze 同源序列化）
         let communities = detect_communities(&g, 42);
-        let communities_json: Vec<serde_json::Value> = communities.iter().enumerate()
-            .map(|(i, c)| serde_json::json!({
-                "id": format!("comm_{}", i), "label": format!("社区 {}", i + 1),
-                "size": c.len(), "node_ids": c
-            }))
+        let communities_json: Vec<serde_json::Value> = communities
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                serde_json::json!({
+                    "id": format!("comm_{}", i), "label": format!("社区 {}", i + 1),
+                    "size": c.len(), "node_ids": c
+                })
+            })
             .collect();
         let hcommunities = detect_hierarchical_communities(&g, 42);
-        let hcommunities_json: Vec<serde_json::Value> = hcommunities.iter()
-            .map(|hc| serde_json::json!({
-                "id": hc.id,
-                "label": hc.label,
-                "node_ids": hc.node_ids,
-                "level": hc.level,
-                "parent_id": hc.parent_id,
-            }))
+        let hcommunities_json: Vec<serde_json::Value> = hcommunities
+            .iter()
+            .map(|hc| {
+                serde_json::json!({
+                    "id": hc.id,
+                    "label": hc.label,
+                    "node_ids": hc.node_ids,
+                    "level": hc.level,
+                    "parent_id": hc.parent_id,
+                })
+            })
             .collect();
         serde_json::json!({
             "nodes": nodes, "edges": edges,
@@ -915,9 +1079,13 @@ fn frame_response(payload: &[u8]) -> Vec<u8> {
 /// 解析帧消息：返回 (payload, 消耗的字节数)，数据不足时返回 None。
 #[allow(dead_code)]
 fn unframe(buf: &[u8]) -> Option<(Vec<u8>, usize)> {
-    if buf.len() < 4 { return None; }
+    if buf.len() < 4 {
+        return None;
+    }
     let len = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
-    if buf.len() < 4 + len { return None; }
+    if buf.len() < 4 + len {
+        return None;
+    }
     Some((buf[4..4 + len].to_vec(), 4 + len))
 }
 
@@ -957,10 +1125,16 @@ fn parse_cli_args(rest: &[String]) -> Result<(String, String, serde_json::Value)
         if arg.starts_with("--") {
             // 解析 --key value 对
             let key = arg.strip_prefix("--").unwrap_or(arg);
-            let value = rest.get(i + 1).ok_or_else(|| format!("缺少 --{} 的值", key))?;
+            let value = rest
+                .get(i + 1)
+                .ok_or_else(|| format!("缺少 --{} 的值", key))?;
             // 逗号分隔的值 → JSON 数组（处理器期望列表参数为数组）
             let parsed = if value.contains(',') {
-                let arr: Vec<&str> = value.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+                let arr: Vec<&str> = value
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect();
                 json!(arr)
             } else if value == "true" {
                 json!(true)
@@ -987,7 +1161,11 @@ fn parse_cli_args(rest: &[String]) -> Result<(String, String, serde_json::Value)
     }
 
     // 项目路径默认为当前目录 "."
-    let project_path = if project_path.is_empty() { ".".into() } else { project_path };
+    let project_path = if project_path.is_empty() {
+        ".".into()
+    } else {
+        project_path
+    };
     Ok((tool, project_path, json!(args_map)))
 }
 
@@ -1000,7 +1178,10 @@ fn parse_cli_args(rest: &[String]) -> Result<(String, String, serde_json::Value)
 fn extract_mcp_result(envelope: &serde_json::Value) -> (String, bool) {
     // 错误响应：直接提取 error.message
     if let Some(err) = envelope.get("error") {
-        let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
+        let msg = err
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown error");
         return (msg.to_string(), true);
     }
     // 成功响应：从 result.content[0].text 中提取文本
@@ -1037,7 +1218,10 @@ fn cli_run(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             println!("{:<22} {}", name, desc);
             if let Some(spec) = hologram_engine::tools::domain_of(name) {
                 for a in spec.actions {
-                    println!("    {:<18} → {}({})  [原名 {}]", a.action, name, a.action, a.tool);
+                    println!(
+                        "    {:<18} → {}({})  [原名 {}]",
+                        a.action, name, a.action, a.tool
+                    );
                 }
             }
         }
@@ -1061,12 +1245,17 @@ fn cli_run(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     //   2. analyze_project / validate_project：工具自身会触发分析
     let self_analyzing = tool == "analyze_project" || tool == "validate_project";
     if tool != "engine_status" && !self_analyzing {
-        let has_graph = hologram_engine::engine::engine_read(|idx| idx.node_count() > 0 || idx.edge_count() > 0)
-            .unwrap_or(false);
+        let has_graph = hologram_engine::engine::engine_read(|idx| {
+            idx.node_count() > 0 || idx.edge_count() > 0
+        })
+        .unwrap_or(false);
         if !has_graph {
             eprintln!("[cli] 图为空，正在分析项目…");
             match hologram_engine::engine::engine_analyze(&root) {
-                Ok(result) => info!("[cli] 自动分析完成: {} 节点, {} 边", result.node_count, result.edge_count),
+                Ok(result) => info!(
+                    "[cli] 自动分析完成: {} 节点, {} 边",
+                    result.node_count, result.edge_count
+                ),
                 Err(e) => {
                     eprintln!("[cli] 分析失败: {}", e);
                     std::process::exit(1);
@@ -1078,7 +1267,10 @@ fn cli_run(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     // analyze_project：在分发前先执行分析（填充图数据）
     if tool == "analyze_project" {
         match hologram_engine::engine::engine_analyze(&root) {
-            Ok(result) => info!("[cli] 分析完成: {} 节点, {} 边", result.node_count, result.edge_count),
+            Ok(result) => info!(
+                "[cli] 分析完成: {} 节点, {} 边",
+                result.node_count, result.edge_count
+            ),
             Err(e) => {
                 eprintln!("[cli] 分析失败: {}", e);
                 std::process::exit(1);
@@ -1111,7 +1303,10 @@ fn cli_run(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     // preflight_check：风险等级为 critical 或 high 时退出码 1
     if tool == "preflight_check" {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-            let risk = v.get("risk_level").and_then(|r| r.as_str()).unwrap_or("low");
+            let risk = v
+                .get("risk_level")
+                .and_then(|r| r.as_str())
+                .unwrap_or("low");
             if risk == "critical" || risk == "high" {
                 std::process::exit(1);
             }
@@ -1120,4 +1315,3 @@ fn cli_run(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

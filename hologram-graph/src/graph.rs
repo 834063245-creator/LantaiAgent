@@ -5,8 +5,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Edge, Node};
 use crate::id::{EdgeId, NodeId};
+use crate::{Edge, Node};
 
 /// 依赖图 — 核心数据结构。
 /// 对应 Python 的 `Graph` 类，修复了 O(V×E) 性能问题。
@@ -65,10 +65,10 @@ impl Graph {
     /// 同时支持数组格式（Python：nodes/edges 为数组）和
     /// HashMap 格式（Rust serde：nodes/edges 为对象）。
     pub fn from_json_file(path: &str) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("Cannot read {}: {}", path, e))?;
-        let val: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| format!("Invalid JSON: {}", e))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("Cannot read {}: {}", path, e))?;
+        let val: serde_json::Value =
+            serde_json::from_str(&content).map_err(|e| format!("Invalid JSON: {}", e))?;
 
         let mut g = Graph::new();
         if let Some(meta) = val.get("meta") {
@@ -370,7 +370,9 @@ impl Graph {
         let lower = query.to_lowercase();
         self.nodes
             .values()
-            .filter(|n| n.name.to_lowercase().contains(&lower) || n.id.to_lowercase().contains(&lower))
+            .filter(|n| {
+                n.name.to_lowercase().contains(&lower) || n.id.to_lowercase().contains(&lower)
+            })
             .collect()
     }
 
@@ -563,8 +565,16 @@ mod tests {
         after.add_edge_unchecked(Edge::new("e2", "a", "c", EdgeKind::Calls));
 
         let diff = before.diff(&after);
-        let modified_ids: Vec<&str> = diff.modified_nodes.iter().map(|(_, n)| n.id.as_str()).collect();
-        assert_eq!(diff.modified_nodes.len(), 2, "a (out_degree) and c (in_degree) should be modified");
+        let modified_ids: Vec<&str> = diff
+            .modified_nodes
+            .iter()
+            .map(|(_, n)| n.id.as_str())
+            .collect();
+        assert_eq!(
+            diff.modified_nodes.len(),
+            2,
+            "a (out_degree) and c (in_degree) should be modified"
+        );
         assert!(modified_ids.contains(&"a"));
         assert!(modified_ids.contains(&"c"));
         assert_eq!(diff.added_edges.len(), 1);

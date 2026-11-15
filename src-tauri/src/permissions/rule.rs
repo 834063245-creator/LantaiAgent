@@ -22,7 +22,7 @@ pub enum Behavior {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleValue {
-    pub tool_name: String,       // PascalCase: "Bash", "Read", "Edit", "Git", "WebFetch"
+    pub tool_name: String, // PascalCase: "Bash", "Read", "Edit", "Git", "WebFetch"
     pub content: Option<String>, // 例如 "npm test:*", "src/**"
 }
 
@@ -146,14 +146,18 @@ pub fn load_project_rules(project_root: &Path) -> Vec<PermissionRule> {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
         Err(e) => {
-            eprintln!("[permissions] permissions.json 读取失败（{e}）——项目规则（含 deny）未生效！");
+            eprintln!(
+                "[permissions] permissions.json 读取失败（{e}）——项目规则（含 deny）未生效！"
+            );
             return Vec::new();
         }
     };
     let json: serde_json::Value = match serde_json::from_str(&content) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("[permissions] permissions.json 解析失败（{e}）——项目规则（含 deny）未生效！");
+            eprintln!(
+                "[permissions] permissions.json 解析失败（{e}）——项目规则（含 deny）未生效！"
+            );
             return Vec::new();
         }
     };
@@ -356,9 +360,7 @@ fn content_matches(pattern: &str, actual: &str) -> bool {
         return false;
     }
     // 子串匹配（不区分大小写）
-    actual
-        .to_lowercase()
-        .contains(&pattern.to_lowercase())
+    actual.to_lowercase().contains(&pattern.to_lowercase())
 }
 
 /// 将简单的 glob 模式转换为正则表达式。
@@ -480,7 +482,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         append_project_rule(&dir, "Bash(npm test:*)", "allow");
-        let content = std::fs::read_to_string(dir.join(".lantai").join("permissions.json")).unwrap();
+        let content =
+            std::fs::read_to_string(dir.join(".lantai").join("permissions.json")).unwrap();
         assert!(content.contains("npm test:*"));
         // 原子写不得留下 tmp/bak 残渣
         assert!(!dir.join(".lantai").join("permissions.json.tmp").exists());

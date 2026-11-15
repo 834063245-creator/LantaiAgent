@@ -55,12 +55,10 @@ pub fn check_read_permission(
             let path_str = path_to_match_str(resolved_path);
             return PermissionResult::Ask {
                 reason: format!("安全警告: {}", safety.message),
-                suggestions: vec![
-                    crate::permissions::PermissionUpdate {
-                        rule: format!("Read({})", path_str),
-                        behavior: "allow".into(),
-                    },
-                ],
+                suggestions: vec![crate::permissions::PermissionUpdate {
+                    rule: format!("Read({})", path_str),
+                    behavior: "allow".into(),
+                }],
                 danger: None,
             };
         }
@@ -75,12 +73,10 @@ pub fn check_read_permission(
     if let Some(rule) = rules.find_ask("Read", Some(&match_str)) {
         return PermissionResult::Ask {
             reason: rule.explain(),
-            suggestions: vec![
-                crate::permissions::PermissionUpdate {
-                    rule: format!("Read({})", match_str),
-                    behavior: "allow".into(),
-                },
-            ],
+            suggestions: vec![crate::permissions::PermissionUpdate {
+                rule: format!("Read({})", match_str),
+                behavior: "allow".into(),
+            }],
             danger: None,
         };
     }
@@ -94,12 +90,10 @@ pub fn check_read_permission(
     } else {
         PermissionResult::Ask {
             reason: format!("读取项目外的路径: {}（需要用户确认）", raw_path),
-            suggestions: vec![
-                crate::permissions::PermissionUpdate {
-                    rule: format!("Read({})", raw_path.replace('\\', "/")),
-                    behavior: "allow".into(),
-                },
-            ],
+            suggestions: vec![crate::permissions::PermissionUpdate {
+                rule: format!("Read({})", raw_path.replace('\\', "/")),
+                behavior: "allow".into(),
+            }],
             danger: None,
         }
     }
@@ -128,12 +122,10 @@ pub fn check_write_permission(
         SandboxResult::Denied(reason) => {
             return PermissionResult::Ask {
                 reason: format!("写入项目外的路径: {} ({})，需要用户确认", raw_path, reason),
-                suggestions: vec![
-                    crate::permissions::PermissionUpdate {
-                        rule: format!("Edit({})", raw_path.replace('\\', "/")),
-                        behavior: "allow".into(),
-                    },
-                ],
+                suggestions: vec![crate::permissions::PermissionUpdate {
+                    rule: format!("Edit({})", raw_path.replace('\\', "/")),
+                    behavior: "allow".into(),
+                }],
                 danger: None,
             };
         }
@@ -158,12 +150,10 @@ pub fn check_write_permission(
         let path_str = path_to_match_str(&resolved);
         return PermissionResult::Ask {
             reason: format!("安全警告: {}", safety.message),
-            suggestions: vec![
-                crate::permissions::PermissionUpdate {
-                    rule: format!("Edit({})", path_str),
-                    behavior: "allow".into(),
-                },
-            ],
+            suggestions: vec![crate::permissions::PermissionUpdate {
+                rule: format!("Edit({})", path_str),
+                behavior: "allow".into(),
+            }],
             danger: None,
         };
     }
@@ -177,12 +167,10 @@ pub fn check_write_permission(
     if let Some(rule) = rules.find_ask("Edit", Some(&match_str)) {
         return PermissionResult::Ask {
             reason: rule.explain(),
-            suggestions: vec![
-                crate::permissions::PermissionUpdate {
-                    rule: format!("Edit({})", match_str),
-                    behavior: "allow".into(),
-                },
-            ],
+            suggestions: vec![crate::permissions::PermissionUpdate {
+                rule: format!("Edit({})", match_str),
+                behavior: "allow".into(),
+            }],
             danger: None,
         };
     }
@@ -223,7 +211,11 @@ mod tests {
             &rules,
             None,
         );
-        assert!(matches!(r, PermissionResult::Allow), "expected Allow, got: {:?}", r);
+        assert!(
+            matches!(r, PermissionResult::Allow),
+            "expected Allow, got: {:?}",
+            r
+        );
     }
 
     #[test]
@@ -232,7 +224,11 @@ mod tests {
         let rules = PermissionRules::new();
         // 项目外读取升级为 Ask（用户对话框），不静默 Deny
         let r = check_read_permission("C:\\Windows\\System32\\notepad.exe", &s, &rules, None);
-        assert!(matches!(r, PermissionResult::Ask { .. }), "expected Ask, got: {:?}", r);
+        assert!(
+            matches!(r, PermissionResult::Ask { .. }),
+            "expected Ask, got: {:?}",
+            r
+        );
     }
 
     #[test]
@@ -264,7 +260,11 @@ mod tests {
             &rules,
             None,
         );
-        assert!(matches!(r, PermissionResult::Allow), "expected Allow, got: {:?}", r);
+        assert!(
+            matches!(r, PermissionResult::Allow),
+            "expected Allow, got: {:?}",
+            r
+        );
     }
 
     /// provider 配方文件（`.lantai/providers.yml`，providers.yml 统管通道）写路径
@@ -280,14 +280,22 @@ mod tests {
             &rules,
             None,
         );
-        assert!(matches!(r, PermissionResult::Allow), "providers.yml 写应 Allow, got: {:?}", r);
+        assert!(
+            matches!(r, PermissionResult::Allow),
+            "providers.yml 写应 Allow, got: {:?}",
+            r
+        );
         let r = check_write_permission(
             &root.join(".lantai/settings.json").to_string_lossy(),
             &s,
             &rules,
             None,
         );
-        assert!(matches!(r, PermissionResult::Ask { .. }), "settings.json 写仍应 Ask, got: {:?}", r);
+        assert!(
+            matches!(r, PermissionResult::Ask { .. }),
+            "settings.json 写仍应 Ask, got: {:?}",
+            r
+        );
     }
 
     #[test]
@@ -295,16 +303,17 @@ mod tests {
         let (s, root) = sandbox_in_temp();
         let rules = PermissionRules::new();
         // .bashrc 是危险文件
-        let r = check_write_permission(
-            &root.join(".bashrc").to_string_lossy(),
-            &s,
-            &rules,
-            None,
-        );
+        let r = check_write_permission(&root.join(".bashrc").to_string_lossy(), &s, &rules, None);
         match r {
             PermissionResult::Ask { suggestions, .. } => {
-                assert!(!suggestions.is_empty(), "safety Ask must include a suggestion");
-                assert!(suggestions[0].rule.starts_with("Edit("), "suggestion should be Edit(path)");
+                assert!(
+                    !suggestions.is_empty(),
+                    "safety Ask must include a suggestion"
+                );
+                assert!(
+                    suggestions[0].rule.starts_with("Edit("),
+                    "suggestion should be Edit(path)"
+                );
             }
             other => panic!("expected Ask, got: {:?}", other),
         }
@@ -315,12 +324,19 @@ mod tests {
         let (s, _root) = sandbox_in_temp();
         let rules = PermissionRules::new();
         // 任意位置的 .bashrc 都会触发 check_path_safety_read 中的 is_dangerous_file
-        let test_path = format!("{}/.bashrc",
-            std::env::var("USERPROFILE").unwrap_or_default().replace('\\', "/"));
+        let test_path = format!(
+            "{}/.bashrc",
+            std::env::var("USERPROFILE")
+                .unwrap_or_default()
+                .replace('\\', "/")
+        );
         let r = check_read_permission(&test_path, &s, &rules, None);
         match r {
             PermissionResult::Ask { suggestions, .. } => {
-                assert!(!suggestions.is_empty(), "read safety Ask must include a suggestion");
+                assert!(
+                    !suggestions.is_empty(),
+                    "read safety Ask must include a suggestion"
+                );
             }
             // 若路径不存在则可能为 Allow（sandbox 规范化失败 → resolved=None → 项目外 → Ask）
             // 若路径存在且安全检查拦截则为 Ask

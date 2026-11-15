@@ -19,20 +19,25 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use windows::core::Interface;
 use windows::Win32::Foundation::{HANDLE, HWND, RECT};
-use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+};
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, ExpandCollapseState, ExpandCollapseState_Collapsed, ExpandCollapseState_Expanded,
-    ExpandCollapseState_LeafNode, IUIAutomation, IUIAutomationElement, IUIAutomationTreeWalker,
-    ScrollAmount_LargeDecrement, ScrollAmount_LargeIncrement, ScrollAmount_NoAmount,
-    ScrollAmount_SmallIncrement, ToggleState, ToggleState_Off, ToggleState_On,
-    UIA_E_ELEMENTNOTAVAILABLE,
+    CUIAutomation, ExpandCollapseState, ExpandCollapseState_Collapsed,
+    ExpandCollapseState_Expanded, ExpandCollapseState_LeafNode, IUIAutomation,
+    IUIAutomationElement, IUIAutomationTreeWalker, ScrollAmount_LargeDecrement,
+    ScrollAmount_LargeIncrement, ScrollAmount_NoAmount, ScrollAmount_SmallIncrement, ToggleState,
+    ToggleState_Off, ToggleState_On, UIA_E_ELEMENTNOTAVAILABLE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowRect, IsIconic, IsWindow, SetForegroundWindow, ShowWindow,
     SW_RESTORE,
 };
 
-use super::cache::{control_matches, control_type_id, control_type_name, is_interactive, page_bounds, tree_text, ControlRec};
+use super::cache::{
+    control_matches, control_type_id, control_type_name, is_interactive, page_bounds, tree_text,
+    ControlRec,
+};
 use super::errors;
 use super::worker::{Locator, Msg, Target, UiaRequest};
 
@@ -44,9 +49,15 @@ const WAIT_POLL_MS: u64 = 150;
 fn hre(ctx: &str, e: windows::core::Error) -> String {
     let code = e.code().0 as u32;
     if code == UIA_E_ELEMENTNOTAVAILABLE {
-        errors::err(errors::codes::STALE_REF, format!("{ctx}: 控件已不可用（树已变化，将自动重建）"))
+        errors::err(
+            errors::codes::STALE_REF,
+            format!("{ctx}: 控件已不可用（树已变化，将自动重建）"),
+        )
     } else if code == 0x80070005 {
-        errors::err(errors::codes::ACCESS_DENIED, format!("{ctx}: 目标进程权限更高（UIPI），需提权运行"))
+        errors::err(
+            errors::codes::ACCESS_DENIED,
+            format!("{ctx}: 目标进程权限更高（UIPI），需提权运行"),
+        )
     } else {
         errors::err(errors::codes::INTERNAL, format!("{ctx}: {e}"))
     }
@@ -76,7 +87,11 @@ struct UiaCore {
 
 impl UiaCore {
     fn new(automation: IUIAutomation) -> Self {
-        Self { automation, trees: HashMap::new(), generation_seq: 0 }
+        Self {
+            automation,
+            trees: HashMap::new(),
+            generation_seq: 0,
+        }
     }
 
     /// 取/建窗口树（clone 出快照；元素句柄留在缓存里按 ref 索引）。
@@ -87,13 +102,20 @@ impl UiaCore {
             None => true,
         };
         if stale {
-            let el = unsafe { self.automation.ElementFromHandle(hwnd) }.map_err(|e| hre("ElementFromHandle", e))?;
+            let el = unsafe { self.automation.ElementFromHandle(hwnd) }
+                .map_err(|e| hre("ElementFromHandle", e))?;
             let (controls, elements, truncated) = walk_tree(&self.automation, &el)?;
             self.generation_seq += 1;
             let generation = self.generation_seq;
             self.trees.insert(
                 key,
-                WindowTree { generation, controls, elements, truncated, built_at: Instant::now() },
+                WindowTree {
+                    generation,
+                    controls,
+                    elements,
+                    truncated,
+                    built_at: Instant::now(),
+                },
             );
         }
         let t = self.trees.get(&key).expect("刚插入");
@@ -107,7 +129,11 @@ impl UiaCore {
     }
 
     fn element_at(&self, hwnd: HWND, ref_id: usize) -> Option<IUIAutomationElement> {
-        self.trees.get(&(hwnd.0 as u64))?.elements.get(ref_id).cloned()
+        self.trees
+            .get(&(hwnd.0 as u64))?
+            .elements
+            .get(ref_id)
+            .cloned()
     }
 }
 
@@ -187,32 +213,87 @@ type R = Result<Value, String>;
 
 fn dispatch(core: &mut UiaCore, req: UiaRequest) -> (super::worker::Reply, R) {
     match req {
-        UiaRequest::Tree { loc, all, offset, max_results, reply } => {
-            (reply, req_tree(core, &loc, all, offset, max_results))
-        }
-        UiaRequest::Find { loc, all, name, ctype, aid, enabled, reply } => {
-            (reply, req_find(core, &loc, all, name.as_deref(), ctype.as_deref(), aid.as_deref(), enabled))
-        }
+        UiaRequest::Tree {
+            loc,
+            all,
+            offset,
+            max_results,
+            reply,
+        } => (reply, req_tree(core, &loc, all, offset, max_results)),
+        UiaRequest::Find {
+            loc,
+            all,
+            name,
+            ctype,
+            aid,
+            enabled,
+            reply,
+        } => (
+            reply,
+            req_find(
+                core,
+                &loc,
+                all,
+                name.as_deref(),
+                ctype.as_deref(),
+                aid.as_deref(),
+                enabled,
+            ),
+        ),
         UiaRequest::Resolve { loc, target, reply } => (reply, req_resolve(core, &loc, &target)),
         UiaRequest::Read { loc, target, reply } => (reply, req_read(core, &loc, &target)),
-        UiaRequest::Wait { loc, target, until, value, timeout_ms, reply } => {
-            (reply, req_wait(core, loc, target, until, value, timeout_ms))
+        UiaRequest::Wait {
+            loc,
+            target,
+            until,
+            value,
+            timeout_ms,
+            reply,
+        } => (reply, req_wait(core, loc, target, until, value, timeout_ms)),
+        UiaRequest::Click {
+            loc,
+            target,
+            right,
+            allow_coords,
+            reply,
+        } => (reply, req_click(core, loc, target, right, allow_coords)),
+        UiaRequest::Type {
+            loc,
+            target,
+            text,
+            allow_physical,
+            reply,
+        } => (reply, req_type(core, loc, target, &text, allow_physical)),
+        UiaRequest::Scroll {
+            loc,
+            target,
+            direction,
+            amount,
+            allow_wheel,
+            reply,
+        } => (
+            reply,
+            req_scroll(core, loc, target, &direction, amount, allow_wheel),
+        ),
+        UiaRequest::Select { loc, target, reply } => {
+            (reply, req_simple_pattern(core, loc, target, "select"))
         }
-        UiaRequest::Click { loc, target, right, allow_coords, reply } => {
-            (reply, req_click(core, loc, target, right, allow_coords))
+        UiaRequest::Expand { loc, target, reply } => {
+            (reply, req_simple_pattern(core, loc, target, "expand"))
         }
-        UiaRequest::Type { loc, target, text, allow_physical, reply } => {
-            (reply, req_type(core, loc, target, &text, allow_physical))
-        }
-        UiaRequest::Scroll { loc, target, direction, amount, allow_wheel, reply } => {
-            (reply, req_scroll(core, loc, target, &direction, amount, allow_wheel))
-        }
-        UiaRequest::Select { loc, target, reply } => (reply, req_simple_pattern(core, loc, target, "select")),
-        UiaRequest::Expand { loc, target, reply } => (reply, req_simple_pattern(core, loc, target, "expand")),
-        UiaRequest::Keys { loc, modifiers, key, reply } => (reply, req_keys(core, loc, &modifiers, &key)),
+        UiaRequest::Keys {
+            loc,
+            modifiers,
+            key,
+            reply,
+        } => (reply, req_keys(core, loc, &modifiers, &key)),
         UiaRequest::Activate { loc, reply } => (reply, req_activate(core, loc)),
         UiaRequest::WindowRect { loc, reply } => (reply, req_window_rect(core, &loc)),
-        UiaRequest::ProbeRoute { hwnd, budget_ms, reply } => (reply, req_probe_route(core, hwnd, budget_ms)),
+        UiaRequest::ProbeRoute {
+            hwnd,
+            budget_ms,
+            reply,
+        } => (reply, req_probe_route(core, hwnd, budget_ms)),
     }
 }
 
@@ -224,7 +305,10 @@ fn rec_of(el: &IUIAutomationElement, ref_id: usize, depth: u32) -> ControlRec {
     unsafe {
         let ctype = el.CurrentControlType().map(|c| c.0 as u32).unwrap_or(0);
         let name = el.CurrentName().map(|b| b.to_string()).unwrap_or_default();
-        let aid = el.CurrentAutomationId().map(|b| b.to_string()).unwrap_or_default();
+        let aid = el
+            .CurrentAutomationId()
+            .map(|b| b.to_string())
+            .unwrap_or_default();
         let enabled = el.CurrentIsEnabled().map(|b| b.as_bool()).unwrap_or(true);
         let password = el.CurrentIsPassword().map(|b| b.as_bool()).unwrap_or(false);
         let r = el.CurrentBoundingRectangle().unwrap_or(RECT::default());
@@ -250,14 +334,21 @@ fn el_name(el: &IUIAutomationElement) -> String {
 }
 
 fn el_hwnd(el: &IUIAutomationElement) -> i64 {
-    unsafe { el.CurrentNativeWindowHandle().map(|h| h.0 as i64).unwrap_or(0) }
+    unsafe {
+        el.CurrentNativeWindowHandle()
+            .map(|h| h.0 as i64)
+            .unwrap_or(0)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
 // 树遍历（ControlViewWalker DFS 先序，保持文档顺序）
 // ═══════════════════════════════════════════════════════════
 
-fn children_of(walker: &IUIAutomationTreeWalker, el: &IUIAutomationElement) -> Vec<IUIAutomationElement> {
+fn children_of(
+    walker: &IUIAutomationTreeWalker,
+    el: &IUIAutomationElement,
+) -> Vec<IUIAutomationElement> {
     let mut out = Vec::new();
     unsafe {
         let mut cur = match walker.GetFirstChildElement(el) {
@@ -282,7 +373,8 @@ fn walk_tree(
     automation: &IUIAutomation,
     root: &IUIAutomationElement,
 ) -> Result<(Vec<ControlRec>, Vec<IUIAutomationElement>, bool), String> {
-    let walker = unsafe { automation.ControlViewWalker() }.map_err(|e| hre("ControlViewWalker", e))?;
+    let walker =
+        unsafe { automation.ControlViewWalker() }.map_err(|e| hre("ControlViewWalker", e))?;
     let mut controls: Vec<ControlRec> = Vec::new();
     let mut elements: Vec<IUIAutomationElement> = Vec::new();
     let mut truncated = false;
@@ -323,20 +415,30 @@ fn locate_window(core: &UiaCore, loc: &Locator) -> Result<Located, String> {
         if !unsafe { IsWindow(Some(hwnd)) }.as_bool() {
             return Err(errors::err(
                 errors::codes::WINDOW_NOT_FOUND,
-                format!("hwnd={h} 无效或已关闭（句柄可能失效，请重新 desktop_probe 获取最新 hwnd）"),
+                format!(
+                    "hwnd={h} 无效或已关闭（句柄可能失效，请重新 desktop_probe 获取最新 hwnd）"
+                ),
             ));
         }
         let el = unsafe { core.automation.ElementFromHandle(hwnd) }
             .map_err(|e| hre("ElementFromHandle", e))?;
-        return Ok(Located { hwnd, pid: el_pid(&el), title: el_name(&el), element: el });
+        return Ok(Located {
+            hwnd,
+            pid: el_pid(&el),
+            title: el_name(&el),
+            element: el,
+        });
     }
     if loc.pid.is_some() || loc.title.is_some() {
-        let root = unsafe { core.automation.GetRootElement() }
-            .map_err(|e| hre("GetRootElement", e))?;
+        let root =
+            unsafe { core.automation.GetRootElement() }.map_err(|e| hre("GetRootElement", e))?;
         let walker = unsafe { core.automation.ControlViewWalker() }
             .map_err(|e| hre("ControlViewWalker", e))?;
         for c in children_of(&walker, &root) {
-            let pid_match = loc.pid.map(|want| el_pid(&c) == want as i64).unwrap_or(true);
+            let pid_match = loc
+                .pid
+                .map(|want| el_pid(&c) == want as i64)
+                .unwrap_or(true);
             let title_match = loc
                 .title
                 .as_deref()
@@ -346,14 +448,22 @@ fn locate_window(core: &UiaCore, loc: &Locator) -> Result<Located, String> {
                 let h = el_hwnd(&c);
                 let hwnd = HWND(h as usize as *mut _);
                 if h != 0 && unsafe { IsWindow(Some(hwnd)) }.as_bool() {
-                    return Ok(Located { hwnd, pid: el_pid(&c), title: el_name(&c), element: c });
+                    return Ok(Located {
+                        hwnd,
+                        pid: el_pid(&c),
+                        title: el_name(&c),
+                        element: c,
+                    });
                 }
             }
         }
         let desc = if let Some(p) = loc.pid {
             format!("pid={p} 的主窗口")
         } else {
-            format!("标题含「{}」的顶层窗口", loc.title.clone().unwrap_or_default())
+            format!(
+                "标题含「{}」的顶层窗口",
+                loc.title.clone().unwrap_or_default()
+            )
         };
         return Err(errors::err(
             errors::codes::WINDOW_NOT_FOUND,
@@ -363,11 +473,19 @@ fn locate_window(core: &UiaCore, loc: &Locator) -> Result<Located, String> {
     // 前台窗口
     let hwnd = unsafe { GetForegroundWindow() };
     if hwnd.0.is_null() {
-        return Err(errors::err(errors::codes::WINDOW_NOT_FOUND, "无法定位前台窗口"));
+        return Err(errors::err(
+            errors::codes::WINDOW_NOT_FOUND,
+            "无法定位前台窗口",
+        ));
     }
     let el = unsafe { core.automation.ElementFromHandle(hwnd) }
         .map_err(|e| hre("ElementFromHandle", e))?;
-    Ok(Located { hwnd, pid: el_pid(&el), title: el_name(&el), element: el })
+    Ok(Located {
+        hwnd,
+        pid: el_pid(&el),
+        title: el_name(&el),
+        element: el,
+    })
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -440,12 +558,18 @@ fn resolve_element(
     let _ = core.rebuild_tree(hwnd)?;
     let idx = resolve_index(core, hwnd, target)?;
     let el = core.element_at(hwnd, idx).ok_or_else(|| {
-        errors::err(errors::codes::STALE_REF, "控件已失效且重建后仍未找到（请重新 desktop_uia_tree）")
+        errors::err(
+            errors::codes::STALE_REF,
+            "控件已失效且重建后仍未找到（请重新 desktop_uia_tree）",
+        )
     })?;
     Ok((idx, el))
 }
 
-fn pattern_of<T: Interface>(el: &IUIAutomationElement, pattern_id: windows::Win32::UI::Accessibility::UIA_PATTERN_ID) -> Option<T> {
+fn pattern_of<T: Interface>(
+    el: &IUIAutomationElement,
+    pattern_id: windows::Win32::UI::Accessibility::UIA_PATTERN_ID,
+) -> Option<T> {
     unsafe { el.GetCurrentPatternAs::<T>(pattern_id) }.ok()
 }
 
@@ -533,7 +657,9 @@ fn req_find(
     let (generation, controls, _) = core.tree_snapshot(located.hwnd)?;
     let matched: Vec<ControlRec> = controls
         .iter()
-        .filter(|c| (all || is_interactive(c.ctype)) && control_matches(c, name, ctype, aid, enabled))
+        .filter(|c| {
+            (all || is_interactive(c.ctype)) && control_matches(c, name, ctype, aid, enabled)
+        })
         .cloned()
         .collect();
     Ok(json!({
@@ -556,8 +682,8 @@ use windows::Win32::UI::Accessibility::{
     IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationScrollItemPattern,
     IUIAutomationScrollPattern, IUIAutomationSelectionItemPattern, IUIAutomationTogglePattern,
     IUIAutomationValuePattern, UIA_ExpandCollapsePatternId, UIA_InvokePatternId,
-    UIA_ScrollItemPatternId, UIA_ScrollPatternId, UIA_SelectionItemPatternId,
-    UIA_TogglePatternId, UIA_ValuePatternId,
+    UIA_ScrollItemPatternId, UIA_ScrollPatternId, UIA_SelectionItemPatternId, UIA_TogglePatternId,
+    UIA_ValuePatternId,
 };
 
 fn toggle_str(s: ToggleState) -> &'static str {
@@ -589,7 +715,9 @@ struct Snap {
 
 fn snap_target(core: &UiaCore, hwnd: HWND, el: &IUIAutomationElement) -> Snap {
     let mut s = Snap {
-        title: el_name(&unsafe { core.automation.ElementFromHandle(hwnd) }.unwrap_or_else(|_| el.clone())),
+        title: el_name(
+            &unsafe { core.automation.ElementFromHandle(hwnd) }.unwrap_or_else(|_| el.clone()),
+        ),
         focused: unsafe { core.automation.GetFocusedElement() }
             .map(|f| el_name(&f))
             .unwrap_or_default(),
@@ -599,14 +727,24 @@ fn snap_target(core: &UiaCore, hwnd: HWND, el: &IUIAutomationElement) -> Snap {
         unsafe {
             // 密码框掩码（ValuePattern 无 IsPassword — 用元素级 IsPassword 判定）
             let pw = el.CurrentIsPassword().map(|b| b.as_bool()).unwrap_or(false);
-            s.value = Some(if pw { "***".into() } else { vp.CurrentValue().map(|b| b.to_string()).unwrap_or_default() });
+            s.value = Some(if pw {
+                "***".into()
+            } else {
+                vp.CurrentValue().map(|b| b.to_string()).unwrap_or_default()
+            });
         }
     }
     if let Some(tp) = pattern_of::<IUIAutomationTogglePattern>(el, UIA_TogglePatternId) {
-        s.toggle = unsafe { tp.CurrentToggleState() }.ok().map(|t| toggle_str(t).to_string());
+        s.toggle = unsafe { tp.CurrentToggleState() }
+            .ok()
+            .map(|t| toggle_str(t).to_string());
     }
-    if let Some(ep) = pattern_of::<IUIAutomationExpandCollapsePattern>(el, UIA_ExpandCollapsePatternId) {
-        s.expand = unsafe { ep.CurrentExpandCollapseState() }.ok().map(|t| expand_str(t).to_string());
+    if let Some(ep) =
+        pattern_of::<IUIAutomationExpandCollapsePattern>(el, UIA_ExpandCollapsePatternId)
+    {
+        s.expand = unsafe { ep.CurrentExpandCollapseState() }
+            .ok()
+            .map(|t| expand_str(t).to_string());
     }
     if let Some(sp) = pattern_of::<IUIAutomationScrollPattern>(el, UIA_ScrollPatternId) {
         s.v_pct = unsafe { sp.CurrentVerticalScrollPercent() }.ok();
@@ -618,7 +756,10 @@ fn snap_target(core: &UiaCore, hwnd: HWND, el: &IUIAutomationElement) -> Snap {
 fn diff_snaps(before: &Snap, after: &Snap) -> Value {
     let mut changed = serde_json::Map::new();
     if before.title != after.title {
-        changed.insert("window_title".into(), json!(format!("{} → {}", before.title, after.title)));
+        changed.insert(
+            "window_title".into(),
+            json!(format!("{} → {}", before.title, after.title)),
+        );
     }
     if before.focused != after.focused {
         changed.insert(
@@ -628,15 +769,24 @@ fn diff_snaps(before: &Snap, after: &Snap) -> Value {
     }
     if before.value != after.value {
         let fmt = |v: &Option<String>| v.clone().unwrap_or_else(|| "—".into());
-        changed.insert("value".into(), json!(format!("{} → {}", fmt(&before.value), fmt(&after.value))));
+        changed.insert(
+            "value".into(),
+            json!(format!("{} → {}", fmt(&before.value), fmt(&after.value))),
+        );
     }
     if before.toggle != after.toggle {
         let fmt = |v: &Option<String>| v.clone().unwrap_or_else(|| "—".into());
-        changed.insert("toggle".into(), json!(format!("{} → {}", fmt(&before.toggle), fmt(&after.toggle))));
+        changed.insert(
+            "toggle".into(),
+            json!(format!("{} → {}", fmt(&before.toggle), fmt(&after.toggle))),
+        );
     }
     if before.expand != after.expand {
         let fmt = |v: &Option<String>| v.clone().unwrap_or_else(|| "—".into());
-        changed.insert("expand".into(), json!(format!("{} → {}", fmt(&before.expand), fmt(&after.expand))));
+        changed.insert(
+            "expand".into(),
+            json!(format!("{} → {}", fmt(&before.expand), fmt(&after.expand))),
+        );
     }
     if before.v_pct != after.v_pct || before.h_pct != after.h_pct {
         changed.insert(
@@ -699,8 +849,8 @@ mod phys {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS,
         KEYEVENTF_KEYUP, MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
-        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSE_EVENT_FLAGS,
-        MOUSEINPUT, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
+        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT,
+        MOUSE_EVENT_FLAGS, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
     };
     use windows::Win32::UI::WindowsAndMessaging::SetCursorPos;
 
@@ -741,7 +891,11 @@ mod phys {
 
     pub(super) fn wheel(x: i32, y: i32, delta: i32, horizontal: bool) {
         let _ = unsafe { SetCursorPos(x, y) };
-        let flags = if horizontal { MOUSEEVENTF_HWHEEL } else { MOUSEEVENTF_WHEEL };
+        let flags = if horizontal {
+            MOUSEEVENTF_HWHEEL
+        } else {
+            MOUSEEVENTF_WHEEL
+        };
         send(&[mouse_input(flags, x, y, delta)]);
     }
 
@@ -796,7 +950,12 @@ mod phys {
                 "alt" | "option" => VK_MENU.0,
                 "shift" => VK_SHIFT.0,
                 "meta" | "cmd" | "win" => VK_LWIN.0,
-                other => return Err(errors::err(errors::codes::ARG_INVALID, format!("不支持的修饰键: {other}（ctrl/alt/shift/meta）"))),
+                other => {
+                    return Err(errors::err(
+                        errors::codes::ARG_INVALID,
+                        format!("不支持的修饰键: {other}（ctrl/alt/shift/meta）"),
+                    ))
+                }
             };
             if !out.contains(&vk) {
                 out.push(vk);
@@ -812,7 +971,11 @@ mod phys {
                 ki: KEYBDINPUT {
                     wVk: VIRTUAL_KEY(vk),
                     wScan: 0,
-                    dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) },
+                    dwFlags: if up {
+                        KEYEVENTF_KEYUP
+                    } else {
+                        KEYBD_EVENT_FLAGS(0)
+                    },
                     time: 0,
                     dwExtraInfo: 0,
                 },
@@ -856,7 +1019,10 @@ pub(super) fn clipboard_set(text: &str) -> Result<(), String> {
             std::thread::sleep(Duration::from_millis(30));
         }
         if !opened {
-            return Err(errors::err(errors::codes::INTERNAL, "剪贴板打不开（被其他进程占用）"));
+            return Err(errors::err(
+                errors::codes::INTERNAL,
+                "剪贴板打不开（被其他进程占用）",
+            ));
         }
         let result = (|| -> Result<(), String> {
             let w: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
@@ -870,8 +1036,9 @@ pub(super) fn clipboard_set(text: &str) -> Result<(), String> {
             std::ptr::copy_nonoverlapping(w.as_ptr(), p.cast::<u16>(), w.len());
             let _ = GlobalUnlock(h);
             let _ = EmptyClipboard();
-            SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(h.0)))
-                .map_err(|e| errors::err(errors::codes::INTERNAL, format!("SetClipboardData: {e}")))?;
+            SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(h.0))).map_err(|e| {
+                errors::err(errors::codes::INTERNAL, format!("SetClipboardData: {e}"))
+            })?;
             Ok(())
         })();
         let _ = CloseClipboard();
@@ -909,15 +1076,17 @@ pub(super) fn clipboard_get() -> Option<String> {
 }
 
 fn center_of(el: &IUIAutomationElement) -> Result<(i32, i32), String> {
-    let r = unsafe { el.CurrentBoundingRectangle() }
-        .map_err(|e| hre("BoundingRectangle", e))?;
+    let r = unsafe { el.CurrentBoundingRectangle() }.map_err(|e| hre("BoundingRectangle", e))?;
     if r.right <= r.left || r.bottom <= r.top {
         return Err(errors::err(
             errors::codes::STALE_REF,
             "控件没有可点击区域（可能已隐藏或滚动出视口，请重新 desktop_uia_tree）",
         ));
     }
-    Ok((r.left + (r.right - r.left) / 2, r.top + (r.bottom - r.top) / 2))
+    Ok((
+        r.left + (r.right - r.left) / 2,
+        r.top + (r.bottom - r.top) / 2,
+    ))
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -928,7 +1097,8 @@ fn req_resolve(core: &mut UiaCore, loc: &Locator, target: &Target) -> R {
     let located = locate_window(core, loc)?;
     let (idx, el) = resolve_element(core, located.hwnd, target)?;
     let rec = rec_of(&el, idx, 0);
-    let has_value: bool = pattern_of::<IUIAutomationValuePattern>(&el, UIA_ValuePatternId).is_some();
+    let has_value: bool =
+        pattern_of::<IUIAutomationValuePattern>(&el, UIA_ValuePatternId).is_some();
     let value = if has_value {
         snap_target(core, located.hwnd, &el).value
     } else {
@@ -991,7 +1161,14 @@ fn req_read(core: &mut UiaCore, loc: &Locator, target: &Target) -> R {
     }))
 }
 
-fn req_wait(core: &mut UiaCore, loc: Locator, target: Target, until: String, value: Option<String>, timeout_ms: u64) -> R {
+fn req_wait(
+    core: &mut UiaCore,
+    loc: Locator,
+    target: Target,
+    until: String,
+    value: Option<String>,
+    timeout_ms: u64,
+) -> R {
     let timeout = Duration::from_millis(timeout_ms.clamp(100, 30_000));
     let started = Instant::now();
     let until_valid = ["exists", "enabled", "value"].contains(&until.as_str());
@@ -1002,7 +1179,10 @@ fn req_wait(core: &mut UiaCore, loc: Locator, target: Target, until: String, val
         ));
     }
     if until == "value" && value.is_none() {
-        return Err(errors::err(errors::codes::ARG_INVALID, "until=value 需要同时给 value 参数"));
+        return Err(errors::err(
+            errors::codes::ARG_INVALID,
+            "until=value 需要同时给 value 参数",
+        ));
     }
     loop {
         let ok = (|| -> Result<bool, String> {
@@ -1010,9 +1190,13 @@ fn req_wait(core: &mut UiaCore, loc: Locator, target: Target, until: String, val
             let (_, el) = resolve_element(core, located.hwnd, &target)?;
             match until.as_str() {
                 "exists" => Ok(true),
-                "enabled" => Ok(unsafe { el.CurrentIsEnabled() }.map(|b| b.as_bool()).unwrap_or(false)),
+                "enabled" => Ok(unsafe { el.CurrentIsEnabled() }
+                    .map(|b| b.as_bool())
+                    .unwrap_or(false)),
                 _ => {
-                    let v = snap_target(core, located.hwnd, &el).value.unwrap_or_default();
+                    let v = snap_target(core, located.hwnd, &el)
+                        .value
+                        .unwrap_or_default();
                     Ok(v == value.clone().unwrap_or_default())
                 }
             }
@@ -1041,7 +1225,13 @@ fn req_wait(core: &mut UiaCore, loc: Locator, target: Target, until: String, val
     }
 }
 
-fn req_click(core: &mut UiaCore, loc: Locator, target: Target, right: bool, allow_coords: bool) -> R {
+fn req_click(
+    core: &mut UiaCore,
+    loc: Locator,
+    target: Target,
+    right: bool,
+    allow_coords: bool,
+) -> R {
     let located = locate_window(core, &loc)?;
     let (_, el) = resolve_element(core, located.hwnd, &target)?;
     let before = snap_target(core, located.hwnd, &el);
@@ -1062,10 +1252,13 @@ fn req_click(core: &mut UiaCore, loc: Locator, target: Target, right: bool, allo
             .and_then(|p| unsafe { p.Invoke() }.ok());
         if invoked.is_some() {
             method = "invoke".into();
-        } else if let Some(tp) = pattern_of::<IUIAutomationTogglePattern>(&el, UIA_TogglePatternId) {
+        } else if let Some(tp) = pattern_of::<IUIAutomationTogglePattern>(&el, UIA_TogglePatternId)
+        {
             unsafe { tp.Toggle() }.map_err(|e| hre("Toggle", e))?;
             method = "toggle".into();
-        } else if let Some(sp) = pattern_of::<IUIAutomationSelectionItemPattern>(&el, UIA_SelectionItemPatternId) {
+        } else if let Some(sp) =
+            pattern_of::<IUIAutomationSelectionItemPattern>(&el, UIA_SelectionItemPatternId)
+        {
             unsafe { sp.Select() }.map_err(|e| hre("Select", e))?;
             method = "selection".into();
         } else {
@@ -1076,7 +1269,9 @@ fn req_click(core: &mut UiaCore, loc: Locator, target: Target, right: bool, allo
                     "该控件不支持 Invoke/Toggle/Select pattern，只能坐标点击（需批准物理输入路径后执行）",
                 ));
             }
-            if let Some(si) = pattern_of::<IUIAutomationScrollItemPattern>(&el, UIA_ScrollItemPatternId) {
+            if let Some(si) =
+                pattern_of::<IUIAutomationScrollItemPattern>(&el, UIA_ScrollItemPatternId)
+            {
                 let _ = unsafe { si.ScrollIntoView() };
             }
             phys::click(x, y, false);
@@ -1085,10 +1280,24 @@ fn req_click(core: &mut UiaCore, loc: Locator, target: Target, right: bool, allo
     }
     std::thread::sleep(Duration::from_millis(120));
     let after = snap_target(core, located.hwnd, &el);
-    Ok(action_result(&method, located.hwnd, located.pid, &located.title, &el, &before, &after))
+    Ok(action_result(
+        &method,
+        located.hwnd,
+        located.pid,
+        &located.title,
+        &el,
+        &before,
+        &after,
+    ))
 }
 
-fn req_type(core: &mut UiaCore, loc: Locator, target: Target, text: &str, allow_physical: bool) -> R {
+fn req_type(
+    core: &mut UiaCore,
+    loc: Locator,
+    target: Target,
+    text: &str,
+    allow_physical: bool,
+) -> R {
     let located = locate_window(core, &loc)?;
     let (_, el) = resolve_element(core, located.hwnd, &target)?;
     let before = snap_target(core, located.hwnd, &el);
@@ -1118,7 +1327,15 @@ fn req_type(core: &mut UiaCore, loc: Locator, target: Target, text: &str, allow_
     }
     std::thread::sleep(Duration::from_millis(120));
     let after = snap_target(core, located.hwnd, &el);
-    Ok(action_result(&method, located.hwnd, located.pid, &located.title, &el, &before, &after))
+    Ok(action_result(
+        &method,
+        located.hwnd,
+        located.pid,
+        &located.title,
+        &el,
+        &before,
+        &after,
+    ))
 }
 
 fn req_scroll(
@@ -1144,7 +1361,11 @@ fn req_scroll(
     if let Some(sp) = pattern_of::<IUIAutomationScrollPattern>(&el, UIA_ScrollPatternId) {
         // 注意 ScrollAmount 实际值：NoAmount=2 LargeDecrement=0 LargeIncrement=3
         // SmallDecrement=1 SmallIncrement=4（windows crate 绑定与直觉不同，用常量名）
-        let magnitude = if amount >= 1.0 { ScrollAmount_LargeIncrement } else { ScrollAmount_SmallIncrement };
+        let magnitude = if amount >= 1.0 {
+            ScrollAmount_LargeIncrement
+        } else {
+            ScrollAmount_SmallIncrement
+        };
         let (h, v) = match dir.as_str() {
             "up" => (ScrollAmount_NoAmount, ScrollAmount_LargeDecrement),
             "down" => (ScrollAmount_NoAmount, magnitude),
@@ -1173,7 +1394,15 @@ fn req_scroll(
     }
     std::thread::sleep(Duration::from_millis(120));
     let after = snap_target(core, located.hwnd, &el);
-    Ok(action_result(&method, located.hwnd, located.pid, &located.title, &el, &before, &after))
+    Ok(action_result(
+        &method,
+        located.hwnd,
+        located.pid,
+        &located.title,
+        &el,
+        &before,
+        &after,
+    ))
 }
 
 fn req_simple_pattern(core: &mut UiaCore, loc: Locator, target: Target, kind: &str) -> R {
@@ -1182,21 +1411,31 @@ fn req_simple_pattern(core: &mut UiaCore, loc: Locator, target: Target, kind: &s
     let before = snap_target(core, located.hwnd, &el);
     match kind {
         "select" => {
-            let sp: IUIAutomationSelectionItemPattern =
-                pattern_of(&el, UIA_SelectionItemPatternId).ok_or_else(|| {
-                    errors::err(errors::codes::NO_PATTERN, "该控件不支持 SelectionItemPattern（先 desktop_uia_read 确认 patterns）")
+            let sp: IUIAutomationSelectionItemPattern = pattern_of(&el, UIA_SelectionItemPatternId)
+                .ok_or_else(|| {
+                    errors::err(
+                        errors::codes::NO_PATTERN,
+                        "该控件不支持 SelectionItemPattern（先 desktop_uia_read 确认 patterns）",
+                    )
                 })?;
             unsafe { sp.Select() }.map_err(|e| hre("Select", e))?;
         }
         _ => {
             let ep: IUIAutomationExpandCollapsePattern =
                 pattern_of(&el, UIA_ExpandCollapsePatternId).ok_or_else(|| {
-                    errors::err(errors::codes::NO_PATTERN, "该控件不支持 ExpandCollapsePattern（组合框/树节点才有）")
+                    errors::err(
+                        errors::codes::NO_PATTERN,
+                        "该控件不支持 ExpandCollapsePattern（组合框/树节点才有）",
+                    )
                 })?;
             // 幂等：已展开则折叠（toggle 语义，模型可重复调用展开/收起）
-            let state = unsafe { ep.CurrentExpandCollapseState() }.map_err(|e| hre("ExpandCollapseState", e))?;
+            let state = unsafe { ep.CurrentExpandCollapseState() }
+                .map_err(|e| hre("ExpandCollapseState", e))?;
             if state.0 == ExpandCollapseState_LeafNode.0 {
-                return Err(errors::err(errors::codes::NO_PATTERN, "该节点是叶子（无展开状态）"));
+                return Err(errors::err(
+                    errors::codes::NO_PATTERN,
+                    "该节点是叶子（无展开状态）",
+                ));
             }
             if state.0 == ExpandCollapseState_Expanded.0 {
                 unsafe { ep.Collapse() }.map_err(|e| hre("Collapse", e))?;
@@ -1207,8 +1446,20 @@ fn req_simple_pattern(core: &mut UiaCore, loc: Locator, target: Target, kind: &s
     }
     std::thread::sleep(Duration::from_millis(120));
     let after = snap_target(core, located.hwnd, &el);
-    let method = if kind == "select" { "selection" } else { "expandcollapse" };
-    Ok(action_result(method, located.hwnd, located.pid, &located.title, &el, &before, &after))
+    let method = if kind == "select" {
+        "selection"
+    } else {
+        "expandcollapse"
+    };
+    Ok(action_result(
+        method,
+        located.hwnd,
+        located.pid,
+        &located.title,
+        &el,
+        &before,
+        &after,
+    ))
 }
 
 fn req_keys(core: &mut UiaCore, loc: Locator, modifiers: &[String], key: &str) -> R {
@@ -1266,11 +1517,16 @@ fn req_window_rect(core: &mut UiaCore, loc: &Locator) -> R {
 fn req_probe_route(core: &mut UiaCore, hwnd: u64, budget_ms: u32) -> R {
     let hwnd = HWND(hwnd as usize as *mut _);
     if !unsafe { IsWindow(Some(hwnd)) }.as_bool() {
-        return Err(errors::err(errors::codes::WINDOW_NOT_FOUND, format!("hwnd={hwnd:?} 无效")));
+        return Err(errors::err(
+            errors::codes::WINDOW_NOT_FOUND,
+            format!("hwnd={hwnd:?} 无效"),
+        ));
     }
     let deadline = Instant::now() + Duration::from_millis(budget_ms as u64);
-    let walker = unsafe { core.automation.ControlViewWalker() }.map_err(|e| hre("ControlViewWalker", e))?;
-    let el = unsafe { core.automation.ElementFromHandle(hwnd) }.map_err(|e| hre("ElementFromHandle", e))?;
+    let walker =
+        unsafe { core.automation.ControlViewWalker() }.map_err(|e| hre("ControlViewWalker", e))?;
+    let el = unsafe { core.automation.ElementFromHandle(hwnd) }
+        .map_err(|e| hre("ElementFromHandle", e))?;
     let mut stack: Vec<IUIAutomationElement> = children_of(&walker, &el);
     let mut sampled = 0usize;
     let mut interactive_count = 0usize;
@@ -1337,4 +1593,3 @@ mod tests {
         assert_eq!(expand_str(ExpandCollapseState_LeafNode), "leaf");
     }
 }
-

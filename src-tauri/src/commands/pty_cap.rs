@@ -29,8 +29,7 @@ fn opt_u32_of(args: &Value, k: &str) -> Option<u32> {
 // ═══════════════════════════════════════════════════════════════
 
 async fn pty_spawn(app: &tauri::AppHandle, args: &Value) -> Result<String, String> {
-    let cwd = arg_str(args, "cwd")
-        .ok_or_else(|| "pty_spawn: missing 'cwd'".to_string())?;
+    let cwd = arg_str(args, "cwd").ok_or_else(|| "pty_spawn: missing 'cwd'".to_string())?;
     let shell = arg_str(args, "shell");
     let cols = args
         .get("cols")
@@ -49,8 +48,7 @@ async fn pty_spawn(app: &tauri::AppHandle, args: &Value) -> Result<String, Strin
 async fn pty_write(args: &Value) -> Result<String, String> {
     let session_id = opt_u32_of(args, "session_id")
         .ok_or_else(|| "pty_write: missing 'session_id'".to_string())?;
-    let data = arg_str(args, "data")
-        .ok_or_else(|| "pty_write: missing 'data'".to_string())?;
+    let data = arg_str(args, "data").ok_or_else(|| "pty_write: missing 'data'".to_string())?;
     crate::pty_manager::pty_write(session_id, data).await?;
     Ok("null".into())
 }

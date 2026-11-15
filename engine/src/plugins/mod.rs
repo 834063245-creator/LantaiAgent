@@ -25,7 +25,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::analysis::dataflow_engine::LangDataflowConfig;
-use crate::tools::{ToolResponse, HandlerFn};
+use crate::tools::{HandlerFn, ToolResponse};
 
 /// 本引擎支持的 manifest 格式版本（破坏性兼容管控位）。
 pub const MANIFEST_VERSION: u32 = 1;
@@ -232,7 +232,11 @@ static TOOL_ENTRIES: LazyLock<RwLock<Vec<ToolEntry>>> = LazyLock::new(|| RwLock:
 
 fn state_cell() -> &'static RwLock<PluginState> {
     STATE.get_or_init(|| {
-        RwLock::new(PluginState { dir: None, loaded: Vec::new(), errors: Vec::new() })
+        RwLock::new(PluginState {
+            dir: None,
+            loaded: Vec::new(),
+            errors: Vec::new(),
+        })
     })
 }
 
@@ -242,7 +246,10 @@ fn resolve_plugin_dir(project_root: &Path) -> Option<PathBuf> {
     if let Ok(v) = std::env::var("HOLOGRAM_PLUGIN_DIR") {
         let p = PathBuf::from(v);
         if !p.is_dir() {
-            tracing::warn!("[plugins] HOLOGRAM_PLUGIN_DIR 指向的目录不存在: {}", p.display());
+            tracing::warn!(
+                "[plugins] HOLOGRAM_PLUGIN_DIR 指向的目录不存在: {}",
+                p.display()
+            );
         }
         return Some(p);
     }
@@ -259,9 +266,7 @@ fn resolve_plugin_dir(project_root: &Path) -> Option<PathBuf> {
 /// 不回退，且测试进程里其他用例的 engine_init 不会冲掉 env 装载的扩展。
 pub(crate) fn ensure_loaded(project_root: &Path) {
     let dir = resolve_plugin_dir(project_root);
-    let mut last = LAST_DIR
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut last = LAST_DIR.lock().unwrap_or_else(|e| e.into_inner());
     if *last == Some(dir.clone()) {
         return;
     }
@@ -283,23 +288,42 @@ struct LoadOutcome {
 /// 目录扫描 + 全部 manifest 解析与校验（纯函数，不碰全局表）。
 /// 语法注册延后到 apply（GRAMMAR_LOADER 是有副作用的全局）。
 fn load_from_dir(dir: Option<&Path>) -> LoadOutcome {
-    let mut state = PluginState { dir: dir.map(|p| p.to_path_buf()), loaded: Vec::new(), errors: Vec::new() };
+    let mut state = PluginState {
+        dir: dir.map(|p| p.to_path_buf()),
+        loaded: Vec::new(),
+        errors: Vec::new(),
+    };
     let mut languages: Vec<(String, LanguageManifest)> = Vec::new();
     let mut frameworks: Vec<FrameworkEntry> = Vec::new();
     let mut tools: Vec<ToolEntry> = Vec::new();
     let Some(dir) = dir else {
-        return LoadOutcome { state, languages, frameworks, tools };
+        return LoadOutcome {
+            state,
+            languages,
+            frameworks,
+            tools,
+        };
     };
 
     let mut yml_paths: Vec<PathBuf> = match std::fs::read_dir(dir) {
         Ok(entries) => entries
             .flatten()
             .map(|e| e.path())
-            .filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("yml") | Some("yaml")))
+            .filter(|p| {
+                matches!(
+                    p.extension().and_then(|e| e.to_str()),
+                    Some("yml") | Some("yaml")
+                )
+            })
             .collect(),
         Err(e) => {
             state.errors.push(json!({ "file": dir.display().to_string(), "error": format!("read_dir failed: {e}") }));
-            return LoadOutcome { state, languages, frameworks, tools };
+            return LoadOutcome {
+                state,
+                languages,
+                frameworks,
+                tools,
+            };
         }
     };
     yml_paths.sort();
@@ -310,17 +334,23 @@ fn load_from_dir(dir: Option<&Path>) -> LoadOutcome {
         match parse_manifest_file(&path, dir, &seen_names) {
             Ok(ManifestOutcome::Language(lang)) => {
                 seen_names.push(lang.name.clone());
-                state.loaded.push(json!({ "name": lang.name, "kind": "language", "source": file }));
+                state
+                    .loaded
+                    .push(json!({ "name": lang.name, "kind": "language", "source": file }));
                 languages.push((file, lang));
             }
             Ok(ManifestOutcome::Framework(fw)) => {
                 seen_names.push(fw.name.clone());
-                state.loaded.push(json!({ "name": fw.name, "kind": "framework", "source": file }));
+                state
+                    .loaded
+                    .push(json!({ "name": fw.name, "kind": "framework", "source": file }));
                 frameworks.push(fw);
             }
             Ok(ManifestOutcome::Tool(tool)) => {
                 seen_names.push(tool.name.clone());
-                state.loaded.push(json!({ "name": tool.name, "kind": "tool", "source": file }));
+                state
+                    .loaded
+                    .push(json!({ "name": tool.name, "kind": "tool", "source": file }));
                 tools.push(tool);
             }
             Err(e) => {
@@ -329,7 +359,12 @@ fn load_from_dir(dir: Option<&Path>) -> LoadOutcome {
             }
         }
     }
-    LoadOutcome { state, languages, frameworks, tools }
+    LoadOutcome {
+        state,
+        languages,
+        frameworks,
+        tools,
+    }
 }
 
 enum ManifestOutcome {
@@ -348,11 +383,14 @@ struct LanguageManifest {
 }
 
 /// 解析 + 校验单份 manifest（除语法注册外的全部规则都在这里）。
-fn parse_manifest_file(path: &Path, dir: &Path, seen_names: &[String]) -> Result<ManifestOutcome, String> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| format!("read failed: {e}"))?;
-    let m: ManifestFile = serde_yaml::from_str(&raw)
-        .map_err(|e| format!("yaml parse failed: {e}"))?;
+fn parse_manifest_file(
+    path: &Path,
+    dir: &Path,
+    seen_names: &[String],
+) -> Result<ManifestOutcome, String> {
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("read failed: {e}"))?;
+    let m: ManifestFile =
+        serde_yaml::from_str(&raw).map_err(|e| format!("yaml parse failed: {e}"))?;
 
     if m.manifest_version != MANIFEST_VERSION {
         return Err(format!(
@@ -371,7 +409,9 @@ fn parse_manifest_file(path: &Path, dir: &Path, seen_names: &[String]) -> Result
         "language" => build_language(m, path, dir),
         "framework" => build_framework(m),
         "tool" => build_tool(m),
-        other => Err(format!("unknown kind '{other}' (expected language | framework | tool)")),
+        other => Err(format!(
+            "unknown kind '{other}' (expected language | framework | tool)"
+        )),
     }
 }
 
@@ -381,7 +421,9 @@ fn normalize_extensions(raw: &[String]) -> Result<Vec<String>, String> {
     for e in raw {
         let ext = e.trim().trim_start_matches('.').to_ascii_lowercase();
         if ext.is_empty() || !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
-            return Err(format!("invalid extension '{e}' (expected [a-z0-9]+ without dot)"));
+            return Err(format!(
+                "invalid extension '{e}' (expected [a-z0-9]+ without dot)"
+            ));
         }
         if !out.contains(&ext) {
             out.push(ext);
@@ -415,9 +457,16 @@ fn leak_strs(v: &[String]) -> &'static [&'static str] {
 fn build_language(m: ManifestFile, path: &Path, dir: &Path) -> Result<ManifestOutcome, String> {
     let exts = normalize_extensions(&m.extensions)?;
 
-    let grammar = match (m.grammar.as_ref().map(|g| g.builtin.clone()).flatten(), m.grammar.as_ref().map(|g| g.dll.clone()).flatten()) {
-        (Some(_), Some(_)) => return Err("grammar.builtin and grammar.dll are mutually exclusive".to_string()),
-        (None, None) => return Err("language manifest requires grammar.builtin or grammar.dll".to_string()),
+    let grammar = match (
+        m.grammar.as_ref().map(|g| g.builtin.clone()).flatten(),
+        m.grammar.as_ref().map(|g| g.dll.clone()).flatten(),
+    ) {
+        (Some(_), Some(_)) => {
+            return Err("grammar.builtin and grammar.dll are mutually exclusive".to_string())
+        }
+        (None, None) => {
+            return Err("language manifest requires grammar.builtin or grammar.dll".to_string())
+        }
         (Some(key), None) => GrammarResolved::Builtin(key),
         (None, Some(rel)) => {
             let dll = dir.join(rel);
@@ -558,23 +607,35 @@ fn build_framework(m: ManifestFile) -> Result<ManifestOutcome, String> {
             prefix,
         });
     }
-    Ok(ManifestOutcome::Framework(FrameworkEntry { name: m.name, patterns }))
+    Ok(ManifestOutcome::Framework(FrameworkEntry {
+        name: m.name,
+        patterns,
+    }))
 }
 
 const PARAM_TYPES: &[&str] = &["string", "number", "integer", "boolean", "array", "object"];
 
 fn build_tool(m: ManifestFile) -> Result<ManifestOutcome, String> {
-    let valid_name = m.name.chars().next().map_or(false, |c| c.is_ascii_lowercase())
-        && m.name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+    let valid_name = m
+        .name
+        .chars()
+        .next()
+        .map_or(false, |c| c.is_ascii_lowercase())
+        && m.name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
     if !valid_name {
-        return Err(format!(
-            "tool name '{}' must match [a-z][a-z0-9_]*",
-            m.name
-        ));
+        return Err(format!("tool name '{}' must match [a-z][a-z0-9_]*", m.name));
     }
     // 与静态 schema 面冲突 → 装载期显式拒绝（dispatch 静态臂优先，静默遮蔽不可见）。
-    if crate::tools::ToolRegistry::global().get_schema(&m.name).is_some() {
-        return Err(format!("tool name '{}' collides with a built-in tool", m.name));
+    if crate::tools::ToolRegistry::global()
+        .get_schema(&m.name)
+        .is_some()
+    {
+        return Err(format!(
+            "tool name '{}' collides with a built-in tool",
+            m.name
+        ));
     }
     let description = m
         .description
@@ -584,8 +645,9 @@ fn build_tool(m: ManifestFile) -> Result<ManifestOutcome, String> {
         .handler
         .as_ref()
         .ok_or_else(|| "tool manifest requires handler (a built-in handler id)".to_string())?;
-    let handler = crate::tools::builtin_handler(handler_id)
-        .ok_or_else(|| format!("unknown handler id '{handler_id}' (see tools::builtin_handler registry)"))?;
+    let handler = crate::tools::builtin_handler(handler_id).ok_or_else(|| {
+        format!("unknown handler id '{handler_id}' (see tools::builtin_handler registry)")
+    })?;
 
     let mut params: Vec<ParamValue> = Vec::new();
     let mut required: Vec<String> = Vec::new();
@@ -627,7 +689,12 @@ fn build_tool(m: ManifestFile) -> Result<ManifestOutcome, String> {
 // ═══════════════════════════════════════════════════════════════
 
 fn apply(outcome: LoadOutcome) {
-    let LoadOutcome { mut state, languages, frameworks, tools } = outcome;
+    let LoadOutcome {
+        mut state,
+        languages,
+        frameworks,
+        tools,
+    } = outcome;
 
     // ── 语言：语法注册（失败转为状态错误，逐 manifest 隔离）──
     let mut lang_loaded: Vec<Value> = Vec::new();
@@ -638,9 +705,11 @@ fn apply(outcome: LoadOutcome) {
             GrammarResolved::Builtin(key) => {
                 crate::engine::GRAMMAR_LOADER.register_builtin_grammar(key, &lang.extensions)
             }
-            GrammarResolved::Dll { dll, symbol } => {
-                crate::engine::GRAMMAR_LOADER.register_dll(dll.clone(), symbol, lang.extensions.clone())
-            }
+            GrammarResolved::Dll { dll, symbol } => crate::engine::GRAMMAR_LOADER.register_dll(
+                dll.clone(),
+                symbol,
+                lang.extensions.clone(),
+            ),
         };
         match register {
             Ok(()) => {
@@ -661,7 +730,8 @@ fn apply(outcome: LoadOutcome) {
 
     // 扩展名注入 hologram-graph（LazyLock 初始化时的注入只覆盖静态+扫描面，
     // manifest 扩展名是其后的追加——在此重放注入）。
-    let _ = hologram_graph::set_code_extensions(&crate::engine::GRAMMAR_LOADER.supported_extensions());
+    let _ =
+        hologram_graph::set_code_extensions(&crate::engine::GRAMMAR_LOADER.supported_extensions());
 
     *state_cell().write().unwrap_or_else(|e| e.into_inner()) = state;
 }
@@ -673,7 +743,10 @@ fn apply(outcome: LoadOutcome) {
 /// `AdapterRegistry::new()` 尾部消费：manifest 语言适配器行
 ///（builtin 表之后注册——first-wins 语义下 manifest 只补缺口）。
 pub(crate) fn language_adapter_entries() -> Vec<LanguageEntry> {
-    LANGUAGE_ENTRIES.read().unwrap_or_else(|e| e.into_inner()).clone()
+    LANGUAGE_ENTRIES
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 /// `dataflow_engine::config_for_ext` 兜底消费：按扩展名取 manifest 数据流配置。
@@ -687,15 +760,27 @@ pub(crate) fn dataflow_entry(ext: &str) -> Option<(&'static str, LangDataflowCon
 
 /// `framework_routes` 消费：manifest 框架行（glob 已编译）。
 pub(crate) fn framework_entries() -> Vec<FrameworkEntry> {
-    FRAMEWORK_ENTRIES.read().unwrap_or_else(|e| e.into_inner()).clone()
+    FRAMEWORK_ENTRIES
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 pub(crate) fn plugin_tool_values() -> Vec<Value> {
-    TOOL_ENTRIES.read().unwrap_or_else(|e| e.into_inner()).iter().map(|t| t.mcp_value()).collect()
+    TOOL_ENTRIES
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .map(|t| t.mcp_value())
+        .collect()
 }
 
 pub(crate) fn is_plugin_tool(name: &str) -> bool {
-    TOOL_ENTRIES.read().unwrap_or_else(|e| e.into_inner()).iter().any(|t| t.name == name)
+    TOOL_ENTRIES
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .any(|t| t.name == name)
 }
 
 /// dispatch 兜底：manifest 工具 → 注册期解析好的 handler。
@@ -723,8 +808,11 @@ pub(crate) fn reset_for_tests() {
     *DATAFLOW_ENTRIES.write().unwrap_or_else(|e| e.into_inner()) = Vec::new();
     *FRAMEWORK_ENTRIES.write().unwrap_or_else(|e| e.into_inner()) = Vec::new();
     *TOOL_ENTRIES.write().unwrap_or_else(|e| e.into_inner()) = Vec::new();
-    *state_cell().write().unwrap_or_else(|e| e.into_inner()) =
-        PluginState { dir: None, loaded: Vec::new(), errors: Vec::new() };
+    *state_cell().write().unwrap_or_else(|e| e.into_inner()) = PluginState {
+        dir: None,
+        loaded: Vec::new(),
+        errors: Vec::new(),
+    };
     *LAST_DIR.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
@@ -762,8 +850,14 @@ mod tests {
         assert_eq!(pattern_prefix("src/*.myl"), "src/");
         assert_eq!(pattern_prefix("**/*.myl"), "");
 
-        assert_eq!(manifest_route_url("pages/users/list.page.myl", "pages/"), "/users/list.page");
-        assert_eq!(manifest_route_url("pages/index.page.myl", "pages/"), "/index.page");
+        assert_eq!(
+            manifest_route_url("pages/users/list.page.myl", "pages/"),
+            "/users/list.page"
+        );
+        assert_eq!(
+            manifest_route_url("pages/index.page.myl", "pages/"),
+            "/index.page"
+        );
         assert_eq!(manifest_route_url("deep/a.myl", ""), "/deep/a");
     }
 
@@ -795,7 +889,10 @@ mod tests {
         };
         assert_eq!(lang.name, "mylang");
         assert_eq!(lang.extensions, vec!["mylp", "mylpi"]);
-        assert_eq!(lang.entry.structure_query, Some("(function_definition) @fn\n"));
+        assert_eq!(
+            lang.entry.structure_query,
+            Some("(function_definition) @fn\n")
+        );
         assert_eq!(lang.dataflow.len(), 2); // 每扩展名一条
         assert_eq!(lang.dataflow[0].config.skip_names, &["builtins"][..]);
         let _ = std::fs::remove_dir_all(&base);
@@ -812,40 +909,87 @@ mod tests {
         assert!(parse_manifest_file(&p, &base, &[]).is_err());
 
         // 未知版本
-        let p = write_manifest(&base, "ver.yml", "manifest_version: 99\nkind: framework\nname: x\nroutes: [{pattern: \"a/b\"}]\n");
-        assert!(parse_manifest_file(&p, &base, &[]).err().expect("should fail").contains("manifest_version"));
+        let p = write_manifest(
+            &base,
+            "ver.yml",
+            "manifest_version: 99\nkind: framework\nname: x\nroutes: [{pattern: \"a/b\"}]\n",
+        );
+        assert!(parse_manifest_file(&p, &base, &[])
+            .err()
+            .expect("should fail")
+            .contains("manifest_version"));
 
         // 未知 kind
-        let p = write_manifest(&base, "kind.yml", "manifest_version: 1\nkind: widget\nname: x\n");
-        assert!(parse_manifest_file(&p, &base, &[]).err().expect("should fail").contains("unknown kind"));
+        let p = write_manifest(
+            &base,
+            "kind.yml",
+            "manifest_version: 1\nkind: widget\nname: x\n",
+        );
+        assert!(parse_manifest_file(&p, &base, &[])
+            .err()
+            .expect("should fail")
+            .contains("unknown kind"));
 
         // 重复名
-        let p = write_manifest(&base, "dup.yml", "manifest_version: 1\nkind: framework\nname: taken\nroutes: [{pattern: \"a/b\"}]\n");
-        assert!(parse_manifest_file(&p, &base, &["taken".to_string()]).err().expect("should fail").contains("duplicate"));
+        let p = write_manifest(
+            &base,
+            "dup.yml",
+            "manifest_version: 1\nkind: framework\nname: taken\nroutes: [{pattern: \"a/b\"}]\n",
+        );
+        assert!(parse_manifest_file(&p, &base, &["taken".to_string()])
+            .err()
+            .expect("should fail")
+            .contains("duplicate"));
 
         // language 缺 grammar
-        let p = write_manifest(&base, "nogram.yml", "manifest_version: 1\nkind: language\nname: x\nextensions: [zz]\n");
-        assert!(parse_manifest_file(&p, &base, &[]).err().expect("should fail").contains("grammar"));
+        let p = write_manifest(
+            &base,
+            "nogram.yml",
+            "manifest_version: 1\nkind: language\nname: x\nextensions: [zz]\n",
+        );
+        assert!(parse_manifest_file(&p, &base, &[])
+            .err()
+            .expect("should fail")
+            .contains("grammar"));
 
         // builtin + dll 互斥
         let p = write_manifest(&base, "both.yml", "manifest_version: 1\nkind: language\nname: x\nextensions: [zz]\ngrammar:\n  builtin: python\n  dll: ./nope.dll\n");
-        assert!(parse_manifest_file(&p, &base, &[]).err().expect("should fail").contains("mutually exclusive"));
+        assert!(parse_manifest_file(&p, &base, &[])
+            .err()
+            .expect("should fail")
+            .contains("mutually exclusive"));
 
         // 工具：未知 handler
         let p = write_manifest(&base, "badh.yml", "manifest_version: 1\nkind: tool\nname: my_tool\ndescription: d\nhandler: no_such_handler\n");
-        assert!(parse_manifest_file(&p, &base, &[]).err().expect("should fail").contains("unknown handler"));
+        assert!(parse_manifest_file(&p, &base, &[])
+            .err()
+            .expect("should fail")
+            .contains("unknown handler"));
 
         // 工具：与内置工具撞名
         let p = write_manifest(&base, "clash.yml", "manifest_version: 1\nkind: tool\nname: search_symbols\ndescription: d\nhandler: search_symbols\n");
-        assert!(parse_manifest_file(&p, &base, &[]).err().expect("should fail").contains("collides"));
+        assert!(parse_manifest_file(&p, &base, &[])
+            .err()
+            .expect("should fail")
+            .contains("collides"));
 
         // 工具：非法 ptype
         let p = write_manifest(&base, "badt.yml", "manifest_version: 1\nkind: tool\nname: my_tool\ndescription: d\nhandler: search_symbols\nparams: [{name: q, ptype: tuple}]\n");
-        assert!(parse_manifest_file(&p, &base, &[]).err().expect("should fail").contains("ptype"));
+        assert!(parse_manifest_file(&p, &base, &[])
+            .err()
+            .expect("should fail")
+            .contains("ptype"));
 
         // framework 缺 routes
-        let p = write_manifest(&base, "nor.yml", "manifest_version: 1\nkind: framework\nname: x\n");
-        assert!(parse_manifest_file(&p, &base, &[]).err().expect("should fail").contains("route"));
+        let p = write_manifest(
+            &base,
+            "nor.yml",
+            "manifest_version: 1\nkind: framework\nname: x\n",
+        );
+        assert!(parse_manifest_file(&p, &base, &[])
+            .err()
+            .expect("should fail")
+            .contains("route"));
 
         // 未知字段（deny_unknown_fields）
         let p = write_manifest(&base, "unk.yml", "manifest_version: 1\nkind: framework\nname: x\nroutes: [{pattern: \"a/b\"}]\nextra: 1\n");
@@ -877,7 +1021,11 @@ mod tests {
             ";; MyLang Structure Queries\n(function_definition) @fn\n(class_definition) @class\n(call_expression) @call\n(import_statement) @import\n(assignment) @var\n(identifier) @usage\n",
         )
         .unwrap();
-        std::fs::write(qdir.join("mylang_dataflow.scm"), "(function_definition) @fn\n(identifier) @usage\n").unwrap();
+        std::fs::write(
+            qdir.join("mylang_dataflow.scm"),
+            "(function_definition) @fn\n(identifier) @usage\n",
+        )
+        .unwrap();
 
         // 框架：候选模式
         std::fs::write(
@@ -898,12 +1046,23 @@ mod tests {
 
         // 状态面：三份 manifest 全部装载 + 目录可见
         let status = extensions_status();
-        assert_eq!(status["loaded"].as_array().map(|a| a.len()), Some(3), "status: {status}");
-        assert_eq!(status["errors"].as_array().map(|a| a.len()), Some(0), "status: {status}");
+        assert_eq!(
+            status["loaded"].as_array().map(|a| a.len()),
+            Some(3),
+            "status: {status}"
+        );
+        assert_eq!(
+            status["errors"].as_array().map(|a| a.len()),
+            Some(0),
+            "status: {status}"
+        );
 
         // 语法面：扩展名注册 + 语法可解析
         assert!(engine::GRAMMAR_LOADER.get("myl").is_some());
-        assert!(engine::GRAMMAR_LOADER.supported_extensions().iter().any(|e| e == "myl"));
+        assert!(engine::GRAMMAR_LOADER
+            .supported_extensions()
+            .iter()
+            .any(|e| e == "myl"));
 
         // 适配器面：结构分析走 manifest .scm（符号提取端到端）
         let reg = crate::adapter::registry::AdapterRegistry::new();
@@ -935,13 +1094,17 @@ mod tests {
         let mut graph = hologram_graph::Graph::new();
         let files = vec![page_dir.join("list.page.myl")];
         let cache: HashMap<String, (String, Option<tree_sitter::Tree>)> = HashMap::new();
-        let added =
-            crate::analysis::framework_routes::detect_framework_routes(&mut graph, &proj, &cache, &files);
+        let added = crate::analysis::framework_routes::detect_framework_routes(
+            &mut graph, &proj, &cache, &files,
+        );
         assert!(added >= 1, "manifest framework should inject a route node");
 
         // 重放语义：同 env 下 engine_init 幂等（不重复装载）
         engine::engine_init(&proj).unwrap();
-        assert_eq!(extensions_status()["loaded"].as_array().map(|a| a.len()), Some(3));
+        assert_eq!(
+            extensions_status()["loaded"].as_array().map(|a| a.len()),
+            Some(3)
+        );
 
         // 收尾：清 env + 重置表 + 拆 watcher（进程级干净）
         std::env::remove_var("HOLOGRAM_PLUGIN_DIR");
@@ -959,7 +1122,16 @@ mod tests {
             .expect("examples dir");
         assert!(dir.is_dir(), "examples dir missing: {}", dir.display());
         let outcome = load_from_dir(Some(&dir));
-        assert!(outcome.state.errors.is_empty(), "errors: {:?}", outcome.state.errors);
-        assert_eq!(outcome.state.loaded.len(), 3, "loaded: {:?}", outcome.state.loaded);
+        assert!(
+            outcome.state.errors.is_empty(),
+            "errors: {:?}",
+            outcome.state.errors
+        );
+        assert_eq!(
+            outcome.state.loaded.len(),
+            3,
+            "loaded: {:?}",
+            outcome.state.loaded
+        );
     }
 }

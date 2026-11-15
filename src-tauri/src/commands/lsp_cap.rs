@@ -30,10 +30,10 @@ fn opt_u32_of(args: &Value, k: &str) -> Option<u32> {
 // ═══════════════════════════════════════════════════════════════
 
 async fn lsp_start(app: &tauri::AppHandle, args: &Value) -> Result<String, String> {
-    let language = arg_str(args, "language")
-        .ok_or_else(|| "lsp_start: missing 'language'".to_string())?;
-    let root_uri = arg_str(args, "root_uri")
-        .ok_or_else(|| "lsp_start: missing 'root_uri'".to_string())?;
+    let language =
+        arg_str(args, "language").ok_or_else(|| "lsp_start: missing 'language'".to_string())?;
+    let root_uri =
+        arg_str(args, "root_uri").ok_or_else(|| "lsp_start: missing 'root_uri'".to_string())?;
     let id = crate::lsp_manager::lsp_start(app.clone(), language, root_uri).await?;
     Ok(id.to_string())
 }
@@ -41,8 +41,8 @@ async fn lsp_start(app: &tauri::AppHandle, args: &Value) -> Result<String, Strin
 async fn lsp_request(args: &Value) -> Result<String, String> {
     let session_id = opt_u32_of(args, "session_id")
         .ok_or_else(|| "lsp_request: missing 'session_id'".to_string())?;
-    let method = arg_str(args, "method")
-        .ok_or_else(|| "lsp_request: missing 'method'".to_string())?;
+    let method =
+        arg_str(args, "method").ok_or_else(|| "lsp_request: missing 'method'".to_string())?;
     let lsp_params = args.get("params").cloned().unwrap_or(Value::Null);
     // lsp_manager::lsp_request 返回 JSON-RPC result 的 Value——序列化成字符串
     // 返回（Text shape 字节直通；TS kernelLspRequest parseJson 恢复对象语义，

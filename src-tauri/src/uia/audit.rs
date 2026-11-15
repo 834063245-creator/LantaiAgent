@@ -139,9 +139,17 @@ mod tests {
     #[test]
     fn audit_roundtrip_and_agent_filter() {
         let marker = format!("audit-test-{}", std::process::id());
-        audit_log(Some(&marker), "uia_click", "[Button] \"OK\" @ hwnd=1", "done method=invoke");
+        audit_log(
+            Some(&marker),
+            "uia_click",
+            "[Button] \"OK\" @ hwnd=1",
+            "done method=invoke",
+        );
         let out = audit_query(Some(&marker), Some(50));
-        assert!(out.contains("uia_click"), "审计查询应包含刚写入的条目: {out}");
+        assert!(
+            out.contains("uia_click"),
+            "审计查询应包含刚写入的条目: {out}"
+        );
         let out2 = audit_query(Some("no-such-agent-x"), Some(50));
         assert!(!out2.contains(&marker), "agent 过滤应排除他人条目: {out2}");
     }

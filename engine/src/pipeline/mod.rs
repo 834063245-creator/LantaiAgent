@@ -2,6 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 pub mod discovery;
+pub mod incremental;
 pub mod parser;
 pub mod runner;
-pub mod incremental;

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashSet;
 use super::super::DetectedRoute;
+use std::collections::HashSet;
 
 pub(crate) fn is_aspnet_candidate(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -30,8 +30,17 @@ fn extract_method_name(line: &str) -> String {
 
 pub(crate) fn detect_aspnet_routes(file: &str, source: &str) -> Vec<DetectedRoute> {
     let mut result = Vec::new();
-    let http_attrs: HashSet<&str> = ["HttpGet", "HttpPost", "HttpPut", "HttpDelete", "HttpPatch", "Route"]
-        .iter().cloned().collect();
+    let http_attrs: HashSet<&str> = [
+        "HttpGet",
+        "HttpPost",
+        "HttpPut",
+        "HttpDelete",
+        "HttpPatch",
+        "Route",
+    ]
+    .iter()
+    .cloned()
+    .collect();
     let mut pending: Option<(String, String)> = None;
     for (li, line) in source.lines().enumerate() {
         let t = line.trim();
@@ -40,11 +49,21 @@ pub(crate) fn detect_aspnet_routes(file: &str, source: &str) -> Vec<DetectedRout
             if let Some(p) = inner.find('(') {
                 let attr = inner[..p].trim();
                 if http_attrs.contains(attr) {
-                    let path = inner[p..].trim_matches(|c| c == '(' || c == ')' || c == '"' || c == '\'');
-                    let method = if attr == "Route" { "ALL" } else {
+                    let path =
+                        inner[p..].trim_matches(|c| c == '(' || c == ')' || c == '"' || c == '\'');
+                    let method = if attr == "Route" {
+                        "ALL"
+                    } else {
                         &attr.trim_start_matches("Http").to_uppercase()
                     };
-                    pending = Some((if method == "ALL" { "ALL".into() } else { method.to_string() }, path.to_string()));
+                    pending = Some((
+                        if method == "ALL" {
+                            "ALL".into()
+                        } else {
+                            method.to_string()
+                        },
+                        path.to_string(),
+                    ));
                 }
             }
         }
@@ -54,7 +73,13 @@ pub(crate) fn detect_aspnet_routes(file: &str, source: &str) -> Vec<DetectedRout
                 // 提取方法名——它是左括号前的标识符
                 let handler = extract_method_name(t);
                 if !handler.is_empty() {
-                    result.push((m, format!("/{}", p.trim_matches('/')), handler, file.to_string(), li + 1));
+                    result.push((
+                        m,
+                        format!("/{}", p.trim_matches('/')),
+                        handler,
+                        file.to_string(),
+                        li + 1,
+                    ));
                 }
             }
         }

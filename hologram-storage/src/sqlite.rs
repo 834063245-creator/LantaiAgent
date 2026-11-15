@@ -39,8 +39,7 @@ impl SqliteDb {
             .map_err(|e| format!("mkdir {}: {}", hologram_dir.display(), e))?;
         let db_path = hologram_dir.join("hologram.db");
 
-        let conn = Connection::open(&db_path)
-            .map_err(|e| format!("open hologram.db: {}", e))?;
+        let conn = Connection::open(&db_path).map_err(|e| format!("open hologram.db: {}", e))?;
 
         // 关键 pragma —— 连接打开时设置一次。
         // ponytail：WAL 模式下 synchronous=NORMAL 是安全的，且批量写入快约 2 倍。
@@ -65,7 +64,8 @@ impl SqliteDb {
     /// 然后从内容表重建。
     fn migrate_fts5(&self) -> Result<(), String> {
         // 检查 fts_nodes 是否存在且使用旧列名 `node_id`。
-        let sql: String = self.conn
+        let sql: String = self
+            .conn
             .query_row(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='fts_nodes'",
                 [],
@@ -114,9 +114,11 @@ impl SqliteDb {
     /// 读 meta kv。键不存在 → Ok(None)。
     pub fn get_meta(&self, key: &str) -> Result<Option<String>, String> {
         self.conn
-            .query_row("SELECT value FROM meta WHERE key = ?1", params![key], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
             .map(Some)
             .or_else(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
@@ -137,7 +139,10 @@ impl SqliteDb {
 
     /// nodes 表是否有任何行（全新/空库判定 —— 快照兼容加载用）。
     pub fn has_any_node(&self) -> Result<bool, String> {
-        match self.conn.query_row("SELECT 1 FROM nodes LIMIT 1", [], |_| Ok(())) {
+        match self
+            .conn
+            .query_row("SELECT 1 FROM nodes LIMIT 1", [], |_| Ok(()))
+        {
             Ok(()) => Ok(true),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
             Err(e) => Err(format!("nodes probe: {}", e)),
@@ -146,8 +151,7 @@ impl SqliteDb {
 
     /// 用于时间线 I/O 的辅助连接 —— 避免阻塞图存储互斥锁。
     pub fn open_aux_connection(db_path: &Path) -> Result<Connection, String> {
-        let conn = Connection::open(db_path)
-            .map_err(|e| format!("open aux hologram.db: {}", e))?;
+        let conn = Connection::open(db_path).map_err(|e| format!("open aux hologram.db: {}", e))?;
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA busy_timeout=5000;",
@@ -261,10 +265,9 @@ impl SqliteDb {
         );
 
         // 迁移：为 edges 表添加 metadata 列（v4.1）
-        let _ = self.conn.execute(
-            "ALTER TABLE edges ADD COLUMN metadata TEXT",
-            [],
-        );
+        let _ = self
+            .conn
+            .execute("ALTER TABLE edges ADD COLUMN metadata TEXT", []);
         // 迁移：为 edges 表添加 lsp_resolved 列
         let _ = self.conn.execute(
             "ALTER TABLE edges ADD COLUMN lsp_resolved INTEGER DEFAULT 0",
@@ -322,7 +325,10 @@ impl SqliteDb {
                     out_degree: row.get::<_, i64>(5).unwrap_or(0) as u32,
                     in_degree: row.get::<_, i64>(6).unwrap_or(0) as u32,
                     position,
-                    community_id: row.get::<_, Option<i64>>(10).unwrap_or(None).map(|v| v as usize),
+                    community_id: row
+                        .get::<_, Option<i64>>(10)
+                        .unwrap_or(None)
+                        .map(|v| v as usize),
                     non_defines_in_degree: row.get::<_, i64>(11).unwrap_or(0) as u32,
                 })
             })
@@ -338,7 +344,19 @@ impl SqliteDb {
     ///        cross_file, metadata, lsp_resolved) 元组。
     pub fn load_all_edges(
         &self,
-    ) -> Result<Vec<(String, String, EdgeKind, u8, Option<f64>, bool, Option<serde_json::Value>, bool)>, String> {
+    ) -> Result<
+        Vec<(
+            String,
+            String,
+            EdgeKind,
+            u8,
+            Option<f64>,
+            bool,
+            Option<serde_json::Value>,
+            bool,
+        )>,
+        String,
+    > {
         let mut stmt = self
             .conn
             .prepare(
@@ -349,11 +367,10 @@ impl SqliteDb {
         let rows = stmt
             .query_map([], |row| {
                 let kind_str: String = row.get(2)?;
-                let kind = edge_kind_from_str(&kind_str)
-                    .unwrap_or_else(|msg| {
-                        eprintln!("[hologram] {}", msg);
-                        EdgeKind::Calls
-                    });
+                let kind = edge_kind_from_str(&kind_str).unwrap_or_else(|msg| {
+                    eprintln!("[hologram] {}", msg);
+                    EdgeKind::Calls
+                });
                 let depth: i64 = row.get(3)?;
                 let delay: Option<f64> = row.get(4)?;
                 let cross_file: i64 = row.get::<_, Option<i64>>(5)?.unwrap_or(0);
@@ -410,11 +427,7 @@ impl SqliteDb {
     ///   FK 检查是每边 2 次 nodes(id) 查表
     /// - synchronous=OFF —— 派生缓存 DB，断电损坏重跑分析即可；提交后恢复
     /// SQLite 参数上限为 999；节点 12 列 → 66 行/块，边 6 列 → 150 行/块。
-    pub fn bulk_replace_all(
-        &self,
-        nodes: &[&Node],
-        edges: &[EdgeRow<'_>],
-    ) -> Result<(), String> {
+    pub fn bulk_replace_all(&self, nodes: &[&Node], edges: &[EdgeRow<'_>]) -> Result<(), String> {
         let t_total = std::time::Instant::now();
 
         // foreign_keys 不能在事务内修改 —— 必须在 tx 开始前设置。
@@ -442,19 +455,18 @@ impl SqliteDb {
 
     /// bulk_replace_all 的事务主体。DDL（DROP/CREATE INDEX、DROP TRIGGER）
     /// 在 SQLite 中是事务性的，任何失败都随 tx 回滚，不留半残 schema。
-    fn bulk_replace_inner(
-        &self,
-        nodes: &[&Node],
-        edges: &[EdgeRow<'_>],
-    ) -> Result<(), String> {
-        let tx = self.conn.unchecked_transaction()
+    fn bulk_replace_inner(&self, nodes: &[&Node], edges: &[EdgeRow<'_>]) -> Result<(), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
             .map_err(|e| format!("tx: {}", e))?;
 
         tx.execute_batch("PRAGMA cache_size=-50000;")
             .map_err(|e| format!("pragma cache: {}", e))?;
 
         // 先删 FTS 触发器（保住 DELETE 阶段），再删二级索引（保住 INSERT 阶段）。
-        tx.execute_batch("DROP TRIGGER IF EXISTS nodes_ai;
+        tx.execute_batch(
+            "DROP TRIGGER IF EXISTS nodes_ai;
                           DROP TRIGGER IF EXISTS nodes_ad;
                           DROP TRIGGER IF EXISTS nodes_au;
                           DROP INDEX IF EXISTS idx_nodes_kind;
@@ -465,8 +477,9 @@ impl SqliteDb {
                           DROP INDEX IF EXISTS idx_edges_target;
                           DROP INDEX IF EXISTS idx_edges_kind;
                           DROP INDEX IF EXISTS idx_edges_coupling;
-                          DROP INDEX IF EXISTS idx_edges_source_target;")
-            .map_err(|e| format!("drop triggers/indexes: {}", e))?;
+                          DROP INDEX IF EXISTS idx_edges_source_target;",
+        )
+        .map_err(|e| format!("drop triggers/indexes: {}", e))?;
 
         // 清除旧数据
         let t = std::time::Instant::now();
@@ -481,12 +494,28 @@ impl SqliteDb {
         for chunk in nodes.chunks(NODE_CHUNK) {
             let mut sql = String::with_capacity(node_sql.len() + chunk.len() * 80);
             sql.push_str(node_sql);
-            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(chunk.len() * 12);
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+                Vec::with_capacity(chunk.len() * 12);
             for (i, node) in chunk.iter().enumerate() {
-                if i > 0 { sql.push_str(", "); }
+                if i > 0 {
+                    sql.push_str(", ");
+                }
                 let b = 1 + i * 12;
-                sql.push_str(&format!("(?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{})",
-                    b, b+1, b+2, b+3, b+4, b+5, b+6, b+7, b+8, b+9, b+10, b+11));
+                sql.push_str(&format!(
+                    "(?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{})",
+                    b,
+                    b + 1,
+                    b + 2,
+                    b + 3,
+                    b + 4,
+                    b + 5,
+                    b + 6,
+                    b + 7,
+                    b + 8,
+                    b + 9,
+                    b + 10,
+                    b + 11
+                ));
                 let (px, py, pz) = match node.position {
                     Some([x, y, z]) => (Some(x as f64), Some(y as f64), Some(z as f64)),
                     None => (None, None, None),
@@ -505,7 +534,8 @@ impl SqliteDb {
                 params.push(Box::new(node.community_id.map(|v| v as i64)));
                 params.push(Box::new(node.non_defines_in_degree as i64));
             }
-            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                params.iter().map(|p| p.as_ref()).collect();
             tx.execute(&sql, param_refs.as_slice())
                 .map_err(|e| format!("insert node chunk: {}", e))?;
         }
@@ -518,12 +548,44 @@ impl SqliteDb {
         for chunk in edges.chunks(EDGE_CHUNK) {
             let mut sql = String::with_capacity(edge_sql.len() + chunk.len() * 80);
             sql.push_str(edge_sql);
-            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(chunk.len() * 9);
-            for (i, &(source, target, kind, coupling_depth, temporal_delay_sec, cross_file, metadata, lsp_resolved)) in chunk.iter().enumerate() {
-                if i > 0 { sql.push_str(", "); }
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+                Vec::with_capacity(chunk.len() * 9);
+            for (
+                i,
+                &(
+                    source,
+                    target,
+                    kind,
+                    coupling_depth,
+                    temporal_delay_sec,
+                    cross_file,
+                    metadata,
+                    lsp_resolved,
+                ),
+            ) in chunk.iter().enumerate()
+            {
+                if i > 0 {
+                    sql.push_str(", ");
+                }
                 let b = 1 + i * 9;
-                sql.push_str(&format!("(?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{})", b, b+1, b+2, b+3, b+4, b+5, b+6, b+7, b+8));
-                params.push(Box::new(format!("{}::{}::{}", source, target, kind.as_str())));
+                sql.push_str(&format!(
+                    "(?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{})",
+                    b,
+                    b + 1,
+                    b + 2,
+                    b + 3,
+                    b + 4,
+                    b + 5,
+                    b + 6,
+                    b + 7,
+                    b + 8
+                ));
+                params.push(Box::new(format!(
+                    "{}::{}::{}",
+                    source,
+                    target,
+                    kind.as_str()
+                )));
                 params.push(Box::new(source.to_string()));
                 params.push(Box::new(target.to_string()));
                 params.push(Box::new(kind.as_str().to_string()));
@@ -536,7 +598,8 @@ impl SqliteDb {
                 }));
                 params.push(Box::new(if lsp_resolved { 1i64 } else { 0i64 }));
             }
-            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                params.iter().map(|p| p.as_ref()).collect();
             tx.execute(&sql, param_refs.as_slice())
                 .map_err(|e| format!("insert edge chunk: {}", e))?;
         }
@@ -554,7 +617,8 @@ impl SqliteDb {
              CREATE INDEX idx_edges_kind ON edges(kind);
              CREATE INDEX idx_edges_coupling ON edges(coupling_depth);
              CREATE INDEX idx_edges_source_target ON edges(source, target);",
-        ).map_err(|e| format!("recreate indexes: {}", e))?;
+        )
+        .map_err(|e| format!("recreate indexes: {}", e))?;
         let t_indexes = t.elapsed().as_secs_f64();
 
         // ── 重建 FTS 并重新创建触发器 ──
@@ -632,15 +696,22 @@ impl SqliteDb {
 
     /// 使用 (source, target, kind, coupling_depth, temporal_delay_sec,
     ///        cross_file, metadata) 元组批量 upsert 边。
-    pub fn batch_upsert_edges(
-        &self,
-        edges: &[EdgeRow<'_>],
-    ) -> Result<(), String> {
+    pub fn batch_upsert_edges(&self, edges: &[EdgeRow<'_>]) -> Result<(), String> {
         let tx = self
             .conn
             .unchecked_transaction()
             .map_err(|e| format!("tx: {}", e))?;
-        for &(source, target, kind, coupling_depth, temporal_delay_sec, cross_file, metadata, lsp_resolved) in edges {
+        for &(
+            source,
+            target,
+            kind,
+            coupling_depth,
+            temporal_delay_sec,
+            cross_file,
+            metadata,
+            lsp_resolved,
+        ) in edges
+        {
             let id = format!("{}::{}::{}", source, target, kind.as_str());
             let metadata_text = match metadata {
                 Some(m) => serde_json::to_string(m).unwrap_or_else(|_| "{}".into()),
@@ -681,9 +752,7 @@ impl SqliteDb {
         let pattern = format!("\"{}\"", safe);
         let mut stmt = self
             .conn
-            .prepare(
-                "SELECT id FROM fts_nodes WHERE fts_nodes MATCH ?1 ORDER BY rank LIMIT ?2",
-            )
+            .prepare("SELECT id FROM fts_nodes WHERE fts_nodes MATCH ?1 ORDER BY rank LIMIT ?2")
             .map_err(|e| format!("fts prepare: {}", e))?;
         let rows = stmt
             .query_map(params![pattern, limit as i64], |row| row.get(0))
@@ -740,8 +809,7 @@ impl SqliteDb {
                     Some([x, y, z]) => (Some(x as f64), Some(y as f64), Some(z as f64)),
                     None => (None, None, None),
                 };
-                let props = serde_json::to_string(&node.properties)
-                    .unwrap_or_else(|_| "{}".into());
+                let props = serde_json::to_string(&node.properties).unwrap_or_else(|_| "{}".into());
                 if let Err(e) = node_stmt.execute(params![
                     rowid,
                     node.id.as_str(),
@@ -794,7 +862,8 @@ impl SqliteDb {
             return Err(format!("fts rebuild recreate triggers: {}", e)); // tx drop → 回滚
         }
 
-        tx.commit().map_err(|e| format!("fts rebuild commit: {}", e))?;
+        tx.commit()
+            .map_err(|e| format!("fts rebuild commit: {}", e))?;
         eprintln!(
             "[sqlite] fts_rebuild_from_rows: {} rows in {:.1}s",
             count,
@@ -861,9 +930,7 @@ pub fn timeline_record(
     file: Option<&str>,
     summary: &str,
 ) -> Result<(), String> {
-    let ts = chrono::Local::now()
-        .format("%Y-%m-%dT%H:%M:%S")
-        .to_string();
+    let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     conn.execute(
         "INSERT INTO timeline_events (timestamp, event_type, file, summary, properties)
          VALUES (?1, ?2, ?3, ?4, '{}')",
@@ -882,9 +949,7 @@ pub fn timeline_record_with_props(
     summary: &str,
     properties: &serde_json::Value,
 ) -> Result<(), String> {
-    let ts = chrono::Local::now()
-        .format("%Y-%m-%dT%H:%M:%S")
-        .to_string();
+    let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     let props_str = serde_json::to_string(properties).unwrap_or_else(|_| "{}".into());
     conn.execute(
         "INSERT INTO timeline_events (timestamp, event_type, file, summary, properties)
@@ -947,7 +1012,7 @@ fn edge_kind_from_str(s: &str) -> Result<EdgeKind, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hologram_graph::{Node, NodeKind, EdgeKind};
+    use hologram_graph::{EdgeKind, Node, NodeKind};
 
     fn make_test_node(id: &str, kind: NodeKind) -> Node {
         let mut n = Node::new(id, id, kind);
@@ -967,22 +1032,33 @@ mod tests {
         let db = SqliteDb::open(&tmp).unwrap();
 
         // 写入每种 NodeKind 变体各一个节点
-        let all_kinds = [NodeKind::Symbol,
+        let all_kinds = [
+            NodeKind::Symbol,
             NodeKind::Function,
             NodeKind::Class,
             NodeKind::Module,
             NodeKind::File,
             NodeKind::Interface,
             NodeKind::Medium,
-            NodeKind::Temporal];
-        let nodes: Vec<Node> = all_kinds.iter()
+            NodeKind::Temporal,
+        ];
+        let nodes: Vec<Node> = all_kinds
+            .iter()
             .map(|k| make_test_node(k.as_str(), *k))
             .collect();
-        let edges: Vec<EdgeRow<'_>> = vec![
-            ("symbol", "function", EdgeKind::Calls, 1u8, None::<f64>, true, None, false),
-        ];
+        let edges: Vec<EdgeRow<'_>> = vec![(
+            "symbol",
+            "function",
+            EdgeKind::Calls,
+            1u8,
+            None::<f64>,
+            true,
+            None,
+            false,
+        )];
 
-        db.bulk_replace_all(&nodes.iter().collect::<Vec<_>>(), &edges).unwrap();
+        db.bulk_replace_all(&nodes.iter().collect::<Vec<_>>(), &edges)
+            .unwrap();
 
         // 读回并验证每种类型都被保留
         let loaded = db.load_all_nodes().unwrap();
@@ -1001,8 +1077,14 @@ mod tests {
                 "temporal" => NodeKind::Temporal,
                 _ => panic!("意外的节点 id: {}", node.id),
             };
-            assert_eq!(std::mem::discriminant(&node.kind), std::mem::discriminant(&expected_kind),
-                "节点 '{}' 加载为 {:?}, 期望 {:?}", node.id, node.kind, expected_kind);
+            assert_eq!(
+                std::mem::discriminant(&node.kind),
+                std::mem::discriminant(&expected_kind),
+                "节点 '{}' 加载为 {:?}, 期望 {:?}",
+                node.id,
+                node.kind,
+                expected_kind
+            );
             // 验证其他字段也已保留
             assert_eq!(node.out_degree, 1);
             assert_eq!(node.in_degree, 0);
@@ -1026,23 +1108,46 @@ mod tests {
         ];
         let meta = serde_json::json!({"resolved_by": "import-binding", "unresolved_import": false});
         let edges: Vec<EdgeRow<'_>> = vec![
-            ("a", "b", EdgeKind::Calls, 3u8, Some(0.5), true, Some(&meta), true),
+            (
+                "a",
+                "b",
+                EdgeKind::Calls,
+                3u8,
+                Some(0.5),
+                true,
+                Some(&meta),
+                true,
+            ),
             ("a", "b", EdgeKind::Reads, 2u8, None, false, None, false),
         ];
 
-        db.bulk_replace_all(&nodes.iter().collect::<Vec<_>>(), &edges).unwrap();
+        db.bulk_replace_all(&nodes.iter().collect::<Vec<_>>(), &edges)
+            .unwrap();
 
         let loaded = db.load_all_edges().unwrap();
         assert_eq!(loaded.len(), 2);
 
-        let calls = loaded.iter().find(|(_, _, k, _, _, _, _, _)| *k == EdgeKind::Calls).unwrap();
+        let calls = loaded
+            .iter()
+            .find(|(_, _, k, _, _, _, _, _)| *k == EdgeKind::Calls)
+            .unwrap();
         assert_eq!(calls.3, 3); // coupling_depth
         assert_eq!(calls.4, Some(0.5)); // temporal_delay_sec
         assert!(calls.5, "cross_file 应落库读回");
-        assert_eq!(calls.6.as_ref().and_then(|m| m.get("resolved_by")).and_then(|v| v.as_str()), Some("import-binding"));
+        assert_eq!(
+            calls
+                .6
+                .as_ref()
+                .and_then(|m| m.get("resolved_by"))
+                .and_then(|v| v.as_str()),
+            Some("import-binding")
+        );
         assert!(calls.7, "lsp_resolved 应落库读回（P1-2）");
 
-        let reads = loaded.iter().find(|(_, _, k, _, _, _, _, _)| *k == EdgeKind::Reads).unwrap();
+        let reads = loaded
+            .iter()
+            .find(|(_, _, k, _, _, _, _, _)| *k == EdgeKind::Reads)
+            .unwrap();
         assert_eq!(reads.3, 2);
         assert!(reads.4.is_none());
         assert!(!reads.5);
@@ -1065,25 +1170,43 @@ mod tests {
             make_test_node("alpha", NodeKind::Function),
             make_test_node("beta", NodeKind::Function),
         ];
-        let edges1: Vec<EdgeRow<'_>> = vec![
-            ("alpha", "beta", EdgeKind::Calls, 1u8, None, false, None, false),
-        ];
-        db.bulk_replace_all(&nodes1.iter().collect::<Vec<_>>(), &edges1).unwrap();
+        let edges1: Vec<EdgeRow<'_>> = vec![(
+            "alpha",
+            "beta",
+            EdgeKind::Calls,
+            1u8,
+            None,
+            false,
+            None,
+            false,
+        )];
+        db.bulk_replace_all(&nodes1.iter().collect::<Vec<_>>(), &edges1)
+            .unwrap();
 
         // 第二次替换 —— 旧数据存在，走触发器/索引先删后建路径
         let nodes2: Vec<Node> = vec![
             make_test_node("gamma", NodeKind::Class),
             make_test_node("delta", NodeKind::Class),
         ];
-        let edges2: Vec<EdgeRow<'_>> = vec![
-            ("gamma", "delta", EdgeKind::Inherits, 2u8, None, true, None, false),
-        ];
-        db.bulk_replace_all(&nodes2.iter().collect::<Vec<_>>(), &edges2).unwrap();
+        let edges2: Vec<EdgeRow<'_>> = vec![(
+            "gamma",
+            "delta",
+            EdgeKind::Inherits,
+            2u8,
+            None,
+            true,
+            None,
+            false,
+        )];
+        db.bulk_replace_all(&nodes2.iter().collect::<Vec<_>>(), &edges2)
+            .unwrap();
 
         // 数据被完整替换
         let loaded_nodes = db.load_all_nodes().unwrap();
         assert_eq!(loaded_nodes.len(), 2);
-        assert!(loaded_nodes.iter().all(|n| n.id == "gamma" || n.id == "delta"));
+        assert!(loaded_nodes
+            .iter()
+            .all(|n| n.id == "gamma" || n.id == "delta"));
         let loaded_edges = db.load_all_edges().unwrap();
         assert_eq!(loaded_edges.len(), 1);
         assert_eq!(loaded_edges[0].2, EdgeKind::Inherits);
@@ -1100,11 +1223,18 @@ mod tests {
 
         // 二级索引已重建
         for idx in [
-            "idx_nodes_kind", "idx_nodes_location", "idx_nodes_name", "idx_nodes_community",
-            "idx_edges_source", "idx_edges_target", "idx_edges_kind",
-            "idx_edges_coupling", "idx_edges_source_target",
+            "idx_nodes_kind",
+            "idx_nodes_location",
+            "idx_nodes_name",
+            "idx_nodes_community",
+            "idx_edges_source",
+            "idx_edges_target",
+            "idx_edges_kind",
+            "idx_edges_coupling",
+            "idx_edges_source_target",
         ] {
-            let count: i64 = db.conn()
+            let count: i64 = db
+                .conn()
                 .query_row(
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?1",
                     params![idx],
@@ -1115,17 +1245,32 @@ mod tests {
         }
 
         // pragma 已恢复
-        let fk: i64 = db.conn().query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        let fk: i64 = db
+            .conn()
+            .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(fk, 1, "foreign_keys 应恢复为 ON");
-        let sync: i64 = db.conn().query_row("PRAGMA synchronous", [], |r| r.get(0)).unwrap();
+        let sync: i64 = db
+            .conn()
+            .query_row("PRAGMA synchronous", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(sync, 1, "synchronous 应恢复为 NORMAL(1)");
 
         // 外键约束真实生效 —— 插入悬挂边必须失败
-        let dangling: Vec<EdgeRow<'_>> = vec![
-            ("gamma", "no_such_node", EdgeKind::Calls, 1u8, None, false, None, false),
-        ];
-        assert!(db.batch_upsert_edges(&dangling).is_err(),
-            "FK 恢复后悬挂边插入应被拒绝");
+        let dangling: Vec<EdgeRow<'_>> = vec![(
+            "gamma",
+            "no_such_node",
+            EdgeKind::Calls,
+            1u8,
+            None,
+            false,
+            None,
+            false,
+        )];
+        assert!(
+            db.batch_upsert_edges(&dangling).is_err(),
+            "FK 恢复后悬挂边插入应被拒绝"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1151,7 +1296,8 @@ mod tests {
         // 空库探测 → 写入节点后探测翻转
         assert!(!db.has_any_node().unwrap());
         let nodes: Vec<Node> = vec![make_test_node("alpha", NodeKind::Function)];
-        db.bulk_replace_all(&nodes.iter().collect::<Vec<_>>(), &[]).unwrap();
+        db.bulk_replace_all(&nodes.iter().collect::<Vec<_>>(), &[])
+            .unwrap();
         assert!(db.has_any_node().unwrap());
 
         let _ = std::fs::remove_dir_all(&tmp);

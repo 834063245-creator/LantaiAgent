@@ -4,11 +4,7 @@
 use serde_json::{json, Value};
 
 /// 聚合来自 coupling + cycles + conflicts 的边界标记。
-pub fn find_blindspots(
-    coupling_l4: usize,
-    cycle_count: usize,
-    conflict_count: usize,
-) -> Value {
+pub fn find_blindspots(coupling_l4: usize, cycle_count: usize, conflict_count: usize) -> Value {
     let mut boundaries = Vec::new();
 
     // L4 耦合 → 封装边界

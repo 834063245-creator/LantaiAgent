@@ -59,7 +59,11 @@ impl Default for StreamRing {
 impl StreamRing {
     fn plain() -> Self {
         Self {
-            inner: Mutex::new(RingInner { buf: Vec::new(), total: 0, dropped: 0 }),
+            inner: Mutex::new(RingInner {
+                buf: Vec::new(),
+                total: 0,
+                dropped: 0,
+            }),
             spill: Mutex::new(None),
             spill_path: None,
             spill_written: AtomicU64::new(0),
@@ -69,7 +73,10 @@ impl StreamRing {
 
     /// 带全量日志落盘的环。
     pub(crate) fn with_spill(path: PathBuf) -> Self {
-        Self { spill_path: Some(path), ..Self::plain() }
+        Self {
+            spill_path: Some(path),
+            ..Self::plain()
+        }
     }
 
     pub(crate) fn spill_path(&self) -> Option<&PathBuf> {
@@ -104,7 +111,13 @@ impl StreamRing {
         let total = inner.total;
         let earliest = inner.dropped;
         if from >= total {
-            return StreamRead { text: String::new(), next: total, lossy: false, earliest, total };
+            return StreamRead {
+                text: String::new(),
+                next: total,
+                lossy: false,
+                earliest,
+                total,
+            };
         }
         let (start, lossy) = if from < earliest {
             (0usize, true)
@@ -159,13 +172,19 @@ impl StreamRing {
         let inner = lock_or_recover(&self.inner);
         let buf = &inner.buf;
         if buf.len() <= cap {
-            return (crate::utils::decode_shell_bytes(buf), inner.total - buf.len() as u64);
+            return (
+                crate::utils::decode_shell_bytes(buf),
+                inner.total - buf.len() as u64,
+            );
         }
         let mut start = buf.len() - cap;
         while start < buf.len() && (buf[start] & 0xC0) == 0x80 {
             start += 1;
         }
-        (crate::utils::decode_shell_bytes(&buf[start..]), inner.total - (buf.len() - start) as u64)
+        (
+            crate::utils::decode_shell_bytes(&buf[start..]),
+            inner.total - (buf.len() - start) as u64,
+        )
     }
 
     fn write_spill(&self, bytes: &[u8]) {
@@ -183,7 +202,11 @@ impl StreamRing {
             if let Some(dir) = path.parent() {
                 let _ = std::fs::create_dir_all(dir);
             }
-            match std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
                 Ok(f) => *guard = Some(f),
                 Err(_) => {
                     self.spill_stopped.store(true, Ordering::Relaxed);
@@ -193,7 +216,8 @@ impl StreamRing {
         }
         if let Some(f) = guard.as_mut() {
             if f.write_all(bytes).is_ok() {
-                self.spill_written.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                self.spill_written
+                    .fetch_add(bytes.len() as u64, Ordering::Relaxed);
             } else {
                 self.spill_stopped.store(true, Ordering::Relaxed);
             }

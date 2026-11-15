@@ -32,7 +32,7 @@ mod imp {
     use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
     use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumChildWindows, GA_ROOT, GetAncestor, HTCAPTION, HTCLIENT, WM_NCHITTEST,
+        EnumChildWindows, GetAncestor, GA_ROOT, HTCAPTION, HTCLIENT, WM_NCHITTEST,
     };
 
     /// 书眉高（px）——`tokens.css --bar-h: 56px` 的同源镜像（改一处两处同改）。
@@ -103,7 +103,8 @@ mod imp {
             let _ = (PCWSTR::null(), WM_GETTEXT);
             true.into()
         }
-        let _ = unsafe { EnumChildWindows(Some(root), Some(cb), LPARAM(&mut out as *mut _ as isize)) };
+        let _ =
+            unsafe { EnumChildWindows(Some(root), Some(cb), LPARAM(&mut out as *mut _ as isize)) };
         out
     }
 
@@ -111,7 +112,11 @@ mod imp {
     fn diag(line: &str) {
         use std::io::Write;
         let p = std::env::temp_dir().join("lantai-drag-band.log");
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(p)
+        {
             let _ = writeln!(f, "{line}");
         }
     }
@@ -127,7 +132,10 @@ mod imp {
             diag("[window] 拖动带夹紧未安装：取窗口句柄失败");
             return;
         };
-        diag(&format!("[window] install: hwnd={:?} TOPBAR_H={TOPBAR_H}", hwnd.0));
+        diag(&format!(
+            "[window] install: hwnd={:?} TOPBAR_H={TOPBAR_H}",
+            hwnd.0
+        ));
         // HWND 不是 Send：跨线程只带裸句柄，线程内重建（轮询只在后台做，子类化回主线程）
         let root_raw = hwnd.0 as isize;
         std::thread::spawn(move || {
@@ -141,7 +149,11 @@ mod imp {
             let mut seen: std::collections::HashSet<isize> = std::collections::HashSet::new();
             loop {
                 let hosts: Vec<isize> = host_children(root).iter().map(|h| h.0 as isize).collect();
-                let fresh: Vec<isize> = hosts.iter().copied().filter(|h| !seen.contains(h)).collect();
+                let fresh: Vec<isize> = hosts
+                    .iter()
+                    .copied()
+                    .filter(|h| !seen.contains(h))
+                    .collect();
                 if !fresh.is_empty() {
                     for h in &fresh {
                         seen.insert(*h);
@@ -177,14 +189,24 @@ mod imp {
             let cli = HTCLIENT as i32;
             // caption 一律降为 client（窗口拖动由前端自管——行窗可能按"另一张页面"算出来）
             for y in [0, 20, TOPBAR_H - 1, TOPBAR_H, 88, 700] {
-                assert_eq!(clamp_caption_hit(cap, y), cli, "y={y} 的 caption 必须降为 client");
+                assert_eq!(
+                    clamp_caption_hit(cap, y),
+                    cli,
+                    "y={y} 的 caption 必须降为 client"
+                );
             }
         }
 
         #[test]
         fn other_hits_untouched() {
             // 只夹 HTCAPTION——边框调整（HTTOP/HTLEFT/HTBOTTOM…）与已归应用的 HTCLIENT 不动
-            for inner in [HTCLIENT as i32, 12 /* HTTOP */, 10 /* HTRIGHT */, 8 /* HTBOTTOM */, 0] {
+            for inner in [
+                HTCLIENT as i32,
+                12, /* HTTOP */
+                10, /* HTRIGHT */
+                8,  /* HTBOTTOM */
+                0,
+            ] {
                 assert_eq!(clamp_caption_hit(inner, 5), inner);
                 assert_eq!(clamp_caption_hit(inner, 700), inner);
             }

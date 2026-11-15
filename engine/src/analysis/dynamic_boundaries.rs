@@ -40,48 +40,57 @@ struct FormDef {
 const FORMS: &[FormDef] = &[
     // computed-call：obj[key](...)
     FormDef {
-        id: "computed-call", label: "computed member call",
-        langs: &[], regex: r#"[\w$)\]]\s*\[([^\[\]\n]{1,80})\]\s*\("#,
+        id: "computed-call",
+        label: "computed member call",
+        langs: &[],
+        regex: r#"[\w$)\]]\s*\[([^\[\]\n]{1,80})\]\s*\("#,
     },
     // reflection：.invoke / .getMethod / MethodByName / Class.forName
     FormDef {
-        id: "reflection", label: "reflective dispatch",
+        id: "reflection",
+        label: "reflective dispatch",
         langs: &["java", "go", "csharp", "kt"],
         regex: r#"\.(?:invoke|get(?:Declared)?Method|GetMethod|MethodByName|Activator\.CreateInstance|Class\.forName)"#,
     },
     // proxy-reflect：JS 中的 Proxy/Reflect
     FormDef {
-        id: "proxy-reflect", label: "Proxy/Reflect",
+        id: "proxy-reflect",
+        label: "Proxy/Reflect",
         langs: &["javascript", "typescript", "tsx", "jsx"],
         regex: r#"\bnew\s+Proxy\s*\(|\bReflect\.(?:get|apply|construct)\s*\("#,
     },
     // typed-bus：带类型参数的 .Send/.Publish/.Dispatch/.Execute/.Emit
     FormDef {
-        id: "typed-bus", label: "typed message dispatch",
+        id: "typed-bus",
+        label: "typed message dispatch",
         langs: &[],
         regex: r#"\.(?:[Ss]end|[Pp]ublish|[Dd]ispatch|[Ee]xecute|[Ee]mit)(?:Async)?\s*\(\s*new\s+([A-Z]\w*)"#,
     },
     // var-key-dispatch：带变量键的 .emit/.dispatch/.trigger/.fire/.publish/.broadcast
     FormDef {
-        id: "var-key-dispatch", label: "string-keyed dispatch",
+        id: "var-key-dispatch",
+        label: "string-keyed dispatch",
         langs: &[],
         regex: r#"\.(?:emit|dispatch|trigger|fire|publish|broadcast)\s*\(\s*[A-Za-z_$][\w$]*(?:\.[\w$]+){0,3}\s*[,)]"#,
     },
     // getattr-call：Python getattr 直接调用
     FormDef {
-        id: "getattr-call", label: "getattr dispatch",
+        id: "getattr-call",
+        label: "getattr dispatch",
         langs: &["python"],
         regex: r#"getattr\s*\(\s*\w+\s*,\s*['\"][^'\"]+['\"]\s*\)\s*\("#,
     },
     // getattr-assign：Python getattr 赋值后调用
     FormDef {
-        id: "getattr-assign", label: "getattr dispatch (assigned)",
+        id: "getattr-assign",
+        label: "getattr dispatch (assigned)",
         langs: &["python"],
         regex: r#"\w+\s*=\s*getattr\s*\(\s*\w+\s*,\s*['\"]([^'\"]+)['\"]"#,
     },
     // dynamic-import：JS import() / Python importlib
     FormDef {
-        id: "dynamic-import", label: "dynamic import",
+        id: "dynamic-import",
+        label: "dynamic import",
         langs: &[],
         regex: r#"\b(?:import|require)\s*\(\s*(?![\s'\"`])|importlib\.import_module\s*\(|\b__import__\s*\("#,
     },
@@ -107,7 +116,9 @@ pub fn scan_dynamic_boundaries(
             continue;
         }
 
-        let Ok(re) = regex::Regex::new(form_def.regex) else { continue; };
+        let Ok(re) = regex::Regex::new(form_def.regex) else {
+            continue;
+        };
 
         let mut sites_in_form = 0usize;
         let mut best_match: Option<BoundaryMatch> = None;
@@ -115,7 +126,9 @@ pub fn scan_dynamic_boundaries(
         for (line_idx, line) in body.lines().enumerate() {
             if let Some(caps) = re.captures(line) {
                 sites_in_form += 1;
-                if sites_in_form > 10 { break; } // 限制每种模式的扫描数量
+                if sites_in_form > 10 {
+                    break;
+                } // 限制每种模式的扫描数量
 
                 let key = caps.get(1).map(|m| m.as_str().to_string());
 
@@ -140,7 +153,9 @@ pub fn scan_dynamic_boundaries(
             if seen.insert((m.form.clone(), dedup_key)) {
                 results.push(m);
             }
-            if results.len() >= 3 { break; }
+            if results.len() >= 3 {
+                break;
+            }
         }
     }
 
@@ -159,20 +174,27 @@ pub fn boundary_candidates(
     }
 
     let candidates = graph.search_nodes(key);
-    let mut scored: Vec<(usize, String)> = candidates.iter()
+    let mut scored: Vec<(usize, String)> = candidates
+        .iter()
         .filter(|n| {
             // 如果键是类型，优先精确匹配
             if key_is_type {
-                n.name == key || n.name.ends_with(&format!(".{}", key)) || n.name.ends_with(&format!("::{}", key))
+                n.name == key
+                    || n.name.ends_with(&format!(".{}", key))
+                    || n.name.ends_with(&format!("::{}", key))
             } else {
                 true
             }
         })
         .map(|n| {
             // 评分：优先名称中包含该键作为单词的
-            let score = if n.name == key { 100 }
-                else if n.name.contains(key) { 50 }
-                else { 10 };
+            let score = if n.name == key {
+                100
+            } else if n.name.contains(key) {
+                50
+            } else {
+                10
+            };
             (score, n.name.clone())
         })
         .collect();
@@ -196,7 +218,8 @@ mod tests {
 
     #[test]
     fn test_scan_reflection_java() {
-        let body = "Method m = clazz.getDeclaredMethod(name, paramTypes);\nm.invoke(instance, args);";
+        let body =
+            "Method m = clazz.getDeclaredMethod(name, paramTypes);\nm.invoke(instance, args);";
         let matches = scan_dynamic_boundaries(body, "java", 1);
         assert!(!matches.is_empty());
         assert_eq!(matches[0].form, "reflection");

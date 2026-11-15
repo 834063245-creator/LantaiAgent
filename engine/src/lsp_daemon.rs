@@ -77,8 +77,7 @@ impl LspDaemon {
             let _ = std::fs::remove_file(&port_file);
         }
 
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .map_err(|e| format!("bind: {e}"))?;
+        let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| format!("bind: {e}"))?;
         let port = listener
             .local_addr()
             .map_err(|e| format!("local_addr: {e}"))?
@@ -183,25 +182,47 @@ impl LspDaemon {
         let get_u32 = |k: &str| req.get(k).and_then(|v| v.as_u64()).unwrap_or(0) as u32;
         match op {
             "definition" => match LspManager::resolve_definition(
-                get("file"), get("source"), get_u32("line"), get_u32("column"), get("ext"),
+                get("file"),
+                get("source"),
+                get_u32("line"),
+                get_u32("column"),
+                get("ext"),
             ) {
-                Ok(locs) => json!({"ok": true, "locations": locs.iter().map(location_json).collect::<Vec<_>>()}),
+                Ok(locs) => {
+                    json!({"ok": true, "locations": locs.iter().map(location_json).collect::<Vec<_>>()})
+                }
                 Err(e) => json!({"ok": false, "error": e}),
             },
             "implementation" => match LspManager::find_implementations(
-                get("file"), get("source"), get_u32("line"), get_u32("column"), get("ext"),
+                get("file"),
+                get("source"),
+                get_u32("line"),
+                get_u32("column"),
+                get("ext"),
             ) {
-                Ok(locs) => json!({"ok": true, "locations": locs.iter().map(location_json).collect::<Vec<_>>()}),
+                Ok(locs) => {
+                    json!({"ok": true, "locations": locs.iter().map(location_json).collect::<Vec<_>>()})
+                }
                 Err(e) => json!({"ok": false, "error": e}),
             },
             "references" => match LspManager::find_references(
-                get("file"), get("source"), get_u32("line"), get_u32("column"), get("ext"),
+                get("file"),
+                get("source"),
+                get_u32("line"),
+                get_u32("column"),
+                get("ext"),
             ) {
-                Ok(locs) => json!({"ok": true, "locations": locs.iter().map(location_json).collect::<Vec<_>>()}),
+                Ok(locs) => {
+                    json!({"ok": true, "locations": locs.iter().map(location_json).collect::<Vec<_>>()})
+                }
                 Err(e) => json!({"ok": false, "error": e}),
             },
             "hover" => match LspManager::resolve_type(
-                get("file"), get("source"), get_u32("line"), get_u32("column"), get("ext"),
+                get("file"),
+                get("source"),
+                get_u32("line"),
+                get_u32("column"),
+                get("ext"),
             ) {
                 Ok(hover) => json!({"ok": true, "hover": hover}),
                 Err(e) => json!({"ok": false, "error": e}),
@@ -279,7 +300,10 @@ fn read_live_port(port_file: &Path) -> Result<Option<u16>, String> {
         Ok(c) => c,
         Err(_) => return Ok(None),
     };
-    let port: u16 = content.trim().parse().map_err(|e| format!("bad port file: {e}"))?;
+    let port: u16 = content
+        .trim()
+        .parse()
+        .map_err(|e| format!("bad port file: {e}"))?;
     match TcpStream::connect(("127.0.0.1", port)) {
         Ok(_) => Ok(Some(port)),
         Err(_) => Ok(None),
@@ -303,8 +327,14 @@ pub fn location_from_json(v: &Value) -> Option<LspLocation> {
         uri: v.get("uri")?.as_str()?.to_string(),
         range_start_line: v.get("range_start_line")?.as_u64()? as u32,
         range_start_char: v.get("range_start_char")?.as_u64()? as u32,
-        range_end_line: v.get("range_end_line").and_then(|x| x.as_u64()).unwrap_or(0) as u32,
-        range_end_char: v.get("range_end_char").and_then(|x| x.as_u64()).unwrap_or(0) as u32,
+        range_end_line: v
+            .get("range_end_line")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0) as u32,
+        range_end_char: v
+            .get("range_end_char")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0) as u32,
     })
 }
 
@@ -336,7 +366,9 @@ mod tests {
         writeln!(s, "{}", req).unwrap();
         s.flush().unwrap();
         let mut resp = String::new();
-        BufReader::new(s).read_line(&mut resp).expect("read response");
+        BufReader::new(s)
+            .read_line(&mut resp)
+            .expect("read response");
         serde_json::from_str(resp.trim()).expect("valid json response")
     }
 
@@ -359,24 +391,37 @@ mod tests {
         // 状态往返：全部配置条目在列
         let status = call(port, json!({"op": "status"}));
         assert!(status["ok"].as_bool().unwrap(), "status resp: {status}");
-        assert!(status["status"].as_array().unwrap().len() >= 9, "all configs listed");
+        assert!(
+            status["status"].as_array().unwrap().len() >= 9,
+            "all configs listed"
+        );
 
         // 未配置 server 的扩展名：op 级错误原样透传（ok:false + error）
-        let miss = call(port, json!({
-            "op": "definition", "file": "D:/no/such/file.zzz",
-            "source": "x", "line": 0, "column": 0, "ext": "zzz",
-        }));
+        let miss = call(
+            port,
+            json!({
+                "op": "definition", "file": "D:/no/such/file.zzz",
+                "source": "x", "line": 0, "column": 0, "ext": "zzz",
+            }),
+        );
         assert!(!miss["ok"].as_bool().unwrap(), "zzz has no server: {miss}");
         assert!(
-            miss["error"].as_str().unwrap().contains("no server for .zzz"),
-            "error should be verbatim, got: {}", miss["error"]
+            miss["error"]
+                .as_str()
+                .unwrap()
+                .contains("no server for .zzz"),
+            "error should be verbatim, got: {}",
+            miss["error"]
         );
 
         // shutdown → serve 循环退出、端口文件清理
         let bye = call(port, json!({"op": "shutdown"}));
         assert!(bye["ok"].as_bool().unwrap());
         serve_thread.join().expect("serve thread exits cleanly");
-        assert!(!port_file_of(&root).exists(), "port file must be removed on exit");
+        assert!(
+            !port_file_of(&root).exists(),
+            "port file must be removed on exit"
+        );
         // 还原宿主身份（本进程内后续测试按引擎客户端身份跑）
         LspManager::set_daemon_mode(false);
         let _ = std::fs::remove_dir_all(&root);
@@ -405,10 +450,12 @@ mod tests {
             writeln!(w, r#"{{"op":"ping"}}"#).expect("write ping");
             w.flush().expect("flush ping");
             line.clear();
-            r.read_line(&mut line).unwrap_or_else(|e| {
-                panic!("req#{i} read failed (connection killed?): {e}")
-            });
-            assert!(line.contains("\"pong\""), "req#{i} should pong, got: {line}");
+            r.read_line(&mut line)
+                .unwrap_or_else(|e| panic!("req#{i} read failed (connection killed?): {e}"));
+            assert!(
+                line.contains("\"pong\""),
+                "req#{i} should pong, got: {line}"
+            );
         }
 
         writeln!(w, r#"{{"op":"shutdown"}}"#).expect("write shutdown");

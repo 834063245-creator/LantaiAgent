@@ -14,10 +14,9 @@ use super::errors::{codes, err};
 use super::probes::{probe_result_str, CONTENT_PROBE, INSPECT_PROBE, REPORT_PROBE, SNAPSHOT_PROBE};
 use super::session::{
     active_session_key, audit_log, cleanup_old_files_by_age, ensure_observer_started,
-    har_retain_days, is_self, lock_sessions, session_mut, shot_retain_days, truncate_str,
-    Observer, ACTIONABILITY_TIMEOUT, EVAL_TIMEOUT_MS, HAR_DIR_NAME, HAR_FILE_PREFIX,
-    NETWORK_BUF_MAX, POST_ACTION_SETTLE, SELF_AGENT_ID, SHOT_FILE_PREFIX,
-    WEBVIEW_DEBUG_PORT,
+    har_retain_days, is_self, lock_sessions, session_mut, shot_retain_days, truncate_str, Observer,
+    ACTIONABILITY_TIMEOUT, EVAL_TIMEOUT_MS, HAR_DIR_NAME, HAR_FILE_PREFIX, NETWORK_BUF_MAX,
+    POST_ACTION_SETTLE, SELF_AGENT_ID, SHOT_FILE_PREFIX, WEBVIEW_DEBUG_PORT,
 };
 use super::transport::{list_targets_raw, ws_command, ws_command_seq};
 
@@ -29,7 +28,10 @@ use super::transport::{list_targets_raw, ws_command, ws_command_seq};
 pub(crate) fn cdp_targets(agent_id: Option<&str>) -> Result<String, String> {
     let port = {
         let mut sessions = session_mut(agent_id);
-        sessions.entry(active_session_key(agent_id)).or_default().port
+        sessions
+            .entry(active_session_key(agent_id))
+            .or_default()
+            .port
     };
     let raw = list_targets_raw(port)?;
     let arr = raw.as_array().ok_or("CDP /json 返回非数组")?;
@@ -103,12 +105,13 @@ pub(super) fn find_webview_target() -> Result<String, String> {
                     .unwrap_or(false)
         })
         .or_else(|| arr.iter().find(|t| t["type"] == "page"));
-    page.and_then(|t| t["id"].as_str().map(String::from)).ok_or_else(|| {
-        err(
-            codes::TARGET_GONE,
-            "找不到自家 webview 的调试 target（tauri 调试端口未开启？）",
-        )
-    })
+    page.and_then(|t| t["id"].as_str().map(String::from))
+        .ok_or_else(|| {
+            err(
+                codes::TARGET_GONE,
+                "找不到自家 webview 的调试 target（tauri 调试端口未开启？）",
+            )
+        })
 }
 
 /// 惰性确保 self 会话已 attach 到自家 webview。返回 (port, target_id)。
@@ -222,10 +225,12 @@ pub(super) fn require_target(agent_id: Option<&str>) -> Result<(u16, String), St
     if sess.port == 0 {
         return Err(err(codes::SESSION, "尚未 launch 浏览器"));
     }
-    let tid = sess
-        .target_id
-        .clone()
-        .ok_or_else(|| err(codes::SESSION, "未 attach target。先调用 browser(attach) 选择页面"))?;
+    let tid = sess.target_id.clone().ok_or_else(|| {
+        err(
+            codes::SESSION,
+            "未 attach target。先调用 browser(attach) 选择页面",
+        )
+    })?;
     Ok((sess.port, tid))
 }
 
@@ -260,7 +265,9 @@ pub(super) async fn runtime_evaluate(expr: &str, agent_id: Option<&str>) -> Resu
         if text.to_lowercase().contains("timeout") {
             return Err(err(
                 codes::TIMEOUT,
-                format!("页面内 JS 执行超时（{EVAL_TIMEOUT_MS}ms）——表达式可能死循环或页面主线程卡死"),
+                format!(
+                    "页面内 JS 执行超时（{EVAL_TIMEOUT_MS}ms）——表达式可能死循环或页面主线程卡死"
+                ),
             ));
         }
         return Err(format!("页面内 JS 错误: {text} {desc}"));
@@ -422,7 +429,8 @@ pub(super) async fn try_ax_snapshot(
     max_results: usize,
     offset: usize,
 ) -> Result<Option<String>, String> {
-    let mut resp = match ws_command(port, target_id, "Accessibility.getFullAXTree", json!({})).await {
+    let mut resp = match ws_command(port, target_id, "Accessibility.getFullAXTree", json!({})).await
+    {
         Ok(v) => v,
         Err(_) => return Ok(None), // 旧版 Chromium / 非浏览器 target 没有 AX domain → 回退探针
     };
@@ -433,7 +441,10 @@ pub(super) async fn try_ax_snapshot(
     // 树稀疏（无可用候选且节点仍是根裸树）时小延迟重试逼出全树；真没有可交互
     // 元素的页面在树长全（>2 节点）后自然退出重试。
     for _ in 0..3 {
-        let nodes_here = resp["result"]["nodes"].as_array().cloned().unwrap_or_default();
+        let nodes_here = resp["result"]["nodes"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         let has_candidate = nodes_here.iter().filter_map(ax_node_from_value).any(|n| {
             (ax_role_is_interactive(&n.role) || n.focusable)
                 && !ax_role_is_document_container(&n.role)
@@ -674,12 +685,16 @@ pub(super) fn read_buffer(buf: &VecDeque<String>, limit: usize) -> String {
 /// 查询 console 事件（最新 N 条）。
 pub(crate) fn cdp_console(agent_id: Option<&str>, limit: Option<usize>) -> String {
     let Some(obs) = ensure_observer(agent_id) else {
-        return json!({ "entries": [], "truncated": false, "note": "未 attach target" }).to_string();
+        return json!({ "entries": [], "truncated": false, "note": "未 attach target" })
+            .to_string();
     };
     let bufs = crate::utils::lock_or_recover(&obs.buffers);
     let limit = limit.unwrap_or(30);
     let s = read_buffer(&bufs.console, limit);
-    format!("{{\"entries\":{s},\"truncated\":{}}}", bufs.console.len() > limit)
+    format!(
+        "{{\"entries\":{s},\"truncated\":{}}}",
+        bufs.console.len() > limit
+    )
 }
 
 /// 查询网络事件（最新 N 条，请求/响应已按 requestId 配对）。
@@ -933,7 +948,11 @@ pub(crate) async fn cdp_cookies(
             if let Some(v) = secure {
                 params["secure"] = json!(v);
             }
-            if let Some(s) = same_site.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            if let Some(s) = same_site
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
                 let normalized = match s.to_ascii_lowercase().as_str() {
                     "strict" => "Strict",
                     "lax" => "Lax",
@@ -947,7 +966,9 @@ pub(crate) async fn cdp_cookies(
             }
             let resp = ws_command(port, &tid, "Network.setCookie", params.clone()).await?;
             if resp["result"]["success"].as_bool() != Some(true) {
-                return Err("Network.setCookie 返回 success=false（域名/路径与当前页面不匹配？）".into());
+                return Err(
+                    "Network.setCookie 返回 success=false（域名/路径与当前页面不匹配？）".into(),
+                );
             }
             let target = params["url"]
                 .as_str()
@@ -998,7 +1019,9 @@ pub(crate) async fn cdp_cookies(
             })
             .to_string())
         }
-        _ => Err(format!("cookies: 不支持 action \"{action}\"（只支持 list/set/delete）")),
+        _ => Err(format!(
+            "cookies: 不支持 action \"{action}\"（只支持 list/set/delete）"
+        )),
     }
 }
 
@@ -1047,7 +1070,11 @@ pub(crate) async fn cdp_handle_dialog(
                 set_dialog_open(agent_id, false);
                 audit_log(
                     agent_id,
-                    if accept { "dialog_accept" } else { "dialog_dismiss" },
+                    if accept {
+                        "dialog_accept"
+                    } else {
+                        "dialog_dismiss"
+                    },
                     "",
                     "ok",
                 );
@@ -1453,7 +1480,9 @@ pub(crate) async fn cdp_type(
     if !ok["ok"].as_bool().unwrap_or(false) {
         return Err(err(
             codes::REF_STALE,
-            format!("type: 目标不存在或已失效（{target}）——页面可能已变化，请重新 browser(snapshot)"),
+            format!(
+                "type: 目标不存在或已失效（{target}）——页面可能已变化，请重新 browser(snapshot)"
+            ),
         ));
     }
     let (port, tid) = require_target(agent_id)?;
@@ -1576,9 +1605,7 @@ pub(crate) async fn cdp_upload(
             {
                 let sel = sel.clone();
                 Box::new(move |prev| {
-                    let root = prev["result"]["root"]["nodeId"]
-                        .as_i64()
-                        .unwrap_or(0);
+                    let root = prev["result"]["root"]["nodeId"].as_i64().unwrap_or(0);
                     (
                         "DOM.querySelector".to_string(),
                         json!({ "nodeId": root, "selector": sel }),
@@ -1599,9 +1626,7 @@ pub(crate) async fn cdp_upload(
     )
     .await?;
     // 校验 querySelector 结果：nodeId 为 0 表示无匹配。
-    let qs = results
-        .get(1)
-        .ok_or("upload: DOM.querySelector 无响应")?;
+    let qs = results.get(1).ok_or("upload: DOM.querySelector 无响应")?;
     if qs["result"]["nodeId"].as_i64().unwrap_or(0) == 0 {
         return Err(format!("upload: selector 无匹配: {sel}"));
     }
@@ -1882,9 +1907,9 @@ pub(crate) async fn cdp_wait(
 
 // 词表与纯函数判定已提取到 crate::sensitive（CDP 与 UIA 共享单一事实源）。
 // 页面内 JS 仍用 SENSITIVE_CLICK_RE_SOURCE 构造同源正则。
-pub(crate) use crate::sensitive::SENSITIVE_CLICK_RE_SOURCE;
 #[cfg(test)]
 pub(crate) use crate::sensitive::is_sensitive_click_text;
+pub(crate) use crate::sensitive::SENSITIVE_CLICK_RE_SOURCE;
 
 /// 判定目标是否为敏感操作：type 到已填值输入框/password 框；click 提交按钮、
 /// 下载链接、或文本含高危动词的元素。判定失败（未 attach 等）静默放行——
@@ -1969,7 +1994,10 @@ pub(crate) async fn cdp_set_viewport(
 // P0b（2026-09-17）：`inline` 参数与 data URL 分支已拆除——见函数尾注。
 // ═══════════════════════════════════════════════════════════
 
-pub(crate) async fn cdp_screenshot(full_page: bool, agent_id: Option<&str>) -> Result<String, String> {
+pub(crate) async fn cdp_screenshot(
+    full_page: bool,
+    agent_id: Option<&str>,
+) -> Result<String, String> {
     let (port, tid) = require_target(agent_id)?;
     let resp = ws_command(
         port,

@@ -52,7 +52,6 @@ struct FileDiff {
     added_nodes: Vec<Node>,
     removed_node_ids: Vec<String>,
     updated_nodes: Vec<Node>,
-
 }
 
 /// 增量更新引擎。
@@ -71,7 +70,7 @@ impl IncrementalUpdater {
         old_index: &MemoryIndex,
         project_root: &Path,
         db: &SqliteDb,
-        ) -> Result<(MemoryIndex, usize), String> {
+    ) -> Result<(MemoryIndex, usize), String> {
         let mut new_index = Self::clone_index_for_update(old_index);
         // 将克隆中的待处理边刷入 CSR，以便 recompute_edge_count 正常工作
         new_index.flush_pending();
@@ -161,7 +160,12 @@ impl IncrementalUpdater {
         // 同时修复未变更文件指向已变更文件的边
         for diff in &all_diffs {
             for node in diff.added_nodes.iter().chain(diff.updated_nodes.iter()) {
-                Self::repair_incoming_from_unchanged(&node.id, old_index, &mut new_index, &diff.path);
+                Self::repair_incoming_from_unchanged(
+                    &node.id,
+                    old_index,
+                    &mut new_index,
+                    &diff.path,
+                );
             }
         }
 
@@ -240,12 +244,9 @@ impl IncrementalUpdater {
 
     /// Phase 1：用 tree-sitter 解析单个文件。
     fn parse_file(path: &Path, _project_root: &Path) -> Result<FileAnalysis, String> {
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-        let source = std::fs::read_to_string(path)
-            .map_err(|e| format!("read {}: {}", path.display(), e))?;
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let source =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {}", path.display(), e))?;
         let file_id = path.to_string_lossy().to_string();
 
         // 使用注册表查找合适的适配器
@@ -286,7 +287,10 @@ impl IncrementalUpdater {
         let mut old_by_key: HashMap<(String, String), String> = HashMap::new(); // (name, kind) → id
         for nid in old_node_ids {
             if let Some(node) = old_index.get_node(nid) {
-                old_by_key.insert((node.name.clone(), node.kind.as_str().to_string()), nid.clone());
+                old_by_key.insert(
+                    (node.name.clone(), node.kind.as_str().to_string()),
+                    nid.clone(),
+                );
             }
         }
 
@@ -368,7 +372,7 @@ impl IncrementalUpdater {
             added_nodes,
             removed_node_ids,
             updated_nodes,
-            }
+        }
     }
 
     /// 检查两个位置是否"接近"（行差 ≤ 容差）。
@@ -446,10 +450,7 @@ impl IncrementalUpdater {
                 // 检查 cid 是否有指向该节点旧版本的边
                 if let Some(old_node) = old_index.get_node(cid) {
                     if let Some(ref old_loc) = old_node.location {
-                        let old_file = old_loc
-                            .rsplit_once(':')
-                            .map(|(f, _)| f)
-                            .unwrap_or(old_loc);
+                        let old_file = old_loc.rsplit_once(':').map(|(f, _)| f).unwrap_or(old_loc);
                         if old_file != changed_file {
                             // 来自未变更文件 —— 保留边
                             let targets = old_index.get_outgoing_edges(cid);
@@ -552,12 +553,7 @@ mod tests {
             error_count: 0,
         };
 
-        let diff = IncrementalUpdater::diff_file(
-            "src/a.rs",
-            &["n1".to_string()],
-            &analysis,
-            &old,
-        );
+        let diff = IncrementalUpdater::diff_file("src/a.rs", &["n1".to_string()], &analysis, &old);
         assert_eq!(diff.added_nodes.len(), 1);
         assert_eq!(diff.added_nodes[0].name, "new_fn");
         assert_eq!(diff.removed_node_ids.len(), 0);
@@ -597,12 +593,7 @@ mod tests {
             error_count: 0,
         };
 
-        let diff = IncrementalUpdater::diff_file(
-            "src/a.rs",
-            &["n1".to_string()],
-            &analysis,
-            &old,
-        );
+        let diff = IncrementalUpdater::diff_file("src/a.rs", &["n1".to_string()], &analysis, &old);
         // 名称不匹配但位置接近 → 应通过策略 2 匹配
         assert_eq!(diff.updated_nodes.len(), 1);
         assert_eq!(diff.removed_node_ids.len(), 0);

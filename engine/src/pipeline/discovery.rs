@@ -51,14 +51,20 @@ pub fn discover_files(root: &Path, extensions: &[&str]) -> Vec<PathBuf> {
             Err(e) => {
                 skipped_entries += 1;
                 if skipped_entries <= 5 {
-                    tracing::warn!("[discovery] cannot access entry: {} (further errors suppressed)", e);
+                    tracing::warn!(
+                        "[discovery] cannot access entry: {} (further errors suppressed)",
+                        e
+                    );
                 }
             }
         }
     }
 
     if skipped_entries > 0 {
-        tracing::warn!("[discovery] {} directory entries skipped (permission errors / broken links)", skipped_entries);
+        tracing::warn!(
+            "[discovery] {} directory entries skipped (permission errors / broken links)",
+            skipped_entries
+        );
     }
 
     files
@@ -185,7 +191,11 @@ fn collect_gitignore_rules(root: &Path) -> GitignoreRules {
                 } else {
                     // 无斜杠规则 → basename 匹配，作用域 = .gitignore 所在目录
                     // （root 规则 base="" 表示任意层级）
-                    rules.names.entry(name.to_string()).or_default().push(base.clone());
+                    rules
+                        .names
+                        .entry(name.to_string())
+                        .or_default()
+                        .push(base.clone());
                 }
             }
         }
@@ -230,18 +240,44 @@ mod tests {
         fs::write(tmp.join(".gitignore"), "/include/\n/include/config/\n").unwrap();
         fs::write(tmp.join("include").join("gen.h"), "// gen").unwrap();
         fs::write(tmp.join("include").join("config").join("auto.h"), "// auto").unwrap();
-        fs::write(tmp.join("arch").join("x86").join("include").join("core.h"), "// core").unwrap();
-        fs::write(tmp.join("somewhere").join("config").join("keep.c"), "int x;").unwrap();
+        fs::write(
+            tmp.join("arch").join("x86").join("include").join("core.h"),
+            "// core",
+        )
+        .unwrap();
+        fs::write(
+            tmp.join("somewhere").join("config").join("keep.c"),
+            "int x;",
+        )
+        .unwrap();
         fs::write(tmp.join("main.c"), "int main;").unwrap();
 
         let files = discover_files(&tmp, &["c", "h"]);
-        let names: Vec<String> = files.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect();
 
-        assert!(names.iter().any(|p| p.ends_with("main.c")), "root main.c should be found");
-        assert!(!names.iter().any(|p| p.ends_with("gen.h")), "/include/ should exclude only root include/");
-        assert!(!names.iter().any(|p| p.ends_with("auto.h")), "/include/config/ should exclude root include/config");
-        assert!(names.iter().any(|p| p.ends_with("core.h")), "arch/x86/include/ 同名目录应保留（修复回归点）");
-        assert!(names.iter().any(|p| p.ends_with("keep.c")), "somewhere/config 同名目录应保留");
+        assert!(
+            names.iter().any(|p| p.ends_with("main.c")),
+            "root main.c should be found"
+        );
+        assert!(
+            !names.iter().any(|p| p.ends_with("gen.h")),
+            "/include/ should exclude only root include/"
+        );
+        assert!(
+            !names.iter().any(|p| p.ends_with("auto.h")),
+            "/include/config/ should exclude root include/config"
+        );
+        assert!(
+            names.iter().any(|p| p.ends_with("core.h")),
+            "arch/x86/include/ 同名目录应保留（修复回归点）"
+        );
+        assert!(
+            names.iter().any(|p| p.ends_with("keep.c")),
+            "somewhere/config 同名目录应保留"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -256,13 +292,24 @@ mod tests {
         fs::create_dir_all(tmp.join("tools").join("power").join("acpi").join("include")).unwrap();
 
         fs::write(
-            tmp.join("tools").join("power").join("acpi").join(".gitignore"),
+            tmp.join("tools")
+                .join("power")
+                .join("acpi")
+                .join(".gitignore"),
             "/include/\n",
         )
         .unwrap();
-        fs::write(tmp.join("include").join("linux").join("main.h"), "#define X 1").unwrap();
         fs::write(
-            tmp.join("tools").join("power").join("acpi").join("include").join("generated.h"),
+            tmp.join("include").join("linux").join("main.h"),
+            "#define X 1",
+        )
+        .unwrap();
+        fs::write(
+            tmp.join("tools")
+                .join("power")
+                .join("acpi")
+                .join("include")
+                .join("generated.h"),
             "// gen",
         )
         .unwrap();
@@ -273,11 +320,23 @@ mod tests {
         .unwrap();
 
         let files = discover_files(&tmp, &["h"]);
-        let names: Vec<String> = files.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect();
 
-        assert!(names.iter().any(|p| p.ends_with("main.h")), "根 include/ 头文件应被收集（修复核心回归点）");
-        assert!(!names.iter().any(|p| p.ends_with("generated.h")), "tools/power/acpi/include 应被锚定规则排除");
-        assert!(!names.iter().any(|p| p.ends_with("big_regs.h")), ">5MB 大文件应被阈值跳过");
+        assert!(
+            names.iter().any(|p| p.ends_with("main.h")),
+            "根 include/ 头文件应被收集（修复核心回归点）"
+        );
+        assert!(
+            !names.iter().any(|p| p.ends_with("generated.h")),
+            "tools/power/acpi/include 应被锚定规则排除"
+        );
+        assert!(
+            !names.iter().any(|p| p.ends_with("big_regs.h")),
+            ">5MB 大文件应被阈值跳过"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -291,14 +350,34 @@ mod tests {
         fs::create_dir_all(tmp.join("intermediate").join("gen")).unwrap();
 
         fs::write(tmp.join("sub").join(".gitignore"), "intermediate/gen/\n").unwrap();
-        fs::write(tmp.join("sub").join("intermediate").join("gen").join("drop.c"), "int a;").unwrap();
-        fs::write(tmp.join("intermediate").join("gen").join("keep.c"), "int b;").unwrap();
+        fs::write(
+            tmp.join("sub")
+                .join("intermediate")
+                .join("gen")
+                .join("drop.c"),
+            "int a;",
+        )
+        .unwrap();
+        fs::write(
+            tmp.join("intermediate").join("gen").join("keep.c"),
+            "int b;",
+        )
+        .unwrap();
 
         let files = discover_files(&tmp, &["c"]);
-        let names: Vec<String> = files.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect();
 
-        assert!(!names.iter().any(|p| p.ends_with("drop.c")), "sub/intermediate/gen 应被 sub/.gitignore 排除");
-        assert!(names.iter().any(|p| p.ends_with("keep.c")), "根 intermediate/gen 与 sub 无关，应保留");
+        assert!(
+            !names.iter().any(|p| p.ends_with("drop.c")),
+            "sub/intermediate/gen 应被 sub/.gitignore 排除"
+        );
+        assert!(
+            names.iter().any(|p| p.ends_with("keep.c")),
+            "根 intermediate/gen 与 sub 无关，应保留"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -318,10 +397,19 @@ mod tests {
         fs::write(tmp.join("nested").join("my_build").join("gen.py"), "z=3").unwrap();
 
         let files = discover_files(&tmp, &["py"]);
-        let names: Vec<String> = files.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect();
 
-        assert!(names.iter().any(|p| p.ends_with("main.py")), "src/main.py should be found");
-        assert!(names.iter().filter(|p| p.ends_with("gen.py")).count() == 0, "root 规则任意层级 my_build 都应被排除");
+        assert!(
+            names.iter().any(|p| p.ends_with("main.py")),
+            "src/main.py should be found"
+        );
+        assert!(
+            names.iter().filter(|p| p.ends_with("gen.py")).count() == 0,
+            "root 规则任意层级 my_build 都应被排除"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -344,12 +432,27 @@ mod tests {
         fs::write(tmp.join("gen").join("keep3.py"), "d=4").unwrap();
 
         let files = discover_files(&tmp, &["py"]);
-        let names: Vec<String> = files.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect();
 
-        assert!(!names.iter().any(|p| p.ends_with("drop.py")), "sub/gen 应被 sub/.gitignore 排除");
-        assert!(names.iter().any(|p| p.ends_with("keep.py")), "sub/src should be found");
-        assert!(names.iter().any(|p| p.ends_with("keep2.py")), "other/gen 与 sub 无关，应保留（修复回归点）");
-        assert!(names.iter().any(|p| p.ends_with("keep3.py")), "根 gen 与 sub 无关，应保留（修复回归点）");
+        assert!(
+            !names.iter().any(|p| p.ends_with("drop.py")),
+            "sub/gen 应被 sub/.gitignore 排除"
+        );
+        assert!(
+            names.iter().any(|p| p.ends_with("keep.py")),
+            "sub/src should be found"
+        );
+        assert!(
+            names.iter().any(|p| p.ends_with("keep2.py")),
+            "other/gen 与 sub 无关，应保留（修复回归点）"
+        );
+        assert!(
+            names.iter().any(|p| p.ends_with("keep3.py")),
+            "根 gen 与 sub 无关，应保留（修复回归点）"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -368,12 +471,21 @@ mod tests {
         fs::write(tmp.join("README.md"), "doc").unwrap();
 
         let files = discover_files(&tmp, &["py"]);
-        let names: Vec<String> = files.iter().map(|p| p.file_name().unwrap().to_str().unwrap().to_string()).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
 
         assert!(names.contains(&"main.py".to_string()));
         assert!(names.contains(&"util.py".to_string()));
-        assert!(!names.contains(&"cache.pyc".to_string()), "__pycache__ should be excluded");
-        assert!(!names.contains(&"README.md".to_string()), "non-py files should be excluded");
+        assert!(
+            !names.contains(&"cache.pyc".to_string()),
+            "__pycache__ should be excluded"
+        );
+        assert!(
+            !names.contains(&"README.md".to_string()),
+            "non-py files should be excluded"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -402,10 +514,19 @@ mod tests {
         fs::write(tmp.join("my_build").join("gen.py"), "y=2").unwrap();
 
         let files = discover_files(&tmp, &["py"]);
-        let names: Vec<String> = files.iter().map(|p| p.file_name().unwrap().to_str().unwrap().to_string()).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
 
-        assert!(names.contains(&"main.py".to_string()), "src/main.py should be found");
-        assert!(!names.contains(&"gen.py".to_string()), "my_build/ should be excluded by .gitignore");
+        assert!(
+            names.contains(&"main.py".to_string()),
+            "src/main.py should be found"
+        );
+        assert!(
+            !names.contains(&"gen.py".to_string()),
+            "my_build/ should be excluded by .gitignore"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -419,13 +540,26 @@ mod tests {
 
         fs::write(tmp.join("frontend").join(".gitignore"), "dist/\n").unwrap();
         fs::write(tmp.join("frontend").join("src").join("app.ts"), "// ts").unwrap();
-        fs::write(tmp.join("frontend").join("dist").join("bundle.js"), "// built").unwrap();
+        fs::write(
+            tmp.join("frontend").join("dist").join("bundle.js"),
+            "// built",
+        )
+        .unwrap();
 
         let files = discover_files(&tmp, &["ts", "js"]);
-        let names: Vec<String> = files.iter().map(|p| p.file_name().unwrap().to_str().unwrap().to_string()).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
 
-        assert!(names.contains(&"app.ts".to_string()), "src/app.ts should be found");
-        assert!(!names.contains(&"bundle.js".to_string()), "dist/ should be excluded by nested .gitignore");
+        assert!(
+            names.contains(&"app.ts".to_string()),
+            "src/app.ts should be found"
+        );
+        assert!(
+            !names.contains(&"bundle.js".to_string()),
+            "dist/ should be excluded by nested .gitignore"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -447,12 +581,27 @@ mod tests {
         fs::write(tmp.join("Thumbs.db").join("data.py"), "w=4").unwrap();
 
         let files = discover_files(&tmp, &["py"]);
-        let names: Vec<String> = files.iter().map(|p| p.file_name().unwrap().to_str().unwrap().to_string()).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
 
-        assert!(names.contains(&"main.py".to_string()), "src/main.py should be found");
-        assert!(!names.contains(&"sub.py".to_string()), "llama.cpp/ 应被 .gitignore 排除（名字含点但有尾部 /）");
-        assert!(!names.contains(&"gui.py".to_string()), "my.app/ 应被 .gitignore 排除（名字含点但有尾部 /）");
-        assert!(names.contains(&"data.py".to_string()), "Thumbs.db 无尾部 / 视为文件模式，同名目录不应被排除");
+        assert!(
+            names.contains(&"main.py".to_string()),
+            "src/main.py should be found"
+        );
+        assert!(
+            !names.contains(&"sub.py".to_string()),
+            "llama.cpp/ 应被 .gitignore 排除（名字含点但有尾部 /）"
+        );
+        assert!(
+            !names.contains(&"gui.py".to_string()),
+            "my.app/ 应被 .gitignore 排除（名字含点但有尾部 /）"
+        );
+        assert!(
+            names.contains(&"data.py".to_string()),
+            "Thumbs.db 无尾部 / 视为文件模式，同名目录不应被排除"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -470,24 +619,40 @@ mod tests {
         fs::create_dir_all(tmp.join("src")).unwrap();
 
         fs::write(
-            tmp.join(".venv-lme").join("Lib").join("site-packages").join("pip.py"),
+            tmp.join(".venv-lme")
+                .join("Lib")
+                .join("site-packages")
+                .join("pip.py"),
             "import os\n",
         )
         .unwrap();
         fs::write(tmp.join("src").join("main.py"), "x=1\n").unwrap();
 
         let files = discover_files(&tmp, &["py"]);
-        let names: Vec<String> = files.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
-        assert!(names.iter().any(|p| p.ends_with("src/main.py")), "src/main.py should be found");
-        assert!(names.iter().all(|p| !p.contains(".venv-lme")), ".venv-lme must be excluded");
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect();
+        assert!(
+            names.iter().any(|p| p.ends_with("src/main.py")),
+            "src/main.py should be found"
+        );
+        assert!(
+            names.iter().all(|p| !p.contains(".venv-lme")),
+            ".venv-lme must be excluded"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn test_is_ignored_path_windows_backslash() {
-        assert!(is_ignored_path("D:\\projects\\myapp\\.hologram\\baseline.json"));
-        assert!(is_ignored_path("D:\\projects\\myapp\\node_modules\\express\\index.js"));
+        assert!(is_ignored_path(
+            "D:\\projects\\myapp\\.hologram\\baseline.json"
+        ));
+        assert!(is_ignored_path(
+            "D:\\projects\\myapp\\node_modules\\express\\index.js"
+        ));
         assert!(!is_ignored_path("D:\\projects\\myapp\\src\\main.rs"));
     }
 }

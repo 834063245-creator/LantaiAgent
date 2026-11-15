@@ -83,8 +83,7 @@ fn compile_pattern(pattern: &str) -> Result<Regex, String> {
         || pattern.contains('{');
 
     if looks_like_regex {
-        return Regex::new(pattern)
-            .map_err(|e| format!("Invalid regex '{}': {}", pattern, e));
+        return Regex::new(pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e));
     }
 
     // Glob → 正则转换
@@ -156,17 +155,16 @@ fn parse_rules(rules_json: &serde_json::Value) -> Result<Vec<PolicyRule>, String
         let source_re = compile_pattern(source_pattern)?;
         let target_re = compile_pattern(target_pattern)?;
 
-        let edge_kinds: Vec<EdgeKind> = if let Some(kinds) =
-            rule.get("edge_kinds").and_then(|v| v.as_array())
-        {
-            kinds
-                .iter()
-                .filter_map(|k| k.as_str())
-                .filter_map(EdgeKind::from_str)
-                .collect()
-        } else {
-            vec![EdgeKind::Imports] // 默认：仅检查 imports
-        };
+        let edge_kinds: Vec<EdgeKind> =
+            if let Some(kinds) = rule.get("edge_kinds").and_then(|v| v.as_array()) {
+                kinds
+                    .iter()
+                    .filter_map(|k| k.as_str())
+                    .filter_map(EdgeKind::from_str)
+                    .collect()
+            } else {
+                vec![EdgeKind::Imports] // 默认：仅检查 imports
+            };
 
         if edge_kinds.is_empty() {
             return Err(format!(
@@ -322,10 +320,7 @@ mod tests {
     fn test_extract_file_windows() {
         assert_eq!(extract_file("C:\\src\\main.rs:42"), "C:\\src\\main.rs");
         assert_eq!(extract_file("D:\\project\\foo.rs"), "D:\\project\\foo.rs");
-        assert_eq!(
-            extract_file("C:\\a\\b.py:999"),
-            "C:\\a\\b.py"
-        );
+        assert_eq!(extract_file("C:\\a\\b.py:999"), "C:\\a\\b.py");
     }
 
     #[test]
@@ -369,8 +364,18 @@ mod tests {
         let mut idx = MemoryIndex::new();
 
         // 同一模块内的两个文件 — 无跨模块边
-        idx.insert_node(make_node("n1", "fn_a", NodeKind::Function, "modules/foo/api.py"));
-        idx.insert_node(make_node("n2", "fn_b", NodeKind::Function, "modules/foo/utils.py"));
+        idx.insert_node(make_node(
+            "n1",
+            "fn_a",
+            NodeKind::Function,
+            "modules/foo/api.py",
+        ));
+        idx.insert_node(make_node(
+            "n2",
+            "fn_b",
+            NodeKind::Function,
+            "modules/foo/utils.py",
+        ));
         idx.upsert_edge("n1", "n2", EdgeKind::Imports, 1, None);
 
         let rules = serde_json::json!([{
@@ -392,8 +397,18 @@ mod tests {
     fn test_policy_check_violation_found() {
         let mut idx = MemoryIndex::new();
 
-        idx.insert_node(make_node("n1", "fn_a", NodeKind::Function, "modules/foo/api.py"));
-        idx.insert_node(make_node("n2", "fn_b", NodeKind::Function, "modules/bar/internal.py"));
+        idx.insert_node(make_node(
+            "n1",
+            "fn_a",
+            NodeKind::Function,
+            "modules/foo/api.py",
+        ));
+        idx.insert_node(make_node(
+            "n2",
+            "fn_b",
+            NodeKind::Function,
+            "modules/bar/internal.py",
+        ));
         idx.upsert_edge("n1", "n2", EdgeKind::Imports, 1, None);
 
         let rules = serde_json::json!([{
@@ -419,11 +434,31 @@ mod tests {
         let mut idx = MemoryIndex::new();
 
         // 同一源文件中的多个节点
-        idx.insert_node(make_node("n1a", "fn_a", NodeKind::Function, "modules/foo/api.py"));
-        idx.insert_node(make_node("n1b", "fn_b", NodeKind::Function, "modules/foo/api.py"));
+        idx.insert_node(make_node(
+            "n1a",
+            "fn_a",
+            NodeKind::Function,
+            "modules/foo/api.py",
+        ));
+        idx.insert_node(make_node(
+            "n1b",
+            "fn_b",
+            NodeKind::Function,
+            "modules/foo/api.py",
+        ));
         // 同一目标文件中的多个节点
-        idx.insert_node(make_node("n2a", "fn_x", NodeKind::Function, "modules/bar/lib.py"));
-        idx.insert_node(make_node("n2b", "fn_y", NodeKind::Function, "modules/bar/lib.py"));
+        idx.insert_node(make_node(
+            "n2a",
+            "fn_x",
+            NodeKind::Function,
+            "modules/bar/lib.py",
+        ));
+        idx.insert_node(make_node(
+            "n2b",
+            "fn_y",
+            NodeKind::Function,
+            "modules/bar/lib.py",
+        ));
 
         // 同一文件对间的多条边 → 应合并为 1 条违规
         idx.upsert_edge("n1a", "n2a", EdgeKind::Imports, 1, None);
@@ -439,15 +474,30 @@ mod tests {
 
         let result = policy_check_from_index(&idx, &rules);
         let vs = result["violations"].as_array().unwrap();
-        assert_eq!(vs.len(), 1, "should dedup to 1 violation per file pair, got {:?}", vs);
+        assert_eq!(
+            vs.len(),
+            1,
+            "should dedup to 1 violation per file pair, got {:?}",
+            vs
+        );
     }
 
     #[test]
     fn test_policy_check_multiple_edge_kinds() {
         let mut idx = MemoryIndex::new();
 
-        idx.insert_node(make_node("n1", "fn_a", NodeKind::Function, "modules/foo/api.py"));
-        idx.insert_node(make_node("n2", "fn_b", NodeKind::Function, "modules/bar/internal.py"));
+        idx.insert_node(make_node(
+            "n1",
+            "fn_a",
+            NodeKind::Function,
+            "modules/foo/api.py",
+        ));
+        idx.insert_node(make_node(
+            "n2",
+            "fn_b",
+            NodeKind::Function,
+            "modules/bar/internal.py",
+        ));
         // Imports 边
         idx.upsert_edge("n1", "n2", EdgeKind::Imports, 1, None);
 
@@ -469,8 +519,18 @@ mod tests {
     fn test_policy_check_ignores_wrong_edge_kind() {
         let mut idx = MemoryIndex::new();
 
-        idx.insert_node(make_node("n1", "fn_a", NodeKind::Function, "modules/foo/api.py"));
-        idx.insert_node(make_node("n2", "fn_b", NodeKind::Function, "modules/bar/internal.py"));
+        idx.insert_node(make_node(
+            "n1",
+            "fn_a",
+            NodeKind::Function,
+            "modules/foo/api.py",
+        ));
+        idx.insert_node(make_node(
+            "n2",
+            "fn_b",
+            NodeKind::Function,
+            "modules/bar/internal.py",
+        ));
         // Calls 边，但规则仅检查 imports
         idx.upsert_edge("n1", "n2", EdgeKind::Calls, 1, None);
 
@@ -483,7 +543,10 @@ mod tests {
         }]);
 
         let result = policy_check_from_index(&idx, &rules);
-        assert_eq!(result["passed"], true, "calls edge should not trigger imports-only rule");
+        assert_eq!(
+            result["passed"], true,
+            "calls edge should not trigger imports-only rule"
+        );
     }
 
     #[test]
@@ -491,13 +554,33 @@ mod tests {
         let mut idx = MemoryIndex::new();
 
         // 规则 1 违规：foo/backend → bar/backend（跨模块）
-        idx.insert_node(make_node("n1", "fn_a", NodeKind::Function, "modules/foo/backend/api.py"));
-        idx.insert_node(make_node("n2", "fn_b", NodeKind::Function, "modules/bar/backend/internal.py"));
+        idx.insert_node(make_node(
+            "n1",
+            "fn_a",
+            NodeKind::Function,
+            "modules/foo/backend/api.py",
+        ));
+        idx.insert_node(make_node(
+            "n2",
+            "fn_b",
+            NodeKind::Function,
+            "modules/bar/backend/internal.py",
+        ));
         idx.upsert_edge("n1", "n2", EdgeKind::Imports, 1, None);
 
         // 规则 2 应通过：n3→n4 为同模块，不触及框架
-        idx.insert_node(make_node("n3", "fn_c", NodeKind::Function, "modules/foo/api.py"));
-        idx.insert_node(make_node("n4", "fn_d", NodeKind::Function, "modules/foo/utils.py"));
+        idx.insert_node(make_node(
+            "n3",
+            "fn_c",
+            NodeKind::Function,
+            "modules/foo/api.py",
+        ));
+        idx.insert_node(make_node(
+            "n4",
+            "fn_d",
+            NodeKind::Function,
+            "modules/foo/utils.py",
+        ));
         idx.upsert_edge("n3", "n4", EdgeKind::Imports, 1, None);
 
         let rules = serde_json::json!([
@@ -549,6 +632,9 @@ mod tests {
             "message": "bad"
         }]);
         let result = policy_check_from_index(&idx, &rules);
-        assert!(result["error"].as_str().is_some(), "should return error for invalid pattern");
+        assert!(
+            result["error"].as_str().is_some(),
+            "should return error for invalid pattern"
+        );
     }
 }

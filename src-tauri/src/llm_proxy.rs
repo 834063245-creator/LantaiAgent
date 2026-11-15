@@ -202,7 +202,10 @@ async fn run_server() -> u16 {
             Err(e) if attempt < 7 => {
                 // ⚠ 这里在**启动期**（main.rs setup）——tracing 尚无 subscriber，
                 //   故实际落 boot.log（见 net_log 的出口选择注）。
-                net_log!(warn, "[llm_proxy] bind 127.0.0.1:{port} 失败: {e}，尝试下一端口");
+                net_log!(
+                    warn,
+                    "[llm_proxy] bind 127.0.0.1:{port} 失败: {e}，尝试下一端口"
+                );
             }
             Err(e) => {
                 net_log!(error, "[llm_proxy] 无可用端口: {e}");
@@ -222,7 +225,11 @@ fn loopback_bind_addr(port: u16) -> SocketAddr {
 /// 服务监听器上的连接（常驻 accept 循环，200ms 间隔轮询停机标志）。
 /// 供生产 run_server 与集成测试复用；测试可传入私有标志避免全局串扰。
 /// pub(crate)：plugin_assets 的 HTTP 端到端测试复用同一监听器。
-pub(crate) async fn serve_listener(listener: &TcpListener, client: reqwest::Client, shutdown: &AtomicBool) {
+pub(crate) async fn serve_listener(
+    listener: &TcpListener,
+    client: reqwest::Client,
+    shutdown: &AtomicBool,
+) {
     loop {
         if shutdown.load(Ordering::SeqCst) {
             net_log!(info, "[llm_proxy] shutdown flag set, exiting accept loop");
@@ -248,12 +255,16 @@ pub(crate) async fn serve_listener(listener: &TcpListener, client: reqwest::Clie
 }
 
 /// 转发真实 LLM 调用。
-async fn handle(client: reqwest::Client, req: Request<Incoming>) -> Result<Response<BoxBody>, Infallible> {
+async fn handle(
+    client: reqwest::Client,
+    req: Request<Incoming>,
+) -> Result<Response<BoxBody>, Infallible> {
     let resp = handle_inner(client, req).await;
     Ok(resp)
 }
 
-pub(crate) type BoxBody = http_body_util::combinators::BoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>;
+pub(crate) type BoxBody =
+    http_body_util::combinators::BoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 
 async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Response<BoxBody> {
     // CORS 预检
@@ -261,7 +272,10 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
         return cors_response(StatusCode::NO_CONTENT, Bytes::new());
     }
     if req.method() != Method::POST && req.method() != Method::GET {
-        return err_response(StatusCode::METHOD_NOT_ALLOWED, "proxy: 仅支持 GET / POST / OPTIONS");
+        return err_response(
+            StatusCode::METHOD_NOT_ALLOWED,
+            "proxy: 仅支持 GET / POST / OPTIONS",
+        );
     }
     // 插件静态资源通道（WO-S0B）：GET /plugins/* 由 plugin_assets 模块服务。
     // 必须在 x-hologram-target 检查之前——静态请求不带该头（WO-S0A spike 立此规矩；
@@ -284,9 +298,18 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
     }
     // 先在消费 body 前取出 method / target / 业务头（into_body 会 move req）
     let method = req.method().clone();
-    let target = match req.headers().get("x-hologram-target").and_then(|v| v.to_str().ok()) {
+    let target = match req
+        .headers()
+        .get("x-hologram-target")
+        .and_then(|v| v.to_str().ok())
+    {
         Some(t) if validate_target(t) => t.to_string(),
-        _ => return err_response(StatusCode::BAD_REQUEST, "proxy: 缺少或非法 x-hologram-target"),
+        _ => {
+            return err_response(
+                StatusCode::BAD_REQUEST,
+                "proxy: 缺少或非法 x-hologram-target",
+            )
+        }
     };
     let passthrough_headers: Vec<(String, String)> = req
         .headers()
@@ -296,7 +319,10 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
             match name.as_str() {
                 "x-hologram-target" | "host" | "content-length" | "connection" | "keep-alive"
                 | "transfer-encoding" | "upgrade" | "proxy-connection" | "te" => None,
-                _ => v.to_str().ok().map(|s| (k.as_str().to_string(), s.to_string())),
+                _ => v
+                    .to_str()
+                    .ok()
+                    .map(|s| (k.as_str().to_string(), s.to_string())),
             }
         })
         .collect();
@@ -315,7 +341,8 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
     }
 
     // 透传内容类型 / 授权等业务头（跳过 hop-by-hop + 我们的目标头）
-    let method = reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET);
+    let method =
+        reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET);
     let mut builder = client.request(method.clone(), &target);
     for (k, v) in passthrough_headers {
         builder = builder.header(k, v);
@@ -339,7 +366,12 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
                 let name = k.as_str().to_ascii_lowercase();
                 if matches!(
                     name.as_str(),
-                    "connection" | "keep-alive" | "transfer-encoding" | "upgrade" | "proxy-connection" | "te"
+                    "connection"
+                        | "keep-alive"
+                        | "transfer-encoding"
+                        | "upgrade"
+                        | "proxy-connection"
+                        | "te"
                 ) {
                     continue;
                 }
@@ -372,11 +404,10 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
             // 而这条此前完全不可见（前端只看到 fetch 抛错）。
             let tgt = target_host_port(&target);
             let body = StreamBody::new(upstream.bytes_stream().map(move |r| {
-                r.map(|bytes| hyper::body::Frame::data(bytes))
-                    .map_err(|e| {
-                        net_log!(warn, "{}", upstream_error_line(&tgt, &e.to_string()));
-                        Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-                    })
+                r.map(|bytes| hyper::body::Frame::data(bytes)).map_err(|e| {
+                    net_log!(warn, "{}", upstream_error_line(&tgt, &e.to_string()));
+                    Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+                })
             }));
             // 显式调 BodyExt::boxed —— StreamBody 也实现了 Stream，`.boxed()` 会被
             // StreamExt::boxed 劫持（返回 Pin<Box<dyn Stream>>），必须指名 Body 装箱。
@@ -387,7 +418,10 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
             // 出网失败留痕（批 3）：连不上 / 超时 / DNS 错——原文经 scrub_url_query
             // 削掉 query（reqwest 的 Display 会带上整条 URL，可能含 `?api-key=`）。
             net_log!(error, "{}", upstream_error_line(&target, &e.to_string()));
-            err_response(StatusCode::BAD_GATEWAY, &format!("proxy: 目标请求失败: {e}"))
+            err_response(
+                StatusCode::BAD_GATEWAY,
+                &format!("proxy: 目标请求失败: {e}"),
+            )
         }
     }
 }
@@ -409,7 +443,12 @@ fn cors_response(status: StatusCode, body: Bytes) -> Response<BoxBody> {
         .header("access-control-allow-private-network", "true")
         .header("access-control-expose-headers", "x-hologram-proxy-error")
         .body(full_boxed(body))
-        .unwrap_or_else(|_| err_response(StatusCode::INTERNAL_SERVER_ERROR, "proxy: 构造 CORS 响应失败"))
+        .unwrap_or_else(|_| {
+            err_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "proxy: 构造 CORS 响应失败",
+            )
+        })
 }
 
 /// 把 `Full<Bytes>`（Infallible 错误）装箱为统一 BoxBody。
@@ -446,8 +485,12 @@ mod tests {
 
     #[test]
     fn target_url_validation_accepts_http_https_and_localhost() {
-        assert!(validate_target("https://api.openai.com/v1/chat/completions"));
-        assert!(validate_target("http://localhost:11434/v1/chat/completions"));
+        assert!(validate_target(
+            "https://api.openai.com/v1/chat/completions"
+        ));
+        assert!(validate_target(
+            "http://localhost:11434/v1/chat/completions"
+        ));
         assert!(validate_target("http://127.0.0.1:8080/v1"));
         assert!(!validate_target("file:///etc/passwd"));
         assert!(!validate_target("data:text/plain,hi"));
@@ -465,9 +508,18 @@ mod tests {
             target_host_port("https://api.example.com/v1/chat/completions?api-key=SK-LEAK0123"),
             "api.example.com"
         );
-        assert_eq!(target_host_port("http://127.0.0.1:8080/v1"), "127.0.0.1:8080");
-        assert_eq!(target_host_port("http://localhost:11434/v1/chat"), "localhost:11434");
-        assert_eq!(target_host_port("https://user:pass@api.example.com/v1"), "api.example.com");
+        assert_eq!(
+            target_host_port("http://127.0.0.1:8080/v1"),
+            "127.0.0.1:8080"
+        );
+        assert_eq!(
+            target_host_port("http://localhost:11434/v1/chat"),
+            "localhost:11434"
+        );
+        assert_eq!(
+            target_host_port("https://user:pass@api.example.com/v1"),
+            "api.example.com"
+        );
         assert_eq!(target_host_port("not a url"), "<unparsable>");
     }
 
@@ -477,8 +529,14 @@ mod tests {
     fn scrub_url_query_never_leaks_credentials_in_query() {
         let raw = "error sending request for url (https://api.example.com/v1?api-key=SK-LEAK0123): connection refused";
         let out = scrub_url_query(raw);
-        assert!(!out.contains("SK-LEAK0123"), "query 里的凭据不得落盘: {out}");
-        assert!(out.contains("https://api.example.com/v1?<redacted>"), "URL 主体与后续文本要保留: {out}");
+        assert!(
+            !out.contains("SK-LEAK0123"),
+            "query 里的凭据不得落盘: {out}"
+        );
+        assert!(
+            out.contains("https://api.example.com/v1?<redacted>"),
+            "URL 主体与后续文本要保留: {out}"
+        );
         assert!(out.contains("connection refused"));
         // 无 URL / 无 query 的文本一字不改
         assert_eq!(scrub_url_query("connection refused"), "connection refused");
@@ -497,13 +555,22 @@ mod tests {
             "error sending request for url (http://127.0.0.1:8080/v1/chat?api-key=SK-LEAK0123)",
         );
         assert!(line.contains("target=127.0.0.1:8080"), "{line}");
-        assert!(!line.contains("SK-LEAK0123"), "query 里的凭据不得落盘: {line}");
+        assert!(
+            !line.contains("SK-LEAK0123"),
+            "query 里的凭据不得落盘: {line}"
+        );
         assert!(line.contains("?<redacted>"), "{line}");
 
         let status_line = upstream_status_line("https://api.deepseek.com/v1/chat/completions", 401);
-        assert!(status_line.contains("target=api.deepseek.com"), "{status_line}");
+        assert!(
+            status_line.contains("target=api.deepseek.com"),
+            "{status_line}"
+        );
         assert!(status_line.contains("status=401"), "{status_line}");
-        assert!(!status_line.contains("/v1/chat"), "target 字段不落路径: {status_line}");
+        assert!(
+            !status_line.contains("/v1/chat"),
+            "target 字段不落路径: {status_line}"
+        );
     }
 
     /// 端到端：本地代理把上游 SSE 流式透传给调用方（模拟 provider 流式对话）。
@@ -667,15 +734,21 @@ mod tests {
         let resp = err_response(StatusCode::BAD_GATEWAY, "proxy: boom");
         assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
         assert_eq!(
-            resp.headers().get("x-hologram-proxy-error").and_then(|v| v.to_str().ok()),
+            resp.headers()
+                .get("x-hologram-proxy-error")
+                .and_then(|v| v.to_str().ok()),
             Some("1")
         );
         assert_eq!(
-            resp.headers().get("access-control-allow-private-network").and_then(|v| v.to_str().ok()),
+            resp.headers()
+                .get("access-control-allow-private-network")
+                .and_then(|v| v.to_str().ok()),
             Some("true")
         );
         assert_eq!(
-            resp.headers().get("access-control-expose-headers").and_then(|v| v.to_str().ok()),
+            resp.headers()
+                .get("access-control-expose-headers")
+                .and_then(|v| v.to_str().ok()),
             Some("x-hologram-proxy-error")
         );
     }
@@ -711,7 +784,10 @@ mod tests {
     #[test]
     fn loopback_bind_addr_pins_plugin_channel_to_127_0_0_1() {
         for port in [14570u16, 14571, 0] {
-            assert!(loopback_bind_addr(port).ip().is_loopback(), "插件资产通道必须只绑 loopback");
+            assert!(
+                loopback_bind_addr(port).ip().is_loopback(),
+                "插件资产通道必须只绑 loopback"
+            );
         }
     }
 }

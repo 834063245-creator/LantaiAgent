@@ -41,7 +41,10 @@ impl CompositionWatcher {
         let running = std::sync::Arc::new(AtomicBool::new(true));
         let flag = running.clone();
         let thread = std::thread::spawn(move || watch_loop(app_handle, flag));
-        Self { running, thread: Some(thread) }
+        Self {
+            running,
+            thread: Some(thread),
+        }
     }
 
     /// 停止 watcher（幂等；2s 优雅退出后分离——workspace watcher 同款）。
@@ -100,7 +103,11 @@ pub(crate) struct WatchState {
 
 impl WatchState {
     pub(crate) fn new(initial_mtime: Option<u64>) -> Self {
-        Self { last_mtime: initial_mtime, pending: false, last_change_at: None }
+        Self {
+            last_mtime: initial_mtime,
+            pending: false,
+            last_change_at: None,
+        }
     }
 
     /// 一次轮询的转移。返回 Some(reason) = 本轮应发射变更事件
@@ -123,7 +130,11 @@ impl WatchState {
         if self.pending && settled {
             self.pending = false;
             self.last_change_at = None;
-            Some(if current.is_some() { "modified" } else { "removed" })
+            Some(if current.is_some() {
+                "modified"
+            } else {
+                "removed"
+            })
         } else {
             None
         }
@@ -140,7 +151,10 @@ fn root_patch_path() -> PathBuf {
 pub(crate) fn file_mtime(path: &std::path::Path) -> Option<u64> {
     let meta = std::fs::metadata(path).ok()?;
     let modified = meta.modified().ok()?;
-    modified.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())
+    modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
 }
 
 #[cfg(test)]
@@ -177,7 +191,8 @@ mod tests {
     /// root_patch_path：经 HOLOGRAM_COMPOSITION_ROOT 测试隔离生效。
     #[test]
     fn root_patch_path_respects_env() {
-        let tmp = std::env::temp_dir().join(format!("hologram_comp_watch_path_{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("hologram_comp_watch_path_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("HOLOGRAM_COMPOSITION_ROOT", &tmp);
@@ -196,7 +211,14 @@ mod tests {
         let mut s = WatchState::new(Some(100));
         let t0 = std::time::Instant::now();
         for tick in 0..5 {
-            assert_eq!(s.poll(Some(100), t0 + Duration::from_secs(tick), Duration::from_secs(1)), None);
+            assert_eq!(
+                s.poll(
+                    Some(100),
+                    t0 + Duration::from_secs(tick),
+                    Duration::from_secs(1)
+                ),
+                None
+            );
         }
     }
 
@@ -206,16 +228,38 @@ mod tests {
         let mut s = WatchState::new(Some(100));
         let t0 = std::time::Instant::now();
         // t=0：变化发生
-        assert_eq!(s.poll(Some(200), t0, Duration::from_secs(1)), None, "变化当轮不发射");
+        assert_eq!(
+            s.poll(Some(200), t0, Duration::from_secs(1)),
+            None,
+            "变化当轮不发射"
+        );
         // t=0.5s：窗口内（编辑器连发的第二次写——mtime 未再变）
-        assert_eq!(s.poll(Some(200), t0 + Duration::from_millis(500), Duration::from_secs(1)), None);
+        assert_eq!(
+            s.poll(
+                Some(200),
+                t0 + Duration::from_millis(500),
+                Duration::from_secs(1)
+            ),
+            None
+        );
         // t=1.1s：静默期满 → 发射 modified
         assert_eq!(
-            s.poll(Some(200), t0 + Duration::from_millis(1100), Duration::from_secs(1)),
+            s.poll(
+                Some(200),
+                t0 + Duration::from_millis(1100),
+                Duration::from_secs(1)
+            ),
             Some("modified")
         );
         // t=2s：无新变化 → 不再重复发射
-        assert_eq!(s.poll(Some(200), t0 + Duration::from_secs(2), Duration::from_secs(1)), None);
+        assert_eq!(
+            s.poll(
+                Some(200),
+                t0 + Duration::from_secs(2),
+                Duration::from_secs(1)
+            ),
+            None
+        );
     }
 
     /// 删除：mtime → None 也是变化 → 静默后发射 removed。
@@ -224,7 +268,14 @@ mod tests {
         let mut s = WatchState::new(Some(100));
         let t0 = std::time::Instant::now();
         assert_eq!(s.poll(None, t0, Duration::from_secs(1)), None);
-        assert_eq!(s.poll(None, t0 + Duration::from_millis(1100), Duration::from_secs(1)), Some("removed"));
+        assert_eq!(
+            s.poll(
+                None,
+                t0 + Duration::from_millis(1100),
+                Duration::from_secs(1)
+            ),
+            Some("removed")
+        );
     }
 
     /// 新建：None → Some 也是变化 → modified。
@@ -233,7 +284,14 @@ mod tests {
         let mut s = WatchState::new(None);
         let t0 = std::time::Instant::now();
         assert_eq!(s.poll(Some(50), t0, Duration::from_secs(1)), None);
-        assert_eq!(s.poll(Some(50), t0 + Duration::from_millis(1100), Duration::from_secs(1)), Some("modified"));
+        assert_eq!(
+            s.poll(
+                Some(50),
+                t0 + Duration::from_millis(1100),
+                Duration::from_secs(1)
+            ),
+            Some("modified")
+        );
     }
 
     /// 连续变化重置去抖窗口（编辑器保存风暴 → 只在最终静默后发一次）。
@@ -243,10 +301,32 @@ mod tests {
         let t0 = std::time::Instant::now();
         // t=0 变化 → t=0.9 再变（窗口重置）→ t=1.5 仍在扩展后的窗口内
         assert_eq!(s.poll(Some(200), t0, Duration::from_secs(1)), None);
-        assert_eq!(s.poll(Some(300), t0 + Duration::from_millis(900), Duration::from_secs(1)), None);
-        assert_eq!(s.poll(Some(300), t0 + Duration::from_millis(1500), Duration::from_secs(1)), None, "窗口被重置——1.5s 仍不发射");
+        assert_eq!(
+            s.poll(
+                Some(300),
+                t0 + Duration::from_millis(900),
+                Duration::from_secs(1)
+            ),
+            None
+        );
+        assert_eq!(
+            s.poll(
+                Some(300),
+                t0 + Duration::from_millis(1500),
+                Duration::from_secs(1)
+            ),
+            None,
+            "窗口被重置——1.5s 仍不发射"
+        );
         // t=2.0：距最后变化 1.1s → 发射
-        assert_eq!(s.poll(Some(300), t0 + Duration::from_millis(2000), Duration::from_secs(1)), Some("modified"));
+        assert_eq!(
+            s.poll(
+                Some(300),
+                t0 + Duration::from_millis(2000),
+                Duration::from_secs(1)
+            ),
+            Some("modified")
+        );
     }
 
     /// 发射后回到静默：后续同 mtime 轮询零发射；再次变化重新走全流程。
@@ -255,13 +335,41 @@ mod tests {
         let mut s = WatchState::new(Some(100));
         let t0 = std::time::Instant::now();
         assert_eq!(s.poll(Some(200), t0, Duration::from_secs(1)), None);
-        assert_eq!(s.poll(Some(200), t0 + Duration::from_millis(1100), Duration::from_secs(1)), Some("modified"));
+        assert_eq!(
+            s.poll(
+                Some(200),
+                t0 + Duration::from_millis(1100),
+                Duration::from_secs(1)
+            ),
+            Some("modified")
+        );
         // 静默期：同 mtime 不发射
         for tick in 2..4 {
-            assert_eq!(s.poll(Some(200), t0 + Duration::from_secs(tick), Duration::from_secs(1)), None);
+            assert_eq!(
+                s.poll(
+                    Some(200),
+                    t0 + Duration::from_secs(tick),
+                    Duration::from_secs(1)
+                ),
+                None
+            );
         }
         // 新变化 → 全流程重走
-        assert_eq!(s.poll(Some(300), t0 + Duration::from_secs(4), Duration::from_secs(1)), None);
-        assert_eq!(s.poll(Some(300), t0 + Duration::from_millis(5100), Duration::from_secs(1)), Some("modified"));
+        assert_eq!(
+            s.poll(
+                Some(300),
+                t0 + Duration::from_secs(4),
+                Duration::from_secs(1)
+            ),
+            None
+        );
+        assert_eq!(
+            s.poll(
+                Some(300),
+                t0 + Duration::from_millis(5100),
+                Duration::from_secs(1)
+            ),
+            Some("modified")
+        );
     }
 }

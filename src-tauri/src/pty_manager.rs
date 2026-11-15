@@ -4,10 +4,13 @@
 // PTY 管理器 — 为集成终端提供伪终端会话。
 // 使用 portable-pty (WezTerm) 实现跨平台 ConPTY/pty 支持。
 
-use portable_pty::{CommandBuilder, PtySize, PtySystem, NativePtySystem};
+use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::{Arc, Mutex, atomic::{AtomicU32, Ordering}};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc, Mutex,
+};
 use tauri::{AppHandle, Emitter};
 
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
@@ -89,7 +92,11 @@ mod conhost_guard {
             entry.dw_size = std::mem::size_of::<PROCESSENTRY32W>() as u32;
             let mut ok = Process32FirstW(snap, &mut entry);
             while ok != 0 {
-                let name_end = entry.sz_exe_file.iter().position(|&c| c == 0).unwrap_or(260);
+                let name_end = entry
+                    .sz_exe_file
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(260);
                 let name = String::from_utf16_lossy(&entry.sz_exe_file[..name_end]);
                 if name.eq_ignore_ascii_case("conhost.exe") {
                     out.push((entry.th32_process_id, entry.th32_parent_process_id));
@@ -169,24 +176,38 @@ fn start_session(
     emit: impl Fn(u32, Vec<u8>) + Send + 'static,
 ) -> Result<(u32, u32), String> {
     let pty_system = NativePtySystem::default();
-    let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
+    let size = PtySize {
+        rows,
+        cols,
+        pixel_width: 0,
+        pixel_height: 0,
+    };
 
     #[cfg(windows)]
     let conhost_before = conhost_guard::snapshot();
 
-    let pair = pty_system.openpty(size)
+    let pair = pty_system
+        .openpty(size)
         .map_err(|e| format!("无法打开 PTY: {}", e))?;
 
     let cmd_str = shell.unwrap_or_else(|| {
-        #[cfg(windows)] { "cmd.exe".into() }
-        #[cfg(not(windows))] { std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into()) }
+        #[cfg(windows)]
+        {
+            "cmd.exe".into()
+        }
+        #[cfg(not(windows))]
+        {
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
+        }
     });
 
     let mut cmd = CommandBuilder::new(&cmd_str);
     cmd.cwd(&cwd);
     cmd.env("TERM", "xterm-256color");
 
-    let child = pair.slave.spawn_command(cmd)
+    let child = pair
+        .slave
+        .spawn_command(cmd)
         .map_err(|e| format!("无法启动 shell: {}", e))?;
     let pid = child.process_id().unwrap_or(0);
 
@@ -197,9 +218,13 @@ fn start_session(
     let conhost_pids: Vec<u32> = Vec::new();
 
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    let reader = pair.master.try_clone_reader()
+    let reader = pair
+        .master
+        .try_clone_reader()
         .map_err(|e| format!("无法获取 PTY reader: {}", e))?;
-    let writer = pair.master.take_writer()
+    let writer = pair
+        .master
+        .take_writer()
         .map_err(|e| format!("无法获取 PTY writer: {}", e))?;
 
     let session = PtySession {
@@ -245,7 +270,8 @@ pub async fn pty_write(session_id: u32, data: String) -> Result<(), String> {
     let map_ref = pty_sessions();
     let mut map = crate::utils::lock_or_recover(&map_ref);
     if let Some(s) = map.get_mut(&session_id) {
-        s.writer.write_all(data.as_bytes())
+        s.writer
+            .write_all(data.as_bytes())
             .map_err(|e| format!("PTY 写入失败: {}", e))?;
         s.writer.flush().ok();
     }
@@ -258,7 +284,13 @@ pub async fn pty_resize(session_id: u32, cols: u16, rows: u16) -> Result<(), Str
     let map_ref = pty_sessions();
     let mut map = crate::utils::lock_or_recover(&map_ref);
     if let Some(s) = map.get_mut(&session_id) {
-        s.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+        s.master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .map_err(|e| format!("PTY 调整大小失败: {}", e))?;
     }
     Ok(())
@@ -380,7 +412,10 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(200));
         }
-        assert!(!alive, "pty_kill 后子进程 PID {pid} 仍然存活——显式 kill 缺失");
+        assert!(
+            !alive,
+            "pty_kill 后子进程 PID {pid} 仍然存活——显式 kill 缺失"
+        );
     }
 
     /// 回归 2026-08-13：PTY 会话关闭后，其 ConPTY conhost 必须退出。

@@ -14,8 +14,8 @@ use serde_json::{json, Value};
 
 use crate::engine;
 use crate::engine::GRAMMAR_LOADER;
-use hologram_graph::{Edge, Graph, Node};
 use crate::pipeline::discovery::discover_files;
+use hologram_graph::{Edge, Graph, Node};
 use hologram_storage::MemoryIndex;
 
 // ═══════════════════════════════════════════════════════════════
@@ -313,7 +313,9 @@ impl DomainSpec {
         let mut properties = serde_json::Map::new();
         properties.insert("action".to_string(), Value::Object(action_prop));
         for a in self.actions {
-            let Some(schema) = find_schema(a.tool) else { continue };
+            let Some(schema) = find_schema(a.tool) else {
+                continue;
+            };
             for p in schema.params {
                 // 同名参数保留首个（类型一致性由 test_domain_param_types_consistent 钉住）；
                 // 其文档来自 ToolSchema——域层不重复维护第二份参数说明。
@@ -417,7 +419,8 @@ impl ToolRegistry {
                 continue;
             }
             // 默认面里未折叠的工具（= 写工具）以原名出现；已折叠的由域承载。
-            if ToolRegistry::DEFAULT_MCP_TOOLS.contains(&s.name) && domain_of_tool(s.name).is_none() {
+            if ToolRegistry::DEFAULT_MCP_TOOLS.contains(&s.name) && domain_of_tool(s.name).is_none()
+            {
                 list.push(s.mcp_value());
             }
         }
@@ -701,7 +704,6 @@ fn suggestions_for(name: &str) -> &'static [&'static str] {
 // 辅助函数
 // ═══════════════════════════════════════════════════════════════
 
-
 pub(crate) mod handlers;
 pub(crate) mod response;
 pub(crate) use response::ToolResponse;
@@ -827,13 +829,18 @@ pub(crate) fn resolve_in_graph(g: &Graph, node_id_or_name: &str) -> Option<Strin
     if g.get_node(node_id_or_name).is_some() {
         return Some(node_id_or_name.to_string());
     }
-    g.search_nodes(node_id_or_name).first().map(|n| n.id.as_str().to_owned())
+    g.search_nodes(node_id_or_name)
+        .first()
+        .map(|n| n.id.as_str().to_owned())
 }
 
 pub(crate) fn discover_source_files(root: &Path, limit: usize) -> Vec<PathBuf> {
     let exts: Vec<String> = GRAMMAR_LOADER.supported_extensions();
     let ext_strs: Vec<&str> = exts.iter().map(|s| s.as_str()).collect();
-    discover_files(root, &ext_strs).into_iter().take(limit).collect()
+    discover_files(root, &ext_strs)
+        .into_iter()
+        .take(limit)
+        .collect()
 }
 
 pub(crate) fn derive_comm_label(members: &[String], idx: &MemoryIndex) -> String {
@@ -892,7 +899,8 @@ pub(crate) fn edge_to_value(e: &Edge) -> Value {
 /// 进程外形态下壳经 MCP 调同一壳方法，本函数是引擎内单一消费源。
 pub fn graph_snapshot_value(g: &Graph, source_root: &str) -> Value {
     // BTreeMap：契约面确定性（HashMap 序列化序不稳定，字节契约）。
-    let mut kind_counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    let mut kind_counts: std::collections::BTreeMap<&str, usize> =
+        std::collections::BTreeMap::new();
     let mut files: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut community_sizes: std::collections::HashMap<usize, usize> =
         std::collections::HashMap::new();
@@ -970,7 +978,6 @@ pub fn file_nodes_value(g: &Graph, project_root: &str, want_file: &str) -> Value
 // ═══════════════════════════════════════════════════════════════
 // V1 处理器 —— 图查询
 // ═══════════════════════════════════════════════════════════════
-
 
 macro_rules! p {
     ($name:expr, $type:expr, $desc:expr) => {
@@ -1447,7 +1454,6 @@ fn all_schemas() -> &'static [ToolSchema] {
     ]
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1480,9 +1486,18 @@ mod tests {
         let tools = registry.tools_list();
         assert!(!tools.is_empty());
         for tool in &tools {
-            assert!(tool.get("name").and_then(|v| v.as_str()).is_some(), "every tool must have a name");
-            assert!(tool.get("description").and_then(|v| v.as_str()).is_some(), "every tool must have a description");
-            assert!(tool.get("inputSchema").is_some(), "every tool must have inputSchema");
+            assert!(
+                tool.get("name").and_then(|v| v.as_str()).is_some(),
+                "every tool must have a name"
+            );
+            assert!(
+                tool.get("description").and_then(|v| v.as_str()).is_some(),
+                "every tool must have a description"
+            );
+            assert!(
+                tool.get("inputSchema").is_some(),
+                "every tool must have inputSchema"
+            );
         }
     }
 
@@ -1491,7 +1506,10 @@ mod tests {
         let dummy_id = json!(1);
         let result = ToolRegistry::dispatch("nonexistent_tool", &json!({}), &dummy_id);
         // 降级响应仍是成功（JSON-RPC 中无 error 字段）
-        assert!(result.get("result").is_some(), "unknown tool should return degraded result, not error");
+        assert!(
+            result.get("result").is_some(),
+            "unknown tool should return degraded result, not error"
+        );
     }
 
     #[test]
@@ -1501,7 +1519,11 @@ mod tests {
         for schema in schemas {
             let args = json!({});
             let result = ToolRegistry::dispatch(schema.name, &args, &dummy_id);
-            assert!(result.is_object(), "dispatch({}) must return a JSON object", schema.name);
+            assert!(
+                result.is_object(),
+                "dispatch({}) must return a JSON object",
+                schema.name
+            );
         }
     }
 
@@ -1525,7 +1547,9 @@ mod tests {
                 "壳方法 {name} 不得进模型默认工具面"
             );
             let result = ToolRegistry::dispatch(name, &json!({}), &dummy_id);
-            let text = result["result"]["content"][0]["text"].as_str().unwrap_or("");
+            let text = result["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("");
             assert!(
                 !text.contains("Tool not found"),
                 "壳方法 {name} 的 dispatch 分支缺失: {text}"
@@ -1537,16 +1561,24 @@ mod tests {
             .filter(|s| s.category == "shell")
             .map(|s| s.name)
             .collect();
-        assert_eq!(shell_schemas.len(), contract_names.len(), "shell 类目 schema 数应与契约一致");
+        assert_eq!(
+            shell_schemas.len(),
+            contract_names.len(),
+            "shell 类目 schema 数应与契约一致"
+        );
         for name in &contract_names {
-            assert!(shell_schemas.contains(name), "契约方法 {name} 缺 shell 类目 schema");
+            assert!(
+                shell_schemas.contains(name),
+                "契约方法 {name} 缺 shell 类目 schema"
+            );
         }
     }
 
     /// tools/list 默认面绝不返回壳专属方法（hidden 机制的行为面验证）。
     #[test]
     fn test_shell_methods_absent_from_tools_list() {
-        let contract_names: HashSet<&str> = crate::contract::shell_method_names().into_iter().collect();
+        let contract_names: HashSet<&str> =
+            crate::contract::shell_method_names().into_iter().collect();
         let tools = ToolRegistry::global().tools_list();
         for tool in &tools {
             let name = tool.get("name").and_then(|v| v.as_str()).unwrap_or("");
@@ -1582,26 +1614,40 @@ mod tests {
         let result = ToolRegistry::dispatch("get_neighbors", &json!({}), &dummy_id);
         // 降级结果包装在 JSON-RPC 成功格式中，带 _isDegraded 标志
         let text = result["result"]["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("node_id") || text.contains("nodeId"),
-            "get_neighbors should degrade on missing nodeId, got: {}", text);
+        assert!(
+            text.contains("node_id") || text.contains("nodeId"),
+            "get_neighbors should degrade on missing nodeId, got: {}",
+            text
+        );
         let result = ToolRegistry::dispatch("find_dep_path", &json!({}), &dummy_id);
         let text = result["result"]["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("from_id") || text.contains("fromId"),
-            "find_dep_path should degrade on missing params");
+        assert!(
+            text.contains("from_id") || text.contains("fromId"),
+            "find_dep_path should degrade on missing params"
+        );
         let result = ToolRegistry::dispatch("coupling_report", &json!({}), &dummy_id);
         let text = result["result"]["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("module_name") || text.contains("module"),
-            "coupling_report should degrade on missing module_name");
+        assert!(
+            text.contains("module_name") || text.contains("module"),
+            "coupling_report should degrade on missing module_name"
+        );
         let result = ToolRegistry::dispatch("search_symbols", &json!({}), &dummy_id);
         let text = result["result"]["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("query"), "search_symbols should degrade on missing query");
+        assert!(
+            text.contains("query"),
+            "search_symbols should degrade on missing query"
+        );
     }
 
     #[test]
     fn test_category_assignments() {
         let schemas = all_schemas();
         for schema in schemas {
-            assert!(!schema.category.is_empty(), "tool '{}' must have a category", schema.name);
+            assert!(
+                !schema.category.is_empty(),
+                "tool '{}' must have a category",
+                schema.name
+            );
         }
         let categories: Vec<&str> = schemas.iter().map(|s| s.category).collect();
         assert!(categories.contains(&"graph"));
@@ -1615,9 +1661,19 @@ mod tests {
     #[test]
     fn test_read_only_consistency() {
         let schemas = all_schemas();
-        let read_only_tools: Vec<&str> = schemas.iter().filter(|s| s.read_only).map(|s| s.name).collect();
-        assert!(!read_only_tools.contains(&"analyze_project"), "analyze mutates state");
-        assert!(!read_only_tools.contains(&"rename_symbol"), "rename mutates state");
+        let read_only_tools: Vec<&str> = schemas
+            .iter()
+            .filter(|s| s.read_only)
+            .map(|s| s.name)
+            .collect();
+        assert!(
+            !read_only_tools.contains(&"analyze_project"),
+            "analyze mutates state"
+        );
+        assert!(
+            !read_only_tools.contains(&"rename_symbol"),
+            "rename mutates state"
+        );
         assert!(read_only_tools.contains(&"get_neighbors"));
         assert!(read_only_tools.contains(&"search_symbols"));
         assert!(read_only_tools.contains(&"engine_status"));
@@ -1729,7 +1785,11 @@ mod tests {
     #[test]
     fn test_default_visible_face_is_folded() {
         let face = default_visible_names();
-        assert_eq!(face.len(), DOMAIN_SPECS.len() + 3, "默认面 = 4 域 + 3 写工具");
+        assert_eq!(
+            face.len(),
+            DOMAIN_SPECS.len() + 3,
+            "默认面 = 4 域 + 3 写工具"
+        );
         for d in DOMAIN_SPECS {
             assert!(face.contains(&d.name.to_string()));
         }
@@ -1763,7 +1823,12 @@ mod tests {
         for d in DOMAIN_SPECS {
             for a in d.actions {
                 let n = a.hint.chars().count();
-                assert!(n >= 40, "域 {}.{} 的 hint 太短（{n} 字），模型无法据此选动作", d.name, a.action);
+                assert!(
+                    n >= 40,
+                    "域 {}.{} 的 hint 太短（{n} 字），模型无法据此选动作",
+                    d.name,
+                    a.action
+                );
                 assert!(
                     n <= 240,
                     "域 {}.{} 的 hint 过长（{n} 字）——完整说明书归 action=help，不常驻上下文",
@@ -1811,12 +1876,18 @@ mod tests {
         // help 载荷：逐域回放 ToolSchema 的完整文档（与真源逐字节一致）
         let mut seen = 0;
         for d in DOMAIN_SPECS {
-            let result =
-                ToolRegistry::dispatch(d.name, &json!({"action": HELP_ACTION}), &json!(1));
-            let text = result["result"]["content"][0]["text"].as_str().unwrap_or("");
+            let result = ToolRegistry::dispatch(d.name, &json!({"action": HELP_ACTION}), &json!(1));
+            let text = result["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or("");
             let payload: Value = serde_json::from_str(text).expect("help 是 JSON");
             let entries = payload["actions"].as_array().expect("actions 数组");
-            assert_eq!(entries.len(), d.actions.len(), "域 {} 说明书动作数不符", d.name);
+            assert_eq!(
+                entries.len(),
+                d.actions.len(),
+                "域 {} 说明书动作数不符",
+                d.name
+            );
             for entry in entries {
                 let tool = entry["tool"].as_str().expect("tool 名");
                 let schema = find_schema(tool).expect("target resolves");
@@ -1839,15 +1910,21 @@ mod tests {
         }
         assert_eq!(seen, 33, "说明书必须覆盖全部折叠动作");
         // hint 之外的信息确实在 help 里（抽查一条只存在于说明书里的纪律）
-        let analysis = ToolRegistry::dispatch("analysis", &json!({"action": HELP_ACTION}), &json!(2));
-        let text = analysis["result"]["content"][0]["text"].as_str().unwrap_or("");
+        let analysis =
+            ToolRegistry::dispatch("analysis", &json!({"action": HELP_ACTION}), &json!(2));
+        let text = analysis["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("");
         let payload: Value = serde_json::from_str(text).expect("help 是 JSON");
         let refs = payload["actions"]
             .as_array()
             .and_then(|entries| entries.iter().find(|e| e["tool"] == "find_unused"))
             .and_then(|e| e["description"].as_str())
             .unwrap_or("");
-        assert!(refs.contains("non_defines_in_degree"), "help 应带回原文细节: {refs}");
+        assert!(
+            refs.contains("non_defines_in_degree"),
+            "help 应带回原文细节: {refs}"
+        );
     }
 
     /// hint 补前置纪律：抽查几条关键「时机/前置」必须留在可见面（不是藏在 help 里）。
@@ -1863,7 +1940,10 @@ mod tests {
                 .hint
                 .to_string()
         };
-        assert!(hint("graph", "impact").contains("BEFORE"), "impact 必须写明改前先跑");
+        assert!(
+            hint("graph", "impact").contains("BEFORE"),
+            "impact 必须写明改前先跑"
+        );
         assert!(
             hint("analysis", "preflight").contains("ALWAYS"),
             "preflight 必须写明改文件前必跑"
@@ -1904,7 +1984,9 @@ mod tests {
         assert!(props["nodeId"]["description"].as_str().is_some());
         assert_eq!(value["inputSchema"]["required"][0], "action");
         // 未折叠的写工具仍是标准注解形态
-        let raw = find_schema("rename_symbol").expect("写工具 schema").mcp_value();
+        let raw = find_schema("rename_symbol")
+            .expect("写工具 schema")
+            .mcp_value();
         assert_eq!(raw["annotations"]["readOnlyHint"], false);
         assert!(raw.get("readOnly").is_none(), "非标准顶层 readOnly 已删");
     }
@@ -1921,14 +2003,30 @@ mod tests {
         );
 
         let missing = ToolRegistry::dispatch("graph", &json!({}), &id);
-        let text = missing["result"]["content"][0]["text"].as_str().unwrap_or("");
-        assert!(text.contains("requires an 'action'"), "缺 action 要可见: {text}");
-        assert!(text.contains("valid actions"), "缺 action 要给合法清单: {text}");
+        let text = missing["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            text.contains("requires an 'action'"),
+            "缺 action 要可见: {text}"
+        );
+        assert!(
+            text.contains("valid actions"),
+            "缺 action 要给合法清单: {text}"
+        );
 
         let unknown = ToolRegistry::dispatch("graph", &json!({"action": "nope"}), &id);
-        let text = unknown["result"]["content"][0]["text"].as_str().unwrap_or("");
-        assert!(text.contains("unknown graph action"), "未知 action 要具名: {text}");
-        assert!(text.contains("_isDegraded"), "未知 action 走降级而非静默: {text}");
+        let text = unknown["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            text.contains("unknown graph action"),
+            "未知 action 要具名: {text}"
+        );
+        assert!(
+            text.contains("_isDegraded"),
+            "未知 action 走降级而非静默: {text}"
+        );
     }
 
     /// 建议必须落在可见面：折叠后回吐裸名 = 建议指向不存在的工具。
@@ -1936,7 +2034,9 @@ mod tests {
     fn test_suggestions_use_visible_refs() {
         let id = json!(1);
         let result = ToolRegistry::dispatch("graph", &json!({"action": "impact"}), &id);
-        let text = result["result"]["content"][0]["text"].as_str().unwrap_or("");
+        let text = result["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("");
         let payload: Value = serde_json::from_str(text).expect("工具响应是 JSON 文本");
         let suggestions = payload["next_tool_suggestions"]
             .as_array()
@@ -1953,7 +2053,9 @@ mod tests {
         }
         // 折叠面里必须出现 `域(动作)` 形态，而不是裸工具名
         assert!(
-            suggestions.iter().any(|s| s.as_str().unwrap_or("").contains('(')),
+            suggestions
+                .iter()
+                .any(|s| s.as_str().unwrap_or("").contains('(')),
             "折叠后建议应写成 domain(action) 形态: {suggestions:?}"
         );
         assert!(visible_ref("trace_impact").as_deref() == Some("graph(impact)"));
@@ -1973,14 +2075,24 @@ mod tests {
         idx.insert_node(node);
         // 精确 ID
         assert_eq!(
-            resolve_in_index(&idx, "D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState").as_deref(),
+            resolve_in_index(&idx, "D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState")
+                .as_deref(),
             Some("D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState")
         );
         // 精确名称
-        assert_eq!(resolve_in_index(&idx, "setPlanState").as_deref(), Some("D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState"));
+        assert_eq!(
+            resolve_in_index(&idx, "setPlanState").as_deref(),
+            Some("D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState")
+        );
         // 后缀匹配（LLM 直觉 ID）
-        assert_eq!(resolve_in_index(&idx, "agent.ts.Agent.setPlanState").as_deref(), Some("D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState"));
-        assert_eq!(resolve_in_index(&idx, "Agent.setPlanState").as_deref(), Some("D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState"));
+        assert_eq!(
+            resolve_in_index(&idx, "agent.ts.Agent.setPlanState").as_deref(),
+            Some("D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState")
+        );
+        assert_eq!(
+            resolve_in_index(&idx, "Agent.setPlanState").as_deref(),
+            Some("D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState")
+        );
         // 无匹配
         assert_eq!(resolve_in_index(&idx, "nonexistent_symbol"), None);
     }

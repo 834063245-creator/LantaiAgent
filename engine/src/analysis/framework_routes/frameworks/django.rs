@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::engine::GRAMMAR_LOADER;
 use super::super::DetectedRoute;
+use crate::engine::GRAMMAR_LOADER;
 
 pub(crate) fn is_django_url_file(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -16,7 +16,10 @@ pub(crate) fn detect_django_routes(file: &str, source: &str) -> Vec<DetectedRout
     let mut result = Vec::new();
 
     let mut parser = tree_sitter::Parser::new();
-    let lang = match GRAMMAR_LOADER.get("py") { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get("py") {
+        Some(l) => l,
+        None => return result,
+    };
     if parser.set_language(&lang).is_err() {
         return result;
     }
@@ -43,7 +46,9 @@ pub(crate) fn detect_django_routes(file: &str, source: &str) -> Vec<DetectedRout
                         if is_router_register {
                             // D4：将 DRF register() 展开为 6 条 CRUD 路由
                             result.extend(expand_drf_register(args, source, file, line));
-                        } else if let Some((method, url, handler)) = extract_django_route(args, source, func_name, false) {
+                        } else if let Some((method, url, handler)) =
+                            extract_django_route(args, source, func_name, false)
+                        {
                             result.push((method, url, handler, file.to_string(), line));
                         }
                     }
@@ -111,7 +116,9 @@ fn extract_django_route(
                                     let mut ac = include_args.walk();
                                     for inc_child in include_args.children(&mut ac) {
                                         if inc_child.kind() == "string" {
-                                            let t = inc_child.utf8_text(source.as_bytes()).unwrap_or("");
+                                            let t = inc_child
+                                                .utf8_text(source.as_bytes())
+                                                .unwrap_or("");
                                             return Some(strip_py_string_prefix(t).to_string());
                                         }
                                     }
@@ -211,12 +218,48 @@ fn expand_drf_register(
     let detail = format!("/{}/{{id}}/", route_prefix.trim_matches('/'));
 
     vec![
-        ("GET".into(),    format!("{}/", base),    format!("{}.list", viewset_name),           file.to_string(), line),
-        ("POST".into(),   format!("{}/", base),    format!("{}.create", viewset_name),         file.to_string(), line),
-        ("GET".into(),    detail.clone(),          format!("{}.retrieve", viewset_name),       file.to_string(), line),
-        ("PUT".into(),    detail.clone(),          format!("{}.update", viewset_name),         file.to_string(), line),
-        ("PATCH".into(),  detail.clone(),          format!("{}.partial_update", viewset_name), file.to_string(), line),
-        ("DELETE".into(), detail,                  format!("{}.destroy", viewset_name),        file.to_string(), line),
+        (
+            "GET".into(),
+            format!("{}/", base),
+            format!("{}.list", viewset_name),
+            file.to_string(),
+            line,
+        ),
+        (
+            "POST".into(),
+            format!("{}/", base),
+            format!("{}.create", viewset_name),
+            file.to_string(),
+            line,
+        ),
+        (
+            "GET".into(),
+            detail.clone(),
+            format!("{}.retrieve", viewset_name),
+            file.to_string(),
+            line,
+        ),
+        (
+            "PUT".into(),
+            detail.clone(),
+            format!("{}.update", viewset_name),
+            file.to_string(),
+            line,
+        ),
+        (
+            "PATCH".into(),
+            detail.clone(),
+            format!("{}.partial_update", viewset_name),
+            file.to_string(),
+            line,
+        ),
+        (
+            "DELETE".into(),
+            detail,
+            format!("{}.destroy", viewset_name),
+            file.to_string(),
+            line,
+        ),
     ]
 }
 
@@ -228,9 +271,17 @@ fn strip_py_string_prefix(s: &str) -> &str {
     let mut rest = s;
     loop {
         let lower = rest.to_ascii_lowercase();
-        if lower.starts_with("rb") || lower.starts_with("br") || lower.starts_with("fr") || lower.starts_with("rf") {
+        if lower.starts_with("rb")
+            || lower.starts_with("br")
+            || lower.starts_with("fr")
+            || lower.starts_with("rf")
+        {
             rest = &rest[2..];
-        } else if lower.starts_with('r') || lower.starts_with('b') || lower.starts_with('f') || lower.starts_with('u') {
+        } else if lower.starts_with('r')
+            || lower.starts_with('b')
+            || lower.starts_with('f')
+            || lower.starts_with('u')
+        {
             // 仅在后跟引号时才去除
             let after = rest[1..].trim_start();
             if after.starts_with('\'') || after.starts_with('"') {

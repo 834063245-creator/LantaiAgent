@@ -24,16 +24,12 @@
 //   - 审计：全部写操作落盘（临时目录 jsonl），browser(audit) 可查。
 //   - 只连 127.0.0.1；launch 用独立 profile，不碰用户日常 Chrome。
 
-mod probes;
-mod transport;
-mod session;
 mod actions;
 mod errors;
+mod probes;
+mod session;
+mod transport;
 
-pub(crate) use session::{
-    cdp_audit, cdp_close_tab, cdp_connect, cdp_discover, cdp_kill, cdp_launch, cdp_new_tab,
-    cdp_sessions, cdp_switch_session, is_self, shot_dir, SELF_AGENT_ID,
-};
 pub(crate) use actions::{
     cdp_attach, cdp_back, cdp_click, cdp_console, cdp_content, cdp_cookies, cdp_dialogs, cdp_eval,
     cdp_forward, cdp_handle_dialog, cdp_hover, cdp_inspect, cdp_navigate, cdp_network,
@@ -41,36 +37,40 @@ pub(crate) use actions::{
     cdp_scroll, cdp_select, cdp_set_viewport, cdp_snapshot, cdp_status, cdp_targets, cdp_type,
     cdp_upload, cdp_wait, check_sensitive,
 };
+pub(crate) use session::{
+    cdp_audit, cdp_close_tab, cdp_connect, cdp_discover, cdp_kill, cdp_launch, cdp_new_tab,
+    cdp_sessions, cdp_switch_session, is_self, shot_dir, SELF_AGENT_ID,
+};
 
 // 生产代码已全部拆入子模块；cdp.rs 仅保留 facade re-export 与测试。
 // 测试/e2e 经 `super::*` 取用这些私有导入。
+#[cfg(test)]
+use serde_json::Value;
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(test)]
 use std::sync::Arc;
 #[cfg(test)]
 use std::time::{Duration, Instant};
-#[cfg(test)]
-use serde_json::Value;
 
-#[cfg(test)]
-use probes::{probe_result_str, CONTENT_PROBE, INSPECT_PROBE, REPORT_PROBE, SNAPSHOT_PROBE};
-#[cfg(test)]
-use session::{
-    active_session_key, audit_log, chrome_candidate_paths, cleanup_old_files_by_age, enforce_lease,
-    ensure_observer_started, extract_debug_port_from_args, find_chrome, lock_sessions,
-    named_profile_dir, network_on_failed, network_on_request, network_on_response,
-    normalize_slot_name, parse_discover_process_lines, profile_dir_for, remove_profile_dir,
-    session_key, session_key_for, set_active_slot, validate_proxy_arg, is_expired_file_time,
-    kill_chrome_tree, session_lease, CdpSession, EventBuffers, NetworkEntry,
-};
-#[cfg(test)]
-use transport::{http_close_tab, http_new_tab, list_targets_raw};
 #[cfg(test)]
 use actions::{
     ax_node_from_value, ax_role_is_interactive, is_sensitive_click_text, parse_modifiers,
     parse_world_value, ref_to_selector, runtime_evaluate, world_diff,
 };
+#[cfg(test)]
+use probes::{probe_result_str, CONTENT_PROBE, INSPECT_PROBE, REPORT_PROBE, SNAPSHOT_PROBE};
+#[cfg(test)]
+use session::{
+    active_session_key, audit_log, chrome_candidate_paths, cleanup_old_files_by_age, enforce_lease,
+    ensure_observer_started, extract_debug_port_from_args, find_chrome, is_expired_file_time,
+    kill_chrome_tree, lock_sessions, named_profile_dir, network_on_failed, network_on_request,
+    network_on_response, normalize_slot_name, parse_discover_process_lines, profile_dir_for,
+    remove_profile_dir, session_key, session_key_for, session_lease, set_active_slot,
+    validate_proxy_arg, CdpSession, EventBuffers, NetworkEntry,
+};
+#[cfg(test)]
+use transport::{http_close_tab, http_new_tab, list_targets_raw};
 
 // ═══════════════════════════════════════════════════════════
 // 测试
@@ -89,7 +89,11 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join(format!("{name}.js"));
         std::fs::write(&path, &js).expect("写探针临时文件失败");
-        match std::process::Command::new("node").arg("--check").arg(&path).output() {
+        match std::process::Command::new("node")
+            .arg("--check")
+            .arg(&path)
+            .output()
+        {
             Ok(out) if out.status.success() => {}
             Ok(out) => panic!(
                 "探针 {name} 语法错误（node --check 失败）:\n{}",
@@ -112,11 +116,17 @@ mod tests {
         let paths = chrome_candidate_paths();
         assert!(!paths.is_empty(), "每个平台都应有 Chrome/Edge 候选路径");
         #[cfg(target_os = "windows")]
-        assert!(paths.iter().any(|p| p.to_string_lossy().ends_with("chrome.exe")));
+        assert!(paths
+            .iter()
+            .any(|p| p.to_string_lossy().ends_with("chrome.exe")));
         #[cfg(target_os = "macos")]
-        assert!(paths.iter().any(|p| p.to_string_lossy().contains("Google Chrome.app")));
+        assert!(paths
+            .iter()
+            .any(|p| p.to_string_lossy().contains("Google Chrome.app")));
         #[cfg(all(unix, not(target_os = "macos")))]
-        assert!(paths.iter().any(|p| p.to_string_lossy().contains("google-chrome")));
+        assert!(paths
+            .iter()
+            .any(|p| p.to_string_lossy().contains("google-chrome")));
     }
 
     #[test]
@@ -129,8 +139,15 @@ bash|9222|99
         assert_eq!(found.len(), 2);
         assert_eq!(found[0], ("chrome".to_string(), 9333));
         assert_eq!(found[1], ("chromium".to_string(), 9444));
-        assert_eq!(extract_debug_port_from_args("--remote-debugging-port=9447 --flag"), Some(9447));
-        assert_eq!(extract_debug_port_from_args("--remote-debugging-port 9447"), None, "Chrome 使用 = 形态");
+        assert_eq!(
+            extract_debug_port_from_args("--remote-debugging-port=9447 --flag"),
+            Some(9447)
+        );
+        assert_eq!(
+            extract_debug_port_from_args("--remote-debugging-port 9447"),
+            None,
+            "Chrome 使用 = 形态"
+        );
     }
 
     #[test]
@@ -154,17 +171,25 @@ bash|9222|99
         let work = super::session_key_for(agent, "work");
         let personal = super::session_key_for(agent, "personal");
         assert_ne!(work, personal, "不同 slot 必须落在不同 session key");
-        assert_eq!(super::active_session_key(agent), super::session_key_for(agent, "default"));
+        assert_eq!(
+            super::active_session_key(agent),
+            super::session_key_for(agent, "default")
+        );
 
         super::set_active_slot(agent, "work");
         assert_eq!(super::active_session_key(agent), work);
         // 恢复 default，避免污染同一 agent 的其他测试
         super::set_active_slot(agent, "default");
-        assert_eq!(super::active_session_key(agent), super::session_key_for(agent, "default"));
+        assert_eq!(
+            super::active_session_key(agent),
+            super::session_key_for(agent, "default")
+        );
 
         let named = super::named_profile_dir("工作账号");
         assert!(
-            named.to_string_lossy().contains("hologram-browser-profiles-工作账号"),
+            named
+                .to_string_lossy()
+                .contains("hologram-browser-profiles-工作账号"),
             "具名 profile 目录应含前缀与 slot 名: {}",
             named.display()
         );
@@ -175,7 +200,10 @@ bash|9222|99
     fn proxy_arg_validation_rejects_newlines_only() {
         assert!(super::validate_proxy_arg("proxy", "socks5://127.0.0.1:1080").is_ok());
         assert!(super::validate_proxy_arg("proxy", "").is_err());
-        assert!(super::validate_proxy_arg("proxy", "socks5://host\n--remote-debugging-port=9999").is_err());
+        assert!(
+            super::validate_proxy_arg("proxy", "socks5://host\n--remote-debugging-port=9999")
+                .is_err()
+        );
     }
 
     /// 第五批 profile 持久化：磁盘上已有的具名 profile 目录，即使当前进程尚未
@@ -252,7 +280,10 @@ bash|9222|99
     #[test]
     fn parse_world_value_requires_object_form() {
         let obj = serde_json::json!({ "u": "https://a/", "d": 12345 });
-        assert_eq!(super::parse_world_value(&obj), ("https://a/".to_string(), 12345));
+        assert_eq!(
+            super::parse_world_value(&obj),
+            ("https://a/".to_string(), 12345)
+        );
         // 字符串形态（旧 bug）：索引不到 u/d，全部落空
         let str_form = serde_json::json!(r#"{"u":"https://a/","d":12345}"#);
         assert_eq!(super::parse_world_value(&str_form), (String::new(), 0));
@@ -276,8 +307,15 @@ bash|9222|99
         assert!(e.contains("形态异常"), "错误应明确提示形态异常: {e}");
         assert!(e.contains("对象"), "对象形态应被指出: {e}");
         // 错误形态 2：Null / 数字 / 非字符串
-        for bad in [serde_json::Value::Null, serde_json::json!(42), serde_json::json!(true)] {
-            assert!(super::probe_result_str(&bad, "inspect").is_err(), "非字符串形态应报错: {bad}");
+        for bad in [
+            serde_json::Value::Null,
+            serde_json::json!(42),
+            serde_json::json!(true),
+        ] {
+            assert!(
+                super::probe_result_str(&bad, "inspect").is_err(),
+                "非字符串形态应报错: {bad}"
+            );
         }
     }
 
@@ -290,11 +328,25 @@ bash|9222|99
         let mut sess = CdpSession::default();
         // 首次启动：产生一个全新 buffers Arc
         super::ensure_observer_started(&mut sess, 39998, "t1");
-        let first = sess.observer.as_ref().expect("首次启动应生成 observer").buffers.clone();
+        let first = sess
+            .observer
+            .as_ref()
+            .expect("首次启动应生成 observer")
+            .buffers
+            .clone();
         // 模拟观察任务已死（alive=false），触发惰性重启
-        sess.observer.as_ref().unwrap().alive.store(false, Ordering::SeqCst);
+        sess.observer
+            .as_ref()
+            .unwrap()
+            .alive
+            .store(false, Ordering::SeqCst);
         super::ensure_observer_started(&mut sess, 39998, "t1");
-        let second = sess.observer.as_ref().expect("重启后 observer 应存在").buffers.clone();
+        let second = sess
+            .observer
+            .as_ref()
+            .expect("重启后 observer 应存在")
+            .buffers
+            .clone();
         assert!(
             Arc::ptr_eq(&first, &second),
             "重启必须复用同一个 buffers Arc——否则历史被清空"
@@ -364,7 +416,11 @@ bash|9222|99
                 "response": { "url": "https://example.com/a", "status": 200, "statusText": "OK", "mimeType": "text/html", "headers": { "content-type": "text/html" } }
             }),
         );
-        assert_eq!(bufs.network.len(), 1, "response 必须回填同一条请求，而不是追加第二条");
+        assert_eq!(
+            bufs.network.len(),
+            1,
+            "response 必须回填同一条请求，而不是追加第二条"
+        );
         let entry = &bufs.network[0];
         assert_eq!(entry.request_id, "r1");
         assert_eq!(entry.status, Some(200));
@@ -380,14 +436,21 @@ bash|9222|99
         assert_eq!(bufs.network.len(), 1);
         let entry = &bufs.network[0];
         assert_eq!(entry.error.as_deref(), Some("net::ERR_CONNECTION_REFUSED"));
-        assert_eq!(entry.url.as_deref(), Some("https://example.com/a"), "loadingFailed 不得用 requestId 覆盖 url");
+        assert_eq!(
+            entry.url.as_deref(),
+            Some("https://example.com/a"),
+            "loadingFailed 不得用 requestId 覆盖 url"
+        );
 
         // 缺失 request 的孤立失败：只记 error，url 保持 null（诚实，不伪造 requestId=url）
         network_on_failed(
             &mut bufs,
             &serde_json::json!({ "requestId": "r2", "errorText": "net::ERR_FAILED" }),
         );
-        let entry = bufs.network_index.get("r2").expect("孤立失败也应有索引条目");
+        let entry = bufs
+            .network_index
+            .get("r2")
+            .expect("孤立失败也应有索引条目");
         assert_eq!(entry.url, None);
         assert!(entry.summary_value()["error"].as_str().is_some());
     }
@@ -421,9 +484,16 @@ bash|9222|99
             "backendDOMNodeId": 18,
             "ignored": true
         });
-        assert!(ax_node_from_value(&ignored).is_none(), "ignored 节点不应进入快照");
-        let no_backend = serde_json::json!({ "role": { "value": "button" }, "name": { "value": "x" } });
-        assert!(ax_node_from_value(&no_backend).is_none(), "没有 backendDOMNodeId 无法回写 ref");
+        assert!(
+            ax_node_from_value(&ignored).is_none(),
+            "ignored 节点不应进入快照"
+        );
+        let no_backend =
+            serde_json::json!({ "role": { "value": "button" }, "name": { "value": "x" } });
+        assert!(
+            ax_node_from_value(&no_backend).is_none(),
+            "没有 backendDOMNodeId 无法回写 ref"
+        );
     }
 
     /// 第四批 HAR 导出的纯函数部分：不依赖 observer/Chrome 即可锁定
@@ -468,7 +538,9 @@ bash|9222|99
     /// 第四批 viewport 参数：坏尺寸/DPR 在碰真实 CDP 前拒绝。
     #[tokio::test]
     async fn viewport_rejects_invalid_args_before_cdp() {
-        let e = cdp_set_viewport(0, 600, None, None, None).await.unwrap_err();
+        let e = cdp_set_viewport(0, 600, None, None, None)
+            .await
+            .unwrap_err();
         assert!(e.contains("width/height"), "{e}");
         let e = cdp_set_viewport(800, 600, Some(4.0), None, None)
             .await
@@ -479,16 +551,26 @@ bash|9222|99
     /// 第三批 launch 参数：windowSize 非法值在找 Chrome 之前就被拒绝。
     #[tokio::test]
     async fn launch_rejects_invalid_window_size_before_cdp() {
-        let e = cdp_launch(None, None, Some(false), Some((0, 600)), None, None, None, None)
-            .await
-            .unwrap_err();
+        let e = cdp_launch(
+            None,
+            None,
+            Some(false),
+            Some((0, 600)),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
         assert!(e.contains("windowSize"), "{e}");
     }
 
     /// 组合键参数归一化：别名收口、去重、非法值明确报错。
     #[test]
     fn parse_modifiers_normalizes_aliases_and_dedupes() {
-        let m = super::parse_modifiers(Some(vec!["ctrl".into(), "Control".into(), "cmd".into()])).unwrap();
+        let m = super::parse_modifiers(Some(vec!["ctrl".into(), "Control".into(), "cmd".into()]))
+            .unwrap();
         assert_eq!(m.len(), 2);
         assert_eq!(m[0].0, "Control");
         assert_eq!(m[1].0, "Meta");
@@ -535,7 +617,8 @@ bash|9222|99
             }
         });
 
-        let created = super::http_new_tab(port as u16, "https://example.com/?q=1").expect("new tab 请求");
+        let created =
+            super::http_new_tab(port as u16, "https://example.com/?q=1").expect("new tab 请求");
         assert_eq!(created["id"].as_str(), Some("tab-1"));
         super::http_close_tab(port as u16, "tab-1").expect("close tab 请求");
         server.join().expect("server join");
@@ -549,7 +632,10 @@ bash|9222|99
         // 阈值上限 30s；这里用 200ms 验证至少等待了该时长
         let out = super::cdp_wait(None, Some(200), None).await.unwrap();
         let elapsed = start.elapsed();
-        assert!(elapsed >= Duration::from_millis(200), "应至少等待 200ms, 实际 {elapsed:?}");
+        assert!(
+            elapsed >= Duration::from_millis(200),
+            "应至少等待 200ms, 实际 {elapsed:?}"
+        );
         assert!(out.contains("200"), "返回值应含 waited_ms: {out}");
     }
 
@@ -620,7 +706,8 @@ bash|9222|99
     /// 文件 mtime 拨回过去，验证「保留窗口内不动、窗口外删除」。
     #[test]
     fn cleanup_old_files_by_age_removes_expired_prefix_only() {
-        let dir = std::env::temp_dir().join(format!("hologram-cleanup-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("hologram-cleanup-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("创建清理测试目录");
         let now = std::time::SystemTime::now();
@@ -641,12 +728,16 @@ bash|9222|99
         assert!(!old_path.exists(), "过期审计文件应被删除");
         assert!(fresh_path.exists(), "窗口内文件应保留");
         assert!(other_path.exists(), "非本套件前缀文件不得误删");
-        assert!(
-            !is_expired_file_time(now - std::time::Duration::from_secs(6 * 24 * 60 * 60), now, 7)
-        );
-        assert!(
-            is_expired_file_time(now - std::time::Duration::from_secs(8 * 24 * 60 * 60), now, 7)
-        );
+        assert!(!is_expired_file_time(
+            now - std::time::Duration::from_secs(6 * 24 * 60 * 60),
+            now,
+            7
+        ));
+        assert!(is_expired_file_time(
+            now - std::time::Duration::from_secs(8 * 24 * 60 * 60),
+            now,
+            7
+        ));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -668,13 +759,25 @@ bash|9222|99
     fn error_codes_are_routable() {
         // 参数校验类错误（不依赖 Chrome/网络，可直接触发）。
         let slot = session::normalize_slot_name("bad/name").unwrap_err();
-        assert!(slot.starts_with("[CDP_SLOT_INVALID]"), "slot 非法应带 code: {slot}");
+        assert!(
+            slot.starts_with("[CDP_SLOT_INVALID]"),
+            "slot 非法应带 code: {slot}"
+        );
         let proxy = session::validate_proxy_arg("proxy", "").unwrap_err();
-        assert!(proxy.starts_with("[CDP_PROXY_INVALID]"), "proxy 非法应带 code: {proxy}");
+        assert!(
+            proxy.starts_with("[CDP_PROXY_INVALID]"),
+            "proxy 非法应带 code: {proxy}"
+        );
         let proxy_nl = session::validate_proxy_arg("proxyBypass", "a\nb").unwrap_err();
-        assert!(proxy_nl.starts_with("[CDP_PROXY_INVALID]"), "proxy 换行应带 code: {proxy_nl}");
+        assert!(
+            proxy_nl.starts_with("[CDP_PROXY_INVALID]"),
+            "proxy 换行应带 code: {proxy_nl}"
+        );
         let eval = actions::check_eval_expr("fetch('https://x')").unwrap_err();
-        assert!(eval.starts_with("[CDP_EVAL_BLOCKED]"), "eval 白名单拦截应带 code: {eval}");
+        assert!(
+            eval.starts_with("[CDP_EVAL_BLOCKED]"),
+            "eval 白名单拦截应带 code: {eval}"
+        );
         // 会话状态类错误：未 launch 即 require_target（port==0 分支）。
         let no_session = actions::require_target(None).unwrap_err();
         assert!(

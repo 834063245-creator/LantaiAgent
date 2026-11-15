@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 
 use crate::os_sandbox;
-use crate::utils::build_lock::{BUILD_LOCKS, LockKey};
+use crate::utils::build_lock::{LockKey, BUILD_LOCKS};
 use crate::utils::ipc_guard::lock_or_recover;
 use crate::utils::stream_ring::{BgSharedOutput, StreamRing};
 
@@ -66,7 +66,6 @@ impl JobStatus {
         !matches!(self, JobStatus::Running | JobStatus::Stopping)
     }
 }
-
 
 // ═══════════════════════════════════════════════════════
 // job 记录
@@ -191,12 +190,16 @@ fn sweep_job_spills_once() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         let dir = jobs_dir();
-        let Ok(entries) = std::fs::read_dir(&dir) else { return };
-        let cutoff = std::time::SystemTime::now()
-            .checked_sub(std::time::Duration::from_secs(7 * 24 * 3600));
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            return;
+        };
+        let cutoff =
+            std::time::SystemTime::now().checked_sub(std::time::Duration::from_secs(7 * 24 * 3600));
         for entry in entries.flatten() {
             let Ok(meta) = entry.metadata() else { continue };
-            let Ok(modified) = meta.modified() else { continue };
+            let Ok(modified) = meta.modified() else {
+                continue;
+            };
             if let Some(cutoff) = cutoff {
                 if modified < cutoff {
                     let _ = std::fs::remove_file(entry.path());
@@ -330,7 +333,12 @@ fn spawn_monitor(id: u32, label: String, app: Option<tauri::AppHandle>) {
             }
             match job.child.try_wait() {
                 Ok(Some(status)) => {
-                    settle(job, JobStatus::Completed, Some(status.code().unwrap_or(-1)), None);
+                    settle(
+                        job,
+                        JobStatus::Completed,
+                        Some(status.code().unwrap_or(-1)),
+                        None,
+                    );
                     // 在锁内取齐收尾所需事实：读方随后移除 job 也不会丢通知。
                     if let Some(k) = job.lock_key.take() {
                         lock_or_recover(&BUILD_LOCKS).remove(&k);
@@ -464,7 +472,11 @@ pub(crate) fn spawn_bg_from_child(
         label: label.to_string(),
         kind: "bash".to_string(),
         last_output_time: now,
-        shared: BgSharedOutput { stdout: stdout_ring, stderr: stderr_ring, drain_done },
+        shared: BgSharedOutput {
+            stdout: stdout_ring,
+            stderr: stderr_ring,
+            drain_done,
+        },
         owner,
         lock_key,
         status: JobStatus::Running,
@@ -558,7 +570,6 @@ fn read_increment(job: &mut BgJob) -> (String, String, Vec<String>) {
     (out_text, err_text, notes)
 }
 
-
 pub(crate) fn read_bg_output(id: u32) -> Result<String, String> {
     // 先看是否已完成；若已完成，先等 drain 收尾再读最终输出（不持锁等待）。
     let drain_to_wait = {
@@ -568,7 +579,12 @@ pub(crate) fn read_bg_output(id: u32) -> Result<String, String> {
             true => true,
             false => match job.child.try_wait() {
                 Ok(Some(status)) => {
-                    settle(job, JobStatus::Completed, Some(status.code().unwrap_or(-1)), None);
+                    settle(
+                        job,
+                        JobStatus::Completed,
+                        Some(status.code().unwrap_or(-1)),
+                        None,
+                    );
                     true
                 }
                 Ok(None) => false,
@@ -600,8 +616,10 @@ pub(crate) fn read_bg_output(id: u32) -> Result<String, String> {
     };
 
     if terminal {
-        let tail_o = std::mem::replace(&mut job.stdout_decoder, crate::utils::StreamDecoder::new()).finish();
-        let tail_e = std::mem::replace(&mut job.stderr_decoder, crate::utils::StreamDecoder::new()).finish();
+        let tail_o =
+            std::mem::replace(&mut job.stdout_decoder, crate::utils::StreamDecoder::new()).finish();
+        let tail_e =
+            std::mem::replace(&mut job.stderr_decoder, crate::utils::StreamDecoder::new()).finish();
         stdout_inc.push_str(&tail_o);
         stderr_inc.push_str(&tail_e);
     }
@@ -651,11 +669,23 @@ pub(crate) fn wait_bg(id: u32, timeout_ms: u64) -> Result<String, String> {
             if job.status.is_terminal() {
                 (Some(job.exit_code.unwrap_or(-1)), None, job.start_time)
             } else {
-                let status = job.child.try_wait().map_err(|e| format!("检查进程状态失败: {e}"))?;
+                let status = job
+                    .child
+                    .try_wait()
+                    .map_err(|e| format!("检查进程状态失败: {e}"))?;
                 match status {
                     Some(st) => {
-                        settle(job, JobStatus::Completed, Some(st.code().unwrap_or(-1)), None);
-                        (Some(st.code().unwrap_or(-1)), Some(Arc::clone(&job.shared.drain_done)), job.start_time)
+                        settle(
+                            job,
+                            JobStatus::Completed,
+                            Some(st.code().unwrap_or(-1)),
+                            None,
+                        );
+                        (
+                            Some(st.code().unwrap_or(-1)),
+                            Some(Arc::clone(&job.shared.drain_done)),
+                            job.start_time,
+                        )
                     }
                     None => (None, None, job.start_time),
                 }
@@ -683,10 +713,7 @@ pub(crate) fn wait_bg(id: u32, timeout_ms: u64) -> Result<String, String> {
                     drop(jobs);
                     archive_job_with_id(finished, id);
                 }
-                let mut out = format!(
-                    "[任务已完成, exit code: {}, 耗时: {}s]\n",
-                    ec, elapsed
-                );
+                let mut out = format!("[任务已完成, exit code: {}, 耗时: {}s]\n", ec, elapsed);
                 if let Some(reason) = detail {
                     out.push_str(&format!("[stopped: {reason}]\n"));
                 }
@@ -712,7 +739,9 @@ pub(crate) fn kill_bg(id: u32, caller: Option<&str>) -> Result<String, String> {
         if let Some(caller) = caller {
             match job.owner.as_deref() {
                 None => {
-                    return Err("该任务由用户发起，Agent 无权终止。请等待其完成或由用户手动清理。".into())
+                    return Err(
+                        "该任务由用户发起，Agent 无权终止。请等待其完成或由用户手动清理。".into(),
+                    )
                 }
                 Some(owner) if owner != caller => {
                     return Err(format!("该任务由 {owner} 持有，当前 Agent 无权终止"))
@@ -720,7 +749,9 @@ pub(crate) fn kill_bg(id: u32, caller: Option<&str>) -> Result<String, String> {
                 _ => {}
             }
         }
-        job.child.kill_tree().map_err(|e| format!("无法终止任务: {e}"))?;
+        job.child
+            .kill_tree()
+            .map_err(|e| format!("无法终止任务: {e}"))?;
         settle(job, JobStatus::Killed, None, None);
         let stdout = job.shared.stdout.decode_all();
         let stderr = job.shared.stderr.decode_all();
@@ -807,7 +838,6 @@ pub(crate) fn drain_bg_notifications(agent_id: Option<&str>) -> String {
     });
     mine
 }
-
 
 #[cfg(test)]
 #[path = "bg_jobs_tests.rs"]

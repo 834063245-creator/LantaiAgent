@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use rayon::prelude::*;
 use tracing::info;
 
+use crate::analysis::bridge_rpc::synthesize_bridge_calls;
 use crate::analysis::coupling::compute_coupling;
 use crate::analysis::coupling::compute_coupling_incremental;
 use crate::analysis::di_reflection::{
@@ -17,10 +18,9 @@ use crate::analysis::di_reflection::{
 use crate::analysis::dynamic_dispatch::synthesize_dynamic_edges;
 use crate::analysis::dynamic_dispatch_react::synthesize_react_edges;
 use crate::analysis::dynamic_dispatch_vue::synthesize_vue_edges;
-use crate::analysis::bridge_rpc::synthesize_bridge_calls;
-use crate::analysis::grpc_services::detect_grpc_services;
 use crate::analysis::flows::detect_all_flows;
 use crate::analysis::framework_routes::detect_framework_routes;
+use crate::analysis::grpc_services::detect_grpc_services;
 use crate::community::detect_communities_and_hierarchy;
 use crate::graph::resolver::CrossFileResolver;
 use crate::pipeline::runner::analyze_project;
@@ -57,22 +57,43 @@ impl Engine {
         let mut result = analyze_project(project_root);
         let failed_note = if result.files_failed > 0 {
             format!(", {} failed", result.files_failed)
-        } else { String::new() };
-        eprintln!("[engine] stage: core-parse done in {:.1}s ({} nodes, {} edges, {}/{} files{})",
-            stage_start.elapsed().as_secs_f64(), result.graph.node_count(), result.graph.edge_count(),
-            result.files_parsed, result.files_discovered, failed_note);
+        } else {
+            String::new()
+        };
+        eprintln!(
+            "[engine] stage: core-parse done in {:.1}s ({} nodes, {} edges, {}/{} files{})",
+            stage_start.elapsed().as_secs_f64(),
+            result.graph.node_count(),
+            result.graph.edge_count(),
+            result.files_parsed,
+            result.files_discovered,
+            failed_note
+        );
         stage_timings.push(StageTiming {
             name: "Core Parse".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
-            detail: format!("{}/{} files{} → {} nodes, {} edges",
-                result.files_parsed, result.files_discovered, failed_note,
-                result.graph.node_count(), result.graph.edge_count()),
+            detail: format!(
+                "{}/{} files{} → {} nodes, {} edges",
+                result.files_parsed,
+                result.files_discovered,
+                failed_note,
+                result.graph.node_count(),
+                result.graph.edge_count()
+            ),
         });
         if cancel.load(Ordering::Relaxed) {
             return Err("分析已被新的重分析请求取消".to_string());
         }
-        set_progress("解析完成", result.files_parsed, result.files_discovered,
-            &if result.files_failed > 0 { format!("{} 个文件解析失败", result.files_failed) } else { String::new() });
+        set_progress(
+            "解析完成",
+            result.files_parsed,
+            result.files_discovered,
+            &if result.files_failed > 0 {
+                format!("{} 个文件解析失败", result.files_failed)
+            } else {
+                String::new()
+            },
+        );
 
         // 1.5. LSP 调用解析 → 已移至按需 MCP 工具
         // (resolve_call)。Graph 存储粗粒度 CALLS 边；
@@ -84,10 +105,8 @@ impl Engine {
         // 具体文件或外部依赖节点。
         set_progress("import 路径解析", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let import_stats = crate::graph::import_resolver::resolve_import_edges(
-            &mut result.graph,
-            project_root,
-        );
+        let import_stats =
+            crate::graph::import_resolver::resolve_import_edges(&mut result.graph, project_root);
         eprintln!(
             "[engine] stage: import-path done in {:.1}s ({})",
             stage_start.elapsed().as_secs_f64(),
@@ -124,8 +143,11 @@ impl Engine {
         let stage_start = std::time::Instant::now();
         let resolved = CrossFileResolver::resolve(&mut result.graph);
         info!(edges = resolved, "[engine] cross-file resolved");
-        eprintln!("[engine] stage: cross-file done in {:.1}s ({} edges resolved)",
-            stage_start.elapsed().as_secs_f64(), resolved);
+        eprintln!(
+            "[engine] stage: cross-file done in {:.1}s ({} edges resolved)",
+            stage_start.elapsed().as_secs_f64(),
+            resolved
+        );
         stage_timings.push(StageTiming {
             name: "Cross-File".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -139,8 +161,10 @@ impl Engine {
         set_progress("耦合分析", 0, 0, "");
         let stage_start = std::time::Instant::now();
         compute_coupling(&mut result.graph);
-        eprintln!("[engine] stage: coupling done in {:.1}s",
-            stage_start.elapsed().as_secs_f64());
+        eprintln!(
+            "[engine] stage: coupling done in {:.1}s",
+            stage_start.elapsed().as_secs_f64()
+        );
         stage_timings.push(StageTiming {
             name: "Coupling".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -153,10 +177,18 @@ impl Engine {
         // 4. 框架路由检测
         set_progress("框架路由检测", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let routes_found = detect_framework_routes(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
+        let routes_found = detect_framework_routes(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
         info!(count = routes_found, "[engine] framework routes detected");
-        eprintln!("[engine] stage: framework-routes done in {:.1}s ({} routes)",
-            stage_start.elapsed().as_secs_f64(), routes_found);
+        eprintln!(
+            "[engine] stage: framework-routes done in {:.1}s ({} routes)",
+            stage_start.elapsed().as_secs_f64(),
+            routes_found
+        );
         stage_timings.push(StageTiming {
             name: "Framework Routes".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -169,9 +201,17 @@ impl Engine {
         // 5. 动态调度合成
         set_progress("动态调度合成", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let syn_edges = synthesize_dynamic_edges(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
-        eprintln!("[engine] stage: dynamic-dispatch done in {:.1}s ({} edges)",
-            stage_start.elapsed().as_secs_f64(), syn_edges);
+        let syn_edges = synthesize_dynamic_edges(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
+        eprintln!(
+            "[engine] stage: dynamic-dispatch done in {:.1}s ({} edges)",
+            stage_start.elapsed().as_secs_f64(),
+            syn_edges
+        );
         stage_timings.push(StageTiming {
             name: "Dynamic Dispatch".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -181,9 +221,17 @@ impl Engine {
         // 5.1. React 合成
         set_progress("React合成", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let react_edges = synthesize_react_edges(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
-        eprintln!("[engine] stage: react-synthesis done in {:.1}s ({} edges)",
-            stage_start.elapsed().as_secs_f64(), react_edges);
+        let react_edges = synthesize_react_edges(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
+        eprintln!(
+            "[engine] stage: react-synthesis done in {:.1}s ({} edges)",
+            stage_start.elapsed().as_secs_f64(),
+            react_edges
+        );
         stage_timings.push(StageTiming {
             name: "React Synthesis".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -193,9 +241,17 @@ impl Engine {
         // 5.2. Vue 合成
         set_progress("Vue合成", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let vue_edges = synthesize_vue_edges(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
-        eprintln!("[engine] stage: vue-synthesis done in {:.1}s ({} edges)",
-            stage_start.elapsed().as_secs_f64(), vue_edges);
+        let vue_edges = synthesize_vue_edges(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
+        eprintln!(
+            "[engine] stage: vue-synthesis done in {:.1}s ({} edges)",
+            stage_start.elapsed().as_secs_f64(),
+            vue_edges
+        );
         stage_timings.push(StageTiming {
             name: "Vue Synthesis".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -205,9 +261,17 @@ impl Engine {
         // 5.3. Bridge/RPC 调用合成（TS rpc() → Rust #[tauri::command]）
         set_progress("Bridge/RPC合成", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let bridge_edges = synthesize_bridge_calls(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
-        eprintln!("[engine] stage: bridge-rpc done in {:.1}s ({} edges)",
-            stage_start.elapsed().as_secs_f64(), bridge_edges);
+        let bridge_edges = synthesize_bridge_calls(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
+        eprintln!(
+            "[engine] stage: bridge-rpc done in {:.1}s ({} edges)",
+            stage_start.elapsed().as_secs_f64(),
+            bridge_edges
+        );
         stage_timings.push(StageTiming {
             name: "Bridge / RPC".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -217,9 +281,17 @@ impl Engine {
         // 5.4. gRPC 服务检测（.proto 定义 → 节点 + 实现/客户端匹配）
         set_progress("gRPC服务检测", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let grpc_added = detect_grpc_services(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
-        eprintln!("[engine] stage: grpc-services done in {:.1}s ({} nodes+edges)",
-            stage_start.elapsed().as_secs_f64(), grpc_added);
+        let grpc_added = detect_grpc_services(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
+        eprintln!(
+            "[engine] stage: grpc-services done in {:.1}s ({} nodes+edges)",
+            stage_start.elapsed().as_secs_f64(),
+            grpc_added
+        );
         stage_timings.push(StageTiming {
             name: "gRPC Services".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -229,9 +301,17 @@ impl Engine {
         // 5.5. DI / 反射检测
         set_progress("DI/反射检测", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let di_edges = detect_di_reflection(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
-        eprintln!("[engine] stage: di-reflection done in {:.1}s ({} edges)",
-            stage_start.elapsed().as_secs_f64(), di_edges);
+        let di_edges = detect_di_reflection(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
+        eprintln!(
+            "[engine] stage: di-reflection done in {:.1}s ({} edges)",
+            stage_start.elapsed().as_secs_f64(),
+            di_edges
+        );
         stage_timings.push(StageTiming {
             name: "DI / Reflection".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -241,9 +321,17 @@ impl Engine {
         // 5.6. 动态导入检测
         set_progress("动态导入检测", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let dyn_imp_edges = detect_dynamic_imports(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
-        eprintln!("[engine] stage: dynamic-import done in {:.1}s ({} markers)",
-            stage_start.elapsed().as_secs_f64(), dyn_imp_edges);
+        let dyn_imp_edges = detect_dynamic_imports(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
+        eprintln!(
+            "[engine] stage: dynamic-import done in {:.1}s ({} markers)",
+            stage_start.elapsed().as_secs_f64(),
+            dyn_imp_edges
+        );
         stage_timings.push(StageTiming {
             name: "Dynamic Import".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -253,9 +341,17 @@ impl Engine {
         // 5.7. Eval / 动态代码检测
         set_progress("Eval检测", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let eval_edges = detect_eval(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
-        eprintln!("[engine] stage: eval done in {:.1}s ({} markers)",
-            stage_start.elapsed().as_secs_f64(), eval_edges);
+        let eval_edges = detect_eval(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
+        eprintln!(
+            "[engine] stage: eval done in {:.1}s ({} markers)",
+            stage_start.elapsed().as_secs_f64(),
+            eval_edges
+        );
         stage_timings.push(StageTiming {
             name: "Eval Detection".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -265,16 +361,24 @@ impl Engine {
         // 5.8. 跨语言调用检测
         set_progress("跨语言调用检测", 0, 0, "");
         let stage_start = std::time::Instant::now();
-        let xlang_edges = detect_cross_lang_calls(&mut result.graph, project_root, &result.parse_cache, &result.discovered_files);
-        eprintln!("[engine] stage: cross-lang done in {:.1}s ({} markers)",
-            stage_start.elapsed().as_secs_f64(), xlang_edges);
+        let xlang_edges = detect_cross_lang_calls(
+            &mut result.graph,
+            project_root,
+            &result.parse_cache,
+            &result.discovered_files,
+        );
+        eprintln!(
+            "[engine] stage: cross-lang done in {:.1}s ({} markers)",
+            stage_start.elapsed().as_secs_f64(),
+            xlang_edges
+        );
         stage_timings.push(StageTiming {
             name: "Cross-Lang".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
             detail: format!("{} markers", xlang_edges),
         });
 
-                // 6. 数据流 — 现通过 query_file_dataflow() 按需执行。
+        // 6. 数据流 — 现通过 query_file_dataflow() 按需执行。
         // 流水线不再在 graph 构建时预计算数据流边。
         // Agent 工具在追踪变量时直接调用查询引擎。
 
@@ -283,8 +387,10 @@ impl Engine {
         set_progress("耦合增量更新", 0, 0, "");
         let stage_start = std::time::Instant::now();
         compute_coupling_incremental(&mut result.graph);
-        eprintln!("[engine] stage: coupling-incr done in {:.1}s",
-            stage_start.elapsed().as_secs_f64());
+        eprintln!(
+            "[engine] stage: coupling-incr done in {:.1}s",
+            stage_start.elapsed().as_secs_f64()
+        );
         stage_timings.push(StageTiming {
             name: "Coupling (incr)".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),
@@ -300,29 +406,38 @@ impl Engine {
         set_progress("源码片段提取", 0, 0, "");
         let stage_start = std::time::Instant::now();
         // 构建文件索引：module_id → source（借用 parse_cache，不做全量 clone）
-        let file_map: std::collections::HashMap<String, &String> = result.parse_cache.iter()
+        let file_map: std::collections::HashMap<String, &String> = result
+            .parse_cache
+            .iter()
             .map(|(fp, (src, _))| {
-                let mid = crate::path_utils::normalize_path(fp)
-                    .replace(['/', '\\'], ".");
+                let mid = crate::path_utils::normalize_path(fp).replace(['/', '\\'], ".");
                 (mid, src)
             })
             .collect();
         // M3 盘读回退索引：module_id → 未缓存文件路径
-        let path_map: std::collections::HashMap<String, &String> = result.cache_skipped_files.iter()
+        let path_map: std::collections::HashMap<String, &String> = result
+            .cache_skipped_files
+            .iter()
             .map(|fp| {
-                let mid = crate::path_utils::normalize_path(fp)
-                    .replace(['/', '\\'], ".");
+                let mid = crate::path_utils::normalize_path(fp).replace(['/', '\\'], ".");
                 (mid, fp)
             })
             .collect();
         // 并行遍历节点 — 尝试将 node.id 作为 module 前缀，逐步剥离
-        let snippets_extracted: usize = result.graph.nodes_map_mut().par_iter_mut()
+        let snippets_extracted: usize = result
+            .graph
+            .nodes_map_mut()
+            .par_iter_mut()
             .map(|(_, node)| {
-                if node.snippet.is_some() { return 0usize; }
+                if node.snippet.is_some() {
+                    return 0usize;
+                }
                 let mut key: &str = node.id.as_str();
                 loop {
                     if let Some(source) = file_map.get(key) {
-                        if let Some(snippet) = hologram_vector::extract_snippet(source, &node.name, &node.kind) {
+                        if let Some(snippet) =
+                            hologram_vector::extract_snippet(source, &node.name, &node.kind)
+                        {
                             node.snippet = Some(snippet);
                             return 1;
                         }
@@ -330,7 +445,9 @@ impl Engine {
                     }
                     if let Some(path) = path_map.get(key) {
                         if let Ok(source) = std::fs::read_to_string(path) {
-                            if let Some(snippet) = hologram_vector::extract_snippet(&source, &node.name, &node.kind) {
+                            if let Some(snippet) =
+                                hologram_vector::extract_snippet(&source, &node.name, &node.kind)
+                            {
                                 node.snippet = Some(snippet);
                                 return 1;
                             }
@@ -346,8 +463,10 @@ impl Engine {
             })
             .sum();
         let snippet_elapsed = stage_start.elapsed().as_secs_f64();
-        eprintln!("[engine] stage: snippet-extract done in {:.1}s ({} snippets)",
-            snippet_elapsed, snippets_extracted);
+        eprintln!(
+            "[engine] stage: snippet-extract done in {:.1}s ({} snippets)",
+            snippet_elapsed, snippets_extracted
+        );
         stage_timings.push(StageTiming {
             name: "Snippet Extract".into(),
             elapsed_secs: snippet_elapsed,
@@ -366,10 +485,13 @@ impl Engine {
         // 这防止社区 ID 在重新分析时发生偏移：
         // 保留大部分成员的社区继承旧 ID。
         let old_assignment: std::collections::HashMap<String, usize> = {
-            let host = self.store_host().lock()
+            let host = self
+                .store_host()
+                .lock()
                 .map_err(|e| format!("Store lock poisoned: {}", e))?;
             let idx_read = host.store.index.read();
-            idx_read.nodes_iter()
+            idx_read
+                .nodes_iter()
                 .filter_map(|n| n.community_id.map(|cid| (n.id.as_str().to_owned(), cid)))
                 .collect::<std::collections::HashMap<String, usize>>()
         };
@@ -377,16 +499,21 @@ impl Engine {
         let (communities, hierarchical) = detect_communities_and_hierarchy(&result.graph, 42);
 
         // 将新社区匹配到旧社区 — 使用稳定 ID 而非位置索引
-        let stable_ids = crate::community::match_communities_to_previous(
-            &communities, &old_assignment,
-        );
+        let stable_ids =
+            crate::community::match_communities_to_previous(&communities, &old_assignment);
 
         let community_count = communities.len();
         let hc_count = hierarchical.iter().filter(|c| c.level > 0).count();
         let leiden_elapsed = stage_start.elapsed().as_secs_f64();
-        info!(count = community_count, super_levels = hc_count, "[engine] Leiden communities detected");
-        eprintln!("[engine] stage: community done in {:.1}s ({} communities, {} super)",
-            leiden_elapsed, community_count, hc_count);
+        info!(
+            count = community_count,
+            super_levels = hc_count,
+            "[engine] Leiden communities detected"
+        );
+        eprintln!(
+            "[engine] stage: community done in {:.1}s ({} communities, {} super)",
+            leiden_elapsed, community_count, hc_count
+        );
         stage_timings.push(StageTiming {
             name: "Community (Leiden)".into(),
             elapsed_secs: leiden_elapsed,
@@ -410,8 +537,10 @@ impl Engine {
         let stage_start = std::time::Instant::now();
         let flow_count = detect_all_flows(&mut result);
         let flow_elapsed = stage_start.elapsed().as_secs_f64();
-        eprintln!("[engine] stage: flows done in {:.1}s ({} flows)",
-            flow_elapsed, flow_count);
+        eprintln!(
+            "[engine] stage: flows done in {:.1}s ({} flows)",
+            flow_elapsed, flow_count
+        );
         stage_timings.push(StageTiming {
             name: "Flow Detection".into(),
             elapsed_secs: flow_elapsed,
@@ -421,7 +550,8 @@ impl Engine {
         // 7.5. 构建语义向量索引（后台异步执行）
         // ponytail: 使用步骤 5.9 中已填充 snippet 的节点。
         // 在后台线程运行 — 不阻塞流水线完成。
-        let vector_nodes: Vec<hologram_graph::Node> = result.graph.nodes_iter().map(|(_, n)| n.clone()).collect();
+        let vector_nodes: Vec<hologram_graph::Node> =
+            result.graph.nodes_iter().map(|(_, n)| n.clone()).collect();
         let vector_path = hologram_graph::data_dir(project_root).join("vectors.usearch");
         let vector_root = project_root.to_path_buf();
         std::thread::spawn(move || {
@@ -434,7 +564,11 @@ impl Engine {
             match vi.build(&vector_nodes) {
                 Ok(n) if n > 0 => match vi.save() {
                     Ok(()) => {
-                        tracing::info!("[vector] index built: {} vectors saved to {}", n, vector_path.display());
+                        tracing::info!(
+                            "[vector] index built: {} vectors saved to {}",
+                            n,
+                            vector_path.display()
+                        );
                         // 让搜索侧缓存失效（按根），下次搜索加载新索引
                         hologram_vector::invalidate_cache(&vector_root);
                     }
@@ -452,8 +586,10 @@ impl Engine {
         let graph_nodes = result.graph.take_nodes();
         let graph_edges = result.graph.take_edges();
         let idx = MemoryIndex::from_existing_graph(graph_nodes, graph_edges);
-        eprintln!("[engine]   db-save: memory-index build {:.1}s",
-            stage_start.elapsed().as_secs_f64());
+        eprintln!(
+            "[engine]   db-save: memory-index build {:.1}s",
+            stage_start.elapsed().as_secs_f64()
+        );
         // 使用 MemoryIndex 去重后的计数 — 原始 Graph 有来自多阶段合成的
         // 重复边，在去重时会被合并。
         let node_count = idx.node_count();
@@ -476,11 +612,15 @@ impl Engine {
                 store.save_index(&idx)?;
                 store.swap_index(idx);
             }
-            eprintln!("[engine]   db-save: persist+swap {:.1}s",
-                save_start.elapsed().as_secs_f64());
+            eprintln!(
+                "[engine]   db-save: persist+swap {:.1}s",
+                save_start.elapsed().as_secs_f64()
+            );
         }
-        eprintln!("[engine] stage: db-save done in {:.1}s",
-            stage_start.elapsed().as_secs_f64());
+        eprintln!(
+            "[engine] stage: db-save done in {:.1}s",
+            stage_start.elapsed().as_secs_f64()
+        );
         stage_timings.push(StageTiming {
             name: "DB Save".into(),
             elapsed_secs: stage_start.elapsed().as_secs_f64(),

@@ -83,7 +83,11 @@ fn parse_tsconfig(project_root: &Path) -> TsConfig {
         .map(|s| s.to_string());
     if let Some(paths) = co.get("paths").and_then(|p| p.as_object()) {
         for (pattern, targets) in paths {
-            if let Some(t) = targets.as_array().and_then(|a| a.first()).and_then(|v| v.as_str()) {
+            if let Some(t) = targets
+                .as_array()
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str())
+            {
                 cfg.paths.push((pattern.to_string(), t.to_string()));
             }
         }
@@ -277,7 +281,9 @@ impl RustModuleIndex {
             }
             let inferred = infer_rust_module_path(path, &idx.crate_base);
             idx.file_module.insert(path.clone(), inferred.clone());
-            idx.module_file.entry(inferred).or_insert_with(|| path.clone());
+            idx.module_file
+                .entry(inferred)
+                .or_insert_with(|| path.clone());
         }
         idx
     }
@@ -288,7 +294,12 @@ impl RustModuleIndex {
 
     /// 与 [`module_file_for`] 相同，但要求至少匹配 rest 的前 `min_rest` 段。
     /// 用于 Rust 2018 裸路径：`use std::…` 不应回退到当前文件。
-    fn module_file_for_range(&self, base: &[String], rest: &[String], min_rest: usize) -> Option<PathBuf> {
+    fn module_file_for_range(
+        &self,
+        base: &[String],
+        rest: &[String],
+        min_rest: usize,
+    ) -> Option<PathBuf> {
         let mut parts = base.to_vec();
         let min_rest = min_rest.min(rest.len());
         for end in (min_rest..=rest.len()).rev() {
@@ -415,7 +426,9 @@ fn resolve_ts_like(
     tsconfig: &TsConfig,
     cache: &mut FsCache,
 ) -> ResolveOutcome {
-    let ext_list: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".d.ts", ".json", ".css"];
+    let ext_list: &[&str] = &[
+        ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".d.ts", ".json", ".css",
+    ];
 
     // 相对路径
     if spec.starts_with("./") || spec.starts_with("../") {
@@ -530,7 +543,9 @@ fn resolve_python(
         let rel = dir.join(rest.replace('.', "/"));
         return probe_py_module(cache, &rel)
             .map(|p| ResolveOutcome::File(canonicalize_lenient(&p)))
-            .unwrap_or_else(|| ResolveOutcome::Unresolved(format!("relative python probe failed: {spec}")));
+            .unwrap_or_else(|| {
+                ResolveOutcome::Unresolved(format!("relative python probe failed: {spec}"))
+            });
     }
 
     let rel = project_root.join(spec.replace('.', "/"));
@@ -551,7 +566,9 @@ fn resolve_python(
                 }
             }
         }
-        return ResolveOutcome::Unresolved(format!("package dir without resolvable module: {spec}"));
+        return ResolveOutcome::Unresolved(format!(
+            "package dir without resolvable module: {spec}"
+        ));
     }
     ResolveOutcome::External(spec.split('.').next().unwrap_or(spec).to_string())
 }
@@ -607,7 +624,10 @@ fn probe_rust_module_file(cache: &mut FsCache, dir: &Path) -> Option<PathBuf> {
         return Some(canonicalize_lenient(&mod_rs));
     }
     if let (Some(name), Some(parent)) = (dir.file_name(), dir.parent()) {
-        let stem = Path::new(name).file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let stem = Path::new(name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
         if !stem.is_empty() {
             let file_rs = parent.join(format!("{stem}.rs"));
             if cache.exists(&file_rs) {
@@ -661,7 +681,10 @@ fn resolve_rust_with_index(
     if let Some(idx) = idx {
         // 内联 mod tests 里的 `use super::*`：super == 本文件模块，
         // 应指向本文件而不是模块树里的根文件。
-        if rest.is_empty() && anchor == RustPathAnchor::Super(1) && base_parts == rust_segments(&file_module) {
+        if rest.is_empty()
+            && anchor == RustPathAnchor::Super(1)
+            && base_parts == rust_segments(&file_module)
+        {
             return ResolveOutcome::File(importer.clone());
         }
         if anchor == RustPathAnchor::Bare {
@@ -795,7 +818,10 @@ fn resolve_go(
         }
         return ResolveOutcome::Unresolved(format!("go relative probe failed: {spec}"));
     }
-    for base in [project_root.join("vendor").join(spec), project_root.join(spec)] {
+    for base in [
+        project_root.join("vendor").join(spec),
+        project_root.join(spec),
+    ] {
         if cache.exists(&base) {
             return ResolveOutcome::File(canonicalize_lenient(&base));
         }
@@ -988,7 +1014,10 @@ pub struct BindingStats {
 
 impl BindingStats {
     pub fn summary(&self) -> String {
-        format!("import-binding bindings={} rewrote={}", self.bindings, self.rewrote)
+        format!(
+            "import-binding bindings={} rewrote={}",
+            self.bindings, self.rewrote
+        )
     }
 }
 
@@ -1281,7 +1310,13 @@ mod tests {
         std::fs::write(src.join("components").join("button.tsx"), "").unwrap();
         let mut cache = FsCache::default();
         let importer = src.join("app.tsx");
-        let out = resolve_ts_like("./components/button", &importer, &root, &TsConfig::default(), &mut cache);
+        let out = resolve_ts_like(
+            "./components/button",
+            &importer,
+            &root,
+            &TsConfig::default(),
+            &mut cache,
+        );
         assert!(matches!(out, ResolveOutcome::File(p) if p.ends_with("components/button.tsx")));
     }
 
@@ -1310,7 +1345,13 @@ mod tests {
         std::fs::write(pkg.join("index.js"), "").unwrap();
         let mut cache = FsCache::default();
         let importer = root.join("src/uses_leftpad.ts");
-        let out = resolve_ts_like("leftpad", &importer, &root, &TsConfig::default(), &mut cache);
+        let out = resolve_ts_like(
+            "leftpad",
+            &importer,
+            &root,
+            &TsConfig::default(),
+            &mut cache,
+        );
         assert!(matches!(out, ResolveOutcome::External(name) if name == "leftpad"));
     }
 
@@ -1393,12 +1434,7 @@ mod tests {
         let mut cache = FsCache::default();
         let importer = root.join("src/framework_routes/frameworks/actix.rs");
 
-        let out1 = resolve_rust(
-            "super::super::DetectedRoute",
-            &importer,
-            &root,
-            &mut cache,
-        );
+        let out1 = resolve_rust("super::super::DetectedRoute", &importer, &root, &mut cache);
         assert!(
             matches!(&out1, ResolveOutcome::File(p) if p.ends_with("framework_routes/mod.rs")),
             "super::super 应回退到父模块文件，got {:?}",
@@ -1456,7 +1492,12 @@ mod tests {
             out
         );
 
-        let out2 = resolve_rust("serde::{Serialize, Deserialize}", &importer, &root, &mut cache);
+        let out2 = resolve_rust(
+            "serde::{Serialize, Deserialize}",
+            &importer,
+            &root,
+            &mut cache,
+        );
         assert!(
             matches!(&out2, ResolveOutcome::External(name) if name == "serde"),
             "无同名本地模块时才应落到外部 crate，got {:?}",

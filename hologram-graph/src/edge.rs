@@ -127,7 +127,7 @@ pub struct Edge {
     #[serde(default)]
     pub lsp_resolved: bool,
 
-        /// 合成边标记 — 由启发式通道生成（非源码直接解析）
+    /// 合成边标记 — 由启发式通道生成（非源码直接解析）
     #[serde(default)]
     pub is_synthesized: bool,
 
@@ -135,7 +135,6 @@ pub struct Edge {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
 }
-
 
 impl Edge {
     pub fn new(
@@ -159,15 +158,25 @@ impl Edge {
     }
 
     pub fn synthesized(
-        id: impl Into<String>, source: impl Into<String>,
-        target: impl Into<String>, kind: EdgeKind, channel: &str,
+        id: impl Into<String>,
+        source: impl Into<String>,
+        target: impl Into<String>,
+        kind: EdgeKind,
+        channel: &str,
     ) -> Self {
         Self {
-            id: EdgeId::new(id), source: NodeId::new(source), target: NodeId::new(target), kind,
-            coupling_depth: 3, cross_file: true,
-            temporal_delay_sec: None, lsp_resolved: false,
+            id: EdgeId::new(id),
+            source: NodeId::new(source),
+            target: NodeId::new(target),
+            kind,
+            coupling_depth: 3,
+            cross_file: true,
+            temporal_delay_sec: None,
+            lsp_resolved: false,
             is_synthesized: true,
-            metadata: Some(serde_json::json!({"synthesizedBy": channel, "provenance": "heuristic"})),
+            metadata: Some(
+                serde_json::json!({"synthesizedBy": channel, "provenance": "heuristic"}),
+            ),
         }
     }
 }
@@ -206,10 +215,18 @@ mod tests {
     fn test_all_edge_kinds_covered() {
         // 所有 12 种 EdgeKind 应具有不同的字符串表示
         let all = [
-            EdgeKind::Imports, EdgeKind::Calls, EdgeKind::Inherits,
-            EdgeKind::Defines, EdgeKind::Reads, EdgeKind::Writes,
-            EdgeKind::Shares, EdgeKind::Triggers, EdgeKind::Awaits,
-            EdgeKind::Sequences, EdgeKind::Usage, EdgeKind::Throws,
+            EdgeKind::Imports,
+            EdgeKind::Calls,
+            EdgeKind::Inherits,
+            EdgeKind::Defines,
+            EdgeKind::Reads,
+            EdgeKind::Writes,
+            EdgeKind::Shares,
+            EdgeKind::Triggers,
+            EdgeKind::Awaits,
+            EdgeKind::Sequences,
+            EdgeKind::Usage,
+            EdgeKind::Throws,
         ];
         let strs: Vec<&str> = all.iter().map(|k| k.as_str()).collect();
         // 全部唯一
@@ -243,10 +260,16 @@ mod tests {
     #[test]
     fn test_edge_is_synthesized() {
         let e = Edge::new("e1", "a", "b", EdgeKind::Calls);
-        assert!(!e.is_synthesized, "Edge::new should default is_synthesized=false");
+        assert!(
+            !e.is_synthesized,
+            "Edge::new should default is_synthesized=false"
+        );
 
         let se = Edge::synthesized("e2", "a", "b", EdgeKind::Calls, "react-render");
-        assert!(se.is_synthesized, "Edge::synthesized should set is_synthesized=true");
+        assert!(
+            se.is_synthesized,
+            "Edge::synthesized should set is_synthesized=true"
+        );
         assert_eq!(se.coupling_depth, 3);
         assert!(se.cross_file);
     }

@@ -5,7 +5,10 @@ use hologram_graph::Graph;
 use hologram_storage::MemoryIndex;
 
 pub fn coupling_report(graph: &Graph, module: &str) -> serde_json::Value {
-    let mut l1=0u32; let mut l2=0u32; let mut l3=0u32; let mut l4=0u32;
+    let mut l1 = 0u32;
+    let mut l2 = 0u32;
+    let mut l3 = 0u32;
+    let mut l4 = 0u32;
 
     // 规范化模块路径，用于匹配节点位置
     let normalized = module.replace('\\', "/").to_lowercase();
@@ -32,10 +35,16 @@ pub fn coupling_report(graph: &Graph, module: &str) -> serde_json::Value {
         if node_matches(graph, &e.source, module, &normalized)
             || node_matches(graph, &e.target, module, &normalized)
         {
-            match e.coupling_depth { 1=>{l1+=1} 2=>{l2+=1} 3=>{l3+=1} 4=>{l4+=1} _=>{} }
+            match e.coupling_depth {
+                1 => l1 += 1,
+                2 => l2 += 1,
+                3 => l3 += 1,
+                4 => l4 += 1,
+                _ => {}
+            }
         }
     }
-    let total = (l1+l2+l3+l4).max(1) as f64;
+    let total = (l1 + l2 + l3 + l4).max(1) as f64;
     serde_json::json!({
         "module": module, "total_edges": l1+l2+l3+l4,
         "L1": l1, "L2": l2, "L3": l3, "L4": l4,
@@ -44,9 +53,12 @@ pub fn coupling_report(graph: &Graph, module: &str) -> serde_json::Value {
 }
 
 pub fn coupling_report_from_index(idx: &MemoryIndex, module: &str) -> serde_json::Value {
-    let mut l1=0u32; let mut l2=0u32; let mut l3=0u32; let mut l4=0u32;
+    let mut l1 = 0u32;
+    let mut l2 = 0u32;
+    let mut l3 = 0u32;
+    let mut l4 = 0u32;
 
-        // 规范化模块路径用于匹配
+    // 规范化模块路径用于匹配
     let normalized = module.replace('\\', "/");
 
     // 查找属于该模块的节点
@@ -78,18 +90,30 @@ pub fn coupling_report_from_index(idx: &MemoryIndex, module: &str) -> serde_json
         for (tgt, _, depth, _) in idx.outgoing(nid, None) {
             let key = format!("{}:{}:{}", nid, tgt, depth);
             if seen.insert(key) {
-                match depth { 1=>{l1+=1} 2=>{l2+=1} 3=>{l3+=1} 4=>{l4+=1} _=>{} }
+                match depth {
+                    1 => l1 += 1,
+                    2 => l2 += 1,
+                    3 => l3 += 1,
+                    4 => l4 += 1,
+                    _ => {}
+                }
             }
         }
         for (src, _, depth, _) in idx.incoming(nid, None) {
             let key = format!("{}:{}:{}", src, nid, depth);
             if seen.insert(key) {
-                match depth { 1=>{l1+=1} 2=>{l2+=1} 3=>{l3+=1} 4=>{l4+=1} _=>{} }
+                match depth {
+                    1 => l1 += 1,
+                    2 => l2 += 1,
+                    3 => l3 += 1,
+                    4 => l4 += 1,
+                    _ => {}
+                }
             }
         }
     }
 
-    let total = (l1+l2+l3+l4).max(1) as f64;
+    let total = (l1 + l2 + l3 + l4).max(1) as f64;
     serde_json::json!({
         "module": module, "total_edges": l1+l2+l3+l4,
         "L1": l1, "L2": l2, "L3": l3, "L4": l4,
@@ -143,8 +167,8 @@ pub fn count_l4_by_file(idx: &MemoryIndex) -> Vec<(String, usize)> {
 
 #[cfg(test)]
 mod tests {
-    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 
     #[test]
     fn test_coupling_empty_graph() {

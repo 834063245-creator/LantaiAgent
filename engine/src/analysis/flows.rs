@@ -9,15 +9,35 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use hologram_graph::{EdgeKind, NodeKind};
 use crate::pipeline::runner::PipelineResult;
+use hologram_graph::{EdgeKind, NodeKind};
 
 /// 用于关键性评分的安全敏感关键词。
 const SECURITY_KEYWORDS: &[&str] = &[
-    "auth", "login", "token", "password", "secret", "credential",
-    "permission", "role", "access", "validate", "sanitize", "encrypt",
-    "decrypt", "hash", "sign", "verify", "session", "csrf", "cors",
-    "oauth", "jwt", "api_key", "rate_limit", "throttle",
+    "auth",
+    "login",
+    "token",
+    "password",
+    "secret",
+    "credential",
+    "permission",
+    "role",
+    "access",
+    "validate",
+    "sanitize",
+    "encrypt",
+    "decrypt",
+    "hash",
+    "sign",
+    "verify",
+    "session",
+    "csrf",
+    "cors",
+    "oauth",
+    "jwt",
+    "api_key",
+    "rate_limit",
+    "throttle",
 ];
 
 /// 去除位置字符串末尾的 `:line_number` 后缀。
@@ -40,7 +60,9 @@ fn strip_line_suffix(loc: &str) -> &str {
 /// source+target+edge.id 三个 String（全内核百万级 Calls 边 ≈ 2GB 瞬时）。
 /// 入参取边表（经 `Graph::edges_map()`）而非整个 Graph：返回值借用边表，
 /// 零克隆；借用存活期间调用方只读 Graph，节点写回延至借用结束后统一执行。
-fn build_calls_adjacency(edges: &HashMap<hologram_graph::EdgeId, hologram_graph::Edge>) -> HashMap<&str, Vec<(&str, &str)>> {
+fn build_calls_adjacency(
+    edges: &HashMap<hologram_graph::EdgeId, hologram_graph::Edge>,
+) -> HashMap<&str, Vec<(&str, &str)>> {
     let mut adj: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
     for edge in edges.values() {
         if edge.kind == EdgeKind::Calls {
@@ -56,7 +78,9 @@ fn build_calls_adjacency(edges: &HashMap<hologram_graph::EdgeId, hologram_graph:
 /// 一次遍历 O(E)，供入口点检测 O(1) 查询 —— 替代逐节点全边扫描
 /// （O(N×E) 字符串比较，压测中占 Flow 阶段 80%+ 耗时）。
 /// M6: 同样借用化，不再克隆 target。
-fn build_calls_indegree(edges: &HashMap<hologram_graph::EdgeId, hologram_graph::Edge>) -> HashMap<&str, usize> {
+fn build_calls_indegree(
+    edges: &HashMap<hologram_graph::EdgeId, hologram_graph::Edge>,
+) -> HashMap<&str, usize> {
     let mut indegree: HashMap<&str, usize> = HashMap::new();
     for edge in edges.values() {
         if edge.kind == EdgeKind::Calls {
@@ -77,9 +101,17 @@ fn is_entry_point_name(name: &str) -> bool {
         || lower.starts_with("process")
         || matches!(
             lower.as_str(),
-            "run" | "start" | "stop" | "serve" | "migrate"
-            | "setup" | "bootstrap" | "execute" | "configure"
-            | "initialize" | "load"
+            "run"
+                | "start"
+                | "stop"
+                | "serve"
+                | "migrate"
+                | "setup"
+                | "bootstrap"
+                | "execute"
+                | "configure"
+                | "initialize"
+                | "load"
         )
 }
 
@@ -114,7 +146,11 @@ fn detect_entry_points(
             for (target, _) in outgoing {
                 if !seen.contains(*target) {
                     seen.insert(target.to_string());
-                    entries.push((target.to_string(), "framework_route".into(), framework.clone()));
+                    entries.push((
+                        target.to_string(),
+                        "framework_route".into(),
+                        framework.clone(),
+                    ));
                 }
             }
         }
@@ -244,8 +280,8 @@ fn compute_criticality(
     let l4_norm = (l4_count as f64 / (edge_ids.len().max(1) as f64)).min(1.0);
     let cross_norm = (cross_comm as f64 / (edge_ids.len().max(1) as f64)).min(1.0);
 
-    let score = depth_norm * 0.25 + size_norm * 0.15 + l4_norm * 0.25
-        + cross_norm * 0.15 + security_score;
+    let score =
+        depth_norm * 0.25 + size_norm * 0.15 + l4_norm * 0.25 + cross_norm * 0.15 + security_score;
 
     (score.clamp(0.0, 1.0), l4_count, cross_comm)
 }
@@ -291,18 +327,21 @@ pub fn detect_all_flows(result: &mut PipelineResult) -> usize {
         // 将 Flow 元数据持久化到入口点节点。
         // node_ids 存储在此处，因为 handler（get_flow, get_affected_flows）
         // 需要完整路径 — MemoryIndex 中没有独立的 Flow 存储区。
-        pending_flows.push((entry_id, serde_json::json!({
-            "id": idx,
-            "entry_kind": kind,
-            "framework": framework,
-            "criticality": criticality,
-            "depth": depth,
-            "node_count": node_ids.len(),
-            "file_count": file_count,
-            "l4_count": l4_count,
-            "cross_community": cross_comm,
-            "node_ids": node_ids,
-        })));
+        pending_flows.push((
+            entry_id,
+            serde_json::json!({
+                "id": idx,
+                "entry_kind": kind,
+                "framework": framework,
+                "criticality": criticality,
+                "depth": depth,
+                "node_count": node_ids.len(),
+                "file_count": file_count,
+                "l4_count": l4_count,
+                "cross_community": cross_comm,
+                "node_ids": node_ids,
+            }),
+        ));
         flow_count += 1;
     }
 
@@ -322,8 +361,8 @@ pub fn detect_all_flows(result: &mut PipelineResult) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hologram_graph::{Edge, Graph, Node, NodeKind};
     use crate::pipeline::runner::PipelineResult;
+    use hologram_graph::{Edge, Graph, Node, NodeKind};
     use std::collections::HashMap;
 
     fn make_result(graph: Graph) -> PipelineResult {
@@ -347,7 +386,9 @@ mod tests {
 
     fn make_calls_edge(graph: &mut Graph, src: &str, tgt: &str) {
         let id = format!("{}::{}::calls", src, tgt);
-        graph.add_edge(Edge::new(id, src, tgt, EdgeKind::Calls)).unwrap();
+        graph
+            .add_edge(Edge::new(id, src, tgt, EdgeKind::Calls))
+            .unwrap();
     }
 
     #[test]
@@ -355,10 +396,19 @@ mod tests {
         assert_eq!(strip_line_suffix("src/main.rs:42"), "src/main.rs");
         assert_eq!(strip_line_suffix("src/main.rs"), "src/main.rs");
         // Windows 驱动器号路径 — 不应去除驱动器冒号
-        assert_eq!(strip_line_suffix("C:\\Users\\foo\\bar.rs:10"), "C:\\Users\\foo\\bar.rs");
-        assert_eq!(strip_line_suffix("C:\\Users\\foo\\bar.rs"), "C:\\Users\\foo\\bar.rs");
+        assert_eq!(
+            strip_line_suffix("C:\\Users\\foo\\bar.rs:10"),
+            "C:\\Users\\foo\\bar.rs"
+        );
+        assert_eq!(
+            strip_line_suffix("C:\\Users\\foo\\bar.rs"),
+            "C:\\Users\\foo\\bar.rs"
+        );
         // 冒号后无行号 → 保持原样
-        assert_eq!(strip_line_suffix("http://example.com"), "http://example.com");
+        assert_eq!(
+            strip_line_suffix("http://example.com"),
+            "http://example.com"
+        );
     }
 
     #[test]
@@ -392,7 +442,10 @@ mod tests {
         assert_eq!(count, 1, "should detect 1 flow from main");
         let main_node = result.graph.get_node("main").unwrap();
         let flow = main_node.properties.get("flow").unwrap();
-        assert_eq!(flow.get("entry_kind").unwrap().as_str().unwrap(), "naming_convention");
+        assert_eq!(
+            flow.get("entry_kind").unwrap().as_str().unwrap(),
+            "naming_convention"
+        );
         assert_eq!(flow.get("node_count").unwrap().as_u64().unwrap(), 3);
         assert_eq!(flow.get("depth").unwrap().as_u64().unwrap(), 2);
     }
@@ -420,10 +473,7 @@ mod tests {
             "framework_route",
             "entry_kind should be framework_route for route-discovered entries"
         );
-        assert_eq!(
-            flow.get("framework").unwrap().as_str().unwrap(),
-            "fastapi"
-        );
+        assert_eq!(flow.get("framework").unwrap().as_str().unwrap(), "fastapi");
     }
 
     #[test]
@@ -469,7 +519,10 @@ mod tests {
         let mut result = make_result(graph);
         let count = detect_all_flows(&mut result);
 
-        assert_eq!(count, 0, "entry point with no callees is not a meaningful flow");
+        assert_eq!(
+            count, 0,
+            "entry point with no callees is not a meaningful flow"
+        );
     }
 
     #[test]
@@ -498,7 +551,9 @@ mod tests {
         make_calls_edge(&mut graph, "a", "b");
         make_calls_edge(&mut graph, "a", "c");
         // 非 CALLS 边应被排除
-        graph.add_edge(Edge::new("a::b::imports", "a", "b", EdgeKind::Imports)).unwrap();
+        graph
+            .add_edge(Edge::new("a::b::imports", "a", "b", EdgeKind::Imports))
+            .unwrap();
 
         let adj = build_calls_adjacency(&graph.edges);
         let a_out = adj.get("a").unwrap();
@@ -516,7 +571,11 @@ mod tests {
         let n = 8000usize;
         for i in 0..n {
             let id = format!("src/pkg/mod_{}/file_{}.go::sym_{}", i % 50, i, i);
-            let name = if i < 20 { format!("handleRequest{}", i) } else { format!("func{}", i) };
+            let name = if i < 20 {
+                format!("handleRequest{}", i)
+            } else {
+                format!("func{}", i)
+            };
             graph.add_node(make_node(&id, &name, NodeKind::Function));
         }
         // 32000 条唯一 CALLS 边:(s, s+1+k),k ∈ 0..4 —— 每节点入度恰为 4

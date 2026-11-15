@@ -89,10 +89,7 @@ impl ParallelParser {
         let source = fs::read_to_string(path).ok()?;
         let source_len = source.lines().count();
 
-        let (mut nodes, edges, tree) = adapter.analyze(
-            &path.to_string_lossy(),
-            &source,
-        );
+        let (mut nodes, edges, tree) = adapter.analyze(&path.to_string_lossy(), &source);
 
         // 将 location 归一化为正斜杠格式，以便 file_index 查找匹配。
         // 适配器已设置 `file:line`；仅为缺少 location 的节点填充。
@@ -140,7 +137,10 @@ mod tests {
         assert_eq!(results.len(), 2);
         // a.py 应有 2 个节点（foo, Bar）
         let a = results.iter().find(|r| r.path.ends_with("a.py")).unwrap();
-        assert!(!a.nodes.is_empty(), "should extract at least 1 symbol from a.py");
+        assert!(
+            !a.nodes.is_empty(),
+            "should extract at least 1 symbol from a.py"
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }

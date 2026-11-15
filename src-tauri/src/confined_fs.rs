@@ -52,7 +52,9 @@ where
             Err(e) => {
                 let retryable = matches!(
                     e.kind(),
-                    io::ErrorKind::Interrupted | io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                    io::ErrorKind::Interrupted
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::WouldBlock
                 );
                 if !retryable || attempt == IO_RETRY_COUNT {
                     return Err(crate::integrity::io_failure_message(label, attempt + 1, &e));
@@ -60,7 +62,11 @@ where
                 let delay = IO_RETRY_BASE_DELAY * 2u32.pow(attempt);
                 eprintln!(
                     "[confined_fs] {}: retryable error, attempt {}/{} — {:?} (retrying in {:?})",
-                    label, attempt + 1, IO_RETRY_COUNT, e, delay
+                    label,
+                    attempt + 1,
+                    IO_RETRY_COUNT,
+                    e,
+                    delay
                 );
                 std::thread::sleep(delay);
                 last_err = Some(e);
@@ -68,7 +74,11 @@ where
         }
     }
     match last_err {
-        Some(e) => Err(crate::integrity::io_failure_message(label, IO_RETRY_COUNT + 1, &e)),
+        Some(e) => Err(crate::integrity::io_failure_message(
+            label,
+            IO_RETRY_COUNT + 1,
+            &e,
+        )),
         None => Err(format!(
             "{} (尝试 {} 次后失败): 未知 I/O 错误",
             label,
@@ -102,9 +112,12 @@ pub(crate) async fn read_text_unchecked(
             file_path
         ));
     }
-    let content = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
-        with_io_retry(|| std::fs::read_to_string(&rp), "read_to_string")
-    }))
+    let content = tokio::time::timeout(
+        READ_TIMEOUT,
+        tokio::task::spawn_blocking(move || {
+            with_io_retry(|| std::fs::read_to_string(&rp), "read_to_string")
+        }),
+    )
     .await
     .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), file_path))?
     .map_err(|e| format!("读取任务失败: {}", e))?
@@ -196,7 +209,10 @@ fn write_bytes_atomic(file_path: &str, bytes: &[u8]) -> Result<(), String> {
     let tmp_path = format!("{}.tmp.{}", file_path, seq);
     let bak_path = format!("{}.bak", file_path);
 
-    with_io_retry(|| std::fs::write(&tmp_path, bytes), "write_bytes_atomic(tmp)")?;
+    with_io_retry(
+        || std::fs::write(&tmp_path, bytes),
+        "write_bytes_atomic(tmp)",
+    )?;
 
     let had_original = std::path::Path::new(file_path).exists();
     if had_original {
@@ -304,8 +320,10 @@ pub(crate) async fn rename(
     state: &tauri::State<'_, WorkspaceState>,
     app: &AppHandle,
 ) -> Result<(PathBuf, PathBuf), String> {
-    let resolved_from = crate::utils::resolve_read_dispatch(from, is_agent, agent_id, state, app).await?;
-    let resolved_to = crate::utils::resolve_write_dispatch(to, is_agent, agent_id, state, app).await?;
+    let resolved_from =
+        crate::utils::resolve_read_dispatch(from, is_agent, agent_id, state, app).await?;
+    let resolved_to =
+        crate::utils::resolve_write_dispatch(to, is_agent, agent_id, state, app).await?;
     let rf = resolved_from.clone();
     let rt = resolved_to.clone();
     with_io_retry(
@@ -363,15 +381,27 @@ pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
             let is_dir = path.is_dir();
-            if filter_ignored && is_dir
+            if filter_ignored
+                && is_dir
                 && crate::ignored_paths::is_ignored_path(&path.to_string_lossy().replace('\\', "/"))
             {
                 continue;
             }
             let children = if is_dir {
                 let mut child_entries = Vec::new();
-                recurse(&path, depth + 1, &mut child_entries, entry_count, truncated, filter_ignored);
-                if child_entries.is_empty() { None } else { Some(child_entries) }
+                recurse(
+                    &path,
+                    depth + 1,
+                    &mut child_entries,
+                    entry_count,
+                    truncated,
+                    filter_ignored,
+                );
+                if child_entries.is_empty() {
+                    None
+                } else {
+                    Some(child_entries)
+                }
             } else {
                 None
             };
@@ -389,7 +419,14 @@ pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -
     let mut entries: Vec<DirEntry> = Vec::new();
     let mut entry_count = 0usize;
     let mut truncated = false;
-    recurse(root, 0, &mut entries, &mut entry_count, &mut truncated, filter_ignored);
+    recurse(
+        root,
+        0,
+        &mut entries,
+        &mut entry_count,
+        &mut truncated,
+        filter_ignored,
+    );
     if truncated && !entries.is_empty() {
         entries[0].truncated = Some(true);
     }
@@ -399,7 +436,8 @@ pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -
 /// 平铺列出（只隐藏 VCS 内部目录）。
 pub(crate) fn list_dir_flat(root: &std::path::Path) -> Vec<DirEntry> {
     let mut entries: Vec<DirEntry> = Vec::new();
-    let skip_dirs: std::collections::HashSet<&str> = [".git", ".hg", ".svn"].iter().cloned().collect();
+    let skip_dirs: std::collections::HashSet<&str> =
+        [".git", ".hg", ".svn"].iter().cloned().collect();
     let readdir = match std::fs::read_dir(root) {
         Ok(r) => r,
         Err(_) => return entries,
@@ -420,7 +458,8 @@ pub(crate) fn list_dir_flat(root: &std::path::Path) -> Vec<DirEntry> {
         });
     }
     entries.sort_by(|a, b| {
-        b.is_dir.cmp(&a.is_dir)
+        b.is_dir
+            .cmp(&a.is_dir)
             .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     entries
@@ -471,7 +510,8 @@ mod tests {
     fn write_bytes_atomic_roundtrip_and_overwrite() {
         let dir = std::env::temp_dir().join(format!(
             "lantai_wb64_{}",
-            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            std::process::id() * 1000
+                + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("blob.bin");
@@ -500,7 +540,8 @@ mod tests {
     fn tmp_dir(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "lantai_{tag}_{}",
-            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            std::process::id() * 1000
+                + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -525,7 +566,10 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().to_string())
             .filter(|n| n != "9.ndjson")
             .collect();
-        assert!(leftovers.is_empty(), "整写成功不得留临时文件：{leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "整写成功不得留临时文件：{leftovers:?}"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -545,7 +589,10 @@ mod tests {
 
         truncate_file(p.to_str().unwrap(), complete.len() as u64).unwrap();
         let kept = std::fs::read_to_string(&p).unwrap();
-        assert_eq!(kept, complete, "只保留完整前缀（半截记录含半个字符一起丢弃）");
+        assert_eq!(
+            kept, complete,
+            "只保留完整前缀（半截记录含半个字符一起丢弃）"
+        );
 
         // 越界拒绝（修复不能变成造洞）
         assert!(truncate_file(p.to_str().unwrap(), 9999).is_err());
@@ -560,7 +607,8 @@ mod tests {
     fn append_text_durable_appends_in_order() {
         let dir = std::env::temp_dir().join(format!(
             "lantai_durable_{}",
-            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            std::process::id() * 1000
+                + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("7.ndjson");
@@ -568,7 +616,10 @@ mod tests {
 
         append_text_durable(ps, "{\"seq\":1}\n").unwrap();
         append_text_durable(ps, "{\"seq\":2}\n").unwrap();
-        assert_eq!(std::fs::read_to_string(ps).unwrap(), "{\"seq\":1}\n{\"seq\":2}\n");
+        assert_eq!(
+            std::fs::read_to_string(ps).unwrap(),
+            "{\"seq\":1}\n{\"seq\":2}\n"
+        );
 
         // 文件不存在时创建（首卷首次 append）
         let p2 = dir.join("new.ndjson");
@@ -583,14 +634,18 @@ mod tests {
     fn append_text_durable_fails_without_partial_file() {
         let dir = std::env::temp_dir().join(format!(
             "lantai_durable_err_{}",
-            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            std::process::id() * 1000
+                + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let target = dir.join("as_dir");
         std::fs::create_dir_all(&target).unwrap();
 
         let err = append_text_durable(target.to_str().unwrap(), "data").unwrap_err();
-        assert!(err.contains("durable append"), "错误必须点名失败原语: {err}");
+        assert!(
+            err.contains("durable append"),
+            "错误必须点名失败原语: {err}"
+        );
         assert!(target.is_dir(), "目录形态未被破坏");
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -601,7 +656,8 @@ mod tests {
     fn truncate_file_discards_tail_and_rejects_overflow() {
         let dir = std::env::temp_dir().join(format!(
             "lantai_trunc_{}",
-            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            std::process::id() * 1000
+                + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("log.ndjson");
@@ -633,7 +689,12 @@ mod tests {
         let result = expand_braces("a/{b,c}/{d,e}");
         assert_eq!(
             result,
-            vec!["a/b/d".to_string(), "a/b/e".to_string(), "a/c/d".to_string(), "a/c/e".to_string()]
+            vec![
+                "a/b/d".to_string(),
+                "a/b/e".to_string(),
+                "a/c/d".to_string(),
+                "a/c/e".to_string()
+            ]
         );
     }
 
@@ -672,7 +733,10 @@ mod tests {
             file_json.get("children").is_some(),
             "文件条目必须携带 children 键（null）：{file_json}"
         );
-        assert!(file_json["children"].is_null(), "无子必须序列化为 null：{file_json}");
+        assert!(
+            file_json["children"].is_null(),
+            "无子必须序列化为 null：{file_json}"
+        );
         assert!(
             dir_json.get("children").is_some(),
             "目录条目必须携带 children 键：{dir_json}"
@@ -683,7 +747,10 @@ mod tests {
     /// `target/`，夹具会落进 `target/confined_fs_*`，而被测的 `glob_entries()` 排除名单
     /// 恰好含 `/target/` ⇒ 测试树被自己的过滤规则滤掉（glob 恒空）。改落仓库根 `.tmp-test/`。
     fn make_tree(tag: &str) -> std::path::PathBuf {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(".tmp-test");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join(".tmp-test");
         let tmp = root.join(format!("confined_fs_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(tmp.join("sub")).unwrap();
@@ -704,7 +771,10 @@ mod tests {
         assert!(names.contains(&"sub"));
         assert!(!names.contains(&"c.txt"), "sub/ 内不应出现在平铺层");
         assert!(!names.contains(&".git"), ".git 应被隐藏");
-        assert!(entries.iter().all(|e| e.children.is_none()), "平铺无 children");
+        assert!(
+            entries.iter().all(|e| e.children.is_none()),
+            "平铺无 children"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -728,8 +798,14 @@ mod tests {
             v
         };
         assert!(flat_names.iter().any(|n| n == "a.txt"));
-        assert!(flat_names.iter().any(|n| n == "c.txt"), "递归应含 sub/c.txt");
-        assert!(!flat_names.iter().any(|n| n == "config"), ".git 应被 is_ignored_path 过滤");
+        assert!(
+            flat_names.iter().any(|n| n == "c.txt"),
+            "递归应含 sub/c.txt"
+        );
+        assert!(
+            !flat_names.iter().any(|n| n == "config"),
+            ".git 应被 is_ignored_path 过滤"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -753,7 +829,10 @@ mod tests {
 
     #[test]
     fn format_lines_numbers() {
-        assert_eq!(format_lines("aa\nbb\ncc", None, None), "     1\taa\n     2\tbb\n     3\tcc");
+        assert_eq!(
+            format_lines("aa\nbb\ncc", None, None),
+            "     1\taa\n     2\tbb\n     3\tcc"
+        );
         assert_eq!(format_lines("aa\nbb\ncc", Some(1), Some(1)), "     2\tbb");
     }
 
@@ -817,8 +896,7 @@ pub(crate) fn glob_entries(root: &str, patterns: &[String]) -> Result<Vec<GlobEn
     let compiled: Vec<glob::Pattern> = expanded
         .iter()
         .map(|pat| {
-            glob::Pattern::new(pat)
-                .map_err(|e| format!("无效的 glob 模式 '{}': {}", pat, e))
+            glob::Pattern::new(pat).map_err(|e| format!("无效的 glob 模式 '{}': {}", pat, e))
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -834,12 +912,18 @@ pub(crate) fn glob_entries(root: &str, patterns: &[String]) -> Result<Vec<GlobEn
         }
         let entry_path = entry.path();
         let eps = entry_path.to_string_lossy();
-        if eps.contains("/.git/") || eps.contains("\\.git\\")
-            || eps.contains("/node_modules/") || eps.contains("\\node_modules\\")
-            || eps.contains("/target/") || eps.contains("\\target\\")
-            || eps.contains("/dist/") || eps.contains("\\dist\\")
-            || eps.contains("/build/") || eps.contains("\\build\\")
-            || eps.contains("/.lantai/") || eps.contains("\\.lantai\\")
+        if eps.contains("/.git/")
+            || eps.contains("\\.git\\")
+            || eps.contains("/node_modules/")
+            || eps.contains("\\node_modules\\")
+            || eps.contains("/target/")
+            || eps.contains("\\target\\")
+            || eps.contains("/dist/")
+            || eps.contains("\\dist\\")
+            || eps.contains("/build/")
+            || eps.contains("\\build\\")
+            || eps.contains("/.lantai/")
+            || eps.contains("\\.lantai\\")
         {
             continue;
         }
@@ -877,14 +961,8 @@ const MAX_IMAGE_ATTACH_BYTES: usize = 20 * 1024 * 1024;
 /// fs_cap.read 的两种结局（2026-09-18 按路径读图）：文本（原文/行号格式）
 /// 或附图（字节已落内容寻址附件 + 引用数据供 fs_cap.rs 组 JSON）。
 pub(crate) enum ReadCapOutcome {
-    Text {
-        real: PathBuf,
-        content: String,
-    },
-    Image {
-        real: PathBuf,
-        image: AttachedImage,
-    },
+    Text { real: PathBuf, content: String },
+    Image { real: PathBuf, image: AttachedImage },
 }
 
 /// 附图引用数据——形状契约与 TS 侧 parseToolImageOutput（id/mediaType/bytes/
@@ -915,7 +993,8 @@ pub(crate) async fn read_cap(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<ReadCapOutcome, String> {
-    let real_path = crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    let real_path =
+        crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
     let rp = real_path.clone();
     let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
     if meta.len() > MAX_READ_BYTES {
@@ -927,9 +1006,10 @@ pub(crate) async fn read_cap(
         ));
     }
     // 先读字节（不再直接 read_to_string——嗅探需要原始字节）。
-    let bytes = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
-        with_io_retry(|| std::fs::read(&rp), "read_bytes")
-    }))
+    let bytes = tokio::time::timeout(
+        READ_TIMEOUT,
+        tokio::task::spawn_blocking(move || with_io_retry(|| std::fs::read(&rp), "read_bytes")),
+    )
     .await
     .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), file_path))?
     .map_err(|e| format!("读取任务失败: {}", e))?
@@ -1004,11 +1084,11 @@ pub(crate) async fn write_text_cap(
             MAX_WRITE_BYTES / (1024 * 1024)
         ));
     }
-    let real_path = crate::utils::resolve_write_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    let real_path =
+        crate::utils::resolve_write_dispatch(file_path, is_agent, agent_id, state, app).await?;
     let rp = real_path.to_string_lossy().to_string();
     if let Some(parent) = real_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("无法创建目录: {}", e))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("无法创建目录: {}", e))?;
     }
     // durable（2026-10-29 换轨收口）：会话事件日志的物化/整写要求「返回即已落盘」，
     // 与 append_text_durable 同档；其余写入维持旧语义（无 fsync，省 IO）。
@@ -1043,11 +1123,11 @@ pub(crate) async fn write_base64_cap(
             MAX_WRITE_BYTES / (1024 * 1024)
         ));
     }
-    let real_path = crate::utils::resolve_write_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    let real_path =
+        crate::utils::resolve_write_dispatch(file_path, is_agent, agent_id, state, app).await?;
     let rp = real_path.to_string_lossy().to_string();
     if let Some(parent) = real_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("无法创建目录: {}", e))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("无法创建目录: {}", e))?;
     }
     write_bytes_atomic(&rp, &bytes)?;
     Ok(real_path)
@@ -1148,7 +1228,8 @@ pub(crate) async fn read_base64_cap(
     app: &AppHandle,
 ) -> Result<String, String> {
     use base64::Engine;
-    let real_path = crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    let real_path =
+        crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
     let rp = real_path.clone();
     let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
     if meta.len() > MAX_READ_BYTES {
@@ -1159,9 +1240,10 @@ pub(crate) async fn read_base64_cap(
             file_path
         ));
     }
-    let bytes = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
-        with_io_retry(|| std::fs::read(&rp), "read_bytes")
-    }))
+    let bytes = tokio::time::timeout(
+        READ_TIMEOUT,
+        tokio::task::spawn_blocking(move || with_io_retry(|| std::fs::read(&rp), "read_bytes")),
+    )
     .await
     .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), file_path))?
     .map_err(|e| format!("读取任务失败: {}", e))?

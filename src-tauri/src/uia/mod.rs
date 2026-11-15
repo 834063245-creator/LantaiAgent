@@ -20,18 +20,18 @@
 // 模块：worker(线程桥) / com(COM 核心) / cache(纯逻辑) / errors / grants(授权+租约) /
 //       audit / shot(截图混合路径) / e2e(env 门控真实窗口测试)
 
-mod worker;
 #[cfg(windows)]
 mod com;
+mod worker;
 #[cfg(not(windows))]
 use worker as com; // 非 Windows：worker_loop 回结构化错误（worker.rs 内置占位）
-mod cache;
-pub(crate) mod errors;
-pub(crate) mod grants;
 mod audit;
-mod shot;
+mod cache;
 #[cfg(test)]
 mod e2e;
+pub(crate) mod errors;
+pub(crate) mod grants;
+mod shot;
 
 use serde_json::Value;
 
@@ -94,9 +94,17 @@ fn post_depth_filter(mut v: Value, depth: Option<u32>) -> Result<Value, String> 
         return Ok(v);
     };
     let controls = v["controls"].as_array().cloned().unwrap_or_default();
-    let kept: Vec<&Value> = controls.iter().filter(|c| c["depth"].as_u64().unwrap_or(1) <= n as u64).collect();
+    let kept: Vec<&Value> = controls
+        .iter()
+        .filter(|c| c["depth"].as_u64().unwrap_or(1) <= n as u64)
+        .collect();
     v["controls"] = Value::Array(kept.iter().map(|c| (*c).clone()).collect());
-    v["tree"] = Value::String(cache::tree_text(&kept.iter().filter_map(|c| json_to_rec(c)).collect::<Vec<_>>()));
+    v["tree"] = Value::String(cache::tree_text(
+        &kept
+            .iter()
+            .filter_map(|c| json_to_rec(c))
+            .collect::<Vec<_>>(),
+    ));
     v["count"] = Value::from(kept.len());
     v["total"] = Value::from(kept.len());
     v["truncated"] = Value::Bool(false);
@@ -329,7 +337,11 @@ pub(crate) async fn uia_keys(
 }
 
 /// desktop_uia_activate — 把窗口带到前台（物理输入，rpc 层保证 lease）。
-pub(crate) async fn uia_activate(title: Option<&str>, pid: Option<u32>, hwnd: Option<u64>) -> Result<String, String> {
+pub(crate) async fn uia_activate(
+    title: Option<&str>,
+    pid: Option<u32>,
+    hwnd: Option<u64>,
+) -> Result<String, String> {
     worker::request(|reply| worker::UiaRequest::Activate {
         loc: locator(title, pid, hwnd),
         reply,
@@ -352,8 +364,15 @@ pub(crate) async fn uia_window_shot(
     let rect = v["rect"]
         .as_array()
         .and_then(|a| {
-            let n: Vec<i32> = a.iter().filter_map(|x| x.as_i64().map(|x| x as i32)).collect();
-            if n.len() == 4 { Some((n[0], n[1], n[2], n[3])) } else { None }
+            let n: Vec<i32> = a
+                .iter()
+                .filter_map(|x| x.as_i64().map(|x| x as i32))
+                .collect();
+            if n.len() == 4 {
+                Some((n[0], n[1], n[2], n[3]))
+            } else {
+                None
+            }
         })
         .ok_or_else(|| errors::err(errors::codes::INTERNAL, "窗口矩形解析失败"))?;
     let (path, bytes, rect_s) = shot::capture(rect.0, rect.1, rect.2, rect.3)?;
@@ -369,7 +388,12 @@ pub(crate) async fn uia_window_shot(
 
 /// desktop_probe 路由探测 — 每窗口 interactive 数（预算 50ms）。
 pub(crate) async fn probe_route(hwnd: u64) -> Result<Value, String> {
-    worker::request(|reply| worker::UiaRequest::ProbeRoute { hwnd, budget_ms: 50, reply }).await
+    worker::request(|reply| worker::UiaRequest::ProbeRoute {
+        hwnd,
+        budget_ms: 50,
+        reply,
+    })
+    .await
 }
 
 /// 优雅停机（lifecycle::UiaService 调用）。

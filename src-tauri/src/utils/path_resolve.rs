@@ -8,8 +8,10 @@ use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 
 use crate::permissions;
-use crate::permissions::{PermissionContext, PermissionDecision, has_permission_to_use_tool, register_ask};
-use crate::sandbox::{Sandbox, expand_home, is_symlink_or_junction, logical_path};
+use crate::permissions::{
+    has_permission_to_use_tool, register_ask, PermissionContext, PermissionDecision,
+};
+use crate::sandbox::{expand_home, is_symlink_or_junction, logical_path, Sandbox};
 use crate::tools;
 use crate::workspace;
 
@@ -52,7 +54,8 @@ type WorkspaceState = Arc<Mutex<Option<workspace::WorkspaceHandle>>>;
 /// 辅助函数：从 WorkspaceHandle 状态获取活动工作区路径。
 /// 若未打开工作区则返回错误（而非静默回退到全局变量）。
 pub(crate) fn workspace_path(state: &WorkspaceState) -> Result<String, String> {
-    state.lock()
+    state
+        .lock()
         .map_err(|e| format!("工作区状态错误: {e}"))?
         .as_ref()
         .map(|h| h.path.clone())
@@ -99,7 +102,12 @@ pub(crate) async fn check_permission(
     match has_permission_to_use_tool(tool, ctx) {
         PermissionDecision::Allow => Ok(()),
         PermissionDecision::Deny { reason } => Err(reason),
-        PermissionDecision::Ask { request_id, reason, suggestions, danger } => {
+        PermissionDecision::Ask {
+            request_id,
+            reason,
+            suggestions,
+            danger,
+        } => {
             // 先注册 receiver 再 emit：yolo/auto 模式下前端收到事件会零延迟
             // 自动回包，若回包先于 register_ask 到达，resolve_ask 查不到条目
             // 会静默丢弃答案，命令只能等满 300s 超时——表现为工具
@@ -177,7 +185,11 @@ pub(crate) fn check_permission_sync(
     match has_permission_to_use_tool(tool, ctx) {
         PermissionDecision::Allow => Ok(()),
         PermissionDecision::Deny { reason } => Err(reason),
-        PermissionDecision::Ask { reason, suggestions, .. } => {
+        PermissionDecision::Ask {
+            reason,
+            suggestions,
+            ..
+        } => {
             let target = tool
                 .get_path()
                 .map(|p| p.to_string_lossy().to_string())
@@ -196,9 +208,16 @@ pub(crate) fn check_permission_sync(
                 ctx.audit_allow(&tool.name(), &target);
                 return Ok(());
             }
-            ctx.audit_deny(&tool.name(), &target, &format!("后台任务无法交互，自动拒绝: {}", reason));
+            ctx.audit_deny(
+                &tool.name(),
+                &target,
+                &format!("后台任务无法交互，自动拒绝: {}", reason),
+            );
             let hint = match suggestions.first() {
-                Some(s) => format!("\n建议在 .lantai/permissions.json 添加: \"allow\": [\"{}\"]", s.rule),
+                Some(s) => format!(
+                    "\n建议在 .lantai/permissions.json 添加: \"allow\": [\"{}\"]",
+                    s.rule
+                ),
                 None => String::new(),
             };
             Err(format!("后台任务需要用户确认但无法交互: {}。请将对应操作加入 allow 规则或使用前台 Agent 执行。{}", reason, hint))
@@ -206,25 +225,40 @@ pub(crate) fn check_permission_sync(
     }
 }
 
-pub(crate) async fn require_read(file_path: &str, agent_id: Option<&str>, state: &tauri::State<'_, WorkspaceState>, app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) async fn require_read(
+    file_path: &str,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &tauri::AppHandle,
+) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
     // Phase 3：当隔离模式为 Worktree 时，前向映射到 worktree 物理路径 (spec §5.6)
     let physical = ctx.forward_map_path(&expand_input(file_path), agent_id);
     let physical_str = physical.to_string_lossy().to_string();
-    let tool = tools::ReadTool { path: physical_str.clone(), agent_id: agent_id.map(|s| s.to_string()) };
+    let tool = tools::ReadTool {
+        path: physical_str.clone(),
+        agent_id: agent_id.map(|s| s.to_string()),
+    };
     check_permission(&tool, &ctx, app).await?;
     // 权限已授予 — 沙箱已在 check_permission 内部检查过。
     // 不再重复检查沙箱边界；用户批准的外部读取必须放行。
-    std::fs::canonicalize(&physical)
-        .map_err(|e| format!("无法解析路径 {}: {}", physical_str, e))
+    std::fs::canonicalize(&physical).map_err(|e| format!("无法解析路径 {}: {}", physical_str, e))
 }
 
-pub(crate) async fn require_write(file_path: &str, agent_id: Option<&str>, state: &tauri::State<'_, WorkspaceState>, app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) async fn require_write(
+    file_path: &str,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &tauri::AppHandle,
+) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
     // Phase 3：当隔离模式为 Worktree 时，前向映射到 worktree 物理路径 (spec §5.6)
     let physical = ctx.forward_map_path(&expand_input(file_path), agent_id);
     let physical_str = physical.to_string_lossy().to_string();
-    let tool = tools::EditTool { path: physical_str.clone(), agent_id: agent_id.map(|s| s.to_string()) };
+    let tool = tools::EditTool {
+        path: physical_str.clone(),
+        agent_id: agent_id.map(|s| s.to_string()),
+    };
     check_permission(&tool, &ctx, app).await?;
     // 权限层已放行（用户确认卡 / yolo 自动放行）——越界写**不再由沙箱二次否决**
     // （2026-10-30 修：旧实现「批准了仍被沙箱拒」，同一件事判两次）。项目内写零变化；
@@ -279,7 +313,10 @@ fn path_under(path: &Path, root: &Path) -> bool {
 }
 
 /// 判据本体（纯函数——注册表真源在调用方，测试直接给根清单，不碰进程级 home/注册表）。
-fn read_under_workspace_lantai(file_path: &Path, roots: &[&str]) -> Option<Result<PathBuf, String>> {
+fn read_under_workspace_lantai(
+    file_path: &Path,
+    roots: &[&str],
+) -> Option<Result<PathBuf, String>> {
     if roots.is_empty() {
         return None;
     }
@@ -338,7 +375,10 @@ fn read_under_workspace_lantai(file_path: &Path, roots: &[&str]) -> Option<Resul
 /// 用户级 mcp.json 读取 = main.ts）工作区还没开，豁免会被
 /// 「未打开工作区，请先打开项目」挡死（2026-09-26 真机事故：providers.yml
 /// 永远建不出来）。非白名单路径照旧 `get_ctx`，边界不放宽。
-pub(crate) fn resolve_path_user_read(file_path: &str, state: &tauri::State<'_, WorkspaceState>) -> Result<PathBuf, String> {
+pub(crate) fn resolve_path_user_read(
+    file_path: &str,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<PathBuf, String> {
     let expanded = expand_input(file_path);
     if let Some(r) = Sandbox::user_data_read(&expanded) {
         return r.into_result();
@@ -353,7 +393,10 @@ pub(crate) fn resolve_path_user_read(file_path: &str, state: &tauri::State<'_, W
     ctx.resolve_read(&physical_str)
 }
 
-pub(crate) fn resolve_path_user_write(file_path: &str, state: &tauri::State<'_, WorkspaceState>) -> Result<PathBuf, String> {
+pub(crate) fn resolve_path_user_write(
+    file_path: &str,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<PathBuf, String> {
     let expanded = expand_input(file_path);
     if let Some(r) = Sandbox::user_data_write(&expanded) {
         return r.into_result();
@@ -416,8 +459,7 @@ pub(crate) fn resolve_read_unchecked(
     }
     let ctx = get_ctx(state)?;
     let physical = ctx.forward_map_path(&expand_input(file_path), agent_id);
-    std::fs::canonicalize(&physical)
-        .map_err(|e| format!("无法解析路径 {}: {}", file_path, e))
+    std::fs::canonicalize(&physical).map_err(|e| format!("无法解析路径 {}: {}", file_path, e))
 }
 
 /// 写路径免检解析：forward-map（agent 带归属）+ sandbox resolve_write。
@@ -434,7 +476,10 @@ pub(crate) fn resolve_write_unchecked(
     // 免检 = 口内已过闸：agent 的越界写在闸里已拿到 Allow（用户确认 / yolo），
     // 这里不再由沙箱二次否决（与 require_write 同一语义，2026-10-30）。
     if is_agent && ctx.sandbox.is_outside_project(std::path::Path::new(&p)) {
-        return ctx.sandbox.resolve_write_approved(std::path::Path::new(&p)).into_result();
+        return ctx
+            .sandbox
+            .resolve_write_approved(std::path::Path::new(&p))
+            .into_result();
     }
     ctx.resolve_write(&p)
 }
@@ -464,15 +509,26 @@ pub(crate) fn git_exec_path(
         .to_string())
 }
 
-pub(crate) async fn require_command(command: &str, state: &tauri::State<'_, WorkspaceState>, app: &tauri::AppHandle) -> Result<(), String> {
+pub(crate) async fn require_command(
+    command: &str,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
     let ctx = get_ctx(state)?;
-    let tool = tools::BashTool { command: command.to_string() };
+    let tool = tools::BashTool {
+        command: command.to_string(),
+    };
     check_permission(&tool, &ctx, app).await
 }
 
-pub(crate) fn require_command_sync(command: &str, state: &tauri::State<'_, WorkspaceState>) -> Result<(), String> {
+pub(crate) fn require_command_sync(
+    command: &str,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<(), String> {
     let ctx = get_ctx(state)?;
-    let tool = tools::BashTool { command: command.to_string() };
+    let tool = tools::BashTool {
+        command: command.to_string(),
+    };
     check_permission_sync(&tool, &ctx)
 }
 
@@ -493,15 +549,21 @@ pub(crate) async fn require_office(
     check_permission(&tool, &ctx, app).await
 }
 
-pub(crate) fn require_read_sync(file_path: &str, agent_id: Option<&str>, state: &tauri::State<'_, WorkspaceState>) -> Result<PathBuf, String> {
+pub(crate) fn require_read_sync(
+    file_path: &str,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
     // Phase 3：当隔离模式为 Worktree 时，前向映射到 worktree 物理路径 (spec §5.6)
     let physical = ctx.forward_map_path(&expand_input(file_path), agent_id);
     let physical_str = physical.to_string_lossy().to_string();
-    let tool = tools::ReadTool { path: physical_str.clone(), agent_id: agent_id.map(|s| s.to_string()) };
+    let tool = tools::ReadTool {
+        path: physical_str.clone(),
+        agent_id: agent_id.map(|s| s.to_string()),
+    };
     check_permission_sync(&tool, &ctx)?;
-    std::fs::canonicalize(&physical)
-        .map_err(|e| format!("无法解析路径 {}: {}", physical_str, e))
+    std::fs::canonicalize(&physical).map_err(|e| format!("无法解析路径 {}: {}", physical_str, e))
 }
 #[cfg(test)]
 mod tests {
@@ -548,17 +610,25 @@ mod tests {
             "已登记工作区的会话根应免工作区可读"
         );
         assert!(
-            matches!(read_under_workspace_lantai(&sessions.join("1.ndjson"), &roots), Some(Ok(_))),
+            matches!(
+                read_under_workspace_lantai(&sessions.join("1.ndjson"), &roots),
+                Some(Ok(_))
+            ),
             "已登记工作区的卷文件应免工作区可读"
         );
         // 缺失的投影缓存（_index.json）按「父目录 + 文件名」解析——首页首启常态。
         assert!(
-            matches!(read_under_workspace_lantai(&sessions.join("_index.json"), &roots), Some(Ok(_))),
+            matches!(
+                read_under_workspace_lantai(&sessions.join("_index.json"), &roots),
+                Some(Ok(_))
+            ),
             "缺失的 _index.json 也应可解析（读失败留到读面）"
         );
 
         // 规范化后的真实路径必须落在该工作区的 .lantai 内。
-        let allowed = read_under_workspace_lantai(&sessions.join("1.ndjson"), &roots).unwrap().unwrap();
+        let allowed = read_under_workspace_lantai(&sessions.join("1.ndjson"), &roots)
+            .unwrap()
+            .unwrap();
         assert!(allowed.starts_with(&ws.canonicalize().unwrap().join(".lantai")));
     }
 
@@ -628,7 +698,10 @@ mod tests {
         let roots = vec![upper];
         let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
         assert!(
-            matches!(read_under_workspace_lantai(&sessions.join("1.ndjson"), &roots), Some(Ok(_))),
+            matches!(
+                read_under_workspace_lantai(&sessions.join("1.ndjson"), &roots),
+                Some(Ok(_))
+            ),
             "Windows 路径归属必须大小写不敏感"
         );
     }

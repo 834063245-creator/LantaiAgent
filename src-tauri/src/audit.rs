@@ -13,7 +13,7 @@ pub struct AuditEntry {
     pub timestamp: String,
     pub tool: String,
     pub target_path: String,
-    pub action: String,   // "allowed" | "denied" | "user_approved" | "user_denied"
+    pub action: String, // "allowed" | "denied" | "user_approved" | "user_denied"
     pub reason: String,
 }
 
@@ -54,7 +54,12 @@ impl AuditLogger {
             let n = self.write_failures.fetch_add(1, Ordering::Relaxed) + 1;
             eprintln!(
                 "[audit] 审计日志写入失败（第 {} 次）{}: {} — 丢失记录: tool={} action={} path={}",
-                n, self.log_path.display(), e, entry.tool, entry.action, entry.target_path
+                n,
+                self.log_path.display(),
+                e,
+                entry.tool,
+                entry.action,
+                entry.target_path
             );
         }
     }

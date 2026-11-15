@@ -44,7 +44,10 @@ pub(crate) const LOG_KEEP: usize = 2;
 
 /// `path` 的第 `n` 代文件路径（`ui.log` → `ui.log.1`）。
 fn generation_path(path: &Path, n: usize) -> PathBuf {
-    let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     path.with_file_name(format!("{name}.{n}"))
 }
 
@@ -75,7 +78,11 @@ pub(crate) fn rotate_generations(path: &Path, keep: usize) -> Result<(), String>
 
 /// 尺寸判断 + 滚代：`size >= max_bytes` 才滚。返回 `(滚了没有, 滚前尺寸)`。
 /// 文件不存在 = `(false, 0)`（不是错误——首次写入前即此态）。
-pub(crate) fn rotate_if_large(path: &Path, max_bytes: u64, keep: usize) -> Result<(bool, u64), String> {
+pub(crate) fn rotate_if_large(
+    path: &Path,
+    max_bytes: u64,
+    keep: usize,
+) -> Result<(bool, u64), String> {
     let size = match std::fs::metadata(path) {
         Ok(m) => m.len(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((false, 0)),
@@ -94,7 +101,10 @@ pub(crate) fn rotate_if_large(path: &Path, max_bytes: u64, keep: usize) -> Resul
 /// 一个「删任意 `<x>.log` 两个副本」的入口。形状检查把它收窄到日志目录下的
 /// 主日志文件（代文件 `.1`/`.2` 不以 `.log` 结尾，天然被拒）。
 pub(crate) fn is_rotatable_log(path: &Path) -> bool {
-    let name_ok = path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".log"));
+    let name_ok = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.ends_with(".log"));
     let parent = path.parent();
     let logs_ok = parent.and_then(|p| p.file_name()).and_then(|n| n.to_str()) == Some("logs");
     let lantai_ok = parent
@@ -124,8 +134,18 @@ struct RotatingFileWriter {
 impl RotatingFileWriter {
     fn open(path: PathBuf, max_bytes: u64, keep: usize) -> std::io::Result<Self> {
         let written = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-        let file = std::fs::OpenOptions::new().create(true).append(true).open(&path)?;
-        Ok(Self { path, file, written, max_bytes, keep, failure_reported: false })
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?;
+        Ok(Self {
+            path,
+            file,
+            written,
+            max_bytes,
+            keep,
+            failure_reported: false,
+        })
     }
 
     /// 越限就滚。**失败不阻断写入**（继续追加旧文件也比丢这条日志强），但必须
@@ -221,15 +241,15 @@ pub fn init_logging(project_root: &Path) -> WorkerGuard {
 
     let file_layer = fmt::layer().json().with_writer(non_blocking);
 
-    let stderr_layer = fmt::layer()
-        .with_target(true)
-        .with_writer(std::io::stderr);
+    let stderr_layer = fmt::layer().with_target(true).with_writer(std::io::stderr);
 
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing::subscriber::set_global_default(
-        Registry::default().with(filter).with(file_layer).with(stderr_layer),
+        Registry::default()
+            .with(filter)
+            .with(file_layer)
+            .with(stderr_layer),
     )
     .expect("bridge tracing subscriber already set");
     // 置位后，启动期模块（llm_proxy 等）的留痕改走 bridge.log（见文件头注 ①）。
@@ -280,7 +300,8 @@ mod tests {
     // ── 日志轮转 / 保留窗口（批 4）──────────────────────────────────
 
     fn tmp_dir(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("lantai_log_rotate_{tag}_{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("lantai_log_rotate_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -299,8 +320,14 @@ mod tests {
         rotate_generations(&f, 2).unwrap();
 
         assert!(!f.exists(), "主文件滚成 .1 后不该还在");
-        assert_eq!(std::fs::read_to_string(dir.join("ui.log.1")).unwrap(), "cur");
-        assert_eq!(std::fs::read_to_string(dir.join("ui.log.2")).unwrap(), "one");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("ui.log.1")).unwrap(),
+            "cur"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("ui.log.2")).unwrap(),
+            "one"
+        );
         // 旧的 .2 被清（保留窗口 = 当前 + 2 代）
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -321,7 +348,10 @@ mod tests {
         let (rotated, size) = rotate_if_large(&f, 10, 2).unwrap();
         assert!(rotated, "达到上限必须滚（>= 判据）");
         assert_eq!(size, 10);
-        assert_eq!(std::fs::read_to_string(dir.join("ui.log.1")).unwrap(), "0123456789");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("ui.log.1")).unwrap(),
+            "0123456789"
+        );
 
         // 不存在 = (false, 0)，不是错误（首次写入前即此态）
         let (rotated, size) = rotate_if_large(&dir.join("none.log"), 10, 2).unwrap();
@@ -347,8 +377,14 @@ mod tests {
         names.sort();
         assert_eq!(names, vec!["ui.log.1".to_string(), "ui.log.2".to_string()]);
         // 最新一轮在最前代
-        assert_eq!(std::fs::read_to_string(dir.join("ui.log.1")).unwrap(), "round-4");
-        assert_eq!(std::fs::read_to_string(dir.join("ui.log.2")).unwrap(), "round-3");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("ui.log.1")).unwrap(),
+            "round-4"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("ui.log.2")).unwrap(),
+            "round-3"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -358,11 +394,26 @@ mod tests {
     fn is_rotatable_log_fences_shapes() {
         assert!(is_rotatable_log(Path::new("D:/ws/.lantai/logs/ui.log")));
         assert!(is_rotatable_log(Path::new("D:/ws/.lantai/logs/bridge.log")));
-        assert!(!is_rotatable_log(Path::new("D:/ws/.lantai/logs/ui.log.1")), "代文件不是主文件");
-        assert!(!is_rotatable_log(Path::new("D:/ws/logs/ui.log")), "缺 .lantai 一层");
-        assert!(!is_rotatable_log(Path::new("D:/ws/.lantai/other/ui.log")), "不在 logs 目录");
-        assert!(!is_rotatable_log(Path::new("D:/ws/.lantai/logs/ui.txt")), "非 .log 后缀");
-        assert!(!is_rotatable_log(Path::new("D:/ws/.lantai/logs")), "目录不是文件");
+        assert!(
+            !is_rotatable_log(Path::new("D:/ws/.lantai/logs/ui.log.1")),
+            "代文件不是主文件"
+        );
+        assert!(
+            !is_rotatable_log(Path::new("D:/ws/logs/ui.log")),
+            "缺 .lantai 一层"
+        );
+        assert!(
+            !is_rotatable_log(Path::new("D:/ws/.lantai/other/ui.log")),
+            "不在 logs 目录"
+        );
+        assert!(
+            !is_rotatable_log(Path::new("D:/ws/.lantai/logs/ui.txt")),
+            "非 .log 后缀"
+        );
+        assert!(
+            !is_rotatable_log(Path::new("D:/ws/.lantai/logs")),
+            "目录不是文件"
+        );
     }
 
     /// 写器：打开时以现有尺寸为初值，达上限的**下一次写入**先滚代再写；
@@ -375,13 +426,19 @@ mod tests {
         let mut w = RotatingFileWriter::open(f.clone(), 10, 2).unwrap();
 
         w.write_all(b"first\n").unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join("bridge.log.1")).unwrap(), "0123456789");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("bridge.log.1")).unwrap(),
+            "0123456789"
+        );
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "first\n");
 
         // 未达上限的写入不动代际
         w.write_all(b"second\n").unwrap();
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "first\nsecond\n");
-        assert_eq!(std::fs::read_to_string(dir.join("bridge.log.1")).unwrap(), "0123456789");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("bridge.log.1")).unwrap(),
+            "0123456789"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -396,7 +453,10 @@ mod tests {
         w.write_all(b"bbbb").unwrap(); // 12 字节 > 10，但这批仍写进主文件
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "aaaaaaaabbbb");
         w.write_all(b"cccc").unwrap(); // 写前检查：越限 ⇒ 先滚
-        assert_eq!(std::fs::read_to_string(dir.join("bridge.log.1")).unwrap(), "aaaaaaaabbbb");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("bridge.log.1")).unwrap(),
+            "aaaaaaaabbbb"
+        );
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "cccc");
         let _ = std::fs::remove_dir_all(&dir);
     }

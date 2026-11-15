@@ -9,8 +9,8 @@
 
 use crate::adapter::traits::LanguageAdapter;
 use crate::engine::GRAMMAR_LOADER;
-use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 use crate::path_utils::normalize_path;
+use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -92,7 +92,9 @@ fn resolve_import_path(import_path: &str, current_file: &str) -> String {
         for seg in s.split('/') {
             match seg {
                 "." | "" => {}
-                ".." => { parts.pop(); }
+                ".." => {
+                    parts.pop();
+                }
                 _ => parts.push(seg),
             }
         }
@@ -106,7 +108,10 @@ fn resolve_import_path(import_path: &str, current_file: &str) -> String {
 
 /// TS/JS：遍历 import_clause 的 default identifier 与 named_imports，
 /// 产出 [{"imported": name, "local": alias}, ...]。
-fn collect_ts_import_bindings(node: &tree_sitter::Node, source_bytes: &[u8]) -> Vec<serde_json::Value> {
+fn collect_ts_import_bindings(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+) -> Vec<serde_json::Value> {
     let mut out: Vec<serde_json::Value> = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -152,7 +157,10 @@ fn collect_ts_import_bindings(node: &tree_sitter::Node, source_bytes: &[u8]) -> 
 
 /// Python `from X import Y [as Z], W`：排除 module_name 子节点后，
 /// dotted_name → imported=Y local=Y；aliased_import → imported=name local=alias。
-fn collect_py_import_from_bindings(node: &tree_sitter::Node, source_bytes: &[u8]) -> Vec<serde_json::Value> {
+fn collect_py_import_from_bindings(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+) -> Vec<serde_json::Value> {
     let module_child = node.child_by_field_name("module_name");
     let mut out: Vec<serde_json::Value> = Vec::new();
     let mut cursor = node.walk();
@@ -188,7 +196,10 @@ fn collect_py_import_from_bindings(node: &tree_sitter::Node, source_bytes: &[u8]
 }
 
 /// Python `import X [as Y]`：dotted_name → local=首段；aliased_import → local=alias。
-fn collect_py_import_bindings(node: &tree_sitter::Node, source_bytes: &[u8]) -> Vec<serde_json::Value> {
+fn collect_py_import_bindings(
+    node: &tree_sitter::Node,
+    source_bytes: &[u8],
+) -> Vec<serde_json::Value> {
     let mut out: Vec<serde_json::Value> = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -340,7 +351,11 @@ fn push_rust_use_binding(
     let imported = if path_text == "self" {
         base_last.to_string()
     } else {
-        path_text.rsplit("::").next().unwrap_or(path_text).to_string()
+        path_text
+            .rsplit("::")
+            .next()
+            .unwrap_or(path_text)
+            .to_string()
     };
     if imported.is_empty() {
         return;
@@ -417,15 +432,24 @@ impl QueryStructureAdapter {
     pub fn new_js_ts() -> Self {
         Self {
             extensions: vec![
-                "ts".into(), "tsx".into(), "mts".into(), "cts".into(),
-                "js".into(), "jsx".into(), "mjs".into(), "cjs".into(),
+                "ts".into(),
+                "tsx".into(),
+                "mts".into(),
+                "cts".into(),
+                "js".into(),
+                "jsx".into(),
+                "mjs".into(),
+                "cjs".into(),
             ],
             query_src: None, // 运行时根据扩展名选择
             ts_query_src: include_str!("../../queries/ts_structure.scm"),
             js_query_src: include_str!("../../queries/js_structure.scm"),
             func_kinds: &[
-                "function_declaration", "generator_function_declaration",
-                "function_expression", "method_definition", "arrow_function",
+                "function_declaration",
+                "generator_function_declaration",
+                "function_expression",
+                "method_definition",
+                "arrow_function",
             ],
             class_kinds: &["class_declaration"],
         }
@@ -636,7 +660,8 @@ fn process_query(
                     // 匿名函数且无法命名：不创建 scope，内部调用归属外层
                     parent_scope.clone()
                 } else {
-                    let name = name.unwrap_or_else(|| format!("<anon@{}>", node.start_position().row + 1));
+                    let name =
+                        name.unwrap_or_else(|| format!("<anon@{}>", node.start_position().row + 1));
                     let qualified = format!("{}.{}", parent_scope, name);
                     scopes.push(Scope {
                         name: qualified.clone(),
@@ -676,15 +701,23 @@ fn process_query(
         for capture in qmatch.captures() {
             let cn: &str = query.capture_names()[capture.index as usize];
             match cn {
-                "fn" | "class" | "interface" | "call" | "import" | "inherit"
-                | "var" | "write" | "throws" | "usage" => {
+                "fn" | "class" | "interface" | "call" | "import" | "inherit" | "var" | "write"
+                | "throws" | "usage" => {
                     primary_cap = Some((cn, capture.node));
                 }
                 "trait_name" => {
-                    trait_name = capture.node.utf8_text(source_bytes).ok().map(|s| s.to_string());
+                    trait_name = capture
+                        .node
+                        .utf8_text(source_bytes)
+                        .ok()
+                        .map(|s| s.to_string());
                 }
                 "type_name" => {
-                    type_name = capture.node.utf8_text(source_bytes).ok().map(|s| s.to_string());
+                    type_name = capture
+                        .node
+                        .utf8_text(source_bytes)
+                        .ok()
+                        .map(|s| s.to_string());
                 }
                 _ => {}
             }
@@ -705,8 +738,8 @@ fn process_query(
                 };
                 // ponytail: 使用外层 scope 使嵌套函数获得正确路径
                 // （如 module.as_view.view 而非 module.view）。
-                let scope_id = find_enclosing_scope(node.start_byte(), &scopes)
-                    .unwrap_or(&module_id);
+                let scope_id =
+                    find_enclosing_scope(node.start_byte(), &scopes).unwrap_or(&module_id);
                 let nid = format!("{}.{}", scope_id, name);
                 if created_ids.contains(&nid) {
                     continue;
@@ -725,20 +758,25 @@ fn process_query(
                 // 作用域边界 — Phase 1 已找到 scope 定义节点，
                 // 但 variable_declarator 包装的函数需要显式 scope 以进行 call 归属
                 let end = scope_end.unwrap_or(node.end_byte());
-                scopes.push(Scope { name: nid.clone(), start: node.start_byte(), end });
+                scopes.push(Scope {
+                    name: nid.clone(),
+                    start: node.start_byte(),
+                    end,
+                });
                 scopes.sort_by_key(|s| s.start);
             }
 
             "class" => {
-                let name = match node.child_by_field_name("name")
+                let name = match node
+                    .child_by_field_name("name")
                     .and_then(|n| n.utf8_text(source_bytes).ok())
                     .map(|s| s.to_string())
                 {
                     Some(n) => n,
                     None => continue,
                 };
-                let scope_id = find_enclosing_scope(node.start_byte(), &scopes)
-                    .unwrap_or(&module_id);
+                let scope_id =
+                    find_enclosing_scope(node.start_byte(), &scopes).unwrap_or(&module_id);
                 let nid = format!("{}.{}", scope_id, name);
                 if created_ids.contains(&nid) {
                     continue;
@@ -755,14 +793,27 @@ fn process_query(
                 n.location = Some(format!("{}:{}", file_path, node.start_position().row + 1));
                 nodes.push(n);
                 // 作用域
-                scopes.push(Scope { name: nid.clone(), start: node.start_byte(), end: node.end_byte() });
+                scopes.push(Scope {
+                    name: nid.clone(),
+                    start: node.start_byte(),
+                    end: node.end_byte(),
+                });
                 scopes.sort_by_key(|s| s.start);
                 // 继承：遍历子节点查找 extends_clause / implements_clause
-                emit_class_inherits(&node, source_bytes, &nid, &module_id, &file_id, &mut counter, &mut edges);
+                emit_class_inherits(
+                    &node,
+                    source_bytes,
+                    &nid,
+                    &module_id,
+                    &file_id,
+                    &mut counter,
+                    &mut edges,
+                );
             }
 
             "interface" => {
-                let name = match node.child_by_field_name("name")
+                let name = match node
+                    .child_by_field_name("name")
                     .and_then(|n| n.utf8_text(source_bytes).ok())
                     .map(|s| s.to_string())
                 {
@@ -799,7 +850,9 @@ fn process_query(
                             counter += 1;
                             let mut e = Edge::new(
                                 format!("imp_{}_{}", file_id, counter),
-                                &module_id, target, EdgeKind::Imports,
+                                &module_id,
+                                target,
+                                EdgeKind::Imports,
                             );
                             e.cross_file = true;
                             e.metadata = Some(serde_json::json!({ "import_raw": target }));
@@ -817,7 +870,9 @@ fn process_query(
                             counter += 1;
                             let mut e = Edge::new(
                                 format!("imp_{}_{}", file_id, counter),
-                                &module_id, &resolved, EdgeKind::Imports,
+                                &module_id,
+                                &resolved,
+                                EdgeKind::Imports,
                             );
                             e.cross_file = true;
                             e.metadata = Some(serde_json::json!({ "import_raw": target }));
@@ -835,7 +890,9 @@ fn process_query(
                 counter += 1;
                 let mut e = Edge::new(
                     format!("call_{}_{}", file_id, counter),
-                    scope_id, &name, EdgeKind::Calls,
+                    scope_id,
+                    &name,
+                    EdgeKind::Calls,
                 );
                 e.cross_file = true;
                 edges.push(e);
@@ -854,7 +911,10 @@ fn process_query(
                 let kind = node.kind();
 
                 // ── JS/TS：import/export ... from "source" ──
-                if let Some(s) = node.child_by_field_name("source").and_then(|n| n.utf8_text(source_bytes).ok()) {
+                if let Some(s) = node
+                    .child_by_field_name("source")
+                    .and_then(|n| n.utf8_text(source_bytes).ok())
+                {
                     let raw = s.to_string();
                     if raw.is_empty() {
                         continue;
@@ -863,7 +923,9 @@ fn process_query(
                     counter += 1;
                     let mut e = Edge::new(
                         format!("imp_{}_{}", file_id, counter),
-                        &module_id, &target, EdgeKind::Imports,
+                        &module_id,
+                        &target,
+                        EdgeKind::Imports,
                     );
                     e.cross_file = true;
                     let bindings = collect_ts_import_bindings(&node, source_bytes);
@@ -892,7 +954,9 @@ fn process_query(
                         counter += 1;
                         let mut e = Edge::new(
                             format!("imp_{}_{}", file_id, counter),
-                            &module_id, module, EdgeKind::Imports,
+                            &module_id,
+                            module,
+                            EdgeKind::Imports,
                         );
                         e.cross_file = true;
                         let mut meta = serde_json::json!({ "import_raw": module.to_string() });
@@ -912,7 +976,9 @@ fn process_query(
                                     counter += 1;
                                     let mut e = Edge::new(
                                         format!("imp_{}_{}", file_id, counter),
-                                        &module_id, name, EdgeKind::Imports,
+                                        &module_id,
+                                        name,
+                                        EdgeKind::Imports,
                                     );
                                     e.cross_file = true;
                                     let mut meta =
@@ -946,7 +1012,9 @@ fn process_query(
                         counter += 1;
                         let mut e = Edge::new(
                             format!("imp_{}_{}", file_id, counter),
-                            &module_id, &raw, EdgeKind::Imports,
+                            &module_id,
+                            &raw,
+                            EdgeKind::Imports,
                         );
                         e.cross_file = true;
                         let mut meta = serde_json::json!({
@@ -979,13 +1047,16 @@ fn process_query(
                         counter += 1;
                         let mut e = Edge::new(
                             format!("imp_{}_{}", file_id, counter),
-                            &module_id, &target, EdgeKind::Imports,
+                            &module_id,
+                            &target,
+                            EdgeKind::Imports,
                         );
                         e.cross_file = true;
                         let mut meta = serde_json::json!({ "import_raw": raw });
                         // Go import 块：提取引号内路径存为 import_path
                         if let Some(quoted) = extract_first_string_arg(&node, source_bytes) {
-                            meta["import_path"] = serde_json::json!(quoted.trim_matches(|c| c == '"' || c == '`'));
+                            meta["import_path"] =
+                                serde_json::json!(quoted.trim_matches(|c| c == '"' || c == '`'));
                         }
                         e.metadata = Some(meta);
                         edges.push(e);
@@ -1001,7 +1072,9 @@ fn process_query(
                     counter += 1;
                     edges.push(Edge::new(
                         format!("inh_{}_{}", file_id, counter),
-                        &type_nid, &trait_nid, EdgeKind::Inherits,
+                        &type_nid,
+                        &trait_nid,
+                        EdgeKind::Inherits,
                     ));
                 }
             }
@@ -1052,7 +1125,9 @@ fn process_query(
                     counter += 1;
                     edges.push(Edge::new(
                         format!("def_{}_{}", file_id, counter),
-                        scope_id, &nid, EdgeKind::Defines,
+                        scope_id,
+                        &nid,
+                        EdgeKind::Defines,
                     ));
                     let mut n = Node::new(&nid, &name, NodeKind::Variable);
                     n.location = Some(format!("{}:{}", file_path, node.start_position().row + 1));
@@ -1075,13 +1150,17 @@ fn process_query(
                     Some(n) => n,
                     None => continue,
                 };
-                if name.is_empty() { continue; }
+                if name.is_empty() {
+                    continue;
+                }
                 let scope_id = find_scope(node.start_byte(), &scopes).unwrap_or(&module_id);
                 let qualified = format!("{}.{}", scope_id, name);
                 counter += 1;
                 edges.push(Edge::new(
                     format!("write_{}_{}", file_id, counter),
-                    scope_id, &qualified, EdgeKind::Writes,
+                    scope_id,
+                    &qualified,
+                    EdgeKind::Writes,
                 ));
             }
 
@@ -1096,7 +1175,9 @@ fn process_query(
                 counter += 1;
                 edges.push(Edge::new(
                     format!("throw_{}_{}", file_id, counter),
-                    scope_id, &name, EdgeKind::Throws,
+                    scope_id,
+                    &name,
+                    EdgeKind::Throws,
                 ));
             }
 
@@ -1109,18 +1190,25 @@ fn process_query(
                 };
                 let lang_ext = file_path.rsplit('.').next().unwrap_or("");
                 // 跳过单字符、内置名称、定义位置、参数声明
-                if name.len() <= 1 || is_skip_name(&name) || is_builtin_for_ext(&name, lang_ext)
-                    || is_definition_site(&node, source_bytes) || is_param_decl(&node, source_bytes)
+                if name.len() <= 1
+                    || is_skip_name(&name)
+                    || is_builtin_for_ext(&name, lang_ext)
+                    || is_definition_site(&node, source_bytes)
+                    || is_param_decl(&node, source_bytes)
                 {
                     continue;
                 }
                 let scope_id = find_scope(node.start_byte(), &scopes).unwrap_or(&module_id);
                 let dedup_key = format!("{}:{}", scope_id, name);
-                if !usage_seen.insert(dedup_key) { continue; }
+                if !usage_seen.insert(dedup_key) {
+                    continue;
+                }
                 counter += 1;
                 edges.push(Edge::new(
                     format!("use_{}_{}", file_id, counter),
-                    scope_id, &name, EdgeKind::Usage,
+                    scope_id,
+                    &name,
+                    EdgeKind::Usage,
                 ));
             }
 
@@ -1222,7 +1310,9 @@ fn resolve_fn(
         let value = node.child_by_field_name("value");
         let is_fn = value.is_some_and(|v| {
             let vk = v.kind();
-            func_kinds.contains(&vk) || vk == "function_expression" || vk == "generator_function_expression"
+            func_kinds.contains(&vk)
+                || vk == "function_expression"
+                || vk == "generator_function_expression"
         });
         if is_fn {
             let end = value.map(|v| v.end_byte());
@@ -1267,7 +1357,8 @@ fn extract_func_field_name(func: tree_sitter::Node, source: &[u8]) -> Option<Str
             let inner = func.child_by_field_name("expression");
             let inner = inner.or_else(|| {
                 let mut cursor = func.walk();
-                let found = func.children(&mut cursor)
+                let found = func
+                    .children(&mut cursor)
                     .find(|c| c.kind() == "member_expression");
                 found
             });
@@ -1323,16 +1414,25 @@ fn extract_func_field_name(func: tree_sitter::Node, source: &[u8]) -> Option<Str
 fn extract_call_target(node: &tree_sitter::Node, source: &[u8]) -> Option<String> {
     // ── 有 "function" 字段的节点 ──
     const FUNC_FIELD_NODES: &[&str] = &[
-        "call_expression", "call", "function_call",
-        "invocation_expression", "method_invocation",
-        "selector", "command_call", "builtin_function",
-        "constructor_expression", "generic_function",
-        "navigation_expression", "with_statement",
+        "call_expression",
+        "call",
+        "function_call",
+        "invocation_expression",
+        "method_invocation",
+        "selector",
+        "command_call",
+        "builtin_function",
+        "constructor_expression",
+        "generic_function",
+        "navigation_expression",
+        "with_statement",
         // PHP：function_call_expression 有 "function" 字段；
         // member_call_expression / scoped_call_expression /
         // nullsafe_member_call_expression 有 "name" 字段
-        "function_call_expression", "member_call_expression",
-        "scoped_call_expression", "nullsafe_member_call_expression",
+        "function_call_expression",
+        "member_call_expression",
+        "scoped_call_expression",
+        "nullsafe_member_call_expression",
     ];
     let nk = node.kind();
     if FUNC_FIELD_NODES.contains(&nk) {
@@ -1362,7 +1462,8 @@ fn extract_call_target(node: &tree_sitter::Node, source: &[u8]) -> Option<String
 
     // ── 有 "name" 或 "constructor" 字段的节点 ──
     if nk == "object_creation_expression" || nk == "new_expression" {
-        let ctor = node.child_by_field_name("constructor")
+        let ctor = node
+            .child_by_field_name("constructor")
             .or_else(|| node.child_by_field_name("name"))?;
         if ctor.kind() == "member_expression" {
             return ctor
@@ -1400,7 +1501,10 @@ fn extract_call_target(node: &tree_sitter::Node, source: &[u8]) -> Option<String
     }
 
     // ── JSX ──
-    if matches!(nk, "jsx_self_closing_element" | "jsx_opening_element" | "jsx_opening_tag") {
+    if matches!(
+        nk,
+        "jsx_self_closing_element" | "jsx_opening_element" | "jsx_opening_tag"
+    ) {
         return node
             .child_by_field_name("name")
             .and_then(|n| n.utf8_text(source).ok())
@@ -1432,7 +1536,10 @@ fn extract_call_target(node: &tree_sitter::Node, source: &[u8]) -> Option<String
     }
 
     // ── 函数式族：第一个子节点是被调用者 ──
-    if matches!(nk, "apply" | "application_expression" | "exp_apply" | "list" | "list_lit" | "applicative") {
+    if matches!(
+        nk,
+        "apply" | "application_expression" | "exp_apply" | "list" | "list_lit" | "applicative"
+    ) {
         let first = node.child(0)?;
         return extract_func_field_name(first, source);
     }
@@ -1486,10 +1593,18 @@ fn is_definition_site(node: &tree_sitter::Node, _source: &[u8]) -> bool {
                 return true;
             }
             // 在 scope 边界停止 — 不要越过 function/class/module
-            if k.contains("function") || k.contains("class") || k.contains("method")
-                || k == "lambda" || k == "arrow_function" || k == "module"
-                || k == "block" || k == "statement_block" || k == "source_file"
-                || k == "program" || k == "module" || k == "translation_unit"
+            if k.contains("function")
+                || k.contains("class")
+                || k.contains("method")
+                || k == "lambda"
+                || k == "arrow_function"
+                || k == "module"
+                || k == "block"
+                || k == "statement_block"
+                || k == "source_file"
+                || k == "program"
+                || k == "module"
+                || k == "translation_unit"
             {
                 break;
             }
@@ -1504,10 +1619,16 @@ fn is_param_decl(node: &tree_sitter::Node, _source: &[u8]) -> bool {
     let mut cur = Some(*node);
     while let Some(p) = cur.and_then(|n| n.parent()) {
         let k = p.kind();
-        if k.contains("parameter") || k.contains("param") { return true; }
+        if k.contains("parameter") || k.contains("param") {
+            return true;
+        }
         // 在 function/class 边界停止
-        if k.contains("function") || k.contains("class") || k.contains("method")
-            || k == "lambda" || k == "arrow_function" || k == "module"
+        if k.contains("function")
+            || k.contains("class")
+            || k.contains("method")
+            || k == "lambda"
+            || k == "arrow_function"
+            || k == "module"
         {
             break;
         }
@@ -1521,74 +1642,291 @@ fn is_builtin_for_ext(name: &str, ext: &str) -> bool {
     match ext {
         "py" | "pyi" => matches!(
             name,
-            "True" | "False" | "None" | "self" | "cls"
-                | "print" | "len" | "range" | "str" | "int" | "float" | "bool"
-                | "list" | "dict" | "tuple" | "set" | "frozenset"
-                | "type" | "isinstance" | "issubclass" | "super"
-                | "Exception" | "ValueError" | "TypeError" | "KeyError"
-                | "IndexError" | "AttributeError" | "RuntimeError" | "StopIteration"
-                | "map" | "filter" | "zip" | "enumerate" | "sorted" | "reversed"
-                | "any" | "all" | "min" | "max" | "sum" | "abs" | "round"
-                | "open" | "iter" | "next" | "hasattr" | "getattr" | "setattr"
-                | "staticmethod" | "classmethod" | "property"
-                | "os" | "sys" | "re" | "json" | "datetime" | "logging"
-                | "__name__" | "__file__" | "__init__" | "__str__" | "__repr__"
+            "True"
+                | "False"
+                | "None"
+                | "self"
+                | "cls"
+                | "print"
+                | "len"
+                | "range"
+                | "str"
+                | "int"
+                | "float"
+                | "bool"
+                | "list"
+                | "dict"
+                | "tuple"
+                | "set"
+                | "frozenset"
+                | "type"
+                | "isinstance"
+                | "issubclass"
+                | "super"
+                | "Exception"
+                | "ValueError"
+                | "TypeError"
+                | "KeyError"
+                | "IndexError"
+                | "AttributeError"
+                | "RuntimeError"
+                | "StopIteration"
+                | "map"
+                | "filter"
+                | "zip"
+                | "enumerate"
+                | "sorted"
+                | "reversed"
+                | "any"
+                | "all"
+                | "min"
+                | "max"
+                | "sum"
+                | "abs"
+                | "round"
+                | "open"
+                | "iter"
+                | "next"
+                | "hasattr"
+                | "getattr"
+                | "setattr"
+                | "staticmethod"
+                | "classmethod"
+                | "property"
+                | "os"
+                | "sys"
+                | "re"
+                | "json"
+                | "datetime"
+                | "logging"
+                | "__name__"
+                | "__file__"
+                | "__init__"
+                | "__str__"
+                | "__repr__"
         ),
         "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "mts" | "cts" => matches!(
             name,
-            "console" | "window" | "document" | "globalThis" | "undefined" | "null"
-                | "true" | "false" | "this" | "super" | "arguments"
-                | "parseInt" | "parseFloat" | "isNaN" | "isFinite"
-                | "JSON" | "Math" | "Object" | "Array" | "String" | "Number" | "Boolean"
-                | "Map" | "Set" | "Date" | "RegExp" | "Promise" | "Symbol"
-                | "Error" | "TypeError" | "SyntaxError" | "ReferenceError"
-                | "Buffer" | "process" | "module" | "exports" | "require"
-                | "setTimeout" | "setInterval" | "clearTimeout" | "clearInterval"
-                | "fetch" | "async" | "await" | "yield"
+            "console"
+                | "window"
+                | "document"
+                | "globalThis"
+                | "undefined"
+                | "null"
+                | "true"
+                | "false"
+                | "this"
+                | "super"
+                | "arguments"
+                | "parseInt"
+                | "parseFloat"
+                | "isNaN"
+                | "isFinite"
+                | "JSON"
+                | "Math"
+                | "Object"
+                | "Array"
+                | "String"
+                | "Number"
+                | "Boolean"
+                | "Map"
+                | "Set"
+                | "Date"
+                | "RegExp"
+                | "Promise"
+                | "Symbol"
+                | "Error"
+                | "TypeError"
+                | "SyntaxError"
+                | "ReferenceError"
+                | "Buffer"
+                | "process"
+                | "module"
+                | "exports"
+                | "require"
+                | "setTimeout"
+                | "setInterval"
+                | "clearTimeout"
+                | "clearInterval"
+                | "fetch"
+                | "async"
+                | "await"
+                | "yield"
         ),
         "rs" => matches!(
             name,
-            "true" | "false" | "self" | "Self" | "None" | "Ok" | "Err" | "Some"
-                | "println" | "print" | "format" | "dbg" | "panic" | "todo" | "unimplemented"
-                | "vec" | "Vec" | "String" | "str" | "Option" | "Result" | "Box"
-                | "HashMap" | "HashSet" | "Iterator" | "Clone" | "Copy" | "Debug"
-                | "Drop" | "Default" | "std" | "core" | "alloc"
-                | "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool" | "usize" | "isize"
+            "true"
+                | "false"
+                | "self"
+                | "Self"
+                | "None"
+                | "Ok"
+                | "Err"
+                | "Some"
+                | "println"
+                | "print"
+                | "format"
+                | "dbg"
+                | "panic"
+                | "todo"
+                | "unimplemented"
+                | "vec"
+                | "Vec"
+                | "String"
+                | "str"
+                | "Option"
+                | "Result"
+                | "Box"
+                | "HashMap"
+                | "HashSet"
+                | "Iterator"
+                | "Clone"
+                | "Copy"
+                | "Debug"
+                | "Drop"
+                | "Default"
+                | "std"
+                | "core"
+                | "alloc"
+                | "i32"
+                | "i64"
+                | "u32"
+                | "u64"
+                | "f32"
+                | "f64"
+                | "bool"
+                | "usize"
+                | "isize"
         ),
         "go" => matches!(
             name,
-            "true" | "false" | "nil" | "iota"
-                | "fmt" | "Println" | "Printf" | "Sprintf" | "Errorf"
-                | "string" | "int" | "int32" | "int64" | "float32" | "float64"
-                | "bool" | "byte" | "rune" | "error"
-                | "make" | "new" | "len" | "cap" | "append" | "copy" | "delete"
-                | "panic" | "recover" | "defer" | "close"
-                | "context" | "os" | "io" | "http" | "json"
+            "true"
+                | "false"
+                | "nil"
+                | "iota"
+                | "fmt"
+                | "Println"
+                | "Printf"
+                | "Sprintf"
+                | "Errorf"
+                | "string"
+                | "int"
+                | "int32"
+                | "int64"
+                | "float32"
+                | "float64"
+                | "bool"
+                | "byte"
+                | "rune"
+                | "error"
+                | "make"
+                | "new"
+                | "len"
+                | "cap"
+                | "append"
+                | "copy"
+                | "delete"
+                | "panic"
+                | "recover"
+                | "defer"
+                | "close"
+                | "context"
+                | "os"
+                | "io"
+                | "http"
+                | "json"
         ),
         "java" => matches!(
             name,
-            "true" | "false" | "null" | "this" | "super"
-                | "System" | "out" | "err" | "in"
-                | "String" | "Integer" | "Long" | "Double" | "Float" | "Boolean"
-                | "List" | "Map" | "Set" | "ArrayList" | "HashMap" | "HashSet"
-                | "Optional" | "Stream" | "Collectors" | "Objects"
-                | "Override" | "Deprecated" | "SuppressWarnings"
+            "true"
+                | "false"
+                | "null"
+                | "this"
+                | "super"
+                | "System"
+                | "out"
+                | "err"
+                | "in"
+                | "String"
+                | "Integer"
+                | "Long"
+                | "Double"
+                | "Float"
+                | "Boolean"
+                | "List"
+                | "Map"
+                | "Set"
+                | "ArrayList"
+                | "HashMap"
+                | "HashSet"
+                | "Optional"
+                | "Stream"
+                | "Collectors"
+                | "Objects"
+                | "Override"
+                | "Deprecated"
+                | "SuppressWarnings"
         ),
         "rb" => matches!(
             name,
-            "true" | "false" | "nil" | "self"
-                | "puts" | "print" | "p" | "pp" | "gets" | "raise" | "require"
-                | "Array" | "Hash" | "String" | "Symbol" | "Integer" | "Float"
-                | "Enumerable" | "each" | "map" | "select" | "reduce" | "inject"
-                | "attr_accessor" | "attr_reader" | "attr_writer" | "include" | "extend"
+            "true"
+                | "false"
+                | "nil"
+                | "self"
+                | "puts"
+                | "print"
+                | "p"
+                | "pp"
+                | "gets"
+                | "raise"
+                | "require"
+                | "Array"
+                | "Hash"
+                | "String"
+                | "Symbol"
+                | "Integer"
+                | "Float"
+                | "Enumerable"
+                | "each"
+                | "map"
+                | "select"
+                | "reduce"
+                | "inject"
+                | "attr_accessor"
+                | "attr_reader"
+                | "attr_writer"
+                | "include"
+                | "extend"
         ),
         "php" => matches!(
             name,
-            "true" | "false" | "null" | "this" | "self" | "static" | "parent"
-                | "echo" | "print" | "isset" | "empty" | "unset" | "array" | "list"
-                | "count" | "strlen" | "sprintf" | "explode" | "implode"
-                | "array_map" | "array_filter" | "array_merge" | "array_keys"
-                | "json_encode" | "json_decode" | "file_get_contents" | "file_put_contents"
+            "true"
+                | "false"
+                | "null"
+                | "this"
+                | "self"
+                | "static"
+                | "parent"
+                | "echo"
+                | "print"
+                | "isset"
+                | "empty"
+                | "unset"
+                | "array"
+                | "list"
+                | "count"
+                | "strlen"
+                | "sprintf"
+                | "explode"
+                | "implode"
+                | "array_map"
+                | "array_filter"
+                | "array_merge"
+                | "array_keys"
+                | "json_encode"
+                | "json_decode"
+                | "file_get_contents"
+                | "file_put_contents"
         ),
         // 单字符 identifier 始终是噪声
         _ => name.len() <= 1,
@@ -1603,11 +1941,29 @@ fn is_skip_name(name: &str) -> bool {
     let head = name.split('.').next().unwrap_or(name);
     matches!(
         head,
-        "console" | "Error" | "TypeError" | "SyntaxError" | "ReferenceError"
-            | "setTimeout" | "setInterval" | "clearTimeout" | "clearInterval"
-            | "fetch" | "JSON" | "Math" | "Object" | "Array" | "Promise"
-            | "Map" | "Set" | "Date" | "RegExp" | "parseInt" | "parseFloat"
-            | "require" | "import"
+        "console"
+            | "Error"
+            | "TypeError"
+            | "SyntaxError"
+            | "ReferenceError"
+            | "setTimeout"
+            | "setInterval"
+            | "clearTimeout"
+            | "clearInterval"
+            | "fetch"
+            | "JSON"
+            | "Math"
+            | "Object"
+            | "Array"
+            | "Promise"
+            | "Map"
+            | "Set"
+            | "Date"
+            | "RegExp"
+            | "parseInt"
+            | "parseFloat"
+            | "require"
+            | "import"
     )
 }
 
@@ -1645,7 +2001,9 @@ fn emit_class_inherits(
                 let mut hc = child.walk();
                 for gc in child.children(&mut hc) {
                     if gc.kind() == "extends_clause" || gc.kind() == "implements_clause" {
-                        emit_inherits_from_clause(&gc, source, nid, module_id, file_id, counter, edges);
+                        emit_inherits_from_clause(
+                            &gc, source, nid, module_id, file_id, counter, edges,
+                        );
                         found = true;
                     }
                 }
@@ -1660,7 +2018,9 @@ fn emit_class_inherits(
                             let target = format!("{}.{}", module_id, name);
                             edges.push(Edge::new(
                                 format!("inh_{}_{}", file_id, counter),
-                                nid, &target, EdgeKind::Inherits,
+                                nid,
+                                &target,
+                                EdgeKind::Inherits,
                             ));
                             found = true;
                         }
@@ -1695,7 +2055,9 @@ fn emit_class_inherits(
                             *counter += 1;
                             let mut e = Edge::new(
                                 format!("inh_{}_{}", file_id, *counter),
-                                nid, &target_nid, EdgeKind::Inherits,
+                                nid,
+                                &target_nid,
+                                EdgeKind::Inherits,
                             );
                             e.cross_file = true;
                             edges.push(e);
@@ -1738,8 +2100,11 @@ fn extract_base_names_from_source(clause: &tree_sitter::Node, source: &[u8]) -> 
     let mut to_visit: Vec<tree_sitter::Node> = vec![*clause];
     while let Some(node) = to_visit.pop() {
         let ck = node.kind();
-        if ck == "identifier" || ck == "type_identifier" || ck == "property_identifier"
-            || ck == "nested_type_identifier" || ck == "member_expression"
+        if ck == "identifier"
+            || ck == "type_identifier"
+            || ck == "property_identifier"
+            || ck == "nested_type_identifier"
+            || ck == "member_expression"
         {
             if let Ok(t) = node.utf8_text(source) {
                 let t = t.trim().to_string();
@@ -1789,7 +2154,11 @@ mod tests {
         let src = "function hello() {}";
         let (nodes, _edges, _) = a.analyze("test.ts", src);
         let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
-        assert!(names.contains(&"hello"), "should find hello function, got {:?}", names);
+        assert!(
+            names.contains(&"hello"),
+            "should find hello function, got {:?}",
+            names
+        );
     }
 
     #[test]
@@ -1799,8 +2168,15 @@ mod tests {
         let src = "const fetchData = async () => { return 42; };";
         let (nodes, edges, _) = a.analyze("test.ts", src);
         let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
-        assert!(names.contains(&"fetchData"), "var-assigned arrow should be found, got {:?}", names);
-        let defs: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Defines) && e.target.contains("fetchData")).collect();
+        assert!(
+            names.contains(&"fetchData"),
+            "var-assigned arrow should be found, got {:?}",
+            names
+        );
+        let defs: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Defines) && e.target.contains("fetchData"))
+            .collect();
         assert!(!defs.is_empty(), "should have Defines edge for fetchData");
         // ponytail: 防双节点回归 — variable_declarator 与包装的 arrow_function
         // 都建节点会出现 module.fetchData + module.fetchData.fetchData，
@@ -1820,7 +2196,11 @@ mod tests {
         let src = "const handler = function onEvent(ev) { return ev; };";
         let (nodes, _edges, _) = a.analyze("test.ts", src);
         let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
-        assert!(names.contains(&"handler"), "var-assigned fn expr should be found, got {:?}", names);
+        assert!(
+            names.contains(&"handler"),
+            "var-assigned fn expr should be found, got {:?}",
+            names
+        );
     }
 
     #[test]
@@ -1828,7 +2208,10 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "function foo() {}\nfunction bar() { foo(); }";
         let (_nodes, edges, _) = a.analyze("test.ts", src);
-        let calls: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "foo").collect();
+        let calls: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "foo")
+            .collect();
         assert!(!calls.is_empty(), "should have call to foo");
     }
 
@@ -1839,9 +2222,19 @@ mod tests {
         let (_nodes, edges, _) = a.analyze("test.ts", src);
         // ponytail: member_expression 现在提取完整 object.property，
         // 以便 resolver 用 best_qualified_match 消歧跨文件静态方法调用。
-        let calls: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "obj.method").collect();
-        assert!(!calls.is_empty(), "member expression call should extract object.property, got {:?}",
-            edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls)).map(|e| &e.target).collect::<Vec<_>>());
+        let calls: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "obj.method")
+            .collect();
+        assert!(
+            !calls.is_empty(),
+            "member expression call should extract object.property, got {:?}",
+            edges
+                .iter()
+                .filter(|e| matches!(e.kind, EdgeKind::Calls))
+                .map(|e| &e.target)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -1851,7 +2244,10 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "function bar() { agentRef.current?.spawnSubAgent(); }";
         let (_nodes, edges, _) = a.analyze("test.ts", src);
-        let calls: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls)).collect();
+        let calls: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Calls))
+            .collect();
         let targets: Vec<&str> = calls.iter().map(|e| e.target.as_str()).collect();
         assert!(
             targets.iter().any(|t| t.contains("spawnSubAgent")),
@@ -1869,8 +2265,13 @@ mod tests {
         let src = "class A {\n  m() {\n    const factory = async () => {\n      loadSettings();\n    };\n  }\n}";
         let (nodes, edges, _) = a.analyze("test.ts", src);
         let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
-        assert!(names.contains(&"factory"), "factory node should exist, got {:?}", names);
-        let calls: Vec<_> = edges.iter()
+        assert!(
+            names.contains(&"factory"),
+            "factory node should exist, got {:?}",
+            names
+        );
+        let calls: Vec<_> = edges
+            .iter()
             .filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "loadSettings")
             .collect();
         assert!(!calls.is_empty(), "should have call to loadSettings");
@@ -1901,7 +2302,8 @@ mod tests {
             "subAgentSpawner node should exist, got {:?}",
             names
         );
-        let calls: Vec<_> = edges.iter()
+        let calls: Vec<_> = edges
+            .iter()
             .filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "spawnSubAgent")
             .collect();
         assert!(!calls.is_empty(), "should have call to spawnSubAgent");
@@ -1919,11 +2321,26 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "function App() { return <div><Header /><Footer>text</Footer></div>; }";
         let (_nodes, edges, _) = a.analyze("test.tsx", src);
-        let jsx_calls: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls)).collect();
+        let jsx_calls: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Calls))
+            .collect();
         let targets: Vec<&str> = jsx_calls.iter().map(|e| e.target.as_str()).collect();
-        assert!(targets.contains(&"Header"), "should find <Header /> call, got {:?}", targets);
-        assert!(targets.contains(&"Footer"), "should find <Footer> call, got {:?}", targets);
-        assert!(targets.contains(&"div"), "should find <div> call, got {:?}", targets);
+        assert!(
+            targets.contains(&"Header"),
+            "should find <Header /> call, got {:?}",
+            targets
+        );
+        assert!(
+            targets.contains(&"Footer"),
+            "should find <Footer> call, got {:?}",
+            targets
+        );
+        assert!(
+            targets.contains(&"div"),
+            "should find <div> call, got {:?}",
+            targets
+        );
     }
 
     /// 诊断：导出 TSX AST 以查找 tree-sitter-typescript 0.23 中的 JSX 节点类型名。
@@ -1970,7 +2387,10 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "import { stuff } from './module';";
         let (_nodes, edges, _) = a.analyze("src/test.ts", src);
-        let imports: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports)).collect();
+        let imports: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Imports))
+            .collect();
         assert!(!imports.is_empty(), "should have import edge");
     }
 
@@ -1980,9 +2400,18 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "export { foo } from './bar';";
         let (_nodes, edges, _) = a.analyze("src/index.ts", src);
-        let imports: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports)).collect();
-        assert!(!imports.is_empty(), "re-export should create import edge, got {:?}",
-            edges.iter().map(|e| format!("{} kind={}", e.target, e.kind.as_str())).collect::<Vec<_>>());
+        let imports: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Imports))
+            .collect();
+        assert!(
+            !imports.is_empty(),
+            "re-export should create import edge, got {:?}",
+            edges
+                .iter()
+                .map(|e| format!("{} kind={}", e.target, e.kind.as_str()))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -1990,9 +2419,18 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "class Dog extends Animal {}";
         let (_nodes, edges, _) = a.analyze("test.ts", src);
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
-        assert!(!inh.is_empty(), "extends should create Inherits edge, got {:?}",
-            edges.iter().map(|e| format!("{} -> {}", e.source, e.target)).collect::<Vec<_>>());
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
+        assert!(
+            !inh.is_empty(),
+            "extends should create Inherits edge, got {:?}",
+            edges
+                .iter()
+                .map(|e| format!("{} -> {}", e.source, e.target))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -2004,15 +2442,29 @@ mod tests {
         // 验证类节点及其子节点可访问。
         // extract_base_names_from_source 中的回退文本解析处理
         // 结构化遍历遗漏名称的情况。
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
         if inh.is_empty() {
             // 如果结构化提取遗漏了，回退文本解析器应能捕获。
             // 打印边以调试语法差异。
-            eprintln!("DEBUG implements: all edges = {:?}",
-                edges.iter().map(|e| format!("{} -> {} ({})", e.source, e.target, e.kind.as_str())).collect::<Vec<_>>());
+            eprintln!(
+                "DEBUG implements: all edges = {:?}",
+                edges
+                    .iter()
+                    .map(|e| format!("{} -> {} ({})", e.source, e.target, e.kind.as_str()))
+                    .collect::<Vec<_>>()
+            );
         }
-        assert!(!inh.is_empty(), "implements should create Inherits edge, got {:?}",
-            edges.iter().map(|e| format!("{} -> {}", e.source, e.target)).collect::<Vec<_>>());
+        assert!(
+            !inh.is_empty(),
+            "implements should create Inherits edge, got {:?}",
+            edges
+                .iter()
+                .map(|e| format!("{} -> {}", e.source, e.target))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -2020,9 +2472,19 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "const fs = require('fs');";
         let (_nodes, edges, _) = a.analyze("test.js", src);
-        let imports: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports) && e.target.contains("fs")).collect();
-        assert!(!imports.is_empty(), "require('fs') should create import edge, got imports: {:?}",
-            edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports)).map(|e| &e.target).collect::<Vec<_>>());
+        let imports: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Imports) && e.target.contains("fs"))
+            .collect();
+        assert!(
+            !imports.is_empty(),
+            "require('fs') should create import edge, got imports: {:?}",
+            edges
+                .iter()
+                .filter(|e| matches!(e.kind, EdgeKind::Imports))
+                .map(|e| &e.target)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -2030,9 +2492,19 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "const mod = await import('./lazy');";
         let (_nodes, edges, _) = a.analyze("test.ts", src);
-        let imports: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports) && e.target.contains("lazy")).collect();
-        assert!(!imports.is_empty(), "dynamic import() should create import edge, got imports: {:?}",
-            edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports)).map(|e| &e.target).collect::<Vec<_>>());
+        let imports: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Imports) && e.target.contains("lazy"))
+            .collect();
+        assert!(
+            !imports.is_empty(),
+            "dynamic import() should create import edge, got imports: {:?}",
+            edges
+                .iter()
+                .filter(|e| matches!(e.kind, EdgeKind::Imports))
+                .map(|e| &e.target)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -2040,10 +2512,16 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "function outer() {\n  function inner() {\n    foo();\n  }\n}";
         let (_nodes, edges, _) = a.analyze("test.ts", src);
-        let call = edges.iter().find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "foo");
+        let call = edges
+            .iter()
+            .find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "foo");
         assert!(call.is_some(), "should have call to foo");
         let call = call.unwrap();
-        assert!(call.source.contains("inner"), "call inside inner should be attributed to inner, got '{}'", call.source);
+        assert!(
+            call.source.contains("inner"),
+            "call inside inner should be attributed to inner, got '{}'",
+            call.source
+        );
     }
 
     #[test]
@@ -2052,7 +2530,11 @@ mod tests {
         let src = "enum Status { Active, Inactive }";
         let (nodes, _edges, _) = a.analyze("test.ts", src);
         let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
-        assert!(names.contains(&"Status"), "enum should be found, got {:?}", names);
+        assert!(
+            names.contains(&"Status"),
+            "enum should be found, got {:?}",
+            names
+        );
     }
 
     #[test]
@@ -2060,7 +2542,10 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "class Foo {}\nfunction bar() { new Foo(); }";
         let (_nodes, edges, _) = a.analyze("test.ts", src);
-        let calls: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "Foo").collect();
+        let calls: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "Foo")
+            .collect();
         assert!(!calls.is_empty(), "new Foo() should create call edge");
     }
 
@@ -2072,7 +2557,11 @@ mod tests {
         let src = "fn hello() {}\npub fn add(a: i32, b: i32) -> i32 { a + b }";
         let (nodes, _edges, _) = a.analyze("lib.rs", src);
         let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
-        assert!(names.contains(&"hello"), "should find hello, got {:?}", names);
+        assert!(
+            names.contains(&"hello"),
+            "should find hello, got {:?}",
+            names
+        );
         assert!(names.contains(&"add"), "should find add, got {:?}", names);
     }
 
@@ -2082,7 +2571,11 @@ mod tests {
         let src = "struct Point { x: f64, y: f64 }";
         let (nodes, _edges, _) = a.analyze("lib.rs", src);
         let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
-        assert!(names.contains(&"Point"), "struct should be found, got {:?}", names);
+        assert!(
+            names.contains(&"Point"),
+            "struct should be found, got {:?}",
+            names
+        );
     }
 
     #[test]
@@ -2093,9 +2586,18 @@ mod tests {
         let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
         assert!(names.contains(&"Draw"), "trait should be found");
         assert!(names.contains(&"Circle"), "struct should be found");
-        let inh: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Inherits)).collect();
-        assert!(!inh.is_empty(), "impl Draw for Circle should produce Inherits edge, got {:?}",
-            edges.iter().map(|e| format!("{} -> {}", e.source, e.target)).collect::<Vec<_>>());
+        let inh: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Inherits))
+            .collect();
+        assert!(
+            !inh.is_empty(),
+            "impl Draw for Circle should produce Inherits edge, got {:?}",
+            edges
+                .iter()
+                .map(|e| format!("{} -> {}", e.source, e.target))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -2103,7 +2605,10 @@ mod tests {
         let a = QueryStructureAdapter::new_rust();
         let src = "fn helper() {}\nfn outer() { helper(); }";
         let (_nodes, edges, _) = a.analyze("lib.rs", src);
-        let calls: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "helper").collect();
+        let calls: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "helper")
+            .collect();
         assert!(!calls.is_empty(), "should have call to helper");
     }
 
@@ -2112,10 +2617,16 @@ mod tests {
         let a = QueryStructureAdapter::new_rust();
         let src = "fn outer() { fn inner() { foo(); } }";
         let (_nodes, edges, _) = a.analyze("lib.rs", src);
-        let call = edges.iter().find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "foo");
+        let call = edges
+            .iter()
+            .find(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "foo");
         assert!(call.is_some(), "should have call to foo");
         let call = call.unwrap();
-        assert!(call.source.contains("inner"), "call inside inner should be attributed to inner, got '{}'", call.source);
+        assert!(
+            call.source.contains("inner"),
+            "call inside inner should be attributed to inner, got '{}'",
+            call.source
+        );
     }
 
     #[test]
@@ -2123,8 +2634,14 @@ mod tests {
         let a = QueryStructureAdapter::new_rust();
         let src = "fn main() { println!(\"hello\"); }";
         let (_nodes, edges, _) = a.analyze("main.rs", src);
-        let calls: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "println").collect();
-        assert!(!calls.is_empty(), "macro invocation should create call edge");
+        let calls: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "println")
+            .collect();
+        assert!(
+            !calls.is_empty(),
+            "macro invocation should create call edge"
+        );
     }
 
     #[test]
@@ -2132,8 +2649,14 @@ mod tests {
         let a = QueryStructureAdapter::new_rust();
         let src = "fn process(v: Vec<i32>) { let n = v.len(); }";
         let (_nodes, edges, _) = a.analyze("lib.rs", src);
-        let calls: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "len").collect();
-        assert!(!calls.is_empty(), "field expression call should extract method name");
+        let calls: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Calls) && e.target == "len")
+            .collect();
+        assert!(
+            !calls.is_empty(),
+            "field expression call should extract method name"
+        );
     }
 
     #[test]
@@ -2141,8 +2664,14 @@ mod tests {
         let a = QueryStructureAdapter::new_rust();
         let src = "use std::collections::HashMap;";
         let (_nodes, edges, _) = a.analyze("lib.rs", src);
-        let imports: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports)).collect();
-        assert!(!imports.is_empty(), "use declaration should create import edge");
+        let imports: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Imports))
+            .collect();
+        assert!(
+            !imports.is_empty(),
+            "use declaration should create import edge"
+        );
     }
 
     #[test]
@@ -2150,10 +2679,30 @@ mod tests {
         let a = QueryStructureAdapter::new_rust();
         let src = "mod tests {\n    use super::super::{Edge, EdgeKind as E};\n}\npub(crate) use crate::util::{fmt as util_fmt, other};";
         let (_nodes, edges, _) = a.analyze("lib.rs", src);
-        let imports: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports)).collect();
-        assert_eq!(imports.len(), 2, "got {:?}", imports.iter().map(|e| e.target.as_str()).collect::<Vec<_>>());
+        let imports: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Imports))
+            .collect();
+        assert_eq!(
+            imports.len(),
+            2,
+            "got {:?}",
+            imports
+                .iter()
+                .map(|e| e.target.as_str())
+                .collect::<Vec<_>>()
+        );
 
-        let scoped = imports.iter().find(|e| e.metadata.as_ref().and_then(|m| m.get("rust_scope")).and_then(|v| v.as_str()) == Some("tests")).unwrap();
+        let scoped = imports
+            .iter()
+            .find(|e| {
+                e.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("rust_scope"))
+                    .and_then(|v| v.as_str())
+                    == Some("tests")
+            })
+            .unwrap();
         let meta = scoped.metadata.as_ref().unwrap();
         assert_eq!(meta["import_path"], "super::super");
         let bindings = meta["import_bindings"].as_array().unwrap();
@@ -2163,7 +2712,15 @@ mod tests {
         assert_eq!(bindings[1]["imported"], "EdgeKind");
         assert_eq!(bindings[1]["local"], "E");
 
-        let pub_use = imports.iter().find(|e| e.metadata.as_ref().and_then(|m| m.get("rust_scope")).is_none()).unwrap();
+        let pub_use = imports
+            .iter()
+            .find(|e| {
+                e.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("rust_scope"))
+                    .is_none()
+            })
+            .unwrap();
         let meta = pub_use.metadata.as_ref().unwrap();
         assert_eq!(meta["import_path"], "crate::util");
         let bindings = meta["import_bindings"].as_array().unwrap();
@@ -2179,7 +2736,11 @@ mod tests {
         let src = "type Meters = f64;";
         let (nodes, _edges, _) = a.analyze("lib.rs", src);
         let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
-        assert!(names.contains(&"Meters"), "type alias should be found, got {:?}", names);
+        assert!(
+            names.contains(&"Meters"),
+            "type alias should be found, got {:?}",
+            names
+        );
     }
 
     #[test]
@@ -2188,10 +2749,19 @@ mod tests {
         let a = QueryStructureAdapter::new_js_ts();
         let src = "import { bus } from './events';\nimport type { AgentEvent } from '../agent/types';\nexport function foo() {}";
         let (_nodes, edges, _) = a.analyze("src/ui/chat.ts", src);
-        let imports: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Imports)).collect();
+        let imports: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Imports))
+            .collect();
         let targets: Vec<&str> = imports.iter().map(|e| e.target.as_str()).collect();
-        assert!(!imports.is_empty(), "should have import edges, got edges: {:?}",
-            edges.iter().map(|e| format!("{}->{} ({})", e.source, e.target, e.kind.as_str())).collect::<Vec<_>>());
+        assert!(
+            !imports.is_empty(),
+            "should have import edges, got edges: {:?}",
+            edges
+                .iter()
+                .map(|e| format!("{}->{} ({})", e.source, e.target, e.kind.as_str()))
+                .collect::<Vec<_>>()
+        );
         eprintln!("DEBUG import targets: {:?}", targets);
     }
 
@@ -2203,8 +2773,16 @@ mod tests {
         let file_node = nodes.iter().find(|n| matches!(n.kind, NodeKind::File));
         assert!(file_node.is_some());
         let fid = &file_node.unwrap().id;
-        assert!(fid.contains("src"), "file_id should contain dir, got '{}'", fid);
-        assert!(fid.contains("ui"), "file_id should contain subdir, got '{}'", fid);
+        assert!(
+            fid.contains("src"),
+            "file_id should contain dir, got '{}'",
+            fid
+        );
+        assert!(
+            fid.contains("ui"),
+            "file_id should contain subdir, got '{}'",
+            fid
+        );
     }
 
     // ── Python 覆盖率测试 ──
@@ -2223,7 +2801,10 @@ mod tests {
         let a = py_adapter();
         let src = "def foo():\n    pass";
         let (nodes, _edges, _) = a.analyze("test.py", src);
-        let fns: Vec<_> = nodes.iter().filter(|n| matches!(n.kind, NodeKind::Function)).collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| matches!(n.kind, NodeKind::Function))
+            .collect();
         assert_eq!(fns.len(), 1, "should have 1 function");
         assert_eq!(fns[0].name, "foo");
     }
@@ -2233,9 +2814,18 @@ mod tests {
         let a = py_adapter();
         let src = "@classmethod\ndef foo(cls):\n    pass";
         let (nodes, _edges, _) = a.analyze("test.py", src);
-        let fns: Vec<_> = nodes.iter().filter(|n| matches!(n.kind, NodeKind::Function)).collect();
-        assert!(!fns.is_empty(), "decorated function should be captured by @fn, got nodes: {:?}",
-            nodes.iter().map(|n| format!("[{:?}] {}", n.kind, n.name)).collect::<Vec<_>>());
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| matches!(n.kind, NodeKind::Function))
+            .collect();
+        assert!(
+            !fns.is_empty(),
+            "decorated function should be captured by @fn, got nodes: {:?}",
+            nodes
+                .iter()
+                .map(|n| format!("[{:?}] {}", n.kind, n.name))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(fns[0].name, "foo");
     }
 
@@ -2244,10 +2834,17 @@ mod tests {
         let a = py_adapter();
         let src = "class Foo:\n    def bar(self):\n        pass";
         let (nodes, _edges, _) = a.analyze("test.py", src);
-        let fns: Vec<_> = nodes.iter().filter(|n| matches!(n.kind, NodeKind::Function)).collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| matches!(n.kind, NodeKind::Function))
+            .collect();
         assert!(!fns.is_empty(), "class method should be captured");
         // 现在带 scope 限定：test.py.Foo.bar 而非 test.py.bar
-        assert!(fns[0].id.contains("Foo.bar"), "method should be scoped to class, got id={}", fns[0].id);
+        assert!(
+            fns[0].id.contains("Foo.bar"),
+            "method should be scoped to class, got id={}",
+            fns[0].id
+        );
     }
 
     #[test]
@@ -2255,10 +2852,17 @@ mod tests {
         let a = py_adapter();
         let src = "def outer():\n    def inner():\n        pass";
         let (nodes, _edges, _) = a.analyze("test.py", src);
-        let fns: Vec<_> = nodes.iter().filter(|n| matches!(n.kind, NodeKind::Function)).collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| matches!(n.kind, NodeKind::Function))
+            .collect();
         assert_eq!(fns.len(), 2);
         let inner = fns.iter().find(|n| n.name == "inner").unwrap();
-        assert!(inner.id.contains("outer.inner"), "nested fn should be scope-qualified, got id={}", inner.id);
+        assert!(
+            inner.id.contains("outer.inner"),
+            "nested fn should be scope-qualified, got id={}",
+            inner.id
+        );
     }
 
     #[test]
@@ -2266,9 +2870,16 @@ mod tests {
         let a = py_adapter();
         let src = "class Foo:\n    @staticmethod\n    def bar():\n        pass";
         let (nodes, _edges, _) = a.analyze("test.py", src);
-        let fns: Vec<_> = nodes.iter().filter(|n| matches!(n.kind, NodeKind::Function)).collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| matches!(n.kind, NodeKind::Function))
+            .collect();
         assert!(!fns.is_empty());
-        assert!(fns[0].id.contains("Foo.bar"), "decorated method should be scoped to class, got id={}", fns[0].id);
+        assert!(
+            fns[0].id.contains("Foo.bar"),
+            "decorated method should be scoped to class, got id={}",
+            fns[0].id
+        );
     }
 
     #[test]
@@ -2276,11 +2887,22 @@ mod tests {
         let a = py_adapter();
         let src = "class Foo:\n    x = 1\n    def bar(self):\n        y = 2";
         let (nodes, _edges, _) = a.analyze("test.py", src);
-        let vars: Vec<_> = nodes.iter().filter(|n| matches!(n.kind, NodeKind::Variable)).collect();
+        let vars: Vec<_> = nodes
+            .iter()
+            .filter(|n| matches!(n.kind, NodeKind::Variable))
+            .collect();
         let class_var = vars.iter().find(|n| n.name == "x").unwrap();
         let local_var = vars.iter().find(|n| n.name == "y").unwrap();
-        assert!(class_var.id.contains("Foo.x"), "class var should be in class scope, got {}", class_var.id);
-        assert!(local_var.id.contains("bar.y"), "local var should be in fn scope, got {}", local_var.id);
+        assert!(
+            class_var.id.contains("Foo.x"),
+            "class var should be in class scope, got {}",
+            class_var.id
+        );
+        assert!(
+            local_var.id.contains("bar.y"),
+            "local var should be in fn scope, got {}",
+            local_var.id
+        );
     }
 
     #[test]
@@ -2289,11 +2911,24 @@ mod tests {
         let src = "class Foo:\n    def bar(self):\n        val = 1\n        print(val)";
         let (_nodes, edges, _) = a.analyze("test.py", src);
         // "val" 的 Usage 边应来自 bar 的 scope
-        let usage = edges.iter().find(|e| matches!(e.kind, EdgeKind::Usage) && e.target == "val");
-        assert!(usage.is_some(), "should have Usage edge for val, got usages: {:?}",
-            edges.iter().filter(|e| matches!(e.kind, EdgeKind::Usage)).map(|e| format!("{}->{}", e.source, e.target)).collect::<Vec<_>>());
+        let usage = edges
+            .iter()
+            .find(|e| matches!(e.kind, EdgeKind::Usage) && e.target == "val");
+        assert!(
+            usage.is_some(),
+            "should have Usage edge for val, got usages: {:?}",
+            edges
+                .iter()
+                .filter(|e| matches!(e.kind, EdgeKind::Usage))
+                .map(|e| format!("{}->{}", e.source, e.target))
+                .collect::<Vec<_>>()
+        );
         let u = usage.unwrap();
-        assert!(u.source.contains("Foo.bar"), "usage of val should be from Foo.bar scope, got source={}", u.source);
+        assert!(
+            u.source.contains("Foo.bar"),
+            "usage of val should be from Foo.bar scope, got source={}",
+            u.source
+        );
     }
 
     #[test]
@@ -2303,10 +2938,20 @@ mod tests {
         let (_nodes, edges, _) = a.analyze("test.py", src);
         // self.baz 的 Call 边应来自 bar 的 scope
         let call = edges.iter().find(|e| matches!(e.kind, EdgeKind::Calls));
-        assert!(call.is_some(), "should have Calls edge for self.baz, got edges: {:?}",
-            edges.iter().map(|e| format!("[{}] {}->{}", e.kind.as_str(), e.source, e.target)).collect::<Vec<_>>());
+        assert!(
+            call.is_some(),
+            "should have Calls edge for self.baz, got edges: {:?}",
+            edges
+                .iter()
+                .map(|e| format!("[{}] {}->{}", e.kind.as_str(), e.source, e.target))
+                .collect::<Vec<_>>()
+        );
         let c = call.unwrap();
-        assert!(c.source.contains("Foo.bar"), "call source should be Foo.bar scope, got {}", c.source);
+        assert!(
+            c.source.contains("Foo.bar"),
+            "call source should be Foo.bar scope, got {}",
+            c.source
+        );
     }
 
     #[test]
@@ -2315,10 +2960,19 @@ mod tests {
         let src = "val = 1\ndef foo():\n    val += 2";
         let (_nodes, edges, _) = a.analyze("test.py", src);
         // @write should create write edge from foo's scope
-        let writes: Vec<_> = edges.iter().filter(|e| matches!(e.kind, EdgeKind::Writes)).collect();
+        let writes: Vec<_> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Writes))
+            .collect();
         let foo_write = writes.iter().find(|e| e.source.contains("foo"));
-        assert!(foo_write.is_some(), "write inside foo() should be from foo scope, got writes: {:?}",
-            writes.iter().map(|e| format!("{}->{}", e.source, e.target)).collect::<Vec<_>>());
+        assert!(
+            foo_write.is_some(),
+            "write inside foo() should be from foo scope, got writes: {:?}",
+            writes
+                .iter()
+                .map(|e| format!("{}->{}", e.source, e.target))
+                .collect::<Vec<_>>()
+        );
     }
 
     /// 诊断：解析真实文件并导出所有节点和边。
@@ -2328,11 +2982,17 @@ mod tests {
         let path = r"D:\django\django\views\generic\base.py";
         let source = match std::fs::read_to_string(path) {
             Ok(s) => s,
-            Err(e) => { eprintln!("SKIP: cannot read {path}: {e}"); return; }
+            Err(e) => {
+                eprintln!("SKIP: cannot read {path}: {e}");
+                return;
+            }
         };
         let lang = match crate::engine::GRAMMAR_LOADER.get("py") {
             Some(l) => l,
-            None => { eprintln!("SKIP: no Python grammar"); return; }
+            None => {
+                eprintln!("SKIP: no Python grammar");
+                return;
+            }
         };
 
         let mut parser = tree_sitter::Parser::new();
@@ -2341,7 +3001,10 @@ mod tests {
 
         let query_src = include_str!("../../queries/python_structure.scm");
         let (nodes, edges) = process_query(
-            &tree, &source, path, query_src,
+            &tree,
+            &source,
+            path,
+            query_src,
             &lang,
             &["function_definition", "lambda"],
             &["class_definition"],
@@ -2349,9 +3012,13 @@ mod tests {
 
         // ── 摘要 ──
         let mut nk: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        for n in &nodes { *nk.entry(format!("{:?}", n.kind)).or_default() += 1; }
+        for n in &nodes {
+            *nk.entry(format!("{:?}", n.kind)).or_default() += 1;
+        }
         let mut ek: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        for e in &edges { *ek.entry(format!("{:?}", e.kind)).or_default() += 1; }
+        for e in &edges {
+            *ek.entry(format!("{:?}", e.kind)).or_default() += 1;
+        }
 
         println!("=== {path} ===");
         println!("Nodes: {}  Edges: {}", nodes.len(), edges.len());
@@ -2361,7 +3028,11 @@ mod tests {
         // ── 按 kind 排序的节点 ──
         println!("\n=== NODES ===");
         for n in &nodes {
-            let cf = if n.location.as_deref() == Some(path) { "" } else { " [REMOTE]" };
+            let cf = if n.location.as_deref() == Some(path) {
+                ""
+            } else {
+                " [REMOTE]"
+            };
             println!("  [{:?}] id={} name={}{}", n.kind, n.id, n.name, cf);
         }
 
@@ -2404,7 +3075,15 @@ mod tests {
         }
         println!("\n=== EDGES (Other) ===");
         for e in &edges {
-            if !matches!(e.kind, hologram_graph::EdgeKind::Calls | hologram_graph::EdgeKind::Usage | hologram_graph::EdgeKind::Imports | hologram_graph::EdgeKind::Inherits | hologram_graph::EdgeKind::Defines | hologram_graph::EdgeKind::Writes) {
+            if !matches!(
+                e.kind,
+                hologram_graph::EdgeKind::Calls
+                    | hologram_graph::EdgeKind::Usage
+                    | hologram_graph::EdgeKind::Imports
+                    | hologram_graph::EdgeKind::Inherits
+                    | hologram_graph::EdgeKind::Defines
+                    | hologram_graph::EdgeKind::Writes
+            ) {
                 println!("  [{:?}] {} -> {}", e.kind, e.source, e.target);
             }
         }
@@ -2426,7 +3105,10 @@ int main(void) {
 "#;
         let lang = match crate::engine::GRAMMAR_LOADER.get("c") {
             Some(l) => l,
-            None => { eprintln!("SKIP: no C grammar"); return; }
+            None => {
+                eprintln!("SKIP: no C grammar");
+                return;
+            }
         };
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&lang).unwrap();
@@ -2434,7 +3116,10 @@ int main(void) {
 
         let query_src = include_str!("../../queries/c_structure.scm");
         let (nodes, edges) = process_query(
-            &tree, source, "test.c", query_src,
+            &tree,
+            source,
+            "test.c",
+            query_src,
             &lang,
             &["function_definition"],
             &["struct_specifier", "union_specifier"],
@@ -2446,7 +3131,9 @@ int main(void) {
             nodes.iter().map(|n| &n.name).collect::<Vec<_>>()
         );
         assert!(
-            edges.iter().any(|e| matches!(e.kind, hologram_graph::EdgeKind::Calls)),
+            edges
+                .iter()
+                .any(|e| matches!(e.kind, hologram_graph::EdgeKind::Calls)),
             "C 调用边应被提取"
         );
     }

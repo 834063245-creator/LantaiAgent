@@ -32,8 +32,7 @@ pub(crate) fn agent_isolation_create(
     let project_path = crate::utils::workspace_path(&state)?;
     let main_path = std::path::PathBuf::from(&project_path);
 
-    let isolation =
-        AgentIsolation::create_worktree(&main_path, &agent_id)?;
+    let isolation = AgentIsolation::create_worktree(&main_path, &agent_id)?;
 
     let wt_path = isolation
         .worktree_path
@@ -80,9 +79,9 @@ pub(crate) fn agent_isolation_diff(
     // 大 diff 溢写：截断即丢信息 — 落盘 .lantai/spill/ 回传 locator，
     // 模型用 read_file 读全量；落盘失败退回截断（带明确标记，不静默）。
     match isolation.diff_readonly()? {
-        crate::agent_isolation::CleanupResult::NoChanges => Ok(
-            serde_json::json!({"has_changes": false, "diff": ""}).to_string(),
-        ),
+        crate::agent_isolation::CleanupResult::NoChanges => {
+            Ok(serde_json::json!({"has_changes": false, "diff": ""}).to_string())
+        }
         crate::agent_isolation::CleanupResult::HasChanges {
             diff,
             worktree_path,
@@ -163,9 +162,7 @@ pub(crate) fn agent_isolation_discard(
 }
 
 #[tauri::command]
-pub(crate) fn agent_isolation_status(
-    state: &crate::WorkspaceState,
-) -> Result<String, String> {
+pub(crate) fn agent_isolation_status(state: &crate::WorkspaceState) -> Result<String, String> {
     let ctx = crate::utils::get_ctx(&state)?;
     let entries = ctx.list_isolations();
     let isolations: Vec<serde_json::Value> = entries
@@ -187,7 +184,8 @@ pub(crate) fn agent_isolation_status(
     Ok(serde_json::json!({
         "isolations": isolations,
         "count": isolations.len(),
-    }).to_string())
+    })
+    .to_string())
 }
 
 #[tauri::command]
@@ -209,7 +207,12 @@ pub(crate) fn agent_isolation_force_purge(
 
     // 运行 git worktree prune 清理过期元数据
     let _ = crate::agent_isolation::git_cmd()
-        .args(["-C", &main_path.to_string_lossy().replace('\\', "/"), "worktree", "prune"])
+        .args([
+            "-C",
+            &main_path.to_string_lossy().replace('\\', "/"),
+            "worktree",
+            "prune",
+        ])
         .output();
 
     Ok(format!("agent {} 的隔离记录已强制清除", agent_id))

@@ -93,7 +93,10 @@ pub(crate) fn spawn_process(
     env: Option<&HashMap<String, String>>,
 ) -> Result<Child, String> {
     let mut cmd = std::process::Command::new(command);
-    cmd.args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    cmd.args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
     if let Some(env) = env {
         cmd.envs(env);
     }
@@ -199,7 +202,9 @@ pub(crate) fn protocol_bridge_spawn(
     let app_exit = app.clone();
     let exit_id = id.clone();
     std::thread::spawn(move || {
-        let Some(code) = wait_proc_exit(&exit_id) else { return };
+        let Some(code) = wait_proc_exit(&exit_id) else {
+            return;
+        };
         info!(id = %exit_id, exit_code = ?code, "protocol bridge exited");
         let _ = app_exit.emit(
             "protocol-bridge:exit",
@@ -225,7 +230,9 @@ pub(crate) fn protocol_bridge_write(id: String, line: String) -> Result<String, 
     stdin
         .write_all(format!("{}\n", line).as_bytes())
         .map_err(|e| format!("protocol_bridge_write: {id} 写入失败: {e}"))?;
-    stdin.flush().map_err(|e| format!("protocol_bridge_write: {id} flush 失败: {e}"))?;
+    stdin
+        .flush()
+        .map_err(|e| format!("protocol_bridge_write: {id} flush 失败: {e}"))?;
     Ok(id)
 }
 
@@ -262,7 +269,8 @@ mod tests {
 
     /// 轮询等待文件出现（进程树测试的同步锚——孙进程写 PID 文件有启动延迟）。
     fn wait_for_file(path: &std::path::Path, timeout_ms: u128) -> bool {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64);
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64);
         while std::time::Instant::now() < deadline {
             if path.is_file() {
                 return true;
@@ -281,7 +289,10 @@ mod tests {
     }
 
     fn test_dir(tag: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("hologram_protocol_bridge_{tag}_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "hologram_protocol_bridge_{tag}_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -313,7 +324,10 @@ mod tests {
             .insert(id.clone(), BridgeProc { child, stdin: None });
         assert_eq!(wait_proc_exit(&id), Some(Some(3)), "应回报真实退出码");
         assert!(
-            !PROCS.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&id),
+            !PROCS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .contains_key(&id),
             "退出后应摘掉注册表行（否则重启换代的行会无限堆积）"
         );
     }
@@ -337,13 +351,17 @@ mod tests {
         let dir = test_dir("env");
         let out_file = dir.join("env.txt");
         let mut env = HashMap::new();
-        env.insert("LANTAI_TEST_DATA_DIR".to_string(), dir.join("data").to_string_lossy().into_owned());
+        env.insert(
+            "LANTAI_TEST_DATA_DIR".to_string(),
+            dir.join("data").to_string_lossy().into_owned(),
+        );
         let script = format!(
             "Set-Content -Path '{}' -Value ('LANTAI_TEST_DATA_DIR=' + $env:LANTAI_TEST_DATA_DIR + '|PATH_PRESENT=' + [bool]$env:PATH)",
             out_file.display()
         );
         let args = vec!["-NoProfile".to_string(), "-Command".to_string(), script];
-        let mut child = spawn_process("powershell", &args, Some(&env)).expect("powershell spawn 应成功");
+        let mut child =
+            spawn_process("powershell", &args, Some(&env)).expect("powershell spawn 应成功");
         let _ = child.wait();
         assert!(out_file.is_file(), "env 落盘文件应存在");
         let content = read_file(&out_file);
@@ -352,7 +370,10 @@ mod tests {
             content.contains(&format!("LANTAI_TEST_DATA_DIR={want}")),
             "注入 env 应在子进程可见:\n{content}"
         );
-        assert!(content.contains("PATH_PRESENT=True"), "继承 env 应保留（PATH 存在）:\n{content}");
+        assert!(
+            content.contains("PATH_PRESENT=True"),
+            "继承 env 应保留（PATH 存在）:\n{content}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -372,8 +393,14 @@ mod tests {
         );
         let args = vec!["-NoProfile".to_string(), "-Command".to_string(), script];
         let mut root = spawn_process("powershell", &args, None).expect("powershell spawn 应成功");
-        assert!(wait_for_file(&pid_file, 15_000), "孙进程 PID 应在时限内落盘");
-        let grand_pid: u32 = read_file(&pid_file).trim().parse().expect("PID 文件应是数字");
+        assert!(
+            wait_for_file(&pid_file, 15_000),
+            "孙进程 PID 应在时限内落盘"
+        );
+        let grand_pid: u32 = read_file(&pid_file)
+            .trim()
+            .parse()
+            .expect("PID 文件应是数字");
         // 树杀
         kill_process_tree(&mut root);
         let _ = root.wait();
@@ -393,7 +420,10 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
-        assert!(gone, "kill_process_tree 应连孙进程（PID {grand_pid}）一并回收");
+        assert!(
+            gone,
+            "kill_process_tree 应连孙进程（PID {grand_pid}）一并回收"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

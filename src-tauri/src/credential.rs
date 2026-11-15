@@ -121,7 +121,12 @@ pub fn delete_api_key(provider: &str) -> Result<(), String> {
 /// OAuth grant 键前缀（provider 名与账号 id 之间的分隔——apiKey 平面键 = provider
 /// 名本身，前缀保证两平面不碰撞）。
 pub fn oauth_grant_key(provider: &str, account_id: &str) -> String {
-    format!("{}{}::{}", crate::oauth::OAUTH_KEY_PREFIX, provider, account_id)
+    format!(
+        "{}{}::{}",
+        crate::oauth::OAUTH_KEY_PREFIX,
+        provider,
+        account_id
+    )
 }
 
 /// 解析 OAuth 键 → (provider, account_id)。非 OAuth 键返回 None。
@@ -163,17 +168,17 @@ pub fn list_oauth_grants(provider: &str) -> Result<Vec<crate::oauth::OAuthGrant>
         let s = v.as_str().unwrap_or("");
         match serde_json::from_str::<crate::oauth::OAuthGrant>(s) {
             Ok(g) => out.push(g),
-            Err(e) => tracing::warn!(
-                "[credential] 丢弃损坏 OAuth grant 条目 key={}（{e}）",
-                k
-            ),
+            Err(e) => tracing::warn!("[credential] 丢弃损坏 OAuth grant 条目 key={}（{e}）", k),
         }
     }
     Ok(out)
 }
 
 /// 读取指定 (provider, account_id) 的 OAuth grant。
-pub fn get_oauth_grant(provider: &str, account_id: &str) -> Result<Option<crate::oauth::OAuthGrant>, String> {
+pub fn get_oauth_grant(
+    provider: &str,
+    account_id: &str,
+) -> Result<Option<crate::oauth::OAuthGrant>, String> {
     let key = oauth_grant_key(provider, account_id);
     match get_api_key(&key)? {
         Some(json) => serde_json::from_str(&json)
@@ -218,13 +223,23 @@ mod windows_impl {
     use super::*;
 
     type CryptProtectDataFn = unsafe extern "system" fn(
-        *const DATA_BLOB, *const u16, *const DATA_BLOB, *const c_void,
-        *const c_void, u32, *mut DATA_BLOB,
+        *const DATA_BLOB,
+        *const u16,
+        *const DATA_BLOB,
+        *const c_void,
+        *const c_void,
+        u32,
+        *mut DATA_BLOB,
     ) -> i32;
 
     type CryptUnprotectDataFn = unsafe extern "system" fn(
-        *const DATA_BLOB, *mut u16, *const DATA_BLOB, *const c_void,
-        *const c_void, u32, *mut DATA_BLOB,
+        *const DATA_BLOB,
+        *mut u16,
+        *const DATA_BLOB,
+        *const c_void,
+        *const c_void,
+        u32,
+        *mut DATA_BLOB,
     ) -> i32;
 
     type LocalFreeFn = unsafe extern "system" fn(isize) -> isize;
@@ -247,11 +262,16 @@ mod windows_impl {
             unsafe { crypt32.get(b"CryptProtectData") }
                 .map_err(|e| format!("CryptProtectData: {e}"))?;
         let LocalFree: libloading::Symbol<LocalFreeFn> =
-            unsafe { kernel32.get(b"LocalFree") }
-                .map_err(|e| format!("LocalFree: {e}"))?;
+            unsafe { kernel32.get(b"LocalFree") }.map_err(|e| format!("LocalFree: {e}"))?;
 
-        let mut blob_in = DATA_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
-        let mut blob_out = DATA_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+        let mut blob_in = DATA_BLOB {
+            cbData: data.len() as u32,
+            pbData: data.as_ptr() as *mut u8,
+        };
+        let mut blob_out = DATA_BLOB {
+            cbData: 0,
+            pbData: std::ptr::null_mut(),
+        };
 
         let ret = unsafe {
             CryptProtectData(
@@ -284,11 +304,16 @@ mod windows_impl {
             unsafe { crypt32.get(b"CryptUnprotectData") }
                 .map_err(|e| format!("CryptUnprotectData: {e}"))?;
         let LocalFree: libloading::Symbol<LocalFreeFn> =
-            unsafe { kernel32.get(b"LocalFree") }
-                .map_err(|e| format!("LocalFree: {e}"))?;
+            unsafe { kernel32.get(b"LocalFree") }.map_err(|e| format!("LocalFree: {e}"))?;
 
-        let mut blob_in = DATA_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
-        let mut blob_out = DATA_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+        let mut blob_in = DATA_BLOB {
+            cbData: data.len() as u32,
+            pbData: data.as_ptr() as *mut u8,
+        };
+        let mut blob_out = DATA_BLOB {
+            cbData: 0,
+            pbData: std::ptr::null_mut(),
+        };
 
         let ret = unsafe {
             CryptUnprotectData(
@@ -330,7 +355,10 @@ mod windows_impl {
             .filter(|(k, v)| {
                 let ok = v.as_str().map(|s| s.len() <= MAX_KEY_LEN).unwrap_or(false);
                 if !ok {
-                    tracing::warn!("[credential] 丢弃异常条目 provider={}（value 超限或非字符串）", k);
+                    tracing::warn!(
+                        "[credential] 丢弃异常条目 provider={}（value 超限或非字符串）",
+                        k
+                    );
                 }
                 ok
             })
@@ -345,9 +373,7 @@ mod windows_impl {
     fn load_cred_map_raw() -> Result<serde_json::Map<String, serde_json::Value>, String> {
         let encrypted = match std::fs::read(cred_path()) {
             Ok(d) => d,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(serde_json::Map::new())
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(serde_json::Map::new()),
             Err(e) => return Err(format!("read credentials: {e}")),
         };
         // 尺寸护栏：超大密文绝不解密解析（解密 256MB 需数十秒且响应会击毁 IPC）
@@ -441,12 +467,16 @@ mod windows_impl {
     }
 
     pub(super) fn store_windows(provider: &str, key: &str) -> Result<(), String> {
-        let dir = cred_path().parent()
+        let dir = cred_path()
+            .parent()
             .ok_or_else(|| "无法确定凭证目录的父路径".to_string())?
             .to_path_buf();
         std::fs::create_dir_all(&dir).map_err(|e| format!("create credentials dir: {e}"))?;
         let mut map = load_or_backup_cred_map()?;
-        map.insert(provider.to_string(), serde_json::Value::String(key.to_string()));
+        map.insert(
+            provider.to_string(),
+            serde_json::Value::String(key.to_string()),
+        );
         let data = serde_json::Value::Object(map).to_string();
         let encrypted = dpapi_encrypt(data.as_bytes())?;
         write_cred_file_atomic(&encrypted)
@@ -580,7 +610,9 @@ mod linux_impl {
 
         let label = format!("兰台: {provider}");
         let mut cmd = std::process::Command::new("secret-tool");
-        cmd.args(["store", "--label", &label, "service", SERVICE, "account", provider]);
+        cmd.args([
+            "store", "--label", &label, "service", SERVICE, "account", provider,
+        ]);
 
         cmd.stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::null())
@@ -685,8 +717,7 @@ mod tests {
         );
 
         let json = serde_json::Value::Object(map.clone()).to_string();
-        let parsed: serde_json::Value =
-            serde_json::from_str(&json).expect("valid JSON roundtrip");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON roundtrip");
         let parsed_map = parsed.as_object().expect("top-level must be an object");
 
         assert_eq!(parsed_map.len(), 2);
@@ -704,8 +735,7 @@ mod tests {
     fn test_json_map_empty() {
         let map = serde_json::Map::new();
         let json = serde_json::Value::Object(map).to_string();
-        let parsed: serde_json::Value =
-            serde_json::from_str(&json).expect("empty map must parse");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("empty map must parse");
         assert!(parsed.as_object().unwrap().is_empty());
     }
 
@@ -778,7 +808,11 @@ mod tests {
             std::fs::create_dir_all(&dir).unwrap();
             let orig = std::env::var_os("LOCALAPPDATA");
             std::env::set_var("LOCALAPPDATA", &dir);
-            TempCredEnv { dir, orig, _guard: guard }
+            TempCredEnv {
+                dir,
+                orig,
+                _guard: guard,
+            }
         }
 
         fn cred_file(&self) -> std::path::PathBuf {
@@ -791,7 +825,9 @@ mod tests {
                 Some(d) => d.to_path_buf(),
                 None => return Vec::new(),
             };
-            let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return Vec::new();
+            };
             entries
                 .filter_map(|e| e.ok())
                 .map(|e| e.path())
@@ -908,11 +944,17 @@ mod tests {
     fn test_store_rejects_oversized_key() {
         let env = TempCredEnv::new("oversized-store");
         let big = "x".repeat(5000);
-        assert!(super::store_api_key("bigprov", &big).is_err(), "超长 key 必须被拒绝");
+        assert!(
+            super::store_api_key("bigprov", &big).is_err(),
+            "超长 key 必须被拒绝"
+        );
         assert!(!env.cred_file().exists(), "拒绝写入时不应创建文件");
         // 正常 key 不受影响
         super::store_api_key("ok", "sk-normal").unwrap();
-        assert_eq!(super::get_api_key("ok").unwrap(), Some("sk-normal".to_string()));
+        assert_eq!(
+            super::get_api_key("ok").unwrap(),
+            Some("sk-normal".to_string())
+        );
     }
 
     /// 毒化文件（超 4MB）场景：get 应快速报错而非解密数百 MB；
@@ -924,10 +966,16 @@ mod tests {
         let dir = env.cred_file().parent().unwrap().to_path_buf();
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(env.cred_file(), vec![0u8; 5 * 1024 * 1024]).unwrap();
-        assert!(super::get_api_key("any").is_err(), "超大文件应直接报错而非尝试解密");
+        assert!(
+            super::get_api_key("any").is_err(),
+            "超大文件应直接报错而非尝试解密"
+        );
         super::store_api_key("newprov", "sk-new").unwrap();
         assert_eq!(env.corrupt_backups().len(), 1, "毒化文件应被隔离备份");
-        assert_eq!(super::get_api_key("newprov").unwrap(), Some("sk-new".to_string()));
+        assert_eq!(
+            super::get_api_key("newprov").unwrap(),
+            Some("sk-new".to_string())
+        );
     }
 
     // ── OAuth grant 平面（Phase 3B，2026-09）──
@@ -965,11 +1013,26 @@ mod tests {
         super::store_oauth_grant(&g2).unwrap();
 
         // apiKey 平面不受 oauth 污染
-        assert_eq!(super::get_api_key("codex").unwrap(), Some("sk-plain".to_string()));
+        assert_eq!(
+            super::get_api_key("codex").unwrap(),
+            Some("sk-plain".to_string())
+        );
 
         // oauth 平面按账号隔离
-        assert_eq!(super::get_oauth_grant("codex", "user-1").unwrap().unwrap().access_token, "at-1");
-        assert_eq!(super::get_oauth_grant("codex", "user-2").unwrap().unwrap().access_token, "at-2");
+        assert_eq!(
+            super::get_oauth_grant("codex", "user-1")
+                .unwrap()
+                .unwrap()
+                .access_token,
+            "at-1"
+        );
+        assert_eq!(
+            super::get_oauth_grant("codex", "user-2")
+                .unwrap()
+                .unwrap()
+                .access_token,
+            "at-2"
+        );
         assert!(super::get_oauth_grant("codex", "nobody").unwrap().is_none());
 
         // list 只列该 provider 的 oauth grant
@@ -980,9 +1043,18 @@ mod tests {
         // delete 单个账号
         super::delete_oauth_grant("codex", "user-1").unwrap();
         assert!(super::get_oauth_grant("codex", "user-1").unwrap().is_none());
-        assert_eq!(super::get_oauth_grant("codex", "user-2").unwrap().unwrap().access_token, "at-2");
+        assert_eq!(
+            super::get_oauth_grant("codex", "user-2")
+                .unwrap()
+                .unwrap()
+                .access_token,
+            "at-2"
+        );
         // apiKey 仍不受影响
-        assert_eq!(super::get_api_key("codex").unwrap(), Some("sk-plain".to_string()));
+        assert_eq!(
+            super::get_api_key("codex").unwrap(),
+            Some("sk-plain".to_string())
+        );
     }
 
     #[test]
@@ -996,6 +1068,9 @@ mod tests {
             account_id: String::new(),
             scope: None,
         };
-        assert!(super::store_oauth_grant(&g).is_err(), "空 account_id 必须拒绝");
+        assert!(
+            super::store_oauth_grant(&g).is_err(),
+            "空 account_id 必须拒绝"
+        );
     }
 }

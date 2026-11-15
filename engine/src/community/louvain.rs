@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
+use std::collections::HashMap;
 
 use hologram_graph::Graph;
 use hologram_storage::MemoryIndex;
@@ -16,9 +16,9 @@ pub type Community = Vec<String>;
 pub struct HierarchicalCommunity {
     pub id: String,
     pub label: String,
-    pub node_ids: Vec<String>,      // leaf graph node IDs (all levels)
-    pub level: usize,               // 0 = base, 1 = super, …
-    pub parent_id: Option<String>,  // community ID one level up, None if top
+    pub node_ids: Vec<String>,     // leaf graph node IDs (all levels)
+    pub level: usize,              // 0 = base, 1 = super, …
+    pub parent_id: Option<String>, // community ID one level up, None if top
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -32,10 +32,17 @@ fn build_adjacency(graph: &Graph) -> Option<Adjacency> {
     let r = build_adjacency_inner(graph);
     if let Some((ids, adj, _, _)) = &r {
         let e: usize = adj.iter().map(|v| v.len()).sum::<usize>() / 2;
-        eprintln!("[louvain] build_adjacency {:.2}s (N={}, E={})",
-            _t.elapsed().as_secs_f64(), ids.len(), e);
+        eprintln!(
+            "[louvain] build_adjacency {:.2}s (N={}, E={})",
+            _t.elapsed().as_secs_f64(),
+            ids.len(),
+            e
+        );
     } else {
-        eprintln!("[louvain] build_adjacency {:.2}s (empty)", _t.elapsed().as_secs_f64());
+        eprintln!(
+            "[louvain] build_adjacency {:.2}s (empty)",
+            _t.elapsed().as_secs_f64()
+        );
     }
     r
 }
@@ -44,9 +51,12 @@ fn build_adjacency_inner(graph: &Graph) -> Option<Adjacency> {
     let mut node_ids: Vec<&str> = graph.node_ids().collect();
     node_ids.sort();
     let n = node_ids.len();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
-    let id_to_idx: HashMap<&str, usize> = node_ids.iter()
+    let id_to_idx: HashMap<&str, usize> = node_ids
+        .iter()
         .enumerate()
         .map(|(i, id)| (*id, i))
         .collect();
@@ -61,7 +71,10 @@ fn build_adjacency_inner(graph: &Graph) -> Option<Adjacency> {
     let mut adj: Vec<Vec<(usize, f64)>> = vec![vec![]; n];
 
     for edge in graph.edges_iter().map(|(_, e)| e) {
-        if let (Some(&s), Some(&t)) = (id_to_idx.get(edge.source.as_str()), id_to_idx.get(edge.target.as_str())) {
+        if let (Some(&s), Some(&t)) = (
+            id_to_idx.get(edge.source.as_str()),
+            id_to_idx.get(edge.target.as_str()),
+        ) {
             let w = 1.0;
             adj[s].push((t, w));
             adj[t].push((s, w));
@@ -74,13 +87,18 @@ fn build_adjacency_inner(graph: &Graph) -> Option<Adjacency> {
     Some((owned_ids, adj, degrees, m))
 }
 
-fn build_adjacency_from_index(idx: &MemoryIndex) -> Option<(Vec<String>, Vec<Vec<(usize, f64)>>, Vec<f64>, f64)> {
+fn build_adjacency_from_index(
+    idx: &MemoryIndex,
+) -> Option<(Vec<String>, Vec<Vec<(usize, f64)>>, Vec<f64>, f64)> {
     let mut node_ids: Vec<String> = idx.nodes_iter().map(|n| n.id.as_str().to_owned()).collect();
     node_ids.sort();
     let n = node_ids.len();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
-    let id_to_idx: HashMap<&str, usize> = node_ids.iter()
+    let id_to_idx: HashMap<&str, usize> = node_ids
+        .iter()
         .enumerate()
         .map(|(i, id)| (id.as_str(), i))
         .collect();
@@ -230,8 +248,12 @@ fn local_moving_core(
     }
 
     if n >= 1000 {
-        eprintln!("[louvain] local-moving {:.2}s ({} iters, N={})",
-            _t.elapsed().as_secs_f64(), iter, n);
+        eprintln!(
+            "[louvain] local-moving {:.2}s ({} iters, N={})",
+            _t.elapsed().as_secs_f64(),
+            iter,
+            n
+        );
     }
     (comm_nodes, node_to_comm)
 }
@@ -269,7 +291,8 @@ fn compact_communities(
 }
 
 fn build_community_result(node_ids: &[String], comm_nodes: &[Vec<usize>]) -> Vec<Community> {
-    let mut result: Vec<Community> = comm_nodes.iter()
+    let mut result: Vec<Community> = comm_nodes
+        .iter()
         .filter(|c| !c.is_empty())
         .map(|nodes| nodes.iter().map(|&idx| node_ids[idx].clone()).collect())
         .collect();
@@ -296,7 +319,9 @@ fn detect_hierarchical_from_base(
 ) -> Vec<HierarchicalCommunity> {
     let _t = std::time::Instant::now();
     let mut result: Vec<HierarchicalCommunity> = Vec::new();
-    if base.is_empty() { return result; }
+    if base.is_empty() {
+        return result;
+    }
 
     // Level 0：基础社区
     for (i, nodes) in base.iter().enumerate() {
@@ -309,16 +334,20 @@ fn detect_hierarchical_from_base(
         });
     }
 
-    if base.len() <= 1 { return result; }
+    if base.len() <= 1 {
+        return result;
+    }
 
     // 仅构建一次 dense node-ID → index 映射。
-    let mut all_node_ids: Vec<&str> = base.iter()
+    let mut all_node_ids: Vec<&str> = base
+        .iter()
         .flat_map(|c| c.iter().map(|s| s.as_str()))
         .collect();
     all_node_ids.sort();
     all_node_ids.dedup();
     let node_count = all_node_ids.len();
-    let node_to_dense: HashMap<&str, usize> = all_node_ids.iter()
+    let node_to_dense: HashMap<&str, usize> = all_node_ids
+        .iter()
         .enumerate()
         .map(|(i, &id)| (id, i))
         .collect();
@@ -349,7 +378,9 @@ fn detect_hierarchical_from_base(
     const MAX_LEVELS: usize = 8;
 
     loop {
-        if level >= MAX_LEVELS { break; }
+        if level >= MAX_LEVELS {
+            break;
+        }
         let n = current_communities.len();
 
         // 构建 node → community-index 映射
@@ -369,7 +400,9 @@ fn detect_hierarchical_from_base(
 
         let mut edge_pairs: Vec<((usize, usize), f64)> = Vec::new();
         for &(ds, dt) in &dense_edges {
-            if ds == usize::MAX || dt == usize::MAX { continue; }
+            if ds == usize::MAX || dt == usize::MAX {
+                continue;
+            }
             let ci = node_to_ci[ds];
             let cj = node_to_ci[dt];
             if ci != usize::MAX && cj != usize::MAX && ci != cj {
@@ -383,7 +416,10 @@ fn detect_hierarchical_from_base(
         let mut sorted_edges: Vec<((usize, usize), f64)> = Vec::new();
         for ((a, b), w) in edge_pairs {
             if let Some(last) = sorted_edges.last_mut() {
-                if last.0 == (a, b) { last.1 += w; continue; }
+                if last.0 == (a, b) {
+                    last.1 += w;
+                    continue;
+                }
             }
             sorted_edges.push(((a, b), w));
         }
@@ -395,18 +431,24 @@ fn detect_hierarchical_from_base(
             m += w;
         }
 
-        if m == 0.0 { break; }
-        eprintln!("[louvain] hierarchy level {}: {} comms, condense {:.2}s",
-            level + 1, n, _t.elapsed().as_secs_f64());
+        if m == 0.0 {
+            break;
+        }
+        eprintln!(
+            "[louvain] hierarchy level {}: {} comms, condense {:.2}s",
+            level + 1,
+            n,
+            _t.elapsed().as_secs_f64()
+        );
 
         // 在压缩图上运行 Louvain（非 Leiden — 精化在此处作用不大）
-        let condensed_ids: Vec<String> = (0..n)
-            .map(|i| format!("l{}_comm_{}", level, i))
-            .collect();
+        let condensed_ids: Vec<String> = (0..n).map(|i| format!("l{}_comm_{}", level, i)).collect();
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed.wrapping_add((level + 1) as u64));
         let super_comms = run_louvain(&condensed_ids, n, &adj, &degrees, m, &mut rng);
 
-        if super_comms.len() >= n { break; }
+        if super_comms.len() >= n {
+            break;
+        }
 
         let parent_level = level + 1;
         let mut next_communities: Vec<Vec<String>> = Vec::new();
@@ -422,7 +464,9 @@ fn detect_hierarchical_from_base(
                     .and_then(|s| s.parse::<usize>().ok())
                     .map(|ci| ci >= n || degrees[ci] == 0.0)
                     .unwrap_or(false);
-                if is_isolated { continue; }
+                if is_isolated {
+                    continue;
+                }
             }
 
             let parent_id = format!("l{}_comm_{}", parent_level, sc_idx);
@@ -456,13 +500,19 @@ fn detect_hierarchical_from_base(
             });
         }
 
-        if next_communities.len() <= 1 { break; }
+        if next_communities.len() <= 1 {
+            break;
+        }
         current_communities = next_communities;
         level = parent_level;
     }
 
-    eprintln!("[louvain] hierarchy total {:.2}s ({} levels, {} base comms)",
-        _t.elapsed().as_secs_f64(), level, base.len());
+    eprintln!(
+        "[louvain] hierarchy total {:.2}s ({} levels, {} base comms)",
+        _t.elapsed().as_secs_f64(),
+        level,
+        base.len()
+    );
     result
 }
 
@@ -487,7 +537,7 @@ fn leiden_refinement(
     degrees: &[f64],
     m: f64,
     rng: &mut rand::rngs::StdRng,
-    p1_comms: &[Vec<usize>],  // Phase 1: community → node indices
+    p1_comms: &[Vec<usize>], // Phase 1: community → node indices
 ) -> Vec<Community> {
     let _t = std::time::Instant::now();
     // ── 步骤 1：从阶段 1 构建 node→community 映射 ──
@@ -498,7 +548,10 @@ fn leiden_refinement(
         }
     }
 
-    eprintln!("[louvain] leiden step1 (map) {:.2}s", _t.elapsed().as_secs_f64());
+    eprintln!(
+        "[louvain] leiden step1 (map) {:.2}s",
+        _t.elapsed().as_secs_f64()
+    );
     // ── 步骤 2：在 P1 社区内部拆分 ──
     // sub_comms：所有子社区的扁平列表，每个为 Vec<usize>
     // sub_parent：每个子社区来自哪个 P1 社区
@@ -521,7 +574,9 @@ fn leiden_refinement(
 
         // 为此社区构建诱导子图
         let k = comm.len();
-        let old_to_new: HashMap<usize, usize> = comm.iter().enumerate()
+        let old_to_new: HashMap<usize, usize> = comm
+            .iter()
+            .enumerate()
             .map(|(new, &old)| (old, new))
             .collect();
         let mut sub_adj: Vec<Vec<(usize, f64)>> = vec![vec![]; k];
@@ -554,7 +609,9 @@ fn leiden_refinement(
 
         // 将子索引转换回全局索引
         for split in &split_nodes {
-            if split.is_empty() { continue; }
+            if split.is_empty() {
+                continue;
+            }
             let mut members: Vec<usize> = split.iter().map(|&si| comm[si]).collect();
             members.sort();
             let sub_idx = sub_comms.len();
@@ -566,7 +623,10 @@ fn leiden_refinement(
         }
     }
 
-    eprintln!("[louvain] leiden step2 (split) {:.2}s", _t.elapsed().as_secs_f64());
+    eprintln!(
+        "[louvain] leiden step2 (split) {:.2}s",
+        _t.elapsed().as_secs_f64()
+    );
     // ── 步骤 3：合并子社区 ──
     // 每个子社区可以留在其父 P1 社区，或切换到
     // 相邻的 P1 社区（如果能改善模块度）。
@@ -583,7 +643,8 @@ fn leiden_refinement(
     }
     // 每个子社区初始分配到其父 P1 社区
     let mut sub_comm: Vec<usize> = sub_parent.clone();
-    let sub_sigma: Vec<f64> = sub_comms.iter()
+    let sub_sigma: Vec<f64> = sub_comms
+        .iter()
         .map(|sc| sc.iter().map(|&v| degrees[v]).sum())
         .collect();
 
@@ -624,7 +685,9 @@ fn leiden_refinement(
             let mut best_gain = 0.0f64;
 
             for &p1 in &touched {
-                if p1 == old_p1 { continue; }
+                if p1 == old_p1 {
+                    continue;
+                }
                 let ki_in = p1_weight[p1];
                 let sigma_new = p1_sigma[p1];
                 let gain = (ki_in - ki_in_old) / m
@@ -655,13 +718,17 @@ fn leiden_refinement(
         fc.dedup();
     }
 
-    let mut result: Vec<Community> = final_comms.iter()
+    let mut result: Vec<Community> = final_comms
+        .iter()
         .filter(|c| !c.is_empty())
         .map(|nodes| nodes.iter().map(|&idx| node_ids[idx].clone()).collect())
         .collect();
     result.sort_by_key(|c| -(c.len() as i64));
-    eprintln!("[louvain] leiden step3 (merge) {:.2}s | total {:.2}s",
-        _t.elapsed().as_secs_f64(), _t.elapsed().as_secs_f64());
+    eprintln!(
+        "[louvain] leiden step3 (merge) {:.2}s | total {:.2}s",
+        _t.elapsed().as_secs_f64(),
+        _t.elapsed().as_secs_f64()
+    );
     result
 }
 
@@ -748,7 +815,8 @@ fn detect_communities_from_index_louvain(idx: &MemoryIndex, seed: u64) -> Vec<Co
 /// 如需 Leiden 精化的扁平社区，请改用 detect_communities()。
 pub fn detect_hierarchical_communities(graph: &Graph, seed: u64) -> Vec<HierarchicalCommunity> {
     let base = detect_communities_louvain(graph, seed);
-    let leaf_edges: Vec<(&str, &str)> = graph.edges_iter()
+    let leaf_edges: Vec<(&str, &str)> = graph
+        .edges_iter()
         .map(|(_, e)| (e.source.as_str(), e.target.as_str()))
         .collect();
     detect_hierarchical_from_base(&base, seed, &leaf_edges)
@@ -760,7 +828,8 @@ pub fn detect_hierarchical_communities_with_base(
     base: Vec<Community>,
     seed: u64,
 ) -> Vec<HierarchicalCommunity> {
-    let leaf_edges: Vec<(&str, &str)> = graph.edges_iter()
+    let leaf_edges: Vec<(&str, &str)> = graph
+        .edges_iter()
         .map(|(_, e)| (e.source.as_str(), e.target.as_str()))
         .collect();
     detect_hierarchical_from_base(&base, seed, &leaf_edges)
@@ -773,14 +842,18 @@ pub fn detect_hierarchical_communities_from_index(
 ) -> Vec<HierarchicalCommunity> {
     let base = detect_communities_from_index_louvain(idx, seed);
     // edges_iter 返回 owned String — 先持有再借用,语义不变
-    let owned_edges: Vec<(String, String)> = idx.edges_iter()
+    let owned_edges: Vec<(String, String)> = idx
+        .edges_iter()
         .into_iter()
         .flat_map(|(src, targets)| {
             let s = src;
-            targets.into_iter().map(move |(tgt, _, _, _)| (s.clone(), tgt))
+            targets
+                .into_iter()
+                .map(move |(tgt, _, _, _)| (s.clone(), tgt))
         })
         .collect();
-    let leaf_edges: Vec<(&str, &str)> = owned_edges.iter()
+    let leaf_edges: Vec<(&str, &str)> = owned_edges
+        .iter()
         .map(|(s, t)| (s.as_str(), t.as_str()))
         .collect();
     detect_hierarchical_from_base(&base, seed, &leaf_edges)
@@ -801,7 +874,8 @@ pub fn detect_communities_and_hierarchy(
     // 同输入 → 结果与原两次独立调用逐位一致(local_moving_core 内部 clone rng,
     // 不消耗外层 rng;build_community_result 内部过滤空社区,与 p1_comms 等价)。
     let Some((owned_ids, adj, degrees, m)) = build_adjacency(graph) else {
-        let leaf_edges: Vec<(&str, &str)> = graph.edges_iter()
+        let leaf_edges: Vec<(&str, &str)> = graph
+            .edges_iter()
             .map(|(_, e)| (e.source.as_str(), e.target.as_str()))
             .collect();
         let hierarchical = detect_hierarchical_from_base(&vec![], seed, &leaf_edges);
@@ -815,13 +889,13 @@ pub fn detect_communities_and_hierarchy(
         (singleton.clone(), singleton)
     } else {
         let (comm_nodes, _) = local_moving_core(n, &adj, &degrees, m, &mut rng);
-        let p1_comms: Vec<Vec<usize>> =
-            comm_nodes.into_iter().filter(|c| !c.is_empty()).collect();
+        let p1_comms: Vec<Vec<usize>> = comm_nodes.into_iter().filter(|c| !c.is_empty()).collect();
         let base = leiden_refinement(&owned_ids, n, &adj, &degrees, m, &mut rng, &p1_comms);
         let hier_base = build_community_result(&owned_ids, &p1_comms);
         (base, hier_base)
     };
-    let leaf_edges: Vec<(&str, &str)> = graph.edges_iter()
+    let leaf_edges: Vec<(&str, &str)> = graph
+        .edges_iter()
         .map(|(_, e)| (e.source.as_str(), e.target.as_str()))
         .collect();
     let hierarchical = detect_hierarchical_from_base(&hier_base, seed, &leaf_edges);
@@ -879,7 +953,10 @@ pub fn match_communities_to_previous(
     }
 
     // 为未匹配的社区分配新 ID
-    let mut next_id = old_assignment.values().copied().max()
+    let mut next_id = old_assignment
+        .values()
+        .copied()
+        .max()
         .map(|m| m.saturating_add(1))
         .unwrap_or(0);
     for id in result.iter_mut() {
@@ -906,12 +983,15 @@ pub fn match_communities_to_previous(
 pub fn assign_communities_to_new_nodes(graph: &mut hologram_graph::Graph) -> Vec<String> {
     use std::collections::{HashMap, HashSet};
 
-    let new_ids: HashSet<String> = graph.nodes_iter()
+    let new_ids: HashSet<String> = graph
+        .nodes_iter()
         .filter(|(_, n)| n.community_id.is_none())
         .map(|(id, _)| id.to_string())
         .collect();
 
-    if new_ids.is_empty() { return Vec::new(); }
+    if new_ids.is_empty() {
+        return Vec::new();
+    }
 
     // 单次遍历边 — 为每个新节点累加社区投票
     let mut votes: HashMap<String, HashMap<usize, usize>> = HashMap::new();
@@ -919,14 +999,22 @@ pub fn assign_communities_to_new_nodes(graph: &mut hologram_graph::Graph) -> Vec
         if new_ids.contains(edge.source.as_str()) {
             if let Some(nbr) = graph.get_node(&edge.target) {
                 if let Some(cid) = nbr.community_id {
-                    *votes.entry(edge.source.as_str().to_owned()).or_default().entry(cid).or_default() += 1;
+                    *votes
+                        .entry(edge.source.as_str().to_owned())
+                        .or_default()
+                        .entry(cid)
+                        .or_default() += 1;
                 }
             }
         }
         if new_ids.contains(edge.target.as_str()) {
             if let Some(nbr) = graph.get_node(&edge.source) {
                 if let Some(cid) = nbr.community_id {
-                    *votes.entry(edge.target.as_str().to_owned()).or_default().entry(cid).or_default() += 1;
+                    *votes
+                        .entry(edge.target.as_str().to_owned())
+                        .or_default()
+                        .entry(cid)
+                        .or_default() += 1;
                 }
             }
         }
@@ -935,10 +1023,9 @@ pub fn assign_communities_to_new_nodes(graph: &mut hologram_graph::Graph) -> Vec
     let mut assigned = Vec::new();
     for (nid, v) in &votes {
         // 选择投票最多的社区；平局按较低 ID 打破（更老 = 更稳定）
-        if let Some(&best_cid) = v.iter()
-            .max_by(|(cid_a, cnt_a), (cid_b, cnt_b)| {
-                cnt_a.cmp(cnt_b).then(cid_b.cmp(cid_a))
-            })
+        if let Some(&best_cid) = v
+            .iter()
+            .max_by(|(cid_a, cnt_a), (cid_b, cnt_b)| cnt_a.cmp(cnt_b).then(cid_b.cmp(cid_a)))
             .map(|(cid, _)| cid)
         {
             if let Some(node) = graph.get_node_mut(nid) {
@@ -963,7 +1050,11 @@ mod tests {
     fn build_test_graph() -> Graph {
         let mut g = Graph::new();
         for i in 0..6 {
-            g.add_node(Node::new(format!("n{}", i), format!("Node{}", i), NodeKind::Symbol));
+            g.add_node(Node::new(
+                format!("n{}", i),
+                format!("Node{}", i),
+                NodeKind::Symbol,
+            ));
         }
         // 簇 1：n0-n1-n2
         g.add_edge_unchecked(Edge::new("e01", "n0", "n1", EdgeKind::Calls));
@@ -983,7 +1074,11 @@ mod tests {
         let n_communities = node_count / community_size;
 
         for i in 0..node_count {
-            g.add_node(Node::new(format!("n{}", i), format!("Node{}", i), NodeKind::Symbol));
+            g.add_node(Node::new(
+                format!("n{}", i),
+                format!("Node{}", i),
+                NodeKind::Symbol,
+            ));
         }
 
         for c in 0..n_communities {
@@ -1016,8 +1111,16 @@ mod tests {
     fn test_louvain_two_clusters() {
         let g = build_test_graph();
         let communities = detect_communities(&g, 42);
-        assert!(communities.len() >= 2, "should find at least 2 communities, got {}", communities.len());
-        assert!(communities[0].len() >= 3, "largest community should have 3+ nodes, got {}", communities[0].len());
+        assert!(
+            communities.len() >= 2,
+            "should find at least 2 communities, got {}",
+            communities.len()
+        );
+        assert!(
+            communities[0].len() >= 3,
+            "largest community should have 3+ nodes, got {}",
+            communities[0].len()
+        );
     }
 
     #[test]
@@ -1031,7 +1134,11 @@ mod tests {
     fn test_no_edges() {
         let mut g = Graph::new();
         for i in 0..5 {
-            g.add_node(Node::new(format!("n{}", i), format!("Node{}", i), NodeKind::Symbol));
+            g.add_node(Node::new(
+                format!("n{}", i),
+                format!("Node{}", i),
+                NodeKind::Symbol,
+            ));
         }
         let communities = detect_communities(&g, 42);
         assert_eq!(communities.len(), 5, "each isolated node = own community");
@@ -1048,27 +1155,35 @@ mod tests {
             hierarchical.iter().map(|c| c.id.as_str()).collect();
         for c in &hierarchical {
             if let Some(ref pid) = c.parent_id {
-                assert!(ids.contains(pid.as_str()),
-                    "parent '{}' of '{}' not found", pid, c.id);
+                assert!(
+                    ids.contains(pid.as_str()),
+                    "parent '{}' of '{}' not found",
+                    pid,
+                    c.id
+                );
             }
         }
 
         let level0: Vec<_> = hierarchical.iter().filter(|c| c.level == 0).collect();
-        let mut covered: Vec<String> = level0.iter()
-            .flat_map(|c| c.node_ids.clone())
-            .collect();
+        let mut covered: Vec<String> = level0.iter().flat_map(|c| c.node_ids.clone()).collect();
         covered.sort();
         let mut expected: Vec<String> = g.node_ids().map(str::to_string).collect();
         expected.sort();
-        assert_eq!(covered, expected,
-            "Level 0 communities should cover all nodes exactly once");
+        assert_eq!(
+            covered, expected,
+            "Level 0 communities should cover all nodes exactly once"
+        );
     }
 
     #[test]
     fn test_hierarchy_single_community() {
         let mut g = Graph::new();
         for i in 0..5 {
-            g.add_node(Node::new(format!("n{}", i), format!("Node{}", i), NodeKind::Symbol));
+            g.add_node(Node::new(
+                format!("n{}", i),
+                format!("Node{}", i),
+                NodeKind::Symbol,
+            ));
         }
         for i in 0..5 {
             for j in (i + 1)..5 {
@@ -1085,9 +1200,7 @@ mod tests {
         assert!(!hierarchical.is_empty());
         let level0: Vec<_> = hierarchical.iter().filter(|c| c.level == 0).collect();
         assert!(!level0.is_empty());
-        let covered: Vec<String> = level0.iter()
-            .flat_map(|c| c.node_ids.clone())
-            .collect();
+        let covered: Vec<String> = level0.iter().flat_map(|c| c.node_ids.clone()).collect();
         assert_eq!(covered.len(), 5, "all nodes covered");
     }
 
@@ -1098,7 +1211,10 @@ mod tests {
         let result = detect_hierarchical_communities(&g, 42);
         let elapsed = start.elapsed();
 
-        assert!(!result.is_empty(), "should find communities in non-empty graph");
+        assert!(
+            !result.is_empty(),
+            "should find communities in non-empty graph"
+        );
         assert!(
             elapsed.as_millis() < 500,
             "hierarchical too slow: {}ms ({} nodes, {} edges)",
@@ -1112,7 +1228,11 @@ mod tests {
     fn test_sparse_graph_condensation_fast() {
         let mut g = Graph::new();
         for i in 0..100 {
-            g.add_node(Node::new(format!("n{}", i), format!("Node{}", i), NodeKind::Symbol));
+            g.add_node(Node::new(
+                format!("n{}", i),
+                format!("Node{}", i),
+                NodeKind::Symbol,
+            ));
         }
         for i in 0..10 {
             g.add_edge_unchecked(Edge::new(
@@ -1146,14 +1266,15 @@ mod tests {
         let direct = detect_hierarchical_communities(&g, 42);
         let with_base = detect_hierarchical_communities_with_base(&g, base, 42);
 
-        assert_eq!(direct.len(), with_base.len(),
-            "with_base and direct should produce same community count");
+        assert_eq!(
+            direct.len(),
+            with_base.len(),
+            "with_base and direct should produce same community count"
+        );
 
         for result in &[&direct, &with_base] {
             let level0: Vec<_> = result.iter().filter(|c| c.level == 0).collect();
-            let mut covered: Vec<String> = level0.iter()
-                .flat_map(|c| c.node_ids.clone())
-                .collect();
+            let mut covered: Vec<String> = level0.iter().flat_map(|c| c.node_ids.clone()).collect();
             covered.sort();
             let mut expected: Vec<String> = g.node_ids().map(str::to_string).collect();
             expected.sort();
@@ -1169,20 +1290,21 @@ mod tests {
 
         assert!(!result.is_empty());
         let level0: Vec<_> = result.iter().filter(|c| c.level == 0).collect();
-        let mut covered: Vec<String> = level0.iter()
-            .flat_map(|c| c.node_ids.clone())
-            .collect();
+        let mut covered: Vec<String> = level0.iter().flat_map(|c| c.node_ids.clone()).collect();
         covered.sort();
         let mut expected: Vec<String> = g.node_ids().map(str::to_string).collect();
         expected.sort();
         assert_eq!(covered, expected);
 
-        let ids: std::collections::HashSet<&str> =
-            result.iter().map(|c| c.id.as_str()).collect();
+        let ids: std::collections::HashSet<&str> = result.iter().map(|c| c.id.as_str()).collect();
         for c in &result {
             if let Some(ref pid) = c.parent_id {
-                assert!(ids.contains(pid.as_str()),
-                    "parent '{}' of '{}' not found", pid, c.id);
+                assert!(
+                    ids.contains(pid.as_str()),
+                    "parent '{}' of '{}' not found",
+                    pid,
+                    c.id
+                );
             }
         }
     }
@@ -1196,20 +1318,21 @@ mod tests {
 
         for r in &[&r1, &r2] {
             let level0: Vec<_> = r.iter().filter(|c| c.level == 0).collect();
-            let mut covered: Vec<String> = level0.iter()
-                .flat_map(|c| c.node_ids.clone())
-                .collect();
+            let mut covered: Vec<String> = level0.iter().flat_map(|c| c.node_ids.clone()).collect();
             covered.sort();
             let mut expected: Vec<String> = g.node_ids().map(str::to_string).collect();
             expected.sort();
             assert_eq!(covered, expected, "Level 0 should cover all nodes");
 
-            let ids: std::collections::HashSet<&str> =
-                r.iter().map(|c| c.id.as_str()).collect();
+            let ids: std::collections::HashSet<&str> = r.iter().map(|c| c.id.as_str()).collect();
             for c in *r {
                 if let Some(ref pid) = c.parent_id {
-                    assert!(ids.contains(pid.as_str()),
-                        "parent '{}' of '{}' not found", pid, c.id);
+                    assert!(
+                        ids.contains(pid.as_str()),
+                        "parent '{}' of '{}' not found",
+                        pid,
+                        c.id
+                    );
                 }
             }
         }
@@ -1226,11 +1349,13 @@ mod tests {
         let from_idx = detect_hierarchical_communities_from_index(&idx, 42);
         let from_graph = detect_hierarchical_communities(&g, 42);
 
-        let idx_l0: Vec<String> = from_idx.iter()
+        let idx_l0: Vec<String> = from_idx
+            .iter()
             .filter(|c| c.level == 0)
             .flat_map(|c| c.node_ids.clone())
             .collect();
-        let graph_l0: Vec<String> = from_graph.iter()
+        let graph_l0: Vec<String> = from_graph
+            .iter()
             .filter(|c| c.level == 0)
             .flat_map(|c| c.node_ids.clone())
             .collect();
@@ -1243,7 +1368,11 @@ mod tests {
     fn test_condensation_all_singletons() {
         let mut g = Graph::new();
         for i in 0..20 {
-            g.add_node(Node::new(format!("n{}", i), format!("Node{}", i), NodeKind::Symbol));
+            g.add_node(Node::new(
+                format!("n{}", i),
+                format!("Node{}", i),
+                NodeKind::Symbol,
+            ));
         }
         let hierarchical = detect_hierarchical_communities(&g, 42);
         let level0: Vec<_> = hierarchical.iter().filter(|c| c.level == 0).collect();
@@ -1258,12 +1387,20 @@ mod tests {
         // 孤立社区不得每层各造一个超节点 —— 修复前此处高层社区数 ≈ 孤立节点数 × 层数
         let mut g = Graph::new();
         for i in 0..200 {
-            g.add_node(Node::new(format!("iso{}", i), format!("Iso{}", i), NodeKind::Symbol));
+            g.add_node(Node::new(
+                format!("iso{}", i),
+                format!("Iso{}", i),
+                NodeKind::Symbol,
+            ));
         }
         // 两个 K5 团 + 一条弱桥(保证基线产出 2 个真实社区且有跨社区边)
         for c in 0..2 {
             for i in 0..5 {
-                g.add_node(Node::new(format!("c{}n{}", c, i), format!("C{}N{}", c, i), NodeKind::Symbol));
+                g.add_node(Node::new(
+                    format!("c{}n{}", c, i),
+                    format!("C{}N{}", c, i),
+                    NodeKind::Symbol,
+                ));
             }
             for i in 0..5 {
                 for j in (i + 1)..5 {
@@ -1280,11 +1417,18 @@ mod tests {
 
         let hierarchical = detect_hierarchical_communities(&g, 42);
         let supers: Vec<_> = hierarchical.iter().filter(|c| c.level > 0).collect();
-        assert!(supers.len() <= 8,
-            "孤立社区不应造超节点:高层社区数 {} 应有界(≤ 最大层数)", supers.len());
+        assert!(
+            supers.len() <= 8,
+            "孤立社区不应造超节点:高层社区数 {} 应有界(≤ 最大层数)",
+            supers.len()
+        );
         for sc in &supers {
-            assert!(sc.node_ids.len() >= 2,
-                "高层社区 {} 仅 {} 个叶节点,疑似孤立节点超节点", sc.id, sc.node_ids.len());
+            assert!(
+                sc.node_ids.len() >= 2,
+                "高层社区 {} 仅 {} 个叶节点,疑似孤立节点超节点",
+                sc.id,
+                sc.node_ids.len()
+            );
         }
     }
 
@@ -1309,13 +1453,14 @@ mod tests {
         let (flat, hier) = detect_communities_and_hierarchy(&g, 42);
 
         let standalone = detect_communities(&g, 42);
-        assert_eq!(flat.len(), standalone.len(),
-            "combined flat should match standalone detect_communities");
+        assert_eq!(
+            flat.len(),
+            standalone.len(),
+            "combined flat should match standalone detect_communities"
+        );
 
         let level0: Vec<_> = hier.iter().filter(|c| c.level == 0).collect();
-        let mut covered: Vec<String> = level0.iter()
-            .flat_map(|c| c.node_ids.clone())
-            .collect();
+        let mut covered: Vec<String> = level0.iter().flat_map(|c| c.node_ids.clone()).collect();
         covered.sort();
         let mut expected: Vec<String> = g.node_ids().map(str::to_string).collect();
         expected.sort();
@@ -1390,7 +1535,7 @@ mod tests {
         let comms = vec![
             vec!["a".to_string(), "b".to_string()],
             vec!["c".to_string(), "d".to_string()],
-            vec!["e".to_string(), "f".to_string()],  // 新社区
+            vec!["e".to_string(), "f".to_string()], // 新社区
         ];
         let mut old: HashMap<String, usize> = HashMap::new();
         old.insert("a".into(), 0);
@@ -1419,7 +1564,7 @@ mod tests {
 
         let ids = match_communities_to_previous(&comms, &old);
         assert_eq!(ids[0], 0); // {a,b} 保留 ID 0
-        // ID 7 现在是孤立的，但没关系 — 只是未使用
+                               // ID 7 现在是孤立的，但没关系 — 只是未使用
     }
 
     // ── 增量路径的邻居投票 ─────────────────────────
@@ -1494,9 +1639,12 @@ mod tests {
         // 两个旧社区合并为一个新社区，重叠数相等
         // — 最低旧 ID 必须总是获胜，不论 HashMap
         // 迭代顺序如何。
-        let comms = vec![
-            vec!["x".to_string(), "y".to_string(), "z".to_string(), "w".to_string()],
-        ];
+        let comms = vec![vec![
+            "x".to_string(),
+            "y".to_string(),
+            "z".to_string(),
+            "w".to_string(),
+        ]];
         let mut old: HashMap<String, usize> = HashMap::new();
         old.insert("x".into(), 0);
         old.insert("y".into(), 0);
@@ -1513,8 +1661,8 @@ mod tests {
         // 旧社区 5 拆分为两个新社区 — 只有较大的
         // 残余认领 ID 5；较小的获得新 ID（1:1 映射）。
         let comms = vec![
-            vec!["a".to_string(), "b".to_string()],                     // 与 5 重叠 2
-            vec!["c".to_string(), "d".to_string(), "e".to_string()],    // 与 5 重叠 3
+            vec!["a".to_string(), "b".to_string()], // 与 5 重叠 2
+            vec!["c".to_string(), "d".to_string(), "e".to_string()], // 与 5 重叠 3
         ];
         let mut old: HashMap<String, usize> = HashMap::new();
         old.insert("a".into(), 5);

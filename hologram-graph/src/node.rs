@@ -18,8 +18,7 @@ static CODE_EXTENSIONS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::
 // 反向依赖 engine 的 GRAMMAR_LOADER）；未注入时为空表——engine 初始化先于
 // 任何 Node 构造，实际运行中不会出现空表路径。
 fn code_extension_set() -> &'static std::collections::HashSet<String> {
-    static SET: std::sync::OnceLock<std::collections::HashSet<String>> =
-        std::sync::OnceLock::new();
+    static SET: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
     SET.get_or_init(|| {
         // 未注入时退化为一组通用代码后缀（rs/py/ts/js/go 等）而非空表——
         // 空表会让 short_name 的扩展名感知在独立测试/未初始化路径下语义漂移
@@ -28,10 +27,12 @@ fn code_extension_set() -> &'static std::collections::HashSet<String> {
             .get()
             .map(|v| v.iter().cloned().collect())
             .unwrap_or_else(|| {
-                ["rs", "py", "ts", "tsx", "js", "jsx", "go", "java", "c", "cpp", "rb", "lua"]
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect()
+                [
+                    "rs", "py", "ts", "tsx", "js", "jsx", "go", "java", "c", "cpp", "rb", "lua",
+                ]
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
             })
     })
 }
@@ -94,7 +95,7 @@ pub struct Node {
     pub snippet: Option<String>,
     /// 任意元数据
     pub properties: serde_json::Value,
-        /// 预计算的度数（修复 O(V×E) 社区标签性能问题）
+    /// 预计算的度数（修复 O(V×E) 社区标签性能问题）
     #[serde(default)]
     pub out_degree: u32,
     #[serde(default)]
@@ -245,8 +246,12 @@ mod tests {
                 "temporal" => NodeKind::Temporal,
                 _ => panic!("unknown kind: {}", s),
             };
-            assert_eq!(std::mem::discriminant(&parsed), std::mem::discriminant(&original),
-                "kind {:?} → '{s}' did not round-trip back to same variant", original);
+            assert_eq!(
+                std::mem::discriminant(&parsed),
+                std::mem::discriminant(&original),
+                "kind {:?} → '{s}' did not round-trip back to same variant",
+                original
+            );
         }
     }
 
@@ -280,7 +285,11 @@ mod tests {
         a.location = Some("lib.rs".into());
         let mut b = Node::new("id_b", "fn", NodeKind::Symbol);
         b.location = Some("lib.rs".into());
-        assert_eq!(a.loc_key(), b.loc_key(), "same loc+name+kind should produce same key");
+        assert_eq!(
+            a.loc_key(),
+            b.loc_key(),
+            "same loc+name+kind should produce same key"
+        );
     }
 
     #[test]

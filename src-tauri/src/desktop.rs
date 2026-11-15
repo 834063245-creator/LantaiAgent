@@ -28,8 +28,13 @@ pub(crate) struct ProcEntry {
 /// Chromium 系进程名特征(含 Electron 等)。用于与浏览器观察通道对齐。
 fn is_chromium_name(name: &str) -> bool {
     let n = name.to_lowercase();
-    n == "chrome" || n == "msedge" || n == "brave" || n == "chromium"
-        || n.contains("chrome") || n.contains("edge") || n.contains("electron")
+    n == "chrome"
+        || n == "msedge"
+        || n == "brave"
+        || n == "chromium"
+        || n.contains("chrome")
+        || n.contains("edge")
+        || n.contains("electron")
         || n == "msedgewebview2"
 }
 
@@ -40,8 +45,15 @@ fn parse_proc_line(line: &str) -> Option<ProcEntry> {
     let pid = it.next()?.trim().parse().ok()?;
     let ppid = it.next()?.trim().parse().ok()?;
     let name = it.next()?.trim().to_string();
-    if name.is_empty() { return None; }
-    Some(ProcEntry { pid, ppid, name: name.clone(), is_chromium: is_chromium_name(&name) })
+    if name.is_empty() {
+        return None;
+    }
+    Some(ProcEntry {
+        pid,
+        ppid,
+        name: name.clone(),
+        is_chromium: is_chromium_name(&name),
+    })
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -66,8 +78,16 @@ fn parse_window_line(line: &str) -> Option<WindowEntry> {
     let name = it.next()?.trim().to_string();
     let title = it.next()?.trim().to_string();
     let handle = it.next()?.trim().parse::<u64>().ok()?;
-    if name.is_empty() || handle == 0 { return None; }
-    Some(WindowEntry { pid, name, title: title.clone(), visible: !title.is_empty(), handle })
+    if name.is_empty() || handle == 0 {
+        return None;
+    }
+    Some(WindowEntry {
+        pid,
+        name,
+        title: title.clone(),
+        visible: !title.is_empty(),
+        handle,
+    })
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -84,23 +104,32 @@ pub(crate) fn desktop_probe() -> Result<String, String> {
         // 1. 进程表: pid|ppid|name
         let proc_ps = "Get-CimInstance Win32_Process | ForEach-Object { \"{0}|{1}|{2}\" -f $_.ProcessId, $_.ParentProcessId, $_.Name }";
         let proc_rows = run_ps(proc_ps)?;
-        let processes: Vec<ProcEntry> = proc_rows.lines()
-            .map(str::trim).filter(|l| !l.is_empty())
-            .filter_map(parse_proc_line).collect();
+        let processes: Vec<ProcEntry> = proc_rows
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .filter_map(parse_proc_line)
+            .collect();
 
         // 2. 顶层窗口: pid|name|title|handle(仅 MainWindowHandle != 0)
         let win_ps = "Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { \"{0}|{1}|{2}|{3}\" -f $_.Id, $_.ProcessName, $_.MainWindowTitle, $_.MainWindowHandle }";
         let win_rows = run_ps(win_ps)?;
-        let windows: Vec<WindowEntry> = win_rows.lines()
-            .map(str::trim).filter(|l| !l.is_empty())
-            .filter_map(parse_window_line).collect();
+        let windows: Vec<WindowEntry> = win_rows
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .filter_map(parse_window_line)
+            .collect();
 
         // 3. 可见控制台窗口: conhost 带可见主窗口句柄的进程(LSP 弹窗的直接信号)
         let con_ps = "Get-Process conhost -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { \"{0}|{1}\" -f $_.Id, $_.MainWindowTitle }";
         let con_rows = run_ps(con_ps)?;
-        let visible_consoles: Vec<String> = con_rows.lines()
-            .map(str::trim).filter(|l| !l.is_empty())
-            .map(|l| l.to_string()).collect();
+        let visible_consoles: Vec<String> = con_rows
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .collect();
 
         Ok(json!({
             "process_count": processes.len(),
@@ -152,17 +181,19 @@ try {
         if src.is_empty() {
             return Err("desktop_screenshot: PowerShell 未返回截图路径".into());
         }
-        let bytes = std::fs::read(&src)
-            .map_err(|e| format!("desktop_screenshot: 读截图失败: {e}"))?;
+        let bytes =
+            std::fs::read(&src).map_err(|e| format!("desktop_screenshot: 读截图失败: {e}"))?;
         // 转存到会话截图目录(与 cdp_screenshot 同目录), 再清理临时源文件
         let dir = std::env::temp_dir().join("hologram-browser-shots");
-        std::fs::create_dir_all(&dir).map_err(|e| format!("desktop_screenshot: 创建截图目录失败: {e}"))?;
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("desktop_screenshot: 创建截图目录失败: {e}"))?;
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0);
         let path = dir.join(format!("desk-{ts}.png"));
-        std::fs::write(&path, &bytes).map_err(|e| format!("desktop_screenshot: 写截图文件失败: {e}"))?;
+        std::fs::write(&path, &bytes)
+            .map_err(|e| format!("desktop_screenshot: 写截图文件失败: {e}"))?;
         let _ = std::fs::remove_file(&src); // 清理临时源
         Ok(json!({
             "path": path.to_string_lossy(),
@@ -180,8 +211,10 @@ try {
 /// 运行一段 PowerShell 命令并返回 stdout。
 /// pub(crate) — 供 uia 模块复用（同一套静默无窗口姿势）。
 pub(crate) fn run_ps(script_body: &str) -> Result<String, String> {
-    let script = format!("$ErrorActionPreference='SilentlyContinue'
-{script_body}");
+    let script = format!(
+        "$ErrorActionPreference='SilentlyContinue'
+{script_body}"
+    );
     let mut ps = std::process::Command::new("powershell");
     ps.args(["-NoProfile", "-Command", &script]);
     // 静默后台运行：不弹 PowerShell 窗口（windows 上隐含控制台会闪烁）
@@ -190,7 +223,8 @@ pub(crate) fn run_ps(script_body: &str) -> Result<String, String> {
         use std::os::windows::process::CommandExt;
         ps.creation_flags(crate::utils::HIDDEN_CONSOLE);
     }
-    let out = ps.output()
+    let out = ps
+        .output()
         .map_err(|e| format!("desktop probe: 执行 PowerShell 失败: {e}"))?;
     if !out.status.success() {
         return Err(format!("desktop probe: PowerShell 退出码 {}", out.status));

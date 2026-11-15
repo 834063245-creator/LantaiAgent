@@ -32,13 +32,17 @@ pub fn synthesize_bridge_calls(
     // Step 1: 收集所有 Rust command 函数名
     let mut rust_commands: HashMap<String, String> = HashMap::new(); // name → node_id
     for (nid, node) in graph.nodes_iter() {
-        if node.kind != NodeKind::Function { continue; }
+        if node.kind != NodeKind::Function {
+            continue;
+        }
         let loc = match &node.location {
             Some(l) => l,
             None => continue,
         };
         // 只看 Rust 文件
-        if !loc.ends_with(".rs") && !loc.contains(".rs:") { continue; }
+        if !loc.ends_with(".rs") && !loc.contains(".rs:") {
+            continue;
+        }
         // 检查是否在 src-tauri/ 路径下（或不限定路径，看 #[tauri::command] 属性无法从节点获取）
         // 策略：匹配常见的 Tauri command 命名模式 —
         // 这些函数名通常是 snake_case 动词，如 read_file_content、write_file、create_directory
@@ -64,27 +68,39 @@ pub fn synthesize_bridge_calls(
             project_root.join(file).to_string_lossy().replace('\\', "/")
         };
 
-        let source_opt = parse_cache.get(&abs_key)
+        let source_opt = parse_cache
+            .get(&abs_key)
             .map(|(src, _)| src.clone())
             .or_else(|| std::fs::read_to_string(project_root.join(file)).ok());
 
         let Some(source) = source_opt else { continue };
-        if !source.contains("rpc") { continue; }
+        if !source.contains("rpc") {
+            continue;
+        }
 
         // 找到当前文件中定义的函数（调用者）
-        let caller_nodes: Vec<(String, String)> = graph.nodes_iter()
+        let caller_nodes: Vec<(String, String)> = graph
+            .nodes_iter()
             .filter(|(_, n)| {
-                if n.kind != NodeKind::Function && n.kind != NodeKind::Class { return false; }
-                n.location.as_ref().map_or(false, |l| l.starts_with(file.as_str()) || l.starts_with(&abs_key))
+                if n.kind != NodeKind::Function && n.kind != NodeKind::Class {
+                    return false;
+                }
+                n.location.as_ref().map_or(false, |l| {
+                    l.starts_with(file.as_str()) || l.starts_with(&abs_key)
+                })
             })
             .map(|(id, n)| (id.to_string(), n.name.clone()))
             .collect();
 
         let mut seen_cmds: HashSet<String> = HashSet::new();
         for caps in re.captures_iter(&source) {
-            if added >= 200 { break; }
+            if added >= 200 {
+                break;
+            }
             let cmd = caps.get(1).expect("捕获组 1 必命中").as_str().to_string();
-            if seen_cmds.contains(&cmd) { continue; }
+            if seen_cmds.contains(&cmd) {
+                continue;
+            }
             seen_cmds.insert(cmd.clone());
 
             // 在 Rust 命令中查找匹配的
@@ -92,10 +108,15 @@ pub fn synthesize_bridge_calls(
                 // 将该文件中的所有 caller 连接到此 Rust 命令
                 for (caller_id, _caller_name) in &caller_nodes {
                     // 跳过 Rust 函数自身（避免 Rust → Rust 自引用）
-                    if caller_id == rust_nid { continue; }
+                    if caller_id == rust_nid {
+                        continue;
+                    }
                     graph.add_edge_unchecked(Edge::synthesized(
                         format!("bridge_{}_{}_{}", caller_id, cmd, rust_nid),
-                        caller_id, rust_nid, EdgeKind::Calls, "bridge-rpc",
+                        caller_id,
+                        rust_nid,
+                        EdgeKind::Calls,
+                        "bridge-rpc",
                     ));
                     added += 1;
                 }
@@ -104,7 +125,10 @@ pub fn synthesize_bridge_calls(
                     if let Some(file_node_id) = find_file_node(graph, file) {
                         graph.add_edge_unchecked(Edge::synthesized(
                             format!("bridge_file_{}_{}", file_node_id, cmd),
-                            &file_node_id, rust_nid, EdgeKind::Calls, "bridge-rpc",
+                            &file_node_id,
+                            rust_nid,
+                            EdgeKind::Calls,
+                            "bridge-rpc",
                         ));
                         added += 1;
                     }

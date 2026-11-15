@@ -101,12 +101,10 @@ pub fn build_grant(
 ) -> Result<OAuthGrant, String> {
     let account_id = chatgpt_account_id_from_id_token(id_token)?;
     let expires_at = match expires_in {
-        Some(s) => {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64 + s as i64)
-                .unwrap_or(0)
-        }
+        Some(s) => std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64 + s as i64)
+            .unwrap_or(0),
         None => 0,
     };
     Ok(OAuthGrant {
@@ -149,8 +147,8 @@ mod tests {
 
     #[test]
     fn chatgpt_account_id_missing_is_err() {
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(br#"{"sub":"someone-else"}"#);
+        let payload =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"sub":"someone-else"}"#);
         let token = format!("h.{payload}.s");
         let err = chatgpt_account_id_from_id_token(&token).expect_err("缺 claim 必须报错");
         assert!(err.contains("chatgpt_account_id"));

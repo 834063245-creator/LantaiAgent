@@ -5,9 +5,9 @@
 // 经 #[path] 挂回 bg_jobs 的 mod tests——等价于原先的 inline 模块，
 // 保留对私有项的访问权；拆开只为让生产码回到 LIMIT 以下可读。
 
+use super::*;
 use crate::utils::job_observe::{job_list, job_read_at};
 use crate::utils::stream_ring::MAX_SHARED_OUTPUT_BYTES;
-use super::*;
 
 static BUILD_LOCK_TESTS: Mutex<()> = Mutex::new(());
 
@@ -105,7 +105,10 @@ fn read_at_is_non_consuming() {
     assert_eq!(a, b, "同一偏移两次观测必须一致（非消费）");
     // 模型读仍能拿到全部内容
     let model = read_bg_output(id).expect("model read");
-    assert!(model.contains("hello-observable"), "模型读被观测读吃掉: {model}");
+    assert!(
+        model.contains("hello-observable"),
+        "模型读被观测读吃掉: {model}"
+    );
     kill_bg(id, None).ok();
 }
 
@@ -143,13 +146,17 @@ fn settled_job_keeps_projection_after_model_read() {
     }
     let list_before = job_list();
     assert!(
-        list_before.iter().any(|v| v["id"] == id && v["status"] == "completed"),
+        list_before
+            .iter()
+            .any(|v| v["id"] == id && v["status"] == "completed"),
         "结算后名册必须仍含该 job"
     );
     let _ = read_bg_output(id).expect("final read");
     let list_after = job_list();
     assert!(
-        list_after.iter().any(|v| v["id"] == id && v["status"] == "completed"),
+        list_after
+            .iter()
+            .any(|v| v["id"] == id && v["status"] == "completed"),
         "模型终读后投影必须仍在（历史）"
     );
 }
@@ -161,8 +168,18 @@ fn human_kill_records_reason_and_notifies_owner() {
     lock_or_recover(&COMPLETED_NOTES).clear();
     let id = next_job_id();
     let child = crate::os_sandbox::spawn_shell("sleep 30 # killh", ".").expect("spawn");
-    register_fg_child(id, child, "killh", BgSharedOutput::default(), Some("agent-x".into()), None);
-    assert_eq!(job_kill_human(id, "cancelled by the user", None).unwrap(), "requested");
+    register_fg_child(
+        id,
+        child,
+        "killh",
+        BgSharedOutput::default(),
+        Some("agent-x".into()),
+        None,
+    );
+    assert_eq!(
+        job_kill_human(id, "cancelled by the user", None).unwrap(),
+        "requested"
+    );
     {
         let jobs = lock_or_recover(&BG_JOBS);
         let job = jobs.get(&id).expect("job");
@@ -170,9 +187,15 @@ fn human_kill_records_reason_and_notifies_owner() {
         assert_eq!(job.detail.as_deref(), Some("cancelled by the user"));
     }
     let notes = drain_bg_notifications(Some("agent-x"));
-    assert!(notes.contains("已被用户停止"), "owner 必须收到带原因的完成通知: {notes}");
+    assert!(
+        notes.contains("已被用户停止"),
+        "owner 必须收到带原因的完成通知: {notes}"
+    );
     // 第二次停同一条 = 已完成
-    assert_eq!(job_kill_human(id, "again", None).unwrap_or("already-finished"), "already-finished");
+    assert_eq!(
+        job_kill_human(id, "again", None).unwrap_or("already-finished"),
+        "already-finished"
+    );
     lock_or_recover(&BG_JOBS).remove(&id);
 }
 
@@ -214,13 +237,25 @@ fn bg_notifications_route_by_owner() {
     let _g = NOTE_TESTS.lock().expect("note tests lock");
     let mut notes = lock_or_recover(&COMPLETED_NOTES);
     notes.clear();
-    notes.push(BgNote { owner: Some("agent-a".into()), text: "A1".into() });
-    notes.push(BgNote { owner: Some("agent-b".into()), text: "B1".into() });
-    notes.push(BgNote { owner: None, text: "UI1".into() });
+    notes.push(BgNote {
+        owner: Some("agent-a".into()),
+        text: "A1".into(),
+    });
+    notes.push(BgNote {
+        owner: Some("agent-b".into()),
+        text: "B1".into(),
+    });
+    notes.push(BgNote {
+        owner: None,
+        text: "UI1".into(),
+    });
     drop(notes);
 
     let a = drain_bg_notifications(Some("agent-a"));
-    assert!(a.contains("A1") && !a.contains("B1") && !a.contains("UI1"), "a: {a}");
+    assert!(
+        a.contains("A1") && !a.contains("B1") && !a.contains("UI1"),
+        "a: {a}"
+    );
     let b = drain_bg_notifications(Some("agent-b"));
     assert!(b.contains("B1") && !b.contains("UI1"), "b: {b}");
     let a2 = drain_bg_notifications(Some("agent-a"));
@@ -236,7 +271,11 @@ fn bg_notification_queue_bounded() {
     }
     let drained = drain_bg_notifications(Some("dead-agent"));
     let lines: Vec<&str> = drained.split('\n').collect();
-    assert!(lines.contains(&"n249"), "最新通知丢失（共 {} 行）", lines.len());
+    assert!(
+        lines.contains(&"n249"),
+        "最新通知丢失（共 {} 行）",
+        lines.len()
+    );
     assert!(!lines.contains(&"n0"), "最旧通知应已被丢弃");
     assert_eq!(lines.len(), MAX_COMPLETED_NOTES, "保留数应恰为上限");
 }
@@ -245,11 +284,19 @@ fn bg_notification_queue_bounded() {
 fn remove_job_releases_build_lock() {
     let _g = serial();
     let id = next_job_id();
-    let k = crate::utils::build_lock::acquire_build_lock("cargo build", "C:/ws-bg-remove", id, None)
-        .unwrap()
-        .unwrap();
+    let k =
+        crate::utils::build_lock::acquire_build_lock("cargo build", "C:/ws-bg-remove", id, None)
+            .unwrap()
+            .unwrap();
     let child = crate::os_sandbox::spawn_shell("echo x", ".").expect("spawn");
-    register_fg_child(id, child, "test", BgSharedOutput::default(), None, Some(k.clone()));
+    register_fg_child(
+        id,
+        child,
+        "test",
+        BgSharedOutput::default(),
+        None,
+        Some(k.clone()),
+    );
     remove_job(id);
     assert!(
         !crate::utils::lock_or_recover(&BUILD_LOCKS).contains_key(&k),
@@ -312,8 +359,16 @@ fn bg_output_snapshot_quiet_task_returns_fast() {
 fn spawn_bg_with_uses_given_job_id() {
     let _g = serial();
     let id = next_job_id();
-    let kid = spawn_bg_with(id, "echo bg-id-ok", ".", crate::os_sandbox::ShellInterpreter::Auto, None, None, None)
-        .expect("spawn_bg_with failed");
+    let kid = spawn_bg_with(
+        id,
+        "echo bg-id-ok",
+        ".",
+        crate::os_sandbox::ShellInterpreter::Auto,
+        None,
+        None,
+        None,
+    )
+    .expect("spawn_bg_with failed");
     assert_eq!(kid, id, "后台 job_id 应与调用方预留 id 一致");
     let out = wait_bg(id, 10_000).expect("wait_bg failed");
     assert!(out.contains("bg-id-ok"), "unexpected output: {out}");

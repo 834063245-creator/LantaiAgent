@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
 use crate::engine;
-use crate::tools::{get_str, get_usize, project_root};
 use crate::tools::ToolResponse;
+use crate::tools::{get_str, get_usize, project_root};
+use serde_json::{json, Value};
 
 /// LSP 引用检查结果。
 pub(crate) enum LspCheck {
@@ -66,12 +66,7 @@ pub(crate) fn lsp_has_real_reference(location: &str, name: &str) -> LspCheck {
 /// 定位源节点（同文件、同名、行号邻近）与目标节点（定义位置 file:line），
 /// 把图中已存在的 calls 边标记 lsp_resolved=true 并落库。
 /// 只标记真实存在的边 —— 图里没有的边如实报告，不凭空造边。
-fn write_back_lsp_resolution(
-    file: &str,
-    func_name: &str,
-    line0: u32,
-    defs: &[Value],
-) -> Value {
+fn write_back_lsp_resolution(file: &str, func_name: &str, line0: u32, defs: &[Value]) -> Value {
     use hologram_graph::EdgeKind;
 
     // 1) 定位源节点：同文件 + 同名 + 行号邻近（节点行号 1-based，LSP 0-based → +1）
@@ -104,8 +99,8 @@ fn write_back_lsp_resolution(
     let mut marked = 0usize;
     let mut targets: Vec<Value> = Vec::new();
     for d in defs {
-        let def_path = crate::lsp_manager::uri_to_path(d["file"].as_str().unwrap_or(""))
-            .replace('\\', "/");
+        let def_path =
+            crate::lsp_manager::uri_to_path(d["file"].as_str().unwrap_or("")).replace('\\', "/");
         let def_line1 = d["line"].as_u64().unwrap_or(0) as u32 + 1;
         let tgt_id: Option<String> = crate::tools::with_store(|idx| {
             let mut hit: Option<String> = None;
@@ -127,9 +122,10 @@ fn write_back_lsp_resolution(
         .map(|s| s.to_string());
 
         if let (Some(ref s), Some(ref t)) = (src_id.as_ref(), tgt_id.as_ref()) {
-            let edge_marked = crate::engine::with_engine(|eng| eng.mark_edge_lsp_resolved(s, t, EdgeKind::Calls))
-                .and_then(|r| r.ok())
-                .unwrap_or(false);
+            let edge_marked =
+                crate::engine::with_engine(|eng| eng.mark_edge_lsp_resolved(s, t, EdgeKind::Calls))
+                    .and_then(|r| r.ok())
+                    .unwrap_or(false);
             if edge_marked {
                 marked += 1;
             }
@@ -162,7 +158,9 @@ fn lsp_degraded_details(ext: &str, lsp_error: Option<String>) -> Value {
     });
     if let Some(e) = lsp_error {
         if crate::lsp_manager::LspManager::err_is_busy(&e) {
-            details["retry_hint"] = json!("LSP server is starting/busy — retry in a minute instead of installing anything");
+            details["retry_hint"] = json!(
+                "LSP server is starting/busy — retry in a minute instead of installing anything"
+            );
         }
         details["lsp_error"] = json!(e);
     }
@@ -183,7 +181,12 @@ fn lsp_degraded_details(ext: &str, lsp_error: Option<String>) -> Value {
 ///   ② 忙/冷启动（`LSP busy`）→ 稍后重试，别装东西；
 ///   ③ 拉起失败（装了但起不来）→ 看原因，重装没用；
 ///   ④ 没装 / 无适配器 → 安装指引（这才是「去装 LSP」唯一成立的场合）。
-fn lsp_degraded(ext: &str, what: &str, answered_empty: bool, lsp_error: Option<String>) -> ToolResponse {
+fn lsp_degraded(
+    ext: &str,
+    what: &str,
+    answered_empty: bool,
+    lsp_error: Option<String>,
+) -> ToolResponse {
     use crate::lsp_manager::{LspManager, LspServerState};
     let state = LspManager::server_state_for_ext(ext);
     let busy = lsp_error
@@ -238,7 +241,8 @@ fn lsp_degraded(ext: &str, what: &str, answered_empty: bool, lsp_error: Option<S
 
 /// 通过原生 LSP 按需进行类型感知的调用解析。
 /// LSP 服务器未安装时优雅降级。
-pub(crate) fn handler_resolve_call(args: &Value) -> ToolResponse {    let file_path = args.get("file").and_then(|v| v.as_str()).unwrap_or("");
+pub(crate) fn handler_resolve_call(args: &Value) -> ToolResponse {
+    let file_path = args.get("file").and_then(|v| v.as_str()).unwrap_or("");
     let func_name = args.get("function").and_then(|v| v.as_str()).unwrap_or("");
     let line = args.get("line").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     let column = args.get("column").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
@@ -261,11 +265,13 @@ pub(crate) fn handler_resolve_call(args: &Value) -> ToolResponse {    let file_p
     // 读取源码
     let source = match std::fs::read_to_string(&abs_path) {
         Ok(s) => s,
-        Err(e) => return ToolResponse::Degraded {
-            guidance: format!("cannot read file: {}", e),
-            fallback: "Check the file path and permissions".into(),
-            details: json!({}),
-        },
+        Err(e) => {
+            return ToolResponse::Degraded {
+                guidance: format!("cannot read file: {}", e),
+                fallback: "Check the file path and permissions".into(),
+                details: json!({}),
+            }
+        }
     };
 
     // 尝试原生 LSP（如果池已预热）——真实错误透传给降级详情，
@@ -273,13 +279,16 @@ pub(crate) fn handler_resolve_call(args: &Value) -> ToolResponse {    let file_p
     if line == 0 && column == 0 {
         return ToolResponse::Degraded {
             guidance: "line/column required for LSP call resolution".into(),
-            fallback: "Provide the 0-based line (and column) of the call site to resolve it via LSP.".into(),
+            fallback:
+                "Provide the 0-based line (and column) of the call site to resolve it via LSP."
+                    .into(),
             details: lsp_degraded_details(&ext, None),
         };
     }
     let mut lsp_error: Option<String> = None;
     let mut answered_empty = false;
-    match crate::lsp_manager::LspManager::resolve_definition(&path_str, &source, line, column, &ext) {
+    match crate::lsp_manager::LspManager::resolve_definition(&path_str, &source, line, column, &ext)
+    {
         // 有定义：P1-2 回写（命中的 calls 边标记 lsp_resolved=true 并落库）
         Ok(locs) if !locs.is_empty() => {
             let mapped = locs
@@ -318,7 +327,10 @@ pub(crate) fn handler_resolve_type(args: &Value) -> ToolResponse {
     let (path_str, source, ext) = match resolve_tool_prepare(args) {
         Ok(v) => v,
         Err(e) => {
-            let msg = e.get("error").and_then(|v| v.as_str()).unwrap_or("Invalid arguments");
+            let msg = e
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Invalid arguments");
             return ToolResponse::Degraded {
                 guidance: msg.into(),
                 fallback: "Provide a valid file path".into(),
@@ -354,7 +366,10 @@ pub(crate) fn handler_find_implementations(args: &Value) -> ToolResponse {
     let (path_str, source, ext) = match resolve_tool_prepare(args) {
         Ok(v) => v,
         Err(e) => {
-            let msg = e.get("error").and_then(|v| v.as_str()).unwrap_or("Invalid arguments");
+            let msg = e
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Invalid arguments");
             return ToolResponse::Degraded {
                 guidance: msg.into(),
                 fallback: "Provide a valid file path".into(),
@@ -368,7 +383,9 @@ pub(crate) fn handler_find_implementations(args: &Value) -> ToolResponse {
     // 尝试原生 LSP
     let mut lsp_error: Option<String> = None;
     let mut answered_empty = false;
-    match crate::lsp_manager::LspManager::find_implementations(&path_str, &source, line, column, &ext) {
+    match crate::lsp_manager::LspManager::find_implementations(
+        &path_str, &source, line, column, &ext,
+    ) {
         Ok(locs) if !locs.is_empty() => {
             return ToolResponse::Success(json!({
                 "file": path_str, "line": line, "column": column,
@@ -387,7 +404,12 @@ pub(crate) fn handler_find_implementations(args: &Value) -> ToolResponse {
     }
 
     // 回退：无结果 → 按归因分流（#6）
-    lsp_degraded(&ext, "interface implementation search", answered_empty, lsp_error)
+    lsp_degraded(
+        &ext,
+        "interface implementation search",
+        answered_empty,
+        lsp_error,
+    )
 }
 
 /// 查找指定位置符号的所有引用。
@@ -395,7 +417,10 @@ pub(crate) fn handler_find_references(args: &Value) -> ToolResponse {
     let (path_str, source, ext) = match resolve_tool_prepare(args) {
         Ok(v) => v,
         Err(e) => {
-            let msg = e.get("error").and_then(|v| v.as_str()).unwrap_or("Invalid arguments");
+            let msg = e
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Invalid arguments");
             return ToolResponse::Degraded {
                 guidance: msg.into(),
                 fallback: "Provide a valid file path".into(),
@@ -405,11 +430,16 @@ pub(crate) fn handler_find_references(args: &Value) -> ToolResponse {
     };
     let line = get_usize(args, "line", 0) as u32;
     let column = get_usize(args, "column", 0) as u32;
-    let _include_decl = args.get("includeDeclaration").and_then(|v| v.as_bool()).unwrap_or(false);
+    let _include_decl = args
+        .get("includeDeclaration")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // 尝试原生 LSP
     let (lsp_err, lsp_answered): (Option<String>, bool) =
-        match crate::lsp_manager::LspManager::find_references(&path_str, &source, line, column, &ext) {
+        match crate::lsp_manager::LspManager::find_references(
+            &path_str, &source, line, column, &ext,
+        ) {
             Ok(locs) if !locs.is_empty() => {
                 return ToolResponse::Success(json!({
                     "file": path_str, "line": line, "column": column,
@@ -431,13 +461,16 @@ pub(crate) fn handler_find_references(args: &Value) -> ToolResponse {
     match engine::engine_read(|idx| {
         let g = engine::graph_from_index(idx);
         let _node_ids: Vec<String> = g.node_ids().map(|s| s.to_string()).collect();
-        let refs: Vec<Value> = g.edges_iter()
+        let refs: Vec<Value> = g
+            .edges_iter()
             .take(100)
-            .map(|(_, e)| json!({
-                "source": e.source,
-                "target": e.target,
-                "kind": format!("{:?}", e.kind),
-            }))
+            .map(|(_, e)| {
+                json!({
+                    "source": e.source,
+                    "target": e.target,
+                    "kind": format!("{:?}", e.kind),
+                })
+            })
             .collect();
         let mut out = json!({
             "file": path_str, "line": line, "column": column,
@@ -490,7 +523,11 @@ pub(crate) fn handler_dataflow(args: &Value) -> ToolResponse {
     let files: Vec<String> = args
         .get("files")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     if files.is_empty() {
         return ToolResponse::Degraded {
@@ -504,7 +541,11 @@ pub(crate) fn handler_dataflow(args: &Value) -> ToolResponse {
         .iter()
         .map(|f| {
             let p = Path::new(f);
-            if p.is_absolute() { p.to_path_buf() } else { root.join(p) }
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                root.join(p)
+            }
         })
         .collect();
     let results = crate::analysis::dataflow_engine::query_dataflow_files(&paths);

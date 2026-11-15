@@ -18,10 +18,10 @@ use serde::Serialize;
 
 use rayon::prelude::*;
 
-use hologram_graph::{EdgeKind, Node};
 use crate::snapshot::MemoryIndexSnapshot;
 use crate::sqlite::SqliteDb;
 use crate::string_arena::StringArena;
+use hologram_graph::{EdgeKind, Node};
 
 /// engine_status MCP 工具的进度信息。
 #[derive(Debug, Clone, Serialize)]
@@ -36,11 +36,27 @@ pub struct LoadProgress {
 
 // ── delay 打包/解包（f64::NAN = None）──
 
-fn pack_delay(d: Option<f64>) -> f64 { d.unwrap_or(f64::NAN) }
-fn unpack_delay(d: f64) -> Option<f64> { if d.is_nan() { None } else { Some(d) } }
+fn pack_delay(d: Option<f64>) -> f64 {
+    d.unwrap_or(f64::NAN)
+}
+fn unpack_delay(d: f64) -> Option<f64> {
+    if d.is_nan() {
+        None
+    } else {
+        Some(d)
+    }
+}
 
-fn pack_cross_file(b: bool) -> u8 { if b { 1 } else { 0 } }
-fn unpack_cross_file(v: u8) -> bool { v != 0 }
+fn pack_cross_file(b: bool) -> u8 {
+    if b {
+        1
+    } else {
+        0
+    }
+}
+fn unpack_cross_file(v: u8) -> bool {
+    v != 0
+}
 
 /// CSR 单条边元组：
 /// (对端句柄, kind_u8, coupling_depth, delay_f64, cross_file_u8, metadata_handle)
@@ -103,7 +119,7 @@ pub struct MemoryIndex {
     file_index: HashMap<String, Vec<u32>>,
     /// 总边数（缓存；边存储在邻接表中）
     edge_count: usize,
-        /// name_index 和 file_index 是否已构建（OOM 时可能跳过）
+    /// name_index 和 file_index 是否已构建（OOM 时可能跳过）
     has_aux_indexes: bool,
     /// 合成边索引: (source_handle, target_handle) — 结构工具遍历时跳过
     synthesized_edges: HashSet<(u32, u32)>,
@@ -202,12 +218,23 @@ impl MemoryIndex {
             }
         }
         for &(src, tgt, kind, coupling, delay, cross_file, metadata) in &self.pending_adds {
-            if src != src_handle { continue; }
-            if self.pending_removes.contains(&(src, tgt, kind)) { continue; }
+            if src != src_handle {
+                continue;
+            }
+            if self.pending_removes.contains(&(src, tgt, kind)) {
+                continue;
+            }
             let kind_u8 = kind.to_u8();
             let key = (tgt, kind_u8, coupling, cross_file, metadata);
             if seen.insert(key) {
-                edges.push((tgt, kind_u8, coupling, pack_delay(delay), cross_file, metadata));
+                edges.push((
+                    tgt,
+                    kind_u8,
+                    coupling,
+                    pack_delay(delay),
+                    cross_file,
+                    metadata,
+                ));
             }
         }
         edges
@@ -248,12 +275,23 @@ impl MemoryIndex {
             }
         }
         for &(src, tgt, kind, coupling, delay, cross_file, metadata) in &self.pending_adds {
-            if tgt != tgt_handle { continue; }
-            if self.pending_removes.contains(&(src, tgt, kind)) { continue; }
+            if tgt != tgt_handle {
+                continue;
+            }
+            if self.pending_removes.contains(&(src, tgt, kind)) {
+                continue;
+            }
             let kind_u8 = kind.to_u8();
             let key = (src, kind_u8, coupling, cross_file, metadata);
             if seen.insert(key) {
-                edges.push((src, kind_u8, coupling, pack_delay(delay), cross_file, metadata));
+                edges.push((
+                    src,
+                    kind_u8,
+                    coupling,
+                    pack_delay(delay),
+                    cross_file,
+                    metadata,
+                ));
             }
         }
         edges
@@ -261,7 +299,9 @@ impl MemoryIndex {
 
     /// 检查待删除边是否存在于 CSR 中。remove_edge 使用。
     fn edge_exists_in_csr(&self, src_handle: u32, tgt_handle: u32, kind_u8: u8) -> bool {
-        let Some(idx) = self.node_idx(src_handle) else { return false; };
+        let Some(idx) = self.node_idx(src_handle) else {
+            return false;
+        };
         let (start, end) = self.out_range(idx);
         for i in start..end {
             if self.out_targets[i] == tgt_handle && self.out_kinds[i] == kind_u8 {
@@ -282,11 +322,7 @@ impl MemoryIndex {
 
     /// 将逐节点边桶扁平化为 CSR 数组。消费桶数据。
     /// 在全新构建（from_existing_graph、from_sqlite）和变更刷入时调用。
-    fn flatten_buckets(
-        &mut self,
-        out_buckets: &[Vec<CsrEdge>],
-        in_buckets: &[Vec<CsrEdge>],
-    ) {
+    fn flatten_buckets(&mut self, out_buckets: &[Vec<CsrEdge>], in_buckets: &[Vec<CsrEdge>]) {
         let n = self.node_by_idx.len();
 
         // 前缀和出度 → out_offsets
@@ -390,10 +426,12 @@ impl MemoryIndex {
                 continue;
             }
             if let Some(&src_idx) = self.handle_to_idx.get(&src) {
-                out_buckets[src_idx as usize].push((tgt, kind_u8, coupling, delay, cross_file, metadata));
+                out_buckets[src_idx as usize]
+                    .push((tgt, kind_u8, coupling, delay, cross_file, metadata));
             }
             if let Some(&tgt_idx) = self.handle_to_idx.get(&tgt) {
-                in_buckets[tgt_idx as usize].push((src, kind_u8, coupling, delay, cross_file, metadata));
+                in_buckets[tgt_idx as usize]
+                    .push((src, kind_u8, coupling, delay, cross_file, metadata));
             }
         }
 
@@ -406,22 +444,10 @@ impl MemoryIndex {
             let delay_f64 = pack_delay(delay);
             if let Some(&src_idx) = self.handle_to_idx.get(&src) {
                 if let Some(&tgt_idx) = self.handle_to_idx.get(&tgt) {
-                    out_buckets[src_idx as usize].push((
-                        tgt,
-                        kind_u8,
-                        coupling,
-                        delay_f64,
-                        cross_file,
-                        metadata,
-                    ));
-                    in_buckets[tgt_idx as usize].push((
-                        src,
-                        kind_u8,
-                        coupling,
-                        delay_f64,
-                        cross_file,
-                        metadata,
-                    ));
+                    out_buckets[src_idx as usize]
+                        .push((tgt, kind_u8, coupling, delay_f64, cross_file, metadata));
+                    in_buckets[tgt_idx as usize]
+                        .push((src, kind_u8, coupling, delay_f64, cross_file, metadata));
                 }
             }
         }
@@ -508,8 +534,14 @@ impl MemoryIndex {
 
     /// 检查边是否为合成边（通过字符串 ID）。
     pub fn is_edge_synthesized(&self, source: &str, target: &str) -> bool {
-        let src = match self.handle_of(source) { Some(h) => h, None => return false };
-        let tgt = match self.handle_of(target) { Some(h) => h, None => return false };
+        let src = match self.handle_of(source) {
+            Some(h) => h,
+            None => return false,
+        };
+        let tgt = match self.handle_of(target) {
+            Some(h) => h,
+            None => return false,
+        };
         self.synthesized_edges.contains(&(src, tgt))
     }
 
@@ -592,12 +624,32 @@ impl MemoryIndex {
             let delay_f64 = pack_delay(edge.temporal_delay_sec);
             let cross_file = pack_cross_file(edge.cross_file);
             let metadata = idx.pack_metadata(edge.metadata.as_ref());
-            if let (Some(&src_idx), Some(&tgt_idx)) = (idx.handle_to_idx.get(&src), idx.handle_to_idx.get(&tgt)) {
-                out_buckets[src_idx as usize].push((tgt, kind_u8, edge.coupling_depth, delay_f64, cross_file, metadata));
-                in_buckets[tgt_idx as usize].push((src, kind_u8, edge.coupling_depth, delay_f64, cross_file, metadata));
+            if let (Some(&src_idx), Some(&tgt_idx)) =
+                (idx.handle_to_idx.get(&src), idx.handle_to_idx.get(&tgt))
+            {
+                out_buckets[src_idx as usize].push((
+                    tgt,
+                    kind_u8,
+                    edge.coupling_depth,
+                    delay_f64,
+                    cross_file,
+                    metadata,
+                ));
+                in_buckets[tgt_idx as usize].push((
+                    src,
+                    kind_u8,
+                    edge.coupling_depth,
+                    delay_f64,
+                    cross_file,
+                    metadata,
+                ));
             }
         }
-        eprintln!("[mem-idx] buckets {:.2}s (E={})", _t1.elapsed().as_secs_f64(), _edge_total);
+        eprintln!(
+            "[mem-idx] buckets {:.2}s (E={})",
+            _t1.elapsed().as_secs_f64(),
+            _edge_total
+        );
         let _t2 = std::time::Instant::now();
 
         // 对每个桶排序 + 去重（cross_file / metadata 参与键）
@@ -610,7 +662,10 @@ impl MemoryIndex {
 
         idx.recompute_degrees(&out_buckets, &in_buckets);
         idx.flatten_buckets(&out_buckets, &in_buckets);
-        eprintln!("[mem-idx] degrees+flatten {:.2}s", _t3.elapsed().as_secs_f64());
+        eprintln!(
+            "[mem-idx] degrees+flatten {:.2}s",
+            _t3.elapsed().as_secs_f64()
+        );
         // 全新构建的图尚未写库 —— SQLite fts_nodes 不反映此索引，标记待惰性重建
         idx.fts_dirty.store(true, Ordering::Release);
         idx
@@ -636,16 +691,34 @@ impl MemoryIndex {
         let mut out_buckets: Vec<Vec<CsrEdge>> = (0..n).map(|_| Vec::with_capacity(est)).collect();
         let mut in_buckets: Vec<Vec<CsrEdge>> = (0..n).map(|_| Vec::with_capacity(est)).collect();
 
-        for (source, target, kind, coupling_depth, delay, cross_file, metadata, lsp_resolved) in db_edges {
+        for (source, target, kind, coupling_depth, delay, cross_file, metadata, lsp_resolved) in
+            db_edges
+        {
             let src = idx.intern(&source);
             let tgt = idx.intern(&target);
             let kind_u8 = kind.to_u8();
             let delay_f64 = pack_delay(delay);
             let cross_file = pack_cross_file(cross_file);
             let metadata_handle = idx.pack_metadata(metadata.as_ref());
-            if let (Some(&src_idx), Some(&tgt_idx)) = (idx.handle_to_idx.get(&src), idx.handle_to_idx.get(&tgt)) {
-                out_buckets[src_idx as usize].push((tgt, kind_u8, coupling_depth, delay_f64, cross_file, metadata_handle));
-                in_buckets[tgt_idx as usize].push((src, kind_u8, coupling_depth, delay_f64, cross_file, metadata_handle));
+            if let (Some(&src_idx), Some(&tgt_idx)) =
+                (idx.handle_to_idx.get(&src), idx.handle_to_idx.get(&tgt))
+            {
+                out_buckets[src_idx as usize].push((
+                    tgt,
+                    kind_u8,
+                    coupling_depth,
+                    delay_f64,
+                    cross_file,
+                    metadata_handle,
+                ));
+                in_buckets[tgt_idx as usize].push((
+                    src,
+                    kind_u8,
+                    coupling_depth,
+                    delay_f64,
+                    cross_file,
+                    metadata_handle,
+                ));
             }
             if lsp_resolved {
                 idx.lsp_resolved_edges.insert((source, target, kind));
@@ -680,16 +753,34 @@ impl MemoryIndex {
         let mut out_buckets: Vec<Vec<CsrEdge>> = (0..n).map(|_| Vec::with_capacity(est)).collect();
         let mut in_buckets: Vec<Vec<CsrEdge>> = (0..n).map(|_| Vec::with_capacity(est)).collect();
 
-        for (source, target, kind, coupling_depth, delay, cross_file, metadata, lsp_resolved) in db_edges {
+        for (source, target, kind, coupling_depth, delay, cross_file, metadata, lsp_resolved) in
+            db_edges
+        {
             let src = idx.intern(&source);
             let tgt = idx.intern(&target);
             let kind_u8 = kind.to_u8();
             let delay_f64 = pack_delay(delay);
             let cross_file = pack_cross_file(cross_file);
             let metadata_handle = idx.pack_metadata(metadata.as_ref());
-            if let (Some(&src_idx), Some(&tgt_idx)) = (idx.handle_to_idx.get(&src), idx.handle_to_idx.get(&tgt)) {
-                out_buckets[src_idx as usize].push((tgt, kind_u8, coupling_depth, delay_f64, cross_file, metadata_handle));
-                in_buckets[tgt_idx as usize].push((src, kind_u8, coupling_depth, delay_f64, cross_file, metadata_handle));
+            if let (Some(&src_idx), Some(&tgt_idx)) =
+                (idx.handle_to_idx.get(&src), idx.handle_to_idx.get(&tgt))
+            {
+                out_buckets[src_idx as usize].push((
+                    tgt,
+                    kind_u8,
+                    coupling_depth,
+                    delay_f64,
+                    cross_file,
+                    metadata_handle,
+                ));
+                in_buckets[tgt_idx as usize].push((
+                    src,
+                    kind_u8,
+                    coupling_depth,
+                    delay_f64,
+                    cross_file,
+                    metadata_handle,
+                ));
             }
             if lsp_resolved {
                 idx.lsp_resolved_edges.insert((source, target, kind));
@@ -746,8 +837,11 @@ impl MemoryIndex {
                 }
             }
         }
-        eprintln!("[sqlite] to_sqlite: edge collect {:.1}s ({} edges)",
-            t.elapsed().as_secs_f64(), edges.len());
+        eprintln!(
+            "[sqlite] to_sqlite: edge collect {:.1}s ({} edges)",
+            t.elapsed().as_secs_f64(),
+            edges.len()
+        );
         let edge_refs: Vec<(
             &str,
             &str,
@@ -769,7 +863,10 @@ impl MemoryIndex {
         // db 已是最新全量图 —— 任何既有快照即刻作废。
         // 放这里（而非 GraphStore::save）让 incremental.rs 的直调路径也覆盖。
         if let Err(e) = db.set_meta("snapshot_token", "") {
-            eprintln!("[sqlite] to_sqlite: snapshot_token 清除失败（非致命）: {}", e);
+            eprintln!(
+                "[sqlite] to_sqlite: snapshot_token 清除失败（非致命）: {}",
+                e
+            );
         }
         Ok(())
     }
@@ -815,8 +912,8 @@ impl MemoryIndex {
     pub fn load_snapshot(project_root: &Path) -> Result<MemoryIndex, String> {
         let t = std::time::Instant::now();
         let path = crate::snapshot::snapshot_path(project_root);
-        let bytes = std::fs::read(&path)
-            .map_err(|e| format!("snapshot read {}: {}", path.display(), e))?;
+        let bytes =
+            std::fs::read(&path).map_err(|e| format!("snapshot read {}: {}", path.display(), e))?;
         let (_token, offset) = crate::snapshot::parse_snapshot_header(&bytes)?;
         // bincode 3 起 serde 集成走显式 API（encode_to_vec / decode_from_slice）：
         // 1.3 的 `serialize` / `deserialize` 扁平函数已删，且默认编码从定长
@@ -850,10 +947,7 @@ impl MemoryIndex {
         if self.has_aux_indexes {
             if let Some(ref loc) = node.location {
                 let file = extract_file_path(loc);
-                self.file_index
-                    .entry(file)
-                    .or_default()
-                    .push(handle);
+                self.file_index.entry(file).or_default().push(handle);
             }
         }
     }
@@ -872,10 +966,7 @@ impl MemoryIndex {
                 .push(handle);
             if let Some(ref loc) = node.location {
                 let file = extract_file_path(loc);
-                self.file_index
-                    .entry(file)
-                    .or_default()
-                    .push(handle);
+                self.file_index.entry(file).or_default().push(handle);
             }
         }
         self.has_aux_indexes = true;
@@ -891,7 +982,12 @@ impl MemoryIndex {
     pub fn get_nodes_by_name(&self, name: &str) -> Vec<String> {
         self.name_index
             .get(name)
-            .map(|handles| handles.iter().map(|&h| self.get_str(h).to_string()).collect())
+            .map(|handles| {
+                handles
+                    .iter()
+                    .map(|&h| self.get_str(h).to_string())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -899,7 +995,12 @@ impl MemoryIndex {
         let normalized = file.replace('\\', "/");
         self.file_index
             .get(&normalized)
-            .map(|handles| handles.iter().map(|&h| self.get_str(h).to_string()).collect())
+            .map(|handles| {
+                handles
+                    .iter()
+                    .map(|&h| self.get_str(h).to_string())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -979,7 +1080,12 @@ impl MemoryIndex {
                     continue;
                 }
             }
-            results.push((self.get_str(tgt).to_string(), kind, coupling, unpack_delay(delay)));
+            results.push((
+                self.get_str(tgt).to_string(),
+                kind,
+                coupling,
+                unpack_delay(delay),
+            ));
         }
         results
     }
@@ -1002,7 +1108,12 @@ impl MemoryIndex {
                     continue;
                 }
             }
-            results.push((self.get_str(src).to_string(), kind, coupling, unpack_delay(delay)));
+            results.push((
+                self.get_str(src).to_string(),
+                kind,
+                coupling,
+                unpack_delay(delay),
+            ));
         }
         results
     }
@@ -1043,7 +1154,9 @@ impl MemoryIndex {
                         continue;
                     }
                     if let Some(kinds) = kind_filter {
-                        if !kinds.contains(&kind) { continue; }
+                        if !kinds.contains(&kind) {
+                            continue;
+                        }
                     }
                     if visited.insert(other) {
                         let other_str = self.get_str(other).to_string();
@@ -1060,7 +1173,9 @@ impl MemoryIndex {
                         continue;
                     }
                     if let Some(kinds) = kind_filter {
-                        if !kinds.contains(&kind) { continue; }
+                        if !kinds.contains(&kind) {
+                            continue;
+                        }
                     }
                     if visited.insert(other) {
                         let other_str = self.get_str(other).to_string();
@@ -1074,7 +1189,9 @@ impl MemoryIndex {
                 for &(src, tgt, kind, coupling, delay, _, _) in &self.pending_adds {
                     if src == cur_handle && !self.pending_removes.contains(&(src, tgt, kind)) {
                         if let Some(kinds) = kind_filter {
-                            if !kinds.contains(&kind) { continue; }
+                            if !kinds.contains(&kind) {
+                                continue;
+                            }
                         }
                         if visited.insert(tgt) {
                             let other_str = self.get_str(tgt).to_string();
@@ -1085,7 +1202,9 @@ impl MemoryIndex {
                     }
                     if tgt == cur_handle && !self.pending_removes.contains(&(src, tgt, kind)) {
                         if let Some(kinds) = kind_filter {
-                            if !kinds.contains(&kind) { continue; }
+                            if !kinds.contains(&kind) {
+                                continue;
+                            }
                         }
                         if visited.insert(src) {
                             let other_str = self.get_str(src).to_string();
@@ -1128,10 +1247,14 @@ impl MemoryIndex {
                 let (s, e) = self.out_range(cur_idx);
                 for i in s..e {
                     let tgt = self.out_targets[i];
-                    if self.is_edge_synthesized_by_handle(cur_handle, tgt) { continue; }
+                    if self.is_edge_synthesized_by_handle(cur_handle, tgt) {
+                        continue;
+                    }
                     if has_pending {
                         let kind = EdgeKind::from_u8(self.out_kinds[i]);
-                        if self.pending_removes.contains(&(cur_handle, tgt, kind)) { continue; }
+                        if self.pending_removes.contains(&(cur_handle, tgt, kind)) {
+                            continue;
+                        }
                     }
                     if visited.insert(tgt) {
                         queue.push_back((tgt, depth + 1));
@@ -1140,10 +1263,14 @@ impl MemoryIndex {
                 let (s, e) = self.in_range(cur_idx);
                 for i in s..e {
                     let src = self.in_targets[i];
-                    if self.is_edge_synthesized_by_handle(src, cur_handle) { continue; }
+                    if self.is_edge_synthesized_by_handle(src, cur_handle) {
+                        continue;
+                    }
                     if has_pending {
                         let kind = EdgeKind::from_u8(self.in_kinds[i]);
-                        if self.pending_removes.contains(&(src, cur_handle, kind)) { continue; }
+                        if self.pending_removes.contains(&(src, cur_handle, kind)) {
+                            continue;
+                        }
                     }
                     if visited.insert(src) {
                         queue.push_back((src, depth + 1));
@@ -1153,10 +1280,18 @@ impl MemoryIndex {
             // 待处理边（始终检查）
             if has_pending {
                 for &(src, tgt, kind, _, _, _, _) in &self.pending_adds {
-                    if src == cur_handle && !self.pending_removes.contains(&(src, tgt, kind))
-                        && visited.insert(tgt) { queue.push_back((tgt, depth + 1)); }
-                    if tgt == cur_handle && !self.pending_removes.contains(&(src, tgt, kind))
-                        && visited.insert(src) { queue.push_back((src, depth + 1)); }
+                    if src == cur_handle
+                        && !self.pending_removes.contains(&(src, tgt, kind))
+                        && visited.insert(tgt)
+                    {
+                        queue.push_back((tgt, depth + 1));
+                    }
+                    if tgt == cur_handle
+                        && !self.pending_removes.contains(&(src, tgt, kind))
+                        && visited.insert(src)
+                    {
+                        queue.push_back((src, depth + 1));
+                    }
                 }
             }
         }
@@ -1201,11 +1336,15 @@ impl MemoryIndex {
             if let Some(cur_idx) = self.node_idx(cur) {
                 let (s, e) = self.out_range(cur_idx);
                 for i in s..e {
-                    if explore_count >= max_explore { break; }
+                    if explore_count >= max_explore {
+                        break;
+                    }
                     let tgt = self.out_targets[i];
                     if has_pending {
                         let kind = EdgeKind::from_u8(self.out_kinds[i]);
-                        if self.pending_removes.contains(&(cur, tgt, kind)) { continue; }
+                        if self.pending_removes.contains(&(cur, tgt, kind)) {
+                            continue;
+                        }
                     }
                     if visited.insert(tgt) {
                         prev.insert(tgt, cur);
@@ -1215,11 +1354,15 @@ impl MemoryIndex {
                 }
                 let (s, e) = self.in_range(cur_idx);
                 for i in s..e {
-                    if explore_count >= max_explore { break; }
+                    if explore_count >= max_explore {
+                        break;
+                    }
                     let src = self.in_targets[i];
                     if has_pending {
                         let kind = EdgeKind::from_u8(self.in_kinds[i]);
-                        if self.pending_removes.contains(&(src, cur, kind)) { continue; }
+                        if self.pending_removes.contains(&(src, cur, kind)) {
+                            continue;
+                        }
                     }
                     if visited.insert(src) {
                         prev.insert(src, cur);
@@ -1231,13 +1374,21 @@ impl MemoryIndex {
             // 待处理边
             if has_pending {
                 for &(src, tgt, kind, _, _, _, _) in &self.pending_adds {
-                    if explore_count >= max_explore { break; }
-                    if self.pending_removes.contains(&(src, tgt, kind)) { continue; }
+                    if explore_count >= max_explore {
+                        break;
+                    }
+                    if self.pending_removes.contains(&(src, tgt, kind)) {
+                        continue;
+                    }
                     if src == cur && visited.insert(tgt) {
-                        prev.insert(tgt, cur); queue.push_back((tgt, depth + 1)); explore_count += 1;
+                        prev.insert(tgt, cur);
+                        queue.push_back((tgt, depth + 1));
+                        explore_count += 1;
                     }
                     if tgt == cur && visited.insert(src) {
-                        prev.insert(src, cur); queue.push_back((src, depth + 1)); explore_count += 1;
+                        prev.insert(src, cur);
+                        queue.push_back((src, depth + 1));
+                        explore_count += 1;
                     }
                 }
             }
@@ -1262,7 +1413,12 @@ impl MemoryIndex {
     /// FTS 惰性重建预算（秒）。超出即回滚并返回降级错误。
     const FTS_REBUILD_BUDGET_SECS: u64 = 30;
 
-    pub fn fts_search(&self, db: &SqliteDb, query: &str, limit: usize) -> Result<Vec<Node>, String> {
+    pub fn fts_search(
+        &self,
+        db: &SqliteDb,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<Node>, String> {
         self.ensure_fts_fresh(db)?;
         let ids = db.fts_search(query, limit)?;
         let mut results = Vec::with_capacity(ids.len());
@@ -1330,7 +1486,9 @@ impl MemoryIndex {
         for &src_handle in &self.node_by_idx {
             seen.insert(src_handle);
             let raw = self.collect_outgoing(src_handle);
-            if raw.is_empty() { continue; }
+            if raw.is_empty() {
+                continue;
+            }
             let src_str = self.get_str(src_handle).to_string();
             let mut targets = Vec::with_capacity(raw.len());
             for &(tgt, kind_u8, coupling, delay, cross_file, metadata_handle) in &raw {
@@ -1348,9 +1506,13 @@ impl MemoryIndex {
         // ponytail：未刷入的节点（已插入但尚未在稠密索引中）——
         // 边在 pending_adds 中。遍历它们，使调用方在 flush_pending() 之前也能看到边。
         for &(src, _, _, _, _, _, _) in &self.pending_adds {
-            if !seen.insert(src) { continue; }
+            if !seen.insert(src) {
+                continue;
+            }
             let raw = self.collect_outgoing(src);
-            if raw.is_empty() { continue; }
+            if raw.is_empty() {
+                continue;
+            }
             let src_str = self.get_str(src).to_string();
             let mut targets = Vec::with_capacity(raw.len());
             for &(tgt, kind_u8, coupling, delay, cross_file, metadata_handle) in &raw {
@@ -1377,7 +1539,9 @@ impl MemoryIndex {
         for &src_handle in &self.node_by_idx {
             seen.insert(src_handle);
             let raw = self.collect_outgoing(src_handle);
-            if raw.is_empty() { continue; }
+            if raw.is_empty() {
+                continue;
+            }
             let src_str = self.get_str(src_handle).to_string();
             let mut targets = Vec::with_capacity(raw.len());
             for &(tgt, kind_u8, coupling, delay, _, _) in &raw {
@@ -1391,9 +1555,13 @@ impl MemoryIndex {
             results.push((src_str, targets));
         }
         for &(src, _, _, _, _, _, _) in &self.pending_adds {
-            if !seen.insert(src) { continue; }
+            if !seen.insert(src) {
+                continue;
+            }
             let raw = self.collect_outgoing(src);
-            if raw.is_empty() { continue; }
+            if raw.is_empty() {
+                continue;
+            }
             let src_str = self.get_str(src).to_string();
             let mut targets = Vec::with_capacity(raw.len());
             for &(tgt, kind_u8, coupling, delay, _, _) in &raw {
@@ -1486,7 +1654,8 @@ impl MemoryIndex {
         }
         // 同时移除此节点的待处理边
         let pending_before = self.pending_adds.len();
-        self.pending_adds.retain(|&(s, t, _, _, _, _, _)| s != handle && t != handle);
+        self.pending_adds
+            .retain(|&(s, t, _, _, _, _, _)| s != handle && t != handle);
         removed += pending_before - self.pending_adds.len();
         // LSP 标记层同步清理 —— 涉及被删节点的标记作废，避免统计虚高
         self.lsp_resolved_edges
@@ -1648,12 +1817,16 @@ impl MemoryIndex {
         };
         // 检查边是否存在于 CSR 或 pending 中
         let in_csr = self.edge_exists_in_csr(src, tgt, kind.to_u8());
-        let in_pending = self.pending_adds.iter().any(|&(s, t, k, _, _, _, _)| s == src && t == tgt && k == kind);
+        let in_pending = self
+            .pending_adds
+            .iter()
+            .any(|&(s, t, k, _, _, _, _)| s == src && t == tgt && k == kind);
         if !in_csr && !in_pending {
             return false;
         }
         // 从 pending adds 中移除（如果刚添加）
-        self.pending_adds.retain(|&(s, t, k, _, _, _, _)| !(s == src && t == tgt && k == kind));
+        self.pending_adds
+            .retain(|&(s, t, k, _, _, _, _)| !(s == src && t == tgt && k == kind));
         if in_csr {
             self.pending_removes.insert((src, tgt, kind));
         }
@@ -1753,7 +1926,11 @@ fn collect_arena_entries(idx: &MemoryIndex) -> Vec<(u32, String)> {
     let mut handles: Vec<u32> = idx.nodes.keys().copied().collect();
     handles.extend(idx.out_targets.iter().copied());
     handles.extend(idx.in_targets.iter().copied());
-    handles.extend(idx.pending_adds.iter().flat_map(|&(s, t, _, _, _, _, _)| [s, t]));
+    handles.extend(
+        idx.pending_adds
+            .iter()
+            .flat_map(|&(s, t, _, _, _, _, _)| [s, t]),
+    );
     handles.extend(idx.out_metadata.iter().copied().filter(|&h| h != 0));
     handles.extend(idx.in_metadata.iter().copied().filter(|&h| h != 0));
     handles.extend(
@@ -1766,7 +1943,10 @@ fn collect_arena_entries(idx: &MemoryIndex) -> Vec<(u32, String)> {
     handles.extend(idx.synthesized_edges.iter().flat_map(|&(s, t)| [s, t]));
     handles.sort_unstable();
     handles.dedup();
-    handles.into_iter().map(|h| (h, idx.get_str(h).to_string())).collect()
+    handles
+        .into_iter()
+        .map(|h| (h, idx.get_str(h).to_string()))
+        .collect()
 }
 
 /// 从快照重建 MemoryIndex。fts_dirty 恒置 true —— 快照模式下
@@ -1860,7 +2040,9 @@ mod tests {
         // to_graph 透出标志
         let g = idx.to_graph();
         let edges: Vec<_> = g.edges_iter().map(|(_, e)| e.clone()).collect();
-        assert!(edges.iter().any(|e| e.kind == EdgeKind::Calls && e.lsp_resolved));
+        assert!(edges
+            .iter()
+            .any(|e| e.kind == EdgeKind::Calls && e.lsp_resolved));
 
         // remove_node 清理孤儿标记
         idx.remove_node("b");
@@ -1906,8 +2088,14 @@ mod tests {
         idx.upsert_edge("a", "b", EdgeKind::Calls, 3, None); // same (s,t,k,d) → dedup
         assert_eq!(idx.edge_count(), 2, "two distinct (kind,depth) tuples");
         let out = idx.outgoing("a", None);
-        assert!(out.iter().any(|(_, _, d, _)| *d == 1), "depth=1 entry present");
-        assert!(out.iter().any(|(_, _, d, _)| *d == 3), "depth=3 entry present");
+        assert!(
+            out.iter().any(|(_, _, d, _)| *d == 1),
+            "depth=1 entry present"
+        );
+        assert!(
+            out.iter().any(|(_, _, d, _)| *d == 3),
+            "depth=3 entry present"
+        );
     }
 
     /// 回归测试：MemoryIndex 加载器（from_existing_graph/from_sqlite/_degraded）
@@ -1936,7 +2124,11 @@ mod tests {
             (n.in_degree, n.out_degree)
         };
         assert_eq!(deg("a"), (0, 1), "a: out=1 (a→b), in=0");
-        assert_eq!(deg("b"), (1, 1), "b: stale 99 must be overwritten to in=1 out=1");
+        assert_eq!(
+            deg("b"),
+            (1, 1),
+            "b: stale 99 must be overwritten to in=1 out=1"
+        );
         assert_eq!(deg("c"), (1, 0), "c: in=1 (b→c), out=0");
     }
 
@@ -2073,7 +2265,11 @@ mod tests {
         cloned.flush_pending();
 
         // 验证边已保留
-        assert_eq!(cloned.edge_count(), 2, "both edges should survive clone+flush");
+        assert_eq!(
+            cloned.edge_count(),
+            2,
+            "both edges should survive clone+flush"
+        );
         let out = cloned.outgoing("a", None);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].1, EdgeKind::Calls);
@@ -2104,7 +2300,11 @@ mod tests {
         assert_eq!(out[0].0, "b");
 
         // 验证边数正确（flush 后从 CSR 读取）
-        assert_eq!(idx.edge_count(), 1, "edge_count should be correct after flush");
+        assert_eq!(
+            idx.edge_count(),
+            1,
+            "edge_count should be correct after flush"
+        );
     }
 
     #[test]
@@ -2161,7 +2361,11 @@ mod tests {
             .filter(|(_, kind, _, _)| matches!(kind, EdgeKind::Triggers))
             .collect();
         assert_eq!(triggers.len(), 1);
-        assert_eq!(triggers[0].3, Some(2.5), "Triggers delay should survive round-trip");
+        assert_eq!(
+            triggers[0].3,
+            Some(2.5),
+            "Triggers delay should survive round-trip"
+        );
 
         let b_out = loaded.outgoing("b", None);
         let awaits: Vec<_> = b_out
@@ -2169,7 +2373,11 @@ mod tests {
             .filter(|(_, kind, _, _)| matches!(kind, EdgeKind::Awaits))
             .collect();
         assert_eq!(awaits.len(), 1);
-        assert_eq!(awaits[0].3, Some(0.75), "Awaits delay should survive round-trip");
+        assert_eq!(
+            awaits[0].3,
+            Some(0.75),
+            "Awaits delay should survive round-trip"
+        );
 
         let calls: Vec<_> = a_out
             .iter()
@@ -2337,8 +2545,14 @@ mod tests {
         // MemoryIndex → SQLite → 冷启动 MemoryIndex。
         let cold_edges = loaded.get_outgoing_edges("a");
         assert_eq!(cold_edges.len(), 1);
-        assert!(cold_edges[0].cross_file, "cross_file should survive cold start");
-        let cold_meta = cold_edges[0].metadata.as_ref().expect("metadata should survive cold start");
+        assert!(
+            cold_edges[0].cross_file,
+            "cross_file should survive cold start"
+        );
+        let cold_meta = cold_edges[0]
+            .metadata
+            .as_ref()
+            .expect("metadata should survive cold start");
         assert_eq!(cold_meta["resolved_by"], "import-binding");
         assert_eq!(cold_meta["unresolved_import"], false);
 
@@ -2362,8 +2576,14 @@ mod tests {
         let db = SqliteDb::open(&tmp).unwrap(); // 空库 —— nodes/fts_nodes 均无内容
 
         let mut nodes = HashMap::new();
-        nodes.insert("a".into(), test_node("a", "handle_request", Some("src/a.rs")));
-        nodes.insert("b".into(), test_node("b", "handle_response", Some("src/b.rs")));
+        nodes.insert(
+            "a".into(),
+            test_node("a", "handle_request", Some("src/a.rs")),
+        );
+        nodes.insert(
+            "b".into(),
+            test_node("b", "handle_response", Some("src/b.rs")),
+        );
         nodes.insert("c".into(), test_node("c", "compute_hash", Some("src/c.rs")));
         let mut edges = HashMap::new();
         edges.insert("e1".into(), Edge::new("e1", "a", "b", EdgeKind::Calls));

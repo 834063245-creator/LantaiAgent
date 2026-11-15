@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+use super::super::DetectedRoute;
 use crate::engine::GRAMMAR_LOADER;
 use std::collections::HashSet;
-use super::super::DetectedRoute;
 
 pub(crate) fn is_hono_candidate(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -36,7 +36,10 @@ pub(crate) fn detect_hono_routes(file: &str, source: &str) -> Vec<DetectedRoute>
     // 确定使用哪种 tree-sitter 语言
     let is_ts = file.ends_with(".ts") || file.ends_with(".tsx");
     let ext = if is_ts { "ts" } else { "js" };
-    let lang = match GRAMMAR_LOADER.get(ext) { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get(ext) {
+        Some(l) => l,
+        None => return result,
+    };
 
     let mut parser = tree_sitter::Parser::new();
     if parser.set_language(&lang).is_err() {
@@ -47,12 +50,10 @@ pub(crate) fn detect_hono_routes(file: &str, source: &str) -> Vec<DetectedRoute>
         None => return result,
     };
 
-    let http_methods: HashSet<&str> = [
-        "get", "post", "put", "delete", "patch", "options", "all",
-    ]
-    .iter()
-    .cloned()
-    .collect();
+    let http_methods: HashSet<&str> = ["get", "post", "put", "delete", "patch", "options", "all"]
+        .iter()
+        .cloned()
+        .collect();
 
     let root = tree.root_node();
     let mut cursor = root.walk();
@@ -107,7 +108,8 @@ pub(crate) fn detect_hono_routes(file: &str, source: &str) -> Vec<DetectedRoute>
                             if let Some(args) = node.child_by_field_name("arguments") {
                                 let line = node.start_position().row + 1;
                                 let mut args_cursor = args.walk();
-                                let arg_children: Vec<_> = args.children(&mut args_cursor).collect();
+                                let arg_children: Vec<_> =
+                                    args.children(&mut args_cursor).collect();
 
                                 let mut route_str = String::new();
                                 let mut handler: String;
@@ -150,7 +152,13 @@ pub(crate) fn detect_hono_routes(file: &str, source: &str) -> Vec<DetectedRoute>
                                     // 接收者链获取前缀；否则使用已记录的前缀。
                                     let prefix = chain_basepath_prefix(&func, source)
                                         .unwrap_or_else(|| current_prefix.clone());
-                                    result.push((method, join_paths(&prefix, &route_str), handler, file.to_string(), line));
+                                    result.push((
+                                        method,
+                                        join_paths(&prefix, &route_str),
+                                        handler,
+                                        file.to_string(),
+                                        line,
+                                    ));
                                 }
                             }
                         }

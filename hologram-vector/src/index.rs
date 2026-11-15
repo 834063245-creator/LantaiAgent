@@ -62,7 +62,14 @@ impl CodeVectorIndex {
     }
 
     fn ensure_index(&self, capacity: usize) -> Result<(), String> {
-        if self.index.read().unwrap_or_else(|e| e.into_inner()).is_some() { return Ok(()); }
+        if self
+            .index
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+        {
+            return Ok(());
+        }
         let options = usearch::IndexOptions {
             dimensions: VECTOR_DIM,
             metric: usearch::MetricKind::Cos,
@@ -110,10 +117,18 @@ impl CodeVectorIndex {
             snippets.push(text);
         }
 
-        if snippets.is_empty() { warn!("[vector] 无节点可嵌入"); return Ok(BuildStats::default()); }
+        if snippets.is_empty() {
+            warn!("[vector] 无节点可嵌入");
+            return Ok(BuildStats::default());
+        }
 
         let total = snippets.len();
-        info!("[vector] 正在嵌入 {} 个节点（{}, {} 维）...", total, crate::embed::backend_id(), VECTOR_DIM);
+        info!(
+            "[vector] 正在嵌入 {} 个节点（{}, {} 维）...",
+            total,
+            crate::embed::backend_id(),
+            VECTOR_DIM
+        );
 
         // 进程级向量缓存：watcher 每次文件保存都会触发全量 build()，
         // 未变更节点按 snippet 内容哈希直接命中，只有新增/变更节点真正走推理。
@@ -127,7 +142,9 @@ impl CodeVectorIndex {
         let mut cache_hits = 0usize;
         let mut disk_hits = 0usize;
         {
-            let mut cache = VECTOR_CACHE.lock().map_err(|e| format!("vector cache lock: {e}"))?;
+            let mut cache = VECTOR_CACHE
+                .lock()
+                .map_err(|e| format!("vector cache lock: {e}"))?;
             for (i, h) in hashes.iter().enumerate() {
                 if let Some(v) = cache.get(h).cloned() {
                     vectors[i] = Some(v);
@@ -151,7 +168,11 @@ impl CodeVectorIndex {
         // 顺序 batch 推理（不再 par_iter：共享 session 的 Mutex 实测负加速 0.63x，
         // 且堵满 rayon 全局池会饿死解析/dataflow 任务 —— 见 minilm.rs::embed_batch）
         if !misses.is_empty() {
-            info!("[vector] {} 个节点待嵌入（{} 个命中缓存）", misses.len(), total - misses.len());
+            info!(
+                "[vector] {} 个节点待嵌入（{} 个命中缓存）",
+                misses.len(),
+                total - misses.len()
+            );
             // 按长度排序分桶：batch 内 padding 对齐到最长样本，长度相近的样本同批
             // 可显著减少填充浪费（文件头 5 行 vs 函数体 30 行混在一起时差 6 倍）
             misses.sort_by_key(|&i| snippets[i].len());
@@ -171,8 +192,12 @@ impl CodeVectorIndex {
             }
         }
         if !embedded.is_empty() {
-            let mut cache = VECTOR_CACHE.lock().map_err(|e| format!("vector cache lock: {e}"))?;
-            for (h, v) in embedded { cache.insert(h, v); }
+            let mut cache = VECTOR_CACHE
+                .lock()
+                .map_err(|e| format!("vector cache lock: {e}"))?;
+            for (h, v) in embedded {
+                cache.insert(h, v);
+            }
         }
 
         let mut slot = 0usize;
@@ -185,7 +210,8 @@ impl CodeVectorIndex {
 
         for (i, vec) in vectors.iter().enumerate() {
             let vec = vec.as_ref().expect("所有 snippet 均已嵌入");
-            index.add(slot as u64, vec)
+            index
+                .add(slot as u64, vec)
                 .map_err(|e| format!("usearch add failed: {e}"))?;
             slots.push(node_ids[i].as_str().to_owned());
             slot += 1;
@@ -206,7 +232,13 @@ impl CodeVectorIndex {
         }
 
         let indexed = slots.len();
-        Ok(BuildStats { total, cache_hits, disk_hits, misses: misses.len(), indexed })
+        Ok(BuildStats {
+            total,
+            cache_hits,
+            disk_hits,
+            misses: misses.len(),
+            indexed,
+        })
     }
 
     /// 搜索。返回排序后的 (node_id, 相似度) 对。
@@ -217,9 +249,12 @@ impl CodeVectorIndex {
         let index = index.as_ref().ok_or("index not initialized")?;
         let slots = self.slots.read().unwrap_or_else(|e| e.into_inner());
 
-        if slots.is_empty() { return Ok(vec![]); }
+        if slots.is_empty() {
+            return Ok(vec![]);
+        }
 
-        let results = index.search(&q_vec, top_k)
+        let results = index
+            .search(&q_vec, top_k)
             .map_err(|e| format!("usearch search failed: {e}"))?;
 
         let mut output = Vec::with_capacity(results.keys.len());
@@ -241,9 +276,10 @@ impl CodeVectorIndex {
         // 1. 索引 → tmp → rename
         let tmp_index = self.path.with_extension("usearch.tmp");
         let tmp_str = tmp_index.to_str().ok_or("non-UTF8 path")?;
-        index.save(tmp_str).map_err(|e| format!("usearch save: {e}"))?;
-        rename_with_retry(&tmp_index, &self.path)
-            .map_err(|e| format!("usearch rename: {e}"))?;
+        index
+            .save(tmp_str)
+            .map_err(|e| format!("usearch save: {e}"))?;
+        rename_with_retry(&tmp_index, &self.path).map_err(|e| format!("usearch rename: {e}"))?;
         info!("[vector] 索引已保存到 {}", self.path.display());
 
         // 2. slots（含嵌入后端标识）→ tmp → rename
@@ -255,21 +291,19 @@ impl CodeVectorIndex {
             "dim": VECTOR_DIM,
             "model": crate::embed::backend_id(),
         });
-        let json_str = serde_json::to_string(&data)
-            .map_err(|e| format!("slot serialize: {e}"))?;
-        std::fs::write(&tmp_slot, json_str)
-            .map_err(|e| format!("slot save: {e}"))?;
-        rename_with_retry(&tmp_slot, &slot_path)
-            .map_err(|e| format!("slot rename: {e}"))?;
+        let json_str = serde_json::to_string(&data).map_err(|e| format!("slot serialize: {e}"))?;
+        std::fs::write(&tmp_slot, json_str).map_err(|e| format!("slot save: {e}"))?;
+        rename_with_retry(&tmp_slot, &slot_path).map_err(|e| format!("slot rename: {e}"))?;
         Ok(())
     }
 
     pub fn load(&self) -> Result<usize, String> {
         let path_str = self.path.to_str().ok_or("non-UTF8 path")?;
-        if !self.path.exists() { return Ok(0); }
+        if !self.path.exists() {
+            return Ok(0);
+        }
 
-        let idx = usearch::Index::restore(path_str)
-            .map_err(|e| format!("usearch restore: {e}"))?;
+        let idx = usearch::Index::restore(path_str).map_err(|e| format!("usearch restore: {e}"))?;
 
         let slot_path = self.path.with_extension("slots.json");
         if !slot_path.exists() {
@@ -277,8 +311,9 @@ impl CodeVectorIndex {
             return Ok(0);
         }
         let data: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&slot_path).map_err(|e| format!("read slots: {e}"))?
-        ).map_err(|e| format!("parse slots: {e}"))?;
+            &std::fs::read_to_string(&slot_path).map_err(|e| format!("read slots: {e}"))?,
+        )
+        .map_err(|e| format!("parse slots: {e}"))?;
 
         // 嵌入空间校验：索引的嵌入后端必须与当前激活后端一致，
         // 否则查询向量与索引向量不在同一空间，结果全是垃圾（静默错误）。
@@ -289,8 +324,13 @@ impl CodeVectorIndex {
             return Ok(0);
         }
 
-        let loaded: Vec<String> = data["slots"].as_array()
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        let loaded: Vec<String> = data["slots"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         // 一致性校验：slots 数必须与索引内向量数一致，否则 slot 映射错位
@@ -308,7 +348,9 @@ impl CodeVectorIndex {
         Ok(count)
     }
 
-    pub fn exists_on_disk(&self) -> bool { self.path.exists() }
+    pub fn exists_on_disk(&self) -> bool {
+        self.path.exists()
+    }
 
     // ── 磁盘嵌入缓存（2026-10-28）──
     //
@@ -325,10 +367,16 @@ impl CodeVectorIndex {
     /// 读磁盘缓存；任何异常（缺失/损坏/版本或后端不匹配）⇒ 空表 + warn。
     fn read_disk_cache(&self) -> std::collections::HashMap<u64, Arc<Vec<f32>>> {
         let path = self.embed_cache_path();
-        if !path.exists() { return std::collections::HashMap::new(); }
+        if !path.exists() {
+            return std::collections::HashMap::new();
+        }
         match read_embed_cache(&path) {
             Ok(map) => {
-                info!("[vector] 嵌入缓存命中 {} 条（{}）", map.len(), path.display());
+                info!(
+                    "[vector] 嵌入缓存命中 {} 条（{}）",
+                    map.len(),
+                    path.display()
+                );
                 map
             }
             Err(e) => {
@@ -342,7 +390,11 @@ impl CodeVectorIndex {
     fn persist_embed_cache(&self, pairs: &[(u64, Arc<Vec<f32>>)]) {
         let path = self.embed_cache_path();
         match write_embed_cache(&path, pairs) {
-            Ok(()) => info!("[vector] 嵌入缓存已保存 {} 条 → {}", pairs.len(), path.display()),
+            Ok(()) => info!(
+                "[vector] 嵌入缓存已保存 {} 条 → {}",
+                pairs.len(),
+                path.display()
+            ),
             Err(e) => warn!("[vector] 嵌入缓存保存失败（{e}）——不影响索引可用性"),
         }
     }
@@ -375,7 +427,10 @@ fn rename_with_retry(from: &std::path::Path, to: &std::path::Path) -> std::io::R
         }
     }
     Err(last_err.unwrap_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "rename_with_retry: no attempt made")
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "rename_with_retry: no attempt made",
+        )
     }))
 }
 
@@ -394,7 +449,9 @@ const EMBED_CACHE_MAGIC: [u8; 4] = *b"LVEC";
 const EMBED_CACHE_VERSION: u32 = 1;
 
 fn take<'a>(bytes: &'a [u8], off: &mut usize, n: usize) -> Result<&'a [u8], String> {
-    let end = off.checked_add(n).ok_or_else(|| "offset overflow".to_string())?;
+    let end = off
+        .checked_add(n)
+        .ok_or_else(|| "offset overflow".to_string())?;
     if end > bytes.len() {
         return Err(format!("truncated at {off} (+{n}, len {})", bytes.len()));
     }
@@ -441,13 +498,17 @@ fn read_embed_cache(
     let entry_len = 8 + dim * 4;
     let remaining = bytes.len().saturating_sub(off);
     if remaining != count.saturating_mul(entry_len) {
-        return Err(format!("payload {remaining} != count {count} × {entry_len}"));
+        return Err(format!(
+            "payload {remaining} != count {count} × {entry_len}"
+        ));
     }
 
     let mut map = std::collections::HashMap::with_capacity(count);
     for _ in 0..count {
         let hash_bytes = take(&bytes, &mut off, 8)?;
-        let hash_arr: [u8; 8] = hash_bytes.try_into().map_err(|_| "hash slice".to_string())?;
+        let hash_arr: [u8; 8] = hash_bytes
+            .try_into()
+            .map_err(|_| "hash slice".to_string())?;
         let mut vec = Vec::with_capacity(dim);
         for _ in 0..dim {
             let f = take(&bytes, &mut off, 4)?;
@@ -513,10 +574,20 @@ fn index_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
 
 /// 获取或创建给定项目根目录的缓存 CodeVectorIndex（按根键控）。
 /// 首次访问时从磁盘加载；索引文件 mtime 变化时自动重载。
-pub fn get_or_load_index(project_root: &std::path::Path) -> Result<(Arc<RwLock<Option<usearch::Index>>>, Arc<RwLock<Vec<String>>>), String> {
+pub fn get_or_load_index(
+    project_root: &std::path::Path,
+) -> Result<
+    (
+        Arc<RwLock<Option<usearch::Index>>>,
+        Arc<RwLock<Vec<String>>>,
+    ),
+    String,
+> {
     let path = hologram_graph::data_dir(project_root).join("vectors.usearch");
     let current_mtime = index_mtime(&path);
-    let mut cache = CACHED_INDEX.lock().map_err(|e| format!("vector cache lock: {e}"))?;
+    let mut cache = CACHED_INDEX
+        .lock()
+        .map_err(|e| format!("vector cache lock: {e}"))?;
 
     let stale = match cache.get(&path) {
         None => true,
@@ -527,7 +598,13 @@ pub fn get_or_load_index(project_root: &std::path::Path) -> Result<(Arc<RwLock<O
         if vi.exists_on_disk() {
             vi.load()?;
         }
-        cache.insert(path.clone(), CachedIndex { vi, mtime: current_mtime });
+        cache.insert(
+            path.clone(),
+            CachedIndex {
+                vi,
+                mtime: current_mtime,
+            },
+        );
     }
     let c = cache.get(&path).expect("索引缓存必已填充");
     Ok((c.vi.index.clone(), c.vi.slots.clone()))
@@ -573,11 +650,19 @@ pub fn filter_hits(
 ) -> Vec<(String, f32)> {
     let mut hits: Vec<(String, f32)> = Vec::with_capacity(max_hits);
     for (id, score) in raw {
-        if *score < threshold { break; }
-        if existing.contains(id.as_str()) { continue; }
-        if hits.iter().any(|(h, _)| h == id) { continue; }
+        if *score < threshold {
+            break;
+        }
+        if existing.contains(id.as_str()) {
+            continue;
+        }
+        if hits.iter().any(|(h, _)| h == id) {
+            continue;
+        }
         hits.push((id.clone(), *score));
-        if hits.len() >= max_hits { break; }
+        if hits.len() >= max_hits {
+            break;
+        }
     }
     hits
 }
@@ -593,7 +678,10 @@ pub fn extract_snippet(source: &str, node_name: &str, node_kind: &NodeKind) -> O
     // 旧实现逐行 contains + 命中后全量 collect 所有行，每节点 O(文件大小)
     // 且伴随全文件行 Vec 分配 —— 155k 节点时是不可忽视的分配风暴。
     if let Some(byte_pos) = source.find(node_name) {
-        let line_num = source.as_bytes()[..byte_pos].iter().filter(|&&b| b == b'\n').count();
+        let line_num = source.as_bytes()[..byte_pos]
+            .iter()
+            .filter(|&&b| b == b'\n')
+            .count();
         let start = line_num.saturating_sub(1);
         let window: Vec<&str> = source.lines().skip(start).take(30).collect();
         return Some(window.join("\n"));
@@ -634,7 +722,8 @@ mod tests {
 
         let vi = CodeVectorIndex::new(&idx_path);
         let mut n1 = Node::new("n1", "handle_payment", NodeKind::Function);
-        n1.snippet = Some("fn handle_payment(amount: f64) -> Result<Receipt> { charge(amount) }".into());
+        n1.snippet =
+            Some("fn handle_payment(amount: f64) -> Result<Receipt> { charge(amount) }".into());
         vi.build(&[n1]).unwrap();
         vi.save().unwrap();
 
@@ -663,19 +752,20 @@ mod tests {
         let idx_path = tmp.join("vectors.usearch");
 
         let vi = CodeVectorIndex::new(&idx_path);
-        let nodes: Vec<Node> = (0..3).map(|i| {
-            let mut n = Node::new(&format!("n{i}"), &format!("func_{i}"), NodeKind::Function);
-            n.snippet = Some(format!("fn func_{i}() {{ do_work({i}); }}"));
-            n
-        }).collect();
+        let nodes: Vec<Node> = (0..3)
+            .map(|i| {
+                let mut n = Node::new(&format!("n{i}"), &format!("func_{i}"), NodeKind::Function);
+                n.snippet = Some(format!("fn func_{i}() {{ do_work({i}); }}"));
+                n
+            })
+            .collect();
         vi.build(&nodes).unwrap();
         vi.save().unwrap();
 
         // 删掉一个 slot → 数量不一致
         let slot_path = idx_path.with_extension("slots.json");
-        let mut data: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&slot_path).unwrap()
-        ).unwrap();
+        let mut data: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&slot_path).unwrap()).unwrap();
         data["slots"].as_array_mut().unwrap().pop();
         std::fs::write(&slot_path, serde_json::to_string(&data).unwrap()).unwrap();
 
@@ -700,13 +790,18 @@ mod tests {
         // 构建并保存索引（文件出现，mtime 变化）
         let vi = CodeVectorIndex::new(&idx_path);
         let mut n1 = Node::new("n1", "handle_payment", NodeKind::Function);
-        n1.snippet = Some("fn handle_payment(amount: f64) -> Result<Receipt> { charge(amount) }".into());
+        n1.snippet =
+            Some("fn handle_payment(amount: f64) -> Result<Receipt> { charge(amount) }".into());
         vi.build(&[n1]).unwrap();
         vi.save().unwrap();
 
         // 再次获取：必须看到新索引，而不是旧的空缓存
         let (_, slots2) = get_or_load_index(&root).unwrap();
-        assert_eq!(slots2.read().unwrap().len(), 1, "索引重建后缓存必须自动失效重载");
+        assert_eq!(
+            slots2.read().unwrap().len(),
+            1,
+            "索引重建后缓存必须自动失效重载"
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -754,7 +849,10 @@ mod tests {
         }
         let vi = CodeVectorIndex::new(path);
         let n = vi.load().unwrap();
-        eprintln!("从 {path} 加载了 {n} 个向量 (backend: {})", crate::embed::backend_id());
+        eprintln!(
+            "从 {path} 加载了 {n} 个向量 (backend: {})",
+            crate::embed::backend_id()
+        );
         if n == 0 {
             // 索引与当前嵌入后端不匹配（如旧 n-gram 索引）——需要重新分析
             eprintln!("跳过: 索引不可用或与当前嵌入后端不匹配，请重新运行 analyze");
@@ -763,9 +861,18 @@ mod tests {
 
         // 对真实 HoloGram 代码库进行搜索测试
         let tests = [
-            ("payment processing", "Should find payment/transaction related code"),
-            ("window button minimize", "Should find window control UI code"),
-            ("graph community layout", "Should find graph/community detection code"),
+            (
+                "payment processing",
+                "Should find payment/transaction related code",
+            ),
+            (
+                "window button minimize",
+                "Should find window control UI code",
+            ),
+            (
+                "graph community layout",
+                "Should find graph/community detection code",
+            ),
         ];
         for (query, desc) in &tests {
             let results = vi.search(query, 5).unwrap();
@@ -787,18 +894,29 @@ mod tests {
         let vi = CodeVectorIndex::new(&idx_path);
 
         let mut n1 = Node::new("n1", "handle_payment", NodeKind::Function);
-        n1.snippet = Some("fn handle_payment(amount: f64) -> Result<Receipt, Error> { process(amount) }".into());
+        n1.snippet = Some(
+            "fn handle_payment(amount: f64) -> Result<Receipt, Error> { process(amount) }".into(),
+        );
         let mut n2 = Node::new("n2", "render_ui", NodeKind::Function);
         n2.snippet = Some("fn render_ui() { draw_button(); draw_text(); }".into());
         let mut n3 = Node::new("n3", "process_refund", NodeKind::Function);
-        n3.snippet = Some("fn process_refund(order_id: u64) -> Result<Money, Error> { validate(order_id) }".into());
+        n3.snippet = Some(
+            "fn process_refund(order_id: u64) -> Result<Money, Error> { validate(order_id) }"
+                .into(),
+        );
 
         let count = vi.build(&[n1, n2, n3]).unwrap();
         assert_eq!(count, 3);
 
         let results = vi.search("payment processing", 2).unwrap();
         assert!(!results.is_empty());
-        eprintln!("search 'payment processing': {:?}", results.iter().map(|(id, s)| format!("{id}({:.2})", s)).collect::<Vec<_>>());
+        eprintln!(
+            "search 'payment processing': {:?}",
+            results
+                .iter()
+                .map(|(id, s)| format!("{id}({:.2})", s))
+                .collect::<Vec<_>>()
+        );
         // handle_payment 应排在首位
         assert_eq!(results[0].0, "n1");
 
@@ -807,7 +925,13 @@ mod tests {
         assert_eq!(vi2.load().unwrap(), 3);
 
         let results2 = vi2.search("refund money", 2).unwrap();
-        eprintln!("reloaded search 'refund': {:?}", results2.iter().map(|(id, s)| format!("{id}({:.2})", s)).collect::<Vec<_>>());
+        eprintln!(
+            "reloaded search 'refund': {:?}",
+            results2
+                .iter()
+                .map(|(id, s)| format!("{id}({:.2})", s))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(results2[0].0, "n3");
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -827,7 +951,11 @@ mod tests {
     fn three_nodes(tag: &str) -> Vec<Node> {
         (0..3)
             .map(|i| {
-                let mut n = Node::new(&format!("{tag}{i}"), &format!("embed_cache_{tag}_fn_{i}"), NodeKind::Function);
+                let mut n = Node::new(
+                    &format!("{tag}{i}"),
+                    &format!("embed_cache_{tag}_fn_{i}"),
+                    NodeKind::Function,
+                );
                 n.snippet = Some(format!("fn embed_cache_{tag}_fn_{i}() {{ work({i}); }}"));
                 n
             })
@@ -850,7 +978,10 @@ mod tests {
             .collect();
 
         write_embed_cache(&path, &entries).unwrap();
-        assert!(!path.with_extension("embed.cache.tmp").exists(), "原子落盘不应残留 tmp");
+        assert!(
+            !path.with_extension("embed.cache.tmp").exists(),
+            "原子落盘不应残留 tmp"
+        );
 
         let loaded = read_embed_cache(&path).unwrap();
         assert_eq!(loaded.len(), entries.len());
@@ -868,8 +999,7 @@ mod tests {
     fn test_embed_cache_rejects_header_mismatch() {
         let dir = tmp_cache_dir("hdr");
         let path = dir.join("vectors.embed.cache");
-        let entries: Vec<(u64, Arc<Vec<f32>>)> =
-            vec![(42, Arc::new(vec![0.25f32; VECTOR_DIM]))];
+        let entries: Vec<(u64, Arc<Vec<f32>>)> = vec![(42, Arc::new(vec![0.25f32; VECTOR_DIM]))];
         write_embed_cache(&path, &entries).unwrap();
 
         let good = std::fs::read(&path).unwrap();
@@ -907,8 +1037,7 @@ mod tests {
         std::fs::write(&path, b"NOPE").unwrap();
         assert!(read_embed_cache(&path).is_err(), "坏魔数");
 
-        let entries: Vec<(u64, Arc<Vec<f32>>)> =
-            vec![(7, Arc::new(vec![0.5f32; VECTOR_DIM]))];
+        let entries: Vec<(u64, Arc<Vec<f32>>)> = vec![(7, Arc::new(vec![0.5f32; VECTOR_DIM]))];
         write_embed_cache(&path, &entries).unwrap();
         let good = std::fs::read(&path).unwrap();
         std::fs::write(&path, &good[..good.len() - 7]).unwrap();
@@ -926,7 +1055,9 @@ mod tests {
 
         // 生产路径每次重建都新建实例（engine/src/engine/pipeline.rs 与
         // hologram-storage/src/store.rs 同款）——这里按同一姿势模拟。
-        let first = CodeVectorIndex::new(&idx_path).build_with_stats(&nodes).unwrap();
+        let first = CodeVectorIndex::new(&idx_path)
+            .build_with_stats(&nodes)
+            .unwrap();
         assert_eq!(first.total, 3);
         assert_eq!(first.misses, 3, "冷启动：三个节点都必须真推理");
         assert_eq!(first.indexed, 3);
@@ -934,14 +1065,18 @@ mod tests {
         // 模拟进程重启：清掉进程级 static 缓存
         clear_process_vector_cache();
 
-        let second = CodeVectorIndex::new(&idx_path).build_with_stats(&nodes).unwrap();
+        let second = CodeVectorIndex::new(&idx_path)
+            .build_with_stats(&nodes)
+            .unwrap();
         assert_eq!(second.misses, 0, "磁盘缓存必须让重启后的重建零推理");
         assert_eq!(second.disk_hits, 3, "三条全部来自磁盘缓存");
         assert_eq!(second.cache_hits, 0, "进程内缓存已被清空");
         assert_eq!(second.indexed, 3);
 
         // 第三次（磁盘缓存 + 进程内都在）仍然零推理
-        let third = CodeVectorIndex::new(&idx_path).build_with_stats(&nodes).unwrap();
+        let third = CodeVectorIndex::new(&idx_path)
+            .build_with_stats(&nodes)
+            .unwrap();
         assert_eq!(third.misses, 0);
         assert_eq!(third.cache_hits, 3, "本轮应走进程内缓存");
 
@@ -958,8 +1093,15 @@ mod tests {
         let nodes = three_nodes("reuse");
 
         assert_eq!(vi.build(&nodes).unwrap(), 3);
-        assert_eq!(vi.build(&nodes).unwrap(), 3, "二次重建不应因 usearch 重复键失败");
-        assert!(!vi.search("embed_cache_fn_1", 1).unwrap().is_empty(), "重建后搜索应可用");
+        assert_eq!(
+            vi.build(&nodes).unwrap(),
+            3,
+            "二次重建不应因 usearch 重复键失败"
+        );
+        assert!(
+            !vi.search("embed_cache_fn_1", 1).unwrap().is_empty(),
+            "重建后搜索应可用"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

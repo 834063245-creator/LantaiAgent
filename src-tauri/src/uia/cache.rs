@@ -204,7 +204,11 @@ pub(crate) fn tree_text(controls: &[ControlRec]) -> String {
 }
 
 /// 分页边界：clamp 到 [0, total]。max=0 视为默认 80。
-pub(crate) fn page_bounds(total: usize, offset: usize, max_results: usize) -> std::ops::Range<usize> {
+pub(crate) fn page_bounds(
+    total: usize,
+    offset: usize,
+    max_results: usize,
+) -> std::ops::Range<usize> {
     let max = if max_results == 0 { 80 } else { max_results };
     let start = offset.min(total);
     let end = (start + max).min(total);
@@ -265,9 +269,21 @@ mod tests {
         };
         assert!(control_matches(&c, Some("save"), None, None, None));
         assert!(control_matches(&c, None, Some("button"), None, None));
-        assert!(control_matches(&c, None, None, Some("SAVE_BTN"), Some(true)));
-        assert!(!control_matches(&c, Some("open"), None, None, None), "name 不匹配");
-        assert!(!control_matches(&c, None, None, None, Some(false)), "enabled 不匹配");
+        assert!(control_matches(
+            &c,
+            None,
+            None,
+            Some("SAVE_BTN"),
+            Some(true)
+        ));
+        assert!(
+            !control_matches(&c, Some("open"), None, None, None),
+            "name 不匹配"
+        );
+        assert!(
+            !control_matches(&c, None, None, None, Some(false)),
+            "enabled 不匹配"
+        );
     }
 
     #[test]
@@ -280,12 +296,19 @@ mod tests {
         b.enabled = false;
         let t = tree_text(&[a, b]);
         assert!(t.contains("[0] Edit"));
-        assert!(t.contains("  [1] Button \"OK\" (disabled)"), "depth=2 应缩进: {t}");
+        assert!(
+            t.contains("  [1] Button \"OK\" (disabled)"),
+            "depth=2 应缩进: {t}"
+        );
     }
 
     #[test]
     fn page_bounds_clamps() {
-        assert_eq!(page_bounds(10, 0, 0), 0..80.min(10), "max=0 → 默认 80 并 clamp");
+        assert_eq!(
+            page_bounds(10, 0, 0),
+            0..80.min(10),
+            "max=0 → 默认 80 并 clamp"
+        );
         assert_eq!(page_bounds(10, 8, 5), 8..10);
         assert_eq!(page_bounds(10, 20, 5), 10..10, "offset 越界 → 空页");
         assert_eq!(page_bounds(100, 80, 80), 80..100);

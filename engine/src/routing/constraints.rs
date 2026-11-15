@@ -92,8 +92,12 @@ struct DenylistBlock {
     keywords: Vec<String>,
 }
 
-fn default_true() -> bool { true }
-fn default_blast_radius() -> usize { 50 }
+fn default_true() -> bool {
+    true
+}
+fn default_blast_radius() -> usize {
+    50
+}
 
 /// 运行时约束配置 — 从 YAML 结构展平而来。
 pub struct ConstraintConfig {
@@ -108,10 +112,17 @@ pub struct ConstraintConfig {
 impl ConstraintConfig {
     pub fn defaults() -> Self {
         Self {
-            routing_l4: true, routing_l3: true, routing_l2: true,
+            routing_l4: true,
+            routing_l3: true,
+            routing_l2: true,
             blast_radius_max: 50,
             allowlist_files: vec![],
-            denylist_keywords: vec!["DROP ".into(), "DELETE ".into(), "rm -rf".into(), "shutdown".into()],
+            denylist_keywords: vec![
+                "DROP ".into(),
+                "DELETE ".into(),
+                "rm -rf".into(),
+                "shutdown".into(),
+            ],
         }
     }
 
@@ -120,19 +131,17 @@ impl ConstraintConfig {
     pub fn from_yaml_file(project_root: &Path) -> Self {
         let yaml_path = project_root.join("hologram.constraints.yaml");
         match std::fs::read_to_string(&yaml_path) {
-            Ok(contents) => {
-                match serde_yaml::from_str::<ConstraintsFile>(&contents) {
-                    Ok(f) => Self::from_parsed(&f),
-                    Err(e) => {
-                        tracing::warn!(
-                            path = %yaml_path.display(),
-                            err = %e,
-                            "[constraints] yaml parse failed — using defaults"
-                        );
-                        Self::defaults()
-                    }
+            Ok(contents) => match serde_yaml::from_str::<ConstraintsFile>(&contents) {
+                Ok(f) => Self::from_parsed(&f),
+                Err(e) => {
+                    tracing::warn!(
+                        path = %yaml_path.display(),
+                        err = %e,
+                        "[constraints] yaml parse failed — using defaults"
+                    );
+                    Self::defaults()
                 }
-            }
+            },
             Err(_) => {
                 tracing::debug!(
                     "[constraints] no {} found — using defaults",
@@ -146,10 +155,7 @@ impl ConstraintConfig {
     fn from_parsed(f: &ConstraintsFile) -> Self {
         // 将 allowlist 中的 modules 和 files 合并为统一的模式列表。
         // 两者在 check_constraints 中均使用子串匹配。
-        let mut allowlist_files: Vec<String> = f.constraints
-            .allowlist
-            .files
-            .clone();
+        let mut allowlist_files: Vec<String> = f.constraints.allowlist.files.clone();
         allowlist_files.extend(f.constraints.allowlist.modules.iter().cloned());
 
         let mut denylist = f.constraints.denylist.keywords.clone();
@@ -174,7 +180,10 @@ impl ConstraintConfig {
         let mut c = Self::defaults();
         if let Some(r) = v.get("routing") {
             c.routing_l4 = r.get("l4_silent").and_then(|v| v.as_bool()).unwrap_or(true);
-            c.routing_l3 = r.get("l3_delayed").and_then(|v| v.as_bool()).unwrap_or(true);
+            c.routing_l3 = r
+                .get("l3_delayed")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
             c.routing_l2 = r.get("l2_blast").and_then(|v| v.as_bool()).unwrap_or(true);
         }
         c
@@ -185,23 +194,40 @@ pub fn check_constraints(signals: &[Value], config: &ConstraintConfig) -> Value 
     let mut violations = Vec::new();
     let mut passed = 0usize;
     let allowlist: Vec<&str> = config.allowlist_files.iter().map(|s| s.as_str()).collect();
-    let denylist: Vec<&str> = config.denylist_keywords.iter().map(|s| s.as_str()).collect();
+    let denylist: Vec<&str> = config
+        .denylist_keywords
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
     for s in signals {
         let level = s["level"].as_u64().unwrap_or(0) as u8;
         // description 可能位于 s.signal.description（SignalGenerator）或 s.desc（测试扁平格式）
-        let desc = s.get("signal").and_then(|sig| sig.get("description")).and_then(|v| v.as_str())
+        let desc = s
+            .get("signal")
+            .and_then(|sig| sig.get("description"))
+            .and_then(|v| v.as_str())
             .or_else(|| s.get("desc").and_then(|v| v.as_str()))
             .unwrap_or("");
         let denied = !denylist.is_empty() && denylist.iter().any(|k| desc.contains(k));
         // affected_nodes 可能位于 s.signal.affected_nodes（SignalGenerator）或不存在（扁平格式）
-        let files: Vec<&str> = s.get("signal")
+        let files: Vec<&str> = s
+            .get("signal")
             .and_then(|sig| sig.get("affected_nodes"))
             .and_then(|v| v.as_array())
             .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
-        let allowed = !allowlist.is_empty() && !files.is_empty()
-            && files.iter().all(|f| allowlist.iter().any(|a| f.contains(a)));
-        let enabled = match level { 5 => true, 4 => config.routing_l4, 3 => config.routing_l3, 2 => config.routing_l2, _ => false };
+        let allowed = !allowlist.is_empty()
+            && !files.is_empty()
+            && files
+                .iter()
+                .all(|f| allowlist.iter().any(|a| f.contains(a)));
+        let enabled = match level {
+            5 => true,
+            4 => config.routing_l4,
+            3 => config.routing_l3,
+            2 => config.routing_l2,
+            _ => false,
+        };
         if denied || (enabled && !allowed) {
             violations.push(s.clone());
         } else {
@@ -285,7 +311,10 @@ mod tests {
             json!({"signal": {"description": "L3 shared data", "affected_nodes": ["src/new/b.rs"]}, "level": 3}),
         ];
         let r = check_constraints(&signals, &c);
-        assert_eq!(r["violation_count"], 1, "legacy file allowed, new file still flagged");
+        assert_eq!(
+            r["violation_count"], 1,
+            "legacy file allowed, new file still flagged"
+        );
     }
 
     #[test]
@@ -296,7 +325,10 @@ mod tests {
             json!({"signal": {"description": "Found a dangerous DELETE statement", "affected_nodes": []}, "level": 4}),
         ];
         let r = check_constraints(&signals, &c);
-        assert_eq!(r["violation_count"], 1, "denylist keyword should override level toggle");
+        assert_eq!(
+            r["violation_count"], 1,
+            "denylist keyword should override level toggle"
+        );
     }
 
     #[test]

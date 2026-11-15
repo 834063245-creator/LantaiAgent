@@ -46,13 +46,40 @@ pub(crate) fn lock_name_for_command(cmd: &str) -> Option<&'static str> {
     let sub = it.next().unwrap_or("");
     let heavy = |set: &[&str]| set.contains(&sub);
     match tool {
-        "cargo" => heavy(&["build", "test", "check", "clippy", "run", "install", "bench", "audit"]).then_some("target"),
-        "npm" | "pnpm" | "yarn" => heavy(&["install", "ci", "build", "test", "run", "exec", "audit", "start"]).then_some("node_modules"),
+        "cargo" => heavy(&[
+            "build", "test", "check", "clippy", "run", "install", "bench", "audit",
+        ])
+        .then_some("target"),
+        "npm" | "pnpm" | "yarn" => heavy(&[
+            "install", "ci", "build", "test", "run", "exec", "audit", "start",
+        ])
+        .then_some("node_modules"),
         "git" => {
             let write = [
-                "add", "commit", "push", "pull", "fetch", "checkout", "switch", "create-branch",
-                "init", "reset", "merge", "rebase", "cherry-pick", "revert", "clean",
-                "restore", "rm", "mv", "stage", "unstage", "stash", "tag", "apply", "am",
+                "add",
+                "commit",
+                "push",
+                "pull",
+                "fetch",
+                "checkout",
+                "switch",
+                "create-branch",
+                "init",
+                "reset",
+                "merge",
+                "rebase",
+                "cherry-pick",
+                "revert",
+                "clean",
+                "restore",
+                "rm",
+                "mv",
+                "stage",
+                "unstage",
+                "stash",
+                "tag",
+                "apply",
+                "am",
             ];
             write.contains(&sub).then_some("git_index")
         }
@@ -96,7 +123,12 @@ pub(crate) fn acquire_build_lock(
     }
     locks.insert(
         key.clone(),
-        LockHolder { job_id, cmd: cmd.to_string(), owner, started_at: std::time::Instant::now() },
+        LockHolder {
+            job_id,
+            cmd: cmd.to_string(),
+            owner,
+            started_at: std::time::Instant::now(),
+        },
     );
     Ok(Some(key))
 }

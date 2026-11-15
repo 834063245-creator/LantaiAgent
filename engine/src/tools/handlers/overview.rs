@@ -1,15 +1,15 @@
 use std::path::PathBuf;
 
-use serde_json::{json, Value};
 use crate::analysis::*;
 use crate::community::detect_communities_from_index;
 use crate::engine;
-use hologram_graph::Graph;
 use crate::routing::preflight::{load_baseline, run_full_check, save_baseline};
-use crate::tools::{get_usize, with_store};
-use crate::tools::with_graph;
 use crate::tools::derive_comm_label;
+use crate::tools::with_graph;
 use crate::tools::ToolResponse;
+use crate::tools::{get_usize, with_store};
+use hologram_graph::Graph;
+use serde_json::{json, Value};
 
 pub(crate) fn handler_graph_summary(_args: &Value) -> ToolResponse {
     let mut v = with_store(graph_summary_from_index);
@@ -33,11 +33,15 @@ pub(crate) fn handler_clusters(args: &Value) -> ToolResponse {
     // 增量漂移治理（P1-4）：图经增量维护后聚类结果是近似的，结果带标注。
     let drift = crate::tools::staleness::incremental_drift();
     ToolResponse::Success(with_store(|idx| {
-        let mut comm_map: std::collections::HashMap<usize, Vec<String>> = std::collections::HashMap::new();
+        let mut comm_map: std::collections::HashMap<usize, Vec<String>> =
+            std::collections::HashMap::new();
         let mut has_any = false;
         for node in idx.nodes_iter() {
             if let Some(cid) = node.community_id {
-                comm_map.entry(cid).or_default().push(node.id.as_str().to_owned());
+                comm_map
+                    .entry(cid)
+                    .or_default()
+                    .push(node.id.as_str().to_owned());
                 has_any = true;
             }
         }
@@ -86,7 +90,11 @@ pub(crate) fn handler_clusters(args: &Value) -> ToolResponse {
 }
 
 pub(crate) fn handler_diff(args: &Value) -> ToolResponse {
-    let before_path = args.get("before_path").or_else(|| args.get("beforePath")).and_then(|v| v.as_str()).unwrap_or("");
+    let before_path = args
+        .get("before_path")
+        .or_else(|| args.get("beforePath"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if before_path.is_empty() {
         return ToolResponse::Degraded {
             guidance: "before_path is required".into(),
@@ -113,13 +121,28 @@ pub(crate) fn handler_diff(args: &Value) -> ToolResponse {
             }
         };
         let diff = before.diff(after);
-        let added_nodes: Vec<_> = diff.added_nodes.iter().map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()})).collect();
-        let removed_nodes: Vec<_> = diff.removed_nodes.iter().map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()})).collect();
-        let modified_nodes: Vec<_> = diff.modified_nodes.iter().map(|(old, new)| json!({
-            "node_id": new.id, "name": new.name,
-            "old_kind": old.kind.as_str(), "new_kind": new.kind.as_str(),
-        })).collect();
-        let is_empty = added_nodes.is_empty() && removed_nodes.is_empty() && modified_nodes.is_empty();
+        let added_nodes: Vec<_> = diff
+            .added_nodes
+            .iter()
+            .map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()}))
+            .collect();
+        let removed_nodes: Vec<_> = diff
+            .removed_nodes
+            .iter()
+            .map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()}))
+            .collect();
+        let modified_nodes: Vec<_> = diff
+            .modified_nodes
+            .iter()
+            .map(|(old, new)| {
+                json!({
+                    "node_id": new.id, "name": new.name,
+                    "old_kind": old.kind.as_str(), "new_kind": new.kind.as_str(),
+                })
+            })
+            .collect();
+        let is_empty =
+            added_nodes.is_empty() && removed_nodes.is_empty() && modified_nodes.is_empty();
         json!({
             "is_empty": is_empty,
             "added_nodes": added_nodes,
@@ -206,25 +229,34 @@ pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
         _ => {
             match engine::engine_init(&root) {
                 Ok(_) => {}
-                Err(e) => return ToolResponse::Degraded {
-                    guidance: format!("Engine init failed: {}", e),
-                    fallback: "Check engine logs and retry".into(),
-                    details: json!({}),
-                },
+                Err(e) => {
+                    return ToolResponse::Degraded {
+                        guidance: format!("Engine init failed: {}", e),
+                        fallback: "Check engine logs and retry".into(),
+                        details: json!({}),
+                    }
+                }
             }
             match engine::engine_analyze(&root) {
                 Ok(r) => r.graph,
-                Err(e) => return ToolResponse::Degraded {
-                    guidance: e,
-                    fallback: "Check project structure and retry".into(),
-                    details: json!({}),
-                },
+                Err(e) => {
+                    return ToolResponse::Degraded {
+                        guidance: e,
+                        fallback: "Check project structure and retry".into(),
+                        details: json!({}),
+                    }
+                }
             }
         }
     };
-    let changed_files: Vec<String> = args.get("changed_files")
+    let changed_files: Vec<String> = args
+        .get("changed_files")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     let check_result = run_full_check(&before, &after, &changed_files, path);
     // 推进基线，使下次检查与此次快照对比
@@ -233,7 +265,11 @@ pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
     let passed = check_result["passed"].as_bool().unwrap_or(true);
     let violation_count = check_result["violation_count"].as_u64().unwrap_or(0);
     if violation_count > 0 || !changed_files.is_empty() {
-        let event_type = if passed { "commit_clean" } else { "commit_violation" };
+        let event_type = if passed {
+            "commit_clean"
+        } else {
+            "commit_violation"
+        };
         let summary = if passed {
             format!("Check passed ({} violations)", violation_count)
         } else {
@@ -257,7 +293,8 @@ pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
             "l2_violations": check_result["l2_violations"],
             "timestamp": check_result["timestamp"],
         });
-        let _ = engine::engine_record_timeline_with_props(event_type, None::<&str>, &summary, &props);
+        let _ =
+            engine::engine_record_timeline_with_props(event_type, None::<&str>, &summary, &props);
     }
     ToolResponse::Success(json!(check_result))
 }
@@ -286,7 +323,13 @@ pub(crate) fn handler_run_health(args: &Value) -> ToolResponse {
         let coupling_ratio = if e > 0.0 { l4_count / e } else { 0.0 };
         let coupling_score = (1.0 - coupling_ratio).max(0.0) * 30.0;
         let score = ((density + coupling_score + fragile_score + cycle_score) as u32).min(100);
-        let trend = if n > 0.0 && e / n > 2.0 { "healthy" } else if e > 0.0 { "stable" } else { "needs_edges" };
+        let trend = if n > 0.0 && e / n > 2.0 {
+            "healthy"
+        } else if e > 0.0 {
+            "stable"
+        } else {
+            "needs_edges"
+        };
         json!({
             "path": path,
             "days": days,
@@ -307,5 +350,3 @@ pub(crate) fn handler_run_health(args: &Value) -> ToolResponse {
         })
     }))
 }
-
-

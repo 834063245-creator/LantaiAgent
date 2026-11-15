@@ -33,6 +33,9 @@ mod tests {
     #[test]
     fn test_noop() {
         let mut g = Graph::new();
-        assert_eq!(synthesize_dataflow_edges(&mut g, Path::new(""), &Default::default(), &[]), 0);
+        assert_eq!(
+            synthesize_dataflow_edges(&mut g, Path::new(""), &Default::default(), &[]),
+            0
+        );
     }
 }

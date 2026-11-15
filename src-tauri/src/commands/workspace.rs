@@ -14,12 +14,8 @@ pub(crate) async fn workspace_activate(
     let mut handle = crate::workspace::WorkspaceHandle::new(&path);
     // register 需要 path，但 activate 会 move 走——先克隆（登记在激活成功后）。
     let reg_path = path.clone();
-    crate::app::services::workspace_service::activate(
-        path,
-        app_ctx.inner().clone(),
-        &mut handle,
-    )
-    .await?;
+    crate::app::services::workspace_service::activate(path, app_ctx.inner().clone(), &mut handle)
+        .await?;
     *crate::utils::lock_or_recover(&state) = Some(handle);
     // Stage-5 补尾：绑定真目录 → 登记进「已知工作区」注册表（首页工作区管理
     // 的实体来源；空工作区也可见）。登记是便利面，失败不阻断激活（可见于日志）。
@@ -42,7 +38,10 @@ pub(crate) fn create_default_workspace_dir(name: &str) -> Result<String, String>
     }
     // 名字 = 目录名：拒绝路径分隔符与 Windows 保留字符、控制字符、相对路径段
     const ILLEGAL: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
-    if trimmed.chars().any(|c| ILLEGAL.contains(&c) || c.is_control()) {
+    if trimmed
+        .chars()
+        .any(|c| ILLEGAL.contains(&c) || c.is_control())
+    {
         return Err("工作区名字不能包含 / \\ : * ? \" < > | 或控制字符".into());
     }
     if trimmed == "." || trimmed == ".." {
@@ -78,7 +77,8 @@ pub(crate) async fn workspace_deactivate(
     if let Some(mut h) = handle {
         let old_path = h.path.clone();
         h.deactivate();
-        crate::app::services::workspace_service::deactivate(old_path, app_ctx.inner().clone()).await?;
+        crate::app::services::workspace_service::deactivate(old_path, app_ctx.inner().clone())
+            .await?;
     }
     Ok(())
 }
@@ -140,7 +140,12 @@ pub(crate) mod registry {
     pub(crate) fn read_registry() -> WorkspaceRegistry {
         let raw = match std::fs::read_to_string(registry_path()) {
             Ok(r) => r,
-            Err(_) => return WorkspaceRegistry { version: 1, workspaces: Vec::new() },
+            Err(_) => {
+                return WorkspaceRegistry {
+                    version: 1,
+                    workspaces: Vec::new(),
+                }
+            }
         };
         match serde_json::from_str::<WorkspaceRegistry>(&raw) {
             Ok(mut r) => {
@@ -149,7 +154,10 @@ pub(crate) mod registry {
                 }
                 r
             }
-            Err(_) => WorkspaceRegistry { version: 1, workspaces: Vec::new() },
+            Err(_) => WorkspaceRegistry {
+                version: 1,
+                workspaces: Vec::new(),
+            },
         }
     }
 
@@ -158,8 +166,8 @@ pub(crate) mod registry {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("创建 ~/.lantai 目录失败: {e}"))?;
         }
-        let json =
-            serde_json::to_string_pretty(reg).map_err(|e| format!("序列化工作区注册表失败: {e}"))?;
+        let json = serde_json::to_string_pretty(reg)
+            .map_err(|e| format!("序列化工作区注册表失败: {e}"))?;
         crate::utils::write_atomic(&path.to_string_lossy(), &json)
     }
 
@@ -298,7 +306,9 @@ pub(crate) mod registry {
         }
 
         out.sort_by(|a, b| {
-            b.pinned.cmp(&a.pinned).then_with(|| b.last_opened_at.cmp(&a.last_opened_at))
+            b.pinned
+                .cmp(&a.pinned)
+                .then_with(|| b.last_opened_at.cmp(&a.last_opened_at))
         });
         Ok(out)
     }
@@ -537,8 +547,16 @@ pub(crate) mod registry {
                 // {ws}/.lantai/sessions/ 下——删除 = 删该目录
                 let sessions_dir = crate::commands::filesystem::workspace_sessions_root(&ws_str);
                 std::fs::create_dir_all(&sessions_dir).unwrap();
-                std::fs::write(sessions_dir.join("21.ndjson"), r#"{"type":"session","version":1,"id":21}"#).unwrap();
-                std::fs::write(sessions_dir.join("22.ndjson"), r#"{"type":"session","version":1,"id":22}"#).unwrap();
+                std::fs::write(
+                    sessions_dir.join("21.ndjson"),
+                    r#"{"type":"session","version":1,"id":21}"#,
+                )
+                .unwrap();
+                std::fs::write(
+                    sessions_dir.join("22.ndjson"),
+                    r#"{"type":"session","version":1,"id":22}"#,
+                )
+                .unwrap();
 
                 remove(&ws_str).unwrap();
 

@@ -80,15 +80,17 @@ pub(super) fn normalize_slot_name(slot: &str) -> Result<String, String> {
         return Ok(DEFAULT_SLOT.to_string());
     }
     if slot.len() > 48 {
-        return Err(err(codes::SLOT_INVALID, "profile/session 名过长（最多 48 字符）"));
+        return Err(err(
+            codes::SLOT_INVALID,
+            "profile/session 名过长（最多 48 字符）",
+        ));
     }
     if slot == "." || slot == ".." {
         return Err(err(codes::SLOT_INVALID, "profile/session 名不能是 . 或 .."));
     }
-    if slot
-        .chars()
-        .any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
-    {
+    if slot.chars().any(|c| {
+        c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+    }) {
         return Err(err(
             codes::SLOT_INVALID,
             "profile/session 名不能包含 / \\ : * ? \" < > | 或控制字符",
@@ -715,7 +717,11 @@ pub(super) fn start_observer(
         }
         a2.store(false, Ordering::SeqCst);
     });
-    Observer { buffers, alive, cmd_tx }
+    Observer {
+        buffers,
+        alive,
+        cmd_tx,
+    }
 }
 
 /// 启动/重启会话观察任务（统一入口，A4 修复）。
@@ -1204,10 +1210,16 @@ pub(super) fn probe_free_port() -> Result<u16, String> {
 /// 校验代理命令行参数：只拒绝换行（避免参数注入的伪影），其余交给 Chrome。
 pub(super) fn validate_proxy_arg(name: &str, value: &str) -> Result<(), String> {
     if value.is_empty() {
-        return Err(err(codes::PROXY_INVALID, format!("launch: {name} 不能为空字符串")));
+        return Err(err(
+            codes::PROXY_INVALID,
+            format!("launch: {name} 不能为空字符串"),
+        ));
     }
     if value.contains(['\r', '\n']) {
-        return Err(err(codes::PROXY_INVALID, format!("launch: {name} 不能包含换行符")));
+        return Err(err(
+            codes::PROXY_INVALID,
+            format!("launch: {name} 不能包含换行符"),
+        ));
     }
     Ok(())
 }
@@ -1300,8 +1312,12 @@ pub(crate) async fn cdp_launch(
         None => probe_free_port()?,
     };
 
-    let chrome = find_chrome()
-        .ok_or_else(|| err(codes::NO_CHROME, "未找到 Chrome/Edge。可设置环境变量 HOLOGRAM_CHROME 指定路径"))?;
+    let chrome = find_chrome().ok_or_else(|| {
+        err(
+            codes::NO_CHROME,
+            "未找到 Chrome/Edge。可设置环境变量 HOLOGRAM_CHROME 指定路径",
+        )
+    })?;
     // 缺省 profile 按端口隔离（临时，随会话删除）；具名 profile 持久（多账号切换复用）。
     let profile_dir = if named_profile {
         named_profile_dir(&slot)
@@ -1367,7 +1383,9 @@ pub(crate) async fn cdp_launch(
             use std::os::windows::process::CommandExt;
             cmd.creation_flags(crate::utils::HIDDEN_CONSOLE);
         }
-        let child = cmd.spawn().map_err(|e| err(codes::INTERNAL, format!("启动 Chrome 失败: {e}")))?;
+        let child = cmd
+            .spawn()
+            .map_err(|e| err(codes::INTERNAL, format!("启动 Chrome 失败: {e}")))?;
         sess.chrome_child = Some(child);
     }
 
@@ -1446,7 +1464,8 @@ pub(crate) fn cdp_kill(agent_id: Option<&str>) -> Result<String, String> {
         );
         let msg = if had_child {
             if kept_profile {
-                "受控 Chrome 已终止；具名 profile 目录已保留，再次 launch 同 profile 可恢复登录态".to_string()
+                "受控 Chrome 已终止；具名 profile 目录已保留，再次 launch 同 profile 可恢复登录态"
+                    .to_string()
             } else {
                 "受控 Chrome 已终止".into()
             }
@@ -1482,15 +1501,21 @@ pub(crate) fn cdp_connect(
     }
     let slot = normalize_slot_name(profile.as_deref().unwrap_or(""))?;
     // 端口必须真的有调试服务——connect 不猜端口，由用户告诉 Agent
-    let raw = list_targets_raw(port)
-        .map_err(|e| err(codes::NETWORK, format!("端口 {port} 没有可用的调试服务: {e}")))?;
+    let raw = list_targets_raw(port).map_err(|e| {
+        err(
+            codes::NETWORK,
+            format!("端口 {port} 没有可用的调试服务: {e}"),
+        )
+    })?;
     let pages = raw
         .as_array()
         .map(|arr| arr.iter().filter(|t| t["type"] == "page").count())
         .unwrap_or(0);
 
     let mut sessions = session_mut_for(agent_id, &slot);
-    let sess = sessions.entry(session_key_for(agent_id, &slot)).or_default();
+    let sess = sessions
+        .entry(session_key_for(agent_id, &slot))
+        .or_default();
     // 替换前回收旧状态：受控 Chrome kill 掉（换目标不再需要），外部连接直接覆盖
     if let Some(mut old) = sess.chrome_child.take() {
         let exited = old.try_wait().map(|s| s.is_some()).unwrap_or(false);
@@ -1674,7 +1699,10 @@ pub(crate) fn cdp_switch_session(
 /// Chrome 151 起实测：/json/new?url=X 只创建 about:blank 的空白 tab，
 /// **不再导航到 X**（http/file 都如此）。因此创建后补一次 Page.navigate；
 /// 老 Chrome 已导航时先查 location.href，一致则跳过，避免双加载。
-pub(crate) async fn cdp_new_tab(url: Option<String>, agent_id: Option<&str>) -> Result<String, String> {
+pub(crate) async fn cdp_new_tab(
+    url: Option<String>,
+    agent_id: Option<&str>,
+) -> Result<String, String> {
     let url = url.unwrap_or_else(|| "about:blank".into());
     // 会话锁只在同步段持有：创建 tab + 更新 target_id 后立即释放，
     // 后面的 WS 命令跨 await，不能持有非 Send 的 MutexGuard。
@@ -1714,7 +1742,13 @@ pub(crate) async fn cdp_new_tab(url: Option<String>, agent_id: Option<&str>) -> 
         })
         .unwrap_or(false);
         if !already_there {
-            ws_command(port, &target_id, "Page.navigate", json!({ "url": url.clone() })).await?;
+            ws_command(
+                port,
+                &target_id,
+                "Page.navigate",
+                json!({ "url": url.clone() }),
+            )
+            .await?;
         }
     }
     audit_log(agent_id, "new_tab", &url, &target_id);

@@ -16,14 +16,14 @@
 //! 纯计算层）。不再依赖 engine——数据家与分析器物理分家。
 
 pub mod memory;
+pub mod snapshot;
 pub mod sqlite;
 pub mod store;
-pub mod snapshot;
 pub mod string_arena;
 
 pub use memory::{LoadProgress, MemoryIndex};
-pub use sqlite::SqliteDb;
 pub use rusqlite::Connection;
+pub use sqlite::SqliteDb;
 pub use store::GraphStore;
 
 use std::path::Path;
@@ -47,6 +47,9 @@ impl StoreHost {
     pub fn open(project_root: &Path) -> Result<Self, String> {
         let store = GraphStore::open(project_root)?;
         let timeline_conn = SqliteDb::open_aux_connection(store.db.path())?;
-        Ok(Self { store, timeline_conn })
+        Ok(Self {
+            store,
+            timeline_conn,
+        })
     }
 }

@@ -38,7 +38,11 @@ pub fn synthesize_dynamic_edges(
     for p in discovered_files {
         let s = p.to_string_lossy();
         let lower = s.to_lowercase();
-        if lower.ends_with(".js") || lower.ends_with(".ts") || lower.ends_with(".tsx") || lower.ends_with(".py") {
+        if lower.ends_with(".js")
+            || lower.ends_with(".ts")
+            || lower.ends_with(".tsx")
+            || lower.ends_with(".py")
+        {
             files.insert(s.replace('\\', "/"));
         }
     }
@@ -80,7 +84,12 @@ pub fn synthesize_dynamic_edges(
 // ═══════════════════════════════════════════════════════════════
 
 /// 遍历缓存的树（来自 Step 1）— 无需重新解析。
-fn synthesize_js_from_tree(graph: &mut Graph, file: &str, tree: &tree_sitter::Tree, source: &str) -> usize {
+fn synthesize_js_from_tree(
+    graph: &mut Graph,
+    file: &str,
+    tree: &tree_sitter::Tree,
+    source: &str,
+) -> usize {
     walk_js_ts_tree(graph, file, tree, source)
 }
 
@@ -88,7 +97,10 @@ fn synthesize_js_from_tree(graph: &mut Graph, file: &str, tree: &tree_sitter::Tr
 fn synthesize_js_fallback(graph: &mut Graph, file: &str, source: &str) -> usize {
     let is_ts = file.ends_with(".ts") || file.ends_with(".tsx");
     let ext = if is_ts { "ts" } else { "js" };
-    let lang = match GRAMMAR_LOADER.get(ext) { Some(l) => l, None => return 0 };
+    let lang = match GRAMMAR_LOADER.get(ext) {
+        Some(l) => l,
+        None => return 0,
+    };
     let mut parser = tree_sitter::Parser::new();
     if parser.set_language(&lang).is_err() {
         return 0;
@@ -106,8 +118,17 @@ fn walk_js_ts_tree(graph: &mut Graph, file: &str, tree: &tree_sitter::Tree, sour
 
     // 已知的回调注册方法名
     let callback_methods: HashSet<&str> = [
-        "addEventListener", "on", "once", "then", "catch", "finally",
-        "subscribe", "use", "listen", "observe", "watch",
+        "addEventListener",
+        "on",
+        "once",
+        "then",
+        "catch",
+        "finally",
+        "subscribe",
+        "use",
+        "listen",
+        "observe",
+        "watch",
     ]
     .iter()
     .cloned()
@@ -119,7 +140,9 @@ fn walk_js_ts_tree(graph: &mut Graph, file: &str, tree: &tree_sitter::Tree, sour
 
     while let Some(node) = stack.pop() {
         if node.kind() == "call_expression" {
-            if let Some((callback_ref, line)) = extract_js_callback(&node, source, &callback_methods) {
+            if let Some((callback_ref, line)) =
+                extract_js_callback(&node, source, &callback_methods)
+            {
                 // 查找包含该调用的函数
                 let parent_func = find_containing_function(&node, source);
                 if let Some(src_name) = parent_func {
@@ -127,7 +150,12 @@ fn walk_js_ts_tree(graph: &mut Graph, file: &str, tree: &tree_sitter::Tree, sour
                     let src_id = find_or_create_node(graph, &src_name, file, line);
                     let tgt_id = find_or_create_node(graph, &callback_ref, file, line);
 
-                    let edge_id = format!("syn_{}_{}_{}", file.replace(['.', '/', '\\'], "_"), added, line);
+                    let edge_id = format!(
+                        "syn_{}_{}_{}",
+                        file.replace(['.', '/', '\\'], "_"),
+                        added,
+                        line
+                    );
                     if graph.get_edge(&edge_id).is_none() {
                         let edge = Edge {
                             id: edge_id.into(),
@@ -166,12 +194,13 @@ fn extract_js_callback(
     methods: &HashSet<&str>,
 ) -> Option<(String, usize)> {
     // 查找被调用函数（member_expression：obj.method）
-    let func = call.child_by_field_name("function")
-        .or_else(|| {
-            let mut cc = call.walk();
-            let children: Vec<_> = call.children(&mut cc).collect();
-            children.into_iter().find(|c| c.kind() == "member_expression")
-        })?;
+    let func = call.child_by_field_name("function").or_else(|| {
+        let mut cc = call.walk();
+        let children: Vec<_> = call.children(&mut cc).collect();
+        children
+            .into_iter()
+            .find(|c| c.kind() == "member_expression")
+    })?;
 
     if func.kind() != "member_expression" {
         return None;
@@ -180,7 +209,9 @@ fn extract_js_callback(
     let mut mc = func.walk();
     let func_children: Vec<_> = func.children(&mut mc).collect();
 
-    let prop_name = func_children.iter().rfind(|c| c.kind() == "property_identifier")
+    let prop_name = func_children
+        .iter()
+        .rfind(|c| c.kind() == "property_identifier")
         .map(|c| c.utf8_text(source.as_bytes()).unwrap_or("").to_string())?;
 
     if !methods.contains(prop_name.as_str()) {
@@ -188,12 +219,11 @@ fn extract_js_callback(
     }
 
     // 获取参数 — 第一个非字符串参数即为回调
-    let args = call.child_by_field_name("arguments")
-        .or_else(|| {
-            let mut cc = call.walk();
-            let children: Vec<_> = call.children(&mut cc).collect();
-            children.into_iter().find(|c| c.kind() == "arguments")
-        })?;
+    let args = call.child_by_field_name("arguments").or_else(|| {
+        let mut cc = call.walk();
+        let children: Vec<_> = call.children(&mut cc).collect();
+        children.into_iter().find(|c| c.kind() == "arguments")
+    })?;
 
     let mut ac = args.walk();
     for arg in args.children(&mut ac) {
@@ -227,10 +257,17 @@ fn find_containing_function(node: &tree_sitter::Node, source: &str) -> Option<St
     let mut cur = node.parent();
     while let Some(p) = cur {
         match p.kind() {
-            "function_declaration" | "function_expression" | "method_definition"
+            "function_declaration"
+            | "function_expression"
+            | "method_definition"
             | "arrow_function" => {
                 if let Some(name_node) = p.child_by_field_name("name") {
-                    return Some(name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string());
+                    return Some(
+                        name_node
+                            .utf8_text(source.as_bytes())
+                            .unwrap_or("")
+                            .to_string(),
+                    );
                 }
                 // 匿名 — 使用父级上下文
                 if p.kind() == "arrow_function" {
@@ -251,14 +288,22 @@ fn find_containing_function(node: &tree_sitter::Node, source: &str) -> Option<St
 // ═══════════════════════════════════════════════════════════════
 
 /// 遍历缓存的树（来自 Step 1）— 无需重新解析。
-fn synthesize_py_from_tree(graph: &mut Graph, file: &str, tree: &tree_sitter::Tree, source: &str) -> usize {
+fn synthesize_py_from_tree(
+    graph: &mut Graph,
+    file: &str,
+    tree: &tree_sitter::Tree,
+    source: &str,
+) -> usize {
     walk_py_dispatch_tree(graph, file, tree, source)
 }
 
 /// 回退：对不在解析缓存中的文件从源码解析。
 fn synthesize_py_fallback(graph: &mut Graph, file: &str, source: &str) -> usize {
     let mut parser = tree_sitter::Parser::new();
-    let lang = match GRAMMAR_LOADER.get("py") { Some(l) => l, None => return 0 };
+    let lang = match GRAMMAR_LOADER.get("py") {
+        Some(l) => l,
+        None => return 0,
+    };
     if parser.set_language(&lang).is_err() {
         return 0;
     }
@@ -270,13 +315,25 @@ fn synthesize_py_fallback(graph: &mut Graph, file: &str, source: &str) -> usize 
 }
 
 /// 共享的树遍历器 — 缓存和回退路径共用。
-fn walk_py_dispatch_tree(graph: &mut Graph, file: &str, tree: &tree_sitter::Tree, source: &str) -> usize {
+fn walk_py_dispatch_tree(
+    graph: &mut Graph,
+    file: &str,
+    tree: &tree_sitter::Tree,
+    source: &str,
+) -> usize {
     let mut added = 0usize;
 
     // 已知的 Python 回调注册方法名
     let callback_methods: HashSet<&str> = [
-        "subscribe", "add_callback", "register", "on", "add_listener",
-        "connect", "add_handler", "observe", "watch",
+        "subscribe",
+        "add_callback",
+        "register",
+        "on",
+        "add_listener",
+        "connect",
+        "add_handler",
+        "observe",
+        "watch",
     ]
     .iter()
     .cloned()
@@ -288,13 +345,20 @@ fn walk_py_dispatch_tree(graph: &mut Graph, file: &str, tree: &tree_sitter::Tree
 
     while let Some(node) = stack.pop() {
         if node.kind() == "call" {
-            if let Some((callback_ref, line)) = extract_py_callback(&node, source, &callback_methods) {
+            if let Some((callback_ref, line)) =
+                extract_py_callback(&node, source, &callback_methods)
+            {
                 let parent_func = find_containing_py_function(&node, source);
                 if let Some(src_name) = parent_func {
                     let src_id = find_or_create_node(graph, &src_name, file, line);
                     let tgt_id = find_or_create_node(graph, &callback_ref, file, line);
 
-                    let edge_id = format!("syn_{}_{}_{}", file.replace(['.', '/', '\\'], "_"), added, line);
+                    let edge_id = format!(
+                        "syn_{}_{}_{}",
+                        file.replace(['.', '/', '\\'], "_"),
+                        added,
+                        line
+                    );
                     if graph.get_edge(&edge_id).is_none() {
                         let edge = Edge {
                             id: edge_id.into(),
@@ -336,7 +400,8 @@ fn extract_py_callback(
     if let Some(func) = call.child_by_field_name("function") {
         if func.kind() == "attribute" {
             let mut ac = func.walk();
-            let method = func.children(&mut ac)
+            let method = func
+                .children(&mut ac)
                 .filter(|c| c.kind() == "identifier")
                 .last()
                 .map(|c| c.utf8_text(source.as_bytes()).unwrap_or("").to_string())?;
@@ -374,7 +439,12 @@ fn find_containing_py_function(node: &tree_sitter::Node, source: &str) -> Option
         match p.kind() {
             "function_definition" | "async_function_definition" => {
                 if let Some(name_node) = p.child_by_field_name("name") {
-                    return Some(name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string());
+                    return Some(
+                        name_node
+                            .utf8_text(source.as_bytes())
+                            .unwrap_or("")
+                            .to_string(),
+                    );
                 }
                 let line = p.start_position().row + 1;
                 return Some(format!("<fn@{}>", line));
@@ -402,7 +472,8 @@ fn find_or_create_node(graph: &mut Graph, name: &str, file: &str, line: usize) -
     let node_id = format!("dyn_{}_{}", file.replace(['.', '/', '\\'], "_"), name);
     let mut node = Node::new(&node_id, name, NodeKind::Symbol);
     node.location = Some(format!("{}:{}", file, line));
-    node.properties = serde_json::json!({"kind": "synthesized_target", "provenance": "dynamic_dispatch"});
+    node.properties =
+        serde_json::json!({"kind": "synthesized_target", "provenance": "dynamic_dispatch"});
     graph.add_node(node);
     node_id
 }
@@ -425,7 +496,10 @@ function setup() {
 }
 "#;
         let added = synthesize_js_fallback(&mut g, "app.js", source);
-        assert!(added >= 1, "Should create synthesized edge for addEventListener callback");
+        assert!(
+            added >= 1,
+            "Should create synthesized edge for addEventListener callback"
+        );
     }
 
     #[test]

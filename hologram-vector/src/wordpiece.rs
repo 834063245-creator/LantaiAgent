@@ -33,13 +33,22 @@ impl WordPieceTokenizer {
             }
         }
         if vocab.len() < 30000 {
-            return Err(format!("vocab.txt 词条数异常: {} ({} )", vocab.len(), path.display()));
+            return Err(format!(
+                "vocab.txt 词条数异常: {} ({} )",
+                vocab.len(),
+                path.display()
+            ));
         }
         let cls_id = *vocab.get("[CLS]").unwrap_or(&101);
         let sep_id = *vocab.get("[SEP]").unwrap_or(&102);
         let unk_id = *vocab.get("[UNK]").unwrap_or(&100);
         tracing::info!("[vector] WordPiece 词表已加载: {} 词", vocab.len());
-        Ok(Self { vocab, cls_id, sep_id, unk_id })
+        Ok(Self {
+            vocab,
+            cls_id,
+            sep_id,
+            unk_id,
+        })
     }
 
     /// 编码为 (input_ids, attention_mask, token_type_ids)，含 [CLS]/[SEP]，
@@ -48,7 +57,9 @@ impl WordPieceTokenizer {
         let mut ids = Vec::with_capacity(64);
         ids.push(self.cls_id);
         for word in basic_tokenize(text) {
-            if ids.len() >= MAX_SEQ_LEN - 1 { break; }
+            if ids.len() >= MAX_SEQ_LEN - 1 {
+                break;
+            }
             self.wordpiece(&word, &mut ids);
         }
         ids.push(self.sep_id);
@@ -60,7 +71,10 @@ impl WordPieceTokenizer {
     /// 单词 → WordPiece 子词序列（贪心最长匹配）。失败整词 → [UNK]。
     fn wordpiece(&self, word: &str, out: &mut Vec<i64>) {
         let chars: Vec<char> = word.chars().collect();
-        if chars.len() > 100 { out.push(self.unk_id); return; }
+        if chars.len() > 100 {
+            out.push(self.unk_id);
+            return;
+        }
         let mut start = 0usize;
         while start < chars.len() {
             let mut end = chars.len();
@@ -81,13 +95,17 @@ impl WordPieceTokenizer {
             }
             match matched {
                 Some(id) => {
-                    if out.len() >= MAX_SEQ_LEN - 1 { return; }
+                    if out.len() >= MAX_SEQ_LEN - 1 {
+                        return;
+                    }
                     out.push(id);
                     start = end;
                 }
                 None => {
                     // 整词无法切分 → 单个 [UNK]，终止该词
-                    if out.len() < MAX_SEQ_LEN - 1 { out.push(self.unk_id); }
+                    if out.len() < MAX_SEQ_LEN - 1 {
+                        out.push(self.unk_id);
+                    }
                     return;
                 }
             }
@@ -106,15 +124,21 @@ fn basic_tokenize(text: &str) -> Vec<String> {
             || (0x3040..=0x30FF).contains(&code)
             || (0xF900..=0xFAFF).contains(&code);
         if is_cjk {
-            if !current.is_empty() { words.push(std::mem::take(&mut current)); }
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
             words.push(ch.to_string());
         } else if ch.is_whitespace() || is_punctuation(code) {
-            if !current.is_empty() { words.push(std::mem::take(&mut current)); }
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
         } else {
             current.push(ch);
         }
     }
-    if !current.is_empty() { words.push(current); }
+    if !current.is_empty() {
+        words.push(current);
+    }
     words
 }
 
@@ -132,7 +156,9 @@ mod tests {
     fn test_tokenizer() -> WordPieceTokenizer {
         // 真实词表（30522 词）
         let path = Path::new("../engine/models/all-MiniLM-L6-v2/vocab.txt");
-        if !path.exists() { panic!("vocab.txt 缺失: {}", path.display()); }
+        if !path.exists() {
+            panic!("vocab.txt 缺失: {}", path.display());
+        }
         WordPieceTokenizer::from_file(path).unwrap()
     }
 

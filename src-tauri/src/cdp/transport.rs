@@ -35,7 +35,8 @@ pub(super) fn http_new_tab(port: u16, url: &str) -> Result<Value, String> {
     let text = body
         .read_to_string()
         .map_err(|e| err(codes::NETWORK, format!("CDP /json/new 读取失败: {e}")))?;
-    serde_json::from_str(&text).map_err(|e| err(codes::INTERNAL, format!("CDP /json/new 解析失败: {e}")))
+    serde_json::from_str(&text)
+        .map_err(|e| err(codes::INTERNAL, format!("CDP /json/new 解析失败: {e}")))
 }
 
 /// Chrome 调试 HTTP 端点：/json/close/{targetId}，返回纯文本（非 JSON）。
@@ -75,7 +76,8 @@ pub(super) fn list_targets_raw(port: u16) -> Result<Value, String> {
     let text = body
         .read_to_string()
         .map_err(|e| err(codes::NETWORK, format!("CDP /json 读取失败: {e}")))?;
-    serde_json::from_str(&text).map_err(|e| err(codes::INTERNAL, format!("CDP /json 解析失败: {e}")))
+    serde_json::from_str(&text)
+        .map_err(|e| err(codes::INTERNAL, format!("CDP /json 解析失败: {e}")))
 }
 
 /// 通过 CDP WebSocket 发送一条命令，返回响应 JSON（含 result）。
@@ -92,7 +94,12 @@ pub(super) async fn ws_command(
             .iter()
             .find(|t| t["id"].as_str() == Some(target_id))
             .and_then(|t| t["webSocketDebuggerUrl"].as_str().map(String::from))
-            .ok_or_else(|| err(codes::TARGET_GONE, format!("target {target_id} 已消失（页面可能被关闭）")))?;
+            .ok_or_else(|| {
+                err(
+                    codes::TARGET_GONE,
+                    format!("target {target_id} 已消失（页面可能被关闭）"),
+                )
+            })?;
 
         let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
             .await
@@ -136,9 +143,12 @@ pub(super) async fn ws_command(
             }
         }
     };
-    tokio::time::timeout(WS_TIMEOUT, fut)
-        .await
-        .map_err(|_| err(codes::TIMEOUT, format!("CDP {method} 超时（{WS_TIMEOUT:?} 无响应）——页面主线程可能卡死")))?
+    tokio::time::timeout(WS_TIMEOUT, fut).await.map_err(|_| {
+        err(
+            codes::TIMEOUT,
+            format!("CDP {method} 超时（{WS_TIMEOUT:?} 无响应）——页面主线程可能卡死"),
+        )
+    })?
 }
 
 /// 在一条 WS 连接上顺序执行命令：后一条命令的参数可以引用前一条的结果。
@@ -164,7 +174,12 @@ pub(super) async fn ws_command_seq(
             .iter()
             .find(|t| t["id"].as_str() == Some(target_id))
             .and_then(|t| t["webSocketDebuggerUrl"].as_str().map(String::from))
-            .ok_or_else(|| err(codes::TARGET_GONE, format!("target {target_id} 已消失（页面可能被关闭）")))?;
+            .ok_or_else(|| {
+                err(
+                    codes::TARGET_GONE,
+                    format!("target {target_id} 已消失（页面可能被关闭）"),
+                )
+            })?;
 
         let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
             .await
@@ -195,7 +210,10 @@ pub(super) async fn ws_command_seq(
                                     .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("unknown");
-                                return Err(err(codes::INTERNAL, format!("CDP {method} 错误: {msg2}")));
+                                return Err(err(
+                                    codes::INTERNAL,
+                                    format!("CDP {method} 错误: {msg2}"),
+                                ));
                             }
                             prev = v.clone();
                             results.push(v);
@@ -209,7 +227,10 @@ pub(super) async fn ws_command_seq(
         let _ = ws.close(None).await;
         Ok::<Vec<Value>, String>(results)
     };
-    tokio::time::timeout(WS_TIMEOUT, fut)
-        .await
-        .map_err(|_| err(codes::TIMEOUT, "CDP 顺序命令超时——页面主线程可能卡死".to_string()))?
+    tokio::time::timeout(WS_TIMEOUT, fut).await.map_err(|_| {
+        err(
+            codes::TIMEOUT,
+            "CDP 顺序命令超时——页面主线程可能卡死".to_string(),
+        )
+    })?
 }

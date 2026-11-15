@@ -65,7 +65,9 @@ fn arg_str(args: &Value, key: &str) -> Option<String> {
 
 fn arg_strs(args: &Value, key: &str) -> Option<Vec<String>> {
     args.get(key).and_then(|v| v.as_array()).map(|arr| {
-        arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>()
+        arr.iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect::<Vec<String>>()
     })
 }
 
@@ -98,23 +100,29 @@ async fn browser_launch(gate: &BrowserGate<'_>, args: &Value) -> Result<String, 
         .get("window_size")
         .and_then(|v| v.as_object())
         .map(|o| {
-            let w = o.get("width").and_then(|v| v.as_u64()).ok_or_else(|| {
-                "browser_launch: windowSize.width 必须是正整数".to_string()
-            })?;
-            let h = o.get("height").and_then(|v| v.as_u64()).ok_or_else(|| {
-                "browser_launch: windowSize.height 必须是正整数".to_string()
-            })?;
-            let w = u32::try_from(w).map_err(|_| {
-                "browser_launch: windowSize.width 必须在 1-16384 之间".to_string()
-            })?;
-            let h = u32::try_from(h).map_err(|_| {
-                "browser_launch: windowSize.height 必须在 1-16384 之间".to_string()
-            })?;
+            let w = o
+                .get("width")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| "browser_launch: windowSize.width 必须是正整数".to_string())?;
+            let h = o
+                .get("height")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| "browser_launch: windowSize.height 必须是正整数".to_string())?;
+            let w = u32::try_from(w)
+                .map_err(|_| "browser_launch: windowSize.width 必须在 1-16384 之间".to_string())?;
+            let h = u32::try_from(h)
+                .map_err(|_| "browser_launch: windowSize.height 必须在 1-16384 之间".to_string())?;
             Ok::<(u32, u32), String>((w, h))
         })
         .transpose()?;
     crate::cdp::cdp_launch(
-        url, port, headless, window_size, profile, proxy, proxy_bypass,
+        url,
+        port,
+        headless,
+        window_size,
+        profile,
+        proxy,
+        proxy_bypass,
         agent_id.as_deref(),
     )
     .await
@@ -150,21 +158,14 @@ async fn browser_switch_session(gate: &BrowserGate<'_>, args: &Value) -> Result<
 async fn browser_cookies(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = self_or_agent(gate, args);
     if crate::cdp::is_self(agent_id.as_deref()) {
-        return Err(
-            "browser_cookies: self 会话只读，不暴露/修改自家 webview cookie".into(),
-        );
+        return Err("browser_cookies: self 会话只读，不暴露/修改自家 webview cookie".into());
     }
-    let action = arg_str(args, "op")
-        .ok_or_else(|| "browser_cookies: missing 'op'".to_string())?;
+    let action = arg_str(args, "op").ok_or_else(|| "browser_cookies: missing 'op'".to_string())?;
     let perm = match action.as_str() {
         "list" => "cookies_list",
         "set" => "cookies_set",
         "delete" => "cookies_delete",
-        _ => {
-            return Err(
-                "browser_cookies: action 只支持 list/set/delete".into(),
-            )
-        }
+        _ => return Err("browser_cookies: action 只支持 list/set/delete".into()),
     };
     gate.check(perm, agent_id.as_deref()).await?;
     let urls = arg_strs(args, "urls");
@@ -178,8 +179,18 @@ async fn browser_cookies(gate: &BrowserGate<'_>, args: &Value) -> Result<String,
     let same_site = arg_str(args, "same_site");
     let expires = args.get("expires").and_then(|v| v.as_f64());
     crate::cdp::cdp_cookies(
-        &action, urls, url, name, value, domain, path, http_only, secure, same_site,
-        expires, agent_id.as_deref(),
+        &action,
+        urls,
+        url,
+        name,
+        value,
+        domain,
+        path,
+        http_only,
+        secure,
+        same_site,
+        expires,
+        agent_id.as_deref(),
     )
     .await
 }
@@ -216,9 +227,11 @@ async fn browser_inspect(gate: &BrowserGate<'_>, args: &Value) -> Result<String,
     let selector = arg_str(args, "selector")
         .ok_or_else(|| "browser_inspect: missing 'selector'".to_string())?;
     let props = arg_strs(args, "props");
-    let max_results = args.get("max_results").and_then(|v| v.as_u64()).map(|n| n as usize);
-    crate::cdp::cdp_inspect(&selector, props, max_results, agent_id.as_deref())
-        .await
+    let max_results = args
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
+    crate::cdp::cdp_inspect(&selector, props, max_results, agent_id.as_deref()).await
 }
 
 async fn browser_report(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
@@ -232,8 +245,14 @@ async fn browser_snapshot(gate: &BrowserGate<'_>, args: &Value) -> Result<String
     let agent_id = self_or_agent(gate, args);
     gate.check("snapshot", agent_id.as_deref()).await?;
     let scope = arg_str(args, "scope");
-    let max_results = args.get("max_results").and_then(|v| v.as_u64()).map(|n| n as usize);
-    let offset = args.get("offset").and_then(|v| v.as_u64()).map(|n| n as usize);
+    let max_results = args
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
+    let offset = args
+        .get("offset")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
     crate::cdp::cdp_snapshot(scope, max_results, offset, agent_id.as_deref()).await
 }
 
@@ -242,22 +261,34 @@ async fn browser_content(gate: &BrowserGate<'_>, args: &Value) -> Result<String,
     gate.check("content", agent_id.as_deref()).await?;
     let scope = arg_str(args, "scope");
     let format = arg_str(args, "format");
-    let max_chars = args.get("max_chars").and_then(|v| v.as_u64()).map(|n| n as usize);
-    let offset = args.get("offset").and_then(|v| v.as_u64()).map(|n| n as usize);
+    let max_chars = args
+        .get("max_chars")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
+    let offset = args
+        .get("offset")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
     crate::cdp::cdp_content(scope, format, max_chars, offset, agent_id.as_deref()).await
 }
 
 async fn browser_console(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = self_or_agent(gate, args);
     gate.check("console", agent_id.as_deref()).await?;
-    let limit = args.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize);
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
     Ok(crate::cdp::cdp_console(agent_id.as_deref(), limit))
 }
 
 async fn browser_network(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = self_or_agent(gate, args);
     gate.check("network", agent_id.as_deref()).await?;
-    let limit = args.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize);
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
     Ok(crate::cdp::cdp_network(agent_id.as_deref(), limit))
 }
 
@@ -272,14 +303,20 @@ async fn browser_network_detail(gate: &BrowserGate<'_>, args: &Value) -> Result<
 async fn browser_network_har(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = self_or_agent(gate, args);
     gate.check("network_har", agent_id.as_deref()).await?;
-    let limit = args.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize);
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
     crate::cdp::cdp_network_har(agent_id.as_deref(), limit)
 }
 
 async fn browser_screenshot(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = self_or_agent(gate, args);
     gate.check("screenshot", agent_id.as_deref()).await?;
-    let full_page = args.get("full_page").and_then(|v| v.as_bool()).unwrap_or(false);
+    let full_page = args
+        .get("full_page")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let out = crate::cdp::cdp_screenshot(full_page, agent_id.as_deref()).await?;
     // 工具附图通道 P0a（docs/plans/tool-image-context-plan.md）：把截图转存成工作区
     // 内容寻址附件，并在输出里附 image 引用 —— 模型侧 parseToolImageOutput 据此把图
@@ -365,31 +402,41 @@ fn png_dim(bytes: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_be_bytes(buf))
 }
 
-
 async fn browser_viewport(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = self_or_agent(gate, args);
     if crate::cdp::is_self(agent_id.as_deref()) {
         return Err("browser_viewport: self 会话只读，不能操作自家 webview".into());
     }
     gate.check("viewport", agent_id.as_deref()).await?;
-    let width = args.get("width")
+    let width = args
+        .get("width")
         .and_then(|v| v.as_u64())
         .and_then(|n| u32::try_from(n).ok())
         .ok_or_else(|| "browser_viewport: missing or invalid 'width'".to_string())?;
-    let height = args.get("height")
+    let height = args
+        .get("height")
         .and_then(|v| v.as_u64())
         .and_then(|n| u32::try_from(n).ok())
         .ok_or_else(|| "browser_viewport: missing or invalid 'height'".to_string())?;
     let device_scale_factor = args.get("device_scale_factor").and_then(|v| v.as_f64());
     let mobile = args.get("mobile").and_then(|v| v.as_bool());
-    crate::cdp::cdp_set_viewport(width, height, device_scale_factor, mobile, agent_id.as_deref())
-        .await
+    crate::cdp::cdp_set_viewport(
+        width,
+        height,
+        device_scale_factor,
+        mobile,
+        agent_id.as_deref(),
+    )
+    .await
 }
 
 async fn browser_audit(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
     gate.check("audit", None).await?;
     let agent = arg_str(args, "agent");
-    let limit = args.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize);
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize);
     Ok(crate::cdp::cdp_audit(agent.as_deref(), limit))
 }
 
@@ -398,8 +445,8 @@ async fn browser_click(gate: &BrowserGate<'_>, args: &Value) -> Result<String, S
     if crate::cdp::is_self(agent_id.as_deref()) {
         return Err("browser_click: self 会话只读，不能操作自家 webview".into());
     }
-    let selector = arg_str(args, "selector")
-        .ok_or_else(|| "browser_click: missing 'selector'".to_string())?;
+    let selector =
+        arg_str(args, "selector").ok_or_else(|| "browser_click: missing 'selector'".to_string())?;
     gate.check("click", agent_id.as_deref()).await?;
     // 敏感目标（提交按钮/下载/中英文高危文本）→ 每次单独 Ask（ADR 0003 D6 L3）
     if crate::cdp::check_sensitive(&selector, "click", agent_id.as_deref()).await {
@@ -413,11 +460,13 @@ async fn browser_type(gate: &BrowserGate<'_>, args: &Value) -> Result<String, St
     if crate::cdp::is_self(agent_id.as_deref()) {
         return Err("browser_type: self 会话只读，不能操作自家 webview".into());
     }
-    let selector = arg_str(args, "selector")
-        .ok_or_else(|| "browser_type: missing 'selector'".to_string())?;
-    let text_v = arg_str(args, "text")
-        .ok_or_else(|| "browser_type: missing 'text'".to_string())?;
-    let replace = args.get("replace").and_then(|v| v.as_bool()).unwrap_or(false);
+    let selector =
+        arg_str(args, "selector").ok_or_else(|| "browser_type: missing 'selector'".to_string())?;
+    let text_v = arg_str(args, "text").ok_or_else(|| "browser_type: missing 'text'".to_string())?;
+    let replace = args
+        .get("replace")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     gate.check("type", agent_id.as_deref()).await?;
     // 敏感目标（已填值输入框/密码框）→ 每次单独 Ask（ADR 0003 D6 L3）
     if crate::cdp::check_sensitive(&selector, "type", agent_id.as_deref()).await {
@@ -431,8 +480,7 @@ async fn browser_press(gate: &BrowserGate<'_>, args: &Value) -> Result<String, S
     if crate::cdp::is_self(agent_id.as_deref()) {
         return Err("browser_press: self 会话只读，不能操作自家 webview".into());
     }
-    let key = arg_str(args, "key")
-        .ok_or_else(|| "browser_press: missing 'key'".to_string())?;
+    let key = arg_str(args, "key").ok_or_else(|| "browser_press: missing 'key'".to_string())?;
     let modifiers = arg_strs(args, "modifiers");
     gate.check("press", agent_id.as_deref()).await?;
     crate::cdp::cdp_press(&key, modifiers, agent_id.as_deref()).await
@@ -443,8 +491,8 @@ async fn browser_hover(gate: &BrowserGate<'_>, args: &Value) -> Result<String, S
     if crate::cdp::is_self(agent_id.as_deref()) {
         return Err("browser_hover: self 会话只读，不能操作自家 webview".into());
     }
-    let selector = arg_str(args, "selector")
-        .ok_or_else(|| "browser_hover: missing 'selector'".to_string())?;
+    let selector =
+        arg_str(args, "selector").ok_or_else(|| "browser_hover: missing 'selector'".to_string())?;
     gate.check("hover", agent_id.as_deref()).await?;
     crate::cdp::cdp_hover(&selector, agent_id.as_deref()).await
 }
@@ -462,7 +510,10 @@ async fn browser_dialog(gate: &BrowserGate<'_>, args: &Value) -> Result<String, 
     } else {
         // 只查询 pending/最近 dialog；self 通道也可用。
         gate.check("dialog_query", agent_id.as_deref()).await?;
-        let limit = args.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize);
+        let limit = args
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize);
         Ok(crate::cdp::cdp_dialogs(agent_id.as_deref(), limit))
     }
 }
@@ -473,8 +524,8 @@ async fn browser_upload(gate: &BrowserGate<'_>, args: &Value) -> Result<String, 
         return Err("browser_upload: self 会话只读，不能操作自家 webview".into());
     }
     let selector = arg_str(args, "selector");
-    let files = arg_strs(args, "files")
-        .ok_or_else(|| "browser_upload: missing 'files'".to_string())?;
+    let files =
+        arg_strs(args, "files").ok_or_else(|| "browser_upload: missing 'files'".to_string())?;
     gate.check("upload", agent_id.as_deref()).await?;
     crate::cdp::cdp_upload(selector, files, agent_id.as_deref()).await
 }
@@ -516,8 +567,7 @@ async fn browser_navigate(gate: &BrowserGate<'_>, args: &Value) -> Result<String
     if crate::cdp::is_self(agent_id.as_deref()) {
         return Err("browser_navigate: self 会话只读，不能操作自家 webview".into());
     }
-    let url = arg_str(args, "url")
-        .ok_or_else(|| "browser_navigate: missing 'url'".to_string())?;
+    let url = arg_str(args, "url").ok_or_else(|| "browser_navigate: missing 'url'".to_string())?;
     gate.check("navigate", agent_id.as_deref()).await?;
     crate::cdp::cdp_navigate(&url, agent_id.as_deref()).await
 }
@@ -556,8 +606,8 @@ async fn browser_select(gate: &BrowserGate<'_>, args: &Value) -> Result<String, 
     }
     let selector = arg_str(args, "selector")
         .ok_or_else(|| "browser_select: missing 'selector'".to_string())?;
-    let value = arg_str(args, "value")
-        .ok_or_else(|| "browser_select: missing 'value'".to_string())?;
+    let value =
+        arg_str(args, "value").ok_or_else(|| "browser_select: missing 'value'".to_string())?;
     gate.check("select", agent_id.as_deref()).await?;
     crate::cdp::cdp_select(&selector, &value, agent_id.as_deref()).await
 }
@@ -574,8 +624,7 @@ async fn browser_wait(gate: &BrowserGate<'_>, args: &Value) -> Result<String, St
 async fn browser_eval(gate: &BrowserGate<'_>, args: &Value) -> Result<String, String> {
     let agent_id = gate.agent_id.clone();
     gate.check("eval", agent_id.as_deref()).await?;
-    let expr = arg_str(args, "expr")
-        .ok_or_else(|| "browser_eval: missing 'expr'".to_string())?;
+    let expr = arg_str(args, "expr").ok_or_else(|| "browser_eval: missing 'expr'".to_string())?;
     crate::cdp::cdp_eval(&expr, agent_id.as_deref()).await
 }
 
@@ -589,7 +638,11 @@ async fn browser_status(gate: &BrowserGate<'_>, args: &Value) -> Result<String, 
 // 分派与入口
 // ═══════════════════════════════════════════════════════════════
 
-async fn dispatch_action(gate: &BrowserGate<'_>, action: &str, args: &Value) -> Result<String, String> {
+async fn dispatch_action(
+    gate: &BrowserGate<'_>,
+    action: &str,
+    args: &Value,
+) -> Result<String, String> {
     match action {
         "browser_launch" => browser_launch(gate, args).await,
         "browser_connect" => browser_connect(gate, args).await,
@@ -741,7 +794,9 @@ mod tests {
     #[test]
     fn png_dim_rejects_non_png_and_short_input() {
         // 非 PNG（JPEG 头）——不得把任意二进制当图读尺寸
-        let jpeg = vec![0xff, 0xd8, 0xff, 0xe0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let jpeg = vec![
+            0xff, 0xd8, 0xff, 0xe0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
         assert_eq!(super::png_dim(&jpeg, 16), None);
         // 越界读（不足 at+4）
         assert_eq!(super::png_dim(&png_head(1, 1)[..14], 16), None);
@@ -756,7 +811,10 @@ mod tests {
             std::path::Path::new(&dir.join("shot-1.png")).parent(),
             Some(dir.as_path())
         );
-        for bad in ["C:\\Windows\\Temp\\evil.png", "D:\\proj\\.lantai\\attachments\\x.png"] {
+        for bad in [
+            "C:\\Windows\\Temp\\evil.png",
+            "D:\\proj\\.lantai\\attachments\\x.png",
+        ] {
             assert_ne!(std::path::Path::new(bad).parent(), Some(dir.as_path()));
         }
     }

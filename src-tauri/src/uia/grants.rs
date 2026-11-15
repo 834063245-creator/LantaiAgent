@@ -164,7 +164,10 @@ mod tests {
         {
             let mut map = crate::utils::lock_or_recover(&GRANTS);
             let ttl = grant_ttl();
-            map.insert((agent_key(Some(a)), 333), Instant::now() - ttl - Duration::from_secs(1));
+            map.insert(
+                (agent_key(Some(a)), 333),
+                Instant::now() - ttl - Duration::from_secs(1),
+            );
         }
         assert!(!has_grant(Some(a), Some(333)), "过期授权应失效");
     }

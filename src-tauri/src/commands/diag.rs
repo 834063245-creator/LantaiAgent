@@ -55,10 +55,22 @@ struct ChannelSpec {
 }
 
 const CHANNELS: [ChannelSpec; 4] = [
-    ChannelSpec { name: "ui.log", style: TsStyle::JsonTs },
-    ChannelSpec { name: "bridge.log", style: TsStyle::JsonTimestamp },
-    ChannelSpec { name: "boot.log", style: TsStyle::TextPrefix },
-    ChannelSpec { name: "engine.log", style: TsStyle::JsonTimestamp },
+    ChannelSpec {
+        name: "ui.log",
+        style: TsStyle::JsonTs,
+    },
+    ChannelSpec {
+        name: "bridge.log",
+        style: TsStyle::JsonTimestamp,
+    },
+    ChannelSpec {
+        name: "boot.log",
+        style: TsStyle::TextPrefix,
+    },
+    ChannelSpec {
+        name: "engine.log",
+        style: TsStyle::JsonTimestamp,
+    },
 ];
 
 /// 单通道读数。
@@ -116,7 +128,10 @@ pub(crate) fn build_bundle(
 ) -> Result<(PathBuf, u64, Vec<ChannelOut>), String> {
     let logs_dir = workspace.join(".lantai").join("logs");
     if !logs_dir.is_dir() {
-        return Err(format!("诊断包：日志目录不存在（{}）——先在兰台里打开过工作区、写过日志再来导出", logs_dir.display()));
+        return Err(format!(
+            "诊断包：日志目录不存在（{}）——先在兰台里打开过工作区、写过日志再来导出",
+            logs_dir.display()
+        ));
     }
 
     let mut reads: Vec<ChannelRead> = Vec::new();
@@ -137,9 +152,11 @@ pub(crate) fn build_bundle(
     }
 
     let dir = workspace.join(".lantai").join("diag");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("诊断包：创建目录失败 {}: {e}", dir.display()))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("诊断包：创建目录失败 {}: {e}", dir.display()))?;
     let path = dir.join(format!("lantai-diag-{}.txt", now.format("%Y%m%d-%H%M%S")));
-    std::fs::write(&path, out.as_bytes()).map_err(|e| format!("诊断包：写入失败 {}: {e}", path.display()))?;
+    std::fs::write(&path, out.as_bytes())
+        .map_err(|e| format!("诊断包：写入失败 {}: {e}", path.display()))?;
     let size = out.len() as u64;
 
     prune_old(&dir);
@@ -163,14 +180,20 @@ fn read_channel(path: &Path) -> Result<ChannelRead, String> {
     let meta = match std::fs::metadata(path) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(ChannelRead { exists: false, file_size: 0, mtime: None, text: String::new(), truncated: false });
+            return Ok(ChannelRead {
+                exists: false,
+                file_size: 0,
+                mtime: None,
+                text: String::new(),
+                truncated: false,
+            });
         }
         Err(e) => return Err(format!("诊断包：读不到 {} 的元数据：{e}", path.display())),
     };
     let file_size = meta.len();
     let mtime = meta.modified().ok().map(DateTime::<Local>::from);
-    let mut file =
-        std::fs::File::open(path).map_err(|e| format!("诊断包：打开 {} 失败：{e}", path.display()))?;
+    let mut file = std::fs::File::open(path)
+        .map_err(|e| format!("诊断包：打开 {} 失败：{e}", path.display()))?;
     let start = file_size.saturating_sub(PER_FILE_CAP);
     let truncated = start > 0;
     if truncated {
@@ -190,7 +213,13 @@ fn read_channel(path: &Path) -> Result<ChannelRead, String> {
             None => text.clear(),
         }
     }
-    Ok(ChannelRead { exists: true, file_size, mtime, text, truncated })
+    Ok(ChannelRead {
+        exists: true,
+        file_size,
+        mtime,
+        text,
+        truncated,
+    })
 }
 
 /// 扫描一份文本的行时间戳（纯函数）。
@@ -230,7 +259,11 @@ fn scan(text: &str, style: TsStyle) -> Scan {
 fn extract_ts(line: &str, style: TsStyle) -> Option<i64> {
     match style {
         TsStyle::JsonTs | TsStyle::JsonTimestamp => {
-            let key = if style == TsStyle::JsonTs { "ts" } else { "timestamp" };
+            let key = if style == TsStyle::JsonTs {
+                "ts"
+            } else {
+                "timestamp"
+            };
             let v: serde_json::Value = serde_json::from_str(line).ok()?;
             parse_rfc3339_ms(v.get(key)?.as_str()?)
         }
@@ -242,7 +275,9 @@ fn extract_ts(line: &str, style: TsStyle) -> Option<i64> {
 }
 
 fn parse_rfc3339_ms(raw: &str) -> Option<i64> {
-    DateTime::parse_from_rfc3339(raw).ok().map(|dt| dt.timestamp_millis())
+    DateTime::parse_from_rfc3339(raw)
+        .ok()
+        .map(|dt| dt.timestamp_millis())
 }
 
 /// 空档 top3（降序、最多 3 条）。
@@ -264,27 +299,40 @@ fn render_header(
 ) {
     let bar = "=".repeat(72);
     out.push_str(&format!("{bar}\n兰台诊断包 / lantai diag\n{bar}\n\n"));
-    out.push_str(&format!("生成时间：{}\n", now.format("%Y-%m-%d %H:%M:%S %:z")));
+    out.push_str(&format!(
+        "生成时间：{}\n",
+        now.format("%Y-%m-%d %H:%M:%S %:z")
+    ));
     out.push_str(&format!("工作区：{}\n", workspace.display()));
     let boot = last_boot_identity(&reads[0].text);
     match &boot {
         Some(b) => {
             out.push_str(&format!("应用：{} ({})", b.version, b.commit));
             if let Some(lvl) = &b.log_level {
-                out.push_str(&format!(" ［自报：来自日志中的 boot 记录；日志级别 {}（{}）］", lvl, b.level_source.as_deref().unwrap_or("来源未上报")));
+                out.push_str(&format!(
+                    " ［自报：来自日志中的 boot 记录；日志级别 {}（{}）］",
+                    lvl,
+                    b.level_source.as_deref().unwrap_or("来源未上报")
+                ));
             } else {
                 out.push_str(" ［自报：来自日志中的 boot 记录；级别未上报（旧构建）］");
             }
             out.push('\n');
         }
         None => {
-            out.push_str("应用：未能从包内日志中找到 boot 记录（可能在被截掉的部分、或该通道尚无记录）\n");
+            out.push_str(
+                "应用：未能从包内日志中找到 boot 记录（可能在被截掉的部分、或该通道尚无记录）\n",
+            );
         }
     }
 
     out.push_str("\n── 怎么读这份包 ──────────────────────────────────────────\n");
-    out.push_str("读数标签：[实测] = 本次导出时现场测量的客观事实（大小 / 时间 / 行数 / 空档）；\n");
-    out.push_str("          [自报] = 应用运行时自己声明的（版本 / 级别 / 丢条计数——可能过时或有误）。\n\n");
+    out.push_str(
+        "读数标签：[实测] = 本次导出时现场测量的客观事实（大小 / 时间 / 行数 / 空档）；\n",
+    );
+    out.push_str(
+        "          [自报] = 应用运行时自己声明的（版本 / 级别 / 丢条计数——可能过时或有误）。\n\n",
+    );
 
     out.push_str("通道可用性（文件存在吗、多大、最后写入何时）：\n");
     for (i, spec) in channels.iter().enumerate() {
@@ -294,10 +342,15 @@ fn render_header(
                 "  {:<11} {} · 最后写入 {}  [实测]\n",
                 spec.name,
                 fmt_bytes(r.file_size),
-                r.mtime.map(|m| m.format("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_else(|| "未知".to_string()),
+                r.mtime
+                    .map(|m| m.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| "未知".to_string()),
             ));
         } else {
-            out.push_str(&format!("  {:<11} 不存在（该通道从未写过日志）  [实测]\n", spec.name));
+            out.push_str(&format!(
+                "  {:<11} 不存在（该通道从未写过日志）  [实测]\n",
+                spec.name
+            ));
         }
     }
 
@@ -316,7 +369,11 @@ fn render_header(
                 fmt_bytes(r.file_size)
             ));
         } else {
-            out.push_str(&format!("  {:<11} 完整 {} \n", spec.name, fmt_bytes(r.file_size)));
+            out.push_str(&format!(
+                "  {:<11} 完整 {} \n",
+                spec.name,
+                fmt_bytes(r.file_size)
+            ));
         }
         out.push_str(&format!(
             "              {} 行 · 无法解析时间戳 {} 行 · 时间 {} → {}\n",
@@ -354,7 +411,9 @@ fn render_header(
             out.push_str("  ui.log：无 log.self 记录——未报告过丢条（若期间真有写入失败，这里应出现补偿记录）  [自报]\n");
         }
     }
-    out.push_str("  其余通道没有丢条自报告机制——「这些通道有没有丢过」本包回答不了（现状限制）。\n");
+    out.push_str(
+        "  其余通道没有丢条自报告机制——「这些通道有没有丢过」本包回答不了（现状限制）。\n",
+    );
 
     out.push_str("\n断档提示：空档可能只是那段时间没人用应用，未必是日志丢失——判据看空档两端\n");
     out.push_str("附近的记录连续性：前一秒还在写、后一秒跳出几小时，先怀疑丢。\n");
@@ -395,18 +454,33 @@ fn log_self_summary(ui_text: &str) -> Option<LogSelfSummary> {
         if !line.contains("\"log.self\"") {
             continue;
         }
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
         if v.get("event").and_then(|e| e.as_str()) != Some("log.self") {
             continue;
         }
         seen = true;
         s.count += 1;
         let ctx = v.get("ctx");
-        s.dropped += ctx.and_then(|c| c.get("dropped")).and_then(|x| x.as_u64()).unwrap_or(0);
-        s.rotate_failed += ctx.and_then(|c| c.get("rotate_failed")).and_then(|x| x.as_u64()).unwrap_or(0);
-        s.ring_dumped += ctx.and_then(|c| c.get("ring_dumped")).and_then(|x| x.as_u64()).unwrap_or(0);
+        s.dropped += ctx
+            .and_then(|c| c.get("dropped"))
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0);
+        s.rotate_failed += ctx
+            .and_then(|c| c.get("rotate_failed"))
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0);
+        s.ring_dumped += ctx
+            .and_then(|c| c.get("ring_dumped"))
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0);
     }
-    if seen { Some(s) } else { None }
+    if seen {
+        Some(s)
+    } else {
+        None
+    }
 }
 
 /// 包内最后一条 boot 记录的身份面（版本 / commit / 级别 / 级别来源）。
@@ -423,7 +497,9 @@ fn last_boot_identity(ui_text: &str) -> Option<BootIdentity> {
         if !line.contains("\"event\":\"boot\"") {
             continue;
         }
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
         if v.get("event").and_then(|e| e.as_str()) != Some("boot") {
             continue;
         }
@@ -458,7 +534,11 @@ fn fmt_bytes(n: u64) -> String {
 
 fn fmt_ms(ms: i64) -> String {
     DateTime::from_timestamp_millis(ms)
-        .map(|dt| dt.with_timezone(&Local).format("%Y-%m-%d %H:%M:%S").to_string())
+        .map(|dt| {
+            dt.with_timezone(&Local)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        })
         .unwrap_or_else(|| "—".to_string())
 }
 
@@ -481,7 +561,9 @@ fn fmt_duration_ms(ms: i64) -> String {
 /// 清理旧诊断包：按文件名（含时间戳）降序保留最近 `DIAG_KEEP` 份。
 /// 删除失败只记 stderr、不打断导出（导入成功优先于清理完美）。
 fn prune_old(dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut packages: Vec<PathBuf> = entries
         .flatten()
         .map(|e| e.path())
@@ -495,7 +577,10 @@ fn prune_old(dir: &Path) {
     packages.reverse(); // 新的在前（名字 = 时间戳）
     for stale in packages.into_iter().skip(DIAG_KEEP) {
         if let Err(e) = std::fs::remove_file(&stale) {
-            eprintln!("[diag] 旧诊断包清理失败（不影响本次导出）：{}: {e}", stale.display());
+            eprintln!(
+                "[diag] 旧诊断包清理失败（不影响本次导出）：{}: {e}",
+                stale.display()
+            );
         }
     }
 }
@@ -521,7 +606,7 @@ mod tests {
         let text = concat!(
             "{\"ts\":\"2026-10-12T10:00:00Z\",\"event\":\"a\"}\n",
             "{\"ts\":\"2026-10-12T10:00:10Z\",\"event\":\"b\"}\n",
-            "这不是 JSON\n",                                      // unparsed
+            "这不是 JSON\n",                                          // unparsed
             "{\"ts\":\"2026-10-12T09:00:00Z\",\"event\":\"back\"}\n", // 时间回退
             "{\"ts\":\"2026-10-12T14:00:00Z\",\"event\":\"c\"}\n",    // 回退后跳到 14:00
         );
@@ -534,7 +619,10 @@ mod tests {
         assert_eq!(s.over_gap, 1);
         let (from, to) = s.gaps[0];
         assert_eq!(fmt_duration_ms(to - from), "5 小时 0 分");
-        assert_eq!(s.first_ms.map(fmt_ms).unwrap(), fmt_ms(parse_rfc3339_ms("2026-10-12T10:00:00Z").unwrap()));
+        assert_eq!(
+            s.first_ms.map(fmt_ms).unwrap(),
+            fmt_ms(parse_rfc3339_ms("2026-10-12T10:00:00Z").unwrap())
+        );
     }
 
     #[test]
@@ -557,7 +645,10 @@ mod tests {
         let path = dir.join(".lantai").join("logs").join("big.log");
         // 造一个超上限的文件：一行 64 字节 × 超限行数太多不实际——用小样本改测半行丢弃逻辑：
         // 直接手工构造「截断后的缓冲」不可注入，故用真实大于上限的文件（多行）。
-        let line = format!("{{\"ts\":\"2026-10-12T10:00:00Z\",\"pad\":\"{}\"}}\n", "x".repeat(900));
+        let line = format!(
+            "{{\"ts\":\"2026-10-12T10:00:00Z\",\"pad\":\"{}\"}}\n",
+            "x".repeat(900)
+        );
         let mut content = String::new();
         while (content.len() as u64) <= PER_FILE_CAP + 10 {
             content.push_str(&line);
@@ -570,7 +661,10 @@ mod tests {
         assert_eq!(r.file_size, content.len() as u64);
         assert!(r.text.len() as u64 <= PER_FILE_CAP);
         for l in r.text.lines() {
-            assert!(l.starts_with('{') && l.ends_with('}'), "截尾后行必须完整：{l}");
+            assert!(
+                l.starts_with('{') && l.ends_with('}'),
+                "截尾后行必须完整：{l}"
+            );
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -602,18 +696,28 @@ mod tests {
             "{\"timestamp\":\"2026-10-12T10:00:01.000000Z\",\"level\":\"INFO\",\"fields\":{\"message\":\"spawn\"},\"target\":\"lantai::x\"}\n",
         )
         .unwrap();
-        std::fs::write(logs.join("boot.log"), "2026-10-12T09:59:00.000+08:00 [INFO] lantai: boot ok\n").unwrap();
+        std::fs::write(
+            logs.join("boot.log"),
+            "2026-10-12T09:59:00.000+08:00 [INFO] lantai: boot ok\n",
+        )
+        .unwrap();
 
         let (path, size, summary) = build_bundle(&ws, now_fixed()).unwrap();
         assert!(path.exists());
         assert!(size > 0);
         assert_eq!(summary.len(), 4);
         assert_eq!(summary[3].name, "engine.log");
-        assert!(!summary[3].exists, "engine.log 缺席必须是 exists:false（不是错误）");
+        assert!(
+            !summary[3].exists,
+            "engine.log 缺席必须是 exists:false（不是错误）"
+        );
 
         let text = std::fs::read_to_string(&path).unwrap();
         // 判据 ①：丢条可答
-        assert!(text.contains("log.self 记录 1 条——丢条补偿 dropped 合计 7 条"), "{text}");
+        assert!(
+            text.contains("log.self 记录 1 条——丢条补偿 dropped 合计 7 条"),
+            "{text}"
+        );
         // 判据 ②：断档可答（本样本无超 1 小时空档 → 明确写「未超过」）
         assert!(text.contains("最大空档 无（未超过 1 小时）"), "{text}");
         // 来源标签与版本（自报）
@@ -653,9 +757,19 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         names.sort();
-        assert_eq!(names.len(), DIAG_KEEP + 1, "保留 10 份 + other.txt：{names:?}");
+        assert_eq!(
+            names.len(),
+            DIAG_KEEP + 1,
+            "保留 10 份 + other.txt：{names:?}"
+        );
         assert!(names.contains(&"other.txt".to_string()));
-        assert!(names.contains(&"lantai-diag-20261009-000000.txt".to_string()), "最新一份必须在");
-        assert!(!names.contains(&"lantai-diag-20261000-000000.txt".to_string()), "最老一份应被清");
+        assert!(
+            names.contains(&"lantai-diag-20261009-000000.txt".to_string()),
+            "最新一份必须在"
+        );
+        assert!(
+            !names.contains(&"lantai-diag-20261000-000000.txt".to_string()),
+            "最老一份应被清"
+        );
     }
 }

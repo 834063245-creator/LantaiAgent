@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+use super::super::DetectedRoute;
 use crate::engine::GRAMMAR_LOADER;
 use std::collections::HashSet;
-use super::super::DetectedRoute;
 
 pub(crate) fn is_chi_candidate(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -29,7 +29,10 @@ pub(crate) fn detect_chi_routes(file: &str, source: &str) -> Vec<DetectedRoute> 
     let mut result = Vec::new();
 
     let mut parser = tree_sitter::Parser::new();
-    let lang = match GRAMMAR_LOADER.get("go") { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get("go") {
+        Some(l) => l,
+        None => return result,
+    };
     if parser.set_language(&lang).is_err() {
         return result;
     }
@@ -38,12 +41,10 @@ pub(crate) fn detect_chi_routes(file: &str, source: &str) -> Vec<DetectedRoute> 
         None => return result,
     };
 
-    let http_methods: HashSet<&str> = [
-        "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",
-    ]
-    .iter()
-    .cloned()
-    .collect();
+    let http_methods: HashSet<&str> = ["Get", "Post", "Put", "Delete", "Patch", "Head", "Options"]
+        .iter()
+        .cloned()
+        .collect();
 
     let root = tree.root_node();
     let mut cursor = root.walk();
@@ -60,12 +61,14 @@ pub(crate) fn detect_chi_routes(file: &str, source: &str) -> Vec<DetectedRoute> 
                 if func.kind() == "selector_expression" {
                     // selector_expression：r.Get → field "Get"
                     let mut sel_cursor = func.walk();
-                    let method = match func.children(&mut sel_cursor)
+                    let method = match func
+                        .children(&mut sel_cursor)
                         .find(|c| c.kind() == "field_identifier")
-                        .map(|c| c.utf8_text(source.as_bytes()).unwrap_or("").to_string()) {
-                            Some(m) => m,
-                            None => continue,
-                        };
+                        .map(|c| c.utf8_text(source.as_bytes()).unwrap_or("").to_string())
+                    {
+                        Some(m) => m,
+                        None => continue,
+                    };
 
                     if method == "Route" {
                         // r.Route("/api", func(r chi.Router) { ... }) —— 记录
@@ -75,7 +78,11 @@ pub(crate) fn detect_chi_routes(file: &str, source: &str) -> Vec<DetectedRoute> 
                                 let mut c = args.walk();
                                 for ac in args.children(&mut c) {
                                     if ac.kind() == "func_literal" {
-                                        route_scopes.push((ac.start_byte(), ac.end_byte(), prefix.clone()));
+                                        route_scopes.push((
+                                            ac.start_byte(),
+                                            ac.end_byte(),
+                                            prefix.clone(),
+                                        ));
                                     }
                                 }
                             }
@@ -83,7 +90,9 @@ pub(crate) fn detect_chi_routes(file: &str, source: &str) -> Vec<DetectedRoute> 
                     } else if http_methods.contains(method.as_str()) {
                         if let Some(args) = node.child_by_field_name("arguments") {
                             let line = node.start_position().row + 1;
-                            if let Some((m, path, handler)) = extract_chi_route(&args, &method, source) {
+                            if let Some((m, path, handler)) =
+                                extract_chi_route(&args, &method, source)
+                            {
                                 // 包含此调用的最内层记录范围生效。
                                 let mut prefix = String::new();
                                 for (start, end, p) in &route_scopes {
@@ -91,7 +100,13 @@ pub(crate) fn detect_chi_routes(file: &str, source: &str) -> Vec<DetectedRoute> 
                                         prefix = p.clone();
                                     }
                                 }
-                                result.push((m, join_paths(&prefix, &path), handler, file.to_string(), line));
+                                result.push((
+                                    m,
+                                    join_paths(&prefix, &path),
+                                    handler,
+                                    file.to_string(),
+                                    line,
+                                ));
                             }
                         }
                     }

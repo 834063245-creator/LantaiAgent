@@ -35,7 +35,12 @@ pub fn providers_dir(open: bool) -> Result<String, String> {
         Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
         // 无目录段（如 HOLOGRAM_PROVIDERS_FILE 只给了裸文件名）= 配置无落点，
         // 明确报错而不是往当前工作目录里建（不猜、不静默兜底）。
-        _ => return Err(format!("providers_dir: 配置路径无目录段 {}", file.display())),
+        _ => {
+            return Err(format!(
+                "providers_dir: 配置路径无目录段 {}",
+                file.display()
+            ))
+        }
     };
     let path = ensure_providers_dir(&dir)?;
     if open {
@@ -78,7 +83,11 @@ mod tests {
         std::fs::write(&file, content).unwrap();
 
         assert!(ensure_providers_dir(&dir).is_ok());
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), content, "已有配方必须原样在");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            content,
+            "已有配方必须原样在"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

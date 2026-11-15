@@ -9,44 +9,45 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-#[cfg(windows)] use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 mod agent_isolation;
-mod pty_manager;
 mod lsp_manager;
 mod oauth;
+mod pty_manager;
 
-mod permissions;
-mod tools;
-mod sandbox;
-mod audit;
-mod credential;
-mod logging;
-mod boot_log;
-mod integrity;
-pub(crate) mod os_sandbox;
-mod workspace;
-mod ignored_paths;
-mod utils;
-mod commands;
-mod confined_fs;
-mod attachments;
-mod image_probe;
-mod rpc;
 mod app;
-mod lifecycle;
+mod attachments;
+mod audit;
+mod boot_log;
 mod cdp;
-mod window_drag_band;
-mod desktop;
-mod uia;
-mod sensitive;
-mod llm_proxy;
-mod plugin_assets;
-mod engine_assets;
+mod commands;
 mod composition_watcher;
+mod confined_fs;
+mod credential;
+mod desktop;
+mod engine_assets;
+mod ignored_paths;
+mod image_probe;
+mod integrity;
+mod lifecycle;
+mod llm_proxy;
+mod logging;
+pub(crate) mod os_sandbox;
+mod permissions;
+mod plugin_assets;
 mod providers_watcher;
 mod purge;
+mod rpc;
+mod sandbox;
+mod sensitive;
 mod single_instance;
+mod tools;
+mod uia;
+mod utils;
+mod window_drag_band;
+mod workspace;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -56,13 +57,10 @@ use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 // 重新导出 WorkspaceState，使命令可以以 crate::WorkspaceState 引用
 pub(crate) type WorkspaceState = Arc<Mutex<Option<workspace::WorkspaceHandle>>>;
 
-
 /// 返回当前活跃工作区路径（未设置时为空字符串）。
 /// 前端在冷启动时 graph meta.source_root 缺失时用作回退。
 #[tauri::command]
-fn get_active_project(
-    state: tauri::State<'_, WorkspaceState>,
-) -> Result<String, String> {
+fn get_active_project(state: tauri::State<'_, WorkspaceState>) -> Result<String, String> {
     utils::workspace_path(&state)
 }
 
@@ -104,7 +102,8 @@ fn main() {
 
     let workspace_state: WorkspaceState = Arc::new(Mutex::new(None));
     // L1 应用层：按工作区实例化的数据上下文注册表（会话 attach 的家）。
-    let app_contexts: std::sync::Arc<app::AppContexts> = std::sync::Arc::new(app::AppContexts::new());
+    let app_contexts: std::sync::Arc<app::AppContexts> =
+        std::sync::Arc::new(app::AppContexts::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -136,7 +135,9 @@ fn main() {
                 let (tx, rx) = std::sync::mpsc::channel();
                 let app_clone = app.clone();
                 std::thread::spawn(move || {
-                    if let Some(ledger) = app_clone.try_state::<std::sync::Mutex<lifecycle::ResourceLedger>>() {
+                    if let Some(ledger) =
+                        app_clone.try_state::<std::sync::Mutex<lifecycle::ResourceLedger>>()
+                    {
                         let ledger = ledger.lock().unwrap_or_else(|e| e.into_inner());
                         ledger.shutdown_all(std::time::Duration::from_secs(2));
                     }
@@ -152,10 +153,7 @@ fn main() {
             }
             _ => {}
         })
-        .invoke_handler(tauri::generate_handler![
-            rpc::rpc,
-            get_active_project,
-        ])
+        .invoke_handler(tauri::generate_handler![rpc::rpc, get_active_project,])
         .setup(|app| {
             // .hologram → .lantai 数据目录迁移（2026-08-23 改名）：
             // 开发/安装目录下的老 .hologram 在 setup 期一次性重命名。
@@ -180,13 +178,15 @@ fn main() {
             // 组合层热重载 watcher（S4-2）：~/.lantai/composition/ 根级
             // roster.patch.yml 变更 → composition:changed 事件 → 前端 reload。
             // app 生命周期 = watcher 生命周期（Drop 停线程）。
-            let _composition_watcher = composition_watcher::CompositionWatcher::start(app.handle().clone());
+            let _composition_watcher =
+                composition_watcher::CompositionWatcher::start(app.handle().clone());
             app.manage(std::sync::Mutex::new(_composition_watcher));
             // provider 配置文件热重载 watcher：~/.lantai/providers.yml 变更 →
             // providers:changed 事件 → 前端重读 provider 配方。
             // manage key = Mutex<ProvidersWatcher>（与组合 watcher 不同类型，互不冲突）；
             // app 生命周期 = watcher 生命周期（Drop 停线程）。
-            let _providers_watcher = providers_watcher::ProvidersWatcher::start(app.handle().clone());
+            let _providers_watcher =
+                providers_watcher::ProvidersWatcher::start(app.handle().clone());
             app.manage(std::sync::Mutex::new(_providers_watcher));
             // Memory Bundle: 如果在 hologram 旁找到 exe 则启动
             if let Ok(exe_path) = std::env::current_exe() {
@@ -198,10 +198,14 @@ fn main() {
                             .stdout(std::process::Stdio::null())
                             .stderr(std::process::Stdio::null());
                         #[cfg(windows)]
-                        { mc.creation_flags(crate::utils::HIDDEN_CONSOLE); }
+                        {
+                            mc.creation_flags(crate::utils::HIDDEN_CONSOLE);
+                        }
                         // 保留 Child 句柄供 ResourceLedger 在关闭时终止
                         if let Ok(child) = mc.spawn() {
-                            *crate::utils::lock_or_recover(&commands::external::MEMORY_BUNDLE_CHILD) = Some(child);
+                            *crate::utils::lock_or_recover(
+                                &commands::external::MEMORY_BUNDLE_CHILD,
+                            ) = Some(child);
                         }
                     }
                 }
@@ -265,7 +269,10 @@ mod tests {
         let handle = workspace::WorkspaceHandle::new("");
         handle.activate(&tmp);
         let content = std::fs::read_to_string(&last).unwrap_or_default();
-        assert_eq!(content, "D:/some/real/project", "占位 activate 不得清空 .last_project");
+        assert_eq!(
+            content, "D:/some/real/project",
+            "占位 activate 不得清空 .last_project"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -336,8 +343,10 @@ mod tests {
         let _ = std::fs::create_dir_all(&tmp);
         let handle = workspace::WorkspaceHandle::new(&tmp.to_string_lossy());
         let state: WorkspaceState = Arc::new(Mutex::new(Some(handle)));
-        assert_eq!(utils::workspace_path(&state).unwrap(), tmp.to_string_lossy());
+        assert_eq!(
+            utils::workspace_path(&state).unwrap(),
+            tmp.to_string_lossy()
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
-
 }

@@ -153,7 +153,9 @@ impl Sandbox {
                 if let Some(parent) = path.parent() {
                     match std::fs::canonicalize(parent) {
                         Ok(p) => p.join(path.file_name().unwrap_or_default()),
-                        Err(_) => return SandboxResult::Denied("parent directory not found".into()),
+                        Err(_) => {
+                            return SandboxResult::Denied("parent directory not found".into())
+                        }
                     }
                 } else {
                     return SandboxResult::Denied("invalid path".into());
@@ -353,26 +355,21 @@ impl Sandbox {
                 if let Some(parent) = path.parent() {
                     match std::fs::canonicalize(parent) {
                         Ok(p) => p.join(path.file_name().unwrap_or_default()),
-                        Err(_) => {
-                            match find_existing_ancestor(path) {
-                                Some((canon_ancestor, orig_ancestor)) => {
-                                    if !self.contains(&canon_ancestor) {
-                                        return SandboxResult::Denied(format!(
-                                            "write outside project root {:?}",
-                                            self.project_root
-                                        ));
-                                    }
-                                    let relative =
-                                        path.strip_prefix(&orig_ancestor).unwrap_or(path);
-                                    canon_ancestor.join(relative)
+                        Err(_) => match find_existing_ancestor(path) {
+                            Some((canon_ancestor, orig_ancestor)) => {
+                                if !self.contains(&canon_ancestor) {
+                                    return SandboxResult::Denied(format!(
+                                        "write outside project root {:?}",
+                                        self.project_root
+                                    ));
                                 }
-                                None => {
-                                    return SandboxResult::Denied(
-                                        "parent directory not found".into(),
-                                    )
-                                }
+                                let relative = path.strip_prefix(&orig_ancestor).unwrap_or(path);
+                                canon_ancestor.join(relative)
                             }
-                        }
+                            None => {
+                                return SandboxResult::Denied("parent directory not found".into())
+                            }
+                        },
                     }
                 } else {
                     return SandboxResult::Denied("invalid path".into());
@@ -473,9 +470,15 @@ mod tests {
         {
             let verbatim = Path::new(r"\\?\D:\FirstBeat Ultimate\.lantai\worktrees\agent-abc");
             let logical = logical_path(verbatim);
-            assert_eq!(logical, PathBuf::from(r"D:\FirstBeat Ultimate\.lantai\worktrees\agent-abc"));
+            assert_eq!(
+                logical,
+                PathBuf::from(r"D:\FirstBeat Ultimate\.lantai\worktrees\agent-abc")
+            );
             // 无前缀路径原样返回
-            assert_eq!(logical_path(Path::new(r"D:\proj")), PathBuf::from(r"D:\proj"));
+            assert_eq!(
+                logical_path(Path::new(r"D:\proj")),
+                PathBuf::from(r"D:\proj")
+            );
         }
         #[cfg(not(windows))]
         {
@@ -497,15 +500,27 @@ mod tests {
         #[cfg(windows)]
         {
             assert_eq!(expand_home("~"), h);
-            assert_eq!(expand_home("~/.lantai/mcp.json"), h.join(".lantai/mcp.json"));
-            assert_eq!(expand_home(r"~\.lantai\mcp.json"), h.join(r".lantai\mcp.json"));
-            assert_eq!(expand_home("C:/other/x.json"), PathBuf::from("C:/other/x.json"));
+            assert_eq!(
+                expand_home("~/.lantai/mcp.json"),
+                h.join(".lantai/mcp.json")
+            );
+            assert_eq!(
+                expand_home(r"~\.lantai\mcp.json"),
+                h.join(r".lantai\mcp.json")
+            );
+            assert_eq!(
+                expand_home("C:/other/x.json"),
+                PathBuf::from("C:/other/x.json")
+            );
             assert_eq!(expand_home("~/"), h.join(""));
         }
         #[cfg(not(windows))]
         {
             assert_eq!(expand_home("~"), h);
-            assert_eq!(expand_home("~/.lantai/mcp.json"), h.join(".lantai/mcp.json"));
+            assert_eq!(
+                expand_home("~/.lantai/mcp.json"),
+                h.join(".lantai/mcp.json")
+            );
             assert_eq!(expand_home("/tmp/x"), PathBuf::from("/tmp/x"));
         }
     }
@@ -520,9 +535,15 @@ mod tests {
                 project_root: PathBuf::from(r"D:\root"),
             };
             let verbatim_child = Path::new(r"\\?\D:\root\sub\file.rs");
-            assert!(sandbox.contains(verbatim_child), "verbatim child must be inside root");
+            assert!(
+                sandbox.contains(verbatim_child),
+                "verbatim child must be inside root"
+            );
             let outside = Path::new(r"\\?\D:\other\file.rs");
-            assert!(!sandbox.contains(outside), "verbatim outside path must be denied");
+            assert!(
+                !sandbox.contains(outside),
+                "verbatim outside path must be denied"
+            );
         }
         #[cfg(not(windows))]
         {
@@ -595,11 +616,21 @@ mod tests {
         let home = fake_home();
         let home_s = home.to_string_lossy().into_owned();
         // ~/.lantai/skills/<name>/SKILL.md 应放行（前端读用户级技能）
-        let p = home.join(".lantai").join("skills").join("code-review").join("SKILL.md");
-        assert!(Sandbox::is_user_data_path_with_home(&p, &home_s), "~/.lantai/skills 应放行");
+        let p = home
+            .join(".lantai")
+            .join("skills")
+            .join("code-review")
+            .join("SKILL.md");
+        assert!(
+            Sandbox::is_user_data_path_with_home(&p, &home_s),
+            "~/.lantai/skills 应放行"
+        );
         // global_memory 保持放行（历史语义）
         let gm = home.join(".lantai").join("global_memory").join("MEMORY.md");
-        assert!(Sandbox::is_user_data_path_with_home(&gm, &home_s), "~/.lantai/global_memory 应放行");
+        assert!(
+            Sandbox::is_user_data_path_with_home(&gm, &home_s),
+            "~/.lantai/global_memory 应放行"
+        );
     }
 
     #[test]
@@ -608,7 +639,10 @@ mod tests {
         let home_s = home.to_string_lossy().into_owned();
         // ~/.lantai/mcp.json（用户级 MCP 配置）读+写豁免（Commit 5b/6c）
         let f = home.join(".lantai").join("mcp.json");
-        assert!(Sandbox::is_user_data_path_with_home(&f, &home_s), "~/.lantai/mcp.json 读应放行");
+        assert!(
+            Sandbox::is_user_data_path_with_home(&f, &home_s),
+            "~/.lantai/mcp.json 读应放行"
+        );
         assert!(
             Sandbox::is_user_mcp_json_path_with_home(&f, &home_s),
             "~/.lantai/mcp.json 写豁免判定应真"
@@ -629,13 +663,19 @@ mod tests {
         let root = std::env::temp_dir().join("lantai-approved-root");
         let outside = std::env::temp_dir().join("lantai-approved-outside.txt");
         let sandbox = Sandbox::new(&root);
-        assert!(sandbox.is_outside_project(&outside), "temp 相邻文件应在项目外");
+        assert!(
+            sandbox.is_outside_project(&outside),
+            "temp 相邻文件应在项目外"
+        );
         assert!(
             matches!(sandbox.resolve_write(&outside), SandboxResult::Denied(_)),
             "未批准的越界写仍拒"
         );
         assert!(
-            matches!(sandbox.resolve_write_approved(&outside), SandboxResult::Allowed(_)),
+            matches!(
+                sandbox.resolve_write_approved(&outside),
+                SandboxResult::Allowed(_)
+            ),
             "已批准的越界写放行"
         );
         let inside = root.join("a.txt");
@@ -734,17 +774,29 @@ mod tests {
         let sandbox = Sandbox::new(&std::env::temp_dir());
         let lantai = PathBuf::from(&home).join(".lantai");
         assert!(
-            matches!(sandbox.resolve_read(&lantai.join("providers.yml")), SandboxResult::Allowed(_)),
+            matches!(
+                sandbox.resolve_read(&lantai.join("providers.yml")),
+                SandboxResult::Allowed(_)
+            ),
             "~/.lantai/providers.yml 读应绕过项目沙箱"
         );
         assert!(
-            matches!(sandbox.resolve_write(&lantai.join("providers.yml")), SandboxResult::Allowed(_)),
+            matches!(
+                sandbox.resolve_write(&lantai.join("providers.yml")),
+                SandboxResult::Allowed(_)
+            ),
             "~/.lantai/providers.yml 写应绕过项目沙箱"
         );
         // 相邻路径两项都仍锁项目内
         let bak = lantai.join("providers.yml.bak");
-        assert!(matches!(sandbox.resolve_read(&bak), SandboxResult::Denied(_)), "providers.yml.bak 读仍拒绝");
-        assert!(matches!(sandbox.resolve_write(&bak), SandboxResult::Denied(_)), "providers.yml.bak 写仍拒绝");
+        assert!(
+            matches!(sandbox.resolve_read(&bak), SandboxResult::Denied(_)),
+            "providers.yml.bak 读仍拒绝"
+        );
+        assert!(
+            matches!(sandbox.resolve_write(&bak), SandboxResult::Denied(_)),
+            "providers.yml.bak 写仍拒绝"
+        );
     }
 
     /// 回归（2026-09-26 真机）：白名单用户级路径的解析**不依赖工作区**。
@@ -770,19 +822,31 @@ mod tests {
         let lantai = PathBuf::from(&home).join(".lantai");
         let providers = lantai.join("providers.yml");
         assert!(
-            matches!(Sandbox::user_data_read(&providers), Some(SandboxResult::Allowed(_))),
+            matches!(
+                Sandbox::user_data_read(&providers),
+                Some(SandboxResult::Allowed(_))
+            ),
             "读：~/.lantai/providers.yml 应免工作区放行"
         );
         assert!(
-            matches!(Sandbox::user_data_write(&providers), Some(SandboxResult::Allowed(_))),
+            matches!(
+                Sandbox::user_data_write(&providers),
+                Some(SandboxResult::Allowed(_))
+            ),
             "写：~/.lantai/providers.yml 应免工作区放行"
         );
         assert!(
-            matches!(Sandbox::user_data_read(&lantai.join("mcp.json")), Some(SandboxResult::Allowed(_))),
+            matches!(
+                Sandbox::user_data_read(&lantai.join("mcp.json")),
+                Some(SandboxResult::Allowed(_))
+            ),
             "读：~/.lantai/mcp.json 应免工作区放行（main.ts 装载用户级 MCP）"
         );
         assert!(
-            matches!(Sandbox::user_data_write(&lantai.join("mcp.json")), Some(SandboxResult::Allowed(_))),
+            matches!(
+                Sandbox::user_data_write(&lantai.join("mcp.json")),
+                Some(SandboxResult::Allowed(_))
+            ),
             "写：~/.lantai/mcp.json 应免工作区放行"
         );
 
@@ -793,7 +857,10 @@ mod tests {
         {
             let mixed = PathBuf::from(format!("{}\\.lantai/providers.yml", home));
             assert!(
-                matches!(Sandbox::user_data_write(&mixed), Some(SandboxResult::Allowed(_))),
+                matches!(
+                    Sandbox::user_data_write(&mixed),
+                    Some(SandboxResult::Allowed(_))
+                ),
                 "前端拼的混合分隔符形态应同样放行"
             );
         }
@@ -811,17 +878,25 @@ mod tests {
             );
         }
         assert!(
-            Sandbox::user_data_write(&lantai.join("skills").join("officecli").join("SKILL.md")).is_none(),
+            Sandbox::user_data_write(&lantai.join("skills").join("officecli").join("SKILL.md"))
+                .is_none(),
             "skills 只读：写不豁免（免工作区入口同样不得放行）"
         );
         assert!(
-            Sandbox::user_data_read(&lantai.join("skills").join("officecli").join("SKILL.md")).is_some(),
+            Sandbox::user_data_read(&lantai.join("skills").join("officecli").join("SKILL.md"))
+                .is_some(),
             "skills 读豁免面照旧"
         );
         // 边界不放宽（二）：`.lantai` 之外的普通用户文件两条通道都不得豁免
         let docs = PathBuf::from(&home).join("Documents");
-        assert!(Sandbox::user_data_read(&docs).is_none(), "普通用户目录读不得免工作区");
-        assert!(Sandbox::user_data_write(&docs.join("x.txt")).is_none(), "普通用户文件写不得免工作区");
+        assert!(
+            Sandbox::user_data_read(&docs).is_none(),
+            "普通用户目录读不得免工作区"
+        );
+        assert!(
+            Sandbox::user_data_write(&docs.join("x.txt")).is_none(),
+            "普通用户文件写不得免工作区"
+        );
     }
 
     #[test]
@@ -835,9 +910,15 @@ mod tests {
             "~/.lantai/sessions 不在白名单——拒绝"
         );
         let log = home.join(".lantai").join("logs").join("ui.log");
-        assert!(!Sandbox::is_user_data_path_with_home(&log, &home_s), "~/.lantai/logs 拒绝");
+        assert!(
+            !Sandbox::is_user_data_path_with_home(&log, &home_s),
+            "~/.lantai/logs 拒绝"
+        );
         // ~/.lantai 根本身（无子目录段）→ 拒绝
-        assert!(!Sandbox::is_user_data_path_with_home(&home.join(".lantai"), &home_s), ".lantai 根拒绝");
+        assert!(
+            !Sandbox::is_user_data_path_with_home(&home.join(".lantai"), &home_s),
+            ".lantai 根拒绝"
+        );
     }
 
     /// 回归：Windows `canonicalize` 产出的 **verbatim 形态**（`\\?\C:\...`）必须同样命中用户数据豁免。
@@ -851,12 +932,16 @@ mod tests {
         let home_s = home.to_string_lossy().into_owned();
         #[cfg(windows)]
         {
-            let verbatim = PathBuf::from(format!(r"\\?\{}\.lantai\skills\officecli\SKILL.md", home_s));
+            let verbatim =
+                PathBuf::from(format!(r"\\?\{}\.lantai\skills\officecli\SKILL.md", home_s));
             assert!(
                 Sandbox::is_user_data_path_with_home(&verbatim, &home_s),
                 r"verbatim（\\?\）形态应命中用户数据豁免"
             );
-            let verbatim_fwd = PathBuf::from(format!("//?/{}/.lantai/skills/officecli/SKILL.md", home_s.replace('\\', "/")));
+            let verbatim_fwd = PathBuf::from(format!(
+                "//?/{}/.lantai/skills/officecli/SKILL.md",
+                home_s.replace('\\', "/")
+            ));
             assert!(
                 Sandbox::is_user_data_path_with_home(&verbatim_fwd, &home_s),
                 "verbatim 正斜杠形态（//?/C:/...）应命中用户数据豁免"
@@ -870,7 +955,11 @@ mod tests {
         }
         #[cfg(not(windows))]
         {
-            let p = home.join(".lantai").join("skills").join("officecli").join("SKILL.md");
+            let p = home
+                .join(".lantai")
+                .join("skills")
+                .join("officecli")
+                .join("SKILL.md");
             assert!(Sandbox::is_user_data_path_with_home(&p, &home_s));
         }
     }
@@ -884,6 +973,9 @@ mod tests {
         let outside = PathBuf::from(r"D:\proj\.lantai\skills\x\SKILL.md");
         #[cfg(not(windows))]
         let outside = PathBuf::from("/proj/.lantai/skills/x/SKILL.md");
-        assert!(!Sandbox::is_user_data_path_with_home(&outside, &home_s), "项目内 skills 走正常沙箱，非用户数据豁免");
+        assert!(
+            !Sandbox::is_user_data_path_with_home(&outside, &home_s),
+            "项目内 skills 走正常沙箱，非用户数据豁免"
+        );
     }
 }

@@ -214,7 +214,9 @@ fn build_office_command(argv: &[String], pre_close: Option<&str>) -> String {
     if let Some(doc) = pre_close {
         cmd.push_str(&format!("{bin} 'close' {} 2>&1; ", sh_quote(doc)));
     }
-    cmd.push_str("OFFICECLI_SKIP_UPDATE=1 OFFICECLI_NO_AUTO_RESIDENT=1 OFFICECLI_RESIDENT_FLUSH=each ");
+    cmd.push_str(
+        "OFFICECLI_SKIP_UPDATE=1 OFFICECLI_NO_AUTO_RESIDENT=1 OFFICECLI_RESIDENT_FLUSH=each ",
+    );
     cmd.push_str(&bin);
     for arg in argv {
         cmd.push(' ');
@@ -259,8 +261,9 @@ async fn office_exec(
 ) -> Result<String, String> {
     let payload =
         payload.ok_or_else(|| "process_cap office_exec: missing 'office' 载荷".to_string())?;
-    let parsed: OfficePayload = serde_json::from_value(payload)
-        .map_err(|e| format!("office_exec 载荷不合法（期望 {{argv:[…], targets:[{{path,write}}]}}）: {e}"))?;
+    let parsed: OfficePayload = serde_json::from_value(payload).map_err(|e| {
+        format!("office_exec 载荷不合法（期望 {{argv:[…], targets:[{{path,write}}]}}）: {e}")
+    })?;
     if parsed.argv.is_empty() {
         return Err("office_exec: argv 为空".into());
     }
@@ -357,8 +360,8 @@ pub(crate) async fn process_cap(
 ) -> Result<String, String> {
     match action.as_str() {
         "exec_command" => {
-            let command = command
-                .ok_or_else(|| "process_cap exec_command: missing 'command'".to_string())?;
+            let command =
+                command.ok_or_else(|| "process_cap exec_command: missing 'command'".to_string())?;
             exec_command(
                 command,
                 cwd,
@@ -394,14 +397,14 @@ pub(crate) async fn process_cap(
             .await
         }
         "bash_output" => {
-            let job_id = job_id
-                .ok_or_else(|| "process_cap bash_output: missing 'job_id'".to_string())?;
+            let job_id =
+                job_id.ok_or_else(|| "process_cap bash_output: missing 'job_id'".to_string())?;
             crate::utils::read_bg_output(job_id)
                 .map(|s| crate::utils::truncate_output_spill(&s, &format!("bg-job-{job_id}")))
         }
         "bash_kill" => {
-            let job_id = job_id
-                .ok_or_else(|| "process_cap bash_kill: missing 'job_id'".to_string())?;
+            let job_id =
+                job_id.ok_or_else(|| "process_cap bash_kill: missing 'job_id'".to_string())?;
             // kill 所有权身份：owner_id（bus id——与 spawn 时 job owner 对齐）
             // 回退 agent_id（隔离子 Agent / 旧前端直连形态；两形都收——
             // 退役前插件同款）。
@@ -409,26 +412,31 @@ pub(crate) async fn process_cap(
             crate::utils::kill_bg(job_id, caller.as_deref())
         }
         "bash_wait" => {
-            let job_id = job_id
-                .ok_or_else(|| "process_cap bash_wait: missing 'job_id'".to_string())?;
+            let job_id =
+                job_id.ok_or_else(|| "process_cap bash_wait: missing 'job_id'".to_string())?;
             let timeout = wait_timeout_ms.unwrap_or(60_000);
             crate::utils::wait_bg(job_id, timeout)
                 .map(|s| crate::utils::truncate_output_spill(&s, &format!("bg-job-{job_id}")))
         }
         // shell_env：serde 序列化恒 JSON（兑底也是合法 JSON 字面量）——
         // runtime 注入 system prompt 经 TS parseJson 消费。
-        "shell_env" => Ok(serde_json::to_string(&crate::os_sandbox::shell_env())
-            .unwrap_or_else(|_| r#"{"os":"unknown","shell":"unknown","shell_path":"","notes":""}"#.to_string())),
-        "job_list" => Ok(serde_json::to_string(&crate::utils::job_list())
-            .unwrap_or_else(|_| "[]".to_string())),
+        "shell_env" => Ok(
+            serde_json::to_string(&crate::os_sandbox::shell_env()).unwrap_or_else(|_| {
+                r#"{"os":"unknown","shell":"unknown","shell_path":"","notes":""}"#.to_string()
+            }),
+        ),
+        "job_list" => {
+            Ok(serde_json::to_string(&crate::utils::job_list())
+                .unwrap_or_else(|_| "[]".to_string()))
+        }
         "job_read_at" => {
-            let job_id = job_id
-                .ok_or_else(|| "process_cap job_read_at: missing 'job_id'".to_string())?;
+            let job_id =
+                job_id.ok_or_else(|| "process_cap job_read_at: missing 'job_id'".to_string())?;
             crate::utils::job_read_at(job_id, stdout_from.unwrap_or(0), stderr_from.unwrap_or(0))
         }
         "job_kill_human" => {
-            let job_id = job_id
-                .ok_or_else(|| "process_cap job_kill_human: missing 'job_id'".to_string())?;
+            let job_id =
+                job_id.ok_or_else(|| "process_cap job_kill_human: missing 'job_id'".to_string())?;
             let reason = reason.as_deref().unwrap_or("cancelled by the user");
             crate::utils::job_kill_human(job_id, reason, Some(app.clone())).map(|s| s.to_string())
         }
@@ -510,7 +518,8 @@ async fn exec_command(
     // ── BuildLock：原子检查+注册（Tauri 单进程 + Mutex，无 TOCTOU）──
     // 冲突 → 打回（带路径错误，LLM 决策）；无冲突 → 持锁执行，随 job 释放。
     let job_id = crate::utils::next_job_id();
-    let lock_key = crate::utils::acquire_build_lock(&command, &physical_dir_str, job_id, agent_id.clone())?;
+    let lock_key =
+        crate::utils::acquire_build_lock(&command, &physical_dir_str, job_id, agent_id.clone())?;
 
     // P4 护栏：cmd 语法 `cd /d X:` 混入捆绑 bash（日志实证 19 次必失败重试）。
     // 不拦截 — 输出顶部注入纠偏提示，模型看得到失败原因与正确写法。
@@ -557,7 +566,11 @@ async fn exec_command(
 
     let timeout = std::time::Duration::from_millis(timeout_ms.unwrap_or(300_000));
 
-    let mut child = match crate::os_sandbox::spawn_shell_with(&effective_command, &physical_dir_str, shell_kind) {
+    let mut child = match crate::os_sandbox::spawn_shell_with(
+        &effective_command,
+        &physical_dir_str,
+        shell_kind,
+    ) {
         Ok(c) => c,
         Err(e) => {
             crate::utils::release_build_lock(&lock_key);
@@ -570,19 +583,22 @@ async fn exec_command(
         // 流式路径的 cd /d 护栏：hint 作为首个输出块 emit（前端监听器在
         // invoke 前注册，无竞态），按到达顺序拼在结果顶部。
         if let Some(hint) = &cmd_syntax_hint {
-            let _ = app.emit("shell:output", serde_json::json!({
-                "streamId": stream_id,
-                "kind": "stdout",
-                "chunk": hint,
-            }));
+            let _ = app.emit(
+                "shell:output",
+                serde_json::json!({
+                    "streamId": stream_id,
+                    "kind": "stdout",
+                    "chunk": hint,
+                }),
+            );
         }
         let stdout_reader = child.take_stdout();
         let stderr_reader = child.take_stderr();
 
         // 共享输出环 — 管道被 take 后，转后台时 bg job 从这里读；
         // 观测面按绝对偏移非消费读同一份环（见 utils/bg_jobs.rs 双读者模型）。
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
         let shared_out = Arc::new(crate::utils::StreamRing::default());
         let shared_err = Arc::new(crate::utils::StreamRing::default());
 
@@ -623,22 +639,28 @@ async fn exec_command(
                     };
                     let chunk = dec.push(&buf[..n]);
                     if !chunk.is_empty() {
-                        let _ = app_stdout.emit("shell:output", serde_json::json!({
-                            "streamId": sid_stdout,
-                            "kind": "stdout",
-                            "chunk": chunk,
-                        }));
+                        let _ = app_stdout.emit(
+                            "shell:output",
+                            serde_json::json!({
+                                "streamId": sid_stdout,
+                                "kind": "stdout",
+                                "chunk": chunk,
+                            }),
+                        );
                     }
                     so_clone.push(&buf[..n]);
                 }
                 // EOF：清空解码器残余（不完整序列 / GBK 尾）。
                 let tail = dec.finish();
                 if !tail.is_empty() {
-                    let _ = app_stdout.emit("shell:output", serde_json::json!({
-                        "streamId": sid_stdout,
-                        "kind": "stdout",
-                        "chunk": tail,
-                    }));
+                    let _ = app_stdout.emit(
+                        "shell:output",
+                        serde_json::json!({
+                            "streamId": sid_stdout,
+                            "kind": "stdout",
+                            "chunk": tail,
+                        }),
+                    );
                 }
                 dd.fetch_add(1, Ordering::SeqCst);
             })
@@ -665,21 +687,27 @@ async fn exec_command(
                     };
                     let chunk = dec.push(&buf[..n]);
                     if !chunk.is_empty() {
-                        let _ = app_stderr.emit("shell:output", serde_json::json!({
-                            "streamId": stream_id_stderr,
-                            "kind": "stderr",
-                            "chunk": chunk,
-                        }));
+                        let _ = app_stderr.emit(
+                            "shell:output",
+                            serde_json::json!({
+                                "streamId": stream_id_stderr,
+                                "kind": "stderr",
+                                "chunk": chunk,
+                            }),
+                        );
                     }
                     se_clone.push(&buf[..n]);
                 }
                 let tail = dec.finish();
                 if !tail.is_empty() {
-                    let _ = app_stderr.emit("shell:output", serde_json::json!({
-                        "streamId": stream_id_stderr,
-                        "kind": "stderr",
-                        "chunk": tail,
-                    }));
+                    let _ = app_stderr.emit(
+                        "shell:output",
+                        serde_json::json!({
+                            "streamId": stream_id_stderr,
+                            "kind": "stderr",
+                            "chunk": tail,
+                        }),
+                    );
                 }
                 dd.fetch_add(1, Ordering::SeqCst);
             })
@@ -693,7 +721,14 @@ async fn exec_command(
             stderr: Arc::clone(&shared_err),
             drain_done: Arc::clone(&drain_done),
         };
-        crate::utils::register_fg_child(job_id, child, &label, shared, owner_id.or(agent_id), lock_key);
+        crate::utils::register_fg_child(
+            job_id,
+            child,
+            &label,
+            shared,
+            owner_id.or(agent_id),
+            lock_key,
+        );
 
         // 在后台等待子进程，发送完成事件 / 超时转后台（promote）
         let app_done = app.clone();
@@ -735,10 +770,13 @@ async fn exec_command(
                             thread::sleep(Duration::from_millis(20));
                         }
                         crate::utils::remove_job(job_id);
-                        let _ = app_done.emit("shell:done", serde_json::json!({
-                            "streamId": sid_done,
-                            "exitCode": code,
-                        }));
+                        let _ = app_done.emit(
+                            "shell:done",
+                            serde_json::json!({
+                                "streamId": sid_done,
+                                "exitCode": code,
+                            }),
+                        );
                         return;
                     }
                     Poll::Running => {
@@ -771,7 +809,8 @@ async fn exec_command(
                                 }
                                 std::thread::sleep(Duration::from_millis(50));
                                 let st = {
-                                    let mut jobs = crate::utils::lock_or_recover(&crate::utils::BG_JOBS);
+                                    let mut jobs =
+                                        crate::utils::lock_or_recover(&crate::utils::BG_JOBS);
                                     match jobs.get_mut(&job_id) {
                                         Some(job) => job.child.try_wait(),
                                         None => return,
@@ -779,41 +818,55 @@ async fn exec_command(
                                 };
                                 if let Ok(Some(st)) = st {
                                     // 宽限窗内跑完：走正常收尾（与 Poll::Done 同款）。
-                                    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+                                    let deadline =
+                                        std::time::Instant::now() + Duration::from_secs(3);
                                     while drain_flag.load(Ordering::SeqCst) < 2
                                         && std::time::Instant::now() < deadline
                                     {
                                         thread::sleep(Duration::from_millis(20));
                                     }
                                     crate::utils::remove_job(job_id);
-                                    let _ = app_done.emit("shell:done", serde_json::json!({
-                                        "streamId": sid_done,
-                                        "exitCode": st.code().unwrap_or(-1),
-                                    }));
+                                    let _ = app_done.emit(
+                                        "shell:done",
+                                        serde_json::json!({
+                                            "streamId": sid_done,
+                                            "exitCode": st.code().unwrap_or(-1),
+                                        }),
+                                    );
                                     return;
                                 }
                             }
                             // 宽限窗用完仍未结束 ⇒ 转后台：挂监视线程（锁 + 通知的
                             // 唯一释放点），然后告诉前端「这条已经是 job 了」。
-                            crate::utils::spawn_monitor_for_existing(job_id, label_done.clone(), Some(app_done.clone()));
-                            let _ = app_done.emit("shell:done", serde_json::json!({
-                                "streamId": sid_done,
-                                "exitCode": -1,
-                                "promotedJobId": job_id,
-                                "promotedTimeoutMs": timeout_ms_val,
-                                "promoted": true,
-                            }));
+                            crate::utils::spawn_monitor_for_existing(
+                                job_id,
+                                label_done.clone(),
+                                Some(app_done.clone()),
+                            );
+                            let _ = app_done.emit(
+                                "shell:done",
+                                serde_json::json!({
+                                    "streamId": sid_done,
+                                    "exitCode": -1,
+                                    "promotedJobId": job_id,
+                                    "promotedTimeoutMs": timeout_ms_val,
+                                    "promoted": true,
+                                }),
+                            );
                             return;
                         }
                         thread::sleep(Duration::from_millis(50));
                     }
                     Poll::Gone => {
                         crate::utils::remove_job(job_id);
-                        let _ = app_done.emit("shell:done", serde_json::json!({
-                            "streamId": sid_done,
-                            "exitCode": -1,
-                            "error": "命令执行异常或已被终止",
-                        }));
+                        let _ = app_done.emit(
+                            "shell:done",
+                            serde_json::json!({
+                                "streamId": sid_done,
+                                "exitCode": -1,
+                                "error": "命令执行异常或已被终止",
+                            }),
+                        );
                         return;
                     }
                 }
@@ -845,13 +898,26 @@ async fn exec_command(
         drain_done: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     };
     let label: String = command.chars().take(80).collect();
-    crate::utils::register_fg_child(job_id, child, &label, shared, owner_id.or(agent_id), lock_key);
+    crate::utils::register_fg_child(
+        job_id,
+        child,
+        &label,
+        shared,
+        owner_id.or(agent_id),
+        lock_key,
+    );
 
     // P1-16：try_wait+sleep 忙等是阻塞循环，移入 spawn_blocking——
     // 否则一条长命令（默认上限 300s）占住一个 tokio worker，并发命令叠加可耗尽线程池。
     let timeout_ms_val = timeout_ms.unwrap_or(300_000);
     let result = tokio::task::spawn_blocking(move || {
-        let r = wait_child_blocking(job_id, stdout_drainer, stderr_drainer, timeout, timeout_ms_val);
+        let r = wait_child_blocking(
+            job_id,
+            stdout_drainer,
+            stderr_drainer,
+            timeout,
+            timeout_ms_val,
+        );
         // 命令结束（含超时/错误）→ 从 ledger 移除（锁随 job 释放）
         crate::utils::remove_job(job_id);
         r
@@ -1124,13 +1190,31 @@ mod tests {
     #[test]
     fn office_exec_verb_whitelist_covers_ts_action_surface() {
         for v in [
-            "view", "get", "query", "validate", "create", "set", "add", "remove", "batch", "merge",
+            "view",
+            "get",
+            "query",
+            "validate",
+            "create",
+            "set",
+            "add",
+            "remove",
+            "batch",
+            "merge",
             "load_skill",
         ] {
-            assert!(OFFICE_VERBS.contains(&v), "{v} 应在允许面（TS 动作面需要它）");
+            assert!(
+                OFFICE_VERBS.contains(&v),
+                "{v} 应在允许面（TS 动作面需要它）"
+            );
         }
-        for v in ["raw", "raw-set", "add-part", "watch", "dump", "mark", "refresh", "install", "open", "close", "save"] {
-            assert!(!OFFICE_VERBS.contains(&v), "{v} 是 CLI 逃生舱/生命周期动作，不得进本口");
+        for v in [
+            "raw", "raw-set", "add-part", "watch", "dump", "mark", "refresh", "install", "open",
+            "close", "save",
+        ] {
+            assert!(
+                !OFFICE_VERBS.contains(&v),
+                "{v} 是 CLI 逃生舱/生命周期动作，不得进本口"
+            );
         }
         assert_eq!(OFFICE_VERBS.len(), 11);
     }
@@ -1145,14 +1229,21 @@ mod tests {
             "[exit code: 0]\nBatch complete: 3 succeeded"
         );
         let failed = "[exit code: 1]\ncurrently opened by a resident process".to_string();
-        assert_eq!(office_result_with_exit_code(failed.clone()), failed, "失败前缀原样");
+        assert_eq!(
+            office_result_with_exit_code(failed.clone()),
+            failed,
+            "失败前缀原样"
+        );
         assert!(
             office_result_with_exit_code("[exit code: -1] 命令超时 (120000ms)".to_string())
                 .starts_with("[exit code: -1]"),
             "超时前缀原样（不叠加第二个前缀）"
         );
         // 空输出也算成功（无 stdout 的成功动作，如 set 后无回显）
-        assert_eq!(office_result_with_exit_code(String::new()), "[exit code: 0]\n");
+        assert_eq!(
+            office_result_with_exit_code(String::new()),
+            "[exit code: 0]\n"
+        );
     }
 
     /// 命令拼装：环境钉扎 + POSIX 单引号（空格 / 方括号 / 单引号）；且**不得再出现
@@ -1173,12 +1264,24 @@ mod tests {
             None,
         );
         assert!(cmd.contains("OFFICECLI_SKIP_UPDATE=1"), "跳后台更新检查");
-        assert!(cmd.contains("OFFICECLI_RESIDENT_FLUSH=each"), "每次改动立即落盘");
+        assert!(
+            cmd.contains("OFFICECLI_RESIDENT_FLUSH=each"),
+            "每次改动立即落盘"
+        );
         // 不起常驻：officecli 缺省为每个文件留 42MB/16 线程的 resident（闲置 12min 才退，
         // 每次调用重置计时器）——用户报的"线程泄露"即此
-        assert!(cmd.contains("OFFICECLI_NO_AUTO_RESIDENT=1"), "不得起常驻进程: {cmd}");
-        assert!(cmd.contains("'view' 'D:/ws/报告 一.docx' 'outline'"), "逐项单引号：{cmd}");
-        assert!(!cmd.contains("${"), "命令里不得再有 ${{…}} 赋值段（R3 根因）: {cmd}");
+        assert!(
+            cmd.contains("OFFICECLI_NO_AUTO_RESIDENT=1"),
+            "不得起常驻进程: {cmd}"
+        );
+        assert!(
+            cmd.contains("'view' 'D:/ws/报告 一.docx' 'outline'"),
+            "逐项单引号：{cmd}"
+        );
+        assert!(
+            !cmd.contains("${"),
+            "命令里不得再有 ${{…}} 赋值段（R3 根因）: {cmd}"
+        );
         assert!(!cmd.contains("BIN="), "命令里不得再有 BIN 赋值段: {cmd}");
         assert!(!cmd.contains("'close'"), "无写目标时不得前置 close: {cmd}");
     }
@@ -1192,7 +1295,10 @@ mod tests {
             .and_then(|e| e.parent().map(|d| d.to_path_buf()));
         let Some(dir) = exe_dir else { return };
         let want = dir.join(OFFICECLI_EXE);
-        assert!(cands.contains(&want), "候选梯必须含宿主 exe 同级 {want:?}: {cands:?}");
+        assert!(
+            cands.contains(&want),
+            "候选梯必须含宿主 exe 同级 {want:?}: {cands:?}"
+        );
     }
 
     /// 随包件候选梯：含取件脚本的落点（`src-tauri/bin/`）——dev / `cargo test` 靠它。
@@ -1202,7 +1308,10 @@ mod tests {
             .join("bin")
             .join(OFFICECLI_EXE);
         let cands = office_bundled_candidates();
-        assert!(cands.contains(&want), "候选梯必须含取件落点 {want:?}: {cands:?}");
+        assert!(
+            cands.contains(&want),
+            "候选梯必须含取件落点 {want:?}: {cands:?}"
+        );
     }
 
     /// **跨面漂移守护（静默故障变响亮）**：运行时名 `OFFICECLI_EXE`、取件脚本的落点与
@@ -1247,11 +1356,31 @@ mod tests {
         let targets_w = vec![(doc.clone(), true)];
         let targets_r = vec![(doc.clone(), false)];
         assert_eq!(pre_close_target("create", &targets_w), Some("/ws/a.xlsx"));
-        assert_eq!(pre_close_target("create", &targets_r), None, "只读目标不该被 close");
-        for verb in ["set", "add", "remove", "batch", "merge", "view", "load_skill"] {
-            assert_eq!(pre_close_target(verb, &targets_w), None, "{verb} 不该前置 close");
+        assert_eq!(
+            pre_close_target("create", &targets_r),
+            None,
+            "只读目标不该被 close"
+        );
+        for verb in [
+            "set",
+            "add",
+            "remove",
+            "batch",
+            "merge",
+            "view",
+            "load_skill",
+        ] {
+            assert_eq!(
+                pre_close_target(verb, &targets_w),
+                None,
+                "{verb} 不该前置 close"
+            );
         }
-        assert_eq!(pre_close_target("create", &[]), None, "无目标（playbook）不 close");
+        assert_eq!(
+            pre_close_target("create", &[]),
+            None,
+            "无目标（playbook）不 close"
+        );
     }
 
     /// 真二进制端到端（Rust 侧）：命令拼装 × 真 bash × 真 officecli（二进制缺席即跳过）。
@@ -1270,7 +1399,10 @@ mod tests {
         let create = build_office_command(&["create".to_string(), file.clone()], None);
         let out = run_wait_in(&create, &dir.to_string_lossy(), 120_000).expect("create 执行失败");
         assert!(out.contains("Created"), "create 回执异常: {out}");
-        assert!(std::path::Path::new(&file).is_file(), "create 后盘上应有文件");
+        assert!(
+            std::path::Path::new(&file).is_file(),
+            "create 后盘上应有文件"
+        );
 
         // 不常驻 ⇒ 直接读盘就该能看到字节（不需要 close/save）
         let view = build_office_command(
@@ -1278,7 +1410,10 @@ mod tests {
             None,
         );
         let out2 = run_wait_in(&view, &dir.to_string_lossy(), 120_000).expect("view 执行失败");
-        assert!(out2.contains("Sheet1") || out2.contains("sheet"), "view 回执异常: {out2}");
+        assert!(
+            out2.contains("Sheet1") || out2.contains("sheet"),
+            "view 回执异常: {out2}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -1341,7 +1476,10 @@ mod tests {
         let cmd = build_office_command(&["create".to_string(), file.clone()], Some(&file));
         let out2 = run_wait_in(&cmd, &dir_s, 120_000).expect("本口 create 执行失败");
         assert!(!out2.contains("resident process"), "锁未被释放: {out2}");
-        assert!(out2.contains("already exists"), "应回到正常的 file_exists 语义: {out2}");
+        assert!(
+            out2.contains("already exists"),
+            "应回到正常的 file_exists 语义: {out2}"
+        );
 
         let close = format!("{} 'close' {}", sh_quote(&bin), sh_quote(&file));
         let _ = run_wait_in(&close, &dir_s, 30_000);
@@ -1352,8 +1490,7 @@ mod tests {
     /// → workspace root；候选盘上不存在（被删）→ 跳过自愈。
     #[test]
     fn resolve_effective_cwd_order_explicit_sticky_root() {
-        let tmp = std::env::temp_dir()
-            .join(format!("lantai_pcap_sticky_{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("lantai_pcap_sticky_{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let root = "d:/root".to_string();
         let sticky = tmp.to_string_lossy().to_string();
@@ -1381,9 +1518,15 @@ mod tests {
     #[test]
     fn wrap_bash_survives_trailing_bg_and_comment() {
         let w = wrap_bash_command("npm run dev &");
-        assert!(w.starts_with("npm run dev &\n"), "尾随 & 必须直接换行续接: {w}");
+        assert!(
+            w.starts_with("npm run dev &\n"),
+            "尾随 & 必须直接换行续接: {w}"
+        );
         let w2 = wrap_bash_command("cargo check # heavy");
-        assert!(w2.starts_with("cargo check # heavy\n"), "注释行必须被换行终结: {w2}");
+        assert!(
+            w2.starts_with("cargo check # heavy\n"),
+            "注释行必须被换行终结: {w2}"
+        );
         for w in [&w, &w2] {
             assert!(w.contains("printf '"));
             assert!(w.contains("\"$PWD\""));
@@ -1411,7 +1554,10 @@ mod tests {
         }
         let out = run_wait(&wrap_bash_command("echo pcap-marker-e2e"), 30_000).unwrap();
         assert!(out.contains("pcap-marker-e2e"), "unexpected: {out}");
-        assert!(out.contains(CWD_MARKER_START), "marker 必须随输出流出（TS 截流契约）: {out}");
+        assert!(
+            out.contains(CWD_MARKER_START),
+            "marker 必须随输出流出（TS 截流契约）: {out}"
+        );
         // 失败命令的退出码经包装还原（printf 的 0 不覆盖）
         let fail = run_wait(&wrap_bash_command("exit 3"), 30_000).unwrap();
         assert!(fail.contains("[exit code: 3]"), "unexpected: {fail}");
@@ -1419,9 +1565,14 @@ mod tests {
 
     #[test]
     fn test_cmd_cd_slash_d_detection() {
-        assert!(is_cmd_cd_slash_d("cd /d D:\\HoloGramHG\\src-ui && npm run build"));
+        assert!(is_cmd_cd_slash_d(
+            "cd /d D:\\HoloGramHG\\src-ui && npm run build"
+        ));
         assert!(is_cmd_cd_slash_d("  cd  /d  C:\\x"));
-        assert!(!is_cmd_cd_slash_d("cd /d/HoloGramHG/engine && cargo build"), "MSYS 绝对路径 `/d/...` 不是 cmd 语法");
+        assert!(
+            !is_cmd_cd_slash_d("cd /d/HoloGramHG/engine && cargo build"),
+            "MSYS 绝对路径 `/d/...` 不是 cmd 语法"
+        );
         assert!(!is_cmd_cd_slash_d("echo cd /d"));
         assert!(!is_cmd_cd_slash_d("cd src && npm test"));
     }
@@ -1445,7 +1596,11 @@ mod tests {
         let out = run_wait("sleep 30", 500).unwrap();
         assert!(out.contains("命令超时"), "unexpected output: {out}");
         // 超时即终止进程树，不得等满 sleep 30
-        assert!(start.elapsed() < Duration::from_secs(20), "took {:?}", start.elapsed());
+        assert!(
+            start.elapsed() < Duration::from_secs(20),
+            "took {:?}",
+            start.elapsed()
+        );
     }
 
     // P1-21 回归：前台命令注册进 ledger（kill_all_bg 可遍历终止）；
@@ -1453,7 +1608,8 @@ mod tests {
     // 注意：不调真实 kill_all_bg —— 它清空全局 BG_JOBS，会干扰并行测试的其他 job。
     #[test]
     fn test_fg_command_killed_by_ledger_removal() {
-        let mut child = crate::os_sandbox::spawn_shell("sleep 30", ".").expect("spawn_shell failed");
+        let mut child =
+            crate::os_sandbox::spawn_shell("sleep 30", ".").expect("spawn_shell failed");
         let stdout = pipe_drainer(child.take_stdout());
         let stderr = pipe_drainer(child.take_stderr());
         let job_id = crate::utils::next_job_id();
@@ -1473,16 +1629,29 @@ mod tests {
     // P1-21 回归：前台命令正常完成后，ledger 中不再残留该 job
     #[test]
     fn test_fg_command_removed_after_completion() {
-        let mut child = crate::os_sandbox::spawn_shell("echo p121-done", ".").expect("spawn_shell failed");
+        let mut child =
+            crate::os_sandbox::spawn_shell("echo p121-done", ".").expect("spawn_shell failed");
         let stdout = pipe_drainer(child.take_stdout());
         let stderr = pipe_drainer(child.take_stderr());
         let job_id = crate::utils::next_job_id();
-        crate::utils::register_fg_child(job_id, child, "echo p121-done", empty_shared(), None, None);
+        crate::utils::register_fg_child(
+            job_id,
+            child,
+            "echo p121-done",
+            empty_shared(),
+            None,
+            None,
+        );
         let r = wait_child_blocking(job_id, stdout, stderr, Duration::from_secs(10), 10_000);
         crate::utils::remove_job(job_id);
-        assert!(r.as_ref().unwrap().contains("p121-done"), "unexpected output: {r:?}");
         assert!(
-            crate::utils::lock_or_recover(&crate::utils::BG_JOBS).get(&job_id).is_none(),
+            r.as_ref().unwrap().contains("p121-done"),
+            "unexpected output: {r:?}"
+        );
+        assert!(
+            crate::utils::lock_or_recover(&crate::utils::BG_JOBS)
+                .get(&job_id)
+                .is_none(),
             "job {job_id} 应已从 ledger 移除"
         );
     }

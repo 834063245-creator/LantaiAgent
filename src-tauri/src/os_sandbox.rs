@@ -48,7 +48,10 @@ where
                 let delay = SPAWN_RETRY_BASE_DELAY * 2u32.pow(attempt);
                 eprintln!(
                     "[hologram] spawn retry {}/{} — {:?} (retrying in {:?})",
-                    attempt + 1, SPAWN_RETRY_COUNT, e, delay
+                    attempt + 1,
+                    SPAWN_RETRY_COUNT,
+                    e,
+                    delay
                 );
                 std::thread::sleep(delay);
                 last_err = Some(e);
@@ -148,11 +151,17 @@ impl SandboxedChild {
     }
 
     pub fn take_stdout(&mut self) -> Option<Box<dyn Read + Send + Unpin>> {
-        self.inner.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send + Unpin>)
+        self.inner
+            .stdout
+            .take()
+            .map(|s| Box::new(s) as Box<dyn Read + Send + Unpin>)
     }
 
     pub fn take_stderr(&mut self) -> Option<Box<dyn Read + Send + Unpin>> {
-        self.inner.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send + Unpin>)
+        self.inner
+            .stderr
+            .take()
+            .map(|s| Box::new(s) as Box<dyn Read + Send + Unpin>)
     }
 
     pub fn stdout_reader(&mut self) -> Option<&mut dyn Read> {
@@ -183,7 +192,9 @@ pub fn init(app: &tauri::AppHandle) {
         let s = linux::status();
         match s {
             SandboxStatus::Available => {
-                eprintln!("[hologram] bubblewrap sandbox detected — shell commands will be sandboxed");
+                eprintln!(
+                    "[hologram] bubblewrap sandbox detected — shell commands will be sandboxed"
+                );
             }
             SandboxStatus::Unavailable => {
                 eprintln!(
@@ -199,13 +210,21 @@ pub fn init(app: &tauri::AppHandle) {
 /// 查询当前沙箱状态用于 UI 显示 (spec §6.6)。
 pub fn status() -> SandboxStatus {
     #[cfg(windows)]
-    { imp::status() }
+    {
+        imp::status()
+    }
     #[cfg(target_os = "macos")]
-    { mac::status() }
+    {
+        mac::status()
+    }
     #[cfg(target_os = "linux")]
-    { linux::status() }
+    {
+        linux::status()
+    }
     #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
-    { SandboxStatus::Unavailable }
+    {
+        SandboxStatus::Unavailable
+    }
 }
 
 /// shell 解释器选择（shell-stability P5）：
@@ -219,7 +238,11 @@ pub enum ShellInterpreter {
 /// pwsh 候选路径（纯函数，供 Windows 实跑与 Linux 单测共用）：
 /// PowerShell 7 安装目录 → PATH 条目 → Windows PowerShell 5.1 兜底
 /// （对齐 dsh `pwsh-local/resolve.ts` 的解析顺序，每台 Windows 必有其一）。
-pub(crate) fn candidate_pwsh_paths(program_files: &str, system_root: &str, path_entries: &str) -> Vec<String> {
+pub(crate) fn candidate_pwsh_paths(
+    program_files: &str,
+    system_root: &str,
+    path_entries: &str,
+) -> Vec<String> {
     let mut out: Vec<String> = vec![format!(
         "{}\\PowerShell\\7\\pwsh.exe",
         program_files.trim_end_matches('\\')
@@ -249,7 +272,11 @@ pub fn spawn_shell(command: &str, cwd: &str) -> io::Result<SandboxedChild> {
 /// 在 Windows 上，将进程分配到每命令独立 Job Object 实现 die-with-parent。
 /// 在 macOS 上使用 sandbox-exec；在 Linux 上使用 bubblewrap。
 /// 当 OS 沙箱工具不可用时回退到普通启动。
-pub fn spawn_shell_with(command: &str, cwd: &str, interpreter: ShellInterpreter) -> io::Result<SandboxedChild> {
+pub fn spawn_shell_with(
+    command: &str,
+    cwd: &str,
+    interpreter: ShellInterpreter,
+) -> io::Result<SandboxedChild> {
     #[cfg(windows)]
     {
         if interpreter == ShellInterpreter::Pwsh {
@@ -286,7 +313,10 @@ pub fn spawn_shell_with(command: &str, cwd: &str, interpreter: ShellInterpreter)
         match mac::spawn(command, cwd) {
             Ok(child) => return Ok(child),
             Err(e) => {
-                eprintln!("[hologram] sandbox-exec failed ({}), falling back to plain spawn", e);
+                eprintln!(
+                    "[hologram] sandbox-exec failed ({}), falling back to plain spawn",
+                    e
+                );
             }
         }
         spawn_plain(command, cwd)
@@ -302,7 +332,10 @@ pub fn spawn_shell_with(command: &str, cwd: &str, interpreter: ShellInterpreter)
         match linux::spawn(command, cwd) {
             Ok(child) => return Ok(child),
             Err(e) => {
-                eprintln!("[hologram] bubblewrap failed ({}), falling back to plain spawn", e);
+                eprintln!(
+                    "[hologram] bubblewrap failed ({}), falling back to plain spawn",
+                    e
+                );
             }
         }
         spawn_plain(command, cwd)
@@ -394,9 +427,14 @@ fn spawn_plain(command: &str, cwd: &str) -> io::Result<SandboxedChild> {
 /// 成功返回 true，Job Object 不可用时返回 false。
 pub fn assign_to_job(child: &std::process::Child) -> bool {
     #[cfg(windows)]
-    { imp::job::assign(child) }
+    {
+        imp::job::assign(child)
+    }
     #[cfg(not(windows))]
-    { let _ = child; true }
+    {
+        let _ = child;
+        true
+    }
 }
 
 /// bash 方言解释器是否可用（捆绑/系统 bash；cmd 回退时为 false）。
@@ -404,9 +442,13 @@ pub fn assign_to_job(child: &std::process::Child) -> bool {
 /// 污染每条命令的输出尾部）。
 pub fn bash_interpreter_available() -> bool {
     #[cfg(windows)]
-    { !matches!(imp::resolve_shell(), imp::Shell::Cmd) }
+    {
+        !matches!(imp::resolve_shell(), imp::Shell::Cmd)
+    }
     #[cfg(not(windows))]
-    { true }
+    {
+        true
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -431,17 +473,22 @@ pub mod imp {
     // ── FFI 声明 ──
 
     extern "system" {
-                // Job Object
+        // Job Object
         fn CreateJobObjectW(attrs: *mut std::ffi::c_void, name: *const u16) -> isize;
         fn SetInformationJobObject(
-            job: isize, info_class: i32, info: *const std::ffi::c_void, info_len: u32,
+            job: isize,
+            info_class: i32,
+            info: *const std::ffi::c_void,
+            info_len: u32,
         ) -> i32;
         fn AssignProcessToJobObject(job: isize, process: isize) -> i32;
         fn TerminateJobObject(job: isize, exit_code: u32) -> i32;
         // 管道创建
         fn CreatePipe(
-            read: *mut isize, write: *mut isize,
-            attrs: *mut std::ffi::c_void, size: u32,
+            read: *mut isize,
+            write: *mut isize,
+            attrs: *mut std::ffi::c_void,
+            size: u32,
         ) -> i32;
         fn SetHandleInformation(handle: isize, mask: u32, flags: u32) -> i32;
         fn CloseHandle(handle: isize) -> i32;
@@ -497,8 +544,12 @@ pub mod imp {
 
     #[repr(C)]
     struct IoCounters {
-        read_operation_count: u64, write_operation_count: u64, other_operation_count: u64,
-        read_transfer_count: u64, write_transfer_count: u64, other_transfer_count: u64,
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
     }
 
     // ── Shell 检测 ──
@@ -542,7 +593,9 @@ pub mod imp {
     /// 从候选根目录解析捆绑 bash：文件存在 + 冒烟通过才算数。
     /// 存在但冒烟失败必须大声告警——把坏解释器钉死成全局比回退更危险。
     fn resolve_bundled_bash(root: Option<&std::path::Path>) -> Option<std::path::PathBuf> {
-        let candidate = root.map(|d| d.join(BUNDLED_BASH_REL)).filter(|p| p.is_file());
+        let candidate = root
+            .map(|d| d.join(BUNDLED_BASH_REL))
+            .filter(|p| p.is_file());
         match candidate {
             Some(path) => {
                 if smoke_test_bash(&path.to_string_lossy()) {
@@ -701,7 +754,15 @@ pub mod imp {
     /// 展开 %VAR% 形式的注册表 PATH（机器级 PATH 常见 %SystemRoot% 等）。
     fn expand_env_vars(input: &str) -> String {
         let mut out = input.to_string();
-        for key in ["SystemRoot", "USERPROFILE", "ProgramFiles", "ProgramFiles(x86)", "APPDATA", "LOCALAPPDATA", "ProgramData"] {
+        for key in [
+            "SystemRoot",
+            "USERPROFILE",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "ProgramData",
+        ] {
             if let Ok(val) = std::env::var(key) {
                 out = out.replace(&format!("%{key}%"), &val);
             }
@@ -737,10 +798,9 @@ pub mod imp {
             r"C:\Program Files (x86)\Git\bin\bash.exe",
         ];
         for path in &bash_candidates {
-            if std::path::Path::new(path).exists()
-                && smoke_test_bash(path) {
-                    return Shell::Bash(path.to_string());
-                }
+            if std::path::Path::new(path).exists() && smoke_test_bash(path) {
+                return Shell::Bash(path.to_string());
+            }
         }
         // 一次性 PATH 探测：stdio 重定向、不 spawn 孙进程 → DETACHED 无副作用
         if let Ok(output) = std::process::Command::new("where")
@@ -838,9 +898,9 @@ pub mod imp {
     // ── Job Object ──
 
     pub mod job {
+        use super::*;
         use std::os::windows::io::AsRawHandle;
         use std::sync::OnceLock;
-        use super::*;
 
         static JOB: OnceLock<Option<isize>> = OnceLock::new();
 
@@ -853,8 +913,7 @@ pub mod imp {
                 }
                 let mut limits: JobObjectExtendedLimitInformationRaw =
                     unsafe { std::mem::zeroed() };
-                limits.basic.limit_flags =
-                    JOB_OBJECT_LIMIT_DIE_ON_JOB_CLOSE
+                limits.basic.limit_flags = JOB_OBJECT_LIMIT_DIE_ON_JOB_CLOSE
                     | JOB_OBJECT_LIMIT_BREAKAWAY_OK
                     | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
                     | JOB_OBJECT_LIMIT_JOB_MEMORY;
@@ -862,7 +921,8 @@ pub mod imp {
                 limits.job_memory_limit = 1024 * 1024 * 1024; // 1 GiB
                 let ret = unsafe {
                     SetInformationJobObject(
-                        h, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                        h,
+                        JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
                         &limits as *const _ as *const std::ffi::c_void,
                         std::mem::size_of::<JobObjectExtendedLimitInformationRaw>() as u32,
                     )
@@ -881,7 +941,9 @@ pub mod imp {
                 None => return false,
             };
             let raw = child.as_raw_handle();
-            if raw.is_null() { return false; }
+            if raw.is_null() {
+                return false;
+            }
             unsafe { AssignProcessToJobObject(job, raw as isize) != 0 }
         }
 
@@ -914,7 +976,8 @@ pub mod imp {
         limits.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         let ret = unsafe {
             SetInformationJobObject(
-                h, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                h,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
                 &limits as *const _ as *const std::ffi::c_void,
                 std::mem::size_of::<JobObjectExtendedLimitInformationRaw>() as u32,
             )
@@ -965,7 +1028,9 @@ pub mod imp {
             Ok(v) => v,
             Err(e) => {
                 // 第二个管道创建失败时关闭第一个管道的父端读句柄，避免句柄泄漏。
-                unsafe { CloseHandle(stdout_read); }
+                unsafe {
+                    CloseHandle(stdout_read);
+                }
                 return Err(e);
             }
         };
@@ -1001,14 +1066,10 @@ pub mod imp {
         // 用我们的读取句柄替换子进程的 stdout/stderr。
         // Command::spawn 在使用自定义 Stdio 时会将 stdout/stderr 留为 None。
         child.stdout = Some(unsafe {
-            std::process::ChildStdout::from(OwnedHandle::from_raw_handle(
-                stdout_read as RawHandle,
-            ))
+            std::process::ChildStdout::from(OwnedHandle::from_raw_handle(stdout_read as RawHandle))
         });
         child.stderr = Some(unsafe {
-            std::process::ChildStderr::from(OwnedHandle::from_raw_handle(
-                stderr_read as RawHandle,
-            ))
+            std::process::ChildStderr::from(OwnedHandle::from_raw_handle(stderr_read as RawHandle))
         });
 
         // 每命令独立 Job（shell-stability P2）：杀树 = TerminateJobObject(own job)，
@@ -1028,7 +1089,10 @@ pub mod imp {
                 None
             }
         });
-        Ok(super::SandboxedChild { inner: child, job: assigned })
+        Ok(super::SandboxedChild {
+            inner: child,
+            job: assigned,
+        })
     }
 
     /// Git Bash / 捆绑 MSYS2 bash：`bash -c <command>` — 命令串原样传参，bash 自行解析
@@ -1037,7 +1101,11 @@ pub mod imp {
     /// C:\Program Files\Git\src\main.ts，正斜杠参数必错）。
     /// env 纪律（shell-stability P3，对齐 dsh ENV_OVERRIDES）：
     /// LC_ALL=C.UTF-8 钉死输出编码，NO_COLOR/PAGER/GIT_PAGER 消灭彩色转义与 pager 卡管道。
-    pub fn spawn_bash(bash_path: &str, command: &str, cwd: &str) -> io::Result<super::SandboxedChild> {
+    pub fn spawn_bash(
+        bash_path: &str,
+        command: &str,
+        cwd: &str,
+    ) -> io::Result<super::SandboxedChild> {
         let arg = command.to_string();
         // 临时目录钉死到真实存在的 Windows 用户临时目录，同时给 MSYS 侧一个 POSIX
         // TMPDIR。避免捆绑 MSYS2 根目录只读时命令写 /tmp 失败，也避免 runtime 因
@@ -1138,7 +1206,12 @@ pub mod imp {
         if let Some(p) = &user_path {
             envs.push(("PATH", p));
         }
-        let child = spawn_argv("cmd.exe", &[String::from("/d"), String::from("/c"), path_arg], cwd, &envs)?;
+        let child = spawn_argv(
+            "cmd.exe",
+            &[String::from("/d"), String::from("/c"), path_arg],
+            cwd,
+            &envs,
+        )?;
         // 延迟清理：cmd /c 秒级执行完即释放句柄，3 秒后删除足够安全。
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(3));
@@ -1153,17 +1226,13 @@ pub mod imp {
         use std::os::windows::io::{FromRawHandle, RawHandle};
         let mut read: isize = 0;
         let mut write: isize = 0;
-        let ret = unsafe {
-            CreatePipe(&mut read, &mut write, std::ptr::null_mut(), 0)
-        };
+        let ret = unsafe { CreatePipe(&mut read, &mut write, std::ptr::null_mut(), 0) };
         if ret == 0 {
             return Err(io::Error::last_os_error());
         }
         // 将子端写入句柄标记为不可继承。
         // read（父端）句柄保持可继承，使 Rust 能管理它。
-        let ret = unsafe {
-            SetHandleInformation(write, HANDLE_FLAG_INHERIT, 0)
-        };
+        let ret = unsafe { SetHandleInformation(write, HANDLE_FLAG_INHERIT, 0) };
         if ret == 0 {
             unsafe {
                 CloseHandle(read);
@@ -1172,9 +1241,7 @@ pub mod imp {
             return Err(io::Error::last_os_error());
         }
         // 将写入句柄转换为 Stdio — 由 Command::stdout/stderr 消费
-        let child_stdio = unsafe {
-            std::process::Stdio::from_raw_handle(write as RawHandle)
-        };
+        let child_stdio = unsafe { std::process::Stdio::from_raw_handle(write as RawHandle) };
         Ok((read, child_stdio))
     }
 
@@ -1231,7 +1298,9 @@ pub mod imp {
 
     #[cfg(test)]
     mod tests {
-        use super::{detect_shell, spawn_bash, spawn_cmd_script, spawn_pwsh, windows_to_posix_path, Shell};
+        use super::{
+            detect_shell, spawn_bash, spawn_cmd_script, spawn_pwsh, windows_to_posix_path, Shell,
+        };
 
         /// P5 冒烟：spawn_pwsh 单 argv 传 -Command，编码钉前置，
         /// Write-Output 输出可捕获（PS7 或 PS5.1 均适用）。
@@ -1255,7 +1324,11 @@ pub mod imp {
             };
             let is_pwsh7 = std::path::Path::new(&pwsh)
                 .file_name()
-                .map(|n| n.to_string_lossy().to_ascii_lowercase().ends_with("pwsh.exe"))
+                .map(|n| {
+                    n.to_string_lossy()
+                        .to_ascii_lowercase()
+                        .ends_with("pwsh.exe")
+                })
                 .unwrap_or(false);
             if !is_pwsh7 {
                 eprintln!(
@@ -1305,8 +1378,14 @@ pub mod imp {
 
         #[test]
         fn test_windows_to_posix_drive_letter() {
-            assert_eq!(windows_to_posix_path("C:\\Users\\foo\\bar"), "/c/Users/foo/bar");
-            assert_eq!(windows_to_posix_path("D:\\project\\src\\main.rs"), "/d/project/src/main.rs");
+            assert_eq!(
+                windows_to_posix_path("C:\\Users\\foo\\bar"),
+                "/c/Users/foo/bar"
+            );
+            assert_eq!(
+                windows_to_posix_path("D:\\project\\src\\main.rs"),
+                "/d/project/src/main.rs"
+            );
             assert_eq!(windows_to_posix_path("C:/Users/foo"), "/c/Users/foo");
         }
 
@@ -1333,7 +1412,10 @@ pub mod imp {
         #[test]
         fn test_windows_to_posix_no_drive() {
             assert_eq!(windows_to_posix_path("src\\main.rs"), "src/main.rs");
-            assert_eq!(windows_to_posix_path("some/relative/path"), "some/relative/path");
+            assert_eq!(
+                windows_to_posix_path("some/relative/path"),
+                "some/relative/path"
+            );
         }
 
         #[test]
@@ -1418,8 +1500,7 @@ pub mod imp {
             }
             extern "system" fn enum_cb(hwnd: isize, lparam: isize) -> i32 {
                 unsafe {
-                    let v: &mut Vec<(isize, String)> =
-                        &mut *(lparam as *mut Vec<(isize, String)>);
+                    let v: &mut Vec<(isize, String)> = &mut *(lparam as *mut Vec<(isize, String)>);
                     let mut buf = [0u16; 256];
                     let n = GetClassNameW(hwnd, buf.as_mut_ptr(), 256);
                     let class = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
@@ -1457,12 +1538,7 @@ pub mod imp {
 
             // 用 spawn_argv 启动 bash -c 一条会拉起 cmd 孙进程的命令
             let cmd = "cmd.exe /c echo grandchild-ok && ping -n 2 127.0.0.1 >nul".to_string();
-            let mut child = match super::spawn_argv(
-                &bash,
-                &[String::from("-c"), cmd],
-                ".",
-                &envs,
-            ) {
+            let mut child = match super::spawn_argv(&bash, &[String::from("-c"), cmd], ".", &envs) {
                 Ok(c) => c,
                 Err(e) => {
                     panic!("[window-regression] spawn_argv 失败: {e}");
@@ -1536,7 +1612,8 @@ pub mod imp {
             };
 
             // ── 方式 A: 手工管道（spawn_shell → imp::spawn → CreatePipe） ──
-            let mut child_a = super::super::spawn_shell("seq 1 5000", ".").expect("spawn_shell failed");
+            let mut child_a =
+                super::super::spawn_shell("seq 1 5000", ".").expect("spawn_shell failed");
             let mut reader_a = child_a.take_stdout().expect("take_stdout failed");
             let (tx_a, rx_a) = mpsc::channel();
             std::thread::spawn(move || {
@@ -1569,8 +1646,14 @@ pub mod imp {
             let b_elapsed = b_start.elapsed();
             let _ = child_b.kill();
 
-            eprintln!("[pipe-compare] handmade: {:?} bytes in {:?} (Err=超时卡住)", a_bytes, a_elapsed);
-            eprintln!("[pipe-compare] std-piped: {:?} bytes in {:?} (Err=超时卡住)", b_bytes, b_elapsed);
+            eprintln!(
+                "[pipe-compare] handmade: {:?} bytes in {:?} (Err=超时卡住)",
+                a_bytes, a_elapsed
+            );
+            eprintln!(
+                "[pipe-compare] std-piped: {:?} bytes in {:?} (Err=超时卡住)",
+                b_bytes, b_elapsed
+            );
         }
 
         /// shell-stability §4 真机实跑：cargo test 不经过 tauri 资源拷贝，
@@ -1624,7 +1707,10 @@ pub mod imp {
             let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             let fstab = root.join("vendor").join("etc").join("fstab");
             let body = std::fs::read_to_string(&fstab).unwrap_or_else(|e| {
-                panic!("vendor/etc/fstab 必须随包（缺它盘符退回 /cygdrive）: {} — {e}", fstab.display())
+                panic!(
+                    "vendor/etc/fstab 必须随包（缺它盘符退回 /cygdrive）: {} — {e}",
+                    fstab.display()
+                )
             });
             assert!(
                 body.contains("none / cygdrive"),
@@ -1664,7 +1750,8 @@ pub mod imp {
         #[test]
         #[cfg(windows)]
         fn bundled_bash_home_is_usable() {
-            let Some(expected) = super::posix_home_env(std::env::var("USERPROFILE").ok().as_deref())
+            let Some(expected) =
+                super::posix_home_env(std::env::var("USERPROFILE").ok().as_deref())
             else {
                 eprintln!("[home-guard] 无 USERPROFILE —— 跳过（钉扎不适用）");
                 return;
@@ -1756,8 +1843,15 @@ pub mod imp {
                 Ok(s) => {
                     let lines = s.lines().count();
                     let has_marker = s.contains("1040") || s.contains("5000");
-                    eprintln!("[bg-repro] read_bg_output OK in {read_elapsed:?}, {} lines, has_5k={}", lines, s.contains("5000"));
-                    eprintln!("[bg-repro] last lines: {:?}", s.lines().rev().take(3).collect::<Vec<_>>());
+                    eprintln!(
+                        "[bg-repro] read_bg_output OK in {read_elapsed:?}, {} lines, has_5k={}",
+                        lines,
+                        s.contains("5000")
+                    );
+                    eprintln!(
+                        "[bg-repro] last lines: {:?}",
+                        s.lines().rev().take(3).collect::<Vec<_>>()
+                    );
                     let _ = has_marker;
                 }
                 Err(e) => eprintln!("[bg-repro] read_bg_output Err: {e}"),
@@ -1768,7 +1862,11 @@ pub mod imp {
                 if s.contains("任务运行中") {
                     let t1 = Instant::now();
                     let w = crate::utils::wait_bg(id, 5000);
-                    eprintln!("[bg-repro] wait_bg in {:?}: {:?}", t1.elapsed(), w.as_ref().map(|x| x.lines().count()));
+                    eprintln!(
+                        "[bg-repro] wait_bg in {:?}: {:?}",
+                        t1.elapsed(),
+                        w.as_ref().map(|x| x.lines().count())
+                    );
                 }
             }
         }
@@ -1783,8 +1881,8 @@ pub mod imp {
             use std::sync::mpsc;
             use std::time::{Duration, Instant};
 
-            let mut child = super::super::spawn_shell("seq 1 5000", ".")
-                .expect("spawn_shell failed");
+            let mut child =
+                super::super::spawn_shell("seq 1 5000", ".").expect("spawn_shell failed");
             let mut reader = child.take_stdout().expect("take_stdout failed");
             let (tx, rx) = mpsc::channel();
             std::thread::spawn(move || {
@@ -1805,7 +1903,9 @@ pub mod imp {
                             // 关键诊断：Err 不退出,继续读
                             err_count += 1;
                             eprintln!("[loop-read] read Err #{err_count}: {e:?}");
-                            if err_count > 5 { break; } // 保险丝,防无限刷屏
+                            if err_count > 5 {
+                                break;
+                            } // 保险丝,防无限刷屏
                         }
                     }
                 }
@@ -1834,8 +1934,8 @@ pub mod imp {
             use std::sync::mpsc;
             use std::time::{Duration, Instant};
 
-            let mut child = super::super::spawn_shell("seq 1 5000", ".")
-                .expect("spawn_shell failed");
+            let mut child =
+                super::super::spawn_shell("seq 1 5000", ".").expect("spawn_shell failed");
             let mut reader = child.take_stdout().expect("take_stdout failed");
             let (tx, rx) = mpsc::channel();
             std::thread::spawn(move || {
@@ -1855,7 +1955,9 @@ pub mod imp {
                         Err(e) => {
                             err_count += 1;
                             eprintln!("[vec-read] read_vectored Err #{err_count}: {e:?}");
-                            if err_count > 5 { break; }
+                            if err_count > 5 {
+                                break;
+                            }
                         }
                     }
                 }
@@ -1864,7 +1966,10 @@ pub mod imp {
             let t0 = Instant::now();
             match rx.recv_timeout(Duration::from_secs(5)) {
                 Ok((total, err_count)) => {
-                    eprintln!("[vec-read] DONE in {:?}: total={total} bytes, err_count={err_count}", t0.elapsed());
+                    eprintln!(
+                        "[vec-read] DONE in {:?}: total={total} bytes, err_count={err_count}",
+                        t0.elapsed()
+                    );
                 }
                 Err(_) => {
                     eprintln!("[vec-read] TIMEOUT 5s — read_vectored 也卡住! child.kill_tree");
@@ -1898,8 +2003,8 @@ pub mod imp {
                         "子 shell/算术展开失效（转译问题回归）: {out:?}"
                     );
 
-                    let mut child2 = spawn_bash(&path, "printf '%s\\n' \"a b\"", ".")
-                        .expect("spawn_bash");
+                    let mut child2 =
+                        spawn_bash(&path, "printf '%s\\n' \"a b\"", ".").expect("spawn_bash");
                     let out2 = run_and_capture(&mut child2);
                     assert_eq!(out2.trim(), "a b", "引号嵌套失效: {out2:?}");
                 }
@@ -1914,7 +2019,8 @@ pub mod imp {
         fn test_cmd_script_quoting() {
             use std::sync::mpsc;
             use std::time::{Duration, Instant};
-            let mut child = spawn_cmd_script("echo \"a b\"&echo two", ".").expect("spawn_cmd_script");
+            let mut child =
+                spawn_cmd_script("echo \"a b\"&echo two", ".").expect("spawn_cmd_script");
             let mut reader = child.take_stdout().expect("take_stdout failed");
             let (tx, rx) = mpsc::channel();
             std::thread::spawn(move || {
@@ -1964,7 +2070,10 @@ mod mac {
 
     pub fn spawn(command: &str, cwd: &str) -> io::Result<SandboxedChild> {
         if !Path::new("/usr/bin/sandbox-exec").exists() {
-            return Err(io::Error::new(io::ErrorKind::NotFound, "sandbox-exec not found"));
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "sandbox-exec not found",
+            ));
         }
         let profile = build_profile(cwd);
         // 用 ulimit 包裹以限制资源（8 GiB VM, 300s CPU）
@@ -2029,10 +2138,7 @@ mod linux {
     /// 检查 bwrap 二进制是否在 PATH 中可用。
     fn bwrap_path() -> Option<PathBuf> {
         // 先检查常见位置（比 `which` 更快）
-        let candidates = [
-            "/usr/bin/bwrap",
-            "/usr/local/bin/bwrap",
-        ];
+        let candidates = ["/usr/bin/bwrap", "/usr/local/bin/bwrap"];
         for c in &candidates {
             if Path::new(c).exists() {
                 return Some(PathBuf::from(c));
@@ -2106,10 +2212,7 @@ mod linux {
         // 允许新命名空间（嵌套进程启动需要）
         cmd.arg("--unshare-pid");
 
-        cmd.arg("--")
-            .arg("sh")
-            .arg("-c")
-            .arg(&limited_cmd);
+        cmd.arg("--").arg("sh").arg("-c").arg(&limited_cmd);
 
         cmd.current_dir(cwd)
             .stdout(std::process::Stdio::piped())
@@ -2156,6 +2259,9 @@ mod pure_tests {
         assert_eq!(paths[0], r"C:\Program Files\PowerShell\7\pwsh.exe");
         assert_eq!(paths[1], r"C:\tools\pwsh.exe");
         assert_eq!(paths[2], r"C:\Users\me\bin\pwsh.exe");
-        assert_eq!(paths[3], r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe");
+        assert_eq!(
+            paths[3],
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        );
     }
 }

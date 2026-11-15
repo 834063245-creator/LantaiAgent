@@ -43,7 +43,9 @@ pub(crate) async fn search_content_cap(
     state: &State<'_, crate::WorkspaceState>,
     app: &tauri::AppHandle,
 ) -> Result<Value, String> {
-    let root = crate::utils::resolve_read_dispatch(&directory, is_agent, agent_id.as_deref(), state, app).await?;
+    let root =
+        crate::utils::resolve_read_dispatch(&directory, is_agent, agent_id.as_deref(), state, app)
+            .await?;
 
     let is_regex = use_regex.unwrap_or(false);
     let regex = if is_regex {
@@ -89,14 +91,10 @@ pub(crate) async fn search_content_cap(
         let mut files: Vec<Value> = Vec::new();
         let mut total_matches: usize = 0;
         let skip_extensions: Vec<&str> = vec![
-            "exe", "dll", "so", "dylib", "bin", "o", "a",
-            "png", "jpg", "jpeg", "gif", "ico", "svg",
-            "woff", "woff2", "ttf", "eot",
-            "zip", "tar", "gz", "bz2", "7z", "rar",
-            "mp3", "mp4", "avi", "mov", "wav",
-            "pdf", "doc", "docx", "xls", "xlsx",
-            "pyc", "pyo", "class", "wasm",
-            "lock", "map", "min.js", "min.css",
+            "exe", "dll", "so", "dylib", "bin", "o", "a", "png", "jpg", "jpeg", "gif", "ico",
+            "svg", "woff", "woff2", "ttf", "eot", "zip", "tar", "gz", "bz2", "7z", "rar", "mp3",
+            "mp4", "avi", "mov", "wav", "pdf", "doc", "docx", "xls", "xlsx", "pyc", "pyo", "class",
+            "wasm", "lock", "map", "min.js", "min.css",
         ];
 
         // ── 扫描预算：防止在巨大目录树中无限遍历 ──
@@ -111,15 +109,10 @@ pub(crate) async fn search_content_cap(
         let root_str = root_str.trim_end_matches('/').to_string();
 
         let mut builder = ignore::WalkBuilder::new(&root);
-        builder
-            .hidden(false)
-            .require_git(false)
-            .filter_entry(|e| {
-                e.file_type().map_or(true, |ft| !ft.is_dir())
-                    || !is_ignored_path(
-                        &e.path().to_string_lossy().replace('\\', "/"),
-                    )
-            });
+        builder.hidden(false).require_git(false).filter_entry(|e| {
+            e.file_type().map_or(true, |ft| !ft.is_dir())
+                || !is_ignored_path(&e.path().to_string_lossy().replace('\\', "/"))
+        });
         'walk: for entry in builder.build() {
             if scanned_files >= MAX_SCAN_FILES || std::time::Instant::now() > deadline {
                 truncated_by_budget = true;
@@ -136,10 +129,17 @@ pub(crate) async fn search_content_cap(
             scanned_files += 1;
 
             let fp = entry.path();
-            let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            let ext = fp
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
             let name = fp.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-            if skip_extensions.iter().any(|skip| ext == *skip || name.ends_with(skip)) {
+            if skip_extensions
+                .iter()
+                .any(|skip| ext == *skip || name.ends_with(skip))
+            {
                 continue;
             }
             if !extensions.is_empty() && !extensions.contains(&ext) {
@@ -150,7 +150,9 @@ pub(crate) async fn search_content_cap(
                 let rel = fp_str.replace('\\', "/");
                 let rel = rel.strip_prefix(&root_str).unwrap_or(&rel);
                 let rel = rel.trim_start_matches('/');
-                if !re.is_match(rel) { continue; }
+                if !re.is_match(rel) {
+                    continue;
+                }
             }
 
             let content = match std::fs::read_to_string(fp) {
@@ -175,9 +177,13 @@ pub(crate) async fn search_content_cap(
                         // 上下文邻居（含命中行自身——ctx=0 时即单行块）
                         let start = line_no.saturating_sub(ctx_lines);
                         let end = (line_no + ctx_lines + 1).min(lines.len());
-                        let context: Vec<Value> = lines[start..end].iter().enumerate().map(|(i, l)| {
-                            serde_json::json!({ "line": start + i + 1, "content": l })
-                        }).collect();
+                        let context: Vec<Value> = lines[start..end]
+                            .iter()
+                            .enumerate()
+                            .map(
+                                |(i, l)| serde_json::json!({ "line": start + i + 1, "content": l }),
+                            )
+                            .collect();
                         file_matches.push(serde_json::json!({
                             "line": line_no + 1,
                             "content": line,
@@ -186,7 +192,9 @@ pub(crate) async fn search_content_cap(
                     }
                     // content 形态的行级断（退役前 results.len() >= max 同款）
                     if let Some(m) = max_matches {
-                        if total_matches >= m { break; }
+                        if total_matches >= m {
+                            break;
+                        }
                     }
                 }
             }
@@ -207,7 +215,9 @@ pub(crate) async fn search_content_cap(
             }
             // content 形态的文件级断（不置 truncated——同退役前）
             if let Some(m) = max_matches {
-                if total_matches >= m { break; }
+                if total_matches >= m {
+                    break;
+                }
             }
         }
 
@@ -246,20 +256,62 @@ fn glob_filter_to_regex(gf: &str) -> Option<regex::Regex> {
                     i += 1;
                 }
             }
-            '?' => { re.push_str("[^/]"); i += 1; }
-            '.' => { re.push_str("\\."); i += 1; }
-            '\\' => { re.push_str("\\\\"); i += 1; }
-            '+' => { re.push_str("\\+"); i += 1; }
-            '(' => { re.push_str("\\("); i += 1; }
-            ')' => { re.push_str("\\)"); i += 1; }
-            '[' => { re.push_str("\\["); i += 1; }
-            ']' => { re.push_str("\\]"); i += 1; }
-            '{' => { re.push_str("\\{"); i += 1; }
-            '}' => { re.push_str("\\}"); i += 1; }
-            '^' => { re.push_str("\\^"); i += 1; }
-            '$' => { re.push_str("\\$"); i += 1; }
-            '|' => { re.push_str("\\|"); i += 1; }
-            c => { re.push(c); i += 1; }
+            '?' => {
+                re.push_str("[^/]");
+                i += 1;
+            }
+            '.' => {
+                re.push_str("\\.");
+                i += 1;
+            }
+            '\\' => {
+                re.push_str("\\\\");
+                i += 1;
+            }
+            '+' => {
+                re.push_str("\\+");
+                i += 1;
+            }
+            '(' => {
+                re.push_str("\\(");
+                i += 1;
+            }
+            ')' => {
+                re.push_str("\\)");
+                i += 1;
+            }
+            '[' => {
+                re.push_str("\\[");
+                i += 1;
+            }
+            ']' => {
+                re.push_str("\\]");
+                i += 1;
+            }
+            '{' => {
+                re.push_str("\\{");
+                i += 1;
+            }
+            '}' => {
+                re.push_str("\\}");
+                i += 1;
+            }
+            '^' => {
+                re.push_str("\\^");
+                i += 1;
+            }
+            '$' => {
+                re.push_str("\\$");
+                i += 1;
+            }
+            '|' => {
+                re.push_str("\\|");
+                i += 1;
+            }
+            c => {
+                re.push(c);
+                i += 1;
+            }
         }
     }
     re.push('$');

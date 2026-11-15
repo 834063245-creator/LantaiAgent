@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 use crate::analysis::detect_cycles;
-use hologram_graph::Graph;
 use crate::routing::patterns::PatternMatcher;
+use hologram_graph::Graph;
 use serde_json::{json, Value};
 
 fn count_l4_edges(graph: &Graph) -> usize {
-    graph.edges_iter().filter(|(_, e)| e.coupling_depth >= 4).count()
+    graph
+        .edges_iter()
+        .filter(|(_, e)| e.coupling_depth >= 4)
+        .count()
 }
 
 /// 稳定的违规标识 — 确定性、可读、跨检查运行保持一致。
@@ -39,14 +42,24 @@ impl Default for SignalGenerator {
 }
 
 impl SignalGenerator {
-    pub fn new() -> Self { Self { matcher: PatternMatcher::new() } }
+    pub fn new() -> Self {
+        Self {
+            matcher: PatternMatcher::new(),
+        }
+    }
 
     /// 通过对比 `before` → `after` 生成变更信号。
     /// L4/L2 仅在耦合/环 **增加** 时触发 — 不针对静态项目状态。
     /// 如果提供了 `df_counts`，则使用数据流引擎结果代替 graph 边来生成 L3/L4 信号。
-    pub fn generate(&self, before: &Graph, after: &Graph, changed_files: &[String],
-        _coupling_l4_after: usize, cycle_count_after: usize,
-        df_counts: Option<&DataflowSignalCounts>) -> Vec<Value> {
+    pub fn generate(
+        &self,
+        before: &Graph,
+        after: &Graph,
+        changed_files: &[String],
+        _coupling_l4_after: usize,
+        cycle_count_after: usize,
+        df_counts: Option<&DataflowSignalCounts>,
+    ) -> Vec<Value> {
         let mut signals = Vec::new();
         let l4_before = count_l4_edges(before);
         let l4_after = count_l4_edges(after);
@@ -84,7 +97,8 @@ impl SignalGenerator {
         } else {
             for (_, edge) in after.edges_iter() {
                 if edge.coupling_depth >= 3 {
-                    let loc = after.get_node(&edge.source)
+                    let loc = after
+                        .get_node(&edge.source)
                         .and_then(|n| n.location.as_deref())
                         .unwrap_or("");
                     // 使用路径感知匹配：文件必须匹配路径段，而非任意子串
@@ -93,7 +107,10 @@ impl SignalGenerator {
                         let loc_norm = loc.replace('\\', "/");
                         loc_norm == f_norm
                             || loc_norm.starts_with(&format!("{}/", f_norm))
-                            || f_norm.ends_with(&format!("/{}", loc_norm.rsplit('/').next().unwrap_or(&loc_norm)))
+                            || f_norm.ends_with(&format!(
+                                "/{}",
+                                loc_norm.rsplit('/').next().unwrap_or(&loc_norm)
+                            ))
                     });
                     if is_affected {
                         let disc = format!("{}->{}", edge.source, edge.target);
@@ -116,8 +133,8 @@ impl SignalGenerator {
 
 #[cfg(test)]
 mod tests {
-    use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
     use super::*;
+    use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 
     #[test]
     fn test_signals_empty() {
@@ -187,7 +204,10 @@ mod tests {
         g.add_edge_unchecked(Edge::new("e2", "b", "c", EdgeKind::Calls));
         g.add_edge_unchecked(Edge::new("e3", "c", "a", EdgeKind::Calls));
         let signals = gen.generate(&g, &g, &[], 0, 1, None);
-        assert!(signals.is_empty(), "same graph should not re-alert on existing cycles");
+        assert!(
+            signals.is_empty(),
+            "same graph should not re-alert on existing cycles"
+        );
     }
 
     #[test]
@@ -221,9 +241,14 @@ mod tests {
         let mut l4 = Edge::new("e4", "a", "b", EdgeKind::Calls);
         l4.coupling_depth = 4;
         after.add_edge_unchecked(l4);
-        let signals = gen.generate(&before, &after,
+        let signals = gen.generate(
+            &before,
+            &after,
             &["migrations/init.py".into(), "config.toml".into()],
-            1, 1, None);
+            1,
+            1,
+            None,
+        );
         // L5：migration + config + serialization？仅 config = 1 config + 1 migration = 2，L4 delta 1，L2 delta 1
         assert!(signals.len() >= 3);
     }

@@ -94,7 +94,9 @@ fn resolve_under_plugin(name: &str, rel: &str) -> Result<PathBuf, String> {
     fence_rel(rel)?;
     let plugin_dir = plugin_data_root().join(name);
     if !plugin_dir.is_dir() {
-        return Err(format!("数据目录未分配（manifest 未声明 dataDir 或 ensure 未跑）: {name}"));
+        return Err(format!(
+            "数据目录未分配（manifest 未声明 dataDir 或 ensure 未跑）: {name}"
+        ));
     }
     let canon_plugin_dir = std::fs::canonicalize(&plugin_dir)
         .map_err(|e| format!("数据目录解析失败（{}）: {e}", plugin_dir.display()))?;
@@ -114,7 +116,9 @@ fn resolve_under_plugin(name: &str, rel: &str) -> Result<PathBuf, String> {
     let canon_ancestor = std::fs::canonicalize(&ancestor)
         .map_err(|e| format!("路径解析失败（{name}/{rel}）: {e}"))?;
     if !canon_ancestor.starts_with(&canon_plugin_dir) {
-        return Err(format!("数据路径越界（拒绝——回溯/junction 逃逸）: {name}/{rel}"));
+        return Err(format!(
+            "数据路径越界（拒绝——回溯/junction 逃逸）: {name}/{rel}"
+        ));
     }
     Ok(target)
 }
@@ -136,11 +140,18 @@ pub(crate) fn plugin_data_list(name: &str, rel: &str) -> Result<serde_json::Valu
         return Err(format!("数据路径不是目录: {name}/{rel}"));
     }
     let mut entries: Vec<(bool, String, u64)> = Vec::new();
-    for entry in std::fs::read_dir(&dir).map_err(|e| format!("枚举失败（{name}/{rel}）: {e}"))? {
+    for entry in std::fs::read_dir(&dir).map_err(|e| format!("枚举失败（{name}/{rel}）: {e}"))?
+    {
         let entry = entry.map_err(|e| format!("枚举失败（{name}/{rel}）: {e}"))?;
-        let ft = entry.file_type().map_err(|e| format!("枚举失败（{name}/{rel}）: {e}"))?;
+        let ft = entry
+            .file_type()
+            .map_err(|e| format!("枚举失败（{name}/{rel}）: {e}"))?;
         let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-        entries.push((ft.is_dir(), entry.file_name().to_string_lossy().into_owned(), size));
+        entries.push((
+            ft.is_dir(),
+            entry.file_name().to_string_lossy().into_owned(),
+            size,
+        ));
     }
     entries.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let entries: Vec<serde_json::Value> = entries
@@ -189,7 +200,9 @@ pub(crate) fn plugin_data_write(name: &str, rel: &str, content: &str) -> Result<
 /// .trash，不裸删）。
 pub(crate) fn plugin_data_delete(name: &str, rel: &str) -> Result<(), String> {
     if rel.trim().is_empty() {
-        return Err(format!("delete 需要具体路径（插件根的回收走卸载 .trash）: {name}"));
+        return Err(format!(
+            "delete 需要具体路径（插件根的回收走卸载 .trash）: {name}"
+        ));
     }
     let path = resolve_under_plugin(name, rel)?;
     if path.is_dir() {
@@ -226,8 +239,13 @@ pub(crate) fn recycle_on_uninstall(name: &str) -> Result<(), String> {
             dest = trash_root.join(format!("{name}-{secs}-{nanos}"));
         }
     }
-    std::fs::rename(&dir, &dest)
-        .map_err(|e| format!("数据目录回收失败（{} → {}）: {e}", dir.display(), dest.display()))
+    std::fs::rename(&dir, &dest).map_err(|e| {
+        format!(
+            "数据目录回收失败（{} → {}）: {e}",
+            dir.display(),
+            dest.display()
+        )
+    })
 }
 
 #[cfg(test)]
@@ -239,8 +257,11 @@ mod tests {
     static PLUGIN_DATA_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn with_data_root(tag: &str) -> (std::sync::MutexGuard<'static, ()>, std::path::PathBuf) {
-        let guard = PLUGIN_DATA_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!("hologram_plugin_data_{tag}_{}", std::process::id()));
+        let guard = PLUGIN_DATA_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp =
+            std::env::temp_dir().join(format!("hologram_plugin_data_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::env::set_var("HOLOGRAM_PLUGIN_DATA_ROOT", &tmp);
         (guard, tmp)
@@ -264,7 +285,11 @@ mod tests {
         // scope 名嵌套（安装通道同款布局）
         let scoped = plugin_data_ensure("acme/tools").unwrap();
         assert!(
-            scoped["path"].as_str().unwrap().replace('\\', "/").ends_with("acme/tools"),
+            scoped["path"]
+                .as_str()
+                .unwrap()
+                .replace('\\', "/")
+                .ends_with("acme/tools"),
             "意外路径: {scoped}"
         );
         // 名字围栏
@@ -283,7 +308,10 @@ mod tests {
         let (_guard, tmp) = with_data_root("roundtrip");
         plugin_data_ensure("hello").unwrap();
         plugin_data_write("hello", "notes/sub/a.json", "{\"x\":1}").unwrap();
-        assert_eq!(plugin_data_read("hello", "notes/sub/a.json").unwrap(), "{\"x\":1}");
+        assert_eq!(
+            plugin_data_read("hello", "notes/sub/a.json").unwrap(),
+            "{\"x\":1}"
+        );
         plugin_data_write("hello", "notes.json", "n").unwrap();
         // list 根：目录在前、名字序
         let listed = plugin_data_list("hello", "").unwrap();
@@ -318,9 +346,21 @@ mod tests {
         let (_guard, tmp) = with_data_root("fences");
         plugin_data_ensure("hello").unwrap();
         plugin_data_write("hello", "a.txt", "x").unwrap();
-        for bad in ["../escape", "a/../../escape", "\\escape", "C:/evil", "/abs", "a//b", "./a", "a/."] {
+        for bad in [
+            "../escape",
+            "a/../../escape",
+            "\\escape",
+            "C:/evil",
+            "/abs",
+            "a//b",
+            "./a",
+            "a/.",
+        ] {
             assert!(plugin_data_read("hello", bad).is_err(), "{bad} read 应拒绝");
-            assert!(plugin_data_write("hello", bad, "x").is_err(), "{bad} write 应拒绝");
+            assert!(
+                plugin_data_write("hello", bad, "x").is_err(),
+                "{bad} write 应拒绝"
+            );
         }
         assert!(plugin_data_read("hello", "").is_err());
         assert!(plugin_data_write("hello", "", "x").is_err());
@@ -368,7 +408,10 @@ mod tests {
             cleanup(&tmp);
             return;
         }
-        assert!(plugin_data_read("hello", "escape/secret.txt").is_err(), "junction 逃逸必须拒绝");
+        assert!(
+            plugin_data_read("hello", "escape/secret.txt").is_err(),
+            "junction 逃逸必须拒绝"
+        );
         assert!(plugin_data_list("hello", "escape").is_err());
         assert!(plugin_data_write("hello", "escape/new.txt", "x").is_err());
         // 跨插件 junction（指向 other——仍在数据根内，前缀锚插件目录判拒）
@@ -417,21 +460,36 @@ mod tests {
     /// HOLOGRAM_PLUGINS_ROOT——两个 env 都是进程级）。
     #[test]
     fn uninstall_recycles_data_dir() {
-        let _data_guard = PLUGIN_DATA_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _plugins_guard = crate::plugin_assets::PLUGINS_ROOT_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let data_tmp = std::env::temp_dir().join(format!("hologram_plugin_data_uninstall_{}", std::process::id()));
-        let plugins_tmp = std::env::temp_dir().join(format!("hologram_plugins_uninstall_{}", std::process::id()));
+        let _data_guard = PLUGIN_DATA_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _plugins_guard = crate::plugin_assets::PLUGINS_ROOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let data_tmp = std::env::temp_dir().join(format!(
+            "hologram_plugin_data_uninstall_{}",
+            std::process::id()
+        ));
+        let plugins_tmp =
+            std::env::temp_dir().join(format!("hologram_plugins_uninstall_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&data_tmp);
         let _ = std::fs::remove_dir_all(&plugins_tmp);
         std::fs::create_dir_all(plugins_tmp.join("hello")).unwrap();
-        std::fs::write(plugins_tmp.join("hello/manifest.json"), b"{\"name\":\"hello\"}").unwrap();
+        std::fs::write(
+            plugins_tmp.join("hello/manifest.json"),
+            b"{\"name\":\"hello\"}",
+        )
+        .unwrap();
         std::env::set_var("HOLOGRAM_PLUGIN_DATA_ROOT", &data_tmp);
         std::env::set_var("HOLOGRAM_PLUGINS_ROOT", &plugins_tmp);
         plugin_data_ensure("hello").unwrap();
         plugin_data_write("hello", "keep.json", "v").unwrap();
         crate::commands::plugin_install::plugin_uninstall("hello").unwrap();
         assert!(!plugins_tmp.join("hello").exists(), "代码目录已删");
-        assert!(data_tmp.join(".trash/hello/keep.json").is_file(), "数据随卸载进 .trash");
+        assert!(
+            data_tmp.join(".trash/hello/keep.json").is_file(),
+            "数据随卸载进 .trash"
+        );
         assert!(!data_tmp.join("hello").exists(), "原位数据目录已挪走");
         std::env::remove_var("HOLOGRAM_PLUGIN_DATA_ROOT");
         std::env::remove_var("HOLOGRAM_PLUGINS_ROOT");

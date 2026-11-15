@@ -72,7 +72,9 @@ pub(crate) fn builtin_plugins_root() -> Option<PathBuf> {
     }
     // 兜底：仓库 dist-plugins（dev / cargo test —— 打包态由 init 注入缓存）
     let manifest_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_dist = manifest_root.parent().map(|p| p.join("src-ui").join("dist-plugins"));
+    let repo_dist = manifest_root
+        .parent()
+        .map(|p| p.join("src-ui").join("dist-plugins"));
     if let Some(dir) = repo_dist {
         if dir.is_dir() {
             let _ = BUILTIN_PLUGINS_DIR.set(Some(dir.clone()));
@@ -110,9 +112,12 @@ pub(crate) fn init_builtin_plugins_dir(app: &tauri::AppHandle) {
     let resource = app.path().resource_dir().ok();
     let candidates: [Option<PathBuf>; 2] = [
         resource.as_ref().map(|r| r.join("builtin")),
-        resource
-            .as_ref()
-            .map(|r| r.join("_up_").join("src-ui").join("dist-plugins").join("builtin")),
+        resource.as_ref().map(|r| {
+            r.join("_up_")
+                .join("src-ui")
+                .join("dist-plugins")
+                .join("builtin")
+        }),
     ];
     for candidate in candidates.into_iter().flatten() {
         if candidate.is_dir() {
@@ -270,9 +275,11 @@ pub(crate) async fn serve_plugin_path(url_path: &str) -> Response<BoxBody> {
     }
     let root = plugins_root();
     match resolve_asset(&root, url_path) {
-        ResolveOutcome::Forbidden => {
-            json_error(StatusCode::FORBIDDEN, "forbidden", "路径遍历或非法路径被拒绝")
-        }
+        ResolveOutcome::Forbidden => json_error(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "路径遍历或非法路径被拒绝",
+        ),
         ResolveOutcome::Found(path) => serve_file(&path).await,
         ResolveOutcome::Missing => {
             // P1d 回退：用户根缺失 → 试内置根（第一方产物随包携带）。
@@ -311,24 +318,40 @@ async fn serve_file(path: &std::path::Path) -> Response<BoxBody> {
     .await;
     match read {
         Ok(Ok(bytes)) => asset_response(StatusCode::OK, mime, Bytes::from(bytes)),
-        Ok(Err(AssetReadError::NotAFile)) => json_error(StatusCode::NOT_FOUND, "not_found", "不是常规文件"),
-        Ok(Err(AssetReadError::TooLarge)) => {
-            json_error(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "插件资产超过 32MB 上限")
+        Ok(Err(AssetReadError::NotAFile)) => {
+            json_error(StatusCode::NOT_FOUND, "not_found", "不是常规文件")
         }
+        Ok(Err(AssetReadError::TooLarge)) => json_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "too_large",
+            "插件资产超过 32MB 上限",
+        ),
         Ok(Err(AssetReadError::Io(e))) => {
             eprintln!("[plugin_assets] 插件资产读取失败: {e}");
-            json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "插件资产读取失败")
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "插件资产读取失败",
+            )
         }
         Err(join_err) => {
             eprintln!("[plugin_assets] 插件资产读取任务失败: {join_err}");
-            json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "插件资产读取任务失败")
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "插件资产读取任务失败",
+            )
         }
     }
 }
 
 /// 非 GET 的 /plugins/* → 405（JSON 错误体，CORS 头齐全）。
 pub(crate) fn method_not_allowed() -> Response<BoxBody> {
-    json_error(StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed", "插件资产通道仅支持 GET")
+    json_error(
+        StatusCode::METHOD_NOT_ALLOWED,
+        "method_not_allowed",
+        "插件资产通道仅支持 GET",
+    )
 }
 
 /// 组合 patch 路由主入口（S2-2，GET /composition/<path>）。
@@ -351,10 +374,14 @@ pub(crate) async fn serve_composition_path(url_path: &str) -> Response<BoxBody> 
     }
     let root = composition_root();
     match resolve_asset(&root, url_path) {
-        ResolveOutcome::Forbidden => {
-            json_error(StatusCode::FORBIDDEN, "forbidden", "路径遍历或非法路径被拒绝")
+        ResolveOutcome::Forbidden => json_error(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "路径遍历或非法路径被拒绝",
+        ),
+        ResolveOutcome::Missing => {
+            json_error(StatusCode::NOT_FOUND, "not_found", "组合 patch 不存在")
         }
-        ResolveOutcome::Missing => json_error(StatusCode::NOT_FOUND, "not_found", "组合 patch 不存在"),
         ResolveOutcome::Found(path) => {
             let mime = plugin_mime(&path);
             let read = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AssetReadError> {
@@ -373,16 +400,26 @@ pub(crate) async fn serve_composition_path(url_path: &str) -> Response<BoxBody> 
                 Ok(Err(AssetReadError::NotAFile)) => {
                     json_error(StatusCode::NOT_FOUND, "not_found", "不是常规文件")
                 }
-                Ok(Err(AssetReadError::TooLarge)) => {
-                    json_error(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "组合 patch 超过 32MB 上限")
-                }
+                Ok(Err(AssetReadError::TooLarge)) => json_error(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "too_large",
+                    "组合 patch 超过 32MB 上限",
+                ),
                 Ok(Err(AssetReadError::Io(e))) => {
                     eprintln!("[plugin_assets] 组合 patch 读取失败: {e}");
-                    json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "组合 patch 读取失败")
+                    json_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "internal",
+                        "组合 patch 读取失败",
+                    )
                 }
                 Err(join_err) => {
                     eprintln!("[plugin_assets] 组合 patch 读取任务失败: {join_err}");
-                    json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "组合 patch 读取任务失败")
+                    json_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "internal",
+                        "组合 patch 读取任务失败",
+                    )
                 }
             }
         }
@@ -400,7 +437,11 @@ async fn serve_index() -> Response<BoxBody> {
         Ok(dirs) => dirs,
         Err(join_err) => {
             eprintln!("[plugin_assets] 插件索引扫描任务失败: {join_err}");
-            return json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "插件索引扫描失败");
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "插件索引扫描失败",
+            );
         }
     };
     // 内置根合并（去重：用户同名目录优先——用户覆盖升级不被内置目录挤掉）
@@ -436,7 +477,9 @@ fn list_plugin_dirs(root: &Path) -> Vec<String> {
         if !entry.path().join("manifest.json").is_file() {
             continue;
         }
-        let Ok(rel) = entry.path().strip_prefix(root) else { continue };
+        let Ok(rel) = entry.path().strip_prefix(root) else {
+            continue;
+        };
         out.push(rel.to_string_lossy().replace('\\', "/"));
     }
     out.sort();
@@ -461,7 +504,11 @@ async fn serve_preset_index() -> Response<BoxBody> {
         }
         Err(join_err) => {
             eprintln!("[plugin_assets] preset 索引扫描任务失败: {join_err}");
-            json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "preset 索引扫描失败")
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "preset 索引扫描失败",
+            )
         }
     }
 }
@@ -481,7 +528,9 @@ fn list_preset_dirs(root: &Path) -> Vec<String> {
         if !entry.path().join("roster.patch.yml").is_file() {
             continue;
         }
-        let Ok(rel) = entry.path().strip_prefix(root) else { continue };
+        let Ok(rel) = entry.path().strip_prefix(root) else {
+            continue;
+        };
         out.push(rel.to_string_lossy().replace('\\', "/"));
     }
     out.sort();
@@ -507,7 +556,9 @@ fn asset_response(status: StatusCode, mime: &str, body: Bytes) -> Response<BoxBo
         .header("access-control-allow-headers", "*")
         .header("access-control-allow-private-network", "true")
         .body(full_boxed(body))
-        .unwrap_or_else(|_| err_response(StatusCode::INTERNAL_SERVER_ERROR, "proxy: 构造插件响应失败"))
+        .unwrap_or_else(|_| {
+            err_response(StatusCode::INTERNAL_SERVER_ERROR, "proxy: 构造插件响应失败")
+        })
 }
 
 /// JSON 错误响应（404/403/405/500/413 统一形状：{"error": code, "message": ...}）。
@@ -521,7 +572,12 @@ fn json_error(status: StatusCode, code: &str, message: &str) -> Response<BoxBody
         .header("access-control-allow-headers", "*")
         .header("access-control-allow-private-network", "true")
         .body(full_boxed(Bytes::from(body)))
-        .unwrap_or_else(|_| err_response(StatusCode::INTERNAL_SERVER_ERROR, "proxy: 构造插件错误响应失败"))
+        .unwrap_or_else(|_| {
+            err_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "proxy: 构造插件错误响应失败",
+            )
+        })
 }
 
 /// HOLOGRAM_PLUGINS_ROOT 测试锁（S4-3）：env 变量进程级——设置它的测试
@@ -535,18 +591,29 @@ mod tests {
     use super::*;
 
     fn make_root(tag: &str) -> std::path::PathBuf {
-        let tmp = std::env::temp_dir().join(format!("hologram_plugin_assets_{tag}_{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!(
+            "hologram_plugin_assets_{tag}_{}",
+            std::process::id()
+        ));
         let root = tmp.join("plugins");
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(root.join("hello")).unwrap();
         std::fs::create_dir_all(root.join("hologram").join("settings")).unwrap();
-        std::fs::write(root.join("hello").join("manifest.json"), b"{\"name\":\"hello\"}").unwrap();
+        std::fs::write(
+            root.join("hello").join("manifest.json"),
+            b"{\"name\":\"hello\"}",
+        )
+        .unwrap();
         std::fs::write(
             root.join("hologram").join("settings").join("manifest.json"),
             b"{\"name\":\"hologram/settings\"}",
         )
         .unwrap();
-        std::fs::write(root.join("hello").join("entry.js"), b"export const spike = 1").unwrap();
+        std::fs::write(
+            root.join("hello").join("entry.js"),
+            b"export const spike = 1",
+        )
+        .unwrap();
         std::fs::write(root.join("plugins.json"), b"{\"disabled\":[]}").unwrap();
         root
     }
@@ -563,7 +630,9 @@ mod tests {
         ] {
             let resp = asset_response(status, mime, Bytes::from_static(b"x"));
             assert_eq!(
-                resp.headers().get("cache-control").and_then(|v| v.to_str().ok()),
+                resp.headers()
+                    .get("cache-control")
+                    .and_then(|v| v.to_str().ok()),
                 Some("no-store"),
                 "插件资产响应必须禁缓存（否则产物热更被 WebView2 缓存吃掉）"
             );
@@ -578,21 +647,58 @@ mod tests {
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("secret.js"), b"secret").unwrap();
 
-        assert!(matches!(resolve_asset(&root, "hello/entry.js"), ResolveOutcome::Found(_)));
-        assert!(matches!(resolve_asset(&root, "plugins.json"), ResolveOutcome::Found(_)));
+        assert!(matches!(
+            resolve_asset(&root, "hello/entry.js"),
+            ResolveOutcome::Found(_)
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "plugins.json"),
+            ResolveOutcome::Found(_)
+        ));
         // app shell 件 A（S3）：窗内容入口是插件目录深处的 .html——深路径照常
         // 解析（同一 canonicalize 围栏，无深度特判）。
         std::fs::create_dir_all(root.join("hello").join("app")).unwrap();
-        std::fs::write(root.join("hello").join("app").join("index.html"), b"<!doctype html>").unwrap();
-        assert!(matches!(resolve_asset(&root, "hello/app/index.html"), ResolveOutcome::Found(_)));
-        assert!(matches!(resolve_asset(&root, "../outside/secret.js"), ResolveOutcome::Forbidden));
-        assert!(matches!(resolve_asset(&root, "hello/../../outside/secret.js"), ResolveOutcome::Forbidden));
-        assert!(matches!(resolve_asset(&root, "%2e%2e/outside/secret.js"), ResolveOutcome::Forbidden));
-        assert!(matches!(resolve_asset(&root, "hello/%2e%2e/outside/secret.js"), ResolveOutcome::Forbidden));
-        assert!(matches!(resolve_asset(&root, "hello\\..\\outside\\secret.js"), ResolveOutcome::Forbidden));
-        assert!(matches!(resolve_asset(&root, "hello//entry.js"), ResolveOutcome::Forbidden));
-        assert!(matches!(resolve_asset(&root, "c:/windows/win.ini"), ResolveOutcome::Forbidden));
-        assert!(matches!(resolve_asset(&root, "hello/nope.js"), ResolveOutcome::Missing));
+        std::fs::write(
+            root.join("hello").join("app").join("index.html"),
+            b"<!doctype html>",
+        )
+        .unwrap();
+        assert!(matches!(
+            resolve_asset(&root, "hello/app/index.html"),
+            ResolveOutcome::Found(_)
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "../outside/secret.js"),
+            ResolveOutcome::Forbidden
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "hello/../../outside/secret.js"),
+            ResolveOutcome::Forbidden
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "%2e%2e/outside/secret.js"),
+            ResolveOutcome::Forbidden
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "hello/%2e%2e/outside/secret.js"),
+            ResolveOutcome::Forbidden
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "hello\\..\\outside\\secret.js"),
+            ResolveOutcome::Forbidden
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "hello//entry.js"),
+            ResolveOutcome::Forbidden
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "c:/windows/win.ini"),
+            ResolveOutcome::Forbidden
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "hello/nope.js"),
+            ResolveOutcome::Missing
+        ));
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }
 
@@ -601,15 +707,36 @@ mod tests {
     #[test]
     fn mime_mapping() {
         use std::path::Path;
-        assert_eq!(plugin_mime(Path::new("hello/entry.js")), "application/javascript");
-        assert_eq!(plugin_mime(Path::new("hello/entry.mjs")), "application/javascript");
-        assert_eq!(plugin_mime(Path::new("hello/manifest.json")), "application/json");
+        assert_eq!(
+            plugin_mime(Path::new("hello/entry.js")),
+            "application/javascript"
+        );
+        assert_eq!(
+            plugin_mime(Path::new("hello/entry.mjs")),
+            "application/javascript"
+        );
+        assert_eq!(
+            plugin_mime(Path::new("hello/manifest.json")),
+            "application/json"
+        );
         assert_eq!(plugin_mime(Path::new("hello/style.css")), "text/css");
-        assert_eq!(plugin_mime(Path::new("hello/app/index.html")), "text/html; charset=utf-8");
-        assert_eq!(plugin_mime(Path::new("hello/old.HTM")), "text/html; charset=utf-8");
+        assert_eq!(
+            plugin_mime(Path::new("hello/app/index.html")),
+            "text/html; charset=utf-8"
+        );
+        assert_eq!(
+            plugin_mime(Path::new("hello/old.HTM")),
+            "text/html; charset=utf-8"
+        );
         assert_eq!(plugin_mime(Path::new("hello/mod.wasm")), "application/wasm");
-        assert_eq!(plugin_mime(Path::new("hello/icon.png")), "application/octet-stream");
-        assert_eq!(plugin_mime(Path::new("hello/noext")), "application/octet-stream");
+        assert_eq!(
+            plugin_mime(Path::new("hello/icon.png")),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            plugin_mime(Path::new("hello/noext")),
+            "application/octet-stream"
+        );
     }
 
     /// 目录索引：只列含 manifest.json 的子目录；scope 名（嵌套目录）支持；
@@ -619,7 +746,10 @@ mod tests {
         let root = make_root("index");
         std::fs::create_dir_all(root.join("junk")).unwrap();
         let dirs = list_plugin_dirs(&root);
-        assert_eq!(dirs, vec!["hello".to_string(), "hologram/settings".to_string()]);
+        assert_eq!(
+            dirs,
+            vec!["hello".to_string(), "hologram/settings".to_string()]
+        );
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }
 
@@ -648,7 +778,10 @@ mod tests {
             return;
         }
         assert!(
-            matches!(resolve_asset(&root, "escape/secret.js"), ResolveOutcome::Forbidden),
+            matches!(
+                resolve_asset(&root, "escape/secret.js"),
+                ResolveOutcome::Forbidden
+            ),
             "junction 逃逸必须被前缀检查拒绝"
         );
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
@@ -663,7 +796,10 @@ mod tests {
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("secret.js"), b"secret").unwrap();
         std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
-        assert!(matches!(resolve_asset(&root, "escape/secret.js"), ResolveOutcome::Forbidden));
+        assert!(matches!(
+            resolve_asset(&root, "escape/secret.js"),
+            ResolveOutcome::Forbidden
+        ));
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }
 
@@ -675,7 +811,9 @@ mod tests {
         use std::io::{Read, Write};
         // S4-3：持 PLUGINS_ROOT 锁（plugin_install 的安装测试同锁串行——
         // env 变量进程级，并行 clobber 会间歇红）
-        let _env_lock = super::PLUGINS_ROOT_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env_lock = super::PLUGINS_ROOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let root = make_root("http");
 
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -767,16 +905,27 @@ mod tests {
 
         // 默认形态（env 未设）：`~/.lantai/providers.yml`
         std::env::remove_var("HOLOGRAM_PROVIDERS_FILE");
-        let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok();
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .ok();
         let default = providers_file();
-        assert_eq!(default.file_name().and_then(|n| n.to_str()), Some("providers.yml"));
         assert_eq!(
-            default.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()),
+            default.file_name().and_then(|n| n.to_str()),
+            Some("providers.yml")
+        );
+        assert_eq!(
+            default
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str()),
             Some(".lantai"),
             "默认落 ~/.lantai/ 根级（与 mcp.json 同列）"
         );
         if let Some(home) = home.filter(|h| !h.is_empty()) {
-            assert_eq!(default, PathBuf::from(home).join(".lantai").join("providers.yml"));
+            assert_eq!(
+                default,
+                PathBuf::from(home).join(".lantai").join("providers.yml")
+            );
         }
 
         // env 覆盖（测试隔离/重定位）：公开访问面与内部真源同源
@@ -811,7 +960,8 @@ mod tests {
     /// S4-0 纯函数：presets/ 目录不存在 = 空列表（无用户 preset 是常态）。
     #[test]
     fn preset_index_empty_when_no_dir() {
-        let tmp = std::env::temp_dir().join(format!("hologram_preset_empty_{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("hologram_preset_empty_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         assert!(list_preset_dirs(&tmp).is_empty());
@@ -825,7 +975,11 @@ mod tests {
             std::env::temp_dir().join(format!("hologram_composition_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
-        std::fs::write(tmp.join("roster.patch.yml"), b"tools:\n  - id: builtin/shell\n    disabled: true\n").unwrap();
+        std::fs::write(
+            tmp.join("roster.patch.yml"),
+            b"tools:\n  - id: builtin/shell\n    disabled: true\n",
+        )
+        .unwrap();
         // S4-0：preset 子目录（paper 含本体+元数据；focus 只含本体；
         // junk 无本体不入索引）
         std::fs::create_dir_all(tmp.join("presets").join("paper")).unwrap();
@@ -836,7 +990,11 @@ mod tests {
             b"tools:\n  - id: builtin/web\n    disabled: true\n",
         )
         .unwrap();
-        std::fs::write(tmp.join("presets").join("paper").join("preset.yml"), b"name: paper\n").unwrap();
+        std::fs::write(
+            tmp.join("presets").join("paper").join("preset.yml"),
+            b"name: paper\n",
+        )
+        .unwrap();
         std::fs::write(
             tmp.join("presets").join("focus").join("roster.patch.yml"),
             b"capabilities:\n  - id: auto-tune\n    disabled: true\n",
@@ -849,11 +1007,26 @@ mod tests {
     #[test]
     fn composition_route_semantics() {
         let root = make_composition_root("semantics");
-        assert!(matches!(resolve_asset(&root, "roster.patch.yml"), ResolveOutcome::Found(_)));
-        assert!(matches!(resolve_asset(&root, "missing.yml"), ResolveOutcome::Missing));
-        assert!(matches!(resolve_asset(&root, "../escape.yml"), ResolveOutcome::Forbidden));
-        assert!(matches!(resolve_asset(&root, "%2e%2e/escape.yml"), ResolveOutcome::Forbidden));
-        assert!(matches!(resolve_asset(&root, "roster.patch.yml/.."), ResolveOutcome::Forbidden));
+        assert!(matches!(
+            resolve_asset(&root, "roster.patch.yml"),
+            ResolveOutcome::Found(_)
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "missing.yml"),
+            ResolveOutcome::Missing
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "../escape.yml"),
+            ResolveOutcome::Forbidden
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "%2e%2e/escape.yml"),
+            ResolveOutcome::Forbidden
+        ));
+        assert!(matches!(
+            resolve_asset(&root, "roster.patch.yml/.."),
+            ResolveOutcome::Forbidden
+        ));
         assert_eq!(
             plugin_mime(std::path::Path::new("c/roster.patch.yml")),
             "text/plain; charset=utf-8"
@@ -964,21 +1137,31 @@ mod tests {
     #[test]
     fn builtin_plugin_fallback_end_to_end() {
         use std::io::{Read, Write};
-        let _env_lock = super::PLUGINS_ROOT_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env_lock = super::PLUGINS_ROOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let user_root = make_root("p1d_user");
         // 内置根：独立临时目录，含渲染器插件（manifest + entry）
-        let builtin_tmp =
-            std::env::temp_dir().join(format!("hologram_plugin_assets_builtin_{}", std::process::id()));
+        let builtin_tmp = std::env::temp_dir().join(format!(
+            "hologram_plugin_assets_builtin_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&builtin_tmp);
         let builtin_root = builtin_tmp.join("builtin");
         std::fs::create_dir_all(builtin_root.join("hologram").join("renderers")).unwrap();
         std::fs::write(
-            builtin_root.join("hologram").join("renderers").join("manifest.json"),
+            builtin_root
+                .join("hologram")
+                .join("renderers")
+                .join("manifest.json"),
             br#"{"name":"hologram/renderers","version":"1.0.0","entry":"entry.js"}"#,
         )
         .unwrap();
         std::fs::write(
-            builtin_root.join("hologram").join("renderers").join("entry.js"),
+            builtin_root
+                .join("hologram")
+                .join("renderers")
+                .join("entry.js"),
             b"export const renderers = 1",
         )
         .unwrap();
@@ -995,26 +1178,41 @@ mod tests {
             let addr = listener.local_addr().unwrap();
             let client = reqwest::Client::builder().build().unwrap();
             let shutdown = std::sync::atomic::AtomicBool::new(false);
-            let server_handle =
-                tokio::spawn(async move { crate::llm_proxy::serve_listener(&listener, client, &shutdown).await });
+            let server_handle = tokio::spawn(async move {
+                crate::llm_proxy::serve_listener(&listener, client, &shutdown).await
+            });
 
             let get = |path: &str| {
                 format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nconnection: close\r\n\r\n")
             };
             let cases: Vec<(&str, u16, &str)> = vec![
                 // 用户根没有渲染器 → 回退内置根（manifest JSON）
-                ("/plugins/hologram/renderers/manifest.json", 200, "application/json"),
+                (
+                    "/plugins/hologram/renderers/manifest.json",
+                    200,
+                    "application/json",
+                ),
                 // 回退 entry（JS MIME）
-                ("/plugins/hologram/renderers/entry.js", 200, "application/javascript"),
+                (
+                    "/plugins/hologram/renderers/entry.js",
+                    200,
+                    "application/javascript",
+                ),
                 // 白名单消灭后（2026-09-06）：任意路径用户根缺失都试内置根，
                 // 内置根也无该文件（ghost）→ 404（与白名单时代终态等价）
                 ("/plugins/ghost/entry.js", 404, "application/json"),
                 // 遍历防护在内置根同样生效
-                ("/plugins/hologram/renderers/../../outside.js", 403, "application/json"),
+                (
+                    "/plugins/hologram/renderers/../../outside.js",
+                    403,
+                    "application/json",
+                ),
             ];
             for (path, want_status, want_mime) in cases {
                 let mut probe = std::net::TcpStream::connect(addr).unwrap();
-                probe.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+                probe
+                    .set_read_timeout(Some(std::time::Duration::from_secs(8)))
+                    .unwrap();
                 probe.write_all(get(path).as_bytes()).unwrap();
                 probe.flush().unwrap();
                 let mut buf = String::new();
@@ -1025,17 +1223,25 @@ mod tests {
                     "{path} 期望 {want_status}: {buf}"
                 );
                 let lower = buf.to_ascii_lowercase();
-                assert!(lower.contains(&format!("content-type: {want_mime}")), "{path} MIME: {buf}");
+                assert!(
+                    lower.contains(&format!("content-type: {want_mime}")),
+                    "{path} MIME: {buf}"
+                );
             }
 
             // 索引合并：内置渲染器插件出现在 /plugins/ 索引
             let mut probe = std::net::TcpStream::connect(addr).unwrap();
-            probe.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+            probe
+                .set_read_timeout(Some(std::time::Duration::from_secs(8)))
+                .unwrap();
             probe.write_all(get("/plugins/").as_bytes()).unwrap();
             probe.flush().unwrap();
             let mut buf = String::new();
             probe.read_to_string(&mut buf).unwrap();
-            assert!(buf.contains("hologram/renderers"), "索引应含内置渲染器: {buf}");
+            assert!(
+                buf.contains("hologram/renderers"),
+                "索引应含内置渲染器: {buf}"
+            );
 
             server_handle.abort();
         });
@@ -1049,21 +1255,31 @@ mod tests {
     #[test]
     fn user_plugin_dir_wins_over_builtin() {
         use std::io::{Read, Write};
-        let _env_lock = super::PLUGINS_ROOT_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env_lock = super::PLUGINS_ROOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let user_root = make_root("p1d_userwin");
         // 用户根放渲染器（覆盖升级场景）
         std::fs::create_dir_all(user_root.join("hologram").join("renderers")).unwrap();
         std::fs::write(
-            user_root.join("hologram").join("renderers").join("manifest.json"),
+            user_root
+                .join("hologram")
+                .join("renderers")
+                .join("manifest.json"),
             br#"{"name":"hologram/renderers","version":"9.9.9","entry":"entry.js"}"#,
         )
         .unwrap();
-        let builtin_tmp =
-            std::env::temp_dir().join(format!("hologram_plugin_assets_builtin_{}", std::process::id()));
+        let builtin_tmp = std::env::temp_dir().join(format!(
+            "hologram_plugin_assets_builtin_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&builtin_tmp);
         std::fs::create_dir_all(builtin_tmp.join("hologram").join("renderers")).unwrap();
         std::fs::write(
-            builtin_tmp.join("hologram").join("renderers").join("manifest.json"),
+            builtin_tmp
+                .join("hologram")
+                .join("renderers")
+                .join("manifest.json"),
             br#"{"name":"hologram/renderers","version":"1.0.0","entry":"entry.js"}"#,
         )
         .unwrap();
@@ -1080,15 +1296,20 @@ mod tests {
             let addr = listener.local_addr().unwrap();
             let client = reqwest::Client::builder().build().unwrap();
             let shutdown = std::sync::atomic::AtomicBool::new(false);
-            let server_handle =
-                tokio::spawn(async move { crate::llm_proxy::serve_listener(&listener, client, &shutdown).await });
+            let server_handle = tokio::spawn(async move {
+                crate::llm_proxy::serve_listener(&listener, client, &shutdown).await
+            });
 
             let get = |path: &str| {
                 format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nconnection: close\r\n\r\n")
             };
             let mut probe = std::net::TcpStream::connect(addr).unwrap();
-            probe.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
-            probe.write_all(get("/plugins/hologram/renderers/manifest.json").as_bytes()).unwrap();
+            probe
+                .set_read_timeout(Some(std::time::Duration::from_secs(8)))
+                .unwrap();
+            probe
+                .write_all(get("/plugins/hologram/renderers/manifest.json").as_bytes())
+                .unwrap();
             probe.flush().unwrap();
             let mut buf = String::new();
             probe.read_to_string(&mut buf).unwrap();

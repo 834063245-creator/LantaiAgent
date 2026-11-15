@@ -32,7 +32,10 @@ const PROGRESS_POLL_MS: u64 = 150;
 /// 需要上报进度的长任务工具（内部异步分析，返回 `started` 后仍在后台跑）。
 /// `analyze_with_progress` 是壳专属方法（Phase 1），进度推送机制与模型工具同路。
 fn is_long_running(name: &str) -> bool {
-    matches!(name, "analyze_project" | "validate_project" | "analyze_with_progress")
+    matches!(
+        name,
+        "analyze_project" | "validate_project" | "analyze_with_progress"
+    )
 }
 
 /// 解析 CLI 参数 `engine.exe serve [--project-root <path>]`。
@@ -58,7 +61,11 @@ pub fn parse_serve_args() -> Option<Option<String>> {
             project_root = Some(arg.trim_start_matches("--project-root=").to_string());
         }
     }
-    if is_serve { Some(project_root) } else { None }
+    if is_serve {
+        Some(project_root)
+    } else {
+        None
+    }
 }
 
 /// 是否同时开启 TCP 9777 监听（serve --tcp）—— 与 MCP stdio 共享同一内存图。
@@ -144,17 +151,27 @@ impl McpServer {
     /// 会话初始化状态 — 供测试断言；生产代码经 handle_notification 隐式维护。
     #[allow(dead_code)]
     fn is_initialized(&self) -> bool {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).initialized
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .initialized
     }
 
     fn mark_initialized(&self) {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).initialized = true;
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .initialized = true;
     }
 
     /// 请求是否已被取消 — 供测试断言（生产逻辑在 current_progress_notification 内联查询）。
     #[allow(dead_code)]
     fn is_cancelled(&self, request_id: &Value) -> bool {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).cancelled.contains(request_id)
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cancelled
+            .contains(request_id)
     }
 
     // ── JSON-RPC 协议 ──
@@ -192,7 +209,9 @@ impl McpServer {
         info!(method = %method, id = %id, elapsed_ms = start.elapsed().as_millis(), "mcp response");
         match serde_json::to_string(&result) {
             Ok(s) => out(s),
-            Err(e) => warn!(method = %method, id = %id, error = %e, "mcp response serialization failed"),
+            Err(e) => {
+                warn!(method = %method, id = %id, error = %e, "mcp response serialization failed")
+            }
         }
     }
 
@@ -333,7 +352,11 @@ impl McpServer {
         });
         if started && engine::engine_state().is_analyzing() {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.progress = Some(ProgressCtx { request_id: id, token, tool: tool.to_string() });
+            st.progress = Some(ProgressCtx {
+                request_id: id,
+                token,
+                tool: tool.to_string(),
+            });
         }
     }
 
@@ -350,12 +373,24 @@ impl McpServer {
             (ctx.request_id.clone(), ctx.token.clone(), ctx.tool.clone())
         };
         match engine::engine_state() {
-            EngineState::Analyzing { phase, current, total, .. } => {
-                Some(McpServer::progress_notification(&request_id, token.as_ref(), current, total, &phase))
-            }
+            EngineState::Analyzing {
+                phase,
+                current,
+                total,
+                ..
+            } => Some(McpServer::progress_notification(
+                &request_id,
+                token.as_ref(),
+                current,
+                total,
+                &phase,
+            )),
             // 分析结束：清空上下文，不再推送。
             _ => {
-                self.state.lock().unwrap_or_else(|e| e.into_inner()).progress = None;
+                self.state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .progress = None;
                 None
             }
         }
@@ -374,7 +409,13 @@ impl McpServer {
     }
 
     /// 构造 progress 通知。
-    fn progress_notification(request_id: &Value, token: Option<&Value>, progress: usize, total: usize, message: &str) -> String {
+    fn progress_notification(
+        request_id: &Value,
+        token: Option<&Value>,
+        progress: usize,
+        total: usize,
+        message: &str,
+    ) -> String {
         let mut params = json!({
             "progress": progress,
             "total": total,
@@ -387,7 +428,8 @@ impl McpServer {
                 obj.insert("progressToken".into(), t.clone());
             }
         }
-        json!({ "jsonrpc": "2.0", "method": "notifications/progress", "params": params }).to_string()
+        json!({ "jsonrpc": "2.0", "method": "notifications/progress", "params": params })
+            .to_string()
     }
 
     // ── initialize 握手 ──
@@ -401,33 +443,39 @@ impl McpServer {
             HOLOGRAM_INSTRUCTIONS_NO_INDEX
         };
 
-        McpServer::success_response(id, json!({
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "tools": {},
-                "prompts": {},
-                "progress": {}
-            },
-            "serverInfo": {
-                "name": "hologram-engine",
-                // 取自 crate 版本（Cargo.toml），不再硬编码。
-                // 原来这里写死 "4.0.0"，而 CLI `--version` 走的是
-                // env!("CARGO_PKG_VERSION")（当时 1.0.1）——同一个二进制的
-                // 版本号从两条路报出两个值，宿主做诊断时只会更糊涂。
-                // 单一真源 = Cargo.toml。
-                "version": env!("CARGO_PKG_VERSION"),
-                "author": "Wenbing Jing",
-                "license": "MIT",
-                "homepage": "https://github.com/834063245-creator/LantaiAgent"
-            },
-            "instructions": instructions
-        }))
+        McpServer::success_response(
+            id,
+            json!({
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {},
+                    "prompts": {},
+                    "progress": {}
+                },
+                "serverInfo": {
+                    "name": "hologram-engine",
+                    // 取自 crate 版本（Cargo.toml），不再硬编码。
+                    // 原来这里写死 "4.0.0"，而 CLI `--version` 走的是
+                    // env!("CARGO_PKG_VERSION")（当时 1.0.1）——同一个二进制的
+                    // 版本号从两条路报出两个值，宿主做诊断时只会更糊涂。
+                    // 单一真源 = Cargo.toml。
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "author": "Wenbing Jing",
+                    "license": "MIT",
+                    "homepage": "https://github.com/834063245-creator/LantaiAgent"
+                },
+                "instructions": instructions
+            }),
+        )
     }
 
     // ── tools/list：列出所有可用工具 ──
 
     fn handle_tools_list(&self, id: &Value) -> Value {
-        McpServer::success_response(id, json!({ "tools": crate::tools::ToolRegistry::global().tools_list() }))
+        McpServer::success_response(
+            id,
+            json!({ "tools": crate::tools::ToolRegistry::global().tools_list() }),
+        )
     }
 
     // ── tools/call：分发工具调用 ──
@@ -444,7 +492,10 @@ impl McpServer {
             let msg = if tool_name.is_empty() {
                 "Invalid params: missing tool name".to_string()
             } else {
-                format!("Tool not found: {} — check tools/list for available tools", tool_name)
+                format!(
+                    "Tool not found: {} — check tools/list for available tools",
+                    tool_name
+                )
             };
             return McpServer::error_response(id, -32000, &msg);
         }
@@ -456,8 +507,18 @@ impl McpServer {
 
         // 长任务：若请求带 progressToken，先发一条 "started" 进度通知。
         if is_long_running(effective) {
-            if let Some(token) = params.get("_meta").and_then(|m| m.get("progressToken")).cloned() {
-                out(McpServer::progress_notification(id, Some(&token), 0, 0, &format!("{} started", tool_name)));
+            if let Some(token) = params
+                .get("_meta")
+                .and_then(|m| m.get("progressToken"))
+                .cloned()
+            {
+                out(McpServer::progress_notification(
+                    id,
+                    Some(&token),
+                    0,
+                    0,
+                    &format!("{} started", tool_name),
+                ));
             }
         }
 
@@ -488,12 +549,18 @@ impl McpServer {
         // MCP 1.0：工具执行失败应放在 result.isError，而不是 JSON-RPC error 封套。
         // 把 dispatch 返回的 error 封套转成带 isError 的 result。
         if result.get("error").is_some() {
-            let err_msg = result["error"]["message"].as_str().unwrap_or("tool execution failed").to_string();
-            return McpServer::success_response(id, json!({
-                "content": [{ "type": "text", "text": err_msg }],
-                "isError": true,
-                "_meta": { "generator": "HoloGram v4.0", "license": "MIT", "copyright": "Copyright (c) 2026 Wenbing Jing" }
-            }));
+            let err_msg = result["error"]["message"]
+                .as_str()
+                .unwrap_or("tool execution failed")
+                .to_string();
+            return McpServer::success_response(
+                id,
+                json!({
+                    "content": [{ "type": "text", "text": err_msg }],
+                    "isError": true,
+                    "_meta": { "generator": "HoloGram v4.0", "license": "MIT", "copyright": "Copyright (c) 2026 Wenbing Jing" }
+                }),
+            );
         }
         result
     }
@@ -501,15 +568,18 @@ impl McpServer {
     // ── prompts：暴露预置指令提示词 ──
 
     fn handle_prompts_list(&self, id: &Value) -> Value {
-        McpServer::success_response(id, json!({
-            "prompts": [
-                {
-                    "name": "project-context",
-                    "description": "HoloGram preset guidance for the current project index state",
-                    "arguments": []
-                }
-            ]
-        }))
+        McpServer::success_response(
+            id,
+            json!({
+                "prompts": [
+                    {
+                        "name": "project-context",
+                        "description": "HoloGram preset guidance for the current project index state",
+                        "arguments": []
+                    }
+                ]
+            }),
+        )
     }
 
     fn handle_prompts_get(&self, request: &Value, id: &Value) -> Value {
@@ -517,17 +587,24 @@ impl McpServer {
         let params = request.get("params").unwrap_or(&empty_params);
         let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
         if name != "project-context" {
-            return McpServer::error_response(id, -32602, "Unknown prompt: only 'project-context' is available");
+            return McpServer::error_response(
+                id,
+                -32602,
+                "Unknown prompt: only 'project-context' is available",
+            );
         }
         let instructions = if has_active_index() {
             HOLOGRAM_INSTRUCTIONS_INDEXED
         } else {
             HOLOGRAM_INSTRUCTIONS_NO_INDEX
         };
-        McpServer::success_response(id, json!({
-            "description": "HoloGram preset guidance for the current project index state",
-            "messages": [{ "role": "user", "content": { "type": "text", "text": instructions } }]
-        }))
+        McpServer::success_response(
+            id,
+            json!({
+                "description": "HoloGram preset guidance for the current project index state",
+                "messages": [{ "role": "user", "content": { "type": "text", "text": instructions } }]
+            }),
+        )
     }
 }
 
@@ -587,7 +664,10 @@ mod tests {
         // 通知（无 id）不产生响应行
         let srv = server();
         let req = serde_json::to_string(&make_notification("notifications/initialized")).unwrap();
-        assert!(srv.handle_request(&req).is_empty(), "notifications must not produce a response");
+        assert!(
+            srv.handle_request(&req).is_empty(),
+            "notifications must not produce a response"
+        );
     }
 
     #[test]
@@ -598,9 +678,18 @@ mod tests {
         let lines = srv.handle_request(&req);
         let v = responses(&lines);
         let caps = &v[0]["result"]["capabilities"];
-        assert!(caps.get("tools").is_some(), "capabilities must declare tools");
-        assert!(caps.get("prompts").is_some(), "capabilities must declare prompts");
-        assert!(caps.get("progress").is_some(), "capabilities must declare progress");
+        assert!(
+            caps.get("tools").is_some(),
+            "capabilities must declare tools"
+        );
+        assert!(
+            caps.get("prompts").is_some(),
+            "capabilities must declare prompts"
+        );
+        assert!(
+            caps.get("progress").is_some(),
+            "capabilities must declare progress"
+        );
         assert_eq!(v[0]["result"]["protocolVersion"], "2024-11-05");
     }
 
@@ -642,7 +731,10 @@ mod tests {
         assert!(names.contains(&"analyze_project"), "写工具留在顶层");
         assert!(!names.contains(&"get_neighbors"), "折叠后不再单列原名");
         // 域 schema 带 action 枚举与只读注解（宿主 plan 门禁认 annotations）
-        let graph = tools.iter().find(|t| t["name"] == "graph").expect("graph 域");
+        let graph = tools
+            .iter()
+            .find(|t| t["name"] == "graph")
+            .expect("graph 域");
         assert_eq!(graph["annotations"]["readOnlyHint"], true);
         assert!(graph["inputSchema"]["properties"]["action"]["enum"].is_array());
     }
@@ -665,16 +757,27 @@ mod tests {
         .unwrap();
         let v = responses(&srv.handle_request(&routed));
         let r = responses(&srv.handle_request(&raw));
-        assert!(v[0].get("error").is_none(), "域调用不得是 JSON-RPC 层错误: {:?}", v[0]);
+        assert!(
+            v[0].get("error").is_none(),
+            "域调用不得是 JSON-RPC 层错误: {:?}",
+            v[0]
+        );
         assert_eq!(
             v[0]["result"]["content"][0]["text"], r[0]["result"]["content"][0]["text"],
             "域调用与原名调用必须逐字节等价"
         );
         // 未知 action：降级（可见引导）而非 JSON-RPC 错误
-        let bad = serde_json::to_string(&make_tool_call("graph", json!({"action": "nope"}), 4)).unwrap();
+        let bad =
+            serde_json::to_string(&make_tool_call("graph", json!({"action": "nope"}), 4)).unwrap();
         let v = responses(&srv.handle_request(&bad));
-        assert!(v[0].get("error").is_none(), "未知 action 走 Degraded: {:?}", v[0]);
-        let text = v[0]["result"]["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(
+            v[0].get("error").is_none(),
+            "未知 action 走 Degraded: {:?}",
+            v[0]
+        );
+        let text = v[0]["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default();
         assert!(text.contains("unknown graph action"), "{text}");
     }
 
@@ -707,9 +810,18 @@ mod tests {
         let req = serde_json::to_string(&make_tool_call("graph_snapshot", json!({}), 2)).unwrap();
         let lines = srv.handle_request(&req);
         let v = responses(&lines);
-        assert!(v[0].get("error").is_none(), "壳方法调用不得是 JSON-RPC 层错误: {:?}", v[0]);
-        let text = v[0]["result"]["content"][0]["text"].as_str().unwrap_or_default();
-        assert!(!text.contains("Tool not found"), "graph_snapshot 必须可达: {text}");
+        assert!(
+            v[0].get("error").is_none(),
+            "壳方法调用不得是 JSON-RPC 层错误: {:?}",
+            v[0]
+        );
+        let text = v[0]["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            !text.contains("Tool not found"),
+            "graph_snapshot 必须可达: {text}"
+        );
         // 未注册的名字依旧被拒（契约 v2 已删除的 get_graph_page 不再存在）
         let req = serde_json::to_string(&make_tool_call("get_graph_page", json!({}), 3)).unwrap();
         let lines = srv.handle_request(&req);
@@ -725,11 +837,20 @@ mod tests {
     fn test_tool_call_known_tool() {
         // 已知工具应返回正常 result
         let srv = server();
-        let req = serde_json::to_string(&make_tool_call("project_timeline", json!({"limit": 5}), 2)).unwrap();
+        let req =
+            serde_json::to_string(&make_tool_call("project_timeline", json!({"limit": 5}), 2))
+                .unwrap();
         let lines = srv.handle_request(&req);
         let v = responses(&lines);
-        assert!(v[0]["result"]["content"].is_array(), "known tool returns content");
-        assert_eq!(v[0]["result"]["isError"].as_bool(), None, "successful tool has no isError");
+        assert!(
+            v[0]["result"]["content"].is_array(),
+            "known tool returns content"
+        );
+        assert_eq!(
+            v[0]["result"]["isError"].as_bool(),
+            None,
+            "successful tool has no isError"
+        );
     }
 
     #[test]
@@ -739,8 +860,14 @@ mod tests {
         let req = serde_json::to_string(&make_tool_call("nonexistent_tool", json!({}), 2)).unwrap();
         let lines = srv.handle_request(&req);
         let v = responses(&lines);
-        assert!(v[0]["error"].is_object(), "unknown tool should be a JSON-RPC error");
-        assert!(v[0].get("result").is_none(), "unknown tool must not return a result envelope");
+        assert!(
+            v[0]["error"].is_object(),
+            "unknown tool should be a JSON-RPC error"
+        );
+        assert!(
+            v[0].get("result").is_none(),
+            "unknown tool must not return a result envelope"
+        );
     }
 
     #[test]
@@ -761,7 +888,8 @@ mod tests {
             "jsonrpc": "2.0",
             "method": "notifications/cancelled",
             "params": { "requestId": 42 }
-        })).unwrap();
+        }))
+        .unwrap();
         srv.handle_request(&cancel);
         assert!(srv.is_cancelled(&json!(42)));
     }
@@ -775,7 +903,12 @@ mod tests {
         let prompts = v[0]["result"]["prompts"].as_array().unwrap();
         assert_eq!(prompts[0]["name"], "project-context");
 
-        let get_req = serde_json::to_string(&make_rpc("prompts/get", json!({ "name": "project-context" }), 2)).unwrap();
+        let get_req = serde_json::to_string(&make_rpc(
+            "prompts/get",
+            json!({ "name": "project-context" }),
+            2,
+        ))
+        .unwrap();
         let glines = srv.handle_request(&get_req);
         let gv = responses(&glines);
         assert!(gv[0]["result"]["messages"].is_array());
@@ -784,10 +917,10 @@ mod tests {
     #[test]
     fn test_prompts_get_unknown() {
         let srv = server();
-        let req = serde_json::to_string(&make_rpc("prompts/get", json!({ "name": "nope" }), 1)).unwrap();
+        let req =
+            serde_json::to_string(&make_rpc("prompts/get", json!({ "name": "nope" }), 1)).unwrap();
         let lines = srv.handle_request(&req);
         let v = responses(&lines);
         assert!(v[0]["error"].is_object(), "unknown prompt errors");
     }
 }
-

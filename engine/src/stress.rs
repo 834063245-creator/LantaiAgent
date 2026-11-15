@@ -132,8 +132,16 @@ impl ProjectGenerator {
 
         // 规模越大，目录层级越深
         let dirs = [
-            "models", "services", "controllers", "utils", "core", "api",
-            "dal", "middleware", "handlers", "schemas",
+            "models",
+            "services",
+            "controllers",
+            "utils",
+            "core",
+            "api",
+            "dal",
+            "middleware",
+            "handlers",
+            "schemas",
         ];
         for d in &dirs {
             fs::create_dir_all(root.join(d)).expect("创建子目录");
@@ -143,7 +151,9 @@ impl ProjectGenerator {
         let show_progress = file_count >= 1000;
 
         // 阶段 1：规划所有文件并生成所有符号名
-        if show_progress { eprint!("  Phase 1 (plan)... "); }
+        if show_progress {
+            eprint!("  Phase 1 (plan)... ");
+        }
         for dir_idx in 0..dirs.len() {
             let dir = dirs[dir_idx];
             for file_idx in 0..files_per_dir {
@@ -153,7 +163,8 @@ impl ProjectGenerator {
                 // 密度：每文件 3-8 个类，2-3 个顶层函数
                 let class_count = self.rng.random_range(3..=8);
                 let top_func_count = self.rng.random_range(2..=4);
-                self.file_plan.push((dir.to_string(), file_idx, class_count, top_func_count));
+                self.file_plan
+                    .push((dir.to_string(), file_idx, class_count, top_func_count));
 
                 for c in 0..class_count {
                     let class_name = format!("{}_{}C{}", dir, file_idx, c);
@@ -161,20 +172,23 @@ impl ProjectGenerator {
                     // 每类 3-10 个方法
                     let method_count = self.rng.random_range(3..=10);
                     for m in 0..method_count {
-                        self.func_names.push(format!(
-                            "{}_{}C{}_m{}",
-                            dir, file_idx, c, m
-                        ));
+                        self.func_names
+                            .push(format!("{}_{}C{}_m{}", dir, file_idx, c, m));
                     }
                 }
                 for tf in 0..top_func_count {
-                    self.func_names.push(format!("{}_{}_tf{}", dir, file_idx, tf));
+                    self.func_names
+                        .push(format!("{}_{}_tf{}", dir, file_idx, tf));
                 }
             }
         }
-        if show_progress { eprintln!("{} symbols", self.func_names.len()); }
+        if show_progress {
+            eprintln!("{} symbols", self.func_names.len());
+        }
 
-        let module_names: Vec<String> = self.file_plan.iter()
+        let module_names: Vec<String> = self
+            .file_plan
+            .iter()
             .map(|(d, fi, _, _)| format!("{}.mod_{}", d, fi))
             .collect();
 
@@ -187,7 +201,9 @@ impl ProjectGenerator {
         let total = file_plan.len();
         let progress_step = (total / 20).max(1);
 
-        if show_progress { eprint!("  Phase 2 (write)... "); }
+        if show_progress {
+            eprint!("  Phase 2 (write)... ");
+        }
         for (fi, (dir, file_idx, class_count, top_func_count)) in file_plan.iter().enumerate() {
             if show_progress && fi % progress_step == 0 {
                 eprint!("{:.0}% ", (fi as f64 / total as f64) * 100.0);
@@ -204,7 +220,9 @@ impl ProjectGenerator {
                     let target = loop {
                         let t = module_names.choose(&mut self.rng).expect("名称列表非空");
                         let current = format!("{}.mod_{}", dir, file_idx);
-                        if *t != current { break t.clone(); }
+                        if *t != current {
+                            break t.clone();
+                        }
                     };
                     let parts: Vec<&str> = target.splitn(2, '.').collect();
                     imports.push(format!("from {}.{} import *\n", parts[0], parts[1]));
@@ -220,7 +238,13 @@ impl ProjectGenerator {
                 let attr_count = self.rng.random_range(2..=5);
                 writeln!(f, "    def __init__(self):").expect("写入生成文件");
                 for a in 0..attr_count {
-                    writeln!(f, "        self.attr_{} = {}", a, self.rng.random_range(0..100)).expect("写入生成文件");
+                    writeln!(
+                        f,
+                        "        self.attr_{} = {}",
+                        a,
+                        self.rng.random_range(0..100)
+                    )
+                    .expect("写入生成文件");
                 }
 
                 // 计算此类的方法数（从 func_names 中连续匹配）
@@ -228,7 +252,11 @@ impl ProjectGenerator {
                     let cn = &class_names[class_idx - 1];
                     let mut c = 0;
                     for i in symbol_idx..func_names.len() {
-                        if func_names[i].starts_with(cn) { c += 1; } else { break; }
+                        if func_names[i].starts_with(cn) {
+                            c += 1;
+                        } else {
+                            break;
+                        }
                     }
                     c
                 };
@@ -238,14 +266,17 @@ impl ProjectGenerator {
                     // 0-3 个参数
                     let param_count = self.rng.random_range(0..=3);
                     let params: Vec<String> = (0..param_count).map(|i| format!("p{}", i)).collect();
-                    writeln!(f, "    def {}(self, {}):", func_name, params.join(", ")).expect("写入生成文件");
+                    writeln!(f, "    def {}(self, {}):", func_name, params.join(", "))
+                        .expect("写入生成文件");
                     // 3-10 行方法体（调用表达式）
                     for _bl in 0..self.rng.random_range(3..=10) {
-                        writeln!(f, "        {}", self.gen_call_expr(&module_names)).expect("写入生成文件");
+                        writeln!(f, "        {}", self.gen_call_expr(&module_names))
+                            .expect("写入生成文件");
                     }
                     // 70% 概率有返回语句
                     if self.rng.random_bool(0.7) {
-                        writeln!(f, "        {}", self.gen_ret_expr(&module_names)).expect("写入生成文件");
+                        writeln!(f, "        {}", self.gen_ret_expr(&module_names))
+                            .expect("写入生成文件");
                     }
                 }
             }
@@ -268,11 +299,15 @@ impl ProjectGenerator {
 
             // 将导入语句前置到文件开头
             let mut content = String::new();
-            for imp in &imports { content.push_str(imp); }
+            for imp in &imports {
+                content.push_str(imp);
+            }
             content.push_str(&fs::read_to_string(&path).expect("读取生成文件"));
             fs::write(&path, &content).expect("写入文件");
         }
-        if show_progress { eprintln!("done"); }
+        if show_progress {
+            eprintln!("done");
+        }
 
         self.func_names.len()
     }
@@ -285,13 +320,23 @@ impl ProjectGenerator {
         match self.rng.random_range(0..=10) {
             0..=2 => {
                 // 类实例化调用
-                if self.class_names.is_empty() { return "pass".into(); }
-                let class = self.class_names.choose(&mut self.rng).expect("名称列表非空");
-                format!("{}().do_work()", class.rsplit('_').next().unwrap_or("Unknown"))
+                if self.class_names.is_empty() {
+                    return "pass".into();
+                }
+                let class = self
+                    .class_names
+                    .choose(&mut self.rng)
+                    .expect("名称列表非空");
+                format!(
+                    "{}().do_work()",
+                    class.rsplit('_').next().unwrap_or("Unknown")
+                )
             }
             3..=5 => {
                 // 函数调用
-                if self.func_names.is_empty() { return "pass".into(); }
+                if self.func_names.is_empty() {
+                    return "pass".into();
+                }
                 let f = self.func_names.choose(&mut self.rng).expect("名称列表非空");
                 let short = f.rsplit('.').next().unwrap_or(f);
                 let arg_count = self.rng.random_range(0..=2);
@@ -300,27 +345,40 @@ impl ProjectGenerator {
             }
             6..=7 => {
                 // self 方法调用
-                if self.func_names.is_empty() { return "pass".into(); }
+                if self.func_names.is_empty() {
+                    return "pass".into();
+                }
                 let f = self.func_names.choose(&mut self.rng).expect("名称列表非空");
                 format!("self.{}()", f.rsplit('.').next().unwrap_or(f))
             }
             8 => {
                 // 内置函数调用
-                let builtins = ["len", "str", "int", "list", "dict", "sum", "max", "min", "sorted", "print"];
-                format!("{}(x)", builtins.choose(&mut self.rng).expect("名称列表非空"))
+                let builtins = [
+                    "len", "str", "int", "list", "dict", "sum", "max", "min", "sorted", "print",
+                ];
+                format!(
+                    "{}(x)",
+                    builtins.choose(&mut self.rng).expect("名称列表非空")
+                )
             }
             9 => "obj.prop.nested.leaf".into(), // 属性链
-            _ => format!("x{} = {}", self.rng.random_range(0..10), self.rng.random_range(0..100)), // 赋值
+            _ => format!(
+                "x{} = {}",
+                self.rng.random_range(0..10),
+                self.rng.random_range(0..100)
+            ), // 赋值
         }
     }
 
     /// 生成随机的返回表达式。
     fn gen_ret_expr(&mut self, _module_names: &[String]) -> String {
         match self.rng.random_range(0..=4) {
-            0 => self.gen_ret_value(),           // 随机数值
+            0 => self.gen_ret_value(), // 随机数值
             1 => {
                 // 函数调用
-                if self.func_names.is_empty() { return "None".into(); }
+                if self.func_names.is_empty() {
+                    return "None".into();
+                }
                 let f = self.func_names.choose(&mut self.rng).expect("名称列表非空");
                 format!("{}(p0)", f.rsplit('.').next().unwrap_or(f))
             }
@@ -351,14 +409,17 @@ fn get_rss_mb() -> f64 {
         // 会测到 PowerShell 自己(之前报告恒为 ~60MB 的原因)
         let self_pid = std::process::id();
         let mut c = Command::new("powershell");
-        c.args(["-NoProfile", "-Command", &format!("(Get-Process -Id {}).WorkingSet64 / 1MB", self_pid)]);
+        c.args([
+            "-NoProfile",
+            "-Command",
+            &format!("(Get-Process -Id {}).WorkingSet64 / 1MB", self_pid),
+        ]);
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             c.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
-        if let Ok(output) = c.output()
-        {
+        if let Ok(output) = c.output() {
             if let Ok(s) = String::from_utf8(output.stdout) {
                 return s.trim().parse().unwrap_or(0.0);
             }
@@ -370,9 +431,12 @@ fn get_rss_mb() -> f64 {
         if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
             for line in status.lines() {
                 if line.starts_with("VmRSS:") {
-                    return line.split_whitespace().nth(1)
+                    return line
+                        .split_whitespace()
+                        .nth(1)
                         .and_then(|s| s.parse::<f64>().ok())
-                        .unwrap_or(0.0) / 1024.0; // KB → MB
+                        .unwrap_or(0.0)
+                        / 1024.0; // KB → MB
                 }
             }
         }
@@ -410,14 +474,21 @@ impl StressReport {
         println!("║  HOLOGRAM STRESS TEST — {:<47}║", self.label);
         println!("╠══════════════════════════════════════════════════════════════════════╣");
         if self.symbol_count > 0 {
-            println!("║  Files: {:>6}   Symbols: {:>6}   Iterations: {:>3}                     ║",
-                self.file_count, self.symbol_count, self.iterations);
+            println!(
+                "║  Files: {:>6}   Symbols: {:>6}   Iterations: {:>3}                     ║",
+                self.file_count, self.symbol_count, self.iterations
+            );
         } else {
-            println!("║  Files: {:>6}   Iterations: {:>3}                                      ║",
-                self.file_count, self.iterations);
+            println!(
+                "║  Files: {:>6}   Iterations: {:>3}                                      ║",
+                self.file_count, self.iterations
+            );
         }
         println!("╠══════════════════════════════════════════════════════════════════════╣");
-        println!("║  {:30}  {:>8}  {:>6}  {:>16}║", "Stage", "Time", "%", "Detail");
+        println!(
+            "║  {:30}  {:>8}  {:>6}  {:>16}║",
+            "Stage", "Time", "%", "Detail"
+        );
         println!("╠══════════════════════════════════════════════════════════════════════╣");
 
         let total = self.total_secs.max(0.001);
@@ -425,23 +496,31 @@ impl StressReport {
             let pct = (stage.elapsed_secs / total) * 100.0;
             // 进度条：每个 █ 代表 2.5%
             let bar = "█".repeat(((pct / 2.5) as usize).min(20));
-            println!("║  {:30}  {:>7.2}s  {:>5.1}%  {} {:<16}║",
-                stage.name, stage.elapsed_secs, pct, bar, stage.detail);
+            println!(
+                "║  {:30}  {:>7.2}s  {:>5.1}%  {} {:<16}║",
+                stage.name, stage.elapsed_secs, pct, bar, stage.detail
+            );
         }
 
         println!("╠══════════════════════════════════════════════════════════════════════╣");
-        println!("║  {:30}  {:>7.2}s  {:>5.1}%                                        ║",
-            "TOTAL", total, 100.0);
+        println!(
+            "║  {:30}  {:>7.2}s  {:>5.1}%                                        ║",
+            "TOTAL", total, 100.0
+        );
         println!("╠══════════════════════════════════════════════════════════════════════╣");
-        println!("║  Nodes: {:>6}  Edges: {:>6}  Communities: {:>4}  RSS: {:>7.1} MB       ║",
-            self.node_count, self.edge_count, self.community_count, self.peak_rss_mb);
+        println!(
+            "║  Nodes: {:>6}  Edges: {:>6}  Communities: {:>4}  RSS: {:>7.1} MB       ║",
+            self.node_count, self.edge_count, self.community_count, self.peak_rss_mb
+        );
 
         // 吞吐量统计
         if total > 0.0 && self.node_count > 0 {
-            println!("║  Throughput: {:>6.0} nodes/s  {:>6.0} edges/s  {:>6.1} files/s           ║",
+            println!(
+                "║  Throughput: {:>6.0} nodes/s  {:>6.0} edges/s  {:>6.1} files/s           ║",
                 self.node_count as f64 / total,
                 self.edge_count as f64 / total,
-                self.file_count as f64 / total);
+                self.file_count as f64 / total
+            );
         }
         println!("╚══════════════════════════════════════════════════════════════════════╝");
         println!();
@@ -449,9 +528,11 @@ impl StressReport {
 
     /// 将报告序列化为 JSON。
     pub fn to_json(&self) -> serde_json::Value {
-        let stages: Vec<serde_json::Value> = self.stages.iter().map(|s| {
-            json!({ "name": s.name, "elapsed_secs": s.elapsed_secs, "detail": s.detail })
-        }).collect();
+        let stages: Vec<serde_json::Value> = self
+            .stages
+            .iter()
+            .map(|s| json!({ "name": s.name, "elapsed_secs": s.elapsed_secs, "detail": s.detail }))
+            .collect();
         json!({
             "label": self.label,
             "file_count": self.file_count,
@@ -482,14 +563,22 @@ pub fn run_stress(size: StressSize) -> StressReport {
     let root = base.join(format!("proj_{}", file_count));
 
     eprintln!("══ HoloGram Stress: {} ══", label);
-    eprintln!("Estimated: ~{} nodes, {} files", size.estimated_nodes(), file_count);
+    eprintln!(
+        "Estimated: ~{} nodes, {} files",
+        size.estimated_nodes(),
+        file_count
+    );
 
     // 生成合成项目
     eprint!("Generating {} files... ", file_count);
     let gen_start = Instant::now();
     let mut generator = ProjectGenerator::new(42);
     let symbol_count = generator.generate(&root, file_count);
-    eprintln!("done in {:.1}s ({} symbols)", gen_start.elapsed().as_secs_f64(), symbol_count);
+    eprintln!(
+        "done in {:.1}s ({} symbols)",
+        gen_start.elapsed().as_secs_f64(),
+        symbol_count
+    );
 
     // 初始化引擎并执行分析
     let engine = Engine::open(&root).expect("engine open failed");
@@ -527,7 +616,10 @@ pub fn run_stress_real(project_path: &Path, iterations: usize) -> StressReport {
 
     eprintln!("══ HoloGram Real-Project Benchmark ══");
     eprintln!("Project: {}", root.display());
-    eprintln!("Source files: {}  |  Iterations: {}", file_count, iterations);
+    eprintln!(
+        "Source files: {}  |  Iterations: {}",
+        file_count, iterations
+    );
     eprintln!();
 
     // 收集所有迭代的每阶段耗时
@@ -548,7 +640,11 @@ pub fn run_stress_real(project_path: &Path, iterations: usize) -> StressReport {
 
         // 收集阶段耗时
         if all_stage_names.is_empty() {
-            all_stage_names = result.stage_timings.iter().map(|s| s.name.clone()).collect();
+            all_stage_names = result
+                .stage_timings
+                .iter()
+                .map(|s| s.name.clone())
+                .collect();
         }
 
         let mut stage_times: Vec<f64> = Vec::with_capacity(result.stage_timings.len());
@@ -563,10 +659,20 @@ pub fn run_stress_real(project_path: &Path, iterations: usize) -> StressReport {
         community_count = result.community_count;
 
         let rss = get_rss_mb();
-        if rss > peak_rss { peak_rss = rss; }
+        if rss > peak_rss {
+            peak_rss = rss;
+        }
 
-        eprintln!("  iter {}/{}:  {:.2}s  ({} nodes, {} edges, {} communities)  RSS: {:.0} MB",
-            i + 1, iterations, iter_elapsed, node_count, edge_count, community_count, rss);
+        eprintln!(
+            "  iter {}/{}:  {:.2}s  ({} nodes, {} edges, {} communities)  RSS: {:.0} MB",
+            i + 1,
+            iterations,
+            iter_elapsed,
+            node_count,
+            edge_count,
+            community_count,
+            rss
+        );
     }
 
     // 计算每阶段的 min/mean/max
@@ -581,7 +687,11 @@ pub fn run_stress_real(project_path: &Path, iterations: usize) -> StressReport {
         let mean_t = times.iter().sum::<f64>() / times.len() as f64;
 
         // 报告均值，方差 > 5% 时在 detail 中显示范围
-        let range_pct = if mean_t > 0.0 { (max_t - min_t) / mean_t * 100.0 } else { 0.0 };
+        let range_pct = if mean_t > 0.0 {
+            (max_t - min_t) / mean_t * 100.0
+        } else {
+            0.0
+        };
         let detail = if iterations > 1 && range_pct > 5.0 {
             format!("mean={:.2}s  min={:.2}s  max={:.2}s", mean_t, min_t, max_t)
         } else {
@@ -598,7 +708,11 @@ pub fn run_stress_real(project_path: &Path, iterations: usize) -> StressReport {
     // 总耗时取均值
     let mean_total = all_totals.iter().sum::<f64>() / all_totals.len() as f64;
 
-    let label = format!("{} ({})", root.file_name().unwrap_or_default().to_string_lossy(), root.display());
+    let label = format!(
+        "{} ({})",
+        root.file_name().unwrap_or_default().to_string_lossy(),
+        root.display()
+    );
 
     let report = StressReport {
         label,
@@ -622,9 +736,15 @@ pub fn run_stress_real(project_path: &Path, iterations: usize) -> StressReport {
         sorted_totals.sort_by(|a, b| a.partial_cmp(b).expect("浮点排序比较"));
         let min_t = sorted_totals.first().copied().unwrap_or(0.0);
         let max_t = sorted_totals.last().copied().unwrap_or(0.0);
-        let range_pct = if mean_total > 0.0 { (max_t - min_t) / mean_total * 100.0 } else { 0.0 };
-        println!("Stability: total time {:.2}s–{:.2}s, range {:.1}% of mean",
-            min_t, max_t, range_pct);
+        let range_pct = if mean_total > 0.0 {
+            (max_t - min_t) / mean_total * 100.0
+        } else {
+            0.0
+        };
+        println!(
+            "Stability: total time {:.2}s–{:.2}s, range {:.1}% of mean",
+            min_t, max_t, range_pct
+        );
         println!();
     }
 
@@ -658,13 +778,20 @@ fn collect_source_files(root: &Path) -> Vec<std::path::PathBuf> {
 /// + Dataflow 分析（query_dataflow_files）+ LSP 预热（warm_blocking）。
 ///
 /// 每轮迭代依次执行三个阶段，收集每阶段耗时并汇总统计。
-pub fn run_stress_full(project_path: &Path, iterations: usize, ext_filter: &[&str]) -> StressReport {
+pub fn run_stress_full(
+    project_path: &Path,
+    iterations: usize,
+    ext_filter: &[&str],
+) -> StressReport {
     let root = project_path.to_path_buf();
     let file_count = count_source_files(&root);
 
     eprintln!("══ HoloGram Full-Pipeline Benchmark ══");
     eprintln!("Project: {}", root.display());
-    eprintln!("Source files: {}  |  Iterations: {}", file_count, iterations);
+    eprintln!(
+        "Source files: {}  |  Iterations: {}",
+        file_count, iterations
+    );
     eprintln!("Pipeline: Structure + Dataflow + LSP warm");
     eprintln!();
 
@@ -694,12 +821,16 @@ pub fn run_stress_full(project_path: &Path, iterations: usize, ext_filter: &[&st
         // 阶段 2：Dataflow 分析
         let df_start = Instant::now();
         let df_results = crate::analysis::dataflow_engine::query_dataflow_files(&source_files);
-        let df_scopes: usize = df_results.iter()
+        let df_scopes: usize = df_results
+            .iter()
             .filter_map(|r| r.result.as_ref().ok())
-            .map(|df| df.scopes.len()).sum();
-        let df_shared: usize = df_results.iter()
+            .map(|df| df.scopes.len())
+            .sum();
+        let df_shared: usize = df_results
+            .iter()
             .filter_map(|r| r.result.as_ref().ok())
-            .map(|df| df.shared.len()).sum();
+            .map(|df| df.shared.len())
+            .sum();
         let df_success = df_results.iter().filter(|r| r.result.is_ok()).count();
         let df_elapsed = df_start.elapsed().as_secs_f64();
 
@@ -708,7 +839,10 @@ pub fn run_stress_full(project_path: &Path, iterations: usize, ext_filter: &[&st
         let (lsp_started, lsp_failed) = if ext_filter.is_empty() {
             crate::lsp_manager::LspManager::warm_blocking(&root.to_string_lossy())
         } else {
-            crate::lsp_manager::LspManager::warm_blocking_filtered(&root.to_string_lossy(), ext_filter)
+            crate::lsp_manager::LspManager::warm_blocking_filtered(
+                &root.to_string_lossy(),
+                ext_filter,
+            )
         };
         let lsp_elapsed = lsp_start.elapsed().as_secs_f64();
 
@@ -717,7 +851,11 @@ pub fn run_stress_full(project_path: &Path, iterations: usize, ext_filter: &[&st
         // 构建阶段耗时列表
         if all_stage_names.is_empty() {
             // 首轮：复制结构分析阶段名，追加额外阶段
-            all_stage_names = result.stage_timings.iter().map(|s| s.name.clone()).collect();
+            all_stage_names = result
+                .stage_timings
+                .iter()
+                .map(|s| s.name.clone())
+                .collect();
             all_stage_names.extend(all_extra_names.iter().map(|s| s.to_string()));
         }
 
@@ -738,7 +876,9 @@ pub fn run_stress_full(project_path: &Path, iterations: usize, ext_filter: &[&st
         community_count = result.community_count;
 
         let rss = get_rss_mb();
-        if rss > peak_rss { peak_rss = rss; }
+        if rss > peak_rss {
+            peak_rss = rss;
+        }
 
         eprintln!(
             "  iter {}/{}:  struct {:.2}s + df {:.2}s ({} scopes, {} shared, {}/{} files) + lsp {:.2}s ({} ok, {} fail)  = {:.2}s total  RSS: {:.0} MB",
@@ -761,7 +901,11 @@ pub fn run_stress_full(project_path: &Path, iterations: usize, ext_filter: &[&st
         let max_t = times.last().copied().unwrap_or(0.0);
         let mean_t = times.iter().sum::<f64>() / times.len() as f64;
 
-        let range_pct = if mean_t > 0.0 { (max_t - min_t) / mean_t * 100.0 } else { 0.0 };
+        let range_pct = if mean_t > 0.0 {
+            (max_t - min_t) / mean_t * 100.0
+        } else {
+            0.0
+        };
         let detail = if iterations > 1 && range_pct > 5.0 {
             format!("mean={:.2}s  min={:.2}s  max={:.2}s", mean_t, min_t, max_t)
         } else {
@@ -777,7 +921,11 @@ pub fn run_stress_full(project_path: &Path, iterations: usize, ext_filter: &[&st
 
     let mean_total = all_totals.iter().sum::<f64>() / all_totals.len() as f64;
 
-    let label = format!("{} ({}) — FULL", root.file_name().unwrap_or_default().to_string_lossy(), root.display());
+    let label = format!(
+        "{} ({}) — FULL",
+        root.file_name().unwrap_or_default().to_string_lossy(),
+        root.display()
+    );
 
     let report = StressReport {
         label,
@@ -800,9 +948,15 @@ pub fn run_stress_full(project_path: &Path, iterations: usize, ext_filter: &[&st
         sorted_totals.sort_by(|a, b| a.partial_cmp(b).expect("浮点排序比较"));
         let min_t = sorted_totals.first().copied().unwrap_or(0.0);
         let max_t = sorted_totals.last().copied().unwrap_or(0.0);
-        let range_pct = if mean_total > 0.0 { (max_t - min_t) / mean_total * 100.0 } else { 0.0 };
-        println!("Stability: total time {:.2}s–{:.2}s, range {:.1}% of mean",
-            min_t, max_t, range_pct);
+        let range_pct = if mean_total > 0.0 {
+            (max_t - min_t) / mean_total * 100.0
+        } else {
+            0.0
+        };
+        println!(
+            "Stability: total time {:.2}s–{:.2}s, range {:.1}% of mean",
+            min_t, max_t, range_pct
+        );
         println!();
     }
 
@@ -823,7 +977,10 @@ pub fn run_stress_dataflow(project_path: &Path, iterations: usize) -> StressRepo
 
     eprintln!("══ HoloGram Dataflow-Only Benchmark ══");
     eprintln!("Project: {}", root.display());
-    eprintln!("Source files: {}  |  Iterations: {}", file_count, iterations);
+    eprintln!(
+        "Source files: {}  |  Iterations: {}",
+        file_count, iterations
+    );
     eprintln!();
 
     let mut all_times: Vec<f64> = Vec::new();
@@ -837,10 +994,16 @@ pub fn run_stress_dataflow(project_path: &Path, iterations: usize) -> StressRepo
         let results = crate::analysis::dataflow_engine::query_dataflow_files(&source_files);
         let elapsed = start.elapsed().as_secs_f64();
 
-        let scopes: usize = results.iter()
-            .filter_map(|r| r.result.as_ref().ok()).map(|df| df.scopes.len()).sum();
-        let shared: usize = results.iter()
-            .filter_map(|r| r.result.as_ref().ok()).map(|df| df.shared.len()).sum();
+        let scopes: usize = results
+            .iter()
+            .filter_map(|r| r.result.as_ref().ok())
+            .map(|df| df.scopes.len())
+            .sum();
+        let shared: usize = results
+            .iter()
+            .filter_map(|r| r.result.as_ref().ok())
+            .map(|df| df.shared.len())
+            .sum();
         let success = results.iter().filter(|r| r.result.is_ok()).count();
 
         all_times.push(elapsed);
@@ -849,15 +1012,29 @@ pub fn run_stress_dataflow(project_path: &Path, iterations: usize) -> StressRepo
         last_success = success;
 
         let rss = get_rss_mb();
-        if rss > peak_rss { peak_rss = rss; }
+        if rss > peak_rss {
+            peak_rss = rss;
+        }
 
-        eprintln!("  iter {}/{}:  {:.2}s  ({} scopes, {} shared vars, {}/{} files)  RSS: {:.0} MB",
-            i + 1, iterations, elapsed, scopes, shared, success, file_count, rss);
+        eprintln!(
+            "  iter {}/{}:  {:.2}s  ({} scopes, {} shared vars, {}/{} files)  RSS: {:.0} MB",
+            i + 1,
+            iterations,
+            elapsed,
+            scopes,
+            shared,
+            success,
+            file_count,
+            rss
+        );
     }
 
     let mean = all_times.iter().sum::<f64>() / all_times.len() as f64;
 
-    let label = format!("{} (Dataflow)", root.file_name().unwrap_or_default().to_string_lossy());
+    let label = format!(
+        "{} (Dataflow)",
+        root.file_name().unwrap_or_default().to_string_lossy()
+    );
     let report = StressReport {
         label,
         file_count,
@@ -865,11 +1042,16 @@ pub fn run_stress_dataflow(project_path: &Path, iterations: usize) -> StressRepo
         stages: vec![StageTiming {
             name: "Dataflow".into(),
             elapsed_secs: mean,
-            detail: format!("{} scopes, {} shared, {}/{} files", last_scopes, last_shared, last_success, file_count),
+            detail: format!(
+                "{} scopes, {} shared, {}/{} files",
+                last_scopes, last_shared, last_success, file_count
+            ),
         }],
         total_secs: mean,
         peak_rss_mb: peak_rss,
-        node_count: 0, edge_count: 0, community_count: 0,
+        node_count: 0,
+        edge_count: 0,
+        community_count: 0,
         iterations,
     };
 
@@ -879,9 +1061,18 @@ pub fn run_stress_dataflow(project_path: &Path, iterations: usize) -> StressRepo
     if iterations > 1 {
         let mut sorted = all_times.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).expect("浮点排序比较"));
-        println!("Stability: {:.2}s–{:.2}s, range {:.1}% of mean",
-            sorted.first().copied().unwrap_or(0.0), sorted.last().copied().unwrap_or(0.0),
-            if mean > 0.0 { (sorted.last().expect("排序后列表非空") - sorted.first().expect("排序后列表非空")) / mean * 100.0 } else { 0.0 });
+        println!(
+            "Stability: {:.2}s–{:.2}s, range {:.1}% of mean",
+            sorted.first().copied().unwrap_or(0.0),
+            sorted.last().copied().unwrap_or(0.0),
+            if mean > 0.0 {
+                (sorted.last().expect("排序后列表非空") - sorted.first().expect("排序后列表非空"))
+                    / mean
+                    * 100.0
+            } else {
+                0.0
+            }
+        );
         println!();
     }
 
@@ -897,7 +1088,11 @@ pub fn run_stress_dataflow(project_path: &Path, iterations: usize) -> StressRepo
 /// 测量 `warm_blocking_filtered` 的耗时和成功率。
 pub fn run_stress_lsp(project_path: &Path, iterations: usize, ext_filter: &[&str]) -> StressReport {
     let root = project_path.to_path_buf();
-    let filter_label = if ext_filter.is_empty() { "all".to_string() } else { ext_filter.join(",") };
+    let filter_label = if ext_filter.is_empty() {
+        "all".to_string()
+    } else {
+        ext_filter.join(",")
+    };
 
     eprintln!("══ HoloGram LSP-Only Benchmark ══");
     eprintln!("Project: {}", root.display());
@@ -912,7 +1107,8 @@ pub fn run_stress_lsp(project_path: &Path, iterations: usize, ext_filter: &[&str
     for i in 0..iterations {
         let start = Instant::now();
         let (started, failed) = crate::lsp_manager::LspManager::warm_blocking_filtered(
-            &root.to_string_lossy(), ext_filter,
+            &root.to_string_lossy(),
+            ext_filter,
         );
         let elapsed = start.elapsed().as_secs_f64();
 
@@ -921,17 +1117,29 @@ pub fn run_stress_lsp(project_path: &Path, iterations: usize, ext_filter: &[&str
         all_failed.push(failed);
 
         let rss = get_rss_mb();
-        if rss > peak_rss { peak_rss = rss; }
+        if rss > peak_rss {
+            peak_rss = rss;
+        }
 
-        eprintln!("  iter {}/{}:  {:.2}s  ({} ok, {} fail)  RSS: {:.0} MB",
-            i + 1, iterations, elapsed, started, failed, rss);
+        eprintln!(
+            "  iter {}/{}:  {:.2}s  ({} ok, {} fail)  RSS: {:.0} MB",
+            i + 1,
+            iterations,
+            elapsed,
+            started,
+            failed,
+            rss
+        );
     }
 
     let mean = all_times.iter().sum::<f64>() / all_times.len() as f64;
     let avg_started = all_started.iter().sum::<usize>() / all_started.len().max(1);
     let avg_failed = all_failed.iter().sum::<usize>() / all_failed.len().max(1);
 
-    let label = format!("{} (LSP)", root.file_name().unwrap_or_default().to_string_lossy());
+    let label = format!(
+        "{} (LSP)",
+        root.file_name().unwrap_or_default().to_string_lossy()
+    );
     let report = StressReport {
         label,
         file_count: 0,
@@ -943,7 +1151,9 @@ pub fn run_stress_lsp(project_path: &Path, iterations: usize, ext_filter: &[&str
         }],
         total_secs: mean,
         peak_rss_mb: peak_rss,
-        node_count: 0, edge_count: 0, community_count: 0,
+        node_count: 0,
+        edge_count: 0,
+        community_count: 0,
         iterations,
     };
 
@@ -953,9 +1163,18 @@ pub fn run_stress_lsp(project_path: &Path, iterations: usize, ext_filter: &[&str
     if iterations > 1 {
         let mut sorted = all_times.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).expect("浮点排序比较"));
-        println!("Stability: {:.2}s–{:.2}s, range {:.1}% of mean",
-            sorted.first().copied().unwrap_or(0.0), sorted.last().copied().unwrap_or(0.0),
-            if mean > 0.0 { (sorted.last().expect("排序后列表非空") - sorted.first().expect("排序后列表非空")) / mean * 100.0 } else { 0.0 });
+        println!(
+            "Stability: {:.2}s–{:.2}s, range {:.1}% of mean",
+            sorted.first().copied().unwrap_or(0.0),
+            sorted.last().copied().unwrap_or(0.0),
+            if mean > 0.0 {
+                (sorted.last().expect("排序后列表非空") - sorted.first().expect("排序后列表非空"))
+                    / mean
+                    * 100.0
+            } else {
+                0.0
+            }
+        );
         println!();
     }
 
@@ -988,10 +1207,16 @@ pub fn run_stress_suite() {
     println!("║ Size         ║  Files  ║  Symbols ║  Nodes   ║  Edges   ║   Time   ║  RSS   ║");
     println!("╠══════════════╬═════════╬══════════╬══════════╬══════════╬══════════╬════════╣");
     for r in &reports {
-        println!("║ {:12} ║ {:>6}  ║ {:>7}  ║ {:>7}  ║ {:>7}  ║ {:>6.1}s  ║ {:>5.0}M  ║",
+        println!(
+            "║ {:12} ║ {:>6}  ║ {:>7}  ║ {:>7}  ║ {:>7}  ║ {:>6.1}s  ║ {:>5.0}M  ║",
             r.label.split('(').next().unwrap_or(&r.label).trim(),
-            r.file_count, r.symbol_count, r.node_count, r.edge_count,
-            r.total_secs, r.peak_rss_mb);
+            r.file_count,
+            r.symbol_count,
+            r.node_count,
+            r.edge_count,
+            r.total_secs,
+            r.peak_rss_mb
+        );
     }
     println!("╚══════════════╩═════════╩══════════╩══════════╩══════════╩══════════╩════════╝");
 
@@ -1003,15 +1228,23 @@ pub fn run_stress_suite() {
         let time_ratio = last.total_secs / first.total_secs.max(0.001);
         let node_ratio = last.node_count as f64 / first.node_count.max(1) as f64;
         println!();
-        println!("Scaling ({} → {}):",
+        println!(
+            "Scaling ({} → {}):",
             first.label.split('(').next().unwrap_or(""),
-            last.label.split('(').next().unwrap_or(""));
-        println!("  Files: {:>4.0}x   Time: {:>5.1}x   Efficiency: {:>5.0}%",
-            file_ratio, time_ratio, (file_ratio / time_ratio.max(0.001)) * 100.0);
-        println!("  Nodes: {:>4.0}x   Time/node: {:.2}ms → {:.2}ms",
+            last.label.split('(').next().unwrap_or("")
+        );
+        println!(
+            "  Files: {:>4.0}x   Time: {:>5.1}x   Efficiency: {:>5.0}%",
+            file_ratio,
+            time_ratio,
+            (file_ratio / time_ratio.max(0.001)) * 100.0
+        );
+        println!(
+            "  Nodes: {:>4.0}x   Time/node: {:.2}ms → {:.2}ms",
             node_ratio,
             (first.total_secs * 1000.0) / first.node_count.max(1) as f64,
-            (last.total_secs * 1000.0) / last.node_count.max(1) as f64);
+            (last.total_secs * 1000.0) / last.node_count.max(1) as f64
+        );
     }
     println!();
 }
@@ -1027,9 +1260,18 @@ mod tests {
     #[test]
     fn test_stress_size_parsing() {
         // 字符串和数字都应正确解析
-        assert!(matches!(StressSize::from_str("small"), Some(StressSize::Small)));
-        assert!(matches!(StressSize::from_str("MEDIUM"), Some(StressSize::Medium)));
-        assert!(matches!(StressSize::from_str("500"), Some(StressSize::Custom(500))));
+        assert!(matches!(
+            StressSize::from_str("small"),
+            Some(StressSize::Small)
+        ));
+        assert!(matches!(
+            StressSize::from_str("MEDIUM"),
+            Some(StressSize::Medium)
+        ));
+        assert!(matches!(
+            StressSize::from_str("500"),
+            Some(StressSize::Custom(500))
+        ));
         assert!(StressSize::from_str("nonsense").is_none());
     }
 
@@ -1052,13 +1294,24 @@ mod tests {
     fn test_stress_small_pipeline() {
         // 5 个文件的完整管线应快速完成并产生图数据
         let report = run_stress(StressSize::Custom(5));
-        assert!(report.node_count > 0, "should produce nodes: {:?}", report.node_count);
+        assert!(
+            report.node_count > 0,
+            "should produce nodes: {:?}",
+            report.node_count
+        );
         assert!(report.total_secs < 10.0, "5 files should finish quickly");
         // 必须有每阶段耗时
         assert!(!report.stages.is_empty(), "should have stage timings");
         let stage_names: Vec<&str> = report.stages.iter().map(|s| s.name.as_str()).collect();
-        assert!(stage_names.contains(&"Core Parse"), "should have Core Parse stage, got: {:?}", stage_names);
-        assert!(stage_names.contains(&"Community (Leiden)"), "should have Community (Leiden) stage");
+        assert!(
+            stage_names.contains(&"Core Parse"),
+            "should have Core Parse stage, got: {:?}",
+            stage_names
+        );
+        assert!(
+            stage_names.contains(&"Community (Leiden)"),
+            "should have Community (Leiden) stage"
+        );
     }
 
     #[test]
@@ -1068,7 +1321,11 @@ mod tests {
             label: "test".into(),
             file_count: 10,
             symbol_count: 50,
-            stages: vec![StageTiming { name: "parse".into(), elapsed_secs: 1.0, detail: "ok".into() }],
+            stages: vec![StageTiming {
+                name: "parse".into(),
+                elapsed_secs: 1.0,
+                detail: "ok".into(),
+            }],
             total_secs: 1.0,
             peak_rss_mb: 100.0,
             node_count: 20,

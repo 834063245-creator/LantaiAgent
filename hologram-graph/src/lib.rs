@@ -11,16 +11,16 @@
 //! L2 存储外置（layering-rework-plan §4.3 欠账项 1）时从 engine crate 物理拆出：
 //! engine 只保留「纯分析器」身份，类型层与存储层各自成家。
 
-pub mod node;
 pub mod edge;
 pub mod graph;
 pub mod id;
 pub mod ignore;
+pub mod node;
 pub mod paths;
 
-pub use node::{Node, NodeKind, set_code_extensions};
 pub use edge::{Edge, EdgeKind};
 pub use graph::Graph;
 pub use id::{EdgeId, NodeId};
 pub use ignore::{is_ignored_dir_name, is_ignored_path, IGNORED_DIRS};
-pub use paths::{DATA_DIR_NAME, data_dir};
+pub use node::{set_code_extensions, Node, NodeKind};
+pub use paths::{data_dir, DATA_DIR_NAME};

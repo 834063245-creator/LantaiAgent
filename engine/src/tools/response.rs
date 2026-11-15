@@ -22,14 +22,9 @@ pub enum ToolResponse {
         details: Value,
     },
     /// 安全拒绝 —— Agent 不得重试。
-    Refused {
-        reason: String,
-    },
+    Refused { reason: String },
     /// 真正故障 —— 重试一次，然后放弃此工具继续。
-    Fault {
-        message: String,
-        retry: bool,
-    },
+    Fault { message: String, retry: bool },
 }
 
 impl ToolResponse {
@@ -52,11 +47,19 @@ impl ToolResponse {
                 }
                 Self::Success(data)
             }
-            Self::Degraded { guidance, fallback, mut details } => {
+            Self::Degraded {
+                guidance,
+                fallback,
+                mut details,
+            } => {
                 if let Some(obj) = details.as_object_mut() {
                     obj.insert("next_tool_suggestions".into(), value);
                 }
-                Self::Degraded { guidance, fallback, details }
+                Self::Degraded {
+                    guidance,
+                    fallback,
+                    details,
+                }
             }
             other => other,
         }
@@ -66,7 +69,11 @@ impl ToolResponse {
     pub fn to_mcp_value(&self, id: &Value) -> Value {
         match self {
             Self::Success(data) => tool_result(id, data.clone()),
-            Self::Degraded { guidance, fallback, details } => {
+            Self::Degraded {
+                guidance,
+                fallback,
+                details,
+            } => {
                 let mut d = details.clone();
                 if let Some(obj) = d.as_object_mut() {
                     obj.insert("_guidance".into(), json!(guidance));
@@ -102,12 +109,15 @@ fn error_response(id: &Value, code: i32, message: &str) -> Value {
 
 fn tool_result(id: &Value, data: Value) -> Value {
     let text = serde_json::to_string(&data).unwrap_or_default();
-    success_response(id, json!({
-        "content": [{ "type": "text", "text": text }],
-        "_meta": {
-            "generator": format!("HoloGram {}", env!("CARGO_PKG_VERSION")),
-            "license": "MIT",
-            "copyright": "Copyright (c) 2026 Wenbing Jing"
-        }
-    }))
+    success_response(
+        id,
+        json!({
+            "content": [{ "type": "text", "text": text }],
+            "_meta": {
+                "generator": format!("HoloGram {}", env!("CARGO_PKG_VERSION")),
+                "license": "MIT",
+                "copyright": "Copyright (c) 2026 Wenbing Jing"
+            }
+        }),
+    )
 }

@@ -37,7 +37,11 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub(crate) enum PluginSource {
     /// registry 规格：包名（可含 version）+ 可选 registry base URL。
-    Registry { name: String, version: Option<String>, registry: Option<String> },
+    Registry {
+        name: String,
+        version: Option<String>,
+        registry: Option<String>,
+    },
     /// tarball：URL（http/https）或本地文件路径。
     Tarball(String),
     /// 本地插件目录——复制进 plugins 根。
@@ -50,7 +54,9 @@ impl PluginSource {
         let kind = params
             .get("source_kind")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| "参数 'source_kind' 缺失（允许: registry | tarball | local_dir）".to_string())?;
+            .ok_or_else(|| {
+                "参数 'source_kind' 缺失（允许: registry | tarball | local_dir）".to_string()
+            })?;
         match kind {
             "registry" => {
                 let name = params
@@ -61,9 +67,19 @@ impl PluginSource {
                 if name.trim().is_empty() {
                     return Err("registry 源 'name' 不能为空".to_string());
                 }
-                let version = params.get("version").and_then(|v| v.as_str()).map(String::from);
-                let registry = params.get("registry").and_then(|v| v.as_str()).map(String::from);
-                Ok(PluginSource::Registry { name, version, registry })
+                let version = params
+                    .get("version")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let registry = params
+                    .get("registry")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                Ok(PluginSource::Registry {
+                    name,
+                    version,
+                    registry,
+                })
             }
             "tarball" => {
                 let loc = params
@@ -88,7 +104,9 @@ impl PluginSource {
                 }
                 Ok(PluginSource::LocalDir(path))
             }
-            _ => Err(format!("未知 source_kind: {kind}（允许: registry | tarball | local_dir）")),
+            _ => Err(format!(
+                "未知 source_kind: {kind}（允许: registry | tarball | local_dir）"
+            )),
         }
     }
 }
@@ -103,7 +121,11 @@ fn registry_tarball_url(name: &str, version: &str, registry: &str) -> String {
 
 /// 安装主流程（spawn_blocking 调用）：取包 → 解包校验 → 版本守卫 → 原子落盘。
 /// 返回安装的插件目录名（npm 包名，scope 保留）。
-pub(crate) async fn plugin_install(source: PluginSource, expect_name: Option<String>, force: bool) -> Result<String, String> {
+pub(crate) async fn plugin_install(
+    source: PluginSource,
+    expect_name: Option<String>,
+    force: bool,
+) -> Result<String, String> {
     // 1) 取字节（下载或本地读）
     let bytes = fetch_source_bytes(&source).await?;
     // 2) 解包校验 + 版本守卫 + 落盘（阻塞 IO → spawn_blocking）
@@ -113,7 +135,11 @@ pub(crate) async fn plugin_install(source: PluginSource, expect_name: Option<Str
 }
 
 /// 本地目录安装（复制进 plugins 根后校验 manifest 存在性）。
-pub(crate) async fn plugin_install_local_dir(dir: PathBuf, expect_name: Option<String>, force: bool) -> Result<String, String> {
+pub(crate) async fn plugin_install_local_dir(
+    dir: PathBuf,
+    expect_name: Option<String>,
+    force: bool,
+) -> Result<String, String> {
     tokio::task::spawn_blocking(move || install_from_local_dir(&dir, expect_name, force))
         .await
         .map_err(|e| format!("plugin_install_local_dir 任务失败: {e}"))?
@@ -122,7 +148,11 @@ pub(crate) async fn plugin_install_local_dir(dir: PathBuf, expect_name: Option<S
 /// 源 → tarball 字节（registry 拼 URL 下载；tarball 源区分 URL/本地路径）。
 async fn fetch_source_bytes(source: &PluginSource) -> Result<Vec<u8>, String> {
     match source {
-        PluginSource::Registry { name, version, registry } => {
+        PluginSource::Registry {
+            name,
+            version,
+            registry,
+        } => {
             let reg = registry
                 .clone()
                 .unwrap_or_else(|| "https://registry.npmjs.org".to_string())
@@ -145,15 +175,23 @@ async fn fetch_source_bytes(source: &PluginSource) -> Result<Vec<u8>, String> {
                 if !path.is_file() {
                     return Err(format!("本地 tarball 不存在: {loc}"));
                 }
-                let cap = path.metadata().map_err(|e| format!("读取 tarball 元数据失败: {e}"))?.len() as usize;
-                std::fs::read(&path).map_err(|e| format!("读取本地 tarball 失败: {e}")).and_then(|b| {
-                    // 大小护栏（镜像 MAX_PLUGIN_FILE_BYTES 的量级——防误指大文件）
-                    if b.len() > cap.max(1) * 2 + 1 && b.len() > 256 * 1024 * 1024 {
-                        Err(format!("tarball 过大（{} MB），超过 256MB 上限", b.len() / 1024 / 1024))
-                    } else {
-                        Ok(b)
-                    }
-                })
+                let cap = path
+                    .metadata()
+                    .map_err(|e| format!("读取 tarball 元数据失败: {e}"))?
+                    .len() as usize;
+                std::fs::read(&path)
+                    .map_err(|e| format!("读取本地 tarball 失败: {e}"))
+                    .and_then(|b| {
+                        // 大小护栏（镜像 MAX_PLUGIN_FILE_BYTES 的量级——防误指大文件）
+                        if b.len() > cap.max(1) * 2 + 1 && b.len() > 256 * 1024 * 1024 {
+                            Err(format!(
+                                "tarball 过大（{} MB），超过 256MB 上限",
+                                b.len() / 1024 / 1024
+                            ))
+                        } else {
+                            Ok(b)
+                        }
+                    })
             }
         }
         PluginSource::LocalDir(_) => {
@@ -177,8 +215,10 @@ async fn fetch_latest_version(registry: &str, name: &str) -> Result<String, Stri
     if !resp.status().is_success() {
         return Err(format!("查询 {url} 返回 HTTP {}", resp.status()));
     }
-    let meta: serde_json::Value =
-        resp.json().await.map_err(|e| format!("解析 registry 元数据失败: {e}"))?;
+    let meta: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析 registry 元数据失败: {e}"))?;
     meta.get("dist-tags")
         .and_then(|d| d.get("latest"))
         .and_then(|v| v.as_str())
@@ -193,7 +233,11 @@ async fn download(url: &str) -> Result<Vec<u8>, String> {
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| format!("构造 HTTP 客户端失败: {e}"))?;
-    let resp = client.get(url).send().await.map_err(|e| format!("下载 {url} 失败: {e}"))?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("下载 {url} 失败: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("下载 {url} 返回 HTTP {}", resp.status()));
     }
@@ -202,15 +246,25 @@ async fn download(url: &str) -> Result<Vec<u8>, String> {
             return Err(format!("tarball 过大（{len} 字节），超过 256MB 上限"));
         }
     }
-    let bytes = resp.bytes().await.map_err(|e| format!("读取下载流失败: {e}"))?;
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("读取下载流失败: {e}"))?;
     if bytes.len() as u64 > MAX_TARBALL_BYTES {
-        return Err(format!("tarball 过大（{} 字节），超过 256MB 上限", bytes.len()));
+        return Err(format!(
+            "tarball 过大（{} 字节），超过 256MB 上限",
+            bytes.len()
+        ));
     }
     Ok(bytes.to_vec())
 }
 
 /// tarball 字节 → 校验 + 版本守卫 + 原子落盘。返回安装的插件目录名。
-fn install_from_tarball_bytes(bytes: &[u8], expect_name: Option<String>, force: bool) -> Result<String, String> {
+fn install_from_tarball_bytes(
+    bytes: &[u8],
+    expect_name: Option<String>,
+    force: bool,
+) -> Result<String, String> {
     // 1) 解包到内存结构（entry 路径 → 字节），同步做 tar-slip 校验与
     //    npm `package/` 前缀剥离
     let entries = extract_tarball(bytes)?;
@@ -227,7 +281,9 @@ fn install_from_tarball_bytes(bytes: &[u8], expect_name: Option<String>, force: 
     let manifest_name = parse_manifest_name(&manifest)?;
     if let Some(expected) = &expect_name {
         if &manifest_name != expected {
-            return Err(format!("manifest.name ({manifest_name}) 与 expect_name ({expected}) 不一致——拒绝安装"));
+            return Err(format!(
+                "manifest.name ({manifest_name}) 与 expect_name ({expected}) 不一致——拒绝安装"
+            ));
         }
     }
     let incoming_version = parse_manifest_version(&manifest)?;
@@ -235,17 +291,14 @@ fn install_from_tarball_bytes(bytes: &[u8], expect_name: Option<String>, force: 
     let plugins_root = crate::plugin_assets::plugins_root();
     let plan = plan_install(&plugins_root, &manifest_name, &incoming_version, force)?;
     let target = plugins_root.join(&manifest_name);
-    let tmp = plugins_root.join(format!(
-        ".tmp-{}-{}",
-        std::process::id(),
-        rand_suffix()
-    ));
+    let tmp = plugins_root.join(format!(".tmp-{}-{}", std::process::id(), rand_suffix()));
     let _guard = TmpDirGuard(&tmp);
     std::fs::create_dir_all(&tmp).map_err(|e| format!("创建临时目录失败: {e}"))?;
     for (rel, data) in &entries {
         let dest = tmp.join(rel);
         if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("创建目录 {parent:?} 失败: {e}"))?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("创建目录 {parent:?} 失败: {e}"))?;
         }
         std::fs::write(&dest, data).map_err(|e| format!("写入 {rel} 失败: {e}"))?;
     }
@@ -260,7 +313,11 @@ fn install_from_tarball_bytes(bytes: &[u8], expect_name: Option<String>, force: 
 }
 
 /// 本地目录安装：复制进 plugins 根 + manifest 存在性校验 + 版本守卫（同款原子纪律）。
-fn install_from_local_dir(dir: &Path, expect_name: Option<String>, force: bool) -> Result<String, String> {
+fn install_from_local_dir(
+    dir: &Path,
+    expect_name: Option<String>,
+    force: bool,
+) -> Result<String, String> {
     let manifest_path = dir.join("manifest.json");
     if !manifest_path.is_file() {
         return Err(format!("本地目录缺 manifest.json: {}", dir.display()));
@@ -269,7 +326,9 @@ fn install_from_local_dir(dir: &Path, expect_name: Option<String>, force: bool) 
     let manifest_name = parse_manifest_name(&manifest)?;
     if let Some(expected) = &expect_name {
         if &manifest_name != expected {
-            return Err(format!("manifest.name ({manifest_name}) 与 expect_name ({expected}) 不一致——拒绝安装"));
+            return Err(format!(
+                "manifest.name ({manifest_name}) 与 expect_name ({expected}) 不一致——拒绝安装"
+            ));
         }
     }
     let incoming_version = parse_manifest_version(&manifest)?;
@@ -280,7 +339,9 @@ fn install_from_local_dir(dir: &Path, expect_name: Option<String>, force: bool) 
     let _guard = TmpDirGuard(&tmp);
     copy_dir_recursive(dir, &tmp)?;
     match plan {
-        InstallPlan::Fresh => std::fs::rename(&tmp, &target).map_err(|e| format!("原子落盘失败: {e}"))?,
+        InstallPlan::Fresh => {
+            std::fs::rename(&tmp, &target).map_err(|e| format!("原子落盘失败: {e}"))?
+        }
         InstallPlan::Replace => replace_existing(&tmp, &target)?,
     }
     Ok(manifest_name)
@@ -310,12 +371,18 @@ fn extract_tarball(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
     let gz = flate2::read::GzDecoder::new(bytes);
     let mut archive = tar::Archive::new(gz);
     let mut out = Vec::new();
-    for entry in archive.entries().map_err(|e| format!("tar 解包失败: {e}"))? {
+    for entry in archive
+        .entries()
+        .map_err(|e| format!("tar 解包失败: {e}"))?
+    {
         let mut entry = entry.map_err(|e| format!("tar entry 读取失败: {e}"))?;
         let header_type = entry.header().entry_type();
         // 符号链接条目拒绝（tar-slip 攻击面：链接落盘后指向外部路径）
         if header_type.is_symlink() || header_type.is_hard_link() {
-            return Err(format!("tar 含链接条目（拒绝——tar-slip 防护）: {}", entry.path().unwrap_or_default().display()));
+            return Err(format!(
+                "tar 含链接条目（拒绝——tar-slip 防护）: {}",
+                entry.path().unwrap_or_default().display()
+            ));
         }
         let path = entry
             .path()
@@ -420,9 +487,7 @@ fn parse_semver(v: &str) -> Result<Semver, String> {
                     .map(|seg| match seg.parse::<u64>() {
                         Ok(n) => Ok(PrereleaseId::Numeric(n)),
                         Err(_) => {
-                            if seg.is_empty()
-                                || !seg.chars().all(|c| c.is_ascii_alphanumeric())
-                            {
+                            if seg.is_empty() || !seg.chars().all(|c| c.is_ascii_alphanumeric()) {
                                 Err(format!("version 预发布段含非法字符: {seg}（{v}）"))
                             } else {
                                 Ok(PrereleaseId::Alpha(seg.to_string()))
@@ -493,20 +558,25 @@ fn plan_install(
     }
     let manifest_path = target.join("manifest.json");
     if !manifest_path.is_file() {
-        return Err(format!("插件已存在且缺 manifest.json（无法比较版本）: {name}——force = true 覆盖"));
+        return Err(format!(
+            "插件已存在且缺 manifest.json（无法比较版本）: {name}——force = true 覆盖"
+        ));
     }
-    let bytes = std::fs::read(&manifest_path).map_err(|e| format!("读取已装 manifest 失败: {e}"))?;
+    let bytes =
+        std::fs::read(&manifest_path).map_err(|e| format!("读取已装 manifest 失败: {e}"))?;
     let old = match parse_manifest_version(&bytes) {
         Ok(v) => v,
         Err(_) => {
-            return Err(format!("已装插件缺 version 字段（无法比较）: {name}——force = true 覆盖"));
+            return Err(format!(
+                "已装插件缺 version 字段（无法比较）: {name}——force = true 覆盖"
+            ));
         }
     };
     match semver_cmp(incoming_version, &old) {
         Ok(std::cmp::Ordering::Greater) => Ok(InstallPlan::Replace),
-        Ok(std::cmp::Ordering::Equal) => {
-            Err(format!("同版本已安装: {name} {old}——重装请先卸载（force = true 覆盖）"))
-        }
+        Ok(std::cmp::Ordering::Equal) => Err(format!(
+            "同版本已安装: {name} {old}——重装请先卸载（force = true 覆盖）"
+        )),
         Ok(std::cmp::Ordering::Less) => Err(format!(
             "拒绝降级安装: {name} 请求 {incoming_version} < 已装 {old}（force = true 覆盖）"
         )),
@@ -519,7 +589,8 @@ fn plan_install(
 /// 插件索引收录（list_plugin_dirs 只列含 manifest.json 的目录）。
 fn replace_existing(tmp: &Path, target: &Path) -> Result<(), String> {
     let old = target.with_extension(format!("old-{}", rand_suffix()));
-    std::fs::rename(target, &old).map_err(|e| format!("换装备份失败（rename {target:?} → {old:?}）: {e}"))?;
+    std::fs::rename(target, &old)
+        .map_err(|e| format!("换装备份失败（rename {target:?} → {old:?}）: {e}"))?;
     let old_manifest = old.join("manifest.json");
     if old_manifest.is_file() {
         if let Err(e) = std::fs::remove_file(&old_manifest) {
@@ -533,7 +604,10 @@ fn replace_existing(tmp: &Path, target: &Path) -> Result<(), String> {
     }
     if let Err(e) = std::fs::remove_dir_all(&old) {
         // 已装成功，旧目录残留是无 manifest 的不可见目录——warn 不阻断
-        eprintln!("[plugin_install] 旧版本目录清理失败（残留 {}）: {e}", old.display());
+        eprintln!(
+            "[plugin_install] 旧版本目录清理失败（残留 {}）: {e}",
+            old.display()
+        );
     }
     Ok(())
 }
@@ -591,7 +665,8 @@ pub(crate) fn plugin_set_enabled(name: &str, enabled: bool) -> Result<(), String
     // 其余顶层键（如 granted）原样保留——只改 disabled 段）
     let mut root: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     if let Ok(text) = std::fs::read_to_string(&file) {
-        if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(&text) {
+        if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(&text)
+        {
             root = map;
         }
     }
@@ -653,9 +728,13 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
         if entry.file_type().is_dir() {
             std::fs::create_dir_all(&dest).map_err(|e| format!("创建目录失败: {e}"))?;
         } else if entry.file_type().is_symlink() {
-            return Err(format!("本地目录含符号链接（拒绝复制）: {}", entry.path().display()));
+            return Err(format!(
+                "本地目录含符号链接（拒绝复制）: {}",
+                entry.path().display()
+            ));
         } else {
-            std::fs::copy(entry.path(), &dest).map_err(|e| format!("复制 {} 失败: {e}", entry.path().display()))?;
+            std::fs::copy(entry.path(), &dest)
+                .map_err(|e| format!("复制 {} 失败: {e}", entry.path().display()))?;
         }
     }
     Ok(())
@@ -671,7 +750,10 @@ mod tests {
         let guard = crate::plugin_assets::PLUGINS_ROOT_TEST_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!("hologram_plugin_install_{tag}_{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!(
+            "hologram_plugin_install_{tag}_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("HOLOGRAM_PLUGINS_ROOT", &tmp);
@@ -692,10 +774,18 @@ mod tests {
             header.set_size(data.len() as u64);
             header.set_mode(0o644);
             header.set_cksum();
-            builder.append_data(&mut header, path, data.as_slice()).unwrap();
+            builder
+                .append_data(&mut header, path, data.as_slice())
+                .unwrap();
         };
-        add(format!("package/manifest.json"), manifest.to_string().into_bytes());
-        add("package/entry.js".to_string(), b"export default {}".to_vec());
+        add(
+            format!("package/manifest.json"),
+            manifest.to_string().into_bytes(),
+        );
+        add(
+            "package/entry.js".to_string(),
+            b"export default {}".to_vec(),
+        );
         for (p, d) in extra {
             add(format!("package/{p}"), d.to_vec());
         }
@@ -710,7 +800,10 @@ mod tests {
 
     #[test]
     fn extract_strips_package_prefix_and_reads_entries() {
-        let tarball = gz(make_tarball("hello", &[("sub/dir/asset.txt", b"asset".as_slice())]));
+        let tarball = gz(make_tarball(
+            "hello",
+            &[("sub/dir/asset.txt", b"asset".as_slice())],
+        ));
         let entries = extract_tarball(&tarball).unwrap();
         let paths: Vec<&str> = entries.iter().map(|(p, _)| p.as_str()).collect();
         assert!(paths.contains(&"manifest.json"));
@@ -750,7 +843,12 @@ mod tests {
 
     #[test]
     fn extract_rejects_absolute_and_drive_entries() {
-        for bad in ["/etc/passwd", "package//etc/passwd", "package/C:/evil.txt", "C:/evil.txt"] {
+        for bad in [
+            "/etc/passwd",
+            "package//etc/passwd",
+            "package/C:/evil.txt",
+            "C:/evil.txt",
+        ] {
             let mut builder = tar::Builder::new(Vec::new());
             append_evil_entry(&mut builder, bad, b"x");
             let raw = builder.into_inner().unwrap();
@@ -767,7 +865,9 @@ mod tests {
         header.set_entry_type(tar::EntryType::Symlink);
         header.set_mode(0o777);
         header.set_cksum();
-        builder.append_data(&mut header, "package/link", std::io::empty()).unwrap();
+        builder
+            .append_data(&mut header, "package/link", std::io::empty())
+            .unwrap();
         let raw = builder.into_inner().unwrap();
         let err = extract_tarball(&gz(raw)).unwrap_err();
         assert!(err.contains("链接"), "应拒绝符号链接: {err}");
@@ -811,7 +911,8 @@ mod tests {
         // 重复禁用不重复追加
         plugin_set_enabled("hello", false).unwrap();
         let v: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(root.join("plugins.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(root.join("plugins.json")).unwrap())
+                .unwrap();
         let count = v["disabled"]
             .as_array()
             .unwrap()
@@ -822,19 +923,26 @@ mod tests {
         // 启用 → 移出 disabled
         plugin_set_enabled("hello", true).unwrap();
         let v2: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(root.join("plugins.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(root.join("plugins.json")).unwrap())
+                .unwrap();
         assert!(v2["disabled"].as_array().unwrap().is_empty());
 
         // C11-2：granted 授权段在开关读改写中原样保留（抹掉 = 安全回退）
-        let granted_json = r#"{"disabled":["hello"],"granted":{"hello":["bash","edit"],"other":["web"]}}"#;
+        let granted_json =
+            r#"{"disabled":["hello"],"granted":{"hello":["bash","edit"],"other":["web"]}}"#;
         std::fs::write(root.join("plugins.json"), granted_json).unwrap();
         plugin_set_enabled("hello", false).unwrap();
         let v3: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(root.join("plugins.json")).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(root.join("plugins.json")).unwrap())
+                .unwrap();
         assert_eq!(v3["granted"]["hello"], serde_json::json!(["bash", "edit"]));
         assert_eq!(v3["granted"]["other"], serde_json::json!(["web"]));
         assert!(
-            v3["disabled"].as_array().unwrap().iter().any(|x| x.as_str() == Some("hello")),
+            v3["disabled"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|x| x.as_str() == Some("hello")),
             "disabled 段仍应按开关语义更新"
         );
 
@@ -842,7 +950,7 @@ mod tests {
         plugin_uninstall("hello").unwrap();
         assert!(!root.join("hello").exists());
         plugin_uninstall("hello").unwrap(); // 幂等
-        // 非法名拒绝（路径逃逸防护）
+                                            // 非法名拒绝（路径逃逸防护）
         assert!(plugin_uninstall("../evil").is_err());
         assert!(plugin_uninstall("a/b").is_err());
 
@@ -865,7 +973,10 @@ mod tests {
 
         // 存在 → 绝对路径（含插件名尾段）
         let dir = plugin_dir(&name).unwrap();
-        assert!(dir.replace('\\', "/").ends_with("/hello"), "意外路径: {dir}");
+        assert!(
+            dir.replace('\\', "/").ends_with("/hello"),
+            "意外路径: {dir}"
+        );
         assert!(std::path::Path::new(&dir).is_dir());
 
         // 不存在 → 错误（声明 mcpServers 的插件必须已安装）
@@ -885,7 +996,8 @@ mod tests {
         let (_guard, tmp) = with_plugins_root("tarball");
 
         let tarball = gz(make_tarball("acme-tools", &[]));
-        let name = install_from_tarball_bytes(&tarball, Some("acme-tools".to_string()), false).unwrap();
+        let name =
+            install_from_tarball_bytes(&tarball, Some("acme-tools".to_string()), false).unwrap();
         assert_eq!(name, "acme-tools");
         assert!(tmp.join("acme-tools/manifest.json").is_file());
         assert!(tmp.join("acme-tools/entry.js").is_file());
@@ -906,7 +1018,9 @@ mod tests {
         let data = b"export {}".to_vec();
         header.set_size(data.len() as u64);
         header.set_cksum();
-        builder.append_data(&mut header, "package/entry.js", data.as_slice()).unwrap();
+        builder
+            .append_data(&mut header, "package/entry.js", data.as_slice())
+            .unwrap();
         let no_manifest = gz(builder.into_inner().unwrap());
         assert!(install_from_tarball_bytes(&no_manifest, None, false).is_err());
 
@@ -928,13 +1042,16 @@ mod tests {
 
     #[test]
     fn source_parsing() {
-        let p = serde_json::json!({ "source_kind": "registry", "name": "hello", "version": "1.0.0" });
+        let p =
+            serde_json::json!({ "source_kind": "registry", "name": "hello", "version": "1.0.0" });
         assert!(matches!(
             PluginSource::from_params(&p).unwrap(),
             PluginSource::Registry { ref name, ref version, .. } if name == "hello" && version.as_deref() == Some("1.0.0")
         ));
         let p = serde_json::json!({ "source_kind": "tarball", "location": "C:/x/y.tgz" });
-        assert!(matches!(PluginSource::from_params(&p).unwrap(), PluginSource::Tarball(ref l) if l == "C:/x/y.tgz"));
+        assert!(
+            matches!(PluginSource::from_params(&p).unwrap(), PluginSource::Tarball(ref l) if l == "C:/x/y.tgz")
+        );
         let bad = serde_json::json!({ "source_kind": "nope" });
         assert!(PluginSource::from_params(&bad).is_err());
         let missing = serde_json::json!({});
@@ -971,7 +1088,9 @@ mod tests {
     /// LocalDir 源不走 fetch（内部错误——分发路由在 rpc.rs 的 match）。
     #[tokio::test]
     async fn fetch_source_bytes_local_dir_is_internal_error() {
-        let err = fetch_source_bytes(&PluginSource::LocalDir(PathBuf::from("."))).await.unwrap_err();
+        let err = fetch_source_bytes(&PluginSource::LocalDir(PathBuf::from(".")))
+            .await
+            .unwrap_err();
         assert!(err.contains("内部错误"), "LocalDir 应被分发路由拦截: {err}");
     }
 
@@ -1025,7 +1144,10 @@ mod tests {
             if let Ok(st) = status {
                 if st.status.success() {
                     let err = copy_dir_recursive(&src, &tmp.join("dst2")).unwrap_err();
-                    assert!(err.contains("符号链接") || err.contains("链接"), "应拒绝链接: {err}");
+                    assert!(
+                        err.contains("符号链接") || err.contains("链接"),
+                        "应拒绝链接: {err}"
+                    );
                 }
                 // 沙箱建不了 junction 时跳过（链接面已由 walkdir follow_links(false)
                 // + 显式 is_symlink 分支守护——plugin_assets 的 junction 测试同款处理）
@@ -1051,12 +1173,21 @@ mod tests {
         // release > prerelease
         assert_eq!(semver_cmp("1.0.0", "1.0.0-alpha"), Ok(Ordering::Greater));
         // 数字段数值比且 < 字母段；字母段字典序
-        assert_eq!(semver_cmp("1.0.0-alpha.1", "1.0.0-alpha"), Ok(Ordering::Greater));
-        assert_eq!(semver_cmp("1.0.0-alpha.2", "1.0.0-alpha.10"), Ok(Ordering::Less));
+        assert_eq!(
+            semver_cmp("1.0.0-alpha.1", "1.0.0-alpha"),
+            Ok(Ordering::Greater)
+        );
+        assert_eq!(
+            semver_cmp("1.0.0-alpha.2", "1.0.0-alpha.10"),
+            Ok(Ordering::Less)
+        );
         assert_eq!(semver_cmp("1.0.0-alpha", "1.0.0-beta"), Ok(Ordering::Less));
         assert_eq!(semver_cmp("1.0.0-1", "1.0.0-alpha"), Ok(Ordering::Less));
         // 前缀相等的短集 < 长集
-        assert_eq!(semver_cmp("1.0.0-alpha", "1.0.0-alpha.1"), Ok(Ordering::Less));
+        assert_eq!(
+            semver_cmp("1.0.0-alpha", "1.0.0-alpha.1"),
+            Ok(Ordering::Less)
+        );
     }
 
     #[test]
@@ -1092,8 +1223,14 @@ mod tests {
         let v2 = make_src("2.0.0");
         install_from_local_dir(&v2, Some("hello".to_string()), false).unwrap();
         let manifest = std::fs::read_to_string(root.join("hello/manifest.json")).unwrap();
-        assert!(manifest.contains("2.0.0"), "升级后 manifest 应为新版本: {manifest}");
-        assert!(root.join("hello/entry.js").is_file(), "entry.js 应为新内容面");
+        assert!(
+            manifest.contains("2.0.0"),
+            "升级后 manifest 应为新版本: {manifest}"
+        );
+        assert!(
+            root.join("hello/entry.js").is_file(),
+            "entry.js 应为新内容面"
+        );
         let leftovers: Vec<String> = std::fs::read_dir(&root)
             .unwrap()
             .filter_map(|e| e.ok())
@@ -1106,7 +1243,10 @@ mod tests {
         let err = install_from_local_dir(&v1, Some("hello".to_string()), false).unwrap_err();
         assert!(err.contains("降级"), "应拒绝降级: {err}");
         let manifest = std::fs::read_to_string(root.join("hello/manifest.json")).unwrap();
-        assert!(manifest.contains("2.0.0"), "拒绝降级后已装面不变: {manifest}");
+        assert!(
+            manifest.contains("2.0.0"),
+            "拒绝降级后已装面不变: {manifest}"
+        );
 
         // 同版本 → 拒绝
         let err = install_from_local_dir(&v2, Some("hello".to_string()), false).unwrap_err();
@@ -1130,10 +1270,14 @@ mod tests {
         let v2 = gz(make_tarball_versioned("acme-tools", "2.0.0", &[]));
         install_from_tarball_bytes(&v2, Some("acme-tools".to_string()), false).unwrap();
         let manifest = std::fs::read_to_string(root.join("acme-tools/manifest.json")).unwrap();
-        assert!(manifest.contains("2.0.0"), "升级后 manifest 应为新版本: {manifest}");
+        assert!(
+            manifest.contains("2.0.0"),
+            "升级后 manifest 应为新版本: {manifest}"
+        );
 
         // 降级拒绝
-        let err = install_from_tarball_bytes(&v1, Some("acme-tools".to_string()), false).unwrap_err();
+        let err =
+            install_from_tarball_bytes(&v1, Some("acme-tools".to_string()), false).unwrap_err();
         assert!(err.contains("降级"), "应拒绝降级: {err}");
 
         // 手工造缺 version 的 tarball → 拒绝（不猜）
@@ -1154,7 +1298,8 @@ mod tests {
             .append_data(&mut entry_header, "package/entry.js", b"{}".as_slice())
             .unwrap();
         let no_version = gz(builder.into_inner().unwrap());
-        let err = install_from_tarball_bytes(&no_version, Some("acme-tools".to_string()), false).unwrap_err();
+        let err = install_from_tarball_bytes(&no_version, Some("acme-tools".to_string()), false)
+            .unwrap_err();
         assert!(err.contains("version"), "缺 version 应拒绝: {err}");
         let _ = std::fs::remove_dir_all(&tmp);
     }

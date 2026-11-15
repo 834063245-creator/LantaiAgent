@@ -14,13 +14,13 @@
 //! 新增语言只需一个约 30 行的 .scm 文件 + 内置名称列表 —
 //! 无需编写 Rust 遍历代码。
 
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
-use tree_sitter::{Language, Node as TsNode, Query, QueryCursor};
 use streaming_iterator::StreamingIterator;
-use rayon::prelude::*;
+use tree_sitter::{Language, Node as TsNode, Query, QueryCursor};
 
 // ── 语言配置 ──
 
@@ -42,8 +42,12 @@ impl LangDataflowConfig {
     }
 
     fn scope_role(&self, kind: &str) -> Option<&'static str> {
-        if self.func_kinds.contains(&kind) { return Some("function"); }
-        if self.class_kinds.contains(&kind) { return Some("class"); }
+        if self.func_kinds.contains(&kind) {
+            return Some("function");
+        }
+        if self.class_kinds.contains(&kind) {
+            return Some("class");
+        }
         None
     }
 }
@@ -51,40 +55,138 @@ impl LangDataflowConfig {
 // ── Python 配置 ──
 
 static PY_BUILTINS: &[&str] = &[
-    "str","int","float","bool","bytes","bytearray","complex",
-    "list","dict","tuple","set","frozenset","object",
-    "True","False","None",
-    "len","range","type","print","isinstance","issubclass",
-    "super","Exception","ValueError","TypeError","KeyError",
-    "IndexError","AttributeError","RuntimeError","StopIteration",
-    "map","filter","zip","enumerate","sorted","reversed",
-    "any","all","min","max","sum","abs","round",
-    "chr","ord","hex","oct","bin","hash","id","repr",
-    "input","open","format","staticmethod","classmethod",
-    "property","hasattr","getattr","setattr","delattr",
-    "iter","next","slice","dir","vars","__name__","__file__",
+    "str",
+    "int",
+    "float",
+    "bool",
+    "bytes",
+    "bytearray",
+    "complex",
+    "list",
+    "dict",
+    "tuple",
+    "set",
+    "frozenset",
+    "object",
+    "True",
+    "False",
+    "None",
+    "len",
+    "range",
+    "type",
+    "print",
+    "isinstance",
+    "issubclass",
+    "super",
+    "Exception",
+    "ValueError",
+    "TypeError",
+    "KeyError",
+    "IndexError",
+    "AttributeError",
+    "RuntimeError",
+    "StopIteration",
+    "map",
+    "filter",
+    "zip",
+    "enumerate",
+    "sorted",
+    "reversed",
+    "any",
+    "all",
+    "min",
+    "max",
+    "sum",
+    "abs",
+    "round",
+    "chr",
+    "ord",
+    "hex",
+    "oct",
+    "bin",
+    "hash",
+    "id",
+    "repr",
+    "input",
+    "open",
+    "format",
+    "staticmethod",
+    "classmethod",
+    "property",
+    "hasattr",
+    "getattr",
+    "setattr",
+    "delattr",
+    "iter",
+    "next",
+    "slice",
+    "dir",
+    "vars",
+    "__name__",
+    "__file__",
 ];
 
-static PY_FUNC_KINDS: &[&str] = &["function_definition","lambda"];
+static PY_FUNC_KINDS: &[&str] = &["function_definition", "lambda"];
 static PY_CLASS_KINDS: &[&str] = &["class_definition"];
 
 // ── JS/TS 配置 ──
 
 static JS_SKIP_NAMES: &[&str] = &[
-    "this","super","undefined","null","NaN","Infinity",
-    "console","window","document","process","global","globalThis",
-    "Math","JSON","Date","RegExp","Promise","Array","Object",
-    "String","Number","Boolean","Function","Symbol","Map","Set",
-    "WeakMap","WeakSet","Proxy","Reflect","Error","TypeError",
-    "parseInt","parseFloat","isNaN","isFinite",
-    "setTimeout","setInterval","clearTimeout","clearInterval",
-    "fetch","XMLHttpRequest","FormData","URL","URLSearchParams",
-    "Intl","BigInt",
+    "this",
+    "super",
+    "undefined",
+    "null",
+    "NaN",
+    "Infinity",
+    "console",
+    "window",
+    "document",
+    "process",
+    "global",
+    "globalThis",
+    "Math",
+    "JSON",
+    "Date",
+    "RegExp",
+    "Promise",
+    "Array",
+    "Object",
+    "String",
+    "Number",
+    "Boolean",
+    "Function",
+    "Symbol",
+    "Map",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "Proxy",
+    "Reflect",
+    "Error",
+    "TypeError",
+    "parseInt",
+    "parseFloat",
+    "isNaN",
+    "isFinite",
+    "setTimeout",
+    "setInterval",
+    "clearTimeout",
+    "clearInterval",
+    "fetch",
+    "XMLHttpRequest",
+    "FormData",
+    "URL",
+    "URLSearchParams",
+    "Intl",
+    "BigInt",
 ];
 
 static JS_FUNC_KINDS: &[&str] = &[
-    "function_declaration","function_expression","arrow_function",
-    "method_definition","generator_function_declaration",
+    "function_declaration",
+    "function_expression",
+    "arrow_function",
+    "method_definition",
+    "generator_function_declaration",
 ];
 
 static JS_CLASS_KINDS: &[&str] = &["class_declaration"];
@@ -92,172 +194,761 @@ static JS_CLASS_KINDS: &[&str] = &["class_declaration"];
 // ── Rust 配置 ──
 
 static RS_SKIP_NAMES: &[&str] = &[
-    "self","Self","true","false","None","Ok","Err","Some","Option","Result",
-    "String","str","Vec","HashMap","HashSet","Box","Rc","Arc","Cell","RefCell",
-    "Mutex","RwLock","i8","i16","i32","i64","u8","u16","u32","u64","f32","f64",
-    "usize","isize","bool","char","println","eprintln","format","dbg","panic",
-    "assert","assert_eq","assert_ne","Ok","try","unwrap","expect","clone","copy",
-    "drop","into","from","new","default","len","is_empty","push","pop","insert",
-    "remove","get","iter","next","map","filter","collect","fold","std","core",
-    "alloc","main","crate","super",
+    "self",
+    "Self",
+    "true",
+    "false",
+    "None",
+    "Ok",
+    "Err",
+    "Some",
+    "Option",
+    "Result",
+    "String",
+    "str",
+    "Vec",
+    "HashMap",
+    "HashSet",
+    "Box",
+    "Rc",
+    "Arc",
+    "Cell",
+    "RefCell",
+    "Mutex",
+    "RwLock",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "f32",
+    "f64",
+    "usize",
+    "isize",
+    "bool",
+    "char",
+    "println",
+    "eprintln",
+    "format",
+    "dbg",
+    "panic",
+    "assert",
+    "assert_eq",
+    "assert_ne",
+    "Ok",
+    "try",
+    "unwrap",
+    "expect",
+    "clone",
+    "copy",
+    "drop",
+    "into",
+    "from",
+    "new",
+    "default",
+    "len",
+    "is_empty",
+    "push",
+    "pop",
+    "insert",
+    "remove",
+    "get",
+    "iter",
+    "next",
+    "map",
+    "filter",
+    "collect",
+    "fold",
+    "std",
+    "core",
+    "alloc",
+    "main",
+    "crate",
+    "super",
 ];
 
-static RS_FUNC_KINDS: &[&str] = &["function_item","closure_expression"];
-static RS_CLASS_KINDS: &[&str] = &["impl_item","struct_item","enum_item","trait_item"];
+static RS_FUNC_KINDS: &[&str] = &["function_item", "closure_expression"];
+static RS_CLASS_KINDS: &[&str] = &["impl_item", "struct_item", "enum_item", "trait_item"];
 
 // ── Go 配置 ──
 
 static GO_SKIP_NAMES: &[&str] = &[
-    "nil","true","false","iota","string","int","int8","int16","int32","int64",
-    "uint","uint8","uint16","uint32","uint64","float32","float64","bool","byte",
-    "rune","error","complex64","complex128","uintptr","print","println","len",
-    "cap","make","new","append","copy","delete","close","panic","recover","defer",
-    "go","chan","map","range","select","func","interface","struct","type","var",
-    "const","fmt","context","Context","err","Err","main","init",
+    "nil",
+    "true",
+    "false",
+    "iota",
+    "string",
+    "int",
+    "int8",
+    "int16",
+    "int32",
+    "int64",
+    "uint",
+    "uint8",
+    "uint16",
+    "uint32",
+    "uint64",
+    "float32",
+    "float64",
+    "bool",
+    "byte",
+    "rune",
+    "error",
+    "complex64",
+    "complex128",
+    "uintptr",
+    "print",
+    "println",
+    "len",
+    "cap",
+    "make",
+    "new",
+    "append",
+    "copy",
+    "delete",
+    "close",
+    "panic",
+    "recover",
+    "defer",
+    "go",
+    "chan",
+    "map",
+    "range",
+    "select",
+    "func",
+    "interface",
+    "struct",
+    "type",
+    "var",
+    "const",
+    "fmt",
+    "context",
+    "Context",
+    "err",
+    "Err",
+    "main",
+    "init",
 ];
 
-static GO_FUNC_KINDS: &[&str] = &["function_declaration","method_declaration","func_literal"];
+static GO_FUNC_KINDS: &[&str] = &["function_declaration", "method_declaration", "func_literal"];
 static GO_CLASS_KINDS: &[&str] = &["type_declaration"];
 
 // ── Java 配置 ──
 
 static JAVA_SKIP_NAMES: &[&str] = &[
-    "this","super","null","true","false","System","String","Object","Class",
-    "Integer","Long","Double","Float","Boolean","Byte","Short","Character",
-    "Math","Arrays","Collections","List","Map","Set","ArrayList","HashMap",
-    "HashSet","Optional","Stream","StringBuilder","Exception","RuntimeException",
-    "Override","Deprecated","SuppressWarnings","out","err","in","println","print",
-    "equals","hashCode","toString","clone","finalize","getClass","notify","wait",
-    "valueOf","parseInt","parseLong","of","main",
+    "this",
+    "super",
+    "null",
+    "true",
+    "false",
+    "System",
+    "String",
+    "Object",
+    "Class",
+    "Integer",
+    "Long",
+    "Double",
+    "Float",
+    "Boolean",
+    "Byte",
+    "Short",
+    "Character",
+    "Math",
+    "Arrays",
+    "Collections",
+    "List",
+    "Map",
+    "Set",
+    "ArrayList",
+    "HashMap",
+    "HashSet",
+    "Optional",
+    "Stream",
+    "StringBuilder",
+    "Exception",
+    "RuntimeException",
+    "Override",
+    "Deprecated",
+    "SuppressWarnings",
+    "out",
+    "err",
+    "in",
+    "println",
+    "print",
+    "equals",
+    "hashCode",
+    "toString",
+    "clone",
+    "finalize",
+    "getClass",
+    "notify",
+    "wait",
+    "valueOf",
+    "parseInt",
+    "parseLong",
+    "of",
+    "main",
 ];
 
-static JAVA_FUNC_KINDS: &[&str] = &["method_declaration","constructor_declaration","lambda_expression"];
-static JAVA_CLASS_KINDS: &[&str] = &["class_declaration","interface_declaration","enum_declaration"];
+static JAVA_FUNC_KINDS: &[&str] = &[
+    "method_declaration",
+    "constructor_declaration",
+    "lambda_expression",
+];
+static JAVA_CLASS_KINDS: &[&str] = &[
+    "class_declaration",
+    "interface_declaration",
+    "enum_declaration",
+];
 
 // ── C/C++ 配置 ──
 
 static C_SKIP_NAMES: &[&str] = &[
-    "NULL","nullptr","true","false","printf","scanf","fprintf","sprintf","snprintf",
-    "malloc","calloc","realloc","free","sizeof","typeof","memcpy","memset","memcmp",
-    "memmove","strlen","strcpy","strncpy","strcmp","strncmp","strcat","strncat",
-    "strdup","strstr","strchr","strrchr","atoi","atol","atof","itoa","sprintf",
-    "stdin","stdout","stderr","std","cout","cin","cerr","endl","vector","string",
-    "map","set","pair","make_pair","shared_ptr","unique_ptr","weak_ptr","move",
-    "forward","static_cast","dynamic_cast","const_cast","reinterpret_cast",
-    "main","argc","argv","void","int","char","float","double","long","short",
-    "unsigned","signed","const","volatile","auto","extern","register","static",
-    "size_t","ssize_t","ptrdiff_t","FILE",
+    "NULL",
+    "nullptr",
+    "true",
+    "false",
+    "printf",
+    "scanf",
+    "fprintf",
+    "sprintf",
+    "snprintf",
+    "malloc",
+    "calloc",
+    "realloc",
+    "free",
+    "sizeof",
+    "typeof",
+    "memcpy",
+    "memset",
+    "memcmp",
+    "memmove",
+    "strlen",
+    "strcpy",
+    "strncpy",
+    "strcmp",
+    "strncmp",
+    "strcat",
+    "strncat",
+    "strdup",
+    "strstr",
+    "strchr",
+    "strrchr",
+    "atoi",
+    "atol",
+    "atof",
+    "itoa",
+    "sprintf",
+    "stdin",
+    "stdout",
+    "stderr",
+    "std",
+    "cout",
+    "cin",
+    "cerr",
+    "endl",
+    "vector",
+    "string",
+    "map",
+    "set",
+    "pair",
+    "make_pair",
+    "shared_ptr",
+    "unique_ptr",
+    "weak_ptr",
+    "move",
+    "forward",
+    "static_cast",
+    "dynamic_cast",
+    "const_cast",
+    "reinterpret_cast",
+    "main",
+    "argc",
+    "argv",
+    "void",
+    "int",
+    "char",
+    "float",
+    "double",
+    "long",
+    "short",
+    "unsigned",
+    "signed",
+    "const",
+    "volatile",
+    "auto",
+    "extern",
+    "register",
+    "static",
+    "size_t",
+    "ssize_t",
+    "ptrdiff_t",
+    "FILE",
 ];
 
-static C_FUNC_KINDS: &[&str] = &["function_definition","lambda_expression"];
-static C_CLASS_KINDS: &[&str] = &["class_specifier","struct_specifier","union_specifier"];
+static C_FUNC_KINDS: &[&str] = &["function_definition", "lambda_expression"];
+static C_CLASS_KINDS: &[&str] = &["class_specifier", "struct_specifier", "union_specifier"];
 
 // ── C# 配置 ──
 
 static CS_SKIP_NAMES: &[&str] = &[
-    "null","true","false","this","base","var","string","int","long","double",
-    "float","bool","char","byte","short","decimal","object","dynamic","void",
-    "System","Console","Math","Convert","String","StringBuilder","List",
-    "Dictionary","Array","Enumerable","Task","async","await","WriteLine",
-    "Write","ReadLine","ToString","Equals","GetHashCode","GetType","Main",
+    "null",
+    "true",
+    "false",
+    "this",
+    "base",
+    "var",
+    "string",
+    "int",
+    "long",
+    "double",
+    "float",
+    "bool",
+    "char",
+    "byte",
+    "short",
+    "decimal",
+    "object",
+    "dynamic",
+    "void",
+    "System",
+    "Console",
+    "Math",
+    "Convert",
+    "String",
+    "StringBuilder",
+    "List",
+    "Dictionary",
+    "Array",
+    "Enumerable",
+    "Task",
+    "async",
+    "await",
+    "WriteLine",
+    "Write",
+    "ReadLine",
+    "ToString",
+    "Equals",
+    "GetHashCode",
+    "GetType",
+    "Main",
 ];
 
-static CS_FUNC_KINDS: &[&str] = &["method_declaration","constructor_declaration","lambda_expression"];
-static CS_CLASS_KINDS: &[&str] = &["class_declaration","struct_declaration","interface_declaration","enum_declaration"];
+static CS_FUNC_KINDS: &[&str] = &[
+    "method_declaration",
+    "constructor_declaration",
+    "lambda_expression",
+];
+static CS_CLASS_KINDS: &[&str] = &[
+    "class_declaration",
+    "struct_declaration",
+    "interface_declaration",
+    "enum_declaration",
+];
 
 // ── Ruby 配置 ──
 
 static RB_SKIP_NAMES: &[&str] = &[
-    "nil","true","false","self","puts","print","p","pp","gets","raise","require",
-    "include","extend","attr_accessor","attr_reader","attr_writer","new",
-    "initialize","to_s","inspect","class","module","def","end","do","if",
-    "else","elsif","unless","while","until","for","break","next","return",
-    "Array","Hash","String","Symbol","Integer","Float","Regexp","Proc","Lambda",
-    "Enumerable","Object","Kernel","Module",
+    "nil",
+    "true",
+    "false",
+    "self",
+    "puts",
+    "print",
+    "p",
+    "pp",
+    "gets",
+    "raise",
+    "require",
+    "include",
+    "extend",
+    "attr_accessor",
+    "attr_reader",
+    "attr_writer",
+    "new",
+    "initialize",
+    "to_s",
+    "inspect",
+    "class",
+    "module",
+    "def",
+    "end",
+    "do",
+    "if",
+    "else",
+    "elsif",
+    "unless",
+    "while",
+    "until",
+    "for",
+    "break",
+    "next",
+    "return",
+    "Array",
+    "Hash",
+    "String",
+    "Symbol",
+    "Integer",
+    "Float",
+    "Regexp",
+    "Proc",
+    "Lambda",
+    "Enumerable",
+    "Object",
+    "Kernel",
+    "Module",
 ];
 
-static RB_FUNC_KINDS: &[&str] = &["method","lambda","block"];
-static RB_CLASS_KINDS: &[&str] = &["class","module"];
+static RB_FUNC_KINDS: &[&str] = &["method", "lambda", "block"];
+static RB_CLASS_KINDS: &[&str] = &["class", "module"];
 
 // ── Lua 配置 ──
 
 static LUA_SKIP_NAMES: &[&str] = &[
-    "nil","true","false","print","pairs","ipairs","next","type","tostring",
-    "tonumber","assert","error","pcall","xpcall","require","module","select",
-    "unpack","pack","rawget","rawset","rawlen","rawequal","setmetatable",
-    "getmetatable","string","math","table","io","os","debug","coroutine",
-    "utf8","self","arg","_G","_ENV","_VERSION",
+    "nil",
+    "true",
+    "false",
+    "print",
+    "pairs",
+    "ipairs",
+    "next",
+    "type",
+    "tostring",
+    "tonumber",
+    "assert",
+    "error",
+    "pcall",
+    "xpcall",
+    "require",
+    "module",
+    "select",
+    "unpack",
+    "pack",
+    "rawget",
+    "rawset",
+    "rawlen",
+    "rawequal",
+    "setmetatable",
+    "getmetatable",
+    "string",
+    "math",
+    "table",
+    "io",
+    "os",
+    "debug",
+    "coroutine",
+    "utf8",
+    "self",
+    "arg",
+    "_G",
+    "_ENV",
+    "_VERSION",
 ];
 
-static LUA_FUNC_KINDS: &[&str] = &["function_declaration","function_definition"];
+static LUA_FUNC_KINDS: &[&str] = &["function_declaration", "function_definition"];
 static LUA_CLASS_KINDS: &[&str] = &[];
 
 // ── PHP 配置 ──
 
 static PHP_SKIP_NAMES: &[&str] = &[
-    "null","true","false","this","self","static","parent","echo","print",
-    "isset","empty","unset","die","exit","require","include","require_once",
-    "include_once","array","list","count","strlen","str_replace","substr",
-    "trim","explode","implode","json_encode","json_decode","sprintf","printf",
-    "var_dump","print_r","array_map","array_filter","array_reduce","array_keys",
-    "array_values","in_array","date","time","strtotime","PDO","Exception",
-    "Error","Throwable","stdClass","__construct","__destruct","__toString",
-    "_GET","_POST","_SERVER","_SESSION","_COOKIE","_FILES","_REQUEST","_ENV",
-    "GLOBALS","php","PHP_EOL","DIRECTORY_SEPARATOR",
+    "null",
+    "true",
+    "false",
+    "this",
+    "self",
+    "static",
+    "parent",
+    "echo",
+    "print",
+    "isset",
+    "empty",
+    "unset",
+    "die",
+    "exit",
+    "require",
+    "include",
+    "require_once",
+    "include_once",
+    "array",
+    "list",
+    "count",
+    "strlen",
+    "str_replace",
+    "substr",
+    "trim",
+    "explode",
+    "implode",
+    "json_encode",
+    "json_decode",
+    "sprintf",
+    "printf",
+    "var_dump",
+    "print_r",
+    "array_map",
+    "array_filter",
+    "array_reduce",
+    "array_keys",
+    "array_values",
+    "in_array",
+    "date",
+    "time",
+    "strtotime",
+    "PDO",
+    "Exception",
+    "Error",
+    "Throwable",
+    "stdClass",
+    "__construct",
+    "__destruct",
+    "__toString",
+    "_GET",
+    "_POST",
+    "_SERVER",
+    "_SESSION",
+    "_COOKIE",
+    "_FILES",
+    "_REQUEST",
+    "_ENV",
+    "GLOBALS",
+    "php",
+    "PHP_EOL",
+    "DIRECTORY_SEPARATOR",
 ];
 
-static PHP_FUNC_KINDS: &[&str] = &["method_declaration","function_definition","arrow_function"];
-static PHP_CLASS_KINDS: &[&str] = &["class_declaration","interface_declaration","trait_declaration"];
+static PHP_FUNC_KINDS: &[&str] = &[
+    "method_declaration",
+    "function_definition",
+    "arrow_function",
+];
+static PHP_CLASS_KINDS: &[&str] = &[
+    "class_declaration",
+    "interface_declaration",
+    "trait_declaration",
+];
 
 // ── Swift 配置 ──
 
 static SWIFT_SKIP_NAMES: &[&str] = &[
-    "nil","true","false","self","Self","print","debugPrint","fatalError",
-    "precondition","assert","String","Int","Double","Float","Bool","Array",
-    "Dictionary","Set","Optional","Result","Error","Task","async","await",
-    "guard","let","var","func","class","struct","enum","protocol","extension",
-    "throws","rethrows","try","catch","throw","where","Swift","SwiftUI",
-    "UIKit","Foundation","Combine","SwiftData",
+    "nil",
+    "true",
+    "false",
+    "self",
+    "Self",
+    "print",
+    "debugPrint",
+    "fatalError",
+    "precondition",
+    "assert",
+    "String",
+    "Int",
+    "Double",
+    "Float",
+    "Bool",
+    "Array",
+    "Dictionary",
+    "Set",
+    "Optional",
+    "Result",
+    "Error",
+    "Task",
+    "async",
+    "await",
+    "guard",
+    "let",
+    "var",
+    "func",
+    "class",
+    "struct",
+    "enum",
+    "protocol",
+    "extension",
+    "throws",
+    "rethrows",
+    "try",
+    "catch",
+    "throw",
+    "where",
+    "Swift",
+    "SwiftUI",
+    "UIKit",
+    "Foundation",
+    "Combine",
+    "SwiftData",
 ];
 
-static SWIFT_FUNC_KINDS: &[&str] = &["function_declaration","method_declaration","closure_expression"];
-static SWIFT_CLASS_KINDS: &[&str] = &["class_declaration","struct_declaration","enum_declaration","protocol_declaration"];
+static SWIFT_FUNC_KINDS: &[&str] = &[
+    "function_declaration",
+    "method_declaration",
+    "closure_expression",
+];
+static SWIFT_CLASS_KINDS: &[&str] = &[
+    "class_declaration",
+    "struct_declaration",
+    "enum_declaration",
+    "protocol_declaration",
+];
 
 // ── Dart 配置 ──
 
 static DART_SKIP_NAMES: &[&str] = &[
-    "null","true","false","this","super","print","debugPrint","String","int",
-    "double","bool","num","List","Map","Set","Object","dynamic","void","Future",
-    "Stream","async","await","yield","assert","throw","rethrow","try","catch",
-    "finally","new","const","final","var","static","library","import","export",
-    "part","Flutter","Widget","BuildContext","Material","Cupertino",
+    "null",
+    "true",
+    "false",
+    "this",
+    "super",
+    "print",
+    "debugPrint",
+    "String",
+    "int",
+    "double",
+    "bool",
+    "num",
+    "List",
+    "Map",
+    "Set",
+    "Object",
+    "dynamic",
+    "void",
+    "Future",
+    "Stream",
+    "async",
+    "await",
+    "yield",
+    "assert",
+    "throw",
+    "rethrow",
+    "try",
+    "catch",
+    "finally",
+    "new",
+    "const",
+    "final",
+    "var",
+    "static",
+    "library",
+    "import",
+    "export",
+    "part",
+    "Flutter",
+    "Widget",
+    "BuildContext",
+    "Material",
+    "Cupertino",
 ];
 
-static DART_FUNC_KINDS: &[&str] = &["function_declaration","method_declaration","function_expression"];
-static DART_CLASS_KINDS: &[&str] = &["class_declaration","enum_declaration","mixin_declaration"];
+static DART_FUNC_KINDS: &[&str] = &[
+    "function_declaration",
+    "method_declaration",
+    "function_expression",
+];
+static DART_CLASS_KINDS: &[&str] = &["class_declaration", "enum_declaration", "mixin_declaration"];
 
 // ── Scala 配置 ──
 
 static SCALA_SKIP_NAMES: &[&str] = &[
-    "null","true","false","this","super","println","print","String","Int","Long",
-    "Double","Float","Boolean","Byte","Short","Char","Unit","Any","Nothing",
-    "Option","Some","None","List","Map","Set","Seq","Array","Vector","Either",
-    "Left","Right","Try","Success","Failure","Future","Await","await","implicitly",
-    "scala","Predef","require","assert","assume","???",
+    "null",
+    "true",
+    "false",
+    "this",
+    "super",
+    "println",
+    "print",
+    "String",
+    "Int",
+    "Long",
+    "Double",
+    "Float",
+    "Boolean",
+    "Byte",
+    "Short",
+    "Char",
+    "Unit",
+    "Any",
+    "Nothing",
+    "Option",
+    "Some",
+    "None",
+    "List",
+    "Map",
+    "Set",
+    "Seq",
+    "Array",
+    "Vector",
+    "Either",
+    "Left",
+    "Right",
+    "Try",
+    "Success",
+    "Failure",
+    "Future",
+    "Await",
+    "await",
+    "implicitly",
+    "scala",
+    "Predef",
+    "require",
+    "assert",
+    "assume",
+    "???",
 ];
 
-static SCALA_FUNC_KINDS: &[&str] = &["function_definition","method_definition","lambda_expression"];
-static SCALA_CLASS_KINDS: &[&str] = &["class_definition","object_definition","trait_definition"];
+static SCALA_FUNC_KINDS: &[&str] = &[
+    "function_definition",
+    "method_definition",
+    "lambda_expression",
+];
+static SCALA_CLASS_KINDS: &[&str] = &["class_definition", "object_definition", "trait_definition"];
 
 // ── Zig 配置 ──
 
 static ZIG_SKIP_NAMES: &[&str] = &[
-    "null","true","false","undefined","void","bool","u8","u16","u32","u64",
-    "i8","i16","i32","i64","f32","f64","usize","isize","comptime_int",
-    "comptime_float","anytype","type","error","@import","@export","@extern",
-    "@intCast","@floatCast","@intFromFloat","@floatFromInt","@ptrCast",
-    "@as","@sizeOf","@alignOf","@typeInfo","@typeName","@embedFile",
-    "print","@memset","@memcpy","@panic","std","builtin","main",
+    "null",
+    "true",
+    "false",
+    "undefined",
+    "void",
+    "bool",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "f32",
+    "f64",
+    "usize",
+    "isize",
+    "comptime_int",
+    "comptime_float",
+    "anytype",
+    "type",
+    "error",
+    "@import",
+    "@export",
+    "@extern",
+    "@intCast",
+    "@floatCast",
+    "@intFromFloat",
+    "@floatFromInt",
+    "@ptrCast",
+    "@as",
+    "@sizeOf",
+    "@alignOf",
+    "@typeInfo",
+    "@typeName",
+    "@embedFile",
+    "print",
+    "@memset",
+    "@memcpy",
+    "@panic",
+    "std",
+    "builtin",
+    "main",
 ];
 
 static ZIG_FUNC_KINDS: &[&str] = &["function_declaration"];
@@ -266,30 +957,148 @@ static ZIG_CLASS_KINDS: &[&str] = &[];
 // ── Elixir 配置 ──
 
 static EX_SKIP_NAMES: &[&str] = &[
-    "nil","true","false","__MODULE__","__DIR__","__ENV__","__CALLER__",
-    "inspect","to_string","length","hd","tl","elem","put_elem","tuple_size",
-    "is_list","is_map","is_tuple","is_atom","is_integer","is_float","is_binary",
-    "is_pid","is_function","is_boolean","is_nil","is_number","is_port",
-    "is_reference","Enum","Map","List","String","Keyword","IO","Kernel",
-    "Module","Process","Agent","GenServer","Task","Supervisor","Logger",
-    "raise","throw","exit","receive","send","spawn","spawn_link","spawn_monitor",
-    "self","make_ref","apply","def","defp","defmacro","defmacrop","use","import",
-    "require","alias","case","cond","if","unless","with","for","try","rescue",
+    "nil",
+    "true",
+    "false",
+    "__MODULE__",
+    "__DIR__",
+    "__ENV__",
+    "__CALLER__",
+    "inspect",
+    "to_string",
+    "length",
+    "hd",
+    "tl",
+    "elem",
+    "put_elem",
+    "tuple_size",
+    "is_list",
+    "is_map",
+    "is_tuple",
+    "is_atom",
+    "is_integer",
+    "is_float",
+    "is_binary",
+    "is_pid",
+    "is_function",
+    "is_boolean",
+    "is_nil",
+    "is_number",
+    "is_port",
+    "is_reference",
+    "Enum",
+    "Map",
+    "List",
+    "String",
+    "Keyword",
+    "IO",
+    "Kernel",
+    "Module",
+    "Process",
+    "Agent",
+    "GenServer",
+    "Task",
+    "Supervisor",
+    "Logger",
+    "raise",
+    "throw",
+    "exit",
+    "receive",
+    "send",
+    "spawn",
+    "spawn_link",
+    "spawn_monitor",
+    "self",
+    "make_ref",
+    "apply",
+    "def",
+    "defp",
+    "defmacro",
+    "defmacrop",
+    "use",
+    "import",
+    "require",
+    "alias",
+    "case",
+    "cond",
+    "if",
+    "unless",
+    "with",
+    "for",
+    "try",
+    "rescue",
 ];
 
-static EX_FUNC_KINDS: &[&str] = &["function","anonymous_function"];
-static EX_CLASS_KINDS: &[&str] = &["module","defmodule"];
+static EX_FUNC_KINDS: &[&str] = &["function", "anonymous_function"];
+static EX_CLASS_KINDS: &[&str] = &["module", "defmodule"];
 
 // ── Bash 配置 ──
 
 static SH_SKIP_NAMES: &[&str] = &[
-    "echo","printf","cd","ls","pwd","cat","cp","mv","rm","mkdir","rmdir",
-    "chmod","chown","ln","touch","grep","awk","sed","sort","uniq","wc","head",
-    "tail","cut","tr","tee","xargs","find","which","type","export","unset",
-    "readonly","declare","local","shift","source","exit","return","test",
-    "true","false","null","HOME","PATH","USER","SHELL","PWD","OLDPWD",
-    "IFS","PS1","PS2","PS3","PS4","RANDOM","SECONDS","LINENO","FUNCNAME",
-    "BASHPID","BASH_VERSION","BASH_SOURCE","BASH_LINENO","HOSTNAME","OSTYPE",
+    "echo",
+    "printf",
+    "cd",
+    "ls",
+    "pwd",
+    "cat",
+    "cp",
+    "mv",
+    "rm",
+    "mkdir",
+    "rmdir",
+    "chmod",
+    "chown",
+    "ln",
+    "touch",
+    "grep",
+    "awk",
+    "sed",
+    "sort",
+    "uniq",
+    "wc",
+    "head",
+    "tail",
+    "cut",
+    "tr",
+    "tee",
+    "xargs",
+    "find",
+    "which",
+    "type",
+    "export",
+    "unset",
+    "readonly",
+    "declare",
+    "local",
+    "shift",
+    "source",
+    "exit",
+    "return",
+    "test",
+    "true",
+    "false",
+    "null",
+    "HOME",
+    "PATH",
+    "USER",
+    "SHELL",
+    "PWD",
+    "OLDPWD",
+    "IFS",
+    "PS1",
+    "PS2",
+    "PS3",
+    "PS4",
+    "RANDOM",
+    "SECONDS",
+    "LINENO",
+    "FUNCNAME",
+    "BASHPID",
+    "BASH_VERSION",
+    "BASH_SOURCE",
+    "BASH_LINENO",
+    "HOSTNAME",
+    "OSTYPE",
 ];
 
 static SH_FUNC_KINDS: &[&str] = &["function_definition"];
@@ -298,22 +1107,115 @@ static SH_CLASS_KINDS: &[&str] = &[];
 // ── R 配置 ──
 
 static R_SKIP_NAMES: &[&str] = &[
-    "NULL","NA","NaN","Inf","TRUE","FALSE","T","F","print","cat","summary",
-    "str","head","tail","length","nrow","ncol","dim","names","rownames",
-    "colnames","class","typeof","mode","attributes","attr","levels","nlevels",
-    "as.character","as.numeric","as.integer","as.logical","as.factor","as.matrix",
-    "as.data.frame","as.list","as.vector","c","list","matrix","data.frame",
-    "factor","rep","seq","seq_len","seq_along","sample","sort","order","rank",
-    "which","which.min","which.max","match","%in%","is.na","is.null","is.nan",
-    "is.infinite","is.finite","mean","median","sd","var","min","max","sum",
-    "prod","range","quantile","cor","cov","table","aggregate","merge","subset",
-    "transform","apply","lapply","sapply","tapply","mapply","library","require",
-    "install.packages","read.csv","write.csv","read.table","write.table",
-    "plot","hist","boxplot","barplot","par","dev.off","png","pdf",
-    "if","else","for","while","repeat","break","next","function","return",
+    "NULL",
+    "NA",
+    "NaN",
+    "Inf",
+    "TRUE",
+    "FALSE",
+    "T",
+    "F",
+    "print",
+    "cat",
+    "summary",
+    "str",
+    "head",
+    "tail",
+    "length",
+    "nrow",
+    "ncol",
+    "dim",
+    "names",
+    "rownames",
+    "colnames",
+    "class",
+    "typeof",
+    "mode",
+    "attributes",
+    "attr",
+    "levels",
+    "nlevels",
+    "as.character",
+    "as.numeric",
+    "as.integer",
+    "as.logical",
+    "as.factor",
+    "as.matrix",
+    "as.data.frame",
+    "as.list",
+    "as.vector",
+    "c",
+    "list",
+    "matrix",
+    "data.frame",
+    "factor",
+    "rep",
+    "seq",
+    "seq_len",
+    "seq_along",
+    "sample",
+    "sort",
+    "order",
+    "rank",
+    "which",
+    "which.min",
+    "which.max",
+    "match",
+    "%in%",
+    "is.na",
+    "is.null",
+    "is.nan",
+    "is.infinite",
+    "is.finite",
+    "mean",
+    "median",
+    "sd",
+    "var",
+    "min",
+    "max",
+    "sum",
+    "prod",
+    "range",
+    "quantile",
+    "cor",
+    "cov",
+    "table",
+    "aggregate",
+    "merge",
+    "subset",
+    "transform",
+    "apply",
+    "lapply",
+    "sapply",
+    "tapply",
+    "mapply",
+    "library",
+    "require",
+    "install.packages",
+    "read.csv",
+    "write.csv",
+    "read.table",
+    "write.table",
+    "plot",
+    "hist",
+    "boxplot",
+    "barplot",
+    "par",
+    "dev.off",
+    "png",
+    "pdf",
+    "if",
+    "else",
+    "for",
+    "while",
+    "repeat",
+    "break",
+    "next",
+    "function",
+    "return",
 ];
 
-static R_FUNC_KINDS: &[&str] = &["function_definition","lambda_definition"];
+static R_FUNC_KINDS: &[&str] = &["function_definition", "lambda_definition"];
 static R_CLASS_KINDS: &[&str] = &[];
 
 // ── Capture 类型 ──
@@ -418,8 +1320,8 @@ pub fn query_file_dataflow(
     tree: &tree_sitter::Tree,
     config: &LangDataflowConfig,
 ) -> Result<FileDataflow, String> {
-    let query = Query::new(&lang, config.query_src)
-        .map_err(|e| format!("query compile failed: {e}"))?;
+    let query =
+        Query::new(&lang, config.query_src).map_err(|e| format!("query compile failed: {e}"))?;
 
     let mut cursor = QueryCursor::new();
     let root = tree.root_node();
@@ -460,28 +1362,68 @@ pub fn query_file_dataflow(
         match cap_name {
             "write" => {
                 write_offsets.insert(start);
-                caps.push(Cap { name, line, start, capture: CapKind::Write });
+                caps.push(Cap {
+                    name,
+                    line,
+                    start,
+                    capture: CapKind::Write,
+                });
             }
             "read" => {
-                caps.push(Cap { name, line, start, capture: CapKind::Read });
+                caps.push(Cap {
+                    name,
+                    line,
+                    start,
+                    capture: CapKind::Read,
+                });
             }
             "global_var" => {
-                caps.push(Cap { name, line, start, capture: CapKind::GlobalVar });
+                caps.push(Cap {
+                    name,
+                    line,
+                    start,
+                    capture: CapKind::GlobalVar,
+                });
             }
             "trigger_call" => {
-                caps.push(Cap { name, line, start, capture: CapKind::TriggerCall });
+                caps.push(Cap {
+                    name,
+                    line,
+                    start,
+                    capture: CapKind::TriggerCall,
+                });
             }
             "await_cb" => {
-                caps.push(Cap { name, line, start, capture: CapKind::AwaitCb });
+                caps.push(Cap {
+                    name,
+                    line,
+                    start,
+                    capture: CapKind::AwaitCb,
+                });
             }
             "await_fn" => {
-                caps.push(Cap { name, line, start, capture: CapKind::AwaitFn });
+                caps.push(Cap {
+                    name,
+                    line,
+                    start,
+                    capture: CapKind::AwaitFn,
+                });
             }
             "_then_name" => {
-                caps.push(Cap { name: name.clone(), line, start, capture: CapKind::ThenMethod(name) });
+                caps.push(Cap {
+                    name: name.clone(),
+                    line,
+                    start,
+                    capture: CapKind::ThenMethod(name),
+                });
             }
             "sequence" => {
-                caps.push(Cap { name: name.clone(), line, start, capture: CapKind::Sequence(name) });
+                caps.push(Cap {
+                    name: name.clone(),
+                    line,
+                    start,
+                    capture: CapKind::Sequence(name),
+                });
             }
             _ => {}
         }
@@ -501,20 +1443,37 @@ pub fn query_file_dataflow(
 
         match &cap.capture {
             CapKind::Write => {
-                if cap.name.is_empty() { continue; }
-                scope_writes.entry(scope_id.clone()).or_default().insert(cap.name.clone());
+                if cap.name.is_empty() {
+                    continue;
+                }
+                scope_writes
+                    .entry(scope_id.clone())
+                    .or_default()
+                    .insert(cap.name.clone());
             }
             CapKind::GlobalVar => {
                 module_vars.insert(cap.name.clone());
             }
             CapKind::Read => {
-                if write_offsets.contains(&cap.start) { continue; }
-                if config.is_skip_name(&cap.name) { continue; }
-                if !cap.name.chars().next().is_some_and(|c| c.is_lowercase()) { continue; }
-                scope_reads.entry(scope_id.clone()).or_default().insert(cap.name.clone());
+                if write_offsets.contains(&cap.start) {
+                    continue;
+                }
+                if config.is_skip_name(&cap.name) {
+                    continue;
+                }
+                if !cap.name.chars().next().is_some_and(|c| c.is_lowercase()) {
+                    continue;
+                }
+                scope_reads
+                    .entry(scope_id.clone())
+                    .or_default()
+                    .insert(cap.name.clone());
             }
             CapKind::TriggerCall => {
-                scope_triggers.entry(scope_id.clone()).or_default().push(cap.name.clone());
+                scope_triggers
+                    .entry(scope_id.clone())
+                    .or_default()
+                    .push(cap.name.clone());
             }
             CapKind::AwaitCb | CapKind::AwaitFn => {
                 let cb = match &cap.capture {
@@ -524,7 +1483,9 @@ pub fn query_file_dataflow(
                 scope_awaits.entry(scope_id.clone()).or_default().push(cb);
             }
             CapKind::Sequence(target) => {
-                scope_sequences.entry(scope_id.clone()).or_default()
+                scope_sequences
+                    .entry(scope_id.clone())
+                    .or_default()
                     .push((target.clone(), cap.line));
             }
             _ => {}
@@ -535,35 +1496,47 @@ pub fn query_file_dataflow(
     let mut var_to_writers: HashMap<&str, HashSet<&str>> = HashMap::new();
     for (sid, wvars) in &scope_writes {
         for v in wvars {
-            var_to_writers.entry(v.as_str()).or_default().insert(sid.as_str());
+            var_to_writers
+                .entry(v.as_str())
+                .or_default()
+                .insert(sid.as_str());
         }
     }
     let mut seen: HashSet<String> = HashSet::new();
     let mut shared: Vec<SharedVarFlow> = Vec::new();
     for (scope_id, read_vars) in &scope_reads {
         for v in read_vars {
-            if seen.contains(v) { continue; }
+            if seen.contains(v) {
+                continue;
+            }
             let is_shared = module_vars.contains(v)
-                || var_to_writers.get(v.as_str()).is_some_and(|w| {
-                    w.len() > 1 || !w.contains(scope_id.as_str())
-                });
+                || var_to_writers
+                    .get(v.as_str())
+                    .is_some_and(|w| w.len() > 1 || !w.contains(scope_id.as_str()));
             if is_shared {
                 seen.insert(v.clone());
-                let readers: Vec<String> = scope_reads.iter()
+                let readers: Vec<String> = scope_reads
+                    .iter()
                     .filter(|(_, rv)| rv.contains(v))
                     .map(|(s, _)| s.clone())
                     .collect();
-                let writers: Vec<String> = var_to_writers.get(v.as_str())
+                let writers: Vec<String> = var_to_writers
+                    .get(v.as_str())
                     .map(|w| w.iter().map(|s| s.to_string()).collect())
                     .unwrap_or_default();
-                shared.push(SharedVarFlow { var: v.clone(), readers, writers });
+                shared.push(SharedVarFlow {
+                    var: v.clone(),
+                    readers,
+                    writers,
+                });
             }
         }
     }
 
     // ── 构建按作用域的输出 ──
     let scope_names: Vec<String> = {
-        let mut set: HashSet<String> = scope_reads.keys()
+        let mut set: HashSet<String> = scope_reads
+            .keys()
             .chain(scope_writes.keys())
             .chain(scope_triggers.keys())
             .chain(scope_awaits.keys())
@@ -593,7 +1566,10 @@ pub fn query_file_dataflow(
         });
     }
 
-    Ok(FileDataflow { scopes: scope_flows, shared })
+    Ok(FileDataflow {
+        scopes: scope_flows,
+        shared,
+    })
 }
 
 fn sorted(set: &HashSet<String>) -> Vec<String> {
@@ -633,62 +1609,76 @@ static DF_CACHE: std::sync::LazyLock<Mutex<HashMap<(PathBuf, u64), DataflowFileR
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub fn query_dataflow_files(files: &[std::path::PathBuf]) -> Vec<DataflowFileResult> {
-    files.par_iter().map(|p| {
-        let mtime = std::fs::metadata(p)
-            .and_then(|m| m.modified())
-            .map(|t| t.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
-            .unwrap_or(0);
-        let cache_key = (p.clone(), mtime);
-        {
-            let cache = DF_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(cached) = cache.get(&cache_key) {
-                return cached.clone();
+    files
+        .par_iter()
+        .map(|p| {
+            let mtime = std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .map(|t| t.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
+                .unwrap_or(0);
+            let cache_key = (p.clone(), mtime);
+            {
+                let cache = DF_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(cached) = cache.get(&cache_key) {
+                    return cached.clone();
+                }
             }
-        }
-        let file = p.to_string_lossy().replace('\\', "/");
-        let source = match std::fs::read_to_string(p) {
-            Ok(s) => s,
-            Err(e) => return DataflowFileResult {
-                file: file.clone(),
-                result: Err(format!("read failed: {e}")),
-            },
-        };
-        let ext = file.rsplit('.').next().unwrap_or("");
-        let (grammar_key, config) = match config_for_ext(ext) {
-            Some(x) => x,
-            None => return DataflowFileResult {
-                file: file.clone(),
-                result: Err(format!("unsupported extension: .{ext}")),
-            },
-        };
-        let lang = match crate::engine::GRAMMAR_LOADER.get(grammar_key) {
-            Some(l) => l,
-            None => return DataflowFileResult {
-                file: file.clone(),
-                result: Err(format!("grammar not loaded for {grammar_key}")),
-            },
-        };
-        let mut parser = tree_sitter::Parser::new();
-        if let Err(e) = parser.set_language(&lang) {
-            return DataflowFileResult {
-                file: file.clone(),
-                result: Err(format!("parser init failed: {e}")),
+            let file = p.to_string_lossy().replace('\\', "/");
+            let source = match std::fs::read_to_string(p) {
+                Ok(s) => s,
+                Err(e) => {
+                    return DataflowFileResult {
+                        file: file.clone(),
+                        result: Err(format!("read failed: {e}")),
+                    }
+                }
             };
-        }
-        let tree = match parser.parse(&source, None) {
-            Some(t) => t,
-            None => return DataflowFileResult {
-                file: file.clone(),
-                result: Err("parse returned None".into()),
-            },
-        };
-        let result = DataflowFileResult {
-            file,
-            result: query_file_dataflow(lang, &source, &tree, &config),
-        };
-        DF_CACHE.lock().unwrap_or_else(|e| e.into_inner()).insert(cache_key, result.clone());
-        result
-    }).collect()
+            let ext = file.rsplit('.').next().unwrap_or("");
+            let (grammar_key, config) = match config_for_ext(ext) {
+                Some(x) => x,
+                None => {
+                    return DataflowFileResult {
+                        file: file.clone(),
+                        result: Err(format!("unsupported extension: .{ext}")),
+                    }
+                }
+            };
+            let lang = match crate::engine::GRAMMAR_LOADER.get(grammar_key) {
+                Some(l) => l,
+                None => {
+                    return DataflowFileResult {
+                        file: file.clone(),
+                        result: Err(format!("grammar not loaded for {grammar_key}")),
+                    }
+                }
+            };
+            let mut parser = tree_sitter::Parser::new();
+            if let Err(e) = parser.set_language(&lang) {
+                return DataflowFileResult {
+                    file: file.clone(),
+                    result: Err(format!("parser init failed: {e}")),
+                };
+            }
+            let tree = match parser.parse(&source, None) {
+                Some(t) => t,
+                None => {
+                    return DataflowFileResult {
+                        file: file.clone(),
+                        result: Err("parse returned None".into()),
+                    }
+                }
+            };
+            let result = DataflowFileResult {
+                file,
+                result: query_file_dataflow(lang, &source, &tree, &config),
+            };
+            DF_CACHE
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(cache_key, result.clone());
+            result
+        })
+        .collect()
 }
 
 /// 查找字节偏移的最紧包含作用域。
@@ -708,55 +1698,140 @@ fn find_scope(offset: usize, scopes: &[Scope]) -> Option<String> {
 // ═══════════════════════════════════════════════════════════════
 
 pub fn python_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/python_dataflow.scm"), skip_names: PY_BUILTINS, func_kinds: PY_FUNC_KINDS, class_kinds: PY_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/python_dataflow.scm"),
+        skip_names: PY_BUILTINS,
+        func_kinds: PY_FUNC_KINDS,
+        class_kinds: PY_CLASS_KINDS,
+    }
 }
 pub fn js_ts_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/js_ts_dataflow.scm"), skip_names: JS_SKIP_NAMES, func_kinds: JS_FUNC_KINDS, class_kinds: JS_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/js_ts_dataflow.scm"),
+        skip_names: JS_SKIP_NAMES,
+        func_kinds: JS_FUNC_KINDS,
+        class_kinds: JS_CLASS_KINDS,
+    }
 }
 pub fn rust_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/rust_dataflow.scm"), skip_names: RS_SKIP_NAMES, func_kinds: RS_FUNC_KINDS, class_kinds: RS_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/rust_dataflow.scm"),
+        skip_names: RS_SKIP_NAMES,
+        func_kinds: RS_FUNC_KINDS,
+        class_kinds: RS_CLASS_KINDS,
+    }
 }
 pub fn go_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/go_dataflow.scm"), skip_names: GO_SKIP_NAMES, func_kinds: GO_FUNC_KINDS, class_kinds: GO_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/go_dataflow.scm"),
+        skip_names: GO_SKIP_NAMES,
+        func_kinds: GO_FUNC_KINDS,
+        class_kinds: GO_CLASS_KINDS,
+    }
 }
 pub fn java_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/java_dataflow.scm"), skip_names: JAVA_SKIP_NAMES, func_kinds: JAVA_FUNC_KINDS, class_kinds: JAVA_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/java_dataflow.scm"),
+        skip_names: JAVA_SKIP_NAMES,
+        func_kinds: JAVA_FUNC_KINDS,
+        class_kinds: JAVA_CLASS_KINDS,
+    }
 }
 pub fn c_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/c_dataflow.scm"), skip_names: C_SKIP_NAMES, func_kinds: C_FUNC_KINDS, class_kinds: C_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/c_dataflow.scm"),
+        skip_names: C_SKIP_NAMES,
+        func_kinds: C_FUNC_KINDS,
+        class_kinds: C_CLASS_KINDS,
+    }
 }
 pub fn csharp_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/csharp_dataflow.scm"), skip_names: CS_SKIP_NAMES, func_kinds: CS_FUNC_KINDS, class_kinds: CS_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/csharp_dataflow.scm"),
+        skip_names: CS_SKIP_NAMES,
+        func_kinds: CS_FUNC_KINDS,
+        class_kinds: CS_CLASS_KINDS,
+    }
 }
 pub fn ruby_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/ruby_dataflow.scm"), skip_names: RB_SKIP_NAMES, func_kinds: RB_FUNC_KINDS, class_kinds: RB_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/ruby_dataflow.scm"),
+        skip_names: RB_SKIP_NAMES,
+        func_kinds: RB_FUNC_KINDS,
+        class_kinds: RB_CLASS_KINDS,
+    }
 }
 pub fn lua_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/lua_dataflow.scm"), skip_names: LUA_SKIP_NAMES, func_kinds: LUA_FUNC_KINDS, class_kinds: LUA_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/lua_dataflow.scm"),
+        skip_names: LUA_SKIP_NAMES,
+        func_kinds: LUA_FUNC_KINDS,
+        class_kinds: LUA_CLASS_KINDS,
+    }
 }
 pub fn php_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/php_dataflow.scm"), skip_names: PHP_SKIP_NAMES, func_kinds: PHP_FUNC_KINDS, class_kinds: PHP_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/php_dataflow.scm"),
+        skip_names: PHP_SKIP_NAMES,
+        func_kinds: PHP_FUNC_KINDS,
+        class_kinds: PHP_CLASS_KINDS,
+    }
 }
 pub fn swift_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/swift_dataflow.scm"), skip_names: SWIFT_SKIP_NAMES, func_kinds: SWIFT_FUNC_KINDS, class_kinds: SWIFT_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/swift_dataflow.scm"),
+        skip_names: SWIFT_SKIP_NAMES,
+        func_kinds: SWIFT_FUNC_KINDS,
+        class_kinds: SWIFT_CLASS_KINDS,
+    }
 }
 pub fn dart_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/dart_dataflow.scm"), skip_names: DART_SKIP_NAMES, func_kinds: DART_FUNC_KINDS, class_kinds: DART_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/dart_dataflow.scm"),
+        skip_names: DART_SKIP_NAMES,
+        func_kinds: DART_FUNC_KINDS,
+        class_kinds: DART_CLASS_KINDS,
+    }
 }
 pub fn scala_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/scala_dataflow.scm"), skip_names: SCALA_SKIP_NAMES, func_kinds: SCALA_FUNC_KINDS, class_kinds: SCALA_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/scala_dataflow.scm"),
+        skip_names: SCALA_SKIP_NAMES,
+        func_kinds: SCALA_FUNC_KINDS,
+        class_kinds: SCALA_CLASS_KINDS,
+    }
 }
 pub fn zig_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/zig_dataflow.scm"), skip_names: ZIG_SKIP_NAMES, func_kinds: ZIG_FUNC_KINDS, class_kinds: ZIG_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/zig_dataflow.scm"),
+        skip_names: ZIG_SKIP_NAMES,
+        func_kinds: ZIG_FUNC_KINDS,
+        class_kinds: ZIG_CLASS_KINDS,
+    }
 }
 pub fn elixir_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/elixir_dataflow.scm"), skip_names: EX_SKIP_NAMES, func_kinds: EX_FUNC_KINDS, class_kinds: EX_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/elixir_dataflow.scm"),
+        skip_names: EX_SKIP_NAMES,
+        func_kinds: EX_FUNC_KINDS,
+        class_kinds: EX_CLASS_KINDS,
+    }
 }
 pub fn bash_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/bash_dataflow.scm"), skip_names: SH_SKIP_NAMES, func_kinds: SH_FUNC_KINDS, class_kinds: SH_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/bash_dataflow.scm"),
+        skip_names: SH_SKIP_NAMES,
+        func_kinds: SH_FUNC_KINDS,
+        class_kinds: SH_CLASS_KINDS,
+    }
 }
 pub fn r_config() -> LangDataflowConfig {
-    LangDataflowConfig { query_src: include_str!("../../queries/r_dataflow.scm"), skip_names: R_SKIP_NAMES, func_kinds: R_FUNC_KINDS, class_kinds: R_CLASS_KINDS }
+    LangDataflowConfig {
+        query_src: include_str!("../../queries/r_dataflow.scm"),
+        skip_names: R_SKIP_NAMES,
+        func_kinds: R_FUNC_KINDS,
+        class_kinds: R_CLASS_KINDS,
+    }
 }
 
 /// 将文件扩展名映射到 (grammar_key, dataflow_config)。不支持的语言返回 None。
@@ -829,7 +1904,9 @@ pub fn validate_all_queries() -> Vec<String> {
                 }
             }
             None => {
-                eprintln!("[dataflow] grammar not available for {grammar_key} — skipping validation");
+                eprintln!(
+                    "[dataflow] grammar not available for {grammar_key} — skipping validation"
+                );
             }
         }
     }
@@ -851,7 +1928,11 @@ mod tests {
     #[test]
     fn test_all_queries_compile() {
         let errors = validate_all_queries();
-        assert!(errors.is_empty(), "dataflow query compile failures:\n{}", errors.join("\n"));
+        assert!(
+            errors.is_empty(),
+            "dataflow query compile failures:\n{}",
+            errors.join("\n")
+        );
     }
 
     fn run_query(lang_key: &str, cfg: LangDataflowConfig, src: &str) -> FileDataflow {
@@ -863,81 +1944,145 @@ mod tests {
     }
 
     fn find_scope<'a>(df: &'a FileDataflow, name: &str) -> &'a ScopeFlow {
-        df.scopes.iter().find(|s| s.name == name)
-            .unwrap_or_else(|| panic!("scope {name} not found in {:?}", df.scopes.iter().map(|s| &s.name).collect::<Vec<_>>()))
+        df.scopes
+            .iter()
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| {
+                panic!(
+                    "scope {name} not found in {:?}",
+                    df.scopes.iter().map(|s| &s.name).collect::<Vec<_>>()
+                )
+            })
     }
 
     #[test]
     fn test_py_reads_writes() {
-        let df = run_query("py", python_config(), r#"
+        let df = run_query(
+            "py",
+            python_config(),
+            r#"
 x = 1
 def foo():
     y = x + 1
     print(y)
-"#);
+"#,
+        );
         let foo = find_scope(&df, "foo");
-        assert!(foo.reads.contains(&"x".into()), "foo should read x, got reads={:?}", foo.reads);
-        assert!(foo.writes.contains(&"y".into()), "foo should write y, got writes={:?}", foo.writes);
+        assert!(
+            foo.reads.contains(&"x".into()),
+            "foo should read x, got reads={:?}",
+            foo.reads
+        );
+        assert!(
+            foo.writes.contains(&"y".into()),
+            "foo should write y, got writes={:?}",
+            foo.writes
+        );
     }
 
     #[test]
     fn test_py_shares() {
-        let df = run_query("py", python_config(), r#"
+        let df = run_query(
+            "py",
+            python_config(),
+            r#"
 config = {}
 def set_cfg():
     config['k'] = 1
 def get_cfg():
     return config
-"#);
+"#,
+        );
         let shared = df.shared.iter().find(|s| s.var == "config");
-        assert!(shared.is_some(), "config should be detected as shared state, got shared={:?}", df.shared);
+        assert!(
+            shared.is_some(),
+            "config should be detected as shared state, got shared={:?}",
+            df.shared
+        );
     }
 
     #[test]
     fn test_py_awaits() {
-        let df = run_query("py", python_config(), r#"
+        let df = run_query(
+            "py",
+            python_config(),
+            r#"
 async def fetch():
     await do_request()
-"#);
+"#,
+        );
         let fetch = find_scope(&df, "fetch");
-        assert!(!fetch.triggers.is_empty(), "fetch should have trigger, got triggers={:?}", fetch.triggers);
+        assert!(
+            !fetch.triggers.is_empty(),
+            "fetch should have trigger, got triggers={:?}",
+            fetch.triggers
+        );
     }
 
     #[test]
     fn test_js_reads_writes() {
-        let df = run_query("js", js_ts_config(), r#"
+        let df = run_query(
+            "js",
+            js_ts_config(),
+            r#"
 let x = 1;
 function foo() {
     let y = x + 1;
     console.log(y);
 }
-"#);
+"#,
+        );
         let foo = find_scope(&df, "foo");
-        assert!(foo.reads.contains(&"x".into()), "foo should read x, got reads={:?}", foo.reads);
-        assert!(foo.writes.contains(&"y".into()), "foo should write y, got writes={:?}", foo.writes);
+        assert!(
+            foo.reads.contains(&"x".into()),
+            "foo should read x, got reads={:?}",
+            foo.reads
+        );
+        assert!(
+            foo.writes.contains(&"y".into()),
+            "foo should write y, got writes={:?}",
+            foo.writes
+        );
     }
 
     #[test]
     fn test_js_awaits() {
-        let df = run_query("js", js_ts_config(), r#"
+        let df = run_query(
+            "js",
+            js_ts_config(),
+            r#"
 async function load() {
     await fetch('/api');
 }
-"#);
+"#,
+        );
         let load = find_scope(&df, "load");
-        assert!(!load.triggers.is_empty(), "load should have trigger, got triggers={:?}", load.triggers);
+        assert!(
+            !load.triggers.is_empty(),
+            "load should have trigger, got triggers={:?}",
+            load.triggers
+        );
     }
 
     #[test]
     fn test_sequences() {
-        let df = run_query("py", python_config(), r#"
+        let df = run_query(
+            "py",
+            python_config(),
+            r#"
 def foo():
     a()
     b()
     c()
-"#);
+"#,
+        );
         let foo = find_scope(&df, "foo");
-        assert_eq!(foo.sequence_calls.len(), 3, "foo should have 3 sequence calls, got {:?}", foo.sequence_calls);
+        assert_eq!(
+            foo.sequence_calls.len(),
+            3,
+            "foo should have 3 sequence calls, got {:?}",
+            foo.sequence_calls
+        );
     }
 
     #[test]
@@ -981,30 +2126,60 @@ def pipeline():
         let df = run_query("py", python_config(), src);
         eprintln!("=== SCOPES ===");
         for s in &df.scopes {
-            eprintln!("  {}: reads={:?} writes={:?} triggers={:?} seq={:?}",
-                s.name, s.reads, s.writes, s.triggers, s.sequence_calls);
+            eprintln!(
+                "  {}: reads={:?} writes={:?} triggers={:?} seq={:?}",
+                s.name, s.reads, s.writes, s.triggers, s.sequence_calls
+            );
         }
         eprintln!("=== SHARED ===");
         for sh in &df.shared {
-            eprintln!("  {}: readers={:?} writers={:?}", sh.var, sh.readers, sh.writers);
+            eprintln!(
+                "  {}: readers={:?} writers={:?}",
+                sh.var, sh.readers, sh.writers
+            );
         }
         // 断言
-        assert!(df.scopes.iter().any(|s| s.name == "connect"), "should find connect");
-        assert!(df.scopes.iter().any(|s| s.name == "query"), "should find query");
-        assert!(df.scopes.iter().any(|s| s.name == "fetch_users"), "should find fetch_users");
-        assert!(df.scopes.iter().any(|s| s.name == "pipeline"), "should find pipeline");
+        assert!(
+            df.scopes.iter().any(|s| s.name == "connect"),
+            "should find connect"
+        );
+        assert!(
+            df.scopes.iter().any(|s| s.name == "query"),
+            "should find query"
+        );
+        assert!(
+            df.scopes.iter().any(|s| s.name == "fetch_users"),
+            "should find fetch_users"
+        );
+        assert!(
+            df.scopes.iter().any(|s| s.name == "pipeline"),
+            "should find pipeline"
+        );
         // connect 读取 config
         let connect = df.scopes.iter().find(|s| s.name == "connect").unwrap();
-        assert!(connect.reads.contains(&"config".into()), "connect should read config");
+        assert!(
+            connect.reads.contains(&"config".into()),
+            "connect should read config"
+        );
         // fetch_users 有 trigger
         let fetch = df.scopes.iter().find(|s| s.name == "fetch_users").unwrap();
-        assert!(!fetch.triggers.is_empty(), "fetch_users should have trigger");
+        assert!(
+            !fetch.triggers.is_empty(),
+            "fetch_users should have trigger"
+        );
         // pipeline 有 sequence_calls
         let pipe = df.scopes.iter().find(|s| s.name == "pipeline").unwrap();
-        assert_eq!(pipe.sequence_calls.len(), 3, "pipeline should have 3 sequence calls");
+        assert_eq!(
+            pipe.sequence_calls.len(),
+            3,
+            "pipeline should have 3 sequence calls"
+        );
         // config 应为共享状态（被 connect 读取）
         let config_shared = df.shared.iter().find(|s| s.var == "config");
-        assert!(config_shared.is_some(), "config should be detected as shared");
+        assert!(
+            config_shared.is_some(),
+            "config should be detected as shared"
+        );
     }
 
     #[test]
@@ -1017,7 +2192,11 @@ def pipeline():
         std::fs::write(tmp.join("readme.txt"), "hello").unwrap();
         let results = super::query_dataflow_files(&[tmp.join("readme.txt")]);
         assert!(results[0].result.is_err());
-        assert!(results[0].result.as_ref().unwrap_err().contains("unsupported"));
+        assert!(results[0]
+            .result
+            .as_ref()
+            .unwrap_err()
+            .contains("unsupported"));
 
         // 解析错误 — 无效的 Python 代码
         std::fs::write(tmp.join("bad.py"), "def foo(:").unwrap();
@@ -1037,21 +2216,43 @@ def pipeline():
         let tmp = std::env::temp_dir().join("_df_multilang");
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
-        std::fs::write(tmp.join("auth.py"), "secret = 'xyz'\ndef login():\n    return secret\n").unwrap();
-        std::fs::write(tmp.join("app.js"), "let db = null;\nfunction connect() {\n    db = openDB();\n}\n").unwrap();
+        std::fs::write(
+            tmp.join("auth.py"),
+            "secret = 'xyz'\ndef login():\n    return secret\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("app.js"),
+            "let db = null;\nfunction connect() {\n    db = openDB();\n}\n",
+        )
+        .unwrap();
 
         let results = super::query_dataflow_files(&[tmp.join("auth.py"), tmp.join("app.js")]);
         assert_eq!(results.len(), 2);
-        assert!(results[0].result.is_ok(), "py failed: {:?}", results[0].result);
-        assert!(results[1].result.is_ok(), "js failed: {:?}", results[1].result);
+        assert!(
+            results[0].result.is_ok(),
+            "py failed: {:?}",
+            results[0].result
+        );
+        assert!(
+            results[1].result.is_ok(),
+            "js failed: {:?}",
+            results[1].result
+        );
 
         let py = results[0].result.as_ref().unwrap();
         let login = py.scopes.iter().find(|s| s.name == "login").unwrap();
-        assert!(login.reads.contains(&"secret".into()), "login should read secret");
+        assert!(
+            login.reads.contains(&"secret".into()),
+            "login should read secret"
+        );
 
         let js = results[1].result.as_ref().unwrap();
         let connect = js.scopes.iter().find(|s| s.name == "connect").unwrap();
-        assert!(connect.writes.contains(&"db".into()), "connect should write db");
+        assert!(
+            connect.writes.contains(&"db".into()),
+            "connect should write db"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

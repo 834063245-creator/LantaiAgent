@@ -63,7 +63,11 @@ impl Roots {
         );
         #[cfg(not(windows))]
         let (roaming, local) = (None, None);
-        Self { home, roaming, local }
+        Self {
+            home,
+            roaming,
+            local,
+        }
     }
 }
 
@@ -112,7 +116,10 @@ pub fn targets(roots: &Roots, bundle_id: &str) -> Vec<Target> {
     if !bundle_id.is_empty() {
         ids.push(bundle_id);
     }
-    for (root, label) in [(&roots.roaming, "%APPDATA%"), (&roots.local, "%LOCALAPPDATA%")] {
+    for (root, label) in [
+        (&roots.roaming, "%APPDATA%"),
+        (&roots.local, "%LOCALAPPDATA%"),
+    ] {
         if let Some(r) = root {
             for id in &ids {
                 push(&mut out, r.join(id), label);
@@ -189,7 +196,10 @@ fn remove(path: &Path) -> Result<(), String> {
 }
 
 fn clear_readonly(root: &Path) {
-    for entry in walkdir::WalkDir::new(root).into_iter().filter_map(Result::ok) {
+    for entry in walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         let Ok(md) = entry.metadata() else { continue };
         let mut perms = md.permissions();
         if perms.readonly() {
@@ -204,7 +214,9 @@ fn clear_readonly(root: &Path) {
 pub enum CliMode {
     /// 正常起 GUI。
     None,
-    Purge { assume_yes: bool },
+    Purge {
+        assume_yes: bool,
+    },
 }
 
 pub fn parse_args(args: &[String]) -> CliMode {
@@ -257,7 +269,14 @@ fn message_box(text: &str, caption: &str, flags: u32) -> i32 {
     use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MESSAGEBOX_STYLE};
     let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
     let (t, c) = (wide(text), wide(caption));
-    let r = unsafe { MessageBoxW(None, PCWSTR(t.as_ptr()), PCWSTR(c.as_ptr()), MESSAGEBOX_STYLE(flags)) };
+    let r = unsafe {
+        MessageBoxW(
+            None,
+            PCWSTR(t.as_ptr()),
+            PCWSTR(c.as_ptr()),
+            MESSAGEBOX_STYLE(flags),
+        )
+    };
     r.0
 }
 
@@ -293,7 +312,11 @@ fn notify_failure(report: &Report) {
     }
     text.push_str("\n已删除其余数据。请关闭兰台及相关进程后手动删除上述目录。");
     #[cfg(windows)]
-    message_box(&text, "卸载兰台 · 有残留", MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND);
+    message_box(
+        &text,
+        "卸载兰台 · 有残留",
+        MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND,
+    );
     #[cfg(not(windows))]
     eprintln!("[lantai] 卸载清理残留：{text}");
 }
@@ -331,7 +354,11 @@ fn write_log(report: &Report) {
     let mut body = lines.join("\n");
     body.push('\n');
     use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         let _ = f.write_all(body.as_bytes());
     }
 }
@@ -378,7 +405,10 @@ mod tests {
             roaming: Some(roaming.clone()),
             local: Some(local.clone()),
         };
-        let got: Vec<PathBuf> = targets(&roots, "com.lantai.app").into_iter().map(|t| t.path().to_path_buf()).collect();
+        let got: Vec<PathBuf> = targets(&roots, "com.lantai.app")
+            .into_iter()
+            .map(|t| t.path().to_path_buf())
+            .collect();
         assert_eq!(
             got,
             vec![
@@ -419,7 +449,11 @@ mod tests {
         }
         assert!(Target::new(PathBuf::from(r"C:\Users\t\.lantai"), "test").is_some());
         assert!(Target::new(PathBuf::from(r"C:\Users\t\.hologram"), "test").is_some());
-        assert!(Target::new(PathBuf::from(r"C:\Users\t\AppData\Local\com.lantai.app"), "test").is_some());
+        assert!(Target::new(
+            PathBuf::from(r"C:\Users\t\AppData\Local\com.lantai.app"),
+            "test"
+        )
+        .is_some());
     }
 
     /// 真删：清单内的删干净（含只读文件），清单外的邻居一动不动。
@@ -463,7 +497,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&local);
 
         // 没建过的目标 = missing（不是失败）
-        assert!(report.missing.iter().any(|p| p.ends_with("com.hologram.hg")));
+        assert!(report
+            .missing
+            .iter()
+            .any(|p| p.ends_with("com.hologram.hg")));
     }
 
     /// 幂等：删完再删一次 = 全 missing、零失败，不 panic。
@@ -521,7 +558,10 @@ mod tests {
             hooks.contains("/PURGE-DATA"),
             "必须保留无人值守的显式同意开关（/S 时勾选框页不出现；E2E 也走它）"
         );
-        assert!(hooks.contains("$UpdateMode"), "更新（/UPDATE）路径不得清数据");
+        assert!(
+            hooks.contains("$UpdateMode"),
+            "更新（/UPDATE）路径不得清数据"
+        );
     }
 
     /// 反向守卫：**MSI 渠道不得复活**（2026-09-26 用户拍板「Windows 只发 NSIS」），

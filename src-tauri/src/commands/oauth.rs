@@ -40,7 +40,8 @@ pub async fn oauth_poll(
     user_code: &str,
 ) -> Result<Option<oauth::OAuthGrant>, String> {
     let def = oauth::providers::find_oauth_provider(provider)?;
-    let approved = oauth::device_flow::poll_device_token(def.issuer, device_auth_id, user_code).await?;
+    let approved =
+        oauth::device_flow::poll_device_token(def.issuer, device_auth_id, user_code).await?;
     let Some(approved) = approved else {
         return Ok(None);
     };
@@ -84,10 +85,15 @@ pub fn oauth_accounts(provider: &str) -> Result<Vec<serde_json::Value>, String> 
 /// access_token 只在 Tauri 进程内流转，绝不出 IPC 到页面之外的本模块封装）。
 /// 已过期 → 自动刷新一次并回写；仍失败 → Err（响亮，前端提示重新登录）。
 /// account_id 缺省/空 = 最近登录（列表首条）。
-pub async fn oauth_access(provider: &str, account_id: Option<String>) -> Result<oauth::OAuthGrant, String> {
+pub async fn oauth_access(
+    provider: &str,
+    account_id: Option<String>,
+) -> Result<oauth::OAuthGrant, String> {
     let grants = crate::credential::list_oauth_grants(provider)?;
     if grants.is_empty() {
-        return Err(format!("OAUTH_NO_GRANT: provider \"{provider}\" 无已登录账号——请先登录"));
+        return Err(format!(
+            "OAUTH_NO_GRANT: provider \"{provider}\" 无已登录账号——请先登录"
+        ));
     }
     // 指定 account_id 或列表首条（最近登录）
     let grant = match account_id {
@@ -120,14 +126,13 @@ pub fn oauth_logout(provider: &str, account_id: &str) -> Result<(), String> {
 
 /// oauth_refresh：用 refresh_token 续期并回写 grant（account_id 不变）。
 /// 刷新响应带 id_token → build_grant（可能账号变更）；无 → 显式保留原 account_id。
-pub async fn oauth_refresh(
-    provider: &str,
-    account_id: &str,
-) -> Result<oauth::OAuthGrant, String> {
+pub async fn oauth_refresh(provider: &str, account_id: &str) -> Result<oauth::OAuthGrant, String> {
     let def = oauth::providers::find_oauth_provider(provider)?;
     let existing = crate::credential::get_oauth_grant(provider, account_id)?
         .ok_or_else(|| format!("oauth grant 不存在: {provider}::{account_id}"))?;
-    let tokens = oauth::device_flow::refresh_tokens(def.issuer, def.client_id, &existing.refresh_token).await?;
+    let tokens =
+        oauth::device_flow::refresh_tokens(def.issuer, def.client_id, &existing.refresh_token)
+            .await?;
     let grant = if !tokens.id_token.is_empty() {
         // 刷新带新 id_token → build_grant（账号可能变更，解析新 account_id）
         oauth::providers::build_grant(

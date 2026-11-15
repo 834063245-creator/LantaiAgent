@@ -138,7 +138,9 @@ impl Engine {
                     Ok(Ok(event)) => {
                         // 过滤：仅关注源文件变更
                         let is_source = match event.kind {
-                            EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => true,
+                            EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_) => {
+                                true
+                            }
                             _ => false,
                         };
                         if !is_source {
@@ -147,9 +149,8 @@ impl Engine {
                         let is_tracked = |p: &PathBuf| -> bool {
                             let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
                             let is_src = source_exts.contains(ext);
-                            let is_ignored = crate::pipeline::discovery::is_ignored_path(
-                                &p.to_string_lossy()
-                            );
+                            let is_ignored =
+                                crate::pipeline::discovery::is_ignored_path(&p.to_string_lossy());
                             is_src && !is_ignored
                         };
                         if !event.paths.iter().any(&is_tracked) {
@@ -183,8 +184,7 @@ impl Engine {
                     Err(mpsc::RecvTimeoutError::Timeout) => {
                         if pending && last_event.elapsed() >= debounce_window {
                             pending = false;
-                            let paths: Vec<(PathBuf, String)> =
-                                std::mem::take(&mut changed_paths);
+                            let paths: Vec<(PathBuf, String)> = std::mem::take(&mut changed_paths);
                             seen_paths.clear();
                             if !paths.is_empty() {
                                 let Some(self_weak) = &self_weak else {
@@ -244,12 +244,18 @@ impl Engine {
     /// 暴露 watcher 中待处理的文件变更，用于过期提示横幅。
     /// 返回 (path, timestamp_ms, is_indexing) 列表。
     pub fn get_pending_files(&self) -> Vec<(String, u64, bool)> {
-        self.pending_changes.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.pending_changes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// 清除待处理的文件变更（成功重新索引后调用）。
     pub fn clear_pending_files(&self) {
-        self.pending_changes.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.pending_changes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
     }
 
     // ── 增量漂移治理（P1-4）──────────────────────────────────
@@ -263,7 +269,10 @@ impl Engine {
         let host = match self.store_host().lock() {
             Ok(g) => g,
             Err(e) => {
-                warn!("[engine] store lock poisoned reading incr_since_full: {}", e);
+                warn!(
+                    "[engine] store lock poisoned reading incr_since_full: {}",
+                    e
+                );
                 return 0;
             }
         };
@@ -297,7 +306,10 @@ impl Engine {
         let host = match self.store_host().lock() {
             Ok(g) => g,
             Err(e) => {
-                warn!("[engine] store lock poisoned resetting incremental drift: {}", e);
+                warn!(
+                    "[engine] store lock poisoned resetting incremental drift: {}",
+                    e
+                );
                 return;
             }
         };
@@ -325,7 +337,9 @@ impl Engine {
                 return Ok(false);
             }
         }
-        host.store.db.mark_edge_lsp_resolved(source, target, kind.as_str())?;
+        host.store
+            .db
+            .mark_edge_lsp_resolved(source, target, kind.as_str())?;
         Ok(true)
     }
 
@@ -465,7 +479,10 @@ impl Engine {
     ) -> Result<(), String> {
         let start = std::time::Instant::now();
         let count = changed_files.len();
-        info!("[engine watcher] {} file(s) changed, trying incremental update", count);
+        info!(
+            "[engine watcher] {} file(s) changed, trying incremental update",
+            count
+        );
 
         // 填充 pending_changes，以便在更新进行中查询索引的工具
         // 能触发过期提示横幅（参见 staleness.rs）。
@@ -474,7 +491,10 @@ impl Engine {
             .unwrap_or_default()
             .as_millis() as u64;
         {
-            let mut pending = self.pending_changes.lock().unwrap_or_else(|e| e.into_inner());
+            let mut pending = self
+                .pending_changes
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             for (path, _action) in changed_files {
                 pending.push((path.to_string_lossy().to_string(), now_ms, true));
             }
@@ -516,18 +536,21 @@ impl Engine {
                 }
             }
             let (graph_nodes, graph_edges) = graph.into_parts();
-            let final_idx =
-                MemoryIndex::from_existing_graph(graph_nodes, graph_edges);
+            let final_idx = MemoryIndex::from_existing_graph(graph_nodes, graph_edges);
             let synth_ms = synth_start.elapsed().as_millis();
             info!(
                 "[engine watcher] post-incremental synthesis (neighbor vote): {} assigned, {}ms",
-                voted_ids.len(), synth_ms
+                voted_ids.len(),
+                synth_ms
             );
 
             store.swap_index(final_idx);
             store.reindex_vectors();
             if errors > 0 {
-                info!("[engine watcher] incremental update with {} parse errors", errors);
+                info!(
+                    "[engine watcher] incremental update with {} parse errors",
+                    errors
+                );
             }
             Ok(())
         })();
@@ -535,11 +558,9 @@ impl Engine {
         match inc_result {
             Ok(()) => {
                 let elapsed = start.elapsed().as_secs_f64();
-                info!(
-                    "[engine watcher] incremental done in {:.1}s",
-                    elapsed
-                );
-                let file_entries: Vec<String> = changed_files.iter()
+                info!("[engine watcher] incremental done in {:.1}s", elapsed);
+                let file_entries: Vec<String> = changed_files
+                    .iter()
                     .map(|(p, a)| {
                         let rel = p.strip_prefix(root).unwrap_or(p);
                         format!("{} ({})", rel.display(), a)
@@ -548,7 +569,11 @@ impl Engine {
                 let summary = if file_entries.len() <= 5 {
                     file_entries.join("  ")
                 } else {
-                    format!("{} … +{} more", file_entries[..5].join("  "), file_entries.len() - 5)
+                    format!(
+                        "{} … +{} more",
+                        file_entries[..5].join("  "),
+                        file_entries.len() - 5
+                    )
                 };
                 let _ = self.record_timeline_with_props(
                     "incremental_update",
@@ -593,7 +618,8 @@ impl Engine {
                     "node_count": result.node_count,
                     "edge_count": result.edge_count,
                     "elapsed_secs": result.elapsed_secs,
-                }).to_string();
+                })
+                .to_string();
                 info!(
                     "[engine watcher] full re-analysis done: {} nodes, {} edges in {:.1}s",
                     result.node_count, result.edge_count, result.elapsed_secs
@@ -649,8 +675,14 @@ mod tests {
         }
         let events = take_watcher_events();
         assert_eq!(events.len(), WATCHER_EVENT_CAP, "封顶丢弃最旧");
-        assert!(events[0].contains(&format!("\"i\":{}", 10)), "最旧的 10 条被丢弃");
-        assert!(events.last().unwrap().contains(&format!("\"i\":{}", WATCHER_EVENT_CAP + 9)));
+        assert!(
+            events[0].contains(&format!("\"i\":{}", 10)),
+            "最旧的 10 条被丢弃"
+        );
+        assert!(events
+            .last()
+            .unwrap()
+            .contains(&format!("\"i\":{}", WATCHER_EVENT_CAP + 9)));
         assert!(take_watcher_events().is_empty(), "drain 后队列清空");
     }
 }

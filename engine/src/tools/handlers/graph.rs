@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
 use crate::community::detect_communities_from_index;
 use crate::engine;
-use hologram_graph::Edge;
-use crate::tools::{get_str, get_usize, project_root, with_store};
-use crate::tools::{with_graph, resolve_in_index, resolve_in_graph};
-use crate::tools::{node_to_value, edge_to_value, discover_source_files};
 use crate::tools::ToolResponse;
+use crate::tools::{discover_source_files, edge_to_value, node_to_value};
+use crate::tools::{get_str, get_usize, project_root, with_store};
+use crate::tools::{resolve_in_graph, resolve_in_index, with_graph};
+use hologram_graph::Edge;
+use serde_json::{json, Value};
 
 pub(crate) fn handler_neighbors(args: &Value) -> ToolResponse {
     let node_id = get_str(args, &["node_id", "nodeId"]);
@@ -67,7 +67,10 @@ pub(crate) fn handler_neighbors(args: &Value) -> ToolResponse {
     }) {
         Ok(value) if value.get("error").is_none() => return ToolResponse::Success(value),
         Ok(value) => {
-            let msg = value.get("error").and_then(|v| v.as_str()).unwrap_or("unknown error");
+            let msg = value
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown error");
             return ToolResponse::Degraded {
                 guidance: msg.into(),
                 fallback: "Use search_symbols to find the node first".into(),
@@ -125,24 +128,32 @@ pub(crate) fn handler_impact(args: &Value) -> ToolResponse {
         // 每层节点附带 name/kind/location —— 只有裸 ID 时 LLM 无法
         // 知道影响的是谁，必须逐个解码（多轮补看）。name+file 让
         // Agent 一轮就能判断影响面。
-        let layers_value: Vec<Value> = layers.iter().map(|(d, nodes)| {
-            let entries: Vec<Value> = nodes.iter().map(|nid| {
-                match idx.get_node(nid) {
-                    Some(n) => {
-                        let raw_loc = n.location.as_deref().unwrap_or("");
-                        let file = raw_loc.rsplit_once(':').map(|(f, _)| f).unwrap_or(raw_loc).to_string();
-                        json!({
-                            "id": nid,
-                            "name": n.name,
-                            "kind": n.kind.as_str(),
-                            "file": file,
-                        })
-                    }
-                    None => json!({"id": nid}),
-                }
-            }).collect();
-            json!({"depth": d, "nodes": entries})
-        }).collect();
+        let layers_value: Vec<Value> = layers
+            .iter()
+            .map(|(d, nodes)| {
+                let entries: Vec<Value> = nodes
+                    .iter()
+                    .map(|nid| match idx.get_node(nid) {
+                        Some(n) => {
+                            let raw_loc = n.location.as_deref().unwrap_or("");
+                            let file = raw_loc
+                                .rsplit_once(':')
+                                .map(|(f, _)| f)
+                                .unwrap_or(raw_loc)
+                                .to_string();
+                            json!({
+                                "id": nid,
+                                "name": n.name,
+                                "kind": n.kind.as_str(),
+                                "file": file,
+                            })
+                        }
+                        None => json!({"id": nid}),
+                    })
+                    .collect();
+                json!({"depth": d, "nodes": entries})
+            })
+            .collect();
         json!({
             "source_node_id": resolved,
             "max_depth": depth,
@@ -173,8 +184,12 @@ pub(crate) fn handler_path(args: &Value) -> ToolResponse {
             None => return json!({"error": format!("Node {} not found", to_id)}),
         };
         match idx.shortest_path_with_limits(&resolved_from, &resolved_to, depth, 5000) {
-            Some(path) => json!({"from_id": resolved_from, "to_id": resolved_to, "path_count": 1, "paths": [path]}),
-            None => json!({"from_id": resolved_from, "to_id": resolved_to, "path_count": 0, "paths": []}),
+            Some(path) => {
+                json!({"from_id": resolved_from, "to_id": resolved_to, "path_count": 1, "paths": [path]})
+            }
+            None => {
+                json!({"from_id": resolved_from, "to_id": resolved_to, "path_count": 0, "paths": []})
+            }
         }
     }))
 }
@@ -214,7 +229,11 @@ pub(crate) fn handler_community(args: &Value) -> ToolResponse {
                 let communities = detect_communities_from_index(idx, 42);
                 for (i, comm) in communities.iter().enumerate() {
                     if comm.contains(&resolved) {
-                        let siblings: Vec<_> = comm.iter().filter(|nid| *nid != &resolved).cloned().collect();
+                        let siblings: Vec<_> = comm
+                            .iter()
+                            .filter(|nid| *nid != &resolved)
+                            .cloned()
+                            .collect();
                         return decorate(json!({
                             "node_id": resolved,
                             "community": {
@@ -228,7 +247,9 @@ pub(crate) fn handler_community(args: &Value) -> ToolResponse {
                         }));
                     }
                 }
-                return decorate(json!({"node_id": resolved, "community": null, "message": "Node not in any community"}));
+                return decorate(
+                    json!({"node_id": resolved, "community": null, "message": "Node not in any community"}),
+                );
             }
         };
         let mut comm_node_ids = Vec::new();
@@ -259,7 +280,11 @@ pub(crate) fn handler_delayed(args: &Value) -> ToolResponse {
     let files: Vec<String> = args
         .get("files")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     let root = project_root();
     let paths: Vec<PathBuf> = if files.is_empty() {
@@ -285,13 +310,19 @@ pub(crate) fn handler_delayed(args: &Value) -> ToolResponse {
         if let Ok(df) = &r.result {
             for s in &df.scopes {
                 for t in &s.triggers {
-                    triggers.push(json!({"file": r.file, "scope": s.name, "target": t, "type": "trigger"}));
+                    triggers.push(
+                        json!({"file": r.file, "scope": s.name, "target": t, "type": "trigger"}),
+                    );
                 }
                 for a in &s.awaits_callbacks {
-                    awaits.push(json!({"file": r.file, "scope": s.name, "target": a, "type": "await"}));
+                    awaits.push(
+                        json!({"file": r.file, "scope": s.name, "target": a, "type": "await"}),
+                    );
                 }
                 for seq in &s.sequence_calls {
-                    sequences.push(json!({"file": r.file, "scope": s.name, "target": seq, "type": "sequence"}));
+                    sequences.push(
+                        json!({"file": r.file, "scope": s.name, "target": seq, "type": "sequence"}),
+                    );
                 }
             }
         }
@@ -308,7 +339,6 @@ pub(crate) fn handler_delayed(args: &Value) -> ToolResponse {
         "_note": "from dataflow engine (on-demand query, no graph storage)",
     }))
 }
-
 
 pub(crate) fn handler_node(args: &Value) -> ToolResponse {
     let node_id = get_str(args, &["node_id", "nodeId"]);
@@ -371,5 +401,3 @@ pub(crate) fn strip_loc_suffix(loc: &str) -> &str {
     }
     loc
 }
-
-

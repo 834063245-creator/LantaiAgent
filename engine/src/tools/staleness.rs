@@ -103,7 +103,9 @@ pub fn check_staleness(result: &Value) -> Option<String> {
     for (path, ts_ms, indexing) in &pending {
         let age = now_ms.saturating_sub(*ts_ms);
         let status = if *indexing { "索引中" } else { "待同步" };
-        let matched = referenced.iter().any(|r| path.contains(r.as_str()) || r.contains(path.as_str()));
+        let matched = referenced
+            .iter()
+            .any(|r| path.contains(r.as_str()) || r.contains(path.as_str()));
         if matched {
             referenced_pending.push(format!("  - {} (edited {}ms ago, {})", path, age, status));
         } else {
@@ -167,10 +169,23 @@ mod tests {
     #[test]
     fn test_derived_banner_community_tools_with_drift() {
         for tool in ["get_community", "cluster_report"] {
-            let banner = derived_banner_for(tool, 3).expect("community tool with drift must be marked");
-            assert!(banner.contains("3"), "banner should name the drift count: {}", banner);
-            assert!(banner.contains("近似"), "banner should say results are approximate: {}", banner);
-            assert!(banner.contains("全量重分析"), "banner should point at the recompute path: {}", banner);
+            let banner =
+                derived_banner_for(tool, 3).expect("community tool with drift must be marked");
+            assert!(
+                banner.contains("3"),
+                "banner should name the drift count: {}",
+                banner
+            );
+            assert!(
+                banner.contains("近似"),
+                "banner should say results are approximate: {}",
+                banner
+            );
+            assert!(
+                banner.contains("全量重分析"),
+                "banner should point at the recompute path: {}",
+                banner
+            );
         }
     }
 
@@ -220,17 +235,17 @@ pub struct StaleCheck {
 pub fn compute_cache_stale(root: &std::path::Path, generated_at_ms: Option<u64>) -> StaleCheck {
     use std::collections::HashSet;
 
-    let baseline: Option<(std::time::SystemTime, &'static str)> =
-        if let Some(ms) = generated_at_ms {
-            std::time::UNIX_EPOCH
-                .checked_add(std::time::Duration::from_millis(ms))
-                .map(|t| (t, "graph_generated_at"))
-        } else {
-            std::fs::metadata(hologram_graph::data_dir(root).join("hologram.db"))
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .map(|t| (t, "db_mtime"))
-        };
+    let baseline: Option<(std::time::SystemTime, &'static str)> = if let Some(ms) = generated_at_ms
+    {
+        std::time::UNIX_EPOCH
+            .checked_add(std::time::Duration::from_millis(ms))
+            .map(|t| (t, "graph_generated_at"))
+    } else {
+        std::fs::metadata(hologram_graph::data_dir(root).join("hologram.db"))
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .map(|t| (t, "db_mtime"))
+    };
     let Some((baseline_time, baseline_kind)) = baseline else {
         return StaleCheck {
             stale: true,
@@ -238,7 +253,10 @@ pub fn compute_cache_stale(root: &std::path::Path, generated_at_ms: Option<u64>)
             baseline: "none",
         };
     };
-    let mut exts: HashSet<String> = engine::GRAMMAR_LOADER.supported_extensions().into_iter().collect();
+    let mut exts: HashSet<String> = engine::GRAMMAR_LOADER
+        .supported_extensions()
+        .into_iter()
+        .collect();
     exts.insert("proto".to_string());
     for entry in walkdir::WalkDir::new(root)
         .follow_links(false)

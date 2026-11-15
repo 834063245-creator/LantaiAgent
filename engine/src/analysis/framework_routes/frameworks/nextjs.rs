@@ -95,7 +95,10 @@ pub(crate) fn extract_exported_http_methods(source: &str) -> Vec<(&'static str, 
             continue;
         };
         let rest = rest.trim_start();
-        let rest = rest.strip_prefix("async ").map(str::trim_start).unwrap_or(rest);
+        let rest = rest
+            .strip_prefix("async ")
+            .map(str::trim_start)
+            .unwrap_or(rest);
         let decl = rest
             .strip_prefix("function ")
             .or_else(|| rest.strip_prefix("const "));
@@ -147,7 +150,13 @@ pub(crate) fn detect_nextjs_routes(file: &str, source: Option<&str>) -> Vec<Dete
         return result;
     };
     for (m, line) in extract_exported_http_methods(src) {
-        result.push((m.to_string(), url.clone(), format!("{}#{}", file, m), file.to_string(), line));
+        result.push((
+            m.to_string(),
+            url.clone(),
+            format!("{}#{}", file, m),
+            file.to_string(),
+            line,
+        ));
     }
     result
 }

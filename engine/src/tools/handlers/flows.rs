@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use serde_json::{json, Value};
 use crate::tools::handlers::strip_loc_suffix;
-use crate::tools::{get_usize, project_root, with_store};
 use crate::tools::ToolResponse;
+use crate::tools::{get_usize, project_root, with_store};
+use serde_json::{json, Value};
 
 // ═══════════════════════════════════════════════════════════════
 // 流程工具: list_flows, get_flow, get_affected_flows
@@ -27,7 +27,8 @@ pub(crate) fn handler_list_flows(args: &Value) -> ToolResponse {
             .filter_map(|n| {
                 let flow = n.properties.get("flow")?;
                 let id = flow.get("id")?.as_u64()?;
-                let entry_kind = flow.get("entry_kind")
+                let entry_kind = flow
+                    .get("entry_kind")
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown")
                     .to_string();
@@ -50,7 +51,10 @@ pub(crate) fn handler_list_flows(args: &Value) -> ToolResponse {
                     n.name.clone()
                 };
 
-                let criticality = flow.get("criticality").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let criticality = flow
+                    .get("criticality")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
                 let depth = flow.get("depth").and_then(|v| v.as_u64()).unwrap_or(0);
                 let node_count = flow.get("node_count").and_then(|v| v.as_u64()).unwrap_or(0);
 
@@ -69,28 +73,33 @@ pub(crate) fn handler_list_flows(args: &Value) -> ToolResponse {
             .collect();
 
         // 排序
-        flows.sort_by(|a, b| {
-            match sort_by {
-                "depth" => b["depth"].as_u64().cmp(&a["depth"].as_u64()),
-                "node_count" => b["node_count"].as_u64().cmp(&a["node_count"].as_u64()),
-                "file_count" => b["file_count"].as_u64().cmp(&a["file_count"].as_u64()),
-                "name" => a["name"].as_str().cmp(&b["name"].as_str()),
-                _ => b["criticality"].as_f64().unwrap_or(0.0)
-                    .partial_cmp(&a["criticality"].as_f64().unwrap_or(0.0))
-                    .unwrap_or(std::cmp::Ordering::Equal),
-            }
+        flows.sort_by(|a, b| match sort_by {
+            "depth" => b["depth"].as_u64().cmp(&a["depth"].as_u64()),
+            "node_count" => b["node_count"].as_u64().cmp(&a["node_count"].as_u64()),
+            "file_count" => b["file_count"].as_u64().cmp(&a["file_count"].as_u64()),
+            "name" => a["name"].as_str().cmp(&b["name"].as_str()),
+            _ => b["criticality"]
+                .as_f64()
+                .unwrap_or(0.0)
+                .partial_cmp(&a["criticality"].as_f64().unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal),
         });
 
         let total = flows.len();
         flows.truncate(limit);
 
         let items: Vec<serde_json::Value> = if detail_level == "minimal" {
-            flows.iter().map(|f| json!({
-                "id": f["id"],
-                "name": f["name"],
-                "criticality": f["criticality"],
-                "node_count": f["node_count"],
-            })).collect()
+            flows
+                .iter()
+                .map(|f| {
+                    json!({
+                        "id": f["id"],
+                        "name": f["name"],
+                        "criticality": f["criticality"],
+                        "node_count": f["node_count"],
+                    })
+                })
+                .collect()
         } else {
             flows
         };
@@ -105,15 +114,23 @@ pub(crate) fn handler_list_flows(args: &Value) -> ToolResponse {
 }
 
 pub(crate) fn handler_get_flow(args: &Value) -> ToolResponse {
-    let flow_id = args.get("flow_id").and_then(|v| v.as_u64()).map(|v| v as u32);
-    let flow_name = args.get("flow_name").and_then(|v| v.as_str()).map(|s| s.to_lowercase());
-    let include_source = args.get("include_source").and_then(|v| v.as_bool()).unwrap_or(false);
+    let flow_id = args
+        .get("flow_id")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32);
+    let flow_name = args
+        .get("flow_name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_lowercase());
+    let include_source = args
+        .get("include_source")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     ToolResponse::Success(with_store(|idx| {
         // 查找匹配流程的入口点节点
-        let entry: Option<(&hologram_graph::Node, &serde_json::Value)> = idx
-            .nodes_iter()
-            .find_map(|n| {
+        let entry: Option<(&hologram_graph::Node, &serde_json::Value)> =
+            idx.nodes_iter().find_map(|n| {
                 let flow = n.properties.get("flow")?;
                 if let Some(fid) = flow_id {
                     if flow.get("id")?.as_u64()? == fid as u64 {
@@ -144,7 +161,11 @@ pub(crate) fn handler_get_flow(args: &Value) -> ToolResponse {
         let node_ids: Vec<String> = flow
             .get("node_ids")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
 
         // 构建包含节点详情的流程路径
@@ -174,14 +195,12 @@ pub(crate) fn handler_get_flow(args: &Value) -> ToolResponse {
                         let full = project_root().join(file);
                         if let Ok(content) = std::fs::read_to_string(&full) {
                             let lines: Vec<&str> = content.lines().collect();
-                            let start = line_num
-                                .map(|l| l.saturating_sub(10))
-                                .unwrap_or(0);
+                            let start = line_num.map(|l| l.saturating_sub(10)).unwrap_or(0);
                             let end = line_num
                                 .map(|l| (l + 10).min(lines.len()))
                                 .unwrap_or(lines.len().min(50));
-                            let snippet = lines[start.min(lines.len())..end.min(lines.len())]
-                                .join("\n");
+                            let snippet =
+                                lines[start.min(lines.len())..end.min(lines.len())].join("\n");
                             step["source_snippet"] = json!(snippet);
                         }
                     }
@@ -291,7 +310,9 @@ pub(crate) fn handler_affected_flows(args: &Value) -> ToolResponse {
 
         // 按关键度降序排序
         affected.sort_by(|a, b| {
-            b["criticality"].as_f64().unwrap_or(0.0)
+            b["criticality"]
+                .as_f64()
+                .unwrap_or(0.0)
                 .partial_cmp(&a["criticality"].as_f64().unwrap_or(0.0))
                 .unwrap_or(std::cmp::Ordering::Equal)
         });

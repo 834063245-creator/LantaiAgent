@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+use super::super::DetectedRoute;
 use crate::engine::GRAMMAR_LOADER;
 use std::collections::HashSet;
-use super::super::DetectedRoute;
 
 pub(crate) fn is_spring_candidate(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -24,7 +24,10 @@ pub(crate) fn detect_spring_routes(file: &str, source: &str) -> Vec<DetectedRout
         // Kotlin tree-sitter 尚未接入，跳过
         return result;
     } else {
-        match GRAMMAR_LOADER.get("java") { Some(l) => l, None => return result }
+        match GRAMMAR_LOADER.get("java") {
+            Some(l) => l,
+            None => return result,
+        }
     };
 
     let mut parser = tree_sitter::Parser::new();
@@ -56,7 +59,10 @@ pub(crate) fn detect_spring_routes(file: &str, source: &str) -> Vec<DetectedRout
         if node.kind() == "method_declaration" {
             let mut handler_name = String::new();
             if let Some(name_node) = node.child_by_field_name("name") {
-                handler_name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                handler_name = name_node
+                    .utf8_text(source.as_bytes())
+                    .unwrap_or("")
+                    .to_string();
             }
 
             // 在 modifiers/annotations 中检查 Spring 注解
@@ -64,7 +70,14 @@ pub(crate) fn detect_spring_routes(file: &str, source: &str) -> Vec<DetectedRout
             for child in node.children(&mut node_cursor) {
                 if child.kind() == "modifiers" || child.kind() == "annotation" {
                     // 扫描 @GetMapping、@PostMapping 等（仅方法级注解）
-                    find_spring_annotations(&child, source, &mut result, &handler_name, file, &class_prefix);
+                    find_spring_annotations(
+                        &child,
+                        source,
+                        &mut result,
+                        &handler_name,
+                        file,
+                        &class_prefix,
+                    );
                 }
             }
         }
@@ -147,8 +160,12 @@ fn find_spring_annotations(
     // D1：仅方法级注解——方法级 RequestMapping 是有效的，
     // 但类级 @RequestMapping 作为前缀单独处理。
     let spring_annotations: HashSet<&str> = [
-        "RequestMapping", "GetMapping", "PostMapping", "PutMapping",
-        "DeleteMapping", "PatchMapping",
+        "RequestMapping",
+        "GetMapping",
+        "PostMapping",
+        "PutMapping",
+        "DeleteMapping",
+        "PatchMapping",
     ]
     .iter()
     .cloned()
@@ -175,8 +192,8 @@ fn find_spring_annotations(
                             _ => "ALL",
                         };
                         // 在注解参数中查找路径字符串
-                        let path = extract_spring_path(&child, source)
-                            .unwrap_or_else(|| "/".to_string());
+                        let path =
+                            extract_spring_path(&child, source).unwrap_or_else(|| "/".to_string());
                         // D1：合并类级前缀与方法级路径
                         let merged_path = merge_spring_paths(class_prefix, &path);
                         let line = child.start_position().row + 1;
@@ -206,16 +223,25 @@ fn extract_spring_path(annotation: &tree_sitter::Node, source: &str) -> Option<S
             let mut ac = child.walk();
             for arg in child.children(&mut ac) {
                 if arg.kind() == "string_literal" || arg.kind() == "string" {
-                    return Some(arg.utf8_text(source.as_bytes()).unwrap_or("")
-                        .trim_matches(&['\'', '"'][..]).to_string());
+                    return Some(
+                        arg.utf8_text(source.as_bytes())
+                            .unwrap_or("")
+                            .trim_matches(&['\'', '"'][..])
+                            .to_string(),
+                    );
                 }
                 // annotation_member：value = "/path"
                 if arg.kind() == "annotation_member" || arg.kind() == "element_value_pair" {
                     let mut mc = arg.walk();
                     for mchild in arg.children(&mut mc) {
                         if mchild.kind() == "string_literal" || mchild.kind() == "string" {
-                            return Some(mchild.utf8_text(source.as_bytes()).unwrap_or("")
-                                .trim_matches(&['\'', '"'][..]).to_string());
+                            return Some(
+                                mchild
+                                    .utf8_text(source.as_bytes())
+                                    .unwrap_or("")
+                                    .trim_matches(&['\'', '"'][..])
+                                    .to_string(),
+                            );
                         }
                     }
                 }

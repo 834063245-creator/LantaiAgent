@@ -3,10 +3,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use serde_json::{json, Value};
 use crate::engine;
 use crate::tools::project_root;
 use crate::tools::ToolResponse;
+use serde_json::{json, Value};
 
 // ═══════════════════════════════════════════════════════════════
 // 重命名 —— 两阶段预览/应用，带过期 + 统一 diff
@@ -149,10 +149,25 @@ fn generate_rename_diff(plan: &RenamePlan) -> String {
 }
 
 pub(crate) fn handler_rename(args: &Value) -> ToolResponse {
-    let old_name = args.get("old_name").or_else(|| args.get("oldName")).and_then(|v| v.as_str()).unwrap_or("");
-    let new_name = args.get("new_name").or_else(|| args.get("newName")).and_then(|v| v.as_str()).unwrap_or("");
-    let dry_run = args.get("dry_run").or_else(|| args.get("dryRun")).and_then(|v| v.as_bool()).unwrap_or(true);
-    let ref_id = args.get("refactor_id").or_else(|| args.get("refactorId")).and_then(|v| v.as_str());
+    let old_name = args
+        .get("old_name")
+        .or_else(|| args.get("oldName"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let new_name = args
+        .get("new_name")
+        .or_else(|| args.get("newName"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let dry_run = args
+        .get("dry_run")
+        .or_else(|| args.get("dryRun"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let ref_id = args
+        .get("refactor_id")
+        .or_else(|| args.get("refactorId"))
+        .and_then(|v| v.as_str());
 
     // ── 阶段 2：通过 refactor_id 应用 ──
     if let Some(rid) = ref_id {
@@ -162,7 +177,10 @@ pub(crate) fn handler_rename(args: &Value) -> ToolResponse {
             Some((_, plan)) => plan,
             None => {
                 return ToolResponse::Degraded {
-                    guidance: format!("Refactor ID '{}' not found or expired ({}s TTL)", rid, RENAME_EXPIRY_SECS),
+                    guidance: format!(
+                        "Refactor ID '{}' not found or expired ({}s TTL)",
+                        rid, RENAME_EXPIRY_SECS
+                    ),
                     fallback: "Run rename with dry_run=true to create a new preview".into(),
                     details: json!({}),
                 };
@@ -220,19 +238,26 @@ pub(crate) fn handler_rename(args: &Value) -> ToolResponse {
     // dry_run：使用统一 diff 预览
     let (matched_ids, matched_locations): (Vec<String>, Vec<String>) = {
         match engine::engine_read(|idx| {
-            let ids: Vec<String> = idx.nodes_iter().filter(|n| n.name == old_name).map(|n| n.id.as_str().to_owned()).collect();
-            let locs: Vec<String> = idx.nodes_iter()
+            let ids: Vec<String> = idx
+                .nodes_iter()
+                .filter(|n| n.name == old_name)
+                .map(|n| n.id.as_str().to_owned())
+                .collect();
+            let locs: Vec<String> = idx
+                .nodes_iter()
                 .filter(|n| n.name == old_name)
                 .filter_map(|n| n.location.clone())
                 .collect();
             (ids, locs)
         }) {
             Ok((ids, locs)) => (ids, locs),
-            Err(e) => return ToolResponse::Degraded {
-                guidance: e,
-                fallback: "Engine read failed, retry once".into(),
-                details: json!({}),
-            },
+            Err(e) => {
+                return ToolResponse::Degraded {
+                    guidance: e,
+                    fallback: "Engine read failed, retry once".into(),
+                    details: json!({}),
+                }
+            }
         }
     };
 
@@ -301,5 +326,3 @@ pub(crate) fn handler_rename(args: &Value) -> ToolResponse {
         ),
     }))
 }
-
-

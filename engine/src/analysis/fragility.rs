@@ -14,21 +14,33 @@ pub fn fragile_nodes(graph: &Graph, limit: usize) -> Vec<serde_json::Value> {
         node_edges.entry(&e.target).or_default().push(e);
     }
 
-    let mut scored: Vec<(f64, &str)> = graph.nodes_iter().map(|(_, n)| {
-        let fan = (n.out_degree + n.in_degree) as f64;
-        let coupling_penalty = if let Some(edges) = node_edges.get(n.id.as_str()) {
-            edges.iter().map(|e| (e.coupling_depth as f64).powi(2)).sum::<f64>() / fan.max(1.0)
-        } else {
-            0.0
-        };
-        let score = fan * (1.0 + coupling_penalty);
-        (score, n.id.as_str())
-    }).collect();
+    let mut scored: Vec<(f64, &str)> = graph
+        .nodes_iter()
+        .map(|(_, n)| {
+            let fan = (n.out_degree + n.in_degree) as f64;
+            let coupling_penalty = if let Some(edges) = node_edges.get(n.id.as_str()) {
+                edges
+                    .iter()
+                    .map(|e| (e.coupling_depth as f64).powi(2))
+                    .sum::<f64>()
+                    / fan.max(1.0)
+            } else {
+                0.0
+            };
+            let score = fan * (1.0 + coupling_penalty);
+            (score, n.id.as_str())
+        })
+        .collect();
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     scored.truncate(limit);
-    scored.iter().map(|(s, id)| serde_json::json!({
-        "node_id": id, "fragility_score": format!("{:.1}", s)
-    })).collect()
+    scored
+        .iter()
+        .map(|(s, id)| {
+            serde_json::json!({
+                "node_id": id, "fragility_score": format!("{:.1}", s)
+            })
+        })
+        .collect()
 }
 
 pub fn fragile_nodes_from_index(idx: &MemoryIndex, limit: usize) -> Vec<serde_json::Value> {
@@ -37,24 +49,35 @@ pub fn fragile_nodes_from_index(idx: &MemoryIndex, limit: usize) -> Vec<serde_js
         let out = idx.outgoing(&node.id, None);
         let incoming = idx.incoming(&node.id, None);
         let fan = (out.len() + incoming.len()) as f64;
-        let coupling_penalty: f64 = out.iter()
+        let coupling_penalty: f64 = out
+            .iter()
             .map(|(_, _, depth, _)| (*depth as f64).powi(2))
-            .chain(incoming.iter().map(|(_, _, depth, _)| (*depth as f64).powi(2)))
-            .sum::<f64>() / fan.max(1.0);
+            .chain(
+                incoming
+                    .iter()
+                    .map(|(_, _, depth, _)| (*depth as f64).powi(2)),
+            )
+            .sum::<f64>()
+            / fan.max(1.0);
         let score = fan * (1.0 + coupling_penalty);
         scored.push((score, node.id.as_str().to_owned()));
     }
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     scored.truncate(limit);
-    scored.iter().map(|(s, id)| serde_json::json!({
-        "node_id": id, "fragility_score": format!("{:.1}", s)
-    })).collect()
+    scored
+        .iter()
+        .map(|(s, id)| {
+            serde_json::json!({
+                "node_id": id, "fragility_score": format!("{:.1}", s)
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 
     #[test]
     fn test_fragile_empty_graph() {
@@ -88,10 +111,12 @@ mod tests {
     fn test_fragile_higher_coupling_scores_higher() {
         let mut g = Graph::new();
         let mut a = Node::new("a", "high_coupling", NodeKind::Symbol);
-        a.out_degree = 10; a.in_degree = 0;
+        a.out_degree = 10;
+        a.in_degree = 0;
         g.add_node(a);
         let mut b = Node::new("b", "low_coupling", NodeKind::Symbol);
-        b.out_degree = 0; b.in_degree = 0;
+        b.out_degree = 0;
+        b.in_degree = 0;
         g.add_node(b);
         for i in 0..10 {
             let tid = format!("t{}", i);
@@ -126,10 +151,12 @@ mod tests {
     fn test_fragile_from_index() {
         let mut g = Graph::new();
         let mut a = Node::new("a", "high_coupling", NodeKind::Symbol);
-        a.out_degree = 10; a.in_degree = 0;
+        a.out_degree = 10;
+        a.in_degree = 0;
         g.add_node(a);
         let mut b = Node::new("b", "low_coupling", NodeKind::Symbol);
-        b.out_degree = 0; b.in_degree = 0;
+        b.out_degree = 0;
+        b.in_degree = 0;
         g.add_node(b);
         // 节点 a 有许多高耦合的出边
         for i in 0..10 {
@@ -144,6 +171,9 @@ mod tests {
         let idx = MemoryIndex::from_existing_graph(g.nodes, g.edges);
         let result = fragile_nodes_from_index(&idx, 2);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0]["node_id"], "a", "high coupling should rank first from index too");
+        assert_eq!(
+            result[0]["node_id"], "a",
+            "high coupling should rank first from index too"
+        );
     }
 }

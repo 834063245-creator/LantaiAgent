@@ -18,26 +18,52 @@ impl Default for PatternMatcher {
 impl PatternMatcher {
     pub fn new() -> Self {
         fn compile(ps: &[&str]) -> Vec<Regex> {
-            ps.iter().map(|p| Regex::new(p).unwrap_or_else(|e| panic!("invalid route pattern: {e}"))).collect()
+            ps.iter()
+                .map(|p| Regex::new(p).unwrap_or_else(|e| panic!("invalid route pattern: {e}")))
+                .collect()
         }
         Self {
             migration: compile(&[
-                r"migrations?/", r"alembic/", r"\b\d{4,}_.*\.(py|sql)$", r"\.sql$",
-                r".*schema.*\.(py|sql)$", r"\bschema\.sql\b", r"\bmigrate\b.*\.(py|sql)$",
+                r"migrations?/",
+                r"alembic/",
+                r"\b\d{4,}_.*\.(py|sql)$",
+                r"\.sql$",
+                r".*schema.*\.(py|sql)$",
+                r"\bschema\.sql\b",
+                r"\bmigrate\b.*\.(py|sql)$",
             ]),
             serialization: compile(&[
-                r"\.proto$", r"\.fbs$", r"\.avsc$", r"\.thrift$", r"\.capnp$",
+                r"\.proto$",
+                r"\.fbs$",
+                r"\.avsc$",
+                r"\.thrift$",
+                r"\.capnp$",
             ]),
             config: compile(&[
-                r"\.yaml$", r"\.yml$", r"\.toml$", r"\.json$", r"\.ini$", r"\.cfg$",
-                r"\.env$", r"\.env\.", r"settings\.py$", r"config\.py$", r"\.conf$",
+                r"\.yaml$",
+                r"\.yml$",
+                r"\.toml$",
+                r"\.json$",
+                r"\.ini$",
+                r"\.cfg$",
+                r"\.env$",
+                r"\.env\.",
+                r"settings\.py$",
+                r"config\.py$",
+                r"\.conf$",
             ]),
         }
     }
 
-    pub fn is_migration_file(&self, path: &str) -> bool { self.migration.iter().any(|r| r.is_match(path)) }
-    pub fn is_serialization_file(&self, path: &str) -> bool { self.serialization.iter().any(|r| r.is_match(path)) }
-    pub fn is_config_file(&self, path: &str) -> bool { self.config.iter().any(|r| r.is_match(path)) }
+    pub fn is_migration_file(&self, path: &str) -> bool {
+        self.migration.iter().any(|r| r.is_match(path))
+    }
+    pub fn is_serialization_file(&self, path: &str) -> bool {
+        self.serialization.iter().any(|r| r.is_match(path))
+    }
+    pub fn is_config_file(&self, path: &str) -> bool {
+        self.config.iter().any(|r| r.is_match(path))
+    }
 }
 
 #[cfg(test)]
@@ -70,5 +96,4 @@ mod tests {
         assert!(matcher.is_config_file("settings.py"));
         assert!(!matcher.is_config_file("main.py"));
     }
-
 }

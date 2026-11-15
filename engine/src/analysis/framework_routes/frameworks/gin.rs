@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+use super::super::DetectedRoute;
 use crate::engine::GRAMMAR_LOADER;
 use std::collections::HashSet;
-use super::super::DetectedRoute;
 
 pub(crate) fn is_gin_candidate(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -14,7 +14,10 @@ pub(crate) fn detect_gin_routes(file: &str, source: &str) -> Vec<DetectedRoute> 
     let mut result = Vec::new();
 
     let mut parser = tree_sitter::Parser::new();
-    let lang = match GRAMMAR_LOADER.get("go") { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get("go") {
+        Some(l) => l,
+        None => return result,
+    };
     if parser.set_language(&lang).is_err() {
         return result;
     }
@@ -24,8 +27,7 @@ pub(crate) fn detect_gin_routes(file: &str, source: &str) -> Vec<DetectedRoute> 
     };
 
     let http_methods: HashSet<&str> = [
-        "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
-        "Use", "Group", "Handle",
+        "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "Use", "Group", "Handle",
     ]
     .iter()
     .cloned()
@@ -42,17 +44,21 @@ pub(crate) fn detect_gin_routes(file: &str, source: &str) -> Vec<DetectedRoute> 
                 if func.kind() == "selector_expression" {
                     // selector_expression: r.GET → field "GET"
                     let mut sel_cursor = func.walk();
-                    let method = match func.children(&mut sel_cursor)
+                    let method = match func
+                        .children(&mut sel_cursor)
                         .find(|c| c.kind() == "field_identifier")
-                        .map(|c| c.utf8_text(source.as_bytes()).unwrap_or("").to_string()) {
-                            Some(m) => m,
-                            None => continue,
-                        };
+                        .map(|c| c.utf8_text(source.as_bytes()).unwrap_or("").to_string())
+                    {
+                        Some(m) => m,
+                        None => continue,
+                    };
 
                     if http_methods.contains(method.as_str()) {
                         if let Some(args) = node.child_by_field_name("arguments") {
                             let line = node.start_position().row + 1;
-                            if let Some((m, path, handler)) = extract_gin_route(&args, &method, source) {
+                            if let Some((m, path, handler)) =
+                                extract_gin_route(&args, &method, source)
+                            {
                                 result.push((m, path, handler, file.to_string(), line));
                             }
                         }

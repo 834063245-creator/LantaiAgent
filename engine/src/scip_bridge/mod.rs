@@ -72,7 +72,11 @@ fn symbol_display_name(symbol: &str) -> String {
         .last()
         .unwrap_or(trimmed);
     let name = last.rsplit('/').next().unwrap_or(last);
-    if name.is_empty() { symbol.to_string() } else { name.to_string() }
+    if name.is_empty() {
+        symbol.to_string()
+    } else {
+        name.to_string()
+    }
 }
 
 /// 单次导入：把 SCIP index 合并进 MemoryIndex。
@@ -113,15 +117,13 @@ pub fn import_index(
             if symbol_to_node.contains_key(&occ.symbol) {
                 continue; // 同一符号多处定义（如泛型实例化），已建节点
             }
-            let line1 = occ
-                .range
-                .first()
-                .copied()
-                .unwrap_or(0)
-                .saturating_add(1) as u32;
+            let line1 = occ.range.first().copied().unwrap_or(0).saturating_add(1) as u32;
             // 复用：绝对路径 + 行号命中已有节点
             let reused = project_root.and_then(|root| {
-                let abs_file = root.join(&doc.relative_path).to_string_lossy().replace('\\', "/");
+                let abs_file = root
+                    .join(&doc.relative_path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
                 let want = format!("{}:{}", abs_file, line1);
                 let hit = idx.get_nodes_by_file(&abs_file).into_iter().find(|nid| {
                     idx.get_node(nid)
@@ -264,15 +266,7 @@ pub fn import_index(
                 EdgeKind::Imports | EdgeKind::Usage => 1,
                 _ => 0,
             };
-            idx.upsert_edge_full(
-                &src,
-                &target,
-                kind,
-                depth,
-                None,
-                true,
-                Some(&provenance),
-            );
+            idx.upsert_edge_full(&src, &target, kind, depth, None, true, Some(&provenance));
             stats.edges_added += 1;
             let _ = &mut stats; // 保持结构扩展点
         }
@@ -352,8 +346,12 @@ mod tests {
         let (_, _) = idx.lsp_resolution_stats();
         let out = idx.get_outgoing_edges(foo[0].as_str());
         assert_eq!(out.len(), 2, "foo 应有 2 条引用边");
-        assert!(out.iter().any(|e| e.kind == EdgeKind::Usage && e.target == bar[0]));
-        assert!(out.iter().any(|e| e.kind == EdgeKind::Usage && e.target.starts_with("ext:")));
+        assert!(out
+            .iter()
+            .any(|e| e.kind == EdgeKind::Usage && e.target == bar[0]));
+        assert!(out
+            .iter()
+            .any(|e| e.kind == EdgeKind::Usage && e.target.starts_with("ext:")));
         // provenance 元数据
         let ext_edge = out.iter().find(|e| e.target.starts_with("ext:")).unwrap();
         let meta = ext_edge.metadata.clone().unwrap();
@@ -383,8 +381,14 @@ mod tests {
             "导入后原有边必须保留: got {} edges",
             idx.edge_count()
         );
-        assert!(idx.get_outgoing_edges("ts:a").iter().any(|e| e.kind == EdgeKind::Calls));
-        assert!(idx.get_outgoing_edges("ts:a").iter().any(|e| e.kind == EdgeKind::Imports));
+        assert!(idx
+            .get_outgoing_edges("ts:a")
+            .iter()
+            .any(|e| e.kind == EdgeKind::Calls));
+        assert!(idx
+            .get_outgoing_edges("ts:a")
+            .iter()
+            .any(|e| e.kind == EdgeKind::Imports));
     }
 
     #[test]
@@ -411,7 +415,10 @@ mod tests {
 
     #[test]
     fn test_symbol_display_name() {
-        assert_eq!(symbol_display_name("scip-python python defpkg 3.10.0 src/`/mod.py`/Foo.bar()."), "Foo.bar()");
+        assert_eq!(
+            symbol_display_name("scip-python python defpkg 3.10.0 src/`/mod.py`/Foo.bar()."),
+            "Foo.bar()"
+        );
         assert_eq!(symbol_display_name("local 1 `foo`."), "foo");
         assert_eq!(symbol_display_name("ext 1 `extfun`."), "extfun");
     }
@@ -437,7 +444,10 @@ mod tests {
             return;
         };
         let index = parse_index_file(Path::new(&path)).expect("parse real index.scip");
-        assert!(!index.documents.is_empty(), "index should contain documents");
+        assert!(
+            !index.documents.is_empty(),
+            "index should contain documents"
+        );
         let mut idx = MemoryIndex::new();
         let stats = import_index(&mut idx, &index, None);
         eprintln!(
@@ -447,7 +457,13 @@ mod tests {
             stats.external_nodes_added, stats.edges_added,
             stats.skipped_no_enclosing, stats.skipped_missing_target,
         );
-        assert!(stats.definitions_added > 0, "real index should yield definition nodes");
-        assert!(stats.edges_added > 0, "real index should yield reference edges");
+        assert!(
+            stats.definitions_added > 0,
+            "real index should yield definition nodes"
+        );
+        assert!(
+            stats.edges_added > 0,
+            "real index should yield reference edges"
+        );
     }
 }

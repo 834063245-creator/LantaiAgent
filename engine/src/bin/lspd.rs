@@ -12,9 +12,9 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use hologram_engine::logging;
 use hologram_engine::lsp_daemon::{LspDaemon, DEFAULT_IDLE_TIMEOUT};
 use hologram_engine::lsp_manager::LspManager;
-use hologram_engine::logging;
 
 fn main() {
     let mut root: Option<PathBuf> = None;

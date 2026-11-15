@@ -6,11 +6,21 @@ use hologram_storage::MemoryIndex;
 use std::collections::HashMap;
 
 pub fn graph_summary(graph: &Graph) -> serde_json::Value {
-    let mut sym=0; let mut med=0; let mut tmp=0;
+    let mut sym = 0;
+    let mut med = 0;
+    let mut tmp = 0;
     for (_, n) in graph.nodes_iter() {
-        match n.kind { NodeKind::Symbol|NodeKind::Function|NodeKind::Class|NodeKind::Module|NodeKind::File|NodeKind::Interface|NodeKind::Variable=>{sym+=1}
-            NodeKind::Medium=>{med+=1}
-            NodeKind::Temporal=>{tmp+=1} }
+        match n.kind {
+            NodeKind::Symbol
+            | NodeKind::Function
+            | NodeKind::Class
+            | NodeKind::Module
+            | NodeKind::File
+            | NodeKind::Interface
+            | NodeKind::Variable => sym += 1,
+            NodeKind::Medium => med += 1,
+            NodeKind::Temporal => tmp += 1,
+        }
     }
     let mut edge_types: HashMap<String, u32> = HashMap::new();
     let mut calls_total: u32 = 0;
@@ -33,11 +43,22 @@ pub fn graph_summary(graph: &Graph) -> serde_json::Value {
 }
 
 pub fn graph_summary_from_index(idx: &MemoryIndex) -> serde_json::Value {
-    let mut sym=0; let mut med=0; let mut tmp=0; let mut external=0;
+    let mut sym = 0;
+    let mut med = 0;
+    let mut tmp = 0;
+    let mut external = 0;
     for n in idx.nodes_iter() {
-        match n.kind { NodeKind::Symbol|NodeKind::Function|NodeKind::Class|NodeKind::Module|NodeKind::File|NodeKind::Interface|NodeKind::Variable=>{sym+=1}
-            NodeKind::Medium=>{med+=1}
-            NodeKind::Temporal=>{tmp+=1} }
+        match n.kind {
+            NodeKind::Symbol
+            | NodeKind::Function
+            | NodeKind::Class
+            | NodeKind::Module
+            | NodeKind::File
+            | NodeKind::Interface
+            | NodeKind::Variable => sym += 1,
+            NodeKind::Medium => med += 1,
+            NodeKind::Temporal => tmp += 1,
+        }
         if n.id.as_str().starts_with("ext:") {
             external += 1;
         }
@@ -97,8 +118,8 @@ fn lsp_resolution_json(calls_total: usize, calls_lsp: usize) -> serde_json::Valu
 
 #[cfg(test)]
 mod tests {
-    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 
     #[test]
     fn test_summary_empty_graph() {

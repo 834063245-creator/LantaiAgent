@@ -70,7 +70,7 @@ impl Tool for PluginToolAdapter {
         &self,
         ctx: &crate::permissions::PermissionContext,
     ) -> crate::permissions::PermissionResult {
-        use crate::permissions::{PermissionResult, bash, filesystem, git};
+        use crate::permissions::{bash, filesystem, git, PermissionResult};
 
         let rules = ctx.read_rules();
         let Some(family) = self.family else {
@@ -103,12 +103,12 @@ impl Tool for PluginToolAdapter {
             }
             "Git" => {
                 // GitTool 同款两段：仓库路径读检查 + 子命令规则。
-                let (Some(path), Some(sub)) =
-                    (self.path.as_deref(), self.subcommand.as_deref())
+                let (Some(path), Some(sub)) = (self.path.as_deref(), self.subcommand.as_deref())
                 else {
                     return PermissionResult::Passthrough;
                 };
-                let path_check = filesystem::check_read_permission(path, &ctx.sandbox, &rules, None);
+                let path_check =
+                    filesystem::check_read_permission(path, &ctx.sandbox, &rules, None);
                 if let PermissionResult::Deny { .. } = path_check {
                     return path_check;
                 }

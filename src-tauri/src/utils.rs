@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 // 共享工具函数。
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::process::Command;
 use tracing_appender::non_blocking::WorkerGuard;
-#[cfg(windows)] use std::os::windows::process::CommandExt;
 // ═══════════════════════════════════════════════════════════════
 // Windows 子进程窗口控制 — 语义化常量（2026-08-17 根治复发问题）。
 //
@@ -68,9 +69,13 @@ pub(crate) static LOG_GUARD: std::sync::OnceLock<WorkerGuard> = std::sync::OnceL
 //  随图谱全量退役删除，2026-09-09——事件落引擎进程的 hologram.db，属引擎
 //  图数据面；壳内零引擎接线后无调用方。）
 
-pub(crate) fn is_private_ip(host: &str) -> bool {    // 主机名检查（解析到本地/私有的 DNS 名称）
+pub(crate) fn is_private_ip(host: &str) -> bool {
+    // 主机名检查（解析到本地/私有的 DNS 名称）
     let host_lower = host.to_lowercase();
-    if host_lower == "localhost" || host_lower.ends_with(".local") || host_lower.ends_with(".internal") {
+    if host_lower == "localhost"
+        || host_lower.ends_with(".local")
+        || host_lower.ends_with(".internal")
+    {
         return true;
     }
     use std::net::IpAddr;
@@ -78,11 +83,11 @@ pub(crate) fn is_private_ip(host: &str) -> bool {    // 主机名检查（解析
         Ok(ip) => ip,
         Err(_) => return false,
     };
-    if ip.is_loopback() || ip.is_unspecified() { return true; }
+    if ip.is_loopback() || ip.is_unspecified() {
+        return true;
+    }
     match ip {
-        IpAddr::V4(v4) => {
-            v4.is_private() || v4.is_link_local()
-        }
+        IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
         IpAddr::V6(v6) => {
             // 检查 IPv6 映射的 IPv4 地址 (::ffff:a.b.c.d)
             if let Some(mapped) = v6.to_ipv4_mapped() {
@@ -99,9 +104,14 @@ pub(crate) fn urlencoding(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 3);
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             b' ' => out.push('+'),
-            _ => { out.push('%'); out.push_str(&format!("{:02X}", b)); }
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{:02X}", b));
+            }
         }
     }
     out
@@ -122,7 +132,8 @@ pub(crate) fn git_failure_text(stderr: &str, stdout: &str, code: Option<i32>) ->
     }
     format!(
         "git 命令失败 (exit {})",
-        code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string())
+        code.map(|c| c.to_string())
+            .unwrap_or_else(|| "unknown".to_string())
     )
 }
 
@@ -247,7 +258,9 @@ where
 /// 在内容中查找包含查询字符串的行（模糊子串匹配）。
 pub(crate) fn fuzzy_find(content: &str, query: &str) -> Option<(usize, String)> {
     let q = query.trim();
-    if q.is_empty() { return None; }
+    if q.is_empty() {
+        return None;
+    }
     for (i, line) in content.lines().enumerate() {
         if line.contains(q) {
             return Some((i + 1, line.trim().chars().take(80).collect()));
@@ -346,7 +359,10 @@ mod tests {
     //    状态文本全在 stdout——只回 stderr 得到空错误）──
     #[test]
     fn git_failure_text_prefers_stderr() {
-        assert_eq!(git_failure_text(" fatal: boom ", "out", Some(128)), "fatal: boom");
+        assert_eq!(
+            git_failure_text(" fatal: boom ", "out", Some(128)),
+            "fatal: boom"
+        );
     }
 
     #[test]
@@ -358,7 +374,10 @@ mod tests {
 
     #[test]
     fn git_failure_text_reports_exit_code_when_both_empty() {
-        assert_eq!(git_failure_text("", "  \n", Some(1)), "git 命令失败 (exit 1)");
+        assert_eq!(
+            git_failure_text("", "  \n", Some(1)),
+            "git 命令失败 (exit 1)"
+        );
         assert_eq!(
             git_failure_text("", "", None),
             "git 命令失败 (exit unknown)",
@@ -392,16 +411,28 @@ mod tests {
         assert_eq!(on_disk, big, "落盘内容必须与全量输出一致");
         // 短输出不落盘、原文返回
         let short = "hello";
-        assert_eq!(crate::utils::truncate_output_spill(short, "test-job"), short);
+        assert_eq!(
+            crate::utils::truncate_output_spill(short, "test-job"),
+            short
+        );
         let _ = std::fs::remove_file(&path_part);
     }
 
     // ── B1: SSRF 防护必须捕获 ipv6 映射的 ipv4 (::ffff:a.b.c.d) ──
     #[test]
     fn test_b1_is_private_ip_ipv6_mapped() {
-        assert!(is_private_ip("::ffff:127.0.0.1"), "ipv6 映射的回环地址必须被拦截");
-        assert!(is_private_ip("::ffff:10.0.0.5"), "ipv6 映射的私有地址段必须被拦截");
-        assert!(is_private_ip("::ffff:192.168.1.1"), "ipv6 映射的私有地址段必须被拦截");
+        assert!(
+            is_private_ip("::ffff:127.0.0.1"),
+            "ipv6 映射的回环地址必须被拦截"
+        );
+        assert!(
+            is_private_ip("::ffff:10.0.0.5"),
+            "ipv6 映射的私有地址段必须被拦截"
+        );
+        assert!(
+            is_private_ip("::ffff:192.168.1.1"),
+            "ipv6 映射的私有地址段必须被拦截"
+        );
     }
 
     #[test]
@@ -432,7 +463,9 @@ mod tests {
 
     #[test]
     fn truncate_output_long_keeps_head_and_tail() {
-        let s: String = (0..MAX_TOOL_OUTPUT_CHARS * 2).map(|i| char::from(b'a' + (i % 26) as u8)).collect();
+        let s: String = (0..MAX_TOOL_OUTPUT_CHARS * 2)
+            .map(|i| char::from(b'a' + (i % 26) as u8))
+            .collect();
         let out = truncate_output(&s);
         assert!(out.contains("[output truncated:"), "必须带截断标记");
         assert!(out.starts_with(&s[..100]), "必须保留头部");
@@ -496,7 +529,8 @@ mod tests {
         let _g = BUILD_LOCK_TESTS.lock().expect("test lock");
         let k1 = acquire_build_lock("cargo build", "C:/ws-t1", 1, Some("agent-a".into())).unwrap();
         assert!(k1.is_some(), "cargo build 应注册 target 锁");
-        let err = acquire_build_lock("cargo test", "C:/ws-t1", 2, Some("agent-b".into())).unwrap_err();
+        let err =
+            acquire_build_lock("cargo test", "C:/ws-t1", 2, Some("agent-b".into())).unwrap_err();
         assert!(err.contains("构建锁冲突"), "冲突应打回: {err}");
         assert!(err.contains("job #1"), "打回应指明持有者 job: {err}");
         assert!(err.contains("agent-a"), "打回应指明持有者: {err}");
@@ -511,7 +545,10 @@ mod tests {
         let k1 = acquire_build_lock("cargo build", "C:/ws-t2", 1, None).unwrap();
         let k2 = acquire_build_lock("npm install", "C:/ws-t2", 2, None).unwrap();
         let k3 = acquire_build_lock("cargo build", "C:/ws-t2/worktree2", 3, None).unwrap();
-        assert!(k1.is_some() && k2.is_some() && k3.is_some(), "异资源/异目录不应冲突");
+        assert!(
+            k1.is_some() && k2.is_some() && k3.is_some(),
+            "异资源/异目录不应冲突"
+        );
         assert_ne!(k1, k2);
         assert_ne!(k1, k3);
         crate::utils::lock_or_recover(&BUILD_LOCKS).clear();
@@ -521,9 +558,15 @@ mod tests {
     #[test]
     fn build_lock_ignores_nonlocking_commands() {
         let _g = BUILD_LOCK_TESTS.lock().expect("test lock");
-        assert!(acquire_build_lock("echo hi", "C:/ws-t3", 1, None).unwrap().is_none());
-        assert!(acquire_build_lock("git status", "C:/ws-t3", 2, None).unwrap().is_none());
-        assert!(acquire_build_lock("git commit -m x", "C:/ws-t3", 3, None).unwrap().is_some());
+        assert!(acquire_build_lock("echo hi", "C:/ws-t3", 1, None)
+            .unwrap()
+            .is_none());
+        assert!(acquire_build_lock("git status", "C:/ws-t3", 2, None)
+            .unwrap()
+            .is_none());
+        assert!(acquire_build_lock("git commit -m x", "C:/ws-t3", 3, None)
+            .unwrap()
+            .is_some());
         crate::utils::lock_or_recover(&BUILD_LOCKS).clear();
     }
 
@@ -534,7 +577,18 @@ mod tests {
         let _g = BUILD_LOCK_TESTS.lock().expect("test lock");
         let id = next_job_id();
         let child = crate::os_sandbox::spawn_shell("sleep 30", ".").expect("spawn_shell failed");
-        register_fg_child(id, child, "sleep 30", BgSharedOutput { stdout: Default::default(), stderr: Default::default(), drain_done: Default::default() }, Some("agent-a".into()), None);
+        register_fg_child(
+            id,
+            child,
+            "sleep 30",
+            BgSharedOutput {
+                stdout: Default::default(),
+                stderr: Default::default(),
+                drain_done: Default::default(),
+            },
+            Some("agent-a".into()),
+            None,
+        );
         // 其他 Agent 无权 kill
         let err = kill_bg(id, Some("agent-b")).unwrap_err();
         assert!(err.contains("无权终止"), "跨 Agent kill 应拒绝: {err}");
@@ -543,9 +597,23 @@ mod tests {
         // 用户任务（owner=None）：Agent 无权 kill
         let id2 = next_job_id();
         let child2 = crate::os_sandbox::spawn_shell("sleep 30", ".").expect("spawn_shell failed");
-        register_fg_child(id2, child2, "sleep 30", BgSharedOutput { stdout: Default::default(), stderr: Default::default(), drain_done: Default::default() }, None, None);
+        register_fg_child(
+            id2,
+            child2,
+            "sleep 30",
+            BgSharedOutput {
+                stdout: Default::default(),
+                stderr: Default::default(),
+                drain_done: Default::default(),
+            },
+            None,
+            None,
+        );
         let err2 = kill_bg(id2, Some("agent-a")).unwrap_err();
-        assert!(err2.contains("无权终止"), "用户任务 Agent 不可 kill: {err2}");
+        assert!(
+            err2.contains("无权终止"),
+            "用户任务 Agent 不可 kill: {err2}"
+        );
         // 用户（无 agent_id）可 kill 任何任务
         assert!(kill_bg(id2, None).is_ok(), "用户 kill 应放行");
     }

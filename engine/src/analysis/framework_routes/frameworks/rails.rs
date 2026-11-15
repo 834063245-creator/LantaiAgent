@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::engine::GRAMMAR_LOADER;
-use std::collections::HashSet;
-use super::super::DetectedRoute;
+use super::super::capitalize_first;
 use super::super::find_first_string;
 use super::super::find_rails_handler;
-use super::super::capitalize_first;
+use super::super::DetectedRoute;
+use crate::engine::GRAMMAR_LOADER;
+use std::collections::HashSet;
 
 pub(crate) fn is_rails_file(file: &str) -> bool {
     let lower = file.to_lowercase();
@@ -19,7 +19,10 @@ pub(crate) fn detect_rails_routes(file: &str, source: &str) -> Vec<DetectedRoute
     let mut result = Vec::new();
 
     let mut parser = tree_sitter::Parser::new();
-    let lang = match GRAMMAR_LOADER.get("rb") { Some(l) => l, None => return result };
+    let lang = match GRAMMAR_LOADER.get("rb") {
+        Some(l) => l,
+        None => return result,
+    };
     if parser.set_language(&lang).is_err() {
         return result;
     }
@@ -29,8 +32,19 @@ pub(crate) fn detect_rails_routes(file: &str, source: &str) -> Vec<DetectedRoute
     };
 
     let http_methods: HashSet<&str> = [
-        "get", "post", "put", "patch", "delete", "head", "options",
-        "match", "resources", "resource", "root", "namespace", "scope",
+        "get",
+        "post",
+        "put",
+        "patch",
+        "delete",
+        "head",
+        "options",
+        "match",
+        "resources",
+        "resource",
+        "root",
+        "namespace",
+        "scope",
     ]
     .iter()
     .cloned()
@@ -43,7 +57,8 @@ pub(crate) fn detect_rails_routes(file: &str, source: &str) -> Vec<DetectedRoute
     while let Some(node) = stack.pop() {
         // Rails 路由是 call 节点：`get '/path'` 或 `get '/path', to: 'controller#action'`
         if node.kind() == "call" || node.kind() == "method_call" {
-            if let Some((method, path, handler)) = extract_rails_route(&node, source, &http_methods) {
+            if let Some((method, path, handler)) = extract_rails_route(&node, source, &http_methods)
+            {
                 let line = node.start_position().row + 1;
                 result.push((method, path, handler, file.to_string(), line));
             }
@@ -65,7 +80,8 @@ fn extract_rails_route(
 ) -> Option<(String, String, String)> {
     // 获取第一个标识符（HTTP 方法）
     let mut node_cursor = node.walk();
-    let method = node.children(&mut node_cursor)
+    let method = node
+        .children(&mut node_cursor)
         .find(|c| c.kind() == "identifier")
         .map(|c| c.utf8_text(source.as_bytes()).unwrap_or("").to_lowercase())?;
 

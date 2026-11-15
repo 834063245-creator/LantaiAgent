@@ -52,7 +52,8 @@ pub fn explore(
         let results = graph.search_nodes(sym);
         // 优先精确名称匹配，然后取第一个
         // 结果：Vec<&Node>
-        let best: Option<&Node> = results.iter()
+        let best: Option<&Node> = results
+            .iter()
             .find(|n| n.name == *sym)
             .copied()
             .or_else(|| results.first().copied());
@@ -175,7 +176,11 @@ fn parse_nl_query(graph: &Graph, query: &str) -> Vec<String> {
     for qt in &qualified_tokens {
         // 按完整限定名搜索
         let matches = graph.search_nodes(qt);
-        if let Some(best) = matches.iter().find(|n| n.name == *qt).or_else(|| matches.first()) {
+        if let Some(best) = matches
+            .iter()
+            .find(|n| n.name == *qt)
+            .or_else(|| matches.first())
+        {
             result.push(best.name.clone());
         }
     }
@@ -210,14 +215,13 @@ fn parse_nl_query(graph: &Graph, query: &str) -> Vec<String> {
 fn normalize_query_spelling(query: &str) -> String {
     // Erlang 元数：fn/N → fn
     static RE_ARITY: OnceLock<regex::Regex> = OnceLock::new();
-    let re_arity = RE_ARITY.get_or_init(||
-        regex::Regex::new(r"\b([A-Za-z_][\w@]*)/\d{1,3}\b").expect("静态正则")
-    );
+    let re_arity = RE_ARITY
+        .get_or_init(|| regex::Regex::new(r"\b([A-Za-z_][\w@]*)/\d{1,3}\b").expect("静态正则"));
     // Lua mod:fn → mod.fn（但跳过协议前缀如 "kind:"、"lang:" 等）
     static RE_COLON: OnceLock<regex::Regex> = OnceLock::new();
-    let re_colon = RE_COLON.get_or_init(||
+    let re_colon = RE_COLON.get_or_init(|| {
         regex::Regex::new(r"\b([a-z_][\w@]*):([A-Za-z_][\w@]*)\b").expect("静态正则")
-    );
+    });
     let s = re_arity.replace_all(query, "$1").to_string();
     re_colon.replace_all(&s, "$1.$2").to_string()
 }
@@ -229,18 +233,19 @@ fn tokenize(query: &str) -> Vec<String> {
     static EXT_RE: OnceLock<regex::Regex> = OnceLock::new();
 
     let re = SPLIT_RE.get_or_init(|| regex::Regex::new(r"[\s,()\[\]]+").expect("静态正则"));
-    let id_re = ID_RE.get_or_init(|| regex::Regex::new(r"^[A-Za-z_$][\w$]*(?:(?:::|\.)[\w$]+)*$").expect("静态正则"));
+    let id_re = ID_RE.get_or_init(|| {
+        regex::Regex::new(r"^[A-Za-z_$][\w$]*(?:(?:::|\.)[\w$]+)*$").expect("静态正则")
+    });
     let ext_re = EXT_RE.get_or_init(|| regex::Regex::new(r"\.(py|rs|ts|tsx|js|jsx|go|java|swift|c|h|cpp|rb|lua|cs|php|kt|dart|scala|hs|json|html|css|yaml|yml|toml|md|sh)$").expect("静态正则"));
 
-    let mut tokens: Vec<String> = re.split(query)
+    let mut tokens: Vec<String> = re
+        .split(query)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
 
     // 过滤：必须匹配标识符模式，非文件扩展名，长度 >= 2
-    tokens.retain(|t| {
-        id_re.is_match(t) && !ext_re.is_match(t) && t.len() >= 2
-    });
+    tokens.retain(|t| id_re.is_match(t) && !ext_re.is_match(t) && t.len() >= 2);
 
     // 去重
     let mut seen = HashSet::new();
@@ -264,15 +269,18 @@ fn disambiguate<'a>(candidates: &[&'a Node], pascal_tokens: &[String]) -> Vec<&'
     }
 
     // 保留容器（限定名前缀）匹配某个 PascalCase token 的候选
-    let in_context: Vec<&Node> = candidates.iter().filter(|n| {
-        // 获取容器：限定名中最后一个 :: 之前的所有内容。
-        // id 通常形如 "src.module.ClassName.method"
-        let container = n.id.rsplit_once('.').map(|x| x.0).unwrap_or("");
-        pascal_tokens.iter().any(|pt| {
-            container.eq_ignore_ascii_case(pt)
-                || container.contains(pt.as_str())
+    let in_context: Vec<&Node> = candidates
+        .iter()
+        .filter(|n| {
+            // 获取容器：限定名中最后一个 :: 之前的所有内容。
+            // id 通常形如 "src.module.ClassName.method"
+            let container = n.id.rsplit_once('.').map(|x| x.0).unwrap_or("");
+            pascal_tokens
+                .iter()
+                .any(|pt| container.eq_ignore_ascii_case(pt) || container.contains(pt.as_str()))
         })
-    }).copied().collect();
+        .copied()
+        .collect();
 
     if !in_context.is_empty() {
         in_context.into_iter().take(4).collect()
@@ -303,7 +311,8 @@ fn compute_flow(ctx: &ExploreCtx) -> serde_json::Value {
             for j in (i + 1)..ctx.named_nodes.len() {
                 let from = &ctx.named_nodes[i];
                 let to = &ctx.named_nodes[j];
-                if let Some(path) = bfs_path(ctx, &from.id, &to.id, edge_kind_filter.as_ref(), false)
+                if let Some(path) =
+                    bfs_path(ctx, &from.id, &to.id, edge_kind_filter.as_ref(), false)
                 {
                     if best_path.as_ref().is_none_or(|p| path.len() > p.len()) {
                         best_path = Some(path);
@@ -354,7 +363,7 @@ fn compute_flow(ctx: &ExploreCtx) -> serde_json::Value {
                 "synthesizedHops": [],
                 "boundaries": boundaries,
             })
-        },
+        }
     }
 }
 
@@ -381,14 +390,15 @@ fn scan_boundaries_at_breakpoints(ctx: &ExploreCtx) -> Vec<serde_json::Value> {
         };
 
         let language = guess_language(&file_path);
-        let boundaries = crate::analysis::dynamic_boundaries::scan_dynamic_boundaries(
-            &content, language, 1,
-        );
+        let boundaries =
+            crate::analysis::dynamic_boundaries::scan_dynamic_boundaries(&content, language, 1);
 
         for bm in boundaries {
             let candidates = if let Some(ref key) = bm.key {
                 crate::analysis::dynamic_boundaries::boundary_candidates(
-                    ctx.graph, key, bm.key_is_type,
+                    ctx.graph,
+                    key,
+                    bm.key_is_type,
                 )
             } else {
                 Vec::new()
@@ -627,20 +637,28 @@ pub struct ExploreOutputBudget {
 pub fn explore_output_budget(file_count: usize) -> ExploreOutputBudget {
     match file_count {
         n if n < 150 => ExploreOutputBudget {
-            max_output_chars: 13_000, default_max_files: 4,
-            max_chars_per_file: 3_800, gap_threshold: 7,
+            max_output_chars: 13_000,
+            default_max_files: 4,
+            max_chars_per_file: 3_800,
+            gap_threshold: 7,
         },
         n if n < 500 => ExploreOutputBudget {
-            max_output_chars: 18_000, default_max_files: 5,
-            max_chars_per_file: 3_800, gap_threshold: 8,
+            max_output_chars: 18_000,
+            default_max_files: 5,
+            max_chars_per_file: 3_800,
+            gap_threshold: 8,
         },
         n if n < 5_000 => ExploreOutputBudget {
-            max_output_chars: 24_000, default_max_files: 8,
-            max_chars_per_file: 6_500, gap_threshold: 12,
+            max_output_chars: 24_000,
+            default_max_files: 8,
+            max_chars_per_file: 6_500,
+            gap_threshold: 12,
         },
         _ => ExploreOutputBudget {
-            max_output_chars: 24_000, default_max_files: 8,
-            max_chars_per_file: 7_000, gap_threshold: 15,
+            max_output_chars: 24_000,
+            default_max_files: 8,
+            max_chars_per_file: 7_000,
+            gap_threshold: 15,
         },
     }
 }
@@ -649,7 +667,11 @@ pub fn explore_output_budget(file_count: usize) -> ExploreOutputBudget {
 // 步骤 5：Source Code
 // ═══════════════════════════════════════════════════════════════
 
-fn read_source_sections(ctx: &ExploreCtx, truncated: &mut bool, hint: &mut String) -> Vec<serde_json::Value> {
+fn read_source_sections(
+    ctx: &ExploreCtx,
+    truncated: &mut bool,
+    hint: &mut String,
+) -> Vec<serde_json::Value> {
     let budget = explore_output_budget(ctx.graph.node_count());
     let max_per_file = budget.max_chars_per_file;
     let max_output = budget.max_output_chars;
@@ -673,7 +695,13 @@ fn read_source_sections(ctx: &ExploreCtx, truncated: &mut bool, hint: &mut Strin
                 *truncated = true;
                 break;
             }
-            if let Some(section) = read_file_section(ctx.project_root, &file_path, line_num, max_per_file, &mut total_chars) {
+            if let Some(section) = read_file_section(
+                ctx.project_root,
+                &file_path,
+                line_num,
+                max_per_file,
+                &mut total_chars,
+            ) {
                 file_sections.push(SourceFileInfo {
                     file: file_path,
                     sections: vec![section],
@@ -697,7 +725,13 @@ fn read_source_sections(ctx: &ExploreCtx, truncated: &mut bool, hint: &mut Strin
                     }
                     total_files_matched += 1;
                     let (file_path, line_num) = parse_location(&Some(loc.clone()));
-                    if let Some(section) = read_file_section(ctx.project_root, &file_path, line_num, max_per_file, &mut total_chars) {
+                    if let Some(section) = read_file_section(
+                        ctx.project_root,
+                        &file_path,
+                        line_num,
+                        max_per_file,
+                        &mut total_chars,
+                    ) {
                         file_sections.push(SourceFileInfo {
                             file: file_path,
                             sections: vec![section],
@@ -709,21 +743,27 @@ fn read_source_sections(ctx: &ExploreCtx, truncated: &mut bool, hint: &mut Strin
     }
 
     if *truncated {
-        *hint = format!("{} of {} matching files shown. Call explore_deps again with more specific symbols.",
-            file_sections.len(), total_files_matched);
+        *hint = format!(
+            "{} of {} matching files shown. Call explore_deps again with more specific symbols.",
+            file_sections.len(),
+            total_files_matched
+        );
     }
 
-    file_sections.into_iter().map(|s| {
-        json!({
-            "file": s.file,
-            "language": guess_language(&s.file),
-            "sections": s.sections.into_iter().map(|sec| json!({
-                "startLine": sec.start_line,
-                "endLine": sec.end_line,
-                "lines": sec.lines,
-            })).collect::<Vec<_>>(),
+    file_sections
+        .into_iter()
+        .map(|s| {
+            json!({
+                "file": s.file,
+                "language": guess_language(&s.file),
+                "sections": s.sections.into_iter().map(|sec| json!({
+                    "startLine": sec.start_line,
+                    "endLine": sec.end_line,
+                    "lines": sec.lines,
+                })).collect::<Vec<_>>(),
+            })
         })
-    }).collect()
+        .collect()
 }
 
 struct SourceFileInfo {
@@ -812,18 +852,31 @@ fn read_file_section(
 
 fn guess_language(file: &str) -> &'static str {
     let lower = file.to_lowercase();
-    if lower.ends_with(".rs") { "rust" }
-    else if lower.ends_with(".py") { "python" }
-    else if lower.ends_with(".ts") || lower.ends_with(".tsx") { "typescript" }
-    else if lower.ends_with(".js") || lower.ends_with(".jsx") { "javascript" }
-    else if lower.ends_with(".go") { "go" }
-    else if lower.ends_with(".java") { "java" }
-    else if lower.ends_with(".swift") { "swift" }
-    else if lower.ends_with(".c") || lower.ends_with(".h") { "c" }
-    else if lower.ends_with(".cpp") || lower.ends_with(".hpp") || lower.ends_with(".cc") { "cpp" }
-    else if lower.ends_with(".rb") { "ruby" }
-    else if lower.ends_with(".lua") { "lua" }
-    else { "text" }
+    if lower.ends_with(".rs") {
+        "rust"
+    } else if lower.ends_with(".py") {
+        "python"
+    } else if lower.ends_with(".ts") || lower.ends_with(".tsx") {
+        "typescript"
+    } else if lower.ends_with(".js") || lower.ends_with(".jsx") {
+        "javascript"
+    } else if lower.ends_with(".go") {
+        "go"
+    } else if lower.ends_with(".java") {
+        "java"
+    } else if lower.ends_with(".swift") {
+        "swift"
+    } else if lower.ends_with(".c") || lower.ends_with(".h") {
+        "c"
+    } else if lower.ends_with(".cpp") || lower.ends_with(".hpp") || lower.ends_with(".cc") {
+        "cpp"
+    } else if lower.ends_with(".rb") {
+        "ruby"
+    } else if lower.ends_with(".lua") {
+        "lua"
+    } else {
+        "text"
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -836,15 +889,22 @@ fn compute_alerts(ctx: &ExploreCtx) -> serde_json::Value {
     // 环 — 检查是否有命名节点在环中
     let all_cycles = detect_cycles(ctx.graph);
     if !all_cycles.is_empty() {
-        let relevant: Vec<_> = all_cycles.iter().filter(|c| {
-            c.get("nodes").and_then(|n| n.as_array())
-                .map(|nodes| {
-                    nodes.iter().any(|n| {
-                        n.as_str().map(|id| ctx.named_ids.contains(id)).unwrap_or(false)
+        let relevant: Vec<_> = all_cycles
+            .iter()
+            .filter(|c| {
+                c.get("nodes")
+                    .and_then(|n| n.as_array())
+                    .map(|nodes| {
+                        nodes.iter().any(|n| {
+                            n.as_str()
+                                .map(|id| ctx.named_ids.contains(id))
+                                .unwrap_or(false)
+                        })
                     })
-                })
-                .unwrap_or(false)
-        }).cloned().collect();
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect();
         if !relevant.is_empty() {
             alerts.insert("cycles".into(), json!(relevant));
         }
@@ -853,11 +913,16 @@ fn compute_alerts(ctx: &ExploreCtx) -> serde_json::Value {
     // 脆弱模块 — 检查命名节点的文件是否在 top fragile 中
     let fragile = fragile_nodes(ctx.graph, 10);
     if !fragile.is_empty() {
-        let relevant: Vec<_> = fragile.iter().filter(|f| {
-            f.get("file").and_then(|n| n.as_str())
-                .map(|file| ctx.named_files.contains(&file_key(file)))
-                .unwrap_or(false)
-        }).cloned().collect();
+        let relevant: Vec<_> = fragile
+            .iter()
+            .filter(|f| {
+                f.get("file")
+                    .and_then(|n| n.as_str())
+                    .map(|file| ctx.named_files.contains(&file_key(file)))
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect();
         if !relevant.is_empty() {
             alerts.insert("fragileModules".into(), json!(relevant));
         }
@@ -887,11 +952,15 @@ fn compute_alerts(ctx: &ExploreCtx) -> serde_json::Value {
         for edge in ctx.graph.outgoing(&node.id) {
             if let Some(target) = ctx.graph.get_node(&edge.target) {
                 if matches!(target.kind, NodeKind::Medium) {
-                    let accessors: Vec<_> = ctx.graph.incoming(&target.id)
+                    let accessors: Vec<_> = ctx
+                        .graph
+                        .incoming(&target.id)
                         .filter_map(|e| ctx.graph.get_node(&e.source).map(|n| n.name.clone()))
                         .collect();
                     if accessors.len() >= 2 {
-                        let has_write = ctx.graph.incoming(&target.id)
+                        let has_write = ctx
+                            .graph
+                            .incoming(&target.id)
                             .any(|e| matches!(e.kind, EdgeKind::Writes));
                         thread_conflicts.push(json!({
                             "resource": target.name,
@@ -1008,7 +1077,13 @@ mod tests {
     fn test_explore_two_symbols() {
         let g = test_graph();
         let tmp = std::env::temp_dir();
-        let result = explore(&g, &tmp, &["DataRequest.task".into(), "DataRequest.validate".into()], None, true);
+        let result = explore(
+            &g,
+            &tmp,
+            &["DataRequest.task".into(), "DataRequest.validate".into()],
+            None,
+            true,
+        );
 
         // Flow 应存在
         assert!(result["flow"]["path"].is_array());
@@ -1126,8 +1201,8 @@ mod tests {
         assert!(is_pascal_case("DataRequest"));
         assert!(is_pascal_case("UserService"));
         assert!(!is_pascal_case("dataRequest")); // 小写开头
-        assert!(!is_pascal_case("URL"));           // 太短（<4）
-        assert!(!is_pascal_case("abc"));           // 太短 + 小写
+        assert!(!is_pascal_case("URL")); // 太短（<4）
+        assert!(!is_pascal_case("abc")); // 太短 + 小写
     }
 
     #[test]

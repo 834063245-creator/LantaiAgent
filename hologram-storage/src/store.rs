@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use parking_lot::{Mutex, RwLock};
 use tracing::{info, warn};
 
-use hologram_graph::Graph;
 use crate::memory::{LoadProgress, MemoryIndex};
 use crate::sqlite::SqliteDb;
+use hologram_graph::Graph;
 
 /// 核心图存储。所有 MCP 工具通过此层读取。
 pub struct GraphStore {
@@ -219,14 +219,17 @@ impl GraphStore {
             // 但此时磁盘上没有可被冷启动认可的权威快照，不能刷新 graph_generated_at，
             // 否则 SQLite 旧图会被误判为“新鲜”。
             if let Err(e) = self.db.set_meta("snapshot_token", &token) {
-                warn!("[store] snapshot_token 写入失败（下次启动走 SQLite，安全退化）: {}", e);
+                warn!(
+                    "[store] snapshot_token 写入失败（下次启动走 SQLite，安全退化）: {}",
+                    e
+                );
                 return Ok(());
             }
             // 记录本次持久化的完成时刻 —— 冷启动新鲜度判定的单一事实源。
-            if let Err(e) = self
-                .db
-                .set_meta("graph_generated_at", &chrono::Utc::now().timestamp_millis().to_string())
-            {
+            if let Err(e) = self.db.set_meta(
+                "graph_generated_at",
+                &chrono::Utc::now().timestamp_millis().to_string(),
+            ) {
                 warn!("[store] graph_generated_at 写入失败（冷启动新鲜度判定将回退旧逻辑）: {e}");
             }
             Ok(())
@@ -240,7 +243,9 @@ impl GraphStore {
                     "graph_generated_at",
                     &chrono::Utc::now().timestamp_millis().to_string(),
                 ) {
-                    warn!("[store] graph_generated_at 写入失败（冷启动新鲜度判定将回退旧逻辑）: {e}");
+                    warn!(
+                        "[store] graph_generated_at 写入失败（冷启动新鲜度判定将回退旧逻辑）: {e}"
+                    );
                 }
             }
             result
@@ -274,10 +279,10 @@ impl GraphStore {
             idx.to_sqlite(&self.db)
         };
         // 全量分析主路径（pipeline.rs）走这里 —— 同样记录持久化时刻，见 save() 注释。
-        if let Err(e) = self
-            .db
-            .set_meta("graph_generated_at", &chrono::Utc::now().timestamp_millis().to_string())
-        {
+        if let Err(e) = self.db.set_meta(
+            "graph_generated_at",
+            &chrono::Utc::now().timestamp_millis().to_string(),
+        ) {
             warn!("[store] graph_generated_at 写入失败（冷启动新鲜度判定将回退旧逻辑）: {e}");
         }
         stored
@@ -288,7 +293,7 @@ impl GraphStore {
         &self.project_root
     }
 
-        /// 交换内存索引为新索引。短暂持有写锁。
+    /// 交换内存索引为新索引。短暂持有写锁。
     /// 守卫：在服务查询前验证辅助索引已构建。
     /// 如果辅助索引缺失（降级加载后的竞争窗口），
     /// 内联重建以防止空搜索结果。
@@ -329,14 +334,16 @@ impl GraphStore {
             let mut nodes = nodes;
             // 为缺少 snippet 的节点提取片段（增量添加的）
             for node in &mut nodes {
-                if node.snippet.is_some() { continue; }
+                if node.snippet.is_some() {
+                    continue;
+                }
                 if let Some(loc) = &node.location {
                     if let Some((file_path, _line)) = loc.split_once(':') {
                         let full_path = project_root.join(file_path);
                         if let Ok(source) = std::fs::read_to_string(&full_path) {
-                            if let Some(snippet) = hologram_vector::extract_snippet(
-                                &source, &node.name, &node.kind,
-                            ) {
+                            if let Some(snippet) =
+                                hologram_vector::extract_snippet(&source, &node.name, &node.kind)
+                            {
                                 node.snippet = Some(snippet);
                             }
                         }
@@ -390,12 +397,16 @@ impl GraphStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use crate::snapshot::{snapshot_path, SNAPSHOT_ENV_LOCK};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use std::collections::HashMap;
 
     fn tmp_project(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("hologram_test_store_{}_{}", name, std::process::id()))
+        std::env::temp_dir().join(format!(
+            "hologram_test_store_{}_{}",
+            name,
+            std::process::id()
+        ))
     }
 
     fn small_index() -> MemoryIndex {
@@ -446,7 +457,11 @@ mod tests {
         // 全新进程重开：必须读到新图（save_index 已落盘新图）
         let store2 = GraphStore::open(&tmp).unwrap();
         store2.read(|idx| {
-            assert_eq!(idx.node_count(), 3, "重开须读到新图（3 节点）而非旧图（2 节点）");
+            assert_eq!(
+                idx.node_count(),
+                3,
+                "重开须读到新图（3 节点）而非旧图（2 节点）"
+            );
             assert!(idx.get_node("z").is_some(), "新图节点 z 必须存在");
         });
 
@@ -470,10 +485,12 @@ mod tests {
             let store1 = GraphStore::open(&tmp).unwrap();
             store1.swap_index(small_index());
             store1.save().unwrap();
-            assert!(snapshot_path(&tmp).exists(), "阈值 0 → 应生成 graph.snapshot");
+            assert!(
+                snapshot_path(&tmp).exists(),
+                "阈值 0 → 应生成 graph.snapshot"
+            );
             // 代际 token 同时写入文件头部与 db meta
-            let snap_token =
-                crate::snapshot::peek_snapshot_token(&snapshot_path(&tmp)).unwrap();
+            let snap_token = crate::snapshot::peek_snapshot_token(&snapshot_path(&tmp)).unwrap();
             assert_eq!(
                 store1.db.get_meta("snapshot_token").unwrap(),
                 Some(snap_token)
@@ -534,7 +551,10 @@ mod tests {
         store2.read(|idx| {
             assert_eq!(idx.node_count(), 2, "SQLite 路径同样载回 2 节点");
             assert_eq!(idx.edge_count(), 1);
-            assert!(!idx.fts_dirty(), "SQLite 加载 → dirty=false（证明未走快照）");
+            assert!(
+                !idx.fts_dirty(),
+                "SQLite 加载 → dirty=false（证明未走快照）"
+            );
         });
 
         std::env::remove_var("HOLOGRAM_SNAPSHOT_MIN_EDGES");
@@ -583,9 +603,13 @@ mod tests {
             let store = GraphStore::open(&tmp).unwrap();
             store.swap_index(small_index());
             store.save().unwrap(); // 小图 < 默认阈值 → SQLite 路径，db 有数据
-            // 手写 R9 初版格式：裸 bincode payload（无 token 头部）
+                                   // 手写 R9 初版格式：裸 bincode payload（无 token 头部）
             let legacy = store.read(|idx| {
-                bincode::serde::encode_to_vec(&crate::memory::to_snapshot(idx), bincode::config::standard()).unwrap()
+                bincode::serde::encode_to_vec(
+                    &crate::memory::to_snapshot(idx),
+                    bincode::config::standard(),
+                )
+                .unwrap()
             });
             std::fs::write(snapshot_path(&tmp), &legacy).unwrap();
         }

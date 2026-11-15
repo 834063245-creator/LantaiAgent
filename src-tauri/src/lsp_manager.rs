@@ -14,7 +14,10 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex, mpsc, atomic::{AtomicU32, Ordering}};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    mpsc, Arc, Mutex,
+};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::oneshot;
@@ -72,8 +75,8 @@ pub async fn lsp_start(
     language: String,
     root_uri: String,
 ) -> Result<u32, String> {
-    let (cmd, args) = detect_lsp(&language)
-        .ok_or_else(|| format!("不支持的语言或未安装 LSP: {}", language))?;
+    let (cmd, args) =
+        detect_lsp(&language).ok_or_else(|| format!("不支持的语言或未安装 LSP: {}", language))?;
 
     let mut c = Command::new(cmd);
     c.args(&args)
@@ -90,18 +93,25 @@ pub async fn lsp_start(
         // （2026-08-17 探针实验：cmd→cmd→ping 链 0x08000000 可见窗口=0，0x00000008=1）
         c.creation_flags(crate::utils::HIDDEN_CONSOLE);
     }
-    let mut child = c.spawn()
+    let mut child = c
+        .spawn()
         .map_err(|e| format!("无法启动 LSP ({cmd}): {e}"))?;
 
     crate::os_sandbox::assign_to_job(&child);
     // P1-20：spawn 成功后的任何失败路径都必须回收子进程（drop 不杀进程）
     let stdout = match child.stdout.take() {
         Some(s) => s,
-        None => { reap_failed_child(&mut child); return Err("无法获取 LSP stdout".into()); }
+        None => {
+            reap_failed_child(&mut child);
+            return Err("无法获取 LSP stdout".into());
+        }
     };
     let stdin: Box<dyn Write + Send> = Box::new(match child.stdin.take() {
         Some(s) => s,
-        None => { reap_failed_child(&mut child); return Err("无法获取 LSP stdin".into()); }
+        None => {
+            reap_failed_child(&mut child);
+            return Err("无法获取 LSP stdin".into());
+        }
     });
     let stdin = Arc::new(Mutex::new(stdin));
 
@@ -123,7 +133,9 @@ pub async fn lsp_start(
         let reader = BufReader::new(stdout);
         for line in reader.lines() {
             if let Ok(text) = line {
-                if text.is_empty() { continue; }
+                if text.is_empty() {
+                    continue;
+                }
                 if let Ok(msg) = serde_json::from_str::<Value>(&text) {
                     // 通过 oneshot channel 路由带 id 的响应
                     if let Some(resp_id) = msg.get("id").and_then(|v| v.as_u64()) {
@@ -137,10 +149,13 @@ pub async fn lsp_start(
                         // 无 oneshot 等待 — 仍作为事件发送（如延迟响应）
                     }
                     // 通知或无人认领的响应 → 转发到前端
-                    let _ = handle.emit("lsp-message", serde_json::json!({
-                        "session_id": sid,
-                        "message": msg,
-                    }));
+                    let _ = handle.emit(
+                        "lsp-message",
+                        serde_json::json!({
+                            "session_id": sid,
+                            "message": msg,
+                        }),
+                    );
                 }
             }
         }
@@ -184,7 +199,12 @@ pub async fn lsp_start(
             }
         });
         let mut lock = crate::utils::lock_or_recover(&stdin);
-        writeln!(lock, "{}", serde_json::to_string(&init).expect("JSON 序列化")).ok();
+        writeln!(
+            lock,
+            "{}",
+            serde_json::to_string(&init).expect("JSON 序列化")
+        )
+        .ok();
         lock.flush().ok();
         // 注册一个转发到 mpsc 的 oneshot
         let (otx, orx) = oneshot::channel();
@@ -197,7 +217,9 @@ pub async fn lsp_start(
 
     // 等待 initialize 响应（30s 超时，避免坏服务器永久挂起）
     match rx.recv_timeout(Duration::from_secs(30)) {
-        Ok(Ok(val)) => { let _ = val; /* initialize 成功 */ }
+        Ok(Ok(val)) => {
+            let _ = val; /* initialize 成功 */
+        }
         Ok(Err(_)) => {
             // P1-20：std Child 的 drop 不杀进程——失败路径必须显式回收，
             // 否则每次重试泄漏一个语言服务器
@@ -216,7 +238,12 @@ pub async fn lsp_start(
             "jsonrpc": "2.0", "method": "initialized", "params": {}
         });
         let mut lock = crate::utils::lock_or_recover(&stdin);
-        writeln!(lock, "{}", serde_json::to_string(&notif).expect("JSON 序列化")).ok();
+        writeln!(
+            lock,
+            "{}",
+            serde_json::to_string(&notif).expect("JSON 序列化")
+        )
+        .ok();
         lock.flush().ok();
     }
 
@@ -232,23 +259,18 @@ pub async fn lsp_start(
     Ok(id)
 }
 
-    /// 向 LSP 服务器发送请求/通知。
-    /// 对于请求（completion、hover、definition 等），等待
-    /// JSON-RPC 响应并返回 `result` 字段。
-    /// 对于通知（textDocument/did*），立即返回。
+/// 向 LSP 服务器发送请求/通知。
+/// 对于请求（completion、hover、definition 等），等待
+/// JSON-RPC 响应并返回 `result` 字段。
+/// 对于通知（textDocument/did*），立即返回。
 #[tauri::command]
-pub async fn lsp_request(
-    session_id: u32,
-    method: String,
-    params: Value,
-) -> Result<Value, String> {
+pub async fn lsp_request(session_id: u32, method: String, params: Value) -> Result<Value, String> {
     let is_notification = method.starts_with("textDocument/did");
 
     // --- 准备并发送消息（在 SERVERS 锁内）---
     let (rx, request_id) = {
         let map = crate::utils::lock_or_recover(&SERVERS);
-        let server = map.get(&session_id)
-            .ok_or("LSP 会话不存在")?;
+        let server = map.get(&session_id).ok_or("LSP 会话不存在")?;
 
         let id = if is_notification {
             0
@@ -263,8 +285,12 @@ pub async fn lsp_request(
         };
 
         let mut lock = crate::utils::lock_or_recover(&server.stdin);
-        writeln!(*lock, "{}", serde_json::to_string(&msg).expect("JSON 序列化"))
-            .map_err(|e| format!("LSP 写入失败: {e}"))?;
+        writeln!(
+            *lock,
+            "{}",
+            serde_json::to_string(&msg).expect("JSON 序列化")
+        )
+        .map_err(|e| format!("LSP 写入失败: {e}"))?;
         lock.flush().ok();
 
         if is_notification {
@@ -284,10 +310,15 @@ pub async fn lsp_request(
             Ok(Ok(json_rpc_response)) => {
                 // 从 JSON-RPC 信封中提取 result 或 error
                 if let Some(err) = json_rpc_response.get("error") {
-                    let msg = err.get("message").and_then(|v| v.as_str()).unwrap_or("LSP 错误");
+                    let msg = err
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("LSP 错误");
                     return Err(format!("LSP 错误: {msg}"));
                 }
-                let result = json_rpc_response.get("result").cloned()
+                let result = json_rpc_response
+                    .get("result")
+                    .cloned()
                     .unwrap_or(Value::Null);
                 Ok(result)
             }
@@ -345,16 +376,42 @@ mod tests {
     #[test]
     fn test_all_registered_languages_have_lsp() {
         let langs = [
-            "python", "rust", "go", "typescript", "javascript",
-            "java", "c", "cpp", "csharp", "ruby", "lua", "php",
-            "swift", "dart", "haskell", "elixir", "erlang", "zig",
-            "bash", "shell", "html", "css", "scss", "less",
-            "yaml", "yml", "scala", "r", "nix", "ocaml",
+            "python",
+            "rust",
+            "go",
+            "typescript",
+            "javascript",
+            "java",
+            "c",
+            "cpp",
+            "csharp",
+            "ruby",
+            "lua",
+            "php",
+            "swift",
+            "dart",
+            "haskell",
+            "elixir",
+            "erlang",
+            "zig",
+            "bash",
+            "shell",
+            "html",
+            "css",
+            "scss",
+            "less",
+            "yaml",
+            "yml",
+            "scala",
+            "r",
+            "nix",
+            "ocaml",
         ];
         for lang in &langs {
             assert!(
                 detect_lsp(lang).is_some(),
-                "LSP should be configured for: {}", lang
+                "LSP should be configured for: {}",
+                lang
             );
         }
     }

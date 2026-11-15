@@ -134,8 +134,7 @@ fn serve_local_http(stream: &mut TcpStream) {
             Ok(0) => break, // 客户端关闭
             Ok(n) => {
                 buf.extend_from_slice(&chunk[..n]);
-                if buf.windows(4).any(|w| w == b"\r\n\r\n")
-                    || buf.windows(2).any(|w| w == b"\n\n")
+                if buf.windows(4).any(|w| w == b"\r\n\r\n") || buf.windows(2).any(|w| w == b"\n\n")
                 {
                     break; // 请求头读完
                 }
@@ -220,7 +219,10 @@ async fn e2e_connect_external_full_flow() {
             let t = cdp_targets(Some(agent)).expect("targets 应成功");
             let v: Value = serde_json::from_str(&t).expect("targets 返回应可解析");
             let pages = v["targets"].as_array().expect("targets 应含 targets 数组");
-            if let Some(p) = pages.iter().find(|p| p["url"].as_str().unwrap_or("").contains("127.0.0.1")) {
+            if let Some(p) = pages
+                .iter()
+                .find(|p| p["url"].as_str().unwrap_or("").contains("127.0.0.1"))
+            {
                 break p["id"].as_str().unwrap_or("").to_string();
             }
             if Instant::now() > deadline {
@@ -293,13 +295,14 @@ async fn e2e_connect_external_full_flow() {
     let mut click_attempt = 0;
     loop {
         click_attempt += 1;
-        let c = cdp_click(&link_ref, Some(agent)).await.expect("click 应成功");
+        let c = cdp_click(&link_ref, Some(agent))
+            .await
+            .expect("click 应成功");
         if c.contains("URL 变化") {
             break;
         }
         if click_attempt >= 3 {
-            let t =
-                cdp_targets(Some(agent)).unwrap_or_else(|e| format!("targets 查询失败: {e}"));
+            let t = cdp_targets(Some(agent)).unwrap_or_else(|e| format!("targets 查询失败: {e}"));
             panic!(
                 "click 世界反馈应报 URL 变化（回归 e1679a0/bfbcd95，{click_attempt} 次点击仍无导航）: {c}\n点击后 targets 状态: {t}"
             );
@@ -349,7 +352,10 @@ async fn e2e_launch_controlled_kill_and_profile_cleanup() {
     assert!(out.contains("\"launched\""), "launch 返回异常: {out}");
 
     let t = cdp_targets(Some(agent)).expect("targets 应成功");
-    assert!(t.contains("example.com"), "受控 Chrome 应打开 example.com: {t}");
+    assert!(
+        t.contains("example.com"),
+        "受控 Chrome 应打开 example.com: {t}"
+    );
 
     // kill：受控 Chrome 必须真的终止
     let k = cdp_kill(Some(agent)).expect("kill 应成功");
@@ -391,7 +397,10 @@ async fn wait_target_with_url(agent: &str, needle: &str, timeout: Duration) -> S
         let t = cdp_targets(Some(agent)).expect("targets 应成功");
         let v: Value = serde_json::from_str(&t).expect("targets 返回应可解析");
         let pages = v["targets"].as_array().expect("targets 应含 targets 数组");
-        if let Some(p) = pages.iter().find(|p| p["url"].as_str().unwrap_or("").contains(needle)) {
+        if let Some(p) = pages
+            .iter()
+            .find(|p| p["url"].as_str().unwrap_or("").contains(needle))
+        {
             return p["id"].as_str().unwrap_or("").to_string();
         }
         if Instant::now() > deadline {
@@ -456,13 +465,26 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
 <body><h1>Page B</h1><p id="body-text">Second page for navigation history</p></body></html>"#,
     )
     .expect("写 page-b");
-    let page_a_url = url::Url::from_file_path(&page_a).expect("file URL 转换").to_string();
-    let page_b_url = url::Url::from_file_path(&page_b).expect("file URL 转换").to_string();
+    let page_a_url = url::Url::from_file_path(&page_a)
+        .expect("file URL 转换")
+        .to_string();
+    let page_b_url = url::Url::from_file_path(&page_b)
+        .expect("file URL 转换")
+        .to_string();
 
     let agent = "e2e-round2-agent";
-    let out = cdp_launch(Some(page_a_url.clone()), Some(E2E_NAV_PORT), None, None, None, None, None, Some(agent))
-        .await
-        .expect("launch 应成功");
+    let out = cdp_launch(
+        Some(page_a_url.clone()),
+        Some(E2E_NAV_PORT),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(agent),
+    )
+    .await
+    .expect("launch 应成功");
     assert!(out.contains("\"launched\""), "launch 返回异常: {out}");
 
     let target_id = wait_target_with_url(agent, "page-a.html", Duration::from_secs(10)).await;
@@ -482,9 +504,15 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
     .expect("content text 应成功");
     let v: Value = serde_json::from_str(&c).expect("content 返回应可解析");
     assert_eq!(v["title"].as_str(), Some("Hologram CDP E2E Page A"));
-    assert!(v["url"].as_str().unwrap_or("").contains("page-a.html"), "{c}");
     assert!(
-        v["text"].as_str().unwrap_or("").contains("Hello content probe"),
+        v["url"].as_str().unwrap_or("").contains("page-a.html"),
+        "{c}"
+    );
+    assert!(
+        v["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Hello content probe"),
         "text 正文应含页面文本: {c}"
     );
 
@@ -499,7 +527,10 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
     .await
     .expect("content 分页第一页应成功");
     let v1: Value = serde_json::from_str(&c1).expect("content 返回应可解析");
-    assert!(v1["truncated"].as_bool().unwrap_or(false), "第一页应截断: {c1}");
+    assert!(
+        v1["truncated"].as_bool().unwrap_or(false),
+        "第一页应截断: {c1}"
+    );
     let c2 = cdp_content(
         Some("#content".into()),
         Some("text".into()),
@@ -539,7 +570,11 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
     let name = runtime_evaluate("document.getElementById('name').value", Some(agent))
         .await
         .expect("读 name 值");
-    assert_eq!(name.as_str(), Some("fresh value"), "replace 后输入框值应为全新文本");
+    assert_eq!(
+        name.as_str(),
+        Some("fresh value"),
+        "replace 后输入框值应为全新文本"
+    );
 
     // select：value 匹配，再切到可见文本匹配。
     let s1 = cdp_select("#choice", "b", Some(agent))
@@ -560,7 +595,9 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
     assert_eq!(vs2["selected"].as_str(), Some("Option A"));
 
     // hover：mouseMoved 应触发真实 mouseenter。
-    let hov = cdp_hover("#hover-zone", Some(agent)).await.expect("hover 应成功");
+    let hov = cdp_hover("#hover-zone", Some(agent))
+        .await
+        .expect("hover 应成功");
     assert!(hov.contains(r#""hovered""#), "hover 返回异常: {hov}");
     let hovered = runtime_evaluate("window.__hovered === true", Some(agent))
         .await
@@ -577,7 +614,11 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
     let combo_state = runtime_evaluate("window.__combo", Some(agent))
         .await
         .expect("读组合键标记");
-    assert_eq!(combo_state.as_str(), Some("ctrl+a"), "页面应收到 ctrlKey=true 的 a 键");
+    assert_eq!(
+        combo_state.as_str(),
+        Some("ctrl+a"),
+        "页面应收到 ctrlKey=true 的 a 键"
+    );
 
     // upload：selector 回退路径 DOM.setFileInputFiles。
     let upload_file = dir.join("upload.txt");
@@ -589,14 +630,21 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
     )
     .await
     .expect("upload 应成功");
-    assert!(up.contains(r#""via":"selector""#), "upload 应走 selector 回退: {up}");
+    assert!(
+        up.contains(r#""via":"selector""#),
+        "upload 应走 selector 回退: {up}"
+    );
     let uploaded = runtime_evaluate(
         "document.getElementById('upload').files.length + ':' + document.getElementById('upload').files[0].name",
         Some(agent),
     )
     .await
     .expect("读 upload files");
-    assert_eq!(uploaded.as_str(), Some("1:upload.txt"), "input.files 应为注入文件");
+    assert_eq!(
+        uploaded.as_str(),
+        Some("1:upload.txt"),
+        "input.files 应为注入文件"
+    );
 
     // dialog：observer 捕获 javascriptDialogOpening，handle 后页面继续执行。
     let _ = cdp_eval(
@@ -622,18 +670,33 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
     let handled = cdp_handle_dialog(true, None, Some(agent))
         .await
         .expect("dialog accept 应成功");
-    assert!(handled.contains(r#""handled":true"#), "dialog 返回异常: {handled}");
+    assert!(
+        handled.contains(r#""handled":true"#),
+        "dialog 返回异常: {handled}"
+    );
     let dialog_done = runtime_evaluate("window.__dialogDone === true", Some(agent))
         .await
         .expect("读 dialog 完成标记");
-    assert_eq!(dialog_done.as_bool(), Some(true), "alert 处理完后页面脚本应继续");
+    assert_eq!(
+        dialog_done.as_bool(),
+        Some(true),
+        "alert 处理完后页面脚本应继续"
+    );
 
     // screenshot：fullPage 落盘（P0b 起不再有 inline data URL——那是上下文炸弹）。
-    let shot = cdp_screenshot(true, Some(agent)).await.expect("screenshot 应成功");
+    let shot = cdp_screenshot(true, Some(agent))
+        .await
+        .expect("screenshot 应成功");
     let vshot: Value = serde_json::from_str(&shot).expect("screenshot 返回应可解析");
     assert_eq!(vshot["fullPage"].as_bool(), Some(true));
-    assert!(vshot["bytes"].as_u64().unwrap_or(0) > 0, "截图应有字节读数: {shot}");
-    assert!(vshot["dataUrl"].is_null(), "P0b 起不得再回 data URL: {shot}");
+    assert!(
+        vshot["bytes"].as_u64().unwrap_or(0) > 0,
+        "截图应有字节读数: {shot}"
+    );
+    assert!(
+        vshot["dataUrl"].is_null(),
+        "P0b 起不得再回 data URL: {shot}"
+    );
     assert!(
         vshot["path"].as_str().unwrap_or("").ends_with(".png"),
         "截图应落盘为 PNG: {shot}"
@@ -665,28 +728,45 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
     let marker_after = runtime_evaluate("typeof window.__hgReloadMarker", Some(agent))
         .await
         .expect("读 reload 后 marker");
-    assert_eq!(marker_after.as_str(), Some("undefined"), "reload 后旧 JS 变量应消失");
+    assert_eq!(
+        marker_after.as_str(),
+        Some("undefined"),
+        "reload 后旧 JS 变量应消失"
+    );
 
     // tab 管理：新开 tab 自动 attach；关闭当前 attach tab 后会话回到未 attach。
     let nt = cdp_new_tab(Some(page_a_url.clone()), Some(agent))
         .await
         .expect("new_tab 应成功");
     let vnt: Value = serde_json::from_str(&nt).expect("new_tab 返回应可解析");
-    let new_tab_id = vnt["targetId"].as_str().expect("new_tab 应返回 targetId").to_string();
+    let new_tab_id = vnt["targetId"]
+        .as_str()
+        .expect("new_tab 应返回 targetId")
+        .to_string();
     wait_page_ready(agent).await;
     let new_h1 = runtime_evaluate("document.querySelector('h1').textContent", Some(agent))
         .await
         .expect("读新 tab 标题");
-    assert_eq!(new_h1.as_str(), Some("Page A"), "new_tab 后应自动 attach 到新页面");
+    assert_eq!(
+        new_h1.as_str(),
+        Some("Page A"),
+        "new_tab 后应自动 attach 到新页面"
+    );
     let closed = cdp_close_tab(&new_tab_id, Some(agent)).expect("close_tab 应成功");
-    assert!(closed.contains(r#""closed":true"#), "close_tab 返回异常: {closed}");
+    assert!(
+        closed.contains(r#""closed":true"#),
+        "close_tab 返回异常: {closed}"
+    );
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let targets = cdp_targets(Some(agent)).expect("targets 应成功");
         let vt: Value = serde_json::from_str(&targets).expect("targets 返回应可解析");
         let still_there = vt["targets"]
             .as_array()
-            .map(|arr| arr.iter().any(|t| t["id"].as_str() == Some(new_tab_id.as_str())))
+            .map(|arr| {
+                arr.iter()
+                    .any(|t| t["id"].as_str() == Some(new_tab_id.as_str()))
+            })
             .unwrap_or(false);
         if !still_there {
             break;
@@ -707,7 +787,6 @@ window.addEventListener('load', () => { document.getElementById('hover-zone').ad
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
-
 
 /// E2E-4：第三批 round3 —— headless/windowSize 启动 + network 配对/详情 + AX snapshot。
 /// 本地 HTTP 服务提供真实网络事件；file:// 页面不可靠地产生 Network 事件，
@@ -739,7 +818,11 @@ async fn e2e_headless_window_network_and_ax_snapshot() {
     .await
     .expect("headless launch 应成功");
     let v: Value = serde_json::from_str(&out).expect("launch 返回应可解析");
-    assert_eq!(v["headless"].as_bool(), Some(true), "launch 应回显 headless: {out}");
+    assert_eq!(
+        v["headless"].as_bool(),
+        Some(true),
+        "launch 应回显 headless: {out}"
+    );
     assert_eq!(
         v["windowSize"]["width"].as_u64(),
         Some(800),
@@ -755,7 +838,10 @@ async fn e2e_headless_window_network_and_ax_snapshot() {
             let vd: Value = serde_json::from_str(&disc).expect("discover 返回应可解析");
             let seen = vd["instances"]
                 .as_array()
-                .map(|arr| arr.iter().any(|i| i["port"].as_u64() == Some(E2E_HEADLESS_PORT as u64)))
+                .map(|arr| {
+                    arr.iter()
+                        .any(|i| i["port"].as_u64() == Some(E2E_HEADLESS_PORT as u64))
+                })
                 .unwrap_or(false);
             if seen {
                 break;
@@ -776,7 +862,9 @@ async fn e2e_headless_window_network_and_ax_snapshot() {
     // observer 缓冲为空的整租跑实测），用带 cache-bust 查询的 URL 强制真导航；
     // 页面内 fetch('/api.json') 是绝对路径，不受页面查询串影响。
     let busted = format!("{page_url}?hg_e2e_reload={}", std::process::id());
-    let n = cdp_navigate(&busted, Some(agent)).await.expect("navigate 应成功");
+    let n = cdp_navigate(&busted, Some(agent))
+        .await
+        .expect("navigate 应成功");
     assert!(n.contains("navigated"), "navigate 应返回本次导航目标: {n}");
     wait_page_ready(agent).await;
 
@@ -804,12 +892,15 @@ async fn e2e_headless_window_network_and_ax_snapshot() {
         loop {
             let net = cdp_network(Some(agent), Some(50));
             let vn: Value = serde_json::from_str(&net).expect("network 返回应可解析");
-            if let Some(entry) = vn["entries"]
-                .as_array()
-                .and_then(|arr| arr.iter().find(|e| e["url"].as_str().unwrap_or("").contains("/api.json")))
-            {
+            if let Some(entry) = vn["entries"].as_array().and_then(|arr| {
+                arr.iter()
+                    .find(|e| e["url"].as_str().unwrap_or("").contains("/api.json"))
+            }) {
                 break (
-                    entry["requestId"].as_str().expect("network 条目应含 requestId").to_string(),
+                    entry["requestId"]
+                        .as_str()
+                        .expect("network 条目应含 requestId")
+                        .to_string(),
                     entry["url"].as_str().unwrap_or("").to_string(),
                 );
             }
@@ -826,12 +917,19 @@ async fn e2e_headless_window_network_and_ax_snapshot() {
         Some(request_url.as_str()),
         "detail 应返回完整请求 URL: {detail}"
     );
-    assert_eq!(vd["entry"]["status"].as_u64(), Some(200), "detail 状态应为 200: {detail}");
+    assert_eq!(
+        vd["entry"]["status"].as_u64(),
+        Some(200),
+        "detail 状态应为 200: {detail}"
+    );
 
     // 第四批 HAR 导出：写入临时目录的 HAR 文件必须可读且含已观察请求。
     let har_out = cdp_network_har(Some(agent), Some(50)).expect("network_har 应成功");
     let vh: Value = serde_json::from_str(&har_out).expect("network_har 返回应可解析");
-    let har_path = vh["path"].as_str().expect("network_har 应返回 path").to_string();
+    let har_path = vh["path"]
+        .as_str()
+        .expect("network_har 应返回 path")
+        .to_string();
     let har_bytes = vh["bytes"].as_u64().expect("network_har 应返回 bytes");
     assert!(har_bytes > 0, "HAR 文件不应为空: {har_out}");
     let har_text = std::fs::read_to_string(&har_path).expect("HAR 文件应可读");
@@ -840,7 +938,10 @@ async fn e2e_headless_window_network_and_ax_snapshot() {
     assert!(
         har_json["log"]["entries"]
             .as_array()
-            .map(|arr| arr.iter().any(|e| e["request"]["url"].as_str().unwrap_or("").contains("/api.json")))
+            .map(|arr| arr.iter().any(|e| e["request"]["url"]
+                .as_str()
+                .unwrap_or("")
+                .contains("/api.json")))
             .unwrap_or(false),
         "HAR 应包含 /api.json 请求: {har_text}"
     );
@@ -850,7 +951,11 @@ async fn e2e_headless_window_network_and_ax_snapshot() {
         .await
         .expect("snapshot 应成功");
     let vs: Value = serde_json::from_str(&snap).expect("snapshot 返回应可解析");
-    assert_eq!(vs["source"].as_str(), Some("ax"), "真实 Chrome 应优先走 AX 树: {snap}");
+    assert_eq!(
+        vs["source"].as_str(),
+        Some("ax"),
+        "真实 Chrome 应优先走 AX 树: {snap}"
+    );
     let found = vs["refs"]
         .as_array()
         .map(|arr| {
@@ -881,11 +986,22 @@ async fn e2e_headless_window_network_and_ax_snapshot() {
     // 会拿旧值（1.0）——Chrome 151 headless 实测。轮询等到 2，w/h 每轮都断言。
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let inner = runtime_evaluate("({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio })", Some(agent))
-            .await
-            .expect("读覆盖后视口应成功");
-        assert_eq!(inner["w"].as_i64(), Some(640), "Emulation 后 innerWidth 应为 640: {inner}");
-        assert_eq!(inner["h"].as_i64(), Some(480), "Emulation 后 innerHeight 应为 480: {inner}");
+        let inner = runtime_evaluate(
+            "({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio })",
+            Some(agent),
+        )
+        .await
+        .expect("读覆盖后视口应成功");
+        assert_eq!(
+            inner["w"].as_i64(),
+            Some(640),
+            "Emulation 后 innerWidth 应为 640: {inner}"
+        );
+        assert_eq!(
+            inner["h"].as_i64(),
+            Some(480),
+            "Emulation 后 innerHeight 应为 480: {inner}"
+        );
         if inner["dpr"].as_f64() == Some(2.0) {
             break;
         }
@@ -910,8 +1026,7 @@ async fn e2e_multi_account_profiles_and_cookies() {
     if skip_if_no_chrome() {
         return;
     }
-    if list_targets_raw(E2E_ACCOUNT_A_PORT).is_ok()
-        || list_targets_raw(E2E_ACCOUNT_B_PORT).is_ok()
+    if list_targets_raw(E2E_ACCOUNT_A_PORT).is_ok() || list_targets_raw(E2E_ACCOUNT_B_PORT).is_ok()
     {
         eprintln!("[cdp-e2e] 跳过：账号 e2e 端口已被占用（上次崩溃残留？）");
         return;
@@ -941,15 +1056,29 @@ async fn e2e_multi_account_profiles_and_cookies() {
     .await
     .expect("账号 A launch 应成功");
     let va: Value = serde_json::from_str(&out_a).expect("账号 A launch 返回应可解析");
-    assert_eq!(va["slot"].as_str(), Some(profile_a), "账号 A 应回显 slot: {out_a}");
+    assert_eq!(
+        va["slot"].as_str(),
+        Some(profile_a),
+        "账号 A 应回显 slot: {out_a}"
+    );
 
     let target_a = wait_target_with_url(agent, "127.0.0.1", Duration::from_secs(10)).await;
     cdp_attach(&target_a, Some(agent)).expect("账号 A attach 应成功");
     wait_page_ready(agent).await;
 
     let set = cdp_cookies(
-        "set", None, Some(page_url.clone()), Some("acct".into()), Some("A".into()),
-        None, None, None, None, None, None, Some(agent),
+        "set",
+        None,
+        Some(page_url.clone()),
+        Some("acct".into()),
+        Some("A".into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(agent),
     )
     .await
     .expect("账号 A set cookie 应成功");
@@ -969,15 +1098,29 @@ async fn e2e_multi_account_profiles_and_cookies() {
     .await
     .expect("账号 B launch 应成功");
     let vb: Value = serde_json::from_str(&out_b).expect("账号 B launch 返回应可解析");
-    assert_eq!(vb["slot"].as_str(), Some(profile_b), "账号 B 应回显 slot: {out_b}");
+    assert_eq!(
+        vb["slot"].as_str(),
+        Some(profile_b),
+        "账号 B 应回显 slot: {out_b}"
+    );
 
     let target_b = wait_target_with_url(agent, "127.0.0.1", Duration::from_secs(10)).await;
     cdp_attach(&target_b, Some(agent)).expect("账号 B attach 应成功");
     wait_page_ready(agent).await;
 
     let list_b = cdp_cookies(
-        "list", Some(vec![page_url.clone()]), None, None, None, None, None, None,
-        None, None, None, Some(agent),
+        "list",
+        Some(vec![page_url.clone()]),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(agent),
     )
     .await
     .expect("账号 B list cookie 应成功");
@@ -988,10 +1131,23 @@ async fn e2e_multi_account_profiles_and_cookies() {
 
     // switch 回 A：cookie 应仍在（具名 profile 持久 + 会话隔离）。
     let sw = cdp_switch_session(Some(profile_a.into()), Some(agent)).expect("切回账号 A 应成功");
-    assert!(sw.contains(r#""status":"switched""#), "switch 返回异常: {sw}");
+    assert!(
+        sw.contains(r#""status":"switched""#),
+        "switch 返回异常: {sw}"
+    );
     let list_a = cdp_cookies(
-        "list", Some(vec![page_url.clone()]), None, None, None, None, None, None,
-        None, None, None, Some(agent),
+        "list",
+        Some(vec![page_url.clone()]),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(agent),
     )
     .await
     .expect("账号 A list cookie 应成功");
@@ -1001,12 +1157,25 @@ async fn e2e_multi_account_profiles_and_cookies() {
     );
 
     let del = cdp_cookies(
-        "delete", None, Some(page_url.clone()), Some("acct".into()), None,
-        None, None, None, None, None, None, Some(agent),
+        "delete",
+        None,
+        Some(page_url.clone()),
+        Some("acct".into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(agent),
     )
     .await
     .expect("账号 A delete cookie 应成功");
-    assert!(del.contains(r#""deleted":true"#), "delete cookie 返回异常: {del}");
+    assert!(
+        del.contains(r#""deleted":true"#),
+        "delete cookie 返回异常: {del}"
+    );
 
     // 收尾：两个受控 Chrome 都 kill；具名 profile 目录由测试自行清理。
     cdp_kill(Some(agent)).expect("kill 账号 A 应成功");

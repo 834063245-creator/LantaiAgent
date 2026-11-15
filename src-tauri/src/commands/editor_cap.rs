@@ -75,9 +75,8 @@ pub(crate) fn checked_write_atomic(
     new_content: &str,
 ) -> Result<(), String> {
     let _guard = EDIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let current = std::fs::read_to_string(file_path).map_err(|e| {
-        format!("无法重读文件以校验并发安全，已取消写入: {file_path}: {e}")
-    })?;
+    let current = std::fs::read_to_string(file_path)
+        .map_err(|e| format!("无法重读文件以校验并发安全，已取消写入: {file_path}: {e}"))?;
     if current != expected_base {
         return Err(format!(
             "文件在编辑过程中被并发修改，请重试（old_string 基于旧内容）: {}",
@@ -163,144 +162,168 @@ async fn edit_file(ctx: &EditorCtx<'_>, args: &Value) -> Result<Value, ToolError
     // Rust 内闭合，不再外溢为模型侧重试风暴。
     const EDIT_RACE_ATTEMPTS: usize = 3;
     'retry: for attempt in 0..EDIT_RACE_ATTEMPTS {
-    // 循环体保持原缩进（机械包裹，避免整段重排的 diff 噪声）
-    let (_, content) = crate::confined_fs::read_text_unchecked(&file_path, is_agent, agent_id, state, false, None, None)
+        // 循环体保持原缩进（机械包裹，避免整段重排的 diff 噪声）
+        let (_, content) = crate::confined_fs::read_text_unchecked(
+            &file_path, is_agent, agent_id, state, false, None, None,
+        )
         .await
         .map_err(ToolError::Tool)?;
 
-    if old_string.is_empty() {
-        return Err(ToolError::InvalidArgs("old_string 不能为空".to_string()));
-    }
-
-    // 容错模式的替换执行（写回 out 后返回 diff 快照）
-    let fallback = |start: usize, old_lines: &[&str], new_ls: &[&str], file_lines: &[&str]| -> String {
-        let mut out = String::new();
-        for l in &file_lines[..start] { out.push_str(l); out.push('\n'); }
-        for nl in new_ls { out.push_str(nl); out.push('\n'); }
-        for l in &file_lines[start + old_lines.len()..] {
-            out.push_str(l); out.push('\n');
+        if old_string.is_empty() {
+            return Err(ToolError::InvalidArgs("old_string 不能为空".to_string()));
         }
-        out
-    };
 
-    let count = if replace_all {
-        content.matches(&old_string).count()
-    } else {
-        let c = content.matches(&old_string).count();
-        if c == 0 {
-            // Whitespace-tolerant: match line-by-line after trimming each line.
-            let old_lines: Vec<&str> = old_string.lines().collect();
-            if !old_lines.is_empty() {
-                let file_lines: Vec<&str> = content.lines().collect();
-                let first_trimmed = old_lines[0].trim();
-                for start in 0..file_lines.len() {
-                    if file_lines[start].trim() != first_trimmed { continue; }
-                    let mut matched = true;
-                    for k in 1..old_lines.len() {
-                        if start + k >= file_lines.len()
-                            || file_lines[start + k].trim() != old_lines[k].trim()
-                        { matched = false; break; }
-                    }
-                    if matched && start + old_lines.len() <= file_lines.len() {
-                        // 写回时 new_string 按调用者原样（每行保留自身缩进），
-                        // 不再做「首行补 prefix、后续行 trim」的不可预测改写。
-                        let new_ls: Vec<&str> = new_string.lines().collect();
-                        let mut out = fallback(start, &old_lines, &new_ls, &file_lines);
-                        // 保持原文件的末尾换行状态：原文件无末尾换行则不补。
-                        // （此前 trim_end_matches('\n') 会删掉所有末尾换行，
-                        //   导致每次容错编辑后文件变成 no-newline-at-EOF。）
-                        if !content.ends_with('\n') && out.ends_with('\n') {
-                            out.pop();
+        // 容错模式的替换执行（写回 out 后返回 diff 快照）
+        let fallback =
+            |start: usize, old_lines: &[&str], new_ls: &[&str], file_lines: &[&str]| -> String {
+                let mut out = String::new();
+                for l in &file_lines[..start] {
+                    out.push_str(l);
+                    out.push('\n');
+                }
+                for nl in new_ls {
+                    out.push_str(nl);
+                    out.push('\n');
+                }
+                for l in &file_lines[start + old_lines.len()..] {
+                    out.push_str(l);
+                    out.push('\n');
+                }
+                out
+            };
+
+        let count = if replace_all {
+            content.matches(&old_string).count()
+        } else {
+            let c = content.matches(&old_string).count();
+            if c == 0 {
+                // Whitespace-tolerant: match line-by-line after trimming each line.
+                let old_lines: Vec<&str> = old_string.lines().collect();
+                if !old_lines.is_empty() {
+                    let file_lines: Vec<&str> = content.lines().collect();
+                    let first_trimmed = old_lines[0].trim();
+                    for start in 0..file_lines.len() {
+                        if file_lines[start].trim() != first_trimmed {
+                            continue;
                         }
-                        // 乐观并发检查 + 原子写入在同一临界区（锁内重读校验，
-                        // fail-closed）；timeline 记录等后续动作在锁外。
-                        // 内容漂移 → 命令内重读重算，不惊动模型。
-                        match checked_write_atomic(&file_path, &content, &out) {
-                            Ok(()) => {}
-                            Err(e)
-                                if (e.contains("并发修改") || e.contains("无法重读"))
-                                    && attempt + 1 < EDIT_RACE_ATTEMPTS =>
+                        let mut matched = true;
+                        for k in 1..old_lines.len() {
+                            if start + k >= file_lines.len()
+                                || file_lines[start + k].trim() != old_lines[k].trim()
                             {
-                                continue 'retry;
+                                matched = false;
+                                break;
                             }
-                            Err(e) => return Err(ToolError::Tool(e)),
                         }
-                        let match_line = start + 1;
-                        let ds = build_line_diff(&content, &out);
-                        return Ok(Value::String(format!(
+                        if matched && start + old_lines.len() <= file_lines.len() {
+                            // 写回时 new_string 按调用者原样（每行保留自身缩进），
+                            // 不再做「首行补 prefix、后续行 trim」的不可预测改写。
+                            let new_ls: Vec<&str> = new_string.lines().collect();
+                            let mut out = fallback(start, &old_lines, &new_ls, &file_lines);
+                            // 保持原文件的末尾换行状态：原文件无末尾换行则不补。
+                            // （此前 trim_end_matches('\n') 会删掉所有末尾换行，
+                            //   导致每次容错编辑后文件变成 no-newline-at-EOF。）
+                            if !content.ends_with('\n') && out.ends_with('\n') {
+                                out.pop();
+                            }
+                            // 乐观并发检查 + 原子写入在同一临界区（锁内重读校验，
+                            // fail-closed）；timeline 记录等后续动作在锁外。
+                            // 内容漂移 → 命令内重读重算，不惊动模型。
+                            match checked_write_atomic(&file_path, &content, &out) {
+                                Ok(()) => {}
+                                Err(e)
+                                    if (e.contains("并发修改") || e.contains("无法重读"))
+                                        && attempt + 1 < EDIT_RACE_ATTEMPTS =>
+                                {
+                                    continue 'retry;
+                                }
+                                Err(e) => return Err(ToolError::Tool(e)),
+                            }
+                            let match_line = start + 1;
+                            let ds = build_line_diff(&content, &out);
+                            return Ok(Value::String(format!(
                             "已替换 1 处匹配（容错模式：逐行对齐）— {} (第 {} 行附近)\n```diff\n{}\n```",
                             file_path, match_line, ds
                         )));
+                        }
+                        break;
                     }
-                    break;
                 }
+                let first_line = old_string.lines().next().unwrap_or("(empty)");
+                let best = crate::utils::fuzzy_find(&content, first_line);
+                let hint = match best {
+                    Some((ln, ctxx)) => format!("line {}: {}", ln, ctxx),
+                    None => format!(
+                        "file starts: {}",
+                        content.lines().take(3).collect::<Vec<_>>().join(" | ")
+                    ),
+                };
+                let key = truncate_err_key(first_line);
+                return Err(ToolError::Tool(format!(
+                    "not found: \"{}\" | {}",
+                    key, hint
+                )));
             }
-            let first_line = old_string.lines().next().unwrap_or("(empty)");
-            let best = crate::utils::fuzzy_find(&content, first_line);
-            let hint = match best {
-                Some((ln, ctxx)) => format!("line {}: {}", ln, ctxx),
-                None => format!("file starts: {}",
-                    content.lines().take(3).collect::<Vec<_>>().join(" | ")),
-            };
-            let key = truncate_err_key(first_line);
-            return Err(ToolError::Tool(format!("not found: \"{}\" | {}", key, hint)));
-        }
-        if c > 1 {
-            return Err(ToolError::Tool(format!(
+            if c > 1 {
+                return Err(ToolError::Tool(format!(
                 "old_string 在文件中出现了 {} 次，不是唯一的。请添加更多上下文使其唯一，或设置 replace_all: true。",
                 c
             )));
+            }
+            c
+        };
+
+        let new_content = if replace_all {
+            content.replace(&old_string, &new_string)
+        } else {
+            content.replacen(&old_string, &new_string, 1)
+        };
+
+        // 乐观并发检查 + 原子写入在同一临界区（锁内重读校验，fail-closed）。
+        // 内容漂移 → 命令内重读重算，不惊动模型。
+        match checked_write_atomic(&file_path, &content, &new_content) {
+            Ok(()) => {}
+            Err(e)
+                if (e.contains("并发修改") || e.contains("无法重读"))
+                    && attempt + 1 < EDIT_RACE_ATTEMPTS =>
+            {
+                continue 'retry;
+            }
+            Err(e) => return Err(ToolError::Tool(e)),
         }
-        c
-    };
 
-    let new_content = if replace_all {
-        content.replace(&old_string, &new_string)
-    } else {
-        content.replacen(&old_string, &new_string, 1)
-    };
+        let first_match_line = content
+            .lines()
+            .enumerate()
+            .find(|(_, l)| l.contains(old_string.lines().next().unwrap_or("")))
+            .map(|(i, _)| i + 1)
+            .unwrap_or(0);
+        let line_info = if first_match_line > 0 {
+            format!(" (第 {} 行附近)", first_match_line)
+        } else {
+            String::new()
+        };
 
-    // 乐观并发检查 + 原子写入在同一临界区（锁内重读校验，fail-closed）。
-    // 内容漂移 → 命令内重读重算，不惊动模型。
-    match checked_write_atomic(&file_path, &content, &new_content) {
-        Ok(()) => {}
-        Err(e)
-            if (e.contains("并发修改") || e.contains("无法重读")) && attempt + 1 < EDIT_RACE_ATTEMPTS =>
-        {
-            continue 'retry;
-        }
-        Err(e) => return Err(ToolError::Tool(e)),
-    }
+        // 真实 before/after 行级 diff — 模型看到的就是文件里实际发生的变化
+        // （此前按 old_string 伪造的 snippet 在行内替换/replace_all 时会误导）。
+        let diff_snippet = build_line_diff(&content, &new_content);
 
-    let first_match_line = content.lines()
-        .enumerate()
-        .find(|(_, l)| l.contains(old_string.lines().next().unwrap_or("")))
-        .map(|(i, _)| i + 1)
-        .unwrap_or(0);
-    let line_info = if first_match_line > 0 {
-        format!(" (第 {} 行附近)", first_match_line)
-    } else {
-        String::new()
-    };
-
-    // 真实 before/after 行级 diff — 模型看到的就是文件里实际发生的变化
-    // （此前按 old_string 伪造的 snippet 在行内替换/replace_all 时会误导）。
-    let diff_snippet = build_line_diff(&content, &new_content);
-
-    return Ok(Value::String(if replace_all {
-        format!(
-            "已替换 {} 处匹配 — {}{}\n```diff\n{}\n```",
-            count, file_path, line_info, diff_snippet
-        )
-    } else {
-        format!(
-            "已替换 1 处匹配 — {}{}\n```diff\n{}\n```",
-            file_path, line_info, diff_snippet
-        )
-    }));
+        return Ok(Value::String(if replace_all {
+            format!(
+                "已替换 {} 处匹配 — {}{}\n```diff\n{}\n```",
+                count, file_path, line_info, diff_snippet
+            )
+        } else {
+            format!(
+                "已替换 1 处匹配 — {}{}\n```diff\n{}\n```",
+                file_path, line_info, diff_snippet
+            )
+        }));
     }
     // 防御性不可达：每轮必以 return/continue 收束；末轮并发拒绝也直返 Err。
-    Err(ToolError::Tool("文件被高频并发修改，编辑未落地，请重读后重试".to_string()))
+    Err(ToolError::Tool(
+        "文件被高频并发修改，编辑未落地，请重读后重试".to_string(),
+    ))
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -471,7 +494,10 @@ fn build_line_diff(before: &str, after: &str) -> String {
             .position(|o| *o != DiffOp::Del)
             .map(|p| b_pos[s0 + p] + 1)
             .unwrap_or(b_pos[s0]);
-        out.push_str(&format!("@@ -{},{} +{},{} @@\n", a_start, a_count, b_start, b_count));
+        out.push_str(&format!(
+            "@@ -{},{} +{},{} @@\n",
+            a_start, a_count, b_start, b_count
+        ));
         emitted += 1;
 
         for (idx, op) in ops.iter().enumerate().take(e0).skip(s0) {
@@ -638,11 +664,20 @@ mod tests {
     #[test]
     fn diff_inline_substring_replacement_shows_only_that_line() {
         // 行内替换 — 旧实现会把整行标 - / + 之外还伪造上下文；现在只显示真实变化。
-        let d = diff_of("line one\nfoo bar baz\nline three\n", "line one\nfoo QUX baz\nline three\n");
+        let d = diff_of(
+            "line one\nfoo bar baz\nline three\n",
+            "line one\nfoo QUX baz\nline three\n",
+        );
         assert!(d.contains("- foo bar baz"), "unexpected diff: {d}");
         assert!(d.contains("+ foo QUX baz"), "unexpected diff: {d}");
-        assert!(!d.contains("- line one"), "unchanged line must not be removed: {d}");
-        assert!(!d.contains("- line three"), "unchanged line must not be removed: {d}");
+        assert!(
+            !d.contains("- line one"),
+            "unchanged line must not be removed: {d}"
+        );
+        assert!(
+            !d.contains("- line three"),
+            "unchanged line must not be removed: {d}"
+        );
         // 尾部上下文行按标准 unified diff 正常显示（hunk 紧邻行）
         assert!(d.contains("  line three"), "tail context missing: {d}");
     }
@@ -662,7 +697,10 @@ mod tests {
         // replace_all 场景：两处相距 > 2*CTX 行的修改必须是两个独立 hunk，
         // 各自带 @@ 头（回归：旧渲染器 off-by-one 导致第二个 hunk 起丢头，
         // 无头变化直接拼接在上一 hunk 尾部，严重误导模型）。
-        let mids = (0..10).map(|i| format!("mid{i}")).collect::<Vec<_>>().join("\n");
+        let mids = (0..10)
+            .map(|i| format!("mid{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let before = format!("x1\n{mids}\nx2\n");
         let after = before.replacen("x1", "y1", 1).replacen("x2", "y2", 1);
         let d = diff_of(&before, &after);
@@ -689,10 +727,16 @@ mod tests {
         // 标准 unified diff：@@ 头在最前，行号含上下文行。
         // 文件头插入（全文仅 2 行，全部成为上下文）→ @@ -1,2 +1,3 @@
         let d = diff_of("a\nb\n", "new\na\nb\n");
-        assert!(d.starts_with("@@ -1,2 +1,3 @@\n+ new\n  a\n  b"), "unexpected diff: {d}");
+        assert!(
+            d.starts_with("@@ -1,2 +1,3 @@\n+ new\n  a\n  b"),
+            "unexpected diff: {d}"
+        );
         // 第 2 行替换（3 行文件全上下文）→ @@ -1,3 +1,3 @@
         let d2 = diff_of("a\nold\nc\n", "a\nnew\nc\n");
-        assert!(d2.starts_with("@@ -1,3 +1,3 @@\n  a\n- old\n+ new\n  c"), "unexpected diff: {d2}");
+        assert!(
+            d2.starts_with("@@ -1,3 +1,3 @@\n  a\n- old\n+ new\n  c"),
+            "unexpected diff: {d2}"
+        );
         // 纯插入且前方无上下文 → git 约定锚点 -k,0
         let d3 = diff_of("", "x\n");
         assert!(d3.starts_with("@@ -0,0 +1,1 @@"), "unexpected diff: {d3}");
@@ -701,7 +745,10 @@ mod tests {
     #[test]
     fn diff_whitespace_preserved() {
         // 容错模式：缩进差异必须原样显示（trim 会误导模型）。
-        let d = diff_of("fn a() {\n    let x = 1;\n}\n", "fn a() {\n  let x = 1;\n}\n");
+        let d = diff_of(
+            "fn a() {\n    let x = 1;\n}\n",
+            "fn a() {\n  let x = 1;\n}\n",
+        );
         assert!(d.contains("-     let x = 1;"), "indentation lost: {d}");
         assert!(d.contains("+   let x = 1;"), "indentation lost: {d}");
     }
@@ -709,8 +756,14 @@ mod tests {
     #[test]
     fn diff_truncation_guard() {
         // 全量变化（500 Del + 500 Ins）远超 400 行上限 → 必须截断并注明。
-        let before = (0..500).map(|i| format!("old line {i}")).collect::<Vec<_>>().join("\n");
-        let after = (0..500).map(|i| format!("new line {i}")).collect::<Vec<_>>().join("\n");
+        let before = (0..500)
+            .map(|i| format!("old line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let after = (0..500)
+            .map(|i| format!("new line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let d = diff_of(&before, &after);
         assert!(d.contains("已截断"), "expected truncation note: {d:?}");
     }

@@ -145,7 +145,14 @@
 ///      `LSP busy`（服务器还在索引）；只有真没装才给安装指引。
 ///   ⑤ 版本号说明：本版原拟 v10，与远端「仓库改名收口」撞号（后者已推送，
 ///      属既成事实），故本版重编号为 v11。
-pub const ENGINE_CONTRACT_VERSION: u32 = 11;
+/// v12（2026-11-15 全仓 rustfmt 首刷）：**模型可见面形状零变更**——工具名 / schema /
+/// 输出形态 / 壳方法清单 / 开关语义一律照旧，消费方无需跟改。本版登记的只是
+/// 契约面文件的**排版**变更：rustfmt 把 8 个契约面载体里的长行拆行、结构体字面量
+/// 展平、`use` 分组重排，内容语义逐字节未动（指纹算法按内容算，排版即变更）。
+///   为什么仍要升版：指纹 guard 的判据是「契约面文件 → 指纹」，它不区分改动是
+///   语义还是排版——这个设计是对的（任何内容变动都该经过一次显式确认），所以这里
+///   按纪律走完整流程，而不是给 guard 开例外。
+pub const ENGINE_CONTRACT_VERSION: u32 = 12;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard（本文件的
 /// `contract_face_fingerprint_matches`）对拍 `CONTRACT_FACE_FINGERPRINT`：
@@ -170,7 +177,7 @@ pub const ENGINE_CONTRACT_FILES: &[&str] = &[
 /// 实现细节：换行归一（CRLF→LF）——工作树 EOL 因 `.gitattributes` 归一而可能
 /// 与索引不同，指纹必须跟着**仓库内容**走；contract.rs 自身在哈希前剔除本行
 /// （自指），其余内容照常参与。
-pub const CONTRACT_FACE_FINGERPRINT: &str = "486df19d832bcc98";
+pub const CONTRACT_FACE_FINGERPRINT: &str = "7861dec69aabbb8a";
 
 /// 壳专属方法参数（最小形状；Phase 1 接线时并入 dispatch）。
 pub struct ShellParam {
@@ -321,7 +328,10 @@ pub fn contract_face_fingerprint() -> Result<String, String> {
         let content = if *rel == "engine/src/contract.rs" {
             normalized
                 .lines()
-                .filter(|l| !l.trim_start().starts_with("pub const CONTRACT_FACE_FINGERPRINT"))
+                .filter(|l| {
+                    !l.trim_start()
+                        .starts_with("pub const CONTRACT_FACE_FINGERPRINT")
+                })
                 .collect::<Vec<_>>()
                 .join("\n")
         } else {
@@ -378,11 +388,7 @@ mod tests {
     #[test]
     fn contract_face_fingerprint_matches() {
         let actual = contract_face_fingerprint().expect("契约面指纹可算");
-        assert_eq!(
-            actual.len(),
-            16,
-            "指纹形态应为 16 位十六进制（FNV-1a 64）"
-        );
+        assert_eq!(actual.len(), 16, "指纹形态应为 16 位十六进制（FNV-1a 64）");
         assert_eq!(
             actual, CONTRACT_FACE_FINGERPRINT,
             "契约面文件已变更——按契约纪律同 commit 完成三件事：\

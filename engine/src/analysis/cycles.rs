@@ -7,20 +7,34 @@ use std::collections::HashMap;
 
 pub fn detect_cycles(graph: &Graph) -> Vec<serde_json::Value> {
     let n = graph.node_count();
-    if n == 0 { return vec![]; }
+    if n == 0 {
+        return vec![];
+    }
     let node_ids: Vec<&str> = graph.node_ids().collect();
-    let id_to_idx: HashMap<&str, usize> = node_ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+    let id_to_idx: HashMap<&str, usize> = node_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (*id, i))
+        .collect();
     let mut adj = vec![vec![]; n];
     let mut skipped = 0usize;
     for (_, e) in graph.edges_iter() {
-        if let (Some(&s), Some(&t)) = (id_to_idx.get(e.source.as_str()), id_to_idx.get(e.target.as_str())) {
+        if let (Some(&s), Some(&t)) = (
+            id_to_idx.get(e.source.as_str()),
+            id_to_idx.get(e.target.as_str()),
+        ) {
             adj[s].push(t);
         } else {
             skipped += 1;
         }
     }
     if skipped > 0 {
-        tracing::debug!(skipped, total_nodes = n, "cycles(direct): {} edge targets unresolved (should be resolved by CrossFileResolver)", skipped);
+        tracing::debug!(
+            skipped,
+            total_nodes = n,
+            "cycles(direct): {} edge targets unresolved (should be resolved by CrossFileResolver)",
+            skipped
+        );
     }
     run_tarjan(&node_ids, &adj)
 }
@@ -28,8 +42,14 @@ pub fn detect_cycles(graph: &Graph) -> Vec<serde_json::Value> {
 pub fn detect_cycles_from_index(idx: &MemoryIndex) -> Vec<serde_json::Value> {
     let node_ids: Vec<String> = idx.nodes_iter().map(|n| n.id.as_str().to_owned()).collect();
     let n = node_ids.len();
-    if n == 0 { return vec![]; }
-    let id_to_idx: HashMap<&str, usize> = node_ids.iter().enumerate().map(|(i, id)| (id.as_str(), i)).collect();
+    if n == 0 {
+        return vec![];
+    }
+    let id_to_idx: HashMap<&str, usize> = node_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
     let mut adj = vec![vec![]; n];
     let mut skipped = 0usize;
     for (source, targets) in idx.edges_iter() {
@@ -48,7 +68,12 @@ pub fn detect_cycles_from_index(idx: &MemoryIndex) -> Vec<serde_json::Value> {
         }
     }
     if skipped > 0 {
-        tracing::debug!(skipped, total_nodes = n, "cycles: {} edge targets unresolved (likely external/stdlib deps)", skipped);
+        tracing::debug!(
+            skipped,
+            total_nodes = n,
+            "cycles: {} edge targets unresolved (likely external/stdlib deps)",
+            skipped
+        );
     }
     let node_refs: Vec<&str> = node_ids.iter().map(|s| s.as_str()).collect();
     run_tarjan(&node_refs, &adj)
@@ -62,33 +87,70 @@ fn run_tarjan(node_ids: &[&str], adj: &[Vec<usize>]) -> Vec<serde_json::Value> {
     let mut on_stack = vec![false; n];
     let mut stack = Vec::new();
     let mut sccs = Vec::new();
-    fn strongconnect(v: usize, adj: &[Vec<usize>], idx: &mut [u32], lowlink: &mut [u32],
-        on_stack: &mut [bool], stack: &mut Vec<usize>, index: &mut u32, sccs: &mut Vec<Vec<usize>>) {
-        idx[v] = *index; lowlink[v] = *index; *index += 1;
-        stack.push(v); on_stack[v] = true;
+    fn strongconnect(
+        v: usize,
+        adj: &[Vec<usize>],
+        idx: &mut [u32],
+        lowlink: &mut [u32],
+        on_stack: &mut [bool],
+        stack: &mut Vec<usize>,
+        index: &mut u32,
+        sccs: &mut Vec<Vec<usize>>,
+    ) {
+        idx[v] = *index;
+        lowlink[v] = *index;
+        *index += 1;
+        stack.push(v);
+        on_stack[v] = true;
         for &w in &adj[v] {
-            if idx[w] == u32::MAX { strongconnect(w, adj, idx, lowlink, on_stack, stack, index, sccs);
+            if idx[w] == u32::MAX {
+                strongconnect(w, adj, idx, lowlink, on_stack, stack, index, sccs);
                 lowlink[v] = lowlink[v].min(lowlink[w]);
-            } else if on_stack[w] { lowlink[v] = lowlink[v].min(idx[w]); }
+            } else if on_stack[w] {
+                lowlink[v] = lowlink[v].min(idx[w]);
+            }
         }
         if lowlink[v] == idx[v] {
             let mut comp = Vec::new();
-            loop { let w = stack.pop().expect("Tarjan 不变量：v 必在栈上，pop 必成功"); on_stack[w] = false; comp.push(w); if w == v { break; } }
+            loop {
+                let w = stack.pop().expect("Tarjan 不变量：v 必在栈上，pop 必成功");
+                on_stack[w] = false;
+                comp.push(w);
+                if w == v {
+                    break;
+                }
+            }
             sccs.push(comp);
         }
     }
-    for v in 0..n { if idx[v] == u32::MAX { strongconnect(v, adj, &mut idx, &mut lowlink, &mut on_stack, &mut stack, &mut index, &mut sccs); } }
+    for v in 0..n {
+        if idx[v] == u32::MAX {
+            strongconnect(
+                v,
+                adj,
+                &mut idx,
+                &mut lowlink,
+                &mut on_stack,
+                &mut stack,
+                &mut index,
+                &mut sccs,
+            );
+        }
+    }
 
-    sccs.into_iter().filter(|c| c.len() > 1).map(|c| {
-        let node_names: Vec<&str> = c.iter().map(|&i| node_ids[i]).collect();
-        serde_json::json!({ "nodes": node_names, "size": c.len() })
-    }).collect()
+    sccs.into_iter()
+        .filter(|c| c.len() > 1)
+        .map(|c| {
+            let node_names: Vec<&str> = c.iter().map(|&i| node_ids[i]).collect();
+            serde_json::json!({ "nodes": node_names, "size": c.len() })
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 
     #[test]
     fn test_cycles_empty_graph() {

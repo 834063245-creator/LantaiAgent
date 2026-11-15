@@ -12,7 +12,10 @@ use std::path::{Path, PathBuf};
 pub(crate) fn git_cmd() -> std::process::Command {
     let mut c = std::process::Command::new("git");
     #[cfg(windows)]
-    { use std::os::windows::process::CommandExt; c.creation_flags(crate::utils::HIDDEN_CONSOLE); }
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(crate::utils::HIDDEN_CONSOLE);
+    }
     c
 }
 
@@ -29,7 +32,10 @@ pub enum CleanupResult {
     /// 工作树无变更，已移除。
     NoChanges,
     /// 工作树有待处理变更 — 向用户展示 diff。
-    HasChanges { diff: String, worktree_path: PathBuf },
+    HasChanges {
+        diff: String,
+        worktree_path: PathBuf,
+    },
 }
 
 /// Agent 隔离状态 — worktree 生命周期 + 路径映射。
@@ -66,15 +72,11 @@ impl AgentIsolation {
         } else {
             format!("agent-{}", agent_id)
         };
-        let worktree_dir = main_repo_path
-            .join(".lantai")
-            .join("worktrees")
-            .join(&slug);
+        let worktree_dir = main_repo_path.join(".lantai").join("worktrees").join(&slug);
 
         // 如有需要则创建父目录
         if let Some(parent) = worktree_dir.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("无法创建工作树目录: {e}"))?;
+            std::fs::create_dir_all(parent).map_err(|e| format!("无法创建工作树目录: {e}"))?;
         }
 
         // 获取当前 HEAD
@@ -138,7 +140,13 @@ impl AgentIsolation {
         }
 
         let Ok(output) = git_cmd()
-            .args(["-C", &normalize(main_repo_path), "worktree", "list", "--porcelain"])
+            .args([
+                "-C",
+                &normalize(main_repo_path),
+                "worktree",
+                "list",
+                "--porcelain",
+            ])
             .output()
         else {
             return Vec::new();
@@ -271,7 +279,8 @@ impl AgentIsolation {
                 // （git diff 不含 untracked — 一并收集，避免误判"无变更"）
                 let diff = run_git(wt, &["diff"]).unwrap_or_default();
                 let stat = run_git(wt, &["diff", "--stat"]).unwrap_or_default();
-                let untracked = run_git(wt, &["ls-files", "--others", "--exclude-standard"]).unwrap_or_default();
+                let untracked = run_git(wt, &["ls-files", "--others", "--exclude-standard"])
+                    .unwrap_or_default();
                 if diff.trim().is_empty() && untracked.trim().is_empty() {
                     // 无变更可抢救 — 清理
                     let _ = remove_worktree(&self.main_repo_path, wt);
@@ -313,12 +322,19 @@ impl AgentIsolation {
         // 范围为空 = head 不是 original_head 的后代（reset / 切了无关分支）—
         // 退回单 commit cherry-pick（旧行为），别让空范围把 git 打挂。
         if commits.is_empty() {
-            return self.cherry_pick_and_clean(&head, wt, format!("已合并变更 (commit: {head_short})"));
+            return self.cherry_pick_and_clean(
+                &head,
+                wt,
+                format!("已合并变更 (commit: {head_short})"),
+            );
         }
         let label = if commits.len() > 1 {
             let first = commits[0];
             let first_short = &first[..8.min(first.len())];
-            format!("已合并变更 ({} commits: {first_short}..{head_short})", commits.len())
+            format!(
+                "已合并变更 ({} commits: {first_short}..{head_short})",
+                commits.len()
+            )
         } else {
             format!("已合并变更 (commit: {head_short})")
         };
@@ -339,8 +355,15 @@ impl AgentIsolation {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             // 中止 cherry-pick 以保持主仓库干净
-            match git_cmd().args(["-C", &main, "cherry-pick", "--abort"]).output() {
-                Err(e) => return Err(format!("merge 失败且 cherry-pick --abort 失败: {e}。请手动 git cherry-pick --abort")),
+            match git_cmd()
+                .args(["-C", &main, "cherry-pick", "--abort"])
+                .output()
+            {
+                Err(e) => {
+                    return Err(format!(
+                    "merge 失败且 cherry-pick --abort 失败: {e}。请手动 git cherry-pick --abort"
+                ))
+                }
                 Ok(abort) if !abort.status.success() => {
                     let abort_stderr = String::from_utf8_lossy(&abort.stderr);
                     return Err(format!("merge 失败且 cherry-pick --abort 失败: {abort_stderr}。请手动 git cherry-pick --abort"));
@@ -386,7 +409,11 @@ impl AgentIsolation {
 /// 判定用 `merge-base --is-ancestor` 而非 `cat-file -e`：worktree 与主仓
 /// 共享对象库，对象存在 ≠ 主仓可达 — 拿「存在但不可达」的孤儿 commit
 /// 当基，cherry-pick 范围会包含已被主仓视为陌生的提交。
-fn find_base_commit(main_repo_path: &Path, worktree_path: &Path, wt_head: &str) -> Result<String, String> {
+fn find_base_commit(
+    main_repo_path: &Path,
+    worktree_path: &Path,
+    wt_head: &str,
+) -> Result<String, String> {
     let revs = run_git(worktree_path, &["rev-list", "--max-count=512", wt_head])?;
     for sha in revs.lines().map(str::trim).filter(|l| !l.is_empty()) {
         let is_ancestor = git_cmd()
@@ -607,29 +634,43 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["init", "--quiet"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["config", "user.email", "test@test.com"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["config", "user.name", "Test"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         std::fs::write(tmp.join("file.txt"), "hello").unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["add", "-A"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["commit", "-m", "init", "--quiet"])
-            .status().unwrap();
+            .status()
+            .unwrap();
 
         let result = run_git(&tmp, &["log", "--oneline"]);
-        assert!(result.is_ok(), "git log (exit 0) should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "git log (exit 0) should succeed: {:?}",
+            result
+        );
         assert!(result.unwrap().contains("init"));
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -642,31 +683,45 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["init", "--quiet"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["config", "user.email", "test@test.com"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["config", "user.name", "Test"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         std::fs::write(tmp.join("file.txt"), "v1").unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["add", "-A"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp)
+            .args(["-C"])
+            .arg(&tmp)
             .args(["commit", "-m", "init", "--quiet"])
-            .status().unwrap();
+            .status()
+            .unwrap();
         // 引入未提交变更 → git diff 退出码为 1
         std::fs::write(tmp.join("file.txt"), "v2").unwrap();
 
         let result = run_git(&tmp, &["diff", "--stat", "HEAD"]);
-        assert!(result.is_ok(), "git diff (exit 1 with changes) should NOT be an error: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "git diff (exit 1 with changes) should NOT be an error: {:?}",
+            result
+        );
         assert!(!result.unwrap().is_empty(), "should have diff output");
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -683,19 +738,41 @@ mod tests {
 
         // 初始化 git 仓库 + 首个 commit
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).arg("init").arg("--quiet").status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .arg("init")
+            .arg("--quiet")
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["config", "user.email", "t@t"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["config", "user.email", "t@t"])
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["config", "user.name", "t"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["config", "user.name", "t"])
+            .status()
+            .unwrap();
         std::fs::write(tmp.join("base.txt"), "base").unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["add", "-A"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["add", "-A"])
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["commit", "-m", "init", "--quiet"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["commit", "-m", "init", "--quiet"])
+            .status()
+            .unwrap();
 
         // 创建真实 worktree
-        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-untracked").expect("worktree create");
+        let iso =
+            AgentIsolation::create_worktree(&tmp, "agent-test-untracked").expect("worktree create");
         let wt = iso.worktree_path.as_ref().unwrap().clone();
 
         // 子 Agent 新建 untracked 文件（git diff HEAD 不可见）
@@ -706,16 +783,30 @@ mod tests {
         let result = iso.diff_readonly().expect("diff_readonly should succeed");
         match result {
             CleanupResult::HasChanges { diff, .. } => {
-                assert!(diff.contains("[未跟踪文件]"), "diff must list untracked files, got: {diff}");
-                assert!(diff.contains("new_file.ts"), "untracked file name must appear, got: {diff}");
-                assert!(diff.contains("base.txt"), "tracked change must appear, got: {diff}");
+                assert!(
+                    diff.contains("[未跟踪文件]"),
+                    "diff must list untracked files, got: {diff}"
+                );
+                assert!(
+                    diff.contains("new_file.ts"),
+                    "untracked file name must appear, got: {diff}"
+                );
+                assert!(
+                    diff.contains("base.txt"),
+                    "tracked change must appear, got: {diff}"
+                );
             }
             CleanupResult::NoChanges => panic!("untracked new file must be detected as changes"),
         }
 
         // worktree 必须保留（diff_readonly 永不删除）
         assert!(wt.exists(), "diff_readonly must NOT remove the worktree");
-        assert!(iso.worktree_path.as_ref().unwrap().join("new_file.ts").exists());
+        assert!(iso
+            .worktree_path
+            .as_ref()
+            .unwrap()
+            .join("new_file.ts")
+            .exists());
 
         // 清理：显式 discard
         iso.discard().ok();
@@ -729,26 +820,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).arg("init").arg("--quiet").status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .arg("init")
+            .arg("--quiet")
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["config", "user.email", "t@t"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["config", "user.email", "t@t"])
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["config", "user.name", "t"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["config", "user.name", "t"])
+            .status()
+            .unwrap();
         std::fs::write(tmp.join("base.txt"), "base").unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["add", "-A"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["add", "-A"])
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["commit", "-m", "init", "--quiet"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["commit", "-m", "init", "--quiet"])
+            .status()
+            .unwrap();
 
-        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-untracked-only").expect("worktree create");
+        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-untracked-only")
+            .expect("worktree create");
         let wt = iso.worktree_path.as_ref().unwrap().clone();
 
         // 只新建文件（触发旧 bug 的精确场景）
         std::fs::write(wt.join("only_new.py"), "# migration\n").unwrap();
 
         let result = iso.diff_readonly().expect("diff_readonly should succeed");
-        assert!(matches!(result, CleanupResult::HasChanges { .. }),
-            "untracked-only worktree must be HasChanges, got: {:?}", result);
+        assert!(
+            matches!(result, CleanupResult::HasChanges { .. }),
+            "untracked-only worktree must be HasChanges, got: {:?}",
+            result
+        );
         assert!(wt.exists(), "worktree must be kept");
 
         iso.discard().ok();
@@ -765,25 +881,50 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).arg("init").arg("--quiet").status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .arg("init")
+            .arg("--quiet")
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["config", "user.email", "t@t"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["config", "user.email", "t@t"])
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["config", "user.name", "t"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["config", "user.name", "t"])
+            .status()
+            .unwrap();
         std::fs::write(tmp.join("base.txt"), "base").unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["add", "-A"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["add", "-A"])
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["commit", "-m", "init", "--quiet"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["commit", "-m", "init", "--quiet"])
+            .status()
+            .unwrap();
 
-        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-merge-untracked").expect("worktree create");
+        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-merge-untracked")
+            .expect("worktree create");
         let wt = iso.worktree_path.as_ref().unwrap().clone();
 
         // 子 Agent 新建 untracked 文件（旧实现的假阳性场景）
         std::fs::write(wt.join("new_file.ts"), "export const x = 1;").unwrap();
 
         let result = iso.merge_to_main().expect("merge should succeed");
-        assert!(!result.contains("没有变更"), "merge must NOT report no-changes, got: {result}");
+        assert!(
+            !result.contains("没有变更"),
+            "merge must NOT report no-changes, got: {result}"
+        );
 
         // 文件必须落地主仓库
         let merged = tmp.join("new_file.ts");
@@ -794,7 +935,10 @@ mod tests {
             "file content must be preserved"
         );
         // worktree 应已被清理（merge 成功路径）
-        assert!(!wt.exists(), "worktree should be removed after successful merge");
+        assert!(
+            !wt.exists(),
+            "worktree should be removed after successful merge"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -807,24 +951,52 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).arg("init").arg("--quiet").status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .arg("init")
+            .arg("--quiet")
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["config", "user.email", "t@t"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["config", "user.email", "t@t"])
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["config", "user.name", "t"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["config", "user.name", "t"])
+            .status()
+            .unwrap();
         std::fs::write(tmp.join("base.txt"), "base").unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["add", "-A"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["add", "-A"])
+            .status()
+            .unwrap();
         std::process::Command::new("git")
-            .args(["-C"]).arg(&tmp).args(["commit", "-m", "init", "--quiet"]).status().unwrap();
+            .args(["-C"])
+            .arg(&tmp)
+            .args(["commit", "-m", "init", "--quiet"])
+            .status()
+            .unwrap();
 
-        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-merge-uo").expect("worktree create");
+        let iso =
+            AgentIsolation::create_worktree(&tmp, "agent-test-merge-uo").expect("worktree create");
         let wt = iso.worktree_path.as_ref().unwrap().clone();
         std::fs::write(wt.join("only_new.py"), "# migration\n").unwrap();
 
         let result = iso.merge_to_main().expect("merge should succeed");
-        assert!(!result.contains("没有变更"), "merge must NOT report no-changes, got: {result}");
-        assert!(tmp.join("only_new.py").exists(), "untracked-only file must land in main repo");
+        assert!(
+            !result.contains("没有变更"),
+            "merge must NOT report no-changes, got: {result}"
+        );
+        assert!(
+            tmp.join("only_new.py").exists(),
+            "untracked-only file must land in main repo"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -842,7 +1014,11 @@ mod tests {
         };
         assert!(!wt.exists(), "sanity: worktree dir should not exist");
         let result = iso.discard();
-        assert!(result.is_ok(), "discard() on missing dir should return Ok, got: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "discard() on missing dir should return Ok, got: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -858,7 +1034,10 @@ mod tests {
         };
         assert!(!wt.exists(), "sanity: worktree dir should not exist");
         let result = iso.merge_to_main();
-        assert!(result.is_err(), "merge_to_main() on missing dir should return Err");
+        assert!(
+            result.is_err(),
+            "merge_to_main() on missing dir should return Err"
+        );
         let err = result.unwrap_err();
         assert!(
             err.contains("工作树目录不存在"),
@@ -873,7 +1052,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let git = |args: &[&str]| {
-            let st = git_cmd().args(["-C"]).arg(&tmp).args(args).status().unwrap();
+            let st = git_cmd()
+                .args(["-C"])
+                .arg(&tmp)
+                .args(args)
+                .status()
+                .unwrap();
             assert!(st.success(), "git {:?} failed", args);
         };
         git(&["init", "--quiet"]);
@@ -923,7 +1107,9 @@ mod tests {
         );
 
         // 收养后可正常 merge — 已提交的变更必须落地主仓
-        let result = adopted.merge_to_main().expect("adopted merge should succeed");
+        let result = adopted
+            .merge_to_main()
+            .expect("adopted merge should succeed");
         assert!(result.starts_with("已合并变更 ("), "前缀必须保持: {result}");
         assert_eq!(
             std::fs::read_to_string(tmp.join("orphan.txt")).unwrap(),
@@ -949,7 +1135,8 @@ mod tests {
     #[test]
     fn test_merge_to_main_multi_commit_range() {
         let tmp = setup_repo("hologram_test_merge_multi_commit");
-        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-multi-commit").expect("worktree create");
+        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-multi-commit")
+            .expect("worktree create");
         let wt = iso.worktree_path.as_ref().unwrap().clone();
 
         // worktree 内分两次 commit，各改一个文件（不带尾换行 — 本机 autocrlf
@@ -963,7 +1150,10 @@ mod tests {
 
         let result = iso.merge_to_main().expect("merge should succeed");
         assert!(result.starts_with("已合并变更 ("), "前缀必须保持: {result}");
-        assert!(result.contains("2 commits"), "文案必须列出合并的 commit 数: {result}");
+        assert!(
+            result.contains("2 commits"),
+            "文案必须列出合并的 commit 数: {result}"
+        );
 
         // 两个 commit 的改动都必须在主仓落地（第一个 commit 是旧实现会丢的）
         assert_eq!(
@@ -987,7 +1177,8 @@ mod tests {
     #[test]
     fn test_merge_to_main_cleanup_failure_still_reports_merged() {
         let tmp = setup_repo("hologram_test_merge_cleanup_fail");
-        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-cleanup-fail").expect("worktree create");
+        let iso = AgentIsolation::create_worktree(&tmp, "agent-test-cleanup-fail")
+            .expect("worktree create");
         let wt = iso.worktree_path.as_ref().unwrap().clone();
 
         std::fs::write(wt.join("merged.txt"), "merged").unwrap();
@@ -1004,11 +1195,22 @@ mod tests {
             .open(wt.join("merged.txt"))
             .unwrap();
 
-        let result = iso.merge_to_main().expect("清理失败不得导致 merge 返回 Err");
+        let result = iso
+            .merge_to_main()
+            .expect("清理失败不得导致 merge 返回 Err");
         assert!(result.starts_with("已合并变更 ("), "前缀必须保持: {result}");
-        assert!(result.contains("worktree 清理失败"), "必须说明清理失败: {result}");
-        assert!(result.contains("变更已在主仓"), "必须说明变更已落主仓: {result}");
-        assert!(result.contains(&normalize(&wt)), "必须给出残留 worktree 路径: {result}");
+        assert!(
+            result.contains("worktree 清理失败"),
+            "必须说明清理失败: {result}"
+        );
+        assert!(
+            result.contains("变更已在主仓"),
+            "必须说明变更已落主仓: {result}"
+        );
+        assert!(
+            result.contains(&normalize(&wt)),
+            "必须给出残留 worktree 路径: {result}"
+        );
         assert_eq!(
             std::fs::read_to_string(tmp.join("merged.txt")).unwrap(),
             "merged",
