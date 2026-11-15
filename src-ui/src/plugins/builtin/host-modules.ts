@@ -236,6 +236,7 @@ import {
   nearestFreeRegion,
   pickDropAnchor,
   REGION_CONTENT_MARGIN,
+  REGION_FOOT_GAP,
   STREAM_REGION,
 } from '../../paper/space';
 import { collapseToolGroups, isDiffLang, translateMessagesCached } from '../../paper/translate';
@@ -378,6 +379,7 @@ import { useCanvasViewStore } from '../../state/canvas-view-store';
 import { getComposeStore, resolveNewSessionDefault } from '../../state/compose-store';
 import { useCompositionStore } from '../../state/composition-store';
 import { useDockStore } from '../../state/dock-store';
+import { useDraftSheetStore } from '../../state/draft-sheet-store';
 import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../state/mode-store';
 import { usePluginPrefs } from '../../state/plugin-prefs';
 import { usePluginStore } from '../../state/plugin-store';
@@ -402,6 +404,9 @@ import { useWorkspaceEntryStore } from '../../state/workspace-entry-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 // 批 9e-3 归家：ask / 权限卡架进产物 ⇒ 桥它的图标库（自有静态图标，卡片小图标）
 import { iconHtml, iconSvg } from '../../ui/icons';
+/* 待题纸的模型选择器（2026-11-14 立卷 UX）：题签与创作坞用**同一枚** ModelSelector——
+ * 它是 compose-dock 包内件，产物域经 faceDeps 取宿主侧那一份真实例。 */
+import { ModelSelector } from './compose-dock/ModelSelector';
 
 /** 宿主桥供面封蜡（2026-09-02 划词白屏事故立法）：faceDeps 此前是手抄清单，
  *  host.ts 加出口漏注册时 tsc/测试全绿（两域测试都直连真身）、exe 里才炸
@@ -549,6 +554,7 @@ const faceDeps = {
   nearestFreeRegion,
   pickDropAnchor,
   REGION_CONTENT_MARGIN,
+  REGION_FOOT_GAP,
   STREAM_REGION,
   collapseToolGroups,
   translateMessagesCached,
@@ -559,6 +565,14 @@ const faceDeps = {
   snapshotFromBlock,
   useCanvasViewStore,
   useCompositionStore,
+  // 待题纸（2026-11-14 立卷 UX）：出生面开合是跨产物瞬态（创作坞据此不出输入条）
+  useDraftSheetStore,
+  /* 题签三件与创作坞同源（2026-11-14 立卷 UX）：模型下拉 = 同一枚 ModelSelector 组件，
+   * 档位表 = 同一把 thinkingOptionsOrDefault 尺子；effectiveModels / loadSettings /
+   * modelDescriptor 早已在册（下方 provider 段），此处只补组件本体——ModelSelector 是
+   * compose-dock 包内件，产物域经 faceDeps 取宿主侧那一份真实例（组件函数零状态，
+   * 跨产物共享它只是共享同一次模块求值）。 */
+  ModelSelector,
   getComposeStore,
   resolveNewSessionDefault,
   useDockStore,

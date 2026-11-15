@@ -38,8 +38,9 @@
 // 本文件自此只剩**视图**：装配（use-paper-panel.ts）+ 表现件（paper-panel-parts.tsx）+ 本文件 JSX。
 // 改域逻辑去装配根，改单块渲染去表现件，改版面留在这里。
 
-import { type CSSProperties, Fragment } from 'react';
+import { type CSSProperties, Fragment, useEffect } from 'react';
 import { volumeDisplayName } from '../../../state/volume-name';
+import { DraftSheet } from './DraftSheet';
 import { FolioAskBadge } from './FolioAskBadge';
 import { FolioCompositionChip } from './FolioCompositionChip';
 import {
@@ -52,6 +53,7 @@ import {
   PaperRegionContext,
   PluginBoundary,
   useDockStore,
+  useDraftSheetStore,
   WinControls,
 } from './host';
 import { InkLayer } from './InkLayer';
@@ -67,6 +69,19 @@ import './PaperPanel.css';
 import { usePaperPanelAssembly } from './use-paper-panel';
 
 export function PaperPanel() {
+  /* 待题纸是**瞬态**（设计件 §3.5）：关画布 / 切工作区 = 弃纸——不烧号、不落盘、
+   * 不留悬空状态。清理挂在纸视图生命周期上（PaperPanel 卸载即离开本工作区）。 */
+  useEffect(() => {
+    return () => useDraftSheetStore.getState().dismiss();
+  }, []);
+
+  /* 待题纸摊开 = 出生面已经在场：**空态整块退场**（2026-11-15 用户报「文字和题签重叠」）。
+   * 空态判据原本只有 `sessions.length === 0`，而待题纸**不建卷**（这正是立卷 UX 的要害）
+   * ⇒ 空态的 kicker/题字/引导句/花押与纸同屏叠着画。两处判据同源：纸在 ⇒ 空态不在。
+   * ⚡ 2026-11-15 V2：化卷交接窗（morph）里纸**还在屏上**，故它也算法「纸在」——
+   * 判据与装配根（use-paper-panel 的 sheetPresent）同一把尺子，两处一起改。 */
+  const sheetPresent = useDraftSheetStore((s) => s.open || s.morph !== null);
+
   const {
     core,
     updateAvailable,
@@ -208,7 +223,7 @@ export function PaperPanel() {
             }`}
             onMouseDown={onCanvasMouseDown}
           >
-            {sessions.length === 0 && (
+            {sessions.length === 0 && !sheetPresent && (
               <div className="pp-empty">
                 <div className="pp-empty-kicker">LANTAI · BLANK SHEET</div>
                 <div className="pp-empty-title">案上无卷，落笔即起</div>
@@ -217,7 +232,13 @@ export function PaperPanel() {
                  * 不再 disabled 依赖 core——onClick 永远走 createNewSession()，
                  * 无 core 时其内部守卫会 toast「需要先有工作区」，点按必有反馈，
                  * 按钮不会出现「点了没反应」。 */}
-                <button type="button" className="pp-empty-cta" onClick={() => void core?.createNewSession()}>
+                {/* 2026-11-14 立卷 UX：CTA 不再直接建卷，而是落一张**待题纸**
+                 * （题签 → 开卷才发号；详见 DraftSheet 头注 / 设计件 new-session-ux.md） */}
+                <button
+                  type="button"
+                  className="pp-empty-cta"
+                  onClick={() => useDraftSheetStore.getState().openSheet()}
+                >
                   ＋ 另起一卷
                 </button>
                 <div className="pp-empty-hint">点签条可续写旧卷，或直接在下方案头落笔——开口即开卷</div>
@@ -231,6 +252,11 @@ export function PaperPanel() {
                   随拖动/缩放走且只纹理桌面自身，不再乘盖流区/纸条（贴纸有贴纸的
                   纹，见 .pp-region 的 paper-sheet；样式见 .pp-desk） */}
               <div className="pp-desk" />
+              {/* 待题纸（2026-11-14 立卷 UX）：**在 world 里**——与流区同一坐标语言，
+                  开卷后卷落在同一个锚点（纸不跳位）。它是纸，不是层：不引入模态框。
+                  未摊开时组件自身早退（零成本）。 */}
+              <DraftSheet core={core} />
+
               {/* 原点十字（方位感） */}
               <div className="pp-origin" style={{ left: 0, top: 0 }}>
                 <span className="pp-origin-label">origin</span>
@@ -820,30 +846,35 @@ export function PaperPanel() {
               = 无覆盖 = CSS 默认居中坐底）；**默认锁定**——点坞顶浮现的锁钮（移/锁，
               桌面歌词式）解锁后整坞才是抓手，双击坞体复位（判据在 composer-float.ts
               的 isComposerDragSurface）。 */}
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: 坞槽承载拖坞手势（拖动面判据在 composer-float.ts 的 isComposerDragSurface——锁定态一律放行） */}
-          <div
-            className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}${
-              composer.dragging ? ' pp-composer-dragging' : ''
-            }${composer.unlocked ? ' pp-composer-unlocked' : ''}`}
-            ref={composer.slotRef}
-            style={composer.style}
-            data-pop-side={composer.popSide}
-            onPointerDown={composer.onPointerDown}
-            onDoubleClick={composer.onDoubleClick}
-          >
-            {composerOverlays.map((def) => (
-              /* 保险丝 b：覆盖层贡献行（插件面）包边界——创作坞崩溃不卸整树 */
-              <PluginBoundary key={def.id} label={`覆盖层 ${def.id}`}>
-                <def.component />
-              </PluginBoundary>
-            ))}
-            {desk && <DeskShelf core={core} />}
-            {/* 拖动锁按钮**不在这里**（2026-09-17 二版）：它归坞的书眉工具行，
+          {/* ⚡ 2026-11-15 V2：纸在场时**坞槽整只不渲染**（不是隐藏输入条）——纸替坞。
+              判据已订阅（sheetPresent，含化卷交接窗），开纸那一刻坞就退场，不留一帧两层叠着。
+              交接窗里纸还没走完，坞也先不冒头——两件事不抢同一帧。 */}
+          {!sheetPresent && (
+            // biome-ignore lint/a11y/noStaticElementInteractions: 坞槽承载拖坞手势（拖动面判据在 composer-float.ts 的 isComposerDragSurface——锁定态一律放行）
+            <div
+              className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}${
+                composer.dragging ? ' pp-composer-dragging' : ''
+              }${composer.unlocked ? ' pp-composer-unlocked' : ''}`}
+              ref={composer.slotRef}
+              style={composer.style}
+              data-pop-side={composer.popSide}
+              onPointerDown={composer.onPointerDown}
+              onDoubleClick={composer.onDoubleClick}
+            >
+              {composerOverlays.map((def) => (
+                /* 保险丝 b：覆盖层贡献行（插件面）包边界——创作坞崩溃不卸整树 */
+                <PluginBoundary key={def.id} label={`覆盖层 ${def.id}`}>
+                  <def.component />
+                </PluginBoundary>
+              ))}
+              {desk && <DeskShelf core={core} />}
+              {/* 拖动锁按钮**不在这里**（2026-09-17 二版）：它归坞的书眉工具行，
                 由坞本体渲染（`PaperDockContext.composerLock` 能力位——锁态与写面在
                 本槽主人手里）。曾试过「槽里浮一枚 hover 小钮」，两个病灶：浮在坞外
                 与坞之间有缝、悬停链被掐断（用户「还没挪过去就消失了」），且外观
                 与坞的语言不合（用户「太难看了」）。 */}
-          </div>
+            </div>
+          )}
           {edgeOverlays.map((def) => (
             <PluginBoundary key={def.id} label={`边缘层 ${def.id}`}>
               <def.component />

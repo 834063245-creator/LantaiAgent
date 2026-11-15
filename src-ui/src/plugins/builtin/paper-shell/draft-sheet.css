@@ -1,0 +1,232 @@
+/* paper-shell · draft-sheet — 待题纸（新卷出生面，2026-11-14 立项；2026-11-15 V2 改判）
+ *
+ * 设计件：docs/plans/canvas-space/new-session-ux.md
+ * 语汇依据：docs/design/lantai-design-spec.md §3（墨阶）/ §10（浸墨五法则）/ §11（层次法）
+ *
+ * ⚠ 本片不是「空白卷换个字」。待题纸是卷成立**之前**那一瞬，语汇必须自己长；
+ * 但**不许长成表单**，也不许长成通用卡片（§11 致死动作①「万物皆框」）。
+ *
+ * ── V2 的形状（本片现行口径）────────────────────────────────────────────
+ * 纸 = **卷首照常 + 天头之下就是这张卷的创作坞**。
+ *   · 段题／边注／界栏那套「题签注疏」随 V1 一起退役——题签行现在归坞的设置行
+ *     （组合 + 模型），纸面不再自造第二套控件语言。
+ *   · 纸上**没有第二个主动作**：没有「开卷」按钮，主动作只有输入行那枚「拟文」。
+ *   · 纸高**随内容长**——绝不再写死正文高（V1 的 DRAFT_BODY_H 是「三行题签」的算术，
+ *     输入面进来后那个数就是错的）。
+ *
+ * 两条版式纪律（V1 踩过，勿重犯）：
+ *   ① **没有外框**：框是卡片的语法（v2 实测判丑）；纸自己的边界是纸纹 + 物理包边。
+ *   ② **天头以下一整块流式栈**：段与段之间的相对位置交给流，禁手算每段 top
+ *      （v1 按「绝对定位 + 手算 top」排，卷首一改高就压线）。
+ */
+
+.pp-draft-sheet {
+  z-index: 2;
+  /* 未题完的纸比成卷**低一档影**：它还没落到桌上（同族三档 sheet/active/lift） */
+  box-shadow:
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 7px color-mix(in oklch, var(--paper-deep) 30%, transparent),
+    var(--shadow-sheet);
+  animation: pp-draft-in var(--m-sheet) var(--m-ease-io) backwards;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes pp-draft-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 化卷那一拍（V2-P3，2026-11-15）─────────────────────────────────────
+ * 病灶（V1 实测）：发送后纸**当帧消失**、卷当帧淡入——两件事同时发生，用户读到的
+ * 是「纸啪一下没了，卷啪一下出现」，而不是「这张纸变成了那一卷」。
+ *
+ * 治法：纸**不收走**，就地化成卷——与卷的落纸（.pp-region.pp-spread）同档同曲线，
+ * 一次动作两头：
+ *   ① 纸与卷**同宽同锚点**（纸本来就按 STREAM_REGION.width 落位），故「化」不需要
+ *      任何尺寸变化——**只动 opacity**（纸律：整叶不得声明 transform/translate，
+ *      base.css 有案）；
+ *   ② 影从「待题纸」那一档升到成卷档（读者读到的是「这张纸落到桌上了」）；
+ *   ③ 输入面整块已撤（组件侧，见 DraftSheet.tsx）——那一句已经发出去了。
+ * 窗长 = --m-sheet（DRAFT_MORPH_MS 镜像，motion-contract 钉死）；动效敏感 = 当帧撤纸。
+ *
+ * ⚠ **不做**：宽度过渡 / transform: scale（会把纸纹与天头文字一起拉变形——「化」的
+ * 语义是纸落到桌上，不是纸被拉伸），也不做交叉淡入（纸没的那一帧卷正好在起手，
+ * 读作「换了一件东西」）。 */
+.pp-draft-sheet.pp-draft-morph {
+  z-index: 1;
+  /* 化卷期不再是「待题纸」（低一档影），直接接成卷的落影——影不跳档 */
+  box-shadow:
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 7px var(--sheet-band),
+    var(--shadow-sheet);
+  animation: pp-draft-morph var(--m-sheet) var(--m-ease-io) forwards;
+  pointer-events: none;
+}
+
+@keyframes pp-draft-morph {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ── 天头：号未发（印照常钤） ─────────────────────────────────── */
+
+/* 眉行说状态、不说身份——朱砂是全屏唯一一处常驻红（§10 法则 3：每屏至多一处红；
+ * 空画布态没有别的红，本处可占）。 */
+.pp-draft-sheet .pp-folio-eyebrow {
+  color: var(--seal);
+  opacity: 0.9;
+  letter-spacing: 0.44em;
+  text-indent: 0.44em;
+}
+/* 题字降半档墨：这一卷还没有名字（发送后才成为「案卷 Nº 12」） */
+.pp-draft-sheet .pp-folio-title {
+  color: var(--ink-2);
+}
+/* 卷号空位：一条待填的线（开卷后被真号取代）。inline-block 不改行高。 */
+.pp-draft-num {
+  display: inline-block;
+  width: 2.6em;
+  height: 0;
+  margin-left: 0.36em;
+  border-bottom: 1px dashed var(--ink-4);
+  vertical-align: 0.08em;
+}
+.pp-draft-sheet .pp-folio-sub {
+  color: var(--ink-4);
+  letter-spacing: 0.2em;
+}
+
+/* ── 天头之下：这条卷的创作坞（同一个组件，另一次挂载） ─────────────
+ * 版心纪律：坞自己的 max-width 880 在 1440 纸上居中 ⇒ 与卷首版心（纸半 = 720）
+ * 左右各差 80。可接受且同源——「坞在屏上什么样，在纸上就什么样」；不为纸另写一套
+ * 宽度（那会让纸上的坞与开卷后的坞差一拍，正是 V1 割裂的来源）。
+ *
+ * ⚠ **必须让出天头的高度**（2026-11-15 用户报「文字冲出题签背景」的根因）：
+ * `.pp-folio-head` 是**绝对定位**（不吃流），而纸的实测高由这块栈撑出来——
+ * 栈不从天头下面起，纸就会比内容矮一个天头：文字画在纸的背景之外。
+ * 高度走组件写下的 `--draft-folio-h`（= measureFolioHeadHeight 的实测值），
+ * **禁在这里手写数字**（卷首一改高就压线，v1 的老病）。 */
+.pp-draft-stack {
+  display: flex;
+  flex-direction: column;
+  padding-top: calc(var(--draft-folio-h, 0px) + 6px);
+  /* 下缘留一档（纸脚是材料缘，控件不贴边） */
+  padding-bottom: 18px;
+}
+
+/* 纸上的坞（ComposerDock variant='sheet'）：**去匣**——纸即界面，不再给坞一层壳
+ * （同案头形态 .pp-at-desk 的判据：常驻匣退匣，纸面直书）。只留坞顶那条硬线
+ * 作为「天头 / 正文」的分区（§10 浸墨③：屏级分区用硬线，不用框）。 */
+.pp-draft-sheet .pp-composer {
+  min-height: 0;
+  padding: 10px 24px 0;
+  background: transparent;
+  border-top: var(--rule-hard);
+}
+/* 版口钮（坞顶左端那 56px 朱砂）在纸上不出现：纸没有「匣口」，
+ * 且朱砂在本屏已被眉行占用（每屏至多一处红，§10 法则 3）。 */
+.pp-draft-sheet .pp-composer::before {
+  content: none;
+}
+/* 纸期书眉：没有卷名可报，只有状态 + 一条明路（弃纸）。 */
+.pp-sheet-header {
+  min-height: 22px;
+}
+.pp-sheet-eyebrow {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  color: var(--ink-3);
+}
+/* 弃纸：无框文字（纸上唯一主动作是发送；这里只能读作「一条注」）。
+ * hover 转朱砂——与全仓「瞬时件去框 + hover 朱砂」同族。 */
+.pp-sheet-discard {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-family: var(--f-kai);
+  font-size: var(--fs-caption);
+  letter-spacing: 0.08em;
+  color: var(--ink-4);
+  cursor: pointer;
+  transition: color var(--snap);
+}
+.pp-sheet-discard:hover {
+  color: var(--seal-deep);
+}
+
+/* 题签（设置行的纸期形态）：组合 + 模型，一行。与坞的「权限 / 模型」同一行位，
+ * 只是左端那枚从权限段换成组合——**不是**第二个控件语言，是同一行的换装。 */
+.pp-sheet-comp {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 1px 0 2px;
+  border: 0;
+  background: transparent;
+  font-family: var(--f-kai);
+  font-size: var(--fs-lead);
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  color: var(--ink-1);
+  text-align: left;
+  cursor: pointer;
+}
+.pp-sheet-comp-k {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+}
+.pp-sheet-comp-v {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* 值下的短朱线：只在 hover/展开时从 0 长到 26px（与坞的模型值同一手势） */
+.pp-sheet-comp-v::after {
+  content: "";
+  display: block;
+  width: 0;
+  height: 1px;
+  margin-top: 2px;
+  background: var(--seal);
+  transition: width var(--snap);
+}
+.pp-sheet-comp:hover .pp-sheet-comp-v::after,
+.pp-sheet-comp.open .pp-sheet-comp-v::after {
+  width: 26px;
+}
+.pp-sheet-comp:disabled {
+  color: var(--ink-4);
+  cursor: default;
+}
+.pp-sheet-caret {
+  margin-left: 2px;
+  font-size: 9px;
+  color: var(--ink-4);
+}
+
+/* 失败原因：单行省略（错误要读，不要占位；完整原因另有 toast 通道一份）。 */
+.pp-draft-error {
+  margin: 6px 24px 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--f-kai);
+  font-size: var(--fs-body);
+  color: var(--seal-deep);
+}

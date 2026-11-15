@@ -71,6 +71,10 @@ export {
 export { useCanvasViewStore } from '../../../state/canvas-view-store';
 export type { ComposeSessionPrefs } from '../../../state/compose-store';
 export { getComposeStore, resolveNewSessionDefault } from '../../../state/compose-store';
+/* 待题纸（2026-11-14 立卷 UX）：出生面摊开时**坞不出输入条**（纸还没成立，没有
+ * 可写的正文）。键由 paper-shell 那本账先上（faceDeps 已是超集），故取用不新增
+ * 宿主面键、指纹零漂移。 */
+export { useDraftSheetStore } from '../../../state/draft-sheet-store';
 export type { PermissionMode } from '../../../state/mode-store';
 export { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../../state/mode-store';
 export type { PresetStoreState } from '../../../state/preset-store';

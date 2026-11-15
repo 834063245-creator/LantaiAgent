@@ -28,7 +28,7 @@
 import type { Context } from '../../../cordis';
 import { injectFaceArtifactCss } from '../face-css';
 import { AssetRack } from './AssetRack';
-import { ComposerDock } from './ComposerDock';
+import { ComposerDock, ComposerSheet } from './ComposerDock';
 import { TocStrip } from './TocStrip';
 
 /** 创作坞插件——composer 槽 + right-edge 槽双覆盖贡献 + 空间消费命令。 */
@@ -45,6 +45,20 @@ export const composeDockPlugin = {
           component: ComposerDock,
         }),
       'compose-dock',
+    );
+    /* **待题纸的输入面**（2026-11-15 V2 立卷 UX）：纸在场时坞整只不渲染，输入面长在
+     * 纸上——**同一个组件、另一次注册**（不是第二份实现，设计件 §2 原则 8）。
+     * 落 'draft-sheet' 槽由 paper-shell 的 DraftSheet 渲染；两槽互斥由组件自身判据
+     * 保证（看 draft-sheet-store 的 open），插件层不做条件注册——热更新时两槽的
+     * 注册/注销不该有先后窗口。 */
+    ctx.effect(
+      () =>
+        ctx.overlays.register({
+          id: 'compose-sheet',
+          slot: 'draft-sheet',
+          component: ComposerSheet,
+        }),
+      'compose-sheet',
     );
     ctx.effect(
       () =>

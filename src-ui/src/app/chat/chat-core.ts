@@ -28,11 +28,13 @@ import { useShellStore } from '../../app/shell-store';
 import type { CommandContribution } from '../../composition/services';
 import { activeSpace } from '../../composition/space-service';
 import { pickDropAnchor } from '../../paper/space';
+import type { StoredThinking } from '../../provider/thinking';
 import type { ChatImageRef } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
 import { clipLabel, useAskPendingStore } from '../../state/ask-pending-store';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { useDockStore } from '../../state/dock-store';
+import { useDraftSheetStore } from '../../state/draft-sheet-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import { bumpTurnDone } from '../../state/turn-done-store';
 import { deriveVolumeLabel, isUnnamedVolumeLabel, volumeDisplayName } from '../../state/volume-name';
@@ -62,6 +64,15 @@ import {
   MAX_MESSAGE_IMAGE_BYTES,
   splitIntakePaths,
 } from './image-intake';
+import {
+  applyDraftPicks,
+  type DraftOpenHooks,
+  type DraftOpenOpts,
+  type DraftOpenResult,
+  focusBornVolume,
+  openDraftVolume,
+  placeDraftRegion,
+} from './session/draft-opening';
 import * as Branch from './session-branch';
 import * as SessionComposition from './session-composition';
 
@@ -707,14 +718,52 @@ export class ChatCore {
     this.refreshGoalView();
   }
 
-  /** 创作者模式入口（2026-10-30）：起一卷 creator，把开场白填进输入框（**不自动发送**
-   *  ——需求由用户补完，避免点一下就开始花钱）。失败原因原样返回给控件显示。 */
-  async createCreatorSession(): Promise<{ ok: boolean; reason?: string }> {
-    const r = await SessionComposition.createSessionWithPreset(this._sessionCtx(), 'creator');
-    if (!r.ok) return { ok: false, reason: r.reason };
-    getChatStore(this.panelId).input.getState().setInputText(SessionComposition.CREATOR_OPENING_PROMPT);
-    this.refreshGoalView();
-    return { ok: true };
+  /** **开卷**（2026-11-14 立卷 UX；**2026-11-15 V2 改道：发送即开卷**）。
+   *
+   *  唯一入口 = 待题纸上按发送（`sendMessage` 的纸在场分支），**不再有「开卷」按钮**
+   *  ——V1 的 `createSession({presetId})` 包装器随之删除（只此一处调用方）。
+   *  编排本体（起卷 + 题签落账 + 三件几何）在 `session/draft-opening.ts`：那是
+   *  「把一张纸变成一张卷」的空间动作，与消息编排不是同一层的知识。 */
+  async openDraftVolume(opts: DraftOpenOpts): Promise<DraftOpenResult> {
+    const r = await openDraftVolume(this.panelId, this._sessionCtx(), opts, this._draftHooks);
+    if (r.ok) this.refreshGoalView();
+    return r;
+  }
+
+  /** 开卷需要的三个空间动作（引用稳定：每次都取当前实例的方法，不缓存闭包）。 */
+  private get _draftHooks(): DraftOpenHooks {
+    return {
+      placeRegion: (sid, region) => this.placeRegion(sid, region),
+      requestFocus: (sid) => this.requestFocus(sid),
+      applyDraftPicks: (sid, picks, fallback) => this.applyDraftPicks(sid, picks, fallback),
+    };
+  }
+
+  /** 造模式（2026-11-14 立卷 UX）：待题纸开卷后把 creator 开场白填进输入框。
+   *  只填不发——与 2026-10-30 同一条纪律（点一下就开始花钱是不对的）。 */
+  fillComposer(text: string): void {
+    getChatStore(this.panelId).input.getState().setInputText(text);
+    this._composer?.focus();
+  }
+
+  /** 待题纸开卷后的**几何编排**（落位 / 出生即展开 / 题签覆盖）——实现见
+   *  `app/chat/session/draft-opening.ts`（三件都是空间动作，不属会话编排的知识；
+   *  两处可选链病灶的教训也记在那里）。 */
+  requestFocus(sessionId: string | null): void {
+    focusBornVolume(this.panelId, sessionId);
+  }
+
+  placeRegion(sessionId: string, region: { anchorX: number; anchorY: number }): void {
+    placeDraftRegion(this.panelId, sessionId, region);
+  }
+
+  /** 题签的模型/思考：只在**显式题过**时写会话覆盖（全默认 = 零覆盖）。 */
+  applyDraftPicks(
+    sessionId: number,
+    picks: { providerName: string; model: string; thinking: StoredThinking | undefined },
+    fallback: { providerName: string; model: string },
+  ): void {
+    applyDraftPicks(this.panelId, sessionId, picks, fallback);
   }
 
   /** **立枝**（会话树，2026-09-18）：从某条消息（节点）另起一枝——**枝含该节点**，
@@ -1217,6 +1266,41 @@ export class ChatCore {
     const text = getChatStore(this.panelId).input.getState().inputText.trim();
     if (!text) return;
 
+    // ── 待题纸（V2 立卷 UX）：纸在场 = **发送即开卷** ──
+    // 判据读 store 单例（纸是跨产物瞬态，真源在 state/draft-sheet-store）。起卷失败
+    // **不吞那句话**：原因写回纸脚（纸还在、字还在），本次不往下走——这是「发送即
+    // 开卷」唯一允许的失败形态（V1 的「建了半截的卷」在这里不允许出现）。
+    // ⚠ 必须在句柄水合之前：新卷还没有 Agent 句柄，下面的 `!this.agent` 分支会拿
+    //   **上一卷**的诊断说事（旧入口就有这个歧义）。
+    const draft = useDraftSheetStore.getState();
+    if (draft.open) {
+      // 「新卷出生默认」的读面（全默认 ⇒ 零覆盖）——静态面纪律：compose-store 在模块体
+      // 就求值，静态可达即成环（见 session-composition 头注），故此处动态取。
+      const { resolveNewSessionDefault } = await import('../../state/compose-store');
+      const fallback = resolveNewSessionDefault();
+      const picks = draft.picks ?? {
+        presetId: draft.presetId,
+        providerName: fallback.providerName,
+        model: fallback.model,
+        thinking: undefined,
+      };
+      const opened = await this.openDraftVolume({
+        presetId: draft.presetId,
+        picks,
+        fallback,
+        anchor: draft.anchor,
+      });
+      if (!opened.ok) {
+        useDraftSheetStore.getState().setNotice(opened.reason);
+        return;
+      }
+      // 纸化成卷（V2-P3 那一拍）：纸**不当帧消失**——它保留到窗满，与新卷的落纸
+      // （.pp-spread，同一档 --m-sheet）交接；坞在 open 转 false 的那一刻就可以出现
+      // （它属于新卷，与纸的退场不冲突：纸在上、坞在下，不是同一个位置）。
+      // 动效敏感 / 窗长常量都在 store 里（一处真源，CSS token 镜像由 motion-contract 钉住）。
+      useDraftSheetStore.getState().beginMorph(opened.sessionId);
+    }
+
     if (!this.agent) {
       // L0 惰性水合（session-ledger）：重启后惰性卷切到/拟文时句柄缺席——
       // 按需补建（factory 现调 + msgStore 内容回填），摊开集大时避免全量起 Agent
@@ -1302,6 +1386,7 @@ export class ChatCore {
 
     // 附加文件 + 附图（发送即消费掉附件槽）——文本前缀只载路径附件，
     // 附图引用随 agent.run 结构化传递（multimodal-image-plan D-1）。
+
     const filesSnapshot = [...getChatStore(this.panelId).input.getState().attachedFiles];
     const imagesSnapshot = [...getChatStore(this.panelId).input.getState().attachedImages];
     const agent = this.agent;

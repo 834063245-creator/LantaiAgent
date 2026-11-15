@@ -94,14 +94,17 @@ export {
   EMPTY_REGION_CONTENT_H,
   nearestFreeRegion,
   REGION_CONTENT_MARGIN,
+  REGION_FOOT_GAP,
   STREAM_REGION,
 } from '../../../paper/space';
 export type { MessageTranslateCache } from '../../../paper/translate';
 export { collapseToolGroups, translateMessagesCached } from '../../../paper/translate';
+export type { StoredThinking } from '../../../provider/thinking';
+export { thinkingOptionsOrDefault } from '../../../provider/thinking';
 // 批 9c-4b：`injectPaperTokens` 随 `type-tokens.ts` 进包 ⇒ 包内直接 `from './type-tokens'`
 // 设置读面（2026-09-08 缩放舒适度批）：滚轮行为 canvasWheelMode + 保存广播
 // onSettingsSaved——视口域滚轮语义随设置即时换轨（ref 缓存 + 广播刷新）。
-export { canvasWheelMode, loadSettings, onSettingsSaved } from '../../../settings';
+export { canvasWheelMode, effectiveModels, loadSettings, modelDescriptor, onSettingsSaved } from '../../../settings';
 /* 离开工作区回首页（2026-09-08）：真关工作区 + 回首页（PaperPanel 确认弹层
  * 确认后调用——workspace 流函数，运行时 deactivate 在壳层）。 */
 /* 展卷页（2026-11-05 入口 UX 批）：进入态 store 与两个出口（逃生 / 重试）。
@@ -113,7 +116,16 @@ export { useBgAlertStore } from '../../../state/bg-alert-store';
 export type { CanvasStore } from '../../../state/canvas-store';
 export { blockFromSnapshot, getCanvasStore, scheduleCanvasSave, snapshotFromBlock } from '../../../state/canvas-store';
 export { useCanvasViewStore } from '../../../state/canvas-view-store';
+export type { ComposeSessionPrefs } from '../../../state/compose-store';
+/* 待题纸开卷时读「新卷出生默认」（题签三笔的出厂值）。写会话覆盖已收进
+ * `core.applyDraftPicks`（app/chat/session/draft-opening），本包不再直连 compose-store。 */
+export { resolveNewSessionDefault } from '../../../state/compose-store';
 export { useDockStore } from '../../../state/dock-store';
+/* 待题纸（2026-11-14 立卷 UX）：出生面的开合是**跨产物**的瞬态——创作坞要据此
+ * 不出输入条（纸还没成立，没有可写的正文）。故必须经桥取宿主那一份 store 单例
+ * （直引内核路径会被产物构建内联成第二份 ⇒ 坞永远读不到开合，同 toast-store 先例）。
+ * faceDeps 三处同步：本文件 / host.aliased.ts / host-modules.ts。 */
+export { useDraftSheetStore } from '../../../state/draft-sheet-store';
 /* 卷首组合芯片（S6 P5a）读面：preset 清单 / 全局选择态 / 装载失败原因。
  * 写面与空白判据不经本出口——它们走 core 的能力位（sessionComposition /
  * isSessionBlank / selectSessionPreset，与创作坞芯片同一套）。faceDeps 已含该
@@ -128,6 +140,10 @@ export { useUpdateStore } from '../../../state/update-store';
 export { useWorkspaceEntryStore } from '../../../state/workspace-entry-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../../ui/message-model';
+/* 待题纸的题签三件要**与创作坞同一套选择器/同一把尺子**（模型下拉 = ModelSelector，
+ * 思考档位表 = thinkingOptionsOrDefault）。两者都在 compose-dock 产物里 ⇒ 经
+ * paper-shell 的入站面反引一份（esbuild 内联，无运行时耦合）。 */
+export { ModelSelector } from '../compose-dock/ModelSelector';
 // 批 5a 注意：本包私有件（provenance / sel-ink / focus-flight / sheet）**不进本面**——
 // host 面是「内核桥」专用（host-modules 的 FaceBridgeSeal 要求本文件每个导出都是
 // faceDeps 键）；包内符号由消费方直接 `from './<file>'` 取用。

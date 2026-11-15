@@ -48,6 +48,7 @@ import {
 // 册，取用零指纹代价）——遮罩点关语义就地写在下面两处。
 import { createPortal } from 'react-dom';
 import { volumeDisplayName } from '../../../state/volume-name';
+import { HELP_GROUPS, HIST_HINT_KEY, THINKING_DESC, thinkingZhLabel } from './dock-copy';
 import type {
   ChatCore,
   ChatImageRef,
@@ -88,6 +89,7 @@ import {
   thinkingOptionsOrDefault,
   useCoreStore,
   useDialogEscape,
+  useDraftSheetStore,
   useModeStore,
   usePaperDock,
   usePresetStore,
@@ -96,6 +98,7 @@ import {
   watchFileDragDrop,
 } from './host';
 import { composerSubmitOnKey } from './ime';
+import { SheetHeader, SheetSign } from './sheet-parts';
 import { SlashPanel } from './slash-panel';
 import './composition-chip.css';
 import './goal-strip.css';
@@ -178,86 +181,61 @@ function isSubsequence(needle: string, haystack: string): boolean {
   return i === needle.length;
 }
 
-/** 律（快捷键总览）——2026-10-22 P2 分组：输入 / 附卷 / 画布 / 纸面。
- *  13 行等权平铺时代结束；组题沿用册页的「方墨锚点 + 字距题字」语言。 */
-const HELP_GROUPS: ReadonlyArray<{
-  title: string;
-  rows: ReadonlyArray<readonly [string, string]>;
-}> = [
-  {
-    title: '输入',
-    rows: [
-      ['Enter', '发送'],
-      ['Shift+Enter', '换行'],
-      ['↑ / ↓', '输入历史'],
-      ['/ 或 翰', '命令面板'],
-    ],
-  },
-  {
-    title: '附卷',
-    rows: [
-      ['引 · 夹', '附文件入卷'],
-      ['拖文件到坞', '界栏松手入卷'],
-    ],
-  },
-  {
-    title: '画布',
-    rows: [
-      ['Alt+↑↓', '块间移动'],
-      ['Alt+←→', '卷间移动'],
-      ['Home', '画布回原点'],
-    ],
-  },
-  {
-    title: '纸面',
-    rows: [
-      ['拖文类签', '移出钉住'],
-      ['拖流区边缘', '移动流区'],
-      ['拖流区四角', '调整宽度'],
-      ['拖选区', '抽纸条'],
-    ],
-  },
-];
-
-/** 历史导航眉批：一次性提示旗标（localStorage，毒化容忍——读写全包 try）。 */
-const HIST_HINT_KEY = 'lantai.hint.historySeen';
-
-/** rework P2-2：思考档位纯中文展示词（创作坞内不再中英混排）。 */
-const THINKING_ZH: Record<string, string> = {
-  '': '自动',
-  off: '关闭',
-  minimal: '最浅',
-  low: '低',
-  medium: '中',
-  high: '高',
-  xhigh: '较深',
-  max: '极限',
-};
-
-function thinkingZhLabel(value: string | undefined): string {
-  if (value == null || value === '') return THINKING_ZH[''] ?? '自动';
-  return THINKING_ZH[value] ?? value;
-}
-
-/** DSH thinkingDesc 语义（中文）——思考档位下拉选项的说明行。 */
-const THINKING_DESC: Record<string, string> = {
-  '': '模型自定推理强度',
-  off: '不推理，直接作答',
-  minimal: '最浅推理，响应最快',
-  low: '轻度推理',
-  medium: '均衡推理',
-  high: '深入推理',
-  xhigh: '较深推理',
-  max: '极限推理',
-};
+/* 律册（HELP_GROUPS）与思考文案（THINKING_ZH / THINKING_DESC / thinkingZhLabel）
+ * 已随坞面拆分落 `dock-copy.ts`（2026-11-15 V2：本文件在上帝文件账上，只减不增）。 */
 
 /** 无目录声明模型的思考控件安全兜底表已收口到 provider/thinking 的
  *  THINKING_SAFE_OPTIONS（2026-09-23 思考下沉：设置页参数面板与这里共用同一把
  *  尺子），本件不再自抄一份。 */
 
+export type ComposerVariant = 'dock' | 'sheet';
+
+/** 正常创作坞（卷成立之后）。待题纸上那张见 `ComposerSheet`——同一个面，另一次挂载。 */
 export const ComposerDock = memo(function ComposerDock() {
-  const core = useCoreStore((s) => s.core);
   const { activeSessionId, composerLock } = usePaperDock();
+  /* 纸在场时坞**整只不渲染**（V2-P1：V1 的「隐藏输入条/设置行」双轨已拆）。
+   * 判据放在**外壳**而不是 ComposerSurface 里：后者是一千多行的 hook 罐，早退会
+   * 违反 hooks 次序（lint/useHookAtTopLevel）；两层各有一次订阅，代价零。 */
+  const draftOpen = useDraftSheetStore((s) => s.open);
+  if (draftOpen) return null;
+  return <ComposerSurface variant="dock" contextSessionId={activeSessionId} composerLock={composerLock} />;
+});
+
+/** **待题纸的创作坞**（2026-11-15 V2 立卷 UX）：纸在场时坞整只不渲染，输入面长在纸上。
+ *
+ *  与坞共用**同一份实现**与同一个 input store（设计件 §2 原则 8：禁复制第二份输入面——
+ *  复制一份 = 把「一套设置摆两处」换成「一套输入摆两处」，负债更重）。
+ *  差别只有四处，且都在本文件里以 `isSheet` 显式分叉：
+ *    ① 没有书眉（卷名/役/墨/移是「这一卷的账」，纸还没有卷号）；
+ *    ② 设置行 = **题签**：组合 + 模型（含思考）——没有权限段（权限是工作区级，
+ *       开卷后归坞；纸期拨它没有意义，拨了也不会少一分钱）；
+ *    ③ 模型/思考/组合写 **draft-sheet-store 的题签**（开卷那一刻才落既有写路径）；
+ *    ④ 发送 = 起卷 + 把这句话发出去（编排在 `ChatCore.sendMessage` 的纸在场分支，
+ *       本件只管点——判据与写入不在视图层）。
+ *
+ *  为什么经 overlays 的 'draft-sheet' 槽注册而不是直引：跨插件直引会把产物 esbuild
+ *  内联成第二份 store（同 toast-store 先例，见 docs/landmine-map.md）。 */
+export const ComposerSheet = memo(function ComposerSheet() {
+  const draftOpen = useDraftSheetStore((s) => s.open);
+  if (!draftOpen) return null;
+  return <ComposerSurface variant="sheet" contextSessionId={null} composerLock={undefined} />;
+});
+
+const ComposerSurface = memo(function ComposerSurface({
+  variant,
+  contextSessionId,
+  composerLock,
+}: {
+  variant: ComposerVariant;
+  contextSessionId: string | null;
+  composerLock?: { unlocked: boolean; toggle: () => void };
+}) {
+  const isSheet = variant === 'sheet';
+  const core = useCoreStore((s) => s.core);
+  /* 纸期**没有活跃卷**：把上下文卷位当空——坞的既有「无主态」分支自然接管
+   * （prefs 空、无役册/墨量册、running=false、组合走卷级判据的空位），一行不用改。 */
+  const activeSessionId = isSheet ? null : contextSessionId;
+
   /* ── 坞内提示（2026-11-12 重构；用户：「坞内弹提示会导致整个创作坞跳变，而且必须
    *    要点『知道了』才消失，感觉不舒服」）──────────────────────────────
    * 旧形态 = 坞内一行 `.pp-local-notice` + 「知道了」按钮：**占布局**（坞高被撑高 ⇒
@@ -281,6 +259,10 @@ export const ComposerDock = memo(function ComposerDock() {
   const yinInputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [histHint, setHistHint] = useState(false);
+
+  /* ── 纸期书眉（V2）：没有卷名可报，但**弃纸**必须可达（Esc 之外的一条明路——
+   * 触屏/丢焦点时键盘不一定在）。它是本面唯一的非坞件，故就地分叉，不另起一套。 ── */
+  const draftNotice = useDraftSheetStore((s) => s.notice);
 
   /* ── 会话面：sess store 订阅（切卷/改名/token 变化自动重渲）── */
   const [sessions, setSessions] = useState<Array<{ id: number; label: string }>>([]);
@@ -478,8 +460,12 @@ export const ComposerDock = memo(function ComposerDock() {
   // tick 驱动重读——无主态拨模型/思考走 settings-saved → tick 变 → 重算。
   // biome-ignore lint/correctness/useExhaustiveDependencies: settingsTick 是刻意的重读触发器（非响应值），与上方 settings memo 同款手法
   const newSessionDefault = useMemo(() => resolveNewSessionDefault(), [settingsTick]);
-  const providerName = prefs?.providerName ?? newSessionDefault.providerName;
-  const model = prefs?.model ?? newSessionDefault.model;
+  /* 待题纸（2026-11-15 V2）：`draftOpen` 已在函数开头（早退判据，同一次订阅）。
+   * 纸自己那张（variant='sheet'）用**同一份** provider/model 推导，只是源头换成题签：
+   * 题签未填（纸刚摊开）= 出厂默认（新卷出生默认），与坞期 prefs 的空位同义。 */
+  const draftPicks = useDraftSheetStore((s) => s.picks);
+  const providerName = (isSheet ? draftPicks?.providerName : prefs?.providerName) ?? newSessionDefault.providerName;
+  const model = (isSheet ? draftPicks?.model : prefs?.model) ?? newSessionDefault.model;
   const settingsVersion = settingsTick + providerName.length; // 触发器合成：保存代数 + 覆盖换向
   // biome-ignore lint/correctness/useExhaustiveDependencies: settingsVersion 是刻意的重读触发器（保存事件/覆盖切换 provider），非响应值
   const settings = useMemo(() => {
@@ -517,7 +503,9 @@ export const ComposerDock = memo(function ComposerDock() {
   // 生效档位三层（2026-09-23）：会话覆盖（本卷显式拨过）?? 该模型档位
   // （per-model 覆盖 ?? 本家默认档位，经 modelThinking 一把尺子）；行缺席（已删）
   // 才回落新卷出生默认。
-  const currentThinking = thinkingOverride ?? (provider ? modelThinking(provider, model) : newSessionDefault.thinking);
+  const currentThinking =
+    (isSheet ? draftPicks?.thinking : thinkingOverride) ??
+    (provider ? modelThinking(provider, model) : newSessionDefault.thinking);
 
   /* ── 权限（mode-store 工作区级单一真相）── */
   const permissionMode = useModeStore((s) => s.permissionMode);
@@ -624,14 +612,21 @@ export const ComposerDock = memo(function ComposerDock() {
   );
   const compLocked = activeSessionId != null && !compBlank;
   const compLabel = compInfo.presetId;
-  /** 创作者模式入口（2026-10-30）：起一卷 creator + 预填开场白（不自动发送）。 */
-  const onCreatorDraft = useCallback(async () => {
-    const r = (await core?.createCreatorSession?.()) ?? {
-      ok: false,
-      reason: '本坞未接到创作者入口（旧句柄）',
-    };
-    if (!r.ok) notice(`无法进入创作者模式：${r.reason}`, 'error');
-  }, [core, notice]);
+  /** 创作者模式入口（2026-10-30 起一卷 creator；**2026-11-14 立卷 UX 改道**）：
+   *  不再「先建卷再预填开场白」（那是缺出生面的绕路），改为**落一张预选 creator 的
+   *  待题纸**——组合在出生时点定下（字节契约面），开场白则在开卷后进输入框
+   *  （需求由用户补完，仍不自动发送）。 */
+  const onCreatorDraft = useCallback(() => {
+    useDraftSheetStore.getState().openSheet({ presetId: 'creator' });
+  }, []);
+
+  /** 题签拨组合（V2）：纸期**只写题签**——真正的登记发生在开卷那一刻
+   *  （`ChatCore.openDraftVolume` → `createSessionWithPreset`，严一档校验 + 卷级登记）。
+   * 纸期不做校验：预设可能先坏后修，纸上不该出现「选了但没落账」的第二套拒绝语义。 */
+  const onDraftPresetChange = useCallback((id: string) => {
+    setCompOpen(false);
+    useDraftSheetStore.getState().setPresetId(id);
+  }, []);
 
   /* ── 斜杠命令（v2 2026-08-31；2026-09-19 command-surface-rework；2026-10-22 P2 翰解耦）：
    *    命令清单真源 = app/commands/command-catalog 合流点（本卷内建命令 +
@@ -853,6 +848,12 @@ export const ComposerDock = memo(function ComposerDock() {
     const live = getChatStore(core.panelId).input.getState();
     const t = live.inputText.trim();
     if (!t) return;
+    // 纸期（V2）：起卷 + 发出去**同一拍**，编排在 ChatCore.sendMessage 的纸在场分支
+    // （判据与写入不在视图层）。本件只管点——失败原因会由 core 写回纸脚。
+    if (isSheet) {
+      await core.sendMessage();
+      return;
+    }
     const sessSt = getChatStore(core.panelId).sess.getState();
     if (sessSt.activeIdx < 0 || !sessSt.sessions[sessSt.activeIdx]) {
       // 开口即开卷（2026-08-31 拍板）：无活跃卷 → 先建卷再把这句发出去。
@@ -868,13 +869,25 @@ export const ComposerDock = memo(function ComposerDock() {
       getChatStore(core.panelId).input.getState().setInputText(t);
     }
     await core.sendMessage();
-  }, [core, notice]);
+  }, [core, notice, isSheet]);
 
   /* ── 热切换：模型 / 思考 ── */
   const onModelChange = useCallback(
     (modelId: string, desc?: { vendor: string }) => {
       if (!core) return;
       const targetProvider = providerNameForModel(desc, providerName);
+      // 纸期（V2）：拨的是**题签**（开卷那一刻才落会话覆盖/全局默认）——三态变四态，
+      // 判据只有这一处。纸没有卷号，写全局默认是错的（那是「没起过卷」的语义）。
+      if (isSheet) {
+        const st = useDraftSheetStore.getState();
+        st.setPicks({
+          presetId: st.presetId,
+          providerName: targetProvider,
+          model: modelId,
+          thinking: undefined, // 换模型 = 思考档重解析（旧档位可能不在新模型声明里）
+        });
+        return;
+      }
       const compose = getComposeStore(core.panelId).getState();
       // 开口即开卷（2026-08-31）：无主态拨「新卷出生默认」；有卷写会话覆盖
       if (activeSessionId == null) {
@@ -883,11 +896,20 @@ export const ComposerDock = memo(function ComposerDock() {
       }
       compose.setModel(activeSessionId, targetProvider, modelId);
     },
-    [core, activeSessionId, providerName],
+    [core, activeSessionId, providerName, isSheet],
   );
   const onThinkingChange = useCallback(
     (value: string) => {
       if (!core) return;
+      // 纸期（V2）：同 onModelChange——写题签，不写全局默认/会话覆盖。
+      // ⚠ 与原坞的差别：'自动' 在坞里写成 '' 覆盖值，在纸上是 **undefined**（= 没题），
+      // 这样「没碰过」与「显式选自动」在开卷时同义（零覆盖，跟随全局）。
+      if (isSheet) {
+        const st = useDraftSheetStore.getState();
+        if (!st.picks) return;
+        st.setPicks({ ...st.picks, thinking: value === '' ? undefined : (value as StoredThinking) });
+        return;
+      }
       const next = (value === '' ? '' : value) as StoredThinking;
       const compose = getComposeStore(core.panelId).getState();
       if (activeSessionId == null) {
@@ -896,7 +918,7 @@ export const ComposerDock = memo(function ComposerDock() {
       }
       compose.setThinking(activeSessionId, next);
     },
-    [core, activeSessionId],
+    [core, activeSessionId, isSheet],
   );
 
   /* ── 思考档位面（2026-11-12 DSH 两级菜单，用户拍板「去抄 dsh 的 UX」）──────
@@ -982,95 +1004,101 @@ export const ComposerDock = memo(function ComposerDock() {
           判据修正（翻 2026-11-08 丙案"模型是书眉级身份"那条）：书眉是**这一卷的账**
           （哪一卷 + 还有什么在跑），换模型与拨权限是**动作**——动作与账挤在同一行，
           读起来就是"卷名右边跟着一串控件"。模型+权限回到自成一行（它俩同属"这一趟怎么跑"）。 */}
-      <div className="pp-composer-header">
-        <span
-          className="pp-composer-target"
-          // hover 文案 = **显示名**（2026-09-21 卷号收显示）：旧实现硬报 `案卷 ${id}`——
-          // 对有名卷也报号（同元素下一行就有名字），且裸用 id 绕过了单一真源
-          // `volumeDisplayName`（state/volume-name 纪律①：禁在调用点散写）。
-          data-tip={activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '落笔即另起一卷'}
-        >
-          {activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '新卷'}
-        </span>
-        <div className="pp-composer-settings-spacer" />
-        {/* 书眉工具带（2026-11-09 密度批后只剩**移/锁**）：拖动锁是槽主人（纸壳）
+      {isSheet ? (
+        <SheetHeader onDiscard={() => useDraftSheetStore.getState().dismiss()} />
+      ) : (
+        <div className="pp-composer-header">
+          <span
+            className="pp-composer-target"
+            // hover 文案 = **显示名**（2026-09-21 卷号收显示）：旧实现硬报 `案卷 ${id}`——
+            // 对有名卷也报号（同元素下一行就有名字），且裸用 id 绕过了单一真源
+            // `volumeDisplayName`（state/volume-name 纪律①：禁在调用点散写）。
+            data-tip={activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '落笔即另起一卷'}
+          >
+            {activeSession ? volumeDisplayName(activeSession.label, activeSession.id) : '新卷'}
+          </span>
+          <div className="pp-composer-settings-spacer" />
+          {/* 书眉工具带（2026-11-09 密度批后只剩**移/锁**）：拖动锁是槽主人（纸壳）
             的能力位——宿主不给 composerLock ⇒ 整枚不出现，坞不知道锁态。常显可点、
             不做悬停浮现：前者是用户报的「不知道能拖」，后者是用户报的「还没挪过去
             就消失了」。翰/律 于同日撤出本行（「案」抽屉里已各有一份，书眉那两枚是重复）。 */}
-        {activeSidNum != null && (
-          <WorkLedger
-            panelId={core?.panelId ?? ''}
-            sessionId={activeSidNum}
-            sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
-            sessionNameOf={sessionNameOf}
-            onStop={(e: WorkEntry) => {
-              if (!core) return;
-              const jobId = Number.parseInt(e.id.replace(/^job-/, ''), 10);
-              if (Number.isFinite(jobId)) void killShellWork(core.panelId, jobId);
-            }}
-            open={workOpen}
-            onToggle={() => toggleLayer('work')}
-          />
-        )}
-        {activeSidNum != null && (
-          <InkLedger
-            stats={tokenStats}
-            sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
-            fallbackTotal={tokenCount}
-            open={inkOpen}
-            onToggle={() => toggleLayer('ink')}
-          />
-        )}
-        <div className="pp-dock-tools">
-          {composerLock && (
-            <button
-              type="button"
-              className={`pp-tool-btn${composerLock.unlocked ? ' open' : ''}`}
-              aria-pressed={composerLock.unlocked}
-              aria-label={composerLock.unlocked ? '锁定创作坞' : '解锁创作坞（可拖动）'}
-              data-tip={composerLock.unlocked ? '锁定创作坞' : '解锁创作坞'}
-              data-tip-hint={
-                composerLock.unlocked ? '已解锁：按住坞体空白处拖动，双击复位' : '解锁后按住坞体空白处拖动，双击复位'
-              }
-              onClick={composerLock.toggle}
-            >
-              {composerLock.unlocked ? '锁' : '移'}
-            </button>
+          {activeSidNum != null && (
+            <WorkLedger
+              panelId={core?.panelId ?? ''}
+              sessionId={activeSidNum}
+              sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
+              sessionNameOf={sessionNameOf}
+              onStop={(e: WorkEntry) => {
+                if (!core) return;
+                const jobId = Number.parseInt(e.id.replace(/^job-/, ''), 10);
+                if (Number.isFinite(jobId)) void killShellWork(core.panelId, jobId);
+              }}
+              open={workOpen}
+              onToggle={() => toggleLayer('work')}
+            />
           )}
-          {/* 2026-11-09 密度批：**翰/律 撤出书眉**。它们上一批随「案」落地时已经进了抽屉
+          {activeSidNum != null && (
+            <InkLedger
+              stats={tokenStats}
+              sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
+              fallbackTotal={tokenCount}
+              open={inkOpen}
+              onToggle={() => toggleLayer('ink')}
+            />
+          )}
+          <div className="pp-dock-tools">
+            {composerLock && (
+              <button
+                type="button"
+                className={`pp-tool-btn${composerLock.unlocked ? ' open' : ''}`}
+                aria-pressed={composerLock.unlocked}
+                aria-label={composerLock.unlocked ? '锁定创作坞' : '解锁创作坞（可拖动）'}
+                data-tip={composerLock.unlocked ? '锁定创作坞' : '解锁创作坞'}
+                data-tip-hint={
+                  composerLock.unlocked ? '已解锁：按住坞体空白处拖动，双击复位' : '解锁后按住坞体空白处拖动，双击复位'
+                }
+                onClick={composerLock.toggle}
+              >
+                {composerLock.unlocked ? '锁' : '移'}
+              </button>
+            )}
+            {/* 2026-11-09 密度批：**翰/律 撤出书眉**。它们上一批随「案」落地时已经进了抽屉
               （同一对入口在抽屉「另起」段里各有一行），书眉这两枚是**重复**——同一件事在
               同一个坞里有两个入口，用户看到的是"挤"。保留抽屉那份：抽屉是"低频动作的家"，
               而 Ctrl+K 本身就是翰的快捷键，不需要常驻一枚单字钮提醒。 */}
-        </div>
-        {/* B7（2026-08-27）：后台卷运行指示 + 停止——此前任一后台会话在跑就
+          </div>
+          {/* B7（2026-08-27）：后台卷运行指示 + 停止——此前任一后台会话在跑就
             全局阻断发送（chat-core），但创作坞无任何指示、无从停止。 */}
-        {bgRunning.length > 0 && (
-          <span className="pp-bg-running" data-tip={`后台卷：${bgRunning.map((s) => s.label).join('、')}`}>
-            ⟳ 后台 {bgRunning.length} 卷运行中
-            <button
-              type="button"
-              className="pp-bg-stop"
-              data-tip="停止全部后台卷"
-              data-tip-hint={bgRunning.map((s) => s.label).join('、')}
-              onClick={() => {
-                if (!core) return;
-                // 停账 + 级联（同 chat-core.abort 语义）：`stopRuns` = 用户停止
-                //（abort 全部在跑运行 + 注销记录 + 清权限卡队列）——**不注销账本条目**
-                //（句柄仍在册；条目由句柄消亡 removeAgent 接管清理）。v43 起这条纪律
-                // 是结构性的：stop 不再有「把条目注销掉」的形态，也没有「谁记得带令牌」。
-                for (const s of bgRunning) {
-                  agentSessionState.stopRuns(core.panelId, s.id);
-                  agentSessionState.getAgent(core.panelId, s.id)?.cascadeAbort();
-                }
-              }}
-            >
-              停止
-            </button>
-          </span>
-        )}
-      </div>
+          {bgRunning.length > 0 && (
+            <span className="pp-bg-running" data-tip={`后台卷：${bgRunning.map((s) => s.label).join('、')}`}>
+              ⟳ 后台 {bgRunning.length} 卷运行中
+              <button
+                type="button"
+                className="pp-bg-stop"
+                data-tip="停止全部后台卷"
+                data-tip-hint={bgRunning.map((s) => s.label).join('、')}
+                onClick={() => {
+                  if (!core) return;
+                  // 停账 + 级联（同 chat-core.abort 语义）：`stopRuns` = 用户停止
+                  //（abort 全部在跑运行 + 注销记录 + 清权限卡队列）——**不注销账本条目**
+                  //（句柄仍在册；条目由句柄消亡 removeAgent 接管清理）。v43 起这条纪律
+                  // 是结构性的：stop 不再有「把条目注销掉」的形态，也没有「谁记得带令牌」。
+                  for (const s of bgRunning) {
+                    agentSessionState.stopRuns(core.panelId, s.id);
+                    agentSessionState.getAgent(core.panelId, s.id)?.cascadeAbort();
+                  }
+                }}
+              >
+                停止
+              </button>
+            </span>
+          )}
+        </div>
+      )}
 
-      {/* 输入行（原 composer 主体） */}
+      {/* 输入行（原 composer 主体）
+          ⚡ 2026-11-15 V2：判据从「纸在场 ⇒ 隐藏本行」改为「纸在场 ⇒ 整只坞不渲染」
+          （见 ComposerSurface 开头的早退）——本行不再需要 hidden。 */}
       <div className="pp-composer-row">
         {slashQuery !== null && (
           <SlashPanel
@@ -1359,7 +1387,7 @@ export const ComposerDock = memo(function ComposerDock() {
                 data-tip-hint="起一卷 creator：说完需求，它写出组合并落盘；之后在新卷上选它"
                 onClick={() => {
                   setSchemeOpen(false);
-                  void onCreatorDraft();
+                  onCreatorDraft();
                 }}
               >
                 <span className="pp-scheme-k">✎ 造模式</span>
@@ -1488,27 +1516,45 @@ export const ComposerDock = memo(function ComposerDock() {
       </div>
 
       {/* 设置行（2026-11-09 用户裁定：模型与权限**另起一行**；同日再裁：**权限在左、模型在右**）
+          ⚡ 2026-11-15 V2：纸期这一行整行换成**题签**（组合 + 模型，见下方 isSheet 分支）；
+          坞期不变——两处不是两个入口，是**同一个面的两种宿主**。
           ——只放两件，它们同属「这一趟怎么跑」，与书眉的「这一卷的账」分家。
           位置对调（2026-11-09 二次裁定）：**权限居左、模型收右**。
           判据：权限是**底线**（全放/半放/常询决定 Agent 能做什么），先读它；模型是这一行的
           长值，收右端与书眉的读数对齐（右缘同一条线），行左留给"这一趟的闸"。
           行内仍走 §11 锚点型选中（权限 = 重墨 + 朱砂底线），不新增第三种语言。 */}
-      <div className="pp-composer-settings">
-        <fieldset className="pp-mode-seg" aria-label="权限模式">
-          {PERMISSION_MODES.map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
-              data-tip={MODE_DESCRIPTIONS[m]}
-              aria-pressed={permissionMode === m}
-              onClick={() => selectMode(m)}
-            >
-              {MODE_LABELS[m]}
-            </button>
-          ))}
-        </fieldset>
-        <div className="pp-composer-settings-spacer" />
+      <div className="pp-composer-settings" data-variant={variant}>
+        {isSheet ? (
+          <>
+            <SheetSign
+              label={compLabel}
+              open={compOpen}
+              error={presetError}
+              roster={presetRoster}
+              onToggle={() => setCompOpen((v) => !v)}
+              onPick={onDraftPresetChange}
+            />
+            <div className="pp-composer-settings-spacer" />
+          </>
+        ) : (
+          <>
+            <fieldset className="pp-mode-seg" aria-label="权限模式">
+              {PERMISSION_MODES.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
+                  data-tip={MODE_DESCRIPTIONS[m]}
+                  aria-pressed={permissionMode === m}
+                  onClick={() => selectMode(m)}
+                >
+                  {MODE_LABELS[m]}
+                </button>
+              ))}
+            </fieldset>
+            <div className="pp-composer-settings-spacer" />
+          </>
+        )}
         <ModelSelector
           value={model}
           onChange={onModelChange}

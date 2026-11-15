@@ -45,6 +45,8 @@ const SIDEBAR_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'canvas-nav', '
 const CANVAS_VIEW_STORE_TS = readFileSync(join(SRC, 'state', 'canvas-view-store.ts'), 'utf8');
 const VIEWPORT_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'use-paper-viewport.ts'), 'utf8');
 const REGION_MOTION_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'region-motion.ts'), 'utf8');
+const DRAFT_STORE_TS = readFileSync(join(SRC, 'state', 'draft-sheet-store.ts'), 'utf8');
+const DRAFT_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'draft-sheet.css'), 'utf8');
 
 /** 剥 CSS 注释（病灶史注释里点名选择器是留痕，不是使用）——本文件 CSS 断言走它。 */
 const stripCssComments = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -82,6 +84,9 @@ const REGISTERED_ANIMATIONS = new Set([
   'pp-trace-pulse', // 溯源落点一拍即散（信号）
   'pp-hint-fade', // 一次性眉批 6s 自散（存活期，不是节奏）
   'sp-upd-slide', // 检查更新条游走（信号）
+  // 2026-11-15 V2-P3：待题纸化卷（纸落地成卷的那一拍，与卷的落纸同档同曲线）
+  'pp-draft-in',
+  'pp-draft-morph',
 ]);
 
 /** §15 登记表 B：**连续读数件**的 transition——量在连续变化，不是「一段过程」。 */
@@ -413,6 +418,27 @@ describe('§15 动效契约（散写时长守卫）', () => {
     expect(guards, '两处 rAF 飞行都要有 reduced-motion 短路').toBe(2);
     // 时长不再在本文件散写两遍魔数
     expect(FOCUS_TS).not.toMatch(/DURATION = \d+/);
+  });
+
+  it('化卷那一拍（V2-P3）：窗长镜像 --m-sheet + 纸律只动 opacity（不做宽度/缩放过渡）', () => {
+    const morph = /export const DRAFT_MORPH_MS = (\d+);/.exec(DRAFT_STORE_TS);
+    expect(morph, 'draft-sheet-store.ts 缺 DRAFT_MORPH_MS').not.toBeNull();
+    expect(Number((morph as RegExpExecArray)[1])).toBe(Math.round(tokenSeconds('m-sheet') * 1000));
+
+    const sheetCss = stripCssComments(DRAFT_CSS);
+    // 化卷期：一次动作（动画名在册）+ 只碰 opacity
+    const rule = /\.pp-draft-sheet\.pp-draft-morph\s*\{([\s\S]*?)\n\}/.exec(sheetCss);
+    expect(rule, '缺化卷规则（.pp-draft-sheet.pp-draft-morph）').not.toBeNull();
+    expect((rule as RegExpExecArray)[1]).toContain('pp-draft-morph var(--m-sheet) var(--m-ease-io)');
+    expect((rule as RegExpExecArray)[1]).not.toMatch(/\b(transform|translate|width|scale)\b/);
+    const frames = /@keyframes pp-draft-morph\s*\{([\s\S]*?)\n\}/.exec(sheetCss);
+    expect(frames, '缺化卷 keyframes').not.toBeNull();
+    expect((frames as RegExpExecArray)[1]).toContain('opacity: 0');
+    expect((frames as RegExpExecArray)[1]).not.toMatch(/\b(transform|translate|width|scale)\b/);
+    // 反向自证：纸体基座也不许声明 transform/translate（纸律，同卷开合那条）
+    const base = /^\.pp-draft-sheet \{([\s\S]*?)\n\}/m.exec(sheetCss);
+    expect(base, '缺纸体基座规则').not.toBeNull();
+    expect((base as RegExpExecArray)[1]).not.toMatch(/\b(transform|translate)\b/);
   });
 
   it('跨语言镜像同值（TS ↔ CSS token）：相机飞行 ↔ --m-sheet、TOAST_FADE_MS ↔ --m-sheet', () => {

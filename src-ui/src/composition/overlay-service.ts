@@ -14,6 +14,10 @@
 //   - 'composer'   —— 底部创作坞（视口固定输入条 + 设置行）**及挂坞的家具**
 //                     （2026-09-23 图版架：坞下缘那条横架是坞槽内的第二件家具，
 //                     与坞并列渲染 ⇒ DOM 上是坞的兄弟，绝对定位挂坞下）；
+//   - 'draft-sheet'—— **待题纸的输入面**（2026-11-15 V2 立卷 UX）：纸在场时坞整只
+//                     不渲染，输入面长在纸上。**同一个组件、另一次注册**——纸不是第二个
+//                     输入实现，只是同一个 ComposerDock 换了个宿主槽（设计件 §8 V2-P1；
+//                     跨插件直引会把产物 esbuild 内联成第二份 store，见 landmine-map）。
 //   - 'right-edge' —— 右缘窄条（目次带等卷内导航附件）。
 // 组件渲染在 PaperPanel 内部（可经 paper/overlay-context 取派生流区数据）。
 
@@ -22,7 +26,7 @@ import { type Context, Service } from '../cordis';
 import { ContributionChannel } from './contribution-channel';
 
 /** 覆盖层槽位。 */
-export type OverlaySlot = 'composer' | 'right-edge';
+export type OverlaySlot = 'composer' | 'draft-sheet' | 'right-edge';
 
 /** 覆盖层贡献定义。 */
 export interface OverlayContribution {

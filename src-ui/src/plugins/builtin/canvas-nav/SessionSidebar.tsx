@@ -49,6 +49,7 @@ import {
   useCanvasViewStore,
   useCoreStore,
   useDockStore,
+  useDraftSheetStore,
   useSessionVolumesStore,
   useShellStore,
 } from './host';
@@ -688,14 +689,9 @@ export const SessionSidebar = memo(function SessionSidebar() {
     // 相对视口中心，聚焦把它带到眼前
     void (async () => {
       try {
-        const before = getChatStore(core.panelId).sess.getState().sessions.length;
-        await core.createNewSession();
-        const st = getChatStore(core.panelId).sess.getState();
-        // 建卷失败（无工作区等）= 案头未变：不定位（旧实现会照读 activeIdx，
-        // 对上一个活跃卷发起一次无意义飞行）——2026-09-10 同族收口。
-        if (st.sessions.length <= before) return;
-        const sid = st.sessions[st.activeIdx]?.id;
-        if (sid != null) useCanvasViewStore.getState().requestFocus(String(sid));
+        // 2026-11-14 立卷 UX：新建 = **落一张待题纸**（题签 → 开卷才发号）。
+        // 落位/聚焦由纸自己管（开卷后卷落在纸的锚点），此处只管把纸摊出来。
+        useDraftSheetStore.getState().openSheet();
       } finally {
         newBusyRef.current = false;
         setNewBusy(false);

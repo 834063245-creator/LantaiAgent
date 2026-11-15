@@ -1,5 +1,5 @@
 {
-  "fingerprint": "ada4b547",
+  "fingerprint": "3074157a",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -36,6 +36,7 @@
     "McpServerDeclSchema",
     "MermaidBlock",
     "MessageNotFoundError",
+    "ModelSelector",
     "Overlay",
     "PERMISSION_MODES",
     "PROVIDER_PROTOCOL_DEFAULTS",
@@ -43,6 +44,7 @@
     "PaperRegionContext",
     "PluginBoundary",
     "REGION_CONTENT_MARGIN",
+    "REGION_FOOT_GAP",
     "STREAM_REGION",
     "STUCK_THRESHOLD_S",
     "Service",
@@ -349,6 +351,7 @@
     "useCoreStore",
     "useDialogEscape",
     "useDockStore",
+    "useDraftSheetStore",
     "useModeStore",
     "usePaperDock",
     "usePaperRegion",

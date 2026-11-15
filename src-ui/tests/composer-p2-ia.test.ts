@@ -18,6 +18,7 @@ const SRC = join(__dirname, '..', 'src');
 const SHELL_CSS = readFileSync(join(SRC, 'app', 'shell.css'), 'utf8');
 const DOCK_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'ComposerDock.tsx'), 'utf8');
 const WORK_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'WorkLedger.tsx'), 'utf8');
+const DOCK_COPY_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'dock-copy.ts'), 'utf8');
 
 function ruleBody(css: string, selector: string): string {
   const i = css.indexOf(selector);
@@ -53,10 +54,13 @@ describe('创作坞 P2 · 翰 / 律 / 役接线', () => {
   });
 
   it('律四组：输入 / 附卷 / 画布 / 纸面', () => {
+    // 2026-11-15 V2：静态文案表搬去 dock-copy.ts（坞本体在大文件账上）——
+    // 判据不变，读的是新的落位（坞从那里 import，渲染面仍在本件）。
     for (const title of ["title: '输入'", "title: '附卷'", "title: '画布'", "title: '纸面'"]) {
-      expect(DOCK_TSX).toContain(title);
+      expect(DOCK_COPY_TS).toContain(title);
     }
     expect(DOCK_TSX).toContain('pp-help-group-title');
+    expect(DOCK_TSX).toContain("from './dock-copy'");
   });
 
   it('役空态有去处说明；大号读数只在 running > 0 时渲染', () => {

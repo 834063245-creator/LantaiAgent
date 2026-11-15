@@ -22,5 +22,7 @@ export { pickDropAnchor } from '../../../paper/space';
 export { useAskStore } from '../../../state/ask-store';
 export { useCanvasViewStore } from '../../../state/canvas-view-store';
 export { useDockStore } from '../../../state/dock-store';
+/* 新建 = 落待题纸（2026-11-14 立卷 UX）：开合是跨产物瞬态，必须经桥取宿主单例。 */
+export { useDraftSheetStore } from '../../../state/draft-sheet-store';
 export { useSessionVolumesStore } from '../../../state/session-volumes-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';

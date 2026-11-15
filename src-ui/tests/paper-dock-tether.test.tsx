@@ -112,6 +112,7 @@ import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { getCanvasStore } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import { useDockStore } from '../src/state/dock-store';
+import { useDraftSheetStore } from '../src/state/draft-sheet-store';
 import { volumeDisplayName } from '../src/state/volume-name';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 import type { AssistantMessage, ChatMessage, UserMessage } from '../src/ui/message-model';
@@ -350,6 +351,34 @@ describe('匣脚引线（坞的版口钮 → 活卷的纸脚）', () => {
     await mount({ sessions: [] });
     expect(layer()).toBeNull();
     expect(container?.querySelector('.pp-composer-slot')?.className).toContain('pp-at-desk');
+  }, 30_000);
+
+  /* 2026-11-15 V2（用户报「创作坞的引导线在点击新建后依然存在于老会话和原本应该有
+   * 创作坞的地方」）：纸在场 ⇒ **整条引线不画**。病灶两半——坞在纸期不渲染（它的版口钮
+   * 也一起没了，线的坞端悬在空气里）+ 线仍指着**老会话**的纸脚。⇒ 判据 = 纸在就不画，
+   * 交接窗（morph）里也不画（那一拍纸正在化卷，此时让线冒出来是第二件事）。 */
+  it('待题纸在场 ⇒ 不画线（坞不在，线也不该指着老会话）', async () => {
+    await mount({});
+    expect(layer()).not.toBeNull(); // 先证明这条线本来是画的（否则下面断言恒真）
+
+    await act(async () => {
+      useDraftSheetStore.getState().openSheet();
+    });
+    expect(layer()).toBeNull();
+  }, 30_000);
+
+  it('化卷交接窗内也不画线（纸还在屏上，坞先不冒头）', async () => {
+    await mount({});
+    await act(async () => {
+      useDraftSheetStore.getState().openSheet();
+    });
+    await act(async () => {
+      useDraftSheetStore.getState().beginMorph(9);
+    });
+    // 交接期：open 已 false、morph 在场
+    expect(useDraftSheetStore.getState().open).toBe(false);
+    expect(useDraftSheetStore.getState().morph).not.toBeNull();
+    expect(layer()).toBeNull();
   }, 30_000);
 
   it('活卷在屏外 ⇒ 线照样出屏（方向即来路，与枝边/出处引导同款判据）', async () => {

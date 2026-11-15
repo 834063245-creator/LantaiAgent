@@ -47,6 +47,7 @@ export const screenToWorld = impl.screenToWorld;
 export const pickDropAnchor = impl.pickDropAnchor;
 export const useCanvasViewStore = impl.useCanvasViewStore;
 export const useDockStore = impl.useDockStore;
+export const useDraftSheetStore = impl.useDraftSheetStore;
 export const getChatStore = impl.getChatStore;
 export const msgStoreFor = impl.msgStoreFor;
 export const useCoreStore = impl.useCoreStore;

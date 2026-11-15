@@ -21,6 +21,7 @@ import {
   useCanvasViewStore,
   useCoreStore,
   useDockStore,
+  useDraftSheetStore,
   useShellStore,
   useUpdateStore,
   worldToScreen,
@@ -487,7 +488,18 @@ export function usePaperPanelAssembly() {
   /* ── 案头态（创作坞 v2 2026-08-31）：零摊开卷——退匣直书 + 签条架陪衬。
    * 2026-09-02 拍板 C：两态同位（--composer-rise 恒定抬高）——落笔发出
    * 首句后坞不再沉降，只换装常驻匣；desk 只再管形态面（退匣/签条架/题字）。 ── */
-  const desk = sessions.length === 0;
+  /* 案头态（零摊开卷）。⚠ 判据必须**排除待题纸**（2026-11-15 用户报「文字和题签重叠」）：
+   * 待题纸不建卷 ⇒ sessions 仍是 0 ⇒ 若不排除，坞会退匣直书（案头形态）、并在坞下方
+   * 挂出「续 · 卷名」签条架——那两样与纸同屏，字直接压在一起。
+   * 「纸在场 = 出生面已经在场」这一条判据对**空态块**与**案头态**是同一条（两者同源：
+   * 都读 sessions 长度）。 */
+  // ⚠ 必须**订阅**（getState 不是响应式：开纸那一刻不会重渲，坞就停在案头形态）
+  const draftOpen = useDraftSheetStore((s) => s.open);
+  /* 化卷交接窗（V2-P3）：纸已交卷但还在屏上——它仍是「出生面在场」，
+   * 故案头态与坞槽的判据要和 open 一样把它算进去（同一条尺子两处消费）。 */
+  const draftMorph = useDraftSheetStore((s) => s.morph !== null);
+  const sheetPresent = draftOpen || draftMorph;
+  const desk = sessions.length === 0 && !sheetPresent;
 
   /* 世界层 transform */
   const worldStyle = useMemo(
@@ -593,6 +605,15 @@ export function usePaperPanelAssembly() {
    * 无活卷 / 案头态（匣退、钮本就不画）⇒ **不画线**；「活卷在场上但流区还没落位」
    * （新卷出生后落位 effect 之前那一帧）同样不画——宁可没有线，也不指错（锚点批同款判据）。 */
   const dockTether = useMemo(() => {
+    /* ⚡ 2026-11-15 V2（用户报「创作坞的引导线在点击新建后依然存在于老会话和原本
+     * 应该有创作坞的地方」）：**纸在场时整条引线不画**。
+     * 病灶两半：① 坞在纸期不渲染（V2-P1），它的版口钮也随之不存在——线的坞端
+     * 悬在「原本应该有创作坞的地方」；② 线仍指向**老会话**的纸脚（activeSessionKey
+     * 还是上一卷），于是屏幕上同时出现「一张待题纸」+「一条从空气连到旧卷的线」。
+     * 判据 = 纸在（open 或交接窗内）⇒ 引线不画。交接期也包含在内：那一拍纸正在
+     * 化卷，此时让线突然冒出来反而是第二件事。 */
+    if (draftOpen || draftMorph) return null;
+    // 无活卷 / 尚未落位 ⇒ 不画线（宁可没有线，也不指错）
     if (activeSessionKey === null) return null;
     const region = regions.find((r) => r.sessionId === activeSessionKey);
     if (!region) return null;
@@ -608,7 +629,7 @@ export function usePaperPanelAssembly() {
       selSeedOf(`${DOCK_TETHER_SEED}-${activeSessionKey}`),
       DOCK_TETHER_PEN,
     );
-  }, [activeSessionKey, regions, view, composer.anchor]);
+  }, [activeSessionKey, regions, view, composer.anchor, draftOpen, draftMorph]);
 
   return {
     core,

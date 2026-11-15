@@ -41,6 +41,15 @@ export const REGION_MAX_W = 2160;
  *  与空卷包围盒兜底（两处同值，改一处必改两处）。 */
 export const EMPTY_REGION_CONTENT_H = 200;
 
+/** 流区**纸脚底距**（世界单位）：卷底边 = 锚点 + 本值。
+ *
+ *  锚点 = 最新块底边（流向上长），纸脚再低这么一段 = 「墨将落此处」下方那片留白，
+ *  也是匣脚引线的卷侧落点（`regionFootAnchorOf`）。**单一真源**：消费面三处
+ *  （流区几何 `regionHeight` / 空卷视口包围盒 / 呼吸点 CSS 的 bottom）必须同值——
+ *  此前是散写在 `use-paper-regions` 两处与 CSS 一处的字面量 `72`，
+ *  2026-11-15 立卷 UX 收口（导出给产物域经宿主桥取用）。 */
+export const REGION_FOOT_GAP = 72;
+
 export function clampRegionW(w: number): number {
   return Math.min(REGION_MAX_W, Math.max(REGION_MIN_W, w));
 }
