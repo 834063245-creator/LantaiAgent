@@ -1030,6 +1030,24 @@ measure 折叠高 = `FOLD_ROW_H`）+ `prototype/asset-rack-v2.html`（真样式�
 
 **约束律**：① 一次动作至多一个动效主体；② 动效永不阻塞交互（动画只描述，不延迟可点）；③ **一切动效走 CSS animation/transition**——唯一豁免点 = `foundation.css` 的 `prefers-reduced-motion` 块；**JS 帧动画要么删、要么自觉读 `matchMedia`**（先例：相机飞行 `use-paper-focus.ts` 的 rAF 原本绕过该豁免——动效敏感用户唯一还在动的恰好是幅度最大的那个动作）。
 
+**环境 / 信号档的时长也必须成 token（2026-11-17 批）**：登记表解决的是「这个动画该不该有自有节拍」，
+不解决「它的时长写在哪」。实测这一档此前散写五种字面值——`1.6s`（呼吸线/运行点/落笔点/行走秒）、
+`1.4s`（待处理点）、`0.8s`（探测中/加载旋）、`0.7s`（溯源一拍）、`1.5s`（更新条游走）——
+散在六个文件里，改一处漏十处。这与 §15 立法时「浮层递出写成 0.14/0.15/0.16/0.18/0.24 五个值」
+是同一类病，只是当时只收了结构性动作、漏了这一档。
+
+现立四个 token（**节奏按语义分层，不是随便取数**）：
+
+| token | 值 | 层 | 用在 | 判据 |
+|---|---|---|---|---|
+| `--m-ambient` | 1.6s | 环境 | 呼吸线 / 运行点 / 落笔点 / 行走秒 | 读的是「还活着」，要慢到不抢注意力；**快于 1.2s 就开始读作心跳过速** |
+| `--m-ambient-fast` | 0.8s | 紧张 | 探测中 / 待处理点 | 读的是「正在发生什么」，比环境层快一档，但**不做成闪烁**（<0.5s 即读作告警） |
+| `--m-signal` | 0.7s | 一次性信号 | 溯源落点一拍 | 跑两遍即散，不进循环 |
+| `--m-spin` | 0.8s | 加载旋 | 刷新/连接 | **唯一允许 linear 的档**：旋转的加速度曲线会让角速度忽快忽慢，机械感才是加载旋该有的读感 |
+
+曲线一律 `--m-ease-ambient`（`ease-in-out`）——**呼吸不做成 C2 连续**：它本来就是正弦，
+ease-in-out 的对称性足够；硬套 `cubic-bezier(0.4,0,0.6,1)` 反而让半个周期的亮度变化读成「顿一下」。
+
 **登记表（不受三档约束，但新增必须登记）**：**仪式** = 首页钤印 `sh-stamp` / 列表升起 `sh-rise` / 卷首朱笔划界 `pp-seal-draw`；**环境** = 画布呼吸线 `pp-breathe`、运行态呼吸 `pp-ink-live`、侧栏/书脊运行点 `ss-breathe` `sr-breathe`；**信号** = 探测中 `pp-pulse`、加载旋 `pp-spin` `ms-spin`、溯源一拍 `pp-trace-pulse`、更新条 `sp-upd-slide`；**存活期** = 一次性眉批 `pp-hint-fade`(6s)；**连续读数件** = 墨量线/进度段 `transition: width`、状态点纸晕 `transition: background`；**化卷那一拍（2026-11-15，2026-11-16 改判）** = `pp-draft-in`（纸出生）/ `pp-draft-morph`（天头之下那条输入面上移 8px 退场）/ `pp-draft-folio-out`（天头四行升到卷首将落的位置再退，位移量由组件算）/ `pp-composer-rise`（创作坞自屏幕下缘之外升起）。**纸身不在册**：它这一拍自己**不播任何动画**（当帧让位给底下那张同纹同盒的纸）。
 
 **⚠ 双曲线简写 = 非法声明（2026-11-15 立法）**：`animation: x var(--m-sheet) var(--m-ease-io)` 这种写法**整条被级联丢弃**——`--m-sheet` 的值自带一条 bezier（`0.26s cubic-bezier(…)`），简写里再叠第二段曲线即解析失败；`getAnimations()` 为空、`animationName` 为 none，而 CSS 源码读起来毫无破绽。立法当天全仓实测 10 处、**8 条动效从未播过**（卷开合两窗 / 落纸 / 落墨 / 化卷淡出全躺着），用户读到的是「啪一下」。曲线一律 **longhand**：`animation: x var(--m-sheet) backwards; animation-timing-function: var(--m-ease-io);`（先例 `app/tip/tip.css`）。守护：`motion-contract` 的「双曲线简写不得回潮」一条（全仓扫）。

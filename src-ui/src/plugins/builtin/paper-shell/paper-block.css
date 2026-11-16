@@ -242,7 +242,7 @@
  * （ToolStatusChip 渲染）——静止的英文字 'running' 无活气，走秒是「在跑」
  * 最便宜的体感。 */
 .pp-status.pp-status--live {
-  animation: pp-ink-live 1.6s ease-in-out infinite;
+  animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite;
 }
 
 /* 湿墨尾点（2026-09-06 纸面运行态）：正在书写的块（.pp-writing，壳层按
@@ -258,7 +258,7 @@
   width: 7px;
   height: 7px;
   background: var(--indigo);
-  animation: pp-ink-live 1.6s ease-in-out infinite;
+  animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite;
   pointer-events: none;
 }
 

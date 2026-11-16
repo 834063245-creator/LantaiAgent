@@ -757,7 +757,7 @@
 }
 .pp-composer .pp-ink-trigger.full .pp-ink-trigger-dot {
   background: var(--seal);
-  animation: pp-ink-live 1.6s ease-in-out infinite;
+  animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite;
 }
 /* 档位词定宽（同思考 pill 纪律）：百分比位数变化不推挤同行控件 */
 .pp-composer .pp-ink-trigger-label {

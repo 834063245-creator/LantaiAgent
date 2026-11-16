@@ -105,7 +105,7 @@
 .pp-ghost--traced {
   border-color: var(--seal);
   color: var(--seal-deep);
-  animation: pp-trace-pulse 0.7s ease-in-out 2;
+  animation: pp-trace-pulse var(--m-signal) var(--m-ease-ambient) 2;
 }
 @keyframes pp-trace-pulse {
   0%,

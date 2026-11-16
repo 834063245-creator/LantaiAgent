@@ -233,7 +233,9 @@
   bottom: 0;
   height: 2px;
   background: var(--indigo);
-  animation: pp-breathe 1.6s ease-in-out infinite;
+  /* 环境档呼吸（§15 登记表 A）。时长/曲线走 token：2026-11-17 批把散写的
+   * `1.6s ease-in-out` 收进 --m-ambient / --m-ease-ambient。 */
+  animation: pp-breathe var(--m-ambient) var(--m-ease-ambient) infinite;
   pointer-events: none;
 }
 @keyframes pp-breathe {

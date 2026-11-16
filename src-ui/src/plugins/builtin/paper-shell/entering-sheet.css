@@ -112,7 +112,7 @@
   opacity: 1;
   /* 呼吸 = 与画布/侧栏同一支环境节拍（§15 登记表内的 pp-pulse）——
    * 不新造一条节奏，也不再散写一条未登记的 keyframes 名。 */
-  animation: pp-pulse 1.6s ease-in-out infinite;
+  animation: pp-pulse var(--m-ambient) var(--m-ease-ambient) infinite;
 }
 
 .pp-entry-zh {

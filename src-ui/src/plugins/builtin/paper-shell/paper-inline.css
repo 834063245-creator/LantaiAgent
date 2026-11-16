@@ -44,7 +44,7 @@
  * 只染折叠行本身，不碰展开态（展开卡的活气由行走秒承担）。 */
 .pp-fold.pp-fold--busy {
   color: var(--indigo);
-  animation: pp-ink-live 1.6s ease-in-out infinite;
+  animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite;
 }
 .pp-block.pp-reasoning .pp-fold {
   color: var(--graphite);

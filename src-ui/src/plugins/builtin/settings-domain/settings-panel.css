@@ -1182,7 +1182,7 @@ button.sp-btn.sp-btn-ok {
 /* 总量未知（服务端未给 Content-Length）：不确定条，不假装百分比 */
 .sp-upd-bar-fill.is-unknown {
   width: 35%;
-  animation: sp-upd-slide 1.5s ease-in-out infinite;
+  animation: sp-upd-slide var(--m-ambient) var(--m-ease-ambient) infinite;
 }
 
 @keyframes sp-upd-slide {

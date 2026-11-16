@@ -162,18 +162,21 @@
   top: 50%;
   width: 2px;
   height: 18px;
-  transform: translateY(-50%);
   background: color-mix(in oklch, var(--seal) 52%, transparent);
+  /* **2026-11-17 批：height 过渡 → scaleY**（合成器属性，不触发布局）。
+   * 抓手是「从中心吐出一段」的手势，故 origin 取 center；三档高度改由
+   * scale 表达（18 / 24 / 28px ⇒ 1 / 1.333 / 1.556）。translateY 保留居中。 */
+  transform: translateY(-50%) scaleY(1);
   transition:
-    height var(--snap),
+    transform var(--snap),
     background var(--snap);
 }
 /* 悬停整条带 = 预抓（抓手吐出一档）；真拖着时再亮一档。 */
 .pp-toc:hover .pp-toc-grip {
-  height: 24px;
+  transform: translateY(-50%) scaleY(1.333);
 }
 .pp-toc-slider.is-dragging .pp-toc-grip {
-  height: 28px;
+  transform: translateY(-50%) scaleY(1.556);
   background: var(--seal);
 }
 .pp-toc-slider.is-fit .pp-toc-grip {
@@ -263,22 +266,25 @@
   position: absolute;
   left: 14px;
   top: 50%;
-  transform: translateY(-50%);
   width: 20px;
   height: 2px;
   background: var(--seal);
+  /* **2026-11-17 批：width 过渡 → scaleX**（合成器属性）。规线「向右侧伸长」，
+   * 故 origin 取 left；20→24px ⇒ scaleX 1 → 1.2。translateY 保留居中。 */
+  transform: translateY(-50%) scaleX(1);
+  transform-origin: left center;
   transition:
-    width var(--snap),
+    transform var(--snap),
     background var(--snap);
 }
 .pp-toc-anchor:hover::before,
 .pp-toc-anchor:focus-visible::before,
 .pp-toc-anchor.is-hover::before {
-  width: 24px;
+  transform: translateY(-50%) scaleX(1.2);
   background: var(--seal-deep);
 }
 .pp-toc-anchor.is-active::before {
-  width: 24px;
+  transform: translateY(-50%) scaleX(1.2);
   height: 3px;
   background: var(--seal-deep);
 }
@@ -327,7 +333,7 @@
   right: 0;
   height: 2px;
   background: var(--indigo);
-  animation: pp-breathe 1.6s ease-in-out infinite;
+  animation: pp-breathe var(--m-ambient) var(--m-ease-ambient) infinite;
   pointer-events: none;
   z-index: 4;
 }

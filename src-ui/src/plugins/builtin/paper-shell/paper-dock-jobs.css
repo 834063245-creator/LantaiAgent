@@ -51,7 +51,7 @@
 }
 .pp-composer .pp-work-trigger.live .pp-work-trigger-dot {
   background: var(--indigo);
-  animation: pp-ink-live 1.6s ease-in-out infinite;
+  animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite;
 }
 .pp-composer .pp-work-trigger:hover .pp-work-trigger-dot,
 .pp-composer .pp-work-trigger.open .pp-work-trigger-dot {

@@ -681,7 +681,7 @@
   width: 7px;
   height: 7px;
   background: var(--indigo);
-  animation: pp-ink-live 1.6s ease-in-out infinite;
+  animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite;
   pointer-events: none;
 }
 .pp-mm-band {

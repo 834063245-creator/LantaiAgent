@@ -96,7 +96,7 @@
 }
 
 .ms-refresh-btn.spinning svg {
-  animation: ms-spin 0.8s linear infinite;
+  animation: ms-spin var(--m-spin) linear infinite;
 }
 
 @keyframes ms-spin {

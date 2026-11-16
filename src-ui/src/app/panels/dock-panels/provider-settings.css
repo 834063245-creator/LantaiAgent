@@ -373,7 +373,7 @@
   border: 1px solid color-mix(in oklch, var(--indigo) 30%, transparent);
 }
 .pp-pill-testing .pp-pdot {
-  animation: pp-pulse 0.8s ease-in-out infinite;
+  animation: pp-pulse var(--m-ambient-fast) var(--m-ease-ambient) infinite;
 }
 @keyframes pp-pulse {
   0%,
@@ -865,7 +865,7 @@
   border: 1.5px solid color-mix(in oklch, var(--indigo) 30%, transparent);
   border-top-color: var(--indigo);
   border-radius: 50%;
-  animation: pp-spin 0.7s linear infinite;
+  animation: pp-spin var(--m-spin) linear infinite;
   display: inline-block;
 }
 @keyframes pp-spin {
@@ -1306,7 +1306,7 @@
   width: 6px;
   height: 6px;
   background: var(--seal);
-  animation: pp-pulse 1.6s ease-in-out infinite;
+  animation: pp-pulse var(--m-ambient) var(--m-ease-ambient) infinite;
 }
 .pp-save-bar-text {
   flex: 1;

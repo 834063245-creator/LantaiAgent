@@ -99,8 +99,12 @@ const REGISTERED_TRANSITION_PROPS = new Set([
   'background', // 状态点纸晕（0.5s 缓慢上色，读作信号不是动效）
 ]);
 
-/** 承载「时长」的 token——出现即视为时长已 token 化（`--snap` = 态变轴同族）。 */
-const MOTION_TOKEN = /^var\(--(snap|m-ink|m-sheet|m-scene|m-ease-out|m-ease-io)\)$/;
+/** 承载「时长」的 token——出现即视为时长已 token 化（`--snap` = 态变轴同族）。
+ *  2026-11-17 批：环境/信号档（`--m-ambient` / `--m-ambient-fast` / `--m-signal` /
+ *  `--m-spin`）一并入册——这一档本来就用自有节拍，但**时长不该散写**（1.6 / 1.4 /
+ *  0.8 / 0.7 / 1.5 五种字面值曾散在六个文件里，改一处漏十处）。 */
+const MOTION_TOKEN =
+  /^var\(--(snap|m-ink|m-sheet|m-scene|m-ease-out|m-ease-io|m-ambient|m-ambient-fast|m-signal|m-spin)\)$/;
 const TIME_LITERAL = /^[\d.]+m?s$/;
 
 /** 按**顶层**空白/逗号切 token——括号组（cubic-bezier / var / steps）各自成一个 token。 */
@@ -297,6 +301,63 @@ describe('§15 动效契约（散写时长守卫）', () => {
     }
   });
 
+  it('环境/信号档 token 在册且节奏分层（环境 > 紧张 > 一次性信号）', () => {
+    // 这一档不属三档（各有自有节拍），但**必须成 token**——字面时长散写是
+    // §15 立法时抓到的同一类病（浮层递出曾写成 0.14/0.15/0.16/0.18/0.24 五值）。
+    for (const t of ['m-ambient', 'm-ambient-fast', 'm-signal', 'm-spin']) {
+      expect(TOKENS_CSS, `缺 --${t}`).toContain(`--${t}:`);
+    }
+    expect(TOKENS_CSS, '缺 --m-ease-ambient').toContain('--m-ease-ambient:');
+    // 节奏必须分层：环境层最慢（读「还活着」），紧张层比它快，一次性信号更快。
+    // 反了就是「环境比告警还急」，读作心跳过速。
+    expect(tokenSeconds('m-ambient')).toBeGreaterThan(tokenSeconds('m-ambient-fast'));
+    expect(tokenSeconds('m-ambient-fast')).toBeGreaterThanOrEqual(tokenSeconds('m-signal'));
+    // 环境层不得快于 1.2s（低于这个值，呼吸开始读作心跳过速——2026-11-17 判据）。
+    expect(tokenSeconds('m-ambient')).toBeGreaterThanOrEqual(1.2);
+  });
+
+  it('环境/信号动画一律走 token（全仓零字面时长的呼吸/旋转/脉冲）', () => {
+    // 反向守卫：这六个动画名此前散写 1.6s/1.4s/0.8s/0.7s/1.5s 字面值，
+    // 现要求全部经 var(--m-ambient*) / var(--m-spin) / var(--m-signal)。
+    const AMBIENT_ANIMS = [
+      'pp-breathe',
+      'pp-ink-live',
+      'ss-breathe',
+      'sr-breathe',
+      'pp-pulse',
+      'pp-spin',
+      'ms-spin',
+      'sp-upd-slide',
+      'pp-trace-pulse',
+    ];
+    const offenders: string[] = [];
+    for (const file of allCssFiles(SRC)) {
+      const css = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const raw of css.split(';')) {
+        const decl = raw
+          .slice(raw.lastIndexOf('{') + 1)
+          .replace(/\s+/g, ' ')
+          .trim();
+        const m = /^animation\s*:\s*(.*)$/.exec(decl);
+        if (!m) continue;
+        for (const part of m[1].split(',')) {
+          const norm = part.replace(/\s+/g, ' ').trim();
+          const name = AMBIENT_ANIMS.find((n) => new RegExp(`\\b${n}\\b`).test(norm));
+          if (!name) continue;
+          // 时长必须 token 化（字面值如 `1.6s` 视为散写）
+          if (!/var\(--m-(ambient|ambient-fast|signal|spin)\)/.test(norm)) {
+            offenders.push(`${file.replace(SRC, 'src')} → ${norm}`);
+          }
+        }
+      }
+    }
+    expect(
+      offenders,
+      `环境/信号动画时长散写（改走 --m-ambient* / --m-signal / --m-spin）：\n${offenders.join('\n')}`,
+    ).toEqual([]);
+    // 反向自证：真扫到了这套动画（防正则漂移把上面扫成空集而恒真）
+    expect(TOKENS_CSS).toContain('--m-ambient:');
+  });
   it('缓动扫描器自证非永真（喂旧曲线必须红、喂当前曲线必须绿）', () => {
     const old = easeProfile([0.23, 1, 0.32, 1]);
     expect(Math.abs(old.v0)).toBeGreaterThan(0.05); // 旧出相：起点有速度（4.345 px/ms）

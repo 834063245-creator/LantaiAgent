@@ -257,19 +257,23 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* 值下的短朱线：只在 hover/展开时从 0 长到 26px（与坞的模型值同一手势） */
+/* 值下的短朱线：只在 hover/展开时从 0 长到 26px（与坞的模型值同一手势）
+ * **2026-11-17 批：width 过渡 → scaleX**（合成器属性，不触发布局）。
+ * 线的语义是「从左边长出来」，故 transform-origin: left。 */
 .pp-sheet-comp-v::after {
   content: "";
   display: block;
-  width: 0;
+  width: 26px;
   height: 1px;
   margin-top: 2px;
   background: var(--seal);
-  transition: width var(--snap);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--snap);
 }
 .pp-sheet-comp:hover .pp-sheet-comp-v::after,
 .pp-sheet-comp.open .pp-sheet-comp-v::after {
-  width: 26px;
+  transform: scaleX(1);
 }
 .pp-sheet-comp:disabled {
   color: var(--ink-4);

@@ -949,7 +949,9 @@ describe('纸面运行态（2026-09-06——「会话在跑而纸面死寂」根
     expect(kf).toContain('opacity: 0.45');
     expect(kf).toContain('opacity: 1');
     // 1.6s 与 pp-breathe 同频（整族同拍）
-    expect(ruleBody(PANEL_CSS, '.pp-quill')).toContain('animation: pp-ink-live 1.6s ease-in-out infinite');
+    expect(ruleBody(PANEL_CSS, '.pp-quill')).toContain(
+      'animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite',
+    );
   });
 
   it('落笔点：卷轴线锚下石青方点（bottom 56 = 锚+9~16，7px 方形——圆角恒 0）', () => {
@@ -973,11 +975,11 @@ describe('纸面运行态（2026-09-06——「会话在跑而纸面死寂」根
 
   it('行走秒/在跑折叠行：石青 + 同族呼吸', () => {
     expect(ruleBody(PANEL_CSS, '.pp-status.pp-status--live')).toContain(
-      'animation: pp-ink-live 1.6s ease-in-out infinite',
+      'animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite',
     );
     const busy = ruleBody(PANEL_CSS, '.pp-fold.pp-fold--busy');
     expect(busy).toContain('color: var(--indigo)');
-    expect(busy).toContain('animation: pp-ink-live 1.6s ease-in-out infinite');
+    expect(busy).toContain('animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite');
     // running 状态签本色仍是石青（行走秒在其上叠呼吸）
     expect(ruleBody(PANEL_CSS, '.pp-status.pp-running')).toContain('color: var(--indigo)');
   });

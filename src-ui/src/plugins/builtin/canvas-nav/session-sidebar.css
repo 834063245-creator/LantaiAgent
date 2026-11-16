@@ -467,11 +467,11 @@
 }
 .ss-dot-pending {
   background: var(--seal);
-  animation: ss-breathe 1.4s ease-in-out infinite;
+  animation: ss-breathe var(--m-ambient-fast) var(--m-ease-ambient) infinite;
 }
 .ss-dot-running {
   background: var(--indigo);
-  animation: ss-breathe 1.6s ease-in-out infinite;
+  animation: ss-breathe var(--m-ambient) var(--m-ease-ambient) infinite;
 }
 .ss-dot-done {
   background: var(--ink-2);
