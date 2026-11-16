@@ -196,6 +196,56 @@ function ruleBody(css: string, selector: string): string {
   return stripped.slice(open + 1, close);
 }
 
+/** 解析一条 `cubic-bezier(a, b, c, d)` 的四个控制点（解析不出 = null）。 */
+function bezierPoints(value: string): [number, number, number, number] | null {
+  const m = /cubic-bezier\(\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*\)/.exec(value);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+}
+
+/** 按**引擎同款**求值：给定进度 u 解出 p(u)（与 Chromium 的 cubic-bezier 解算同法：
+ *  二分求参数 t 使 x(t) = u，再取 y(t)）。 */
+function bezierEval(pts: [number, number, number, number], u: number): number {
+  const [x1, y1, x2, y2] = pts;
+  const cx = (t: number) => 3 * (1 - t) ** 2 * t * x1 + 3 * (1 - t) * t ** 2 * x2 + t ** 3;
+  const cy = (t: number) => 3 * (1 - t) ** 2 * t * y1 + 3 * (1 - t) * t ** 2 * y2 + t ** 3;
+  let lo = 0;
+  let hi = 1;
+  let mid = 0.5;
+  for (let i = 0; i < 40; i++) {
+    mid = (lo + hi) / 2;
+    if (cx(mid) < u) lo = mid;
+    else hi = mid;
+  }
+  return cy(mid);
+}
+
+/** 取整套缓动 token 的实测量。
+ *
+ *  **口径与 2026-11-16 定案那次实测逐字同法**：1000px 的位移、1000ms 的时长、
+ *  每 1ms 取一帧（= i 从 0 到 1000，位置 = p(i/1000) × 1000px）。于是
+ *  v 的单位是 px/ms、a 是 px/ms²，读数可以直接和台架/真机那次对拍
+ *  （旧出相 v0 = 4.345、峰值 a = 0.015；新曲线 v0 = 0.002、峰值 a = 0.006）。 */
+function easeProfile(pts: [number, number, number, number]) {
+  const N = 1000;
+  const DIST = 1000;
+  const ys: number[] = [];
+  for (let i = 0; i <= N; i++) ys.push(bezierEval(pts, i / N) * DIST);
+  const v: number[] = [];
+  for (let i = 1; i < ys.length; i++) v.push(ys[i] - ys[i - 1]);
+  const a: number[] = [];
+  for (let i = 1; i < v.length; i++) a.push(v[i] - v[i - 1]);
+  const peakA = Math.max(...a.map(Math.abs));
+  let t80 = N;
+  for (let i = 0; i < ys.length; i++) {
+    if (ys[i] >= DIST * 0.8) {
+      t80 = i;
+      break;
+    }
+  }
+  return { v0: v[0], v1: v[v.length - 1], peakA, t80 };
+}
+
 describe('§15 动效契约（散写时长守卫）', () => {
   it('三档 + 两曲线 + 态变轴在 tokens.css 在册，且档间单调', () => {
     for (const t of ['snap', 'm-ink', 'm-sheet', 'm-scene', 'm-ease-out', 'm-ease-io']) {
@@ -204,6 +254,56 @@ describe('§15 动效契约（散写时长守卫）', () => {
     // 写反了就是「小事慢、大事快」的观感错
     expect(tokenSeconds('m-ink')).toBeLessThan(tokenSeconds('m-sheet'));
     expect(tokenSeconds('m-sheet')).toBeLessThan(tokenSeconds('m-scene'));
+  });
+
+  /** 2026-11-16 曲线重标（用户判「粗糙」触发）。
+   *
+   *  病史：旧出相 `cubic-bezier(0.23, 1, 0.32, 1)` 的**起点速度是均速的 4.345 倍**
+   *  （Chromium 逐 1ms 采样实测），即「被弹出后急刹」——全产品粗糙感的物理来源，
+   *  与花哨与否无关。且它名字叫「出相」（快起慢收），而 `--m-ease-out` 那条判据
+   *  「出相曲线在入场开头会钝住」描述的从来不是这条曲线。
+   *
+   *  本测把「丝滑」钉成可判的性质，而不是靠手感：
+   *    ① 两端速度趋零（v(0)、v(1) ≈ 0）——起点有速度就是「弹」，终点有速度就是「撞」；
+   *    ② 两端加速度趋零——落定那一帧不许还在抽；
+   *    ③ 峰值加速度有上限——全程不许有一段猛冲；
+   *    ④ 不许「前 30% 跑完大半」——那会让剩下的时间是空等。
+   *  `--snap` 豁免：它是态变轴（输入回执），要的就是「啪」的即时感，本就不是动效。 */
+  it('缓动曲线两端 C2 连续（v(0)=v(1)=0、两端 |a|≈0、峰值加速度有界）', () => {
+    const EASE_TOKENS = ['m-ease-out', 'm-ease-io'] as const;
+    for (const name of EASE_TOKENS) {
+      const m = new RegExp(`--${name}:\\s*([^;]+);`).exec(TOKENS_CSS);
+      expect(m, `tokens.css 缺 --${name}`).not.toBeNull();
+      const pts = bezierPoints((m as RegExpExecArray)[1]);
+      expect(
+        pts,
+        `--${name} 必须是 cubic-bezier(...)（linear() 多段逼近的折点会产生加速度尖峰，实测差 24 倍）`,
+      ).not.toBeNull();
+
+      const p = easeProfile(pts as [number, number, number, number]);
+      // ① 两端速度趋零（px/ms，口径见 easeProfile）。旧出相 v0 = 4.345；
+      //    新曲线 0.002 —— 判据留 0.05 的余量给浮点误差。
+      expect(Math.abs(p.v0), `--${name} 起点有速度（${p.v0.toFixed(3)} px/ms）= 读作「弹出来」`).toBeLessThan(0.05);
+      expect(Math.abs(p.v1), `--${name} 终点有速度（${p.v1.toFixed(3)} px/ms）= 读作「撞上去」`).toBeLessThan(0.05);
+      // ② 两端加速度趋零。cubic-bezier 的 y 控制点在 0/1 上即两端 |a|→0。
+      const y1 = (pts as [number, number, number, number])[1];
+      const y2 = (pts as [number, number, number, number])[3];
+      expect(y1, `--${name} 的 y1 必须为 0（否则起点带加速度）`).toBe(0);
+      expect(y2, `--${name} 的 y2 必须为 1（否则终点带加速度）`).toBe(1);
+      // ③ 峰值加速度有上限。现行 0.006；旧出相 0.015 —— 上限取 0.008。
+      expect(p.peakA, `--${name} 峰值加速度 ${p.peakA.toFixed(4)} 超界（全程有一段猛冲）`).toBeLessThan(0.008);
+      // ④ 不许「前半段跑完大半」。现行 t80 = 696/1000；旧出相 267/1000。
+      expect(p.t80, `--${name} 走完 80% 只用 ${p.t80}/1000（头重脚轻，后半程是空等）`).toBeGreaterThan(600);
+    }
+  });
+
+  it('缓动扫描器自证非永真（喂旧曲线必须红、喂当前曲线必须绿）', () => {
+    const old = easeProfile([0.23, 1, 0.32, 1]);
+    expect(Math.abs(old.v0)).toBeGreaterThan(0.05); // 旧出相：起点有速度（4.345 px/ms）
+    expect(old.t80).toBeLessThan(600); // 旧出相：头重脚轻（267/1000）
+    const now = easeProfile([0.4, 0, 0.6, 1]);
+    expect(Math.abs(now.v0)).toBeLessThan(0.05); // 新曲线：两端归零（0.002）
+    expect(now.t80).toBeGreaterThan(600); // 新曲线：全窗均匀（696/1000）
   });
 
   it('退役 token 不得复活：--glide / --pp-grow-dur / --pp-grow-ease 全仓零引用', () => {
