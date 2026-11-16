@@ -98,6 +98,12 @@ export interface DraftSheetState {
   morph: DraftMorph | null;
   /** 落纸锚点（null = 尚未落位——由落纸方按「视口中心最近空位」算）。 */
   anchor: DraftSheetAnchor | null;
+  /** 落纸代数：**每摊开一次纸 +1**。落位方（DraftSheet）据此判定「这一拍要把镜头带过去」。
+   *
+   *  为什么不是「anchor 变了才飞」：再点「＋」= 把当前这张纸重新定位（设计件 §3.5），
+   *  而落位算法是幂等的——anchor 与上一张纸同值（画布没动过）时，只看 anchor 就不飞，
+   *  而用户这一下要的恰恰是「回到那张纸去」。代数由摊开动作推进，与几何无关。 */
+  landNonce: number;
   /** 预选组合（「✎ 造模式」= 'creator'；null = 跟随全局默认）——摊开时的种子。 */
   presetId: string | null;
   /** 题签三笔（null = 纸刚摊开、纸面尚未填出厂默认）。 */
@@ -204,6 +210,7 @@ export const useDraftSheetStore = create<DraftSheetState>((set, get) => ({
   open: false,
   morph: null,
   anchor: null,
+  landNonce: 0,
   presetId: null,
   picks: null,
   notice: null,
@@ -215,6 +222,8 @@ export const useDraftSheetStore = create<DraftSheetState>((set, get) => ({
       morph: null,
       anchor: init?.anchor === undefined ? s.anchor : init.anchor,
       presetId: init?.presetId === undefined ? s.presetId : init.presetId,
+      // 摊开 = 一次新的落纸：落位方据此把镜头带过去（见 landNonce 注）
+      landNonce: s.landNonce + 1,
     }));
   },
   setAnchor: (anchor) => set((s) => (s.anchor === anchor ? s : { anchor })),
@@ -245,6 +254,8 @@ export const useDraftSheetStore = create<DraftSheetState>((set, get) => ({
   },
   dismiss: () => {
     clearMorphTimer();
+    /* `landNonce` 刻意**不**随弃纸清零：它是单调的落纸代数（见字段注）。清回 0 会让
+     * 迟到的落位方读到「与上次相同」，把「再摊一张纸」的聚焦吞掉。 */
     set((s) =>
       s.open || s.morph !== null || s.anchor !== null || s.presetId !== null || s.picks !== null || s.notice !== null
         ? { open: false, morph: null, anchor: null, presetId: null, picks: null, notice: null }

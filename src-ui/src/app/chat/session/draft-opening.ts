@@ -11,11 +11,15 @@
 //      整件事，随后落位 effect 的 `nearestFreeRegion` 接管；空画布上两个算法恰好同值
 //      （测不出来），用户平移过画布立刻分家：纸在这儿，呼吸灯与匣脚引线在那儿。
 //   ② **出生 = 一种展开**：新卷必须被标成**活跃流区**（`activeSessionKey` 是匣脚引线 /
-//      目录带 / 创作坞三处的判据），并请求一次定位飞行（由 usePaperFocus 兑现）。
+//      目录带 / 创作坞三处的判据），并**确保它在眼前**。
 //      这一条曾被可选链吞掉（ChatCore 压根没有 `requestFocus` 能力位）——症状是
 //      「引线整层不画 + 坞对着上一卷」，用户读作「定位全错」。
+//      **2026-11-16 收窄**：定位不再无条件发起 —— 落纸那一刻镜头已经把纸带到视野里
+//      （见 DraftSheet 的落纸一拍），纸与卷同锚点同宽 ⇒ 再飞一次只是让视线在交接那一拍
+//      自己动一下。现在按 `volumeInSight` 判：在眼前 = 只标活跃；不在眼前 = 照旧请求飞行。
 //   ③ **倾斜的卷级覆盖**：题签里的模型/思考只在**显式题过**时写会话覆盖。
 
+import { worldToScreen } from '../../../paper/canvas-math';
 import { STREAM_REGION } from '../../../paper/space';
 import type { StoredThinking } from '../../../provider/thinking';
 import { getCanvasStore } from '../../../state/canvas-store';
@@ -49,6 +53,23 @@ export function focusBornVolume(panelId: string, sessionId: string | null): void
   }
   getCanvasStore(panelId).getState().setActiveRegion(sessionId);
   useCanvasViewStore.getState().requestFocus(sessionId);
+}
+
+/** 这一卷**已经在眼前**吗（= 落纸那一刻镜头已经把它带到视野里了）。
+ *
+ *  判据 = 该卷锚点（最新块底边）投到屏幕后落在画布矩形之内。开卷时若它已经在
+ *  眼前，就**只标活跃、不再飞**：纸与卷同锚点同宽，再飞一次等于让视线在交接那一拍
+ *  自己动一下（屏上的东西没变，画面却抖了一格）。卷不在眼前（视口被拖走 / 窗口极小）
+ *  才回落到请求飞行——「出生即展开」要的是**一定能看见**，不是「一定要飞」。
+ *
+ *  ⚠ 读的是**画布状态里的落位**（不是屏幕矩形）：`placeRegion` 已把卷写到纸的锚点上，
+ *  两侧用的是同一份坐标，不存在「纸在这儿、卷在那儿」的分家。 */
+export function volumeInSight(panelId: string, sessionId: number): boolean {
+  const region = getCanvasStore(panelId).getState().spread[String(sessionId)];
+  if (!region) return false; // 还没落位 = 无从判可见 ⇒ 当它不在眼前（回落飞行）
+  const cvs = useCanvasViewStore.getState();
+  const screen = worldToScreen(cvs.view, region.anchorX, region.anchorY);
+  return screen.x >= 0 && screen.x <= cvs.canvasSize.w && screen.y >= 0 && screen.y <= cvs.canvasSize.h;
 }
 
 /** 题签的模型/思考：**只在显式题过**时写会话覆盖（全默认 = 零覆盖，照常跟随全局）。 */
@@ -99,7 +120,8 @@ export interface DraftOpenHooks {
  * 顺序（错一步就出现「纸已撤、卷没个准位置」）：
  *   ① 存正文 → 起卷（带组合，出生即按它装配）→ 还正文；
  *   ② 落位（纸在哪，卷就落哪）；
- *   ③ 出生 = 一种展开（标活跃流区 + 请求定位飞行）；
+ *   ③ 出生 = 一种展开（标活跃流区；**不在眼前**才请求定位飞行——落纸那一拍已经把
+ *      镜头带到纸上，卷与纸同锚点同宽，再飞一次只是让视线在交接拍自己动一下）；
  *   ④ 题签的另两笔落到会话覆盖上（全默认 = 零覆盖）。
  *
  * 为什么 ① 要先存正文：`createNewSession` 会 `restoreSessionDraft`（新卷无草稿槽）
@@ -111,6 +133,8 @@ export async function openDraftVolume(
   ctx: SessionContext,
   opts: DraftOpenOpts,
   hooks: DraftOpenHooks,
+  /** 这一卷此刻在不在眼前（判据 = `volumeInSight`；由 ChatCore 的能力位注入）。 */
+  inSight: (sessionId: number) => boolean = (sid) => volumeInSight(panelId, sid),
 ): Promise<DraftOpenResult> {
   const input = getChatStore(panelId).input;
   const pendingText = input.getState().inputText;
@@ -124,7 +148,11 @@ export async function openDraftVolume(
   if (pendingText) input.getState().setInputText(pendingText);
   const sid = String(r.sessionId);
   if (opts.anchor) hooks.placeRegion(sid, opts.anchor);
-  hooks.requestFocus(sid);
+  /* ③ 在眼前 = 只标活跃（不再飞）：落纸那一拍已经把镜头带到这张纸上，而卷与纸
+   *    **同锚点同宽**——再飞一次的画面变化 = 视线在交接拍自己挪一小格。不在眼前
+   *    （视口被拖走 / 窗口极小）才回落请求飞行，「出生即展开」的底线是不许看不见。 */
+  getCanvasStore(panelId).getState().setActiveRegion(sid);
+  if (!inSight(r.sessionId)) hooks.requestFocus(sid);
   hooks.applyDraftPicks(r.sessionId, opts.picks, opts.fallback);
   return r;
 }

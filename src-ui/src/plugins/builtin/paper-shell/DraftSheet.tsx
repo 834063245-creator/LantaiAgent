@@ -26,18 +26,20 @@
 // V1 的三条断言留作判据（勿重犯）：题签 = 纸上的三行注疏 / 开卷按钮 / 坞隐藏输入条。
 // 前两条已被 V2 推翻，第三条改为「坞整只不渲染」（见 `ComposerSurface` 开头的早退）。
 
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
-import { type DraftSheetCore, draftPlacement, draftScale } from './draft-sheet';
+import { type CSSProperties, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { type DraftSheetCore, draftBoxInSight, draftFocusPoint, draftPlacement, draftScale } from './draft-sheet';
 import {
   activeOverlayContributions,
   draftSheetSeed,
   EMPTY_REGION_CONTENT_H,
   Icon,
+  PaperDockContext,
   PluginBoundary,
   REGION_FOOT_GAP,
   resolveNewSessionDefault,
   STREAM_REGION,
   subscribeOverlayContributions,
+  useCanvasViewStore,
   useDraftSheetStore,
   usePresetStore,
 } from './host';
@@ -68,12 +70,31 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
 
   const presetSelected = usePresetStore((s) => s.selected);
 
+  /* ── 落位 = 落纸 + 把镜头带过去（2026-11-16 用户报「点了新建视角不跟过去」）──
+   *  落点是**视口中心最近的空位**：画布上卷一多，最近空位就在屏外。只写 anchor 不飞
+   *  ⇒ 用户按下「＋」后画面纹丝不动，还得满画布找那张纸。故两件事同一拍：
+   *    ① 算锚点（`draftPlacement`，与卷的自动落位同一把尺子）；
+   *    ② 把镜头带到这张纸（`draftFocusPoint` → 槽主人的 `glideTo`）。
+   *  聚焦走 `PaperDockContext` 的**能力位**（缺席 = 不飞，纸照常落位）——待题纸不是卷、
+   *  没有 sessionId，`requestFocus` 那条通道对它不成立；本组件在 PaperPanel 的 provider
+   *  之内（同树见 PaperPanel 的 <DraftSheet />），故 `useContext` 直接取，不经 usePaperDock
+   *  （那个钩子在 provider 外会抛，而测试可以单独挂这张纸）。
+   *  代数 `landNonce`：再点「＋」= 把这张纸重新定位，几何可能一字未变，仍要回镜头。 */
+  const dockCtx = useContext(PaperDockContext);
+  const glideToRef = useRef(dockCtx?.glideTo ?? null);
+  glideToRef.current = dockCtx?.glideTo ?? null;
+  const landedNonce = useRef(0);
+
   const sheetRef = useRef<HTMLDivElement | null>(null);
   /* 纸高实测（V2：纸高随内容长——输入面多行/附件 rail/失败行都会变）。
    * 纸以**下缘锚点**向上长：top = 锚点 − 实测高。用 ResizeObserver 而不是量一次：
    * 输入面自己会随打字增高，量一次会在第一个换行处露馅（纸脚被内容顶穿）。
    * jsdom 无 RO：退回量首帧（测试自铺桩，与 use-composer-float 同款纪律）。 */
   const [sheetH, setSheetH] = useState(0);
+  /* 实测高的 ref 镜像：落纸那个 effect 要读它算盒高，但**不能把它写进依赖**——
+   * 每来一帧尺寸就把镜头重算一次 = 落完纸之后还在追着纸动。 */
+  const sheetHRef = useRef(0);
+  sheetHRef.current = sheetH;
   const measureSheet = useCallback((el: HTMLDivElement | null) => {
     sheetRef.current = el;
     if (!el) return;
@@ -100,11 +121,34 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
     setSheetH(0); // 交出去：本件的实测高不再参与盒
   }, [morph]);
 
-  /* ── 落纸：首帧算锚点（视口中心最近的空位——与流区落位同一把尺子）── */
+  /* ── 落纸：算锚点（视口中心最近的空位——与流区落位同一把尺子）→ **同拍把镜头带过去** ──
+   *  两件事必须是一个动作：只落位不飞 = 纸落在屏外、用户看不见（2026-11-16 报的那一幕）。
+   *  这一拍还包下「纸自己重算位置」的情形（anchor 为 null —— 例如锚点被弃纸清掉之后）。 */
+  const landNonce = useDraftSheetStore((s) => s.landNonce);
+  /* 画布尺寸只作**重试扳机**（见下：首测尺寸为 0 时本拍跳过，尺寸一到再来一次）；
+   * 落点与镜头目标仍从 getState() 现取，不吃渲染期快照。 */
+  const canvasSize = useCanvasViewStore((s) => s.canvasSize);
   useEffect(() => {
-    if (!open || anchor !== null || !core) return;
-    setAnchor(draftPlacement(core));
-  }, [open, anchor, core, setAnchor]);
+    void canvasSize; // 只作重试扳机（同 use-paper-panel 的 motionTick 范式）：真值仍从 getState 现取
+    if (!open || !core) return;
+    if (landedNonce.current === landNonce) return; // 这一张纸已经落过纸（重新渲染不再飞）
+    const view = useCanvasViewStore.getState();
+    /* 画布还没量到尺寸（挂载首帧之前）：无从判可见、也无从算「该飞到哪」——
+     * 这一拍整只跳过，**且不消耗代数**（尺寸一到，下一次依赖变化会重跑本 effect）。 */
+    if (view.canvasSize.w <= 0 || view.canvasSize.h <= 0) return;
+    landedNonce.current = landNonce;
+    const spot = anchor ?? draftPlacement(core);
+    if (anchor === null) setAnchor(spot);
+    /* 盒高取「实测 vs 零块卷最小盒高」中的大者——与纸自己渲染的那个盒**同一把尺子**
+     *（见下方 regionMinH：纸高垫到卷的最小盒高，内容更高就按内容走）。 */
+    const boxH = Math.max(sheetHRef.current, EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP);
+    /* 纸已经整块在视口里 ⇒ **一动不动**：视角是用户的，自动动作只在「你按了＋却看不见」
+     * 这一种情形里才配动它（同 2026-09-01 视角抢夺修复的口径）。
+     * 能力位缺席 = 不飞，纸照常落位（纸面不炸——与 FolioCompositionChip 同款纪律）。 */
+    if (draftBoxInSight(spot, view.view, view.canvasSize, boxH)) return;
+    const focus = draftFocusPoint(spot, boxH);
+    glideToRef.current?.(focus.x, focus.y);
+  }, [open, core, anchor, landNonce, canvasSize, setAnchor]);
 
   /* ── 每次开纸重置题签（预选组合 = 造模式入口传进来的；其余取出厂默认）──
    * 题签住 store（不在此组件态）：**发送面要读它**（ChatCore.sendMessage 的纸在场分支

@@ -72,6 +72,7 @@ import {
   focusBornVolume,
   openDraftVolume,
   placeDraftRegion,
+  volumeInSight,
 } from './session/draft-opening';
 import * as Branch from './session-branch';
 import * as SessionComposition from './session-composition';
@@ -725,7 +726,9 @@ export class ChatCore {
    *  编排本体（起卷 + 题签落账 + 三件几何）在 `session/draft-opening.ts`：那是
    *  「把一张纸变成一张卷」的空间动作，与消息编排不是同一层的知识。 */
   async openDraftVolume(opts: DraftOpenOpts): Promise<DraftOpenResult> {
-    const r = await openDraftVolume(this.panelId, this._sessionCtx(), opts, this._draftHooks);
+    const r = await openDraftVolume(this.panelId, this._sessionCtx(), opts, this._draftHooks, (sid) =>
+      this.isVolumeInSight(sid),
+    );
     if (r.ok) this.refreshGoalView();
     return r;
   }
@@ -751,6 +754,13 @@ export class ChatCore {
    *  两处可选链病灶的教训也记在那里）。 */
   requestFocus(sessionId: string | null): void {
     focusBornVolume(this.panelId, sessionId);
+  }
+
+  /** **这一卷在不在眼前**（2026-11-16 落纸聚焦批的能力位）：开卷编排用它决定
+   *  还要不要请求一次定位飞行——落纸那一刻镜头已经带过去了的话，再飞只是让视线
+   *  在化卷那一拍自己动一下。判据本体在 `session/draft-opening`（与落位同一份坐标）。 */
+  isVolumeInSight(sessionId: number): boolean {
+    return volumeInSight(this.panelId, sessionId);
   }
 
   placeRegion(sessionId: string, region: { anchorX: number; anchorY: number }): void {

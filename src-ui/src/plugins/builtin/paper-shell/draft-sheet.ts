@@ -14,10 +14,18 @@
 // 那套的算术；V2 把创作坞整只搬进纸里，纸高随输入面长（输入多行、附件 rail、题签行
 // 有无都会变）。故本文件只留「落点」与「宽度」，高度交给组件的实测回写
 // （`anchorY` 是**纸的下缘**——纸以锚点为底线向上长，开卷后卷落在同一处）。
+//
+// 第三件（2026-11-16：「纸落下来，镜头跟着」）：落位本身只管**纸在世界的哪儿**，
+// **不管用户此刻看不看得见**。落点 = 视口中心最近的**空位**，画布上卷一多，最近空位
+// 就在视口之外——点「＋」之后纸落在屏外的某个空档，用户只看到画面纹丝不动，得自己
+// 满画布找题签。故落位与聚焦必须**同拍**：`draftFocusPoint` 给出「纸盒竖直中线」那个
+// 世界点，纸把它交给槽主人的 glideTo（`PaperDockContext` 的能力位）把镜头带过去。
 
 import {
+  EMPTY_REGION_CONTENT_H,
   getCanvasStore,
   nearestFreeRegion,
+  REGION_FOOT_GAP,
   STREAM_REGION,
   type StreamRegionState,
   useCanvasViewStore,
@@ -46,6 +54,49 @@ export function draftPlacement(core: DraftSheetCore): StreamRegionState {
     width: r.width,
   }));
   return { ...nearestFreeRegion(occupied, center.x, center.y), width: STREAM_REGION.width };
+}
+
+/** 落纸后的聚焦点（世界坐标）——**纸盒的竖直中线**那个点。
+ *
+ *  为什么不取锚点：锚点不是纸的几何中心。锚点 = 「最新块底边」，纸/卷盒底 = 锚点 +
+ *  `REGION_FOOT_GAP`（纸脚留白，见 DraftSheet 的 boxBottom），盒再往上长一个盒高——
+ *  把锚点对到视口正中，纸会整块偏到正中以下（实测量：800 高视口里纸顶被切掉 90px，
+ *  「落下来了但没落准」）。
+ *
+ *  盒高缺省 = `EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP`（零块卷的最小盒高，与
+ *  DraftSheet 的 regionMinH 同一把尺子）；落纸那一刻纸通常就是这个高，组件量到实测高
+ *  就传进来。**纯世界几何**：算出来的是「世界里的哪一点」，把这一点对到视口正中是
+ *  glideTo 的职责（屏幕换算只在槽主人那一处，本函数不碰视口状态）。
+ *  ⚠ 只给**落纸**用；开卷时的定位仍走 `requestFocus`（活跃卷 = 最新块底边，语义不同）。 */
+export function draftFocusPoint(
+  anchor: { anchorX: number; anchorY: number },
+  boxH: number = EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP,
+): { x: number; y: number } {
+  const boxBottom = anchor.anchorY + REGION_FOOT_GAP;
+  return { x: anchor.anchorX, y: boxBottom - boxH / 2 };
+}
+
+/** 这张纸**整块在视口里**吗（纸盒四缘都落在画布矩形内）。
+ *
+ *  用途 = 落纸时决定**要不要动镜头**：已经在眼前就一动不动——视角是用户的，
+ *  「任何自动动作都把 pan 拉回某处」在这条产品线上炸过（2026-09-01 视角抢夺修复；
+ *  尺寸变化、模型下拉这些无关动作都曾把画布抢回锚点）。落纸同理：只有「用户按下
+ *  ＋却看不见纸」这一种情形才配动镜头。
+ *  纯函数（视口从入参进来），判据与 `volumeInSight` 同源（都是「盒投到屏幕后落在
+ *  画布矩形里」），只是这里用的是**纸盒**而不是卷锚。 */
+export function draftBoxInSight(
+  anchor: { anchorX: number; anchorY: number; width: number },
+  view: { zoom: number; panX: number; panY: number },
+  canvasSize: { w: number; h: number },
+  boxH: number = EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP,
+): boolean {
+  const boxBottom = anchor.anchorY + REGION_FOOT_GAP;
+  const boxTop = boxBottom - boxH;
+  const x0 = (anchor.anchorX - anchor.width / 2) * view.zoom + view.panX;
+  const x1 = (anchor.anchorX + anchor.width / 2) * view.zoom + view.panX;
+  const y0 = boxTop * view.zoom + view.panY;
+  const y1 = boxBottom * view.zoom + view.panY;
+  return x0 >= 0 && x1 <= canvasSize.w && y0 >= 0 && y1 <= canvasSize.h;
 }
 
 /** 纸面状态词（数据面）：notice = 上一次发送（= 开卷）被拒的原因。
