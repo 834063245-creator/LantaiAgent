@@ -49,7 +49,7 @@
 | 事件 | 级别 | 何时 | 关键字段（`ctx` / `err`） |
 |---|---|---|---|
 | `boot` | info | 工作区打开、logger 落定后一次 | platform、tz、utc_offset_min、workspace、providers_yml、proxy_port、log_channel、**log_level、log_level_source**（批 3：这份 log 是哪个级别、开关从哪来） |
-| `config.load` | info/warn/error | provider 文档装载出口（**成功也写**） | path、sections、rows、section_errors、fatal、empty、source（file/localStorage）、keys（`N/M` 带 Key 行数） |
+| `config.load` | info/warn/error | provider 文档装载出口（**成功也写**） | path、sections、rows、section_errors（`[整节]` / `[字段]` 前缀区分「整节判死」与「字段级降级」）、fatal、empty、source（file/localStorage）、keys（`N/M` 带 Key 行数） |
 | `panel.providers_reload` | info/warn/error | 设置面板重读（外部改动 / 重试路径两条） | 同上 + trigger |
 | `cred.get` | info/warn/error | **真解析**一次凭据（IPC 往返；缓存命中不记） | provider、len；`err.kind=CRED_IPC_ERROR` 区分「IPC 抛错」与「真没配」 |
 | `cred.store` / `cred.remove` | info/error | 凭据写入 / 删除（逐 provider） | provider；失败带原文 |

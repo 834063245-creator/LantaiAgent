@@ -9,21 +9,23 @@
 // 真正的磁盘文件：复制文件就是导入，文件本身就是导出，agent 用 fs 工具直接改。
 //
 // 权威三分（见 settings.ts 同段注释）：意图 → 本文件；密钥 → 系统凭据；
-// 运行态读数（探针结果 / 目录快照）→ localStorage。三者不重叠。
+// 运行态读数（探针结果 / 目录快照 / 模型元数据）→ localStorage。三者不重叠。
 //
-// 两层文件（单一权威源不破——每层各只有一个来源）：
-//   `~/.lantai/providers.yml`  用户级：全局可用的连接配置（人/agent 都能写）；
-//   `{工作区}/.lantai/providers.yml` 项目级：同 id **整节覆盖**用户级（一个仓库的
-//   内网网关不该污染全局，也不该逼人手抄进全局文件）。
+// **只有一份文件**：`~/.lantai/providers.yml`（2026-11-16 项目级整份拆除——
+// 见下方「项目级配置文件整份拆除」段）。
 //
 // 时序（照 DSH `settings-file` 的「boot 先读、watcher 后武装、就绪后再对账」）：
 //   boot: loadProvidersDoc() → installProvidersDocProjection() ← 装配面首次读设置之前
 //   live: typedListen('providers:changed') → loadProvidersDoc()（外部编辑热生效）
 //   save: saveProvidersDoc(patch)           ← 设置页「保存」统一入口
 //
-// 纪律：
+// 纪律（2026-11-16 字段级校验批重写）：
 //   - **手稿解析不了 ⇒ 拒写**（绝不覆盖用户正在编辑的文件——DSH 同款）；
-//   - 坏节只坏自己（其余节照常生效），错误面点名到 provider（设置页显示）；
+//   - **字段级降级**：一个字段写错只丢那个字段（点名提示），整节照常生效；
+//     只有「这一节是谁 / 连到哪」判不出来（名字非法 / 缺 kind / 缺 baseUrl）才整节作废；
+//   - **坏节回落上一次可用**：整节作废时行表不消失（按名顶上上一次解析成功的样子）；
+//   - **有整节读不出来 ⇒ 拒写整份**：面板行表里没有它，写盘会把「没读出来」当成
+//     「用户删了」，真机上就这么抹掉过 359 行手写配置；
 //   - 写盘 = 读-改-写（先重读磁盘再渲染）：绝不复活陈旧文档、不丢本进程没观察到的兄弟节点。
 
 import { log } from '../agent/logger';
@@ -56,8 +58,11 @@ import {
 export interface ProvidersDocStatus {
   /** 配置文件绝对路径（Rust 侧计算；未就绪 = 空串）。 */
   path: string;
-  /** 逐节错误（坏节点名 + 可读原因）。 */
+  /** **整节**不可用（坏节点名 + 可读原因）——这些节按「上一次可用」回落，
+   *  不再从行表里消失。 */
   errors: SectionError[];
+  /** **字段级**问题：这一节照常生效，只是这些字段被按缺省处理。 */
+  warnings: SectionError[];
   /** 整份不可用原因（YAML 语法错 / 根不是映射）——此时**拒写**，以手写稿优先。 */
   fatal?: string;
   /** 磁盘上还没有内容（文件不存在 / 全空）——迁移的判据：
@@ -80,6 +85,7 @@ type Sections = Array<{ name: ProviderSettings['name']; intent: ProviderIntent }
 const state: ProvidersDocStatus = {
   path: '',
   errors: [],
+  warnings: [],
   empty: true,
   loaded: false,
   available: false,
@@ -107,16 +113,24 @@ function looksLikePath(p: string): boolean {
 export function providersFileReady(): boolean {
   return state.available && state.loaded && !state.fatal && !state.empty;
 }
-/** 运行态读数（provider 名 → 探针结果/目录快照/密钥），localStorage 的作者。 */
+/** 运行态读数（provider 名 → 探针结果/目录快照/元数据/密钥），localStorage 的作者。
+ *  ⚡ 2026-11-16 本机读数迁出批：`modelMeta`（刷新目录拉回来的模型元数据）从配置
+ *  文件搬到这一层——它是每天被自动重写的大块数据（真机占文件 87%），不该让它的
+ *  一处笔误决定整节 provider 的生死。旧文件里的遗留值在装载时收割到这里。 */
 let runtimeMap = new Map<string, ProviderRuntime>();
 /** 用户级文件原文（写盘时做读-改-写的底）。 */
 let lastFileText = '';
 /** 用户级解析出的节。 */
 let lastSections: Sections = [];
-/** 项目级文件解析出的节/错误（打开工作区时装载）。 */
-let projectSections: Sections = [];
-let projectErrors: SectionError[] = [];
-let projectFatal: string | undefined;
+/** **上一次可用**的节（按名）。坏节不进行表时用它顶上——
+ *  设计件「坏节只坏自己、该节回落上次可用值」的兑现（2026-11-16 事故：此前
+ *  这句话只写在注释里，代码里没有，于是坏节直接从应用侧消失）。 */
+let lastGoodSections = new Map<string, Sections[number]>();
+
+/** 本文件里出现过的坏节名（保存时**永不删**——「没读出来」≠「用户删了」）。 */
+let brokenSectionNames = new Set<string>();
+/** 文件里的顶层键顺序（含坏节）——行表按它排。 */
+let fileKeyOrder: string[] = [];
 let cachedRows: ProviderSettings[] | null = null;
 let cachedSignature = '';
 const listeners = new Set<Listener>();
@@ -166,16 +180,27 @@ function knownProtocols(): { has(kind: string): boolean } {
   return { has: (kind: string) => kinds.has(kind) };
 }
 
-/** 当前生效的节 = 项目级覆盖同名用户级节（顺序：用户级在前，项目级独有接尾）。 */
+/** 当前生效的节 = 文件里的节 + 坏节的「上一次可用」回落。
+ *
+ *  ⚡ 2026-11-16：坏节不再从行表里消失——按名回落到上一次解析成功的意图
+ *  （设计件承诺的语义，此前只有注释没有实现）。文件里彻底删掉的节才真的消失。 */
 function effectiveSections(): Sections {
-  if (projectSections.length === 0) return lastSections;
-  const override = new Map(projectSections.map((s) => [s.name, s.intent]));
-  const out: Sections = lastSections.map((s) => {
-    const hit = override.get(s.name);
-    return hit ? { name: s.name, intent: hit } : s;
-  });
-  const seen = new Set(lastSections.map((s) => s.name));
-  for (const s of projectSections) if (!seen.has(s.name)) out.push(s);
+  if (lastGoodSections.size === 0) return lastSections;
+  const byName = new Map<string, Sections[number]>();
+  for (const [name, section] of lastGoodSections) byName.set(name, section);
+  // 文件里读得出来的节覆盖旧值（最新状态优先）
+  for (const s of lastSections) byName.set(s.name, s);
+  // 顺序 = 文件里的键序（坏节回到原位），文件里已删掉的节才排在后面
+  const out: Sections = [];
+  const seen = new Set<string>();
+  for (const name of fileKeyOrder) {
+    const s = byName.get(name);
+    if (s) {
+      out.push(s);
+      seen.add(name);
+    }
+  }
+  for (const [name, s] of byName) if (!seen.has(name)) out.push(s);
   return out;
 }
 
@@ -184,15 +209,19 @@ function runtimeOf(p: ProviderSettings): ProviderRuntime {
     apiKey: p.apiKey ?? '',
     ...(p.lastTest !== undefined ? { lastTest: p.lastTest } : {}),
     ...(p.catalog !== undefined ? { catalog: p.catalog } : {}),
+    ...(p.modelMeta !== undefined ? { modelMeta: p.modelMeta } : {}),
   };
 }
 
 /** 重新计算投影（签名没变则复用同一数组引用——打字/滚轮热路径上 loadSettings 高频）。 */
 function refreshRows(): void {
   const runtimeSig = [...runtimeMap.entries()]
-    .map(([k, v]) => `${k}|${v.apiKey.length}|${v.lastTest?.at ?? 0}|${v.catalog?.length ?? 0}`)
+    .map(
+      ([k, v]) =>
+        `${k}|${v.apiKey.length}|${v.lastTest?.at ?? 0}|${v.catalog?.length ?? 0}|${v.modelMeta ? Object.keys(v.modelMeta).length : 0}`,
+    )
     .join(',');
-  const signature = `${lastFileText.length}:${state.fatal ?? ''}:${projectSections.length}:${projectFatal ?? ''}:${runtimeSig}`;
+  const signature = `${lastFileText.length}:${state.fatal ?? ''}:${lastGoodSections.size}:${brokenSectionNames.size}:${fileKeyOrder.length}:${runtimeSig}`;
   if (cachedRows && signature === cachedSignature) return;
   cachedSignature = signature;
   const rt = (name: string): ProviderRuntime => runtimeMap.get(name) ?? { apiKey: '' };
@@ -232,7 +261,10 @@ function docSnapshotForObs(): Obs.ObsDocSnapshot {
     path: state.path,
     sections: lastSections.length,
     rows: rows.length,
-    errors: state.errors.map((e) => ({ name: e.name, reason: e.message })),
+    errors: [
+      ...state.errors.map((e) => ({ name: e.name, reason: `[整节] ${e.message}` })),
+      ...state.warnings.map((e) => ({ name: e.name, reason: `[字段] ${e.message}` })),
+    ],
     fatal: state.fatal,
     empty: state.empty,
     source: ready ? 'file' : 'localStorage',
@@ -295,9 +327,30 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
   state.loaded = true;
   state.empty = text.trim().length === 0;
   state.errors = doc.errors;
+  state.warnings = doc.warnings;
   state.fatal = doc.fatal;
   state.lastError = doc.fatal ?? '';
   lastSections = doc.sections.map((s) => ({ name: s.name, intent: s.intent }));
+  // ── 「上一次可用」账（2026-11-16 事故根治）────────────────────────
+  // 成功解析的节逐名刷新；坏节按名**保留旧值**（行表靠 effectiveSections 顶上）。
+  for (const s of lastSections) lastGoodSections.set(s.name, s);
+  brokenSectionNames = new Set(doc.errors.map((e) => e.name));
+  fileKeyOrder = doc.order;
+  // 文件里已经删掉的节必须从 last-good 里除名——否则「上一次可用」会把用户删掉的
+  // 行复活（删除是他们明确表达过的意图，不能当成「没读出来」）。
+  // 整份 fatal 时 doc.order 为空 ⇒ 不动账本（保留整份上一次可用）。
+  if (!doc.fatal) {
+    const alive = new Set(doc.order);
+    for (const name of [...lastGoodSections.keys()]) {
+      if (!alive.has(name)) lastGoodSections.delete(name);
+    }
+  }
+  // 遗留的 modelMeta（旧文件里那片自动生成的读数）：收进运行态，下次写盘即从文件消失。
+  for (const s of doc.sections) {
+    if (!s.legacyModelMeta) continue;
+    const prev = runtimeMap.get(s.name) ?? { apiKey: '' };
+    runtimeMap.set(s.name, { ...prev, modelMeta: { ...prev.modelMeta, ...s.legacyModelMeta } });
+  }
   cachedRows = null; // 强制重算
   refreshRows();
   notify();
@@ -307,43 +360,13 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
   return true;
 }
 
-/** 读项目级覆盖（打开工作区时调一次；无文件 = 无覆盖，常态）。 */
-export async function loadProjectProvidersDoc(projectPath: string): Promise<void> {
-  const path = projectProvidersFilePath(projectPath);
-  projectSections = [];
-  projectErrors = [];
-  projectFatal = undefined;
-  if (path) {
-    try {
-      const text = await kernelReadFile(path);
-      const doc = parseProvidersDoc(text, knownProtocols());
-      projectSections = doc.sections.map((s) => ({ name: s.name, intent: s.intent }));
-      projectErrors = doc.errors;
-      projectFatal = doc.fatal;
-    } catch {
-      // 无项目级文件 = 常态
-    }
-  }
-  cachedRows = null;
-  refreshRows();
-  notify();
-}
-
-/** 项目级配置文件路径（工作区未打开 = 空串）。 */
-export function projectProvidersFilePath(projectPath: string): string {
-  const base = projectPath.replace(/[\\/]+$/, '');
-  return base ? `${base}/.lantai/providers.yml` : '';
-}
-
-/** 项目级文档的逐节错误（设置页显示；与用户级错误分开报）。 */
-export function projectProvidersErrors(): readonly SectionError[] {
-  return projectErrors;
-}
-
-/** 项目级文档整份不可用原因。 */
-export function projectProvidersFatal(): string | undefined {
-  return projectFatal;
-}
+// ⚡ 2026-11-16 项目级配置文件整份拆除（用户裁定｜原设计不是有用的东西）：
+//   `{工作区}/.lantai/providers.yml`「同 id 整节覆盖用户级」这套——它带来的是
+//   三份互相打架的真相（用户级 / 项目级 / localStorage），而收益（一个仓库一个
+//   内网网关不污染全局）在实际使用里不存在。更糟的是它**没有热重载**（watcher
+//   只监听用户级），prompt 段却告诉 agent「改完约 1 秒生效」——真机实测：agent
+//   写了项目级文件，ui.log 一个字都没有，它还以为配好了。
+//   现在只有一份 provider 配置文件：`~/.lantai/providers.yml`。
 
 /**
  * 写盘：把「provider 名 → 意图」补丁落到**用户级**配置文件（读-改-写，保住手写注释）。
@@ -384,8 +407,22 @@ export async function saveProvidersDoc(
   if (check.fatal) {
     return { ok: false, error: `配置文件当前无法解析，已拒绝写入（绝不覆盖你正在编辑的内容）：${check.fatal}` };
   }
+  // ⚡ 目录里还有**整节读不出来**的节 ⇒ 拒绝整份写入（2026-11-16 事故）：
+  //   面板行表里没有那一节，补丁里也就没有它；若照旧写盘，'删掉补丁里没有的节'
+  //   会把用户手写的整节（真机上 359 行）静默抹掉。手写错误必须当场修，
+  //   修好之前本进程一个字节都不写——错误可见（下面点名到节）。
+  if (check.errors.length > 0) {
+    const names = check.errors.map((e) => e.name).join('、');
+    return {
+      ok: false,
+      error: `配置文件里这些节读不出来：${names}——修好之前不会写盘（否则会覆盖掉你手写的内容）`,
+    };
+  }
+  // 即使本次补丁覆盖了全部节，也把「读不出来的节」原样保留（双保险：将来放宽上面的
+  // 拒写策略时，这里仍不会把它们当作用户删掉的节）。
+  const keep = [...brokenSectionNames];
   try {
-    await kernelWriteFile(state.path, applyProvidersDoc(disk, patch));
+    await kernelWriteFile(state.path, applyProvidersDoc(disk, patch, { keep }));
   } catch (e) {
     return { ok: false, error: `写配置文件失败：${errText(e)}` };
   }
@@ -418,10 +455,25 @@ export async function seedProvidersDoc(rows: readonly ProviderSettings[]): Promi
 export async function bootstrapProvidersDoc(): Promise<void> {
   installProvidersDocProjection();
   await loadProvidersDoc();
+  // 装载时从旧文件里收割的 modelMeta（本机读数迁移源）——下面重建 runtimeMap
+  // 时**必须合并进来**，否则刚收上来的那批会当场丢掉。
+  const harvested = new Map(runtimeMap);
   const stored = storedProviderRows();
-  // 运行态读数（密钥/探针/目录快照）先按名挂上——**必须在写盘之前**：
+  // 运行态读数（密钥/探针/目录快照/模型元数据）先按名挂上——**必须在写盘之前**：
   // 迁移出文件之后投影立刻生效，此时 apiKey 就该在（否则设置页那一下会显示空 Key）。
-  runtimeMap = new Map(stored.map((p) => [p.name, runtimeOf(p)]));
+  runtimeMap = new Map(
+    stored.map((p) => {
+      const rt = runtimeOf(p);
+      const legacy = harvested.get(p.name)?.modelMeta;
+      // 文件里的遗留值更新（旧设计里它每轮刷新目录都会重写文件）⇒ 覆盖本机那份；
+      // 两边都没有 = 这一行没有元数据（不是空壳要写回去）。
+      if (!legacy) return [p.name, rt];
+      return [p.name, { ...rt, modelMeta: { ...rt.modelMeta, ...legacy } }];
+    }),
+  );
+  for (const [name, rt] of harvested) {
+    if (rt.modelMeta && !runtimeMap.has(name)) runtimeMap.set(name, rt);
+  }
   cachedRows = null;
   refreshRows();
   if (!state.loaded || state.fatal) {
@@ -493,6 +545,7 @@ export async function ensureProvidersDir(): Promise<void> {
 export function __resetProvidersDocForTests(): void {
   state.path = '';
   state.errors = [];
+  state.warnings = [];
   state.fatal = undefined;
   state.empty = true;
   state.loaded = false;
@@ -501,9 +554,9 @@ export function __resetProvidersDocForTests(): void {
   runtimeMap = new Map();
   lastFileText = '';
   lastSections = [];
-  projectSections = [];
-  projectErrors = [];
-  projectFatal = undefined;
+  lastGoodSections = new Map();
+  brokenSectionNames = new Set();
+  fileKeyOrder = [];
   cachedRows = null;
   cachedSignature = '';
   armed = false;

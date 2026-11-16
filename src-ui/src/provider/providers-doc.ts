@@ -39,13 +39,26 @@ import {
 } from './thinking';
 import { CORE_PROTOCOLS } from './types';
 
-/** 配置文件里一节 provider 的全部字段（= 用户意图；身份在键名里）。 */
-export type ProviderIntent = Omit<ProviderSettings, 'name' | 'apiKey' | 'lastTest' | 'catalog'>;
+/** 配置文件里一节 provider 的全部字段（= 用户意图；身份在键名里）。
+ *
+ *  ⚡ 2026-11-16 本机读数迁出批：`modelMeta`（API 拉取回来的模型元数据缓存）也在这里
+ *  被剥掉了。实测真机上它占配置文件的 **87%**（15642 字节里 12838 字节），是每次
+ *  刷新目录都会被重写的自动生成内容——把它当「用户意图」写进人手写的文件，等于让
+ *  一个每天自动生成的大块数据去承担手写错误的爆炸半径：真机事故（2026-11-16）
+ *  就是一行 `input: [audio]` 打死了 359 行、84 条元数据的整节。运行态读数与
+ *  `lastTest` / `catalog` 同类，回 localStorage。 */
+export type ProviderIntent = Omit<ProviderSettings, 'name' | 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta'>;
 
 /** 解析成功的一节：身份（键名）+ 意图。 */
 export interface ProviderSection {
   name: ProviderId;
   intent: ProviderIntent;
+  /** **字段级**警告：这一节可用，但某个字段的值写错了、已按缺省处理
+   *  （坏字段只丢字段——整节不因一处笔误而消失）。 */
+  warnings: string[];
+  /** 文件里遗留的 `modelMeta`（本机读数，已不在意图面）。
+   *  只用于一次性迁移：装载时收进运行态、下次写盘从文件里消失。 */
+  legacyModelMeta?: Record<string, ModelMeta>;
 }
 
 /** 一节的身份/字段错误（设置页点名报错用；坏节回落上次可用值）。 */
@@ -60,9 +73,16 @@ export interface SectionError {
 export interface ProvidersDoc {
   /** 逐节解析成功的意图（顺序 = 文件里的键序）。 */
   sections: ProviderSection[];
-  /** 逐节错误（坏节不进 sections）。 */
+  /** **整节**不可用（身份非法 / 不是映射 / 缺 kind / 缺 baseUrl）——这一节没进行表，
+   *  由装载方按「上一次可用」回落。 */
   errors: SectionError[];
-  /** 整份不可用（YAML 语法错 / 根不是映射）——此时 sections 为空。 */
+  /** **字段级**问题：这一节在 sections 里照常生效，只是这些字段被按缺省处理。 */
+  warnings: SectionError[];
+  /** 文件里所有顶层键的原始顺序（含读不出来的坏节）——行表按它排，
+   *  坏节回落上一次可用时仍回到它原本的位置。 */
+  order: string[];
+  /** 整份不可用（YAML 语法错 / 根不是映射）——此时 sections 为空，装载方保留
+   *  上一次可用的整份文档。 */
   fatal?: string;
 }
 
@@ -71,6 +91,7 @@ const RUNTIME_ONLY_KEYS: readonly { key: string; why: string }[] = [
   { key: 'apiKey', why: '密钥永不进本文件（明文落盘会被误分享）——请到设置页「API Key」栏填写，权威在系统凭据库' },
   { key: 'lastTest', why: '连接探针结果是本机读数、不进配置（本文件是用户意图）' },
   { key: 'catalog', why: '模型目录快照是本机读数、不进配置（设置页「刷新目录」拉取）' },
+  { key: 'modelMeta', why: '模型元数据是「刷新目录」拉取回来的本机读数、不进配置（2026-11-16 起只在本机存储）' },
 ];
 
 /** provider 身份围栏（键名即身份：凭据键 + 目录合并键三合一）——同 AddProviderSheet。 */
@@ -82,7 +103,7 @@ export const PROVIDERS_DOC_HEADER = [
   '',
   '· 一行 provider = 一个顶层键，键名就是 provider 身份（字母/数字/下划线/连字符）。',
   '· 这里只放**非敏感**连接配置；密钥（apiKey）权威在本机系统凭据库，不写在这里。',
-  '· 本机读数（连接探针结果、模型目录快照）也不在这里，它们只活在本机存储。',
+  '· 本机读数（连接探针、模型目录快照、模型元数据）也不在这里，它们只活在本机存储。',
   '· 删掉某一节 = 删掉那行 provider（密钥仍留在凭据库，设置页「清除」可一并删）。',
   '· 设置页保存会**按字段**回写本文件，你手写的注释与排版会保留。',
   '',
@@ -96,7 +117,8 @@ export const PROVIDERS_DOC_HEADER = [
   '#   thinking: high                                # 本家默认思考档位（缺省 = 自动）',
   '#   headers:                                      # 网关怪癖（可选）',
   '#     x-opencode-session: sess-1',
-  '#   modelOverrides:                               # 单模型纠正（可选）',
+  '#   modelOverrides:                               # 单模型纠正（可选；模型的窗口/视觉声明属这里，',
+  '#                                                 #  「刷新目录」拉回来的元数据属本机读数、不写文件）',
   '#     deepseek-v4.1-flash:',
   '#       contextWindow: 1000000',
   '#       maxTokens: 384000',
@@ -112,7 +134,7 @@ export function isProvidersDocPath(path: string): boolean {
 
 /** 由完整行取意图（剥掉非文件字段）——UI 写盘与文件解析共用同一把尺子。 */
 export function intentOf(p: ProviderSettings): ProviderIntent {
-  const { name: _name, apiKey: _apiKey, lastTest: _lastTest, catalog: _catalog, ...intent } = p;
+  const { name: _name, apiKey: _apiKey, lastTest: _lastTest, catalog: _catalog, modelMeta: _modelMeta, ...intent } = p;
   return intent;
 }
 
@@ -120,7 +142,7 @@ export function intentOf(p: ProviderSettings): ProviderIntent {
 export function mergeIntent(
   name: ProviderId,
   intent: ProviderIntent,
-  runtime: Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog'>,
+  runtime: Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta'>,
 ): ProviderSettings {
   return { ...intent, name, ...runtime };
 }
@@ -345,36 +367,31 @@ const INTENT_FIELDS = [
   'oauthProvider',
   'headers',
   'modelOverrides',
-  'modelMeta',
 ] as const satisfies readonly (keyof ProviderIntent)[];
 
-/** 解析一节 provider（键名 = 身份）。返回意图或点名字段错误。 */
-export function parseSection(
-  name: string,
-  raw: unknown,
-  protocols: KnownProtocols = FACTORY_PROTOCOLS,
-): { intent: ProviderIntent } | { errors: string[] } {
+/** 一节的解析结果：意图能否成立，取决于**身份/连接**是否可判——
+ *  其余字段写坏了只降级那个字段（字段级警告），不拖整节下水。 */
+export interface ParsedSection {
+  intent: ProviderIntent;
+  /** 字段级问题：这些字段已按缺省处理，节的其余部分照常生效。 */
+  warnings: string[];
+  /** 文件里遗留的 `modelMeta`（运行态读数，迁移用；不再写回文件）。 */
+  legacyModelMeta?: Record<string, ModelMeta>;
+}
+
+/** 这一节**非死不可**的原因（身份/连接层面无法判断它是哪个 provider）：
+ *  返回非空 = 整节作废、由装载方按「上一次可用」回落；返回空 = 意图可成立。 */
+function fatalSectionErrors(name: string, src: Record<string, unknown> | null, protocols: KnownProtocols): string[] {
   const errors: string[] = [];
   if (!PROVIDER_NAME_RE.test(name)) {
     errors.push(
       `provider 名「${name}」不合法（只允许字母、数字、下划线、连字符）——键名就是 provider 身份，也是系统凭据的键`,
     );
   }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (src === null) {
     errors.push('这一节必须是一个键值映射（如 kind / baseUrl / model）');
-    return { errors };
+    return errors;
   }
-  const src = raw as Record<string, unknown>;
-
-  for (const { key, why } of RUNTIME_ONLY_KEYS) {
-    if (src[key] !== undefined) errors.push(`${key} 不该出现在本文件：${why}`);
-  }
-  for (const key of Object.keys(src)) {
-    if (!(INTENT_FIELDS as readonly string[]).includes(key)) {
-      errors.push(`未知字段「${key}」（可写字段：${INTENT_FIELDS.join(' / ')}）`);
-    }
-  }
-
   const kind = src.kind;
   if (typeof kind !== 'string' || !kind.trim()) {
     errors.push('缺少 kind（协议：anthropic / openai / responses）');
@@ -387,46 +404,95 @@ export function parseSection(
   } else if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(baseUrl.trim())) {
     errors.push(`baseUrl「${baseUrl.trim()}」不像完整地址（需要 http(s):// 开头）`);
   }
-  const model = src.model;
-  if (typeof model !== 'string' || !model.trim()) errors.push('缺少 model（新会话默认模型 id）');
+  return errors;
+}
 
-  const models = readStringArray(src.models, 'models', errors);
-  const headers = readHeaders(src.headers, errors);
-  const modelOverrides = readModelOverrides(src.modelOverrides, errors);
-  const modelMeta = readModelMeta(src.modelMeta, errors);
+/**
+ * 解析一节 provider（键名 = 身份）。
+ *
+ * ⚡ 2026-11-16 字段级校验批（真机事故根治）：**能用的节绝不整节作废**。
+ *  只有「这一节是谁、连到哪」判不出来时（名字非法 / 不是映射 / 缺 kind /
+ *  缺 baseUrl）才整节判死；其余字段写错只丢那个字段并记一条警告。
+ *  事故形态：一行 `input: [audio]` 让 359 行、84 条元数据的整节从应用侧蒸发。
+ *
+ * @returns `{ errors }` = 整节不可用；`ParsedSection` = 可用（可能带字段级警告）。
+ */
+export function parseSection(
+  name: string,
+  raw: unknown,
+  protocols: KnownProtocols = FACTORY_PROTOCOLS,
+): ParsedSection | { errors: string[] } {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  const fatal = fatalSectionErrors(name, src, protocols);
+  if (fatal.length > 0) return { errors: fatal };
 
-  const thinking = src.thinking;
+  // 走到这里 src 一定是映射（fatalSectionErrors 已保证），且 kind/baseUrl 可判。
+  const fields = src as Record<string, unknown>;
+  const warnings: string[] = [];
+
+  // 本机读数键（apiKey / lastTest / catalog / modelMeta）：点名提示 + **忽略**
+  // ——modelMeta 例外，它是迁移源（旧文件里那片自动生成的数据要收进本机存储）。
+  let legacyModelMeta: Record<string, ModelMeta> | undefined;
+  for (const { key, why } of RUNTIME_ONLY_KEYS) {
+    if (fields[key] === undefined) continue;
+    if (key === 'modelMeta') {
+      legacyModelMeta = readModelMeta(fields.modelMeta, warnings);
+      warnings.push('modelMeta 已从本文件迁出（本机读数）；装载时会收进本机存储，下次保存即从文件消失');
+      continue;
+    }
+    warnings.push(`${key} 不该出现在本文件（已忽略）：${why}`);
+  }
+  // 未知字段一律忽略（前向兼容：旧版本打开新文件不该炸，也不该丢掉整节）
+  for (const key of Object.keys(fields)) {
+    if (RUNTIME_ONLY_KEYS.some((r) => r.key === key)) continue;
+    if (!(INTENT_FIELDS as readonly string[]).includes(key)) {
+      warnings.push(`未知字段「${key}」已忽略（本版本可写字段：${INTENT_FIELDS.join(' / ')}）`);
+    }
+  }
+
+  const model = fields.model;
+  if (typeof model !== 'string' || !model.trim()) {
+    warnings.push('缺少 model（新会话默认模型 id）——本行暂时没有默认模型，可在设置页补上');
+  }
+
+  const models = readStringArray(fields.models, 'models', warnings);
+  const headers = readHeaders(fields.headers, warnings);
+  const modelOverrides = readModelOverrides(fields.modelOverrides, warnings);
+
+  const thinking = fields.thinking;
   if (thinking !== undefined && typeof thinking !== 'string') {
-    errors.push('thinking 必须是字符串（档位名或空串 = 自动）');
+    warnings.push('thinking 必须是字符串（档位名或空串 = 自动）——已忽略该字段');
   } else if (typeof thinking === 'string' && thinking !== '' && !isThinkingMode(thinking)) {
-    errors.push(
-      `thinking「${thinking}」不是合法档位（${THINKING_MODES.map((m) => m.value || '自动').join(' / ')}）——遗留数字预算只在设置页里保留，不写进本文件`,
+    warnings.push(
+      `thinking「${thinking}」不是合法档位（${THINKING_MODES.map((m) => m.value || '自动').join(' / ')}）——已忽略该字段（回落自动）`,
     );
   }
-  const authMode = src.authMode;
+  const authMode = fields.authMode;
   if (authMode !== undefined && authMode !== 'api-key' && authMode !== 'oauth') {
-    errors.push('authMode 只能是 "api-key" 或 "oauth"');
+    warnings.push('authMode 只能是 "api-key" 或 "oauth"——已忽略该字段');
   }
-  const oauthProvider = src.oauthProvider;
+  const oauthProvider = fields.oauthProvider;
   if (oauthProvider !== undefined && typeof oauthProvider !== 'string') {
-    errors.push('oauthProvider 必须是字符串（如 codex）');
+    warnings.push('oauthProvider 必须是字符串（如 codex）——已忽略该字段');
   }
-  if (errors.length > 0) return { errors };
 
-  return {
-    intent: {
-      kind: (kind as string).trim(),
-      baseUrl: (baseUrl as string).trim(),
-      model: (model as string).trim(),
-      ...(models !== undefined ? { models } : {}),
-      ...(headers !== undefined ? { headers } : {}),
-      ...(modelOverrides !== undefined ? { modelOverrides } : {}),
-      ...(modelMeta !== undefined ? { modelMeta } : {}),
-      ...(typeof thinking === 'string' ? { thinking: thinking as StoredThinking } : {}),
-      ...(authMode === 'api-key' || authMode === 'oauth' ? { authMode } : {}),
-      ...(typeof oauthProvider === 'string' ? { oauthProvider } : {}),
-    },
+  const authOk = authMode === 'api-key' || authMode === 'oauth';
+  const intent: ProviderIntent = {
+    kind: (fields.kind as string).trim(),
+    baseUrl: (fields.baseUrl as string).trim(),
+    // model 是 ProviderSettings 的必填 string——缺省写空串（= 本行暂无可选模型），
+    // 而不是把整个字段删掉（那会让类型和消费面各说一套）。
+    model: typeof fields.model === 'string' ? fields.model.trim() : '',
+    ...(models !== undefined ? { models } : {}),
+    ...(headers !== undefined ? { headers } : {}),
+    ...(modelOverrides !== undefined ? { modelOverrides } : {}),
+    ...(typeof thinking === 'string' && (thinking === '' || isThinkingMode(thinking))
+      ? { thinking: thinking as StoredThinking }
+      : {}),
+    ...(authOk ? { authMode } : {}),
+    ...(typeof oauthProvider === 'string' ? { oauthProvider } : {}),
   };
+  return { intent, warnings, ...(legacyModelMeta !== undefined ? { legacyModelMeta } : {}) };
 }
 
 /**
@@ -438,20 +504,19 @@ export function parseSection(
 export function parseProvidersDoc(text: string, protocols: KnownProtocols = FACTORY_PROTOCOLS): ProvidersDoc {
   const sections: ProviderSection[] = [];
   const errors: SectionError[] = [];
-  const wrap = (name: string, list: string[]): void => {
-    errors.push({ name, message: list.join('\n') });
-  };
+  const warnings: SectionError[] = [];
+  const order: string[] = [];
 
-  if (!text.trim()) return { sections, errors };
+  if (!text.trim()) return { sections, errors, warnings, order };
 
   const doc: Document = parseDocument(text);
   if (doc.errors.length > 0) {
-    return { sections, errors, fatal: `YAML 解析失败：${doc.errors[0].message}` };
+    return { sections, errors, warnings, order, fatal: `YAML 解析失败：${doc.errors[0].message}` };
   }
   const root = doc.contents;
-  if (root === null) return { sections, errors };
+  if (root === null) return { sections, errors, warnings, order };
   if (!isMap(root)) {
-    return { sections, errors, fatal: '文档根必须是一个映射：顶层键 = provider 名' };
+    return { sections, errors, warnings, order, fatal: '文档根必须是一个映射：顶层键 = provider 名' };
   }
 
   const seen = new Map<string, string>();
@@ -462,21 +527,36 @@ export function parseProvidersDoc(text: string, protocols: KnownProtocols = FACT
     const name =
       typeof key === 'object' && key !== null && 'value' in key ? String(key.value ?? '') : String(key ?? '');
     if (!name.trim()) {
-      wrap('(空键)', ['provider 名不能为空']);
+      errors.push({ name: '(空键)', message: 'provider 名不能为空' });
       continue;
     }
+    order.push(name.trim());
     const lower = name.trim().toLowerCase();
     const prev = seen.get(lower);
     if (prev !== undefined) {
-      wrap(name.trim(), [`provider 名「${name.trim()}」与本文件里的「${prev}」重复（本机文件名/凭据键大小写不敏感）`]);
+      errors.push({
+        name: name.trim(),
+        message: `provider 名「${name.trim()}」与本文件里的「${prev}」重复（本机文件名/凭据键大小写不敏感）`,
+      });
       continue;
     }
     seen.set(lower, name.trim());
     const parsed = parseSection(name.trim(), plain[name.trim()], protocols);
-    if ('errors' in parsed) wrap(name.trim(), parsed.errors);
-    else sections.push({ name: name.trim() as ProviderId, intent: parsed.intent });
+    if ('errors' in parsed) {
+      errors.push({ name: name.trim(), message: parsed.errors.join('\n') });
+      continue;
+    }
+    sections.push({
+      name: name.trim() as ProviderId,
+      intent: parsed.intent,
+      warnings: parsed.warnings,
+      ...(parsed.legacyModelMeta !== undefined ? { legacyModelMeta: parsed.legacyModelMeta } : {}),
+    });
+    if (parsed.warnings.length > 0) {
+      warnings.push({ name: name.trim(), message: parsed.warnings.join('\n') });
+    }
   }
-  return { sections, errors };
+  return { sections, errors, warnings, order };
 }
 
 // ── 写盘：注释与排版保留的 leaf-diff ──────────────────────────────
@@ -487,8 +567,6 @@ function sectionFields(intent: ProviderIntent): Record<string, unknown> {
   for (const field of INTENT_FIELDS) {
     const v = (intent as Record<string, unknown>)[field];
     if (v === undefined) continue;
-    // modelMeta 全空对象不写（只有 fetchedAt 的条目不值得落盘——同 metaHasContent 纪律）
-    if (field === 'modelMeta' && Object.keys(v as object).length === 0) continue;
     out[field] = v;
   }
   return out;
@@ -510,9 +588,16 @@ function isMappingAt(doc: Document, path: string[]): boolean {
  *
  * @param text - 现有文件原文（空 = 从新建骨架开始）。
  * @param patch - provider 名 → 意图（**这一节的全量字段**；不在表里的字段会被删）。
+ * @param opts.keep - 补丁里没有、但**必须原样保留**的节名（解析失败的坏节：
+ *   「这一节没读出来」绝不等于「用户删了它」——2026-11-16 事故：坏节状态下点一次
+ *   保存，359 行手写配置连同元数据被静默抹掉）。
  * @returns 新的文件文本。
  */
-export function applyProvidersDoc(text: string, patch: Readonly<Record<string, ProviderIntent>>): string {
+export function applyProvidersDoc(
+  text: string,
+  patch: Readonly<Record<string, ProviderIntent>>,
+  opts: { keep?: Iterable<string> } = {},
+): string {
   const doc: Document = text.trim().length > 0 ? parseDocument(text) : new Document({});
   if (doc.errors.length > 0) {
     // 手稿解析不了 ⇒ 绝不覆盖（调用方应先报错）；这里原样返回，写盘方负责拒写。
@@ -525,8 +610,10 @@ export function applyProvidersDoc(text: string, patch: Readonly<Record<string, P
     doc.commentBefore = ` ${PROVIDERS_DOC_HEADER.replace(/\n/g, '\n ')}`;
   }
 
-  // 1) 删掉文档里有、补丁里没有的 provider 节（键序不乱动）
+  // 1) 删掉文档里有、补丁里没有的 provider 节（键序不乱动）。
+  //    ⚡ keep 里的节**永不删**：那是「解析失败」的节，不是用户删掉的节。
   const wanted = new Set(Object.keys(patch));
+  for (const kept of opts.keep ?? []) wanted.add(kept);
   for (const item of [...(doc.contents as YAMLMap).items]) {
     const key = item.key;
     const name =
@@ -534,7 +621,7 @@ export function applyProvidersDoc(text: string, patch: Readonly<Record<string, P
     if (!wanted.has(name)) doc.delete(name);
   }
 
-  // 2) 逐节 leaf-diff
+  // 2) 逐节 leaf-diff（keep 里的节不在外观：它们读不出来，原样留着）
   for (const [name, intent] of Object.entries(patch)) {
     const fields = sectionFields(intent);
     const existing = doc.get(name, true);

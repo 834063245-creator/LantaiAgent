@@ -79,11 +79,8 @@ export { intentOf } from '../../../provider/providers-doc';
 // 打开目录、保存时写盘——意图的唯一权威是那份 YAML，这里是它的界面面。
 export {
   ensureProvidersDir,
-  loadProjectProvidersDoc,
   loadProvidersDoc,
   onProvidersDocChange,
-  projectProvidersErrors,
-  projectProvidersFatal,
   providersDocStatus,
   providersFilePath,
   retryProvidersPath,

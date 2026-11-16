@@ -123,11 +123,13 @@ fn is_hologram_config_path(path: &Path) -> bool {
                     return false;
                 }
                 // provider 配方文件（2026-09-24）：判据 = 「紧跟 `.lantai` 的那一段
-                // 恰为 providers.yml」——用户级 `~/.lantai/providers.yml` 与项目级
-                // `{ws}/.lantai/providers.yml` 同一条判定覆盖。刻意不写成全路径
-                // contains/suffix：providers.yml.bak、`.lantai/providers/x.yml`、
-                // `.lantai/<其它文件名>`、以及更深层级 `.lantai/sub/providers.yml`
-                // 一律照旧受保护。
+                // 恰为 providers.yml」。⚠ 2026-11-16 应用侧删掉了「项目级覆盖」那一层
+                // （`{ws}/.lantai/providers.yml` 不再被读取），但**这条放行不跟着收窄**：
+                // agent 手一抖写到工作区里时，拦它的是「写了不生效」这条应用语义（prompt
+                // 段已明说只有一份文件），而不是一张权限卡——放行它反而让错误**可读**
+                // （文件在那儿，用户能看见并删掉）。刻意不写成全路径 contains/suffix：
+                // providers.yml.bak、`.lantai/providers/x.yml`、`.lantai/<其它文件名>`、
+                // 以及更深层级 `.lantai/sub/providers.yml` 一律照旧受保护。
                 if *sub == "providers.yml" {
                     return false;
                 }
@@ -454,7 +456,8 @@ mod tests {
     // ── provider 配方文件写豁免（providers.yml 统管通道，2026-09-24）──
 
     /// `.lantai/providers.yml` 写放行：该文件是 agent 的编辑面，写不得弹权限卡。
-    /// 用户级（home）与项目级（{ws}）形态同一条判定覆盖。
+    /// 用户级（home）与工作区（{ws}）形态同一条判定覆盖——注意工作区那份已不是
+    /// 「项目级覆盖」（2026-11-16 拆除），放行按文件名判定照旧。
     #[test]
     fn test_write_safety_exempts_providers_yml() {
         let r = check_path_safety(Path::new(r"C:\Users\test\.lantai\providers.yml"));
@@ -464,7 +467,7 @@ mod tests {
         let r = check_path_safety(Path::new(r"D:\proj\.lantai\providers.yml"));
         assert!(
             r.safe,
-            "项目级 .lantai/providers.yml 写应放行（同一条判定）"
+            "工作区 .lantai/providers.yml 写应放行（同一条文件名判定）"
         );
     }
 

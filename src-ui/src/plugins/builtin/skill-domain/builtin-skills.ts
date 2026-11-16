@@ -586,7 +586,7 @@ const LANTAI_GUIDE_PROMPT = `# 兰台——产品地图与操作手册（Agent �
 
 | 页签 | 管什么 |
 |---|---|
-| 提供方 | 模型连接：端点 / 密钥 / 模型 / 思考档位；也读 YAML 文件（\`~/.lantai/providers.yml\`、\`<工作区>/.lantai/providers.yml\`，改动约 1 秒自动生效） |
+| 提供方 | 模型连接：端点 / 密钥 / 模型 / 思考档位；也读一份 YAML 文件（\`~/.lantai/providers.yml\`，改动约 1 秒自动生效；**没有**项目级覆盖） |
 | Agent | Agent 行为与组合（preset 诊断与选择） |
 | 显示 | 外观与界面偏好 |
 | 插件 | 插件安装 / 卸载 / 启停（安装＝目录绝对路径 / tarball / npm 包名） |

@@ -30,8 +30,6 @@ import {
   notifyAgentConfigChanged,
   onProvidersDocChange,
   panelReload,
-  projectProvidersErrors,
-  projectProvidersFatal,
   providersDocStatus,
   providersFilePath,
   retryProvidersPath,
@@ -104,7 +102,10 @@ function logPanelReload(trigger: string): void {
   panelReload({
     path: providersFilePath(),
     rows: rows.length,
-    errors: st.errors.map((e) => ({ name: e.name, reason: e.message })),
+    errors: [
+      ...st.errors.map((e) => ({ name: e.name, reason: `[整节] ${e.message}` })),
+      ...st.warnings.map((e) => ({ name: e.name, reason: `[字段] ${e.message}` })),
+    ],
     fatal: st.fatal,
     empty: st.empty,
     source: st.available && st.loaded && !st.fatal && !st.empty ? 'file' : 'localStorage',
@@ -435,6 +436,8 @@ const SettingsPanelApp: React.FC<{
       for (const p of kept) patch[p.name] = intentOf(p);
       const docWrite = await saveProvidersDoc(patch);
       if (!docWrite.ok) {
+        // 2026-11-16：坏节拒写是最常见的一条——提示必须说清「去改文件哪一节」，
+        // 而不是只说「保存失败」（用户会反复点保存，文件其实一个字节都没动）。
         setSaveError(
           `provider 配置文件写入失败：${docWrite.error ?? '未知原因'}\n设置未保存——配置文件是 provider 连接配置的唯一权威。`,
         );
@@ -593,8 +596,6 @@ const SettingsPanelApp: React.FC<{
                 version: providersDocVersion,
                 status: providersDocStatus(),
                 path: providersFilePath(),
-                projectErrors: projectProvidersErrors(),
-                projectFatal: projectProvidersFatal(),
                 // 外部改动（人/agent 手写文件）→ 面板重读生效行表。
                 // ⚡ 有未保存的暂存时**不整体替换**（那会把用户正在敲的改动冲掉）：
                 // 只标一条提示，等用户保存/放弃后随下一次广播重读。

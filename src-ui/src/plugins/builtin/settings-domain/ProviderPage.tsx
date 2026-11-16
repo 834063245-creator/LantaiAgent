@@ -68,7 +68,10 @@ export interface ProvidersDocView {
   version: number;
   status: {
     path: string;
+    /** **整节**读不出来的节（行表按「上一次可用」回落，不消失）。 */
     errors: Array<{ name: string; message: string }>;
+    /** **字段级**问题：这一节照常生效，只是这些字段被按缺省处理。 */
+    warnings?: Array<{ name: string; message: string }>;
     fatal?: string;
     empty: boolean;
     loaded: boolean;
@@ -76,9 +79,6 @@ export interface ProvidersDocView {
     lastError: string;
   };
   path: string;
-  /** 项目级覆盖（`{ws}/.lantai/providers.yml`）的逐节错误与整份状态。 */
-  projectErrors: ReadonlyArray<{ name: string; message: string }>;
-  projectFatal?: string;
   /** 外部改动后重读面板 state（settings 由父组件持有）。 */
   onReload: () => void;
   /** 外部改动到达时有未保存暂存 ⇒ 面板没替换（提示用户先保存/放弃）。 */
@@ -90,9 +90,8 @@ export interface ProvidersDocView {
 /** 空态配置文件面（未接入 provider-store 的宿主：测试 / 降级）。 */
 export const EMPTY_PROVIDERS_DOC: ProvidersDocView = {
   version: 0,
-  status: { path: '', errors: [], empty: true, loaded: false, available: false, lastError: '' },
+  status: { path: '', errors: [], warnings: [], empty: true, loaded: false, available: false, lastError: '' },
   path: '',
-  projectErrors: [],
   onReload: () => {},
 };
 
@@ -675,8 +674,6 @@ export function ProviderPage({
             doc: {
               path: providersDoc.path,
               status: providersDoc.status,
-              projectErrors: providersDoc.projectErrors,
-              projectFatal: providersDoc.projectFatal,
               staleHint: providersDoc.staleHint === true,
               onRetryPath: providersDoc.onRetryPath,
             },

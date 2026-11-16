@@ -26,9 +26,13 @@ interface ProviderDocCardProps {
 }
 
 export function ProviderDocCard({ doc, myName, onOpenDir, onReload, msg }: ProviderDocCardProps) {
+  const warnings = doc.status.warnings ?? [];
+  // 整节读不出来的节（行表按「上一次可用」回落，不消失）
   const mine = doc.status.errors.filter((e) => e.name === myName);
   const others = doc.status.errors.filter((e) => e.name !== myName);
-  const projectMine = doc.projectErrors.filter((e) => e.name === myName);
+  // 字段级警告：这一节在可用列表里，只是某几个字段被按缺省处理
+  const warnMine = warnings.filter((e) => e.name === myName);
+  const warnOthers = warnings.filter((e) => e.name !== myName);
 
   return (
     <div className="pp-card">
@@ -103,10 +107,13 @@ export function ProviderDocCard({ doc, myName, onOpenDir, onReload, msg }: Provi
         </div>
       )}
 
-      {(mine.length > 0 || projectMine.length > 0) && (
+      {(mine.length > 0 || warnMine.length > 0) && (
         <div className="pp-doc-error">
-          <b>「{myName}」这一节有问题，本行仍用上一次可用的配置：</b>
-          {[...mine, ...projectMine].map((e) => (
+          <b>
+            「{myName}」这一节有问题
+            {mine.length > 0 ? '，本行仍用上一次可用的配置' : '，本行照常可用但下列字段已按缺省处理'}：
+          </b>
+          {[...mine, ...warnMine].map((e) => (
             <div key={`${e.name}-${e.message}`} className="pp-doc-error-body">
               {e.message}
             </div>
@@ -115,43 +122,18 @@ export function ProviderDocCard({ doc, myName, onOpenDir, onReload, msg }: Provi
         </div>
       )}
 
-      {others.length > 0 && (
+      {(others.length > 0 || warnOthers.length > 0) && (
         <div className="pp-field">
           <div className="pp-f-label-row">
             <span className="pp-f-label">其它节的问题</span>
-            <span className="pp-chip">{others.length} 个</span>
+            <span className="pp-chip">{others.length + warnOthers.length} 个</span>
           </div>
-          {others.map((e) => (
+          {[...others, ...warnOthers].map((e) => (
             <div key={`${e.name}-${e.message}`} className="pp-doc-other" data-tip={e.message}>
               <span className="pp-doc-other-name">{e.name}</span>
               <span className="pp-doc-other-msg">{e.message.split('\n')[0]}</span>
             </div>
           ))}
-        </div>
-      )}
-
-      {doc.projectFatal && (
-        <div className="pp-doc-error">
-          <b>本项目的配置文件（.lantai/providers.yml）整份无法解析：</b>
-          <div className="pp-doc-error-body">{doc.projectFatal}</div>
-        </div>
-      )}
-
-      {doc.projectErrors.length > 0 && (
-        <div className="pp-field">
-          <div className="pp-f-label-row">
-            <span className="pp-f-label">本项目配置的节问题</span>
-            <span className="pp-chip">{doc.projectErrors.length} 个</span>
-          </div>
-          {doc.projectErrors.map((e) => (
-            <div key={`p-${e.name}-${e.message}`} className="pp-doc-other" data-tip={e.message}>
-              <span className="pp-doc-other-name">{e.name}</span>
-              <span className="pp-doc-other-msg">{e.message.split('\n')[0]}</span>
-            </div>
-          ))}
-          <div className="pp-f-hint">
-            项目级配置（工作区下 .lantai/providers.yml）同 id 覆盖用户级；同 id 的节整节替换。
-          </div>
         </div>
       )}
 

@@ -143,11 +143,26 @@ describe('providers.yml — modelOverrides.reasoningEfforts 校验', () => {
     ['未知档位', { turbo: 'x', high: 'high' }, '未知档位'],
     ['非对象', true, '必须是'],
     ['数组', ['high'], '必须是'],
-  ])('%s → 点名报错', (_label, value, needle) => {
+    // 2026-11-16 字段级校验批：声明写坏只丢这个字段（kind/baseUrl 判不出来才整节
+    // 作废），所以这里是**字段级警告**而不是整节判死——断言随之换轨。
+  ])('%s → 点名（字段级警告，节照常可用）', (_label, value, needle) => {
     const parsed = section(value);
-    expect('errors' in parsed).toBe(true);
-    if (!('errors' in parsed)) return;
-    expect(parsed.errors.join('\n')).toContain(needle);
+    expect('errors' in parsed).toBe(false);
+    if ('errors' in parsed) return;
+    expect(parsed.warnings.join('\n')).toContain(needle);
+  });
+
+  // 降级的粒度：坏条目丢掉，其余合法档位照常生效；一个可用档位都不剩时整段声明丢弃
+  it('坏条目只丢条目，合法档位保留；全坏 ⇒ 整段声明丢弃', () => {
+    const partial = section({ turbo: 'x', high: 'high' });
+    expect('errors' in partial).toBe(false);
+    if ('errors' in partial) return;
+    expect(partial.intent.modelOverrides?.m.reasoningEfforts).toEqual({ high: 'high' });
+
+    const allBad = section({ turbo: 'x' });
+    expect('errors' in allBad).toBe(false);
+    if ('errors' in allBad) return;
+    expect(allBad.intent.modelOverrides?.m.reasoningEfforts).toBeUndefined();
   });
 
   it('写盘/读回保持声明（含 off:null）', () => {

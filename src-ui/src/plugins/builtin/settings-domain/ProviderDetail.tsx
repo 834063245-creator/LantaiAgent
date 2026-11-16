@@ -134,15 +134,16 @@ export interface ProviderDocView {
   path: string;
   status: {
     path: string;
+    /** **整节**读不出来的节（行表按「上一次可用」回落，不消失）。 */
     errors: Array<{ name: string; message: string }>;
+    /** **字段级**问题：这一节照常生效，只是这些字段被按缺省处理。 */
+    warnings?: Array<{ name: string; message: string }>;
     fatal?: string;
     empty: boolean;
     loaded: boolean;
     available: boolean;
     lastError: string;
   };
-  projectErrors: ReadonlyArray<{ name: string; message: string }>;
-  projectFatal?: string;
   /** 外部改动到达时有未保存暂存 ⇒ 面板没替换（提示用户先保存/放弃）。 */
   staleHint: boolean;
   /** 手动重试取路径（通道就绪后不必重启应用）。 */

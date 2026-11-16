@@ -346,6 +346,100 @@ describe('provider 配置文件通道（写盘一半）', () => {
     expect(disk.get(DOC_PATH)).toBe(broken);
   });
 
+  // ⚡ 2026-11-16 真机事故回归（agent 手改出 `input: [audio, video]`）：
+  //   旧行为 = 整节从行表消失 + 之后任何一次保存把 359 行手写配置静默抹掉。
+  it('坏节回落上一次可用 + 有整节读不出来时拒绝写盘（手写内容不被抹）', async () => {
+    const good = [
+      'commandcodegoat:',
+      '  kind: openai',
+      '  baseUrl: https://api.commandcode.ai/provider/v1',
+      '  model: deepseek/deepseek-v4.1-flash',
+      '  models: [deepseek/deepseek-v4.1-flash]',
+      'opencode:',
+      '  kind: openai',
+      '  baseUrl: https://opencode.ai/zen/go/v1',
+      '  model: deepseek-flash',
+      '',
+    ].join('\n');
+    disk.set(DOC_PATH, good);
+    await bootstrapProvidersDoc();
+    expect(loadSettings().providers.map((p) => p.name)).toEqual(['commandcodegoat', 'opencode']);
+
+    // agent 手改：给一家加了应用不认的模态（旧版本会因此整节消失）
+    const brokenSection = good.replace(
+      '  models: [deepseek/deepseek-v4.1-flash]',
+      '  models: [deepseek/deepseek-v4.1-flash]\n  modelOverrides:\n    m:\n      input: [text, audio]',
+    );
+    disk.set(DOC_PATH, brokenSection);
+    await loadProvidersDoc();
+
+    // ① 字段级：节照常可用，坏字段降级并点名
+    expect(providersDocStatus().errors).toEqual([]);
+    expect(providersDocStatus().warnings[0].message).toContain('input');
+    expect(loadSettings().providers.map((p) => p.name)).toEqual(['commandcodegoat', 'opencode']);
+
+    // ② 真正整节读不出来（baseUrl 坏了）⇒ 行表按上一次可用顶上，不消失
+    const unscannable = brokenSection.replace(
+      '  baseUrl: https://api.commandcode.ai/provider/v1',
+      '  baseUrl: not-a-url',
+    );
+    disk.set(DOC_PATH, unscannable);
+    await loadProvidersDoc();
+    expect(providersDocStatus().errors.map((e) => e.name)).toEqual(['commandcodegoat']);
+    expect(loadSettings().providers.map((p) => p.name)).toEqual(['commandcodegoat', 'opencode']);
+    // 回落的是「上一次可用」的意图（agent 最后那次好配置），不是文件里那行坏的
+    expect(loadSettings().providers[0].baseUrl).toBe('https://api.commandcode.ai/provider/v1');
+
+    // ②b 文件里**真的删掉**这一节 ⇒ 才从行表消失（删除是明确意图，不当「没读出来」）
+    disk.set(
+      DOC_PATH,
+      'opencode:\n  kind: openai\n  baseUrl: https://opencode.ai/zen/go/v1\n  model: deepseek-flash\n',
+    );
+    await loadProvidersDoc();
+    expect(loadSettings().providers.map((p) => p.name)).toEqual(['opencode']);
+    // 复原成坏节形态，继续验证写盘纪律
+    disk.set(DOC_PATH, unscannable);
+    await loadProvidersDoc();
+
+    // ③ 此时保存必须被拒（否则会把这一节当成「用户删了」写掉）
+    const { saveProvidersDoc } = await import('../src/provider/providers-store');
+    const res = await saveProvidersDoc({
+      opencode: { kind: 'openai', baseUrl: 'https://typed.example/v1', model: 'deepseek-flash' },
+    });
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('commandcodegoat');
+    expect(disk.get(DOC_PATH)).toBe(unscannable); // 文件一字未动
+  });
+
+  it('旧文件里的 modelMeta 是运行态读数：装载时收进本机存储，写盘即从文件消失', async () => {
+    disk.set(
+      DOC_PATH,
+      [
+        'legacy:',
+        '  kind: openai',
+        '  baseUrl: https://x.example/v1',
+        '  model: m',
+        '  modelMeta:',
+        '    m:',
+        '      fetchedAt: 1790132392579',
+        '      contextWindow: 1000000',
+        '',
+      ].join('\n'),
+    );
+    await bootstrapProvidersDoc();
+    // 行表拿得到元数据（读面不变）
+    expect(loadSettings().providers[0].modelMeta?.m.contextWindow).toBe(1000000);
+    // 但意图里没有它 → 一次保存就把它从文件里清出去
+    const { saveProvidersDoc } = await import('../src/provider/providers-store');
+    const res = await saveProvidersDoc({
+      legacy: { kind: 'openai', baseUrl: 'https://x.example/v1', model: 'm' },
+    });
+    expect(res.ok).toBe(true);
+    expect(disk.get(DOC_PATH)).not.toContain('modelMeta');
+    // 清出去之后元数据仍在本机（运行态读数不随文件走）
+    expect(loadSettings().providers[0].modelMeta?.m.contextWindow).toBe(1000000);
+  });
+
   it('保存页端到端：设置页改 baseUrl → 保存 → 意图进文件、localStorage 只留运行态', async () => {
     disk.set(DOC_PATH, 'deepseek:\n  kind: openai\n  baseUrl: https://old.example/v1\n  model: deepseek-flash\n');
     await bootstrapProvidersDoc();

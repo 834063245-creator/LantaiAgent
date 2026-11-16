@@ -1,5 +1,5 @@
 {
-  "fingerprint": "46da262e",
+  "fingerprint": "dc35eb25",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -207,7 +207,6 @@
     "llmError",
     "llmFirstByte",
     "llmSend",
-    "loadProjectProvidersDoc",
     "loadProvidersDoc",
     "loadSessionJobHistory",
     "loadSettings",
@@ -265,8 +264,6 @@
     "planRegistry",
     "previewUrlFor",
     "probeBundledEngine",
-    "projectProvidersErrors",
-    "projectProvidersFatal",
     "providerId",
     "providersDocStatus",
     "providersFilePath",

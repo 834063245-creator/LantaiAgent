@@ -131,19 +131,22 @@ const PROVIDER_CONFIG: PromptSection = {
     return `
 
 ## provider 配置
-本机所有 provider 的连接配置在一份 YAML 文件里，人和 agent 都可以直接改它：
-- 用户级：${userPath}
-- 项目级（可选，仅本项目生效）：本工作区 .lantai/providers.yml
+本机所有 provider 的连接配置在**一份** YAML 文件里，人和 agent 都可以直接改它：
+${userPath}
+
+（只有这一份。不要再往工作区里写 .lantai/providers.yml——项目级覆盖已拆除，
+写在那种文件里的东西**不会**生效。）
 
 一行 provider = 一个顶层键，键名就是 provider 身份（字母/数字/下划线/连字符）；可改字段：
 kind（协议：anthropic / openai / responses）、baseUrl、model（新会话默认）、models（可用模型）、
-thinking（默认思考档位）、headers（网关怪癖）、modelOverrides / modelMeta、authMode / oauthProvider。
-同名的项目级节整节覆盖用户级。
+thinking（默认思考档位）、headers（网关怪癖）、modelOverrides、authMode / oauthProvider。
 
 改完约 1 秒自动生效（无需重启、无需用户点保存）。密钥**不要**写进这个文件——
-apiKey 权威在本机系统凭据库（用户可在 设置 → 提供方 的 Key 栏填写）；lastTest / catalog
-是本机读数，也不属于这份文件。写错一节只影响那一行（其余 provider 照常），原因会显示在
-设置 → 提供方页。`;
+apiKey 权威在本机系统凭据库（用户可在 设置 → 提供方 的 Key 栏填写）；连接探针、模型目录、
+模型元数据都是本机读数，不属于这份文件。写错**一个字段**只丢那个字段并在设置页点名
+（整节照常生效）；只有名字/kind/baseUrl 这种「这行是谁、连到哪」写坏了才整节降级——
+此时该行沿用上一次可用的配置，**不会**消失；而只要还有整节读不出来的节，
+设置页保存会拒绝写盘（避免覆盖手写内容）。`;
   },
 };
 

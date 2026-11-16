@@ -90,37 +90,64 @@ describe('parseProvidersDoc', () => {
     expect(doc.errors[0].message).toContain('baseUrl');
   });
 
-  it('节错误点名到字段（缺必填 / 未知字段 / 未知协议 / 非法档位）', () => {
+  // 2026-11-16 字段级校验批（真机事故根治）：错的层次决定谁陪葬——
+  //   「这一行是谁 / 连到哪」写坏了才整节作废；其余字段写错只丢那个字段。
+  it('整节判死只发生在身份/连接判不出来时（缺 kind / 未知协议 / 缺 baseUrl）', () => {
     const doc = parseProvidersDoc(
       [
         'a:',
         '  baseUrl: https://x/v1',
         '  model: m',
+        'c:',
+        '  kind: 不存在的协议',
+        '  baseUrl: https://x/v1',
+        '  model: m',
+        'e:',
+        '  kind: openai',
+        '  model: m',
+      ].join('\n'),
+    );
+    const byName = Object.fromEntries(doc.errors.map((e) => [e.name, e.message]));
+    expect(byName.a).toContain('缺少 kind');
+    expect(byName.c).toContain('没有对应的协议适配器');
+    expect(byName.e).toContain('baseUrl');
+    expect(doc.sections).toEqual([]);
+  });
+
+  it('字段写错只丢字段：未知字段 / 非法档位 / 坏 input 都不牵连整节', () => {
+    const doc = parseProvidersDoc(
+      [
         'b:',
         '  kind: openai',
         '  baseUrl: https://x/v1',
         '  model: m',
         '  junk: 1',
-        'c:',
-        '  kind: 不存在的协议',
-        '  baseUrl: https://x/v1',
-        '  model: m',
         'd:',
         '  kind: openai',
         '  baseUrl: https://x/v1',
         '  model: m',
         '  thinking: 超高',
+        '  modelOverrides:',
+        '    m:',
+        '      input: [text, audio]',
       ].join('\n'),
     );
-    const byName = Object.fromEntries(doc.errors.map((e) => [e.name, e.message]));
-    expect(byName.a).toContain('缺少 kind');
+    // 两节都在行表里（这是本批的核心：一行笔误不再让整节消失）
+    expect(doc.sections.map((s) => s.name)).toEqual(['b', 'd']);
+    expect(doc.errors).toEqual([]);
+    const byName = Object.fromEntries(doc.warnings.map((e) => [e.name, e.message]));
     expect(byName.b).toContain('未知字段「junk」');
-    expect(byName.c).toContain('没有对应的协议适配器');
     expect(byName.d).toContain('thinking');
+    expect(byName.d).toContain('input');
+    // 坏字段按缺省处理，好的字段照常生效
+    expect(doc.sections[1].intent.model).toBe('m');
+    expect(doc.sections[1].intent.thinking).toBeUndefined();
   });
 
-  // 密钥与运行态读数不属本文件（写进去就是明文落盘的误分享面）
-  it('apiKey / lastTest / catalog 写进文件 = 点名报错（不静默丢弃）', () => {
+  // 密钥与运行态读数不属本文件（写进去就是明文落盘的误分享面）。
+  // 2026-11-16：这些键一律**忽略 + 点名**，不再拖整节下水——它们最容易被人
+  // 或旧版本误写，而它们错了并不影响这一行的连接配置是否可用。
+  it('apiKey / lastTest / catalog 写进文件 = 忽略并点名（不再整节判死）', () => {
     const doc = parseProvidersDoc(
       [
         'leaky:',
@@ -132,12 +159,38 @@ describe('parseProvidersDoc', () => {
         '  catalog: [m]',
       ].join('\n'),
     );
-    expect(doc.sections).toEqual([]);
-    const msg = doc.errors[0].message;
+    expect(doc.errors).toEqual([]);
+    expect(doc.sections.map((s) => s.name)).toEqual(['leaky']);
+    // 密钥字段绝不能被吃进意图（写盘时就不会被留住）
+    expect('apiKey' in doc.sections[0].intent).toBe(false);
+    const msg = doc.warnings[0].message;
     expect(msg).toContain('apiKey');
     expect(msg).toContain('凭据库');
     expect(msg).toContain('lastTest');
     expect(msg).toContain('catalog');
+  });
+
+  // modelMeta 2026-11-16 从「用户意图」降级为「本机读数」：旧文件里那片
+  // 自动生成的数据要在装载时被收走（legacyModelMeta），而不是打死整节。
+  it('遗留 modelMeta：收进 legacyModelMeta 备迁移，不当用户意图', () => {
+    const doc = parseProvidersDoc(
+      [
+        'legacy:',
+        '  kind: openai',
+        '  baseUrl: https://x/v1',
+        '  model: m',
+        '  modelMeta:',
+        '    m:',
+        '      fetchedAt: 123',
+        '      contextWindow: 1000',
+      ].join('\n'),
+    );
+    expect(doc.errors).toEqual([]);
+    expect(doc.sections).toHaveLength(1);
+    expect('modelMeta' in doc.sections[0].intent).toBe(false);
+    expect(doc.sections[0].legacyModelMeta?.m.contextWindow).toBe(1000);
+    // 迁移用的那段不能再被写回文件
+    expect(applyProvidersDoc('', { legacy: doc.sections[0].intent })).not.toContain('modelMeta');
   });
 
   it('provider 名围栏 + 大小写重复（本机文件名/凭据键不敏感）', () => {
@@ -164,38 +217,50 @@ describe('parseProvidersDoc', () => {
     expect(FACTORY_PROTOCOLS.has('nope')).toBe(false);
   });
 
-  it('请求头非法条目点名报错（写入边界严格，沿 custom-headers 同一把尺子）', () => {
+  it('请求头非法条目点名到字段（写入边界严格，沿 custom-headers 同一把尺子）', () => {
     const doc = parseProvidersDoc(
       'a:\n  kind: openai\n  baseUrl: https://x/v1\n  model: m\n  headers:\n    "bad name": v\n',
     );
-    expect(doc.errors[0].message).toContain('bad name');
+    // 坏头只丢那个头；这一节照常可用
+    expect(doc.errors).toEqual([]);
+    expect(doc.warnings[0].message).toContain('bad name');
+    expect(doc.sections).toHaveLength(1);
   });
 
   // 2026-09-24：请求头的校验边界从「localStorage 读取容忍毒化」搬到文件写入边界
   // ——文件是人手写的，写错必须点名（原 settings-provider-headers.test.ts 的
   // 毒化用例在此以**文件形态**重建：坏条目仍被点名，不再静默丢弃）。
-  it('请求头：非字符串值 / 整体不是对象 / 值超长都点名报错（原毒化容忍用例的文件形态）', () => {
+  it('请求头：非字符串值 / 整体不是对象都点名；合法条目照常进意图', () => {
     const numeric = parseProvidersDoc(
       'a:\n  kind: openai\n  baseUrl: https://x/v1\n  model: m\n  headers:\n    x-num: 42\n',
     );
-    expect(numeric.errors[0].message).toContain('x-num');
+    expect(numeric.warnings[0].message).toContain('x-num');
+    expect(numeric.sections).toHaveLength(1);
     const notObject = parseProvidersDoc('a:\n  kind: openai\n  baseUrl: https://x/v1\n  model: m\n  headers: oops\n');
-    expect(notObject.errors[0].message).toContain('headers');
+    expect(notObject.warnings[0].message).toContain('headers');
+    expect(notObject.sections).toHaveLength(1);
     const legal = parseProvidersDoc(
       'a:\n  kind: openai\n  baseUrl: https://x/v1\n  model: m\n  headers:\n    x-ok: v\n    x-empty: ""\n',
     );
     expect(legal.errors).toEqual([]);
+    expect(legal.warnings).toEqual([]);
     expect(legal.sections[0].intent.headers).toEqual({ 'x-ok': 'v', 'x-empty': '' });
   });
 
-  it('modelOverrides.in 只认 text/image；thinking 只认 canonical 档位', () => {
+  // ⚡ 真机事故（2026-11-16）的同一条用例：input: [audio] 曾经打死整节
+  it('modelOverrides.input 只认 text/image：坏模态只丢那个字段，节照常可用', () => {
     const bad = parseSection('a', {
       kind: 'openai',
       baseUrl: 'https://x/v1',
       model: 'm',
-      modelOverrides: { m: { input: ['audio'] } },
+      modelOverrides: { m: { contextWindow: 1000, input: ['audio'] } },
     });
-    expect('errors' in bad && bad.errors.join()).toContain('input');
+    expect('errors' in bad).toBe(false);
+    if ('errors' in bad) return;
+    expect(bad.warnings.join()).toContain('input');
+    // 同一 overrides 条目里没写坏的字段保留
+    expect(bad.intent.modelOverrides?.m.contextWindow).toBe(1000);
+    expect(bad.intent.modelOverrides?.m.input).toBeUndefined();
     const ok = parseSection('a', {
       kind: 'openai',
       baseUrl: 'https://x/v1',
@@ -266,13 +331,26 @@ describe('applyProvidersDoc', () => {
     expect(applyProvidersDoc(broken, { a: intent })).toBe(broken);
   });
 
-  it('序列整值替换（YAML 语义）+ modelMeta 空对象不写', () => {
+  it('序列整值替换（YAML 语义）', () => {
     const next = applyProvidersDoc(DOC, {
-      opencodego: { ...intent, models: ['only-one'], modelMeta: {} },
+      opencodego: { ...intent, models: ['only-one'] },
     });
     expect(next).toContain('- only-one');
     expect(next).not.toContain('- deepseek-flash\n  headers');
-    expect(next).not.toContain('modelMeta');
+  });
+
+  // 2026-11-16 事故回归：坏节状态下写盘，绝不把「没读出来」当成「用户删了」
+  it('keep：补丁里没有的节，只要点名保留就原样留着（手写内容不被抹）', () => {
+    const withBroken = `${DOC}broken:\n  kind: openai\n  baseUrl: not-a-url\n  model: m\n  modelOverrides:\n    x:\n      contextWindow: 42\n`;
+    // 面板行表只有读得出来的两节（这正是真机上的形态）
+    const patch = { opencodego: { ...intent, baseUrl: 'https://new.example/v1' } };
+    const clobbered = applyProvidersDoc(withBroken, patch);
+    expect(clobbered).not.toContain('broken:');
+    const kept = applyProvidersDoc(withBroken, patch, { keep: ['broken', 'anthropic-official'] });
+    expect(kept).toContain('broken:');
+    expect(kept).toContain('contextWindow: 42');
+    expect(kept).toContain('anthropic-official:');
+    expect(kept).toContain('https://new.example/v1');
   });
 
   it('emptyProvidersDoc：可被解析（空文档）+ 带格式说明头 + 写出密钥纪律', () => {
@@ -302,7 +380,8 @@ describe('applyProvidersDoc', () => {
     const snippet = renderSection('opencodego', intent);
     const doc = parseProvidersDoc(snippet);
     expect(doc.errors).toEqual([]);
-    expect(doc.sections[0]).toEqual({ name: 'opencodego', intent });
+    expect(doc.warnings).toEqual([]);
+    expect(doc.sections[0]).toEqual({ name: 'opencodego', intent, warnings: [] });
   });
 });
 
@@ -314,16 +393,23 @@ describe('意图 ↔ 完整行', () => {
       apiKey: 'sk-secret',
       lastTest: { status: 'ok', latencyMs: 1, at: 2 },
       catalog: ['deepseek-flash'],
+      modelMeta: { 'deepseek-flash': { fetchedAt: 3, contextWindow: 1000000 } },
     };
     const bare = intentOf(row);
     expect(bare).toEqual(intent);
     expect('apiKey' in bare).toBe(false);
     expect('lastTest' in bare).toBe(false);
     expect('catalog' in bare).toBe(false);
+    expect('modelMeta' in bare).toBe(false);
     expect('name' in bare).toBe(false);
-    expect(mergeIntent(row.name, bare, { apiKey: row.apiKey, lastTest: row.lastTest, catalog: row.catalog })).toEqual(
-      row,
-    );
+    expect(
+      mergeIntent(row.name, bare, {
+        apiKey: row.apiKey,
+        lastTest: row.lastTest,
+        catalog: row.catalog,
+        modelMeta: row.modelMeta,
+      }),
+    ).toEqual(row);
   });
 
   it('provider 名围栏与 AddProviderSheet 同一把尺子', () => {

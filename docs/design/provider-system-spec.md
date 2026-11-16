@@ -110,18 +110,27 @@ interface ProviderSettings {
 没有落点、不能 diff、不能进 git、agent 碰不到，每次分享/复用都要人来回复制粘贴。
 现在它是**一份 YAML 文件**：复制文件即导入，文件本身就是导出，agent 直接改。
 
-- **用户级**（唯一权威面）：`~/.lantai/providers.yml`；**项目级**（可选）：
-  `{工作区}/.lantai/providers.yml`，同 id **整节覆盖**用户级（一个仓库的内网网关
-  不该污染全局）。路径由 Rust 侧计算（`plugin_assets::providers_file`，尊重
-  `HOLOGRAM_PROVIDERS_FILE`），RPC `providers_dir` 只回目录、前端拼文件名。
+- **只有一份文件**（唯一权威面）：`~/.lantai/providers.yml`。路径由 Rust 侧
+  计算（`plugin_assets::providers_file`，尊重 `HOLOGRAM_PROVIDERS_FILE`），RPC
+  `providers_dir` 只回目录、前端拼文件名。
+  **（2026-11-16 项目级整份拆除）** 原「项目级 `{工作区}/.lantai/providers.yml`
+  同 id 整节覆盖用户级」的设计已删除：它带来三份互相打架的真相，收益（一个仓库
+  一个内网网关）在实际使用里不存在；且它**没有热重载**（watcher 只监听用户级），
+  而 prompt 段却告诉 agent「改完约 1 秒生效」——agent 写了项目级文件，应用侧零反应。
 - **一行 provider = 一个顶层键，键名即身份**（= 系统凭据键）。可写字段：
   `kind` / `baseUrl` / `model` / `models` / `thinking` / `headers` / `modelOverrides`
-  / `modelMeta` / `authMode` / `oauthProvider`。
+  / `authMode` / `oauthProvider`。**未知字段一律忽略并点名**（前向兼容：旧版本
+  打开新文件不该炸，也不该连累这一行）。
 - **权威三分（互不重叠，各自只有一处）**：意图 → 本文件；密钥 → 系统凭据库
-  （`apiKey` 写进文件 = 点名报错——明文落盘会被误分享）；**运行态读数**
-  （`lastTest` 连接探针、`catalog` 目录快照）→ localStorage，不进文件（照 DSH
-  `settings-file`「文件里只放用户层」的分工）。存量迁移：首启时文件还没有内容 ⇒
-  把旧 localStorage 存档里的 provider 行写出去；此后文件即权威。
+  （`apiKey` 写进文件 = 点名告警并忽略——明文落盘会被误分享）；**运行态读数**
+  （`lastTest` 连接探针、`catalog` 目录快照、**`modelMeta` 模型元数据**）→
+  localStorage，不进文件（照 DSH `settings-file`「文件里只放用户层」的分工）。
+  **（2026-11-16 本机读数迁出批）** `modelMeta` 原属文件：实测真机上它占配置文件
+  **87%**（15642 字节里 12838 字节），是每次「刷新目录」都重写的自动生成内容——
+  让它承担手写错误的爆炸半径，等于每天自动生成的大块数据随时能把整个 provider 节
+  干掉。旧文件里遗留的 `modelMeta` 在装载时收进本机存储（`legacyModelMeta`），
+  下次写盘即从文件消失。存量迁移：首启时文件还没有内容 ⇒ 把旧 localStorage 存档
+  里的 provider 行写出去；此后文件即权威。
 - **热生效**：Rust `providers_watcher.rs`（mtime 轮询 1s + settle 去抖，照
   `composition_watcher` 同款）emit `providers:changed` → 前端 `providers-store`
   重读 → 投影换新 + 复用 `settings-saved` 广播（UI 重读 + 逐会话重解析）。
@@ -130,9 +139,17 @@ interface ProviderSettings {
   排版在未触及的节点上逐字保留（阵列内注释与改动标量的行内注释会随值走，空间归一为
   单空格——与 DSH 记录的限制同款）。
 - **校验纪律**（照 DSH「boot fails loud, reload keeps last good」落到本仓库语义）：
-  **逐节校验**——坏节只坏自己（点名到 provider、该节回落上次可用值、其余节照常）；
+  **字段级降级**（2026-11-16 字段级校验批）——一个字段写错只丢那个字段并点名，
+  整节照常生效；只有「这一行是谁 / 连到哪」判不出来（名字非法 / 不是映射 /
+  缺 `kind` / 缺 `baseUrl`）才整节作废。真机事故：一行 `input: [audio]` 让
+  359 行、84 条元数据的整节从应用侧蒸发。
+  **坏节回落上一次可用**（`providers-store` 的 last-good 账）：整节作废时行表
+  **不消失**，按名顶上上一次解析成功的意图，并回到文件里的原键序。
   **整份解析失败** ⇒ 保留上次可用文档 + 报错 + **拒绝写盘**（绝不覆盖人手稿）。
-  错误面在 设置 → 提供方 → 配置文件卡片（路径 / 本行错误 / 其它节错误 / 重读入口）。
+  **有整节读不出来 ⇒ 拒绝写盘整份**：面板行表里没有那一节，而写盘会「删掉补丁里
+  没有的节」——「没读出来」被当成「用户删了」，真机上就这么抹掉过 359 行手写配置。
+  错误面在 设置 → 提供方 → 配置文件卡片（路径 / 本行错误 / 字段级警告 / 其它节 /
+  重读入口）。
 - **agent 可直接读写**：prompt 段 `provider-config` 注入文件绝对路径与可改字段清单；
   沙箱读写白名单（`sandbox.rs`）与安全层（`permissions/safety.rs`）按**精确文件名**
   放行 `providers.yml`（`.lantai` 整目录不放行）。

@@ -28,7 +28,6 @@
 
 import { useShellStore } from '../../app/shell-store';
 import { withTimeout } from '../../lifecycle/timeout';
-import { loadProjectProvidersDoc } from '../../provider/providers-store';
 import { kernelCreateDirectory } from '../../rpc-contract';
 import { useDockStore } from '../../state/dock-store';
 import {
@@ -149,15 +148,6 @@ async function switchWorkspace(path?: string, opts?: { name?: string }): Promise
     // #2 修复（2026-09-02）+ 竞态根治（2026-11-05）：'switching' 持有到整个进入流程
     // 结束（含恢复）——期间任何程序性重入都被入口守卫拦下；展卷页是它唯一可见面。
     bumpWorkspaceSwitched(); // P1 总线归零：workspace:switched → state/workspace-switch-store
-
-    // 项目级 provider 覆盖（2026-09-24 配方改文件批）：`{ws}/.lantai/providers.yml`
-    // 同 id 整节覆盖用户级——必须在 setupAgent **之前**装（Agent 装配读的就是
-    // 生效行表）。无该文件 = 常态；装载失败不阻断开卷（可见于状态条 + console）。
-    try {
-      await loadProjectProvidersDoc(folder);
-    } catch (e) {
-      console.warn('[switchWorkspace] 项目 provider 覆盖装载失败（继续开卷）:', e);
-    }
 
     // ── ② 装配 ──
     setWorkspaceEntryPhase('assembling');

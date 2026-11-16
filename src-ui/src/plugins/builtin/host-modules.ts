@@ -290,11 +290,8 @@ import { intentOf } from '../../provider/providers-doc';
 // provider 配置文件通道（2026-09-24 配方改文件批）：设置页路径/错误/写盘面
 import {
   ensureProvidersDir,
-  loadProjectProvidersDoc,
   loadProvidersDoc,
   onProvidersDocChange,
-  projectProvidersErrors,
-  projectProvidersFatal,
   providersDocStatus,
   providersFilePath,
   retryProvidersPath,
@@ -486,9 +483,6 @@ const faceDeps = {
   providersDocStatus,
   onProvidersDocChange,
   ensureProvidersDir,
-  loadProjectProvidersDoc,
-  projectProvidersErrors,
-  projectProvidersFatal,
   retryProvidersPath,
   // 日志可观测性批 2（2026-09-27）：事件门面（唯一脱敏点）对产物域的出口面。
   //   settings-domain → 凭据写面（credStore/credRemove）

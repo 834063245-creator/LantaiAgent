@@ -452,8 +452,10 @@ export function loadSettings(): AppSettings {
 // `loadSettings()` 调用点，也不会在打字/滚轮热路径上做文件 IO
 // （`onSettingsSaved` 订阅方在文件变更后照常重读）。
 
-/** localStorage 只承载 provider 的**运行态读数**（意图在文件里）。 */
-export type ProviderRuntime = Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog'>;
+/** localStorage 只承载 provider 的**运行态读数**（意图在文件里）。
+ *  ⚡ 2026-11-16：`modelMeta`（刷新目录拉回来的模型元数据）加入本层——它每天被
+ *  自动重写、真机占配置文件 87%，属于「本机读数」而不是用户意图。 */
+export type ProviderRuntime = Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta'>;
 
 /** provider 文档投影口（由 provider-store 在 boot 期注入；缺省 = 未启用文件权威）。 */
 interface ProvidersProjection {
@@ -499,7 +501,7 @@ function fileProvidersProjection(fallback: ProviderSettings[]): ProviderSettings
 /** 读某 provider 的运行态读数（文件权威下 localStorage 里只留这些）。 */
 export function providerRuntimeOf(name: string): ProviderRuntime {
   const row = loadSettings().providers.find((p) => p.name === name);
-  return { apiKey: row?.apiKey ?? '', lastTest: row?.lastTest, catalog: row?.catalog };
+  return { apiKey: row?.apiKey ?? '', lastTest: row?.lastTest, catalog: row?.catalog, modelMeta: row?.modelMeta };
 }
 
 /**
@@ -550,6 +552,7 @@ export function saveSettings(s: AppSettings): void {
           apiKey: '',
           ...(p.lastTest !== undefined ? { lastTest: p.lastTest } : {}),
           ...(p.catalog !== undefined ? { catalog: p.catalog } : {}),
+          ...(p.modelMeta !== undefined ? { modelMeta: p.modelMeta } : {}),
         } as ProviderSettings;
       }),
     };
