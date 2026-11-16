@@ -60,6 +60,14 @@ test_projects/
 # 否则会被 glob_entries 的 /target/ 排除规则连测试树一起滤掉）
 .tmp-test/
 
+# 仓库根的工作区垃圾桶（2026-11-16 清理）：一次性日志 / 截图副本 / 调试脚本 /
+# 临时浏览器 profile 落这里，常年挂在 git status 里没人管。**目录本身仍可用**
+#（脚本随手扔东西进去不会被拦），只是不再污染未跟踪清单。
+/tmp/
+# 前端侧的同名垃圾桶（实测里面有 WPS 的 mdbx 库，不是本项目产物，但同样不该
+# 出现在 git status 里）
+/src-ui/.tmp/
+
 # Project-local runtime data (generated per project)
 .lantai/
 .zcode/
