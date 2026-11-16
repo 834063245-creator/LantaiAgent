@@ -169,10 +169,26 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
    * 读作「这张纸成了那一卷」而不是「纸没了、别处冒出个卷」。
    * 宽的同一性由 draftPlacement 保证（都用 STREAM_REGION.width 与同一锚点）。 */
   const boxBottom = (anchor?.anchorY ?? 0) + REGION_FOOT_GAP;
-  /* **交接期锁盒**（2026-11-15 化卷批）：交接窗里盒由卷侧回填（store 的 morph.box）——
-   * 纸与卷同宽同锚点早已成立，但高度是各自内容撑的：卷落进首块后 552，纸实测 490，
-   * 不等就跳 62px。窗内一律用卷的盒，纸不自己长。 */
+  /* **交接期：盒一帧都不动**（2026-11-16 改判）。
+   *
+   * 上一版（2026-11-15）在交接窗里把纸的盒**整块换成卷的盒**（store 的 morph.box）——
+   * 目的是「纸与卷严丝合缝」。真机定帧实测：卷落进首块后是 552、纸实测 490，两条盒的
+   * **盒底相同**（都是锚点 + 底距），于是换盒那一帧纸的上缘**往上跳 62px**，天头四行跟着瞬移
+   * ——用户读到的就是「题签跳了一下」。这恰恰是本轮要消灭的东西。
+   *
+   * 现在的口径：**纸的盒归纸自己**（RO 在交接期已停，故它冻结在发送那一刻的值），
+   * 只有左缘与宽度取自卷（同宽同锚点，本来相等，取它是为了与世界变换同源）。
+   * 高度差 62px 是**卷多了一行正文**这件事的几何后果，不是纸该跟着跳的理由：
+   * 纸的天头按这个差升到卷首将落的位置再退，卷的字在自己的位上落下——两页字换手，
+   * 谁都不瞬移。 */
   const morphBox = morph?.box ?? null;
+  /* **天头要抬多高**（2026-11-16）：卷的盒比纸高（多一行正文），两件盒底相同 ⇒ 卷首比纸的
+   * 天头高出这个差。纸的天头按它升到卷首将落的位置再退场——交接那一帧是「原位交接」，
+   * 不是两个位置的互换。卷高还没量到（box 未回填 / height 为 null）时差为 0：
+   * 此时纸的天头原地淡出，与上一版行为一致。
+   * 差值**夹在 [0, 96px]**：负数没有意义（纸比卷高时不必往下沉），上界防止窗口极窄时
+   * 卷被超长正文撑得极高、天头飞出画布。 */
+  const folioRise = Math.max(0, Math.min(96, (morphBox?.height ?? boxH) - boxH));
 
   /* 交接期 = 纸**正在化卷**：嘴上仍是这张纸，但输入面已撤（不能再打字——那句已经发出去了），
    * 天头保留（Title/玉徽还在，读作「这张纸正在变成卷」而不是「纸没了」）。 */
@@ -188,8 +204,8 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
       style={
         anchor
           ? ({
-              /* 交接期**整块**交给卷（2026-11-15）：左缘、宽、高、上缘全部取自 morph.box。
-                 只锁高度不够——纸的锚点与世界变换各自独立更新一帧，左缘还会错开半格。 */
+              /* 左缘与宽度取自卷的盒（同宽同锚点，本该相等；取它是为了与世界变换同源，
+                 免得纸与卷的锚点各自更新一帧时左缘错开半格）。高度/上缘不取——见上注。 */
               left: morphBox ? morphBox.left : anchor.anchorX - anchor.width / 2,
               width: morphBox ? morphBox.width : anchor.width,
               /* 纸以**锚点**为底线向上长（内容高随输入面变化，不写死）：
@@ -197,11 +213,13 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
                  RO 一到即回填——**绝不用 translate: -100% 代替**：那会参与层叠/
                  纸纹对位（纸律：整叶不得声明 transform，见 base.css 注）。 */
               // 盒底 = 锚点 + 底距（与卷的纸脚同一个尺子）；盒高取「内容实测 vs 卷的最小盒高」
-              // 交接期改用**卷的盒**（morphBox）：纸正在化成它，两件必须严丝合缝（见上注）
-              top: morphBox ? morphBox.top : boxBottom - boxH,
-              height: morphBox ? morphBox.height : boxH,
+              /* ⚠ 高度与上缘**一律归纸自己**（见上注）：交接期换成卷的盒 = 天头瞬跳 62px。 */
+              top: boxBottom - boxH,
+              height: boxH,
               // 卷首实测高（FOLIO_TOKENS 契约）——正文区按它下移，禁在 CSS 里手写数字
               '--draft-folio-h': `${folioH}px`,
+              // 交接期天头抬升量（见上注）：0 = 卷高未量到，天头原地退
+              '--draft-rise': `${folioRise}px`,
               // 纸性三参（真源 = sheet.ts）：与流区叶同名同义（见 .pp-region）
               '--sheet-ox': `${sheet.ox}px`,
               '--sheet-oy': `${sheet.oy}px`,
@@ -230,7 +248,7 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
 
       {/* 天头之下 = **这张卷的创作坞**（同一个组件，另一次挂载）。
           纸栈走流式、纸高随内容长——v1 按「绝对定位 + 手算每段 top」排，卷首一改高就压线。
-          ⚡ 交接期（morph）：**留着它、让它跟着纸一起退**（`.pp-draft-core-out`，显形档），
+          ⚡ 交接期（morph）：**留着它、让它跟着纸一起退**（`.pp-draft-morph`，显形档），
           而不是当帧撤掉——当帧撤 = 发送那一瞬输入面凭空消失，纸却还整张在那儿（真机帧上
           读作「啪一下」）。退场期 `pointer-events: none`（见 CSS）：那一句已经发出去了，
           它不能再被点、也不该吃焦点，但它**不该凭空不见**。 */}

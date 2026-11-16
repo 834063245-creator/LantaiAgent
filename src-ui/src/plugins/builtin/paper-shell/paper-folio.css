@@ -53,7 +53,11 @@
  * `pp-region-take` 而不是落墨。 */
 .pp-region.pp-rise .pp-folio-head,
 .pp-region.pp-rise.pp-region-active .pp-folio-head {
-  animation: pp-drop-in var(--m-ink) 0.1s backwards;
+  /* 0.04s（2026-11-16 定帧复核）：纸的天头这窗**不是原地淡出**，而是升到卷首将落的位置
+   * 再退（见 draft-sheet.css 的 --draft-rise）。两页字因此在**同一处**交接——这是真正的
+   * 原位交接，可以交叉；错开太远反而在中段（实测 100ms）读作「屏上没字」。
+   * 故墨自 40ms 起落，与纸的退场叠出 120ms 的重合。 */
+  animation: pp-drop-in var(--m-ink) 0.04s backwards;
   animation-timing-function: var(--m-ease-io);
 }
 /* 版心内层（2026-09-16 新增）：卷首四行 + 硬规线 + 版口钮的**唯一版心盒**。

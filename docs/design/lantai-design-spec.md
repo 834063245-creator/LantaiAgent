@@ -1014,11 +1014,12 @@ measure 折叠高 = `FOLD_ROW_H`）+ `prototype/asset-rack-v2.html`（真样式�
 | `--m-scene` | 0.38s | 换景：首页↔画布 / 页签 / 侧栏↔书脊 | 整层替换 |
 | `--m-ease-out` / `--m-ease-io` | 出相 / 对开 | 前者＝纸的惯性（快起慢收）；后者＝开合两端都交待 | — |
 
-> **曲线选型的判据（2026-10-15 批 3 应用法时补）**：`--m-ease-io`（两端都交待）是给**两侧同时动**的过场备的——View Transition 的旧快照与新快照同框位移就属此类；**单侧登场**（一个模态/面板自己从无到有）要用 `--m-ease-out` 档（`--m-ink` / `--m-sheet` 已内含），io 曲线在入场开头会**钝住**。故「换景」不等于一律 `--m-scene`：看是一侧动还是两侧动。
+> **曲线选型的判据（2026-10-15 批 3 应用法时补；2026-11-16 补一条）**：`--m-ease-io`（两端都交待）是给**两侧同时动**的过场备的——View Transition 的旧快照与新快照同框位移就属此类；**单侧登场**（一个模态/面板自己从无到有）要用 `--m-ease-out` 档（`--m-ink` / `--m-sheet` 已内含），io 曲线在入场开头会**钝住**。故「换景」不等于一律 `--m-scene`：看是一侧动还是两侧动。
+> **补充判据（行程）**：上述分的是「一侧/两侧」，还要看**行程**。小行程（≤20px）用出相；**容器级大行程**（坞自屏外升起 250px、相机飞行）用出相就是「闪一下到位」——定帧实测 250px 行程在出相下头 40ms 走掉 57%，而 io 只走 9%。故大行程一律 io，不论单侧双侧。
 
 **约束律**：① 一次动作至多一个动效主体；② 动效永不阻塞交互（动画只描述，不延迟可点）；③ **一切动效走 CSS animation/transition**——唯一豁免点 = `foundation.css` 的 `prefers-reduced-motion` 块；**JS 帧动画要么删、要么自觉读 `matchMedia`**（先例：相机飞行 `use-paper-focus.ts` 的 rAF 原本绕过该豁免——动效敏感用户唯一还在动的恰好是幅度最大的那个动作）。
 
-**登记表（不受三档约束，但新增必须登记）**：**仪式** = 首页钤印 `sh-stamp` / 列表升起 `sh-rise` / 卷首朱笔划界 `pp-seal-draw`；**环境** = 画布呼吸线 `pp-breathe`、运行态呼吸 `pp-ink-live`、侧栏/书脊运行点 `ss-breathe` `sr-breathe`；**信号** = 探测中 `pp-pulse`、加载旋 `pp-spin` `ms-spin`、溯源一拍 `pp-trace-pulse`、更新条 `sp-upd-slide`；**存活期** = 一次性眉批 `pp-hint-fade`(6s)；**连续读数件** = 墨量线/进度段 `transition: width`、状态点纸晕 `transition: background`；**化卷那一拍（2026-11-15）** = `pp-draft-in`（纸出生）/ `pp-draft-morph`（纸身淡出）/ `pp-draft-core-out`（纸上的字与输入面先退）。
+**登记表（不受三档约束，但新增必须登记）**：**仪式** = 首页钤印 `sh-stamp` / 列表升起 `sh-rise` / 卷首朱笔划界 `pp-seal-draw`；**环境** = 画布呼吸线 `pp-breathe`、运行态呼吸 `pp-ink-live`、侧栏/书脊运行点 `ss-breathe` `sr-breathe`；**信号** = 探测中 `pp-pulse`、加载旋 `pp-spin` `ms-spin`、溯源一拍 `pp-trace-pulse`、更新条 `sp-upd-slide`；**存活期** = 一次性眉批 `pp-hint-fade`(6s)；**连续读数件** = 墨量线/进度段 `transition: width`、状态点纸晕 `transition: background`；**化卷那一拍（2026-11-15，2026-11-16 改判）** = `pp-draft-in`（纸出生）/ `pp-draft-morph`（天头之下那条输入面上移 8px 退场）/ `pp-draft-folio-out`（天头四行升到卷首将落的位置再退，位移量由组件算）/ `pp-composer-rise`（创作坞自屏幕下缘之外升起）。**纸身不在册**：它这一拍自己**不播任何动画**（当帧让位给底下那张同纹同盒的纸）。
 
 **⚠ 双曲线简写 = 非法声明（2026-11-15 立法）**：`animation: x var(--m-sheet) var(--m-ease-io)` 这种写法**整条被级联丢弃**——`--m-sheet` 的值自带一条 bezier（`0.26s cubic-bezier(…)`），简写里再叠第二段曲线即解析失败；`getAnimations()` 为空、`animationName` 为 none，而 CSS 源码读起来毫无破绽。立法当天全仓实测 10 处、**8 条动效从未播过**（卷开合两窗 / 落纸 / 落墨 / 化卷淡出全躺着），用户读到的是「啪一下」。曲线一律 **longhand**：`animation: x var(--m-sheet) backwards; animation-timing-function: var(--m-ease-io);`（先例 `app/tip/tip.css`）。守护：`motion-contract` 的「双曲线简写不得回潮」一条（全仓扫）。
 

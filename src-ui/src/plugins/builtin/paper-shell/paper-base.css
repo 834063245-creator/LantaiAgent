@@ -439,7 +439,9 @@
  * 自 100ms 才落（`backwards` 填充 ⇒ 让位期它还是「未落」态，不会隔着纸透出来）。
  * 这个 0.1s 是**编排错峰**不是时长（§15 允许字面 delay，时长仍走 token）。 */
 .pp-region.pp-rise .pp-block.pp-drop {
-  animation: pp-drop-in var(--m-ink) 0.1s backwards;
+  /* 80ms：卷首先落（0.04s）、正文后落（0.08s）——一页字自天头往下一行一行现出来。
+   * 两者都排在纸的退场窗（--m-ink）之内，故整窗都有字可读。 */
+  animation: pp-drop-in var(--m-ink) 0.08s backwards;
   animation-timing-function: var(--m-ease-io);
 }
 /* 卷首那一半**不住这里**（同上面「卷首随纸落/沉」的理由：`.pp-folio-head` 目标规则一律落

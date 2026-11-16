@@ -219,7 +219,7 @@ export const ComposerSheet = memo(function ComposerSheet() {
   const draftOpen = useDraftSheetStore((s) => s.open);
   /* **交接窗里也留着**（2026-11-15 化卷批）：纸还在屏上退场，天头之下那段输入面若当帧撤，
    * 发送那一瞬下半张纸会**空一块**（真机定帧实测：纸还整张在那儿，输入行凭空没了）。
-   * 留着它跟着纸一起退（`.pp-draft-core-out`，`pointer-events: none`）——它不能再被点，
+   * 留着它跟着纸一起退（`.pp-draft-morph`，`pointer-events: none`）——它不能再被点，
    * 也不该吃焦点，但它不该凭空不见。判据与纸自己那条同一把尺子（open || morph）。 */
   const draftMorph = useDraftSheetStore((s) => s.morph !== null);
   if (!draftOpen && !draftMorph) return null;

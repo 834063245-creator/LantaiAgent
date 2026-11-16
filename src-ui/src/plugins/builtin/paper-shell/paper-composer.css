@@ -304,6 +304,29 @@
   flex-direction: column;
   z-index: 6;
 }
+
+/* ── 化卷那一拍：坞从屏幕下缘**升上来**（2026-11-16，用户在四种交接里拍板 edge）──
+ * 病灶：题签期输入面在纸上（y=196）、坞在屏底（y=671），差 475px；发送那一帧前者消失、
+ * 后者在终点出现，中间没有任何一帧交代去向 ⇒ 不论淡入还是 8px 上浮，读到的都是跳变。
+ * 治法：从屏幕下缘之外整块升上来（起点在屏外 ⇒ 没有「出现」的那一帧），案头抽屉的到法。
+ * 位移量 = 100%（坞自己的高）+ 坐底抬高 + 一格，不写死像素（坞高随书眉/签条架变）。
+ * ⚠ 只挂 `translate`：独立属性，与基座 `transform: translateX(-50%)` 叠加，互不覆盖。 */
+.pp-composer-slot.pp-composer-rise {
+  animation: pp-composer-rise var(--m-sheet) backwards;
+  /* 曲线取 **io** 而不是出相（2026-11-16 定帧实测）：出相是极前端加载的，250px 的行程在
+   * 头 40ms 就走掉 57%（实测 dockY 671→779），读起来仍是「闪一下出现」；io 在头 40ms 只走
+   * 9%，与「抽屉被拉出来」的读法一致。§15 那条「单侧登场用出相」针对的是小位移的淡入，
+   * 这里是**容器级的大行程**（同 §15 纸律「让位」一档），故取 io。 */
+  animation-timing-function: var(--m-ease-io);
+}
+@keyframes pp-composer-rise {
+  from {
+    translate: 0 calc(100% + var(--composer-rise) + 16px);
+  }
+  to {
+    translate: 0 0;
+  }
+}
 /* 坞浮动（2026-09-17）·拖动期禁选**已由全局选区政策接管**（2026-09-17 收族）：
  * 坞上按下会带出原生选区，而纸上挂着 document 级 selectionchange（use-paper-strips
  * 的选中浮钮）——「拖动创作坞 = 纸上划词」是用户报的第一条冲突。当时的修法是拖动期

@@ -87,7 +87,10 @@ const REGISTERED_ANIMATIONS = new Set([
   'sp-upd-slide', // 检查更新条游走（信号）
   // 2026-11-15 V2-P3：待题纸化卷（纸落地成卷的那一拍，与卷的落纸同档同曲线）
   'pp-draft-in',
-  'pp-draft-morph',
+  // 2026-11-16 改判「纸不动，字换页」：三条各管一处退场（详见规格 §15 登记行）
+  'pp-draft-morph', // 天头之下那条输入面：上移 8px 淡出
+  'pp-draft-folio-out', // 天头四行：升到卷首将落的位置再退（位移量由组件算，时长走 token）
+  'pp-composer-rise', // 创作坞自屏幕下缘之外升起（连续位移，起点在屏外）
 ]);
 
 /** §15 登记表 B：**连续读数件**的 transition——量在连续变化，不是「一段过程」。 */
@@ -421,25 +424,46 @@ describe('§15 动效契约（散写时长守卫）', () => {
     expect(FOCUS_TS).not.toMatch(/DURATION = \d+/);
   });
 
-  it('化卷那一拍（V2-P3）：窗长镜像 --m-sheet + 纸律只动 opacity（不做宽度/缩放过渡）', () => {
+  it('化卷那一拍（V2-P3 · 2026-11-16 改判「纸不动，字换页」）：窗长镜像 --m-sheet + 纸身只让位不动', () => {
     const morph = /export const DRAFT_MORPH_MS = (\d+);/.exec(DRAFT_STORE_TS);
     expect(morph, 'draft-sheet-store.ts 缺 DRAFT_MORPH_MS').not.toBeNull();
     expect(Number((morph as RegExpExecArray)[1])).toBe(Math.round(tokenSeconds('m-sheet') * 1000));
 
     const sheetCss = stripCssComments(DRAFT_CSS);
-    // 化卷期：一次动作（动画名在册）+ 只碰 opacity
+    // 化卷期：纸身**当帧让位**（背景与影撤掉，由底下那张同纹同盒的纸接手），
+    // 自身不播任何动画——走的是纸上的字（下面两条）。
     const rule = /\.pp-draft-sheet\.pp-draft-morph\s*\{([\s\S]*?)\n\}/.exec(sheetCss);
     expect(rule, '缺化卷规则（.pp-draft-sheet.pp-draft-morph）').not.toBeNull();
-    // 曲线走 longhand（2026-11-15）：简写里叠第二段 bezier 是**非法 animation**，整条被丢弃
-    // ——本条正是那个病（纸从不淡出）。判据改为「时长 token + 紧随其后的 longhand 曲线」。
-    expect((rule as RegExpExecArray)[1]).toContain('pp-draft-morph var(--m-sheet) forwards;');
-    expect((rule as RegExpExecArray)[1]).toContain('animation-timing-function: var(--m-ease-io);');
-    expect((rule as RegExpExecArray)[1]).not.toMatch(/\b(transform|translate|width|scale)\b/);
+    // ① 纸身让位：背景/影撤掉（底下那张同纹同盒的纸接手）——这是「纸没动」的实现本身。
+    const body = (rule as RegExpExecArray)[1];
+    expect(body, '纸身没有让位（背景仍画着，会盖住底下的墨）').toContain('background-image: none');
+    expect(body, '纸身没有让位（影还在）').toContain('box-shadow: none');
+    // ② 纸身**不播动画**：任何 animation 声明都是「纸在动」——本拍的主语是字，不是纸。
+    expect(body, '纸身不许自己播动画（这一拍动的是字）').not.toMatch(/\banimation\s*:/);
+    // ③ 纸律：整叶不得声明 transform/translate/width/scale（纸纹与 InkLayer 对位红线）。
+    expect(body).not.toMatch(/\b(transform|translate|width|scale)\b/);
+
+    // ④ 纸上的字**两条退法**，各有去处（见 draft-sheet.css 头注）：
+    //    天头四行升到卷首将落的位置（位移量走 --draft-rise，由组件按卷高−纸高算）；
+    //    天头之下那条输入面只上移 8px（§15 距离律：≤8px 用显形档）。
+    const folioOut = /\.pp-draft-sheet\.pp-draft-morph \.pp-folio-inner \{([\s\S]*?)\n\}/.exec(sheetCss);
+    expect(folioOut, '缺天头退场规则').not.toBeNull();
+    expect((folioOut as RegExpExecArray)[1]).toContain('pp-draft-folio-out var(--m-ink) forwards;');
+    const folioFrames = /@keyframes pp-draft-folio-out\s*\{([\s\S]*?)\n\}/.exec(sheetCss);
+    expect(folioFrames, '缺天头退场 keyframes').not.toBeNull();
+    expect((folioFrames as RegExpExecArray)[1]).toContain('var(--draft-rise');
+
+    const stackOut = /\.pp-draft-sheet\.pp-draft-morph \.pp-draft-stack \{([\s\S]*?)\n\}/.exec(sheetCss);
+    expect(stackOut, '缺输入面退场规则').not.toBeNull();
+    expect((stackOut as RegExpExecArray)[1]).toContain('pp-draft-morph var(--m-ink) forwards;');
     const frames = /@keyframes pp-draft-morph\s*\{([\s\S]*?)\n\}/.exec(sheetCss);
-    expect(frames, '缺化卷 keyframes').not.toBeNull();
+    expect(frames, '缺输入面退场 keyframes').not.toBeNull();
+    expect((frames as RegExpExecArray)[1]).toContain('translate: 0 -8px');
     expect((frames as RegExpExecArray)[1]).toContain('opacity: 0');
-    expect((frames as RegExpExecArray)[1]).not.toMatch(/\b(transform|translate|width|scale)\b/);
-    // 反向自证：纸体基座也不许声明 transform/translate（纸律，同卷开合那条）
+    // 两条都走独立 translate（不写 transform——块定位用内联 transform，见 base.css 事故注）
+    expect((frames as RegExpExecArray)[1]).not.toMatch(/\btransform\b/);
+
+    // ⑤ 反向自证：纸体基座也不许声明 transform/translate（纸律，同卷开合那条）
     const base = /^\.pp-draft-sheet \{([\s\S]*?)\n\}/m.exec(sheetCss);
     expect(base, '缺纸体基座规则').not.toBeNull();
     expect((base as RegExpExecArray)[1]).not.toMatch(/\b(transform|translate)\b/);
@@ -539,17 +563,18 @@ describe('§15 动效契约（散写时长守卫）', () => {
     expect((drop as RegExpExecArray)[1]).toContain('translate: 0 18px');
     expect(css).toMatch(/\.pp-block\.pp-drop\s*\{[^}]*pp-drop-in var\(--m-sheet\) backwards/);
     expect(css, '卷首要与块同落').toMatch(/\.pp-region\.pp-spread \.pp-folio-head\s*\{[^}]*pp-drop-in/);
-    /* **出生即交接**（2026-11-15 化卷批）：纸化成的卷不重播纸淡入，落墨还要让纸先撤字——
-     * 判据 = 交卷那一卷挂 `pp-rise`（壳层按 state/draft-sheet-store 的账发放），它的卷首与块
-     * 走同一条墨律但**带 0.1s 编排错峰**（纸 0–160ms 撤字，墨 100ms 才落）。 */
-    // 落墨规则分两处（卷首在 folio 片、块在 base 片——同一族同一条墨律）：两片都要有 `pp-rise` 档
-    for (const [name, source] of [
-      ['paper-base.css', css],
-      ['paper-folio.css', stripCssComments(FOLIO_CSS)],
+    /* **出生即交接**（2026-11-15 化卷批 → 2026-11-16 改判）：纸化成的卷不重播纸淡入。
+     * 旧口径是「墨让一拍：纸 0–160ms 撤字，墨 100ms 才落」——真机定帧实测那 100ms 里
+     * 屏上几乎没字（纸的字退完了、卷的字还没起），读作「空了一下」。
+     * 现在纸的天头是**升到卷首将落的位置**再退（同为 --m-ink），两页字在同一处交接，
+     * 故墨可以早落：卷首 0.04s、正文 0.08s（编排错峰，§15 允许字面 delay）。
+     * 判据 = 两片都仍有 `pp-rise` 档（只落墨、不让纸淡第二次），且错峰在 0.1s 之内。 */
+    for (const [name, source, delay] of [
+      ['paper-base.css', css, '0.08s'],
+      ['paper-folio.css', stripCssComments(FOLIO_CSS), '0.04s'],
     ] as const) {
-      expect(source, `${name} 缺出生即交接的落墨规则（pp-rise）：只落墨、不让纸淡第二次`).toMatch(
-        /\.pp-region\.pp-rise[^{]*\{[^}]*pp-drop-in var\(--m-ink\) 0\.1s backwards/,
-      );
+      const re = new RegExp(`\\.pp-region\\.pp-rise[^{]*\\{[^}]*pp-drop-in var\\(--m-ink\\) ${delay} backwards`);
+      expect(source, `${name} 缺出生即交接的落墨规则（pp-rise）：只落墨、不让纸淡第二次`).toMatch(re);
     }
 
     // 退场（起纸）：[data-leaving] 淡出 + 不接点击，曲线同为 io；墨随纸沉走**独立 translate**

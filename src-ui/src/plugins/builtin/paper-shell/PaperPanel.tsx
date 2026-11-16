@@ -175,18 +175,25 @@ export function PaperPanel() {
     onBranchGripMouseDown,
   } = usePaperPanelAssembly();
 
-  /* **交接期锁盒**的回填（2026-11-15 化卷批）：纸在交接窗里必须与新卷同一个盒——
-   * 真源是卷的几何（`regionTop - folioH` / `regionHeight + folioH`），量到就写回 store。
-   * 写在渲染期（不是 effect）：晚一帧纸会先按自己的高长一帧、再被拉回卷的盒；
-   * 同值不重设（setMorphBox 内判等），不会逐帧抖 store。 */
+  /* **交接期：纸只借卷的「左缘与宽」**（2026-11-16 改判；上一版整盒借用已被推翻）。
+   *
+   * 旧的整盒回填（`top` / `height` 也取卷的）目的曾是「纸与卷严丝合缝」，真机定帧实测的
+   * 后果是：卷落进首块后盒高 552、纸实测 490，**盒底相同** ⇒ 换盒那一帧纸的上缘往上跳
+   * 62px，天头四行跟着瞬移——正是本轮要消灭的「题签跳了一下」。
+   * 现在只回填左缘与宽（两者本该相等，取它是为了与世界变换同源），高与上缘归纸自己。
+   * 写在渲染期（不是 effect）：晚一帧纸会先按自己的左缘摆一帧再被拉回；同值不重设
+   *（setMorphBox 内判等），不会逐帧抖 store。 */
   if (draftMorph) {
     const rising = regionRender.find((e) => !e.leaving && e.view.sessionId === draftMorph.sheetId);
     if (rising) {
       const v = rising.view;
       setMorphBox({
         left: v.anchor.anchorX - v.anchor.width / 2,
-        top: v.regionTop - v.folioH,
+        top: null,
         width: v.anchor.width,
+        /* 卷的**高**照传：不是拿去改纸的盒（那会让纸的上缘瞬跳，见上注），
+         * 而是给纸的天头算「该往上抬多少」——两件盒底相同，故差值 = 卷高 − 纸高。
+         * 纸按这个差把天头**平移**到卷首将要去的地方：移的是字，不是纸。 */
         height: v.regionHeight + v.folioH,
       });
     }
@@ -873,14 +880,16 @@ export function PaperPanel() {
               的 isComposerDragSurface）。 */}
           {/* ⚡ 2026-11-15 V2：纸在场时**坞槽整只不渲染**（不是隐藏输入条）——纸替坞。
               判据已订阅（sheetPresent，含化卷交接窗），开纸那一刻坞就退场，不留一帧两层叠着。
-              **化卷交接（2026-11-15）**：交接窗里坞就落座（占位 = 与纸期输入面同形的空壳），
-              窗满纸一撤，坞已在那儿——撤纸与坞落座不再是一前一后两帧。 */}
+              **化卷交接（2026-11-16 改判 edge）**：交接窗里坞**从屏幕下缘之外升上来**
+              （`pp-composer-rise`）——题签期那条输入面在纸上、坞在屏底，两者差 475px，
+              若让坞在终点直接出现，中间没有任何一帧交代「同一个东西挪过去了」，读作跳变。
+              升起是连续位移，起点完全在屏外：它没有「出现」的那一帧。 */}
           {(!sheetPresent || draftMorphOpen) && (
             // biome-ignore lint/a11y/noStaticElementInteractions: 坞槽承载拖坞手势（拖动面判据在 composer-float.ts 的 isComposerDragSurface——锁定态一律放行）
             <div
               className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}${
                 composer.dragging ? ' pp-composer-dragging' : ''
-              }${composer.unlocked ? ' pp-composer-unlocked' : ''}`}
+              }${composer.unlocked ? ' pp-composer-unlocked' : ''}${draftMorphOpen ? ' pp-composer-rise' : ''}`}
               ref={composer.slotRef}
               style={composer.style}
               data-pop-side={composer.popSide}
