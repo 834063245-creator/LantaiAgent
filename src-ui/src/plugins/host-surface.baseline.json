@@ -1,5 +1,5 @@
 {
-  "fingerprint": "dc35eb25",
+  "fingerprint": "0fc4a9f0",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -126,6 +126,7 @@
     "defineTool",
     "describeReceipt",
     "discoverPresets",
+    "draftInputKey",
     "draftSheetSeed",
     "editGoal",
     "effectiveModels",
@@ -144,6 +145,7 @@
     "findModels",
     "findVendorTemplate",
     "finishReasonMessage",
+    "focusedPaper",
     "foldLabel",
     "foldToolResults",
     "formatDiagnostics",

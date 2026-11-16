@@ -73,18 +73,25 @@ export function PaperPanel() {
   /* 待题纸是**瞬态**（设计件 §3.5）：关画布 / 切工作区 = 弃纸——不烧号、不落盘、
    * 不留悬空状态。清理挂在纸视图生命周期上（PaperPanel 卸载即离开本工作区）。 */
   useEffect(() => {
-    return () => useDraftSheetStore.getState().dismiss();
+    return () => useDraftSheetStore.getState().dismissAll();
   }, []);
 
   /* 待题纸摊开 = 出生面已经在场：**空态整块退场**（2026-11-15 用户报「文字和题签重叠」）。
    * 空态判据原本只有 `sessions.length === 0`，而待题纸**不建卷**（这正是立卷 UX 的要害）
    * ⇒ 空态的 kicker/题字/引导句/花押与纸同屏叠着画。两处判据同源：纸在 ⇒ 空态不在。
    * ⚡ 2026-11-15 V2：化卷交接窗（morph）里纸**还在屏上**，故它也算法「纸在」——
-   * 判据与装配根（use-paper-panel 的 sheetPresent）同一把尺子，两处一起改。 */
-  const sheetPresent = useDraftSheetStore((s) => s.open || s.morph !== null);
-  /** 化卷交接窗（纸已交卷、还在屏上）。坞在这条窗里就落座——见下方坞槽注。 */
-  const draftMorphOpen = useDraftSheetStore((s) => s.morph !== null);
-  const draftMorph = useDraftSheetStore((s) => s.morph);
+   * 判据与装配根（use-paper-panel 的两条同源判据）同一把尺子，两处一起改。 */
+  /* **多纸改判（2026-11-17）**：判据从「纸在不在」拆成两条——
+   *   ① `draftFocusOn`：**焦点在纸上** ⇒ 坞让位（纸上那枚输入面就是这条通道）；
+   *   ② `draftMorphOpen`：有纸正在化卷 ⇒ 坞从屏外升上来（交接那一拍）。
+   *  「纸在画布上」本身**不再是**坞的让位判据：纸可以摆在画布上不拿焦点，那时坞照常
+   *  对着活跃卷工作（用户报的「不能回头和已有会话交互」正是旧判据把坞整只摁掉）。 */
+  const draftFocusOn = useDraftSheetStore((s) => s.focusedId !== null);
+  const draftMorphOpen = useDraftSheetStore((s) => Object.keys(s.morphs).length > 0);
+  const draftMorph = useDraftSheetStore((s) => {
+    const ids = Object.keys(s.morphs);
+    return ids.length > 0 ? s.morphs[ids[0]] : null;
+  });
 
   const {
     core,
@@ -183,6 +190,9 @@ export function PaperPanel() {
    * 现在只回填左缘与宽（两者本该相等，取它是为了与世界变换同源），高与上缘归纸自己。
    * 写在渲染期（不是 effect）：晚一帧纸会先按自己的左缘摆一帧再被拉回；同值不重设
    *（setMorphBox 内判等），不会逐帧抖 store。 */
+  /* 多纸（2026-11-17）：`draftMorph` 只取第一张正在交接的纸，回填按它的 `sheetId` 反查
+   * ——**同一时刻只可能有一张纸在化卷**（发送是单发的动作），故这一份「唯一在交接的那张」
+   * 就是全部交接面。`setMorphBox` 的缺省纸参数按「交接表里唯一那张」反查，多纸不会串。 */
   if (draftMorph) {
     const rising = regionRender.find((e) => !e.leaving && e.view.sessionId === draftMorph.sheetId);
     if (rising) {
@@ -251,7 +261,7 @@ export function PaperPanel() {
             }`}
             onMouseDown={onCanvasMouseDown}
           >
-            {sessions.length === 0 && !sheetPresent && (
+            {sessions.length === 0 && !draftFocusOn && !draftMorphOpen && (
               <div className="pp-empty">
                 <div className="pp-empty-kicker">LANTAI · BLANK SHEET</div>
                 <div className="pp-empty-title">案上无卷，落笔即起</div>
@@ -265,7 +275,10 @@ export function PaperPanel() {
                 <button
                   type="button"
                   className="pp-empty-cta"
-                  onClick={() => useDraftSheetStore.getState().openSheet()}
+                  onClick={() => {
+                    const paperId = useDraftSheetStore.getState().openSheet();
+                    void core?.focusDraft?.(paperId);
+                  }}
                 >
                   ＋ 另起一卷
                 </button>
@@ -879,12 +892,14 @@ export function PaperPanel() {
               桌面歌词式）解锁后整坞才是抓手，双击坞体复位（判据在 composer-float.ts
               的 isComposerDragSurface）。 */}
           {/* ⚡ 2026-11-15 V2：纸在场时**坞槽整只不渲染**（不是隐藏输入条）——纸替坞。
-              判据已订阅（sheetPresent，含化卷交接窗），开纸那一刻坞就退场，不留一帧两层叠着。
+              判据已订阅（焦点在纸上），开纸那一刻坞就退场，不留一帧两层叠着。**多纸改判**：
+          判据是「焦点在纸上」，不是「纸在画布上」——纸摆在画布上不拿焦点时，坞照常对着
+          活跃卷工作（纸在时不许跟已有会话说话，正是用户 2026-11-17 报的那条）。
               **化卷交接（2026-11-16 改判 edge）**：交接窗里坞**从屏幕下缘之外升上来**
               （`pp-composer-rise`）——题签期那条输入面在纸上、坞在屏底，两者差 475px，
               若让坞在终点直接出现，中间没有任何一帧交代「同一个东西挪过去了」，读作跳变。
               升起是连续位移，起点完全在屏外：它没有「出现」的那一帧。 */}
-          {(!sheetPresent || draftMorphOpen) && (
+          {(!draftFocusOn || draftMorphOpen) && (
             // biome-ignore lint/a11y/noStaticElementInteractions: 坞槽承载拖坞手势（拖动面判据在 composer-float.ts 的 isComposerDragSurface——锁定态一律放行）
             <div
               className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}${

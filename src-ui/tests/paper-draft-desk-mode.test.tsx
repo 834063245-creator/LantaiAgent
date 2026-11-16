@@ -105,7 +105,7 @@ describe('空画布 + 待题纸：案头形态退场', () => {
     mockInvoke.mockReset();
     mockInvoke.mockImplementation(() => Promise.resolve(null));
     useShellStore.setState({ projectPath: 'D:/desk-ws' });
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     useDockStore.getState().closePanel('paper');
   });
 
@@ -114,7 +114,7 @@ describe('空画布 + 待题纸：案头形态退场', () => {
     container?.remove();
     root = null;
     container = null;
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
   });
 
   it('纸摊开后坞槽不再是案头形态（pp-at-desk 退场）', async () => {

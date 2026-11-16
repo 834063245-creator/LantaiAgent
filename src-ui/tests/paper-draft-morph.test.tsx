@@ -67,7 +67,7 @@ describe('待题纸 · 化卷那一拍（V2-P3）', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     usePresetStore.setState({ selected: 'standard', error: null });
     resetCanvasStoresForTests();
     useCanvasViewStore.setState({ view: identityView(), canvasSize: { w: 1600, h: 900 } });
@@ -78,7 +78,7 @@ describe('待题纸 · 化卷那一拍（V2-P3）', () => {
     container?.remove();
     root = null;
     container = null;
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     vi.useRealTimers();
   });
 
@@ -113,8 +113,12 @@ describe('待题纸 · 化卷那一拍（V2-P3）', () => {
     expect(container.textContent).toContain('待题 · 未开卷');
     expect(container.textContent).not.toContain('已交卷');
     // store：open 已 false（坞可以出现），morph 在场（纸张力上还在）
-    expect(useDraftSheetStore.getState().open).toBe(false);
-    expect(useDraftSheetStore.getState().morph).toMatchObject({ sessionId: 7, sheetId: '7', box: null });
+    expect(useDraftSheetStore.getState().papers.length > 0).toBe(false);
+    expect(Object.values(useDraftSheetStore.getState().morphs)[0] ?? null).toMatchObject({
+      sessionId: 7,
+      sheetId: '7',
+      box: null,
+    });
   });
 
   it('纸盒 = 卷盒：盒底落在锚点 + 底距（化卷那一拍纸不往上跳）', async () => {
@@ -187,29 +191,34 @@ describe('待题纸 · 化卷那一拍（V2-P3）', () => {
     });
 
     expect(container.querySelector('[data-draft-sheet]')).toBeNull();
-    expect(useDraftSheetStore.getState().morph).toBeNull();
+    expect(Object.values(useDraftSheetStore.getState().morphs)[0] ?? null).toBeNull();
   });
 
-  it('交接期开新纸 = 旧纸立即作废（定时器不许把新纸抹掉）', async () => {
+  it('交接期开新纸：新纸照常在场，旧纸的撤场定时器只撤它自己（多纸不串台）', async () => {
     const m = await mount();
     root = m.root;
     container = m.container;
+    let morphedId = '';
     await act(async () => {
-      useDraftSheetStore.getState().openSheet();
+      morphedId = useDraftSheetStore.getState().openSheet();
       useDraftSheetStore.getState().setAnchor({ anchorX: 800, anchorY: 450, width: 1440 });
     });
     await act(async () => {
-      useDraftSheetStore.getState().beginMorph(11);
+      useDraftSheetStore.getState().beginMorph(11, morphedId);
     });
+    let nextId = '';
     await act(async () => {
-      useDraftSheetStore.getState().openSheet();
+      nextId = useDraftSheetStore.getState().openSheet();
     });
-    // 新纸立刻是正常态（不是交接态），且旧定时器已清
-    expect(useDraftSheetStore.getState().morph).toBeNull();
-    expect(useDraftSheetStore.getState().open).toBe(true);
+    /* **多纸改判**（2026-11-17）：新摊一张纸**不再作废旧纸的交接**——两张纸是两条独立
+     * 记录、各自一只撤场定时器（旧实现是模块级单表，开新纸会连旧纸的交接一起抹掉）。 */
+    expect(Object.keys(useDraftSheetStore.getState().morphs)).toEqual([morphedId]);
+    expect(useDraftSheetStore.getState().papers.map((p) => p.id)).toEqual([nextId]);
     await act(async () => {
       vi.advanceTimersByTime(DRAFT_MORPH_MS + 10);
     });
-    expect(useDraftSheetStore.getState().open).toBe(true);
+    // 窗满只撤那张化成卷的纸；新摊的这张**不许**被一起抹掉
+    expect(useDraftSheetStore.getState().morphs).toEqual({});
+    expect(useDraftSheetStore.getState().papers.map((p) => p.id)).toEqual([nextId]);
   });
 });

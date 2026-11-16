@@ -56,12 +56,12 @@ describe('发送即开卷：几何与流区同一真源', () => {
     mockInvoke.mockReset();
     mockInvoke.mockImplementation(() => Promise.resolve(null));
     useShellStore.setState({ projectPath: 'D:/draft-ws' });
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     useCanvasViewStore.setState({ view: identityView(), canvasSize: { w: 1600, h: 900 } });
   });
 
   afterEach(() => {
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
   });
 
   it('落位 = 纸的锚点（不撒手给另一个算法）', async () => {

@@ -132,7 +132,7 @@ describe('待题纸 · 落纸即聚焦（① 纸落在屏外 ⇒ 镜头跟过去
   let container: HTMLDivElement | null = null;
 
   beforeEach(() => {
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     usePresetStore.setState({ selected: 'standard', error: null });
     getCanvasStore(PANEL).getState().clearCanvas();
     useCanvasViewStore.setState({ view: { zoom: 1, panX: 0, panY: 0 }, canvasSize: { w: W, h: H } });
@@ -143,7 +143,7 @@ describe('待题纸 · 落纸即聚焦（① 纸落在屏外 ⇒ 镜头跟过去
     container?.remove();
     root = null;
     container = null;
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
   });
 
   /** 把视口中心占满：最近空位必然落在视口之外（就是用户报的那一幕）。 */
@@ -173,13 +173,15 @@ describe('待题纸 · 落纸即聚焦（① 纸落在屏外 ⇒ 镜头跟过去
     occupyCenter();
     const glideTo = vi.fn();
     container = await mount(glideTo);
-    expect(useDraftSheetStore.getState().open).toBe(false);
+    expect(useDraftSheetStore.getState().papers).toHaveLength(0);
 
     await act(async () => {
       useDraftSheetStore.getState().openSheet();
     });
 
-    const spot = useDraftSheetStore.getState().anchor;
+    const spot =
+      useDraftSheetStore.getState().papers.find((p) => p.id === useDraftSheetStore.getState().focusedId)?.anchor ??
+      null;
     expect(spot).not.toBeNull();
     // 前提：这一次落位真的落在视口之外（否则本测什么也证明不了）
     expect(draftBoxInSight(spot!, useCanvasViewStore.getState().view, { w: W, h: H })).toBe(false);
@@ -196,34 +198,46 @@ describe('待题纸 · 落纸即聚焦（① 纸落在屏外 ⇒ 镜头跟过去
     await act(async () => {
       useDraftSheetStore.getState().openSheet();
     });
-    const spot = useDraftSheetStore.getState().anchor;
+    const spot =
+      useDraftSheetStore.getState().papers.find((p) => p.id === useDraftSheetStore.getState().focusedId)?.anchor ??
+      null;
     expect(spot).not.toBeNull();
     expect(draftBoxInSight(spot!, useCanvasViewStore.getState().view, { w: W, h: H })).toBe(true);
     expect(glideTo).not.toHaveBeenCalled();
   });
 
-  it('再点「＋」= 同一张纸重新定位：几何一字未变，仍要回到那张纸', async () => {
+  it('再点「＋」= **新摊一张纸**（多纸），旧纸留在画布上；新纸落在眼前 ⇒ 镜头不动', async () => {
     occupyCenter();
     const glideTo = vi.fn();
     container = await mount(glideTo);
 
+    let firstId = '';
     await act(async () => {
-      useDraftSheetStore.getState().openSheet();
+      firstId = useDraftSheetStore.getState().openSheet();
     });
     expect(glideTo).toHaveBeenCalledTimes(1);
-    const first = (glideTo.mock.calls[0] ?? []) as [number, number];
 
-    // 用户把画面拖去别处（纸出屏），再点一次「＋」——锚点与上次同值，仍要回镜头
+    // 再点「＋」：多纸改判 —— 第二张是**新的一条记录**，不是把旧纸挪个位置
+    let secondId = '';
     await act(async () => {
-      useCanvasViewStore.getState().setView({ zoom: 1, panX: 4000, panY: 2500 });
-    });
-    await act(async () => {
-      useDraftSheetStore.getState().openSheet();
+      secondId = useDraftSheetStore.getState().openSheet();
     });
 
-    // 镜头目标只由**纸自己的几何**决定（世界点固定），与此刻视口在哪无关
-    expect(glideTo).toHaveBeenCalledTimes(2);
-    expect(glideTo).toHaveBeenLastCalledWith(first[0], first[1]);
+    const st = useDraftSheetStore.getState();
+    expect(st.papers).toHaveLength(2);
+    expect(st.papers.map((p) => p.id)).toEqual([firstId, secondId]);
+    expect(st.focusedId).toBe(secondId); // 焦点交给新那张
+    const second = st.papers.find((p) => p.id === secondId)!;
+    expect(second.anchor).not.toBeNull();
+    /* 第二张纸的锚点**必然避开第一张**（nearestFreeRegion 的区间语义）：视口中心被
+     * 第一张占着 ⇒ 第二张被推到旁边。它可能整块在屏内、也可能一头出屏——两种都合法，
+     * 判据只看「镜头有没有去它那儿」：出屏 ⇒ 必须飞；在屏内 ⇒ 一动不动。 */
+    const inSight = draftBoxInSight(second.anchor!, useCanvasViewStore.getState().view, { w: W, h: H });
+    expect(glideTo).toHaveBeenCalledTimes(inSight ? 1 : 2);
+    if (!inSight) {
+      const focus = draftFocusPoint(second.anchor!);
+      expect(glideTo).toHaveBeenLastCalledWith(focus.x, focus.y);
+    }
   });
 
   it('重渲染不重播：同一张纸落过纸之后，普通的 re-render 不再拉镜头', async () => {
@@ -259,7 +273,8 @@ describe('待题纸 · 落纸即聚焦（① 纸落在屏外 ⇒ 镜头跟过去
     await act(async () => {
       useDraftSheetStore.getState().openSheet();
     });
-    expect(useDraftSheetStore.getState().anchor).not.toBeNull();
+    expect(useDraftSheetStore.getState().papers.length).toBeGreaterThan(0);
+    expect(useDraftSheetStore.getState().papers[0]?.anchor).not.toBeNull();
     expect(el.querySelector('[data-draft-sheet]')).not.toBeNull();
   });
 });
@@ -294,7 +309,7 @@ describe('待题纸 · 落纸即聚焦（③ 端到端：真 PaperPanel + 真 Ch
       return Promise.resolve(null);
     });
     useShellStore.setState({ projectPath: 'D:/draft-landing-ws' });
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     useDockStore.getState().closePanel('paper');
   });
 
@@ -303,7 +318,7 @@ describe('待题纸 · 落纸即聚焦（③ 端到端：真 PaperPanel + 真 Ch
     container?.remove();
     root = null;
     container = null;
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
   });
 
   async function mountPanel(): Promise<HTMLDivElement> {
@@ -349,7 +364,9 @@ describe('待题纸 · 落纸即聚焦（③ 端到端：真 PaperPanel + 真 Ch
       await new Promise((r) => setTimeout(r, 500)); // 镜头飞行（--m-sheet 一档）
     });
 
-    const spot = useDraftSheetStore.getState().anchor;
+    const spot =
+      useDraftSheetStore.getState().papers.find((p) => p.id === useDraftSheetStore.getState().focusedId)?.anchor ??
+      null;
     expect(spot).not.toBeNull();
     const sheet = container.querySelector('[data-draft-sheet]') as HTMLElement | null;
     expect(sheet).not.toBeNull();

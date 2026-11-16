@@ -59,7 +59,7 @@ describe('待题纸的输入面（V2-P1）', () => {
   beforeEach(() => {
     resetComposeStoresForTests();
     resetCanvasStoresForTests();
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     usePresetStore.setState({ selected: 'standard', error: null });
     useCoreStore.getState().setChatCore(fakeCore(PANEL));
     getChatStore(PANEL).sess.setState({
@@ -77,7 +77,7 @@ describe('待题纸的输入面（V2-P1）', () => {
     act(() => root?.unmount());
     container.remove();
     root = null;
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
   });
 
   it('纸不在场：坞在、纸期面不在（两槽互斥的第一半）', async () => {

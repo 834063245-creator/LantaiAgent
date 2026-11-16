@@ -11,6 +11,7 @@ import type { Message } from '../../../provider/types';
 import { disposeAssetSessionStore } from '../../../state/asset-store';
 import { getCanvasStore } from '../../../state/canvas-store';
 import { getComposeStore } from '../../../state/compose-store';
+import { useDraftSheetStore } from '../../../state/draft-sheet-store';
 import { disposeSessionMessagesStore } from '../../../state/messages-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../../state/toast-store';
 import { volumeDisplayName } from '../../../state/volume-name';
@@ -45,14 +46,17 @@ export function switchSession(ctx: SessionContext, idx: number): void {
   if (idx === activeIdx || idx < 0 || idx >= sessions.length) return;
 
   // 先把当前活跃会话的输入草稿存回其会话槽，再把目标会话的草稿恢复到输入框。
-  // 输入框 live 状态始终只属于活跃会话 —— 这样切 tab 时未发送的文字留在原会话，
-  // 不会"漂移"到另一个会话的输入框。
+  // 输入框 live 状态始终只属于**当前输入焦点**那一个目标 —— 这样切 tab 时未发送的文字
+  // 留在原会话，不会"漂移"到另一个会话的输入框。
+  // 2026-11-17 多纸改判：live 槽的主人可能是**待题纸**（`draft:<id>`），故换手统一走
+  // `claimLive`（它按 `liveOwner` 存旧主、取新主），不再假设旧主是「上一个活跃卷」。
   if (activeIdx >= 0) {
     getChatStore(storeId).sess.getState().setSessionTokens(sessions[activeIdx].id, ctx.getTotalTokensUsed());
-    getChatStore(storeId).input.getState().saveSessionDraft(sessions[activeIdx].id);
   }
   getChatStore(storeId).sess.setState({ activeIdx: idx });
-  getChatStore(storeId).input.getState().restoreSessionDraft(sessions[idx].id);
+  // 切到某个卷 = 焦点离开纸（坞立刻接管，纸留在画布上）
+  useDraftSheetStore.getState().focusSheet(null);
+  getChatStore(storeId).input.getState().claimLive(`s:${sessions[idx].id}`);
 
   // 切换会话级 board 到新会话
   const newSessionId = String(sessions[idx].id);
@@ -270,13 +274,12 @@ export function closeSession(ctx: SessionContext, idx: number): void {
   // 从 agent 数据同步捕获，此处拆的是注册表项；续开该卷走磁盘恢复重建）
   disposeSessionMessagesStore(ctx.storeId, s.id);
   disposeAssetSessionStore(ctx.storeId, s.id);
-  // 若关闭的是活跃会话，先把它未发送的文字存入其槽再清空，稍后换入新活跃会话的草稿
+  /* 草稿槽的两条动作（2026-11-17 多纸改判后按 `liveOwner` 判，不再假设主人是谁）：
+   *   - 这一卷**正持有 live 输入**（`s:<id>`）⇒ 它的槽本来就没被写，无需先 save；
+   *   - 其余情形（纸持有输入 / 别的卷持有）⇒ 槽里可能有旧草稿，照旧丢弃。
+   *   合卷后输入绝不残留这一卷的字，是这条的唯一目的。 */
   const closingActive = idx === st.activeIdx;
-  if (closingActive) {
-    getChatStore(ctx.storeId).input.getState().saveSessionDraft(s.id);
-  }
-  // 丢弃被关闭会话的输入草稿槽 —— 关闭后不应再残留其未发送文字
-  getChatStore(ctx.storeId).input.getState().clearSessionDraft(s.id);
+  getChatStore(ctx.storeId).input.getState().clearSessionDraft(`s:${s.id}`);
   // 创作坞每会话偏好随卷消亡一并清理（Stage-4）
   getComposeStore(ctx.storeId).getState().removePrefs(String(s.id));
 
@@ -314,9 +317,9 @@ export function closeSession(ctx: SessionContext, idx: number): void {
   }
 
   getChatStore(ctx.storeId).sess.setState({ sessions: newSessions, activeIdx: newIdx });
-  // 关闭的是原活跃会话 → 新的活跃会话换其草稿到输入框（s.id 槽已被清空，不会留下旧文字）
+  // 关闭的是原活跃会话 → 输入交给新的活跃会话（槽已被清空，不会留下旧文字）
   if (closingActive) {
-    getChatStore(ctx.storeId).input.getState().restoreSessionDraft(newSessions[newIdx].id);
+    getChatStore(ctx.storeId).input.getState().claimLive(`s:${newSessions[newIdx].id}`);
   }
   // ponytail: 无需 restoreMessages — React 自动从会话级 store 读取
 
@@ -403,8 +406,7 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
     if (stNow.activeIdx >= 0) {
       const oldSid = stNow.sessions[stNow.activeIdx].id;
       getChatStore(ctx.storeId).sess.getState().setSessionTokens(oldSid, ctx.getTotalTokensUsed());
-      // 把旧会话的输入草稿存回其会话槽 —— 新建会话后切回旧 tab 时文字仍在
-      getChatStore(ctx.storeId).input.getState().saveSessionDraft(oldSid);
+      // 旧卷的输入草稿由 `claimLive` 在下面换手时自动存回（按 `liveOwner` 存，不看活跃卷）
     }
   }
   if (newAgent) {
@@ -428,8 +430,9 @@ export async function createNewSession(ctx: SessionContext, opts: CreateSessionO
   msgStoreFor(ctx.storeId, id).getState().setMessages([]);
   resetMsgIdCounter();
   ctx.clearInputHistory();
-  // 新会话无草稿槽 → 清空 live 输入，避免沿用上一会话未发送的文字
-  getChatStore(ctx.storeId).input.getState().restoreSessionDraft(id);
+  // 新会话无草稿槽 → 换手到它（旧主人的字存回旧槽，live 清空），不沿用上一会话未发送的文字
+  useDraftSheetStore.getState().focusSheet(null);
+  getChatStore(ctx.storeId).input.getState().claimLive(`s:${id}`);
   setTurnPairs(ctx.storeId, null, []);
   setTurnPairs(ctx.storeId, id, []);
   ctx.setTotalTokensUsed(0);

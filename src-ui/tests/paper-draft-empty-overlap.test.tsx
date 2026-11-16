@@ -106,7 +106,7 @@ describe('空画布：待题纸摊开时空态退场（不与题签重叠）', (
     mockInvoke.mockReset();
     mockInvoke.mockImplementation(() => Promise.resolve(null));
     useShellStore.setState({ projectPath: 'D:/empty-ws' });
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     useDockStore.getState().closePanel('paper');
   });
 
@@ -115,7 +115,7 @@ describe('空画布：待题纸摊开时空态退场（不与题签重叠）', (
     container?.remove();
     root = null;
     container = null;
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
   });
 
   it('空画布：先有「案上无卷」空态 → 点新开卷后空态消失、只剩待题纸', async () => {

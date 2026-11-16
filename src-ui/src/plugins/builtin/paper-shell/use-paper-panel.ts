@@ -505,11 +505,14 @@ export function usePaperPanelAssembly() {
    * 「纸在场 = 出生面已经在场」这一条判据对**空态块**与**案头态**是同一条（两者同源：
    * 都读 sessions 长度）。 */
   // ⚠ 必须**订阅**（getState 不是响应式：开纸那一刻不会重渲，坞就停在案头形态）
-  const draftOpen = useDraftSheetStore((s) => s.open);
+  /* **多纸改判（2026-11-17）**：判据 = **焦点在纸上**（不是「纸在画布上」）。
+   * 纸摆在画布上但不拿焦点时，坞照常是坞（对着活跃卷工作）——「纸在 ⇒ 坞消失」正是
+   * 用户报的「不能回头和已有会话交互」。 */
+  const draftFocusOn = useDraftSheetStore((s) => s.focusedId !== null);
   /* 化卷交接窗（V2-P3）：纸已交卷但还在屏上——它仍是「出生面在场」，
-   * 故案头态与坞槽的判据要和 open 一样把它算进去（同一条尺子两处消费）。 */
-  const draftMorph = useDraftSheetStore((s) => s.morph !== null);
-  const sheetPresent = draftOpen || draftMorph;
+   * 故案头态与坞槽的判据要和焦点一样把它算进去（同一条尺子两处消费）。 */
+  const draftMorph = useDraftSheetStore((s) => Object.keys(s.morphs).length > 0);
+  const sheetPresent = draftFocusOn || draftMorph;
   const desk = sessions.length === 0 && !sheetPresent;
 
   /* 世界层 transform */
@@ -623,7 +626,7 @@ export function usePaperPanelAssembly() {
      * 还是上一卷），于是屏幕上同时出现「一张待题纸」+「一条从空气连到旧卷的线」。
      * 判据 = 纸在（open 或交接窗内）⇒ 引线不画。交接期也包含在内：那一拍纸正在
      * 化卷，此时让线突然冒出来反而是第二件事。 */
-    if (draftOpen || draftMorph) return null;
+    if (draftFocusOn || draftMorph) return null;
     // 无活卷 / 尚未落位 ⇒ 不画线（宁可没有线，也不指错）
     if (activeSessionKey === null) return null;
     const region = regions.find((r) => r.sessionId === activeSessionKey);
@@ -640,7 +643,7 @@ export function usePaperPanelAssembly() {
       selSeedOf(`${DOCK_TETHER_SEED}-${activeSessionKey}`),
       DOCK_TETHER_PEN,
     );
-  }, [activeSessionKey, regions, view, composer.anchor, draftOpen, draftMorph]);
+  }, [activeSessionKey, regions, view, composer.anchor, draftFocusOn, draftMorph]);
 
   return {
     core,

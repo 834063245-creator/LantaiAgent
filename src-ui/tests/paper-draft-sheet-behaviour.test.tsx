@@ -62,7 +62,7 @@ describe('待题纸 · 出生面（V2：纸即输入面）', () => {
   let container: HTMLDivElement | null = null;
 
   beforeEach(() => {
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     usePresetStore.setState({ selected: 'standard', error: null });
     resetCanvasStoresForTests();
     useCanvasViewStore.setState({ view: identityView(), canvasSize: { w: 1600, h: 900 } });
@@ -73,7 +73,7 @@ describe('待题纸 · 出生面（V2：纸即输入面）', () => {
     container?.remove();
     root = null;
     container = null;
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
   });
 
   it('未摊开 = 不渲染任何东西（零成本）', async () => {
@@ -122,7 +122,7 @@ describe('待题纸 · 出生面（V2：纸即输入面）', () => {
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
-    expect(useDraftSheetStore.getState().open).toBe(false);
+    expect(useDraftSheetStore.getState().papers.length > 0).toBe(false);
   });
 
   it('发送被拒 → 纸留在原地 + 原因写在纸脚（错误不静默）', async () => {
@@ -136,7 +136,7 @@ describe('待题纸 · 出生面（V2：纸即输入面）', () => {
       useDraftSheetStore.getState().setNotice('组合「x」不在册');
     });
 
-    expect(useDraftSheetStore.getState().open).toBe(true);
+    expect(useDraftSheetStore.getState().papers.length > 0).toBe(true);
     expect(container.querySelector('[data-draft-sheet]')?.getAttribute('data-body-state')).toBe('rejected');
     expect(container.textContent).toContain('组合「x」不在册');
   });

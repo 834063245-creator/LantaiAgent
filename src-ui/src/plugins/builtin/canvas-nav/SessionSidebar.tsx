@@ -691,7 +691,10 @@ export const SessionSidebar = memo(function SessionSidebar() {
       try {
         // 2026-11-14 立卷 UX：新建 = **落一张待题纸**（题签 → 开卷才发号）。
         // 落位/聚焦由纸自己管（开卷后卷落在纸的锚点），此处只管把纸摊出来。
-        useDraftSheetStore.getState().openSheet();
+        // 2026-11-17 多纸：每次都**新增一张**（不再重定位旧纸）；摊开后立刻把焦点与
+        // 输入槽交给它——走 core 的能力位（store 焦点 + input live 槽一次换手）。
+        const paperId = useDraftSheetStore.getState().openSheet();
+        core.focusDraft?.(paperId);
       } finally {
         newBusyRef.current = false;
         setNewBusy(false);

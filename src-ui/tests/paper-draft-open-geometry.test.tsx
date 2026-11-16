@@ -101,7 +101,7 @@ describe('发送即开卷：落位与流区盒同一真源', () => {
       return Promise.resolve(null);
     });
     useShellStore.setState({ projectPath: 'D:/draft-ws' });
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     useDockStore.getState().closePanel('paper');
   });
 
@@ -110,7 +110,7 @@ describe('发送即开卷：落位与流区盒同一真源', () => {
     container?.remove();
     root = null;
     container = null;
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
   });
 
   it('发送 → 卷落在纸的锚点，流区盒底 = 锚点 + 72，引线脚在盒底', async () => {

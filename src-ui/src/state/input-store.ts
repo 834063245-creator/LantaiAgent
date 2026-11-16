@@ -52,8 +52,13 @@ interface InputStore {
   inputHistoryIdx: number;
   draftText: string;
 
-  /** 非活跃会话的草稿槽：sessionId → 该会话未发送的输入。live 状态始终只属于活跃会话。 */
-  sessionDrafts: Record<number, SessionDraft>;
+  /** 非活跃目标（会话 / 待题纸）的草稿槽：槽键 → 该目标未发送的输入。
+   *
+   *  live 状态只属于**当前输入焦点**那一个目标。焦点 = 活跃卷（常态）或某张待题纸
+   *  （2026-11-17 多纸改判：纸有自己的输入，不再窃取面板这份 live 槽）。
+   *  槽键：会话 = `String(sessionId)`；待题纸 = `draft:<paperId>`（见 draft-sheet-store
+   *  的 `draftInputKey`，那是唯一发号处）。 */
+  sessionDrafts: Record<string, SessionDraft>;
 
   setInputText: (text: string) => void;
   setAttachedFiles: (files: Array<{ path: string; name: string; size: number }>) => void;
@@ -69,12 +74,27 @@ interface InputStore {
   setInputHistoryIdx: (idx: number) => void;
   setDraftText: (text: string) => void;
 
-  /** 把当前 live 草稿存入 sid 槽（会话切离前调用）。 */
-  saveSessionDraft: (sid: number) => void;
-  /** 把 sid 槽恢复为 live 草稿并删除槽；无槽则清空 live（新会话/未写过草稿）。 */
-  restoreSessionDraft: (sid: number) => void;
-  /** 删除 sid 槽（关闭会话 / 发送后清理，避免切回时复活已发送文本）。 */
-  clearSessionDraft: (sid: number) => void;
+  /** **当前 live 输入归谁**：`s:<sessionId>`（活跃卷）或 `draft:<paperId>`（待题纸）；
+   *  '' = 未认领（还没有任何目标占用过输入框）。
+   *
+   *  为什么需要显式记「归谁」：2026-11-17 多纸改判后，live 槽在**卷与纸之间换手**
+   *  ——点某张题签 → 纸拿走输入；点某卷 → 卷拿回来。换手必须「先存旧主、再取新主」，
+   *  而旧主是谁不能靠猜（活跃卷恒在，但纸拿走输入时活跃卷并不是旧主）。
+   *  与「切卷」是同一条动作：切卷只是 owner 从 `s:A` 换到 `s:B`。 */
+  liveOwner: string;
+  /** 把 live 输入交给 `owner`（存旧主的草稿 → 取新主的草稿）。
+   *  同一 owner 重复调用是幂等的（不覆盖正在打字的正文）。 */
+  claimLive: (owner: string) => void;
+  /** **丢掉 live 输入**（不写任何槽）：弃纸 / 弃卷这类「这些字不要了」的动作。
+   *  与 `claimLive` 的区别只在**旧主的草稿要不要留**：留 = 换手，丢 = 弃。 */
+  releaseLive: () => void;
+
+  /** 把当前 live 草稿存入槽（焦点切离该目标前调用）。 */
+  saveSessionDraft: (slot: string | number) => void;
+  /** 把槽恢复为 live 草稿并删除槽；无槽则清空 live（新目标/未写过草稿）。 */
+  restoreSessionDraft: (slot: string | number) => void;
+  /** 删除槽（关闭会话 / 发送后清理，避免切回时复活已发送文本）。 */
+  clearSessionDraft: (slot: string | number) => void;
   /** 清空全部草稿槽并重置 live 输入（整棵会话树重建，如项目重载）。 */
   clearSessionDrafts: () => void;
 }
@@ -90,6 +110,7 @@ function createInputStoreImpl() {
     inputHistoryIdx: -1,
     draftText: '',
     sessionDrafts: {},
+    liveOwner: '',
 
     setInputText: (inputText) => set({ inputText }),
     setAttachedFiles: (attachedFiles) => set({ attachedFiles }),
@@ -110,23 +131,37 @@ function createInputStoreImpl() {
     setInputHistoryIdx: (inputHistoryIdx) => set({ inputHistoryIdx }),
     setDraftText: (draftText) => set({ draftText }),
 
-    saveSessionDraft: (sid) => set((s) => ({ sessionDrafts: { ...s.sessionDrafts, [sid]: snapshotDraft(s) } })),
-    restoreSessionDraft: (sid) =>
+    claimLive: (owner) =>
       set((s) => {
-        const saved = s.sessionDrafts[sid];
-        const { [sid]: _dropped, ...rest } = s.sessionDrafts;
+        if (s.liveOwner === owner) return s; // 幂等：同一个主人不重取（否则打字的正文被回滚）
+        const drafts = { ...s.sessionDrafts };
+        if (s.liveOwner) drafts[s.liveOwner] = snapshotDraft(s);
+        const next = drafts[owner];
+        delete drafts[owner];
+        return { ...(next ?? emptyDraft()), liveOwner: owner, sessionDrafts: drafts };
+      }),
+    releaseLive: () => set(() => ({ ...emptyDraft(), liveOwner: '' })),
+    saveSessionDraft: (slot) =>
+      set((s) => ({ sessionDrafts: { ...s.sessionDrafts, [String(slot)]: snapshotDraft(s) } })),
+    restoreSessionDraft: (slot) =>
+      set((s) => {
+        const key = String(slot);
+        const saved = s.sessionDrafts[key];
+        const { [key]: _dropped, ...rest } = s.sessionDrafts;
         return saved ? { ...saved, sessionDrafts: rest } : { ...emptyDraft(), sessionDrafts: rest };
       }),
-    clearSessionDraft: (sid) =>
+    clearSessionDraft: (slot) =>
       set((s) => {
-        if (!(sid in s.sessionDrafts)) return {};
-        const { [sid]: _dropped, ...rest } = s.sessionDrafts;
+        const key = String(slot);
+        if (!(key in s.sessionDrafts)) return s;
+        const { [key]: _dropped, ...rest } = s.sessionDrafts;
         return { sessionDrafts: rest };
       }),
     clearSessionDrafts: () =>
       set(() => ({
         ...emptyDraft(),
         sessionDrafts: {},
+        liveOwner: '',
       })),
   }));
 }

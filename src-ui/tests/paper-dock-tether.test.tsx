@@ -376,8 +376,8 @@ describe('匣脚引线（坞的版口钮 → 活卷的纸脚）', () => {
       useDraftSheetStore.getState().beginMorph(9);
     });
     // 交接期：open 已 false、morph 在场
-    expect(useDraftSheetStore.getState().open).toBe(false);
-    expect(useDraftSheetStore.getState().morph).not.toBeNull();
+    expect(useDraftSheetStore.getState().papers.length > 0).toBe(false);
+    expect(Object.values(useDraftSheetStore.getState().morphs)[0] ?? null).not.toBeNull();
     expect(layer()).toBeNull();
   }, 30_000);
 

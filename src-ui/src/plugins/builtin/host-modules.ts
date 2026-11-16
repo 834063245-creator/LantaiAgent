@@ -376,7 +376,15 @@ import { useCanvasViewStore } from '../../state/canvas-view-store';
 import { getComposeStore, resolveNewSessionDefault } from '../../state/compose-store';
 import { useCompositionStore } from '../../state/composition-store';
 import { useDockStore } from '../../state/dock-store';
-import { draftSheetSeed, isRiseVolume, setMorphBox, useDraftSheetStore } from '../../state/draft-sheet-store';
+// 2026-11-17 多纸批：+ draftInputKey / focusedPaper（本文件是宿主面封蜡，处于 1000 行水线）。
+import {
+  draftInputKey,
+  draftSheetSeed,
+  focusedPaper,
+  isRiseVolume,
+  setMorphBox,
+  useDraftSheetStore,
+} from '../../state/draft-sheet-store';
 import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../state/mode-store';
 import { usePluginPrefs } from '../../state/plugin-prefs';
 import { usePluginStore } from '../../state/plugin-store';
@@ -559,11 +567,11 @@ const faceDeps = {
   snapshotFromBlock,
   useCanvasViewStore,
   useCompositionStore,
-  // 待题纸（2026-11-14 立卷 UX）：出生面开合是跨产物瞬态（创作坞据此不出输入条）
+  /* 纸面域（2026-11-14 立卷 / 多纸 11-17）：焦点/开合跨产物瞬态；写面 arm/clear 在内核侧不上桥。 */
   useDraftSheetStore,
-  /* 化卷交接（2026-11-15）：纸性种子（纸与卷同一张纸）+ 落墨窗判据（纸化成的卷不再淡一次纸）。
-   * 两个能力位同属纸面域，跨产物取宿主那一份真实例；写面（arm/clear）在内核侧，不上桥。 */
   draftSheetSeed,
+  draftInputKey,
+  focusedPaper,
   isRiseVolume,
   setMorphBox,
   /* 题签三件与创作坞同源（2026-11-14 立卷 UX）：模型下拉 = 同一枚 ModelSelector 组件，

@@ -15,6 +15,7 @@ import {
   ANCHOR,
   canvasWheelMode,
   getCanvasStore,
+  getChatStore,
   loadSettings,
   lodActive,
   lodFarActive,
@@ -23,6 +24,7 @@ import {
   panBy,
   scheduleCanvasSave,
   useCanvasViewStore,
+  useDraftSheetStore,
   useShellStore,
   wheelFactor,
   zoomAt,
@@ -412,27 +414,41 @@ export function usePaperViewport(core: PaperCore | null) {
     return () => window.removeEventListener('keydown', onKey);
   }, [setView, landingAnchor]);
 
-  const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    // 空白处按下 → 开始平移。2026-09-07 UX 批：平移起手势面扩到流区纸面
-    // （.pp-region 本体——卷首/空卷题字 pointer-events:none 穿透到它）——
-    // 鼠标在会话流区内同样可拖动画布。块/边缘/角柄/纸条/文类签各有自己的
-    // 手势（stopPropagation），不会落到这里；流区自己的 onMouseDown（激活）
-    // 先跑，激活与平移并存。
-    const t = e.target as HTMLElement;
-    const onEmpty = t === e.currentTarget || t.classList.contains('pp-world') || t.classList.contains('pp-region');
-    if (!onEmpty) return;
-    e.preventDefault();
-    // 用户拖拽 = 手动接管视口：取消在途定位动画（否则动画会跟手抢 pan）
-    if (focusRafRef.current) {
-      cancelAnimationFrame(focusRafRef.current);
-      focusRafRef.current = 0;
-      focusFlightRef.current.end();
-    }
-    useCanvasViewStore.getState().requestFocus(null);
-    panningRef.current = { lastX: e.clientX, lastY: e.clientY };
-    setPanning(true);
-  }, []);
+  const onCanvasMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      /* **点画布空白 = 焦点离开纸**（2026-11-17 多纸改判）：纸留着，坞回来。
+       * 只在真有焦点时动作（无焦点时整句空操作，不惊动 store）。
+       * ⚠ 这一句在「判空手势」之前：连点纸背后那块画布也该先把焦点交回去。 */
+      const draftStore = useDraftSheetStore.getState();
+      if (draftStore.focusedId !== null && core) {
+        const input = getChatStore(core.panelId).input.getState();
+        draftStore.focusSheet(null);
+        const sess = getChatStore(core.panelId).sess.getState();
+        const active = sess.sessions[sess.activeIdx];
+        input.claimLive(active ? `s:${active.id}` : '');
+      }
+      // 空白处按下 → 开始平移。2026-09-07 UX 批：平移起手势面扩到流区纸面
+      // （.pp-region 本体——卷首/空卷题字 pointer-events:none 穿透到它）——
+      // 鼠标在会话流区内同样可拖动画布。块/边缘/角柄/纸条/文类签各有自己的
+      // 手势（stopPropagation），不会落到这里；流区自己的 onMouseDown（激活）
+      // 先跑，激活与平移并存。
+      const t = e.target as HTMLElement;
+      const onEmpty = t === e.currentTarget || t.classList.contains('pp-world') || t.classList.contains('pp-region');
+      if (!onEmpty) return;
+      e.preventDefault();
+      // 用户拖拽 = 手动接管视口：取消在途定位动画（否则动画会跟手抢 pan）
+      if (focusRafRef.current) {
+        cancelAnimationFrame(focusRafRef.current);
+        focusRafRef.current = 0;
+        focusFlightRef.current.end();
+      }
+      useCanvasViewStore.getState().requestFocus(null);
+      panningRef.current = { lastX: e.clientX, lastY: e.clientY };
+      setPanning(true);
+    },
+    [core],
+  );
 
   useEffect(() => {
     if (!panning) return;

@@ -193,11 +193,14 @@ export type ComposerVariant = 'dock' | 'sheet';
 /** 正常创作坞（卷成立之后）。待题纸上那张见 `ComposerSheet`——同一个面，另一次挂载。 */
 export const ComposerDock = memo(function ComposerDock() {
   const { activeSessionId, composerLock } = usePaperDock();
-  /* 纸在场时坞**整只不渲染**（V2-P1：V1 的「隐藏输入条/设置行」双轨已拆）。
+  /* **焦点在纸上时**坞整只不渲染（V2-P1 的判据在 2026-11-17 多纸改判中收窄）：
+   * 旧判据是「纸在画布上」——于是只要有一张题签，坞就消失，**不能回头和已有会话交互**
+   * （用户报的那条）。现行判据是**焦点**：纸拿焦点才让位；纸摆在画布上不拿焦点时，
+   * 坞照常对着活跃卷工作，点卷即把焦点与输入槽一并拿回来。
    * 判据放在**外壳**而不是 ComposerSurface 里：后者是一千多行的 hook 罐，早退会
    * 违反 hooks 次序（lint/useHookAtTopLevel）；两层各有一次订阅，代价零。 */
-  const draftOpen = useDraftSheetStore((s) => s.open);
-  if (draftOpen) return null;
+  const draftFocusOn = useDraftSheetStore((s) => s.focusedId !== null);
+  if (draftFocusOn) return null;
   return <ComposerSurface variant="dock" contextSessionId={activeSessionId} composerLock={composerLock} />;
 });
 
@@ -216,12 +219,12 @@ export const ComposerDock = memo(function ComposerDock() {
  *  为什么经 overlays 的 'draft-sheet' 槽注册而不是直引：跨插件直引会把产物 esbuild
  *  内联成第二份 store（同 toast-store 先例，见 docs/landmine-map.md）。 */
 export const ComposerSheet = memo(function ComposerSheet() {
-  const draftOpen = useDraftSheetStore((s) => s.open);
+  const draftOpen = useDraftSheetStore((s) => s.focusedId !== null);
   /* **交接窗里也留着**（2026-11-15 化卷批）：纸还在屏上退场，天头之下那段输入面若当帧撤，
    * 发送那一瞬下半张纸会**空一块**（真机定帧实测：纸还整张在那儿，输入行凭空没了）。
    * 留着它跟着纸一起退（`.pp-draft-morph`，`pointer-events: none`）——它不能再被点，
    * 也不该吃焦点，但它不该凭空不见。判据与纸自己那条同一把尺子（open || morph）。 */
-  const draftMorph = useDraftSheetStore((s) => s.morph !== null);
+  const draftMorph = useDraftSheetStore((s) => Object.keys(s.morphs).length > 0);
   if (!draftOpen && !draftMorph) return null;
   return <ComposerSurface variant="sheet" contextSessionId={null} composerLock={undefined} />;
 });
@@ -265,9 +268,10 @@ const ComposerSurface = memo(function ComposerSurface({
   const [dragOver, setDragOver] = useState(false);
   const [histHint, setHistHint] = useState(false);
 
-  /* ── 纸期书眉（V2）：没有卷名可报，但**弃纸**必须可达（Esc 之外的一条明路——
-   * 触屏/丢焦点时键盘不一定在）。它是本面唯一的非坞件，故就地分叉，不另起一套。 ── */
-  const draftNotice = useDraftSheetStore((s) => s.notice);
+  /* 纸期书眉（V2）没有卷名可报，但**弃纸**必须可达（Esc 之外的一条明路——触屏/丢焦点时
+   * 键盘不一定在）。它是本面唯一的非坞件，故就地分叉（见下方 SheetHeader 分支）。
+   * ⚠ 纸脚那行失败原因（`notice`）**不在这里**：它由 DraftSheet 渲染（纸自己的面），
+   * 坞这层只负责发送那一枚钮——2026-11-17 顺手拆掉这里的死订阅。 */
 
   /* ── 会话面：sess store 订阅（切卷/改名/token 变化自动重渲）── */
   const [sessions, setSessions] = useState<Array<{ id: number; label: string }>>([]);
@@ -468,7 +472,10 @@ const ComposerSurface = memo(function ComposerSurface({
   /* 待题纸（2026-11-15 V2）：`draftOpen` 已在函数开头（早退判据，同一次订阅）。
    * 纸自己那张（variant='sheet'）用**同一份** provider/model 推导，只是源头换成题签：
    * 题签未填（纸刚摊开）= 出厂默认（新卷出生默认），与坞期 prefs 的空位同义。 */
-  const draftPicks = useDraftSheetStore((s) => s.picks);
+  const draftPicks = useDraftSheetStore((s) => {
+    const id = s.focusedId;
+    return id === null ? null : (s.papers.find((p) => p.id === id)?.picks ?? null);
+  });
   const providerName = (isSheet ? draftPicks?.providerName : prefs?.providerName) ?? newSessionDefault.providerName;
   const model = (isSheet ? draftPicks?.model : prefs?.model) ?? newSessionDefault.model;
   const settingsVersion = settingsTick + providerName.length; // 触发器合成：保存代数 + 覆盖换向
@@ -622,8 +629,9 @@ const ComposerSurface = memo(function ComposerSurface({
    *  待题纸**——组合在出生时点定下（字节契约面），开场白则在开卷后进输入框
    *  （需求由用户补完，仍不自动发送）。 */
   const onCreatorDraft = useCallback(() => {
-    useDraftSheetStore.getState().openSheet({ presetId: 'creator' });
-  }, []);
+    const paperId = useDraftSheetStore.getState().openSheet({ presetId: 'creator' });
+    core?.focusDraft?.(paperId);
+  }, [core]);
 
   /** 题签拨组合（V2）：纸期**只写题签**——真正的登记发生在开卷那一刻
    *  （`ChatCore.openDraftVolume` → `createSessionWithPreset`，严一档校验 + 卷级登记）。
@@ -885,8 +893,9 @@ const ComposerSurface = memo(function ComposerSurface({
       // 判据只有这一处。纸没有卷号，写全局默认是错的（那是「没起过卷」的语义）。
       if (isSheet) {
         const st = useDraftSheetStore.getState();
+        // 多纸：写的是**焦点那张纸**的题签（setPicks 的缺省纸 = 焦点）
         st.setPicks({
-          presetId: st.presetId,
+          presetId: st.papers.find((p) => p.id === st.focusedId)?.presetId ?? null,
           providerName: targetProvider,
           model: modelId,
           thinking: undefined, // 换模型 = 思考档重解析（旧档位可能不在新模型声明里）
@@ -911,8 +920,10 @@ const ComposerSurface = memo(function ComposerSurface({
       // 这样「没碰过」与「显式选自动」在开卷时同义（零覆盖，跟随全局）。
       if (isSheet) {
         const st = useDraftSheetStore.getState();
-        if (!st.picks) return;
-        st.setPicks({ ...st.picks, thinking: value === '' ? undefined : (value as StoredThinking) });
+        // 多纸：写的是**焦点那张纸**的题签
+        const picks = st.papers.find((p) => p.id === st.focusedId)?.picks ?? null;
+        if (!picks) return;
+        st.setPicks({ ...picks, thinking: value === '' ? undefined : (value as StoredThinking) });
         return;
       }
       const next = (value === '' ? '' : value) as StoredThinking;
@@ -1010,7 +1021,15 @@ const ComposerSurface = memo(function ComposerSurface({
           （哪一卷 + 还有什么在跑），换模型与拨权限是**动作**——动作与账挤在同一行，
           读起来就是"卷名右边跟着一串控件"。模型+权限回到自成一行（它俩同属"这一趟怎么跑"）。 */}
       {isSheet ? (
-        <SheetHeader onDiscard={() => useDraftSheetStore.getState().dismiss()} />
+        <SheetHeader
+          onDiscard={() => {
+            const id = useDraftSheetStore.getState().focusedId;
+            if (id === null) return;
+            // 弃纸走 core 的能力位：store 焦点 + input 草稿槽 + 交回活跃卷三件事一起做
+            if (core?.dismissDraft) core.dismissDraft(id);
+            else useDraftSheetStore.getState().dismissOne(id);
+          }}
+        />
       ) : (
         <div className="pp-composer-header">
           <span

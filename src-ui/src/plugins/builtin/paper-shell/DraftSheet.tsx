@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// DraftSheet — **待题纸**（新卷出生面，2026-11-14 立项；**2026-11-15 定稿改判 V2**）。
+// DraftSheet — **待题纸**（新卷出生面，2026-11-14 立项；**2026-11-15 定稿改判 V2**；
+// **2026-11-17 多纸改判**）。
 //
-// 设计件：docs/plans/canvas-space/new-session-ux.md（V2 = 纸即输入面，发送即开卷）。
+// 设计件：docs/plans/canvas-space/new-session-ux.md；多纸：multi-draft-sheets.md。
 //
 // 一句话：点「＋」在画布落一张**会打字的纸**——卷首已具形（玉徽 / 眉行「待题 · 未开卷」/
 // 题字「案卷 __」），天头之下**就是这张卷的创作坞**；按发送那一刻才发号建卷，纸化作
@@ -15,21 +16,26 @@
 //   ② **纸面只有一个主动作 = 发送**：没有「开卷」按钮（V1 有，V2 删）。开卷的真实
 //      含义就是「我说了第一句话」；题签的不可晚定由**第一次发送**这道闸保护。
 //   ③ **不复制输入面**：天头之下那张 = 创作坞**同一个组件**（`ComposerSheet`，经
-//      `overlays` 的 'draft-sheet' 槽注册，本件只负责给槽）。纸与坞共用同一个
-//      input store（设计件 §2 原则 8）——复制一份就是把「一套设置摆两处」换成
-//      「一套输入摆两处」，负债更重。
+//      `overlays` 的 'draft-sheet' 槽注册，本件只负责给槽）。纸与坞共用同一份实现，
+//      但**各有各的草稿槽**（多纸改判：纸不再占用面板那份 live 槽）。
+//
+// **多纸（2026-11-17）**：画布上可以同时有多张纸。每张纸一条记录（`papers[]`），
+// 各自锚点 / 题签 / 失败原因 / 草稿槽。**焦点独占**：只有 `focusedId` 那张纸展开
+// 完整输入面（吃键盘），其余只显示「天头 + 题签一行」——点它即拿回焦点。
+// 焦点在纸上时坞让位；点任意一卷 / 画布空白 ⇒ 焦点交回坞，纸留在画布上不动。
 //
 // 落位：纸在 `.pp-world` 里（与流区同一坐标语言），位置 = 流区自动落位同一把尺子
 // （nearestFreeRegion + viewportCenterWorld，见 draft-sheet.ts）；开卷时流区写进
 // 同一个锚点（`ChatCore.openDraftVolume`）⇒「纸在哪，卷就落哪」，不跳位。
 //
 // V1 的三条断言留作判据（勿重犯）：题签 = 纸上的三行注疏 / 开卷按钮 / 坞隐藏输入条。
-// 前两条已被 V2 推翻，第三条改为「坞整只不渲染」（见 `ComposerSurface` 开头的早退）。
+// 前两条已被 V2 推翻，第三条改为「焦点在纸上时坞让位」。
 
 import { type CSSProperties, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { type DraftSheetCore, draftBoxInSight, draftFocusPoint, draftPlacement, draftScale } from './draft-sheet';
 import {
   activeOverlayContributions,
+  type DraftSheetAnchor,
   draftSheetSeed,
   EMPTY_REGION_CONTENT_H,
   Icon,
@@ -52,23 +58,90 @@ import './draft-sheet.css';
  *  （随机种子会让每次开纸都是另一张纸——纸纹是材料身份，不是装饰。） */
 const SHEET_SEED = 'draft-sheet';
 
+/** 待题纸群（画布上可以有多张；每张一条记录，各自一份草稿槽）。 */
 export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
-  const open = useDraftSheetStore((s) => s.open);
-  /* **化卷交接**（V2-P3）：发送成功后 open 转 false、morph 在场——纸上还在屏上，
-   * 与新卷的落纸同一窗（窗长 DRAFT_MORPH_MS = --m-sheet，store 自己收尾）。
-   * 张力上仍渲染 = 「纸没被一刀砍掉」，坞则已可以出现（它属于新卷）。 */
-  const morph = useDraftSheetStore((s) => s.morph);
-  const anchor = useDraftSheetStore((s) => s.anchor);
-  const presetSeed = useDraftSheetStore((s) => s.presetId);
-  // 题签（picks）不住本件：纸上的输入面（ComposerSheet）自己读它填出厂值，
-  // 发送面（ChatCore）读它去起卷——本件只要「预选组合」这一个种子。
+  const papers = useDraftSheetStore((s) => s.papers);
+  const morphs = useDraftSheetStore((s) => s.morphs);
+  const focusedId = useDraftSheetStore((s) => s.focusedId);
 
-  const notice = useDraftSheetStore((s) => s.notice);
-  const setAnchor = useDraftSheetStore((s) => s.setAnchor);
-  const dismiss = useDraftSheetStore((s) => s.dismiss);
-  const setPicks = useDraftSheetStore((s) => s.setPicks);
+  /* ── 纸上那张输入面：经 overlays 的 'draft-sheet' 槽取（热注册即时重取）──
+   * 纸替坞：本槽是**同一个** ComposerDock 的另一次挂载（见该文件 ComposerSheet 头注）。
+   * 多纸：**只给焦点那张纸挂**——两处 textarea 同屏会抢输入（焦点独占）。 */
+  const [, setOverlayTick] = useState(0);
+  useEffect(() => subscribeOverlayContributions(() => setOverlayTick((t) => t + 1)), []);
+  const sheetOverlays = activeOverlayContributions('draft-sheet');
 
+  /* ── Esc = 弃纸（不烧号、不落盘、画布无残留）──
+   * 多纸：**只弃焦点那张**（焦点不在纸上时 Esc 不归本件管）。
+   * 注意：纸上那张输入面自己也听 Esc（斜杠面板先吃）。本监听在 **capture** 阶段、
+   * 且只在输入面之外生效——判据 = 事件源不在纸内输入件上时才算弃纸。 */
+  useEffect(() => {
+    if (focusedId === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // 事件源可能是 Document/window（测试与合成事件），不保证有 closest。
+      const el = e.target as HTMLElement | null;
+      const inField = typeof el?.closest === 'function' && el.closest('textarea, input, [role="listbox"]') !== null;
+      if (inField) return; // 输入面自己处理（斜杠面板 / 弹层）
+      if (e.defaultPrevented) return;
+      e.stopPropagation();
+      core?.dismissDraft?.(focusedId);
+      useDraftSheetStore.getState().dismissOne(focusedId);
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [focusedId, core]);
+
+  if (papers.length === 0 && Object.keys(morphs).length === 0) return null;
+
+  return (
+    <>
+      {papers.map((paper) => (
+        <PaperView
+          key={paper.id}
+          paperId={paper.id}
+          anchor={paper.anchor}
+          presetSeed={paper.presetId}
+          notice={paper.notice}
+          focused={paper.id === focusedId}
+          overlays={sheetOverlays}
+          core={core}
+        />
+      ))}
+      {Object.entries(morphs).map(([paperId, morph]) => (
+        <MorphView key={paperId} paperId={paperId} morph={morph} />
+      ))}
+    </>
+  );
+}
+
+/** 一张**在办**的纸（还没开卷）：自己量高、自己落位、焦点那张自己跟镜头。 */
+function PaperView({
+  paperId,
+  anchor,
+  presetSeed,
+  notice,
+  focused,
+  overlays,
+  core,
+}: {
+  paperId: string;
+  anchor: DraftSheetAnchor | null;
+  presetSeed: string | null;
+  notice: string | null;
+  focused: boolean;
+  overlays: ReadonlyArray<{ id: string; component: React.ComponentType }>;
+  core: DraftSheetCore | null;
+}) {
   const presetSelected = usePresetStore((s) => s.selected);
+  const picks = useDraftSheetStore((s) => s.papers.find((p) => p.id === paperId)?.picks ?? null);
+  const setAnchor = useDraftSheetStore((s) => s.setAnchor);
+  const setPicks = useDraftSheetStore((s) => s.setPicks);
+  const setNotice = useDraftSheetStore((s) => s.setNotice);
+  const landNonce = useDraftSheetStore((s) => s.landNonce);
+  /* 画布尺寸只作**重试扳机**（首测尺寸为 0 时本拍跳过，尺寸一到再来一次）；
+   * 落点与镜头目标仍从 getState() 现取，不吃渲染期快照。 */
+  const canvasSize = useCanvasViewStore((s) => s.canvasSize);
 
   /* ── 落位 = 落纸 + 把镜头带过去（2026-11-16 用户报「点了新建视角不跟过去」）──
    *  落点是**视口中心最近的空位**：画布上卷一多，最近空位就在屏外。只写 anchor 不飞
@@ -79,7 +152,7 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
    *  没有 sessionId，`requestFocus` 那条通道对它不成立；本组件在 PaperPanel 的 provider
    *  之内（同树见 PaperPanel 的 <DraftSheet />），故 `useContext` 直接取，不经 usePaperDock
    *  （那个钩子在 provider 外会抛，而测试可以单独挂这张纸）。
-   *  代数 `landNonce`：再点「＋」= 把这张纸重新定位，几何可能一字未变，仍要回镜头。 */
+   *  代数 `landNonce`：点某张纸 = 把镜头带回它，几何可能一字未变，仍要回镜头。 */
   const dockCtx = useContext(PaperDockContext);
   const glideToRef = useRef(dockCtx?.glideTo ?? null);
   glideToRef.current = dockCtx?.glideTo ?? null;
@@ -91,10 +164,6 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
    * 输入面自己会随打字增高，量一次会在第一个换行处露馅（纸脚被内容顶穿）。
    * jsdom 无 RO：退回量首帧（测试自铺桩，与 use-composer-float 同款纪律）。 */
   const [sheetH, setSheetH] = useState(0);
-  /* 实测高的 ref 镜像：落纸那个 effect 要读它算盒高，但**不能把它写进依赖**——
-   * 每来一帧尺寸就把镜头重算一次 = 落完纸之后还在追着纸动。 */
-  const sheetHRef = useRef(0);
-  sheetHRef.current = sheetH;
   const measureSheet = useCallback((el: HTMLDivElement | null) => {
     sheetRef.current = el;
     if (!el) return;
@@ -106,92 +175,57 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
     return () => ro.disconnect();
   }, []);
 
-  /* ── 纸上那张输入面：经 overlays 的 'draft-sheet' 槽取（热注册即时重取）──
-   * 纸替坞：本槽是**同一个** ComposerDock 的另一次挂载（见该文件 ComposerSheet 头注）。 */
-  const [, setOverlayTick] = useState(0);
-  useEffect(() => subscribeOverlayContributions(() => setOverlayTick((t) => t + 1)), []);
-  const sheetOverlays = activeOverlayContributions('draft-sheet');
-
-  /* ── 交接期纸**停止实测**（2026-11-15 定帧实测的真病灶：抖）──
-   * 化卷那一刻发号 + 落位 + 首条来文一起进来：纸的 RO 仍按内容量高，而盒又已锁到卷的几何，
-   * 两条高在几帧内互相追（实测 552 → 425 → 552 的来回），读作「整页纸在地上抖两下」。
-   * 交接期盒由卷**单方面**决定（store 的 morph.box），RO 不再回写。 */
+  /* ── 首帧落位（视口中心最近的空位——与流区落位同一把尺子）── */
   useEffect(() => {
-    if (!morph) return;
-    setSheetH(0); // 交出去：本件的实测高不再参与盒
-  }, [morph]);
+    if (anchor !== null || !core) return;
+    setAnchor(draftPlacement(core), paperId);
+  }, [anchor, core, paperId, setAnchor]);
 
-  /* ── 落纸：算锚点（视口中心最近的空位——与流区落位同一把尺子）→ **同拍把镜头带过去** ──
-   *  两件事必须是一个动作：只落位不飞 = 纸落在屏外、用户看不见（2026-11-16 报的那一幕）。
-   *  这一拍还包下「纸自己重算位置」的情形（anchor 为 null —— 例如锚点被弃纸清掉之后）。 */
-  const landNonce = useDraftSheetStore((s) => s.landNonce);
-  /* 画布尺寸只作**重试扳机**（见下：首测尺寸为 0 时本拍跳过，尺寸一到再来一次）；
-   * 落点与镜头目标仍从 getState() 现取，不吃渲染期快照。 */
-  const canvasSize = useCanvasViewStore((s) => s.canvasSize);
+  /* ── 首帧填出厂题签（预选组合 = 造模式入口传进来的；其余取出厂默认）──
+   * 题签住 store（不在此组件态）：**发送面要读它**（`ChatCore.sendMessage` 起卷时登记
+   * 组合、写会话覆盖）。放组件态 = 两处真源。 */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 这张纸的 picks 一旦写下就不该被重设（presetSelected 刻意不在依赖里——开纸途中改全局默认不许冲掉用户刚题的签）
+  useEffect(() => {
+    if (picks !== null) return;
+    setNotice(null, paperId);
+    // 出厂题签的模型/思考 = 此刻的「新卷出生默认」（settings 活跃行）；组合 = 预选 ?? 全局默认。
+    const base = resolveNewSessionDefault();
+    setPicks(
+      {
+        presetId: presetSeed ?? presetSelected,
+        providerName: base.providerName,
+        model: base.model,
+        thinking: base.thinking,
+      },
+      paperId,
+    );
+  }, [paperId, presetSeed, picks, setPicks, setNotice]);
+
+  /* ── 焦点那张纸：落位那一拍把镜头带过去（只在**要不要动镜头**上做判断）── */
   useEffect(() => {
     void canvasSize; // 只作重试扳机（同 use-paper-panel 的 motionTick 范式）：真值仍从 getState 现取
-    if (!open || !core) return;
-    if (landedNonce.current === landNonce) return; // 这一张纸已经落过纸（重新渲染不再飞）
+    if (!focused || !core || anchor === null) return;
+    if (landedNonce.current === landNonce) return;
     const view = useCanvasViewStore.getState();
     /* 画布还没量到尺寸（挂载首帧之前）：无从判可见、也无从算「该飞到哪」——
      * 这一拍整只跳过，**且不消耗代数**（尺寸一到，下一次依赖变化会重跑本 effect）。 */
     if (view.canvasSize.w <= 0 || view.canvasSize.h <= 0) return;
     landedNonce.current = landNonce;
-    const spot = anchor ?? draftPlacement(core);
-    if (anchor === null) setAnchor(spot);
     /* 盒高取「实测 vs 零块卷最小盒高」中的大者——与纸自己渲染的那个盒**同一把尺子**
      *（见下方 regionMinH：纸高垫到卷的最小盒高，内容更高就按内容走）。 */
-    const boxH = Math.max(sheetHRef.current, EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP);
+    const boxH = Math.max(sheetH, EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP);
     /* 纸已经整块在视口里 ⇒ **一动不动**：视角是用户的，自动动作只在「你按了＋却看不见」
      * 这一种情形里才配动它（同 2026-09-01 视角抢夺修复的口径）。
      * 能力位缺席 = 不飞，纸照常落位（纸面不炸——与 FolioCompositionChip 同款纪律）。 */
-    if (draftBoxInSight(spot, view.view, view.canvasSize, boxH)) return;
-    const focus = draftFocusPoint(spot, boxH);
+    if (draftBoxInSight(anchor, view.view, view.canvasSize, boxH)) return;
+    const focus = draftFocusPoint(anchor, boxH);
     glideToRef.current?.(focus.x, focus.y);
-  }, [open, core, anchor, landNonce, canvasSize, setAnchor]);
-
-  /* ── 每次开纸重置题签（预选组合 = 造模式入口传进来的；其余取出厂默认）──
-   * 题签住 store（不在此组件态）：**发送面要读它**（ChatCore.sendMessage 的纸在场分支
-   * 起卷时登记组合、写会话覆盖）。放组件态 = 两处真源。 */
-  // biome-ignore lint/correctness/useExhaustiveDependencies: open/presetSeed 是刻意的重置扳机（重新落纸 = 一份新题签），presetSelected 刻意不在依赖里（否则开纸途中改全局默认会把用户刚题的签冲掉）
-  useEffect(() => {
-    if (!open) return;
-    useDraftSheetStore.getState().setNotice(null);
-    // 出厂题签的模型/思考 = 此刻的「新卷出生默认」（settings 活跃行）；组合 = 预选 ?? 全局默认。
-    const base = resolveNewSessionDefault();
-    setPicks({
-      presetId: presetSeed ?? presetSelected,
-      providerName: base.providerName,
-      model: base.model,
-      thinking: base.thinking,
-    });
-  }, [open, presetSeed, setPicks]);
-
-  /* ── Esc = 弃纸（不烧号、不落盘、画布无残留）──
-   * 注意：纸上那张输入面自己也听 Esc（斜杠面板先吃）。本监听在 **capture** 阶段、
-   * 且只在输入面之外生效——判据 = 事件源不在纸内输入件上时才算弃纸。 */
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // 事件源可能是 Document/window（测试与合成事件），不保证有 closest。
-      const el = e.target as HTMLElement | null;
-      const inField = typeof el?.closest === 'function' && el.closest('textarea, input, [role="listbox"]') !== null;
-      if (inField) return; // 输入面自己处理（斜杠面板 / 弹层）
-      if (e.defaultPrevented) return;
-      e.stopPropagation();
-      dismiss();
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [open, dismiss]);
-
-  if (!open && morph === null) return null;
+  }, [focused, core, anchor, landNonce, canvasSize, sheetH]);
 
   const folioH = measureFolioHeadHeight('案卷', STREAM_REGION.width);
   /* 纸性（2026-11-15 化卷批）：纸与卷**同一张纸**——同一张 paper-sheet 纹、同一套水洗。
    * 出生面期 = 固定种子；交接期 = 新卷 id（store 的 draftSheetSeed）。 */
-  const sheet = sheetCharacter(draftSheetSeed(SHEET_SEED));
+  const sheet = sheetCharacter(draftSheetSeed(paperId, SHEET_SEED));
   const scale = draftScale(anchor?.width ?? STREAM_REGION.width);
   /* **纸高垫到「卷的最小盒高」**（2026-11-15 用户报「文字冲出题签背景」）：
    * 病灶 = 纸高由内容实测（输入面多高纸就多高），而卷的盒高恒 ≥
@@ -213,57 +247,33 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
    * 读作「这张纸成了那一卷」而不是「纸没了、别处冒出个卷」。
    * 宽的同一性由 draftPlacement 保证（都用 STREAM_REGION.width 与同一锚点）。 */
   const boxBottom = (anchor?.anchorY ?? 0) + REGION_FOOT_GAP;
-  /* **交接期：盒一帧都不动**（2026-11-16 改判）。
-   *
-   * 上一版（2026-11-15）在交接窗里把纸的盒**整块换成卷的盒**（store 的 morph.box）——
-   * 目的是「纸与卷严丝合缝」。真机定帧实测：卷落进首块后是 552、纸实测 490，两条盒的
-   * **盒底相同**（都是锚点 + 底距），于是换盒那一帧纸的上缘**往上跳 62px**，天头四行跟着瞬移
-   * ——用户读到的就是「题签跳了一下」。这恰恰是本轮要消灭的东西。
-   *
-   * 现在的口径：**纸的盒归纸自己**（RO 在交接期已停，故它冻结在发送那一刻的值），
-   * 只有左缘与宽度取自卷（同宽同锚点，本来相等，取它是为了与世界变换同源）。
-   * 高度差 62px 是**卷多了一行正文**这件事的几何后果，不是纸该跟着跳的理由：
-   * 纸的天头按这个差升到卷首将落的位置再退，卷的字在自己的位上落下——两页字换手，
-   * 谁都不瞬移。 */
-  const morphBox = morph?.box ?? null;
-  /* **天头要抬多高**（2026-11-16）：卷的盒比纸高（多一行正文），两件盒底相同 ⇒ 卷首比纸的
-   * 天头高出这个差。纸的天头按它升到卷首将落的位置再退场——交接那一帧是「原位交接」，
-   * 不是两个位置的互换。卷高还没量到（box 未回填 / height 为 null）时差为 0：
-   * 此时纸的天头原地淡出，与上一版行为一致。
-   * 差值**夹在 [0, 96px]**：负数没有意义（纸比卷高时不必往下沉），上界防止窗口极窄时
-   * 卷被超长正文撑得极高、天头飞出画布。 */
-  const folioRise = Math.max(0, Math.min(96, (morphBox?.height ?? boxH) - boxH));
-
-  /* 交接期 = 纸**正在化卷**：嘴上仍是这张纸，但输入面已撤（不能再打字——那句已经发出去了），
-   * 天头保留（Title/玉徽还在，读作「这张纸正在变成卷」而不是「纸没了」）。 */
-  const morphing = morph !== null;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: 纸是画布上的一件「物件」（同 .pp-region 的 mousedown 激活语义——点纸张即拿到它）；键盘路径在纸内那枚真实按钮（.pp-draft-idle）上，这里只补鼠标那条腿。
     <div
-      className={`pp-region pp-draft-sheet${morphing ? ' pp-draft-morph' : ''}`}
+      className={`pp-region pp-draft-sheet${focused ? ' pp-draft-focused' : ' pp-draft-idle'}`}
       data-draft-sheet
-      data-morph={morphing ? 'out' : undefined}
+      data-paper-id={paperId}
       data-body-state={notice ? 'rejected' : 'ready'}
+      data-focused={focused ? 'true' : undefined}
       ref={measureSheet}
+      onMouseDown={() => {
+        if (!focused) core?.focusDraft?.(paperId);
+      }}
       style={
         anchor
           ? ({
-              /* 左缘与宽度取自卷的盒（同宽同锚点，本该相等；取它是为了与世界变换同源，
-                 免得纸与卷的锚点各自更新一帧时左缘错开半格）。高度/上缘不取——见上注。 */
-              left: morphBox ? morphBox.left : anchor.anchorX - anchor.width / 2,
-              width: morphBox ? morphBox.width : anchor.width,
+              left: anchor.anchorX - anchor.width / 2,
+              width: anchor.width,
               /* 纸以**锚点**为底线向上长（内容高随输入面变化，不写死）：
                  top = 锚点 − 实测高。首帧未测（sheetH=0）= 只画在锚点下方，
                  RO 一到即回填——**绝不用 translate: -100% 代替**：那会参与层叠/
                  纸纹对位（纸律：整叶不得声明 transform，见 base.css 注）。 */
               // 盒底 = 锚点 + 底距（与卷的纸脚同一个尺子）；盒高取「内容实测 vs 卷的最小盒高」
-              /* ⚠ 高度与上缘**一律归纸自己**（见上注）：交接期换成卷的盒 = 天头瞬跳 62px。 */
               top: boxBottom - boxH,
               height: boxH,
               // 卷首实测高（FOLIO_TOKENS 契约）——正文区按它下移，禁在 CSS 里手写数字
               '--draft-folio-h': `${folioH}px`,
-              // 交接期天头抬升量（见上注）：0 = 卷高未量到，天头原地退
-              '--draft-rise': `${folioRise}px`,
               // 纸性三参（真源 = sheet.ts）：与流区叶同名同义（见 .pp-region）
               '--sheet-ox': `${sheet.ox}px`,
               '--sheet-oy': `${sheet.oy}px`,
@@ -279,6 +289,115 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
             <Icon name="lantai" size={26} />
           </span>
           {/* 眉行「待题」而不是卷次：**卷号还没发**——这一行就是「纸还没成立」的机读断言 */}
+          <p className="pp-folio-eyebrow">{focused ? '待题 · 未开卷' : '待题 · 另有一纸'}</p>
+          <h2 className="pp-folio-title">
+            案卷<span className="pp-draft-num">Nº</span>
+          </h2>
+          <p className="pp-folio-sub">题签随首句落账 · 卷号于发送时发出</p>
+        </div>
+      </div>
+
+      {/* 天头之下 = **这张卷的创作坞**（同一个组件，另一次挂载）。
+          多纸：**只有焦点那张纸展开输入面**——两处 textarea 同屏会抢输入；其余纸只留
+          题签一行 + 一句去处（点它就换焦点），纸本身仍是完整的纸（天头/纸纹/落影）。 */}
+      <div className="pp-draft-stack">
+        {focused ? (
+          <>
+            {overlays.map((def) => (
+              <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
+                <def.component />
+              </PluginBoundary>
+            ))}
+            {notice && (
+              <div className="pp-draft-error" role="alert">
+                {notice}
+              </div>
+            )}
+          </>
+        ) : (
+          <button type="button" className="pp-draft-idle" onClick={() => core?.focusDraft?.(paperId)}>
+            <span className="pp-draft-idle-sign">{picks?.presetId ?? presetSeed ?? presetSelected}</span>
+            <span className="pp-draft-idle-hint">点这张纸继续题签</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 一张**正在化卷**的纸（已从 papers 摘出，只等窗满消失）。
+ *
+ *  盒一帧都不动（2026-11-16 改判）：纸的盒归纸自己（RO 在交接期冻结），只有左缘与宽度
+ *  取自卷（同宽同锚点，本来相等，取它是为了与世界变换同源）。
+ *  天头按「卷高 − 纸高」升到卷首将落的位置再退（`--draft-rise`，见 draft-sheet.css）。 */
+function MorphView({
+  paperId,
+  morph,
+}: {
+  paperId: string;
+  morph: {
+    sheetId: string;
+    box: { left: number; width: number; height: number | null } | null;
+    anchor: DraftSheetAnchor;
+  };
+}) {
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const [sheetH, setSheetH] = useState(0);
+  const measureSheet = useCallback((el: HTMLDivElement | null) => {
+    sheetRef.current = el;
+    if (!el) return;
+    const measure = () => setSheetH((prev) => (prev === el.offsetHeight ? prev : el.offsetHeight));
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const folioH = measureFolioHeadHeight('案卷', STREAM_REGION.width);
+  const regionMinH = EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP + folioH;
+  const boxH = Math.max(sheetH, regionMinH);
+  const sheet = sheetCharacter(morph.sheetId);
+  const scale = draftScale(morph.anchor.width);
+  const morphBox = morph.box;
+  /* **天头要抬多高**（2026-11-16）：卷的盒比纸高（多一行正文），两件盒底相同 ⇒ 卷首比纸的
+   * 天头高出这个差。纸的天头按它升到卷首将落的位置再退场——交接那一帧是「原位交接」，
+   * 不是两个位置的互换。卷高还没量到（box 未回填 / height 为 null）时差为 0。
+   * 差值**夹在 [0, 96px]**：负数没有意义，上界防止窗口极窄时天头飞出画布。 */
+  const folioRise = Math.max(0, Math.min(96, (morphBox?.height ?? boxH) - boxH));
+  const boxBottom = morph.anchor.anchorY + REGION_FOOT_GAP;
+
+  return (
+    <div
+      className="pp-region pp-draft-sheet pp-draft-morph"
+      data-draft-sheet
+      data-paper-id={paperId}
+      data-morph="out"
+      ref={measureSheet}
+      style={
+        {
+          /* 左缘与宽度取自卷的盒（同宽同锚点，本该相等；取它是为了与世界变换同源）。 */
+          left: morphBox ? morphBox.left : morph.anchor.anchorX - morph.anchor.width / 2,
+          width: morphBox ? morphBox.width : morph.anchor.width,
+          /* ⚠ 高度与上缘**一律归纸自己**：交接期换成卷的盒 = 天头瞬跳 62px。 */
+          top: boxBottom - boxH,
+          height: boxH,
+          // 卷首实测高（FOLIO_TOKENS 契约）——正文区按它下移，禁在 CSS 里手写数字
+          '--draft-folio-h': `${folioH}px`,
+          // 交接期天头抬升量（见上注）：0 = 卷高未量到，天头原地退
+          '--draft-rise': `${folioRise}px`,
+          // 纸性三参（真源 = sheet.ts）：与流区叶同名同义（见 .pp-region）
+          '--sheet-ox': `${sheet.ox}px`,
+          '--sheet-oy': `${sheet.oy}px`,
+          '--sheet-j': `${sheet.j}`,
+        } as CSSProperties
+      }
+    >
+      <div className="pp-folio-head">
+        <div className="pp-folio-inner">
+          <span className="pp-yuwei" style={{ transform: `scale(${scale})` }}>
+            <Icon name="lantai" size={26} />
+          </span>
           {/* 交接期**不改口**（2026-11-15 定帧实测）：改口 = 发送那一瞬天头一个字换成另一个字，
               而整窗只有 260ms——字一换就落进「啪一下」那一类观感。纸照旧说「待题 · 未开卷」
               到淡完为止：它表达的是**这张纸从没变过身份**，只是成了卷。 */}
@@ -289,25 +408,9 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
           <p className="pp-folio-sub">题签随首句落账 · 卷号于发送时发出</p>
         </div>
       </div>
-
-      {/* 天头之下 = **这张卷的创作坞**（同一个组件，另一次挂载）。
-          纸栈走流式、纸高随内容长——v1 按「绝对定位 + 手算每段 top」排，卷首一改高就压线。
-          ⚡ 交接期（morph）：**留着它、让它跟着纸一起退**（`.pp-draft-morph`，显形档），
-          而不是当帧撤掉——当帧撤 = 发送那一瞬输入面凭空消失，纸却还整张在那儿（真机帧上
-          读作「啪一下」）。退场期 `pointer-events: none`（见 CSS）：那一句已经发出去了，
-          它不能再被点、也不该吃焦点，但它**不该凭空不见**。 */}
-      <div className="pp-draft-stack">
-        {sheetOverlays.map((def) => (
-          <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
-            <def.component />
-          </PluginBoundary>
-        ))}
-        {notice && (
-          <div className="pp-draft-error" role="alert">
-            {notice}
-          </div>
-        )}
-      </div>
+      {/* 交接期：纸**正在化卷**——嘴上仍是这张纸，但输入面已撤（不能再打字，那句已经发出去了）。
+          留着这条空栈是为了让纸的高度与发送那一刻一致（盒一帧都不动，见上注）。 */}
+      <div className="pp-draft-stack" />
     </div>
   );
 }

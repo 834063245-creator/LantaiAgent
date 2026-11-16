@@ -59,13 +59,13 @@ describe('发送即开卷：落位不许悄悄退回 nearestFreeRegion', () => {
     mockInvoke.mockReset();
     mockInvoke.mockImplementation(() => Promise.resolve(null));
     useShellStore.setState({ projectPath: 'D:/draft-ws' });
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     getCanvasStore(PANEL).getState().clearCanvas();
     useCanvasViewStore.setState({ view: identityView(), canvasSize: { w: 1600, h: 900 } });
   });
 
   afterEach(() => {
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
   });
 
   it('开纸后平移视口 → 发送仍落在纸的锚点（不是视口中心）', async () => {
@@ -117,8 +117,8 @@ describe('发送即开卷：落位不许悄悄退回 nearestFreeRegion', () => {
     });
 
     const draft = useDraftSheetStore.getState();
-    expect(draft.open).toBe(false);
-    expect(draft.picks).toBeNull();
-    expect(draft.notice).toBeNull();
+    expect(draft.papers.length > 0).toBe(false);
+    expect(draft.papers.find((p) => p.id === draft.focusedId)?.picks ?? null).toBeNull();
+    expect(draft.morphs).toEqual({});
   });
 });

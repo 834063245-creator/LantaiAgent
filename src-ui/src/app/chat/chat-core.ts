@@ -34,7 +34,7 @@ import { apiErrorSummary } from '../../provider/types';
 import { clipLabel, useAskPendingStore } from '../../state/ask-pending-store';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { useDockStore } from '../../state/dock-store';
-import { useDraftSheetStore } from '../../state/draft-sheet-store';
+import { draftInputKey, useDraftSheetStore } from '../../state/draft-sheet-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import { bumpTurnDone } from '../../state/turn-done-store';
 import { deriveVolumeLabel, isUnnamedVolumeLabel, volumeDisplayName } from '../../state/volume-name';
@@ -756,6 +756,32 @@ export class ChatCore {
     focusBornVolume(this.panelId, sessionId);
   }
 
+  /** **把焦点交给某张待题纸**（2026-11-17 多纸改判）：store 的 focusedId + input store 的
+   *  live 槽**同一次换手**——前者决定谁吃键盘 / 坞让不让位，后者决定谁的草稿进输入框。
+   *  两件事必须一起做：只换 store ⇒ 纸显示输入面却打的是上一卷的字（病灶②的另一半）。 */
+  focusDraft(paperId: string): void {
+    const input = getChatStore(this.panelId).input.getState();
+    useDraftSheetStore.getState().focusSheet(paperId);
+    input.claimLive(draftInputKey(paperId));
+  }
+
+  /** **弃一张待题纸**（Esc / 纸上的「弃纸」）：不烧号、不落盘；输入还给活跃卷。 */
+  dismissDraft(paperId: string): void {
+    const input = getChatStore(this.panelId).input.getState();
+    const st = useDraftSheetStore.getState();
+    // 弃纸 = 那份字也不要了（不落任何槽）——故先 releaseLive 再清槽，最后交回活跃卷。
+    // ⚠ 顺序要紧：直接 claimLive 会把这张纸的 live 内容存进它自己的槽（复活）。
+    if (st.focusedId === paperId) {
+      input.releaseLive();
+      input.clearSessionDraft(draftInputKey(paperId));
+      const sess = getChatStore(this.panelId).sess.getState();
+      const active = sess.sessions[sess.activeIdx];
+      useDraftSheetStore.getState().focusSheet(null);
+      input.claimLive(active ? `s:${active.id}` : '');
+    }
+    st.dismissOne(paperId);
+  }
+
   /** **这一卷在不在眼前**（2026-11-16 落纸聚焦批的能力位）：开卷编排用它决定
    *  还要不要请求一次定位飞行——落纸那一刻镜头已经带过去了的话，再飞只是让视线
    *  在化卷那一拍自己动一下。判据本体在 `session/draft-opening`（与落位同一份坐标）。 */
@@ -1276,39 +1302,41 @@ export class ChatCore {
     const text = getChatStore(this.panelId).input.getState().inputText.trim();
     if (!text) return;
 
-    // ── 待题纸（V2 立卷 UX）：纸在场 = **发送即开卷** ──
-    // 判据读 store 单例（纸是跨产物瞬态，真源在 state/draft-sheet-store）。起卷失败
-    // **不吞那句话**：原因写回纸脚（纸还在、字还在），本次不往下走——这是「发送即
-    // 开卷」唯一允许的失败形态（V1 的「建了半截的卷」在这里不允许出现）。
+    // ── 待题纸（V2 立卷 UX）：**焦点在纸上 = 发送即开卷** ──
+    // 判据读 store 单例（纸是跨产物瞬态，真源在 state/draft-sheet-store），且是
+    // **焦点那张纸**——多纸之后「有纸在画布上」不等于「这句话是给纸的」。
+    // 起卷失败**不吞那句话**：原因写回那张纸的纸脚（纸还在、字还在），本次不往下走——
+    // 这是「发送即开卷」唯一允许的失败形态（V1 的「建了半截的卷」在这里不允许出现）。
     // ⚠ 必须在句柄水合之前：新卷还没有 Agent 句柄，下面的 `!this.agent` 分支会拿
     //   **上一卷**的诊断说事（旧入口就有这个歧义）。
-    const draft = useDraftSheetStore.getState();
-    if (draft.open) {
+    const draftStore = useDraftSheetStore.getState();
+    const draftPaper =
+      draftStore.focusedId === null ? null : (draftStore.papers.find((p) => p.id === draftStore.focusedId) ?? null);
+    if (draftPaper) {
       // 「新卷出生默认」的读面（全默认 ⇒ 零覆盖）——静态面纪律：compose-store 在模块体
       // 就求值，静态可达即成环（见 session-composition 头注），故此处动态取。
       const { resolveNewSessionDefault } = await import('../../state/compose-store');
       const fallback = resolveNewSessionDefault();
-      const picks = draft.picks ?? {
-        presetId: draft.presetId,
+      const picks = draftPaper.picks ?? {
+        presetId: draftPaper.presetId,
         providerName: fallback.providerName,
         model: fallback.model,
         thinking: undefined,
       };
       const opened = await this.openDraftVolume({
-        presetId: draft.presetId,
+        presetId: draftPaper.presetId,
         picks,
         fallback,
-        anchor: draft.anchor,
+        anchor: draftPaper.anchor,
       });
       if (!opened.ok) {
-        useDraftSheetStore.getState().setNotice(opened.reason);
+        useDraftSheetStore.getState().setNotice(opened.reason, draftPaper.id);
         return;
       }
       // 纸化成卷（V2-P3 那一拍）：纸**不当帧消失**——它保留到窗满，与新卷的落纸
-      // （.pp-spread，同一档 --m-sheet）交接；坞在 open 转 false 的那一刻就可以出现
-      // （它属于新卷，与纸的退场不冲突：纸在上、坞在下，不是同一个位置）。
+      // （.pp-spread，同一档 --m-sheet）交接；焦点随之交回卷（坞立刻可以出现）。
       // 动效敏感 / 窗长常量都在 store 里（一处真源，CSS token 镜像由 motion-contract 钉住）。
-      useDraftSheetStore.getState().beginMorph(opened.sessionId);
+      useDraftSheetStore.getState().beginMorph(opened.sessionId, draftPaper.id);
     }
 
     if (!this.agent) {

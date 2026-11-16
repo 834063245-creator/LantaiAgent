@@ -55,7 +55,7 @@ describe('发送即开卷：新卷必须成为活跃流区（引线/坞/目次�
     mockInvoke.mockReset();
     mockInvoke.mockImplementation(() => Promise.resolve(null));
     useShellStore.setState({ projectPath: 'D:/draft-ws' });
-    useDraftSheetStore.getState().dismiss();
+    useDraftSheetStore.getState().dismissAll();
     useCanvasViewStore.setState({ view: identityView(), canvasSize: { w: 1600, h: 900 } });
   });
 

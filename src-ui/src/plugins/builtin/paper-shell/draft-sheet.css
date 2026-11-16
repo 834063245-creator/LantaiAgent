@@ -291,3 +291,41 @@
   font-size: var(--fs-body);
   color: var(--seal-deep);
 }
+
+/* ── 多纸（2026-11-17）：**非焦点那张**只留一行去处 ──────────────────────────
+ *
+ * 焦点独占（同一时刻只有一张纸吃键盘），其余纸仍是完整的纸（天头 / 纸纹 / 落影都在），
+ * 只是天头之下不再展开输入面——换成一行「组合 · 点这张纸继续题签」。
+ *
+ * 为什么不是把整张纸淡掉：纸摆在画布上是**可见的待办**（用户要多开几张就是要在画布上
+ * 看见它们）；淡掉就成了「纸没了」，与多纸的语义相反。
+ * 行高按题签行一档（与 .pp-sheet-comp 同字号基线），纸高因此不跳：焦点换手时两张纸的
+ * 高度只差「输入面 vs 一行注」，视觉上只读作「这张纸醒了」。 */
+.pp-draft-idle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 12px 24px 14px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.pp-draft-idle-sign {
+  font-family: var(--f-kai);
+  font-size: var(--fs-lead);
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+}
+.pp-draft-idle-hint {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.22em;
+  color: var(--ink-4);
+  transition: color var(--snap);
+}
+.pp-draft-idle:hover .pp-draft-idle-hint {
+  color: var(--seal-deep);
+}
