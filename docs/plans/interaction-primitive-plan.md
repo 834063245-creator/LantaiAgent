@@ -1,7 +1,7 @@
 # 交互原语收口（interaction primitive consolidation）
 
-> 状态：**Proposed（2026-11-17 立项，未开工）**——**四批全部可施工**：创作坞 P6 拆解已于 2026-11-17
-> 提交（`6f225ee0`，ComposerDock 1688 → 370 行），批 C 的前置条件解除。
+> 状态：**In progress（2026-11-17 立项；同日复核修订后开工，见 §6 修订记录）**——**五批全部可施工**：
+> 创作坞 P6 拆解已于 2026-11-17 提交（`6f225ee0`，ComposerDock 1688 → 370 行），批 C 的前置条件解除。
 > 触发：2026-11-17 用户自查四问——「重复到第三遍的是什么」，交出 9 份手势 / 4 份外点 / 808 行跟库较劲。
 > 预计总量：**7–8 人日**（分批，见 §3）。
 > 拟增门禁：`src-ui/tests/interaction-primitive.test.ts`（形态对齐 `motion-contract.test.ts`）。
@@ -24,6 +24,20 @@
 ### 一句话判据
 
 > 凡是「浮层关闭」或「手势收尾」要自己写 `document.addEventListener` 的，都是本线要收的东西。
+
+### 复核补记（2026-11-17 开工前，对着源码逐条核过）
+
+立项时的手表只点了**拖拽手势**这一族（9 份），但判据一旦写成上面那句话，覆盖面就比手表宽——
+全库带 `mouse*/pointer*` 监听的**文件**实测 18 个，其中 3 个是纯 pointer 面（`TocStrip` /
+`MinimapView` / `resize-zones`，本批的先验样本），**剩下 2 个既不在 9 份里、也不是浮层**：
+
+| 漏账 | 在哪 | 性质 | 处置 |
+|---|---|---|---|
+| **拖选自动滚屏** | `use-paper-viewport.ts` L560-595（`mousedown` capture + `mousemove` + `mouseup` + `edge-scroll` 驱动） | 完整手势，但**不移动任何东西**：按在块文本上开始扩选，指针到边缘就滚。没有「窗外交付」语义（选区不跟指针出窗） | 进 **C5 例外表**，不并入 `useDragGesture`；批 E 白名单登记 |
+| **边缘滚动卧倒** | `edge-scroll.ts` L361（`mousedown` capture → `disarm()`） | 不是手势，是**手势的中止信号**（按下即收）。它听 `mousedown` 是为了「先于拖拽域跑到」 | 同上，白名单登记 |
+
+**后果**：若不补这条，批 E 的断言在批 C 落地当天就会把这两个文件判红，而白名单只能靠
+「看到再补」长出来——**正好重演它自己批判的那条根因**（抽象是可选的，不是强制的）。
 
 ## 1. 为什么会有今天（三条根因）
 
@@ -55,6 +69,12 @@
 - 「点自己算不算外」：`ref.contains(e.target)`——四处各自定义的差异在此统一；
 - 不许 `preventDefault`（外点关闭不消费这次点击）。
 
+**同批必须一起对齐的第五处**：`overlay.tsx` 自己的遮罩——`Overlay` 的 `onMouseDown`
+（L96）就是一次「点空白 → 关闭」，只是它长在 JSX 上不是 `addEventListener`，所以既没进
+立项的 4 处表、也不会被批 E 的源码断言抓到。**同一次「点空白」不能有两个半场**
+（Escape 已收编、外点未收编）——批 A 把它一并收进 `useOutsideClose`（`ref` = 遮罩自身，
+判据换成 `e.target === veil` 的等价形态），收编后 `Overlay` 与四处浮层走同一条路径。
+
 ### 2.3 指针所有权：浮层优先，画布殿后
 
 确立一条裁决：**指针事件的归属按层高排序，高层未消费才落到画布。**
@@ -78,7 +98,17 @@
 
 - 新增 `useOutsideClose` 到 `app/overlay.tsx`；
 - 收编 4 处：`CommandPalette`（L104）、`SessionSidebar`（L399，capture）、`ModelSelector`（L445）、`StatusLine`；
-- 逐处对照原判据，差异（哪些算「外」）显式写进 opts，不许静默统一。
+- **外加 `Overlay` 遮罩自己**（L96 的 `onMouseDown`，见 §2.2 尾注）——它是第五处，
+  形状不同（`e.target === veil`）但语义同一，收编后全库「点空白关闭」只剩一条实现路径；
+- 逐处对照原判据，差异（哪些算「外」）显式写进 opts，不许静默统一：
+
+| 收编点 | `ref` | `enabled` | capture | 判「外」的口径 |
+|---|---|---|---|---|
+| `CommandPalette` | 面板 `boxRef` | `open` | 缺省（新 hook 默认 true） | `!box.contains(target)` |
+| `SessionSidebar` | 栏根 `asideRef`（新挂） | `confirmingDeleteId !== null` | **true**（原样保留） | `!aside.contains(target)`（原判据是 `.closest('.ss-sidebar')`，语义等价） |
+| `ModelSelector` | 容器 `containerRef` | `isOpen && compact` | 缺省 | `!container.contains(target)` |
+| `StatusLine` | 根 `hostRef` | `logOpen` | 缺省 | `!host.contains(target)` |
+| `Overlay` | 遮罩自身 | `open && veilClose` | 缺省 | `target === veil`（`refContains` 换三参形态，见 hook 签名） |
 
 **风险**：低。只改变「谁来听」，不改变「听到之后做什么」。
 
@@ -116,8 +146,11 @@
 
 **C4 · 指针所有权**（§2.3）：`PaperPanel.onCanvasMouseDown` 改为「有浮层或有手势则让路」。
 
-**C5 · 两处待核实**（不计入 9 份）：`TocStrip.tsx`（已有 pointer events，734 行）/ `MinimapView.tsx`（275 行）——
-先判定是否同类，是则并入，否则在门禁里登记为例外。
+**C5 · 四处待核实**（不计入 9 份）：`TocStrip.tsx`（已有 pointer events + `setPointerCapture`，734 行）/
+`MinimapView.tsx`（纯 pointer，275 行）/**`use-paper-viewport.ts` 拖选自动滚屏**（L560-595）/
+**`edge-scroll.ts` 按下即收**（L361）——先判定是否同类，是则并入，否则在门禁里登记为例外。
+判定口径：**「手势」= 有拖拽位移语义 + 有提交/取消两态**；只有其中一半（纯跟随、纯中止信号、
+纯自动滚屏）就不并入，免得 `useDragGesture` 被塞进它不负责的语义。
 
 **为何 3–4 天而非 2–3**：拖拽是手感型，自动化测不出来，9 处都要真机走一遍；其中 `use-paper-strips` 678 行是
 「抽纸条失灵」的事故现场，改动风险最高。
@@ -137,11 +170,17 @@
 
 新增 `tests/interaction-primitive.test.ts`，形态对齐 `motion-contract.test.ts`（源码断言 + 白名单）：
 
-| 断言 | 白名单 |
-|---|---|
-| 除 `overlay.tsx` 外不得 `addEventListener('mousedown')` 做外点关闭 | 无 |
-| 除 `useDragGesture` 外不得 `addEventListener('mousemove'/'mouseup')` | `window-drag.ts`（OS 标题栏，另一范畴） |
-| `setTimeout` 的毫秒字面量只许出现在已登记文件 | `DockPanel` / `boot-cover` / `use-paper-strips`（3000 业务计时） |
+| # | 断言 | 登记表（白名单） |
+|---|---|---|
+| E1 | `document`/`window` 上的 `mousedown` / `mouseup` / `mousemove` / `pointerdown` / `pointerup` / `pointermove` **监听器注册点**只许出现在登记表内的文件 | `overlay.tsx`（`useOutsideClose` / `useDialogEscape`）/ `use-drag-gesture.ts` / `window-drag.ts`（OS 标题栏，另一范畴）/ `resize-zones.ts` / `TocStrip.tsx` / `MinimapView.tsx` / `use-paper-viewport.ts`（拖选自动滚屏）/ `edge-scroll.ts`（按下即收）/ `lost-focus.ts`（兜底） |
+| E2 | 「点空白 → 关闭」只许出自 `overlay.tsx`：其余文件不得出现 `document.addEventListener('mousedown'|'pointerdown')`**且**同一文件内同时有 `contains(` | 无（收编完成的终态断言，收紧于 E1 之上） |
+| E3 | `setTimeout` 的毫秒字面量只许出现在已登记文件 | `DockPanel`（`PANEL_LEAVE_MS`）/ `boot-cover`（早于 tokens.css）/ `use-paper-strips`（3000 业务计时）/ `motion-bench` 一族（测试台架） |
+
+> **E1 为什么按文件登记而不是按调用点语义**：「这是不是外点关闭」静态判不出来（同一个
+> `document.addEventListener('mousedown')` 既可能是外点关闭，也可能是`use-paper-strips` 的
+> 起手面登记）。**能机械判定的只有「注册点在哪」**——登记表把「新增一处监听」变成一次
+> **显式决定**（加行 = 在 PR 里被看见），而不是一道猜谜题。E2 才是语义闸，它只在 E1 的
+> 小集合上做一次 grep 组合判断，误报面被压到最小。
 
 > **没有批 E，批 C 会在半年后长出第 10 份。** 这是本线唯一不能省的一批。
 
@@ -165,6 +204,25 @@
 | E | 新门禁绿；故意写一处违规验证会红 |
 
 **统一门禁**：`npm run build` + `npx vitest run` + `npx biome ci .`（0/0）+ `npm run doc-check`。
+
+## 6. 修订记录
+
+### 2026-11-17 开工前复核（三处补 + 一处收紧）
+
+复核方式：对着源码把 §0 的每一个数字与位置重新核了一遍（`grep` + 行号），再按判据反向扫
+全库**没被手表收进来**的同类。结论：**手表里的取证全部属实**（9 份手势行数逐一对上，
+第 7 个纯 hook 是 `PluginWindowFrame.tsx` 153 行；`useLostFocusCancel` 恰 3 处接线；
+`transitionend`/`animationend` 全库 0 处），改的是**覆盖面**不是结论。
+
+1. **补例外清单**（§0 复核补记 + C5 扩两处）：`use-paper-viewport` 拖选自动滚屏、
+   `edge-scroll` 按下即收——两者都在 §0 判据的覆盖面内却不在 9 份手表里，进 C5 判定 + E1 登记表。
+2. **补 overlay 遮罩**（§2.2 尾注 + 批 A 表）：`Overlay` 自己的「点空白」是第五处外点关闭，
+   JSX 形态所以既没被立项的 4 处表点到、也不会被源码断言抓到。
+3. **收紧批 E**（§3 批 E）：原三条断言里「除 X 外不得 `addEventListener('mousedown')` 做外点关闭」
+   静态判不出来（`use-paper-strips` 的 mousedown 是起手面登记，不是外点），改成
+   **E1 按文件登记注册点 + E2 语义组合闸 + E3 超时字面量**三条可机械判定的断言。
+4. **补 C5 判定口径**：「手势」= 有拖拽位移语义 + 有提交/取消两态；只有一半的不并入，
+   免得 `useDragGesture` 被塞进自动滚屏、中止信号这类它不负责的语义。
 
 ## 附 · 取证
 

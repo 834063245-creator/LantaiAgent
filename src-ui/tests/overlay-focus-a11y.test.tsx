@@ -6,17 +6,18 @@
 // frontend-overlay-a11y-plan 档位 A 守护：
 // - Overlay 原语（portal 到 body / 面板内就地 / 背景 inert / 遮罩点关）
 // - useDialogEscape 单点 Escape 语义（enabled / blockPropagation / capture）
+// - useOutsideClose 外点关闭语义（2026-11-17 交互原语收口批 A：与外点四点同门）
 // - dialog-focus 的 FOCUSABLE 含 [contenteditable]
 // - CommandPalette ARIA（listbox/option/aria-activedescendant/aria-selected）
 
-import { act, createElement } from 'react';
+import { act, createElement, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerActions } from '../src/app/actions';
 import { CommandPalette } from '../src/app/CommandPalette';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { mountDialogFocus } from '../src/app/dialog-focus';
-import { Overlay, useDialogEscape } from '../src/app/overlay';
+import { Overlay, useDialogEscape, useOutsideClose } from '../src/app/overlay';
 import { useShellStore } from '../src/app/shell-store';
 import type { CommandContribution } from '../src/composition/services';
 import { shellRefs } from '../src/shell/runtime';
@@ -36,6 +37,30 @@ function Harness({
     Overlay,
     { open, onClose, portal, inertBackground, className: 'test-overlay' },
     createElement('div', { className: 'test-sheet' }, 'sheet'),
+  );
+}
+
+/** useOutsideClose 消费组件：内部一块（ref 面）+ 外部一块。 */
+function OutsideHarness({
+  onOutside,
+  enabled = true,
+  capture,
+  event,
+  isOutside,
+}: {
+  onOutside: () => void;
+  enabled?: boolean;
+  capture?: boolean;
+  event?: 'mousedown' | 'pointerdown';
+  isOutside?: (e: MouseEvent, el: HTMLElement) => boolean;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useOutsideClose(ref, onOutside, { enabled, capture, event, isOutside });
+  return createElement(
+    'div',
+    null,
+    createElement('div', { className: 'inner', ref }, 'in'),
+    createElement('div', { className: 'outer' }, 'out'),
   );
 }
 
@@ -177,6 +202,106 @@ describe('useDialogEscape 单点 Escape', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
     });
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe('useOutsideClose 单点外点关闭（批 A）', () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container?.remove();
+    root = null;
+  });
+
+  it('外点触发；内点不触发', () => {
+    const onOutside = vi.fn();
+    act(() => {
+      root?.render(createElement(OutsideHarness, { onOutside }));
+    });
+    act(() => {
+      container!.querySelector('.inner')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(onOutside).not.toHaveBeenCalled();
+    act(() => {
+      container!.querySelector('.outer')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(onOutside).toHaveBeenCalledTimes(1);
+  });
+
+  it('enabled=false 时不注册（外点不触发）', () => {
+    const onOutside = vi.fn();
+    act(() => {
+      root?.render(createElement(OutsideHarness, { onOutside, enabled: false }));
+    });
+    act(() => {
+      container!.querySelector('.outer')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(onOutside).not.toHaveBeenCalled();
+  });
+
+  it('capture=true 时能收到**冒泡面已被拦下**的 mousedown（画布 preventDefault 场景）', () => {
+    const onOutside = vi.fn();
+    act(() => {
+      root?.render(createElement(OutsideHarness, { onOutside, capture: true }));
+    });
+    // 模拟画布：在冒泡阶段 stopPropagation，document 冒泡监听收不到——capture 才收得到。
+    const stop = (e: Event) => e.stopPropagation();
+    container!.querySelector('.outer')!.addEventListener('mousedown', stop);
+    try {
+      act(() => {
+        container!.querySelector('.outer')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      });
+      expect(onOutside).toHaveBeenCalledTimes(1);
+    } finally {
+      container!.querySelector('.outer')!.removeEventListener('mousedown', stop);
+    }
+  });
+
+  it('event=pointerdown 时只认 pointerdown', () => {
+    const onOutside = vi.fn();
+    act(() => {
+      root?.render(createElement(OutsideHarness, { onOutside, event: 'pointerdown' }));
+    });
+    act(() => {
+      container!.querySelector('.outer')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(onOutside).not.toHaveBeenCalled();
+    act(() => {
+      container!
+        .querySelector('.outer')!
+        .dispatchEvent(new Event('pointerdown', { bubbles: true }) as unknown as PointerEvent);
+    });
+    expect(onOutside).toHaveBeenCalledTimes(1);
+  });
+
+  it('isOutside 显式判据覆盖缺省（Overlay 的「事件源就是遮罩本身」形态）', () => {
+    const onOutside = vi.fn();
+    act(() => {
+      root?.render(createElement(OutsideHarness, { onOutside, isOutside: (e, el) => e.target === el }));
+    });
+    // 缺省判据会认为 inner 在元素**内**（不关）；显式判据判「事件源 ≠ 元素本身」⇒ 关。
+    act(() => {
+      container!.querySelector('.inner')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(onOutside).toHaveBeenCalledTimes(1);
+  });
+
+  it('不消费这次点击（不 preventDefault）', () => {
+    act(() => {
+      root?.render(createElement(OutsideHarness, { onOutside: () => {} }));
+    });
+    const ev = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    act(() => {
+      container!.querySelector('.outer')!.dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(false);
   });
 });
 

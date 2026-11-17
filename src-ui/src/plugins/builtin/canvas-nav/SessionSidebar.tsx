@@ -50,6 +50,7 @@ import {
   useCoreStore,
   useDockStore,
   useDraftSheetStore,
+  useOutsideClose,
   useSessionVolumesStore,
   useShellStore,
 } from './host';
@@ -179,6 +180,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   /** 磁盘清单读取失败（读面可见化：旧实现失败即空集 → 侧栏显示「本工作区暂无案卷」）。 */
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** 栏根（外点关闭的判据面，2026-11-17 批 A）。 */
+  const rootRef = useRef<HTMLElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   /** 键盘游标（roving tabindex）：可见行中当前聚焦的卷 id。 */
   const [cursorId, setCursorId] = useState<number | null>(null);
@@ -389,16 +392,10 @@ export const SessionSidebar = memo(function SessionSidebar() {
   /* 武装的寿命不越出本栏：栏外按下即撤（点击本身照常执行——画布/聊天/别的面板都不知道
    * 这里有个待确认的删除）。旧实现只在本栏内其它动作里撤 ⇒ 去画布点一下再回来，红态还在，
    * 下一击「删」被读成第二次确认 = **一次点击直接删除**（armSeqRef 注里那条病的另一半）。 */
-  useEffect(() => {
-    if (confirmingDeleteId === null) return;
-    const onOutsideDown = (e: MouseEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t?.closest?.('.ss-sidebar')) return; // 栏内点击归捕获守卫处置
-      disarmAll();
-    };
-    document.addEventListener('mousedown', onOutsideDown, true);
-    return () => document.removeEventListener('mousedown', onOutsideDown, true);
-  }, [confirmingDeleteId, disarmAll]);
+  /* 2026-11-17 交互原语收口批 A：改走 overlay.tsx 的 useOutsideClose（capture 原样保留，
+   * 判据由「closest('.ss-sidebar')」换成「栏根不含事件源」——同一个栏，语义等价且不再依赖
+   * 类名在不在）。 */
+  useOutsideClose(rootRef, disarmAll, { enabled: confirmingDeleteId !== null, capture: true });
 
   /* ── 整理模式（2026-10-08 丙案）：选择是模式不是散点——全部勾选动作只在整理态内 ── */
   /** 进入整理：清一切武装与选择；整理条登场（「另起一卷」/视角两行在其下退场，CSS 管）。 */
@@ -1329,6 +1326,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
 
   return (
     <aside
+      ref={rootRef}
       className={`ss-sidebar${arranging ? ' arranging' : ''}`}
       style={{ width }}
       aria-label="当前工作区案卷管理"

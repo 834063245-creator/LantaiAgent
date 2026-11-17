@@ -109,6 +109,7 @@ export const getChatStore = impl.getChatStore;
 export const msgStoreFor = impl.msgStoreFor;
 export const useCoreStore = impl.useCoreStore;
 export const useDialogEscape = impl.useDialogEscape;
+export const useOutsideClose = impl.useOutsideClose;
 export const useShellStore = impl.useShellStore;
 export const Icon = impl.Icon;
 export const WinControls = impl.WinControls;

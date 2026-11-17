@@ -61,6 +61,7 @@ import {
   onSettingsSaved,
   resolveApiKey,
   searchModels,
+  useOutsideClose,
 } from './host';
 
 interface ModelSelectorProps {
@@ -437,14 +438,7 @@ export function ModelSelector({
    *    手势）拦得掉 blur——react-aria 的 blur 关闭永不触发，菜单收不回（实锤：
    *    PaperPanel.onCanvasMouseDown L1704）。document mousedown 兜底（preventDefault
    *    不阻监听器本身）；容器（触发器 + 弹层）内按下不算外点。仅 compact 挂。 ── */
-  useEffect(() => {
-    if (!state.isOpen || !compact) return;
-    const closeOutside = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) close();
-    };
-    document.addEventListener('mousedown', closeOutside);
-    return () => document.removeEventListener('mousedown', closeOutside);
-  }, [state.isOpen, compact, close]);
+  useOutsideClose(containerRef, close, { enabled: state.isOpen && compact });
 
   /** 触发器点击 = toggle（开→关 / 关→开）——触发器恒驻后必须有自闭合路径。
    *  关闭路径回焦触发器（输入框随弹层卸载，焦点会坠回 body）。 */

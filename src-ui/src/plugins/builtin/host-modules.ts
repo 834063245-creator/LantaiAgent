@@ -160,7 +160,7 @@ import { filterCommands, listCommands, slashOnly } from '../../app/commands/comm
 import { ensureSkillCatalog } from '../../app/commands/skill-catalog';
 import { mountDialogFocus } from '../../app/dialog-focus';
 import { Icon } from '../../app/Icon';
-import { Overlay, useDialogEscape } from '../../app/overlay';
+import { Overlay, useDialogEscape, useOutsideClose } from '../../app/overlay';
 import { PluginBoundary } from '../../app/PluginBoundary';
 // 批 1 归家：McpPage / PluginsPage / SkillsPage 已迁 plugins/builtin/settings-domain/
 // （改为逐符号桥，见下方「批 1」段）；ProviderPage 家族仍在内核（批 9）。
@@ -615,6 +615,7 @@ const faceDeps = {
   // 应用壳件
   Icon,
   useDialogEscape,
+  useOutsideClose,
   useShellStore,
   useToastStore,
   WinControls,

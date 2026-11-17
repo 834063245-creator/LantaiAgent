@@ -15,6 +15,8 @@
 export { agentSessionState } from '../../../agent/agent-session-state';
 export type { ExecStateInstance } from '../../../agent/execution-state';
 export { useCoreStore } from '../../../app/chat/core-instance';
+/* 浮层原语（2026-11-17 交互原语收口批 A）：外点关闭与 Escape 同门，产物域经宿主桥取。 */
+export { useOutsideClose } from '../../../app/overlay';
 export { useShellStore } from '../../../app/shell-store';
 export { activeSpace } from '../../../composition/space-service';
 export { screenToWorld } from '../../../paper/canvas-math';

@@ -51,6 +51,7 @@ export const useDraftSheetStore = impl.useDraftSheetStore;
 export const getChatStore = impl.getChatStore;
 export const msgStoreFor = impl.msgStoreFor;
 export const useCoreStore = impl.useCoreStore;
+export const useOutsideClose = impl.useOutsideClose;
 export const useAskStore = impl.useAskStore;
 export const useShellStore = impl.useShellStore;
 export const useSessionVolumesStore = impl.useSessionVolumesStore;

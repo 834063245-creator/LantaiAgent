@@ -355,6 +355,7 @@
     "useDockStore",
     "useDraftSheetStore",
     "useModeStore",
+    "useOutsideClose",
     "usePaperDock",
     "usePaperRegion",
     "usePluginPrefs",

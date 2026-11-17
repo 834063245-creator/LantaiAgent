@@ -44,6 +44,7 @@ export const typedJsonRpc = impl.typedJsonRpc;
 // 随包内联的副本会让 ui.log 答不出「请求到底发没发」。
 export const kernelListDirectory = impl.kernelListDirectory;
 export const useDialogEscape = impl.useDialogEscape;
+export const useOutsideClose = impl.useOutsideClose;
 export const useShellStore = impl.useShellStore;
 export const watchFileDragDrop = impl.watchFileDragDrop;
 export const usePaperDock = impl.usePaperDock;

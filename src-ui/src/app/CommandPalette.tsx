@@ -19,6 +19,7 @@ import { usePanelDefsStore } from '../state/panel-defs-store';
 import { type AppAction, listActions } from './actions';
 import { mountDialogFocus } from './dialog-focus';
 import { Icon } from './Icon';
+import { useOutsideClose } from './overlay';
 import { useShellStore } from './shell-store';
 
 /** 命令贡献 → AppAction 折算（'plugin/<id>' 命名空间防撞内置动作 id）。 */
@@ -95,15 +96,9 @@ export function CommandPalette() {
     return mountDialogFocus(boxRef.current, { initial: inputRef.current });
   }, [open]);
 
-  // 点击面板外关闭（document 级监听，静态元素上不挂交互处理器）
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open, setOpen]);
+  // 点击面板外关闭（2026-11-17 交互原语收口批 A：收进 overlay.tsx 的 useOutsideClose，
+  // 与 Escape 同门——同一次「点空白」不再有第二个半场）
+  useOutsideClose(boxRef, () => setOpen(false), { enabled: open });
 
   const rows = useMemo(() => {
     void tick;

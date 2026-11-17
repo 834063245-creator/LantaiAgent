@@ -21,7 +21,7 @@
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { useBgAlertStore, useDialogEscape, useShellStore } from './host';
+import { useBgAlertStore, useDialogEscape, useOutsideClose, useShellStore } from './host';
 import './status-line.css';
 
 const ACTIVITY_PULSE_MS = 900;
@@ -64,15 +64,8 @@ export const StatusLine = memo(function StatusLine({ running = false }: { runnin
     return () => window.clearInterval(t);
   }, [analyzing, running]);
 
-  // 外点收起日志（弹层一致性，2026-08 UI 大清扫）
-  useEffect(() => {
-    if (!logOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (hostRef.current && !hostRef.current.contains(e.target as Node)) setLogOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [logOpen]);
+  // 外点收起日志（2026-11-17 交互原语收口批 A：收进 overlay.tsx 的 useOutsideClose）
+  useOutsideClose(hostRef, () => setLogOpen(false), { enabled: logOpen });
 
   // Esc 关闭日志弹层（2026-08-29 overlay 原语收编：非模态气泡——不拦冒泡不挡默认）
   useDialogEscape(() => setLogOpen(false), { enabled: logOpen, capture: false, blockPropagation: false });

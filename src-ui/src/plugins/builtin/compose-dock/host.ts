@@ -25,7 +25,7 @@ export { ensureSkillCatalog } from '../../../app/commands/skill-catalog';
  * Escape 必须走 **document 级**监听——原先挂在坞内那个不可聚焦的 div 上，焦点在
  * 缩略图按钮上时事件根本不经过它（用户报「预览收不回」的键盘那一半）。本键**早已在
  * faceDeps 在册**（paper-shell 用），故取用不新增宿主面键、不改指纹。 */
-export { useDialogEscape } from '../../../app/overlay';
+export { useDialogEscape, useOutsideClose } from '../../../app/overlay';
 export { useShellStore } from '../../../app/shell-store';
 export type { FileDragEvent } from '../../../bridge';
 export { isMockMode, watchFileDragDrop } from '../../../bridge';
