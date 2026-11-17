@@ -132,7 +132,7 @@ export function PaperPanel() {
     activeRunning,
     edgeDragPos,
     regionCornerPos,
-    onRegionEdgeMouseDown,
+    onRegionEdgePointerDown,
     sidecarOutOf,
     orphanPins,
     deadOrphanPinIds,
@@ -176,7 +176,7 @@ export function PaperPanel() {
     regionContext,
     dockTether,
     activateRegion,
-    onRegionCornerMouseDown,
+    onRegionCornerPointerDown,
     onResizePointerDown,
     branchGrips,
     onBranchGripPointerDown,
@@ -423,26 +423,23 @@ export function PaperPanel() {
                      * 远档退场：亚像素交互柄只剩噪点（P4c）。 */}
                     {!lodFar && (
                       <>
-                        {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态） */}
                         <div
                           className="pp-region-edge pp-region-edge--l"
                           data-tip="拖动边缘——移动整个流区"
-                          onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
+                          onPointerDown={(e) => onRegionEdgePointerDown(e, r.sessionId)}
                         />
-                        {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（同左缘——拖右缘移动整个流区） */}
                         <div
                           className="pp-region-edge pp-region-edge--r"
                           data-tip="拖动边缘——移动整个流区"
-                          onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
+                          onPointerDown={(e) => onRegionEdgePointerDown(e, r.sessionId)}
                         />
                         {/* P6 四角横向缩放柄（角落只开放横向——Y 由内容生长） */}
                         {(['nw', 'ne', 'sw', 'se'] as const).map((c) => (
-                          // biome-ignore lint/a11y/noStaticElementInteractions: 角柄是拖拽交互面
                           <div
                             key={c}
                             className={`pp-region-corner pp-region-corner--${c}`}
                             data-tip="拖动角柄——调整流区宽度"
-                            onMouseDown={(e) => onRegionCornerMouseDown(e, r.sessionId, c)}
+                            onPointerDown={(e) => onRegionCornerPointerDown(e, r.sessionId, c)}
                           />
                         ))}
                       </>

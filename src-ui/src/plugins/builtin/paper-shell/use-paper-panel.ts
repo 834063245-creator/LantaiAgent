@@ -159,7 +159,7 @@ export function usePaperPanelAssembly() {
   const { measureTick, blockRootRef } = useBlockMeasure();
   const { foldedOf, onToggleFold, expandBlock, sidecarFoldedOf, onToggleSidecarFold } = useFoldState();
   const { runningSessions, streamLive, activeRunning } = useRunningSessions(core, activeSessionId);
-  const { edgeDragPos, regionCornerPos, onRegionEdgeMouseDown, onRegionCornerMouseDown } = useRegionMove({
+  const { edgeDragPos, regionCornerPos, onRegionEdgePointerDown, onRegionCornerPointerDown } = useRegionMove({
     core,
     canvasRef,
     viewRef,
@@ -776,7 +776,7 @@ export function usePaperPanelAssembly() {
     activeRunning,
     edgeDragPos,
     regionCornerPos,
-    onRegionEdgeMouseDown,
+    onRegionEdgePointerDown,
     sidecarOutOf,
     orphanPins,
     deadOrphanPinIds,
@@ -821,7 +821,7 @@ export function usePaperPanelAssembly() {
     regionContext,
     dockTether,
     activateRegion,
-    onRegionCornerMouseDown,
+    onRegionCornerPointerDown,
     onResizePointerDown,
     branchGrips,
     onBranchGripPointerDown,
