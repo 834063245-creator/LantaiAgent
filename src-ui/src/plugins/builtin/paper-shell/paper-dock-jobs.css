@@ -219,12 +219,19 @@
   font-size: var(--fs-caption);
   color: var(--ink-1);
   line-height: 1.4;
-  /* 命令原文可到 80 字（Rust 侧截断）——两行夹，超出省略 */
+  /* 命令原文可到 80 字（Rust 侧截断）——两行夹，超出省略。
+     2026-11-27：`break-all` 会把 `--all-features` 从中间劈开；改为只在
+     必要时断（优先空格/连字符）。 */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+/* 命令原文用等宽（路径/参数/引号竖直对齐，与下方输出块同一支笔）；
+   子代理的描述是散文，仍走正文位。 */
+.pp-work-shell .pp-work-label {
+  font-family: var(--f-mono);
 }
 .pp-work-sub {
   font-family: var(--f-mono);
