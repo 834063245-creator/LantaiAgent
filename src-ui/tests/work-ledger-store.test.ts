@@ -24,11 +24,14 @@ vi.mock('../src/state/toast-store', async (importOriginal) => ({
 }));
 
 import {
+  type JobHistoryEntry,
   killShellWork,
+  loadSessionJobHistory,
   pullShellWork,
   resetWorkLedgerForTests,
   type ShellSnapshot,
   selectSessionWork,
+  setJobHistoryProvider,
   setOwnerSessionResolver,
   useWorkLedgerStore,
 } from '../src/state/work-ledger-store';
@@ -275,6 +278,22 @@ describe('役台账 · 切分与排序', () => {
     s.noteSubAgentSpawn(P, 3, 'sub-done', null, 'C');
     s.noteSubAgentFinished(P, 'sub-done', true);
     expect(counts(P, 1)).toEqual({ running: 2, elsewhere: 1 });
+  });
+
+  it('历史恢复：有注册无结算 ⇒ 中断（时长未知），且吃终态配额', () => {
+    const events: JobHistoryEntry[] = [];
+    for (let i = 0; i < 60; i++) {
+      events.push({ kind: 'job/registered', jobId: i, label: `j${i}`, startedAt: T0 + i });
+    }
+    setJobHistoryProvider(P, () => events);
+    loadSessionJobHistory(P, 1);
+
+    const list = listOf(P, 1);
+    // MAX_TERMINAL = 40：整卷几十条 job 不把内存账本喂大
+    expect(list).toHaveLength(40);
+    const newest = list.find((e) => e.id === 'job-59');
+    expect(newest).toMatchObject({ state: 'interrupted', endedAt: null });
+    expect(newest?.note).toContain('中断');
   });
 
   it('clearPanel 只清本面板，别面板条目留存', () => {

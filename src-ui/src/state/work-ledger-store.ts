@@ -576,6 +576,9 @@ export function loadSessionJobHistory(panelId: string, sessionId: number): void 
     for (const [key, entry] of restored) {
       if (entries[key] === undefined) entries[key] = entry;
     }
+    /* 历史恢复也吃终态配额：旧实现绕过 MAX_TERMINAL，长卷（几百条 job/* 事件）
+       会把内存账本越喂越大，而册页只显示 8 条。 */
+    evictTerminal(entries, panelId);
     return { entries };
   });
 }
