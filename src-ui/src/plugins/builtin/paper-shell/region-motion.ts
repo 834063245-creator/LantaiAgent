@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+import type { MotionEndCancel } from './motion-end';
+import { waitMotionEnd } from './motion-end';
+
 // region-motion — 卷**开合两窗**（2026-10-18 卷开合动效批；用户拍板「甲 · 入场 + 退场对称」）。
 //
 // 病灶（用户：「卷的展开收起……现在纯粹是闪现」）：开卷 = 纸与字同一帧出现
@@ -37,9 +40,17 @@
 // **出生即交接**（2026-11-15）：待题纸化成的那一卷不走「落纸」而走「落墨」——纸的淡出
 // 与它是同一个盒里同一张纸的交接（见 draft-sheet.css 化卷段）。`rise` 集合由壳层在装配期
 // 喂一个判据（`isRiseVolume`），它取代 `spread`、只留墨（卷首不落、块自 18px 落）。
+//
+// **退场窗的事件化**（2026-11-17 批 B）：`until` 仍是排程用的到期时刻，但**真卸载**
+// 改由 `regionExits`（`.pp-region[data-leaving]` 的 transitionend）触发——动画播完就
+// 摘，不再等一把估算的钟；`REGION_MOTION_MS` 退成那条事件的保险兜底。
 
 /** 卷开合窗长（ms）——**镜像 `--m-sheet`**（0.26s）；退场窗与落纸窗同长。改一处必改
- *  两处，由 `tests/motion-contract.test.ts` 的「跨窗口镜像同值」与 `--m-sheet` 对拍钉住。 */
+ *  两处，由 `tests/motion-contract.test.ts` 的「跨窗口镜像同值」与 `--m-sheet` 对拍钉住。
+ *
+ *  2026-11-17 交互原语收口批 B：**退场窗改事件驱动后，本常量只给落纸/落墨两窗与
+ *  `nextExpiry` 排程用**——真卸载由 `.pp-region[data-leaving]` 的 `transitionend` 触发
+ *  （见 `regionExits`），本常量退化成那条事件的保险兜底。 */
 export const REGION_MOTION_MS = 260;
 
 /** 一个正在退场的卷（`view` = 消失当帧的**全量快照**——冻结最后一帧，不再重算）。 */
@@ -104,6 +115,20 @@ export function regionOnScreen(topY: number, bottomY: number, viewY0: number, vi
  */
 /** 一张卷是否「出生即交接」（待题纸化成的那一卷）——由壳层按交卷账判，见 use-paper-panel。 */
 export type RiseJudge = (sessionId: string) => boolean;
+
+/**
+ * 一张离场卷的**真卸载**凭据（2026-11-17 批 B 事件化）：
+ * 不再是「窗满时刻到了」，而是「`.pp-region[data-leaving]` 的 opacity 过渡真播完了」。
+ * 调用方挂一次 `waitMotionEnd`，事件到达（或兜底窗满）后调它；卷若在这之前重开，
+ * 调用方的 cleanup 会摘掉监听——重开不卸载，退场窗随撤销一起消失。
+ */
+export function regionExits(onExit: () => void, el: Element | null): MotionEndCancel {
+  if (!el) {
+    onExit();
+    return () => {};
+  }
+  return waitMotionEnd(el, onExit);
+}
 
 /** `stepRegionMotion` 的本帧回报。 */
 export interface RegionMotionStep<T> {

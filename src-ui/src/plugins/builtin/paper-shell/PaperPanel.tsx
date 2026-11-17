@@ -463,6 +463,7 @@ export function PaperPanel() {
                   <div
                     key={s.id}
                     className={`pp-strip${stripDragged ? ' pp-dragging' : ''}${settleId === s.id ? ' pp-settle' : ''}`}
+                    data-strip-id={s.id}
                     style={{ left: stripPos.x, top: stripPos.y, width: stripW }}
                     onMouseDown={(e) => onStripMouseDown(e, s)}
                   >

@@ -28,8 +28,17 @@ import {
   useUpdateStore,
   worldToScreen,
 } from './host';
+import { waitMotionEnd } from './motion-end';
 import { sourceBlockIdOf, TETHER_ANCHOR_DY, tetherAnchors, tetherAnchorsAt, tetherPath } from './provenance';
-import { createRegionMotionWindow, regionOnScreen, stepRegionMotion } from './region-motion';
+import { createRegionMotionWindow, regionExits, regionOnScreen, stepRegionMotion } from './region-motion';
+
+/** 属性选择器里的字符串转义（会话 id 可能就是数字串，但仍按规范转义——
+ *  含 `"` / `\\` 的值直接拼进选择器会抛 SyntaxError）。 */
+function cssEscape(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value);
+  return value.replace(/["\\]/g, '\\$&');
+}
+
 /* 出生即交接（2026-11-15 化卷批）：交卷那一卷只落墨、不重播纸淡入。
  * 账在 state/draft-sheet-store（`beginMorph` 同步登记）——判据必须**渲染期**可读，见该处头注。 */
 import { selSeedOf } from './sel-ink';
@@ -253,6 +262,72 @@ export function usePaperPanelAssembly() {
     const t = window.setTimeout(() => setMotionTick((n) => n + 1), Math.max(0, motionExpiry - Date.now()) + 8);
     return () => window.clearTimeout(t);
   }, [motionExpiry, motionTick]);
+  /* ── 退场窗的**真卸载**改听事件（2026-11-17 批 B）──
+   * 玩家看到的「起纸」是 `.pp-region[data-leaving]` 的一条 opacity 过渡（paper-base.css）；
+   * 它播完的那一拍就是卸载的那一拍，用不着再猜 `--m-sheet` 是多少。
+   * 逐卷监听、卷在窗内重开则 cleanup 撤销（重开不卸载 = 同一元素的过渡按当下值掉头）；
+   * `motionTick` 只用来给新进窗的卷挂监听，不参与判定。 */
+  const exitWatchRef = useRef(new Map<string, () => void>());
+  useEffect(() => {
+    void motionTick; // 重挂扳机（新进窗的卷挂监听）——判定不靠它
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const watching = exitWatchRef.current;
+    const alive = motionWin.current.leaving;
+    /* 撤销：卷在事件到达前重开（或整批已卸载）——监听必须先摘，否则迟到的事件
+     * 会把一张仍在场上的卷当成「要卸载」再扳一次渲染。 */
+    for (const [sid, cancel] of [...watching]) {
+      if (!alive.has(sid)) {
+        cancel();
+        watching.delete(sid);
+      }
+    }
+    for (const sid of alive.keys()) {
+      if (watching.has(sid)) continue;
+      const el = canvas.querySelector(`.pp-region[data-leaving][data-session-id="${cssEscape(sid)}"]`);
+      if (!el) continue; // 本帧元素还没挂上——下一次 tick 再挂
+      watching.set(
+        sid,
+        regionExits(() => setMotionTick((n) => n + 1), el),
+      );
+    }
+  }, [canvasRef, motionTick]);
+  useEffect(() => {
+    const watching = exitWatchRef.current;
+    return () => {
+      for (const cancel of watching.values()) cancel();
+      watching.clear();
+    };
+  }, []);
+  /* ── 落纸 / 落墨窗同样听事件（批 B）──
+   * `region-motion` 按「首次可见」发类，这里按「动画真播完」摘：纸的 `pp-spread-in`、
+   * 卷首与块的落墨都在卷元素**自己**身上（.pp-region.pp-spread / .pp-rise 上的 animation），
+   * 子元素（.pp-block.pp-drop）的收尾不算——父级 animationend 天然过滤掉了它们。
+   * 摘类只影响样式，不改任何业务态；兜底窗覆盖 reduced-motion 与「类被提前摘掉」。 */
+  const spreadWatchRef = useRef(new Set<string>());
+  useEffect(() => {
+    void motionTick; // 同上：只作重挂扳机
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const watched = spreadWatchRef.current;
+    const windows = new Set([...motionWin.current.spread.keys(), ...motionWin.current.rise.keys()]);
+    for (const sid of [...watched]) {
+      if (windows.has(sid)) continue;
+      watched.delete(sid);
+    }
+    for (const sid of windows) {
+      if (watched.has(sid)) continue;
+      const el = canvas.querySelector(`.pp-region[data-session-id="${cssEscape(sid)}"]`);
+      if (!el) continue;
+      watched.add(sid);
+      waitMotionEnd(el, () => {
+        watched.delete(sid);
+        motionWin.current.spread.delete(sid);
+        motionWin.current.rise.delete(sid);
+        setMotionTick((n) => n + 1);
+      });
+    }
+  }, [canvasRef, motionTick]);
   /* 卸载即放手：画布关掉/切组合时窗可能还开着——不 release 就是**整屏动画永久冻在
    * 半路**（元素卸载时 CSS 动画随之消失，但 getAnimations 冻住的那些别的动画不会自己醒）。 */
   useEffect(() => () => hitstop.current.release(), []);

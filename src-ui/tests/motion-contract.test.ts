@@ -693,6 +693,10 @@ describe('§15 动效契约（散写时长守卫）', () => {
     const ms = /export const REGION_MOTION_MS = (\d+);/.exec(REGION_MOTION_TS);
     expect(ms, 'region-motion.ts 缺 REGION_MOTION_MS').not.toBeNull();
     expect(Number((ms as RegExpExecArray)[1])).toBe(Math.round(tokenSeconds('m-sheet') * 1000));
+    /* 2026-11-17 交互原语收口批 B：退场窗改**事件驱动**（.pp-region[data-leaving] 的
+     * transitionend），REGION_MOTION_MS 退成那条事件的保险兜底——CSS 侧那条过渡的
+     * 时长仍是 --m-sheet，故上面这条镜像对拍照旧成立。事件路径由
+     * tests/motion-end.test.ts 钉语义、region-motion.test.ts 钉卸载时机。 */
 
     const css = stripCssComments(PANEL_CSS);
 

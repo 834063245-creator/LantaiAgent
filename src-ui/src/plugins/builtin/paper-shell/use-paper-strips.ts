@@ -25,6 +25,7 @@ import { useEdgeAutoScroll } from './edge-scroll';
 import type { RegionView, SourcedBlock } from './host';
 import { ANCHOR, getCanvasStore, screenToWorld, useCanvasViewStore } from './host';
 import { useLostFocusCancel } from './lost-focus';
+import { MOTION_END_FALLBACK_MS, waitMotionEnd } from './motion-end';
 import { mergeSelectionLines, selInkPaths, selSeedOf } from './sel-ink';
 import {
   classifyDropZone,
@@ -204,9 +205,15 @@ export function usePaperStrips(params: {
       const strip = makeStrip(trimmed, params.x, params.y, 480, source);
       getCanvasStore(core.panelId).getState().addStrip(strip);
       setSettleId(strip.id); // 成条落定「放下」手感（刀3）
-      window.setTimeout(() => setSettleId((cur) => (cur === strip.id ? null : cur)), 400);
+      /* 播完即摘（批 B）：`.pp-strip.pp-settle` 的 animation 就在纸条元素上。纸条是
+       * 刚 addStrip 出来的，本帧还没进 DOM ⇒ 下一帧再找；miss 走兜底窗。 */
+      requestAnimationFrame(() => {
+        const el = canvasRef.current?.querySelector(`.pp-strip[data-strip-id="${strip.id}"]`);
+        if (el) waitMotionEnd(el, () => setSettleId((cur) => (cur === strip.id ? null : cur)));
+        else window.setTimeout(() => setSettleId((cur) => (cur === strip.id ? null : cur)), MOTION_END_FALLBACK_MS);
+      });
     },
-    [core, regionsRef, setSettleId],
+    [core, regionsRef, setSettleId, canvasRef],
   );
 
   const toWorldInCanvas = useCallback(

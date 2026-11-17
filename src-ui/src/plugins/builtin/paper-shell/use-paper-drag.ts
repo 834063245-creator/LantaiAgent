@@ -19,6 +19,7 @@ import { useEdgeAutoScroll } from './edge-scroll';
 import type { RegionView, SourcedBlock } from './host';
 import { ANCHOR, getCanvasStore, screenToWorld, snapshotFromBlock, useCanvasViewStore } from './host';
 import { useLostFocusCancel } from './lost-focus';
+import { MOTION_END_FALLBACK_MS, waitMotionEnd } from './motion-end';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击）——纸条拖拽同款（本域导出）。 */
@@ -270,8 +271,12 @@ export function usePaperDrag(params: {
       }
       commitPinned(d.sessionId, d.id, { x: fx, y: fy }, d.block);
       if (!d.instant) {
+        /* 落定「按下」那一拍（pp-settle-pin）住在块元素上，播完即摘——不再用 400 估。
+         * 元素由 blockRootRef 代理（块层是 ref 池），miss 时留兜底：600ms 后照摘。 */
         setSettleId(d.id);
-        window.setTimeout(() => setSettleId((cur) => (cur === d.id ? null : cur)), 400);
+        const el = canvasRef.current?.querySelector(`[data-block-id="${d.id}"]`);
+        if (el) waitMotionEnd(el, () => setSettleId((cur) => (cur === d.id ? null : cur)));
+        else window.setTimeout(() => setSettleId((cur) => (cur === d.id ? null : cur)), MOTION_END_FALLBACK_MS);
       }
     };
     window.addEventListener('mousemove', move);
