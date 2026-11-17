@@ -35,6 +35,9 @@ uiAssistant.parts.push({
   readOnly: false,
   status: 'done',
 });
+// 工具卡之后的第二段正文（不在本 region 的块表里）——用来证明「抄全文」跨块收全，
+// 而「抄录」只抄自己那一段。
+uiAssistant.parts.push({ type: 'text', text: '三' });
 
 const region = {
   sessionNum: SID,
@@ -174,6 +177,29 @@ describe('会话树「枝」入口 = 消息动作行（useBlockOps）', () => {
     expect(copyText).toHaveBeenLastCalledWith('TERM-OUT');
   });
 
+  it('「抄全文」只给**正文块**：抄整条回复的正文（跨块），工具卡 / 来文不给', () => {
+    const { core } = fakeCore();
+    let ops = new Map<string, BlockOp[]>();
+    act(() => {
+      root = createRoot(container);
+      root.render(createElement(Probe, { core, onOps: (m) => (ops = m), onGrips: () => {} }));
+    });
+    const copyText = (core as unknown as { copyText: Mock }).copyText;
+
+    const assistOps = ops.get('pb-assistant') ?? [];
+    expect(assistOps.map((o) => o.key)).toEqual(['copy', 'copy-all', 'branch']);
+    // 块级「抄录」只抄本段
+    act(() => assistOps.find((o) => o.key === 'copy')?.run());
+    expect(copyText).toHaveBeenLastCalledWith('二');
+    // 「抄全文」= 整条回复的正文（含工具卡之后、不在本块表里的第二段）
+    act(() => assistOps.find((o) => o.key === 'copy-all')?.run());
+    expect(copyText).toHaveBeenLastCalledWith('二\n三');
+
+    // 工具卡 / 来文块不给「抄全文」——在工具卡上抄到整篇回复正是刚修掉的病灶
+    expect(ops.get('pb-tool')?.some((o) => o.key === 'copy-all')).toBeFalsy();
+    expect(ops.get('pb-user')?.some((o) => o.key === 'copy-all')).toBeFalsy();
+  });
+
   it('回复块：也有「立枝」，点击带上**本块坐标**（切点 = 该块那一步的末尾）', () => {
     const { core, branchCalls } = fakeCore();
     let ops = new Map<string, BlockOp[]>();
@@ -183,7 +209,7 @@ describe('会话树「枝」入口 = 消息动作行（useBlockOps）', () => {
     });
 
     const assistOps = ops.get('pb-assistant') ?? [];
-    expect(assistOps.map((o) => o.key)).toEqual(['copy', 'branch']);
+    expect(assistOps.map((o) => o.key)).toEqual(['copy', 'copy-all', 'branch']);
     const branch = assistOps.find((o) => o.key === 'branch');
     expect(branch?.title).toContain('本卷原样保留');
 

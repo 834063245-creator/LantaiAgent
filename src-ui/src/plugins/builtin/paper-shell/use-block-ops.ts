@@ -10,7 +10,7 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useMemo, useRef } from 'react';
-import type { ChatMessage, RegionView, SourcedBlock, UserMessage } from './host';
+import type { ChatMessage, RegionView, SourcedBlock, TextPart, UserMessage } from './host';
 import { sameKey } from './use-paper-regions';
 import type { PaperCore } from './use-paper-sessions';
 
@@ -78,6 +78,19 @@ function blockCopyText(block: SourcedBlock): string {
   }
 }
 
+/** 整条回复的正文——所有 text part 拼接（「抄全文」用；含代码围栏原文）。
+ *
+ *  与 `blockCopyText` 分工：「抄录」抄**这一块**，「抄全文」抄**整条**。后者只给
+ *  **正文块**（用户 2026-11 裁定）——工具卡 / 代码块上给「抄全文」等于又回到
+ *  "按钮和内容对不上号"的老毛病。来文块不需要：它本身就是全文。 */
+function messageCopyText(msg: ChatMessage): string {
+  if (msg.role !== 'assistant') return msg.text;
+  return msg.parts
+    .filter((p): p is TextPart => p.type === 'text')
+    .map((p) => p.text)
+    .join('\n');
+}
+
 /** 消息操作域（paper-panel-split C3，自 PaperPanel 184-204 + 1592-1697
  *  域内原样搬入）。ops 按块 id 记忆（opsCacheRef，stamp 随最新消息判定与
  * 可撤态变化失效）——点击时经 regionMsgs 取最新消息。 */
@@ -138,6 +151,16 @@ export function useBlockOps(params: {
       // **抄录 = 抄这一块**（不是整条消息）：按钮按块挂，抄的就必须是本块内容。
       const text = blockCopyText(latestSelf());
       if (text.trim()) ops.push({ key: 'copy', label: '抄录', run: () => core.copyText(blockCopyText(latestSelf())) });
+      // **抄全文**只给**正文块**（2026-11 用户裁定）：一条回复的正文常被工具调用夹成
+      // 多段，读哪一段都能顺手把整条正文抄走。工具卡 / 代码块 / 组头上不给——那等于
+      // 又回到"按钮和内容对不上号"（在代码块上抄到整篇回复）。来文块也不需要：它本身
+      // 就是全文。**入口给所有正文段**（只给首段会让读到第三段的用户找不到入口）。
+      if (self.kind === 'markdown' && msg.role === 'assistant') {
+        const whole = messageCopyText(latest());
+        if (whole.trim()) {
+          ops.push({ key: 'copy-all', label: '抄全文', run: () => core.copyText(messageCopyText(latest())) });
+        }
+      }
       // **立枝**（会话树，2026-09-18；2026-09-22 改按**块**定位）：从这一块另起一枝——
       // 枝**含这一块**，切点 = 该块所在**那一步**的末尾（判据在 `session-branch`）。
       // 位置纪律 = 与「改 / 重发 / 抄」同一行动作（主流 agent 软件的分支入口都挂在
