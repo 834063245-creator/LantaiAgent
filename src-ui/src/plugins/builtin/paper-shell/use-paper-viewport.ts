@@ -417,11 +417,18 @@ export function usePaperViewport(core: PaperCore | null) {
   const onCanvasMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0) return;
-      /* **点画布空白 = 焦点离开纸**（2026-11-17 多纸改判）：纸留着，坞回来。
-       * 只在真有焦点时动作（无焦点时整句空操作，不惊动 store）。
-       * ⚠ 这一句在「判空手势」之前：连点纸背后那块画布也该先把焦点交回去。 */
+      /* **点纸外面 = 焦点离开纸**（2026-11-17 多纸改判）：纸留着，坞回来。
+       *
+       * ⚠⚠ **必须排除纸自己**（2026-11-17 真机 bug：点题签的输入框 → 直接不能打字）。
+       * 病灶：mousedown 从 textarea 冒泡到 `.pp-canvas`（React 合成事件走根委托），
+       * 这一句无条件清焦点 ⇒ `ComposerSheet` 当帧卸载 ⇒ 用户刚点中的那个 textarea
+       * 没了。症状是"点一下就跳到无法打字的状态"，看着像低级错误，根因是**没判事件源**。
+       * 判据 = 事件源不在 `[data-draft-sheet]` 子树里（纸内的任何一处——输入面、题签、
+       * 弃纸钮——都属于"还在纸上"，不该把焦点交回卷）。 */
+      const t = e.target as HTMLElement;
+      const insideDraft = typeof t?.closest === 'function' && t.closest('[data-draft-sheet]') !== null;
       const draftStore = useDraftSheetStore.getState();
-      if (draftStore.focusedId !== null && core) {
+      if (!insideDraft && draftStore.focusedId !== null && core) {
         const input = getChatStore(core.panelId).input.getState();
         draftStore.focusSheet(null);
         const sess = getChatStore(core.panelId).sess.getState();
@@ -433,7 +440,6 @@ export function usePaperViewport(core: PaperCore | null) {
       // 鼠标在会话流区内同样可拖动画布。块/边缘/角柄/纸条/文类签各有自己的
       // 手势（stopPropagation），不会落到这里；流区自己的 onMouseDown（激活）
       // 先跑，激活与平移并存。
-      const t = e.target as HTMLElement;
       const onEmpty = t === e.currentTarget || t.classList.contains('pp-world') || t.classList.contains('pp-region');
       if (!onEmpty) return;
       e.preventDefault();

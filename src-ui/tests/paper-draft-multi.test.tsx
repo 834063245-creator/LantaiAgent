@@ -367,3 +367,88 @@ describe('待题纸 · 多纸（④ 端到端：纸在画布上时，坞照常�
     expect(container.querySelector(`[data-paper-id="${paperId}"]`)).not.toBeNull();
   });
 });
+
+describe('待题纸 · ③b 点纸**里面**不许把焦点交回卷（2026-11-17 真机 bug）', () => {
+  let root: Root | null = null;
+  let container: HTMLDivElement | null = null;
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((_cmd: string, payload: { method?: string }) => {
+      if (payload?.method === 'list_directory') return Promise.resolve('[]');
+      return Promise.resolve(null);
+    });
+    useShellStore.setState({ projectPath: 'D:/draft-multi-ws' });
+    useDraftSheetStore.getState().dismissAll();
+    useDockStore.getState().closePanel('paper');
+  });
+
+  afterEach(() => {
+    act(() => root?.unmount());
+    container?.remove();
+    root = null;
+    container = null;
+    useDraftSheetStore.getState().dismissAll();
+  });
+
+  /* 真机病灶（用户："点题签的输入框之后直接跳到无法打字的状态"）：
+   * mousedown 从纸里的输入件冒泡到 `.pp-canvas`（React 合成事件走根委托），画布那条
+   * 「点空白 = 焦点离开纸」的判据**没看事件源** ⇒ 当帧清掉焦点 ⇒ `ComposerSheet` 卸载
+   * ⇒ 用户刚点中的那个 textarea 消失。修法 = 判据排除 `[data-draft-sheet]` 子树。
+   *
+   * 本测挂真 PaperPanel，走同一条冒泡链：在纸内的一个真实节点上派发 mousedown。 */
+  it('在纸内按下（冒泡到画布）⇒ 焦点不动；在纸外按下 ⇒ 焦点交回', async () => {
+    const panel = new ChatCore();
+    useCoreStore.setState({ core: panel });
+    const canvas = getCanvasStore(panel.panelId);
+    canvas.getState().setRegion('1', { anchorX: 300, anchorY: 400, width: STREAM_REGION.width });
+    getChatStore(panel.panelId).sess.setState({
+      sessions: [{ id: 1, label: '卷一' }],
+      activeIdx: 0,
+      nextSessionId: 2,
+    });
+    const view = useCanvasViewStore;
+    view.getState().setCanvasSize(W, H);
+    view.getState().restoreView({ zoom: 1, panX: 0, panY: 0 });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    await act(async () => {
+      root = createRoot(container as HTMLDivElement);
+      (root as Root).render(<PaperPanel />);
+    });
+    await act(async () => {
+      view.getState().setCanvasSize(W, H);
+    });
+    await act(async () => {
+      view.getState().setView({ zoom: 1, panX: 0, panY: 0 });
+    });
+
+    // 摊一张纸并拿焦点
+    let paperId = '';
+    await act(async () => {
+      paperId = useDraftSheetStore.getState().openSheet();
+      panel.focusDraft(paperId);
+    });
+    expect(useDraftSheetStore.getState().focusedId).toBe(paperId);
+
+    // ① 纸内的一个真实节点（天头版心）上按下 —— 事件冒泡到 .pp-canvas
+    const inside = container.querySelector(`[data-paper-id="${paperId}"] .pp-folio-inner`) as HTMLElement | null;
+    expect(inside).not.toBeNull();
+    await act(async () => {
+      inside!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    });
+    expect(useDraftSheetStore.getState().focusedId).toBe(paperId); // 焦点没被偷走
+
+    // ② 在画布空白上按下 —— 焦点交回卷（坞随之回来）
+    const canvasEl = container.querySelector('.pp-canvas') as HTMLElement | null;
+    expect(canvasEl).not.toBeNull();
+    await act(async () => {
+      canvasEl!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    });
+    expect(useDraftSheetStore.getState().focusedId).toBeNull();
+    // 纸仍在画布上（不是被销毁，只是让出焦点）
+    expect(useDraftSheetStore.getState().papers.map((p) => p.id)).toEqual([paperId]);
+  });
+});
