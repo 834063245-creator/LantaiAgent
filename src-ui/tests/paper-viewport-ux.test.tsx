@@ -216,8 +216,19 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     return canvas;
   }
 
+  /* 2026-11-17 交互原语批 C3：纸壳手势族改走 pointer 事件（核心要 setPointerCapture）。
+   * 这个帮手**统一把 mouse 名映射到 pointer 名**——下面 92 处 fire(el, 'mousedown', …)
+   * 的**判据与断言一个字符不用改**，只有「怎么把用户动作喂给组件」这一层换了。
+   * 非 mouse 事件（wheel / keydown / click / transitionend…）原样派发。 */
+  const POINTER_EQUIV: Record<string, string> = {
+    mousedown: 'pointerdown',
+    mousemove: 'pointermove',
+    mouseup: 'pointerup',
+  };
   const fire = (el: Element | Window, type: string, init: MouseEventInit & { button?: number }): MouseEvent => {
-    const ev = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
+    const type2 = POINTER_EQUIV[type] ?? type;
+    const ev = new MouseEvent(type2, { bubbles: true, cancelable: true, ...init });
+    if (type2 !== type) Object.defineProperty(ev, 'pointerId', { value: 1 });
     (el === window ? window : el).dispatchEvent(ev);
     return ev;
   };

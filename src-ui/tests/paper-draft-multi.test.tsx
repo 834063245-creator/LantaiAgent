@@ -287,7 +287,7 @@ describe('待题纸 · 多纸（③ 组件面：坞回来 / 焦点可换）', ()
     const idleSheet = el.querySelector(`[data-paper-id="${a}"]`) as HTMLElement | null;
     expect(idleSheet).not.toBeNull();
     await act(async () => {
-      idleSheet!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+      idleSheet!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
     });
     expect(focusDraft).toHaveBeenCalledWith(a);
     expect(useDraftSheetStore.getState().focusedId).toBe(a);
@@ -442,7 +442,7 @@ describe('待题纸 · ③b 点纸**里面**不许把焦点交回卷（2026-11-1
     const inside = container.querySelector(`[data-paper-id="${paperId}"] .pp-folio-inner`) as HTMLElement | null;
     expect(inside).not.toBeNull();
     await act(async () => {
-      inside!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+      inside!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
     });
     expect(useDraftSheetStore.getState().focusedId).toBe(paperId); // 焦点没被偷走
 
@@ -450,7 +450,7 @@ describe('待题纸 · ③b 点纸**里面**不许把焦点交回卷（2026-11-1
     const canvasEl = container.querySelector('.pp-canvas') as HTMLElement | null;
     expect(canvasEl).not.toBeNull();
     await act(async () => {
-      canvasEl!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+      canvasEl!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
     });
     expect(useDraftSheetStore.getState().focusedId).toBeNull();
     // 纸仍在画布上（不是被销毁，只是让出焦点）

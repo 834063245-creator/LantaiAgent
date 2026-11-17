@@ -110,7 +110,7 @@ export function PaperPanel() {
     panning,
     stepZoom,
     resetZoom,
-    onCanvasMouseDown,
+    onCanvasPointerDown,
     lodFar,
     zoomTick,
     draggingId,
@@ -143,11 +143,11 @@ export function PaperPanel() {
     onProvTrace,
     tether,
     branchTethers,
-    onBlockMouseDown,
+    onBlockPointerDown,
     onUnpin,
     onGhostClick,
     onSidecarRestore,
-    onSidecarPinMouseDown,
+    onSidecarPinPointerDown,
     pinHint,
     resizePreview,
     branchDragTether,
@@ -162,7 +162,7 @@ export function PaperPanel() {
     stripDragPos,
     stripConfirmId,
     onRemoveStrip,
-    onStripMouseDown,
+    onStripPointerDown,
     composerOverlays,
     edgeOverlays,
     desk,
@@ -259,7 +259,7 @@ export function PaperPanel() {
             className={`pp-canvas${panning ? ' pp-panning' : ''}${streamLive ? ' pp-stream-live' : ''}${
               edgeDragPos || regionCornerPos ? ' pp-live-hand' : ''
             }`}
-            onMouseDown={onCanvasMouseDown}
+            onPointerDown={onCanvasPointerDown}
           >
             {sessions.length === 0 && !draftFocusOn && !draftMorphOpen && (
               <div className="pp-empty">
@@ -462,7 +462,7 @@ export function PaperPanel() {
                     className={`pp-strip${stripDragged ? ' pp-dragging' : ''}${settleId === s.id ? ' pp-settle' : ''}`}
                     data-strip-id={s.id}
                     style={{ left: stripPos.x, top: stripPos.y, width: stripW }}
-                    onMouseDown={(e) => onStripMouseDown(e, s)}
+                    onPointerDown={(e) => onStripPointerDown(e, s)}
                   >
                     <div className="pp-strip-head">
                       <span className="pp-strip-tag">纸条</span>
@@ -548,9 +548,9 @@ export function PaperPanel() {
                       sidecarFolded={sidecarFoldedOf(snapshotBlock)}
                       onToggleFold={onToggleFold}
                       onToggleSidecarFold={onToggleSidecarFold}
-                      onSidecarPinMouseDown={onSidecarPinMouseDown}
+                      onSidecarPinPointerDown={onSidecarPinPointerDown}
                       onUnpin={onUnpin}
-                      onDragHandleMouseDown={onBlockMouseDown}
+                      onDragHandlePointerDown={onBlockPointerDown}
                       unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
                       prov={
                         source
@@ -646,11 +646,11 @@ export function PaperPanel() {
                           sidecarFolded={sidecarFoldedOf(b)}
                           onToggleFold={onToggleFold}
                           onToggleSidecarFold={onToggleSidecarFold}
-                          onSidecarPinMouseDown={onSidecarPinMouseDown}
+                          onSidecarPinPointerDown={onSidecarPinPointerDown}
                           sidecarOut={sidecarOutOf(b)}
                           onSidecarRestore={onSidecarRestore}
                           onUnpin={onUnpin}
-                          onDragHandleMouseDown={onBlockMouseDown}
+                          onDragHandlePointerDown={onBlockPointerDown}
                           /* 空间手势立枝的握把：只在**判据通过**的块上（与「立枝」按钮
                              同一张表）——工具卡/通知块/未落定轮不长一个注定被拒的手势。 */
                           onBranchGripPointerDown={branchGrips.has(b.id) ? onBranchGripPointerDown : undefined}
@@ -706,11 +706,11 @@ export function PaperPanel() {
                           sidecarFolded={sidecarFoldedOf(b)}
                           onToggleFold={onToggleFold}
                           onToggleSidecarFold={onToggleSidecarFold}
-                          onSidecarPinMouseDown={onSidecarPinMouseDown}
+                          onSidecarPinPointerDown={onSidecarPinPointerDown}
                           sidecarOut={sidecarOutOf(b)}
                           onSidecarRestore={onSidecarRestore}
                           onUnpin={onUnpin}
-                          onDragHandleMouseDown={onBlockMouseDown}
+                          onDragHandlePointerDown={onBlockPointerDown}
                           prov={provenanceText(volumeDisplayName(r.label, r.sessionNum), 'live')}
                           provTitle={provenanceTitle('live')}
                           provTraceable

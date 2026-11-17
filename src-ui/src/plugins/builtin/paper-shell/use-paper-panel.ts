@@ -113,7 +113,7 @@ export function usePaperPanelAssembly() {
     resetZoom,
     focusRafRef,
     focusFlightRef,
-    onCanvasMouseDown,
+    onCanvasPointerDown,
     lodFar,
   } = usePaperViewport(core);
 
@@ -492,12 +492,12 @@ export function usePaperPanelAssembly() {
 
   const {
     dragRef,
-    onBlockMouseDown,
+    onBlockPointerDown,
     onUnpin,
     onGhostClick,
     onSidecarRestore,
-    onSidecarPinMouseDown,
-    onRackPinMouseDown,
+    onSidecarPinPointerDown,
+    onRackPinPointerDown,
     pinHint,
   } = usePaperDrag({
     core,
@@ -561,7 +561,7 @@ export function usePaperPanelAssembly() {
     stripDragPos,
     stripConfirmId,
     onRemoveStrip,
-    onStripMouseDown,
+    onStripPointerDown,
   } = usePaperStrips({
     core,
     canvasRef,
@@ -666,9 +666,9 @@ export function usePaperPanelAssembly() {
       glideTo: glideViewTo,
       composerLock,
       expandBlock: expandBlockById,
-      dragBlockOut: onRackPinMouseDown,
+      dragBlockOut: onRackPinPointerDown,
     }),
-    [activeSessionKey, flyToPoint, glideViewTo, composerLock, expandBlockById, onRackPinMouseDown],
+    [activeSessionKey, flyToPoint, glideViewTo, composerLock, expandBlockById, onRackPinPointerDown],
   );
   const regionContext = useMemo(
     () => ({
@@ -754,7 +754,7 @@ export function usePaperPanelAssembly() {
     panning,
     stepZoom,
     resetZoom,
-    onCanvasMouseDown,
+    onCanvasPointerDown,
     lodFar,
     zoomTick,
     draggingId,
@@ -787,11 +787,11 @@ export function usePaperPanelAssembly() {
     onProvTrace,
     tether,
     branchTethers,
-    onBlockMouseDown,
+    onBlockPointerDown,
     onUnpin,
     onGhostClick,
     onSidecarRestore,
-    onSidecarPinMouseDown,
+    onSidecarPinPointerDown,
     pinHint,
     resizePreview,
     branchDragTether,
@@ -806,7 +806,7 @@ export function usePaperPanelAssembly() {
     stripDragPos,
     stripConfirmId,
     onRemoveStrip,
-    onStripMouseDown,
+    onStripPointerDown,
     composerOverlays,
     edgeOverlays,
     desk,

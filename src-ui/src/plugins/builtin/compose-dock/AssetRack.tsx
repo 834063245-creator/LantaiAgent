@@ -194,7 +194,7 @@ export const AssetRack = memo(function AssetRack() {
             data-asset-id={e.assetId}
             data-tip={title}
             aria-label={`${e.sign}${e.title ? ` ${e.title}` : ''}${fresh ? '（有更新）' : ''}`}
-            onMouseDown={(ev) => dragBlockOut?.(ev, e.block)}
+            onPointerDown={(ev) => dragBlockOut?.(ev, e.block)}
             onClick={() => onChipClick(e)}
           >
             <span className="pp-rack-sign" aria-hidden="true">

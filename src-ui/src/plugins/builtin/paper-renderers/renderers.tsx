@@ -551,7 +551,7 @@ export function MarkdownBody({
   block,
   sidecarFolded,
   onToggleSidecarFold,
-  onSidecarPinMouseDown,
+  onSidecarPinPointerDown,
   sidecarOut,
   onSidecarRestore,
 }: BlockRendererProps) {
@@ -625,7 +625,7 @@ export function MarkdownBody({
                 type="button"
                 className="pp-marginalia-pin"
                 data-tip="拖出钉上画布"
-                onMouseDown={(e) => onSidecarPinMouseDown?.(e, block)}
+                onPointerDown={(e) => onSidecarPinPointerDown?.(e, block)}
               >
                 钉
               </button>

@@ -108,11 +108,11 @@ export const BlockView = memo(function BlockView({
   sidecarFolded,
   onToggleFold,
   onToggleSidecarFold,
-  onSidecarPinMouseDown,
+  onSidecarPinPointerDown,
   sidecarOut,
   onSidecarRestore,
   onUnpin,
-  onDragHandleMouseDown,
+  onDragHandlePointerDown,
   onBranchGripPointerDown,
   unpinLabel = '收回',
   prov,
@@ -136,14 +136,14 @@ export const BlockView = memo(function BlockView({
   /** 眉批折叠切换（壳层 foldOv 持久，key = `${block.id}:sc`） */
   onToggleSidecarFold?: (b: SourcedBlock) => void;
   /** 眉批拖出钉画布（移出语义：首动建钉跟手，快照从眉批栏原位揭起） */
-  onSidecarPinMouseDown?: (e: React.MouseEvent, block: SourcedBlock) => void;
+  onSidecarPinPointerDown?: (e: React.PointerEvent, block: SourcedBlock) => void;
   /** 眉批已钉出（`:sc` 快照钉在画布）——眉批栏渲染「已移出·点击恢复」占位 */
   sidecarOut?: boolean;
   /** 眉批恢复（拔 `:sc` 快照钉，夹注回眉批栏——占位点击手势的语义端） */
   onSidecarRestore?: (b: SourcedBlock) => void;
   onUnpin: (id: string) => void;
   /** 拖拽手柄（文类签 .pp-kind）——V3a 手势分工：签=整块拖出（D-R2-1） */
-  onDragHandleMouseDown: (e: React.MouseEvent, block: SourcedBlock) => void;
+  onDragHandlePointerDown: (e: React.PointerEvent, block: SourcedBlock) => void;
   /** **空间手势立枝**（P4-①）：块 hover 出现的「枝」握把——按住拖出一条引线、松手落在
    *  纸上就地立枝。**只在可立枝的块上传**（判据 = `branchPoints`，与「立枝」按钮同一张
    *  表；见 `use-block-ops` 的 `branchGrips`）——缺省 = 不长握把（钉住块/通知块/未落定轮）。 */
@@ -193,8 +193,7 @@ export const BlockView = memo(function BlockView({
           被引线连上时由引线层自己的朱点标出位置。见 CSS .pp-anchor 注。 */}
       <span className="pp-anchor pp-anchor--l" aria-hidden="true" />
       <span className="pp-anchor pp-anchor--r" aria-hidden="true" />
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽手柄（D-R2-1 拖出钉住）；收回有原生按钮 */}
-      <div className="pp-kind pp-drag-handle" onMouseDown={(e) => onDragHandleMouseDown(e, block)}>
+      <div className="pp-kind pp-drag-handle" onPointerDown={(e) => onDragHandlePointerDown(e, block)}>
         <span className="pp-zh">{KIND_ZH[block.kind] ?? block.kind}</span>
         <span className="pp-en">
           {KIND_EN[block.kind] ?? 'NOTE'} · {seq}
@@ -251,7 +250,7 @@ export const BlockView = memo(function BlockView({
             folded={folded}
             sidecarFolded={sidecarFolded}
             onToggleSidecarFold={onToggleSidecarFold}
-            onSidecarPinMouseDown={onSidecarPinMouseDown}
+            onSidecarPinPointerDown={onSidecarPinPointerDown}
             sidecarOut={sidecarOut}
             onSidecarRestore={onSidecarRestore}
             sessionProjectPath={sessionProjectPath}

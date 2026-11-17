@@ -38,6 +38,7 @@ import {
   stashStripBesideRight,
   stashStripPositionAt,
 } from './selection';
+import { useDragGesture } from './use-drag-gesture';
 import { DRAG_THRESHOLD } from './use-paper-drag';
 import type { PaperCore } from './use-paper-sessions';
 
@@ -150,12 +151,15 @@ export function usePaperStrips(params: {
    * 拖拽手势多在 React 层 stopPropagation，冒泡面收不到，与本仓既有的
    * 「捕获面先行」纪律同源（见 use-paper-viewport 拖选自动滚屏注）。 */
   useEffect(() => {
-    const onDown = (e: MouseEvent) => {
+    /* 2026-11-17 批 C3：手势族改走 pointer 事件 ⇒ **起手面登记必须同面**。
+     * 旧实现只听 mousedown；若只换手势不换登记，pressInProseRef 会恒为 false
+     * （划词朱线不落、抽纸条 A 路短路）——这条是本批最容易漏的连带。 */
+    const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
       pressInProseRef.current = pressedInProse(e.target);
     };
-    window.addEventListener('mousedown', onDown, true);
-    return () => window.removeEventListener('mousedown', onDown, true);
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
   }, []);
 
   /* ── lift 遮罩（P1 抽纸条手感 2026-08-30）：拖出选区时原地「被揭起」占位。
@@ -339,7 +343,7 @@ export function usePaperStrips(params: {
       setGhost({ x: w.x, y: w.y, zone });
     };
 
-    const down = (e: MouseEvent) => {
+    const down = (e: PointerEvent) => {
       if (e.button !== 0) return;
       if (dragRef.current || stripDragRef.current || resizeRef.current) {
         liftRef.current = null;
@@ -381,7 +385,7 @@ export function usePaperStrips(params: {
       });
     };
 
-    const move = (e: MouseEvent) => {
+    const move = (e: PointerEvent) => {
       const lift = liftRef.current;
       if (!lift) return; // 非 lift 手势（本通道只服务 A 路）
       lift.lastX = e.clientX;
@@ -389,7 +393,7 @@ export function usePaperStrips(params: {
       syncGhost(e.clientX, e.clientY);
     };
 
-    const up = (e: MouseEvent) => {
+    const up = (e: PointerEvent) => {
       stopEdgeScroll();
       setGhost(null);
       setBandSessionId(null);
@@ -415,13 +419,13 @@ export function usePaperStrips(params: {
       clearLiftMask(); // 取消：选区原样恢复，遮罩即撤（无事发生）
     };
 
-    window.addEventListener('mousedown', down);
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
+    window.addEventListener('pointerdown', down);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
     return () => {
-      window.removeEventListener('mousedown', down);
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
+      window.removeEventListener('pointerdown', down);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
       stopEdgeScroll();
     };
   }, [
@@ -547,8 +551,67 @@ export function usePaperStrips(params: {
    * 边缘滚动同款（拖到很远也跟手，循环归 edge-scroll.ts）。 */
   const [dragStripId, setDragStripId] = useState<string | null>(null);
   const [stripDragPos, setStripDragPos] = useState<{ x: number; y: number } | null>(null);
-  const onStripMouseDown = useCallback(
-    (e: React.MouseEvent, s: PaperStrip) => {
+  /* ── 拖纸条（2026-11-17 交互原语批 C3 · 9/9 的一半）──
+   * 与拖块同族：阈值起 → 跟手（读 store 现值 view）→ 松手写回；边缘滚屏循环归
+   * edge-scroll.ts。手势骨架交给核心（阈值/失联/Esc 统一）。 */
+  const stripGesture = useDragGesture({
+    threshold: DRAG_THRESHOLD,
+    onStart: (_e, ds) => {
+      const d = stripDragRef.current;
+      if (!d) return;
+      d.moved = true;
+      d.lastX = ds.x;
+      d.lastY = ds.y;
+      setDragStripId(d.id);
+      startEdgeScroll(() => {
+        const cur = stripDragRef.current;
+        if (!cur?.moved) return null; // 手势已收
+        return { x: cur.lastX, y: cur.lastY, afterPan: () => syncStripPreview(cur) };
+      });
+    },
+    onMove: (_e, ds) => {
+      const d = stripDragRef.current;
+      if (!d) return;
+      d.lastX = ds.x;
+      d.lastY = ds.y;
+      syncStripPreview(d);
+    },
+    onEnd: (_e, ds) => {
+      const d = stripDragRef.current;
+      stripDragRef.current = null;
+      stopEdgeScroll();
+      setDragStripId(null);
+      setStripDragPos(null);
+      if (!d?.moved || !core) return;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      // 落点读 store 现值 view：与块影/纸条影同一把尺子（见 syncStripPreview 注）
+      const w = screenToWorld(useCanvasViewStore.getState().view, ds.x - rect.left, ds.y - rect.top);
+      getCanvasStore(core.panelId)
+        .getState()
+        .moveStrip(d.id, w.x - d.offX, w.y - d.offY);
+    },
+    onCancel: () => {
+      stripDragRef.current = null;
+      stopEdgeScroll();
+      setDragStripId(null);
+      setStripDragPos(null);
+    },
+  });
+
+  /** 跟手一帧（指针事件与边缘滚动帧共用；读 store 现值 view，滚屏不脱手）。 */
+  const syncStripPreview = useCallback(
+    (d: NonNullable<typeof stripDragRef.current>): void => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const w = screenToWorld(useCanvasViewStore.getState().view, d.lastX - rect.left, d.lastY - rect.top);
+      setStripDragPos({ x: w.x - d.offX, y: w.y - d.offY });
+    },
+    [canvasRef],
+  );
+
+  const onStripPointerDown = useCallback(
+    (e: React.PointerEvent, s: PaperStrip) => {
       if (e.button !== 0) return;
       e.stopPropagation();
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -564,57 +627,10 @@ export function usePaperStrips(params: {
         offX: w.x - s.x,
         offY: w.y - s.y,
       };
+      stripGesture.begin(e);
     },
-    [canvasRef],
+    [canvasRef, stripGesture],
   );
-  useEffect(() => {
-    /** 跟手一帧（mousemove 与边缘滚动帧共用；读 store 现值 view，滚屏不脱手）。 */
-    const syncPreview = (d: NonNullable<typeof stripDragRef.current>): void => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const w = screenToWorld(useCanvasViewStore.getState().view, d.lastX - rect.left, d.lastY - rect.top);
-      setStripDragPos({ x: w.x - d.offX, y: w.y - d.offY });
-    };
-    const move = (e: MouseEvent) => {
-      const d = stripDragRef.current;
-      if (!d) return;
-      d.lastX = e.clientX;
-      d.lastY = e.clientY;
-      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_THRESHOLD) return;
-      if (!d.moved) {
-        d.moved = true;
-        setDragStripId(d.id);
-        startEdgeScroll(() => {
-          const cur = stripDragRef.current;
-          if (!cur?.moved) return null; // 手势已收
-          return { x: cur.lastX, y: cur.lastY, afterPan: () => syncPreview(cur) };
-        });
-      }
-      syncPreview(d);
-    };
-    const up = (e: MouseEvent) => {
-      const d = stripDragRef.current;
-      stripDragRef.current = null;
-      stopEdgeScroll();
-      setDragStripId(null);
-      setStripDragPos(null);
-      if (!d?.moved || !core) return;
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      // 落点读 store 现值 view：与块影/纸条影同一把尺子（见 syncPreview 注）
-      const w = screenToWorld(useCanvasViewStore.getState().view, e.clientX - rect.left, e.clientY - rect.top);
-      getCanvasStore(core.panelId)
-        .getState()
-        .moveStrip(d.id, w.x - d.offX, w.y - d.offY);
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-      stopEdgeScroll();
-    };
-  }, [core, canvasRef, startEdgeScroll, stopEdgeScroll]);
 
   /* 失联即收（2026-10-29 抽纸条失灵批见文件头注 ③）：窗口失焦 / 页面隐藏 /
    * 指针离开文档 ⇒ lift 与拖纸条双双回退到「无事发生」。不清的话，一次窗外松手
@@ -680,6 +696,6 @@ export function usePaperStrips(params: {
     stripDragPos,
     stripConfirmId,
     onRemoveStrip,
-    onStripMouseDown,
+    onStripPointerDown,
   };
 }

@@ -18,8 +18,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEdgeAutoScroll } from './edge-scroll';
 import type { RegionView, SourcedBlock } from './host';
 import { ANCHOR, getCanvasStore, screenToWorld, snapshotFromBlock, useCanvasViewStore } from './host';
-import { useLostFocusCancel } from './lost-focus';
 import { MOTION_END_FALLBACK_MS, waitMotionEnd } from './motion-end';
+import { useDragGesture } from './use-drag-gesture';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击）——纸条拖拽同款（本域导出）。 */
@@ -118,42 +118,6 @@ export function usePaperDrag(params: {
     block: SourcedBlock | null;
   } | null>(null);
 
-  const onBlockMouseDown = useCallback(
-    (e: React.MouseEvent, block: SourcedBlock) => {
-      if (e.button !== 0) return;
-      e.stopPropagation(); // 不触发画布平移/流区激活
-      e.preventDefault();
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const sessionId = blockSessionRef.current.get(block.id);
-      const region = sessionId ? regionsRef.current.find((r) => r.sessionId === sessionId) : undefined;
-      const v = viewRef.current;
-      const w = screenToWorld(v, e.clientX - rect.left, e.clientY - rect.top);
-      const lay = region?.layout;
-      const rx = block.state === 'flow' ? (lay?.get(block.id)?.x ?? block.x) : block.x;
-      const ry = block.state === 'flow' ? (lay?.get(block.id)?.y ?? block.y) : block.y;
-      dragRef.current = {
-        id: block.id,
-        sessionId,
-        sx: e.clientX,
-        sy: e.clientY,
-        moved: false,
-        wasFlow: block.state === 'flow',
-        instant: false, // 整块拖出 = 松手定夺（纯预览 → 带外落钉/带内取消）
-        bw: block.w,
-        offX: w.x - rx,
-        offY: w.y - ry,
-        lastX: e.clientX,
-        lastY: e.clientY,
-        ox: rx,
-        oy: ry,
-        lastPos: null,
-        block,
-      };
-    },
-    [canvasRef, viewRef, regionsRef, blockSessionRef],
-  );
-
   /** 落定钉住：新钉 = 捕获快照 + 活引用源；已钉 = 移位置；pos null = 收回
    *  （眉批 instant 路径的取消端）。源会话缺省（孤儿钉）= 只移动既有钉，不新建。 */
   const commitPinned = useCallback(
@@ -197,12 +161,16 @@ export function usePaperDrag(params: {
    *  块影同帧钉回指针下；松手即撤。 */
   const { start: startEdgeScroll, stop: stopEdgeScroll } = useEdgeAutoScroll(canvasRef);
 
-  useEffect(() => {
-    /* ── 跟手一帧（mousemove 与滚屏帧共用）──
-     * 预览位 = 最新指针 − 抓取偏移，读 **store 现值** view：手势期间 pan 会被
-     * 边缘滚屏/滚轮改动，用闭包旧 view 算的块影会脱离指针（松手落点随之错位）。
-     * 同值短路（lastPos）：指针静止且 pan 未动的帧零重渲染。 */
-    const syncPreview = (d: NonNullable<typeof dragRef.current>): void => {
+  /* ── 手势骨架（2026-11-17 交互原语批 C3 · 8/9）──
+   * 这一份是九份里最重的一份（463 行），也是「失联即收」最早接上的三份之一
+   * （2026-10-29）——收编不改变它的判据，换掉的是：自挂 window 监听 → 核心的
+   * setPointerCapture（拖出窗口仍然收得到）+ 统一的阈值/取消理由。
+   *
+   * 两处**刻意保留**的本地机制：
+   *   · syncPreview 每帧读 **store 现值 view**（边缘滚屏每帧改 pan，闭包快照会脱手）；
+   *   · 边缘滚屏的 rAF 循环在 onStart 起、在 onEnd / onCancel 撤。 */
+  const syncPreview = useCallback(
+    (d: NonNullable<typeof dragRef.current>): void => {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       const w = screenToWorld(useCanvasViewStore.getState().view, d.lastX - rect.left, d.lastY - rect.top);
@@ -211,39 +179,45 @@ export function usePaperDrag(params: {
       if (d.lastPos && d.lastPos.x === nx && d.lastPos.y === ny) return;
       d.lastPos = { x: nx, y: ny };
       setDragPos({ x: nx, y: ny });
-    };
+    },
+    [canvasRef, setDragPos],
+  );
 
-    const move = (e: MouseEvent) => {
+  const gesture = useDragGesture({
+    threshold: DRAG_THRESHOLD,
+    onStart: (_e, ds) => {
       const d = dragRef.current;
       if (!d) return;
-      d.lastX = e.clientX;
-      d.lastY = e.clientY;
-      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_THRESHOLD) return;
-      if (!d.moved) {
-        d.moved = true;
-        takeOverViewport(); // 拖块 = 手动接管视口（否则在途定位飞行跟手抢 pan）
-        setDraggingId(d.id);
-        setDragSource({ sessionId: d.sessionId, wasFlow: d.wasFlow });
-        setBandSessionId(d.sessionId ?? null);
-        // 眉批 instant 族：首动即建钉（携带预览 = 孤儿钉跟手，眉批位同帧
-        // 换「已移出」占位）——撕出批注的揭起手感，与抽纸条 lift mask 同族。
-        if (d.instant) {
-          const rect = canvasRef.current?.getBoundingClientRect();
-          if (rect) {
-            const w = screenToWorld(useCanvasViewStore.getState().view, d.lastX - rect.left, d.lastY - rect.top);
-            commitPinned(d.sessionId, d.id, { x: w.x - d.offX, y: w.y - d.offY }, d.block);
-          }
+      d.lastX = ds.x;
+      d.lastY = ds.y;
+      d.moved = true;
+      takeOverViewport(); // 拖块 = 手动接管视口（否则在途定位飞行跟手抢 pan）
+      setDraggingId(d.id);
+      setDragSource({ sessionId: d.sessionId, wasFlow: d.wasFlow });
+      setBandSessionId(d.sessionId ?? null);
+      // 眉批 instant 族：首动即建钉（携带预览 = 孤儿钉跟手，眉批位同帧换「已移出」占位）
+      if (d.instant) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (rect) {
+          const w = screenToWorld(useCanvasViewStore.getState().view, d.lastX - rect.left, d.lastY - rect.top);
+          commitPinned(d.sessionId, d.id, { x: w.x - d.offX, y: w.y - d.offY }, d.block);
         }
-        // 指针贴四缘 → 视口每帧自动平移（指针静止在带内也滚）；平移后同帧复位块影
-        startEdgeScroll(() => {
-          const cur = dragRef.current;
-          if (!cur?.moved) return null; // 手势已收 → 循环自然停摆
-          return { x: cur.lastX, y: cur.lastY, afterPan: () => syncPreview(cur) };
-        });
       }
+      // 指针贴四缘 → 视口每帧自动平移（指针静止在带内也滚）；平移后同帧复位块影
+      startEdgeScroll(() => {
+        const cur = dragRef.current;
+        if (!cur?.moved) return null; // 手势已收 → 循环自然停摆
+        return { x: cur.lastX, y: cur.lastY, afterPan: () => syncPreview(cur) };
+      });
+    },
+    onMove: (_e, ds) => {
+      const d = dragRef.current;
+      if (!d) return;
+      d.lastX = ds.x;
+      d.lastY = ds.y;
       syncPreview(d);
-    };
-    const up = (e: MouseEvent) => {
+    },
+    onEnd: (_e, ds) => {
       const d = dragRef.current;
       dragRef.current = null;
       stopEdgeScroll(); // 收手势：撤边缘滚动帧循环
@@ -256,7 +230,7 @@ export function usePaperDrag(params: {
       if (!rect) return;
       // 落点读 store 现值 view：边缘滚屏的最后一帧 pan 未必已进闭包快照——
       // 落点与块影（上一帧按现值算的预览位）必须同一把尺子，否则钉跳位。
-      const w = screenToWorld(useCanvasViewStore.getState().view, e.clientX - rect.left, e.clientY - rect.top);
+      const w = screenToWorld(useCanvasViewStore.getState().view, ds.x - rect.left, ds.y - rect.top);
       const fx = w.x - d.offX;
       const fy = w.y - d.offY;
       const region = d.sessionId ? regionsRef.current.find((r) => r.sessionId === d.sessionId) : undefined;
@@ -272,43 +246,16 @@ export function usePaperDrag(params: {
       commitPinned(d.sessionId, d.id, { x: fx, y: fy }, d.block);
       if (!d.instant) {
         /* 落定「按下」那一拍（pp-settle-pin）住在块元素上，播完即摘——不再用 400 估。
-         * 元素由 blockRootRef 代理（块层是 ref 池），miss 时留兜底：600ms 后照摘。 */
+         * 元素由 canvasRef 查（块层在画布内），miss 时留兜底窗：.pp-settle 会照摘。 */
         setSettleId(d.id);
         const el = canvasRef.current?.querySelector(`[data-block-id="${d.id}"]`);
         if (el) waitMotionEnd(el, () => setSettleId((cur) => (cur === d.id ? null : cur)));
         else window.setTimeout(() => setSettleId((cur) => (cur === d.id ? null : cur)), MOTION_END_FALLBACK_MS);
       }
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-      stopEdgeScroll();
-    };
-    /* ⚠ 依赖表刻意不含 view：平移每帧换值 → 每帧重建 effect（监听器拆装 +
-     *  滚屏循环被 cleanup 掐断）。本域一律读 store 现值 view（见 syncPreview
-     *  注）——与视口域「拖拽回调零依赖稳定」同源纪律。 */
-  }, [
-    commitPinned,
-    canvasRef,
-    regionsRef,
-    takeOverViewport,
-    startEdgeScroll,
-    stopEdgeScroll,
-    setDraggingId,
-    setDragPos,
-    setDragSource,
-    setBandSessionId,
-    setSettleId,
-  ]);
-
-  /* 失联即收（2026-10-29）：窗口失焦 / 页面隐藏 / 指针离开文档 ⇒ 手势取消
-   * （docs/landmine-map.md V2「未修的一半」：帧循环早已停，手势态却留在在途——
-   * 拖块停在拖拽态之外，更阴的是 in-flight ref 会静默吞掉下一次抽纸条）。
-   * instant 族（眉批撕出）首动已建钉 ⇒ 取消端拔钉还原占位（与 up 的回槽端同语义）。 */
-  useLostFocusCancel(
-    useCallback(() => {
+    },
+    /* 失联即收（2026-10-29 的原语义，现在由核心统一触发）：instant 族首动已建钉 ⇒
+     * 取消端拔钉还原占位（与 onEnd 的回槽端同语义）。 */
+    onCancel: () => {
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
@@ -318,7 +265,44 @@ export function usePaperDrag(params: {
       setBandSessionId(null);
       setDragPos(null);
       if (d.instant) commitPinned(d.sessionId, d.id, null);
-    }, [stopEdgeScroll, setDraggingId, setDragSource, setBandSessionId, setDragPos, commitPinned]),
+    },
+  });
+
+  const onBlockPointerDown = useCallback(
+    (e: React.PointerEvent, block: SourcedBlock) => {
+      if (e.button !== 0) return;
+      e.stopPropagation(); // 不触发画布平移/流区激活
+      e.preventDefault();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const sessionId = blockSessionRef.current.get(block.id);
+      const region = sessionId ? regionsRef.current.find((r) => r.sessionId === sessionId) : undefined;
+      const v = viewRef.current;
+      const w = screenToWorld(v, e.clientX - rect.left, e.clientY - rect.top);
+      const lay = region?.layout;
+      const rx = block.state === 'flow' ? (lay?.get(block.id)?.x ?? block.x) : block.x;
+      const ry = block.state === 'flow' ? (lay?.get(block.id)?.y ?? block.y) : block.y;
+      dragRef.current = {
+        id: block.id,
+        sessionId,
+        sx: e.clientX,
+        sy: e.clientY,
+        moved: false,
+        wasFlow: block.state === 'flow',
+        instant: false, // 整块拖出 = 松手定夺（纯预览 → 带外落钉/带内取消）
+        bw: block.w,
+        offX: w.x - rx,
+        offY: w.y - ry,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        ox: rx,
+        oy: ry,
+        lastPos: null,
+        block,
+      };
+      gesture.begin(e);
+    },
+    [canvasRef, viewRef, regionsRef, blockSessionRef, gesture],
   );
 
   /* 收回（即时手势，双向对称）：钉从纸上拔掉（回到流/或孤儿钉直接消失） */
@@ -340,8 +324,8 @@ export function usePaperDrag(params: {
    * 锚在眉批栏世界位），流内眉批位同帧换「已移出」占位（sidecarOutOf），
    * 拖回流带松手 = 取消（占位还原）；快照仍是拷贝语义公共物。
    * 点击（未过阈值）= 无操作，与整块拖拽一致。 ── */
-  const onSidecarPinMouseDown = useCallback(
-    (e: React.MouseEvent, block: SourcedBlock) => {
+  const onSidecarPinPointerDown = useCallback(
+    (e: React.PointerEvent, block: SourcedBlock) => {
       if (e.button !== 0) return;
       e.stopPropagation();
       e.preventDefault();
@@ -387,8 +371,9 @@ export function usePaperDrag(params: {
           source: block.source,
         },
       };
+      gesture.begin(e);
     },
-    [canvasRef, viewRef, blockSessionRef],
+    [canvasRef, viewRef, blockSessionRef, gesture],
   );
 
   /* ── 架上签条拖出钉（2026-09-23 图版架丙案 §9.5 手势②）────────────────────
@@ -398,8 +383,8 @@ export function usePaperDrag(params: {
    * 取消端语义不变：落回起拖锚附近（回槽判据据**来源原位**量，此处来源 = 架上
    * 那张签条）＝ 不落钉、签条留架。落钉 = `commitPinned`（快照 + 活引用源）⇒
    * `state === 'pinned'` ⇒ 架内一条判据当场把这张签条摘掉（D4「钉出去 = 拿出来」）。 */
-  const onRackPinMouseDown = useCallback(
-    (e: React.MouseEvent, block: SourcedBlock) => {
+  const onRackPinPointerDown = useCallback(
+    (e: React.PointerEvent, block: SourcedBlock) => {
       if (e.button !== 0) return;
       e.stopPropagation();
       e.preventDefault();
@@ -427,8 +412,9 @@ export function usePaperDrag(params: {
         lastPos: null,
         block,
       };
+      gesture.begin(e);
     },
-    [canvasRef, viewRef, blockSessionRef],
+    [canvasRef, viewRef, blockSessionRef, gesture],
   );
 
   /* ── 钉住可发现性（一次性眉批，2026-09-05）：有摊开卷且从未提示过 →
@@ -457,12 +443,12 @@ export function usePaperDrag(params: {
 
   return {
     dragRef,
-    onBlockMouseDown,
+    onBlockPointerDown,
     onUnpin,
     onGhostClick,
     onSidecarRestore,
-    onSidecarPinMouseDown,
-    onRackPinMouseDown,
+    onSidecarPinPointerDown,
+    onRackPinPointerDown,
     pinHint,
   };
 }

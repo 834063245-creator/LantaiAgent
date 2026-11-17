@@ -48,7 +48,7 @@ export interface BlockRendererProps {
   /** 眉批折叠切换（壳层 foldOv 持久，key = `${block.id}:sc`） */
   onToggleSidecarFold?: (block: SourcedBlock) => void;
   /** 眉批拖出钉画布（移出语义：首动建钉跟手，快照从眉批栏原位揭起） */
-  onSidecarPinMouseDown?: (e: React.MouseEvent, block: SourcedBlock) => void;
+  onSidecarPinPointerDown?: (e: React.PointerEvent, block: SourcedBlock) => void;
   /** 眉批已钉出（2026-08-31 移出语义）：`:sc` 快照钉在画布上——体渲染换
    *  「已移出·点击恢复」占位（替代夹注全文/折叠钮/钉手柄）。 */
   sidecarOut?: boolean;

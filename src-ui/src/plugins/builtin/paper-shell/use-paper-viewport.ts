@@ -30,6 +30,7 @@ import {
   zoomAt,
 } from './host';
 import { panForAnchor } from './landing';
+import { claimPointer } from './pointer-claims';
 import { injectPaperTokens } from './type-tokens';
 import type { PaperCore } from './use-paper-sessions';
 import { isEditableSurface } from './use-paper-strips';
@@ -254,6 +255,8 @@ export function usePaperViewport(core: PaperCore | null) {
 
   /* ── 交互：平移 / 缩放 ── */
   const panningRef = useRef<{ lastX: number; lastY: number } | null>(null);
+  /** 平移手势的指针所有权认领（plan §2.3）：起手记账、松手/失联释放。 */
+  const panReleaseRef = useRef<(() => void) | null>(null);
   const [panning, setPanning] = useState(false);
   /* 焦点飞行载体（use-paper-focus / glide 消费——wheel 与手动拖拽抢占飞行）。 */
   const focusRafRef = useRef(0);
@@ -414,8 +417,8 @@ export function usePaperViewport(core: PaperCore | null) {
     return () => window.removeEventListener('keydown', onKey);
   }, [setView, landingAnchor]);
 
-  const onCanvasMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const onCanvasPointerDown = useCallback(
+    (e: React.PointerEvent) => {
       if (e.button !== 0) return;
       /* **点纸外面 = 焦点离开纸**（2026-11-17 多纸改判）：纸留着，坞回来。
        *
@@ -442,6 +445,14 @@ export function usePaperViewport(core: PaperCore | null) {
       // 先跑，激活与平移并存。
       const onEmpty = t === e.currentTarget || t.classList.contains('pp-world') || t.classList.contains('pp-region');
       if (!onEmpty) return;
+      /* 指针所有权裁决（2026-11-17 交互原语批 C4 / plan §2.3）：**有手势在途就让路**。
+       * 病灶：这一句 preventDefault 是平移手势的正确实现，但它同时是全局副作用——
+       * 它不知道上面还浮着谁。于是每个浮层都要自己打「怎么不被吃掉」的补丁，同类
+       * 复发 5 次。现在改由手势自己记账（claimPointer）：画布**开账即认领**，高层手势
+       * 起手时先判 pointerClaimed() 并拒绝起手（见各域 begin 前的判据）。 */
+      const releasePan = claimPointer();
+      panReleaseRef.current?.();
+      panReleaseRef.current = releasePan;
       e.preventDefault();
       // 用户拖拽 = 手动接管视口：取消在途定位动画（否则动画会跟手抢 pan）
       if (focusRafRef.current) {
@@ -473,7 +484,7 @@ export function usePaperViewport(core: PaperCore | null) {
       pendY = 0;
       if (dx !== 0 || dy !== 0) setView((v) => panBy(v, dx, dy));
     };
-    const move = (e: MouseEvent) => {
+    const move = (e: PointerEvent) => {
       const p = panningRef.current;
       if (!p) return;
       pendX += e.clientX - p.lastX;
@@ -484,7 +495,7 @@ export function usePaperViewport(core: PaperCore | null) {
     };
     const up = () => {
       // ⚠ 必须清 panningRef：move 以 ref 判手势在途——不清则松手后任意
-      // mousemove 继续拖画布（2026-09-06 前只清 state 没清 ref，真机病根之一）。
+      // pointermove 继续拖画布（2026-09-06 前只清 state 没清 ref，真机病根之一）。
       panningRef.current = null;
       if (raf) {
         cancelAnimationFrame(raf);
@@ -492,12 +503,16 @@ export function usePaperViewport(core: PaperCore | null) {
       }
       flush(); // 松手把尾巴增量落完，视角精确停在指针下
       setPanning(false);
+      panReleaseRef.current?.();
+      panReleaseRef.current = null;
     };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
     return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
       if (raf) cancelAnimationFrame(raf);
     };
   }, [panning, setView]);
@@ -557,7 +572,7 @@ export function usePaperViewport(core: PaperCore | null) {
       });
     };
 
-    const down = (e: MouseEvent): void => {
+    const down = (e: PointerEvent): void => {
       if (e.button !== 0) return;
       const canvasEl = canvasRef.current;
       const t = e.target instanceof Element ? e.target : null;
@@ -573,7 +588,7 @@ export function usePaperViewport(core: PaperCore | null) {
       if (t.closest('button, a, summary, .pp-kind, .pp-resize') || isEditableSurface(t)) return;
       selDragRef.current = { x: e.clientX, y: e.clientY, keepAlive: null };
     };
-    const move = (e: MouseEvent): void => {
+    const move = (e: PointerEvent): void => {
       const g = selDragRef.current;
       if (!g) return;
       g.x = e.clientX;
@@ -585,13 +600,13 @@ export function usePaperViewport(core: PaperCore | null) {
       selDragRef.current = null;
       stopEdgeScroll();
     };
-    window.addEventListener('mousedown', down, true);
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
     return () => {
-      window.removeEventListener('mousedown', down, true);
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
+      window.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
       stopEdgeScroll();
     };
   }, [startEdgeScroll, stopEdgeScroll]);
@@ -617,6 +632,6 @@ export function usePaperViewport(core: PaperCore | null) {
     resetZoom,
     focusRafRef,
     focusFlightRef,
-    onCanvasMouseDown,
+    onCanvasPointerDown,
   };
 }

@@ -305,7 +305,7 @@ export function useHoverEdgeScroll(canvasRef: MutableRefObject<HTMLElement | nul
     };
 
     /** 指针此刻是否**可滚**（判据 = hoverEdgeEligible，与考官共用同一函数）。 */
-    const eligible = (e: MouseEvent): boolean =>
+    const eligible = (e: PointerEvent): boolean =>
       hoverEdgeEligible({
         target: e.target instanceof Element ? e.target : null,
         canvas: canvasRef.current,
@@ -327,7 +327,7 @@ export function useHoverEdgeScroll(canvasRef: MutableRefObject<HTMLElement | nul
       });
     };
 
-    const move = (e: MouseEvent): void => {
+    const move = (e: PointerEvent): void => {
       if (!eligible(e)) {
         ptrRef.current = null;
         disarm();
@@ -357,13 +357,13 @@ export function useHoverEdgeScroll(canvasRef: MutableRefObject<HTMLElement | nul
     const down = (): void => disarm();
     const leave = (): void => disarm();
 
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mousedown', down, true);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerdown', down, true);
     document.addEventListener('mouseleave', leave);
     window.addEventListener('blur', leave);
     return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mousedown', down, true);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerdown', down, true);
       document.removeEventListener('mouseleave', leave);
       window.removeEventListener('blur', leave);
       disarm();

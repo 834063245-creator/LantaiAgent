@@ -16,7 +16,7 @@
 // 全部是 PaperPanel 的 P2-3 缓存原样下发，引用稳定纪律不破），
 // PaperDockContext 补 glideTo（无目标卷视口飞行——小地图点击跳转）。
 
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { createContext, useContext } from 'react';
 import type { SourcedBlock } from './block-model';
 import type { InkCache } from './ink';
@@ -46,7 +46,7 @@ export interface PaperDockContextValue {
    *  - `dragBlockOut`：架上签条按住拖出 = **复用既有钉手势**（use-paper-drag 的
    *    D-R2-1 路径：跟手预览 → 松手定夺，纸上落钉 = 公共物）。 */
   expandBlock?: (blockId: string) => void;
-  dragBlockOut?: (e: ReactMouseEvent, block: SourcedBlock) => void;
+  dragBlockOut?: (e: ReactPointerEvent, block: SourcedBlock) => void;
 }
 
 /** 目次带消费的高频上下文（流区派生几何）。 */

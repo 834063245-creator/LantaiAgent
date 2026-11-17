@@ -276,7 +276,9 @@ function PaperView({
               core?.focusDraft?.(paperId);
             },
           })}
-      onMouseDown={() => {
+      /* 2026-11-17 批 C3：纸内换焦点与「点纸外交回焦点」必须**同一事件面**——
+       * 画布侧已改 pointerdown，这里若留 mousedown，点非焦点纸会先交回卷、再换回纸。 */
+      onPointerDown={() => {
         if (!focused) core?.focusDraft?.(paperId);
       }}
       style={
