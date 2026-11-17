@@ -10,7 +10,7 @@
 //   ② **只点不拖不落盘**：单击坞体不该把已存坞位当「无覆盖」清掉；
 //   ③ 拖动期全页禁选类的挂/摘成对（`pp-composer-dragging`）。
 
-import { act, createElement, useRef } from 'react';
+import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useComposerFloat } from '../src/plugins/builtin/paper-shell/use-composer-float';
