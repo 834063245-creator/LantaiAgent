@@ -327,15 +327,22 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     canvas.className = 'pp-canvas';
     container!.appendChild(canvas);
     const main = container!.querySelector('.sr-spine-main') as HTMLElement;
+    /* 2026-11-17 批 C3 · 6/9：书脊拖落收编进 useDragGesture，抬手面换成 pointer 事件
+     * （核心要 setPointerCapture）——判据与断言原样。 */
+    const pointer = (target: EventTarget, type: string, x: number, y: number): void => {
+      const ev = new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y });
+      Object.defineProperty(ev, 'pointerId', { value: 1 });
+      target.dispatchEvent(ev);
+    };
     act(() => {
-      main.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
+      pointer(main, 'pointerdown', 10, 10);
     });
     act(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 20 }));
+      pointer(window, 'pointermove', 60, 20);
     });
     expect(container!.querySelector('.sr-drag-ghost')).not.toBeNull(); // 幽灵预览
     act(() => {
-      window.dispatchEvent(new MouseEvent('mouseup', { clientX: 2600, clientY: 30 }));
+      pointer(window, 'pointerup', 2600, 30);
     });
     // 世界 x=2600 空位（无重叠）→ 拖到哪落哪（P6 区间模型，不吸附）；y=用户落点 30
     expect(getCanvasStore('sr-t7').getState().spread['1']).toEqual({

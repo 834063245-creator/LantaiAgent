@@ -44,6 +44,7 @@
 
 import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { volumeDisplayName } from '../../../state/volume-name';
+import { useDragGesture } from '../paper-shell/use-drag-gesture';
 import {
   activeSpace,
   agentSessionState,
@@ -391,42 +392,42 @@ export const SpineRack = memo(function SpineRack() {
   const dragRef = useRef<{ id: number; sx: number; sy: number; moved: boolean } | null>(null);
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
 
-  const onSpineMouseDown = useCallback((e: React.MouseEvent, id: number) => {
-    if (e.button !== 0) return;
-    dragRef.current = { id, sx: e.clientX, sy: e.clientY, moved: false };
-  }, []);
-
-  useEffect(() => {
-    const move = (e: MouseEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
-      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_THRESHOLD) return;
-      d.moved = true;
-      setGhost({ x: e.clientX, y: e.clientY });
-    };
-    const up = (e: MouseEvent) => {
-      const d = dragRef.current;
-      dragRef.current = null;
+  /* 拖动骨架（2026-11-17 交互原语批 C3 · 6/9）：阈值 / 失联即收 / Esc 全交给核心——
+   * 这一份此前同样没接「失联即收」，窗外松手会让 ghost 停在屏上。 */
+  const dragGesture = useDragGesture({
+    threshold: DRAG_THRESHOLD,
+    onStart: (_e, d) => setGhost({ x: d.x, y: d.y }),
+    onMove: (_e, d) => setGhost({ x: d.x, y: d.y }),
+    onEnd: (_e, d) => {
       setGhost(null);
-      if (!d?.moved || !core) return;
+      const cur = dragRef.current;
+      dragRef.current = null;
+      if (!cur || !core) return;
       // 画布坐标换算：读 .pp-canvas 的视口 rect（只读坐标，不建游离 DOM——
       // 书脊是 DockPanel 上层覆盖，跨组件取坐标是 ponytail 例外）。
       const rect = document.querySelector('.pp-canvas')?.getBoundingClientRect();
       if (!rect) return;
       const v = useCanvasViewStore.getState().view;
-      const w = screenToWorld(v, e.clientX - rect.left, e.clientY - rect.top);
+      const w = screenToWorld(v, d.x - rect.left, d.y - rect.top);
       const space = activeSpace();
       const regions = space?.getState().regions ?? [];
-      const anchor = pickDropAnchor(regions, String(d.id), w.x, w.y);
-      space?.place(String(d.id), anchor.anchorX, anchor.anchorY);
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-    };
-  }, [core]);
+      const anchor = pickDropAnchor(regions, String(cur.id), w.x, w.y);
+      space?.place(String(cur.id), anchor.anchorX, anchor.anchorY);
+    },
+    onCancel: () => {
+      dragRef.current = null;
+      setGhost(null);
+    },
+  });
+
+  const onSpinePointerDown = useCallback(
+    (e: React.PointerEvent, id: number) => {
+      if (e.button !== 0) return;
+      dragRef.current = { id, sx: e.clientX, sy: e.clientY, moved: false };
+      dragGesture.begin(e);
+    },
+    [dragGesture],
+  );
 
   /* ── 手势 3：hover 小卡合卷（收起，数据保留 + 自动存）── */
   const onClose = useCallback(
@@ -483,7 +484,7 @@ export const SpineRack = memo(function SpineRack() {
                     onLocate(s.id);
                   }
                 }}
-                onMouseDown={(e) => onSpineMouseDown(e, s.id)}
+                onPointerDown={(e) => onSpinePointerDown(e, s.id)}
                 onMouseEnter={(e) => openCard(s, e.currentTarget)}
                 onFocus={(e) => openCard(s, e.currentTarget)}
               >
