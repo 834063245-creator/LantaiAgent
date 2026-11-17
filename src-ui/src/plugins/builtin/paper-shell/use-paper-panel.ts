@@ -515,7 +515,7 @@ export function usePaperPanelAssembly() {
     setSettleId,
   });
 
-  const { resizeRef, resizePreview, onResizeMouseDown } = usePinStripResize({ core, canvasRef, viewRef });
+  const { resizeRef, resizePreview, onResizePointerDown } = usePinStripResize({ core, canvasRef, viewRef });
 
   /* ── 空间手势立枝（P4-①，2026-09-19）──
    * 按住块上的「枝」握把拖出一条引线、松手落在纸上 = 就地立枝（枝卷落在落点）。
@@ -822,7 +822,7 @@ export function usePaperPanelAssembly() {
     dockTether,
     activateRegion,
     onRegionCornerMouseDown,
-    onResizeMouseDown,
+    onResizePointerDown,
     branchGrips,
     onBranchGripPointerDown,
   };

@@ -177,7 +177,7 @@ export function PaperPanel() {
     dockTether,
     activateRegion,
     onRegionCornerMouseDown,
-    onResizeMouseDown,
+    onResizePointerDown,
     branchGrips,
     onBranchGripPointerDown,
   } = usePaperPanelAssembly();
@@ -489,8 +489,7 @@ export function PaperPanel() {
                         不渲染，不编造来路）。 */}
                     {s.source?.label && <div className="pp-strip-src">摘自 {s.source.label}</div>}
                     {/* P2b 宽度手调面（右缘拖拽） */}
-                    {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
-                    <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, s.id, 'strip', s.w)} />
+                    <div className="pp-resize" onPointerDown={(e) => onResizePointerDown(e, s.id, 'strip', s.w)} />
                   </div>
                 );
               })}
@@ -569,8 +568,7 @@ export function PaperPanel() {
                       onProvClick={onProvTrace}
                     />
                     {/* P2b 宽度手调面（右缘拖拽） */}
-                    {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
-                    <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, pinId, 'pin', pin.w)} />
+                    <div className="pp-resize" onPointerDown={(e) => onResizePointerDown(e, pinId, 'pin', pin.w)} />
                   </div>
                 );
               })}
@@ -722,8 +720,7 @@ export function PaperPanel() {
                           onProvClick={onProvTrace}
                         />
                         {/* P2b 宽度手调面（右缘拖拽） */}
-                        {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
-                        <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, b.id, 'pin', b.w)} />
+                        <div className="pp-resize" onPointerDown={(e) => onResizePointerDown(e, b.id, 'pin', b.w)} />
                       </div>
                     </Fragment>
                   );
