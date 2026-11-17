@@ -16,12 +16,14 @@
 // 崩溃隔离：帧体包 PluginBoundary（宿主渲染面自保——iframe 内容异常天然隔离
 // 在独立 document，到不了宿主）。
 //
-// 拖拽（floating）：书眉 mousedown → document 级 mousemove/mouseup（快速
-// 拖出书眉不断线——PaperPanel panningRef 同款 document 监听纪律）；
-// 位置经 store moveWindow 写回（视口边界夹持——书眉恒可达）。帧内指针
-// 事件 stopPropagation：不向画布底座漏（pan 抢占防线第二道）。
+// 拖拽（floating）：书眉 pointerdown → `useDragGesture`（2026-11-17 交互原语批 C3 · 4/9）。
+// 换 pointer 的好处在这里最实在：**指针拖出窗口仍然收得到**——旧实现靠
+// document 级 mousemove 硬扛（快速拖出书眉会断线），现在 `setPointerCapture`
+// 把事件锁在书眉上，出窗照跟。位置经 store moveWindow 写回（视口边界夹持——
+// 书眉恒可达）。帧内指针事件 stopPropagation：不向画布底座漏（pan 抢占防线第二道）。
 
-import { type MouseEvent as ReactMouseEvent, useEffect, useRef } from 'react';
+import { type PointerEvent as ReactPointerEvent, useEffect, useRef } from 'react';
+import { useDragGesture } from '../../plugins/builtin/paper-shell/use-drag-gesture';
 import { bindBridgeWindow, postBridgeEvent, unbindBridgeWindow } from '../../plugins/window-bridge';
 import { closePluginWindow, focusPluginWindow } from '../../plugins/window-facility';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../../state/plugin-window-store';
@@ -66,7 +68,26 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
 
   const stop = (e: { stopPropagation(): void }) => e.stopPropagation();
 
-  const onTitleMouseDown = (e: ReactMouseEvent) => {
+  /** 拖动期夹持：书眉恒可达（窗口最多缩到 120×48 露在屏上）。 */
+  const winDrag = useDragGesture({
+    onMove: (_e, d) => {
+      const off = dragRef.current;
+      if (!off) return;
+      const maxX = Math.max(0, window.innerWidth - 120);
+      const maxY = Math.max(0, window.innerHeight - 48);
+      const x = Math.min(Math.max(0, d.x - off.offX), maxX);
+      const y = Math.min(Math.max(0, d.y - off.offY), maxY);
+      usePluginWindowStore.getState().moveWindow(instance.windowId, x, y);
+    },
+    onEnd: () => {
+      dragRef.current = null;
+    },
+    onCancel: () => {
+      dragRef.current = null;
+    },
+  });
+
+  const onTitlePointerDown = (e: ReactPointerEvent) => {
     stop(e);
     focusPluginWindow(instance.windowId);
     if (instance.mode !== 'floating') return;
@@ -77,22 +98,7 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
      * 掐掉它的 mousedown 默认就是掐掉它的取焦，闸门不拦自己人。 */
     if (!isTopbarInteractiveTarget(e.target)) e.preventDefault();
     dragRef.current = { offX: e.clientX - instance.x, offY: e.clientY - instance.y };
-    const onMove = (ev: MouseEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
-      const maxX = Math.max(0, window.innerWidth - 120);
-      const maxY = Math.max(0, window.innerHeight - 48);
-      const x = Math.min(Math.max(0, ev.clientX - d.offX), maxX);
-      const y = Math.min(Math.max(0, ev.clientY - d.offY), maxY);
-      usePluginWindowStore.getState().moveWindow(instance.windowId, x, y);
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    winDrag.begin(e);
   };
 
   const modeClass = `pw-frame pw-frame-${instance.mode}`;
@@ -112,8 +118,9 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
     <div className={modeClass} style={style} onMouseDown={stop} onMouseUp={stop} onPointerDown={stop}>
       <PluginBoundary label={`插件窗 ${instance.windowId}`}>
         <div className="pw-frame-inner">
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: 书眉拖拽手柄（关窗有原生按钮） */}
-          <div className="pw-titlebar" onMouseDown={onTitleMouseDown}>
+          {/* 书眉拖拽手柄（关窗有原生按钮）——批 C3 起走 pointerdown，不再触发
+           *  noStaticElementInteractions（那条规则针对 onMouseDown 这类静态元素交互） */}
+          <div className="pw-titlebar" onPointerDown={onTitlePointerDown}>
             <span className="pw-title">{def.title}</span>
             <span className="pw-title-plugin">{instance.pluginName}</span>
             <button

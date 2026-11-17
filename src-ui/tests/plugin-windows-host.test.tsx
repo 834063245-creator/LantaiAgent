@@ -176,7 +176,15 @@ describe('S3 视口层：d) 不抢画布 pan（帧内指针事件不冒泡）+ f
     document.removeEventListener('mousedown', docSpy);
   });
 
-  it('书眉拖拽：mousedown → document mousemove 写回坐标（夹持）→ mouseup 收手', () => {
+  /** 派发一次指针事件（2026-11-17 批 C3：书眉拖拽改走 useDragGesture，抬手面是
+   *  pointer 事件；jsdom 没有 PointerEvent 构造器，补 pointerId 即可让 React 认）。 */
+  const pointer = (target: EventTarget, type: string, x: number, y: number): void => {
+    const ev = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+    Object.defineProperty(ev, 'pointerId', { value: 1 });
+    target.dispatchEvent(ev);
+  };
+
+  it('书眉拖拽：pointerdown → pointermove 写回坐标（夹持）→ pointerup 收手', () => {
     mountHost();
     act(() => {
       openPluginWindow('acme/notes');
@@ -185,23 +193,21 @@ describe('S3 视口层：d) 不抢画布 pan（帧内指针事件不冒泡）+ f
     const titlebar = document.body.querySelector<HTMLElement>('.pw-titlebar');
     // 按下书眉（焦点顺带抬升）
     act(() => {
-      titlebar?.dispatchEvent(
-        new MouseEvent('mousedown', { bubbles: true, clientX: before.x + 40, clientY: before.y + 12 }),
-      );
+      pointer(titlebar!, 'pointerdown', before.x + 40, before.y + 12);
     });
     const afterFocus = usePluginWindowStore.getState().windows[0];
     expect(afterFocus.z).toBeGreaterThan(before.z);
-    // 拖动：位移写回（off = 按下点 - 窗位；新位 = mouse - off）
+    // 拖动：位移写回（off = 按下点 - 窗位；新位 = 指针 - off）
     act(() => {
-      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 400, clientY: 300 }));
+      pointer(window, 'pointermove', 400, 300);
     });
     const afterMove = usePluginWindowStore.getState().windows[0];
     expect(afterMove.x).toBe(400 - 40); // 360
     expect(afterMove.y).toBe(300 - 12); // 288
     // 收手：后续 move 不再写回
     act(() => {
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 800, clientY: 600 }));
+      pointer(window, 'pointerup', 400, 300);
+      pointer(window, 'pointermove', 800, 600);
     });
     expect(usePluginWindowStore.getState().windows[0].x).toBe(360);
   });
