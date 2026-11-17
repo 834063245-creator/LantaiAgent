@@ -15,11 +15,11 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import { useEdgeAutoScroll } from './edge-scroll';
 import type { RegionView, SourcedBlock } from './host';
 import { ANCHOR, getCanvasStore, screenToWorld, snapshotFromBlock, useCanvasViewStore } from './host';
 import { MOTION_END_FALLBACK_MS, waitMotionEnd } from './motion-end';
-import { useDragGesture } from './use-drag-gesture';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击）——纸条拖拽同款（本域导出）。 */

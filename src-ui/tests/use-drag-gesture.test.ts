@@ -11,7 +11,7 @@
 import { act, createElement, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useDragGesture } from '../src/plugins/builtin/paper-shell/use-drag-gesture';
+import { useDragGesture } from '../src/app/interaction/use-drag-gesture';
 
 type Opts = Parameters<typeof useDragGesture>[0];
 

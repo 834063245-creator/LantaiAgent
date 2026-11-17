@@ -1,10 +1,8 @@
 # 交互原语收口（interaction primitive consolidation）
 
-> 状态：**In progress（2026-11-17 立项；同日复核修订后开工，见 §6 修订记录）**——**五批全部可施工**：
-> 创作坞 P6 拆解已于 2026-11-17 提交（`6f225ee0`，ComposerDock 1688 → 370 行），批 C 的前置条件解除。
+> 状态：**✅ Done（2026-11-17 立项 + 当日复核修订 + 当日五批全落地）**——结果与逐批 commit 见 §7。
 > 触发：2026-11-17 用户自查四问——「重复到第三遍的是什么」，交出 9 份手势 / 4 份外点 / 808 行跟库较劲。
-> 预计总量：**7–8 人日**（分批，见 §3）。
-> 拟增门禁：`src-ui/tests/interaction-primitive.test.ts`（形态对齐 `motion-contract.test.ts`）。
+> 门禁：`src-ui/tests/interaction-primitive.test.ts`（形态对齐 `motion-contract.test.ts`）**已落地**。
 
 ## 0. 要裁什么（结论在前）
 
@@ -204,6 +202,41 @@
 | E | 新门禁绿；故意写一处违规验证会红 |
 
 **统一门禁**：`npm run build` + `npx vitest run` + `npx biome ci .`（0/0）+ `npm run doc-check`。
+
+## 7. 结果（2026-11-17 收口）
+
+### 逐批落地
+
+| 批 | commit | 结果 |
+|---|---|---|
+| 复核修订 | 见本文件 §6 | 补例外清单、补 Overlay 遮罩第五处、批 E 断言改为三条可机械判定 |
+| A 外点关闭 | `6ae0d2dc` | `useOutsideClose` 落地，5 处收编（含 Overlay 遮罩）；+6 例 hook 语义 |
+| A 连带账 | `675e30e2` | 宿主面基线重生成（指纹 fc715abd）+ host-modules 体量登记 |
+| B 动效时序 | `1812d7c0` | `motion-end.ts` 落地；退场/落纸/落定三窗改听事件；+9 例 |
+| C1+C2 手势核心 | `44737c23` | `useDragGesture`（阈值 / 失联即收 / Esc / clamp / captured）+8 例 |
+| C3 收编 1-2 | `7a725a5f` `84bb37d3` | 立枝（判据换 `elementFromPoint`）、宽度手调（先验样本）+5 例 |
+| C3 收编 3-9 | `85f2cd9a` `788f37f8` `049970c6` `e2e6807d` `19bff5b6` `84c33455` | 流区、浮窗、创作坞、书脊、侧栏、拖块/拖纸条/眉批/架上签条 |
+| C4 指针所有权 | `84c33455` + `d7fe99be` | `pointer-claims.ts`；画布认领、手势让路 |
+| C5 例外判定 | `9aeeb04f` | 小地图**并入**（两态齐）；TocStrip / 拖选滚屏 / edge-scroll / resize-zones 登记为例外 |
+| D 卸库 | `436d99a1` + `82558c90` | ModelSelector 802 → 777 行，`@react-aria/*` 4 包退出依赖 |
+| E 守卫 | `9ace5591` | `interaction-primitive.test.ts` 6 例（E1/E1b/E2/E3 + 反证） |
+
+### 数字（实测）
+
+- **手势**：9 份 → 1 份核心。全库 `addEventListener('mousemove'|'mouseup'|'mousedown')`
+  从 18 个文件 / 19 处 → **0 处**（只剩手势核心与 8 条登记例外，全部走 pointer 事件）。
+- **外点关闭**：4 处手写 + 1 处 JSX → 1 处（`overlay.tsx`）。E2 守卫钉死。
+- **动效时序**：`transitionend`/`animationend` 从 0 处 → 3 个窗全部事件驱动
+  （退场 / 落纸落墨 / 落定），`setTimeout` 毫秒字面量只在 6 个登记文件。
+- **ModelSelector**：808 行 + 4 包 + 30 条对抗注释 → 777 行 + 0 包 + 0 条。
+
+### 与预估的偏差
+
+- **批 C 的「两处待核实」变成四处**（复核补记），其中一处（小地图）判为并入而非例外。
+- **手势核心多长出两个能力位**：`cancelOnEscape`（原本各域各挂一条 window keydown）
+  与 `DragState.captured`（捕获面下 `e.target` 恒为捕获元素，落点判据要靠它选面）。
+- **批 D 不是纯本地改动**：`ModelSelector` 之外还牵连名册 `shared` 登记（批 C 让
+  canvas-nav / paper-minimap 的模块图伸进了手势核心）。
 
 ## 6. 修订记录
 

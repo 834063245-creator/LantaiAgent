@@ -40,7 +40,6 @@
 
 | 项 | 成本 | 说明 |
 |---|---|---|
-| **交互原语收口** | **施工中（2026-11-17 立项 + 同日复核修订后开工）**，分五批共 7–8 人日 | 拖拽手势 9 份各自收尾（`lost-focus` 只接 3/9）/ 外点关闭 4 份未收编进 `overlay.tsx` / 指针所有权（画布 `preventDefault` 吃掉浮层，同病灶复发 5 次）/ 动效时序改事件驱动（全库 0 处 `transitionend`）/ `ModelSelector` 卸库（808 行 + 4 包 + 30 条对抗注释）。**不引入任何动画或手势库**——[`interaction-primitive-plan.md`](interaction-primitive-plan.md) |
 | **code_execution 升级** | **P1-P5 ✅ 全部落地（2026-10-30）**；一批一 commit 串行施工 | 「code mode v1」补四条回路 + 一条展示面：**绑定目录进描述**（✅ 名字 + 派生签名 + 一条示例，读活注册表——取证发现域门面是构建期快照，装配期取会晚一次收敛）· **并发面**（✅ 按动作只读 + 键控写锁 + 排他闸，修描述里的假承诺；锁键按归一化绝对路径分片）· **错误面**（✅ `code`/`hint` 可分类，码在源头定）· **输出预算**（✅ 超限从「整段作废」改为「截断 + 标记」= 唯一故意规格变更）· **结构化完成值**（✅ P5：`return {__view:'table'|'diff',…}` → 纸面真表格/差分；视图从完成值段文本投影，模型面只多一句描述）。类型检查器 / 读面批量 / 基座硬化 / 暂停等审批**挂起**（理由在文内，附业界横向对账 §11）——[`code-execution-upgrade-plan.md`](code-execution-upgrade-plan.md) |
 | **pretext 排版引擎** | P1-P5 全竣工 + P4c 远景三档；**余 P2a 对齐环未开工**（方向 A\|B 未定 ⇒ 待排期） | 从高度计算器升级为纸面排版引擎（lift 遮罩 / rich-inline 精确测量 / 来文变宽纸条 / 缩远墨迹 LOD 与小地图真墨）——[`pretext-typography-plan.md`](pretext-typography-plan.md) |
 | **日志可观测性（失败可见 P0）** | 批 0–4 **已落地**（批 1/2 = 2026-09-27：`06fadbe2` + `bf4c910b`；批 3/4 = 2026-10-12：级别开关 + 健康度 + 前情缓冲 + Rust 出网留痕 + **轮转/保留窗口** + **设置页「诊断」签（级别开关 UI + 诊断包导出）**）；验收默认通过（2026-10-28 口径） | 消灭「失败默认无痕」：事件门面 `agent/obs.ts`（唯一脱敏审查点）+ 用户可见失败唯一漏斗 + 五条接缝（boot / config.load / cred / llm / turn.failed）插桩 + `logger.ts` 的级别过滤（默认 info，**debug 进内存前情缓冲，失败时自动连现场落盘**——用户不必记得开开关）与丢条补偿；三份日志同规轮转（8 MiB / 保 2 代，失败不静默）；诊断包导出（单文件，带可信度段：通道可用性/断档/丢条/字段来源标签）。规格 [`../design/log-observability-spec.md`](../design/log-observability-spec.md)，计划与事故取证 [`log-observability-plan.md`](log-observability-plan.md)（触发 = 2026-09-27 用户报本地模型调不动，其 log 对该故障的可答信息 0 条） |
@@ -72,6 +71,14 @@
 | 开发侧自测 | 运行看门狗真机复现（临时压阈值 + 假 provider，取 `ui.log` 两条 `log.warn`） | [`../landmine-map.md`](../landmine-map.md) L3——**唯一仍算开发侧欠账的一行**，不占用户时间 |
 
 ## 已完成并归档（点名即可，详情勿读）
+
+**2026-11-17 竣工**：**交互原语收口**（[`interaction-primitive-plan.md`](interaction-primitive-plan.md)）
+——五批当日全落地：外点关闭 5 处收进 `useOutsideClose`（与 Escape 同门）· 动效三窗改听
+`transitionend`/`animationend`（全库从 0 处到 3 窗）· 9 份拖拽手势收进 `useDragGesture`
+（`setPointerCapture` + 失联即收 + Esc，全库 `addEventListener('mousemove'…)` 归零）·
+指针所有权改模块级账（`claimPointer`）· `ModelSelector` 卸掉 4 个 react-aria 包
+（808 → 777 行、30 条对抗注释归零）。守卫 `tests/interaction-primitive.test.ts`
+（E1 注册点登记 / E2 外点唯一实现 / E3 超时字面量）已落地。**不引入任何动画或手势库。**
 
 **2026-10-31 竣工**：**卷名自动命名 A/C/B**（[`volume-naming-plan.md`](../archive/volume-naming-plan.md)）——派生清洗（换行 / 排版壳 / 代理对劈半）+ 名字来源标记（内存态 `derived`/`refined`/`user`）+ 一次旁路模型概括（复用 `callSummaryLLM`，usage 不入卷账）；命名真源、两个命名时点、改名钉死语义未动。
 

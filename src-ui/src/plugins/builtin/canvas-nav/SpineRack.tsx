@@ -43,8 +43,8 @@
 // 直连 token-meter 先例）。
 
 import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import { volumeDisplayName } from '../../../state/volume-name';
-import { useDragGesture } from '../paper-shell/use-drag-gesture';
 import {
   activeSpace,
   agentSessionState,

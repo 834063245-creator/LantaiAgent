@@ -12,9 +12,9 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useRef, useState } from 'react';
+import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import type { RegionView, StreamRegionState } from './host';
 import { clampRegionW, getCanvasStore, STREAM_REGION } from './host';
-import { useDragGesture } from './use-drag-gesture';
 import type { PaperCore } from './use-paper-sessions';
 
 /** 流区移位域（paper-panel-split C3，自 PaperPanel 977-1049 + 2135-2191 域内原样搬入）。 */

@@ -18,7 +18,7 @@
 
 // @vitest-environment node
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -39,7 +39,8 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 /** 源码里**注册指针/鼠标监听**的地方（只看 addEventListener 调用，不看注释）。 */
-const LISTENER_RE = /addEventListener\(\s*['"](?:mousedown|mousemove|mouseup|pointerdown|pointermove|pointerup|pointercancel)['"]/g;
+const LISTENER_RE =
+  /addEventListener\(\s*['"](?:mousedown|mousemove|mouseup|pointerdown|pointermove|pointerup|pointercancel)['"]/g;
 
 /** 去注释（块注释 + 行注释）——病灶史注释里点名 API 是留痕，不是使用。 */
 function stripComments(src: string): string {
@@ -54,7 +55,7 @@ const WITHOUT_COMMENTS = new Map(FILES.map((f) => [f.rel, stripComments(readFile
  * **新增一行 = 一次显式决策**（plan §3 批 E）。理由必须说得出「为什么它不能是手势核心」。
  */
 const LISTENER_REGISTRY: Record<string, string> = {
-  'src-ui/src/plugins/builtin/paper-shell/use-drag-gesture.ts':
+  'src-ui/src/app/interaction/use-drag-gesture.ts':
     '手势核心本体：setPointerCapture / 回退窗口监听都住在这里，其余全部经它',
   'src-ui/src/app/overlay.tsx': '外点关闭（useOutsideClose）与 Escape 的唯一实现',
   'src-ui/src/app/window-drag.ts': 'OS 标题栏拖动热区（另一范畴：原生窗口移动）',
@@ -160,9 +161,7 @@ describe('交互原语守卫（plan 批 E）', () => {
       const hasContains = /\.contains\(\s*(?:e|ev|event)\.target/.test(src);
       if (hasDocDown && hasContains) offenders.push(f.rel);
     }
-    expect(offenders, '外点关闭必须走 overlay.tsx 的 useOutsideClose（同一份实现、同一个 Escape 门）：').toEqual(
-      [],
-    );
+    expect(offenders, '外点关闭必须走 overlay.tsx 的 useOutsideClose（同一份实现、同一个 Escape 门）：').toEqual([]);
   });
 
   it('E3：setTimeout 的毫秒字面量只许出现在登记文件（交互面）', () => {

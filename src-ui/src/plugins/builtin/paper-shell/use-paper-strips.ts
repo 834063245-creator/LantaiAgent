@@ -19,12 +19,13 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLostFocusCancel } from '../../../app/interaction/lost-focus';
+import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import type { PaperStrip } from '../../../paper/selection-contract';
 import { volumeDisplayName } from '../../../state/volume-name';
 import { useEdgeAutoScroll } from './edge-scroll';
 import type { RegionView, SourcedBlock } from './host';
 import { ANCHOR, getCanvasStore, screenToWorld, useCanvasViewStore } from './host';
-import { useLostFocusCancel } from './lost-focus';
 import { MOTION_END_FALLBACK_MS, waitMotionEnd } from './motion-end';
 import { mergeSelectionLines, selInkPaths, selSeedOf } from './sel-ink';
 import {
@@ -38,7 +39,6 @@ import {
   stashStripBesideRight,
   stashStripPositionAt,
 } from './selection';
-import { useDragGesture } from './use-drag-gesture';
 import { DRAG_THRESHOLD } from './use-paper-drag';
 import type { PaperCore } from './use-paper-sessions';
 

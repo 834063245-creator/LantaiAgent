@@ -250,7 +250,6 @@ export function PaperPanel() {
             </svg>
           )}
 
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面 */}
           <div
             ref={canvasRef}
             /* `pp-live-hand` = 手律态（§15）：整区拖动 / 四角缩放中，块体随流区每帧
@@ -338,7 +337,6 @@ export function PaperPanel() {
                 const isRise = !leaving && rising;
                 const sheet = sheetCharacter(r.sessionId);
                 return (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: 流区是可点击交互面（点背景激活流区）
                   <div
                     key={r.sessionId}
                     className={`pp-region${isActive ? ' pp-region-active' : ''}${isSpread ? ' pp-spread' : ''}${
@@ -357,7 +355,9 @@ export function PaperPanel() {
                       } as CSSProperties
                     }
                     data-session-id={r.sessionId}
-                    onMouseDown={
+                    /* 2026-11-17 批 C：流区激活与画布平移同面（pointer 事件）——
+                     * 两件事都在冒泡面上判，混用鼠标/指针会让「按下就激活」偶发不触发。 */
+                    onPointerDown={
                       leaving
                         ? undefined
                         : (e) => {
@@ -456,7 +456,6 @@ export function PaperPanel() {
                 const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
                 const stripW = resizePreview?.id === s.id ? resizePreview.w : s.w;
                 return (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
                   <div
                     key={s.id}
                     className={`pp-strip${stripDragged ? ' pp-dragging' : ''}${settleId === s.id ? ' pp-settle' : ''}`}

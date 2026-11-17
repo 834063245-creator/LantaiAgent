@@ -14,7 +14,7 @@
 //   R3.5 浮动化：可拖动 + 滚轮缩放 + localStorage 记忆。
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useDragGesture } from '../paper-shell/use-drag-gesture';
+import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import {
   clampViewportFrame,
   inkBarsFor,

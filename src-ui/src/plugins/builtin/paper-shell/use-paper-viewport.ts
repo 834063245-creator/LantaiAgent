@@ -9,6 +9,7 @@
 // focusRafRef/focusFlightRef 载体。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { claimPointer } from '../../../app/interaction/pointer-claims';
 import { useEdgeAutoScroll, useHoverEdgeScroll } from './edge-scroll';
 import { createFocusFlightScheduler } from './focus-flight';
 import {
@@ -30,7 +31,6 @@ import {
   zoomAt,
 } from './host';
 import { panForAnchor } from './landing';
-import { claimPointer } from './pointer-claims';
 import { injectPaperTokens } from './type-tokens';
 import type { PaperCore } from './use-paper-sessions';
 import { isEditableSurface } from './use-paper-strips';

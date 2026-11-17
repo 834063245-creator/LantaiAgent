@@ -37,8 +37,8 @@
 // 真实例（store 单例不可内联副本），react 由构建期别名桥共享。
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import { isUnnamedVolumeLabel, volumeDisplayName } from '../../../state/volume-name';
-import { useDragGesture } from '../paper-shell/use-drag-gesture';
 import {
   activeSpace,
   agentSessionState,
@@ -1508,6 +1508,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
                 forest.families.map((fam) => {
                   const foldKey = famFoldKey(fam.root.id);
                   const isFolded = folded(foldKey);
+                  /* 字符串比较（时刻串按字典序即时间序）——**不要**改成 Math.max：biome 的
+                   * useMathMinMax 会把它"优化"成数值函数，而 savedAt 是 ISO 串。 */
                   const latest = fam.rows.reduce((acc, x) => ((x.savedAt || '') > acc ? x.savedAt || '' : acc), '');
                   return (
                     <div className="ss-fam" key={fam.root.id}>

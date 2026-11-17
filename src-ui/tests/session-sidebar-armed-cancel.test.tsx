@@ -36,6 +36,15 @@ import { getCanvasStore, resetCanvasStoresForTests } from '../src/state/canvas-s
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import { getChatStore } from '../src/ui/chat-store';
 
+/** 派发一次 pointer 事件（2026-11-17 批 C3：拖行手势收编进 useDragGesture，抬手面是
+ *  pointer 事件；jsdom 没有 PointerEvent 构造器，补 pointerId 即可让 React 认）。
+ *  **判据与断言不变**——只有「怎么把用户动作喂给组件」这一层换了面。 */
+function pointerEvt(type: string, init: MouseEventInit & { button?: number }): MouseEvent {
+  const ev = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
+  Object.defineProperty(ev, 'pointerId', { value: 1 });
+  return ev;
+}
+
 describe('案卷侧栏：删除武装期间「点其它处 = 取消」（不许把卷摊开）', () => {
   let container: HTMLDivElement;
   let root: Root | null = null;
@@ -240,13 +249,13 @@ describe('案卷侧栏：删除武装期间「点其它处 = 取消」（不许�
     container.appendChild(canvas);
     const closed = rowOf(2);
     act(() => {
-      closed.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
+      closed.dispatchEvent(pointerEvt('pointerdown', { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
     });
     act(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 40 }));
+      window.dispatchEvent(pointerEvt('pointermove', { clientX: 60, clientY: 40 }));
     });
     act(() => {
-      window.dispatchEvent(new MouseEvent('mouseup', { clientX: 5000, clientY: 30 }));
+      window.dispatchEvent(pointerEvt('pointerup', { clientX: 5000, clientY: 30 }));
     });
     expect(getCanvasStore(panelId).getState().spread['2']).toBeTruthy(); // 落位照常
     expect(load()).toHaveBeenCalledWith('', 2);

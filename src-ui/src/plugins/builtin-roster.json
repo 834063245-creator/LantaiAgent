@@ -80,7 +80,10 @@
       "paper/tool-text.ts",
       "paper/viewer-exts.ts",
       "state/volume-name.ts",
-      "ui/tool-semantics.ts"
+      "ui/tool-semantics.ts",
+      "app/interaction/lost-focus.ts",
+      "app/interaction/pointer-claims.ts",
+      "app/interaction/use-drag-gesture.ts"
     ],
     "face": true
   },
@@ -105,10 +108,10 @@
       "assets/paper/paper-fiber.jpg",
       "assets/paper/paper-grain.jpg",
       "state/volume-name.ts",
-      "plugins/builtin/paper-shell/use-drag-gesture.ts",
-      "plugins/builtin/paper-shell/lost-focus.ts",
-      "plugins/builtin/paper-shell/pointer-claims.ts",
-      "plugins/builtin/paper-shell/motion-end.ts"
+      "plugins/builtin/paper-shell/motion-end.ts",
+      "app/interaction/lost-focus.ts",
+      "app/interaction/pointer-claims.ts",
+      "app/interaction/use-drag-gesture.ts"
     ],
     "face": true
   },
@@ -130,10 +133,10 @@
     "hostModule": "host",
     "inject": ["overlays"],
     "shared": [
-      "plugins/builtin/paper-shell/use-drag-gesture.ts",
-      "plugins/builtin/paper-shell/lost-focus.ts",
-      "plugins/builtin/paper-shell/pointer-claims.ts",
-      "plugins/builtin/paper-shell/motion-end.ts"
+      "plugins/builtin/paper-shell/motion-end.ts",
+      "app/interaction/lost-focus.ts",
+      "app/interaction/pointer-claims.ts",
+      "app/interaction/use-drag-gesture.ts"
     ],
     "face": true
   },

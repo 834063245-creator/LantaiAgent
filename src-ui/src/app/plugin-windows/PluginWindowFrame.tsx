@@ -23,10 +23,10 @@
 // 书眉恒可达）。帧内指针事件 stopPropagation：不向画布底座漏（pan 抢占防线第二道）。
 
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef } from 'react';
-import { useDragGesture } from '../../plugins/builtin/paper-shell/use-drag-gesture';
 import { bindBridgeWindow, postBridgeEvent, unbindBridgeWindow } from '../../plugins/window-bridge';
 import { closePluginWindow, focusPluginWindow } from '../../plugins/window-facility';
 import { type PluginWindowDef, type PluginWindowInstance, usePluginWindowStore } from '../../state/plugin-window-store';
+import { useDragGesture } from '../interaction/use-drag-gesture';
 import { PluginBoundary } from '../PluginBoundary';
 import { isTopbarInteractiveTarget } from '../window-drag';
 

@@ -27,6 +27,7 @@
 
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import { type ComposerBandSink, createComposerBandSink } from './composer-band';
 import type { ComposerBox, ComposerDockGeom, ComposerPos, ComposerViewport } from './composer-float';
 import {
@@ -41,7 +42,6 @@ import {
   saveComposerUnlocked,
   snapComposerPos,
 } from './composer-float';
-import { useDragGesture } from './use-drag-gesture';
 import { DRAG_THRESHOLD } from './use-paper-drag';
 
 /** 坞浮动域的输入（2026-09-23 图版架丙案 D2 起有第二个输入）。 */
