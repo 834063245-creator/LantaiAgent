@@ -168,6 +168,27 @@
   color: var(--ink-1);
   letter-spacing: 0.26em;
 }
+/* 段题行尾动作（在役段的「全停子代理」）——贴右，不参与段题的排印节奏 */
+.pp-work-section-action {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+.pp-work-stopall {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 0 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--snap);
+}
+.pp-work-stopall:hover {
+  color: var(--seal-deep);
+}
 .pp-work-list {
   list-style: none;
   margin: 4px 0 0;

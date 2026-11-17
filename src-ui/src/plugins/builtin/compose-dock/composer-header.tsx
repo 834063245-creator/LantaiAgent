@@ -13,7 +13,7 @@
 
 import { volumeDisplayName } from '../../../state/volume-name';
 import type { WorkEntry } from './host';
-import { agentSessionState, killShellWork } from './host';
+import { agentSessionState, killShellWork, useWorkLedgerStore } from './host';
 import { InkLedger } from './InkLedger';
 import { WorkLedger } from './WorkLedger';
 
@@ -77,6 +77,14 @@ export function ComposerHeader({
           onStop={(e: WorkEntry) => {
             const jobId = Number.parseInt(e.id.replace(/^job-/, ''), 10);
             if (Number.isFinite(jobId)) void killShellWork(panelId, jobId);
+          }}
+          /* 全停子代理：写面在宿主（句柄能力位），坞只回调。池对 UI 只给 stopAll，
+             逐条停没有通道——停完立刻落账，不等 abort 分支的收尾回调（那会把
+             「人停的」写成「失败」）。 */
+          onStopAllSubAgents={() => {
+            if (activeSidNum == null) return;
+            const stopped = agentSessionState.getAgent(panelId, activeSidNum)?.stopAllSubAgents() ?? [];
+            useWorkLedgerStore.getState().noteSubAgentStopped(panelId, stopped);
           }}
           open={workOpen}
           onToggle={onToggleWork}

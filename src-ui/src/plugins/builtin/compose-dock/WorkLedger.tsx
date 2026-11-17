@@ -38,7 +38,7 @@
 //   - 读数去重、时长口径统一（在役「已 X」/ 已了「用时 X」）、旁注去重、
 //     「已了」超量不再静默截断、读账失败在触发器上显形。
 
-import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { memo, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { WorkEntry, WorkKind } from './host';
 import {
   loadSessionJobHistory,
@@ -99,16 +99,20 @@ export interface WorkLedgerProps {
   onGoToSession?: (sessionId: number) => void;
   /** 停一条在役 shell（写面在宿主：坞只回调）。 */
   onStop?: (entry: WorkEntry) => void;
+  /** 停本卷全部子代理（宿主不给 ⇒ 不出现「全停」；子代理无逐条停通道）。 */
+  onStopAllSubAgents?: () => void;
   open: boolean;
   onToggle: () => void;
 }
 
-/** 段题（复刻首页节题：方墨锚点 + 字距题字）——与墨量册同款。 */
-function Section({ title }: { title: string }) {
+/** 段题（复刻首页节题：方墨锚点 + 字距题字）——与墨量册同款。
+ *  `action` = 该段的行尾动作（目前只有「在役」段的「全停子代理」）。 */
+function Section({ title, action }: { title: string; action?: ReactNode }) {
   return (
     <div className="pp-work-section">
       <span className="pp-work-section-mark" aria-hidden="true" />
       <span className="pp-work-section-title">{title}</span>
+      {action ? <span className="pp-work-section-action">{action}</span> : null}
     </div>
   );
 }
@@ -294,6 +298,7 @@ export const WorkLedger = memo(function WorkLedger({
   sessionNameOf,
   onStop,
   onGoToSession,
+  onStopAllSubAgents,
   open,
   onToggle,
 }: WorkLedgerProps) {
@@ -427,7 +432,24 @@ export const WorkLedger = memo(function WorkLedger({
                   </>
                 )}
               </p>
-              <Section title="在役" />
+              {/* 子代理无逐条停通道（池对 UI 只给 stopAll），故整段给一枚「全停」：
+                  ≥2 条才出现（单条时它和「停这一条」是同一件事，语义重复）。 */}
+              <Section
+                title="在役"
+                action={
+                  subCount > 1 && onStopAllSubAgents ? (
+                    <button
+                      type="button"
+                      className="pp-work-stopall"
+                      aria-label="停止本卷全部子代理"
+                      data-tip="停止本卷全部子代理"
+                      onClick={onStopAllSubAgents}
+                    >
+                      全停子代理
+                    </button>
+                  ) : null
+                }
+              />
               <ul className="pp-work-list">
                 {running.map((e) => (
                   <Item

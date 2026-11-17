@@ -116,6 +116,22 @@ describe('役台账 · 子 Agent 记账', () => {
     expect(byId.get('sub-bad')).toMatchObject({ state: 'failed', note: '失败' });
   });
 
+  it('用户「全停」：在役子代理立刻落「已停」，随后的收尾回调不改写成失败', () => {
+    const s = useWorkLedgerStore.getState();
+    s.noteSubAgentSpawn(P, 1, 'sub-a', null, 'A');
+    s.noteSubAgentSpawn(P, 1, 'sub-b', null, 'B');
+    vi.setSystemTime(T0 + 2000);
+    s.noteSubAgentStopped(P, ['sub-a', 'sub-b']);
+
+    const list = listOf(P, 1);
+    expect(list.map((e) => e.state)).toEqual(['stopped', 'stopped']);
+    expect(list[0].endedAt).toBe(T0 + 2000);
+
+    // abort 分支的收尾回调（ok=false）不得把「人停的」写成「失败」
+    s.noteSubAgentFinished(P, 'sub-a', false);
+    expect(listOf(P, 1).find((e) => e.id === 'sub-a')?.state).toBe('stopped');
+  });
+
   it('未观察到的子 Agent 收尾是 no-op——不凭 finished 造条目', () => {
     useWorkLedgerStore.getState().noteSubAgentFinished(P, 'sub-never-seen', true);
     expect(listOf(P, 1)).toEqual([]);

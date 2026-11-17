@@ -25,6 +25,7 @@ vi.mock('../src/rpc-contract', async (importOriginal) => ({
   kernelProcessCall,
 }));
 
+import { agentSessionState } from '../src/agent/agent-session-state';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
@@ -341,6 +342,38 @@ describe('役册（创作坞后台工作监视装置）', () => {
   });
 
   /* ── 2026-11-27 役册 UX 批 ─────────────────────────────────────────── */
+
+  it('在役子代理 ≥2：段题行尾出「全停」，点了立刻落「已停」', async () => {
+    const s = useWorkLedgerStore.getState();
+    s.noteSubAgentSpawn(PANEL, 1, 'sub-1', null, 'A');
+    s.noteSubAgentSpawn(PANEL, 1, 'sub-2', null, 'B');
+    const stopAllSubAgents = vi.fn(() => ['sub-1', 'sub-2']);
+    const spy = vi
+      .spyOn(agentSessionState, 'getAgent')
+      .mockReturnValue({ stopAllSubAgents } as unknown as ReturnType<typeof agentSessionState.getAgent>);
+    try {
+      await mountDock();
+      act(() => trigger()?.click());
+      await act(async () => {});
+
+      const btn = container.querySelector<HTMLButtonElement>('.pp-work-stopall');
+      expect(btn).not.toBeNull();
+      act(() => btn?.click());
+      expect(stopAllSubAgents).toHaveBeenCalledTimes(1);
+      // 立刻落「已停」——不等 abort 分支的收尾回调（那会写成「失败」）
+      expect(container.querySelectorAll('.pp-work-state-stopped')).toHaveLength(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('只有一条子代理时不出「全停」（它和「停这一条」是同一件事）', async () => {
+    useWorkLedgerStore.getState().noteSubAgentSpawn(PANEL, 1, 'sub-1', null, 'A');
+    await mountDock();
+    act(() => trigger()?.click());
+    await act(async () => {});
+    expect(container.querySelector('.pp-work-stopall')).toBeNull();
+  });
 
   it('展开输出：已了的条目也能看（命令跑完的那一刻不再是信息盲区）', async () => {
     withSettledShell(11, 'cargo build');

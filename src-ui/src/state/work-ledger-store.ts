@@ -177,6 +177,8 @@ interface WorkLedgerState {
   ): void;
   /** 子 Agent 收尾（onSubAgentFinished 喂）。找不到条目 = no-op（不是本面板派的）。 */
   noteSubAgentFinished(panelId: string, agentId: string, ok: boolean, at?: number): void;
+  /** 用户成批停止子 Agent（役册「全停」）：立即落「已停」，不等收尾回调。 */
+  noteSubAgentStopped(panelId: string, agentIds: readonly string[], at?: number): void;
 
   /** shell 快照对账：进来的置/留在役，**从在役集合消失的**结转终态。 */
   noteShells(
@@ -275,6 +277,9 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
     const key = keyOf(panelId, 'subagent', agentId);
     const prev = get().entries[key];
     if (!prev) return; // 非本面板派生 / 未观察到的派生 —— no-op
+    /* 用户先按了「全停」：收尾回调走的是 abort 分支（ok=false），不得把它改写成
+       「失败」——人停的不是失败（2026-11-27）。 */
+    if (prev.state === 'stopped') return;
     const done: WorkEntry = {
       ...prev,
       state: ok ? 'done' : 'failed',
@@ -285,6 +290,23 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
       const entries = { ...s.entries, [key]: done };
       evictTerminal(entries, panelId);
       return { entries };
+    });
+  },
+
+  noteSubAgentStopped: (panelId, agentIds, at) => {
+    if (agentIds.length === 0) return;
+    set((s) => {
+      const entries = { ...s.entries };
+      let changed = false;
+      const endedAt = at ?? Date.now();
+      for (const agentId of agentIds) {
+        const key = keyOf(panelId, 'subagent', agentId);
+        const prev = entries[key];
+        if (prev?.state !== 'running') continue;
+        entries[key] = { ...prev, state: 'stopped', endedAt, note: null };
+        changed = true;
+      }
+      return changed ? { entries } : s;
     });
   },
 
