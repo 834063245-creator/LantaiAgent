@@ -184,3 +184,43 @@ describe('卷开合窗 · 可见判据与两窗共同计时', () => {
     expect(r2.nextExpiry).toBe(860);
   });
 });
+describe('卷开合窗 · hits 回报（冻帧的打点依据，2026-11-17 打击感批）', () => {
+  it('三类命中各计一次，冷启动整批与「无新窗」帧计 0', () => {
+    // 病灶：冻帧若靠「窗的 until ≈ now + 窗长」反推「刚开窗」，那是拿浮点时间猜状态
+    //（同 2026-09-18 rAF 两把钟不等源的实测事故）——一帧偏差就漏打或重打。
+    // 窗刚被 set 的那一刻只有本模块知道，故在此计数。
+    const win = createRegionMotionWindow<Vol>();
+
+    // 首帧整批 prime：**落纸窗一个都不开**（冷启动是恢复现场，不是命中——
+    // 满屏纸一起冻一帧会被读成「一进来就卡了一下」）
+    expect(stepRegionMotion(win, [vol('a'), vol('b')], all('a', 'b'), 1000).hits).toBe(0);
+
+    // 新卷首次可见 ⇒ 落纸窗开 ⇒ 1
+    expect(stepRegionMotion(win, [vol('a'), vol('b'), vol('c')], all('a', 'b', 'c'), 2000).hits).toBe(1);
+
+    // 原地不动（无新窗）⇒ 0（不许每帧都打一拍）
+    expect(stepRegionMotion(win, [vol('a'), vol('b'), vol('c')], all('a', 'b', 'c'), 2500).hits).toBe(0);
+
+    // 卷 a 消失 ⇒ 退场窗开 ⇒ 1
+    expect(stepRegionMotion(win, [vol('b'), vol('c')], all('b', 'c'), 3000).hits).toBe(1);
+
+    // 出生即交接的卷（isRise）⇒ 落墨窗开 ⇒ 1
+    expect(
+      stepRegionMotion(win, [vol('b'), vol('c'), vol('d')], all('b', 'c', 'd'), 4000, (sid) => sid === 'd').hits,
+    ).toBe(1);
+  });
+
+  it('hits 是**加总**：同一帧两张纸一起摊开 = 2（不是布尔）', () => {
+    // 布尔会把「两张纸同时落」读成「落了一张」，第二张没有冻帧——
+    // 而多题签（2026-11-17）之后同帧多纸是常态。
+    //
+    // ⚠ 首帧语义（本测第一版踩过）：**空首帧不 prime**，第一条**非空**批才是冷启动批
+    // （整批记 played、hits = 0）——恢复是异步的，别把「第一批真数据」当成用户摊开。
+    const win = createRegionMotionWindow<Vol>();
+    stepRegionMotion(win, [], all(), 100); // 空首帧：不 prime
+    expect(stepRegionMotion(win, [vol('a')], all('a'), 200).hits, '冷启动批不算命中').toBe(0);
+    // 同一帧两张新纸一起摊开
+    const r = stepRegionMotion(win, [vol('a'), vol('p'), vol('q')], all('a', 'p', 'q'), 300);
+    expect(r.hits).toBe(2);
+  });
+});

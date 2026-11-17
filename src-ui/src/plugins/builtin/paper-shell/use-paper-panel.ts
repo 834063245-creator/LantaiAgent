@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rackPresent } from '../../../paper/asset-rack';
 import { DOCK_TETHER_PEN, DOCK_TETHER_SEED, regionFootAnchorOf } from './dock-tether';
+import { createHitstop, HITSTOP_MS } from './hitstop';
 import type { RegionView } from './host';
 import {
   activeOverlayContributions,
@@ -194,6 +195,9 @@ export function usePaperPanelAssembly() {
    * 语义不动）。 */
   const motionWin = useRef(createRegionMotionWindow<RegionView>());
   const [motionTick, setMotionTick] = useState(0);
+  /* 冻帧器（2026-11-17 打击感批；机制与三条实测依据见 hitstop.ts 头注）。
+   * 一个纸壳实例一个：它是整屏级的，不能是模块单例（多画布会互相冻）。 */
+  const hitstop = useRef(createHitstop());
   /* 「真在视口里」= 横向（渲染虚拟化口径 `visibleRegionIds`）+ **纵向**（那个口径只看 x）
    * ——落纸要给**用户看得见**的那一刻发（见 region-motion.ts 头注：远卷的摊开带着 260ms
    * 飞行，按「首次活跃」发类会在屏外播完，镜头到了纸已稳稳摊着 = 读作还是闪现）。 */
@@ -206,13 +210,22 @@ export function usePaperPanelAssembly() {
     }
     return s;
   }, [regions, visibleRegionIds, viewRect]);
-  const { entered: justLeft, nextExpiry: motionExpiry } = stepRegionMotion(
-    motionWin.current,
-    regions,
-    onScreenIds,
-    Date.now(),
-    isRiseVolume,
-  );
+  const {
+    entered: justLeft,
+    nextExpiry: motionExpiry,
+    hits: motionHits,
+  } = stepRegionMotion(motionWin.current, regions, onScreenIds, Date.now(), isRiseVolume);
+  /* ── 冻帧：命中那一拍先停住（2026-11-17 打击感批）──
+   * 三个命中点（判据由 region-motion 的 `hits` 回报，不在本文件猜时间）：
+   *   ① **落纸**（.pp-spread）：一张新纸摊开的命中；
+   *   ② **落墨**（rise，待题纸化成的那一卷）：化卷交接的命中；
+   *   ③ **起纸**（.pp-leaving）：合卷被抽走的命中。
+   * ⚠ **不给「冷启动整批」打冻帧**：那是恢复现场，不是命中——满屏纸一起冻一帧
+   * 会被读成「一进来就卡了一下」（同 §15「首帧整批算已落纸」那条判据的同一理由）。
+   * 冷启动那一批在 `stepRegionMotion` 里走的是 `primed` 分支：**落纸窗一个都不开**
+   * （整批直接记 played），只有「出生即交接」的 rise 会计数——而那恰恰是用户正在
+   * 看着它出生的一卷，该给一拍。 */
+  if (motionHits > 0) hitstop.current.hit(HITSTOP_MS);
   for (const gone of justLeft) {
     /* 首见印记随卷一并清掉 ⇒ 重开卷重播墨律（不清 = 重开无墨，`seenBlocksRef` 老病）。 */
     for (const b of gone.blocks) seenBlocksRef.current.delete(b.id);
@@ -240,6 +253,9 @@ export function usePaperPanelAssembly() {
     const t = window.setTimeout(() => setMotionTick((n) => n + 1), Math.max(0, motionExpiry - Date.now()) + 8);
     return () => window.clearTimeout(t);
   }, [motionExpiry, motionTick]);
+  /* 卸载即放手：画布关掉/切组合时窗可能还开着——不 release 就是**整屏动画永久冻在
+   * 半路**（元素卸载时 CSS 动画随之消失，但 getAnimations 冻住的那些别的动画不会自己醒）。 */
+  useEffect(() => () => hitstop.current.release(), []);
 
   const { flyToPoint, flyToRegion, glideViewTo } = usePaperFocus({
     core,

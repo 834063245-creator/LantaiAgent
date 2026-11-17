@@ -105,13 +105,28 @@ export function regionOnScreen(topY: number, bottomY: number, viewY0: number, vi
 /** 一张卷是否「出生即交接」（待题纸化成的那一卷）——由壳层按交卷账判，见 use-paper-panel。 */
 export type RiseJudge = (sessionId: string) => boolean;
 
+/** `stepRegionMotion` 的本帧回报。 */
+export interface RegionMotionStep<T> {
+  /** 本帧消失、刚进**退场窗**的卷（调用方据此清「首见」印记）。 */
+  entered: T[];
+  /** 本帧最早到期时刻（调用方据此排一次重渲染把满窗的摘掉）；无窗 = null。 */
+  nextExpiry: number | null;
+  /** **本帧刚开窗的命中数**（落纸 + 落墨 + 起纸，三窗合计）——冻帧的打点依据。
+   *
+   *  为什么不让调用方自己看窗：窗是「until 时间戳」，判断「刚开」只能比较
+   *  `until - REGION_MOTION_MS ≈ now`，那是拿浮点时间猜状态（本仓 2026-09-18
+   *  rAF 两把钟不等源的实测事故同款），一帧偏差就漏打或重打。窗在这里刚被
+   *  `set` 的那一刻只有本函数知道，就在此处计数最诚实。 */
+  hits: number;
+}
+
 export function stepRegionMotion<T extends { sessionId: string }>(
   win: RegionMotionWindow<T>,
   live: T[],
   visible: ReadonlySet<string>,
   now: number,
   isRise: RiseJudge = () => false,
-): { entered: T[]; nextExpiry: number | null } {
+): RegionMotionStep<T> {
   const liveIds = new Set(live.map((r) => r.sessionId));
 
   // ① 退场窗内重开 = 撤销（同一 key 的元素从未卸载，属性摘掉即回场）
@@ -121,9 +136,12 @@ export function stepRegionMotion<T extends { sessionId: string }>(
 
   // ② 本帧消失的卷当帧进退场窗（晚一趟 = 先拆后挂）+ 清「已落纸」⇒ 重开重播
   const entered: T[] = [];
+  /** 本帧刚开窗的命中数（见 RegionMotionStep#hits）。 */
+  let hits = 0;
   for (const [sid, view] of win.lastLive) {
     if (liveIds.has(sid) || win.leaving.has(sid)) continue;
     win.leaving.set(sid, { view, until: now + REGION_MOTION_MS });
+    hits += 1;
     win.played.delete(sid);
     win.rise.delete(sid);
     entered.push(view);
@@ -137,9 +155,11 @@ export function stepRegionMotion<T extends { sessionId: string }>(
       win.played.add(r.sessionId);
       if (isRise(r.sessionId)) {
         win.rise.set(r.sessionId, now + REGION_MOTION_MS);
+        hits += 1;
         continue;
       }
       win.spread.set(r.sessionId, now + REGION_MOTION_MS);
+      hits += 1;
     }
   } else if (live.length > 0) {
     /* 冷启动/恢复：第一批量（非空）整批算「已落纸」。
@@ -150,7 +170,10 @@ export function stepRegionMotion<T extends { sessionId: string }>(
     win.primed = true;
     for (const r of live) {
       win.played.add(r.sessionId);
-      if (visible.has(r.sessionId) && isRise(r.sessionId)) win.rise.set(r.sessionId, now + REGION_MOTION_MS);
+      if (visible.has(r.sessionId) && isRise(r.sessionId)) {
+        win.rise.set(r.sessionId, now + REGION_MOTION_MS);
+        hits += 1;
+      }
     }
   }
 
@@ -184,5 +207,5 @@ export function stepRegionMotion<T extends { sessionId: string }>(
   }
 
   win.lastLive = new Map(live.map((r) => [r.sessionId, r]));
-  return { entered, nextExpiry };
+  return { entered, nextExpiry, hits };
 }
