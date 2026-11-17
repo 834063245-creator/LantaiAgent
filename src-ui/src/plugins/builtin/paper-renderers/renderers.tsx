@@ -94,6 +94,22 @@ interface StreamDelta {
   delta: string;
 }
 
+/* ── 蓄水池（2026-11-17「流式跳变」批）──
+ * 实测（真机 CDP 抓兰台自己的 LLM 代理链路）：模型提速到 100~200 tok/s 后，
+ * 上游数据是**脉冲式**的——绝大多数口只有 181~207 字节（1~3 个汉字），但每隔
+ * 0.2~0.7s 憋一次，憋完一次涌来 3~5KB（20~50 个字）。直出时这一整口落在同一帧，
+ * 纸面就是「一大坨一大坨」。
+ * 治法：收到的字先进 received，**显示进度 shown 按时间预算推进**——
+ *   积压 ≤ KICK 字：立即追平（小口直出，零延迟，与旧行为一致）
+ *   积压 >  KICK 字：挂 rAF 泵，每秒吐 BASE + 积压×GAIN 字（上限 MAX）
+ * 任意积压量约 150~200ms 吐净 ⇒ 大块被摊成连续吐字，且延迟不累积。
+ * 纪律：进度只影响**渲染**，不动 payload.text——测高仍按全文算（块高比显示领先
+ * 约一行，等于提前留出行位，不产生块内跳动）。 */
+const POOL_KICK = 4;
+const POOL_CPS_BASE = 100;
+const POOL_CPS_GAIN = 7;
+const POOL_CPS_MAX = 1500;
+
 /**
  * 流式增量识别：文本尾部追加 → 增量；否则整块稳定。
  * 稳定段永远 = 旧文本全部（渲染层镜像：markdown 走 parseMarkdown、纯文本原样）——
@@ -101,28 +117,74 @@ interface StreamDelta {
  * 流式半成型可接受；纯文本里行内接续）。
  */
 function useStreamDelta(text: string, resetKey: unknown): StreamDelta {
-  const prevRef = useRef<string | null>(null);
+  const receivedRef = useRef<string>(text);
+  const shownRef = useRef<number>(text.length);
   const lastKeyRef = useRef<unknown>(undefined);
+  const lastTickRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  const [, pumpTick] = useState(0);
 
-  // resetKey（folded 等）变化 → 重置：整块稳定，不留增量尾巴
+  // ① 接收：重置/非追加 = 立即追平（历史与编辑不倒放，只有尾部追加进蓄水池）
   if (lastKeyRef.current !== resetKey) {
     lastKeyRef.current = resetKey;
-    prevRef.current = text;
-    return { stable: text, delta: '' };
+    receivedRef.current = text;
+    shownRef.current = text.length;
+  } else {
+    const prev = receivedRef.current;
+    if (!text.startsWith(prev)) shownRef.current = text.length;
+    else if (shownRef.current > text.length) shownRef.current = text.length;
+    receivedRef.current = text;
   }
 
-  const prev = prevRef.current;
-  if (prev === null || text === prev) {
-    prevRef.current = text;
-    return { stable: text, delta: '' };
-  }
-  if (text.startsWith(prev)) {
-    prevRef.current = text;
-    return { stable: prev, delta: text.slice(prev.length) };
-  }
-  // 非追加（编辑/重置）：整块稳定
-  prevRef.current = text;
-  return { stable: text, delta: '' };
+  const received = receivedRef.current;
+  const shown = shownRef.current;
+
+  // ② 泵：积压超过 KICK 才挂 rAF（小口直出、零延迟）；按时间预算推进，
+  //    积压越多吐得越快，任意积压量约 150~200ms 吐净——不累积延迟。
+  const pumpRef = useRef<() => void>(() => {});
+  pumpRef.current = () => {
+    rafRef.current = null;
+    const total = receivedRef.current.length;
+    const left = total - shownRef.current;
+    if (left <= 0) return;
+    const now = performance.now();
+    const dtSec = Math.min(0.1, Math.max(0.001, (now - lastTickRef.current) / 1000));
+    lastTickRef.current = now;
+    const cps = Math.min(POOL_CPS_MAX, POOL_CPS_BASE + left * POOL_CPS_GAIN);
+    const step = Math.max(1, Math.round(cps * dtSec));
+    shownRef.current = Math.min(total, shownRef.current + step);
+    pumpTick((t) => t + 1);
+    if (shownRef.current < receivedRef.current.length) {
+      rafRef.current = requestAnimationFrame(() => pumpRef.current());
+    }
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: text 是蓄水池的检查信号——正文每次更新重判一次背压；读写全走 ref，闭包不消费 text 本身
+  useEffect(() => {
+    if (receivedRef.current.length - shownRef.current <= POOL_KICK) return;
+    // 降级：没有 rAF 的环境（jsdom / 非浏览器）直接追平——蓄水池是观感优化，
+    // 不能成为渲染前提。
+    if (typeof requestAnimationFrame !== 'function') {
+      shownRef.current = receivedRef.current.length;
+      pumpTick((t) => t + 1);
+      return;
+    }
+    if (rafRef.current !== null) return;
+    lastTickRef.current = performance.now();
+    rafRef.current = requestAnimationFrame(() => pumpRef.current());
+  }, [text]);
+
+  useEffect(
+    () => () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    },
+    [],
+  );
+
+  return { stable: received.slice(0, shown), delta: received.slice(shown) };
 }
 
 /** 增量段：持久容器不重建（旧文本在 stable，永不重淡），只让 fresh（新到达）淡入。
@@ -132,7 +194,10 @@ function useStreamDelta(text: string, resetKey: unknown): StreamDelta {
 function DeltaZone({ delta, className, block }: { delta: string; className?: string; block?: boolean }) {
   if (!delta) return null;
   const inner = (
-    // key 驱动：每次新内容重挂载 → 动画重新触发（旧内容在 stable 不受影响）
+    // key 驱动：每次新内容重挂载 → 动画重新触发（旧内容在 stable 不受影响）。
+    // 蓄水池保证每次只有 1~3 个新任到（不再是几十字一整口），所以「整块淡入」
+    // 本身就是逐字浮现——不需要再按字切 span（那要 index key + DOM 膨胀，
+    // 收益趋零）。
     <span className="pp-ink-delta" key={delta}>
       {delta}
     </span>

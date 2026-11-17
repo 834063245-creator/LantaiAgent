@@ -80,7 +80,10 @@ const DEBT: Record<string, number> = {
   'engine/src/main.rs': 1400, // 现 1317
   'src-tauri/src/plugin_assets.rs': 1400, // 现 1325
   'engine/src/stress.rs': 1400, // 现 1358
-  'src-ui/src/plugins/builtin/paper-renderers/renderers.tsx': 1300, // 现 1299
+  // 2026-11-17 跨档（1300 → 1400）：流式「蓄水池」批把读到的字与显示进度分开
+  // （useStreamDelta 的 received/shown 双游标 + rAF 泵），是**渲染期状态机**而非可拆纯函数——
+  // 拆出去要跨模块共享 ref，反而让「进度只影响渲染、不动 payload.text」这条纪律失去单点。现 1364。
+  'src-ui/src/plugins/builtin/paper-renderers/renderers.tsx': 1400, // 现 1364
   'src-ui/src/plugins/builtin/settings-domain/settings-panel.css': 1300, // 现 1238
   'src-tauri/src/confined_fs.rs': 1300, // 现 1278
   'engine/src/analysis/explore.rs': 1300, // 现 1225
