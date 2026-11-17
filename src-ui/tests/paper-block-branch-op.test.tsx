@@ -39,9 +39,19 @@ uiAssistant.parts.push({
 const region = {
   sessionNum: SID,
   blocks: [
-    { id: 'pb-user', source: { messageId: uiUser._id, part: null } },
-    { id: 'pb-assistant', source: { messageId: uiAssistant._id, part: uiAssistant.parts[0] } },
-    { id: 'pb-tool', source: { messageId: uiAssistant._id, part: uiAssistant.parts[1] } },
+    { id: 'pb-user', kind: 'user', payload: { text: '一' }, source: { messageId: uiUser._id, part: null } },
+    {
+      id: 'pb-assistant',
+      kind: 'markdown',
+      payload: { text: '二' },
+      source: { messageId: uiAssistant._id, part: uiAssistant.parts[0] },
+    },
+    {
+      id: 'pb-tool',
+      kind: 'tool',
+      payload: { toolId: 'c1', name: 'fs', args: '{"path":"a.ts"}', label: 'fs', status: 'done', output: 'TERM-OUT' },
+      source: { messageId: uiAssistant._id, part: uiAssistant.parts[1] },
+    },
   ],
 } as unknown as RegionView;
 
@@ -127,6 +137,41 @@ describe('会话树「枝」入口 = 消息动作行（useBlockOps）', () => {
     act(() => branch?.run());
     // 来文块不带块坐标（切点 = 这条来文自己，与块无关）
     expect(branchCalls).toEqual([{ sid: SID, msgId: uiUser._id }]);
+  });
+
+  it('抄录 = 抄**所点的这一块**（块级投影：不跨块、不抄整条消息）', () => {
+    const { core } = fakeCore();
+    let ops = new Map<string, BlockOp[]>();
+    act(() => {
+      root = createRoot(container);
+      root.render(createElement(Probe, { core, onOps: (m) => (ops = m), onGrips: () => {} }));
+    });
+    const copyText = (core as unknown as { copyText: Mock }).copyText;
+
+    act(() =>
+      ops
+        .get('pb-user')
+        ?.find((o) => o.key === 'copy')
+        ?.run(),
+    );
+    expect(copyText).toHaveBeenLastCalledWith('一');
+
+    act(() =>
+      ops
+        .get('pb-assistant')
+        ?.find((o) => o.key === 'copy')
+        ?.run(),
+    );
+    expect(copyText).toHaveBeenLastCalledWith('二');
+
+    // 工具卡（脚注）：抄工具输出——旧实现抄的是整条消息的正文（工具输出一个字都没有）
+    act(() =>
+      ops
+        .get('pb-tool')
+        ?.find((o) => o.key === 'copy')
+        ?.run(),
+    );
+    expect(copyText).toHaveBeenLastCalledWith('TERM-OUT');
   });
 
   it('回复块：也有「立枝」，点击带上**本块坐标**（切点 = 该块那一步的末尾）', () => {

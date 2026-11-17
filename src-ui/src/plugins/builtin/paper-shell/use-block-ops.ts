@@ -10,7 +10,7 @@
 
 import type { MutableRefObject } from 'react';
 import { useCallback, useMemo, useRef } from 'react';
-import type { ChatMessage, RegionView, TextPart, UserMessage } from './host';
+import type { ChatMessage, RegionView, SourcedBlock, UserMessage } from './host';
 import { sameKey } from './use-paper-regions';
 import type { PaperCore } from './use-paper-sessions';
 
@@ -35,13 +35,47 @@ type BranchNode = Parameters<PaperCore['branchPoints']>[1][number];
 /** 块坐标（消息 parts + 本块下标）——按块定位的输入，形状同样取自 core 能力位。 */
 type BranchBlockRef = NonNullable<BranchNode['block']>;
 
-/** 从消息提取可复制的正文文本（text part 拼接）。 */
-function messageCopyText(msg: ChatMessage): string {
-  if (msg.role !== 'assistant') return msg.text;
-  return msg.parts
-    .filter((p): p is TextPart => p.type === 'text')
-    .map((p) => p.text)
-    .join('\n');
+/** 从**块**提取可抄文本——「抄录」抄的是**这一块**（2026-11 修订）。
+ *
+ *  旧实现抄的是**整条消息**（assistant = 全部 text part 拼接），但按钮是按
+ *  **块**挂的（每个块 hover 一行，块与消息不是 1:1）——于是在代码块上点抄录，
+ *  拿到的是整篇回复正文；在工具卡上点，拿到的是 agent 的话、工具输出一个字
+ *  都没有（用户报「复制的内容和预期不符」）。抄录的语义是「抄眼前这一块」，
+ *  故按块投影 payload：纸面上怎么写的，剪贴板里就是什么。
+ *
+ *  复合块（工具组 / 子代理组）收组内各项；资产块（插件自定义 payload）只认
+ *  `text` 字段——投影不出文本就不出按钮，绝不回退成"抄一条不相干的消息"。 */
+function blockCopyText(block: SourcedBlock): string {
+  const p = (block.payload ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+  const pick = (v: unknown, fallback: unknown): string => (str(v).trim() ? str(v) : str(fallback));
+  switch (block.kind) {
+    case 'tool': // 脚注：工具输出为主；未跑完（无输出）退错误、再退入参
+      return pick(p.output, pick(p.err, p.args));
+    case 'code': // 程文：程序体 + 运行结果
+      return [str(p.code), str(p.output)].filter((s) => s.trim()).join('\n\n');
+    case 'plan': // 拟策：题 + 正文
+      return [str(p.title), str(p.content)].filter((s) => s.trim()).join('\n\n');
+    case 'toolgroup': {
+      // 工具组：组头只是折叠行，内容 = 组内各项的输出
+      const items = Array.isArray(p.items) ? (p.items as Array<Record<string, unknown>>) : [];
+      return items
+        .map((it) => pick(it.output, pick(it.err, it.args)))
+        .filter((s) => s.trim())
+        .join('\n\n');
+    }
+    case 'subagent': {
+      // 子代理组：组内各步的正文（工具步取输出）
+      const items = Array.isArray(p.items) ? (p.items as Array<Record<string, unknown>>) : [];
+      return items
+        .map((it) => (it.type === 'tool' ? pick(it.output, it.err) : str(it.text)))
+        .filter((s) => s.trim())
+        .join('\n\n');
+    }
+    default:
+      // 来文 / 正文 / 夹注 / 抄录（代码）/ 贴黄 / 回合错误：payload.text 即本块文字
+      return str(p.text);
+  }
 }
 
 /** 消息操作域（paper-panel-split C3，自 PaperPanel 184-204 + 1592-1697
@@ -63,6 +97,7 @@ export function useBlockOps(params: {
       sid: number,
       branch: BranchVerdict,
       block: BranchBlockRef | undefined,
+      self: SourcedBlock,
     ): BlockOp[] => {
       if (!core) return [];
       const latest = (): ChatMessage => {
@@ -73,7 +108,15 @@ export function useBlockOps(params: {
         }
         return msg;
       };
-      const latestMsg = latest();
+      /** 本块的**最新版本**（同 id）——流式期间块对象每帧重建，闭包里捕获的
+       *  可能是旧快照；抄录点击时必须抄纸面上此刻的内容。 */
+      const latestSelf = (): SourcedBlock => {
+        for (const r of regionsRef.current) {
+          const found = r.blocks.find((b) => b.id === self.id);
+          if (found) return found;
+        }
+        return self;
+      };
       const ops: BlockOp[] = [];
       // 可撤态置灰降级（沙盒映射定位失败 = 会话已压缩/上下文已变化——
       // 按钮可留待重派生自愈，但绝不撤错轮）
@@ -92,8 +135,9 @@ export function useBlockOps(params: {
         ops.push({ key: 'edit', label: '改写', run: () => core.editUserMessage(latestUser()), ...gone(retrace) });
         ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(latestUser()), ...gone(retrace) });
       }
-      const text = messageCopyText(latestMsg);
-      if (text.trim()) ops.push({ key: 'copy', label: '抄录', run: () => core.copyText(messageCopyText(latest())) });
+      // **抄录 = 抄这一块**（不是整条消息）：按钮按块挂，抄的就必须是本块内容。
+      const text = blockCopyText(latestSelf());
+      if (text.trim()) ops.push({ key: 'copy', label: '抄录', run: () => core.copyText(blockCopyText(latestSelf())) });
       // **立枝**（会话树，2026-09-18；2026-09-22 改按**块**定位）：从这一块另起一枝——
       // 枝**含这一块**，切点 = 该块所在**那一步**的末尾（判据在 `session-branch`）。
       // 位置纪律 = 与「改 / 重发 / 抄」同一行动作（主流 agent 软件的分支入口都挂在
@@ -196,7 +240,7 @@ export function useBlockOps(params: {
           // 陈旧会话消息表。
           opsByBlock.set(b.id, hit.ops);
         } else {
-          const ops = msgOpsFor(msg, stateOps, retrace, r.sessionNum, branch, blockRefs.get(b.id));
+          const ops = msgOpsFor(msg, stateOps, retrace, r.sessionNum, branch, blockRefs.get(b.id), b);
           opsCacheRef.current.set(b.id, { msg, ops, stamp, regionMsgs });
           opsByBlock.set(b.id, ops);
         }
