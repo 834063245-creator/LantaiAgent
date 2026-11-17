@@ -101,7 +101,15 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["panels", "commands", "space"],
-    "shared": ["assets/paper/paper-fiber.jpg", "assets/paper/paper-grain.jpg", "state/volume-name.ts"],
+    "shared": [
+      "assets/paper/paper-fiber.jpg",
+      "assets/paper/paper-grain.jpg",
+      "state/volume-name.ts",
+      "plugins/builtin/paper-shell/use-drag-gesture.ts",
+      "plugins/builtin/paper-shell/lost-focus.ts",
+      "plugins/builtin/paper-shell/pointer-claims.ts",
+      "plugins/builtin/paper-shell/motion-end.ts"
+    ],
     "face": true
   },
   {
@@ -121,6 +129,12 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["overlays"],
+    "shared": [
+      "plugins/builtin/paper-shell/use-drag-gesture.ts",
+      "plugins/builtin/paper-shell/lost-focus.ts",
+      "plugins/builtin/paper-shell/pointer-claims.ts",
+      "plugins/builtin/paper-shell/motion-end.ts"
+    ],
     "face": true
   },
   {

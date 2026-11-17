@@ -4,48 +4,29 @@
 // ModelSelector — 可搜索的下拉组合框，用于从目录中选择模型。
 // 支持自由输入目录中不存在的自定义模型名称（设置页字段形态）。
 //
-// 2026 徽章收口：模型行只留模型本身（id + 人类名）——原 LIVE / 🧠 /
-// 上下文窗口 chip / vendor-hint 与字段形态下方的「推理/上下文/来自 API」
-// 标签组全部拆除（视觉噪声 + 挡字），元数据信息移入行 title（hover 可见）
-// 不丢失。判定动态（无目录元数据）内联为 contextWindow <= 0。
+// ── 2026-11-17 交互原语批 D：**卸库**（@react-aria/combobox + listbox + react-stately）──
+// 病灶：808 行里 30 余条注释在解释「为什么不能按库的默认写」（blur 关闭被画布
+// preventDefault 拦掉、commitCustomValue 拿半截查询回写、autoFocus 把方向键吃掉、
+// 受控 inputValue 与 setOpen 打架……）。**这 30 条注释是每次改动的门票钱**——
+// 买来的 808 行里有 4 个包、411 行 CSS、一份我们必须逆着用的状态机。
 //
-// 2026-08-29 frontend-overlay-a11y-plan 档位 C：手写 combobox（handleKeyDown /
-// role=listbox/option/aria-activedescendant 手工接线）整体换成 @react-aria/combobox
-// 的 useComboBox + useListBox/useOption。保留：分组表头 / compact 触发按钮 /
-// 元数据徽标 / 空态文案（「目录获取失败态」于 2026-09-23 撤除，见下）。DOM 类名与布局不变。
+// 自写后只剩**这个产品真要的三件事**：键盘上下（aria-activedescendant）、Enter 选中、
+// Escape 关闭（两级菜单里先退回根栏）。其余（虚拟聚焦、集合 API、i18n、
+// menuTrigger:'focus' 的时序）本产品一件也没用上，却要逐条对着它的默认值写反向补丁。
 //
-// 2026-09-06 创作坞 UX 收口（compact 形态重做）：
-//   - 触发器恒驻：打开时不再被搜索输入框整体顶替（旧形态触发 pill 消失、
-//     空输入顶上——「当前模型被清空」的视觉错觉根因）；
-//   - 搜索输入移进弹层（弹层 = 搜索行 + 列表滚动区，DSH chip 形态）；
-//   - 外点关闭：document mousedown 兜底——画布空白处 mousedown preventDefault
-//     （平移手势）拦得掉 blur，react-aria 的 blur 关闭永不触发，必须显式听
-//     （DSH ModelSelect closeOutside 同款）；
-//   - 触发器再点 = toggle 收起；Escape 收起并回焦触发器；
-//   - compact 下 onSelectionChange 忽略空键：外点/blur 的 react-aria
-//     commitCustomValue 会以半截查询回调 onChange——弹层取消语义，不误写库
-//     （自定义模型名提交仍属设置页字段形态）。
-// 非 compact（设置页字段）形态零改动。
+// 行为契约（**与本批之前逐条一致**，由 tests/model-selector-*.test.tsx 钉住）：
+//   · 触发器恒驻；点触发器 = toggle；Escape 收起并回焦触发器；
+//   · ↑↓ 移动 aria-activedescendant，不换行（shouldFocusWrap=false 的原语义）；
+//   · Enter 选中聚焦项；无匹配时 compact **不**把查询词当自定义名写库
+//     （非 compact 字段形态仍提交——那是设置页的自定义模型入口）；
+//   · 外点关闭走 overlay.tsx 的 useOutsideClose（与 Escape 同门）；
+//   · 打开即把当前选中项滚进视野。
 //
-// 2026-09-23 三层重构配套（用户实测报告「拉了 81 个模型，下拉里根本没有那么多」）：
-//   结果链上的 `.slice(0, 30)` 拆除。它来自初版选择器（8c00891f）对**静态目录搜索**
-//   的"前 30 条"展示上限；compact 形态的可选面后来换成「已配置模型」（配置面）后，
-//   这条上限就退化成配置列表的天花板——配多少个都只列 30 个。配置面不该有截断。
-// 同日（用户拍板 A）：失败面「目录获取失败」徽标从坞里撤除——原因与重试归设置页
-//   的「模型目录」区（那是唯一能补救的地方）；坞里保留「目录获取中…」。原 C5（2026-08-27）
-//   的行为随之退役，`getDynamicFetchFailure` 在该产物的取用面归零（宿主桥键保留，
-//   属已发布宿主面，不随本批撤键）。
+// 徽章收口 / 创作坞触发器形态 / 两级菜单 / 配置面不截断四条既有决策原样保留（见下）。
 //
-// 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享
-// 真实例；@react-aria/* react-stately 由 esbuild 内联（其 react import 经
-// 构建期别名桥共享宿主 React，零副本）。
+// 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
-import { useComboBox } from '@react-aria/combobox';
-import { useListBox, useOption } from '@react-aria/listbox';
-import type { ComboBoxState } from '@react-stately/combobox';
-import { useComboBoxState } from '@react-stately/combobox';
 import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Item } from 'react-stately';
 import type { ModelDescriptor, Protocol } from './host';
 import './model-selector.css';
 import {
@@ -144,6 +125,12 @@ function itemKey(m: ModelDescriptor): string {
   return `${m.vendor}/${m.id}`;
 }
 
+/** 当前值对应的集合键（打开时把激活项落到当前选中行）。 */
+function keyOfValue(results: readonly ModelDescriptor[], value: string): string | null {
+  const hit = results.find((m) => m.id === value);
+  return hit ? itemKey(hit) : null;
+}
+
 export function ModelSelector({
   value,
   onChange,
@@ -161,12 +148,13 @@ export function ModelSelector({
    * （chip 挤成两行、与列表语义无关、拨档位不关弹层）。DSH 的解法是把它做成同级的
    * 第二面——结构一致，且档位表再长也不挤模型列表。 */
   const [pane, setPane] = useState<Pane>('root');
+  const [open, setOpen] = useState(false);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const listBoxRef = useRef<HTMLElement | null>(null);
-  const popoverRef = useRef<Element | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // R3b（2026-09-06）：紧凑形态的可选面 = 已配置 provider 的模型列表——settings 保存
   // （含「添加提供方即时生效」）后必须立刻重读，新提供方/新模型才可选。订阅
@@ -204,35 +192,6 @@ export function ModelSelector({
     }
     return base.filter((m) => compact || m.kind === kind).sort((a, b) => a.id.localeCompare(b.id));
   }, [query, kind, providerName, compact, settingsState]);
-
-  // ── react-aria combobox 状态机：items = 已过滤结果（受控 → 不再二次过滤）──
-  const state = useComboBoxState({
-    items: results,
-    children: (m: ModelDescriptor) => (
-      <Item key={itemKey(m)} textValue={m.name}>
-        {m.name}
-      </Item>
-    ),
-    inputValue: query,
-    onInputChange: setQuery,
-    allowsCustomValue: true,
-    allowsEmptyCollection: true,
-    menuTrigger: 'focus', // 设置页字段形态：聚焦即开（对齐旧 onFocus 行为）
-    selectedKey: value ? (compact ? `${providerName}/${value}` : value) : '',
-    onSelectionChange: handleSelectionChange,
-  });
-
-  // useComboBox 装配（inputProps 接管 role/aria-activedescendant/keydown）
-  const { inputProps, listBoxProps: comboboxListBoxProps } = useComboBox(
-    {
-      'aria-label': '模型选择',
-      inputRef,
-      listBoxRef,
-      popoverRef,
-    },
-    state,
-  );
-  const { listBoxProps } = useListBox({ ...comboboxListBoxProps }, state, listBoxRef);
 
   /** 收起态人类可读名（rework P2-1：不再只露 model id）。
    *  2026-10-22 P1：目录外 provider-scoped id（如 `deepseek/deepseek-v4.1-flash`）
@@ -289,13 +248,13 @@ export function ModelSelector({
    *    「模型目录」区（ProviderDetail），那儿才有「刷新目录」按钮。 ── */
   const [fetchInflight, setFetchInflight] = useState<Set<string>>(new Set());
   useEffect(() => {
-    if (!state.isOpen) return;
+    if (!open) return;
     const refresh = () => setFetchInflight(new Set(headerVendors.filter((v) => getDynamicFetchInflight(v))));
     refresh();
     return onDynamicFetchChange(refresh);
-  }, [state.isOpen, headerVendors]);
+  }, [open, headerVendors]);
   useEffect(() => {
-    if (!state.isOpen || !compact || headerVendors.length === 0) return;
+    if (!open || !compact || headerVendors.length === 0) return;
     let alive = true;
     void (async () => {
       const next = new Set<string>();
@@ -308,7 +267,7 @@ export function ModelSelector({
     return () => {
       alive = false;
     };
-  }, [state.isOpen, compact, headerVendors]);
+  }, [open, compact, headerVendors]);
 
   /* ── DSH 不可用状态（2026-08-26）：当前会话模型所属 provider 已不在配置里
    *    （被删/移除）——触发器标「⚠ 不可用」，title 说明；仍可打开下拉选有效
@@ -325,14 +284,9 @@ export function ModelSelector({
   const close = useCallback(() => {
     setQuery('');
     setPane('root'); // 收起即归位：下次打开仍落在根栏（DSH close() 同款）
-    state.setOpen(false);
-    // compact：搜索框随弹层卸载 → 无真实 blur 事件 → react-aria 的 isFocused
-    // 持高，react-stately「聚焦中 + inputValue 变化」effect 会拿重置后的空查询
-    // 重新开菜单（实测：带半截查询时外点/触发器再点/Escape 都「关了又开」）。
-    // 手动降焦位切断重开路。触发的 commitValue 回调被 compact 空键忽略拦下，
-    // 半截查询不落库。非 compact（设置页字段）保 react-aria 原生语义零改动。
-    if (compact) state.setFocused(false);
-  }, [state, compact]);
+    setActiveKey(null);
+    setOpen(false);
+  }, []);
 
   /* ── DSH 移植（2026-08-26）：运行中守卫——流式中不允许切模型（onAttemptOpen
    *    语义）。拦下时回调 onBlocked，宿主弹提示；打开本身被 veto。 ── */
@@ -359,68 +313,25 @@ export function ModelSelector({
     [compact, value, providerName, onChange, close],
   );
 
-  /** react-aria onSelectionChange：真实键 → 模型选择；null/空 → 自定义值提交。
-   *  2026-09-06 收口：compact 忽略空键——外点/blur 时 react-aria 的
-   *  commitCustomValue 会以「半截查询」回调到这里（setValue(null) 在受控
-   *  下仍触发 onSelectionChange），弹层取消语义 = 不写库；自定义模型名提交
-   *  仍属设置页字段形态（非 compact）。 */
-  function handleSelectionChange(key: unknown) {
-    if (key == null || key === '') {
-      if (compact) return;
-      // 自定义值提交（Enter 无匹配 / blur）：把输入当自定义模型名提交
-      const q = state.inputValue.trim();
-      if (q && q !== value) {
-        onChange(q);
-        close(); // 2026-09-01 审计：自定义提交后收起下拉（此前停在打开态）
-      }
-      return;
-    }
-    const m = results.find((r) => itemKey(r) === String(key));
-    if (m) handleSelect(m);
-  }
+  /* ── 键盘（自写；2026-11-17 批 D）──
+   * 只留这个产品真要的三件：↑↓ 移动激活项（不换行）、Enter 选中、Escape 关闭
+   * （两级菜单里先退回根栏）。**没有** react-aria 的虚拟聚焦/集合 API 那套——
+   * 它们唯一的作用是逼我们写反向补丁（旧注释里 30 余条）。 */
+  const itemEls = useCallback(() => [...(listRef.current?.querySelectorAll<HTMLElement>('.ms-item') ?? [])], []);
+  const moveActive = useCallback(
+    (step: 1 | -1) => {
+      const items = itemEls();
+      if (items.length === 0) return;
+      const at = activeKey == null ? -1 : items.findIndex((el) => el.dataset.key === activeKey);
+      const next = at === -1 ? (step > 0 ? 0 : items.length - 1) : at + step;
+      // 不换行（旧 react-aria 默认 shouldFocusWrap=false 的语义）
+      if (next < 0 || next >= items.length) return;
+      setActiveKey(items[next]?.dataset.key ?? null);
+    },
+    [activeKey, itemEls],
+  );
 
-  // 打开期间焦点跟随滚动（react-aria 虚拟焦点，滚动交给宿主；optional-call——
-  // jsdom 无 scrollIntoView，2026-09-06 接上 listRef 后测试环境首跑即踩）
-  // biome-ignore lint/correctness/useExhaustiveDependencies: focusedKey 是刻意的「触发器」依赖——仅用于滚动跟随，非响应值
-  useEffect(() => {
-    if (!state.isOpen) return;
-    const el = listRef.current?.querySelector('.ms-item.active') as HTMLElement | null;
-    el?.scrollIntoView?.({ block: 'nearest' });
-  }, [state.isOpen, state.selectionManager.focusedKey]);
-
-  /* 打开即把**当前模型**滚进视野（2026-11-08 实量缺陷）：上面那条只在 focusedKey
-   * 变化时滚，而打开那一刻 focusedKey 尚未落下 ⇒ 首屏停在顶部，当前行 top=182 而
-   * 列表高 188、行高 29 —— **只露 6px**（连测三次一致）。滚到视口中央而不是
-   * nearest：nearest 在「刚好贴边」时几乎不滚，仍然只露一条边。 */
-  useEffect(() => {
-    if (!state.isOpen || !compact || pane !== 'model') return;
-    const el = listRef.current?.querySelector('.ms-item.selected') as HTMLElement | null;
-    // 直接滚，不包 rAF：effect 在 DOM 提交之后跑，节点已挂载且布局可读；
-    // 包一层 rAF 反而让「打开即定位」晚一帧（视觉上先闪一下顶部再跳）。
-    el?.scrollIntoView?.({ block: 'center' });
-  }, [state.isOpen, compact, pane]);
-
-  // 进模型面才把焦点送入输入框（ARIA combobox 语义：触发弹出 → 焦点在输入；
-  // 否则键盘流落在触发器按钮上，react-aria 的 ↑↓/Enter 全部失效）。
-  // 2026-11-12：根栏/思考面没有输入框，落焦由下一条 effect 按面分派。
-  useEffect(() => {
-    if (state.isOpen && compact && pane === 'model') inputRef.current?.focus();
-  }, [state.isOpen, compact, pane]);
-
-  /* 面切换的落焦（DSH 同款）：进思考面落在「当前档那一行」，回根栏落在第一格——
-   * 键盘流不因换面断掉。模型面由上面那条送焦点进搜索框。 */
-  useEffect(() => {
-    if (!state.isOpen || !compact || pane === 'model') return;
-    const root = popoverRef.current;
-    if (!root) return;
-    const target =
-      pane === 'thinking'
-        ? (root.querySelector<HTMLElement>('[aria-checked="true"]:not([disabled])') ??
-          root.querySelector<HTMLElement>('.ms-item:not([disabled])'))
-        : root.querySelector<HTMLElement>('.ms-cell:not([disabled])');
-    target?.focus();
-  }, [state.isOpen, compact, pane]);
-
+  /** 打开：清查询、落面、把激活项落到当前选中行（combobox 惯例）。 */
   const handleTriggerOpen = useCallback(
     (focusStrategy?: 'first' | 'last') => {
       if (!attemptOpen()) return;
@@ -429,27 +340,64 @@ export function ModelSelector({
        * （设置页字段形态 / 不开思考的调用点）直接进模型面——单选维度不该多一次点击
        * （DSH 的 root 也只在模型/强度两件事并存时才有意义）。 */
       setPane(thinking != null ? 'root' : 'model');
-      state.open(focusStrategy, 'manual');
+      setOpen(true);
+      setActiveKey(focusStrategy === 'last' ? null : keyOfValue(results, value));
     },
-    [attemptOpen, state, thinking],
+    [attemptOpen, thinking, results, value],
   );
 
-  /* ── 2026-09-06 收口：外点关闭。画布空白处 mousedown preventDefault（平移
-   *    手势）拦得掉 blur——react-aria 的 blur 关闭永不触发，菜单收不回（实锤：
-   *    PaperPanel.onCanvasMouseDown L1704）。document mousedown 兜底（preventDefault
-   *    不阻监听器本身）；容器（触发器 + 弹层）内按下不算外点。仅 compact 挂。 ── */
-  useOutsideClose(containerRef, close, { enabled: state.isOpen && compact });
+  // 打开即把**当前模型**滚进视野（2026-11-08 实量缺陷）：旧实现只在激活项变化时滚，
+  // 而打开那一刻激活项尚未落下 ⇒ 首屏停在顶部，当前行 top=182 而列表高 188、行高 29
+  // —— **只露 6px**（连测三次一致）。滚到视口中央而不是 nearest。
+  useEffect(() => {
+    if (!open || !compact || pane !== 'model') return;
+    const el = listRef.current?.querySelector('.ms-item.selected') as HTMLElement | null;
+    // 直接滚，不包 rAF：effect 在 DOM 提交之后跑，节点已挂载且布局可读；
+    // 包一层 rAF 反而让「打开即定位」晚一帧（视觉上先闪一下顶部再跳）。
+    el?.scrollIntoView?.({ block: 'center' });
+  }, [open, compact, pane]);
+  // 激活项变化时的滚动跟随（键盘 ↑↓ 列表比视口长时）
+  useEffect(() => {
+    if (!open || activeKey == null) return;
+    const el = listRef.current?.querySelector<HTMLElement>('.ms-item[data-key="' + activeKey + '"]');
+    el?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, activeKey]);
+
+  // 进模型面才把焦点送入输入框（ARIA combobox 语义：触发弹出 → 焦点在输入；
+  // 否则键盘流落在触发器按钮上，↑↓/Enter 全部失效）。
+  useEffect(() => {
+    if (open && compact && pane === 'model') inputRef.current?.focus();
+  }, [open, compact, pane]);
+
+  /* 面切换的落焦（DSH 同款）：进思考面落在「当前档那一行」，回根栏落在第一格——
+   * 键盘流不因换面断掉。模型面由上面那条送焦点进搜索框。 */
+  useEffect(() => {
+    if (!open || !compact || pane === 'model') return;
+    const root = popoverRef.current;
+    if (!root) return;
+    const target =
+      pane === 'thinking'
+        ? (root.querySelector<HTMLElement>('[aria-checked="true"]:not([disabled])') ??
+          root.querySelector<HTMLElement>('.ms-item:not([disabled])'))
+        : root.querySelector<HTMLElement>('.ms-cell:not([disabled])');
+    target?.focus();
+  }, [open, compact, pane]);
+
+  /* ── 外点关闭：与 Escape 同门（2026-11-17 批 A 收编；画布在冒泡阶段
+   *    preventDefault，故 useOutsideClose 缺省走 capture）。仅 compact 需要——
+   *    字段形态的开关权在输入框焦点上（点外面 = 失焦 = 关）。 ── */
+  useOutsideClose(containerRef, close, { enabled: open && compact });
 
   /** 触发器点击 = toggle（开→关 / 关→开）——触发器恒驻后必须有自闭合路径。
    *  关闭路径回焦触发器（输入框随弹层卸载，焦点会坠回 body）。 */
   const handleTriggerClick = useCallback(() => {
-    if (state.isOpen) {
+    if (open) {
       close();
       requestAnimationFrame(() => triggerRef.current?.focus());
       return;
     }
     handleTriggerOpen();
-  }, [state.isOpen, close, handleTriggerOpen]);
+  }, [open, close, handleTriggerOpen]);
 
   /** 面切换：回根栏（Escape / 返回格同一条路）。 */
   const backToRoot = useCallback(() => setPane('root'), []);
@@ -465,8 +413,7 @@ export function ModelSelector({
     [thinking, close],
   );
 
-  /** 根栏 / 思考面的键位（模型面的键位交给 react-aria 的 combobox 输入框）。
-   *  DSH onRootKeyDown 同款：Escape 先退出钻入面、再关；↑↓ 在面内行间走。 */
+  /** 根栏 / 思考面的键位（模型面的键位交给输入框那条）。 */
   const onPaneKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!compact || e.target instanceof HTMLInputElement) return;
     if (e.key === 'Escape') {
@@ -502,7 +449,6 @@ export function ModelSelector({
       : compact
         ? '没有可用模型——去 设置 → Provider 添加'
         : '目录为空，点击刷新从 API 获取';
-
   /** 搜索输入（两形态共用）。isField = 设置页字段形态：收起时显当前 id + 清除钮；
    *  compact（弹层内搜索行）只在打开时存在，值恒为查询词，无清除钮。 */
   const renderInput = (isField: boolean) => (
@@ -517,37 +463,69 @@ export function ModelSelector({
           type="text"
           className="sp-input ms-input"
           ref={inputRef}
-          {...inputProps}
-          /* 2026-11-08：placeholder 必须写在 `{...inputProps}` **之后**——react-aria 的
-           * inputProps 自带 placeholder:''，展开在前会被它盖掉（真机实测 getAttribute
-           * 为 null，搜索行 39px 却是空的）。设置页字段形态无占位符（isField 收起态显示
-           * 当前 id），保持 undefined。 */
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="ms-listbox"
+          aria-activedescendant={activeKey != null ? `ms-opt-${activeKey}` : undefined}
+          aria-autocomplete="list"
           placeholder={compact ? '搜索模型…' : undefined}
-          value={isField ? (state.isOpen ? state.inputValue : value) : state.inputValue}
-          onFocus={(e) => {
-            // 对齐旧行为（字段形态）：聚焦预填当前模型 id
-            if (isField && !state.isOpen) setQuery(value);
-            inputProps.onFocus?.(e);
+          value={isField ? (open ? query : value) : query}
+          onFocus={() => {
+            // 对齐旧行为（字段形态）：聚焦预填当前模型 id，并开面（menuTrigger:'focus' 的原语义）
+            if (isField && !open) {
+              setQuery(value);
+              if (!isStreaming) {
+                setPane('model');
+                setOpen(true);
+                setActiveKey(keyOfValue(results, value));
+              }
+            }
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActiveKey(null);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
-              // Escape = 取消关闭，不提交自定义值（react-aria 默认 revert 会提交，拦截掉）
+              // Escape = 取消关闭，不提交自定义值（无匹配时也不落库）
               e.preventDefault();
               if (compact && thinking != null && pane !== 'root') {
-                // 2026-11-12 两级菜单：模型面是**钻入面**——Escape 先退回根栏
-                // （DSH back 语义），根栏再 Escape 才收起。无思考面时没有根栏可退。
+                // 两级菜单：模型面是**钻入面**——Escape 先退回根栏（DSH back 语义），
+                // 根栏再 Escape 才收起。无思考面时没有根栏可退。
                 setPane('root');
                 return;
               }
               close();
-              // 2026-09-06 收口：收起后焦点回触发器（combobox 惯例：取消回到收起态控件）
               if (compact) requestAnimationFrame(() => triggerRef.current?.focus());
               return;
             }
-            inputProps.onKeyDown?.(e);
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              moveActive(e.key === 'ArrowDown' ? 1 : -1);
+              return;
+            }
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              const m = results.find((r) => itemKey(r) === activeKey);
+              if (m) {
+                handleSelect(m);
+                return;
+              }
+              /* 无匹配 + Enter：compact **不**写库（弹层内手输 = 取消语义）；
+               * 字段形态提交自定义模型名（设置页的自定义入口）。 */
+              if (compact) {
+                close();
+                return;
+              }
+              const q = query.trim();
+              if (q && q !== value) {
+                onChange(q);
+                close();
+              }
+            }
           }}
         />
-        {isField && value && !state.isOpen && (
+        {isField && value && !open && (
           <button
             type="button"
             className="ms-input-clear"
@@ -572,12 +550,19 @@ export function ModelSelector({
           {fetchInflight.has(row.vendor) && <span className="ms-group-fetch">目录获取中…</span>}
         </div>
       ) : (
-        <ModelRow key={itemKey(row.m)} state={state} m={row.m} value={value} />
+        <ModelRow
+          key={itemKey(row.m)}
+          m={row.m}
+          value={value}
+          active={activeKey === itemKey(row.m)}
+          onPick={handleSelect}
+          onHover={() => setActiveKey(itemKey(row.m))}
+        />
       ),
     );
 
   return (
-    <div className={`ms-container${state.isOpen ? ' ms-open' : ''}${compact ? ' ms-compact' : ''}`} ref={containerRef}>
+    <div className={`ms-container${open ? ' ms-open' : ''}${compact ? ' ms-compact' : ''}`} ref={containerRef}>
       {compact ? (
         <>
           {/* 触发器恒驻（2026-09-06 收口）：打开时仍显示当前模型，不被搜索框顶替。
@@ -589,12 +574,11 @@ export function ModelSelector({
             data-tip={`${providerName} · ${triggerLabel}`}
             data-tip-hint={providerUnavailable ? `⚠ 提供方「${providerName}」不可用——请改选可用模型` : '点击选择模型'}
             aria-haspopup={thinking != null ? 'menu' : 'listbox'}
-            aria-expanded={state.isOpen}
+            aria-expanded={open}
             onMouseDown={(e) => {
               // 防抢焦竞态（DSH ModelSelect 同款注释）：打开态下 mousedown 触发器会
-              // 把焦点从搜索框拽走 → blur 不在弹层内 → react-aria commitValue 抢先
-              // 关菜单，随后 click 又重开（toggle 失效 + 闪烁）。preventDefault 拦掉
-              // mousedown 的默认抢焦，toggle 交给 click 一次做完。
+              // 把焦点从搜索框拽走 → 弹层先关、随后 click 又重开（toggle 失效 + 闪烁）。
+              // preventDefault 拦掉 mousedown 的默认抢焦，toggle 交给 click 一次做完。
               e.preventDefault();
             }}
             onClick={handleTriggerClick}
@@ -625,15 +609,9 @@ export function ModelSelector({
            *  时换行、拨完不关弹层。DSH 的解法是同级第二面——根栏 模型 / 思考 两格，
            *  各自点进去是一张清单（模型 = 搜索 + 分组列表；思考 = 档位表 + 当前勾）。
            *  尺寸不变：根栏两格 ≈ 68px，与旧「搜索 + 4 行列表」同高量级。 */}
-          {state.isOpen && (
+          {open && (
             // biome-ignore lint/a11y/noStaticElementInteractions: 键位容器无自身语义——行角色在子层（根栏 role=menu / 模型面 listbox / 档位面 menu），本层只做面内 ↑↓/Escape 分派（DSH MenuSurface 同构）
-            <div
-              ref={(el) => {
-                popoverRef.current = el;
-              }}
-              className={`ms-dropdown ms-pane-${pane}`}
-              onKeyDown={onPaneKeyDown}
-            >
+            <div ref={popoverRef} className={`ms-dropdown ms-pane-${pane}`} onKeyDown={onPaneKeyDown}>
               {pane === 'root' && (
                 <div className="ms-cells" role="menu" aria-label="模型与思考档位">
                   <button type="button" role="menuitem" className="ms-cell" onClick={() => setPane('model')}>
@@ -668,14 +646,7 @@ export function ModelSelector({
                       <span className="ms-empty-text">{emptyText}</span>
                     </div>
                   ) : (
-                    <div
-                      ref={(el) => {
-                        listRef.current = el;
-                        listBoxRef.current = el;
-                      }}
-                      className="ms-listbox"
-                      {...listBoxProps}
-                    >
+                    <div ref={listRef} className="ms-listbox" role="listbox" id="ms-listbox" aria-label="模型">
                       {renderRows()}
                     </div>
                   )}
@@ -718,21 +689,13 @@ export function ModelSelector({
       ) : (
         <>
           {renderInput(true)}
-          {state.isOpen &&
+          {open &&
             (results.length === 0 ? (
               <div className="ms-dropdown ms-empty">
                 <span className="ms-empty-text">{emptyText}</span>
               </div>
             ) : (
-              <div
-                ref={(el) => {
-                  popoverRef.current = el;
-                  listRef.current = el;
-                  listBoxRef.current = el;
-                }}
-                className="ms-dropdown"
-                {...listBoxProps}
-              >
+              <div ref={listRef} className="ms-dropdown" role="listbox" id="ms-listbox" aria-label="模型">
                 {renderRows()}
               </div>
             ))}
@@ -752,13 +715,22 @@ function ProviderMark({ vendor, className }: { vendor: string; className?: strin
   );
 }
 
-/** 下拉单项（useOption 接管 role/aria-selected/键盘选中语义，DOM 类名不变）。
- *  行内只留模型本身（id + 人类名）；目录元数据（推理/上下文窗口/动态来源）全部
- *  收进 title——徽章收口后 hover 可见，不再占行内空间挡字。 */
-function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; m: ModelDescriptor; value: string }) {
-  const optionRef = useRef<HTMLButtonElement | null>(null);
+/** 下拉单项。行内只留模型本身（id + 人类名）；目录元数据（推理/上下文窗口/动态来源）
+ *  全部收进 title——徽章收口后 hover 可见，不再占行内空间挡字。 */
+function ModelRow({
+  m,
+  value,
+  active,
+  onPick,
+  onHover,
+}: {
+  m: ModelDescriptor;
+  value: string;
+  active: boolean;
+  onPick: (m: ModelDescriptor) => void;
+  onHover: () => void;
+}) {
   const key = itemKey(m);
-  const { optionProps, isFocused } = useOption({ key, isSelected: m.id === value }, state, optionRef);
   const isDynamic = m.contextWindow <= 0; // 无目录元数据 = 运行时从 /models 动态发现
   /* 2026-11-08：设定行右缘 vendor 之后，第二行 id 的职责收窄——只在「名字与 id 不同
    * 且该 id 是本行唯一识别依据」时仍露（例如自定义 provider 的目录外 id）；
@@ -779,11 +751,14 @@ function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; 
   return (
     <button
       type="button"
-      ref={optionRef}
-      {...optionProps}
+      id={`ms-opt-${key}`}
+      role="option"
+      aria-selected={m.id === value}
       data-key={key}
       data-tip={title || undefined}
-      className={`ms-item${isFocused ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
+      className={`ms-item${active ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
+      onMouseEnter={onHover}
+      onClick={() => onPick(m)}
     >
       <span className="ms-item-title">
         <span className="ms-item-name">{m.name}</span>

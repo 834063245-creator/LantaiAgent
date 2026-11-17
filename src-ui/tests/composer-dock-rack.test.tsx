@@ -300,18 +300,23 @@ describe('图版架（坞下横架 · 丙案）', () => {
     });
   };
 
-  /** 按住 → 拖到屏幕点 → 松手（真手势三拍：钉手势走 window 监听）。 */
+  /** 按住 → 拖到屏幕点 → 松手（真手势三拍）。
+   *  2026-11-17 批 C3：钉手势收编进 useDragGesture ⇒ 抬手面是 pointer 事件
+   *  （核心要 setPointerCapture）——**三拍语义不变**，只换事件名。 */
   const dragFrom = (handle: HTMLElement, x0: number, y0: number, x1: number, y1: number): void => {
+    const fire = (target: EventTarget, type: string, x: number, y: number): void => {
+      const ev = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y });
+      Object.defineProperty(ev, 'pointerId', { value: 1 });
+      target.dispatchEvent(ev);
+    };
     act(() => {
-      handle.dispatchEvent(
-        new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: x0, clientY: y0 }),
-      );
+      fire(handle, 'pointerdown', x0, y0);
     });
     act(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x1, clientY: y1 }));
+      fire(window, 'pointermove', x1, y1);
     });
     act(() => {
-      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x1, clientY: y1 }));
+      fire(window, 'pointerup', x1, y1);
     });
   };
 

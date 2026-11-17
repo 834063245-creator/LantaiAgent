@@ -25,7 +25,7 @@
 //
 // 类型导入纪律：type-only import 编译期擦除（esbuild 产物无裸运行时 import）。
 // smiles-drawer（scientific-rendering #10，2026-09）：npm 依赖，esbuild 产物域
-// bundle:true 自动内联（react-bridge.cjs 注释 @react-aria 先例；本包零 react
+// bundle:true 自动内联（react-bridge.cjs 的注释有先例；本包零 react
 // 依赖——chroma-js 一并内联，不进宿主桥）。vitest 域真实加载本包：parse 是纯
 // 字符串处理不碰 DOM，SvgDrawer/ReactionDrawer 只在组件 effect 挂载后 draw 时
 // 才碰 svg DOM。类型：包自带 dist/types（SmilesDrawerNS 默认导出）。
