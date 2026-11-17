@@ -14,6 +14,7 @@
 //   R3.5 浮动化：可拖动 + 滚轮缩放 + localStorage 记忆。
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDragGesture } from '../paper-shell/use-drag-gesture';
 import {
   clampViewportFrame,
   inkBarsFor,
@@ -107,7 +108,40 @@ export const MinimapView = memo(function MinimapView() {
   const mmBoxRef = useRef<HTMLDivElement | null>(null);
   /* 拖动状态（R3.5）：按下空白区记起点，move 换算 right/bottom 增量；
    * 松手位移 < DRAG_THRESHOLD = 点击 → 跳转到该世界点（原 V3b 手势保留）。 */
-  const dragRef = useRef<{ sx: number; sy: number; right: number; bottom: number; moved: boolean } | null>(null);
+  const mmDragRef = useRef<{ sx: number; sy: number; right: number; bottom: number; moved: boolean } | null>(null);
+  /* 拖小地图（2026-11-17 交互原语批 C3 · C5 判定：**并入**）——按 plan §3 的判定口径：
+   * 「手势 = 有拖拽位移语义 + 有提交/取消两态」它两样都齐（拖 = 挪位并落盘，未过阈值 = 点击跳转），
+   * 只是动作对象是**小地图自己的偏好位**而不是纸上的东西。收编进核心后它才终于有了
+   * 「失联即收」——旧实现窗外松手会把 `dragRef` 留在在途态，下一次按下直接当「续拖」。 */
+  const mmGesture = useDragGesture({
+    threshold: DRAG_THRESHOLD,
+    onMove: (_e, d) => {
+      const cur = mmDragRef.current;
+      if (!cur) return;
+      cur.moved = true;
+      // 相对画布容器（.pp-canvas）右下角的偏移增量
+      const crect = (document.querySelector('.pp-canvas') as HTMLElement | null)?.getBoundingClientRect();
+      if (!crect) return;
+      const right = Math.min(crect.width - 8, Math.max(8, cur.right - d.dx));
+      const bottom = Math.min(crect.height - 8, Math.max(8, cur.bottom - d.dy));
+      persistPref({ ...pref, right, bottom });
+    },
+    onEnd: (e, d) => {
+      const cur = mmDragRef.current;
+      mmDragRef.current = null;
+      // 未拖动 = 点击跳转：像素反解世界坐标
+      if (!cur || cur.moved || !e) return;
+      const rect = mmBoxRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const mx = d.x - rect.left - 4 - offX;
+      const my = d.y - rect.top - 4 - offY;
+      glideTo(content.x0 + mx / scale, content.y0 + my / scale);
+    },
+    onCancel: () => {
+      mmDragRef.current = null;
+    },
+  });
+
   const onContainerPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
@@ -116,37 +150,12 @@ export const MinimapView = memo(function MinimapView() {
       // R3.5 收尾：preventDefault 掐断拖动时的原生文本选择（配合 CSS user-select:none，
       // 双保险——WebView 下 pointerdown 选择在 capture 阶段就启动了）
       e.preventDefault();
-      const rect = e.currentTarget.getBoundingClientRect();
-      dragRef.current = { sx: e.clientX, sy: e.clientY, right: pref.right, bottom: pref.bottom, moved: false };
-      const onMove = (ev: PointerEvent) => {
-        const d = dragRef.current;
-        if (!d) return;
-        if (!d.moved && Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < DRAG_THRESHOLD) return;
-        d.moved = true;
-        // 相对画布容器（.pp-canvas）右下角的偏移增量
-        const crect = (document.querySelector('.pp-canvas') as HTMLElement | null)?.getBoundingClientRect();
-        if (!crect) return;
-        const right = Math.min(crect.width - 8, Math.max(8, d.right - (ev.clientX - d.sx)));
-        const bottom = Math.min(crect.height - 8, Math.max(8, d.bottom - (ev.clientY - d.sy)));
-        persistPref({ ...pref, right, bottom });
-      };
-      const onUp = (ev: PointerEvent) => {
-        const d = dragRef.current;
-        dragRef.current = null;
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-        // 未拖动 = 点击跳转：像素反解世界坐标
-        if (d && !d.moved) {
-          const mx = ev.clientX - rect.left - 4 - offX;
-          const my = ev.clientY - rect.top - 4 - offY;
-          glideTo(content.x0 + mx / scale, content.y0 + my / scale);
-        }
-      };
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
+      mmDragRef.current = { sx: e.clientX, sy: e.clientY, right: pref.right, bottom: pref.bottom, moved: false };
+      mmGesture.begin(e);
     },
-    [pref, persistPref, offX, offY, scale, content.x0, content.y0, glideTo],
+    [pref, mmGesture],
   );
+
   /* 滚轮缩放（R3.5，2026-09-05 收尾）：原生 wheel 监听（passive:false）——
    * React 合成 onWheel 在 WebView 是 passive，preventDefault 失效且事件会被
    * 画布原生 wheel 监听器吞掉 → 缩放「没实装」的根因。原生监听保证
