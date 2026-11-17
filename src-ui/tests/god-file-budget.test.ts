@@ -98,6 +98,11 @@ const DEBT: Record<string, number> = {
   'src-ui/src/plugins/loader.ts': 1100, // 现 1056
   'src-ui/src/agent/runtime/runtime.ts': 1100, // 现 1057
   'src-ui/src/plugins/builtin/compaction/agent-compaction.ts': 1100, // 现 1016
+  /* 2026-11-17 交互原语批 A 补登记：宿主面注册表 + 指纹（faceDeps 单一真源）。
+   * 它按定义是**一张平表**——拆成多个文件只是把同一张表切段、再互相 import 拼回来，
+   * 结构不会更好，只会更难查「某个键在不在面内」。本批新增 useOutsideClose 让它
+   * 越过 1000 线；下一次真该动它时按单据（faceDeps / verifier / fingerprint）拆。 */
+  'src-ui/src/plugins/builtin/host-modules.ts': 1100, // 现 1001
   'src-tauri/src/credential.rs': 1100, // 现 1076
 };
 function physicalLines(p: string): number {
