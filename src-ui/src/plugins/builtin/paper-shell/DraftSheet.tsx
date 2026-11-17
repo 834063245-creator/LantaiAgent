@@ -31,6 +31,7 @@
 // V1 的三条断言留作判据（勿重犯）：题签 = 纸上的三行注疏 / 开卷按钮 / 坞隐藏输入条。
 // 前两条已被 V2 推翻，第三条改为「焦点在纸上时坞让位」。
 
+import type React from 'react';
 import { type CSSProperties, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { type DraftSheetCore, draftBoxInSight, draftFocusPoint, draftPlacement, draftScale } from './draft-sheet';
 import {
@@ -239,7 +240,11 @@ function PaperView({
    * 纸就比内容矮一个天头（用户报的「文字冲出题签背景」正是这一条）。这里因此**不再**
    * 往 boxH 上补贴 folioH（那是同一笔钱数两遍）。 */
   const regionMinH = EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP + folioH;
-  const boxH = Math.max(sheetH, regionMinH);
+  /* **合上的纸按内容收高**（2026-11-17 用户报「无焦点状态 UI 太难看」的第二半）：
+   * 焦点那张必须垫到「卷的最小盒高」（化卷那一拍盒底/盒高要与卷对得上），而**合上的**
+   * 那张没有输入面、也不参与交接——再垫到 272 + 天头就是**下半截全空**的一页白纸。
+   * 故无焦点时只垫到「天头 + 合口 + 注记 + 去处」这一小段（页高随内容走，实测撑）。 */
+  const boxH = focused ? Math.max(sheetH, regionMinH) : Math.max(sheetH, folioH + 96);
   /* **纸盒 = 卷盒**（2026-11-15 用户报「题签到真实卷没有好的动画过渡」的根因）：
    * 卷的盒底恒在 `锚点 + REGION_FOOT_GAP`（流区几何：regionHeight 已含底距），
    * 而纸原先以**锚点**为底线 —— 于是化卷那一拍纸是「往上跳 72px 再淡出」。
@@ -249,7 +254,7 @@ function PaperView({
   const boxBottom = (anchor?.anchorY ?? 0) + REGION_FOOT_GAP;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: 纸是画布上的一件「物件」（同 .pp-region 的 mousedown 激活语义——点纸张即拿到它）；键盘路径在纸内那枚真实按钮（.pp-draft-idle）上，这里只补鼠标那条腿。
+    // biome-ignore lint/a11y/noStaticElementInteractions: 纸是画布上的一件「物件」（同 .pp-region 的 mousedown 激活语义——点纸张即拿到它）；键盘路径见下方 tabIndex/onKeyDown 那两条腿。
     <div
       className={`pp-region pp-draft-sheet${focused ? ' pp-draft-focused' : ' pp-draft-idle'}`}
       data-draft-sheet
@@ -257,6 +262,20 @@ function PaperView({
       data-body-state={notice ? 'rejected' : 'ready'}
       data-focused={focused ? 'true' : undefined}
       ref={measureSheet}
+      /* 合上的纸是**可达的**（2026-11-17）：无焦点时它整张就是那句「点这张纸继续题签」
+       * 的落点——鼠标走 mousedown，键盘走 tabIndex + Enter/Space（同一件事两条腿）。 */
+      {...(focused
+        ? null
+        : {
+            role: 'button' as const,
+            tabIndex: 0,
+            'aria-label': '点这张纸继续题签',
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              core?.focusDraft?.(paperId);
+            },
+          })}
       onMouseDown={() => {
         if (!focused) core?.focusDraft?.(paperId);
       }}
@@ -315,10 +334,25 @@ function PaperView({
             )}
           </>
         ) : (
-          <button type="button" className="pp-draft-idle" onClick={() => core?.focusDraft?.(paperId)}>
-            <span className="pp-draft-idle-sign">{picks?.presetId ?? presetSeed ?? presetSelected}</span>
-            <span className="pp-draft-idle-hint">点这张纸继续题签</span>
-          </button>
+          /* **合上的纸**（2026-11-17 用户报「无焦点状态 UI 太难看」）：天头以下不是空白，
+           * 是一条合口 + 三笔题签注记 + 一句去处。整张纸可点（点击判据在纸壳的 onMouseDown 上），
+           * 故这里**不挂第二枚按钮**——纸自己就是那个入口，键盘路径由纸壳的 tabIndex 承担。 */
+          <>
+            <div className="pp-draft-seal" aria-hidden="true">
+              <span className="pp-draft-seal-mark">合</span>
+            </div>
+            <div className="pp-draft-note">
+              <span className="pp-draft-note-cell">
+                <span className="pp-draft-note-k">组合</span>
+                <span className="pp-draft-note-v">{picks?.presetId ?? presetSeed ?? presetSelected}</span>
+              </span>
+              <span className="pp-draft-note-cell">
+                <span className="pp-draft-note-k">模型</span>
+                <span className="pp-draft-note-v">{picks?.model ?? '出生默认'}</span>
+              </span>
+            </div>
+            <div className="pp-draft-idle-hint">点这张纸继续题签</div>
+          </>
         )}
       </div>
     </div>

@@ -257,9 +257,14 @@ describe('待题纸 · 多纸（③ 组件面：坞回来 / 焦点可换）', ()
     expect(sheets).toHaveLength(2);
     const focusedEl = el.querySelector('[data-draft-sheet][data-focused="true"]') as HTMLElement | null;
     expect(focusedEl?.getAttribute('data-paper-id')).toBe(b);
-    // 非焦点那张只有一行去处（可点回焦点），没有第二套输入面
-    const idle = el.querySelector(`[data-paper-id="${a}"] .pp-draft-idle`);
-    expect(idle).not.toBeNull();
+    // 非焦点那张 = **合上的纸**（合口 + 题签注记 + 一句去处），没有第二套输入面
+    const idle = el.querySelector(`[data-paper-id="${a}"]`);
+    expect(idle!.classList.contains('pp-draft-idle')).toBe(true);
+    expect(el.querySelector(`[data-paper-id="${a}"] .pp-draft-seal`)).not.toBeNull();
+    expect(el.querySelector(`[data-paper-id="${a}"] .pp-draft-note`)).not.toBeNull();
+    // 键盘可达：合上的纸自己是 role=button + tabIndex（不是靠一枚独立按钮）
+    expect(idle!.getAttribute('role')).toBe('button');
+    expect(idle!.getAttribute('tabindex')).toBe('0');
     expect(el.querySelectorAll('textarea')).toHaveLength(0); // 无 overlays 注册 ⇒ 没有输入面
   });
 
@@ -279,10 +284,10 @@ describe('待题纸 · 多纸（③ 组件面：坞回来 / 焦点可换）', ()
     });
     await act(async () => {});
 
-    const idleBtn = el.querySelector(`[data-paper-id="${a}"] .pp-draft-idle`) as HTMLElement | null;
-    expect(idleBtn).not.toBeNull();
+    const idleSheet = el.querySelector(`[data-paper-id="${a}"]`) as HTMLElement | null;
+    expect(idleSheet).not.toBeNull();
     await act(async () => {
-      idleBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      idleSheet!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
     });
     expect(focusDraft).toHaveBeenCalledWith(a);
     expect(useDraftSheetStore.getState().focusedId).toBe(a);
@@ -450,5 +455,65 @@ describe('待题纸 · ③b 点纸**里面**不许把焦点交回卷（2026-11-1
     expect(useDraftSheetStore.getState().focusedId).toBeNull();
     // 纸仍在画布上（不是被销毁，只是让出焦点）
     expect(useDraftSheetStore.getState().papers.map((p) => p.id)).toEqual([paperId]);
+  });
+});
+
+describe('待题纸 · ③c 合上的纸（2026-11-17 用户报「无焦点状态 UI 太难看」）', () => {
+  let root: Root | null = null;
+  let container: HTMLDivElement | null = null;
+
+  beforeEach(() => {
+    useDraftSheetStore.getState().dismissAll();
+    usePresetStore.setState({ selected: 'standard', error: null });
+    getCanvasStore(PANEL).getState().clearCanvas();
+    useCanvasViewStore.setState({ view: { zoom: 1, panX: 0, panY: 0 }, canvasSize: { w: W, h: H } });
+  });
+
+  afterEach(() => {
+    act(() => root?.unmount());
+    container?.remove();
+    root = null;
+    container = null;
+    useDraftSheetStore.getState().dismissAll();
+  });
+
+  it('无焦点那张 = 「合上的纸」：有合口与题签注记，且**比焦点那张矮**（不留半页空白）', async () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    container = el;
+    await act(async () => {
+      root = createRoot(el);
+      root.render(<DraftSheet core={{ panelId: PANEL }} />);
+    });
+    let a = '';
+    let b = '';
+    await act(async () => {
+      a = useDraftSheetStore.getState().openSheet();
+      b = useDraftSheetStore.getState().openSheet();
+    });
+    await act(async () => {});
+    // 给两张纸都写死锚点（免得依赖视口落位）
+    await act(async () => {
+      useDraftSheetStore.getState().setAnchor({ anchorX: 300, anchorY: 420, width: STREAM_REGION.width }, a);
+      useDraftSheetStore.getState().setAnchor({ anchorX: 1800, anchorY: 420, width: STREAM_REGION.width }, b);
+    });
+    await act(async () => {});
+
+    const idleEl = el.querySelector(`[data-paper-id="${a}"]`) as HTMLElement;
+    const focusEl = el.querySelector(`[data-paper-id="${b}"]`) as HTMLElement;
+    expect(idleEl.classList.contains('pp-draft-idle')).toBe(true);
+    expect(focusEl.classList.contains('pp-draft-focused')).toBe(true);
+
+    /* 合上那态的三件（缺一件就退回"被掏空的框"）：
+     *   ① 合口（一枚「合」字压印）；② 题签注记（组合 + 模型）；③ 去处那一句。 */
+    expect(idleEl.querySelector('.pp-draft-seal')).not.toBeNull();
+    expect(idleEl.querySelector('.pp-draft-note')).not.toBeNull();
+    expect(idleEl.querySelector('.pp-draft-idle-hint')?.textContent).toContain('点这张纸继续题签');
+    // 焦点那张没有这三件（它有真输入面）
+    expect(focusEl.querySelector('.pp-draft-seal')).toBeNull();
+    expect(focusEl.querySelector('.pp-draft-note')).toBeNull();
+
+    // 合上的纸**收高**（不再按卷的最小盒高 272 撑出下半截空白）
+    expect(Number.parseFloat(idleEl.style.height)).toBeLessThan(Number.parseFloat(focusEl.style.height));
   });
 });

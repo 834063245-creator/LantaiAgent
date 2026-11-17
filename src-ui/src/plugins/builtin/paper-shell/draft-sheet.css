@@ -296,40 +296,106 @@
   color: var(--seal-deep);
 }
 
-/* ── 多纸（2026-11-17）：**非焦点那张**只留一行去处 ──────────────────────────
+/* ── 多纸（2026-11-17）：**非焦点那张**是「一张合上的纸」，不是「被掏空的框」─────
  *
- * 焦点独占（同一时刻只有一张纸吃键盘），其余纸仍是完整的纸（天头 / 纸纹 / 落影都在），
- * 只是天头之下不再展开输入面——换成一行「组合 · 点这张纸继续题签」。
+ * 用户判语（2026-11-17）：「焦点离开之后，这个无焦点状态 UI 太难看了」。
+ * 一版把天头以下整块换成一行小字 ⇒ 纸的下半截是**空的**：一张 1440 宽的纸上孤零零
+ * 一行 12px 的字，读起来像加载失败/占位骨架（§11 致死动作①「万物皆框」的反面——
+ * 这里是「万物皆空」）。
  *
- * 为什么不是把整张纸淡掉：纸摆在画布上是**可见的待办**（用户要多开几张就是要在画布上
- * 看见它们）；淡掉就成了「纸没了」，与多纸的语义相反。
- * 行高按题签行一档（与 .pp-sheet-comp 同字号基线），纸高因此不跳：焦点换手时两张纸的
- * 高度只差「输入面 vs 一行注」，视觉上只读作「这张纸醒了」。 */
-.pp-draft-idle {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  width: 100%;
-  margin: 0;
-  padding: 12px 24px 14px;
-  border: 0;
-  background: transparent;
-  text-align: left;
+ * 现行 = **合上的纸面**（纸没人拿，但它整张还在案上）：
+ *   ① 天头以下不是空白，是一条**合口**：双细规线（版心宽）+ 居中的「合」字印痕——
+ *      与卷首底那条 rule-hard 同族语言，密度对齐天头，纸不再头重脚轻；
+ *   ② 题签三笔以**注记**形态留在合口之下（组合 · 模型），读得出来这张纸备了什么，
+ *      但一律降到墨三/墨四——它是**账**，不是可操作控件（同卷首档行那一档）；
+ *   ③ 整张纸 hover 时合口收紧（朱砂细线由 0 长到全宽）、注记提一档墨，且纸的落影
+ *      升到「在手」档：可点性由此表达，不靠一个按钮。
+ * 纸律：只动 box-shadow / opacity / transform:scaleX（合口那条线），不写 width 过渡
+ *（布局属性，见 §15）。 */
+.pp-draft-sheet.pp-draft-idle {
   cursor: pointer;
 }
-.pp-draft-idle-sign {
-  font-family: var(--f-kai);
-  font-size: var(--fs-lead);
-  letter-spacing: 0.04em;
-  color: var(--ink-2);
+/* 焦点在别处 = 纸「合上了」：落影降半档（平放纸比在手的纸薄一层）。 */
+.pp-draft-sheet.pp-draft-idle:hover {
+  box-shadow:
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 7px var(--sheet-band),
+    var(--shadow-sheet-active);
 }
-.pp-draft-idle-hint {
+/* 合口：一枚「合」字压印（**不画线**）。
+ *
+ * ⚠ 两条教训（预览逐版连拍得到，勿回潮）：
+ *   ① **不许再画一条通栏细线**：卷首版心本来就有 border-bottom 的硬规线（`.pp-folio-inner`），
+ *      合口再来一条满宽 1px，两线之间只隔十几像素 ⇒ 读作「双下划线」，比原来的空白更难看。
+ *   ② **不能靠"淡"来表达次要**：纸纹是高对比噪底，墨四那一档放上去直接消失（实测：
+ *      只有纯色底上看得见）。合口这枚字取**墨一 + 0.5 透明度**——色深够被看见，
+ *      透明度把它压成"压印"而不是"标题"。
+ * 版心铁律（2026-09-16）：与天头同轴，宽 = 纸半、margin auto；第一版用了左右 24px
+ * 内距，1440 宽的纸上左缘孤零零一行，读作「版式没做完」。 */
+.pp-draft-seal {
+  display: flex;
+  justify-content: center;
+  margin: 22px auto 0;
+}
+.pp-draft-seal-mark {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  line-height: 1;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  color: var(--ink-1);
+  opacity: 0.42;
+  transition: opacity var(--snap);
+}
+.pp-draft-sheet.pp-draft-idle:hover .pp-draft-seal-mark {
+  opacity: 0.6;
+}
+/* 题签注记：三笔各一枚小签（组合 · 模型），一律墨三/墨四——它是账不是控件。
+ * 与合口同样走版心宽、居中（同一条铁律，见上）。 */
+.pp-draft-note {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 26px;
+  width: 50%;
+  margin: 14px auto 0;
   font-family: var(--f-mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.22em;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.pp-draft-note-cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.pp-draft-note-k {
+  font-family: var(--f-song);
+  letter-spacing: 0.18em;
   color: var(--ink-4);
+}
+.pp-draft-note-v {
+  font-family: var(--f-kai);
+  font-size: var(--fs-lead);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 去处那一句：合口之下最末一行，hover 转朱砂（与全仓「瞬时件去框 + hover 朱砂」同族）。 */
+.pp-draft-idle-hint {
+  width: 50%;
+  margin: 14px auto 0;
+  text-align: center;
+  font-family: var(--f-kai);
+  font-size: var(--fs-caption);
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
   transition: color var(--snap);
 }
-.pp-draft-idle:hover .pp-draft-idle-hint {
+.pp-draft-sheet.pp-draft-idle:hover .pp-draft-idle-hint {
   color: var(--seal-deep);
 }
