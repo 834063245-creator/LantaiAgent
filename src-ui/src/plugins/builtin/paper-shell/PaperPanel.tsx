@@ -179,7 +179,7 @@ export function PaperPanel() {
     onRegionCornerMouseDown,
     onResizeMouseDown,
     branchGrips,
-    onBranchGripMouseDown,
+    onBranchGripPointerDown,
   } = usePaperPanelAssembly();
 
   /* **交接期：纸只借卷的「左缘与宽」**（2026-11-16 改判；上一版整盒借用已被推翻）。
@@ -658,7 +658,7 @@ export function PaperPanel() {
                           onDragHandleMouseDown={onBlockMouseDown}
                           /* 空间手势立枝的握把：只在**判据通过**的块上（与「立枝」按钮
                              同一张表）——工具卡/通知块/未落定轮不长一个注定被拒的手势。 */
-                          onBranchGripMouseDown={branchGrips.has(b.id) ? onBranchGripMouseDown : undefined}
+                          onBranchGripPointerDown={branchGrips.has(b.id) ? onBranchGripPointerDown : undefined}
                         />
                       </div>
                     );

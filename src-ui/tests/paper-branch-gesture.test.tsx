@@ -318,8 +318,17 @@ describe('会话树「枝」——空间手势立枝（P4-①：拖出引线、�
     return el;
   }
 
+  /** 派发一个指针/鼠标事件。
+   *  2026-11-17 交互原语批 C3：抬手面从 mouse 事件换成 **pointer** 事件（手势核心要
+   *  `setPointerCapture`，那只有 pointer 事件能给）——**判据与断言一个字符没改**，只换
+   *  了「怎么把用户动作喂给组件」这一层。jsdom 没有 PointerEvent 构造器，故在
+   *  MouseEvent 上补 `pointerId`（React 认它）。 */
   const fire = (el: Element | Window, type: string, init: MouseEventInit & { button?: number }): void => {
-    (el === window ? window : el).dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...init }));
+    const target = el === window ? window : el;
+    const isPointer = type.startsWith('pointer');
+    const ev = new MouseEvent(isPointer ? type : type, { bubbles: true, cancelable: true, ...init });
+    if (isPointer) Object.defineProperty(ev, 'pointerId', { value: 1 });
+    target.dispatchEvent(ev);
   };
 
   /** 按下握把 + 拖到落点（手势两步，各自包 act——React 事件外的状态更新会告警）。 */
@@ -327,17 +336,17 @@ describe('会话树「枝」——空间手势立枝（P4-①：拖出引线、�
     const rect = stubBlockRect(messageId);
     const grip = gripEl(messageId);
     await act(async () => {
-      fire(grip, 'mousedown', { button: 0, clientX: rect.right - 20, clientY: rect.bottom + 8 });
+      fire(grip, 'pointerdown', { button: 0, clientX: rect.right - 20, clientY: rect.bottom + 8 });
     });
     await act(async () => {
-      fire(window, 'mousemove', { clientX: to.x, clientY: to.y });
+      fire(window, 'pointermove', { clientX: to.x, clientY: to.y });
     });
   }
 
   /** 松手（落在 target 上）+ 让异步立枝跑完。 */
   async function releaseOn(target: Element, at: { x: number; y: number }): Promise<void> {
     await act(async () => {
-      fire(target, 'mouseup', { clientX: at.x, clientY: at.y });
+      fire(target, 'pointerup', { clientX: at.x, clientY: at.y });
       await new Promise((r) => setTimeout(r, 0));
     });
   }

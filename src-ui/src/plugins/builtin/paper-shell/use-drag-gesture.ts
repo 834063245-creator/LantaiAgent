@@ -45,7 +45,14 @@ export interface DragState {
   dragging: boolean;
   /** 松手点是否在窗口外（`clampToViewport` 时为 true 且 x/y 已夹回）。 */
   outsideViewport: boolean;
+  /** 本次手势**是否真拿到了 pointer capture**。拿到时事件 `target` 恒是捕获元素
+   *  （握把/手柄），判「松手落在哪个面上」必须改用 `document.elementFromPoint`；
+   *  没拿到（回退路径）时 `target` 才是真正的落点元素。 */
+  captured: boolean;
 }
+
+/** 取消的那个理由。「没过阈值就松手」也算取消（`click`）——它不是拖拽，是一次点击。 */
+export type CancelReason = 'lost-focus' | 'pointercancel' | 'click' | 'escape' | 'manual';
 
 export interface DragGestureOptions {
   /** 起手阈值（px，缺省 0 = 按下即拖）。 */
@@ -54,14 +61,16 @@ export interface DragGestureOptions {
   cancelOnLostFocus?: boolean;
   /** 窗外松手仍定夺（把点夹回视口内再交出去）。 */
   clampToViewport?: boolean;
+  /** Esc 取消（缺省 true）——手势在途时才挂监听。 */
+  cancelOnEscape?: boolean;
   /** 过了阈值的那一帧（只调一次）——起手动画/抬高态在这挂。 */
   onStart?: (e: PointerEvent, d: DragState) => void;
   /** 每帧（过阈值后）。 */
   onMove?: (e: PointerEvent, d: DragState) => void;
   /** 松手提交（过阈值才调）。 */
   onEnd?: (e: PointerEvent | null, d: DragState) => void;
-  /** 取消（失联 / pointercancel / 没过阈值就松手）。**不提交任何结果。** */
-  onCancel?: (reason: 'lost-focus' | 'pointercancel' | 'click') => void;
+  /** 取消（失联 / pointercancel / Esc / 没过阈值就松手）。**不提交任何结果。** */
+  onCancel?: (reason: CancelReason) => void;
 }
 
 /** 手势本体（`begin` 挂在 onPointerDown 上）。 */
@@ -88,17 +97,11 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
  * 回调走 ref 转发（同 `useLostFocusCancel` 的纪律）。
  */
 export function useDragGesture(opts: DragGestureOptions): DragGesture {
-  const {
-    threshold = 0,
-    cancelOnLostFocus = true,
-    clampToViewport = false,
-    onStart,
-    onMove,
-    onEnd,
-    onCancel,
-  } = opts;
+  const { cancelOnLostFocus = true, cancelOnEscape = true } = opts;
+  /* 其余选项一律走 `latest`（阈值/夹取/回调都随渲染变；读 ref 才不拆装监听器）。 */
   const latest = useRef(opts);
   latest.current = opts;
+  const keyCancel = cancelOnEscape;
   /** 进行态（null = 无手势）。 */
   const state = useRef<{
     pointerId: number;
@@ -113,7 +116,7 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
 
   const detach = useRef<(() => void) | null>(null);
 
-  const finish = useCallback((kind: 'end' | 'cancel', reason: 'lost-focus' | 'pointercancel' | 'click', e?: PointerEvent) => {
+  const finish = useCallback((kind: 'end' | 'cancel', reason: CancelReason, e?: PointerEvent) => {
     const s = state.current;
     if (!s) return;
     state.current = null;
@@ -137,6 +140,7 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
       dy: s.lastY - s.startY,
       dragging: s.dragging,
       outsideViewport: outside(s.lastX, s.lastY),
+      captured: s.captured,
     };
 
     if (kind === 'cancel') {
@@ -150,7 +154,7 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
       return;
     }
     let out = { ...d };
-    if (clampToViewport && out.outsideViewport) {
+    if (latest.current.clampToViewport && out.outsideViewport) {
       const x = clamp(d.x, 0, window.innerWidth);
       const y = clamp(d.y, 0, window.innerHeight);
       out = { ...out, x, y, dx: x - d.startX, dy: y - d.startY };
@@ -158,7 +162,7 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
     latest.current.onEnd?.(e ?? null, out);
   }, []);
 
-  const cancel = useCallback(() => finish('cancel', 'lost-focus'), [finish]);
+  const cancel = useCallback(() => finish('cancel', 'manual'), [finish]);
 
   const begin = useCallback(
     (e: React.PointerEvent) => {
@@ -198,7 +202,7 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
         s.lastY = ev.clientY;
         if (!s.dragging) {
           const dist = Math.hypot(ev.clientX - s.startX, ev.clientY - s.startY);
-          if (dist < latest.current.threshold!) return;
+          if (dist < (latest.current.threshold ?? 0)) return;
           s.dragging = true;
           const d: DragState = {
             startX: s.startX,
@@ -209,6 +213,7 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
             dy: s.lastY - s.startY,
             dragging: true,
             outsideViewport: outside(s.lastX, s.lastY),
+            captured: s.captured,
           };
           latest.current.onStart?.(ev, d);
         }
@@ -221,6 +226,7 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
           dy: s.lastY - s.startY,
           dragging: true,
           outsideViewport: outside(s.lastX, s.lastY),
+          captured: s.captured,
         };
         latest.current.onMove?.(ev, d);
       };
@@ -245,6 +251,19 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
     },
     [finish],
   );
+
+  /* Esc = 取消（2026-11-17 批 C3）：原来归各域自己挂 window keydown（branch-drag /
+   * 侧栏拖行各一份），现在收进核心——**只有手势在途时才挂**，不做常驻监听。 */
+  useEffect(() => {
+    if (!keyCancel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (!state.current) return;
+      finish('cancel', 'escape');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [keyCancel, finish]);
 
   /* 失联兜底：即使拿到捕获（WebView2 的边界仍在），窗口失焦/切走也要收。
    * 有捕获时这一条多半不会触发；没有捕获时它就是主路径（plan §2.1）。 */

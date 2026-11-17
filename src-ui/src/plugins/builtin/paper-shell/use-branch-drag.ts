@@ -19,9 +19,10 @@
 //   · 落在纸外（坞 / 侧栏 / 窗口外）⇒ 取消（与书脊拖行「松手落回本栏 = 中止」同族）。
 
 import type { MutableRefObject } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { ChatMessage, SourcedBlock } from './host';
 import { screenToWorld, useCanvasViewStore } from './host';
+import { useDragGesture } from './use-drag-gesture';
 import { DRAG_THRESHOLD } from './use-paper-drag';
 import type { PaperCore } from './use-paper-sessions';
 
@@ -47,7 +48,7 @@ export function useBranchDrag(params: {
   takeOverViewport: () => void;
 }): {
   branchDrag: BranchDragState | null;
-  onBranchGripMouseDown: (e: React.MouseEvent, block: SourcedBlock) => void;
+  onBranchGripPointerDown: (e: React.PointerEvent, block: SourcedBlock) => void;
 } {
   const { core, canvasRef, blockSessionRef, regionMsgs, takeOverViewport } = params;
   const [branchDrag, setBranchDrag] = useState<BranchDragState | null>(null);
@@ -69,8 +70,67 @@ export function useBranchDrag(params: {
     origin: { left: number; top: number; right: number; bottom: number } | null;
   } | null>(null);
 
-  const onBranchGripMouseDown = useCallback(
-    (e: React.MouseEvent, block: SourcedBlock) => {
+  /* 手势核心（2026-11-17 批 C3 收编）：阈值/失联即收/松手定夺都交给 `useDragGesture`。
+   * 本域只留「这一支手势的语义」：起手记下落点基准、跟手画引线、松手判三分。 */
+  const gesture = useDragGesture({
+    threshold: DRAG_THRESHOLD,
+    onStart: () => {
+      takeOverViewport(); // 起手势 = 手动接管视口（否则在途飞行跟手抢 pan）
+    },
+    onMove: (_e, d) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      const cur = dragRef.current;
+      if (!rect || !cur) return;
+      setBranchDrag({
+        blockId: cur.blockId,
+        sessionId: cur.sessionId,
+        screen: { x: d.x - rect.left, y: d.y - rect.top },
+      });
+    },
+    onEnd: (e, d) => {
+      const cur = dragRef.current;
+      setBranchDrag(null);
+      if (!cur) return;
+      const o = cur.origin;
+      /* 落回原块 = 取消（不立卷）。用**指针**坐标判：`e.target` 在捕获面下恒是握把
+       * 自己（旧实现读 target 判「在不在纸上」是 capture 未接管时的权宜）。 */
+      if (o && d.x >= o.left && d.x <= o.right && d.y >= o.top && d.y <= o.bottom) return;
+      /* 落在纸外（坞 / 侧栏 / 窗口外）= 取消——与书脊拖行「松手落回本栏 = 中止」同族。
+       * ⚠ 捕获面下 `e.target` 恒是**握把自己**（setPointerCapture 重新定向了指针事件），
+       * 于是「落点在哪个面上」要靠 `elementFromPoint` 现取；没有捕获（回退路径）时
+       * `target` 就是真落点，两条腿都留着，判据不变。 */
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const landedOn = d.captured
+        ? document.elementFromPoint(d.x, d.y)
+        : ((e?.target as Element | null) ?? document.elementFromPoint(d.x, d.y));
+      if (landedOn && !landedOn.closest('.pp-canvas')) return;
+      const sx = d.x - rect.left;
+      const sy = d.y - rect.top;
+      if (sx < 0 || sy < 0 || sx > rect.width || sy > rect.height) return;
+      const msg = msgsRef.current[cur.sessionId]?.messages.find((m) => m._id === cur.messageId);
+      if (!msg) return; // 块已不在消息表里（卷被换掉/关掉）：无从立枝，取消
+      // 落点 = **世界坐标**（与书脊拖落同一把尺子：pickDropAnchor + place 在 chat-core）
+      const w = screenToWorld(useCanvasViewStore.getState().view, sx, sy);
+      // 块坐标随点击一起交出去（2026-09-22 按块定位）：握把长在**块**上，切点就必须是
+      // 该块所在那一步的末尾——只给消息 = 整轮末尾（一条助手消息在实时形态里聚合整轮）。
+      const partIndex = msg.role === 'assistant' ? msg.parts.findIndex((p) => p === cur.part) : -1;
+      // 第三位 = 落点（旧核也认），第四位 = 块坐标（旧核忽略）——见 chat-core 该函数的注
+      void core?.branchFromMessage(
+        msg,
+        Number(cur.sessionId),
+        { x: w.x, y: w.y },
+        msg.role === 'assistant' ? { parts: msg.parts, index: partIndex } : undefined,
+      );
+      void e;
+    },
+    onCancel: () => {
+      setBranchDrag(null);
+    },
+  });
+
+  const onBranchGripPointerDown = useCallback(
+    (e: React.PointerEvent, block: SourcedBlock) => {
       if (e.button !== 0) return;
       e.stopPropagation(); // 不落成画布平移 / 不触发流区激活
       e.preventDefault(); // 不起原生拖拽 / 不划词
@@ -89,73 +149,13 @@ export function useBranchDrag(params: {
         moved: false,
         origin: rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } : null,
       };
+      gesture.begin(e);
     },
-    [core, blockSessionRef],
+    [core, blockSessionRef, gesture],
   );
 
-  useEffect(() => {
-    const move = (e: MouseEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
-      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_THRESHOLD) return;
-      if (!d.moved) {
-        d.moved = true;
-        takeOverViewport(); // 起手势 = 手动接管视口（否则在途飞行跟手抢 pan）
-      }
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setBranchDrag({
-        blockId: d.blockId,
-        sessionId: d.sessionId,
-        screen: { x: e.clientX - rect.left, y: e.clientY - rect.top },
-      });
-    };
-    const cancel = () => {
-      if (!dragRef.current) return;
-      dragRef.current = null;
-      setBranchDrag(null);
-    };
-    const up = (e: MouseEvent) => {
-      const d = dragRef.current;
-      dragRef.current = null;
-      setBranchDrag(null);
-      if (!d?.moved) return; // 未过阈值 = 点击（握把是拖拽件，点击不落动作）
-      const o = d.origin;
-      // 落回原块 = 取消（不立卷）
-      if (o && e.clientX >= o.left && e.clientX <= o.right && e.clientY >= o.top && e.clientY <= o.bottom) return;
-      // 落在纸外（坞 / 侧栏 / 窗口外）= 取消——与书脊拖行「松手落回本栏 = 中止」同族
-      if (!(e.target as HTMLElement | null)?.closest?.('.pp-canvas')) return;
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const msg = msgsRef.current[d.sessionId]?.messages.find((m) => m._id === d.messageId);
-      if (!msg) return; // 块已不在消息表里（卷被换掉/关掉）：无从立枝，取消
-      // 落点 = **世界坐标**（与书脊拖落同一把尺子：pickDropAnchor + place 在 chat-core）
-      const w = screenToWorld(useCanvasViewStore.getState().view, e.clientX - rect.left, e.clientY - rect.top);
-      // 块坐标随点击一起交出去（2026-09-22 按块定位）：握把长在**块**上，切点就必须是
-      // 该块所在那一步的末尾——只给消息 = 整轮末尾（一条助手消息在实时形态里聚合整轮）。
-      const partIndex = msg.role === 'assistant' ? msg.parts.findIndex((p) => p === d.part) : -1;
-      // 第三位 = 落点（旧核也认），第四位 = 块坐标（旧核忽略）——见 chat-core 该函数的注
-      void core?.branchFromMessage(
-        msg,
-        Number(d.sessionId),
-        { x: w.x, y: w.y },
-        msg.role === 'assistant' ? { parts: msg.parts, index: partIndex } : undefined,
-      );
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') cancel();
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    window.addEventListener('keydown', key);
-    return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-      window.removeEventListener('keydown', key);
-    };
-    /* ⚠ 依赖表刻意不含 regionMsgs（走 msgsRef 读最新值）——与拖块域「拖拽回调零
-     *  依赖稳定」同源纪律：流式每 tick 换引用会把监听器拆装一遍。 */
-  }, [core, canvasRef, takeOverViewport]);
+  /* Esc = 取消（原来那条 window keydown 只做这一件事，握把手势是它的唯一消费者）——
+   * 挂在握把元素自己的 onKeyDown 上不再需要 window 级监听。 */
 
-  return { branchDrag, onBranchGripMouseDown };
+  return { branchDrag, onBranchGripPointerDown };
 }

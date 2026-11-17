@@ -522,7 +522,7 @@ export function usePaperPanelAssembly() {
    * 判据与弃案见 plan §5；手势域本体见 use-branch-drag。预览线与枝边层同一支笔、
    * 同一层位（屏幕坐标）：起笔 = 原块缘（世界矩形投到屏上），收笔 = 指针（朱点即
    * 落点——「线是引，点是落」）。 */
-  const { branchDrag, onBranchGripMouseDown } = useBranchDrag({
+  const { branchDrag, onBranchGripPointerDown } = useBranchDrag({
     core,
     canvasRef,
     blockSessionRef,
@@ -824,6 +824,6 @@ export function usePaperPanelAssembly() {
     onRegionCornerMouseDown,
     onResizeMouseDown,
     branchGrips,
-    onBranchGripMouseDown,
+    onBranchGripPointerDown,
   };
 }

@@ -113,7 +113,7 @@ export const BlockView = memo(function BlockView({
   onSidecarRestore,
   onUnpin,
   onDragHandleMouseDown,
-  onBranchGripMouseDown,
+  onBranchGripPointerDown,
   unpinLabel = '收回',
   prov,
   provTitle,
@@ -147,7 +147,7 @@ export const BlockView = memo(function BlockView({
   /** **空间手势立枝**（P4-①）：块 hover 出现的「枝」握把——按住拖出一条引线、松手落在
    *  纸上就地立枝。**只在可立枝的块上传**（判据 = `branchPoints`，与「立枝」按钮同一张
    *  表；见 `use-block-ops` 的 `branchGrips`）——缺省 = 不长握把（钉住块/通知块/未落定轮）。 */
-  onBranchGripMouseDown?: (e: React.MouseEvent, block: SourcedBlock) => void;
+  onBranchGripPointerDown?: (e: React.PointerEvent, block: SourcedBlock) => void;
   /** 孤儿钉按钮文案（2026-08-28 会话管理专项）：源卷已删 = 「删除」，否则「收回」 */
   unpinLabel?: string;
   /** 出处行文本（**仅钉住块**，paper/provenance.provenanceText 产出）——页边注
@@ -261,7 +261,7 @@ export const BlockView = memo(function BlockView({
       ) : (
         <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>
       )}
-      {(ops.length > 0 || onBranchGripMouseDown) && (
+      {(ops.length > 0 || onBranchGripPointerDown) && (
         <div className="pp-msg-ops">
           {ops.map((o) => (
             <button
@@ -283,12 +283,14 @@ export const BlockView = memo(function BlockView({
               ——一个动作两个词、两处落位；并进行盒后只剩**六点握把**（CSS 画的点，
               字形无关），语义落在 title 上。在块体之外/之内不再有别：行盒在块外的块
               （非来文块）行本身就是那条悬空腿。只在可立枝的块上出现（判据与按钮同表）。 */}
-          {onBranchGripMouseDown && (
-            // biome-ignore lint/a11y/noStaticElementInteractions: 拖拽握把（拖出立枝）；立枝本身另有按钮入口（键盘路径 = 行内那颗「立枝」）
+          {onBranchGripPointerDown && (
+            /* 拖拽握把（拖出立枝）；立枝本身另有按钮入口（键盘路径 = 行内那颗「立枝」）。
+             * 2026-11-17 批 C3：mousedown → pointerdown（手势核心要 pointer 事件才能
+             * setPointerCapture），故不再触发 noStaticElementInteractions。 */
             <div
               className="pp-branch-grip"
               data-tip={BRANCH_GRIP_TITLE}
-              onMouseDown={(e) => onBranchGripMouseDown(e, block)}
+              onPointerDown={(e) => onBranchGripPointerDown(e, block)}
             />
           )}
         </div>
