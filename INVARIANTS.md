@@ -408,6 +408,30 @@ imageChannel 门控 / 角色口径 / 预算与 user 共用）、`tests/provider-
 
 ---
 
+## 17. 多题签输入槽：换手不是复制（liveOwner / claimLive）
+
+**文件**: `src-ui/src/state/input-store.ts`（`liveOwner` / `claimLive` / `releaseLive`）·
+`src-ui/src/app/chat/chat-core.ts`（`focusDraft` / `dismissDraft`）·
+`src-ui/src/plugins/builtin/paper-shell/use-region-activation.ts`（点卷交回焦点）
+
+```
+⚠️ INVARIANT：live 输入槽同一时刻只有一个主人（`s:<sid>` 或 `draft:<paperId>`）。
+   1. 切焦点（卷 ↔ 纸）必须走 `claimLive`：**先存旧主的草稿、再取新主的草稿**——
+      纸与卷共用同一个 store 实例 = 「纸显示输入面却打上一卷的字」（2026-11-17 修过）。
+   2. 「弃纸 / 弃卷」走 `releaseLive`（丢字、不写槽），与换手是两件事。
+   3. 坞的让位判据 = **焦点在纸上**（不是「纸在画布上」）；纸摆着不拿焦点时，坞照常对活跃卷工作。
+
+✅ 正确：切焦点 `claimLive(owner)`；弃纸 `releaseLive()`；发送后 `clearSessionDraft(slot)`
+❌ 错误：纸与卷共用输入实例；切走不存草稿；把「纸在画布上」当坞退场判据
+```
+
+**炸过**: 2026-11-17 用户报「画布上有题签后，既不能回头和已有会话交互，也不能同时创建多个题签」——
+根因 = 纸窃取面板 live 输入槽 + 「纸在场 ⇒ 坞整只不渲染」。
+
+**守护**: `tests/paper-draft-multi.test.tsx`（store / 焦点与输入槽 / 组件 / 端到端四组）。
+
+---
+
 ## 使用方式
 
 每个 Agent prompt 模板里加一行：

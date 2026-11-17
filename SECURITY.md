@@ -29,9 +29,9 @@ You should receive an acknowledgement within 48 hours. We will keep you updated 
 Security-relevant areas of Lantai include:
 
 1. **Agent tool execution** — The built-in Agent can execute shell commands and read/write files. Permission escalation bugs, sandbox escapes, or privilege bypasses in the tool guard layer (permission engine / sandbox / confined fs) are critical.
-2. **Engine subprocess IPC** — The shell communicates with the Rust analysis engine (`hologram-engine`) via JSON-RPC over stdio / TCP :9777. Injection vectors in IPC messages that could cause arbitrary code execution, or path/command smuggling that escapes the project boundary.
+2. **Engine subprocess IPC** — The bundled Rust engine (`hologram-engine`) runs as a governed stdio MCP subprocess, driven by the frontend MCP bridge (`mcp-bridge.ts` → Rust `protocol_bridge.rs`); the shell only probes the binary path and never links engine crates. Injection vectors in MCP messages that could cause arbitrary code execution, or path/command smuggling that escapes the project boundary.
 3. **Dynamic grammar loading** — `engine/grammars/*.dll` (tree-sitter Kotlin / Markdown / TOML) are loaded at runtime via `libloading`; supply-chain attacks via compromised grammar artifacts or release attachments.
-4. **Graph serialization deserialization** — Malformed JSON/SQLite graph files or `.lantai/` state (sessions, boards, goals, permissions.json) could trigger memory corruption or code execution in the native Rust layer.
+4. **State and graph deserialization** — Malformed `.lantai/` state (sessions, boards, goals, permissions.json) parsed by the shell, or graph files under `.hologram/` parsed by the engine process, could trigger memory corruption or code execution in the respective native layer.
 5. **LLM API keys & credentials** — API keys are stored in system-encrypted credential storage (Windows DPAPI / macOS Keychain / Linux secret-tool). Any vector that leaks these keys (including through the loopback LLM proxy or logs) is in scope.
 
 ### Out of Scope
@@ -44,5 +44,5 @@ Security-relevant areas of Lantai include:
 
 - **API keys**: Store only through the app's credential store; never commit keys to the repository or `.env` files.
 - **Agent permissions**: Run the Agent with the minimum necessary permissions. Review before approving shell execution (Ask cards), and keep an eye on the permission mode (Ask / Auto / Yolo).
-- **Constraint gates**: Use `hologram.constraints.yaml` to set pre-commit/CI gates — L5 irreversible changes cannot be silenced.
-- **Graph/state files**: Treat `.lantai/` contents as untrusted project data — do not open graphs or sessions from sources you do not trust with full local privileges.
+- **Constraint gates (engine CLI only)**: `hologram.constraints.yaml` is consumed by the engine's `run_check`; the desktop app no longer reads it (in-app consumers were retired with the graph integration on 2026-09-09).
+- **Project data**: Treat `.lantai/` (sessions, attachments, canvas, permissions) and `.hologram/` (engine index) as untrusted project data — do not open workspaces from sources you do not trust with full local privileges.

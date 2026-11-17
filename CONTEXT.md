@@ -1,6 +1,6 @@
 # 兰台
 
-兰台是深空代码拓扑观测站：把代码库解析成可对话的依赖星图，并通过 AI 代理辅助分析。本词汇表是应用级统一语言，已锁定「模型接入」「会话与聊天」「任务与目标」「状态」「事件」五个簇；`kind` 与 `status` 是重载字段，用词时必须带簇前缀。
+兰台是纸壳 · 注疏案卷的桌面 Agent 工作台：会话摊在一张可缩放的纸上，模型经域工具、子 Agent、技能与组合层工作。本词汇表是应用级统一语言，已锁定「模型接入」「会话与聊天」「任务与目标」「状态」「事件」五个簇；`kind` 与 `status` 是重载字段，用词时必须带簇前缀。
 
 ## Language
 
@@ -91,7 +91,7 @@ _Avoid_: 压缩（当指规整时）、上传
 ### 任务与目标（Task & Goal 簇）
 
 **Task**:
-Agent 自管理的一次可跟踪工作项（hologram_task_* 工具），会话内生效，带 TaskStatus。用于跨轮次追踪多步工作。
+Agent 自管理的一次可跟踪工作项（`task(create|get|list|update|stop|board)` 域工具），会话内生效，带 TaskStatus。用于跨轮次追踪多步工作。
 _Avoid_: issue、todo、goal
 
 **TaskStatus**:
@@ -99,7 +99,7 @@ Task 的状态机：pending → in_progress → completed / cancelled。
 _Avoid_: status（裸用）、state
 
 **Goal**:
-`/goal` 模式下的长期目标记录（GoalRecord），独立于普通会话槽位持久化；崩溃后可迁移/收养恢复。
+每卷一个的长期目标（GoalSnapshot）：状态住会话日志（`goal/change` 事件 + 严格折叠，修订 CAS），阶段 active / paused / blocked / complete；`/goal` 命令与 `goal(get/create/update)` 域工具走同一内核服务。
 _Avoid_: task、mission、目标（代码标识符）
 
 **GoalStatus**:
@@ -181,23 +181,18 @@ Agent 输出的事件流条目，以 EventKind 判别；经 EventSink 单向流�
 _Avoid_: message（当指事件时）、bus event
 
 **EventKind**:
-AgentEvent 的种类：turn_started / reasoning / text / message / tool_dispatch / tool_result / tool_progress / usage / notice / session_changed / plan_review。
+AgentEvent 的种类：turn_started / reasoning / text / message / tool_dispatch / tool_result / tool_progress / usage / notice / session_changed / plan_review / asset / asset_delta。
 _Avoid_: type、kind（裸用）
 
 **Chunk**:
 Provider 流式响应中的数据片，以 ChunkType 判别（Text/Reasoning/ToolCall/Usage/Done/Error 等）。
 _Avoid_: 流片、stream piece、事件（Chunk 不是 AgentEvent）
 
-**BusEvent**:
-前端事件总线（events.ts，如 `agent:status`）上的一类 UI 级事件，与 AgentEvent 是两个通道。
-_Avoid_: event（裸用）、AgentEvent（当指 bus 时）
-
-`kind` 字段重载速查（五义）：
+`kind` 字段重载速查（四义）：
 
 | 载体 | 规范词 | 值域/说明 |
 | --- | --- | --- |
 | ProviderSettings.kind / ModelDescriptor.kind / catalog JSON kind | Protocol | anthropic / openai（存储遗留名，改键需迁移） |
 | AgentEvent.kind | EventKind | 事件种类（见上） |
-| NodeBrief.kind / graph 节点 kind（graph-types / graph-analysis / graph-fold） | SymbolKind | 依赖图节点/边的符号类别（file/function/class…） |
 | chat-utils diff 行 kind | DiffLineClass | diff-added / diff-removed 等 UI 样式类 |
 | LSP CompletionItemKind | （外来词） | 第三方 LSP 枚举，不进入本项目词汇 |

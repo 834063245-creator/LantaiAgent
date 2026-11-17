@@ -1,8 +1,8 @@
 # 兰台（Lantai）— 核心能力与技术架构
 
 > © 2026 Wenbing Jing. MIT License.
-> 最后更新：2026-10-08（现状层校准：9-27 后新增面——日志可观测性事件门面 / 资产状态存档线 / 产物内联面宿主桥，
-> 受治进程治理与 LSP 归因补录，CI 现状更正）。
+> 最后更新：2026-11-17（现状层校准：10-08 后新增面——后台任务注册表与役册（双游标 / 结算 / 重启恢复）、
+> 立卷 UX V2 与多题签（待题纸 / 发送即开卷 / 输入槽换手））。
 > 本页是**现状层（L2）**：回答「系统现在是什么样」。规则见 `CONVENTIONS.md` / `INVARIANTS.md`，
 > 最高约定见 `docs/adr/project-constitution.md`；现在在哪、还剩什么见 `docs/plans/README.md`；
 > 历史（不是现状）见 `docs/archive/`。
@@ -118,6 +118,11 @@ flowchart TD
 - **组合身份随卷走**：卷文件记录本卷创建时生效的组合 id；UI 之外按组合起卷的单点是
   `app/chat/session-composition.ts` 的 `createSessionWithPreset(ctx, presetId?)`（只收 preset id，不可解析则
   拒绝创建 + 具名原因）。
+- **新建 = 落一张待题纸，发送即开卷**（2026-11-15/17）：新建不建卷、不占号、不落盘——画布上先摊一张
+  待题纸（`draft-sheet-store` 的 `papers[] + focusedId + morphs{}`，可同时多张），纸上直接写；发送那一刻
+  经 `ChatCore.openDraftVolume` → `app/chat/session/draft-opening.ts` 发号、登记组合、落位，再把这句话
+  发出去（化卷交接 260ms，`--m-sheet`）。多纸焦点独占：输入槽 `liveOwner` 在卷与纸之间**换手**
+  （`claimLive` 先存旧主草稿再取新主），坞只在焦点在纸上时让位；点卷即交回焦点，纸留在原处。
 
 ---
 
@@ -504,6 +509,15 @@ drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable）。
 - `plugin_assets.rs` / `commands/plugin_data.rs`：插件与数据目录位置（含 `.trash` 回收）
 - `composition_watcher.rs`：组合层文件监听 → `composition:changed` 事件
 - `memory-bundle.exe`：可选外部记忆服务，exe 同目录存在才 spawn（生命周期挂 ResourceLedger）
+
+### 7.4 后台任务（BgJobs）与役册
+
+`utils/bg_jobs.rs` 是后台任务注册表：前台命令超时即转后台（模型不必预判「该不该后台」），job 输出带
+累计写入字节 + 头部丢弃字节的环形缓冲，两个读者各有一条游标——模型侧**消费式**读取
+（`read_bg_output` / `wait_bg`），人侧**非消费**按绝对偏移读（`job_read_at`，役册面板；观测读绝不移动
+模型游标、也不销毁 job）。进程退出时 job 就地转终态（保留环 + 退出码），模型终读后才移入结算历史
+（只留投影 + 输出尾巴 + 日志路径）；重启后役册按注册/结算事件恢复。注册进 `ResourceLedger`（BgJobs），
+退出按注册序 drain。
 
 ---
 
