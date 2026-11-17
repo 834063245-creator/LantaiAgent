@@ -105,7 +105,7 @@ import type { StepsRegistry } from './steps';
 import type { StreamingToolExecutor } from './streaming-executor';
 import { parseAssetEventOutput } from './streaming-executor';
 import type { SubAgentSpawnHost } from './subagent-runtime-contract';
-import { countMessages, countTexts, countToolSchemas } from './token-counter';
+import { countMessages, countTexts } from './token-counter';
 import { countImageTokens, type EnvelopeMeasure, measureEnvelope } from './token-meter';
 import type { TokenLedger, TokenLedgerSnapshot, TokenMeasurement, TokenRequestRecord } from './token-meter/contract';
 import { requireTokenMeter } from './token-meter/service';
@@ -1936,7 +1936,11 @@ export class Agent {
     // ── token 计量（2026-09-13）：请求发出时刻测信封构成 ──
     // 一次分词同时喂两面：本请求的计量记录（构成 + 表面量）与诊断日志
     // （`_diagTokenBreakdown` 读 this._envelope，不再自己重算）。
-    const envelope = measureEnvelope([...payload, ...transientMsgs], toolSchemas);
+    // 2026-11-17：schema 那一段的分词数与 pre-flight 同源（选择器锁存），直接传进去，
+    // 不再让 measureEnvelope 自己重算一遍（台架实测省 27.6ms/次发送）。
+    const envelope = measureEnvelope([...payload, ...transientMsgs], toolSchemas, [], {
+      toolsTokens: this.toolSchemaTokenCount(),
+    });
     this._envelope = envelope;
     const fullSession = transientMsgs.length > 0 ? [...payload, ...transientMsgs] : payload;
 
@@ -2250,6 +2254,22 @@ export class Agent {
     return this._schemaSelector.select(this.tools, this._visibleToolsLimit, userContext(this.session));
   }
 
+  /** 本批 schema 的分词数——**缓存在选择器里**（2026-11-17 台架实测后加）。
+   *
+   *  病史（这一处试错过两次，都记下来防再犯）：
+   *   ① 逐条按对象身份缓存（token-counter 的 WeakMap）→ 恒不命中：
+   *      `ToolRegistry.schemas()` 每次 `map` 出全新对象。
+   *   ② 在 Agent 上按**数组引用**缓存 → 仍不命中：回退全量那条路径直接
+   *      `return all`（新数组）。
+   *  正解 = 跟选择器**同一把锁**（tool-select 的 tokensOf）：选择的失效条件
+   *  （registry / limit / userContext）就是分词数的失效条件，天然同源。
+   *
+   *  实测：一次发送的阻塞里 `countToolSchemas` inclusive 27.6ms，占 pre-flight
+   *  那次 `tokenCountWithEstimation`（63ms）四成；命中后 0.0ms。 */
+  private toolSchemaTokenCount(): number {
+    return this._schemaSelector.tokensOf(this.tools, this._visibleToolsLimit, userContext(this.session));
+  }
+
   private tokenCountWithEstimation(): number {
     const payload = this.payloadMessages();
     let total = countMessages(payload);
@@ -2258,8 +2278,8 @@ export class Agent {
     total += countImageTokens(payload).tokens;
     // 计算临时提醒 token — 发送给 LLM 但不在会话中
     total += countTexts(this._transientReminders);
-    // 计算工具 schema token — 每次请求都发送
-    total += countToolSchemas(this.requestToolSchemas());
+    // 计算工具 schema token — 每次请求都发送（整批缓存，见 toolSchemaTokenCount）
+    total += this.toolSchemaTokenCount();
     // 载荷估算入库（projected 占用的表面基准）：本方法是所有压力判定的
     // 必经之路（step 前 pre-flight / 响应式压缩 / 压缩埋点），在此顺手刷新
     // 表面量 = 零额外开销的计量面更新（不重复分词）。

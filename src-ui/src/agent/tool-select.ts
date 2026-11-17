@@ -8,6 +8,7 @@
 //   - limit <= 0 或超过全量时回退全量（兼容旧行为）。
 
 import type { ToolSchema } from '../provider/types';
+import { countToolSchemas } from './token-counter';
 import type { ToolRegistry } from './tool';
 
 const STOPWORDS = new Set([
@@ -134,20 +135,40 @@ export function userContext(messages: { role: string; content: string }[], maxUs
 export interface StableSchemaSelector {
   /** 返回工具 schema。仅当 (registry 引用, limit, user 上下文) 任一变化时重算。 */
   select(registry: ToolRegistry, limit: number, contextText: string): ToolSchema[];
+  /** 同一把锁存的**分词数**（见下方 `tokensOf`）。
+   *
+   *  为什么缓存在这里而不是调用方按数组引用缓存（2026-11-17 台架实测）：回退全量那条
+   *  路径（`limit <= 0 || all.length <= limit`）直接 `return all`，而 `all` 是
+   *  `registry.schemas()` **每次新 map 出来的数组**——按引用缓存恒不命中。这里锁存的
+   *  是同一份 (reg, limit, key)，所以 tokens 跟着 value 一起失效，天然同源。 */
+  tokensOf(registry: ToolRegistry, limit: number, contextText: string): number;
 }
 
 /** 工具 schema 稳定选择器 — 锁存上次结果，避免每轮动态打分击穿缓存。
  *  plan 模式切换（registry 引用变化）或用户新消息（contextText 变化）时自动失效重算。 */
 export function createStableSchemaSelector(): StableSchemaSelector {
-  let cache: { reg: ToolRegistry; limit: number; key: string; value: ToolSchema[] } | null = null;
+  let cache: { reg: ToolRegistry; limit: number; key: string; value: ToolSchema[]; tokens: number | null } | null =
+    null;
+  const hit = (reg: ToolRegistry, limit: number, key: string): boolean =>
+    cache !== null && cache.reg === reg && cache.limit === limit && cache.key === key;
   return {
     select(registry: ToolRegistry, limit: number, contextText: string): ToolSchema[] {
-      if (cache && cache.reg === registry && cache.limit === limit && cache.key === contextText) {
-        return cache.value;
-      }
+      if (hit(registry, limit, contextText)) return (cache as NonNullable<typeof cache>).value;
       const value = selectToolSchemas(registry, contextText, limit);
-      cache = { reg: registry, limit, key: contextText, value };
+      cache = { reg: registry, limit, key: contextText, value, tokens: null };
       return value;
+    },
+    tokensOf(registry: ToolRegistry, limit: number, contextText: string): number {
+      if (hit(registry, limit, contextText)) {
+        const c = cache as NonNullable<typeof cache>;
+        if (c.tokens === null) c.tokens = countToolSchemas(c.value);
+        return c.tokens;
+      }
+      // 未命中 = 先算 schema（顺带把 value 填进缓存），再算 tokens
+      const value = selectToolSchemas(registry, contextText, limit);
+      const tokens = countToolSchemas(value);
+      cache = { reg: registry, limit, key: contextText, value, tokens };
+      return tokens;
     },
   };
 }

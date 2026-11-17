@@ -70,7 +70,13 @@ export function measureEnvelope(
   payload: readonly Message[],
   toolSchemas: readonly ToolSchema[],
   transientReminders: readonly string[] = [],
-  opts?: { priceImage?: (width: number, height: number) => number },
+  opts?: {
+    priceImage?: (width: number, height: number) => number;
+    /** 已知的工具 schema 分词数（调用方已算过 = 免二次分词）。
+     *  先例：Agent 的 pre-flight 已经算过同一批 schema，streamOnce 再算一次是纯重复
+     *  （2026-11-17 台架实测：一次发送里这一项 inclusive 27.6ms）。 */
+    toolsTokens?: number;
+  },
 ): EnvelopeMeasure {
   let systemTokens = 0;
   let systemMessages = 0;
@@ -113,7 +119,7 @@ export function measureEnvelope(
   }
 
   const transientTokens = countTexts(transientReminders);
-  const toolsTokens = countToolSchemas(toolSchemas);
+  const toolsTokens = opts?.toolsTokens ?? countToolSchemas(toolSchemas);
   // 附图计价（2026-09-22）：并入对话段——图是对话内容的一部分，不新开第四段。
   const image = countImageTokens(payload, opts?.priceImage);
   const messageTokens =

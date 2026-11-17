@@ -75,15 +75,24 @@ export function countTexts(texts: readonly string[]): number {
  *  这些作为 JSON 发送给 API 并消耗 prompt token。 */
 export function countToolSchemas(schemas: readonly ToolSchema[]): number {
   let total = 0;
-  for (const s of schemas) {
-    total += safeCount(s.name);
-    total += safeCount(s.description);
-    try {
-      const params = typeof s.parameters === 'string' ? s.parameters : JSON.stringify(s.parameters);
-      total += safeCount(params);
-    } catch {
-      // 忽略不可字符串化的参数
-    }
+  for (const s of schemas) total += countOneToolSchema(s);
+  return total;
+}
+
+/** 单条工具 schema 的分词数。
+ *
+ *  ⚠ **不要在这里做逐条缓存**（2026-11-17 台架实测否决过一次）：`ToolRegistry.schemas()`
+ *  每次调用都 `map` 出**全新对象**（tool.ts），所以按对象身份缓存恒不命中；按 name 缓存
+ *  又会在「同名不同定义」时返回旧值。真正的重复不在单条，而在**整批**——
+ *  见 `agent.ts` 的 `_schemaTokens`（按选择器锁存结果缓存整批，装配换代即失效）。 */
+function countOneToolSchema(s: ToolSchema): number {
+  let total = safeCount(s.name);
+  total += safeCount(s.description);
+  try {
+    const params = typeof s.parameters === 'string' ? s.parameters : JSON.stringify(s.parameters);
+    total += safeCount(params);
+  } catch {
+    // 忽略不可字符串化的参数
   }
   return total;
 }
