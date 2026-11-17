@@ -43,10 +43,7 @@
   },
   "dependencies": {
     "@chenglou/pretext": "^1.0.0",
-    "@react-aria/combobox": "^3.16.1",
     "@react-aria/i18n": "^3.13.1",
-    "@react-aria/listbox": "^3.16.1",
-    "@react-stately/combobox": "^3.14.1",
     "@tanstack/react-virtual": "^3.14.8",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
@@ -62,7 +59,6 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
-    "react-stately": "^3.49.0",
     "remark-gfm": "^4.0.1",
     "smiles-drawer": "^2.4.1",
     "three": "^0.187.0",
