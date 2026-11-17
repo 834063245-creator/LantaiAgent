@@ -220,6 +220,7 @@
 | C5 例外判定 | `9aeeb04f` | 小地图**并入**（两态齐）；TocStrip / 拖选滚屏 / edge-scroll / resize-zones 登记为例外 |
 | D 卸库 | `436d99a1` + `82558c90` | ModelSelector 802 → 777 行，`@react-aria/*` 4 包退出依赖 |
 | E 守卫 | `9ace5591` | `interaction-primitive.test.ts` 6 例（E1/E1b/E2/E3 + 反证） |
+| C 收口 | `b744d0e8` 之前一笔 | **手势原语上收内核** `src/app/interaction/`——`PluginWindowFrame`（内核件）不再反向依赖产物；名册 `shared` 三处登记 |
 
 ### 数字（实测）
 

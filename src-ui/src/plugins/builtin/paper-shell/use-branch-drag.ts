@@ -116,8 +116,7 @@ export function useBranchDrag(params: {
       // 该块所在那一步的末尾——只给消息 = 整轮末尾（一条助手消息在实时形态里聚合整轮）。
       /* indexOf 需要同型参数——`cur.part` 是块来源的活引用（`BlockSource.part`），
        * 与 `msg.parts` 的元素同型（存的就是它），故按元素型断言，不改判据。 */
-      const partIndex =
-        msg.role === 'assistant' ? msg.parts.indexOf(cur.part as (typeof msg.parts)[number]) : -1;
+      const partIndex = msg.role === 'assistant' ? msg.parts.indexOf(cur.part as (typeof msg.parts)[number]) : -1;
       // 第三位 = 落点（旧核也认），第四位 = 块坐标（旧核忽略）——见 chat-core 该函数的注
       void core?.branchFromMessage(
         msg,
