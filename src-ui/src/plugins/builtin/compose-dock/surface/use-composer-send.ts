@@ -196,7 +196,13 @@ export function useComposerSend({
       void onSend();
       return;
     }
-    if (e.key === 'ArrowUp' && !e.nativeEvent.isComposing) {
+    /* ⚠ **词/段选择是编辑，不是历史**（2026-11-17 精细编辑批）：Shift+↑↓ 与
+     * Ctrl+↑↓ 是原生的「扩选 / 跳段」——旧实现只判「首行 + ↑」，把它们一并吃掉
+     * （Ctrl+↑ 直接跳走历史、用户那句还没选中完的正文被整条替换）。同一把判据
+     * 对 ↓ 也补上：Shift/Ctrl + ArrowDown 落在这里时不该进历史分支。
+     * 判据写在**两条分支的入口**（不是各自内部）——一处判，两处同源。 */
+    const selectMod = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (e.key === 'ArrowUp' && !e.nativeEvent.isComposing && !selectMod) {
       const el = e.currentTarget;
       const atFirstLine = el.selectionStart === 0 || !el.value.includes('\n');
       if (atFirstLine && core) {
@@ -211,7 +217,7 @@ export function useComposerSend({
           requestAnimationFrame(() => el.setSelectionRange(entry.text.length, entry.text.length));
         }
       }
-    } else if (e.key === 'ArrowDown' && !e.nativeEvent.isComposing) {
+    } else if (e.key === 'ArrowDown' && !e.nativeEvent.isComposing && !selectMod) {
       const el = e.currentTarget;
       // 多行输入中间行按 ↓ 是移光标——只有已在历史浏览（idx≥0）时才消费
       const input = core ? getChatStore(core.panelId).input.getState() : null;

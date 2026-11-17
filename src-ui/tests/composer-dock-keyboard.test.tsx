@@ -81,10 +81,20 @@ async function mountDock(
   return core;
 }
 
-/** 在 textarea 上触发 keydown（React 合成事件；isComposing 默认 false = 非 IME）。 */
-function keyOn(ta: HTMLTextAreaElement, key: string, shiftKey = false): void {
+/** 在 textarea 上触发 keydown（React 合成事件；isComposing 默认 false = 非 IME）。
+ *  mods 用来测「词/段选择键」：Shift+↑↓（扩选）与 Ctrl/Meta+↑↓（跳段）都是**编辑**，
+ *  不是历史导航（2026-11-17 精细编辑批）。 */
+function keyOn(ta: HTMLTextAreaElement, key: string, mods: { shift?: boolean; ctrl?: boolean } = {}): void {
   act(() => {
-    ta.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true }));
+    ta.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key,
+        shiftKey: mods.shift ?? false,
+        ctrlKey: mods.ctrl ?? false,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
   });
 }
 
@@ -169,6 +179,39 @@ describe('ComposerDock 输入历史键盘导航（↑↓）', () => {
     });
     await act(async () => {});
     expect(getChatStore('hist-type').input.getState().inputHistoryIdx).toBe(-1);
+  });
+
+  /* 2026-11-17 精细编辑批：**词/段选择键不许被历史吃掉**。
+   * 病灶：旧判据只看「↑ + 首行」，于是 Shift+↑（扩选上一行）与 Ctrl+↑（跳段）
+   * 都会整条替换正文——用户正在选一段字，一按就没了，只剩历史里那句旧的。
+   * 判据：带 Shift/Ctrl/Meta 的 ↑↓ 一律交回原生编辑。 */
+  it('Shift/Ctrl + ↑↓ = 原生扩选/跳段，**不进历史浏览**（正文一格不动）', async () => {
+    await mountDock(
+      'hist-mods',
+      container,
+      { inputText: 'draft', inputHistory: ['first', 'second'], inputHistoryIdx: -1 },
+      (r) => {
+        root = r;
+      },
+    );
+    const ta = container.querySelector<HTMLTextAreaElement>('.pp-composer-row textarea');
+    expect(ta).not.toBeNull();
+
+    keyOn(ta!, 'ArrowUp', { shift: true });
+    await act(async () => {});
+    expect(ta!.value).toBe('draft'); // 扩选由 UA 处理，正文不变
+    expect(getChatStore('hist-mods').input.getState().inputHistoryIdx).toBe(-1);
+
+    keyOn(ta!, 'ArrowUp', { ctrl: true });
+    await act(async () => {});
+    expect(ta!.value).toBe('draft');
+    expect(getChatStore('hist-mods').input.getState().inputHistoryIdx).toBe(-1);
+
+    // 对照：不带修饰的 ↑ 照旧进历史（原判据不变）
+    keyOn(ta!, 'ArrowUp');
+    await act(async () => {});
+    expect(ta!.value).toBe('second');
+    expect(getChatStore('hist-mods').input.getState().inputHistoryIdx).toBe(1);
   });
 
   it('空历史：↑ 不越界（输入内容不动）', async () => {
@@ -270,7 +313,7 @@ describe('ComposerDock 斜杠命令键盘导航', () => {
     expect(container.querySelector('.pp-slash')).not.toBeNull();
 
     // Shift+Enter → 不执行命令、不发送、面板保持
-    keyOn(ta!, 'Enter', true);
+    keyOn(ta!, 'Enter', { shift: true });
     await act(async () => {});
     expect(core.executeCommand).not.toHaveBeenCalled();
     expect(core.sendMessage).not.toHaveBeenCalled();

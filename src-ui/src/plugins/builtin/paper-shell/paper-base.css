@@ -32,9 +32,23 @@
 }
 /* 划词朱线（2026-09-02 视觉迭代）：流区内原生洗底退役——选区以手写朱线呈现
  * （.pp-sel-ink，PaperPanel 渲染；paper/sel-ink.ts 纯函数）。纸不动、只落墨；
- * composer/菜单等 UI 面照旧洗底。 */
+ * composer/菜单等 UI 面照旧洗底。
+ *
+ * ⚠ 输入件**例外**（2026-11-17 精细编辑批）：上面那条是通配选择器（`*`），
+ * 它把**纸上输入面**（待题纸的 textarea —— 它就是画布世界里的一件，住在 .pp-region
+ * 之下）的选区洗底也一并洗掉了。而「洗底 → 手写朱线」这条替代只对**纸面正文**
+ * 成立：朱线层只认块内选区（use-paper-strips 的 snapshotBlockSelection 要求
+ * 起手面在 .pp-block、且不是输入面），textarea 里的选区**永远不会**落线。
+ * ⇒ 结果 = 选区既没有朱线、也没有底色，用户看不见自己选中了哪几个字
+ *（选中 → 看不见 → 不敢按删除/替换 = 「没法精细编辑」）。
+ * 治法 = 让输入件自证洗底（与 foundation.css 选区政策「输入面自证可选」同一条
+ * 纪律）。两条规则**同具体度**（:where 归零：都是 0,1,1），故顺序即判据——
+ * 输入件那条必须写在通配那条**之后**，正文面才继续透明。 */
 .pp-region ::selection {
   background: transparent;
+}
+.pp-region :where(input, textarea, select, [contenteditable]:not([contenteditable="false"]))::selection {
+  background: var(--seal-soft);
 }
 .pp-root ::-webkit-scrollbar {
   width: 10px;

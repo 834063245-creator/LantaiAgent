@@ -306,6 +306,38 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     await f1.dispose();
   }
 
+  /* 2026-11-17 精细编辑批：**输入件自己滚**。待题纸的输入面住在世界里
+   * （.pp-region 之下），长草稿超过 max-height 后它自己的滚动条曾被画布的
+   * 无差别 preventDefault 一票否决——选不到、也翻不动上半段。判据与
+   * `.pp-out` 同族（可滚内容面原生透传），尺子用全仓唯一的 isEditableSurface。 */
+  it('滚轮在输入件（textarea）上：原生透传，画布不动（Ctrl+wheel 仍缩放）', async () => {
+    const canvas = await mountCanvas();
+    const ta = document.createElement('textarea');
+    ta.value = 'x';
+    canvas.appendChild(ta);
+    const ev = new WheelEvent('wheel', {
+      deltaY: 120,
+      clientX: 600,
+      clientY: 400,
+      bubbles: true,
+      cancelable: true,
+    });
+    ta.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false); // 让 UA 自己滚这个输入件
+    expect(useCanvasViewStore.getState().view.panY).toBe(600); // 画布一格不动
+    // Ctrl+wheel = 明确要缩放：仍归画布（输入件自己没有 ctrl+wheel 语义）
+    const ctrl = new WheelEvent('wheel', {
+      deltaY: 120,
+      ctrlKey: true,
+      clientX: 600,
+      clientY: 400,
+      bubbles: true,
+      cancelable: true,
+    });
+    ta.dispatchEvent(ctrl);
+    expect(useCanvasViewStore.getState().view.zoom).toBeCloseTo(wheelFactor(120), 10);
+  }, 30_000);
+
   it('滚轮在程文输出区（.pp-out）上：原生透传，画布不动', async () => {
     await withRenderers(async () => {
       await mountCanvas();

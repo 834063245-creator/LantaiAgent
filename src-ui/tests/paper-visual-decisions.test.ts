@@ -174,6 +174,20 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(PANEL_TSX).toContain('selInkPaths');
   });
 
+  it('输入件自证洗底（2026-11-17 精细编辑批）：纸上 textarea 的选区看得见——洗底不能连坐输入面', () => {
+    /* 病灶（用户报「题签态的输入框没法对文字进行精细编辑」）：'.pp-region ::selection'
+     * 是通配选择器（'*'），纸上那枚 textarea 就住在 .pp-region 之下 ⇒ 它的选区洗底被
+     * 一并洗成透明；而「洗底 → 手写朱线」的替代只对纸面正文成立（朱线只认 .pp-block
+     * 内、且不是输入件的选区）。⇒ 选中一段**什么都看不见**，不敢按删除/替换。
+     * 钉子：输入件自己一条（:where 归零 ⇒ 与通配那条**同具体度** 0,1,1，源码序在后
+     * 即胜出），且正文面不被放开。 */
+    const inputSel = ruleBody(PANEL_CSS, '.pp-region :where(input, textarea, select');
+    expect(inputSel).toContain('::selection');
+    expect(inputSel).toContain('background: var(--seal-soft)');
+    // 正文面仍透明（朱线是它的替代，不许跟着一起恢复洗底）
+    expect(ruleBody(PANEL_CSS, '.pp-region ::selection')).toContain('background: transparent');
+  });
+
   it('块入场（2026-08-30 流式生命感）：入场动画单次（尾笔已由用户拍板拆除）', () => {
     // 尾笔（pp-tail）2026-08-30 用户拍板拆除——见 taste-ledger 翻案；只钉入场
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-tail')).toBe('');

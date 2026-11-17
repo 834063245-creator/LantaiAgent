@@ -305,7 +305,17 @@ export function usePaperViewport(core: PaperCore | null) {
       const t = e.target instanceof Element ? e.target : null;
       // R3.5 浮动 minimap：滚轮在 minimap 上 = 缩放 minimap 本体，不缩放画布
       if (t?.closest('.pp-minimap')) return;
-      if (!e.ctrlKey && t?.closest('pre, .pp-out')) return;
+      /* **可滚内容面原生透传**（2026-11-17 精细编辑批补第二类）：
+       *   · `pre / .pp-out`（2026-09-07）——程文/工具输出自带溢出滚动；
+       *   · **输入件**（textarea / input / contenteditable）——待题纸的输入面就住在
+       *     世界里（.pp-region 之下），长草稿超过 144px 后它自己的滚动条**永远滚不动**：
+       *     画布在这里无差别 preventDefault + 改 pan，而输入件自己的滚动是 UA 默认行为
+       *     （不吃 preventDefault 就滚不了）。用户读到的是「在题签里选不到、也翻不动
+       *     上半段」——同一类「精细编辑失灵」。
+       *   判据用全仓唯一那把尺子 isEditableSurface（use-paper-strips），不另写选择器：
+       *   块内的意见框、卡内输入件与本条同源（2026-09-17 收口过一回）。
+       *   ⚠ Ctrl+wheel 仍归画布（缩放意图明确，且输入件自身没有 ctrl+wheel 语义）。 */
+      if (!e.ctrlKey && (t?.closest('pre, .pp-out') || isEditableSurface(t))) return;
       e.preventDefault();
       // 用户动视口 = 手动接管：取消在途定位动画（否则动画会跟手抢 pan）
       if (focusRafRef.current) {
