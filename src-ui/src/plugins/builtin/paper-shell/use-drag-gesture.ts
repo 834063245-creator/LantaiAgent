@@ -29,6 +29,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useLostFocusCancel } from './lost-focus';
+import { claimPointer } from './pointer-claims';
 
 /** 一次手势的进行态（交给 onMove / onEnd 的第二个参数）。 */
 export interface DragState {
@@ -115,6 +116,8 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
   } | null>(null);
 
   const detach = useRef<(() => void) | null>(null);
+  /** 指针所有权的账（plan §2.3）：手势在途期间记一笔，画布据此让路。 */
+  const releaseClaim = useRef<(() => void) | null>(null);
 
   const finish = useCallback((kind: 'end' | 'cancel', reason: CancelReason, e?: PointerEvent) => {
     const s = state.current;
@@ -122,6 +125,8 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
     state.current = null;
     detach.current?.();
     detach.current = null;
+    releaseClaim.current?.();
+    releaseClaim.current = null;
     /* 释放捕获：浏览器在 pointerup 后会自己释放，但**取消路径**（blur / pointercancel）
      * 不会，残留的捕获会让下一次按下直接落在老元素上。释放失败无所谓（元素已卸载）。 */
     try {
@@ -184,6 +189,7 @@ export function useDragGesture(opts: DragGestureOptions): DragGesture {
       } catch {
         captured = false; // WebView2 / 合成事件：拿不到捕获就退回 window 面
       }
+      releaseClaim.current = claimPointer();
       state.current = {
         pointerId,
         startX: e.clientX,
