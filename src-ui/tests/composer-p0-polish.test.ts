@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readDockSources } from './helpers/dock-source';
 import { readPanelCss } from './helpers/panel-css';
 import { readPaperSources } from './helpers/panel-source';
 
@@ -21,7 +22,9 @@ const SRC = join(__dirname, '..', 'src');
 const PANEL_CSS = readPanelCss();
 const MODEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'model-selector.css'), 'utf8');
 const FOUNDATION_CSS = readFileSync(join(SRC, 'app', 'foundation.css'), 'utf8');
-const DOCK_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'ComposerDock.tsx'), 'utf8');
+// 2026-11-17 上帝文件治理 P6：坞拆成多件——源码级断言改为读**整个包**（helpers/dock-source.ts）。
+// 断言字符串一个都没改：口径仍钉「这套源码里有没有这条」，只是不再假设它住在一个文件里。
+const DOCK_TSX = readDockSources();
 const PAPER_TSX = readPaperSources();
 const FLOAT_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'use-composer-float.ts'), 'utf8');
 const FLOAT_GEOM_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'composer-float.ts'), 'utf8');

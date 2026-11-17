@@ -13,10 +13,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readDockSources } from './helpers/dock-source';
 
 const SRC = join(__dirname, '..', 'src');
 const SHELL_CSS = readFileSync(join(SRC, 'app', 'shell.css'), 'utf8');
-const DOCK_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'ComposerDock.tsx'), 'utf8');
+// 2026-11-17 P6：坞拆成多件——源码级断言读**整个包**（断言字符串不动）。
+const DOCK_TSX = readDockSources();
 const WORK_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'WorkLedger.tsx'), 'utf8');
 const DOCK_COPY_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'dock-copy.ts'), 'utf8');
 

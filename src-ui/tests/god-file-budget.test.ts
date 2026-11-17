@@ -68,7 +68,6 @@ const DEBT: Record<string, number> = {
   'engine/src/engine/mod.rs': 2100, // 现 2020
   'src-tauri/src/cdp/session.rs': 2000, // 现 1932
   'src-ui/src/app/chat/chat-core.ts': 1800, // 现 1744（V2 立卷 UX 升档，见下文原注）
-  'src-ui/src/plugins/builtin/compose-dock/ComposerDock.tsx': 1700, // 现 1669
   'engine/src/community/louvain.rs': 1700, // 现 1697
   'src-tauri/src/commands/process_cap.rs': 1700, // 现 1658
   'engine/src/graph/import_resolver.rs': 1600, // 现 1596

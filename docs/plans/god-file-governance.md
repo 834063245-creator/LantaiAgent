@@ -1,6 +1,6 @@
 # 上帝文件治理（god-file governance）
 
-> 状态：**P1 + P2 + P3 已落地（2026-11-06）**——门禁、chat-session 拆解、纸壳分片、PaperPanel 拆解均已进主干；余 Rust 宽度型文件（登记不拆，见 P4）。
+> 状态：**P1-P3（2026-11-06）+ P5（2026-11-12）+ P6（2026-11-17）已落地**——门禁、chat-session 拆解、纸壳分片、PaperPanel / chat-core / ComposerDock 拆解均已进主干；余 Rust 宽度型文件（登记不拆，见 P4）。
 > 门禁 = `src-ui/tests/god-file-budget.test.ts`（未登记文件 ≤ 1000 行；已登记只减不增）。
 
 ## 0. 要裁什么（结论在前）
@@ -153,6 +153,12 @@
 `runEpoch` 数的是**全部**运行（含 goal/wake/compact），拿它判"有没有更新的**轮次**"会把
 "后台唤醒起了一条运行"误判成"用户发了新消息"，于是本轮不 finalize、流式助手永久停在
 streaming。两者语义边界不同，代数账保持独立、搬去注册表即可。
+
+### P6 ✅ 已落地（2026-11-17）：ComposerDock 拆解
+
+`1688 → 370 行`（DEBT 销账），拆成 6 个表现件 + `surface/use-composer-*.ts` 八件 hook（`composer-rows.tsx` 接走输入行 / 案抽屉 / 设置行，是新的最大件）。
+刀 1-5 只搬字节（15 份 `tests/composer-*` 行为测试零改动），刀 6 才动结构：坞本体 8 条 `useExhaustiveDependencies` 豁免随「触发器写成显式入参 → `void tick`」一并消失，`biome-ignore` 9 → 0。
+源码级断言的面同步跟上：`tests/helpers/dock-source.ts` 的 `readDockSources()`（口径同 `panel-source.ts`），断言字符串一条未改。**订阅改 `useSyncExternalStore` 不在本批**——下一刀。
 
 ### P4 登记不拆（本线不动）
 

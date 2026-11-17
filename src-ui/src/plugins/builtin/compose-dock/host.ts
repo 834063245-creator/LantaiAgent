@@ -32,6 +32,9 @@ export { isMockMode, watchFileDragDrop } from '../../../bridge';
 // 组合芯片（S6 P1e）：preset 清单/选择态读取面 + 全局默认选择入口 + 卷消息面
 // （空白判据 = 本卷消息数，与写路径二道闸同一把尺子）
 export { selectPreset } from '../../../composition/preset-assembly';
+/* 组合条目的类型面（2026-11-17 P6）：`composer-rows.tsx` 的抽屉吃 roster 形状。
+ * 纯类型面 = 编译期擦除，不新增宿主面键（值面仍只有 usePresetStore）。 */
+export type { PresetEntry } from '../../../composition/presets';
 export type { CommandContribution } from '../../../composition/services';
 export type { SourcedBlock } from '../../../paper/block-model';
 export { createInkCache, INK_FAIL, inkBarColorOf, inkColorOf, inkForBlock } from '../../../paper/ink';
