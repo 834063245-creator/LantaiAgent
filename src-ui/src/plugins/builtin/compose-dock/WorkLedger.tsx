@@ -95,6 +95,8 @@ export interface WorkLedgerProps {
   sessionLabel: string;
   /** 卷名反查（「他卷」段用；给不出就显 `案卷 N`）。 */
   sessionNameOf?: (sessionId: number | null) => string;
+  /** 跳到别卷（「他卷」行整行可点；宿主不给 ⇒ 行只是只读读数）。 */
+  onGoToSession?: (sessionId: number) => void;
   /** 停一条在役 shell（写面在宿主：坞只回调）。 */
   onStop?: (entry: WorkEntry) => void;
   open: boolean;
@@ -291,6 +293,7 @@ export const WorkLedger = memo(function WorkLedger({
   sessionLabel,
   sessionNameOf,
   onStop,
+  onGoToSession,
   open,
   onToggle,
 }: WorkLedgerProps) {
@@ -451,21 +454,42 @@ export const WorkLedger = memo(function WorkLedger({
             <>
               <Section title="他卷" />
               <ul className="pp-work-list">
-                {elsewhereList.map((e) => (
-                  <li key={`${e.kind}:${e.id}`} className={`pp-work-item pp-work-${e.kind}`}>
-                    <span className="pp-work-mark" data-tip={KIND_TITLE[e.kind]} aria-hidden="true">
-                      {KIND_MARK[e.kind]}
-                    </span>
-                    <span className="pp-work-body">
-                      <span className="pp-work-label" data-tip={e.label}>
-                        {e.label || '（无名）'}
+                {elsewhereList.map((e) => {
+                  const sid = e.sessionId;
+                  const name = sessionNameOf?.(sid) ?? `案卷 ${sid}`;
+                  /* 整行可点：跳到那一卷（2026-11-27）。监视面看到别卷还有活在跑，
+                     得能过去看——旧实现里这一行是死路，点了没反应。 */
+                  const go = sid != null && onGoToSession ? () => onGoToSession(sid) : null;
+                  const row = (
+                    <>
+                      <span className="pp-work-mark" data-tip={KIND_TITLE[e.kind]} aria-hidden="true">
+                        {KIND_MARK[e.kind]}
                       </span>
-                      <span className="pp-work-sub">
-                        {sessionNameOf?.(e.sessionId) ?? `案卷 ${e.sessionId}`} · 已 {formatElapsed(now - e.startedAt)}
+                      <span className="pp-work-body">
+                        <span className="pp-work-label" data-tip={e.label}>
+                          {e.label || '（无名）'}
+                        </span>
+                        <span className="pp-work-sub">
+                          {name} · 已 {formatElapsed(now - e.startedAt)}
+                        </span>
                       </span>
-                    </span>
-                  </li>
-                ))}
+                    </>
+                  );
+                  return (
+                    <li
+                      key={`${e.kind}:${e.id}`}
+                      className={`pp-work-item pp-work-${e.kind}${go ? ' pp-work-jumpable' : ''}`}
+                    >
+                      {go ? (
+                        <button type="button" className="pp-work-jump" data-tip={`跳到「${name}」`} onClick={go}>
+                          {row}
+                        </button>
+                      ) : (
+                        row
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </>
           )}

@@ -26,6 +26,8 @@ export interface ComposerHeaderProps {
   tokenStats: Parameters<typeof InkLedger>[0]['stats'];
   tokenCount: number;
   sessionNameOf: (sid: number | null) => string;
+  /** 跳到别卷（「他卷」行整行可点；宿主不给 ⇒ 只读读数）。 */
+  onGoToSession?: (sessionId: number) => void;
   composerLock?: { unlocked: boolean; toggle: () => void };
   workOpen: boolean;
   inkOpen: boolean;
@@ -42,6 +44,7 @@ export function ComposerHeader({
   tokenCount,
   sessionNameOf,
   composerLock,
+  onGoToSession,
   workOpen,
   inkOpen,
   onToggleWork,
@@ -70,6 +73,7 @@ export function ComposerHeader({
           sessionId={activeSidNum}
           sessionLabel={volumeDisplayName(activeSession?.label, activeSidNum)}
           sessionNameOf={sessionNameOf}
+          onGoToSession={onGoToSession}
           onStop={(e: WorkEntry) => {
             const jobId = Number.parseInt(e.id.replace(/^job-/, ''), 10);
             if (Number.isFinite(jobId)) void killShellWork(panelId, jobId);

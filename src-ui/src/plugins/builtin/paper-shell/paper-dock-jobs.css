@@ -68,7 +68,9 @@
   right: 0;
   bottom: calc(100% + 6px);
   z-index: 85;
-  width: 300px;
+  /* 360（2026-11-27 用户拍板加宽）：300px 下列表把命令名挤成两行夹、输出每行只剩
+     ~30 字符。宽度与 `.pp-ink-panel` 仍**逐字同源**（两本册页必须一样大、一样位置弹）。 */
+  width: 360px;
   max-height: min(70vh, 520px);
   overflow-y: auto;
   background: var(--paper);
@@ -273,6 +275,35 @@
 }
 .pp-work-bad .pp-work-mark {
   background: var(--seal-deep);
+}
+/* 他卷行：整行可点 ⇒ 跳到那一卷（2026-11-27）。按钮本体承担网格，
+   li 退成块级壳（否则按钮会被塞进第一列）。
+   ⚠ 本组排在这一族之后：`.pp-work-jump:hover .pp-work-label` 比
+   `.pp-work-label` 高一档，提前出现会触发 noDescendingSpecificity。 */
+.pp-work-item.pp-work-jumpable {
+  display: block;
+}
+.pp-work-jump {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 7px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.pp-work-jump:hover .pp-work-label {
+  color: var(--seal-deep);
+}
+.pp-work-jump:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--seal);
 }
 /* 已了超量：如实报余量（旧实现 slice(0,8) 静默截断，页眉却报真实总数） */
 .pp-work-more {

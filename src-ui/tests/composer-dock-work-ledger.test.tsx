@@ -35,6 +35,9 @@ import { resetComposeStoresForTests } from '../src/state/compose-store';
 import { resetWorkLedgerForTests, setOwnerSessionResolver, useWorkLedgerStore } from '../src/state/work-ledger-store';
 import { getChatStore } from '../src/ui/chat-store';
 
+/** 切卷回调（他卷跳转）：模块级共享，便于断言。 */
+const switchSession = vi.fn();
+
 function fakeCore(panelId: string): ChatCore {
   return {
     panelId,
@@ -42,6 +45,7 @@ function fakeCore(panelId: string): ChatCore {
     abort: vi.fn(),
     openFilePicker: vi.fn(),
     registerComposer: vi.fn(),
+    switchSession,
   } as unknown as ChatCore;
 }
 
@@ -114,6 +118,7 @@ describe('役册（创作坞后台工作监视装置）', () => {
     resetWorkLedgerForTests();
     shells.length = 0;
     kernelProcessCall.mockReset();
+    switchSession.mockReset();
     // 对账读的就是这本替身账（空表 = 后端无在役 job）
     kernelProcessCall.mockImplementation(async (action: string) => {
       // 展开输出的非消费读：固定回一段 stdout（stderr 空）
@@ -360,6 +365,24 @@ describe('役册（创作坞后台工作监视装置）', () => {
     act(() => row?.querySelector<HTMLButtonElement>('.pp-work-expand')?.click());
     await act(async () => {});
     expect(row?.querySelector('.pp-work-output-wrap')).toBeNull();
+  });
+
+  it('他卷条目可点：整行跳到那一卷（监视面不再是死路）', async () => {
+    useWorkLedgerStore.getState().noteSubAgentSpawn(PANEL, 2, 'sub-other', null, '别的卷的活');
+    await mountDock(DOCK_CONTEXT, [
+      { id: 1, label: '案卷一' },
+      { id: 2, label: '案卷二' },
+    ]);
+    act(() => trigger()?.click());
+    await act(async () => {});
+
+    const jump = container.querySelector<HTMLButtonElement>('.pp-work-jump');
+    expect(jump).not.toBeNull();
+    expect(jump?.textContent).toContain('案卷二');
+
+    act(() => jump?.click());
+    // 会话 2 在会话表第 1 位（0 基）——走 core 的既有 switchSession
+    expect(switchSession).toHaveBeenCalledWith(1);
   });
 
   it('Esc 关闭册页（与同行的模型菜单同语义）', async () => {

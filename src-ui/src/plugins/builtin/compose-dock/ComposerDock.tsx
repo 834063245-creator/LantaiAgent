@@ -189,6 +189,18 @@ const ComposerSurface = memo(function ComposerSurface({
   });
   const { running, bgRunning, sessionNameOf, onSend } = send;
 
+  /* 役册「他卷」段的跳卷入口（2026-11-27）：监视面看到别卷还有活在跑，得能过去看。
+     真源是 chat store 的会话表，切卷走 core 的既有 `switchSession`（与侧栏同一条路）。 */
+  const goToSession = useCallback(
+    (sid: number) => {
+      if (!core) return;
+      const st = getChatStore(core.panelId).sess.getState();
+      const idx = st.sessions.findIndex((s) => s.id === sid);
+      if (idx >= 0 && idx !== st.activeIdx) core.switchSession(idx);
+    },
+    [core],
+  );
+
   /* ── 权限（mode-store 工作区级单一真相）──
    * ⚠ 它既不随卷变、也不随坞的浮层变——只随工作区的权限档变，故不进上面任何一件：
    * 三个订阅 + 一条「全放要二次确认」的判据放回外壳，是这一刀里最小的一处。 */
@@ -247,6 +259,7 @@ const ComposerSurface = memo(function ComposerSurface({
           tokenStats={session.tokenStats}
           tokenCount={session.tokenCount}
           sessionNameOf={sessionNameOf}
+          onGoToSession={goToSession}
           composerLock={composerLock}
           workOpen={layers.workOpen}
           inkOpen={layers.inkOpen}
