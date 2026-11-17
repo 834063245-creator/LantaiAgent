@@ -90,6 +90,21 @@ describe('役册（创作坞后台工作监视装置）', () => {
     });
   };
 
+  /** 已结算的 shell（名册里带着 status/exitCode/finishedAt——2026-11-12 起是直给）。 */
+  const withSettledShell = (jobId: number, label: string, over: Record<string, unknown> = {}) => {
+    shells.push({
+      jobId,
+      label,
+      agent: 'main-1',
+      elapsedSecs: 12,
+      stalled: false,
+      startedAt: Date.now() - 12_000,
+      status: 'completed',
+      exitCode: 0,
+      finishedAt: Date.now(),
+      ...over,
+    });
+  };
   const trigger = () => container.querySelector<HTMLButtonElement>('.pp-work-trigger');
   const triggerText = () => trigger()?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 
@@ -100,8 +115,15 @@ describe('役册（创作坞后台工作监视装置）', () => {
     shells.length = 0;
     kernelProcessCall.mockReset();
     // 对账读的就是这本替身账（空表 = 后端无在役 job）
-    kernelProcessCall.mockImplementation(async () =>
-      JSON.stringify(
+    kernelProcessCall.mockImplementation(async (action: string) => {
+      // 展开输出的非消费读：固定回一段 stdout（stderr 空）
+      if (action === 'job_read_at') {
+        return JSON.stringify({
+          stdout: { text: 'hello from job\n', next: 15, lossy: false },
+          stderr: { text: '', next: 0, lossy: false },
+        });
+      }
+      return JSON.stringify(
         shells.map((s) => ({
           id: s.jobId,
           label: s.label,
@@ -118,8 +140,8 @@ describe('役册（创作坞后台工作监视装置）', () => {
             spill: { stdout: null, stderr: null },
           },
         })),
-      ),
-    );
+      );
+    });
     // 归属解析：本测试文件不经 workspace 装配，直接注入同形的解析器
     setOwnerSessionResolver(PANEL, (owner) => (owner === 'main-1' ? 1 : null));
     container = document.createElement('div');
@@ -191,9 +213,9 @@ describe('役册（创作坞后台工作监视装置）', () => {
 
       expect(triggerText()).toBe('役 —');
       expect(trigger()?.className).not.toContain('live');
-      // 消失 = 结转中性终态（口径纪律②：账本没有退出码，不外推成败）
+      // 消失 = 结局未知：不冒充「已了」，也不外推成败
       const settled = Object.values(useWorkLedgerStore.getState().entries).find((e) => e.id === 'job-7');
-      expect(settled?.state).toBe('done');
+      expect(settled?.state).toBe('interrupted');
     } finally {
       vi.useRealTimers();
     }
@@ -279,8 +301,9 @@ describe('役册（创作坞后台工作监视装置）', () => {
       reason: 'cancelled by the user',
     });
     expect(actions).toContain('job_list');
-    // 立刻落到「已了」——不等下一个轮询周期
-    expect(container.querySelector('.pp-work-state-done')).not.toBeNull();
+    // 立刻落出「在役」——不等下一个轮询周期（结局未知 ⇒ 中断，不冒充「已了」）
+    expect(container.querySelector('.pp-work-state-running')).toBeNull();
+    expect(container.querySelector('.pp-work-state-interrupted')).not.toBeNull();
   });
 
   it('并入浮层互斥：开役册关墨量册，开墨量册关役册', async () => {
@@ -310,5 +333,92 @@ describe('役册（创作坞后台工作监视装置）', () => {
       { id: 2, label: '案卷二' },
     ]);
     expect(container.querySelector('.pp-work-panel')).toBeNull();
+  });
+
+  /* ── 2026-11-27 役册 UX 批 ─────────────────────────────────────────── */
+
+  it('展开输出：已了的条目也能看（命令跑完的那一刻不再是信息盲区）', async () => {
+    withSettledShell(11, 'cargo build');
+    await mountDock();
+    act(() => trigger()?.click());
+    await act(async () => {});
+
+    const row = container.querySelector('.pp-work-state-done');
+    expect(row).not.toBeNull();
+    const btn = row?.querySelector<HTMLButtonElement>('.pp-work-expand');
+    expect(btn).not.toBeNull();
+    // 操作对聚在同一格（旧实现里「收」被网格推到面板外 217px）
+    expect(row?.querySelector('.pp-work-actions .pp-work-expand')).not.toBeNull();
+
+    act(() => btn?.click());
+    await act(async () => {});
+    expect(row?.querySelector('.pp-work-output-wrap')).not.toBeNull();
+    expect(row?.querySelector('.pp-work-output')?.textContent).toContain('hello from job');
+    expect(row?.querySelector('.pp-work-expand')?.getAttribute('aria-expanded')).toBe('true');
+
+    // 再点收起 = 卸载输出、停流
+    act(() => row?.querySelector<HTMLButtonElement>('.pp-work-expand')?.click());
+    await act(async () => {});
+    expect(row?.querySelector('.pp-work-output-wrap')).toBeNull();
+  });
+
+  it('Esc 关闭册页（与同行的模型菜单同语义）', async () => {
+    await mountDock();
+    act(() => trigger()?.click());
+    await act(async () => {});
+    expect(container.querySelector('.pp-work-panel')).not.toBeNull();
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await act(async () => {});
+    expect(container.querySelector('.pp-work-panel')).toBeNull();
+  });
+
+  it('点面板外关闭册页（旧实现只能再点触发器）', async () => {
+    await mountDock();
+    act(() => trigger()?.click());
+    await act(async () => {});
+    expect(container.querySelector('.pp-work-panel')).not.toBeNull();
+
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    await act(async () => {});
+    expect(container.querySelector('.pp-work-panel')).toBeNull();
+  });
+
+  it('读账失败：触发器自己显形（册页关着也看得见，不是只在页脚说）', async () => {
+    kernelProcessCall.mockRejectedValue(new Error('bridge down'));
+    await mountDock();
+    await act(async () => {});
+    expect(trigger()?.className).toContain('error');
+    expect(trigger()?.getAttribute('data-tip-hint')).toContain('bridge down');
+  });
+
+  it('已了超过 8 条：如实报余量，不静默截断', async () => {
+    const s = useWorkLedgerStore.getState();
+    for (let i = 0; i < 10; i++) {
+      s.noteSubAgentSpawn(PANEL, 1, `sub-${i}`, null, `活 ${i}`);
+      s.noteSubAgentFinished(PANEL, `sub-${i}`, true);
+    }
+    await mountDock();
+    act(() => trigger()?.click());
+    await act(async () => {});
+
+    expect(container.querySelectorAll('.pp-work-state-done')).toHaveLength(8);
+    expect(container.querySelector('.pp-work-more')?.textContent).toContain('另有 2 条');
+    expect(container.querySelector('.pp-work-head-figures')?.textContent).toContain('已了 10');
+  });
+
+  it('退出码非 0 的命令：失败看得见（旧实现与成功同形）', async () => {
+    withSettledShell(12, 'cargo test', { exitCode: 101, finishedAt: Date.now() });
+    await mountDock();
+    act(() => trigger()?.click());
+    await act(async () => {});
+
+    const row = container.querySelector('.pp-work-state-done');
+    expect(row?.className).toContain('pp-work-bad');
+    expect(row?.querySelector('.pp-work-sub')?.textContent).toContain('exit 101');
   });
 });

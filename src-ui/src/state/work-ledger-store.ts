@@ -44,8 +44,10 @@ import { showToast, TOAST_LONG_HOLD_MS } from './toast-store';
 /** 在役种类——读面据此分徽标与可用操作。 */
 export type WorkKind = 'shell' | 'subagent';
 
-/** 条目状态。`done` 是「已结束」的中性档——账本不报 shell 退出码，不编造成败。 */
-export type WorkState = 'running' | 'done' | 'failed' | 'stopped';
+/** 条目状态。`done` = 进程自己退出（成败由 `exitCode` 表达，不由生命周期表达）；
+ *  `stopped` = 有人终止；`failed` 只给子 Agent（shell 的失败是退出码，不是状态）；
+ *  `interrupted` = 有注册无结算（宿主重启 / 名册里查不到结局），**不猜成败**。 */
+export type WorkState = 'running' | 'done' | 'failed' | 'stopped' | 'interrupted';
 
 export interface WorkEntry {
   /** 稳定身份：shell = `job-<jobId>`；subagent = Agent id（`sub-…`）。 */
@@ -240,6 +242,13 @@ function evictTerminal(entries: Record<string, WorkEntry>, panelId: string): voi
   for (let i = 0; i < overflow; i++) delete entries[terminal[i][0]];
 }
 
+/** Rust 的 `detail` 里「人停的」标准原因不进旁注——状态字「已停」已经说了这件事。 */
+function noteOfDetail(detail: string | null | undefined): string | null {
+  if (!detail) return null;
+  if (/^cancelled by the user$/i.test(detail)) return null;
+  return detail;
+}
+
 export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
   entries: {},
   error: {},
@@ -297,13 +306,7 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
         const status = job.status ?? 'running';
         const live = status === 'running' || status === 'stopping';
         const state: WorkState = live ? 'running' : status === 'killed' ? 'stopped' : 'done';
-        const note = live
-          ? status === 'stopping'
-            ? '停止中'
-            : job.stalled
-              ? '停滞'
-              : null
-          : (job.detail ?? (job.exitCode != null && job.exitCode !== 0 ? `退出码 ${job.exitCode}` : '已结束'));
+        const note = live ? (status === 'stopping' ? '停止中' : job.stalled ? '停滞' : null) : noteOfDetail(job.detail);
         const startedAt = job.startedAt ?? prev?.startedAt ?? now - (job.elapsedSecs ?? 0) * 1000;
         const endedAt = live ? null : (job.finishedAt ?? now);
         /* 稳定字段逐项对表——全等即原样留用（引用不动 ⇒ 下面能整轮判空）。 */
@@ -361,12 +364,12 @@ export const useWorkLedgerStore = create<WorkLedgerState>((set, get) => ({
         }
       }
 
-      // 名册里彻底消失（历史被淘汰/宿主重启）= 中性收尾，不编造成败。
+      // 名册里彻底消失（历史被淘汰/宿主重启）= **结局未知**，不编造成败、也不冒充「已了」。
       for (const [key, e] of Object.entries(entries)) {
         if (e.kind !== 'shell' || e.state !== 'running') continue;
         if (!key.startsWith(panelId + '\u0000')) continue;
         if (seen.has(key)) continue;
-        entries[key] = { ...e, state: 'done', endedAt: now, note: '已结束' };
+        entries[key] = { ...e, state: 'interrupted', endedAt: now, note: '中断（名册里查不到结局）' };
         changed = true;
       }
 
@@ -547,7 +550,7 @@ export function loadSessionJobHistory(panelId: string, sessionId: number): void 
     const startedAt = registered.startedAt ?? Date.now();
     const terminal = settled !== undefined;
     // 宽进：不认识的终态（历史卷里的旧值）按「已了」中性档收——不猜成失败、不丢行。
-    const state: WorkState = terminal ? (settled.status === 'killed' ? 'stopped' : 'done') : 'stopped';
+    const state: WorkState = terminal ? (settled.status === 'killed' ? 'stopped' : 'done') : 'interrupted';
     restored.push([
       keyOf(panelId, 'shell', `job-${jobId}`),
       {
@@ -555,11 +558,12 @@ export function loadSessionJobHistory(panelId: string, sessionId: number): void 
         kind: 'shell',
         label: registered.label ?? '',
         startedAt,
-        endedAt: terminal ? (settled.finishedAt ?? startedAt) : startedAt,
+        /* 有注册无结算 ⇒ 结束时刻**未知**，留 null（旧实写 startedAt，于是时长恒显 0s）。 */
+        endedAt: terminal ? (settled.finishedAt ?? startedAt) : null,
         state,
         sessionId,
         parentAgentId: null,
-        note: terminal ? (settled.detail ?? '已结束') : '中断（宿主退出，结局未知）',
+        note: terminal ? noteOfDetail(settled.detail) : '中断（宿主退出，结局未知）',
         exitCode: settled?.exitCode ?? null,
         detail: settled?.detail ?? null,
         spill: settled?.spill ?? { stdout: null, stderr: null },

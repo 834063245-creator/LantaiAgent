@@ -157,14 +157,32 @@ describe('役台账 · shell 快照对账', () => {
     expect(e.state).toBe('running');
   });
 
-  it('从在役集合消失 = 已结束：中性终态 + 如实标注，不编造成败', () => {
+  it('从名册里彻底消失 = 中断：结局未知，不冒充「已了」、不编造成败', () => {
     const s = useWorkLedgerStore.getState();
     s.noteShells(P, [shell(7)], () => 2);
     vi.setSystemTime(T0 + 8000);
     useWorkLedgerStore.getState().noteShells(P, [], () => 2);
     const [e] = listOf(P, 2);
-    expect(e).toMatchObject({ state: 'done', note: '已结束', endedAt: T0 + 8000 });
-    expect(e.state).not.toBe('failed'); // 账本没有退出码，不许外推成失败
+    expect(e).toMatchObject({ state: 'interrupted', endedAt: T0 + 8000 });
+    expect(e.note).toContain('查不到结局');
+    expect(e.state).not.toBe('failed'); // 账本没有结局，不许外推成失败
+  });
+
+  it('进程自己退出：状态是中性「已了」，退出码原样带着（成败不写进状态字）', () => {
+    useWorkLedgerStore
+      .getState()
+      .noteShells(P, [shell(7, { status: 'completed', exitCode: 1, finishedAt: T0 })], () => 2);
+    const [e] = listOf(P, 2);
+    expect(e).toMatchObject({ state: 'done', exitCode: 1, endedAt: T0 });
+  });
+
+  it('人停的：状态「已停」，标准原因不进旁注（状态字已经说过）', () => {
+    useWorkLedgerStore
+      .getState()
+      .noteShells(P, [shell(7, { status: 'killed', detail: 'cancelled by the user', finishedAt: T0 })], () => 2);
+    const [e] = listOf(P, 2);
+    expect(e.state).toBe('stopped');
+    expect(e.note).toBeNull();
   });
 
   it('owner 解析不出会话：条目不丢，落归属未知档', () => {

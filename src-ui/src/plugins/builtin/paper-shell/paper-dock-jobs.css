@@ -173,10 +173,13 @@
   display: flex;
   flex-direction: column;
 }
-/* 一条役：徽 + 主文（两行夹）+ 副行 + 可选停止钮 */
+/* 一条役：徽 + 主文（两行夹）+ 副行 + 操作 + 可选输出。
+   2026-11-27：`1fr` → `minmax(0, 1fr)`——`1fr` 的自动最小尺寸是 max-content，
+   展开输出后 `<pre>` 的固有宽度会把中列撑到 472px，操作列被推出面板 217px
+   （实测 grid 列 = 18px / 472px / 17px，而条目盒只有 274px）。 */
 .pp-work-item {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 7px;
   padding: 5px 0;
@@ -184,6 +187,13 @@
 }
 .pp-work-item:last-child {
   border-bottom: none;
+}
+/* 操作对：看/收 + 停（同一格，不各占一行） */
+.pp-work-actions {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
 }
 .pp-work-mark {
   font-family: var(--f-song);
@@ -231,7 +241,9 @@
 .pp-work-state-failed .pp-work-label {
   color: var(--seal-deep);
 }
-.pp-work-stop {
+/* 行内动作：看/收（展开输出）与停——同族同档（仪器小字，不是按钮面） */
+.pp-work-stop,
+.pp-work-expand {
   font-family: var(--f-song);
   font-size: var(--fs-caption);
   border: none;
@@ -243,8 +255,91 @@
   white-space: nowrap;
   transition: color var(--snap);
 }
-.pp-work-stop:hover {
+.pp-work-stop:hover,
+.pp-work-expand:hover {
   color: var(--seal-deep);
+}
+/* 退出码非 0：失败必须看得见（与子代理 failed 同一支笔）。旧实现里失败的命令
+   与成功的长得一样——只有一行小字 exit 1。 */
+.pp-work-bad .pp-work-label {
+  color: var(--seal-deep);
+}
+.pp-work-bad .pp-work-mark {
+  background: var(--seal-deep);
+}
+/* 已了超量：如实报余量（旧实现 slice(0,8) 静默截断，页眉却报真实总数） */
+.pp-work-more {
+  margin: 5px 0 0;
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+
+/* ── 展开输出（2026-11-27 第一次有样式）─────────────────────────────
+ * 此前 `pp-work-output*` / `pp-work-expand` 在 CSS 里**一个选择器都没有**：
+ * `<pre>` 按 UA 默认以 15.6px 渲染（比册页正文还大）、不折行、无容器，
+ * 固有宽度把网格中列撑爆并把「收」推出面板。以下为册页语言的补课：
+ *  - 输出整行跨列（不吃徽/操作两列）；
+ *  - 深纸底 + 发丝线 = 与图版架同一族的「嵌入块」语言；
+ *  - 封高 + 内滚（长跑命令不把册页拉成一根面条）；
+ *  - 等宽 + 折行（终端原样，但不许横向溢出面板）。 */
+.pp-work-output-wrap {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 4px 0 2px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line-soft);
+}
+.pp-work-output-note {
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+  /* 长路径不撑破面板：单行省略，完整路径走 data-tip */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-work-output-path {
+  color: var(--ink-3);
+}
+.pp-work-output-box {
+  margin-top: 4px;
+  max-height: 200px;
+  overflow: auto;
+  padding: 6px 7px;
+  background: color-mix(in oklch, var(--paper-deep) 42%, var(--paper));
+  border: 1px solid var(--line-soft);
+}
+.pp-work-output {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.55;
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* stderr 与 stdout 分块：小标题 + 退一档墨（错误流是同一份日志的另一半，
+   不是第二段正文） */
+.pp-work-stream-tag {
+  margin: 6px 0 2px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+}
+.pp-work-output-box > .pp-work-stream-tag:first-child {
+  margin-top: 0;
+}
+.pp-work-output-err {
+  color: var(--ink-1);
+}
+.pp-work-output-idle {
+  color: var(--ink-3);
 }
 .pp-work-empty {
   margin: 4px 0 0;
