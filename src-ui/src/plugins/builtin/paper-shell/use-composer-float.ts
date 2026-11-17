@@ -41,6 +41,8 @@ import {
   saveComposerUnlocked,
   snapComposerPos,
 } from './composer-float';
+import { useDragGesture } from './use-drag-gesture';
+import { DRAG_THRESHOLD } from './use-paper-drag';
 
 /** 坞浮动域的输入（2026-09-23 图版架丙案 D2 起有第二个输入）。 */
 export interface ComposerFloatOpts {
@@ -221,53 +223,93 @@ export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
     };
   }, [effective, popRoomUp, popRoomDown]);
 
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    if (!isComposerDragSurface(e.target, unlockedRef.current)) return;
-    const el = slotEl.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    if (r.width <= 0 || r.height <= 0) return; // 未实测（jsdom / 未布局）：不起拖
-    /* 起拖快照：坞位 + 指针起点 + 当帧视口（拖动期窗口若变，松手后由读侧夹紧收）。
-     * 坞在 CSS 默认位（pos=null）时也从实测矩形起算——拖动即接管为显式坞位。 */
-    const vpNow = { w: window.innerWidth, h: window.innerHeight };
-    const start = { x: e.clientX, y: e.clientY, left: r.left, bottom: vpNow.h - r.bottom };
-    const boxNow = { w: r.width, h: r.height };
-    let moved = false;
-    setDragging(true);
-    /* 拖动期全页禁选（html 上挂类，规则在 PaperPanel.css）：坞上按下会带出原生选区，
-     * 而纸上挂着 document 级 selectionchange（use-paper-strips 的选中浮钮）——
-     * 不禁选就是「拖动坞 = 纸上划词」（2026-09-17 用户报的第一条冲突）。
-     * 既有选区也一并清掉：抓坞等同点了别处，选区该散。 */
-    const rootEl = document.documentElement;
-    rootEl.classList.add('pp-composer-dragging');
-    window.getSelection()?.removeAllRanges();
-    const onMove = (ev: PointerEvent) => {
-      moved = true;
-      const raw = {
-        left: start.left + (ev.clientX - start.x),
-        bottom: start.bottom - (ev.clientY - start.y),
-      };
-      const next = snapComposerPos(clampComposerPos(raw, vpNow, boxNow, { rack: rackOnRef.current }), vpNow, boxNow, {
+  /* ── 拖动（2026-11-17 交互原语批 C3 · 5/9）──
+   * 这一份原本已经是 pointer 事件（坞是后起之秀，没背 mouse 的债），收编换来的不是
+   * 事件名，是**三件它此前没有的事**：
+   *   ① setPointerCapture：指针拖出坞/拖出窗口仍然收得到（旧实现是 window 监听，
+   *      窗口失焦就断线，坞会卡在 dragging 态）；
+   *   ② 失联即收：blur / 视口切走 ⇒ 取消（不落盘、位置回滚到起拖前）；
+   *   ③ 「只点不拖」的判据从本地 moved 变量换成核心的 threshold——同一条语义，
+   *      但和其余八份共用一个实现。 */
+  const startRef = useRef<{
+    x: number;
+    y: number;
+    left: number;
+    bottom: number;
+    vp: { w: number; h: number };
+    box: { w: number; h: number };
+  } | null>(null);
+
+  /** 收尾：撤禁选类、撤拖动态、清起拖快照。 */
+  const endDrag = useCallback(() => {
+    document.documentElement.classList.remove('pp-composer-dragging');
+    setDragging(false);
+  }, []);
+
+  const gesture = useDragGesture({
+    threshold: DRAG_THRESHOLD,
+    onStart: () => {
+      setDragging(true);
+      /* 拖动期全页禁选（html 上挂类，规则在 PaperPanel.css）：坞上按下会带出原生选区，
+       * 而纸上挂着 document 级 selectionchange（use-paper-strips 的选中浮钮）——
+       * 不禁选就是「拖动坞 = 纸上划词」（2026-09-17 用户报的第一条冲突）。
+       * 既有选区也一并清掉：抓坞等同点了别处，选区该散。 */
+      document.documentElement.classList.add('pp-composer-dragging');
+      window.getSelection()?.removeAllRanges();
+    },
+    onMove: (_e, d) => {
+      const s = startRef.current;
+      if (!s) return;
+      const raw = { left: s.left + d.dx, bottom: s.bottom - d.dy };
+      const next = snapComposerPos(clampComposerPos(raw, s.vp, s.box, { rack: rackOnRef.current }), s.vp, s.box, {
         rack: rackOnRef.current,
       });
       posRef.current = next;
       setPos(next);
-    };
-    const onEnd = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onEnd);
-      window.removeEventListener('pointercancel', onEnd);
-      rootEl.classList.remove('pp-composer-dragging');
-      setDragging(false);
-      /* 只点不拖（moved=false）= 坞位原样（不落盘）——否则单击坞体会把已存的
-       * 坞位当「无覆盖」清掉，坞无故跳回底部。 */
-      if (moved) saveComposerPos(posRef.current);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onEnd);
-    window.addEventListener('pointercancel', onEnd);
-  }, []);
+    },
+    onEnd: () => {
+      endDrag();
+      startRef.current = null;
+      /* 过阈值才落盘（「只点不拖」由核心的 threshold 判掉——单击坞体不该把已存的
+       * 坞位当「无覆盖」清掉，坞会无故跳回底部）。 */
+      saveComposerPos(posRef.current);
+    },
+    onCancel: () => {
+      endDrag();
+      /* 取消 = 回滚到起拖前的坞位：失联不是「放到这里了」，把半路位置落盘会让坞
+       * 停在意外的角落（plan §2.1「失联即收，不提交」）。 */
+      const s = startRef.current;
+      if (s) {
+        posRef.current = { left: s.left, bottom: s.bottom };
+        setPos({ left: s.left, bottom: s.bottom });
+      }
+      startRef.current = null;
+    },
+  });
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      if (!isComposerDragSurface(e.target, unlockedRef.current)) return;
+      const el = slotEl.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return; // 未实测（jsdom / 未布局）：不起拖
+      /* 起拖快照：坞位 + 指针起点 + 当帧视口（拖动期窗口若变，松手后由读侧夹紧收）。
+       * 坞在 CSS 默认位（pos=null）时也从实测矩形起算——拖动即接管为显式坞位。 */
+      const vpNow = { w: window.innerWidth, h: window.innerHeight };
+      startRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        left: r.left,
+        bottom: vpNow.h - r.bottom,
+        vp: vpNow,
+        box: { w: r.width, h: r.height },
+      };
+      gesture.begin(e);
+    },
+    [gesture],
+  );
 
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     if (!isComposerDragSurface(e.target, unlockedRef.current)) return;
