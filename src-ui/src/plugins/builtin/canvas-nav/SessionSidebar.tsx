@@ -38,6 +38,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isUnnamedVolumeLabel, volumeDisplayName } from '../../../state/volume-name';
+import { useDragGesture } from '../paper-shell/use-drag-gesture';
 import {
   activeSpace,
   agentSessionState,
@@ -442,30 +443,40 @@ export const SessionSidebar = memo(function SessionSidebar() {
   }, []);
 
   /* ── 宽度拖拽（右缘） ── */
-  const onResizeMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  /* 宽度拖拽（右缘）——2026-11-17 批 C3 · 7/9 收编进 useDragGesture：
+   * 阈值/失联即收/Esc 走核心，本域只剩「宽度怎么算、什么时候落盘」。
+   * 失联即收在这里尤其要紧：旧实现窗外松手会把宽度停在半路且**不写盘**，
+   * 下次启动回到旧宽度，用户读作「改了又变回去」。 */
+  const widthStartRef = useRef(width);
+  const widthLatestRef = useRef(width);
+  const widthGesture = useDragGesture({
+    onStart: () => {
+      widthStartRef.current = widthAtStartRef.current;
+      widthLatestRef.current = widthAtStartRef.current;
+    },
+    onMove: (_e, d) => {
+      const next = Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, widthStartRef.current + d.dx));
+      widthLatestRef.current = next;
+      setWidth(next);
+    },
+    onEnd: () => {
+      try {
+        localStorage.setItem(WIDTH_KEY, String(Math.round(widthLatestRef.current)));
+      } catch {
+        /* 写失败仅本次会话生效 */
+      }
+    },
+  });
+  /** 按下那一刻的宽度（onStart 快照；用 ref 保住「按下时的值」语义）。 */
+  const widthAtStartRef = useRef(width);
+  const onResizePointerDown = useCallback(
+    (e: React.PointerEvent) => {
       if (e.button !== 0) return;
       e.preventDefault();
-      const startX = e.clientX;
-      const startW = width;
-      let latest = width;
-      const move = (ev: MouseEvent) => {
-        latest = Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, startW + ev.clientX - startX));
-        setWidth(latest);
-      };
-      const up = () => {
-        window.removeEventListener('mousemove', move);
-        window.removeEventListener('mouseup', up);
-        try {
-          localStorage.setItem(WIDTH_KEY, String(Math.round(latest)));
-        } catch {
-          /* 写失败仅本次会话生效 */
-        }
-      };
-      window.addEventListener('mousemove', move);
-      window.addEventListener('mouseup', up);
+      widthAtStartRef.current = width;
+      widthGesture.begin(e);
     },
-    [width],
+    [width, widthGesture],
   );
 
   /* 拖拽柄键盘：←→ 微调 ±16px（可聚焦件的键盘义务）。 */
@@ -486,55 +497,58 @@ export const SessionSidebar = memo(function SessionSidebar() {
 
   /* ── 行拖放落位（书脊手势同族）：闭合卷 = 先落位再摊开（region 先写，
    * 装载即用落点位，不落默认位）；摊开卷 = 再落位。 ── */
-  const onRowMouseDown = useCallback(
-    (e: React.MouseEvent, row: SidebarRow) => {
+  /* 行拖行（2026-11-17 批 C3 · 7/9）：拖到纸上 = 落位（闭合卷先落位再摊开）。
+   * 阈值/失联即收/Esc 走核心；本域只剩「落到哪、落完之后清什么」。 */
+  const rowGesture = useDragGesture({
+    threshold: DRAG_THRESHOLD,
+    onStart: () => {
+      // 压旗复位：拖行结束（松手在行外）不会有 click 落到行上清旗——
+      // 不复位会把下一次真点击误吞
+      suppressClickRef.current = false;
+    },
+    onMove: (_e, d) => {
+      setGhost({ x: d.x, y: d.y });
+    },
+    onEnd: (e, d) => {
+      const cur = dragRef.current;
+      dragRef.current = null;
+      setGhost(null);
+      if (!cur || !core) return;
+      suppressClickRef.current = true;
+      /* 松手落回本栏（拖了又反悔）= 中止，不在栏底落位。
+       * ⚠ 捕获面下 e.target 恒是行自己：用 isOutside 判据要看**落点元素**，
+       * 故捕获时走 elementFromPoint（同 use-branch-drag 的判据形态）。 */
+      const landedOn = d.captured ? document.elementFromPoint(d.x, d.y) : ((e?.target as Element | null) ?? null);
+      if (landedOn?.closest?.('.ss-sidebar')) return;
+      const rect = document.querySelector('.pp-canvas')?.getBoundingClientRect();
+      if (!rect) return;
+      const v = useCanvasViewStore.getState().view;
+      const w = screenToWorld(v, d.x - rect.left, d.y - rect.top);
+      const space = activeSpace();
+      const regions = space?.getState().regions ?? [];
+      const anchor = pickDropAnchor(regions, String(cur.id), w.x, w.y);
+      space?.place(String(cur.id), anchor.anchorX, anchor.anchorY);
+      if (!cur.open) space?.expand(String(cur.id)); // expand 自带视角聚焦（用户拍板）
+      disarmAll(); // 落位 = 别的意图：武装同撤（红态不跨手势残留——同「点击行 = 其它意图」纪律）
+    },
+    onCancel: () => {
+      dragRef.current = null;
+      setGhost(null);
+    },
+  });
+
+  const onRowPointerDown = useCallback(
+    (e: React.PointerEvent, row: SidebarRow) => {
       if (e.button !== 0) return;
       // 整理态 = 选择语境：拖放落位退场（点行语义已是勾选）
       if (arranging) return;
       // 行内交互子件（勾选格/行操作/改名输入）不承载拖行手势
       if ((e.target as HTMLElement).closest('.ss-check, .ss-actions, .ss-rename-input')) return;
-      // 压旗复位：拖行结束（mouseup 在行外）不会有 click 落到行上清旗——
-      // 不复位会把下一次真点击误吞
-      suppressClickRef.current = false;
       dragRef.current = { id: row.id, open: row.open, sx: e.clientX, sy: e.clientY, moved: false };
+      rowGesture.begin(e);
     },
-    [arranging],
+    [arranging, rowGesture],
   );
-
-  useEffect(() => {
-    const move = (e: MouseEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
-      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_THRESHOLD) return;
-      d.moved = true;
-      setGhost({ x: e.clientX, y: e.clientY });
-    };
-    const up = (e: MouseEvent) => {
-      const d = dragRef.current;
-      dragRef.current = null;
-      setGhost(null);
-      if (!d?.moved || !core) return;
-      suppressClickRef.current = true;
-      // 松手落回本栏（拖了又反悔）= 中止，不在栏底落位
-      if ((e.target as HTMLElement | null)?.closest?.('.ss-sidebar')) return;
-      const rect = document.querySelector('.pp-canvas')?.getBoundingClientRect();
-      if (!rect) return;
-      const v = useCanvasViewStore.getState().view;
-      const w = screenToWorld(v, e.clientX - rect.left, e.clientY - rect.top);
-      const space = activeSpace();
-      const regions = space?.getState().regions ?? [];
-      const anchor = pickDropAnchor(regions, String(d.id), w.x, w.y);
-      space?.place(String(d.id), anchor.anchorX, anchor.anchorY);
-      if (!d.open) space?.expand(String(d.id)); // expand 自带视角聚焦（用户拍板）
-      disarmAll(); // 落位 = 别的意图：武装同撤（红态不跨手势残留——同「点击行 = 其它意图」纪律）
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-    };
-  }, [core, disarmAll]);
 
   /* ── 行点击 onRowClick 定义在 flat 之后（整理态区间连选要读可见行序）——
    *  这里只留位置说明，见「可见行」区块。 ── */
@@ -1092,7 +1106,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         aria-current={isCurrent ? 'true' : undefined}
         aria-expanded={tree && kids > 0 ? !famFolded : undefined}
         onClick={(e) => onRowClick(e, r)}
-        onMouseDown={(e) => onRowMouseDown(e, r)}
+        onPointerDown={(e) => onRowPointerDown(e, r)}
         onMouseEnter={tree ? () => setHoverId(r.id) : undefined}
         onMouseLeave={tree ? () => setHoverId((prev) => (prev === r.id ? null : prev)) : undefined}
         onFocus={() => {
@@ -1535,7 +1549,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         type="button"
         className="ss-resize"
         aria-label="拖拽调整侧栏宽度（聚焦后 ← → 微调）"
-        onMouseDown={onResizeMouseDown}
+        onPointerDown={onResizePointerDown}
         onKeyDown={onResizeKeyDown}
       />
 
