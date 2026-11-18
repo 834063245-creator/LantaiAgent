@@ -29,8 +29,32 @@ function safeCount(text: string): number {
   }
 }
 
-/** 使用 cl100k_base 分词器计算单条消息的 token 数。 */
+/** 逐消息计数记忆（**按对象身份**缓存 —— 消息是不可变的，见下）。
+ *
+ *  为什么需要：压缩预检在**每一步**都要量整个载荷，而载荷里 99% 的消息上一步就量过
+ *  （实测 500 条消息、33.9 万 token 的卷，全量重算是 50–100ms/步，步步如此）。会话越
+ *  长越贵，且 pre-flight / maybeCompact / 诊断三处各调一次。
+ *
+ *  ⚠ **正确性前提 = 消息对象不可变**。这不是新立的规矩，是全仓既有事实：
+ *  session 里的消息只在 `_appendMessage` 处**新增**，全仓无一处就地改 `content` /
+ *  `reasoning_content` / `tool_calls`（INVARIANTS #14 同源纪律；`replace`/retract
+ *  走的是 splice 换元素，不是改对象）。谁哪天要就地改，必须先在此处失效缓存——
+ *  用 WeakMap 而非 Map 是因为消息被替换后会自然回收，不会把旧消息钉在内存里。
+ *
+ *  缓存的是**整条消息**的计数（不是逐字段）：一次命中就省掉全部分词，粒度最粗、
+ *  失效面最小。 */
+const messageTokens = new WeakMap<Message, number>();
+
+/** 使用 cl100k_base 分词器计算单条消息的 token 数（结果按对象身份记忆）。 */
 export function countMessage(m: Message): number {
+  const hit = messageTokens.get(m);
+  if (hit !== undefined) return hit;
+  const total = countMessageUncached(m);
+  messageTokens.set(m, total);
+  return total;
+}
+
+function countMessageUncached(m: Message): number {
   let total = MSG_OVERHEAD;
 
   if (typeof m.content === 'string') {
