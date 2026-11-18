@@ -7,7 +7,10 @@
 .pp-shelf-mask {
   position: fixed;
   inset: 0;
-  z-index: 260;
+  /* **必须高于 .pp-root 的 280**（paper-base.css）：纸壳根是 fixed + z-index 280，
+     本浮层挂在它**外面**（Provider 的兄弟，不是 .pp-root 的子节点）⇒ 同一层叠上下文里
+     260 会被整张纸盖住（2026-12-08 实机报「架阁点不开」的真相：它弹了，但在纸下面）。 */
+  z-index: 400;
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--ink-1) 16%, transparent);
