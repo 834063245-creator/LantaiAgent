@@ -445,7 +445,9 @@ export interface RpcContract {
     };
     result: string; // "null"
   };
-  set_permission_mode: { params: { mode: string }; result: string }; // "null"
+  /** mode = 权限档；agentId 缺省 = 写**工作区默认**（全局镜像），
+   *  给了 = 写该 agent（= 某一卷）的**卷级模式**（2026-11-28 权限卷级批）。 */
+  set_permission_mode: { params: { mode: string; agentId?: string }; result: string }; // "null"
   credential_store: { params: { provider: string; key: string }; result: string }; // "null"
   credential_get: { params: { provider: string }; result: string }; // JSON
   credential_delete: { params: { provider: string }; result: string }; // "null"

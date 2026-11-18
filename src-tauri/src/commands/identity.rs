@@ -47,11 +47,24 @@ pub(crate) fn credential_store(provider: String, key: String) -> Result<(), Stri
 
 /// 权限模式同步 — 前端 UI 模式镜像到后端，供同步路径（后台任务）旁路使用。
 /// 仅前端是权威源；本函数只更新镜像，不持久化。
-pub(crate) fn set_permission_mode(mode: String) -> Result<(), String> {
+pub(crate) fn set_permission_mode(mode: String, agent_id: Option<String>) -> Result<(), String> {
     match mode.as_str() {
         "ask" | "auto" | "yolo" => {
-            crate::permissions::set_permission_mode(mode.as_str());
-            tracing::info!("[perm] permission mode -> {}", mode);
+            match agent_id.as_deref() {
+                // 卷级（2026-11-28 权限卷级批）：带 agentId = 写该卷自己的模式（同步路径按它判定）；
+                // 空串 = 清除（该 agent 回「跟随工作区」）。
+                Some("") => {
+                    crate::permissions::clear_agent_permission_mode("");
+                }
+                Some(id) => {
+                    crate::permissions::set_agent_permission_mode(id, mode.as_str());
+                }
+                // 不带 agentId = 写工作区默认（仍旧镜像全局，行为零漂移）
+                None => {
+                    crate::permissions::set_permission_mode(mode.as_str());
+                }
+            }
+            tracing::info!("[perm] permission mode -> {} (agent={:?})", mode, agent_id);
             Ok(())
         }
         other => Err(format!("无效的权限模式: '{}' (允许: ask/auto/yolo)", other)),

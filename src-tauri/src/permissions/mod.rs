@@ -62,6 +62,64 @@ pub fn current_permission_mode() -> PermissionMode {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 卷级权限（2026-11-28 权限卷级批）：agent_id → 该卷的有效模式
+//
+// 为什么要有这张表：前端已按「agentId → 所属卷」逐卷判定权限（permission-ask 闸门），
+// 但后台任务的**同步路径**（check_permission_sync）拿不到前端上下文，只能读全局镜像
+// ⇒ 卷级覆盖在后台不生效。这里把「每个 agent（= 某一卷的主 Agent）自己的模式」存成表，
+// 同步路径按 `Tool::agent_id()` 查表、查不到才回退全局——这就是那条边界的补丁。
+//
+// 写入面：前端在切卷 / 拨权限 / 建 Agent 时推 `set_permission_mode`（带 agentId）；
+// 未带 agentId = 写工作区默认（仍旧是全局镜像那条路，行为零漂移）。
+// 清理面：agent 注销时前端推一次删除（agentId 空串 = 删）——不删也只是惰性残留，
+// 读侧按「该 agent 已不在册」自然失效（前端不会再用那个 id 请求）。
+// ═══════════════════════════════════════════════════════════════
+
+/// agent_id → 卷级模式（0=Ask 1=Auto 2=Yolo）。缺 = 跟随全局镜像。
+static AGENT_MODES: LazyLock<RwLock<HashMap<String, u8>>> = LazyLock::new(|| RwLock::new(HashMap::new()));
+
+fn mode_code(mode: &str) -> Option<u8> {
+    match mode {
+        "ask" => Some(0),
+        "auto" => Some(1),
+        "yolo" => Some(2),
+        _ => None,
+    }
+}
+
+/// 写某 agent（= 某一卷）的权限模式。`mode` 非法或 agentId 为空 ⇒ false（不静默改全局）。
+pub fn set_agent_permission_mode(agent_id: &str, mode: &str) -> bool {
+    if agent_id.is_empty() {
+        return false;
+    }
+    let Some(v) = mode_code(mode) else {
+        return false;
+    };
+    let mut m = AGENT_MODES.write().unwrap_or_else(|e| e.into_inner());
+    m.insert(agent_id.to_string(), v);
+    true
+}
+
+/// 清除某 agent 的卷级模式（agent 注销 / 回「跟随工作区」）。
+pub fn clear_agent_permission_mode(agent_id: &str) -> bool {
+    if agent_id.is_empty() {
+        return false;
+    }
+    let mut m = AGENT_MODES.write().unwrap_or_else(|e| e.into_inner());
+    m.remove(agent_id).is_some()
+}
+
+/// 读某 agent 的卷级模式（None = 未设，调用方回退全局镜像）。
+pub fn agent_permission_mode(agent_id: &str) -> Option<PermissionMode> {
+    let m = AGENT_MODES.read().unwrap_or_else(|e| e.into_inner());
+    m.get(agent_id).map(|v| match v {
+        1 => PermissionMode::Auto,
+        2 => PermissionMode::Yolo,
+        _ => PermissionMode::Ask,
+    })
+}
+
 /// auto 模式白名单 — 常规编辑自动批准（与前端 AUTO_WHITELIST 语义一致；
 /// 前端按后端 Tool.name() 匹配，本函数保持同一份名单）。
 /// EditTool 覆盖 edit_file/write_file/delete_file/move_file/create_directory/log_append。

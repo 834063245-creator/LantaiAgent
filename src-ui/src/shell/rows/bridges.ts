@@ -44,6 +44,13 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
       // 权限模式旁路：**按卷**取有效模式（卷级覆盖 ?? 工作区默认）——2026-11-28 权限卷级批。
       // 单一真相 = mode-store 的 modeOf（app 级单例；切换时落盘，卷级只在前端闸门生效）。
       const permMode = useModeStore.getState().modeOf(owner?.sessionId ?? null);
+      /* 顺带把这一卷的有效模式推给 Rust（2026-11-28 权限卷级批）：同步路径（后台任务）
+       * 按 agent 查表判定，而它拿不到前端上下文——每次请示都是一次免费的对账机会，
+       * 保证那张表不会比现实旧。子 Agent 归到主 Agent 名下（表键 = 主 Agent id）。 */
+      const mainAgentId = owner?.mainAgentId ?? agentId;
+      if (mainAgentId) {
+        void typedRpc('set_permission_mode', { mode: permMode, agentId: mainAgentId });
+      }
       // 工作区外写入（Rust 侧标记）不走 auto 自动放行——仍弹卡（2026-10-30）
       if (shouldAutoApprove(permMode, p.tool, p.outsideProject === true)) {
         void typedRpc('permission_ask_response', {

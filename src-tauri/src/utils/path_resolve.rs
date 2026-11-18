@@ -194,7 +194,12 @@ pub(crate) fn check_permission_sync(
                 .get_path()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let mode = permissions::current_permission_mode();
+            // 卷级优先（2026-11-28 权限卷级批）：工具自带 agent 归属 ⇒ 查该卷的模式；
+            // 未设 = 回退全局镜像（工作区默认）。这是「后台同步路径不认卷级覆盖」那条边界的补丁。
+            let mode = tool
+                .agent_id()
+                .and_then(permissions::agent_permission_mode)
+                .unwrap_or_else(permissions::current_permission_mode);
             // auto 白名单两级（P2-0 §3.4）：插件工具的精确名不在白名单，
             // 经 rule_fallback_name 家族回退命中——否则 fs 写工具迁移后
             // auto 模式对它们静默失效（path_resolve L209 静默失效点）。

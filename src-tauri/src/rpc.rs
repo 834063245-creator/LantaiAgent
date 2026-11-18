@@ -686,7 +686,13 @@ async fn dispatch_rpc(
         }
         "set_permission_mode" => {
             let mode = req_str(&params, "mode", "set_permission_mode")?;
-            ok_unit(commands::identity::set_permission_mode(mode))
+            // 卷级（2026-11-28 权限卷级批）：带 agentId = 写该 agent（= 某一卷）的模式；
+            // 空串 = 清除该卷的覆盖（回「跟随工作区」）；不带 = 工作区默认（全局镜像）。
+            let agent_id = params
+                .get("agentId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            ok_unit(commands::identity::set_permission_mode(mode, agent_id))
         }
         "credential_store" => {
             let provider = req_str(&params, "provider", "credential_store")?;
