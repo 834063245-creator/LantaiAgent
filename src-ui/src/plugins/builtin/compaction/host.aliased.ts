@@ -18,6 +18,8 @@ const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const buildCompactedSummaryMessage = impl.buildCompactedSummaryMessage;
 export const ChunkType = impl.ChunkType;
+export const COMPACT_HEADROOM_TOKENS = impl.COMPACT_HEADROOM_TOKENS;
+export const COMPACT_OUTPUT_RESERVE_TOKENS = impl.COMPACT_OUTPUT_RESERVE_TOKENS;
 export const COMPACTION_NOTICE_MARK = impl.COMPACTION_NOTICE_MARK;
 export const countMessage = impl.countMessage;
 export const countMessages = impl.countMessages;
@@ -28,6 +30,7 @@ export const DEFAULT_COMPACT_RATIO = impl.DEFAULT_COMPACT_RATIO;
 export const DEFAULT_RETAIN_RATIO = impl.DEFAULT_RETAIN_RATIO;
 export const defineTool = impl.defineTool;
 export const EventKind = impl.EventKind;
+export const effectiveCompactRatio = impl.effectiveCompactRatio;
 export const extractFilePath = impl.extractFilePath;
 export const foldToolResults = impl.foldToolResults;
 export const kernelReadFile = impl.kernelReadFile;

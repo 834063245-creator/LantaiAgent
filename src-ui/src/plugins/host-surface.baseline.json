@@ -1,5 +1,5 @@
 {
-  "fingerprint": "93a957bd",
+  "fingerprint": "d050418c",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -8,6 +8,8 @@
     "ApiError",
     "BoardPersistence",
     "COMPACTION_NOTICE_MARK",
+    "COMPACT_HEADROOM_TOKENS",
+    "COMPACT_OUTPUT_RESERVE_TOKENS",
     "ChunkType",
     "CompositionPatchError",
     "ConfirmDialog",
@@ -131,6 +133,7 @@
     "draftInputKey",
     "draftSheetSeed",
     "editGoal",
+    "effectiveCompactRatio",
     "effectiveModels",
     "enqueueIsolationOp",
     "ensureProvidersDir",

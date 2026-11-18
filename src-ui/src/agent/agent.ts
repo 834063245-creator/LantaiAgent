@@ -30,10 +30,12 @@ import { generateAssetId } from './asset-kinds';
 import { rebuildAssetsFromSession } from './asset-store';
 import type { CodeReplyCode } from './code-run/protocol';
 import {
+  COMPACT_OUTPUT_RESERVE_TOKENS,
   type CompactionConfig,
   type CompactionHost,
   DEFAULT_COMPACT_RATIO,
   DEFAULT_RETAIN_RATIO,
+  effectiveCompactRatio,
   SUMMARY_OUTPUT_BUDGET,
   type SummaryCall,
   type SummaryRun,
@@ -977,8 +979,15 @@ export class Agent {
   getCompactionTracker(): CompactionTracker {
     return this.compactionTracker;
   }
+  /** 配置档位（自动调优值，落 [0.7, 0.85]）——诊断面/统计工具读它。 */
   getCompactRatio(): number {
     return this.compactRatio;
+  }
+  /** **实际生效的触发线**（占 window）：在配置档位上再扣输出预留与 headroom
+   *  （见 compaction-contract 的 effectiveCompactRatio）。pre-flight 与响应式压缩
+   *  都读这个值，不再直接读档位。 */
+  compactRatioOf(): number {
+    return effectiveCompactRatio(this.contextWindow, this.compactRatio, COMPACT_OUTPUT_RESERVE_TOKENS);
   }
   getRecentKeep(): number {
     return this.recentKeep;
@@ -1647,7 +1656,7 @@ export class Agent {
       tokenCountWithEstimation: () => this.tokenCountWithEstimation(),
       compactNow: (sig) => this.compactNow(sig),
       compactIfNeeded: (sig) => this.compactIfNeeded(sig),
-      compactRatioOf: () => this.compactRatio,
+      compactRatioOf: () => this.compactRatioOf(),
       maybeCompact: (usage) => this.maybeCompact(usage),
       stormNudge: (calls, resultsByCallId) => this._stormNudge(calls, resultsByCallId),
       diagTokenBreakdown: (usage) => this._diagTokenBreakdown(usage),

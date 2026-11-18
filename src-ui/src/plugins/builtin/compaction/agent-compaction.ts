@@ -24,6 +24,7 @@ import {
 import {
   buildCompactedSummaryMessage,
   ChunkType,
+  COMPACT_OUTPUT_RESERVE_TOKENS,
   COMPACTION_NOTICE_MARK,
   type CompactionConfig,
   type CompactionEvent,
@@ -32,6 +33,7 @@ import {
   countMessages,
   countText,
   EventKind,
+  effectiveCompactRatio,
   foldToolResults,
   kernelReadFile,
   kernelWriteFile,
@@ -605,7 +607,9 @@ export function maybeCompactImpl(host: CompactionHost, usage: Usage | undefined)
   const estimated = usage && usage.total_tokens > 0 ? usage.total_tokens : host.tokenCountWithEstimation();
   const ratio = estimated / host.contextWindow;
 
-  if (ratio < host.compactRatio) {
+  // 触发线读**生效值**（配置档位 ∩ 窗口 − 输出预留 − headroom），与 pre-flight 同源：
+  // 两处各读各的会让「step 前压了 / 轮末又压一次」或「两边都不压直到 400」。
+  if (ratio < effectiveCompactRatio(host.contextWindow, host.compactRatio, COMPACT_OUTPUT_RESERVE_TOKENS)) {
     host.compactStuck = false;
     host.compactFailCount = 0;
     return;

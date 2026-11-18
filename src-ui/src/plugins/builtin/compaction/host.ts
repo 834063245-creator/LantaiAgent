@@ -16,9 +16,12 @@ export type {
   SummaryRun,
 } from '../../../agent/compaction-contract';
 export {
+  COMPACT_HEADROOM_TOKENS,
+  COMPACT_OUTPUT_RESERVE_TOKENS,
   COMPACTION_NOTICE_MARK,
   DEFAULT_COMPACT_RATIO,
   DEFAULT_RETAIN_RATIO,
+  effectiveCompactRatio,
 } from '../../../agent/compaction-contract';
 export { registerCompactionImplementation } from '../../../agent/compaction-impl';
 export type { CompactionEvent, CompactionSessionStats, CompactionTracker } from '../../../agent/compaction-tracker';

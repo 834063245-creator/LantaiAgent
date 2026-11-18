@@ -48,7 +48,14 @@ import { deleteCard, listCards, readCard, renameCard, shelveCard, writeCardState
 // 批 9h-1 归家（2026-09-26）：capability 十四项内容表进 capability-segments 包 ⇒
 // `firstPartyCapabilities` 桥键撤除；该包新的取用面（登记表读面 + 工具工厂）在此供面。
 import { createCodeExecutionTool } from '../../agent/code-run/code-execution-tool';
-import { COMPACTION_NOTICE_MARK, DEFAULT_COMPACT_RATIO, DEFAULT_RETAIN_RATIO } from '../../agent/compaction-contract';
+import {
+  COMPACT_HEADROOM_TOKENS,
+  COMPACT_OUTPUT_RESERVE_TOKENS,
+  COMPACTION_NOTICE_MARK,
+  DEFAULT_COMPACT_RATIO,
+  DEFAULT_RETAIN_RATIO,
+  effectiveCompactRatio,
+} from '../../agent/compaction-contract';
 import { registerCompactionImplementation } from '../../agent/compaction-impl';
 import { DEFAULT_C_IN, DEFAULT_C_OUT, LOSS_FACTOR_PER_EVENT } from '../../agent/compaction-tracker';
 import { waitForConfirm } from '../../agent/confirm-registry';
@@ -392,11 +399,6 @@ import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '
 import { usePluginPrefs } from '../../state/plugin-prefs';
 import { usePluginStore } from '../../state/plugin-store';
 import { usePluginWindowStore } from '../../state/plugin-window-store';
-// 窗口设施（app shell 件 A）：**开窗必须走它而不是裸 store**——设施里的
-// `openPluginWindow` 会 `notifyPluginWindowOpened` 通知受治进程治理器（lazy/with-window
-// 档据此拉起后端）。裸 store 开窗 = 窗画出来了但后端永远不启动（2026-12-08 实机：
-// 架阁开便签报「port.json 不可读」、点叉关不掉）。
-import { closePluginWindow, openPluginWindow } from '../window-facility';
 import { usePresetStore } from '../../state/preset-store';
 import { useSessionVolumesStore } from '../../state/session-volumes-store';
 // 架阁浮层开合账（entity-shelf-plan B3）：纯 UI 状态，纸壳顶部那枚字件写、浮层读。
@@ -420,6 +422,11 @@ import { useWorkspaceEntryStore } from '../../state/workspace-entry-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 // 批 9e-3 归家：ask / 权限卡架进产物 ⇒ 桥它的图标库（自有静态图标，卡片小图标）
 import { iconHtml, iconSvg } from '../../ui/icons';
+// 窗口设施（app shell 件 A）：**开窗必须走它而不是裸 store**——设施里的
+// `openPluginWindow` 会 `notifyPluginWindowOpened` 通知受治进程治理器（lazy/with-window
+// 档据此拉起后端）。裸 store 开窗 = 窗画出来了但后端永远不启动（2026-12-08 实机：
+// 架阁开便签报「port.json 不可读」、点叉关不掉）。
+import { closePluginWindow, openPluginWindow } from '../window-facility';
 /* 待题纸的模型选择器（2026-11-14 立卷 UX）：题签与创作坞用**同一枚** ModelSelector——
  * 它是 compose-dock 包内件，产物域经 faceDeps 取宿主侧那一份真实例。 */
 import { ModelSelector } from './compose-dock/ModelSelector';
@@ -881,6 +888,9 @@ const faceDeps = {
   DEFAULT_COMPACT_RATIO,
   DEFAULT_RETAIN_RATIO,
   COMPACTION_NOTICE_MARK,
+  COMPACT_HEADROOM_TOKENS,
+  COMPACT_OUTPUT_RESERVE_TOKENS,
+  effectiveCompactRatio,
   // 批 7a 归家：subagent 工具族进包 ⇒ 撤两工厂键；桥 schema 校验 / 子代理活动账 / 登记表
   registerSubAgentTools,
   assertSupportedSchema,

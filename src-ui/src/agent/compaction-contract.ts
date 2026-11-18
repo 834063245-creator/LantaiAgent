@@ -86,6 +86,47 @@ export const DEFAULT_RETAIN_RATIO = 0.16;
 /** 正常触发水位（占 contextWindow 比例；agent.ts 构造缺省同源）。 */
 export const DEFAULT_COMPACT_RATIO = 0.8;
 
+/** 窗口再小也要剩的固定余量（token，对齐 DSH headroomTokens 的语义）。
+ *
+ *  触发线不能只看「已用占窗口多少」——那漏了「这一次请求还要写多少」。响应输出与
+ *  输入共用同一个上限：长输出撞上「已用 79% 的提示」时，提供方直接 400，而不是
+ *  优雅截断。真实可用的触发线是 min(W × compactRatio, W − 输出预留 − headroom)。
+ *
+ *  取 16K 而非 DSH 的 64K：64K 在 200K 窗口上会把触发线压到 56%（0.8 档失效），
+ *  对「还要读一堆工具结果」的长轮次是过早压缩。16K 在 200K 上得 76%，既守住溢出
+ *  又几乎不改既有档位行为；1M 窗口上根本不生效（W×0.8 仍然更小）。
+ *
+ *  **它同时是上限**：小窗口按 W/8 缩小（见 effectiveCompactRatio），常量不直接套。
+ *  窗口未知（0）不钳制：不知道分母就不编造。 */
+export const COMPACT_HEADROOM_TOKENS = 16384;
+/** 本次请求的输出预留上限（token）。本仓请求恒写 max_tokens: 0 ⇒ 方言缺省
+ *  （openai/anthropic 均为 32000，responses 64000 且自带钳制），故按 32000 计。
+ *  与 headroom 分开是刻意的：headroom 是「窗口再小也要剩这些」的固定余量，
+ *  预留是「这次真要写出去多少」——来源与调参理由不同。小窗口按 W/4 缩小。 */
+export const COMPACT_OUTPUT_RESERVE_TOKENS = 32000;
+
+/** 按输出预留与 headroom 求**实际生效的触发线比例**（占 window）。
+ *
+ *  纯函数，与 DSH resolveCompactSpec 的 floor(min(W × 0.8, W − O − B)) 同式：
+ *  @param window - 上下文窗口（0 = 未知 ⇒ 直接返回 ratio，不钳制）。
+ *  @param ratio - 配置档位（compactRatio，自动调优后落在 [0.7, 0.85]）。
+ *  @param outputReserve - 本次请求的输出预留**上限**（token；0 = 不可知，只用 headroom）。
+ *    实际取 min(它, W/4)：常量不能直接套小窗口。
+ *  @returns 生效比例，恒 > 0（窗口小到装不下时退化为配置档位，由压缩管线报 stuck）。 */
+export function effectiveCompactRatio(window: number, ratio: number, outputReserve: number): number {
+  if (!(window > 0)) return ratio;
+  // 预留与 headroom 都必须随窗口缩放：常量 32K/16K 直接套在 50K 窗口上会把触发线压到
+  // 3%（每步都压 → 下一步无内容可折叠 → stuck），那不是「更安全」而是坏掉。
+  // 上限 = 常量；小窗口按比例取（预留 ≤ W/4，headroom ≤ W/8），合计不超过 W 的 3/8，
+  // 于是 byBudget 恒 ≥ 5W/8，触发线不会掉到荒谬的低位。
+  const reserve = Math.min(Math.max(0, outputReserve), Math.floor(window / 4));
+  const headroom = Math.min(COMPACT_HEADROOM_TOKENS, Math.floor(window / 8));
+  const byRatio = window * ratio;
+  const byBudget = window - reserve - headroom;
+  if (!(byBudget > 0)) return ratio;
+  return Math.min(byRatio, byBudget) / window;
+}
+
 /** 单次摘要调用的产物。usage 缺省 = 提供方未回报（该次调用不可归因）。 */
 export interface SummaryCall {
   text: string;
