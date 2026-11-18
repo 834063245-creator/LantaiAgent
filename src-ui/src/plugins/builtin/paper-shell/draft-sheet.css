@@ -422,6 +422,13 @@
   background: var(--paper-deep);
   border-top: 1px solid rgba(38, 34, 28, 0.22);
   border-bottom: 1px solid rgba(38, 34, 28, 0.22);
+  /* ⚠ 层叠上下文陷阱（2026-11-28 真机实测「组合/权限的下拉点不出来」的根因）：
+   * 下面那条 transform 会给签条**新建一个层叠上下文**——签上的下拉虽然自己是
+   * position:absolute + z-index:90，但那个 90 只在这个上下文**内部**有效；而签条
+   * 与它后面的兄弟（输入行、预演句）在层叠里同级、DOM 顺序在后 ⇒ 输入行把菜单盖住，
+   * 表现为「点了没反应」。治法 = 让签条自己抬一层（它已是 position:relative）。
+   * 不许改成去掉 transform 了事：微倾是「贴上去的纸签」那条判据的一部分。 */
+  z-index: 20;
   transform: rotate(-0.22deg);
   box-shadow:
     1px 2px 0 rgba(38, 34, 28, 0.08),
