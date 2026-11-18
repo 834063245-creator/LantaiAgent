@@ -6,46 +6,9 @@
 // 为什么单独立文件：ComposerDock 已在大文件账上（1700 行档），而这三张表是纯数据
 // ——没有状态、没有 props、没有副作用。搬出去不改任何行为，只让坞本体少 60 行。
 
-/** 律（快捷键总览）——2026-10-22 P2 分组：输入 / 附卷 / 画布 / 纸面。
- *  13 行等权平铺时代结束；组题沿用册页的「方墨锚点 + 字距题字」语言。 */
-export const HELP_GROUPS: ReadonlyArray<{
-  title: string;
-  rows: ReadonlyArray<readonly [string, string]>;
-}> = [
-  {
-    title: '输入',
-    rows: [
-      ['Enter', '发送'],
-      ['Shift+Enter', '换行'],
-      ['↑ / ↓', '输入历史'],
-      ['/ 或 翰', '命令面板'],
-    ],
-  },
-  {
-    title: '附卷',
-    rows: [
-      ['引 · 夹', '附文件入卷'],
-      ['拖文件到坞', '界栏松手入卷'],
-    ],
-  },
-  {
-    title: '画布',
-    rows: [
-      ['Alt+↑↓', '块间移动'],
-      ['Alt+←→', '卷间移动'],
-      ['Home', '画布回原点'],
-    ],
-  },
-  {
-    title: '纸面',
-    rows: [
-      ['拖文类签', '移出钉住'],
-      ['拖流区边缘', '移动流区'],
-      ['拖流区四角', '调整宽度'],
-      ['拖选区', '抽纸条'],
-    ],
-  },
-];
+/* 律（快捷键总览）已于 2026-11-28 搬去 `app/help/shortcut-groups.ts`——「案」抽屉退役，
+ * 它成为应用级帮助页（入口 = 全局搜索 / runAction('shortcuts')），而 app 层不许 import
+ * 插件目录。本文件只剩坞自己的文案表。 */
 
 /** 历史导航眉批：一次性提示旗标（localStorage，毒化容忍——读写全包 try）。 */
 export const HIST_HINT_KEY = 'lantai.hint.historySeen';

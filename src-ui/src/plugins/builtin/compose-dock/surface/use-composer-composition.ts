@@ -107,15 +107,6 @@ export function useComposerComposition({ core, activeSessionId, notice }: Compos
   );
   const compLocked = activeSessionId != null && !compBlank;
   const compLabel = compInfo.presetId;
-  /** 创作者模式入口（2026-10-30 起一卷 creator；**2026-11-14 立卷 UX 改道**）：
-   *  不再「先建卷再预填开场白」（那是缺出生面的绕路），改为**落一张预选 creator 的
-   *  待题纸**——组合在出生时点定下（字节契约面），开场白则在开卷后进输入框
-   *  （需求由用户补完，仍不自动发送）。 */
-  const onCreatorDraft = useCallback(() => {
-    const paperId = useDraftSheetStore.getState().openSheet({ presetId: 'creator' });
-    core?.focusDraft?.(paperId);
-  }, [core]);
-
   /** 题签拨组合（V2）：纸期**只写题签**——真正的登记发生在开卷那一刻
    *  （`ChatCore.openDraftVolume` → `createSessionWithPreset`，严一档校验 + 卷级登记）。
    *  纸期不做校验：预设可能先坏后修，纸上不该出现「选了但没落账」的第二套拒绝语义。 */
@@ -134,7 +125,6 @@ export function useComposerComposition({ core, activeSessionId, notice }: Compos
     compLocked,
     compLabel,
     onCompositionChange,
-    onCreatorDraft,
     onDraftPresetChange,
   };
 }

@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { activeRootViews, type RootViewSlot, subscribeRootViews } from '../composition/root-views-service';
 import { CommandPalette } from './CommandPalette';
 import { ExitConfirmDialog } from './ExitConfirmDialog';
+import { HelpSheet } from './HelpSheet';
 import { DockPanel } from './panels/DockPanel';
 import { PluginWindowsHost } from './plugin-windows/PluginWindowsHost';
 import { TipHost } from './tip';
@@ -43,6 +44,7 @@ export function App() {
       ))}
       <DockPanel />
       <CommandPalette />
+      <HelpSheet />
       {overlayViews.map((v) => (
         <v.component key={v.id} />
       ))}

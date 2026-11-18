@@ -96,28 +96,6 @@ describe('创作坞书眉行（2026-09-06 续批：卷名/翰/律恒居顶行）
     expect(settings.querySelector('.pp-mode-seg')).not.toBeNull();
   });
 
-  it('律册在「案」抽屉里就地展开（2026-11-09：书眉那枚「律」钮撤掉后浮层改挂抽屉）', async () => {
-    await mountDock('header-help-sheet');
-    // 书眉里不再有 律 钮
-    expect(
-      [...container.querySelectorAll('.pp-composer-header .pp-tool-btn')].some((b) => b.textContent === '律'),
-    ).toBe(false);
-    act(() => {
-      (container.querySelector('.pp-scheme-btn') as HTMLButtonElement).click();
-    });
-    await act(async () => {});
-    const panel = container.querySelector('.pp-scheme-panel')!;
-    const lü = [...panel.querySelectorAll<HTMLButtonElement>('.pp-scheme-row')].find((b) =>
-      b.textContent?.includes('律'),
-    )!;
-    expect(lü).not.toBeUndefined();
-    act(() => lü.click());
-    await act(async () => {});
-    const inline = panel.querySelector('.pp-help-inline');
-    expect(inline).not.toBeNull(); // 就地展开，不再是绝对定位浮层
-    expect(inline?.textContent).toContain('Enter'); // 键位在册
-  });
-
   /* 2026-09-17 二版：拖动锁那枚单字工具（`移` ↔ `锁`）落**坞自己的工具行**——
    * 与 翰/律 同排同语言、常显可点。一版曾试「槽里浮一枚 hover 小钮」：浮在坞外，
    * 揭示靠悬停、命中又要靠揭示（互为前提）⇒ 用户「还没挪过去就消失了」；

@@ -32,6 +32,9 @@ interface ShellState {
    *  反之不成立）；页签 id 的合法性由 settings-domain 自己校验（不在册 = 忽略并清）。
    *  SettingsPanel 消费即清，不做常驻态（这是请求，不是状态）。 */
   settingsTab: string | null;
+  /** 快捷键总览浮层（2026-11-28「案」抽屉退役批）：入口 = 全局搜索 / runAction('shortcuts')。
+   *  与 paletteOpen 同族（一个布尔 = 开/关），不挂面板栈——它是帮助页，不是工作区。 */
+  helpOpen: boolean;
 
   /** 写状态文本并压入日志环 */
   pushStatus: (msg: string) => void;
@@ -44,6 +47,7 @@ interface ShellState {
   /** 请求设置面板落到某页签（消费方 = SettingsPanel，消费即清）。 */
   requestSettingsTab: (tab: string) => void;
   clearSettingsTab: () => void;
+  setHelpOpen: (b: boolean) => void;
 }
 
 const STATUS_LOG_MAX = 15;
@@ -57,6 +61,7 @@ export const useShellStore = create<ShellState>((set) => ({
   analyzing: null,
   paletteOpen: false,
   settingsTab: null,
+  helpOpen: false,
 
   pushStatus: (msg) =>
     set((st) => ({
@@ -70,4 +75,5 @@ export const useShellStore = create<ShellState>((set) => ({
   setPaletteOpen: (b) => set({ paletteOpen: b }),
   requestSettingsTab: (tab) => set({ settingsTab: tab }),
   clearSettingsTab: () => set({ settingsTab: null }),
+  setHelpOpen: (b) => set({ helpOpen: b }),
 }));

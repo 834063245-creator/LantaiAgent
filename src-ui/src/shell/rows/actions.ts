@@ -14,6 +14,7 @@
 // 依赖注入：switchWorkspace / escLayer 属 workspace 流（行表注入）。
 
 import { registerActions } from '../../app/actions';
+import { useShellStore } from '../../app/shell-store';
 import type { ShellRefs } from '../runtime';
 
 /** workspace 流函数注入面（workspace 行产出；编排期由 shell/workspace.ts 提供）。 */
@@ -32,5 +33,15 @@ export function bootActions(_refs: ShellRefs, deps: WorkspaceFlowDeps): void {
       run: () => deps.switchWorkspace(),
     },
     { id: 'esc-layer', group: '操作', label: '逐层关闭', icon: 'close', run: () => deps.escLayer() },
+    /* 快捷键总览（2026-11-28「案」抽屉退役批）：原先是坞内「案」抽屉里就地展开的一段。
+     * 抽屉退役后它是**应用级帮助页**——属于壳，不属于某一卷，故落在壳行动作表；
+     * 入口 = 全局搜索（Ctrl+K 搜「快捷键」）与本动作（runAction('shortcuts')）。 */
+    {
+      id: 'shortcuts',
+      group: '帮助',
+      label: '快捷键总览',
+      icon: 'info',
+      run: () => useShellStore.getState().setHelpOpen(true),
+    },
   ]);
 }

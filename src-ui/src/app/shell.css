@@ -207,3 +207,99 @@
   margin-left: auto;
   letter-spacing: 0.1em;
 }
+
+/* ── 快捷键总览（2026-11-28「案」抽屉退役批：原在坞内就地展开，现在是一张应用级帮助页）──
+ * 与命令面板同一套模态语言（veil + 纸面 + 头线 + 投影），只是内容是分组的键位表：
+ * 组题沿用册页段题（方墨锚点 + 字距题字），键位走 mono（机读域），释义走宋体。
+ * 分组多列自适应（auto-fit），窄窗自动落成一列，不写死断点。 */
+.help-veil {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-palette, 510);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--veil);
+  animation: veil-in var(--m-ink);
+}
+.help-box {
+  width: min(760px, 92vw);
+  max-height: 76vh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--f-song);
+  color: var(--ink-1);
+  background: var(--paper);
+  border: var(--rule-strong);
+  border-top: var(--rule-head);
+  border-radius: 0; /* 印刷品无圆角 */
+  overflow: hidden;
+  box-shadow: var(--elev-raise); /* 模态档（命令面板是浮层档） */
+  animation: pop-down var(--m-ink);
+}
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ink-4);
+}
+.help-title {
+  font-family: var(--f-song);
+  font-size: var(--fs-lead);
+  letter-spacing: 0.06em;
+}
+.help-close {
+  font-family: var(--f-kai);
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.help-close:hover {
+  color: var(--seal-deep);
+}
+.help-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 4px 28px;
+  padding: 14px 18px 18px;
+  overflow-y: auto;
+}
+.help-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 6px;
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--ink-2);
+}
+.help-group-title::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--ink-2);
+}
+.help-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px dotted var(--rule-soft-ink);
+}
+.help-key {
+  flex: 0 0 96px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+}
+.help-desc {
+  flex: 1;
+  font-size: var(--fs-body);
+  color: var(--ink-2);
+}

@@ -116,7 +116,7 @@ describe('创作坞 v2 纯函数：目录树摊平', () => {
   });
 });
 
-describe('创作坞 v2：翰（命令面板入口）', () => {
+describe('创作坞 v2：斜杠面板（/ 触发词）', () => {
   const CMDS: CommandContribution[] = [
     {
       id: 'gamma',
@@ -144,32 +144,6 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
     useShellStore.setState({ paletteOpen: false });
   });
 
-  it('点翰 = 打开全局命令面板（Ctrl+K 同源），不再生内联斜杠清单', async () => {
-    await mountDock(
-      'han-open',
-      container,
-      {},
-      (r) => {
-        root = r;
-      },
-      CMDS,
-    );
-    expect(useShellStore.getState().paletteOpen).toBe(false);
-    // 2026-11-09：翰/律 撤出书眉——入口在「案」抽屉「另起」段
-    act(() => {
-      (container.querySelector('.pp-scheme-btn') as HTMLButtonElement).click();
-    });
-    await act(async () => {});
-    act(() => {
-      [...container.querySelectorAll<HTMLButtonElement>('.pp-scheme-row')]
-        .find((b) => b.textContent?.includes('翰'))
-        ?.click();
-    });
-    await act(async () => {});
-    expect(useShellStore.getState().paletteOpen).toBe(true);
-    expect(container.querySelector('.pp-slash')).toBeNull();
-  });
-
   it('/ 触发词仍走内联斜杠面板（翰解耦不伤 / 路径）', async () => {
     const core = await mountDock(
       'han-slash',
@@ -194,52 +168,6 @@ describe('创作坞 v2：翰（命令面板入口）', () => {
     });
     await act(async () => {});
     expect(core.executeCommand).toHaveBeenCalled();
-  });
-});
-
-describe('创作坞 v2：律（快捷键总览）', () => {
-  let container: HTMLDivElement;
-  let root: Root | null = null;
-
-  beforeEach(() => {
-    resetComposeStoresForTests();
-    resetCanvasStoresForTests();
-    container = document.createElement('div');
-    document.body.appendChild(container);
-  });
-  afterEach(() => {
-    act(() => root?.unmount());
-    container.remove();
-    root = null;
-  });
-
-  it('点律在抽屉里就地展开：Enter 发送/换行/输入历史等键位在册；再点收起（2026-11-09）', async () => {
-    await mountDock('lv-open', container, {}, (r) => {
-      root = r;
-    });
-    act(() => {
-      (container.querySelector('.pp-scheme-btn') as HTMLButtonElement).click();
-    });
-    await act(async () => {});
-    const lvRow = () =>
-      [...container.querySelectorAll<HTMLButtonElement>('.pp-scheme-row')].find((b) => b.textContent?.includes('律'))!;
-    act(() => lvRow().click());
-    await act(async () => {});
-    const sheet = container.querySelector('.pp-help-inline');
-    expect(sheet).not.toBeNull();
-    expect(sheet?.textContent).toContain('发送');
-    expect(sheet?.textContent).toContain('换行');
-    expect(sheet?.textContent).toContain('输入历史');
-    // 2026-10-22 P2：13 行等权平铺 → 四组（输入/附卷/画布/纸面）
-    expect([...sheet!.querySelectorAll('.pp-help-group-title')].map((el) => el.textContent)).toEqual([
-      '输入',
-      '附卷',
-      '画布',
-      '纸面',
-    ]);
-    act(() => lvRow().click());
-    await act(async () => {});
-    expect(container.querySelector('.pp-help-inline')).toBeNull();
   });
 });
 

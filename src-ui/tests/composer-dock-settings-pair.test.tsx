@@ -118,15 +118,17 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     expect(msIdx).toBe(classes.length - 1);
   });
 
-  it('丙案：坞面可点件从 13 降到 5（卷名不算，读数/工具各算）', async () => {
+  it('坞面可点件收敛（密度纪律）：设置行常驻，抽屉类浮层不再占位', async () => {
     await mountDock('settings-pair-count');
     const dock = container.querySelector('.pp-composer')!;
-    const visible = [...dock.querySelectorAll('button')].filter((b) => !b.closest('.pp-scheme-panel'));
-    // 模型触发器 + 役 + 墨 + 移 + 翰 + 律 + 引 + 夹 + 案 + 拟文 = 10（无拖动锁能力位则 9）。
+    const visible = [...dock.querySelectorAll('button')];
+    // 模型触发器 + 役 + 墨 + 移 + 引 + 夹 + 拟文（+ 权限三档在设置行）。
     // 判据不是死数字而是**设置行那一排不再常驻**：
     // 2026-11-09：设置行复活（只装模型 + 权限两件），坞面可点件随之 +4（模型 + 权限三档）
+    // 2026-11-28：「案」抽屉退役（案钮 + 抽屉里那 5 行入口一并消失，律册搬去全局搜索）
     expect(dock.querySelector('.pp-composer-settings')).not.toBeNull();
-    expect(dock.querySelector('.pp-scheme-panel')).toBeNull(); // 抽屉关着
+    expect(dock.querySelector('.pp-scheme-btn'), '「案」入口已退役').toBeNull();
+    expect(dock.querySelector('.pp-scheme-panel'), '抽屉整只退役').toBeNull();
     expect(dock.querySelector('.pp-mode-seg')).not.toBeNull(); // 权限常驻
     expect(visible.length).toBeLessThan(16);
   });

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 // 创作坞 P2 信息架构（2026-10-22）——静态钉值。
-// 行为面在 composer-dock-desk（翰 → 全局面板 / 律四组 / / 内联面板仍通）与
-// composer-dock-work-ledger（空态一句 + 去处说明）；本文件钉材质与源码接线：
+// 行为面在 composer-dock-desk（/ 内联面板仍通）与 composer-dock-work-ledger（空态一句 + 去处说明）；
+// 本文件钉材质与源码接线：
 //   ① 命令面板回纸（去 glass/blur；组题 11/600，行 13，脚 11）；
-//   ② 翰 = 全局 Ctrl+K 面板（坞内不再维护 menuOpen 第二份清单）；
-//   ③ 律四组（输入/附卷/画布/纸面）；
+//   ② 坞内不再维护第二份命令清单（menuOpen / effectiveSlashQuery 恒不复活）；
+//   ③ 律（快捷键总览）分组在册——**2026-11-28 起数据面搬去 app/help/shortcut-groups.ts**
+//      （「案」抽屉退役，律册成为应用级帮助页；分组多了「全局」一组）；
 //   ④ 役空态第二行存在（大号 0 / 段题只在真有活时出现）。
 
 // @vitest-environment node
@@ -20,7 +21,8 @@ const SHELL_CSS = readFileSync(join(SRC, 'app', 'shell.css'), 'utf8');
 // 2026-11-17 P6：坞拆成多件——源码级断言读**整个包**（断言字符串不动）。
 const DOCK_TSX = readDockSources();
 const WORK_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'WorkLedger.tsx'), 'utf8');
-const DOCK_COPY_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'compose-dock', 'dock-copy.ts'), 'utf8');
+/** 律册数据面（2026-11-28 从 dock-copy.ts 搬到 app 层）。 */
+const SHORTCUT_TS = readFileSync(join(SRC, 'app', 'help', 'shortcut-groups.ts'), 'utf8');
 
 function ruleBody(css: string, selector: string): string {
   const i = css.indexOf(selector);
@@ -49,20 +51,21 @@ describe('创作坞 P2 · 命令面板回纸', () => {
 });
 
 describe('创作坞 P2 · 翰 / 律 / 役接线', () => {
-  it('翰 = setPaletteOpen(true)；坞内 menuOpen / effectiveSlashQuery 退役', () => {
-    expect(DOCK_TSX).toContain('setPaletteOpen(true)');
+  it('坞内不再有命令面板入口（翰随「案」抽屉退役）；第二份斜杠清单恒不复活', () => {
+    // 2026-11-28：「案」抽屉整只退役 ⇒ 翰钮没了，Ctrl+K 由全局快捷键/全局搜索承担。
+    // 判据的**本意**没变——坞里不许再长第二份命令清单。
+    expect(DOCK_TSX).not.toContain('setPaletteOpen');
     expect(DOCK_TSX).not.toContain('menuOpen');
     expect(DOCK_TSX).not.toContain('effectiveSlashQuery');
   });
 
-  it('律四组：输入 / 附卷 / 画布 / 纸面', () => {
-    // 2026-11-15 V2：静态文案表搬去 dock-copy.ts（坞本体在大文件账上）——
-    // 判据不变，读的是新的落位（坞从那里 import，渲染面仍在本件）。
-    for (const title of ["title: '输入'", "title: '附卷'", "title: '画布'", "title: '纸面'"]) {
-      expect(DOCK_COPY_TS).toContain(title);
+  it('律（快捷键总览）分组在册：五组（2026-11-28 多一组「全局」）', () => {
+    // 2026-11-28：律册随「案」抽屉退役搬去 app 层（应用级帮助页）——判据不变，读新落位。
+    for (const title of ["title: '全局'", "title: '输入'", "title: '附卷'", "title: '画布'", "title: '纸面'"]) {
+      expect(SHORTCUT_TS).toContain(title);
     }
-    expect(DOCK_TSX).toContain('pp-help-group-title');
-    expect(DOCK_TSX).toContain("from './dock-copy'");
+    // 渲染面在 HelpSheet（.help-group-title），不再是坞内就地展开
+    expect(SHELL_CSS).toContain('.help-group-title');
   });
 
   it('役空态有去处说明；大号读数只在 running > 0 时渲染', () => {

@@ -24,7 +24,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flattenDirEntries, fuzzyMatchFiles } from './../composer-helpers';
 import { kernelListDirectory, useShellStore } from './../host';
 
-export type ComposerLayer = 'help' | 'yin' | 'ink' | 'work' | 'scheme';
+/** 坞内浮层族（2026-11-28「案」抽屉退役：'help' / 'scheme' 随抽屉与律册搬走——
+ *  律 → 全局搜索的 `app/HelpSheet`；组合/图版/造模式各有自带入口）。 */
+export type ComposerLayer = 'yin' | 'ink' | 'work';
 
 export interface ComposerLayersInput {
   /** 上下文卷位（切卷清态的判据；纸期恒 null）。 */
@@ -32,10 +34,6 @@ export interface ComposerLayersInput {
 }
 
 export interface ComposerLayersState {
-  schemeOpen: boolean;
-  setSchemeOpen: Dispatch<SetStateAction<boolean>>;
-  helpOpen: boolean;
-  setHelpOpen: Dispatch<SetStateAction<boolean>>;
   yinOpen: boolean;
   setYinOpen: Dispatch<SetStateAction<boolean>>;
   inkOpen: boolean;
@@ -60,8 +58,6 @@ export interface ComposerLayersState {
 }
 
 export function useComposerLayers({ activeSessionId }: ComposerLayersInput): ComposerLayersState {
-  const [schemeOpen, setSchemeOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [yinOpen, setYinOpen] = useState(false);
   const [inkOpen, setInkOpen] = useState(false);
   const [workOpen, setWorkOpen] = useState(false);
@@ -82,20 +78,18 @@ export function useComposerLayers({ activeSessionId }: ComposerLayersInput): Com
    *    2026-11-12：坞内提示改挂 toast 浮层（自带消散），切卷不再需要清它。 ── */
   useEffect(() => {
     void activeSessionId; // 切卷触发器：正是要响应它变化清本地态
-    setHelpOpen(false);
     setYinOpen(false);
     setInkOpen(false);
     setWorkOpen(false);
     setHistHint(false);
   }, [activeSessionId]);
 
-  /* ── 浮层互斥（2026-09-01 审计）：律/引/墨/役/案 同屏只开一个 ── */
+  /* ── 浮层互斥（2026-09-01 审计）：引/墨/役 同屏只开一个 ──
+   * 2026-11-28 起族里只剩三件：律册搬去全局搜索（自带模态互斥），「案」抽屉整只退役。 */
   const toggleLayer = useCallback((layer: ComposerLayer) => {
-    setHelpOpen(layer === 'help' ? (v) => !v : false);
     setYinOpen(layer === 'yin' ? (v) => !v : false);
     setInkOpen(layer === 'ink' ? (v) => !v : false);
     setWorkOpen(layer === 'work' ? (v) => !v : false);
-    setSchemeOpen(layer === 'scheme' ? (v) => !v : false);
   }, []);
 
   /* ── 引：工作区文件模糊引用（v2 2026-08-31）。
@@ -118,7 +112,6 @@ export function useComposerLayers({ activeSessionId }: ComposerLayersInput): Com
     if (!yinOpen) return;
     setYinQuery('');
     setYinIdx(0);
-    setHelpOpen(false);
     if (yinFiles.length === 0) void loadYinFiles();
     yinInputRef.current?.focus();
   }, [yinOpen, loadYinFiles, yinFiles.length]);
@@ -138,10 +131,6 @@ export function useComposerLayers({ activeSessionId }: ComposerLayersInput): Com
   }, []);
 
   return {
-    schemeOpen,
-    setSchemeOpen,
-    helpOpen,
-    setHelpOpen,
     yinOpen,
     setYinOpen,
     inkOpen,

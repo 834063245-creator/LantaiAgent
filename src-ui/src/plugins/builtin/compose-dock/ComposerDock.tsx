@@ -34,19 +34,11 @@ import { memo, useCallback, useEffect, useRef } from 'react';
 // （faceDeps 早已在册，取用零指纹代价），故权限那枚的 Esc 留在本文件。
 import { ComposerHeader } from './composer-header';
 import { ImagePreviewModal, YoloConfirmModal } from './composer-modals';
-import { InputRow, SchemeDrawer, SettingsRow } from './composer-rows';
+import { InputRow, SettingsRow } from './composer-rows';
 import { HIST_HINT_KEY } from './dock-copy';
 import { GoalStrip } from './goal-strip';
 import type { PermissionMode } from './host';
-import {
-  getChatStore,
-  useCoreStore,
-  useDialogEscape,
-  useDraftSheetStore,
-  useModeStore,
-  usePaperDock,
-  useShellStore,
-} from './host';
+import { getChatStore, useCoreStore, useDialogEscape, useDraftSheetStore, useModeStore, usePaperDock } from './host';
 import { SheetHeader } from './sheet-parts';
 import { useComposerAttach } from './surface/use-composer-attach';
 import { useComposerChrome } from './surface/use-composer-chrome';
@@ -314,33 +306,12 @@ const ComposerSurface = memo(function ComposerSurface({
         attachedImages={session.attachedImages}
         onRemoveAttached={attach.onRemoveAttached}
         onRemoveAttachedImage={attach.onRemoveAttachedImage}
-        schemeOpen={layers.schemeOpen}
         onToggleYin={() => layers.toggleLayer('yin')}
         onAttach={attach.onAttach}
-        onToggleScheme={() => layers.toggleLayer('scheme')}
         running={running}
         onSend={onSend}
         onAbort={() => core?.abort()}
-      >
-        <SchemeDrawer
-          open={layers.schemeOpen}
-          compLocked={composition.compLocked}
-          compLabel={composition.compLabel}
-          compInfo={composition.compInfo}
-          compOpen={composition.compOpen}
-          onCompToggle={() => composition.setCompOpen((v) => !v)}
-          presetRoster={composition.presetRoster}
-          presetError={composition.presetError}
-          activeSessionId={activeSessionId}
-          activeSidNum={session.activeSidNum}
-          onCompositionChange={composition.onCompositionChange}
-          onCreatorDraft={composition.onCreatorDraft}
-          helpOpen={layers.helpOpen}
-          onHelpToggle={() => layers.setHelpOpen((v) => !v)}
-          onOpenPalette={() => useShellStore.getState().setPaletteOpen(true)}
-          onClose={() => layers.setSchemeOpen(false)}
-        />
-      </InputRow>
+      />
 
       {/* 设置行：模型与权限另起一行（2026-11-09 两次裁定）——判据（权限居左 / 模型收右 /
           纸期换题签）随件搬进 `composer-rows.tsx` 的 `<SettingsRow />` 头注。 */}
