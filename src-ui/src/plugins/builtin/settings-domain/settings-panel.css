@@ -1,5 +1,8 @@
 /* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
 @import "../../../app/type-scale.css";
+/* 动作钮基座（.sp-btn 族）真源在壳层 `app/controls.css`——构建期内联，产物仍自包含。
+ * 2026-11-17 技术债批 A：壳层 ConfirmDialog 也在用这族类，定义必须下沉到壳层。 */
+@import "../../../app/controls.css";
 
 /* ═══════════════════════════════════════════════════════════════
    兰台 · 设置面板（C2 set-frame 注疏化重排，2026-08-22）
@@ -394,42 +397,8 @@
   accent-color: var(--ink-1);
 }
 
-/* ── 输入件：下划线式（原型 .set-control 语法）── */
-.sp-input,
-.sp-select {
-  padding: 7px 2px;
-  font-family: var(--f-mono);
-  font-size: var(--fs-body);
-  background: color-mix(in oklch, var(--paper-deep) 35%, transparent);
-  color: var(--ink-1);
-  border: none;
-  border-bottom: var(--rule-soft);
-  border-radius: 0;
-  outline: none;
-  transition:
-    border-bottom-color var(--snap),
-    background var(--snap);
-}
-
-.sp-select {
-  cursor: pointer;
-}
-
-.sp-input:hover,
-.sp-select:hover {
-  border-bottom-color: var(--ink-3);
-}
-
-.sp-input:focus,
-.sp-select:focus {
-  border-bottom: 2px solid var(--seal);
-  padding-bottom: 6px; /* 2px 边框替代 1px：补偿下探 1px，行高不跳 */
-  background: color-mix(in oklch, var(--paper-deep) 22%, transparent);
-}
-
-.sp-input::placeholder {
-  color: var(--ink-3);
-}
+/* 输入件基座（.sp-input / .sp-select）真源 = 壳层 app/controls.css，
+ * 文件头 @import 已内联（2026-11-17 技术债批 C：跨产物共享，副本即漂移）。 */
 
 .sp-input-num {
   width: 110px;
@@ -600,94 +569,11 @@
   border-top: var(--rule-soft);
 }
 
-.sp-btn {
-  font-family: var(--f-song);
-  font-size: var(--fs-body);
-  font-weight: 600; /* 2026-09-01 轻重批：动作钮=重墨档 */
-  letter-spacing: 0.06em;
-  padding: 7px 18px;
-  border-radius: 0;
-  cursor: pointer;
-  transition:
-    background var(--snap),
-    color var(--snap),
-    border-color var(--snap),
-    transform var(--snap);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.sp-btn-cancel {
-  background: transparent;
-  color: var(--ink-2);
-  border: none;
-}
-
-.sp-btn-cancel:hover {
-  color: var(--seal-deep);
-}
-
-/* 主按钮：墨底纸字（原型 .seg button.on 同语汇）——浸墨②本屏唯一主动作挂
-   --shadow-anchor 硬偏移投影（§10 法则 1）；hover 墨加深、active 压印投影塌缩 */
-.sp-btn-save {
-  background: var(--ink-1);
-  color: var(--paper);
-  border: 1px solid var(--ink-1);
-  box-shadow: var(--shadow-anchor);
-}
-
-.sp-btn-save:hover {
-  background: var(--ink-2);
-  border-color: var(--ink-2);
-  box-shadow: 1px 2px 0 rgba(38, 34, 28, 0.14);
-}
-.sp-btn-save:active {
-  background: var(--ink-3);
-  border-color: var(--ink-3);
-  transform: translateY(1px);
-  box-shadow: none;
-}
-
-/* 保存成功：朱砂细框确认（人批语义） */
-button.sp-btn.sp-btn-ok {
-  box-shadow: inset 0 0 0 1px var(--pass);
-  color: var(--paper);
-}
-
 /* ── Provider 行内小按钮 ── */
 .sp-provider-row {
   display: flex;
   gap: 4px;
   align-items: center;
-}
-
-.sp-btn-sm {
-  font-family: var(--f-song);
-  font-size: var(--fs-caption);
-  padding: 4px 10px;
-  border-radius: 0;
-  cursor: pointer;
-  background: transparent;
-  color: var(--ink-2);
-  border: var(--rule-strong);
-  transition:
-    background var(--snap),
-    color var(--snap),
-    border-color var(--snap);
-  white-space: nowrap;
-}
-
-.sp-btn-sm:hover {
-  background: var(--paper-deep);
-  color: var(--ink-1);
-}
-
-/* 声明态小钮（B5 multimodal-image：ProviderDetail「视觉模型」开关）——
- * is-on = 石青墨 + 石青框（声明生效中；与模型行「视」徽标同色系）。 */
-.sp-btn-sm.is-on {
-  color: var(--indigo);
-  border-color: color-mix(in oklch, var(--indigo) 45%, transparent);
 }
 
 .sp-btn-rm-provider:hover {

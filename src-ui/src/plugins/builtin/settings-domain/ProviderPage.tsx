@@ -6,6 +6,8 @@
 // 添加/删除/清除 Key 均为「暂存」，保存时统一落盘 + 写/删凭据 + 重建 Agent。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+// 控制台样式（2026-11-17 技术债批 B：整份从壳层 provider-settings.css 迁入本产物）
+import './provider-console.css';
 import type { StoredThinking, ThinkingLevelMap } from '../../../provider/thinking';
 import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';

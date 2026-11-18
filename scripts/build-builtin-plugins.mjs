@@ -87,6 +87,14 @@ const GLOBAL_INPUTS = new Set([
   // 产物自包含是硬约束（旧 exe + 新产物不得塌成继承），故它是**构建全局件**
   // 而非某个产物的 shared（同 react 桥：不属于任何单一产物）。
   'src-ui/src/app/type-scale.css',
+  // 动作钮基座（2026-11-17 技术债批 A）：.sp-btn 族真源在壳层（ConfirmDialog 等
+  // 壳层组件也在用），产物 CSS 经 @import 内联自包含——同 type-scale 的理由：
+  // 它是跨域基座，不属于任何单一产物，故登记为构建全局件。
+  'src-ui/src/app/controls.css',
+  // 查看器状态基座（2026-11-17 技术债批 A2）：pp-viewer-empty/-error、pp-media-loading/-open
+  // 三方共用（壳层 model3d/pdf + 产物 renderers/paper-shell），真源下沉壳层，
+  // 产物 CSS 经 @import 内联——同一理由登记为构建全局件。
+  'src-ui/src/app/viewer-base.css',
 ]);
 const statefulKernelModules = JSON.parse(
   readFileSync(join(__dirname, 'lib', 'stateful-kernel-modules.json'), 'utf8'),

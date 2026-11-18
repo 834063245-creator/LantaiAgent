@@ -1,0 +1,53 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+ * SPDX-License-Identifier: MIT */
+
+/* 查看器状态基座（加载/空/错误/放大出口）——**壳层真源，产物经 @import 内联**。
+ *
+ * ⚡ 2026-11-17（技术债批 A2）：这 4 条原本只定义在产物
+ * `plugins/builtin/paper-shell/paper-assets.css`，而**壳层**查看器
+ * `app/paper/viewers/model3d.tsx` / `pdf.tsx` 也在用同名类，产物
+ * `plugins/builtin/renderers/**` 用得更多——三方共用却只有产物一份定义。
+ * 壳层编进 exe 的查看器不该向可热更产物要样式（反向依赖）。
+ *
+ * 归属定案：查看器状态类 = 跨域基座，放壳层；产物 CSS 用
+ * `@import "../../../app/viewer-base.css";` 内联（构建期展开，产物仍自包含）。
+ * 名册登记见 `scripts/build-builtin-plugins.mjs` GLOBAL_INPUTS。
+ *
+ * ⚠ 本文件沿用原有 `--pp-asset-*` 变量原样（该族变量在当前树里没有定义处，
+ * 声明本就无效、由继承兜底）——本批只搬位置，不改视觉；变量清理另行立批。 */
+
+.pp-viewer-error {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-media-rowSize);
+  color: var(--fail);
+  margin-bottom: var(--pp-asset-viewer-labelMarginB);
+}
+
+.pp-viewer-empty {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-viewer-metaSize);
+  color: var(--ink-3);
+}
+
+.pp-media-loading {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-media-rowSize);
+  color: var(--ink-3);
+}
+
+.pp-viewer-note {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0 var(--pp-asset-viewer-codePadH);
+  background: inherit;
+  color: var(--seal-deep);
+  white-space: pre-wrap;
+}
+.pp-media-open {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}

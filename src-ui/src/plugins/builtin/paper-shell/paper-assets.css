@@ -2,6 +2,11 @@
  * 从 PaperPanel.css 按主题段拆出（2026-11-06 上帝文件治理·P2）。
  * 入口 @import 顺序 = 原文件行序 = 层叠序，禁重排；改版式落本片。 */
 
+/* 查看器状态基座（pp-viewer-empty/-error、pp-media-loading/-open）真源 = 壳层
+ * app/viewer-base.css——壳层 model3d/pdf 与产物 renderers 三方共用（2026-11-17
+ * 技术债批 A2：原定义只在本产物里，壳层组件够不着）。构建期内联，产物仍自包含。 */
+@import "../../../app/viewer-base.css";
+
 /* ── 资产块兜底 JSON 视图（WO-4）：未知 kind / 表现原语未接时保信息保真 ── */
 .pp-json {
   padding: var(--pp-asset-json-padTop) 0 var(--pp-asset-json-padBottom);
@@ -429,12 +434,6 @@
   color: var(--ink-2);
   margin-bottom: var(--pp-asset-viewer-labelMarginB);
 }
-.pp-viewer-error {
-  font-family: var(--f-mono);
-  font-size: var(--pp-asset-media-rowSize);
-  color: var(--fail);
-  margin-bottom: var(--pp-asset-viewer-labelMarginB);
-}
 /* 音频查看器（B1）：固定盒高（原生控件高度随 UA 变 ⇒ 静态测高镜像要钉死） + 时长读数行 */
 .pp-viewer-audio {
   display: flex;
@@ -512,20 +511,8 @@
   line-height: var(--pp-type-mono-lh);
   color: var(--ink-1);
 }
-.pp-viewer-note {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 0 var(--pp-asset-viewer-codePadH);
-  background: inherit;
-  color: var(--seal-deep);
-  white-space: pre-wrap;
-}
-.pp-viewer-empty {
-  font-family: var(--f-mono);
-  font-size: var(--pp-asset-viewer-metaSize);
-  color: var(--ink-3);
-}
+/* .pp-viewer-note 已迁壳层基座 app/viewer-base.css（2026-11-17 技术债批 C：
+ * 壳层 model3d 与产物 renderers 共用，产物侧 @import 自包含）。 */
 /* 题名行容器 + 系统打开出口（P2 · B5）：按钮**绝对定位**在行右端——不进高度流水
    （与组合芯片同一条落位纪律），故静态测高不受影响；题名行自身的规线仍满宽。 */
 .pp-viewer-head {
@@ -569,23 +556,11 @@
   color: var(--ink-3);
   word-break: break-all;
 }
-.pp-media-loading {
-  font-family: var(--f-mono);
-  font-size: var(--pp-asset-media-rowSize);
-  color: var(--ink-3);
-}
 .pp-media-video {
   display: block;
   max-width: 100%;
   max-height: var(--pp-asset-media-imgMaxH);
   border: var(--rule-soft);
-}
-.pp-media-open {
-  display: block;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: zoom-in;
 }
 /* 点击放大浏览浮层（portal 到 body 的全局模态） */
 .pp-media-preview-overlay {

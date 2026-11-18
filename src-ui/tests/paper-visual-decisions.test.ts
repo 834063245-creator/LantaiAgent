@@ -20,6 +20,11 @@ import { readPanelCss } from './helpers/panel-css';
 
 const SRC = join(__dirname, '..', 'src');
 const PANEL_CSS = readPanelCss();
+/** 查看器状态基座（2026-11-17 技术债批 A2/C）：`.pp-viewer-empty/-error/-note`、
+ *  `.pp-media-loading/-open` 真源已从纸壳产物下沉到壳层 `app/viewer-base.css`
+ *  （壳层 model3d/pdf 与产物 renderers 三方共用）。本文件仍是**同一批规则**的
+ *  段面扫描——只把扫描面扩到新真源，断言一字不动。 */
+const VIEWER_BASE_CSS = readFileSync(join(SRC, 'app', 'viewer-base.css'), 'utf8');
 /** 首页样式面（批 9e 起随 `sessions-home` 产物走）；壳文件只剩全局面（重置/纹理层/选区）。 */
 const HOME_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'sessions-home', 'home.css'), 'utf8');
 /** 壳全局样式面（body::before/after 纹理层、可访问性、字号交还——与首页不同生共死）。 */
@@ -1174,7 +1179,7 @@ describe('图版架段面（丙案 §9.5）· 墨阶与「不套方框」钉值'
 describe('查看器公共壳段面（B1）· 不裸色 + 壳件走 token', () => {
   /** `.pp-viewer` 段的规则（选择器含 `.pp-viewer`；剥注释后按 `}` 切块——同上图版架手法）。 */
   function viewerRules(): Array<{ selector: string; body: string }> {
-    const stripped = PANEL_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+    const stripped = (PANEL_CSS + '\n' + VIEWER_BASE_CSS).replace(/\/\*[\s\S]*?\*\//g, '');
     const out: Array<{ selector: string; body: string }> = [];
     for (const chunk of stripped.split('}')) {
       const at = chunk.lastIndexOf('{');

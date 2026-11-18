@@ -1,0 +1,141 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+ * SPDX-License-Identifier: MIT */
+
+/* 通用动作钮基座（.sp-btn 族）——**壳层真源，产物经 @import 内联**。
+ *
+ * ⚡ 2026-11-17（技术债批 A）：这一族原本只定义在产物
+ * `plugins/builtin/settings-domain/settings-panel.css`，而**壳层**组件
+ * `app/ConfirmDialog.tsx` 也在用 `.sp-btn / .sp-btn-cancel`——旧 exe + 新产物
+ * （或设置插件被禁用）时确认框按钮就裸样式。反向依赖是最险的一类：
+ * 壳层编进 exe 的组件不该向可热更产物要样式。
+ *
+ * 归属定案：动作钮 = 跨域基座（设置面板 / 纸壳确认层 / 各处小钮），放壳层；
+ * 产物 CSS 用 `@import "../../../app/controls.css";` 内联一份（构建期展开，
+ * 产物仍自包含：旧 exe + 新产物不塌）。名册登记见
+ * `scripts/build-builtin-plugins.mjs` GLOBAL_INPUTS。
+ *
+ * ⚠ 改本文件 = 改壳层：真机生效需重建 exe（产物侧只需重打产物）。 */
+
+/* ── 主按钮（设置面板 / 确认框）── */
+.sp-btn {
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  font-weight: 600; /* 2026-09-01 轻重批：动作钮=重墨档 */
+  letter-spacing: 0.06em;
+  padding: 7px 18px;
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap),
+    border-color var(--snap),
+    transform var(--snap);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sp-btn-cancel {
+  background: transparent;
+  color: var(--ink-2);
+  border: none;
+}
+
+.sp-btn-cancel:hover {
+  color: var(--seal-deep);
+}
+
+/* 主按钮：墨底纸字（原型 .seg button.on 同语汇）——浸墨②本屏唯一主动作挂
+   --shadow-anchor 硬偏移投影（§10 法则 1）；hover 墨加深、active 压印投影塌缩 */
+.sp-btn-save {
+  background: var(--ink-1);
+  color: var(--paper);
+  border: 1px solid var(--ink-1);
+  box-shadow: var(--shadow-anchor);
+}
+
+.sp-btn-save:hover {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
+  box-shadow: 1px 2px 0 rgba(38, 34, 28, 0.14);
+}
+.sp-btn-save:active {
+  background: var(--ink-3);
+  border-color: var(--ink-3);
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+/* 保存成功：朱砂细框确认（人批语义） */
+button.sp-btn.sp-btn-ok {
+  box-shadow: inset 0 0 0 1px var(--pass);
+  color: var(--paper);
+}
+
+/* ── 小钮（行内动作 / 设置页次级动作）── */
+.sp-btn-sm {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  padding: 4px 10px;
+  border-radius: 0;
+  cursor: pointer;
+  background: transparent;
+  color: var(--ink-2);
+  border: var(--rule-strong);
+  transition:
+    background var(--snap),
+    color var(--snap),
+    border-color var(--snap);
+  white-space: nowrap;
+}
+
+.sp-btn-sm:hover {
+  background: var(--paper-deep);
+  color: var(--ink-1);
+}
+
+/* 声明态小钮（B5 multimodal-image：ProviderDetail「视觉模型」开关）——
+ * is-on = 石青墨 + 石青框（声明生效中；与模型行「视」徽标同色系）。 */
+.sp-btn-sm.is-on {
+  color: var(--indigo);
+  border-color: color-mix(in oklch, var(--indigo) 45%, transparent);
+}
+
+/* ── 输入件：下划线式（原型 .set-control 语法）──
+ * 2026-11-17 技术债批 C：从产物 settings-panel.css 下沉（跨产物共享：
+ * compose-dock 的 ModelSelector 也在用；产物 CSS 经 @import 自包含）。 */
+.sp-input,
+.sp-select {
+  padding: 7px 2px;
+  font-family: var(--f-mono);
+  font-size: var(--fs-body);
+  background: color-mix(in oklch, var(--paper-deep) 35%, transparent);
+  color: var(--ink-1);
+  border: none;
+  border-bottom: var(--rule-soft);
+  border-radius: 0;
+  outline: none;
+  transition:
+    border-bottom-color var(--snap),
+    background var(--snap);
+}
+
+.sp-select {
+  cursor: pointer;
+}
+
+.sp-input:hover,
+.sp-select:hover {
+  border-bottom-color: var(--ink-3);
+}
+
+.sp-input:focus,
+.sp-select:focus {
+  border-bottom: 2px solid var(--seal);
+  padding-bottom: 6px; /* 2px 边框替代 1px：补偿下探 1px，行高不跳 */
+  background: color-mix(in oklch, var(--paper-deep) 22%, transparent);
+}
+
+.sp-input::placeholder {
+  color: var(--ink-3);
+}

@@ -24,7 +24,13 @@ import './app/type-scale.css';
 import './app/tokens.css';
 import './app/foundation.css';
 import './app/shell.css';
-import './app/panels/dock-panels/provider-settings.css';
+// 动作钮基座（.sp-btn 族）：壳层真源，产物经 @import 内联（2026-11-17 技术债批 A）
+import './app/controls.css';
+// 查看器状态基座（pp-viewer-empty/-error、pp-media-loading/-open）：壳层真源（批 A2）
+import './app/viewer-base.css';
+// 弹层基座（.cd-* 确认弹层）——壳层真源（2026-11-17 技术债批 B：provider 控制台
+// 样式已整份迁入 settings-domain 产物 provider-console.css，本文件只剩跨域基座）
+import './app/overlay-base.css';
 import './app/plugin-windows/plugin-windows.css';
 import './plugins/builtin/compose-dock/model-selector.css';
 import './plugins/builtin/paper-shell/PaperPanel.css';
