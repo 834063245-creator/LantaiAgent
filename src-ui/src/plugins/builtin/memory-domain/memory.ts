@@ -283,35 +283,41 @@ export class MemoryManager implements MemoryManagerFace {
       return section;
     }
 
-    // ── 图感知相关性过滤 ──
-    // 当记忆超过 10 条时，按与当前图节点的相关性排序。
-    // fact 级别始终包含；reference/background 竞争剩余名额。
+    // ── 相关性过滤 —— **图锚已随图谱退役，这条链当前是死的** ──
+    // 历史：超过 10 条时按「与当前图节点的相关性」排序，fact 恒含、其余竞争名额。
+    // 图谱退役（2026-09-09）后全部调用点都不传 graphNodes（workspace / runtime 各一处），
+    // 于是 `graphNodes && length > 0` 恒假 ⇒ **MEMORY_LIMIT 从未生效**：26 条项目记忆
+    // 每次全量注入 2,250 token（实测），而设计意图是 10 条 / 831 token。
+    //
+    // 现在按图锚**不存在的那个维度的替代品**排：`hit_count`（回想频率）+ fact 优先。
+    // 保留 graphNodes 入参本身（契约面不动、第三方可继续传），只是不再把它当作
+    // 唯一开关——不传时按频率排，传了时图相关性优先、频率作次键。
+    //
+    // 为什么不是「干脆不截断」：2,250 token 每卷付一次不算贵，但记忆会无限增长，
+    // 且**低价值记忆会稀释高价值记忆的注意力**。10 条上限是原设计意图，恢复它。
     const MEMORY_LIMIT = 10;
     const allItems = [...allByName.values()];
     const facts = allItems.filter((i) => i.mf.confidence === 'fact');
     const others = allItems.filter((i) => i.mf.confidence !== 'fact');
 
     let itemsToLoad = allItems;
-    if (allItems.length > MEMORY_LIMIT && graphNodes && graphNodes.length > 0) {
-      // 对每条非 fact 记忆按与图节点的相关性评分
+    if (allItems.length > MEMORY_LIMIT) {
       const gn = graphNodes ?? [];
       const scored = others.map((item) => ({
         item,
-        score: scoreMemoryRelevance(item.mf, gn),
+        // 主键 = 图相关性（有锚时，×1000 压倒次键）；次键 = 回想频率（恒有）。
+        // 没有图锚时主键恒 0 ⇒ 排序自然退化为「常用优先」，正是无图谱时代的判据。
+        // 同分保持 allByName 的插入序（Map 保序）——不引入第三条不稳定的判据。
+        score:
+          (gn.length > 0 ? scoreMemoryRelevance(item.mf, gn) * 1000 : 0) +
+          Math.min(99, Math.max(0, item.mf.hit_count ?? 0)),
       }));
       scored.sort((a, b) => b.score - a.score);
 
-      // 取前 (MEMORY_LIMIT - facts.length) 条 reference/background + 全部 fact
+      // fact 恒含（用户明确要求的规则不该被频率挤掉），其余竞争剩余名额。
       const refLimit = Math.max(0, MEMORY_LIMIT - facts.length);
       const topRefs = scored.slice(0, refLimit).map((s) => s.item);
       itemsToLoad = [...facts, ...topRefs];
-
-      // 如果有记忆被过滤掉，记录一下
-      const dropped = allItems.length - itemsToLoad.length;
-      if (dropped > 0) {
-        // ponytail: 静默过滤 — 下方的区段注释已说明
-        void dropped;
-      }
     }
 
     // 按置信度分组
