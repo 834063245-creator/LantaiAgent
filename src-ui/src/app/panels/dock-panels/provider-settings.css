@@ -1084,10 +1084,20 @@
 }
 .pp-cat-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* ⚡ minmax(0, 1fr) 不是口味问题（2026-11-17 用户实测「浮层内容冲出边框」）：
+   * `1fr` 的隐式下限是 `auto` = 该列内容的 min-content 宽度，而 chip 里的
+   * Base URL 是 `white-space: nowrap` 的长串（`https://open.bigmodel.cn/api/paas/v4`
+   * / `https://chatgpt.com/backend-api/codex` 等），三列会被撑成**不等宽**并整体
+   * 越过弹层右边框（实测 176.8 + 250.1 + 166.0 = 593 > 容器 502，chip 右边缘
+   * 984 vs 弹层 902，弹层凭空长出横向滚动）。与 `.sp-field`（2026-11-06 同一条
+   * 「grid 子项默认 auto 撑破列宽」）同一病灶，勿回退成 `1fr`。 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 .pp-cat-chip {
+  /* grid item 的 auto 最小尺寸同样会撑破列宽：显式归零，长串交给
+     `.pp-cat-model` 的 ellipsis 收口。 */
+  min-width: 0;
   text-align: left;
   padding: 8px 9px;
   border: var(--rule-soft);
@@ -1189,6 +1199,11 @@
   font-size: var(--fs-micro);
   color: var(--ink-3);
   line-height: 1.4;
+  /* 同一族病灶（2026-11-17）：flex item 的 auto 最小宽度 = 内容 min-content，
+   * 「拉取失败：<长 URL/长串>」这种一句话会把整行推出弹层边框（实测无空格
+   * 200 字符撑到 1357px）。归零 + 任意处断行，长原因在行内折行而不是越界。 */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .pp-add-pull-msg.fail {
   color: var(--fail);
