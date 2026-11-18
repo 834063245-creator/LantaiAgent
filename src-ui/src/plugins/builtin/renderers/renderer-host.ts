@@ -24,6 +24,7 @@ import {
   getAssetState,
   patchAssetState,
 } from '../../../agent/asset-state';
+import { readCard, writeCardState } from '../../../agent/card-library';
 import { Overlay } from '../../../app/overlay';
 import { loadHeavyViewer } from '../../../app/paper/viewers';
 import { createBlock, type SourcedBlock } from '../../../paper/block-model';
@@ -70,6 +71,18 @@ export interface RendererAssetStateFace {
  */
 export function rendererAssetState(): RendererAssetStateFace | null {
   return { get: getAssetState, patch: patchAssetState };
+}
+
+/** 卡片库状态桥（架阁 B6）：从架阁摊到画布上的卡不属任何会话——它的
+ *  window.lantai.state 对面是 `~/.lantai/cards/<cardId>/`，读走 card_read、
+ *  写走 card_state_write（异步 RPC，故与 asset-state 的同步面形状不同）。 */
+export interface RendererCardStateFace {
+  read(cardId: string): Promise<{ card: unknown; state: Record<string, unknown> }>;
+  write(cardId: string, patch: Record<string, unknown>): Promise<{ bytes: number }>;
+}
+
+export function rendererCardState(): RendererCardStateFace | null {
+  return { read: readCard, write: writeCardState };
 }
 
 /**

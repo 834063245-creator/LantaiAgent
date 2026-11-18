@@ -19,12 +19,16 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   deleteCard,
+  getCanvasStore,
   listCards,
   readCard,
   renameCard,
+  useCanvasViewStore,
+  useCoreStore,
   usePluginWindowStore,
   useShelfStore,
   useToastStore,
+  viewportCenterWorld,
   writeCardState,
 } from './host';
 import { buildShelfCardDocument, SHELF_CARD_STATE_NS } from './shelf-card-document';
@@ -178,6 +182,39 @@ export function ShelfOverlay() {
       .catch((err: unknown) => toast(`删除失败：${String(err)}`, 'error', 4200, 'composer'));
   };
 
+  /** **摊到画布**（架阁 B6，2026-12-08 用户拍板必做）：把库里的一张卡变成画布上的
+   *  一条**无源钉**（pins 容器原生支持——"无源 = 纯公共物快照"），落在视口中心。
+   *  摊上去就归画布管：能拖、能缩、能拔钉，坐标进 canvas.json（重开还在）。
+   *  内容取 card.json 的快照（拔钉前不依赖磁盘），状态仍走卡片库（见 HtmlBody 的
+   *  cardId 分路）——**改的永远是库里那一份**。 */
+  const pinToCanvas = (cardId: string) => {
+    const core = useCoreStore.getState().core;
+    if (!core) {
+      toast('摊不上：画布还没准备好', 'warn', 3200, 'composer');
+      return;
+    }
+    readCard(cardId)
+      .then((rec) => {
+        const card = (rec.card ?? {}) as { kind?: unknown; payload?: unknown; title?: unknown };
+        const kind = typeof card.kind === 'string' ? card.kind : 'markdown';
+        const payload = (card.payload ?? {}) as Record<string, unknown>;
+        const title = typeof card.title === 'string' ? card.title : '';
+        const { view, canvasSize } = useCanvasViewStore.getState();
+        const center = viewportCenterWorld(view, canvasSize.w, canvasSize.h);
+        getCanvasStore(core.panelId)
+          .getState()
+          .setPin(`pin-card-${cardId}`, {
+            x: Math.round(center.x - 210),
+            y: Math.round(center.y - 150),
+            w: 420,
+            snapshot: { kind, payload, cardId },
+          });
+        closeShelf();
+        toast(`已摊到画布：${title || '这张卡'}`, 'info', 2600, 'composer');
+      })
+      .catch((err: unknown) => toast(`摊到画布失败：${String(err)}`, 'error', 4200, 'composer'));
+  };
+
   const openCard = (cardId: string) => {
     setOpenError(null);
     readCard(cardId)
@@ -315,6 +352,9 @@ export function ShelfOverlay() {
                             </span>
                           </button>
                           <span className="pp-shelf-actions">
+                            <button type="button" onClick={() => pinToCanvas(c.cardId)}>
+                              摊
+                            </button>
                             <button
                               type="button"
                               onClick={() => {

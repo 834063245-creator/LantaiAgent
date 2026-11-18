@@ -54,6 +54,7 @@ import type { BlockRendererProps } from '../../../composition/renderer-service';
 import { plateSignOf } from '../../../paper/plate-sign';
 import {
   rendererAssetState,
+  rendererCardState,
   rendererHooks,
   rendererLoadViewer,
   rendererOverlay,
@@ -1676,6 +1677,32 @@ function HtmlBody({ block, sessionProjectPath, sessionId }: BlockRendererProps) 
       const req = data.req;
       const reply = (payload: { ok: boolean; state?: unknown; error?: string }) =>
         win.postMessage({ type: HTML_CARD_STATE_NS, req, ...payload }, '*');
+      /* 架阁 B6（2026-12-08）：**从架阁摊到画布上的卡**——状态写回**卡片库**
+       * （`~/.lantai/cards/<cardId>/`），不走会话级 asset-state：库里那张卡不属于
+       * 任何一次对话，按会话键写等于把它的状态又绑回某一卷。两条桥形状不同
+       * （库是异步 RPC、会话表是同步内存表），故在此分路后各自 return。 */
+      const cardId = block.asset?.cardId;
+      if (cardId) {
+        const cardBridge = rendererCardState();
+        if (!cardBridge) {
+          reply({ ok: false, error: '状态存储不可用：宿主桥缺 cardState 面（产物与宿主版本偏斜）' });
+          return;
+        }
+        if (data.op === 'get') {
+          void cardBridge
+            .read(cardId)
+            .then((r) => reply({ ok: true, state: r.state }))
+            .catch((err: unknown) => reply({ ok: false, error: String(err) }));
+          return;
+        }
+        if (data.op === 'patch') {
+          void cardBridge
+            .write(cardId, (data.patch ?? {}) as Record<string, unknown>)
+            .then(() => reply({ ok: true }))
+            .catch((err: unknown) => reply({ ok: false, error: String(err) }));
+          return;
+        }
+      }
       if (!assetId) {
         reply({ ok: false, error: '状态存储不可用：本块没有资产身份' });
         return;

@@ -42,6 +42,10 @@ export interface PinSnapshot {
   payload?: Record<string, unknown>;
   /** 资产块快照（仅 type:block 映射出的块有）——载荷随快照保存，坐标/钉住不属快照。 */
   asset?: BlockAssetMeta & { payload: unknown };
+  /** **卡片库来源**（架阁 B6，2026-12-08）：非空 = 这条钉住的是库里的卡
+   *  （`~/.lantai/cards/<cardId>/`）。渲染层据此把状态桥指向卡片库；
+   *  内容仍走 snapshot（拔钉前源不依赖磁盘），状态走库。 */
+  cardId?: string;
 }
 
 /** 工作区级钉住块（独立宿主）。 */
@@ -528,7 +532,7 @@ export function snapshotFromBlock(block: SourcedBlock): PinSnapshot {
 
 /** 快照 → 渲染块（公共物独立宿主：源会话未摊开/已删除时渲染它）。 */
 export function blockFromSnapshot(blockId: string, pin: WorkspacePin): SourcedBlock {
-  const { text, lang, payload, asset } = pin.snapshot;
+  const { text, lang, payload, asset, cardId } = pin.snapshot;
   const base: Record<string, unknown> = { ...payload };
   if (text !== undefined) base.text = text;
   if (lang !== undefined) base.lang = lang;
@@ -545,9 +549,20 @@ export function blockFromSnapshot(blockId: string, pin: WorkspacePin): SourcedBl
               presentation: asset.presentation,
               ...(asset.title !== undefined ? { title: asset.title } : {}),
               finalised: asset.finalised,
+              // 架阁 B6：库里摊上来的卡——渲染层据此把状态桥指向卡片库。
+              ...(cardId !== undefined ? { cardId } : {}),
             },
           }
-        : undefined,
+        : cardId !== undefined
+          ? {
+              asset: {
+                assetId: `card:${cardId}`,
+                presentation: '',
+                finalised: true,
+                cardId,
+              },
+            }
+          : undefined,
     ),
     id: blockId,
     state: 'pinned',

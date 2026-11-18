@@ -74,6 +74,9 @@ const impl = host.mods.faceDeps as unknown as {
     assetId: string,
     patch: Record<string, unknown>,
   ) => { ok: true } | { ok: false; error: string };
+  /** 卡片库读写面（架阁 B6）：从架阁摊到画布上的卡——状态走库不走会话。 */
+  readCard?: (cardId: string) => Promise<{ card: unknown; state: Record<string, unknown> }>;
+  writeCardState?: (cardId: string, patch: Record<string, unknown>) => Promise<{ bytes: number }>;
 };
 
 /** React 全量（组件构造面——esbuild define 产物域用到的元素类型不在此受限）。 */
@@ -121,6 +124,18 @@ export function rendererAssetState(): {
   const patch = impl.patchAssetState;
   if (!get || !patch) return null;
   return { get, patch };
+}
+
+/** 卡片库状态桥（架阁 B6）：从架阁摊到画布上的卡——状态走 `card_read` /
+ *  `card_state_write`（异步 RPC），不属任何会话。面缺 = null（消费方如实拒绝）。 */
+export function rendererCardState(): {
+  read(cardId: string): Promise<{ card: unknown; state: Record<string, unknown> }>;
+  write(cardId: string, patch: Record<string, unknown>): Promise<{ bytes: number }>;
+} | null {
+  const read = impl.readCard;
+  const write = impl.writeCardState;
+  if (!read || !write) return null;
+  return { read, write };
 }
 
 /** 查看器建 markdown 块（A4 销账 W1，2026-09-28）：块 id 发号器在内核
