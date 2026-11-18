@@ -24,6 +24,7 @@
 //
 // 判据落在**消费端真值**：Agent 的注册表（`ToolRegistry`）里必须有 `mcp__<server>__*`。
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProcIO } from '../src/agent/mcp';
 import type { ToolRegistry } from '../src/agent/tool';

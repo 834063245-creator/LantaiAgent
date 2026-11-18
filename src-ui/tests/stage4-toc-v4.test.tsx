@@ -13,6 +13,7 @@
 //      aria-label 已报阶段序，编号是重复的可视读数）。
 // 另加滑块抓手（is-dragging）与卡片语色/eyebrow 的行为钉。
 
+import './helpers/kernel-registry';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

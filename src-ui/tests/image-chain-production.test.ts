@@ -15,6 +15,7 @@
 // 判据（用户真机症状的机器化）：附一张图跑一轮，**出站请求体**里必须出现
 // image_url data URI；缺它就是「图压根没送出去」，且必须至少留占位（错误不静默）。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockInvoke = vi.fn();

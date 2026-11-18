@@ -8,6 +8,7 @@
 //   （单 seam 替换的细粒度钉子：provider-dialect ③ / fs-seam ④ /
 //   subagent-seam ③ 已各自覆盖；本测试证明三 seam 正交共存不互相污染。）
 
+import './helpers/kernel-registry';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Agent } from '../src/agent/agent';
 import { resetAgentLoopForTests } from '../src/agent/agent-loop/agent-loop-active';

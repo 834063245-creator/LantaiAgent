@@ -15,6 +15,7 @@
 // 本文件两道：① 身份语义单测（同/异、用户层、贡献代数、空层归一）；
 //            ② 真 Workspace 装配腰上的**行为**断言（数 buildToolRegistry 调用次数）。
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── settings / rpc / logger mock 面（workspace 装配腰最小面，同 P1a 用例）──

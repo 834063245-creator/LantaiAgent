@@ -15,6 +15,7 @@
 // kernelDeleteFile——内部直呼 fs_cap）——mock 站到 helper 层；agent_isolation_*
 // 是 agentInvoke 动态分发（bridge.rpc 直达），走 bridge mock 面。两轨并存。
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AgentAddress } from '../src/agent/message-contract';

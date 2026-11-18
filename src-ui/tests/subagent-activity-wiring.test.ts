@@ -7,6 +7,7 @@
 // 盲的 —— 本测试驱动真实 spawnSubAgent（fresh 模式、headless sink），在子Agent
 // 工具执行期间断言 getSubAgentActivity 反映了 dispatch。
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 
 const mockRpc = vi.fn();

@@ -10,6 +10,7 @@
 //
 // 用户操作序列：起卷 → 打字跑完一轮 → 改名 → 重启重开。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cacheText, logText } from './helpers/session-files';
 

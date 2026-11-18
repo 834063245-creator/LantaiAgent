@@ -18,6 +18,7 @@
 // 单次调用从同一起点做同一推进，任何状态下都逐字节相等。请求级对拍在 window=0
 // （生产默认，边界恒 0）下进行，window>0 只做方法级差分。
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 import type { Message } from '../src/provider/types';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';

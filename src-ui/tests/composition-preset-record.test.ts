@@ -16,6 +16,7 @@
 // **与 capability** 通道都要装（minimal 的 patch 同时禁用工具行与 state-hooks
 // capability 行——少装一条即解析「未知行 id」回退，覆盖路径根本不发生，断言退化）。
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── settings mock 面 ──

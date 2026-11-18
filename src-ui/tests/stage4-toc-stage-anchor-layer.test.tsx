@@ -17,6 +17,7 @@
 //   ③ 连续 scrub 归滑块 + 带空白处（滚动条语义）；
 //   ④ hover 卡与命中盒同源：卡片所示即点击所得（锚优先「阶段 N · 首句」）。
 
+import './helpers/kernel-registry';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

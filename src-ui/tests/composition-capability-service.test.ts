@@ -24,6 +24,7 @@
 // 通道贡献快照（B⑤ 后第一方也经通道——roster 测试钉通道面 + convergence
 // 双 preset 实测）。
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 // 批 6c：出厂 hook 实现（state-hooks 产物）在生产由装载器常驻登记；
 // service 类 ⇒ 缺实现装配期 fail-loud——本文件自行装配 Agent，须先复现该登记态。

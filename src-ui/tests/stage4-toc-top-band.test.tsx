@@ -14,6 +14,7 @@
 // 刻痕盒那 4px 落在当时的书眉（-webkit-app-region: drag）拖动带里——点刻痕
 // 变成拖窗口，视觉上还被书眉压住半截。
 
+import './helpers/kernel-registry';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act, createElement } from 'react';

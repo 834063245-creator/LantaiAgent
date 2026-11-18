@@ -20,6 +20,7 @@
 // 未覆盖（不伪造）：ResizeObserver 的**运行时**收放（jsdom 无 RO，只测首帧判据与折叠行为）、
 // 滚动后的视觉落位（jsdom 无布局）、脚注/数学/HTML 的渲染细节（归应用侧渲染器的判据面）。
 
+import './helpers/kernel-registry';
 import { act, type ComponentType, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

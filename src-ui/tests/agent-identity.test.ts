@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 import type { Agent, AgentOptions } from '../src/agent/agent';
 import { AgentStore } from '../src/agent/agent-store';

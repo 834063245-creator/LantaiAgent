@@ -9,6 +9,7 @@
 //  - stopAllLsp 此前不清 diagnosticsCache/lspWarned，切换工作区后旧项目诊断
 //    仍被 agent 状态钩子读到。
 //  - listenForDiagnostics 此前丢弃 unlisten，编辑器随面板重建会叠加监听器。
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── bridge mock：捕获 listen 处理器 + 可解锁的 unlisten ──

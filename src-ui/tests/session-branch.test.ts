@@ -13,6 +13,7 @@
 // 另钉三条切点纪律的**拒态**（未落定 / 断尾 / 空卷 / 缺卷）：拒态**一个字节都不落盘**
 // ——绝不制造「半个枝」。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetSessionLogStoresForTests } from '../src/app/chat/session-log-store';
 import { SessionPersistenceService } from '../src/composition/session-persistence-service';

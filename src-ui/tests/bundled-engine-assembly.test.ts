@@ -22,6 +22,7 @@
 // （ProcIO 注入 fake，initialize 应答由测试闸门放行）⇒ **建出来的注册表里必须有
 // `mcp__hologram__*`**，且接线回执如实报出工具数。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProcIO } from '../src/agent/mcp';
 import type { ToolRegistry } from '../src/agent/tool';

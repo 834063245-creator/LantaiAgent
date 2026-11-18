@@ -8,6 +8,7 @@
 // 覆盖四条穿线：buildToolRegistry(toolRows) / buildSystemPrompt(sections) /
 // AgentBlueprint.fromRoster / AgentRuntime(composition) + composition-store。
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AgentBlueprint } from '../src/agent/blueprint';
 import { AgentContext } from '../src/agent/context';

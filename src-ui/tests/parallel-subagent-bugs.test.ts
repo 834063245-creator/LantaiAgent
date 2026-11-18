@@ -12,6 +12,7 @@
 //   5. fork worktree 创建失败必须显式上抛/告警，不得静默降级直写主仓
 //   6. merge 无产物（worktree 无变更）不得报「已自动合并回主仓」假成功
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 
 (globalThis as any).__LANTAI_MERGE_GATE__ = { graph: false };

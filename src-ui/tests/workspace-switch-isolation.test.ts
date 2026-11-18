@@ -15,6 +15,7 @@
 //  RPC 还会误关新工作区的后端态。
 //  契约：deactivate 每步落盘前校验代际，过期即跳。
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── settings mock 面（可翻面注入装配失败）──

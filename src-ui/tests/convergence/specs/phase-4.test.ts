@@ -9,6 +9,7 @@
 //   （每个 Agent 恰好 +1 巡检 interval，dispose 后归零），注册表/总线全空。
 // T3：Phase 0 全部快照（除已在案变更的 wiring dispose 段）由 phase-0 spec
 //   在同一次 gate check 比对；dispose_steps 变化走 baseline-change-request 审批。
+import './../../helpers/kernel-registry';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as ts from 'typescript-legacy';

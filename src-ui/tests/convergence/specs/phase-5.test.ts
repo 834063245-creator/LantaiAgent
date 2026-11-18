@@ -11,6 +11,7 @@
 // T2 差分矩阵在 tests/session-differential.test.ts（全量 vitest 覆盖）。
 // T3 契约快照：session-projection.trace.json — 固定场景（文本轮 + 工具轮 +
 //   compaction + retract）的事件流与逐步派生载荷，冻结双写等价的字节契约。
+import './../../helpers/kernel-registry';
 import { readFileSync } from 'node:fs';
 // 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
 // service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。

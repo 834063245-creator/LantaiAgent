@@ -11,6 +11,7 @@
 // workspace-session-ownership-rework（2026-08-27）：占位工作区（path=''）退役，
 // 低层构造改 public——测试用真实路径轻量实例（不触 RPC，同占位语义）。
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { Context } from '../src/cordis';

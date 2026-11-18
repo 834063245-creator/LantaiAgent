@@ -10,6 +10,7 @@
 //   4. async 子 agent signal 不含父 _currentRunSignal
 //   5. 子 agent 有独立 execState，多个子 agent 唤醒不互相 abort
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 // 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
 // service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。

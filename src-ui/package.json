@@ -20,6 +20,7 @@
     "check": "biome ci .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:related": "vitest related --run",
     "gen:tool-contract": "node ../scripts/gen-tool-contract-md.cjs",
     "check:tool-contract": "node ../scripts/gen-tool-contract-md.cjs --check",
     "gen:engine-contract": "node ../scripts/gen-engine-plugin-contract.cjs",

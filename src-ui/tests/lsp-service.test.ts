@@ -9,6 +9,7 @@
 //   4. H2 代际防护在服务实例内同样生效（过期 resolve 的 sid 丢弃）。
 // 既有 tests/lsp-session / lsp-diagnostics 零改动经薄转发全绿 — 转发等价性由它们守护。
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockRpc, mockListen } = vi.hoisted(() => ({

@@ -13,6 +13,7 @@
 //      - enter + reminders → transient 提醒进本次请求（不落会话、每步重建）；
 //      - reject → 不开步（无 step/start、无 request）、Notice 可见、turn 收尾。
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 import { installCompactionForTest } from './helpers/compaction-impl';
 

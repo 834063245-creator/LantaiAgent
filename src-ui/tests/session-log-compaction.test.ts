@@ -16,6 +16,7 @@
 //   ⑥ **写失败 = 未落定**（文件保持原样）+ 下个 flush 重试后落定；
 //   ⑦ 枝卷继承裁剪后的抹除账（否则子卷文件被判「序号断裂」而截断）。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionPersistenceService } from '../src/composition/session-persistence-service';
 import { Context } from '../src/cordis';

@@ -11,6 +11,7 @@
 //   5. create 工厂：每个 Agent 调一次（per-Agent 实例，状态隔离）；抛错 =
 //      装配期 fail-loud（不静默跳过）。
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 import type { StepsRegistry } from '../src/agent/steps';
 import {

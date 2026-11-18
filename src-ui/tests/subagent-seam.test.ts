@@ -10,6 +10,7 @@
 
 // 注意用例次序：① 必须先于任何 ensureProductionChannelsBooted() 调用。
 
+import './helpers/kernel-registry';
 import { ToolRegistry } from '../src/agent/tool';
 import { activeSubagentProviders, type SubagentProvider } from '../src/composition/subagent-service';
 import type { Provider } from '../src/provider/types';

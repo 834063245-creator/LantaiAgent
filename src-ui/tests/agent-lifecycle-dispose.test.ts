@@ -10,6 +10,7 @@
 //   4. listAgents() 描述 — 会话主 Agent（main-<ts>-<rand>，parentId === null）
 //      显示为「主Agent」而非旧的 id === 'main' 硬编码判断
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 
 // ── bridge mock（同 lifecycle-integration.test.ts 的模式）──

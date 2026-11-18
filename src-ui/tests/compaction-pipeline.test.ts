@@ -22,6 +22,7 @@
 //  17. 二次压缩：回放前缀含 <compacted-context> 头，区域接在其后
 //  18. 区域含附图 → 不走回放（附图 wire 形态需重解析），退转录口径
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 // 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
 // service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。

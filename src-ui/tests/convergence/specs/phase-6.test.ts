@@ -21,6 +21,7 @@
 // T3：零新增 baseline——缺省装配面的字节契约由既有 phase-0/1 快照承担
 //   （tool-schemas.effective 跑真实 createAgent 全注册；等价性锚在人类审批的
 //   既有 baseline，同决策 #14）。
+import './../../helpers/kernel-registry';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as ts from 'typescript-legacy';

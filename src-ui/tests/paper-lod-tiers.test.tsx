@@ -14,6 +14,7 @@
 // harness 时序纪律同 paper-regionsref-wiring：jsdom clientWidth=0 的 RO
 // 直写须覆盖 + 预置 restoreView 掐掉挂载期视角飞行（见该文件注释）。
 
+import './helpers/kernel-registry';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

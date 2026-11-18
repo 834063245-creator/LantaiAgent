@@ -4,6 +4,7 @@
 // paper-ink — P4 缩远墨迹：墨条几何（walkLineRanges 路径）/ LOD 迟滞 /
 // 墨色板 token 字面量镜像钉死。pretext 全 mock（jsdom 无 Canvas 2D）。
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { walkMock, naturalWidthMock, materializeMock, richWalkMock, richMaterializeMock } = vi.hoisted(() => ({

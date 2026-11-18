@@ -6,6 +6,7 @@
 //   2. effect 注册与逆序释放、单项释放、dispose 后拒绝新增；
 //   3. child() 隔离：身份按父子关系派生、继承表之外的服务不泄露、effect 所有权独立；
 //   4. ctx 构造入口的 Agent 冒烟（身份/服务从 ctx 读取）。
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 import { Agent } from '../src/agent/agent';
 import { AgentContext, type AgentServices } from '../src/agent/context';

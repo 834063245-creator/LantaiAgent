@@ -9,6 +9,7 @@
 // tool-schemas.effective 快照用空输入注册表跑真实 createAgent，把这块盲区钉住。
 // 注：快照是注册后的 schemas() 可见面；不含运行时 _schemaSelector 的 visibleToolsLimit
 // 限额裁剪（那是按上下文动态决定的）。
+import './../../helpers/kernel-registry';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';

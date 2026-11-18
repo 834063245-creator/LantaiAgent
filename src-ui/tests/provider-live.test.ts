@@ -14,6 +14,7 @@
 //   ③ 凭据内存缓存：同 provider 重复解析零额外 IPC；invalidate 后重取
 //   ④ 提供方已从设置删除 → LIVE_PROVIDER 报错（不回退其他提供方）
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockInvoke = vi.fn();

@@ -12,6 +12,7 @@
 //   5. AgentRuntime 透传：createAgent 的 Agent 在 runtime 的挂载父下获得 fiber，
 //      handle.dispose 后摘除。
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 import { AgentContext } from '../src/agent/context';
 import { AgentRuntime } from '../src/agent/runtime/runtime';

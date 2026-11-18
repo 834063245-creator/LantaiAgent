@@ -20,6 +20,7 @@
 // ⑩⑪ = subagents / loopEvents 两消费单点；⑫ = 生命周期（dispose 清行）+ 哨兵
 // （无 owner 的直调仍读全局当前选择 ⇒ 旧路径零漂移）。①-⑧ 一行未改。
 
+import './helpers/kernel-registry';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Agent } from '../src/agent/agent';
 import { AgentContext } from '../src/agent/context';

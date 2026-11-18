@@ -13,6 +13,7 @@
 //   ④ translate 产物块 id 唯一（React key 层无重复）
 // mock 面沿用 session-restore-snapshot.test.ts（kernel-fs 内存盘 + 生产 seam 装配）。
 
+import './helpers/kernel-registry';
 import { cacheText, logText } from './helpers/session-files';
 
 const H = vi.hoisted(() => ({

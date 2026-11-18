@@ -11,6 +11,7 @@
 // 顺序位移（显式记录）：注入落点由「注入链中段」（injectInbox 之后立即）移到
 // 「链尾」（步骤钩子注入的统一点、压缩预检之前）——内容与判据不变。
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 import { installCompactionForTest } from './helpers/compaction-impl';
 

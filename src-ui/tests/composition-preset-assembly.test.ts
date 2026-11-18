@@ -17,6 +17,7 @@
 // 寻址 capability id 的解析须在 withFirstPartyCapabilityChannel 腰内。
 // 2026-09-09 图谱退役：graph-hooks 收缩改名 state-hooks，禁用行随键改。
 
+import './helpers/kernel-registry';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';

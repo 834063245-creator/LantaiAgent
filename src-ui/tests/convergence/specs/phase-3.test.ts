@@ -14,6 +14,7 @@
 // T3：tool-schemas.* / system-prompt.fixture 由 phase-0 spec 在同一次 gate check
 // 中比对（字节不变）；create-agent.wiring.txt 的变化走 baseline-change-request
 // 人类审批流程（Phase 3 目的即 wiring 收敛，漂移是预期产物）。
+import './../../helpers/kernel-registry';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as ts from 'typescript-legacy';

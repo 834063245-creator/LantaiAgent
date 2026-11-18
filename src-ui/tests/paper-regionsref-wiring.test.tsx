@@ -15,6 +15,7 @@
 //（原用例② 自动选中 settle 随 2026-09-10 拍板「浏览跟随退役」一并拆除。）
 // 挂真实 PaperPanel 穿全层（perf-paper-pan 同款 harness），jsdom 真实定时器。
 
+import './helpers/kernel-registry';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

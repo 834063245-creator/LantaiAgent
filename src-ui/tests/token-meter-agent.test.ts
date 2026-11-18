@@ -8,6 +8,7 @@
 //   ④ 失败请求计数不入账（发了没账单）；
 //   ⑤ newSession 清账、快照/恢复往返（卷文件持久化的形状）。
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 // 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
 // service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。

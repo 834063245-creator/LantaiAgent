@@ -19,6 +19,7 @@
 //   ③ 记档按**模型 id** 键控 → 换模型自动重新尝试发图（不把旧模型的拒绝延续）；
 //   ④ 非图片类失败不触发去图降级（不许把普通错误当「该丢图」的证据）。
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 // 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
 // service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。

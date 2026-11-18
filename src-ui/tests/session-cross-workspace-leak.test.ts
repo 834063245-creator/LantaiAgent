@@ -12,6 +12,7 @@
 // 守卫契约：任何跨 await 的 sess append 必须代际校验后落笔（对齐 scheduleAutoSave
 // 的 H5 防护面）。任何「旧区卷出现在新工作区」即红。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockInvoke = vi.hoisted(() => vi.fn());

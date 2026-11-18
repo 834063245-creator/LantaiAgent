@@ -4,6 +4,7 @@
 // Agent.runGoalRound（DSH goal 驱动器的执行原语）：一轮 = goal/round 准入事件 +
 // `<goal_round>` 用户消息 + 工具循环。轮数只由准入事件推进，由 foldGoal 严格回放。
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 import type { Agent } from '../src/agent/agent';
 import { foldGoal } from '../src/agent/goal/fold';

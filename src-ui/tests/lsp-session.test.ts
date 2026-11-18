@@ -7,6 +7,7 @@
 //  - file-viewer 曾自建第二张 lspSessions 表，stopAllLsp 清不到它，切换工作区后
 //    LSP 永久假死却仍显示"已连接"。
 //  - startLsp 在途 resolve 无代际校验 — 把 A 项目文件内容发进 B 的 tsserver。
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockRpc } = vi.hoisted(() => ({

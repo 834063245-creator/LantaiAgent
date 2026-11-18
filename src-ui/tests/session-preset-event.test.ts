@@ -12,6 +12,7 @@
 //      （调用方以 standard 缺省）；
 //   6. replay 兼容：含该事件的快照可重建。
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 import type { Agent } from '../src/agent/agent';
 import { SessionLog } from '../src/agent/session-log';

@@ -12,6 +12,7 @@
 //
 // 用户操作序列：起几卷 → 删掉高位卷 → 重启 → 再起一卷（号必须 > 所有已发出的号）。
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cacheText, logText } from './helpers/session-files';
 

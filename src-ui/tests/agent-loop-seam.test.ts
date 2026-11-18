@@ -8,6 +8,7 @@
 //   ③ Agent 装配：显式注入的替换 loop 接管 runLoop（host 面活性断言）
 //   ④ 默认 loop id = builtin/default（出厂面可寻址证明；实现现在住产物包）
 
+import './helpers/kernel-registry';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Agent } from '../src/agent/agent';
 import { resetAgentLoopForTests, resolveAgentLoop } from '../src/agent/agent-loop/agent-loop-active';

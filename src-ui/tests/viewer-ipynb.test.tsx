@@ -17,6 +17,7 @@
 // 未覆盖（要真笔记本才有结论，本文件不伪造）：widget 运行时（无依赖，只出「不渲染」说明）、
 // 图片内联（只报 MIME 与字节数，不断言像素）、超 6000 行大笔记本（只钉「不解析 + 明说」）。
 
+import './helpers/kernel-registry';
 import { act, type ComponentType, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

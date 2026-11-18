@@ -10,6 +10,7 @@
 // （rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站到 helper 层（不再
 // 拦 bridge + toolCallArgsOfBridge 翻信封）。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionPersistenceService } from '../src/composition/session-persistence-service';
 // 会话持久化 seam 装配（seam 接线 C 批 3）：scheduleAutoSave 落盘已换轨

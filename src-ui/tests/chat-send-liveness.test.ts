@@ -62,6 +62,7 @@ vi.mock('gsap', () => {
 });
 vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
+import './helpers/kernel-registry';
 import { NO_PROGRESS_WARN_MS, RUN_ABANDON_MS, setRunWatchdogThresholds } from '../src/agent/run-watchdog';
 // 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
 // service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。

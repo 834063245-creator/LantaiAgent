@@ -11,6 +11,7 @@
 //        落地（messages 落会话、reminders 进下一轮请求）；
 //      - 护栏：同 turn 连续 continue 超限（MAX_TURN_CONTINUES）⇒ 强制停 + warn + Notice。
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 import { installCompactionForTest } from './helpers/compaction-impl';
 

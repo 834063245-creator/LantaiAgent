@@ -12,6 +12,7 @@
 //   ④ 体积治源（2026-10-29 收口）：头部逐字节相同 ⇒ 连那一条全文也不写
 //      （事件 `messages: []`，投影零变化——实测 63 号卷 6 次开卷 = 210KB 副本）
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 import { SessionLog } from '../src/agent/session-log';
 import { ToolRegistry } from '../src/agent/tool';

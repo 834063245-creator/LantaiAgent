@@ -17,6 +17,7 @@
 //   ② **行为面**：真链路句柄（rt.createAgent 产物，与 workspace 工厂同一个实现）
 //      真带这两个成员，且转发到 raw Agent。
 
+import './helpers/kernel-registry';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';

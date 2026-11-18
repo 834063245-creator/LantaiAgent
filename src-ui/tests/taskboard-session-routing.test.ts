@@ -12,6 +12,7 @@
 //   - setCurrentSession 仅做 board 懒加载恢复（面板查询语义），不再改写任何绑定
 //   - 子 Agent 经 _agentSessions.get(parentId) 继承父会话
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 
 // ── bridge mock（同 agent-lifecycle-dispose.test.ts 的模式）──

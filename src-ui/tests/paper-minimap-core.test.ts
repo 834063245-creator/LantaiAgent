@@ -6,6 +6,7 @@
 // 非 stub 真墨 / stub 占位砖）、卷框（regionFrame：非 stub 几何 / stub extent）。
 // pretext 全 mock（jsdom 无 Canvas 2D）——沿用 paper-ink.test.ts 同款手法。
 
+import './helpers/kernel-registry';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@chenglou/pretext', () => ({

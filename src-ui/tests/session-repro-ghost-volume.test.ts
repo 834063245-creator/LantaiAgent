@@ -12,6 +12,7 @@
 // kernelWriteFile（rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站到
 // helper 层（不再拦 bridge + legacyDispatchShim 翻信封）。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { logText } from './helpers/session-files';
 

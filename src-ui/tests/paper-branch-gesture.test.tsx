@@ -11,6 +11,7 @@
 //   ③ 拖动中 Esc / 松手落回原块 / 松手落在纸外 ⇒ 取消（不立卷、不留定位请求）。
 // 入口是**加法**：动作行里的「立枝」照旧（守护 = tests/paper-block-branch-op.test.tsx）。
 
+import './helpers/kernel-registry';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

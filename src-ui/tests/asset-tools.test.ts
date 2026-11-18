@@ -7,6 +7,7 @@
 // 协议：docs/archive/agent-asset-blocks.md §2.5/§2.6/§2.7（show_asset/update_asset/
 // list_block_kinds + 报错带窗 + Asset/AssetDelta 路由）。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../src/agent/agent-types';
 

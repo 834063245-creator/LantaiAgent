@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 import { cacheText, logText } from './helpers/session-files';

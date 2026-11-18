@@ -13,6 +13,7 @@
 // 破测（2026-09-15 逐条注入验证，见 commit message）：retain 不接线 / release 不挂
 // effect / plan 前缀判定放宽 / 归零不 stop / 失败静默吞 —— 各自用例必须能红。
 
+import './helpers/kernel-registry';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';

@@ -12,6 +12,7 @@
 // 本测试钉转发契约：AgentRuntime.createAgent 产出的句柄（真链路——与
 // workspace 工厂、chat-core 消费的是同一个实现）必须把 images 原样交给 Agent。
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 
 // ── bridge mock（同 agent-lifecycle-dispose.test.ts 的模式）──

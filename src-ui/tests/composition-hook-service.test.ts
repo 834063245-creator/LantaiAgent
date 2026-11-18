@@ -16,6 +16,7 @@
 // 零漂移守护：无贡献环境（convergence 夹具/生产初态）折叠为空集，
 // phase 快照不受影响（verify:convergence 双 preset 实测）。
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 import { AgentEventBus, attachHookRegistry, attachPreflightRegistry } from '../src/agent/events';
 import { activeHookContributions, type HookContribution, hooksServicePlugin } from '../src/composition/hook-service';

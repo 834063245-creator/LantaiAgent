@@ -9,6 +9,7 @@
 //   · ② 零目录卷/跨工作区开卷已退役（D2/D5：会话只在所属工作区内打开）
 // mock 模式沿用 chat-session.test.ts（mockRpc 归一化 + 路径键实现式 mock）。
 
+import './helpers/kernel-registry';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 import { logText } from './helpers/session-files';

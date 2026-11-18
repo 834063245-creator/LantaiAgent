@@ -12,6 +12,7 @@
 //   ③ 后台任务通知（bg:note 的 bus 段）→ 空闲父卷被唤醒 + 通知进上下文；owner 不在册
 //      = 投递被拒（null）——记档：通知留在 Rust 有界队列，靠 bash_output 兜底拉取。
 
+import './helpers/kernel-registry';
 import { describe, expect, it, vi } from 'vitest';
 // 批 6c：出厂 hook 实现（state-hooks 产物）在生产由装载器常驻登记；
 // service 类 ⇒ 缺实现装配期 fail-loud——本文件自行装配 Agent，须先复现该登记态。

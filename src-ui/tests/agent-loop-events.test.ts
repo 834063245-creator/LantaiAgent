@@ -9,6 +9,7 @@
 //      step/end → turn/end（单轮无工具路径），载荷字段逐项断言
 //   ④ 监听 disposer 生效（dispose 后不再收到事件）
 
+import './helpers/kernel-registry';
 import { describe, expect, it } from 'vitest';
 // 批 6d-2：压缩实现（compaction 产物）在生产由装载器常驻登记；
 // service 类 ⇒ 缺实现在调用点 fail-loud——本文件自行装配/驱动 Agent，须先复现该登记态。
