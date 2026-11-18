@@ -55,12 +55,14 @@ import {
   setMorphBox,
   useDockStore,
   useDraftSheetStore,
+  useShelfStore,
   WinControls,
 } from './host';
 import { InkLayer } from './InkLayer';
 import { blockHasView, needsObservedHeight, observedKeyOf } from './measure';
 import { BlockView, DeskShelf, EMPTY_OPS, folioSubLine } from './paper-panel-parts';
 import { type ProvenanceState, provenanceText, provenanceTitle, provenanceTraceable } from './provenance';
+import { ShelfOverlay } from './ShelfOverlay';
 import { StatusLine } from './StatusLine';
 import { sheetCharacter } from './sheet';
 import { ToastHost } from './ToastHost';
@@ -860,6 +862,17 @@ export function PaperPanel() {
               </button>
             </div>
             <StatusLine running={activeRunning} />
+            {/* 架阁（entity-shelf-plan B3，2026-12-08 用户拍板）：顶部浮件一枚两字件，
+                与「画布 / 设置 / 回首页」同排同规格；点开是那本两页浮层（软件型 / 卡片型）。
+                排在设置左侧——设置是"改配置"，架阁是"看我手上有什么"，后者更常用。 */}
+            <button
+              type="button"
+              className="pp-settings"
+              data-tip="架阁：我手上的软件与卡片"
+              onClick={() => useShelfStore.getState().openShelf()}
+            >
+              架阁
+            </button>
             <button
               type="button"
               className={`pp-settings${updateAvailable ? ' has-update' : ''}`}
@@ -950,6 +963,8 @@ export function PaperPanel() {
         </div>
       </PaperRegionContext.Provider>
       <ToastHost />
+      {/* 架阁浮层（B3）：常挂在纸壳根——开合由 shelf-store 决定，关着 = 零渲染。 */}
+      <ShelfOverlay />
     </PaperDockContext.Provider>
   );
 }

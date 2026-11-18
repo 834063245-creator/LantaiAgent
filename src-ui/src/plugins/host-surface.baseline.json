@@ -1,5 +1,5 @@
 {
-  "fingerprint": "aaabe973",
+  "fingerprint": "7c697d66",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -204,6 +204,7 @@
     "leaveToHome",
     "listAssetStateSummaryForOwner",
     "listAssets",
+    "listCards",
     "listCommands",
     "llmDone",
     "llmError",
@@ -361,8 +362,10 @@
     "usePaperRegion",
     "usePluginPrefs",
     "usePluginStore",
+    "usePluginWindowStore",
     "usePresetStore",
     "useSessionVolumesStore",
+    "useShelfStore",
     "useShellStore",
     "useToastStore",
     "useUpdateStore",

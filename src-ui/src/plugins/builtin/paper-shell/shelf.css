@@ -1,0 +1,144 @@
+@import "../../../app/type-scale.css";
+
+/* 架阁浮层（docs/plans/entity-shelf-plan.md B3）——纸片规格**照 `.pp-toc-card` 取**：
+   纸底 / 强线 / 菜单落影 / 宋体位，**刻意不透明**（半透明会与底下正文糊字，
+   app/tip/tip.css 头注已立此判据）。不新造色、不新造动效、不加图标。 */
+
+.pp-shelf-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--ink-1) 16%, transparent);
+}
+
+.pp-shelf {
+  width: min(680px, calc(100vw - 96px));
+  max-height: min(72vh, 620px);
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border: var(--rule-strong);
+  border-radius: 0;
+  box-shadow: var(--elev-menu);
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  color: var(--ink-1);
+  overflow: hidden;
+}
+
+.pp-shelf-head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding: 14px 18px 10px;
+  border-bottom: var(--rule-strong);
+}
+
+.pp-shelf-title {
+  font-size: calc(var(--fs-body) * 1.15);
+  letter-spacing: 0.08em;
+}
+
+.pp-shelf-tabs {
+  display: flex;
+  gap: 14px;
+  margin-left: auto;
+}
+
+.pp-shelf-tab {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  color: var(--ink-1);
+  opacity: 0.5;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+}
+
+.pp-shelf-tab.is-on {
+  opacity: 1;
+  border-bottom-color: currentColor;
+}
+
+.pp-shelf-close {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 1.1em;
+  line-height: 1;
+  color: var(--ink-1);
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.pp-shelf-close:hover {
+  opacity: 1;
+}
+
+.pp-shelf-body {
+  overflow-y: auto;
+  padding: 6px 0 10px;
+}
+
+.pp-shelf-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pp-shelf-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 18px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pp-shelf-item.is-static {
+  cursor: default;
+}
+
+.pp-shelf-item:hover:not(.is-static) {
+  background: color-mix(in srgb, var(--ink-1) 6%, transparent);
+}
+
+.pp-shelf-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-shelf-meta {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: calc(var(--fs-body) * 0.86);
+  opacity: 0.55;
+}
+
+.pp-shelf-empty,
+.pp-shelf-error {
+  margin: 0;
+  padding: 22px 18px 26px;
+  line-height: 1.8;
+  opacity: 0.66;
+}
+
+.pp-shelf-error {
+  opacity: 1;
+  color: var(--fail);
+}

@@ -39,6 +39,10 @@ export const useAskPendingStore = impl.useAskPendingStore;
 // 架阁（2026-12-08 B2）：收进架阁的读写两件（形状对拍 host.ts）。
 export const getAssetState = impl.getAssetState;
 export const shelveCard = impl.shelveCard;
+// 架阁浮层（B3）：软件口径 + 卡片 RPC + 开合账（形状对拍 host.ts）。
+export const listCards = impl.listCards;
+export const usePluginWindowStore = impl.usePluginWindowStore;
+export const useShelfStore = impl.useShelfStore;
 export const ANCHOR = impl.ANCHOR;
 export const autoPanVector = impl.autoPanVector;
 export const layoutRegion = impl.layoutRegion;

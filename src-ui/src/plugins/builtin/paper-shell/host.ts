@@ -28,7 +28,7 @@ export interface FolioAskBadgeCore {
  * 模块级状态，必须走桥）+ 写卡片库（shelveCard，内核实现口径）。faceDeps 两键均在
  * host-modules：getAssetState 既有，shelveCard 本批新增。 */
 export { getAssetState } from '../../../agent/asset-state';
-export { shelveCard } from '../../../agent/card-library';
+export { listCards, shelveCard } from '../../../agent/card-library';
 export { Icon } from '../../../app/Icon';
 export { useDialogEscape, useOutsideClose } from '../../../app/overlay';
 /* 保险丝 b（2026-09-03 生产事故立法）：渲染面错误边界——面组件/块渲染器
@@ -139,12 +139,16 @@ export {
   setMorphBox,
   useDraftSheetStore,
 } from '../../../state/draft-sheet-store';
+/* 架阁浮层（entity-shelf-plan B3）要用的两件：软件口径 = plugin-window-store 的
+ * defs/windows/openWindow；开合账 = shelf-store（纯 UI 状态，纸壳字件写、浮层读）。 */
+export { usePluginWindowStore } from '../../../state/plugin-window-store';
 /* 卷首组合芯片（S6 P5a）读面：preset 清单 / 全局选择态 / 装载失败原因。
  * 写面与空白判据不经本出口——它们走 core 的能力位（sessionComposition /
  * isSessionBlank / selectSessionPreset，与创作坞芯片同一套）。faceDeps 已含该
  * key（host-modules.ts 的 usePresetStore，compose-dock 在用），故只补本文件与
  * host.aliased.ts 两处 + gen:host-surface 重生成。 */
 export { usePresetStore } from '../../../state/preset-store';
+export { useShelfStore } from '../../../state/shelf-store';
 /* ⚡ 2026-09-28（A4 销账第一笔）：toast store **必须走桥**——ToastHost 是 toast 通道的
  * 唯一渲染器，而全部生产者在内核侧；直引内核路径会被产物构建内联成第二份 store，
  * 打包态 toast 一条都不显示（开发域单实例 ⇒ 单测看不出来）。 */
