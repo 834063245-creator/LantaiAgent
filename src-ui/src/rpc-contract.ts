@@ -564,6 +564,17 @@ export interface RpcContract {
   plugin_data_write: { params: { name: string; path: string; content: string }; result: string }; // "null"
   plugin_data_delete: { params: { name: string; path: string }; result: string }; // "null"
 
+  // ── 卡片库（架阁存储底座，entity-shelf-plan B1）─────────────
+  // 卡片包 = <cardsRoot>/<cardId>/{card.json,state.json}，根 = ~/.lantai/cards/
+  // （HOLOGRAM_CARD_ROOT 可覆盖）。收进架阁 = **用户手势**（非 Agent 工具面，
+  // D3）；围栏 / 64 KiB 预算 / 拓印不覆盖 / .trash 回收全在 Rust
+  // commands/card_store.rs（测试钉死）。
+  card_shelve: { params: { card_json: string; state_json?: string }; result: string }; // JSON — {cardId, dir}
+  card_list: { params: Record<string, never>; result: string }; // JSON — {cards:[{cardId,kind,title,shelvedAt,stateBytes,dirBytes}], skipped:[{cardId,error}]}
+  card_read: { params: { card_id: string }; result: string }; // JSON — {card, state}
+  card_state_write: { params: { card_id: string; patch_json: string }; result: string }; // JSON — {bytes}
+  card_delete: { params: { card_id: string }; result: string }; // JSON — {cardId, trashed}
+
   // ── Agent 隔离（worktree）────────────────────────────────
   agent_isolation_create: { params: { agent_id: string }; result: string }; // JSON
   agent_isolation_diff: { params: { agent_id: string }; result: string }; // JSON
@@ -1090,6 +1101,31 @@ export const rpcResultSchemas = {
       entries: z.array(z.object({ name: z.string(), is_dir: z.boolean(), size: z.number() }).passthrough()),
     })
     .passthrough(),
+  // card_*（架阁存储底座，entity-shelf-plan B1）：shelve={cardId,dir}；
+  // list={cards:[…],skipped:[…]}（坏卡进 skipped，不炸全表）；read={card,state}；
+  // state_write={bytes}；delete={cardId,trashed}（trashed 可空 = 目标本就不存在）。
+  card_shelve: z.object({ cardId: z.string(), dir: z.string() }).passthrough(),
+  card_list: z
+    .object({
+      cards: z.array(
+        z
+          .object({
+            cardId: z.string(),
+            kind: z.unknown(),
+            title: z.unknown(),
+            shelvedAt: z.unknown(),
+            stateBytes: z.number(),
+            dirBytes: z.number(),
+          })
+          .passthrough(),
+      ),
+      skipped: z.array(z.object({ cardId: z.string(), error: z.string() }).passthrough()),
+    })
+    .passthrough(),
+  // state 恒为 object（Rust normalize_state 兜底；手改坏文件 ⇒ 违形 throw，不静默读成空）。
+  card_read: z.object({ card: z.unknown(), state: z.record(z.string(), z.unknown()) }).passthrough(),
+  card_state_write: z.object({ bytes: z.number() }).passthrough(),
+  card_delete: z.object({ cardId: z.string(), trashed: z.nullable(z.string()) }).passthrough(),
   // 随包图谱引擎探测（2026-09-24 补收编）：恒 JSON 对象；三字段可空（未找到 =
   // path/dir 为 null、available false，非错误）。收编后消费面走 typedJsonRpc ⇒
   // 双形态兼容（Rust 出口已展开 / 表外仍字符串）+ 违形即 throw（不再静默读成 false）。

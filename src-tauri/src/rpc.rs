@@ -222,6 +222,12 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // read = 文件内容文本 / write/delete = ok_unit "null"——Text（默认臂）。
         "plugin_data_ensure" | "plugin_data_list" => RpcResultShape::JsonValue,
 
+        // ── 卡片库（架阁存储底座，entity-shelf-plan B1）──
+        // shelve/list/read/state_write/delete 全部 ok_json（对象或数组）⇒ JsonValue。
+        "card_shelve" | "card_list" | "card_read" | "card_state_write" | "card_delete" => {
+            RpcResultShape::JsonValue
+        }
+
         // ── 随包图谱引擎探测（engine-bundled-mcp-distribution）──
         // engine_bundled_info：serde_json::json!({path,dir,available}) 恒合法 JSON。
         // **2026-09-24 补登记**：此前漏登记 ⇒ 落默认臂 Text ⇒ 出口把 JSON 当**字符串**
@@ -916,6 +922,58 @@ async fn dispatch_rpc(
         // canonicalize 前缀锁死 <dataRoot>/<插件名>/（命令体 commands/
         // plugin_data.rs——越界/junction 逃逸拒绝，测试钉死）。
         // ═══════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════
+        // 卡片库（架阁存储底座，entity-shelf-plan B1，5 个命令）：卡片包 =
+        // <cardsRoot>/<cardId>/{card.json,state.json}，根 = ~/.lantai/cards/。
+        // 收进架阁是**用户手势**，非 Agent 工具面（D3）——本表只服务前端
+        // 收纳面。围栏 / 64 KiB 预算 / 拓印不覆盖 / 原子写全部在
+        // commands/card_store.rs（测试钉死）。
+        // ═══════════════════════════════════════════════════════
+        "card_shelve" => {
+            let card_json = req_str(&params, "card_json", "card_shelve")?;
+            let state_json = opt_str(&params, "state_json").unwrap_or_default();
+            let r = tokio::task::spawn_blocking(move || {
+                commands::card_store::card_shelve(&card_json, &state_json)
+            })
+            .await
+            .map_err(|e| format!("card_shelve 任务失败: {e}"))?;
+            ok_json(r)
+        }
+        "card_list" => {
+            let r = tokio::task::spawn_blocking(commands::card_store::card_list)
+                .await
+                .map_err(|e| format!("card_list 任务失败: {e}"))?;
+            ok_json(r)
+        }
+        "card_read" => {
+            let card_id = req_str(&params, "card_id", "card_read")?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::card_store::card_read(&card_id)
+            })
+            .await
+            .map_err(|e| format!("card_read 任务失败: {e}"))?;
+            ok_json(r)
+        }
+        "card_state_write" => {
+            let card_id = req_str(&params, "card_id", "card_state_write")?;
+            let patch_json = req_str(&params, "patch_json", "card_state_write")?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::card_store::card_state_write(&card_id, &patch_json)
+            })
+            .await
+            .map_err(|e| format!("card_state_write 任务失败: {e}"))?;
+            ok_json(r)
+        }
+        "card_delete" => {
+            let card_id = req_str(&params, "card_id", "card_delete")?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::card_store::card_delete(&card_id)
+            })
+            .await
+            .map_err(|e| format!("card_delete 任务失败: {e}"))?;
+            ok_json(r)
+        }
+
         "plugin_data_ensure" => {
             let name = req_str(&params, "name", "plugin_data_ensure")?;
             let r = tokio::task::spawn_blocking(move || {

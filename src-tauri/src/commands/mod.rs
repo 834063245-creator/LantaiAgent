@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 pub mod browser_cap;
+pub mod card_store;
 pub mod composition;
 pub mod diag;
 pub mod editor_cap;

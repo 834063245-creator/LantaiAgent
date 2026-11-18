@@ -87,10 +87,13 @@ const DEBT: Record<string, number> = {
   'src-ui/src/plugins/builtin/settings-domain/settings-panel.css': 1300, // 现 1238
   'src-tauri/src/confined_fs.rs': 1300, // 现 1278
   'engine/src/analysis/explore.rs': 1300, // 现 1225
-  'src-tauri/src/rpc.rs': 1300, // 现 1254
+  // 架阁底座 B1（entity-shelf-plan §5.1）：card_* 五命令分派 + shape 登记跨了 1300 档
+  // ⇒ 抬到 1400（实测 1312；跨档 = 一次显式决策，本行为该决策记录）。
+  'src-tauri/src/rpc.rs': 1400, // 现 1312
   'src-tauri/src/agent_isolation.rs': 1300, // 现 1223
   'engine/src/plugins/mod.rs': 1200, // 现 1137（2026-11-15 补登记：一直超 LIMIT，此前账外）
-  'src-ui/src/rpc-contract.ts': 1200, // 现 1183
+  // 架阁底座 B1：卡片库 5 条契约 + 5 条 result schema 跨了 1200 档 ⇒ 抬到 1300（实测 1219）。
+  'src-ui/src/rpc-contract.ts': 1300, // 现 1219
   'src-ui/src/workspace.ts': 1200, // 现 1164
   'src-ui/src/paper/tool-present.ts': 1200, // 现 1104
   'src-tauri/src/permissions/mod.rs': 1200, // 现 1120

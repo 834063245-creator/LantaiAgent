@@ -39,6 +39,7 @@ fn capability_command_modules_are_frozen() {
     //  程序「基线加入/移出该模块 + commit 标注」执行。）
     let expected = vec![
         "browser_cap",
+        "card_store",
         "composition",
         // diag = 强制层诊断（日志可观测性批 4，commit 431d961a：诊断包导出
         // `diag_export` RPC，只读 UI/bridge/boot 日志——强制层审计面同族）。

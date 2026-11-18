@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-10-29T06:18:46.546Z
-> 方法总数：57（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-11-18T02:32:29.143Z
+> 方法总数：62（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -19,7 +19,7 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `search_cap` | directory, pattern | is_agent, agent_id, _agent_id, file_types, use_regex, collect_lines, glob_filter, max_matches, max_files, context_lines | 字符串 |
+| `search_cap` | directory, pattern | is_agent, agent_id, _agent_id, file_types, use_regex, collect_lines, glob_filter | 字符串 |
 
 ## Graph
 
@@ -31,13 +31,13 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `git_cap` | action, repo_path | is_agent, agent_id, _agent_id, file, message, branch, files, count | 字符串 |
+| `git_cap` | action, repo_path | is_agent, agent_id, _agent_id, file, message, branch, files | 字符串 |
 
 ## 能力口（fs_cap）
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `process_cap` | action | is_agent, agent_id, _agent_id, owner_id, _owner_id, command, cwd, sticky_cwd, run_in_background, stream_tool_id, interpreter, capture_cwd, timeout_ms, office, job_id, wait_timeout_ms | 字符串 |
+| `process_cap` | action | is_agent, agent_id, _agent_id, owner_id, _owner_id, command, cwd, sticky_cwd, run_in_background, stream_tool_id, interpreter, capture_cwd, reason, timeout_ms, office, wait_timeout_ms, stdout_from, stderr_from | 字符串 |
 
 ## 能力口（git_cap）
 
@@ -111,17 +111,22 @@
 | `composition_dir` | — | open | 字符串 |
 | `providers_dir` | — | open | 字符串 |
 
-## OAuth 订阅平面
+## 插件安装通道
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
+| `card_shelve` | card_json | state_json | JSON 字符串 |
+| `card_list` | — | — | JSON 字符串 |
+| `card_read` | card_id | — | JSON 字符串 |
+| `card_state_write` | card_id, patch_json | — | JSON 字符串 |
+| `card_delete` | card_id | — | JSON 字符串 |
 | `plugin_data_ensure` | name | — | JSON 字符串 |
 | `plugin_data_list` | name | path | JSON 字符串 |
 | `plugin_data_read` | name, path | — | 字符串 |
 | `plugin_data_write` | name, path, content | — | `null`（unit） |
 | `plugin_data_delete` | name, path | — | `null`（unit） |
 
-## 插件安装通道
+## 插件数据目录
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -132,13 +137,13 @@
 | `agent_isolation_status` | — | — | 字符串 |
 | `agent_isolation_force_purge` | agent_id | — | 字符串 |
 
-## 插件数据目录
+## Agent 隔离（worktree）
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `sandbox_status` | — | — | 字符串 |
 
-## Agent 隔离（worktree）
+## 外部服务
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -159,6 +164,7 @@ payload 类型见 `src-ui/src/rpc-contract.ts` 的 `EventContract`（前端类�
 |--------|--------|
 | `bg:note` | src-tauri/src/utils/bg_jobs.rs |
 | `composition:changed` | src-tauri/src/composition_watcher.rs |
+| `job:changed` | src-tauri/src/utils/bg_jobs.rs |
 | `lsp-message` | src-tauri/src/lsp_manager.rs |
 | `permission-ask` | src-tauri/src/utils/path_resolve.rs |
 | `protocol-bridge:exit` | src-tauri/src/commands/protocol_bridge.rs |

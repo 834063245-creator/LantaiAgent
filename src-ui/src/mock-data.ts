@@ -69,6 +69,28 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): unknown
     };
   }
 
+  // 卡片库（架阁存储底座，entity-shelf-plan B1）：形状真源 = commands/card_store.rs。
+  // 浏览器 dev 无盘权 ⇒ **空库形状**（诚实：dev 里看不到真实卡片，也不假装有）；
+  // 写类命令返回合成成功形状，只用于跑通界面接线，不落任何地方。
+  if (cmd === 'card_shelve') {
+    const cardId = 'mock-card-1';
+    return { cardId, dir: 'mock://cards/' + cardId };
+  }
+  if (cmd === 'card_list') {
+    return { cards: [], skipped: [] };
+  }
+  if (cmd === 'card_read') {
+    const cardId = typeof args?.card_id === 'string' ? args.card_id : 'mock-card-1';
+    return { card: { cardId, kind: 'html', title: '（浏览器 dev 占位卡）' }, state: {} };
+  }
+  if (cmd === 'card_state_write') {
+    return { bytes: 2 };
+  }
+  if (cmd === 'card_delete') {
+    const cardId = typeof args?.card_id === 'string' ? args.card_id : 'mock-card-1';
+    return { cardId, trashed: null };
+  }
+
   // 首页工作区清单（2026-09-01 三轴面审种子）：浏览器 dev 此前恒空态，
   // 首页数据态无法取证。两行覆盖面：置顶+活跃 / 非置顶+昨日+无注册名。
   if (cmd === 'workspace_list') {
