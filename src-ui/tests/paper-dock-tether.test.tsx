@@ -227,8 +227,13 @@ describe('匣脚引线（坞的版口钮 → 活卷的纸脚）', () => {
     await act(async () => {
       useCanvasViewStore.getState().setView((v) => ({ ...v, ...VIEW }));
     });
-    const slot = container.querySelector('.pp-composer-slot') as HTMLDivElement;
-    expect(slot).not.toBeNull();
+    const slot = container.querySelector('.pp-composer-slot') as HTMLDivElement | null;
+    /* 零卷（2026-11-28 案头态退役）：坞槽整只不渲染 ⇒ 没有坞可锚，跳过几何桩
+     * （该用例只断言「线不画」）。有卷时坞必须在场——否则本组用例测的是空气。 */
+    if (!slot) {
+      expect(sessions.length, '有卷却没有坞槽：坞的渲染判据坏了').toBe(0);
+      return container;
+    }
     // 坞槽实测矩形（jsdom 无布局：RO 桩 + 实例方法覆盖）——默认位或用户摆过的位
     const left = opts.dockPos?.left ?? (VW - DOCK_W) / 2;
     const bottom = opts.dockPos?.bottom ?? 96;
@@ -347,10 +352,11 @@ describe('匣脚引线（坞的版口钮 → 活卷的纸脚）', () => {
     expect(layer()).toBeNull();
   }, 30_000);
 
-  it('案头态（零摊开卷）⇒ 不画线（匣退、版口钮本就不画）', async () => {
+  it('零卷（案头态已退役）⇒ 无坞可锚 ⇒ 不画线', async () => {
     await mount({ sessions: [] });
     expect(layer()).toBeNull();
-    expect(container?.querySelector('.pp-composer-slot')?.className).toContain('pp-at-desk');
+    // 2026-11-28：零卷时坞槽整只不渲染（出生面 = 待题纸）——连「无钮的坞」都不在场
+    expect(container?.querySelector('.pp-composer-slot'), '零卷不该有创作坞').toBeNull();
   }, 30_000);
 
   /* 2026-11-15 V2（用户报「创作坞的引导线在点击新建后依然存在于老会话和原本应该有

@@ -62,7 +62,8 @@
 **判据一句话**：没按下发送 = 这张纸**还不存在**（不占卷号、不落盘、侧栏看不见）。
 
 **为什么砍掉「开卷」按钮**：开卷的真实含义就是「我说了第一句话」。仓库里这条判据早有先例——
-无主态坞的「开口即开卷」（`ComposerDock` 的 `onSend`：无活跃卷 → 先建卷再把这句话发出去），
+无主态坞的「开口即开卷」（`ComposerDock` 的 `onSend`：无活跃卷 → 先建卷再把这句话发出去；
+**该分支已于 2026-11-28 随案头坞退役整段删除**——零卷时坞槽不渲染，出生面只剩这张纸），
 而「空白卷跑第一轮之前仍可拨组合」也已由 `isSessionBlank` 的空白闸兜住。⇒ 题签的「不可晚定」
 不需要靠一个按钮来保护，**第一次发送就是那道闸**。
 
@@ -300,17 +301,17 @@ ModelSelector 的触发器/弹层规则全写在 `.pp-composer` 作用域下（`
 | 同屏物 | 内容 | 后果 |
 |---|---|---|
 | 空态块 `.pp-empty`（z2，压在 world 之上） | LANTAI · BLANK SHEET /「案上无卷，落笔即起」/ CTA / 引导句 / 花押三星 | 直接压在题签上（用户报的那一幕） |
-| 案头形态 `pp-at-desk` + `DeskShelf` | 坞退匣直书、坞下挂「续 · 卷名」签条架 | 同样的重叠 |
+| 案头形态 `pp-at-desk` + `DeskShelf` | 坞退匣直书、坞下挂「续 · 卷名」签条架 | 同样的重叠（**该形态 2026-11-28 整体退役**：零卷时坞槽不渲染，签条架搬进空态块） |
 
 **修法：把「纸在场」并进这两条判据**（一处判据两处消费，不新增状态）：
-空态 `sessions.length === 0 && !draftOpen`；案头态 `desk = sessions.length === 0 && !draftOpen`。
+空态 `sessions.length === 0 && !draftOpen && !draftMorph`；案头态（已退役，判据随形态删除）。
 ⚠ `draftOpen` 必须**订阅**（`useDraftSheetStore((s) => s.open)`）——用 `getState()`
 开纸那一刻不重渲，坞会停在案头形态。
 
 ![修复前：空态压在题签上](../../assets/draft-empty-overlap-before.png)
 ![修复后：纸摊开 = 出生面在场，空态与案头整块退场](../../assets/draft-empty-no-overlap.png)
 
-钉子：`tests/paper-draft-empty-overlap.test.tsx`（空态退场）+ `tests/paper-draft-desk-mode.test.tsx`（案头退场）。
+钉子：`tests/paper-draft-empty-overlap.test.tsx`（空态退场）+ `tests/paper-empty-no-dock.test.tsx`（零卷坞槽不渲染 / 签条架在空态块里；**2026-11-28 由 paper-draft-desk-mode.test.tsx 改写而来**——旧行为「案头形态退场」随形态退役，新行为从用户操作序列重写）。
 
 ## 6.7 一条新纪律：待题纸不建卷，故**所有「零卷」判据都要排除它**
 
@@ -320,7 +321,7 @@ ModelSelector 的触发器/弹层规则全写在 `.pp-composer` 作用域下（`
 | 判据 | 纸在场时本应 | 已处理 |
 |---|---|---|
 | 空态块 `.pp-empty` | 退场（纸就是出生面） | ✅ `&& !draftOpen` |
-| 案头形态 `pp-at-desk` + 签条架 | 退场（坞照常、不出架） | ✅ `&& !draftOpen` |
+| 案头形态 `pp-at-desk` + 签条架 | ~~退场（坞照常、不出架）~~ **随形态退役**（坞整只不渲染；架搬进空态块，随空态块退场） | ✅ 判据删净 |
 | 见底呼吸线 / 落笔点 | 不受影响（读的是运行态，不是卷数） | — 无需改 |
 | 匣脚引线 | 不受影响（`activeSessionKey === null` 时不画，本来就不该画） | — 无需改 |
 

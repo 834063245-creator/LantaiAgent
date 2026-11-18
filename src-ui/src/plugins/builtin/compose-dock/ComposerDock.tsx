@@ -181,7 +181,6 @@ const ComposerSurface = memo(function ComposerSurface({
     core,
     isSheet,
     activeSidNum: session.activeSidNum,
-    notice,
     composerRef,
     inputText: session.inputText,
     setInputText: session.setInputText,

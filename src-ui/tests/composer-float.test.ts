@@ -150,8 +150,8 @@ describe('创作坞浮动化 · 版口引线坞侧锚点（坞顶左端版口钮
     expect(tick).toContain(`width: ${COMPOSER_TICK_W}px`);
     expect(tick).toContain(`height: ${COMPOSER_TICK_H}px`);
     expect(tick).toContain('var(--seal)'); // 朱砂短横——与活卷那枚同墨（红对红）
-    // 案头态（匣退）：钮 content:none ⇒ 锚点不在场，引线随之不画（空态诚实）
-    expect(ruleBody(PANEL_CSS, '.pp-composer-slot.pp-at-desk .pp-composer::before {')).toContain('content: none');
+    // 2026-11-28：案头态（pp-at-desk）退役 ⇒ 钮不再有「退匣」变体，本断言随形态删除
+    // （零卷时坞整只不渲染——没有坞，也就没有坞侧锚点）。
   });
 });
 

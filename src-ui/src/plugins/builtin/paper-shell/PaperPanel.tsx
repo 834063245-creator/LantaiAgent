@@ -165,7 +165,6 @@ export function PaperPanel() {
     onStripPointerDown,
     composerOverlays,
     edgeOverlays,
-    desk,
     worldStyle,
     zoomLabel,
     totalBlocks,
@@ -281,7 +280,11 @@ export function PaperPanel() {
                 >
                   ＋ 另起一卷
                 </button>
-                <div className="pp-empty-hint">点签条可续写旧卷，或直接在下方案头落笔——开口即开卷</div>
+                {/* 续写签条架（2026-11-28 搬家）：原挂创作坞下缘、只在零卷时出没；坞在零卷态
+                 * 退役后它随空态块走——「上次写到哪」仍在眼前，不必开侧栏。无已存卷 / 无工作区
+                 * 时架自己退场（判据在组件内，空态块一字不知）。 */}
+                <DeskShelf core={core} />
+                <div className="pp-empty-hint">续写旧卷点签条 · 新卷落纸、题签后开卷</div>
                 <div className="pp-empty-asterism">⁂</div>
               </div>
             )}
@@ -877,14 +880,13 @@ export function PaperPanel() {
               本处不再渲染——见 plugins/builtin/paper-minimap/ */}
 
           {/* 覆盖层贡献行（Stage-4）：创作坞（composer 槽）在底栏，目次带（right-edge 槽）在右缘。
-              案头态（v2 + 2026-09-02 拍板 C）：位置两态恒同，只换形态（退匣直书）；
-              坞下方出流悬挂签条架（最近三卷续写——出没不推坞位）。
-              ⚠ 形态类刻意叫 pp-at-desk 不叫 pp-desk——与世界层桌垫 .pp-desk
-              同名会撞车（桌垫 top/height ±200000 接管槽，坞射出屏外，CSS 注释有案）。
               2026-09-17 浮动化：坞位 state 归 useComposerFloat（style 为 undefined
               = 无覆盖 = CSS 默认居中坐底）；**默认锁定**——点坞顶浮现的锁钮（移/锁，
               桌面歌词式）解锁后整坞才是抓手，双击坞体复位（判据在 composer-float.ts
-              的 isComposerDragSurface）。 */}
+              的 isComposerDragSurface）。
+              ⚡ 2026-11-28 案头态退役：**零卷时坞槽整只不渲染**（见下方条件）。旧形态
+              pp-at-desk（退匣直书 + 签条架）是待题纸之前的出生面，与「＋ 另起一卷」落纸
+              重复；出生面唯一 = 待题纸，「续写旧卷」签条架搬进空态块（.pp-empty）。 */}
           {/* ⚡ 2026-11-15 V2：纸在场时**坞槽整只不渲染**（不是隐藏输入条）——纸替坞。
               判据已订阅（焦点在纸上），开纸那一刻坞就退场，不留一帧两层叠着。**多纸改判**：
           判据是「焦点在纸上」，不是「纸在画布上」——纸摆在画布上不拿焦点时，坞照常对着
@@ -893,12 +895,12 @@ export function PaperPanel() {
               （`pp-composer-rise`）——题签期那条输入面在纸上、坞在屏底，两者差 475px，
               若让坞在终点直接出现，中间没有任何一帧交代「同一个东西挪过去了」，读作跳变。
               升起是连续位移，起点完全在屏外：它没有「出现」的那一帧。 */}
-          {(!draftFocusOn || draftMorphOpen) && (
+          {sessions.length > 0 && (!draftFocusOn || draftMorphOpen) && (
             // biome-ignore lint/a11y/noStaticElementInteractions: 坞槽承载拖坞手势（拖动面判据在 composer-float.ts 的 isComposerDragSurface——锁定态一律放行）
             <div
-              className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}${
-                composer.dragging ? ' pp-composer-dragging' : ''
-              }${composer.unlocked ? ' pp-composer-unlocked' : ''}${draftMorphOpen ? ' pp-composer-rise' : ''}`}
+              className={`pp-composer-slot${composer.dragging ? ' pp-composer-dragging' : ''}${
+                composer.unlocked ? ' pp-composer-unlocked' : ''
+              }${draftMorphOpen ? ' pp-composer-rise' : ''}`}
               ref={composer.slotRef}
               style={composer.style}
               data-pop-side={composer.popSide}
@@ -911,7 +913,6 @@ export function PaperPanel() {
                   <def.component />
                 </PluginBoundary>
               ))}
-              {desk && <DeskShelf core={core} />}
               {/* 化卷交接窗的病根**不在这里**（2026-11-15 实测更正）：坞本就随 `open` 转 false 当帧
                   挂上（订阅是同步的），空窗并不存在——原判据「两条订阅错拍」是误诊。真问题是
                   **纸整张盖在坞上**直到窗满（Z 序 + 不透明纸），于是坞那 260ms 的入场看不见。

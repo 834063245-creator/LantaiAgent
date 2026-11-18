@@ -587,24 +587,20 @@ export function usePaperPanelAssembly() {
   const composerOverlays = activeOverlayContributions('composer');
   const edgeOverlays = activeOverlayContributions('right-edge');
 
-  /* ── 案头态（创作坞 v2 2026-08-31）：零摊开卷——退匣直书 + 签条架陪衬。
-   * 2026-09-02 拍板 C：两态同位（--composer-rise 恒定抬高）——落笔发出
-   * 首句后坞不再沉降，只换装常驻匣；desk 只再管形态面（退匣/签条架/题字）。 ── */
-  /* 案头态（零摊开卷）。⚠ 判据必须**排除待题纸**（2026-11-15 用户报「文字和题签重叠」）：
-   * 待题纸不建卷 ⇒ sessions 仍是 0 ⇒ 若不排除，坞会退匣直书（案头形态）、并在坞下方
-   * 挂出「续 · 卷名」签条架——那两样与纸同屏，字直接压在一起。
-   * 「纸在场 = 出生面已经在场」这一条判据对**空态块**与**案头态**是同一条（两者同源：
-   * 都读 sessions 长度）。 */
-  // ⚠ 必须**订阅**（getState 不是响应式：开纸那一刻不会重渲，坞就停在案头形态）
-  /* **多纸改判（2026-11-17）**：判据 = **焦点在纸上**（不是「纸在画布上」）。
-   * 纸摆在画布上但不拿焦点时，坞照常是坞（对着活跃卷工作）——「纸在 ⇒ 坞消失」正是
-   * 用户报的「不能回头和已有会话交互」。 */
+  /* ── 案头态已退役（2026-11-28 用户拍板）：零卷时创作坞整只不渲染 ──
+   * 旧形态 = `pp-at-desk`（退匣直书 + 坞下挂「续 · 卷名」签条架）。它在「待题纸」
+   * （2026-11-14 立卷 UX）之后成了**第二条出生路径**：坞里打字直接建卷，绕过了题签 /
+   * 落点 / 化卷那一拍，而「＋ 另起一卷」已经落一张会打字的纸——同一件事两套行为。
+   * 现行口径：**坞的身份 = 这一卷的输入面**（「坞是视图不是容器」铁律的另一半），
+   * 零卷时它没有指向对象 ⇒ 不渲染。出生面唯一 = 待题纸；「续写旧卷」签条架搬进空态块。
+   * 坞槽的渲染判据因此收在 PaperPanel（它已订阅 sessions 与纸焦点），本钩子不再持 desk 态。
+   * 下面两条订阅**留着**：匣脚引线（dockTether）也要在纸期让位（线不能悬在空气里）。 */
+
+  /* 纸期判据（两条订阅；坞槽与引线各消费一次，同一把尺子）：
+   *   ① 焦点在纸上（多纸改判 2026-11-17：不是「纸在画布上」——纸摆着不拿焦点时坞照常工作）；
+   *   ② 化卷交接窗（纸已交卷但还在屏上）。 */
   const draftFocusOn = useDraftSheetStore((s) => s.focusedId !== null);
-  /* 化卷交接窗（V2-P3）：纸已交卷但还在屏上——它仍是「出生面在场」，
-   * 故案头态与坞槽的判据要和焦点一样把它算进去（同一条尺子两处消费）。 */
   const draftMorph = useDraftSheetStore((s) => Object.keys(s.morphs).length > 0);
-  const sheetPresent = draftFocusOn || draftMorph;
-  const desk = sessions.length === 0 && !sheetPresent;
 
   /* 世界层 transform */
   const worldStyle = useMemo(
@@ -809,7 +805,6 @@ export function usePaperPanelAssembly() {
     onStripPointerDown,
     composerOverlays,
     edgeOverlays,
-    desk,
     worldStyle,
     zoomLabel,
     totalBlocks,

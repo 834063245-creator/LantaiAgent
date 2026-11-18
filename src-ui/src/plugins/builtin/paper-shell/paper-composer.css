@@ -576,68 +576,11 @@
   margin: 2px 0 4px;
 }
 
-/* ── 案头（创作坞 v2 2026-08-31）：无摊开卷时坞的形态面──
- * 空态死白的解法：直书于纸 + 签条架陪衬（位置两态恒同，2026-09-02 拍板 C；
- * React 侧 sessions.length === 0 判定只再切形态类）。
- * ⚠ 类名刻意用 pp-at-desk 不用 pp-desk——世界层桌垫（.pp-desk，db397238
- * ±200000px 巨幅）同名撞车：槽带 pp-desk 会被桌垫的 top/height 接管，
- * bottom 因过约束被忽略 → 坞整体射出屏外（2026-09-02 CDP 实锤 top:-200000）。 */
-/* 案头无匣（dock-v3 转录收尾）：空态直书于纸——退匣（去 deep 底/顶线/版口钮），
- * 写字行坐基线，纸即界面；落笔发出首句换装常驻匣（位置不动）。 */
-.pp-composer-slot.pp-at-desk .pp-composer {
-  background: transparent;
-  border-top: none;
-  padding: 6px 2px 0;
-}
-.pp-composer-slot.pp-at-desk .pp-composer::before {
-  content: none;
-}
-/* 案头签条架：最近三卷「续写」签条（纸色签 + 楷体批注字，hover 朱砂）。
- * 出流悬挂于坞下方 14px（2026-09-02 拍板 C 附带）——架只随案头态出没，
- * 不进槽内布局流：坞位不因架出没而移。 */
-.pp-desk-shelf {
-  position: absolute;
-  top: calc(100% + 14px);
-  left: 0;
-  right: 0;
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.pp-desk-tag {
-  font-family: var(--f-kai);
-  font-size: var(--fs-body);
-  letter-spacing: 0.04em;
-  color: var(--ink-2);
-  background: var(--paper);
-  border: 1px solid var(--rule-soft-ink);
-  border-radius: 0;
-  padding: 6px 16px;
-  cursor: pointer;
-  max-width: 260px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition:
-    color var(--snap),
-    border-color var(--snap),
-    background var(--snap);
-}
-.pp-desk-tag:hover {
-  color: var(--seal-deep);
-  border-color: var(--seal);
-  background: var(--seal-soft);
-}
-.pp-desk-tag:active {
-  transform: translateY(1px);
-}
-.pp-desk-tag:first-child {
-  transform: rotate(-0.5deg); /* 签条微倾——手置纸签的自然感 */
-}
-.pp-desk-tag:last-child {
-  transform: rotate(0.4deg);
-}
+/* ── 案头坞形态（pp-at-desk）与签条架已于 2026-11-28 退役 ──
+ * 零卷时坞槽整只不渲染（判据在 PaperPanel），故这里不再有「退匣直书」那一态；
+ * 签条架搬进空态块（样式随件迁 paper-ops.css 的 .pp-empty 段）。
+ * 曾用类名 pp-at-desk 而非 pp-desk，为避开世界层桌垫 .pp-desk（同名会被它的
+ * top/height ±200000 接管，坞射出屏外）——随本形态退役，该陷阱只剩历史注记。 */
 /* ── 书眉行（2026-09-06 续批：三行制之顶行）——卷名左端 + 翰/律/后台卷指示
  *    右端；坞的顶行恒是书眉，三控件（模型/权限/思考）归设置行垫底。
  *    2026-09-17 浮动化：书眉行**不再是唯一抓手**（解锁后整坞可拖，见下方

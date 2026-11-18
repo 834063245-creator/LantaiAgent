@@ -181,13 +181,22 @@
 .pp-draft-stack {
   display: flex;
   flex-direction: column;
-  padding-top: calc(var(--draft-folio-h, 0px) + 6px);
+  /* **绝不缩**（2026-11-18 化卷错位批）：纸的盒高由本栈实测撑出来（组件住 RO 观察
+   * 的就是本元素）。`.pp-draft-sheet` 是定高的 column flex 容器 ⇒ 默认 flex-shrink:1
+   * 会把本栈压回容器高、量出来永远等于盒高（旧实现量的是纸自己，同一个自指死循环：
+   * 「纸高随内容长」是死代码，输入面多写几行就冲出纸脚）。 */
+  flex: none;
+  /* 天头让位 = 卷首实测高（FOLIO_TOKENS 契约）。**不加任何余量**：
+   * 卷的正文从 `regionTop` 起，而卷首盒底在 `regionTop − FOLIO_HEAD_GAP`——
+   * 也就是说「纸上的正文基线」与「卷上的正文基线」必须逐像素相等，否则化卷
+   * 那一刻正文会跳（2026-11-18 前此处是 `+ 6px`，即 6 像素的确定性错位）。 */
+  padding-top: var(--draft-folio-h, 0px);
   /* 下缘留一档（纸脚是材料缘，控件不贴边） */
   padding-bottom: 18px;
 }
 
 /* 纸上的坞（ComposerDock variant='sheet'）：**去匣**——纸即界面，不再给坞一层壳
- * （同案头形态 .pp-at-desk 的判据：常驻匣退匣，纸面直书）。只留坞顶那条硬线
+ * （与旧案头形态 .pp-at-desk 同一条判据：常驻匣退匣，纸面直书；后者 2026-11-28 退役）。只留坞顶那条硬线
  * 作为「天头 / 正文」的分区（§10 浸墨③：屏级分区用硬线，不用框）。 */
 .pp-draft-sheet .pp-composer {
   min-height: 0;

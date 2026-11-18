@@ -697,13 +697,13 @@
  * ②pointer-events 只禁整块，CTA 按钮（.pp-empty-cta）单独开 auto（旧代码整块
  * none 把新开卷按钮的点击一票否决，完全失灵）。 */
 .pp-empty {
-  /* 案头（2026-08-31）：坞升案头当主角后，空态题字上移让位（36% 居上，
-   * 案头坞在下方 var(--composer-rise)（96px 固定）处——同屏不叠） */
+  /* 2026-11-28：案头坞退役后空态块**垂直居中**（旧 36% 是为下方坞让位；坞不在，
+   * 整块构图 = 题字 + CTA + 续写签条，居中成一叶）。 */
   position: absolute;
   /* 材质批修复（2026-09-01）：world 内有了不透明桌垫（.pp-desk），空态在 world
    * 之前且无 z 会被桌垫盖住——提层到世界单元之上 */
   z-index: 2;
-  top: 36%;
+  top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
@@ -792,4 +792,51 @@
   letter-spacing: 0.6em;
   text-indent: 0.6em; /* 星距补偿 text-align 居中偏移 */
   color: var(--ink-4);
+}
+
+/* ── 续写签条架（2026-11-28 迁入空态块）──
+ * 原挂创作坞下缘（.pp-composer-slot 的绝对定位子件，只在案头态出没）；零卷坞退役后
+ * 它随空态块走：**走正常流**（不再 top:100% 悬挂），空态块自己撑高。
+ * 签条语言不变：纸色签 + 楷体批注字（手迹位），hover 朱砂落笔。
+ * ⚠ 父盒 .pp-empty 是 pointer-events:none —— 架必须自己开 auto，否则点不中。 */
+.pp-desk-shelf {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  pointer-events: auto;
+}
+.pp-desk-tag {
+  font-family: var(--f-kai);
+  font-size: var(--fs-body);
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  background: var(--paper);
+  border: 1px solid var(--rule-soft-ink);
+  border-radius: 0;
+  padding: 6px 16px;
+  cursor: pointer;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    color var(--snap),
+    border-color var(--snap),
+    background var(--snap);
+}
+.pp-desk-tag:hover {
+  color: var(--seal-deep);
+  border-color: var(--seal);
+  background: var(--seal-soft);
+}
+.pp-desk-tag:active {
+  transform: translateY(1px);
+}
+.pp-desk-tag:first-child {
+  transform: rotate(-0.5deg); /* 签条微倾——手置纸签的自然感 */
+}
+.pp-desk-tag:last-child {
+  transform: rotate(0.4deg);
 }

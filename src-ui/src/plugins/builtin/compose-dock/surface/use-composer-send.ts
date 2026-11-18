@@ -29,7 +29,6 @@ export interface ComposerSendInput {
   core: ChatCore | null;
   isSheet: boolean;
   activeSidNum: number | null;
-  notice: (text: string, level?: 'info' | 'warn' | 'error') => void;
   composerRef: RefObject<HTMLTextAreaElement | null>;
   /** 正文（autoGrow 的重跑触发器：正文变 → 高度重算）。 */
   inputText: string;
@@ -48,7 +47,6 @@ export function useComposerSend({
   core,
   isSheet,
   activeSidNum,
-  notice,
   composerRef,
   inputText,
   setInputText,
@@ -136,22 +134,11 @@ export function useComposerSend({
       await core.sendMessage();
       return;
     }
-    const sessSt = getChatStore(core.panelId).sess.getState();
-    if (sessSt.activeIdx < 0 || !sessSt.sessions[sessSt.activeIdx]) {
-      // 开口即开卷（2026-08-31 拍板）：无活跃卷 → 先建卷再把这句发出去。
-      // 创作坞不再是无主死端——「落笔」本身就是最显式的出生动作。
-      // createNewSession 内部 restoreSessionDraft 会清 live 输入——正文先存后还。
-      await core.createNewSession();
-      const after = getChatStore(core.panelId).sess.getState();
-      if (after.activeIdx < 0 || !after.sessions[after.activeIdx]) {
-        // 建卷失败（未绑定目录等）——createNewSession 已弹 warn，这里兜底可见
-        notice('当前没有活跃会话——请先在首页新建或指定工作区。', 'warn');
-        return;
-      }
-      getChatStore(core.panelId).input.getState().setInputText(t);
-    }
+    /* 2026-11-28：`开口即开卷`（无活跃卷 → 先建卷再发）随案头坞退役——零卷时坞槽
+     * 整只不渲染（判据在 PaperPanel），本件只可能在**有卷**时被点到。出生面唯一 =
+     * 待题纸（纸期走上方的 isSheet 分支，起卷编排在 ChatCore.sendMessage 的纸在场分支）。 */
     await core.sendMessage();
-  }, [core, notice, isSheet]);
+  }, [core, isSheet]);
 
   /* ── 输入行的键盘分发（C3）────────────────────────────────────────────
    * 三条优先级，**顺序即规格**（挪动任意一条都会改变键义）：

@@ -326,11 +326,14 @@ export function folioSubLine(r: RegionView): string {
   return date ? `${date} · ${r.blocks.length} 块` : `${r.blocks.length} 块`;
 }
 
-/* ── 案头签条架（创作坞 v2 2026-08-31）──
- * 空态三件套之一：最近三卷「续写」签条（手迹位批注字，hover 朱砂——样式见
+/* ── 案头签条架（创作坞 v2 2026-08-31；2026-11-28 迁入空态块）──
+ * 最近三卷「续写」签条（手迹位批注字，hover 朱砂——样式见 paper-ops.css 的
  * .pp-desk-shelf）。数据 = listSavedSessions（savedAt 倒序取三）；点击 =
  * activeSpace().expand 摊开 + requestFocus 定位（SessionSidebar 同款手势）。
- * 只在案头态（零摊开卷）渲染；无已存卷/无工作区 = 架空。 */
+ *
+ * **位置变更（2026-11-28 用户拍板 A）**：原挂创作坞下缘、只在「案头态」出没；
+ * 零卷坞退役后随空态块走（.pp-empty 内，正常流，不再是绝对定位的悬挂件）。
+ * 出没判据交给调用方（空态块本身只在零卷且无纸时渲染）；无已存卷/无工作区 = 架空。 */
 export function DeskShelf({ core }: { core: PaperCore | null }) {
   const [recent, setRecent] = useState<Array<{ id: number; label: string }>>([]);
   // 工作区路径（响应式）：进入画布时 projectPath 晚于本组件挂载——路径变化必须重拉
