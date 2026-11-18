@@ -14,6 +14,7 @@ import { buildVolumeTitlePrompt, parseVolumeTitleReply } from '../../../state/vo
 import { getChatStore } from '../../../ui/chat-store';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../../../workspace-scope';
 import { inheritedMessageCount } from '../session-log-store';
+import { isInternalMessage } from './session-types';
 
 /** 若会话**尚未命名**（空名，或旧存档遗留的默认名「案卷 N」/"会话 N"），则从第一
  *  条用户消息自动命名。在每轮对话完成后调用。sid 指定轮次所属卷（并发会话：后台卷
@@ -22,11 +23,14 @@ import { inheritedMessageCount } from '../session-log-store';
  *  这里严「\d+$」、读盘路径松「案卷␣前缀」，同一个名两条路答得不一样）。
  *  **枝卷只认自己的首条来文**（`inheritedMessageCount`）：继承来的前缀是父卷的复制，
  *  拿它起名 = 子卷顶着父卷的名（真机验收报的「卷名乱套」）。 */
-/** 本卷**自己的**首条来文：跳过继承前缀（枝卷）与压缩摘要注入。
- *  命名与概括共用同一判据——枝卷拿继承来的父卷首句起名是这个函数收口前的病灶。 */
+/** 本卷**自己的**首条来文：跳过继承前缀（枝卷）与内部注入（压缩摘要 / 记忆快照）。
+ *  命名与概括共用同一判据——枝卷拿继承来的父卷首句起名是这个函数收口前的病灶。
+ *  ⚡ 2026-11-18：记忆快照改 durable 后**真的会进 session**，不再只是瞬时尾部——
+ *  它落在系统提示之后、用户首句之前，不过滤就会「拿记忆库当卷名」。
+ *  判据复用 `isInternalMessage` 那一把尺子（与恢复/导出/撤回定位同源）。 */
 function ownFirstUserText(agent: ChatAgentHandle): string | null {
   const own = agent.getSession().slice(inheritedMessageCount(agent.sessionLog));
-  const first = own.find((m) => m.role === 'user' && m.content && !m.content.startsWith('<compacted-context>'));
+  const first = own.find((m) => m.role === 'user' && m.content && !isInternalMessage(m.content));
   return first?.content ?? null;
 }
 

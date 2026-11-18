@@ -247,11 +247,18 @@ export function digestMessages(msgs: Message[], registry?: ToolRegistry): string
   let lastUser = '';
   let lastAssistant = '';
 
+  /** 内部注入判据（前缀表只有一份语义：system-reminder 包裹的一切都不是用户说的话）。
+   *  与 `app/chat/session/session-types.ts` 的 `isInternalMessage` 同判据；
+   *  产物包不 import 应用层（分层单向），故此处按同一前缀自查。 */
+  const isInternalInjection = (s: string) => s.startsWith('<system-reminder>') || s.startsWith('<compacted-context>');
+
   const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) + '…' : s);
   const firstLine = (s: string) => s.split('\n').find((l) => l.trim()) ?? '';
 
   for (const m of msgs) {
-    if (m.role === 'user' && m.content && !m.content.startsWith('<compacted-context>')) {
+    // 内部注入（压缩摘要 / 记忆库快照…）不是用户说的话——机械摘要的「用户目标」
+    // 取错就会拿记忆库正文当目标（2026-11-18 记忆快照改 durable 后真实可达）。
+    if (m.role === 'user' && m.content && !isInternalInjection(m.content)) {
       if (!firstUser) firstUser = m.content;
       lastUser = m.content;
     }
