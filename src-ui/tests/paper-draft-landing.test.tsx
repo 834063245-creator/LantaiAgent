@@ -187,7 +187,14 @@ describe('待题纸 · 落纸即聚焦（① 纸落在屏外 ⇒ 镜头跟过去
     expect(draftBoxInSight(spot!, useCanvasViewStore.getState().view, { w: W, h: H })).toBe(false);
 
     expect(glideTo).toHaveBeenCalledTimes(1);
-    const focus = draftFocusPoint(spot!);
+    /* 镜头目标 = **纸实际渲染的那个盒**的竖直中线（2026-11-18 化卷错位批）：
+     * 组件改用真实盒高（含天头 folioH）；旧断言直接用 `draftFocusPoint(spot)` 的
+     * **缺省盒**，而那个缺省值恰好少了 folioH 那一段——等于把错位的盒写成了期望值。 */
+    const paperEl = container.querySelector('[data-draft-sheet]') as HTMLElement | null;
+    expect(paperEl).not.toBeNull();
+    const paperBoxH = Number.parseFloat(paperEl!.style.height);
+    expect(paperBoxH).toBeGreaterThan(EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP);
+    const focus = draftFocusPoint(spot!, paperBoxH);
     expect(glideTo).toHaveBeenLastCalledWith(focus.x, focus.y);
   });
 
@@ -222,6 +229,8 @@ describe('待题纸 · 落纸即聚焦（① 纸落在屏外 ⇒ 镜头跟过去
     await act(async () => {
       secondId = useDraftSheetStore.getState().openSheet();
     });
+    // 第二张纸的盒高（镜头目标要按**它自己**渲染的盒算——见上一条断言注）
+    const secondEl = container?.querySelector(`[data-paper-id="${secondId}"]`) as HTMLElement | null;
 
     const st = useDraftSheetStore.getState();
     expect(st.papers).toHaveLength(2);
@@ -235,7 +244,8 @@ describe('待题纸 · 落纸即聚焦（① 纸落在屏外 ⇒ 镜头跟过去
     const inSight = draftBoxInSight(second.anchor!, useCanvasViewStore.getState().view, { w: W, h: H });
     expect(glideTo).toHaveBeenCalledTimes(inSight ? 1 : 2);
     if (!inSight) {
-      const focus = draftFocusPoint(second.anchor!);
+      const paperBoxH = Number.parseFloat(secondEl?.style.height ?? '0');
+      const focus = draftFocusPoint(second.anchor!, paperBoxH);
       expect(glideTo).toHaveBeenLastCalledWith(focus.x, focus.y);
     }
   });

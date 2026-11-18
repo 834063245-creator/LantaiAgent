@@ -98,6 +98,9 @@ export interface DraftPaper {
   picks: DraftPicks | null;
   /** 开卷被拒的原因（写在纸脚，错误不静默；成功即清）。 */
   notice: string | null;
+  /** 纸的**实际盒高**（世界单位；0 = 尚未量到）。纸面组件每量到一次就回写——
+   *  化卷那一刻 `beginMorph` 用它做交接期的盒快照（「纸盒一帧都不动」靠它）。 */
+  boxH: number;
 }
 
 /** 化卷那一拍（V2-P3）：这张纸已化成卷，但**还在屏上**——与新卷的落纸同一窗交接。
@@ -111,6 +114,9 @@ export interface DraftMorph {
   /** **这张纸化成卷之前站在哪**（世界坐标）：交接期纸要留在原地退场，
    *  不能因为记录离开 `papers` 就跳到世界原点。 */
   anchor: DraftSheetAnchor;
+  /** 纸**发送那一刻的盒高**（快照，见 `DraftPaper.boxH`）：交接期纸盒一帧都不动。
+   *  0 = 快照缺席（旧记录）⇒ 纸面回落到「卷的最小盒高」。 */
+  paperH: number;
 }
 
 /** 纸的草稿槽键（`state/input-store` 的 `sessionDrafts`，**唯一发号处**）。
@@ -250,6 +256,8 @@ export interface DraftSheetState {
   /** 题签：拨组合（V2 起组合也在纸面上拨，与模型同处一行）。 */
   setPresetId: (presetId: string | null, paperId?: string) => void;
   setNotice: (notice: string | null, paperId?: string) => void;
+  /** 纸的实测盒高回写（纸面组件量到就写；化卷时被 `beginMorph` 取作快照）。 */
+  setBoxH: (boxH: number, paperId?: string) => void;
   /** **化卷**（V2-P3）：发送成功那一刻调用——这张纸退成「已交卷」态，与卷的落纸同一窗。
    *  窗满由本 store 自己撤纸（`DRAFT_MORPH_MS`）；动效敏感 = 当帧撤。 */
   beginMorph: (sessionId: number, paperId?: string) => void;
@@ -284,6 +292,7 @@ export const useDraftSheetStore = create<DraftSheetState>((set, get) => ({
           presetId: init?.presetId ?? null,
           picks: null,
           notice: null,
+          boxH: 0,
         },
       ],
       // 新摊开的纸立刻拿焦点：用户点「＋」就是要打字，不是要一张静物
@@ -339,6 +348,16 @@ export const useDraftSheetStore = create<DraftSheetState>((set, get) => ({
       return { papers: s.papers.map((p) => (p.id === id ? { ...p, notice } : p)) };
     }),
 
+  setBoxH: (boxH, paperId) =>
+    set((s) => {
+      const id = paperId ?? s.focusedId;
+      if (id === null) return s;
+      const paper = s.papers.find((p) => p.id === id);
+      // 同值不重设：RO 每次量到都回来，写一次就停（免得逐帧抖 store）
+      if (!paper || paper.boxH === boxH) return s;
+      return { papers: s.papers.map((p) => (p.id === id ? { ...p, boxH } : p)) };
+    }),
+
   beginMorph: (sessionId, paperId) => {
     const state = get();
     const id = paperId ?? state.focusedId;
@@ -368,6 +387,8 @@ export const useDraftSheetStore = create<DraftSheetState>((set, get) => ({
           sheetId: String(sessionId),
           box: null,
           anchor: paper.anchor ?? { anchorX: 0, anchorY: 0, width: 1440 },
+          // 交接期纸盒一帧都不动 ⇒ 快照发送那一刻的盒高（纸自己量不到了：记录已离开 papers）
+          paperH: paper.boxH,
         },
       },
     }));

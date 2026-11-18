@@ -27,6 +27,7 @@ import {
   defaultRegionFor,
   EMPTY_REGION_CONTENT_H,
   layoutRegion,
+  REGION_FOOT_GAP,
   translateMessagesCached,
   writingBlockIdOf,
 } from './host';
@@ -300,6 +301,10 @@ export function usePaperRegions(params: {
         // stub：锚点 + 最近已知派生值。render 面（visibleRegionIds 之后）不
         // 渲染 stub；小地图/孤儿钉/页脚计数消费最近已知值。空容器走共享只读
         // 常量（P2-3——零分配）。
+        /* 内容顶与盒高**必须与非 stub 同式**（2026-11-18 化卷错位批）：
+         * 最小盒高下限（anchorY − EMPTY_REGION_CONTENT_H）在两条路上同值，
+         * 否则卷从视口外回场（stub → 全量）时纸的上缘会跳一截。 */
+        const stubTop = Math.min(known.extent.y0, anchor.anchorY - EMPTY_REGION_CONTENT_H);
         out.push({
           sessionId: sid,
           sessionNum: s.id,
@@ -307,9 +312,9 @@ export function usePaperRegions(params: {
           createdAt: s.createdAt,
           anchor,
           ...STUB_EMPTIES,
-          regionTop: known.extent.y0,
+          regionTop: stubTop,
           regionBottom: anchor.anchorY,
-          regionHeight: Math.max(0, anchor.anchorY - known.extent.y0) + 72,
+          regionHeight: Math.max(0, anchor.anchorY - stubTop) + REGION_FOOT_GAP,
           // 卷首高用真测高（2026-09-16 连带清理：原为魔数 72——卷首实测约 190，
           // 缩到视口外的卷回场时纸的上缘会跳一下，且远档地志标签的锚点
           // （InkLayer 的 regionTop − folioH）在 stub 与非 stub 卷之间不一致。
@@ -393,12 +398,18 @@ export function usePaperRegions(params: {
 
         let top = Number.POSITIVE_INFINITY;
         for (const g of flowGeom) top = Math.min(top, g.y);
-        // 零块卷（新建即摊开、未落墨）：没有「最旧块顶」——regionTop 取锚点上溯
-        // EMPTY_REGION_CONTENT_H（虚拟内容顶）。旧实现以 0 为 Math.min 初值 =
-        // 空卷纸面钉在世界原点（新建卷的纸画在别处、首句落墨才跳回锚点：
-        // 2026-09-10 用户两问之二）。
-        if (!Number.isFinite(top)) top = anchor.anchorY - EMPTY_REGION_CONTENT_H;
-        const regionTop = top;
+        /* 内容顶 = 最旧块顶，但**不得高于「锚点上溯 EMPTY_REGION_CONTENT_H」**——
+         * 这是卷的**最小盒高下限**（2026-11-18 化卷错位批）。两件事同一个式子：
+         *   ① 零块卷（新建即摊开、未落墨）没有「最旧块顶」⇒ top = ＋∞，下限即内容顶。
+         *      旧实现以 0 为 Math.min 初值 = 空卷纸面钉在世界原点（新建卷的纸画在
+         *      别处、首句落墨才跳回锚点：2026-09-10 用户两问之二）。
+         *   ② 有块但**内容比下限矮**（首句只有一两行 = 来文块 ~100 世界单位）：
+         *      旧实现只用块顶 ⇒ 卷比纸矮出 (200 − 块高)。而待题纸把盒高垫到
+         *      `EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP + folioH`（DraftSheet 的
+         *      regionMinH，注释写着「卷的盒高恒 ≥ 200 + 72」）——两件盒底相同、盒高
+         *      差了这一截 ⇒ 化卷那一刻卷首（天头四行）整体往下掉，纸上的题签与卷上的
+         *      题签不在同一个高度上交接。下限在两侧同值，交接才真是同一个盒。 */
+        const regionTop = Math.min(top, anchor.anchorY - EMPTY_REGION_CONTENT_H);
         // 卷首头高度：题字按**流区宽**实测（左右内距 16×2 与 720 版心封顶都在
         // measureFolioHeadHeight 内一次算清——2026-09-16 前此处手写 `anchor.width - 32`，
         // 宽流区下漏掉版心封顶，实测值与渲染的换行不符）
@@ -433,7 +444,7 @@ export function usePaperRegions(params: {
               x0: anchor.anchorX - anchor.width / 2,
               x1: anchor.anchorX + anchor.width / 2,
               y0: anchor.anchorY - EMPTY_REGION_CONTENT_H,
-              y1: anchor.anchorY + 72,
+              y1: anchor.anchorY + REGION_FOOT_GAP,
             },
             blockIds: new Set(),
             blockCount: 0,
@@ -457,7 +468,7 @@ export function usePaperRegions(params: {
             pinnedGeom,
             seq,
             regionTop,
-            regionHeight: Math.max(0, anchor.anchorY - regionTop) + 72,
+            regionHeight: Math.max(0, anchor.anchorY - regionTop) + REGION_FOOT_GAP,
             folioH,
             units,
             stageLeadIds,

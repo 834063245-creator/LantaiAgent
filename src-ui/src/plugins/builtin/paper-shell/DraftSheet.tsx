@@ -139,6 +139,8 @@ function PaperView({
   const setAnchor = useDraftSheetStore((s) => s.setAnchor);
   const setPicks = useDraftSheetStore((s) => s.setPicks);
   const setNotice = useDraftSheetStore((s) => s.setNotice);
+  /* 盒高回写（化卷那一刻 `beginMorph` 取快照——交接期纸盒一帧都不动）。 */
+  const setBoxH = useDraftSheetStore((s) => s.setBoxH);
   const landNonce = useDraftSheetStore((s) => s.landNonce);
   /* 画布尺寸只作**重试扳机**（首测尺寸为 0 时本拍跳过，尺寸一到再来一次）；
    * 落点与镜头目标仍从 getState() 现取，不吃渲染期快照。 */
@@ -159,16 +161,21 @@ function PaperView({
   glideToRef.current = dockCtx?.glideTo ?? null;
   const landedNonce = useRef(0);
 
-  const sheetRef = useRef<HTMLDivElement | null>(null);
-  /* 纸高实测（V2：纸高随内容长——输入面多行/附件 rail/失败行都会变）。
-   * 纸以**下缘锚点**向上长：top = 锚点 − 实测高。用 ResizeObserver 而不是量一次：
-   * 输入面自己会随打字增高，量一次会在第一个换行处露馅（纸脚被内容顶穿）。
+  /* ── 纸高实测（V2：纸高随内容长——输入面多行/附件 rail/失败行都会变）──
+   * 纸以**下缘锚点**向上长：top = 锚点 − 实测高。
+   *
+   * ⚠ **量的是天头之下那块栈（`.pp-draft-stack`），不是纸自己**（2026-11-18 化卷
+   * 错位批）：纸的盒高（inline `height`）正是由本状态算出来的——量纸自己 = 自指，
+   * `offsetHeight` 恒等于 inline height，RO 永远读到同一个数。旧实现因此让
+   * 「纸高随内容长」成了死代码：输入面一多写几行就冲出纸脚（用户报的「文字冲出题签
+   * 背景」的下半截；天头那半截 2026-11-15 已修）。
+   * 栈是定高 flex 容器里的 `flex: none` 项（见 draft-sheet.css）⇒ 量到的是内容真高。
+   * 用 RO 而不是量一次：输入面自己会随打字增高，量一次会在第一个换行处露馅。
    * jsdom 无 RO：退回量首帧（测试自铺桩，与 use-composer-float 同款纪律）。 */
-  const [sheetH, setSheetH] = useState(0);
-  const measureSheet = useCallback((el: HTMLDivElement | null) => {
-    sheetRef.current = el;
+  const [contentH, setContentH] = useState(0);
+  const measureStack = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
-    const measure = () => setSheetH((prev) => (prev === el.offsetHeight ? prev : el.offsetHeight));
+    const measure = () => setContentH((prev) => (prev === el.offsetHeight ? prev : el.offsetHeight));
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(measure);
@@ -202,38 +209,18 @@ function PaperView({
     );
   }, [paperId, presetSeed, picks, setPicks, setNotice]);
 
-  /* ── 焦点那张纸：落位那一拍把镜头带过去（只在**要不要动镜头**上做判断）── */
-  useEffect(() => {
-    void canvasSize; // 只作重试扳机（同 use-paper-panel 的 motionTick 范式）：真值仍从 getState 现取
-    if (!focused || !core || anchor === null) return;
-    if (landedNonce.current === landNonce) return;
-    const view = useCanvasViewStore.getState();
-    /* 画布还没量到尺寸（挂载首帧之前）：无从判可见、也无从算「该飞到哪」——
-     * 这一拍整只跳过，**且不消耗代数**（尺寸一到，下一次依赖变化会重跑本 effect）。 */
-    if (view.canvasSize.w <= 0 || view.canvasSize.h <= 0) return;
-    landedNonce.current = landNonce;
-    /* 盒高取「实测 vs 零块卷最小盒高」中的大者——与纸自己渲染的那个盒**同一把尺子**
-     *（见下方 regionMinH：纸高垫到卷的最小盒高，内容更高就按内容走）。 */
-    const boxH = Math.max(sheetH, EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP);
-    /* 纸已经整块在视口里 ⇒ **一动不动**：视角是用户的，自动动作只在「你按了＋却看不见」
-     * 这一种情形里才配动它（同 2026-09-01 视角抢夺修复的口径）。
-     * 能力位缺席 = 不飞，纸照常落位（纸面不炸——与 FolioCompositionChip 同款纪律）。 */
-    if (draftBoxInSight(anchor, view.view, view.canvasSize, boxH)) return;
-    const focus = draftFocusPoint(anchor, boxH);
-    glideToRef.current?.(focus.x, focus.y);
-  }, [focused, core, anchor, landNonce, canvasSize, sheetH]);
-
+  /* ── 卷首实测高（FOLIO_TOKENS 契约；题字按流区宽实测行数）──
+   * 纸与卷**同一个数**：纸这里的题字恒是「案卷 Nº」（纸还没有名字），卷那边是
+   * volumeDisplayName（可能是长题名、换行更多）。两边各自算各自的，交接靠
+   * MorphView 的 `--draft-rise` 抹平差值——不要在这里改成猜卷的名字。 */
   const folioH = measureFolioHeadHeight('案卷', STREAM_REGION.width);
-  /* 纸性（2026-11-15 化卷批）：纸与卷**同一张纸**——同一张 paper-sheet 纹、同一套水洗。
-   * 出生面期 = 固定种子；交接期 = 新卷 id（store 的 draftSheetSeed）。 */
-  const sheet = sheetCharacter(draftSheetSeed(paperId, SHEET_SEED));
-  const scale = draftScale(anchor?.width ?? STREAM_REGION.width);
   /* **纸高垫到「卷的最小盒高」**（2026-11-15 用户报「文字冲出题签背景」）：
    * 病灶 = 纸高由内容实测（输入面多高纸就多高），而卷的盒高恒 ≥
    * `EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP`（零块卷也有 200 + 72 的纸面）。
-   * 纸一旦比这个矮，交接那一拍就是「小纸 → 大卷」的跳变；而且纸脚离题签太近时，
-   * 输入面下方那条硬线看起来像被切掉了。
-   * ⇒ 只垫**下限**（内容真的更高时按内容走），与卷同一把尺子，不另编数字。
+   * 纸一旦比这个矮，交接那一拍就是「小纸 → 大卷」的跳变。
+   * ⚠ 2026-11-18：这个下限**卷侧也按同一个数夹了**（use-paper-regions 的 regionTop
+   * 下限）——此前只有纸垫到下限，卷一旦落进一条短来文就比纸矮，天头跟着往下掉。
+   * 两边同值，才是真的「同一个盒」。
    *
    * ⚠ 天头的让位在 **CSS** 里（.pp-draft-stack 的 padding-top 读 --draft-folio-h）：
    * 纸高由纸栈实测撑出来，而 .pp-folio-head 是绝对定位、不吃流——栈不从天头下面起，
@@ -244,7 +231,33 @@ function PaperView({
    * 焦点那张必须垫到「卷的最小盒高」（化卷那一拍盒底/盒高要与卷对得上），而**合上的**
    * 那张没有输入面、也不参与交接——再垫到 272 + 天头就是**下半截全空**的一页白纸。
    * 故无焦点时只垫到「天头 + 合口 + 注记 + 去处」这一小段（页高随内容走，实测撑）。 */
-  const boxH = focused ? Math.max(sheetH, regionMinH) : Math.max(sheetH, folioH + 96);
+  const boxH = focused ? Math.max(contentH, regionMinH) : Math.max(contentH, folioH + 96);
+
+  /* ── 焦点那张纸：落位那一拍把镜头带过去（只在**要不要动镜头**上做判断）── */
+  useEffect(() => {
+    void canvasSize; // 只作重试扳机（同 use-paper-panel 的 motionTick 范式）：真值仍从 getState 现取
+    if (!focused || !core || anchor === null) return;
+    if (landedNonce.current === landNonce) return;
+    const view = useCanvasViewStore.getState();
+    /* 画布还没量到尺寸（挂载首帧之前）：无从判可见、也无从算「该飞到哪」——
+     * 这一拍整只跳过，**且不消耗代数**（尺寸一到，下一次依赖变化会重跑本 effect）。 */
+    if (view.canvasSize.w <= 0 || view.canvasSize.h <= 0) return;
+    landedNonce.current = landNonce;
+    /* 盒高 = **纸实际渲染的那个盒**（`boxH`：含天头）。
+     * ⚠ 2026-11-18 前这里另算了一个「零块卷最小盒高」（少了 folioH 那 ~218px）——
+     * 于是镜头按一个矮 218 的盒把纸对到视口正中，纸落下来天头被推出屏外。 */
+    /* 纸已经整块在视口里 ⇒ **一动不动**：视角是用户的，自动动作只在「你按了＋却看不见」
+     * 这一种情形里才配动它（同 2026-09-01 视角抢夺修复的口径）。
+     * 能力位缺席 = 不飞，纸照常落位（纸面不炸——与 FolioCompositionChip 同款纪律）。 */
+    if (draftBoxInSight(anchor, view.view, view.canvasSize, boxH)) return;
+    const focus = draftFocusPoint(anchor, boxH);
+    glideToRef.current?.(focus.x, focus.y);
+  }, [focused, core, anchor, landNonce, canvasSize, boxH]);
+
+  /* 纸性（2026-11-15 化卷批）：纸与卷**同一张纸**——同一张 paper-sheet 纹、同一套水洗。
+   * 出生面期 = 固定种子；交接期 = 新卷 id（store 的 draftSheetSeed）。 */
+  const sheet = sheetCharacter(draftSheetSeed(paperId, SHEET_SEED));
+  const scale = draftScale(anchor?.width ?? STREAM_REGION.width);
   /* **纸盒 = 卷盒**（2026-11-15 用户报「题签到真实卷没有好的动画过渡」的根因）：
    * 卷的盒底恒在 `锚点 + REGION_FOOT_GAP`（流区几何：regionHeight 已含底距），
    * 而纸原先以**锚点**为底线 —— 于是化卷那一拍纸是「往上跳 72px 再淡出」。
@@ -252,6 +265,12 @@ function PaperView({
    * 读作「这张纸成了那一卷」而不是「纸没了、别处冒出个卷」。
    * 宽的同一性由 draftPlacement 保证（都用 STREAM_REGION.width 与同一锚点）。 */
   const boxBottom = (anchor?.anchorY ?? 0) + REGION_FOOT_GAP;
+
+  /* 实测盒高回写 store：交接期（记录已离开 `papers`）纸面量不到了，只能由快照接手。 */
+  useEffect(() => {
+    if (anchor === null || boxH <= 0) return;
+    setBoxH(boxH, paperId);
+  }, [anchor, boxH, paperId, setBoxH]);
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: 纸是画布上的一件「物件」（同 .pp-region 的 mousedown 激活语义——点纸张即拿到它）；键盘路径见下方 tabIndex/onKeyDown 那两条腿。
@@ -261,7 +280,6 @@ function PaperView({
       data-paper-id={paperId}
       data-body-state={notice ? 'rejected' : 'ready'}
       data-focused={focused ? 'true' : undefined}
-      ref={measureSheet}
       /* 合上的纸是**可达的**（2026-11-17）：无焦点时它整张就是那句「点这张纸继续题签」
        * 的落点——鼠标走 mousedown，键盘走 tabIndex + Enter/Space（同一件事两条腿）。 */
       {...(focused
@@ -287,7 +305,7 @@ function PaperView({
               left: anchor.anchorX - anchor.width / 2,
               width: anchor.width,
               /* 纸以**锚点**为底线向上长（内容高随输入面变化，不写死）：
-                 top = 锚点 − 实测高。首帧未测（sheetH=0）= 只画在锚点下方，
+                 top = 锚点 − 实测高。首帧未测（contentH=0）= 取卷的最小盒高，
                  RO 一到即回填——**绝不用 translate: -100% 代替**：那会参与层叠/
                  纸纹对位（纸律：整叶不得声明 transform，见 base.css 注）。 */
               // 盒底 = 锚点 + 底距（与卷的纸脚同一个尺子）；盒高取「内容实测 vs 卷的最小盒高」
@@ -320,8 +338,9 @@ function PaperView({
 
       {/* 天头之下 = **这张卷的创作坞**（同一个组件，另一次挂载）。
           多纸：**只有焦点那张纸展开输入面**——两处 textarea 同屏会抢输入；其余纸只留
-          题签一行 + 一句去处（点它就换焦点），纸本身仍是完整的纸（天头/纸纹/落影）。 */}
-      <div className="pp-draft-stack">
+          题签一行 + 一句去处（点它就换焦点），纸本身仍是完整的纸（天头/纸纹/落影）。
+          `ref` = 纸高的实测点（量本栈、不量纸自己——见 measureStack 头注）。 */}
+      <div className="pp-draft-stack" ref={measureStack}>
         {focused ? (
           <>
             {overlays.map((def) => (
@@ -375,32 +394,31 @@ function MorphView({
     sheetId: string;
     box: { left: number; width: number; height: number | null } | null;
     anchor: DraftSheetAnchor;
+    /** 纸**发送那一刻**的盒高（`beginMorph` 从纸面记录里带过来的快照）。 */
+    paperH: number;
   };
 }) {
-  const sheetRef = useRef<HTMLDivElement | null>(null);
-  const [sheetH, setSheetH] = useState(0);
-  const measureSheet = useCallback((el: HTMLDivElement | null) => {
-    sheetRef.current = el;
-    if (!el) return;
-    const measure = () => setSheetH((prev) => (prev === el.offsetHeight ? prev : el.offsetHeight));
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   const folioH = measureFolioHeadHeight('案卷', STREAM_REGION.width);
   const regionMinH = EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP + folioH;
-  const boxH = Math.max(sheetH, regionMinH);
+  /* 交接期纸盒**一帧都不动**（2026-11-16 改判）——所以这里必须是发送那一刻的**快照**，
+   * 不是现量（2026-11-18 化卷错位批：旧实现量的是纸自己，而纸的 inline height 正是它
+   * 自己算出来的 ⇒ 量到的是「最小盒高」而不是发送时那个更高的盒，纸在交接第一帧就矮一截）。
+   * 快照缺席（旧记录 / 0）= 回落到最小盒高。 */
+  const boxH = morph.paperH > 0 ? morph.paperH : regionMinH;
   const sheet = sheetCharacter(morph.sheetId);
   const scale = draftScale(morph.anchor.width);
   const morphBox = morph.box;
-  /* **天头要抬多高**（2026-11-16）：卷的盒比纸高（多一行正文），两件盒底相同 ⇒ 卷首比纸的
-   * 天头高出这个差。纸的天头按它升到卷首将落的位置再退场——交接那一帧是「原位交接」，
-   * 不是两个位置的互换。卷高还没量到（box 未回填 / height 为 null）时差为 0。
-   * 差值**夹在 [0, 96px]**：负数没有意义，上界防止窗口极窄时天头飞出画布。 */
-  const folioRise = Math.max(0, Math.min(96, (morphBox?.height ?? boxH) - boxH));
+  /* **天头要抬多高**（2026-11-16）：两件盒底相同（锚点 + 底距）⇒ 卷首将落的位置比纸的天头
+   * 高出「卷高 − 纸高」。纸的天头按这个差升到卷首将落的位置再退场——交接那一帧是
+   * 「原位交接」，不是两个位置的互换。
+   *
+   * ⚠ 2026-11-18 化卷错位批：**差值不再夹 [0, 96px]**。
+   *   · 上界 96 是错位的直接制造者：首句一长（块高 400+），真实差 200+，被夹到 96 ⇒
+   *     旧字只升到半路就淡掉、新字在更高处落——正是「交接那一下错一格」。
+   *   · 下界 0 同理：卷比纸矮时（输入面写得多、首句很短）旧字该**往下沉**到卷首的新位置；
+   *     夹成 0 = 旧字原地淡、新字在下面落，两颗字在不同高度上各走各的。
+   *   位移量现在是真差值（可正可负），纸的盒本身不动——移的只是那四行字。 */
+  const folioRise = morphBox?.height != null ? morphBox.height - boxH : 0;
   const boxBottom = morph.anchor.anchorY + REGION_FOOT_GAP;
 
   return (
@@ -409,7 +427,6 @@ function MorphView({
       data-draft-sheet
       data-paper-id={paperId}
       data-morph="out"
-      ref={measureSheet}
       style={
         {
           /* 左缘与宽度取自卷的盒（同宽同锚点，本该相等；取它是为了与世界变换同源）。 */
