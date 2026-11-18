@@ -187,30 +187,31 @@ function surveyText(text: string): {
  *    ① **英文按字母算「字」**：214 字符的英文只有 40 来个词，却报「214 字」——
  *       读者会把 214 当成 214 个汉字的分量，实际差四五倍；
  *    ② emoji / 生僻字（CJK 扩展 B 起）是代理对，`.length` 一律算 2；
- *    ③ 中英混排只有一个数，读者无从知道各占多少。
- *  新口径按**书写系统**各给各的单位，中英混排的分桶规则：
- *    - 汉字/假名/谚文/注音 → 「字」；CJK 标点与数字串在中文语境也算字
+ *    ③ 中英混排只有一个混算数，但单位是错的（字母与汉字同等计价）。
+ *  现行口径（2026-11-18 用户拍板「还是加一起吧，大概准就行」）：
+ *    - 汉字/假名/谚文/注音 → 1「字」；CJK 标点与数字串在中文语境也算字
  *      （「第 3 步」= 3 字，「你好，世界！」= 6 字——对齐 Word「字数」口径）；
- *    - 拉丁/希腊/西里尔等字母串 → 「词」；`_ . - /` 连接的是同一个词
+ *    - 拉丁/希腊/西里尔字母串 → 1「词」；`_ . - /` 连接的是同一个词
  *      （`src/paper/fold.ts` 算 1 个词，不是 4 个）；
- *    - 混排：两侧都够量才各报各的（英文词 ≥ 10 且占字数 10% 以上），
- *      否则只报中文——少量术语/代码不留噪音（「500 字 · 1 词」没有信息量）；
- *    - 无 CJK：数字串按词计（`version 3` = 2 词）；纯 emoji/符号 → 「N 符号」。
- *  **这不是 token 数**：token 由分词器决定（`agent/token-counter.ts`），两者不互算。 */
+ *    - **混排合并成一个数**：英文词按 {@link CJK_PER_WORD} 折成汉字当量后相加；
+ *      单位取主导方——中文当量 ≥ 英文当量报「N 字」，否则报「N 词」；
+ *    - 纯 emoji/符号 → 「N 符号」。
+ *  折算系数是**阅读量的经验值**，不是精确换算（真要精确只有分词器算 token）；
+ *  用户 2026-11-18 明示「大概准就行」——宁可少一个数，也不要两个数各报各的。 */
+const CJK_PER_WORD = 1.5;
+
 export function textScaleLabel(text: string): string {
   const s = surveyText(text);
-  const hasCjk = s.chars > 0 || s.cjkPunct > 0;
-  if (hasCjk) {
-    const charCount = s.chars + s.cjkPunct + s.digits;
-    if (s.words >= 10 && s.words * 10 >= charCount) {
-      return `${charLabel(charCount)} 字 · ${charLabel(s.words)} 词`;
-    }
-    return `${charLabel(charCount)} 字`;
+  // 中文当量：汉字 + CJK 标点 + 数字串（数字串按一个字算）
+  const cjkUnits = s.chars + s.cjkPunct + s.digits;
+  const wordUnits = s.words;
+  if (cjkUnits === 0 && wordUnits === 0) {
+    return s.symbols > 0 ? `${charLabel(s.symbols)} 符号` : '0 字';
   }
-  const wordCount = s.words + s.digits;
-  if (wordCount > 0) return `${charLabel(wordCount)} 词`;
-  if (s.symbols > 0) return `${charLabel(s.symbols)} 符号`;
-  return '0 字';
+  if (cjkUnits >= wordUnits * CJK_PER_WORD) {
+    return `${charLabel(Math.round(cjkUnits + wordUnits * CJK_PER_WORD))} 字`;
+  }
+  return `${charLabel(Math.round(wordUnits + cjkUnits / CJK_PER_WORD))} 词`;
 }
 
 /** 折叠行文本上限（字符）。

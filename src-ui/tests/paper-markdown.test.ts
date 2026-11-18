@@ -185,17 +185,16 @@ describe('paper/fold — 默认规则与文案', () => {
     expect(thinking('第 3 步')).toBe('▸ 思考 3 字');
     // 英文：按「词」——旧口径把 44 个字符报成「44 字」，夸大约四五倍
     expect(thinking('The quick brown fox jumps over the lazy dog.')).toBe('▸ 思考 9 词');
-    // 无 CJK 时数字串按词计（`version 3` = 两个词）
+    // 数字串按 1 个当量计（无 CJK 时折算进词）
     expect(thinking('version 3')).toBe('▸ 思考 2 词');
-    // 中英混排：两侧都够量时各报各的，不混成一个无意义的数
-    expect(thinking(`${'字'.repeat(20)} ${'word '.repeat(10)}`)).toBe('▸ 思考 20 字 · 10 词');
-    // 混排里的中文标点仍算字（21 = 20 汉字 + 1 逗号）
-    expect(thinking(`${'字'.repeat(20)}，${'word '.repeat(10)}`)).toBe('▸ 思考 21 字 · 10 词');
+    // 中英混排：**合并成一个数**（英文词按 1.5 折成汉字当量），不各报各的
+    expect(thinking(`${'字'.repeat(20)} ${'word '.repeat(10)}`)).toBe('▸ 思考 35 字');
+    expect(thinking(`${'字'.repeat(20)}，${'word '.repeat(10)}`)).toBe('▸ 思考 36 字');
     // 代码/路径是**一个**英文块：`_ . - /` 连接不断词，词数不被碎片顶起来
-    expect(thinking(`${'字'.repeat(200)} src/paper/fold.ts fs(read)`)).toBe('▸ 思考 200 字');
-    expect(thinking(`${'字'.repeat(50)} ${'deepseek-v4-flash '.repeat(3)}`)).toBe('▸ 思考 50 字');
-    // 次要项是噪音（不足 10 个词）→ 省略，不占折叠行
-    expect(thinking(`${'字'.repeat(500)} ok`)).toBe('▸ 思考 500 字');
+    expect(thinking(`${'字'.repeat(200)} src/paper/fold.ts fs(read)`)).toBe('▸ 思考 205 字');
+    expect(thinking(`${'字'.repeat(50)} ${'deepseek-v4-flash '.repeat(3)}`)).toBe('▸ 思考 55 字');
+    // 英文主导 → 报「词」（中文当量折算进去），单位跟随主导语种
+    expect(thinking(`${'word '.repeat(200)}字`)).toBe('▸ 思考 201 词');
     // 代理对：emoji 与新码位汉字都算 1（旧 `.length` 一律算 2）
     expect(thinking('🧠')).toBe('▸ 思考 1 符号');
     expect(thinking('𠀀')).toBe('▸ 思考 1 字');
