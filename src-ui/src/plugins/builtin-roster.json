@@ -122,7 +122,7 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["overlays", "commands", "space"],
-    "shared": ["paper/asset-rack.ts", "paper/plate-sign.ts", "state/volume-name.ts"],
+    "shared": ["app/search/file-match.ts", "paper/asset-rack.ts", "paper/plate-sign.ts", "state/volume-name.ts"],
     "face": true
   },
   {
