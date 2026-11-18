@@ -34,6 +34,7 @@
 | **画布空间模型** | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **Stage-6 进行中**（UI/UX 专项） | 一纸多卷 / 有界流区 / 宿主模型 / 三层导航；阶段件与返工清单见笔记「展开」段；provider+创作坞联合体检 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md) |
 | **新卷出生面（立卷）** | [`canvas-space/new-session-ux.md`](canvas-space/new-session-ux.md) · [`multi-draft-sheets.md`](canvas-space/multi-draft-sheets.md) | **V2 落地（2026-11-15）+ 落纸即聚焦（§6.9）+ 多纸（2026-11-17）** | 新建不再直接摊开成品卷：落一张**会打字的纸** → 按发送才发号落盘、纸化成卷（260ms）。落位与聚焦同一拍。**多纸**：画布上可同时有多张，各带自己的题签与草稿，**焦点独占**——焦点在纸上时坞让位，点任一卷焦点交回、坞立刻回来，纸留在画布上 |
 | **上帝文件治理** | [`god-file-governance.md`](god-file-governance.md) | **P1-P3 已落地（2026-11-06）** | 体量门禁（未登记 ≤1000 行；余账 45 条进 DEBT，**百行档位**：档内不吵、跨档才要决策；`tests/god-file-budget.test.ts`）+ `chat-session.ts` 2730→67 行公开面（实现落 `app/chat/session/*`，34 个调用方零改动）+ `PaperPanel.css` 6778→38 行入口 × 12 分片 + `PaperPanel.tsx` 1739→871（装配根/表现件分家，源码断言改读全目录） |
+| **动态插件提升（promote）** | [`dynamic-plugin-promotion-plan.md`](dynamic-plugin-promotion-plan.md) | **已立项未开工（2026-11-17 立）** | 动态插件可固化成常驻磁盘插件：用户显式审批 → Rust `plugin_promote` 原子落盘（manifest + 生成导出壳的 entry.js）→ 走既有装/卸/启用/禁用/授权四通道；`inject` 由沙箱访问记账反推、`permissions` 默认空、provenance 进 manifest 并在设置页可见。卡点 = convergence baseline 变更审批（B3） |
 | **agent hooks（生命周期扩展点）** | [`agent-hooks-plan.md`](agent-hooks-plan.md) | **一期/二期已竣工** | 步骤钩子家族已落（`ctx.steps`：pre-step 每步 enter/reject + turn-stopping 停止边界，含 durable/transient 注入、`create` 工厂、发现注入收编）；三期待拍（request 系列 / plan·inbox 收编 / CC 桥） |
 
 ## 待执行但已立项（按成本排）
