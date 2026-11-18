@@ -574,6 +574,7 @@ export interface RpcContract {
   card_read: { params: { card_id: string }; result: string }; // JSON — {card, state}
   card_state_write: { params: { card_id: string; patch_json: string }; result: string }; // JSON — {bytes}
   card_delete: { params: { card_id: string }; result: string }; // JSON — {cardId, trashed}
+  card_rename: { params: { card_id: string; title: string }; result: string }; // JSON — {cardId, title}
 
   // ── Agent 隔离（worktree）────────────────────────────────
   agent_isolation_create: { params: { agent_id: string }; result: string }; // JSON
@@ -1126,6 +1127,7 @@ export const rpcResultSchemas = {
   card_read: z.object({ card: z.unknown(), state: z.record(z.string(), z.unknown()) }).passthrough(),
   card_state_write: z.object({ bytes: z.number() }).passthrough(),
   card_delete: z.object({ cardId: z.string(), trashed: z.nullable(z.string()) }).passthrough(),
+  card_rename: z.object({ cardId: z.string(), title: z.string() }).passthrough(),
   // 随包图谱引擎探测（2026-09-24 补收编）：恒 JSON 对象；三字段可空（未找到 =
   // path/dir 为 null、available false，非错误）。收编后消费面走 typedJsonRpc ⇒
   // 双形态兼容（Rust 出口已展开 / 表外仍字符串）+ 违形即 throw（不再静默读成 false）。

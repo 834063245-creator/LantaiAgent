@@ -141,6 +141,60 @@
   opacity: 0.66;
 }
 
+/* 卡片行（改名 / 删除，2026-12-08 B5）：动作件 **hover / 聚焦才出**——架上读的是
+   名字，动作不该常驻抢读；触屏与键盘用 :focus-within 兜住（不做长按/右键菜单）。 */
+.pp-shelf-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 12px;
+}
+
+.pp-shelf-row .pp-shelf-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pp-shelf-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.pp-shelf-row:hover .pp-shelf-actions,
+.pp-shelf-row:focus-within .pp-shelf-actions {
+  opacity: 1;
+}
+
+.pp-shelf-actions button {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: calc(var(--fs-body) * 0.88);
+  color: var(--ink-1);
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.pp-shelf-actions button:hover {
+  opacity: 1;
+}
+
+/* 行内改名：同名行高、同一纸底与规线（换的是文字的可编辑态，不是另一件东西）。 */
+.pp-shelf-edit {
+  flex: 1 1 auto;
+  margin: 4px 18px;
+  padding: 6px 8px;
+  border: var(--rule-strong);
+  background: var(--paper);
+  font: inherit;
+  color: var(--ink-1);
+}
+
 .pp-shelf-error {
   opacity: 1;
   color: var(--fail);

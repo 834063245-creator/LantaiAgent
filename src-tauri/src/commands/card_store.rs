@@ -323,6 +323,32 @@ pub(crate) fn card_delete(card_id: &str) -> Result<Value, String> {
     card_delete_at(&cards_root(), card_id)
 }
 
+/// 改标题（只动 `card.json` 的 `title` 字段；其余字段逐字不动——拓印语义下
+/// 内容归作者，重命名是宿主允许改的**唯一**一项，且不改身份）。
+pub(crate) fn card_rename_at(root: &Path, card_id: &str, title: &str) -> Result<Value, String> {
+    let dir = card_dir_at(root, card_id)?;
+    let text = read_optional(&dir.join("card.json"), MAX_CARD_JSON_BYTES)?
+        .ok_or_else(|| format!("卡片不存在: {card_id}"))?;
+    let mut card: Value =
+        serde_json::from_str(&text).map_err(|e| format!("card.json 不是合法 JSON（{card_id}）: {e}"))?;
+    let trimmed = title.trim();
+    if trimmed.chars().count() > 120 {
+        return Err(format!("标题超过 120 字符（{}）", trimmed.chars().count()));
+    }
+    let obj = card
+        .as_object_mut()
+        .ok_or_else(|| format!("card.json 顶层不是 object（{card_id}）"))?;
+    obj.insert("title".to_string(), Value::String(trimmed.to_string()));
+    let out =
+        serde_json::to_string_pretty(&card).map_err(|e| format!("card.json 序列化失败: {e}"))?;
+    write_text(&dir.join("card.json"), &out)?;
+    Ok(json!({ "cardId": card_id, "title": trimmed }))
+}
+
+pub(crate) fn card_rename(card_id: &str, title: &str) -> Result<Value, String> {
+    card_rename_at(&cards_root(), card_id, title)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

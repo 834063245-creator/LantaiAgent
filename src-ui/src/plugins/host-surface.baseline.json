@@ -1,5 +1,5 @@
 {
-  "fingerprint": "8eafd05e",
+  "fingerprint": "b712e0cb",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -124,6 +124,7 @@
     "defaultFolded",
     "defaultRegionFor",
     "defineTool",
+    "deleteCard",
     "describeReceipt",
     "discoverPresets",
     "draftInputKey",
@@ -293,6 +294,7 @@
     "registerSubagentRuntime",
     "registerTaskImplementation",
     "removeSubAgentActivity",
+    "renameCard",
     "requireKind",
     "requireMultiagentComm",
     "requirePresentation",

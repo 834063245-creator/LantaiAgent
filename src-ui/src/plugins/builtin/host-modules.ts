@@ -41,7 +41,7 @@ import { findAssetByContent, getAsset, listAssets, upsertAsset } from '../../age
 import { BoardPersistence } from '../../agent/board-persistence';
 // 卡片库（架阁底座，entity-shelf-plan B1/B2）：收进架阁 = **用户手势**，纸壳的块操作条
 // 经本桥调用。纯 RPC 门面（无模块级状态），但仍是内核实现 ⇒ 按产物边界统一走桥。 */
-import { listCards, readCard, shelveCard, writeCardState } from '../../agent/card-library';
+import { deleteCard, listCards, readCard, renameCard, shelveCard, writeCardState } from '../../agent/card-library';
 // S3：工具域/段贡献插件对象导入已拆除——产物域真源自带；此处只导工具工厂
 // 运行时值（faceDeps 取用面）。（z（engine-domain 运行时取用）随图谱退役
 // 移除，2026-09-09。）
@@ -969,6 +969,9 @@ const faceDeps = {
   // 不是会话级 asset-state（入阁的卡不属任何会话）。
   readCard,
   writeCardState,
+  // 卡片库的收口两件（B5）：重命名（只改 title）与删除（挪 .trash 可恢复）。
+  renameCard,
+  deleteCard,
   usePluginWindowStore,
   useShelfStore,
   // 卷首待答角标（2026-11-11）：paper-shell 的 FolioAskBadge 读待答账

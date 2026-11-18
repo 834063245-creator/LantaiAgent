@@ -79,6 +79,12 @@ export async function writeCardState(cardId: string, patch: Record<string, unkno
   });
 }
 
+/** 改标题（**只动 title**：卡片身份、payload、状态一律不动——拓印语义下内容归作者，
+ *  重命名是宿主允许改的唯一一项）。 */
+export async function renameCard(cardId: string, title: string): Promise<{ cardId: string; title: string }> {
+  return typedJsonRpc('card_rename', { card_id: cardId, title });
+}
+
 /** 删除（挪 `.trash`）。目标本就不存在 = 成功（`trashed` 为 null）。 */
 export async function deleteCard(cardId: string): Promise<{ cardId: string; trashed: string | null }> {
   return typedJsonRpc('card_delete', { card_id: cardId });

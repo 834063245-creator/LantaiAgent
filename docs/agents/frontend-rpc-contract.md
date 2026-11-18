@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-11-18T02:32:29.143Z
-> 方法总数：62（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-11-18T04:59:37.438Z
+> 方法总数：63（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -120,6 +120,7 @@
 | `card_read` | card_id | — | JSON 字符串 |
 | `card_state_write` | card_id, patch_json | — | JSON 字符串 |
 | `card_delete` | card_id | — | JSON 字符串 |
+| `card_rename` | card_id, title | — | JSON 字符串 |
 | `plugin_data_ensure` | name | — | JSON 字符串 |
 | `plugin_data_list` | name | path | JSON 字符串 |
 | `plugin_data_read` | name, path | — | 字符串 |

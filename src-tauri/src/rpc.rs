@@ -224,7 +224,7 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
 
         // ── 卡片库（架阁存储底座，entity-shelf-plan B1）──
         // shelve/list/read/state_write/delete 全部 ok_json（对象或数组）⇒ JsonValue。
-        "card_shelve" | "card_list" | "card_read" | "card_state_write" | "card_delete" => {
+        "card_shelve" | "card_list" | "card_read" | "card_state_write" | "card_delete" | "card_rename" => {
             RpcResultShape::JsonValue
         }
 
@@ -971,6 +971,16 @@ async fn dispatch_rpc(
             })
             .await
             .map_err(|e| format!("card_delete 任务失败: {e}"))?;
+            ok_json(r)
+        }
+        "card_rename" => {
+            let card_id = req_str(&params, "card_id", "card_rename")?;
+            let title = req_str(&params, "title", "card_rename")?;
+            let r = tokio::task::spawn_blocking(move || {
+                commands::card_store::card_rename(&card_id, &title)
+            })
+            .await
+            .map_err(|e| format!("card_rename 任务失败: {e}"))?;
             ok_json(r)
         }
 

@@ -17,7 +17,16 @@
 //   - 两页空态各给一句实话 + 一个出口，不做假数据。
 
 import { useEffect, useRef, useState } from 'react';
-import { listCards, readCard, usePluginWindowStore, useShelfStore, writeCardState } from './host';
+import {
+  deleteCard,
+  listCards,
+  readCard,
+  renameCard,
+  usePluginWindowStore,
+  useShelfStore,
+  useToastStore,
+  writeCardState,
+} from './host';
 import { buildShelfCardDocument, SHELF_CARD_STATE_NS } from './shelf-card-document';
 import './shelf.css';
 
@@ -61,7 +70,11 @@ export function ShelfOverlay() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [opened, setOpened] = useState<OpenedCard | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  /** 行内改名（改的是卡片库里的 title，卡片身份与内容不动）。 */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const editRef = useRef<HTMLInputElement>(null);
 
   // 每次打开都重读（卡片库是盘上的真源，缓存一份就是第二真相）。
   useEffect(() => {
@@ -136,6 +149,34 @@ export function ShelfOverlay() {
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [opened]);
+
+  // 行内改名的聚焦（不用 autoFocus：biome 的 a11y 规则禁裸 autoFocus）。
+  useEffect(() => {
+    if (editingId) editRef.current?.focus();
+  }, [editingId]);
+
+  const toast = useToastStore.getState().showToast;
+
+  const commitRename = (cardId: string) => {
+    const title = editValue.trim();
+    setEditingId(null);
+    renameCard(cardId, title)
+      .then(() => {
+        setCards((prev) => prev?.map((c) => (c.cardId === cardId ? { ...c, title } : c)) ?? prev);
+        toast(`已改名：${title || '（未命名）'}`, 'info', 2200, 'composer');
+      })
+      .catch((err: unknown) => toast(`改名失败：${String(err)}`, 'error', 4200, 'composer'));
+  };
+
+  /** 删除 = 挪进卡片库的 .trash（可找回）——所以不做二次确认，只把后果说清楚。 */
+  const removeCard = (cardId: string, title: string) => {
+    deleteCard(cardId)
+      .then(() => {
+        setCards((prev) => prev?.filter((c) => c.cardId !== cardId) ?? prev);
+        toast(`已删除「${title || '未命名'}」——卡片库的回收站里可找回`, 'info', 3200, 'composer');
+      })
+      .catch((err: unknown) => toast(`删除失败：${String(err)}`, 'error', 4200, 'composer'));
+  };
 
   const openCard = (cardId: string) => {
     setOpenError(null);
@@ -245,23 +286,53 @@ export function ShelfOverlay() {
               <p className="pp-shelf-empty">还没有入阁的卡片。把鼠标移到任意一张卡上，点「入阁」就收进来了。</p>
             ) : (
               <ul className="pp-shelf-list">
-                {cards.map((c) => (
-                  <li key={c.cardId}>
-                    <button type="button" className="pp-shelf-item" onClick={() => openCard(c.cardId)}>
-                      <span className="pp-shelf-name">
-                        {typeof c.title === 'string' && c.title
-                          ? c.title
-                          : typeof c.kind === 'string'
-                            ? `${c.kind}（未命名）`
-                            : '未命名卡片'}
-                      </span>
-                      <span className="pp-shelf-meta">
-                        {typeof c.kind === 'string' ? c.kind : ''}
-                        {formatAt(c.shelvedAt) ? ` · ${formatAt(c.shelvedAt)}` : ''}
-                      </span>
-                    </button>
-                  </li>
-                ))}
+                {cards.map((c) => {
+                  const title = typeof c.title === 'string' ? c.title : '';
+                  return (
+                    <li key={c.cardId} className="pp-shelf-row">
+                      {editingId === c.cardId ? (
+                        <input
+                          ref={editRef}
+                          className="pp-shelf-edit"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onBlur={() => commitRename(c.cardId)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitRename(c.cardId);
+                            if (e.key === 'Escape') setEditingId(null);
+                          }}
+                          aria-label="卡片标题"
+                        />
+                      ) : (
+                        <>
+                          <button type="button" className="pp-shelf-item" onClick={() => openCard(c.cardId)}>
+                            <span className="pp-shelf-name">
+                              {title || (typeof c.kind === 'string' ? `${c.kind}（未命名）` : '未命名卡片')}
+                            </span>
+                            <span className="pp-shelf-meta">
+                              {typeof c.kind === 'string' ? c.kind : ''}
+                              {formatAt(c.shelvedAt) ? ` · ${formatAt(c.shelvedAt)}` : ''}
+                            </span>
+                          </button>
+                          <span className="pp-shelf-actions">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingId(c.cardId);
+                                setEditValue(title);
+                              }}
+                            >
+                              改
+                            </button>
+                            <button type="button" onClick={() => removeCard(c.cardId, title)}>
+                              删
+                            </button>
+                          </span>
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

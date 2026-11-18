@@ -90,6 +90,10 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): unknown
     const cardId = typeof args?.card_id === 'string' ? args.card_id : 'mock-card-1';
     return { cardId, trashed: null };
   }
+  if (cmd === 'card_rename') {
+    const cardId = typeof args?.card_id === 'string' ? args.card_id : 'mock-card-1';
+    return { cardId, title: typeof args?.title === 'string' ? args.title : '' };
+  }
 
   // 首页工作区清单（2026-09-01 三轴面审种子）：浏览器 dev 此前恒空态，
   // 首页数据态无法取证。两行覆盖面：置顶+活跃 / 非置顶+昨日+无注册名。

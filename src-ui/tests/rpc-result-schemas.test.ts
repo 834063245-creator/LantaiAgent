@@ -29,6 +29,7 @@ const MOCK_SAMPLE_PARAMS: Record<keyof typeof rpcResultSchemas, Record<string, u
   card_read: { card_id: 'mock-card-1' },
   card_state_write: { card_id: 'mock-card-1', patch_json: '{}' },
   card_delete: { card_id: 'mock-card-1' },
+  card_rename: { card_id: 'mock-card-1', title: '改名' },
   // 随包引擎探测（2026-09-24 收编）：无参；mock 返回合成「未检测到」形状。
   engine_bundled_info: {},
   // 诊断包导出（日志可观测性批 4 收编）：无参；mock 返回合成形状（浏览器 dev 无盘）。
