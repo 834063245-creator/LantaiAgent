@@ -27,6 +27,11 @@ interface ShellState {
   /** 分析进行中（打开=open / 重分析=reanalyze） */
   analyzing: AnalyzingKind;
   paletteOpen: boolean;
+  /** 设置面板「打开到某页签」的**一次性请求**（2026-11-28 全局搜索批）。
+   *  string 而非 SettingsTabId：app 层不 import 插件目录（层次纪律——插件依赖 app，
+   *  反之不成立）；页签 id 的合法性由 settings-domain 自己校验（不在册 = 忽略并清）。
+   *  SettingsPanel 消费即清，不做常驻态（这是请求，不是状态）。 */
+  settingsTab: string | null;
 
   /** 写状态文本并压入日志环 */
   pushStatus: (msg: string) => void;
@@ -36,6 +41,9 @@ interface ShellState {
   setViolations: (n: number) => void;
   setAnalyzing: (k: AnalyzingKind) => void;
   setPaletteOpen: (b: boolean) => void;
+  /** 请求设置面板落到某页签（消费方 = SettingsPanel，消费即清）。 */
+  requestSettingsTab: (tab: string) => void;
+  clearSettingsTab: () => void;
 }
 
 const STATUS_LOG_MAX = 15;
@@ -48,6 +56,7 @@ export const useShellStore = create<ShellState>((set) => ({
   violations: 0,
   analyzing: null,
   paletteOpen: false,
+  settingsTab: null,
 
   pushStatus: (msg) =>
     set((st) => ({
@@ -59,4 +68,6 @@ export const useShellStore = create<ShellState>((set) => ({
   setViolations: (n) => set({ violations: n }),
   setAnalyzing: (k) => set({ analyzing: k }),
   setPaletteOpen: (b) => set({ paletteOpen: b }),
+  requestSettingsTab: (tab) => set({ settingsTab: tab }),
+  clearSettingsTab: () => set({ settingsTab: null }),
 }));

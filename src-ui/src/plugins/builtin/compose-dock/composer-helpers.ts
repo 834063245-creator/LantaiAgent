@@ -11,7 +11,6 @@
 // ⚠ 依赖方向是单向的：本件只 import 宿主桥（'./host'）与 react 之外的东西；
 // 坞本体与本件之间只许「坞 → 本件」，不许反向——反向 = 又拼回一个环。
 
-import type { DirEntry } from './host';
 import { loadSettings } from './host';
 
 /** 把目录模型描述符映射到已配置 provider 名（跨 provider 搜索时联动切换）。 */
@@ -42,49 +41,8 @@ export function navigateHistory(
   return { entry: { idx: next, text: history[next] } };
 }
 
-/* ── 引（创作坞 v2 2026-08-31）：工作区文件模糊引用 ── */
-
-/** list_directory 递归项（Rust DirEntry 序列化形状——schema 推导）。 */
-type YinDirEntry = DirEntry;
-
-/** 递归摊平目录树为文件清单（目录不入引——附卷的是文件）。 */
-export function flattenDirEntries(entries: readonly YinDirEntry[]): Array<{ path: string; name: string }> {
-  const out: Array<{ path: string; name: string }> = [];
-  const walk = (list: readonly YinDirEntry[]) => {
-    for (const e of list ?? []) {
-      if (!e.is_dir) out.push({ path: e.path, name: e.name });
-      if (e.children?.length) walk(e.children);
-    }
-  };
-  walk(entries);
-  return out;
-}
-
-/** 引 模糊匹配纯函数：查询词对路径做子序列命中；basename 命中加权靠前，
- *  路径越短越靠前。空查询 = 清单原序截前 limit（打开即见常拥文件）。 */
-export function fuzzyMatchFiles(
-  files: ReadonlyArray<{ path: string; name: string }>,
-  query: string,
-  limit = 14,
-): Array<{ path: string; name: string }> {
-  const q = query.trim().toLowerCase();
-  if (!q) return files.slice(0, limit);
-  const hits: Array<{ path: string; name: string; score: number }> = [];
-  for (const f of files) {
-    const path = f.path.toLowerCase();
-    const name = f.name.toLowerCase();
-    if (!isSubsequence(q, path)) continue;
-    const score = name.startsWith(q) ? 0 : name.includes(q) ? 1 : 2;
-    hits.push({ ...f, score });
-  }
-  hits.sort((a, b) => a.score - b.score || a.path.length - b.path.length);
-  return hits.slice(0, limit);
-}
-
-function isSubsequence(needle: string, haystack: string): boolean {
-  let i = 0;
-  for (let j = 0; j < haystack.length && i < needle.length; j++) {
-    if (haystack[j] === needle[i]) i++;
-  }
-  return i === needle.length;
-}
+/* ── 引（创作坞 v2 2026-08-31）：工作区文件模糊引用 ──
+ * 2026-11-28 全局搜索批：两件纯函数搬去 `app/search/file-match.ts`（命令面板的「文件」组
+ * 要用同一把尺子，而 app 层不许 import 插件目录）。本文件原样 re-export——既有 import
+ * 面（坞内「引」面板、行为测试）零 churn，口径仍是同一份实现。 */
+export { flattenDirEntries, fuzzyMatchFiles } from '../../../app/search/file-match';

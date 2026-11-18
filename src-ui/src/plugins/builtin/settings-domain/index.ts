@@ -20,8 +20,9 @@
 
 import type { Context } from '../../../cordis';
 import { injectFaceArtifactCss } from '../face-css';
-import { useDockStore } from './host';
+import { useDockStore, useShellStore } from './host';
 import { SettingsPanel } from './SettingsPanel';
+import { SETTINGS_TABS } from './settings-tabs';
 import { bootUpdateCheck } from './update-check';
 
 /** settings 域插件 — 面板贡献（即时生效）+ toggle 命令贡献。 */
@@ -68,6 +69,32 @@ export const settingsPlugin = {
         }),
       'settings-command',
     );
+    /* 全局搜索的「设置」组（2026-11-28）：八个页签各**贡献一条命令**（无 slash ⇒ 不进斜杠
+     * 面板，只进命令面板/全局搜索）。执行 = 打开设置面板 + 落到那一页——跨插件不给面板加
+     * 参数（插件自包含契约），故经 shell-store 的一次性请求位（`requestSettingsTab`），
+     * SettingsPanel 消费即清。页签 id 的合法性也在这里守住（面板按 SETTINGS_TABS 校验）。
+     *
+     * 为什么是贡献而不是让面板直接读表：面板（app 层）不许 import 插件目录（层次纪律），
+     * 而页签表是本域的真源——经命令通道交出去，面板只认「组名 = 设置」这一条通用规矩。 */
+    ctx.effect(() => {
+      const offs = SETTINGS_TABS.map((tab) =>
+        ctx.commands.register({
+          id: `settings/tab/${tab.id}`,
+          label: `设置 · ${tab.label}`,
+          group: '设置',
+          action: {
+            type: 'local',
+            handler: () => {
+              useShellStore.getState().requestSettingsTab(tab.id);
+              useDockStore.getState().openPanel('settings');
+            },
+          },
+        }),
+      );
+      return () => {
+        for (const off of offs) off();
+      };
+    }, 'settings-tab-commands');
   },
 };
 

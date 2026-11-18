@@ -164,6 +164,27 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 全局搜索（2026-11-28）：右端补充说明（卷的「已摊开/未摊开」、文件路径）——
+ * 墨阶退一档、可截断；它是注解不是内容，永远让位给标签。 */
+.pal-row .pal-hint {
+  flex: 0 1 auto;
+  max-width: 46%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-4);
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+}
+/* 不可用的行（如：没有活跃卷时的文件项）：变灰 + 不吃 hover 墨洗。
+ * 原因写在 data-tip 上（行本身 disabled，点不动——这是「有话说」不是「悄悄消失」）。 */
+.pal-row.blocked,
+.pal-row.blocked:hover {
+  color: var(--ink-4);
+  background: none;
+  box-shadow: none;
+  cursor: not-allowed;
+}
 .pal-row:hover,
 .pal-row.active {
   background: var(--sel-wash); /* 2026-09-01 审计：去 paper-deep 黄绿——统一选中墨洗 */

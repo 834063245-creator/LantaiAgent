@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProviderIntent } from '../../../provider/providers-doc';
 import type { AppSettings, ConnectionProbe, ProviderId } from './host';
 // 配方文档纯函数面（意图抽取——写盘补丁的形状真源；纯计算，不经宿主桥）
-import { intentOf } from './host';
+import { intentOf, useShellStore } from './host';
 import './settings-panel.css';
 // 批 1 归家：三页与作者面已是包内实现（不再经宿主面整页桥）。
 import { DiagnosticPage } from './DiagnosticPage';
@@ -123,6 +123,15 @@ const SettingsPanelApp: React.FC<{
 }> = ({ onClose, onSave }) => {
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [activeTab, setActiveTab] = useState<Tab>('provider');
+  /* 全局搜索的「设置」组落点（2026-11-28）：面板被打开时若带着「落到某页签」的一次性
+   * 请求，就在这里兑现并立刻清掉（请求不是状态——留在 store 里会让下次开面板又跳一次）。
+   * 合法性由本域校验：不在 SETTINGS_TABS 在册的 id 一律忽略（毒化容忍，同读侧纪律）。 */
+  const settingsTabRequest = useShellStore((s) => s.settingsTab);
+  useEffect(() => {
+    if (settingsTabRequest == null) return;
+    if (SETTINGS_TABS.some((t) => t.id === settingsTabRequest)) setActiveTab(settingsTabRequest as Tab);
+    useShellStore.getState().clearSettingsTab();
+  }, [settingsTabRequest]);
   /** 内容列滚动容器（切页复位用）——`.sp-content` 是**唯一**滚动容器，而七个页是它的
    *  兄弟子件：不复位的话从长页切到短页会落在中途/被夹到末尾，读作一次跳变。 */
   const contentRef = useRef<HTMLDivElement | null>(null);
