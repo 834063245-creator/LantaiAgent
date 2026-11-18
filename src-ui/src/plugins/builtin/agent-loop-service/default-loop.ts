@@ -162,6 +162,10 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
 
       // 在安全边界应用待插入的用户消息（工具结果提交后）
       host.applyPendingInserts();
+      // 记忆库快照落史（2026-11-18 变更驱动批）：内容没变 = 纯读（不写任何东西），
+      // 变了或已被压缩遮蔽 = 补一条 durable 消息。**必须在压缩预检之前**——否则
+      // 这一步落下的快照要等下一步才进得了载荷，且当步的压力读数会少算它。
+      host.syncMemorySnapshot();
       host.applyPendingMemoryUpdates();
 
       host.ui.progress?.(step + 1, 'thinking');

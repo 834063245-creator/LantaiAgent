@@ -25,6 +25,8 @@ export interface ChatSession {
 
 /** Agent 在 session 中注入的内部上下文消息（非用户输入），恢复/导出时应跳过 */
 const INTERNAL_PREFIXES = ['<system-reminder>', '<goal>', '<truncated-context>', '<compacted-context>'];
+// （记忆库快照也是 <system-reminder> 开头 ⇒ 已被上面第一条覆盖——2026-11-18 起
+//  它从 transient 尾部改走 durable 消息，恢复/导出/撤回定位照旧跳过它。）
 /** 内部来文判定（Agent 注入的上下文，不是用户说的话）——恢复/导出/撤回定位共用这一把尺子。
  *  导出供 `app/chat/session-branch` 复用（会话树「枝」的轮内切点不得被内部插入截断）：
  *  前缀表只有这一份，绝不出现第二把尺子。 */

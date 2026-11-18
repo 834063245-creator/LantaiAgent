@@ -22,9 +22,15 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 60;
+export const OPEN_SURFACE_CONTRACT_VERSION = 61;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v61（2026-11-18）**agent loop 宿主面增 `syncMemorySnapshot()`**（记忆快照变更驱动批）：
+ *  `AgentLoopHost` 新增成员，默认 loop 在安全边界（待插入应用之后、压缩预检之前）调它
+ *  一次；语义 = 「记忆快照变了或被压缩遮蔽了就补一条 durable 消息，否则纯读」。
+ *  **执行语义零变更**：第三方 loop 不调它 = 装配期那份快照照旧留在会话里（记忆不丢），
+ *  只是后续记忆变更要等下一次装配才生效。同批 `buildTransientMessages` 去掉
+ *  `memoryDigest` 参数（记忆不再走每步重发的尾部副本）。
  *  v60（2026-11-07）**命令贡献面增可选 `takesArg`（「填入待编辑」形态）**：
  *  `composition/services.ts` 的 `CommandContribution` 新增可选 `takesArg?: boolean`
  *  ——声明后斜杠面板 / 命令面板**点选或回车不再空参执行**，改成把 `/cmd ` 写进

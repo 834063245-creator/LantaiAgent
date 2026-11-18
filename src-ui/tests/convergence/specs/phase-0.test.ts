@@ -57,8 +57,8 @@ describe('phase-0 契约快照', () => {
     // providerName 齐备——identity → env → model-identity → claude-md 按序拼装）
     // 与 noProject（零目录面：path=''，其余空——identity-brief 独段，
     // "当前没有加载项目"在此面才是真话）。
-    // 2026-10-28 卷首字节稳定性批：**记忆库段已从卷首摘除**（改走对话尾部的
-    // transient reminder，见 agent.ts 的 buildTransientMessages）——夹具不再有
+    // 2026-10-28 卷首字节稳定性批：**记忆库段已从卷首摘除**（2026-11-18 起改走
+    // durable 变更驱动的会话消息，见 agent/memory-snapshot.ts）——夹具不再有
     // memory 输入，且断言反转为「卷首必须不含记忆库」。
     await withFirstPartyPromptChannel(async () => {
       // 有目录面：claudeMd/shellEnv/providerName 全注入。

@@ -57,7 +57,7 @@ const DEBT: Record<string, number> = {
   'engine/src/adapter/query_adapter.rs': 3200, // 现 3140
   'engine/src/lsp_manager.rs': 2900, // 现 2849
   'engine/src/analysis/framework_routes/mod.rs': 2700, // 现 2619
-  'src-ui/src/agent/agent.ts': 2500, // 现 2500
+  'src-ui/src/agent/agent.ts': 2500, // 现 2495（2026-11-18 记忆快照判据外移到 memory-snapshot.ts）
   'src-tauri/src/os_sandbox.rs': 2300, // 现 2267
   'engine/src/analysis/di_reflection/langs.rs': 2300, // 现 2263
   'engine/src/analysis/dataflow_engine.rs': 2300, // 现 2259

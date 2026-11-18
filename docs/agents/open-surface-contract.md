@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：60
+当前版本：61
 
-<!-- contract-fingerprint: 8af603ce89aa9aee5f10339ee4e7d86e20c1bf426e0db6388a22144dfc59dc0a -->
+<!-- contract-fingerprint: 71160f80e8613ed17ac76df3bce14b2795e80f977e54475a6ed57df2749313d5 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
+| 61 | 2026-11-18 | **agent loop 宿主面增 `syncMemorySnapshot()`**（记忆快照变更驱动批）：`AgentLoopHost` 新增成员，默认 loop 在安全边界（待插入应用之后、压缩预检之前）调它；语义 = 记忆快照变了或被压缩遮蔽就补一条 durable 消息，未变则纯读。**执行语义零变更**：第三方 loop 不调它 = 装配期快照照旧留在会话里（记忆不丢），只是后续变更要等下次装配。同批 `buildTransientMessages` 去掉 `memoryDigest` 参数。 | 真机卷 121 实测：每步重发 2,114 tokens（占 miss 段 30%–60%）且模型三次把注入读成「上下文被压缩」；守护 `tests/memory-tail-injection.test.ts` |
 | 60 | 2026-11-07 | **命令贡献面增可选 `takesArg`（「填入待编辑」形态）**：`composition/services.ts` 的 `CommandContribution` 新增可选 `takesArg?: boolean`——声明后斜杠面板／命令面板**点选或回车不再空参执行**，改成把 `/cmd ` 写进输入框并聚焦等用户补参数（消费面 = `ChatCore.prepareCommand`，首批 `/goal <目标>` · `/remember <事实>`）。**缺省 = 不声明 ⇒ 既有「点选即执行」逐字不变**（纯可选字段，旧插件源码零迁移）。同批面板形态重做：分组双行（节头 + 斜杠词/显示名/描述）、命中标朱、零命中空态、↑↓ 高亮滚动到可见、命令词后出现空白即退出补全（参数模式）。 | 2026-11-07 用户报「带参命令点一下就空参跑掉」；守护 `tests/command-surface.test.tsx` + `tests/composer-dock-keyboard.test.tsx` + `tests/overlay-focus-a11y.test.tsx` |
 | 59 | 2026-10-27 | **goal 域移植的契约面同步（无公开形状变更）**：`composition/workspaces-service.ts` 头注随 goal 域移植清理（`GoalManager` 从 Workspace 拆线）；同批 `AgentConfig` 移除 `goalManager` 字段（`agent/runtime/types.ts` 不在本清单内，按 facts/phase-6 门禁处理）。指纹是粗粒度的（注释改动亦变），照流程升版重录，契约形状零变化。 | `docs/plans/goal-domain-dsh-port.md`；守护 `tests/seam-contract-version.test.ts` + `tests/goal-fold.test.ts` 等 51 例 |
 | 58 | 2026-10-22 | **模型级自定义推理等级**：`provider/types.ts` 的 `ModelDescriptor` 新增可选 `thinkingLevelMap`（canonical 档位 → 请求里发送的 API 参数值；对齐 DSH `reasoningEfforts`）与可选 `reasoningDisabled`（用户显式声明不推理；`reasoning:false` 本身可能是「未知」，不能据此拦请求）。出现 `thinkingLevelMap` 时 `thinkingEfforts` 由键派生、`thinkingOff` 由是否含 `off` 键裁决；缺省 = 无自定义声明，旧行为逐字节不变。第三方 adapter 不读 = 零影响；设置页把声明写进 `providers.yml` 的 `modelOverrides.<id>.reasoningEfforts`。 | `docs/design/provider-system-spec.md`「追裁：自定义推理等级」；守护 `tests/provider-reasoning-levels.test.ts` |

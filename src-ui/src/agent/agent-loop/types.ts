@@ -112,6 +112,11 @@ export interface AgentLoopHost {
   diagTokenBreakdown(apiUsage: Usage | undefined): void;
   toolReadOnly(name: string): boolean;
   applyPendingInserts(): void;
+  /** 记忆库快照落史（vX，2026-11-18 变更驱动批）——**未变不发**：内容与模型当前
+   *  可见的那份快照一致时是纯读，什么都没写。loop 在安全边界（待插入应用之后、
+   *  压缩预检之前）调它一次；第三方 loop 不调 = 装配期那份快照照旧留在会话里
+   *  （不会丢记忆），只是后续记忆变更要等下一次装配才生效。 */
+  syncMemorySnapshot(): void;
   applyPendingMemoryUpdates(): void;
   injectInbox(): void;
   onMessageDelivered(): Promise<void>;

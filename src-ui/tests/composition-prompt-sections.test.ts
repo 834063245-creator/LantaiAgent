@@ -188,8 +188,8 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
   it('记忆库**永不在卷首**（2026-10-28 卷首字节稳定性批）', async () => {
     await withFirstPartyPromptChannel(async () => {
       // 两面前提下都不出现：记忆随增删变字节，坐卷首会打穿其后的**全部对话**前缀。
-      // 它改由 Agent 每轮以 transient reminder 注入对话尾部（agent.ts memoryDigest，
-      // 永不落历史）——旧卷也能看到新写的记忆。
+      // 2026-11-18 起它更不是每步重发的尾部副本，而是 durable、变更驱动的会话消息
+      // （agent/memory-snapshot.ts）——旧卷也能看到新写的记忆，且不重复付费。
       const brief = assembleSystemPrompt({ projectPath: '', hasProject: false });
       expect(brief).not.toContain('## 记忆库');
       const full = assembleSystemPrompt({
