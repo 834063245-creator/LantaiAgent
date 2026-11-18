@@ -261,6 +261,33 @@ const ComposerSurface = memo(function ComposerSurface({
     const input = getChatStore(core.panelId).input.getState();
     if (armHistHintIfDue(input.inputHistory.length, HIST_HINT_KEY)) layers.showHistHint();
   }, [core, armHistHintIfDue, layers.showHistHint]);
+  /* 设置行 / 题签的**位置**（2026-11-28 用户改主意）：纸期它压在输入行**上面**——
+   * 「先题签，再落笔」的读序；坞期仍在下面（模型与权限是「这一趟怎么跑」，垫底）。
+   * 同一个元素只定义一次，两处按宿主取用——不复制 props。 */
+  const settingsRowEl = (
+    <SettingsRow
+      isSheet={isSheet}
+      variant={variant}
+      compLabel={composition.compLabel}
+      compOpen={composition.compOpen}
+      presetError={composition.presetError}
+      presetRoster={composition.presetRoster}
+      onCompToggle={() => composition.setCompOpen((v) => !v)}
+      onDraftPresetPick={composition.onDraftPresetChange}
+      permissionMode={permissionMode}
+      onSelectMode={selectMode}
+      sheetPermission={sheetPermission}
+      onPermissionInherit={onPermissionInherit}
+      model={session.model}
+      providerName={session.providerName}
+      providerKind={session.providerKind}
+      running={running}
+      thinking={thinkingSeat}
+      onModelChange={onModelChange}
+      onModelBlocked={() => notice('Agent 正在运行——本回合结束后才能切换模型。', 'warn')}
+    />
+  );
+
   return (
     <div className={`pp-composer${layers.dragOver ? ' pp-droptarget' : ''}`} ref={dockRef}>
       {/* 书眉行（2026-11-09 用户裁定：**模型与权限另起一行**）——左端卷名，右端只有读数 + 移。
@@ -297,6 +324,8 @@ const ComposerSurface = memo(function ComposerSurface({
           ⚠ DOM 上挂 body（portal），故它**不是**输入行的布局子件；血缘上仍住这行。
           「为什么 portal 到 body」的病灶注随件搬家：见 `composer-modals.tsx` 头注。 */}
       <ImagePreviewModal preview={imagePreview} onClose={() => setImagePreview(null)} />
+
+      {isSheet && settingsRowEl}
 
       {/* 输入行（原 composer 主体）
           ⚡ 2026-11-15 V2：判据从「纸在场 ⇒ 隐藏本行」改为「纸在场 ⇒ 整只坞不渲染」
@@ -348,27 +377,7 @@ const ComposerSurface = memo(function ComposerSurface({
 
       {/* 设置行：模型与权限另起一行（2026-11-09 两次裁定）——判据（权限居左 / 模型收右 /
           纸期换题签）随件搬进 `composer-rows.tsx` 的 `<SettingsRow />` 头注。 */}
-      <SettingsRow
-        isSheet={isSheet}
-        variant={variant}
-        compLabel={composition.compLabel}
-        compOpen={composition.compOpen}
-        presetError={composition.presetError}
-        presetRoster={composition.presetRoster}
-        onCompToggle={() => composition.setCompOpen((v) => !v)}
-        onDraftPresetPick={composition.onDraftPresetChange}
-        permissionMode={permissionMode}
-        onSelectMode={selectMode}
-        sheetPermission={sheetPermission}
-        onPermissionInherit={onPermissionInherit}
-        model={session.model}
-        providerName={session.providerName}
-        providerKind={session.providerKind}
-        running={running}
-        thinking={thinkingSeat}
-        onModelChange={onModelChange}
-        onModelBlocked={() => notice('Agent 正在运行——本回合结束后才能切换模型。', 'warn')}
-      />
+      {!isSheet && settingsRowEl}
 
       {/* 历史眉批（一次性，6s 自散）：提示长在功能所在处，不常驻占位符 */}
       {layers.histHint && <div className="pp-eyebrow-hint">↑ 可回取上文 · ↓ 返回草稿</div>}

@@ -468,3 +468,48 @@
 .pp-sheet-prev-mut {
   color: var(--ink-4);
 }
+
+/* ── 题签在输入行**上方**（2026-11-28 用户改主意：先题签、再落笔）──
+ * 让位方向随之翻转：原来是 margin-top（签在下方），现在让位给下方正文。 */
+.pp-composer-settings[data-variant="sheet"] {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+/* ── 预演句的色彩分层（用户：不要全用黑字）──
+ * 色相即语义：组合 = 人的决定（朱砂）；模型/思考 = 机器的脑子（石青，机读域）；
+ * 权限 = 人的闸门（墨一）。三家不同色，一眼读得出「哪段是谁定的」。 */
+.pp-sheet-prev .pp-prev-comp {
+  color: var(--seal-deep);
+}
+.pp-sheet-prev .pp-prev-model {
+  color: var(--indigo);
+}
+.pp-sheet-prev .pp-prev-think {
+  color: var(--indigo);
+  font-weight: 400; /* 同色第二档：思考比模型弱一层，用字重而不是第二种颜色 */
+}
+.pp-sheet-prev .pp-prev-perm {
+  color: var(--ink-1);
+}
+
+/* ── 防跳变（用户：UI 不要产生莫名其妙的跳变）──
+ * 签上的下拉改**绝对定位**：展开不再撑高纸盒 ⇒ 纸的上缘与落影纹丝不动；
+ * 落影用真机同一支硬投影笔（不是新语言）。 */
+.pp-composer-settings[data-variant="sheet"] .pp-comp-sel,
+.pp-composer-settings[data-variant="sheet"] .pp-sheet-perm {
+  position: relative;
+}
+.pp-composer-settings[data-variant="sheet"] .pp-comp-menu-inline {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 90;
+  min-width: 220px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin: 0;
+  box-shadow:
+    3px 4px 0 rgba(38, 34, 28, 0.05),
+    8px 10px 0 rgba(38, 34, 28, 0.03);
+}

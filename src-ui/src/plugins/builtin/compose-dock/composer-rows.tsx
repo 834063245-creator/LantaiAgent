@@ -374,8 +374,9 @@ export function SettingsRow(props: SettingsRowProps) {
           只纸期有——卷成立之后，这些读数各自有家（书眉 / 芯片 / 设置行）。 */}
       {isSheet && (
         <p className="pp-sheet-prev">
-          此卷以 <b>{compLabel}</b> 成卷 · 模型 <b>{model}</b> · <b>{thinking.label}</b> · 权限{' '}
-          <b>
+          此卷以 <b className="pp-prev-comp">{compLabel}</b> 成卷 · 模型 <b className="pp-prev-model">{model}</b> ·{' '}
+          <b className="pp-prev-think">{thinking.label}</b> · 权限{' '}
+          <b className="pp-prev-perm">
             {sheetPermission == null ? `跟随工作区（${MODE_LABELS[permissionMode]}）` : MODE_LABELS[sheetPermission]}
           </b>
           <span className="pp-sheet-prev-mut">——开卷那一刻落账</span>
