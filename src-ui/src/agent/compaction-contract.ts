@@ -14,6 +14,7 @@ import type { Message, Provider, ToolSchema, Usage } from '../provider/types';
 import type { AgentEvent } from './agent-types';
 import type { CompactionTracker } from './compaction-tracker';
 import type { ExecStateInstance } from './execution-state';
+import type { TokenBaselineKind } from './token-meter/types';
 import type { Tool, ToolRegistry } from './tool';
 
 /** 压缩域对宿主 Agent 的最小状态面（成员与 Agent 类声明逐字对齐）。 */
@@ -50,7 +51,10 @@ export interface CompactionHost {
   _sessionLog: { append(kind: string, data: unknown): void };
   _foldHead(): number;
   payloadMessages(): Message[];
-  tokenCountWithEstimation(): number;
+  /** 当前载荷的压力读数（缺省 = 提供方锚 + 表面增量；`'estimated'` = 强制全量启发式）。
+   *  压前/压后成对读数**必须传 `'estimated'`**——两把尺子相减出来的压缩比是假数
+   *  （压前挂在锚上、压后只能走启发式，见 `token-meter/pressure.ts`）。 */
+  tokenCountWithEstimation(basis?: TokenBaselineKind): number;
   /** 与主请求同一份工具 schema —— 回放前缀对齐的另一半（tools 在 wire 上先于 messages 进
    *  token 流，不带上它前缀在 system 之后即分叉）。选择器按 user 请求锁存 ⇒ 同请求内字节稳定。 */
   requestToolSchemas(): ToolSchema[];

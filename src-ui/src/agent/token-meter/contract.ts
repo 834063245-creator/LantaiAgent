@@ -21,15 +21,32 @@
 // （`TOKEN_METER_UNAVAILABLE`，见 `service.ts` 的 `requireTokenMeter()`）。
 
 import type { Usage } from '../../provider/types';
-import type { TokenBuckets, TokenLedgerSnapshot, TokenMeasurement, TokenRequestRecord } from './types';
-
-/** 消费面类型出口（真源 = `types.ts`；本文件是唯一的对外类型入口）。 */
-export type {
-  ContextBreakdown,
+import type {
+  TokenAnchoredPressure,
+  TokenAnchorProbe,
   TokenBuckets,
   TokenLedgerSnapshot,
   TokenMeasurement,
   TokenRequestRecord,
+  TokenUsageAnchor,
+} from './types';
+
+/** 消费面类型出口（真源 = `types.ts`；本文件是唯一的对外类型入口）。 */
+export type {
+  ContextBreakdown,
+  EnvelopeIdentity,
+  TokenAnchoredPressure,
+  TokenAnchorProbe,
+  TokenAnchorRejectReason,
+  TokenAnchorVerdict,
+  TokenBaseline,
+  TokenBaselineKind,
+  TokenBuckets,
+  TokenEnvelopeSignature,
+  TokenLedgerSnapshot,
+  TokenMeasurement,
+  TokenRequestRecord,
+  TokenUsageAnchor,
   TurnTokens,
 } from './types';
 
@@ -40,11 +57,18 @@ export type {
 export interface TokenLedger {
   /** 模型上下文窗口（0 = 未知 ⇒ `percent()` 不报读数）。 */
   setContextWindow(window: number): void;
-  /** 记一次「服务商未回报」的采样载荷增量（构成估算面）。 */
+  /** 刷新当前表面量（**全量启发式**口径：无锚或锚已失效时的读数）。 */
   recordSurface(tokens: number): void;
+  /** 刷新当前表面量（**锚 + 增量**口径：调用方已核验锚仍同构）。 */
+  recordAnchoredSurface(tokens: number): void;
+  /** 最近一次成功请求的锚（含信封签字）；一条成功请求都没跑过 = undefined。 */
+  anchor(): TokenUsageAnchor | undefined;
+  /** 以提供方锚回答当前压力 —— **压缩判定与 UI 读数的唯一计算口**（见 `meter.ts`）。
+   *  锚对不上 ⇒ 具名原因（`model` / `tools` / `history`），调用方须退回全量估算。 */
+  anchoredPressure(probe: TokenAnchorProbe): TokenAnchoredPressure;
   /** 落一条请求记录（录入点的唯一产物形状）。 */
   recordRequest(record: TokenRequestRecord): void;
-  /** 本卷读数（纯读，含构成/压力/投影/逐轮）。 */
+  /** 本卷读数（纯读，含构成/压力/投影/基准/逐轮）。 */
   measure(): TokenMeasurement;
   /** 上下文占用百分比；窗口未知或无压力时 undefined。 */
   percent(): number | undefined;

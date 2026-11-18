@@ -407,7 +407,16 @@ describe('compaction pipeline E2E', () => {
         if (mainCalls === 1) {
           calls.push('main-tool');
           yield { type: ChunkType.ToolCall, tool_call: { id: 'c1', name: 'fake_tool', arguments: '{}' } } as any;
-          yield { type: ChunkType.Usage, usage: { ...USAGE_HIGH } } as any;
+          // 用量回报要**与实发载荷一致**（2026-11-19 压力基准批）：此前这里固定回
+          // USAGE_HIGH（90000），而压缩后真正发出去的载荷只有两万出头——按新口径
+          // 这条 usage 会成为锚，让下一步的 pre-flight 按 9 万判成 1.8 倍，于是
+          // 「压完立刻又触发一次压缩」把事件账最后一条写成 stuck。真服务商回报的
+          // 就是实发大小，故这里按载荷实测回。
+          const prompt = countMessages(msgs);
+          yield {
+            type: ChunkType.Usage,
+            usage: { ...USAGE_HIGH, prompt_tokens: prompt, total_tokens: prompt },
+          } as any;
           yield { type: ChunkType.Done } as any;
         } else {
           calls.push('main-text');

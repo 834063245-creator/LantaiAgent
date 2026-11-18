@@ -62,11 +62,19 @@ function usageOf(over: Partial<Usage> = {}): Usage {
   };
 }
 
-function makeAgent(prov: Provider, events: AgentEvent[] = []): Agent {
+function makeAgent(prov: Provider, events: AgentEvent[] = [], contextWindow = 100_000): Agent {
   return createTestAgent(prov, new ToolRegistry(), '你是兰台的测试 Agent。', {
-    contextWindow: 100_000,
+    contextWindow,
     eventSink: (ev) => events.push(ev),
   });
+}
+
+/** pre-flight 触发提示（只有判定按锚读数才可能出现的那些）。 */
+function preflightNotices(events: readonly AgentEvent[]): string[] {
+  return events
+    .filter((e) => e.kind === EventKind.Notice)
+    .map((e) => (e as { text?: string }).text ?? '')
+    .filter((text) => text.startsWith('上下文使用率') && text.includes('发送前压缩'));
 }
 
 const SIGNAL = new AbortController().signal;
@@ -142,6 +150,36 @@ describe('token-meter · Agent 侧入账', () => {
     expect(stats.turns[0]?.peakPressureTokens).toBe(1_000);
     expect(stats.turns[1]?.peakPressureTokens).toBe(2_000);
     expect(stats.last?.turn).toBe(2);
+  });
+
+  it('读数以提供方 usage 为锚：启发式远小于回报时，占用按真值算', async () => {
+    const { prov } = makeProvider(usageOf({ prompt_tokens: 990, cache_hit_tokens: 0, cache_miss_tokens: 990 }));
+    const agent = makeAgent(prov, [], 1_000);
+
+    await agent.run(SIGNAL, '你好，帮我看看这段代码');
+
+    const stats = agent.getTokenStats();
+    expect(stats.surfaceTokens).toBeLessThan(200); // 本地启发式：百来 token
+    expect(stats.baseline).toEqual({ kind: 'usage', tokens: 990 }); // 分子挂在提供方真值上
+    expect(stats.usedTokens).toBe(990);
+    expect(stats.percent).toBe(99);
+    expect(stats.surfaceDeltaTokens).toBe(0); // 采样点 = 本次发出的载荷
+  });
+
+  it('pre-flight 判定用锚：启发式远低于触发线，也按提供方真值触发压缩', async () => {
+    const events: AgentEvent[] = [];
+    const { prov } = makeProvider(usageOf({ prompt_tokens: 990, cache_hit_tokens: 0, cache_miss_tokens: 990 }));
+    const agent = makeAgent(prov, events, 1_000);
+
+    // 第一轮还没有锚：判定只能走启发式（约 20/1000），不该出现 pre-flight 触发提示
+    await agent.run(SIGNAL, '第一句');
+    expect(preflightNotices(events)).toEqual([]);
+
+    // 第二轮有锚（990/1000 = 99%）：启发式仍然低，但判定必须按真值触发
+    await agent.run(SIGNAL, '第二句');
+    const triggered = preflightNotices(events);
+    expect(triggered).toHaveLength(1);
+    expect(triggered[0]).toMatch(/^上下文使用率 \d+%，发送前压缩…$/);
   });
 
   it('失败请求计数不入账（发了但没账单）', async () => {

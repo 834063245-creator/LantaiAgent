@@ -9,15 +9,32 @@
 //   - UI 侧：state/token-store.ts 持有每卷计量器 + 账本快照落盘。
 
 export type { EnvelopeMeasure } from './estimate';
-export { estimatePayloadTokens, measureEnvelope } from './estimate';
+export {
+  anchorVerdict,
+  envelopeSignature,
+  estimatePayloadTokens,
+  measureEnvelope,
+  surfaceDeltaTokens,
+} from './estimate';
 export { countImageTokens, deepSeekImageTokens } from './image-tokens';
 export { SessionTokenMeter } from './meter';
+export type { PressureEnvelope, PressureReading } from './pressure';
+export { readPressure } from './pressure';
 export type {
   ContextBreakdown,
+  EnvelopeIdentity,
+  TokenAnchoredPressure,
+  TokenAnchorProbe,
+  TokenAnchorRejectReason,
+  TokenAnchorVerdict,
+  TokenBaseline,
+  TokenBaselineKind,
   TokenBuckets,
+  TokenEnvelopeSignature,
   TokenLedgerSnapshot,
   TokenMeasurement,
   TokenRequestRecord,
+  TokenUsageAnchor,
   TurnTokens,
 } from './types';
 export {

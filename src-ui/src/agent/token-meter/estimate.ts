@@ -23,7 +23,14 @@
 import type { Message, ToolSchema } from '../../provider/types';
 import { countMessage, countMessages, countTexts, countToolSchemas } from '../token-counter';
 import { countImageTokens } from './image-tokens';
-import type { ContextBreakdown } from './types';
+import type {
+  ContextBreakdown,
+  EnvelopeIdentity,
+  TokenAnchorProbe,
+  TokenAnchorVerdict,
+  TokenEnvelopeSignature,
+  TokenUsageAnchor,
+} from './types';
 
 /** 请求信封测量的完整产物（构成 + 细分，细分供诊断日志消费）。 */
 export interface EnvelopeMeasure {
@@ -150,4 +157,75 @@ export function measureEnvelope(
  *  ⚡ 2026-09-22：附图视觉 token 计入（此前只算文本——有图时墨量线偏小）。 */
 export function estimatePayloadTokens(payload: readonly Message[]): number {
   return countMessages(payload) + countImageTokens(payload).tokens;
+}
+
+// ── 信封签字与锚核验（压力基准，见 types.ts 文件头）──────────────────────
+//
+// 只有「当前信封与那条 usage 所属请求的信封同构」才敢复用锚（DSH `requestHeader`
+// 比对同判）。同构 = 模型 + 工具 schema 集合 + 载荷前缀逐条一致；核验成本必须是
+// O(条数) 次**查表**（不是分词）——逐条签字值按消息对象身份缓存在 WeakMap 里，
+// 与 `token-counter.ts` 的不可变前提（INVARIANTS #14）共用同一份正确性依据。
+
+/** 逐条消息的签字种子（角色无关的那一半）——按对象身份缓存。 */
+const messageChainSeed = new WeakMap<Message, number>();
+
+/** 滚动签字的起点（FNV-1a 偏移基）。 */
+const CHAIN_BASIS = 2166136261;
+/** 滚动签字的乘子（FNV-1a prime）。 */
+const CHAIN_PRIME = 16777619;
+
+const ROLE_CODE: Record<Message['role'], number> = { system: 1, user: 2, assistant: 3, tool: 4 };
+
+/** 一条消息的签字种子：分词价 + 内容长度 + 附图张数（内容改了就换种子）。 */
+function chainSeed(m: Message): number {
+  const hit = messageChainSeed.get(m);
+  if (hit !== undefined) return hit;
+  const chars = Math.min(m.content.length, 0xffff);
+  const seed = Math.imul(countMessage(m) ^ Math.imul(chars, 0x9e3779b1), 0x85ebca6b);
+  messageChainSeed.set(m, seed);
+  return seed;
+}
+
+/** 信封签字（`upto` 缺省 = 全量；核验锚时传锚的条数，只签前缀）。 */
+export function envelopeSignature(identity: EnvelopeIdentity, upto?: number): TokenEnvelopeSignature {
+  const end = Math.max(0, Math.min(upto ?? identity.payload.length, identity.payload.length));
+  let chain = CHAIN_BASIS;
+  for (let i = 0; i < end; i += 1) {
+    const m = identity.payload[i];
+    chain = Math.imul(chain ^ ROLE_CODE[m.role], CHAIN_PRIME);
+    chain = Math.imul(chain ^ chainSeed(m), CHAIN_PRIME);
+  }
+  return {
+    model: identity.model,
+    toolsCount: identity.toolsCount,
+    toolsTokens: identity.toolsTokens,
+    messages: end,
+    chain: (chain >>> 0).toString(16),
+  };
+}
+
+/** 锚核验（**显式且可测**的复用判据，三条全过才复用）：
+ *  ① 模型相同；② 工具 schema 集合同形（条数 + 满量分词数）；③ 当前载荷不短于锚、
+ *  且前 `anchor.messages` 条的滚动签字与锚一致。 */
+export function anchorVerdict(anchor: TokenUsageAnchor, probe: TokenAnchorProbe): TokenAnchorVerdict {
+  const sig = anchor.signature;
+  if (sig.model !== probe.model) return { ok: false, reason: 'model' };
+  if (sig.toolsCount !== probe.toolsCount || sig.toolsTokens !== probe.toolsTokens) {
+    return { ok: false, reason: 'tools' };
+  }
+  if (probe.payload.length < sig.messages) return { ok: false, reason: 'history' };
+  const prefix = envelopeSignature(probe, sig.messages);
+  return prefix.chain === sig.chain ? { ok: true, cut: sig.messages } : { ok: false, reason: 'history' };
+}
+
+/** 锚以来的表面**带符号**增量：只对锚之后新增的尾部走启发式，另两项（工具 schema /
+ *  临时提醒）取差值。压缩遮蔽会让它为负（投影夹零在账本侧）。 */
+export function surfaceDeltaTokens(anchor: TokenUsageAnchor, probe: TokenAnchorProbe, cut: number): number {
+  const tail = probe.payload.length > cut ? probe.payload.slice(cut) : [];
+  return (
+    countMessages(tail) +
+    countImageTokens(tail).tokens +
+    (probe.transientTokens - anchor.transientTokens) +
+    (probe.toolsTokens - anchor.signature.toolsTokens)
+  );
 }

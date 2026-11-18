@@ -108,9 +108,14 @@ import type { StepsRegistry } from './steps';
 import type { StreamingToolExecutor } from './streaming-executor';
 import { parseAssetEventOutput } from './streaming-executor';
 import type { SubAgentSpawnHost } from './subagent-runtime-contract';
-import { countMessages, countTexts } from './token-counter';
-import { countImageTokens, type EnvelopeMeasure, measureEnvelope } from './token-meter';
-import type { TokenLedger, TokenLedgerSnapshot, TokenMeasurement, TokenRequestRecord } from './token-meter/contract';
+import { type EnvelopeMeasure, envelopeSignature, measureEnvelope, readPressure } from './token-meter';
+import type {
+  TokenBaselineKind,
+  TokenLedger,
+  TokenLedgerSnapshot,
+  TokenMeasurement,
+  TokenRequestRecord,
+} from './token-meter/contract';
 import { requireTokenMeter } from './token-meter/service';
 import type { ToolRegistry } from './tool';
 import { createStableSchemaSelector, type StableSchemaSelector, userContext } from './tool-select';
@@ -1653,7 +1658,7 @@ export class Agent {
       stepBoundary: (sig) => this._stepBoundary(sig),
       abandonedError: (sig) => this._abandonedError(sig),
       isAbandoned: (sig) => isAbandoned(sig),
-      tokenCountWithEstimation: () => this.tokenCountWithEstimation(),
+      tokenCountWithEstimation: (basis) => this.tokenCountWithEstimation(basis),
       compactNow: (sig) => this.compactNow(sig),
       compactIfNeeded: (sig) => this.compactIfNeeded(sig),
       compactRatioOf: () => this.compactRatioOf(),
@@ -1949,13 +1954,19 @@ export class Agent {
     // 工具 schema 本请求只解析一次（选择器带锁存，但没必要调两遍）——
     // 请求体与 token 计量共用同一份；计量那侧复用选择器锁存的分词数（省 27.6ms/次发送）。
     const toolSchemas = this.requestToolSchemas();
-    // ── token 计量（2026-09-13）：请求发出时刻测信封构成 ──
-    // 一次分词同时喂两面：本请求的计量记录（构成 + 表面量）与诊断日志
-    // （`_diagTokenBreakdown` 读 this._envelope，不再自己重算）。
-    const envelope = measureEnvelope([...payload, ...transientMsgs], toolSchemas, [], {
-      toolsTokens: this._schemaSelector.tokensOf(this.tools, this._visibleToolsLimit, userContext(this.session)),
-    });
+    const toolsTokens = this._schemaSelector.tokensOf(this.tools, this._visibleToolsLimit, userContext(this.session));
+    // ── token 计量（2026-09-13）：一次分词同时喂两面——本请求的计量记录（构成 + 表面量
+    // + 信封签字）与诊断日志（`_diagTokenBreakdown` 读 `this._envelope`）。
+    // 2026-11-19：临时提醒按**提醒文本**计量（与压缩预检同一把尺子，锚的增量算术靠这个恒等）。
+    const envelope = measureEnvelope(payload, toolSchemas, this._transientReminders, { toolsTokens });
     this._envelope = envelope;
+    // 信封签字（发出时刻）：下一条 usage 能否当锚复用，就看它还在不在（`anchorVerdict`）。
+    const envelopeSig = envelopeSignature({
+      model: `${this.prov.name()}/${this.prov.model()}`,
+      toolsCount: toolSchemas.length,
+      toolsTokens,
+      payload,
+    });
     const fullSession = transientMsgs.length > 0 ? [...payload, ...transientMsgs] : payload;
 
     // ── 附图发送面（multimodal-image-plan B3 · D-5/D-7/D-8③；2026-09-19 语义变更）──
@@ -2177,6 +2188,8 @@ export class Agent {
       breakdown: envelope.breakdown,
       surfaceTokens: envelope.surfaceTokens,
       contextWindow: this.contextWindow,
+      transientTokens: envelope.transientTokens,
+      signature: envelopeSig,
       ...(usage === undefined ? {} : { usage }),
     };
     this._tokenMeter.recordRequest(token);
@@ -2252,12 +2265,6 @@ export class Agent {
   compactRunning = false;
   // ⚡ sessionGen migrated to ExecutionState.sessionVersion
 
-  /** 使用 cl100k_base tokenizer 精确计算 token 数。
-   *  替代旧的 chars/2.5 启发式（误差 30-60%）。
-   *  Cl100k_base 匹配 GPT-4、DeepSeek 和大多数 OpenAI 兼容模型。
-   *  Anthropic 的 tokenizer 略有差异（< 8% 误差），对压缩安全。
-   *  按发送载荷（payloadMessages 折叠视图）计数 — 触发判定必须
-   *  与真实 API 压力一致，而非完整历史大小。 */
   /** 每轮发给模型的工具 schema：默认全量（limit=0），保持 tools 段逐字节稳定，
    *  DeepSeek 前缀缓存才能跨用户消息命中；limit>0 时按上下文打分注入子集
    *  （见 tool-select.ts）。打分子集的稳定性契约：只由 user 消息驱动、带锁存——
@@ -2268,19 +2275,28 @@ export class Agent {
     return this._schemaSelector.select(this.tools, this._visibleToolsLimit, userContext(this.session));
   }
 
-  private tokenCountWithEstimation(): number {
+  /** 当前载荷的压力读数 —— **压缩判定（pre-flight / 响应式）与 UI 读数同源同判据**。
+   *  缺省 = 有可用锚就返回「提供方锚 + 表面增量」（只对锚之后的尾巴走启发式，见
+   *  `token-meter/pressure.ts`）；锚对不上（换模型/工具集/压缩遮蔽/会话替换/撤回）才退回
+   *  全量启发式并落日志。`'estimated'` = 强制全量启发式，只给必须同尺对比的账目用。 */
+  private tokenCountWithEstimation(basis: TokenBaselineKind = 'usage'): number {
     const payload = this.payloadMessages();
-    let total = countMessages(payload);
-    // 附图视觉 token（2026-09-22 补账）：文本分词器看不见图——不计这一项，
-    // 有图时的压力判定（step 前 pre-flight / 响应式压缩 / 压缩埋点）全部少算。
-    total += countImageTokens(payload).tokens;
-    // 计算临时提醒 token — 发送给 LLM 但不在会话中
-    total += countTexts(this._transientReminders);
-    // 工具 schema token：与 pre-flight 同源（选择器锁存，见 tool-select.tokensOf）
-    total += this._schemaSelector.tokensOf(this.tools, this._visibleToolsLimit, userContext(this.session));
-    // 载荷估算入库：本方法是所有压力判定的必经之路，在此顺手刷新表面量。
-    this._tokenMeter.recordSurface(total);
-    return total;
+    const toolSchemas = this.requestToolSchemas();
+    const reading = readPressure(this._tokenMeter, {
+      model: `${this.prov.name()}/${this.prov.model()}`,
+      toolSchemas,
+      payload,
+      toolsTokens: this._schemaSelector.tokensOf(this.tools, this._visibleToolsLimit, userContext(this.session)),
+      transientReminders: this._transientReminders,
+      basis,
+    });
+    if (reading.rejected) {
+      log.info('agent', 'token anchor unusable — fell back to full estimate', {
+        reason: reading.rejected,
+        payloadMessages: payload.length,
+      });
+    }
+    return reading.tokens;
   }
 
   /** 诊断: 按组件分解 token 消耗。
@@ -2294,6 +2310,7 @@ export class Agent {
     try {
       const env =
         this._envelope ?? measureEnvelope(this.payloadMessages(), this.requestToolSchemas(), this._transientReminders);
+      const meter = this._tokenMeter.measure();
 
       const diag = {
         turn_session_msgs: env.messageCount,
@@ -2318,6 +2335,14 @@ export class Agent {
         // 本地估算 − 提供方回报（正 = 估高）。持续非零即说明构成口径该校（例如换到
         // 非 DeepSeek 血统的视觉路由：图价网格不再成立）；有图那几轮尤其要看它。
         api_delta: apiUsage ? env.surfaceTokens - apiUsage.prompt_tokens : null,
+        // 压力基准（2026-11-19）：'usage' = 提供方锚 + 表面增量（surface_delta）；
+        // 'estimated' = 锚不可用/还没有锚。与 pre-flight 判定读同一份账本状态。
+        token_baseline: {
+          kind: meter.baseline.kind,
+          anchor: meter.pressureTokens ?? null,
+          surface_delta: meter.surfaceDeltaTokens,
+          projected: meter.projectedTokens ?? null,
+        },
         cache: apiUsage ? { hit: apiUsage.cache_hit_tokens, miss: apiUsage.cache_miss_tokens } : null,
       };
 

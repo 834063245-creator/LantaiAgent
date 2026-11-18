@@ -6,7 +6,7 @@
 // 缓存命中诚实舍入 / 账本快照往返与毒化容忍。
 
 import { describe, expect, it } from 'vitest';
-import { measureEnvelope } from '../src/agent/token-meter/estimate';
+import { envelopeSignature, measureEnvelope } from '../src/agent/token-meter/estimate';
 import { SessionTokenMeter } from '../src/agent/token-meter/meter';
 import type { TokenRequestRecord } from '../src/agent/token-meter/types';
 import {
@@ -32,6 +32,11 @@ function usage(over: Partial<Usage> = {}): Usage {
   };
 }
 
+/** 记录用的信封签字（本文件只验账本状态机，签字取空载荷即可）。 */
+function emptySignature() {
+  return envelopeSignature({ model: 'mock/mock-model', toolsCount: 0, toolsTokens: 0, payload: [] });
+}
+
 function record(over: Partial<TokenRequestRecord> = {}): TokenRequestRecord {
   const breakdown = over.breakdown ?? { systemTokens: 100, toolsTokens: 200, messageTokens: 300 };
   return {
@@ -40,6 +45,8 @@ function record(over: Partial<TokenRequestRecord> = {}): TokenRequestRecord {
     breakdown,
     surfaceTokens: breakdown.systemTokens + breakdown.toolsTokens + breakdown.messageTokens,
     contextWindow: 100_000,
+    transientTokens: 0,
+    signature: emptySignature(),
     ...over,
   };
 }
@@ -128,20 +135,21 @@ describe('token-meter · 每卷计量器', () => {
     expect(v.usedSource).toBe('projected');
 
     // 采样之后表面又长了（工具结果入场）——流式期间压力站住，投影跟着涨
-    m.recordSurface(1_800);
+    m.recordAnchoredSurface(1_800);
     v = m.measure();
     expect(v.pressureTokens).toBe(1_000);
     expect(v.projectedTokens).toBe(1_800);
     expect(v.surfaceTokens).toBe(1_800);
+    expect(v.baseline).toEqual({ kind: 'usage', tokens: 1_000 });
   });
 
   it('投影夹零：压缩把表面削到采样点之下不出负数', () => {
     const m = new SessionTokenMeter();
     m.recordSurface(5_000);
     m.recordRequest(record({ surfaceTokens: 5_000, usage: usage({ prompt_tokens: 5_000 }) }));
-    m.recordSurface(1_200); // 压缩后载荷骤降
+    m.recordAnchoredSurface(1_200); // 压缩后载荷骤降
     expect(m.measure().projectedTokens).toBe(1_200);
-    m.recordSurface(0);
+    m.recordAnchoredSurface(0);
     expect(m.measure().projectedTokens).toBe(0);
   });
 
@@ -212,7 +220,10 @@ describe('token-meter · 每卷计量器', () => {
     expect(v.pressureTokens).toBe(3_400);
     expect(v.contextWindow).toBe(200_000);
     expect(v.surfaceTokens).toBe(3_400); // 表面随快照回来（采样基准同源）
-    expect(v.projectedTokens).toBe(3_400);
+    // 锚也随快照回来（签字在内），但恢复后**先按估算读**：载荷能不能核验同构要等
+    // Agent 拿到载荷（2026-11-19 压力基准批，见 token-meter/meter.ts 的 restore 注）。
+    expect(v.baseline.kind).toBe('estimated');
+    expect(v.projectedTokens).toBeUndefined();
   });
 
   it('空账本不落盘；毒化快照降级为缺省而不抛', () => {

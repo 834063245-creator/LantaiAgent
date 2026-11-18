@@ -22,9 +22,20 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 61;
+export const OPEN_SURFACE_CONTRACT_VERSION = 62;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v62（2026-11-19）**压力基准改以提供方 usage 为锚**（token 计量口径批，对齐 DSH
+ *  `TokenMeasurement.baseline`）：`TokenLedger`（`agent/token-meter/contract.ts`）新增
+ *  `anchor()` / `anchoredPressure(probe)` / `recordAnchoredSurface(tokens)`，`measure()`
+ *  读数新增 `baseline`（'usage' | 'estimated' | 'none'）与 `surfaceDeltaTokens`；
+ *  `usedSource` 去掉永不可达的 `'pressure'`。`AgentLoopHost` 与 `CompactionHost` 的
+ *  `tokenCountWithEstimation(basis?)` 增**可选**参数——缺省 = 能用锚就用锚（锚值 + 表面
+ *  增量），`'estimated'` = 强制全量启发式（压缩压前/压后必须同尺对比的账目用）。
+ *  **对外可感知**：压缩触发判定与墨量册读数从此同源（以前判定走全量启发式、读数走锚式
+ *  投影，分词器估低时会出现「提示条 85% 却不压」）；锚对不上（换模型 / 换工具集 / 压缩
+ *  遮蔽 / 会话替换 / 撤回 / 重启后未核验）时读数诚实退回估算（`baseline='estimated'`）。
+ *  第三方 loop 不传参 = 调用形状不变；第三方账本实现需补三个成员（缺 = 编译期红）。
  *  v61（2026-11-18）**agent loop 宿主面增 `syncMemorySnapshot()`**（记忆快照变更驱动批）：
  *  `AgentLoopHost` 新增成员，默认 loop 在安全边界（待插入应用之后、压缩预检之前）调它
  *  一次；语义 = 「记忆快照变了或被压缩遮蔽了就补一条 durable 消息，否则纯读」。

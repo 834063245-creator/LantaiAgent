@@ -19,6 +19,8 @@ function stats(over: Partial<TokenMeasurement> = {}): TokenMeasurement {
   return {
     pressureTokens: 24_000,
     projectedTokens: 25_000,
+    baseline: { kind: 'usage', tokens: 24_000 },
+    surfaceDeltaTokens: 1_000,
     surfaceTokens: 25_000,
     contextWindow: 200_000,
     usedTokens: 25_000,

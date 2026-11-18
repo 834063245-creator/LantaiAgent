@@ -23,7 +23,7 @@ import type { PlanGate } from '../plan/plan-registry';
 import type { SessionLog } from '../session-log';
 import type { StepsRegistry } from '../steps';
 import type { StreamingToolExecutor } from '../streaming-executor';
-import type { TokenRequestRecord } from '../token-meter';
+import type { TokenBaselineKind, TokenRequestRecord } from '../token-meter';
 import type { ToolRegistry } from '../tool';
 
 /** loop 一次流式请求的产物（Agent.stream 的返回形状）。 */
@@ -99,7 +99,12 @@ export interface AgentLoopHost {
    *  「本轮是不是已经被硬截止作废了」——给「不该再产生新事实」的写入点用
    *  （如分发前的 `tool/call` 审计补落；一旦作废，那条审计也不该再写）。 */
   isAbandoned(signal: AbortSignal): boolean;
-  tokenCountWithEstimation(): number;
+  /** 当前载荷的压力读数 —— **压缩判定与 UI 读数同源同判据**（v62）。
+   *  缺省 `'usage'` = 有可用锚就报「提供方锚 + 表面增量」（锚对不上才退回全量启发式，
+   *  判据见 `token-meter/estimate.ts` 的 `anchorVerdict`）；`'estimated'` = 强制全量
+   *  启发式，**只给必须同尺对比的账目用**（压缩压前/压后埋点）。第三方 loop 不传参 =
+   *  调用形状不变，读数口径随本版换成锚式（更贴提供方真值）。 */
+  tokenCountWithEstimation(basis?: TokenBaselineKind): number;
   compactNow(signal: AbortSignal): Promise<string>;
   /** 自动压缩入口（step 前 pre-flight 主触发）— 尾部按 retainRatio token
    *  预算保留完整 user 回合（对齐 DSH 自动压力路径；compactNow 是手动

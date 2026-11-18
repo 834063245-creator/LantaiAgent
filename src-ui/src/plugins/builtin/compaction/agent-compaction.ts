@@ -471,8 +471,8 @@ export async function runCompactionImpl(
         summaryInputTokens: 0,
         summaryOutputTokens: 0,
         tailMsgCount: Math.max(0, host.session.length - foldHead(host)),
-        preTokens: host.tokenCountWithEstimation(),
-        postTokens: host.tokenCountWithEstimation(),
+        preTokens: host.tokenCountWithEstimation('estimated'),
+        postTokens: host.tokenCountWithEstimation('estimated'),
         outcome: 'stuck',
       });
       host._sink({
@@ -501,8 +501,8 @@ export async function runCompactionImpl(
         summaryInputTokens: 0,
         summaryOutputTokens: 0,
         tailMsgCount: host.session.length - tailStart,
-        preTokens: host.tokenCountWithEstimation(),
-        postTokens: host.tokenCountWithEstimation(),
+        preTokens: host.tokenCountWithEstimation('estimated'),
+        postTokens: host.tokenCountWithEstimation('estimated'),
         outcome: 'stuck',
         ...(result ? meteringOf(host, result) : hardFailure ? { summaryError: hardFailure } : {}),
       });
@@ -522,7 +522,7 @@ export async function runCompactionImpl(
     // 对齐 DSH「summary 必须小于被遮蔽内容」的 shrink 校验；防自动压缩
     // 在尾预算过大 / 摘要退化时"压了没变小还白费一次 LLM"。手动 /compact
     // 是用户显式动作，不做此拦截（stuck 提示已足够）。
-    const preEstimate = host.tokenCountWithEstimation();
+    const preEstimate = host.tokenCountWithEstimation('estimated');
     if (mode === 'auto') {
       // 压后载荷 = head(≈估算 − 区域内 token) + 摘要 + 保留尾 + schema/transient。
       // 用「压后 ≈ 原载荷 − 区域 + 摘要」的线性近似；摘要退化到接近区域时
@@ -562,7 +562,7 @@ export async function runCompactionImpl(
     // ── 压缩模型埋点 ──
     // preTokens = 折叠**前**的载荷估算（preEstimate，上面已测）；旧实现两次都在
     // applyCompactState 之后取，两个读数恒等 —— 事件账里的压缩比因此恒 0%。
-    const postTokens = host.tokenCountWithEstimation();
+    const postTokens = host.tokenCountWithEstimation('estimated');
     recordCompactionEvent(host, {
       ts: Date.now(),
       regionMsgCount: region.length,
@@ -668,7 +668,7 @@ export function maybeCompactImpl(host: CompactionHost, usage: Usage | undefined)
       // 检查压缩是否足够 — 若折叠后载荷仍高于 95%，则已卡住
       // （尾部保留的消息本身就占满窗口 — 压缩确实无能为力，
       //  这是唯一合法的"卡死"，只有 /new 能解决）
-      const postEstimate = host.tokenCountWithEstimation();
+      const postEstimate = host.tokenCountWithEstimation('estimated');
       if (postEstimate / host.contextWindow > 0.95) {
         host.compactStuck = true;
         host.compactRunning = false;
