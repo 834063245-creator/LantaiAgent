@@ -21,6 +21,7 @@ import {
   deleteCard,
   getCanvasStore,
   listCards,
+  openPluginWindow,
   readCard,
   renameCard,
   useCanvasViewStore,
@@ -68,7 +69,6 @@ export function ShelfOverlay() {
   const closeShelf = useShelfStore((s) => s.closeShelf);
   const defs = usePluginWindowStore((s) => s.defs);
   const windows = usePluginWindowStore((s) => s.windows);
-  const openWindow = usePluginWindowStore((s) => s.openWindow);
 
   const [cards, setCards] = useState<CardRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -301,7 +301,11 @@ export function ShelfOverlay() {
                         type="button"
                         className="pp-shelf-item"
                         onClick={() => {
-                          openWindow(def.pluginName);
+                          /* **必须走窗口设施**（不是裸 store）：设施会通知受治进程
+                             治理器，lazy / with-window 档的后端据此才被拉起。
+                             2026-12-08 实机事故：裸 store 开窗 ⇒ 窗画出来了、后端没起
+                             ⇒ 便签报「port.json 不可读」，关窗也因计数对不上而失灵。 */
+                          openPluginWindow(def.pluginName);
                           closeShelf();
                         }}
                       >

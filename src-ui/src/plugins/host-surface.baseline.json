@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b712e0cb",
+  "fingerprint": "93a957bd",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -99,6 +99,7 @@
     "clearSkillImplementation",
     "clearTaskImplementation",
     "clearWorkspaceListCache",
+    "closePluginWindow",
     "collapseToolGroups",
     "completeGoal",
     "consumeFactAuthorization",
@@ -244,6 +245,7 @@
     "onTopbarDoubleClick",
     "onTopbarPointerDown",
     "once",
+    "openPluginWindow",
     "ownerContext",
     "ownerIdOf",
     "ownerSeamView",

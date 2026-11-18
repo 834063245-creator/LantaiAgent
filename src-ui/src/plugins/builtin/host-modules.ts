@@ -392,6 +392,11 @@ import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '
 import { usePluginPrefs } from '../../state/plugin-prefs';
 import { usePluginStore } from '../../state/plugin-store';
 import { usePluginWindowStore } from '../../state/plugin-window-store';
+// 窗口设施（app shell 件 A）：**开窗必须走它而不是裸 store**——设施里的
+// `openPluginWindow` 会 `notifyPluginWindowOpened` 通知受治进程治理器（lazy/with-window
+// 档据此拉起后端）。裸 store 开窗 = 窗画出来了但后端永远不启动（2026-12-08 实机：
+// 架阁开便签报「port.json 不可读」、点叉关不掉）。
+import { closePluginWindow, openPluginWindow } from '../window-facility';
 import { usePresetStore } from '../../state/preset-store';
 import { useSessionVolumesStore } from '../../state/session-volumes-store';
 // 架阁浮层开合账（entity-shelf-plan B3）：纯 UI 状态，纸壳顶部那枚字件写、浮层读。
@@ -973,6 +978,10 @@ const faceDeps = {
   renameCard,
   deleteCard,
   usePluginWindowStore,
+  // 窗口设施两件（B7 修复）：架阁的「软件型」页开窗/关窗必须走设施——
+  // 裸 store 不漏治理器通知，后端进程不会起。
+  openPluginWindow,
+  closePluginWindow,
   useShelfStore,
   // 卷首待答角标（2026-11-11）：paper-shell 的 FolioAskBadge 读待答账
   useAskPendingStore,

@@ -46,6 +46,9 @@ export const writeCardState = impl.writeCardState;
 export const renameCard = impl.renameCard;
 export const deleteCard = impl.deleteCard;
 export const usePluginWindowStore = impl.usePluginWindowStore;
+// 窗口设施（B7 修复）：开窗/关窗带治理器通知（形状对拍 host.ts）。
+export const openPluginWindow = impl.openPluginWindow;
+export const closePluginWindow = impl.closePluginWindow;
 export const useShelfStore = impl.useShelfStore;
 export const ANCHOR = impl.ANCHOR;
 export const autoPanVector = impl.autoPanVector;

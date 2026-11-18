@@ -142,6 +142,9 @@ export {
 /* 架阁浮层（entity-shelf-plan B3）要用的两件：软件口径 = plugin-window-store 的
  * defs/windows/openWindow；开合账 = shelf-store（纯 UI 状态，纸壳字件写、浮层读）。 */
 export { usePluginWindowStore } from '../../../state/plugin-window-store';
+/* 窗口设施（app shell 件 A，B7 修复）：**开窗必须走设施**——它比裸 store 多一步
+ * 「通知受治进程治理器」，lazy/with-window 档的后端靠这条通知才会被拉起。 */
+export { closePluginWindow, openPluginWindow } from '../../window-facility';
 /* 卷首组合芯片（S6 P5a）读面：preset 清单 / 全局选择态 / 装载失败原因。
  * 写面与空白判据不经本出口——它们走 core 的能力位（sessionComposition /
  * isSessionBlank / selectSessionPreset，与创作坞芯片同一套）。faceDeps 已含该
