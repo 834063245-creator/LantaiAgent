@@ -11,6 +11,8 @@
     "build": "node ../scripts/build-builtin-plugins.mjs && node ./node_modules/typescript/bin/tsc --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
     "build:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs",
     "watch:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs --watch",
+    "motion:bench": "node ../scripts/motion-bench.cjs",
+    "motion:film": "node ../scripts/motion-filmstrip.cjs",
     "check:builtin-plugins": "node ../scripts/build-builtin-plugins.mjs --check",
     "plugin-home:report": "node ../scripts/plugin-home-check.cjs",
     "format": "biome format --write .",
