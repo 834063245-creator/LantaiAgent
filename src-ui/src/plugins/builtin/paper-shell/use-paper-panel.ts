@@ -10,21 +10,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rackPresent } from '../../../paper/asset-rack';
 import { DOCK_TETHER_PEN, DOCK_TETHER_SEED, regionFootAnchorOf } from './dock-tether';
 import { createHitstop, HITSTOP_MS } from './hitstop';
-import type { RegionView } from './host';
+import type { RegionView, SourcedBlock } from './host';
 import {
   activeOverlayContributions,
   activeSpace,
   agentSessionState,
+  getAssetState,
   getCanvasStore,
   isRiseVolume,
   leaveToHome,
   screenToWorld,
+  shelveCard,
   subscribeOverlayContributions,
   useCanvasViewStore,
   useCoreStore,
   useDockStore,
   useDraftSheetStore,
   useShellStore,
+  useToastStore,
   useUpdateStore,
   worldToScreen,
 } from './host';
@@ -195,7 +198,53 @@ export function usePaperPanelAssembly() {
     selDragRef,
   });
 
-  const { opsByBlock, branchGrips } = useBlockOps({ core, regions, regionsRef, regionMsgs });
+  /** **入阁**（架阁，2026-12-08 B2）：把这一块**当刻的样子**抄进卡片库。
+   *  - 用户手势：只在块操作条上由点击触发（模型侧零工具 action，D3）；
+   *  - 拓印：状态取当前会话键的读数，抄完与原卡**互不回写**；
+   *  - 失败必须可见：无工作区 / 回执失败都 toast 明说，绝不静默。 */
+  const shelveBlockAsset = useCallback(
+    (block: SourcedBlock, sessionNum: number) => {
+      const asset = block.asset;
+      if (!asset) return;
+      const toast = useToastStore.getState().showToast;
+      if (!projectPath) {
+        toast('入阁失败：还没有打开工作区', 'warn', 3600, 'composer');
+        return;
+      }
+      const sessionId = String(sessionNum);
+      const state = getAssetState({ projectPath, sessionId }, asset.assetId) ?? {};
+      const title = asset.title ?? '';
+      const cardId = `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      void shelveCard({
+        card: {
+          cardId,
+          kind: block.kind,
+          presentation: asset.presentation,
+          title,
+          payload: block.payload,
+          source: {
+            sessionId,
+            assetId: asset.assetId,
+            projectPath,
+            shelvedAt: new Date().toISOString(),
+          },
+          v: 1,
+        },
+        state,
+      })
+        .then(() => toast(`已入阁：${title || '这张卡'}`, 'info', 2600, 'composer'))
+        .catch((err: unknown) => toast(`入阁失败：${String(err)}`, 'error', 5200, 'composer'));
+    },
+    [projectPath],
+  );
+
+  const { opsByBlock, branchGrips } = useBlockOps({
+    core,
+    regions,
+    regionsRef,
+    regionMsgs,
+    onShelve: shelveBlockAsset,
+  });
 
   /* ── 卷**开合两窗**（2026-10-18 卷开合动效批；机制与三条纪律见 region-motion.ts 头注）──
    * 渲染期收敛：本帧消失的卷**当帧**进退场窗、新出场的卷当帧开落纸窗（挪进 effect =

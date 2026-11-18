@@ -1,5 +1,5 @@
 {
-  "fingerprint": "fc715abd",
+  "fingerprint": "aaabe973",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -325,6 +325,7 @@
     "setLogLevelPreference",
     "setMorphBox",
     "setOwnerSessionResolver",
+    "shelveCard",
     "slashOnly",
     "snapshotFromBlock",
     "spillToFile",

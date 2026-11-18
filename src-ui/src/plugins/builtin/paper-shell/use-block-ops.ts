@@ -99,8 +99,11 @@ export function useBlockOps(params: {
   regions: RegionView[];
   regionsRef: MutableRefObject<RegionView[]>;
   regionMsgs: Record<string, { messages: readonly ChatMessage[]; tick: number }>;
+  /** **入阁**（架阁，2026-12-08 B2）：把这一块当刻的样子抄进卡片库。缺席 = 不出
+   *  「入阁」按钮（能力位语义——与纸壳其余可选面同款；旧宿主/测试桩零改动）。 */
+  onShelve?: (block: SourcedBlock, sessionNum: number) => void;
 }) {
-  const { core, regions, regionsRef, regionMsgs } = params;
+  const { core, regions, regionsRef, regionMsgs, onShelve } = params;
 
   const msgOpsFor = useCallback(
     (
@@ -151,6 +154,12 @@ export function useBlockOps(params: {
       // **抄录 = 抄这一块**（不是整条消息）：按钮按块挂，抄的就必须是本块内容。
       const text = blockCopyText(latestSelf());
       if (text.trim()) ops.push({ key: 'copy', label: '抄录', run: () => core.copyText(blockCopyText(latestSelf())) });
+      // **入阁**（架阁，2026-12-08 B2）：把这一块（资产卡）**当刻的样子**抄进卡片库。
+      // 拓印语义——此后它与本卷这张卡互不回写（entity-shelf-plan D3）；必须是**用户
+      // 手势**，Agent 无法代劳（工具面零新增 action）。无资产身份 / 无回调 = 不出按钮。
+      if (self.asset && onShelve) {
+        ops.push({ key: 'shelve', label: '入阁', run: () => onShelve(latestSelf(), sid) });
+      }
       // **抄全文**只给**正文块**（2026-11 用户裁定）：一条回复的正文常被工具调用夹成
       // 多段，读哪一段都能顺手把整条正文抄走。工具卡 / 代码块 / 组头上不给——那等于
       // 又回到"按钮和内容对不上号"（在代码块上抄到整篇回复）。来文块也不需要：它本身
@@ -181,7 +190,7 @@ export function useBlockOps(params: {
       });
       return ops;
     },
-    [core, regionMsgs, regionsRef],
+    [core, regionMsgs, regionsRef, onShelve],
   );
   const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[]; stamp: string; regionMsgs: unknown }>>(
     new Map(),

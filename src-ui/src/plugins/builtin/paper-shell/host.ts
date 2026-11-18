@@ -24,6 +24,11 @@ export interface FolioAskBadgeCore {
   /** 把该卷的第一张在等卡顶到队头（A 面「点名」语义；缺席 = 只跳卷不重排）。 */
   promoteAskBySession?(sessionId: number): boolean;
 }
+/* 架阁（2026-12-08 B2）：收进架阁的两件——读本卡**当刻**状态（getAssetState，内核带
+ * 模块级状态，必须走桥）+ 写卡片库（shelveCard，内核实现口径）。faceDeps 两键均在
+ * host-modules：getAssetState 既有，shelveCard 本批新增。 */
+export { getAssetState } from '../../../agent/asset-state';
+export { shelveCard } from '../../../agent/card-library';
 export { Icon } from '../../../app/Icon';
 export { useDialogEscape, useOutsideClose } from '../../../app/overlay';
 /* 保险丝 b（2026-09-03 生产事故立法）：渲染面错误边界——面组件/块渲染器

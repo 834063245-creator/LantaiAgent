@@ -36,6 +36,9 @@ const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const useAskPendingStore = impl.useAskPendingStore;
+// 架阁（2026-12-08 B2）：收进架阁的读写两件（形状对拍 host.ts）。
+export const getAssetState = impl.getAssetState;
+export const shelveCard = impl.shelveCard;
 export const ANCHOR = impl.ANCHOR;
 export const autoPanVector = impl.autoPanVector;
 export const layoutRegion = impl.layoutRegion;
