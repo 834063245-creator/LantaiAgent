@@ -71,4 +71,21 @@ describe('待题纸 · V2 形态（纸 = 卷首 + 这张卷的创作坞）', () 
     expect(sheet).not.toContain('transform');
     expect(sheet).not.toContain('translate');
   });
+
+  /* ⚠ 2026-11-28 第二次报障（用户：「题签的组合和权限下拉点不开」）的病灶形状。
+   * 绝对定位盒**同时**拿到 top 与 bottom 且 height:auto ⇒ 高度由等式解出
+   * （容器高 − top − bottom）；签上这两个值都是「100% + 4px」⇒ 解出负数夹 0
+   * ⇒ 菜单是个 0 高的空盒，点开等于没开。本组钉住：向下开的三件必须齐
+   * ——撤 bottom、给 top、换 pop-down——缺一件就是又白改一次。 */
+  it('⑧ 签上下拉向下开：撤 bottom + 给 top + pop-down（缺 bottom:auto = 盒高解成 0）', () => {
+    const menu = ruleOf('.pp-composer-settings[data-variant="sheet"] .pp-comp-menu-inline');
+    expect(menu).toContain('position: absolute');
+    expect(menu).toContain('bottom: auto');
+    expect(menu).toContain('top: calc(100% + 4px)');
+    expect(menu).toContain('animation: pop-down');
+    // 两个下拉各自有定位盒（挂整条签 = 开在预演句之下，与权限菜单错位）
+    const at = CSS.indexOf('.pp-sheet-sign');
+    expect(at).toBeGreaterThan(-1);
+    expect(CSS.slice(CSS.indexOf('{', at), CSS.indexOf('}', at))).toContain('position: relative');
+  });
 });

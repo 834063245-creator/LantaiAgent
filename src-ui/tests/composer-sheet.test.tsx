@@ -137,4 +137,72 @@ describe('待题纸的输入面（V2-P1）', () => {
     });
     expect(container.querySelector('.ms-trigger')).not.toBeNull();
   });
+
+  /* ⚠ 2026-11-28 两连报障（用户原话：「题签的组合和权限下拉点不开，或者被什么盖住了」）：
+   * 第一次只抬了层叠（706815b0），第二次的根因是菜单盒被 top+bottom 解成 0 高
+   * （geometry 判据见 paper-draft-sheet-visual ⑧）。这里钉 DOM 面：点了真开、
+   * 各开在自己那层定位盒里、选项可点且落账。 */
+  it('题签两个下拉真能开：组合开在 .pp-sheet-sign、权限开在 .pp-sheet-perm', async () => {
+    root = mount(<ComposerSheet />, container);
+    await act(async () => {
+      useDraftSheetStore.getState().openSheet();
+    });
+
+    const chips = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-comp')];
+    const signBtn = chips.find((b) => b.textContent?.includes('组合'));
+    const permBtn = chips.find((b) => b.textContent?.includes('权限'));
+    expect(signBtn).toBeDefined();
+    expect(permBtn).toBeDefined();
+
+    await act(async () => signBtn?.click());
+    const signMenu = container.querySelector('.pp-sheet-sign [role="listbox"]');
+    expect(signMenu?.getAttribute('aria-label')).toBe('组合（preset）');
+    expect(signMenu?.querySelectorAll('[role="option"]').length).toBeGreaterThan(0);
+
+    await act(async () => permBtn?.click());
+    const permMenu = container.querySelector('.pp-sheet-perm [role="listbox"]');
+    expect(permMenu?.getAttribute('aria-label')).toBe('权限');
+    // 四行 = 跟随工作区 + 三档
+    expect(permMenu?.querySelectorAll('[role="option"]')).toHaveLength(4);
+  });
+
+  it('题签的选择落到本卷题签：组合写 presetId、权限写卷级覆盖，选完即收起', async () => {
+    root = mount(<ComposerSheet />, container);
+    let paperId = '';
+    await act(async () => {
+      paperId = useDraftSheetStore.getState().openSheet();
+      useDraftSheetStore
+        .getState()
+        .setPicks({ presetId: null, providerName: '', model: 'm', thinking: undefined, permission: null }, paperId);
+    });
+    const picks = () => useDraftSheetStore.getState().papers.find((p) => p.id === paperId)?.picks ?? null;
+
+    // 组合：挑一枚非当前的、可装载的 preset
+    const sig = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-comp')].find((b) =>
+      b.textContent?.includes('组合'),
+    );
+    await act(async () => sig?.click());
+    const target = usePresetStore
+      .getState()
+      .roster.find((p) => p.id !== usePresetStore.getState().selected && p.patch !== null);
+    expect(target).toBeDefined();
+    const opt = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-sign [role="option"]')].find(
+      (o) => o.textContent === (target?.metadata?.name ?? target?.id),
+    );
+    await act(async () => opt?.click());
+    expect(picks()?.presetId).toBe(target?.id);
+    expect(container.querySelector('.pp-sheet-sign [role="listbox"]')).toBeNull();
+
+    // 权限：选「半放」（非全放——全放会走二次确认模态，那是另一条判据）
+    const permBtn = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-comp')].find((b) =>
+      b.textContent?.includes('权限'),
+    );
+    await act(async () => permBtn?.click());
+    const modeOpt = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-perm [role="option"]')].find(
+      (o) => o.textContent === '半放',
+    );
+    await act(async () => modeOpt?.click());
+    expect(picks()?.permission).toBe('auto');
+    expect(container.querySelector('.pp-sheet-perm [role="listbox"]')).toBeNull();
+  });
 });

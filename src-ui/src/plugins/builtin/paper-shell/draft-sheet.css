@@ -455,6 +455,9 @@
 .pp-composer-settings[data-variant="sheet"] > * {
   flex: 0 0 auto;
 }
+/* 签的定位盒：组合（.pp-sheet-sign）与权限（.pp-sheet-perm）各一层，
+ * 各自的菜单开在自己那枚按钮正下方——不挂到整条签上（签是两行：控件行 + 预演句）。 */
+.pp-sheet-sign,
 .pp-sheet-perm {
   position: relative;
 }
@@ -502,13 +505,18 @@
 
 /* ── 防跳变（用户：UI 不要产生莫名其妙的跳变）──
  * 签上的下拉改**绝对定位**：展开不再撑高纸盒 ⇒ 纸的上缘与落影纹丝不动；
- * 落影用真机同一支硬投影笔（不是新语言）。 */
-.pp-composer-settings[data-variant="sheet"] .pp-comp-sel,
-.pp-composer-settings[data-variant="sheet"] .pp-sheet-perm {
-  position: relative;
-}
+ * 落影用真机同一支硬投影笔（不是新语言）。
+ * 定位祖先 = 签上两枚各自的定位盒（.pp-sheet-sign / .pp-sheet-perm，见上方那条）。 */
 .pp-composer-settings[data-variant="sheet"] .pp-comp-menu-inline {
   position: absolute;
+  /* ⚠ `bottom: auto` 是**必需**的，不是清理（2026-11-28 第二次真机报障的根因）：
+   * 坞期基准规则 `.pp-composer .pp-comp-menu` 是向上弹的（`bottom: calc(100% + 4px)`），
+   * 本片把方向改成向下（加 `top`）时**忘了撤 `bottom`**。绝对定位盒同时拿到 top 与
+   * bottom、且 height:auto ⇒ 高度由等式解出 = 容器高 − top − bottom，而两个方向都是
+   * 「100% + 4px」⇒ 解出**负数，夹成 0**：菜单成了一个 0 高的空盒（真机只剩两道 1px
+   * 上下边），点开等于没开。同族先例 = paper-cards.css 的浮层换向块，那里每条都写
+   * 了 `bottom: auto`；只抬 z-index（706815b0）治不了这一条。 */
+  bottom: auto;
   top: calc(100% + 4px);
   left: 0;
   z-index: 90;
@@ -516,6 +524,8 @@
   max-height: 46vh;
   overflow-y: auto;
   margin: 0;
+  /* 墨自签下落（向下开 = pop-down；坞期那份 pop-up 是向上弹的笔）。同 paper-cards 换向块。 */
+  animation: pop-down var(--m-ink);
   box-shadow:
     3px 4px 0 rgba(38, 34, 28, 0.05),
     8px 10px 0 rgba(38, 34, 28, 0.03);

@@ -38,7 +38,10 @@ export function SheetSign({
   onPick: (id: string) => void;
 }) {
   return (
-    <>
+    /* 定位盒（2026-11-28 第二次报障批）：菜单是绝对定位件，**必须有自己的一层**
+     * ——挂在签条上（.pp-composer-settings）会让它出现在签条两行之下、并与「权限」的
+     * 菜单错位；本层与 .pp-sheet-perm 同形，两个下拉都开在自己那枚按钮的正下方。 */
+    <div className="pp-sheet-sign">
       <button
         type="button"
         className={`pp-sheet-comp${open ? ' open' : ''}`}
@@ -75,7 +78,7 @@ export function SheetSign({
           {error && <div className="pp-comp-note">⚠ {error}</div>}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
