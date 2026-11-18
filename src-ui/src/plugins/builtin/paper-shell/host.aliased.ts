@@ -41,6 +41,8 @@ export const getAssetState = impl.getAssetState;
 export const shelveCard = impl.shelveCard;
 // 架阁浮层（B3）：软件口径 + 卡片 RPC + 开合账（形状对拍 host.ts）。
 export const listCards = impl.listCards;
+export const readCard = impl.readCard;
+export const writeCardState = impl.writeCardState;
 export const usePluginWindowStore = impl.usePluginWindowStore;
 export const useShelfStore = impl.useShelfStore;
 export const ANCHOR = impl.ANCHOR;

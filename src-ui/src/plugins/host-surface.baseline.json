@@ -1,5 +1,5 @@
 {
-  "fingerprint": "7c697d66",
+  "fingerprint": "8eafd05e",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -273,6 +273,7 @@
     "proxyFetch",
     "pullShellWork",
     "readAttachmentBase64",
+    "readCard",
     "readGoal",
     "readJobOutput",
     "reapplyComposition",
@@ -383,6 +384,7 @@
     "workspaceListCached",
     "worldToScreen",
     "wrapSubAgentSink",
+    "writeCardState",
     "writingBlockIdOf",
     "zoomAt"
   ]
