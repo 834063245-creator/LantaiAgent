@@ -55,6 +55,8 @@ export function useComposerModels({
           providerName: targetProvider,
           model: modelId,
           thinking: undefined, // 换模型 = 思考档重解析（旧档位可能不在新模型声明里）
+          // 权限那一格不因换模型而丢（2026-11-28 卷级权限批）：原样保留已有题签
+          permission: st.papers.find((p) => p.id === st.focusedId)?.picks?.permission ?? null,
         });
         return;
       }

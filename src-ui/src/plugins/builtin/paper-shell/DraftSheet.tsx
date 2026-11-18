@@ -204,6 +204,8 @@ function PaperView({
         providerName: base.providerName,
         model: base.model,
         thinking: base.thinking,
+        // 权限出厂 = 跟随工作区（2026-11-28 卷级权限批：绝大多数卷不该带覆盖）
+        permission: null,
       },
       paperId,
     );

@@ -34,6 +34,7 @@
 
 import { create } from 'zustand';
 import type { StoredThinking } from '../provider/thinking';
+import type { PermissionMode } from './mode-store';
 
 /** 化卷那一拍（V2-P3）的窗长（ms）——**镜像 `--m-sheet`**（0.26s）。
  *
@@ -63,6 +64,10 @@ export interface DraftPicks {
   providerName: string;
   model: string;
   thinking: StoredThinking | undefined;
+  /** 权限：null = **跟随工作区默认**；非 null = 开卷时落成这一卷的卷级覆盖。
+   *  2026-11-28 权限卷级批（用户拍板 B 案）：题签第四格就写在这里，
+   *  开卷那一刻由 `applyDraftPicks` 落到 mode-store 的 sessionModes。 */
+  permission: PermissionMode | null;
 }
 
 /** 交接期纸盒（世界坐标，**由卷侧回填**，且**只回填左缘与宽**）。

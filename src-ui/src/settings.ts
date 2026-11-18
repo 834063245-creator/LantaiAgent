@@ -234,8 +234,14 @@ export function modelDescriptor(p: ProviderSettings, modelId: string): ModelDesc
 export interface AgentSettings {
   /** 默认协作模式 */
   collaborationMode?: 'normal' | 'plan';
-  /** 默认权限模式 */
+  /** **工作区默认**权限模式（新卷的起点；2026-11-28 起不再是"全局唯一真相"） */
   permissionMode?: 'ask' | 'auto' | 'yolo';
+  /** 卷级权限覆盖（键 = 卷号字符串；缺 = 跟随 permissionMode）。
+   *  2026-11-28 权限卷级批：用户拍板「这一卷怎么跟 Agent 相处」应当逐卷可定——
+   *  多卷并行时 A 卷全放、B 卷常询，互不影响。
+   *  ⚠ 卷删除后条目不会自动清（卷号可能复用）——读取面按「该卷仍存在」校验，
+   *  见 state/mode-store 的 modeOf。 */
+  sessionPermissionModes?: Record<string, 'ask' | 'auto' | 'yolo'>;
 }
 
 interface DisplaySettings {

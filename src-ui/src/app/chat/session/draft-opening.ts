@@ -26,6 +26,8 @@ import { getCanvasStore } from '../../../state/canvas-store';
 import { useCanvasViewStore } from '../../../state/canvas-view-store';
 import { getComposeStore } from '../../../state/compose-store';
 import { armRiseVolume, clearRiseVolume } from '../../../state/draft-sheet-store';
+import type { PermissionMode } from '../../../state/mode-store';
+import { useModeStore } from '../../../state/mode-store';
 import { getChatStore } from '../../../ui/chat-store';
 import { createSessionWithPreset } from '../session-composition';
 import type { SessionContext } from './session-types';
@@ -76,9 +78,19 @@ export function volumeInSight(panelId: string, sessionId: number): boolean {
 export function applyDraftPicks(
   panelId: string,
   sessionId: number,
-  picks: { providerName: string; model: string; thinking: StoredThinking | undefined },
+  picks: {
+    providerName: string;
+    model: string;
+    thinking: StoredThinking | undefined;
+    /** 题签第四格（2026-11-28 卷级权限批）：null = 跟随工作区，不落覆盖。 */
+    permission?: PermissionMode | null;
+  },
   fallback: { providerName: string; model: string },
 ): void {
+  /* 权限先落（它自成一条账：即使模型/思考全默认也要写）——卷级覆盖只在题过时才存在。 */
+  if (picks.permission != null) {
+    useModeStore.getState().setSessionMode(sessionId, picks.permission);
+  }
   if (picks.providerName === fallback.providerName && picks.model === fallback.model && picks.thinking === undefined) {
     return;
   }

@@ -18,7 +18,7 @@ import type { ChangeEvent, ClipboardEvent, KeyboardEvent, RefObject } from 'reac
 import type { ChatImageRef, CommandContribution, PermissionMode } from './host';
 import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, previewUrlFor } from './host';
 import { ModelSelector } from './ModelSelector';
-import { SheetSign } from './sheet-parts';
+import { SheetPermission, SheetSign } from './sheet-parts';
 import { SlashPanel } from './slash-panel';
 
 /** 输入行（原坞主体）：斜杠面板 / 引面板 / 附图预览 / textarea / 引夹案三钮 /
@@ -276,9 +276,13 @@ export interface SettingsRowProps {
   }>;
   onCompToggle: () => void;
   onDraftPresetPick: (id: string) => void;
-  /* 坞期权限三分 */
+  /* 权限（坞期 = 本卷有效档；纸期 = 工作区默认，题签另有覆盖值） */
   permissionMode: PermissionMode;
   onSelectMode: (m: PermissionMode) => void;
+  /** 纸期题签第四格：null = 跟随工作区（不落卷级覆盖）。 */
+  sheetPermission?: PermissionMode | null;
+  /** 纸期：把题签的权限拨回「跟随工作区」。 */
+  onPermissionInherit?: () => void;
   /* 模型 + 思考（两种宿主共用）*/
   model: string;
   providerName: string;
@@ -306,6 +310,8 @@ export function SettingsRow(props: SettingsRowProps) {
     onDraftPresetPick,
     permissionMode,
     onSelectMode,
+    sheetPermission,
+    onPermissionInherit,
     model,
     providerName,
     providerKind,
@@ -325,6 +331,13 @@ export function SettingsRow(props: SettingsRowProps) {
             roster={presetRoster}
             onToggle={onCompToggle}
             onPick={onDraftPresetPick}
+          />
+          {/* 题签第四格（2026-11-28 权限卷级批）：null = 跟随工作区；选过才落卷级覆盖。 */}
+          <SheetPermission
+            value={sheetPermission ?? null}
+            fallback={permissionMode}
+            onPick={onSelectMode}
+            onInherit={onPermissionInherit}
           />
           <div className="pp-composer-settings-spacer" />
         </>
@@ -357,6 +370,17 @@ export function SettingsRow(props: SettingsRowProps) {
         onBlocked={onModelBlocked}
         thinking={thinking}
       />
+      {/* 预演句（2026-11-28 题签批）：签下把这卷的打算写成一句人话。
+          只纸期有——卷成立之后，这些读数各自有家（书眉 / 芯片 / 设置行）。 */}
+      {isSheet && (
+        <p className="pp-sheet-prev">
+          此卷以 <b>{compLabel}</b> 成卷 · 模型 <b>{model}</b> · <b>{thinking.label}</b> · 权限{' '}
+          <b>
+            {sheetPermission == null ? `跟随工作区（${MODE_LABELS[permissionMode]}）` : MODE_LABELS[sheetPermission]}
+          </b>
+          <span className="pp-sheet-prev-mut">——开卷那一刻落账</span>
+        </p>
+      )}
     </div>
   );
 }

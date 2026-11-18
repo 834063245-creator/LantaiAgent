@@ -192,15 +192,48 @@ const ComposerSurface = memo(function ComposerSurface({
     [core],
   );
 
-  /* ── 权限（mode-store 工作区级单一真相）──
-   * ⚠ 它既不随卷变、也不随坞的浮层变——只随工作区的权限档变，故不进上面任何一件：
-   * 三个订阅 + 一条「全放要二次确认」的判据放回外壳，是这一刀里最小的一处。 */
-  const permissionMode = useModeStore((s) => s.permissionMode);
+  /* ── 权限（2026-11-28 起**卷级**：本卷覆盖 ?? 工作区默认）──
+   * 坞期拨的是「本卷」；纸期拨的是题签（开卷那一刻落成卷级覆盖）。
+   * 工作区默认只在没有卷级覆盖时才管用（水合源 = settings.agent.permissionMode）。
+   * ⚠ Rust 侧只有一份全局镜像（服务后台任务的同步路径）——卷级覆盖只在前端闸门生效，
+   * 这是本批明示的边界（见 state/mode-store 的 setSessionMode 注）。 */
+  const globalMode = useModeStore((s) => s.permissionMode);
+  const sessionModes = useModeStore((s) => s.sessionModes);
   const pendingYolo = useModeStore((s) => s.pendingYolo);
-  const setPermissionMode = useModeStore((s) => s.setPermissionMode);
   const setPendingYolo = useModeStore((s) => s.setPendingYolo);
+  /** 本卷有效权限（无卷 = 工作区默认；纸期无卷号，读到的是默认值）。 */
+  const permissionMode =
+    session.activeSidNum != null ? (sessionModes[String(session.activeSidNum)] ?? globalMode) : globalMode;
   /* 全放二次确认模态的 Esc（同附图预览：portal 到 body 后 Escape 只能走 document 级） */
   useDialogEscape(() => setPendingYolo(false), { enabled: pendingYolo });
+
+  /** 纸期题签第四格：坞不持有纸的题签，只订阅它（null = 跟随工作区）。 */
+  const sheetPermission = useDraftSheetStore((s) => {
+    if (!isSheet || s.focusedId === null) return null;
+    return s.papers.find((pp) => pp.id === s.focusedId)?.picks?.permission ?? null;
+  });
+  /** 纸期：把题签的权限拨回「跟随工作区」（清掉卷级覆盖）。 */
+  const onPermissionInherit = useCallback(() => {
+    const st = useDraftSheetStore.getState();
+    const paper = st.papers.find((pp) => pp.id === st.focusedId);
+    if (paper?.picks) st.setPicks({ ...paper.picks, permission: null }, paper.id);
+  }, []);
+
+  /** 直接写入（跳过「全放要二次确认」那道闸——确认模态自己用它落账）。 */
+  const applyMode = useCallback(
+    (mode: PermissionMode) => {
+      if (isSheet) {
+        // 纸期：写题签第四格——开卷那一刻由 applyDraftPicks 落成这一卷的卷级覆盖
+        const st = useDraftSheetStore.getState();
+        const paper = st.papers.find((pp) => pp.id === st.focusedId);
+        if (paper?.picks) st.setPicks({ ...paper.picks, permission: mode }, paper.id);
+        return;
+      }
+      if (session.activeSidNum != null) useModeStore.getState().setSessionMode(session.activeSidNum, mode);
+      else useModeStore.getState().setPermissionMode(mode);
+    },
+    [isSheet, session.activeSidNum],
+  );
 
   const selectMode = useCallback(
     (mode: PermissionMode) => {
@@ -209,9 +242,9 @@ const ComposerSurface = memo(function ComposerSurface({
         return;
       }
       setPendingYolo(false);
-      setPermissionMode(mode);
+      applyMode(mode);
     },
-    [permissionMode, setPendingYolo, setPermissionMode],
+    [permissionMode, setPendingYolo, applyMode],
   );
   // rework P0-1：卸载（含关窗）时清掉全放确认态，避免残留 DOM 参与销毁时序
   useEffect(() => () => setPendingYolo(false), [setPendingYolo]);
@@ -326,6 +359,8 @@ const ComposerSurface = memo(function ComposerSurface({
         onDraftPresetPick={composition.onDraftPresetChange}
         permissionMode={permissionMode}
         onSelectMode={selectMode}
+        sheetPermission={sheetPermission}
+        onPermissionInherit={onPermissionInherit}
         model={session.model}
         providerName={session.providerName}
         providerKind={session.providerKind}
@@ -343,11 +378,7 @@ const ComposerSurface = memo(function ComposerSurface({
 
       {/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞，避免高度/关窗竞态）
           ——同附图预览的 portal 理由，见 `composer-modals.tsx` 头注。 */}
-      <YoloConfirmModal
-        open={pendingYolo}
-        onCancel={() => setPendingYolo(false)}
-        onConfirm={() => setPermissionMode('yolo')}
-      />
+      <YoloConfirmModal open={pendingYolo} onCancel={() => setPendingYolo(false)} onConfirm={() => applyMode('yolo')} />
     </div>
   );
 });

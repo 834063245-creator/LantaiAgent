@@ -10,6 +10,9 @@
 // 纪律：本件只吃 props（显示名 / 开合态 / roster / 回调），不碰 store、不碰 core
 // ——组合的读写真源仍在坞（它已经算好），纸期只是换了个宿主渲染。
 
+import { useState } from 'react';
+import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, type PermissionMode } from './host';
+
 /** 题签（纸期设置行的左端）：组合芯片 + 下拉。
  *
  *  与坞期「案 › 组合」那枚是**同一把尺子**（presetRoster + presetError），只是宿主
@@ -73,6 +76,79 @@ export function SheetSign({
         </div>
       )}
     </>
+  );
+}
+
+/** **题签第四格 · 权限**（2026-11-28 权限卷级批）：这一卷跟 Agent 怎么相处。
+ *
+ *  与坞期权限段是**同一个开关的两种宿主**：坞期拨本卷、纸期拨题签（开卷那一刻落成
+ *  这一卷的卷级覆盖）。默认值 = **跟随工作区**（null）——绝大多数卷不该带覆盖；
+ *  只有选过三档之一，才在 `DraftPicks.permission` 里留下一个显式值。
+ *  展开面沿用组合菜单的语言（pp-comp-menu），不新增第二种下拉。 */
+export function SheetPermission({
+  value,
+  fallback,
+  onPick,
+  onInherit,
+}: {
+  value: PermissionMode | null;
+  /** 工作区默认（「跟随」的落点，也是菜单里那行小字的读数）。 */
+  fallback: PermissionMode;
+  onPick: (m: PermissionMode) => void;
+  onInherit?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = value == null ? '跟随工作区' : MODE_LABELS[value];
+  return (
+    <div className="pp-sheet-perm">
+      <button
+        type="button"
+        className={`pp-sheet-comp${open ? ' open' : ''}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        data-tip={value == null ? `跟随工作区（当前 ${MODE_LABELS[fallback]}）` : `本卷权限：${MODE_LABELS[value]}`}
+        data-tip-hint="只影响这一卷——多卷并行时各管各的"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="pp-sheet-comp-k">权限</span>
+        <span className="pp-sheet-comp-v">{label}</span>
+        <span className="pp-sheet-caret" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div className="pp-comp-menu pp-comp-menu-inline" role="listbox" aria-label="权限">
+          <button
+            type="button"
+            role="option"
+            aria-selected={value == null}
+            className={`pp-comp-opt${value == null ? ' selected' : ''}`}
+            onClick={() => {
+              onInherit?.();
+              setOpen(false);
+            }}
+          >
+            跟随工作区（{MODE_LABELS[fallback]}）
+          </button>
+          {PERMISSION_MODES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="option"
+              aria-selected={value === m}
+              className={`pp-comp-opt${value === m ? ' selected' : ''}`}
+              data-tip={MODE_DESCRIPTIONS[m]}
+              onClick={() => {
+                onPick(m);
+                setOpen(false);
+              }}
+            >
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

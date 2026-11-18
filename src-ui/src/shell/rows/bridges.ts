@@ -35,10 +35,15 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
     const timedOutRequests = new Set<string>();
     await typedListen('permission-ask', (p) => {
       if (!chatPanel) return;
-      // 权限模式旁路：yolo → 全部自动，auto → 仅白名单（真源 permission-policy）。
-      // 单一真相 = mode-store（C11 重设计，2026-08-22）：app 级单例，
-      // 切换时已同步镜像 Rust + 落盘；不再读 per-panel 的旧字段。
-      const permMode = useModeStore.getState().permissionMode;
+      // ── 归属解析（并发会话）：agentId → 所属卷 ──
+      // 主 Agent id 直接查注册表；子 Agent（sub-*）经 runtime parentId
+      // 链上溯到主 Agent 再查。解析失败（未登记/无身份）→ null，卡按
+      // 活跃卷兜底（单卷/恢复期等场景不降级）。
+      const agentId = p.agentId || null;
+      const owner = agentId ? resolveOwnerSession(agentId) : null;
+      // 权限模式旁路：**按卷**取有效模式（卷级覆盖 ?? 工作区默认）——2026-11-28 权限卷级批。
+      // 单一真相 = mode-store 的 modeOf（app 级单例；切换时落盘，卷级只在前端闸门生效）。
+      const permMode = useModeStore.getState().modeOf(owner?.sessionId ?? null);
       // 工作区外写入（Rust 侧标记）不走 auto 自动放行——仍弹卡（2026-10-30）
       if (shouldAutoApprove(permMode, p.tool, p.outsideProject === true)) {
         void typedRpc('permission_ask_response', {
@@ -49,12 +54,6 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
         return;
       }
 
-      // ── 归属解析（并发会话）：agentId → 所属卷 ──
-      // 主 Agent id 直接查注册表；子 Agent（sub-*）经 runtime parentId
-      // 链上溯到主 Agent 再查。解析失败（未登记/无身份）→ null，卡按
-      // 活跃卷兜底（单卷/恢复期等场景不降级）。
-      const agentId = p.agentId || null;
-      const owner = agentId ? resolveOwnerSession(agentId) : null;
       // 子 Agent 判定：请求方 id ≠ 归属卷主 Agent id（无归属信息时保守视为主
       // Agent——保 120s 长超时，宁可多等不错杀）。
       const isSubAgent = !!agentId && !!owner && agentId !== owner.mainAgentId;

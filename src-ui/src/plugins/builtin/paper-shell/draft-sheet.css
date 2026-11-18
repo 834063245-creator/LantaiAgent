@@ -408,3 +408,63 @@
 .pp-draft-sheet.pp-draft-idle:hover .pp-draft-idle-hint {
   color: var(--seal-deep);
 }
+
+/* ── 题签（2026-11-28 题签批）：纸期设置行 = 一条**纸签**，不是一行控件 ─────────
+ * 依据 = 真机 tokens（不是网页语言）：纸的厚度用**硬投影**（无模糊）、纸的起伏用
+ * 内阴影（受光/背光）、裱边带一圈；签本身比纸深一档（--paper-deep），上下各一道
+ * 1px 压边 —— 它是「贴在纸上的签」，不是选中态高亮块。
+ * 朱砂整屏只留一处：签左端那枚「题」印（浸墨法则 3：一屏至多一处红）。 */
+.pp-composer-settings[data-variant="sheet"] {
+  position: relative;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 9px 12px 8px 44px;
+  background: var(--paper-deep);
+  border-top: 1px solid rgba(38, 34, 28, 0.22);
+  border-bottom: 1px solid rgba(38, 34, 28, 0.22);
+  transform: rotate(-0.22deg);
+  box-shadow:
+    1px 2px 0 rgba(38, 34, 28, 0.08),
+    3px 4px 0 rgba(38, 34, 28, 0.035);
+}
+/* 左端「题」印：签的身份戳（全屏唯一暖色件） */
+.pp-composer-settings[data-variant="sheet"]::before {
+  content: "题";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--seal);
+  color: #f3ece0;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+/* 签上四格之间只留发丝线（1px 墨四），不画边框 */
+.pp-composer-settings[data-variant="sheet"] > * {
+  flex: 0 0 auto;
+}
+.pp-sheet-perm {
+  position: relative;
+}
+/* 预演句：签下把这卷的打算写成一句人话。
+ * 层次靠字重与字距（不靠颜色）：关键词 600 墨一，虚词墨四。 */
+.pp-sheet-prev {
+  flex: 1 0 100%;
+  margin: 9px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+.pp-sheet-prev b {
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.pp-sheet-prev-mut {
+  color: var(--ink-4);
+}
