@@ -125,7 +125,7 @@ describe('资产块在折叠族内但默认张开（显式规格变更）', () =
   });
 
   it('③回归：非资产调用面照旧（夹注/脚注文案逐字不变）', () => {
-    expect(foldLabel('reasoning', { text: 'x'.repeat(214) }, true)).toBe('▸ 思考 214 字');
+    expect(foldLabel('reasoning', { text: '字'.repeat(214) }, true)).toBe('▸ 思考 214 字');
     expect(foldLabel('reasoning', { text: '思' }, false)).toBe('▾ 收起思考');
     expect(foldLabel('tool', { args: '', output: '', err: '' }, true)).toBe('▸ 工具 · 待执行');
   });

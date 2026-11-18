@@ -109,11 +109,108 @@ export function defaultFolded(kind: BlockKind, payload: unknown, block?: Sourced
   return false;
 }
 
-/** 字数展示（>1k 缩写，折叠行不放长数字）。 */
+/** 紧凑计数（>1k 缩写，折叠行不放长数字）。
+ *  2026-11-18 计数口径修正：旧实现 `(n/1000).toFixed(1)` 会把 9999 说成「10.0k」、
+ *  `Math.round(n/1000)` 把 10499 说成「10k」——**四舍五入到整档 = 夸大**。现在一律
+ *  **向下取整到显示精度**（9999 → 9.9k / 12345 → 12.3k）：读数永远不超过真实值。 */
 function charLabel(n: number): string {
-  if (n >= 10000) return `${Math.round(n / 1000)}k`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(Math.floor(n / 100) / 10).toFixed(1)}k`;
+  return `${(Math.floor(n / 100_000) / 10).toFixed(1)}M`;
+}
+
+/** 书写系统分类（折叠行读数用）。
+ *  CJK 字面按「字」计；其余字母连续串按「词」计；数字串与标点按语境归桶。
+ *  ⚠ 用 `for…of` 按**码点**遍历（代理对只算一个），这是与 `.length` 分道扬镳的关键。 */
+const CJK_CHAR = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Bopomofo}]/u;
+const WORD_CHAR = /[\p{L}\p{M}]/u;
+const DIGIT_CHAR = /\p{N}/u;
+/** 词内连接符：`fs_read` / `src/a.ts` / `v4-flash` / `2.0` 是**一个**英文块，不是几个词
+ *  ——中文思考里夹的代码/路径不该把词数顶起来（2026-11-18 混排修正）。 */
+const WORD_JOINER = /[_.\-/]/;
+/** CJK 符号与标点 + 全角形式 + 中文弯引号：中文语境里它们算「字」（对齐 Word 字数口径）。 */
+const CJK_PUNCT = /[\u3000-\u303F\uFF00-\uFFEF\u2018\u2019\u201C\u201D]/u;
+const SYMBOL_CHAR = /\p{S}/u;
+
+/** 文本规模普查：CJK 字 / 词 / 数字串 / CJK 标点 / 符号各多少。 */
+function surveyText(text: string): {
+  chars: number;
+  words: number;
+  digits: number;
+  cjkPunct: number;
+  symbols: number;
+} {
+  let chars = 0;
+  let words = 0;
+  let digits = 0;
+  let cjkPunct = 0;
+  let symbols = 0;
+  let inWord = false;
+  let inDigits = false;
+  for (const ch of text) {
+    if (CJK_CHAR.test(ch)) {
+      chars += 1;
+      inWord = false;
+      inDigits = false;
+      continue;
+    }
+    if (DIGIT_CHAR.test(ch)) {
+      // 词内的数字（`v4` / `gpt-4`）不拆词：仍在同一个英文块里
+      if (inWord) continue;
+      if (!inDigits) {
+        digits += 1;
+        inDigits = true;
+      }
+      continue;
+    }
+    if (WORD_CHAR.test(ch)) {
+      if (!inWord) {
+        words += 1;
+        inWord = true;
+      }
+      inDigits = false;
+      continue;
+    }
+    // 词/数字内的连接符不断词（见 WORD_JOINER 注释）
+    if (WORD_JOINER.test(ch) && (inWord || inDigits)) continue;
+    inWord = false;
+    inDigits = false;
+    if (CJK_PUNCT.test(ch)) cjkPunct += 1;
+    else if (SYMBOL_CHAR.test(ch)) symbols += 1;
+  }
+  return { chars, words, digits, cjkPunct, symbols };
+}
+
+/** 文本规模读数 —— 「思考 N 字」的唯一出口（2026-11-18 计数口径修正）。
+ *
+ *  旧口径 = `text.length`（UTF-16 码元），三个病灶：
+ *    ① **英文按字母算「字」**：214 字符的英文只有 40 来个词，却报「214 字」——
+ *       读者会把 214 当成 214 个汉字的分量，实际差四五倍；
+ *    ② emoji / 生僻字（CJK 扩展 B 起）是代理对，`.length` 一律算 2；
+ *    ③ 中英混排只有一个数，读者无从知道各占多少。
+ *  新口径按**书写系统**各给各的单位，中英混排的分桶规则：
+ *    - 汉字/假名/谚文/注音 → 「字」；CJK 标点与数字串在中文语境也算字
+ *      （「第 3 步」= 3 字，「你好，世界！」= 6 字——对齐 Word「字数」口径）；
+ *    - 拉丁/希腊/西里尔等字母串 → 「词」；`_ . - /` 连接的是同一个词
+ *      （`src/paper/fold.ts` 算 1 个词，不是 4 个）；
+ *    - 混排：两侧都够量才各报各的（英文词 ≥ 10 且占字数 10% 以上），
+ *      否则只报中文——少量术语/代码不留噪音（「500 字 · 1 词」没有信息量）；
+ *    - 无 CJK：数字串按词计（`version 3` = 2 词）；纯 emoji/符号 → 「N 符号」。
+ *  **这不是 token 数**：token 由分词器决定（`agent/token-counter.ts`），两者不互算。 */
+export function textScaleLabel(text: string): string {
+  const s = surveyText(text);
+  const hasCjk = s.chars > 0 || s.cjkPunct > 0;
+  if (hasCjk) {
+    const charCount = s.chars + s.cjkPunct + s.digits;
+    if (s.words >= 10 && s.words * 10 >= charCount) {
+      return `${charLabel(charCount)} 字 · ${charLabel(s.words)} 词`;
+    }
+    return `${charLabel(charCount)} 字`;
+  }
+  const wordCount = s.words + s.digits;
+  if (wordCount > 0) return `${charLabel(wordCount)} 词`;
+  if (s.symbols > 0) return `${charLabel(s.symbols)} 符号`;
+  return '0 字';
 }
 
 /** 折叠行文本上限（字符）。
@@ -161,7 +258,9 @@ function foldLabelRaw(kind: BlockKind, payload: unknown, folded: boolean, block?
     return out > 0 ? ` · 输出 ${charLabel(out)} 字` : '';
   };
   if (kind === 'reasoning') {
-    return folded ? `▸ 思考 ${charLabel(p.text?.length ?? 0)} 字` : '▾ 收起思考';
+    // 2026-11-18 计数口径修正：旧 `text.length` 把英文字母当「字」、emoji 算两个。
+    // 读数出口 = `textScaleLabel`（按书写系统分「字 / 词 / 符号」）。
+    return folded ? `▸ 思考 ${textScaleLabel(p.text ?? '')}` : '▾ 收起思考';
   }
   if (kind === 'tool') {
     // 2026-08-30 会话流专项：折叠行带「干了什么」（名字 + 参数目标摘要）——

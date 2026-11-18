@@ -166,7 +166,7 @@ describe('paper/fold — 默认规则与文案', () => {
   });
 
   it('折叠行文案：折叠报「名字+参数摘要」（2026-08-30 会话流专项，纯字数退役），展开报收起', () => {
-    expect(foldLabel('reasoning', { text: 'x'.repeat(214) }, true)).toBe('▸ 思考 214 字');
+    expect(foldLabel('reasoning', { text: '字'.repeat(214) }, true)).toBe('▸ 思考 214 字');
     expect(foldLabel('reasoning', { text: '思' }, false)).toBe('▾ 收起思考');
     expect(foldLabel('tool', { name: 'edit', label: 'edit', args: '{"file_path":"a.ts"}', output: 'ok' }, true)).toBe(
       '▸ edit a.ts · 输出 2 字',
@@ -175,6 +175,34 @@ describe('paper/fold — 默认规则与文案', () => {
     expect(foldLabel('tool', { args: 'a' }, false)).toBe('▾ 收起 工具');
     expect(foldLabel('code', { code: 'abcd' }, true)).toBe('▸ 程序');
     expect(foldLabel('code', { code: 'abcd' }, false)).toBe('▾ 收起 程序');
+  });
+
+  it('思考读数按书写系统分单位（2026-11-18 计数口径修正：旧 `.length` 把英文字母当「字」）', () => {
+    const thinking = (text: string) => foldLabel('reasoning', { text }, true);
+    // 中文：汉字逐字计；CJK 标点与数字串也算字（对齐 Word「字数」口径）
+    expect(thinking('字'.repeat(214))).toBe('▸ 思考 214 字');
+    expect(thinking('你好，世界！')).toBe('▸ 思考 6 字');
+    expect(thinking('第 3 步')).toBe('▸ 思考 3 字');
+    // 英文：按「词」——旧口径把 44 个字符报成「44 字」，夸大约四五倍
+    expect(thinking('The quick brown fox jumps over the lazy dog.')).toBe('▸ 思考 9 词');
+    // 无 CJK 时数字串按词计（`version 3` = 两个词）
+    expect(thinking('version 3')).toBe('▸ 思考 2 词');
+    // 中英混排：两侧都够量时各报各的，不混成一个无意义的数
+    expect(thinking(`${'字'.repeat(20)} ${'word '.repeat(10)}`)).toBe('▸ 思考 20 字 · 10 词');
+    // 混排里的中文标点仍算字（21 = 20 汉字 + 1 逗号）
+    expect(thinking(`${'字'.repeat(20)}，${'word '.repeat(10)}`)).toBe('▸ 思考 21 字 · 10 词');
+    // 代码/路径是**一个**英文块：`_ . - /` 连接不断词，词数不被碎片顶起来
+    expect(thinking(`${'字'.repeat(200)} src/paper/fold.ts fs(read)`)).toBe('▸ 思考 200 字');
+    expect(thinking(`${'字'.repeat(50)} ${'deepseek-v4-flash '.repeat(3)}`)).toBe('▸ 思考 50 字');
+    // 次要项是噪音（不足 10 个词）→ 省略，不占折叠行
+    expect(thinking(`${'字'.repeat(500)} ok`)).toBe('▸ 思考 500 字');
+    // 代理对：emoji 与新码位汉字都算 1（旧 `.length` 一律算 2）
+    expect(thinking('🧠')).toBe('▸ 思考 1 符号');
+    expect(thinking('𠀀')).toBe('▸ 思考 1 字');
+    // 缩略向下取整：读数不得超过真实值（旧实现把 9999 说成「10.0k」）
+    expect(thinking('字'.repeat(9999))).toBe('▸ 思考 9.9k 字');
+    expect(thinking('字'.repeat(12345))).toBe('▸ 思考 12.3k 字');
+    expect(thinking('')).toBe('▸ 思考 0 字');
   });
 
   it('夹注预览取最新一行（2026-09-14 改向：折叠态随思考推进动态更新）', () => {
