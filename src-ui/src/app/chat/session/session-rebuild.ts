@@ -110,7 +110,10 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
       }
       pendingUserText = m.content || '';
       pendingUserId = nextMsgId();
-      const um = createUserMessage(m.content || '', undefined, idx);
+      /* 附图引用随消息重建（2026-11-19 纯图批）：旧实现只搬正文，重启/重建后
+       * 来文气泡上那张图空空如也——卷里明明有引用（INVARIANTS #14：session 永持
+       * 完整引用），只是 UI 忘了读。 */
+      const um = createUserMessage(m.content || '', undefined, idx, m.images);
       rebuilt.push(um);
       pendingUserId = um._id;
       turnUserId = um._id;

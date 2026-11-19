@@ -60,8 +60,14 @@ describe('创作坞 P0 · 空印禁用', () => {
     expect(block).toContain('--ink-4');
   });
 
-  it('按钮由 inputText.trim() 驱动禁用；点空输入不发消息', () => {
-    expect(DOCK_TSX).toContain('disabled={!inputText.trim()}');
+  it('按钮由「正文 / 附件 / 附图任一在场」驱动禁用；点空输入不发消息', () => {
+    /* ⚡ 2026-11-19 规格变更（用户真机报「只附截图发不出去」）：判据从
+     * `inputText.trim()` 扩到三件任一在场——空印禁用守护的对象变成 `canSend`，
+     * 而它必须仍由这三件组成（不许回退到只看正文）。 */
+    expect(DOCK_TSX).toContain(
+      'const canSend = inputText.trim().length > 0 || attachedFiles.length > 0 || attachedImages.length > 0;',
+    );
+    expect(DOCK_TSX).toContain('disabled={!canSend}');
     expect(DOCK_TSX).toContain('有内容才可拟文');
   });
 });

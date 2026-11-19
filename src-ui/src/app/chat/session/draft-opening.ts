@@ -149,7 +149,15 @@ export async function openDraftVolume(
   inSight: (sessionId: number) => boolean = (sid) => volumeInSight(panelId, sid),
 ): Promise<DraftOpenResult> {
   const input = getChatStore(panelId).input;
-  const pendingText = input.getState().inputText;
+  /* 起卷会 `restoreSessionDraft(新号)`（新卷无草稿槽 ⇒ live 整体清空）。纸上没发出去的
+   * 东西**不是只有正文**：路径附件与附图道同权（2026-11-19 用户真机报「题签上附的
+   * 截图没发给模型」——图在纸化成卷那一拍被清掉了）。三件一起存、一起还。 */
+  const live = input.getState();
+  const pending = {
+    inputText: live.inputText,
+    attachedFiles: [...live.attachedFiles],
+    attachedImages: [...live.attachedImages],
+  };
   /* **发号之前**挂「出生即交接」账（2026-11-15 化卷批）：卷开合两窗的判据在**渲染期**跑，
    * 账晚一步（effect / 发号之后）那一卷就已经被当成普通摊开记进 played，落墨窗再也不开。
    * 见 state/draft-sheet-store 的 isRiseVolume 头注。 */
@@ -157,7 +165,9 @@ export async function openDraftVolume(
   const r = await createSessionWithPreset(ctx, opts.presetId ?? undefined);
   if (!r.ok) clearRiseVolume(); // 起卷失败 = 这一张纸没化成任何卷
   if (!r.ok) return r;
-  if (pendingText) input.getState().setInputText(pendingText);
+  if (pending.inputText) input.getState().setInputText(pending.inputText);
+  if (pending.attachedFiles.length > 0) input.getState().setAttachedFiles(pending.attachedFiles);
+  if (pending.attachedImages.length > 0) input.getState().setAttachedImages(pending.attachedImages);
   const sid = String(r.sessionId);
   if (opts.anchor) hooks.placeRegion(sid, opts.anchor);
   /* ③ 在眼前 = 只标活跃（不再飞）：落纸那一拍已经把镜头带到这张纸上，而卷与纸

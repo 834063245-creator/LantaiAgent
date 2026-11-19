@@ -123,6 +123,9 @@ function createInputStoreImpl() {
     clearAttachedImages: () => set({ attachedImages: [] }),
     pushInputHistory: (text) =>
       set((s) => {
+        // 空正文不入历史（2026-11-19 纯图批）：纯图轮没有可回取的字，
+        // 塞空条只会让 ↑ 历史里出现「看不见的一条」。
+        if (text.trim() === '') return s;
         const filtered = s.inputHistory.filter((t) => t !== text);
         if (filtered.length >= 50) filtered.shift();
         return { inputHistory: [...filtered, text] };

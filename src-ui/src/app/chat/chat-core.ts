@@ -60,6 +60,7 @@ import { GoalDriver } from './goal-driver';
 import {
   admitImageBlob,
   admitImageFromPath,
+  createImageIntakeQueue,
   MAX_IMAGES_PER_MESSAGE,
   MAX_MESSAGE_IMAGE_BYTES,
   splitIntakePaths,
@@ -1057,8 +1058,13 @@ export class ChatCore {
 
   /** Agent 轮次的共享脚手架。 */
   private async _runAgentTurn(opts: {
-    /** 本轮来文气泡文本（铸气泡 + 记轮次对）；缺省 = 不起泡（目标自动轮）。 */
+    /** 本轮来文气泡文本（铸气泡 + 记轮次对）；缺省 = 不起泡（目标自动轮）。
+     *  ⚠ **空串 ≠ 不起泡**（2026-11-19 纯图批）：纯图/纯附件轮的正文就是空的，
+     *  气泡仍要铸（附图随它显示）——判据是 `undefined`，不是 falsy。 */
     bubble?: string;
+    /** 气泡上挂的路径附件 / 附图（与 drive 里的快照同源；只有来文气泡用）。 */
+    bubbleFiles?: Array<{ path: string; name: string; size: number }>;
+    bubbleImages?: ChatImageRef[];
     /** 本轮回合开始时的一次性动作（发送面清输入框/附件、推历史、起卷命名都在这里）。 */
     onStart?: () => void;
     /** 运行种类（运行账的记录标签：诊断 + 读面策略）——目标自动轮传 'goal'。 */
@@ -1106,8 +1112,8 @@ export class ChatCore {
     // 先铸气泡拿 _id——轮次簿册以它作权威身份（撤回/重发 ID 直达）。
     // 气泡由调用方给（sendMessage 的来文气泡、sendAgentText 的命令标签、目标轮无色），
     // 本层不管气泡长什么样，只管「谁发起了本轮」。
-    if (opts.bubble) {
-      const bubble = this.appendUserBubble(opts.bubble);
+    if (opts.bubble !== undefined) {
+      const bubble = this.appendUserBubble(opts.bubble, opts.bubbleFiles, undefined, opts.bubbleImages);
       Session.getTurnPairs(this.panelId, turnSid ?? undefined).push({
         userText: opts.bubble,
         uiMsgId: bubble._id,
@@ -1165,7 +1171,8 @@ export class ChatCore {
         const code = apiErrorSummary(err);
         // 直人发送面的引导句（输入框就在眼前，出错后能立刻重发/压缩/新建卷）；
         // 目标自动轮没有人守着输入框，引导句只会干扰对「续行为什么停」的判读。
-        const hint = opts.bubble ? '。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话' : '。';
+        const hint =
+          opts.bubble !== undefined ? '。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话' : '。';
         const visible = `错误: ${msg}${describeRetryFacts(readRetryFacts(err))}${hint}${code ? `\n（${code}）` : ''}`;
         Stream.markTurnError(this._streamCtxFor(turnSid), visible, 'error');
         this._logTurnFailure(turnSid, turnGen, run.id, err, { visible });
@@ -1299,8 +1306,17 @@ export class ChatCore {
     // 为新轮次重置自动滚动
     getChatStore(this.panelId).msg.getState().setUserScrolledUp(false);
 
-    const text = getChatStore(this.panelId).input.getState().inputText.trim();
-    if (!text) return;
+    // 采集在途先落地（2026-11-19「粘贴后立刻回车」批）：准入是异步的（规整 + 落盘），
+    // 入口却是 fire-and-forget——不等这一拍，本轮读到的就是空快照（图留在附图道等
+    // 下一轮，用户读作「图没发给模型」）。
+    await this._imageIntake.pending();
+
+    const inputState = getChatStore(this.panelId).input.getState();
+    const text = inputState.inputText.trim();
+    // 「有内容才可拟文」的真判据（2026-11-19 纯图批）：正文 / 路径附件 / 附图道
+    // **任一在场**都是一次有效的输入。旧判据只看正文 ⇒ 甩一张截图发不出去。
+    const hasPayload = inputState.attachedFiles.length > 0 || inputState.attachedImages.length > 0;
+    if (!text && !hasPayload) return;
 
     // ── 待题纸（V2 立卷 UX）：**焦点在纸上 = 发送即开卷** ──
     // 判据读 store 单例（纸是跨产物瞬态，真源在 state/draft-sheet-store），且是
@@ -1432,7 +1448,11 @@ export class ChatCore {
     // 起轮：轮次脚手架（运行账 / 气泡 / 轮次对 / 收尾守卫 / 续行排程）全在
     // _runAgentTurn 一处——与目标自动轮、命令驱动轮同一条路，禁止再长第二份。
     await this._runAgentTurn({
+      // 纯图/纯附件轮的正文可以是空串——气泡仍要铸（附图挂在气泡上），
+      // 否则用户看到「发出去了」的只有空气，无从确认图随本轮走了。
       bubble: text,
+      bubbleFiles: filesSnapshot.length > 0 ? filesSnapshot : undefined,
+      bubbleImages: imagesSnapshot.length > 0 ? imagesSnapshot : undefined,
       onStart: () => {
         // 首条来文即命名（未命名卷）：判据与派生都走 state/volume-name 的**同一把尺子**
         // （与轮末 autoTitleSessionIfDefault 同规）。旧实现自带一套——只认「会话 」前缀
@@ -1547,30 +1567,25 @@ export class ChatCore {
     return true;
   }
 
+  /** 附图采集在途账（2026-11-19「粘贴后立刻回车」批）——发送面先等它落地，
+   *  否则读到的是空快照（见 `sendMessage` 头注）。 */
+  private _imageIntake = createImageIntakeQueue({
+    fromBlob: admitImageBlob,
+    fromPath: admitImageFromPath,
+    admit: (ref) => {
+      this.admitOneImage(ref);
+    },
+    notify: (text, level) => showToast(text, level),
+  });
+
   /** 粘贴通道：webview File 字节直入（上限 MAX_IMAGE_BYTES 20MiB）。 */
   async intakeImageFiles(files: readonly File[]): Promise<void> {
-    const root = useShellStore.getState().projectPath;
-    if (!root || files.length === 0) return;
-    for (const file of files) {
-      try {
-        this.admitOneImage(await admitImageBlob(root, file, file.name));
-      } catch (e) {
-        showToast(`附图失败：${file.name || '剪贴板图片'}（${e instanceof Error ? e.message : String(e)}）`, 'warn');
-      }
-    }
+    await this._imageIntake.files(useShellStore.getState().projectPath, files);
   }
 
   /** 路径通道：拖放/夹选（8MiB read_base64 通道上限在 admit 内生效）。 */
   async intakeImagePaths(paths: readonly string[]): Promise<void> {
-    const root = useShellStore.getState().projectPath;
-    if (!root || paths.length === 0) return;
-    for (const p of paths) {
-      try {
-        this.admitOneImage(await admitImageFromPath(root, p));
-      } catch (e) {
-        showToast(`附图失败：${p}（${e instanceof Error ? e.message : String(e)}）`, 'warn');
-      }
-    }
+    await this._imageIntake.paths(useShellStore.getState().projectPath, paths);
   }
 
   /** 夹/引/拖放共用底座（v3 B2；2026-09-22 拆 allowImages 参数）：图片扩展名

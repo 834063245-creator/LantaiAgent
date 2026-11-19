@@ -1420,13 +1420,17 @@ export class Agent {
     // token 计量：一轮 = 一次用户输入（含空 input 的唤醒轮——它同样会发请求）。
     // 计数点在循环之前，因此本轮所有 step（含重试）都归到同一个轮槽。
     this._turnSeq += 1;
-    if (input) {
+    // 空文本纯图轮（2026-11-19 纯图发送）：content 落空串，附图引用是唯一载荷。
+    // 判据不能是 `if (input)`——那会把「只发了一张图」整条消息丢掉（图没有载体，
+    // session 里连一条 user 消息都不剩）。
+    const hasImages = images !== undefined && images.length > 0;
+    if (input || hasImages) {
       // B3（multimodal-image-plan D-1）：附图引用随用户消息入 session（字节
       // 永不进卷）；空文本纯图轮 content 落空串占位。
       this._appendMessage('user/message', {
         role: 'user',
         content: input,
-        ...(images !== undefined && images.length > 0 ? { images } : {}),
+        ...(hasImages ? { images } : {}),
       });
       // 用户发新消息 → 重置 plan 提醒计数（下一轮注入全量提醒）
       this._planInjector?.resetOnUserInput();

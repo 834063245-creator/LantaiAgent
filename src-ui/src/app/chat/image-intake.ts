@@ -458,3 +458,64 @@ export async function admitImageFromPath(root: string, path: string): Promise<Ch
   const name = path.replace(/\\/g, '/').split('/').pop() || path;
   return admitImageBytes(root, bytes, name);
 }
+
+/** ── 采集队列（2026-11-19「粘贴后立刻回车」批）────────────────────────────
+ *  准入是异步的（读字节 → 规整 → sha256 → 落盘），三个入口（粘贴 / 拖放 / 夹选）
+ *  却都是 fire-and-forget。发送面读附图快照时若采集还没落槽，这一轮就静默丢图
+ *  （图留在附图道等下一轮——用户读到的是「图没发给模型」）。
+ *  本节把采集串成一条**在途账**：入队即排队，发送面 `await pending()` 再读快照。
+ *  链自身永不断——单次失败在任务内已 toast 可见，不能让一次失败把后续采集全掐掉。 */
+export interface ImageIntakeQueue {
+  /** 在途采集的总账（发送面等它落地）。 */
+  pending(): Promise<void>;
+  /** 粘贴通道：webview File 字节直入（上限 MAX_IMAGE_BYTES）。 */
+  files(root: string, files: readonly File[]): Promise<void>;
+  /** 路径通道：拖放 / 夹选（8MiB read_base64 通道上限在 admit 内生效）。 */
+  paths(root: string, paths: readonly string[]): Promise<void>;
+}
+
+/** 建一条采集队列（常驻一份 = ChatCore 实例级）。四个依赖由宿主注入：字节通道 /
+ *  路径通道（生产 = 本文件的 admitImageBlob / admitImageFromPath）、入槽闸
+ *  （生产 = ChatCore.admitOneImage，去重 + 上限）与失败播报（toast）。 */
+export function createImageIntakeQueue(deps: {
+  fromBlob: (root: string, blob: Blob, name?: string) => Promise<ChatImageRef>;
+  fromPath: (root: string, path: string) => Promise<ChatImageRef>;
+  admit: (ref: ChatImageRef) => void;
+  notify: (text: string, level: 'warn') => void;
+}): ImageIntakeQueue {
+  const { fromBlob, fromPath, admit, notify } = deps;
+  let chain: Promise<void> = Promise.resolve();
+  const enqueue = (run: () => Promise<void>): Promise<void> => {
+    const next = chain.then(run, run);
+    chain = next.catch(() => {}); // 账不断（失败已在 run 内可见化）
+    return next;
+  };
+  const failure = (label: string, e: unknown) => `附图失败：${label}（${e instanceof Error ? e.message : String(e)}）`;
+  return {
+    pending: () => chain,
+    files: (root, files) => {
+      if (!root || files.length === 0) return Promise.resolve();
+      return enqueue(async () => {
+        for (const file of files) {
+          try {
+            admit(await fromBlob(root, file, file.name));
+          } catch (e) {
+            notify(failure(file.name || '剪贴板图片', e), 'warn');
+          }
+        }
+      });
+    },
+    paths: (root, paths) => {
+      if (!root || paths.length === 0) return Promise.resolve();
+      return enqueue(async () => {
+        for (const p of paths) {
+          try {
+            admit(await fromPath(root, p));
+          } catch (e) {
+            notify(failure(p, e), 'warn');
+          }
+        }
+      });
+    },
+  };
+}

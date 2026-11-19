@@ -127,7 +127,9 @@ export function useComposerSend({
     // 也不许拿旧值回写 store（否则覆盖刚输入的字符 = 丢字）。
     const live = getChatStore(core.panelId).input.getState();
     const t = live.inputText.trim();
-    if (!t) return;
+    // 「有内容就能拟文」的真判据（2026-11-19 纯图批）：正文 / 路径附件 / 附图道
+    // 任一在场都算。旧判据只看正文——甩一张截图、写不写字都发不出去。
+    if (!t && live.attachedFiles.length === 0 && live.attachedImages.length === 0) return;
     // 纸期（V2）：起卷 + 发出去**同一拍**，编排在 ChatCore.sendMessage 的纸在场分支
     // （判据与写入不在视图层）。本件只管点——失败原因会由 core 写回纸脚。
     if (isSheet) {

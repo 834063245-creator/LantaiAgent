@@ -101,6 +101,9 @@ export function InputRow(props: InputRowProps) {
     onSend,
     onAbort,
   } = props;
+  /* 「有没有可发的东西」——拟文印 / 停钮共用的唯一判据（2026-11-19 纯图批）：
+   * 正文 / 路径附件 / 附图道**任一在场**。旧判据只看正文，附了截图写不写字都发不出去。 */
+  const canSend = inputText.trim().length > 0 || attachedFiles.length > 0 || attachedImages.length > 0;
   return (
     <div className="pp-composer-row">
       {slashQuery !== null && (
@@ -225,7 +228,7 @@ export function InputRow(props: InputRowProps) {
           {attachedImages.length > 1 && <span className="pp-attach-count">共 {attachedImages.length} 图</span>}
         </div>
       )}
-      {running && !inputText.trim() ? (
+      {running && !canSend ? (
         <button
           type="button"
           className="pp-stop"
@@ -240,9 +243,9 @@ export function InputRow(props: InputRowProps) {
         <button
           type="button"
           className="pp-send"
-          disabled={!inputText.trim()}
-          data-tip={running ? '插入回合' : inputText.trim() ? '发送本轮输入' : '先落笔'}
-          data-tip-hint={running ? 'Agent 运行中，下轮生效' : inputText.trim() ? undefined : '有内容才可拟文'}
+          disabled={!canSend}
+          data-tip={running ? '插入回合' : canSend ? '发送本轮输入' : '先落笔'}
+          data-tip-hint={running ? 'Agent 运行中，下轮生效' : canSend ? undefined : '有内容才可拟文'}
           onClick={onSend}
         >
           拟文
