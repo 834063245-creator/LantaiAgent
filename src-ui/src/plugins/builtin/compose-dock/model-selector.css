@@ -307,7 +307,10 @@
   width: 100%;
   padding: 6px 10px;
   cursor: pointer;
-  transition: background var(--snap);
+  /* 选中/悬停的朱砂左脊同样要长出来（同 .ss-row / .pal-row 判例） */
+  transition:
+    background var(--snap),
+    box-shadow var(--snap);
   border-bottom: 1px solid var(--line-soft);
   border-left: none;
   border-right: none;

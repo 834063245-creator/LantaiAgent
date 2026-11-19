@@ -391,7 +391,11 @@
   gap: 8px;
   padding: 8px 12px;
   cursor: pointer;
-  transition: background var(--snap);
+  /* 朱砂左脊（hover 的 inset 3px）要"长出来"不是"闪现"——2026-11-17 反馈密度批：
+   * 选中/悬停指示器缺 box-shadow 过渡，是全仓"变了但没动"的典型（.pal-row 早做对了）。 */
+  transition:
+    background var(--snap),
+    box-shadow var(--snap);
 }
 .ss-row:hover {
   background: var(--paper-deep);

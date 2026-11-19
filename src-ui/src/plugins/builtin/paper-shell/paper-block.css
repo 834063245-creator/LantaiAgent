@@ -90,6 +90,21 @@
   letter-spacing: 0.08em;
   color: var(--ink-3);
   white-space: nowrap;
+  /* 落印（2026-11-17 反馈密度批 · 第二批）：✓ 不是「出现」，是「落下来」——
+   * 从上方 4px 落到位再定住。只动伪元素（不碰块体的 transform/translate，
+   * 同 pp-enter 事故纪律）；时长走 --m-ink（显形档 = 单件登场）。 */
+  animation: pp-done-drop var(--m-ink) backwards;
+  animation-timing-function: var(--m-ease-io);
+}
+@keyframes pp-done-drop {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
 
 /* 块体基础（2026-08-30 间距专项）：pre-wrap 镜像测量——measure.ts 的 pretext

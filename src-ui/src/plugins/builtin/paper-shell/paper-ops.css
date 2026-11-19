@@ -684,6 +684,28 @@
   animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite;
   pointer-events: none;
 }
+/* 晕开环（2026-11-17 反馈密度批 · 第二批）：等待首 token 的「死寂窗口」里，方点之外
+ * 再有一圈墨在渗——点表示「在这」，环表示「正在发生」。环走独立伪元素与独立 scale
+ * （不动宿主的 opacity 呼吸）；扩散到 1.5 倍即淡尽，节奏同宿主 1.6s，两拍不打架。 */
+.pp-quill::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border: 1px solid var(--indigo);
+  opacity: 0;
+  animation: pp-quill-seep var(--m-ambient) var(--m-ease-ambient) infinite;
+}
+@keyframes pp-quill-seep {
+  0% {
+    opacity: 0.45;
+    scale: 0.6;
+  }
+  70%,
+  100% {
+    opacity: 0;
+    scale: 1.5;
+  }
+}
 .pp-mm-band {
   position: absolute;
   background: color-mix(in oklch, var(--ink-1) 8%, transparent);
