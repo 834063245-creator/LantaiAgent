@@ -49,9 +49,6 @@ export interface RegionView {
   /** 单元界首块（stream-rhythm 刀5 D：work 单元首成员且上方非来文）——
    *  渲染层给单元界短规线；叙述/恢复/墓碑不发。 */
   unitLeadIds: ReadonlySet<string>;
-  /** 验证链毕块（stream-rhythm 刀5 C：verify 工作单元末成员，链毕判据见
-   *  rhythmAssign）——渲染层给「✓ 阶段完成」锚消费。 */
-  verifyDoneIds: ReadonlySet<string>;
   /** 正在书写的块 id（2026-09-06 纸面运行态：writingBlockIdOf 派生——
    *  source part 未干墨的最末块）。渲染层据此给湿墨尾点；全干/null。
    *  stub 卷为 null。 */

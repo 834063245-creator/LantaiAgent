@@ -484,14 +484,13 @@ function layoutOf(msgs: ChatMessage[]): {
   rhythmOf: Map<string, RhythmClass>;
   stageLeadIds: ReadonlySet<string>;
   unitLeadIds: ReadonlySet<string>;
-  verifyDoneIds: ReadonlySet<string>;
   layout: Map<string, { x: number; y: number }>;
 } {
   const translated = translateMessages(msgs);
   const sealed = sealedMessageIdsOf(msgs);
   const units = groupWorkUnits(translated, { isSealedMessage: (id) => sealed.has(id) });
   const blocks = collapseToolGroups(translated, (b) => defaultFolded(b.kind, b.payload));
-  const { rhythmOf, stageLeadIds, unitLeadIds, verifyDoneIds } = rhythmAssign(blocks, units);
+  const { rhythmOf, stageLeadIds, unitLeadIds } = rhythmAssign(blocks, units);
   const stack = blocks.map((b) => ({ id: b.id, h: synthH(b.id), w: b.w, kind: b.kind, rhythm: rhythmOf.get(b.id) }));
   return {
     blocks,
@@ -500,7 +499,6 @@ function layoutOf(msgs: ChatMessage[]): {
     rhythmOf,
     stageLeadIds,
     unitLeadIds,
-    verifyDoneIds,
     layout: layoutFlow(stack),
   };
 }
@@ -788,36 +786,10 @@ describe('族边界切单元（刀5 A+B）', () => {
   });
 });
 
-/* ═══ 单元界短规线 + 验证链毕锚（刀5 C+D）═══ */
+/* ═══ 单元界短规线（刀5 D）═══ */
 
-describe('单元界短规线 + 验证链毕锚（刀5 C+D）', () => {
+describe('单元界短规线（刀5 D）', () => {
   beforeEach(() => resetBlockIdCounterForTests());
-
-  it('验证链毕锚：链毕（后继非恢复 / sealed 末位）发；流式在跑与失败转折不发', () => {
-    // ① verify 后随叙述（done 消息）→ 链末块发锚
-    const r1 = layoutOf([
-      asstMsg('a1', [
-        toolPart('shell', '{"action":"run","command":"cargo test"}'),
-        { type: 'text', text: '结论', finalised: true },
-      ]),
-    ]);
-    expect(r1.verifyDoneIds.has('pb:a1:0')).toBe(true);
-    // ② verify 后随 recovery（失败转折）→ 不发（✓ 不说谎）
-    const r2 = layoutOf([
-      asstMsg('a1', [
-        toolPart('shell', '{"action":"run","command":"cargo test"}'),
-        toolPart('fs', '{"action":"write","path":"c.ts"}', 'error'),
-        { type: 'text', text: '修后结论', finalised: true },
-      ]),
-    ]);
-    expect(r2.verifyDoneIds.size).toBe(0);
-    // ③ 流式在跑：verify 是流末开放单元 → 不发
-    const r3 = layoutOf([asstMsg('a1', [toolPart('shell', '{"action":"run","command":"cargo test"}')], 'streaming')]);
-    expect(r3.verifyDoneIds.size).toBe(0);
-    // ④ sealed 末位 verify（回合以验证收尾）→ 发
-    const r4 = layoutOf([asstMsg('a1', [toolPart('shell', '{"action":"run","command":"cargo test"}')])]);
-    expect(r4.verifyDoneIds.has('pb:a1:0')).toBe(true);
-  });
 
   it('单元界短规线：work 首且上方非来文才发；叙述 / 恢复 / 来文后不发', () => {
     const r1 = layoutOf([

@@ -947,18 +947,9 @@ describe('会话流族节奏（stream-rhythm 刀5，2026-09-03——族边界切
     expect(PANEL_TSX).toContain('pp-unit-rule');
   });
 
-  it('验证链毕锚（C）：「✓ 阶段完成」小字 ink-3 mono（最素形态）', () => {
-    const rule = ruleBody(PANEL_CSS, '.pp-block.pp-verify-done::after');
-    expect(rule).toContain('content: "✓ 阶段完成"');
-    expect(rule).toContain('color: var(--ink-3)');
-    expect(rule).toContain('var(--f-mono)');
-  });
-
-  it('接线在册：unitLeadIds / verifyDoneIds 进壳层与 RegionView', () => {
+  it('接线在册：unitLeadIds 进壳层与 RegionView', () => {
     expect(PANEL_TSX).toContain('pp-unit-rule');
-    expect(PANEL_TSX).toContain('pp-verify-done');
     expect(PANEL_TSX).toContain('unitLeadIds');
-    expect(PANEL_TSX).toContain('verifyDoneIds');
   });
 });
 

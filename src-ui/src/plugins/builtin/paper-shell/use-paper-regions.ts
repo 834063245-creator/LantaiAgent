@@ -88,8 +88,6 @@ interface RegionCoreCacheEntry {
     stageLeadIds: ReadonlySet<string>;
     /** 单元界首块（刀5 D）——渲染层单元界短规线消费。 */
     unitLeadIds: ReadonlySet<string>;
-    /** 验证链毕块（刀5 C）——渲染层「✓ 阶段完成」锚消费。 */
-    verifyDoneIds: ReadonlySet<string>;
     /** 正在书写的块 id（2026-09-06 纸面运行态：writingBlockIdOf 派生）——
      *  渲染层给湿墨尾点 + 落笔点让位判据。 */
     writingBlockId: string | null;
@@ -108,7 +106,6 @@ const STUB_EMPTIES = {
   units: [] as WorkUnit[],
   stageLeadIds: new Set<string>() as ReadonlySet<string>,
   unitLeadIds: new Set<string>() as ReadonlySet<string>,
-  verifyDoneIds: new Set<string>() as ReadonlySet<string>,
   writingBlockId: null as string | null,
 } as const;
 
@@ -360,7 +357,7 @@ export function usePaperRegions(params: {
         const blocks = collapseToolGroups(adaptBlocks(res.blocks, anchor.width), foldedOf);
         // stream-rhythm 刀5：族边界切单元（读→写→验证→落款是不同的工作行为）
         // + 单元界短规线 / 验证链毕锚的派生——单一真源（与布局级封口测试共用）
-        const { rhythmOf, stageLeadIds, unitLeadIds, verifyDoneIds } = rhythmAssign(blocks, units);
+        const { rhythmOf, stageLeadIds, unitLeadIds } = rhythmAssign(blocks, units);
         const stack = blocks.map((b) => {
           return {
             id: b.id,
@@ -473,7 +470,6 @@ export function usePaperRegions(params: {
             units,
             stageLeadIds,
             unitLeadIds,
-            verifyDoneIds,
             writingBlockId: writingBlockIdOf(blocks),
           },
         };
@@ -512,7 +508,6 @@ export function usePaperRegions(params: {
         units: c.units,
         stageLeadIds: c.stageLeadIds,
         unitLeadIds: c.unitLeadIds,
-        verifyDoneIds: c.verifyDoneIds,
         writingBlockId: c.writingBlockId,
       });
     });

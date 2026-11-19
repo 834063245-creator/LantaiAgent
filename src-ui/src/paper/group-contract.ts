@@ -21,7 +21,6 @@ export interface WorkUnit {
   /** 封口 = 全部成员来自非 streaming 消息（回顾性稳定的边界）。 */
   sealed: boolean;
   /** 节律族（刀5 A）：work/recovery 单元已表态的工具族（读/写/验证/落款）；
-   *  未表态（null）= 开放单元尚未被已知族认领——族不切节奏（other 兜底延伸）。
-   *  verify 工作单元的链毕「阶段完成」锚（刀5 C）以此判据。 */
+   *  未表态（null）= 开放单元尚未被已知族认领——族不切节奏（other 兜底延伸）。 */
   family?: RhythmFamily | null;
 }

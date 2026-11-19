@@ -251,10 +251,6 @@ export interface RhythmAssign {
    *  B1 尾距反转区（asterism 让位，8px 无线位）。叙述/恢复/墓碑不发线
    *  （散文不碎、转折自宣告）。 */
   unitLeadIds: ReadonlySet<string>;
-  /** 验证链毕锚（刀5 C）：verify 工作单元末成员——「✓ 阶段完成」。
-   *  发线判据（时间不能骗人）：链毕 = 后继单元存在且非 recovery（失败转折
-   *  自我宣告，✓ 不说谎），或无后继而单元已封口；流式在跑的末位链不发。 */
-  verifyDoneIds: ReadonlySet<string>;
 }
 
 /** 块序列 + 工作单元 → 节奏档与结构锚分派（单一真源——PaperPanel 布局栈
@@ -282,14 +278,5 @@ export function rhythmAssign(
     // 栈首同上不发
     if (rhythm === 'unit' && i > 0 && m.unit.kind === 'work' && blocks[i - 1]?.kind !== 'user') unitLeadIds.add(b.id);
   }
-  const verifyDoneIds = new Set<string>();
-  for (let i = 0; i < units.length; i++) {
-    const u = units[i];
-    if (u?.kind !== 'work' || u.family !== 'verify') continue;
-    const next = units[i + 1];
-    const done = next == null ? u.sealed : next.kind !== 'recovery';
-    const lastMember = u.memberIds[u.memberIds.length - 1];
-    if (done && lastMember != null) verifyDoneIds.add(lastMember);
-  }
-  return { rhythmOf, stageLeadIds, unitLeadIds, verifyDoneIds };
+  return { rhythmOf, stageLeadIds, unitLeadIds };
 }

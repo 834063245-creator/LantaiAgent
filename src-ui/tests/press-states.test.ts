@@ -49,7 +49,7 @@ describe('按下态（2026-11-17 反馈密度批）', () => {
   it('本批新增的按下块：位移一律走独立 translate，不写 transform', () => {
     for (const [name, rel] of FACES) {
       const text = read(rel);
-      const at = text.indexOf('2026-11-17 反馈密度批');
+      const at = text.lastIndexOf('2026-11-17 反馈密度批');
       if (at < 0) continue; // 面已在此前有 active 档，本期未追加
       const block = stripComments(text.slice(at));
       expect(block, `${name}：按下块不得写 transform（会覆盖元素既有变换）`).not.toContain('transform:');

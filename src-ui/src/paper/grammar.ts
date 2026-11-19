@@ -15,7 +15,7 @@
 // 不致命：族只影响节奏与标记，不进任何正确性路径。
 //
 // run_shell 单列：同名工具族随 command 内容变——test/build/lint 模式 =
-// 验证族（写族 → 验证族链毕出「阶段完成」标记的判据），其余 = other。
+// 验证族（写族 → 验证族是「验 ×N」族签与单元切分的判据），其余 = other。
 
 import { resolveSemanticToolName } from '../ui/tool-semantics';
 
@@ -100,7 +100,7 @@ const FAMILY_BY_SEMANTIC_NAME: Record<string, ToolFamily> = {
 };
 
 /** run_shell 的验证命令模式（test/build/lint/typecheck 族的判据；
- *  误漏方向安全——漏判落 other 仍在工作单元内，只是不出「阶段完成」标记）。 */
+ *  误漏方向安全——漏判落 other 仍在工作单元内，只是族签退回「工具」）。 */
 const VERIFY_COMMAND_RE =
   /(cargo\s+(test|build|check|clippy)|(npm|pnpm|yarn)(\s+run)?\s+(test|build|lint|verify|typecheck|check)|npx\s+(vitest|jest|tsc|eslint|biome|playwright|mocha)|\b(vitest|jest|pytest|tsc|eslint|biome|ruff|mypy|mocha|make|cmake)\b|go\s+(test|vet|build)|gradle\s+(build|test)|mvn\s+(test|build)|dotnet\s+(test|build))/i;
 

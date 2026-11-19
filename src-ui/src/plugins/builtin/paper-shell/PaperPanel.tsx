@@ -621,9 +621,7 @@ export function PaperPanel() {
                           dropping ? ' pp-drop' : ''
                         }${leaving ? ' pp-leaving' : ''}${
                           isDragged ? ' pp-dragging' : ''
-                        }${inBand ? ' pp-drag-returning' : ''}${r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''}${
-                          r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''
-                        }${writing ? ' pp-writing' : ''}`}
+                        }${inBand ? ' pp-drag-returning' : ''}${r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''}${writing ? ' pp-writing' : ''}`}
                         style={{ transform: `translate(${dragX}px, ${dragY}px)`, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}

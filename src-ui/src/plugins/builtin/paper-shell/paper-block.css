@@ -73,40 +73,6 @@
   pointer-events: none; /* 线区在块外间隙带——装饰不挡指针 */
 }
 
-/* 验证链毕锚（stream-rhythm 刀5 C，2026-09-03）：verify 工作单元链毕的
- * 「✓ 阶段完成」小字（规则表「验证链毕出标记」原案落地）。ink-3 辅助墨阶
- * ——最素形态（D2 同判：真机看效果再判升级）；挂在链末块下方、单元间距
- * 中带，不占块高（测高镜像零变化）。判据 rhythmAssign.verifyDoneIds：
- * 流式在跑不发、失败转折（后继 recovery）不发——✓ 不说谎。 */
-.pp-block.pp-verify-done::after {
-  content: "✓ 阶段完成";
-  position: absolute;
-  left: 0;
-  top: 100%;
-  margin-top: 8px;
-  font-family: var(--f-mono);
-  font-size: 10px;
-  line-height: 1;
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
-  white-space: nowrap;
-  /* 落印（2026-11-17 反馈密度批 · 第二批）：✓ 不是「出现」，是「落下来」——
-   * 从上方 4px 落到位再定住。只动伪元素（不碰块体的 transform/translate，
-   * 同 pp-enter 事故纪律）；时长走 --m-ink（显形档 = 单件登场）。 */
-  animation: pp-done-drop var(--m-ink) backwards;
-  animation-timing-function: var(--m-ease-io);
-}
-@keyframes pp-done-drop {
-  from {
-    opacity: 0;
-    translate: 0 -4px;
-  }
-  to {
-    opacity: 1;
-    translate: 0 0;
-  }
-}
-
 /* 块体基础（2026-08-30 间距专项）：pre-wrap 镜像测量——measure.ts 的 pretext
  * 一律按 whiteSpace:'pre-wrap' 计行，而此处旧缺省 normal 把换行折叠掉，
  * 「测得多、渲染少」= 绝对定位块之间出现幻影大间距（流内间距不均的根因）。
