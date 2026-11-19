@@ -1061,3 +1061,32 @@
     display: none;
   }
 }
+
+/* ── 按下态（2026-11-17 反馈密度批 · 第一批 · 首页（次级件））──
+ * 病灶：本面所有可点件只有 hover（"亮起来"），按下没有任何回响——
+ * 全产品 22 条 :active / 412 个交互点，缺的正是这一档（体检
+ * docs/plans/feedback-density-audit-2026-11-17.md）。
+ * 两条纪律：
+ *   ① 位移走**独立 translate**，不写 transform——本仓多处元素自带 transform
+ *      （卡片上浮 / 拖拽跟手 / 图标位移），写 transform 会整表覆盖（同 pp-enter
+ *      2026-09-03 事故的纪律延伸）；
+ *   ② 压深用现成纸色三档（paper → paper-deep → paper-margin），不新造色值。
+ */
+/* 主按钮 .sh-btn-primary 已有朱砂按下档（2026-09 五钮批）；这里补的是次级件。 */
+.sh-btn-text:active,
+.sh-btn-ghost:active,
+.sh-link:active,
+.sh-sheet-opt:active,
+.sh-modal-check:active,
+.sh-ops button:active,
+.sh-retry:active,
+.sh-modal-foot button:active {
+  translate: 0 1px;
+}
+.sh-sib:active {
+  background: var(--paper-deep);
+  translate: 0 1px;
+}
+.sh-row:active {
+  background: var(--paper-margin);
+}

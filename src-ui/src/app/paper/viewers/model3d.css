@@ -114,3 +114,17 @@
   width: 92vw;
   height: 92vh;
 }
+
+/* ── 按下态（2026-11-17 反馈密度批 · 第一批 · 3D 查看器）──
+ * 病灶：本面所有可点件只有 hover（"亮起来"），按下没有任何回响——
+ * 全产品 22 条 :active / 412 个交互点，缺的正是这一档（体检
+ * docs/plans/feedback-density-audit-2026-11-17.md）。
+ * 两条纪律：
+ *   ① 位移走**独立 translate**，不写 transform——本仓多处元素自带 transform
+ *      （卡片上浮 / 拖拽跟手 / 图标位移），写 transform 会整表覆盖（同 pp-enter
+ *      2026-09-03 事故的纪律延伸）；
+ *   ② 压深用现成纸色三档（paper → paper-deep → paper-margin），不新造色值。
+ */
+.pp-viewer-3d-tool:active {
+  translate: 0 1px;
+}
