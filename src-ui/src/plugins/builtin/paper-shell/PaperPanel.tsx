@@ -332,7 +332,7 @@ export function PaperPanel() {
                   2026-10-18 卷开合动效批：本图渲染「活跃卷 + 在窗的离场卷」——
                   离场卷（`data-leaving`）**绕开虚拟化**（否则一卷刚飞出视口就被裁掉，
                   退场动画只看得到半截），且不接活跃/带显形/手势与落纸入场。 */}
-              {regionRender.map(({ view: r, leaving, spreading, rising }) => {
+              {regionRender.map(({ view: r, leaving, spreading, settling, rising }) => {
                 if (!leaving && !visibleRegionIds.has(r.sessionId)) return null;
                 const isActive = !leaving && r.sessionId === activeSessionKey;
                 /* 落纸入场（纸淡入）：在**落纸窗**内即挂类（窗满由 region-motion 摘）。
@@ -340,13 +340,18 @@ export function PaperPanel() {
                  * ——纸的淡出已经由纸自己那一窗讲完，这里只落墨（见 region-motion.ts 头注）。 */
                 const isSpread = !leaving && spreading;
                 const isRise = !leaving && rising;
+                /* 余波（2026-11-17 判据板批）：纸落定后影子继续坐实 1.6s——只挂伪元素动画，
+                 * 不动纸（纸律：整叶只动 opacity，见 paper-base.css 卷开合段）。 */
+                const isSettling = !leaving && settling;
                 const sheet = sheetCharacter(r.sessionId);
                 return (
                   <div
                     key={r.sessionId}
                     className={`pp-region${isActive ? ' pp-region-active' : ''}${isSpread ? ' pp-spread' : ''}${
                       isRise ? ' pp-rise' : ''
-                    }${!leaving && bandSessionId === r.sessionId ? ' pp-region--band' : ''}`}
+                    }${isSettling ? ' pp-settling' : ''}${
+                      !leaving && bandSessionId === r.sessionId ? ' pp-region--band' : ''
+                    }`}
                     {...(leaving ? ({ 'data-leaving': '', inert: true } as const) : null)}
                     style={
                       {

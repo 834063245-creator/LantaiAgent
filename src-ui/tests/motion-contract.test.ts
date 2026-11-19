@@ -768,4 +768,35 @@ describe('§15 动效契约（散写时长守卫）', () => {
     expect(PANEL_TSX).toContain("' pp-drop'");
   });
 
+  it('沉降窗（余波，2026-11-17 判据板批）：窗长镜像 --m-ambient + 伪元素两段影 + 不碰纸', () => {
+    /* 用户判据（四问十二案，乙·乙·乙·丙）：纸要「有来路」「落定之后还要有余」。
+     * 纸律禁止 .pp-region 声明 transform/translate（纸纹与 InkLayer 对位红线），
+     * 故「被推上来」只能由**影子**讲：伪元素在 lift 档淡出，前 16% 落到「刚落定」、
+     * 其后散尽。窗长是环境档（余波是「动作之后的一段时间」，不属三档动作）。 */
+    const ms = /export const REGION_SETTLE_MS = (\d+);/.exec(REGION_MOTION_TS);
+    expect(ms, 'region-motion.ts 缺 REGION_SETTLE_MS').not.toBeNull();
+    expect(Number((ms as RegExpExecArray)[1])).toBe(Math.round(tokenSeconds('m-ambient') * 1000));
+
+    const settle = ruleBody(PANEL_CSS, '.pp-region.pp-settling::after {');
+    expect(settle, '余波动画缺位').toContain('var(--m-ambient)');
+    expect(settle, '曲线必须 longhand 写（双曲线简写 = 整条非法）').toContain(
+      'animation-timing-function: var(--m-ease-io);',
+    );
+
+    const keyframes = /@keyframes pp-sheet-settle\s*\{([\s\S]*?)\n\}/.exec(stripCssComments(PANEL_CSS));
+    expect(keyframes, '余波 keyframes 缺位').not.toBeNull();
+    const body = (keyframes as RegExpExecArray)[1];
+    expect(body, '余波必须两段：落定（16%）+ 散尽').toContain('16%');
+    expect(body).toContain('opacity: 0.95');
+    expect(body).toContain('opacity: 0');
+
+    // 纸律：伪元素基座只放影，宿主本体不因余波多出任何几何声明
+    const base = ruleBody(PANEL_CSS, '.pp-region::after {');
+    expect(base, '缺余波伪元素基座').toContain('pointer-events: none');
+    expect(base).not.toContain('transform');
+    expect(base).not.toContain('translate');
+
+    // 壳层真读了这个窗（不只是 CSS 写了类）
+    expect(PANEL_TSX).toContain('pp-settling');
+  });
 });

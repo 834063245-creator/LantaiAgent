@@ -422,6 +422,43 @@
     opacity: 1;
   }
 }
+/* ── 余波：影子的两段（2026-11-17 判据板批 · 第四问「丙 · 沉降收干」）──
+ * 用户判据（四问十二案，2026-11-17）：纸要「有来路」、「落定之后还要有余」。
+ * 但纸律（见上「卷开合」段末）禁止 `.pp-region` 声明 transform/translate——纸纹
+ * background-position 与 InkLayer 对位是红线。故「被推上来」这一半只能由**影子**讲：
+ * 纸出现的那一帧影子就在 lift 档（离案面最高），先快速收到「刚落定」，再用环境档散尽。
+ *
+ * 两段与两个窗对齐：0→16% 是 1600ms × 0.16 ≈ 256ms（≈ 落纸窗 260ms = 纸到位的那一拍），
+ * 16%→100% 是余波。**一个伪元素同时说完「来路」与「余」**——基座的 box-shadow 已有三条
+ * 既有消费者（拿纸缓退 transition / pp-region-take 过冲 / 三档基座），再叠 keyframes 会重演
+ * pp-enter 的 transform 争槽事故；而伪元素的 animationend 不属于宿主元素那条窗
+ * （motion-end 纪律②只认 `e.target`），沉降窗因此能比落纸窗长六倍。
+ * 时长走 `--m-ambient`（环境档，不属三档动作）——余波是「动作之后的一段时间」。
+ * 窗长镜像：`REGION_SETTLE_MS`（region-motion.ts）↔ 本 token，由 motion-contract 对拍钉住。 */
+.pp-region::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: var(--shadow-sheet-lift);
+  opacity: 0;
+}
+.pp-region.pp-settling::after {
+  animation: pp-sheet-settle var(--m-ambient) both;
+  /* 曲线走 longhand（同 pp-spread 注：简写里再叠一条 curve 会整条非法）。 */
+  animation-timing-function: var(--m-ease-io);
+}
+@keyframes pp-sheet-settle {
+  0% {
+    opacity: 0.95;
+  }
+  16% {
+    opacity: 0.32;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 /* 落纸的**墨**：卷首与块自 18px 落下（`--m-sheet` / io，与纸同档同曲线 = 一次动作）。
  * 走**独立 `translate` 属性**：块定位用内联 `transform: translate(x,y)`，任何一帧声明
  * transform 都会把块钉到左上角（2026-09-03 生产事故，pp-enter 注有案）。

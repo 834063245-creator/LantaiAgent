@@ -295,6 +295,8 @@ export function usePaperPanelAssembly() {
       view,
       leaving: false,
       spreading: motionWin.current.spread.has(view.sessionId),
+      /* 沉降窗（余波）：纸落定之后影子继续坐实——与落纸同开、长六倍，只驱动伪元素 opacity。 */
+      settling: motionWin.current.settle.has(view.sessionId),
       /* 落墨窗（纸化成的卷）：纸只落一遍墨，不淡第二次——见 region-motion.ts 头注「出生即交接」。 */
       rising: motionWin.current.rise.has(view.sessionId),
     })),
@@ -302,6 +304,7 @@ export function usePaperPanelAssembly() {
       view: e.view,
       leaving: true,
       spreading: false,
+      settling: false,
       rising: false,
     })),
   ];

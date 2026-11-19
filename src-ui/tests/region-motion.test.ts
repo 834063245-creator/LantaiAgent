@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createRegionMotionWindow,
   REGION_MOTION_MS,
+  REGION_SETTLE_MS,
   regionOnScreen,
   stepRegionMotion,
 } from '../src/plugins/builtin/paper-shell/region-motion';
@@ -157,6 +158,44 @@ describe('卷开合窗 · 落纸窗（首次可见）', () => {
     expect(win.leaving.has('2')).toBe(false);
     expect(win.spread.has('2')).toBe(true);
     expect(back.entered).toEqual([]);
+  });
+});
+
+describe('卷开合窗 · 沉降窗（余波，2026-11-17 判据板批）', () => {
+  it('与落纸窗**同开**、但长到 1.6s（纸到位 ≠ 画面静止）', () => {
+    const win = createRegionMotionWindow<Vol>();
+    stepRegionMotion(win, [vol('1')], all('1'), 0);
+    stepRegionMotion(win, [vol('1'), vol('2')], all('1', '2'), 500);
+    expect(win.spread.get('2')).toBe(500 + REGION_MOTION_MS);
+    expect(win.settle.get('2')).toBe(500 + REGION_SETTLE_MS);
+    expect(REGION_SETTLE_MS).toBeGreaterThan(REGION_MOTION_MS);
+  });
+
+  it('落纸窗先摘、余波还在：纸到位了，影子还在坐实', () => {
+    const win = createRegionMotionWindow<Vol>();
+    stepRegionMotion(win, [vol('1')], all('1'), 0);
+    stepRegionMotion(win, [vol('1'), vol('2')], all('1', '2'), 500);
+    const mid = stepRegionMotion(win, [vol('1'), vol('2')], all('1', '2'), 500 + REGION_MOTION_MS);
+    expect(win.spread.has('2')).toBe(false);
+    expect(win.settle.has('2')).toBe(true);
+    expect(mid.nextExpiry).toBe(500 + REGION_SETTLE_MS);
+    stepRegionMotion(win, [vol('1'), vol('2')], all('1', '2'), 500 + REGION_SETTLE_MS);
+    expect(win.settle.has('2')).toBe(false);
+  });
+
+  it('合卷时余波一并清掉（不留给下一次开卷）', () => {
+    const win = createRegionMotionWindow<Vol>();
+    stepRegionMotion(win, [vol('1')], all('1'), 0);
+    stepRegionMotion(win, [vol('1'), vol('2')], all('1', '2'), 500);
+    expect(win.settle.has('2')).toBe(true);
+    stepRegionMotion(win, [vol('1')], all('1'), 600);
+    expect(win.settle.has('2')).toBe(false);
+  });
+
+  it('冷启动整批不开沉降窗（恢复现场不是命中，同落纸窗的 primed 判据）', () => {
+    const win = createRegionMotionWindow<Vol>();
+    stepRegionMotion(win, [vol('1'), vol('2')], all('1', '2'), 0);
+    expect(win.settle.size).toBe(0);
   });
 });
 

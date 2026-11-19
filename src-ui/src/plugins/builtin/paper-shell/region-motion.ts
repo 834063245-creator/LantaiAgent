@@ -53,6 +53,17 @@ import { waitMotionEnd } from './motion-end';
  *  （见 `regionExits`），本常量退化成那条事件的保险兜底。 */
 export const REGION_MOTION_MS = 260;
 
+/** 沉降窗长（ms）——**余波**：纸落定之后影子继续坐实的那一段（2026-11-17 判据板批）。
+ *
+ *  **镜像 `--m-ambient`（1.6s），不是 `--m-sheet`**：落纸是「一段动作」（260ms），
+ *  余波是「动作之后的一段时间」——语义属环境档，不属三档动作。改一处必改两处，
+ *  由 `tests/motion-contract.test.ts` 的本常量 ↔ token 对拍钉住。
+ *
+ *  为什么不并进 `REGION_MOTION_MS`：落纸窗要摘 `.pp-spread`（纸的淡入是一次性的），
+ *  而余波只驱动一个伪元素的 opacity（不改变任何几何/业务态）——两者同开不同长，
+ *  并成一条会让「纸的入场」拖到 1.6s。 */
+export const REGION_SETTLE_MS = 1600;
+
 /** 一个正在退场的卷（`view` = 消失当帧的**全量快照**——冻结最后一帧，不再重算）。 */
 export interface RegionLeaveEntry<T> {
   view: T;
@@ -68,6 +79,8 @@ export interface RegionMotionWindow<T> {
   lastLive: Map<string, T>;
   /** 落纸窗：卷 id → 摘 `.pp-spread` 的时刻。 */
   spread: Map<string, number>;
+  /** 沉降窗：卷 id → 摘 `.pp-settling` 的时刻（余波，长于落纸窗——见 REGION_SETTLE_MS）。 */
+  settle: Map<string, number>;
   /** **已落过纸**的卷（冷启动整批 + 真播过的）——落纸窗只给「没落过且这帧真在视口里」的卷。 */
   played: Set<string>;
   /** **出生即交接**的卷（2026-11-15 化卷批）：待题纸化成的那一卷。它的「纸从哪来」已由纸
@@ -84,6 +97,7 @@ export function createRegionMotionWindow<T>(): RegionMotionWindow<T> {
     leaving: new Map(),
     lastLive: new Map(),
     spread: new Map(),
+    settle: new Map(),
     played: new Set(),
     rise: new Map(),
     primed: false,
@@ -169,6 +183,7 @@ export function stepRegionMotion<T extends { sessionId: string }>(
     hits += 1;
     win.played.delete(sid);
     win.rise.delete(sid);
+    win.settle.delete(sid);
     entered.push(view);
   }
 
@@ -184,6 +199,8 @@ export function stepRegionMotion<T extends { sessionId: string }>(
         continue;
       }
       win.spread.set(r.sessionId, now + REGION_MOTION_MS);
+      /* 余波与落纸**同开**、不同长：纸到位那一刻影子才开始「坐实」（见 REGION_SETTLE_MS）。 */
+      win.settle.set(r.sessionId, now + REGION_SETTLE_MS);
       hits += 1;
     }
   } else if (live.length > 0) {
@@ -217,6 +234,15 @@ export function stepRegionMotion<T extends { sessionId: string }>(
   for (const [sid, until] of win.spread) {
     if (until <= now) {
       win.spread.delete(sid);
+      continue;
+    }
+    track(until);
+  }
+  /* 沉降窗比落纸窗长寿（1.6s vs 260ms）——它只摘类，不动任何业务态；
+   * 排程仍走同一条 nextExpiry（到期那次重渲染顺手摘掉）。 */
+  for (const [sid, until] of win.settle) {
+    if (until <= now) {
+      win.settle.delete(sid);
       continue;
     }
     track(until);
