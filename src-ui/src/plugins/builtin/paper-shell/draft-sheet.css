@@ -6,10 +6,14 @@
  * ⚠ 本片不是「空白卷换个字」。待题纸是卷成立**之前**那一瞬，语汇必须自己长；
  * 但**不许长成表单**，也不许长成通用卡片（§11 致死动作①「万物皆框」）。
  *
- * ── V2 的形状（本片现行口径）────────────────────────────────────────────
- * 纸 = **卷首照常 + 天头之下就是这张卷的创作坞**。
- *   · 段题／边注／界栏那套「题签注疏」随 V1 一起退役——题签行现在归坞的设置行
- *     （组合 + 模型），纸面不再自造第二套控件语言。
+ * ── V3 的形状（2026-11-19 题签重画批，本片现行口径）─────────────────────
+ * 纸 = **卷首照常（第三行就是题签）+ 天头之下是这张卷的输入面**。
+ *   · 「这一卷打算怎么跑」三笔（组合 / 模型 / 权限）**不住纸身**，落进天头第三行
+ *     （.pp-folio-picks，见文末那一段）——原来那枚「贴在纸上的纸签」整段退役；
+ *   · 纸身只剩**一条输入行**（书眉行也随纸签一起退役：它只说「待题 · 未开卷」+ 一枚
+ *     弃纸，而那句话与卷首眉行逐字重复）。
+ *
+ *   · 纸面**不自造第二套控件语言**：三笔用的仍是坞期那几枚件（同一把尺子）。
  *   · 纸上**没有第二个主动作**：没有「开卷」按钮，主动作只有输入行那枚「拟文」。
  *   · 纸高**随内容长**——绝不再写死正文高（V1 的 DRAFT_BODY_H 是「三行题签」的算术，
  *     输入面进来后那个数就是错的）。
@@ -209,91 +213,6 @@
 .pp-draft-sheet .pp-composer::before {
   content: none;
 }
-/* 纸期书眉：没有卷名可报，只有状态 + 一条明路（弃纸）。 */
-.pp-sheet-header {
-  min-height: 22px;
-}
-.pp-sheet-eyebrow {
-  font-family: var(--f-mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.34em;
-  text-indent: 0.34em;
-  color: var(--ink-3);
-}
-/* 弃纸：无框文字（纸上唯一主动作是发送；这里只能读作「一条注」）。
- * hover 转朱砂——与全仓「瞬时件去框 + hover 朱砂」同族。 */
-.pp-sheet-discard {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  font-family: var(--f-kai);
-  font-size: var(--fs-caption);
-  letter-spacing: 0.08em;
-  color: var(--ink-4);
-  cursor: pointer;
-  transition: color var(--snap);
-}
-.pp-sheet-discard:hover {
-  color: var(--seal-deep);
-}
-
-/* 题签（设置行的纸期形态）：组合 + 模型，一行。与坞的「权限 / 模型」同一行位，
- * 只是左端那枚从权限段换成组合——**不是**第二个控件语言，是同一行的换装。 */
-.pp-sheet-comp {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  padding: 1px 0 2px;
-  border: 0;
-  background: transparent;
-  font-family: var(--f-kai);
-  font-size: var(--fs-lead);
-  line-height: 1.3;
-  letter-spacing: 0.04em;
-  color: var(--ink-1);
-  text-align: left;
-  cursor: pointer;
-}
-.pp-sheet-comp-k {
-  font-family: var(--f-song);
-  font-size: var(--fs-caption);
-  letter-spacing: 0.16em;
-  color: var(--ink-3);
-}
-.pp-sheet-comp-v {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-/* 值下的短朱线：只在 hover/展开时从 0 长到 26px（与坞的模型值同一手势）
- * **2026-11-17 批：width 过渡 → scaleX**（合成器属性，不触发布局）。
- * 线的语义是「从左边长出来」，故 transform-origin: left。 */
-.pp-sheet-comp-v::after {
-  content: "";
-  display: block;
-  width: 26px;
-  height: 1px;
-  margin-top: 2px;
-  background: var(--seal);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform var(--snap);
-}
-.pp-sheet-comp:hover .pp-sheet-comp-v::after,
-.pp-sheet-comp.open .pp-sheet-comp-v::after {
-  transform: scaleX(1);
-}
-.pp-sheet-comp:disabled {
-  color: var(--ink-4);
-  cursor: default;
-}
-.pp-sheet-caret {
-  margin-left: 2px;
-  font-size: 9px;
-  color: var(--ink-4);
-}
-
 /* 失败原因：单行省略（错误要读，不要占位；完整原因另有 toast 通道一份）。 */
 .pp-draft-error {
   margin: 6px 24px 0;
@@ -409,124 +328,227 @@
   color: var(--seal-deep);
 }
 
-/* ── 题签（2026-11-28 题签批）：纸期设置行 = 一条**纸签**，不是一行控件 ─────────
- * 依据 = 真机 tokens（不是网页语言）：纸的厚度用**硬投影**（无模糊）、纸的起伏用
- * 内阴影（受光/背光）、裱边带一圈；签本身比纸深一档（--paper-deep），上下各一道
- * 1px 压边 —— 它是「贴在纸上的签」，不是选中态高亮块。
- * 朱砂整屏只留一处：签左端那枚「题」印（浸墨法则 3：一屏至多一处红）。 */
-.pp-composer-settings[data-variant="sheet"] {
-  position: relative;
-  flex-wrap: wrap;
-  margin-top: 14px;
-  padding: 9px 12px 8px 44px;
-  background: var(--paper-deep);
-  border-top: 1px solid rgba(38, 34, 28, 0.22);
-  border-bottom: 1px solid rgba(38, 34, 28, 0.22);
-  /* ⚠ 层叠上下文陷阱（2026-11-28 真机实测「组合/权限的下拉点不出来」的根因）：
-   * 下面那条 transform 会给签条**新建一个层叠上下文**——签上的下拉虽然自己是
-   * position:absolute + z-index:90，但那个 90 只在这个上下文**内部**有效；而签条
-   * 与它后面的兄弟（输入行、预演句）在层叠里同级、DOM 顺序在后 ⇒ 输入行把菜单盖住，
-   * 表现为「点了没反应」。治法 = 让签条自己抬一层（它已是 position:relative）。
-   * 不许改成去掉 transform 了事：微倾是「贴上去的纸签」那条判据的一部分。 */
-  z-index: 20;
-  transform: rotate(-0.22deg);
-  box-shadow:
-    1px 2px 0 rgba(38, 34, 28, 0.08),
-    3px 4px 0 rgba(38, 34, 28, 0.035);
-}
-/* 左端「题」印：签的身份戳（全屏唯一暖色件） */
-.pp-composer-settings[data-variant="sheet"]::before {
-  content: "题";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 32px;
+/* ── 题签（2026-11-19 题签重画批）：**它不在纸身里**，在天头第三行 ──────────────
+ *
+ * 病灶（用户：「题签有点丑爆了……还不如创作坞直接放屏幕中间」）：2026-11-28 那版把三笔
+ * 做成贴在纸上的一枚纸签——832×89 的 --paper-deep 色块 + 32px 朱印 + 转 0.22 度的假歪
+ * 的假歪 + 双硬投影，里面塞三样不同类的控件（组合=人的制度 / 权限=人的闸门 / 模型=机器
+ * 的脑子，后者还自带厂章 + 600 字重 + 档位后缀整套触发器语汇），底下再复述一句人话。
+ * 一个盒 4 个墨阶、3 个色相、2 条阴影，读起来不是「纸签」而是「贴了一块木牌」。
+ *
+ * 更根本的是**隐喻不成立**：流区块是「印在纸上的墨」（§11 纸内件无投影）；在印了墨的
+ * 纸上再贴一张纸，只能靠硬投影硬凹层次，而 §11 判过「万物皆浮」是死的。
+ * ⇒ 整段材质（底色 / 朱印 / 假歪 / 硬投影 / 预演句 / 纸期书眉）连同判据一起退役，
+ *   三笔搬进版心第三行（`.pp-folio-picks`，见下）。**不要再把「贴在纸上的签」写回来。**
+ *
+ * 行内纪律（与卷首同轴、同一条墨线）：
+ *   ① 三笔读作**一行读数**（墨三小字签 + 墨二值），hover 才亮 caret（§11 锚点型）；
+ *   ② 零新增材质：无底色、无投影、无朱印——「一屏至多一处红」还给眉行；
+ *   ③ 菜单仍走坞期那份 `.pp-comp-menu` 语言（同一把尺子），只在**行内**绝对定位。 */
+.pp-folio-picks {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: center;
-  background: var(--seal);
-  color: #f3ece0;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  flex-wrap: wrap;
+  gap: 0 10px;
+  min-height: 15px; /* = 天头第三行的高度契约（FOLIO_TOKENS.subH）——行内不放高 */
+  /* 卷首本体是 pointer-events:none（点击穿透流区背景）——本行是**唯一例外**（同组合芯片） */
+  pointer-events: auto;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
 }
-/* 签上四格之间只留发丝线（1px 墨四），不画边框 */
-.pp-composer-settings[data-variant="sheet"] > * {
-  flex: 0 0 auto;
-}
-/* 签的定位盒：组合（.pp-sheet-sign）与权限（.pp-sheet-perm）各一层，
- * 各自的菜单开在自己那枚按钮正下方——不挂到整条签上（签是两行：控件行 + 预演句）。 */
-.pp-sheet-sign,
-.pp-sheet-perm {
+/* 三格各自的定位盒（下拉开在自己底下，不挂整行——挂整行会在窄纸上越界） */
+.pp-folio-pick {
   position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
 }
-/* 预演句：签下把这卷的打算写成一句人话。
- * 层次靠字重与字距（不靠颜色）：关键词 600 墨一，虚词墨四。 */
-.pp-sheet-prev {
-  flex: 1 0 100%;
-  margin: 9px 0 0;
-  font-size: 12px;
-  letter-spacing: 0.03em;
-  line-height: 1.7;
+.pp-folio-pick-btn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+/* 小字签：墨四（同卷首档行的机读注记档） */
+.pp-folio-pick-k {
+  flex: 0 0 auto;
+  color: var(--ink-4);
+  letter-spacing: 0.2em;
+}
+/* 值：墨二；hover/展开转朱砂深（人的动作） */
+.pp-folio-pick-v {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--ink-2);
+  transition: color var(--snap);
 }
-.pp-sheet-prev b {
+.pp-folio-pick-btn:hover .pp-folio-pick-v,
+.pp-folio-pick-btn.open .pp-folio-pick-v {
+  color: var(--seal-deep);
+}
+.pp-folio-pick-btn:hover .pp-folio-pick-k,
+.pp-folio-pick-btn.open .pp-folio-pick-k {
+  color: var(--ink-3);
+}
+/* caret：**静止不可见**（读数是账不是面板），hover/展开才显（§11 锚点型） */
+.pp-folio-pick-caret {
+  flex: 0 0 auto;
+  font-size: 9px;
+  color: var(--ink-4);
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.pp-folio-pick-btn:hover .pp-folio-pick-caret,
+.pp-folio-pick-btn.open .pp-folio-pick-caret {
+  opacity: 1;
+}
+/* 模型那一格：坞期那枚 ModelSelector 原样塞进来——把它的容器压回行内基线
+ * （它不是本行的控件，是**同一个组件**的另一种宿主，故只调盒、不碰它的语言）。 */
+.pp-folio-pick-model {
+  align-items: baseline;
+  gap: 5px;
+  max-width: 34ch;
+}
+.pp-folio-pick-model .ms-container {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+/* ⚠ 触发器**不继承坞期那套 reset**：`.pp-composer .ms-trigger` 的
+ * `border: none / background: transparent` 被 `.pp-composer` 祖先限定，而本行住在
+ * **卷首**（不在坞里）⇒ 不在这里显式抹掉，模型那一格会长出一个输入框边框，
+ * 三格里只有它一枚像控件（实测：1440 纸上读作「纸里嵌了个下拉输入框」）。 */
+.pp-folio-pick-model .ms-trigger {
+  min-height: 0;
+  padding: 0;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-2);
+  justify-content: flex-start;
+}
+.pp-folio-pick-model .ms-trigger-name {
   font-weight: 600;
   color: var(--ink-1);
 }
-.pp-sheet-prev-mut {
+.pp-folio-pick-model .ms-trigger-thinking,
+.pp-folio-pick-model .ms-trigger-caret {
+  color: var(--ink-3);
+  font-size: var(--fs-micro);
+}
+/* 厂章**在天头里不出现**（2026-11-19 落地实测）：坞期它是 16px 方框，读作一枚小签；
+ * 天头这一行是**读数**——去掉那圈框之后，只剩一个与模型名首字母相同的「D」紧贴
+ * 在名字前面，读起来像错字（「DDeepSeek …」）。厂商身份已由值的字形与悬停提示承载，
+ * 这一行不再为它花一个字符位。 */
+.pp-folio-pick-model .ms-provider-mark {
+  display: none;
+}
+/* 分隔点：三笔之间的发丝点（不画线——版心规线只有底那条） */
+.pp-folio-pick-sep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 9px;
+  background: var(--ink-4);
+  opacity: 0.5;
+  align-self: center;
+}
+/* 「弃纸」推到版心右端：它是这张纸上唯一的离开路径（原来住纸期书眉行）。 */
+.pp-folio-pick-gap {
+  flex: 1 1 auto;
+  min-width: 12px;
+}
+/* 弃纸：无框文字（纸面唯一主动作是发送；这里只能读作「一条注」）。
+ * hover 转朱砂——与全仓「瞬时件去框 + hover 朱砂」同族。 */
+.pp-sheet-discard {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-family: var(--f-kai);
+  font-size: var(--fs-caption);
+  letter-spacing: 0.08em;
   color: var(--ink-4);
+  cursor: pointer;
+  transition: color var(--snap);
 }
-
-/* ── 题签在输入行**上方**（2026-11-28 用户改主意：先题签、再落笔）──
- * 让位方向随之翻转：原来是 margin-top（签在下方），现在让位给下方正文。 */
-.pp-composer-settings[data-variant="sheet"] {
-  margin-top: 0;
-  margin-bottom: 14px;
-}
-
-/* ── 预演句的色彩分层（用户：不要全用黑字）──
- * 色相即语义：组合 = 人的决定（朱砂）；模型/思考 = 机器的脑子（石青，机读域）；
- * 权限 = 人的闸门（墨一）。三家不同色，一眼读得出「哪段是谁定的」。 */
-.pp-sheet-prev .pp-prev-comp {
+.pp-sheet-discard:hover {
   color: var(--seal-deep);
 }
-.pp-sheet-prev .pp-prev-model {
-  color: var(--indigo);
-}
-.pp-sheet-prev .pp-prev-think {
-  color: var(--indigo);
-  font-weight: 400; /* 同色第二档：思考比模型弱一层，用字重而不是第二种颜色 */
-}
-.pp-sheet-prev .pp-prev-perm {
-  color: var(--ink-1);
-}
-
-/* ── 防跳变（用户：UI 不要产生莫名其妙的跳变）──
- * 签上的下拉改**绝对定位**：展开不再撑高纸盒 ⇒ 纸的上缘与落影纹丝不动；
- * 落影用真机同一支硬投影笔（不是新语言）。
- * 定位祖先 = 签上两枚各自的定位盒（.pp-sheet-sign / .pp-sheet-perm，见上方那条）。 */
-.pp-composer-settings[data-variant="sheet"] .pp-comp-menu-inline {
+/* 行内下拉（组合 / 权限）：坞期基准规则 `.pp-composer .pp-comp-menu` 是向上弹的
+ * （bottom: calc(100% + 4px)），天头在卷顶、下方是流区 ⇒ 换向向下。
+ * ⚠ `bottom: auto` 必需（2026-11-28 真机报障的根因）：同时拿到 top 与 bottom 且
+ * height:auto ⇒ 高度由等式解出负数、夹成 0 = 0 高的空盒，点开等于没开。 */
+.pp-folio-pick-menu {
   position: absolute;
-  /* ⚠ `bottom: auto` 是**必需**的，不是清理（2026-11-28 第二次真机报障的根因）：
-   * 坞期基准规则 `.pp-composer .pp-comp-menu` 是向上弹的（`bottom: calc(100% + 4px)`），
-   * 本片把方向改成向下（加 `top`）时**忘了撤 `bottom`**。绝对定位盒同时拿到 top 与
-   * bottom、且 height:auto ⇒ 高度由等式解出 = 容器高 − top − bottom，而两个方向都是
-   * 「100% + 4px」⇒ 解出**负数，夹成 0**：菜单成了一个 0 高的空盒（真机只剩两道 1px
-   * 上下边），点开等于没开。同族先例 = paper-cards.css 的浮层换向块，那里每条都写
-   * 了 `bottom: auto`；只抬 z-index（706815b0）治不了这一条。 */
   bottom: auto;
-  top: calc(100% + 4px);
+  top: calc(100% + 5px);
   left: 0;
   z-index: 90;
-  min-width: 220px;
+  min-width: 190px;
+  max-width: 300px;
   max-height: 46vh;
   overflow-y: auto;
   margin: 0;
-  /* 墨自签下落（向下开 = pop-down；坞期那份 pop-up 是向上弹的笔）。同 paper-cards 换向块。 */
+  padding: 2px 0;
+  background: var(--paper);
+  border: 1px solid var(--rule-soft-ink);
+  border-top: 2px solid var(--ink-2); /* 头线：浮层菜单书眉顶缘（--rule-head 同值） */
+  box-shadow: var(--elev-menu);
+  text-align: left;
   animation: pop-down var(--m-ink);
-  box-shadow:
-    3px 4px 0 rgba(38, 34, 28, 0.05),
-    8px 10px 0 rgba(38, 34, 28, 0.03);
+}
+.pp-folio-pick-opt {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.pp-folio-pick-opt:last-child {
+  border-bottom: none;
+}
+.pp-folio-pick-opt:hover {
+  background: var(--paper-deep);
+  color: var(--ink-1);
+}
+.pp-folio-pick-opt.selected {
+  background: var(--sel-wash);
+  color: var(--ink-1);
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+.pp-folio-pick-opt:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+/* 说明行（装载失败 / 原因）——不可点，不参与选中语义 */
+.pp-folio-pick-note {
+  padding: 5px 10px;
+  border-top: 1px solid var(--rule-soft-ink);
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
 }

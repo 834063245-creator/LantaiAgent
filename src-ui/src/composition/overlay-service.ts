@@ -18,6 +18,10 @@
 //                     不渲染，输入面长在纸上。**同一个组件、另一次注册**——纸不是第二个
 //                     输入实现，只是同一个 ComposerDock 换了个宿主槽（设计件 §8 V2-P1；
 //                     跨插件直引会把产物 esbuild 内联成第二份 store，见 landmine-map）。
+//   - 'draft-folio'—— **待题纸的题签行**（2026-11-19 题签重画批）：组合 / 模型 / 权限
+//                     三笔落在天头第三行（版心内、与卷首同轴），不再在纸身里贴一枚「纸签」。
+//                     与 'draft-sheet' 同生同灭（纸有焦点才挂），但宿主不同：输入面在
+//                     天头之下，题签在**天头之内**——两处都读同一份 draft-sheet-store。
 //   - 'right-edge' —— 右缘窄条（目次带等卷内导航附件）。
 // 组件渲染在 PaperPanel 内部（可经 paper/overlay-context 取派生流区数据）。
 
@@ -26,7 +30,7 @@ import { type Context, Service } from '../cordis';
 import { ContributionChannel } from './contribution-channel';
 
 /** 覆盖层槽位。 */
-export type OverlaySlot = 'composer' | 'draft-sheet' | 'right-edge';
+export type OverlaySlot = 'composer' | 'draft-sheet' | 'draft-folio' | 'right-edge';
 
 /** 覆盖层贡献定义。 */
 export interface OverlayContribution {

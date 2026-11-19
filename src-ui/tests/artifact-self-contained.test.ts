@@ -41,10 +41,15 @@ const BUILD_SCRIPT = join(REPO_ROOT, 'scripts', 'build-builtin-plugins.mjs');
 /** 带模块级状态的内核模块欠账清单（构建期按此点名）。 */
 const STATEFUL_LEDGER = join(REPO_ROOT, 'scripts', 'lib', 'stateful-kernel-modules.json');
 /** 构建全局件——不属于任何单一产物，故不进名册 `shared`（构建脚本里显式列）。
- *  第四个是界面字阶（2026-11-06）：产物 CSS 用 @import 把它内联进 entry.css，
- *  产物自包含（旧 exe + 新产物下字号不塌成继承）优先于「单一声明面」的洁癖。 */
+ *  三个 CSS 基座同一条理由（产物 CSS 用 @import 把它们内联进 entry.css，产物自包含
+ *  优先于「单一声明面」的洁癖）：界面字阶（2026-11-06）、动作钮基座 `controls.css`
+ *  与查看器状态基座 `viewer-base.css`（2026-11-17 技术债批 A / A2）。
+ *  ⚠ 2026-11-19 补：本清单在技术债批 A/A2 加了两件全局件后**没跟上**，本仓的守卫
+ *  因此一直红着（与本批题签重画无关，顺手对齐）。 */
 const GLOBAL_INPUTS = [
   'src-ui/src/app/type-scale.css',
+  'src-ui/src/app/controls.css',
+  'src-ui/src/app/viewer-base.css',
   'src-ui/src/plugins/builtin/contribution-helpers.ts',
   'src-ui/src/plugins/builtin/face-css.ts',
   'src-ui/src/plugins/builtin/react-bridge.cjs',
@@ -118,7 +123,7 @@ describe('产物自包含：全部出厂产物源码零相对动态 import', () 
 });
 
 describe('产物输入账本：单一声明面 = 名册 shared（2026-09-28 账本合一）', () => {
-  it('构建全局件恰四个（不是单一产物的事，才配留在脚本里）', () => {
+  it('构建全局件恰六个（不是单一产物的事，才配留在脚本里）', () => {
     const cfg = readFileSync(BUILD_SCRIPT, 'utf8');
     const decl = /const GLOBAL_INPUTS = new Set\(\[([\s\S]*?)\]\);/.exec(cfg);
     expect(decl, '构建脚本缺 GLOBAL_INPUTS 声明').not.toBeNull();

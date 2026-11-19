@@ -33,6 +33,7 @@
 
 import type React from 'react';
 import { type CSSProperties, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { DraftFolioLine } from './DraftFolioLine';
 import { type DraftSheetCore, draftBoxInSight, draftFocusPoint, draftPlacement, draftScale } from './draft-sheet';
 import {
   activeOverlayContributions,
@@ -67,7 +68,10 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
 
   /* ── 纸上那张输入面：经 overlays 的 'draft-sheet' 槽取（热注册即时重取）──
    * 纸替坞：本槽是**同一个** ComposerDock 的另一次挂载（见该文件 ComposerSheet 头注）。
-   * 多纸：**只给焦点那张纸挂**——两处 textarea 同屏会抢输入（焦点独占）。 */
+   * 多纸：**只给焦点那张纸挂**——两处 textarea 同屏会抢输入（焦点独占）。
+   * **题签（组合/模型/权限）不在这里**（2026-11-19）：它升为卷首第三行，走另一条槽
+   * 'draft-folio'，由 DraftFolioLine 在**天头之内**取用——输入面在天头之下，两处相邻
+   * 但不互含（各自取自己那一槽，热注册各自即时重取）。 */
   const [, setOverlayTick] = useState(0);
   useEffect(() => subscribeOverlayContributions(() => setOverlayTick((t) => t + 1)), []);
   const sheetOverlays = activeOverlayContributions('draft-sheet');
@@ -275,7 +279,6 @@ function PaperView({
   }, [anchor, boxH, paperId, setBoxH]);
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: 纸是画布上的一件「物件」（同 .pp-region 的 mousedown 激活语义——点纸张即拿到它）；键盘路径见下方 tabIndex/onKeyDown 那两条腿。
     <div
       className={`pp-region pp-draft-sheet${focused ? ' pp-draft-focused' : ' pp-draft-idle'}`}
       data-draft-sheet
@@ -334,7 +337,13 @@ function PaperView({
           <h2 className="pp-folio-title">
             案卷<span className="pp-draft-num">Nº</span>
           </h2>
-          <p className="pp-folio-sub">题签随首句落账 · 卷号于发送时发出</p>
+          {/* 第三行 = **题签**（2026-11-19 题签重画批）：组合 / 模型 / 权限三笔落进版心，
+              收在这一行的位置上。原来是句定值废话（「题签随首句落账 · 卷号于发送时发出」）
+              ——待题期这卷还没名，第三行空着也是空着，而这三件正是**送出去之前要确认的三件事**。
+              多纸：只给焦点那张挂（合上的纸不装控件——它的三笔已在合口之下的注记里）。 */}
+          {/* ⚠ 第三行用 `div` 不用 `p`：题签行里装的是块级 flex 盒子（下拉自带的定位盒），
+              块进 `p` 会被浏览器当场拆行（HTML 解析规则），纸的天头会散架。 */}
+          <div className="pp-folio-sub">{focused ? <DraftFolioLine /> : '题签随首句落账 · 卷号于发送时发出'}</div>
         </div>
       </div>
 

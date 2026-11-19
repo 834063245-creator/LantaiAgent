@@ -425,7 +425,11 @@ describe('ComposerDock 返工 P2-3（权限分段 + 全放模态）', () => {
       document.querySelector<HTMLButtonElement>('.pp-mode-dialog-actions .primary')?.click();
     });
     await act(async () => {});
-    expect(useModeStore.getState().permissionMode).toBe('yolo');
+    /* 2026-11-28 权限卷级批把落点改成**卷级覆盖**：坞期这个开关拨的是「本卷」，
+     * 工作区默认只在没有卷级覆盖时才管用（modeOf = 覆盖 ?? 默认）。
+     * 本用例的只读断言因此从 permissionMode 改读**本卷有效值**——2026-11-19 题签重画批
+     * 才把这个陈旧断言暴露出来（此前坞期分支顺带写了一次工作区默认，掩盖了它）。 */
+    expect(useModeStore.getState().modeOf('1')).toBe('yolo');
     expect(document.querySelector('.pp-mode-dialog')).toBeNull();
   });
 });

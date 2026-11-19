@@ -35,9 +35,13 @@ const TOAST_STORE_TS = readFileSync(join(SRC, 'state', 'toast-store.ts'), 'utf8'
 const SETTINGS_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'settings-domain', 'settings-panel.css'), 'utf8');
 const SETTINGS_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'settings-domain', 'SettingsPanel.tsx'), 'utf8');
 const SETTINGS_INDEX_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'settings-domain', 'index.ts'), 'utf8');
-/** 壳层 Provider 页样式（`main.ts` 直接 import ⇒ 烧进 exe）。用于守卫「跨层同选择器」：
- *  凡与页签切换权同选择器的规则，必须与切换权同层（产物），否则会被产物 CSS 按源序顶掉。 */
-const PROVIDER_CSS_SHELL = readFileSync(join(SRC, 'app', 'panels', 'dock-panels', 'provider-settings.css'), 'utf8');
+/** Provider 页样式（2026-11-17 技术债批 B：归属收口进产物 settings-domain）。
+ *  用于守卫「跨层同选择器」：凡与页签切换权同选择器的规则，必须与切换权同层（产物），
+ *  否则会被产物 CSS 按源序顶掉。 */
+const PROVIDER_CSS_SHELL = readFileSync(
+  join(SRC, 'plugins', 'builtin', 'settings-domain', 'provider-console.css'),
+  'utf8',
+);
 const DOCK_TSX = readFileSync(join(SRC, 'app', 'panels', 'DockPanel.tsx'), 'utf8');
 const CANVAS_NAV_INDEX_TS = readFileSync(join(SRC, 'plugins', 'builtin', 'canvas-nav', 'index.ts'), 'utf8');
 const SPINE_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'canvas-nav', 'spine-rack.css'), 'utf8');
@@ -763,4 +767,5 @@ describe('§15 动效契约（散写时长守卫）', () => {
     expect(PANEL_TSX).toContain('data-leaving');
     expect(PANEL_TSX).toContain("' pp-drop'");
   });
+
 });

@@ -25,20 +25,8 @@ import type {
   StoredThinking,
   TokenMeasurement,
 } from '../host';
-import {
-  agentSessionState,
-  getChatStore,
-  getComposeStore,
-  getModel,
-  loadSettings,
-  modelDescriptor,
-  modelInput,
-  modelThinking,
-  onSettingsSaved,
-  resolveNewSessionDefault,
-  thinkingOptionsOrDefault,
-  useDraftSheetStore,
-} from '../host';
+import { agentSessionState, getChatStore, getComposeStore, onSettingsSaved } from '../host';
+import { useModelSeat } from './use-model-seat';
 
 export interface ComposerSessionInput {
   core: ChatCore | null;
@@ -181,62 +169,10 @@ export function useComposerSession({
   // 不再每渲染全量 loadSettings()（打字热路径上的 localStorage JSON.parse）
   const [settingsTick, setSettingsTick] = useState(0);
   useEffect(() => onSettingsSaved(() => setSettingsTick((n) => n + 1)), []);
-  // 开口即开卷（2026-08-31）：无主态显示/操作「新卷出生默认」（全局活跃行）；
-  // 有活跃卷时 prefs（resolveEffective）已含全局回落（覆盖 ?? 全局）。
-  // tick 驱动重读——无主态拨模型/思考走 settings-saved → tick 变 → 重算。
-  const newSessionDefault = useMemo(() => {
-    void settingsTick; // 保存代数触发器（非响应值）：设置保存后重读全局默认
-    return resolveNewSessionDefault();
-  }, [settingsTick]);
-  /* 待题纸（2026-11-15 V2）：纸自己那张（variant='sheet'）用**同一份** provider/model
-   * 推导，只是源头换成题签：题签未填（纸刚摊开）= 出厂默认（新卷出生默认），
-   * 与坞期 prefs 的空位同义。 */
-  const draftPicks = useDraftSheetStore((s) => {
-    const id = s.focusedId;
-    return id === null ? null : (s.papers.find((p) => p.id === id)?.picks ?? null);
-  });
-  const providerName = (isSheet ? draftPicks?.providerName : prefs?.providerName) ?? newSessionDefault.providerName;
-  const model = (isSheet ? draftPicks?.model : prefs?.model) ?? newSessionDefault.model;
-  const settingsVersion = settingsTick + providerName.length; // 触发器合成：保存代数 + 覆盖换向
-  const settings = useMemo(() => {
-    void settingsVersion; // 触发器合成值（保存代数 + 覆盖换向）——非响应值
-    try {
-      return loadSettings();
-    } catch {
-      return null;
-    }
-  }, [settingsVersion]);
-  const provider: ProviderSettings | undefined = settings?.providers.find((p) => p.name === providerName);
-  const providerKind = provider?.kind ?? 'openai';
-  // 2026-09-23 思考下沉：描述符改读 **provider 作用域**（覆盖 ?? API 拉取 ?? 目录
-  // seed）——与设置页参数面板、请求期 assertEffortDeclared 同一把尺子。此前读全局
-  // getModel：网关模型在拉取失败/重启后拿不到自己的档位声明，同一模型在坞里与在
-  // 设置页显示的档位表可以不一致。行缺席（已删）才回落全局目录。
-  const modelDesc = useMemo(() => (provider ? modelDescriptor(provider, model) : getModel(model)), [provider, model]);
-  // 附图能力门禁（multimodal-image-plan D-8②）：生效输入模态含 'image' 才开
-  // 图片采集道——策略在此（视图层），机制在 chat-core（intake 方法）。
-  // modelInput 合并链（B5）：ModelOverrides.input 覆盖 ?? 目录 seed vision 声明；
-  // 目录外自定义 vision 模型经设置页参数面板补声明即开。
-  const imageCapable = modelInput(provider, model).includes('image');
-  /* 2026-11-08 墨线退役（丙案尾项）：坞底那条 2px 墨线撤了——它与书眉「墨 NN%」
-   * 读数**同源同判据**（同一个 tokenStats.usedTokens / 同一个 >80% 门槛），是同一件事
-   * 画两遍；而且它占着"坞底发丝线"那条位置，而坞是浮在纸上的，底边本来就是纸的边。
-   * 「快满了」的余光信号没有丢：近满态现在挂在触发器本体（.pp-ink-trigger.full →
-   * 字与点一起转朱砂 + 呼吸，见 paper-composer.css），与旧 .pp-inkline.full 同判据。
-   * 分母口径随之整个交回墨量册（它自己算 percent / nearFull，读同一把 token-meter 尺子）：
-   * per-model 覆盖 ?? 目录声明（modelContextWindow，与运行时压缩阈值同链），未知窗口不编造。 */
-  const thinkingOptions = useMemo(() => {
-    // P14：有声明用声明档位表；无声明给「自动/关闭」协议安全兜底——思考按钮常驻
-    // （DSH 语义），不编造命名档位（''/off 在 assertEffortDeclared 不拦、协议层可
-    // 安全表达）。表来自 thinkingOptionsOrDefault（与设置页参数面板同一函数）。
-    return thinkingOptionsOrDefault(modelDesc);
-  }, [modelDesc]);
-  // 生效档位三层（2026-09-23）：会话覆盖（本卷显式拨过）?? 该模型档位
-  // （per-model 覆盖 ?? 本家默认档位，经 modelThinking 一把尺子）；行缺席（已删）
-  // 才回落新卷出生默认。
-  const currentThinking =
-    (isSheet ? draftPicks?.thinking : thinkingOverride) ??
-    (provider ? modelThinking(provider, model) : newSessionDefault.thinking);
+  /* 生效配置读数（provider / 模型 / 描述符 / 思考档位 / 附图能力）——2026-11-19 题签重画批
+   * 搬进 `use-model-seat`：同一组读数现在有第二处宿主（纸期卷首档行），解析只许一条链。 */
+  const seat = useModelSeat({ isSheet, prefs, thinkingOverride, settingsTick });
+  const { providerName, model, providerKind, provider, imageCapable, thinkingOptions, currentThinking } = seat;
 
   return {
     sessions,

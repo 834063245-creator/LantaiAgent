@@ -73,7 +73,6 @@ const DEBT: Record<string, number> = {
   'engine/src/graph/import_resolver.rs': 1600, // 现 1596
   'src-ui/src/plugins/builtin/canvas-nav/SessionSidebar.tsx': 1600, // 现 1549
   'src-tauri/src/uia/com.rs': 1600, // 现 1595
-  'src-ui/src/app/panels/dock-panels/provider-settings.css': 1500, // 现 1420
   'src-tauri/src/permissions/bash.rs': 1400, // 现 1365
   'engine/src/graph/resolver.rs': 1400, // 现 1380
   'src-tauri/src/commands/plugin_install.rs': 1400, // 现 1306
@@ -85,6 +84,10 @@ const DEBT: Record<string, number> = {
   // 拆出去要跨模块共享 ref，反而让「进度只影响渲染、不动 payload.text」这条纪律失去单点。现 1364。
   'src-ui/src/plugins/builtin/paper-renderers/renderers.tsx': 1400, // 现 1364
   'src-ui/src/plugins/builtin/settings-domain/settings-panel.css': 1300, // 现 1238
+  // 2026-11-17 技术债批 B 从 app/panels/dock-panels/provider-settings.css 迁入产物
+  // （归属收口：使用它的全是产物组件）。旧账那条随之销账、新址按现行行数登记；
+  // 2026-11-19 补了漏掉的 type-scale @import（与本批题签重画无关，顺手清债）。
+  'src-ui/src/plugins/builtin/settings-domain/provider-console.css': 1400, // 现 1319
   'src-tauri/src/confined_fs.rs': 1300, // 现 1278
   'engine/src/analysis/explore.rs': 1300, // 现 1225
   // 架阁底座 B1（entity-shelf-plan §5.1）：card_* 五命令分派 + shape 登记跨了 1300 档

@@ -39,10 +39,8 @@ import { HIST_HINT_KEY } from './dock-copy';
 import { GoalStrip } from './goal-strip';
 import type { PermissionMode } from './host';
 import { getChatStore, useCoreStore, useDialogEscape, useDraftSheetStore, useModeStore, usePaperDock } from './host';
-import { SheetHeader } from './sheet-parts';
 import { useComposerAttach } from './surface/use-composer-attach';
 import { useComposerChrome } from './surface/use-composer-chrome';
-import { useComposerComposition } from './surface/use-composer-composition';
 import { useComposerLayers } from './surface/use-composer-layers';
 import { useComposerModels } from './surface/use-composer-models';
 import { useComposerSend } from './surface/use-composer-send';
@@ -84,13 +82,12 @@ export const ComposerDock = memo(function ComposerDock() {
  *
  *  与坞共用**同一份实现**与同一个 input store（设计件 §2 原则 8：禁复制第二份输入面——
  *  复制一份 = 把「一套设置摆两处」换成「一套输入摆两处」，负债更重）。
- *  差别只有四处，且都在本文件里以 `isSheet` 显式分叉：
- *    ① 没有书眉（卷名/役/墨/移是「这一卷的账」，纸还没有卷号）；
- *    ② 设置行 = **题签**：组合 + 模型（含思考）——没有权限段（权限是工作区级，
- *       开卷后归坞；纸期拨它没有意义，拨了也不会少一分钱）；
- *    ③ 模型/思考/组合写 **draft-sheet-store 的题签**（开卷那一刻才落既有写路径）；
- *    ④ 发送 = 起卷 + 把这句话发出去（编排在 `ChatCore.sendMessage` 的纸在场分支，
- *       本件只管点——判据与写入不在视图层）。
+ *  2026-11-19 题签重画批之后差别只剩两处：
+ *    ① 没有书眉、没有设置行（`pp-composer-settings` 整行不进纸期）——「这一卷打算
+ *       怎么跑」的三笔已升为**卷首档行**（见 `DraftFolioSurface`），纸身只留一条输入行；
+ *    ② 模型/思考写 **draft-sheet-store 的题签**（开卷那一刻才落既有写路径）。
+ *  发送 = 起卷 + 把这句话发出去（编排在 `ChatCore.sendMessage` 的纸在场分支，
+ *  本件只管点——判据与写入不在视图层）。
  *
  *  为什么经 overlays 的 'draft-sheet' 槽注册而不是直引：跨插件直引会把产物 esbuild
  *  内联成第二份 store（同 toast-store 先例，见 docs/landmine-map.md）。 */
@@ -136,8 +133,9 @@ const ComposerSurface = memo(function ComposerSurface({
   /* ── 会话面：sess / input / prefs / settings（含 token 读数与模型推导）── */
   const session = useComposerSession({ core, isSheet, activeSessionId, composerRef });
 
-  /* ── 组合芯片（本卷身份 + 写入口）── */
-  const composition = useComposerComposition({ core, activeSessionId, notice });
+  /* 组合芯片（本卷身份 + 写入口）不住本坞（2026-11-19）：坞期那一格是书眉的
+   * `.pp-comp-sel`（ComposerHeader 自持），纸期在卷首档行（DraftFolioSurface）——
+   * 本组件不再自取一份。 */
 
   /* ── 斜杠命令域 ── */
   const slash = useComposerSlash({ core, inputText: session.inputText });
@@ -207,32 +205,15 @@ const ComposerSurface = memo(function ComposerSurface({
   /* 全放二次确认模态的 Esc（同附图预览：portal 到 body 后 Escape 只能走 document 级） */
   useDialogEscape(() => setPendingYolo(false), { enabled: pendingYolo });
 
-  /** 纸期题签第四格：坞不持有纸的题签，只订阅它（null = 跟随工作区）。 */
-  const sheetPermission = useDraftSheetStore((s) => {
-    if (!isSheet || s.focusedId === null) return null;
-    return s.papers.find((pp) => pp.id === s.focusedId)?.picks?.permission ?? null;
-  });
-  /** 纸期：把题签的权限拨回「跟随工作区」（清掉卷级覆盖）。 */
-  const onPermissionInherit = useCallback(() => {
-    const st = useDraftSheetStore.getState();
-    const paper = st.papers.find((pp) => pp.id === st.focusedId);
-    if (paper?.picks) st.setPicks({ ...paper.picks, permission: null }, paper.id);
-  }, []);
-
-  /** 直接写入（跳过「全放要二次确认」那道闸——确认模态自己用它落账）。 */
+  /** 直接写入（跳过「全放要二次确认」那道闸——确认模态自己用它落账）。
+   *  纸期那一份搬到卷首档行（`DraftFolioSurface` 的权限格，写的是题签第四格）——
+   *  坞期只写本卷/工作区，四种来源各归各的宿主，不在这里合并。 */
   const applyMode = useCallback(
     (mode: PermissionMode) => {
-      if (isSheet) {
-        // 纸期：写题签第四格——开卷那一刻由 applyDraftPicks 落成这一卷的卷级覆盖
-        const st = useDraftSheetStore.getState();
-        const paper = st.papers.find((pp) => pp.id === st.focusedId);
-        if (paper?.picks) st.setPicks({ ...paper.picks, permission: mode }, paper.id);
-        return;
-      }
       if (session.activeSidNum != null) useModeStore.getState().setSessionMode(session.activeSidNum, mode);
       else useModeStore.getState().setPermissionMode(mode);
     },
-    [isSheet, session.activeSidNum],
+    [session.activeSidNum],
   );
 
   const selectMode = useCallback(
@@ -261,23 +242,16 @@ const ComposerSurface = memo(function ComposerSurface({
     const input = getChatStore(core.panelId).input.getState();
     if (armHistHintIfDue(input.inputHistory.length, HIST_HINT_KEY)) layers.showHistHint();
   }, [core, armHistHintIfDue, layers.showHistHint]);
-  /* 设置行 / 题签的**位置**（2026-11-28 用户改主意）：纸期它压在输入行**上面**——
-   * 「先题签，再落笔」的读序；坞期仍在下面（模型与权限是「这一趟怎么跑」，垫底）。
-   * 同一个元素只定义一次，两处按宿主取用——不复制 props。 */
+  /* 设置行（**只在坞期**）：模型与权限是「这一趟怎么跑」，垫在输入行之下（2026-11-09
+   * 用户裁定的三行制：账 / 笔 / 怎么跑）。
+   * 纸期这一行**整行不进纸**（2026-11-19 题签重画批）：「这一卷打算怎么跑」的三笔已升为
+   * 卷首档行（compose-dock 的 `DraftFolioSurface`，经 'draft-folio' 槽挂在纸的天头），
+   * 纸身只留一条输入行。 */
   const settingsRowEl = (
     <SettingsRow
-      isSheet={isSheet}
       variant={variant}
-      compLabel={composition.compLabel}
-      compOpen={composition.compOpen}
-      presetError={composition.presetError}
-      presetRoster={composition.presetRoster}
-      onCompToggle={() => composition.setCompOpen((v) => !v)}
-      onDraftPresetPick={composition.onDraftPresetChange}
       permissionMode={permissionMode}
       onSelectMode={selectMode}
-      sheetPermission={sheetPermission}
-      onPermissionInherit={onPermissionInherit}
       model={session.model}
       providerName={session.providerName}
       providerKind={session.providerKind}
@@ -291,18 +265,12 @@ const ComposerSurface = memo(function ComposerSurface({
   return (
     <div className={`pp-composer${layers.dragOver ? ' pp-droptarget' : ''}`} ref={dockRef}>
       {/* 书眉行（2026-11-09 用户裁定：**模型与权限另起一行**）——左端卷名，右端只有读数 + 移。
-          判据（书眉=这一卷的账 / 换模型与拨权限是动作）随件搬进 `composer-header.tsx`。 */}
-      {isSheet ? (
-        <SheetHeader
-          onDiscard={() => {
-            const id = useDraftSheetStore.getState().focusedId;
-            if (id === null) return;
-            // 弃纸走 core 的能力位：store 焦点 + input 草稿槽 + 交回活跃卷三件事一起做
-            if (core?.dismissDraft) core.dismissDraft(id);
-            else useDraftSheetStore.getState().dismissOne(id);
-          }}
-        />
-      ) : (
+          判据（书眉=这一卷的账 / 换模型与拨权限是动作）随件搬进 `composer-header.tsx`。
+          ⚡ 纸期**没有书眉**（2026-11-19）：旧纸期书眉只说「待题 · 未开卷」+ 一枚弃纸，
+          那句话与卷首眉行逐字重复；弃纸搬进卷首档行右上角（`DraftFolioPicks`）。
+          纸替坞的判据仍在外层（ComposerDock 早退），故本件挂在纸上时也不该有书眉——
+          杆子只有一根：`isSheet`。 */}
+      {!isSheet && (
         <ComposerHeader
           activeSession={session.activeSession}
           activeSidNum={session.activeSidNum}
@@ -324,8 +292,6 @@ const ComposerSurface = memo(function ComposerSurface({
           ⚠ DOM 上挂 body（portal），故它**不是**输入行的布局子件；血缘上仍住这行。
           「为什么 portal 到 body」的病灶注随件搬家：见 `composer-modals.tsx` 头注。 */}
       <ImagePreviewModal preview={imagePreview} onClose={() => setImagePreview(null)} />
-
-      {isSheet && settingsRowEl}
 
       {/* 输入行（原 composer 主体）
           ⚡ 2026-11-15 V2：判据从「纸在场 ⇒ 隐藏本行」改为「纸在场 ⇒ 整只坞不渲染」
@@ -375,8 +341,9 @@ const ComposerSurface = memo(function ComposerSurface({
         onAbort={() => core?.abort()}
       />
 
-      {/* 设置行：模型与权限另起一行（2026-11-09 两次裁定）——判据（权限居左 / 模型收右 /
-          纸期换题签）随件搬进 `composer-rows.tsx` 的 `<SettingsRow />` 头注。 */}
+      {/* 设置行：模型与权限另起一行（2026-11-09 两次裁定）——判据（权限居左 / 模型收右）
+          随件搬进 `composer-rows.tsx` 的 `<SettingsRow />` 头注。纸期不进纸（见上方
+          settingsRowEl 头注：三笔已升为卷首档行）。 */}
       {!isSheet && settingsRowEl}
 
       {/* 历史眉批（一次性，6s 自散）：提示长在功能所在处，不常驻占位符 */}

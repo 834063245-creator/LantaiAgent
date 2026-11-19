@@ -36,6 +36,7 @@
 | **上帝文件治理** | [`god-file-governance.md`](god-file-governance.md) | **P1-P3 已落地（2026-11-06）** | 体量门禁（未登记 ≤1000 行；余账 45 条进 DEBT，**百行档位**：档内不吵、跨档才要决策；`tests/god-file-budget.test.ts`）+ `chat-session.ts` 2730→67 行公开面（实现落 `app/chat/session/*`，34 个调用方零改动）+ `PaperPanel.css` 6778→38 行入口 × 12 分片 + `PaperPanel.tsx` 1739→871（装配根/表现件分家，源码断言改读全目录） |
 | **动态插件提升（promote）** | [`dynamic-plugin-promotion-plan.md`](dynamic-plugin-promotion-plan.md) | **已立项未开工（2026-11-17 立）** | 动态插件可固化成常驻磁盘插件：用户显式审批 → Rust `plugin_promote` 原子落盘（manifest + 生成导出壳的 entry.js）→ 走既有装/卸/启用/禁用/授权四通道；`inject` 由沙箱访问记账反推、`permissions` 默认空、provenance 进 manifest 并在设置页可见。卡点 = convergence baseline 变更审批（B3） |
 | **agent hooks（生命周期扩展点）** | [`agent-hooks-plan.md`](agent-hooks-plan.md) | **一期/二期已竣工** | 步骤钩子家族已落（`ctx.steps`：pre-step 每步 enter/reject + turn-stopping 停止边界，含 durable/transient 注入、`create` 工厂、发现注入收编）；三期待拍（request 系列 / plan·inbox 收编 / CC 桥） |
+| **架阁（卡片架）** | [`entity-shelf-plan.md`](entity-shelf-plan.md) | **方案稿 v2（方向已拍板）；B1-B6 已落地** | 软件的门 + 卡片的家：顶部浮件一枚字 → 专用浮层两页；入阁 = 资产块抄进卡片库（Rust 存储 + RPC + TS 门面），B7 待定 |
 
 ## 待执行但已立项（按成本排）
 

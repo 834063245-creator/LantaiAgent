@@ -74,18 +74,40 @@ describe('待题纸 · V2 形态（纸 = 卷首 + 这张卷的创作坞）', () 
 
   /* ⚠ 2026-11-28 第二次报障（用户：「题签的组合和权限下拉点不开」）的病灶形状。
    * 绝对定位盒**同时**拿到 top 与 bottom 且 height:auto ⇒ 高度由等式解出
-   * （容器高 − top − bottom）；签上这两个值都是「100% + 4px」⇒ 解出负数夹 0
-   * ⇒ 菜单是个 0 高的空盒，点开等于没开。本组钉住：向下开的三件必须齐
-   * ——撤 bottom、给 top、换 pop-down——缺一件就是又白改一次。 */
-  it('⑧ 签上下拉向下开：撤 bottom + 给 top + pop-down（缺 bottom:auto = 盒高解成 0）', () => {
-    const menu = ruleOf('.pp-composer-settings[data-variant="sheet"] .pp-comp-menu-inline');
+   * （容器高 − top − bottom）；旧签上这两个值都是「100% + 4px」⇒ 解出负数夹 0
+   * ⇒ 菜单是个 0 高的空盒，点开等于没开。
+   * **2026-11-19 题签重画批**：那枚「贴在纸上的签」整段退役，三笔搬进卷首第三行
+   * （.pp-folio-pick），病灶形状与治法**原样保留**——本组改成钉新的宿主。
+   * 缺一件（撤 bottom / 给 top / pop-down）就是又白改一次。 */
+  it('⑧ 题签行下拉向下开：撤 bottom + 给 top + pop-down（缺 bottom:auto = 盒高解成 0）', () => {
+    const menu = ruleOf('.pp-folio-pick-menu');
     expect(menu).toContain('position: absolute');
     expect(menu).toContain('bottom: auto');
-    expect(menu).toContain('top: calc(100% + 4px)');
+    expect(menu).toContain('top: calc(100% + 5px)');
     expect(menu).toContain('animation: pop-down');
-    // 两个下拉各自有定位盒（挂整条签 = 开在预演句之下，与权限菜单错位）
-    const at = CSS.indexOf('.pp-sheet-sign');
+    // 每一格各自有定位盒（挂整行 = 窄纸上开在版心之外）
+    const at = CSS.indexOf('.pp-folio-pick {');
     expect(at).toBeGreaterThan(-1);
     expect(CSS.slice(CSS.indexOf('{', at), CSS.indexOf('}', at))).toContain('position: relative');
+  });
+
+  /* 2026-11-19 题签重画批的**形态判据**（用户：「题签有点丑爆了」）：
+   * 那枚纸签的材质（深底色 / 朱印 / 假歪 / 硬投影 / 预演句）一律不许写回来。 */
+  it('⑨ 题签不进纸身：没有纸签材质（底色 / 朱印 / 假歪 / 硬投影 / 预演句）', () => {
+    expect(CSS).not.toContain('.pp-composer-settings[data-variant="sheet"]');
+    expect(CSS).not.toContain('.pp-sheet-prev');
+    expect(CSS).not.toContain('.pp-sheet-comp');
+    expect(CSS).not.toContain('rotate(-0.22deg)');
+    // 三笔落进卷首第三行：行内、与卷首同轴（justify-content: center），且不画框
+    const row = ruleOf('.pp-folio-picks');
+    expect(row).toContain('justify-content: center');
+    expect(row).not.toContain('background:');
+    expect(row).not.toContain('box-shadow');
+    // 卷首本体 pointer-events:none，本行是唯一例外（同组合芯片）
+    expect(row).toContain('pointer-events: auto');
+    // 小字签 / 值 / caret 的墨阶：值墨二、签墨四、caret 静止不可见（§11 锚点型）
+    expect(ruleOf('.pp-folio-pick-v')).toContain('var(--ink-2)');
+    expect(ruleOf('.pp-folio-pick-k')).toContain('var(--ink-4)');
+    expect(ruleOf('.pp-folio-pick-caret')).toContain('opacity: 0');
   });
 });

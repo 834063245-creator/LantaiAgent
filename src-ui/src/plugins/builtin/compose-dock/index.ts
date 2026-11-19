@@ -29,6 +29,7 @@ import type { Context } from '../../../cordis';
 import { injectFaceArtifactCss } from '../face-css';
 import { AssetRack } from './AssetRack';
 import { ComposerDock, ComposerSheet } from './ComposerDock';
+import { DraftFolioSurface } from './DraftFolioSurface';
 import { TocStrip } from './TocStrip';
 
 /** 创作坞插件——composer 槽 + right-edge 槽双覆盖贡献 + 空间消费命令。 */
@@ -59,6 +60,19 @@ export const composeDockPlugin = {
           component: ComposerSheet,
         }),
       'compose-sheet',
+    );
+    /* **待题纸的题签行**（2026-11-19 题签重画批）：组合 / 模型 / 权限三笔升为**卷首档行**
+     * ——输入面之上那一行是卷首自己的版式（paper-shell 的 `DraftFolioLine`），三枚控件
+     * 仍归本插件（它们要的坞内 hook 与写入口都在这儿）。单列一条贡献的理由同图版架：
+     * 判据要的 DOM 位就是「天头第三行」，宿主对每条贡献各出一个子元素。 */
+    ctx.effect(
+      () =>
+        ctx.overlays.register({
+          id: 'draft-folio',
+          slot: 'draft-folio',
+          component: DraftFolioSurface,
+        }),
+      'draft-folio',
     );
     ctx.effect(
       () =>

@@ -160,7 +160,9 @@
   display: flex;
   gap: 8px;
   opacity: 0;
-  transition: opacity 0.12s;
+  /* 2026-11-19：散写时长收进 token（--snap = 0.12s 态变轴，与 hover 同一支笔）——
+   * `tests/motion-contract` 的 §15 守卫此前一直红着（与本批题签重画无关，顺手清债）。 */
+  transition: opacity var(--snap);
 }
 
 .pp-shelf-row:hover .pp-shelf-actions,

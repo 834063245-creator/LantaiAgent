@@ -18,7 +18,6 @@ import type { ChangeEvent, ClipboardEvent, KeyboardEvent, RefObject } from 'reac
 import type { ChatImageRef, CommandContribution, PermissionMode } from './host';
 import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, previewUrlFor } from './host';
 import { ModelSelector } from './ModelSelector';
-import { SheetPermission, SheetSign } from './sheet-parts';
 import { SlashPanel } from './slash-panel';
 
 /** 输入行（原坞主体）：斜杠面板 / 引面板 / 附图预览 / textarea / 引夹案三钮 /
@@ -253,37 +252,21 @@ export function InputRow(props: InputRowProps) {
   );
 }
 /** 设置行（2026-11-09 用户裁定：模型与权限**另起一行**；同日再裁：**权限在左、模型在右**）
- *  ⚡ 2026-11-15 V2：纸期这一行整行换成**题签**（组合 + 模型）；
- *  坞期不变——两处不是两个入口，是**同一个面的两种宿主**。
+ *  ⚡ 2026-11-19 题签重画批：**纸期不进纸**——「这一卷打算怎么跑」三笔升为卷首档行
+ *  （compose-dock 的 `DraftFolioPicks`，经 'draft-folio' 槽挂在天头第三行）。
+ *  本行因此只剩坞期一种形态；`isSheet` 两个分支与预演句随纸签一起退役。
  *  ——只放两件，它们同属「这一趟怎么跑」，与书眉的「这一卷的账」分家。
  *  位置对调（2026-11-09 二次裁定）：**权限居左、模型收右**。
  *  判据：权限是**底线**（全放/半放/常询决定 Agent 能做什么），先读它；模型是这一行的
  *  长值，收右端与书眉的读数对齐（右缘同一条线），行左留给"这一趟的闸"。
  *  行内仍走 §11 锚点型选中（权限 = 重墨 + 朱砂底线），不新增第三种语言。 */
 export interface SettingsRowProps {
-  isSheet: boolean;
-  /** 行的宿主标记（CSS 按变体分叉）。 */
+  /** 行的宿主标记（CSS 按变体分叉；现行只有坞期 'dock'）。 */
   variant: string;
-  /* 纸期题签（组合）*/
-  compLabel: string;
-  compOpen: boolean;
-  presetError: string | null;
-  presetRoster: ReadonlyArray<{
-    id: string;
-    patch: unknown;
-    error?: string;
-    metadata?: { name?: string; description?: string };
-  }>;
-  onCompToggle: () => void;
-  onDraftPresetPick: (id: string) => void;
-  /* 权限（坞期 = 本卷有效档；纸期 = 工作区默认，题签另有覆盖值） */
+  /* 权限（本卷有效档 = 卷级覆盖 ?? 工作区默认） */
   permissionMode: PermissionMode;
   onSelectMode: (m: PermissionMode) => void;
-  /** 纸期题签第四格：null = 跟随工作区（不落卷级覆盖）。 */
-  sheetPermission?: PermissionMode | null;
-  /** 纸期：把题签的权限拨回「跟随工作区」。 */
-  onPermissionInherit?: () => void;
-  /* 模型 + 思考（两种宿主共用）*/
+  /* 模型 + 思考 */
   model: string;
   providerName: string;
   providerKind: string;
@@ -300,18 +283,9 @@ export interface SettingsRowProps {
 
 export function SettingsRow(props: SettingsRowProps) {
   const {
-    isSheet,
     variant,
-    compLabel,
-    compOpen,
-    presetError,
-    presetRoster,
-    onCompToggle,
-    onDraftPresetPick,
     permissionMode,
     onSelectMode,
-    sheetPermission,
-    onPermissionInherit,
     model,
     providerName,
     providerKind,
@@ -322,44 +296,23 @@ export function SettingsRow(props: SettingsRowProps) {
   } = props;
   return (
     <div className="pp-composer-settings" data-variant={variant}>
-      {isSheet ? (
-        <>
-          <SheetSign
-            label={compLabel}
-            open={compOpen}
-            error={presetError}
-            roster={presetRoster}
-            onToggle={onCompToggle}
-            onPick={onDraftPresetPick}
-          />
-          {/* 题签第四格（2026-11-28 权限卷级批）：null = 跟随工作区；选过才落卷级覆盖。 */}
-          <SheetPermission
-            value={sheetPermission ?? null}
-            fallback={permissionMode}
-            onPick={onSelectMode}
-            onInherit={onPermissionInherit}
-          />
-          <div className="pp-composer-settings-spacer" />
-        </>
-      ) : (
-        <>
-          <fieldset className="pp-mode-seg" aria-label="权限模式">
-            {PERMISSION_MODES.map((m) => (
-              <button
-                key={m}
-                type="button"
-                className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
-                data-tip={MODE_DESCRIPTIONS[m]}
-                aria-pressed={permissionMode === m}
-                onClick={() => onSelectMode(m)}
-              >
-                {MODE_LABELS[m]}
-              </button>
-            ))}
-          </fieldset>
-          <div className="pp-composer-settings-spacer" />
-        </>
-      )}
+      {/* 2026-11-19 题签重画批：**纸期不进纸**（三笔升为卷首档行，见 DraftFolioPicks）——
+          本行只剩坞期那一种形态，两个 isSheet 分支随之删掉。 */}
+      <fieldset className="pp-mode-seg" aria-label="权限模式">
+        {PERMISSION_MODES.map((m) => (
+          <button
+            key={m}
+            type="button"
+            className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
+            data-tip={MODE_DESCRIPTIONS[m]}
+            aria-pressed={permissionMode === m}
+            onClick={() => onSelectMode(m)}
+          >
+            {MODE_LABELS[m]}
+          </button>
+        ))}
+      </fieldset>
+      <div className="pp-composer-settings-spacer" />
       <ModelSelector
         value={model}
         onChange={onModelChange}
@@ -370,18 +323,6 @@ export function SettingsRow(props: SettingsRowProps) {
         onBlocked={onModelBlocked}
         thinking={thinking}
       />
-      {/* 预演句（2026-11-28 题签批）：签下把这卷的打算写成一句人话。
-          只纸期有——卷成立之后，这些读数各自有家（书眉 / 芯片 / 设置行）。 */}
-      {isSheet && (
-        <p className="pp-sheet-prev">
-          此卷以 <b className="pp-prev-comp">{compLabel}</b> 成卷 · 模型 <b className="pp-prev-model">{model}</b> ·{' '}
-          <b className="pp-prev-think">{thinking.label}</b> · 权限{' '}
-          <b className="pp-prev-perm">
-            {sheetPermission == null ? `跟随工作区（${MODE_LABELS[permissionMode]}）` : MODE_LABELS[sheetPermission]}
-          </b>
-          <span className="pp-sheet-prev-mut">——开卷那一刻落账</span>
-        </p>
-      )}
     </div>
   );
 }

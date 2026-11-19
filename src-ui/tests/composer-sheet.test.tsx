@@ -3,12 +3,17 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 待题纸的**输入面**（2026-11-15 V2 立卷 UX 的 V2-P1 判据）。
+// 待题纸的**输入面**（2026-11-15 V2 立卷 UX 的 V2-P1 判据；
+// **2026-11-19 题签重画批改写**）。
 //
 // 三件事必须同时为真，缺一条纸就不成立：
 //   ① 纸在场时**坞槽整只不渲染**（不是隐藏输入条——V1 的 hidden 双轨已拆）；
 //   ② 纸上那张输入面是**同一个组件**（ComposerSurface 的 sheet 变体），不是第二份实现；
-//   ③ 纸期设置行 = 题签（组合 + 模型），**没有权限段**（权限是工作区级，纸期拨它无意义）。
+//   ③ **纸身里没有设置行**（2026-11-19）：组合 / 模型 / 权限三笔升为卷首档行，走
+//      'draft-folio' 槽（`DraftFolioPicks` → `DraftFolioSurface`），纸期书眉行同时退役
+//      （它只说「待题 · 未开卷」+ 一枚弃纸，那句话与卷首眉行逐字重复）。
+//      本文件因此只钉「纸身剩下什么」；三笔的**行为**（能开、能落账）在
+//      `composer-folio-picks.test.tsx`——那是它们现在住的宿主。
 //
 // 判据读的都是 DOM 结构（组件行为面），不钉像素。
 
@@ -109,100 +114,25 @@ describe('待题纸的输入面（V2-P1）', () => {
 
     const docks = container.querySelectorAll('.pp-composer');
     expect(docks).toHaveLength(1); // 只有纸期那一面
-    // 纸期书眉（没有卷名可报，只有状态 + 弃纸）——这是「这一面是纸」的机读断言
-    expect(container.querySelector('.pp-sheet-header')).not.toBeNull();
-    expect(container.textContent).toContain('待题 · 未开卷');
-    expect(container.textContent).toContain('弃纸');
-    // 坞期的书眉卷名不在（那一行是「这一卷的账」，纸还没有卷号）
+    // 纸期的书眉行**整行退役**（2026-11-19）：它只说「待题 · 未开卷」+ 一枚弃纸，
+    // 而那句话与卷首眉行逐字重复。判据改为「这一面是纸」的反面：坞期那两件不在。
+    expect(container.querySelector('.pp-sheet-header')).toBeNull();
     expect(container.querySelector('.pp-composer-target')).toBeNull();
+    // 纸身只剩输入行（三笔已升为卷首档行）
+    expect(container.querySelector('.pp-composer-row textarea')).not.toBeNull();
   });
 
-  it('纸期设置行 = 题签：组合在、权限段不在', async () => {
+  it('纸身里**没有设置行**（2026-11-19：三笔升为卷首档行，纸只剩输入行）', async () => {
     root = mount(<ComposerSheet />, container);
     await act(async () => {
       useDraftSheetStore.getState().openSheet();
     });
 
-    const settings = container.querySelector('.pp-composer-settings');
-    expect(settings?.getAttribute('data-variant')).toBe('sheet');
-    expect(container.querySelector('.pp-sheet-comp')).not.toBeNull();
-    // 权限三档是坞期的事（工作区级单一真相）——纸上摆它只是噪音
+    // 纸期不再有 data-variant="sheet" 的设置行（那一行随纸签一起退役）
+    expect(container.querySelector('.pp-composer-settings')).toBeNull();
+    // 坞期那套权限三档也不该被塞进纸身
     expect(container.querySelector('.pp-mode-seg')).toBeNull();
-  });
-
-  it('纸期的模型下拉与坞同一枚组件（不是第二份实现）', async () => {
-    root = mount(<ComposerSheet />, container);
-    await act(async () => {
-      useDraftSheetStore.getState().openSheet();
-    });
-    expect(container.querySelector('.ms-trigger')).not.toBeNull();
-  });
-
-  /* ⚠ 2026-11-28 两连报障（用户原话：「题签的组合和权限下拉点不开，或者被什么盖住了」）：
-   * 第一次只抬了层叠（706815b0），第二次的根因是菜单盒被 top+bottom 解成 0 高
-   * （geometry 判据见 paper-draft-sheet-visual ⑧）。这里钉 DOM 面：点了真开、
-   * 各开在自己那层定位盒里、选项可点且落账。 */
-  it('题签两个下拉真能开：组合开在 .pp-sheet-sign、权限开在 .pp-sheet-perm', async () => {
-    root = mount(<ComposerSheet />, container);
-    await act(async () => {
-      useDraftSheetStore.getState().openSheet();
-    });
-
-    const chips = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-comp')];
-    const signBtn = chips.find((b) => b.textContent?.includes('组合'));
-    const permBtn = chips.find((b) => b.textContent?.includes('权限'));
-    expect(signBtn).toBeDefined();
-    expect(permBtn).toBeDefined();
-
-    await act(async () => signBtn?.click());
-    const signMenu = container.querySelector('.pp-sheet-sign [role="listbox"]');
-    expect(signMenu?.getAttribute('aria-label')).toBe('组合（preset）');
-    expect(signMenu?.querySelectorAll('[role="option"]').length).toBeGreaterThan(0);
-
-    await act(async () => permBtn?.click());
-    const permMenu = container.querySelector('.pp-sheet-perm [role="listbox"]');
-    expect(permMenu?.getAttribute('aria-label')).toBe('权限');
-    // 四行 = 跟随工作区 + 三档
-    expect(permMenu?.querySelectorAll('[role="option"]')).toHaveLength(4);
-  });
-
-  it('题签的选择落到本卷题签：组合写 presetId、权限写卷级覆盖，选完即收起', async () => {
-    root = mount(<ComposerSheet />, container);
-    let paperId = '';
-    await act(async () => {
-      paperId = useDraftSheetStore.getState().openSheet();
-      useDraftSheetStore
-        .getState()
-        .setPicks({ presetId: null, providerName: '', model: 'm', thinking: undefined, permission: null }, paperId);
-    });
-    const picks = () => useDraftSheetStore.getState().papers.find((p) => p.id === paperId)?.picks ?? null;
-
-    // 组合：挑一枚非当前的、可装载的 preset
-    const sig = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-comp')].find((b) =>
-      b.textContent?.includes('组合'),
-    );
-    await act(async () => sig?.click());
-    const target = usePresetStore
-      .getState()
-      .roster.find((p) => p.id !== usePresetStore.getState().selected && p.patch !== null);
-    expect(target).toBeDefined();
-    const opt = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-sign [role="option"]')].find(
-      (o) => o.textContent === (target?.metadata?.name ?? target?.id),
-    );
-    await act(async () => opt?.click());
-    expect(picks()?.presetId).toBe(target?.id);
-    expect(container.querySelector('.pp-sheet-sign [role="listbox"]')).toBeNull();
-
-    // 权限：选「半放」（非全放——全放会走二次确认模态，那是另一条判据）
-    const permBtn = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-comp')].find((b) =>
-      b.textContent?.includes('权限'),
-    );
-    await act(async () => permBtn?.click());
-    const modeOpt = [...container.querySelectorAll<HTMLButtonElement>('.pp-sheet-perm [role="option"]')].find(
-      (o) => o.textContent === '半放',
-    );
-    await act(async () => modeOpt?.click());
-    expect(picks()?.permission).toBe('auto');
-    expect(container.querySelector('.pp-sheet-perm [role="listbox"]')).toBeNull();
+    // 模型触发器同样不在纸身（它现在住在卷首档行，见 composer-folio-picks）
+    expect(container.querySelector('.ms-trigger')).toBeNull();
   });
 });
