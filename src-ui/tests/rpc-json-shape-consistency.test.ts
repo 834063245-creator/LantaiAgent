@@ -132,19 +132,30 @@ describe('RPC 形状跨语言一致性（engine_bundled_info 实机缺陷守卫�
     }
   });
 
-  it('④ 裸串返回的路径类命令不得用 ok_json 包（2026-09-24 真机缺陷守卫）', () => {
+  it('④ 裸串返回的路径类命令不得用 ok_json 包（2026-09-24 / 2026-11-18 真机缺陷守卫）', () => {
     // 缺陷：`ok_json(r)` 对 `r: Result<String, _>` 会产出**带引号的 JSON 文本**
     // （`"C:\\Users\\…"`），而契约声明 `result: string`、前端按裸串直读（typedRpc）
     // ⇒ 路径判据当场失败：真机 ui.log 报 `providers_dir 返回的不是路径`，provider
     // YAML 通道被静默降级成内置存储；`composition_dir` 同病（preset 作者面路径同病）。
+    //
+    // 2026-11-18 同族复发的两处（同一个病、不同症状）：
+    //   · `plugin_dir`：带引号串被 mcp-bridge 当目录锚点拼进 stdio args ⇒ 受治进程
+    //     起来 0.1s 就 exit 1（bridge.log 的 `mcp-bridge/notes-app/notes#N`），
+    //     插件窗里永远读不到 port.json；
+    //   · `plugin_install`：返回 `"hello"`，PluginsPage 拿它当插件名激活 ⇒
+    //     装上永远不 active（`Unexpected token 'h'`）。
     const src = readFileSync(RUST_RPC, 'utf8');
     const bad: string[] = [];
     // 逐臂扫描：`"<name>" => { ... }` 块内若出现 `ok_json(`，则其包装值必须是结构化值
-    // ——这里只钉**已知裸串路径命令**（它们一旦被改回 ok_json，本用例当场红）。
-    for (const name of ['composition_dir', 'providers_dir']) {
-      const arm = src.slice(src.indexOf(`"${name}" => {`), src.indexOf(`"${name}" => {`) + 600);
+    // ——这里只钉**已知裸串命令**（它们一旦被改回 ok_json，本用例当场红）。
+    for (const name of ['composition_dir', 'providers_dir', 'plugin_dir', 'plugin_install']) {
+      const arm = src.slice(src.indexOf(`"${name}" => {`), src.indexOf(`"${name}" => {`) + 900);
       if (arm.includes('ok_json(')) bad.push(name);
     }
-    expect(bad, `这些命令返回裸路径串，用 ok_json 会被序列化成带引号的 JSON 文本：\n${bad.join('\n')}`).toEqual([]);
+    expect(bad, `这些命令返回裸串，用 ok_json 会被序列化成带引号的 JSON 文本：\n${bad.join('\n')}`).toEqual([]);
+    // 反向：这两条也不许回到 JsonValue 显式分类（口径同上，只是换一条路复发）。
+    for (const name of ['plugin_dir', 'plugin_install']) {
+      expect(json.has(name), `${name} 是裸串命令，不该出现在 JsonValue 表`).toBe(false);
+    }
   });
 });

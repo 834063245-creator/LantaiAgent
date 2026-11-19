@@ -1,7 +1,7 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-11-18T04:59:37.438Z
+> 生成时间：2026-11-19T02:47:33.703Z
 > 方法总数：63（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
@@ -103,9 +103,9 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `plugin_install` | — | expect_name, force | JSON 字符串 |
+| `plugin_install` | — | expect_name, force | 字符串 |
 | `plugin_uninstall` | name | — | `null`（unit） |
-| `plugin_dir` | name | — | JSON 字符串 |
+| `plugin_dir` | name | — | 字符串 |
 | `engine_bundled_info` | — | — | JSON 字符串 |
 | `plugin_set_enabled` | name, enabled | — | `null`（unit） |
 | `composition_dir` | — | open | 字符串 |

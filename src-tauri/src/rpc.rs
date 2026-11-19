@@ -213,9 +213,18 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         //  2026-09-09——run_check 约束检查属引擎图数据面。）
 
         // ── 插件安装 ──
-        // plugin_install：ok_json(String) 恒 JSON 字符串。uninstall/set_enabled：
-        // ok_unit "null"，ok_unit 家族统一 Text（见下）。
-        "plugin_install" => RpcResultShape::JsonValue,
+        // plugin_install / plugin_dir：**裸串返回**（2026-11-18 真机修）——
+        // 两处曾经都是 `ok_json(Result<String,_>)`：String 被序列化成带引号的
+        // JSON 文本（`"hello"` / `"C:\\\\…\\\\notes-app"`），而契约声明的是
+        // `result: string`、消费面按裸串直读（settings-domain/PluginsPage 的
+        // `parseJson(name)` 当场抛 `Unexpected token 'h'`；mcp-bridge 的
+        // `io.pluginDir()` 把带引号串当目录锚点，拼出
+        // `"C:\\\\…\\\\notes-app"/server.cjs` —— 受治进程 spawn 起来 0.1s 即以
+        // exit 1 死掉，窗口里永远读不到 port.json）。同 `composition_dir` /
+        // `providers_dir` 的既有判例：裸串命令一律裸串返回。
+        // uninstall/set_enabled：ok_unit "null"，ok_unit 家族统一 Text（见下）。
+        // 裸串命令若重新标成 JsonValue，出口会把文本展开/带引号——TS 侧
+        // tests/rpc-json-shape-consistency.test.ts ④ 会当场红。
 
         // ── 插件数据目录（app shell 件 B，S1）──
         // ensure：ok_json({path}) 恒 JSON 对象；list：ok_json({entries}) 恒 JSON。
@@ -843,7 +852,11 @@ async fn dispatch_rpc(
                     commands::plugin_install::plugin_install(other, expect_name, force).await?
                 }
             };
-            ok_json(Ok(name))
+            // ⚠ 裸名返回（2026-11-18 真机修，同 `composition_dir`）：`ok_json` 会把
+            // String 序列化成带引号的 JSON 文本，而契约声明 `result: string`、
+            // PluginsPage 直接拿它当插件名 ⇒ 安装成功后激活的是 `"hello"`，
+            // 装上的插件永远不会转 active。
+            Ok(name)
         }
         "plugin_uninstall" => {
             let name = req_str(&params, "name", "plugin_uninstall")?;
@@ -860,7 +873,10 @@ async fn dispatch_rpc(
                 tokio::task::spawn_blocking(move || commands::plugin_install::plugin_dir(&name))
                     .await
                     .map_err(|e| format!("plugin_dir 任务失败: {e}"))?;
-            ok_json(r)
+            // ⚠ 裸路径返回（2026-11-18 真机修，同 `composition_dir`）：带引号的
+            // JSON 文本会被 mcp-bridge 当目录锚点拼进 stdio args，受治进程
+            // 起来即 exit 1（窗口里永远读不到 port.json）。
+            r
         }
         // 随包图谱引擎探测（engine-bundled-mcp-distribution，2026-09-16）：纯只读
         // 探测安装目录里的 hologram-engine.exe，不启动进程。前端 plugins/

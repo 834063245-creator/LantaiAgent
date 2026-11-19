@@ -170,6 +170,24 @@ function resolveCommand(command: string, pluginDir: string): string {
   return resolvePluginRel(command, pluginDir);
 }
 
+/** 宿主 RPC 回来的目录锚点归一（2026-11-18 真机修）：`plugin_dir` 曾经是
+ *  `ok_json` 包装的文本 ⇒ 这里拿到的是**带引号的 JSON 串**，拼出来的 arg 变成
+ *  `"C:\…\notes-app"/server.cjs`，node 直接把路径当相对名 ⇒ 进程 0.1s 内 exit 1
+ *  （真机症状：便签窗永远「后端连接失败：port.json 不可读」）。
+ *  出口已改裸串返回；这里再兜一层——锚点必须是磁盘上的绝对路径，形状不对
+ *  **当场抛**（错误不静默：拼一个坏路径去 spawn 是最难查的那种失败）。 */
+function normalizePluginDir(raw: string): string {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  const ok = s !== '' && !s.startsWith('"') && (s.includes('/') || s.includes('\\'));
+  if (!ok) {
+    throw new Error(
+      `插件目录锚点形状异常（期望绝对路径，收到 ${JSON.stringify(raw).slice(0, 120)}）` +
+        '——plugin_dir 必须裸串返回；若这里是带引号的 JSON 串，说明壳（exe）比前端旧，重建壳即可',
+    );
+  }
+  return s;
+}
+
 /** `./`/`../` 前缀的 arg → 相对插件目录解析（平台化 P4 · D1 端到端例子：
  *  让示例插件能以 `args: ["./server.cjs"]` 便携声明脚本参数——裸名 arg
  *  （如 `-v`、`--flag`、`file.json`）不受影响，向后兼容）。 */
@@ -193,7 +211,7 @@ async function openStdio(
   env: Record<string, string> | undefined,
   bridgeId: string,
 ): Promise<{ client: McpClient; proc: ProcIO }> {
-  const pluginDir = await io.pluginDir(pluginName);
+  const pluginDir = normalizePluginDir(await io.pluginDir(pluginName));
   const args = (server.args ?? []).map((a) => (/^\.{1,2}[\\/]/.test(a) ? resolvePluginRel(a, pluginDir) : a));
   const proc = await io.createProcIO(bridgeId, resolveCommand(server.command ?? '', pluginDir), args, env);
   const client = new McpClient({

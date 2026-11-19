@@ -280,6 +280,67 @@ describe('MCP 机器桥（S4-4 乙）：折算与解析域', () => {
     await root[Symbol.asyncDispose]?.();
   });
 
+  /* 2026-11-18 真机事故守卫：`plugin_dir` 曾是 `ok_json` 包装的**带引号 JSON 文本**，
+   * 这里把它当目录锚点拼出来 ⇒ arg 变成 `"C:\…\notes-app"/server.cjs`，node 把该
+   * 串当相对模块名 ⇒ 受治进程 spawn 后 0.1s exit 1（bridge.log 的
+   * `mcp-bridge/notes-app/notes#N`），插件窗永远读不到 port.json。
+   * 出口已改裸串（rpc.rs）；本段钉住桥这一侧：锚点形状不对必须当场可见地失败，
+   * 不许拿坏路径去 spawn。 */
+  describe('插件目录锚点归一（带引号 JSON 串不再拼进 spawn 参数）', () => {
+    function ioWithDir(pluginDir: string): { io: McpBridgeIO; spawns: SpawnRecord[] } {
+      const spawns: SpawnRecord[] = [];
+      const io: McpBridgeIO = {
+        createProcIO: async (id, command, args) => {
+          spawns.push({ id, command, args });
+          return fakeMcpProcIO().proc;
+        },
+        pluginDir: async () => pluginDir,
+      };
+      return { io, spawns };
+    }
+
+    it('正常形态（裸绝对路径）原样拼进 arg（分隔符不归一）', async () => {
+      const { io, spawns } = ioWithDir('C:\\Users\\Administrator\\.lantai\\plugins\\notes-app');
+      const { root, fiber } = await bootBridge(
+        [{ name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], lifecycle: 'lazy' }],
+        io,
+      );
+      await first(pluginToolRows()).factory({} as never);
+      const spawn = first(spawns);
+      expect(spawn.args).toEqual(['C:\\Users\\Administrator\\.lantai\\plugins\\notes-app/server.cjs']);
+      expect(spawn.args[0]?.startsWith('"')).toBe(false);
+      await fiber.dispose();
+      await root[Symbol.asyncDispose]?.();
+    });
+
+    it('旧壳形态（带引号 JSON 串）⇒ 拒绝拼参（不把引号带进 arg 去 spawn）', async () => {
+      const quoted = JSON.stringify('C:\\Users\\Administrator\\.lantai\\plugins\\notes-app');
+      const { io, spawns } = ioWithDir(quoted);
+      const { root, fiber } = await bootBridge(
+        [{ name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], lifecycle: 'lazy' }],
+        io,
+      );
+      expect(await first(pluginToolRows()).factory({} as never)).toEqual([]);
+      expect(spawns, '带引号锚点不许走到 spawn').toEqual([]);
+      await fiber.dispose();
+      await root[Symbol.asyncDispose]?.();
+    });
+
+    it('锚点不是路径形状 ⇒ 不拿坏路径去 spawn（受治面 = 该行空集 + 可见原因）', async () => {
+      const { io, spawns } = ioWithDir('notes-app');
+      const { root, fiber } = await bootBridge(
+        [{ name: 'notes', transport: 'stdio', command: 'node', args: ['./server.cjs'], lifecycle: 'lazy' }],
+        io,
+      );
+      // 受治面的装配口吞异常（空集 = 不缓存，下次装配重试）——但**绝不 spawn**。
+      const tools = await first(pluginToolRows()).factory({} as never);
+      expect(tools).toEqual([]);
+      expect(spawns, '坏锚点不许走到 spawn').toEqual([]);
+      await fiber.dispose();
+      await root[Symbol.asyncDispose]?.();
+    });
+  });
+
   // P0（2026-09-13）：只读语义归真——旧实现两处硬编码 readOnly=true，写型 MCP 工具
   // 因此在 plan 模式被放行。判定真源 = agent/mcp/registry.resolveMcpToolReadOnly。
   it('只读语义（旧形态路）：远端 readOnlyHint 生效，未表态者 fail-closed 视为写', async () => {

@@ -21,7 +21,6 @@ import {
   deactivateExternalPlugin,
   Icon,
   type PluginRecord,
-  parseJson,
   typedRpc,
   usePluginPrefs,
   usePluginStore,
@@ -204,10 +203,12 @@ export function PluginsPage() {
   }
 
   /** 装/卸/启/禁的运行时生效面（D6）：RPC 落盘成功后即时装卸 fiber。
-   *  plugin_install 的 result 是 JSON 字符串（ok_json）——parseJson 还原名。 */
+   *  plugin_install 的 result 是**裸插件名**（2026-11-18 真机修：旧实现
+   *  `ok_json(Ok(name))` 返回的是带引号的 JSON 文本，这里的 `parseJson` 当场抛
+   *  `Unexpected token 'h'` ⇒ 安装永远停在报错、插件装上也激活不了）。
+   *  裸串直读，与 `composition_dir` 同判例；改回 JSON 会让 rpc 形状守卫红。 */
   async function installThenActivate(p: { source_kind: string; name?: string; location?: string }): Promise<string> {
-    const raw = await typedRpc('plugin_install', p as never);
-    const name = parseJson<string>(raw);
+    const name = await typedRpc('plugin_install', p as never);
     const record = await activateExternalPlugin(name);
     return `${name}（${record.status === 'active' ? '已装载' : `状态 ${record.status}${record.error ? `：${record.error}` : ''}`}）`;
   }

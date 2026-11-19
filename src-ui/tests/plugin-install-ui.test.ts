@@ -128,7 +128,11 @@ describe('S4-3 PluginsPage（设置面板插件 tab）', () => {
 
   it('安装动作 → plugin_install RPC + 运行时激活（D6）', async () => {
     usePluginStore.getState().setPlugins([]);
-    mockRpc.mockResolvedValue('"hello"');
+    /* 显式规格变更（2026-11-18）：plugin_install 的 result 由「JSON 字符串
+     * （`"hello"`）」改为**裸插件名**（`hello`）——旧形态下 PluginsPage 的
+     * parseJson 当场抛 `Unexpected token 'h'`，装完永远激活不了（真机复现）。
+     * 夹具随契约改（不是为了让测试变绿而改判据：断言仍是「拿到的名字去激活」）。 */
+    mockRpc.mockResolvedValue('hello');
     mockActivate.mockClear();
     root.render(createElement(PluginsPage));
     await vi.waitFor(() => {
