@@ -66,12 +66,13 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
   const morphs = useDraftSheetStore((s) => s.morphs);
   const focusedId = useDraftSheetStore((s) => s.focusedId);
 
-  /* ── 纸上那张输入面：经 overlays 的 'draft-sheet' 槽取（热注册即时重取）──
+  /* ── 纸上的输入面：经 overlays 的 'draft-sheet' 槽取（热注册即时重取）──
    * 纸替坞：本槽是**同一个** ComposerDock 的另一次挂载（见该文件 ComposerSheet 头注）。
-   * 多纸：**只给焦点那张纸挂**——两处 textarea 同屏会抢输入（焦点独占）。
-   * **题签（组合/模型/权限）不在这里**（2026-11-19）：它升为卷首第三行，走另一条槽
-   * 'draft-folio'，由 DraftFolioLine 在**天头之内**取用——输入面在天头之下，两处相邻
-   * 但不互含（各自取自己那一槽，热注册各自即时重取）。 */
+   * 2026-11-19 放弃合上态批：每张纸都渲染它（合上态整段退役）——但只有**焦点那张**
+   * 吃键盘：非焦点那张整棵子树带 `inert`，输入件不在 Tab 序、不可点。
+   * ⚠ 输入面就住在纸的子树里，**不许**为了「DOM 身份不变」把它提到纸群一层去做绝对定位：
+   * V2 那条文法（纸高随内容长、天头以下一整块流式栈、禁逐段手算 top）会被当场破掉。
+   * 焦点切换本就不需要它搬家——纸的盒已经与焦点无关（见 boxH 头注），换焦点只是换 inert。 */
   const [, setOverlayTick] = useState(0);
   useEffect(() => subscribeOverlayContributions(() => setOverlayTick((t) => t + 1)), []);
   const sheetOverlays = activeOverlayContributions('draft-sheet');
@@ -241,11 +242,20 @@ function PaperView({
    * 纸就比内容矮一个天头（用户报的「文字冲出题签背景」正是这一条）。这里因此**不再**
    * 往 boxH 上补贴 folioH（那是同一笔钱数两遍）。 */
   const regionMinH = EMPTY_REGION_CONTENT_H + REGION_FOOT_GAP + folioH;
-  /* **合上的纸按内容收高**（2026-11-17 用户报「无焦点状态 UI 太难看」的第二半）：
-   * 焦点那张必须垫到「卷的最小盒高」（化卷那一拍盒底/盒高要与卷对得上），而**合上的**
-   * 那张没有输入面、也不参与交接——再垫到 272 + 天头就是**下半截全空**的一页白纸。
-   * 故无焦点时只垫到「天头 + 合口 + 注记 + 去处」这一小段（页高随内容走，实测撑）。 */
-  const boxH = focused ? Math.max(contentH, regionMinH) : Math.max(contentH, folioH + 96);
+  /* **纸高只由内容决定**（2026-11-19 「放弃合上态」批）。
+   *
+   * 病灶（这是「题签焦点/非焦点之间一次大跳变」的真根因，不是它长得像）：旧式是
+   *   focused ? max(内容, 卷的最小盒高 490) : max(内容, 天头 + 96 ≈ 336)
+   * ——**纸的尺寸成了「谁拿焦点」的函数**。而位置又是 top = 盒底 − 盒高、盒底钉在
+   * 锚点上 ⇒ 盒高少 154，整张纸的上缘连天头四行一起下坠 154px，且中间一条过渡都没有
+   * ⇒ 同一帧 paint。位移类动效在这里只能把「跳一下」摊成「滑 154px」，不解决不连续。
+   *
+   * 治法 = **删掉那个分支**，不是给它补动画：合上态退役（多张纸都保持展开，非焦点那张
+   * 只是不吃键盘，见 PaperView 头注）⇒ 纸高只剩一个式子，焦点切换时它在数学上不可能变。
+   * 这个数与化卷交接要逐像素对齐的那个数是**同一个**（卷的最小盒高，见上条注），
+   * 纸与它未来那一卷从第一帧起就是同一个盒。
+   * ⚠ 不要再引入任何随 focused 变化的盒高/几何——那正是本批删掉的东西。 */
+  const boxH = Math.max(contentH, regionMinH);
 
   /* ── 焦点那张纸：落位那一拍把镜头带过去（只在**要不要动镜头**上做判断）── */
   useEffect(() => {
@@ -288,28 +298,23 @@ function PaperView({
 
   return (
     <div
-      className={`pp-region pp-draft-sheet${focused ? ' pp-draft-focused' : ' pp-draft-idle'}`}
+      className="pp-region pp-draft-sheet"
       data-draft-sheet
       data-paper-id={paperId}
       data-body-state={notice ? 'rejected' : 'ready'}
       data-focused={focused ? 'true' : undefined}
-      /* 合上的纸是**可达的**（2026-11-17）：无焦点时它整张就是那句「点这张纸继续题签」
-       * 的落点——鼠标走 mousedown，键盘走 tabIndex + Enter/Space（同一件事两条腿）。 */
-      {...(focused
-        ? null
-        : {
-            role: 'button' as const,
-            tabIndex: 0,
-            'aria-label': '点这张纸继续题签',
-            onKeyDown: (e: React.KeyboardEvent) => {
-              if (e.key !== 'Enter' && e.key !== ' ') return;
-              e.preventDefault();
-              core?.focusDraft?.(paperId);
-            },
-          })}
+      /* **非焦点那张整棵子树退出交互树**（2026-11-19 放弃合上态批）。
+       *
+       * 旧形态：合上的纸 = 一枚 role=button 的大按钮（Enter/Space 展开），天头以下换内容。
+       * 现在每张纸都展开着同一份内容 ⇒ 纸壳自己**不再是控件**，可达性交给纸里那些真控件。
+       * 非焦点那张用原生 `inert`：不聚焦、不吃指针、不进读屏——比手写 tabIndex=-1 全面
+       * （同「一张纸里只有一个输入面能吃键盘」这条焦点独占纪律）。 */
+      {...(focused ? null : ({ inert: true } as const))}
       /* 2026-11-17 批 C3：纸内换焦点与「点纸外交回焦点」必须**同一事件面**——
-       * 画布侧已改 pointerdown，这里若留 mousedown，点非焦点纸会先交回卷、再换回纸。 */
-      onPointerDown={() => {
+       * 画布侧已改 pointerdown，这里若留 mousedown，点非焦点纸会先交回卷、再换回纸。
+       * 2026-11-19：`inert` 会吃掉纸里的指针事件，故换焦点走 **capture 阶段**——
+       * 事件还没进子树就先被这条接住（点纸面任意处都能换手，打字得先点它）。 */
+      onPointerDownCapture={() => {
         if (!focused) core?.focusDraft?.(paperId);
       }}
       style={
@@ -340,59 +345,42 @@ function PaperView({
           <span className="pp-yuwei" style={{ transform: `scale(${scale})` }}>
             <Icon name="lantai" size={26} />
           </span>
-          {/* 眉行「待题」而不是卷次：**卷号还没发**——这一行就是「纸还没成立」的机读断言 */}
-          <p className="pp-folio-eyebrow">{focused ? '待题 · 未开卷' : '待题 · 另有一纸'}</p>
+          {/* 眉行「待题」而不是卷次：**卷号还没发**——这一行就是「纸还没成立」的机读断言。
+              2026-11-19：不再有「另有一纸」这一支（合上态退役）——每张纸都说自己这一句。 */}
+          <p className="pp-folio-eyebrow">待题 · 未开卷</p>
           <h2 className="pp-folio-title">
             案卷<span className="pp-draft-num">Nº</span>
           </h2>
           {/* 第三行 = **题签**（2026-11-19 题签重画批）：组合 / 模型 / 权限三笔落进版心，
               收在这一行的位置上。原来是句定值废话（「题签随首句落账 · 卷号于发送时发出」）
               ——待题期这卷还没名，第三行空着也是空着，而这三件正是**送出去之前要确认的三件事**。
-              多纸：只给焦点那张挂（合上的纸不装控件——它的三笔已在合口之下的注记里）。 */}
+              多纸（2026-11-19）：**每张纸都挂**——合上态退役后没有第二套「注记形态」了；
+              三笔里真正落键盘的只有输入面，题签是读数，多张同屏不抢焦点。 */}
           {/* ⚠ 第三行用 `div` 不用 `p`：题签行里装的是块级 flex 盒子（下拉自带的定位盒），
               块进 `p` 会被浏览器当场拆行（HTML 解析规则），纸的天头会散架。 */}
-          <div className="pp-folio-sub">{focused ? <DraftFolioLine /> : '题签随首句落账 · 卷号于发送时发出'}</div>
+          <div className="pp-folio-sub">
+            <DraftFolioLine />
+          </div>
         </div>
       </div>
 
       {/* 天头之下 = **这张卷的创作坞**（同一个组件，另一次挂载）。
-          多纸：**只有焦点那张纸展开输入面**——两处 textarea 同屏会抢输入；其余纸只留
-          题签一行 + 一句去处（点它就换焦点），纸本身仍是完整的纸（天头/纸纹/落影）。
+          2026-11-19「放弃合上态」批：**每张纸都是同一份内容**——合上态（合口 / 题签注记 /
+          去处一句）整段退役，它是「纸的尺寸随焦点变」那条规则的产物，而那条规则正是
+          焦点切换跳 154px 的真根因（见 boxH 头注）。
+          多张同屏不抢输入靠的是**非焦点那张整棵子树 inert**（纸壳上那条），不是靠换内容
+          ——换内容 = 换 DOM 身份 = 一条新的不连续。
           `ref` = 纸高的实测点（量本栈、不量纸自己——见 measureStack 头注）。 */}
       <div className="pp-draft-stack" ref={measureStack}>
-        {focused ? (
-          <>
-            {overlays.map((def) => (
-              <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
-                <def.component />
-              </PluginBoundary>
-            ))}
-            {notice && (
-              <div className="pp-draft-error" role="alert">
-                {notice}
-              </div>
-            )}
-          </>
-        ) : (
-          /* **合上的纸**（2026-11-17 用户报「无焦点状态 UI 太难看」）：天头以下不是空白，
-           * 是一条合口 + 三笔题签注记 + 一句去处。整张纸可点（点击判据在纸壳的 onMouseDown 上），
-           * 故这里**不挂第二枚按钮**——纸自己就是那个入口，键盘路径由纸壳的 tabIndex 承担。 */
-          <>
-            <div className="pp-draft-seal" aria-hidden="true">
-              <span className="pp-draft-seal-mark">合</span>
-            </div>
-            <div className="pp-draft-note">
-              <span className="pp-draft-note-cell">
-                <span className="pp-draft-note-k">组合</span>
-                <span className="pp-draft-note-v">{picks?.presetId ?? presetSeed ?? presetSelected}</span>
-              </span>
-              <span className="pp-draft-note-cell">
-                <span className="pp-draft-note-k">模型</span>
-                <span className="pp-draft-note-v">{picks?.model ?? '出生默认'}</span>
-              </span>
-            </div>
-            <div className="pp-draft-idle-hint">点这张纸继续题签</div>
-          </>
+        {overlays.map((def) => (
+          <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
+            <def.component />
+          </PluginBoundary>
+        ))}
+        {notice && (
+          <div className="pp-draft-error" role="alert">
+            {notice}
+          </div>
         )}
       </div>
     </div>

@@ -229,109 +229,17 @@
   color: var(--seal-deep);
 }
 
-/* ── 多纸（2026-11-17）：**非焦点那张**是「一张合上的纸」，不是「被掏空的框」─────
+/* ── 合上的纸（2026-11-17 立 · **2026-11-19 整段退役**）────────────────────────
  *
- * 用户判语（2026-11-17）：「焦点离开之后，这个无焦点状态 UI 太难看了」。
- * 一版把天头以下整块换成一行小字 ⇒ 纸的下半截是**空的**：一张 1440 宽的纸上孤零零
- * 一行 12px 的字，读起来像加载失败/占位骨架（§11 致死动作①「万物皆框」的反面——
- * 这里是「万物皆空」）。
+ * 退役依据（用户 2026-11-19 拍板「放弃『合上』的状态，改来改去还不够麻烦的」）：
+ * 那一整段是「纸的尺寸 = 谁拿焦点」这条规则的产物，而它正是焦点切换时整页字跳 154px
+ * 的真根因——位置由 top = 盒底 − 盒高 反推，盒高一变上缘就跟着跳，且中间没有过渡
+ * （位移类动效在这里只能把跳变摊成滑 154px，不解决不连续）。
  *
- * 现行 = **合上的纸面**（纸没人拿，但它整张还在案上）：
- *   ① 天头以下不是空白，是一条**合口**：双细规线（版心宽）+ 居中的「合」字印痕——
- *      与卷首底那条 rule-hard 同族语言，密度对齐天头，纸不再头重脚轻；
- *   ② 题签三笔以**注记**形态留在合口之下（组合 · 模型），读得出来这张纸备了什么，
- *      但一律降到墨三/墨四——它是**账**，不是可操作控件（同卷首档行那一档）；
- *   ③ 整张纸 hover 时合口收紧（朱砂细线由 0 长到全宽）、注记提一档墨，且纸的落影
- *      升到「在手」档：可点性由此表达，不靠一个按钮。
- * 纸律：只动 box-shadow / opacity / transform:scaleX（合口那条线），不写 width 过渡
- *（布局属性，见 §15）。 */
-.pp-draft-sheet.pp-draft-idle {
-  cursor: pointer;
-}
-/* 焦点在别处 = 纸「合上了」：落影降半档（平放纸比在手的纸薄一层）。 */
-.pp-draft-sheet.pp-draft-idle:hover {
-  box-shadow:
-    inset 3px 4px 5px var(--sheet-lit),
-    inset -2px -3px 6px var(--sheet-shade),
-    inset 0 0 0 7px var(--sheet-band),
-    var(--shadow-sheet-active);
-}
-/* 合口：一枚「合」字压印（**不画线**）。
- *
- * ⚠ 两条教训（预览逐版连拍得到，勿回潮）：
- *   ① **不许再画一条通栏细线**：卷首版心本来就有 border-bottom 的硬规线（`.pp-folio-inner`），
- *      合口再来一条满宽 1px，两线之间只隔十几像素 ⇒ 读作「双下划线」，比原来的空白更难看。
- *   ② **不能靠"淡"来表达次要**：纸纹是高对比噪底，墨四那一档放上去直接消失（实测：
- *      只有纯色底上看得见）。合口这枚字取**墨一 + 0.5 透明度**——色深够被看见，
- *      透明度把它压成"压印"而不是"标题"。
- * 版心铁律（2026-09-16）：与天头同轴，宽 = 纸半、margin auto；第一版用了左右 24px
- * 内距，1440 宽的纸上左缘孤零零一行，读作「版式没做完」。 */
-.pp-draft-seal {
-  display: flex;
-  justify-content: center;
-  margin: 22px auto 0;
-}
-.pp-draft-seal-mark {
-  font-family: var(--f-song);
-  font-size: var(--fs-body);
-  line-height: 1;
-  letter-spacing: 0.34em;
-  text-indent: 0.34em;
-  color: var(--ink-1);
-  opacity: 0.42;
-  transition: opacity var(--snap);
-}
-.pp-draft-sheet.pp-draft-idle:hover .pp-draft-seal-mark {
-  opacity: 0.6;
-}
-/* 题签注记：三笔各一枚小签（组合 · 模型），一律墨三/墨四——它是账不是控件。
- * 与合口同样走版心宽、居中（同一条铁律，见上）。 */
-.pp-draft-note {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 26px;
-  width: 50%;
-  margin: 14px auto 0;
-  font-family: var(--f-mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
-  color: var(--ink-3);
-  overflow: hidden;
-  white-space: nowrap;
-}
-.pp-draft-note-cell {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-.pp-draft-note-k {
-  font-family: var(--f-song);
-  letter-spacing: 0.18em;
-  color: var(--ink-4);
-}
-.pp-draft-note-v {
-  font-family: var(--f-kai);
-  font-size: var(--fs-lead);
-  color: var(--ink-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* 去处那一句：合口之下最末一行，hover 转朱砂（与全仓「瞬时件去框 + hover 朱砂」同族）。 */
-.pp-draft-idle-hint {
-  width: 50%;
-  margin: 14px auto 0;
-  text-align: center;
-  font-family: var(--f-kai);
-  font-size: var(--fs-caption);
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
-  transition: color var(--snap);
-}
-.pp-draft-sheet.pp-draft-idle:hover .pp-draft-idle-hint {
-  color: var(--seal-deep);
-}
+ * 删掉「合上」之后：纸高只剩一个式子（max(内容, 卷的最小盒高)），焦点切换在数学上
+ * 不可能改变尺寸 ⇒ 不需要任何过渡、也不需要「同框交接」这一层补丁。
+ * 旧的合口 / 题签注记 / 去处一句 / hover 抬墨，**连同判据一起删除，不留尸体**。
+ * 非焦点那张现在的可达性由纸壳的 `inert` 承担（不聚焦、不可点、不进读屏）。 */
 
 /* ── 题签（2026-11-19 题签重画批）：**它不在纸身里**，在天头第三行 ──────────────
  *
