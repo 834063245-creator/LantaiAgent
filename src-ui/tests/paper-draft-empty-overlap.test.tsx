@@ -153,4 +153,42 @@ describe('空画布：待题纸摊开时空态退场（不与题签重叠）', (
       '空态与待题纸同屏 = 文字重叠（LANTAI·BLANK SHEET / 案上无卷 / 引导句 压在题签上）',
     ).toBeNull();
   });
+
+  /* 2026-11-19 真机报「题签态无法正常工作」的第二半：空态判据读成了**焦点**。
+   * 纸失焦（点画布空白 / 焦点交回卷）**不等于**它不在画布上——它就在那儿等着被点回来。
+   * 判据读错的后果是空态整块盖回纸面，用户读到的是「题签坏了」，
+   * 而真病灶（失焦那张点不回来）在 DraftSheet 的整壳 inert 上（见 paper-draft-refocus）。 */
+  it('纸**失焦**但还在画布上 ⇒ 空态仍不许回来（盖上去就是压着题签）', async () => {
+    const panel = new ChatCore();
+    useCoreStore.setState({ core: panel });
+    getChatStore(panel.panelId).sess.setState({ sessions: [], activeIdx: -1, nextSessionId: 1 });
+    useCanvasViewStore.getState().setCanvasSize(W, H);
+    useCanvasViewStore.getState().restoreView({ zoom: 1, panX: 0, panY: 0 });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    await act(async () => {
+      root = createRoot(container as HTMLDivElement);
+      (root as Root).render(<PaperPanel />);
+    });
+    await act(async () => {
+      useCanvasViewStore.getState().setCanvasSize(W, H);
+    });
+
+    const cta = container.querySelector('.pp-empty-cta') as HTMLButtonElement | null;
+    await act(async () => {
+      cta?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(container.querySelector('[data-draft-sheet]')).not.toBeNull();
+
+    // 焦点交回卷/画布（点画布空白走的就是这一句）
+    await act(async () => {
+      useDraftSheetStore.getState().focusSheet(null);
+    });
+    expect(useDraftSheetStore.getState().papers, '纸仍然在画布上（只是不再吃键盘）').toHaveLength(1);
+    expect(
+      container.querySelector('.pp-empty'),
+      '失焦的纸还在画布上：空态回来 = 再次盖住题签（旧判据读的是焦点）',
+    ).toBeNull();
+  });
 });

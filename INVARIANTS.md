@@ -420,15 +420,27 @@ imageChannel 门控 / 角色口径 / 预算与 user 共用）、`tests/provider-
       纸与卷共用同一个 store 实例 = 「纸显示输入面却打上一卷的字」（2026-11-17 修过）。
    2. 「弃纸 / 弃卷」走 `releaseLive`（丢字、不写槽），与换手是两件事。
    3. 坞的让位判据 = **焦点在纸上**（不是「纸在画布上」）；纸摆着不拿焦点时，坞照常对活跃卷工作。
+   4. **失焦的纸壳不许 `inert`**（2026-11-19）：`inert` 在**命中测试**阶段就摘掉整棵子树
+      （指针 / 焦点 / 读屏一并不认），点失焦那张 = 点画布空白 ⇒ 换焦点回调收不到事件 ⇒
+      纸再也点不回来（用户读作「题签态坏了」）。「只有焦点那张吃键盘」由**输入面自己**
+      （`readOnly`）承担——那是「这一件能不能打字」，不是「这棵子树存不存在」。
+   5. **空态判据读「纸在不在」，不读「焦点在不在纸上」**：纸失焦仍在画布上，空态盖回去
+      就是压在题签上（`.pp-empty` 与纸同屏）。
 
-✅ 正确：切焦点 `claimLive(owner)`；弃纸 `releaseLive()`；发送后 `clearSessionDraft(slot)`
-❌ 错误：纸与卷共用输入实例；切走不存草稿；把「纸在画布上」当坞退场判据
+✅ 正确：切焦点 `claimLive(owner)`；弃纸 `releaseLive()`；发送后 `clearSessionDraft(slot)`；
+          失焦纸壳照常可点、输入面 `readOnly`；空态判据 `papers.length`
+❌ 错误：纸与卷共用输入实例；切走不存草稿；把「纸在画布上」当坞退场判据；
+          给失焦的纸壳加 `inert` / `aria-hidden`；空态读 `focusedId !== null`
 ```
 
 **炸过**: 2026-11-17 用户报「画布上有题签后，既不能回头和已有会话交互，也不能同时创建多个题签」——
 根因 = 纸窃取面板 live 输入槽 + 「纸在场 ⇒ 坞整只不渲染」。
+2026-11-19 用户报「题签态无法正常工作」——根因 = 失焦的纸壳被 `inert`（点它等于点空白，
+纸再也点不回来）+ 空态判据误读焦点（`.pp-empty` 盖回纸上）+ 多张纸全落同一个锚点。
 
-**守护**: `tests/paper-draft-multi.test.tsx`（store / 焦点与输入槽 / 组件 / 端到端四组）。
+**守护**: `tests/paper-draft-multi.test.tsx`（store / 焦点与输入槽 / 组件 / 端到端四组）·
+`tests/paper-draft-refocus.test.tsx`（失焦可点回）· `tests/paper-draft-empty-overlap.test.tsx`
+（空态判据）· `tests/paper-space.test.ts` + `paper-draft-sheet.test.ts`（纸也占位，不叠）·
 
 ---
 

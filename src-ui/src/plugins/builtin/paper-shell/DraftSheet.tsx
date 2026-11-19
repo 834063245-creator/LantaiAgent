@@ -69,10 +69,18 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
   /* ── 纸上的输入面：经 overlays 的 'draft-sheet' 槽取（热注册即时重取）──
    * 纸替坞：本槽是**同一个** ComposerDock 的另一次挂载（见该文件 ComposerSheet 头注）。
    * 2026-11-19 放弃合上态批：每张纸都渲染它（合上态整段退役）——但只有**焦点那张**
-   * 吃键盘：非焦点那张整棵子树带 `inert`，输入件不在 Tab 序、不可点。
+   * 吃键盘。
+   *
+   * ⚠ **非焦点那张不许整壳 `inert`**（2026-11-19 真机报「题签态无法正常工作」的根因）：
+   * `inert` 不是「不吃键盘」的那把尺子——它是在**命中测试**阶段就把整棵子树摘掉，指针、
+   * 焦点、读屏一并不认。实测（CDP）：失焦的纸在 `document.elementFromPoint` 里返回的是
+   * 它**下面**的 `.pp-canvas` ⇒ 点纸 = 点在画布空白 ⇒ 画布那边照「点纸外面 = 焦点交回」
+   * 处理，换焦点那条回调永远收不到事件，纸于是成了钉在画布上的一页死纸（再也打不了字）。
+   * 现行分工：**纸壳必须始终可点**（它自己就是「点我回来」的落点，同 2026-11-17 的纸壳
+   * 点击判据）；「只有焦点那张吃键盘」由**输入面自己**的 disabled / readOnly 承担——
+   * 那是「这一件现在能不能打字」，不是「这棵子树存不存在」。
    * ⚠ 输入面就住在纸的子树里，**不许**为了「DOM 身份不变」把它提到纸群一层去做绝对定位：
-   * V2 那条文法（纸高随内容长、天头以下一整块流式栈、禁逐段手算 top）会被当场破掉。
-   * 焦点切换本就不需要它搬家——纸的盒已经与焦点无关（见 boxH 头注），换焦点只是换 inert。 */
+   * V2 那条文法（纸高随内容长、天头以下一整块流式栈、禁逐段手算 top）会被当场破掉。 */
   const [, setOverlayTick] = useState(0);
   useEffect(() => subscribeOverlayContributions(() => setOverlayTick((t) => t + 1)), []);
   const sheetOverlays = activeOverlayContributions('draft-sheet');
@@ -196,10 +204,14 @@ function PaperView({
     return () => ro.disconnect();
   }, []);
 
-  /* ── 首帧落位（视口中心最近的空位——与流区落位同一把尺子）── */
+  /* ── 首帧落位（视口中心最近的空位——与流区落位同一把尺子）──
+   * ⚠ 占用表要连**别的纸**一起交（2026-11-19 真机报「多张题签叠成一摞」）：纸不建卷，
+   * 只看 canvas.spread 的话每张新纸都按空画布落位，N 张全落在同一个锚点上。
+   * 现取 store（不是 props）：本帧其它纸的锚点必须是最新的，走订阅会让本组件在
+   * 别人落位时白重渲一次。 */
   useEffect(() => {
     if (anchor !== null || !core) return;
-    setAnchor(draftPlacement(core), paperId);
+    setAnchor(draftPlacement(core, useDraftSheetStore.getState().papers), paperId);
   }, [anchor, core, paperId, setAnchor]);
 
   /* ── 首帧填出厂题签（预选组合 = 造模式入口传进来的；其余取出厂默认）──
@@ -303,18 +315,9 @@ function PaperView({
       data-paper-id={paperId}
       data-body-state={notice ? 'rejected' : 'ready'}
       data-focused={focused ? 'true' : undefined}
-      /* **非焦点那张整棵子树退出交互树**（2026-11-19 放弃合上态批）。
-       *
-       * 旧形态：合上的纸 = 一枚 role=button 的大按钮（Enter/Space 展开），天头以下换内容。
-       * 现在每张纸都展开着同一份内容 ⇒ 纸壳自己**不再是控件**，可达性交给纸里那些真控件。
-       * 非焦点那张用原生 `inert`：不聚焦、不吃指针、不进读屏——比手写 tabIndex=-1 全面
-       * （同「一张纸里只有一个输入面能吃键盘」这条焦点独占纪律）。 */
-      {...(focused ? null : ({ inert: true } as const))}
       /* 2026-11-17 批 C3：纸内换焦点与「点纸外交回焦点」必须**同一事件面**——
-       * 画布侧已改 pointerdown，这里若留 mousedown，点非焦点纸会先交回卷、再换回纸。
-       * 2026-11-19：`inert` 会吃掉纸里的指针事件，故换焦点走 **capture 阶段**——
-       * 事件还没进子树就先被这条接住（点纸面任意处都能换手，打字得先点它）。 */
-      onPointerDownCapture={() => {
+       * 画布侧已改 pointerdown，这里若留 mousedown，点非焦点纸会先交回卷、再换回纸。 */
+      onPointerDown={() => {
         if (!focused) core?.focusDraft?.(paperId);
       }}
       style={
@@ -368,10 +371,15 @@ function PaperView({
           2026-11-19「放弃合上态」批：**每张纸都是同一份内容**——合上态（合口 / 题签注记 /
           去处一句）整段退役，它是「纸的尺寸随焦点变」那条规则的产物，而那条规则正是
           焦点切换跳 154px 的真根因（见 boxH 头注）。
-          多张同屏不抢输入靠的是**非焦点那张整棵子树 inert**（纸壳上那条），不是靠换内容
-          ——换内容 = 换 DOM 身份 = 一条新的不连续。
+          多张同屏时「只有焦点那张吃键盘」由**天头之下的这块栈**承担（inert 只在这一层，
+          不罩纸壳——纸壳一旦 inert，点失焦那张就等于点画布空白，见上一条 ⚠）。
+          这不是「换内容」：DOM 身份不变、盒不变，变的只是这块栈进不进交互树。
           `ref` = 纸高的实测点（量本栈、不量纸自己——见 measureStack 头注）。 */}
-      <div className="pp-draft-stack" ref={measureStack}>
+      <div
+        className="pp-draft-stack"
+        ref={measureStack}
+        {...(focused ? null : ({ inert: true } as const))}
+      >
         {overlays.map((def) => (
           <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
             <def.component />

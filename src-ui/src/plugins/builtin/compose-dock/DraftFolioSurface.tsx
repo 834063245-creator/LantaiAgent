@@ -31,6 +31,15 @@ export const DraftFolioSurface = memo(function DraftFolioSurface() {
   void armHistHintIfDue; // 历史眉批只属输入面（本件没有输入框）
   const session = useComposerSession({ core, isSheet: true, activeSessionId, composerRef: { current: null } });
   const composition = useComposerComposition({ core, activeSessionId, notice });
+  /* 纸期的组合读数取自**题签**（2026-11-19 真机报「题签选完组合不变」）：
+   * composition.compLabel 走的是「无主态 = 全局默认」那条链——纸期没有活跃卷，
+   * 它于是恒报全局默认，选完仍是原来那一个（读作「选了没落账」，而真账其实已经写进
+   * 题签了，见 use-composer-composition 的 onDraftPresetChange）。
+   * 与模型/思考同一把尺子：题签未填 = 出厂默认（picks.presetId ?? 全局默认）。 */
+  const draftPresetId = useDraftSheetStore((s) => {
+    const id = s.focusedId;
+    return id === null ? null : (s.papers.find((pp) => pp.id === id)?.picks?.presetId ?? null);
+  });
   const { onModelChange, thinkingSeat } = useComposerModels({
     core,
     isSheet: true,
@@ -53,7 +62,7 @@ export const DraftFolioSurface = memo(function DraftFolioSurface() {
 
   return (
     <DraftFolioPicks
-      compLabel={composition.compLabel}
+      compLabel={draftPresetId ?? composition.compLabel}
       compOpen={composition.compOpen}
       presetError={composition.presetError}
       presetRoster={composition.presetRoster}

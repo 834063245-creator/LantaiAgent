@@ -53,16 +53,29 @@ export interface DraftSheetCore {
 }
 
 /** 落纸位置：与流区自动落位**同一把尺子**（视口中心最近的空位）。
- *  必须在 world 坐标里算——待题纸就在 world 单元里，开卷后卷落在同一处。 */
-export function draftPlacement(core: DraftSheetCore): StreamRegionState {
+ *  必须在 world 坐标里算——待题纸就在 world 单元里，开卷后卷落在同一处。
+ *
+ *  ⚠ **画布上已有的纸也算占用**（2026-11-19 真机报「多张题签叠成一摞」）：旧实现只把
+ *  已摊开的**卷**算进占用表，而待题纸**不建卷**（这正是立卷 UX 的要害）⇒ 每张新纸都按
+ *  「空画布」落位，全部落在视口正中的同一个锚点上。N 张纸 = N 个完全重合的盒子，
+ *  只有最上面那张可点；其余几张在用户的视角里等于不存在（而它们确实占着内存和焦点）。
+ *  占用表必须与「画布上有什么」同源：卷 + 纸，两族共用同一套区间语义。 */
+export function draftPlacement(
+  core: DraftSheetCore,
+  papers: ReadonlyArray<{ anchor: { anchorX: number; anchorY: number; width: number } | null }> = [],
+): StreamRegionState {
   const canvas = getCanvasStore(core.panelId).getState();
   const v = useCanvasViewStore.getState();
   const center = viewportCenterWorld(v.view, v.canvasSize.w, v.canvasSize.h);
-  const occupied = Object.entries(canvas.spread).map(([sessionId, r]) => ({
-    sessionId,
-    anchorX: r.anchorX,
-    width: r.width,
-  }));
+  const occupied: Array<{ sessionId?: string; anchorX: number; width: number }> = Object.entries(canvas.spread).map(
+    ([sessionId, r]) => ({ sessionId, anchorX: r.anchorX, width: r.width }),
+  );
+  // 纸的条目不带 sessionId：它们与卷同处一张占用表，谁都不该被 exclude 掉。
+  // ⚠ 宽度也要按 `STREAM_REGION.width` 记（= 落位函数实际用的宽度）：纸的锚宽可能是
+  // 实测值（窄屏 / 旧记录），照它记会让占用区间偏窄、新纸正好压在旧纸上。
+  for (const pp of papers) {
+    if (pp.anchor !== null) occupied.push({ anchorX: pp.anchor.anchorX, width: STREAM_REGION.width });
+  }
   return { ...nearestFreeRegion(occupied, center.x, center.y), width: STREAM_REGION.width };
 }
 

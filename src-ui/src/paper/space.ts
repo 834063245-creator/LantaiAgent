@@ -89,7 +89,11 @@ function mergedIntervals(
 ): Array<{ x0: number; x1: number }> {
   const RANGE = 100000;
   const sorted = regions
-    .filter((r) => r.sessionId !== excludeSessionId)
+    /* ⚠ 只在**点名**排除时按 id 过滤（2026-11-19 多纸落位批）：旧写法 `r.sessionId !== excludeSessionId`
+     * 在缺省调用（excludeSessionId === undefined）下会把**所有不带 sessionId 的条目**一并滤掉——
+     * 待题纸的占用条目正是这一族（纸不建卷、没有 sessionId）⇒ 纸永远不被算作占用，
+     * 每张新纸都落回视口正中。判据 = 「有没有点名要排除谁」，不是「谁的 id 长得不一样」。 */
+    .filter((r) => excludeSessionId === undefined || r.sessionId !== excludeSessionId)
     .map((r) => occupiedInterval(r.anchorX, r.width))
     .filter((o) => o.x1 > refX - RANGE && o.x0 < refX + RANGE)
     .sort((a, b) => a.x0 - b.x0);

@@ -91,6 +91,12 @@ export function PaperPanel() {
    *  对着活跃卷工作（用户报的「不能回头和已有会话交互」正是旧判据把坞整只摁掉）。 */
   const draftFocusOn = useDraftSheetStore((s) => s.focusedId !== null);
   const draftMorphOpen = useDraftSheetStore((s) => Object.keys(s.morphs).length > 0);
+  /* **「纸在不在」与「焦点在不在纸上」是两件事**（2026-11-19 真机报「题签态无法正常工作」）：
+   * 空态的判据是「出生面有没有在场」，而纸**摆在画布上**就是出生面在场——它失焦也仍然
+   * 在画布上等着你去点（焦点只是「谁吃键盘」）。旧判据读了 focus ⇒ 点一下画布空白，空态
+   * 整块盖回纸上（LANTAI·BLANK SHEET / CTA / 引导句压着题签），用户读到的是「题签坏了」。
+   * 坞槽的让位仍读焦点（那条语义是对的：纸摆着不拿焦点时坞照常对着活跃卷工作）。 */
+  const draftSheetPresent = useDraftSheetStore((s) => s.papers.length > 0);
   const draftMorph = useDraftSheetStore((s) => {
     const ids = Object.keys(s.morphs);
     return ids.length > 0 ? s.morphs[ids[0]] : null;
@@ -262,7 +268,7 @@ export function PaperPanel() {
             }`}
             onPointerDown={onCanvasPointerDown}
           >
-            {sessions.length === 0 && !draftFocusOn && !draftMorphOpen && (
+            {sessions.length === 0 && !draftSheetPresent && !draftMorphOpen && (
               <div className="pp-empty">
                 <div className="pp-empty-kicker">LANTAI · BLANK SHEET</div>
                 <div className="pp-empty-title">案上无卷，落笔即起</div>

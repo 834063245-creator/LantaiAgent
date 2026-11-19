@@ -96,7 +96,9 @@ export const ComposerSheet = memo(function ComposerSheet() {
   /* **交接窗里也留着**（2026-11-15 化卷批）：纸还在屏上退场，天头之下那段输入面若当帧撤，
    * 发送那一瞬下半张纸会**空一块**（真机定帧实测：纸还整张在那儿，输入行凭空没了）。
    * 留着它跟着纸一起退（`.pp-draft-morph`，`pointer-events: none`）——它不能再被点，
-   * 也不该吃焦点，但它不该凭空不见。判据与纸自己那条同一把尺子（open || morph）。 */
+   * 也不该吃焦点，但它不该凭空不见。判据与纸自己那条同一把尺子（open || morph）。
+   * ⚠ 多张同屏时「谁吃键盘」不在本件判（2026-11-19）：非焦点那张的**输入栈**由
+   * DraftSheet 打 inert（只罩栈、不罩纸壳——纸壳一旦 inert 就再也点不回来）。 */
   const draftMorph = useDraftSheetStore((s) => Object.keys(s.morphs).length > 0);
   if (!draftOpen && !draftMorph) return null;
   return <ComposerSurface variant="sheet" contextSessionId={null} composerLock={undefined} />;

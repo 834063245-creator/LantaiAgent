@@ -92,6 +92,13 @@ describe('paper/space 常量与落位（P6 区间模型）', () => {
     expect(r.anchorX).toBe(-1560);
   });
 
+  it('nearestFreeRegion：**不带 sessionId 的占用照算**（待题纸不建卷，条目没有 id）', () => {
+    /* 2026-11-19 多纸落位批：旧过滤式在缺省调用下把所有无 id 条目一并滤掉 ⇒
+     * 纸永远不被算作占用 ⇒ 每张新纸都落回视口正中（画布上叠成一摞）。 */
+    const r = nearestFreeRegion([{ anchorX: 800, width: 1440 }], 800, 0);
+    expect(Math.abs(r.anchorX - 800)).toBeGreaterThanOrEqual(1440 / 2 + STREAM_REGION.gap);
+  });
+
   it('nearestFreeRegion：排除自身（拖动中的卷可留在原位）', () => {
     const regions = [{ sessionId: 'a', anchorX: 0, width: 1440 }];
     const r = nearestFreeRegion(regions, 100, 0, 'a');

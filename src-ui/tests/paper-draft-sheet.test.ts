@@ -50,6 +50,16 @@ describe('待题纸（V2 纯函数面）', () => {
     expect(Math.abs(spot.anchorX - 800)).toBeGreaterThanOrEqual(halfOccupied);
   });
 
+  /* 2026-11-19 真机报「多张题签叠成一摞」的判据：纸**不建卷**，只看 canvas.spread 的话
+   * 每张新纸都按「空画布」落位 ⇒ 全部落在视口正中的同一个锚点上，只有最上面那张可点。
+   * 占用表必须连画布上**已有的纸**一起看（与卷同一套区间语义）。 */
+  it('落位避开**画布上已有的纸**（纸不建卷，只算卷 = 每张都落在同一个锚点）', () => {
+    const first = draftPlacement({ panelId: PANEL });
+    const second = draftPlacement({ panelId: PANEL }, [{ anchor: first }]);
+    const halfOccupied = STREAM_REGION.width / 2 + STREAM_REGION.gap;
+    expect(Math.abs(second.anchorX - first.anchorX)).toBeGreaterThanOrEqual(halfOccupied);
+  });
+
   it('发送被拒 = 状态词可见（错误不静默）；无原因 = ready', () => {
     expect(draftBodyState(null)).toBe('ready');
     expect(draftBodyState('组合不在册')).toBe('rejected');

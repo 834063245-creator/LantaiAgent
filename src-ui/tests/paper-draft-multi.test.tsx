@@ -237,7 +237,7 @@ describe('待题纸 · 多纸（③ 组件面：坞回来 / 焦点可换）', ()
     useDraftSheetStore.getState().dismissAll();
   });
 
-  it('两张纸 = 两张 DOM；两张都展开，**非焦点那张 inert**（不再有「合上」的第二套内容）', async () => {
+  it('两张纸 = 两张 DOM；两张都展开，**非焦点那张不吃键盘但纸壳仍可点**（不再有「合上」的第二套内容）', async () => {
     const el = document.createElement('div');
     document.body.appendChild(el);
     container = el;
@@ -257,12 +257,18 @@ describe('待题纸 · 多纸（③ 组件面：坞回来 / 焦点可换）', ()
     expect(sheets).toHaveLength(2);
     const focusedEl = el.querySelector('[data-draft-sheet][data-focused="true"]') as HTMLElement | null;
     expect(focusedEl?.getAttribute('data-paper-id')).toBe(b);
-    /* 2026-11-19 放弃合上态批：非焦点那张**也是完整的纸**——同一份内容、同一个盒子，
-     * 只是整棵子树 inert（不聚焦、不可点、不进读屏）。旧形态「合口 + 注记 + 去处一句」
-     * 是「纸的尺寸随焦点变」那条规则的产物，也就是焦点切换跳 154px 的真根因。 */
+    /* 2026-11-19 放弃合上态批：非焦点那张**也是完整的纸**——同一份内容、同一个盒子。
+     * 旧形态「合口 + 注记 + 去处一句」是「纸的尺寸随焦点变」那条规则的产物，
+     * 也就是焦点切换跳 154px 的真根因。
+     *
+     * ⚠ 2026-11-19 当日返工（用户报「题签态无法正常工作」）：这一条原先钉的是「整棵子树
+     * inert」——**错的尺子**。inert 在命中测试阶段就摘掉整棵子树（真机实测
+     * elementFromPoint 落到它下面的 .pp-canvas 上）⇒ 点失焦的纸等于点画布空白 ⇒
+     * 换焦点回调永远收不到事件 ⇒ 纸再也拿不回来（打不了字）。现行判据：
+     * **纸壳永远可点**（它自己就是「点我回来」），「不吃键盘」由输入面自己承担。 */
     const idle = el.querySelector(`[data-paper-id="${a}"]`) as HTMLElement;
     expect(idle.classList.contains('pp-draft-focused')).toBe(false);
-    expect(idle.hasAttribute('inert')).toBe(true);
+    expect(idle.hasAttribute('inert'), '纸壳不许 inert——点不到就回不来（见 paper-draft-refocus）').toBe(false);
     // 纸壳不再是「点一下展开」的大按钮
     expect(idle.getAttribute('role')).toBeNull();
     expect(idle.getAttribute('tabindex')).toBeNull();

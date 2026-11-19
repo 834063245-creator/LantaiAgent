@@ -126,6 +126,13 @@ describe('待题纸 · 题签行（2026-11-19）', () => {
     await act(async () => opt?.click());
     expect(picks()?.presetId).toBe(target?.id);
     expect(container.querySelector('[role="listbox"][aria-label="组合（preset）"]')).toBeNull();
+    /* 读数必须跟着题签走（2026-11-19 真机报「选完组合没变」）：本件原先读的是
+     * composition.compLabel —— 纸期没有活跃卷 ⇒ 那条链恒报全局默认 ⇒ 选完标签不动。
+     * 判据 = 行上显示的就是刚选中的那一个。 */
+    const label = [...container.querySelectorAll<HTMLButtonElement>('.pp-folio-pick-btn')].find((b) =>
+      b.textContent?.includes('组合'),
+    )?.textContent;
+    expect(label).toContain(target?.metadata?.name ?? target?.id ?? '');
   });
 
   it('权限四行（跟随工作区 + 三档）真能开，选中落进题签第四格，选完即收起', async () => {
