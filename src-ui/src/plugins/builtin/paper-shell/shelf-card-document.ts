@@ -40,7 +40,6 @@ svg { display: block; max-width: 100%; }
 </style>
 </head>
 <body>
-${safeCode}
 <script>
 (function () {
   var NS = '${SHELF_CARD_RESIZE_NS}';
@@ -88,6 +87,7 @@ ${safeCode}
   };
 })();
 </script>
+${safeCode}
 </body>
 </html>`;
 }

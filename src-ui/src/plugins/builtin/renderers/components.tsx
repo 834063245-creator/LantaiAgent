@@ -1595,7 +1595,10 @@ svg { display: block; max-width: 100%; }
 </style>
 </head>
 <body>
-${safeCode}
+<!-- 状态桥必须先于卡片代码执行：window.lantai.state 是卡片作者随时可用的
+     契约面，若注入脚本排在卡片代码之后，卡内的顶层脚本跑起来时桥还没出现
+     （实测 2026-11-19：卡内自检读到的就是 undefined）。高度上报随之提前，
+     此时 body 已存在但内容未解析——ResizeObserver + load 事件照常兜住。 -->
 <script>
 (function () {
   var NS = '${HTML_CARD_NS}';
@@ -1648,6 +1651,7 @@ ${safeCode}
   };
 })();
 </script>
+${safeCode}
 </body>
 </html>`;
 }

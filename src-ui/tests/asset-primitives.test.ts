@@ -410,6 +410,18 @@ describe('html 沙箱文档（WO-8）', () => {
     expect(html).toContain('<b>hi</b>');
   });
 
+  it('状态桥先于卡片代码注入（卡内顶层脚本能直接用 window.lantai.state）', () => {
+    /* 2026-11-19 实测病灶：注入脚本原本排在卡片代码之后，卡内顶层脚本跑起来时
+       `window.lantai` 还不存在——卡作者照文档写的 `window.lantai.state.get()`
+       直接读到 undefined。顺序是本契约的一部分，不只是实现细节。 */
+    const marker = 'CARD_TOP_LEVEL_MARKER';
+    const html = buildHtmlCardDocument(`<script>${marker}</script>`);
+    const bridgeAt = html.indexOf('window.lantai = window.lantai || {}');
+    const codeAt = html.indexOf(marker);
+    expect(bridgeAt).toBeGreaterThan(-1);
+    expect(codeAt).toBeGreaterThan(bridgeAt);
+  });
+
   it('超过 512KB 的 code 被截断（防滥用）', () => {
     const html = buildHtmlCardDocument('x'.repeat(600 * 1024));
     expect(html.length).toBeLessThan(600 * 1024);
