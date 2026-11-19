@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import type { ChatImageRef } from '../provider/types';
+import { type QuoteCard, quoteKeyOf } from './card-quote';
 import { createScopedStore } from './scoped-store';
 
 /** 单个会话的输入草稿快照 —— 会话切换时保存/恢复。 */
@@ -14,6 +15,9 @@ export interface SessionDraft {
   attachedFiles: Array<{ path: string; name: string; size: number }>;
   /** 附图引用（multimodal-image-plan B1——与文件附件并列的图片草稿槽）。 */
   attachedImages: ChatImageRef[];
+  /** **夹签槽**（卡片引用，card-quote-plan §2.3）：引用过的卡片（只存元数据）。
+   *  每卷一份、随草稿换手——给 B 卷的夹签在 A 卷看不到，这正是「归属」的意思。 */
+  attachedCards: QuoteCard[];
   inputHistory: string[];
   inputHistoryIdx: number;
   draftText: string;
@@ -25,6 +29,7 @@ export function snapshotDraft(s: InputStore): SessionDraft {
     inputText: s.inputText,
     attachedFiles: s.attachedFiles,
     attachedImages: s.attachedImages,
+    attachedCards: s.attachedCards,
     inputHistory: s.inputHistory,
     inputHistoryIdx: s.inputHistoryIdx,
     draftText: s.draftText,
@@ -37,6 +42,7 @@ function emptyDraft(): SessionDraft {
     inputText: '',
     attachedFiles: [],
     attachedImages: [],
+    attachedCards: [],
     inputHistory: [],
     inputHistoryIdx: -1,
     draftText: '',
@@ -48,6 +54,9 @@ interface InputStore {
   attachedFiles: Array<{ path: string; name: string; size: number }>;
   /** 附图引用草稿（multimodal-image-plan——采集准入后入槽，发送时随消息带走）。 */
   attachedImages: ChatImageRef[];
+  /** **夹签槽**（卡片引用，docs/plans/card-quote-plan.md §2.3）：本卷引用过的卡片。
+   *  与附图道并列、同一条「发送即消费」纪律；每卷一份（随 SessionDraft 换手）。 */
+  attachedCards: QuoteCard[];
   inputHistory: string[];
   inputHistoryIdx: number;
   draftText: string;
@@ -69,6 +78,15 @@ interface InputStore {
   addAttachedImage: (image: ChatImageRef) => void;
   removeAttachedImage: (idx: number) => void;
   clearAttachedImages: () => void;
+  setAttachedCards: (cards: QuoteCard[]) => void;
+  /** 追加一枚夹签（同卡去重，方案 §2.5）。**返回 false = 槽里已有**（调用方据此
+   *  闪一下那枚 + toast「已在夹签槽里」，不新增）。 */
+  addAttachedCard: (card: QuoteCard) => boolean;
+  removeAttachedCard: (idx: number) => void;
+  clearAttachedCards: () => void;
+  /** 把夹签直接递进**指定卷的草稿槽**（长按拖到 B 卷，方案 §2.2 态二）：不切活跃卷、
+   *  不动 live——B 卷 `claimLive` 时才把它带出来。返回 false = 该槽里已有这张卡。 */
+  addAttachedCardToSlot: (slot: string | number, card: QuoteCard) => boolean;
   pushInputHistory: (text: string) => void;
   setInputHistory: (history: string[]) => void;
   setInputHistoryIdx: (idx: number) => void;
@@ -106,6 +124,7 @@ function createInputStoreImpl() {
     inputText: '',
     attachedFiles: [],
     attachedImages: [],
+    attachedCards: [],
     inputHistory: [],
     inputHistoryIdx: -1,
     draftText: '',
@@ -121,6 +140,35 @@ function createInputStoreImpl() {
     addAttachedImage: (image) => set((s) => ({ attachedImages: [...s.attachedImages, image] })),
     removeAttachedImage: (idx) => set((s) => ({ attachedImages: s.attachedImages.filter((_, i) => i !== idx) })),
     clearAttachedImages: () => set({ attachedImages: [] }),
+    setAttachedCards: (attachedCards) => set({ attachedCards }),
+    addAttachedCard: (card) => {
+      // 去重键 = 卡身份（assetId / cardId），不是 refId——同一张卡引用两次只留一枚
+      let added = false;
+      set((s) => {
+        const key = quoteKeyOf(card);
+        if (s.attachedCards.some((c) => quoteKeyOf(c) === key)) return s;
+        added = true;
+        return { attachedCards: [...s.attachedCards, card] };
+      });
+      return added;
+    },
+    removeAttachedCard: (idx) => set((s) => ({ attachedCards: s.attachedCards.filter((_, i) => i !== idx) })),
+    clearAttachedCards: () => set({ attachedCards: [] }),
+    addAttachedCardToSlot: (slot, card) => {
+      const key = String(slot);
+      let added = false;
+      set((s) => {
+        // 目标槽 = 该卷的草稿（没有就按空草稿起一份）——live 那份**不碰**
+        const draft = s.sessionDrafts[key] ?? emptyDraft();
+        const dedupe = quoteKeyOf(card);
+        if (draft.attachedCards.some((c) => quoteKeyOf(c) === dedupe)) return s;
+        added = true;
+        return {
+          sessionDrafts: { ...s.sessionDrafts, [key]: { ...draft, attachedCards: [...draft.attachedCards, card] } },
+        };
+      });
+      return added;
+    },
     pushInputHistory: (text) =>
       set((s) => {
         // 空正文不入历史（2026-11-19 纯图批）：纯图轮没有可回取的字，

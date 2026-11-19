@@ -15,6 +15,8 @@
 // 收成一个 useCompositionChip）是**另一次改造**——混进来 = diff 不可审。
 
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent, RefObject } from 'react';
+import { plateSignOf } from '../../../paper/plate-sign';
+import { formatThousands, type QuoteCard, quoteKeyOf } from '../../../state/card-quote';
 import type { ChatImageRef, CommandContribution, PermissionMode } from './host';
 import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, previewUrlFor } from './host';
 import { ModelSelector } from './ModelSelector';
@@ -54,8 +56,12 @@ export interface InputRowProps {
   onPreviewImage: (img: ChatImageRef) => void;
   attachedFiles: ReadonlyArray<{ path: string; name: string }>;
   attachedImages: ReadonlyArray<ChatImageRef>;
+  /** **夹签槽**（卡片引用，card-quote-plan §2.4）：本卷引用过、还没发出去的卡。 */
+  attachedCards: ReadonlyArray<QuoteCard>;
   onRemoveAttached: (idx: number) => void;
   onRemoveAttachedImage: (idx: number) => void;
+  /** 撕掉一枚夹签（方案 §2.7）：只影响槽，不动任何盘上文件（此时也还没写）。 */
+  onRemoveAttachedCard: (idx: number) => void;
   /* 引 / 夹两钮（「案」随抽屉退役，2026-11-28） */
   onToggleYin: () => void;
   onAttach: () => void;
@@ -93,8 +99,10 @@ export function InputRow(props: InputRowProps) {
     onPreviewImage,
     attachedFiles,
     attachedImages,
+    attachedCards,
     onRemoveAttached,
     onRemoveAttachedImage,
+    onRemoveAttachedCard,
     onToggleYin,
     onAttach,
     running,
@@ -103,7 +111,10 @@ export function InputRow(props: InputRowProps) {
   } = props;
   /* 「有没有可发的东西」——拟文印 / 停钮共用的唯一判据（2026-11-19 纯图批）：
    * 正文 / 路径附件 / 附图道**任一在场**。旧判据只看正文，附了截图写不写字都发不出去。 */
-  const canSend = inputText.trim().length > 0 || attachedFiles.length > 0 || attachedImages.length > 0;
+  /* 2026-11-19 夹签批：**只有夹签也能发**（card-quote-plan §2.6）——引用一张卡
+   * 问一句「这个怎么改」是完整的一轮；判据与 chat-core 的发送闸同一把尺子。 */
+  const canSend =
+    inputText.trim().length > 0 || attachedFiles.length > 0 || attachedImages.length > 0 || attachedCards.length > 0;
   return (
     <div className="pp-composer-row">
       {slashQuery !== null && (
@@ -226,6 +237,43 @@ export function InputRow(props: InputRowProps) {
             );
           })}
           {attachedImages.length > 1 && <span className="pp-attach-count">共 {attachedImages.length} 图</span>}
+        </div>
+      )}
+      {/* **夹签轨**（卡片引用，card-quote-plan §2.4）：与附图道并列、同风格。
+          每枚 = 巴掌大的缩略纸：左上物类签 / 中间标题（单行省略）/ 右上 × 撕掉；
+          悬停露出来源（本卷 / 架阁）。**不持久化**（与草稿同命，方案 §12）。 */}
+      {attachedCards.length > 0 && (
+        <div className="pp-card-rail">
+          {attachedCards.map((card, i) => {
+            // 同一张卡可能被引用两次（不同 refId）——槽内按卡身份去重，故键用卡身份
+            const key = quoteKeyOf(card);
+            return (
+              <span key={key} className="pp-quote-wrap">
+                <button
+                  type="button"
+                  className="pp-quote"
+                  data-tip={`${plateSignOf(card.kind)}《${card.title || '未命名'}》`}
+                  data-tip-hint={`${card.origin === 'shelf' ? '架阁' : '本卷'} · payload ${formatThousands(card.bytes)} 字符`}
+                  aria-label={`夹签：${card.title || '未命名'}`}
+                >
+                  <span className="pp-quote-sign" aria-hidden="true">
+                    {plateSignOf(card.kind)}
+                  </span>
+                  <span className="pp-quote-title">{card.title || '未命名'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="pp-quote-remove"
+                  data-tip="撕掉这枚夹签"
+                  aria-label={`撕掉夹签 ${i + 1}`}
+                  onClick={() => onRemoveAttachedCard(i)}
+                >
+                  ✕
+                </button>
+              </span>
+            );
+          })}
+          {attachedCards.length > 1 && <span className="pp-attach-count">共 {attachedCards.length} 签</span>}
         </div>
       )}
       {running && !canSend ? (

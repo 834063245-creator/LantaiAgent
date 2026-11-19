@@ -14,6 +14,7 @@
 
 import { agentSessionState, type OwnedAgentHandle } from '../../agent/agent-session-state';
 import type { AgentEvent } from '../../agent/agent-types';
+import { readCard } from '../../agent/card-library';
 import type { ChatAgentHandle } from '../../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance, type RunKind } from '../../agent/execution-state';
 import { log } from '../../agent/logger';
@@ -31,8 +32,11 @@ import { pickDropAnchor } from '../../paper/space';
 import type { StoredThinking } from '../../provider/thinking';
 import type { ChatImageRef } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
+import { kernelWriteFile } from '../../rpc-contract';
 import { clipLabel, useAskPendingStore } from '../../state/ask-pending-store';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
+import { getAssetTableStore } from '../../state/asset-store';
+import { buildQuoteSnapshot, composeQuotedText, type QuoteCard } from '../../state/card-quote';
 import { useDockStore } from '../../state/dock-store';
 import { draftInputKey, useDraftSheetStore } from '../../state/draft-sheet-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
@@ -109,6 +113,55 @@ function buildFocusPrefix(files: readonly { path: string }[]): string {
   let prefix = '用户附加了以下文件：\n';
   for (const f of files) prefix += `- \`${f.path}\`\n`;
   return `${prefix}你可以用 read_file 读取这些文件。\n\n`;
+}
+
+/** **引用快照那一拍**（docs/plans/card-quote-plan.md §3.3/§5.2）：把本槽的夹签逐枚
+ *  写成 `{ws}/.lantai/refs/<refId>.json`，返回摘要块（路径 + 卡身份）。
+ *
+ *  三件判据（方案逐条）：
+ *   ① **发送时写、引用时不写**——用户可能反悔，只有真发出去的才值得落盘；
+ *   ② 取不到 payload（跨卷且源卷已不在内存 / 架阁读不到）⇒ 该枚**如实降级**
+ *      （`refPath: null` → 摘要写「未落快照」），不假装成功（方案 §3.4/§4 规则 3）；
+ *   ③ 写盘失败 ⇒ **上抛**，调用方据此「不发送 + toast + 槽保留」（方案 §5.2）。
+ *      这一条与 ② 不同：② 是内容本身取不到（可降级），③ 是盘写不进去（必须停）。 */
+async function writeQuoteSnapshots(panelId: string, root: string, cards: readonly QuoteCard[]): Promise<string> {
+  if (cards.length === 0) return '';
+  const blocks: Array<{ card: QuoteCard; refPath: string | null }> = [];
+  for (const card of cards) {
+    let payload: unknown;
+    let found = false;
+    try {
+      if (card.origin === 'shelf') {
+        if (card.cardId) {
+          const rec = await readCard(card.cardId);
+          const inner = (rec.card ?? {}) as { payload?: unknown };
+          payload = inner.payload;
+          found = true;
+        }
+      } else if (card.assetId) {
+        /* 本卷的资产表 = UI 侧按 assetId 定位记录的唯一索引（可从消息重建）。
+         * 跨卷引用时按**来源卷**取表（方案 §3.4 的跨卷降级）：那一卷不在内存里
+         * 就取不到——如实降级，不假装成功。 */
+        const scope = `${panelId}:${card.sourceSessionId ?? ''}`;
+        const record = getAssetTableStore(scope).getState().get(card.assetId);
+        if (record) {
+          payload = record.payload;
+          found = true;
+        }
+      }
+    } catch {
+      found = false; // 读不到 = 降级（不静默成功，摘要里会写「未落快照」）
+    }
+    if (!found) {
+      blocks.push({ card, refPath: null });
+      continue;
+    }
+    // 落盘在**宿主**这一层（产物包内联的是无状态共享件，写盘走内核 fs_cap 能力口）
+    const { path: refPath, content } = buildQuoteSnapshot(root, card, payload);
+    await kernelWriteFile(refPath, content);
+    blocks.push({ card, refPath });
+  }
+  return blocks.length > 0 ? composeQuotedText('', blocks).trim() : '';
 }
 
 export class ChatCore {
@@ -1315,7 +1368,10 @@ export class ChatCore {
     const text = inputState.inputText.trim();
     // 「有内容才可拟文」的真判据（2026-11-19 纯图批）：正文 / 路径附件 / 附图道
     // **任一在场**都是一次有效的输入。旧判据只看正文 ⇒ 甩一张截图发不出去。
-    const hasPayload = inputState.attachedFiles.length > 0 || inputState.attachedImages.length > 0;
+    const hasPayload =
+      inputState.attachedFiles.length > 0 ||
+      inputState.attachedImages.length > 0 ||
+      inputState.attachedCards.length > 0;
     if (!text && !hasPayload) return;
 
     // ── 待题纸（V2 立卷 UX）：**焦点在纸上 = 发送即开卷** ──
@@ -1443,14 +1499,35 @@ export class ChatCore {
 
     const filesSnapshot = [...getChatStore(this.panelId).input.getState().attachedFiles];
     const imagesSnapshot = [...getChatStore(this.panelId).input.getState().attachedImages];
+    const cardsSnapshot = [...getChatStore(this.panelId).input.getState().attachedCards];
     const agent = this.agent;
+
+    /* **引用快照先落盘，再发消息**（card-quote-plan §5.2）：摘要里给的是 refs 文件的
+     * 绝对路径，模型拿到摘要那一刻文件必须已经在盘上。写盘失败 ⇒ **不发送**：
+     * toast 说清具体错误、夹签槽原样保留（用户可重试），绝不发一条指向空气的消息。 */
+    let quoteText = '';
+    if (cardsSnapshot.length > 0) {
+      const root = useShellStore.getState().projectPath;
+      try {
+        quoteText = await writeQuoteSnapshots(this.panelId, root, cardsSnapshot);
+      } catch (e) {
+        const detail = e instanceof Error ? e.message : String(e);
+        showToast(`引用快照写入失败：${detail}`, 'error', TOAST_LONG_HOLD_MS);
+        return; // 槽保留——用户的引用不能丢（方案 §5.2 / §8）
+      }
+    }
+
+    /* 本轮来文的完整正文 = 用户正文 + 引用段（方案 §4 把引卡摘要定义为「在 user message
+     * 里渲染」，故**气泡与发给模型的文本是同一份**：用户回看时看得见自己引了什么，
+     * 纯引用轮也不会留下一个空气泡）。 */
+    const quotedText = `${text}${quoteText}`;
 
     // 起轮：轮次脚手架（运行账 / 气泡 / 轮次对 / 收尾守卫 / 续行排程）全在
     // _runAgentTurn 一处——与目标自动轮、命令驱动轮同一条路，禁止再长第二份。
     await this._runAgentTurn({
       // 纯图/纯附件轮的正文可以是空串——气泡仍要铸（附图挂在气泡上），
       // 否则用户看到「发出去了」的只有空气，无从确认图随本轮走了。
-      bubble: text,
+      bubble: quotedText,
       bubbleFiles: filesSnapshot.length > 0 ? filesSnapshot : undefined,
       bubbleImages: imagesSnapshot.length > 0 ? imagesSnapshot : undefined,
       onStart: () => {
@@ -1484,11 +1561,17 @@ export class ChatCore {
         // size，旧实现硬编码 0 导致模型看到「0 B」误判空文件；要真大小需 Rust stat 通道）。
         if (filesSnapshot.length > 0) getChatStore(this.panelId).input.getState().clearAttachedFiles();
         if (imagesSnapshot.length > 0) getChatStore(this.panelId).input.getState().clearAttachedImages();
+        // 夹签「发送成功 → 槽清空」（方案 §2.6）；发送失败不经过这里 ⇒ 槽保留。
+        // 放在 onStart（起轮那一拍）而不是发送前：起轮被拒（本卷在跑）时不该清用户的引用。
+        if (cardsSnapshot.length > 0) getChatStore(this.panelId).input.getState().clearAttachedCards();
       },
+      /* 引用摘要**拼在用户正文之后**（方案 §5.1：任务在前、材料在后）；它只是本轮
+       * user message 的一部分——不改历史消息、不改系统提示（§5.3 前缀缓存纪律），
+       * 也不进消息模型（§11：P0/P1 都用文本摘要，不加 part 类型）。 */
       drive: (signal) =>
         agent.run(
           signal,
-          buildFocusPrefix(filesSnapshot) + text,
+          `${buildFocusPrefix(filesSnapshot)}${quotedText}`,
           imagesSnapshot.length > 0 ? imagesSnapshot : undefined,
         ),
       // 直人轮收尾的目标续行排程不在这里给——_runAgentTurn 的 finally 缺省就按

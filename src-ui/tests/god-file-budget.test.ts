@@ -67,7 +67,12 @@ const DEBT: Record<string, number> = {
   'engine/src/tools/mod.rs': 2100, // 现 2099
   'engine/src/engine/mod.rs': 2100, // 现 2020
   'src-tauri/src/cdp/session.rs': 2000, // 现 1932
-  'src-ui/src/app/chat/chat-core.ts': 1800, // 现 1744（V2 立卷 UX 升档，见下文原注）
+  /* 2026-11-19 夹签批升档 1800 → 1900：引用快照那一拍落在 sendMessage 里
+   * （cardsSnapshot / 逐枚降级 / 写盘失败不发送，约 40 行）。**为什么不再往坞的
+   * hook 里塞**：发送编排的真源就是本文件的 sendMessage（目标自动轮 / 命令驱动轮
+   * 也走它），放视图层会让那两条路绕过引用快照——那是行为裂缝，不是体量问题。
+   * 真要动结构（把快照拍抽成独立模块）单独立单，别为了省档位把判据切开。 */
+  'src-ui/src/app/chat/chat-core.ts': 1900, // 现 1876
   'engine/src/community/louvain.rs': 1700, // 现 1697
   'src-tauri/src/commands/process_cap.rs': 1700, // 现 1658
   'engine/src/graph/import_resolver.rs': 1600, // 现 1596

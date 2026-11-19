@@ -137,6 +137,83 @@
   background: var(--seal-soft);
 }
 
+/* ── 夹签轨（卡片引用，docs/plans/card-quote-plan.md §2.4）──
+ *  与附图道并列、**同风格**：一发丝框、零圆角、纸色底；每枚 = 巴掌大的缩略纸
+ *  （左：物类签 / 中：单行标题 / 右上：× 撕掉，悬停才露——同 .pp-image-remove）。
+ *  ⚠ 不给它做「浮起」常驻态：这一轨是**待发**清单，不是可点的卡（点它没有动作，
+ *  要动的是原卡——本体永不动，方案 §0.2）。 */
+.pp-card-rail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 40%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+  -webkit-mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+}
+.pp-card-rail::-webkit-scrollbar {
+  display: none;
+}
+.pp-quote-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.pp-quote {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 168px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--ink-4);
+  background: var(--paper);
+  cursor: default;
+  transition: border-color var(--snap);
+}
+.pp-quote:hover {
+  border-color: color-mix(in oklch, var(--seal) 45%, transparent);
+}
+.pp-quote-sign {
+  flex-shrink: 0;
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  line-height: 1;
+  padding: 2px 3px;
+  color: var(--ink-2);
+  border: 1px solid var(--rule-soft-ink);
+}
+.pp-quote-title {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-quote-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 16px;
+  text-align: center;
+  color: var(--paper);
+  background: var(--seal-deep);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.pp-quote-wrap:hover .pp-quote-remove,
+.pp-quote-remove:focus-visible {
+  opacity: 1;
+}
+
 /* ── 附图 rail（B2 multimodal-image-plan）——缩略图道，与路径附件 chips 并列。
  *    圆角恒 0 纪律；缩略 56px 方界（规线细框），hover 露朱砂移除钮；
  *    未命中预览 URL（进程外恢复场景）降级为 mono 文件名占位盒。 ── */

@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rackPresent } from '../../../paper/asset-rack';
+import { newRefId, payloadChars, type QuoteCard } from '../../../state/card-quote';
 import type { DockTetherGeometry } from './DockTetherLayer';
 import { DOCK_TETHER_SEED, regionFootAnchorOf } from './dock-tether';
 import { createHitstop, HITSTOP_MS } from './hitstop';
@@ -18,6 +19,7 @@ import {
   agentSessionState,
   getAssetState,
   getCanvasStore,
+  getChatStore,
   isRiseVolume,
   leaveToHome,
   screenToWorld,
@@ -34,6 +36,7 @@ import {
 } from './host';
 import { waitMotionEnd } from './motion-end';
 import { sourceBlockIdOf, TETHER_ANCHOR_DY, tetherAnchors, tetherAnchorsAt, tetherPath } from './provenance';
+import { quoteSlotOf, useQuoteReady } from './quote-target';
 import { createRegionMotionWindow, regionExits, regionOnScreen, stepRegionMotion } from './region-motion';
 
 /** 属性选择器里的字符串转义（会话 id 可能就是数字串，但仍按规范转义——
@@ -239,12 +242,60 @@ export function usePaperPanelAssembly() {
     [projectPath],
   );
 
+  /** **引用**（夹签，docs/plans/card-quote-plan.md §2.1/§7）：把这一块**当刻的样子**
+   *  建成一枚夹签递进本卷的槽（只存元数据，payload 留在原卡——方案 §3.1）。
+   *
+   *  三条硬纪律（方案 §0/§1）：
+   *   ① **本体永不动**：这里不碰 block / 画布 / 折叠态，只往 input-store 里塞一枚记录；
+   *   ② 槽归**本卷**（liveOwner 的草稿槽）——引用给谁，看用户此刻在哪一卷；
+   *   ③ 同卡重复引用 ⇒ 不新增，槽里那枚闪一下 + toast（方案 §2.5，去重口径 =
+   *      `quoteKeyOf`：assetId 相同就是同一张卡）。 */
+  const quoteBlockAsset = useCallback(
+    (block: SourcedBlock, sessionNum: number) => {
+      const asset = block.asset;
+      if (!asset || !core) return;
+      const toast = useToastStore.getState().showToast;
+      const card: QuoteCard = {
+        refId: newRefId(),
+        origin: 'session',
+        assetId: asset.assetId,
+        sourceSessionId: String(sessionNum),
+        // 卡身份取**块的** kind（asset 元数据只带 presentation/标题——见 BlockAssetMeta）
+        kind: block.kind,
+        title: asset.title ?? '',
+        bytes: payloadChars(block.payload),
+        at: new Date().toISOString(),
+      };
+      // 落**本卷**的槽：未认领时先按活跃卷认领（否则这份 live 会在下次换手时
+      // 被当成「旧主的草稿」写回不相干的卷——见 quote-target 头注）
+      const slot = quoteSlotOf(core.panelId);
+      if (!slot) {
+        toast('先展开一卷或落一张纸', 'warn', 3200, 'composer');
+        return;
+      }
+      const input = getChatStore(core.panelId).input;
+      if (input.getState().liveOwner !== slot) input.getState().claimLive(slot);
+      if (!input.getState().addAttachedCard(card)) {
+        toast('已在夹签槽里', 'info', 2200, 'composer');
+        return;
+      }
+      toast(`已引用：${card.title || '这张卡'}`, 'info', 2200, 'composer');
+    },
+    [core],
+  );
+
+  /** 夹签有没有地方可落（此刻有没有卷 / 纸）——空画布时「引用」置灰（方案 §2.2 态一）。
+   *  订阅 sheet + sess：落纸 / 开卷一发生，按钮立刻可用。 */
+  const quoteReady = useQuoteReady(core?.panelId ?? null);
+
   const { opsByBlock, branchGrips } = useBlockOps({
     core,
     regions,
     regionsRef,
     regionMsgs,
     onShelve: shelveBlockAsset,
+    onQuote: quoteBlockAsset,
+    quoteReady,
   });
 
   /* ── 卷**开合两窗**（2026-10-18 卷开合动效批；机制与三条纪律见 region-motion.ts 头注）──

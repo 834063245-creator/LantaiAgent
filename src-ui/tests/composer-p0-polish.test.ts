@@ -64,9 +64,14 @@ describe('创作坞 P0 · 空印禁用', () => {
     /* ⚡ 2026-11-19 规格变更（用户真机报「只附截图发不出去」）：判据从
      * `inputText.trim()` 扩到三件任一在场——空印禁用守护的对象变成 `canSend`，
      * 而它必须仍由这三件组成（不许回退到只看正文）。 */
-    expect(DOCK_TSX).toContain(
-      'const canSend = inputText.trim().length > 0 || attachedFiles.length > 0 || attachedImages.length > 0;',
-    );
+    /* 2026-11-19 夹签批：第四件（夹签）也是有效内容——判据扩成四件任一在场。
+     * 断言形状随规格走，但**语义仍是「不许回退到只看正文」**（这是本条守护的对象）。 */
+    expect(DOCK_TSX).toContain('const canSend =');
+    for (const part of ['inputText.trim().length > 0', 'attachedFiles.length > 0']) {
+      expect(DOCK_TSX, `canSend 少了判据：${part}`).toContain(part);
+    }
+    expect(DOCK_TSX).toContain('attachedImages.length > 0');
+    expect(DOCK_TSX).toContain('attachedCards.length > 0');
     expect(DOCK_TSX).toContain('disabled={!canSend}');
     expect(DOCK_TSX).toContain('有内容才可拟文');
   });

@@ -1,6 +1,13 @@
 # 卡片引用（夹签）落地方案
 
-> **状态**：Proposed（2026-11-19 立项，待开工）
+> **状态**：P0 已落地（2026-11-19 开工并完成 §10 P0 全部条目）· P1 长按拖拽未开工
+> **落地记录**：`state/card-quote.ts`（纯数据面 + 摘要模板）/ `state/input-store.ts`（`attachedCards`
+> 槽 + 5 个方法，含跨槽递送 `addAttachedCardToSlot`）/ `app/chat/chat-core.ts`（发送前落快照、
+> 逐枚降级、写盘失败不发送）/ `paper-shell`（块操作条「引用」+ 架阁「引」）/ `compose-dock`（夹签轨）。
+> 测试：`card-quote.test.ts` / `card-quote-draft.test.ts` / `card-quote-send.test.ts` /
+> `card-quote-target.test.ts` / `composer-quote-rail.test.tsx`。
+> P1（长按拖拽改归属 + 全套动效 + reduced-motion 降级）待 P0 真机跑通后开工；**拖拽的写入口已备好**
+> （`input-store` 的 `addAttachedCardToSlot` 已落地并有测试，P1 只差手势与动效）。
 > **一句话**：点/长按「引用」→ 卡片以**夹签分身**落进目标卷的夹签槽（本体不动）→ 发送时落一份快照 + 一段固定摘要进上下文 → Agent 要细节、要改，用**现成工具**自己去取。
 > **本文档是施工单**：拿到就能开工，不需要再问设计意图。
 
@@ -269,13 +276,14 @@ interface InputStore {
 
 | 文件 | 改动 | 备注 |
 |---|---|---|
-| `src-ui/src/state/input-store.ts` | `SessionDraft` / `InputStore` 加 `attachedCards` + 4 个方法；`snapshotDraft` / `emptyDraft` 同步 | 内核模块，零 UI 依赖 |
-| `src-ui/src/state/card-quote.ts`（新） | `QuoteCard` 类型、`newRefId()`、`renderQuoteBlock()`（摘要模板）、`writeQuoteSnapshot()` | 纯函数为主，可单测 |
-| `src-ui/src/plugins/builtin/paper-shell/use-block-ops.ts` | 动作行加 `quote`（与 `shelve` 并排） | 需要 `onQuote` 回调入参 |
+| `src-ui/src/state/input-store.ts` | `SessionDraft` / `InputStore` 加 `attachedCards` + 5 个方法（含跨槽递送 `addAttachedCardToSlot` = P1 长按拖拽的写入口）；`snapshotDraft` / `emptyDraft` 同步 | 内核模块，零 UI 依赖 |
+| `src-ui/src/state/card-quote.ts`（新） | `QuoteCard` 类型、`newRefId()`、`renderQuoteBlock()`（摘要模板）、`buildQuoteSnapshot()` | 纯函数为主，可单测。**写盘拆出去**：本件被纸壳/坞两个产物内联 ⇒ 必须无状态无 IO，落盘归宿主 `chat-core` 的 `kernelWriteFile` |
+| `src-ui/src/plugins/builtin/paper-shell/use-block-ops.ts` | 动作行加 `quote`（与 `shelve` 并排） | `onQuote` + `quoteReady` 两个入参（后者让空画布时置灰而非消失） |
+| `src-ui/src/plugins/builtin/paper-shell/quote-target.ts`（新） | `quoteSlotOf()` / `useQuoteReady()`：夹签落给谁 | 未认领时按活跃卷认领——不认领会被下一次换手写回旧主的卷 |
 | `src-ui/src/plugins/builtin/paper-shell/use-paper-panel.ts` | 接线 `quoteBlockAsset`：读 block payload → 建 QuoteCard → `addAttachedCard` | 与 `shelveBlockAsset` 同构 |
 | `src-ui/src/plugins/builtin/paper-shell/ShelfOverlay.tsx` | 架阁项加「引用」：`readCard` → 建 QuoteCard | |
 | `src-ui/src/plugins/builtin/compose-dock/composer-rows.tsx` | 渲染夹签轨（`pp-card-rail`）；`canSend` 加判据 | 与 `pp-image-rail` 同构 |
-| `src-ui/src/plugins/builtin/compose-dock/surface/use-composer-send.ts` | 发送前 `await` 写快照 → 拼摘要 → 发 | 失败不发送 |
+| ~~`compose-dock/surface/use-composer-send.ts`~~ → **实际落 `app/chat/chat-core.ts` 的 `sendMessage`** | 发送前 `await` 写快照 → 拼摘要 → 发 | **施工勘误（2026-11-19）**：发送编排的真源在 `ChatCore.sendMessage`（视图层只管点）；放坞的 hook 里会让目标自动轮 / 命令驱动轮绕过引用快照。失败不发送 |
 | `src-ui/src/plugins/builtin/paper-shell/paper-composer.css` | 夹签轨样式 + 全部动效 keyframes | 动效统一在此 |
 | `src-ui/src/plugins/builtin/paper-shell/`（新增长按拖拽件） | 长按计时、浮层、卷命中检测 | 可复用现有拖拽的命中逻辑 |
 

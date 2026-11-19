@@ -17,9 +17,11 @@
 //   - 两页空态各给一句实话 + 一个出口，不做假数据。
 
 import { useEffect, useRef, useState } from 'react';
+import { newRefId, payloadChars, type QuoteCard } from '../../../state/card-quote';
 import {
   deleteCard,
   getCanvasStore,
+  getChatStore,
   listCards,
   openPluginWindow,
   readCard,
@@ -180,6 +182,44 @@ export function ShelfOverlay() {
         toast(`已删除「${title || '未命名'}」——卡片库的回收站里可找回`, 'info', 3200, 'composer');
       })
       .catch((err: unknown) => toast(`删除失败：${String(err)}`, 'error', 4200, 'composer'));
+  };
+
+  /** **引用**（夹签，docs/plans/card-quote-plan.md §2.1 入口二）：把库里这张卡递进
+   *  **当前活跃卷**的夹签槽——引用是「给这一轮的通行证」，与「摊到画布」并列。
+   *
+   *  只取元数据（card.json 的 kind / title）——payload 不进槽（方案 §3.1）；
+   *  真内容在发送那一刻才按 cardId 从卡片库读出来落快照（§3.4）。 */
+  const quoteCard = (cardId: string) => {
+    const core = useCoreStore.getState().core;
+    if (!core) {
+      toast('引用失败：画布还没准备好', 'warn', 3200, 'composer');
+      return;
+    }
+    const input = getChatStore(core.panelId).input.getState();
+    // 没有归属（既无卷也无纸）= 这枚夹签没有地方可去：如实说清楚，不静默丢弃
+    if (!input.liveOwner) {
+      toast('先展开一卷或落一张纸', 'warn', 3200, 'composer');
+      return;
+    }
+    readCard(cardId)
+      .then((r) => {
+        const card = (r.card ?? {}) as { kind?: unknown; title?: unknown; payload?: unknown };
+        const quote: QuoteCard = {
+          refId: newRefId(),
+          origin: 'shelf',
+          cardId,
+          kind: typeof card.kind === 'string' ? card.kind : 'markdown',
+          title: typeof card.title === 'string' ? card.title : '',
+          bytes: payloadChars(card.payload),
+          at: new Date().toISOString(),
+        };
+        if (!input.addAttachedCard(quote)) {
+          toast('已在夹签槽里', 'info', 2200, 'composer');
+          return;
+        }
+        toast(`已引用：${quote.title || '这张卡'}`, 'info', 2200, 'composer');
+      })
+      .catch((err: unknown) => toast(`引用失败：${String(err)}`, 'error', 4200, 'composer'));
   };
 
   /** **摊到画布**（架阁 B6，2026-12-08 用户拍板必做）：把库里的一张卡变成画布上的
@@ -356,6 +396,9 @@ export function ShelfOverlay() {
                             </span>
                           </button>
                           <span className="pp-shelf-actions">
+                            <button type="button" data-tip="引用到本卷" onClick={() => quoteCard(c.cardId)}>
+                              引
+                            </button>
                             <button type="button" onClick={() => pinToCanvas(c.cardId)}>
                               摊
                             </button>

@@ -346,8 +346,14 @@ const ComposerSurface = memo(function ComposerSurface({
         onPreviewImage={setImagePreview}
         attachedFiles={session.attachedFiles}
         attachedImages={session.attachedImages}
+        attachedCards={session.attachedCards}
         onRemoveAttached={attach.onRemoveAttached}
         onRemoveAttachedImage={attach.onRemoveAttachedImage}
+        onRemoveAttachedCard={(idx) => {
+          // 撕掉 = 只出槽（方案 §2.7：此时还没写任何盘上文件，没有别的要撤）
+          if (!core) return;
+          getChatStore(core.panelId).input.getState().removeAttachedCard(idx);
+        }}
         onToggleYin={() => layers.toggleLayer('yin')}
         onAttach={attach.onAttach}
         running={running}

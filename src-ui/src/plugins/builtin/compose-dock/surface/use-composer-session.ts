@@ -17,6 +17,7 @@
 // 不再需要 biome-ignore 去豁免「依赖数组里有个没用到的值」。
 
 import { type RefObject, useCallback, useEffect, useMemo, useState } from 'react';
+import type { QuoteCard } from '../../../../state/card-quote';
 import type {
   ChatCore,
   ChatImageRef,
@@ -47,6 +48,8 @@ export interface ComposerSessionState {
   setInputText: (text: string) => void;
   attachedFiles: Array<{ path: string; name: string; size: number }>;
   attachedImages: ChatImageRef[];
+  /** **夹签槽**（卡片引用，card-quote-plan §2.4）：本卷引用过、还没发出去的卡。 */
+  attachedCards: QuoteCard[];
   providerName: string;
   model: string;
   providerKind: string;
@@ -100,11 +103,13 @@ export function useComposerSession({
   const [inputText, setInputTextState] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<Array<{ path: string; name: string; size: number }>>([]);
   const [attachedImages, setAttachedImages] = useState<ChatImageRef[]>([]);
+  const [attachedCards, setAttachedCards] = useState<QuoteCard[]>([]);
   useEffect(() => {
     if (!core) {
       setInputTextState('');
       setAttachedFiles([]);
       setAttachedImages([]);
+      setAttachedCards([]);
       return;
     }
     const input = getChatStore(core.panelId).input;
@@ -112,6 +117,7 @@ export function useComposerSession({
       setInputTextState(input.getState().inputText);
       setAttachedFiles(input.getState().attachedFiles);
       setAttachedImages(input.getState().attachedImages);
+      setAttachedCards(input.getState().attachedCards);
     };
     sync();
     return input.subscribe(sync);
@@ -184,6 +190,7 @@ export function useComposerSession({
     setInputText,
     attachedFiles,
     attachedImages,
+    attachedCards,
     providerName,
     model,
     providerKind,
