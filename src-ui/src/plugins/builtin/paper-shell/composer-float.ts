@@ -90,6 +90,12 @@ export interface ComposerViewport {
 export interface ComposerDockGeom {
   bottom: number;
   height: number;
+  /** 坞槽左缘（视口坐标）——消费面判「坞有没有横向盖到自己」的唯一读数
+   *  （2026-11-19 目次带让位批：坞居中坐底时与右缘窄带本不相交，它的高矮不该带着
+   *  导航等比例尺一起缩；窄屏 / 坞被拖到右缘时这一对读数让让位回到实测值）。 */
+  left: number;
+  /** 坞槽实测宽。 */
+  width: number;
 }
 
 /**
@@ -159,8 +165,14 @@ function nearest(targets: number[], value: number, threshold: number): number | 
  *     目次带**不随坞浮动而压缩**，只按出厂位让位，护住「内容尾不藏进坞后」那条
  *     2026-09-01 实机整改）。
  */
-export function composerGeomOf(pos: ComposerPos | null, dockH: number): ComposerDockGeom {
-  return { bottom: pos?.bottom ?? COMPOSER_RISE, height: dockH };
+export function composerGeomOf(pos: ComposerPos | null, vp: ComposerViewport, box: ComposerBox): ComposerDockGeom {
+  return {
+    bottom: pos?.bottom ?? COMPOSER_RISE,
+    height: box.h,
+    // 无覆盖 = CSS 的 left:50% + translateX(-50%)（版心居中坐底）——与坞位夹紧后同值。
+    left: pos?.left ?? (vp.w - box.w) / 2,
+    width: box.w,
+  };
 }
 
 /**

@@ -78,6 +78,7 @@ import {
   grabOffsetAt,
   jumpViewTopAt,
   scrubViewTop,
+  tocDockAllowance,
   unreadBand,
 } from './toc';
 import type { TocInkLine } from './toc-ink';
@@ -143,13 +144,6 @@ const TOC_FAMILY_GAIN_DEFAULT = 0.62;
 /** 墨量 → 带内透明度：最疏桶 0.2、最密桶 1，再乘族增益（见上）。 */
 const TOC_DENSITY_BASE = 0.2;
 const TOC_DENSITY_SPAN = 0.8;
-/** 创作坞槽的坐底抬高（.pp-composer-slot bottom:var(--composer-rise)=96px——
- *  坞**出厂位**顶线 = 页底 −96 −坞高；2026-09-02 拍板 C：两态同位，固定值不随窗口高浮动，
- *  与 tokens.css --composer-rise 同源镜像）。
- *  **2026-09-17 用户裁定：目次带不随坞浮动让位**——坞被拖到哪是用户自己摆的浮窗，
- *  目次带只按出厂底带（本条 + 坞实测高）算映射区/可见域，坞浮起来时不压缩导航带
- *  （「内容尾不藏进坞后」那条 2026-09-01 实机整改照旧成立——坞在底带时口径未变）。 */
-const COMPOSER_RISE = 96;
 /** 错桶短规宽（带内 px）——错是语义状态，不走族色深浅（最响的一档）。 */
 const INK_FAIL_RULE_W = 4;
 /** 阶段锚命中盒高（px）= CSS .pp-toc-anchor 的 height（单一真源：热区 ≥24px
@@ -279,15 +273,20 @@ export const TocStrip = memo(function TocStrip() {
 
   /* 带体从屏顶起（CSS .pp-toc top: 0——书眉退役后带体坐标 = 页面坐标），
    * 映射区 = [刻痕半高, 坞顶线]（**带体坐标** = 页面坐标 − TOC_TOP = 0）。
-   * 底 = 坞顶线（画布区底 − 出厂底带），不随顶内缩；坞顶线 = 抬高 96 + 坞实测高
-   *（不读坞的实际位置——2026-09-17 用户裁定见上）。 */
-  const mappedBottom = Math.max(STRIP_TOP + 1, canvasSize.h - COMPOSER_RISE - composerDock.height);
+   * 底 = 坞顶线（画布区底 − 出厂底带），不随顶内缩。
+   * ⚡ 2026-11-19 手感批（用户报「目次带高度随坞高变化」）：坞**真的横着盖到带子**
+   * （右缘越过带左缘：窄屏 / 坞被拖到右缘）才按实测坞高让位；否则按出厂参考高封顶——
+   * 坞居中坐底时它长高（多行输入/附件/墨量册）只该让自己变高，不该带着导航等比例尺
+   * 一起缩（缩放 = 读者刚建立的「我在卷里的位置」漂移）。 */
+  const dockCoversToc = composerDock.left + composerDock.width > canvasSize.w - TOC_W;
+  const dockAllowance = tocDockAllowance(composerDock.height, dockCoversToc);
+  const mappedBottom = Math.max(STRIP_TOP + 1, canvasSize.h - dockAllowance);
   /* ── 可见视口（世界 y）——滑块、未读区、当前阶段共用同一把尺子 ──
    * 画布区顶 → 坞上缘：visY1 = 画布区底 − 出厂底带（与映射区同一口径：只认
    * 出厂位，不随坞浮动而变）。v4 把它提到前面：当前阶段（编号加粗）要用
    * 视口中心，编号派生又排在锚点派生之后。 */
   const visY0 = viewRect.y0;
-  const visY1 = viewRect.y1 - (COMPOSER_RISE + composerDock.height) / Math.max(0.05, zoom);
+  const visY1 = viewRect.y1 - dockAllowance / Math.max(0.05, zoom);
   const visH = visY1 - visY0;
   /* ── 标记/锚点派生（几何槽位回填 worldY/worldH；一次建索引防 O(n²)）──
    * P2-3（2026-09-02 拖动卡顿专项）：依赖收窄到内容侧原语/稳定内层引用——

@@ -8,7 +8,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rackPresent } from '../../../paper/asset-rack';
-import { DOCK_TETHER_PEN, DOCK_TETHER_SEED, regionFootAnchorOf } from './dock-tether';
+import type { DockTetherGeometry } from './DockTetherLayer';
+import { DOCK_TETHER_SEED, regionFootAnchorOf } from './dock-tether';
 import { createHitstop, HITSTOP_MS } from './hitstop';
 import type { RegionView, SourcedBlock } from './host';
 import {
@@ -757,7 +758,7 @@ export function usePaperPanelAssembly() {
    * 随之消失，见该层注释）。
    * 无活卷 / 案头态（匣退、钮本就不画）⇒ **不画线**；「活卷在场上但流区还没落位」
    * （新卷出生后落位 effect 之前那一帧）同样不画——宁可没有线，也不指错（锚点批同款判据）。 */
-  const dockTether = useMemo(() => {
+  const dockTether = useMemo<DockTetherGeometry | null>(() => {
     /* ⚡ 2026-11-15 V2（用户报「创作坞的引导线在点击新建后依然存在于老会话和原本
      * 应该有创作坞的地方」）：**纸在场时整条引线不画**。
      * 病灶两半：① 坞在纸期不渲染（V2-P1），它的版口钮也随之不存在——线的坞端
@@ -776,13 +777,25 @@ export function usePaperPanelAssembly() {
       regionTop: region.regionTop,
       regionHeight: region.regionHeight,
     });
-    return tetherPath(
-      composer.anchor,
-      worldToScreen(view, foot.x, foot.y),
-      selSeedOf(`${DOCK_TETHER_SEED}-${activeSessionKey}`),
-      DOCK_TETHER_PEN,
-    );
-  }, [activeSessionKey, regions, view, composer.anchor, draftFocusOn, draftMorph]);
+    /* 2026-11-19 手感批：这里交出**两端锚点**而不是算好的 path——坞侧缓动住在
+     * DockTetherLayer（渲染面），否则每帧 setState 会把整个 PaperPanel 拖着重渲。 */
+    return {
+      from: composer.anchor,
+      to: worldToScreen(view, foot.x, foot.y),
+      seed: selSeedOf(`${DOCK_TETHER_SEED}-${activeSessionKey}`),
+      dragging: composer.dragging,
+      dockHeight: composer.dock.height,
+    };
+  }, [
+    activeSessionKey,
+    regions,
+    view,
+    composer.anchor,
+    composer.dragging,
+    composer.dock.height,
+    draftFocusOn,
+    draftMorph,
+  ]);
 
   return {
     core,

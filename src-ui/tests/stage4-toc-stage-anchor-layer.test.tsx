@@ -126,7 +126,7 @@ const VIEW_RECT = { x0: -4000, y0: -4000, x1: 4000, y1: 0 };
 const CANVAS_SIZE = { w: 1200, h: 1000 };
 /** 创作坞几何（2026-09-17）：目次带只读 height（**出厂底带口径，不随坞浮动让位**——
  *  用户 2026-09-17 裁定），几何数值与浮动化前逐字相同。 */
-const COMPOSER_DOCK = { bottom: 96, height: 130 };
+const COMPOSER_DOCK = { bottom: 96, height: 110, left: 160, width: 880 };
 
 describe('目次带 v3 — 阶段锚可点 / 装饰刻痕不参与命中', () => {
   let container: HTMLDivElement | null = null;

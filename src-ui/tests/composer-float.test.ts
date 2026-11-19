@@ -104,17 +104,25 @@ describe('创作坞浮动化 · 吸附边缘', () => {
 });
 
 describe('创作坞浮动化 · 坞几何下发（两种口径由消费面各自派生）', () => {
-  it('无覆盖（默认位）：bottom = 出厂抬高——让位带 = 抬高 + 坞高（与浮动化前同值）', () => {
-    expect(composerGeomOf(null, 110)).toEqual({ bottom: COMPOSER_RISE, height: 110 });
+  const VP = { w: 1200, h: 800 };
+  const BOX = { w: 880, h: 110 };
+
+  it('无覆盖（默认位）：bottom = 出厂抬高，left = 版心居中左缘——让位带 = 抬高 + 坞高', () => {
+    expect(composerGeomOf(null, VP, BOX)).toEqual({ bottom: COMPOSER_RISE, height: 110, left: 160, width: 880 });
   });
 
-  it('浮动态：bottom = 坞的实际位置（让位带 = bottom + 坞高，坞越往上越大）', () => {
-    expect(composerGeomOf({ left: 40, bottom: 300 }, 110)).toEqual({ bottom: 300, height: 110 });
-    expect(composerGeomOf({ left: 40, bottom: 96 }, 110).bottom).toBe(96);
+  it('浮动态：bottom / left = 坞的实际位置（让位带 = bottom + 坞高，坞越往上越大）', () => {
+    expect(composerGeomOf({ left: 40, bottom: 300 }, VP, BOX)).toEqual({
+      bottom: 300,
+      height: 110,
+      left: 40,
+      width: 880,
+    });
+    expect(composerGeomOf({ left: 40, bottom: 96 }, VP, BOX).bottom).toBe(96);
   });
 
   it('坞高变了 height 跟着变（思考展开/附件/墨量册——同一条式子）', () => {
-    expect(composerGeomOf(null, 300).height).toBe(300);
+    expect(composerGeomOf(null, VP, { w: 880, h: 300 }).height).toBe(300);
   });
 });
 

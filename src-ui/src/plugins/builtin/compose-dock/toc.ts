@@ -19,6 +19,30 @@
 // 下一行常低于 1px，bar 是唯一诚实原语（真字形 fillText 亚像素不可辨）。
 // 渲染层把 strip 上下界与流区内容上下界喂进来即可。
 
+/** 创作坞槽的坐底抬高（.pp-composer-slot bottom:var(--composer-rise)=96px——
+ *  坞**出厂位**顶线 = 页底 − 96 − 坞高；2026-09-02 拍板 C：两态同位，固定值不随窗口高
+ *  浮动，与 tokens.css `--composer-rise` 同源镜像（**不跨插件直引**：本值自持一份）。 */
+export const COMPOSER_RISE = 96;
+
+/** 目次带让位里的**坞出厂参考高**（px）：坞高于此（多行输入 / 附件行 / 墨量册展开）
+ *  不再推挤目次带（2026-11-19 用户报「目次带高度随创作坞高度变化」）。
+ *  为什么该封顶：坞是**浮窗**，长高是内容态的一时之举；目次带是卷的等比例尺，跟着缩
+ *  一格，读者刚建立的「我在卷里的位置」就漂了。坞宽 880 居中，与右缘这条窄带本就不
+ *  重叠——让位只为「内容尾不藏进坞后」那条 2026-09-01 整改，不需要逐像素跟随。
+ *  **2026-09-17 用户裁定**（不随坞浮动让位）与此条同族：只认出厂位，不认浮窗。 */
+export const COMPOSER_DOCK_REF_H = 110;
+
+/** 目次带让位（px）= 出厂抬高 + 坞高**封顶**——映射区底与可见视口底共用这一把尺子
+ *  （两处口径分家 = 滑块与刻痕各说一套）。
+ *  `covered` = 坞横向真的盖到了目次带（坞右缘越过带左缘）：此时让位必须按**实测坞高**
+ *  （「内容尾不藏进坞后」），否则按出厂参考高封顶——坞是浮窗，居中坐底时它长高只让
+ *  自己变高，不该带着导航等比例尺一起缩。 */
+export function tocDockAllowance(dockHeight: number, covered = false): number {
+  // 脏值（NaN / 未实测的 0）当「还没量到」——让位不得小于抬高本身。
+  const h = Number.isFinite(dockHeight) ? Math.max(0, dockHeight) : 0;
+  return COMPOSER_RISE + (covered ? h : Math.min(h, COMPOSER_DOCK_REF_H));
+}
+
 export interface TocRange {
   /** 流区内容顶（世界 y，最旧块顶） */
   regionTop: number;

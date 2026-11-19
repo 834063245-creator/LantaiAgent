@@ -18,6 +18,7 @@ import {
   stripToWorld,
   type TocMarkInput,
   type TocRange,
+  tocDockAllowance,
   tocMapper,
   unreadBand,
   viewportMarker,
@@ -238,5 +239,23 @@ describe('paper/toc viewportMarker（位置指示）', () => {
   it('视口在流区内容之外 → null（不显示指示）', () => {
     expect(viewportMarker(100, 500, RANGE)).toBeNull();
     expect(viewportMarker(-2000, -1500, RANGE)).toBeNull();
+  });
+});
+
+describe('paper/toc 让位口径（2026-11-19 手感批：坞高封顶）', () => {
+  it('出厂态：抬高 96 + 坞高（与旧口径逐值相同）', () => {
+    expect(tocDockAllowance(110)).toBe(206);
+    expect(tocDockAllowance(90)).toBe(186); // 坞比出厂态矮：照实让位
+  });
+
+  it('坞长高（多行输入 / 附件行 / 墨量册展开）不再推挤目次带', () => {
+    expect(tocDockAllowance(111)).toBe(206);
+    expect(tocDockAllowance(300)).toBe(206);
+    expect(tocDockAllowance(900)).toBe(206);
+  });
+
+  it('负值/脏值不反噬（让位不得小于抬高本身）', () => {
+    expect(tocDockAllowance(-50)).toBe(96);
+    expect(tocDockAllowance(Number.NaN)).toBe(96);
   });
 });

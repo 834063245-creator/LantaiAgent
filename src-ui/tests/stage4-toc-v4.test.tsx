@@ -60,11 +60,13 @@ function ruleBody(css: string, selector: string): string {
 }
 
 const CANVAS_SIZE = { w: 1200, h: 1000 };
-const COMPOSER_DOCK = { bottom: 96, height: 130 };
-/** 映射区底 = 1000 − 96 − 130 = 774；映射区 = [4, 774]。 */
-const MAPPED_BOTTOM = 774;
-/** 世界区间 0..1000 → 带内 4..774（scale 0.77）。 */
-const VIEW_ALL = { x0: -4000, y0: 0, x1: 4000, y1: 1226 };
+/** 坞在**出厂位**（居中坐底；1200 屏 880 宽 → left 160，右缘 1040 不压 104 宽目次带）。
+ *  高度取 110 = 目次带让位里的出厂参考高（toc.ts 的 COMPOSER_DOCK_REF_H）。 */
+const COMPOSER_DOCK = { bottom: 96, height: 110, left: 160, width: 880 };
+/** 映射区底 = 1000 − 96 − 110 = 794；映射区 = [4, 794]。 */
+const MAPPED_BOTTOM = 794;
+/** 世界区间 0..1000 → 带内 4..794（scale 0.79）。 */
+const VIEW_ALL = { x0: -4000, y0: 0, x1: 4000, y1: 1206 };
 
 /** 夹具：`users` 是 user 块的世界 y（h=10）；可选一条 markdown 正文块。 */
 function fakeRegion(users: number[], opts: { proseAt?: number; total?: number } = {}): RegionView {
@@ -212,9 +214,9 @@ describe('目次带 v4 — 两栏 / 编号 / 纸捻', () => {
   it('卡片语色：行盒原文 → eyebrow「正文」/ is-tone-text；阶段 →「阶段 N」/ is-tone-stage', async () => {
     await mount(fakeRegion([0, 100, 200, 300, 400], { proseAt: 600 }));
     const nav = container!.querySelector('.pp-toc') as HTMLElement;
-    // 正文块顶（600）远离所有阶段锚：stripY = 56 + 600 × 0.718 ≈ 487
+    // 正文块顶（600）远离所有阶段锚：stripY = 56 + 600 × 0.738 ≈ 499
     act(() => {
-      nav.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 20, clientY: 488 }));
+      nav.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 20, clientY: 499 }));
     });
     const textCard = container!.querySelector('.pp-toc-card') as HTMLElement;
     expect(textCard.querySelector('.pp-toc-eyebrow')?.textContent).toBe('正文');
@@ -227,7 +229,7 @@ describe('目次带 v4 — 两栏 / 编号 / 纸捻', () => {
       x0: -4000,
       y0: 0,
       x1: 4000,
-      y1: 1226,
+      y1: 1206,
     });
     const nav = container!.querySelector('.pp-toc') as HTMLElement;
     nav.setPointerCapture = vi.fn();

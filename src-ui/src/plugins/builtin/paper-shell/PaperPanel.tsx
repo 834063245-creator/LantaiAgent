@@ -40,6 +40,7 @@
 
 import { type CSSProperties, Fragment, useEffect } from 'react';
 import { volumeDisplayName } from '../../../state/volume-name';
+import { DockTetherLayer } from './DockTetherLayer';
 import { DraftSheet } from './DraftSheet';
 import { FolioAskBadge } from './FolioAskBadge';
 import { FolioCompositionChip } from './FolioCompositionChip';
@@ -784,13 +785,7 @@ export function PaperPanel() {
               + tabIndex + 点线飞到纸脚），账上记为用户拍板，实为 agent 自记——用户原话
               「我从来也没有拍板过引线本体要做成按钮」。线不是控件：不吃指针、不进 Tab 序
               ⇒ 整层 `aria-hidden`（同 `.pp-pin-layer` 那条瞬时腿）。 */}
-          {dockTether && (
-            <svg className="pp-tether-layer pp-dock-layer" aria-hidden="true">
-              <path className="pp-tether pp-dock-tether" d={dockTether.d} />
-              <circle className="pp-tether-origin" cx={dockTether.origin.x} cy={dockTether.origin.y} r={2.2} />
-              <circle className="pp-tether-bead" cx={dockTether.bead.x} cy={dockTether.bead.y} r={2.2} />
-            </svg>
-          )}
+          {dockTether && <DockTetherLayer geom={dockTether} />}
 
           {/* 立枝手势的**拖动预览**（P4-①，2026-09-19）：按住「枝」握把拖动时的一丝引线
               ——起笔在原块缘、朱点落在指针上（落点即所见）。同一支笔（.pp-tether 的墨）、

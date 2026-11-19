@@ -110,7 +110,7 @@ const CANVAS_SIZE = { w: 1200, h: 1000 };
 /** 创作坞几何（2026-09-17）：bottom = 坞位（视口底 → 坞下边；默认位 = 出厂抬高 96），
  *  height = 坞实测高。**目次带只读 height**（用户 2026-09-17 裁定：目次带不随坞浮动
  *  让位），故映射区底 = 画布高 − 96 − 坞高——与浮动化前逐字同值。 */
-const COMPOSER_DOCK = { bottom: 96, height: 130 };
+const COMPOSER_DOCK = { bottom: 96, height: 110, left: 160, width: 880 };
 /** 带体起点（页面坐标）= **屏顶 0**——2026-09-17 标题栏拆除批：书眉退役，
  *  tokens.css 里那条 `--bar-h` 一并删除（本文件按 0 钉死 = 组件 TOC_TOP 的基准）。 */
 const TOC_TOP_PX = 0;
@@ -128,7 +128,9 @@ function ruleBody(css: string, selector: string): string {
   return css.slice(i, css.indexOf('}', i));
 }
 
-function regionContext(dock: { bottom: number; height: number } = COMPOSER_DOCK): PaperRegionContextValue {
+function regionContext(
+  dock: { bottom: number; height: number; left: number; width: number } = COMPOSER_DOCK,
+): PaperRegionContextValue {
   return {
     regions: [fakeRegion()],
     activeSessionId: '1',
@@ -356,17 +358,17 @@ describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => 
   /* 2026-09-17 用户裁定「目次带似乎没必要做让位」——坞被拖到哪都不该压缩导航带，
    * 只有坞**高**变了才动（那才是可见域的诚实变化）。本用例是这条裁定的考官：
    * 同一份流区内容，坞位从出厂位挪到半屏，刻痕/滑块落点必须逐字不变。 */
-  it('坞浮起不让位（用户 2026-09-17 裁定）：坞位变了映射区不动，坞高变了才动', async () => {
+  it('坞浮起不让位（2026-09-17 裁定）+ 坞高封顶（2026-11-19 手感批）：不覆盖目次带时映射区逐字不动', async () => {
     const marksAt = (): number[] =>
       ([...container!.querySelectorAll('.pp-toc-mark')] as HTMLElement[]).map((m) => Number.parseFloat(m.style.top));
 
-    await mount({ bottom: 96, height: 130 }); // 出厂位
+    await mount({ bottom: 96, height: 130, left: 160, width: 880 }); // 出厂位
     const atHome = marksAt();
     const nav = container!.querySelector('.pp-toc') as HTMLElement;
     pointerDown(nav, MAPPED_BOTTOM + 40); // 映射区底之下 = 坞顶线以下（默认位口径）
     const panAfterBelow = useCanvasViewStore.getState().view.panY;
 
-    await mount({ bottom: 400, height: 130 }); // 坞被拖到半屏（坞位变、坞高不变）
+    await mount({ bottom: 400, height: 130, left: 160, width: 880 }); // 坞被拖到半屏（坞位变、坞高不变）
     expect(marksAt()).toEqual(atHome); // 映射区逐字不动 ⇒ 目次带没让位
     // 「坞顶线以下不响应」这条判据也随出厂位口径（坞浮起来不改变导航带的可点范围）
     pointerDown(nav, MAPPED_BOTTOM + 40);
@@ -374,8 +376,14 @@ describe('目次带 × 屏顶（映射区不越界 + 区外不响应）', () => 
     pointerDown(nav, STRIP_TOP + 300);
     expect(useCanvasViewStore.getState().view.panY).not.toBe(panAfterBelow);
 
-    // 坞高变了（思考展开/附件）→ 才动：映射区底随坞高下移
-    await mount({ bottom: 96, height: 300 });
+    /* ⚡ 2026-11-19 规格变更（用户报「目次带高度随坞高变化」）：坞长高（思考展开/附件/
+     * 墨量册）但**没横向盖到带子**时，让位按出厂参考高封顶 ⇒ 映射区仍逐字不动。 */
+    await mount({ bottom: 96, height: 300, left: 160, width: 880 });
+    expect(marksAt()).toEqual(atHome);
+
+    /* 覆盖态（窄屏 / 坞被拖到右缘：右缘越过带左缘）才回到实测坞高——「内容尾不藏进
+     * 坞后」那条 2026-09-01 整改在真会压住带子的情形下不退。 */
+    await mount({ bottom: 96, height: 300, left: 400, width: 880 });
     expect(marksAt()).not.toEqual(atHome);
   });
 });

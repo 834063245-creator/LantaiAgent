@@ -79,6 +79,17 @@ export interface ComposerFloat {
   onDoubleClick: (e: React.MouseEvent) => void;
 }
 
+/** 落点命中测试（2026-11-19 双击修复）：`document.elementFromPoint` 在 jsdom 缺席，
+ *  返回 null 由调用方回落到 `event.target`——两条路只判「打在哪个元素上」。 */
+function composerHitAt(x: number, y: number): Element | null {
+  if (typeof document.elementFromPoint !== 'function') return null;
+  try {
+    return document.elementFromPoint(x, y);
+  } catch {
+    return null; // 合成坐标 / 非法视口：当作没命中
+  }
+}
+
 export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
   /* 架在否（2026-09-23 图版架丙案 D2）：吸附表/夹紧下限的第二个输入。手势闭包
    * （pointermove 里的 snap）拿不到当帧 props ⇒ 同 unlockedRef 的手法存 ref。 */
@@ -150,7 +161,7 @@ export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
 
   /* 坞几何引用稳定（P2-3 纪律）：PaperPanel 平移/缩放帧都会重渲，若此处每帧换新对象，
    * 覆盖层 context 跟着变 → 目次带/小地图每帧重渲。依赖只有坞位与坞高，平移帧不变。 */
-  const dock = useMemo(() => composerGeomOf(effective, box.h), [effective, box.h]);
+  const dock = useMemo(() => composerGeomOf(effective, vp, box), [effective, vp, box]);
   /* 坞侧锚点（版口引线，2026-09-22）：坞位取**夹紧后**的那一份（与内联 style 同一个数
    * ——否则窗口缩小后线会离坞）。引用稳定纪律同 dock：平移/缩放帧不重算。 */
   const anchor = useMemo(() => composerAnchorOf(effective, vp, box), [effective, vp, box]);
@@ -312,7 +323,14 @@ export function useComposerFloat(opts?: ComposerFloatOpts): ComposerFloat {
   );
 
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
-    if (!isComposerDragSurface(e.target, unlockedRef.current)) return;
+    /* 判据用**落点**而不是 event.target（2026-11-19 用户报「解锁后双击坞体不复位」）：
+     * 拖动手势在 pointerdown 时对槽 setPointerCapture，click / dblclick 的 target 会被
+     * 捕获元素改写——槽本身不在 `.pp-composer` 内，合法双击于是被判成「打在坞外」
+     * （同 `useDragGesture` 的 DragState.captured 注：captured 时判落点必须换命中测试）。
+     * elementFromPoint 给的是真实命中元素，与拖动面判据用同一把尺子。 */
+    if (!unlockedRef.current) return; // 锁定态：坞是普通 DOM，不接管双击
+    const hit = composerHitAt(e.clientX, e.clientY) ?? (e.target as HTMLElement | null);
+    if (!isComposerDragSurface(hit, true)) return;
     posRef.current = null;
     setPos(null);
     saveComposerPos(null);

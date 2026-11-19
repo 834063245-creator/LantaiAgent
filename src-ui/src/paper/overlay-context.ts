@@ -62,7 +62,7 @@ export interface PaperRegionContextValue {
    *   - **出厂底带** = `96 + height`——**目次带专用**（用户 2026-09-17 裁定：
    *     目次带不随坞浮动而压缩，只按出厂位让位，护住「内容尾不藏进坞后」那条
    *     2026-09-01 实机整改）。取代旧的 `composerHeight`（坞实测高单值）。 */
-  composerDock: { bottom: number; height: number };
+  composerDock: { bottom: number; height: number; left: number; width: number };
   /** 有效折叠态（2026-09-01 目次带 minimap 化：内容指纹与主渲染同一折叠
    *  真源——用户覆盖表 + defaultFolded 规则态，PaperPanel 原样下发）。 */
   foldedOf: (b: SourcedBlock) => boolean;

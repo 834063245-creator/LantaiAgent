@@ -376,6 +376,47 @@ describe('创作坞浮动化（槽主人链路：坞位 + 让位带 + 手势）'
     expect(bandVar()).toBe('206px');
   });
 
+  it('双击复位判据用**落点**：pointer capture 把 target 改写成槽时也照样复位', async () => {
+    /* 2026-11-19 用户报「解锁后双击坞体不复位」：真机上槽挂着 pointer capture
+     * （`useDragGesture` 的 setPointerCapture），click/dblclick 的 target 因此是槽
+     * ——槽不在 `.pp-composer` 内，旧判据把合法双击整批判成「打在坞外」。 */
+    const slot = await mount();
+    unlock(slot);
+    const head = slot.querySelector('.pp-composer-target') as HTMLElement;
+    drag(head, { x: 300, y: 660 }, { x: 400, y: 400 });
+    expect(localStorage.getItem(COMPOSER_POS_KEY)).not.toBeNull();
+
+    const had = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => head });
+    try {
+      // target = 槽（模拟捕获改写），真实落点在坞内
+      fire(slot, 'dblclick', { button: 0, clientX: 300, clientY: 660 });
+    } finally {
+      if (had) Object.defineProperty(document, 'elementFromPoint', had);
+      else delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+    }
+    expect(slot.style.left).toBe('');
+    expect(localStorage.getItem(COMPOSER_POS_KEY)).toBeNull();
+  });
+
+  it('守门：双击真的落在坞外时**不**复位（判据不是「随便双击」）', async () => {
+    const slot = await mount();
+    unlock(slot);
+    const head = slot.querySelector('.pp-composer-target') as HTMLElement;
+    drag(head, { x: 300, y: 660 }, { x: 400, y: 400 });
+    expect(localStorage.getItem(COMPOSER_POS_KEY)).not.toBeNull();
+
+    const had = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => document.body });
+    try {
+      fire(slot, 'dblclick', { button: 0, clientX: 8, clientY: 8 });
+    } finally {
+      if (had) Object.defineProperty(document, 'elementFromPoint', had);
+      else delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+    }
+    expect(localStorage.getItem(COMPOSER_POS_KEY)).not.toBeNull();
+  });
+
   it('让位带载体（2026-10-18 性能批）：不写 :root 内联，只下发到命中让位消费面的那条规则', async () => {
     const slot = await mount();
     /* 消费面读得到（解析后的值 = 真值；载体形状不是测试对象）。 */
