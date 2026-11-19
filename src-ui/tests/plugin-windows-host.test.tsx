@@ -11,8 +11,9 @@
 //      监听在其自身元素上，此处钉帧内事件不冒泡到 document 的防线）；
 //   e) 窗口内容不炸宿主：iframe 独立 document（sandbox opaque origin，
 //      结构性隔离）+ 崩溃面 PluginBoundary 包帧体；
-//   f) 书眉拖拽（mousedown → document mousemove 写回坐标并夹持 → mouseup 收）。
-// 管理面 g（启动器/任务栏走产物流）待用户设计定稿后另批——此处不施工。
+//   f) 书眉拖拽（pointerdown → pointermove 写回坐标并夹持 → pointerup 收）；
+//   g) 书眉交互件（× 关窗钮）不被拖拽捕获吞掉 click——2026-11-18 实机「窗关不掉」回归。
+// 管理面 h（启动器/任务栏走产物流）待用户设计定稿后另批——此处不施工。
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -210,5 +211,35 @@ describe('S3 视口层：d) 不抢画布 pan（帧内指针事件不冒泡）+ f
       pointer(window, 'pointermove', 800, 600);
     });
     expect(usePluginWindowStore.getState().windows[0].x).toBe(360);
+  });
+
+  /** 书眉上的交互件（关窗钮）**不得被拖拽捕获吞掉**（2026-11-18 实机事故）：
+   *  书眉 `setPointerCapture` 之后指针事件被重定向到书眉，按钮收不到配对的
+   *  pointerup ⇒ 浏览器不派发 click ⇒「× 点不动、窗关不掉」。判据 = 书眉的
+   *  pointerdown 在交互件上早退（不起手势、不捕获）。 */
+  it('关窗钮上按下不起拖拽手势（捕获会吞掉按钮的 click——× 关不掉的回归）', () => {
+    mountHost();
+    act(() => {
+      openPluginWindow('acme/notes');
+    });
+    const before = usePluginWindowStore.getState().windows[0];
+    const closeBtn = document.body.querySelector<HTMLElement>('.pw-close');
+    expect(closeBtn).not.toBeNull();
+    // 在按钮上按下并移动：窗位不许跟动（拖拽没被接管）
+    act(() => {
+      pointer(closeBtn!, 'pointerdown', before.x + 200, before.y + 12);
+    });
+    act(() => {
+      pointer(window, 'pointermove', 600, 400);
+      pointer(closeBtn!, 'pointerup', 600, 400);
+    });
+    const after = usePluginWindowStore.getState().windows[0];
+    expect(after.x).toBe(before.x);
+    expect(after.y).toBe(before.y);
+    // 且 click 仍然落到按钮上（真关掉这扇窗）
+    act(() => {
+      closeBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(usePluginWindowStore.getState().windows).toHaveLength(0);
   });
 });

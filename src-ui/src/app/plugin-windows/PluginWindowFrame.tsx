@@ -21,6 +21,11 @@
 // document 级 mousemove 硬扛（快速拖出书眉会断线），现在 `setPointerCapture`
 // 把事件锁在书眉上，出窗照跟。位置经 store moveWindow 写回（视口边界夹持——
 // 书眉恒可达）。帧内指针事件 stopPropagation：不向画布底座漏（pan 抢占防线第二道）。
+//
+// ⚠ **交互件不承载拖拽**（2026-11-18 实机修）：书眉带 pointer capture，按下关窗钮
+// 再松手时指针事件被重定向到书眉，按钮收不到自己的 pointerup ⇒ 浏览器凑不齐
+// click ⇒「× 点不动、窗关不掉」（批 C3 换 pointer 时埋的，旧 mousedown 不捕获故
+// 无此症）。判据 = `isTopbarInteractiveTarget` 早退，与坞 `isComposerDragSurface` 同族。
 
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef } from 'react';
 import { bindBridgeWindow, postBridgeEvent, unbindBridgeWindow } from '../../plugins/window-bridge';
@@ -91,12 +96,17 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
     stop(e);
     focusPluginWindow(instance.windowId);
     if (instance.mode !== 'floating') return;
+    /* 交互件（关窗钮）**自己接手势**：书眉一旦 `setPointerCapture`，后续指针事件被
+     * 重定向到书眉 ⇒ 按钮收不到配对的 pointerup ⇒ 浏览器凑不齐一次 click
+     * ⇒「× 点不动」（2026-11-18 实机报障，批 C3 换 pointer 时引入；旧 mousedown
+     * 实现在按钮上起拖但**不捕获**，click 照常派发，故那时没这个症状）。
+     * 与坞的 `isComposerDragSurface`、侧栏行拖的「交互子件不承载拖行」同一条判据。 */
+    if (isTopbarInteractiveTarget(e.target)) return;
     /* 拖动期禁选（2026-09-17 选区政策批）：浮窗是**页内**拖动（mousemove 移 DOM），
      * 指针会横穿纸面——不掐断就是「拖窗口 = 顺手划过一段纸面选区」（全应用默认
      * 不可选之后残留的最后一条：其它拖动面要么走 Tauri 原生移动循环、要么活动
-     * 范围被自身家具圈住，只有浮窗能扫过整张纸）。交互件（关窗钮）除外——
-     * 掐掉它的 mousedown 默认就是掐掉它的取焦，闸门不拦自己人。 */
-    if (!isTopbarInteractiveTarget(e.target)) e.preventDefault();
+     * 范围被自身家具圈住，只有浮窗能扫过整张纸）。交互件已在上一条闸门整段让路。 */
+    e.preventDefault();
     dragRef.current = { offX: e.clientX - instance.x, offY: e.clientY - instance.y };
     winDrag.begin(e);
   };
