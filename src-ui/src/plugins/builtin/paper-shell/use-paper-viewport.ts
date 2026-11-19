@@ -440,8 +440,16 @@ export function usePaperViewport(core: PaperCore | null) {
        * 弃纸钮——都属于"还在纸上"，不该把焦点交回卷）。 */
       const t = e.target as HTMLElement;
       const insideDraft = typeof t?.closest === 'function' && t.closest('[data-draft-sheet]') !== null;
+      /* ⚠ **portal 到 body 的浮层不算「点纸外面」**（2026-11-19 真机 bug：权限弹窗
+       * 「鼠标操作被吞」的根因）。React 合成事件**沿 React 树冒泡**，而全局模态
+       * （.pp-mode-dialog-backdrop / .pp-image-lightbox）是 createPortal 到 body 的——
+       * DOM 上不在画布里，事件却照样进到这里。于是：用户点「确定」→ 焦点被交回卷 →
+       * 纸上的输入面（那个模态的宿主）当帧卸载 → 模态消失、确认动作根本没执行。
+       * 判据 = 事件源**在画布 DOM 子树里**（portal 恰好落在这条之外），与上面那条
+       * 「纸自己不算外面」同族：**只认真正落在画布上的那一击**。 */
+      const insideCanvasDom = typeof e.currentTarget.contains === 'function' ? e.currentTarget.contains(t) : true;
       const draftStore = useDraftSheetStore.getState();
-      if (!insideDraft && draftStore.focusedId !== null && core) {
+      if (!insideDraft && insideCanvasDom && draftStore.focusedId !== null && core) {
         const input = getChatStore(core.panelId).input.getState();
         draftStore.focusSheet(null);
         const sess = getChatStore(core.panelId).sess.getState();

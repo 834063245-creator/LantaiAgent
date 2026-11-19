@@ -168,8 +168,13 @@
   vertical-align: 0.08em;
 }
 .pp-draft-sheet .pp-folio-sub {
-  color: var(--ink-4);
-  letter-spacing: 0.2em;
+  color: var(--ink-3);
+}
+/* 题签行的字距**不跟着卷首档行走**（2026-11-19 真机返工）：档行是机读注记（0.2em 是给
+ * 「二〇二六年…」那种定值句定的），而这一行装的是三枚读数——套上去模型名会被拆成
+ * 「d e e p s e e k」，正好加剧用户看到的「错位」。控件自己带字距，本行只给颜色。 */
+.pp-draft-sheet .pp-folio-sub .pp-folio-picks {
+  letter-spacing: normal;
 }
 
 /* ── 天头之下：这条卷的创作坞（同一个组件，另一次挂载） ─────────────
@@ -414,22 +419,35 @@
   opacity: 1;
 }
 /* 模型那一格：坞期那枚 ModelSelector 原样塞进来——把它的容器压回行内基线
- * （它不是本行的控件，是**同一个组件**的另一种宿主，故只调盒、不碰它的语言）。 */
+ * （它不是本行的控件，是**同一个组件**的另一种宿主，故只调盒、不碰它的语言）。
+ *
+ * ⚠ 2026-11-19 真机返工（用户：「UI 错位，模型下拉菜单缩成一团」）。
+ * **实测归因**（CDP 直读）：坞期那一套全部写在 `.pp-composer …` 前缀下（paper-toc.css /
+ * paper-cards.css），**被祖先限定**，而卷首不在坞里 ⇒ 本行拿到的是浏览器默认值：
+ *   · 触发器是 flex 容器但**没有 nowrap**，子件是默认的 `flex: 0 1 auto` ⇒ 模型名在这一行
+ *     被压到 113px **折成两行**、子件各 30px 高、触发器撑到 28px，与旁边 16px 的格子
+ *     基线错开——这就是「错位」；
+ *   · 没有 `border: 0 / background: transparent` ⇒ 「纸里嵌了个下拉输入框」；
+ *   · 下拉 `.ms-dropdown` 也没有卷首版宽度，坞期那条 `left: 0; right: 28px` 放在 140px
+ *     的行里算出 113px——「菜单缩成一团」。
+ * 所以下面这几条都是**补回卷首这一侧**的默认值，不是新语言。 */
 .pp-folio-pick-model {
   align-items: baseline;
   gap: 5px;
   max-width: 34ch;
+  line-height: 15px;
 }
 .pp-folio-pick-model .ms-container {
-  flex: 0 1 auto;
+  /* 不缩（坞期那份是 0 1 auto）：这一行里它是三笔之一，缩了就会触发上面那条折行 */
+  flex: 0 0 auto;
   min-width: 0;
+  line-height: 15px;
 }
-/* ⚠ 触发器**不继承坞期那套 reset**：`.pp-composer .ms-trigger` 的
- * `border: none / background: transparent` 被 `.pp-composer` 祖先限定，而本行住在
- * **卷首**（不在坞里）⇒ 不在这里显式抹掉，模型那一格会长出一个输入框边框，
- * 三格里只有它一枚像控件（实测：1440 纸上读作「纸里嵌了个下拉输入框」）。 */
 .pp-folio-pick-model .ms-trigger {
+  display: inline-flex;
+  align-items: baseline;
   min-height: 0;
+  height: 15px;
   padding: 0;
   gap: 5px;
   border: 0;
@@ -437,8 +455,20 @@
   box-shadow: none;
   font-family: var(--f-song);
   font-size: var(--fs-caption);
+  line-height: 15px;
   color: var(--ink-2);
   justify-content: flex-start;
+  /* **不许换行**（真机实测）：触发器只有 ~140px，坞期那套规则又给了 name 一个
+   * `flex: 1 1 auto`；在这一行里它会被压到 113px 而**把字折成两行**——子件各自 30px 高、
+   * 触发器撑到 28px，与旁边 16px 的格子基线错开。这就是用户报的「UI 错位」。 */
+  white-space: nowrap;
+}
+/* 三枚子件一律不缩、不折行（`flex: 0 0 auto` + nowrap 是上面那条的必要配套：
+ * 只给容器 nowrap 不够——收缩发生在 flex item 内部，字仍会在 113px 里折行）。 */
+.pp-folio-pick-model .ms-trigger > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  line-height: 15px;
 }
 .pp-folio-pick-model .ms-trigger-name {
   font-weight: 600;
@@ -448,6 +478,18 @@
 .pp-folio-pick-model .ms-trigger-caret {
   color: var(--ink-3);
   font-size: var(--fs-micro);
+}
+/* 模型下拉在**卷首**的宽度契约（2026-11-19 真机返工）：
+ * 坞期 `.ms-dropdown` 是 `left: 0; right: 28px`——那条规则假定触发器所在行有几百像素
+ * 宽（设置行 880）。天头这一行里触发器只有 ~140px ⇒ 菜单被算出 113px，两级菜单的
+ * 条目挤成半个字（用户：「模型下拉菜单缩成一团」）。
+ * 治法：撤掉 `right` 的拉扯，给一个**按内容**的宽度区间；放不下时向下开、允许滚动。 */
+.pp-folio-pick-model .ms-dropdown {
+  left: 0;
+  right: auto;
+  width: max-content;
+  min-width: 260px;
+  max-width: min(340px, 70vw);
 }
 /* 厂章**在天头里不出现**（2026-11-19 落地实测）：坞期它是 16px 方框，读作一枚小签；
  * 天头这一行是**读数**——去掉那圈框之后，只剩一个与模型名首字母相同的「D」紧贴

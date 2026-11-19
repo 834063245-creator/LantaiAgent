@@ -206,14 +206,26 @@ const ComposerSurface = memo(function ComposerSurface({
   useDialogEscape(() => setPendingYolo(false), { enabled: pendingYolo });
 
   /** 直接写入（跳过「全放要二次确认」那道闸——确认模态自己用它落账）。
-   *  纸期那一份搬到卷首档行（`DraftFolioSurface` 的权限格，写的是题签第四格）——
-   *  坞期只写本卷/工作区，四种来源各归各的宿主，不在这里合并。 */
+   *
+   *  ⚠ **纸期分支必须留着**（2026-11-19 真机返工）：卷首档行的「全放」只负责**弹确认**，
+   *  确认之后落哪一笔由**渲染这个模态的那位**决定——而模态住在纸期输入面
+   *  （`ComposerSheet` → 本组件，与坞期同一份实现）。删掉这一支的后果：用户点「确定」，
+   *  工作区默认被改成全放，而题签那一格**一个字没变** ⇒ 读作「弹窗吞了我的操作」。 */
   const applyMode = useCallback(
     (mode: PermissionMode) => {
+      if (isSheet) {
+        const st = useDraftSheetStore.getState();
+        const paper = st.papers.find((pp) => pp.id === st.focusedId);
+        if (paper?.picks) st.setPicks({ ...paper.picks, permission: mode }, paper.id);
+        /* 模态的收合也归这里：坞期靠 setSessionMode/setPermissionMode 顺手清 pendingYolo，
+         * 纸期写的是题签、不经过那两个 setter ⇒ 不显式清，确认完弹窗会一直悬着。 */
+        setPendingYolo(false);
+        return;
+      }
       if (session.activeSidNum != null) useModeStore.getState().setSessionMode(session.activeSidNum, mode);
       else useModeStore.getState().setPermissionMode(mode);
     },
-    [session.activeSidNum],
+    [isSheet, session.activeSidNum, setPendingYolo],
   );
 
   const selectMode = useCallback(

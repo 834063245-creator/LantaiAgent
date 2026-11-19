@@ -88,6 +88,14 @@ export function DraftSheet({ core }: { core: DraftSheetCore | null }) {
       const el = e.target as HTMLElement | null;
       const inField = typeof el?.closest === 'function' && el.closest('textarea, input, [role="listbox"]') !== null;
       if (inField) return; // 输入面自己处理（斜杠面板 / 弹层）
+      /* **有模态在场时 Esc 不归本件管**（2026-11-19 真机 bug：全放确认弹窗点了
+       * 「取消/确定」之前先按 Esc，整张纸被丢掉）。模态是 portal 到 body 的，事件源
+       * 不可能是纸里的输入件 ⇒ 旧判据放行 ⇒ 这一击既关了弹窗又弃了纸。
+       * 判据 = 文档里有 aria-modal 对话框 / 附图 lightbox 在场，Esc 归它们。 */
+      const modalOpen =
+        typeof document.querySelector === 'function' &&
+        document.querySelector('[role="dialog"][aria-modal="true"], .pp-image-lightbox') !== null;
+      if (modalOpen) return;
       if (e.defaultPrevented) return;
       e.stopPropagation();
       core?.dismissDraft?.(focusedId);

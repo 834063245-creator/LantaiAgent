@@ -62,8 +62,13 @@ export const DraftFolioSurface = memo(function DraftFolioSurface() {
       sheetPermission={sheetPermission}
       permissionMode={globalMode}
       onPermissionPick={(m) => {
-        // 纸期：写题签这一格——开卷那一刻由 applyDraftPicks 落成这一卷的卷级覆盖。
-        // 全放照旧先过二次确认（与坞期同一道闸，只是落点换成题签）。
+        /* 纸期：写题签这一格——开卷那一刻由 applyDraftPicks 落成这一卷的卷级覆盖。
+         *
+         * ⚠ 全放（yolo）只**弹确认**，不在这里落账（2026-11-19 真机返工）：
+         *   确认模态由纸期输入面（`ComposerSheet` → `YoloConfirmModal`）渲染，
+         *   它点「确定」后调的是那一面的 applyMode（写题签第四格）。本件若也写一次，
+         *   就是**两个真源**——模态还没点，题签已经变了，读作「弹窗是假的」。
+         *   这也正是用户报的「权限切换弹窗鼠标操作被吞」：弹窗在，点了确定却像没生效。 */
         if (m === 'yolo' && sheetPermission !== 'yolo') {
           useModeStore.getState().setPendingYolo(true);
           return;

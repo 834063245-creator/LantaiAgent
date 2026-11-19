@@ -16,9 +16,13 @@ import { describe, expect, it } from 'vitest';
 
 const CSS = readFileSync(join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'draft-sheet.css'), 'utf8');
 
-/** 取某个选择器的规则体（第一个匹配的 {...}）。 */
+/** 取某个选择器的规则体。
+ *  ⚠ 按**行首**锚定（2026-11-19）：卷首档行里存在 `.pp-draft-sheet .pp-folio-sub .pp-folio-picks`
+ *  这种「以同一串结尾」的复合选择器，裸 indexOf 会先撞上它、取回别人的规则体
+ *  （实测把 ⑨ 判成「没有 justify-content」）。 */
 function ruleOf(selector: string): string {
-  const at = CSS.indexOf(`${selector} {`);
+  const anchored = `\n${selector} {`;
+  const at = CSS.indexOf(anchored);
   if (at < 0) return '';
   const open = CSS.indexOf('{', at);
   const close = CSS.indexOf('}', open);
@@ -109,5 +113,26 @@ describe('待题纸 · V2 形态（纸 = 卷首 + 这张卷的创作坞）', () 
     expect(ruleOf('.pp-folio-pick-v')).toContain('var(--ink-2)');
     expect(ruleOf('.pp-folio-pick-k')).toContain('var(--ink-4)');
     expect(ruleOf('.pp-folio-pick-caret')).toContain('opacity: 0');
+  });
+
+  /* ⚠ 2026-11-19 真机返工（用户：「UI 错位，模型下拉菜单缩成一团，权限切换弹窗鼠标操作被吞」）。
+   * 三条都是「坞期规则被 .pp-composer 祖先限定、卷首不在坞里」的连带后果——钉住它们，
+   * 免得下次「统一到坞期那套」时又踩同一脚。 */
+  it('⑩ 模型那格不折行、不缩（错位的根因：子件各自 block 会把一行拆三行）', () => {
+    const trig = ruleOf('.pp-folio-pick-model .ms-trigger');
+    expect(trig, '缺触发器显式 display（坞期那条被祖先限定）').toContain('display: inline-flex');
+    expect(trig, '缺 nowrap（140px 里字会被折成两行）').toContain('white-space: nowrap');
+    expect(trig, '行高必须与档行一致').toContain('line-height: 15px');
+    // 子件不许缩：只给容器 nowrap 不够，收缩发生在 flex item 内部
+    const kids = ruleOf('.pp-folio-pick-model .ms-trigger > *');
+    expect(kids).toContain('flex: 0 0 auto');
+    expect(kids).toContain('white-space: nowrap');
+  });
+
+  it('⑪ 模型下拉在卷首的宽度契约（缩成一团 = 坞期 left/right 拉扯被搬进 140px 的行）', () => {
+    const menu = ruleOf('.pp-folio-pick-model .ms-dropdown');
+    expect(menu, '必须撤掉坞期那条 right 拉扯').toContain('right: auto');
+    expect(menu).toContain('width: max-content');
+    expect(menu, '下限要够两级菜单读').toContain('min-width: 260px');
   });
 });

@@ -22,6 +22,7 @@ import { DraftFolioSurface } from '../src/plugins/builtin/compose-dock/DraftFoli
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { resetComposeStoresForTests } from '../src/state/compose-store';
 import { useDraftSheetStore } from '../src/state/draft-sheet-store';
+import { useModeStore } from '../src/state/mode-store';
 import { usePresetStore } from '../src/state/preset-store';
 import { getChatStore } from '../src/ui/chat-store';
 
@@ -61,6 +62,7 @@ describe('待题纸 · 题签行（2026-11-19）', () => {
     resetCanvasStoresForTests();
     useDraftSheetStore.getState().dismissAll();
     usePresetStore.setState({ selected: 'standard', error: null });
+    useModeStore.setState({ permissionMode: 'ask', sessionModes: {}, pendingYolo: false });
     useCoreStore.getState().setChatCore(fakeCore(PANEL));
     getChatStore(PANEL).sess.setState({
       sessions: [{ id: 1, label: '案卷一' }],
@@ -142,6 +144,25 @@ describe('待题纸 · 题签行（2026-11-19）', () => {
     await act(async () => modeOpt?.click());
     expect(picks()?.permission).toBe('auto');
     expect(container.querySelector('[role="listbox"][aria-label="权限"]')).toBeNull();
+  });
+
+  /* ⚠ 2026-11-19 真机返工（用户：「权限切换弹窗鼠标操作被吞」）：
+   * 卷首的「全放」只**弹确认**，不落账——落账归渲染那个模态的那位（纸期输入面的
+   * applyMode）。本件若也写一次就是两个真源：模态还没点，题签已经变了。 */
+  it('全放只弹确认、不落账（落账归模态宿主；否则确认框是假的）', async () => {
+    await open();
+    const permBtn = [...container.querySelectorAll<HTMLButtonElement>('.pp-folio-pick-btn')].find((b) =>
+      b.textContent?.includes('权限'),
+    );
+    await act(async () => permBtn?.click());
+    const yoloOpt = [...container.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(
+      (o) => o.textContent === '全放',
+    );
+    expect(yoloOpt).toBeDefined();
+    await act(async () => yoloOpt?.click());
+    // 弹确认态已置位，而题签**一个字没改**
+    expect(useModeStore.getState().pendingYolo).toBe(true);
+    expect(picks()?.permission).toBeNull();
   });
 
   it('「弃纸」在这一行（书眉行退役后的去处）：点了 = 不烧号地撤纸', async () => {
