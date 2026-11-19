@@ -37,6 +37,7 @@
 | **动态插件提升（promote）** | [`dynamic-plugin-promotion-plan.md`](dynamic-plugin-promotion-plan.md) | **已立项未开工（2026-11-17 立）** | 动态插件可固化成常驻磁盘插件：用户显式审批 → Rust `plugin_promote` 原子落盘（manifest + 生成导出壳的 entry.js）→ 走既有装/卸/启用/禁用/授权四通道；`inject` 由沙箱访问记账反推、`permissions` 默认空、provenance 进 manifest 并在设置页可见。卡点 = convergence baseline 变更审批（B3） |
 | **agent hooks（生命周期扩展点）** | [`agent-hooks-plan.md`](agent-hooks-plan.md) | **一期/二期已竣工** | 步骤钩子家族已落（`ctx.steps`：pre-step 每步 enter/reject + turn-stopping 停止边界，含 durable/transient 注入、`create` 工厂、发现注入收编）；三期待拍（request 系列 / plan·inbox 收编 / CC 桥） |
 | **架阁（卡片架）** | [`entity-shelf-plan.md`](entity-shelf-plan.md) | **方案稿 v2（方向已拍板）；B1-B6 已落地** | 软件的门 + 卡片的家：顶部浮件一枚字 → 专用浮层两页；入阁 = 资产块抄进卡片库（Rust 存储 + RPC + TS 门面），B7 待定 |
+| **反馈密度（UI 手感）** | [`feedback-density-audit-2026-11-17.md`](feedback-density-audit-2026-11-17.md) | **体检已出（2026-11-17）；三批待排** | 全产品 412 个交互点的五时刻体检：**只会变色不会动**（几何过渡 5 处 vs 颜色 54 处）+ **次级件无按下态**（22 条 `:active`，主按钮与权限卡已做对）；缺失清单 20 条 + 三批建议见文末 |
 
 ## 待执行但已立项（按成本排）
 
