@@ -139,12 +139,13 @@ export {
   setMorphBox,
   useDraftSheetStore,
 } from '../../../state/draft-sheet-store';
+/* 待题纸出厂权限（2026-11-19「题签要能记住选择」批）：题签第四格的出厂值住在
+ * mode-store（**不是**工作区默认——纸上拨一下只给下一张纸留记号，不改所有未覆盖的卷）。
+ * 与 compose-dock 同一份单例，故必须走桥（直引会被产物构建内联成第二份）。 */
+export { useModeStore } from '../../../state/mode-store';
 /* 架阁浮层（entity-shelf-plan B3）要用的两件：软件口径 = plugin-window-store 的
  * defs/windows/openWindow；开合账 = shelf-store（纯 UI 状态，纸壳字件写、浮层读）。 */
 export { usePluginWindowStore } from '../../../state/plugin-window-store';
-/* 窗口设施（app shell 件 A，B7 修复）：**开窗必须走设施**——它比裸 store 多一步
- * 「通知受治进程治理器」，lazy/with-window 档的后端靠这条通知才会被拉起。 */
-export { closePluginWindow, openPluginWindow } from '../../window-facility';
 /* 卷首组合芯片（S6 P5a）读面：preset 清单 / 全局选择态 / 装载失败原因。
  * 写面与空白判据不经本出口——它们走 core 的能力位（sessionComposition /
  * isSessionBlank / selectSessionPreset，与创作坞芯片同一套）。faceDeps 已含该
@@ -160,6 +161,9 @@ export { useUpdateStore } from '../../../state/update-store';
 export { useWorkspaceEntryStore } from '../../../state/workspace-entry-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../../ui/message-model';
+/* 窗口设施（app shell 件 A，B7 修复）：**开窗必须走设施**——它比裸 store 多一步
+ * 「通知受治进程治理器」，lazy/with-window 档的后端靠这条通知才会被拉起。 */
+export { closePluginWindow, openPluginWindow } from '../../window-facility';
 /* 待题纸的题签三件要**与创作坞同一套选择器/同一把尺子**（模型下拉 = ModelSelector，
  * 思考档位表 = thinkingOptionsOrDefault）。两者都在 compose-dock 产物里 ⇒ 经
  * paper-shell 的入站面反引一份（esbuild 内联，无运行时耦合）。 */

@@ -114,6 +114,8 @@ export const effectiveModels = impl.effectiveModels;
 export const modelDescriptor = impl.modelDescriptor;
 export const thinkingOptionsOrDefault = impl.thinkingOptionsOrDefault;
 export const useDockStore = impl.useDockStore;
+// 待题纸出厂权限（2026-11-19「题签要能记住选择」批）：与 compose-dock 同一份 mode-store
+export const useModeStore = impl.useModeStore;
 export const useBgAlertStore = impl.useBgAlertStore;
 export const useUpdateStore = impl.useUpdateStore;
 export const canvasWheelMode = impl.canvasWheelMode;

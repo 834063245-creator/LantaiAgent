@@ -49,6 +49,7 @@ import {
   subscribeOverlayContributions,
   useCanvasViewStore,
   useDraftSheetStore,
+  useModeStore,
   usePresetStore,
 } from './host';
 import { measureFolioHeadHeight } from './measure';
@@ -221,7 +222,13 @@ function PaperView({
   useEffect(() => {
     if (picks !== null) return;
     setNotice(null, paperId);
-    // 出厂题签的模型/思考 = 此刻的「新卷出生默认」（settings 活跃行）；组合 = 预选 ?? 全局默认。
+    /* 出厂题签 = 「上一张纸记下的选择」（2026-11-19「题签要能记住选择」批）。
+     * 三笔各有自己的记忆位，不共用一个快照：
+     *   组合 → 全局默认（preset-store.selected，selectPreset 落盘 settings.composition）
+     *   模型/思考 → 新卷出生默认（compose-store 的 setGlobalModel / setGlobalThinking）
+     *   权限 → 待题纸出厂权限（mode-store.sheetPermission，缺省 null = 跟随工作区）
+     * ⚠ 权限那一格刻意**不是**工作区默认：在纸上拨只是给下一张纸留记号，
+     *   不该顺手改掉所有未覆盖的卷。 */
     const base = resolveNewSessionDefault();
     setPicks(
       {
@@ -229,8 +236,7 @@ function PaperView({
         providerName: base.providerName,
         model: base.model,
         thinking: base.thinking,
-        // 权限出厂 = 跟随工作区（2026-11-28 卷级权限批：绝大多数卷不该带覆盖）
-        permission: null,
+        permission: useModeStore.getState().sheetPermission,
       },
       paperId,
     );
@@ -375,11 +381,7 @@ function PaperView({
           不罩纸壳——纸壳一旦 inert，点失焦那张就等于点画布空白，见上一条 ⚠）。
           这不是「换内容」：DOM 身份不变、盒不变，变的只是这块栈进不进交互树。
           `ref` = 纸高的实测点（量本栈、不量纸自己——见 measureStack 头注）。 */}
-      <div
-        className="pp-draft-stack"
-        ref={measureStack}
-        {...(focused ? null : ({ inert: true } as const))}
-      >
+      <div className="pp-draft-stack" ref={measureStack} {...(focused ? null : ({ inert: true } as const))}>
         {overlays.map((def) => (
           <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
             <def.component />

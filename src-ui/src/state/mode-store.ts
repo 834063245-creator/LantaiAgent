@@ -43,6 +43,12 @@ export const MODE_DESCRIPTIONS: Record<PermissionMode, string> = {
 interface ModeStore {
   /** **工作区默认**权限模式（新卷的起点；2026-11-28 起不再是"全局唯一真相"）。 */
   permissionMode: PermissionMode;
+  /** **待题纸的出厂权限**（2026-11-19「题签要能记住选择」批）。
+   *  与 permissionMode 分开的理由：那一格在纸上的含义是「**这一卷**要按什么开卷」，
+   *  而 permissionMode 是「新卷跟随工作区」的落点——用户在纸上拨了一下，是给**下一张纸**
+   *  留个记号，不该顺手改掉工作区默认（那会让所有未覆盖的卷一起变）。
+   *  null = 未记过，出厂值仍是 null（跟随工作区）。 */
+  sheetPermission: PermissionMode | null;
   /** **卷级覆盖**（键 = 卷号字符串；缺 = 跟随工作区默认）。
    *  用户拍板（2026-11-28）：多卷并行时 A 卷全放、B 卷常询，互不影响。
    *  ⚠ 作用面：前端权限闸门（permission-ask 事件）按卷判定；Rust 侧只有一份全局
@@ -52,6 +58,8 @@ interface ModeStore {
   pendingYolo: boolean;
   /** 改**工作区默认**：写 store + 镜像 Rust + 落盘（不动已开着的卷）。 */
   setPermissionMode: (mode: PermissionMode) => void;
+  /** 改**待题纸出厂权限**（只在纸上拨时写；落盘 settings.agent.sheetPermissionMode）。 */
+  setSheetPermissionDefault: (mode: PermissionMode | null) => void;
   /** 某卷的**有效**权限 = 卷级覆盖 ?? 工作区默认（sessionId 空 = 工作区默认）。 */
   modeOf: (sessionId: number | string | null | undefined) => PermissionMode;
   /** 写/清某卷的覆盖（mode = null ⇒ 清除，回到跟随工作区）。 */
@@ -62,6 +70,7 @@ interface ModeStore {
 
 export const useModeStore = create<ModeStore>((set, get) => ({
   permissionMode: 'ask',
+  sheetPermission: null,
   sessionModes: {},
   pendingYolo: false,
   setPermissionMode: (mode) => {
@@ -79,6 +88,19 @@ export const useModeStore = create<ModeStore>((set, get) => ({
       }
     } catch (e) {
       console.warn('[mode-store] permissionMode 落盘失败（重启将回上次落盘值）:', e);
+    }
+  },
+  /** 待题纸出厂权限：只落 store + 盘（**不**镜像 Rust——它不是工作区默认，
+   *  后台任务的那份镜像不该因为「我在纸上点了一下」而变）。 */
+  setSheetPermissionDefault: (mode) => {
+    set({ sheetPermission: mode });
+    try {
+      const s = loadSettings();
+      if (s.agent.sheetPermissionMode !== (mode ?? undefined)) {
+        saveSettings({ ...s, agent: { ...s.agent, sheetPermissionMode: mode ?? undefined } });
+      }
+    } catch (e) {
+      console.warn('[mode-store] 待题纸出厂权限落盘失败（下次开纸回上次落盘值）:', e);
     }
   },
   /** 某卷的有效模式 = 卷级覆盖 ?? 工作区默认（sessionId 空 = 工作区默认）。 */
@@ -131,7 +153,15 @@ export function hydratePermissionMode(): void {
   } catch {
     // settings 读失败 — 无覆盖（全部跟随默认）
   }
-  useModeStore.setState({ permissionMode: mode, sessionModes });
+  // 待题纸出厂权限一并水合（毒化值按「不在册」丢弃，同族纪律）
+  let sheetPermission: PermissionMode | null = null;
+  try {
+    const stored = loadSettings().agent?.sheetPermissionMode;
+    if (stored && PERMISSION_MODES.includes(stored)) sheetPermission = stored;
+  } catch {
+    // settings 读失败 — 出厂回落 null（跟随工作区）
+  }
+  useModeStore.setState({ permissionMode: mode, sheetPermission, sessionModes });
   typedRpc('set_permission_mode', { mode }).catch(() => {
     // boot 期 Rust 可能未就绪 — 不视为错误（后续切换时会再镜像）
   });

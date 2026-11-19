@@ -17,7 +17,7 @@
 
 import { memo } from 'react';
 import { DraftFolioPicks } from './DraftFolioPicks';
-import { MODE_LABELS, useCoreStore, useDialogEscape, useDraftSheetStore, useModeStore } from './host';
+import { MODE_LABELS, selectPreset, useCoreStore, useDialogEscape, useDraftSheetStore, useModeStore } from './host';
 import { useComposerChrome } from './surface/use-composer-chrome';
 import { useComposerComposition } from './surface/use-composer-composition';
 import { useComposerModels } from './surface/use-composer-models';
@@ -67,7 +67,15 @@ export const DraftFolioSurface = memo(function DraftFolioSurface() {
       presetError={composition.presetError}
       presetRoster={composition.presetRoster}
       onCompToggle={() => composition.setCompOpen((v) => !v)}
-      onDraftPresetPick={composition.onDraftPresetChange}
+      onDraftPresetPick={(id) => {
+        /* 先写题签（**这一卷**的组合，开卷才落卷级登记），再记成**新卷出生默认**
+         * （2026-11-19「题签要能记住选择」批）——否则每开一张新纸都要重选一遍。
+         * 写默认 = selectPreset，与坞期无主态、设置面板是**同一个入口**（含校验与落盘）；
+         * 校验不过时它返回 false 并只把原因留在 preset-store.error 上——题签那一笔照旧
+         * 存在（纸期不做二次拒绝，见 use-composer-composition 的 onDraftPresetChange 注）。 */
+        composition.onDraftPresetChange(id);
+        selectPreset(id);
+      }}
       sheetPermission={sheetPermission}
       permissionMode={globalMode}
       onPermissionPick={(m) => {
@@ -85,12 +93,19 @@ export const DraftFolioSurface = memo(function DraftFolioSurface() {
         const st = useDraftSheetStore.getState();
         const paper = st.papers.find((pp) => pp.id === st.focusedId);
         if (paper?.picks) st.setPicks({ ...paper.picks, permission: m }, paper.id);
+        /* 同时记成**下一张纸的出厂值**（2026-11-19「题签要能记住选择」批）：题签这一格
+         * 只对**这一卷**成立（开卷时落卷级覆盖）；不记这一笔，用户每次新建都要重拨一次。
+         * ⚠ 记的是「待题纸出厂权限」而不是「工作区默认」——在纸上拨一下只是给下一张纸
+         * 留记号，顺手改工作区默认会让所有未覆盖的卷一起变。 */
+        useModeStore.getState().setSheetPermissionDefault(m);
         notice(`本卷权限将按「${MODE_LABELS[m]}」开卷`, 'info');
       }}
       onPermissionInherit={() => {
         const st = useDraftSheetStore.getState();
         const paper = st.papers.find((pp) => pp.id === st.focusedId);
         if (paper?.picks) st.setPicks({ ...paper.picks, permission: null }, paper.id);
+        // 「跟随工作区」也是一次显式选择：下标同样记住（下次开纸就跟着工作区，不再预填）
+        useModeStore.getState().setSheetPermissionDefault(null);
       }}
       model={session.model}
       providerName={session.providerName}

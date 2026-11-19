@@ -236,6 +236,11 @@ export interface AgentSettings {
   collaborationMode?: 'normal' | 'plan';
   /** **工作区默认**权限模式（新卷的起点；2026-11-28 起不再是"全局唯一真相"） */
   permissionMode?: 'ask' | 'auto' | 'yolo';
+  /** **待题纸的出厂权限**（2026-11-19「题签要能记住选择」批）：用户在纸上拨过权限，
+   *  下一张纸摊开时就按这个值预填（缺 = 跟随工作区默认）。
+   *  ⚠ 与 permissionMode 分开：那一格在纸上的语义是「这一卷怎么开卷」，拨它**不该**
+   *  顺手改掉工作区默认（那会让所有未覆盖的卷一起变）。 */
+  sheetPermissionMode?: 'ask' | 'auto' | 'yolo';
   /** 卷级权限覆盖（键 = 卷号字符串；缺 = 跟随 permissionMode）。
    *  2026-11-28 权限卷级批：用户拍板「这一卷怎么跟 Agent 相处」应当逐卷可定——
    *  多卷并行时 A 卷全放、B 卷常询，互不影响。
