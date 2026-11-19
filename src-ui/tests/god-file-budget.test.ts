@@ -101,7 +101,12 @@ const DEBT: Record<string, number> = {
   'src-ui/src/paper/tool-present.ts': 1200, // 现 1104
   'src-tauri/src/permissions/mod.rs': 1200, // 现 1120
   'src-tauri/src/cdp/e2e.rs': 1200, // 现 1188
-  'src-ui/src/plugins/builtin/canvas-nav/session-sidebar.css': 1100, // 现 1089
+  /* 2026-11-19 用户定调：档位直接抬到 2500（跨两档，不是按 1200 逐档追）。
+   * 理由 = 这个文件还在长（motion 第二批 0142f7e7 长到 1125），而侧栏样式是**一张
+   * 连续的特异性升序表**（biome `noDescendingSpecificity` 要求整段整段落），按百行档
+   * 每长几十行就来回一次「拆 or 改数字」，拆出来的只是把同一张表切段再互相 import——
+   * 结构不会更好，只会更难查某条规则排在哪。一次留足空间，等真要动结构再按单据拆。 */
+  'src-ui/src/plugins/builtin/canvas-nav/session-sidebar.css': 2500, // 现 1125
   'src-ui/src/plugins/builtin/settings-domain/SettingsPanel.tsx': 1100, // 现 1084
   'src-ui/src/plugins/builtin/sessions-home/home.css': 1100, // 现 1063
   'src-ui/src/plugins/loader.ts': 1100, // 现 1056
