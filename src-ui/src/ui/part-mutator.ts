@@ -168,6 +168,34 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
   }
 }
 
+/* ── 卡片终态收口（2026-11-20「工具卡片卡在运行态」批） ── */
+
+/** 把仍在 running/pending 的工具卡落成终态——**递归进子代理组**。
+ *
+ *  Why：`_finaliseStreamingAssistant`（chat-stream）收尾时只扫顶层 `parts`，
+ *  而子 Agent 的工具卡住在 `SubAgentPart.parts` 里。子 Agent 被停/杀/挂死时它的
+ *  执行器不会再发 ToolResult，这些卡于是停在「行 Ns」，父回合早已结束也没有
+ *  任何人来收——用户侧症状正是「工具卡片卡在运行态」。
+ *
+ *  语义与顶层同款：收尾未落定 = 这次调用没有结果（error），不假装成功。
+ *  返回是否有改动（调用方据此决定要不要 bump）。 */
+export function finalisePendingToolParts(parts: AssistantPart[]): boolean {
+  let changed = false;
+  for (const part of parts) {
+    if (part.type === 'tool') {
+      if (part.status === 'running' || part.status === 'pending') {
+        part.status = 'error';
+        changed = true;
+      }
+      continue;
+    }
+    if (part.type === 'subagent') {
+      if (finalisePendingToolParts(part.parts)) changed = true;
+    }
+  }
+  return changed;
+}
+
 /* ── 资产块路由（协议 docs/archive/agent-asset-blocks.md §2.2/§2.3）── */
 
 /** 资产终值应用（两条路径共用同一块构造，防形状漂移）：

@@ -28,7 +28,12 @@ import type {
   UserMessage,
 } from './message-model';
 import { createAssistantMessage, createNoticeMessage, createUserMessage } from './message-model';
-import { appendNoticePart, applyAssetUpdateToExistingParts, applyEventToParts } from './part-mutator';
+import {
+  appendNoticePart,
+  applyAssetUpdateToExistingParts,
+  applyEventToParts,
+  finalisePendingToolParts,
+} from './part-mutator';
 import { isSubagentSpawnTool } from './tool-semantics';
 
 // ── 轮次配对类型 ──
@@ -292,10 +297,12 @@ function _finaliseStreamingAssistant(ctx: StreamContext): void {
     if (assistant.status !== 'error') assistant.status = 'done';
     for (const part of assistant.parts) {
       if (part.type === 'text') part.finalised = true;
-      if (part.type === 'tool' && (part.status === 'running' || part.status === 'pending')) {
-        part.status = 'error';
-      }
     }
+    // 未落定的工具卡统一收成 error——**含子代理组内**（2026-11-20「工具卡片
+    // 卡在运行态」批）：子 Agent 被停/杀/挂死时它的执行器不会再发 ToolResult，
+    // 而那些卡住在 SubAgentPart.parts 里，旧实现只扫顶层 ⇒ 父回合早结束了，
+    // 组内那张卡还停在「行 Ns」，没有任何人会来收。
+    finalisePendingToolParts(assistant.parts);
     // 替换为新的消息对象：AssistantBubble 的 memo 比较器在
     // prev.msg === next.msg 时直接跳过，因此仅原地修改永远不会
     // 渲染流式→完成的转换（卡住的旋转器/光标）。

@@ -381,7 +381,25 @@ export class StreamingToolExecutor {
    *      「模型宣布过这个调用」的事实；被 discard 的只是它进会话投影的资格。
    *      这正是「迟到工具结果只进审计、不进投影」的落点，与 `tool/result` 的
    *      投影栅栏（`Agent._appendMessage`）一对。 */
-  discard(): void {
+  discard(reason = '本次尝试作废（重试/作废），结果未采用'): void {
+    // ⚡ 卡片必须终结（2026-11-20「工具卡卡在运行态」批）：dispatch 事件在 addTool
+    //   时就已把卡片画成 running，discard 若只清账不落终态，那些卡片要等到
+    //   **本轮收尾**才被 `_finaliseStreamingAssistant` 统一标 error——而收尾可能
+    //   隔着整整一轮重试（数分钟），用户看到的就是「一直转」。
+    //   落终态用「已取消」同一套语义：UI 是呈现面，不是投影，不违反
+    //   「作废轮的迟到结果不进会话投影」那条纪律（那条管的是 `_appendMessage`）。
+    //   刻意只走 UI sink（`emitResult`）不走管道（`emitPipelineResult`）：这批结果
+    //   本来就要被重试覆盖掉，惊动 tool/result·tool/error 监听面等于让钩子对一次
+    //   作废尝试记账（富化/统计会重复计数）。
+    for (const [, call] of this.pendingCalls) {
+      const result: PendingResult = {
+        call,
+        output: `[已取消] 工具 ${call.name} 的这次执行作废（${reason}）。`,
+        err: 'discarded',
+        truncated: false,
+      };
+      this.emitResult(call, this.tools.get(call.name) ?? null, result);
+    }
     this.pending.clear();
     this.pendingCalls.clear();
     this.completed = [];
@@ -572,8 +590,16 @@ export class StreamingToolExecutor {
     } catch (e) {
       const eName = (e as { name?: string })?.name;
       const eMsg = (e as { message?: string })?.message;
-      if (eName === 'AbortError' || eMsg?.includes('aborted')) {
-        throw e; // 不捕获中止 — 交给调用方处理
+      // ⚡ 中止判据 = 本轮 signal（2026-11-20「工具卡片卡在运行态」批）。
+      //   旧实现按错误**文本**认中止（`name === 'AbortError' || msg.includes('aborted')`），
+      //   于是任何文案里带 aborted 的普通失败（链路被对端切断 / 子进程被杀 /
+      //   适配器把 abort 字样拼进 message）都被当成「用户按了停止」抛出去：
+      //     · `_drainPending` 随即整体中止收集（break），**该次调用的 ToolResult 永不发出**；
+      //     · in-flight 期间没有兜底计时器（backstop 只在 awaitRemaining 的竞速里），
+      //       若 loop 此时已返回，这张卡片就一直停在「行 Ns」。
+      //   现在只有 signal 真的中止才抛；其余一律按普通失败落地（emitPipelineResult）。
+      if (eName === 'AbortError' && this.signal?.aborted) {
+        throw e; // 真中止 — 交给调用方处理（_settleCancelled 为其补终态）
       }
       const errMsg = eMsg ? eMsg.split('\n')[0] : String(e);
       const result: PendingResult = {
