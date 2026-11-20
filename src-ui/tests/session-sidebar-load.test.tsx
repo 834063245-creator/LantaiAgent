@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 // SessionSidebar 载入成本守护：
 //   ① 刷新分频——消息流式追加（每次 touchMessage）不得触发磁盘全量重扫

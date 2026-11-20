@@ -15,7 +15,7 @@
 // CSSTransition 一视同仁，停顿与恢复各延迟 1 帧；300 条动画时全量 pause+play
 // 一次 2.13ms（单帧预算 12.8%）。
 
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHitstop, HITSTOP_MS } from '../src/plugins/builtin/paper-shell/hitstop';

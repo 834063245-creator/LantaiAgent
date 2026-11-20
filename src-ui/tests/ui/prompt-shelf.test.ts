@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 // PromptShelf（ask_user 弹卡）行为测试 —
 // 1. 开放式问题（无 options）：渲染文本输入 + 提交按钮，自定义回答可提交

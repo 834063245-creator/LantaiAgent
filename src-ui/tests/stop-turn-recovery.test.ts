@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 // 停止链路回归（2026-09-03「停止后会话坏掉」诊断）：
 //   ① abort() 的 3s 安全网定时器不得误杀停止后新发起的轮次

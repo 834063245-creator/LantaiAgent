@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 // Copyright (c) 2026 Wenbing Jing. All rights reserved.
 // SPDX-License-Identifier: MIT

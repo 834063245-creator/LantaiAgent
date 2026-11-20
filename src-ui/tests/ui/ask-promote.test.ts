@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 // 卡架「顶队头」行为测试（2026-11-11 画布多卷审批 UX · A 面的后半句）。
 //

@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 // 目标续行驱动器（ChatCore）· 卷身份与重排回归（2026-11-12）。
 //

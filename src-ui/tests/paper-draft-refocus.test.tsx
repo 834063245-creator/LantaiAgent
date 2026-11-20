@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
@@ -107,7 +107,9 @@ describe('待题纸 · 失焦后仍可点回（inert 不许摘掉指针通道）
     expect(idle?.querySelector('.pp-draft-stack')?.hasAttribute('inert'), '失焦那张的输入栈不进交互树').toBe(true);
     const focusedId = useDraftSheetStore.getState().focusedId;
     const focusedEl = container?.querySelector(`[data-paper-id="${focusedId}"]`) as HTMLElement | null;
-    expect(focusedEl?.querySelector('.pp-draft-stack')?.hasAttribute('inert'), '焦点那张的输入栈照常可交互').toBe(false);
+    expect(focusedEl?.querySelector('.pp-draft-stack')?.hasAttribute('inert'), '焦点那张的输入栈照常可交互').toBe(
+      false,
+    );
   });
 
   it('点失焦那张 = 焦点回到它', async () => {

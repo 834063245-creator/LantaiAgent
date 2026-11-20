@@ -10,7 +10,7 @@
 //   ② 事件永不到达时兜底窗关（不许把一张该消失的卷永久留在场上）；
 //   ③ 取消后不再触发（卷在窗内重开 = 撤销退场，不是卸载）。
 
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOTION_END_FALLBACK_MS } from '../src/plugins/builtin/paper-shell/motion-end';

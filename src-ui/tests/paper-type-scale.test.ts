@@ -9,7 +9,7 @@
 // --font-scale ⇒ 模块常量定格在 1。复位后重导入才能拿到本文件设的 1.5。
 // 反向基线（无 document ⇒ 1）钉在 tests/ui-type-scale.test.ts 的 node 用例里。
 
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 import { describe, expect, it, vi } from 'vitest';
 
