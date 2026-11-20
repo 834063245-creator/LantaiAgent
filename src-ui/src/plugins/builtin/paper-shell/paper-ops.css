@@ -706,6 +706,20 @@
     scale: 1.5;
   }
 }
+/* 提笔收束（2026-11-17 反馈密度批 · 第二批）：整轮结束不是「凭空消失」——
+ * 方点下沉 3px、缩到 0.6、淡尽，读作「笔提起来」。宿主上有呼吸动画（pp-ink-live），
+ * 本规则靠更高特异性整表替换（同属性两条动画只能二选一），forwards 保持终态。
+ * 伪元素（晕开环）随宿主 opacity 一起消失，无需另设。 */
+.pp-quill.pp-quill-lift {
+  animation: pp-quill-lift var(--m-sheet) var(--m-ease-io) forwards;
+}
+@keyframes pp-quill-lift {
+  to {
+    opacity: 0;
+    translate: 0 3px;
+    scale: 0.6;
+  }
+}
 .pp-mm-band {
   position: absolute;
   background: color-mix(in oklch, var(--ink-1) 8%, transparent);

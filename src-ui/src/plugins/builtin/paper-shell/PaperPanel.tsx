@@ -38,7 +38,7 @@
 // 本文件自此只剩**视图**：装配（use-paper-panel.ts）+ 表现件（paper-panel-parts.tsx）+ 本文件 JSX。
 // 改域逻辑去装配根，改单块渲染去表现件，改版面留在这里。
 
-import { type CSSProperties, Fragment, useEffect } from 'react';
+import { type CSSProperties, Fragment, useEffect, useState } from 'react';
 import { volumeDisplayName } from '../../../state/volume-name';
 import { DockTetherLayer } from './DockTetherLayer';
 import { DraftSheet } from './DraftSheet';
@@ -71,6 +71,35 @@ import { blockReturnsToFlow } from './use-paper-drag';
 import { GHOST_H } from './use-paper-regions';
 import './PaperPanel.css';
 import { usePaperPanelAssembly } from './use-paper-panel';
+
+/** 落笔点（2026-09-06 纸面运行态）：卷在跑而尾部无湿墨时，卷尾石青方点呼吸。
+ *
+ *  **提笔收束**（2026-11-17 反馈密度批 · 第二批）：跑完不是「凭空消失」——方点
+ *  下沉 3px、缩到 0.6、淡尽（一窗 280ms），读作「笔提起来」。为什么收在这里：
+ *  用户真机上唯一看得见的运行态信号就是它（原话「靠页面最下面那个呼吸的蓝色
+ *  方块」）——屏幕底缘那条呼吸线他从未注意到。**反馈要放在视线所在的位置。** */
+function Quill({ live }: { live: boolean }) {
+  const [seen, setSeen] = useState(live);
+  const [lifting, setLifting] = useState(false);
+  useEffect(() => {
+    if (live) {
+      setSeen(true);
+      setLifting(false);
+      return;
+    }
+    if (!seen) return;
+    setLifting(true);
+    /* 窗长 = --m-sheet（260ms）+ 一拍余量。元素即将消失、没有事件可听，故用钟
+     * （motion-end 通则的唯一豁免位）。窗内又开跑 ⇒ cleanup 撤销，方点续呼吸。 */
+    const t = window.setTimeout(() => {
+      setSeen(false);
+      setLifting(false);
+    }, 280);
+    return () => window.clearTimeout(t);
+  }, [live, seen]);
+  if (!seen) return null;
+  return <div className={`pp-quill${lifting ? ' pp-quill-lift' : ''}`} aria-hidden="true" />;
+}
 
 export function PaperPanel() {
   /* 待题纸是**瞬态**（设计件 §3.5）：关画布 / 切工作区 = 弃纸——不烧号、不落盘、
@@ -433,9 +462,7 @@ export function PaperPanel() {
                      * 锚线下方石青方点呼吸。湿墨尾点在场时让位（书写中的正文
                      * 自带活信号，双点成噪声）。LOD 缩远不画（方点随缩放变
                      * 亚像素）。运行而纸面静止的「死寂窗口」由此被照亮。 */}
-                    {!lod && runningSessions.has(r.sessionNum) && !r.writingBlockId && (
-                      <div className="pp-quill" aria-hidden="true" />
-                    )}
+                    {!lod && <Quill key={r.sessionId} live={runningSessions.has(r.sessionNum) && !r.writingBlockId} />}
                     {/* 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态）——
                      * 远档退场：亚像素交互柄只剩噪点（P4c）。 */}
                     {!lodFar && (
