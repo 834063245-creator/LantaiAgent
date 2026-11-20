@@ -117,24 +117,18 @@
       }
     },
     {
-      "description": "Block until a target completes, then return immediately — event-driven, NOT a fixed sleep. Pass agentId to wait for that sub-agent to finish: returns its final status the moment it completes (no polling loops, no guessing durations). For background shell jobs use bash_wait (dedicated tool). Omit agentId and pass durationMs ONLY as a fallback for non-event waits (watcher re-analysis, file appearance). Max 10 minutes per call.",
+      "description": "Block until sub-agents finish, then return immediately — event-driven, there is nothing to sleep on. Pass agentId to wait for that one sub-agent; omit it to wait for ALL sub-agents currently running (with none running it returns at once, it does not wait anyway). The moment the last target settles you get its final status — no polling loops, no guessing durations. For background shell jobs use shell(wait, jobId) instead. Max 10 minutes per call; a timed-out wait leaves the targets running — call wait again to keep waiting.",
       "name": "wait",
       "parameters": {
         "additionalProperties": {},
         "properties": {
           "agentId": {
-            "description": "Sub-agent ID to wait for (from agent_spawn result or agent_status). Waits until it completes/fails/stops.",
+            "description": "Sub-agent ID to wait for (from agent_spawn result or agent_status). Omit to wait for all running sub-agents.",
             "type": "string"
-          },
-          "durationMs": {
-            "default": 10000,
-            "description": "Fallback sleep when agentId is omitted (1000 = 1s, max 600000). Prefer agentId/bash_wait.",
-            "maximum": 600000,
-            "type": "number"
           },
           "timeoutMs": {
             "default": 600000,
-            "description": "Max wait in ms (default 600000 = 10 min).",
+            "description": "Max wait in ms (default 600000 = 10 min). On expiry it reports which targets are still running — they keep running; call wait again to continue.",
             "maximum": 600000,
             "type": "number"
           }

@@ -545,7 +545,8 @@ describe('executor 资产通道 — assetChannel 工具的事件路由', () => {
     executor.addTool({
       id: 'c5',
       name: 'wait',
-      arguments: JSON.stringify({ durationMs: 1 }),
+      // wait 已无干等参数（2026-11-20）：无池 / 无在跑子 Agent ⇒ 立即返回
+      arguments: JSON.stringify({}),
     });
     await executor.awaitRemaining();
     const kinds = events.map((e) => e.kind);

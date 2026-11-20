@@ -32,10 +32,11 @@
 
 ### 2.2 wait 工具 — 事件驱动等待
 
-`src-ui/src/agent/tools/wait.ts`：`wait({ agentId, timeoutMs })` 阻塞到子 Agent 完成（内部 500ms 轮询 pool，**不消耗 LLM 轮次**），完成立即返回最终状态+结果摘要。
+`src-ui/src/plugins/builtin/wait-domain/wait.ts`：`wait({ agentId?, timeoutMs })` 阻塞到子 Agent 落地（内部 500ms 轮询 pool，**不消耗 LLM 轮次**），落地立即返回最终状态+结果摘要。不传 `agentId` = 等**当前全部在跑**的子 Agent；一个都没在跑 = 立即返回。
 
 - 设计演进（重要教训）：第一版是固定时长 sleep——**错**。LLM 猜秒数，猜错白等/等不够，是轮询问题的另一种形态。正确语义 = bash_wait 的"等目标完成"。
-- 工具分工：等子 Agent → `wait({agentId})`；等后台任务 → `bash_wait`；无事件可等（watcher 分析/文件出现）→ `wait({durationMs})` 兜底。
+- 2026-11-20（用户拍板「取消干等传参」）：中间态残留下来的 `durationMs` 兜底一并拆除——wait 现在只有一种语义「等目标落地」，不存在「睡 N 秒」。无事件可等的正确答案是「没有可等待目标 = 立即返回」，不是睡一觉再回来说「现在去检查状态吧」。
+- 工具分工：等子 Agent → `wait`；等后台 shell job → `shell(wait, jobId)`；等 DOM/控件 → `browser(wait)` / `desktop(uia_wait)`。
 
 ### 2.3 agent_board 工具 — 黑板第一层
 

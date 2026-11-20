@@ -20,7 +20,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 |------|------|--------|--------------|
 | [`web_search`](#web_search) | ✓ | — | Search the internet for real-time information. Uses a free anonymous search API first; if it fails, automatically falls back to Bing/DuckDuckGo scraping. No API key required. |
 | [`ask_user`](#ask_user) | ✓ | — | Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s). |
-| [`wait`](#wait) | ✓ | — | Block until a target completes, then return immediately — event-driven, NOT a fixed sleep. Pass agentId to wait for that sub-agent to finish: returns its final status the moment it completes (no polling loops, no guessing durations). For background shell jobs use bash_wait (dedicated tool). Omit agentId and pass durationMs ONLY as a fallback for non-event waits (watcher re-analysis, file appearance). Max 10 minutes per call. |
+| [`wait`](#wait) | ✓ | — | Block until sub-agents finish, then return immediately — event-driven, there is nothing to sleep on. Pass agentId to wait for that one sub-agent; omit it to wait for ALL sub-agents currently running (with none running it returns at once, it does not wait anyway). The moment the last target settles you get its final status — no polling loops, no guessing durations. For background shell jobs use shell(wait, jobId) instead. Max 10 minutes per call; a timed-out wait leaves the targets running — call wait again to keep waiting. |
 | [`show_asset`](#show_asset) | ✓ | — | Create a visual asset block in the conversation (chart/table/metric/graph/html...) rendered as a component. Use for any deliverable that benefits from spatial layout or needs to be referred/updated later (charts, tables, impact graphs, metric dashboards, SVG/HTML cards). The block enters the chat flow and can be pinned to the canvas by the user. Kinds and their payload schemas are listed by list_block_kinds; presentation selects the visual form within the kind white-list (omit for the default). Check list_block_kinds before your first call. |
 | [`update_asset`](#update_asset) | ✓ | — | Update an existing asset block in-place by assetId (payload/presentation replace; the block id and pin position keep unchanged — pinned copies update live). Rules: kind is NOT changeable (changing semantics means creating a new asset with show_asset); presentation is changeable (skin swap, within the same kind white-list). Errors name what went wrong and what to do instead. |
 | [`list_block_kinds`](#list_block_kinds) | ✓ | — | List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically). |
@@ -67,15 +67,14 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 
 ### `wait`
 
-> Block until a target completes, then return immediately — event-driven, NOT a fixed sleep. Pass agentId to wait for that sub-agent to finish: returns its final status the moment it completes (no polling loops, no guessing durations). For background shell jobs use bash_wait (dedicated tool). Omit agentId and pass durationMs ONLY as a fallback for non-event waits (watcher re-analysis, file appearance). Max 10 minutes per call.
+> Block until sub-agents finish, then return immediately — event-driven, there is nothing to sleep on. Pass agentId to wait for that one sub-agent; omit it to wait for ALL sub-agents currently running (with none running it returns at once, it does not wait anyway). The moment the last target settles you get its final status — no polling loops, no guessing durations. For background shell jobs use shell(wait, jobId) instead. Max 10 minutes per call; a timed-out wait leaves the targets running — call wait again to keep waiting.
 
 - 只读：是
 
 | 参数 | 必选 | 类型 | 说明 |
 |------|------|------|------|
-| `agentId` | — | string | Sub-agent ID to wait for (from agent_spawn result or agent_status). Waits until it completes/fails/stops. |
-| `durationMs` | — | number | Fallback sleep when agentId is omitted (1000 = 1s, max 600000). Prefer agentId/bash_wait. |
-| `timeoutMs` | — | number | Max wait in ms (default 600000 = 10 min). |
+| `agentId` | — | string | Sub-agent ID to wait for (from agent_spawn result or agent_status). Omit to wait for all running sub-agents. |
+| `timeoutMs` | — | number | Max wait in ms (default 600000 = 10 min). On expiry it reports which targets are still running — they keep running; call wait again to continue. |
 
 ### `show_asset`
 

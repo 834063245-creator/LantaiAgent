@@ -1,3 +1,56 @@
+# Baseline 变更申请 — phase-0/tool-schemas.full.json + phase-0/tool-schemas.plan.json（wait 取消 durationMs 干等参数）
+
+> 申请日期：2026-11-20 · 申请人：编码助手
+> 状态：**已批准** —— 用户原话：「这个干等也太傻逼了，我要取消干等传参」= 本变更的开工授权。
+> 模型可见表面：**有变更**（`wait` 删除 `durationMs` 参数、描述改写）——这正是本申请的对象；
+> 工具数不变（无增无删），只有该条 schema 的 `description` 与 `parameters` 变。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.full.json`
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.plan.json`
+- `src-ui/tests/convergence/baseline/preset-minimal/phase-0/tool-schemas.full.json`
+- `src-ui/tests/convergence/baseline/preset-minimal/phase-0/tool-schemas.plan.json`
+- 变更内容：四份快照的 `wait` 条目内，删 `parameters.properties.durationMs`（含其 default 10000 /
+  maximum 600000），改写 `description` 与 `agentId` / `timeoutMs` 的参数说明；其余条目逐字节不变。
+
+## 2. 为什么必须变
+
+- `durationMs` 是 wait 第一版「固定 sleep」形态的遗留：没有 `agentId` 时 `await sleep(durationMs)`，
+  空参默认睡 10 秒再回一句「已等待 10.0s」。它把 wait 变成「睡 N 秒」——模型据此可以拿它当拖延/抢跑，
+  而「等谁」一个字都没有。用户看到的就是干等。
+- 同一路径还是**骗人返回**的来源：`agentId && pool` 双条件使「有 agentId 但池缺席」静默退化成
+  睡默认时长再答「已等待」——模型以为等到了目标。
+- 事件驱动改造（2026-08-03）已把 wait 的正确语义定死为「等目标落地」；兜底留在参数面上等于同一个工具
+  有两种语义，模型按描述就会用错。无事件可等的正确答案是「没有可等待目标 = 立即返回」。
+
+## 3. 证据
+
+- 行为面新判据 `src-ui/tests/wait-tool.test.ts`（8 例，按用户操作序列重写）：
+  ① 参数面只剩 `agentId` / `timeoutMs`，`durationMs` 不得复活；② 无在跑子 Agent / 缺池 / id 不存在
+  → **立即**返回（断言 < 250ms，旧空参路径要睡 10s）；③ 传 agentId 等那一个、不传等全部在跑（含两个
+  子 Agent 时慢的那个说了算）；④ 超时只结束这次等待，目标仍在 Running（不杀）。
+- 带货夹具 `tests/asset-tools.test.ts`：`wait` 调用参从 `{durationMs:1}` 改 `{}`（该夹具只为证明
+  「非资产通道工具照常出 ToolResult」）。
+- 生成物 `docs/agents/model-tool-contract.md` 经 `npm run gen:tool-contract` 重生成——
+  `durationMs` 行消失、描述与参数说明同步。
+- record 后 `git diff` 只含上述四份快照 + 生成物 + 本批代码；`verify:convergence` 双轨复跑全绿。
+
+## 4. 拟议变更
+
+采纳 record 快照：四份快照仅 `wait` 条目变化（删一个参数属性 + 改描述），工具计数不变。
+
+## 5. 落地步骤
+
+1. ✅ `plugins/builtin/wait-domain/wait.ts` 删 `durationMs` 与 sleep 路径；无目标立即返回；缺池不再伪装成「已等待」；
+2. ✅ 新判据 `tests/wait-tool.test.ts`（旧行为无专属测试，不涉及改造放回）；
+3. ✅ `gen:tool-contract` 重生成；
+4. ✅ `record:convergence`（standard + minimal）；
+5. ✅ 本文件登记 + 授权依据（用户原话）；
+6. ⬜ 门禁（vitest / build / biome ci / verify:convergence）与 `docs/MULTI_AGENT_ROADMAP.md` §2.2 同批更新。
+
+---
+
 # Baseline 变更申请 — phase-0/tool-schemas.full.json + phase-0/tool-schemas.plan.json（新增 office 域工具）
 
 > 申请日期：2026-09-13 · 申请人：编码助手（OfficeCLI 集成 C 路：MCP 挂接改判为一等域工具）
