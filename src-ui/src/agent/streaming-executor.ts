@@ -31,13 +31,92 @@ export interface ExecutorToolCall {
   tool: Tool;
 }
 
+/** 从 `start`（必须是 `{` / `[`）起扫到与之配平的那个闭合符之后，返回其后的下标；
+ *  扫到末尾仍没配平返回 -1。字符串/转义按 JSON 语义跳过——裸扫括号会被参数里的
+ *  反引号/花括号（写代码时遍地都是）骗到。 */
+function scanBalanced(raw: string, start: number): number {
+  const open = raw[start];
+  const close = open === '{' ? '}' : ']';
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return -1;
+}
+
+/** 坏参数是不是「几条调用首尾相接」。是则给出条数与拆分建议，否则 null。
+ *
+ *  Why（2026-11-18~20 真机事故，共 9 次）：模型要发两条工具调用，却写成
+ *  `{"action":"run",…}{"action":"run",…}` 塞进**一个** tool_calls 元素的 arguments
+ *  ——不是 OpenAI/Anthropic 任何一家的数组语义（真并行调用的形状是
+ *  `[{index:0,…},{index:1,…}]`，本地 957 个多调用轮次零例外）。
+ *  此时通用文案「少/多一个 }、尾随逗号，补齐后重发」是**反向指引**：括号根本不缺。
+ *  活标本：会话 130 的模型照着它逐字节重发 3 次同样参数，白烧三轮。
+ *  所以这里要指名病灶。 */
+export function describeConcatenatedCalls(raw: string): string | null {
+  const head = raw.trimStart();
+  if (head[0] !== '{' && head[0] !== '[') return null;
+  const offset = raw.length - head.length;
+
+  // 严格判据：整串必须能切成一串**各自合法**的 JSON 值（对象或数组）。
+  const parts: string[] = [];
+  let i = 0;
+  while (i < raw.length) {
+    const ch = raw[i];
+    if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t') {
+      i++;
+      continue;
+    }
+    if (ch !== '{' && ch !== '[') return null;
+    const end = scanBalanced(raw, i);
+    if (end < 0) return null;
+    const piece = raw.slice(i, end);
+    try {
+      const value: unknown = JSON.parse(piece);
+      if (typeof value !== 'object' || value === null) return null;
+    } catch {
+      return null;
+    }
+    parts.push(piece);
+    i = end;
+  }
+  if (parts.length < 2) return null;
+
+  const first = parts[0];
+  const where = offset === 0 ? '' : `（自第 ${offset} 个字符起）`;
+  // 节选按**原文**给（不 JSON.stringify 再转义一层）：这是给模型读的文本，
+  // 反斜杠转义只会让「我写的第一条」更难认。
+  return [
+    `  诊断：不是括号或逗号的问题——这条 arguments 实际是 **${parts.length} 条调用首尾相接**${where}，` +
+      '第二条的 { 直接跟在前一条的 } 后面。',
+    `  头一条是：${first.length > 60 ? `${first.slice(0, 60)}…` : first}`,
+    '  改法：并行调用 = tool_calls 数组里的两个元素（每条调用一个元素，各自带 id/name/arguments），',
+    '        不能塞进同一个 arguments；只想发一条就先只发这一条，另一条下一轮再发。',
+  ].join('\n');
+}
+
 /** 参数 JSON 解析失败的带窗报错（§2.7「错误即导航」在**工具参数**这一环的补齐）。
  *
  *  Why（2026-09-16 真机事故）：此处原先是裸回显 `error: invalid JSON arguments: <原文>`——
  *  模型看不到"哪里坏、坏成什么样"，只看得到自己那一长串原文。它当时的诊断是
  *  「我没给 payload」（误诊），而真实病灶是它把 title 塞进 payload 里、外层对象
  *  少一个 `}`。误诊没被纠正 → 它此后养成「我的 payload 会坏」的迷信，一路重发。
- *  报错要能自纠：给解析偏移 + 该偏移附近的原文窗口 + 常见成因。 */
+ *  报错要能自纠：给解析偏移 + 该偏移附近的原文窗口 + 常见成因（病灶可指名时指名，
+ *  见 `describeConcatenatedCalls`——通用成因对「两条调用粘连」是反向指引）。 */
 export function invalidArgsErrorText(raw: string, err: unknown): string {
   const detail = err instanceof Error ? err.message : String(err);
   const m = /position (\d+)/.exec(detail);
@@ -50,12 +129,13 @@ export function invalidArgsErrorText(raw: string, err: unknown): string {
     pos !== null && Number.isFinite(pos)
       ? raw.slice(Math.max(0, pos - 60), Math.min(raw.length, pos + 20))
       : raw.slice(-80);
-  return [
-    `error: invalid JSON arguments: ${detail}`,
-    `  ${at}`,
-    `  …${window}`,
-    '  常见成因：少/多一个 } 或 ]、字符串引号未闭合、尾随逗号。补齐后用合法 JSON 重发本次调用。',
-  ].join('\n');
+  const head = [`error: invalid JSON arguments: ${detail}`, `  ${at}`, `  …${window}`];
+  const diagnosed = describeConcatenatedCalls(raw);
+  // 指名病灶时**不给**通用成因：对「两条调用粘连」那句是反向指引（括号根本不缺）。
+  if (diagnosed) return [...head, diagnosed].join('\n');
+  return [...head, '  常见成因：少/多一个 } 或 ]、字符串引号未闭合、尾随逗号。补齐后用合法 JSON 重发本次调用。'].join(
+    '\n',
+  );
 }
 
 interface PendingResult {
