@@ -711,7 +711,10 @@
  * 本规则靠更高特异性整表替换（同属性两条动画只能二选一），forwards 保持终态。
  * 伪元素（晕开环）随宿主 opacity 一起消失，无需另设。 */
 .pp-quill.pp-quill-lift {
-  animation: pp-quill-lift var(--m-sheet) var(--m-ease-io) forwards;
+  /* 曲线一律 longhand：`--m-sheet` 自带一条，简写里再叠第二段 = 整条声明被静默丢弃
+   * （§15 实测病灶，2026-11-15）。 */
+  animation: pp-quill-lift var(--m-sheet) forwards;
+  animation-timing-function: var(--m-ease-io);
 }
 @keyframes pp-quill-lift {
   to {

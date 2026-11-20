@@ -73,6 +73,10 @@ const DEBT: Record<string, number> = {
    * 也走它），放视图层会让那两条路绕过引用快照——那是行为裂缝，不是体量问题。
    * 真要动结构（把快照拍抽成独立模块）单独立单，别为了省档位把判据切开。 */
   'src-ui/src/app/chat/chat-core.ts': 1900, // 现 1876
+  /* 2026-11-20 补登记（提笔收束批 ef9bf492 把它推到 1001，此前 966 在 LIMIT 之下）：
+   * 只超线 1 行，但**登记的是现状不是许可**——下一次动这个文件优先把 Quill 拆出去
+   * 销账，而不是继续抬档。 */
+  'src-ui/src/plugins/builtin/paper-shell/PaperPanel.tsx': 1100, // 现 1001
   'engine/src/community/louvain.rs': 1700, // 现 1697
   'src-tauri/src/commands/process_cap.rs': 1700, // 现 1658
   'engine/src/graph/import_resolver.rs': 1600, // 现 1596
