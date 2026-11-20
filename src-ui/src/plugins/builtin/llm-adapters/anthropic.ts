@@ -579,11 +579,13 @@ async function* readSSE(
     yield {
       type: ChunkType.Usage,
       usage: {
-        prompt_tokens: inTok, // inTok 已是总数，cacheCreate/cacheRead 是其 breakdown
+        // Anthropic 的 input_tokens **不含**缓存读/写（官方语义：输入总量 = 三者之和）。
+        // 此前按 inTok 上报 ⇒ 压力只剩未缓存的那几百 token：压缩永不触发、命中率算成 >100%。
+        prompt_tokens: inTok + cacheRead + _cacheCreate,
         completion_tokens: outTok,
-        total_tokens: inTok + outTok,
+        total_tokens: inTok + cacheRead + _cacheCreate + outTok,
         cache_hit_tokens: cacheRead,
-        cache_miss_tokens: inTok - cacheRead,
+        cache_miss_tokens: inTok,
         // Anthropic 单独报告缓存创建(写缓存)token —— 单价高于普通输入,是重要成本项。
         cache_creation_tokens: _cacheCreate,
         // Anthropic Messages API 的 usage 不提供 reasoning_tokens 字段——

@@ -49,7 +49,7 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
        * 保证那张表不会比现实旧。子 Agent 归到主 Agent 名下（表键 = 主 Agent id）。 */
       const mainAgentId = owner?.mainAgentId ?? agentId;
       if (mainAgentId) {
-        void typedRpc('set_permission_mode', { mode: permMode, agentId: mainAgentId });
+        void typedRpc('set_permission_mode', { mode: permMode, agent_id: mainAgentId });
       }
       // 工作区外写入（Rust 侧标记）不走 auto 自动放行——仍弹卡（2026-10-30）
       if (shouldAutoApprove(permMode, p.tool, p.outsideProject === true)) {

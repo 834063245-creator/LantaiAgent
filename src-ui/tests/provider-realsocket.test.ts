@@ -322,11 +322,14 @@ describe('真 socket — Anthropic Messages 流式全链路', () => {
     expect(toolCalls).toHaveLength(1);
     expect(toolCalls[0].tool_call).toMatchObject({ id: 'toolu_1', name: 'read_file', arguments: '{"path":"a.ts"}' });
     expect(reasoning.map((c) => c.text || c.signature).join('')).toBe('reasonsig1');
+    // Anthropic 的 input_tokens 不含缓存读/写 —— 输入总量 = 50 + 20 + 5。
     expect(usage).toMatchObject({
-      prompt_tokens: 50,
+      prompt_tokens: 75,
       completion_tokens: 7,
+      total_tokens: 82,
       cache_hit_tokens: 20,
       cache_creation_tokens: 5,
+      cache_miss_tokens: 50,
       finish_reason: 'tool_calls',
     });
     expect(chunks.some((c) => c.type === ChunkType.Done)).toBe(true);

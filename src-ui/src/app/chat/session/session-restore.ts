@@ -31,11 +31,23 @@ import { saveSessionById } from './session-save';
 import { isInternalMessage, type SessionContext } from './session-types';
 import { markVolumeRemoved, unmarkVolumeRemoved } from './session-volume-guard';
 
-export async function loadSessionFromDisk(
-  ctx: SessionContext,
-  projectPath: string,
-  sessionId: number,
-): Promise<boolean> {
+/** 在途开卷表（`storeId:projectPath:sid`）——并发续开同一卷只跑一遍工厂装配。
+ *  没有它时，首页双击 / 画布 expand + 侧栏点击会各自跑完装配：sessions 里出现
+ *  同号两条，第一个句柄被 setAgent 覆盖后没人 dispose（真泄漏）。 */
+const _openingVolumes = new Map<string, Promise<boolean>>();
+
+export function loadSessionFromDisk(ctx: SessionContext, projectPath: string, sessionId: number): Promise<boolean> {
+  const key = `${ctx.storeId}:${projectPath}:${sessionId}`;
+  const inflight = _openingVolumes.get(key);
+  if (inflight) return inflight;
+  const opening = openVolumeFromDisk(ctx, projectPath, sessionId).finally(() => {
+    _openingVolumes.delete(key);
+  });
+  _openingVolumes.set(key, opening);
+  return opening;
+}
+
+async function openVolumeFromDisk(ctx: SessionContext, projectPath: string, sessionId: number): Promise<boolean> {
   // 代际防护（H1 跨工作区串卷，2026-09-02）：摊开是 fire-and-forget（space-service
   // .expand / 签条架续写），读盘 + 工厂装配在途期间用户可能已切走工作区——迟到的
   // append 会把旧区卷混进新工作区 sess store（PaperPanel 兜底落位还会把它写进

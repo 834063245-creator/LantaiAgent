@@ -50,6 +50,8 @@ export class SessionLogWriteBehind {
   private barrier: Promise<void> | undefined;
   private deadlineExpired = false;
   private automaticPaused = false;
+  /** 永久封存位（discardPending 之后）：迟到的 enqueue 也永不落盘。 */
+  private sealed = false;
 
   constructor(private readonly options: SessionLogWriteBehindOptions) {}
 
@@ -65,6 +67,7 @@ export class SessionLogWriteBehind {
 
   /** 入队一条事件（深拷贝，生产者后续 mutate 不影响已入队内容）。 */
   enqueue(event: SessionEvent): void {
+    if (this.sealed) return; // 已封存（卷已删）——迟到的入队不得把日志写回来
     const wasEmpty = this.pending.length === 0;
     this.pending.push(cloneEvent(event));
     if (this.barrier !== undefined) return; // 屏障期间入队 → 由屏障循环排空
@@ -108,6 +111,7 @@ export class SessionLogWriteBehind {
    *  卷被删除前退休写面（排空会把刚删掉的 `.ndjson` 写回来）、测试隔离。
    *  与「退休先排空」相反，且此后不再自动写（迟到的入队也无意义）。 */
   discardPending(): void {
+    this.sealed = true;
     this.pending = [];
     this.cancelAutomaticWait();
     this.automaticPaused = true;

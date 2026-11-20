@@ -96,7 +96,9 @@ export function defaultFolded(kind: BlockKind, payload: unknown, block?: Sourced
     if (p.status === 'error') return false;
     const items = p.items ?? [];
     const childErrored = items.some((i) => i.status === 'error');
-    const planPending = items.some((i) => i.type === 'plan' && i._callback);
+    // 待批判据读**持久化的 status**（_callback 只是「本帧可点」的能力位，重载即丢）。
+    // 只认回调 = 重载后的待批卡被当已决议，连同它的组一起收起（卡片凭空消失）。
+    const planPending = items.some((i) => i.type === 'plan' && (i.status === 'pending' || i._callback));
     return !(childErrored || planPending);
   }
   if (kind === 'tool' || kind === 'code') {

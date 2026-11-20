@@ -212,8 +212,17 @@ export async function saveAllSessions(ctx: SessionContext, projectPath: string):
  *  `.json` 不是本卷的快照——展开它改名 = 把**死卷**的消息表/账本写成新卷的缓存
  *  （下次开卷 `seq` 够大就整表搬过来），故残留一律当没有（只写 label 的干净快照）。 */
 export async function renameSessionFile(projectPath: string, sessionId: number, label: string): Promise<void> {
-  const data = await readVolumeJSON(projectPath, sessionId);
-  if (!data) {
+  // 坏档 ≠ 不存在（2026-11 复核）：卷本体是 .ndjson，投影缓存坏了照常改名
+  // （下面 cacheOfThisVolume 会退回「只写干净快照」），但报错要说对是哪一种。
+  let data: StoredSession | null = null;
+  let cacheBroken = false;
+  try {
+    data = await readVolumeJSON(projectPath, sessionId);
+  } catch (e) {
+    cacheBroken = true;
+    console.error('[chat] 改名：投影缓存损坏（按无缓存重写，卷本体不动）', sessionId, e);
+  }
+  if (!cacheBroken && !data) {
     showToast('案卷文件不存在，无法改名', 'error');
     return;
   }
@@ -225,12 +234,10 @@ export async function renameSessionFile(projectPath: string, sessionId: number, 
     // ⇒ cacheOfThisVolume 判「缓存不是本卷的」，只写 label），但失败必须可见。
     log.warn('chat', `改名：案卷 ${sessionId} 事件日志读取失败（按无缓存处理）`, { error: String(e) });
   }
-  const base: Pick<StoredSession, 'id' | 'label' | 'savedAt' | 'messages' | 'tokensUsed'> = cacheOfThisVolume(
-    data,
-    born,
-  )
-    ? data
-    : { id: sessionId, label: '', savedAt: '', messages: [], tokensUsed: 0 };
+  const base: Pick<StoredSession, 'id' | 'label' | 'savedAt' | 'messages' | 'tokensUsed'> =
+    data && cacheOfThisVolume(data, born)
+      ? data
+      : { id: sessionId, label: '', savedAt: '', messages: [], tokensUsed: 0 };
   try {
     // ⚡ 连带修复（2026-09-14 审计）：改名此前**重建**卷对象（只写 6 个字面字段），
     // 于是 `tokens`（token 账本）与 `compose`（创作坞覆盖）被静默抹掉——改名即丢数据。

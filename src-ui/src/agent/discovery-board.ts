@@ -49,9 +49,15 @@ export class DiscoveryBoard {
     await this._store.flush(JSON.stringify(this.entries, null, 2));
   }
 
-  /** 读文件，反序列化 entries。文件不存在时静默返回。 */
+  /** 读文件，反序列化 entries。文件不存在 → 静默返回；读失败 → 停止落盘。 */
   async restore(): Promise<void> {
-    const raw = await this._store.restore();
+    let raw: string | null;
+    try {
+      raw = await this._store.restore();
+    } catch (e) {
+      this._store.blockWrites(e);
+      return;
+    }
     if (!raw) return;
     try {
       const arr = JSON.parse(raw) as DiscoveryEntry[];

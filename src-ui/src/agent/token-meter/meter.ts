@@ -198,8 +198,9 @@ export class SessionTokenMeter implements TokenLedger {
       ...(window === undefined || usedTokens === undefined
         ? {}
         : { percent: Math.min(100, Math.round((usedTokens / window) * 100)) }),
-      ...(this._breakdown === undefined ? {} : { breakdown: this._breakdown }),
-      totals: this._totals,
+      // 内部状态按值交出——调用方一次就地改（stats.totals.outputTokens = 0）就会永久写坏账本。
+      ...(this._breakdown === undefined ? {} : { breakdown: { ...this._breakdown } }),
+      totals: { ...this._totals },
       attempts: this._attempts,
       turns: this._turnOrder.map((t) => ({ ...(this._turnSlots.get(t) as TurnTokens) })),
       cacheHitPercent: cacheHitPercentText(this._totals.cacheReadTokens, billedInputTokens(this._totals)),

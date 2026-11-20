@@ -53,9 +53,16 @@ export class TaskBoard implements TaskBoardFace {
     await this._store.flush(JSON.stringify(arr, null, 2));
   }
 
-  /** 读文件，反序列化回 Map。文件不存在时静默返回。 */
+  /** 读文件，反序列化回 Map。文件不存在 → 静默返回；**读失败 → 停止落盘**
+   *  （把「读不出来」当「没有历史」会让下一次 flush 用空表覆盖盘上文件）。 */
   async restore(): Promise<void> {
-    const raw = await this._store.restore();
+    let raw: string | null;
+    try {
+      raw = await this._store.restore();
+    } catch (e) {
+      this._store.blockWrites(e);
+      return;
+    }
     if (!raw) return;
     try {
       const arr = JSON.parse(raw) as [string, BoardEntry][];

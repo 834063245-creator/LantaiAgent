@@ -85,15 +85,20 @@ export function workspaceSessionsDir(projectPath: string): string {
  *  会话目录 = 不存在（无回退面）。read_volume 缺卷返回 'null'（判空语义与
  *  旧 readSessionJSONOrNull catch 等价——错误不静默在消费方 catch 面）。 */
 export async function readVolumeJSON(projectPath: string, id: number): Promise<StoredSession | null> {
+  const raw = await sessionExecute('read_volume', {
+    root: workspaceSessionsDir(projectPath),
+    id: String(id),
+  });
+  // 只有 provider 明确判空（文件不在）才是 null——坏档/读失败一律上抛（见下方 catch）。
+  if (raw === 'null') return null;
   try {
-    const raw = await sessionExecute('read_volume', {
-      root: workspaceSessionsDir(projectPath),
-      id: String(id),
-    });
-    if (raw === 'null') return null;
     return JSON.parse(raw) as StoredSession;
-  } catch {
-    return null;
+  } catch (e) {
+    // 坏档 ≠ 不存在（2026-11 复核）：此前 parse 失败被吞成 null，整份 uiMessages/
+    // tokens/compose/label 静默丢弃，调用方还会误报「案卷文件不存在」。
+    throw new Error(
+      `案卷 ${id} 的投影缓存损坏（JSON 解析失败；卷本体 .ndjson 仍在盘上）：${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 }
 

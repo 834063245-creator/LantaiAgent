@@ -94,13 +94,20 @@ export class ToolRegistry {
     if (!original) throw new Error(`ToolRegistry: cannot alias unknown tool "${existingName}"`);
     if (this.tools.has(aliasName)) return; // 已存在（真实工具或先前的别名）
 
-    // 包装以覆盖 name() — schemas() 必须显示别名而非原名
+    // 包装以覆盖 name() — schemas() 必须显示别名而非原名。
+    // ⚠ 一律按**名字**现查（不捕获 original 引用）：目标工具被 unregister 后重注册
+    // 成新对象时，别名必须跟着新实现走，而不是调用一个已 dispose 的旧实例。
+    const current = (): Tool | undefined => this.tools.get(existingName);
     const wrapper: Tool = {
       name: () => aliasName,
-      description: () => original.description(),
-      parameters: () => original.parameters(),
-      readOnly: () => original.readOnly(),
-      execute: (args, onProgress, signal) => original.execute(args, onProgress, signal),
+      description: () => (current() ?? original).description(),
+      parameters: () => (current() ?? original).parameters(),
+      readOnly: () => (current() ?? original).readOnly(),
+      execute: (args, onProgress, signal) => {
+        const target = current();
+        if (!target) throw new Error(`ToolRegistry: alias "${aliasName}" 的目标工具 "${existingName}" 已不在册`);
+        return target.execute(args, onProgress, signal);
+      },
     };
     this.tools.set(aliasName, wrapper);
   }

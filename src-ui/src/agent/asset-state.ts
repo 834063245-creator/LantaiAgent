@@ -173,9 +173,15 @@ function ensureSession(key: AssetStateKey): SessionEntry {
 /** 读盘恢复：磁盘打底 + 内存优先（逐键合并——恢复期间用户已写的键不被旧值覆盖，
  *  磁盘旧值的其它键也不丢）。坏文件/读失败 = 无数据可恢复（保持内存现状，不炸）。 */
 async function restoreEntry(entry: SessionEntry): Promise<void> {
+  let raw: string | null = null;
   try {
-    const raw = await entry.persistence.restore();
-    if (raw) {
+    raw = await entry.persistence.restore();
+  } catch (e) {
+    // **读失败 ≠ 没有历史**：禁止后续落盘，否则下一次 flush 用空表覆盖盘上真数据。
+    entry.persistence.blockWrites(e);
+  }
+  if (raw) {
+    try {
       const parsed: unknown = JSON.parse(raw);
       if (isPlainObject(parsed)) {
         for (const [assetId, state] of Object.entries(parsed)) {
@@ -184,15 +190,16 @@ async function restoreEntry(entry: SessionEntry): Promise<void> {
           entry.states.set(assetId, mine ? { ...state, ...mine } : state);
         }
       }
+    } catch {
+      // 坏 JSON：内容已不可用，**不阻断落盘**（否则这张卡的状态永远写不回去）。
+      console.warn('[asset-state] 状态文件损坏，按空表继续（下次 flush 覆盖）');
     }
-  } catch {
-    /* 读失败/坏 JSON：无数据可恢复 */
-  } finally {
-    entry.restoreSettled = true;
-    if (entry.flushPending && !entry.persistence.destroyed) {
-      entry.flushPending = false;
-      void entry.persistence.flush(serializeEntry(entry));
-    }
+  }
+  // 恢复落定（含失败）：此后才允许落盘；恢复期间攒下的写入补一次。
+  entry.restoreSettled = true;
+  if (entry.flushPending && !entry.persistence.destroyed) {
+    entry.flushPending = false;
+    void entry.persistence.flush(serializeEntry(entry));
   }
 }
 

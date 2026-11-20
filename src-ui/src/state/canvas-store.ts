@@ -456,8 +456,8 @@ export async function saveCanvasToDisk(storeId: string, workspace: string): Prom
 /** 防抖保存（与 scheduleAutoSave 同规：500ms 窗口合并密集写入）。
  *  代际防护（INVARIANTS #12，2026-08-28 会话管理专项）：定时器触发时若已
  *  切走工作区则丢弃——否则用「已被新工作区覆盖的画布 store」快照写进旧工作区
- *  canvas.json（跨工作区污染；切走时 deactivate 已显式 flushCanvasSave，此
- *  处丢弃不丢数据）。 */
+ *  canvas.json（跨工作区污染；切走时由 workspace.ts 显式 await
+ *  saveCanvasState → saveCanvasToDisk，此处丢弃不丢数据）。 */
 const _canvasSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const CANVAS_SAVE_DELAY_MS = 500;
 
@@ -472,17 +472,6 @@ export function scheduleCanvasSave(storeId: string, workspace: string): void {
     void saveCanvasToDisk(storeId, workspace);
   }, CANVAS_SAVE_DELAY_MS);
   _canvasSaveTimers.set(key, timer);
-}
-
-/** 立即落盘（取消在途防抖——切换工作区/关闭窗口的显式保存点）。 */
-export function flushCanvasSave(storeId: string, workspace: string): void {
-  const key = `${storeId}:${workspace}`;
-  const t = _canvasSaveTimers.get(key);
-  if (t) {
-    clearTimeout(t);
-    _canvasSaveTimers.delete(key);
-  }
-  void saveCanvasToDisk(storeId, workspace);
 }
 
 /** 测试复位（生产不调用）。 */

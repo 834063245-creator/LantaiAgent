@@ -445,9 +445,9 @@ export interface RpcContract {
     };
     result: string; // "null"
   };
-  /** mode = 权限档；agentId 缺省 = 写**工作区默认**（全局镜像），
+  /** mode = 权限档；agent_id 缺省 = 写**工作区默认**（全局镜像），
    *  给了 = 写该 agent（= 某一卷）的**卷级模式**（2026-11-28 权限卷级批）。 */
-  set_permission_mode: { params: { mode: string; agentId?: string }; result: string }; // "null"
+  set_permission_mode: { params: { mode: string; agent_id?: string }; result: string }; // "null"
   credential_store: { params: { provider: string; key: string }; result: string }; // "null"
   credential_get: { params: { provider: string }; result: string }; // JSON
   credential_delete: { params: { provider: string }; result: string }; // "null"
@@ -874,6 +874,14 @@ export function kernelReadFileRaw(filePath: string): Promise<string> {
   return fsCapReadText(filePath);
 }
 
+/** 「文件不存在」判据（**只这一种**读错误允许被降级成「没有」）。
+ *  真实现：无法读取文件 {p}: ... (os error 2) / No such file / 系统找不到指定的文件；
+ *  测试 mock：ENOENT: {p}。其它错误（超时、权限、IPC 断）一律不是「不存在」。 */
+export function isKernelFileMissingError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /ENOENT|os error 2\b|No such file|cannot find the file|系统找不到指定的文件/i.test(msg);
+}
+
 /** fs_cap 写类 action 返回解析：取 {path} 的 path，缺即 throw（真机恒
  *  `json!({path})`；拿不到 path 说明出口/命令漂移，不许静默返回空串让上游
  *  以为「写到某处了」）。 */
@@ -1204,12 +1212,13 @@ export function clearWorkspaceListCache(): void {
 
 /** 带短期缓存的 workspace_list——读方一律走此入口。 */
 export async function workspaceListCached(): Promise<WorkspaceSummary[]> {
+  // 交副本：缓存数组本体给出去后，任何一处就地 sort() 都会把 10s TTL 缓存改脏。
   if (_wsListCache && Date.now() - _wsListCache.at < WORKSPACE_LIST_TTL_MS) {
-    return _wsListCache.data;
+    return _wsListCache.data.slice();
   }
   const data = await typedJsonRpc('workspace_list', {});
   _wsListCache = { at: Date.now(), data };
-  return data;
+  return data.slice();
 }
 
 export type EventName = keyof EventContract;

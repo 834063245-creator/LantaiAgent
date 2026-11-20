@@ -137,7 +137,6 @@
   background: var(--seal-soft);
 }
 
-
 /* ── 附图 rail（B2 multimodal-image-plan）——缩略图道，与路径附件 chips 并列。
  *    圆角恒 0 纪律；缩略 56px 方界（规线细框），hover 露朱砂移除钮；
  *    未命中预览 URL（进程外恢复场景）降级为 mono 文件名占位盒。 ── */

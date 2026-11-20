@@ -99,7 +99,13 @@ export async function resolveOauthToken(provider: ProviderSettings, accountId?: 
   if (provider.authMode !== 'oauth' || !provider.oauthProvider) return null;
   const cacheKey = `${provider.oauthProvider}::${provider.name}::${accountId ?? '*'}`;
   const cached = _oauthCache.get(cacheKey);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    // 过期即失效（留 60s 余量）。此前缓存命中直接返回，expiresAt 全仓零读 ⇒
+    // token 到期后所有请求 401 直到重启，Rust oauth_access 的自动刷新永远没机会跑。
+    // expiresAt=0/-1 = 提供方未给时刻（负缓存 null 同路）——不按过期处理。
+    if (cached === null || !(cached.expiresAt > 0) || Date.now() < cached.expiresAt - 60_000) return cached;
+    _oauthCache.delete(cacheKey);
+  }
   try {
     const { parseJson, typedRpcWithTimeout } = await import('../rpc-contract');
     const raw = await typedRpcWithTimeout(

@@ -601,10 +601,13 @@ export async function runCompactionImpl(
 export function maybeCompactImpl(host: CompactionHost, usage: Usage | undefined): void {
   if (host.contextWindow <= 0) return;
 
-  // 有 API 报告的 token 时优先使用，否则回退到估算。
-  // 估算基于发送载荷（折叠视图），与真实 API 压力一致 —
-  // 压缩成功后载荷变小，比例自然回落，不会反复触发。
-  const estimated = usage && usage.total_tokens > 0 ? usage.total_tokens : host.tokenCountWithEstimation();
+  // 尺子只认 **prompt 侧**：旧实现用 usage.total_tokens（prompt **+ output**）——
+  // 思考型模型的输出会把比例抬到误压，而压缩预检（default-loop）用的是发送载荷
+  // 压力，两边算的根本不是一件事。这里取「提供方账单的 prompt」与「当前载荷估算」
+  // 的较大者：账单是硬事实（估算漏了图/工具 schema 时不能低估），估算负责把本轮
+  // 新增的尾巴算进去 —— 两个方向都不允许低于真实压力。
+  const reported = usage?.prompt_tokens ?? 0;
+  const estimated = Math.max(reported, host.tokenCountWithEstimation());
   const ratio = estimated / host.contextWindow;
 
   // 触发线读**生效值**（配置档位 ∩ 窗口 − 输出预留 − headroom），与 pre-flight 同源：

@@ -71,9 +71,14 @@ export const useToastStore = create<ToastState>((set, get) => ({
     /* 停留时长（2026-11-12）：error 级默认加倍——调用点不必再手抄 6400；
      * 显式传入的 holdMs 一律优先（老调用点零改动）。 */
     const hold = holdMs ?? (level === 'error' ? TOAST_LONG_HOLD_MS : TOAST_HOLD_MS);
-    // 最多同屏 3 条——满则弃最旧
+    // 每锚最多 3 条——满则弃该锚最旧；**别的锚一条都不动**（top 的系统级错误
+    // 不能被坞里的 composer 提示顺手抹掉，两条通道设计上互相独立）。
     set((s) => ({
-      toasts: [...s.toasts.filter((t) => t.anchor === anchor).slice(-2), { id, text, level, holdMs: hold, anchor }],
+      toasts: [
+        ...s.toasts.filter((t) => t.anchor !== anchor),
+        ...s.toasts.filter((t) => t.anchor === anchor).slice(-2),
+        { id, text, level, holdMs: hold, anchor },
+      ],
     }));
     setTimeout(() => get().dismissToast(id), hold + TOAST_FADE_MS);
   },

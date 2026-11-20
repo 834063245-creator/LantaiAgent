@@ -181,7 +181,13 @@ function chainSeed(m: Message): number {
   const hit = messageChainSeed.get(m);
   if (hit !== undefined) return hit;
   const chars = Math.min(m.content.length, 0xffff);
-  const seed = Math.imul(countMessage(m) ^ Math.imul(chars, 0x9e3779b1), 0x85ebca6b);
+  // 附图必须进种子（单图最多 1024 token）：只签「文本 + 长度」时，同文本换一张图
+  // = 同签字 ⇒ anchorVerdict 判同构、复用旧锚，前缀里被换掉的图不计入压力。
+  const imageTokens = countImageTokens([m]).tokens;
+  const seed = Math.imul(
+    countMessage(m) ^ Math.imul(chars, 0x9e3779b1) ^ Math.imul(imageTokens + 1, 0xc2b2ae35),
+    0x85ebca6b,
+  );
   messageChainSeed.set(m, seed);
   return seed;
 }

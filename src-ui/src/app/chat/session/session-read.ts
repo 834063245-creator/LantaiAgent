@@ -57,7 +57,14 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
   if (!logRead) return null;
   // 空卷（无任何非系统消息）不进摊开集——与「空卷不落盘」同规
   if (!logRead.messages.some((m) => m.role !== 'system')) return null;
-  const raw = await readVolumeJSON(projectPath, id);
+  // 投影缓存读（坏档 ≠ 卷不存在）：卷本体是 .ndjson，缓存坏了只丢投影
+  // （label/tokens/compose），绝不该拦开卷——但必须可见，不许静默。
+  let raw: StoredSession | null = null;
+  try {
+    raw = await readVolumeJSON(projectPath, id);
+  } catch (e) {
+    console.error('[chat] readVolumeData: 投影缓存损坏/读失败（按无缓存继续）', id, e);
+  }
   // 同代校验：`.json` 不是本卷的（上一代残留）⇒ 整份当没有——卷名的家在这里，
   // 采信残留 = 新卷顶着死卷的名（真机「子卷卷名乱套」的机理，见 cacheOfThisVolume）。
   const cache = cacheOfThisVolume(raw, logRead.header.createdAt) ? raw : null;

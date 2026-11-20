@@ -33,6 +33,14 @@ import {
   kernelWriteFileDurable,
 } from './host';
 
+/** 「文件不存在」判据（与内核 rpc-contract.isKernelFileMissingError 同一条正则）。
+ *  产物域**不直连内核模块**（esbuild 会内联成副本，见文件头 §0.6 纪律）——判据只有
+ *  三行，就地复刻；改一种必须改两种。 */
+function isMissingFileError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /ENOENT|os error 2\b|No such file|cannot find the file|系统找不到指定的文件/i.test(msg);
+}
+
 /** 动作 → kernel* helper 的 args 组装。args 已是 snake_case RPC 参数直传
  *  （无腰设计）；helper 返回已解析路径/原文。消费方各自 parse（见 D-1：
  *  read_volume 返 JSON 串或 'null'；list_volumes 返文件名 JSON 数组——helper
@@ -44,10 +52,12 @@ async function executeViaKernel(action: SessionPersistAction, args: Record<strin
     case 'read_volume': {
       try {
         return await kernelReadFileRaw(`${root}/${id}.json`);
-      } catch {
-        // 缺失/坏文件 = 卷不存在（readVolumeData 判空语义——与今日
-        // readSessionJSONOrNull 同源；错误不静默在消费方 catch 面）
-        return 'null';
+      } catch (e) {
+        // 只有「文件不在」才是判空；其它读失败（超时/权限/IPC 断）**上抛**——
+        // 此前一律吞成 'null'，于是「读不出来」被当成「卷不存在」，整份投影缓存
+        // （uiMessages/tokens/compose/label）静默丢弃。
+        if (isMissingFileError(e)) return 'null';
+        throw e;
       }
     }
     case 'list_volumes': {
