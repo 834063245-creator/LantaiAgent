@@ -262,10 +262,13 @@ const ComposerSurface = memo(function ComposerSurface({
       const card = input.getState().attachedCards[quoteHoldIdx.current];
       quoteHoldIdx.current = null;
       if (!card) return;
-      const added = input.getState().addAttachedCardToSlot(`s:${target}`, card);
-      /* 成功不播报（坞内提示的克制纪律：界面变化即反馈——切过去就看得见那枚）；
-       * 只有「以为递出去了、其实没递」才弹。 */
-      if (!added) notice(`第 ${target} 卷的夹签槽里已经有这枚了`, 'warn');
+      /* **拖动 = 挪，不是复制**（2026-11-20 用户报「拖给别的会话后原位那枚还在」）：
+       * 卡本体早就在画布上（那才是拓印），夹签本身只有一枚——它换了归属，原处就该没了。
+       * `moveAttachedCardToSlot` 一步做成（摘原位 + 写目标槽，不闪断）。 */
+      const result = input.getState().moveAttachedCardToSlot(`s:${target}`, card);
+      /* 成功不播报（坞内提示的克制纪律：界面变化即反馈——原位没了、切过去就有了）；
+       * 只有「目标卷本来就有同一张卡」才说一声（那时不再加，但原位照样摘掉）。 */
+      if (result === 'duplicate') notice(`第 ${target} 卷的夹签槽里已经有这枚了（原位已挪走）`, 'warn');
     },
   });
   /** 引面板的空态文案（清单还没拉回来 vs 真无匹配）——判据在坞，件只显示。 */

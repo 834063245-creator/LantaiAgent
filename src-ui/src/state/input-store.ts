@@ -85,8 +85,18 @@ interface InputStore {
   removeAttachedCard: (idx: number) => void;
   clearAttachedCards: () => void;
   /** 把夹签直接递进**指定卷的草稿槽**（长按拖到 B 卷，方案 §2.2 态二）：不切活跃卷、
-   *  不动 live——B 卷 `claimLive` 时才把它带出来。返回 false = 该槽里已有这张卡。 */
+   *  不动 live——B 卷 `claimLive` 时才把它带出来。返回 false = 该槽里已有这张卡。
+   *
+   *  ⚠ 长按拖拽走的是 `moveAttachedCardToSlot`（拖动 = **挪**，不是复制）；
+   *  本方法留给「同一枚夹签要在两卷各留一份」的场合。 */
   addAttachedCardToSlot: (slot: string | number, card: QuoteCard) => boolean;
+  /** **挪**一枚夹签：从 live 槽摘掉，同时写进目标卷的草稿槽（一步，不闪断）。
+   *
+   *  语义（2026-11-20 用户报「拖给别的会话后原位那枚还在」）：长按拖拽是**换归属**，
+   *  不是拓印——卡本体早就拓印过一次了（它还在画布上），夹签本身只有一枚。
+   *  返回 `'moved'` = 挪成；`'duplicate'` = 目标槽已有同一张卡（**原位那枚仍摘掉**：
+   *  用户的意思就是「给它」，两处都留着只会让人以为没挪动）。 */
+  moveAttachedCardToSlot: (slot: string | number, card: QuoteCard) => 'moved' | 'duplicate';
   pushInputHistory: (text: string) => void;
   setInputHistory: (history: string[]) => void;
   setInputHistoryIdx: (idx: number) => void;
@@ -168,6 +178,26 @@ function createInputStoreImpl() {
         };
       });
       return added;
+    },
+    moveAttachedCardToSlot: (slot, card) => {
+      const key = String(slot);
+      let result: 'moved' | 'duplicate' = 'moved';
+      set((s) => {
+        // ① 先从 live 摘掉这一枚（按 refId 找——同卡去重是槽内的事，挪的是**这一枚**）
+        const remaining = s.attachedCards.filter((c) => c.refId !== card.refId);
+        // ② 再写进目标槽（目标已有同一张卡 ⇒ 不再加，但原位那枚照样摘掉）
+        const draft = s.sessionDrafts[key] ?? emptyDraft();
+        const dedupe = quoteKeyOf(card);
+        if (draft.attachedCards.some((c) => quoteKeyOf(c) === dedupe)) {
+          result = 'duplicate';
+          return { attachedCards: remaining };
+        }
+        return {
+          attachedCards: remaining,
+          sessionDrafts: { ...s.sessionDrafts, [key]: { ...draft, attachedCards: [...draft.attachedCards, card] } },
+        };
+      });
+      return result;
     },
     pushInputHistory: (text) =>
       set((s) => {
