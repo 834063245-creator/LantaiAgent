@@ -62,6 +62,13 @@ export interface InputRowProps {
   onRemoveAttachedImage: (idx: number) => void;
   /** 撕掉一枚夹签（方案 §2.7）：只影响槽，不动任何盘上文件（此时也还没写）。 */
   onRemoveAttachedCard: (idx: number) => void;
+  /** **把一枚夹签递给别的卷**（方案 §2.2 态二）：长按 320ms 起手，落到某卷上松手。
+   *  缺省 = 不出这条手势（能力位语义，与纸壳其余可选面同款）。 */
+  onQuoteDrop?: (idx: number, target: string) => void;
+  /** 长按手势的入口（坞持有唯一那份 hook——hooks 不能在 map 里逐枚调）。 */
+  onQuoteHold?: (e: React.PointerEvent, idx: number) => void;
+  /** 长按拖拽的可视态：是否已起手 + 指针下的目标卷（null = 空白 / 本卷）。 */
+  quoteDropState?: { dragging: boolean; dropTarget: string | null };
   /* 引 / 夹两钮（「案」随抽屉退役，2026-11-28） */
   onToggleYin: () => void;
   onAttach: () => void;
@@ -103,6 +110,8 @@ export function InputRow(props: InputRowProps) {
     onRemoveAttached,
     onRemoveAttachedImage,
     onRemoveAttachedCard,
+    onQuoteHold,
+    quoteDropState,
     onToggleYin,
     onAttach,
     running,
@@ -252,10 +261,13 @@ export function InputRow(props: InputRowProps) {
                 {/* 缩略纸本体是 **说明性** 的（点它没有动作——要动的是原卡，方案 §0.2
                     「本体永不动」），故用不可聚焦的 span 而不是按钮：读屏器不会被引到
                     一个按下去什么都不发生的控件上；撕掉仍在旁边那颗真按钮上。 */}
+                {/* 长按 320ms = 「递给别的卷」（方案 §2.2 态二）。手势只挂在本体上：
+                    撕掉那颗 × 有自己的点击语义，不能被长按吞掉。 */}
                 <span
-                  className="pp-quote"
+                  className={`pp-quote${quoteDropState?.dragging ? ' pp-quote-lifted' : ''}`}
                   data-tip={`${plateSignOf(card.kind)}《${card.title || '未命名'}》`}
-                  data-tip-hint={`${card.origin === 'shelf' ? '架阁' : '本卷'} · payload ${formatThousands(card.bytes)} 字符`}
+                  data-tip-hint={`${card.origin === 'shelf' ? '架阁' : '本卷'} · payload ${formatThousands(card.bytes)} 字符 · 按住可递给别的卷`}
+                  onPointerDown={(e) => onQuoteHold?.(e, i)}
                 >
                   <span className="pp-quote-sign" aria-hidden="true">
                     {plateSignOf(card.kind)}

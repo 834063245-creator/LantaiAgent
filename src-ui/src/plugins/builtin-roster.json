@@ -135,6 +135,7 @@
       "app/search/file-match.ts",
       "paper/asset-rack.ts",
       "paper/plate-sign.ts",
+      "plugins/builtin/paper-shell/quote-drop.ts",
       "state/card-quote.ts",
       "state/volume-name.ts"
     ],

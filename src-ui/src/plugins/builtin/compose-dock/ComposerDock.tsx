@@ -27,6 +27,10 @@
 // 真实例，react 经构建期别名桥。
 
 import { memo, useCallback, useEffect, useRef } from 'react';
+/* 长按递给别的卷（card-quote-plan §2.2 态二）：手势与卷命中都在纸壳包（与画布同一套
+ * 几何的知识），坞只调它的入口——不跨产物取 core 内部，走既有的 inlined 相对 import
+ * （同 ModelSelector 先例：esbuild 内联，无运行时耦合）。 */
+import { useQuoteHold } from '../paper-shell/quote-drop';
 // 浮层门户（2026-09-22 附图预览案）：坞内两处**全局模态**（附图大图预览 /
 // 全放二次确认）已随 2026-11-17 P6 拆进 `composer-modals.tsx`——「为什么要 portal
 // 到 body」「为什么是裸 createPortal 而不是 Overlay 原语」两条病灶注在那边头注里
@@ -244,6 +248,26 @@ const ComposerSurface = memo(function ComposerSurface({
   // rework P0-1：卸载（含关窗）时清掉全放确认态，避免残留 DOM 参与销毁时序
   useEffect(() => () => setPendingYolo(false), [setPendingYolo]);
 
+  /* ── 夹签长按·递给别的卷（方案 §2.2 态二）──
+   *  坞只做两件：调手势入口、把落点写进**目标卷的草稿槽**（input-store 的既有能力位
+   *  `addAttachedCardToSlot`——它不切活跃卷、不碰 live，正是「递出去」的语义）。
+   *  自己那一卷 = 无操作：它本来就在这份槽里。 */
+  /** 这次长按是从哪一枚起的（onDrop 里读——手势 hook 只经手 index）。 */
+  const quoteHoldIdx = useRef<number | null>(null);
+  const quoteHold = useQuoteHold({
+    ownSession: session.activeSidNum != null ? String(session.activeSidNum) : '',
+    onDrop: (target) => {
+      if (!core || quoteHoldIdx.current === null) return;
+      const input = getChatStore(core.panelId).input;
+      const card = input.getState().attachedCards[quoteHoldIdx.current];
+      quoteHoldIdx.current = null;
+      if (!card) return;
+      const added = input.getState().addAttachedCardToSlot(`s:${target}`, card);
+      /* 成功不播报（坞内提示的克制纪律：界面变化即反馈——切过去就看得见那枚）；
+       * 只有「以为递出去了、其实没递」才弹。 */
+      if (!added) notice(`第 ${target} 卷的夹签槽里已经有这枚了`, 'warn');
+    },
+  });
   /** 引面板的空态文案（清单还没拉回来 vs 真无匹配）——判据在坞，件只显示。 */
   const yinEmpty = layers.yinFiles.length === 0 ? '卷宗目录读取中…' : '无匹配文件';
   const onYinKeyDown = attach.onYinKeyDown;
@@ -354,6 +378,11 @@ const ComposerSurface = memo(function ComposerSurface({
           if (!core) return;
           getChatStore(core.panelId).input.getState().removeAttachedCard(idx);
         }}
+        onQuoteHold={(e, idx) => {
+          quoteHoldIdx.current = idx;
+          quoteHold.begin(e);
+        }}
+        quoteDropState={quoteHold.state}
         onToggleYin={() => layers.toggleLayer('yin')}
         onAttach={attach.onAttach}
         running={running}

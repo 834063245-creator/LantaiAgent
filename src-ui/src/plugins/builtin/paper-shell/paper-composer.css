@@ -213,6 +213,26 @@
 .pp-quote:hover {
   border-color: color-mix(in oklch, var(--seal) 45%, transparent);
 }
+/* 长按起手（方案 §6.2「触发 | 卡抬起：scale 1.03 + 投影加深」）：夹签离纸、跟手，
+   光标变「拿着」——三个信号同一拍，读作「它现在跟着你的手」。 */
+.pp-quote.pp-quote-lifted {
+  transform: scale(1.03);
+  box-shadow: 0 6px 18px color-mix(in oklch, var(--ink-1) 22%, transparent);
+  cursor: grabbing;
+  transition:
+    transform var(--snap),
+    box-shadow var(--snap);
+}
+/* 可投放态的卷描线（§6.2「所有卷边界描线浮现」）：dragging 期间画布上所有卷都亮边，
+   指针下那一卷加深。**只动描边与底色，不动布局**（纸律：整叶只动 opacity）。 */
+html.pp-quote-dropping .pp-region {
+  outline: 1px dashed color-mix(in oklch, var(--seal) 45%, transparent);
+  outline-offset: -2px;
+}
+html.pp-quote-dropping .pp-region[data-quote-drop="1"] {
+  outline: 1.5px solid var(--seal);
+  background-color: color-mix(in oklch, var(--seal) 6%, transparent);
+}
 .pp-quote-sign {
   flex-shrink: 0;
   font-family: var(--f-song);
