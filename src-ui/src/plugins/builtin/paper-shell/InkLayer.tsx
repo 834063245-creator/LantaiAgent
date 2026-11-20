@@ -25,7 +25,7 @@
 // 卷名标签落位 regionLabelTopWorld（纯几何，不进宿主面 ⇒ 不动面指纹）。
 
 import { useEffect, useRef } from 'react';
-import { regionLabelTopWorld } from '../../../paper/ink';
+import { LABEL_EDGE_PAD_PX, regionLabelTopWorld, regionLabelXClamp } from '../../../paper/ink';
 import { volumeDisplayName } from '../../../state/volume-name';
 import type { InkCache, LodTier, RegionView, SourcedBlock } from './host';
 import {
@@ -225,7 +225,9 @@ export function InkLayer({ regionsRef, foldedOf, inkCache }: InkLayerProps) {
        * （地图标签逻辑），墨色 ink-1（卷首题字同色，朱砂=人铁律不挪用）。
        * 落位（2026-09-20 修「卷名跳出流区」）：**锚在纸面内**——位置由纯几何
        * regionLabelTopWorld 定（见 paper/ink.ts 注：旧实现把屏幕偏移当世界偏移，
-       * 实机测得标签恒在纸顶之上 51-60 世界单位）。 */
+       * 实机测得标签恒在纸顶之上 51-60 世界单位）。
+       * 横向（2026-11-19）：长卷名居中会左右双双溢出纸外——regionLabelXClamp
+       * 把它收进纸内（纸左/右缘 = 流区锚 ± 半宽，换算到屏幕后钳制）。 */
       const drawRegionLabels = (): void => {
         const labelPx = Math.max(INK_LABEL_MIN_PX, 32 * view.zoom);
         ctx.fillStyle = `rgba(${INK_RGB}, ${INK_LABEL_ALPHA})`;
@@ -238,7 +240,12 @@ export function InkLayer({ regionsRef, foldedOf, inkCache }: InkLayerProps) {
           const top = worldToScreen(view, r.anchor.anchorX, regionLabelTopWorld(r.regionTop, r.folioH, labelPx));
           const py = snap(top.y);
           if (py < -20 || py > canvasSize.h) continue;
-          ctx.fillText(volumeDisplayName(r.label, r.sessionNum), snap(top.x), py);
+          const name = volumeDisplayName(r.label, r.sessionNum);
+          const paperLeft = worldToScreen(view, r.anchor.anchorX - half, 0).x;
+          const paperRight = worldToScreen(view, r.anchor.anchorX + half, 0).x;
+          const labelW = ctx.measureText(name).width;
+          const px = regionLabelXClamp(top.x, labelW, paperLeft, paperRight, LABEL_EDGE_PAD_PX);
+          ctx.fillText(name, snap(px), py);
         }
         ctx.textAlign = 'left';
       };

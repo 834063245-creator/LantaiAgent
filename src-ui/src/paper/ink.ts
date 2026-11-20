@@ -152,6 +152,31 @@ export function regionLabelTopWorld(regionTop: number, folioH: number, labelPx: 
   return paperTop + offset;
 }
 
+/** 卷名标签的横向落点（**屏幕坐标**，`textAlign='center'` 的中心 x）：钳在纸面内。
+ *  `regionLabelTopWorld` 的横向姊妹——2026-11-19 收口 §三点八「已知边界」：
+ *  标签横向原本不钳制，居中绘制的长卷名在窄流区会左右双双溢到纸外
+ *  （11px 下限下 24 个汉字 ≈ 288px，纸宽 = 流区宽 × zoom，缩远时纸也跟着窄）。
+ *  语义：能居中就居中；放不下则整体收进纸内（两侧各留 `padPx`）；
+ *  连「纸宽 − 2×pad」都放不下（极端窄纸 + 极长名）⇒ 退回居中：
+ *  宁可两端各溢一点，也不让标签贴死在某一侧（偏贴读作「标错卷」）。
+ *  入参全部屏幕坐标（纸左/右缘由调用方 `worldToScreen` 换算）——本函数不碰 zoom。 */
+export function regionLabelXClamp(
+  centerX: number,
+  textW: number,
+  paperLeft: number,
+  paperRight: number,
+  padPx: number,
+): number {
+  const min = paperLeft + padPx + textW / 2;
+  const max = paperRight - padPx - textW / 2;
+  if (min > max) return centerX;
+  return Math.min(max, Math.max(min, centerX));
+}
+
+/** 卷名标签的纸内留白（屏幕 px，2026-11-19）：钳制时两侧各留这么多，
+ *  与 `INK_LABEL_MIN_PX` 同一量级——标签字号有下限，留白也得有下限。 */
+export const LABEL_EDGE_PAD_PX = 12;
+
 /* ── 墨色板（镜像 tokens.css L17-27——canvas 读不了 CSS 变量，字面量进镜像纪律，
  * tests/paper-ink.test.ts 钉死字面量；改 token 两处同步）──
  * 正文=墨 --ink-1 / 来文=朱砂 --seal / 夹注=石墨 --graphite / 脚注·程文·抄录·

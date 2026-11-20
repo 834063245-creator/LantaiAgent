@@ -59,6 +59,7 @@ import {
   inkBarColorOf,
   inkColorOf,
   inkForBlock,
+  LABEL_EDGE_PAD_PX,
   LABEL_GLYPH_RATIO,
   LOD_BAR_ENTER,
   LOD_BAR_EXIT,
@@ -70,6 +71,7 @@ import {
   lodFarActive,
   lodTierOf,
   regionLabelTopWorld,
+  regionLabelXClamp,
 } from '../src/paper/ink';
 import { clearPaperMeasureCache, PAPER_USER_LINE_HEIGHT } from '../src/plugins/builtin/paper-shell/measure';
 import {
@@ -145,6 +147,32 @@ describe('paper/ink 远档卷名标签落位', () => {
     // 旧实现同两档差 176 世界单位（17.6/0.05 − 17.6/0.35）——漂移从「无界」收成「亚像素」。
     expect(Math.abs(at005 - at035)).toBeLessThan(1);
   });
+
+  /* ── 横向钳制（2026-11-19 收口 §三点八「已知边界」）──
+   * 旧行为：标签横向不钳制，居中绘制的长卷名在窄纸/缩远时左右双双溢出纸外。 */
+  it('能居中就居中：标签放得下时中心不动', () => {
+    expect(regionLabelXClamp(500, 200, 200, 800, LABEL_EDGE_PAD_PX)).toBe(500);
+  });
+
+  it('放不下 → 整体收进纸内（左右各留 pad，文字边缘不出纸）', () => {
+    // 纸 [200, 800]（600 宽）、标签 400 宽、中心 780（右溢 180）→ 收到 800 − 12 − 200 = 588
+    const textW = 400;
+    const x = regionLabelXClamp(780, textW, 200, 800, LABEL_EDGE_PAD_PX);
+    expect(x).toBe(800 - LABEL_EDGE_PAD_PX - textW / 2);
+    expect(x - textW / 2).toBeGreaterThanOrEqual(200 + LABEL_EDGE_PAD_PX - 1e-9);
+    expect(x + textW / 2).toBeLessThanOrEqual(800 - LABEL_EDGE_PAD_PX + 1e-9);
+  });
+
+  it('纸比标签还窄（极端窄纸 + 极长名）→ 退回居中，不贴死一侧', () => {
+    const center = 500;
+    const textW = 900; // 纸 600 − 2×pad < 900
+    expect(regionLabelXClamp(center, textW, 200, 800, LABEL_EDGE_PAD_PX)).toBe(center);
+  });
+
+  it('钳制只在越界时生效：中线在纸内但标签头尾越界也收', () => {
+    // 纸 [200, 800]，标签 300 宽、中线 720 → 右缘 870 越界 → 收到 800−12−150
+    expect(regionLabelXClamp(720, 300, 200, 800, LABEL_EDGE_PAD_PX)).toBe(800 - LABEL_EDGE_PAD_PX - 150);
+  });
 });
 
 /* ═══ 远景三档（P4c，2026-09-06）——档位判定与迟滞 ═══ */
@@ -189,7 +217,10 @@ describe('paper/ink INK_BAR_COLORS 行影档镜像（P4c）', () => {
   });
 });
 
-/* ═══ 墨色板（tokens.css 字面量镜像钉死——改 token 两处同步）═══ */
+/* ═══ 墨色板（tokens.css 字面量镜像钉死——改 token 两处同步）═══
+ * 断言**就地钉在真源旁**（2026-11-19 关账）：曾被登记为「迁去
+ * paper-visual-decisions」，但那份文件测的是 CSS 文本、不是 canvas 侧字面量——
+ * 搬家纯属换文件、零增益；同文件同读一次最不容易漂。 */
 
 describe('paper/ink INK_COLORS 镜像', () => {
   it('文类→墨色铁律：正文=墨 / 来文=朱砂 / 夹注=石墨 / 脚注族=石青 / 贴黄=次级', () => {
