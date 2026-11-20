@@ -8,14 +8,25 @@
 //     包括它自己来源的那一卷（坞里那枚落在本卷才是无操作）；
 //   · 起点 = 块（不是夹签轨上的一枚），故块身份与卷号在这里暂存。
 //
-// ⚠ 与块拖拽（拖出钉住）共存：两者都在块的 pointerdown 上起手，但判据不同——
-//   过 8px 未满 320ms = 拖块/滚动（长按作废）；满 320ms = 引用（此时再移动才是「拖给某卷」）。
+// ── 两条实机病灶（2026-11-20 用户报「画面跳变」「收回失效」）──
+//
+// ① **不许在块内的交互件上起手**：`useDragGesture.begin` 会立刻对 `currentTarget`
+//    `setPointerCapture`。块根一拍就捕获 ⇒ 块内按钮（收回 / 抄录 / 立枝…）的 click
+//    被重定向到块根、**永远不触发**。判据 = 事件源不在 `button, a, input, [role=button]`
+//    也不在拖拽把手（`.pp-kind` / `.pp-drag-handle`）里——那些位置各有自己的手势。
+//    （同 `use-composer-float.ts`「拖动期捕获会掐断 click/dblclick」那条实测同族。）
+//
+// ② **只在被按住的那一块上给回执**：`holding` 是单个布尔，早先挂在**每一块**上 ⇒
+//    按下那一刻整屏块一起变样。这里改成给出「哪一块」，纸面只标那一块。
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { quoteCardOf } from './card-quote-of';
 import type { SourcedBlock } from './host';
 import { useToastStore } from './host';
 import { useQuoteHold } from './quote-drop';
+
+/** 块内这些位置**不归长按管**：它们有各自的点击/拖拽语义，捕获会掐断它们。 */
+const INTERACTIVE = 'button, a, input, textarea, select, [role="button"], .pp-kind, .pp-drag-handle';
 
 export function useQuoteHoldCanvas(params: {
   /** 本面板的 chat store id（写槽与取 core 都经它）。 */
@@ -26,6 +37,8 @@ export function useQuoteHoldCanvas(params: {
   const { panelId, moveCardToSlot } = params;
   /** 这次长按是从哪一块起的（手势 hook 只经手指针事件，块身份在这里暂存）。 */
   const held = useRef<{ block: SourcedBlock; sessionNum: number } | null>(null);
+  /** **正在被按住的那一块**（回执只标它——见头注 ②）。 */
+  const [holdingBlockId, setHoldingBlockId] = useState<string | null>(null);
 
   const hold = useQuoteHold({
     ownSession: '',
@@ -33,6 +46,7 @@ export function useQuoteHoldCanvas(params: {
     onDrop: (target) => {
       const start = held.current;
       held.current = null;
+      setHoldingBlockId(null);
       if (!start || panelId === null) return;
       const card = quoteCardOf(start.block, start.sessionNum);
       if (!card) return;
@@ -41,17 +55,25 @@ export function useQuoteHoldCanvas(params: {
         useToastStore.getState().showToast(`第 ${target} 卷的夹签槽里已经有这枚了`, 'warn', 2600, 'composer');
       }
     },
+    onAbandon: () => {
+      held.current = null;
+      setHoldingBlockId(null);
+    },
   });
 
-  /** 挂在块外层的 onPointerDown 上。非资产块**不起手**（正文段/工具卡没有卡的「本体」）。 */
+  /** 挂在块外层的 onPointerDown 上。非资产块 / 交互件上**不起手**。 */
   const begin = useCallback(
     (e: React.PointerEvent, block: SourcedBlock, sessionNum: number) => {
       if (!block.asset) return;
+      const target = e.target as Element | null;
+      // ① 交互件归它们自己（否则收回/抄录这些按钮的 click 会被捕获掐断）
+      if (typeof target?.closest === 'function' && target.closest(INTERACTIVE)) return;
       held.current = { block, sessionNum };
+      setHoldingBlockId(block.id);
       hold.begin(e);
     },
     [hold],
   );
 
-  return { state: hold.state, begin };
+  return { state: hold.state, holdingBlockId, begin };
 }

@@ -1,0 +1,177 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+ * SPDX-License-Identifier: MIT
+ */
+
+/* paper-shell · quote — **卡片引用（夹签）的全部样式**（docs/plans/card-quote-plan.md）。
+ *
+ * 从 paper-composer.css 按主题段拆出（2026-11-20 上帝文件体量批：那份到了 1002 行）。
+ * 拆的是**一整域**：夹签轨 / 归位 / 飞行浮层 / 长按抬起 / 按住回执 / 跟手浮签 /
+ * 可投放卷描线 / 物类签。入口 @import 顺序 = 层叠序，禁重排。
+ *
+ * ⚠ 两条铁律（都吃过亏）：
+ *   ① 块的回执**不许用 scale** —— 块定位是内联 transform: translate(x,y)，而 scale 是
+ *      独立变换属性、先于 transform 生效（远处块会被自己的坐标缩掉 = 整屏跳一下）；
+ *   ② 夹签轨是**待发清单**，不是可点的卡（点它没有动作，要动的是原卡，方案 §0.2）。 */
+/* ── 夹签轨（卡片引用，docs/plans/card-quote-plan.md §2.4）──
+ *  与附图道并列、**同风格**：一发丝框、零圆角、纸色底；每枚 = 巴掌大的缩略纸
+ *  （左：物类签 / 中：单行标题 / 右上：× 撕掉，悬停才露——同 .pp-image-remove）。
+ *  ⚠ 不给它做「浮起」常驻态：这一轨是**待发**清单，不是可点的卡（点它没有动作，
+ *  要动的是原卡——本体永不动，方案 §0.2）。 */
+.pp-card-rail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 40%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+  -webkit-mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+}
+.pp-card-rail::-webkit-scrollbar {
+  display: none;
+}
+.pp-quote-wrap {
+  position: relative;
+  flex-shrink: 0;
+  /* 落位那一拍（方案 §6.1 帧 4 / §2.7 撕掉的反向）：新进槽的那枚从 0.85 / 半透明
+     归位——**它只是归位**，飞行由 .pp-quote-fly 承担（因果在那边，别在这里重复）。 */
+  animation: pp-quote-settle var(--m-ink) both;
+}
+@keyframes pp-quote-settle {
+  from {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+/* 飞行浮层（命令式创建/摘除，见 quote-flight.ts）：定位走 left/top，动画只碰 transform
+   ——不触发布局，也不进坞的高度流水。 */
+.pp-quote-fly {
+  position: fixed;
+  z-index: var(--z-dialog);
+  border: 1px solid var(--ink-4);
+  background: var(--paper);
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+/* §6.4 降级：减少动效 ⇒ 归位与飞行都退成「直接出现」（不飞、不缩放）。 */
+@media (prefers-reduced-motion: reduce) {
+  .pp-quote-wrap {
+    animation: pp-quote-settle var(--snap) linear both;
+  }
+  @keyframes pp-quote-settle {
+    /* 降级版沿用同一个动画名（§15 登记的是**名**，不是时长）：减少动效时它只淡入。 */
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+.pp-quote {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 168px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--ink-4);
+  background: var(--paper);
+  cursor: default;
+  transition: border-color var(--snap);
+}
+.pp-quote:hover {
+  border-color: color-mix(in oklch, var(--seal) 45%, transparent);
+}
+/* 长按起手（方案 §6.2「触发 | 卡抬起：scale 1.03 + 投影加深」）：夹签离纸、跟手，
+   光标变「拿着」——三个信号同一拍，读作「它现在跟着你的手」。 */
+.pp-quote.pp-quote-lifted {
+  transform: scale(1.03);
+  box-shadow: 0 6px 18px color-mix(in oklch, var(--ink-1) 22%, transparent);
+  cursor: grabbing;
+  transition:
+    transform var(--snap),
+    box-shadow var(--snap);
+}
+/* 长按引用·按住回执（2026-11-20，方案 §6.2「按住 0-320ms：卡轻微下沉 + 进度环」）：
+   按下即起手计时，这一片刻必须看得见——否则用户以为没响应、提前松手（变成点击）。
+   只动 transform 与描边，不碰布局（纸律）。 */
+/* ⚠ **不许用 scale**（2026-11-20 实机「画面跳变」的根因）：块的定位是内联
+   transform: translate(x, y)，而 scale 是**独立变换属性**、按规范先于 transform
+   生效 —— 0.995 的缩放会把块的坐标一起缩掉（x=2000 的块凭空挪 10px，整屏块同时缩 =
+   画面跳一下）。这里只动**不参与几何**的属性：描边 + 纸色底。 */
+.pp-block[data-quote-holding] {
+  outline: 1px solid color-mix(in oklch, var(--seal) 45%, transparent);
+  outline-offset: -1px;
+  background-color: color-mix(in oklch, var(--seal) 3%, transparent);
+}
+
+/* 长按引用·跟手浮签（2026-11-20）：起手后指针旁一枚小签。屏幕坐标、不吃世界变换；
+   pointer-events 全关（它只是「手上有东西」的可见回执，不是可点件）。 */
+.pp-quote-ghost {
+  position: absolute;
+  z-index: 8;
+  padding: 3px 7px;
+  border: 1px solid var(--seal);
+  background: var(--paper);
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--seal-deep);
+  pointer-events: none;
+  box-shadow: 0 4px 12px color-mix(in oklch, var(--ink-1) 18%, transparent);
+}
+
+/* 可投放态的卷描线（§6.2「所有卷边界描线浮现」）：dragging 期间画布上所有卷都亮边，
+   指针下那一卷加深。**只动描边与底色，不动布局**（纸律：整叶只动 opacity）。 */
+html.pp-quote-dropping .pp-region {
+  outline: 1px dashed color-mix(in oklch, var(--seal) 45%, transparent);
+  outline-offset: -2px;
+}
+html.pp-quote-dropping .pp-region[data-quote-drop="1"] {
+  outline: 1.5px solid var(--seal);
+  background-color: color-mix(in oklch, var(--seal) 6%, transparent);
+}
+.pp-quote-sign {
+  flex-shrink: 0;
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  line-height: 1;
+  padding: 2px 3px;
+  color: var(--ink-2);
+  border: 1px solid var(--rule-soft-ink);
+}
+.pp-quote-title {
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-quote-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  font-family: var(--f-mono);
+  font-size: var(--fs-micro);
+  line-height: 16px;
+  text-align: center;
+  color: var(--paper);
+  background: var(--seal-deep);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.pp-quote-wrap:hover .pp-quote-remove,
+.pp-quote-remove:focus-visible {
+  opacity: 1;
+}

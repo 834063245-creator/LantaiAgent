@@ -175,6 +175,7 @@ export function PaperPanel() {
     orphanPins,
     orphanOps,
     canvasQuoteHold,
+    quoteHoldingBlockId,
     beginQuoteHold,
     deadOrphanPinIds,
     visibleRegionIds,
@@ -580,7 +581,7 @@ export function PaperPanel() {
                     data-source-label={source?.label}
                     /* 孤儿钉的长按引用（2026-11-20）：它就是「摊在画布上的库卡」的常态宿主。 */
                     onPointerDown={(e) => beginQuoteHold(e, snapshotBlock, source ? source.sessionId : -1)}
-                    data-quote-holding={canvasQuoteHold.holding || undefined}
+                    data-quote-holding={quoteHoldingBlockId === pinId || undefined}
                     onDragStart={(e) => e.preventDefault()}
                     onMouseEnter={() => setTetherPinId(pinId)}
                     onMouseLeave={() => setTetherPinId((cur) => (cur === pinId ? null : cur))}
@@ -679,7 +680,7 @@ export function PaperPanel() {
                            与块拖拽共存：过 8px 未满 320ms = 拖块/滚动（长按作废），
                            满 320ms 起手 = 引用（此时再移动才是「拖给某卷」）。 */
                         onPointerDown={(e) => beginQuoteHold(e, b, r.sessionNum)}
-                        data-quote-holding={canvasQuoteHold.holding || undefined}
+                        data-quote-holding={quoteHoldingBlockId === b.id || undefined}
                         onDragStart={(e) => e.preventDefault()}
                       >
                         {/* 单元界短规线（2026-09-06 尸检改实元素）：原块级 ::before
@@ -749,7 +750,7 @@ export function PaperPanel() {
                            与块拖拽共存：过 8px 未满 320ms = 拖块/滚动（长按作废），
                            满 320ms 起手 = 引用（此时再移动才是「拖给某卷」）。 */
                         onPointerDown={(e) => beginQuoteHold(e, b, r.sessionNum)}
-                        data-quote-holding={canvasQuoteHold.holding || undefined}
+                        data-quote-holding={quoteHoldingBlockId === b.id || undefined}
                         onDragStart={(e) => e.preventDefault()}
                         onMouseEnter={() => setTetherPinId(b.id)}
                         onMouseLeave={() => setTetherPinId((cur) => (cur === b.id ? null : cur))}

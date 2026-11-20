@@ -296,6 +296,8 @@ export function usePaperPanelAssembly() {
     },
   });
   const beginQuoteHold = canvasHold.begin;
+  /** 正在被按住的那一块（回执只标它——整屏一起标是「画面跳变」的病灶）。 */
+  const quoteHoldingBlockId = canvasHold.holdingBlockId;
 
   /* **孤儿钉的动作行**（2026-11-20 用户报「已经摊开的卡片没有引用按钮」）：
    * 孤儿钉 = 源卷未摊开 / 源块已不在流内 / 源卷已删 / 从架阁摊上来的卡——它们没有活
@@ -884,6 +886,8 @@ export function usePaperPanelAssembly() {
     core,
     /** 画布卡长按的渲染态（纸面据此给那张卡描边、跟手画一枚小浮签）。 */
     canvasQuoteHold: canvasHold.state,
+    /** 正在被按住的那一块 id（只有它标回执）。 */
+    quoteHoldingBlockId,
     beginQuoteHold,
     updateAvailable,
     updateVersion,

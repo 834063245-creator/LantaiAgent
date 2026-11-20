@@ -3,62 +3,80 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 画布上那张卡的长按引用（2026-11-20 用户要：摊开状态的卡也能长按）。
+// 画布长按的两条**实机病灶**（2026-11-20 用户报「画面跳变」「收回也失效了」）：
 //
-// 与坞里那枚夹签的长按是**同一份手势核心**（quote-drop 的 useQuoteHold），差别：
-//   · allowOwn: true —— 画布卡不属于任何槽，落在**哪一卷**就引用进哪一卷（含它自己的来源卷）；
-//   · 落点写进那一卷的夹签槽（不是「此刻 live 是谁」）。
-
+// ① 收回失效：useDragGesture.begin 会立刻对 currentTarget setPointerCapture，
+//    块根一拍就捕获 ⇒ 块内按钮（收回 / 抄录 / 立枝…）的 click 被重定向到块根，
+//    永远不触发。判据 = 事件源不在交互件里（button / a / input / role=button /
+//    .pp-kind / .pp-drag-handle）。
+//
+// ② 画面跳变：holding 是单个布尔、早先挂在**每一块**上；且 CSS 用了 scale——
+//    块定位靠内联 transform: translate(x,y)，而 scale 先于 transform 生效，
+//    远处块会被自己的坐标缩掉（x=2000 挪 10px）。现在只标被按住的那一块，
+//    CSS 不碰任何参与几何的属性。
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LONG_PRESS_MS, useQuoteHold } from '../src/plugins/builtin/paper-shell/quote-drop';
+import { createBlock } from '../src/paper/block-model';
+import { useQuoteHoldCanvas } from '../src/plugins/builtin/paper-shell/use-quote-hold-canvas';
 
-type HoldOpts = Parameters<typeof useQuoteHold>[0];
-type HoldApi = { begin?: (e: React.PointerEvent) => void; state?: ReturnType<typeof useQuoteHold>['state'] };
+type HookOpts = Parameters<typeof useQuoteHoldCanvas>[0];
+type HookApi = {
+  begin?: (e: React.PointerEvent, block: ReturnType<typeof assetBlock>, sessionNum: number) => void;
+  holdingBlockId?: string | null;
+  state?: ReturnType<typeof useQuoteHoldCanvas>['state'];
+};
 
-function Probe(p: { opts: HoldOpts; api: HoldApi }) {
-  const h = useQuoteHold(p.opts);
+function Probe(p: { opts: HookOpts; api: HookApi }) {
+  const h = useQuoteHoldCanvas(p.opts);
   p.api.begin = h.begin;
+  p.api.holdingBlockId = h.holdingBlockId;
   p.api.state = h.state;
   return null;
 }
 
-function mountHold(opts: HoldOpts) {
-  const api: HoldApi = {};
+function mount(opts: HookOpts) {
+  const api: HookApi = {};
   const root = createRoot(document.createElement('div'));
   act(() => root.render(createElement(Probe, { opts, api })));
   return { api, root };
 }
 
-function seedRegion(sessionId: string) {
-  const el = document.createElement('div');
-  el.className = 'pp-region';
-  el.dataset.sessionId = sessionId;
-  document.body.appendChild(el);
-  return el;
+function assetBlock(id = 'pb:1') {
+  return {
+    ...createBlock(
+      'html',
+      { code: '<b>x</b>' } as never,
+      { messageId: '', part: null },
+      { asset: { assetId: 'as_a', presentation: 'html', title: '示例', finalised: true } },
+    ),
+    id,
+  };
 }
 
-function pointAt(el: Element | null) {
-  document.elementFromPoint = () => el as Element | null;
+/** 造一次「块根 + 里面有什么」的按下事件。 */
+function downOn(el: Element) {
+  return {
+    button: 0,
+    clientX: 10,
+    clientY: 10,
+    pointerId: 0,
+    currentTarget: document.body,
+    target: el,
+  } as unknown as React.PointerEvent;
 }
 
-function press(api: HoldApi, x = 10, y = 10) {
-  act(() =>
-    api.begin?.({
-      button: 0,
-      clientX: x,
-      clientY: y,
-      pointerId: 0,
-      currentTarget: document.body,
-    } as unknown as React.PointerEvent),
-  );
+function blockRoot(inner?: { cls?: string; tag?: 'button' | 'div' }) {
+  const root = document.createElement('div');
+  root.className = 'pp-block';
+  if (inner) {
+    const child = document.createElement(inner.tag ?? 'div');
+    if (inner.cls) child.className = inner.cls;
+    root.appendChild(child);
+  }
+  document.body.appendChild(root);
+  return root;
 }
-
-const up = (x: number, y: number) =>
-  act(() => window.dispatchEvent(new PointerEvent('pointerup', { clientX: x, clientY: y })));
-const move = (x: number, y: number) =>
-  act(() => window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y })));
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -71,67 +89,42 @@ afterEach(() => {
   document.documentElement.className = '';
 });
 
-describe('画布卡长按 → 引用', () => {
-  it('**落在本卷也有效**（allowOwn）——画布卡不属于任何槽，本卷就是它的去处', () => {
-    const a = seedRegion('1');
-    pointAt(a);
-    const onDrop = vi.fn();
-    const { api } = mountHold({ ownSession: '', allowOwn: true, onDrop });
-
-    press(api);
-    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
-    expect(document.documentElement.classList.contains('pp-quote-dropping')).toBe(true);
-    up(10, 10); // 还在本卷
-
-    expect(onDrop).toHaveBeenCalledWith('1');
-    expect(document.documentElement.classList.contains('pp-quote-dropping')).toBe(false);
+describe('画布长按：两条实机病灶', () => {
+  it('① 落在块内按钮上不起手（否则 setPointerCapture 掐断 click —— 收回失效）', () => {
+    const root = blockRoot({ tag: 'button' });
+    root.firstElementChild!.textContent = '收回';
+    const { api } = mount({ panelId: 'p', moveCardToSlot: () => 'moved' });
+    act(() => api.begin?.(downOn(root.firstElementChild!), assetBlock(), 1));
+    expect(api.holdingBlockId).toBeNull();
+    expect(api.state?.holding).toBe(false);
   });
 
-  it('落空白 = 无操作（给 onAbandon，不误投）', () => {
-    pointAt(null);
-    const onDrop = vi.fn();
-    const onAbandon = vi.fn();
-    const { api } = mountHold({ ownSession: '', allowOwn: true, onDrop, onAbandon });
-    press(api);
-    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
-    up(999, 999);
-    expect(onDrop).not.toHaveBeenCalled();
-    expect(onAbandon).toHaveBeenCalledTimes(1);
+  it('① 拖拽把手（.pp-kind）同样不归长按管', () => {
+    const root = blockRoot({ cls: 'pp-kind pp-drag-handle' });
+    const { api } = mount({ panelId: 'p', moveCardToSlot: () => 'moved' });
+    act(() => api.begin?.(downOn(root.firstElementChild!), assetBlock(), 1));
+    expect(api.state?.holding).toBe(false);
   });
 
-  it('指针位置进 state（跟手浮签要靠它定位）', () => {
-    const a = seedRegion('1');
-    pointAt(a);
-    const { api } = mountHold({ ownSession: '', allowOwn: true, onDrop: vi.fn() });
-    press(api, 40, 60);
-    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
-    move(140, 260);
-    expect(api.state?.x).toBe(140);
-    expect(api.state?.y).toBe(260);
-    expect(api.state?.dragging).toBe(true);
+  it('① 落在块体本身（非交互件）照常起手', () => {
+    const root = blockRoot({ cls: 'pp-body' });
+    const { api } = mount({ panelId: 'p', moveCardToSlot: () => 'moved' });
+    act(() => api.begin?.(downOn(root.firstElementChild!), assetBlock(), 1));
+    expect(api.state?.holding).toBe(true);
   });
 
-  it('没到 320ms 就松手 = 轻点（不引用、不放弃）——块拖拽/点击照旧', () => {
-    pointAt(seedRegion('1'));
-    const onDrop = vi.fn();
-    const onAbandon = vi.fn();
-    const { api } = mountHold({ ownSession: '', allowOwn: true, onDrop, onAbandon });
-    press(api);
-    act(() => vi.advanceTimersByTime(120));
-    up(10, 10);
-    expect(onDrop).not.toHaveBeenCalled();
-    expect(onAbandon).not.toHaveBeenCalled();
+  it('② 回执只标被按住的那一块', () => {
+    const root = blockRoot();
+    const { api } = mount({ panelId: 'p', moveCardToSlot: () => 'moved' });
+    act(() => api.begin?.(downOn(root), assetBlock('pb:7'), 1));
+    expect(api.holdingBlockId).toBe('pb:7');
   });
 
-  it('缺省（夹签轨那枚）仍是「本卷 = 无操作」——两种入口的差别只有 allowOwn', () => {
-    pointAt(seedRegion('1'));
-    const onDrop = vi.fn();
-    const onAbandon = vi.fn();
-    const { api } = mountHold({ ownSession: '1', onDrop, onAbandon });
-    press(api);
-    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
-    up(10, 10);
-    expect(onDrop).not.toHaveBeenCalled();
-    expect(onAbandon).toHaveBeenCalledTimes(1);
+  it('没有资产身份的块不起手（正文段/工具卡没有卡的「本体」）', () => {
+    const root = blockRoot();
+    const plain = createBlock('markdown', { text: '正文' } as never, { messageId: '', part: null });
+    const { api } = mount({ panelId: 'p', moveCardToSlot: () => 'moved' });
+    act(() => api.begin?.(downOn(root), plain as never, 1));
+    expect(api.state?.holding).toBe(false);
   });
 });
