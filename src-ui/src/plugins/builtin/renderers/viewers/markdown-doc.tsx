@@ -28,6 +28,7 @@
 // 的标题不进树，仍在正文里照常渲染）· 无编辑入口（只读查看）。
 
 import * as React from 'react';
+import { type FenceMark, fenceCloseOf, fenceOpenOf } from '../../../../paper/fence';
 import type { ViewerProps } from '../../../../paper/viewer-contract';
 import { VIEWER_MARKDOWN_EXTS } from '../../../../paper/viewer-exts';
 // 建块走宿主桥（A4 销账 W1）：`paper/block-model` 带模块级发号器（`let blockSeq`），
@@ -56,8 +57,6 @@ export interface MdDocHeading {
   section: number;
 }
 
-/** 围栏码开标记（与 `paper/markdown.ts` 的 `FENCE_RE` 同形）。 */
-const FENCE_RE = /^(```|~~~)\s*([^`]*)$/;
 /** 标题行（与 `paper/markdown.ts` 的 `HEADING_RE` 同形，只收 1-3 级——4 级以上不进标题树）。 */
 const HEADING_RE = /^(#{1,3})\s+(.*)$/;
 
@@ -94,18 +93,20 @@ export function splitMarkdownSections(text: string): MdDocSection[] {
     }
     cur.text = cur.text === '' ? line : `${cur.text}\n${line}`;
   };
-  let fence: string | null = null;
+  // 围栏判据走 `paper/fence`（与 markdown 解析层同一份真源）：开围栏 ≥3 个同种
+  // 字符、闭围栏须同种且不短于——四反引号围栏里的「三反引号 + 语言」是围栏体的一行。
+  let fence: FenceMark | null = null;
   for (const line of text.split('\n')) {
     const trimmed = line.trim();
     if (fence !== null) {
       // 围栏码内部不动结构（`# 伪标题` 是代码，不是标题）
-      if (trimmed.startsWith(fence)) fence = null;
+      if (fenceCloseOf(trimmed, fence)) fence = null;
       append(line);
       continue;
     }
-    const open = FENCE_RE.exec(trimmed);
+    const open = fenceOpenOf(trimmed);
     if (open) {
-      fence = open[1];
+      fence = open.mark;
       append(line);
       continue;
     }

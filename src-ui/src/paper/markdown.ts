@@ -18,6 +18,7 @@
 // + 固定盒）/ 行内：加粗·斜体·删除线·行内码·链接。流式容忍：未闭合围栏按已闭合
 // 产出（块随 token 生长）；未配对的强调标记按字面量保留。超出子集的行→段落兜底，不丢字。
 
+import { fenceCloseOf, fenceOpenOf } from './fence';
 import { fileExtOf, VIEWER_IMAGE_EXTS } from './viewer-exts';
 
 /** 行内片段：text 恒有；标志位任一为真 = 富行内（测量端按偏窄宽度保守计高）。 */
@@ -97,6 +98,25 @@ function emphBoundary(text: string, idx: number): boolean {
   return /[\s([{<'"\u4e00-\u9fff，。；：、！？]/.test(prev);
 }
 
+/** 行内码的闭合串：**等长**的反引号连串（CommonMark 6.1）。串长不等的那段是内容，
+ *  不是定界符——「一个反引号 + 三个反引号 + mermaid + 一个反引号」收成内容为
+ *  「三个反引号 + mermaid」的码段。返回闭合串起点，没有 = -1（开串按字面留在
+ *  文本里，不吞字）。 */
+function findCodeClose(raw: string, from: number, run: number): number {
+  let k = from;
+  while (k < raw.length) {
+    if (raw[k] !== '`') {
+      k++;
+      continue;
+    }
+    let n = 0;
+    while (k + n < raw.length && raw[k + n] === '`') n++;
+    if (n === run) return k;
+    k += n;
+  }
+  return -1;
+}
+
 function parseInlineInner(raw: string, flags: InlineFlags): MdInline[] {
   const out: MdInline[] = [];
   let buf = '';
@@ -115,17 +135,31 @@ function parseInlineInner(raw: string, flags: InlineFlags): MdInline[] {
       i += 2;
       continue;
     }
-    // 行内码：成对反引号内不解析任何标记
+    // 行内码（CommonMark 6.1）：**等长**的反引号串才闭合，中间内容原样不解析。
+    // 等长是硬要求——用「一个反引号 + 三个反引号 + mermaid + 一个反引号」引用一段
+    // 围栏，正是模型教用户写围栏时的惯用写法；旧实现「找到下一个反引号就闭合」
+    // 会把开头那个当成内容为空的码段，余下 mermaid 落进粗体
+    // （2026-11-19 病灶：纸面上一个空白小框 + 粗体 mermaid）。
     if (ch === '`') {
-      const end = raw.indexOf('`', i + 1);
+      let run = 0;
+      while (i + run < raw.length && raw[i + run] === '`') run++;
+      const fenceRun = '`'.repeat(run);
+      const end = findCodeClose(raw, i + run, run);
       if (end > i) {
         flush();
-        mergeInline(out, { text: raw.slice(i + 1, end), c: true });
-        i = end + 1;
+        // 定界用掉各 run 个反引号，中间原样；CommonMark 的「两侧各去一个空格」
+        // 只在内容首尾都是空格、且内容不止空格时生效。
+        let body = raw.slice(i + run, end);
+        if (body.length > 1 && body.startsWith(' ') && body.endsWith(' ') && body.trim() !== '') {
+          body = body.slice(1, -1);
+        }
+        mergeInline(out, { text: body, c: true });
+        i = end + run;
         continue;
       }
-      buf += ch;
-      i++;
+      // 无等长闭合（流式中 / 落单反引号）：按字面留着，不吞字
+      buf += fenceRun;
+      i += run;
       continue;
     }
     // 加粗 / 斜体 / 删除线（先试三连标记 ***粗斜***，再退两连）
@@ -261,7 +295,9 @@ export function mdHasRichInline(inl: MdInline[]): boolean {
 
 /* ── 块级解析 ── */
 
-const FENCE_RE = /^(```|~~~)\s*([^`]*)$/;
+/** 行首围栏（字符 / 长度 / 闭合判据在 `paper/fence`：开围栏 = ≥3 个同种字符，
+ *  闭围栏同种且不短于）——本文件只问「这行是不是开围栏」，不另判一份。 */
+const isFenceOpen = (line: string): boolean => fenceOpenOf(line) !== undefined;
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const HR_RE = /^ {0,3}([-*_])\s*(?:\1\s*){2,}$/;
 const LIST_RE = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
@@ -334,7 +370,7 @@ function isBlockStart(line: string): boolean {
   const t = line.trimStart();
   return (
     t.length === 0 ||
-    FENCE_RE.test(t) ||
+    isFenceOpen(t) ||
     HEADING_RE.test(t) ||
     HR_RE.test(line.trim()) ||
     IMG_LINE_RE.test(t) ||
@@ -449,22 +485,22 @@ function parseDetailed(text: string): MdDetailed {
       continue;
     }
     const blockStart = i;
-    // 围栏码（未闭合按到文末——流式容忍）
-    const fence = FENCE_RE.exec(trimmed);
+    // 围栏码（未闭合按到文末——流式容忍）。字符 / 长度 / 闭合判据在 paper/fence：
+    // 开围栏 ≥3 个同种字符，闭围栏须同种且**不短于**——四反引号围栏里的
+    // 「三反引号 + mermaid」是围栏体的一行，不是闭合（2026-11-19 病灶）。
+    const fence = fenceOpenOf(line.trimStart());
     if (fence) {
-      const lang = fence[2].trim() || undefined;
       const code: string[] = [];
       i++;
       while (i < lines.length) {
-        const inner = lines[i].trim();
-        if (inner.startsWith(fence[1])) {
+        if (fenceCloseOf(lines[i].trim(), fence.mark)) {
           i++;
           break;
         }
         code.push(lines[i]);
         i++;
       }
-      blocks.push({ t: 'code', lang, text: code.join('\n') });
+      blocks.push({ t: 'code', lang: fence.lang, text: code.join('\n') });
       starts.push(blockStart);
       continue;
     }

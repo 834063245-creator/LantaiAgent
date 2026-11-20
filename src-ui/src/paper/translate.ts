@@ -26,6 +26,7 @@ import type { AssistantMessage, ChatMessage, ToolCallPart, UserMessage } from '.
 import type { BlockPayloads, SourcedBlock } from './block-model';
 import { createBlock, DEFAULT_BLOCK_WIDTH } from './block-model';
 import { codeViewOf } from './code-view';
+import { fenceCloseOf, fenceOpenOf, reemitFence } from './fence';
 import { type RhythmFamily, rhythmFamilyOfBlock } from './grammar';
 
 /** 稳定块 id：同一消息同一 part 在重转译后得到同一 id（React key 稳定 +
@@ -226,7 +227,12 @@ function translateUser(msg: UserMessage): SourcedBlock {
  * markdown 段的 `MdCodeBlock` 上，独立成抄录块会与测高镜像脱钩 ⇒ 回吐
  * markdown（行为与本批前一致）。
  *
- * 流式友好：围栏未闭合（token 还在到达）时按已闭合处理（差分块持续生长）。
+ * 围栏标记的判据（字符 / 长度 / 闭合）**不在本件**，在 `paper/fence`（与 markdown
+ * 解析层、查看器分段共用的单一真源）——2026-11-19 病灶：本件曾写死「正好三个反引号」，
+ * 模型用四反引号包一层演示 ```mermaid 时，多出的反引号被吃进语言签（纸上语言行显示
+ * `text），内层 ```mermaid 被当成闭围栏截断，flowchart 掉回正文、末尾还多一个空抄录块。
+ *
+ * 流式友好：围栏未闭合（token 还在到达）时按到文末处理（差分块持续生长）。
  * id 方案：无围栏的纯文本保持 pb:{msg}:{i}（兼容）；拆分后 text 段
  * pb:{msg}:{i}t{n}、围栏段 pb:{msg}:{i}f{n}——围栏标记位置稳定则 id 稳定。 */
 
@@ -251,8 +257,6 @@ interface TextSegment {
 
 export function splitFencedSegments(text: string): TextSegment[] {
   const segments: TextSegment[] = [];
-  // 行首 ``` 开围栏；语言标记跟在后（如 ```diff / ```ts）
-  const fenceRe = /^```([^\n]*)$/;
   const lines = text.split('\n');
   let i = 0;
   let buf: string[] = [];
@@ -264,31 +268,32 @@ export function splitFencedSegments(text: string): TextSegment[] {
     buf = [];
   };
   while (i < lines.length) {
-    const m = lines[i].match(fenceRe);
-    if (m) {
-      const lang = m[1].trim() || undefined;
+    // 行首围栏（字符 + 长度由 paper/fence 定，CommonMark 4.5）：``` / ```` / ~~~ 都认。
+    // 长度必须随行带走——闭围栏要「同字符且不短于」，写死三个就会把四反引号围栏
+    // 里的 ```mermaid 当成闭合（2026-11-19 病灶：mermaid 示例被劈成三块）。
+    const open = fenceOpenOf(lines[i].trimStart());
+    if (open) {
+      const { mark } = open;
       const code: string[] = [];
       i++;
-      let closed = false;
       while (i < lines.length) {
-        if (fenceRe.test(lines[i])) {
-          closed = true;
+        if (fenceCloseOf(lines[i].trim(), mark)) {
+          // 闭围栏行之后可能还有空白（```␠␠ 常见），整行吃掉
           i++;
           break;
         }
         code.push(lines[i]);
         i++;
       }
-      void closed; // 未闭合 = 流式中：照常产出（块内容持续增长）
       flushText();
-      if (lang === MERMAID_LANG) {
-        // 唯一豁免：重建围栏回吐 markdown（parseMarkdown 收成 t:'code' →
-        // MdCodeBlock 的 mermaid 认领与测高契约原样保留）。
-        segments.push({ kind: 'markdown', text: [`\`\`\`${lang}`, ...code, '```'].join('\n') });
+      if (open.lang === MERMAID_LANG) {
+        // 唯一豁免：回吐 markdown（parseMarkdown 收成 t:'code' → MdCodeBlock 的
+        // mermaid 认领与测高契约原样保留）——按**原标记**还原，不一律三个反引号。
+        segments.push({ kind: 'markdown', text: reemitFence(mark, open.info, code) });
       } else {
         // 其余围栏一律独立成块（抄录 / CODE）——语言标记随 payload 下去，
         // 块体按 isDiffLang 分流差分着色 / hljs 代码体。
-        segments.push({ kind: 'diff', text: code.join('\n'), lang });
+        segments.push({ kind: 'diff', text: code.join('\n'), lang: open.lang });
       }
     } else {
       buf.push(lines[i]);
