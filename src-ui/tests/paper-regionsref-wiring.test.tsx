@@ -88,6 +88,7 @@ class FakeResizeObserver {
 import { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { useShellStore } from '../src/app/shell-store';
+import { identityView } from '../src/paper/canvas-math';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { getCanvasStore } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
@@ -196,5 +197,76 @@ describe('纸壳共享 ref 穿线（paper-panel-split 接线事故回归）', ()
       await new Promise((r) => setTimeout(r, 200));
     });
     expect(inkStats.fillRect).toBeGreaterThan(0);
+  }, 30_000);
+
+  /* P2a 对齐环 C 案（2026-11-19 用户拍板「散文与机器左齐」）的生产接线考：
+   * 判据在 paper/canvas-math 的 flowAlignX，但**版心宽由本 hook 传入**——
+   * 传错（比如误传流区宽而非版心宽）单测看不出来，必须挂真组件量 DOM。 */
+  it('P2a 对齐环 C 案：机器文本族左缘贴版心左缘，来文/夹注守中轴（真组件几何）', async () => {
+    const panel = new ChatCore();
+    useCoreStore.setState({ core: panel });
+    const sess = getChatStore(panel.panelId).sess;
+    sess.setState({ sessions: [{ id: 1, label: '卷一' }], activeIdx: 0, nextSessionId: 2 });
+    msgStoreFor(panel.panelId, 1)
+      .getState()
+      .setMessages([
+        ...turnMessages(1, 1),
+        /* 独立夹注：P5 起「夹注 + 紧随正文」合并成复合块（眉批），单独一条 reasoning
+         * 才长成 .pp-reasoning——本用例的「批守中轴」要的就是它。 */
+        asstMsg('a1r', [{ type: 'reasoning', text: '独立夹注：对齐环拍板 C 案的依据。', finalised: true }]),
+      ]);
+    // 1440 纸 → 版心 720（columnWidthFor = 流区宽 × 0.5）：不缩放，读数即设计值
+    getCanvasStore(panel.panelId).getState().setRegion('1', { anchorX: 0, anchorY: 0, width: 1440 });
+    /* canvas-view-store 是 app 级单例：上一用例把视口停在 zoom 0.3（墨迹档）——
+     * 不重置的话 restoreView 同值短路、挂载期视角飞行没掐掉，本用例会被留在
+     * LOD 档（DOM 块整体退场）。三件套与 paper-lod-tiers 同款。 */
+    useCanvasViewStore.setState({
+      view: identityView(),
+      canvasSize: { w: 800, h: 600 },
+      restoredView: null,
+      pendingFocusId: null,
+    });
+    useCanvasViewStore.getState().setCanvasSize(1200, 800);
+    useCanvasViewStore.getState().restoreView({ zoom: 1, panX: 600, panY: 450 });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(<PaperPanel />);
+    });
+    await act(async () => {
+      useCanvasViewStore.getState().setCanvasSize(1200, 800);
+    });
+    await act(async () => {
+      useCanvasViewStore.getState().setView((v) => ({ ...v, zoom: 1, panX: 600, panY: 450 }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 120));
+    });
+
+    const read = (el: HTMLElement) => {
+      const m = /translate\(([-\d.]+)px/.exec(el.style.transform);
+      return { x: Number(m?.[1]), w: Number.parseFloat(el.style.width) };
+    };
+    const byKind = (kind: string) => container?.querySelector(`.pp-block.pp-${kind}`) as HTMLElement | null;
+
+    const md = byKind('markdown');
+    const user = byKind('user');
+    const reason = byKind('reasoning');
+    const machines = [
+      ...(container?.querySelectorAll('.pp-block.pp-tool, .pp-block.pp-toolgroup, .pp-block.pp-code') ?? []),
+    ] as HTMLElement[];
+
+    expect(md).not.toBeNull();
+    expect(read(md as HTMLElement)).toEqual({ x: -360, w: 720 }); // 散文左缘 = 版心左缘
+    expect(read(user as HTMLElement)).toEqual({ x: -280, w: 560 }); // 来文（题）守中轴
+    expect(read(reason as HTMLElement).x).toBe(-309.5); // 夹注（批）守中轴
+    expect(machines.length).toBeGreaterThan(0);
+    for (const el of machines) {
+      const { x, w } = read(el);
+      expect(w).toBeLessThan(720); // 机器族窄于版心（宽度不是判据，只是本用例的前提）
+      expect(x).toBe(-360); // 左缘贴版心左缘（旧行为是各自的 -w/2：-320 / -360）
+    }
   }, 30_000);
 });

@@ -165,7 +165,35 @@ export function rhythmGap(r: RhythmClass): number {
   }
 }
 
-/** 流布局输出：给每个 flow 块算出世界坐标（x 居中窄带，y 自锚点向上累积）。
+/** 机器文本族（P2a 对齐环 C 案的左齐判据）：抄录（diff）/ 工具（tool）/
+ *  程序（code）/ 工具组（toolgroup）/ 子代理组（subagent）。
+ *  **只认 kind 不认宽度**——同族宽度可变（P2b 手调、钉块定格），拿宽度当判据
+ *  会在 640→720 之间翻面。资产卡（开放 kind）不在此列：它是「物件」，居中。 */
+const MACHINE_ALIGN_KINDS: ReadonlySet<string> = new Set(['diff', 'tool', 'code', 'toolgroup', 'subagent']);
+
+/** 块左缘在世界坐标里的 x（未加流区锚点）。
+ *  **P2a 对齐环（2026-11-19 用户拍板 C 案「散文与机器左齐」）**：
+ *   · 正文 / 计划 / 通知 / 资产卡吃满版心（w = columnW）——两式同值，随版心；
+ *   · 机器文本族 → 左缘贴**版心左缘**（-columnW/2），与正文共用一条左边线，
+ *     文类签（页边注）那一列随之成一条直线；
+ *   · 来文（题）与夹注（批）→ 各自居中（-w/2）——题心/批心仍是版面中轴，
+ *     书版惯例：标题居中、正文齐左。
+ *  columnW 非有限/非正（脏宽）⇒ 退回居中：宁可整块偏，不让全卷 x 变 NaN。 */
+export function flowAlignX(kind: string | undefined, blockW: number, columnW: number): number {
+  if (!Number.isFinite(columnW) || columnW <= 0) return -blockW / 2;
+  return MACHINE_ALIGN_KINDS.has(kind ?? '') ? -columnW / 2 : -blockW / 2;
+}
+
+/** 布局栈里的一块（x/y 求解的最小输入）。 */
+export interface FlowLayoutBlock {
+  id: string;
+  h: number;
+  w?: number;
+  kind?: string;
+  rhythm?: RhythmClass;
+}
+
+/** 流布局输出：给每个 flow 块算出世界坐标（x 见 `flowAlignX`，y 自锚点向上累积）。
  *  B1 垂直节奏：间距看「上面那块是否来文」——
  *    user 头顶（即下方是 user）：blockGap + userLeadGap（用户轮次切分，头顶宽）
  *    user 尾部（即上方是 user）：userTailGap（asterism 已带 30px 视觉尾距，零头）
@@ -174,10 +202,13 @@ export function rhythmGap(r: RhythmClass): number {
  *    recovery 96 / stage 96）；上方是 user 恒 userTailGap（B1 反转：来文后
  *    第一块紧贴，asterism 让位）。无 rhythm 的调用面（外部插件 / 旧测试）走
  *  B1 基线不变。
- *  自底向上遍历：游标减去的间距属于「上方那块」的头部空间。 */
-export function layoutFlow(
-  flowBlocks: Array<{ id: string; h: number; w?: number; kind?: string; rhythm?: RhythmClass }>,
-): Map<string, { x: number; y: number }> {
+ *  自底向上遍历：游标减去的间距属于「上方那块」的头部空间。
+ *  **版心对齐（P2a 对齐环，2026-11-19 用户拍板 C 案）**：x 不再一律居中——
+ *  机器文本族左缘贴版心左缘，散文满宽（同值），来文/夹注各守中轴。
+ *  判据单一真源 = `flowAlignX`；columnW = 本流区版心宽（流区宽 × 0.5，
+ *  真源 `paper-shell/measure.columnWidthFor`），**由调用点传入**——paper/ 是
+ *  纯几何层，不认识版心比例，也不该认识。 */
+export function layoutFlow(flowBlocks: FlowLayoutBlock[], columnW: number): Map<string, { x: number; y: number }> {
   const out = new Map<string, { x: number; y: number }>();
   // 从锚点 (0, 0) 向上：第一个（最旧）块在最上，最新的贴锚点。
   // 自底向上累积：游标从 0 出发向 -y 走，最后一块（最新）底边贴 y=0。
@@ -192,7 +223,7 @@ export function layoutFlow(
     const h = Number.isFinite(rawH) && rawH >= 0 ? rawH : 0;
     const rawW = b.w ?? 720;
     const w = Number.isFinite(rawW) && rawW > 0 ? rawW : 720;
-    const x = -w / 2; // 窄带居中（原点在窄带中轴）
+    const x = flowAlignX(b.kind, w, columnW);
     const y = cursor - h; // 块顶 = 游标 - 高度
     out.set(b.id, { x, y });
     cursor = y - gapAbove(b, upper);
@@ -222,12 +253,14 @@ export interface RegionAnchor {
 
 /** 多锚流布局（stage-2 4.2：单锚 → 多锚）。
  *  复用 layoutFlow 的相对栈序，整体平移到流区锚点——每流区独立栈：
- *  一个会话吐字只重算它自己的栈（“单流区更新=常数”铁律的布局根基）。 */
+ *  一个会话吐字只重算它自己的栈（“单流区更新=常数”铁律的布局根基）。
+ *  `columnW` 同 `layoutFlow`（版心宽，决定机器文本族是否左齐）。 */
 export function layoutRegion(
-  flowBlocks: Array<{ id: string; h: number; w?: number; kind?: string }>,
+  flowBlocks: FlowLayoutBlock[],
   anchor: RegionAnchor,
+  columnW: number,
 ): Map<string, { x: number; y: number }> {
-  const rel = layoutFlow(flowBlocks);
+  const rel = layoutFlow(flowBlocks, columnW);
   const out = new Map<string, { x: number; y: number }>();
   for (const [id, pos] of rel) out.set(id, { x: anchor.x + pos.x, y: anchor.y + pos.y });
   return out;

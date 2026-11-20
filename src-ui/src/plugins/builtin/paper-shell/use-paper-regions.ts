@@ -55,6 +55,15 @@ const FALLBACK_REGION_W = 1440;
 /** 视口虚拟化输入：可见窗口外扩余量（px，世界单位）。 */
 const OVERSCAN = 200;
 
+/** 流区宽 → 版心宽（**唯一换算口**：块宽缩放与栈布局（C 案左齐）共用同一把尺子）。
+ *  ⚠ 防御（2026-09-03 级联排查）：regionW 非有限数（流区宽脏/NaN）会让本卷全部
+ *  块宽变 NaN → 测高 NaN → 布局级联打碎。宁可回落默认流区宽（版心 720），
+ *  也不让 NaN 进测量链。 */
+function columnWidthOfRegion(regionW: number): number {
+  const safe = Number.isFinite(regionW) && regionW > 0 ? regionW : FALLBACK_REGION_W;
+  return columnWidthFor(safe);
+}
+
 /* ── P2-3 平移零重算（2026-09-02 拖动卡顿专项）── 卷级布局核心缓存条目：
  * inputs = 失效键（消息快照/锚点/钉表/折叠谓词/测量代——全部内容侧输入，
  * 不含视口），core = O(块) 派生物（translate/adapt/measure/layout/seq/
@@ -227,11 +236,7 @@ export function usePaperRegions(params: {
   const shrinkCopyCacheRef = useRef(new WeakMap<SourcedBlock, { w: number; copy: SourcedBlock }>());
   const adaptBlocks = useCallback((blocks: SourcedBlock[], regionW: number): SourcedBlock[] => {
     const cache = shrinkCopyCacheRef.current;
-    // ⚠ 防御（2026-09-03 级联排查）：regionW 非有限数（流区宽脏/NaN）会让本卷
-    // 全部块宽变 NaN → 测高 NaN → 布局级联打碎。实测优先无签名守卫，宁可回落
-    // 默认流区宽（版心 720），也不让 NaN 进测量链。
-    const safeRegionW = Number.isFinite(regionW) && regionW > 0 ? regionW : FALLBACK_REGION_W;
-    const colW = columnWidthFor(safeRegionW);
+    const colW = columnWidthOfRegion(regionW);
     return blocks.map((b) => {
       if (b.state === 'pinned') return b;
       const scaled = (b.w / BASE_BLOCK_W) * colW;
@@ -370,7 +375,9 @@ export function usePaperRegions(params: {
             rhythm: rhythmOf.get(b.id),
           };
         });
-        const layout = layoutRegion(stack, { x: anchor.anchorX, y: anchor.anchorY });
+        // P2a 对齐环 C 案（2026-11-19 用户拍板）：机器文本族左缘贴版心左缘——
+        // columnW 与 adaptBlocks 同一把尺子（columnWidthOfRegion，含脏宽兜底）。
+        const layout = layoutRegion(stack, { x: anchor.anchorX, y: anchor.anchorY }, columnWidthOfRegion(anchor.width));
         const flowGeom: FlowGeom[] = stack.map((sx) => ({
           id: sx.id,
           y: layout.get(sx.id)?.y ?? 0,

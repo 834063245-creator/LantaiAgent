@@ -63,6 +63,9 @@ import {
   visiblePinnedIds,
 } from '../src/plugins/builtin/paper-shell/virtualize';
 
+/* 默认版心宽（1440 纸 × 0.5，真源 = paper-shell/measure.columnWidthFor）——layout 的 x 依它分档。 */
+const DEFAULT_COLUMN_W = 720;
+
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
   return createBlock(kind, payload as never, { messageId: 'm', part: null });
 }
@@ -163,7 +166,7 @@ describe('paper/measure', () => {
       { id: 'u', h: 50, kind: 'user' },
       { id: 'b', h: 100, kind: 'markdown' },
     ];
-    const lay = layoutFlow(stack);
+    const lay = layoutFlow(stack, DEFAULT_COLUMN_W);
     // 最新块 b 底边贴锚 y=0 → b 顶 -100
     expect(lay.get('b')?.y).toBe(-100);
     // u 尾距（u 底到 b 顶）：userTailGap 8 → u 顶 = -100 - 8 - 50 = -158
@@ -426,7 +429,10 @@ describe('paper/measure → layoutFlow 接缝', () => {
       block('markdown', { text: 'b' }),
       block('markdown', { text: 'c' }),
     ];
-    const laid = layoutFlow(blocks.map((b) => ({ id: b.id, h: measureBlockHeight(b), w: b.w })));
+    const laid = layoutFlow(
+      blocks.map((b) => ({ id: b.id, h: measureBlockHeight(b), w: b.w })),
+      DEFAULT_COLUMN_W,
+    );
     const last = blocks[blocks.length - 1];
     // 最新块底边 = y + h = 0（锚点）
     expect(laid.get(last.id)?.y).toBe(-measureBlockHeight(last));

@@ -34,6 +34,9 @@ import {
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import { getChatStore } from '../src/ui/chat-store';
 
+/* 默认版心宽（1440 纸 × 0.5，真源 = paper-shell/measure.columnWidthFor）——layout 的 x 依它分档。 */
+const DEFAULT_COLUMN_W = 720;
+
 const STORE = 'test-space';
 
 /** 测试用假 core——SpaceService 只消费 panelId 与若干转发方法。 */
@@ -120,8 +123,8 @@ describe('paper/canvas-math layoutRegion（多锚布局）', () => {
       { id: 'a', h: 100, w: 720, kind: 'markdown' },
       { id: 'b', h: 60, w: 720, kind: 'user' },
     ];
-    const r0 = layoutRegion(blocks, { x: 0, y: 0 });
-    const r1 = layoutRegion(blocks, { x: 2160, y: -500 });
+    const r0 = layoutRegion(blocks, { x: 0, y: 0 }, DEFAULT_COLUMN_W);
+    const r1 = layoutRegion(blocks, { x: 2160, y: -500 }, DEFAULT_COLUMN_W);
     // 相对关系在两区一致（平移不变）
     const d0 = (r0.get('a')!.y - r0.get('b')!.y) / 1;
     const d1 = (r1.get('a')!.y - r1.get('b')!.y) / 1;
@@ -138,7 +141,7 @@ describe('paper/canvas-math layoutRegion（多锚布局）', () => {
       { id: 'old', h: 100 },
       { id: 'new', h: 60 },
     ];
-    const laid = layoutRegion(blocks, { x: 0, y: 0 });
+    const laid = layoutRegion(blocks, { x: 0, y: 0 }, DEFAULT_COLUMN_W);
     expect(laid.get('new')!.y).toBe(-60); // 最新块底边贴锚点
     expect(laid.get('old')!.y).toBeLessThan(-60); // 旧块在更上方
   });

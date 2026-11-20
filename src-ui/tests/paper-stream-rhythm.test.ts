@@ -30,6 +30,9 @@ import {
 import { visibleFlowWindow } from '../src/plugins/builtin/paper-shell/virtualize';
 import type { AssistantMessage, ChatMessage, ToolCallPart, UserMessage } from '../src/ui/message-model';
 
+/* 默认版心宽（1440 纸 × 0.5，真源 = paper-shell/measure.columnWidthFor）——layout 的 x 依它分档。 */
+const DEFAULT_COLUMN_W = 720;
+
 function toolPart(name: string, args: string, status: ToolCallPart['status'] = 'done'): ToolCallPart {
   return { type: 'tool', toolId: `tc-${name}-${Math.random()}`, name, label: name, args, readOnly: false, status };
 }
@@ -450,7 +453,7 @@ describe('canvas-math：节奏档间距（刀2 布局面）', () => {
       { id: 'tg', h: 30, kind: 'toolgroup', rhythm: 'intra' as const },
       { id: 'b', h: 100, kind: 'markdown', rhythm: 'unit' as const },
     ];
-    const lay = layoutFlow(stack);
+    const lay = layoutFlow(stack, DEFAULT_COLUMN_W);
     // b 底贴锚 y=0 → b 顶 -100；b(unit) 头顶 unit 64
     expect(lay.get('b')?.y).toBe(-100);
     // tg 顶 = -100 - 64(unit) - 30；tg(intra) 头顶 intra 32
@@ -499,7 +502,7 @@ function layoutOf(msgs: ChatMessage[]): {
     rhythmOf,
     stageLeadIds,
     unitLeadIds,
-    layout: layoutFlow(stack),
+    layout: layoutFlow(stack, DEFAULT_COLUMN_W),
   };
 }
 

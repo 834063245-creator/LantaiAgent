@@ -38,6 +38,10 @@ import {
 } from '../src/paper/translate';
 import type { AssistantMessage, ChatMessage, UserMessage } from '../src/ui/message-model';
 
+/* 默认版心宽（1440 纸 × 0.5，真源 = paper-shell/measure.columnWidthFor）——
+ * 布局测试的基准；P2a 对齐环（C 案）后 layout 的 x 依它分档。 */
+const DEFAULT_COLUMN_W = 720;
+
 /* ── 测试数据构造（真实 message-model 形状，非 mock 接口——数据是本地产物） ── */
 
 function userMsg(id: string, text: string): UserMessage {
@@ -222,11 +226,14 @@ describe('paper/canvas-math', () => {
   });
 
   it('layoutFlow：最新块底边贴锚点（y=0），流向上生长（D-R1-3）', () => {
-    const laid = layoutFlow([
-      { id: 'old', h: 100 },
-      { id: 'mid', h: 80 },
-      { id: 'new', h: 60 },
-    ]);
+    const laid = layoutFlow(
+      [
+        { id: 'old', h: 100 },
+        { id: 'mid', h: 80 },
+        { id: 'new', h: 60 },
+      ],
+      DEFAULT_COLUMN_W,
+    );
     // 最新块底边 = 0
     expect(laid.get('new')?.y).toBe(-60);
     // 中块底边 = 新块顶 - gap
@@ -239,12 +246,15 @@ describe('paper/canvas-math', () => {
 
   it('layoutFlow：单块高 NaN → 按 0 兜底不级联（「从坏点起全乱」的防御）', () => {
     // 回归：坏块（h=NaN）在中间，上方旧块必须仍拿到有限坐标
-    const laid = layoutFlow([
-      { id: 'old', h: 100 },
-      { id: 'bad', h: Number.NaN }, // 测量异常的来文块
-      { id: 'mid', h: 80 },
-      { id: 'new', h: 60 },
-    ]);
+    const laid = layoutFlow(
+      [
+        { id: 'old', h: 100 },
+        { id: 'bad', h: Number.NaN }, // 测量异常的来文块
+        { id: 'mid', h: 80 },
+        { id: 'new', h: 60 },
+      ],
+      DEFAULT_COLUMN_W,
+    );
     const ys = ['old', 'bad', 'mid', 'new'].map((id) => laid.get(id)?.y);
     for (const y of ys) expect(Number.isFinite(y)).toBe(true);
     // 坏块按 0 高：mid 底边 = new 顶 - gap，bad 落在 mid 顶 - gap，old 再往上
@@ -254,12 +264,61 @@ describe('paper/canvas-math', () => {
   });
 
   it('layoutFlow：块宽 NaN → 兜底默认宽（x 不污染）', () => {
-    const laid = layoutFlow([
-      { id: 'a', h: 50, w: Number.NaN },
-      { id: 'b', h: 50, w: 720 },
-    ]);
+    const laid = layoutFlow(
+      [
+        { id: 'a', h: 50, w: Number.NaN },
+        { id: 'b', h: 50, w: 720 },
+      ],
+      DEFAULT_COLUMN_W,
+    );
     expect(laid.get('a')?.x).toBe(-360); // 默认宽 720
     expect(laid.get('b')?.x).toBe(-360);
+  });
+
+  /* ── P2a 对齐环 C 案（2026-11-19 用户拍板「散文与机器左齐」）──
+   * 判据 = kind（flowAlignX 单一真源），不认宽度：机器文本族左缘贴版心左缘，
+   * 满版心的散文两式同值，来文（题）与夹注（批）守中轴。 */
+  it('layoutFlow：C 案——机器文本族左缘贴版心左缘，来文/夹注守中轴', () => {
+    const laid = layoutFlow(
+      [
+        { id: 'md', h: 100, w: 720, kind: 'markdown' },
+        { id: 'u', h: 50, w: 560, kind: 'user' },
+        { id: 'r', h: 40, w: 619, kind: 'reasoning' },
+        { id: 'tg', h: 30, w: 640, kind: 'toolgroup' },
+        { id: 't', h: 30, w: 640, kind: 'tool' },
+        { id: 'd', h: 30, w: 640, kind: 'diff' },
+        { id: 'c', h: 30, w: 640, kind: 'code' },
+        { id: 'sa', h: 30, w: 640, kind: 'subagent' },
+      ],
+      DEFAULT_COLUMN_W,
+    );
+    // 满版心的散文：左缘 = 版心左缘（与居中同值）
+    expect(laid.get('md')?.x).toBe(-360);
+    // 机器文本族（抄录/工具/程序/工具组/子代理组）：左缘 = 版心左缘
+    for (const id of ['tg', 't', 'd', 'c', 'sa']) expect(laid.get(id)?.x).toBe(-360);
+    // 来文（题）居中：560 / 2
+    expect(laid.get('u')?.x).toBe(-280);
+    // 夹注（批）居中：619 / 2
+    expect(laid.get('r')?.x).toBe(-309.5);
+  });
+
+  it('layoutFlow：C 案随版心走——拉宽流区（版心 1080）机器族仍贴左缘、来文仍居中', () => {
+    const laid = layoutFlow(
+      [
+        { id: 't', h: 30, w: 960, kind: 'tool' }, // 640 × 1.5
+        { id: 'u', h: 30, w: 840, kind: 'user' }, // 560 × 1.5
+      ],
+      1080,
+    );
+    expect(laid.get('t')?.x).toBe(-540); // 左缘 = 版心左缘
+    expect(laid.get('u')?.x).toBe(-420); // 题守中轴
+  });
+
+  it('layoutFlow：版心宽脏（NaN / 0）→ 退回居中，不让全卷 x 变 NaN', () => {
+    for (const bad of [Number.NaN, 0, -1]) {
+      const laid = layoutFlow([{ id: 't', h: 30, w: 640, kind: 'tool' }], bad);
+      expect(laid.get('t')?.x).toBe(-320); // 居中兜底
+    }
   });
 });
 
