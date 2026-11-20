@@ -40,6 +40,7 @@ import { sourceBlockIdOf, TETHER_ANCHOR_DY, tetherAnchors, tetherAnchorsAt, teth
 import { flyQuoteGhost } from './quote-flight';
 import { quoteSlotOf, useQuoteReady } from './quote-target';
 import { createRegionMotionWindow, regionExits, regionOnScreen, stepRegionMotion } from './region-motion';
+import { useQuoteHoldCanvas } from './use-quote-hold-canvas';
 
 /** 属性选择器里的字符串转义（会话 id 可能就是数字串，但仍按规范转义——
  *  含 `"` / `\\` 的值直接拼进选择器会抛 SyntaxError）。 */
@@ -283,6 +284,18 @@ export function usePaperPanelAssembly() {
   /** 夹签有没有地方可落（此刻有没有卷 / 纸）——空画布时「引用」置灰（方案 §2.2 态一）。
    *  订阅 sheet + sess：落纸 / 开卷一发生，按钮立刻可用。 */
   const quoteReady = useQuoteReady(core?.panelId ?? null);
+
+  /* **画布上任意一张卡的长按引用**（2026-11-20 用户要：摊开状态的卡也能长按）。
+   * 手势核、暂存起点、落点写槽全在 use-quote-hold-canvas（装配根只接线不塞业务）——
+   * 此前内联在这里把本文件推过了 1000 行门禁。 */
+  const canvasHold = useQuoteHoldCanvas({
+    panelId: core?.panelId ?? null,
+    moveCardToSlot: (slot, card) => {
+      if (!core) return 'moved';
+      return getChatStore(core.panelId).input.getState().moveAttachedCardToSlot(slot, card);
+    },
+  });
+  const beginQuoteHold = canvasHold.begin;
 
   /* **孤儿钉的动作行**（2026-11-20 用户报「已经摊开的卡片没有引用按钮」）：
    * 孤儿钉 = 源卷未摊开 / 源块已不在流内 / 源卷已删 / 从架阁摊上来的卡——它们没有活
@@ -869,6 +882,9 @@ export function usePaperPanelAssembly() {
 
   return {
     core,
+    /** 画布卡长按的渲染态（纸面据此给那张卡描边、跟手画一枚小浮签）。 */
+    canvasQuoteHold: canvasHold.state,
+    beginQuoteHold,
     updateAvailable,
     updateVersion,
     projectPath,

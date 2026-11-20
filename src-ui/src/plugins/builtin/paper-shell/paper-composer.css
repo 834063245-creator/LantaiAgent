@@ -223,6 +223,31 @@
     transform var(--snap),
     box-shadow var(--snap);
 }
+/* 长按引用·按住回执（2026-11-20，方案 §6.2「按住 0-320ms：卡轻微下沉 + 进度环」）：
+   按下即起手计时，这一片刻必须看得见——否则用户以为没响应、提前松手（变成点击）。
+   只动 transform 与描边，不碰布局（纸律）。 */
+.pp-block[data-quote-holding] {
+  transform-origin: center;
+  scale: 0.995;
+  outline: 1px solid color-mix(in oklch, var(--seal) 40%, transparent);
+  outline-offset: -1px;
+}
+
+/* 长按引用·跟手浮签（2026-11-20）：起手后指针旁一枚小签。屏幕坐标、不吃世界变换；
+   pointer-events 全关（它只是「手上有东西」的可见回执，不是可点件）。 */
+.pp-quote-ghost {
+  position: absolute;
+  z-index: 8;
+  padding: 3px 7px;
+  border: 1px solid var(--seal);
+  background: var(--paper);
+  font-family: var(--f-song);
+  font-size: var(--fs-caption);
+  color: var(--seal-deep);
+  pointer-events: none;
+  box-shadow: 0 4px 12px color-mix(in oklch, var(--ink-1) 18%, transparent);
+}
+
 /* 可投放态的卷描线（§6.2「所有卷边界描线浮现」）：dragging 期间画布上所有卷都亮边，
    指针下那一卷加深。**只动描边与底色，不动布局**（纸律：整叶只动 opacity）。 */
 html.pp-quote-dropping .pp-region {

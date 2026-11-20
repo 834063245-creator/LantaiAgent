@@ -45,8 +45,11 @@ export interface QuoteHoldState {
   holding: boolean;
   /** 已起手（夹签浮起、卷进入可投放态）。 */
   dragging: boolean;
-  /** 指针下的目标卷（null = 空白或本卷 = 无有效落点）。 */
+  /** 指针下的目标卷（null = 空白；是否算「有效落点」由调用方的 allowOwn 决定）。 */
   dropTarget: string | null;
+  /** 指针位置（client 坐标）——跟手的小浮签要靠它定位（画布卡长按用）。 */
+  x: number;
+  y: number;
 }
 
 export interface QuoteHoldOptions {
@@ -54,8 +57,13 @@ export interface QuoteHoldOptions {
   ownSession: string;
   /** 起手（长按满 320ms）。 */
   onArm?: () => void;
-  /** 松手落在**别的卷**上：把夹签递给它。 */
+  /** 松手落在**有效卷**上：把这张卡引用（或挪）给它。 */
   onDrop: (targetSession: string) => void;
+  /** **本卷也算有效落点**（缺省 false）。
+   *
+   *  夹签轨上的那枚长按拖拽：本卷 = 它本来就在这份槽里 ⇒ 无操作（缺省）。
+   *  **画布上的卡**长按拖拽：它不属于任何槽，落在哪一卷就引用进哪一卷，本卷当然算。 */
+  allowOwn?: boolean;
   /** 无效落点（空白 / 本卷 / Esc / 位移超限）。 */
   onAbandon?: () => void;
 }
@@ -73,13 +81,16 @@ function clearDomMarks(): void {
  * ⚠ 没起手（320ms 内松手 / 位移超限）时**什么都不做**——轻点仍走既有快路（引用到本卷），
  *   本 hook 不许吞掉它（方案 §2.2：两个入口并存，不是替换）。
  */
-export function useQuoteHold({ ownSession, onArm, onDrop, onAbandon }: QuoteHoldOptions) {
-  const [state, setState] = useState<QuoteHoldState>({ holding: false, dragging: false, dropTarget: null });
+export function useQuoteHold({ ownSession, onArm, onDrop, onAbandon, allowOwn }: QuoteHoldOptions) {
+  const [state, setState] = useState<QuoteHoldState>({ holding: false, dragging: false, dropTarget: null, x: 0, y: 0 });
   /** 长按计时器与「已起手」标记（ref：手势回调里要读最新值，state 会滞后一帧）。 */
   const timer = useRef<number | null>(null);
   const armed = useRef(false);
-  const latest = useRef({ ownSession, onArm, onDrop, onAbandon });
-  latest.current = { ownSession, onArm, onDrop, onAbandon };
+  const latest = useRef({ ownSession, onArm, onDrop, onAbandon, allowOwn });
+  latest.current = { ownSession, onArm, onDrop, onAbandon, allowOwn };
+  /** 指针最新位置（**没过阈值时也要有**）：长按满 320ms 却一动不动地松手，
+   *  手势核心判的是「没过阈值 = click」→ onCancel —— 那一支得靠这份坐标算落点。 */
+  const pointer = useRef({ x: 0, y: 0 });
 
   const clearTimer = useCallback(() => {
     if (timer.current !== null) {
@@ -94,7 +105,7 @@ export function useQuoteHold({ ownSession, onArm, onDrop, onAbandon }: QuoteHold
     timer.current = null;
     armed.current = true;
     if (typeof document !== 'undefined') document.documentElement.classList.add('pp-quote-dropping');
-    setState({ holding: false, dragging: true, dropTarget: null });
+    setState((prev) => ({ ...prev, holding: false, dragging: true }));
     latest.current.onArm?.();
   }, []);
 
@@ -102,7 +113,7 @@ export function useQuoteHold({ ownSession, onArm, onDrop, onAbandon }: QuoteHold
     clearTimer();
     armed.current = false;
     clearDomMarks();
-    setState({ holding: false, dragging: false, dropTarget: null });
+    setState((prev) => ({ ...prev, holding: false, dragging: false, dropTarget: null }));
   }, [clearTimer]);
 
   /** 收尾（只在**起手过**时提交结果；没起手 = 轻点/滚动，交回快路）。 */
@@ -112,7 +123,9 @@ export function useQuoteHold({ ownSession, onArm, onDrop, onAbandon }: QuoteHold
       reset();
       if (!wasArmed) return;
       const own = latest.current.ownSession;
-      if (target && target !== own) latest.current.onDrop(target);
+      // allowOwn：画布卡不属于任何槽，落在本卷同样有效（夹签轨那枚则否——它本来就在）
+      const valid = target !== null && (latest.current.allowOwn === true || target !== own);
+      if (valid) latest.current.onDrop(target as string);
       else latest.current.onAbandon?.();
     },
     [reset],
@@ -139,15 +152,26 @@ export function useQuoteHold({ ownSession, onArm, onDrop, onAbandon }: QuoteHold
       if (!armed.current) reset();
     },
     onMove: (_e, d) => {
+      pointer.current = { x: d.x, y: d.y };
       if (!armed.current) return;
       markTarget(regionAtPoint(d.x, d.y));
+      // 指针位置（画布卡长按要一枚跟手的小浮签）——同值短路，静止帧不重渲
+      setState((prev) => (prev.x === d.x && prev.y === d.y ? prev : { ...prev, x: d.x, y: d.y }));
     },
     onEnd: (_e, d) => {
       if (!armed.current) return;
       finish(regionAtPoint(d.x, d.y));
     },
-    onCancel: () => {
-      // Esc / 失联 / 没过阈值就松手：起手过 ⇒ 一次「放弃」；没起手 ⇒ 交回快路
+    onCancel: (reason) => {
+      /* 四条来路（核心的 CancelReason）：
+       *   · 'click' —— 没过阈值就松手。**起手过**（长按满 320ms 但一动不动）⇒ 按松手点
+       *     提交：用户按住就是要给它，不该因为他没挪鼠标就作废；
+       *   · 'escape' / 'lost-focus' / 'pointercancel' / 'manual' —— 一律作废（方案 §8）。
+       * 没起手（320ms 内松手）= 轻点，交回快路（finish 自己会判）。 */
+      if (reason === 'click' && armed.current) {
+        finish(regionAtPoint(pointer.current.x, pointer.current.y));
+        return;
+      }
       finish(null);
     },
   });
@@ -156,7 +180,8 @@ export function useQuoteHold({ ownSession, onArm, onDrop, onAbandon }: QuoteHold
   const begin = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
-      setState({ holding: true, dragging: false, dropTarget: null });
+      pointer.current = { x: e.clientX, y: e.clientY };
+      setState({ holding: true, dragging: false, dropTarget: null, x: e.clientX, y: e.clientY });
       clearTimer();
       timer.current = window.setTimeout(arm, LONG_PRESS_MS);
       gesture.begin(e);

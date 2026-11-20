@@ -174,6 +174,8 @@ export function PaperPanel() {
     sidecarOutOf,
     orphanPins,
     orphanOps,
+    canvasQuoteHold,
+    beginQuoteHold,
     deadOrphanPinIds,
     visibleRegionIds,
     inkCache,
@@ -576,6 +578,9 @@ export function PaperPanel() {
                       只能从 DOM 上看得出它是钉住的、来自哪一卷）。 */
                     data-block-state="pinned"
                     data-source-label={source?.label}
+                    /* 孤儿钉的长按引用（2026-11-20）：它就是「摊在画布上的库卡」的常态宿主。 */
+                    onPointerDown={(e) => beginQuoteHold(e, snapshotBlock, source ? source.sessionId : -1)}
+                    data-quote-holding={canvasQuoteHold.holding || undefined}
                     onDragStart={(e) => e.preventDefault()}
                     onMouseEnter={() => setTetherPinId(pinId)}
                     onMouseLeave={() => setTetherPinId((cur) => (cur === pinId ? null : cur))}
@@ -670,6 +675,11 @@ export function PaperPanel() {
                             : undefined
                         }
                         ref={blockRootRef}
+                        /* 长按 320ms = **引用这张卡**（2026-11-20 用户要：摊开状态的卡也能长按）。
+                           与块拖拽共存：过 8px 未满 320ms = 拖块/滚动（长按作废），
+                           满 320ms 起手 = 引用（此时再移动才是「拖给某卷」）。 */
+                        onPointerDown={(e) => beginQuoteHold(e, b, r.sessionNum)}
+                        data-quote-holding={canvasQuoteHold.holding || undefined}
                         onDragStart={(e) => e.preventDefault()}
                       >
                         {/* 单元界短规线（2026-09-06 尸检改实元素）：原块级 ::before
@@ -735,6 +745,11 @@ export function PaperPanel() {
                             : undefined
                         }
                         ref={blockRootRef}
+                        /* 长按 320ms = **引用这张卡**（2026-11-20 用户要：摊开状态的卡也能长按）。
+                           与块拖拽共存：过 8px 未满 320ms = 拖块/滚动（长按作废），
+                           满 320ms 起手 = 引用（此时再移动才是「拖给某卷」）。 */
+                        onPointerDown={(e) => beginQuoteHold(e, b, r.sessionNum)}
+                        data-quote-holding={canvasQuoteHold.holding || undefined}
                         onDragStart={(e) => e.preventDefault()}
                         onMouseEnter={() => setTetherPinId(b.id)}
                         onMouseLeave={() => setTetherPinId((cur) => (cur === b.id ? null : cur))}
@@ -773,6 +788,18 @@ export function PaperPanel() {
                 只接管流块墨迹——钉住块/纸条/孤儿钉 DOM 恒在场（2026-09-07 用户
                 拍板：LOD 不再隐藏钉在画布上的卡片），本层不画它们（不叠墨）。 */}
             {lod && <InkLayer regionsRef={regionsRef} foldedOf={foldedOf} inkCache={inkCache.current} />}
+
+            {/* 长按引用·跟手浮签（2026-11-20）：起手后指针旁一枚小签，读作「这张卡现在跟着手」。
+                屏幕坐标（本层是画布根，不吃世界变换）；纯视觉，pointer-events 全关。 */}
+            {canvasQuoteHold.dragging && (
+              <div
+                className="pp-quote-ghost"
+                style={{ left: canvasQuoteHold.x + 12, top: canvasQuoteHold.y + 12 }}
+                aria-hidden="true"
+              >
+                引
+              </div>
+            )}
           </div>
 
           {/* 引线层（2026-09-18 出处引导，同批按用户判「直线直连有点劣质」重做）：
