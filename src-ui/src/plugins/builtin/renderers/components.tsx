@@ -1877,7 +1877,13 @@ function FormBody({ block }: BlockRendererProps) {
   );
 }
 
-/* ── board（看板——列+卡，§2.9 原语补齐）── */
+/* ── board（看板——列+卡，§2.9 原语补齐）──
+ * ⚠ 结构纪律（2026-11-20 真机塌陷回归）：题签行**不得**与列同处一个 flex 行容器。
+ * 2026-09-17「题签铺到 board」把题签塞进了 `.pp-board`（当时那是个 flex 行）——
+ * 题签成了第 1 个 flex 子项：列 2..n 各分一份宽，列 1 被题签挤到下方一条 ~15px
+ * 窄条（标题与卡按纵向 IFC 单字一行），整块高度还要按列数叠（真机：4 列 = 4×内容高，
+ * 600+ 撑破版心，卡全被推到块外）。现有形状与其它图版同构：题签行独占一条，
+ * 列另起一条 flex 行（.pp-board-cols）——见 paper-cards.css 的容器分工注。 */
 
 function BoardBody({ block }: BlockRendererProps) {
   const p = block.payload as {
@@ -1891,19 +1897,21 @@ function BoardBody({ block }: BlockRendererProps) {
   return (
     <div className="pp-board">
       <PlateHead kind="board" title={p.caption} titleClass="pp-plate-title" />
-      {columns.map((col, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: 看板列按数据序渲染，列序即身份
-        <div key={i} className="pp-board-col">
-          <div className="pp-board-col-title">{col.title ?? ''}</div>
-          {(col.cards ?? []).map((card, j) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: 卡按列内序渲染
-            <div key={j} className={`pp-board-card${card.tone ? ` pp-board-card-${card.tone}` : ''}`}>
-              <div className="pp-board-card-label">{card.label ?? ''}</div>
-              {card.body && <div className="pp-board-card-body">{card.body}</div>}
-            </div>
-          ))}
-        </div>
-      ))}
+      <div className="pp-board-cols">
+        {columns.map((col, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 看板列按数据序渲染，列序即身份
+          <div key={i} className="pp-board-col">
+            <div className="pp-board-col-title">{col.title ?? ''}</div>
+            {(col.cards ?? []).map((card, j) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 卡按列内序渲染
+              <div key={j} className={`pp-board-card${card.tone ? ` pp-board-card-${card.tone}` : ''}`}>
+                <div className="pp-board-card-label">{card.label ?? ''}</div>
+                {card.body && <div className="pp-board-card-body">{card.body}</div>}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

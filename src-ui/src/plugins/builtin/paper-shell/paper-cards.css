@@ -16,9 +16,16 @@
   padding-left: 10px;
 }
 
-/* ── board（看板——列+卡，§2.9 原语补齐）── */
+/* ── board（看板——列+卡，§2.9 原语补齐）──
+ * ⚠ 两条容器分工（2026-11-20 真机塌陷回归）：`.pp-board` 只做**竖向堆叠**
+ *（题签行独占一条 + 列行），**不得**是 flex 行——题签行一旦与列同级，它就成了
+ * 第 1 个 flex 子项：列 2..n 各分一份、列 1 被压到题签下方一条窄条（纵向 IFC
+ * 单字一行），块高再按列数叠（真机 4 列 = 4×内容高）。横向滚动归 `.pp-board-cols`：
+ * 滚动列时题签行原地不动。渲染侧结构见 components.tsx 的 BoardBody。 */
 .pp-board {
   padding: var(--pp-asset-board-padV) 0;
+}
+.pp-board-cols {
   display: flex;
   gap: var(--pp-asset-board-colGap);
   overflow-x: auto;

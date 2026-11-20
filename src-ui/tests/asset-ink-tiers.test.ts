@@ -28,7 +28,7 @@ const ASSET_PREFIXES = [
   'pp-grid',
   'pp-chart',
   'pp-metric',
-  'pp-board',
+  'pp-board', // 含 .pp-board-cols（列行，2026-11-20 塌陷回归起与题签行分工）
   'pp-timeline',
   'pp-citation',
   'pp-chem',

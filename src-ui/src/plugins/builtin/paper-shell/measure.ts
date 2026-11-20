@@ -853,7 +853,9 @@ function graphLayeredBodyH(payload: unknown, _w: number): number {
   return GRAPH_PAD_V + ASSET_DERIVED.graphViewH(maxRows);
 }
 
-/** board 体高：横排等高列（flex 行）——列高 = 列题 + Σ 卡高，取最大列。 */
+/** board 体高：题签行 + 横排等高列（列行是题签**下方**的一条 flex 行，不是同级——
+ *  2026-11-20 塌陷回归见 components.tsx 的 BoardBody 注）——列高 = 列题 + Σ 卡高，
+ *  取最大列；题签行只计一次（PLATE_HEAD_H）。 */
 function boardBodyH(p: { columns?: unknown }, w: number): number {
   const columns = Array.isArray(p.columns)
     ? p.columns.filter((c): c is Record<string, unknown> => c != null && typeof c === 'object')
