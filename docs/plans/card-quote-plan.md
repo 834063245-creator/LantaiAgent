@@ -1,13 +1,16 @@
 # 卡片引用（夹签）落地方案
 
-> **状态**：P0 已落地（2026-11-19 开工并完成 §10 P0 全部条目）· P1 长按拖拽未开工
+> **状态**：P0 已落地（2026-11-19）· **P1 的「点引用」全套动效已落地（2026-11-20）**；P1 余项 = 长按拖拽改归属
 > **落地记录**：`state/card-quote.ts`（纯数据面 + 摘要模板）/ `state/input-store.ts`（`attachedCards`
 > 槽 + 5 个方法，含跨槽递送 `addAttachedCardToSlot`）/ `app/chat/chat-core.ts`（发送前落快照、
 > 逐枚降级、写盘失败不发送）/ `paper-shell`（块操作条「引用」+ 架阁「引」）/ `compose-dock`（夹签轨）。
 > 测试：`card-quote.test.ts` / `card-quote-draft.test.ts` / `card-quote-send.test.ts` /
 > `card-quote-target.test.ts` / `composer-quote-rail.test.tsx`。
-> P1（长按拖拽改归属 + 全套动效 + reduced-motion 降级）待 P0 真机跑通后开工；**拖拽的写入口已备好**
-> （`input-store` 的 `addAttachedCardToSlot` 已落地并有测试，P1 只差手势与动效）。
+> **动效面（§6.1 + §6.4 降级）已落地**：`paper-shell/quote-flight.ts`（起点=卡、终点=夹签轨，
+> 二次弧线 240ms，落地即摘除；量不到任一端不画）+ `paper-composer.css` 的归位动画与
+> `prefers-reduced-motion` 分支；测试 `card-quote-flight.test.ts`。
+> **P1 余项 = 长按拖拽改归属（§2.2 态二 / §6.2）+ 撕掉的反向动效（§6.3）**；
+> 拖拽的写入口已备好（`input-store` 的 `addAttachedCardToSlot`，已有测试），只差手势与命中检测。
 > **一句话**：点/长按「引用」→ 卡片以**夹签分身**落进目标卷的夹签槽（本体不动）→ 发送时落一份快照 + 一段固定摘要进上下文 → Agent 要细节、要改，用**现成工具**自己去取。
 > **本文档是施工单**：拿到就能开工，不需要再问设计意图。
 

@@ -249,18 +249,19 @@ export function InputRow(props: InputRowProps) {
             const key = quoteKeyOf(card);
             return (
               <span key={key} className="pp-quote-wrap">
-                <button
-                  type="button"
+                {/* 缩略纸本体是 **说明性** 的（点它没有动作——要动的是原卡，方案 §0.2
+                    「本体永不动」），故用不可聚焦的 span 而不是按钮：读屏器不会被引到
+                    一个按下去什么都不发生的控件上；撕掉仍在旁边那颗真按钮上。 */}
+                <span
                   className="pp-quote"
                   data-tip={`${plateSignOf(card.kind)}《${card.title || '未命名'}》`}
                   data-tip-hint={`${card.origin === 'shelf' ? '架阁' : '本卷'} · payload ${formatThousands(card.bytes)} 字符`}
-                  aria-label={`夹签：${card.title || '未命名'}`}
                 >
                   <span className="pp-quote-sign" aria-hidden="true">
                     {plateSignOf(card.kind)}
                   </span>
                   <span className="pp-quote-title">{card.title || '未命名'}</span>
-                </button>
+                </span>
                 <button
                   type="button"
                   className="pp-quote-remove"

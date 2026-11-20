@@ -158,6 +158,45 @@
 .pp-quote-wrap {
   position: relative;
   flex-shrink: 0;
+  /* 落位那一拍（方案 §6.1 帧 4 / §2.7 撕掉的反向）：新进槽的那枚从 0.85 / 半透明
+     归位——**它只是归位**，飞行由 .pp-quote-fly 承担（因果在那边，别在这里重复）。 */
+  animation: pp-quote-settle var(--m-ink) both;
+}
+@keyframes pp-quote-settle {
+  from {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+/* 飞行浮层（命令式创建/摘除，见 quote-flight.ts）：定位走 left/top，动画只碰 transform
+   ——不触发布局，也不进坞的高度流水。 */
+.pp-quote-fly {
+  position: fixed;
+  z-index: var(--z-dialog);
+  border: 1px solid var(--ink-4);
+  background: var(--paper);
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+/* §6.4 降级：减少动效 ⇒ 归位与飞行都退成「直接出现」（不飞、不缩放）。 */
+@media (prefers-reduced-motion: reduce) {
+  .pp-quote-wrap {
+    animation: pp-quote-settle var(--snap) linear both;
+  }
+  @keyframes pp-quote-settle {
+    /* 降级版沿用同一个动画名（§15 登记的是**名**，不是时长）：减少动效时它只淡入。 */
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 .pp-quote {
   display: flex;

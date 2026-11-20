@@ -93,14 +93,17 @@ describe('夹签轨', () => {
     expect(container.querySelector('.pp-card-rail')).toBeNull();
   });
 
-  it('一枚：物类签 + 标题 + 撕掉钮', () => {
+  it('一枚：物类签 + 标题 + 撕掉钮；缩略纸本体**不可聚焦**（点它没有动作）', () => {
     mount(props({ attachedCards: [quote('as_a')] }));
     const rail = container.querySelector('.pp-card-rail')!;
     expect(rail).not.toBeNull();
     expect(rail.querySelectorAll('.pp-quote')).toHaveLength(1);
     expect(rail.querySelector('.pp-quote-sign')?.textContent).toBe('页'); // html → 页
     expect(rail.querySelector('.pp-quote-title')?.textContent).toBe('卡 as_a');
-    expect(rail.querySelector('.pp-quote-remove')).not.toBeNull();
+    // 本体是说明性纸片（方案 §0.2：要动的是原卡）——不许是一颗按下去什么都不发生的按钮
+    expect(rail.querySelector('.pp-quote')?.tagName).toBe('SPAN');
+    expect(rail.querySelector('button.pp-quote')).toBeNull();
+    expect(rail.querySelector('.pp-quote-remove')?.tagName).toBe('BUTTON');
     // 一枚时不显示「共 N 签」
     expect(rail.querySelector('.pp-attach-count')).toBeNull();
   });

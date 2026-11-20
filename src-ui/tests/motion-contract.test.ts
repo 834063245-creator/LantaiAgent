@@ -95,6 +95,9 @@ const REGISTERED_ANIMATIONS = new Set([
   'pp-draft-morph', // 天头之下那条输入面：上移 8px 淡出
   'pp-draft-folio-out', // 天头四行：升到卷首将落的位置再退（位移量由组件算，时长走 token）
   'pp-composer-rise', // 创作坞自屏幕下缘之外升起（连续位移，起点在屏外）
+  // 2026-11-20 卡片引用批：夹签落进槽的那一拍（§6.1 帧 4「槽展开、已有夹签让位」的
+  // 末端）。时长走 --m-ink（≤8px 的显形档），减少动效时同名只淡入——登记的是名。
+  'pp-quote-settle',
 ]);
 
 /** §15 登记表 B：**连续读数件**的 transition——量在连续变化，不是「一段过程」。 */

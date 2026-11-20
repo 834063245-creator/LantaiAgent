@@ -36,6 +36,7 @@ import {
 } from './host';
 import { waitMotionEnd } from './motion-end';
 import { sourceBlockIdOf, TETHER_ANCHOR_DY, tetherAnchors, tetherAnchorsAt, tetherPath } from './provenance';
+import { flyQuoteGhost } from './quote-flight';
 import { quoteSlotOf, useQuoteReady } from './quote-target';
 import { createRegionMotionWindow, regionExits, regionOnScreen, stepRegionMotion } from './region-motion';
 
@@ -280,6 +281,10 @@ export function usePaperPanelAssembly() {
         return;
       }
       toast(`已引用：${card.title || '这张卡'}`, 'info', 2200, 'composer');
+      /* 落地回执（方案 §6.1 帧 1-5 的**因果**那一半）：夹签从这张卡飞到坞里的夹签轨上，
+       * 卡本体全程可见、不位移（拓印不是搬家）。动效本体在 CSS（`.pp-quote-fly`），
+       * 起点 / 终点在这里量——一次性的一拍，不是常驻几何。 */
+      flyQuoteGhost(block.id);
     },
     [core],
   );
