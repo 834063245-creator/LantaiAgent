@@ -208,22 +208,23 @@
 - 能力面与工具清单见 [`ARCHITECTURE.md`](ARCHITECTURE.md) §5–§6 与生成物
   [`docs/agents/engine-plugin-contract.md`](docs/agents/engine-plugin-contract.md)。
 
-### 三种消费形态
+### 两种消费形态
 
 1. **桌面应用内**——设置 → MCP →「随包图谱引擎」（默认关）。
 2. **任意 MCP 客户端**——引擎就是标准 stdio MCP server：复制仓库根
    [`.mcp.json.example`](.mcp.json.example) 为项目级 `.mcp.json`（用户级用
    `claude mcp add --scope user`）。
-3. **DSH 插件包** [`@a834063245/hologram-dsh`](dsh-bundle/README.md)——薄发布适配层（不自带产品资产），
-   Windows x64；装后重启 `dsh web`，图查询工具进 agent 工具箱（`mcp__hologram__*`）。
 
-原先随包的 3D 星图已随主仓图谱渲染内核退役拆除，**包内只发引擎 + MCP 工具面**。
+> 2026-11-20 起 **不再提供 DSH 插件包**（原 `dsh-bundle` / npm `@a834063245/hologram-dsh`
+> 已整体删除，见 [`docs/landmine-map.md`](docs/landmine-map.md) 第十七批）；DSH 侧仍可
+> 按上一条直接接 stdio MCP。
 
 ### 引擎 CLI
 
 **预编译产物**：每个 `v*` tag 的 [Releases](https://github.com/834063245-creator/LantaiAgent/releases)
-附件。解包后二进制与 `grammars/` 同级——后者是 kotlin / markdown / toml 三个动态语法，引擎按二进制
-同级目录自动加载。
+附件（三平台各一枚；`hologram-engine-win32-x64.exe` 那枚随 DSH 插件包一起停发于 2026-11-20，
+Windows 直接用 `hologram-engine-windows-x64.zip`）。解包后二进制与 `grammars/` 同级——后者是
+kotlin / markdown / toml 三个动态语法，引擎按二进制同级目录自动加载。
 
 | 平台 | 附件 |
 |---|---|

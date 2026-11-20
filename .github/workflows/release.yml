@@ -3,6 +3,8 @@
 #   desktop:    Windows 桌面应用（NSIS setup.exe；2026-09-26 起只发 NSIS、不再出 .msi，
 #               见 src-tauri/tauri.windows.conf.json 的 bundle.targets 与
 #               docs/plans/uninstall-purge-plan.md）
+#   dsh-bundle: 已于 2026-11-20 随「取消 DSH Bundle 支持」整条删除（含 npm publish 与 NPM_TOKEN 用法），
+#               见 docs/landmine-map.md 第十七批；引擎二进制仍由 engine-cli 腿发布。
 #
 # ⚠ 自动更新的两根命脉（2026-09-22 修复，两者曾同时断掉）：
 #   1. `src-tauri/tauri.conf.json` 的 `bundle.createUpdaterArtifacts` **必须为 true**，
@@ -206,87 +208,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-  dsh-bundle:
-    # hologram-dsh npm 包：构建引擎二进制传 Release + 自动 npm publish
-    # 版本跟随主版本线：tag v<version> → npm 发 <version>（install.mjs 按版本从 Release 下载二进制）
-    runs-on: windows-latest
-    timeout-minutes: 30
-    env:
-      RUSTC_WRAPPER: ''
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Build engine (release)
-        run: cargo build --release -p hologram-engine
-
-      - name: Stage engine binary for dsh-bundle
-        shell: bash
-        run: |
-          mkdir -p staging
-          cp target/release/hologram-engine.exe staging/hologram-engine-win32-x64.exe
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: hologram-engine-win32-x64
-          path: staging/hologram-engine-win32-x64.exe
-          retention-days: 3
-
-      # npm ci 会跑 postinstall（scripts/install.mjs）——它按版本从 GitHub Release 下载引擎二进制。
-      # 而本文件末尾的 attach-assets 腿才是挂资产的地方（各腿不再自己写 release），
-      # 这一刻 release 上还没有这个附件 ⇒ 先把刚构建好的引擎放进 bundle 的 bin/
-      # （install.mjs 见到该文件就跳过下载）。发布内容不受影响：package.json 的 files 不含 bin/，
-      # 用户装包时仍从 Release 取二进制。
-      - name: Pre-place engine binary for the postinstall step
-        shell: bash
-        run: |
-          mkdir -p dsh-bundle/bin
-          cp target/release/hologram-engine.exe dsh-bundle/bin/hologram-engine.exe
-
-      - name: Install plugin build deps
-        working-directory: dsh-bundle
-        run: npm ci || npm install --no-audit --no-fund
-
-      - name: Build host plugin
-        working-directory: dsh-bundle
-        run: npx tsdown --config tsdown.config.ts
-
-      - name: Align package version to tag
-        shell: bash
-        working-directory: dsh-bundle
-        run: |
-          VER="${GITHUB_REF_NAME#v}"
-          echo "Publishing version: $VER"
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));p.version=process.argv[1];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" "$VER"
-
-      # 幂等：npm 不允许覆盖已发布的版本号，所以「重跑一次发版」时这一步必然红
-      # （`npm publish` → E403 "You cannot publish over the previously published versions"）。
-      # 而重跑恰恰是发版失败后的标准恢复动作——不该因为「已经发过了」把整轮判红。
-      # 已存在即跳过（内容本来也改不了：同版本同产物）。
-      - name: Publish to npm (skip if this version already exists)
-        working-directory: dsh-bundle
-        shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          VER=$(node -p "require('./package.json').version")
-          if npm view "@a834063245/hologram-dsh@$VER" version >/dev/null 2>&1; then
-            echo "npm 上已有 @a834063245/hologram-dsh@$VER —— 跳过发布"
-          else
-            npm publish --access public
-          fi
-
   desktop:
     runs-on: windows-latest
     # 45 分钟，不是 30：本 job 现在**多了一次冷编引擎**（bundle.resources 要那枚二进制，
@@ -433,9 +354,10 @@ jobs:
     # 现在各腿只传 workflow artifact，这里一次性 `gh release upload`（只碰资产）。
     # release 本体（标题 / changelog 正文 / 签名产物 / latest.json）由 desktop 腿的
     # tauri-action 建，所以这一腿排在它之后。
-    needs: [engine-cli, dsh-bundle, desktop]
-    # always()：引擎资产是主线交付物，不能因为 dsh 腿红就整条跳过（那正是 2026-09-26
-    # run #170 的形态：三腿绿、dsh 红 ⇒ attach 被 skip、引擎包一个都没挂上）。
+    needs: [engine-cli, desktop]
+    # always()：引擎资产是主线交付物，不能因为别的腿红就整条跳过（那正是 2026-09-26
+    # run #170 的形态：三腿绿、dsh 红 ⇒ attach 被 skip、引擎包一个都没挂上；那条 dsh 腿
+    # 已于 2026-11-20 删除，但「某条腿红不得连坐引擎包」的理由仍在）。
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

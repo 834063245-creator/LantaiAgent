@@ -11,7 +11,7 @@
 
 - **DSH 是双平面系统**：host 平面（Node 进程）+ browser 平面。browser 插件被关在冻结 module table 后面（`packages/client/web/src/seed.ts`：仅 react / cordis / ui-primitives 等 10 个包可 resolve），摸不到 fs、不能 import 任意 npm 依赖——**这与兰台 webview 插件将过的日子是同一种约束**。
 - **「一切皆插件」的本体是组合均匀性**：第一方与第三方走同一条组合管道（`packages/bundle/base/cordis.patch.yml` 451 行 roster——工具/工具注册表/system-prompt/LLM adapter/sandbox/审批/telemetry 全是行；`web-app/cordis.patch.yml` 把整个 agent plane 禁用改为 per-session preset）。它不是「机器可编程」。
-- **DSH 的机器答案恰恰是外部进程模式**：本部署（`C:\Users\Administrator\.dsh\profiles\web\package.json`）中 DSH 的代码智能来自 `hologram-dsh` bundle——兰台的 Rust 引擎作为 stdio MCP 行被组合进去（`dsh-bundle/cordis.patch.yml`：`hologram-mcp` 行 + `failOnStartupError: false`）。**DSH 借的是兰台的机器；兰台在羡慕的，是自己已经供出去的东西。**
+- **DSH 的机器答案恰恰是外部进程模式**：本部署（`C:\Users\Administrator\.dsh\profiles\web\package.json`）中 DSH 的代码智能来自 `hologram-dsh` bundle——兰台的 Rust 引擎作为 stdio MCP 行被组合进去（当时随包的 `dsh-bundle/cordis.patch.yml`：`hologram-mcp` 行 + `failOnStartupError: false`）。**DSH 借的是兰台的机器；兰台在羡慕的，是自己已经供出去的东西。**（2026-11-20 更新：该插件包已随「取消 DSH Bundle 支持」整体删除，`dsh-bundle/` 不再随仓；DSH 侧退回到标准 stdio MCP 接入。本条实证的结论——机器层的答案是外部进程——不受影响。）
 
 结论：把「接近 DSH」当失败是参照系错位。DSH 自身对机器层的答案就是 HoloGram 引擎这个形态。
 
@@ -31,7 +31,7 @@
 | 能力 | 判决 | 路径 |
 |---|---|---|
 | **组合均匀性**（第一方第三方同管道、行寻址、preset、「一切皆插件」的本体） | **全额可达** | 纯 TS 平面工程；kernel/blueprint/per-session 数据流均已就位 |
-| **机器即行**（插件挂接任意外部机器进程） | **可达，模板已写过一次** | 外部进程模式（`dsh-bundle/cordis.patch.yml` 即参考实现）+ 通用桥（S4 可选） |
+| **机器即行**（插件挂接任意外部机器进程） | **可达，模板已写过一次** | 外部进程模式（参考实现曾为 `dsh-bundle/cordis.patch.yml`，2026-11-20 随包删除；现行参考 = `plugins/builtin/bundled-engine/` 经 `mcp-bridge.ts` 起受治进程）+ 通用桥（S4 可选） |
 | **进程内宿主插件**（wrap fs / 换 sandbox 策略 / hook agent loop 于宿主进程内） | **永久关闭** | webview 物理边界；DSH host 插件的等价物在本架构中不存在。这是唯一的真死刑，且它不是「一切皆插件」的本体 |
 
 ## 4. 决策：为什么「不做」是理性选择而非妥协
@@ -46,7 +46,7 @@
 
 **永久（写进宪法，不再复议）**：进程内宿主插件 · Agent↔engine 耦合带拆解 · 星图 scene 插件化 · typert 式跨进程类型协议 · Rust 面新增插件暴露（插件复用既有 133 方法面）。
 
-**延期（可后补的加法，按需启动）**：Node sidecar 宿主臂（补上它才触达第 3 档关闭的能力；dsh-bundle 已证外部进程模式覆盖机器扩展大头，故不预支）· marketplace · HMR · 插件 SDK d.ts 分发 · wasm 面。
+**延期（可后补的加法，按需启动）**：Node sidecar 宿主臂（补上它才触达第 3 档关闭的能力；外部进程模式已由 `bundled-engine` 受治进程通道证明能覆盖机器扩展大头，故不预支）· marketplace · HMR · 插件 SDK d.ts 分发 · wasm 面。
 
 ## 6. 后果
 

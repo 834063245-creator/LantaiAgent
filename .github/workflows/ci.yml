@@ -14,7 +14,8 @@
 #     修它要么换 job 用的命令、要么换资源注入通道，都属工程改动，不在本次范围。
 #   · engine 矩阵（ubuntu + windows × `cargo test --release` 全 workspace）——重，
 #     要装系统 C++ 工具链，失败模式与前端无关。
-#   · dsh-bundle —— 依赖 npm 安装 + 打包校验，价值面窄。
+#   · dsh-bundle —— 依赖 npm 安装 + 打包校验，价值面窄。（**该包已于 2026-11-20 整体删除**，
+#     见 docs/landmine-map.md 第十七批；这条只留作「当初为何砍它」的历史判据。）
 #
 # 保留的判据 = **仓库自己的前端门禁**（CLAUDE.md 门禁表：`cd src-ui && npm run build`，
 # 即 esbuild 产物域 + `tsc --noEmit` + `vite build`）。三件全在仓库内、无外网依赖、

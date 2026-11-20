@@ -466,8 +466,6 @@ CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**—
 **⚠️ 发布缺口（2026-09-28 核对）**：本批四颗雷里只有 Q1（`3c25f976`）进了发布线——Q2/Q3/Q4 的修复 commit（`0b75e5d6` / `2730e5bd`）**晚于 `v1.0.4` tag**（`git merge-base --is-ancestor 0b75e5d6 v1.0.4` = 否）。所以用户报「provider 只能在工作区里配置」（= Q2 的沙箱工作区闸 + Q3 的空文档夺权威在**首页**同时发作：读被挡 ⇒ 空文档算权威 ⇒ 行表空；写被挡 ⇒ 保存管道首步失败即中止，Key 也不落凭据库）**在 v1.0.4 上是真实存在的**，用户侧要等下一个发布才消失。取证与判据见本表 Q2/Q3 行。 **✅ 已消失（2026-10-28 核对）**：版本线已推到 v1.0.9，Q2/Q3/Q4 的修复早已随发布线出厂——此段保留作发布纪律判例（修复 commit 与 tag 的先后关系）。
 
 
-
-
 ## 第十六批审计（2026-10-29）— 自改代码把界面搞死家族（用户报「兰台改自己的代码，UI 整个崩掉，然后就僵住了」）
 
 > 引爆现场 2026-10-29 19:57。用户感知只有一句话：**窗口白着，没有任何提示，重启也白**。
@@ -486,3 +484,23 @@ CI / release 去掉 viewer 与 client 两步（**顺带解堵 npm 发布链**—
 ③ 失败必须**有出口**（重新加载 / 复制诊断 / 安全模式；安全模式 = 跳过产物先让界面出来，再谈修）。
 另一个反复出现的形状：**审计面读的是「已装载的东西」，于是「什么都没装载」被判成全绿**——凡是对账，都要先问「缺席的当事人在不在账上」。
 
+## 第十七批审计（2026-11-20）— DSH 插件包退役（用户拍板「取消 DSH Bundle 支持」）
+
+> 引爆现场：自动发版 Release 工作流的 `dsh-bundle` 腿红了。用户的裁定不是修它，而是**把这个包撤掉**
+> （「不过没关系，我要取消 DSH Bundle 支持」）。
+> 本批形态 = **B3 的同族，但方向相反**：这次是「整个产品面退役」，所以三面（消费侧 / 分发侧 / 产物侧）
+> 必须一次过干净——只删一半会留下「发布工作流仍在发一个源码已不存在的包」「版本号提升器仍在改一份
+> 不存在的 lock」这类断链。
+
+| # | 位置 | 雷 | 触发 → 后果 | 处置 |
+|---|------|----|------------|------|
+| D1 | `dsh-bundle/`（整包，受版本控制 10 文件） | **退役的包体本身**：npm 包 `@a834063245/hologram-dsh`（cordis 行 + tsdown 构建 + install.mjs 下载引擎 + ci-verify） | 留着 = 仓库里永远有一份没人测、没人发的源码；且它自己的 README 还教用户装已无人维护的包 | ✅ `git rm -r` 整删（git 史可查）；本地未跟踪产物（`node_modules/` · `bin/*.exe` · `lib/`，约 110 MB）同批物理清除 |
+| D2 | `.github/workflows/release.yml` · `dsh-bundle` 腿（原 L209-288） | **分发侧断链**：该腿做「冷编引擎 → `npm ci`（postinstall 下载引擎）→ tsdown 构建 → 改版本号 → `npm publish`」，是自动发版失败的那条腿 | 只删源码不删腿 ⇒ 每次打 tag 都跑一条「构建已不存在目录」的 job，发版永远红；且 `NPM_TOKEN` 秘密仍被消费 | ✅ 整腿删除；`attach-assets` 的 `needs` 由 `[engine-cli, dsh-bundle, desktop]` 收窄为 `[engine-cli, desktop]`；头部 job 清单与 `always()` 判据注释同步留痕（**桌面腿红不得连坐引擎包**的理由仍在） |
+| D3 | `scripts/bump-version.mjs` | **落点表残留**：它按表逐条 `mustExist` + 校验命中数，表里两项指向 `dsh-bundle/package.json` 与 `package-lock.json` | 包一删，**下一次提版本号直接 `✗ 落点表里列了它，但文件不在` 退出**——即「下一个发版的第一枪就哑」 | ✅ 落点表收窄为 `tauri.conf.json` 一处 JSON（Cargo 五份 + 根 `Cargo.lock` 不变）；已 `--dry-run` 实测 7 个落点全绿 |
+| D4 | `docs/agents/engine-plugin-contract.md`（生成物）+ `src-ui/scripts/gen-engine-plugin-contract.ts` | **生成物文案化石**：消费方式一节由生成器硬编码「兰台（Phase 3 起）与 DSH（hologram-dsh）经 stdio MCP 消费」 | 改真源才不漂——直接手改 md 会被 `--check` 判漂移 | ✅ 改生成器真源并重跑 `gen-engine-plugin-contract`，`--check` 一致 |
+| D5 | `README.md` · `ARCHITECTURE.md` · `docs/adr/{composition-boundaries,workspace-concept-ownership}.md` · `.github/workflows/ci.yml` 头注 | **叙事面化石**：README 还在教用户装 DSH 插件包；架构图把「DSH bundle」列为外部消费者；两份 ADR 拿 `dsh-bundle/cordis.patch.yml` 当「机器即行」的参考实现 | 文档说有的东西不存在 = 下一个 Agent/用户照着重做一遍 | ✅ 已回写（ADR 保留结论、把「参考实现」指到现行 `plugins/builtin/bundled-engine/`）；`ci.yml` 头注仍记着「旧 dsh-bundle job 为何被砍」，本批补一句「源码也已删除」 |
+
+**退休判据（写给自己与下一次「撤功能」）**：撤一个**对外发布物** = 四件事一起过，缺一条就留断链——
+① 源码/包体；② 分发通道（workflow job、`needs`、secrets 消费）；③ 锁步工具（版本号落点表、构建脚本）；
+④ 叙事面（README / 架构图 / ADR / 生成物真源）。**验证形态**：`grep -ri dsh-bundle -- . ':!docs/archive'` 的
+剩余命中必须**全部是留痕**（本表、HISTORY、`ci.yml` 的历史注释），不得有任何**活引用**。

@@ -220,7 +220,7 @@ function main(): void {
   md.push('## 消费方式');
   md.push('');
   md.push('引擎以 `hologram-engine serve`（stdio MCP）或 TCP 9777 暴露同一契约面。');
-  md.push('兰台（Phase 3 起）与 DSH（hologram-dsh）经 stdio MCP 消费；Unity 等外部客户端走 TCP 9777 数据面。');
+  md.push('兰台（Phase 3 起）经 stdio MCP 消费；Unity 等外部客户端走 TCP 9777 数据面。');
   md.push('壳专属方法经 `tools/call` 调用（与模型工具同一注册面），但 `tools/list` 永不返回它们。');
   md.push('');
 

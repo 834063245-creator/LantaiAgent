@@ -17,7 +17,7 @@
 
 **HoloGram（代码图谱引擎）是随包配套的独立进程与独立产品面**，不是应用内的主叙事：
 它以 `hologram-engine serve`（stdio MCP）对外提供图能力，兰台侧**默认不启用**（用户按需开启），
-外部 MCP 客户端（Claude Code / Cursor / DSH bundle）可独立消费同一二进制。
+外部 MCP 客户端（Claude Code / Cursor 等）可独立消费同一二进制。
 
 工作台本体完全插件化：贡献通道（面板 / 命令 / 工具 / LLM adapter / prompt 段 / 渲染器 / 工具管道钩子 /
 capability / overlay）与 seam provider 注册表（fs / shell / sessionPersistence / subagents / agentLoop）
@@ -59,7 +59,7 @@ flowchart TD
   ENGINE["hologram-engine serve（随包配套进程，默认未启用）"]
   WS[".lantai/：宿主数据（sessions / memory / agents / skills / attachments）"]
   HOLO[".hologram/：引擎数据（hologram.db / 快照 / 向量 / 基线）"]
-  EXT["外部 MCP 客户端（Claude Code / Cursor / DSH bundle）"]
+  EXT["外部 MCP 客户端（Claude Code / Cursor 等）"]
 
   UI --> AGENT
   AGENT -- "typedRpc / typedListen" --> RPC
@@ -594,7 +594,6 @@ drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable）。
 ├── hologram-storage/        # crate：数据家（GraphStore / SQLite / 快照 / StoreHost）
 ├── src-tauri/               # Tauri 桌面壳（通道 / 权限 / 沙箱 / 进程治理 / 凭据）
 ├── src-ui/                  # 前端（React 19 + Agent 运行时 + 组合层 + 插件系统 + 纸壳）
-├── dsh-bundle/              # DSH 插件包（引擎接入 + viewer/ 3D 星图；构建来源与状态见其 README）
 ├── examples/                # 插件示例（plugins/ 宿主插件、engine-plugins/ 引擎免编译扩展）
 ├── docs/                    # 活动文档（入口 docs/README.md；facts.generated.md 是数字真源）
 ├── scripts/                 # 构建与门禁脚本（gen-* / doc-sync / doc-check / build-builtin-plugins）

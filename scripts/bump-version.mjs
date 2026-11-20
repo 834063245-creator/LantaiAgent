@@ -7,7 +7,8 @@
 //
 // 为什么要有这个脚本（2026-09-22 立）：旧 `bump-version.ps1` 只覆盖 2 个文件
 // （tauri.conf.json + src-tauri/Cargo.toml），而真实落点有 11 个（五个 crate + 三份 lock
-// + tauri.conf + dsh-bundle 两份）；它还用 `ConvertTo-Json` 整份重排 tauri.conf.json——
+// + tauri.conf + dsh-bundle 两份；其中 dsh-bundle 两处已于 2026-11-20 随包删除）；
+// 它还用 `ConvertTo-Json` 整份重排 tauri.conf.json——
 // 正是 CONVENTIONS §3 记录过的那类编码事故的形态。改名/加 crate 后无人改它，于是「版本号
 // 只改了一半」是必然结局。本脚本取代它：落点表显式、逐条校验命中数、未命中即报错退出。
 //
@@ -141,8 +142,11 @@ for (const rel of CARGO_LOCKS) {
   console.log(`✓ ${rel}（${hits.length} 个包：${hits.join(', ')}）`);
 }
 
-// ── JSON：tauri.conf.json / dsh-bundle 的 package.json（顶层 version 行）──
-for (const rel of [confPath, 'dsh-bundle/package.json']) {
+// ── JSON：tauri.conf.json（顶层 version 行）──────────────────────────────
+// dsh-bundle/package.json 曾是第二个落点；该包已于 2026-11-20 随「取消 DSH Bundle 支持」
+// 整个删除（docs/landmine-map.md 第十七批）——落点表同步收窄，别再把它加回来。
+{
+  const rel = confPath;
   mustExist(rel);
   const text = readFileSync(p(rel), 'utf8');
   const re = new RegExp(`^ {2}"version": "${from.replace(/\./g, '\\.')}",$`, 'm');
@@ -152,23 +156,6 @@ for (const rel of [confPath, 'dsh-bundle/package.json']) {
     process.exit(1);
   }
   write(rel, text.replace(re, `  "version": "${to}",`));
-  console.log(`✓ ${rel}`);
-}
-
-// ── dsh-bundle/package-lock.json：顶层 + packages[""] 两条 ────────────────
-{
-  const rel = 'dsh-bundle/package-lock.json';
-  mustExist(rel);
-  let text = readFileSync(p(rel), 'utf8');
-  const esc = from.replace(/\./g, '\\.');
-  const topRe = new RegExp(`^ {2}"version": "${esc}",$`, 'm');
-  const rootRe = new RegExp(`("packages":\\s*\\{\\s*"":\\s*\\{[^}]*?"version": ")${esc}(")`);
-  if (!topRe.test(text) || !rootRe.test(text)) {
-    console.error(`✗ ${rel}: 顶层或 packages[""] 的 version 不是 ${from}`);
-    process.exit(1);
-  }
-  text = text.replace(topRe, `  "version": "${to}",`).replace(rootRe, `$1${to}$2`);
-  write(rel, text);
   console.log(`✓ ${rel}`);
 }
 
