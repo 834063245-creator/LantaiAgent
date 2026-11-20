@@ -90,7 +90,12 @@ export {
  * `state/messages-store.ts` 切卷清态）。登记口**必须经宿主桥**取用——直连内核模块路径会被
  * esbuild 内联成副本，登记落副本 = 实机炸（账本 §0.6 的 memory-domain 先例）。 */
 export { clearMeasureImplementation, registerMeasureImplementation } from '../../../paper/measure-seam';
-export { PaperDockContext, PaperRegionContext } from '../../../paper/overlay-context';
+export {
+  DraftPaperContext,
+  PaperDockContext,
+  PaperRegionContext,
+  useDraftPaperId,
+} from '../../../paper/overlay-context';
 export type { RegionView } from '../../../paper/region-view';
 export type { StreamRegionState } from '../../../paper/space';
 export {

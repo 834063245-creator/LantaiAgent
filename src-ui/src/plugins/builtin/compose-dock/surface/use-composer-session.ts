@@ -33,6 +33,8 @@ export interface ComposerSessionInput {
   core: ChatCore | null;
   /** 纸期（variant='sheet'）：模型/思考/组合的源头换成题签。 */
   isSheet: boolean;
+  /** 纸期：**这张纸**的 id（2026-11-29 多纸错位批；缺省/null = 焦点那张）。 */
+  paperId?: string | null;
   /** 上下文卷（纸期恒 null——纸还没有卷号）。 */
   activeSessionId: string | null;
   composerRef: RefObject<HTMLTextAreaElement | null>;
@@ -62,6 +64,7 @@ export interface ComposerSessionState {
 export function useComposerSession({
   core,
   isSheet,
+  paperId,
   activeSessionId,
   composerRef,
 }: ComposerSessionInput): ComposerSessionState {
@@ -177,7 +180,7 @@ export function useComposerSession({
   useEffect(() => onSettingsSaved(() => setSettingsTick((n) => n + 1)), []);
   /* 生效配置读数（provider / 模型 / 描述符 / 思考档位 / 附图能力）——2026-11-19 题签重画批
    * 搬进 `use-model-seat`：同一组读数现在有第二处宿主（纸期卷首档行），解析只许一条链。 */
-  const seat = useModelSeat({ isSheet, prefs, thinkingOverride, settingsTick });
+  const seat = useModelSeat({ isSheet, paperId, prefs, thinkingOverride, settingsTick });
   const { providerName, model, providerKind, provider, imageCapable, thinkingOptions, currentThinking } = seat;
 
   return {

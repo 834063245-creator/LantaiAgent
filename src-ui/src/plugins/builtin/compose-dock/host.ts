@@ -42,7 +42,13 @@ export { createInkCache, INK_FAIL, inkBarColorOf, inkColorOf, inkForBlock } from
  * （宿主不给 ⇒ 架不渲染，同能力位纪律）——`usePaperRegion()` 是会抛的那个面，
  * 只挂坞岛的单件测试桩铺不出全套流区数据。键名 `PaperRegionContext` **早在册**
  * （paper-shell 出），故取用不新增宿主面键、指纹零漂移。 */
-export { PaperRegionContext, usePaperDock, usePaperRegion } from '../../../paper/overlay-context';
+export {
+  DraftPaperContext,
+  PaperRegionContext,
+  useDraftPaperId,
+  usePaperDock,
+  usePaperRegion,
+} from '../../../paper/overlay-context';
 export {
   findModels,
   getDynamicFetchFailure,

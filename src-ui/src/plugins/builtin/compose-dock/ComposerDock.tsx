@@ -42,7 +42,16 @@ import { InputRow, SettingsRow } from './composer-rows';
 import { HIST_HINT_KEY } from './dock-copy';
 import { GoalStrip } from './goal-strip';
 import type { PermissionMode } from './host';
-import { getChatStore, useCoreStore, useDialogEscape, useDraftSheetStore, useModeStore, usePaperDock } from './host';
+import {
+  getChatStore,
+  useCoreStore,
+  useDialogEscape,
+  useDraftPaperId,
+  useDraftSheetStore,
+  useModeStore,
+  usePaperDock,
+} from './host';
+import { writeSheetPermission } from './sheet-picks';
 import { useComposerAttach } from './surface/use-composer-attach';
 import { useComposerChrome } from './surface/use-composer-chrome';
 import { useComposerLayers } from './surface/use-composer-layers';
@@ -122,6 +131,10 @@ const ComposerSurface = memo(function ComposerSurface({
   /* 纸期**没有活跃卷**：把上下文卷位当空——坞的既有「无主态」分支自然接管
    * （prefs 空、无役册/墨量册、running=false、组合走卷级判据的空位），一行不用改。 */
   const activeSessionId = isSheet ? null : contextSessionId;
+  /* **本输入面挂在哪张纸上**（2026-11-29 多纸错位批）：多纸同屏时纸身里那份输入面
+   * 也是逐纸各挂一个——旧实现读焦点那张的题签，于是非焦点那张的输入面显示的
+   * 模型/思考（以及全放确认落哪一张）都是别人的。坞期 = null（不参与）。 */
+  const sheetPaperId = useDraftPaperId();
 
   /* ⚠ 2026-11-17 P6：769 行 hooks 段按「随同一个事件变化」拆成八件（surface/ 目录）——
    * 每件只吃上面这三个判据（core / isSheet / activeSessionId）+ 自己的显式入参，
@@ -137,7 +150,7 @@ const ComposerSurface = memo(function ComposerSurface({
   const layers = useComposerLayers({ activeSessionId });
 
   /* ── 会话面：sess / input / prefs / settings（含 token 读数与模型推导）── */
-  const session = useComposerSession({ core, isSheet, activeSessionId, composerRef });
+  const session = useComposerSession({ core, isSheet, paperId: sheetPaperId, activeSessionId, composerRef });
 
   /* 组合芯片（本卷身份 + 写入口）不住本坞（2026-11-19）：坞期那一格是书眉的
    * `.pp-comp-sel`（ComposerHeader 自持），纸期在卷首档行（DraftFolioSurface）——
@@ -150,6 +163,7 @@ const ComposerSurface = memo(function ComposerSurface({
   const { onModelChange, thinkingSeat } = useComposerModels({
     core,
     isSheet,
+    paperId: sheetPaperId,
     activeSessionId,
     providerName: session.providerName,
     currentThinking: session.currentThinking,
@@ -204,25 +218,42 @@ const ComposerSurface = memo(function ComposerSurface({
   const globalMode = useModeStore((s) => s.permissionMode);
   const sessionModes = useModeStore((s) => s.sessionModes);
   const pendingYolo = useModeStore((s) => s.pendingYolo);
+  const pendingYoloPaper = useModeStore((s) => s.pendingYoloPaper);
   const setPendingYolo = useModeStore((s) => s.setPendingYolo);
-  /** 本卷有效权限（无卷 = 工作区默认；纸期无卷号，读到的是默认值）。 */
+  /** 本卷有效权限（无卷 = 工作区默认）。
+   *  纸期（2026-11-29）：读的是**本件所属那张纸**的题签第四格（null = 跟随工作区）——
+   *  旧实现读到的是焦点那张纸的读数（多纸同屏时非焦点那张显示别人的档位）。 */
+  const paperPick = useDraftSheetStore((s) =>
+    isSheet && sheetPaperId !== null ? (s.papers.find((p) => p.id === sheetPaperId)?.picks?.permission ?? null) : null,
+  );
   const permissionMode =
-    session.activeSidNum != null ? (sessionModes[String(session.activeSidNum)] ?? globalMode) : globalMode;
-  /* 全放二次确认模态的 Esc（同附图预览：portal 到 body 后 Escape 只能走 document 级） */
-  useDialogEscape(() => setPendingYolo(false), { enabled: pendingYolo });
+    isSheet && sheetPaperId !== null
+      ? (paperPick ?? globalMode)
+      : session.activeSidNum != null
+        ? (sessionModes[String(session.activeSidNum)] ?? globalMode)
+        : globalMode;
+  /* 全放二次确认模态的 Esc（同附图预览：portal 到 body 后 Escape 只能走 document 级）。
+   * 多纸（2026-11-29）：**只有请求者那张纸**渲染这个模态（旧实现每张纸各渲染一个 portal
+   * ——N 张纸 = N 个叠起来的确认框，点哪个都落焦点那张）。`== null` 容旧态（坞期/未记名）。 */
+  const yoloMine = !isSheet || pendingYoloPaper == null || pendingYoloPaper === sheetPaperId;
+  useDialogEscape(() => setPendingYolo(false), { enabled: pendingYolo && yoloMine });
 
   /** 直接写入（跳过「全放要二次确认」那道闸——确认模态自己用它落账）。
    *
    *  ⚠ **纸期分支必须留着**（2026-11-19 真机返工）：卷首档行的「全放」只负责**弹确认**，
    *  确认之后落哪一笔由**渲染这个模态的那位**决定——而模态住在纸期输入面
    *  （`ComposerSheet` → 本组件，与坞期同一份实现）。删掉这一支的后果：用户点「确定」，
-   *  工作区默认被改成全放，而题签那一格**一个字没变** ⇒ 读作「弹窗吞了我的操作」。 */
+   *  工作区默认被改成全放，而题签那一格**一个字没变** ⇒ 读作「弹窗吞了我的操作」。
+   *
+   *  ⚠ 2026-11-29（题签记忆批）：纸期这一支改走 `writeSheetPermission` 这**唯一**写入口
+   *  ——旧实现只写了这一张纸的题签、**没写**「下一张纸的出厂权限」⇒ 全放用户（本机工作区
+   *  默认正是 yolo）在纸上拨完，重启后记号全无（settings.agent.sheetPermissionMode 从未落盘）。
+   *  落账目标 = `pendingYoloPaper ?? 本件所属那张纸`（请求者），不是「此刻焦点那张」。 */
   const applyMode = useCallback(
     (mode: PermissionMode) => {
       if (isSheet) {
-        const st = useDraftSheetStore.getState();
-        const paper = st.papers.find((pp) => pp.id === st.focusedId);
-        if (paper?.picks) st.setPicks({ ...paper.picks, permission: mode }, paper.id);
+        const target = pendingYoloPaper ?? sheetPaperId;
+        writeSheetPermission(target, mode);
         /* 模态的收合也归这里：坞期靠 setSessionMode/setPermissionMode 顺手清 pendingYolo，
          * 纸期写的是题签、不经过那两个 setter ⇒ 不显式清，确认完弹窗会一直悬着。 */
         setPendingYolo(false);
@@ -231,19 +262,20 @@ const ComposerSurface = memo(function ComposerSurface({
       if (session.activeSidNum != null) useModeStore.getState().setSessionMode(session.activeSidNum, mode);
       else useModeStore.getState().setPermissionMode(mode);
     },
-    [isSheet, session.activeSidNum, setPendingYolo],
+    [isSheet, pendingYoloPaper, sheetPaperId, session.activeSidNum, setPendingYolo],
   );
 
   const selectMode = useCallback(
     (mode: PermissionMode) => {
       if (mode === 'yolo' && permissionMode !== 'yolo') {
-        setPendingYolo(true);
+        // 请求者记名（纸期 = 本件那张纸；坞期 = null）——确认时按这个名字落账
+        setPendingYolo(true, isSheet ? sheetPaperId : null);
         return;
       }
       setPendingYolo(false);
       applyMode(mode);
     },
-    [permissionMode, setPendingYolo, applyMode],
+    [isSheet, permissionMode, setPendingYolo, applyMode, sheetPaperId],
   );
   // rework P0-1：卸载（含关窗）时清掉全放确认态，避免残留 DOM 参与销毁时序
   useEffect(() => () => setPendingYolo(false), [setPendingYolo]);
@@ -406,7 +438,11 @@ const ComposerSurface = memo(function ComposerSurface({
 
       {/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞，避免高度/关窗竞态）
           ——同附图预览的 portal 理由，见 `composer-modals.tsx` 头注。 */}
-      <YoloConfirmModal open={pendingYolo} onCancel={() => setPendingYolo(false)} onConfirm={() => applyMode('yolo')} />
+      <YoloConfirmModal
+        open={pendingYolo && yoloMine}
+        onCancel={() => setPendingYolo(false)}
+        onConfirm={() => applyMode('yolo')}
+      />
     </div>
   );
 });

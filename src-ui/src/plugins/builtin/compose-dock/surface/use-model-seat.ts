@@ -25,8 +25,11 @@ import {
 } from '../host';
 
 export interface ModelSeatInput {
-  /** 纸期：模型/思考的源头是**题签**（`draft-sheet-store` 焦点那张纸）。 */
+  /** 纸期：模型/思考的源头是**题签**（`draft-sheet-store` 的某一张纸）。 */
   isSheet: boolean;
+  /** 纸期：**这张纸**的 id（2026-11-29 多纸错位批）。缺省/null = 焦点那张
+   *  （坞期不用它；裸挂单件的测试也不给）。多纸同屏时每张纸的题签/输入面各读各的。 */
+  paperId?: string | null;
   /** 坞期：会话生效配置（覆盖 ?? 全局；`undefined` = 无活跃卷/无主态）。 */
   prefs: { providerName: string; model: string } | undefined;
   /** 坞期：会话**显式**思考覆盖（不拿 prefs 当覆盖用——见 use-composer-session 原注）。 */
@@ -45,7 +48,7 @@ export interface ModelSeat {
   currentThinking: StoredThinking | '' | undefined;
 }
 
-export function useModelSeat({ isSheet, prefs, thinkingOverride, settingsTick }: ModelSeatInput): ModelSeat {
+export function useModelSeat({ isSheet, paperId, prefs, thinkingOverride, settingsTick }: ModelSeatInput): ModelSeat {
   // 开口即开卷（2026-08-31）：无主态显示/操作「新卷出生默认」（全局活跃行）；
   // 有活跃卷时 prefs（resolveEffective）已含全局回落（覆盖 ?? 全局）。
   const newSessionDefault = useMemo(() => {
@@ -53,9 +56,12 @@ export function useModelSeat({ isSheet, prefs, thinkingOverride, settingsTick }:
     return resolveNewSessionDefault();
   }, [settingsTick]);
   /* 待题纸（2026-11-15 V2）：纸自己那张用**同一份** provider/model 推导，只是源头换成
-   * 题签：题签未填（纸刚摊开）= 出厂默认（新卷出生默认），与坞期 prefs 的空位同义。 */
+   * 题签：题签未填（纸刚摊开）= 出厂默认（新卷出生默认），与坞期 prefs 的空位同义。
+   * 多纸（2026-11-29）：源头是**本贡献所属那张纸**（context 给的 id，缺省 = 焦点那张）
+   * ——每张纸的读数必须是自己那条记录，否则非焦点那张会显示焦点那张的三笔。 */
   const draftPicks = useDraftSheetStore((s) => {
-    const id = s.focusedId;
+    if (!isSheet) return null;
+    const id = paperId ?? s.focusedId;
     return id === null ? null : (s.papers.find((p) => p.id === id)?.picks ?? null);
   });
   const providerName = (isSheet ? draftPicks?.providerName : prefs?.providerName) ?? newSessionDefault.providerName;

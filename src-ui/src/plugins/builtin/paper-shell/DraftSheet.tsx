@@ -37,6 +37,7 @@ import { DraftFolioLine } from './DraftFolioLine';
 import { type DraftSheetCore, draftBoxInSight, draftFocusPoint, draftPlacement, draftScale } from './draft-sheet';
 import {
   activeOverlayContributions,
+  DraftPaperContext,
   type DraftSheetAnchor,
   draftSheetSeed,
   EMPTY_REGION_CONTENT_H,
@@ -368,7 +369,7 @@ function PaperView({
           {/* ⚠ 第三行用 `div` 不用 `p`：题签行里装的是块级 flex 盒子（下拉自带的定位盒），
               块进 `p` 会被浏览器当场拆行（HTML 解析规则），纸的天头会散架。 */}
           <div className="pp-folio-sub">
-            <DraftFolioLine />
+            <DraftFolioLine paperId={paperId} />
           </div>
         </div>
       </div>
@@ -382,11 +383,15 @@ function PaperView({
           这不是「换内容」：DOM 身份不变、盒不变，变的只是这块栈进不进交互树。
           `ref` = 纸高的实测点（量本栈、不量纸自己——见 measureStack 头注）。 */}
       <div className="pp-draft-stack" ref={measureStack} {...(focused ? null : ({ inert: true } as const))}>
-        {overlays.map((def) => (
-          <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
-            <def.component />
-          </PluginBoundary>
-        ))}
+        {/* 输入面与天头那一行**同一个判据**：这份栈里的覆盖层贡献属于**这张纸**
+            （多纸：每张纸各挂一个输入面；2026-11-29 前它们一律读焦点那张）。 */}
+        <DraftPaperContext.Provider value={paperId}>
+          {overlays.map((def) => (
+            <PluginBoundary key={def.id} label={`待题纸 ${def.id}`}>
+              <def.component />
+            </PluginBoundary>
+          ))}
+        </DraftPaperContext.Provider>
         {notice && (
           <div className="pp-draft-error" role="alert">
             {notice}

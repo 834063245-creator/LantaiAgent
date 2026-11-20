@@ -21,8 +21,9 @@
 // input-store 形态，createScopedStore 注册表，sessionId 按面板隔离）。
 
 import { create } from 'zustand';
+import { patchProviderIntent } from '../provider/providers-store';
 import type { StoredThinking } from '../provider/thinking';
-import { getActiveProvider, loadSettings, type ProviderId, saveSettings, updateProvider } from '../settings';
+import { getActiveProvider, loadSettings, type ModelOverrides, type ProviderId, saveSettings } from '../settings';
 import { notifyAgentConfigChanged } from './agent-config-store';
 import { createScopedStore } from './scoped-store';
 
@@ -68,18 +69,27 @@ function snapshotFromGlobal(): ComposeSessionPrefs {
   }
 }
 
-/** 新卷出生默认写盘（setModel 尾部与无主态 setGlobalModel 共用）：
- *  定向写「最近使用的 provider + 该行 model」——重新 loadSettings 读改写
- *  单字段（不整份快照 → A4 clobber 不复活）。 */
+/** 新卷出生默认写盘（setModel 尾部与无主态 setGlobalModel 共用）。
+ *
+ *  ⚡ 2026-11-29（题签「记住选择」批）：**模型走 providers.yml**。
+ *  病灶：旧实现 `saveSettings(updateProvider(..., { model }))` 写的是 localStorage 里的
+ *  provider 行——而 2026-09-24「配方改文件」之后，**意图的权威是 `~/.lantai/providers.yml`**，
+ *  `saveSettings` 在文件权威就位时会把意图整段剥掉（只留 apiKey/lastTest/catalog/modelMeta）。
+ *  于是这一笔**写的那一刻就没了**：拨完模型开下一张纸仍是文件里那个，重启更不会记得。
+ *  分工不变：`activeProvider`（最近使用的 provider）本就是运行态读数 → 仍落本地存档；
+ *  `model`（这一行的默认模型）是用户意图 → 落配置文件。 */
 function writeNewSessionDefault(providerName: string, model: string): void {
   try {
     const s = loadSettings();
     const row = s.providers.find((p) => p.name === providerName);
-    if (row && (row.model !== model || s.activeProvider !== providerName)) {
-      saveSettings(updateProvider({ ...s, activeProvider: providerName as ProviderId }, providerName, { model }));
+    if (!row) return;
+    if (s.activeProvider !== providerName) {
+      saveSettings({ ...s, activeProvider: providerName as ProviderId });
     }
-  } catch {
-    /* 读/写失败静默——新会话默认保持旧值，不阻断热切换 */
+    if (row.model !== model) patchProviderIntent(providerName, { model });
+  } catch (e) {
+    /* 读失败：新会话默认保持旧值，不阻断热切换——但**留痕**（写失败由 patchProviderIntent 记） */
+    console.warn('[compose-store] 新会话默认落盘失败（下次开纸回旧值）:', e);
   }
 }
 
@@ -124,26 +134,35 @@ function createComposeStoreImpl() {
     },
 
     setGlobalThinking: (thinking) => {
-      // 无主态（开口即开卷）：坞里拨的是**当前出生默认模型**的档位——2026-09-23
+      // 无主态（开口即开卷）：坞里 / 题签上拨的是**当前出生默认模型**的档位——2026-09-23
       // 思考下沉后落到该模型的 per-model 覆盖（与本家默认档位各管一层：设置页行级
       // 那个是「没单独设过的模型用它」）。行无模型时无从定位，回落写行值。
+      //
+      // ⚡ 2026-11-29（题签「记住选择」批）：改走 `patchProviderIntent`——**意图权威 =
+      // `~/.lantai/providers.yml`**。旧实现 `saveSettings(updateProvider(...))` 写的是本地
+      // 存档里的 provider 行，而文件权威就位后 `saveSettings` 会把意图整段剥掉（见
+      // writeNewSessionDefault 的病灶注）：档位从来就没落过盘，下一次开纸就回旧值。
       // 发 thinking-changed 信号无意义——无会话句柄可热切，工厂出生时现读。
       try {
         const s = loadSettings();
         const act = getActiveProvider(s);
         const model = act.model?.trim();
         if (!model) {
-          saveSettings(updateProvider(s, act.name, { thinking }));
+          patchProviderIntent(act.name, { thinking });
           return;
         }
-        const cur = act.modelOverrides?.[model] ?? {};
-        saveSettings(
-          updateProvider(s, act.name, {
-            modelOverrides: { ...(act.modelOverrides ?? {}), [model]: { ...cur, thinking } },
-          }),
-        );
-      } catch {
-        /* 读/写失败静默 */
+        const overrides: Record<string, ModelOverrides> = { ...(act.modelOverrides ?? {}) };
+        const entry: ModelOverrides = { ...(overrides[model] ?? {}) };
+        if (thinking === undefined) delete entry.thinking;
+        else entry.thinking = thinking;
+        // 空条目不留壳：模型没有别的覆盖时，文件里不该多出一条空映射
+        if (Object.keys(entry).length === 0) delete overrides[model];
+        else overrides[model] = entry;
+        patchProviderIntent(act.name, {
+          modelOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
+        });
+      } catch (e) {
+        console.warn('[compose-store] 思考档位落盘失败（下次开纸回旧值）:', e);
       }
     },
 

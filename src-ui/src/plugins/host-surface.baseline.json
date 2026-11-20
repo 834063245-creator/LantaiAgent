@@ -1,5 +1,5 @@
 {
-  "fingerprint": "d050418c",
+  "fingerprint": "0d956b17",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -19,6 +19,7 @@
     "DEFAULT_C_IN",
     "DEFAULT_C_OUT",
     "DEFAULT_RETAIN_RATIO",
+    "DraftPaperContext",
     "EMPTY_REGION_CONTENT_H",
     "EventKind",
     "FileOwnership",
@@ -363,6 +364,7 @@
     "useCoreStore",
     "useDialogEscape",
     "useDockStore",
+    "useDraftPaperId",
     "useDraftSheetStore",
     "useModeStore",
     "useOutsideClose",

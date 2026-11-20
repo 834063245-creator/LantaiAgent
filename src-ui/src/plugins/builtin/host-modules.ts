@@ -238,7 +238,14 @@ import {
 import { activeMarkdownBody } from '../../paper/markdown-body-seam';
 import { clearMeasureImplementation, registerMeasureImplementation } from '../../paper/measure-seam';
 import { clampViewportFrame, inkBarsFor, minimapProject, regionFrame } from '../../paper/minimap-core';
-import { PaperDockContext, PaperRegionContext, usePaperDock, usePaperRegion } from '../../paper/overlay-context';
+import {
+  DraftPaperContext,
+  PaperDockContext,
+  PaperRegionContext,
+  useDraftPaperId,
+  usePaperDock,
+  usePaperRegion,
+} from '../../paper/overlay-context';
 import {
   clampRegionW,
   defaultRegionFor,
@@ -564,6 +571,8 @@ const faceDeps = {
   INK_LABEL_ALPHA,
   PaperDockContext,
   PaperRegionContext,
+  DraftPaperContext,
+  useDraftPaperId,
   usePaperDock,
   usePaperRegion,
   // 批 5a 归家（2026-09-24）：toc / toc-ink / ime / sel-ink / focus-flight / sheet /

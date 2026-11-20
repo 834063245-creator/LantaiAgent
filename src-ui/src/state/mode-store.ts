@@ -56,6 +56,11 @@ interface ModeStore {
   sessionModes: Record<string, PermissionMode>;
   /** yolo 二次确认态：非 null 时书眉显示确认条，目标模式存此。 */
   pendingYolo: boolean;
+  /** **谁要的这次全放确认**（2026-11-29 多纸错位批）：待题纸的纸 id，坞期/工作区 = null。
+   *  用途有二——① 「确定」时把那一笔落到**请求它的那张纸**（不是「此刻焦点那张」：
+   *  用户完全可能点了全放又去点别的纸）；② 多纸同屏时只有那一张纸的输入面渲染模态
+   *  （旧实现每张纸各渲染一个 portal，N 张纸 = N 个叠着的确认框）。 */
+  pendingYoloPaper: string | null;
   /** 改**工作区默认**：写 store + 镜像 Rust + 落盘（不动已开着的卷）。 */
   setPermissionMode: (mode: PermissionMode) => void;
   /** 改**待题纸出厂权限**（只在纸上拨时写；落盘 settings.agent.sheetPermissionMode）。 */
@@ -64,8 +69,8 @@ interface ModeStore {
   modeOf: (sessionId: number | string | null | undefined) => PermissionMode;
   /** 写/清某卷的覆盖（mode = null ⇒ 清除，回到跟随工作区）。 */
   setSessionMode: (sessionId: number | string, mode: PermissionMode | null) => void;
-  /** yolo 确认条开/合。 */
-  setPendingYolo: (pending: boolean) => void;
+  /** yolo 确认条开/合。`paperId` = 请求者（待题纸的纸 id；坞期/工作区省略或 null）。 */
+  setPendingYolo: (pending: boolean, paperId?: string | null) => void;
 }
 
 export const useModeStore = create<ModeStore>((set, get) => ({
@@ -73,8 +78,9 @@ export const useModeStore = create<ModeStore>((set, get) => ({
   sheetPermission: null,
   sessionModes: {},
   pendingYolo: false,
+  pendingYoloPaper: null,
   setPermissionMode: (mode) => {
-    set({ permissionMode: mode, pendingYolo: false });
+    set({ permissionMode: mode, pendingYolo: false, pendingYoloPaper: null });
     // 镜像 Rust — 后台任务（同步权限路径）旁路判定靠它；失败可见（不静默吞，
     // 但不阻断交互——镜像失败时前台闸门仍按本 store 裁决，仅后台路径回退旧值）
     typedRpc('set_permission_mode', { mode }).catch((e) =>
@@ -117,7 +123,7 @@ export const useModeStore = create<ModeStore>((set, get) => ({
     const next = { ...get().sessionModes };
     if (mode === null) delete next[key];
     else next[key] = mode;
-    set({ sessionModes: next, pendingYolo: false });
+    set({ sessionModes: next, pendingYolo: false, pendingYoloPaper: null });
     try {
       const s = loadSettings();
       const saved: Record<string, 'ask' | 'auto' | 'yolo'> = { ...(s.agent.sessionPermissionModes ?? {}) };
@@ -128,7 +134,8 @@ export const useModeStore = create<ModeStore>((set, get) => ({
       console.warn('[mode-store] 卷级权限落盘失败（重启将回上次落盘值）:', e);
     }
   },
-  setPendingYolo: (pendingYolo) => set({ pendingYolo }),
+  setPendingYolo: (pendingYolo, paperId) =>
+    set({ pendingYolo, pendingYoloPaper: pendingYolo ? (paperId ?? null) : null }),
 }));
 
 /** boot 期水合：盘上 settings → store；并同步 Rust 镜像（应用启动时

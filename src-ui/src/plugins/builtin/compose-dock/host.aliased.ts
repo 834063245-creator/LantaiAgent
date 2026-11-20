@@ -50,6 +50,10 @@ export const watchFileDragDrop = impl.watchFileDragDrop;
 export const usePaperDock = impl.usePaperDock;
 export const usePaperRegion = impl.usePaperRegion;
 export const PaperRegionContext = impl.PaperRegionContext;
+/* 纸期覆盖层「这张贡献挂在哪张纸上」（2026-11-29 多纸错位批）：题签行/纸期输入面
+ * 按纸读自己的记录——宿主不给（坞期/裸挂测试）= null = 沿用「焦点那张」旧语义。 */
+export const DraftPaperContext = impl.DraftPaperContext;
+export const useDraftPaperId = impl.useDraftPaperId;
 // 批 5a（2026-09-24）：toc / toc-ink / ime 已随包 ⇒ 不进宿主面，消费方直接
 // `from './toc'` / `'./toc-ink'` / `'./ime'`（host 面只许桥内核）。
 export const inkColorOf = impl.inkColorOf;

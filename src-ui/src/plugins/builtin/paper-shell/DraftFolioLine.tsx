@@ -25,19 +25,27 @@
 // 本件因此只吃 overlays 槽，一字不知 store。
 
 import { useEffect, useState } from 'react';
-import { activeOverlayContributions, subscribeOverlayContributions } from './host';
+import { activeOverlayContributions, DraftPaperContext, subscribeOverlayContributions } from './host';
 
-/** 题签行（天头第三行）：槽内贡献在这里挂载——空槽 = 不渲染（零新增噪声）。 */
-export function DraftFolioLine() {
+/** 题签行（天头第三行）：槽内贡献在这里挂载——空槽 = 不渲染（零新增噪声）。
+ *
+ *  ⚠ **参数 `paperId` 不是装饰**（2026-11-29 多纸错位批）：每张纸各挂一行，而槽内贡献
+ *  是**同一个组件**（compose-dock 的 `DraftFolioSurface`，覆盖层契约无 props）。不给纸
+ *  身份，那批 hook 只能读 `focusedId` ⇒ **每张纸的题签行都显示焦点那张纸的三笔**
+ *  （用户报「非焦点态显示的组合/模型/思考强度/权限与实际设置不符」）——读数与写入一起错。
+ *  故本行把「这是哪张纸」经 `DraftPaperContext` 下发给贡献：纸是宿主，读数归自己的记录。 */
+export function DraftFolioLine({ paperId }: { paperId: string }) {
   /* 贡献热注册即时重取（同 DraftSheet 的输入面槽）：插件重载时本行不塌。 */
   const [, setOverlayTick] = useState(0);
   useEffect(() => subscribeOverlayContributions(() => setOverlayTick((t) => t + 1)), []);
   const contributions = activeOverlayContributions('draft-folio');
   if (contributions.length === 0) return null;
   return (
-    <div className="pp-folio-picks" data-draft-folio>
+    <div className="pp-folio-picks" data-draft-folio data-paper-id={paperId}>
       {contributions.map((def) => (
-        <def.component key={def.id} />
+        <DraftPaperContext.Provider key={def.id} value={paperId}>
+          <def.component />
+        </DraftPaperContext.Provider>
       ))}
     </div>
   );

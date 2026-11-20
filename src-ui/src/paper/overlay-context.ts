@@ -76,6 +76,26 @@ export interface PaperRegionContextValue {
 export const PaperDockContext = createContext<PaperDockContextValue | null>(null);
 export const PaperRegionContext = createContext<PaperRegionContextValue | null>(null);
 
+/** **这张覆盖层贡献挂在哪张待题纸上**（2026-11-29 多纸错位批）。
+ *
+ *  病灶：纸期的两处覆盖层（卷首题签行 / 纸上的输入面）是「同组件另一次挂载」，
+ *  而那批 hook 一律读 `draft-sheet-store.focusedId` —— 于是**每张纸的题签行都显示
+ *  焦点那张纸的三笔**（换焦点时非焦点那张的数就跟着别人的值走，用户报「非焦点态
+ *  显示的组合/模型/思考强度/权限与实际不符」）。
+ *
+ *  语义：纸是宿主，读数归自己的记录；`null` = 不在纸上（坞期/裸挂测试），消费面
+ *  沿用「焦点那张」的旧语义。宿主 = paper-shell 的 `DraftFolioLine` / `DraftSheet`，
+ *  消费面 = compose-dock 的 `DraftFolioSurface` / `ComposerSheet`。
+ *
+ *  为什么是 context 而不是 prop：覆盖层贡献的契约是 `ComponentType`（无 props，
+ *  见 composition/overlay-service）——宿主逐实例给值只能走 context。 */
+export const DraftPaperContext = createContext<string | null>(null);
+
+/** 消费面：本贡献所属那张纸的 id（`null` = 不在任何纸上）。 */
+export function useDraftPaperId(): string | null {
+  return useContext(DraftPaperContext);
+}
+
 /** 创作坞消费面（必须在 PaperPanel 内渲染）。 */
 export function usePaperDock(): PaperDockContextValue {
   const v = useContext(PaperDockContext);

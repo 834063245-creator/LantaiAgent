@@ -430,6 +430,102 @@ export async function saveProvidersDoc(
   return { ok: true };
 }
 
+/** 单节意图补丁（**题签「记住选择」批 2026-11-29**）：只改一节里的几个字段，其余节原样。
+ *
+ *  为什么需要它：`model` / `modelOverrides[*].thinking` 这类「新卷出生默认」是**用户意图**，
+ *  权威在这份文件里（localStorage 里的 provider 行只留运行态读数，`saveSettings` 会把意图剥掉）。
+ *  旧实现（compose-store 的 setGlobalModel / setGlobalThinking）走 `saveSettings` 写本地存档
+ *  ——文件权威一旦就位，那一笔在写盘那一刻就被剥掉：**当场就没落盘，重启更不会有**。
+ *
+ *  两段式（照 `selectPreset` 的「内存态先行、持久化失败可见」口径）：
+ *    ① 内存投影立刻改（`loadSettings()` 同拍读到）——「下一张纸的出厂值」不能等 IPC 回来；
+ *    ② 串行落盘（以磁盘现状为底，读-改-写）：失败写进 `state.lastError` + ui.log，
+ *       设置页点名可见；下一次装载（watcher / 重启）回落到盘上的旧值——**不假装成功**。
+ *
+ *  降级域（文件通道不可用 / 文件还空着 / 手稿坏了）：沿用旧语义写 localStorage 那份
+ *  ——那个域里 `saveSettings` 不会剥意图（同一判据 `providersFileReady`）。 */
+export function patchProviderIntent(name: string, patch: Partial<ProviderIntent>): void {
+  if (!PROVIDER_NAME_RE.test(name)) {
+    log.error('provider-doc', '意图补丁的 provider 名不合法', { name });
+    return;
+  }
+  if (!providersFileReady()) {
+    try {
+      const s = loadSettings();
+      saveSettings({ ...s, providers: s.providers.map((p) => (p.name === name ? { ...p, ...patch } : p)) });
+    } catch (e) {
+      log.error('provider-doc', '意图补丁落盘失败（降级域：本地存档）', { name, error: errText(e) });
+    }
+    return;
+  }
+  const base = effectiveSections().find((s) => s.name === name)?.intent ?? {};
+  /* base 来自已解析的节（kind/baseUrl 必在，节才进得了行表）——补丁只叠字段，
+   * 故整体仍是完整意图；`as` 只为把「Partial 叠在完整上」这件事告诉 tsc。 */
+  const next = { ...base, ...patch } as ProviderIntent;
+  applyIntentInMemory(name, next);
+  /* 队列吞掉异常（写盘失败已在 writeIntentPatch 里留痕）——一次失败不许卡死后续写入。 */
+  intentWrites = intentWrites.then(() =>
+    writeIntentPatch(name, patch).catch((e) =>
+      log.error('provider-doc', '意图补丁写盘抛错', { name, error: errText(e) }),
+    ),
+  );
+}
+
+/** 内存投影改一节（串行写盘的底 + 立刻可读的读数；不做磁盘 IO）。 */
+function applyIntentInMemory(name: string, next: ProviderIntent): void {
+  const clean: ProviderIntent = { ...next };
+  for (const key of Object.keys(clean) as (keyof ProviderIntent)[]) {
+    if (clean[key] === undefined) delete clean[key];
+  }
+  const section: Sections[number] = { name: name as ProviderSettings['name'], intent: clean };
+  const idx = lastSections.findIndex((s) => s.name === name);
+  lastSections = idx >= 0 ? lastSections.map((s, i) => (i === idx ? section : s)) : [...lastSections, section];
+  lastGoodSections.set(section.name, section);
+  if (!fileKeyOrder.includes(name)) fileKeyOrder = [...fileKeyOrder, name];
+  cachedRows = null;
+  refreshRows();
+  notify();
+}
+
+/** 串行写盘队列（拨模型是连点动作：并发写同一份文件会互相覆盖）。 */
+let intentWrites: Promise<void> = Promise.resolve();
+
+/** 以**磁盘现状**为底做单节读-改-写（本进程可能错过一次外部编辑；
+ *  手稿坏掉/有整节读不出来时 `saveProvidersDoc` 自己会拒写并把原因带回来）。 */
+async function writeIntentPatch(name: string, patch: Partial<ProviderIntent>): Promise<void> {
+  let disk = '';
+  try {
+    disk = await kernelReadFile(state.path);
+  } catch {
+    disk = '';
+  }
+  const fresh = parseProvidersDoc(disk, knownProtocols());
+  if (fresh.fatal) {
+    // 手稿解析不了：内存已经改了（本进程读数生效），但**绝不覆盖手稿**——原因可见
+    state.lastError = `provider 配置当前无法解析，未写盘：${fresh.fatal}`;
+    notify();
+    log.error('provider-doc', '意图补丁未写盘（手稿解析失败）', { name, error: fresh.fatal });
+    return;
+  }
+  const full: Record<string, ProviderIntent> = {};
+  for (const s of fresh.sections) full[s.name] = s.intent;
+  if (!(name in full)) {
+    /* 盘上没有这一节（本进程那条来自「上一次可用」回落 / 已被外部删掉）：
+     * 只把这一节拼进补丁会写出**缺 kind/baseUrl 的坏节** —— 宁可不动盘，原因可见。 */
+    state.lastError = `provider「${name}」不在配置文件里，意图未写盘（先在设置页或文件里补一节）`;
+    notify();
+    log.error('provider-doc', '意图补丁未写盘（该节不在盘上）', { name });
+    return;
+  }
+  full[name] = { ...full[name], ...patch };
+  const res = await saveProvidersDoc(full);
+  if (!res.ok) {
+    state.lastError = res.error ?? '未知原因';
+    notify();
+    log.error('provider-doc', '意图补丁写盘失败（下次装载回旧值）', { name, error: res.error });
+  }
+}
+
 /** 首次落盘骨架（文件不存在时把当前行写出去——存量迁移与首启共用同一条路）。 */
 export async function seedProvidersDoc(rows: readonly ProviderSettings[]): Promise<{ ok: boolean; error?: string }> {
   const patch: Record<string, ProviderIntent> = {};

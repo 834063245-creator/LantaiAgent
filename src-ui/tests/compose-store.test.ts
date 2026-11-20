@@ -100,15 +100,25 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     });
     // 信号带 sessionId（applyAgentConfig 只热切换该会话）
     expect(notifyAgentConfigChanged).toHaveBeenCalledWith('model-switched', 1);
-    // 新语义（2026-08-26「新会话默认 = 最近使用」）：定向写目标 provider 行的
-    // model + activeProvider = 最近使用的 provider（saveSettings 被 mock，断言入参）
+    // 新语义（2026-08-26「新会话默认 = 最近使用」）：定向写 activeProvider = 最近使用的
+    // provider（运行态读数 → 本地存档）。
+    // ⚡ 2026-11-29（题签持久化批）：目标 provider 行的 **model** 不再写本地存档——它是
+    // 用户意图，权威在 `~/.lantai/providers.yml`（`saveSettings` 在文件权威就位时会把
+    // 意图整段剥掉，旧写法等于白写）。无文件通道时（本测的域）走 `patchProviderIntent`
+    // 的降级分支，仍落本地存档——故这里按「入参里有没有那一笔」断言，不依赖调用次数/顺序。
     const saveSpy = vi.mocked(settingsModule.saveSettings);
     expect(saveSpy).toHaveBeenCalled();
-    const saved = saveSpy.mock.calls.at(-1)?.[0] as settingsModule.AppSettings;
-    expect(saved.providers.find((p) => p.name === 'anthropic')?.model).toBe('claude-opus-4-6');
-    expect(saved.activeProvider).toBe('anthropic'); // 最近使用跟随（「设为当前」退役）
+    const writes = saveSpy.mock.calls.map((c) => c[0] as settingsModule.AppSettings);
+    expect(
+      writes.some((w) => w.activeProvider === 'anthropic'),
+      '最近使用跟随（「设为当前」退役）',
+    ).toBe(true);
+    const providerWrite = writes.filter(
+      (w) => w.providers.find((p) => p.name === 'anthropic')?.model === 'claude-opus-4-6',
+    );
+    expect(providerWrite.length, '目标 provider 行的 model 写到了新会话默认').toBeGreaterThan(0);
     // A1 不复发：别家 provider 未被拖累（不是全量轰炸）；已存在会话走覆盖
-    expect(saved.providers.find((p) => p.name === 'deepseek')?.model).toBe('deepseek-v4-pro');
+    expect(providerWrite.at(-1)?.providers.find((p) => p.name === 'deepseek')?.model).toBe('deepseek-v4-pro');
   });
 
   it('setThinking：写会话覆盖（A2 根治——不再写全局活跃 provider 行）', () => {

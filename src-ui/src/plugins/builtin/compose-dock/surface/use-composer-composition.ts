@@ -107,12 +107,14 @@ export function useComposerComposition({ core, activeSessionId, notice }: Compos
   );
   const compLocked = activeSessionId != null && !compBlank;
   const compLabel = compInfo.presetId;
-  /** 题签拨组合（V2）：纸期**只写题签**——真正的登记发生在开卷那一刻
+  /** 题签拨组合（V2）：纸期写的是**这张纸**的题签——真正的登记发生在开卷那一刻
    *  （`ChatCore.openDraftVolume` → `createSessionWithPreset`，严一档校验 + 卷级登记）。
-   *  纸期不做校验：预设可能先坏后修，纸上不该出现「选了但没落账」的第二套拒绝语义。 */
-  const onDraftPresetChange = useCallback((id: string) => {
+   *  纸期不做校验：预设可能先坏后修，纸上不该出现「选了但没落账」的第二套拒绝语义。
+   *  `paperId` = 目标纸（2026-11-29 多纸错位批）：多纸同屏时每张纸的行各写各的；
+   *  缺省/`null` = 焦点那张（裸挂单件的旧语义）。 */
+  const onDraftPresetChange = useCallback((id: string, paperId?: string | null) => {
     setCompOpen(false);
-    useDraftSheetStore.getState().setPresetId(id);
+    useDraftSheetStore.getState().setPresetId(id, paperId ?? undefined);
   }, []);
 
   return {

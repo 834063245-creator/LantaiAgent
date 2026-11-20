@@ -85,6 +85,10 @@ export const registerMeasureImplementation = impl.registerMeasureImplementation;
 export const clearMeasureImplementation = impl.clearMeasureImplementation;
 export const PaperDockContext = impl.PaperDockContext;
 export const PaperRegionContext = impl.PaperRegionContext;
+/* 纸期覆盖层「这张贡献挂在哪张纸上」（2026-11-29 多纸错位批）——
+ * 卷首题签行按纸读自己的三笔，不再跟着焦点那张走。 */
+export const DraftPaperContext = impl.DraftPaperContext;
+export const useDraftPaperId = impl.useDraftPaperId;
 export { sheetCharacter } from './sheet';
 export const clampRegionW = impl.clampRegionW;
 export const defaultRegionFor = impl.defaultRegionFor;

@@ -26,6 +26,10 @@ import { getComposeStore, useDraftSheetStore } from './../host';
 export interface ComposerModelsInput {
   core: ChatCore | null;
   isSheet: boolean;
+  /** 纸期：**这张纸**的 id（2026-11-29 多纸错位批；缺省/null = 焦点那张）。
+   *  多纸同屏时每张纸的输入面各写各的题签——旧实现一律写焦点那张，非焦点那张
+   *  拨了等于写进别人的记录。 */
+  paperId?: string | null;
   activeSessionId: string | null;
   providerName: string;
   currentThinking: StoredThinking | '' | undefined;
@@ -35,6 +39,7 @@ export interface ComposerModelsInput {
 export function useComposerModels({
   core,
   isSheet,
+  paperId,
   activeSessionId,
   providerName,
   currentThinking,
@@ -53,15 +58,22 @@ export function useComposerModels({
       // 语义分层不变：**这一卷**由题签决定（开卷时落会话覆盖），**下一卷**由默认决定。
       if (isSheet) {
         const st = useDraftSheetStore.getState();
-        // 多纸：写的是**焦点那张纸**的题签（setPicks 的缺省纸 = 焦点）
-        st.setPicks({
-          presetId: st.papers.find((p) => p.id === st.focusedId)?.presetId ?? null,
-          providerName: targetProvider,
-          model: modelId,
-          thinking: undefined, // 换模型 = 思考档重解析（旧档位可能不在新模型声明里）
-          // 权限那一格不因换模型而丢（2026-11-28 卷级权限批）：原样保留已有题签
-          permission: st.papers.find((p) => p.id === st.focusedId)?.picks?.permission ?? null,
-        });
+        // 多纸：写的是**本件所属那张纸**的题签（缺省 = 焦点那张——裸挂单件的旧语义）
+        const targetId = paperId ?? st.focusedId;
+        const paper = targetId === null ? null : st.papers.find((p) => p.id === targetId);
+        /* 纸不在了（力迟到的回调）：不写——空写会落到焦点那张身上，等于替别人改题签。 */
+        if (!paper) return;
+        st.setPicks(
+          {
+            presetId: paper.presetId,
+            providerName: targetProvider,
+            model: modelId,
+            thinking: undefined, // 换模型 = 思考档重解析（旧档位可能不在新模型声明里）
+            // 权限那一格不因换模型而丢（2026-11-28 卷级权限批）：原样保留已有题签
+            permission: paper.picks?.permission ?? null,
+          },
+          paper.id,
+        );
         // 下一卷：同一笔写成新卷出生默认（同一写路径 = 坞期「无主态拨」那条）
         getComposeStore(core.panelId).getState().setGlobalModel(targetProvider, modelId);
         return;
@@ -74,7 +86,7 @@ export function useComposerModels({
       }
       compose.setModel(activeSessionId, targetProvider, modelId);
     },
-    [core, activeSessionId, providerName, isSheet],
+    [core, activeSessionId, providerName, isSheet, paperId],
   );
   const onThinkingChange = useCallback(
     (value: string) => {
@@ -86,10 +98,14 @@ export function useComposerModels({
       // 否则用户选了「自动」，下次开纸又变回该模型的声明档位）。
       if (isSheet) {
         const st = useDraftSheetStore.getState();
-        // 多纸：写的是**焦点那张纸**的题签
-        const picks = st.papers.find((p) => p.id === st.focusedId)?.picks ?? null;
+        // 多纸：写的是**本件所属那张纸**的题签
+        const targetId = paperId ?? st.focusedId;
+        const picks = targetId === null ? null : (st.papers.find((p) => p.id === targetId)?.picks ?? null);
         if (!picks) return;
-        st.setPicks({ ...picks, thinking: value === '' ? undefined : (value as StoredThinking) });
+        st.setPicks(
+          { ...picks, thinking: value === '' ? undefined : (value as StoredThinking) },
+          targetId ?? undefined,
+        );
         // 下一卷：记成该模型的默认档位（'自动' = 显式 ''，别再交给行值兜底）
         getComposeStore(core.panelId)
           .getState()
@@ -104,7 +120,7 @@ export function useComposerModels({
       }
       compose.setThinking(activeSessionId, next);
     },
-    [core, activeSessionId, isSheet],
+    [core, activeSessionId, isSheet, paperId],
   );
 
   /* ── 思考档位面（2026-11-12 DSH 两级菜单，用户拍板「去抄 dsh 的 UX」）──────
