@@ -430,7 +430,32 @@ async function* readSSE(
   signal?: AbortSignal,
   obsMeta?: SseLogMeta,
 ): AsyncGenerator<Chunk> {
-  const toolsByIndex = new Map<number, { id: string; name: string; arguments: string }>();
+  /* ⚡ 累加器按 (index, id) 认——**不是**按 index 唯一（2026-11-20「工具卡片卡在
+   *  运行态」真机根因）：OpenAI 兼容网关会在一轮里放多个 tool_calls，而它们的
+   *  `index` 可能相同（真机 amr-link 网关实测：两个 fs(edit) 调用都带 index 0，
+   *  另有整轮缺省 index 的形态）。旧实现按 index 建唯一累加器，后果两连：
+   *    ① 第二个调用的 id/name 覆盖同一个累加器 ⇒ 第一个调用**只发过
+   *       ToolCallStart**，永远等不到自己的 ToolCall/结果 ⇒ 卡片停在「行 Ns」；
+   *    ② 两个调用的 arguments 拼成一条 ⇒ JSON.parse 失败（真机原文
+   *       「Unexpected non-whitespace character after JSON at position 1272」，
+   *       错误窗口里两段 `{"action": "edit"…}` 首尾相接）。
+   *  判据：**id 变了就是另一个调用**（id 是模型生成的调用身份，index 只是增量
+   *  的槽位提示）。同 id 的后续增量照旧累加；同 index 不同 id 另起一条。 */
+  interface ToolAcc {
+    index: number;
+    id: string;
+    name: string;
+    arguments: string;
+    /** 已发过 ToolCallStart（name 到齐那一拍）——同 id 后续 name 增量不再补发。 */
+    started: boolean;
+  }
+  /** 在途累加器：按**出现序**排（= 调用序，也是 ToolCall 的发射序）。 */
+  const pending: ToolAcc[] = [];
+  /** 单条调用的终值事件（收尾统一发射）。 */
+  const flushOne = (acc: ToolAcc): Chunk => ({
+    type: ChunkType.ToolCall,
+    tool_call: { id: acc.id, name: acc.name, arguments: acc.arguments },
+  });
   let usage: Chunk['usage'];
 
   for await (const ev of sseEvents<OpenAiSseEvent>(body, name, signal, obsMeta)) {
@@ -491,14 +516,46 @@ async function* readSSE(
       // 工具调用
       if (delta.tool_calls) {
         for (const tcDelta of delta.tool_calls) {
-          let tc = toolsByIndex.get(tcDelta.index);
-          if (!tc) {
-            tc = { id: '', name: '', arguments: '' };
-            toolsByIndex.set(tcDelta.index, tc);
+          const idx = tcDelta.index ?? 0;
+          /* 归属判据 = **id**（index 只是槽位提示，网关会给出重复的）：
+           *   · 带 id 且与在途某条不同 ⇒ 另起一条（并行调用，哪怕 index 相同）；
+           *   · 带 id 且命中在途某条 ⇒ 认领它（少数实现只首帧带 id）；
+           *   · 不带 id ⇒ 归给同 index 最近一条在途调用（标准增量形态）。 */
+          let tc: ToolAcc | undefined;
+          if (tcDelta.id) {
+            tc = pending.find((p) => p.id === tcDelta.id);
+            if (!tc) {
+              /* 先到的匿名条目（首帧没带 id 的实现）就地认领——否则同一个调用会
+               * 留下一条 id 为空的条目，收尾时多画一张无身份卡片。只认「同 index
+               * 且 id 仍为空」的那条，已有 id 的绝不改认。 */
+              const anon = pending.find((p) => p.index === idx && p.id === '');
+              if (anon) {
+                anon.id = tcDelta.id;
+                tc = anon;
+              } else {
+                tc = { index: idx, id: tcDelta.id, name: '', arguments: '', started: false };
+                pending.push(tc);
+              }
+            }
+          } else {
+            for (let i = pending.length - 1; i >= 0; i--) {
+              if (pending[i].index === idx) {
+                tc = pending[i];
+                break;
+              }
+            }
+            if (!tc) {
+              tc = { index: idx, id: '', name: '', arguments: '', started: false };
+              pending.push(tc);
+            }
           }
-          if (tcDelta.id) tc.id = tcDelta.id;
-          if (tcDelta.function?.name) {
-            tc.name = tcDelta.function.name;
+          if (tcDelta.function?.name) tc.name = tcDelta.function.name;
+          // ToolCallStart 只在**身份（id）+ 名字都到齐**时发一次：UI 靠它建卡，
+          // 卡的身份必须与最终 ToolCall 的 id 一致——先发一张 id 为空的卡再补发
+          // 真 id，旧卡就永远没人认领（正是本批要根治的那种「卡住」）。
+          // 重复发同样有害（旧实现每个 name 增量发一次 = 同一个调用画两遍）。
+          if (!tc.started && tc.name && tc.id) {
+            tc.started = true;
             yield {
               type: ChunkType.ToolCallStart,
               tool_call: { id: tc.id, name: tc.name, arguments: '' },
@@ -523,14 +580,11 @@ async function* readSSE(
         if (usage) {
           usage.finish_reason = choice.finish_reason;
         }
-        // 输出已完成的工具调用
-        for (const tc of toolsByIndex.values()) {
-          yield {
-            type: ChunkType.ToolCall,
-            tool_call: { id: tc.id, name: tc.name, arguments: tc.arguments },
-          };
+        // 输出已完成的工具调用（出现序 = 调用序，与 provider 的 index 无关）
+        for (const tc of pending) {
+          yield flushOne(tc);
         }
-        toolsByIndex.clear();
+        pending.length = 0;
       }
     }
 
