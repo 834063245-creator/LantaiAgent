@@ -172,6 +172,21 @@ export function renderQuoteSection(blocks: ReadonlyArray<{ card: QuoteCard; refP
   return blocks.map((b) => renderQuoteBlock(b.card, b.refPath)).join('\n\n');
 }
 
+/** **来文气泡上的紧凑回执**（2026-11-20 用户报「来文里显示了全部的快照内容，不太好看」）。
+ *
+ *  纸面上那张纸写的是**人读的那一句**，不是给模型的材料清单：五六个字段的摘要块在
+ *  来文里占掉一半版面，把用户自己写的那句话挤没了。故气泡只留一行「引了哪几张」，
+ *  完整摘要仍原样进**模型上下文**（两处同源、不同投影——摘要模板一个字都不改）。
+ *
+ *  形态：`引 页《示例标题》、表《未命名》`（一类一枚，超三枚收成「等 N 枚」）。 */
+export function renderQuoteReceipt(cards: readonly QuoteCard[]): string {
+  if (cards.length === 0) return '';
+  const label = (card: QuoteCard): string => `${plateSignOf(card.kind)}《${card.title || '未命名'}》`;
+  const shown = cards.slice(0, 3).map(label).join('、');
+  const more = cards.length > 3 ? ` 等 ${cards.length} 枚` : '';
+  return `引 ${shown}${more}`;
+}
+
 /** 拼进 user message 的完整引用段（方案 §5.1 逐字形态）：
  *  `<正文>\n\n——以下为引用卡片——\n\n〔引卡〕…`。空清单 = 正文原样（零改动）。 */
 export function composeQuotedText(

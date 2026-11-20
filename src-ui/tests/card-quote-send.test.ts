@@ -184,6 +184,46 @@ describe('夹签发送链', () => {
     expect(getChatStore(panel.panelId).input.getState().attachedCards).toEqual([]);
   });
 
+  it('**来文气泡只放回执**，完整摘要仍原样进模型上下文（两处同源、投影不同）', async () => {
+    const reqs: Request[] = [];
+    const panel = panelWith(recordingProvider(reqs));
+    await panel.createNewSession();
+    panel.renameSession(1, '回执夹具');
+    getAssetTableStore(`${panel.panelId}:1`)
+      .getState()
+      .upsert({
+        assetId: 'as_abc',
+        kind: 'html',
+        presentation: 'html',
+        title: '示例标题',
+        payload: { code: '<b>x</b>' },
+      } as never);
+    getChatStore(panel.panelId).input.getState().setInputText('帮我改这张卡');
+    getChatStore(panel.panelId).input.getState().addAttachedCard(CARD);
+
+    await panel.sendMessage();
+    await flush();
+
+    // 模型面：完整摘要（地址 / 规模 / 改本体的入参都在）
+    const sent = lastUserText(reqs[0]);
+    expect(sent).toContain('· 原文：');
+    expect(sent).toContain('· 改本体：update_asset(');
+    expect(sent).toContain('· 规模：payload');
+
+    // 纸面：来文气泡只有一行回执（摘要字段一个都不许漏进去）
+    // 来文气泡的真源 = 该卷的消息表（不是 msg 镜像；镜像在无视图的用例里不刷新）
+    const { msgStoreFor } = await import('../src/ui/chat-store');
+    const bubble = msgStoreFor(panel.panelId, 1)
+      .getState()
+      .messages.find((m) => m.role === 'user');
+    expect(bubble, '这一轮没铸来文气泡').toBeDefined();
+    const bubbleText = bubble?.role === 'user' ? bubble.text : '';
+    expect(bubbleText, '来文里又出现了整段摘要').not.toContain('· 原文：');
+    expect(bubbleText).not.toContain('· 改本体');
+    expect(bubbleText).toContain('帮我改这张卡');
+    expect(bubbleText).toContain('引 页《示例标题》');
+  });
+
   it('只有夹签也能发（正文为空）', async () => {
     const reqs: Request[] = [];
     const panel = panelWith(recordingProvider(reqs));

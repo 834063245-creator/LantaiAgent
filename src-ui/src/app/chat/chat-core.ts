@@ -36,7 +36,7 @@ import { kernelWriteFile } from '../../rpc-contract';
 import { clipLabel, useAskPendingStore } from '../../state/ask-pending-store';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { getAssetTableStore } from '../../state/asset-store';
-import { buildQuoteSnapshot, composeQuotedText, type QuoteCard } from '../../state/card-quote';
+import { buildQuoteSnapshot, composeQuotedText, type QuoteCard, renderQuoteReceipt } from '../../state/card-quote';
 import { useDockStore } from '../../state/dock-store';
 import { draftInputKey, useDraftSheetStore } from '../../state/draft-sheet-store';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
@@ -1517,17 +1517,24 @@ export class ChatCore {
       }
     }
 
-    /* 本轮来文的完整正文 = 用户正文 + 引用段（方案 §4 把引卡摘要定义为「在 user message
-     * 里渲染」，故**气泡与发给模型的文本是同一份**：用户回看时看得见自己引了什么，
-     * 纯引用轮也不会留下一个空气泡）。 */
+    /* **两处投影，一份真源**（2026-11-20 用户报「来文里显示了全部的快照内容」）：
+     *   · 发给模型 = 用户正文 + **完整摘要块**（方案 §4/§5.1：模型要读地址与规模）；
+     *   · 来文气泡 = 用户正文 + **一行紧凑回执**（纸面上那张纸写的是人读的那一句，
+     *     摘要块五六个字段会把用户自己写的话挤没）。
+     * 同一批夹签、同一个渲染真源（card-quote 的 renderQuoteReceipt / renderQuoteBlock），
+     * 只是投影不同——不在两处各写一份格式。 */
     const quotedText = `${text}${quoteText}`;
+    /* 回执单独起一行（pp-body 是 pre-wrap，换行即分段）：纸面上读作「那句话 + 一行小注」，
+     * 与「附 · 文件名」同一档旁注的做法，不混进楷书正文。 */
+    const receipt = renderQuoteReceipt(cardsSnapshot);
+    const bubbleText = receipt === '' ? text : text.trim() ? `${text}\n${receipt}` : receipt; // 纯引用轮：气泡就这一行（不留空气泡）
 
     // 起轮：轮次脚手架（运行账 / 气泡 / 轮次对 / 收尾守卫 / 续行排程）全在
     // _runAgentTurn 一处——与目标自动轮、命令驱动轮同一条路，禁止再长第二份。
     await this._runAgentTurn({
       // 纯图/纯附件轮的正文可以是空串——气泡仍要铸（附图挂在气泡上），
       // 否则用户看到「发出去了」的只有空气，无从确认图随本轮走了。
-      bubble: quotedText,
+      bubble: bubbleText,
       bubbleFiles: filesSnapshot.length > 0 ? filesSnapshot : undefined,
       bubbleImages: imagesSnapshot.length > 0 ? imagesSnapshot : undefined,
       onStart: () => {
