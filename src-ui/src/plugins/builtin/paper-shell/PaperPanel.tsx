@@ -173,6 +173,7 @@ export function PaperPanel() {
     onRegionEdgePointerDown,
     sidecarOutOf,
     orphanPins,
+    orphanOps,
     deadOrphanPinIds,
     visibleRegionIds,
     inkCache,
@@ -586,7 +587,9 @@ export function PaperPanel() {
                       sessionProjectPath={projectPath || undefined}
                       sessionId={source && !deadOrphanPinIds.has(pinId) ? String(source.sessionId) : undefined}
                       seq="PIN"
-                      ops={EMPTY_OPS}
+                      /* 孤儿钉也有资产动作行（2026-11-20 用户报：已经摊开的卡片没有「引用」）——
+                         判据与活块同一份（assetOpsOf），只是它的来源是快照而非活消息。 */
+                      ops={orphanOps.get(pinId) ?? EMPTY_OPS}
                       folded={foldedOf(snapshotBlock)}
                       sidecarFolded={sidecarFoldedOf(snapshotBlock)}
                       onToggleFold={onToggleFold}

@@ -113,6 +113,10 @@ describe('夹签身份与读数', () => {
     expect(newRefId(at)).toMatch(/^q-20261119-105213-[a-z0-9]{4}$/);
     const ids = new Set(Array.from({ length: 200 }, () => newRefId(at)));
     expect(ids.size).toBe(200);
+    // 回归（2026-11-20 实测偶发红）：**同一秒**连发也要全不重号——refId 就是 refs 文件名，
+    // 撞号 = 后写的覆盖前者（第二个引用静默丢内容）。窗口内重抽保证这条。
+    const many = new Set(Array.from({ length: 2000 }, () => newRefId(at)));
+    expect(many.size).toBe(2000);
   });
 
   it('千分位（规模一眼看出是不是大件）', () => {

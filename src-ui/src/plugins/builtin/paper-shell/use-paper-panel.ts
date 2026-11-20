@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rackPresent } from '../../../paper/asset-rack';
-import { newRefId, payloadChars, type QuoteCard } from '../../../state/card-quote';
+import { quoteCardOf } from './card-quote-of';
 import type { DockTetherGeometry } from './DockTetherLayer';
 import { DOCK_TETHER_SEED, regionFootAnchorOf } from './dock-tether';
 import { createHitstop, HITSTOP_MS } from './hitstop';
@@ -17,6 +17,7 @@ import {
   activeOverlayContributions,
   activeSpace,
   agentSessionState,
+  blockFromSnapshot,
   getAssetState,
   getCanvasStore,
   getChatStore,
@@ -51,7 +52,7 @@ function cssEscape(value: string): string {
  * 账在 state/draft-sheet-store（`beginMorph` 同步登记）——判据必须**渲染期**可读，见该处头注。 */
 import { selSeedOf } from './sel-ink';
 import { useBlockMeasure } from './use-block-measure';
-import { useBlockOps } from './use-block-ops';
+import { assetOpsOf, type BlockOp, useBlockOps } from './use-block-ops';
 import { useBranchDrag } from './use-branch-drag';
 import { useComposerFloat } from './use-composer-float';
 import { useFoldState } from './use-fold-state';
@@ -253,20 +254,10 @@ export function usePaperPanelAssembly() {
    *      `quoteKeyOf`：assetId 相同就是同一张卡）。 */
   const quoteBlockAsset = useCallback(
     (block: SourcedBlock, sessionNum: number) => {
-      const asset = block.asset;
-      if (!asset || !core) return;
+      if (!block.asset || !core) return;
       const toast = useToastStore.getState().showToast;
-      const card: QuoteCard = {
-        refId: newRefId(),
-        origin: 'session',
-        assetId: asset.assetId,
-        sourceSessionId: String(sessionNum),
-        // 卡身份取**块的** kind（asset 元数据只带 presentation/标题——见 BlockAssetMeta）
-        kind: block.kind,
-        title: asset.title ?? '',
-        bytes: payloadChars(block.payload),
-        at: new Date().toISOString(),
-      };
+      const card = quoteCardOf(block, sessionNum);
+      if (!card) return;
       // 落**本卷**的槽：未认领时先按活跃卷认领（否则这份 live 会在下次换手时
       // 被当成「旧主的草稿」写回不相干的卷——见 quote-target 头注）
       const slot = quoteSlotOf(core.panelId);
@@ -292,6 +283,29 @@ export function usePaperPanelAssembly() {
   /** 夹签有没有地方可落（此刻有没有卷 / 纸）——空画布时「引用」置灰（方案 §2.2 态一）。
    *  订阅 sheet + sess：落纸 / 开卷一发生，按钮立刻可用。 */
   const quoteReady = useQuoteReady(core?.panelId ?? null);
+
+  /* **孤儿钉的动作行**（2026-11-20 用户报「已经摊开的卡片没有引用按钮」）：
+   * 孤儿钉 = 源卷未摊开 / 源块已不在流内 / 源卷已删 / 从架阁摊上来的卡——它们没有活
+   * 消息，按消息建表的 opsByBlock 到不了，旧实现一律给 EMPTY_OPS。而「入阁 / 引用」
+   * 只认**资产身份**，与消息无关：判据与文案直接复用 assetOpsOf（同一条真源）。
+   *
+   * 计算口径：以孤儿钉**快照重建出来的块**为准（与渲染面同一枚，见 PaperPanel 的
+   * blockFromSnapshot 调用）——快照里的 asset 就是这张卡如今的身份。 */
+  const orphanOps = useMemo(() => {
+    const out = new Map<string, BlockOp[]>();
+    for (const [pinId, pin] of orphanPins) {
+      const block = blockFromSnapshot(pinId, pin);
+      const ops = assetOpsOf(block, pin.source ? pin.source.sessionId : -1, {
+        onShelve: shelveBlockAsset,
+        onQuote: quoteBlockAsset,
+        quoteReady,
+      });
+      // 「收回 / 删除」不在这里——它是 BlockView 自己那颗（unpinLabel 走 props），
+      // 本表只管**资产两件**（入阁 / 引用），避免同一动作在行里出现两次。
+      if (ops.length > 0) out.set(pinId, ops);
+    }
+    return out;
+  }, [orphanPins, shelveBlockAsset, quoteBlockAsset, quoteReady]);
 
   const { opsByBlock, branchGrips } = useBlockOps({
     core,
@@ -900,6 +914,7 @@ export function usePaperPanelAssembly() {
     visibleRegionIds,
     inkCache,
     opsByBlock,
+    orphanOps,
     regionRender,
     onProvTrace,
     tether,

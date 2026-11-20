@@ -25,6 +25,47 @@ export interface BlockOp {
   title?: string;
 }
 
+/** 资产类动作行（**入阁 / 引用**）——活块与孤儿钉共用同一份判据与文案。
+ *
+ *  为什么单独抽出来：孤儿钉（源卷未摊开 / 已删 / 从架阁摊上来的卡）没有活消息，
+ *  `msgOpsFor` 那条按消息建表的循环根本到不了它们——旧实现给它们 `EMPTY_OPS`，
+ *  于是「已经摊在画布上的卡没有引用按钮」（2026-11-20 用户报）。
+ *  这两件动作只认**资产身份**，与消息无关，故判据可以共用一份。
+ *
+ *  `resolve` = 点击那一刻取「当刻那一版」块（活块流式期间每帧重建，闭包里捕获的
+ *  可能是旧快照）；孤儿钉没有更版，缺省就用入参那一枚。 */
+export function assetOpsOf(
+  block: SourcedBlock,
+  sessionNum: number,
+  opts: {
+    onShelve?: (block: SourcedBlock, sessionNum: number) => void;
+    onQuote?: (block: SourcedBlock, sessionNum: number) => void;
+    quoteReady?: boolean;
+  },
+  resolve: () => SourcedBlock = () => block,
+): BlockOp[] {
+  const ops: BlockOp[] = [];
+  if (!block.asset) return ops;
+  // **入阁**（架阁，2026-12-08 B2）：把这一块**当刻的样子**抄进卡片库。拓印语义——
+  // 此后它与本卷这张卡互不回写（entity-shelf-plan D3）；必须是**用户手势**。
+  if (opts.onShelve) {
+    const shelve = opts.onShelve;
+    ops.push({ key: 'shelve', label: '入阁', run: () => shelve(resolve(), sessionNum) });
+  }
+  // **引用**（夹签，card-quote-plan §2.1/§11）：与「入阁」并排的第二个拓印出口——
+  // 入阁是**收进库**（长期），引用是**递给这一轮的 Agent**（一次性通行证）。
+  if (opts.onQuote) {
+    const quote = opts.onQuote;
+    ops.push({
+      key: 'quote',
+      label: '引用',
+      run: () => quote(resolve(), sessionNum),
+      ...(opts.quoteReady ? {} : { disabled: true, title: '先展开一卷或落一张纸（夹签要有地方可落）' }),
+    });
+  }
+  return ops;
+}
+
 /** 「立枝」判据表（**块 id** → 判据）：形状取自 core 能力位，不另立类型出口——
  *  判据真源在 `app/chat/session-branch`（本文件只消费）。 */
 type BranchMap = ReturnType<PaperCore['branchPoints']>;
@@ -160,23 +201,8 @@ export function useBlockOps(params: {
       // **抄录 = 抄这一块**（不是整条消息）：按钮按块挂，抄的就必须是本块内容。
       const text = blockCopyText(latestSelf());
       if (text.trim()) ops.push({ key: 'copy', label: '抄录', run: () => core.copyText(blockCopyText(latestSelf())) });
-      // **入阁**（架阁，2026-12-08 B2）：把这一块（资产卡）**当刻的样子**抄进卡片库。
-      // 拓印语义——此后它与本卷这张卡互不回写（entity-shelf-plan D3）；必须是**用户
-      // 手势**，Agent 无法代劳（工具面零新增 action）。无资产身份 / 无回调 = 不出按钮。
-      if (self.asset && onShelve) {
-        ops.push({ key: 'shelve', label: '入阁', run: () => onShelve(latestSelf(), sid) });
-      }
-      // **引用**（夹签，card-quote-plan §2.1/§11）：与「入阁」并排的第二个拓印出口——
-      // 入阁是**收进库**（长期），引用是**递给这一轮的 Agent**（一次性通行证）。
-      // 同一条判据：必须是带资产身份的块；工具面零新增 action（引用≠给模型开库门）。
-      if (self.asset && onQuote) {
-        ops.push({
-          key: 'quote',
-          label: '引用',
-          run: () => onQuote(latestSelf(), sid),
-          ...(quoteReady ? {} : { disabled: true, title: '先展开一卷或落一张纸（夹签要有地方可落）' }),
-        });
-      }
+      // **入阁 / 引用**（拓印家族两件）：判据与文案单一真源 = assetOpsOf（孤儿钉共用）。
+      ops.push(...assetOpsOf(self, sid, { onShelve, onQuote, quoteReady }, latestSelf));
       // **抄全文**只给**正文块**（2026-11 用户裁定）：一条回复的正文常被工具调用夹成
       // 多段，读哪一段都能顺手把整条正文抄走。工具卡 / 代码块 / 组头上不给——那等于
       // 又回到"按钮和内容对不上号"（在代码块上抄到整篇回复）。来文块也不需要：它本身

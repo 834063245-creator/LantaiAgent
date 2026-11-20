@@ -76,14 +76,38 @@ export const QUOTE_DEGRADED_SOURCE = '· 原文：未落快照（跨卷引用且
 
 const pad2 = (n: number): string => String(n).padStart(2, '0');
 
+/** 同一秒内已发出的 refId（进程级、按秒自清——CONVENTIONS §1.10 第 3 类）。
+ *
+ *  为什么需要：方案 §3.1 的 4 位随机尾巴在同一秒内只有 36⁴ ≈ 168 万种组合，而 refId
+ *  同时是 refs **文件名**——两枚撞上，后写的会覆盖前者（第二个引用静默丢内容）。
+ *  同一秒抽 2000 枚时生日碰撞期望已 ≈1.2 次（实测偶发红），必须做重抽。
+ *  窗口 = **当前这一秒**（跨秒时间戳本身不同，天然不撞），故不在秒与秒之间攒内存。 */
+let issuedStamp = '';
+const issuedInSecond = new Set<string>();
+
 /** 夹签身份：`q-<yyyymmdd-hhmmss>-<4 位随机>`（方案 §3.1）。
  *  本地时区（与用户看到的时间一致——它同时是文件名的可读部分）。 */
 export function newRefId(at: Date = new Date()): string {
   const stamp =
     `${at.getFullYear()}${pad2(at.getMonth() + 1)}${pad2(at.getDate())}` +
     `-${pad2(at.getHours())}${pad2(at.getMinutes())}${pad2(at.getSeconds())}`;
-  const tail = Math.random().toString(36).slice(2, 6).padEnd(4, '0');
-  return `q-${stamp}-${tail}`;
+  // 换秒即清（上一秒的号不可能与本秒相同——时间戳段已经不同）
+  if (issuedStamp !== stamp) {
+    issuedStamp = stamp;
+    issuedInSecond.clear();
+  }
+  for (let attempt = 0; attempt < 4096; attempt++) {
+    const tail = Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+    const id = `q-${stamp}-${tail}`;
+    if (issuedInSecond.has(id)) continue; // 同秒撞号 = 重抽（格式不变）
+    issuedInSecond.add(id);
+    return id;
+  }
+  // 极端情况（同秒连发数千枚仍未抽中）：退回时间戳兜底——宁可长一点，
+  // 也不覆盖别人已经写下的 refs 文件。
+  const fallback = `q-${stamp}-${Date.now().toString(36).slice(-4)}${Math.random().toString(36).slice(2, 4)}`;
+  issuedInSecond.add(fallback);
+  return fallback;
 }
 
 /** 去重键（方案 §2.5）：同一张卡（同一 assetId **或**同一 cardId）在同一槽内只允许一枚。 */
