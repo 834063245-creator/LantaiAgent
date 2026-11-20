@@ -21,6 +21,42 @@
   text-autospace: no-autospace;
   text-spacing-trim: space-all;
 }
+/* ── 环境光：世界一直在运转（2026-11-17 反馈密度批 · 第三批）──
+ * 病灶：整张纸是死的——你不动，就没有任何东西能证明"世界还在"。
+ * 用户判据（2026-11-17）：「世界一直在运转听起来最吸引我」；参照物是**魔法书 /
+ * 魔法画**（内容有自己的生命），不是游戏 UI 的特效。
+ *
+ * 做法：一层**极慢**的暗色云影，约 3 分钟一个来回，贴着纸面漂过。
+ * 三条纪律：
+ *   ① 只走 translate / scale（合成层，不重绘）——纸纹 background-position 是
+ *      `.pp-region` 的红线，但这是**独立覆盖层**，不碰纸本体，纸律不破；
+ *   ② z-index 2 = 盖在卷（1）之上、浮件（30）之下——光要照在纸上，不是只照空白；
+ *   ③ 峰值 4.5% 墨、周期 140s：**读字时感知不到，离开一两分钟再回来才觉得
+ *      "变过"**。这是"世界在运转"，不是"界面在动"——一旦能盯着看出它在飘，就太重了。
+ *      首版定 4.5% 而非 3.4%：前几批的教训是"极轻 = 用户看不见 = 等于没做"，
+ *      宁可先过一点再往下调。
+ *
+ * 调参位（真机判据）：觉得没感觉 → 抬 alpha 或缩短周期；觉得纸在变色 → 反向调。
+ * 动效敏感用户由 foundation.css 的全局 reduced-motion 豁免兜住。 */
+.pp-root::after {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(46% 36% at 50% 46%, rgba(38, 34, 28, 0.045), transparent 72%);
+  animation: pp-env-drift 140s ease-in-out infinite alternate;
+}
+@keyframes pp-env-drift {
+  from {
+    translate: -6% -4%;
+    scale: 1;
+  }
+  to {
+    translate: 6% 4%;
+    scale: 1.1;
+  }
+}
 
 /* 纸张颗粒：全局唯一一份，挂 foundation.css body::after（文档级 fixed 全屏 z 9998，
    首页/纸壳/画布/面板一律被其覆盖；2026-09-01 前错挂 .sh-root——首页自己的层叠
