@@ -126,6 +126,38 @@ describe('run-config · 四笔的单一解析层', () => {
     expect(cb.sources.permission).toBe('explicit');
   });
 
+  it('新纸预填：模型档位来自 providers.yml 的 per-model 覆盖（用户上次拨过的档位）', () => {
+    /* 用户真机形态：provider 行本身没有 thinking，只有 `modelOverrides[模型].thinking`。
+     * 新纸的题签不写 thinking（= 没题），读数落到该模型的档位 ⇒ 显示上次拨过的「极限」。
+     * 这条是「每次新建都要重设一遍」的去证：拨过一次之后，新纸自动预填。 */
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        activeProvider: 'deepseek',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'deepseek',
+            apiKey: '',
+            baseUrl: 'https://api.deepseek.com/v1',
+            model: 'deepseek-flash',
+            modelOverrides: { 'deepseek-flash': { thinking: 'max' } },
+          },
+        ],
+      }),
+    );
+    const id = useDraftSheetStore.getState().openSheet();
+    useDraftSheetStore
+      .getState()
+      .setPicks(
+        { presetId: null, providerName: 'deepseek', model: 'deepseek-flash', thinking: undefined, permission: null },
+        id,
+      );
+    const c = resolveRunConfig(paperTarget(id, PANEL));
+    expect(c.thinking, '档位来自模型覆盖，不是「自动」').toBe('max');
+    expect(c.sources.thinking, '来源 = 该模型的档位（不是本卷显式）').toBe('model');
+  });
+
   it('纸不在了：按无主读出（**绝不**回落焦点那张）', () => {
     const keep = useDraftSheetStore.getState().openSheet();
     useDraftSheetStore.getState().setPicks(
