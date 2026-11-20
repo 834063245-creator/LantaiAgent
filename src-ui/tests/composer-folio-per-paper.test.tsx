@@ -180,6 +180,27 @@ describe('题签行 · 每张纸显示自己的三笔（2026-11-29）', () => {
     expect(b).toContain('model-b');
     expect(b).toContain('常询');
     expect(b).not.toContain('model-a');
+
+    /* 来源记号（2026-11-30）：B 的组合就是全局默认 ⇒ 标「默认」；A 的组合是本卷自己定的
+     * ⇒ 不标。用户据此能分清「这一卷定的」与「跟着默认的」——「我选了它却没记住」的那
+     * 一半误读就此消失。 */
+    expect(b).toContain('默认');
+    expect(a).not.toContain('默认');
+  });
+
+  it('拨一下之后来源记号消失（那一格从「跟默认」变成「本卷的」）', async () => {
+    await openTwoPapers();
+    expect(rowText(row(paperB))).toContain('默认');
+    const signBtn = [...(row(paperB)?.querySelectorAll<HTMLButtonElement>('.pp-folio-pick-btn') ?? [])].find((b) =>
+      b.textContent?.includes('组合'),
+    );
+    await act(async () => signBtn?.click());
+    const opt = [...(row(paperB)?.querySelectorAll<HTMLButtonElement>('.pp-folio-pick-opt') ?? [])].find(
+      (o) => o.textContent === 'minimal',
+    );
+    await act(async () => opt?.click());
+    expect(picksOf(paperB)?.presetId).toBe('minimal');
+    expect(rowText(row(paperB))).not.toContain('默认');
   });
 
   it('焦点交回画布（没有任何纸拿焦点）时，两张行仍是各自的值', async () => {

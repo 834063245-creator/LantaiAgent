@@ -61,6 +61,9 @@ export const volumeTarget = impl.volumeTarget;
 export const bareTarget = impl.bareTarget;
 export const resolveRunConfig = impl.resolveRunConfig;
 export const patchRunConfig = impl.patchRunConfig;
+/* 待题纸的草稿槽发号（2026-11-30 非焦点纸身批）：每张纸的正文/附件住在
+ * `sessionDrafts['draft:<id>']`，非焦点那张的输入面要读**自己那份**。 */
+export const draftInputKey = impl.draftInputKey;
 // 批 5a（2026-09-24）：toc / toc-ink / ime 已随包 ⇒ 不进宿主面，消费方直接
 // `from './toc'` / `'./toc-ink'` / `'./ime'`（host 面只许桥内核）。
 export const inkColorOf = impl.inkColorOf;

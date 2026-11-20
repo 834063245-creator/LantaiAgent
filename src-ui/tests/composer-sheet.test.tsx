@@ -22,11 +22,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
-import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
+import { DraftPaperContext, PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
 import { ComposerDock, ComposerSheet } from '../src/plugins/builtin/compose-dock/ComposerDock';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { resetComposeStoresForTests } from '../src/state/compose-store';
-import { useDraftSheetStore } from '../src/state/draft-sheet-store';
+import { draftInputKey, useDraftSheetStore } from '../src/state/draft-sheet-store';
 import { usePresetStore } from '../src/state/preset-store';
 import { getChatStore } from '../src/ui/chat-store';
 
@@ -134,5 +134,47 @@ describe('待题纸的输入面（V2-P1）', () => {
     expect(container.querySelector('.pp-mode-seg')).toBeNull();
     // 模型触发器同样不在纸身（它现在住在卷首档行，见 composer-folio-picks）
     expect(container.querySelector('.ms-trigger')).toBeNull();
+  });
+
+  /* ⚠ 2026-11-30 非焦点纸身批：每张纸的输入面要显示**自己那份草稿**。
+   * 旧实现一律读 input store 的 live 槽（= 焦点那张的正文），于是第二张纸的输入框里
+   * 显示的是别人的字（看着像复制了一份）。切焦点时 `claimLive` 已经把旧主的正文快照
+   * 进 `sessionDrafts['draft:<id>']`，故非焦点那张读槽就是它自己的字。 */
+  it('两张纸：非焦点那张的输入面显示自己的草稿正文（不是焦点那张的）', async () => {
+    let a = '';
+    let b = '';
+    await act(async () => {
+      a = useDraftSheetStore.getState().openSheet();
+      b = useDraftSheetStore.getState().openSheet(); // 焦点在 b
+    });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <PaperDockContext.Provider value={DOCK_CONTEXT}>
+          {[a, b].map((pid) => (
+            <div key={pid} data-row={pid}>
+              <DraftPaperContext.Provider value={pid}>
+                <ComposerSheet />
+              </DraftPaperContext.Provider>
+            </div>
+          ))}
+        </PaperDockContext.Provider>,
+      );
+    });
+    const input = getChatStore(PANEL).input;
+    /* 生产时序：切焦点 = claimLive（旧主正文快照进槽）→ 在新主里打字 */
+    await act(async () => {
+      input.getState().claimLive(draftInputKey(a));
+      input.getState().setInputText('甲的正文');
+    });
+    await act(async () => {
+      input.getState().claimLive(draftInputKey(b));
+      input.getState().setInputText('乙的正文');
+    });
+
+    const textOf = (pid: string) =>
+      container.querySelector<HTMLTextAreaElement>(`[data-row="${pid}"] textarea`)?.value ?? '';
+    expect(textOf(a), '非焦点那张读自己那份槽').toBe('甲的正文');
+    expect(textOf(b), '焦点那张读 live').toBe('乙的正文');
   });
 });

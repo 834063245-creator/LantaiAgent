@@ -109,6 +109,7 @@ describe('run-config · 四笔的单一解析层', () => {
 
     const ca = resolveRunConfig(paperTarget(a, PANEL));
     expect(ca.presetId, 'A 自己的组合').toBe('minimal');
+    expect(ca.sources.preset, '与全局默认不同 = 本卷自己定的').toBe('explicit');
     expect(ca.model, 'A 仍是出生默认的模型').toBe('deepseek-flash');
     expect(ca.sources.model, '与出生默认相等 = default').toBe('default');
     expect(ca.sources.permission).toBe('default');

@@ -44,6 +44,7 @@ import { GoalStrip } from './goal-strip';
 import type { PermissionMode } from './host';
 import {
   bareTarget,
+  draftInputKey,
   getChatStore,
   paperTarget,
   patchRunConfig,
@@ -143,6 +144,11 @@ const ComposerSurface = memo(function ComposerSurface({
    * 也是逐纸各挂一个——旧实现读焦点那张的题签，于是非焦点那张的输入面显示的
    * 模型/思考（以及全放确认落哪一张）都是别人的。坞期 = null（不参与）。 */
   const sheetPaperId = useDraftPaperId();
+  const draftFocusedId = useDraftSheetStore((s) => s.focusedId);
+  /* **本件的草稿槽**（2026-11-30）：非焦点那张纸的输入面读它**自己**那份草稿
+   * （`sessionDrafts['draft:<id>']`），不再显示焦点那张的正文；焦点那张/坞期读 live。 */
+  const draftSlot =
+    isSheet && sheetPaperId !== null && draftFocusedId !== sheetPaperId ? draftInputKey(sheetPaperId) : null;
   /* **本宿主指向的目标**（2026-11-29 收口批）：四笔的读与写都只认它。
    * 纸期 = 这张纸；坞期 = 活跃卷；两者皆无 = 无主（出厂的出生默认）。 */
   const panelId = core?.panelId ?? NO_PANEL;
@@ -167,7 +173,7 @@ const ComposerSurface = memo(function ComposerSurface({
   const layers = useComposerLayers({ activeSessionId });
 
   /* ── 会话面：sess / input / 四笔读数（模型推导在 use-model-seat）── */
-  const session = useComposerSession({ core, target, activeSessionId, composerRef });
+  const session = useComposerSession({ core, target, draftSlot, activeSessionId, composerRef });
 
   /* 组合芯片（本卷身份 + 写入口）不住本坞（2026-11-19）：坞期那一格是书眉的
    * `.pp-comp-sel`（ComposerHeader 自持），纸期在卷首档行（DraftFolioSurface）——

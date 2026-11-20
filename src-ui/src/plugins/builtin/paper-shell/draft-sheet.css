@@ -326,6 +326,16 @@
 .pp-folio-pick-btn.open .pp-folio-pick-caret {
   opacity: 1;
 }
+/* 来源记号（2026-11-30）：这一格此刻是**这一卷自己定的**，还是跟着「出生默认 / 全局默认」。
+ * 只在「跟着默认」时出现（那是用户会误读的那一态：以为选过了、其实没记住）；
+ * 墨四小字，与行内小字签同档——读数的一部分，不是第四个控件。 */
+.pp-folio-pick-src {
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--ink-4);
+  opacity: 0.85;
+}
 /* 模型那一格：坞期那枚 ModelSelector 原样塞进来——把它的容器压回行内基线
  * （它不是本行的控件，是**同一个组件**的另一种宿主，故只调盒、不碰它的语言）。
  *

@@ -29,10 +29,23 @@ export interface ComposerSessionInput {
   /** 本宿主指向的**目标**（纸 / 卷 / 无主）——四笔读数唯一入口的入参（2026-11-29 收口批）。
    *  宿主自己知道「我是谁」（题签行给纸 id、坞给卷号），本 hook 不猜、也不读 focusedId。 */
   target: RunTarget;
+  /** **本件的草稿槽**（2026-11-30 非焦点纸身批）：`null/缺省` = 读 live（坞期、焦点那张纸）；
+   *  给了槽（`draft:<纸 id>`）且本件不是 live 主人 ⇒ 读那一份（非焦点那张纸显示自己的正文）。 */
+  draftSlot?: string | null;
   /** 上下文卷（纸期恒 null——纸还没有卷号）。 */
   activeSessionId: string | null;
   composerRef: RefObject<HTMLTextAreaElement | null>;
 }
+
+/** 草稿视图（正文 + 三族附件）——live 与各槽共用同一个形状。 */
+interface DraftView {
+  inputText: string;
+  attachedFiles: Array<{ path: string; name: string; size: number }>;
+  attachedImages: ChatImageRef[];
+  attachedCards: QuoteCard[];
+}
+
+const EMPTY_DRAFT_VIEW: DraftView = { inputText: '', attachedFiles: [], attachedImages: [], attachedCards: [] };
 
 export interface ComposerSessionState {
   sessions: Array<{ id: number; label: string }>;
@@ -58,6 +71,7 @@ export interface ComposerSessionState {
 export function useComposerSession({
   core,
   target,
+  draftSlot,
   activeSessionId,
   composerRef,
 }: ComposerSessionInput): ComposerSessionState {
@@ -94,37 +108,62 @@ export function useComposerSession({
     return agentSessionState.getAgent(core.panelId, activeSidNum)?.getTokenStats?.() ?? null;
   }, [core, activeSidNum, sessionTokens]);
 
-  /* ── 草稿（input-store live = 当前活跃会话的输入框；切卷由 chat-session
-   *    负责 save/restore sessionDrafts，本组件只读写 live 槽）── */
-  const [inputText, setInputTextState] = useState('');
-  const [attachedFiles, setAttachedFiles] = useState<Array<{ path: string; name: string; size: number }>>([]);
-  const [attachedImages, setAttachedImages] = useState<ChatImageRef[]>([]);
-  const [attachedCards, setAttachedCards] = useState<QuoteCard[]>([]);
+  /* ── 草稿（input-store）──
+   * 两条读面，按**本件是不是 live 的主人**分派（2026-11-30 非焦点纸身批）：
+   *   · `draftSlot` 缺省 / 本件就是 liveOwner ⇒ 读 live 槽（坞期、焦点那张纸）；
+   *   · 否则读 `sessionDrafts['draft:<纸 id>']` —— **非焦点那张纸要显示自己的草稿**。
+   *     旧实现一律读 live，于是第二张纸的输入框里显示的是**焦点那张的正文**（看着像复制
+   *     了一份）。切焦点时 `claimLive` 已把旧主的正文快照进槽，故槽里是它自己的字。
+   * 写入仍只落 live（非焦点那张的输入栈由 DraftSheet 打 inert，本来也打不了字）。 */
+  const [live, setLive] = useState<DraftView>(EMPTY_DRAFT_VIEW);
+  const [drafts, setDrafts] = useState<Record<string, DraftView>>({});
+  const [liveOwner, setLiveOwner] = useState('');
   useEffect(() => {
     if (!core) {
-      setInputTextState('');
-      setAttachedFiles([]);
-      setAttachedImages([]);
-      setAttachedCards([]);
+      setLive(EMPTY_DRAFT_VIEW);
+      setDrafts({});
+      setLiveOwner('');
       return;
     }
     const input = getChatStore(core.panelId).input;
     const sync = () => {
-      setInputTextState(input.getState().inputText);
-      setAttachedFiles(input.getState().attachedFiles);
-      setAttachedImages(input.getState().attachedImages);
-      setAttachedCards(input.getState().attachedCards);
+      const st = input.getState();
+      setLive({
+        inputText: st.inputText,
+        attachedFiles: st.attachedFiles,
+        attachedImages: st.attachedImages,
+        attachedCards: st.attachedCards,
+      });
+      const slots: Record<string, DraftView> = {};
+      for (const [key, d] of Object.entries(st.sessionDrafts)) {
+        slots[key] = {
+          inputText: d.inputText,
+          attachedFiles: d.attachedFiles,
+          attachedImages: d.attachedImages,
+          attachedCards: d.attachedCards,
+        };
+      }
+      setDrafts(slots);
+      setLiveOwner(st.liveOwner);
     };
     sync();
     return input.subscribe(sync);
   }, [core]);
 
+  /* 本件读哪一份：自己不是 live 主人（且宿主指定了槽）⇒ 读槽里那一份。 */
+  const readSlot = draftSlot != null && draftSlot !== '' && liveOwner !== draftSlot ? draftSlot : null;
+  const view = readSlot === null ? live : (drafts[readSlot] ?? EMPTY_DRAFT_VIEW);
+  const { inputText, attachedFiles, attachedImages, attachedCards } = view;
+
   const setInputText = useCallback(
     (text: string) => {
       if (!core) return;
+      /* 非焦点那张纸只**看**不写（它的栈是 inert；这里再兜一道，免得迟到的回调把字写进
+       * 别人的 live 槽——那正是「两张纸的正文串了」的形态）。 */
+      if (readSlot !== null) return;
       getChatStore(core.panelId).input.getState().setInputText(text);
     },
-    [core],
+    [core, readSlot],
   );
 
   /* ── B6（2026-08-27）：注册输入框命令式接口——接活 chat-core 的

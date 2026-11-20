@@ -99,6 +99,7 @@ export const DraftFolioSurface = memo(function DraftFolioSurface() {
       }}
       sheetPermission={sheetPermission}
       permissionMode={config.permission}
+      sources={config.sources}
       onPermissionPick={(m) => {
         /* 纸期：写题签这一格——开卷那一刻由 applyDraftPicks 落成这一卷的卷级覆盖。
          *

@@ -22,14 +22,17 @@
 // 卷首（DraftSheet / DraftFolioLine）渲染——跨插件直引会把产物 esbuild 内联成第二份
 // store（同 toast-store 先例，见 docs/landmine-map.md）。
 
-import type { PermissionMode } from './host';
+import type { PermissionMode, RunSources } from './host';
 import { ModelSelector } from './ModelSelector';
 import { SheetPermission, SheetSign } from './sheet-parts';
 
 export interface DraftFolioPicksProps {
-  /** 组合读数（`composition.compLabel`）。 */
+  /** 组合读数（`config.presetId`，单一解析层的生效值）。 */
   compLabel: string;
   compOpen: boolean;
+  /** 四笔各自的**来源**（2026-11-30 来源批）：解析层已经给好了，本件只负责显示成「默认」
+   *  ——用户报的「我选了它却没记住」有一半是**读不出这一格是这一卷的还是跟着默认的**。 */
+  sources: RunSources;
   presetError: string | null;
   presetRoster: ReadonlyArray<{
     id: string;
@@ -70,6 +73,7 @@ export interface DraftFolioPicksProps {
 export function DraftFolioPicks({
   compLabel,
   compOpen,
+  sources,
   presetError,
   presetRoster,
   onCompToggle,
@@ -92,6 +96,7 @@ export function DraftFolioPicks({
       <span className="pp-folio-pick-sep" aria-hidden="true" />
       <SheetSign
         label={compLabel}
+        source={sources.preset}
         open={compOpen}
         error={presetError}
         roster={presetRoster}
@@ -100,7 +105,7 @@ export function DraftFolioPicks({
       />
       <span className="pp-folio-pick-sep" aria-hidden="true" />
       {/* 模型：坞期那一枚**同一个组件**（compact 触发器 = 厂章 + 名 + 档位后缀 + caret）。
-          它自带容器与菜单，本行只给它一个不缩的位。 */}
+          它自带容器与菜单，本行只给它一个不缩的位；来源记号是本行自己的（不是它的语言）。 */}
       <span className="pp-folio-pick pp-folio-pick-model">
         <span className="pp-folio-pick-k">模型</span>
         <ModelSelector
@@ -113,11 +118,17 @@ export function DraftFolioPicks({
           onBlocked={onModelBlocked}
           thinking={thinking}
         />
+        {sources.model === 'default' && (
+          <span className="pp-folio-pick-src" data-tip="跟随「新卷出生默认」——拨一下就是这一卷的">
+            默认
+          </span>
+        )}
       </span>
       <span className="pp-folio-pick-sep" aria-hidden="true" />
       <SheetPermission
         value={sheetPermission}
         fallback={permissionMode}
+        source={sources.permission}
         onPick={onPermissionPick}
         onInherit={onPermissionInherit}
       />

@@ -114,6 +114,9 @@ export function resolveRunConfig(target: RunTarget, deps: RunDeps = {}): RunConf
      * 判会把每一张纸都读成「用户改过」）。 */
     const modelExplicit =
       picks !== null && (picks.providerName !== fallback.providerName || picks.model !== fallback.model);
+    /* 组合同理按**值**判（纸摊开时题签就填了「当时的全局默认」，按「有没有值」判会把
+     * 每张纸都读成「本卷自己定的」——行上那枚「默认」记号就再也出不来）。 */
+    const presetExplicit = picks?.presetId != null && picks.presetId !== presetSelected;
     const providerName = picks?.providerName ?? fallback.providerName;
     const model = picks?.model ?? fallback.model;
     const byModel = modelThinkingOf(providerName, model);
@@ -125,7 +128,7 @@ export function resolveRunConfig(target: RunTarget, deps: RunDeps = {}): RunConf
       thinking,
       permission: picks?.permission ?? workspaceMode,
       sources: {
-        preset: picks?.presetId != null ? 'explicit' : 'default',
+        preset: presetExplicit ? 'explicit' : 'default',
         model: modelExplicit ? 'explicit' : 'default',
         thinking: picks?.thinking !== undefined ? 'explicit' : byModel !== undefined ? 'model' : 'default',
         permission: picks?.permission != null ? 'explicit' : 'default',

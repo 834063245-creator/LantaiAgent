@@ -83,7 +83,9 @@ export { getComposeStore, resolveNewSessionDefault } from '../../../state/compos
 /* 待题纸（2026-11-14 立卷 UX）：出生面摊开时**坞不出输入条**（纸还没成立，没有
  * 可写的正文）。键由 paper-shell 那本账先上（faceDeps 已是超集），故取用不新增
  * 宿主面键、指纹零漂移。 */
-export { useDraftSheetStore } from '../../../state/draft-sheet-store';
+/* 待题纸的草稿槽发号（2026-11-30 非焦点纸身批）：每张纸的正文/附件住在
+ * `sessionDrafts['draft:<id>']`——非焦点那张的输入面读自己那份，不显示别人的草稿。 */
+export { draftInputKey, useDraftSheetStore } from '../../../state/draft-sheet-store';
 export type { PermissionMode } from '../../../state/mode-store';
 export { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../../state/mode-store';
 export type { PresetStoreState } from '../../../state/preset-store';

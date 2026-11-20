@@ -23,6 +23,7 @@ import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, type PermissionMode }
  *  流区），定位盒 = 本格自己（`.pp-folio-pick`）。 */
 export function SheetSign({
   label,
+  source,
   open,
   error,
   roster,
@@ -30,6 +31,8 @@ export function SheetSign({
   onPick,
 }: {
   label: string;
+  /** 这一格的来源（`default` = 跟着全局默认，行上标一枚「默认」）。 */
+  source: 'explicit' | 'default';
   open: boolean;
   error: string | null;
   roster: ReadonlyArray<{
@@ -48,12 +51,17 @@ export function SheetSign({
         className={`pp-folio-pick-btn${open ? ' open' : ''}`}
         aria-haspopup="listbox"
         aria-expanded={open}
-        data-tip={error ?? `本卷组合：${label}`}
+        data-tip={error ?? (source === 'default' ? `跟随全局默认：${label}` : `本卷组合：${label}`)}
         data-tip-hint="开卷那一刻落账——跑过一轮即锁"
         onClick={onToggle}
       >
         <span className="pp-folio-pick-k">组合</span>
         <span className="pp-folio-pick-v">{label}</span>
+        {source === 'default' && (
+          <span className="pp-folio-pick-src" aria-hidden="true">
+            默认
+          </span>
+        )}
         <span className="pp-folio-pick-caret" aria-hidden="true">
           ▾
         </span>
@@ -92,12 +100,15 @@ export function SheetSign({
 export function SheetPermission({
   value,
   fallback,
+  source,
   onPick,
   onInherit,
 }: {
   value: PermissionMode | null;
   /** 工作区默认（「跟随」的落点，也是菜单里那行小字的读数）。 */
   fallback: PermissionMode;
+  /** 这一格的来源（`default` = 跟随工作区；`explicit` = 这一卷自己定了）。 */
+  source: 'explicit' | 'default';
   onPick: (m: PermissionMode) => void;
   onInherit?: () => void;
 }) {
@@ -110,7 +121,11 @@ export function SheetPermission({
         className={`pp-folio-pick-btn${open ? ' open' : ''}`}
         aria-haspopup="listbox"
         aria-expanded={open}
-        data-tip={value == null ? `跟随工作区（当前 ${MODE_LABELS[fallback]}）` : `本卷权限：${MODE_LABELS[value]}`}
+        data-tip={
+          value == null
+            ? `跟随工作区（当前 ${MODE_LABELS[fallback]}）`
+            : `本卷权限：${MODE_LABELS[value]}${source === 'explicit' ? '（这一卷自己定的）' : ''}`
+        }
         data-tip-hint="只影响这一卷——多卷并行时各管各的"
         onClick={() => setOpen((v) => !v)}
       >
