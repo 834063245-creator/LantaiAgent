@@ -1,40 +1,25 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// use-model-seat — 「这一趟拿哪个模型、拨多深」的**读数解析**（2026-11-19 题签重画批拆出）。
+// use-model-seat — 「这一趟拿哪个模型、拨多深」的**读数解析**（2026-11-19 题签重画批拆出；
+// **2026-11-29 收口批改写**）。
 //
-// 为什么单独立文件：这组读数现在有**两处宿主**——坞期设置行（`useComposerSession` 的
-// prefs 分支）与纸期卷首档行（`DraftFolioSurface`）。原样留在前者里，后者要么复制一遍
-// 十六行推导（两把尺子），要么经第二份 store 读——两条都是本仓判过的病灶。
+// 改写理由：这组读数原来由宿主自己拼（题签 / 会话覆盖 / 出生默认三处 `?? `、外加一层
+// 「显式覆盖」的旁路）——每个宿主拼一遍，就有一份自己的优先级链。收口之后**四笔的生效值
+// 只由 `state/run-config` 解析**（`useRunConfig` 把它变成响应式读数），本件只剩一件正事：
+// 拿那三笔去解析出**模型描述符 / 附图能力 / 思考档位表**（设置面与请求面同一把尺子）。
 //
-// 源解析**只有一条链**（逐字搬自 use-composer-session，语义零变化）：
-//   题签（纸期）/ 会话覆盖（坞期）?? 新卷出生默认 → provider → 描述符（provider 作用域）
-//   → 思考档位表（有声明用声明，无声明给协议安全兜底）→ 生效档位（题签/覆盖 ?? 模型默认）。
+// 于是「同一个动作一个实现」在读数面也成立了：纸期卷首档行、纸身输入面、坞的设置行，
+// 三处拿到的是同一个 `RunConfig`，唯一的差别是宿主传给解析层的目标（纸 / 卷 / 无主）。
 
 import { useMemo } from 'react';
-import type { ProviderSettings, StoredThinking } from '../host';
-import {
-  getModel,
-  loadSettings,
-  modelDescriptor,
-  modelInput,
-  modelThinking,
-  resolveNewSessionDefault,
-  thinkingOptionsOrDefault,
-  useDraftSheetStore,
-} from '../host';
+import type { ProviderSettings, RunConfig, StoredThinking } from '../host';
+import { getModel, loadSettings, modelDescriptor, modelInput, thinkingOptionsOrDefault } from '../host';
 
 export interface ModelSeatInput {
-  /** 纸期：模型/思考的源头是**题签**（`draft-sheet-store` 的某一张纸）。 */
-  isSheet: boolean;
-  /** 纸期：**这张纸**的 id（2026-11-29 多纸错位批）。缺省/null = 焦点那张
-   *  （坞期不用它；裸挂单件的测试也不给）。多纸同屏时每张纸的题签/输入面各读各的。 */
-  paperId?: string | null;
-  /** 坞期：会话生效配置（覆盖 ?? 全局；`undefined` = 无活跃卷/无主态）。 */
-  prefs: { providerName: string; model: string } | undefined;
-  /** 坞期：会话**显式**思考覆盖（不拿 prefs 当覆盖用——见 use-composer-session 原注）。 */
-  thinkingOverride: StoredThinking | undefined;
-  /** 设置保存代数（保存后重读全局默认与描述符）。 */
+  /** 四笔的**已解析**读数（`useRunConfig(目标)` 给的那一份；兜底与来源都已定好）。 */
+  config: RunConfig;
+  /** 设置保存代数（保存后重读 provider 行与描述符）。 */
   settingsTick: number;
 }
 
@@ -48,44 +33,24 @@ export interface ModelSeat {
   currentThinking: StoredThinking | '' | undefined;
 }
 
-export function useModelSeat({ isSheet, paperId, prefs, thinkingOverride, settingsTick }: ModelSeatInput): ModelSeat {
-  // 开口即开卷（2026-08-31）：无主态显示/操作「新卷出生默认」（全局活跃行）；
-  // 有活跃卷时 prefs（resolveEffective）已含全局回落（覆盖 ?? 全局）。
-  const newSessionDefault = useMemo(() => {
-    void settingsTick; // 保存代数触发器（非响应值）：设置保存后重读全局默认
-    return resolveNewSessionDefault();
-  }, [settingsTick]);
-  /* 待题纸（2026-11-15 V2）：纸自己那张用**同一份** provider/model 推导，只是源头换成
-   * 题签：题签未填（纸刚摊开）= 出厂默认（新卷出生默认），与坞期 prefs 的空位同义。
-   * 多纸（2026-11-29）：源头是**本贡献所属那张纸**（context 给的 id，缺省 = 焦点那张）
-   * ——每张纸的读数必须是自己那条记录，否则非焦点那张会显示焦点那张的三笔。 */
-  const draftPicks = useDraftSheetStore((s) => {
-    if (!isSheet) return null;
-    const id = paperId ?? s.focusedId;
-    return id === null ? null : (s.papers.find((p) => p.id === id)?.picks ?? null);
-  });
-  const providerName = (isSheet ? draftPicks?.providerName : prefs?.providerName) ?? newSessionDefault.providerName;
-  const model = (isSheet ? draftPicks?.model : prefs?.model) ?? newSessionDefault.model;
-  const settingsVersion = settingsTick + providerName.length; // 触发器合成：保存代数 + 覆盖换向
+export function useModelSeat({ config, settingsTick }: ModelSeatInput): ModelSeat {
+  const { providerName, model, thinking: currentThinking } = config;
+  /* 描述符/能力表读的是**设置快照**（每次保存一代重读一次）——热路径不在渲染里做
+   * localStorage JSON.parse（C4 纪律）。 */
   const settings = useMemo(() => {
-    void settingsVersion; // 触发器合成值（保存代数 + 覆盖换向）——非响应值
+    void settingsTick;
     try {
       return loadSettings();
     } catch {
       return null;
     }
-  }, [settingsVersion]);
+  }, [settingsTick]);
   const provider: ProviderSettings | undefined = settings?.providers.find((p) => p.name === providerName);
   const providerKind = provider?.kind ?? 'openai';
-  // 2026-09-23 思考下沉：描述符改读 **provider 作用域**（覆盖 ?? API 拉取 ?? 目录 seed）
-  // ——与设置页参数面板、请求期 assertEffortDeclared 同一把尺子。
+  /* 2026-09-23 思考下沉：描述符改读 **provider 作用域**（覆盖 ?? API 拉取 ?? 目录 seed）
+   * ——与设置页参数面板、请求期 assertEffortDeclared 同一把尺子。 */
   const modelDesc = useMemo(() => (provider ? modelDescriptor(provider, model) : getModel(model)), [provider, model]);
-  // 附图能力门禁（multimodal-image-plan D-8②）：生效输入模态含 'image' 才开图片采集道。
   const imageCapable = modelInput(provider, model).includes('image');
   const thinkingOptions = useMemo(() => thinkingOptionsOrDefault(modelDesc), [modelDesc]);
-  // 生效档位三层（2026-09-23）：会话覆盖（本卷显式拨过）?? 该模型档位 ?? 新卷出生默认。
-  const currentThinking =
-    (isSheet ? draftPicks?.thinking : thinkingOverride) ??
-    (provider ? modelThinking(provider, model) : newSessionDefault.thinking);
   return { providerName, model, providerKind, provider, imageCapable, thinkingOptions, currentThinking };
 }

@@ -36,7 +36,7 @@ vi.mock('../src/bridge', () => ({
 
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
-import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
+import { DraftPaperContext, PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
 import { DraftFolioSurface } from '../src/plugins/builtin/compose-dock/DraftFolioSurface';
 import { loadSettings } from '../src/settings';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
@@ -88,14 +88,8 @@ describe('题签 · 模型 / 思考被记住为新卷出生默认', () => {
   const picks = () => useDraftSheetStore.getState().papers.find((p) => p.id === paperId)?.picks ?? null;
 
   async function open() {
-    await act(async () => {
-      root = createRoot(container);
-      root.render(
-        <PaperDockContext.Provider value={DOCK_CONTEXT}>
-          <DraftFolioSurface />
-        </PaperDockContext.Provider>,
-      );
-    });
+    /* 2026-11-29 收口批：题签行必须知道自己挂在哪张纸上（生产由 DraftFolioLine 经
+     * `DraftPaperContext` 下发）——先摊纸、再挂行，与生产的挂载顺序一致。 */
     await act(async () => {
       paperId = useDraftSheetStore.getState().openSheet();
       useDraftSheetStore
@@ -104,6 +98,16 @@ describe('题签 · 模型 / 思考被记住为新卷出生默认', () => {
           { presetId: null, providerName: 'deepseek', model: 'deepseek-flash', thinking: undefined, permission: null },
           paperId,
         );
+    });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <PaperDockContext.Provider value={DOCK_CONTEXT}>
+          <DraftPaperContext.Provider value={paperId}>
+            <DraftFolioSurface />
+          </DraftPaperContext.Provider>
+        </PaperDockContext.Provider>,
+      );
     });
   }
 

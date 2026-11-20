@@ -46,7 +46,7 @@ import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
-import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
+import { DraftPaperContext, PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
 import { DraftFolioSurface } from '../src/plugins/builtin/compose-dock/DraftFolioSurface';
 import { loadSettings } from '../src/settings';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
@@ -103,19 +103,23 @@ describe('题签三笔：这一卷归题签，下一张纸归记忆', () => {
   });
 
   async function open() {
-    await act(async () => {
-      root = createRoot(container);
-      root.render(
-        <PaperDockContext.Provider value={DOCK_CONTEXT}>
-          <DraftFolioSurface />
-        </PaperDockContext.Provider>,
-      );
-    });
+    /* 2026-11-29 收口批：题签行必须知道自己挂在哪张纸上（生产由 DraftFolioLine 经
+     * `DraftPaperContext` 下发）——先摊纸、再挂行，与生产的挂载顺序一致。 */
     await act(async () => {
       paperId = useDraftSheetStore.getState().openSheet();
       useDraftSheetStore
         .getState()
         .setPicks({ presetId: null, providerName: '', model: 'm', thinking: undefined, permission: null }, paperId);
+    });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <PaperDockContext.Provider value={DOCK_CONTEXT}>
+          <DraftPaperContext.Provider value={paperId}>
+            <DraftFolioSurface />
+          </DraftPaperContext.Provider>
+        </PaperDockContext.Provider>,
+      );
     });
   }
 

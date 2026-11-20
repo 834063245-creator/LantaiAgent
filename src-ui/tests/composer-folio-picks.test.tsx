@@ -17,7 +17,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
-import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
+import { DraftPaperContext, PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
 import { DraftFolioSurface } from '../src/plugins/builtin/compose-dock/DraftFolioSurface';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { resetComposeStoresForTests } from '../src/state/compose-store';
@@ -84,13 +84,21 @@ describe('待题纸 · 题签行（2026-11-19）', () => {
 
   /** 摊开一张纸并把题签填好（不填 = 出厂默认由纸自己写，这里要可控）。 */
   async function open() {
-    root = mount(<DraftFolioSurface />, container);
+    /* 2026-11-29 收口批：题签行**必须知道自己挂在哪张纸上**（生产由 DraftFolioLine 经
+     * `DraftPaperContext` 下发）。裸挂 = 无主目标（四笔只读出厂默认、写只落默认）——
+     * 那正是「不给就落焦点那张」的旧写法被根除后的语义，故本测显式给纸 id。 */
     await act(async () => {
       paperId = useDraftSheetStore.getState().openSheet();
       useDraftSheetStore
         .getState()
         .setPicks({ presetId: null, providerName: '', model: 'm', thinking: undefined, permission: null }, paperId);
     });
+    root = mount(
+      <DraftPaperContext.Provider value={paperId}>
+        <DraftFolioSurface />
+      </DraftPaperContext.Provider>,
+      container,
+    );
   }
 
   const picks = () => useDraftSheetStore.getState().papers.find((p) => p.id === paperId)?.picks ?? null;

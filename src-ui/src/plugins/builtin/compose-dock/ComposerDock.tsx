@@ -26,7 +26,7 @@
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享
 // 真实例，react 经构建期别名桥。
 
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 /* 长按递给别的卷（card-quote-plan §2.2 态二）：手势与卷命中都在纸壳包（与画布同一套
  * 几何的知识），坞只调它的入口——不跨产物取 core 内部，走既有的 inlined 相对 import
  * （同 ModelSelector 先例：esbuild 内联，无运行时耦合）。 */
@@ -43,15 +43,18 @@ import { HIST_HINT_KEY } from './dock-copy';
 import { GoalStrip } from './goal-strip';
 import type { PermissionMode } from './host';
 import {
+  bareTarget,
   getChatStore,
+  paperTarget,
+  patchRunConfig,
   useCoreStore,
   useDialogEscape,
   useDraftPaperId,
   useDraftSheetStore,
   useModeStore,
   usePaperDock,
+  volumeTarget,
 } from './host';
-import { writeSheetPermission } from './sheet-picks';
 import { useComposerAttach } from './surface/use-composer-attach';
 import { useComposerChrome } from './surface/use-composer-chrome';
 import { useComposerLayers } from './surface/use-composer-layers';
@@ -59,6 +62,7 @@ import { useComposerModels } from './surface/use-composer-models';
 import { useComposerSend } from './surface/use-composer-send';
 import { useComposerSession } from './surface/use-composer-session';
 import { useComposerSlash } from './surface/use-composer-slash';
+import { useRunConfig } from './surface/use-run-config';
 import './composition-chip.css';
 import './goal-strip.css';
 
@@ -74,6 +78,10 @@ export { flattenDirEntries, fuzzyMatchFiles, navigateHistory } from './composer-
 /** 无目录声明模型的思考控件安全兜底表已收口到 provider/thinking 的
  *  THINKING_SAFE_OPTIONS（2026-09-23 思考下沉：设置页参数面板与这里共用同一把
  *  尺子），本件不再自抄一份。 */
+
+/** 无面板（裸挂单件 / 早期装配）：compose-store 的入口仍要一个稳定 id。
+ *  坞期不用会话覆盖表以外的账，故这个 id 只影响注册表键、不影响读数。 */
+const NO_PANEL = '__no-panel__';
 
 export type ComposerVariant = 'dock' | 'sheet';
 
@@ -135,6 +143,15 @@ const ComposerSurface = memo(function ComposerSurface({
    * 也是逐纸各挂一个——旧实现读焦点那张的题签，于是非焦点那张的输入面显示的
    * 模型/思考（以及全放确认落哪一张）都是别人的。坞期 = null（不参与）。 */
   const sheetPaperId = useDraftPaperId();
+  /* **本宿主指向的目标**（2026-11-29 收口批）：四笔的读与写都只认它。
+   * 纸期 = 这张纸；坞期 = 活跃卷；两者皆无 = 无主（出厂的出生默认）。 */
+  const panelId = core?.panelId ?? NO_PANEL;
+  const target = useMemo(() => {
+    if (isSheet) return sheetPaperId === null ? bareTarget(panelId) : paperTarget(sheetPaperId, panelId);
+    if (activeSessionId === null) return bareTarget(panelId);
+    return volumeTarget(activeSessionId, panelId);
+  }, [isSheet, sheetPaperId, activeSessionId, panelId]);
+  const config = useRunConfig(target);
 
   /* ⚠ 2026-11-17 P6：769 行 hooks 段按「随同一个事件变化」拆成八件（surface/ 目录）——
    * 每件只吃上面这三个判据（core / isSheet / activeSessionId）+ 自己的显式入参，
@@ -149,8 +166,8 @@ const ComposerSurface = memo(function ComposerSurface({
   /* ── 浮层五态（律/引/墨/役/案）+ 拖放界栏 + 引面板读数 ── */
   const layers = useComposerLayers({ activeSessionId });
 
-  /* ── 会话面：sess / input / prefs / settings（含 token 读数与模型推导）── */
-  const session = useComposerSession({ core, isSheet, paperId: sheetPaperId, activeSessionId, composerRef });
+  /* ── 会话面：sess / input / 四笔读数（模型推导在 use-model-seat）── */
+  const session = useComposerSession({ core, target, activeSessionId, composerRef });
 
   /* 组合芯片（本卷身份 + 写入口）不住本坞（2026-11-19）：坞期那一格是书眉的
    * `.pp-comp-sel`（ComposerHeader 自持），纸期在卷首档行（DraftFolioSurface）——
@@ -159,12 +176,10 @@ const ComposerSurface = memo(function ComposerSurface({
   /* ── 斜杠命令域 ── */
   const slash = useComposerSlash({ core, inputText: session.inputText });
 
-  /* ── 模型 / 思考热切换 ── */
+  /* ── 模型 / 思考热切换（写路径统一经 patchRunConfig）── */
   const { onModelChange, thinkingSeat } = useComposerModels({
     core,
-    isSheet,
-    paperId: sheetPaperId,
-    activeSessionId,
+    target,
     providerName: session.providerName,
     currentThinking: session.currentThinking,
     thinkingOptions: session.thinkingOptions,
@@ -210,28 +225,13 @@ const ComposerSurface = memo(function ComposerSurface({
     [core],
   );
 
-  /* ── 权限（2026-11-28 起**卷级**：本卷覆盖 ?? 工作区默认）──
-   * 坞期拨的是「本卷」；纸期拨的是题签（开卷那一刻落成卷级覆盖）。
-   * 工作区默认只在没有卷级覆盖时才管用（水合源 = settings.agent.permissionMode）。
-   * ⚠ Rust 侧只有一份全局镜像（服务后台任务的同步路径）——卷级覆盖只在前端闸门生效，
-   * 这是本批明示的边界（见 state/mode-store 的 setSessionMode 注）。 */
-  const globalMode = useModeStore((s) => s.permissionMode);
-  const sessionModes = useModeStore((s) => s.sessionModes);
+  /* ── 权限（2026-11-28 起**卷级**：本卷覆盖 ?? 工作区默认；纸期拨题签）──
+   * 读数与写入都经 run-config（2026-11-29 收口批）：目标决定「这一卷 / 这一张纸 /
+   * 无主」，本件不再自己拼 sessionModes/globalMode 那一串兜底。 */
+  const permissionMode = config.permission;
   const pendingYolo = useModeStore((s) => s.pendingYolo);
   const pendingYoloPaper = useModeStore((s) => s.pendingYoloPaper);
   const setPendingYolo = useModeStore((s) => s.setPendingYolo);
-  /** 本卷有效权限（无卷 = 工作区默认）。
-   *  纸期（2026-11-29）：读的是**本件所属那张纸**的题签第四格（null = 跟随工作区）——
-   *  旧实现读到的是焦点那张纸的读数（多纸同屏时非焦点那张显示别人的档位）。 */
-  const paperPick = useDraftSheetStore((s) =>
-    isSheet && sheetPaperId !== null ? (s.papers.find((p) => p.id === sheetPaperId)?.picks?.permission ?? null) : null,
-  );
-  const permissionMode =
-    isSheet && sheetPaperId !== null
-      ? (paperPick ?? globalMode)
-      : session.activeSidNum != null
-        ? (sessionModes[String(session.activeSidNum)] ?? globalMode)
-        : globalMode;
   /* 全放二次确认模态的 Esc（同附图预览：portal 到 body 后 Escape 只能走 document 级）。
    * 多纸（2026-11-29）：**只有请求者那张纸**渲染这个模态（旧实现每张纸各渲染一个 portal
    * ——N 张纸 = N 个叠起来的确认框，点哪个都落焦点那张）。`== null` 容旧态（坞期/未记名）。 */
@@ -245,24 +245,19 @@ const ComposerSurface = memo(function ComposerSurface({
    *  （`ComposerSheet` → 本组件，与坞期同一份实现）。删掉这一支的后果：用户点「确定」，
    *  工作区默认被改成全放，而题签那一格**一个字没变** ⇒ 读作「弹窗吞了我的操作」。
    *
-   *  ⚠ 2026-11-29（题签记忆批）：纸期这一支改走 `writeSheetPermission` 这**唯一**写入口
-   *  ——旧实现只写了这一张纸的题签、**没写**「下一张纸的出厂权限」⇒ 全放用户（本机工作区
-   *  默认正是 yolo）在纸上拨完，重启后记号全无（settings.agent.sheetPermissionMode 从未落盘）。
-   *  落账目标 = `pendingYoloPaper ?? 本件所属那张纸`（请求者），不是「此刻焦点那张」。 */
+   *  ⚠ 2026-11-29（收口批）：三态（纸 / 卷 / 无主）一律 `patchRunConfig(target, …)`——
+   *  旧实现三处各写各的，其中纸期那条**漏了**「下一张纸的出厂权限」⇒ 全放用户（本机工作区
+   *  默认正是 yolo）在纸上拨完，重启后记号全无。落账目标 = 请求者那张纸（不是焦点那张）。 */
   const applyMode = useCallback(
     (mode: PermissionMode) => {
-      if (isSheet) {
-        const target = pendingYoloPaper ?? sheetPaperId;
-        writeSheetPermission(target, mode);
-        /* 模态的收合也归这里：坞期靠 setSessionMode/setPermissionMode 顺手清 pendingYolo，
-         * 纸期写的是题签、不经过那两个 setter ⇒ 不显式清，确认完弹窗会一直悬着。 */
-        setPendingYolo(false);
-        return;
-      }
-      if (session.activeSidNum != null) useModeStore.getState().setSessionMode(session.activeSidNum, mode);
-      else useModeStore.getState().setPermissionMode(mode);
+      /* 请求者记名时用它（用户点了全放又去点别的纸）；否则就是本宿主自己的目标。 */
+      const writeTarget = isSheet && pendingYoloPaper != null ? paperTarget(pendingYoloPaper, panelId) : target;
+      patchRunConfig(writeTarget, { permission: mode });
+      /* 模态的收合也归这里：坞期靠 setSessionMode/setPermissionMode 顺手清 pendingYolo，
+       * 纸期写的是题签、不经过那两个 setter ⇒ 不显式清，确认完弹窗会一直悬着。 */
+      setPendingYolo(false);
     },
-    [isSheet, pendingYoloPaper, sheetPaperId, session.activeSidNum, setPendingYolo],
+    [isSheet, pendingYoloPaper, panelId, target, setPendingYolo],
   );
 
   const selectMode = useCallback(

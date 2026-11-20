@@ -1,14 +1,15 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// use-composer-session — 创作坞的**会话面**（2026-11-17 上帝文件治理 P6 拆出；语义零新增）。
+// use-composer-session — 创作坞的**会话面**（2026-11-17 上帝文件治理 P6 拆出；
+// **2026-11-29 收口批**：四笔生效配置的解析搬去 `state/run-config`，本件只剩「这一趟怎么发」）。
 //
 // 归组判据（施工单）：**这组状态是否随同一个事件变化**——本件收的全是「卷变了 / 卷级账
-// 变了 / 设置保存了」三类事件驱动的读数与生效配置：
+// 变了 / 输入变了」三类事件驱动的读数与草稿面：
 //   · sess 订阅（切卷 / 改名 / token 入账）
-//   · input-store live 槽（正文 + 附件 + 附图）与命令式接口注册
-//   · compose-store 每会话偏好（覆盖 ?? 全局默认）
-//   · settings 保存代数 → 新卷出生默认 / 模型描述符 / 思考档位表 / 附图能力
+//   · input-store live 槽（正文 + 附件 + 附图 + 夹签）与命令式接口注册
+//   · 四笔生效值（模型 / 思考 / 组合 / 权限）→ 经 `useRunConfig(目标)`（唯一解析层）
+//   · 模型描述符 / 思考档位表 / 附图能力 → 拿已解析的四笔去设置面查（`use-model-seat`）
 //
 // ⚠ 与独立改造的边界（本次**不**做）：这些读数的真源都不在 React（store / Agent 侧账本），
 // 现在靠 `tick + 1` 与订阅回调把它们灌进 useState。改成 useSyncExternalStore 是**另一刀**
@@ -18,23 +19,16 @@
 
 import { type RefObject, useCallback, useEffect, useMemo, useState } from 'react';
 import type { QuoteCard } from '../../../../state/card-quote';
-import type {
-  ChatCore,
-  ChatImageRef,
-  ComposeSessionPrefs,
-  ProviderSettings,
-  StoredThinking,
-  TokenMeasurement,
-} from '../host';
-import { agentSessionState, getChatStore, getComposeStore, onSettingsSaved } from '../host';
+import type { ChatCore, ChatImageRef, ProviderSettings, RunTarget, StoredThinking, TokenMeasurement } from '../host';
+import { agentSessionState, getChatStore, onSettingsSaved } from '../host';
 import { useModelSeat } from './use-model-seat';
+import { useRunConfig } from './use-run-config';
 
 export interface ComposerSessionInput {
   core: ChatCore | null;
-  /** 纸期（variant='sheet'）：模型/思考/组合的源头换成题签。 */
-  isSheet: boolean;
-  /** 纸期：**这张纸**的 id（2026-11-29 多纸错位批；缺省/null = 焦点那张）。 */
-  paperId?: string | null;
+  /** 本宿主指向的**目标**（纸 / 卷 / 无主）——四笔读数唯一入口的入参（2026-11-29 收口批）。
+   *  宿主自己知道「我是谁」（题签行给纸 id、坞给卷号），本 hook 不猜、也不读 focusedId。 */
+  target: RunTarget;
   /** 上下文卷（纸期恒 null——纸还没有卷号）。 */
   activeSessionId: string | null;
   composerRef: RefObject<HTMLTextAreaElement | null>;
@@ -63,8 +57,7 @@ export interface ComposerSessionState {
 
 export function useComposerSession({
   core,
-  isSheet,
-  paperId,
+  target,
   activeSessionId,
   composerRef,
 }: ComposerSessionInput): ComposerSessionState {
@@ -152,35 +145,18 @@ export function useComposerSession({
     return () => core.registerComposer({ focus: () => {}, selectEnd: () => {} });
   }, [core, composerRef]);
 
-  /* ── 会话生效配置（方案甲：覆盖 ?? 全局默认，实时解析）── */
-  const [prefs, setPrefs] = useState<ComposeSessionPrefs | undefined>(undefined);
-  /* 会话**显式**思考覆盖（2026-09-23 思考下沉）：prefs 是「解析后」的生效配置，
-   * 未改卷时它带着全局快照的档位值——拿它当「本卷拨过」用会把全局值误当覆盖，
-   * 永远压住模型的 per-model 档位显示。故档位显示单独读覆盖表（getPrefs）。 */
-  const [thinkingOverride, setThinkingOverride] = useState<StoredThinking | undefined>(undefined);
-  useEffect(() => {
-    if (!core || activeSessionId == null) {
-      setPrefs(undefined);
-      setThinkingOverride(undefined);
-      return;
-    }
-    const compose = getComposeStore(core.panelId);
-    const sync = () => {
-      const st = compose.getState();
-      setPrefs(st.resolveEffective(activeSessionId));
-      setThinkingOverride(st.getPrefs(activeSessionId)?.thinking);
-    };
-    sync();
-    return compose.subscribe(sync);
-  }, [core, activeSessionId]);
+  /* ── 四笔的生效值（模型 / 思考 / 组合 / 权限）──
+   * 2026-11-29 收口批：读数**不再由本 hook 自己拼**（旧实现自己订阅 compose 覆盖、自己
+   * 拿 prefs 当覆盖用），一律经 `useRunConfig(目标)` —— 与题签行、坞的设置行同一份规则。
+   * 本 hook 只保留「这一趟怎么发」需要的那一半：会话表 / token / 草稿 / 命令式接口。 */
+  const config = useRunConfig(target);
 
   // C4（2026-08-27）：显示读 settings 走「初值 + onSettingsSaved 订阅」，
   // 不再每渲染全量 loadSettings()（打字热路径上的 localStorage JSON.parse）
   const [settingsTick, setSettingsTick] = useState(0);
   useEffect(() => onSettingsSaved(() => setSettingsTick((n) => n + 1)), []);
-  /* 生效配置读数（provider / 模型 / 描述符 / 思考档位 / 附图能力）——2026-11-19 题签重画批
-   * 搬进 `use-model-seat`：同一组读数现在有第二处宿主（纸期卷首档行），解析只许一条链。 */
-  const seat = useModelSeat({ isSheet, paperId, prefs, thinkingOverride, settingsTick });
+  /* 模型描述符 / 附图能力 / 思考档位表：拿已解析的四笔去查设置面（同一把尺子）。 */
+  const seat = useModelSeat({ config, settingsTick });
   const { providerName, model, providerKind, provider, imageCapable, thinkingOptions, currentThinking } = seat;
 
   return {

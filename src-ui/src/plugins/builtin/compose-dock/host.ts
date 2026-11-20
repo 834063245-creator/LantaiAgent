@@ -88,6 +88,24 @@ export type { PermissionMode } from '../../../state/mode-store';
 export { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../../state/mode-store';
 export type { PresetStoreState } from '../../../state/preset-store';
 export { usePresetStore } from '../../../state/preset-store';
+export type {
+  RunConfig,
+  RunDeps,
+  RunPatch,
+  RunPatchResult,
+  RunSources,
+  RunTarget,
+} from '../../../state/run-config';
+/* 「这一卷打算怎么跑」的单一解析/单一写入层（2026-11-29 收口批）：题签行与纸身输入面
+ * 都只经它读写四笔——**禁**自己从 draft-sheet-store 的 focusedId 摸题签（那正是本批
+ * 要根除的「第二个宿主」）。 */
+export {
+  bareTarget,
+  paperTarget,
+  patchRunConfig,
+  resolveRunConfig,
+  volumeTarget,
+} from '../../../state/run-config';
 /* 瞬时提示通道（2026-11-12 坞内提示改挂坞上方浮层）：**必须经桥取宿主那一份 store**
  * ——ToastHost（paper-shell 产物）是唯一渲染器，直引内核路径会被产物构建内联成第二份
  * zustand store（生产者写内核那份、渲染器读产物这份 ⇒ 打包态一条都不显示）。

@@ -54,6 +54,13 @@ export const PaperRegionContext = impl.PaperRegionContext;
  * 按纸读自己的记录——宿主不给（坞期/裸挂测试）= null = 沿用「焦点那张」旧语义。 */
 export const DraftPaperContext = impl.DraftPaperContext;
 export const useDraftPaperId = impl.useDraftPaperId;
+/* 「这一卷打算怎么跑」的单一解析/单一写入层（2026-11-29 收口批）——
+ * 四笔的读与写都从宿主侧那一份真实例走（直连 = 第二份 store，见 landmine-map）。 */
+export const paperTarget = impl.paperTarget;
+export const volumeTarget = impl.volumeTarget;
+export const bareTarget = impl.bareTarget;
+export const resolveRunConfig = impl.resolveRunConfig;
+export const patchRunConfig = impl.patchRunConfig;
 // 批 5a（2026-09-24）：toc / toc-ink / ime 已随包 ⇒ 不进宿主面，消费方直接
 // `from './toc'` / `'./toc-ink'` / `'./ime'`（host 面只许桥内核）。
 export const inkColorOf = impl.inkColorOf;

@@ -407,6 +407,9 @@ import { usePluginPrefs } from '../../state/plugin-prefs';
 import { usePluginStore } from '../../state/plugin-store';
 import { usePluginWindowStore } from '../../state/plugin-window-store';
 import { usePresetStore } from '../../state/preset-store';
+/* 「这一卷打算怎么跑」的单一解析/单一写入层（2026-11-29 收口批）：题签行、纸身输入面、
+ * 坞的设置行都只经它读写四笔——多一个宿主就多一处「该读谁 / 该写哪儿」的空白。 */
+import { bareTarget, paperTarget, patchRunConfig, resolveRunConfig, volumeTarget } from '../../state/run-config';
 import { useSessionVolumesStore } from '../../state/session-volumes-store';
 // 架阁浮层开合账（entity-shelf-plan B3）：纯 UI 状态，纸壳顶部那枚字件写、浮层读。
 import { useShelfStore } from '../../state/shelf-store';
@@ -575,6 +578,13 @@ const faceDeps = {
   useDraftPaperId,
   usePaperDock,
   usePaperRegion,
+  // 「这一卷打算怎么跑」的单一解析/单一写入层（2026-11-29 收口批）——
+  // 题签行 / 纸身输入面 / 坞的设置行共用同一份规则与同一组写入口。
+  paperTarget,
+  volumeTarget,
+  bareTarget,
+  resolveRunConfig,
+  patchRunConfig,
   // 批 5a 归家（2026-09-24）：toc / toc-ink / ime / sel-ink / focus-flight / sheet /
   // provenance 七件随包 ⇒ 这些 faceDeps 键已撤（包内实现，两域同源）。
   clampRegionW,

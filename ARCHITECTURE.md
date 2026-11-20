@@ -123,6 +123,12 @@ flowchart TD
   经 `ChatCore.openDraftVolume` → `app/chat/session/draft-opening.ts` 发号、登记组合、落位，再把这句话
   发出去（化卷交接 260ms，`--m-sheet`）。多纸焦点独占：输入槽 `liveOwner` 在卷与纸之间**换手**
   （`claimLive` 先存旧主草稿再取新主），坞只在焦点在纸上时让位；点卷即交回焦点，纸留在原处。
+- **「这一卷打算怎么跑」四笔只有一个入口**（2026-11-29 收口批）：组合 / 模型 / 思考 / 权限的**生效值**
+  与**写路径**统一在 `state/run-config.ts`——`resolveRunConfig(目标)` / `patchRunConfig(目标, 补丁)`，
+  目标只有三种（纸 id / 卷号 / 无主），返回值带每笔的来源。题签行（卷首档行）、纸身输入面、坞的设置行
+  都只调它：组件层**禁**自己从 `draft-sheet-store.focusedId` 摸题签，也**禁**直接调 `setGlobalModel` /
+  `setGlobalThinking` / `setSheetPermissionDefault`（守门见 `tests/run-config-single-authority.test.ts`）。
+  卷级组合仍归 `core.selectSessionPreset`（异步 + 空白闸 + 严一档校验），本层对其**具名拒绝**、不代写。
 
 ---
 
