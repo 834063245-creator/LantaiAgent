@@ -132,6 +132,9 @@
     "hostModule": "host",
     "inject": ["overlays", "commands", "space"],
     "shared": [
+      "app/interaction/lost-focus.ts",
+      "app/interaction/pointer-claims.ts",
+      "app/interaction/use-drag-gesture.ts",
       "app/search/file-match.ts",
       "paper/asset-rack.ts",
       "paper/plate-sign.ts",
