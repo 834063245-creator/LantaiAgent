@@ -19,7 +19,7 @@ export { useCoreStore } from '../../../app/chat/core-instance';
 export { extractImageFiles, previewUrlFor } from '../../../app/chat/image-intake';
 // 命令目录（2026-09-19 command-surface-rework）：斜杠命令与命令面板的唯一合流点
 // ——旧 `ui/command-registry` 单例已退役（退役命令陈列 + 就地写全局表两病灶）
-export { filterCommands, listCommands, slashOnly } from '../../../app/commands/command-catalog';
+export { draftCommandVerdict, filterCommands, listCommands, slashOnly } from '../../../app/commands/command-catalog';
 export { ensureSkillCatalog } from '../../../app/commands/skill-catalog';
 /* 浮层 Escape 收口（2026-09-22 附图预览案）：坞内两处全局模态 portal 到 body 后，
  * Escape 必须走 **document 级**监听——原先挂在坞内那个不可聚焦的 div 上，焦点在

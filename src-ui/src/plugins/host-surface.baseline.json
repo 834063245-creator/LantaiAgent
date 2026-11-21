@@ -1,5 +1,5 @@
 {
-  "fingerprint": "23e23f34",
+  "fingerprint": "7393acea",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -132,6 +132,7 @@
     "deleteCard",
     "describeReceipt",
     "discoverPresets",
+    "draftCommandVerdict",
     "draftInputKey",
     "draftSheetSeed",
     "editGoal",

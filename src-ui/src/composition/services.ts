@@ -96,6 +96,17 @@ export interface CommandContribution {
    *  输入框并聚焦，等用户把参数写完再回车（`/goal <目标>`、`/remember <事实>`）。
    *  缺省 false = 点选即执行（`/new` `/compact` 这类无参命令）。 */
   takesArg?: boolean;
+  /** **这条 `local` 命令作用于「某一卷」**（v63，2026-11-21）：`/compact` 改本卷、
+   *  `/export` 导本卷、`/goal` 记本卷、`/remember` 跑在本卷的 Agent 上。
+   *  缺省 false = 与卷无关（`/settings` `/paper` `/sidebar` `/dock` 这类开关）。
+   *  只对 `local` 型有意义：`send` / `skill` 型的语义本来就是「一句要发给模型的话」，
+   *  执行面据 action 类型自己认得出来，不需要插件再声明一遍。
+   *
+   *  为什么这枚标记必须住在贡献里：`local` 的 handler 是插件写的不透明闭包，外壳猜不出
+   *  它碰不碰卷。而**题签态**（纸在场、这一句还没开卷）的判据全靠它——标了 = 不许拿画布
+   *  上别的卷当靶子（提示先开卷）；没标 = 与卷无关，纸期照常执行。分诊规则单一真源 =
+   *  `app/commands/command-catalog` 的 `draftCommandVerdict`。 */
+  volumeCommand?: boolean;
   action: CommandAction;
 }
 

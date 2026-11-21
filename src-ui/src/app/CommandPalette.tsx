@@ -32,6 +32,7 @@ import { activeSpace } from '../composition/space-service';
 import { kernelListDirectory } from '../rpc-contract';
 import { shellRefs } from '../shell/runtime';
 import { usePanelDefsStore } from '../state/panel-defs-store';
+import { showToast } from '../state/toast-store';
 import { volumeDisplayName } from '../state/volume-name';
 import { getChatStore } from '../ui/chat-store';
 import { type AppAction, listActions } from './actions';
@@ -89,10 +90,20 @@ function commandContributionActions(): AppAction[] {
       icon: undefined,
       kbd: c.kbd || c.slash || undefined,
       run: (arg) => {
+        const panel = shellRefs.chatPanel;
         // 带参命令（takesArg）= 填入「/cmd 」待编辑，不空参执行（与斜杠面板同一条规矩）
         if (contribution.takesArg) {
-          shellRefs.chatPanel?.prepareCommand(contribution);
+          panel?.prepareCommand(contribution);
           return;
+        }
+        /* 题签态闸：面板点选不经过 sendMessage，判据也只能来自同一把尺子（core 能力位）——
+         * 纸在场时带卷语义的命令不许落到画布上别的卷头上（2026-11-21 收口）。 */
+        if (panel) {
+          const blocked = panel.commandBlockedInDraft(contribution);
+          if (blocked !== null) {
+            showToast(blocked, 'warn');
+            return;
+          }
         }
         // 折算为 local handler 型 AppAction：run 调用贡献的执行面（§2.3）。
         // local → 直接调 handler；send/fill/skill → 经聊天面板的命令执行面
@@ -101,7 +112,6 @@ function commandContributionActions(): AppAction[] {
           contribution.action.handler(arg ?? '');
           return;
         }
-        const panel = shellRefs.chatPanel;
         if (panel) {
           panel.executeCommand(contribution, arg ?? '');
         } else {
@@ -123,6 +133,7 @@ function sessionCommandActions(): AppAction[] {
     label: c.label,
     kbd: c.slash ?? c.kbd,
     // 带参命令（takesArg）选中 = 填入待编辑；无参命令照旧直接执行
+    // （题签态闸住在 executeCommand 里——内建命令与插件命令同一条路）
     run: (arg) => (c.takesArg ? panel.prepareCommand(c) : panel.executeCommand(c, arg ?? '')),
   }));
 }

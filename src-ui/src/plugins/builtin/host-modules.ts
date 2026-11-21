@@ -166,7 +166,7 @@ import { parseStructuredError } from '../../agent/tools/structured-error';
 import { ConfirmDialog } from '../../app/ConfirmDialog';
 import { useCoreStore } from '../../app/chat/core-instance';
 import { extractImageFiles, previewUrlFor, readAttachmentBase64 } from '../../app/chat/image-intake';
-import { filterCommands, listCommands, slashOnly } from '../../app/commands/command-catalog';
+import { draftCommandVerdict, filterCommands, listCommands, slashOnly } from '../../app/commands/command-catalog';
 import { ensureSkillCatalog } from '../../app/commands/skill-catalog';
 import { mountDialogFocus } from '../../app/dialog-focus';
 import { Icon } from '../../app/Icon';
@@ -649,6 +649,7 @@ const faceDeps = {
   listCommands,
   slashOnly,
   filterCommands,
+  draftCommandVerdict,
   ensureSkillCatalog,
   useCoreStore,
   // 应用壳件

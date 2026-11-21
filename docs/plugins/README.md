@@ -152,10 +152,13 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
   **声明面而非快照**：删一条 = 声明本产物不再内联它，必须同批改 import 并验证产物字节
   （`blockSeq` / `logPath` 一类**定义**在产物里命中 0），否则构建立刻红——设计意图。
   台账与逐条销账见 `docs/landmine-map.md` 第十五批 A4。
-- 宿主桥（P1a + 增补四扩面）：`window.__lantai_plugin_host__` 提供 `react`
+- 宿主桥（P1a + 增补四扩面 + agent 面）：`window.__lantai_plugin_host__` 提供 `react`
   （React 全量）、hooks 全集、`Overlay`、`rpc`、`loadCss`（产物 CSS 注入：URL 带
   版本号、每产品一 link、停用即摘——2026-09-19 起，见 landmine H2/H3）、
-  `mods`（faceDeps 依赖真实例 + toolDomains/segments 插件对象）——见 §4。
+  `mods`（faceDeps 依赖真实例 + toolDomains/segments 插件对象）、`agent`（2026-11-21：
+  `spawn({ prompt, description?, mode?, toolAllowlist?, outputSchema? })` 派生一个子代理并等它
+  跑完 · `list()` 列根 Agent——给**没有 turn 的消费者**用：面板按钮/命令点下去也能派活；
+  取的是最近装配的根 Agent，无会话时抛 `PLUGIN_AGENT`）——见 §4。
 
 ### 契约版本
 
@@ -776,6 +779,7 @@ export default {
 const host = globalThis.__lantai_plugin_host__;
 // host.createElement —— React.createElement 形状（面板组件构造）
 // host.notify —— 状态栏通知（命令动作的最小 UI 反馈）
+// host.agent.spawn({ prompt }) —— 派生一个子代理并等它跑完（面板按钮/命令没有 turn 时用）
 ```
 
 桥由装载器在装载第一方插件前注入。无桥环境（旧版本/测试降级）时插件

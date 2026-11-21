@@ -107,6 +107,7 @@ export const msgStoreFor = impl.msgStoreFor;
 export const listCommands = impl.listCommands;
 export const slashOnly = impl.slashOnly;
 export const filterCommands = impl.filterCommands;
+export const draftCommandVerdict = impl.draftCommandVerdict;
 export const ensureSkillCatalog = impl.ensureSkillCatalog;
 export const useCoreStore = impl.useCoreStore;
 export const iconHtml = impl.iconHtml;

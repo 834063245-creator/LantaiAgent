@@ -20,6 +20,7 @@ import type {
   Usage,
 } from '../provider/types';
 import { ApiError, apiErrorSummary, ChunkType } from '../provider/types';
+import { registerRootAgent, unregisterRootAgent } from './active-agent';
 import { resolveAgentLoop } from './agent-loop/agent-loop-active';
 import { attachFirstPartyLoopObservability } from './agent-loop/observability';
 import type { AgentLoop, AgentLoopHost } from './agent-loop/types';
@@ -617,6 +618,12 @@ export class Agent {
     this._subagentDepth = ctx.subagentDepth ?? opts.subagentDepth ?? 0;
     this.id = ctx.agentId ?? opts.agentId ?? `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     this.parentId = ctx.parentId ?? opts.parentId ?? null;
+    // 根 Agent 登记（插件宿主桥的 `host.agent.spawn` 入口用）：只登记根，
+    // 子 Agent 不登记——否则插件会把子当父派孙。注销走 ctx 对称清理。
+    if (this._subagentDepth === 0 && this.parentId == null) {
+      registerRootAgent(this);
+      ctx.effect(() => () => unregisterRootAgent(this), 'active-root-agent');
+    }
     // 运行账（「这 Agent 在不在跑」的唯一事实，2026-09-20 收口）：会话装配面
     // （workspace 会话工厂 → 卷级账）/ 子 Agent 派生面（subagent-spawn → 私账）都显式
     // 供账；两处都缺席 = 非会话装配路径（测试直构 / headless 驱动）→ 自铸一本**私有**账
@@ -802,6 +809,12 @@ export class Agent {
 
   setUiSessionId(sid: number): void {
     this._uiSessionId = sid;
+  }
+
+  /** 本 Agent 绑定的卷号（只读；0 = 还没绑上本卷）。宿主桥 `host.agent.list()` 用它
+   *  回答插件「哪个根 Agent 属于哪一卷」——内部会话串 `sessionId` 不是卷号。 */
+  get uiSessionId(): number {
+    return this._uiSessionId;
   }
 
   /** 私账自铸（非会话装配路径：测试直构 / headless 驱动）。

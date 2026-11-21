@@ -68,3 +68,26 @@ export function parseSlashInput(
   const cmd = findCommandBySlash(cmds, word);
   return cmd ? { cmd, arg } : null;
 }
+
+/** **题签态（待题纸在场、这一句还没开卷）下一条已命中的命令怎么处置**（2026-11-21）。
+ *
+ *  分界只有一条：**这条命令是要「说给模型的一句话」，还是要在一张卷上做事**。
+ *  - `open-and-send` — `send` / `skill` 型：本来就是「一句要发出去的话」（技能 = 让模型跑
+ *    某个技能）。纸期照常**开卷、把这一句发给刚开出来的那一卷**——这正是纸的语义。
+ *  - `run` — `local` 型且与卷无关（`/settings` `/paper` `/sidebar` `/dock`）：与卷无关，
+ *    **照常执行、不开卷**（否则用户只是开个设置面板，画布上就凭空多一张空卷）。
+ *  - `needs-volume` — `local` 型且标了 `volumeCommand`（`/compact` `/export` `/goal`
+ *    `/remember`）：它作用于**活跃卷**——纸期执行就是拿画布上别的卷当靶子，而开一张空卷再
+ *    压/导/记也没有意义 ⇒ 不执行，提示先开卷。
+ *  - `paper-is-new` — `/new`：纸上本来没有历史可重置，而「手上这张纸」就是新卷 ⇒ 提示，不动。
+ *
+ * 两个消费面共用这一把尺子：`ChatCore.sendMessage` 的斜杠分诊（执行面）与创作坞的斜杠面板
+ * （陈列面）——列出来却按不动，是这一批要根除的形态之一。 */
+export type DraftCommandVerdict = 'open-and-send' | 'run' | 'needs-volume' | 'paper-is-new';
+
+export function draftCommandVerdict(cmd: CommandContribution): DraftCommandVerdict {
+  if (cmd.id === 'new') return 'paper-is-new';
+  if (cmd.action.type === 'send' || cmd.action.type === 'skill') return 'open-and-send';
+  if (cmd.volumeCommand === true) return 'needs-volume';
+  return 'run';
+}

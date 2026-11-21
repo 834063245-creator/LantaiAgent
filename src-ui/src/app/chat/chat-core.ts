@@ -56,7 +56,7 @@ import {
 import * as Stream from '../../ui/chat-stream';
 import { type ChatMessage, resetMsgIdCounter, type UserMessage } from '../../ui/message-model';
 import { builtinCommands } from '../commands/builtin-commands';
-import { listCommands, parseSlashInput } from '../commands/command-catalog';
+import { draftCommandVerdict, listCommands, parseSlashInput } from '../commands/command-catalog';
 import { ensureSkillCatalog } from '../commands/skill-catalog';
 import type { PromptShelfHandle } from './ask-card-contract';
 import { restoreCanvasSpread, saveCanvasState } from './canvas-restore';
@@ -85,6 +85,13 @@ import * as SessionComposition from './session-composition';
 // ── 斜杠技能候选 ──
 // 真源 = app/commands/skill-catalog（工作区路径键控缓存）；chat-core 构造时
 // 同步确保一次，工作区已变则后台重扫——命令清单是同步读取面，见该模块头注。
+
+/** **题签态发「带卷语义」命令**的提示（2026-11-21）：这类命令作用于某一卷，而纸上这一句
+ *  还没开卷——不执行（否则就是拿画布上别的卷当靶子），纸与字原样保留。 */
+const DRAFT_VOLUME_COMMAND_NOTICE = '这条命令作用于案卷——先发一句话开卷，再在卷里用 /（纸与字都还在）';
+
+/** **题签态按 `/new`** 的提示：纸上本来就没有历史可重置，纸张本身就是新卷。 */
+const DRAFT_NEW_COMMAND_NOTICE = '手上这张纸就是新的一卷——直接在纸上说第一句话即可';
 
 /** 视图注册的输入框命令式接口（聚焦/全选），其余输入状态一律走 input-store */
 export interface ComposerApi {
@@ -1374,6 +1381,40 @@ export class ChatCore {
       inputState.attachedCards.length > 0;
     if (!text && !hasPayload) return;
 
+    /* ── 题签态：**已命中的命令一律先不开卷**（2026-11-21）──
+     * 病灶两条，都在开卷之前分诊：
+     *   ① **不能拿别的卷当靶子**——纸在场时这一句是「这张纸」的话，而带卷语义的命令
+     *      （/compact /export /goal /memory）作用于**活跃卷**：执行 = 改/导/记别人的卷，
+     *      用户根本没在说那张卷（用户报的事故）。⇒ 不执行，提示先开卷。
+     *   ② **不能替用户白烧一个号**——开关型命令（/settings /paper /sidebar /dock）与卷
+     *      无关，若先开卷再执行，用户只是开个设置面板，画布上就凭空多一张空卷。
+     *      ⇒ 照常执行、**不开卷**。
+     *   ③ `/new` 是第三种：纸上本来就没有历史可重置，而「手上这张纸」就是新卷——
+     *      执行它只会再烧一个号（旧形态：纸化成卷 + 又开一张 = 双卷）。⇒ 提示，不动。
+     * 未命中的斜杠（技能 / 手写的命令词）= 一句要发给模型的话，不在这里拦：落到下面
+     * 走「开卷 → 把这一句发给新卷」。
+     * ⚠ 取在最前：开卷会把焦点交出去（纸进 morphs），之后就分不清这一句来自哪张纸了。 */
+    const focusPaperId = useDraftSheetStore.getState().focusedId;
+    if (focusPaperId !== null && text.startsWith('/')) {
+      const focusHit = parseSlashInput(listCommands(this), text);
+      if (focusHit) {
+        /* 分诊单一真源 = command-catalog 的 draftCommandVerdict。`local` 型直接交给
+         * executeCommand——那里有同一道闸（面板点选也走它），不在两处各判一次；这里只处理
+         * 两种「要开卷」的情况：send/skill 型 = 这一句就是说给模型的话（落到下面开卷再发），
+         * 以及不需要开卷也说得清后果的 /new（提示一句，不动）。 */
+        const verdict = draftCommandVerdict(focusHit.cmd);
+        if (verdict === 'paper-is-new') {
+          showToast(DRAFT_NEW_COMMAND_NOTICE, 'info');
+          return;
+        }
+        if (verdict !== 'open-and-send') {
+          this.executeCommand(focusHit.cmd, focusHit.arg); // run → 执行；needs-volume → 由它拒
+          return;
+        }
+        // 'open-and-send'：按纸的语义开卷，把这一句发给刚开出来的那一卷。
+      }
+    }
+
     // ── 待题纸（V2 立卷 UX）：**焦点在纸上 = 发送即开卷** ──
     // 判据读 store 单例（纸是跨产物瞬态，真源在 state/draft-sheet-store），且是
     // **焦点那张纸**——多纸之后「有纸在画布上」不等于「这句话是给纸的」。
@@ -1842,9 +1883,33 @@ export class ChatCore {
     requestAnimationFrame(() => composer.selectEnd());
   }
 
+  /** **题签态拦截原因**（2026-11-21）：焦点在待题纸上且这条命令不能在纸上跑时，返回要说给
+   *  用户的那句话；可以跑（null）= 与卷无关的开关，或此刻根本没在纸上。
+   *
+   *  为什么收成一个方法：题签态有三个执行入口——斜杠面板点选 / 全局搜索（Ctrl+K）点选 /
+   *  输入框回车。前两个都**不经过** `sendMessage`，各自判一遍就会漏（收口前即漏在面板那条）。
+   *  分诊规则本身仍只有 `command-catalog.draftCommandVerdict` 一份。 */
+  commandBlockedInDraft(cmd: CommandContribution): string | null {
+    if (useDraftSheetStore.getState().focusedId === null) return null;
+    const verdict = draftCommandVerdict(cmd);
+    if (verdict === 'run') return null;
+    /* `takesArg` 的条目点选 = 「填入待编辑」（prepareCommand），不执行、也不填字到纸外，
+     * 故不算拦截；只有真正会把命令跑起来的那三型要拦。 */
+    return verdict === 'paper-is-new' ? DRAFT_NEW_COMMAND_NOTICE : DRAFT_VOLUME_COMMAND_NOTICE;
+  }
+
   /** 执行命令 —— 斜杠面板 / 命令面板 / 文本解析三入口的唯一执行面（四型全语义）。
-   *  arg = 斜杠参数（`/goal resume` → 'resume'；无参空串），fill 型拼在提示文本后。 */
+   *  arg = 斜杠参数（`/goal resume` → 'resume'；无参空串），fill 型拼在提示文本后。
+   *
+   *  ⚠ **题签态也要过同一道闸**（2026-11-21）：面板点选**不经过** `sendMessage`，故纸在场时
+   *  这里同样要先问 `draftCommandVerdict`——否则面板上点一下 `/goal`，命令照样落在画布上
+   *  别的卷头上（收口前就是这条缝）。分诊规则仍只有 command-catalog 那一份，两个入口共用。 */
   executeCommand(cmd: CommandContribution, arg = ''): void {
+    const blocked = this.commandBlockedInDraft(cmd);
+    if (blocked !== null) {
+      showToast(blocked, 'warn');
+      return;
+    }
     const action = cmd.action;
     switch (action.type) {
       case 'send':

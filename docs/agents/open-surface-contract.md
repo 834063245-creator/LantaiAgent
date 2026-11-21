@@ -8,16 +8,16 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：62
+当前版本：63
 
-<!-- contract-fingerprint: c546c961e6b3fbed4ab6f905ccaa9a059ca0008238a6831b2d9cd2c303bfd051 -->
+<!-- contract-fingerprint: 34d1d078c974400e39f24172f502ed611ddc7e73ba100f889ed8b9e4f5b1abed -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
 | 文件 | 契约内容 |
 |---|---|
 | `src/composition/contribution-channel.ts` | **贡献通道内核**（M1 收口：九通道 + 五 seam 的唯一注册表实现——`ContributionChannel` / `ContributionTiming` / `ContributionChannelOptions`。类名经宿主桥 `faceDeps` 与 `host.aliased.ts` 暴露给产物插件，形状即对外契约） |
-| `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`；**v37 起 `activeLlmAdapters(view?)` 的可选 view**——缺省 = 全局当前选择）+ panels/commands/tools 通道 def 形状（M1 起注册表内核移出本文件；**v60 起 `CommandContribution` 增可选 `takesArg`**——带参命令点选 = 填入待编辑） |
+| `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`；**v37 起 `activeLlmAdapters(view?)` 的可选 view**——缺省 = 全局当前选择）+ panels/commands/tools 通道 def 形状（M1 起注册表内核移出本文件；**v60 起 `CommandContribution` 增可选 `takesArg`**——带参命令点选 = 填入待编辑；**v63 起增可选 `volumeCommand`**——这条 `local` 命令作用于某一卷，题签态不执行、也不陈列） |
 | `src/provider/types.ts` | `ctx.llm` seam 的**实现面形状真源**（`Provider` / `Chunk` / `Request`——v25 补登记：`LlmAdapterContribution.create` 返回的 Provider 形状即契约面，此前未入册。**v41 起 `ProviderRuntimeArgs` 增加可选 `headers`**——自定义请求头，三方言请求携带且凭据/协议头恒胜） |
 | `src/composition/fs-service.ts` | `ctx.fs`（`FsProvider` / `FsAction` 动作 / `FsCallOptions` dispatch 腰） |
 | `src/composition/shell-service.ts` | `ctx.shell`（`ShellProvider` / `ShellAction` 四动作；subprocess 并入） |
@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
+| 63 | 2026-11-21 | **命令贡献面增可选 `volumeCommand`（这条 `local` 命令作用于某一卷）**：`composition/services.ts` 的 `CommandContribution` 新增可选 `volumeCommand?: boolean`——出厂首批 `/compact` `/export` `/goal` `/remember`（`/new` 不标：它不作用于某一卷，就是「另起一卷」；`/memory` `/compact-stats` 是 `send` 型，由 action 类型自明）。**对外可感知**：题签态（待题纸在场、这一句还没开卷）**不再执行这一类命令**——它们作用于活跃卷，纸上敲下去等于拿画布上别的卷当靶子（用户报的事故），现改为提示「先发一句话开卷」，斜杠面板在纸期也不陈列。同批定死纸期另两条：与卷无关的开关型 `local` 命令**照常执行、不再替用户烧一个号**（旧形态先开卷再执行 = 开个设置面板就多一张空卷）；`send` / `skill` 型与未命中的斜杠照旧开卷并把这句发给**新卷**。旧插件不声明 = 行为逐字不变（纯可选字段，零迁移）。分诊单一真源 = `app/commands/command-catalog` 的 `draftCommandVerdict`（执行面与斜杠面板共用）。 | 2026-11-21 用户报「题签态直接发斜杠命令交给了其他卷」；守护 `tests/draft-slash-command.test.ts` |
 | 62 | 2026-11-19 | **压力基准改以提供方 usage 为锚**（对齐 DSH `TokenMeasurement.baseline`）：`agent/token-meter/contract.ts` 的 `TokenLedger` 新增 `anchor()` / `anchoredPressure(probe)` / `recordAnchoredSurface(tokens)`，`measure()` 新增 `baseline`（`'usage'` \| `'estimated'` \| `'none'`）与 `surfaceDeltaTokens`，`usedSource` 去掉永不可达的 `'pressure'`；`AgentLoopHost` / `CompactionHost` 的 `tokenCountWithEstimation(basis?)` 增可选参数（缺省 = 能用锚就用锚；`'estimated'` = 强制全量启发式，给压缩压前/压后这类**必须同尺**的账目）。**对外可感知**：压缩触发判定与墨量册读数同源（此前判定走全量启发式、读数走锚式投影，分词器估低时「提示条说 85%、判定却 79% 一路不压」）；锚对不上（换模型 / 换工具集 / 压缩遮蔽 / 会话替换 / 撤回 / 重启后未核验）时退回估算。第三方 loop 不传参 = 调用形状不变；第三方账本实现需补三个成员。 | DSH `packages/llm/token-meter` 的 `TokenMeasurement.baseline` + `compaction-basic` 的「One measurement service prices every decision」；守护 `tests/token-meter-anchor.test.ts` + `tests/token-meter-agent.test.ts`（pre-flight 按锚触发） |
 | 61 | 2026-11-18 | **agent loop 宿主面增 `syncMemorySnapshot()`**（记忆快照变更驱动批）：`AgentLoopHost` 新增成员，默认 loop 在安全边界（待插入应用之后、压缩预检之前）调它；语义 = 记忆快照变了或被压缩遮蔽就补一条 durable 消息，未变则纯读。**执行语义零变更**：第三方 loop 不调它 = 装配期快照照旧留在会话里（记忆不丢），只是后续变更要等下次装配。同批 `buildTransientMessages` 去掉 `memoryDigest` 参数。 | 真机卷 121 实测：每步重发 2,114 tokens（占 miss 段 30%–60%）且模型三次把注入读成「上下文被压缩」；守护 `tests/memory-tail-injection.test.ts` |
 | 60 | 2026-11-07 | **命令贡献面增可选 `takesArg`（「填入待编辑」形态）**：`composition/services.ts` 的 `CommandContribution` 新增可选 `takesArg?: boolean`——声明后斜杠面板／命令面板**点选或回车不再空参执行**，改成把 `/cmd ` 写进输入框并聚焦等用户补参数（消费面 = `ChatCore.prepareCommand`，首批 `/goal <目标>` · `/remember <事实>`）。**缺省 = 不声明 ⇒ 既有「点选即执行」逐字不变**（纯可选字段，旧插件源码零迁移）。同批面板形态重做：分组双行（节头 + 斜杠词/显示名/描述）、命中标朱、零命中空态、↑↓ 高亮滚动到可见、命令词后出现空白即退出补全（参数模式）。 | 2026-11-07 用户报「带参命令点一下就空参跑掉」；守护 `tests/command-surface.test.tsx` + `tests/composer-dock-keyboard.test.tsx` + `tests/overlay-focus-a11y.test.tsx` |

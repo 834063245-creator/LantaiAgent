@@ -18,7 +18,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatCore, CommandContribution } from '../host';
-import { ensureSkillCatalog, filterCommands, listCommands, slashOnly, useShellStore } from '../host';
+import {
+  draftCommandVerdict,
+  ensureSkillCatalog,
+  filterCommands,
+  listCommands,
+  slashOnly,
+  useDraftSheetStore,
+  useShellStore,
+} from '../host';
 
 export interface ComposerSlashInput {
   core: ChatCore | null;
@@ -45,11 +53,23 @@ export function useComposerSlash({ core, inputText }: ComposerSlashInput) {
    * 产物域不订阅 panel-defs-store（那要动宿主桥 faceDeps、改宿主面指纹），
    * 改读 ensureSkillCatalog 的返回值——同一条闭环，零新增宿主面键。 */
   const [skillTick, setSkillTick] = useState(0);
+  /* 焦点在不在待题纸上（**读单据真源**，订阅它才跟着「点纸 / 点回卷」重算）——
+   * 这是下面「带卷语义的命令在纸期不进候选」的判据，与执行面同一把尺子（store 的 focusedId）。 */
+  const draftFocusOn = useDraftSheetStore((s) => s.focusedId !== null);
   const slashCommands = useMemo(() => {
     void skillTick; // 「技能清单换代」触发器：命令清单是同步读取面，正是要靠它重算
     if (slashQuery === null) return [];
-    return filterCommands(slashOnly(listCommands(core)), slashQuery);
-  }, [slashQuery, core, skillTick]);
+    const listed = filterCommands(slashOnly(listCommands(core)), slashQuery);
+    /* **题签态只陈列「能在纸上用」的命令**（2026-11-21）：会拿别的卷当靶子 / 要开卷 / 无意义
+     * 的那几类不列——列出来却按不动，等于给一个必然弹回的键。判据不在这里另写：同一把尺子
+     * = `draftCommandVerdict`（执行面 `ChatCore.sendMessage` 的斜杠分诊也用它）。 */
+    return draftFocusOn
+      ? listed.filter((c) => {
+          const verdict = draftCommandVerdict(c);
+          return verdict === 'run' || verdict === 'open-and-send';
+        })
+      : listed;
+  }, [slashQuery, core, skillTick, draftFocusOn]);
   /* 面板每次**打开** = 强制重扫技能目录（不只是键变了才扫）：热装载就是在同一个
    * 工作区里多出 `.lantai/skills/<名>/SKILL.md`（设置页新建 / 手放 / Agent 自己写），
    * 路径键根本不变——旧实现靠键控检查，「永远不重扫」+「扫完不通知」两处叠加，

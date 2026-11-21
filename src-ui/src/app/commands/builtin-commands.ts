@@ -37,6 +37,7 @@ export function builtinCommands(host: BuiltinCommandHost): CommandContribution[]
       description: '压缩对话历史以节省 token',
       group: '案卷',
       slash: '/compact',
+      volumeCommand: true,
       action: { type: 'local', handler: () => host.compact() },
     },
     {
@@ -57,6 +58,7 @@ export function builtinCommands(host: BuiltinCommandHost): CommandContribution[]
       description: '导出当前案卷为 Markdown',
       group: '案卷',
       slash: '/export',
+      volumeCommand: true,
       action: { type: 'local', handler: () => host.exportVolume() },
     },
     {
@@ -66,6 +68,7 @@ export function builtinCommands(host: BuiltinCommandHost): CommandContribution[]
       group: '案卷',
       slash: '/goal',
       takesArg: true,
+      volumeCommand: true,
       action: { type: 'local', handler: (arg) => host.goal(arg) },
     },
     {
@@ -87,6 +90,7 @@ export function builtinCommands(host: BuiltinCommandHost): CommandContribution[]
       group: '记忆',
       slash: '/remember',
       takesArg: true,
+      volumeCommand: true,
       action: { type: 'local', handler: (arg) => host.remember(arg) },
     },
   ];

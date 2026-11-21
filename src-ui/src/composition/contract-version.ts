@@ -22,9 +22,21 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 62;
+export const OPEN_SURFACE_CONTRACT_VERSION = 63;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v63（2026-11-21）**命令贡献面增可选 `volumeCommand`（这条 `local` 命令作用于某一卷）**：
+ *  `composition/services.ts` 的 `CommandContribution` 新增可选 `volumeCommand?: boolean`，
+ *  出厂首批 `/compact` `/export` `/goal` `/remember`（`/new` 不标：它不作用于某一卷，就是
+ *  「另起一卷」；`/memory` `/compact-stats` 是 `send` 型，语义上就是「一句要发给模型的话」，
+ *  由 action 类型自明）。
+ *  **对外可感知**：**题签态（待题纸在场、这一句还没开卷）不再执行这一类命令**——它们作用于
+ *  活跃卷，纸上敲下去等于拿画布上别的卷当靶子（用户报的事故）；现改为提示「先发一句话
+ *  开卷」，斜杠面板在纸期也不陈列它。同批定死纸期的另两条：与卷无关的开关型 `local` 命令
+ *  照常执行、**不再替用户烧一个号**（旧形态是先开卷再执行，用户只是开个设置面板就多一张
+ *  空卷）；`send` / `skill` 与未命中的斜杠照旧开卷并把那一句发给**新卷**。旧插件不声明 =
+ *  行为逐字不变（缺省 false，纯可选字段，零迁移）。分诊单一真源 =
+ *  `app/commands/command-catalog` 的 `draftCommandVerdict`（执行面与斜杠面板共用）。
  *  v62（2026-11-19）**压力基准改以提供方 usage 为锚**（token 计量口径批，对齐 DSH
  *  `TokenMeasurement.baseline`）：`TokenLedger`（`agent/token-meter/contract.ts`）新增
  *  `anchor()` / `anchoredPressure(probe)` / `recordAnchoredSurface(tokens)`，`measure()`

@@ -28,13 +28,14 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
-
+import { activeRootAgent, listRootAgents } from '../agent/active-agent';
 import { Overlay } from '../app/overlay';
 import { loadHeavyViewer } from '../app/paper/viewers';
 import { useShellStore } from '../app/shell-store';
 import type { Context, Fiber } from '../cordis';
 import { getProxyPort } from '../provider/transport';
 import { typedRpc } from '../rpc-contract';
+import { useDockStore } from '../state/dock-store';
 import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { faceDepsKeys, hostSurfaceFingerprint, pluginHostMods } from './builtin/host-modules';
@@ -178,6 +179,28 @@ declare global {
       Overlay: typeof Overlay;
       rpc: (method: string, params: Record<string, unknown>) => Promise<unknown>;
       notify: (text: string) => void;
+      /** 派生一个子代理并等它跑完（复用 Agent.spawnSubAgent——工具/隔离/重试全继承）。
+       *  给「没有 turn 的消费者」用（面板按钮、命令）。多个并发调用 = 多个并行子代理。 */
+      agent: {
+        spawn: (args: {
+          description?: string;
+          prompt: string;
+          mode?: 'fork' | 'fresh';
+          toolAllowlist?: string[] | null;
+          outputSchema?: Record<string, unknown> | null;
+        }) => Promise<{ text: string; err?: string }>;
+        /** 已装配的根 Agent。`uiSessionId` = 卷号（0 = 尚未绑定本卷；会话装配路径在每轮
+         *  开始时经 `setUiSessionId` 写入）；`sessionId` 是 Agent 内部会话串，插件不要拿它
+         *  当卷号用。 */
+        list: () => Array<{ id: string; sessionId: string; uiSessionId: number }>;
+      };
+      /** 面板开合。壳里没有通用入口，插件不自己开就永远「注册了打不开」。 */
+      panels: {
+        toggle: (id: string) => void;
+        open: (id: string) => void;
+        close: (id: string) => void;
+        isOpen: (id: string) => boolean;
+      };
       loadCss: (url: string) => void;
       fs: PluginDataFs;
       windows: PluginWindowFacility;
@@ -290,6 +313,39 @@ export function installPluginHostBridge(): void {
       },
       Overlay,
       rpc: (method: string, params: Record<string, unknown>) => typedRpc(method as never, params as never),
+      agent: {
+        spawn: async (args: {
+          description?: string;
+          prompt: string;
+          mode?: 'fork' | 'fresh';
+          toolAllowlist?: string[] | null;
+          outputSchema?: Record<string, unknown> | null;
+        }) => {
+          const parent = activeRootAgent();
+          if (!parent) {
+            throw new Error('PLUGIN_AGENT: 没有可用的根 Agent（先打开一个会话）');
+          }
+          // 同步档（asyncMode=false）：并发调用即并行子代理；完成才 resolve。
+          return parent.spawnSubAgent(
+            args.description ?? 'plugin-subagent',
+            args.prompt,
+            undefined,
+            args.mode ?? 'fresh',
+            args.toolAllowlist ?? null,
+            undefined,
+            false,
+            undefined,
+            args.outputSchema ?? null,
+          );
+        },
+        list: () => listRootAgents().map((a) => ({ id: a.id, sessionId: a.sessionId, uiSessionId: a.uiSessionId })),
+      },
+      panels: {
+        toggle: (id: string) => useDockStore.getState().togglePanel(id),
+        open: (id: string) => useDockStore.getState().openPanel(id),
+        close: (id: string) => useDockStore.getState().closePanel(id),
+        isOpen: (id: string) => useDockStore.getState().isOpen(id),
+      },
       loadViewer: loadHeavyViewer,
       notify: (text: string) => useShellStore.getState().pushStatus(text),
       loadCss: injectPluginCss,
