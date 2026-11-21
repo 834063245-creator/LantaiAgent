@@ -115,6 +115,32 @@ describe('paper token 注入键集审计', () => {
     expect(injected.get('--pp-md-mathSizeRatio')).toBe('1.06');
   });
 
+  /* 2026-11-21 事故钉：`*lh` 键被当成「行高**系数**」注入无单位值——这是给 line-height
+   * 的倍数用的。有人拿它装 **px 行盒高**（post.headLh = 20）时，注入出 `20`（无单位），
+   * CSS 的 `line-height: 20` 就变成「20 倍字号」= 一行 270px，帖首当场撑成半屏。
+   * 判据很直接：行高系数是 1~2 量级，凡是 *lh 键值 > 3 一定是有人错把 px 塞进来了。
+   * （px 语义的行盒高请用 *H 结尾，见 CHROME_TOKENS.post.headH 注。） */
+  it('*lh 键的值必须是「系数」量级（>3 = 有人把 px 行盒高错塞进 lh 键，真机一行会变成 20 倍字号）', () => {
+    const offenders: string[] = [];
+    for (const [k, v] of injected) {
+      if (!/lh$/i.test(k)) continue;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n > 3) offenders.push(`${k}=${v}`);
+    }
+    expect(offenders, '行高系数 >3 ⇒ 该键装的是 px，改名成 *H 走 px 注入路径').toEqual([]);
+  });
+
+  /* 2026-11-21 事故钉（同日第二起）：帖的两枚真 <button> 曾完全漏掉 CSS/UA reset ——
+   * 真机上它们是灰底凸起的小方块，贴在纸上像外来的控件。这里不查样式值（CSS 细节
+   * 归视觉决策测试），只查**存在性**：类名一旦出现在 JSX 就必须在 CSS 里有定义，
+   * 否则就是「写了类名没人管」。 */
+  it('帖的按钮类（.pp-post-title / .pp-post-stop）在纸壳 CSS 里都有定义（漏定义 = UA 默认灰底凸起方块）', () => {
+    const css = readPanelCss();
+    for (const cls of ['pp-post-title', 'pp-post-stop']) {
+      expect(css, `.${cls} 在值班 JSX 里被使用，却没有一条 CSS`).toContain(`.${cls} {`);
+    }
+  });
+
   it('查看器自带 CSS（P1：viewers/*.css）不出现裸色值——墨/纸/线全走 token', () => {
     const files = viewerCssFiles();
     expect(files.length, '一个查看器 CSS 都没有 = 扫描面失灵').toBeGreaterThan(0);

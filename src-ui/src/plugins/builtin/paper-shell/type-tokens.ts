@@ -174,11 +174,15 @@ export const CHROME_TOKENS = {
   reasoning: { borderL: 2, padL: 18 },
   tool: { padTop: 10, noteW: 44, noteH: 1.5 },
   /* 子代理**帖**chrome（2026-11-20 帖批）——帖 = 帖签 + 活体行 + 体 + 复命段。
-   *  帖签行高 = max(子印 19, 描述行 20)；活体行 15 + 上距 2 —— 帖收起态 =
-   *  padTop + 帖签 20 + 活体 17 = 47（与样张实测同值，见 prototype/subagent-post-ab）。
+   *  帖签行盒 20 / 活体行 15 + 上距 2 —— 帖收起态 = padTop 10 + 20 + 2 + 15 = 47。
    *  ⚠ 这不是「加高」而是**把活体行从折叠行里拆出来单列**：拆开才能把「干什么」
-   *  与「干了多少」分开读（旧形态一行塞三件事，三件都读不清）。 */
-  post: { padTop: 10, padL: 15, seal: 19, headLh: 20, liveLh: 15, liveGap: 2, bodyGap: 9, reportGap: 10, reportPad: 9 },
+   *  与「干了多少」分开读（旧形态一行塞三件事，三件都读不清）。
+   *  ⚠⚠ 键名纪律（2026-11-21 事故）：**行盒高**键一律以 `H` 结尾（headH / liveH），
+   *  绝不能写 `*Lh`——注入器把 `/lh$/` 当「行高**系数**」发无单位值（这是给
+   *  line-height 的倍数），而这里装的是 px 行盒高。写错 = 注入出 =20（无单位）→
+   *  CSS 的 line-height:20 变成 20 倍字号（13.5px × 20 = 270px 一行），帖首瞬间
+   *  撑成半屏、活体行被推到看不见的地方。真机事故见 2026-11-21。 */
+  post: { padTop: 10, padL: 15, seal: 19, headH: 20, liveH: 15, liveGap: 2, reportGap: 10, reportPad: 9 },
   // 载荷段头（2026-09-14 工具卡可读性专项）：参数/输出/错误各一行小字标 + 细规线。
   // 旧 .pp-out 的 marginTop/borderTop/padTop（6/1/6）退役——分隔语义改由段头行
   // 承载（首段不留空档，后续段上距 = marginTop）。
@@ -285,14 +289,12 @@ export const CHROME_DERIVED = {
   reasoningTextInset: CHROME_TOKENS.reasoning.borderL + CHROME_TOKENS.reasoning.padL,
   toolPadTop: CHROME_TOKENS.tool.padTop,
   /* 子代理帖（2026-11-20 帖批）：帖签 / 活体行 / 复命段——measure 与 CSS 同源。
-   * 帖签行高取 headLh（= .pp-post-head 的行盒高），活体行 = liveLh + 上距。
-   * 帖收起态 = padTop 10 + headLh 20 + liveGap 2 + liveLh 15 = 47（样张实测同值）。 */
+   * 帖签行盒 headH、活体行 liveH + 上距——帖收起态 = padTop 10 + 20 + 2 + 15 = 47。 */
   postPadTop: CHROME_TOKENS.post.padTop,
   postPadL: CHROME_TOKENS.post.padL,
-  postHeadH: CHROME_TOKENS.post.headLh,
-  postLiveH: CHROME_TOKENS.post.liveLh,
+  postHeadH: CHROME_TOKENS.post.headH,
+  postLiveH: CHROME_TOKENS.post.liveH,
   postLiveGap: CHROME_TOKENS.post.liveGap,
-  postBodyGap: CHROME_TOKENS.post.bodyGap,
   postReportGap: CHROME_TOKENS.post.reportGap,
   postReportPad: CHROME_TOKENS.post.reportPad,
   /** 段头行恒一行（mono size × lh）——参数/输出/错误段共用。 */

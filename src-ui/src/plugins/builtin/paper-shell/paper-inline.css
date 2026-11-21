@@ -204,7 +204,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  height: var(--pp-ch-post-headLh);
+  height: var(--pp-ch-post-headH);
 }
 /* 「子」印：方框 + 石青字。子代理的身份符，与工具族的 44px 注线分工（那是族的，这是件的） */
 .pp-post-seal {
@@ -226,11 +226,11 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  height: var(--pp-ch-post-liveLh);
+  height: var(--pp-ch-post-liveH);
   margin-top: var(--pp-ch-post-liveGap);
   font-family: var(--f-mono);
   font-size: 10.5px;
-  line-height: var(--pp-ch-post-liveLh);
+  line-height: var(--pp-ch-post-liveH);
   letter-spacing: 0.02em;
   color: color-mix(in oklch, var(--indigo) 88%, var(--ink-1));
   white-space: nowrap;
@@ -255,24 +255,68 @@
   border-color: color-mix(in oklch, var(--warn) 70%, transparent);
   color: var(--warn);
 }
-/* 帖签文字（描述）：宋体 600 13.5——比折叠行（10px mono）重一档，帖是「人」不是「注」 */
+/* 帖签文字（描述）：宋体 600 13.5——比折叠行（10px mono）重一档，帖是「人」不是「注」
+ *
+ *  ⚠ 这是 <button>（点它切折叠态，手势与工具族折叠行同源），必须自己把浏览器的
+ *  UA 默认按钮外观**全部**收掉——否则真机上它是一枚灰底凸起的小方块（2026-11-21 事故）：
+ *  浏览器默认给 button 渲染 background-color / 2px outset 边框 / 居中文字 / 内距，
+ *  这些不在 .pp-block 的既有 reset 清单里（.pp-kind / .pp-status 那些都自带重置）。
+ *  别改成 <span onClick>：那会丢键盘可达性与 role——把按钮做成「看起来不是按钮」才对。 */
 .pp-post-title {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
   font-family: var(--f-song);
   font-size: 13.5px;
   font-weight: 600;
-  line-height: var(--pp-ch-post-headLh);
+  line-height: var(--pp-ch-post-headH);
   color: var(--ink-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  /* 贴纸面的 hover 语汇：字转朱砂深（与 .pp-fold / .pp-kind 同一支笔） */
+  transition: color var(--snap);
+}
+.pp-post-title:hover {
+  color: var(--seal-deep);
+}
+/* 召回钮（仅在办时出现）：帖签行右端的动作位。
+ * ⚠ 与帖签同一条纪律——它是真 <button>，UA 默认外观必须收干净（2026-11-21 事故同源：
+ *  漏了 reset 的真机形态 = 灰底凸起方块，贴在纸上像外来的控件）。
+ *  语义：停本卷**全部**在办子代理（池没有单停 UI 面），title 里如实说范围。 */
+.pp-post-stop {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  height: var(--pp-ch-post-headH);
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  line-height: var(--pp-ch-post-headH);
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color var(--snap);
+}
+.pp-post-stop:hover {
+  color: var(--seal-deep);
 }
 /* 帖签读数（走秒 / 步数）：mono 9.5 tabular——数字列要对齐，帖并排时不跳字宽 */
 .pp-post-read {
   flex: 0 0 auto;
   font-family: var(--f-mono);
   font-size: 9.5px;
-  line-height: var(--pp-ch-post-headLh);
+  line-height: var(--pp-ch-post-headH);
   letter-spacing: 0.08em;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;

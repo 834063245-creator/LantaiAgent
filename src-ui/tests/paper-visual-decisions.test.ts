@@ -1278,4 +1278,31 @@ describe('机读位字体与 pre>code 交还（2026-09-24）', () => {
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-diff pre {')).toContain('font-family: var(--f-mono)');
     expect(ruleBody(PANEL_CSS, '.pp-viewer-code-pre code {')).toContain('font: inherit');
   });
+
+  /* ── 子代理**帖**（2026-11-20 帖批；2026-11-21 真机事故后补的两条）─────────────
+   * 事故形态：帖签与召回两枚真 <button> 既没有 CSS 定义、也没在别处被 reset ——
+   * 真机上是一对灰底凸起小方块，贴在纸上像外来的控件；同时帖签的 line-height
+   * 吃了无单位的 lh 令牌（20），一行被撑成 270px。两条都靠**字面量**钉住：改这三行
+   * 的任何一个（appearance/background/border、或 line-height 改成 lh 键）都会红。 */
+  it('帖的 <button> 自己收干净 UA 默认外观（appearance + 背景 + 边框 + 内距全归零）', () => {
+    for (const sel of ['.pp-post-title {', '.pp-post-stop {']) {
+      const body = ruleBody(PANEL_CSS, sel);
+      expect(body, sel).toContain('appearance: none');
+      expect(body, sel).toContain('-webkit-appearance: none');
+      expect(body, sel).toContain('background: none');
+      expect(body, sel).toContain('border: 0');
+      expect(body, sel).toContain('border-radius: 0');
+    }
+  });
+
+  it('帖的 line-height 走 px 行盒高令牌（headH / liveH），不是行高系数键', () => {
+    // 走 lh 键 = 注入无单位值 = line-height 变成「N 倍字号」（2026-11-21 真机：一行 270px）
+    const head = ruleBody(PANEL_CSS, '.pp-post-head {');
+    expect(head).toContain('height: var(--pp-ch-post-headH)');
+    expect(ruleBody(PANEL_CSS, '.pp-post-title {')).toContain('line-height: var(--pp-ch-post-headH)');
+    expect(ruleBody(PANEL_CSS, '.pp-post-read {')).toContain('line-height: var(--pp-ch-post-headH)');
+    expect(ruleBody(PANEL_CSS, '.pp-post-live {')).toContain('line-height: var(--pp-ch-post-liveH)');
+    expect(PANEL_CSS).not.toContain('--pp-ch-post-headLh');
+    expect(PANEL_CSS).not.toContain('--pp-ch-post-liveLh');
+  });
 });
