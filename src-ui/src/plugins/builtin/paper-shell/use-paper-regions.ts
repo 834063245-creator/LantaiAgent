@@ -26,6 +26,7 @@ import {
   createInkCache,
   defaultRegionFor,
   EMPTY_REGION_CONTENT_H,
+  isPostInner,
   layoutRegion,
   REGION_FOOT_GAP,
   translateMessagesCached,
@@ -351,15 +352,24 @@ export function usePaperRegions(params: {
         const translateCache = translateCacheBySession.current.get(s.id) ?? null;
         const res = translateMessagesCached(msgs, pinsMap, translateCache);
         translateCacheBySession.current.set(s.id, res.cache);
+        /* 帖内页块**不出卷**（2026-11-21 帖内页批，单一分界点）：
+         * 转译层照旧为每个子代理产出思考/工具/正文块（帖体渲染要用它们，见
+         * renderers 的 SubagentPostInner），但那些块属于**子会话**，不属于这一卷。
+         * 父卷视角（块数 / 流水号 / 工作单元 / 可立枝 / 可引用 / 湿墨）在这里一刀切干净——
+         * 而不是在六七个下游各写一个 if（那样漏一处就是一处虚高，且永远没人发现）。
+         *
+         * 判据只看 `source.ownerPostId`（见 block-model 的 isPostInner）：
+         * translate 输出 → 这里分区 → 建造 layout/seq/units 只用父卷那一份。 */
+        const parentBlocks = res.blocks.filter((b) => !isPostInner(b));
         // stream-rhythm 刀2（2026-09-03）：工作单元封套 pass——折叠摘除前的全块列
         // 分组（组头子块强制归组），节奏档喂布局栈（intra 32 / unit 64 / recovery 96
         // / stage 96）；来文块进 stageLeadIds（阶段细线渲染面）。刀3：分派走
         // rhythmAssign 单一真源（与布局级封口测试共用），units 进核心缓存（刀4
         // 目次带阶段导航消费）。
         const sealedIds = sealedMessageIdsOf(msgs);
-        const units = groupWorkUnits(res.blocks, { isSealedMessage: (id) => sealedIds.has(id) });
+        const units = groupWorkUnits(parentBlocks, { isSealedMessage: (id) => sealedIds.has(id) });
         // 工具组收起摘除（2026-08-30 会话流专项）：折叠态组头的子卡不进布局栈
-        const blocks = collapseToolGroups(adaptBlocks(res.blocks, anchor.width), foldedOf);
+        const blocks = collapseToolGroups(adaptBlocks(parentBlocks, anchor.width), foldedOf);
         // stream-rhythm 刀5：族边界切单元（读→写→验证→落款是不同的工作行为）
         // + 单元界短规线 / 验证链毕锚的派生——单一真源（与布局级封口测试共用）
         const { rhythmOf, stageLeadIds, unitLeadIds } = rhythmAssign(blocks, units);

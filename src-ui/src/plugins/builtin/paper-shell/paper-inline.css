@@ -311,6 +311,67 @@
 .pp-post-stop:hover {
   color: var(--seal-deep);
 }
+
+/* 帖的**内页**（2026-11-21 帖内页批）：子代理自己的思考/工具/正文。
+ *
+ * 它们**不属于父卷**——父卷的块数/流水号/工作单元/立枝/引用全都不认它们
+ * （见 use-paper-regions 的单一分界点）；这里只是一个抽屉，把「这个人干了什么」
+ * 收在帖里面。所以：
+ *   · 不用父卷的文类签列（那是页边注，属于卷的骨架，不属于帖）；
+ *   · 局部编号 1/7（帖内序号，与父卷 ·021 互不干扰）；
+ *   · 字号小一档、墨浅一档——读它是「查证」，不是「读正文」。
+ * 收起/展开跟帖的折叠态走（默认收起：用户 2026-11-21 拍板「思考放父卷里干嘛」）。 */
+.pp-post-inner {
+  margin-top: var(--pp-ch-post-innerGap);
+  padding-left: var(--pp-ch-post-innerPadL);
+  border-left: var(--rule-soft);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pp-ch-post-innerStepGap);
+}
+/* 一步 = 序号 + 体。序号列窄而固定（局部编号要对齐），体吃余下宽度 */
+.pp-post-inner-step {
+  display: grid;
+  grid-template-columns: var(--pp-ch-post-innerNoW) 1fr;
+  gap: var(--pp-ch-post-innerStepGap);
+  align-items: start;
+}
+.pp-post-inner-no {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  line-height: var(--pp-ch-post-innerH);
+  letter-spacing: 0.04em;
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.pp-post-inner-body {
+  min-width: 0;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: var(--pp-ch-post-innerH);
+  color: var(--ink-2);
+}
+/* 思考（内页里的夹注）：石墨、更小一号——它是过程里最轻的一档 */
+.pp-post-inner-step--reasoning .pp-post-inner-body {
+  font-family: var(--f-song);
+  font-size: 11px;
+  color: var(--graphite);
+}
+/* 正文（内页里的 markdown）：回到宋体，但比父卷正文小两档 */
+.pp-post-inner-step--markdown .pp-post-inner-body {
+  font-family: var(--f-song);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+/* 内页里的工具卡：脚注族的注线不要（那是父卷的族标记），只留等宽文字 */
+.pp-post-inner-step--tool .pp-post-inner-body .pp-args,
+.pp-post-inner-step--tool .pp-post-inner-body .pp-out {
+  font-size: 10.5px;
+  line-height: 1.6;
+  max-height: var(--pp-lim-preMaxH);
+  overflow: auto;
+}
 /* 帖签读数（走秒 / 步数）：mono 9.5 tabular——数字列要对齐，帖并排时不跳字宽 */
 .pp-post-read {
   flex: 0 0 auto;

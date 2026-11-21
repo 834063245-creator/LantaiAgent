@@ -18,9 +18,9 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
   measureRichInlineStats: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
 }));
 
-import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
+import { createBlock, isPostInner, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { defaultFolded } from '../src/paper/fold';
-import { subagentPostFields } from '../src/paper/translate';
+import { subagentPostFields, translateMessages } from '../src/paper/translate';
 import { measureBlockHeight } from '../src/plugins/builtin/paper-shell/measure';
 import type { SubAgentPart, ToolCallPart } from '../src/ui/message-model';
 
@@ -102,10 +102,54 @@ describe('帖高随读数走（测高镜像与渲染同源）', () => {
     expect(measureBlockHeight(withReport)).toBeGreaterThan(measureBlockHeight(settled));
   });
 
-  it('帖默认收起（体是子块，壳层摘除）；出错时张开', () => {
+  it('帖默认收起；出错时张开', () => {
     const ok = blockOf(subagentPostFields(part({ status: 'done' })));
     expect(defaultFolded('subagent', ok.payload)).toBe(true);
     const bad = blockOf(subagentPostFields(part({ status: 'error', errorText: '挂了' })), 'error');
     expect(defaultFolded('subagent', bad.payload)).toBe(false);
+  });
+});
+
+describe('帖内页：子块不属于父卷（2026-11-21 内页批）', () => {
+  beforeEach(() => resetBlockIdCounterForTests());
+
+  const msgWithPost = () => {
+    const p = part({
+      status: 'done',
+      parts: [toolPart('fs', 'done'), toolPart('search', 'done'), { type: 'text', text: '子正文', finalised: true }],
+    });
+    return {
+      _id: 'm1',
+      role: 'assistant' as const,
+      respondingTo: 'u1',
+      status: 'done' as const,
+      parts: [{ type: 'text' as const, text: '父正文', finalised: true }, p],
+    };
+  };
+
+  it('translate：子块带 ownerPostId，帖 payload 持有同一批块（inner）', () => {
+    const blocks = translateMessages([msgWithPost() as never]);
+    const post = blocks.find((b) => b.kind === 'subagent')!;
+    const children = blocks.filter((b) => isPostInner(b));
+    expect(children.length).toBe(3);
+    for (const c of children) expect(c.source.ownerPostId).toBe(post.id);
+    const inner = (post.payload as { inner: typeof blocks }).inner;
+    expect(inner.map((b) => b.id)).toEqual(children.map((b) => b.id));
+  });
+
+  it('父卷视角：滤掉内页块后只剩父卷自己的块（块数/流水号不再被子代理撑大）', () => {
+    const blocks = translateMessages([msgWithPost() as never]);
+    const parent = blocks.filter((b) => !isPostInner(b));
+    expect(parent.map((b) => b.kind)).toEqual(['markdown', 'subagent']);
+    expect(parent.length).toBe(2);
+  });
+
+  it('内页默认收起 ⇒ 帖高只算帖签；展开才把内页算进去', () => {
+    const blocks = translateMessages([msgWithPost() as never]);
+    const post = blocks.find((b) => b.kind === 'subagent')!;
+    const collapsed = measureBlockHeight(post, true);
+    const expanded = measureBlockHeight(post, false);
+    expect(collapsed).toBe(10 + 20);
+    expect(expanded).toBeGreaterThan(collapsed);
   });
 });

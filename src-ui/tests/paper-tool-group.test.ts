@@ -426,20 +426,26 @@ describe('measure/摘除：子代理帖的帖首几何，收起摘子块', () =>
     );
     expect(measureSignature(header, false)).toBe('subagent|调研|done||2|0');
   });
-  it('collapseToolGroups：subagent 组折叠摘 flow 子块，钉住子块保留', () => {
+  /* 2026-11-21 帖内页批（**显式规格变更**）：旧行为是「帖折叠 → collapseToolGroups 把子块
+   * 从布局栈摘掉」。这条补丁的前提是「子块在父卷块栈里」——而那个前提本身就是病灶：
+   * 子代理的思考/工具/正文属于**子会话**，不该占父卷的块位、块数、流水号。内页批把根因
+   * 拔掉（translate 打 ownerPostId → use-paper-regions 入口分区），子块根本不进 blocks，
+   * 于是这条摘除逻辑成为死代码并已删除。新断言从「归属」这一面写（见
+   * paper-subagent-post.test.ts 的「子块不属于父卷」一组），此处不再留旧断言的尸体。 */
+  it('collapseToolGroups 只处理工具组（帖的子块已不入卷，无物可摘）', () => {
     const child = () => createBlock('markdown', { text: '子产出' }, { messageId: 'm', part: null });
     const c1 = { ...child(), id: 'c1' };
-    const pinned = { ...child(), id: 'c2', state: 'pinned' as const, x: 5, y: 5 };
     const header = {
       ...createBlock(
         'subagent',
-        { agentId: 'a', description: 'd', status: 'done', childIds: ['c1', 'c2'], items: [] },
+        { agentId: 'a', description: 'd', status: 'done', childIds: ['c1'], items: [] },
         { messageId: 'm', part: null },
       ),
       id: 'h1',
     };
-    const blocks = [header, c1, pinned];
-    expect(collapseToolGroups(blocks, () => true).map((b) => b.id)).toEqual(['h1', 'c2']);
+    const blocks = [header, c1];
+    // 帖折叠与否都不动别人的块——子块本来就不在这个数组里（即便塞进来也不归它管）
+    expect(collapseToolGroups(blocks, () => true).map((b) => b.id)).toEqual(['h1', 'c1']);
     expect(collapseToolGroups(blocks, () => false)).toEqual(blocks);
   });
 });

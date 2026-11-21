@@ -46,10 +46,11 @@ afterEach(() => {
 
 function renderPost(payload: Record<string, unknown>): void {
   const def = builtinRendererDefs().find((d) => d.kind === 'subagent');
-  expect(def, 'subagent 渲染器必须注册（缺注册 = 落 ' * ' JSON 兜底，payload 含活 part 引用会炸）').toBeTruthy();
+  expect(def, 'subagent 渲染器必须注册（缺注册 = 落 JSON 兜底，payload 含活 part 引用会炸）').toBeTruthy();
   const C = def!.component;
+  const folded = payload.__folded === true;
   act(() => {
-    root.render(createElement(C, { block: postBlock(payload) as never }));
+    root.render(createElement(C, { block: postBlock(payload) as never, folded }));
   });
 }
 
@@ -76,5 +77,34 @@ describe('帖的渲染面：复命段', () => {
   it('报成功但正文为空 ⇒ 仍不出段（宁缺勿造，不铺半截复命）', () => {
     renderPost({ status: 'done', report: '' });
     expect(container.querySelector('.pp-post-report')).toBeNull();
+  });
+});
+
+describe('帖内页的渲染面（2026-11-21 内页批）', () => {
+  const innerBlocks = () => [
+    createBlock('reasoning', { text: '想了想' }, { messageId: 'm', part: null }),
+    createBlock(
+      'tool',
+      { toolId: 't', name: 'fs', label: 'fs(read)', args: '{"path":"a.ts"}', status: 'done', output: 'ok' } as never,
+      { messageId: 'm', part: null },
+    ),
+  ];
+
+  it('默认收起：内页不出 DOM（父卷纸面干净——用户 2026-11-21 拍板「思考放父卷里干嘛」）', () => {
+    renderPost({ status: 'done', inner: innerBlocks(), __folded: true });
+    expect(container.querySelector('.pp-post-inner')).toBeNull();
+  });
+
+  it('展开：内页出 DOM，局部编号 1/N 与父卷流水号无关', () => {
+    renderPost({ status: 'done', inner: innerBlocks() });
+    expect(container.querySelector('.pp-post-inner')).toBeTruthy();
+    const nos = [...container.querySelectorAll('.pp-post-inner-no')].map((e) => e.textContent);
+    expect(nos).toEqual(['1/2', '2/2']);
+  });
+
+  it('内页里的工具卡走同一套语义投影（不是第二套渲染）', () => {
+    renderPost({ status: 'done', inner: innerBlocks() });
+    const body = container.querySelector('.pp-post-inner-step--tool');
+    expect(body?.textContent?.length, '工具卡体应当有内容（投影渲染）').toBeGreaterThan(0);
   });
 });

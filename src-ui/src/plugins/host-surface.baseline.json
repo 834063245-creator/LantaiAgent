@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b44971f9",
+  "fingerprint": "23e23f34",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -189,6 +189,7 @@
     "isDiffLang",
     "isFoldable",
     "isMockMode",
+    "isPostInner",
     "isRiseVolume",
     "isThinkingMode",
     "isTopLevelHost",

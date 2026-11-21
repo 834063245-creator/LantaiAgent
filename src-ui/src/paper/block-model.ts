@@ -130,6 +130,16 @@ export interface BlockPayloads {
     /** 复命正文（成功）/ 未办原因（失败或被召回）——帖尾那一段。 */
     report?: string;
     error?: string;
+    /** **内页**（2026-11-21 帖内页批）：子代理自己的思考/工具/正文，按序已译成块。
+     *
+     *  ⚠ 这些块**不属于父卷**（source.ownerPostId = 本帖 id）——父卷视角在
+     *  use-paper-regions 的单一分界点就把它们滤掉了（块数/序号/单元/立枝/引用/湿墨
+     *  统统当它们不存在）。它们只为帖体渲染而存在。
+     *
+     *  与旧 `items` 的区别：`items` 是**活 part 引用**（流式期直读，永远最新），
+     *  内页是**已译好的块序列**（渲染期不用再翻 part，测高与渲染读同一份）。
+     *  两者并存：`items` 供读数派生，`inner` 供帖体渲染。 */
+    inner?: SourcedBlock[];
   };
   notice: { text: string; level: 'info' | 'warn' | 'error' };
   /** 回合错误（2026-08-31）：assistant 回合终止失败/暂停时的墓碑行——
@@ -184,6 +194,21 @@ export interface BlockSource {
   messageId: MessageId;
   /** assistant 消息内的 part 引用（user/notice 为 null） */
   part: object | null;
+  /** **归属帖**（2026-11-21 帖内页批）：非空 = 这块是某个子代理帖的**内页内容**，
+   *  不是父卷的块。数据上它由 translate 产出（供帖体渲染），但父卷的一切视角
+   *  （块数 / 流水号 / 工作单元 / 可立枝 / 可引用 / 湿墨）都必须当它不存在——
+   *  子代理自己的思考与工具调用属于**子会话**，不属于这一卷。
+   *
+   *  为什么要一个字段而不是「靠 id 前缀认」：判据要能被每一处消费面**廉价地问**，
+   *  而 id 形状是转译实现细节（哪天编号规则变了，全仓的 if 会一起失灵）。 */
+  ownerPostId?: string;
+}
+
+/** 块是否属于某个子代理帖的内页（**不是**父卷的块）。
+ *  所有「父卷视角」的消费面（块数/序号/工作单元/立枝/引用/湿墨）在入口处问它一次；
+ *  帖体渲染是唯一的例外——它就是要读这些块。 */
+export function isPostInner(b: SourcedBlock): boolean {
+  return b.source.ownerPostId != null;
 }
 
 export type MessageId = string;

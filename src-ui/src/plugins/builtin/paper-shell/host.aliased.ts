@@ -140,6 +140,7 @@ export const subscribeOverlayContributions = impl.subscribeOverlayContributions;
 export const resolveAssetBlock = impl.resolveAssetBlock;
 export const resolveRenderer = impl.resolveRenderer;
 export const writingBlockIdOf = impl.writingBlockIdOf;
+export const isPostInner = impl.isPostInner;
 export const activeSpace = impl.activeSpace;
 export const agentSessionState = impl.agentSessionState;
 export const PluginBoundary = impl.PluginBoundary;

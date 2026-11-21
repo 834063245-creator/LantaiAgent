@@ -182,7 +182,23 @@ export const CHROME_TOKENS = {
    *  line-height 的倍数），而这里装的是 px 行盒高。写错 = 注入出 =20（无单位）→
    *  CSS 的 line-height:20 变成 20 倍字号（13.5px × 20 = 270px 一行），帖首瞬间
    *  撑成半屏、活体行被推到看不见的地方。真机事故见 2026-11-21。 */
-  post: { padTop: 10, padL: 15, seal: 19, headH: 20, liveH: 15, liveGap: 2, reportGap: 10, reportPad: 9 },
+  post: {
+    padTop: 10,
+    padL: 15,
+    seal: 19,
+    headH: 20,
+    liveH: 15,
+    liveGap: 2,
+    reportGap: 10,
+    reportPad: 9,
+    /* 内页（2026-11-21）：上距 / 左内距 / 步间距 / 序号列宽 / 行盒高。
+     * ⚠ 行盒高用 *H（px 语义）——写 *Lh 会被注入器当行高系数发无单位值（11-21 事故）。 */
+    innerGap: 12,
+    innerPadL: 10,
+    innerStepGap: 8,
+    innerNoW: 26,
+    innerH: 17,
+  },
   // 载荷段头（2026-09-14 工具卡可读性专项）：参数/输出/错误各一行小字标 + 细规线。
   // 旧 .pp-out 的 marginTop/borderTop/padTop（6/1/6）退役——分隔语义改由段头行
   // 承载（首段不留空档，后续段上距 = marginTop）。
@@ -297,6 +313,11 @@ export const CHROME_DERIVED = {
   postLiveGap: CHROME_TOKENS.post.liveGap,
   postReportGap: CHROME_TOKENS.post.reportGap,
   postReportPad: CHROME_TOKENS.post.reportPad,
+  postInnerGap: CHROME_TOKENS.post.innerGap,
+  postInnerPadL: CHROME_TOKENS.post.innerPadL,
+  postInnerStepGap: CHROME_TOKENS.post.innerStepGap,
+  postInnerNoW: CHROME_TOKENS.post.innerNoW,
+  postInnerH: CHROME_TOKENS.post.innerH,
   /** 段头行恒一行（mono size × lh）——参数/输出/错误段共用。 */
   secHeadH: CHROME_TOKENS.secHead.size * CHROME_TOKENS.secHead.lh,
   /** 段头上距（首段不留空档——渲染端 gap 条件与 measure 同判据）。 */

@@ -124,11 +124,16 @@ function groupToolRuns(
 
 /** 工具组收起摘除（壳层消费）：折叠态组头的 flow 子卡不进布局栈——
  *  钉住子卡不摘（钉住态在世界层，与组收起无关）。
- *  subagent 组（F4 2026-09-01）同机制：组头折叠 = 子 parts 摘出布局栈。 */
+ *
+ *  ⚠ 帖（subagent）**不在此列**（2026-11-21 帖内页批）：帖的子块早已不是卷的块
+ *  （translate 给它们打 ownerPostId，use-paper-regions 在入口就滤掉了），所以这里
+ *  没有可摘的对象——帖折叠时由帖体自己收起内页（SubagentPostBody 按 folded 收敛）。
+ *  旧实现靠这条把子块摘出布局栈，是「子块居然在父卷块栈里」的伴生补丁；
+ *  内页批把根因拔掉之后，这条 subagent 分支就成了死逻辑，一并删除。 */
 export function collapseToolGroups(blocks: SourcedBlock[], isCollapsed: (b: SourcedBlock) => boolean): SourcedBlock[] {
   const hidden = new Set<string>();
   for (const b of blocks) {
-    if ((b.kind !== 'toolgroup' && b.kind !== 'subagent') || !isCollapsed(b)) continue;
+    if (b.kind !== 'toolgroup' || !isCollapsed(b)) continue;
     for (const id of (b.payload as { childIds?: string[] }).childIds ?? []) hidden.add(id);
   }
   if (hidden.size === 0) return blocks;
@@ -566,6 +571,10 @@ function translateAssistantParts(
         const childIds: string[] = [];
         for (let sIdx = 0; sIdx < part.parts.length; sIdx++) childIds.push(`pb:${msg._id}:${idx}s${sIdx}`);
         const headerId = `pb:${msg._id}:${idx}g`;
+        /* 内页块（2026-11-21 帖内页批）：帖 payload 持**同一数组引用**，下面 forEach
+         * 边译边填。这样做是为了不打乱既有的「先建头、再建子」顺序（翻译顺序 = 屏上
+         * 顺序，子块 id 也按 s{n} 递增）；数组引用稳定，填充对已建的对象立即可见。 */
+        const inner: SourcedBlock[] = [];
         const header = withPin(
           {
             ...createBlock(
@@ -576,6 +585,7 @@ function translateAssistantParts(
                 status: part.status,
                 childIds,
                 items: part.parts,
+                inner,
                 ...subagentPostFields(part),
               },
               { messageId: msg._id, part },
@@ -659,7 +669,13 @@ function translateAssistantParts(
           };
           const b = make();
           subChildIds.add(subId);
-          out.push(withPin(b, pinned?.get(subId)));
+          inner.push(b);
+          /* 归属帖（2026-11-21 帖内页批）：子代理的思考/工具/正文属于**子会话**，
+           * 不属于这一卷。打上 ownerPostId 后，父卷的一切视角（块数 / 流水号 /
+           * 工作单元 / 可立枝 / 可引用 / 湿墨）都会当它不存在；只有帖体渲染读它。
+           * ⚠ 子块**仍然产出**（不是删掉）：帖的内页要用它们渲染「这个人干了什么」，
+           * 只是不再冒充父卷的块。 */
+          out.push(withPin({ ...b, source: { ...b.source, ownerPostId: headerId } }, pinned?.get(subId)));
         });
         break;
       }

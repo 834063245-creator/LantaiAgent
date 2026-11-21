@@ -44,7 +44,7 @@ import { VIEWER_BOX_CLASSES, viewerClassOf } from '../../../paper/viewer-exts';
  * 保留——FONT_STACKS 与 tokens.css --f-* 同源，canvas 测量字体必须与渲染字体一致）。 */
 
 // 子代理帖的几何/量高（2026-11-20 帖批 · 拆刀）：本文件按块 kind 分派，帖的增长不住这里
-import { measurePostHeight } from './post-metrics';
+import { measurePostHeight, measurePostInnerStepH } from './post-metrics';
 import {
   ASSET_DERIVED,
   ASSET_TOKENS,
@@ -277,12 +277,8 @@ const USER_IMAGE_GAP = CHROME_DERIVED.userImageGap;
 const USER_IMAGES_MARGIN_TOP = CHROME_DERIVED.userImagesMarginTop;
 const REASONING_TEXT_INSET = CHROME_DERIVED.reasoningTextInset; // padding-left 18 + border-left 2（虚线）
 const TOOL_PAD_TOP = CHROME_DERIVED.toolPadTop; // .pp-block.pp-tool padding-top
-/* 子代理帖的几何住在 post-metrics.ts（2026-11-20 帖批 · 上帝文件拆刀）：
- * 帖是独立一族块，常量与复命段量高都不属于通用块高逻辑，且 measure.ts 已在 2200 行档位上。
- * 这里的取值与调用保持原样——只是把「住哪儿」搬走，口径一字未变。 */
-/** 载荷段头（.pp-sec-head，2026-09-14）：恒一行（mono 10px × 1.4 = 14），
- *  首段不留上距——参数段紧跟折叠行（渲染端 gap 条件同判据）。 */
-export const SEC_HEAD_H = CHROME_DERIVED.secHeadH;
+/** 载荷段头（.pp-sec-head）：恒一行（mono 10px × 1.4 = 14），首段不留上距（段头紧折叠行）。 */
+export const SEC_HEAD_H = CHROME_DERIVED.secHeadH; // 行高
 export const SEC_HEAD_GAP = CHROME_DERIVED.secHeadGap;
 const DIFF_LANG_H = CHROME_DERIVED.diffLangH; // .pp-lang 10px×lh1 + margin-bottom 6
 const DIFF_PRE_CHROME_H = CHROME_DERIVED.diffPreChromeH; // pre padding 14×2 + border 1×2
@@ -1268,6 +1264,10 @@ export function needsObservedHeight(kind: BlockKind, hasAsset: boolean, hasView 
   // 折行点仍是 canvas 与 DOM 的老分歧（同正文表格先例）⇒ 挂 RO 收口。
   // 无视图的程文照旧不挂（载荷段全部封顶，468/468 零偏差的既有实测）。
   if (kind === 'code') return hasView;
+  /* 子代理帖（2026-11-21 内页批）：内页里套着 reasoning/markdown/diff 这些**实测族**，
+   *  它们的体高在 DOM 里与 canvas 有老分歧（折行点不同）；帖整体的高又是把内页逐块量
+   *  再相加后算出来的 ⇒ 分歧会累积。挂 RO 收口，让真机实测高回写覆盖静态镜像。 */
+  if (kind === 'subagent') return true;
   return kind === 'reasoning' || kind === 'markdown' || kind === 'diff';
 }
 
@@ -1980,11 +1980,12 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       // 子卡是独立 tool 块，收起由壳层摘出布局栈，头高与子卡数无关。
       return TOOL_PAD_TOP + FOLD_ROW_H;
     case 'subagent': {
-      // 子代理**帖**（2026-11-20 帖批）：几何与量高都住 post-metrics.ts——帖是独立一族块，
-      // 它跟工具组头早已不是同构（多一条活体行、多一段复命），知识不该再混在通用分派里。
-      // 测量器由本文件传入：文本测量只在 measure.ts 有一份（pretext 缓存 + 字体常量）。
-      const p = b.payload as { status?: string; doing?: string | null; report?: string; error?: string };
-      return measurePostHeight(p, b.w, folded, measureTextHeight);
+      // 子代理**帖**（11-20 帖批；11-21 内页批）：帖首 + 活体行 + 内页 + 复命段。
+      // 内页块不在父卷块栈里，高度没别处会量——交给 post-metrics 逐块量（它持有该族知识）。
+      const inner = (b.payload as { inner?: ReadonlyArray<{ kind: string; w: number }> }).inner ?? [];
+      const stepH = (i: number): number =>
+        inner[i] ? measurePostInnerStepH(inner[i], b.w, (x) => measureBlockHeight(x as never)) : 0;
+      return measurePostHeight(b.payload as never, b.w, folded, measureTextHeight, stepH);
     }
     default:
       // 资产/开放 kind：按表现原语镜像计高（旧固定 80 是画图族卡片溢出的根因）。

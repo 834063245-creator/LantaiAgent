@@ -68,7 +68,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 | `ctx.overlays` | `OverlayService` | `src/composition/overlay-service.ts` | `asset-rack` · `compose-dock` · `compose-sheet` · `draft-folio` · `paper-minimap` · `toc-strip` | 2 文件 |
 | `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `my-panel` · `paper` · `settings` | 4 文件 |
 | `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | `goal` · `my/section` | 2 文件 |
-| `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | `my/kind` | 7 文件 |
+| `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | `my/kind` | 8 文件 |
 | `ctx.rootViews` | `RootViewsService` | `src/composition/root-views-service.ts` | `ask-cards` · `sessions-home` | 2 文件 |
 | `ctx.steps` | `StepsService` | `src/composition/steps-service.ts` | — | 0 文件 |
 | `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `communication-tools` · `compaction-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `hologram/composition-domain/composition` · `merge-tools` · `my/dynamic-tool` · `my/query` · `request-tool` · `spawn-tool` | 7 文件 |
@@ -127,7 +127,7 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 - owner：`src/composition/renderer-service.tsx`
 - 默认实现 / 贡献者 id：`my/kind`
-- 消费面（7）：`src/plugins/builtin/host-modules.ts` · `src/plugins/builtin/paper-renderers/index.tsx` · `src/plugins/builtin/paper-shell/host.ts` · `src/plugins/builtin/renderers/components.tsx` · `src/plugins/builtin/renderers/index.tsx` · `src/plugins/builtin/skill-domain/builtin-skills.ts` · `src/plugins/service-plugins.ts`
+- 消费面（8）：`src/plugins/builtin/host-modules.ts` · `src/plugins/builtin/paper-renderers/index.tsx` · `src/plugins/builtin/paper-renderers/post-renderer.tsx` · `src/plugins/builtin/paper-shell/host.ts` · `src/plugins/builtin/renderers/components.tsx` · `src/plugins/builtin/renderers/index.tsx` · `src/plugins/builtin/skill-domain/builtin-skills.ts` · `src/plugins/service-plugins.ts`
 
 ### `ctx.rootViews` — RootViewsService（贡献通道）
 

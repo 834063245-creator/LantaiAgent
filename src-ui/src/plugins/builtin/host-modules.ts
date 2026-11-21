@@ -205,7 +205,7 @@ import { Service } from '../../cordis';
 import { setLang } from '../../i18n';
 // A4 销账 W1（2026-09-28）：`createBlock` 也经宿主面出（renderers 的双走查查看器建块用）——
 // 该模块带块 id 发号器（`let blockSeq`），产物域随包内联会另起一套号、与画布（以 id 为键）撞车。
-import { createBlock, writingBlockIdOf } from '../../paper/block-model';
+import { createBlock, isPostInner, writingBlockIdOf } from '../../paper/block-model';
 import {
   ANCHOR,
   autoPanVector,
@@ -537,6 +537,8 @@ const faceDeps = {
   // paper 域（几何/墨迹/测量/选择/翻译/虚拟化/上下文）
   viewportCenterWorld,
   writingBlockIdOf,
+  // 帖内页归属判据（2026-11-21）：父卷视角把子代理内部产出挡在块流水之外。
+  isPostInner,
   // A4 销账 W1（2026-09-28）：块工厂（renderers 双走查查看器）+ 差分语言判据
   // （paper-renderers 体渲染）——两处所在模块都带模块级状态，按纪律上桥。
   createBlock,
