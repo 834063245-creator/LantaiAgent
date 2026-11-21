@@ -59,7 +59,7 @@ export interface AddProviderEntry {
   models: string[];
   /** 模型目录快照（拉取到的全量 id）——详情页据此可继续勾选，不必重拉。 */
   catalog?: string[];
-  /** 新会话默认模型（必须是 models 之一或与 model 一致）。 */
+  /** 添加后的初始「最近使用」模型（必须是 models 之一）；之后由创作坞跟从更新。 */
   model: string;
   /** API 拉取到的 per-model 元数据（provider-model-meta，2026-09-11）——拉取时
    *  由方言的宽容解析层产出（窗口/输出上限/视觉/推理），随添加一次性落盘到
@@ -376,7 +376,7 @@ export function AddProviderSheet({ open, existingNames, onClose, submitError, on
   };
 
   /** **添加 / 移除**一个模型（行首「＋」/「✓」）——「添加」是进「可用模型」的
-   *  唯一动作（拉取只填目录，不自动添加）。移除的正是「新会话默认」时顶第一个
+   *  唯一动作（拉取只填目录，不自动添加）。移除的正是当前初始模型时顶第一个
    *  已添加项（否则默认模型落在可用模型之外，创作坞触发器会显示一个不在下拉里的模型）。 */
   const toggleEnabled = (id: string) => {
     setEnabled((prev) => {
@@ -474,7 +474,7 @@ export function AddProviderSheet({ open, existingNames, onClose, submitError, on
         </div>
 
         <div className="pp-sheet-note">
-          选择厂商预填连接（或手动配置）→ 拉取该提供方的真实模型 → 选定新会话默认 → 添加即生效。
+          选择厂商预填连接（或手动配置）→ 拉取该提供方的真实模型 → 选定初始使用模型 → 添加即生效。
           {isOAuth && ' OAuth 订阅：先在下方完成浏览器授权登录，登录后即可拉取该账号的可用模型。'}
         </div>
 
@@ -731,12 +731,12 @@ export function AddProviderSheet({ open, existingNames, onClose, submitError, on
                       {on ? '✓' : '＋'}
                     </button>
                     <span className="pp-pick-model-id">{id}</span>
-                    {defaultModel === id && <span className="pp-model-chip-default">新会话默认</span>}
+                    {defaultModel === id && <span className="pp-model-chip-default">初始模型</span>}
                     <button
                       type="button"
                       className="pp-pick-setdefault"
                       disabled={!on || defaultModel === id}
-                      data-tip={on ? '设为新会话默认模型' : '先点「＋」添加，才能设为默认'}
+                      data-tip={on ? '设为添加后的初始使用模型' : '先点「＋」添加，才能设为初始模型'}
                       onClick={() => setDefaultModel(id)}
                     >
                       设为默认

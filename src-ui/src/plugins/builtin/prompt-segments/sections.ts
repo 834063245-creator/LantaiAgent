@@ -138,9 +138,11 @@ ${userPath}
 写在那种文件里的东西**不会**生效。）
 
 一行 provider = 一个顶层键，键名就是 provider 身份（字母/数字/下划线/连字符）；可改字段：
-kind（协议：anthropic / openai / responses）、baseUrl、model（新会话默认）、models（可用模型）、
+kind（协议：anthropic / openai / responses）、baseUrl、models（可用模型）、
 headers（网关怪癖）、modelOverrides、authMode / oauthProvider。
 思考档位**不在**这份文件里（2026-11-21 起：只在创作坞按会话选；老文件里的 thinking 字段已退役）。
+model（最近使用）也不在这份文件里（2026-11-30 起：创作坞切模型时自动记在本机；老文件里的
+model 字段只作一次性迁移，下次保存即从文件消失）。
 
 改完约 1 秒自动生效（无需重启、无需用户点保存）。密钥**不要**写进这个文件——
 apiKey 权威在本机系统凭据库（用户可在 设置 → 提供方 的 Key 栏填写）；连接探针、模型目录、

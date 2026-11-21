@@ -10,7 +10,7 @@
 //   - 一份文件则是：复制文件 = 导入，文件本身就是导出，agent 用 fs 工具直接改。
 //
 // 与设置页/存储的分工（照 DSH `settings-file` 的「一份用户可编辑文档 + 用户层覆盖」）：
-//   - **本文件 = 用户意图的权威源**（kind / baseUrl / 模型 / 请求头 / 覆盖 / 档位）；
+//   - **本文件 = 用户意图的权威源**（kind / baseUrl / 可用模型 / 请求头 / 覆盖 / 档位）；
 //   - 系统凭据库 = 密钥权威（apiKey 永不进本文件——写进去就是明文落盘）；
 //   - localStorage = 运行态权威（lastTest 探针结果 / catalog 目录快照）——那是 app
 //     自己的读数，不是用户意图，不进文件（DSH 同款：文件里只放用户层）。
@@ -42,7 +42,7 @@ import { CORE_PROTOCOLS } from './types';
  *  `lastTest` / `catalog` 同类，回 localStorage。 */
 export type ProviderIntent = Omit<
   ProviderSettings,
-  'name' | 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta' | 'lastThinking'
+  'name' | 'apiKey' | 'model' | 'lastTest' | 'catalog' | 'modelMeta' | 'lastThinking'
 >;
 
 /** 解析成功的一节：身份（键名）+ 意图。 */
@@ -52,6 +52,10 @@ export interface ProviderSection {
   /** **字段级**警告：这一节可用，但某个字段的值写错了、已按缺省处理
    *  （坏字段只丢字段——整节不因一处笔误而消失）。 */
   warnings: string[];
+  /** 文件里遗留的 `model`（2026-11-30 R5：已从意图面退役）。
+   *  `model` 是「最近使用」运行态读数；旧文件里的值只用于一次性迁移，
+   *  装载时收进本机运行态，下次写盘从文件里消失。 */
+  legacyModel?: string;
   /** 文件里遗留的 `modelMeta`（本机读数，已不在意图面）。
    *  只用于一次性迁移：装载时收进运行态、下次写盘从文件里消失。 */
   legacyModelMeta?: Record<string, ModelMeta>;
@@ -85,6 +89,7 @@ export interface ProvidersDoc {
 /** 文档里**不属于**用户意图的保留键（写进来必定是写错了——点名报错，不静默丢弃）。 */
 const RUNTIME_ONLY_KEYS: readonly { key: string; why: string }[] = [
   { key: 'apiKey', why: '密钥永不进本文件（明文落盘会被误分享）——请到设置页「API Key」栏填写，权威在系统凭据库' },
+  { key: 'model', why: '「最近使用」是本机运行态读数、不进配置——创作坞切模型时自动记；新卷默认跟从它' },
   { key: 'lastTest', why: '连接探针结果是本机读数、不进配置（本文件是用户意图）' },
   { key: 'catalog', why: '模型目录快照是本机读数、不进配置（设置页「刷新目录」拉取）' },
   { key: 'modelMeta', why: '模型元数据是「刷新目录」拉取回来的本机读数、不进配置（2026-11-16 起只在本机存储）' },
@@ -100,7 +105,7 @@ export const PROVIDERS_DOC_HEADER = [
   '',
   '· 一行 provider = 一个顶层键，键名就是 provider 身份（字母/数字/下划线/连字符）。',
   '· 这里只放**非敏感**连接配置；密钥（apiKey）权威在本机系统凭据库，不写在这里。',
-  '· 本机读数（连接探针、模型目录快照、模型元数据）也不在这里，它们只活在本机存储。',
+  '· 本机读数（最近使用模型、连接探针、模型目录快照、模型元数据）也不在这里，它们只活在本机存储。',
   '· 删掉某一节 = 删掉那行 provider（密钥仍留在凭据库，设置页「清除」可一并删）。',
   '· 设置页保存会**按字段**回写本文件，你手写的注释与排版会保留。',
   '',
@@ -109,8 +114,7 @@ export const PROVIDERS_DOC_HEADER = [
   '# my-gateway:',
   '#   kind: openai                                  # 协议：anthropic / openai / responses',
   '#   baseUrl: https://gateway.example.com/v1',
-  '#   model: deepseek-v4.1-flash                    # 新会话默认模型',
-  '#   models: [deepseek-v4.1-flash, claude-opus-4-6] # 可用模型（缺省 = 只有 model 一个）',
+  '#   models: [deepseek-v4.1-flash, claude-opus-4-6] # 可用模型（创作坞下拉的可选面）',
   '#   headers:                                      # 网关怪癖（可选）',
   '#     x-opencode-session: sess-1',
   '#   modelOverrides:                               # 单模型纠正（可选；模型的窗口/视觉声明属这里，',
@@ -133,6 +137,7 @@ export function intentOf(p: ProviderSettings): ProviderIntent {
   const {
     name: _name,
     apiKey: _apiKey,
+    model: _model,
     lastTest: _lastTest,
     catalog: _catalog,
     modelMeta: _modelMeta,
@@ -146,9 +151,12 @@ export function intentOf(p: ProviderSettings): ProviderIntent {
 export function mergeIntent(
   name: ProviderId,
   intent: ProviderIntent,
-  runtime: Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta' | 'lastThinking'>,
+  runtime: Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta' | 'lastThinking'> & {
+    model?: string;
+  },
 ): ProviderSettings {
-  return { ...intent, name, ...runtime };
+  // model = 本机「最近使用」运行态，不是文件意图；空串是合法起始态。
+  return { ...intent, name, ...runtime, model: runtime.model ?? '' };
 }
 
 /** 读字符串数组字段（缺省 = undefined；非法 = 报错，不静默清洗）。 */
@@ -366,7 +374,6 @@ export const FACTORY_PROTOCOLS: KnownProtocols = {
 const INTENT_FIELDS = [
   'kind',
   'baseUrl',
-  'model',
   'models',
   'authMode',
   'oauthProvider',
@@ -381,6 +388,8 @@ export interface ParsedSection {
   intent: ProviderIntent;
   /** 字段级问题：这些字段已按缺省处理，节的其余部分照常生效。 */
   warnings: string[];
+  /** 文件里遗留的 `model`（最近使用运行态；迁移用，不再写回文件）。 */
+  legacyModel?: string;
   /** 文件里遗留的 `modelMeta`（运行态读数，迁移用；不再写回文件）。 */
   legacyModelMeta?: Record<string, ModelMeta>;
 }
@@ -436,11 +445,18 @@ export function parseSection(
   const fields = src as Record<string, unknown>;
   const warnings: string[] = [];
 
-  // 本机读数键（apiKey / lastTest / catalog / modelMeta）：点名提示 + **忽略**
-  // ——modelMeta 例外，它是迁移源（旧文件里那片自动生成的数据要收进本机存储）。
+  // 本机读数键（apiKey / model / lastTest / catalog / modelMeta）：点名提示 + **忽略**
+  // ——model / modelMeta 例外，它们是迁移源（旧文件里的值要收进本机运行态）。
+  let legacyModel: string | undefined;
   let legacyModelMeta: Record<string, ModelMeta> | undefined;
   for (const { key, why } of RUNTIME_ONLY_KEYS) {
     if (fields[key] === undefined) continue;
+    if (key === 'model') {
+      if (typeof fields.model === 'string' && fields.model.trim()) legacyModel = fields.model.trim();
+      else warnings.push('model 必须是字符串——已忽略该字段');
+      warnings.push('model 已从本文件迁出（最近使用是本机运行态）；装载时会收进本机存储，下次保存即从文件消失');
+      continue;
+    }
     if (key === 'modelMeta') {
       legacyModelMeta = readModelMeta(fields.modelMeta, warnings);
       warnings.push('modelMeta 已从本文件迁出（本机读数）；装载时会收进本机存储，下次保存即从文件消失');
@@ -454,11 +470,6 @@ export function parseSection(
     if (!(INTENT_FIELDS as readonly string[]).includes(key)) {
       warnings.push(`未知字段「${key}」已忽略（本版本可写字段：${INTENT_FIELDS.join(' / ')}）`);
     }
-  }
-
-  const model = fields.model;
-  if (typeof model !== 'string' || !model.trim()) {
-    warnings.push('缺少 model（新会话默认模型 id）——本行暂时没有默认模型，可在设置页补上');
   }
 
   const models = readStringArray(fields.models, 'models', warnings);
@@ -487,9 +498,6 @@ export function parseSection(
   const intent: ProviderIntent = {
     kind: (fields.kind as string).trim(),
     baseUrl: (fields.baseUrl as string).trim(),
-    // model 是 ProviderSettings 的必填 string——缺省写空串（= 本行暂无可选模型），
-    // 而不是把整个字段删掉（那会让类型和消费面各说一套）。
-    model: typeof fields.model === 'string' ? fields.model.trim() : '',
     ...(models !== undefined ? { models } : {}),
     ...(headers !== undefined ? { headers } : {}),
     ...(modelOverrides !== undefined ? { modelOverrides } : {}),
@@ -497,7 +505,12 @@ export function parseSection(
     ...(typeof oauthProvider === 'string' ? { oauthProvider } : {}),
     ...(typeof oauthAccountId === 'string' && oauthAccountId.trim() ? { oauthAccountId: oauthAccountId.trim() } : {}),
   };
-  return { intent, warnings, ...(legacyModelMeta !== undefined ? { legacyModelMeta } : {}) };
+  return {
+    intent,
+    warnings,
+    ...(legacyModel !== undefined ? { legacyModel } : {}),
+    ...(legacyModelMeta !== undefined ? { legacyModelMeta } : {}),
+  };
 }
 
 /**
@@ -555,6 +568,7 @@ export function parseProvidersDoc(text: string, protocols: KnownProtocols = FACT
       name: name.trim() as ProviderId,
       intent: parsed.intent,
       warnings: parsed.warnings,
+      ...(parsed.legacyModel !== undefined ? { legacyModel: parsed.legacyModel } : {}),
       ...(parsed.legacyModelMeta !== undefined ? { legacyModelMeta: parsed.legacyModelMeta } : {}),
     });
     if (parsed.warnings.length > 0) {

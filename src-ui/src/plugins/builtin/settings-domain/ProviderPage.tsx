@@ -357,7 +357,7 @@ export function ProviderPage({
       const seed = cur.length === 0 && p?.model?.trim() ? [p.model.trim()] : [];
       const next = seed.concat(cur.includes(id) ? [] : [id]);
       const patch: Partial<ProviderSettings> = { models: next };
-      // 还没有「新会话默认」（= 最近使用，自动跟从创作坞）：第一个可用模型即默认
+      // 还没有「最近使用」记录：第一个可用模型即新卷出生值。
       if (!p?.model?.trim() && next.length > 0) patch.model = next[0];
       if (patch.model !== undefined) patch.lastTest = undefined;
       onCommitProvider(updateProvider(settings, name, patch));
@@ -371,7 +371,7 @@ export function ProviderPage({
       const cur = Array.isArray(p?.models) ? p.models : [];
       const next = cur.filter((m) => m !== modelId);
       const patch: Partial<ProviderSettings> = { models: next };
-      // 删的是当前「新会话默认」→ 自动顶上第一个（无剩余则清空）
+      // 删的是当前「最近使用」模型 → 自动顶上剩余列表第一个（无剩余则清空）
       if (p?.model === modelId) patch.model = next[0] ?? '';
       if (patch.model !== undefined) patch.lastTest = undefined;
       onCommitProvider(updateProvider(settings, name, patch));

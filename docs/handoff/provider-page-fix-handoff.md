@@ -15,6 +15,9 @@ Provider 页问题来自多写入面、多真相源、缺少保存事务与配�
 **R1/R2 本轮已完成**：跨重启独立 intent 备份 + fatal/坏节回落；保存前 revision + 磁盘原文冲突闸 +
 未点名有效节保留。实现见 `providers-store.ts`，回归见 `tests/providers-store.test.ts`。
 
+**R5 本轮已完成（产品拍板 A + 自动回落第一个）**：`model` 从 providers.yml 意图迁出，
+成为本机「最近使用」运行态；Provider 页只管理 `models`，目录/可用集移除当前模型时自动回落第一个。
+
 ## 1. 思考档位最终语义
 
 
@@ -27,6 +30,14 @@ Provider 页问题来自多写入面、多真相源、缺少保存事务与配�
 供应商未返回：显示未声明；创作坞只给自动/关闭安全兜底，可在 Provider 页手动覆盖补声明。
 
 当前只认 canonical：minimal / low / medium / high / xhigh / max。私有词必须补明确映射，不能静默猜。
+
+### 1.1 模型归属（R5 最终语义）
+
+- `providers.yml` 只写 `models`（可用模型）；不再写 `model`。
+- `model` = 本机「最近使用」运行态（localStorage），创作坞切模型时自动记；新卷/未改卷跟从它。
+- Provider 页高亮显示「最近使用」，不是可编辑的 Provider 默认项。
+- 目录/可用集移除当前最近模型：自动回落剩余列表第一个；空集则为空。
+- 老文件的 `model` 走一次性迁移（`legacyModel`）；本机已有最近值时本机优先，下次 Provider 保存从文件消失。
 
 ## 2. 下个窗口仍需处理
 
@@ -49,8 +60,14 @@ Provider 页问题来自多写入面、多真相源、缺少保存事务与配�
 ### R4（中）probe 指纹对 Key 只记长度
 同长度换 Key 若绕过 UI 编辑路径不会使旧探针失效。建议增加不可逆 key hash 或 credential revision。
 
-### R5（中）model 仍兼任最近使用与显式默认
-UI 说自动跟从，但目录勾选/移除又会自动改 model。需要产品二选一：移出 Provider 配置，或改成显式设为默认。
+### R5（中）model 仍兼任最近使用与显式默认（本轮已完成）
+- 产品拍板：**A = 新会话跟随最近使用**；移除当前模型时**自动回落第一个**。
+- `ProviderIntent` 已排除 `model`；文件解析把旧 `model` 收进 `legacyModel` 做迁移。
+- `ProviderRuntime` 增加 `model`，localStorage 运行态壳持久化；`saveSettings` 在文件权威下保留它。
+- 创作坞 `setModel/setGlobalModel` 改回写本机运行态，不再碰 providers.yml。
+- Provider 页投影会把最近模型归一到 `models` 内；外部改 `models` 移除当前项也自动回落。
+- UI 文案改为「最近使用」；AddProviderSheet 的初选模型改为「初始模型」。
+- 回归：文件 model 迁移/删除、最近使用跨重启、external models 回落、Provider 页移除顶位。
 
 ### R6（中）ModelSelector 仍有全局目录显示元数据
 settings 侧窗口/视觉/档位已 provider 作用域，但 configuredModelDescriptors 仍用全局 getModel 做显示；不同 Provider 同名 id 仍可能串显示。建议统一 catalogSeedForProvider。
@@ -66,10 +83,12 @@ OAuth 登录/多账号/登出；oauthAccountId 重启生效；watcher 冲突阻�
 
 ## 3. 已验证
 
-- tsc --noEmit：通过（R1/R2 完成后复跑）。
-- Provider + 设置过滤套件 41 个测试文件、492 用例：全通过。
+- tsc --noEmit：通过（R5 完成后复跑）。
+- Provider + 设置过滤套件 41 个测试文件、495 用例：全通过。
 - R1/R2 新增回归：fatal 跨重启备份恢复、坏节跨重启回落、保存时磁盘外部改写冲突、
   watcher 已重读的过期 revision 冲突、未点名有效节保留 / pendingDeletes 显式删除。
+- R5 新增回归：旧 `model` 迁移并从 YAML 删除、最近使用落本机并跨重启、
+  外部 `models` 移除当前项自动回落、Provider 页移除当前模型顶位。
 - build-builtin-plugins：41 个内置插件产物自包含校验通过。
 - 测试命令入口：cd src-ui 后跑 node .\node_modules\vitest\vitest.mjs run（文件列表见 git diff / 新增测试）。
 
@@ -88,5 +107,5 @@ Provider 页：ProviderPage/ProviderDetail/ModelReasoningLevels/SettingsPanel/se
 
 1. 先读本文和 docs/design/provider-system-spec.md 的思考档位/OAuth 章节。
 2. 不重做第 0 节的已修项。
-3. R1/R2 已完成，下一步 R3/R5/R6；R4/R7 视真机反馈。
-4. 最后跑 tsc + provider 套件 + 真机 OAuth/文件冲突/重启恢复验收。
+3. R1/R2/R5 已完成，下一步 R3/R6；R4/R7 视真机反馈。
+4. 最后跑 tsc + provider 套件 + 真机 OAuth/文件冲突/重启恢复/最近模型迁移验收。

@@ -267,7 +267,12 @@ function persistProvidersIntentBackup(): void {
  *
  *  逐节走与文件同一把 parseSection 尺子：备份是本机缓存，不是第二真相源——字段
  *  或协议已不再支持时只丢该节，不让一份旧 JSON 反向污染当前配置语义。 */
-function readProvidersIntentBackup(): { sections: Sections; order: string[]; capturedAt: number } | null {
+function readProvidersIntentBackup(): {
+  sections: Sections;
+  order: string[];
+  capturedAt: number;
+  legacyModels: Map<string, string>;
+} | null {
   try {
     if (typeof localStorage === 'undefined') return null;
     const raw = localStorage.getItem(PROVIDERS_INTENT_BACKUP_KEY);
@@ -277,6 +282,7 @@ function readProvidersIntentBackup(): { sections: Sections; order: string[]; cap
       return null;
     }
     const sections: Sections = [];
+    const legacyModels = new Map<string, string>();
     const seen = new Set<string>();
     for (const item of parsed.sections) {
       if (!item || typeof item !== 'object') continue;
@@ -288,6 +294,7 @@ function readProvidersIntentBackup(): { sections: Sections; order: string[]; cap
       if ('errors' in section) continue;
       seen.add(lower);
       sections.push({ name: name as ProviderSettings['name'], intent: section.intent });
+      if (section.legacyModel) legacyModels.set(name, section.legacyModel);
     }
     // 空快照是合法状态（用户删空所有 provider）；但「原本有 N 条、最后 0 条可解析」
     // 是腐坏/版本不兼容，不是可信的空配置——宁可不恢复，也不能用空表盖住运行态壳。
@@ -304,6 +311,7 @@ function readProvidersIntentBackup(): { sections: Sections; order: string[]; cap
       sections,
       order,
       capturedAt: typeof parsed.capturedAt === 'number' ? parsed.capturedAt : 0,
+      legacyModels,
     };
   } catch {
     return null;
@@ -316,9 +324,19 @@ function providerIntentAvailable(): boolean {
   return fileAuthorityConfirmed || intentBackupActive;
 }
 
+/** 旧文件/旧备份里的 `model` 是「最近使用」迁移源：只有当前没有本机值时采用；
+ *  已有最近使用值时，本机那份一定更新。 */
+function adoptLegacyModel(name: string, model: string | undefined): void {
+  const clean = model?.trim();
+  if (!clean) return;
+  const prev = runtimeMap.get(name) ?? { apiKey: '' };
+  if (!prev.model?.trim()) runtimeMap.set(name, { ...prev, model: clean });
+}
+
 function runtimeOf(p: ProviderSettings): ProviderRuntime {
   return {
     apiKey: p.apiKey ?? '',
+    ...(typeof p.model === 'string' ? { model: p.model } : {}),
     ...(p.lastTest !== undefined ? { lastTest: p.lastTest } : {}),
     ...(p.catalog !== undefined ? { catalog: p.catalog } : {}),
     ...(p.modelMeta !== undefined ? { modelMeta: p.modelMeta } : {}),
@@ -326,19 +344,34 @@ function runtimeOf(p: ProviderSettings): ProviderRuntime {
   };
 }
 
+/** 投影时归一「最近使用」：显式启用集存在时，model 必须是其中一项；
+ *  否则自动回落到第一个可用模型（用户 2026-11-30 拍板：A + 自动回落第一个）。 */
+function mergedProviderRow(
+  name: ProviderSettings['name'],
+  intent: ProviderIntent,
+  runtime: ProviderRuntime,
+): ProviderSettings {
+  const row = mergeIntent(name, intent, runtime);
+  if (Array.isArray(intent.models)) {
+    const available = [...new Set(intent.models.map((model) => model.trim()).filter(Boolean))];
+    if (!available.includes(row.model)) row.model = available[0] ?? '';
+  }
+  return row;
+}
+
 /** 重新计算投影（签名没变则复用同一数组引用——打字/滚轮热路径上 loadSettings 高频）。 */
 function refreshRows(): void {
   const runtimeSig = [...runtimeMap.entries()]
     .map(
       ([k, v]) =>
-        `${k}|${v.apiKey.length}|${v.lastTest?.at ?? 0}|${v.catalog?.length ?? 0}|${v.modelMeta ? Object.keys(v.modelMeta).length : 0}|${v.lastThinking ? JSON.stringify(v.lastThinking) : ''}`,
+        `${k}|${v.apiKey.length}|${v.model ?? ''}|${v.lastTest?.at ?? 0}|${v.catalog?.length ?? 0}|${v.modelMeta ? Object.keys(v.modelMeta).length : 0}|${v.lastThinking ? JSON.stringify(v.lastThinking) : ''}`,
     )
     .join(',');
   const signature = `${lastFileText.length}:${state.fatal ?? ''}:${lastGoodSections.size}:${brokenSectionNames.size}:${fileKeyOrder.length}:${runtimeSig}`;
   if (cachedRows && signature === cachedSignature) return;
   cachedSignature = signature;
-  const rt = (name: string): ProviderRuntime => runtimeMap.get(name) ?? { apiKey: '' };
-  cachedRows = effectiveSections().map(({ name, intent }) => mergeIntent(name, intent, rt(name)));
+  const rt = (name: string): ProviderRuntime => runtimeMap.get(name) ?? { apiKey: '', model: '' };
+  cachedRows = effectiveSections().map(({ name, intent }) => mergedProviderRow(name, intent, rt(name)));
 }
 
 /** 运行态读数的写出回执（`settings.installProviderRuntimeSink` 的装配面）。
@@ -373,9 +406,14 @@ function mergeRuntime(
   next: ProviderRuntime | undefined,
   apiKey: string,
 ): ProviderRuntime {
-  const base = prev ?? { apiKey: '' };
+  const base = prev ?? { apiKey: '', model: '' };
   return {
     apiKey,
+    ...(next?.model !== undefined
+      ? { model: next.model }
+      : base.model !== undefined
+        ? { model: base.model }
+        : {}),
     ...(next?.lastTest !== undefined
       ? { lastTest: next.lastTest }
       : base.lastTest !== undefined
@@ -542,6 +580,7 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
   const backup = lastGoodSections.size === 0 ? readProvidersIntentBackup() : null;
   if (backup) {
     lastGoodSections = new Map(backup.sections.map((section) => [section.name, section]));
+    for (const [name, model] of backup.legacyModels) adoptLegacyModel(name, model);
     if (doc.fatal) fileKeyOrder = backup.order;
   }
   if (doc.fatal) {
@@ -568,8 +607,9 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
     // 不拿它覆盖旧备份；有内容（含仅剩文件头 = 用户删空所有 provider）才刷新。
     if (text.trim().length > 0) persistProvidersIntentBackup();
   }
-  // 遗留的 modelMeta（旧文件里那片自动生成的读数）：收进运行态，下次写盘即从文件消失。
+  // 遗留的 model / modelMeta（旧文件里的本机读数）：收进运行态，下次写盘即从文件消失。
   for (const s of doc.sections) {
+    adoptLegacyModel(s.name, s.legacyModel);
     if (!s.legacyModelMeta) continue;
     const prev = runtimeMap.get(s.name) ?? { apiKey: '' };
     runtimeMap.set(s.name, { ...prev, modelMeta: { ...prev.modelMeta, ...s.legacyModelMeta } });
@@ -713,16 +753,13 @@ export async function saveProvidersDoc(
   return { ok: true };
 }
 
-/** 单节意图补丁（**题签「记住选择」批 2026-11-29**）：只改一节里的几个字段，其余节原样。
+/** 单节意图补丁：只改一节里的几个字段，其余节原样。
  *
- *  为什么需要它：`model`（新卷出生默认）这类「用户意图」的权威在这份文件里
- *  （localStorage 里的 provider 行只留运行态读数，`saveSettings` 会把意图剥掉）。
- *  旧实现（compose-store 的 setGlobalModel）走 `saveSettings` 写本地存档——文件权威
- *  一旦就位，那一笔在写盘那一刻就被剥掉：**当场就没落盘，重启更不会有**。
- *  （思考档位 2026-11-21 起不在这里：它只按会话/内存，见 compose-store。）
+ *  providers.yml 是连接意图权威；调用方负责只传真正属于文件的字段（`ProviderIntent`
+ *  已排除 model / apiKey / 运行态读数）。
  *
  *  两段式（照 `selectPreset` 的「内存态先行、持久化失败可见」口径）：
- *    ① 内存投影立刻改（`loadSettings()` 同拍读到）——「下一张纸的出厂值」不能等 IPC 回来；
+ *    ① 内存投影立刻改（`loadSettings()` 同拍读到）；
  *    ② 串行落盘（以磁盘现状为底，读-改-写）：失败写进 `state.lastError` + ui.log，
  *       设置页点名可见；下一次装载（watcher / 重启）回落到盘上的旧值——**不假装成功**。
  *
@@ -835,24 +872,31 @@ export async function seedProvidersDoc(rows: readonly ProviderSettings[]): Promi
 export async function bootstrapProvidersDoc(): Promise<void> {
   installProvidersDocProjection();
   await loadProvidersDoc();
-  // 装载时从旧文件里收割的 modelMeta（本机读数迁移源）——下面重建 runtimeMap
-  // 时**必须合并进来**，否则刚收上来的那批会当场丢掉。
+  // 装载时从旧文件里收割的 model / modelMeta（本机读数迁移源）——下面重建
+  // runtimeMap 时**必须合并进来**，否则刚收上来的那批会当场丢掉。
   const harvested = new Map(runtimeMap);
   const stored = storedProviderRows();
-  // 运行态读数（密钥/探针/目录快照/模型元数据）先按名挂上——**必须在写盘之前**：
+  // 运行态读数（密钥/探针/最近模型/目录快照/模型元数据）先按名挂上——**必须在写盘之前**：
   // 迁移出文件之后投影立刻生效，此时 apiKey 就该在（否则设置页那一下会显示空 Key）。
   runtimeMap = new Map(
     stored.map((p) => {
       const rt = runtimeOf(p);
-      const legacy = harvested.get(p.name)?.modelMeta;
-      // 文件里的遗留值更新（旧设计里它每轮刷新目录都会重写文件）⇒ 覆盖本机那份；
-      // 两边都没有 = 这一行没有元数据（不是空壳要写回去）。
-      if (!legacy) return [p.name, rt];
-      return [p.name, { ...rt, modelMeta: { ...rt.modelMeta, ...legacy } }];
+      const legacyRt = harvested.get(p.name);
+      // 旧文件里的遗留值补到本机壳缺省处；本机已有最近模型/元数据时以本机为准。
+      const model = rt.model?.trim() ? rt.model : legacyRt?.model;
+      const modelMeta = legacyRt?.modelMeta ? { ...rt.modelMeta, ...legacyRt.modelMeta } : rt.modelMeta;
+      return [
+        p.name,
+        {
+          ...rt,
+          ...(model !== undefined && model !== '' ? { model } : {}),
+          ...(modelMeta !== undefined ? { modelMeta } : {}),
+        },
+      ];
     }),
   );
   for (const [name, rt] of harvested) {
-    if (rt.modelMeta && !runtimeMap.has(name)) runtimeMap.set(name, rt);
+    if ((rt.model || rt.modelMeta) && !runtimeMap.has(name)) runtimeMap.set(name, rt);
   }
   cachedRows = null;
   refreshRows();

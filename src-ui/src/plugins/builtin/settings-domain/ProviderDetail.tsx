@@ -26,7 +26,7 @@ import { ProviderDocCard } from './ProviderDocCard';
 import { protocolLabel } from './protocol';
 import { formatLatency, formatTestAt, probeMatchesProvider, providerStatus, STATUS_LABEL } from './status';
 
-export type ProviderField = 'apiKey' | 'baseUrl' | 'model';
+export type ProviderField = 'apiKey' | 'baseUrl';
 
 /** per-model 参数的来源标注字段（provider-model-meta 四层链的展示面）。 */
 type MetaField = 'contextWindow' | 'maxTokens' | 'input';
@@ -421,9 +421,9 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
           </div>
         )}
 
-        {/* 模型区（2026-09-23 三层重构：目录 / 启用 / 选中）：
+        {/* 模型区（2026-09-23 三层重构；2026-11-30 R5 收口）：
             可用模型 = 用户从目录里**添加**进来的（创作坞下拉可选面）；
-            「刷新目录」只更新目录快照（catalog）与元数据，**不改**可用模型。 */}
+            高亮项 = 最近使用运行态，不可在此编辑；「刷新目录」只更新目录快照与元数据。 */}
         <div className="pp-field">
           <div className="pp-f-label-row">
             <label className="pp-f-label" htmlFor="pd-models-input">
@@ -483,9 +483,9 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                       {id === provider.model && (
                         <span
                           className="pp-model-chip-default"
-                          data-tip="「新会话默认」= 最近在创作坞选用的模型——自动跟从，在此不可改"
+                          data-tip="「最近使用」= 最近在创作坞选用的模型——新卷自动跟从；不是 Provider 默认配置"
                         >
-                          新会话默认
+                          最近使用
                         </span>
                       )}
                       <button
@@ -682,7 +682,8 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
           </div>
 
           <div className="pp-f-hint">
-            创作坞模型下拉只列「可用模型」；「新会话默认」= 最近在创作坞选用的模型，自动跟从（不可在此改）。 目录 =
+            创作坞模型下拉只列「可用模型」；高亮项 = 最近在创作坞选用的模型，新卷自动跟从（不可在此改）。
+            移除高亮模型时自动回落到剩余列表第一个。 目录 =
             该提供方 /models 的最近一次快照（只读）——点行上的「添加」才进可用模型，手动添加的不受目录变动影响。
           </div>
         </div>

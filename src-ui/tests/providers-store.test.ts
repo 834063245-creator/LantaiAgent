@@ -413,6 +413,66 @@ describe('provider 配置文件通道（写盘一半）', () => {
     expect(disk.get(DOC_PATH)).toBe(unscannable); // 文件一字未动
   });
 
+  it('model 从文件意图迁出：保存即从 YAML 消失，最近使用留本机并可跨重启', async () => {
+    disk.set(
+      DOC_PATH,
+      'gw:\n  kind: openai\n  baseUrl: https://gw.example/v1\n  model: old-model\n  models: [old-model, new-model]\n',
+    );
+    seedStored([
+      {
+        kind: 'openai',
+        name: 'gw',
+        baseUrl: 'https://gw.example/v1',
+        model: 'old-model',
+        models: ['old-model', 'new-model'],
+      },
+    ]);
+    await bootstrapProvidersDoc();
+    expect(loadSettings().providers[0]?.model).toBe('old-model');
+
+    // 设置页下一次保存：intentOf 不再含 model → leaf-diff 从 YAML 删掉该字段。
+    const { intentOf } = await import('../src/provider/providers-doc');
+    const { saveSettings } = await import('../src/settings');
+    const patch = { gw: intentOf(loadSettings().providers[0]) };
+    expect((await saveProvidersDoc(patch)).ok).toBe(true);
+    expect(disk.get(DOC_PATH)).not.toContain('model:');
+    expect(loadSettings().providers[0]?.model).toBe('old-model');
+
+    // 最近使用进 localStorage 运行态壳；重启后仍跟从它（文件里已没有 model）。
+    saveSettings(loadSettings());
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+      providers?: Array<{ name?: string; model?: string }>;
+    };
+    expect(stored.providers?.[0]?.model).toBe('old-model');
+
+    __resetProvidersDocForTests();
+    installProvidersProjection(null);
+    await bootstrapProvidersDoc();
+    expect(loadSettings().providers[0]?.model).toBe('old-model');
+  });
+
+  it('外部修改可用模型列表移除最近使用项：投影自动回落第一个', async () => {
+    disk.set(
+      DOC_PATH,
+      'gw:\n  kind: openai\n  baseUrl: https://gw.example/v1\n  models: [alpha, beta]\n',
+    );
+    seedStored([
+      {
+        kind: 'openai',
+        name: 'gw',
+        baseUrl: 'https://gw.example/v1',
+        model: 'beta',
+        models: ['alpha', 'beta'],
+      },
+    ]);
+    await bootstrapProvidersDoc();
+    expect(loadSettings().providers[0]?.model).toBe('beta');
+
+    disk.set(DOC_PATH, 'gw:\n  kind: openai\n  baseUrl: https://gw.example/v1\n  models: [alpha]\n');
+    await loadProvidersDoc({ reloadRuntime: true });
+    expect(loadSettings().providers[0]?.model).toBe('alpha');
+  });
+
   it('旧文件里的 modelMeta 是运行态读数：装载时收进本机存储，写盘即从文件消失', async () => {
     disk.set(
       DOC_PATH,
@@ -526,6 +586,7 @@ describe('provider 配置文件通道（写盘一半）', () => {
     disk.set(DOC_PATH, 'commandcodegoat:\n  kind: openai\n  baseUrl: https://outside.example/v1\n  model: m1\n');
     await loadProvidersDoc();
     await tick();
+    await tick(); // 外部改动 → 订阅 → ProviderPage effect → 输入框重渲染，留两拍防并行负载下抢跑
 
     // 重读真的发生了（baseUrl 换新）……
     expect(fieldInputs().find((i) => i.placeholder.includes('https://'))?.value).toBe('https://outside.example/v1');
@@ -695,7 +756,8 @@ describe('provider config safety regressions', () => {
     await bootstrapProvidersDoc();
     expect(localStorage.getItem(PROVIDERS_INTENT_BACKUP_KEY)).toBeTruthy();
 
-    // 文件权威下 saveSettings 只留运行态壳：意图（baseUrl/model/headers）全部被剥掉。
+    // 文件权威下 saveSettings 只留运行态壳：意图（baseUrl/headers）被剥掉；
+    // model 已在本批从意图迁为「最近使用」运行态，因此必须留下。
     const { saveSettings } = await import('../src/settings');
     saveSettings(loadSettings());
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
@@ -703,7 +765,7 @@ describe('provider config safety regressions', () => {
     };
     expect(stored.providers?.[0]?.name).toBe('a');
     expect(stored.providers?.[0]?.baseUrl).toBeUndefined();
-    expect(stored.providers?.[0]?.model).toBeUndefined();
+    expect(stored.providers?.[0]?.model).toBe('m1');
 
     // 模拟进程重启：内存 last-good 清空，磁盘在启动时已经是坏 YAML。
     __resetProvidersDocForTests();

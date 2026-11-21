@@ -3,20 +3,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 题签「记住选择」**真落盘**（2026-11-29 持久化批）。
+// 题签「记住选择」**真落盘**。
 //
-// 病灶（用户报「组合 / 模型 / 思考强度 / 权限 这些设置项，之前做过持久化，但现在看起来
-// 似乎没有完全生效」）：
-//   · 组合 → `settings.composition.preset`（本地存档）——一直是好的；
-//   · 模型 / 思考 → compose-store 的 `setGlobalModel` / `setGlobalThinking` 写的是
-//     **本地存档里的 provider 行**。而 2026-09-24「配方改文件」之后，provider 的**意图**
-//     权威是 `~/.lantai/providers.yml`，`saveSettings` 在文件权威就位时会把意图整段剥掉
-//     （只留 apiKey / lastTest / catalog / modelMeta）⇒ 那一笔**写的那一刻就没了**：
-//     下一张纸还是文件里的旧模型/旧档位，重启更不会记得。
-//   · 权限（全放路径）→ 见 `composer-folio-per-paper.test.tsx` 的确认模态那条。
-//
-// 现行语义（本文件钉它）：这两个「新卷出生默认」是**用户意图**，走文件权威
-// （`patchProviderIntent`：内存投影当拍可读 + 串行写盘），不再写本地存档里的 provider 行。
+// 现行语义（2026-11-30 R5 收口后，本文件钉它）：
+//   · 模型 = **最近使用**运行态读数，落本地存档 provider 行的 `model`，不进 providers.yml；
+//     新卷/未改卷跟从它，目录移除时自动回落第一个可用模型。
+//   · 思考档位 = 该模型「上次用过」的本机记忆（lastThinking），也不进 providers.yml。
+//   · `providers.yml` 只留连接意图与可用模型列表（models）。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -69,7 +62,6 @@ function wireRpc(): void {
   });
 }
 
-/** 等到串行写盘队列跑完（写盘是异步的：内存当拍生效、盘上稍后）。 */
 const settle = () => new Promise((r) => setTimeout(r, 80));
 
 describe('题签「记住选择」· 文件权威下落盘（2026-11-29）', () => {
@@ -118,23 +110,25 @@ describe('题签「记住选择」· 文件权威下落盘（2026-11-29）', () 
     expect(resolveNewSessionDefault().thinking).toBe('high');
   });
 
-  it('模型：改的是 providers.yml 的 model（新卷出生默认），不是本地存档的残影', async () => {
+  it('模型：最近使用落本地存档；providers.yml 不再写 model；重启跟从最近使用', async () => {
     getComposeStore(PANEL).getState().setGlobalModel('deepseek', 'deepseek-v4-pro');
 
     expect(resolveNewSessionDefault().model).toBe('deepseek-v4-pro');
     await settle();
-    expect(disk.get(DOC_PATH)).toContain('model: deepseek-v4-pro');
+    // R5：最近使用是运行态，不属于 provider 文件意图——切换模型不会改写文件。
+    // 文件里那条旧版 model 是迁移源，等下一次 Provider 保存时才会被清掉。
+    expect(disk.get(DOC_PATH)).toContain('model: deepseek-flash');
+    expect(disk.get(DOC_PATH)).not.toContain('model: deepseek-v4-pro');
 
-    /* 本地存档里的 provider 行仍是「运行态读数壳」——**读数只认文件**：
-     * 即便存档里那行还留着旧模型/旧档位（真机上是历史残留，写盘时已被剥成壳），
-     * 也不会遮住文件里的新值。 */
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
       activeProvider?: string;
       providers?: Array<{ name: string; model?: string }>;
     };
-    expect(stored.activeProvider, '最近使用的 provider 是运行态读数，仍落本地存档').toBe('deepseek');
-    expect(loadSettings().providers[0]?.model, '行表模型来自文件，不来自本地存档').toBe('deepseek-v4-pro');
+    expect(stored.activeProvider, '最近使用的 provider 是运行态读数，落本地存档').toBe('deepseek');
+    expect(stored.providers?.[0]?.model, '最近使用模型也是运行态读数').toBe('deepseek-v4-pro');
+    expect(loadSettings().providers[0]?.model, '行表投影合上最近使用').toBe('deepseek-v4-pro');
 
+    // 文件里仍留着旧版 model（迁移源）也不得盖掉本地更新的最近使用。
     __resetProvidersDocForTests();
     await bootstrapProvidersDoc();
     expect(resolveNewSessionDefault().model).toBe('deepseek-v4-pro');

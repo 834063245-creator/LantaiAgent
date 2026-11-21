@@ -514,7 +514,7 @@
   white-space: nowrap;
   max-width: 220px;
 }
-/* 「新会话默认」标记（= 最近使用，自动跟从创作坞切换；只读展示，非选择器） */
+/* 「最近使用」标记（新卷出生默认跟从创作坞切换；只读展示，非配置选择器） */
 .pp-model-chip.is-default {
   border-color: color-mix(in oklch, var(--seal) 45%, var(--paper));
 }

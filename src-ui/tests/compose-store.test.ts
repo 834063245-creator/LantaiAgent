@@ -99,12 +99,9 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     });
     // 信号带 sessionId（applyAgentConfig 只热切换该会话）
     expect(notifyAgentConfigChanged).toHaveBeenCalledWith('model-switched', 1);
-    // 新语义（2026-08-26「新会话默认 = 最近使用」）：定向写 activeProvider = 最近使用的
-    // provider（运行态读数 → 本地存档）。
-    // ⚡ 2026-11-29（题签持久化批）：目标 provider 行的 **model** 不再写本地存档——它是
-    // 用户意图，权威在 `~/.lantai/providers.yml`（`saveSettings` 在文件权威就位时会把
-    // 意图整段剥掉，旧写法等于白写）。无文件通道时（本测的域）走 `patchProviderIntent`
-    // 的降级分支，仍落本地存档——故这里按「入参里有没有那一笔」断言，不依赖调用次数/顺序。
+    // 新语义（2026-08-26 拍板；2026-11-30 R5 最终收口）：新会话默认 = 最近使用。
+    // `activeProvider` 与目标 provider 行的 `model` 都是运行态读数 → 同一次
+    // `saveSettings` 落本地存档；`model` 不再是 providers.yml 意图。
     const saveSpy = vi.mocked(settingsModule.saveSettings);
     expect(saveSpy).toHaveBeenCalled();
     const writes = saveSpy.mock.calls.map((c) => c[0] as settingsModule.AppSettings);
@@ -115,7 +112,7 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     const providerWrite = writes.filter(
       (w) => w.providers.find((p) => p.name === 'anthropic')?.model === 'claude-opus-4-6',
     );
-    expect(providerWrite.length, '目标 provider 行的 model 写到了新会话默认').toBeGreaterThan(0);
+    expect(providerWrite.length, '目标 provider 行的 model 写成了最近使用').toBeGreaterThan(0);
     // A1 不复发：别家 provider 未被拖累（不是全量轰炸）；已存在会话走覆盖
     expect(providerWrite.at(-1)?.providers.find((p) => p.name === 'deepseek')?.model).toBe('deepseek-v4-pro');
   });

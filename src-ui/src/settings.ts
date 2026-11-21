@@ -41,6 +41,9 @@ export interface ProviderSettings {
   name: ProviderId;
   apiKey: string;
   baseUrl: string;
+  /** **最近使用模型**（R5 2026-11-30 收口）：本机运行态读数，不是 providers.yml 意图。
+   *  创作坞切模型时自动写；新卷/未改卷跟从它。文件装载时旧 `model` 字段会迁移到这里。
+   *  它必须是 `models` 的成员；目录/可用集移除它时自动回落剩余列表第一个。 */
   model: string;
   /** 登录方式（provider-refactor 方案乙 Phase 3D）：缺省/缺字段 = 'api-key'
    *  （零迁移——旧存储无此字段走 API Key 输入）；'oauth' = 系统 OAuth 订阅
@@ -52,8 +55,9 @@ export interface ProviderSettings {
   oauthAccountId?: string;
   lastTest?: ConnectionProbe; // 存储字段名保持 lastTest（遗留名）；领域词 ConnectionProbe
   /** 该提供方「可用模型」id 列表 = **用户启用的模型**——创作坞下拉的可选面
-   *  （DSH routable 列表的前端配置形态）。与 model（默认模型）解耦：同一提供方
-   *  可挂多个模型，会话级在列表内切换；缺省/空 = 视为 [model]（旧数据零迁移）。
+   *  （DSH routable 列表的前端配置形态）。与 model（最近使用）分工：同一提供方
+   *  可挂多个模型，会话级在列表内切换；缺省 = 视为 [model]（旧数据零迁移），
+   *  显式空数组 = 本家不贡献可选模型。
    *  ⚡ 2026-09-23 provider 配置面三层重构：本字段**不再由「从 API 拉取」直接填充**
    *  ——拉取只更新 `catalog`（目录快照），启用集由用户在目录里勾选（写这里）。
    *  旧存档（models = 拉取并集）语义不变：它们就是「全部已启用」，零迁移。 */
@@ -106,7 +110,7 @@ export interface ModelOverrides {
 }
 
 /** 解析某提供方的「可用模型」id 列表：显式 models 优先，缺省回落 [model]
- *  （旧存档无 models 字段 = 只有一个默认模型，零迁移）。 */
+ *  （旧存档无 models 字段 = 只有一个最近使用模型，零迁移）。 */
 export function effectiveModels(p: ProviderSettings): string[] {
   if (Array.isArray(p.models)) {
     return [...new Set(p.models.map((m) => m?.trim()).filter((m): m is string => !!m))];
@@ -509,8 +513,16 @@ export function loadSettings(): AppSettings {
 
 /** localStorage 只承载 provider 的**运行态读数**（意图在文件里）。
  *  ⚡ 2026-11-16：`modelMeta`（刷新目录拉回来的模型元数据）加入本层——它每天被
- *  自动重写、真机占配置文件 87%，属于「本机读数」而不是用户意图。 */
-export type ProviderRuntime = Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta' | 'lastThinking'>;
+ *  自动重写、真机占配置文件 87%，属于「本机读数」而不是用户意图。
+ *  ⚡ 2026-11-30 R5：`model`（最近使用）也从意图层迁入本层——新卷跟从最近选择，
+ *  但它不是「Provider 默认模型」配置；`providers.yml` 不再写这个字段。 */
+export type ProviderRuntime = Pick<
+  ProviderSettings,
+  'apiKey' | 'lastTest' | 'catalog' | 'modelMeta' | 'lastThinking'
+> & {
+  /** 最近使用模型。缺省 = 旧存档没有这一层（不要用空串覆盖旧文件迁移值）。 */
+  model?: string;
+};
 
 /** provider 文档投影口（由 provider-store 在 boot 期注入；缺省 = 未启用文件权威）。 */
 interface ProvidersProjection {
@@ -580,7 +592,13 @@ function fileProvidersProjection(fallback: ProviderSettings[]): ProviderSettings
 /** 读某 provider 的运行态读数（文件权威下 localStorage 里只留这些）。 */
 export function providerRuntimeOf(name: string): ProviderRuntime {
   const row = loadSettings().providers.find((p) => p.name === name);
-  return { apiKey: row?.apiKey ?? '', lastTest: row?.lastTest, catalog: row?.catalog, modelMeta: row?.modelMeta };
+  return {
+    apiKey: row?.apiKey ?? '',
+    ...(row ? { model: row.model } : {}),
+    lastTest: row?.lastTest,
+    catalog: row?.catalog,
+    modelMeta: row?.modelMeta,
+  };
 }
 
 /**
@@ -639,6 +657,7 @@ export function saveSettings(s: AppSettings): void {
         return {
           name: p.name,
           apiKey: '',
+          model: typeof p.model === 'string' ? p.model : '',
           ...(p.lastTest !== undefined ? { lastTest: p.lastTest } : {}),
           ...(p.catalog !== undefined ? { catalog: p.catalog } : {}),
           ...(p.modelMeta !== undefined ? { modelMeta: p.modelMeta } : {}),

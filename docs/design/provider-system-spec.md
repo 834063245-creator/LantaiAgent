@@ -118,16 +118,21 @@ interface ProviderSettings {
   一个内网网关）在实际使用里不存在；且它**没有热重载**（watcher 只监听用户级），
   而 prompt 段却告诉 agent「改完约 1 秒生效」——agent 写了项目级文件，应用侧零反应。
 - **一行 provider = 一个顶层键，键名即身份**（= 系统凭据键）。可写字段：
-  `kind` / `baseUrl` / `model` / `models` / `headers` / `modelOverrides`
+  `kind` / `baseUrl` / `models` / `headers` / `modelOverrides`
   / `authMode` / `oauthProvider` / `oauthAccountId`。**未知字段一律忽略并点名**（前向兼容：旧版本
   打开新文件不该炸，也不该连累这一行）。
   **（2026-11-21 思考档位收口）** 提供方级 `thinking` 与 `modelOverrides[*].thinking`
   一并退役：思考档位只在创作坞按**会话**选，没有「提供方/模型默认档位」这一层；
   老文件里的这两个字段读都不读、点名提示，下次保存即从文件消失。
+  **（2026-11-30 R5 模型归属收口）** `model` 从本文件退役——它不是 Provider 的「显式默认」，
+  而是**最近使用**运行态：创作坞每次切模型自动记本机，新卷/未改卷跟从它。Provider 页只管理
+  `models`（可用模型）；目录/可用集移除最近模型时**自动回落剩余列表第一个**。老文件里的
+  `model` 由 `legacyModel` 迁移进本机运行态（本机已有最近值时本机优先），下次写盘即从文件消失。
 - **权威三分（互不重叠，各自只有一处）**：意图 → 本文件；密钥 → 系统凭据库
   （`apiKey` 写进文件 = 点名告警并忽略——明文落盘会被误分享）；**运行态读数**
-  （`lastTest` 连接探针、`catalog` 目录快照、**`modelMeta` 模型元数据**）→
-  localStorage，不进文件（照 DSH `settings-file`「文件里只放用户层」的分工）。
+  （`model` 最近使用、`lastTest` 连接探针、`catalog` 目录快照、**`modelMeta` 模型元数据**、
+  `lastThinking` 模型档位记忆）→ localStorage，不进文件（照 DSH `settings-file`
+  「文件里只放用户层」的分工）。
   **（2026-11-16 本机读数迁出批）** `modelMeta` 原属文件：实测真机上它占配置文件
   **87%**（15642 字节里 12838 字节），是每次「刷新目录」都重写的自动生成内容——
   让它承担手写错误的爆炸半径，等于每天自动生成的大块数据随时能把整个 provider 节
@@ -141,6 +146,11 @@ interface ProviderSettings {
   照 DSH settings-file 的 YAML 渲染）——只手改动的叶子值、只删没了的键，手写注释与
   排版在未触及的节点上逐字保留（阵列内注释与改动标量的行内注释会随值走，空间归一为
   单空格——与 DSH 记录的限制同款）。
+- **保存事务前的冲突闸（2026-11-30 R1/R2）**：保存请求携带编辑起点 `revision`，并
+  再比磁盘原文与 `lastFileText`；watcher 已重读或尚未送达的外部修改都直接进入冲突态。
+  磁盘上存在、补丁没写、`pendingDeletes` 也没点名的有效节原样保留。完整 intent 另有
+  一份独立本机 backup（`hologram_provider_intent_backup_v1`，不含密钥/运行态）：
+  跨重启 fatal 或坏节时优先回落到它，避免 localStorage 只剩运行态壳时丢意图。
 - **校验纪律**（照 DSH「boot fails loud, reload keeps last good」落到本仓库语义）：
   **字段级降级**（2026-11-16 字段级校验批）——一个字段写错只丢那个字段并点名，
   整节照常生效；只有「这一行是谁 / 连到哪」判不出来（名字非法 / 不是映射 /

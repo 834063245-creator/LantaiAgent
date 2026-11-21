@@ -23,7 +23,6 @@ import { type ProviderSettings, providerId } from '../src/settings';
 const intent: ProviderIntent = {
   kind: 'openai',
   baseUrl: 'https://opencode.ai/zen/go/v1',
-  model: 'deepseek-flash',
   models: ['deepseek-flash', 'claude-opus-4-6'],
   headers: { 'x-opencode-session': 'sess-1' },
   modelOverrides: { 'deepseek-flash': { contextWindow: 1000000, maxTokens: 384000 } },
@@ -63,7 +62,6 @@ describe('parseProvidersDoc', () => {
     expect(doc.sections[0].intent).toEqual({
       kind: 'openai',
       baseUrl: 'https://opencode.ai/zen/go/v1',
-      model: 'deepseek-flash',
       models: ['deepseek-flash'],
       headers: { 'x-opencode-session': 'sess-1' },
     });
@@ -139,7 +137,7 @@ describe('parseProvidersDoc', () => {
     expect(byName.d).toContain('thinking');
     expect(byName.d).toContain('input');
     // 坏字段按缺省处理，好的字段照常生效
-    expect(doc.sections[1].intent.model).toBe('m');
+    expect(doc.sections[1].legacyModel).toBe('m');
     expect(doc.sections[1].intent.thinking).toBeUndefined();
   });
 
@@ -152,7 +150,6 @@ describe('parseProvidersDoc', () => {
         'leaky:',
         '  kind: openai',
         '  baseUrl: https://x/v1',
-        '  model: m',
         '  apiKey: sk-leaked',
         '  lastTest: { status: ok }',
         '  catalog: [m]',
@@ -171,6 +168,18 @@ describe('parseProvidersDoc', () => {
 
   // modelMeta 2026-11-16 从「用户意图」降级为「本机读数」：旧文件里那片
   // 自动生成的数据要在装载时被收走（legacyModelMeta），而不是打死整节。
+  // R5（2026-11-30）：model 从文件意图迁出，成为本机「最近使用」运行态读数。
+  it('遗留 model：收进 legacyModel 备迁移，不当用户意图', () => {
+    const doc = parseProvidersDoc(
+      ['legacy:', '  kind: openai', '  baseUrl: https://x/v1', '  model: m', '  models: [m]'].join('\n'),
+    );
+    expect(doc.errors).toEqual([]);
+    expect('model' in doc.sections[0].intent).toBe(false);
+    expect(doc.sections[0].legacyModel).toBe('m');
+    expect(doc.warnings[0].message).toContain('最近使用');
+    expect(applyProvidersDoc('', { legacy: doc.sections[0].intent })).not.toContain('model: m');
+  });
+
   it('遗留 modelMeta：收进 legacyModelMeta 备迁移，不当用户意图', () => {
     const doc = parseProvidersDoc(
       [
@@ -218,7 +227,7 @@ describe('parseProvidersDoc', () => {
 
   it('请求头非法条目点名到字段（写入边界严格，沿 custom-headers 同一把尺子）', () => {
     const doc = parseProvidersDoc(
-      'a:\n  kind: openai\n  baseUrl: https://x/v1\n  model: m\n  headers:\n    "bad name": v\n',
+      'a:\n  kind: openai\n  baseUrl: https://x/v1\n  headers:\n    "bad name": v\n',
     );
     // 坏头只丢那个头；这一节照常可用
     expect(doc.errors).toEqual([]);
@@ -231,15 +240,15 @@ describe('parseProvidersDoc', () => {
   // 毒化用例在此以**文件形态**重建：坏条目仍被点名，不再静默丢弃）。
   it('请求头：非字符串值 / 整体不是对象都点名；合法条目照常进意图', () => {
     const numeric = parseProvidersDoc(
-      'a:\n  kind: openai\n  baseUrl: https://x/v1\n  model: m\n  headers:\n    x-num: 42\n',
+      'a:\n  kind: openai\n  baseUrl: https://x/v1\n  headers:\n    x-num: 42\n',
     );
     expect(numeric.warnings[0].message).toContain('x-num');
     expect(numeric.sections).toHaveLength(1);
-    const notObject = parseProvidersDoc('a:\n  kind: openai\n  baseUrl: https://x/v1\n  model: m\n  headers: oops\n');
+    const notObject = parseProvidersDoc('a:\n  kind: openai\n  baseUrl: https://x/v1\n  headers: oops\n');
     expect(notObject.warnings[0].message).toContain('headers');
     expect(notObject.sections).toHaveLength(1);
     const legal = parseProvidersDoc(
-      'a:\n  kind: openai\n  baseUrl: https://x/v1\n  model: m\n  headers:\n    x-ok: v\n    x-empty: ""\n',
+      'a:\n  kind: openai\n  baseUrl: https://x/v1\n  headers:\n    x-ok: v\n    x-empty: ""\n',
     );
     expect(legal.errors).toEqual([]);
     expect(legal.warnings).toEqual([]);
@@ -416,6 +425,7 @@ describe('意图 ↔ 完整行', () => {
       ...intent,
       name: providerId('opencodego'),
       apiKey: 'sk-secret',
+      model: 'deepseek-flash',
       lastTest: { status: 'ok', latencyMs: 1, at: 2 },
       catalog: ['deepseek-flash'],
       modelMeta: { 'deepseek-flash': { fetchedAt: 3, contextWindow: 1000000 } },
@@ -426,10 +436,12 @@ describe('意图 ↔ 完整行', () => {
     expect('lastTest' in bare).toBe(false);
     expect('catalog' in bare).toBe(false);
     expect('modelMeta' in bare).toBe(false);
+    expect('model' in bare).toBe(false);
     expect('name' in bare).toBe(false);
     expect(
       mergeIntent(row.name, bare, {
         apiKey: row.apiKey,
+        model: row.model,
         lastTest: row.lastTest,
         catalog: row.catalog,
         modelMeta: row.modelMeta,

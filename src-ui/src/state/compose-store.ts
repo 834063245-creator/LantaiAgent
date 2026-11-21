@@ -21,7 +21,6 @@
 // input-store 形态，createScopedStore 注册表，sessionId 按面板隔离）。
 
 import { create } from 'zustand';
-import { patchProviderIntent } from '../provider/providers-store';
 import type { StoredThinking } from '../provider/thinking';
 import {
   getActiveProvider,
@@ -82,24 +81,24 @@ function snapshotFromGlobal(): ComposeSessionPrefs {
 
 /** 新卷出生默认写盘（setModel 尾部与无主态 setGlobalModel 共用）。
  *
- *  ⚡ 2026-11-29（题签「记住选择」批）：**模型走 providers.yml**。
- *  病灶：旧实现 `saveSettings(updateProvider(..., { model }))` 写的是 localStorage 里的
- *  provider 行——而 2026-09-24「配方改文件」之后，**意图的权威是 `~/.lantai/providers.yml`**，
- *  `saveSettings` 在文件权威就位时会把意图整段剥掉（只留 apiKey/lastTest/catalog/modelMeta）。
- *  于是这一笔**写的那一刻就没了**：拨完模型开下一张纸仍是文件里那个，重启更不会记得。
- *  分工不变：`activeProvider`（最近使用的 provider）本就是运行态读数 → 仍落本地存档；
- *  `model`（这一行的默认模型）是用户意图 → 落配置文件。 */
+ *  ⚡ 2026-11-30 R5 收口：`model` 是**最近使用**运行态读数，不是 providers.yml 意图。
+ *  因此这里只写本地存档（`activeProvider` + 目标行的 `model`）；文件权威下
+ *  `saveSettings` 会剥掉 provider 意图、保留 model/lastTest/catalog/modelMeta 等运行态。
+ *  新卷默认跟从「最近使用」，目录移除该模型时由 ProviderPage 自动回落剩余列表第一个。 */
 function writeNewSessionDefault(providerName: string, model: string): void {
   try {
     const s = loadSettings();
     const row = s.providers.find((p) => p.name === providerName);
     if (!row) return;
-    if (s.activeProvider !== providerName) {
-      saveSettings({ ...s, activeProvider: providerName as ProviderId });
-    }
-    if (row.model !== model) patchProviderIntent(providerName, { model });
+    const nextModel = model.trim();
+    if (s.activeProvider === providerName && row.model === nextModel) return;
+    saveSettings({
+      ...s,
+      activeProvider: providerName as ProviderId,
+      providers: s.providers.map((p) => (p.name === providerName ? { ...p, model: nextModel } : p)),
+    });
   } catch (e) {
-    /* 读失败：新会话默认保持旧值，不阻断热切换——但**留痕**（写失败由 patchProviderIntent 记） */
+    /* 读失败：新会话默认保持旧值，不阻断热切换——但留痕。 */
     console.warn('[compose-store] 新会话默认落盘失败（下次开纸回旧值）:', e);
   }
 }

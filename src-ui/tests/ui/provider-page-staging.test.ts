@@ -356,10 +356,10 @@ describe('ProviderPage — 暂存流程', () => {
     const chipIds = () =>
       [...document.querySelectorAll<HTMLElement>('.pp-model-chip')].map((c) => c.getAttribute('data-tip') ?? '');
 
-    // 添加前：旧数据无 models → 自动视为 [默认模型]（= 新会话默认，带标记）
+    // 添加前：旧数据无 models → 自动视为 [最近使用模型]（带标记）
     expect(chipIds()).toContain('deepseek-v4-pro');
     expect(document.querySelector('.pp-model-chip.is-default')?.getAttribute('data-tip')).toBe('deepseek-v4-pro');
-    expect(document.querySelector('.pp-model-chip-default')?.textContent).toContain('新会话默认');
+    expect(document.querySelector('.pp-model-chip-default')?.textContent).toContain('最近使用');
 
     const addInput = document.querySelector<HTMLInputElement>('#pd-models-input')!;
     await setInputValue(addInput, 'deepseek-reasoner');
@@ -369,12 +369,12 @@ describe('ProviderPage — 暂存流程', () => {
       )!,
     );
 
-    // 默认模型并入 + 新模型追加 → 两个 chip；新会话默认标记仍在 deepseek-v4-pro
+    // 旧最近模型并入 + 新模型追加 → 两个 chip；最近使用标记仍在 deepseek-v4-pro
     expect(chipIds()).toContain('deepseek-reasoner');
     expect(chipIds()).toContain('deepseek-v4-pro');
     expect(document.querySelector('.pp-model-chip.is-default')?.getAttribute('data-tip')).toBe('deepseek-v4-pro');
 
-    // 移除「新会话默认」→ 自动顶上剩余第一个为默认
+    // 移除「最近使用」→ 自动顶上剩余第一个
     const defaultX = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-x')].find((b) =>
       (b.getAttribute('data-tip') ?? '').includes('deepseek-v4-pro'),
     )!;
@@ -382,7 +382,7 @@ describe('ProviderPage — 暂存流程', () => {
     expect(chipIds()).not.toContain('deepseek-v4-pro');
     expect(document.querySelector('.pp-model-chip.is-default')?.getAttribute('data-tip')).toBe('deepseek-reasoner');
 
-    // 再移除新加的（已是默认）→ 无剩余，默认清空
+    // 再移除新加的（已是最近使用）→ 无剩余，清空
     const lastX = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-x')].find((b) =>
       (b.getAttribute('data-tip') ?? '').includes('deepseek-reasoner'),
     )!;
