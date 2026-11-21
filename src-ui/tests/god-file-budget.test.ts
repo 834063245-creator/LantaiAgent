@@ -75,7 +75,16 @@ const DEBT: Record<string, number> = {
    * hook 里塞**：发送编排的真源就是本文件的 sendMessage（目标自动轮 / 命令驱动轮
    * 也走它），放视图层会让那两条路绕过引用快照——那是行为裂缝，不是体量问题。
    * 真要动结构（把快照拍抽成独立模块）单独立单，别为了省档位把判据切开。 */
-  'src-ui/src/app/chat/chat-core.ts': 1900, // 现 1876
+  /* 2026-11-21 升档 1900 → 2000（现 1967）。跨这一档的是两笔**发送编排**的活，
+   * 都不是能在别处落脚的东西：
+   *   ① 4f5fc5bf 题签态命令分诊（+67）——`draftCommandVerdict` 的判据必须与
+   *      sendMessage 同源；放视图层会让「斜杠面板点选」与「Ctrl+K 点选」这两条
+   *      **不经过 sendMessage** 的路绕过分诊，那正是「命令打到别的卷」的病灶；
+   *   ② 8817aafa goal 轮次计数（+15）——计数随日志事件实时刷新，读面就在本卷的
+   *      状态投影里。
+   * 真要动结构（sendMessage 的分诊段 + 夹签快照段抽成 app/chat/send-orchestration/*）
+   * 单独立单；本条按 2026-11-19 那次的口径处理——不为了省档位把判据切开。 */
+  'src-ui/src/app/chat/chat-core.ts': 2000, // 现 1967
   /* 2026-11-20 补登记（提笔收束批 ef9bf492 把它推到 1001，此前 966 在 LIMIT 之下）：
    * 只超线 1 行，但**登记的是现状不是许可**——下一次动这个文件优先把 Quill 拆出去
    * 销账，而不是继续抬档。 */
@@ -121,7 +130,13 @@ const DEBT: Record<string, number> = {
   'src-ui/src/plugins/builtin/canvas-nav/session-sidebar.css': 2500, // 现 1125
   'src-ui/src/plugins/builtin/settings-domain/SettingsPanel.tsx': 1100, // 现 1084
   'src-ui/src/plugins/builtin/sessions-home/home.css': 1100, // 现 1063
-  'src-ui/src/plugins/loader.ts': 1100, // 现 1056
+  /* 2026-11-21 升档 1100 → 1200（现 1112）。跨档那 56 行全在 4f5fc5bf：插件宿主桥补
+   * `agent`（spawn / list）与 `panels`（toggle / open / close / isOpen）两个面。
+   * **为什么长在 loader 里**：宿主桥 `installPluginHostBridge` / `createPluginHost`
+   * 本来就是本文件的职责（外部插件拿到的 `__lantai_plugin_host__` 只有这一个构造点）；
+   * 把两个面拆出去只是把同一张桥表切段再拼回来。真要动结构（宿主桥独立成
+   * `plugins/host-bridge.ts`，连带 faceDeps 对拍与 install 时序一起搬）单独立单。 */
+  'src-ui/src/plugins/loader.ts': 1200, // 现 1112
   'src-ui/src/agent/runtime/runtime.ts': 1100, // 现 1057
   'src-ui/src/plugins/builtin/compaction/agent-compaction.ts': 1100, // 现 1016
   /* 2026-11-17 交互原语批 A 补登记：宿主面注册表 + 指纹（faceDeps 单一真源）。
