@@ -125,17 +125,39 @@ OAuth 登录/多账号/登出；oauthAccountId 重启生效；watcher 冲突阻�
   `host-surface.baseline.json`（`aabd497d`）一致。
 - 测试命令入口：cd src-ui 后跑 node .\node_modules\vitest\vitest.mjs run（文件列表见 git diff / 新增测试）。
 
+**2026-11-21 第二批（信息架构）实测：**
+
+- tsc --noEmit：通过。
+- **全量 Vitest：541 个测试文件、5478 用例全通过**（+4 文件 / +25 用例 = 本批新增四份守护：
+  `provider-detail-ia` 9 · `provider-detail-a11y` 5 · `model-reasoning-presets` 5 · `provider-console-css` 6）。
+- 既有 Provider 套件（`provider-page-staging` 12 · `provider-model-catalog` 8 · `provider-model-autofill` 2
+  等 7 文件 51 例）**零改动通过**——版式重构的行为零漂移证据。
+- `npm run build`：通过（含 builtin 产物重建；`provider-console-ia.css` 已进 entry.css）。
+- `npm run doc-check`：通过。
+- **门禁现状（如实记录）**：仓库级 `biome ci .` 在 HEAD 上就是红的（锁版 2.6.7 实测 27 errors /
+  15 warnings；全是未改动文件：`canvas-nav/session-sidebar.css` 的 `noDescendingSpecificity`、
+  paper-shell 两片 CSS 与若干 tsx 的 formatter 漂移、`providers-store.ts` 等）。本批只保证
+  **改动文件干净**（8 个文件逐个 `biome check` 通过），没有顺手改未触碰文件。
+  另：`node_modules` 里 biome 是 2.6.8 而 `package-lock.json` 锁 2.6.7，2.6.8 会把仓库红数抬到 33
+  ——复验请用 `npx @biomejs/biome@2.6.7 ci .`。
+
 ## 4. 部署警告
 
 设置域 faceDeps 本次新增 `credentialRevision` / `noteCredentialDeleted` / `noteCredentialStored`
 （94 键，宿主面基线指纹 `aabd497d`），产物指纹已变。只替换 dist-plugins 不够，旧 exe 会拒载新产物；
 必须重建 exe：cd src-tauri && cargo tauri build（或 --no-bundle）。
 
+**2026-11-21 第二批补充**：本批只动页面 TSX 与 CSS（新增 `provider-console-ia.css`），
+**faceDeps 键集未变**（face.json 指纹仍是 `aabd497d`）⇒ 产物可只换 dist-plugins；
+但若要连 JS 一起生效仍建议按上面的 exe 重建路径走一次。
+
 ## 5. 关键文件
 
 Provider 页：ProviderPage/ProviderDetail/ModelReasoningLevels/SettingsPanel/settings-panel-helpers/AddProviderSheet/ProviderList/ProviderAdvanced/provider-data/status。
 核心：settings.ts/provider/model-meta.ts/providers-doc.ts/providers-store.ts/live.ts/catalog.ts/oauth.ts。
 新增测试：provider-oauth-account-selection/provider-status-fingerprint/provider-thinking-capability-view/ui/provider-model-autofill。
+第二批新增：`provider-console-ia.css`（IA 分片）+ `tests/ui/provider-detail-ia.test.tsx` /
+`provider-detail-a11y.test.tsx` / `model-reasoning-presets.test.tsx` / `provider-console-css.test.ts`。
 
 ## 6. 接手顺序
 
@@ -144,3 +166,54 @@ Provider 页：ProviderPage/ProviderDetail/ModelReasoningLevels/SettingsPanel/se
 3. R1-R7 已完成；代码风险项清空。
 4. 只剩 R8 人工真机验收：OAuth 多账号、文件冲突、fatal 重启、最近模型迁移、凭据重试、
    部署新 exe 后多账号重启仍生效。
+5. UI/UX：信息架构 / 参数职责切分 / 档位预设 / 窄窗断点 / 可及名称均已落地（第 7.1 第二批）；
+   像素截图基线、窄窗真机目检、读屏真机朗读仍未做，见第 7.2 节。
+
+## 7. UI/UX 交接
+
+> 本节曾在 `94dae0a9` 被整节误删（只删未搬迁）；2026-11-21 已从 `515310a4` 原样还原。
+> 7.1 各条已抽查代码对映（推理档位声明 / 视觉三态 select / 放弃暂存并重读 / 结果已失效 /
+> 新行使用账号 / 初始模型 / 最近使用高亮）。
+
+### 7.1 已完成的 UI/UX 改动
+
+- 思考档位区改名为「推理档位声明」，加来源 chip：API 拉取 / 内置目录 / 手动覆盖 / 未声明。
+- 未手动覆盖时直接展示生效档位与 wire 映射；按钮为「手动覆盖 / 恢复声明」，不再像默认档位选择器。
+- 视觉输入由二态开关改为三态 select：跟随声明 / 强制支持图片 / 强制仅文本。
+- OAuth 新增「请求使用账号」选择器；缺省「自动（最近登录）」，显式选择后显示手动账号。
+- 测试连接显示「结果已失效」提示；草稿测试只留在面板内，不写已保存健康状态。
+- 保存条有 saving 状态、外部冲突态、「放弃暂存并重读」出口。
+- 新增 Provider 弹层内联显示保存失败错误。
+- 改 Key/name/kind/baseUrl 时清空旧拉取态与启用集。
+- API Key / Base URL onBlur 清理会写回 React state。
+- 恢复默认 URL 仅对该 Provider 默认值判定。
+- ProviderDetail 按 provider key 重挂，切行不串本地状态。
+- headers textarea 跟随外部 reload 同步。
+- 删除后同名重建不继承旧 lastTest/catalog/modelMeta 的视觉残留。
+
+**2026-11-21 第二批（信息架构，§7.2 欠账 ①②③④⑥ 落地；裁定与理由见
+[`docs/design/provider-system-spec.md`](../design/provider-system-spec.md) 末节「追裁 · Provider 页信息架构」）：**
+
+- 详情页改「五分区 + 粘顶锚点导航」：连接与凭据 / 模型 / 诊断 / 高级 / 文件（+ 危险区，仅多提供方）。
+  分区常量 `SECTIONS` 是 nav 与 DOM 的单一真源；nav 不跟随滚动，`aria-current` 只标用户点过的那节。
+- 模型区拆双列：左「可用模型」、右「单模型参数面板」——参数从行内展开改为右侧固定面板
+  （行上「参数 / 收起」仍是开关；点开出现、再点收起的行为契约未变）。
+- 模型目录留在双列之外（模型区尾部），只做「远端清单 → 添加/移除」；折叠头补 `aria-controls`。
+- 手改档位编辑器补四个预设（关/低中高、关/中高、关/高、全部档位）+「按声明重新同步」；
+  预设保留声明的 wire 映射（`high → "deep"` 不被冲回档位名）；预设组用 `fieldset + legend`。
+- 窄窗断点改看**容器宽度**：`.pp-body` 是 `container-type: inline-size` 落点；
+  ≤880px 模型双列→单列，≤720px 双栏→单栏（详情区去第二层滚动、导航取消粘顶）。
+- 基线：本仓无 playwright —— 像素截图基线仍未做；本批落地的是**结构基线**
+  （分区黄金结构 + CSS 断点契约 + 可及名称/ARIA 关系），见 §7.2 说明。
+
+### 7.2 仍未做 / 能力边界（2026-11-21 第二批后更新）
+
+- **像素级视觉回归基线**仍未做（需浏览器 harness：本仓只有 `scripts/cdp-shot.cjs` 手工截图，
+  没有 e2e 工程）。现有替代 = `tests/ui/provider-detail-ia.test.tsx`（分区黄金结构）+
+  `tests/ui/provider-console-css.test.ts`（断点/留白/minmax/焦点环契约）。
+- **窄窗真机目检**未做：断点已按容器宽度落地（≤880 / ≤720）并有 CSS 契约，但真实面板缩放的手感
+  仍需人工看一眼。
+- **读屏软件真机朗读**未做：`tests/ui/provider-detail-a11y.test.tsx` 已覆盖可及名称、选项语义、
+  `aria-expanded/controls`、`role=switch`；NVDA / VoiceOver 实际朗读仍待人工。
+- 分区折叠：除「模型目录」外其余分区常开（内容再增长时再评估要不要折叠）。
+

@@ -74,6 +74,7 @@
 | 工具链/命令面 | 内核能力口 R3+R4 四项（browser / desktop / shell cwd+bg / 编辑） · 斜杠命令面 · 技能与 MCP 生产级 · 案卷侧栏载入体感 | [`../landmine-map.md`](../landmine-map.md) S6/S8 · [`../archive/kernel-tooling-line/command-surface-rework-plan.md`](../archive/kernel-tooling-line/command-surface-rework-plan.md) · [`../archive/kernel-tooling-line/skills-mcp-production-plan.md`](../archive/kernel-tooling-line/skills-mcp-production-plan.md) |
 | 系统面 | provider「刷新目录」CORS · 随包 LSP 守护（打包件） · 权限卡桥（真实 agent 写动作） · goal 目标域 | [`../landmine-map.md`](../landmine-map.md) 第十三批 · [`../archive/kernel-tooling-line/lsp-fleet-daemon-plan.md`](../archive/kernel-tooling-line/lsp-fleet-daemon-plan.md) §7 · [`goal-domain-dsh-port.md`](goal-domain-dsh-port.md) |
 | 开发侧自测 | 运行看门狗真机复现（临时压阈值 + 假 provider，取 `ui.log` 两条 `log.warn`） | [`../landmine-map.md`](../landmine-map.md) L3——**唯一仍算开发侧欠账的一行**，不占用户时间 |
+| Provider 页 | OAuth 真实 device-flow 授权 / 多账号 token 请求 / 登出 · `oauthAccountId` 重启生效 · watcher 文件冲突阻断 · fatal 跨重启恢复 · 凭据删除失败重试 · 新 exe 部署后多账号重启 | [`../handoff/provider-page-fix-handoff.md`](../handoff/provider-page-fix-handoff.md) §2 R8（R1–R7 代码侧已完成，只剩人工勾销） |
 
 ## 已完成并归档（点名即可，详情勿读）
 

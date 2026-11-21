@@ -1186,3 +1186,71 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
   `tests/ui/provider-page-staging.test.ts`（参数面板写/清覆盖）、
   `tests/composer-dock-rework.test.tsx`（pill 值换源 + provider 作用域档位表）、
   `tests/model-selector-compact.test.tsx`（40 个模型列全 40 条）。
+
+## 追裁 · Provider 页信息架构（2026-11-21，§7.2 欠账 ①②③④⑥ 落地）
+
+> 动机：handoff §7.2 记「信息架构未整体重做：列表 + 详情 + 高级 + 参数纵向堆叠，缺少按任务
+> 分组/折叠/锚点导航」「模型目录勾选区与参数区职责仍重」「手动覆盖编辑器逐行表格」「窄窗未验」
+> 「三态 select / 账号选择器键盘读屏未验」。本批只动**版式与交互形状**，不改数据契约、
+> 不改保存链路。
+
+### 决定（我的裁定 + 理由）
+
+1. **详情页 = 五个任务分区 + 粘顶锚点导航**：连接与凭据 / 模型 / 诊断 / 高级 / 文件（+ 危险区，
+   仅多提供方时出现）。跳过「整体改成左侧设置树」的理由：设置页本身已在面板里，再套一层树
+   会让窄窗更挤；分区 + 锚点用最小结构换来「不必靠滚找东西」。
+   - 分区顺序 = `SECTIONS` 常量 = DOM 顺序 = 导航顺序（单一真源，`ProviderDetail.tsx`）；
+     悬空锚点（nav 有、DOM 无）由 `tests/ui/provider-detail-ia.test.tsx` 拦。
+   - 导航**不做滚动跟随**（不猜 IntersectionObserver）：`aria-current` 只标用户点过的那一节，
+     避免「指示的位置和实际视口不一致」这种更糟的谎。
+2. **模型区拆双列**：左 = 可用模型（创作坞唯一可选面），右 = **单模型参数面板**。
+   - 参数从「行内展开」改为「右侧固定面板」：参数是「一次看一个模型」的任务，行内展开会把
+     可用模型列表撑成一条长滚动带（§7.2「长列表滚动与定位成本高」）。
+   - 触发面仍是行上的「参数 / 收起」按钮（`aria-expanded` + `aria-controls` 指向面板 id），
+     行为契约未变：点开出现 `.pp-model-params`，再点收起消失——既有 12 个暂存流程用例零改动通过。
+   - **模型目录**留在双列之外、模型区尾部：它只做「远端清单 → 添加/移除」，不再和参数编辑
+     抢同一个滚动面。目录的折叠头补 `aria-controls`（此前只有 `aria-expanded`）。
+3. **手改档位编辑器补两项**（`ModelReasoningLevels`）：
+   - **预设**：关/低中高、关/中高、关/高、全部档位。预设只换「有哪几档」，每档 wire 值仍按
+     当前声明播种——网关要 `high → "deep"` 时套预设不会把它冲回档位名。
+   - **按声明重新同步**：一步把覆盖重置回供应商 / 目录当前声明（丢弃手改），对应
+     §7.2「无一键『从 API 重新同步』」。
+   - 预设组用 `fieldset + legend`（不是 `role="group"` + `aria-label` 的 div）——语义元素优先。
+4. **窄窗断点看容器宽度，不看窗口宽度**：`.pp-console-body`（ProviderPage 里包住 `.pp-split`）是
+   `container-type: inline-size` 的落点。
+   - 命名纪律：面产品 CSS 跨产品不得重名（`tests/plugin-css-channel.test.ts` 钉死）——
+     不叫 `.pp-body`（paper-shell 的正文块已占用），导航叫 `.pp-sec-nav` / `.pp-sec-jump`。
+   - `@container (max-width: 880px)`：模型双列 → 单列。
+   - `@container (max-width: 720px)`：列表 + 详情双栏 → 单栏；详情区去掉第二层滚动；粘顶
+     导航取消粘顶。
+   - 理由：设置页只占面板的一部分，`@media` 的窗口宽度不是有效信号。
+5. **基线形态（如实记录能力边界）**：本仓没有 playwright / puppeteer，**像素级视觉回归基线
+   仍未做**。本批落地的是两层**结构基线**：
+   - `tests/ui/provider-detail-ia.test.tsx`：分区 id / 顺序 / 导航文案 / 每节 aria-label 的
+     黄金结构（改版式必须显式改这里）；
+   - `tests/ui/provider-console-css.test.ts`：容器查询断点、锚点跳转留白、双列 minmax 护栏、
+     焦点环的 CSS 契约。
+   - 另加 `tests/ui/provider-detail-a11y.test.tsx`：三态视觉 select、OAuth 账号 select、
+     档位 switch、折叠头的可及名称与 ARIA 关系（键盘/读屏的**自动化**半边；真机朗读仍待人工）。
+
+### 行为变化（用户可感知）
+
+- 详情页顶部多一条分区导航；点击跳到对应分区。
+- 模型参数不再在行内展开，改为右侧面板；模型目录仍是可折叠块，位置在模型区尾部。
+- 手改档位多了四个预设与一个「按声明重新同步」。
+- 面板变窄时（容器 ≤880 / ≤720）自动降级单列，不再横向挤压。
+
+### 剩余欠账（不在本批）
+
+- 像素级截图基线（需浏览器 harness）。
+- 窄窗真机目检、读屏软件真机朗读。
+- 分区折叠：除模型目录外，其余分区常开——内容再增长时再评估要不要折叠。
+
+### 守护
+
+- `tests/ui/provider-detail-ia.test.tsx`（9 例：分区/导航/跳转/landmark + 双列/面板开合/目录归位/换人重开）
+- `tests/ui/provider-detail-a11y.test.tsx`（5 例：可及名称/选项语义/ARIA 关系/type=button）
+- `tests/ui/model-reasoning-presets.test.tsx`（5 例：预设播种、wire 保留、重新同步、语义化 fieldset）
+- `tests/ui/provider-console-css.test.ts`（6 例：container-type、两个断点、scroll-margin、minmax、focus-visible）
+- 既有 `provider-page-staging` / `provider-model-catalog` / `provider-model-autofill` **零改动通过**
+  （版式重构的行为零漂移证据）。
