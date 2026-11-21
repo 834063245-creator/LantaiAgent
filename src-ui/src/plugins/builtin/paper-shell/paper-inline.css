@@ -364,13 +364,56 @@
   font-size: 12px;
   color: var(--ink-2);
 }
-/* 内页里的工具卡：脚注族的注线不要（那是父卷的族标记），只留等宽文字 */
-.pp-post-inner-step--tool .pp-post-inner-body .pp-args,
-.pp-post-inner-step--tool .pp-post-inner-body .pp-out {
-  font-size: 10.5px;
-  line-height: 1.6;
+/* ── 内页里的**工具卡**（2026-11-21 连续帖重叠事故）：必须自带全套盒规则 ──
+ *
+ *  真凶：`.pp-args` / `.pp-out` 的样式全部挂在**祖先选择器** `.pp-block.pp-tool` 上
+ *  （字体档 / max-height / overflow / white-space 四样）。内页里没有那个祖先——
+ *  内页块是体渲染器直接画的裸 <pre>，父容器只有 .pp-post-inner-step--tool。
+ *  于是内页工具卡**一条盒规则都没有**：长输出无限展开（无封顶、无滚动、无 pre-wrap），
+ *  DOM 远高于 measurePostHeight 算的高 ⇒ 帖内容溢出块框、后一张帖按算错的高排
+ *  ⇒ 用户看到「连续的子代理卡片文字重叠」。
+ *
+ *  ⚠ 纪律：内页**不许继承父卷的祖先作用域**。每一个进内页的 kind，盒规则都必须在这里
+ *  成对写一遍（体渲染器只负责结构，样式归属由宿主决定）。写漏 = 高度失控。
+ *  ⚠ 数值必须与 measure.ts 的 cappedH 逐字同源：args 用 PRE_MAX_H / 输出用 OUT_MAX_H、
+ *  字体档取 --pp-type-tool-* / --pp-type-out-*（与父卷同名块同一个尺子）。 */
+.pp-post-inner-step--tool .pp-args {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-tool-size);
+  line-height: var(--pp-type-tool-lh);
+  color: var(--indigo);
   max-height: var(--pp-lim-preMaxH);
   overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.pp-post-inner-step--tool .pp-out {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-out-size);
+  line-height: var(--pp-type-out-lh);
+  color: var(--ink-2);
+  max-height: var(--pp-lim-outMaxH);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+/* 内页里的错误段：--fail 单一真源（与父卷工具卡的错误段同一个色） */
+.pp-post-inner-step--tool .pp-out--err {
+  color: var(--fail);
+}
+/* 内页里的程文（code）：程序体与输出同样自带盒规则 */
+.pp-post-inner-step--code .pp-code-src {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-tool-size);
+  line-height: var(--pp-type-tool-lh);
+  color: var(--ink-1);
+  max-height: var(--pp-ch-codeSrc-maxH);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 /* 帖签读数（走秒 / 步数）：mono 9.5 tabular——数字列要对齐，帖并排时不跳字宽 */
 .pp-post-read {

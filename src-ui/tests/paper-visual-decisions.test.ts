@@ -1305,4 +1305,31 @@ describe('机读位字体与 pre>code 交还（2026-09-24）', () => {
     expect(PANEL_CSS).not.toContain('--pp-ch-post-headLh');
     expect(PANEL_CSS).not.toContain('--pp-ch-post-liveLh');
   });
+
+  /* 2026-11-21「连续帖文字重叠」事故钉：内页**不许继承父卷的祖先作用域**。
+   *
+   * 病灶：`.pp-args` / `.pp-out` 的盒规则全部挂在 `.pp-block.pp-tool` 这个祖先上
+   * （字体档 / max-height / overflow / white-space 四样）。内页块是体渲染器画的裸 <pre>，
+   * 父容器只有 `.pp-post-inner-step--tool` —— 一条盒规则都命中不了：长输出无限展开、
+   * 无封顶、无滚动、无 pre-wrap，DOM 远高于 measure 算的高 ⇒ 帖内容溢出块框、
+   * 后一张帖按算错的高排 ⇒ 「连续的子代理卡片文字重叠」。
+   *
+   * 判据：凡是内页会渲染、且在父卷里靠祖先选择器拿样式的叶件，都必须有对应的
+   * `.pp-post-inner-step--<kind>` 版本，而且四样盒属性齐全（缺一样高度就会失控）。 */
+  it('内页的工具卡/程文自带全套盒规则（缺则为「祖先作用域」漏洞 → 高度失控）', () => {
+    const required: Array<[string, string]> = [
+      ['.pp-post-inner-step--tool .pp-args {', 'args 段'],
+      ['.pp-post-inner-step--tool .pp-out {', '输出/错误段'],
+      ['.pp-post-inner-step--code .pp-code-src {', '程文程序体'],
+    ];
+    for (const [sel, label] of required) {
+      const body = ruleBody(PANEL_CSS, sel);
+      expect(body, `${label} 在 CSS 里缺失`).not.toBe('');
+      // 四样盒属性：缺 max-height 会无限展开；缺 overflow 不会滚；缺 pre-wrap 折行模型与测高不符
+      expect(body, `${label} 缺 max-height（会无限展开）`).toContain('max-height');
+      expect(body, `${label} 缺 overflow（不会滚动）`).toContain('overflow: auto');
+      expect(body, `${label} 缺 white-space（折行模型与测高不符）`).toContain('white-space: pre-wrap');
+      expect(body, `${label} 缺字体档（会落到 UA 默认）`).toContain('font-family: var(--f-mono)');
+    }
+  });
 });
