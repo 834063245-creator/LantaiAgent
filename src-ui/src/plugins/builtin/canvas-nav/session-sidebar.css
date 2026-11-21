@@ -397,6 +397,17 @@
     background var(--snap),
     box-shadow var(--snap);
 }
+/* 行重排让位（FLIP，2026-11-21 用户报「卷的位置发生变化时只跳变」）：
+ * 新旧 y 差由壳内一次 rAF 写成起手 transform，本类只负责把归零那一程交给
+ * --m-sheet。纸律：只动 transform；背景/影仍走态变轴 --snap（transition 简写
+ * 是整表替换，双档必须写全，否则 hover 会误走 260ms）。 */
+.ss-row.ss-row--moving {
+  transition:
+    transform var(--m-sheet),
+    background var(--snap),
+    box-shadow var(--snap);
+  will-change: transform;
+}
 .ss-row:hover {
   background: var(--paper-deep);
 }

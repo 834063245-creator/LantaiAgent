@@ -36,7 +36,7 @@
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享
 // 真实例（store 单例不可内联副本），react 由构建期别名桥共享。
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
 import { isUnnamedVolumeLabel, volumeDisplayName } from '../../../state/volume-name';
 import {
@@ -75,6 +75,29 @@ import './session-sidebar.css';
 
 /** 拖动阈值（px）：超过即视为拖行（区分点击摊开）。 */
 const DRAG_THRESHOLD = 6;
+/** 行位置让位：FLIP 只动 transform（§15 纸律），时长走 --m-sheet（CSS 类同名声明）。 */
+const ROW_MOVE_CLASS = 'ss-row--moving';
+
+/** 动效敏感短路（§15 约束律：JS 帧编排 CSS 的过渡也必须自觉读 matchMedia）。 */
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
+}
+
+/** 行在文档流里的布局 y（offsetTop 链；不受 transform 影响，适合 FLIP 前后对拍）。 */
+function layoutTopOf(el: HTMLElement): number {
+  let top = 0;
+  let node: HTMLElement | null = el;
+  while (node) {
+    top += node.offsetTop;
+    const parent = node.offsetParent as HTMLElement | null;
+    if (parent === node) break; // 防御自环（坏 DOM/测试桩）
+    node = parent;
+  }
+  return top;
+}
+
 /** 面板核类型（`useCoreStore` 所持 core 的非空形状）——本文件不 import ChatCore
  *  （产物域依赖一律经 './host'），删除连坐的返回值类型从能力位本身取。 */
 type SidebarCore = NonNullable<ReturnType<typeof useCoreStore.getState>['core']>;
@@ -782,6 +805,108 @@ export const SessionSidebar = memo(function SessionSidebar() {
   }, [forest, folded]);
   /** 可见行（键盘游标 / Ctrl+A / 全选可见都读它）——当前视角那一份。 */
   const flat = view === 'case' ? caseFlat : treeFlat;
+
+  /** 行位置让位的失效键：只编码「会影响行 y」的结构（行集/顺序/节桶族折叠），
+   *  不编码 label/状态/块数——流式更新每块都换 rows 引用，但位置没变就不许量 DOM。 */
+  const motionKey = useMemo(() => {
+    const rowIds = flat.map((r) => r.id).join(',');
+    const groups =
+      view === 'case'
+        ? [
+            `open:${folded('open') ? 1 : 0}:${caseSections.open.map((r) => r.id).join(',')}`,
+            `closed:${folded('closed') ? 1 : 0}:${caseSections.closed.map((r) => r.id).join(',')}`,
+            `buckets:${showBucketHeads ? 1 : 0}:${buckets
+              .map((b) => `${b.bucket}:${folded(b.bucket) ? 1 : 0}:${b.rows.map((r) => r.id).join(',')}`)
+              .join(';')}`,
+          ].join('|')
+        : [
+            `trees:${folded('trees') ? 1 : 0}:${forest.families
+              .map(
+                (fam) =>
+                  `${fam.root.id}:${folded(famFoldKey(fam.root.id)) ? 1 : 0}:${fam.rows.map((r) => r.id).join(',')}`,
+              )
+              .join(';')}`,
+            `solo:${folded(SOLO_KEY) ? 1 : 0}:${forest.solo.map((r) => r.id).join(',')}`,
+          ].join('|');
+    return [view, arranging ? 'arranging' : 'normal', rowIds, groups].join('|');
+  }, [flat, view, arranging, caseSections, buckets, showBucketHeads, folded, forest]);
+
+  /** FLIP：改序前的布局 y 在上一趟 effect 里已量好；本趟只把「旧 y − 新 y」写成
+   *  起手 transform，下一帧撤掉，让 CSS 的 --m-sheet 接管让位。 */
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const rowTopRef = useRef(new Map<number, number>());
+  const rowFlipRafRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    void motionKey; // 失效键本身不参与计算；它只决定这趟是否量 DOM（biome 依赖声明需要真引用）。
+    const list = listRef.current;
+    if (!list) return;
+    // 同一趟若被更快的布局更新抢占：旧 rAF 作废，旧内联起手值也先摘净。
+    if (rowFlipRafRef.current != null) {
+      cancelAnimationFrame(rowFlipRafRef.current);
+      rowFlipRafRef.current = null;
+    }
+    const rows = Array.from(list.querySelectorAll<HTMLElement>('.ss-row[data-id]'));
+    const next = new Map<number, number>();
+    // 先只读（offsetTop 链一次量完），再统一摘上一趟内联起手值——读写分离，避免每行一次强制布局。
+    for (const el of rows) {
+      const id = Number(el.dataset.id);
+      if (Number.isFinite(id)) next.set(id, layoutTopOf(el));
+    }
+    for (const el of rows) {
+      el.classList.remove(ROW_MOVE_CLASS);
+      el.style.transition = '';
+      el.style.transform = '';
+    }
+
+    const reduce = prefersReducedMotion();
+    const moving: Array<{ el: HTMLElement; dy: number }> = [];
+    if (!reduce) {
+      for (const el of rows) {
+        const id = Number(el.dataset.id);
+        const prev = rowTopRef.current.get(id);
+        const now = next.get(id);
+        if (prev == null || now == null) continue;
+        const dy = prev - now;
+        if (Math.abs(dy) < 0.5) continue;
+        moving.push({ el, dy });
+      }
+    }
+    rowTopRef.current = next;
+    if (moving.length === 0) return;
+
+    for (const { el, dy } of moving) {
+      el.classList.add(ROW_MOVE_CLASS);
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${dy}px)`;
+    }
+    // 起手位移先落成非过渡态，下一帧再撤掉让 CSS 过渡接管——纸律：只动 transform。
+    void list.offsetHeight;
+    rowFlipRafRef.current = requestAnimationFrame(() => {
+      rowFlipRafRef.current = null;
+      for (const { el } of moving) {
+        if (!el.isConnected) continue;
+        el.style.transition = '';
+        el.style.transform = '';
+      }
+    });
+  }, [motionKey]);
+
+  useEffect(
+    () => () => {
+      if (rowFlipRafRef.current != null) cancelAnimationFrame(rowFlipRafRef.current);
+    },
+    [],
+  );
+
+  /** 让位过渡收尾摘类：类提供 `transform var(--m-sheet)`，不摘会让后续 260ms 内的
+   *  hover 背景也误走长档（transition 简写是整表替换）。 */
+  const onListTransitionEnd = useCallback((e: React.TransitionEvent<HTMLDivElement>) => {
+    if (e.propertyName !== 'transform') return;
+    const target = e.target as HTMLElement;
+    if (target.classList?.contains('ss-row')) target.classList.remove(ROW_MOVE_CLASS);
+  }, []);
+
   /** 区间连选（整理态 Shift+点行）：锚点到目标之间**设为选中**（不翻转、不清其余）。 */
   const rangeSelect = useCallback(
     (fromId: number, toId: number) => {
@@ -1458,7 +1583,13 @@ export const SessionSidebar = memo(function SessionSidebar() {
         {/* biome-ignore lint/a11y/noStaticElementInteractions: 键盘导航容器（↑↓/←→/F2/C/Delete/X 经事件冒泡统一处理）。
           role=tree 语义留待重排 DOM 的小批（分组头/折枝注记是并列件，硬套 role=tree 结构不成立）——
           本批只给折枝钮 aria-expanded + 行 aria-current（见 plan §2.4 裁定）。 */}
-        <div className="ss-list" onKeyDown={onListKeyDown} data-view={view}>
+        <div
+          ref={listRef}
+          className="ss-list"
+          onKeyDown={onListKeyDown}
+          onTransitionEnd={onListTransitionEnd}
+          data-view={view}
+        >
           {view === 'case' && caseSections.open.length > 0 && (
             <div className="ss-section">
               <button
