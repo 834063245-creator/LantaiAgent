@@ -151,6 +151,13 @@ interface ProviderSettings {
   磁盘上存在、补丁没写、`pendingDeletes` 也没点名的有效节原样保留。完整 intent 另有
   一份独立本机 backup（`hologram_provider_intent_backup_v1`，不含密钥/运行态）：
   跨重启 fatal 或坏节时优先回落到它，避免 localStorage 只剩运行态壳时丢意图。
+- **两阶段保存（2026-11-30 R3）**：跨文件/密钥库没有真正的分布式事务，因此语义显式
+  拆成两段——① provider.yml + 非敏感 settings 提交；② 系统凭据删除/写入。第二段
+  失败不再伪装成「设置未保存」：配置 dirty 熄灭，`credentialDirty` 单独置位，设置页
+  提供「重试凭据同步」只重跑第二段，不重写 provider 配置；关闭守卫也把该状态计入。
+- **ModelSelector 显示元数据（2026-11-30 R6）**：创作坞/字段选择器的描述符统一走
+  `modelDescriptor(provider, id)`（provider 作用域的 seed/meta/override 链），不再用
+ 全局 `getModel(id)` 拼显示名/窗口/视觉/档位——不同 Provider 同名 id 不串元数据。
 - **校验纪律**（照 DSH「boot fails loud, reload keeps last good」落到本仓库语义）：
   **字段级降级**（2026-11-16 字段级校验批）——一个字段写错只丢那个字段并点名，
   整节照常生效；只有「这一行是谁 / 连到哪」判不出来（名字非法 / 不是映射 /

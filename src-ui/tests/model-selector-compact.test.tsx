@@ -201,7 +201,7 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     expect(tips.every((t) => t === '' || !t.includes('deepseek'))).toBe(true);
   });
 
-  it('B5：vision 模型行带「视」徽标（目录声明 + 覆盖补声明同面亮标）', async () => {
+  it('B5：vision 模型行带「视」徽标（拉取元数据 + 覆盖补声明同面亮标）', async () => {
     localStorage.setItem(
       'hologram_settings',
       JSON.stringify({
@@ -214,6 +214,10 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
             baseUrl: 'https://gateway.example/v1',
             model: 'deepseek-v4-flash-vision-exp',
             models: ['deepseek-v4-flash-vision-exp', 'glm-4v-custom', 'deepseek-v4-pro'],
+            modelMeta: {
+              'deepseek-v4-flash-vision-exp': { fetchedAt: 1, name: 'Vision Exp', input: ['text', 'image'] },
+              'deepseek-v4-pro': { fetchedAt: 1, name: 'DeepSeek V4 Pro', input: ['text'] },
+            },
             modelOverrides: { 'glm-4v-custom': { input: ['text', 'image'] } },
           },
         ],
@@ -246,6 +250,67 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     // 纯文本主线：无徽标（不编造能力）
     const plain = container!.querySelector('[data-key="p/deepseek-v4-pro"]');
     expect(plain?.querySelector('.ms-item-vision')).toBeNull();
+  });
+
+  it('R6：同名模型 id 的名字/视觉元数据按 Provider 作用域，不串全局目录', async () => {
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'p1',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'p1',
+            apiKey: '',
+            baseUrl: 'https://p1.example/v1',
+            model: 'deepseek-v4-pro',
+            models: ['deepseek-v4-pro'],
+            modelMeta: {
+              'deepseek-v4-pro': { fetchedAt: 1, name: 'P1 私有模型', input: ['text', 'image'] },
+            },
+          },
+          {
+            kind: 'openai',
+            name: 'p2',
+            apiKey: '',
+            baseUrl: 'https://p2.example/v1',
+            model: 'deepseek-v4-pro',
+            models: ['deepseek-v4-pro'],
+            modelMeta: {
+              'deepseek-v4-pro': { fetchedAt: 1, name: 'P2 私有模型', input: ['text'] },
+            },
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'p1',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    // 收起态名字也必须按当前 provider 解析，不落全局目录名。
+    expect(container!.querySelector('.ms-trigger')?.textContent).toContain('P1 私有模型');
+
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    const p1 = container!.querySelector('[data-key="p1/deepseek-v4-pro"]');
+    const p2 = container!.querySelector('[data-key="p2/deepseek-v4-pro"]');
+    expect(p1?.querySelector('.ms-item-name')?.textContent).toBe('P1 私有模型');
+    expect(p2?.querySelector('.ms-item-name')?.textContent).toBe('P2 私有模型');
+    // vision 也按各自 meta：p1 有、p2 无。
+    expect(p1?.querySelector('.ms-item-vision')).not.toBeNull();
+    expect(p2?.querySelector('.ms-item-vision')).toBeNull();
   });
 
   // 2026-09-23 用户拍板 A：**坞里不再报目录失败**——它是消费面，看到也做不了补救；
@@ -442,6 +507,8 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
             baseUrl: 'https://gw.example/v1',
             model: 'deepseek-v4-pro',
             models: ['deepseek-v4-pro'],
+            // R6：自定义网关的同名 id 不再吃全局目录显示元数据；人类名来自本 Provider 拉取。
+            modelMeta: { 'deepseek-v4-pro': { fetchedAt: 1, name: 'DeepSeek V4 Pro' } },
           },
         ],
         projectPath: '.',
@@ -468,7 +535,7 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     const heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
     expect(heads.some((h) => h.includes('my-gateway'))).toBe(true);
     expect(heads.some((h) => h.includes('deepseek'))).toBe(false);
-    // 行内人类名仍来自目录元数据
+    // 行内人类名来自本 Provider 的拉取元数据（不是全局目录）
     const items = [...container!.querySelectorAll<HTMLButtonElement>('.ms-item')].map((b) => b.textContent ?? '');
     expect(items.some((t) => t.includes('DeepSeek V4 Pro'))).toBe(true);
   });

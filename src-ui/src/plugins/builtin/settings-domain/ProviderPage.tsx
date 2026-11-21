@@ -55,8 +55,12 @@ interface ProviderPageProps {
   /** 保存成功后自增——用于把「未保存 Key」标记复位为「已保存」 */
   saveVersion: number;
   providerDirty: boolean;
+  /** R3 第二阶段：配置已保存、凭据删除/写入仍待重试。 */
+  credentialDirty?: boolean;
   /** Provider 页独立保存（落盘 + 凭据 + 重建 Agent） */
   onSaveProviders: () => void;
+  /** 只重试凭据同步（不重写 provider 配置）。 */
+  onRetryCredentials?: () => void;
   /** 添加提供方即时生效（2026-09-06）：一步落盘 + 写 Key + settings-saved 热广播，
    *  使新提供方模型立刻全会话可选（不再走暂存-保存条）。next 已含新 provider。 */
   onAddAndPersist: (next: AppSettings, addedName: ProviderId) => Promise<void>;
@@ -115,7 +119,9 @@ export function ProviderPage({
   pendingClears,
   saveVersion,
   providerDirty,
+  credentialDirty = false,
   onSaveProviders,
+  onRetryCredentials = () => {},
   onAddAndPersist,
   saving = false,
   onDiscardProviderChanges = () => {},
@@ -760,17 +766,25 @@ export function ProviderPage({
         />
       </div>
 
-      {providerDirty && (
+      {(providerDirty || credentialDirty) && (
         <div className="pp-save-bar" aria-busy={saving}>
           <span className="pp-save-bar-dot" />
           <span className="pp-save-bar-text">
             {saving
-              ? '正在保存 Provider 配置...'
-              : providersDoc.staleHint
-                ? '配置文件已被外部修改：为避免覆盖，当前已阻止保存。'
-                : '有未保存的提供方更改'}
+              ? credentialDirty && !providerDirty
+                ? '正在重试凭据同步...'
+                : '正在保存 Provider 配置...'
+              : credentialDirty && !providerDirty
+                ? 'Provider 配置已保存；系统凭据同步未完成。'
+                : providersDoc.staleHint
+                  ? '配置文件已被外部修改：为避免覆盖，当前已阻止保存。'
+                  : '有未保存的提供方更改'}
           </span>
-          {providersDoc.staleHint ? (
+          {credentialDirty && !providerDirty ? (
+            <button type="button" className="pp-save-btn" disabled={saving} onClick={onRetryCredentials}>
+              {saving ? '重试中...' : '重试凭据同步'}
+            </button>
+          ) : providersDoc.staleHint ? (
             <button type="button" className="pp-save-btn" onClick={onDiscardProviderChanges}>
               放弃暂存并重读
             </button>

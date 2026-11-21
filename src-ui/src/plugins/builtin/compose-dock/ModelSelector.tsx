@@ -37,6 +37,7 @@ import {
   hasDynamicFetchInflight,
   iconHtml,
   loadSettings,
+  modelDescriptor,
   modelInput,
   onDynamicFetchChange,
   onSettingsSaved,
@@ -94,11 +95,12 @@ function configuredModelDescriptors(settings: ReturnType<typeof loadSettings>): 
     const out: ModelDescriptor[] = [];
     for (const p of settings.providers) {
       for (const id of effectiveModels(p)) {
-        const known = getModel(id);
-        // B5：input 走 modelInput 合并（覆盖 ?? 目录）——「视」徽标与附图门禁
-        // 同链，自定义 vision 模型补声明后徽标即亮
+        // R6：显示元数据必须走 **provider 作用域**描述符——同名 id 在不同 Provider
+        // 下的名字/窗口/视觉/档位互不串台。全局 getModel 只在该 Provider 没有
+        // seed/meta/override 时自然返回 undefined（下面合成最小描述符）。
+        const known = modelDescriptor(p, id);
         if (known) {
-          out.push({ ...known, vendor: p.name, input: modelInput(p, id) });
+          out.push(known);
         } else {
           out.push({
             id,
@@ -197,11 +199,13 @@ export function ModelSelector({
    *  2026-10-22 P1：目录外 provider-scoped id（如 `deepseek/deepseek-v4.1-flash`）
    *  去厂商前缀再露——厂商章已经表明是谁家，215px 里不该先花 9 个字符在 `deepseek/`。 */
   const selectedHumanName = useMemo(() => {
-    const known = getModel(value)?.name;
+    // R6：收起态名字同样按当前 Provider 解析；provider 不在场（降级/测试）才落回目录。
+    const provider = settingsState.providers.find((p) => p.name === providerName);
+    const known = provider ? modelDescriptor(provider, value)?.name : getModel(value)?.name;
     if (known) return known;
     const slash = value.lastIndexOf('/');
     return slash >= 0 ? value.slice(slash + 1) : value;
-  }, [value]);
+  }, [providerName, settingsState, value]);
   /** 收起态标签（DSH model.notSelected 语义）：有值 = 人类可读名；空 = 显式未选择。 */
   const triggerLabel = value ? selectedHumanName || value : '选择模型';
 

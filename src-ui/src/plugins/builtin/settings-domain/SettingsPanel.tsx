@@ -63,6 +63,15 @@ import { UpdateSection } from './UpdateSection';
 // 页签 id 类型的真源在 `settings-tabs.ts`（表与类型同处——加页签只动那一处）。
 type Tab = SettingsTabId;
 
+/** 保存回执的两阶段语义（R3）：非敏感配置先提交，凭据同步是独立第二阶段。
+ *  `persisted` = provider.yml + saveSettings 已提交；凭据失败不再伪装成「设置未保存」。 */
+interface SavePipelineResult {
+  ok: boolean;
+  error?: string;
+  persisted: boolean;
+  credentialsPending?: boolean;
+}
+
 // （「语言依赖」标签页（引擎 LSP 舰队状态探测）随图谱全量退役删除，2026-09-09——
 //  数据源 hologram_call(engine_status) 属引擎接线，兰台侧零引擎后无源。）
 
@@ -284,6 +293,9 @@ const SettingsPanelApp: React.FC<{
   useEffect(() => onProvidersDocChange(() => setProvidersDocVersion((v) => v + 1)), []);
   // Provider 页独立 dirty：与其他 tab 的全局保存互不牵连
   const [providerDirty, setProviderDirty] = useState(false);
+  /** R3 第二阶段：配置已保存，但凭据删除/写入未完成。独立于 providerDirty，
+   *  UI 提供「重试凭据同步」而不是重写整份 provider 配置。 */
+  const [credentialDirty, setCredentialDirty] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -369,8 +381,8 @@ const SettingsPanelApp: React.FC<{
    * 直连 dock.closePanel——绕过 dirty 确认，未保存更改静默丢失。守卫注册进
    * dock-store：任何关闭路径（closePanel/togglePanel）先问守卫；dirty 时弹
    * 确认并拦截。确认后的真关闭走 forceClose（先摘守卫再关）。 */
-  const dirtyRef = useRef(0); // 1 = 全局 dirty，2 = providerDirty，3 = 双
-  dirtyRef.current = (dirty ? 1 : 0) | (providerDirty ? 2 : 0);
+  const dirtyRef = useRef(0); // 1 = 全局 dirty，2 = providerDirty，4 = 凭据待同步
+  dirtyRef.current = (dirty ? 1 : 0) | (providerDirty ? 2 : 0) | (credentialDirty ? 4 : 0);
   const forceClose = useCallback(() => {
     useDockStore.getState().unregisterCloseGuard('settings');
     onClose();
@@ -391,19 +403,59 @@ const SettingsPanelApp: React.FC<{
   }, []);
 
   const handleClose = useCallback(() => {
-    if (dirty || providerDirty) {
+    if (dirty || providerDirty || credentialDirty) {
       setCloseConfirm(true);
       return;
     }
     forceClose();
-  }, [dirty, providerDirty, forceClose]);
+  }, [dirty, providerDirty, credentialDirty, forceClose]);
 
-  /** 保存管道：落盘 + 删暂存凭据 + 写新 Key + 重建 Agent。返回是否成功。
+  /** R3 第二阶段（可单独重试）：应用暂存的凭据删除 + 写入当前面板里的新 Key。
+   *  配置文件与非敏感设置此时已经提交；失败只把 credentialDirty 置位，不重写配置。 */
+  const runCredentialPhase = useCallback(
+    async (
+      target: AppSettings,
+      clears: readonly ProviderId[],
+      deletes: readonly ProviderId[],
+    ): Promise<{ ok: boolean; error?: string }> => {
+      const removeNames = [...new Set([...clears, ...deletes])];
+      const removedOk = new Set<ProviderId>();
+      const cleanupFailures: string[] = [];
+      for (const name of removeNames) {
+        const removed = await removeSecret(name);
+        if (removed.ok) removedOk.add(name);
+        else cleanupFailures.push(name + ': ' + (removed.error ?? '未知原因'));
+      }
+      // 已成功的删除不再留在暂存里——否则重试会重复删除、且失败名单越来越脏。
+      if (removedOk.size > 0) {
+        setPendingClears((current) => current.filter((name) => !removedOk.has(name)));
+        setPendingDeletes((current) => current.filter((name) => !removedOk.has(name)));
+      }
+      const failedKeys = await persistSecrets(target);
+      const problems: string[] = [];
+      if (cleanupFailures.length > 0) problems.push('删除失败：' + cleanupFailures.join('；'));
+      if (failedKeys.length > 0) problems.push('Key 写入失败：' + failedKeys.join('、'));
+      if (problems.length > 0) {
+        setCredentialDirty(true);
+        const message =
+          'Provider 配置已保存；系统凭据同步未完成：' +
+          problems.join('；') +
+          '。\n请点「重试凭据同步」；在成功前重启，未写入的 Key 会丢失。';
+        setSaveError(message);
+        return { ok: false, error: message };
+      }
+      setCredentialDirty(false);
+      return { ok: true };
+    },
+    [],
+  );
+
+  /** 保存管道：落盘 + 删暂存凭据 + 写新 Key + 重建 Agent。返回两阶段回执。
    *  @param toSave 要持久化的 settings（缺省 = 面板 state）。添加提供方即时
    *   生效路径传入含新 provider 的 next——避免闭包读到 setSettings 前的旧快照。 */
   const runSavePipeline = useCallback(
-    async (toSave?: AppSettings, opts?: { reconcileName?: ProviderId }): Promise<{ ok: boolean; error?: string }> => {
-      if (savingRef.current) return { ok: false, error: '正在保存，请稍候' };
+    async (toSave?: AppSettings, opts?: { reconcileName?: ProviderId }): Promise<SavePipelineResult> => {
+      if (savingRef.current) return { ok: false, persisted: false, error: '正在保存，请稍候' };
       savingRef.current = true;
       setSaving(true);
       setSaveError('');
@@ -446,7 +498,7 @@ const SettingsPanelApp: React.FC<{
             (docWrite.error ?? '未知原因') +
             '\n设置未保存——配置文件是 provider 连接配置的唯一权威。';
           setSaveError(message);
-          return { ok: false, error: message };
+          return { ok: false, persisted: false, error: message };
         }
         // 文件已成功落盘：后续凭据清理/写入即使失败，下一次 Provider 保存也应以
         // 这份新盘面为 baseline，不能拿旧 revision 再判一次假冲突。
@@ -454,52 +506,39 @@ const SettingsPanelApp: React.FC<{
         providerDocRevisionRef.current = providersDocStatus().revision;
         const diskComposition = loadSettings().composition;
         saveSettings(diskComposition ? { ...target, composition: diskComposition } : target);
-        const cleanupFailures: string[] = [];
-        for (const name of [...new Set([...clearsAtStart, ...deletesAtStart])]) {
-          const removed = await removeSecret(name);
-          if (!removed.ok) cleanupFailures.push(name + ': ' + (removed.error ?? '未知原因'));
+        // ── 第二阶段：密钥库（独立可重试；失败不推翻上面已提交的配置）──
+        const credentialResult = await runCredentialPhase(target, clearsAtStart, deletesAtStart);
+        if (!credentialResult.ok) {
+          return {
+            ok: false,
+            persisted: true,
+            credentialsPending: true,
+            error: credentialResult.error ?? '系统凭据同步失败',
+          };
         }
-        if (cleanupFailures.length > 0) {
-          const message =
-            '系统凭据删除失败：' +
-            cleanupFailures.join('；') +
-            '。\n设置本身已保存，但暂存的清除/删除操作尚未生效，请重试。';
-          setSaveError(message);
-          return { ok: false, error: message };
-        }
-        const failed = await persistSecrets(target);
-        if (failed.length > 0) {
-          const message =
-            'API Key 写入系统凭据失败：' +
-            failed.join('、') +
-            '。\n设置本身已保存，但重启后这些 Key 会丢失，请重试或检查系统加密服务。';
-          setSaveError(message);
-          return { ok: false, error: message };
-        }
-        setPendingClears((current) => current.filter((name) => !clearsAtStart.includes(name)));
-        setPendingDeletes((current) => current.filter((name) => !deletesAtStart.includes(name)));
         providerDocRevisionRef.current = null;
         setLang(target.display.language);
         setSaved(true);
         setTimeout(() => setSaved(false), 1500);
         if (onSave) onSave();
-        return { ok: true };
+        return { ok: true, persisted: true };
       } finally {
         savingRef.current = false;
         setSaving(false);
       }
     },
-    [settings, pendingClears, pendingDeletes, providerDirty, onSave],
+    [settings, pendingClears, pendingDeletes, providerDirty, onSave, runCredentialPhase],
   );
   /** 全局保存（Agent / 显示等 tab） */
   const handleSave = useCallback(async () => {
     const revision = editRevisionRef.current;
     const result = await runSavePipeline();
-    if (result.ok && editRevisionRef.current === revision) {
+    if (result.persisted && editRevisionRef.current === revision) {
+      // 非敏感配置已提交：dirty 必须熄灭；凭据若失败由 credentialDirty 单独承载。
       setDirty(false);
       setProviderDirty(false);
-      setSaveVersion((v) => v + 1);
       setDocStaleHint(false);
+      if (result.ok) setSaveVersion((v) => v + 1);
     }
   }, [runSavePipeline]);
 
@@ -507,13 +546,34 @@ const SettingsPanelApp: React.FC<{
   const handleSaveProviders = useCallback(async () => {
     const revision = editRevisionRef.current;
     const result = await runSavePipeline();
-    if (result.ok && editRevisionRef.current === revision) {
+    if (result.persisted && editRevisionRef.current === revision) {
       setProviderDirty(false);
       setDirty(false);
-      setSaveVersion((v) => v + 1);
       setDocStaleHint(false);
+      if (result.ok) setSaveVersion((v) => v + 1);
     }
   }, [runSavePipeline]);
+
+  /** R3 第二阶段独立重试：只重跑凭据库动作，不重写 provider 配置。 */
+  const retryCredentialSync = useCallback(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError('');
+    try {
+      const result = await runCredentialPhase(settings, pendingClears, pendingDeletes);
+      if (result.ok) {
+        setSaveError('');
+        setSaveVersion((v) => v + 1);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1500);
+        if (onSave) onSave();
+      }
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }, [settings, pendingClears, pendingDeletes, runCredentialPhase, onSave]);
 
   /** 添加提供方即时生效（2026-09-06）：next 进面板 state → 走保存管道（落盘 +
    *  写 Key）→ settings-saved 热广播。全会话立刻可选新提供方的模型。 */
@@ -527,14 +587,16 @@ const SettingsPanelApp: React.FC<{
       }
       const revision = editRevisionRef.current;
       const result = await runSavePipeline(next, { reconcileName: addedName });
-      if (!result.ok) {
+      // 配置已提交、仅凭据失败 = 两阶段第二阶段待重试；不要把已落盘的新 provider
+      // 回滚成「添加失败」，也不要让添加弹层误导用户重复添加。
+      if (!result.persisted) {
         throw new Error('添加 Provider「' + addedName + '」失败：' + (result.error ?? '未知原因'));
       }
       if (editRevisionRef.current === revision) {
         setProviderDirty(false);
         setDirty(false);
-        setSaveVersion((v) => v + 1);
         setDocStaleHint(false);
+        if (result.ok) setSaveVersion((v) => v + 1);
       }
     },
     [runSavePipeline],
@@ -548,17 +610,19 @@ const SettingsPanelApp: React.FC<{
     settingsDocRevisionRef.current = providersDocStatus().revision;
     providerDocRevisionRef.current = null;
     setProviderDirty(false);
+    setCredentialDirty(false);
+    setSaveError('');
     setDocStaleHint(false);
     setSaveVersion((v) => v + 1);
     logPanelReload('discard-provider-draft');
   }, []);
 
+  const closeParts: string[] = [];
+  if (dirty) closeParts.push('未保存的设置');
+  if (providerDirty) closeParts.push('未保存的提供方更改');
+  if (credentialDirty) closeParts.push('尚未完成的凭据同步');
   const closeMsg =
-    dirty && providerDirty
-      ? '有未保存的设置与提供方更改，关闭后将全部丢失。确定关闭？'
-      : dirty
-        ? '有未保存的设置更改，关闭后将丢失。确定关闭？'
-        : '有未保存的提供方更改，关闭后将丢失。确定关闭？';
+    closeParts.length > 0 ? `有${closeParts.join('、')}，关闭后将丢失或失去重试入口。确定关闭？` : '';
 
   /* 边缘滚动读面（2026-09-17 立为原生功能）：**行为真源在 paper-shell 插件域**
    *（`plugins/builtin/paper-shell/edge-scroll.ts`——基准带宽/限速、灵敏度映射、
@@ -631,7 +695,9 @@ const SettingsPanelApp: React.FC<{
               pendingClears={pendingClears}
               saveVersion={saveVersion}
               providerDirty={providerDirty}
+              credentialDirty={credentialDirty}
               onSaveProviders={handleSaveProviders}
+              onRetryCredentials={retryCredentialSync}
               onAddAndPersist={handleAddAndPersist}
               saving={saving}
               onDiscardProviderChanges={discardProviderChanges}

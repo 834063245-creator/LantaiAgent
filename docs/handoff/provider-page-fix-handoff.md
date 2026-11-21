@@ -18,6 +18,9 @@ Provider 页问题来自多写入面、多真相源、缺少保存事务与配�
 **R5 本轮已完成（产品拍板 A + 自动回落第一个）**：`model` 从 providers.yml 意图迁出，
 成为本机「最近使用」运行态；Provider 页只管理 `models`，目录/可用集移除当前模型时自动回落第一个。
 
+**R3/R6 本轮已完成**：R3 改为显式两阶段保存（配置先提交；凭据同步独立可重试，不再谎称配置未保存）；
+R6 ModelSelector 显示元数据统一走 provider 作用域描述符，同名 id 不再串名字/窗口/视觉/档位。
+
 ## 1. 思考档位最终语义
 
 
@@ -54,8 +57,14 @@ Provider 页问题来自多写入面、多真相源、缺少保存事务与配�
 - 全局 tab 保存不再顺手重写 provider 文件，缩小无关写入面。
 - 回归：外部改写直拒、过期 revision 拒写、未点名节保留、显式删除生效。
 
-### R3（中）保存仍非原子事务
-顺序是 provider.yml → saveSettings → 凭据。凭据失败时配置已保存。建议临时文件 + 凭据预检 + commit/rename，或明确两阶段语义。
+### R3（中）保存仍非原子事务（本轮已完成）
+- 明确采用**两阶段语义**（跨文件/密钥库不做伪原子承诺）：
+  ① provider.yml + 非敏感 settings 提交；② 系统凭据删除/写入。
+- 第二阶段失败时返回 `persisted: true`：配置 dirty 熄灭，`credentialDirty` 独立置位；
+  UI 显示「Provider 配置已保存；系统凭据同步未完成」+「重试凭据同步」。
+- 重试只跑凭据阶段，不重写 provider 配置；删除成功的条目立即移出 pending，避免重复删。
+- 关闭守卫计入 `credentialDirty`；放弃 Provider 暂存也会清掉凭据重试态。
+- 回归：配置已保存 + credential_delete 失败 → 独立重试成功 → bar 消失、不重写配置。
 
 ### R4（中）probe 指纹对 Key 只记长度
 同长度换 Key 若绕过 UI 编辑路径不会使旧探针失效。建议增加不可逆 key hash 或 credential revision。
@@ -69,8 +78,11 @@ Provider 页问题来自多写入面、多真相源、缺少保存事务与配�
 - UI 文案改为「最近使用」；AddProviderSheet 的初选模型改为「初始模型」。
 - 回归：文件 model 迁移/删除、最近使用跨重启、external models 回落、Provider 页移除顶位。
 
-### R6（中）ModelSelector 仍有全局目录显示元数据
-settings 侧窗口/视觉/档位已 provider 作用域，但 configuredModelDescriptors 仍用全局 getModel 做显示；不同 Provider 同名 id 仍可能串显示。建议统一 catalogSeedForProvider。
+### R6（中）ModelSelector 仍有全局目录显示元数据（本轮已完成）
+- `configuredModelDescriptors` 改为逐模型调用 `modelDescriptor(provider, id)`：走该 Provider 的
+  seed/meta/override 链，不再用全局 `getModel(id)` 拼显示元数据。
+- 收起态人类名同样按当前 Provider 的 descriptor 解析；Provider 不在场才回落到目录。
+- 回归：两个 Provider 复用同一模型 id，分别显示各自 meta 名字与视觉能力，不串全局目录。
 
 ### R7（低）AddProviderSheet 多 OAuth 账号没有新行账号选择器
 登录多个账号只默认最后一个 grant。AddProviderEntry.oauthAccountId 已存在，接线成本不高。
@@ -83,12 +95,15 @@ OAuth 登录/多账号/登出；oauthAccountId 重启生效；watcher 冲突阻�
 
 ## 3. 已验证
 
-- tsc --noEmit：通过（R5 完成后复跑）。
-- Provider + 设置过滤套件 41 个测试文件、495 用例：全通过。
-- R1/R2 新增回归：fatal 跨重启备份恢复、坏节跨重启回落、保存时磁盘外部改写冲突、
+- tsc --noEmit：通过（R3/R6 完成后复跑）。
+- Provider + 设置 + ModelSelector 过滤套件 42 个测试文件、518 用例：全通过。
+- 相邻组合/选择器/提示词套件 9 文件、78 用例：全通过。
+- R1/R2 回归：fatal 跨重启备份恢复、坏节跨重启回落、保存时磁盘外部改写冲突、
   watcher 已重读的过期 revision 冲突、未点名有效节保留 / pendingDeletes 显式删除。
-- R5 新增回归：旧 `model` 迁移并从 YAML 删除、最近使用落本机并跨重启、
+- R5 回归：旧 `model` 迁移并从 YAML 删除、最近使用落本机并跨重启、
   外部 `models` 移除当前项自动回落、Provider 页移除当前模型顶位。
+- R3 回归：配置提交成功后凭据删除失败 → 显示第二阶段待重试 → 只重试凭据成功。
+- R6 回归：同名模型 id 按 Provider 显示各自名字/视觉能力，不串全局目录。
 - build-builtin-plugins：41 个内置插件产物自包含校验通过。
 - 测试命令入口：cd src-ui 后跑 node .\node_modules\vitest\vitest.mjs run（文件列表见 git diff / 新增测试）。
 
@@ -107,5 +122,5 @@ Provider 页：ProviderPage/ProviderDetail/ModelReasoningLevels/SettingsPanel/se
 
 1. 先读本文和 docs/design/provider-system-spec.md 的思考档位/OAuth 章节。
 2. 不重做第 0 节的已修项。
-3. R1/R2/R5 已完成，下一步 R3/R6；R4/R7 视真机反馈。
-4. 最后跑 tsc + provider 套件 + 真机 OAuth/文件冲突/重启恢复/最近模型迁移验收。
+3. R1/R2/R3/R5/R6 已完成，下一步 R4/R7（视真机反馈；R7 接线成本低）。
+4. 最后跑 tsc + provider 套件 + 真机 OAuth/文件冲突/重启恢复/最近模型迁移/凭据重试验收。

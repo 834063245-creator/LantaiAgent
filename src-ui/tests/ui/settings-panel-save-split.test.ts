@@ -103,6 +103,54 @@ describe('SettingsPanel — 保存拆域', () => {
     expect(mockConfigChanged).toHaveBeenCalledWith('settings-saved');
   });
 
+  it('R3 两阶段：配置已保存但凭据删除失败 → 独立重试凭据，不重写 Provider 配置', async () => {
+    let deleteFailures = 1;
+    (mockRpc as any).mockImplementation(async (method: string) => {
+      if (method === 'credential_delete' && deleteFailures > 0) {
+        deleteFailures -= 1;
+        throw new Error('dpapi locked');
+      }
+      return 'null';
+    });
+
+    // 删除 anthropic（暂存）→ 保存：config 阶段成功，credential 阶段首次失败。
+    const row = [...document.querySelectorAll<HTMLButtonElement>('.pp-src')].find((b) =>
+      b.textContent?.includes('anthropic'),
+    )!;
+    row.click();
+    await tick();
+    [...document.querySelectorAll<HTMLButtonElement>('.pp-btn-danger')]
+      .find((b) => b.textContent?.includes('删除提供方'))
+      ?.click();
+    await tick();
+    document.querySelector<HTMLButtonElement>('.cd-btn-danger')?.click();
+    await tick();
+
+    document.querySelector<HTMLButtonElement>('.pp-save-btn')?.click();
+    await tick();
+    await tick();
+
+    // 配置阶段已提交，但页面不再谎称「未保存 Provider」；第二阶段单独挂起重试。
+    const bar = document.querySelector('.pp-save-bar');
+    expect(bar).not.toBeNull();
+    expect(bar?.textContent).toContain('Provider 配置已保存');
+    expect(bar?.textContent).toContain('系统凭据同步未完成');
+    expect(bar?.querySelector('.pp-save-btn')?.textContent).toContain('重试凭据同步');
+    expect(
+      [...document.querySelectorAll('.pp-error-banner')].some((el) =>
+        el.textContent?.includes('Provider 配置已保存'),
+      ),
+    ).toBe(true);
+
+    // 第二阶段重试成功：只重跑凭据库动作，bar 消失。
+    bar?.querySelector<HTMLButtonElement>('.pp-save-btn')?.click();
+    await tick();
+    await tick();
+    expect(document.querySelector('.pp-save-bar')).toBeNull();
+    expect(deleteFailures).toBe(0);
+    expect(mockConfigChanged).toHaveBeenCalledWith('settings-saved');
+  });
+
   it('Provider dirty 不点亮全局保存；Provider 保存后全局保存仍禁用', async () => {
     const urlInput = [...document.querySelectorAll<HTMLInputElement>('.pp-field input')].find((i) =>
       i.placeholder.includes('https://'),
