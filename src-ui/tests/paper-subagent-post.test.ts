@@ -21,7 +21,11 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 import { createBlock, isPostInner, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { defaultFolded } from '../src/paper/fold';
 import { subagentPostFields, translateMessages } from '../src/paper/translate';
-import { measureBlockHeight } from '../src/plugins/builtin/paper-shell/measure';
+import {
+  createBlockMeasureCache,
+  measureBlockHeight,
+  measureBlockHeightCached,
+} from '../src/plugins/builtin/paper-shell/measure';
 import type { SubAgentPart, ToolCallPart } from '../src/ui/message-model';
 
 function toolPart(name: string, status: ToolCallPart['status'] = 'done'): ToolCallPart {
@@ -151,5 +155,65 @@ describe('帖内页：子块不属于父卷（2026-11-21 内页批）', () => {
     const expanded = measureBlockHeight(post, false);
     expect(collapsed).toBe(10 + 20);
     expect(expanded).toBeGreaterThan(collapsed);
+  });
+});
+
+describe('帖的测量缓存必须区分折叠态（2026-11-21 长空白事故）', () => {
+  /* 真机事故：点开帖之后流里出现**非常长的一段空白**。
+   * 根因 = `measureSignature('subagent')` 漏了折叠位——折叠态算出的 30px 写进测量缓存，
+   * 展开那一帧签名完全相同 ⇒ 直接吃 30，而 DOM 已经展开成几百 px：帖的内容溢出块框、
+   * 下方块仍按 30px 排。tool / code / plan 三条兄弟分支都靠 `f` 入签避免这类事故，唯独帖漏了。
+   *
+   * 这条钉子查的是**缓存行为**，不是字面量：同一块先量收起、再量展开，两次必须不同。 */
+  const postWithInner = () => {
+    const inner = [
+      createBlock(
+        'tool',
+        {
+          toolId: 't',
+          name: 'fs',
+          label: 'fs(read) a.ts',
+          args: '{"path":"a.ts"}',
+          status: 'done',
+          output: 'hello',
+        } as never,
+        { messageId: 'm', part: null },
+      ),
+    ];
+    return createBlock(
+      'subagent',
+      { agentId: 'a', description: 'd', status: 'done', childIds: [], items: [], inner } as never,
+      { messageId: 'm', part: null },
+    );
+  };
+
+  it('展开与收起是两个高（缓存不许串味）', () => {
+    const cache = createBlockMeasureCache();
+    const post = postWithInner();
+    const collapsed = measureBlockHeightCached(post, cache, true);
+    const expanded = measureBlockHeightCached(post, cache, false);
+    expect(collapsed).toBe(10 + 20);
+    expect(expanded, '展开态必须重新量（旧事故：吃到收起态的 30）').toBeGreaterThan(collapsed);
+    // 反向再来一次：先展开后收起也必须各自正确（缓存双向都不许串）
+    const cache2 = createBlockMeasureCache();
+    expect(measureBlockHeightCached(post, cache2, false)).toBe(expanded);
+    expect(measureBlockHeightCached(post, cache2, true)).toBe(collapsed);
+  });
+
+  it('内页步数变化要重测（流式追加步骤时帖要长高）', () => {
+    const cache = createBlockMeasureCache();
+    const post = postWithInner();
+    const before = measureBlockHeightCached(post, cache, false);
+    const more = {
+      ...post,
+      payload: {
+        ...(post.payload as object),
+        inner: [
+          ...(post.payload as { inner: unknown[] }).inner,
+          createBlock('markdown', { text: '第二步产出' }, { messageId: 'm', part: null }),
+        ],
+      },
+    };
+    expect(measureBlockHeightCached(more as never, cache, false)).toBeGreaterThan(before);
   });
 });

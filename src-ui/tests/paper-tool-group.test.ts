@@ -424,7 +424,9 @@ describe('measure/摘除：子代理帖的帖首几何，收起摘子块', () =>
       },
       { messageId: 'm', part: null },
     );
-    expect(measureSignature(header, false)).toBe('subagent|调研|done||2|0');
+    // 签名含折叠位 f 与内页步数（2026-11-21 长空白事故后补：漏 f = 展开吃到收起态的高）
+    expect(measureSignature(header, false)).toBe('subagent|0|调研|done||0|0');
+    expect(measureSignature(header, true)).toBe('subagent|1|调研|done||0|0');
   });
   /* 2026-11-21 帖内页批（**显式规格变更**）：旧行为是「帖折叠 → collapseToolGroups 把子块
    * 从布局栈摘掉」。这条补丁的前提是「子块在父卷块栈里」——而那个前提本身就是病灶：

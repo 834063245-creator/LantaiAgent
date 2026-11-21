@@ -1264,10 +1264,12 @@ export function needsObservedHeight(kind: BlockKind, hasAsset: boolean, hasView 
   // 折行点仍是 canvas 与 DOM 的老分歧（同正文表格先例）⇒ 挂 RO 收口。
   // 无视图的程文照旧不挂（载荷段全部封顶，468/468 零偏差的既有实测）。
   if (kind === 'code') return hasView;
-  /* 子代理帖（2026-11-21 内页批）：内页里套着 reasoning/markdown/diff 这些**实测族**，
-   *  它们的体高在 DOM 里与 canvas 有老分歧（折行点不同）；帖整体的高又是把内页逐块量
-   *  再相加后算出来的 ⇒ 分歧会累积。挂 RO 收口，让真机实测高回写覆盖静态镜像。 */
-  if (kind === 'subagent') return true;
+  /* ⚠ 子代理帖**刻意不入实测族**（2026-11-21 长空白事故）：
+   *  帖高 = 帖签 + 活体行 + 内页逐块量 + 复命段，每一段都有静态镜像——它是**确定性组合**，
+   *  不是「资产卡那种挂载后才知道多高」的动态块。挂 RO 的后果是实测与静态镜像分家：
+   *  RO 在收起态记下 30，展开那一帧布局仍读旧实测 30，而 DOM 已经是几百 px——
+   *  内页溢出块外、盖住下方内容，用户看到的是「非常长的空白页」。
+   *  静态镜像优先 = 高度永远自洽（渲染与测量读同一份数）。 */
   return kind === 'reasoning' || kind === 'markdown' || kind === 'diff';
 }
 
@@ -2068,24 +2070,23 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
       // 子卡数入签（流式追加子卡 → 组头重测；头高本身恒定）
       return `toolgroup|${((p.items as unknown[] | undefined) ?? []).length}`;
     case 'subagent': {
-      // 帖的读签（2026-11-20 帖批）：帖高随四种东西变——状态（在办→复命/未办）、
-      // 活体行（在办才有，写的是「正在干什么」）、复命正文长度、折叠位（f 已含）。
-      // 全不入签就会在收尾那一帧吃到「在办」的旧高（旧实现只签描述/状态/段数，
-      // 而段数按子块数算——子块在帖内不摊平，永远读到 0）。
-      const sp = p as { status?: string; doing?: string | null; report?: string; error?: string; step?: number };
+      /* 帖的读签（2026-11-20 帖批；2026-11-21 长空白事故修正）：帖高随**状态/活体行/
+       * 复命长度/折叠位/内页步数**变，五样都必须入签。
+       *
+       * ⚠⚠ 2026-11-21 真机事故：注释一直写着「f 已含」，代码里却根本没拼 `f`——折叠态
+       * 算出的 30px 进了测量缓存，用户点开那一帧签名与收起态**完全相同** ⇒ 直接吃 30，
+       * 而 DOM 已展开成几百 px：内容溢出块框、下方块仍按 30 排 ⇒「非常长的一段空白」。
+       * tool/code/plan 三条兄弟分支都靠 `f` 入签避免过同类事故，唯独帖漏了。 */
+      const sp = p as {
+        status?: string;
+        doing?: string | null;
+        report?: string;
+        error?: string;
+        inner?: ReadonlyArray<unknown>;
+      };
       const textLen = (sp.report ?? '').length + (sp.error ?? '').length;
-      return (
-        'subagent|' +
-        (p.description ?? '') +
-        '|' +
-        (sp.status ?? '') +
-        '|' +
-        (sp.doing ?? '') +
-        '|' +
-        (sp.step ?? 0) +
-        '|' +
-        textLen
-      );
+      const innerN = sp.inner?.length ?? 0;
+      return `subagent|${f}|${p.description ?? ''}|${sp.status ?? ''}|${sp.doing ?? ''}|${innerN}|${textLen}`;
     }
     default:
       // 资产/开放 kind：表现名入签；payload 变化由 RO 实测驱动（静态镜像
