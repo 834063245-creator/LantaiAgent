@@ -35,7 +35,8 @@ interface PanelStore {
   toolFilter: string;
   contextFilter: string;
   collaborationMode: CollaborationMode;
-  /** 目标状态条数据源（2026-10-23 DSH 式目标域；null = 无目标）。 */
+  /** 目标状态条数据源（2026-10-23 DSH 式目标域；null = 无**在办**目标——
+   *  完成是终态，由 GoalDriver 收起，见其 refreshGoalView）。 */
   goalView: GoalView | null;
   /** P2′：Agent 状态详情文本（如 '分析中…'；null 用默认标签） */
   lastAgentDetail: string | null;

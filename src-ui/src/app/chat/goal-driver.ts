@@ -104,9 +104,16 @@ export class GoalDriver {
     }
   }
 
-  /** 把目标视图写进面板 store（状态条数据源）。 */
+  /** 把目标视图写进面板 store（状态条数据源）。
+   *
+   *  **终态（complete）收起状态条**（2026-11-21 回归修复）：旧实现
+   *  `_updateGoalRecord` 的规则就是「终态 — 收起状态条」，DSH 栈移植时丢了这一条，
+   *  完成的目标会一直挂在创作坞上（而且完成态没有清除按钮，成了摘不掉的死片）。
+   *  收起 ≠ 清除：完成事件仍在卷日志里，`/goal` 照样查得到，新目标也能直接替换。
+   *  paused / blocked 仍挂着——它们是**等用户动作**的状态，不能藏。 */
   refreshGoalView(): void {
-    this.sink().setGoalView(this.goalView() ?? null);
+    const view = this.goalView();
+    this.sink().setGoalView(view !== undefined && view.phase !== 'complete' ? view : null);
   }
 
   /** 本卷日志里的目标事件到达即重读状态条（2026-11-21：轮次计数实时化）。

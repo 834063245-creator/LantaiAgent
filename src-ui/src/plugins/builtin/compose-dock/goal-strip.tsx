@@ -11,7 +11,7 @@
 import { useSyncExternalStore } from 'react';
 import { type ChatCore, getChatStore } from './host';
 
-/** 目标状态条 —— 有目标才渲染（无目标零占位）。数据源 = panel-store.goalView
+/** 目标状态条 —— 有**在办**目标才渲染（无目标 / 完成 = 终态，零占位）。数据源 = panel-store.goalView
  *  （GoalDriver.bindGoalLog 随本卷日志的 `goal/round` / `goal/change` 实时重读，
  *  命令面 / 切卷 / 轮次收尾仍兜底刷新）；控制动作走同一 `/goal` 命令面，
  *  不新造第二条写路径。 */
@@ -62,11 +62,9 @@ function GoalStripLive({ core }: { core: ChatCore }) {
           继续
         </button>
       )}
-      {goal.phase !== 'complete' && (
-        <button type="button" className="pp-goal-strip__btn pp-goal-strip__btn--quiet" onClick={() => run('clear')}>
-          清除
-        </button>
-      )}
+      <button type="button" className="pp-goal-strip__btn pp-goal-strip__btn--quiet" onClick={() => run('clear')}>
+        清除
+      </button>
     </div>
   );
 }

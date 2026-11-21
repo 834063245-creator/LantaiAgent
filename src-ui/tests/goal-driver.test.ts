@@ -73,7 +73,14 @@ vi.mock('gsap', () => {
 vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
 import type { RunKind } from '../src/agent/execution-state';
-import { createGoal, type GoalHost, readGoal, recordGoalRound } from '../src/agent/goal/service';
+import {
+  blockGoal,
+  completeGoal,
+  createGoal,
+  type GoalHost,
+  readGoal,
+  recordGoalRound,
+} from '../src/agent/goal/service';
 import { registerGoalHost } from '../src/agent/goal/session-registry';
 import { SessionLog } from '../src/agent/session-log';
 import { ChatCore } from '../src/app/chat/chat-core';
@@ -376,6 +383,37 @@ describe('目标驱动器 · 进入续行的两条入口', () => {
     expect(view?.objective).toBe('大工程');
     // 事件到达时授权已是翻转后的值（先 append 再 set 会让状态条闪「续行已停」）
     expect(view?.activation).toBe('armed');
+  });
+
+  it('目标完成 = 终态：状态条立刻收起，日志留档（/goal 仍可查）', async () => {
+    const { panel, host, sid } = await setup();
+    const created = createGoal(host, { objective: 'x', maxGoalRounds: 5 });
+    drive(panel, sid);
+    await flush();
+    expect(kindSequence()).toBe('goal');
+
+    // 模型在本轮里 goal(update complete)
+    completeGoal(host, { id: created.id, revision: created.revision });
+    expect(getChatStore(panel.panelId).panel.getState().goalView).toBeNull();
+
+    // 轮收尾的兜底刷新不得把它挂回创作坞
+    pending[0].resolve();
+    await flush(80);
+    expect(getChatStore(panel.panelId).panel.getState().goalView).toBeNull();
+
+    // 「收起」不是「清除」：完成事实仍在卷日志里
+    expect(readGoal(host)?.phase).toBe('complete');
+  });
+
+  it('受阻 / 暂停不是终态：状态条继续挂着（等用户动作）', async () => {
+    const { panel, host } = await setup();
+    const created = createGoal(host, { objective: 'x' });
+    blockGoal(
+      host,
+      { id: created.id, revision: created.revision },
+      { code: 'missing-credential', message: '缺 API key' },
+    );
+    expect(getChatStore(panel.panelId).panel.getState().goalView?.phase).toBe('blocked');
   });
 
   it('该卷账上还有别的运行时，排程挂到空闲转变上，不被丢弃', async () => {
