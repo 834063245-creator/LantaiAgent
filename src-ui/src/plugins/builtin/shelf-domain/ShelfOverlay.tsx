@@ -365,6 +365,10 @@ export function ShelfOverlay() {
       : cardRows.map((c) => ({ id: c.cardId, run: () => openCard(c.cardId) }));
   rowsRef.current = rows;
 
+  /** 「在画布里」= 纸开着（纸关 = 回首页）。卡片行的「引」「摊」只在此时成立——
+   *  见行内注释：没有画布就没有落点，摆出来的只能是无效操作。 */
+  const inCanvas = useDockStore((s) => s.open.paper) === true;
+
   if (!open) return null;
 
   const openedSet = new Set(windows.map((w) => w.pluginName));
@@ -538,12 +542,23 @@ export function ShelfOverlay() {
                             </span>
                           </button>
                           <span className="pp-shelf-actions">
-                            <button type="button" data-tip="引用到本卷" onClick={() => quoteCard(c.cardId)}>
-                              引
-                            </button>
-                            <button type="button" onClick={() => pinToCanvas(c.cardId)}>
-                              摊
-                            </button>
+                            {/* 「引」「摊」只在**画布里**才有意义（2026-11-21 实机报
+                                「首页点架阁，摊是无效的」）：两者都要落在一卷/一张纸上——
+                                没有纸就没有画布、也没有夹签槽，点下去只能弹一句
+                                「画布还没准备好」，那是把无效操作摆出来再解释。
+                                判据取 `open.paper`（纸在 = 画布在；纸关 = 回首页，
+                                这是纸壳唯一的主界面语义），不另造 readiness 状态。
+                                「改」「删」是卡片库自己的操作，任何界面状态都成立 —— 保留。 */}
+                            {inCanvas ? (
+                              <>
+                                <button type="button" data-tip="引用到本卷" onClick={() => quoteCard(c.cardId)}>
+                                  引
+                                </button>
+                                <button type="button" data-tip="摊到画布" onClick={() => pinToCanvas(c.cardId)}>
+                                  摊
+                                </button>
+                              </>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => {
