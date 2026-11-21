@@ -372,7 +372,7 @@ describe('ChatPanel session persistence', () => {
       });
       // 目录已落盘（下次清点直接用它）
       const cat = catalogOfDisk(files);
-      expect(cat.ver).toBe(3);
+      expect(cat.ver).toBe(4);
       expect(Object.keys(cat.rows).sort()).toEqual(['1', '2']);
     });
 
@@ -464,7 +464,7 @@ describe('ChatPanel session persistence', () => {
       const result = await panel.listSavedSessions(P);
       expect(result.map((r) => r.id)).toEqual([3]);
       expect(result[0].label).toBe('丙'); // 真值来自卷体，不采信不认版本的目录
-      expect(catalogOfDisk(files).ver).toBe(3);
+      expect(catalogOfDisk(files).ver).toBe(4);
     });
 
     it('v1 目录（无血缘栏）不认版本 → 整份重建：血缘从卷日志头行一次到位', async () => {
@@ -482,9 +482,15 @@ describe('ChatPanel session persistence', () => {
       const result = await panel.listSavedSessions(P);
       expect(result.find((r) => r.id === 1)?.parentId).toBeUndefined(); // 根卷无父
       expect(result.find((r) => r.id === 2)?.parentId).toBe(1); // 枝卷的边
+      expect(result.find((r) => r.id === 2)?.parentAtSeq).toBe(1); // 归一化/连坐要的切点
       expect(disk.volumeReads().length).toBeGreaterThan(0); // 重建 = 真读头行
-      expect(catalogOfDisk(files).ver).toBe(3);
-      expect((catalogOfDisk(files).rows as Record<string, { parentId?: number }>)['2']?.parentId).toBe(1);
+      expect(catalogOfDisk(files).ver).toBe(4);
+      expect(
+        (catalogOfDisk(files).rows as Record<string, { parentId?: number; parentAtSeq?: number }>)['2']?.parentId,
+      ).toBe(1);
+      expect(
+        (catalogOfDisk(files).rows as Record<string, { parentId?: number; parentAtSeq?: number }>)['2']?.parentAtSeq,
+      ).toBe(1);
     });
 
     it('血缘在稳态清点里也不丢：重启后从 _index.json 取回（不重读卷体）', async () => {
@@ -499,6 +505,7 @@ describe('ChatPanel session persistence', () => {
       Session.resetSessionListCacheForTests(); // 模拟重启
       const again = await panel.listSavedSessions(P);
       expect(again.find((r) => r.id === 2)?.parentId).toBe(1);
+      expect(again.find((r) => r.id === 2)?.parentAtSeq).toBe(1);
       expect(disk.volumeReads().length).toBe(reads); // 血缘随目录走，不额外读盘
     });
 
@@ -516,12 +523,14 @@ describe('ChatPanel session persistence', () => {
 
       const rows = await panel.listSavedSessions(P);
       expect(rows.find((r) => r.id === 2)?.parentId).toBe(1); // 行由补建读头行建
+      expect(rows.find((r) => r.id === 2)?.parentAtSeq).toBe(1);
       expect(disk.volumeReads().some((p) => p.replace(/\\/g, '/').endsWith('/2.ndjson'))).toBe(true);
 
       // 再写一次（写面更新**已建**行）——边不丢
       await panel.renameSavedSession(2, '枝卷二');
       const again = await panel.listSavedSessions(P);
       expect(again.find((r) => r.id === 2)?.parentId).toBe(1);
+      expect(again.find((r) => r.id === 2)?.parentAtSeq).toBe(1);
       expect(again.find((r) => r.id === 2)?.label).toBe('枝卷二');
     });
 

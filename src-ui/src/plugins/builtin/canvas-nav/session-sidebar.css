@@ -613,11 +613,53 @@
   outline: 2px solid var(--seal);
   outline-offset: 1px;
 }
-/* 删除二次确认（2026-08-28 会话管理专项）：武装态 = 朱砂深底白字。 */
+/* 删除二次确认（2026-08-28 会话管理专项；2026-11-21 反馈批强化）：
+ * 第一击**即时**进确认态。删钮常态就预留两字宽（「删除」→「核对」→「确认」），
+ * 换文案不换盒宽；改/合只藏不撤（保留槽位，名区零位移）。 */
+.ss-actions button[data-act="del"] {
+  width: 36px;
+  min-width: 36px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.ss-row.armed,
+.ss-row.deleting {
+  background: color-mix(in oklch, var(--seal-deep) 7%, var(--paper));
+  box-shadow: inset 3px 0 var(--seal-deep);
+}
+.ss-row.armed .ss-label,
+.ss-row.deleting .ss-label {
+  color: var(--ink-solid);
+}
+.ss-row.armed .ss-meta-confirm,
+.ss-row.deleting .ss-meta-confirm {
+  color: var(--seal-deep);
+  font-weight: 600;
+}
+/* 确认态不靠 hover 才显形：鼠标移开、键盘操作或核对较慢时，再点指令仍在眼前。 */
+.ss-row.armed .ss-actions,
+.ss-row.deleting .ss-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* 改/合留占位但不可点：眼睛只面对一枚明确的大红「核对 / 确认」，槽宽仍与常态一致。 */
+.ss-row.armed .ss-actions button:not([data-act="del"]),
+.ss-row.deleting .ss-actions button:not([data-act="del"]) {
+  visibility: hidden;
+  pointer-events: none;
+}
 .ss-actions .ss-danger,
 .ss-actions .ss-danger:hover {
   color: var(--paper);
   background: var(--seal-deep);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--seal-deep) 16%, transparent);
+}
+.ss-actions .ss-danger-busy,
+.ss-actions .ss-danger-busy:hover {
+  color: var(--paper);
+  background: var(--seal-deep);
+  opacity: 0.7;
+  cursor: default;
 }
 
 .ss-empty {

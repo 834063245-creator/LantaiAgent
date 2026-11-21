@@ -38,6 +38,7 @@ import type { SessionContext, SessionDeleteResult } from '../../ui/chat-session'
 import {
   canRetraceUserTurn,
   isInternalMessage,
+  listSavedSessionRows,
   listVolumeIds,
   loadSessionFromDisk,
   noteVolumeIssued,
@@ -648,8 +649,9 @@ export async function createBranchVolume(ctx: SessionContext, fromId: number, at
 //
 // 用户裁定（§9）：会话分支**真的会导致无父会话堆积**，分不清哪个从哪来 ⇒ 应用内删除
 // 一律连坐整棵子树。三条硬规（§8）：
-//   ① **按磁盘真源重建血缘图**：目录枚举定卷集 + 逐卷读头行定边——`_index.json` 只是
-//      投影（可陈旧），不可逆动作不信它；
+//   ① **卷集按磁盘真源、血缘边按已对账目录**：目录枚举定卷集（文件不在 = 卷不存在）；
+//      每卷 parentId + parentAtSeq 由清点补建时从头行一次记住并持久化，规划时直接重建
+//      归一化血缘。缺行/半行才回退逐卷读头行——快路径只省 I/O，不省安全边界；
 //   ② **后序遍历删（先子后父）**：任何中断点剩下的都还是合法森林，**永不产生孤儿**；
 //   ③ **部分失败逐卷可见**：不静默、不假装成功。
 // 边归一化复用 `resolveBranchOrigin`（同一条规则——不归一化会删错子树）。
@@ -663,30 +665,43 @@ export interface BranchLineage {
   childrenOf: Map<number, number[]>;
 }
 
-/** 血缘图重建的读并发（每卷 = 一次整份日志读——seam 无「只读头行」动作）。 */
+/** 读并发（每卷 = 一次整份日志读——seam 无「只读头行」动作；仅作回退路径）。 */
 const LINEAGE_READ_CONCURRENCY = 8;
 
-/**
- * **按磁盘真源重建血缘图**（硬规①）：目录枚举定卷集（文件不在 = 卷不存在），
- * 逐卷读**头行**定边，边一律**归一化**（`resolveBranchOrigin` 同一规则）。
- *
- * 读不出来的卷按**根卷**处理：它的边不可知，就不认它属于谁（悬空血缘不阻塞删除——
- * 与侧栏「父卷已删」同一语义）。
- *
- * 成本诚实说：一次删除 = 每卷一次整份日志读（`read_log` 没有只读头行的形态），
- * 几百卷的工作区要几秒——这是「不可逆动作按真源重建」的价钱，用**可见的等待**
- * （调用方在确认前给出进度提示）换正确性。
- */
-export async function loadBranchLineage(root: string, ids: readonly number[]): Promise<BranchLineage> {
+/** 原始头行边（父卷号 + 切点；根卷 = undefined）。 */
+type LineageEdges = ReadonlyMap<number, SessionLogParentRef | undefined>;
+
+/** 由**完整**边表重建归一化血缘（零 I/O）。回退读盘与目录快规划共用这一份判据：
+ *  上溯/归一化只有 `resolveBranchOrigin` 一把尺，绝不另写。 */
+async function lineageFromEdges(ids: readonly number[], edges: LineageEdges): Promise<BranchLineage> {
   const parentOf = new Map<number, number | null>();
   const childrenOf = new Map<number, number[]>();
   for (const id of ids) {
     parentOf.set(id, null);
     childrenOf.set(id, []);
   }
+  const present = new Set(ids);
+  const readEdge: ParentEdgeReader = async (id) =>
+    present.has(id) ? (edges.get(id) ? { parent: edges.get(id) } : {}) : null;
+  for (const id of ids) {
+    const up = edges.get(id);
+    if (!up) continue;
+    const origin = await resolveBranchOrigin('', id, up.atSeq, readEdge);
+    // 归到自己的卷（= 无有效父）/ 归到卷集外的卷（父已被外部删掉）= 根卷
+    if (!origin || origin.id === id || !present.has(origin.id)) continue;
+    parentOf.set(id, origin.id);
+    childrenOf.get(origin.id)?.push(id);
+  }
+  return { parentOf, childrenOf };
+}
+
+/** **回退路径：按磁盘真源逐卷重建血缘图。**
+ *  目录枚举定卷集（文件不在 = 卷不存在）；每卷读**头行**定边，但当前 seam 的
+ *  `read_log` 没有「只读头行」形态 ⇒ 实际要读完整份日志。只在目录投影缺行/半行
+ *  （首次启动、外部并发改盘、读失败）时走这条路。 */
+export async function loadBranchLineage(root: string, ids: readonly number[]): Promise<BranchLineage> {
   // 逐卷头行（有界并发）：读到的边进表，`readEdge` 据此零 I/O 上溯
   const edges = new Map<number, SessionLogParentRef | undefined>();
-  const present = new Set(ids);
   const queue = [...ids];
   const worker = async (): Promise<void> => {
     for (;;) {
@@ -703,19 +718,39 @@ export async function loadBranchLineage(root: string, ids: readonly number[]): P
     }
   };
   await Promise.all(Array.from({ length: Math.min(LINEAGE_READ_CONCURRENCY, queue.length) }, worker));
+  return lineageFromEdges(ids, edges);
+}
 
-  const readEdge: ParentEdgeReader = async (id) =>
-    present.has(id) ? (edges.get(id) ? { parent: edges.get(id) } : {}) : null;
+/**
+ * **快规划：从已对账的卷目录投影取头行边**（`_index.json` 的 parentId/parentAtSeq）。
+ *
+ * 目录补建早已为每卷读过头行，并把血缘连同 atSeq 一起持久化；删除规划再读一遍
+ * 全部卷体 = 成本正比于历史总体量（几百卷就是几百 MB / 几秒），而用户要的只是
+ * 一棵子树。这里只花「目录枚举 + 小 JSON」的固定成本。
+ *
+ * 安全边界（有意为之）：
+ *   · 卷集仍以**目录枚举**为准（调用方传入）；目录里没了的条目已在清点时摘掉；
+ *   · 目录缺行 / 只有 parentId 没有 atSeq / 读目录失败 ⇒ 返回 null，调用方退回
+ *     `loadBranchLineage` 逐卷真源读头行——快路径只做「完整时才敢省」；
+ *   · 已知边仍走同一个 `resolveBranchOrigin` 归一化，继承区内立枝不会删错子树。
+ */
+export async function loadBranchLineageFromCatalog(
+  projectPath: string,
+  ids: readonly number[],
+): Promise<BranchLineage | null> {
+  const rows = await listSavedSessionRows(projectPath, ids);
+  if (rows.length !== ids.length) return null;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const edges = new Map<number, SessionLogParentRef | undefined>();
   for (const id of ids) {
-    const up = edges.get(id);
-    if (!up) continue;
-    const origin = await resolveBranchOrigin(root, id, up.atSeq, readEdge);
-    // 归到自己的卷（= 无有效父）/ 归到卷集外的卷（父已被外部删掉）= 根卷
-    if (!origin || origin.id === id || !present.has(origin.id)) continue;
-    parentOf.set(id, origin.id);
-    childrenOf.get(origin.id)?.push(id);
+    const row = byId.get(id);
+    if (!row) return null;
+    const hasParent = row.parentId != null;
+    const hasAtSeq = row.parentAtSeq != null;
+    if (hasParent !== hasAtSeq) return null; // 半条边：快路径不敢猜，回退真源
+    edges.set(id, hasParent ? { id: row.parentId as number, atSeq: row.parentAtSeq as number } : undefined);
   }
-  return { parentOf, childrenOf };
+  return lineageFromEdges(ids, edges);
 }
 
 /** 连坐子树（**后序**：先子后父）——硬规②：任何中断点剩下的都还是合法森林。 */
@@ -760,7 +795,8 @@ function isRunning(storeId: string, sid: number): boolean {
 }
 
 /**
- * 连坐删除的准备（只读、磁盘真源）：子树里有运行中的卷 ⇒ 该选择卷**整体不删**
+ * 连坐删除的准备（只读；卷集磁盘真源 + 已对账目录血缘，缺行回退读头行）：
+ * 子树里有运行中的卷 ⇒ 该选择卷**整体不删**
  * （plan §9：「运行中拒绝」扩到整棵子树——不可半途 dispose 别人正在跑的卷）。
  */
 export async function planBranchDelete(
@@ -768,13 +804,21 @@ export async function planBranchDelete(
   projectPath: string,
   ids: readonly number[],
 ): Promise<CascadePlan> {
-  const lineage = await loadBranchLineage(workspaceSessionsDir(projectPath), await listVolumeIds(projectPath));
+  const volumeIds = await listVolumeIds(projectPath);
+  let lineage: BranchLineage | null = null;
+  try {
+    lineage = await loadBranchLineageFromCatalog(projectPath, volumeIds);
+  } catch (e) {
+    // 目录投影读失败不是删除失败：回退磁盘真源（慢但安全），错误可见。
+    log.warn('chat', '血缘快规划失败（回退逐卷读头行）', { error: String(e) });
+  }
+  const resolvedLineage = lineage ?? (await loadBranchLineage(workspaceSessionsDir(projectPath), volumeIds));
   const order: number[] = [];
   const taken = new Set<number>();
   const blocked: Array<{ id: number; running: number[] }> = [];
   let branchCount = 0;
   for (const root of ids) {
-    const subtree = branchSubtree(lineage, root);
+    const subtree = branchSubtree(resolvedLineage, root);
     const running = subtree.filter((sid) => isRunning(storeId, sid));
     if (running.length > 0) {
       blocked.push({ id: root, running });
@@ -806,8 +850,10 @@ export async function deleteBranchSubtrees(
   projectPath: string,
   ids: readonly number[],
   removeOne: (sid: number) => Promise<SessionDeleteResult>,
+  /** 第一击确认时已核过的同一份计划：确认那一下直接复用，别再读一遍全部卷头行。 */
+  precomputedPlan?: CascadePlan,
 ): Promise<CascadeOutcome> {
-  const plan = await planBranchDelete(storeId, projectPath, ids);
+  const plan = precomputedPlan ?? (await planBranchDelete(storeId, projectPath, ids));
   const deleted: number[] = [];
   const failed: Array<{ id: number; reason: string }> = [];
   for (const sid of plan.order) {

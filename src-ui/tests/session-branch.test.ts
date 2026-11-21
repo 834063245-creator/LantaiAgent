@@ -80,6 +80,7 @@ import {
   deleteBranchSubtrees,
   deriveBranchPoints,
   loadBranchLineage,
+  loadBranchLineageFromCatalog,
   planBranchDelete,
   resolveBranchOrigin,
   resolveBranchPoint,
@@ -987,6 +988,24 @@ describe('会话树「枝」——删除连坐（P2，plan §8/§9：删父卷 =
     expect(lineage.parentOf.get(4)).toBe(2); // 从 2@5 分出（卷 2 自己的区域）⇒ 归卷 2
     expect(lineage.childrenOf.get(1)?.sort()).toEqual([2, 3]);
     expect(lineage.childrenOf.get(2)).toEqual([4]);
+  });
+
+  it('目录快规划：清点后血缘直接从 _index 重建，删除规划不再读任何卷体', async () => {
+    const store = 'branch-catalog-fast';
+    resetPanel(store);
+    seedTree();
+    // 首次清点补建目录（这一次按设计要读卷体，把 parentId + atSeq 一次记住）
+    const rows = await Session.listSavedSessions(makeCtx(store), WS);
+    expect(rows.find((r) => r.id === 3)?.parentId).toBe(2);
+    expect(rows.find((r) => r.id === 3)?.parentAtSeq).toBe(2);
+    const logReadsBefore = H.kernelFs!.fs.reads.filter((p) => p.endsWith('.ndjson')).length;
+
+    const lineage = await loadBranchLineageFromCatalog(WS, [1, 2, 3, 4]);
+    expect(lineage?.parentOf.get(3)).toBe(1); // 仍按 atSeq 归一到真正覆盖切点的祖先
+    const plan = await planBranchDelete(store, WS, [1]);
+    expect(plan.order).toEqual([4, 2, 3, 1]);
+    const logReadsAfter = H.kernelFs!.fs.reads.filter((p) => p.endsWith('.ndjson')).length;
+    expect(logReadsAfter).toBe(logReadsBefore); // 规划零卷体读（只剩目录枚举 + 小 JSON）
   });
 
   it('连坐：删父卷 ⇒ 整棵子树（**后序**：先子后父），卷 3 按归一化边跟着卷 1 走', async () => {

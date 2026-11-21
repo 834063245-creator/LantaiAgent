@@ -179,7 +179,7 @@ describe('案卷侧栏：删除武装期间「点其它处 = 取消」（不许�
     await mount();
     await arm(2);
     await click(delOf(2));
-    expect(deleteSessionWithBranches).toHaveBeenCalledWith(2);
+    expect(deleteSessionWithBranches).toHaveBeenCalledWith(2, expect.objectContaining({ order: [2] }));
     expect(armedRow()).toBeNull();
   });
 

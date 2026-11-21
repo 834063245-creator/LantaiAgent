@@ -250,17 +250,17 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     const rows = [...container.querySelectorAll('.ss-row')] as HTMLElement[];
     const closed = rows[rows.length - 1]; // 盘卷甲（id 2，未摊开）
     act(() => closed.focus()); // onFocus → 游标切到该行
-    await act(async () => keydown(closed, 'Delete')); // 一击：按真源核对血缘后武装
+    await act(async () => keydown(closed, 'Delete')); // 一击：即时武装，后台核完血缘
     const danger = container.querySelector('.ss-danger') as HTMLButtonElement;
-    // 武装只换色（文案恒「删」⇒ 动作行宽度恒定，名区不被压缩）；无枝 = 指令不报数
-    expect(danger?.textContent).toBe('删');
-    expect(closed.querySelector('.ss-meta')?.textContent).toBe('再点一次确认删除；点其它处取消');
+    // 文案从「删除」变「确认」（固定宽，名区不压缩）；无枝 = 指令不报数
+    expect(danger?.textContent).toBe('确认');
+    expect(closed.querySelector('.ss-meta')?.textContent).toBe('再点一次「确认」才会删除 · 不可撤销 · 点其它处取消');
     expect(planBranchDelete).toHaveBeenCalledWith(2);
     expect(deleteSessionWithBranches).not.toHaveBeenCalled();
     await act(async () => {
       danger.click();
-    }); // 再击：连坐删除
-    expect(deleteSessionWithBranches).toHaveBeenCalledWith(2);
+    }); // 再击：连坐删除（复用首击计划，不再重读卷头行）
+    expect(deleteSessionWithBranches).toHaveBeenCalledWith(2, expect.objectContaining({ order: [2] }));
   });
 
   it('键盘 Delete：有枝时**行内**如实报数「将同时删除 N 枝」', async () => {
@@ -271,11 +271,52 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     act(() => closed.focus());
     await act(async () => keydown(closed, 'Delete'));
     const danger = container.querySelector('.ss-danger') as HTMLButtonElement;
-    expect(danger?.textContent).toBe('删'); // 按钮不报数（宽度恒定）
+    expect(danger?.textContent).toBe('确认'); // 按钮不报数（连坐数留给 meta 行）
     const meta = closed.querySelector('.ss-meta') as HTMLElement;
+    expect(meta.textContent).toContain('再点一次「确认」才会删除');
     expect(meta.textContent).toContain('同时删除 2 卷（含 1 枝，不可撤销）'); // 本卷 + 1 枝
     expect(meta.className).toContain('ss-meta-confirm');
     expect(danger?.getAttribute('data-tip')).toContain('含 1 枝');
+  });
+
+  it('删除首击即时反馈：核对中已明确显形；第二次点击不抢跑，核对完才变「确认」', async () => {
+    let release: (v: unknown) => void = () => {};
+    planBranchDelete.mockImplementation(
+      () =>
+        new Promise((res) => {
+          release = res;
+        }),
+    );
+    await mount();
+    const rows = [...container.querySelectorAll('.ss-row')] as HTMLElement[];
+    const closed = rows[rows.length - 1];
+    act(() => closed.focus());
+    await act(async () => keydown(closed, 'Delete'));
+
+    // 核对在途：首击已即时进确认态（不再等异步核完才给红态）。
+    const checking = container.querySelector('.ss-danger') as HTMLButtonElement;
+    expect(checking?.textContent).toBe('核对');
+    expect(closed.className).toContain('armed');
+    expect(closed.querySelector('.ss-meta')?.textContent).toContain('正在核对血缘');
+    expect(closed.querySelector('.ss-meta')?.getAttribute('role')).toBe('alert');
+
+    // 核对未完时第二击不许抢跑，也不许重启核对；只把当前进度再说一遍。
+    await act(async () => checking.click());
+    expect(deleteSessionWithBranches).not.toHaveBeenCalled();
+    expect(planBranchDelete).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('.ss-notice')?.textContent).toContain('还在核对血缘');
+
+    // 核对完成：同一槽位变成明确的「确认」，并报连坐数。
+    await act(async () => {
+      release({ roots: [2], order: [2], blocked: [], branchCount: 0 });
+    });
+    const ready = container.querySelector('.ss-danger') as HTMLButtonElement;
+    expect(ready.textContent).toBe('确认');
+    expect(closed.querySelector('.ss-meta')?.textContent).toContain('再点一次「确认」才会删除');
+
+    await act(async () => ready.click());
+    expect(deleteSessionWithBranches).toHaveBeenCalledWith(2, expect.objectContaining({ order: [2] }));
+    expect(planBranchDelete).toHaveBeenCalledTimes(1); // 确认那一击复用首击计划，不重读全部卷头行
   });
 
   it('键盘 Delete：子树里有运行中的卷 ⇒ 整体拒绝并列出（不武装）', async () => {

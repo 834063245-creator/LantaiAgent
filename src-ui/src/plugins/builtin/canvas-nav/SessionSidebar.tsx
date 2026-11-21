@@ -213,14 +213,24 @@ export const SessionSidebar = memo(function SessionSidebar() {
   /** 新建防抖（双击竞态：createNewSession 发号在 await factory 之后）。 */
   const newBusyRef = useRef(false);
   const [newBusy, setNewBusy] = useState(false);
-  /** 删除二次确认：已武装的卷 id（第一击变红，再击才删；null = 未武装）。 */
+  /** 删除二次确认：已武装的卷 id（第一击**即时**进入确认态；null = 未武装）。 */
   const confirmingDeleteIdRef = useRef<number | null>(null);
+  /** 第一击的血缘核对是否已完成（完成前第二次点击只催提示，不删除、不重启核对）。 */
+  const deleteReadyRef = useRef(false);
+  /** 首击核出的计划：确认那一击直接复用，避免第二下再读一遍全部卷头行（很卡手）。 */
+  const deletePlanRef = useRef<Awaited<ReturnType<SidebarCore['planBranchDelete']>> | null>(null);
+  /** 删除请求在途（双击/慢盘防重入；行上显示「删除中」）。 */
+  const deletingRef = useRef(false);
   /** 武装**代际**：第一击的核对是异步的（几百卷要逐卷读头行，几秒），应答回来时用户可能
    *  已经点到别处（任何其它意图都走 disarmAll）。无守卫时旧应答照样把该行武装上，
    *  用户再点一次「删」就被读作第二次确认——**一次点击直接删除**（默认测试
    *  tests/session-sidebar-ops-jump.test.tsx 己条钉住）。 */
   const armSeqRef = useRef(0);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
+  /** 首击后在后台核对血缘：按钮先显示「核对」，完成后才变成「确认」。 */
+  const [deleteChecking, setDeleteChecking] = useState(false);
+  /** 当前删除请求在途的卷 id（按钮 / meta 显示进度，行不装作没反应）。 */
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   /** 武装时按**磁盘真源**核出的枝数（确认文案「将同时删除 N 枝」——用户据此同意）。 */
   const [deleteBranchCount, setDeleteBranchCount] = useState(0);
   /** 整理模式（2026-10-08 丙案）：选择是模式不是散点——常态零勾选，
@@ -379,8 +389,11 @@ export const SessionSidebar = memo(function SessionSidebar() {
    *  ——留着一条已作废的确认指令比没有更坏（读作"还等我一击"）。 */
   const disarmAll = useCallback(() => {
     confirmingDeleteIdRef.current = null;
+    deleteReadyRef.current = false;
+    deletePlanRef.current = null;
     armSeqRef.current += 1; // 作废在途的核对应答（见 armSeqRef 注）
     setConfirmingDeleteId(null);
+    setDeleteChecking(false);
     setDeleteBranchCount(0);
     setBatchArmed(false);
     setLocalNotice(null);
@@ -616,67 +629,103 @@ export const SessionSidebar = memo(function SessionSidebar() {
 
   const onDelete = useCallback(
     async (id: number) => {
-      if (!core) return;
-      // 二次确认（2026-08-28 会话管理专项，用户拍板）：第一击武装（按钮变红），
-      // 再击才真正写墓碑——「删」与「改」「合」相邻，防误触不可撤销。
-      if (confirmingDeleteIdRef.current !== id) {
-        // 第一击 = 按**磁盘真源**核对血缘（plan §8 硬规①）：确认文案要如实说出
-        // 「将同时删除 N 枝」；子树里有运行中的卷 ⇒ 整体拒绝并列出（§9）。
-        // 核对要逐卷读头行（几百卷的工作区要几秒）——给可见的等待，别让用户以为没反应。
-        // 代际：核对在途期间任何其它意图（点行/勾选/改名/合卷/新建/切视角都走 disarmAll）
-        // 一律作废本次武装——否则旧应答会把「已经不在看的那一行」武装上（见 armSeqRef 注）。
-        const seq = ++armSeqRef.current;
-        setLocalNotice('正在核对血缘（逐卷读头行）…');
-        let plan: Awaited<ReturnType<SidebarCore['planBranchDelete']>>;
-        try {
-          plan = await core.planBranchDelete(id);
-        } catch (e) {
-          if (seq !== armSeqRef.current) return; // 已作废：错误也不再打扰
-          setLocalNotice(`血缘核对失败（未删除任何卷）：${e instanceof Error ? e.message : String(e)}`);
+      if (!core || deletingRef.current) return;
+
+      const armed = confirmingDeleteIdRef.current;
+      if (armed === id) {
+        // 首击还在核对血缘：第二次点击不重启核对、更不抢跑删除——只把当前进度再说一遍。
+        if (!deleteReadyRef.current) {
+          setLocalNotice('还在核对血缘——核对完成后按钮会变成「确认」，请稍候再点一次');
           return;
         }
-        if (seq !== armSeqRef.current) return; // 已作废：提示已被 disarmAll 清掉，不复活
+        const plan = deletePlanRef.current;
+        // 核完到第二击之间的窄窗：后台新起跑的卷不许借旧计划被误杀（计划只省 I/O，不省安全门）。
+        if (plan) {
+          const running = plan.order.filter((sid) => agentSessionState.runStateOf(core.panelId, sid).running);
+          if (running.length > 0) {
+            disarmAll();
+            setLocalNotice(
+              `这一枝里有 ${running.length} 卷刚开始运行，已停止删除——先停止再移除：${running
+                .map((n) => `案卷 ${n}`)
+                .join('、')}`,
+            );
+            refresh();
+            return;
+          }
+        }
+        confirmingDeleteIdRef.current = null;
+        deleteReadyRef.current = false;
+        deletePlanRef.current = null;
+        setConfirmingDeleteId(null);
+        setDeleteChecking(false);
+        setDeleteBranchCount(0);
         setLocalNotice(null);
-        if (plan.blocked.length > 0) {
-          const running = plan.blocked.flatMap((b) => b.running);
-          setLocalNotice(
-            `这一枝里有 ${running.length} 卷运行中，不能删除——先停止再移除：${running.map((n) => `案卷 ${n}`).join('、')}`,
-          );
+        deletingRef.current = true;
+        setDeletingId(id);
+        // 再击 = 连坐删除（后序、逐卷可见——部分失败不静默）；复用首击计划，不再读一遍全部卷头行。
+        let outcome: Awaited<ReturnType<SidebarCore['deleteSessionWithBranches']>>;
+        try {
+          outcome = await core.deleteSessionWithBranches(id, plan ?? undefined);
+        } catch (e) {
+          setLocalNotice(`删除失败：${e instanceof Error ? e.message : String(e)}`);
+          refresh();
           return;
+        } finally {
+          deletingRef.current = false;
+          setDeletingId(null);
         }
-        confirmingDeleteIdRef.current = id;
-        setConfirmingDeleteId(id);
-        setDeleteBranchCount(plan.branchCount);
-        return;
-      }
-      confirmingDeleteIdRef.current = null;
-      setConfirmingDeleteId(null);
-      setDeleteBranchCount(0);
-      // 再击 = 连坐删除（后序、逐卷可见——部分失败不静默）
-      let outcome: Awaited<ReturnType<SidebarCore['deleteSessionWithBranches']>>;
-      try {
-        outcome = await core.deleteSessionWithBranches(id);
-      } catch (e) {
-        setLocalNotice(`删除失败：${e instanceof Error ? e.message : String(e)}`);
+        const running = outcome.blocked.flatMap((b) => b.running);
+        if (outcome.deleted.length === 0 && running.length > 0) {
+          setLocalNotice(
+            `这一枝里有 ${running.length} 卷运行中，已整体拒绝：${running.map((n) => `案卷 ${n}`).join('、')}`,
+          );
+        } else {
+          const branches = outcome.deleted.length - 1;
+          const why =
+            outcome.failed.length > 0
+              ? `；${outcome.failed.length} 卷没删掉（${outcome.failed.map((f) => `案卷 ${f.id}：${f.reason}`).join('；')}）`
+              : '';
+          setLocalNotice(`已删 ${outcome.deleted.length} 卷${branches > 0 ? `（含 ${branches} 枝）` : ''}${why}`);
+        }
         refresh();
         return;
       }
-      const running = outcome.blocked.flatMap((b) => b.running);
-      if (outcome.deleted.length === 0 && running.length > 0) {
-        setLocalNotice(
-          `这一枝里有 ${running.length} 卷运行中，已整体拒绝：${running.map((n) => `案卷 ${n}`).join('、')}`,
-        );
-      } else {
-        const branches = outcome.deleted.length - 1;
-        const why =
-          outcome.failed.length > 0
-            ? `；${outcome.failed.length} 卷没删掉（${outcome.failed.map((f) => `案卷 ${f.id}：${f.reason}`).join('；')}）`
-            : '';
-        setLocalNotice(`已删 ${outcome.deleted.length} 卷${branches > 0 ? `（含 ${branches} 枝）` : ''}${why}`);
+
+      // 第一击：**先即时武装 + 显示「核对」**，再去读血缘；旧实现要等异步核完才给红态，
+      // 几百卷的工作区会读作「点了没反应」。代际守卫：期间任何其它意图（disarmAll）作废本应答。
+      const seq = ++armSeqRef.current;
+      confirmingDeleteIdRef.current = id;
+      deleteReadyRef.current = false;
+      deletePlanRef.current = null;
+      setConfirmingDeleteId(id);
+      setDeleteChecking(true);
+      setDeleteBranchCount(0);
+      setLocalNotice(null);
+      let plan: Awaited<ReturnType<SidebarCore['planBranchDelete']>>;
+      try {
+        plan = await core.planBranchDelete(id);
+      } catch (e) {
+        if (seq !== armSeqRef.current) return; // 已作废：错误也不再打扰
+        disarmAll();
+        setLocalNotice(`血缘核对失败（未删除任何卷）：${e instanceof Error ? e.message : String(e)}`);
+        return;
       }
-      refresh();
+      if (seq !== armSeqRef.current) return; // 已作废：提示已被 disarmAll 清掉，不复活
+      if (plan.blocked.length > 0) {
+        const running = plan.blocked.flatMap((b) => b.running);
+        disarmAll();
+        setLocalNotice(
+          `这一枝里有 ${running.length} 卷运行中，不能删除——先停止再移除：${running.map((n) => `案卷 ${n}`).join('、')}`,
+        );
+        return;
+      }
+      deletePlanRef.current = plan;
+      deleteReadyRef.current = true;
+      setDeleteChecking(false);
+      setDeleteBranchCount(plan.branchCount);
+      setLocalNotice(null);
     },
-    [core, refresh],
+    [core, refresh, disarmAll],
   );
 
   /* ── 批量删除（两击确认同款）：同样**连坐**（选中的卷各自带整棵子树），
@@ -1176,17 +1225,26 @@ export const SessionSidebar = memo(function SessionSidebar() {
    */
   const renderRow = (r: SidebarRow, variant: SidebarView) => {
     const isRenaming = renamingId === r.id;
-    /** 本行已武装删除确认（武装态只换色 + 行内 meta 行换文案，几何零变化）。 */
+    /** 本行已武装删除确认：首击即时显形；删钮变成固定宽「确认」，形状不跳。 */
     const armedDelete = confirmingDeleteId === r.id;
+    const deleting = deletingId === r.id;
+    const deleteCheckingHere = armedDelete && deleteChecking;
     /** 武装态的行内告知（连坐数：本卷 + 各枝）——不可逆动作的知情权落在这里。 */
-    const deleteConfirmText =
-      deleteBranchCount > 0
-        ? `再点一次确认：同时删除 ${deleteBranchCount + 1} 卷（含 ${deleteBranchCount} 枝，不可撤销）`
-        : '再点一次确认删除；点其它处取消';
-    const deleteConfirmTitle =
-      deleteBranchCount > 0
-        ? `再点一次确认：将同时删除 ${deleteBranchCount + 1} 卷（含 ${deleteBranchCount} 枝，不可撤销）；点其它处或 Esc 取消（点别的卷只取消、不摊开）`
-        : '再点一次确认删除（不可撤销）；点其它处或 Esc 取消（点别的卷只取消、不摊开）';
+    const deleteConfirmText = deleting
+      ? '正在删除…'
+      : deleteCheckingHere
+        ? '正在核对血缘…完成后请再点一次「确认」'
+        : deleteBranchCount > 0
+          ? `再点一次「确认」才会删除：同时删除 ${deleteBranchCount + 1} 卷（含 ${deleteBranchCount} 枝，不可撤销）`
+          : '再点一次「确认」才会删除 · 不可撤销 · 点其它处取消';
+    const deleteConfirmTitle = deleting
+      ? '正在删除…'
+      : deleteCheckingHere
+        ? '正在核对血缘（逐卷读头行）；完成后按钮会变成「确认」，届时再点一次才会删除'
+        : deleteBranchCount > 0
+          ? `再点一次「确认」：将同时删除 ${deleteBranchCount + 1} 卷（含 ${deleteBranchCount} 枝，不可撤销）；点其它处或 Esc 取消（点别的卷只取消、不摊开）`
+          : '再点一次「确认」才会删除（不可撤销）；点其它处或 Esc 取消（点别的卷只取消、不摊开）';
+    const deleteLabel = deleting ? '删除中' : deleteCheckingHere ? '核对' : armedDelete ? '确认' : '删除';
     const isCurrent = r.open && r.id === activeSid;
     const isSelected = selectedIds.has(r.id);
     // 父卷号取成一枚 **const**（不是就地读 `r.parentId`）：别名条件 `branch` 的类型收窄
@@ -1221,8 +1279,9 @@ export const SessionSidebar = memo(function SessionSidebar() {
           branch ? ' branch' : ''
         }${r.orphan ? ' orphan' : ''}${r.contextOnly ? ' context' : ''}${famHot ? ' fam' : ''}${
           famFolded ? ' folded' : ''
-        }`}
+        }${armedDelete ? ' armed' : ''}${deleting ? ' deleting' : ''}`}
         data-id={r.id}
+        aria-busy={deleting || undefined}
         data-depth={depth}
         data-tip={`${volumeDisplayName(r.label, r.id)}${branch ? ' · 枝（自父卷分出）' : ''}${
           r.orphan ? ' · 父卷已删' : ''
@@ -1369,8 +1428,12 @@ export const SessionSidebar = memo(function SessionSidebar() {
           {/* 悬空血缘的注记由 sessionMeta 出（「父卷已删」，两视角同一处，不重复写）；
               武装态这一行改说「再点一次会删掉什么」——连坐数必须**在行内**可见（不可逆动作
               的知情权），但不许挤动几何 ⇒ 行内换文案，不换按钮宽度。 */}
-          <span className={`ss-meta${armedDelete ? ' ss-meta-confirm' : ''}`}>
-            {armedDelete ? deleteConfirmText : sessionMeta(r)}
+          <span
+            className={`ss-meta${armedDelete || deleting ? ' ss-meta-confirm' : ''}`}
+            role={armedDelete || deleting ? 'alert' : undefined}
+            aria-atomic={armedDelete || deleting ? 'true' : undefined}
+          >
+            {armedDelete || deleting ? deleteConfirmText : sessionMeta(r)}
           </span>
         </div>
         <span className="ss-tail">
@@ -1420,18 +1483,26 @@ export const SessionSidebar = memo(function SessionSidebar() {
                 合
               </button>
             )}
-            {/* 两击确认：武装态**只换色**（文案恒「删」⇒ 动作行宽度恒定），连坐数写在行内 meta 行 */}
+            {/* 两击确认：首击即时进入明确的「核对 → 确认」态；按钮固定宽，文案换但不挤名区。
+                连坐数与「再点一次」指令写进行内 meta 行——不可逆动作的知情权就在行内。 */}
             <button
               type="button"
               data-act="del"
-              className={armedDelete ? 'ss-danger' : ''}
-              data-tip={armedDelete ? deleteConfirmTitle : '彻底删除（点两次确认）'}
+              className={`${armedDelete ? 'ss-danger' : ''}${deleting ? ' ss-danger-busy' : ''}`.trim()}
+              disabled={deleting}
+              aria-busy={deleting || undefined}
+              aria-label={
+                armedDelete
+                  ? `${deleteCheckingHere ? '正在核对血缘，请稍候' : '再次点击确认删除'}：${volumeDisplayName(r.label, r.id)}`
+                  : `删除${volumeDisplayName(r.label, r.id)}（点两次确认）`
+              }
+              data-tip={armedDelete || deleting ? deleteConfirmTitle : '彻底删除（点两次确认）'}
               onClick={(e) => {
                 e.stopPropagation();
                 void onDelete(r.id);
               }}
             >
-              删
+              {deleteLabel}
             </button>
           </div>
         </span>

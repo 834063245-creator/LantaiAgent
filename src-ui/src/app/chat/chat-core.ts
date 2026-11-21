@@ -945,9 +945,15 @@ export class ChatCore {
 
   /** **连坐删除**（plan §9 用户裁定）：删父卷 = 删整棵子树，后序（先子后父，永不产生
    *  孤儿），逐卷可见（部分失败不静默）。见 `Branch.deleteBranchSubtrees`。 */
-  deleteSessionWithBranches(sessionId: number): Promise<Branch.CascadeOutcome> {
+  deleteSessionWithBranches(sessionId: number, plan?: Branch.CascadePlan): Promise<Branch.CascadeOutcome> {
     const pp = useShellStore.getState().projectPath;
-    return Branch.deleteBranchSubtrees(this.panelId, pp, [sessionId], (sid) => this.deleteSessionFile(pp, sid));
+    return Branch.deleteBranchSubtrees(
+      this.panelId,
+      pp,
+      [sessionId],
+      (sid) => this.deleteSessionFile(pp, sid),
+      plan,
+    );
   }
 
   /** 批量连坐删除（多选批量条）：同一套准备/执行面，可删的删、被运行中拦下的逐个报。 */

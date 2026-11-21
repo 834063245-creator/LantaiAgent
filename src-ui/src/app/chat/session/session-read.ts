@@ -77,8 +77,11 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
     label: cache?.label ?? '',
     savedAt: cache?.savedAt ?? '',
     createdAt: logRead.header.createdAt,
-    // 血缘取**头行**（write-once 真源），不取快照——快照里没有这一栏
-    ...(logRead.header.parent ? { parentId: logRead.header.parent.id } : {}),
+    // 血缘取**头行**（write-once 真源），不取快照——快照里没有这一栏。
+    // atSeq 必须一起带出：继承区内立枝的边靠它归一到真正覆盖切点的祖先。
+    ...(logRead.header.parent
+      ? { parentId: logRead.header.parent.id, parentAtSeq: logRead.header.parent.atSeq }
+      : {}),
     messages: logRead.messages,
     uiMessages: fresh ? cache?.uiMessages : undefined,
     tokensUsed: cache?.tokensUsed,
@@ -105,11 +108,17 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
  *  目录对账发现并补建（首次调用阻塞至预算，其余后台分批 + 每批广播）。见「卷目录」头注。
  *  读盘**失败**不再伪装成空集：目录枚举失败一律上抛（调用方保留上次结果并明示），
  *  「工作区为空」才返回 []。 */
-export async function listSavedSessions(_ctx: SessionContext, projectPath: string): Promise<SavedSessionRow[]> {
+/** 清单行的 **ctx-free** 读面（血缘快规划复用；`listSavedSessions` 的公开签名保留
+ *  SessionContext 只为既有调用方零改动——本函数实际不用 ctx）。 */
+export async function listSavedSessionRows(
+  projectPath: string,
+  /** 调用方刚枚举过的卷集（省一次 list_volumes；缺省 = 本函数自己枚举）。 */
+  knownIds?: readonly number[],
+): Promise<SavedSessionRow[]> {
   // 无工作区 = 无卷（合法空态，不是失败——不抛）
   if (!projectPath) return [];
   const root = workspaceSessionsDir(projectPath);
-  const ids = await listVolumeIds(projectPath);
+  const ids = knownIds ? [...knownIds] : await listVolumeIds(projectPath);
 
   const cat = catalogOf(root);
   await loadCatalog(cat, root);
@@ -141,9 +150,15 @@ export async function listSavedSessions(_ctx: SessionContext, projectPath: strin
   return rows;
 }
 
+/** 公开面包装：形状/行为逐字节继承 `listSavedSessionRows`（`_ctx` 历史参数保留）。 */
+export async function listSavedSessions(_ctx: SessionContext, projectPath: string): Promise<SavedSessionRow[]> {
+  return listSavedSessionRows(projectPath);
+}
+
 /** **本工作区卷号集**（目录枚举 = 卷集真源：文件不在 = 卷不存在）——清单之外的
- *  读面（会话树「枝」的血缘图重建）取材于此，**不信 `_index.json`**（它是投影，
- *  可陈旧；删除连坐是不可逆动作，见 `app/chat/session-branch.loadBranchLineage`）。 */
+ *  读面（会话树「枝」的血缘图重建）取材于此。**卷集永远以目录为准**；血缘边才走
+ *  已对账的目录投影（缺行/半行自动回退逐卷真源读头行，见
+ *  `app/chat/session-branch.loadBranchLineage`）。 */
 export async function listVolumeIds(projectPath: string): Promise<number[]> {
   const names = await listVolumeNames(workspaceSessionsDir(projectPath));
   // 卷集 = .ndjson（跳过下划线开头的保留名；provider 已滤目录）

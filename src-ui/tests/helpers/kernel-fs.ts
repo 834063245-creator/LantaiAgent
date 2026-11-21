@@ -78,6 +78,8 @@ export class MockFs {
   writes: WriteCapture[] = [];
   /** 全部 list 调用（kernelListDirectory/Flat）记录。 */
   lists: ListCapture[] = [];
+  /** 全部读文件调用（含日志/缓存/目录 JSON）——性能类断言据此证明「没读卷体」。 */
+  reads: string[] = [];
   /** 全部日志轮转调用（kernelLogRotate）记录——批 4 断言面。 */
   logRotates: string[] = [];
   /** 可编程失败注入：返回错误字符串则抛错。缺省 = 成功。 */
@@ -183,6 +185,7 @@ export function createKernelFsMock(opts?: { wrapWithSpies?: boolean }): {
   const kernelReadFile = async (filePath: string, _opts?: { raw?: boolean }): Promise<string> => {
     if (fs.fail.read) throw new Error(fs.fail.read);
     const p = String(filePath).replace(/\\/g, '/');
+    fs.reads.push(p);
     const v = fs.files.get(p);
     if (v === undefined) throw new Error(`ENOENT: ${filePath}`);
     return v;

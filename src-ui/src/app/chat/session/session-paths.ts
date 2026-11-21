@@ -32,6 +32,10 @@ export interface StoredSession {
    *  头行 `SessionLogHeader.parent.id`（write-once），此处仅供 `readVolumeData` 的返回值
    *  携带（清单投影 `_index.json` 的血缘栏由它供数）。缺 = 根卷。 */
   parentId?: number;
+  /** **父卷切点 seq**（`SessionLogHeader.parent.atSeq`）——与 `parentId` 同源、同生命期；
+   *  单有父号不够：继承区内立枝的边要按 atSeq 归一到真正覆盖切点的祖先，删除连坐
+   *  才能删对子树。同样**不落快照**，只供读面携带。 */
+  parentAtSeq?: number;
   messages?: Message[];
   /** UI 消息副本（WO-7）：含 BlockPart 资产块；旧存档无此字段 = 仅 provider 消息。 */
   uiMessages?: ChatMessage[];

@@ -158,21 +158,29 @@ describe('案卷侧栏行操作：显隐 / 武装 / 提示不得改变盒模型'
     expect(ruleBody(CSS_CODE, '.ss-sidebar.arranging .ss-check {')).toContain('visibility: visible');
   });
 
-  it('乙 · 「删」钮武装只换色：文案不变（动作行宽度恒定，名区不被压缩）', async () => {
+  it('乙 · 「删」钮首击即时进「核对 → 确认」态：固定宽换文案，名区不被压缩', async () => {
     const core = fakeCore(SAVED);
     await mount(core);
     const del = rowOf(1).querySelector('.ss-actions button:last-child') as HTMLButtonElement;
-    expect(del.textContent).toBe('删');
-    await click(del); // 第一击 = 核对血缘（异步）后武装
+    expect(del.textContent).toBe('删除');
+    await click(del); // 第一击 = 立即武装，随后后台核对血缘
     expect(core.planBranchDelete).toHaveBeenCalled();
     const armed = rowOf(1).querySelector('.ss-actions .ss-danger') as HTMLButtonElement;
     expect(armed).toBeTruthy();
-    // 宽度恒定的充分条件：文案不变（旧实现改写成「确删 N 卷?」⇒ 动作行 76 → 115.6px）
-    expect(armed.textContent).toBe('删');
-    // 连坐信息改由**行内机读注记行**承接（不可逆动作的知情权留在行内，但不挤按钮宽度）
+    // 文案变了（明确说「确认」），但按钮常态就预留固定宽 ⇒ 同一行武装前后盒宽不变。
+    expect(armed.textContent).toBe('确认');
+    const delRule = ruleBody(CSS_CODE, '.ss-actions button[data-act="del"] {');
+    expect(delRule).toContain('width: 36px');
+    expect(delRule).toContain('min-width: 36px');
+    // 改/合只藏不撤（槽位保留）+ 确认态常显：鼠标移开也能看到再点指令。
+    expect(CSS_CODE).toContain('.ss-row.armed .ss-actions button:not([data-act="del"])');
+    expect(CSS_CODE).toContain('.ss-row.armed .ss-actions');
+    // 连坐信息由**行内机读注记行**承接（不可逆动作的知情权留在行内，但不挤按钮宽度）
     const meta = rowOf(1).querySelector('.ss-meta') as HTMLElement;
     expect(meta.className).toContain('ss-meta-confirm');
+    expect(meta.textContent).toContain('再点一次「确认」才会删除');
     expect(meta.textContent).toContain('2 枝');
+    expect(meta.getAttribute('role')).toBe('alert');
   });
 
   it('丙 · 改名态不动骨架：两行式仍在，输入件落在名行之内，动作行常驻', async () => {

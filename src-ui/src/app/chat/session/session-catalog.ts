@@ -81,6 +81,9 @@ export interface SavedSessionRow {
    *  真源 = 卷日志头行（`StoredSession.parentId`），故**只由补建（读头行）产生**：
    *  快照写面带不出血缘（见 `upsertCatalogRow` 注）。 */
   parentId?: number;
+  /** 父卷切点 seq（头行 `parent.atSeq`）——与 `parentId` 成对；归一化血缘和删除连坐
+   *  都靠它，单有父号会把继承区内立出的枝归错祖先。 */
+  parentAtSeq?: number;
 }
 
 /** 目录文件 id（`{root}/_index.json`——下划线保留名，各消费方的卷集过滤天然跳过）。 */
@@ -90,8 +93,11 @@ const CATALOG_ID = '_index';
  *  不认版本即整份重建（补建读头行，血缘一次到位），不做就地补读。
  *  v3（2026-11-21）：`msgCount` 改用与摊开态同一把尺（UI 快照消息数；无快照回退
  *  到非 system 日志消息数）。v2 按事件日志数出的块数会在合卷/摊开时跳变，
- *  故不认旧版本、整份重建，避免旧口径残留。 */
-const CATALOG_VERSION = 3;
+ *  故不认旧版本、整份重建，避免旧口径残留。
+ *  v4（2026-11-21）：行加 `parentAtSeq`（头行 `parent.atSeq`）。删除的连坐规划不再
+ *  逐卷读整份日志，而是从这份**已对账的目录投影**重建归一化血缘；缺 atSeq 就无法
+ *  判断继承区内立枝该归到哪个祖先，故 v3 整份重建一次。 */
+const CATALOG_VERSION = 4;
 /** 首次补建的**阻塞**预算（ms）：预算内补齐多少算多少，其余转后台（不吊死首屏）。 */
 const CATALOG_BLOCK_BUDGET_MS = 2500;
 /** 补建并发（每卷 = 日志 + 投影缓存两跳读；并发过高只是把 IPC 挤满）。 */
@@ -153,7 +159,10 @@ export function flushCatalog(cat: VolumeCatalog, root: string): void {
       return;
     }
     cat.dirty = false;
-    const rows: Record<string, { label: string; savedAt: string; msgCount: number; parentId?: number }> = {};
+    const rows: Record<
+      string,
+      { label: string; savedAt: string; msgCount: number; parentId?: number; parentAtSeq?: number }
+    > = {};
     for (const [id, r] of cat.rows) {
       rows[String(id)] = {
         label: r.label,
@@ -161,6 +170,7 @@ export function flushCatalog(cat: VolumeCatalog, root: string): void {
         msgCount: r.msgCount,
         // 缺 = 根卷（JSON 丢 undefined 键——缺席即无父，读面同判）
         ...(r.parentId != null ? { parentId: r.parentId } : {}),
+        ...(r.parentAtSeq != null ? { parentAtSeq: r.parentAtSeq } : {}),
       };
     }
     const data = JSON.stringify({ ver: CATALOG_VERSION, rows });
@@ -188,7 +198,13 @@ export function loadCatalog(cat: VolumeCatalog, root: string): Promise<void> {
         } else if (parsed.rows && typeof parsed.rows === 'object') {
           for (const [key, v] of Object.entries(parsed.rows as Record<string, unknown>)) {
             const id = Number(key);
-            const row = v as { label?: unknown; savedAt?: unknown; msgCount?: unknown; parentId?: unknown };
+            const row = v as {
+              label?: unknown;
+              savedAt?: unknown;
+              msgCount?: unknown;
+              parentId?: unknown;
+              parentAtSeq?: unknown;
+            };
             if (!Number.isFinite(id) || typeof row?.label !== 'string') continue;
             // 本地写入优先（载入不得覆盖本次运行已更的行）
             if (cat.rows.has(id)) continue;
@@ -197,9 +213,14 @@ export function loadCatalog(cat: VolumeCatalog, root: string): Promise<void> {
               label: row.label,
               savedAt: typeof row.savedAt === 'string' ? row.savedAt : '',
               msgCount: typeof row.msgCount === 'number' ? row.msgCount : 0,
-              // 血缘形状不对 = 当根卷（毒化容忍同 parseHeader：不让一栏脏数据毁掉整行）
+              // 血缘形状不对 = 当根卷（毒化容忍同 parseHeader：不让一栏脏数据毁掉整行）。
+              // id / atSeq 必须成对有效；只剩一半时保留 parentId 供树显示，快规划看到
+              // 缺 atSeq 会退回磁盘真源，绝不猜一条删除边。
               ...(Number.isInteger(row.parentId) && (row.parentId as number) > 0
                 ? { parentId: row.parentId as number }
+                : {}),
+              ...(Number.isInteger(row.parentAtSeq) && (row.parentAtSeq as number) >= 0
+                ? { parentAtSeq: row.parentAtSeq as number }
                 : {}),
             });
           }
@@ -245,8 +266,9 @@ async function hydrateVolumeRow(projectPath: string, id: number): Promise<SavedS
     label: data.label ?? '',
     msgCount,
     savedAt: data.savedAt || '',
-    // 血缘 = 卷日志头行（`readVolumeData` 已从头行取；缺 = 根卷）
+    // 血缘 = 卷日志头行（`readVolumeData` 已从头行取 id + atSeq；缺 = 根卷）
     ...(data.parentId != null ? { parentId: data.parentId } : {}),
+    ...(data.parentAtSeq != null ? { parentAtSeq: data.parentAtSeq } : {}),
   };
 }
 
@@ -337,7 +359,11 @@ export function upsertCatalogRow(root: string, row: SavedSessionRow): void {
   const cat = catalogOf(root);
   const prev = cat.rows.get(row.id);
   if (!prev) return;
-  cat.rows.set(row.id, { ...row, ...(prev.parentId != null ? { parentId: prev.parentId } : {}) });
+  cat.rows.set(row.id, {
+    ...row,
+    ...(prev.parentId != null ? { parentId: prev.parentId } : {}),
+    ...(prev.parentAtSeq != null ? { parentAtSeq: prev.parentAtSeq } : {}),
+  });
   cat.failed.delete(row.id);
   flushCatalog(cat, root);
 }
