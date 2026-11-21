@@ -63,7 +63,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
 | `ctx.capabilities` | `CapabilitiesService` | `src/composition/capability-service.ts` | `my/capability` | 2 文件 |
-| `ctx.commands` | `CommandsService` | `src/composition/services.ts` | `canvas/sidebar-toggle` · `compose/space-status` · `my/say-hi` · `paper/toggle` · `settings/toggle` | 5 文件 |
+| `ctx.commands` | `CommandsService` | `src/composition/services.ts` | `canvas/sidebar-toggle` · `compose/space-status` · `my/say-hi` · `paper/toggle` · `settings/toggle` · `shelf/open` | 6 文件 |
 | `ctx.hooks` | `HooksService` | `src/composition/hook-service.ts` | `plan-injector` | 0 文件 |
 | `ctx.overlays` | `OverlayService` | `src/composition/overlay-service.ts` | `asset-rack` · `compose-dock` · `compose-sheet` · `draft-folio` · `paper-minimap` · `toc-strip` | 2 文件 |
 | `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `my-panel` · `paper` · `settings` | 4 文件 |
@@ -86,8 +86,8 @@ capability 贡献注册表（A-3 第八贡献通道）——贡献注册 → dis
 命令注册表（S1-1）——def 注册 → disposer；即时生效语义。
 
 - owner：`src/composition/services.ts`
-- 默认实现 / 贡献者 id：`canvas/sidebar-toggle` · `compose/space-status` · `my/say-hi` · `paper/toggle` · `settings/toggle`
-- 消费面（5）：`src/plugins/builtin/canvas-nav/index.ts` · `src/plugins/builtin/compose-dock/index.ts` · `src/plugins/builtin/paper-shell/index.ts` · `src/plugins/builtin/settings-domain/index.ts` · `src/plugins/builtin/skill-domain/builtin-skills.ts`
+- 默认实现 / 贡献者 id：`canvas/sidebar-toggle` · `compose/space-status` · `my/say-hi` · `paper/toggle` · `settings/toggle` · `shelf/open`
+- 消费面（6）：`src/plugins/builtin/canvas-nav/index.ts` · `src/plugins/builtin/compose-dock/index.ts` · `src/plugins/builtin/paper-shell/index.ts` · `src/plugins/builtin/settings-domain/index.ts` · `src/plugins/builtin/shelf-domain/index.tsx` · `src/plugins/builtin/skill-domain/builtin-skills.ts`
 
 ### `ctx.hooks` — HooksService（贡献通道）
 

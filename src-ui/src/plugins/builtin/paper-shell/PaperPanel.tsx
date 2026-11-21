@@ -57,6 +57,7 @@ import {
   setMorphBox,
   useDockStore,
   useDraftSheetStore,
+  useShelfStore,
   useWorkLedgerStore,
   WinControls,
 } from './host';
@@ -944,9 +945,21 @@ export function PaperPanel() {
               </button>
             </div>
             <StatusLine running={activeRunning} />
-            {/* 架阁字件已迁出（v66，2026-11-21）：架阁出纸壳成为**应用级浮层**
-                （ctx.rootViews 的 'overlay' 槽），入口随之搬到 App 根与案卷首页——
-                纸关着时它也要在，那就不能再挂在纸壳里。 */}
+            {/* 架阁（entity-shelf-plan B3，2026-12-08 用户拍板）：顶部浮件一枚两字件，
+                与「画布 / 设置 / 回首页」同排同规格；点开是那本两页浮层（软件型 / 卡片型）。
+                排在设置左侧——设置是"改配置"，架阁是"看我手上有什么"，后者更常用。
+                v66 起浮层本体是**应用级**（ctx.rootViews 的 'overlay' 槽，纸关着也在），
+                但**入口跟着人在哪**：首页顶栏一个、纸壳浮件一个（此处）、Ctrl+K 一个。
+                浮层搬到 App 根之后，本件的按钮若也删掉，纸开着时就再也开不出架阁了
+                ——2026-11-21 实机报「架阁只在首页」。 */}
+            <button
+              type="button"
+              className="pp-settings"
+              data-tip="架阁：我手上的软件与卡片"
+              onClick={() => useShelfStore.getState().openShelf()}
+            >
+              架阁
+            </button>
             <button
               type="button"
               className={`pp-settings${updateAvailable ? ' has-update' : ''}`}

@@ -29,6 +29,9 @@ function Bare() {
 const PANELS: PanelContribution[] = [
   { id: 't-desk', side: 'right', title: '研报工作台', icon: 'agent', component: Bare },
   { id: 't-fullscreen', side: null, title: '全屏面', icon: 'settings', component: Bare },
+  // 家具型（书脊 / 案卷同款）：有 side，但 frame:'self' —— 2026-11-21 实机报
+  // 「软件里怎么还有书脊和案卷」，这条钉住它不再混进来。
+  { id: 't-furniture', side: 'left', title: '家具面', icon: 'book', frame: 'self', component: Bare },
 ];
 
 describe('架阁：panels 通道的入口（v66）', () => {
@@ -68,6 +71,12 @@ describe('架阁：panels 通道的入口（v66）', () => {
 
   it('side:null 的面板不进架阁（它不是「软件」）', () => {
     expect(container!.textContent ?? '').not.toContain('全屏面');
+  });
+
+  it('家具（frame: self）不进架阁——书脊 / 案卷不是软件', () => {
+    // 为什么这条重要：家具的生命周期挂在纸上（canvas-nav 的 syncPanels：纸关 = 全关），
+    // 列进架阁就能在**首页**（没有工作区）把它点开，出来一条空侧栏——是状态 bug 不是观感。
+    expect(container!.textContent ?? '').not.toContain('家具面');
   });
 
   it('点面板行 = togglePanel + 关架阁', async () => {

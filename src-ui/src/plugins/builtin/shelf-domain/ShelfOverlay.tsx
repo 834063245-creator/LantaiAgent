@@ -318,13 +318,20 @@ export function ShelfOverlay() {
    * 面板，壳里既没有入口也没有盒子（见 docs/issues/lantai-plugin-panels-no-home）。
    * 架阁本来就是「软件的门」，面板是同一件事的另一半（同一张皮、缺了整套宿主）。
    *
-   * 只收 side !== null 的：side:null 的面板（纸 / 设置）语义是「不上轨道」，
-   * 它们不是「软件」，各有自己的开关（Ctrl+P / Ctrl+, 与它们的命令贡献）。
+   * **两道过滤，各自一条理由**（2026-11-21 实机报「架阁里怎么还有书脊和案卷」）：
+   *   ① `side !== null`——side:null 的面板（纸 / 设置）语义是「不上轨道」，它们不是
+   *      「软件」，各有自己的开关（Ctrl+P / Ctrl+, 与它们的命令贡献）。
+   *   ② `frame !== 'self'`——书脊 / 案卷这类**家具**不是软件：它们自持定位与 chrome，
+   *      生命周期挂在纸上（canvas-nav 的 syncPanels：纸关 = 两者全关），而且只在有
+   *      工作区时才有意义。列进架阁 = 让用户在**首页**（纸关着、没有卷）把它点开，
+   *      出来一条空侧栏——所以「看着奇怪」底下是个真的状态 bug。
+   *      判据取 `frame`（'self' 的定义就是「家具型，自持定位与 chrome」），不另造字段。
    * 判据读 panelDefs() 合流点（常量 + 插件贡献），壳里不重推「哪些 id 是面板」。 */
   const panelTick = usePanelDefsStore((s) => s.panelDefsTick);
   void panelTick; // 贡献热注册即时重进清单
   const panelRows = panelDefs()
     .filter((d) => d.side !== null)
+    .filter((d) => d.frame !== 'self')
     .filter((d) => !query || d.title.toLowerCase().includes(query.toLowerCase()));
   const appRows = Object.values(defs).filter(
     (d) => !query || (d.title || d.pluginName).toLowerCase().includes(query.toLowerCase()),
