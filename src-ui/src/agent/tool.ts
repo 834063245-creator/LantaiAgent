@@ -47,6 +47,14 @@ export interface Tool {
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
   private hiddenNames = new Set<string>();
+  /** 程序内调用才可见的工具名（2026-11-21「code 模式」）。
+   *  语义：**直调有名无实，程序内可调**——模型绕过 code_execution 直接调给名
+   *  会拿到一份可读的引导文本（不是「未知工具」的含糊报错），而 code_execution
+   *  的绑定集照常包含它（绑定集读 visibleTools，本集合只影响 schemas()）。
+   *  为什么需要这一层：把「工具面收进程序」这类组合（code 模式）不能靠
+   *  preset 剪可行——剪掉行 = 程序内也调不到，那等于把 code mode 做成残废
+   *  （见 docs/plans/code-mode-preset-plan.md）。 */
+  private programOnlyNames = new Set<string>();
 
   /** 注册工具并返回所有权清理器（Phase 1 disposer 契约）。
    *  调用方持有 disposer 即持有该工具的清理责任；幂等。
@@ -69,6 +77,11 @@ export class ToolRegistry {
   unregister(name: string): void {
     this.tools.delete(name);
     this.hiddenNames.delete(name);
+    // ⚠ programOnly 标记**刻意不随 unregister 清除**（2026-11-21 code 模式）：
+    // 它是**组合**对某个名字的声明，不是工具实例的属性。装配链里 converge-tools
+    // capability 会先 unregister 域门面再重注册同名新实例（领域收敛的既有语义），
+    // 若在这里清标记，装配完成后直调面又回来了——「组合说收进程序」静默失效。
+    // 名字维度的声明就按名字续命，与 preset 按名字寻址同一把尺子。
   }
 
   /** 从 schemas()/catalog() 中隐藏工具，但仍保留在 registry 中：
@@ -116,13 +129,38 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  /** 可见工具（未被 hide 的） */
+  /** 程序内可见（code_execution 绑定集）：隐藏名除外、程序内专属名照常在内。 */
   visibleTools(): Tool[] {
     return this.all().filter((t) => !this.hiddenNames.has(t.name()));
   }
 
+  /** 模型**直调**面（schemas() 的唯一数据源）：可见面再扣掉程序内专属名。
+   *  ⚠ 与 visibleTools() 的分工是硬的：前者 = 「程序里能 await 到什么」，
+   *  后者 = 「模型能把它当顶层工具调什么」。任何一处拿错就会让 code 模式
+   *  要么漏绑、要么半残。 */
+  directTools(): Tool[] {
+    return this.visibleTools().filter((t) => !this.programOnlyNames.has(t.name()));
+  }
+
+  /** 标记/取消「仅程序内可见」（幂等；unregister 时同 hide 一起清）。 */
+  setProgramOnly(name: string, on = true): void {
+    // 按名字记账，不要求在册（组合可能在装配早期就声明一个尚未注册的名字——
+    // 与「未注册的工具行不产生工具」同序语义；标记本身不制造工具）。
+    if (on) this.programOnlyNames.add(name);
+    else this.programOnlyNames.delete(name);
+  }
+
+  isProgramOnly(name: string): boolean {
+    return this.programOnlyNames.has(name);
+  }
+
+  /** 当前仅程序内可见的名字（诊断/引导文案用）。 */
+  programOnlyNamesList(): string[] {
+    return [...this.programOnlyNames];
+  }
+
   schemas(): ToolSchema[] {
-    return this.visibleTools().map((t) => ({
+    return this.directTools().map((t) => ({
       name: t.name(),
       description: t.description(),
       parameters: t.parameters(),

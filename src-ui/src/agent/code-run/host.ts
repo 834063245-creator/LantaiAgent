@@ -34,6 +34,18 @@ import {
   type WorkerToHost,
 } from './protocol';
 
+/** 程序内调用的一笔事实（展示面旁路；2026-11-21）。 */
+export interface CodeDispatchRecord {
+  /** 程序内调用序（1 起，按落定序——与 session-log 的 dispatchCounter 不同源）。 */
+  seq: number;
+  name: string;
+  /** 该动作（域工具的 args.action；非域工具为 undefined）。 */
+  action?: string;
+  ok: boolean;
+  /** 结果首行（已截断）——只够「一眼看出它干了什么」，不做正文。 */
+  summary: string;
+}
+
 /** 绑定调用结果（P3）：`code`/`hint` 会原样进 reply，成为程序内 Error 的属性。 */
 export interface CodeBindingOutcome {
   output: string;
@@ -73,6 +85,11 @@ export interface CodeRunHostOptions {
   signal?: AbortSignal | null;
   /** 绑定集（P3 起为唯一能力面；空集 = 程序只能纯计算）。 */
   bindings: CodeBindingSpec[];
+  /** 每次嵌套调用落定后的回调（2026-11-21 纸面显形批）：给展示面用的
+   *  **旁路**——不改变程序看到的返回值，也不替代 session-log 审计
+   *  （审计在 capability 段的 invoke 闭包里，两本账互不替代）。
+   *  为什么挂在宿主侧：这是唯一同时知道 name / args / outcome / 序的位置。 */
+  onDispatch?: (d: CodeDispatchRecord) => void;
   /** Worker 工厂（注入面 — 测试用 fake；缺省真实 Web Worker）。 */
   createWorker?: (source: string) => CodeWorkerLike;
 }
@@ -108,6 +125,14 @@ function createRealWorker(source: string): CodeWorkerLike {
   // url 立即释放安全：worker 已加载脚本（规范允许 revoke 后已启动的 worker 继续）
   URL.revokeObjectURL(url);
   return w as unknown as CodeWorkerLike;
+}
+
+/** 结果首行（展示面摘要用）：截到 80 字符，空白归一。
+ *  只做「一眼看出它干了什么」，完整输出仍在程序里 / 日志里。 */
+function firstLine(text: string): string {
+  const line = text.split('\n').find((l) => l.trim() !== '') ?? '';
+  const t = line.replace(/\s+/g, ' ').trim();
+  return t.length > 80 ? `${t.slice(0, 80)}…` : t;
 }
 
 /** UTF-8 字节计长（与 worker 侧 byteLen 同语义；宿主侧独立计账用）。 */
@@ -225,6 +250,7 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
   let usedBytes = 2; // "[]" 形态（与 worker 侧同口径）
   let outputLimited = false;
   let settled = false;
+  let dispatchSeq = 0; // 展示面旁路的调用序（与 session-log 的 dispatchCounter 各自独立）
 
   // 写调度闸：读不进闸；写按 lockKey 分片（缺省 '*' = 与旧「一条写链」逐字等价）
   const gate = createWriteGate();
@@ -389,6 +415,21 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
         };
       }
       if (settled) return; // run 已结束（超时/中止）：不再回话
+      // 展示面旁路（2026-11-21）：落定时刻才知道胜负与输出，这里正好齐了。
+      try {
+        opts.onDispatch?.({
+          seq: ++dispatchSeq,
+          name,
+          action:
+            typeof (args as { action?: unknown }).action === 'string'
+              ? String((args as { action: unknown }).action)
+              : undefined,
+          ok: !outcome.isError,
+          summary: firstLine(outcome.output),
+        });
+      } catch {
+        /* 展示面故障不阻断程序（与 hooks 的降级同款） */
+      }
       worker.postMessage(
         outcome.isError
           ? ({

@@ -281,6 +281,24 @@ export class StreamingToolExecutor {
       return;
     }
 
+    // 程序内专属工具被直调（2026-11-21 code 模式）：工具还在册、程序里照常能
+    // await 到，只是**不在直调面**（schemas() 已扣）。这里给可读引导而不是让它
+    // 静默跑掉——否则「组合说了收进程序」只是一句空话。
+    if (this.tools.isProgramOnly(call.name)) {
+      const result: PendingResult = {
+        call,
+        output:
+          `[code 模式] ${call.name} 在本卷只经 code_execution 提供：` +
+          `请写一段程序 \`await tools.${call.name}(…)\` 调用它（程序内可并行、可循环、可带错误处理）。`,
+        truncated: false,
+      };
+      this.completed.push(result);
+      // isError=false：这是**导航**不是失败（同「已淘汰重定向」的分支口径）——
+      // 事件面按 result 广播，result.err 留空，模型看到的是可照做的引导。
+      this.emitPipelineResult(call, this.tools.get(call.name) ?? null, result, call.name, false);
+      return;
+    }
+
     // Plan 门禁：plan 激活时在执行层拦截写操作（schema 不切换注册表，
     // DeepSeek 前缀缓存不被 plan 切换击穿；规则见 plan/plan-registry.ts）。
     // 内部 plan 文件写入不走 executor，不受影响。

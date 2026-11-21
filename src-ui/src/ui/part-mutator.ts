@@ -7,6 +7,8 @@
 
 import type { AgentEvent, AssetDeltaEventData, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
+import { CODE_CALL_MARK } from '../agent/code-run/code-execution-tool';
+import type { CodeDispatchRecord } from '../agent/code-run/host';
 import type { AssistantPart, BlockPart, NoticePart } from './message-model';
 import { findToolPart, lastTextPart } from './message-model';
 import { resolveSemanticToolName } from './tool-semantics';
@@ -103,6 +105,18 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
         if (tp) {
           tp.status = 'running';
           if (tp.startedAt == null) tp.startedAt = Date.now();
+          // 程序内调用旁路（2026-11-21 纸面显形批）：code_execution 的执行期增量
+          // 不是「输出正文」，而是逐笔调用事实——分流进 part.calls，绝不拼进
+          // output（output 由 ToolResult 权威覆盖，混进去会污染结果信封的解析）。
+          if (ev.tool.output?.startsWith(CODE_CALL_MARK)) {
+            const rec = parseCodeCall(ev.tool.output.slice(CODE_CALL_MARK.length));
+            if (rec) {
+              if (!tp.calls) tp.calls = [];
+              tp.calls.push(rec);
+              return true;
+            }
+            return false;
+          }
           if (ev.tool.output) {
             // ponytail: 写入/编辑工具替换（预览内容随模型流式增长），
             // shell 工具追加（stdout 块累积）。
@@ -165,6 +179,23 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
 
     default:
       return false;
+  }
+}
+
+/** 旁路线一行 → 结构化记录（坏行 = null：展示面异常不制造假事实）。 */
+function parseCodeCall(json: string): CodeDispatchRecord | null {
+  try {
+    const o = JSON.parse(json) as Partial<CodeDispatchRecord>;
+    if (typeof o.name !== 'string' || typeof o.seq !== 'number') return null;
+    return {
+      seq: o.seq,
+      name: o.name,
+      ...(typeof o.action === 'string' ? { action: o.action } : {}),
+      ok: o.ok !== false,
+      summary: typeof o.summary === 'string' ? o.summary : '',
+    };
+  } catch {
+    return null;
   }
 }
 

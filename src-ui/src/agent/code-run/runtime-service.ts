@@ -18,7 +18,13 @@
 // 永不因「服务未挂」走静默死路。
 
 import { type Context, Service } from '../../cordis';
-import { type CodeBindingSpec, type CodeRunHostOptions, type CodeWorkerLike, runCode } from './host';
+import {
+  type CodeBindingSpec,
+  type CodeDispatchRecord,
+  type CodeRunHostOptions,
+  type CodeWorkerLike,
+  runCode,
+} from './host';
 import type { CodeRunResult } from './protocol';
 
 /** 一次 code run 请求 — 请求携带 runtime 需要的一切，无隐藏缺省
@@ -36,6 +42,9 @@ export interface CodeRunRequest {
   signal?: AbortSignal | null;
   /** Worker 工厂注入面（测试）。 */
   createWorker?: (source: string) => CodeWorkerLike;
+  /** 程序内调用落定旁路（2026-11-21 纸面显形批）——展示面用，不改变程序
+   *  看到的返回值。透传给宿主，见 host.ts 的 CodeDispatchRecord。 */
+  onDispatch?: (d: CodeDispatchRecord) => void;
 }
 
 declare module '../../cordis/context' {
@@ -72,6 +81,7 @@ export class CodeRuntimeService extends Service {
       timeoutMs: request.timeoutMs,
       signal: request.signal,
       createWorker: request.createWorker,
+      onDispatch: request.onDispatch,
     };
     return runCode(request.program, opts);
   }
@@ -103,6 +113,7 @@ export function runViaRuntime(request: CodeRunRequest): Promise<CodeRunResult> {
         timeoutMs: req.timeoutMs,
         signal: req.signal,
         createWorker: req.createWorker,
+        onDispatch: req.onDispatch,
       };
       return runCode(req.program, opts);
     },

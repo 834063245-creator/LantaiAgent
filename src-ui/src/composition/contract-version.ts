@@ -22,9 +22,23 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 63;
+export const OPEN_SURFACE_CONTRACT_VERSION = 65;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v65（2026-11-21）**用户组合新增 `programOnly` 域（工具面收进程序）**：
+ *  `composition/roster.ts` 的 `CompositionPatchSchema` 新增可选顶层键
+ *  `programOnly: [{ id, programOnly: boolean }]`——语义 = 把**已装配的工具**
+ *  从「模型直调面」（`schemas()`）扣掉，但保留在 `visibleTools()` 里（所以
+ *  code_execution 的程序内绑定集照旧包含它）。**为什么必须新增一个域而不是
+ *  用现有的 `tools[].disabled`**：禁用行 = 工具从注册表消失 ⇒ 程序内也调不到，
+ *  而「code 模式」的全部意义恰恰是「工具还在，只是只能经程序调」。
+ *  解析产物 `ResolvedComposition` 同步增 `programOnly: string[]`（纯收集，
+ *  后层覆盖前层）；出厂组合 = 空数组 ⇒ 现行三个组合逐字节零漂移。
+ *  **对外可感知**：用户 preset 多一个可写域；内置 `code` 组合用它把日常工具
+ *  收进 `code_execution`，直调只剩执行原语与问人。旧 preset 不写该键 = 行为
+ *  逐字不变（纯可选字段，零迁移）。依据 `docs/plans/code-mode-preset-plan.md`；
+ *  守护 `tests/composition-presets.test.ts` + `tests/code-mode-preset.test.ts`
+ *  + `tests/tool-registry-disposer.test.ts`。
  *  v63（2026-11-21）**命令贡献面增可选 `volumeCommand`（这条 `local` 命令作用于某一卷）**：
  *  `composition/services.ts` 的 `CommandContribution` 新增可选 `volumeCommand?: boolean`，
  *  出厂首批 `/compact` `/export` `/goal` `/remember`（`/new` 不标：它不作用于某一卷，就是

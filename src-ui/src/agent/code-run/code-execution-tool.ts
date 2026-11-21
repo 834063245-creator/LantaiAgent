@@ -55,11 +55,27 @@ export interface CodeExecutionDeps {
   createWorker?: (source: string) => import('./host').CodeWorkerLike;
 }
 
-/** 目录条目 —— 纯投影：名字 / 动作枚举 / 必填键。 */
+/** 程序内调用旁路的线格式（2026-11-21 纸面显形批）。
+ *
+ *  为什么走 onProgress 的文本通道：Tool 的执行接口只有 (args, onProgress, signal)
+ *  三件——加第四个参数会扇出到全仓每一个工具实现；而 onProgress 本来就是
+ *  「执行期增量」，只是既有消费者（fs 的写预览 / shell 的 stdout）都把它当人读
+ *  文本。这里用一个**不会出现在任何真实输出里的控制字符前缀**做判别，展示面
+ *  （part-mutator）据此把它分流成结构化的 `calls` 而不是拼进 output。
+ *  ⚠ 与 paper 的解析判据是一对契约：改前缀同改 ui/part-mutator 的分流点。 */
+export const CODE_CALL_MARK = '\u0001call:';
+
+/** 目录条目 —— 纯投影：名字 / 动作枚举 / 只读动作 / 必填键。 */
 export interface BindingCatalogEntry {
   name: string;
   /** 域工具的动作枚举（原样；渲染时缩写）。 */
   actions?: string[];
+  /** 可在程序内**并行**的动作（域工具的只读白名单，原样；渲染时缩写）。
+   *  ★ 2026-11-21：这是唯一进描述、却**不是**参数说明的投影——C7 并发契约
+   *  （「读类并行」）此前只活在域工具自己的 schema 里，模型要写 `Promise.all`
+   *  得先自己猜哪些动作算读。投影的数据源与 host 的 `readOnlyFor` 判定同源
+   *  （Tool.readOnlyActions，活注册表），因此描述不会与执行语义分家。 */
+  readOnlyActions?: string[];
   /** JSON Schema 的必填键（已剔除 `action`——它由动作枚举单独表达）。 */
   required?: string[];
 }
@@ -67,27 +83,43 @@ export interface BindingCatalogEntry {
 /** 动作列表缩写上限（超出打 `…`；完整枚举在工具自己的 schema 里）。 */
 const ACTION_CAP = 6;
 
-/** 活 Tool → 目录条目。纯函数：不缓存、不猜——同一个 Tool 每次投影结果一致。 */
+/** 活 Tool → 目录条目。纯函数：不缓存、不猜——同一个 Tool 每次投影结果一致。
+ *
+ *  只读动作的投影判据与 host 的 `readOnlyFor` **同源**（都读 Tool.readOnlyActions）：
+ *  没有动作白名单的工具（整件只读，如 `search`）不投影——条目名本身已经是
+ *  「全部动作都可并行」，逐条列一遍是噪音。 */
 export function projectBindingEntry(tool: Tool): BindingCatalogEntry {
   const actions = tool.actions?.() ?? [];
   const raw = tool.parameters() as { required?: unknown };
   const required = Array.isArray(raw.required)
     ? raw.required.filter((k): k is string => typeof k === 'string' && k !== 'action')
     : [];
+  const readOnly = actions.length > 0 ? (tool.readOnlyActions?.() ?? []) : [];
   return {
     name: tool.name(),
     ...(actions.length > 0 ? { actions: [...actions] } : {}),
+    ...(readOnly.length > 0 ? { readOnlyActions: [...readOnly] } : {}),
     ...(required.length > 0 ? { required } : {}),
   };
 }
 
+/** 只读动作前缀（`+read`）：一个字符标记并行性，不新增一列。
+ *  为什么要这个标记（2026-11-21）：C7 并发契约此前只活在域工具自己的 schema 里，
+ *  模型要写 `Promise.all` 得先猜哪些动作算读——而这恰恰是 code mode 的核心红利。 */
+const PARALLEL_MARK = '+';
+
 function renderEntry(e: BindingCatalogEntry): string {
   const rest = (e.required ?? []).join(', ');
   if (e.actions && e.actions.length > 0) {
-    const shown = e.actions.slice(0, ACTION_CAP).join('|');
+    const ro = new Set(e.readOnlyActions ?? []);
+    const shown = e.actions
+      .slice(0, ACTION_CAP)
+      .map((a) => (ro.has(a) ? `${PARALLEL_MARK}${a}` : a))
+      .join('|');
     const more = e.actions.length > ACTION_CAP ? '|…' : '';
     return `${e.name}(action: ${shown}${more}${rest ? `; ${rest}` : ''})`;
   }
+  // 整件只读（无动作枚举）的工具：全动作可并行，不必逐条标
   return rest ? `${e.name}(${rest})` : e.name;
 }
 
@@ -98,7 +130,7 @@ export function renderBindingCatalog(entries: BindingCatalogEntry[]): string {
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
     .map((e) => `  ${renderEntry(e)}`);
   return [
-    "Available bindings in this session (call as `await tools.<name>(args)`; an action list ending in `…` is abbreviated — each tool's full parameter schema is its own tool definition):",
+    "Available bindings in this session (call as `await tools.<name>(args)`; an action list ending in `…` is abbreviated — each tool's full parameter schema is its own tool definition; a `+` before an action marks it read-only, so those may be fanned out with `Promise.all` while writes are serialized):",
     ...lines,
   ].join('\n');
 }
@@ -108,7 +140,10 @@ const CODE_EXECUTION_DESCRIPTION =
   'top-level `await` and `return` work. Call tools as `await tools.<name>(args)` — e.g. ' +
   '`const r = await tools.fs({action:"read", filePath:"x.ts"}); return r.length;`. ' +
   'Use this for loops, fan-out reads, try/catch retries, and multi-step compositions instead of ' +
-  'repeated single tool calls. Concurrency: read-only tools run in parallel; write tools are serialized. ' +
+  'repeated single tool calls. One call is cheaper and clearer as ONE direct tool call: if what you need ' +
+  'is a single read / one search / one shell command that you will hand straight back, call that tool ' +
+  'directly — do not wrap it in a program. ' +
+  'Concurrency: read-only tools run in parallel; write tools are serialized. ' +
   'Only what you console.log or return is program output — curate it (output budget is capped). ' +
   'Nested tool calls are audited exactly like direct calls (permissions/plan-mode rules apply). ' +
   // P5（2026-10-30）：结构化完成值——纸面把结果段渲成真表格/差分（视图是展示投影，
@@ -147,7 +182,7 @@ export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
         ),
     }),
     readOnly: false,
-    execute: async (args, _onProgress, signal) => {
+    execute: async (args, onProgress, signal) => {
       const { code } = args;
       const result = await runViaRuntime({
         program: code,
@@ -156,6 +191,9 @@ export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
         timeoutMs: deps.timeoutMs,
         createWorker: deps.createWorker,
         signal,
+        // 程序内调用 → 展示面旁路（2026-11-21）：一行一笔，走 onProgress 的
+        // 文本通道（线格式见文件头的 CODE_CALL_MARK 注）。
+        onDispatch: onProgress ? (d) => onProgress(CODE_CALL_MARK + JSON.stringify(d)) : undefined,
       });
 
       // 结构化输出：logs + result / error 分类文本（对齐 DSH「失败也是可读结果」）

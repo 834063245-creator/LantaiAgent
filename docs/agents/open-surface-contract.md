@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：63
+当前版本：65
 
-<!-- contract-fingerprint: 34d1d078c974400e39f24172f502ed611ddc7e73ba100f889ed8b9e4f5b1abed -->
+<!-- contract-fingerprint: 7a02d8c2a42755b6417a18a1bd5f65cad3756e589385a56bd6de7f189e8157b4 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
+| 65 | 2026-11-21 | **用户组合新增 `programOnly` 域（工具面收进程序）**：`composition/roster.ts` 的 `CompositionPatchSchema` 增可选顶层键 `programOnly: [{ id, programOnly: boolean }]`；语义 = 把**已装配的工具**从模型直调面（`schemas()`）扣掉、保留在 `visibleTools()`（code_execution 的程序内绑定集照旧包含它）。**为什么必须新开一个域而不是用 `tools[].disabled`**：禁用行 = 工具从注册表消失 ⇒ 程序内也调不到，而「code 模式」的全部意义正是「工具还在，只是只能经程序调」。解析产物 `ResolvedComposition` 同步增 `programOnly: string[]`（纯收集、后层覆盖前层）；出厂组合 = 空数组 ⇒ 现有组合逐字节零漂移。**对外可感知**：用户 preset 多一个可写域；内置 `code` 组合用它把日常工具收进 `code_execution`，直调只剩执行原语与问人。旧 preset 不写该键 = 行为逐字不变（纯可选，零迁移）。 | `docs/plans/code-mode-preset-plan.md`；守护 `tests/composition-presets.test.ts` + `tests/code-mode-preset.test.ts` + `tests/tool-registry-disposer.test.ts` |
 | 63 | 2026-11-21 | **命令贡献面增可选 `volumeCommand`（这条 `local` 命令作用于某一卷）**：`composition/services.ts` 的 `CommandContribution` 新增可选 `volumeCommand?: boolean`——出厂首批 `/compact` `/export` `/goal` `/remember`（`/new` 不标：它不作用于某一卷，就是「另起一卷」；`/memory` `/compact-stats` 是 `send` 型，由 action 类型自明）。**对外可感知**：题签态（待题纸在场、这一句还没开卷）**不再执行这一类命令**——它们作用于活跃卷，纸上敲下去等于拿画布上别的卷当靶子（用户报的事故），现改为提示「先发一句话开卷」，斜杠面板在纸期也不陈列。同批定死纸期另两条：与卷无关的开关型 `local` 命令**照常执行、不再替用户烧一个号**（旧形态先开卷再执行 = 开个设置面板就多一张空卷）；`send` / `skill` 型与未命中的斜杠照旧开卷并把这句发给**新卷**。旧插件不声明 = 行为逐字不变（纯可选字段，零迁移）。分诊单一真源 = `app/commands/command-catalog` 的 `draftCommandVerdict`（执行面与斜杠面板共用）。 | 2026-11-21 用户报「题签态直接发斜杠命令交给了其他卷」；守护 `tests/draft-slash-command.test.ts` |
 | 62 | 2026-11-19 | **压力基准改以提供方 usage 为锚**（对齐 DSH `TokenMeasurement.baseline`）：`agent/token-meter/contract.ts` 的 `TokenLedger` 新增 `anchor()` / `anchoredPressure(probe)` / `recordAnchoredSurface(tokens)`，`measure()` 新增 `baseline`（`'usage'` \| `'estimated'` \| `'none'`）与 `surfaceDeltaTokens`，`usedSource` 去掉永不可达的 `'pressure'`；`AgentLoopHost` / `CompactionHost` 的 `tokenCountWithEstimation(basis?)` 增可选参数（缺省 = 能用锚就用锚；`'estimated'` = 强制全量启发式，给压缩压前/压后这类**必须同尺**的账目）。**对外可感知**：压缩触发判定与墨量册读数同源（此前判定走全量启发式、读数走锚式投影，分词器估低时「提示条说 85%、判定却 79% 一路不压」）；锚对不上（换模型 / 换工具集 / 压缩遮蔽 / 会话替换 / 撤回 / 重启后未核验）时退回估算。第三方 loop 不传参 = 调用形状不变；第三方账本实现需补三个成员。 | DSH `packages/llm/token-meter` 的 `TokenMeasurement.baseline` + `compaction-basic` 的「One measurement service prices every decision」；守护 `tests/token-meter-anchor.test.ts` + `tests/token-meter-agent.test.ts`（pre-flight 按锚触发） |
 | 61 | 2026-11-18 | **agent loop 宿主面增 `syncMemorySnapshot()`**（记忆快照变更驱动批）：`AgentLoopHost` 新增成员，默认 loop 在安全边界（待插入应用之后、压缩预检之前）调它；语义 = 记忆快照变了或被压缩遮蔽就补一条 durable 消息，未变则纯读。**执行语义零变更**：第三方 loop 不调它 = 装配期快照照旧留在会话里（记忆不丢），只是后续变更要等下次装配。同批 `buildTransientMessages` 去掉 `memoryDigest` 参数。 | 真机卷 121 实测：每步重发 2,114 tokens（占 miss 段 30%–60%）且模型三次把注入读成「上下文被压缩」；守护 `tests/memory-tail-injection.test.ts` |

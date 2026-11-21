@@ -150,6 +150,68 @@ const BUILTIN_PRESETS: Array<{
     },
   },
   {
+    // ── code 模式（2026-11-21 用户拍板 B 选项）─────────────────────────────
+    // 「工具面收进程序」：模型**直调**只说一句话——写程序；域工具仍在册、仍进
+    // code_execution 的绑定集（`await tools.fs(...)` 照旧可用）。
+    // 为什么不是剪行：剪掉行 = 程序内也调不到（绑定集 = visibleTools），code mode
+    // 会被做成残废（docs/plans/code-mode-preset-plan.md §4）。
+    // programOnly 的判据 = 直调面（schemas()）扣集，见 roster.ts 的字段注。
+    id: 'code',
+    metadata: {
+      name: 'code',
+      description: 'code 模式：工具面收进 code_execution 的程序里（直调只剩执行原语与问人），一程序多调用',
+    },
+    // ⚠ id 语义：programOnly 域寻址的是**模型可见的工具名**（`fs` / `shell`…），
+    // 不是行 id——裁的是直调面（schemas()），而直调面按名字判定。未在册的名字
+    // 静默忽略（与 disable 域同一宽容度：裁一个不存在的名字不是错误）。
+    patch: {
+      programOnly: [
+        // 域工具：全部进程序（名单取「标准组合里有行」的那批；未在册的名字静默忽略）
+        { id: 'fs', programOnly: true },
+        { id: 'shell', programOnly: true },
+        { id: 'git', programOnly: true },
+        { id: 'search', programOnly: true },
+        { id: 'web', programOnly: true },
+        { id: 'office', programOnly: true },
+        { id: 'browser', programOnly: true },
+        { id: 'desktop', programOnly: true },
+        { id: 'cordis', programOnly: true },
+        { id: 'agent', programOnly: true },
+        { id: 'task', programOnly: true },
+        { id: 'goal', programOnly: true },
+        // 资产/知识类：读得到就调得到，但同样走程序（一次调用里批量取）
+        { id: 'show_asset', programOnly: true },
+        { id: 'update_asset', programOnly: true },
+        { id: 'list_block_kinds', programOnly: true },
+        { id: 'web_search', programOnly: true },
+      ],
+      prompt: [
+        {
+          insert: [
+            {
+              id: 'code-mode/guide',
+              // 锚点刻意不写（同 readonly-research/scope）：锚只存在于 prompt 通道，
+              // 缺锚会让整个 preset 不可解析。追加表尾稳且够用。
+              text: [
+                '本卷是 **code 模式**：日常工具不再直接给你，都在 `code_execution` 的程序里。',
+                '',
+                '怎么用：一个程序体（async 函数体）一次调完所有需要的东西——',
+                '`const [a, b] = await Promise.all([tools.fs({action:"read", filePath:"x.ts"}), tools.search({action:"content", pattern:"Y"})]); return a.slice(0, 4000);`',
+                '',
+                '三条纪律：',
+                '1. **读可以并行**（目录里 `+` 开头的动作都算读），写按锁串行——别把独立的读写成一串 `await`。',
+                '2. **只把要看的留下**：程序里 `.slice()` / 过滤 / 计数，别把整份文件倒给上下文（输出预算 64KB）。',
+                '3. **写类动作照样过门禁**：高危写入在程序内一律被打回（`blocked`），需要用户确认的动作请先说明再由用户直接调。',
+                '',
+                '需要人做决定（拿不准就问）：`ask_user` 仍是直调工具，可以随时用。',
+              ].join('\n'),
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     id: 'readonly',
     metadata: {
       name: 'readonly',

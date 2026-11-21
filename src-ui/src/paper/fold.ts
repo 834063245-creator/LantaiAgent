@@ -32,6 +32,7 @@
 
 import { displayToolName } from '../ui/tool-semantics';
 import type { BlockKind, SourcedBlock } from './block-model';
+import { codeCallsReadout } from './code-calls';
 import { type CodeView, codeViewReadout } from './code-view';
 import { type RhythmFamily, rhythmFamilyOfTool } from './grammar';
 import { plateSignOf } from './plate-sign';
@@ -287,9 +288,14 @@ function foldLabelRaw(kind: BlockKind, payload: unknown, folded: boolean, block?
     if (!p.code && !p.output && !p.err) return `▸ ${who} · 待执行`;
     // 结构化完成值（P5）：读数换成「表格 12×4」/「差分 +3 −2」——折叠行是用户
     // 95% 时间看到的那一行，行列/增删比字数有用（与脚注 summary 同一纪律）。
-    if (p.view) return `▸ ${who} · ${codeViewReadout(p.view)}`;
+    // 程序内调用（2026-11-21 显形批）：折叠行先报「内调 N」——用户 95% 时间只
+    // 看到这一行，「这条程序实际调了几次工具」比字数更能说明它干了什么。
+    const calls = (p as { calls?: readonly { ok: boolean }[] }).calls;
+    const callsRead = codeCallsReadout(calls as never);
+    if (p.view) return `▸ ${who} · ${codeViewReadout(p.view)}${callsRead ? ` · ${callsRead}` : ''}`;
     const contentLen = codeSections(p.output).reduce((n, s) => n + s.raw.length, 0);
-    return `▸ ${who}${outSuffix(contentLen)}`;
+    const head = `▸ ${who}${outSuffix(contentLen)}`;
+    return callsRead ? `${head} · ${callsRead}` : head;
   }
   if (kind === 'subagent') {
     // 子代理**帖**折叠行（2026-11-20 帖批）：这一行只报**身份与账**（描述 + 步数 +

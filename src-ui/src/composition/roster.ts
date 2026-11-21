@@ -150,6 +150,23 @@ export const CompositionPatchSchema = z.strictObject({
   //      独占什么」，冲突检测对两者一视同仁（见 composition/activation.ts）。 ──
   requires: z.array(PLUGIN_NAME_FIELD).optional(),
   exclusive: z.array(z.string().min(1)).optional(),
+  // ── 工具可见面策略（2026-11-21，code 模式）：本组合把**哪些已装配的工具**
+  //    收进程序里（code_execution 的程序内绑定面照旧包含它们）。
+  //
+  //    为什么是 patch 字段而不是两种「剪行」：剪掉行 = 程序内也调不到（绑定集
+  //    读 visibleTools），code mode 会被做成残废（见 docs/plans/code-mode-preset-plan.md
+  //    §4）。本字段只改**直调面**（模型能当顶层工具调什么），不动装配面。
+  //    缺省（不写）= 现行语义逐字不变；语义 = 后层覆盖前层（同 id 后写胜前写）。 ──
+  programOnly: z
+    .array(
+      z.strictObject({
+        /** 工具行 id（与 tools 域同一寻址面）或工具名（直调名，如 'fs'）。 */
+        id: idField,
+        /** true = 只进程序；false = 回开直调（后层覆盖前层）。 */
+        programOnly: z.boolean(),
+      }),
+    )
+    .optional(),
 });
 
 export type CompositionPatch = z.infer<typeof CompositionPatchSchema>;
@@ -206,6 +223,11 @@ export interface ResolvedComposition {
    *  消费视图 = 活动注册表 − 本表（晚注册可见，除非显式禁用）；composition-store
    *  写入口经 applySeamDisabled 灌入运行时（seam-resolution.ts）。 */
   seamDisabled: SeamDisabledMap;
+  /** 程序内专属工具名（2026-11-21 code 模式）——模型**直调**面要扣掉的名字。
+   *  终态 = 各层 `programOnly` 条目后写胜前写后的 true 集；空数组 = 现行语义
+   *  （直调面 ≡ 可见面），零漂移。**不动装配面**：这些工具仍在注册表里、
+   *  仍进 code_execution 的绑定集，只是不再出现在 `schemas()`。 */
+  programOnly: string[];
   /** 激活域声明（S6 P3b）——各层 `requires` / `exclusive` 的**纯聚合**
    *  （并集 + 保持首现序去重；空层 = 空数组，零漂移）。刻意只收集**声明**、
    *  不做任何判定：可满足性（插件在不在册）与独占冲突（别的组合是否持有）
@@ -278,6 +300,7 @@ export function factoryComposition(): ResolvedComposition {
     },
     seamDisabled: EMPTY_SEAM_DISABLED,
     activationDecl: { requires: [], exclusive: [] },
+    programOnly: [],
     diagnostics: { unselected: [], disabled: [], seamCapped: [], overridden: [], inserted: [] },
   };
 }
@@ -400,6 +423,8 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
   // 激活域声明聚合（S6 P3b）：纯收集——并集 + 首现序去重（判定归 activation 层）。
   const requiresDecl: string[] = [];
   const exclusiveDecl: string[] = [];
+  // 程序内专属集（2026-11-21 code 模式）：后层覆盖前层的同 id 判定。
+  const programOnlyDecl = new Set<string>();
 
   for (const layer of layers) {
     for (const plugin of layer.requires ?? []) {
@@ -422,6 +447,10 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
       for (const entry of entries) {
         applyDisable(seamWork[domain], entry.id, entry.disabled, 'seam/' + domain);
       }
+    }
+    for (const entry of layer.programOnly ?? []) {
+      if (entry.programOnly) programOnlyDecl.add(entry.id);
+      else programOnlyDecl.delete(entry.id);
     }
     for (const entry of layer.prompt ?? []) {
       if ('insert' in entry) {
@@ -504,6 +533,9 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     seams: seamResolved,
     seamDisabled: seamDisabledOut,
     activationDecl: { requires: requiresDecl, exclusive: exclusiveDecl },
+    // 程序内专属集进解析产物（纯收集；「这个名字存不存在」的判定归装配面——
+    // 未在册的名字静默不入集，与 patch 的 disable 域同一宽容度）。
+    programOnly: [...programOnlyDecl],
     diagnostics: {
       unselected: unselectedIds,
       disabled: disabledIds,

@@ -251,13 +251,19 @@ record 永不上 CI；baseline 变更走 docs/archive/agent-core-convergence/bas
 
 preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
 ✅ preset = 命名的行组合叠加层：composition/presets.ts 内置表（standard/
-   minimal）+ preset-discovery 用户目录（~/.lantai/composition/presets/
+   minimal / creator / code / readonly）+ preset-discovery 用户目录（~/.lantai/composition/presets/
    <id>/）+ preset-assembly（resolveCurrentComposition 引用稳定 cache +
    settings↔store 选择同步）。层序 factory → 用户层 → preset；同 id 后写胜
 ✅ 装配组合覆盖：createAgentFromContext/createAgent 第 4/2 参可选
    composition（缺省 = runtime 组合 = S2 零漂移）；会话工厂在 resolved ≠
    工作区默认时自建会话作用域注册表（V5 选择器的机制位）；子 Agent 经
    ctx composition 服务 child() 继承（父子同面）
+✅ 工具**直调面** vs **程序面**（2026-11-21 code 模式，契约 v65）：工具行
+   `disabled` = 从注册表消失（程序里也调不到）；`programOnly` patch 域 =
+   只从直调面（`ToolRegistry.schemas()` ← `directTools()`）扣掉、留在
+   `visibleTools()`（code_execution 的绑定集）。直调被拦时 executor 给
+   可行动引导（不是「未知工具」）。要「收进程序」只准用后者——剪行会把
+   code 模式做成残废。守护 tests/code-mode-preset.test.ts / code-mode-direct-call.test.ts
 ✅ 消费闭环（G0 修复）：面板清单 = panelDefs()（常量 + ctx.panels 贡献）；
    命令清单 = 会话内建（ChatCore.builtinCommands）+ ctx.commands 折算 + 技能候选，
    合流点 src/app/commands/command-catalog.ts（`/` 内联面板与 Ctrl+K 面板同源——

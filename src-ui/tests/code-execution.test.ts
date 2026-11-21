@@ -506,7 +506,9 @@ describe('P1 绑定目录', () => {
       }),
     );
     const withCatalog = createCodeExecutionTool({ bindings: [], catalog: () => reg.visibleTools() });
-    expect(withCatalog.description()).toContain('  fs(action: read)');
+    // 故意规格变更（2026-11-21）：只读动作带 + 前缀（C7 并发契约进描述，见下方
+    // 「只读动作投影」用例）——断言从 `fs(action: read)` 改为带标记形态。
+    expect(withCatalog.description()).toContain('  fs(action: +read)');
     expect(
       withCatalog
         .description()
@@ -526,12 +528,57 @@ describe('P1 绑定目录', () => {
     reg.register(actionTool('read_file_content', true));
     convergeRegistry(reg);
     const tool = createCodeExecutionTool({ bindings: [], catalog: () => reg.visibleTools() });
-    expect(tool.description()).toContain('  fs(action: read)');
+    // 故意规格变更（2026-11-21）：同上一例——只读动作带 + 前缀。
+    expect(tool.description()).toContain('  fs(action: +read)');
 
     // 装配期之后才出现的动作（域实例不会自更新，必须复收敛——见计划 §3.4 取证）
     reg.register(actionTool('write_file'));
     convergeRegistry(reg);
-    expect(tool.description()).toContain('  fs(action: read|write)');
+    expect(tool.description()).toContain('  fs(action: +read|write)');
+  });
+
+  // ── 2026-11-21 增补：C7 并发契约进描述 + 直调判据 ──
+  // 判据来源：会话实测——1593 次 code_execution 里 47.5% 只嵌 0~1 次工具调用、
+  // 其中 63.5% 是「读了就吐回」的纯套壳；而「读类可并行」这句承诺此前只活在域
+  // 工具自己的 schema 里，模型写 Promise.all 前得先猜哪些动作算读。
+
+  it('只读动作投影：域工具带 + 标记；整件只读工具不逐条标；条目形状纯 JSON', () => {
+    // 域门面：read 只读、write 不是 —— 与 host 的 readOnlyFor 同一数据源（Tool.readOnlyActions）
+    const fsTool = defineTool({
+      name: 'fs',
+      description: 'fs',
+      domain: 'fs',
+      actions: ['read', 'write'],
+      readOnlyActions: ['read'],
+      schema: z.object({ action: z.enum(['read', 'write']), path: z.string() }),
+      execute: async () => 'fs',
+    });
+    expect(projectBindingEntry(fsTool)).toEqual({
+      name: 'fs',
+      actions: ['read', 'write'],
+      readOnlyActions: ['read'],
+      required: ['path'],
+    });
+    // 整件只读（无动作枚举）：readOnlyActions 不投影（名字本身就代表全部可并行）
+    const search = defineTool({
+      name: 'search',
+      description: 'search',
+      schema: z.object({ pattern: z.string() }),
+      readOnly: true,
+      execute: async () => 'search',
+    });
+    expect(projectBindingEntry(search).readOnlyActions).toBeUndefined();
+
+    const text = renderBindingCatalog([projectBindingEntry(fsTool), projectBindingEntry(search)]);
+    expect(text).toContain('  fs(action: +read|write; path)');
+    expect(text).toContain('  search(pattern)');
+    // 表头必须解释 + 的含义（否则标记只是密文）
+    expect(text).toContain('a `+` before an action marks it read-only');
+  });
+
+  it('直调判据进描述：单发调用不该包成程序（一条可以指认的否定句，不是隐含意图）', () => {
+    const tool = createCodeExecutionTool({ bindings: [] });
+    expect(tool.description()).toContain('call that tool directly — do not wrap it in a program');
   });
 });
 

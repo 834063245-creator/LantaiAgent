@@ -37,6 +37,8 @@ import type { PlanApprovalResponse, PlanOptionOutcome } from '../../../agent/pla
 import type { BlockRendererContribution, BlockRendererProps } from '../../../composition/renderer-service';
 // 结构化完成值视图（P5 2026-10-30）：解析/归一的判据住内核 `paper/code-view.ts`，
 // 渲染面只消费它的产物（表格行列 / 差分行墨色）——不许在渲染器里再判一次形状。
+import type { CodeCallPart } from '../../../paper/block-model';
+import { CODE_CALLS_LABEL, codeCallLines } from '../../../paper/code-calls';
 import { type CodeTableView, type CodeView, diffViewDisplay, tableViewNote } from '../../../paper/code-view';
 import { foldLabel, foldPreviewLine } from '../../../paper/fold';
 import {
@@ -1276,7 +1278,9 @@ function CodeSrc({ code }: { code: string }) {
  *  真表格 DOM、差分走三档墨色文本；JSON 原文仍在卷里（段文本只是不画出来），
  *  模型面一字未动（视图是展示投影，见 paper/code-view 头注）。 */
 function CodeBody({ block, folded }: BlockRendererProps) {
-  const p = block.payload as { code: string; output?: string; err?: string; view?: CodeView };
+  const p = block.payload as { code: string; output?: string; err?: string; view?: CodeView; calls?: CodeCallPart[] };
+  // 程序内调用段（2026-11-21 显形批）：与测高/墨迹读同一份投影（paper/code-calls）。
+  const callSec = useMemo(() => codeCallLines(p.calls), [p.calls]);
   const showSrc = !folded && !!p.code;
   const view = p.view ?? null;
   // 视图取代完成值段（同一条信封文本的两种读法——不并列，否则同一份结果画两遍）
@@ -1285,10 +1289,28 @@ function CodeBody({ block, folded }: BlockRendererProps) {
     return view ? all.filter((sec) => sec.kind !== 'result') : all;
   }, [p.output, view]);
   const errDisplay = useMemo(() => (hasPayloadToShow(p.err) ? toolDisplay(p.err) : null), [p.err]);
-  const hasBody = showSrc || secs.length > 0;
+  const hasCalls = callSec.lines.length > 0;
+  const hasBody = showSrc || secs.length > 0 || hasCalls;
   return (
     <>
       {showSrc && <CodeSrc code={p.code} />}
+      {hasCalls && (
+        <PayloadSection
+          label={CODE_CALLS_LABEL}
+          variant="out"
+          gap={showSrc}
+          body={
+            <div className="pp-calls">
+              {callSec.lines.map((line) => (
+                <div key={line} className="pp-calls-line">
+                  {line}
+                </div>
+              ))}
+              {callSec.note && <div className="pp-calls-note">{callSec.note}</div>}
+            </div>
+          }
+        />
+      )}
       {secs.map((sec, i) => (
         <PayloadSection
           // biome-ignore lint/suspicious/noArrayIndexKey: 段按位渲染（信封段序稳定，无重排身份）

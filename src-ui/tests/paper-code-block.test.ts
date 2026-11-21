@@ -20,13 +20,21 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
   measureRichInlineStats: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
 }));
 
+import type { CodeDispatchRecord } from '../src/agent/code-run/host';
 import { createBlock } from '../src/paper/block-model';
 import { translateMessages } from '../src/paper/translate';
 import { builtinRendererDefs } from '../src/plugins/builtin/paper-renderers/renderers';
 import { measureBlockHeight } from '../src/plugins/builtin/paper-shell/measure';
 import type { AssistantMessage } from '../src/ui/message-model';
 
-function toolMsg(name: string, args: string, status: 'running' | 'done' | 'error', output?: string, err?: string) {
+function toolMsg(
+  name: string,
+  args: string,
+  status: 'running' | 'done' | 'error',
+  output?: string,
+  err?: string,
+  calls?: CodeDispatchRecord[],
+) {
   const m: AssistantMessage = {
     role: 'assistant',
     _id: 'm1',
@@ -41,6 +49,7 @@ function toolMsg(name: string, args: string, status: 'running' | 'done' | 'error
         status,
         output,
         err,
+        ...(calls ? { calls } : {}),
       },
     ],
     status: 'done',
@@ -82,6 +91,24 @@ describe('translate：code_execution → 程文块', () => {
   });
 });
 
+describe('translate：程序内调用（2026-11-21 显形批）', () => {
+  it('part.calls 原样进 code 块 payload（渲染/测高读同一份）', () => {
+    const args = JSON.stringify({ code: 'await tools.fs({});', description: 'd' });
+    const calls: CodeDispatchRecord[] = [
+      { seq: 1, name: 'fs', action: 'read', ok: true, summary: 'a.ts' },
+      { seq: 2, name: 'shell', ok: false, summary: 'boom' },
+    ];
+    const blocks = translateMessages([toolMsg('code_execution', args, 'done', '── result ──\nok', undefined, calls)]);
+    expect(blocks[0].payload).toMatchObject({ calls });
+  });
+
+  it('无调用 = payload 不含该字段（旧卷零回归）', () => {
+    const args = JSON.stringify({ code: 'x', description: 'd' });
+    const blocks = translateMessages([toolMsg('code_execution', args, 'done', 'ok')]);
+    expect('calls' in (blocks[0].payload as object)).toBe(false);
+  });
+});
+
 describe('measure：code 块封顶测量', () => {
   it('三段叠加为正且随内容增长', () => {
     const small = {
@@ -104,6 +131,28 @@ describe('measure：code 块封顶测量', () => {
     const hBig = measureBlockHeight(big);
     expect(hSmall).toBeGreaterThan(0);
     expect(hBig).toBeGreaterThan(hSmall);
+  });
+
+  it('程序内调用段占高：有 calls 更高，且随条数增长（无调用 = 零增量）', () => {
+    const mk = (n: number) => ({
+      ...createBlock(
+        'code',
+        {
+          toolId: 't',
+          description: 'd',
+          code: 'a',
+          status: 'done' as const,
+          calls: Array.from({ length: n }, (_, i) => ({ seq: i + 1, name: 'fs', ok: true, summary: 's' })),
+        },
+        { messageId: 'm', part: null },
+      ),
+      w: 640,
+    });
+    const none = measureBlockHeight(mk(0));
+    const two = measureBlockHeight(mk(2));
+    const five = measureBlockHeight(mk(5));
+    expect(two).toBeGreaterThan(none);
+    expect(five).toBeGreaterThan(two);
   });
 });
 

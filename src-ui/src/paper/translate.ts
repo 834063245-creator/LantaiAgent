@@ -435,6 +435,8 @@ function codeBlockPayload(part: ToolCallPart, descriptionPrefix = ''): BlockPayl
     err: part.err,
     ...(part.startedAt !== undefined ? { startedAt: part.startedAt } : {}),
     ...(view ? { view } : {}),
+    // 程序内调用（2026-11-21 显形批）：同一构造点带出，子代理路径按构造同构。
+    ...(part.calls && part.calls.length > 0 ? { calls: part.calls } : {}),
   };
 }
 

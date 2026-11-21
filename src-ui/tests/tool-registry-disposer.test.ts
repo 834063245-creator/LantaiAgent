@@ -41,6 +41,56 @@ describe('ToolRegistry.register → Disposer', () => {
     dispose2();
   });
 
+  // ── 程序内专属面（2026-11-21 code 模式）：直调面 ≠ 程序面 ──
+  it('programOnly：直调面（schemas）扣掉，程序面（visibleTools）照常在内', () => {
+    const reg = new ToolRegistry();
+    reg.register(toyTool('fs'));
+    reg.register(toyTool('ask_user'));
+    reg.setProgramOnly('fs', true);
+
+    expect(reg.schemas().map((s) => s.name)).toEqual(['ask_user']);
+    // 绑定集读 visibleTools —— 程序里必须还能 await tools.fs(...)
+    expect(
+      reg
+        .visibleTools()
+        .map((t) => t.name())
+        .sort(),
+    ).toEqual(['ask_user', 'fs']);
+    expect(reg.directTools().map((t) => t.name())).toEqual(['ask_user']);
+    expect(reg.isProgramOnly('fs')).toBe(true);
+    expect(reg.programOnlyNamesList()).toEqual(['fs']);
+
+    // 撤销：直调面回来（后层覆盖前层同款语义）
+    reg.setProgramOnly('fs', false);
+    expect(
+      reg
+        .schemas()
+        .map((s) => s.name)
+        .sort(),
+    ).toEqual(['ask_user', 'fs']);
+  });
+
+  it('programOnly 与 hide 正交；标记按名字续命；未在册名照记不造工具', () => {
+    const reg = new ToolRegistry();
+    reg.register(toyTool('fs'));
+    reg.setProgramOnly('ghost', true); // 未在册：照记账，但不制造工具
+    expect(reg.programOnlyNamesList()).toEqual(['ghost']);
+    expect(reg.get('ghost')).toBeUndefined();
+
+    reg.setProgramOnly('fs', true);
+    reg.hide('fs');
+    // 两条面各自独立：hide 是「旧名淘汰」，programOnly 是「收进程序」
+    expect(reg.visibleTools().map((t) => t.name())).toEqual([]);
+    expect(reg.directTools().map((t) => t.name())).toEqual([]);
+
+    // 标记按**名字**续命（组合声明，不是工具实例属性）：领域收敛会先 unregister
+    // 再重注册同名门面，清标记会让 code 模式在装配后静默失效。
+    reg.unregister('fs');
+    reg.register(toyTool('fs'));
+    expect(reg.isProgramOnly('fs')).toBe(true);
+    expect(reg.directTools().map((t) => t.name())).toEqual([]);
+  });
+
   it('陈旧 disposer 不误删同名的新工具', () => {
     const reg = new ToolRegistry();
     const t1 = toyTool('shared');

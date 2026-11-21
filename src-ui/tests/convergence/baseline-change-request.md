@@ -1,3 +1,46 @@
+# baseline change request — code_execution 描述：直调判据 + 只读动作投影（C7 并发契约进模型面，2026-11-21）
+
+- **日期**: 2026-11-21
+- **请求 Agent**: 根会话 lead（用户 2026-11-21 拍板：「你认为的两个该修的地方确实需要修」）
+- **涉及快照**: `baseline/phase-1/tool-schemas.effective.json`（standard 轨）+ `baseline/preset-minimal/phase-1/tool-schemas.effective.json`（minimal 轨）
+- **状态**: **已批准（2026-11-21 用户明示「两个该修的地方确实需要修」）**——两轨已重录，`verify:convergence` 双轨 exit 0
+
+## 变更内容
+
+模型可见面的变化全部在 `code_execution` 的 `description`（`parameters` 及此后各行逐字不变）：
+
+1. **直调判据**（基础文案中间插入一句）：
+```
++ One call is cheaper and clearer as ONE direct tool call: if what you need is a single read / one search /
+  one shell command that you will hand straight back, call that tool directly — do not wrap it in a program.
+```
+2. **只读动作投影**（绑定目录内每条的 `+` 前缀 + 表头解释）：
+```
+   fs(action: +read|write; path)
+```
+表头追加：`a `+` before an action marks it read-only, so those may be fanned out with `Promise.all` while writes are serialized`。
+
+## 为什么变
+
+会话实测（`.lantai/sessions/*.ndjson` 全量，2026-11-21）：`code_execution` 占全部工具调用 21.7%（1593/7348）；
+每次程序平均只嵌 1.99 次工具调用，**47.5%（677/1446）的程序只嵌 0~1 次**，其中 **63.5%（430/677）是
+「读了就吐回」的纯套壳**（p50 程序体 280 字符，形如 `const r = await tools.fs({action:"read",path}); console.log(r);`）。
+同时 C7 并发契约（「读类并行」）此前只活在域工具自己的 schema 里——模型写 `Promise.all` 前得先猜哪些动作算读。
+两条都不是「列表太长」，是**判据缺席**：描述有一句"什么时候该写程序"，没有反面，也没有可执行的并行面。
+
+## 影响面
+
+- **模型可见面**：仅上述两处（描述文本）。`parameters` 零变化、工具面集合零变化。
+- **用户可感知行为**：无（工具行为一字未改；变的只是模型拿到的说明）。
+- **字节稳定性**：目录块按名字排序 + 只读动作按域的声明序 ⇒ 绑定集不变则字节不变（前缀缓存不抖）。
+- **测试面**：`tests/code-execution.test.ts` 两条既有断言**故意规格变更**（`fs(action: read)` → `fs(action: +read)`，
+  commit message 已声明），另新增 2 例（只读投影 / 直调判据）。
+- **重录动作**：`npm run record:convergence` + `CONVERGENCE_PRESET=minimal npm run record:convergence`，
+  重录单独一个 commit，不夹带代码。
+- **验收**：`npm run verify:convergence`（双轨）exit 0。
+
+---
+
 # baseline change request — code_execution 结构化完成值进描述（P5；模型可见面唯一变化 = 描述末句，2026-10-30）
 
 - **日期**: 2026-10-30

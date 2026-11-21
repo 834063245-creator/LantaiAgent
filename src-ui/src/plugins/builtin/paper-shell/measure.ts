@@ -23,7 +23,8 @@ import {
   type RichInlineItem,
 } from '@chenglou/pretext/rich-inline';
 import { assetKinds } from '../../../agent/asset-kinds';
-import type { BlockKind, SourcedBlock } from '../../../paper/block-model';
+import type { BlockKind, CodeCallPart, SourcedBlock } from '../../../paper/block-model';
+import { codeCallLines } from '../../../paper/code-calls';
 import { type CodeTableView, type CodeView, diffViewDisplay, tableViewNote } from '../../../paper/code-view';
 import {
   type MdBlock,
@@ -543,6 +544,8 @@ interface PayloadLike {
   code?: string;
   /** 结构化完成值视图（P5；转译层从 output 投影，见 paper/code-view）。 */
   view?: CodeView | null;
+  /** 程序内调用（2026-11-21 显形批；转译层从 part.calls 带出，纯展示）。 */
+  calls?: CodeCallPart[];
 }
 
 /** 封顶测量：真实行高 × 行数，超 maxH 截断（滚动部分不占高）。 */
@@ -1484,8 +1487,25 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
         });
         y += SEC_HEAD_H + codeSrcH(src, b.w);
       }
+      // 程序内调用段（2026-11-21 显形批）：逐行落位，与 codeCallsBodyH 同一行高。
+      const callSec = codeCallLines(p.calls);
+      if (callSec.lines.length > 0) {
+        const gap = src ? SEC_HEAD_GAP : 0;
+        let cy = y + SEC_HEAD_H + gap;
+        for (const line of [...callSec.lines, ...(callSec.note ? [callSec.note] : [])]) {
+          out.push({
+            text: line,
+            font: PAPER_OUT_FONT,
+            lineHeight: PAPER_OUT_LINE_HEIGHT,
+            inset: 0,
+            y: cy,
+          });
+          cy += PAPER_OUT_LINE_HEIGHT;
+        }
+        y = cy;
+      }
       secs.forEach((sec, i) => {
-        const gap = src || i > 0 ? SEC_HEAD_GAP : 0;
+        const gap = src || i > 0 || callSec.lines.length > 0 ? SEC_HEAD_GAP : 0;
         const top = y + SEC_HEAD_H + gap;
         if (sec.table) {
           // 表格视图：逐行落位（与 markdown 表格同一墨迹形态——一行一源，
@@ -1611,6 +1631,17 @@ function tableViewGeometry(view: CodeTableView, w: number): TableViewGeometry {
     : 0;
   const noteH = note ? measureTextHeight(note, w, CODE_VIEW_FONT, MD_TABLE_LINE_HEIGHT) + CODE_VIEW_NOTE_GAP : 0;
   return { h: captionH + rowHs.reduce((a, b) => a + b, 0) + noteH, rowHs, bodyTop: captionH };
+}
+
+/** 程序内调用段体高（含段头与 gap）。行数由 `codeCallLines` 决定（上限 12 行 +
+ *  注记行），每行恒一行（行内已截断到 80 字符 + 序号前缀，不折行——与渲染端
+ *  `.pp-calls-line` 的 nowrap 同判据）。0 = 无调用（旧卷 / 没嵌调用：零占高）。 */
+function codeCallsBodyH(calls: readonly CodeCallPart[] | undefined, w: number, hasSrc: boolean): number {
+  const { lines, note } = codeCallLines(calls);
+  if (lines.length === 0) return 0;
+  void w; // 行内 nowrap ⇒ 宽度不影响行数
+  const rows = lines.length + (note ? 1 : 0);
+  return SEC_HEAD_H + (hasSrc ? SEC_HEAD_GAP : 0) + rows * PAPER_OUT_LINE_HEIGHT;
 }
 
 /** 段体高：文本段按封顶行高；表格段按表格几何。两者共用 .pp-out 的滚动上限
@@ -1938,11 +1969,14 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       const showSrc = !folded && !!(b.payload as { code?: string }).code;
       const secs = codeOutSections(p);
       const codeH = showSrc ? codeSrcH((b.payload as { code?: string }).code ?? p.args ?? '', b.w) : 0;
+      // 程序内调用段（2026-11-21 显形批）：与渲染端 CodeBody 同序——程序体之后、
+      // 输出段之前；行文本来自同一份 codeCallLines（paper/code-calls，单一投影）。
+      const callsH = codeCallsBodyH(p.calls, b.w, showSrc);
       let outH = 0;
       secs.forEach((sec, i) => {
-        outH += SEC_HEAD_H + (showSrc || i > 0 ? SEC_HEAD_GAP : 0) + codeSectionBodyH(sec, b.w);
+        outH += SEC_HEAD_H + (showSrc || i > 0 || callsH > 0 ? SEC_HEAD_GAP : 0) + codeSectionBodyH(sec, b.w);
       });
-      return TOOL_PAD_TOP + FOLD_ROW_H + codeH + outH;
+      return TOOL_PAD_TOP + FOLD_ROW_H + codeH + callsH + outH;
     }
     case 'plan': {
       // 拟策内容 = 完整 markdown 体（2026-09-10 拟策卡渲染专项）：与正文块同一

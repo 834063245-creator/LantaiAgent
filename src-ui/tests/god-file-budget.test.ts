@@ -61,7 +61,10 @@ const DEBT: Record<string, number> = {
   'src-tauri/src/os_sandbox.rs': 2300, // 现 2267
   'engine/src/analysis/di_reflection/langs.rs': 2300, // 现 2263
   'engine/src/analysis/dataflow_engine.rs': 2300, // 现 2259
-  'src-ui/src/plugins/builtin/paper-shell/measure.ts': 2200, // 现 2169
+  // 2026-11-21 code 模式批（跨档决策）：程文「程序内调用」段要三面镜像
+  // （块高 / 墨迹 / 渲染同源），高度与墨迹两笔落在这里 ⇒ 2169 → 2233。拆法是把
+  // 程文整族测量搬到单独模块（codeBlockH），那是另一批的活；本批只登记换档。
+  'src-ui/src/plugins/builtin/paper-shell/measure.ts': 2300, // 现 2233
   'src-ui/src/plugins/builtin/renderers/components.tsx': 2200, // 现 2130
   'src-tauri/src/cdp/actions.rs': 2200, // 现 2143
   'engine/src/tools/mod.rs': 2100, // 现 2099

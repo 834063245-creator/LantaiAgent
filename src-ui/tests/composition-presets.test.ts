@@ -24,7 +24,7 @@ import {
   isValidPresetId,
   resolvePresetComposition,
 } from '../src/composition/presets';
-import { type CompositionPatch, factoryComposition } from '../src/composition/roster';
+import { type CompositionPatch, factoryComposition, resolveRoster } from '../src/composition/roster';
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
@@ -38,7 +38,7 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     const table = builtinPresets();
     // V5 拆除（2026-08-22）：paper preset 行退役——纸壳是唯一主界面，
     // 主视图落点不再经 preset 分叉。
-    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator', 'readonly']);
+    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator', 'code', 'readonly']);
     expect(table.every((p) => p.builtin)).toBe(true);
   });
 
@@ -166,6 +166,41 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
         expect(r.prompt.map((s) => s.id)).toContain('readonly-research/scope');
       }),
     );
+  });
+
+  it('code：programOnly 声明进解析产物；不剪任何工具行；卷首指南段在', async () => {
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyCapabilityChannel(async () => {
+        const r = resolvePresetComposition('code');
+        // ① 直调面扣集（程序内专属名）——判据归装配面，这里钉「声明没有丢」
+        expect(r.programOnly).toContain('fs');
+        expect(r.programOnly).toContain('shell');
+        expect(r.programOnly).toContain('agent');
+        // ② 工具行**一条都没剪**（剪了 = 程序内也调不到，code 模式会被做成残废）
+        expect(ids(r.tools)).toEqual(ids(resolvePresetComposition('standard').tools));
+        // ③ 执行原语仍在（capability 面零改动——code 模式恰恰靠它）
+        expect(r.capabilities.map((c) => c.id)).toContain('code-execution-tool');
+        // ④ 卷首指南段
+        expect(r.prompt.map((s) => s.id)).toContain('code-mode/guide');
+      }),
+    );
+  });
+
+  it('programOnly 语义：后层覆盖前层（同 id 后写胜前写）；缺省 = 空集（零漂移）', () => {
+    // 缺省：出厂组合与 standard 都没有程序内专属名
+    expect(factoryComposition().programOnly).toEqual([]);
+    expect(resolvePresetComposition('standard').programOnly).toEqual([]);
+    // 覆盖：先标后撤 = 不在集里（与 disable 域同一「后写胜」语义）
+    const r = resolveRoster(factoryComposition(), [
+      {
+        programOnly: [
+          { id: 'fs', programOnly: true },
+          { id: 'shell', programOnly: true },
+        ],
+      },
+      { programOnly: [{ id: 'fs', programOnly: false }] },
+    ]);
+    expect(r.programOnly).toEqual(['shell']);
   });
 
   it('PresetId 围栏规则：合法/非法形态', () => {

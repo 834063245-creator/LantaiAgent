@@ -8,6 +8,7 @@
 
 export type MessageId = string;
 
+import type { CodeDispatchRecord } from '../agent/code-run/host';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-contract';
 import type { ChatImageRef } from '../provider/types';
 // ⚡ _idSeq → chat-store.ts
@@ -97,6 +98,13 @@ export interface ToolCallPart {
   label: string;
   readOnly: boolean;
   status: ToolStatus;
+  /** 程序内调用（2026-11-21 纸面显形批，仅 code_execution 卡）：执行期经
+   *  onProgress 旁路送来的逐笔事实（程序里 `await tools.x()` 的那些调用）。
+   *  与 session-log 的同名审计**不是一本账**：那是 durable 事实面
+   *  （tool/code-dispatch），这里只是展示面——随消息快照（卷文件 uiMessages）
+   *  原样落盘，重开卷时照旧还原；快照缺席的旧卷 = 没有这一段（不凭审计补造：
+   *  dispatch 事件不带外层 callId，硬拼就是「猜哪几笔属于哪条程序」）。 */
+  calls?: CodeDispatchRecord[];
   /** 工具运行期间累积的输出。 */
   output?: string;
   /** 工具失败时的错误信息。 */

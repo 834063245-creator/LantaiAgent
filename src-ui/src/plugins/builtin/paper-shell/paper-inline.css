@@ -543,6 +543,25 @@
 .pp-block.pp-code .pp-out--err {
   color: var(--fail);
 }
+/* ── 程序内调用段（2026-11-21 显形批）─────────────────────────────────
+ * 程序里 `await tools.x()` 的逐笔事实：一行一笔（序号 · 工具(动作) · ✓/✗ · 摘要）。
+ * **不折行**（nowrap + 省略号）：测高按「每行恒一行」（PAPER_OUT_LINE_HEIGHT）
+ * 计，折行会让静态镜像与 DOM 分家——这是本段能留在非实测族（无 RO）的前提。
+ * 行高/字号与程文输出段同款（同为 `.pp-out` 盒内文本）。 */
+.pp-block.pp-code .pp-calls {
+  font-family: var(--f-mono);
+  font-size: var(--pp-type-out-size);
+  line-height: var(--pp-type-out-lh);
+  color: var(--ink-3);
+}
+.pp-block.pp-code .pp-calls-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pp-block.pp-code .pp-calls-note {
+  color: var(--ink-4);
+}
 
 /* ── 结构化完成值视图（P5，2026-10-30）：程序 return {__view:'table'|'diff',…} ──
  * 病根：完成值是 JSON 对象时，纸面把整段当文本倾倒——用户要「程序结果直接出表格」，

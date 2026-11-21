@@ -100,6 +100,9 @@ export interface ToolRegistryOptions {
    *  缺省 = factoryComposition().tools 出厂组合快照（当前通道贡献行，
    *  S4-4 甲统一解析域；现行行为零漂移保证）。 */
   toolRows?: BuiltinToolRow[];
+  /** 程序内专属工具名（2026-11-21 code 模式）——组合解析产物的
+   *  `ResolvedComposition.programOnly`。缺省/空 = 直调面 ≡ 可见面（现行语义）。 */
+  programOnly?: readonly string[];
 }
 
 import type { MemoryManagerFace } from '../memory-contract';
@@ -109,7 +112,16 @@ import type { SubAgentSpawner } from '../subagent-tools-contract';
 import type { TaskManagerFace } from '../task-contract';
 
 export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<ToolRegistry> {
-  const { deps, memoryManager: mm, skillRegistry, taskManager, subAgentPool, subAgentSpawner, toolRows } = opts;
+  const {
+    deps,
+    memoryManager: mm,
+    skillRegistry,
+    taskManager,
+    subAgentPool,
+    subAgentSpawner,
+    toolRows,
+    programOnly,
+  } = opts;
   const registry = new ToolRegistry();
 
   // ── Shell 执行（2026-08-10：队列退役，直连流式） ──
@@ -170,6 +182,13 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
 
   // ── 工具层收敛：领域工具 + 隐藏旧名（旧工具保留在 registry 供 executor/测试解析）──
   convergeRegistry(registry);
+
+  // ── 程序内专属面（2026-11-21 code 模式）──
+  // 必须在收敛之后：convergeRegistry 先 unregister 再重注册域门面，提前标会点名
+  // 到即将被替换的旧实例（setProgramOnly 只对在册名字生效，标早了就是静默漏标）。
+  // 语义：这些名字仍留注册表、仍进 code_execution 绑定集（visibleTools），
+  // 只是从直调面（schemas）扣掉——见 tool.ts 的 directTools 注。
+  for (const name of programOnly ?? []) registry.setProgramOnly(name, true);
 
   return registry;
 }
