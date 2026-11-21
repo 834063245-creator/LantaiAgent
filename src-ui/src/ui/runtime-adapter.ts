@@ -83,6 +83,10 @@ export function createRuntimeAdapter(storeId: string): RuntimeNotifier {
         agentId: info.agentId,
         description: info.description,
         status: 'running',
+        ...(info.mode !== undefined ? { mode: info.mode } : {}),
+        /* 起跑戳：帖签的走秒起点。落在 part 上而不是渲染层 Date.now()——
+         * 虚拟化卸挂/切卷回来要读得出**真实**跑了多久，不能从重挂时刻重新起算。 */
+        startedAt: Date.now(),
         parts: [],
         version: 0,
       };
@@ -131,7 +135,13 @@ export function createRuntimeAdapter(storeId: string): RuntimeNotifier {
       });
     },
 
-    onSubAgentFinished(agentId: string, _parentAgentId: string, sessionId: number, ok: boolean): void {
+    onSubAgentFinished(
+      agentId: string,
+      _parentAgentId: string,
+      sessionId: number,
+      ok: boolean,
+      detail?: { report?: string; error?: string },
+    ): void {
       // 役台账收尾（先落账再修卡片——卡片那条路可能早返回）
       useWorkLedgerStore.getState().noteSubAgentFinished(storeId, agentId, ok);
       const text = ok ? `子 Agent ${agentId} 已完成` : `子 Agent ${agentId} 失败`;
@@ -151,6 +161,14 @@ export function createRuntimeAdapter(storeId: string): RuntimeNotifier {
           for (const p of parts) {
             if (p.type === 'subagent' && p.agentId === agentId) {
               p.status = ok ? 'done' : 'error';
+              /* 复命 / 未办落帖尾（2026-11-20 帖批）：帖是**同一件事**的起、在办、复命——
+               * 回文此前只活在工具结果里，帖面一收尾就什么都不说了。 */
+              p.finishedAt = Date.now();
+              if (ok) {
+                if (detail?.report) p.reportText = detail.report;
+              } else if (detail?.error) {
+                p.errorText = detail.error;
+              }
               p.version++;
               // 通过单一写入路径提交 — 父回合通常此时已完成；
               // 裸 bump 会使卡片停在"执行中"。

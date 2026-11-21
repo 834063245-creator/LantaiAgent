@@ -34,8 +34,16 @@ export interface RuntimeNotifier {
   onSessionReplaced(agentId: string, messages: Message[]): void;
   /** 子 Agent 启动 — UI 构建渲染状态并返回 EventSink */
   onSubAgentSpawn(info: SubAgentSpawnInfo): EventSink | undefined;
-  /** 子 Agent 结束 — UI 收尾渲染状态 */
-  onSubAgentFinished(agentId: string, parentAgentId: string, sessionId: number, ok: boolean): void;
+  /** 子 Agent 结束 — UI 收尾渲染状态。
+   *  detail 带上帖尾要说的那句话（成功 = 最终报告；失败 = 未办原因），
+   *  帖面才有「复命」可读（2026-11-20 帖批）。 */
+  onSubAgentFinished(
+    agentId: string,
+    parentAgentId: string,
+    sessionId: number,
+    ok: boolean,
+    detail?: { report?: string; error?: string },
+  ): void;
   /** 工具执行完成（面板自动刷新） */
   onToolDone(agentId: string, toolName: string, args: Record<string, unknown>, output: string): void;
   /** 循环进度（状态栏） */
@@ -53,6 +61,8 @@ export interface SubAgentSpawnInfo {
   parentAgentId: string;
   description: string;
   sessionId: number;
+  /** 派生模式（fork 继承上下文 / fresh 白纸）——帖签据此标「承 / 白」。 */
+  mode?: 'fork' | 'fresh';
   onProgress?: (chunk: string) => void;
 }
 

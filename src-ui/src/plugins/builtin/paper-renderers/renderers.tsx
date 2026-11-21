@@ -1339,11 +1339,31 @@ function ToolGroupBody(): null {
   return null;
 }
 
-/** 子代理组头（2026-09-01 三轴审计 F4）：与工具组头同构——体恒空，
- *  信息在壳层折叠行（foldLabel：描述 · 段数 · 在跑/出错），子 parts 是
- *  独立块（reasoning/text/tool…），折叠摘除复用 collapseToolGroups。 */
-function SubagentGroupBody(): null {
-  return null;
+/** 子代理**帖**的体（2026-11-20 帖批；前身是恒 `return null` 的 SubagentGroupBody）。
+ *
+ *  **壳层与体怎么分工**：帖签行与活体行是**纸面读数**，跟折叠行一样由壳层承担
+ *  （.pp-fold 说身份与账、活体行说此刻在干什么）——所以本组件只画**体**：
+ *  展开时的复命段（收尾后那一段回文/未办原因）。子 parts 是挂靠的独立块
+ *  （childIds），由壳层按折叠态摘挂，不经本组件。
+ *
+ *  ⚠ 不渲染时的判据必须与 measure.ts 的 `subagent` 分支逐字同源：那里
+ *  「有 report/error 才加 POST_REPORT_GAP + 正文高」，这里也只在同一条件下出段。 */
+function SubagentPostBody({ block }: BlockRendererProps) {
+  const p = block.payload as { status?: string; report?: string; error?: string };
+  const text = p.report || p.error || '';
+  if (!text) return null;
+  const failed = !p.report && !!p.error;
+  return (
+    <div className={`pp-post-report${failed ? ' pp-post-report--failed' : ''}`}>
+      <div className="pp-post-report-lab">
+        <span>复命</span>
+        <span className={`pp-post-report-res ${failed ? 'pp-post-report-res--bad' : 'pp-post-report-res--ok'}`}>
+          {failed ? '未办' : '已办'}
+        </span>
+      </div>
+      <p className="pp-post-report-text">{text}</p>
+    </div>
+  );
 }
 
 /** 内置渲染器行（默认行——视觉由纸壳 CSS 承载，渲染器只管体结构）。 */
@@ -1358,7 +1378,7 @@ export function builtinRendererDefs(): BlockRendererContribution[] {
     { id: 'builtin/tool', kind: 'tool', component: ToolBody },
     { id: 'builtin/code', kind: 'code', component: CodeBody },
     { id: 'builtin/toolgroup', kind: 'toolgroup', component: ToolGroupBody },
-    { id: 'builtin/subagent', kind: 'subagent', component: SubagentGroupBody },
+    { id: 'builtin/subagent', kind: 'subagent', component: SubagentPostBody },
     { id: 'builtin/turn-error', kind: 'turn-error', component: TurnErrorBody },
   ];
 }

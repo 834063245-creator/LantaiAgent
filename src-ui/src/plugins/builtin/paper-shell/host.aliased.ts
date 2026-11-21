@@ -151,6 +151,8 @@ export const abortWorkspaceEntry = impl.abortWorkspaceEntry;
 export const retryWorkspaceEntry = impl.retryWorkspaceEntry;
 // A4 销账第一笔（2026-09-28）：toast store 经桥取内核同一实例——见 host.ts 同款注记
 export const useToastStore = impl.useToastStore;
+// 役台账（2026-11-20 帖批）：同 toast store 纪律——取内核同一实例，禁产物内私有副本
+export const useWorkLedgerStore = impl.useWorkLedgerStore;
 
 export type SourcedBlock = import('./host').SourcedBlock;
 export type BlockInk = import('./host').BlockInk;

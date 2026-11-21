@@ -183,6 +183,143 @@
 .pp-block.pp-toolgroup .pp-kind .pp-zh {
   color: var(--indigo);
 }
+
+/* ── 子代理**帖**（2026-11-20 帖批）────────────────────────────────────
+ * 帖 ≠ 工具组：工具组是「同一轮并发调用的折叠头」，帖是「一件事的起、在办、复命」。
+ * 形态差别全在这里：
+ *   · 身份线是**虚线聘线**（左缘 1px dashed 石青），不是工具族的 44px 实注线——
+ *     子代理是被派出去的一个人，不是一次调用；
+ *   · 帖首行（帖签）= 方框「子」印 + 描述 + 走秒 + 步数 + 召回；
+ *   · 帖首下面**多一条活体行**（.pp-post-live）——此刻在干什么，只在进行时出现；
+ *   · 帖尾多一条复命段（.pp-post-report）——办成松绿、未办藤黄，回文就落在帖上。
+ * 几何真源 = type-tokens.ts 的 CHROME_TOKENS.post（measure.ts 取同一份派生）。
+ * ⚠ 活体行**不进折叠行**：折叠行（.pp-fold）说的是「谁 · 几步」，活体行说的是
+ *   「此刻在干什么」——两件事分开读才读得清（旧形态一行塞三件，三件都模糊）。 */
+.pp-block.pp-subagent {
+  padding: var(--pp-ch-post-padTop) 0 0 var(--pp-ch-post-padL);
+  border-left: 1px dashed color-mix(in oklch, var(--indigo) 55%, transparent);
+}
+/* 帖签首行：与折叠行同高（20），但内容分三段（印 / 描述 / 读数） */
+.pp-post-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: var(--pp-ch-post-headLh);
+}
+/* 「子」印：方框 + 石青字。子代理的身份符，与工具族的 44px 注线分工（那是族的，这是件的） */
+.pp-post-seal {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--pp-ch-post-seal);
+  height: var(--pp-ch-post-seal);
+  border: 1px solid color-mix(in oklch, var(--indigo) 70%, transparent);
+  font-family: var(--f-song);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--indigo);
+  user-select: none;
+}
+/* 活体行（在办才有）：色比帖签浅一档、比折叠行重一档——读的是「正在发生」 */
+.pp-post-live {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--pp-ch-post-liveLh);
+  margin-top: var(--pp-ch-post-liveGap);
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  line-height: var(--pp-ch-post-liveLh);
+  letter-spacing: 0.02em;
+  color: color-mix(in oklch, var(--indigo) 88%, var(--ink-1));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 在办呼吸点（环境档）——与纸面其他「活着」信号同一支笔 */
+.pp-post-live::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  background: var(--indigo);
+  animation: pp-ink-live var(--m-ambient) var(--m-ease-ambient) infinite;
+}
+/* 未办（帖自身出错）：聘线与印转藤黄——与 --fail 错误家族分开，这是「没办成」不是「炸了」 */
+/* 未办态由壳层加 .pp-post-error（判据 = payload.status === 'error'，与 fold/measure 同源） */
+.pp-block.pp-subagent.pp-post-error {
+  border-left-color: color-mix(in oklch, var(--warn) 55%, transparent);
+}
+.pp-block.pp-subagent.pp-post-error .pp-post-seal {
+  border-color: color-mix(in oklch, var(--warn) 70%, transparent);
+  color: var(--warn);
+}
+/* 帖签文字（描述）：宋体 600 13.5——比折叠行（10px mono）重一档，帖是「人」不是「注」 */
+.pp-post-title {
+  font-family: var(--f-song);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: var(--pp-ch-post-headLh);
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* 帖签读数（走秒 / 步数）：mono 9.5 tabular——数字列要对齐，帖并排时不跳字宽 */
+.pp-post-read {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  line-height: var(--pp-ch-post-headLh);
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pp-post-read--live {
+  color: var(--indigo);
+}
+/* 复命段：帖尾一段回文。上距 + 段头行（复命 · 已办/未办）+ 正文（宋体 12.5 / 1.85） */
+.pp-post-report {
+  margin-top: var(--pp-ch-post-reportGap);
+  padding-top: var(--pp-ch-post-reportPad);
+  border-top: var(--rule-soft);
+}
+.pp-post-report-lab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  line-height: 1.2;
+  letter-spacing: 0.22em;
+  color: var(--ink-3);
+}
+.pp-post-report-res {
+  margin-left: auto;
+  letter-spacing: 0.1em;
+}
+/* 已办 = 松绿（--pass 的唯一语义位：事办成了）；未办 = 藤黄 */
+.pp-post-report-res--ok {
+  color: var(--pass);
+}
+.pp-post-report-res--bad {
+  color: var(--warn);
+}
+.pp-post-report-text {
+  margin: 6px 0 0;
+  font-family: var(--f-song);
+  font-size: 12.5px;
+  line-height: 1.85;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+/** 帖的块高镜像：measure.ts 的 `subagent` 分支读同一份 CHROME_TOKENS.post 派生。
+ *  收起态 = padTop 10 + 帖签 20 + 活体行（在办 2+15）= 47（在办）/ 30（已收尾）。
+ *  已收尾且无复命 = 帖首 30——与旧形态同高，不多占一像素。 */
 /* 参数（入）段：石青 mono 直排（未结构化载荷仍是石青字身——结构化行由 .pp-tv-* 接管墨阶） */
 .pp-block.pp-tool .pp-args {
   margin: 0;

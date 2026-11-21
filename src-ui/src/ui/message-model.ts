@@ -120,12 +120,31 @@ export interface NoticePart {
   level: 'info' | 'warn' | 'error';
 }
 
-/** 子 agent 嵌套块 — 在助手消息内渲染为可折叠分组。 */
+/** 子代理**帖**（2026-11-20「帖」批）——子代理 = 一件事，不是一次调用的折叠壳。
+ *
+ *  **为什么从「组头」改名**：旧形状只有 agentId/description/status/parts/version，
+ *  帖要说的三件事一件都答不上——「怎么派的」（fork 继承上下文 / fresh 白纸）、
+ *  「走了多久」（连起跑戳都没有，走秒只能借父侧工具卡的）、「办成什么样」
+ *  （回文压根没进 part，只活在工具结果里）。补齐的是**读面事实**，不是装饰：
+ *  帖签行读 startedAt 走秒、复命段读 reportText、未办段读 errorText。
+ *
+ *  ⚠ 全是纯 JSON（INVARIANTS #14 同族：卷里只放引用与文本，不放函数/字节）——
+ *  回调（如召回）一律经 agentSessionState 句柄现取，不进 part。 */
 export interface SubAgentPart {
   type: 'subagent';
   agentId: string;
   description: string;
   status: 'running' | 'done' | 'error';
+  /** 派生模式：fork = 继承父近期上下文（默认）；fresh = 白纸。缺省 = 未知（旧卷）。 */
+  mode?: 'fork' | 'fresh';
+  /** 起跑戳（Date.now）；缺省 = 旧卷/未观察，帖签退化为不带走秒。 */
+  startedAt?: number;
+  /** 收尾戳（Date.now）；running 时缺省。 */
+  finishedAt?: number;
+  /** 复命正文（子代理最终报告）——成功时写回；失败时缺省。 */
+  reportText?: string;
+  /** 未办原因——失败/被召回时写回，帖尾如实说，不编造。 */
+  errorText?: string;
   /** 此子 agent 产出的有序部分。 */
   parts: AssistantPart[];
   /** 每次变更递增，使 React 可订阅而无需全局 bump。 */

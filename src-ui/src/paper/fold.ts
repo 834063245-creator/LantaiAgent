@@ -87,8 +87,10 @@ export function defaultFolded(kind: BlockKind, payload: unknown, block?: Sourced
     return !items.some((i) => i.status === 'error');
   }
   if (kind === 'subagent') {
-    // 子代理组（2026-09-01 三轴审计 F4）：过程块收进组内，正文流只留组头一行。
-    // 组内子调用出错 / 组自身出错 / 子拟策待审批（可操作卡不可被折叠藏住）= 张开。
+    // 子代理**帖**（2026-11-20 帖批；前身 2026-09-01 F4 组头）：默认收起——
+    // 帖签 + 活体行已经说清「谁、在干什么、多久」，体（子 parts）按需展开。
+    // 仍有三条**张开**的例外（可操作/出错的内容不可被折叠藏住）：
+    //   ① 帖自身出错；② 帖内子调用出错；③ 子拟策待审批。
     const p = payload as {
       status?: string;
       items?: Array<{ type?: string; status?: string; _callback?: unknown }>;
@@ -97,7 +99,7 @@ export function defaultFolded(kind: BlockKind, payload: unknown, block?: Sourced
     const items = p.items ?? [];
     const childErrored = items.some((i) => i.status === 'error');
     // 待批判据读**持久化的 status**（_callback 只是「本帧可点」的能力位，重载即丢）。
-    // 只认回调 = 重载后的待批卡被当已决议，连同它的组一起收起（卡片凭空消失）。
+    // 只认回调 = 重载后的待批卡被当已决议，连同它的帖一起收起（卡片凭空消失）。
     const planPending = items.some((i) => i.type === 'plan' && (i.status === 'pending' || i._callback));
     return !(childErrored || planPending);
   }
@@ -290,13 +292,19 @@ function foldLabelRaw(kind: BlockKind, payload: unknown, folded: boolean, block?
     return `▸ ${who}${outSuffix(contentLen)}`;
   }
   if (kind === 'subagent') {
-    // 子代理组头（2026-09-01 F4）：描述即身份，段数量化；在跑/出错缀状态。
+    // 子代理**帖**折叠行（2026-11-20 帖批）：这一行只报**身份与账**（描述 + 步数 +
+    // 走秒 + 状态），**不报活体行**——「此刻在干什么」由帖签下面那条独立活体行说，
+    // 两者不重复（旧实现把描述/段数/状态全挤在一行，一行读三件事，反而都读不清）。
     const raw = (p.description || '').replace(/\s+/g, ' ').trim() || '子代理';
     const desc = raw.length > 24 ? `${raw.slice(0, 24)}…` : raw;
-    if (!folded) return `▾ 收起 ${desc}`;
-    const n = (p.items as unknown[] | undefined)?.length ?? 0;
-    const suffix = p.status === 'error' ? ' · 出错' : p.status === 'running' ? ' · 在跑' : '';
-    return `▸ ${desc} · ${n} 段${suffix}`;
+    const step = (p as { step?: number }).step ?? 0;
+    const mode = (p as { mode?: string }).mode;
+    // 帖签前缀：承 = fork（继承上下文）/ 白 = fresh（白纸）——怎么派的是帖的身份之一
+    const mark = mode === 'fresh' ? '白' : mode === 'fork' ? '承' : '';
+    const head = `${desc}${mark ? ` · ${mark}` : ''}${step > 0 ? ` · ${step} 步` : ''}`;
+    if (!folded) return `▾ 收起 ${head}`;
+    const suffix = p.status === 'error' ? ' · 未办' : p.status === 'running' ? ' · 在办' : '';
+    return `▸ ${head}${suffix}`;
   }
   if (kind === 'toolgroup') {
     const items = p.items ?? [];

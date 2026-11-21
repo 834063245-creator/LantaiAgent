@@ -107,15 +107,29 @@ export interface BlockPayloads {
     childIds: string[];
     items: ToolCallPart[];
   };
-  /** 子代理组（2026-09-01 三轴审计 F4）：SubAgentPart 的组内折叠形态——
-   *  组头一行（描述+状态），子 parts 是独立块（reasoning/text/tool…），
-   *  折叠/钉住/摘除全复用工具组机制；items 持活 part 引用（流式直读）。 */
+  /** 子代理**帖**（2026-11-20 帖批；前身 = 2026-09-01 F4 的组头）：
+   *  帖 = 一件事的起、在办、复命。子 parts 是独立块（reasoning/text/tool…），
+   *  折叠/钉住/摘除全复用工具组机制；items 持活 part 引用（流式直读）。
+   *  帖面读数（mode/step/doing/起止/复命）由转译层一次算清写进 payload——
+   *  渲染端与测高端读**同一份**（见 paper/translate 的 subagentPostFields 注）。 */
   subagent: {
     agentId: string;
     description: string;
     status: 'running' | 'done' | 'error';
     childIds: string[];
     items: AssistantPart[];
+    /** 派生模式：fork = 继承父上下文（译作「承」）/ fresh = 白纸（译作「白」）。 */
+    mode?: 'fork' | 'fresh';
+    /** 帖内已发生的工具调用数（折叠行与帖签读数）。 */
+    step?: number;
+    /** 此刻在干什么（仅进行时非空；转译层按「最后一张仍在跑的卡」判定）。 */
+    doing?: string | null;
+    /** 走秒两端（帖签现算 elapsed）。 */
+    startedAt?: number;
+    finishedAt?: number;
+    /** 复命正文（成功）/ 未办原因（失败或被召回）——帖尾那一段。 */
+    report?: string;
+    error?: string;
   };
   notice: { text: string; level: 'info' | 'warn' | 'error' };
   /** 回合错误（2026-08-31）：assistant 回合终止失败/暂停时的墓碑行——

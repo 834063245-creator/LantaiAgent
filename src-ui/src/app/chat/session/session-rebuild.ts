@@ -41,6 +41,46 @@ export function renderRestoredSession(ctx: SessionContext): void {
   bumpSession(ctx.storeId, sid);
 }
 
+/** 从一次 spawn 调用重建**历史帖**（2026-11-20 帖批 · 补缺 1）。
+ *
+ *  病灶（用户报「重开卷子代理整段消失」）：`rebuildMessagesFromMessages` 见 spawn 调用
+ *  一律 `continue`——实时会话里由 `preservedSubAgents` 顶上（内存里那些活对象），
+ *  可**冷恢复**（进程重启 / 卷重载 / 旧档无 uiMessages）根本没有 preserved，于是：
+ *  spawn 不建工具卡（跳过）+ 没有 subagent part（无内存对象）= 这件事在流里彻底没了。
+ *  只有工具回执里的那段最终报告还在 provider 消息里。
+ *
+ *  重建口径（**只重建读得出来的事实**，不编造）：
+ *    · 帖签：description / mode 来自调用参数；
+ *    · 复命：工具结果文本——它就是子代理的最终报告（agent_spawn 的同步语义）；
+ *    · 体：**不重建**。子代理自己的工具调用不在父会话里（那属于子会话，未随父卷落盘），
+ *      硬造只会编出一段没发生过的工作记录；
+ *    · 状态：有回执 = done；回执缺失（卷中断/调用没结果）= error 并如实说。
+ *
+ *  这样冷恢复后帖还在、回文还在——与实时路径的差别只有「体是空的」，
+ *  而那个差别是数据面的事实（子会话未落盘），不是渲染层的偷懒。 */
+function subAgentPartFromSpawn(tc: { id: string; arguments?: string }, output: string | undefined): SubAgentPart {
+  let description = '子代理';
+  let mode: 'fork' | 'fresh' | undefined;
+  try {
+    const args = JSON.parse(tc.arguments || '{}') as { description?: unknown; subagent_type?: unknown };
+    if (typeof args.description === 'string' && args.description.trim()) description = args.description.trim();
+    if (args.subagent_type === 'fresh' || args.subagent_type === 'fork') mode = args.subagent_type;
+  } catch {
+    /* 参数不是合法 JSON（老卷/截断）：描述回落「子代理」，不因一次解析失败丢掉整张贴 */
+  }
+  const text = (output ?? '').trim();
+  return {
+    type: 'subagent',
+    agentId: `restored-${tc.id}`,
+    description,
+    status: text ? 'done' : 'error',
+    ...(mode !== undefined ? { mode } : {}),
+    ...(text ? { reportText: text } : { errorText: '本卷未记录这次委办的结局（工具回执缺失）' }),
+    parts: [],
+    version: 0,
+  };
+}
+
 /** 从 agent 的 getSession() 原始消息填充活跃会话的会话级消息 store + turnPairs。
  *  纯数据重建 — 无 DOM 操作，无通知。 */
 export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, sessionId: number): void {
@@ -132,10 +172,16 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
 
       if (m.tool_calls) {
         for (const tc of m.tool_calls) {
-          // 子 Agent spawn 调用由 SubAgentBlock 呈现（实时会话的 SubAgentPart 在上方
-          // preservedSubAgents 中保留并重新挂载）— 不重建 ToolCard，
-          // 否则恢复/撤回重建后同一 spawn 会同时出现两种卡片。
-          if (isSubagentSpawnTool(tc.name, tc.arguments || undefined)) continue;
+          /* 子 Agent spawn：实时会话由上方 preservedSubAgents 顶上（内存活对象），
+           * 冷恢复没有 preserve —— 此时从「调用参数 + 工具回执」重建一张收尾态的帖
+           * （2026-11-20 帖批补缺 1：旧实现一律 continue，重开卷后子代理整段消失，
+           * 只剩工具回执里的那段报告；现在报告落在帖尾，帖还在原位上）。
+           * ⚠ 体（子代理自己的工具调用）不重建：那属于子会话，未随父卷落盘，
+           * 硬造就是编造一段没发生过的工作记录。 */
+          if (isSubagentSpawnTool(tc.name, tc.arguments || undefined)) {
+            am.parts.push(subAgentPartFromSpawn(tc, toolResults.get(tc.id)));
+            continue;
+          }
           const output = toolResults.get(tc.id);
           am.parts.push({
             type: 'tool',

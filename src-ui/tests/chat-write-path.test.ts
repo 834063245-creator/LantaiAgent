@@ -369,4 +369,48 @@ describe('subagent spawn — no duplicate ToolCard', () => {
     expect(tools).toHaveLength(1);
     expect((tools[0] as { toolId?: string }).toolId).toBe('c2');
   });
+
+  /* 2026-11-20 帖批补缺 1（**显式规格变更**）：旧行为是「spawn 调用一律跳过、什么都不重建」
+   * ——实时会话有 preservedSubAgents 顶上，可冷恢复（进程重启 / 卷重载）没有 preserve，
+   * 于是子代理在流里整段消失（用户报的病灶）。新行为：从「调用参数 + 工具回执」重建一张
+   * 收尾态的**帖**（帖还在原位、回文落在帖尾），体留空——子会话没随父卷落盘，不编造。 */
+  it('冷恢复：spawn 调用重建为收尾态的帖（含复命），不重建体', () => {
+    makeCtx();
+
+    rebuildMessagesFromMessages(
+      [
+        { role: 'user', content: 'hi' },
+        {
+          role: 'assistant',
+          content: 'done',
+          tool_calls: [
+            {
+              id: 'c1',
+              name: 'agent_spawn',
+              arguments: '{"description":"校对员 · 错别字扫描","subagent_type":"fresh"}',
+            },
+            { id: 'c2', name: 'agent_spawn', arguments: '{"description":"没回执的那次"}' },
+          ],
+        },
+        { role: 'tool', tool_call_id: 'c1', content: '全书 47 处图注断号，已列成清单。' },
+      ] as never,
+      STORE_ID,
+      SESSION_A,
+    );
+
+    const subs = assistantMsg().parts.filter((p) => p.type === 'subagent');
+    expect(subs).toHaveLength(2);
+    const ok = subs[0] as { description: string; status: string; mode?: string; reportText?: string; parts: unknown[] };
+    expect(ok.description).toBe('校对员 · 错别字扫描');
+    expect(ok.mode).toBe('fresh');
+    expect(ok.status).toBe('done');
+    expect(ok.reportText).toBe('全书 47 处图注断号，已列成清单。');
+    expect(ok.parts).toEqual([]);
+    // 回执缺失 = 结局未知：如实标 error 并说明，不假装办成
+    const missing = subs[1] as { status: string; errorText?: string };
+    expect(missing.status).toBe('error');
+    expect(missing.errorText).toContain('未记录这次委办的结局');
+    // 帖不是工具卡：不重复出卡（同一条规则的另一半）
+    expect(assistantMsg().parts.filter((p) => p.type === 'tool')).toHaveLength(0);
+  });
 });

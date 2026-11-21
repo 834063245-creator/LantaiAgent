@@ -121,6 +121,7 @@ export const BlockView = memo(function BlockView({
   onProvClick,
   sessionProjectPath,
   sessionId,
+  onRecallSubAgents,
 }: {
   block: SourcedBlock;
   /** 文类签机读序号（卷内流水号，三位补零） */
@@ -165,6 +166,10 @@ export const BlockView = memo(function BlockView({
    *  存盘口据此定位 `.lantai/asset-state/<sessionId>.json`（其他渲染器不用可忽略）。 */
   sessionProjectPath?: string;
   sessionId?: string;
+  /** 帖签的「召回」写面（本卷全部在办子代理）——宿主传入；缺省 = 不出现召回钮。
+   *  入参 = 本块所属卷号（string，与 sessionId prop 同源；由本组件回传，
+   *  调用点不必为每块造闭包）。**只传稳定回调**：内联箭头会击穿 memo（§1.9）。 */
+  onRecallSubAgents?: (sessionId: string | undefined) => void;
 }) {
   const p = block.payload;
   const Body = block.asset
@@ -224,7 +229,19 @@ export const BlockView = memo(function BlockView({
           </button>
         )}
       </div>
-      {foldable && (
+      {/* 子代理帖的帖签行（2026-11-20 帖批）：**取代**折叠行，不是并列——
+          帖签 = 折叠加「子」印 + 描述 + 走秒/步数 + 召回。点它照旧切折叠态
+          （手势与工具族同源），召回单独一枚按钮不沾折叠语义。
+          判据与 measure.ts 的 subagent 分支同源：帖高 = 帖签 20 + 活体行（在办 17）。 */}
+      {block.kind === 'subagent' ? (
+        <PostHead
+          block={block}
+          folded={folded}
+          onToggleFold={onToggleFold}
+          sessionId={sessionId}
+          onRecallSubAgents={onRecallSubAgents}
+        />
+      ) : foldable ? (
         <button
           type="button"
           className={`pp-fold${foldBusy ? ' pp-fold--busy' : ''}`}
@@ -235,7 +252,7 @@ export const BlockView = memo(function BlockView({
         >
           {foldLabel(block.kind, p, folded, block)}
         </button>
-      )}
+      ) : null}
       {Body && !(block.asset != null && folded) ? (
         /* 保险丝 b（2026-09-03）：块渲染器（内置 + 资产/插件贡献面）包边界——
          * 单块渲染崩溃只死该块，纸壳与整树永生。
@@ -310,6 +327,105 @@ export const BlockView = memo(function BlockView({
     </>
   );
 });
+
+/* ── 子代理帖：帖签行 + 活体行（2026-11-20 帖批）──────────────────────
+ *  住在壳层而不是渲染器里，与工具族折叠行同一层位：它是**块的读数**（谁 · 多久 ·
+ *  几步），不是块体。折叠态点击照旧经 onToggleFold（手势与工具族同源）。
+ *
+ *  走秒：读 payload.startedAt / finishedAt 现算——虚拟化卸挂不丢时长（同 ToolStatusChip
+ *  的纪律；那边读 part 戳，这边读转译进 payload 的戳）。1s 心跳自持在本件，
+ *  只重渲这几颗字，不惊动块体。
+ *
+ *  召回：只在本帖在办时出现。通道 = 会话级「全停子代理」（池没有单停 UI 面）——
+ *  按钮据此**如实**写「召回（全停本卷子代理）」，不假装能只停这一个。 */
+const PostHead = memo(function PostHead({
+  block,
+  folded,
+  onToggleFold,
+  sessionId,
+  onRecallSubAgents,
+}: {
+  block: SourcedBlock;
+  folded: boolean;
+  onToggleFold: (b: SourcedBlock) => void;
+  sessionId?: string;
+  onRecallSubAgents?: (sessionId: string | undefined) => void;
+}) {
+  const p = block.payload as {
+    description?: string;
+    status?: string;
+    step?: number;
+    doing?: string | null;
+    startedAt?: number;
+    finishedAt?: number;
+    report?: string;
+    error?: string;
+  };
+  const live = p.status === 'running';
+  const failed = p.status === 'error';
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!live) return;
+    const t = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [live]);
+  const startedAt = p.startedAt;
+  const endAt = live ? Date.now() : (p.finishedAt ?? Date.now());
+  const elapsed = startedAt != null ? formatPostElapsed(endAt - startedAt) : null;
+  const step = p.step ?? 0;
+  return (
+    <>
+      <div className="pp-post-head">
+        <span className="pp-post-seal" aria-hidden="true">
+          子
+        </span>
+        <button
+          type="button"
+          className="pp-post-title"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFold(block);
+          }}
+          title={p.description}
+        >
+          {p.description || '子代理'}
+        </button>
+        <span className="pp-post-read">{folded ? '▸' : '▾'}</span>
+        {elapsed && (
+          <span className="pp-post-read">
+            {live ? '行' : '共'} {elapsed}
+          </span>
+        )}
+        {step > 0 && <span className="pp-post-read">{step} 步</span>}
+        {live && <span className="pp-post-read pp-post-read--live">在办</span>}
+        {failed && <span className="pp-post-read pp-post-read--live">未办</span>}
+        {live && onRecallSubAgents && (
+          <button
+            type="button"
+            className="pp-post-stop"
+            title="召回：停本卷全部在办子代理（池暂无单停通道）"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRecallSubAgents?.(sessionId);
+            }}
+          >
+            召回
+          </button>
+        )}
+      </div>
+      {live && p.doing && <div className="pp-post-live">{p.doing}</div>}
+    </>
+  );
+});
+
+/** 帖的走秒读数：`12s` / `4m12s` / `1h07m`（与役册 formatElapsed 同口径，禁各写一套）。 */
+function formatPostElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total}s`;
+  const m = Math.floor(total / 60);
+  if (m < 60) return `${m}m${String(total % 60).padStart(2, '0')}s`;
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`;
+}
 
 /* ── 主组件 ── */
 

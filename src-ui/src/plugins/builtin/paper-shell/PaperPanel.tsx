@@ -38,13 +38,14 @@
 // 本文件自此只剩**视图**：装配（use-paper-panel.ts）+ 表现件（paper-panel-parts.tsx）+ 本文件 JSX。
 // 改域逻辑去装配根，改单块渲染去表现件，改版面留在这里。
 
-import { type CSSProperties, Fragment, useEffect, useState } from 'react';
+import { type CSSProperties, Fragment, useCallback, useEffect, useState } from 'react';
 import { volumeDisplayName } from '../../../state/volume-name';
 import { DockTetherLayer } from './DockTetherLayer';
 import { DraftSheet } from './DraftSheet';
 import { FolioAskBadge } from './FolioAskBadge';
 import { FolioCompositionChip } from './FolioCompositionChip';
 import {
+  agentSessionState,
   blockFromSnapshot,
   ConfirmDialog,
   Icon,
@@ -57,6 +58,7 @@ import {
   useDockStore,
   useDraftSheetStore,
   useShelfStore,
+  useWorkLedgerStore,
   WinControls,
 } from './host';
 import { InkLayer } from './InkLayer';
@@ -222,6 +224,24 @@ export function PaperPanel() {
     branchGrips,
     onBranchGripPointerDown,
   } = usePaperPanelAssembly();
+
+  /* 帖签「召回」的写面（2026-11-20 帖批）：停本卷**全部**在办子代理。
+   *
+   *  为什么是全停而不是单停：池对 UI 只暴露 `stopAll`（单停只有模型工具 agent_kill
+   *  那条路），UI 侧没有逐条停的通道。按钮据此如实写「召回」并在 title 里说明
+   *  范围——不假装能只停这一帖（错误不静默，也别把能力吹大）。
+   *  与坞的「全停子代理」共用同一个写面与同一本账（先落账再等收尾回调，
+   *  否则 abort 分支会把「人停的」写成「失败」，见 work-ledger-store 注）。 */
+  const onRecallSubAgents = useCallback(
+    (sessionNum: string | undefined) => {
+      const panelId = core?.panelId;
+      const num = sessionNum != null ? Number(sessionNum) : Number.NaN;
+      if (!panelId || !Number.isFinite(num)) return;
+      const stopped = agentSessionState.getAgent(panelId, num)?.stopAllSubAgents() ?? [];
+      useWorkLedgerStore.getState().noteSubAgentStopped(panelId, stopped);
+    },
+    [core?.panelId],
+  );
 
   /* **交接期：纸只借卷的「左缘与宽」**（2026-11-16 改判；上一版整盒借用已被推翻）。
    *
@@ -705,6 +725,7 @@ export function PaperPanel() {
                           sidecarOut={sidecarOutOf(b)}
                           onSidecarRestore={onSidecarRestore}
                           onUnpin={onUnpin}
+                          onRecallSubAgents={onRecallSubAgents}
                           onDragHandlePointerDown={onBlockPointerDown}
                           /* 空间手势立枝的握把：只在**判据通过**的块上（与「立枝」按钮
                              同一张表）——工具卡/通知块/未落定轮不长一个注定被拒的手势。 */
@@ -770,6 +791,7 @@ export function PaperPanel() {
                           sidecarOut={sidecarOutOf(b)}
                           onSidecarRestore={onSidecarRestore}
                           onUnpin={onUnpin}
+                          onRecallSubAgents={onRecallSubAgents}
                           onDragHandlePointerDown={onBlockPointerDown}
                           prov={provenanceText(volumeDisplayName(r.label, r.sessionNum), 'live')}
                           provTitle={provenanceTitle('live')}

@@ -129,13 +129,20 @@ export interface AgentUINotifier {
    *  子 agent 应流式输出的 EventSink（undefined → 空操作 sink）。
    *  sessionId 标识拥有此子 Agent 输出的 UI 会话。 */
   subAgentSpawn?(
-    info: { agentId: string; description: string; sessionId: number },
+    info: { agentId: string; description: string; sessionId: number; mode?: 'fork' | 'fresh' },
     onProgress?: (chunk: string) => void,
   ): EventSink | undefined;
   /** Agent 运行状态变更（idle ↔ running） */
   onStatusChange?(running: boolean): void;
-  /** 子 Agent 完成 — UI 完成其渲染状态。 */
-  subAgentFinished?(agentId: string, sessionId: number, ok: boolean): void;
+  /** 子 Agent 完成 — UI 完成其渲染状态。
+   *  report / error 是**帖尾要说的那句话**（成功 = 子代理最终报告；失败 = 未办原因）。
+   *  此前只给一个 ok 布尔，回文只活在工具结果里，帖面无从读——帖批补上。 */
+  subAgentFinished?(
+    agentId: string,
+    sessionId: number,
+    ok: boolean,
+    detail?: { report?: string; error?: string },
+  ): void;
   /** Agent 的会话数组已被替换（压缩 / 撤回 / setSession）。
    *  ChatCore 需要重建其 ChatMessage[] 投影。 */
   sessionReplaced?(messages: Message[]): void;

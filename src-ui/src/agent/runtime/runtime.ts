@@ -1032,11 +1032,12 @@ export class AgentRuntime implements RuntimePort {
           parentAgentId: agentId,
           description: info.description,
           sessionId: info.sessionId,
+          ...(info.mode !== undefined ? { mode: info.mode } : {}),
           onProgress,
         });
       },
-      subAgentFinished: (id, sessionId, ok) => {
-        this.notifier?.onSubAgentFinished(id, agentId, sessionId, ok);
+      subAgentFinished: (id, sessionId, ok, detail) => {
+        this.notifier?.onSubAgentFinished(id, agentId, sessionId, ok, detail);
       },
       onStatusChange: (running: boolean) => {
         this.notifier?.onAgentStatus(agentId, running ? 'running' : 'idle');

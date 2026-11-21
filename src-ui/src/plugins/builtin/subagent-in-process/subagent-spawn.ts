@@ -31,6 +31,17 @@ import {
 
 const MAX_SUBAGENT_DEPTH = 3;
 
+/** 帖尾摘要上限（字符）。帖是**纸面读面**，不是日志——全文仍在工具结果里可查。
+ *  超限截断并显式标「…（全文见工具结果）」，不做静默丢字（宪法四同类纪律）。 */
+const POST_REPORT_MAX = 600;
+
+/** 帖尾摘要：压平首尾空白 + 截断 + 截断标记。空串 → 空串（帖尾据此不渲染复命段）。 */
+export function clipReport(text: string | undefined | null): string {
+  const flat = (text ?? '').trim();
+  if (flat.length <= POST_REPORT_MAX) return flat;
+  return `${flat.slice(0, POST_REPORT_MAX)}…（全文见工具结果）`;
+}
+
 /** 用自定义 execute 函数包装一个 Tool，返回新的 Tool 对象。
  *  原始 Tool 永远不会被修改 — 这点至关重要，因为父 Agent
  *  与其子 Agent 共享 Tool 引用。 */
@@ -286,7 +297,8 @@ ${subTools
   // board/bus 条目（async 模式返回此 ID 给 LLM）。
   const subAgentId = agentIdOverride ?? `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const rawSubSink =
-    ag._ui.subAgentSpawn?.({ agentId: subAgentId, description, sessionId: ag._uiSessionId }, onProgress) ?? (() => {});
+    ag._ui.subAgentSpawn?.({ agentId: subAgentId, description, sessionId: ag._uiSessionId, mode }, onProgress) ??
+    (() => {});
   // 将子 Agent 的事件流分叉到 activity tracker — agent_status 读取它
   // 以报告当前工具调用 + 等待时间（见 subagent-activity.ts）。
   const subSink = wrapSubAgentSink(subAgentId, rawSubSink);
@@ -395,11 +407,19 @@ ${subTools
     }
     result = { text: '', err: errReason };
   } finally {
-    ag._ui.subAgentFinished?.(subAgentId, ag._uiSessionId, subAgentSucceeded);
     removeSubAgentActivity(subAgentId);
     // 释放此子 Agent 的文件所有权声明
     ag._fileOwnership?.release(subAgent.id);
   }
+
+  /* 帖尾要说的那句话随收尾一起交付（2026-11-20 帖批）：此前只给一个 ok 布尔，
+   * 子 Agent 的回文只活在工具结果里，帖面（SubAgentPart）压根读不到——
+   * 用户看到的是「在跑」直接跳到「完成」，中间那件事干成了什么没有落面。
+   * 截断 = 帖尾摘要档（全文仍在工具结果里可查）。放在 try/catch **之后**而不是
+   * finally 里：此处 result 必已赋值（try 成功或 catch 兜底），TS 流分析也认。 */
+  ag._ui.subAgentFinished?.(subAgentId, ag._uiSessionId, subAgentSucceeded, {
+    ...(subAgentSucceeded ? { report: clipReport(result.text) } : { error: clipReport(result.err ?? '') }),
+  });
 
   if (asyncMode) {
     // ── Async 模式: 保存 diff 到 board + 通过 bus 通知（不自动合并） ──

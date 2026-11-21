@@ -43,6 +43,8 @@ import { VIEWER_BOX_CLASSES, viewerClassOf } from '../../../paper/viewer-exts';
  * 2026-09-10 三体换代：宋/楷/等宽退役，三栈统一 MiSans（文类语义键 song/kai/mono
  * 保留——FONT_STACKS 与 tokens.css --f-* 同源，canvas 测量字体必须与渲染字体一致）。 */
 
+// 子代理帖的几何/量高（2026-11-20 帖批 · 拆刀）：本文件按块 kind 分派，帖的增长不住这里
+import { measurePostHeight } from './post-metrics';
 import {
   ASSET_DERIVED,
   ASSET_TOKENS,
@@ -275,6 +277,9 @@ const USER_IMAGE_GAP = CHROME_DERIVED.userImageGap;
 const USER_IMAGES_MARGIN_TOP = CHROME_DERIVED.userImagesMarginTop;
 const REASONING_TEXT_INSET = CHROME_DERIVED.reasoningTextInset; // padding-left 18 + border-left 2（虚线）
 const TOOL_PAD_TOP = CHROME_DERIVED.toolPadTop; // .pp-block.pp-tool padding-top
+/* 子代理帖的几何住在 post-metrics.ts（2026-11-20 帖批 · 上帝文件拆刀）：
+ * 帖是独立一族块，常量与复命段量高都不属于通用块高逻辑，且 measure.ts 已在 2200 行档位上。
+ * 这里的取值与调用保持原样——只是把「住哪儿」搬走，口径一字未变。 */
 /** 载荷段头（.pp-sec-head，2026-09-14）：恒一行（mono 10px × 1.4 = 14），
  *  首段不留上距——参数段紧跟折叠行（渲染端 gap 条件同判据）。 */
 export const SEC_HEAD_H = CHROME_DERIVED.secHeadH;
@@ -1974,9 +1979,13 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       // 工具组头恒一行（2026-08-30 会话流专项）：折叠行即本体，注线顶距同脚注族；
       // 子卡是独立 tool 块，收起由壳层摘出布局栈，头高与子卡数无关。
       return TOOL_PAD_TOP + FOLD_ROW_H;
-    case 'subagent':
-      // 子代理组头（F4 2026-09-01）：与工具组头同构恒一行（文类签+折叠行，体空）。
-      return TOOL_PAD_TOP + FOLD_ROW_H;
+    case 'subagent': {
+      // 子代理**帖**（2026-11-20 帖批）：几何与量高都住 post-metrics.ts——帖是独立一族块，
+      // 它跟工具组头早已不是同构（多一条活体行、多一段复命），知识不该再混在通用分派里。
+      // 测量器由本文件传入：文本测量只在 measure.ts 有一份（pretext 缓存 + 字体常量）。
+      const p = b.payload as { status?: string; doing?: string | null; report?: string; error?: string };
+      return measurePostHeight(p, b.w, folded, measureTextHeight);
+    }
     default:
       // 资产/开放 kind：按表现原语镜像计高（旧固定 80 是画图族卡片溢出的根因）。
       // 折叠态（2026-09-23 图版架批；2026-10-08 默认态翻成张开后，本分支服务
@@ -2057,9 +2066,26 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
     case 'toolgroup':
       // 子卡数入签（流式追加子卡 → 组头重测；头高本身恒定）
       return `toolgroup|${((p.items as unknown[] | undefined) ?? []).length}`;
-    case 'subagent':
-      // 描述/状态/子段数入签（组头折叠行文案随状态与子块生长变化）
-      return `subagent|${p.description ?? ''}|${p.status ?? ''}|${((p.items as unknown[] | undefined) ?? []).length}`;
+    case 'subagent': {
+      // 帖的读签（2026-11-20 帖批）：帖高随四种东西变——状态（在办→复命/未办）、
+      // 活体行（在办才有，写的是「正在干什么」）、复命正文长度、折叠位（f 已含）。
+      // 全不入签就会在收尾那一帧吃到「在办」的旧高（旧实现只签描述/状态/段数，
+      // 而段数按子块数算——子块在帖内不摊平，永远读到 0）。
+      const sp = p as { status?: string; doing?: string | null; report?: string; error?: string; step?: number };
+      const textLen = (sp.report ?? '').length + (sp.error ?? '').length;
+      return (
+        'subagent|' +
+        (p.description ?? '') +
+        '|' +
+        (sp.status ?? '') +
+        '|' +
+        (sp.doing ?? '') +
+        '|' +
+        (sp.step ?? 0) +
+        '|' +
+        textLen
+      );
+    }
     default:
       // 资产/开放 kind：表现名入签；payload 变化由 RO 实测驱动（静态镜像
       // 只服务未挂载块的虚拟化窗口估高，不逐 payload 入签省 stringify）。

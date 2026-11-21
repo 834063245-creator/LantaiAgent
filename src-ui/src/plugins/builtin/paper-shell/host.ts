@@ -163,6 +163,10 @@ export { useShelfStore } from '../../../state/shelf-store';
  * 打包态 toast 一条都不显示（开发域单实例 ⇒ 单测看不出来）。 */
 export { useToastStore } from '../../../state/toast-store';
 export { useUpdateStore } from '../../../state/update-store';
+/* 役台账（2026-11-20 帖批）：帖签「召回」要落账（先落账再等收尾回调，否则 abort 分支
+ * 会把「人停的」写成「失败」）。**必须经桥取内核同一实例**——直引会在产物里内联成
+ * 私有副本，台账分家（构建闸拦下的正是这一条）。 */
+export { useWorkLedgerStore } from '../../../state/work-ledger-store';
 export { useWorkspaceEntryStore } from '../../../state/workspace-entry-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../../ui/message-model';

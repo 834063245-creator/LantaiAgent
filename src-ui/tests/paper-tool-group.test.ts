@@ -322,8 +322,8 @@ describe('translate：subagent → 组头 + 子块（不摊平、不嵌套成组
   });
 });
 
-describe('fold：subagent 组规则 + 折叠行文案', () => {
-  it('isFoldable 含 subagent；完成/在跑收起，组自身或子调用出错张开，子拟策待审批张开', () => {
+describe('fold：子代理帖的折叠规则 + 帖签行文案', () => {
+  it('isFoldable 含 subagent；完成/在办收起，帖自身或子调用出错张开，子拟策待审批张开', () => {
     expect(isFoldable('subagent')).toBe(true);
     const done = subAgentPart([{ type: 'text', text: 'x', finalised: true }]);
     expect(
@@ -357,33 +357,61 @@ describe('fold：subagent 组规则 + 折叠行文案', () => {
     expect(defaultFolded('subagent', planPending)).toBe(false);
   });
 
-  it('折叠行：描述即身份 + 段数量化 + 在跑/出错缀', () => {
-    const items = [{ type: 'text', text: 'x', finalised: true }] as SubAgentPart['parts'];
-    const payload = (status: SubAgentPart['status']) => ({
+  /* 2026-11-20 帖批（**显式规格变更**）：折叠行从「描述 · N 段」改成「描述 · 承/白 · N 步」。
+   * 为什么：段数说的是「帖里有几个 part」，与用户要看的东西（调了几次工具、怎么派的）
+   * 不是一回事；而「此刻在干什么」不进折叠行，另起一条活体行（见 paper-panel-parts 的
+   * PostHead）。旧断言随旧行为整段退役，新断言从帖的真实读数面新写（不改造后放回原位）。 */
+  it('帖签行：描述 + 派生模式 + 步数 + 在办/未办（不再报「段」）', () => {
+    const payload = (over: Record<string, unknown>) => ({
       agentId: 'a',
       description: '校对员：错别字扫描',
-      status,
+      status: 'done',
       childIds: ['c1'],
-      items,
+      items: [],
+      ...over,
     });
-    expect(foldLabel('subagent', payload('done'), true)).toBe('▸ 校对员：错别字扫描 · 1 段');
-    expect(foldLabel('subagent', payload('running'), true)).toBe('▸ 校对员：错别字扫描 · 1 段 · 在跑');
-    expect(foldLabel('subagent', payload('error'), true)).toBe('▸ 校对员：错别字扫描 · 1 段 · 出错');
-    expect(foldLabel('subagent', payload('done'), false)).toBe('▾ 收起 校对员：错别字扫描');
+    expect(foldLabel('subagent', payload({ status: 'done', step: 3 }), true)).toBe('▸ 校对员：错别字扫描 · 3 步');
+    expect(foldLabel('subagent', payload({ status: 'running', step: 3 }), true)).toBe(
+      '▸ 校对员：错别字扫描 · 3 步 · 在办',
+    );
+    expect(foldLabel('subagent', payload({ status: 'error', step: 3 }), true)).toBe(
+      '▸ 校对员：错别字扫描 · 3 步 · 未办',
+    );
+    // 派生模式：fork = 承（继承上下文）/ fresh = 白；未知（旧卷）不缀
+    expect(foldLabel('subagent', payload({ mode: 'fork', step: 1 }), true)).toBe('▸ 校对员：错别字扫描 · 承 · 1 步');
+    expect(foldLabel('subagent', payload({ mode: 'fresh', step: 1 }), true)).toBe('▸ 校对员：错别字扫描 · 白 · 1 步');
+    // 一步没走（纯思考）时不报步数——「0 步」是噪声
+    expect(foldLabel('subagent', payload({ step: 0 }), true)).toBe('▸ 校对员：错别字扫描');
+    expect(foldLabel('subagent', payload({ step: 3 }), false)).toBe('▾ 收起 校对员：错别字扫描 · 3 步');
   });
 
   it('长描述截断 24 字；空描述回落「子代理」', () => {
     const payload = (description: string) => ({ agentId: 'a', description, status: 'done', childIds: [], items: [] });
     const long = '这是一段特别长的子代理描述文字超过二十四个字的边界测试用例';
-    expect(foldLabel('subagent', payload(long), true)).toBe(`▸ ${long.slice(0, 24)}… · 0 段`);
-    expect(foldLabel('subagent', payload(''), true)).toBe('▸ 子代理 · 0 段');
+    expect(foldLabel('subagent', payload(long), true)).toBe(`▸ ${long.slice(0, 24)}…`);
+    expect(foldLabel('subagent', payload(''), true)).toBe('▸ 子代理');
   });
 });
 
-describe('measure/摘除：subagent 组头恒一行，收起摘子块', () => {
+describe('measure/摘除：子代理帖的帖首几何，收起摘子块', () => {
   beforeEach(() => resetBlockIdCounterForTests());
 
-  it('组头测高与工具组头同构（注线顶距 10 + 折叠行 20），签名含描述/状态/段数', () => {
+  /* 帖首 = 帖签 20（+ padTop 10）+ 活体行（在办才有：2 + 15）。
+   * 三个读数都是**行为差**，不是抄固定值：收尾即退场了活体行。 */
+  it('帖首：收尾态 = 10 + 20；在办态多一条活体行 2 + 15', () => {
+    const make = (status: 'running' | 'done', doing: string | null) =>
+      createBlock(
+        'subagent',
+        { agentId: 'sa1', description: '调研', status, childIds: [], items: [], doing },
+        { messageId: 'm', part: null },
+      );
+    expect(measureBlockHeight(make('done', null))).toBe(10 + 20);
+    expect(measureBlockHeight(make('running', 'fs(read) a.ts'))).toBe(10 + 20 + 2 + 15);
+    // 在办但还没开始干活（模型思考中）——doing 由转译层兜底成「思考中」，同样占一行
+    expect(measureBlockHeight(make('running', '思考中'))).toBe(10 + 20 + 2 + 15);
+  });
+
+  it('签名含帖的状态/活体行/步数/复命长度（收尾那一帧必须重测）', () => {
     const header = createBlock(
       'subagent',
       {
@@ -392,13 +420,12 @@ describe('measure/摘除：subagent 组头恒一行，收起摘子块', () => {
         status: 'done',
         childIds: ['c1'],
         items: [{ type: 'text', text: 'x', finalised: true }],
+        step: 2,
       },
       { messageId: 'm', part: null },
     );
-    expect(measureBlockHeight(header)).toBe(10 + 20);
-    expect(measureSignature(header, false)).toBe('subagent|调研|done|1');
+    expect(measureSignature(header, false)).toBe('subagent|调研|done||2|0');
   });
-
   it('collapseToolGroups：subagent 组折叠摘 flow 子块，钉住子块保留', () => {
     const child = () => createBlock('markdown', { text: '子产出' }, { messageId: 'm', part: null });
     const c1 = { ...child(), id: 'c1' };

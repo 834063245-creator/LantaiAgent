@@ -22,7 +22,7 @@
 // part → 块保持引用（source.part = part 对象）——外部改动可经消息
 // version 信号触发重转译，块 id 按消息 id+part 索引稳定重建。
 
-import type { AssistantMessage, ChatMessage, ToolCallPart, UserMessage } from '../ui/message-model';
+import type { AssistantMessage, ChatMessage, SubAgentPart, ToolCallPart, UserMessage } from '../ui/message-model';
 import type { BlockPayloads, SourcedBlock } from './block-model';
 import { createBlock, DEFAULT_BLOCK_WIDTH } from './block-model';
 import { codeViewOf } from './code-view';
@@ -133,6 +133,51 @@ export function collapseToolGroups(blocks: SourcedBlock[], isCollapsed: (b: Sour
   }
   if (hidden.size === 0) return blocks;
   return blocks.filter((b) => !hidden.has(b.id) || b.state === 'pinned');
+}
+
+/** 子代理帖的机读读数（2026-11-20 帖批）。
+ *
+ *  帖面上除「子 parts 本身」之外还有几种**读数**，它们必须由转译层一次算清、
+ *  写进 payload，让渲染端与测高端读**同一份**（旧实现里折叠行文案在 fold.ts 现算、
+ *  活体行压根没有、测高只能按固定一行估——三处各算各的，涨高度必漂）。
+ *
+ *  口径（沿用现有 UI 词汇，不发明新名词）：
+ *   · step = 帖内已发生的**工具调用**个数（子工具块），不是 token 数；
+ *   · doing = 此刻正在干的那件事（最后一张仍 running/pending 的工具卡）；
+ *     没有在跑的工具 = 模型在思考，读作「思考中」；帖收尾后为 null；
+ *   · startedAt / finishedAt = 走秒两端（帖签现算 elapsed）；
+ *   · report = 复命正文（成功）/ error = 未办原因（失败或被召回）。
+ *
+ *  纯函数、只读 part：转译是每帧 O(块) 的主消耗，这里不做任何 IO。 */
+export interface SubagentPostFields {
+  mode?: 'fork' | 'fresh';
+  step: number;
+  doing: string | null;
+  startedAt?: number;
+  finishedAt?: number;
+  report?: string;
+  error?: string;
+}
+
+export function subagentPostFields(part: SubAgentPart): SubagentPostFields {
+  let step = 0;
+  let doing: string | null = null;
+  for (const p of part.parts) {
+    if (p.type !== 'tool') continue;
+    step += 1;
+    // 语义 = 「最后一张仍在跑的卡」；出了结果就清空（单槽，同 subagent-activity 口径）
+    doing = p.status === 'running' || p.status === 'pending' ? p.label || p.name : null;
+  }
+  const live = part.status === 'running';
+  return {
+    ...(part.mode !== undefined ? { mode: part.mode } : {}),
+    step,
+    doing: live ? (doing ?? '思考中') : null,
+    ...(part.startedAt !== undefined ? { startedAt: part.startedAt } : {}),
+    ...(part.finishedAt !== undefined ? { finishedAt: part.finishedAt } : {}),
+    ...(part.reportText ? { report: part.reportText } : {}),
+    ...(part.errorText ? { error: part.errorText } : {}),
+  };
 }
 
 /** 转译主函数（纯函数，可无头测试）。 */
@@ -511,10 +556,13 @@ function translateAssistantParts(
         break;
       }
       case 'subagent': {
-        // 子代理组（2026-09-01 三轴审计 F4）：组头一行（描述+状态+段数），
-        // 子 parts 挂组内——折叠摘除/钉住续命全复用工具组机制；不再摊平成
-        // 独立正文块污染主流。组头 id 锚 part 序号（`g` 尾缀，与工具组头
-        // 同族同稳定语义），子块 id 带 `s{n}` 前缀防与父消息 part 撞号。
+        // 子代理**帖**（2026-11-20 帖批；前身是 2026-09-01 F4 的「组头」）：
+        // 帖 = 一件事的起、在办、复命——头一行帖签（子印 + 描述 + 走秒 + 步数），
+        // 第二行**活体行**（此刻在干什么，只在进行时才有），体是本帖挂的子 parts，
+        // 尾是复命/未办段。活体行与复命段都写进 payload——渲染与测高读同一份，
+        // 不各自去翻 part（旧实现在渲染层现算，测高侧只能按固定一行估，两边会漂）。
+        // id 锚 part 序号（`g` 尾缀，与工具组头同族同稳定语义），子块 id 带
+        // `s{n}` 前缀防与父消息 part 撞号。
         const childIds: string[] = [];
         for (let sIdx = 0; sIdx < part.parts.length; sIdx++) childIds.push(`pb:${msg._id}:${idx}s${sIdx}`);
         const headerId = `pb:${msg._id}:${idx}g`;
@@ -528,6 +576,7 @@ function translateAssistantParts(
                 status: part.status,
                 childIds,
                 items: part.parts,
+                ...subagentPostFields(part),
               },
               { messageId: msg._id, part },
             ),

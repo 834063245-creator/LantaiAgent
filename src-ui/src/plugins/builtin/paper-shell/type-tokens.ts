@@ -173,6 +173,12 @@ export const CHROME_TOKENS = {
   userImages: { thumb: 64, gap: 8, marginTop: 10 },
   reasoning: { borderL: 2, padL: 18 },
   tool: { padTop: 10, noteW: 44, noteH: 1.5 },
+  /* 子代理**帖**chrome（2026-11-20 帖批）——帖 = 帖签 + 活体行 + 体 + 复命段。
+   *  帖签行高 = max(子印 19, 描述行 20)；活体行 15 + 上距 2 —— 帖收起态 =
+   *  padTop + 帖签 20 + 活体 17 = 47（与样张实测同值，见 prototype/subagent-post-ab）。
+   *  ⚠ 这不是「加高」而是**把活体行从折叠行里拆出来单列**：拆开才能把「干什么」
+   *  与「干了多少」分开读（旧形态一行塞三件事，三件都读不清）。 */
+  post: { padTop: 10, padL: 15, seal: 19, headLh: 20, liveLh: 15, liveGap: 2, bodyGap: 9, reportGap: 10, reportPad: 9 },
   // 载荷段头（2026-09-14 工具卡可读性专项）：参数/输出/错误各一行小字标 + 细规线。
   // 旧 .pp-out 的 marginTop/borderTop/padTop（6/1/6）退役——分隔语义改由段头行
   // 承载（首段不留空档，后续段上距 = marginTop）。
@@ -278,6 +284,17 @@ export const CHROME_DERIVED = {
   userImagesMarginTop: CHROME_TOKENS.userImages.marginTop,
   reasoningTextInset: CHROME_TOKENS.reasoning.borderL + CHROME_TOKENS.reasoning.padL,
   toolPadTop: CHROME_TOKENS.tool.padTop,
+  /* 子代理帖（2026-11-20 帖批）：帖签 / 活体行 / 复命段——measure 与 CSS 同源。
+   * 帖签行高取 headLh（= .pp-post-head 的行盒高），活体行 = liveLh + 上距。
+   * 帖收起态 = padTop 10 + headLh 20 + liveGap 2 + liveLh 15 = 47（样张实测同值）。 */
+  postPadTop: CHROME_TOKENS.post.padTop,
+  postPadL: CHROME_TOKENS.post.padL,
+  postHeadH: CHROME_TOKENS.post.headLh,
+  postLiveH: CHROME_TOKENS.post.liveLh,
+  postLiveGap: CHROME_TOKENS.post.liveGap,
+  postBodyGap: CHROME_TOKENS.post.bodyGap,
+  postReportGap: CHROME_TOKENS.post.reportGap,
+  postReportPad: CHROME_TOKENS.post.reportPad,
   /** 段头行恒一行（mono size × lh）——参数/输出/错误段共用。 */
   secHeadH: CHROME_TOKENS.secHead.size * CHROME_TOKENS.secHead.lh,
   /** 段头上距（首段不留空档——渲染端 gap 条件与 measure 同判据）。 */
