@@ -69,6 +69,13 @@ describe('帖的渲染面：复命段', () => {
     expect(container.querySelector('.pp-post-report--failed')).toBeTruthy();
   });
 
+  /* 2026-11-21 真机叠字事故：收起态的帖照画复命段（帖尾不随内页收起），而测高把
+   * 它当「无复命」算 ⇒ 后一块压上复命正文。这里钉住渲染面的语义：折叠只管内页。 */
+  it('收起态：复命段仍在纸面（折叠只收内页，帖尾不收起）', () => {
+    renderPost({ status: 'done', report: '全书 47 处图注断号，已列成清单。', __folded: true });
+    expect(container.querySelector('.pp-post-report-text')?.textContent).toContain('47 处图注断号');
+  });
+
   it('无回文（还在办）⇒ 整段不在场（不留空框）', () => {
     renderPost({ status: 'running', doing: 'fs(read) a.ts' });
     expect(container.querySelector('.pp-post-report')).toBeNull();

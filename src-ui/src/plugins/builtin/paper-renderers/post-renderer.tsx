@@ -31,8 +31,12 @@ export type BodyResolver = (kind: string) => ComponentType<BlockRendererProps> |
  *  说清「谁 · 在干什么 · 多久」，内页是「我要查它到底做了什么」时才打开的抽屉。
  *  收起/展开走壳层折叠态（与工具族同一套手势与持久化），本组件按 folded 收敛。
  *
- *  ⚠ 判据必须与 post-metrics.ts 的 measurePostHeight 逐字同源：那边按
- *  「folded ? 不出内页；有 report/error 才加复命段」算高，这里同条件出 DOM。 */
+ *  **折叠只管内页，不复命段**：回文是这个人交回来的答案（已办/未办就写在段头上），
+ *  不是抽屉里的过程。复命段**恒在**（有 report/error 时），收起态也照常画。
+ *  ⚠ 判据必须与 post-metrics.ts 的 measurePostHeight 逐字同源：那边
+ *  「folded 只跳过内页；有 report/error 一律加复命段高」，这里同条件出 DOM。
+ *  2026-11-21 真机叠字事故就是这条判据两侧漂了：测高在 folded 提前返回，
+ *  渲染端照画复命段 ⇒ 后一块压在复命正文上。 */
 export function SubagentPostBody({ block, folded, resolve }: BlockRendererProps & { resolve: BodyResolver }) {
   const p = block.payload as { status?: string; report?: string; error?: string; inner?: SourcedBlock[] };
   const inner = p.inner ?? [];

@@ -185,19 +185,31 @@ export const CHROME_TOKENS = {
   post: {
     padTop: 10,
     padL: 15,
+    /** 左缘虚线聘线宽（**进内容宽**：border-box 下正文可用宽 = 块宽 − borderL − padL）。
+     *  2026-11-21 叠字批：旧测宽只扣 padL，每行多算 1px——长复命在折行边界附近差一行。 */
+    borderL: 1,
     seal: 19,
     headH: 20,
     liveH: 15,
     liveGap: 2,
     reportGap: 10,
     reportPad: 9,
-    /* 内页（2026-11-21）：上距 / 左内距 / 步间距 / 序号列宽 / 行盒高。
+    /* 复命段其余几何（2026-11-21 叠字批）：段头上方那条弱规线宽 / 段头与正文之间的上距 /
+     * 正文宋体字号与行高系数。测高（post-metrics）与 CSS 同读这一组。 */
+    reportRule: 1,
+    reportTextGap: 6,
+    reportSize: 12.5,
+    reportLh: 1.85,
+    reportLabSize: 9,
+    reportLabLh: 1.2,
+    /* 内页（2026-11-21）：上距 / 左内距 / 步间距 / 序号列宽 / 行盒高 / 左规线宽。
      * ⚠ 行盒高用 *H（px 语义）——写 *Lh 会被注入器当行高系数发无单位值（11-21 事故）。 */
     innerGap: 12,
     innerPadL: 10,
     innerStepGap: 8,
     innerNoW: 26,
     innerH: 17,
+    innerBorder: 1,
   },
   // 载荷段头（2026-09-14 工具卡可读性专项）：参数/输出/错误各一行小字标 + 细规线。
   // 旧 .pp-out 的 marginTop/borderTop/padTop（6/1/6）退役——分隔语义改由段头行
@@ -307,17 +319,26 @@ export const CHROME_DERIVED = {
   /* 子代理帖（2026-11-20 帖批）：帖签 / 活体行 / 复命段——measure 与 CSS 同源。
    * 帖签行盒 headH、活体行 liveH + 上距——帖收起态 = padTop 10 + 20 + 2 + 15 = 47。 */
   postPadTop: CHROME_TOKENS.post.padTop,
-  postPadL: CHROME_TOKENS.post.padL,
+  /** 帖正文可用宽要扣的横向 chrome = 虚线聘线（border-left）宽 + 左内距。
+   *  border-box 下两者的和就是块宽与内容宽之差（2026-11-21 叠字批补 borderL）。 */
+  postTextInset: CHROME_TOKENS.post.borderL + CHROME_TOKENS.post.padL,
   postHeadH: CHROME_TOKENS.post.headH,
   postLiveH: CHROME_TOKENS.post.liveH,
   postLiveGap: CHROME_TOKENS.post.liveGap,
   postReportGap: CHROME_TOKENS.post.reportGap,
   postReportPad: CHROME_TOKENS.post.reportPad,
+  postReportRule: CHROME_TOKENS.post.reportRule,
+  postReportTextGap: CHROME_TOKENS.post.reportTextGap,
+  postReportSize: CHROME_TOKENS.post.reportSize,
+  postReportLh: CHROME_TOKENS.post.reportLh,
+  postReportLabSize: CHROME_TOKENS.post.reportLabSize,
+  postReportLabLh: CHROME_TOKENS.post.reportLabLh,
   postInnerGap: CHROME_TOKENS.post.innerGap,
   postInnerPadL: CHROME_TOKENS.post.innerPadL,
   postInnerStepGap: CHROME_TOKENS.post.innerStepGap,
   postInnerNoW: CHROME_TOKENS.post.innerNoW,
   postInnerH: CHROME_TOKENS.post.innerH,
+  postInnerBorder: CHROME_TOKENS.post.innerBorder,
   /** 段头行恒一行（mono size × lh）——参数/输出/错误段共用。 */
   secHeadH: CHROME_TOKENS.secHead.size * CHROME_TOKENS.secHead.lh,
   /** 段头上距（首段不留空档——渲染端 gap 条件与 measure 同判据）。 */

@@ -197,7 +197,8 @@
  *   「此刻在干什么」——两件事分开读才读得清（旧形态一行塞三件，三件都模糊）。 */
 .pp-block.pp-subagent {
   padding: var(--pp-ch-post-padTop) 0 0 var(--pp-ch-post-padL);
-  border-left: 1px dashed color-mix(in oklch, var(--indigo) 55%, transparent);
+  /* 聘线宽也进 token：它是 border-box 内容宽的一部分，测宽要扣（postTextInset）。 */
+  border-left: var(--pp-ch-post-borderL) dashed color-mix(in oklch, var(--indigo) 55%, transparent);
 }
 /* 帖签首行：与折叠行同高（20），但内容分三段（印 / 描述 / 读数） */
 .pp-post-head {
@@ -324,7 +325,8 @@
 .pp-post-inner {
   margin-top: var(--pp-ch-post-innerGap);
   padding-left: var(--pp-ch-post-innerPadL);
-  border-left: var(--rule-soft);
+  /* 规线宽走 token：测宽（measurePostInnerStepH）与 DOM 同扣这一像素。 */
+  border-left: var(--pp-ch-post-innerBorder) solid var(--rule-soft-ink);
   display: flex;
   flex-direction: column;
   gap: var(--pp-ch-post-innerStepGap);
@@ -429,19 +431,21 @@
 .pp-post-read--live {
   color: var(--indigo);
 }
-/* 复命段：帖尾一段回文。上距 + 段头行（复命 · 已办/未办）+ 正文（宋体 12.5 / 1.85） */
+/* 复命段：帖尾一段回文。上距 + 上规线 + 段头行（复命 · 已办/未办）+ 正文（宋体 12.5 / 1.85）。
+ * ⚠ 几何四件全走 post token（post-metrics.measurePostReportH 同源）——尤其是
+ *  上规线宽与「段头 → 正文」的 6px 上距：旧测高漏了这两项，每帖少算 7px。 */
 .pp-post-report {
   margin-top: var(--pp-ch-post-reportGap);
   padding-top: var(--pp-ch-post-reportPad);
-  border-top: var(--rule-soft);
+  border-top: var(--pp-ch-post-reportRule) solid var(--rule-soft-ink);
 }
 .pp-post-report-lab {
   display: flex;
   align-items: center;
   gap: 8px;
   font-family: var(--f-mono);
-  font-size: 9px;
-  line-height: 1.2;
+  font-size: var(--pp-ch-post-reportLabSize);
+  line-height: var(--pp-ch-post-reportLabLh);
   letter-spacing: 0.22em;
   color: var(--ink-3);
 }
@@ -457,17 +461,18 @@
   color: var(--warn);
 }
 .pp-post-report-text {
-  margin: 6px 0 0;
+  margin: var(--pp-ch-post-reportTextGap) 0 0;
   font-family: var(--f-song);
-  font-size: 12.5px;
-  line-height: 1.85;
+  font-size: var(--pp-ch-post-reportSize);
+  line-height: var(--pp-ch-post-reportLh);
   color: var(--ink-2);
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
 /** 帖的块高镜像：measure.ts 的 `subagent` 分支读同一份 CHROME_TOKENS.post 派生。
- *  收起态 = padTop 10 + 帖签 20 + 活体行（在办 2+15）= 47（在办）/ 30（已收尾）。
- *  已收尾且无复命 = 帖首 30——与旧形态同高，不多占一像素。 */
+ *  帖首 = padTop 10 + 帖签 20 + 活体行（在办 2+15）= 47（在办）/ 30（已收尾无复命）。
+ *  **复命段在收起态也占高**（帖尾不是抽屉里的过程，见 post-metrics.measurePostHeight 注）：
+ *  有复命 = 帖首 + reportGap 10 + 规线 1 + 内距 9 + 段头 10.8 + 正文上距 6 + 正文行高。 */
 /* 参数（入）段：石青 mono 直排（未结构化载荷仍是石青字身——结构化行由 .pp-tv-* 接管墨阶） */
 .pp-block.pp-tool .pp-args {
   margin: 0;

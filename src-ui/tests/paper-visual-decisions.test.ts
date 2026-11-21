@@ -1306,6 +1306,34 @@ describe('机读位字体与 pre>code 交还（2026-09-24）', () => {
     expect(PANEL_CSS).not.toContain('--pp-ch-post-liveLh');
   });
 
+  /* 2026-11-21 叠字批（用户报「子代理卡片折叠状态盖住后一个工具卡片的文字」）：
+   * 复命段的几何四件（上规线 / 内距 / 段头行 / 正文上距）以前一半是 CSS 裸字面量，
+   * post-metrics 的测高漏了规线与正文上距 ⇒ 每帖少算 7px；行高又误把系数 1.85
+   * 当 px 递进 pretext ⇒ 正文每行只算 1.85px。四件现在全走 post token，CSS 与
+   * measurePostReportH 读同一组数——改一处两边同时变。 */
+  it('复命段几何全走 post token（规线 / 内距 / 段头—正文上距 / 字号行高）', () => {
+    const report = ruleBody(PANEL_CSS, '.pp-post-report {');
+    expect(report).toContain('margin-top: var(--pp-ch-post-reportGap)');
+    expect(report).toContain('padding-top: var(--pp-ch-post-reportPad)');
+    expect(report).toContain('border-top: var(--pp-ch-post-reportRule) solid var(--rule-soft-ink)');
+    const text = ruleBody(PANEL_CSS, '.pp-post-report-text {');
+    expect(text).toContain('margin: var(--pp-ch-post-reportTextGap) 0 0');
+    expect(text).toContain('font-size: var(--pp-ch-post-reportSize)');
+    expect(text).toContain('line-height: var(--pp-ch-post-reportLh)');
+    const lab = ruleBody(PANEL_CSS, '.pp-post-report-lab {');
+    expect(lab).toContain('font-size: var(--pp-ch-post-reportLabSize)');
+    expect(lab).toContain('line-height: var(--pp-ch-post-reportLabLh)');
+  });
+
+  /* border-box 下聘线（帖块 border-left）与内页左规线都吃内容宽：测宽不扣它们，
+   * 长复命/长内页在折行边界附近就会比 DOM 少一行。宽度真源住在同一组 token 里。 */
+  it('帖的聘线与内页左规线也走 token（border-box 下它们进测宽）', () => {
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-subagent {')).toContain('border-left: var(--pp-ch-post-borderL) dashed');
+    expect(ruleBody(PANEL_CSS, '.pp-post-inner {')).toContain(
+      'border-left: var(--pp-ch-post-innerBorder) solid var(--rule-soft-ink)',
+    );
+  });
+
   /* 2026-11-21「连续帖文字重叠」事故钉：内页**不许继承父卷的祖先作用域**。
    *
    * 病灶：`.pp-args` / `.pp-out` 的盒规则全部挂在 `.pp-block.pp-tool` 这个祖先上

@@ -10,7 +10,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@chenglou/pretext', () => ({
   prepare: vi.fn((text: string) => ({ _text: text, _mock: true })),
-  layout: vi.fn(() => ({ height: 36, lineCount: 2 })),
+  // 行高按 pretext 真实语义（height = lineCount × lineHeight，lineHeight 是 **px**）。
+  // 2026-11-21 叠字事故里测高把系数 1.85 当 px 递进来，常高 mock（36）把单位病盖住了
+  // ——mock 必须自己尊重第三个参数，单位漂移才测得出来。
+  layout: vi.fn((_p: unknown, _w: number, lineHeight: number) => ({ height: lineHeight * 2, lineCount: 2 })),
   clearCache: vi.fn(),
 }));
 vi.mock('@chenglou/pretext/rich-inline', () => ({
@@ -26,6 +29,8 @@ import {
   measureBlockHeight,
   measureBlockHeightCached,
 } from '../src/plugins/builtin/paper-shell/measure';
+import { measurePostInnerStepH, postInnerShellH } from '../src/plugins/builtin/paper-shell/post-metrics';
+import { cssUsedPx } from '../src/plugins/builtin/paper-shell/type-tokens';
 import type { SubAgentPart, ToolCallPart } from '../src/ui/message-model';
 
 function toolPart(name: string, status: ToolCallPart['status'] = 'done'): ToolCallPart {
@@ -106,6 +111,21 @@ describe('帖高随读数走（测高镜像与渲染同源）', () => {
     expect(measureBlockHeight(withReport)).toBeGreaterThan(measureBlockHeight(settled));
   });
 
+  /* 2026-11-21 真机叠字事故（用户报「子代理卡片折叠状态盖住后一个工具卡片的文字」）：
+   * 渲染端收起态照画复命段，测高却在 folded 分支提前 return ⇒ 后一块按没有复命的坐标排。
+   * 本用例钉三件事：① 收起态也计复命段；② 行高按 px 用值（12.5×1.85）而不是系数；
+   * ③ 上规线 + 段头 + 正文上距都在账上。 */
+  it('收起态复命段照样计高（帖尾不是折叠的抽屉）——行高按 12.5×1.85 的 px 用值', () => {
+    const withoutReport = blockOf(subagentPostFields(part({ status: 'done', parts: [toolPart('fs', 'done')] })));
+    const withReport = blockOf(
+      subagentPostFields(part({ status: 'done', parts: [toolPart('fs', 'done')], reportText: '办完了' })),
+    );
+    const delta = measureBlockHeight(withReport, true) - measureBlockHeight(withoutReport, true);
+    // mock 固定两行：2 × (12.5 × 1.85)；段头行同 CSS 用值（9 × 1.2 过 1/64 量化）
+    const reportBodyH = 2 * 12.5 * 1.85;
+    expect(delta).toBeCloseTo(10 + 1 + 9 + cssUsedPx(9 * 1.2) + 6 + reportBodyH, 6);
+  });
+
   it('帖默认收起；出错时张开', () => {
     const ok = blockOf(subagentPostFields(part({ status: 'done' })));
     expect(defaultFolded('subagent', ok.payload)).toBe(true);
@@ -155,6 +175,29 @@ describe('帖内页：子块不属于父卷（2026-11-21 内页批）', () => {
     const expanded = measureBlockHeight(post, false);
     expect(collapsed).toBe(10 + 20);
     expect(expanded).toBeGreaterThan(collapsed);
+  });
+
+  /* 2026-11-21 叠字批：内页测宽必须等于 DOM 的实际行盒宽——帖块 border-box，
+   * 块宽先扣聘线 1 + 左内距 15；内页自己再扣左规线 1 + 左内距 10；步内再扣
+   * 序号列 26 + 列距 8。旧式子从块宽直接扣后三样，多算 16px ⇒ 长内页少折一行。 */
+  it('内页测宽扣齐帖块聘线/左内距与内页规线（漏扣 = 长内页少折一行）', () => {
+    let bodyW = Number.NaN;
+    const h = measurePostInnerStepH({ kind: 'markdown', w: 0 }, 600, (b) => {
+      bodyW = b.w;
+      return 120;
+    });
+    expect(bodyW).toBe(600 - (1 + 15) - (1 + 10) - 26 - 8);
+    expect(h).toBe(120); // markdown 内页无父卷块壳
+  });
+
+  /* 内页是**体**渲染（folded=false）：父卷的折叠行不在 DOM 里，测高必须扣掉。
+   * 2026-11-21 叠字批：旧表只扣 padTop、夹注一分不扣 ⇒ 每步多算 20px 的虚高空白。 */
+  it('内页块壳含折叠行（脚注 30 / 夹注 20 / 正文 0）——多扣或少扣都是虚高/压字', () => {
+    expect(postInnerShellH('tool')).toBe(10 + 20); // toolPadTop + .pp-fold
+    expect(postInnerShellH('code')).toBe(10 + 20);
+    expect(postInnerShellH('reasoning')).toBe(20);
+    expect(postInnerShellH('markdown')).toBe(0);
+    expect(measurePostInnerStepH({ kind: 'tool', w: 0 }, 600, () => 130)).toBe(100); // 130 − 30
   });
 });
 
