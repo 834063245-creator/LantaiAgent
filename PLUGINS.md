@@ -67,9 +67,11 @@ export default {
       () =>
         ctx.panels.register({
           id: 'quick-panel',
-          side: 'right',
+          side: 'right',   // 壳给盒子：定位 / 书眉 / 关闭钮由宿主出，组件只写内容
           title: '快捷',
           icon: 'agent',
+          // 可选：宽 'shell'（缺省，壳给盒子）/ 'self'（面板自持定位与 chrome）；
+          //       width 是像素宽，缺省 = 内容撑开（兜底带 260px～45vw）
           component: () => ce('div', { style: { padding: 16 } }, 'Hello from quick-panel'),
         }),
       'quick-panel',
@@ -128,7 +130,7 @@ export default {
 
 | ctx 通道 | 贡献什么 | 生效时机（各通道声明的 `timing`） |
 |---|---|---|
-| `ctx.panels` | 面板（右侧 dock / 全屏覆盖） | 装载后即时（`immediate`） |
+| `ctx.panels` | 面板（`side:'left'/'right'` = 侧栏，壳出书眉与定位；`side:null` = 全屏覆盖，自己定位）。**入口 = 架阁「软件型」页** | 装载后即时（`immediate`） |
 | `ctx.commands` | 命令（命令面板 Ctrl+K） | 装载后即时（`immediate`） |
 | `ctx.overlays` | 画布覆盖层（视口固定槽位：创作坞 / 右缘窄条） | 装载后即时（`immediate`） |
 | `ctx.renderers` | 块渲染器（纸壳块体渲染，后注册胜 + `*` 兜底） | 渲染期每帧重取（`frame`） |
@@ -228,9 +230,9 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 
 ## 内部：给兰台仓库加第一方出厂产物
 
-兰台内置的 59 个第一方插件（**19 内核 service + 40 出厂产物**）与第三方走同一套通道。
+兰台内置的 60 个第一方插件（**19 内核 service + 41 出厂产物**）与第三方走同一套通道。
 内核 19 件编译进 exe（注册表/运行时 + code-runtime + dynamic-runner + lsp-service + root-views + token-meter + workspaces + shellRows + steps——真源 =
-`src-ui/src/plugins/service-plugins.ts`，loader 的 `BUILTIN_PLUGINS` 由它派生）；出厂产物 40 件真源在 `plugins/builtin/<name>/`
+`src-ui/src/plugins/service-plugins.ts`，loader 的 `BUILTIN_PLUGINS` 由它派生）；出厂产物 41 件真源在 `plugins/builtin/<name>/`
 目录（磁盘通道装载，**改插件 = 换产物，不重编译 exe**）。设置面板
 「插件」tab 三组陈列：**平台服务**（内核，不可禁）/ **内置插件**（产物，
 可禁用）/ **已安装**（第三方）。

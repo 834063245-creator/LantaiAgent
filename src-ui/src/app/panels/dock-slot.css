@@ -1,0 +1,126 @@
+/* ═══════════════════════════════════════════════════════════════
+   DockSlot — 通用面板壳（v66，2026-11-21）。
+
+   病灶：ctx.panels 的出口（DockRail）随 V5 拆除、PanelDef.side 从此零消费者，
+   第三方面板裸挂文档流 ⇒ 被纸壳根（z 280）与首页底版（z 30）整片盖住，任何
+   应用状态下都不可见。本片给「frame: 'shell'（缺省）」的面板一个盒子。
+
+   三条纪律：
+     ① **只出盒子，不出形态**——盒子里装什么由面板决定（对齐 ctx.overlays）；
+     ② 尺寸走兜底带（260px ～ 45vw），面板声明 width 时以它为准；
+     ③ 层级取 token（--z-dock-panel），禁散写 magic number（tokens.css 头注）。
+   ═══════════════════════════════════════════════════════════════ */
+
+.dock-slot {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  /* 兜底带：面板不声明 width 时按内容撑开，但夹在 260px ～ 45vw 之间——
+     下限保证可见（fit-content 在空内容时会塌到 0），上限保证不吞掉纸面。 */
+  width: fit-content;
+  min-width: 260px;
+  max-width: 45vw;
+  z-index: var(--z-dock-panel);
+  background: var(--paper);
+  color: var(--ink-1);
+  font-family: var(--f-song);
+  font-size: var(--fs-body);
+  line-height: 1.7;
+  /* 纸壳 / 书脊 / 侧栏都在它底下，本层必须自己接事件。 */
+  pointer-events: auto;
+  transition:
+    opacity var(--m-sheet),
+    transform var(--m-sheet);
+}
+
+.dock-slot[data-side="left"] {
+  left: 0;
+  border-right: var(--rule-strong);
+}
+
+.dock-slot[data-side="right"] {
+  right: 0;
+  border-left: var(--rule-strong);
+}
+
+/* ── 书眉（壳出：图标 + 标题 + 关闭钮；面板不重复画）── */
+.dock-slot-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  border-bottom: var(--rule-strong);
+  flex: none;
+}
+
+.dock-slot-icon {
+  display: inline-flex;
+  color: var(--ink-3);
+}
+
+.dock-slot-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.08em;
+  color: var(--ink-1);
+}
+
+.dock-slot-close {
+  appearance: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  background: none;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: 1;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition:
+    border-color var(--snap),
+    color var(--snap),
+    background var(--snap);
+}
+
+.dock-slot-close:hover {
+  border-color: var(--ink-2);
+  color: var(--ink-1);
+  background: var(--paper-deep);
+}
+
+.dock-slot-close:active {
+  translate: 0 1px;
+}
+
+/* 本体：面板内容的容器（面板自己若也滚，这里不抢）。 */
+.dock-slot-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 进场 / 退场（§15 退场对称，与设置面板同一套钩子）──
+   入场：起手式 + 过渡（不用 keyframes——收请求与动画抢同一属性时动画会压过渡）；
+   退场：外层标记层挂 [data-panel-leaving] 后本盒子淡出（窗长 = --m-sheet）。 */
+@starting-style {
+  .dock-slot {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+
+  .dock-slot[data-side="right"] {
+    transform: translateX(8px);
+  }
+}
+
+[data-panel-leaving] .dock-slot {
+  pointer-events: none;
+  opacity: 0;
+}

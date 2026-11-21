@@ -869,7 +869,7 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     usePluginStore.getState().setPlugins([]);
   });
 
-  it('装载后写入 plugin-store：58 条 builtin 记录 + 元数据 + 状态 active', async () => {
+  it('装载后写入 plugin-store：60 条 builtin 记录 + 元数据 + 状态 active', async () => {
     const root = new Context();
     loadBuiltinPlugins(root);
     // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
@@ -889,7 +889,8 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     // pre-step-service 新增（2026-10-13 agent-hooks-plan 一期：步前裁决贡献面）：57 → 58
     // 二期面扩展改名 steps-service（2026-10-13：ctx.preStep → ctx.steps + turn-stopping；计数不变）
     // composition-domain 新增（2026-10 创作者模式最小闭环：composition 工具行，defaultOff）：58 → 59
-    expect(ALL_PLUGINS.length).toBe(59);
+    // shelf-domain 新增（2026-11-21 v66：架阁出纸壳成应用级浮层 + panels 通道唯一入口）：59 → 60
+    expect(ALL_PLUGINS.length).toBe(60);
     expect(plugins.every((p) => p.builtin === true)).toBe(true);
     expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
     expect(plugins.every((p) => p.status === 'active')).toBe(true);

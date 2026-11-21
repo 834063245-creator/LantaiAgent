@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 //
-// plugins/builtin/paper-shell/ShelfOverlay — **架阁**（docs/plans/entity-shelf-plan.md B3/B4）
+// plugins/builtin/shelf-domain/ShelfOverlay — **架阁**（docs/plans/entity-shelf-plan.md B3/B4）
+// v66（2026-11-21）：随架阁升格从 paper-shell 迁出，经 ctx.rootViews 的 'overlay' 槽贡献
+// （App 根渲染——纸关着时也在）。同批收编 ctx.panels：软件页 = 插件窗口 ∪ 面板。
 //
 // 顶部那枚「架阁」字件点开的浮层：两页（软件型 / 卡片型），用户 2026-12-08 拍板。
 // 卡片页点一条 = **展开这张卡**（B4）：html 卡在沙箱里真跑，勾选/输入写回**卡片库**
@@ -24,10 +26,13 @@ import {
   getChatStore,
   listCards,
   openPluginWindow,
+  panelDefs,
   readCard,
   renameCard,
   useCanvasViewStore,
   useCoreStore,
+  useDockStore,
+  usePanelDefsStore,
   usePluginWindowStore,
   useShelfStore,
   useToastStore,
@@ -72,6 +77,17 @@ export function ShelfOverlay() {
   const defs = usePluginWindowStore((s) => s.defs);
   const windows = usePluginWindowStore((s) => s.windows);
 
+  /* ── 搜索 / 键盘（2026-11-21 架阁升格批，用户拍板「一批做完」+「视觉后面单独立项」）──
+   * 搜索：两页共用一条查询（切页不重置——「我刚才在找东西」不应该因为换页忘掉）。
+   * **空查询 = 全列**，不做默认截断：架阁是查询面不是信息流（列表本来就是全量）。 */
+  const [query, setQuery] = useState('');
+  /** 键盘选中行（-1 = 未选）。只在**当前页**的行序上移动。 */
+  const [cursor, setCursor] = useState(-1);
+  /** 行序的**可读最新值**：键盘 handler 只注册一次（窗口级），若直接把 rows 放进
+   *  依赖数组，每次筛选/切页都会重绑一次监听器；走 ref 则监听器恒定、读到的永远
+   *  是这一帧的行序（单一真源仍是下面的 rows 派生）。 */
+  const rowsRef = useRef<Array<{ id: string; run: () => void }>>([]);
+
   const [cards, setCards] = useState<CardRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [opened, setOpened] = useState<OpenedCard | null>(null);
@@ -112,14 +128,39 @@ export function ShelfOverlay() {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Esc 先退一层：展开中 → 回列表；列表 → 关浮层。
-      if (opened) setOpened(null);
-      else closeShelf();
+      if (e.key === 'Escape') {
+        // Esc 先退一层：展开中 → 回列表；列表 → 关浮层。
+        if (opened) setOpened(null);
+        else closeShelf();
+        return;
+      }
+      /* ↑↓ / Enter（架阁升格批，2026-11-21）：只在**未展开卡片**时接管——卡片详图里
+         那些键属于卡片自己的界面（iframe 里的表单），浮层不能抢。
+         输入件聚焦时也不接管（搜索框里 ↑↓ 该走光标）。 */
+      if (opened) return;
+      const el = document.activeElement;
+      if (el && el.tagName === 'INPUT') return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCursor((c) => {
+          const n = rowsRef.current.length;
+          if (n === 0) return -1;
+          const step = e.key === 'ArrowDown' ? 1 : -1;
+          const next = c < 0 ? (step > 0 ? 0 : n - 1) : (c + step + n) % n;
+          return next;
+        });
+        return;
+      }
+      if (e.key === 'Enter') {
+        const row = rowsRef.current[cursor];
+        if (!row) return;
+        e.preventDefault();
+        row.run();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, opened, closeShelf]);
+  }, [open, opened, closeShelf, cursor]);
 
   // 卡片详图的状态桥：iframe 的 get/patch → 卡片库的 card_read / card_state_write。
   // 只认**本 iframe** 的消息（e.source 校验），回执按 req 配对——与 renderers 的
@@ -272,15 +313,57 @@ export function ShelfOverlay() {
       .catch((err: unknown) => setOpenError(`打不开这张卡：${String(err)}`));
   };
 
+  /* ── 行清单（架阁升格批：软件页 = 插件窗口 ∪ **面板**）──
+   * 面板进架阁的依据（2026-11-21）：ctx.panels 此前只有注册端没有出口——插件注册了
+   * 面板，壳里既没有入口也没有盒子（见 docs/issues/lantai-plugin-panels-no-home）。
+   * 架阁本来就是「软件的门」，面板是同一件事的另一半（同一张皮、缺了整套宿主）。
+   *
+   * 只收 side !== null 的：side:null 的面板（纸 / 设置）语义是「不上轨道」，
+   * 它们不是「软件」，各有自己的开关（Ctrl+P / Ctrl+, 与它们的命令贡献）。
+   * 判据读 panelDefs() 合流点（常量 + 插件贡献），壳里不重推「哪些 id 是面板」。 */
+  const panelTick = usePanelDefsStore((s) => s.panelDefsTick);
+  void panelTick; // 贡献热注册即时重进清单
+  const panelRows = panelDefs()
+    .filter((d) => d.side !== null)
+    .filter((d) => !query || d.title.toLowerCase().includes(query.toLowerCase()));
+  const appRows = Object.values(defs).filter(
+    (d) => !query || (d.title || d.pluginName).toLowerCase().includes(query.toLowerCase()),
+  );
+  const cardRows = (cards ?? []).filter((c) => {
+    if (!query) return true;
+    const title = typeof c.title === 'string' ? c.title : '';
+    return title.toLowerCase().includes(query.toLowerCase());
+  });
+
+  /* 键盘行序（与渲染同序）：软件页 = 窗口行 → 面板行；卡片页 = 卡片行。
+   * 单一真源——渲染与 ↑↓/Enter 都读它，不各推一份。 */
+  const rows: Array<{ id: string; run: () => void }> =
+    page === 'app'
+      ? [
+          ...appRows.map((d) => ({
+            id: d.pluginName,
+            run: () => {
+              openPluginWindow(d.pluginName);
+              closeShelf();
+            },
+          })),
+          ...panelRows.map((p) => ({
+            id: p.id,
+            run: () => {
+              useDockStore.getState().togglePanel(p.id);
+              closeShelf();
+            },
+          })),
+        ]
+      : cardRows.map((c) => ({ id: c.cardId, run: () => openCard(c.cardId) }));
+  rowsRef.current = rows;
+
   if (!open) return null;
 
-  const apps = Object.values(defs);
   const openedSet = new Set(windows.map((w) => w.pluginName));
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: 背板点击关闭（与命令面板同款）
     <div className="pp-shelf-mask" onPointerDown={closeShelf}>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: 浮层本体吞掉背板手势 */}
       <div className="pp-shelf" role="dialog" aria-label="架阁" onPointerDown={(e) => e.stopPropagation()}>
         <header className="pp-shelf-head">
           <span className="pp-shelf-title">架阁</span>
@@ -293,6 +376,7 @@ export function ShelfOverlay() {
                 onClick={() => {
                   setPage(key);
                   setOpened(null);
+                  setCursor(-1);
                 }}
               >
                 {PAGE_LABEL[key]}
@@ -303,6 +387,24 @@ export function ShelfOverlay() {
             ×
           </button>
         </header>
+
+        {/* 搜索（架阁升格批）：两页共用一条查询，切页不重置。空查询 = 全列——
+            架阁是查询面不是信息流，不做默认截断。 */}
+        {opened ? null : (
+          <div className="pp-shelf-search">
+            <input
+              className="pp-shelf-search-input"
+              type="search"
+              value={query}
+              placeholder="搜软件 / 面板 / 卡片"
+              aria-label="搜索架阁"
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setCursor(-1);
+              }}
+            />
+          </div>
+        )}
 
         {opened ? (
           <div className="pp-shelf-detail">
@@ -331,15 +433,20 @@ export function ShelfOverlay() {
           <div className="pp-shelf-body">
             {openError ? <p className="pp-shelf-error">{openError}</p> : null}
             {page === 'app' ? (
-              apps.length === 0 ? (
-                <p className="pp-shelf-empty">还没有装软件。装进来的软件会住在这里——去「设置 → 插件」安装一个试试。</p>
+              appRows.length === 0 && panelRows.length === 0 ? (
+                <p className="pp-shelf-empty">
+                  {query
+                    ? '没有匹配的软件或面板。'
+                    : '还没有装软件。装进来的软件会住在这里——去「设置 → 插件」安装一个试试。'}
+                </p>
               ) : (
                 <ul className="pp-shelf-list">
-                  {apps.map((def) => (
+                  {appRows.map((def, i) => (
                     <li key={def.pluginName}>
                       <button
                         type="button"
                         className="pp-shelf-item"
+                        data-cursor={cursor === i ? 'on' : undefined}
                         onClick={() => {
                           /* **必须走窗口设施**（不是裸 store）：设施会通知受治进程
                              治理器，lazy / with-window 档的后端据此才被拉起。
@@ -357,17 +464,40 @@ export function ShelfOverlay() {
                       </button>
                     </li>
                   ))}
+                  {/* 面板行（架阁升格批）：与软件行同规格——对用户就是同一种「装进来的东西」。
+                      点击走 dock-store（开合由壳面板自己渲染），关浮层收尾与软件行一致。 */}
+                  {panelRows.map((p, i) => (
+                    <li key={'panel-' + p.id}>
+                      <button
+                        type="button"
+                        className="pp-shelf-item"
+                        data-cursor={cursor === appRows.length + i ? 'on' : undefined}
+                        onClick={() => {
+                          useDockStore.getState().togglePanel(p.id);
+                          closeShelf();
+                        }}
+                      >
+                        <span className="pp-shelf-name">{p.title}</span>
+                        <span className="pp-shelf-meta">
+                          面板 · {p.side === 'left' ? '左' : '右'}
+                          {useDockStore.getState().open[p.id] ? ' · 已开' : ''}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               )
             ) : loadError ? (
               <p className="pp-shelf-error">卡片库读取失败：{loadError}</p>
             ) : cards === null ? (
               <p className="pp-shelf-empty">正在读卡片库…</p>
-            ) : cards.length === 0 ? (
-              <p className="pp-shelf-empty">还没有入阁的卡片。把鼠标移到任意一张卡上，点「入阁」就收进来了。</p>
+            ) : cardRows.length === 0 ? (
+              <p className="pp-shelf-empty">
+                {query ? '没有匹配的卡片。' : '还没有入阁的卡片。把鼠标移到任意一张卡上，点「入阁」就收进来了。'}
+              </p>
             ) : (
               <ul className="pp-shelf-list">
-                {cards.map((c) => {
+                {cardRows.map((c, i) => {
                   const title = typeof c.title === 'string' ? c.title : '';
                   return (
                     <li key={c.cardId} className="pp-shelf-row">
@@ -386,7 +516,12 @@ export function ShelfOverlay() {
                         />
                       ) : (
                         <>
-                          <button type="button" className="pp-shelf-item" onClick={() => openCard(c.cardId)}>
+                          <button
+                            type="button"
+                            className="pp-shelf-item"
+                            data-cursor={cursor === i ? 'on' : undefined}
+                            onClick={() => openCard(c.cardId)}
+                          >
                             <span className="pp-shelf-name">
                               {title || (typeof c.kind === 'string' ? `${c.kind}（未命名）` : '未命名卡片')}
                             </span>

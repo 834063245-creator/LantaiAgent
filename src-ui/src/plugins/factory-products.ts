@@ -42,6 +42,7 @@ import { builtinRenderersPlugin } from './builtin/renderers';
 import { builtinSessionsPlugin } from './builtin/sessions-builtin';
 import { sessionsHomePlugin } from './builtin/sessions-home';
 import { settingsPlugin } from './builtin/settings-domain';
+import { shelfDomainPlugin } from './builtin/shelf-domain';
 import { builtinShellPlugin } from './builtin/shell-builtin';
 import { inProcessSubagentPlugin } from './builtin/subagent-in-process';
 import { BUILTIN_ROSTER } from './builtin-roster';
@@ -74,6 +75,8 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     sessionsHomePlugin,
     // 批 9e-3（2026-09-26）：ask / 权限卡架归产物（名册 required——唯一承接面），经 'overlay' 槽贡献
     askCardsPlugin,
+    // v66（2026-11-21）：架阁出纸壳——应用级浮层（'overlay' 槽），同时也是 panels 通道的唯一入口
+    shelfDomainPlugin,
     paperPlugin,
     settingsPlugin,
     canvasNavPlugin,

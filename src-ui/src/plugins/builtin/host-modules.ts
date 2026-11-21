@@ -172,6 +172,9 @@ import { mountDialogFocus } from '../../app/dialog-focus';
 import { Icon } from '../../app/Icon';
 import { Overlay, useDialogEscape, useOutsideClose } from '../../app/overlay';
 import { PluginBoundary } from '../../app/PluginBoundary';
+// panelDefs 是「常量 + ctx.panels 贡献」的合流点（读模块级 activePanelContributions）
+// ——必须走桥，否则产物里会内联成第二份登记面（v66 架阁收编面板）。
+import { panelDefs } from '../../app/panels/panel-def';
 // 批 1 归家：McpPage / PluginsPage / SkillsPage 已迁 plugins/builtin/settings-domain/
 // （改为逐符号桥，见下方「批 1」段）；ProviderPage 家族仍在内核（批 9）。
 // 批 8b 归家：纸面块渲染器进 paper-renderers 包 ⇒ 桥它仍住应用 bundle 的件
@@ -403,6 +406,7 @@ import {
   useDraftSheetStore,
 } from '../../state/draft-sheet-store';
 import { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../state/mode-store';
+import { usePanelDefsStore } from '../../state/panel-defs-store';
 import { usePluginPrefs } from '../../state/plugin-prefs';
 import { usePluginStore } from '../../state/plugin-store';
 import { usePluginWindowStore } from '../../state/plugin-window-store';
@@ -622,6 +626,9 @@ const faceDeps = {
   getComposeStore,
   resolveNewSessionDefault,
   useDockStore,
+  // v66（2026-11-21）架阁收编面板：清单合流点 + 贡献变更信号——两个都是模块级态，必须走桥。
+  panelDefs,
+  usePanelDefsStore,
   MODE_DESCRIPTIONS,
   MODE_LABELS,
   PERMISSION_MODES,

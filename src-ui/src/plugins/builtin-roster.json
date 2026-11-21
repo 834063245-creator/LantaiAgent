@@ -405,8 +405,19 @@
     "face": true
   },
   {
-    "dir": "bundled-engine",
+    "dir": "shelf-domain",
     "buildOrder": 38,
+    "description": "架阁（软件的门 + 卡片的家；应用级浮层——软件页还是 panels 通道的唯一入口）",
+    "entry": "index.tsx",
+    "hostModule": "host",
+    "inject": ["rootViews"],
+    "required": true,
+    "face": true,
+    "shared": ["state/card-quote.ts", "paper/plate-sign.ts"]
+  },
+  {
+    "dir": "bundled-engine",
+    "buildOrder": 39,
     "description": "随包图谱引擎接线（探测/开关留内核；接线随包——禁用 = 引擎天然 kill switch）",
     "entry": "index.ts",
     "hostModule": "host",
@@ -414,7 +425,7 @@
   },
   {
     "dir": "composition-domain",
-    "buildOrder": 39,
+    "buildOrder": 40,
     "description": "组合作者面工具（composition：list/read/validate/write；默认关——只由 creator 组合回开）",
     "entry": "index.ts",
     "hostModule": "host",

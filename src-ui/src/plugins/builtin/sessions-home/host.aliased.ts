@@ -46,6 +46,7 @@ export const workspaceListCached = impl.workspaceListCached;
 export const pickFolder = impl.pickFolder;
 export const workspaceFlow = impl.workspaceFlow;
 export const useDockStore = impl.useDockStore;
+export const useShelfStore = impl.useShelfStore;
 export const useUpdateStore = impl.useUpdateStore;
 export const useShellStore = impl.useShellStore;
 export const useCoreStore = impl.useCoreStore;

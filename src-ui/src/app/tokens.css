@@ -166,6 +166,8 @@
   --z-paper-base: 280; /* 纸壳 */
   --z-paper-rack: 281; /* 书脊架——侧栏收起态的左缘卷列（与 --z-paper-sidebar 互斥两态） */
   --z-paper-sidebar: 282; /* 案卷侧栏 */
+  --z-dock-panel: 283; /* 通用面板壳 DockSlot（v66，2026-11-21）——书脊 281 / 侧栏 282
+                         之上（同侧并陈时面板盖住家具），插件应用窗 460 之下 */
   --z-panel-veil: 400; /* settings 遮罩 */
   --z-panel: 401; /* settings 面板体 */
   --z-plugin-window: 460; /* 插件应用窗（app shell 件 A · S3）——软件窗盖面板，让位于牒卡/命令面板 */

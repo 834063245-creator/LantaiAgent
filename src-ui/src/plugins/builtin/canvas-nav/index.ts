@@ -43,6 +43,9 @@ export const canvasNavPlugin = {
           side: 'left',
           title: '书脊',
           icon: 'book',
+          // 家具（v66）：自持定位与 chrome——左缘整列拉通屏幕、自带拖拽与互斥两态，
+          // 套通用 DockSlot 会多出一层书眉（书脊自己就是书架）。
+          frame: 'self',
           unmountOnClose: true,
           // 出场：与 sr-slide-in 逆写（§15 退场对称）——互斥两态换态不再「一边滑入、一边凭空消失」
           animateExit: true,
@@ -57,6 +60,8 @@ export const canvasNavPlugin = {
           side: 'left',
           title: '案卷',
           icon: 'list',
+          // 家具（v66）：自持定位——左缘侧栏（240–420px 可拖）、自带书眉与整理态。
+          frame: 'self',
           unmountOnClose: true,
           // 出场：与 ss-slide-in 逆写（§15 退场对称）
           animateExit: true,

@@ -148,18 +148,24 @@ manifest.json 字段（\`name\`/\`version\`/\`entry\` 必填）：
 
 ### 2.3 贡献通道与 def 形状（全部经 \`ctx.<服务>.register(def)\`）
 
-**panels**（面板，即时生效）：
+**panels**（面板，即时生效；**入口 = 架阁「软件型」页**，v66 起建成）：
 
 \`\`\`js
 ctx.panels.register({
   id: 'my-panel',            // 稳定 id；同 id 撞名装载期拒绝（不静默覆盖）
-  side: 'right',             // 'left' | 'right' | null（null = 不上轨道）
-  title: '我的面板',
+  side: 'right',             // 'left' | 'right' = 侧栏（壳给盒子）；null = 全屏覆盖，组件自己定位
+  title: '我的面板',          // 架阁里显示的名字 + 壳书眉的标题
   icon: 'chat',              // 宿主图标集键名（'agent'/'chat'/'check'/'settings'/'folder-open' 等天文几何图标键）
-  askAgent: true,            // 可选：面板内提供「问 Agent」入口
+  frame: 'shell',            // 可选，缺省 'shell' = 壳给盒子（定位/书眉/关闭钮全由宿主出）
+                             //        'self' = 面板自持定位与 chrome（家具型，一般第三方不用）
+  width: 360,                // 可选，像素宽；缺省 = 内容撑开（兜底带 260px～45vw）
   component: () => ce('div', { style: { padding: 16 } }, '内容'),
 });
 \`\`\`
+
+装好后：**架阁 → 软件型** 里会出现「我的面板」，点一下打开；侧栏右上角有壳给的关闭钮，Esc 也能关。
+面板跑在**宿主 React 树内**（不是 iframe）——能直接用 host 面给的 store 与组件；反过来说也意味着
+它和宿主共享同一份运行时，别在渲染期做重活。
 
 **commands**（命令，即时生效，Ctrl+K 可搜）：
 

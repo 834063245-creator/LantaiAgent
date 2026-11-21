@@ -27,7 +27,7 @@ const stripComments = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '');
 /** 本批覆盖的 12 个交互面（与体检文档 §7 附录的"active 为 0"清单对齐）。 */
 const FACES: Array<[string, string]> = [
   ['设置页', 'plugins/builtin/settings-domain/settings-panel.css'],
-  ['架阁浮层', 'plugins/builtin/paper-shell/shelf.css'],
+  ['架阁浮层', 'plugins/builtin/shelf-domain/shelf.css'],
   ['模型选择器', 'plugins/builtin/compose-dock/model-selector.css'],
   ['创作坞', 'plugins/builtin/paper-shell/paper-composer.css'],
   ['工作台', 'plugins/builtin/paper-shell/paper-dock-jobs.css'],

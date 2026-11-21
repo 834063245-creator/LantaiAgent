@@ -75,6 +75,14 @@ export interface PanelContribution {
    *  `PanelDef.animateExit` **逐字段同义**（两处形状是「贡献面 / 消费面」一对，
    *  合流时 `panelDefs()` 原样透传）；语义与消费面见那里。 */
   animateExit?: boolean;
+  /** 壳形态（v66，2026-11-21）：`'shell'`（缺省）= **壳给盒子**——`side` 非 null 时
+   *  DockPanel 包一层 `DockSlot`（定位 / 书眉 / 关闭钮 / 层级全由壳出）；`'self'` =
+   *  **面板自持**定位与 chrome（书脊列 / 案卷侧栏这类「家具」，自带书眉与拖拽调宽）。
+   *  缺省 = shell：这正是 2026-11-21 那个 bug 的修法——旧插件不写 CSS 也能看见。 */
+  frame?: 'shell' | 'self';
+  /** 面板宽度（px，v66）。仅 `frame: 'shell'` 且 `side` 非 null 时有意义；
+   *  缺省 = 内容撑开（兜底带 260px ～ 45vw，见 app/panels/dock-slot.css）。 */
+  width?: number;
   component: ComponentType;
 }
 

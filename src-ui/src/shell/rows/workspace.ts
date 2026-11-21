@@ -26,6 +26,7 @@
 // 冷启动行不进入工作区（失败隔离）；直接 import 本模块调用一致地失败——
 // 禁用即不可用，文档声明）。
 
+import { panelDefs } from '../../app/panels/panel-def';
 import { useShellStore } from '../../app/shell-store';
 import { withTimeout } from '../../lifecycle/timeout';
 import { kernelCreateDirectory } from '../../rpc-contract';
@@ -305,6 +306,17 @@ function escLayer(): void {
   // closePanel 自带关闭守卫（dock-store 2026-08 UI 大清扫）：settings 有未保存
   // 改动时守卫弹确认并拦截本次 Esc——Esc 不再静默丢设置。
   if (dock.isOpen('settings')) dock.closePanel('settings');
+  // 通用壳面板（v66，2026-11-21）：settings 之下、与纸同层——按清单序关第一个开着的。
+  // 判据读 panelDefs()（常量 + 插件贡献的合流点），不在壳里重推「哪些 id 是面板」；
+  // closePanel 自带关闭守卫（面板可自弹确认拦截本次 Esc）。
+  // frame:'self' 的家具（书脊 / 案卷）不在此列：它们是纸的开合产物，ESC 不关纸
+  // （2026-09-08 用户拍板），关它们的家具有副作用，故只关通用壳面板。
+  for (const def of panelDefs()) {
+    if (def.side !== null && def.frame !== 'self' && dock.isOpen(def.id)) {
+      dock.closePanel(def.id);
+      return;
+    }
+  }
 }
 
 // ── 卡死逃生口（2026-09-09 事故立法：首页「点不进工作区」根因收口）──

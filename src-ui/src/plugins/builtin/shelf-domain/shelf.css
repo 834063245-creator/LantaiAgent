@@ -224,3 +224,40 @@
 .pp-shelf-actions button:active {
   translate: 0 1px;
 }
+
+/* ── 搜索（架阁升格批，2026-11-21）──
+   两页共用一条查询，切页不重置；空查询 = 全列（架阁是查询面不是信息流）。
+   **视觉精度另有立项**（用户 2026-11-21 拍板）——本片只给一个能用、不抢戏的输入件，
+   取既有的纸面件规格（下划线输入，见 settings-panel.css 的 .set-input 族）。 */
+.pp-shelf-search {
+  padding: 10px 18px;
+  border-bottom: var(--rule-soft);
+  flex: none;
+}
+
+.pp-shelf-search-input {
+  width: 100%;
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: var(--rule-strong);
+  border-radius: 0;
+  padding: 4px 0;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--ink-1);
+  outline: none;
+}
+
+.pp-shelf-search-input::placeholder {
+  color: var(--ink-3);
+}
+
+.pp-shelf-search-input:focus {
+  border-bottom-color: var(--seal);
+}
+
+/* 键盘选中行（↑↓）：与 hover 同一档呈现——不自造第三态。 */
+.pp-shelf-item[data-cursor="on"] {
+  background: var(--sel-wash);
+}

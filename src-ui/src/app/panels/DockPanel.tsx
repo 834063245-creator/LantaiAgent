@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// P3：dock 面板容器 — 按注册表挂载六个面板（全部活在单 React 树内）。
+// P3：dock 面板容器 — 按注册表挂载面板（全部活在单 React 树内）。
 // unmountOnClose 的面板（dataflow/settings）关闭即卸载（对齐旧 Controller 的
 // close=unmount 语义）；其余常驻挂载，组件内部用 class 切换保 CSS 过渡。
 // S4-1.5：清单源改读 panelDefs()（常量 + 插件贡献），panelDefsTick 驱动
@@ -11,16 +11,32 @@
 // 崩溃面可见可重试，React 整树卸载绝迹（此前产物/exe 偏斜即全 UI 死）。
 // 2026-10-15 §15 批 3b：加**退场窗**（`animateExit`）——见 PanelSlot 相位机注。
 
+// v66（2026-11-21，面板宿主壳）：**三向分流**——
+//   ① `side === null`                 → 全屏覆盖槽（自己定位：paper / settings）
+//   ② `side !== null && frame==='self'` → 自持槽（家具：书脊 / 案卷侧栏）
+//   ③ 其余（缺省 frame='shell'）        → **DockSlot 盒子**（第三方面板的默认形态）
+// 病灶：① 之外的第三类面板原本裸挂文档流，被纸壳 z280 整片盖住 ⇒ 永远不可见。
+// DockSlot 只出盒子（定位 / 书眉 / 关闭钮 / 层级）；开合与退场相位机仍在
+// PanelSlot——**面板何时真卸载只有一个决定者**。
+
 import { useEffect, useState } from 'react';
 import { useDockStore } from '../../state/dock-store';
 import { usePanelDefsStore } from '../../state/panel-defs-store';
 import { PluginBoundary } from '../PluginBoundary';
+import { DockSlot } from './DockSlot';
 import { type PanelDef, panelDefs } from './panel-def';
 
 /** 面板退场窗（ms）——**必须与 `tokens.css` 的 `--m-sheet`（0.26s）同值**：
  *  两把尺子一把，CSS 侧播出场、壳层侧等这么久才真卸载（不等 = 动画播到一半就
  *  被卸载掐断）。镜像由 `tests/motion-contract.test.ts` 钉死（改一处不改另一处即红）。 */
 const PANEL_LEAVE_MS = 260;
+
+/** 分流判据（单一真源）：'overlay' = 全屏覆盖槽 / 'self' = 家具 / 'shell' = 壳给盒子。
+ *  见 panel-def 的 `frame` 注。导出给测试面复用（不在别处重推）。 */
+export function panelLane(def: PanelDef): 'overlay' | 'self' | 'shell' {
+  if (def.side === null) return 'overlay';
+  return def.frame === 'self' ? 'self' : 'shell';
+}
 
 function PanelSlot({ def }: { def: PanelDef }) {
   const open = useDockStore((s) => s.open[def.id]);
@@ -53,16 +69,21 @@ function PanelSlot({ def }: { def: PanelDef }) {
   }, [phase]);
 
   const mounted = open || phase === 'leaving';
-  if (def.unmountOnClose && !mounted) return null;
+  const lane = panelLane(def);
+  // 覆盖槽 / 家具：关即卸载（各自 CSS 自带定位）。
+  if (lane !== 'shell' && def.unmountOnClose && !mounted) return null;
   const C = def.component;
+  const inner = (
+    <PluginBoundary label={'面板 ' + def.id}>
+      <C />
+    </PluginBoundary>
+  );
   return (
     /* 退场标记层：`display: contents` = **不生成盒子**，对既有布局零影响；
        面板自己的 CSS 以 `[data-panel-leaving] <本面板根>` 播出场（壳层供钩、
        产物消费——见 panel-def 的 animateExit 注）。 */
     <div data-panel-leaving={phase === 'leaving' ? '' : undefined} style={{ display: 'contents' }}>
-      <PluginBoundary label={`面板 ${def.id}`}>
-        <C />
-      </PluginBoundary>
+      {lane === 'shell' ? mounted ? <DockSlot def={def}>{inner}</DockSlot> : null : inner}
     </div>
   );
 }

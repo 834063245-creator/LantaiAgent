@@ -35,6 +35,7 @@ import {
   useCoreStore,
   useDockStore,
   useSessionVolumesStore,
+  useShelfStore,
   useShellStore,
   useUpdateStore,
   WinControls,
@@ -468,6 +469,11 @@ export function SessionsHome() {
           <span className="sh-wordmark">兰台</span>
         </div>
         <div className="sh-head-right">
+          {/* 架阁（v66，2026-11-21）：架阁出纸壳后成为**应用级浮层**，入口必须在
+              所有界面状态都摸得到——首页是「纸关着」的那一半，此前完全没有门。 */}
+          <button type="button" className="sh-btn-text" onClick={() => useShelfStore.getState().openShelf()}>
+            架阁
+          </button>
           <button
             type="button"
             className={`sh-btn-text${updateAvailable ? ' has-update' : ''}`}

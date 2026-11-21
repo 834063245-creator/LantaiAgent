@@ -35,4 +35,7 @@ export {
 export { pickFolder, workspaceFlow } from '../../../shell/rows/workspace';
 export { useDockStore } from '../../../state/dock-store';
 export { useSessionVolumesStore } from '../../../state/session-volumes-store';
+/* 架阁入口（v66，2026-11-21）：首页顶栏那枚字件。架阁本体是 rootViews 'overlay' 槽里的
+ * 应用级浮层（shelf-domain 产物）——首页只负责给门，不引它本体。 */
+export { useShelfStore } from '../../../state/shelf-store';
 export { useUpdateStore } from '../../../state/update-store';

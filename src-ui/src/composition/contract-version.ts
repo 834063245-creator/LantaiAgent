@@ -22,7 +22,7 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 65;
+export const OPEN_SURFACE_CONTRACT_VERSION = 66;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
  *  v65（2026-11-21）**用户组合新增 `programOnly` 域（工具面收进程序）**：
@@ -39,6 +39,19 @@ export const OPEN_SURFACE_CONTRACT_VERSION = 65;
  *  逐字不变（纯可选字段，零迁移）。依据 `docs/plans/code-mode-preset-plan.md`；
  *  守护 `tests/composition-presets.test.ts` + `tests/code-mode-preset.test.ts`
  *  + `tests/tool-registry-disposer.test.ts`。
+ *  v66（2026-11-21）**面板贡献面增可选 `frame` 与 `width`（面板宿主壳）**：
+ *  `composition/services.ts` 的 `PanelContribution` 与 `app/panels/panel-def.ts` 的
+ *  `PanelDef` 各增**可选** `frame?: 'shell' | 'self'` 与 `width?: number`（两处是
+ *  「贡献面 / 消费面」一对形状，合流时 `panelDefs()` 原样透传，故必须同批加）。
+ *  **语义**：`side` 非 null 的面板缺省（`'shell'`）由壳包一层 `DockSlot`——
+ *  定位 / 书眉（标题 + 关闭钮）/ 层级全由壳出；`'self'` = 面板自持定位与 chrome
+ *  （书脊列 / 案卷侧栏这类家具）。**对外可感知**：第三方面板此前**永远不可见**
+ *  （`ctx.panels` 的出口 `DockRail` 随 V5 拆除，组件裸挂文档流被纸壳 z280 盖住），
+ *  本版起不写一行 CSS 也能看见；旧插件不声明 = 从「不可见」变成「可见」，
+ *  **源码零迁移**（纯可选字段）。同批架阁升格为应用级浮层（`ctx.rootViews` 的
+ *  `'overlay'` 槽），并成为 `ctx.panels` 的唯一入口。
+ *  依据：`docs/issues/lantai-plugin-panels-no-home`；施工单 `docs/plans/panel-host-shell-plan.md`；
+ *  守护 `tests/dock-slot.test.tsx` + `tests/shelf-panels.test.tsx`。
  *  v63（2026-11-21）**命令贡献面增可选 `volumeCommand`（这条 `local` 命令作用于某一卷）**：
  *  `composition/services.ts` 的 `CommandContribution` 新增可选 `volumeCommand?: boolean`，
  *  出厂首批 `/compact` `/export` `/goal` `/remember`（`/new` 不标：它不作用于某一卷，就是

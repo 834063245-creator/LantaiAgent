@@ -24,6 +24,7 @@ import './app/type-scale.css';
 import './app/tokens.css';
 import './app/foundation.css';
 import './app/shell.css';
+import './app/panels/dock-slot.css';
 // 动作钮基座（.sp-btn 族）：壳层真源，产物经 @import 内联（2026-11-17 技术债批 A）
 import './app/controls.css';
 // 查看器状态基座（pp-viewer-empty/-error、pp-media-loading/-open）：壳层真源（批 A2）

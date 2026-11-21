@@ -40,6 +40,18 @@ export interface PanelDef {
    *  **未声明 = 即时卸载**（刻画意的默认关）：留一个不播动画的空窗只会变成
    *  「冻住一帧再消失」，比瞬删更糟。 */
   animateExit?: boolean;
+  /** 壳形态（v66，2026-11-21）——与 `composition/services.ts` 的
+   *  `PanelContribution.frame` **逐字段同义**（贡献面 / 消费面一对，合流时原样透传）。
+   *
+   *  - `'shell'`（缺省）＝ **壳给盒子**：`side` 非 null 时由 `DockSlot` 包裹，
+   *    定位 / 书眉（标题 + 关闭钮）/ 层级全由壳出。第三方面板的默认形态——
+   *    不写一行 CSS 也看得见（旧形态是裸挂文档流，被纸壳 z280 整片盖住）。
+   *  - `'self'` ＝ **面板自持**定位与 chrome：书脊列 / 案卷侧栏这类「家具」——
+   *    自带书眉、拖拽调宽、互斥两态，套通用壳会变成双书眉。 */
+  frame?: 'shell' | 'self';
+  /** 面板宽度（px，v66）。仅 `frame: 'shell'` 且 `side` 非 null 时有意义；
+   *  缺省 = 内容撑开（兜底带 260px ～ 45vw）。 */
+  width?: number;
   component: ComponentType;
 }
 
