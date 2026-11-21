@@ -73,6 +73,11 @@ export interface ProvidersDocStatus {
   empty: boolean;
   /** 是否已从磁盘装载（false = 还没读到，界面应显示「装载中」）。 */
   loaded: boolean;
+  /** 磁盘装载代数：文件原文每变一次 +1。保存请求带上「编辑起点」代数，watcher
+   *  已重读而面板仍拿旧草稿时即可在写盘前判冲突。 */
+  revision: number;
+  /** 本次 fatal 是否用了本机独立 intent 备份（跨重启 last-good；无 = undefined）。 */
+  recoveredFromBackup?: boolean;
   /** 配置文件通道是否可用（false = 拿不到有效路径：降级环境/契约不满足）。
    *  不可用时保存管道**不阻断面板**——只跳过写文件并把原因写进 lastError
    *  （与「文件在手但解析不了 ⇒ 拒写」是两回事：后者是保护手稿，必须硬失败）。 */
@@ -93,6 +98,7 @@ const state: ProvidersDocStatus = {
   loaded: false,
   available: false,
   lastError: '',
+  revision: 0,
 };
 
 /** 路径是否像一条真路径（RPC 通道缺失时 mock 会回 "null" 一类哨兵字符串——
@@ -139,6 +145,25 @@ let cachedSignature = '';
 const listeners = new Set<Listener>();
 /** 文件权威是否曾经确认成功（非空且整份可解析）。fatal 后仍用它决定投影走 last-good。 */
 let fileAuthorityConfirmed = false;
+/** 本次 fatal 用的是独立 intent 备份（不是文件、也不是同进程 last-good）。 */
+let intentBackupActive = false;
+
+/** 完整 intent 快照的独立本机备份键。
+ *
+ *  为什么不放在 hologram_settings：那份存档在文件权威下只留运行态壳（saveSettings 会
+ *  剥掉意图）。进程一重启就只剩 name/apiKey/catalog，fatal 时没有任何可回落的完整
+ *  intent。这里单独存一份**不含密钥/运行态**的纯意图快照，fatal 且内存无 last-good
+ *  时优先读它——与配置文件本体互不污染，也不违反「文件 = 意图权威」。 */
+export const PROVIDERS_INTENT_BACKUP_KEY = 'hologram_provider_intent_backup_v1';
+const INTENT_BACKUP_VERSION = 1;
+
+interface ProvidersIntentBackup {
+  version: 1;
+  path: string;
+  capturedAt: number;
+  order: string[];
+  sections: Array<{ name: string; intent: ProviderIntent }>;
+}
 
 /** 订阅文档状态变更（设置页用；返回退订）。 */
 export function onProvidersDocChange(cb: Listener): () => void {
@@ -207,6 +232,88 @@ function effectiveSections(): Sections {
   }
   for (const [name, s] of byName) if (!seen.has(name)) out.push(s);
   return out;
+}
+
+/** 把当前完整意图投影写进独立备份（每次整份非 fatal 装载后调用）。
+ *
+ *  口径：写的是 effectiveSections()——坏节已经由内存 last-good 顶上，因此备份里仍是
+ *  「最后一次可用」的完整意图，而不是这次只解析成功的残片。只存意图，不存密钥、
+ *  探针、目录快照或模型元数据（那些仍是 localStorage 运行态层）。 */
+function persistProvidersIntentBackup(): void {
+  try {
+    if (typeof localStorage === 'undefined' || !state.path) return;
+    const sections = effectiveSections();
+    const byName = new Map(sections.map((section) => [section.name, section]));
+    const order: string[] = [];
+    for (const name of fileKeyOrder) {
+      if (byName.has(name) && !order.includes(name)) order.push(name);
+    }
+    for (const section of sections) if (!order.includes(section.name)) order.push(section.name);
+    const payload: ProvidersIntentBackup = {
+      version: INTENT_BACKUP_VERSION as 1,
+      path: state.path,
+      capturedAt: Date.now(),
+      order,
+      sections: order.map((name) => ({ name, intent: byName.get(name)!.intent })),
+    };
+    localStorage.setItem(PROVIDERS_INTENT_BACKUP_KEY, JSON.stringify(payload));
+  } catch (e) {
+    // 备份写不进去不能反过来阻断正常装载；但必须留痕（下次真需要它时才知道缺）。
+    log.warn('provider-doc', 'intent 备份写入失败（跨重启 last-good 可能不完整）', { error: errText(e) });
+  }
+}
+
+/** 读取并校验独立 intent 备份；路径不符 / 形状腐坏 = null。
+ *
+ *  逐节走与文件同一把 parseSection 尺子：备份是本机缓存，不是第二真相源——字段
+ *  或协议已不再支持时只丢该节，不让一份旧 JSON 反向污染当前配置语义。 */
+function readProvidersIntentBackup(): { sections: Sections; order: string[]; capturedAt: number } | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(PROVIDERS_INTENT_BACKUP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ProvidersIntentBackup>;
+    if (parsed.version !== INTENT_BACKUP_VERSION || parsed.path !== state.path || !Array.isArray(parsed.sections)) {
+      return null;
+    }
+    const sections: Sections = [];
+    const seen = new Set<string>();
+    for (const item of parsed.sections) {
+      if (!item || typeof item !== 'object') continue;
+      const name = (item as { name?: unknown }).name;
+      if (typeof name !== 'string' || !PROVIDER_NAME_RE.test(name)) continue;
+      const lower = name.toLowerCase();
+      if (seen.has(lower)) continue;
+      const section = parseSection(name, (item as { intent?: unknown }).intent, knownProtocols());
+      if ('errors' in section) continue;
+      seen.add(lower);
+      sections.push({ name: name as ProviderSettings['name'], intent: section.intent });
+    }
+    // 空快照是合法状态（用户删空所有 provider）；但「原本有 N 条、最后 0 条可解析」
+    // 是腐坏/版本不兼容，不是可信的空配置——宁可不恢复，也不能用空表盖住运行态壳。
+    if (parsed.sections.length > 0 && sections.length === 0) return null;
+    const valid = new Set(sections.map((section) => section.name));
+    const order: string[] = [];
+    if (Array.isArray(parsed.order)) {
+      for (const name of parsed.order) {
+        if (typeof name === 'string' && valid.has(name) && !order.includes(name)) order.push(name);
+      }
+    }
+    for (const section of sections) if (!order.includes(section.name)) order.push(section.name);
+    return {
+      sections,
+      order,
+      capturedAt: typeof parsed.capturedAt === 'number' ? parsed.capturedAt : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 投影可否使用「意图」行：文件 authority 已确认，或本次 fatal 已读到独立备份。
+ *  后者单独开关——providersFileReady 仍必须为 false（fatal 时绝不能写盘/剥本机意图）。 */
+function providerIntentAvailable(): boolean {
+  return fileAuthorityConfirmed || intentBackupActive;
 }
 
 function runtimeOf(p: ProviderSettings): ProviderRuntime {
@@ -301,7 +408,7 @@ export function installProvidersDocProjection(): void {
       //    （2026-09-23 真机事故：此前这里回空数组，与 saveSettings 剥意图叠加
       //      = 用户配好的 provider 凭空消失）。只有在文件确认接管之后，
       //      「文件里的键」才成为行表真源。
-      if (!state.available || !state.loaded || !fileAuthorityConfirmed) return fallback;
+      if (!state.available || !state.loaded || !providerIntentAvailable()) return fallback;
       refreshRows();
       return cachedRows ?? [];
     },
@@ -415,6 +522,7 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
     text = '';
   }
   const doc = parseProvidersDoc(text, knownProtocols());
+  if (text !== lastFileText) state.revision += 1;
   lastFileText = text;
   state.loaded = true;
   state.empty = text.trim().length === 0;
@@ -424,15 +532,31 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
   state.lastError = doc.fatal ?? '';
   if (!doc.fatal && text.trim().length > 0) fileAuthorityConfirmed = true;
   lastSections = doc.sections.map((s) => ({ name: s.name, intent: s.intent }));
-  // ── 「上一次可用」账（2026-11-16 事故根治）────────────────────────
-  // 成功解析的节逐名刷新；坏节按名**保留旧值**（行表靠 effectiveSections 顶上）。
-  for (const s of lastSections) lastGoodSections.set(s.name, s);
   brokenSectionNames = new Set(doc.errors.map((e) => e.name));
   fileKeyOrder = doc.order;
-  // 文件里已经删掉的节必须从 last-good 里除名——否则「上一次可用」会把用户删掉的
-  // 行复活（删除是他们明确表达过的意图，不能当成「没读出来」）。
-  // 整份 fatal 时 doc.order 为空 ⇒ 不动账本（保留整份上一次可用）。
-  if (!doc.fatal) {
+  intentBackupActive = false;
+  state.recoveredFromBackup = undefined;
+  // 进程刚重启且内存 last-good 为空时，先把独立备份灌进账本：整份 fatal 时它是唯
+  // 一回落；逐节报错时有效节会覆盖它、坏节继续由它顶上（与同进程 last-good 同语义）。
+  // 同进程已有 last-good 时绝不读盘外备份——内存那份一定更新。
+  const backup = lastGoodSections.size === 0 ? readProvidersIntentBackup() : null;
+  if (backup) {
+    lastGoodSections = new Map(backup.sections.map((section) => [section.name, section]));
+    if (doc.fatal) fileKeyOrder = backup.order;
+  }
+  if (doc.fatal) {
+    if (backup) {
+      intentBackupActive = true;
+      state.recoveredFromBackup = true;
+      const when = backup.capturedAt > 0 ? new Date(backup.capturedAt).toLocaleString() : '时间未知';
+      state.lastError = `${doc.fatal}；已从本机 intent 备份恢复 ${backup.sections.length} 节（${when}）`;
+    }
+  } else {
+    // ── 「上一次可用」账（2026-11-16 事故根治）────────────────────────
+    // 成功解析的节逐名刷新；坏节按名**保留旧值**（行表靠 effectiveSections 顶上）。
+    for (const s of lastSections) lastGoodSections.set(s.name, s);
+    // 文件里已经删掉的节必须从 last-good 里除名——否则「上一次可用」会把用户删掉的
+    // 行复活（删除是他们明确表达过的意图，不能当成「没读出来」）。
     const alive = new Set(doc.order);
     for (const name of [...lastGoodSections.keys()]) {
       if (alive.has(name)) continue;
@@ -440,6 +564,9 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
       runtimeMap.delete(name);
       clearDynamicProviderState(name);
     }
+    // 成功装载 = 本机 last-good 快照的原子刷新点。空文本是「首启/迁移前」，
+    // 不拿它覆盖旧备份；有内容（含仅剩文件头 = 用户删空所有 provider）才刷新。
+    if (text.trim().length > 0) persistProvidersIntentBackup();
   }
   // 遗留的 modelMeta（旧文件里那片自动生成的读数）：收进运行态，下次写盘即从文件消失。
   for (const s of doc.sections) {
@@ -464,18 +591,49 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
 //   写了项目级文件，ui.log 一个字都没有，它还以为配好了。
 //   现在只有一份 provider 配置文件：`~/.lantai/providers.yml`。
 
+/** 保存请求的并发/删除约束。 */
+export interface SaveProvidersDocOptions {
+  /** 用户开始编辑时的磁盘装载代数（`providersDocStatus().revision`）。
+   *  watcher 在外改后已重读、而面板还拿着旧草稿时，此值落后于当前代数 ⇒ 拒写。 */
+  expectedRevision?: number;
+  /** 用户在 UI 里明确删除的节。补丁里没有、这里也没点名的磁盘有效节一律保留
+   *  （「没看见」绝不等于「用户删了」）。 */
+  pendingDeletes?: readonly string[];
+}
+
+export interface SaveProvidersDocResult {
+  ok: boolean;
+  error?: string;
+  /** true = 外部冲突/过期草稿；设置页应转入「放弃暂存并重读」安全出口。 */
+  conflict?: boolean;
+  /** 冲突后是否可安全重读盘面。磁盘读不到/被删除时为 false——此时别把「读失败」
+   *  当成「空配置」灌进投影（先让用户修文件/路径）。 */
+  reloadable?: boolean;
+}
+
+function rejectProviderSaveConflict(message: string, reloadable = true): SaveProvidersDocResult {
+  state.lastError = message;
+  notify();
+  return { ok: false, error: message, conflict: true, reloadable };
+}
+
 /**
  * 写盘：把「provider 名 → 意图」补丁落到**用户级**配置文件（读-改-写，保住手写注释）。
  *
- * **拒写纪律**：磁盘上的手稿解析不了（YAML 语法错）时拒绝写入并给出原因——
- * 绝不覆盖用户正在编辑的文件（那会把它的手稿整份冲掉）。
+ * **拒写纪律**：
+ *   - 磁盘上的手稿解析不了（YAML 语法错）时拒绝写入并给出原因——绝不覆盖用户手稿；
+ *   - 保存前比对 `lastFileText` + 编辑起点 revision：外部改动若未被本次补丁吸收，
+ *     直接冲突态（不靠 watcher 是否恰好已送达）；
+ *   - 磁盘上存在、补丁没写、`pendingDeletes` 也没点名的有效节**原样保留**。
  *
- * @param patch - provider 名 → 意图（名字即身份；不在补丁里的节会被删）。
- * @returns ok / 人可读失败原因。
+ * @param patch - provider 名 → 意图（名字即身份）。
+ * @param opts - 编辑起点 revision + 用户明确删除的节。
+ * @returns ok / 人可读失败原因 / 是否外部冲突。
  */
 export async function saveProvidersDoc(
   patch: Readonly<Record<string, ProviderIntent>>,
-): Promise<{ ok: boolean; error?: string }> {
+  opts: SaveProvidersDocOptions = {},
+): Promise<SaveProvidersDocResult> {
   for (const name of Object.keys(patch)) {
     if (!PROVIDER_NAME_RE.test(name)) {
       return { ok: false, error: `provider 名「${name}」不合法（只允许字母、数字、下划线、连字符）` };
@@ -494,12 +652,31 @@ export async function saveProvidersDoc(
   if (!isProvidersDocPath(state.path)) {
     return { ok: false, error: `配置文件路径不是 .yml/.yaml：${state.path}` };
   }
-  // 读-改-写：以**磁盘现状**为底（本进程可能错过了一次外部编辑）
+  if (opts.expectedRevision !== undefined && opts.expectedRevision !== state.revision) {
+    return rejectProviderSaveConflict(
+      `配置文件已被外部修改（编辑起点 revision ${opts.expectedRevision}，当前 ${state.revision}）——已阻止保存，请放弃当前暂存并重读后再改。`,
+    );
+  }
+  // 读-改-写：以**磁盘现状**为底。这里同时做文件级冲突闸：watcher 还没送达的
+  // 外部编辑也必须挡住；读不到而上次有内容时更不能当成「空文件」重建。
   let disk = '';
+  let diskRead = true;
   try {
     disk = await kernelReadFile(state.path);
   } catch {
     disk = '';
+    diskRead = false;
+  }
+  if (disk !== lastFileText) {
+    const reason = diskRead
+      ? '磁盘内容与上次装载不一致'
+      : lastFileText.trim().length > 0
+        ? '上次装载的配置文件现在无法读取或已被删除'
+        : '配置文件读取状态与上次装载不一致';
+    return rejectProviderSaveConflict(
+      `配置文件在你编辑期间被外部修改（${reason}）——已阻止保存，请放弃当前暂存并重读后再改。`,
+      diskRead || lastFileText.trim().length === 0,
+    );
   }
   const check = parseProvidersDoc(disk, knownProtocols());
   if (check.fatal) {
@@ -516,9 +693,17 @@ export async function saveProvidersDoc(
       error: `配置文件里这些节读不出来：${names}——修好之前不会写盘（否则会覆盖掉你手写的内容）`,
     };
   }
-  // 即使本次补丁覆盖了全部节，也把「读不出来的节」原样保留（双保险：将来放宽上面的
-  // 拒写策略时，这里仍不会把它们当作用户删掉的节）。
-  const keep = [...brokenSectionNames];
+  // 补丁没覆盖的有效节：只有 pendingDeletes 点名的才允许删；其余原样保留，
+  // 连注释/未知前向字段都不碰。坏节双保险继续 keep（见 2026-11-16 事故）。
+  const patched = new Set(Object.keys(patch).map((name) => name.toLowerCase()));
+  const deleting = new Set((opts.pendingDeletes ?? []).map((name) => name.toLowerCase()));
+  const preserve = check.sections
+    .filter((section) => {
+      const lower = section.name.toLowerCase();
+      return !patched.has(lower) && !deleting.has(lower);
+    })
+    .map((section) => section.name);
+  const keep = [...new Set([...brokenSectionNames, ...preserve])];
   try {
     await kernelWriteFile(state.path, applyProvidersDoc(disk, patch, { keep }));
   } catch (e) {
@@ -732,7 +917,10 @@ export function __resetProvidersDocForTests(): void {
   state.loaded = false;
   state.available = false;
   state.lastError = '';
+  state.revision = 0;
+  state.recoveredFromBackup = undefined;
   fileAuthorityConfirmed = false;
+  intentBackupActive = false;
   runtimeMap = new Map();
   lastFileText = '';
   lastSections = [];

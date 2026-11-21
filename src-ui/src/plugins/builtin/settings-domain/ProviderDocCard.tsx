@@ -101,6 +101,11 @@ export function ProviderDocCard({ doc, myName, onOpenDir, onReload, msg }: Provi
         <div className="pp-doc-error">
           <b>配置文件整份无法解析，运行中仍是上一次可用的配置：</b>
           <div className="pp-doc-error-body">{doc.status.fatal}</div>
+          {doc.status.recoveredFromBackup && (
+            <div className="pp-f-hint">
+              本进程没有内存里的 last-good，已从本机独立 intent 备份恢复完整 provider 意图（不含密钥/运行态读数）。
+            </div>
+          )}
           <div className="pp-f-hint">
             修好文件后点上方「重读」（或等约 1 秒）——解析不了时兰台不会写这个文件，你的手稿不会被覆盖。
           </div>

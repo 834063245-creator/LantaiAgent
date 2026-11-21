@@ -36,8 +36,10 @@ import {
   __resetProvidersDocForTests,
   bootstrapProvidersDoc,
   loadProvidersDoc,
+  PROVIDERS_INTENT_BACKUP_KEY,
   providersDocStatus,
   retryProvidersPath,
+  saveProvidersDoc,
 } from '../src/provider/providers-store';
 import { installProvidersProjection, loadSettings, loadSettingsWithSecrets, providerId } from '../src/settings';
 
@@ -685,6 +687,133 @@ describe('provider config safety regressions', () => {
     expect(rows[0]?.model).toBe('m1');
   });
 
+  it('fatal 跨重启：localStorage 只剩运行态壳时，从独立 intent 备份恢复完整配置', async () => {
+    const good =
+      'a:\n  kind: openai\n  baseUrl: https://good.example/v1\n  model: m1\n  headers:\n    x-gw: keep-me\n';
+    disk.set(DOC_PATH, good);
+    seedStored([{ kind: 'openai', name: 'a', baseUrl: 'https://good.example/v1', model: 'm1' }]);
+    await bootstrapProvidersDoc();
+    expect(localStorage.getItem(PROVIDERS_INTENT_BACKUP_KEY)).toBeTruthy();
+
+    // 文件权威下 saveSettings 只留运行态壳：意图（baseUrl/model/headers）全部被剥掉。
+    const { saveSettings } = await import('../src/settings');
+    saveSettings(loadSettings());
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+      providers?: Array<{ name?: string; baseUrl?: string; model?: string }>;
+    };
+    expect(stored.providers?.[0]?.name).toBe('a');
+    expect(stored.providers?.[0]?.baseUrl).toBeUndefined();
+    expect(stored.providers?.[0]?.model).toBeUndefined();
+
+    // 模拟进程重启：内存 last-good 清空，磁盘在启动时已经是坏 YAML。
+    __resetProvidersDocForTests();
+    installProvidersProjection(null);
+    disk.set(DOC_PATH, 'a: [unclosed\n');
+    await bootstrapProvidersDoc();
+
+    expect(providersDocStatus().fatal).toBeTruthy();
+    expect(providersDocStatus().recoveredFromBackup).toBe(true);
+    const row = loadSettings().providers.find((p) => p.name === 'a');
+    expect(row).toBeDefined();
+    expect(row?.kind).toBe('openai');
+    expect(row?.baseUrl).toBe('https://good.example/v1');
+    expect(row?.model).toBe('m1');
+    expect(row?.headers).toEqual({ 'x-gw': 'keep-me' });
+  });
+
+  it('fatal 跨重启之外：整节读不出来的坏节也从 intent 备份回到上一次可用', async () => {
+    const good =
+      'a:\n  kind: openai\n  baseUrl: https://a.example/v1\n  model: m1\n' +
+      'b:\n  kind: openai\n  baseUrl: https://b.example/v1\n  model: b1\n';
+    disk.set(DOC_PATH, good);
+    await bootstrapProvidersDoc();
+    const { saveSettings } = await import('../src/settings');
+    saveSettings(loadSettings()); // 文件权威下只留运行态壳
+
+    __resetProvidersDocForTests();
+    installProvidersProjection(null);
+    disk.set(DOC_PATH, good.replace('https://b.example/v1', 'not-a-url'));
+    await bootstrapProvidersDoc();
+
+    expect(providersDocStatus().errors.map((e) => e.name)).toEqual(['b']);
+    expect(loadSettings().providers.map((p) => p.name)).toEqual(['a', 'b']);
+    expect(loadSettings().providers.find((p) => p.name === 'b')?.baseUrl).toBe('https://b.example/v1');
+  });
+
+  it('保存时磁盘已被外部改写：直接冲突态，手稿一字不动', async () => {
+    const good = 'a:\n  kind: openai\n  baseUrl: https://good.example/v1\n  model: m1\n';
+    disk.set(DOC_PATH, good);
+    await bootstrapProvidersDoc();
+    const { intentOf } = await import('../src/provider/providers-doc');
+    const row = loadSettings().providers[0];
+    const external = good.replace('https://good.example/v1', 'https://external.example/v1');
+    disk.set(DOC_PATH, external);
+
+    const res = await saveProvidersDoc({
+      a: { ...intentOf({ ...row, baseUrl: 'https://typed.example/v1' }) },
+    });
+    expect(res.ok).toBe(false);
+    expect(res.conflict).toBe(true);
+    expect(res.error).toContain('外部修改');
+    expect(disk.get(DOC_PATH)).toBe(external);
+  });
+
+  it('watcher 已重读但草稿起点 revision 过期：保存拒绝覆盖外部修改', async () => {
+    const good = 'a:\n  kind: openai\n  baseUrl: https://good.example/v1\n  model: m1\n';
+    disk.set(DOC_PATH, good);
+    await bootstrapProvidersDoc();
+    const baseRevision = providersDocStatus().revision;
+
+    const external = good
+      .replace('https://good.example/v1', 'https://external.example/v1')
+      .replace('  model: m1', '  model: external-model');
+    disk.set(DOC_PATH, external);
+    await loadProvidersDoc();
+    expect(providersDocStatus().revision).toBeGreaterThan(baseRevision);
+
+    const res = await saveProvidersDoc(
+      { a: { kind: 'openai', baseUrl: 'https://typed.example/v1', model: 'm1' } },
+      { expectedRevision: baseRevision },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.conflict).toBe(true);
+    expect(res.error).toContain('revision');
+    expect(disk.get(DOC_PATH)).toBe(external);
+  });
+
+  it('补丁没覆盖且未点名的外部有效节原样保留；pendingDeletes 才允许删除', async () => {
+    disk.set(DOC_PATH, 'a:\n  kind: openai\n  baseUrl: https://a.example/v1\n  model: m1\n');
+    await bootstrapProvidersDoc();
+
+    // 外部新增 b，watcher 已重读（不是「未送达」的冲突；考的是合并时不得静默删节）。
+    const withB =
+      'a:\n  kind: openai\n  baseUrl: https://a.example/v1\n  model: m1\n' +
+      'b:\n  kind: openai\n  baseUrl: https://b.example/v1\n  model: b1\n  headers:\n    x-hand: keep\n';
+    disk.set(DOC_PATH, withB);
+    await loadProvidersDoc();
+    const revisionWithB = providersDocStatus().revision;
+
+    const saved = await saveProvidersDoc(
+      { a: { kind: 'openai', baseUrl: 'https://a2.example/v1', model: 'm1' } },
+      { expectedRevision: revisionWithB },
+    );
+    expect(saved.ok).toBe(true);
+    let text = disk.get(DOC_PATH) ?? '';
+    expect(text).toContain('https://a2.example/v1');
+    expect(text).toContain('b:');
+    expect(text).toContain('x-hand: keep');
+
+    const revisionAfterSave = providersDocStatus().revision;
+    const deleted = await saveProvidersDoc(
+      { a: { kind: 'openai', baseUrl: 'https://a2.example/v1', model: 'm1' } },
+      { expectedRevision: revisionAfterSave, pendingDeletes: ['b'] },
+    );
+    expect(deleted.ok).toBe(true);
+    text = disk.get(DOC_PATH) ?? '';
+    expect(text).not.toContain('b:');
+    expect(text).not.toContain('x-hand: keep');
+  });
+
   it('deleting and re-adding the same name does not resurrect old runtime lastTest', async () => {
     const good = 'a:\n  kind: openai\n  baseUrl: https://good.example/v1\n  model: m1\n';
     disk.set(DOC_PATH, good);
@@ -696,7 +825,7 @@ describe('provider config safety regressions', () => {
     const probe = { status: 'ok' as const, latencyMs: 1, at: 123, message: 'ok' };
     const before = loadSettings();
     saveSettings({ ...before, providers: before.providers.map((row) => ({ ...row, lastTest: probe })) });
-    await saveProvidersDoc({});
+    await saveProvidersDoc({}, { pendingDeletes: ['a'] });
     saveSettings({ ...loadSettings(), providers: [] });
     const readded = {
       kind: 'openai' as const,

@@ -123,6 +123,8 @@ export interface ProviderDocView {
     /** **字段级**问题：这一节照常生效，只是这些字段被按缺省处理。 */
     warnings?: Array<{ name: string; message: string }>;
     fatal?: string;
+    /** fatal 时是否从本机独立 intent 备份恢复了跨重启 last-good。 */
+    recoveredFromBackup?: boolean;
     empty: boolean;
     loaded: boolean;
     available: boolean;

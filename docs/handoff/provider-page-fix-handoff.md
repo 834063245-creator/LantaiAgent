@@ -12,6 +12,9 @@ Provider 页问题来自多写入面、多真相源、缺少保存事务与配�
 本轮已修：保存前校验、保存串行化与 revision、外部文件冲突阻断、凭据删除失败上抛、fatal last-good、删除/同名重建运行态清理。
 已修：Provider 名大小写唯一、OAuth 缓存与多账号选择、探针指纹、草稿测试不落持久状态、Provider 本地状态串台、思考档位能力/会话分层。
 
+**R1/R2 本轮已完成**：跨重启独立 intent 备份 + fatal/坏节回落；保存前 revision + 磁盘原文冲突闸 +
+未点名有效节保留。实现见 `providers-store.ts`，回归见 `tests/providers-store.test.ts`。
+
 ## 1. 思考档位最终语义
 
 
@@ -27,11 +30,18 @@ Provider 页问题来自多写入面、多真相源、缺少保存事务与配�
 
 ## 2. 下个窗口仍需处理
 
-### R1（高）fatal 后跨重启 last-good
-同进程 last-good 已修；重启后若 localStorage 只剩运行态壳，仍可能丢 intent。建议把完整 intent 快照持久化到独立 backup，fatal 时优先读 backup。
+### R1（高）fatal 后跨重启 last-good（本轮已完成）
+- 独立键 `hologram_provider_intent_backup_v1` 保存完整 intent 快照（不含 Key / 探针 / catalog / modelMeta）。
+- 每次非 fatal、非空文本装载后刷新快照；重启后先把备份灌入 last-good，因此整份 fatal 和「整节读不出来」都能回落。
+- fatal 时 `providersFileReady` 仍为 false（不写盘、不剥本机意图）；UI 明示「从本机 intent 备份恢复」。
+- 回归：fatal 跨重启、重启后坏节回落、localStorage 只剩运行态壳。
 
-### R2（高）外部文件冲突仍是 watcher 级
-保存前比较磁盘 hash/mtime/lastFileText；不一致直接冲突态。磁盘存在、patch 不含且不在 pendingDeletes 的有效节必须保留或拒写。
+### R2（高）外部文件冲突仍是 watcher 级（本轮已完成）
+- 保存请求携带编辑起点 `expectedRevision`；watcher 已重读而面板仍是旧草稿时直接拒写。
+- 写盘前再比磁盘原文与 `lastFileText`：watcher 尚未送达的外部修改也挡住；磁盘读不到时不按空文件重建。
+- 磁盘上存在、patch 未覆盖且不在 `pendingDeletes` 的有效节用 `keep` 原样保留（注释/前向字段不动）；只有显式删除才移除。
+- 全局 tab 保存不再顺手重写 provider 文件，缩小无关写入面。
+- 回归：外部改写直拒、过期 revision 拒写、未点名节保留、显式删除生效。
 
 ### R3（中）保存仍非原子事务
 顺序是 provider.yml → saveSettings → 凭据。凭据失败时配置已保存。建议临时文件 + 凭据预检 + commit/rename，或明确两阶段语义。
@@ -56,8 +66,10 @@ OAuth 登录/多账号/登出；oauthAccountId 重启生效；watcher 冲突阻�
 
 ## 3. 已验证
 
-- tsc --noEmit：通过。
-- Provider/设置/门禁 38 个测试文件、472 用例：全通过。
+- tsc --noEmit：通过（R1/R2 完成后复跑）。
+- Provider + 设置过滤套件 41 个测试文件、492 用例：全通过。
+- R1/R2 新增回归：fatal 跨重启备份恢复、坏节跨重启回落、保存时磁盘外部改写冲突、
+  watcher 已重读的过期 revision 冲突、未点名有效节保留 / pendingDeletes 显式删除。
 - build-builtin-plugins：41 个内置插件产物自包含校验通过。
 - 测试命令入口：cd src-ui 后跑 node .\node_modules\vitest\vitest.mjs run（文件列表见 git diff / 新增测试）。
 
@@ -76,5 +88,5 @@ Provider 页：ProviderPage/ProviderDetail/ModelReasoningLevels/SettingsPanel/se
 
 1. 先读本文和 docs/design/provider-system-spec.md 的思考档位/OAuth 章节。
 2. 不重做第 0 节的已修项。
-3. 先 R1/R2，再 R3/R5/R6；R4/R7 视真机反馈。
-4. 最后跑 tsc + provider 套件 + 真机 OAuth/文件冲突验收。
+3. R1/R2 已完成，下一步 R3/R5/R6；R4/R7 视真机反馈。
+4. 最后跑 tsc + provider 套件 + 真机 OAuth/文件冲突/重启恢复验收。

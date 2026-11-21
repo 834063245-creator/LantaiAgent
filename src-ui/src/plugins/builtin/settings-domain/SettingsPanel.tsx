@@ -25,6 +25,7 @@ import {
   ConfirmDialog,
   canvasWheelMode,
   iconHtml,
+  loadProvidersDoc,
   loadSettings,
   loadSettingsWithSecrets,
   notifyAgentConfigChanged,
@@ -288,6 +289,12 @@ const SettingsPanelApp: React.FC<{
   const savingRef = useRef(false);
   /** 用户编辑代数：保存途中继续编辑时，不清 dirty / 不重置「已保存」。 */
   const editRevisionRef = useRef(0);
+  /** 当前面板 `settings.providers` 对应的磁盘装载代数。watcher 已重读但 React
+   *  尚未把新行表放进本页时，编辑起点仍必须指向旧代数。 */
+  const settingsDocRevisionRef = useRef(providersDocStatus().revision);
+  /** Provider 草稿起点的磁盘装载代数：watcher 已重读而本页仍拿旧草稿时，
+   *  saveProvidersDoc 用它直接判冲突（不依赖外部改动是否刚好被 watcher 送达）。 */
+  const providerDocRevisionRef = useRef<number | null>(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
   // 凭据暂存：删除 Provider / 清除 Key 只进 state，保存时才删系统凭据——
   // 用户取消/关闭面板不会丢 Key（P0 修复）。
@@ -316,6 +323,9 @@ const SettingsPanelApp: React.FC<{
 
   /** Provider 页专用提交：只标 providerDirty，不污染其他 tab 的全局 dirty。 */
   const commitProvider = useCallback((next: AppSettings): void => {
+    if (providerDocRevisionRef.current === null) {
+      providerDocRevisionRef.current = settingsDocRevisionRef.current;
+    }
     editRevisionRef.current += 1;
     setSettings(next);
     setProviderDirty(true);
@@ -408,8 +418,29 @@ const SettingsPanelApp: React.FC<{
         const kept = target.providers.filter((p) => !deletesAtStart.includes(p.name));
         const patch: Record<string, ProviderIntent> = {};
         for (const p of kept) patch[p.name] = intentOf(p);
-        const docWrite = await saveProvidersDoc(patch);
+        // 全局 tab 的保存不顺手重写 provider 文件：那会把「没编辑 Provider」也变成
+        // 一次全量写盘，扩大外部冲突面。只有 Provider dirty / 一步式添加才写。
+        const shouldWriteProviders = providerDirty || opts?.reconcileName !== undefined;
+        const docWrite: Awaited<ReturnType<typeof saveProvidersDoc>> = shouldWriteProviders
+          ? await saveProvidersDoc(patch, {
+              expectedRevision: providerDocRevisionRef.current ?? undefined,
+              pendingDeletes: deletesAtStart,
+            })
+          : { ok: true };
         if (!docWrite.ok) {
+          if (docWrite.conflict) {
+            setDocStaleHint(true);
+            // 把外部版本读进 store：用户点「放弃暂存并重读」时拿到的是新盘面，
+            // 而不是等 watcher 下一次去抖窗口。磁盘读不到的冲突不重读——那会把
+            // 「读失败」误当空配置，反而伤到当前安全投影。
+            if (docWrite.reloadable !== false) {
+              try {
+                await loadProvidersDoc({ reloadRuntime: true });
+              } catch {
+                // 冲突原因已经保留在 docWrite.error；重读失败不吞掉主错误。
+              }
+            }
+          }
           const message =
             'provider 配置文件写入失败：' +
             (docWrite.error ?? '未知原因') +
@@ -417,6 +448,10 @@ const SettingsPanelApp: React.FC<{
           setSaveError(message);
           return { ok: false, error: message };
         }
+        // 文件已成功落盘：后续凭据清理/写入即使失败，下一次 Provider 保存也应以
+        // 这份新盘面为 baseline，不能拿旧 revision 再判一次假冲突。
+        settingsDocRevisionRef.current = providersDocStatus().revision;
+        providerDocRevisionRef.current = providersDocStatus().revision;
         const diskComposition = loadSettings().composition;
         saveSettings(diskComposition ? { ...target, composition: diskComposition } : target);
         const cleanupFailures: string[] = [];
@@ -443,6 +478,7 @@ const SettingsPanelApp: React.FC<{
         }
         setPendingClears((current) => current.filter((name) => !clearsAtStart.includes(name)));
         setPendingDeletes((current) => current.filter((name) => !deletesAtStart.includes(name)));
+        providerDocRevisionRef.current = null;
         setLang(target.display.language);
         setSaved(true);
         setTimeout(() => setSaved(false), 1500);
@@ -453,7 +489,7 @@ const SettingsPanelApp: React.FC<{
         setSaving(false);
       }
     },
-    [settings, pendingClears, pendingDeletes, onSave],
+    [settings, pendingClears, pendingDeletes, providerDirty, onSave],
   );
   /** 全局保存（Agent / 显示等 tab） */
   const handleSave = useCallback(async () => {
@@ -486,6 +522,9 @@ const SettingsPanelApp: React.FC<{
       editRevisionRef.current += 1;
       setSettings(next);
       setProviderDirty(true);
+      if (providerDocRevisionRef.current === null) {
+        providerDocRevisionRef.current = settingsDocRevisionRef.current;
+      }
       const revision = editRevisionRef.current;
       const result = await runSavePipeline(next, { reconcileName: addedName });
       if (!result.ok) {
@@ -506,6 +545,8 @@ const SettingsPanelApp: React.FC<{
     setSettings((current) => withCarriedKeys(current, loadSettings().providers));
     setPendingClears([]);
     setPendingDeletes([]);
+    settingsDocRevisionRef.current = providersDocStatus().revision;
+    providerDocRevisionRef.current = null;
     setProviderDirty(false);
     setDocStaleHint(false);
     setSaveVersion((v) => v + 1);
@@ -612,6 +653,7 @@ const SettingsPanelApp: React.FC<{
                   logPanelReload('external-change');
                   // 只换 providers 一域（其余 tab 的暂存改动不牵连）；
                   // 密钥随内存带走——见 withCarriedKeys 头注
+                  settingsDocRevisionRef.current = providersDocStatus().revision;
                   setSettings((s) => withCarriedKeys(s, loadSettings().providers));
                 },
                 staleHint: docStaleHint,
@@ -624,6 +666,7 @@ const SettingsPanelApp: React.FC<{
                   void retryProvidersPath().then(() => {
                     setDocStaleHint(false);
                     logPanelReload('retry-path');
+                    settingsDocRevisionRef.current = providersDocStatus().revision;
                     setSettings((s) => withCarriedKeys(s, loadSettings().providers));
                     setProvidersDocVersion((v) => v + 1);
                   });
