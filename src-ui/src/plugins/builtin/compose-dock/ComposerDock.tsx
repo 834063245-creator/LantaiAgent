@@ -434,8 +434,10 @@ const ComposerSurface = memo(function ComposerSurface({
       {/* 历史眉批（一次性，6s 自散）：提示长在功能所在处，不常驻占位符 */}
       {layers.histHint && <div className="pp-eyebrow-hint">↑ 可回取上文 · ↓ 返回草稿</div>}
 
-      {/* 目标状态条（2026-10-23 DSH 式目标域）：有目标才出现；暂停/恢复/清除走同一命令面 */}
-      <GoalStrip core={core} />
+      {/* 目标状态条（2026-10-23 DSH 式目标域）：有目标才出现；暂停/恢复/清除走同一命令面。
+          纸期没有活跃卷，`goalView` 仍会留着上一卷的读数——目标属于卷，不属于待题纸，
+          故只在坞期挂载；否则一张新纸会莫名继承别的会话的目标。 */}
+      {!isSheet && <GoalStrip core={core} />}
 
       {/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞，避免高度/关窗竞态）
           ——同附图预览的 portal 理由，见 `composer-modals.tsx` 头注。 */}

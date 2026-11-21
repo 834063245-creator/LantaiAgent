@@ -118,12 +118,13 @@ describe('待题纸 · V2 形态（纸 = 卷首 + 这张卷的创作坞）', () 
   /* ⚠ 2026-11-19 真机返工（用户：「UI 错位，模型下拉菜单缩成一团，权限切换弹窗鼠标操作被吞」）。
    * 三条都是「坞期规则被 .pp-composer 祖先限定、卷首不在坞里」的连带后果——钉住它们，
    * 免得下次「统一到坞期那套」时又踩同一脚。 */
-  it('⑩ 模型那格不折行、不缩（错位的根因：子件各自 block 会把一行拆三行）', () => {
+  it('⑩ 模型那格不折行；除模型名外不缩（错位的根因：子件各自 block 会把一行拆三行）', () => {
     const trig = ruleOf('.pp-folio-pick-model .ms-trigger');
     expect(trig, '缺触发器显式 display（坞期那条被祖先限定）').toContain('display: inline-flex');
     expect(trig, '缺 nowrap（140px 里字会被折成两行）').toContain('white-space: nowrap');
     expect(trig, '行高必须与档行一致').toContain('line-height: 15px');
-    // 子件不许缩：只给容器 nowrap 不够，收缩发生在 flex item 内部
+    // 子件默认不许缩：只给容器 nowrap 不够，收缩发生在 flex item 内部。
+    // 模型名是唯一例外（⑫ 单独盖回可缩 + 省略号）——否则它一折行又会撑坏行高。
     const kids = ruleOf('.pp-folio-pick-model .ms-trigger > *');
     expect(kids).toContain('flex: 0 0 auto');
     expect(kids).toContain('white-space: nowrap');
@@ -134,5 +135,30 @@ describe('待题纸 · V2 形态（纸 = 卷首 + 这张卷的创作坞）', () 
     expect(menu, '必须撤掉坞期那条 right 拉扯').toContain('right: auto');
     expect(menu).toContain('width: max-content');
     expect(menu, '下限要够两级菜单读').toContain('min-width: 260px');
+  });
+
+  /* ⚠ 2026-11-30 真机报障（用户：「模型和权限文字重叠」）：来源记号加进模型格后，
+   * 内容超过了原先把整格钉死的 `max-width: 34ch`；子件又声明不缩 ⇒ 溢出的「默认」
+   * 正好压在下一格「权限」上。判据不是换一个更大的 ch，而是「不再设窄于内容的硬上限；
+   * 窄到单格都放不下时，只让模型名省略，绝不把字画进邻格」。
+   * 用源码钉住这三层，防下次又把 caps / nowrap 写回去。 */
+  it('⑫ 模型格不把内容溢出到权限格：无 34ch 硬上限，窄时只省略模型名', () => {
+    const model = ruleOf('.pp-folio-pick-model');
+    expect(model, '不许再给小于内容的硬宽度').not.toContain('max-width: 34ch');
+    expect(model).toContain('max-width: 100%');
+
+    const container = ruleOf('.pp-folio-pick-model .ms-container');
+    expect(container, '容器要能跟着行宽让位').toContain('flex: 0 1 auto');
+    expect(container).toContain('min-width: 0');
+
+    const trigger = ruleOf('.pp-folio-pick-model .ms-trigger');
+    expect(trigger).toContain('max-width: 100%');
+    expect(trigger).toContain('overflow: hidden');
+
+    const name = ruleOf('.pp-folio-pick-model .ms-trigger-name');
+    expect(name, '模型名是唯一可省略的字').toContain('flex: 0 1 auto');
+    expect(name).toContain('min-width: 0');
+    expect(name).toContain('text-overflow: ellipsis');
+    expect(name, '只许单行省略，不许折回旧病').toContain('white-space: nowrap');
   });
 });

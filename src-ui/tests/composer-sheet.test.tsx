@@ -74,6 +74,7 @@ describe('待题纸的输入面（V2-P1）', () => {
       nextSessionId: 2,
     });
     getChatStore(PANEL).input.getState().setInputText('');
+    getChatStore(PANEL).panel.getState().setGoalView(null);
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -134,6 +135,35 @@ describe('待题纸的输入面（V2-P1）', () => {
     expect(container.querySelector('.pp-mode-seg')).toBeNull();
     // 模型触发器同样不在纸身（它现在住在卷首档行，见 composer-folio-picks）
     expect(container.querySelector('.ms-trigger')).toBeNull();
+  });
+
+  it('目标条只属卷：面板里残留的旧目标不跟着待题纸出现', async () => {
+    getChatStore(PANEL).panel.getState().setGoalView({
+      id: 'goal-from-other-volume',
+      revision: 4,
+      objective: '别的会话的目标',
+      phase: 'complete',
+      maxGoalRounds: 20,
+      roundsStarted: 2,
+      createdAt: 1,
+      updatedAt: 2,
+      activation: 'disarmed',
+    });
+    root = mount(
+      <>
+        <ComposerDock />
+        <ComposerSheet />
+      </>,
+      container,
+    );
+    await act(async () => {});
+    // 先确认这份残留目标在坞期确实会显示——否则下面的「不在」是空断言。
+    expect(container.querySelector('.pp-goal-strip__text')?.textContent).toBe('别的会话的目标');
+
+    await act(async () => {
+      useDraftSheetStore.getState().openSheet();
+    });
+    expect(container.querySelector('.pp-goal-strip')).toBeNull();
   });
 
   /* ⚠ 2026-11-30 非焦点纸身批：每张纸的输入面要显示**自己那份草稿**。

@@ -352,18 +352,26 @@
 .pp-folio-pick-model {
   align-items: baseline;
   gap: 5px;
-  max-width: 34ch;
+  /* 2026-11-30 真机报障（模型与权限文字重叠）：这里原先把整格钉在 34ch。模型名本身还没到底，
+   * 但「默认」来源记号把内容撑过了这条硬上限——子件不缩、仍然照常画，于是「默认」 /
+   * 「权限」两字叠在同一处。这里不再给窄于内容的硬上限；空间不够时让整格换行，
+   * 真到单格都放不下时只让模型名省略（见下面 .ms-trigger-name），值 / 档位 / 来源记号不缩。 */
+  max-width: 100%;
+  min-width: 0;
   line-height: 15px;
 }
 .pp-folio-pick-model .ms-container {
-  /* 不缩（坞期那份是 0 1 auto）：这一行里它是三笔之一，缩了就会触发上面那条折行 */
-  flex: 0 0 auto;
+  /* 允许这一格在窄纸上让位；模型名是唯一可缩的字（见 .ms-trigger-name），
+   * 档位后缀 / caret / 「默认」来源记号都保持完整。 */
+  flex: 0 1 auto;
   min-width: 0;
   line-height: 15px;
 }
 .pp-folio-pick-model .ms-trigger {
   display: inline-flex;
   align-items: baseline;
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
   height: 15px;
   padding: 0;
@@ -371,6 +379,7 @@
   border: 0;
   background: transparent;
   box-shadow: none;
+  overflow: hidden;
   font-family: var(--f-song);
   font-size: var(--fs-caption);
   line-height: 15px;
@@ -381,14 +390,22 @@
    * 触发器撑到 28px，与旁边 16px 的格子基线错开。这就是用户报的「UI 错位」。 */
   white-space: nowrap;
 }
-/* 三枚子件一律不缩、不折行（`flex: 0 0 auto` + nowrap 是上面那条的必要配套：
- * 只给容器 nowrap 不够——收缩发生在 flex item 内部，字仍会在 113px 里折行）。 */
+/* 子件一律不折行；默认不缩（`flex: 0 0 auto` + nowrap 是上面那条的必要配套：
+ * 只给容器 nowrap 不够——收缩发生在 flex item 内部，字仍会在 113px 里折行）。
+ * 唯一例外是模型名：下面单独放开为可缩 + 省略号，窄纸才有一个不溢出的让位点。 */
 .pp-folio-pick-model .ms-trigger > * {
   flex: 0 0 auto;
   white-space: nowrap;
   line-height: 15px;
 }
 .pp-folio-pick-model .ms-trigger-name {
+  /* 窄纸兜底：模型名可省略，但保持单行（旧病的折行才会把行高撑坏）。
+   * 来源记号在触发器外，权限格在下一格，两者都不会再被未收缩的字压到。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
   color: var(--ink-1);
 }
