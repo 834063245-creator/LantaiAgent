@@ -302,8 +302,10 @@ export class SessionLog {
     }
   }
 
-  /** 订阅 append（session/event 内部事件 — 测试观测与未来回放的接入点；
-   *  UI/EventSink 不在此面）。返回取消订阅的 Disposer。 */
+  /** 订阅 append（session/event 内部事件 — 落盘队列、状态投影刷新与测试观测的
+   *  接入点；**不是通用 UI 总线**：UI 消费方只准据此重读日志派生的状态
+   *  （先例 = chat-core 的目标状态条，随 `goal/change`/`goal/round` 重读）。
+   *  返回取消订阅的 Disposer。 */
   onEvent(listener: (ev: SessionEvent) => void): Disposer {
     this._listeners.push(listener);
     let done = false;

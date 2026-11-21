@@ -32,6 +32,7 @@ import {
 } from '../../agent/goal/service';
 import { goalHostOf } from '../../agent/goal/session-registry';
 import type { GoalView } from '../../agent/goal/types';
+import type { SessionLog } from '../../agent/session-log';
 import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 
 /** 目标驱动器对 ChatCore 的全部依赖——不给类，只给能力位。 */
@@ -68,6 +69,9 @@ export class GoalDriver {
   private _goalDriveScheduled = false;
   /** 「等本卷空闲再排」的一次性订阅（sid → 退订）：同一卷只挂一个，避免重复排程。 */
   private readonly _goalIdleWait = new Map<number, () => void>();
+  /** 状态条日志订阅（`bindGoalLog` 维护；切卷 / 句柄装配时重挂）。 */
+  private _goalLog: SessionLog | null = null;
+  private _goalLogUnsub: (() => void) | null = null;
 
   constructor(
     private readonly host: GoalDriverHost,
@@ -78,6 +82,9 @@ export class GoalDriver {
   dispose(): void {
     for (const off of this._goalIdleWait.values()) off();
     this._goalIdleWait.clear();
+    this._goalLogUnsub?.();
+    this._goalLogUnsub = null;
+    this._goalLog = null;
   }
 
   /** 本卷目标宿主（Agent 在 goal 注册表里的登记）；Agent 未就绪 = undefined。 */
@@ -100,6 +107,32 @@ export class GoalDriver {
   /** 把目标视图写进面板 store（状态条数据源）。 */
   refreshGoalView(): void {
     this.sink().setGoalView(this.goalView() ?? null);
+  }
+
+  /** 本卷日志里的目标事件到达即重读状态条（2026-11-21：轮次计数实时化）。
+   *
+   *  状态真源 = 本卷会话日志：`goal/round` 推进轮数、`goal/change` 推进阶段。
+   *  旧实现的刷新点全在**动作边界**（驱动器开轮前 / 轮次收尾 / 切卷 / 命令面）：
+   *  轮内计数已经 +1，状态条却停在上一轮——要切一次卷（重读日志）才追上；模型在
+   *  直人轮里用 goal 工具改目标，同样要等该轮收尾才显示。
+   *
+   *  重挂触发面由宿主给（切卷 / 句柄装配），本方法只判「日志换了没有」。旧句柄 /
+   *  测试桩的 `sessionLog` 可能只是一个读形桩（无 onEvent）——降级为只保留动作
+   *  边界的刷新，不炸链路（与句柄其余能力位同规）。 */
+  bindGoalLog(): void {
+    const log = this.host.agentOf()?.sessionLog ?? null;
+    if (log === this._goalLog) return;
+    this._goalLogUnsub?.();
+    this._goalLog = log;
+    this._goalLogUnsub =
+      log && typeof log.onEvent === 'function'
+        ? log.onEvent((ev) => {
+            if (ev.kind === 'goal/change' || ev.kind === 'goal/round') this.refreshGoalView();
+          })
+        : null;
+    // 句柄迟到装配（惰性补建 / 开卷）也意味着「本卷日志现在可读」：读一次——
+    // 恢复出来的目标不必等下一次切卷才出现在状态条上。
+    if (log) this.refreshGoalView();
   }
 
   /** 空闲时排一次目标续行（微任务合并，避免在 turn finally 里递归起轮）。

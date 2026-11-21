@@ -12,7 +12,8 @@ import { useSyncExternalStore } from 'react';
 import { type ChatCore, getChatStore } from './host';
 
 /** 目标状态条 —— 有目标才渲染（无目标零占位）。数据源 = panel-store.goalView
- *  （chat-core 在命令 / 轮次收尾 / 切卷时刷新）；控制动作走同一 `/goal` 命令面，
+ *  （GoalDriver.bindGoalLog 随本卷日志的 `goal/round` / `goal/change` 实时重读，
+ *  命令面 / 切卷 / 轮次收尾仍兜底刷新）；控制动作走同一 `/goal` 命令面，
  *  不新造第二条写路径。 */
 export function GoalStrip({ core }: { core: ChatCore | null }) {
   if (!core) return null;

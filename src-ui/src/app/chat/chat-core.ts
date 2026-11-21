@@ -327,11 +327,26 @@ export class ChatCore {
       }
     };
     _bindExecState();
+    // 目标状态条：本卷日志里的目标事件到达即重读（轮次计数必须**轮内**就更新）。
+    // 机制住 GoalDriver.bindGoalLog（目标域的知识不外溢）；这里只给重挂触发面——
+    // 与 exec 订阅同一组：切卷 / 句柄装配（句柄惰性补建也在内）。
+    this._goal.bindGoalLog();
+    _globalStoreUnsubs.push(() => this._goal.dispose());
     // 用户切换活动会话时重新绑定（含初始同步——换卷即呈现新卷状态）；
     // 退订入 _globalStoreUnsubs（此前漏收——旧实例的订阅永不解除）
-    _globalStoreUnsubs.push(getChatStore(this.panelId).sess.subscribe(() => _bindExecState()));
+    _globalStoreUnsubs.push(
+      getChatStore(this.panelId).sess.subscribe(() => {
+        _bindExecState();
+        this._goal.bindGoalLog();
+      }),
+    );
     // exec 实例表变更 → 只重挂订阅（不做副作用式初始同步）
-    _globalStoreUnsubs.push(agentSessionState.subscribe(() => _bindExecState(false)));
+    _globalStoreUnsubs.push(
+      agentSessionState.subscribe(() => {
+        _bindExecState(false);
+        this._goal.bindGoalLog();
+      }),
+    );
 
     // ── Agent 事件通过 eventSink 直接投递 → renderEvent ──
     // (4.2: 取消总线中转 — Agent → ChatCore 是 1:1，无需总线)

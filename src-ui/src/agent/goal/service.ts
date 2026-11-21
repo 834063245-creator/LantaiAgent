@@ -138,6 +138,21 @@ function commitChange(host: GoalHost, data: SessionEventDataMap['goal/change']):
   return stateOf(host);
 }
 
+/** **变更与进程本地授权一起翻转**（2026-11-21）：状态条随日志事件重读，
+ *  事件到达时读到的授权必须已经是翻转后的值——先 append 再 set，观察者会把
+ *  create/resume 看成「续行已停」、把 pause/complete/block 看成「续行未停」，
+ *  且在下一次事件之前不会自愈。append 抛出（日志拒写）= 什么都没发生，授权回滚。 */
+function withActivation<T>(host: GoalHost, next: GoalActivation, mutate: () => T): T {
+  const prev = goalActivationOf(host);
+  setGoalActivation(host, next);
+  try {
+    return mutate();
+  } catch (e) {
+    setGoalActivation(host, prev);
+    throw e;
+  }
+}
+
 function nextTimestamp(state: NonNullable<GoalProjection['current']>): number {
   return Math.max(Date.now(), state.updatedAt);
 }
@@ -158,21 +173,22 @@ export function createGoal(host: GoalHost, request: { objective: string; maxGoal
   const objective = resolveObjective(request.objective);
   const maxGoalRounds = resolveMaxGoalRounds(request.maxGoalRounds ?? DEFAULT_MAX_GOAL_ROUNDS);
   const now = Date.now();
-  commitChange(host, {
-    operation: 'create',
-    goal: {
-      id: `goal-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      revision: 1,
-      objective,
-      phase: 'active',
-      maxGoalRounds,
-    },
-    roundsStarted: 0,
-    createdAt: now,
-    updatedAt: now,
+  return withActivation(host, 'armed', () => {
+    commitChange(host, {
+      operation: 'create',
+      goal: {
+        id: `goal-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        revision: 1,
+        objective,
+        phase: 'active',
+        maxGoalRounds,
+      },
+      roundsStarted: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return requireView(host);
   });
-  setGoalActivation(host, 'armed');
-  return requireView(host);
 }
 
 /** 改目标字段/上限（不改阶段与轮数；blocked 的原有原因保留）。 */
@@ -214,15 +230,16 @@ export function pauseGoal(host: GoalHost, ref: GoalRef): GoalView {
   if (current.goal.phase !== 'active') {
     throw new GoalError(`cannot pause a goal from phase "${current.goal.phase}"`, 'GOAL_INVALID_TRANSITION');
   }
-  commitChange(host, {
-    operation: 'pause',
-    goal: { ...withoutBlocker(current.goal), revision: current.goal.revision + 1, phase: 'paused' },
-    roundsStarted: current.roundsStarted,
-    createdAt: current.createdAt,
-    updatedAt: nextTimestamp(current),
+  return withActivation(host, 'disarmed', () => {
+    commitChange(host, {
+      operation: 'pause',
+      goal: { ...withoutBlocker(current.goal), revision: current.goal.revision + 1, phase: 'paused' },
+      roundsStarted: current.roundsStarted,
+      createdAt: current.createdAt,
+      updatedAt: nextTimestamp(current),
+    });
+    return requireView(host);
   });
-  setGoalActivation(host, 'disarmed');
-  return requireView(host);
 }
 
 /** 恢复并 arm（受剩余轮预算约束）。 */
@@ -242,15 +259,16 @@ export function resumeGoal(host: GoalHost, ref: GoalRef): GoalView {
       'GOAL_ROUND_EXHAUSTED',
     );
   }
-  commitChange(host, {
-    operation: 'resume',
-    goal: { ...withoutBlocker(current.goal), revision: current.goal.revision + 1, phase: 'active' },
-    roundsStarted: current.roundsStarted,
-    createdAt: current.createdAt,
-    updatedAt: nextTimestamp(current),
+  return withActivation(host, 'armed', () => {
+    commitChange(host, {
+      operation: 'resume',
+      goal: { ...withoutBlocker(current.goal), revision: current.goal.revision + 1, phase: 'active' },
+      roundsStarted: current.roundsStarted,
+      createdAt: current.createdAt,
+      updatedAt: nextTimestamp(current),
+    });
+    return requireView(host);
   });
-  setGoalActivation(host, 'armed');
-  return requireView(host);
 }
 
 /** 标记完成（停续行、终态）。 */
@@ -261,15 +279,16 @@ export function completeGoal(host: GoalHost, ref: GoalRef): GoalView {
   if (current.goal.phase !== 'active' && current.goal.phase !== 'paused' && current.goal.phase !== 'blocked') {
     throw new GoalError(`cannot complete a goal from phase "${current.goal.phase}"`, 'GOAL_INVALID_TRANSITION');
   }
-  commitChange(host, {
-    operation: 'complete',
-    goal: { ...withoutBlocker(current.goal), revision: current.goal.revision + 1, phase: 'complete' },
-    roundsStarted: current.roundsStarted,
-    createdAt: current.createdAt,
-    updatedAt: nextTimestamp(current),
+  return withActivation(host, 'disarmed', () => {
+    commitChange(host, {
+      operation: 'complete',
+      goal: { ...withoutBlocker(current.goal), revision: current.goal.revision + 1, phase: 'complete' },
+      roundsStarted: current.roundsStarted,
+      createdAt: current.createdAt,
+      updatedAt: nextTimestamp(current),
+    });
+    return requireView(host);
   });
-  setGoalActivation(host, 'disarmed');
-  return requireView(host);
 }
 
 /** 标记受阻（必须带策略原因）。 */
@@ -280,20 +299,21 @@ export function blockGoal(host: GoalHost, ref: GoalRef, reason: GoalBlockReason)
   if (current.goal.phase !== 'active') {
     throw new GoalError(`cannot block a goal from phase "${current.goal.phase}"`, 'GOAL_INVALID_TRANSITION');
   }
-  commitChange(host, {
-    operation: 'block',
-    goal: {
-      ...withoutBlocker(current.goal),
-      revision: current.goal.revision + 1,
-      phase: 'blocked',
-      blockedReason: resolveBlockReason(reason),
-    },
-    roundsStarted: current.roundsStarted,
-    createdAt: current.createdAt,
-    updatedAt: nextTimestamp(current),
+  return withActivation(host, 'disarmed', () => {
+    commitChange(host, {
+      operation: 'block',
+      goal: {
+        ...withoutBlocker(current.goal),
+        revision: current.goal.revision + 1,
+        phase: 'blocked',
+        blockedReason: resolveBlockReason(reason),
+      },
+      roundsStarted: current.roundsStarted,
+      createdAt: current.createdAt,
+      updatedAt: nextTimestamp(current),
+    });
+    return requireView(host);
   });
-  setGoalActivation(host, 'disarmed');
-  return requireView(host);
 }
 
 /** 清除当前目标（墓碑进日志；历史保留）。 */
@@ -301,12 +321,13 @@ export function clearGoal(host: GoalHost, ref: GoalRef): void {
   const state = stateOf(host);
   const current = requireCurrent(state);
   expectRef(current, ref);
-  host.getSessionLog().append('goal/change', {
-    operation: 'clear',
-    cleared: { id: current.goal.id, revision: current.goal.revision + 1 },
-    clearedAt: nextTimestamp(current),
+  withActivation(host, 'disarmed', () => {
+    host.getSessionLog().append('goal/change', {
+      operation: 'clear',
+      cleared: { id: current.goal.id, revision: current.goal.revision + 1 },
+      clearedAt: nextTimestamp(current),
+    });
   });
-  setGoalActivation(host, 'disarmed');
 }
 
 /** 只 disarm（停用自动续行，不写日志）——宿主暂停/失败收尾用。 */

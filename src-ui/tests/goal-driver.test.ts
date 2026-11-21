@@ -116,6 +116,9 @@ function controlledAgent(sid: number) {
   const unregister = registerGoalHost(host);
   return {
     id,
+    // 生产句柄有日志面（REG0 之后是开卷/落盘的必经面）——目标状态条的实时刷新
+    // 订阅的就是它，测试桩必须同形。
+    sessionLog: host.log,
     getSession: () => [{ role: 'system', content: 'sys' }],
     setSession: vi.fn(),
     insertMessage: vi.fn(),
@@ -344,6 +347,35 @@ describe('目标驱动器 · 进入续行的两条入口', () => {
     expect(kindSequence()).toBe('turn,goal');
     expect(readGoal(host)?.roundsStarted).toBe(1);
     void sid;
+  });
+
+  it('目标状态条随日志事件实时刷新：轮内计数一准入就到（不必切卷重读）', async () => {
+    const { panel, host, sid } = await setup();
+    createGoal(host, { objective: 'x', maxGoalRounds: 5 });
+    drive(panel, sid);
+    await flush();
+    expect(kindSequence()).toBe('goal');
+    // 旧实现：刷新点在开轮**之前**，轮内计数停在 0——切一次卷（重读日志）才追上。
+    expect(getChatStore(panel.panelId).panel.getState().goalView?.roundsStarted).toBe(1);
+
+    // 轮收尾 → 下一轮准入，计数继续实时推进（不靠 driver 的收尾刷新）
+    pending[0].resolve();
+    await flush(80);
+    expect(getChatStore(panel.panelId).panel.getState().goalView?.roundsStarted).toBe(2);
+  });
+
+  it('模型在直人轮里建目标：状态条在该轮收尾前就出现，且授权已 arm', async () => {
+    const { panel, host } = await setup();
+    getChatStore(panel.panelId).input.getState().setInputText('帮我做个大工程');
+    void panel.sendMessage();
+    await flush(20);
+    expect(kindSequence()).toBe('turn');
+    // 模型在轮内调用 goal(create)（直人授权的那条路）
+    createGoal(host, { objective: '大工程', maxGoalRounds: 5 });
+    const view = getChatStore(panel.panelId).panel.getState().goalView;
+    expect(view?.objective).toBe('大工程');
+    // 事件到达时授权已是翻转后的值（先 append 再 set 会让状态条闪「续行已停」）
+    expect(view?.activation).toBe('armed');
   });
 
   it('该卷账上还有别的运行时，排程挂到空闲转变上，不被丢弃', async () => {

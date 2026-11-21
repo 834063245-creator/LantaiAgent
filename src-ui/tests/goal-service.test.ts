@@ -206,3 +206,40 @@ describe('goal 服务 · 轮记账与损坏', () => {
     expect(() => readGoal(host)).toThrowError(/corrupt/);
   });
 });
+
+describe('goal 服务 · 变更与授权原子翻转（2026-11-21）', () => {
+  // 观察者面 = 会话日志 append：状态条（chat-core）在事件到达时立即重读。
+  // 若「先 append 再 set activation」，观察者会把 create/resume 读成「续行已停」，
+  // 把 pause/complete 读成「续行未停」，且下一次事件前不会自愈。
+  it('事件到达时 activation 已是翻转后的值', () => {
+    const host = new FakeHost();
+    const seen: Array<[string, string]> = [];
+    host.log.onEvent((ev) => {
+      if (ev.kind === 'goal/change') seen.push([ev.data.operation, goalActivationOf(host)]);
+    });
+
+    const created = createGoal(host, { objective: 'a' });
+    const paused = pauseGoal(host, { id: created.id, revision: created.revision });
+    const resumed = resumeGoal(host, { id: paused.id, revision: paused.revision });
+    completeGoal(host, { id: resumed.id, revision: resumed.revision });
+
+    expect(seen).toEqual([
+      ['create', 'armed'],
+      ['pause', 'disarmed'],
+      ['resume', 'armed'],
+      ['complete', 'disarmed'],
+    ]);
+  });
+
+  it('日志拒写 = 授权回滚（不留「已翻转但变更没落」的半态）', () => {
+    const host = new FakeHost();
+    const created = createGoal(host, { objective: 'a' });
+    // 写面故障：append 抛错（盘满/日志拒写）
+    host.log.append = () => {
+      throw new Error('disk full');
+    };
+    expect(() => pauseGoal(host, { id: created.id, revision: created.revision })).toThrowError(/disk full/);
+    expect(goalActivationOf(host)).toBe('armed');
+    expect(readGoal(host)?.phase).toBe('active');
+  });
+});
