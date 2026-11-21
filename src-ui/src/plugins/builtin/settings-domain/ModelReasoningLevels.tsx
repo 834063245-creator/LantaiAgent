@@ -33,11 +33,26 @@ function readEntries(value: false | ThinkingLevelMap | undefined): Entry[] | und
   return Object.entries(value) as Entry[];
 }
 
-/** 开关打开时的初始声明：沿用模型已声明的档位，没有声明则给 off/low/medium/high。 */
-function seedEntries(efforts: readonly ThinkingEffort[] | undefined): Entry[] {
+/** 手动覆盖的初始声明：优先沿用供应商映射的请求值，其次才算整档位名。 */
+function seedEntries(
+  efforts: readonly ThinkingEffort[] | undefined,
+  sourceLevelMap: ThinkingLevelMap | undefined,
+): Entry[] {
+  const mapLevels = sourceLevelMap ? THINKING_EFFORTS.filter((level) => sourceLevelMap[level] !== undefined) : [];
   const levels: ReasoningLevel[] =
-    efforts !== undefined && efforts.length > 0 ? [...efforts] : ['low', 'medium', 'high'];
-  return [['off', null], ...levels.map((level): Entry => [level, level])];
+    efforts !== undefined && efforts.length > 0
+      ? [...efforts]
+      : mapLevels.length > 0
+        ? mapLevels
+        : ['low', 'medium', 'high'];
+  const off = sourceLevelMap?.off ?? null;
+  return [
+    ['off', off],
+    ...levels.map((level): Entry => {
+      const wire = sourceLevelMap?.[level];
+      return [level, typeof wire === 'string' && wire.trim() ? wire.trim() : level];
+    }),
+  ];
 }
 
 /** 替换第 index 行，保留其余行的顺序与值。 */
@@ -51,8 +66,12 @@ function choicesFor(level: ReasoningLevel, used: readonly ReasoningLevel[]): rea
 }
 
 export interface ModelReasoningLevelsProps {
-  /** 该模型已声明的档位（API 拉取/目录）；开关打开时作为播种底稿。 */
+  /** 该模型已声明的档位（API 拉取/目录）；手动覆盖时作为播种底稿。 */
   efforts?: readonly ThinkingEffort[];
+  /** 供应商/目录给出的「档位 → API 参数值」；缺省 = 档位按名称原值发送。 */
+  sourceLevelMap?: ThinkingLevelMap;
+  /** 当前生效声明来自哪儿（API 拉取 / 内置目录 / 手动覆盖 / 未声明）。 */
+  sourceLabel: string;
   /** 已存储的自定义声明（false = 显式不推理；undefined = 未声明）。 */
   value: false | ThinkingLevelMap | undefined;
   /** 写入新声明；undefined = 删除声明（回落到 API 拉取/目录的档位）。 */
@@ -60,7 +79,13 @@ export interface ModelReasoningLevelsProps {
 }
 
 /** 渲染一个模型的推理等级声明编辑器。 */
-export function ModelReasoningLevels({ efforts, value, onChange }: ModelReasoningLevelsProps) {
+export function ModelReasoningLevels({
+  efforts,
+  sourceLevelMap,
+  sourceLabel,
+  value,
+  onChange,
+}: ModelReasoningLevelsProps) {
   const entries = readEntries(value);
   const used = entries?.map(([level]) => level) ?? [];
   const write = (next: Entry[] | undefined): void => {
@@ -107,33 +132,50 @@ export function ModelReasoningLevels({ efforts, value, onChange }: ModelReasonin
   const nonOff = entries?.filter(([level]) => level !== 'off').length ?? 0;
   const refused = on && nonOff === 0;
   const allUsed = used.length >= ALL_LEVELS.length;
+  const sourceRows: Entry[] = sourceLevelMap
+    ? (Object.entries(sourceLevelMap) as Entry[])
+    : (efforts ?? []).map((level): Entry => [level, level]);
 
   return (
     <div className="pp-model-reasoning">
       <div className="pp-model-reasoning-head">
         <span className="pp-model-param">
-          推理等级
+          推理档位声明（模型支持哪些档）
           <span
             className="pp-model-param-src"
-            data-tip="API 参数值会写进请求的推理强度字段（如 OpenAI 的 reasoning_effort），默认与档位名相同；如有不同，以模型提供商的 API 文档为准。Off 表示关闭思考，不需要填写参数值。"
+            data-tip="这里只描述模型能力：支持哪些档、每档请求里发什么参数值。它不决定这次用哪一档——那是创作坞「思考」里的会话选择。通常由供应商 /models 或内置目录给出，只有声明缺失或错误时才需要手动覆盖。"
           >
             ?
           </span>
+          <span className="pp-chip">{sourceLabel}</span>
         </span>
         <button
           type="button"
           role="switch"
           aria-checked={on}
-          aria-label="推理等级"
+          aria-label="手动覆盖推理档位声明"
           className={`sp-btn-sm${on ? ' is-on' : ''}`}
           onClick={() => {
-            write(on ? undefined : seedEntries(efforts));
+            write(on ? undefined : seedEntries(efforts, sourceLevelMap));
           }}
         >
-          {on ? '已开启' : '未开启'}
+          {on ? '恢复声明' : '手动覆盖'}
         </button>
       </div>
-      {entries === undefined ? null : (
+      {entries === undefined ? (
+        // 未手动覆盖：如实展示供应商/目录给出的能力声明与请求值映射。
+        <span className="pp-model-levels-current">
+          {sourceRows.length > 0
+            ? `生效声明：${sourceRows
+                .map(([level, wire]) =>
+                  sourceLevelMap
+                    ? `${thinkingModeLabel(level)} → ${wire === null ? '不发送参数' : wire}`
+                    : thinkingModeLabel(level),
+                )
+                .join(' · ')}${sourceLevelMap ? '（请求按该映射发送）' : '（档位名原值发送）'}`
+            : '生效声明：未声明——创作坞只提供「自动 / 关闭」安全兜底，不编造档位。可点「手动覆盖」补声明。'}
+        </span>
+      ) : (
         <>
           {entries.length > 0 ? (
             <div className="pp-model-reasoning-row pp-model-reasoning-cols" aria-hidden="true">
@@ -210,8 +252,8 @@ export function ModelReasoningLevels({ efforts, value, onChange }: ModelReasonin
       )}
       <span className="pp-model-params-hint">
         {on
-          ? '本模型只提供上面这些档位；参数值原样写进请求。关闭开关 = 回落到 API 拉取/目录声明。'
-          : '未自定义：沿用 API 拉取/目录声明的档位（原值发送）。'}
+          ? '当前是手动覆盖：这里的档位和参数值会原样写进请求声明。点「恢复声明」= 回落到供应商 / 内置目录。'
+          : '以上只是「模型支持什么」，不是默认强度。本次实际用哪一档，请在创作坞的「思考」里按会话选择。'}
       </span>
     </div>
   );

@@ -371,7 +371,6 @@ import {
   modelDescriptor,
   modelInput,
   modelMaxTokens,
-  modelThinking,
   onSettingsSaved,
   PROVIDER_PROTOCOL_DEFAULTS,
   providerId,
@@ -721,10 +720,8 @@ const faceDeps = {
   // B5 multimodal-image：生效输入模态解析（覆盖 ?? 目录 ?? ['text']）——
   // 创作坞附图门禁与 ModelSelector「视」徽标同链消费
   modelInput,
-  // 2026-09-23 思考下沉：provider 作用域描述符 + 生效思考档位（覆盖 ?? 行值）
-  // ——创作坞 pill 换源到与设置页/请求期同一把尺子
+  // provider 作用域描述符（覆盖 ?? API 拉取 ?? 目录）——创作坞 pill / 设置页 / 请求期同一把尺子
   modelDescriptor,
-  modelThinking,
   onSettingsSaved,
   saveSettings,
   getModel,

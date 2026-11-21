@@ -74,7 +74,6 @@ export {
   modelContextWindow,
   modelDescriptor,
   modelInput,
-  modelThinking,
   onSettingsSaved,
 } from '../../../settings';
 export { useCanvasViewStore } from '../../../state/canvas-view-store';

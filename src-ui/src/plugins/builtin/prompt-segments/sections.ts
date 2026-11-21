@@ -139,7 +139,8 @@ ${userPath}
 
 一行 provider = 一个顶层键，键名就是 provider 身份（字母/数字/下划线/连字符）；可改字段：
 kind（协议：anthropic / openai / responses）、baseUrl、model（新会话默认）、models（可用模型）、
-thinking（默认思考档位）、headers（网关怪癖）、modelOverrides、authMode / oauthProvider。
+headers（网关怪癖）、modelOverrides、authMode / oauthProvider。
+思考档位**不在**这份文件里（2026-11-21 起：只在创作坞按会话选；老文件里的 thinking 字段已退役）。
 
 改完约 1 秒自动生效（无需重启、无需用户点保存）。密钥**不要**写进这个文件——
 apiKey 权威在本机系统凭据库（用户可在 设置 → 提供方 的 Key 栏填写）；连接探针、模型目录、

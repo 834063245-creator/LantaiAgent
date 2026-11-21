@@ -132,6 +132,14 @@ export function mergeDynamicModels(providerName: string, models: ModelDescriptor
 }
 
 /** 获取某个 provider 动态发现的模型数量。 */
+export function clearDynamicProviderState(providerName: string): void {
+  _dynamicModels.delete(providerName);
+  _dynamicFetchFailures.delete(providerName);
+  _dynamicFetchInflight.delete(providerName);
+  _catalog = undefined;
+  _notifyDynamicFetchListeners();
+}
+
 export function getDynamicModelCount(providerName: string): number {
   return _dynamicModels.get(providerName)?.length ?? 0;
 }

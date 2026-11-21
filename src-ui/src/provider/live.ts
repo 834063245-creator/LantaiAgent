@@ -22,7 +22,7 @@
 //   - 覆盖存在 = 该维度用会话值（改过的卷不跟随全局——方案甲语义 4）；
 //   - thinking 覆盖区分 undefined（回落行值）与 ''（显式自动 = 不发参数）。
 
-import { loadSettings, modelInput, modelThinking, type ProviderSettings, providerId } from '../settings';
+import { loadSettings, modelInput, type ProviderSettings, providerId, rememberedThinking } from '../settings';
 import { resolveOauthToken, resolveProviderRuntime } from './credentials';
 import { type CreateProviderOptions, createProvider } from './index';
 import type { ModelMeta } from './model-meta';
@@ -59,7 +59,7 @@ export function createLiveProvider(
     let oauthHeaders: Record<string, string> | undefined;
     let apiKey = rt.apiKey;
     if (rt.provider.authMode === 'oauth' && rt.provider.oauthProvider) {
-      const oauth = await resolveOauthToken(rt.provider);
+      const oauth = await resolveOauthToken(rt.provider, rt.provider.oauthAccountId);
       if (!oauth) {
         throw new Error(
           `OAUTH_NOT_LOGGED_IN: 提供方「${name}」的订阅账号未登录或会话已失效——设置 → Provider → 该行先完成 OAuth 登录`,
@@ -73,16 +73,15 @@ export function createLiveProvider(
         ...rt.provider,
         apiKey,
         ...(overrides_.model !== undefined ? { model: overrides_.model } : {}),
-        // 思考档位三层（2026-09-23 思考下沉）：会话覆盖（创作坞 pill）??
-        // **本模型**的 per-model 覆盖 ?? 提供方行值（本家默认档位）。
-        // 模型取生效值（会话覆盖 ?? 行值）——per-model 档位必须跟着**实际要发的
-        // 那个模型**解析，否则「给 A 设的档位」会跟着 B 一起发出去。
-        thinking:
-          overrides_.thinking !== undefined
-            ? overrides_.thinking
-            : modelThinking(rt.provider, overrides_.model ?? rt.provider.model),
       },
-      { ...options, oauthHeaders },
+      // 思考档位（2026-11-21 收口）：会话显式选择 ?? **该模型上次用过的档位**
+      // （本机记忆，创作坞拨档位时自动记；设置页没有手动入口）?? 自动。
+      // 会话显式覆盖优先，保证「这一卷拨过」不被模型记忆盖掉。
+      {
+        ...options,
+        thinking: overrides_.thinking ?? rememberedThinking(rt.provider, overrides_.model ?? rt.provider.model),
+        oauthHeaders,
+      },
     );
   };
 

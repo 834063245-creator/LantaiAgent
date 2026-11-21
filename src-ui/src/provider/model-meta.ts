@@ -16,7 +16,7 @@
 // 不做任何推断/启发式补全——没有证据的字段一律 undefined，消费链照旧落回
 // 「未知」语义（窗口 0 = 不编造、input 缺省 ['text']、无档位声明不显示选择器）。
 
-import type { ThinkingEffort } from './thinking';
+import type { ThinkingEffort, ThinkingLevelMap } from './thinking';
 import type { ModelDescriptor, Protocol } from './types';
 
 const CANONICAL_EFFORTS: readonly ThinkingEffort[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
@@ -38,6 +38,8 @@ export interface ModelMeta {
   reasoning?: boolean;
   /** 声明的思考档位（canonical 词表子集；端点未披露 = 缺省）。 */
   thinkingEfforts?: ThinkingEffort[];
+  /** 端点显式给出的「档位 → API 参数值」映射。只有数组档位时为缺省。 */
+  thinkingLevelMap?: ThinkingLevelMap;
   /** 「关闭」档是否可表达（端点未披露 = 缺省）。 */
   thinkingOff?: boolean;
   /** 本元数据的拉取时刻（epoch ms）——设置页展示来源与新鲜度。 */
@@ -184,16 +186,46 @@ function reasoningOf(r: RawEntry): boolean | undefined {
   return undefined;
 }
 
-/** 思考档位：端点若显式给档位数组（thinking_efforts / reasoning_efforts /
- *  supported_efforts），过滤到 canonical 词表成员后采用；非词表成员**丢弃**
- *  （P14：接受厂商明示的同义词表，但不静默替换语义）。
- *  现实：主流端点目前都不披露此项——缺省 = 不显示档位选择器（不编造）。 */
-function thinkingEffortsOf(r: RawEntry): ThinkingEffort[] | undefined {
-  const raw = strArray(r.thinking_efforts) ?? strArray(r.reasoning_efforts) ?? strArray(r.supported_efforts);
-  if (!raw) return undefined;
-  const allowed = new Set<string>(CANONICAL_EFFORTS);
-  const out = raw.map((e) => e.toLowerCase()).filter((e): e is ThinkingEffort => allowed.has(e));
-  return out.length > 0 ? [...new Set(out)] : undefined;
+/** 端点声明的思考能力。两种合法证据形状：
+ *  - 档位数组（thinking_efforts / reasoning_efforts / supported_efforts）；
+ *  - 档位对象（同上字段，键 = 档位，值 = 请求参数值；off 可为 null）。
+ *  非 canonical 档位丢弃，绝不把厂商私有词映射成另一个档位。 */
+interface ThinkingDeclarationEvidence {
+  efforts: ThinkingEffort[];
+  levelMap?: ThinkingLevelMap;
+}
+
+function canonicalEffort(raw: unknown): ThinkingEffort | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const value = raw.trim().toLowerCase();
+  return (CANONICAL_EFFORTS as readonly string[]).includes(value) ? (value as ThinkingEffort) : undefined;
+}
+
+function thinkingEffortsOf(r: RawEntry): ThinkingDeclarationEvidence | undefined {
+  const raw = r.thinking_efforts ?? r.reasoning_efforts ?? r.supported_efforts;
+  if (raw === undefined) return undefined;
+
+  if (Array.isArray(raw)) {
+    const efforts = [...new Set(raw.map(canonicalEffort).filter((e): e is ThinkingEffort => e !== undefined))];
+    return efforts.length > 0 ? { efforts } : undefined;
+  }
+
+  const rec = asRecord(raw);
+  if (!rec) return undefined;
+  const levelMap: ThinkingLevelMap = {};
+  for (const [levelRaw, wireRaw] of Object.entries(rec)) {
+    const level = levelRaw === 'off' ? 'off' : canonicalEffort(levelRaw);
+    if (level === undefined) continue;
+    if (level === 'off') {
+      if (wireRaw === null) levelMap.off = null;
+      else if (typeof wireRaw === 'string' && wireRaw.trim()) levelMap.off = wireRaw.trim();
+      continue;
+    }
+    if (typeof wireRaw !== 'string' || !wireRaw.trim()) continue;
+    levelMap[level] = wireRaw.trim();
+  }
+  const efforts = CANONICAL_EFFORTS.filter((e) => levelMap[e] !== undefined);
+  return efforts.length > 0 ? { efforts, levelMap } : undefined;
 }
 
 /** 解析 /models 响应里的一条原始条目 → ModelDescriptor（含 provider 级 ModelMeta）。
@@ -214,7 +246,8 @@ export function parseModelEntry(
   const maxTokens = maxTokensOf(r);
   const input = inputOf(r);
   const reasoning = reasoningOf(r);
-  const thinkingEfforts = thinkingEffortsOf(r);
+  const thinking = thinkingEffortsOf(r);
+  const thinkingEfforts = thinking?.efforts;
 
   const meta: ModelMeta = {
     ...(displayName && displayName !== id ? { name: displayName } : {}),
@@ -223,6 +256,7 @@ export function parseModelEntry(
     ...(input !== undefined ? { input } : {}),
     ...(reasoning !== undefined ? { reasoning } : {}),
     ...(thinkingEfforts !== undefined ? { thinkingEfforts } : {}),
+    ...(thinking?.levelMap !== undefined ? { thinkingLevelMap: thinking.levelMap } : {}),
     fetchedAt: Date.now(),
   };
 
@@ -238,6 +272,7 @@ export function parseModelEntry(
     contextWindow: contextWindow ?? 0,
     maxTokens: maxTokens ?? 0,
     ...(thinkingEfforts !== undefined ? { thinkingEfforts } : {}),
+    ...(thinking?.levelMap !== undefined ? { thinkingLevelMap: thinking.levelMap } : {}),
   };
 
   return { descriptor, meta };
@@ -279,6 +314,7 @@ export function metaHasContent(meta: ModelMeta): boolean {
     meta.maxTokens !== undefined ||
     meta.input !== undefined ||
     meta.reasoning !== undefined ||
-    meta.thinkingEfforts !== undefined
+    meta.thinkingEfforts !== undefined ||
+    meta.thinkingLevelMap !== undefined
   );
 }

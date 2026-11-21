@@ -107,23 +107,27 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
 
 /** 删除指定 provider 的 API Key from 系统加密存储（DPAPI）。
  *  调用时机：保存「删除 Provider」或「清除已保存 Key」的暂存操作时。 */
-export async function removeSecret(providerName: ProviderId): Promise<void> {
+export async function removeSecret(providerName: ProviderId): Promise<{ ok: boolean; error?: string }> {
   try {
     await typedRpc('credential_delete', { provider: providerName });
     // Phase C：写穿失效凭据缓存（同 persistSecrets——含 2026-09-28 的产物副本
     // 修正：必须走宿主桥出口，否则失效的是产物私有副本的缓存）
     invalidateCredentialCache(providerName);
     credRemove({ provider: providerName, ok: true });
+    return { ok: true };
   } catch (e) {
     // 「无加密存储或 Key 未找到」是既有语义的**非关键**路径（调用方不关心），
     // 但日志必须留一条——用户看到的「删掉了」与凭据库里的实际状态要能对上账
-    credRemove({ provider: providerName, ok: false, error: e instanceof Error ? e.message : String(e) });
+    const error = e instanceof Error ? e.message : String(e);
+    credRemove({ provider: providerName, ok: false, error });
+    return { ok: false, error };
   }
 }
 
 export function addProvider(s: AppSettings, name: ProviderId, kind: Protocol): AppSettings {
-  if (s.providers.find((p) => p.name === name)) {
-    throw new Error(`提供方 "${name}" 已存在`);
+  const normalized = name.trim().toLowerCase();
+  if (s.providers.some((p) => p.name.trim().toLowerCase() === normalized)) {
+    throw new Error(`提供方 "${name}" 已存在（名称不区分大小写）`);
   }
   const baseUrl = defaultBaseUrl(name, kind);
   return {

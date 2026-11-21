@@ -25,7 +25,6 @@ const intent: ProviderIntent = {
   baseUrl: 'https://opencode.ai/zen/go/v1',
   model: 'deepseek-flash',
   models: ['deepseek-flash', 'claude-opus-4-6'],
-  thinking: 'high',
   headers: { 'x-opencode-session': 'sess-1' },
   modelOverrides: { 'deepseek-flash': { contextWindow: 1000000, maxTokens: 384000 } },
 };
@@ -265,9 +264,36 @@ describe('parseProvidersDoc', () => {
       kind: 'openai',
       baseUrl: 'https://x/v1',
       model: 'm',
-      modelOverrides: { m: { thinking: '', input: ['text', 'image'] } },
+      modelOverrides: { m: { input: ['text', 'image'] } },
     });
-    expect('intent' in ok && ok.intent.modelOverrides?.m.thinking).toBe('');
+    expect('intent' in ok && ok.intent.modelOverrides?.m.input).toEqual(['text', 'image']);
+  });
+
+  // ⚡ 2026-11-21 思考档位收口：提供方级 / per-model 的 thinking 字段都退役——
+  // 读都不读，点名提示（下次保存即从文件消失）。
+  it('thinking 字段已退役：提供方级给字段级警告、per-model 点名报错', () => {
+    const providerLevel = parseSection('a', {
+      kind: 'openai',
+      baseUrl: 'https://x/v1',
+      model: 'm',
+      thinking: 'high',
+    });
+    expect('intent' in providerLevel).toBe(true);
+    if ('intent' in providerLevel) {
+      expect(providerLevel.warnings.join()).toContain('thinking 已废弃');
+      expect((providerLevel.intent as Record<string, unknown>).thinking).toBeUndefined();
+    }
+    const perModel = parseSection('a', {
+      kind: 'openai',
+      baseUrl: 'https://x/v1',
+      model: 'm',
+      modelOverrides: { m: { thinking: 'high' } },
+    });
+    expect('intent' in perModel).toBe(true);
+    if ('intent' in perModel) {
+      expect(perModel.warnings.join()).toContain('已废弃');
+      expect(perModel.intent.modelOverrides?.m.thinking).toBeUndefined();
+    }
   });
 });
 
@@ -312,12 +338,11 @@ describe('applyProvidersDoc', () => {
   });
 
   it('补丁里没有的字段 = 从该节删掉（设置页清空请求头 = 文件里那节没了）', () => {
-    const { headers: _h, thinking: _t, ...bare } = intent;
+    const { headers: _h, ...bare } = intent;
     const next = applyProvidersDoc(DOC, { opencodego: bare });
     const back = parseProvidersDoc(next);
     expect(back.errors).toEqual([]);
     expect(back.sections[0].intent.headers).toBeUndefined();
-    expect(back.sections[0].intent.thinking).toBeUndefined();
     expect(back.sections[0].intent.models).toEqual(['deepseek-flash', 'claude-opus-4-6']);
   });
 

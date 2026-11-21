@@ -69,12 +69,16 @@ export interface AddProviderEntry {
   authMode?: 'api-key' | 'oauth';
   /** authMode='oauth' 时的 Rust oauth provider id。 */
   oauthProvider?: string;
+  /** authMode='oauth' 时默认使用的 account_id；缺省 = 最近登录。 */
+  oauthAccountId?: string;
 }
 
 interface AddProviderSheetProps {
   open: boolean;
   existingNames: ProviderId[];
   onClose: () => void;
+  /** 父组件持久化失败时的可读错误（不能只落 console / 被弹层遮住）。 */
+  submitError?: string;
   /** 确认添加（父组件负责即时持久化 + settings-saved 广播）。 */
   onAdd: (entry: AddProviderEntry) => void;
 }
@@ -97,7 +101,7 @@ interface OAuthAccount {
   accountId: string;
 }
 
-export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddProviderSheetProps) {
+export function AddProviderSheet({ open, existingNames, onClose, submitError, onAdd }: AddProviderSheetProps) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Protocol>('openai');
   const [baseUrl, setBaseUrl] = useState('');
@@ -119,6 +123,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   // Phase 3D：登录方式（模板预填；codex = oauth 订阅）
   const [authMode, setAuthMode] = useState<'api-key' | 'oauth'>('api-key');
   const [oauthProvider, setOauthProvider] = useState<string | undefined>(undefined);
+  const [oauthAccountId, setOauthAccountId] = useState<string | undefined>(undefined);
   // OAuth 弹层内登录态（2026-09-11 重做）：登录直接发生在添加弹层——
   // 不再「添加完再去详情页登录」。已登录账号在此展示，可换/可登出。
   const [oauthBusy, setOauthBusy] = useState(false);
@@ -132,6 +137,11 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
 
   /** oauth 订阅行：无 API Key / 登录走 device-flow——表单形态与 api-key 两轨。 */
   const isOAuth = authMode === 'oauth';
+  /** Provider 身份在本机凭据层大小写不敏感：Add/拉取/used 判定共用同一把尺子。 */
+  const nameTaken = (candidate: string): boolean => {
+    const normalized = candidate.trim().toLowerCase();
+    return existingNames.some((existing) => existing.toLowerCase() === normalized);
+  };
 
   // 协议下拉选项：内核白名单（出厂两族）恒在、顺序在前；ctx.llm adapter 注册表
   // 贡献的其余协议并入（开放协议，按 kind 去重——adapter 的 label 作展示，缺省
@@ -168,6 +178,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       setError('');
       setAuthMode('api-key');
       setOauthProvider(undefined);
+      setOauthAccountId(undefined);
       // OAuth 弹层态复位：清登录/账号展示（重新打开 = 从头选厂商）
       setOauthBusy(false);
       setOauthStatus(null);
@@ -204,6 +215,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     // authMode/oauthProvider 随模板预填（codex = oauth）
     setAuthMode(tpl.authMode ?? 'api-key');
     setOauthProvider(tpl.oauthProvider);
+    setOauthAccountId(undefined);
     if (tpl.authMode === 'oauth' && tpl.oauthProvider) {
       // 打开即拉一次该 provider 已登录账号（grant 与行解耦——可能已有账号）
       void refreshOauthAccounts(tpl.oauthProvider);
@@ -239,8 +251,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
               msg: `请在浏览器打开授权页并输入代码 ${flow.user_code}：${flow.verification_uri}`,
             });
           },
-          onGranted: async () => {
+          onGranted: async (grant) => {
             invalidateOauthCache(pid);
+            setOauthAccountId(grant.account_id);
             await refreshOauthAccounts(pid);
             // 起步给模板默认模型作 seed（可被「从账号拉取模型」并入/替换——真实
             // 可用面以账号 API 为准；无 seed 则留给用户拉取/手动补）。
@@ -302,11 +315,10 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     setFetchMsg('');
     try {
       // 登录后 grant 已存在——live provider 解析 oauth 注入头拉 /models
-      const prov = await buildOauthModelProvider(n, pid, kind, baseUrl.trim());
+      const prov = await buildOauthModelProvider(n, pid, kind, baseUrl.trim(), oauthAccountId);
       const found: ModelDescriptor[] = (await prov.fetchModels?.()) ?? [];
       const ids = found.map((m) => m.id).filter(Boolean);
-      const merged = [...ids, ...models.filter((m) => !ids.includes(m))];
-      setModels(merged);
+      setModels(ids);
       // 拉取 = 只看远端有什么（2026-09-23 三层 + 用户 UX 复盘）：**不自动添加**，
       // 添加是用户的显式动作（行首「＋」/「全部添加」）——「拉过来就全在列表里」
       // 正是本批要根治的那一步缺失。
@@ -327,7 +339,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   /** 从已填连接拉取 /models（无 Key 也尝试——本地端点无鉴权）。 */
   const handleFetch = async () => {
     const n = name.trim();
-    if (!n || existingNames.includes(n)) return;
+    if (!n || nameTaken(n)) return;
     setError('');
     setFetching(true);
     setFetchMsg('');
@@ -388,7 +400,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       nameInputRef.current?.focus();
       return;
     }
-    if (existingNames.includes(n)) {
+    if (nameTaken(n)) {
       setError(`Provider「${n}」已存在`);
       nameInputRef.current?.focus();
       return;
@@ -418,10 +430,11 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       ...(Object.keys(pulledMeta).length > 0 ? { modelMeta: pulledMeta } : {}),
       authMode,
       oauthProvider,
+      ...(authMode === 'oauth' && oauthAccountId ? { oauthAccountId } : {}),
     });
   };
 
-  const hasValidName = name.trim() && !existingNames.includes(name.trim());
+  const hasValidName = name.trim() && !nameTaken(name.trim());
 
   /** oauth 订阅已登录账号（弹层内登录面板 + 详情页共用展示形状）。 */
   const oauthAccountsEl =
@@ -469,7 +482,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
           {getVendorTemplateVendors().map((provName) => {
             const tpl = findVendorTemplate(provName);
             if (!tpl) return null;
-            const used = existingNames.includes(provName);
+            const used = nameTaken(provName);
             return (
               <button
                 type="button"
@@ -510,6 +523,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                   setModels([]);
                   setEnabled([]);
                   setDefaultModel('');
+                  setPulledMeta({});
                   setFetchMsg('');
                 }
               }}
@@ -536,6 +550,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                   setModels([]);
                   setEnabled([]);
                   setDefaultModel('');
+                  setPulledMeta({});
                   setFetchMsg('');
                 }
               }}
@@ -562,6 +577,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                   setModels([]);
                   setEnabled([]);
                   setDefaultModel('');
+                  setPulledMeta({});
                   setFetchMsg('');
                 }
               }}
@@ -582,7 +598,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                   if (pulled) {
                     setPulled(false);
                     setModels([]);
+                    setEnabled([]);
                     setDefaultModel('');
+                    setPulledMeta({});
                     setFetchMsg('');
                   }
                 }}
@@ -762,7 +780,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
           </button>
         </div>
 
-        {error && <div className="pp-form-error">{error}</div>}
+        {(submitError || error) && <div className="pp-form-error">{submitError || error}</div>}
 
         <div className="cd-actions">
           <button type="button" className="sp-btn sp-btn-cancel" onClick={onClose}>
@@ -785,16 +803,21 @@ async function buildOauthModelProvider(
   oauthProvider: string,
   kind: Protocol,
   baseUrl: string,
+  accountId?: string,
 ): Promise<Provider> {
-  const oauth = await resolveOauthToken({
-    kind,
-    name: providerId(name),
-    apiKey: '',
-    baseUrl,
-    model: '',
-    authMode: 'oauth',
-    oauthProvider,
-  });
+  const oauth = await resolveOauthToken(
+    {
+      kind,
+      name: providerId(name),
+      apiKey: '',
+      baseUrl,
+      model: '',
+      authMode: 'oauth',
+      oauthProvider,
+      oauthAccountId: accountId,
+    },
+    accountId,
+  );
   if (!oauth) {
     throw new Error('OAuth 账号未登录或会话已失效——请先完成登录');
   }

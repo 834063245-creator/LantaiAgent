@@ -385,10 +385,9 @@ describe('createLiveProvider — 附图能力声明（发送面已改为先发�
   });
 });
 
-// 2026-09-23 思考下沉（用户报「思考强度看起来是供应商级全局生效，不是分模型」）：
-// 档位解析三层 = 会话覆盖（创作坞 pill）> per-model 覆盖 > 提供方行值（本家默认）。
-// 本组从「发出的请求体」钉死——模型与档位必须一一对应。
-describe('createLiveProvider — 思考档位三层（per-model 覆盖 ?? 行值；会话覆盖最优先）', () => {
+// ⚡ 2026-11-21 思考档位收口：设置页的「提供方默认 / 单模型默认」两层已拆——
+// 档位只来自**会话/调用方的显式选择**（创作坞「思考」）。本组从「发出的请求体」钉死。
+describe('createLiveProvider — 思考档位只来自显式选择', () => {
   function seedWithKey(over: Partial<AppSettings['providers'][number]> = {}): void {
     mockInvoke.mockImplementation((_cmd: string, payload: { method: string }) => {
       if (payload.method === 'credential_get') return Promise.resolve('sk-1');
@@ -399,32 +398,39 @@ describe('createLiveProvider — 思考档位三层（per-model 覆盖 ?? 行值
 
   const lastEffort = () => fetchCalls.at(-1)?.body.reasoning_effort;
 
-  it('同一行两个模型各发自己的档位（不再一刀切）', async () => {
-    seedWithKey({
-      model: 'm1',
-      thinking: 'low',
-      modelOverrides: { m1: { thinking: 'max' }, m2: { thinking: 'high' } },
-    });
-    await collectText(createLiveProvider('p1'));
-    expect(lastEffort()).toBe('max');
-    await collectText(createLiveProvider('p1', undefined, { model: 'm2' }));
-    expect(lastEffort()).toBe('high');
-  });
-
-  it('未单独设置档位的模型回落行值（本家默认档位）', async () => {
-    seedWithKey({ model: 'm1', thinking: 'low', modelOverrides: { m1: { thinking: 'max' } } });
-    await collectText(createLiveProvider('p1', undefined, { model: 'm2' }));
-    expect(lastEffort()).toBe('low');
-  });
-
-  it('会话覆盖压过 per-model；覆盖为 undefined = 回落该模型自己的档位（切模型不冻结行值）', async () => {
-    seedWithKey({ model: 'm1', thinking: 'low', modelOverrides: { m1: { thinking: 'max' } } });
-    // 本卷显式拨过（会话覆盖）
+  it('显式拨了档位 → 请求体带 reasoning_effort', async () => {
+    seedWithKey({ model: 'm1' });
     await collectText(createLiveProvider('p1', undefined, { model: 'm1', thinking: 'high' }));
     expect(lastEffort()).toBe('high');
-    // 创作坞切模型后的形态：覆盖条目在、thinking = undefined（compose-store.setModel）
-    // ——必须回落**目标模型**的档位，而不是把行值/上一个模型的档位带过去
+  });
+
+  it('没有显式选择（undefined）→ 不发参数（自动）——即使老存档里还有 thinking 字段', async () => {
+    seedWithKey({
+      model: 'm1',
+      // 退役字段（YAML/旧存档可能残留）：读都不读
+      ...({ thinking: 'low', modelOverrides: { m1: { thinking: 'max' } } } as object),
+    });
     await collectText(createLiveProvider('p1', undefined, { model: 'm1', thinking: undefined }));
-    expect(lastEffort()).toBe('max');
+    expect(lastEffort()).toBeUndefined();
+  });
+
+  it('显式「自动」（空串）→ 同样不发参数', async () => {
+    seedWithKey({ model: 'm1' });
+    await collectText(createLiveProvider('p1', undefined, { model: 'm1', thinking: '' }));
+    expect(lastEffort()).toBeUndefined();
+  });
+
+  // ⚡ 2026-11-21（用户判词「重开应用回自动听起来不对」）：档位没有手动默认值，
+  // 但有「这个模型上次用过的档位」的本机记忆——重开应用仍在，新卷沿用。
+  it('没有会话覆盖：用「该模型上次用过的档位」（本机记忆）', async () => {
+    seedWithKey({ model: 'm1', lastThinking: { m1: 'high' } } as object);
+    await collectText(createLiveProvider('p1', undefined, { model: 'm1' }));
+    expect(lastEffort()).toBe('high');
+  });
+
+  it('会话显式覆盖优先于本机记忆', async () => {
+    seedWithKey({ model: 'm1', lastThinking: { m1: 'high' } } as object);
+    await collectText(createLiveProvider('p1', undefined, { model: 'm1', thinking: 'low' }));
+    expect(lastEffort()).toBe('low');
   });
 });

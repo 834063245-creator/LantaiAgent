@@ -29,7 +29,6 @@ import {
   loadSettingsWithSecrets,
   notifyAgentConfigChanged,
   onProvidersDocChange,
-  panelReload,
   providersDocStatus,
   providersFilePath,
   retryProvidersPath,
@@ -55,6 +54,7 @@ import {
   userPresetsOf,
 } from './preset-authoring';
 import { persistSecrets, removeSecret } from './provider-data';
+import { errTextOf, logPanelReload, withCarriedKeys } from './settings-panel-helpers';
 import { SkillsPage } from './SkillsPage';
 import { SETTINGS_TABS, type SettingsTabId } from './settings-tabs';
 import { UpdateSection } from './UpdateSection';
@@ -66,56 +66,6 @@ type Tab = SettingsTabId;
 //  数据源 hologram_call(engine_status) 属引擎接线，兰台侧零引擎后无源。）
 
 // ── 主组件 ──
-
-/** 错误消息提取（作者动作反馈面——错误不静默，统一成一行可读文本）。 */
-function errTextOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-/** 用磁盘行表换掉面板的 providers 域——**密钥必须从内存里带过去**。
- *
- *  `loadSettings()` **永远不含 apiKey**（唯一权威在系统凭据库，localStorage 无明文，
- *  见 provider-data.ts 头注）。所以「整体替换 providers 域」= 把面板里刚回填/刚输入的
- *  Key 全部清空 ⇒ 用户看到 Key 字段莫名变空，而**关掉重开面板又恢复**
- *  （mount 的 `loadSettingsWithSecrets` 会再回填一次）——2026-09-26 真机报障
- *  「设置页有时候莫名其妙丢 key」就是这个：Key 没真丢，只是面板内存态被冲掉。
- *
- *  三条重读路径（外部手改文件 → watcher 广播 / 保存后 watcher 广播 / 「重试路径」）
- *  都经这里。只补空位：内存里没有这一行（外部新加的 provider）时保持空，交给回填。 */
-function withCarriedKeys(s: AppSettings, disk: AppSettings['providers']): AppSettings {
-  const carried = new Map(s.providers.map((p) => [p.name, p.apiKey]));
-  return {
-    ...s,
-    providers: disk.map((p) => (p.apiKey ? p : { ...p, apiKey: carried.get(p.name) || '' })),
-  };
-}
-
-/** 面板重读的日志接缝（日志可观测性批 2，2026-09-27）。
- *
- *  ⚡ 为什么这条不可省：事故（2026-09-27）里「面板冲键 vs 凭据库真没 Key」是判不出
- *  来的岔路口——两条重读路径此前**完全无痕**。这里把「谁触发的重读、读到哪个文件、
- *  投影几行、多少行带 Key」一次记下（Key 只记**条数**，绝不落明文）。
- *  `sections` 在面板侧拿不到（那是文件里的节数，只有装载面知道）⇒ 只报投影行数。 */
-function logPanelReload(trigger: string): void {
-  const st = providersDocStatus();
-  const rows = loadSettings().providers;
-  panelReload({
-    path: providersFilePath(),
-    rows: rows.length,
-    errors: [
-      ...st.errors.map((e) => ({ name: e.name, reason: `[整节] ${e.message}` })),
-      ...st.warnings.map((e) => ({ name: e.name, reason: `[字段] ${e.message}` })),
-    ],
-    fatal: st.fatal,
-    empty: st.empty,
-    source: st.available && st.loaded && !st.fatal && !st.empty ? 'file' : 'localStorage',
-    keysCarried: {
-      withKey: rows.filter((p) => (p.apiKey ?? '').trim().length > 0).length,
-      total: rows.length,
-    },
-    trigger,
-  });
-}
 
 const SettingsPanelApp: React.FC<{
   onClose: () => void;
@@ -334,6 +284,10 @@ const SettingsPanelApp: React.FC<{
   // Provider 页独立 dirty：与其他 tab 的全局保存互不牵连
   const [providerDirty, setProviderDirty] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  /** 用户编辑代数：保存途中继续编辑时，不清 dirty / 不重置「已保存」。 */
+  const editRevisionRef = useRef(0);
   const [closeConfirm, setCloseConfirm] = useState(false);
   // 凭据暂存：删除 Provider / 清除 Key 只进 state，保存时才删系统凭据——
   // 用户取消/关闭面板不会丢 Key（P0 修复）。
@@ -346,7 +300,10 @@ const SettingsPanelApp: React.FC<{
   // 点「保存」才落盘 + 写系统凭据 + 重建 Agent。自动落盘曾导致设置页
   // 卡死整个软件（每次击键 saveSettings → 通知订阅者 → credential IPC 风暴），已废弃。
 
-  const markDirty = useCallback(() => setDirty(true), []);
+  const markDirty = useCallback(() => {
+    editRevisionRef.current += 1;
+    setDirty(true);
+  }, []);
 
   /** 整体替换（添加/删除/切换等单次操作），落盘由「保存」按钮统一负责。 */
   const commit = useCallback(
@@ -359,6 +316,7 @@ const SettingsPanelApp: React.FC<{
 
   /** Provider 页专用提交：只标 providerDirty，不污染其他 tab 的全局 dirty。 */
   const commitProvider = useCallback((next: AppSettings): void => {
+    editRevisionRef.current += 1;
     setSettings(next);
     setProviderDirty(true);
   }, []);
@@ -434,72 +392,90 @@ const SettingsPanelApp: React.FC<{
    *  @param toSave 要持久化的 settings（缺省 = 面板 state）。添加提供方即时
    *   生效路径传入含新 provider 的 next——避免闭包读到 setSettings 前的旧快照。 */
   const runSavePipeline = useCallback(
-    async (toSave?: AppSettings): Promise<boolean> => {
+    async (toSave?: AppSettings, opts?: { reconcileName?: ProviderId }): Promise<{ ok: boolean; error?: string }> => {
+      if (savingRef.current) return { ok: false, error: '正在保存，请稍候' };
+      savingRef.current = true;
+      setSaving(true);
+      setSaveError('');
       const target = toSave ?? settings;
-      // 0) **provider 配置写文件**（2026-09-24 配方改文件批）：意图的唯一权威是
-      //    `~/.lantai/providers.yml`——先把面板里这轮连接配置改动写进去（读-改-写，
-      //    保住用户手写注释），失败即中止保存（错误不静默，绝不假装保存成功）。
-      //    暂存的「删除 provider」= 从文件里删掉那一节（身份即键名）。
-      const kept = target.providers.filter((p) => !pendingDeletes.includes(p.name));
-      const patch: Record<string, ProviderIntent> = {};
-      for (const p of kept) patch[p.name] = intentOf(p);
-      const docWrite = await saveProvidersDoc(patch);
-      if (!docWrite.ok) {
-        // 2026-11-16：坏节拒写是最常见的一条——提示必须说清「去改文件哪一节」，
-        // 而不是只说「保存失败」（用户会反复点保存，文件其实一个字节都没动）。
-        setSaveError(
-          `provider 配置文件写入失败：${docWrite.error ?? '未知原因'}\n设置未保存——配置文件是 provider 连接配置的唯一权威。`,
-        );
-        return false;
+      const clearsAtStart = opts?.reconcileName
+        ? pendingClears.filter((name) => name !== opts.reconcileName)
+        : pendingClears;
+      const deletesAtStart = opts?.reconcileName
+        ? pendingDeletes.filter((name) => name !== opts.reconcileName)
+        : pendingDeletes;
+      try {
+        const kept = target.providers.filter((p) => !deletesAtStart.includes(p.name));
+        const patch: Record<string, ProviderIntent> = {};
+        for (const p of kept) patch[p.name] = intentOf(p);
+        const docWrite = await saveProvidersDoc(patch);
+        if (!docWrite.ok) {
+          const message =
+            'provider 配置文件写入失败：' +
+            (docWrite.error ?? '未知原因') +
+            '\n设置未保存——配置文件是 provider 连接配置的唯一权威。';
+          setSaveError(message);
+          return { ok: false, error: message };
+        }
+        const diskComposition = loadSettings().composition;
+        saveSettings(diskComposition ? { ...target, composition: diskComposition } : target);
+        const cleanupFailures: string[] = [];
+        for (const name of [...new Set([...clearsAtStart, ...deletesAtStart])]) {
+          const removed = await removeSecret(name);
+          if (!removed.ok) cleanupFailures.push(name + ': ' + (removed.error ?? '未知原因'));
+        }
+        if (cleanupFailures.length > 0) {
+          const message =
+            '系统凭据删除失败：' +
+            cleanupFailures.join('；') +
+            '。\n设置本身已保存，但暂存的清除/删除操作尚未生效，请重试。';
+          setSaveError(message);
+          return { ok: false, error: message };
+        }
+        const failed = await persistSecrets(target);
+        if (failed.length > 0) {
+          const message =
+            'API Key 写入系统凭据失败：' +
+            failed.join('、') +
+            '。\n设置本身已保存，但重启后这些 Key 会丢失，请重试或检查系统加密服务。';
+          setSaveError(message);
+          return { ok: false, error: message };
+        }
+        setPendingClears((current) => current.filter((name) => !clearsAtStart.includes(name)));
+        setPendingDeletes((current) => current.filter((name) => !deletesAtStart.includes(name)));
+        setLang(target.display.language);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1500);
+        if (onSave) onSave();
+        return { ok: true };
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
       }
-      // ⚡ F3（2026-09-15 审计修复）：composition 节**不在本面板的表单面内**——
-      // 它由预设选择器即时持久化（selectPreset → saveSettings）。settings 是
-      // 挂载期快照，整体写盘会把期间改过的 preset 选择静默回退（复现：面板开着
-      // 时切 preset → 之后点保存 → 重启回到旧 preset）。写盘前从磁盘重读该节
-      // （与 persistProbe 的「读盘-改-写回」同一纪律；面板不拥有它）。
-      const diskComposition = loadSettings().composition;
-      saveSettings(diskComposition ? { ...target, composition: diskComposition } : target);
-      // 1) 先删「清除 Key / 删除 Provider」暂存的系统凭据（removeSecret 幂等、失败静默）
-      for (const name of [...new Set([...pendingClears, ...pendingDeletes])]) {
-        await removeSecret(name);
-      }
-      // 2) 再写新 Key（P0-7：写失败必须据实提示）
-      const failed = await persistSecrets(target);
-      if (failed.length > 0) {
-        setSaveError(
-          `API Key 写入系统凭据失败：${failed.join('、')}。\n设置本身已保存，但重启后这些 Key 会丢失，请重试或检查系统加密服务。`,
-        );
-        return false;
-      }
-      setPendingClears([]);
-      setPendingDeletes([]);
-      setLang(target.display.language);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
-      if (onSave) onSave();
-      return true;
     },
     [settings, pendingClears, pendingDeletes, onSave],
   );
   /** 全局保存（Agent / 显示等 tab） */
   const handleSave = useCallback(async () => {
-    const ok = await runSavePipeline();
-    if (ok) {
+    const revision = editRevisionRef.current;
+    const result = await runSavePipeline();
+    if (result.ok && editRevisionRef.current === revision) {
       setDirty(false);
-      // runSavePipeline 是全量落盘：Provider 页的暂存改动也会一并持久化，
-      // 因此两个 dirty 标志必须同时复位，避免保存条/保存按钮残留假状态。
       setProviderDirty(false);
       setSaveVersion((v) => v + 1);
+      setDocStaleHint(false);
     }
   }, [runSavePipeline]);
 
   /** Provider 页独立保存 */
   const handleSaveProviders = useCallback(async () => {
-    const ok = await runSavePipeline();
-    if (ok) {
+    const revision = editRevisionRef.current;
+    const result = await runSavePipeline();
+    if (result.ok && editRevisionRef.current === revision) {
       setProviderDirty(false);
-      setDirty(false); // 同上：全量落盘，其他 tab 的 dirty 一并复位
+      setDirty(false);
       setSaveVersion((v) => v + 1);
+      setDocStaleHint(false);
     }
   }, [runSavePipeline]);
 
@@ -507,19 +483,34 @@ const SettingsPanelApp: React.FC<{
    *  写 Key）→ settings-saved 热广播。全会话立刻可选新提供方的模型。 */
   const handleAddAndPersist = useCallback(
     async (next: AppSettings, addedName: ProviderId): Promise<void> => {
+      editRevisionRef.current += 1;
       setSettings(next);
       setProviderDirty(true);
-      const ok = await runSavePipeline(next);
-      if (!ok) {
-        // 写 Key 失败——面板保留暂存与保存条，用户可重试保存（错误不静默）
-        throw new Error(`添加 Provider「${addedName}」失败：API Key 写入系统凭据出错，请检查后重试`);
+      const revision = editRevisionRef.current;
+      const result = await runSavePipeline(next, { reconcileName: addedName });
+      if (!result.ok) {
+        throw new Error('添加 Provider「' + addedName + '」失败：' + (result.error ?? '未知原因'));
       }
-      setProviderDirty(false);
-      setDirty(false);
-      setSaveVersion((v) => v + 1);
+      if (editRevisionRef.current === revision) {
+        setProviderDirty(false);
+        setDirty(false);
+        setSaveVersion((v) => v + 1);
+        setDocStaleHint(false);
+      }
     },
     [runSavePipeline],
   );
+
+  /** 放弃 Provider 暂存并接受磁盘版本（外部冲突的唯一安全出口）。 */
+  const discardProviderChanges = useCallback(() => {
+    setSettings((current) => withCarriedKeys(current, loadSettings().providers));
+    setPendingClears([]);
+    setPendingDeletes([]);
+    setProviderDirty(false);
+    setDocStaleHint(false);
+    setSaveVersion((v) => v + 1);
+    logPanelReload('discard-provider-draft');
+  }, []);
 
   const closeMsg =
     dirty && providerDirty
@@ -601,6 +592,8 @@ const SettingsPanelApp: React.FC<{
               providerDirty={providerDirty}
               onSaveProviders={handleSaveProviders}
               onAddAndPersist={handleAddAndPersist}
+              saving={saving}
+              onDiscardProviderChanges={discardProviderChanges}
               providersDoc={{
                 version: providersDocVersion,
                 status: providersDocStatus(),
@@ -609,6 +602,7 @@ const SettingsPanelApp: React.FC<{
                 // ⚡ 有未保存的暂存时**不整体替换**（那会把用户正在敲的改动冲掉）：
                 // 只标一条提示，等用户保存/放弃后随下一次广播重读。
                 onReload: () => {
+                  if (savingRef.current) return;
                   if (providerDirty) {
                     setDocStaleHint(true);
                     logPanelReload('external-change(暂存中，只标提示不替换)');
@@ -623,6 +617,10 @@ const SettingsPanelApp: React.FC<{
                 staleHint: docStaleHint,
                 // 通道就绪后不必重启应用：再跑一次取路径（失败从不缓存）
                 onRetryPath: () => {
+                  if (savingRef.current || providerDirty) {
+                    setDocStaleHint(true);
+                    return;
+                  }
                   void retryProvidersPath().then(() => {
                     setDocStaleHint(false);
                     logPanelReload('retry-path');

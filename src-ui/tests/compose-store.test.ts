@@ -11,7 +11,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { notifyAgentConfigChanged } from '../src/state/agent-config-store';
-import { getComposeStore, resetComposeStoresForTests } from '../src/state/compose-store';
+import { getComposeStore, resetComposeStoresForTests, resolveNewSessionDefault } from '../src/state/compose-store';
 
 vi.mock('../src/state/agent-config-store', () => ({
   notifyAgentConfigChanged: vi.fn(),
@@ -32,7 +32,6 @@ function seedSettings(overrides?: Partial<settingsModule.AppSettings>): void {
         apiKey: '',
         baseUrl: 'https://api.deepseek.com/v1',
         model: 'deepseek-v4-pro',
-        thinking: 'medium',
       },
       {
         kind: 'anthropic',
@@ -40,7 +39,6 @@ function seedSettings(overrides?: Partial<settingsModule.AppSettings>): void {
         apiKey: '',
         baseUrl: 'https://api.anthropic.com',
         model: 'claude-sonnet-4-6',
-        thinking: '',
       },
     ],
     projectPath: '.',
@@ -68,10 +66,11 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     // 未触碰的卷：无覆盖条目
     expect(st.getPrefs('1')).toBeUndefined();
     // 生效配置 = 全局活跃 provider（实时解析）
+    // 思考档位不再有「默认」层（2026-11-21）：没有会话覆盖 = undefined（自动）
     expect(st.resolveEffective('1')).toEqual({
       providerName: 'deepseek',
       model: 'deepseek-v4-pro',
-      thinking: 'medium',
+      thinking: undefined,
     });
     expect(st.sessions).toEqual({});
   });
@@ -121,15 +120,24 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     expect(providerWrite.at(-1)?.providers.find((p) => p.name === 'deepseek')?.model).toBe('deepseek-v4-pro');
   });
 
-  it('setThinking：写会话覆盖（A2 根治——不再写全局活跃 provider 行）', () => {
-    const before = localStorage.getItem('hologram_settings');
+  it('setThinking：写会话覆盖 + 记「该模型上次用的档位」（不写 provider 行意图）', () => {
     const st = getComposeStore(STORE).getState();
     st.setThinking('1', 'high');
     expect(st.getPrefs('1')?.thinking).toBe('high');
     // 无覆盖卷改思考：以当前生效配置为底落覆盖条目（模型维度继承全局默认）
     expect(st.getPrefs('1')).toMatchObject({ providerName: 'deepseek', model: 'deepseek-v4-pro' });
     expect(notifyAgentConfigChanged).toHaveBeenCalledWith('thinking-changed', 1);
-    expect(localStorage.getItem('hologram_settings')).toBe(before);
+    // 记忆 = 本机读数（lastThinking），不是 provider 行上的配置字段
+    const stored = JSON.parse(localStorage.getItem('hologram_settings') ?? '{}') as {
+      providers?: Array<{ name?: string; thinking?: unknown; lastThinking?: Record<string, string> }>;
+    };
+    const row = stored.providers?.find((p) => p.name === 'deepseek');
+    expect(row?.thinking).toBeUndefined();
+    expect(row?.lastThinking?.['deepseek-v4-pro']).toBe('high');
+    // 重开应用（重新读存档）后记忆还在
+    expect(
+      settingsModule.loadSettings().providers.find((p) => p.name === 'deepseek')?.lastThinking?.['deepseek-v4-pro'],
+    ).toBe('high');
   });
 
   it('会话覆盖隔离：卷 1 改模型不影响卷 2 的生效配置（A1 核心）', () => {
@@ -153,7 +161,6 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
           apiKey: '',
           baseUrl: 'https://api.deepseek.com/v1',
           model: 'deepseek-chat', // 全局默认模型也换了
-          thinking: 'medium',
         },
       ],
     });
@@ -190,17 +197,16 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     vi.mocked(settingsModule.loadSettings).mockRestore();
   });
 
-  // 2026-09-23 思考下沉：无主态（无活跃卷）在创作坞拨档位 = 给**当前出生默认模型**
-  // 设档位——落该模型的 per-model 覆盖，而不是整个提供方一刀切。
-  it('setGlobalThinking：写目标模型的 per-model 覆盖（不动行级默认档位）', () => {
+  // ⚡ 2026-11-21 思考档位收口：没有「默认档位」可落盘了——无主态拨的档位只活在
+  // 本进程内存里（开下一卷时随出生默认带进去），不写 providers.yml、不写本机存档。
+  it('setGlobalThinking：只记内存（不落盘），下一卷出生默认读得到', () => {
     const saveSpy = vi.mocked(settingsModule.saveSettings);
+    saveSpy.mockClear();
     const st = getComposeStore(STORE).getState();
     st.setGlobalThinking('max');
-    expect(saveSpy).toHaveBeenCalled();
-    const saved = saveSpy.mock.calls.at(-1)?.[0] as settingsModule.AppSettings;
-    const deepseekRow = saved.providers.find((p) => p.name === 'deepseek');
-    expect(deepseekRow?.modelOverrides?.['deepseek-v4-pro']?.thinking).toBe('max');
-    expect(deepseekRow?.thinking).toBe('medium'); // 行级默认档位原样（是另一层）
-    expect(saved.providers.find((p) => p.name === 'anthropic')?.thinking).toBe(''); // 别家不牵动
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(resolveNewSessionDefault().thinking).toBe('max');
+    // 已有卷不受影响（无覆盖的卷在“未改卷”态跟随出生默认——同一份内存值）
+    expect(st.resolveEffective('1').thinking).toBe('max');
   });
 });

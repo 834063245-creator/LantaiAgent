@@ -13,7 +13,7 @@
 // 图形化编辑面）。密钥不在此列（权威在凭据库）。
 
 import type React from 'react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatHeaderLines, parseHeaderLines } from '../../../provider/custom-headers';
 import type { ProviderSettings } from '../../../settings';
 
@@ -30,6 +30,13 @@ export function ProviderAdvanced({ provider, onChange }: ProviderAdvancedProps) 
   const saved = useMemo(() => formatHeaderLines(provider.headers), [provider.headers]);
   const [headerText, setHeaderText] = useState(saved);
   const [headerHint, setHeaderHint] = useState<Hint | null>(null);
+
+  // 同一 provider 的外部文件重载 / 其它写面更新 headers 时，本地 textarea 必须跟着换底；
+  // 否则下一次 blur 会把旧文本原样提交回去，等于反向覆盖外部修改。
+  useEffect(() => {
+    setHeaderText(saved);
+    setHeaderHint(null);
+  }, [saved]);
 
   // 每次渲染重算（纯函数，行数有上限）——编辑期实时显示错误，不提交坏数据
   const parsed = useMemo(() => parseHeaderLines(headerText), [headerText]);

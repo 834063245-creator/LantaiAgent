@@ -541,6 +541,8 @@ export class Workspace {
       subAgentSpawner: unboundSessionSpawner,
       // S2-1 组合外化：工具行表穿线（roster 解析产物；缺省 = 出厂表 = 零漂移）
       toolRows: composition.tools,
+      // 程序内专属面（2026-11-21 code 模式）：直调面扣集随组合解析产物穿线
+      programOnly: composition.programOnly,
     });
     this.registry = registry;
     // S6 P1d：身份与产物同步快照（建表时点）——判定「能否复用本注册表」用身份比，
@@ -1041,6 +1043,7 @@ export class Workspace {
                 outputSchema,
               ) ?? Promise.resolve({ text: '', err: 'agent not available' }),
             toolRows: compositionOverride.tools,
+            programOnly: compositionOverride.programOnly,
           })
         : (this.registry ?? registry);
 

@@ -486,19 +486,18 @@ describe('ComposerDock 思考档位换源（2026-09-23）', () => {
     apiKey: '',
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-v4-pro',
-    thinking: 'low',
     ...over,
   });
 
-  it('无会话覆盖：模型 pill 后缀显示该模型生效的档位（per-model 覆盖压过行值）', async () => {
-    await mountWithRow('p23-permodel', row({ modelOverrides: { 'deepseek-v4-pro': { thinking: 'max' } } }));
+  // ⚡ 2026-11-21 思考档位收口：没有「提供方默认 / 模型默认」两层了——没拨过 = 自动。
+  // 老存档里残留的 thinking / modelOverrides.thinking 读都不读。
+  it('无会话覆盖：pill 后缀显示「自动」——退役的默认档位不再生效', async () => {
+    await mountWithRow(
+      'p23-permodel',
+      row({ thinking: 'low', modelOverrides: { 'deepseek-v4-pro': { thinking: 'max' } } }),
+    );
     const suffix = container.querySelector('.ms-trigger-thinking');
-    expect(suffix?.textContent).toContain('极限'); // 覆盖值，而不是行值「低」
-  });
-
-  it('无覆盖的模型回落行值（本家默认档位）', async () => {
-    await mountWithRow('p23-rowvalue', row());
-    expect(container.querySelector('.ms-trigger-thinking')?.textContent).toContain('低');
+    expect(suffix?.textContent).toContain('自动');
   });
 
   it('档位表来自 provider 作用域：API 拉取元数据声明的档位在坞里可选（此前读全局目录 → 拿不到）', async () => {
@@ -506,7 +505,6 @@ describe('ComposerDock 思考档位换源（2026-09-23）', () => {
       'p23-declared',
       row({
         model: 'gw-model-x',
-        thinking: '',
         modelMeta: { 'gw-model-x': { thinkingEfforts: ['minimal', 'low'], fetchedAt: 1 } },
       }),
     );

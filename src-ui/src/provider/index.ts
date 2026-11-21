@@ -20,10 +20,14 @@
 import type { SeamDisabledMap } from '../composition/seam-resolution';
 import { activeLlmAdapters } from '../composition/services';
 import { modelDescriptor, modelInput, type ProviderSettings } from '../settings';
-import { withThinkingDisabled } from './thinking';
+import { type StoredThinking, withThinkingDisabled } from './thinking';
 import type { ModelDescriptor, Provider, ProviderRuntimeArgs } from './types';
 
 export interface CreateProviderOptions {
+  /** 本次请求的思考档位（**只来自会话/调用方的显式选择**——2026-11-21 起没有
+   *  「提供方/模型默认档位」这一层了；缺省 = 自动）。'off' / disableThinking 语义
+   *  由 withThinkingDisabled 统一收口。 */
+  thinking?: StoredThinking;
   /** Disable reasoning/thinking on OpenAI-compatible providers (e.g. for translation). */
   disableThinking?: boolean;
   /** OAuth 请求注入头（Phase 3D）：authMode='oauth' 的 provider 由 live 层
@@ -96,7 +100,7 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
       model: settings.model,
       // disableThinking 语义统一到两种协议：true → 强制关闭扩展思考。
       // 翻译器/摘要路径都传 disableThinking: true。
-      thinking: withThinkingDisabled(settings.thinking, options?.disableThinking),
+      thinking: withThinkingDisabled(options?.thinking, options?.disableThinking),
       maxTokensFor,
       describeModel,
       oauthHeaders: options?.oauthHeaders,

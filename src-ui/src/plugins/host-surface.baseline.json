@@ -1,5 +1,5 @@
 {
-  "fingerprint": "cdf5375e",
+  "fingerprint": "0d502120",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -236,7 +236,6 @@
     "modelEntries",
     "modelInput",
     "modelMaxTokens",
-    "modelThinking",
     "mountDialogFocus",
     "msgStoreFor",
     "nearestFreeRegion",

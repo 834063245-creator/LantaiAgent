@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 // 控制台样式（2026-11-17 技术债批 B：整份从壳层 provider-settings.css 迁入本产物）
 import './provider-console.css';
-import type { StoredThinking, ThinkingLevelMap } from '../../../provider/thinking';
+import type { ThinkingLevelMap } from '../../../provider/thinking';
 import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
 import { type AddProviderEntry, AddProviderSheet } from './AddProviderSheet';
@@ -17,17 +17,19 @@ import { type AddProviderEntry, AddProviderSheet } from './AddProviderSheet';
 import type { AppSettings, ConnectionProbe, ProviderId, ProviderSettings } from './host';
 import {
   ConfirmDialog,
-  createLiveProvider,
+  buildOauthHeaders,
   createProvider,
   defaultBaseUrl,
   getActiveProvider,
   invalidateCredentialCache,
+  invalidateOauthCache,
   loadProvidersDoc,
   markDynamicFetchStart,
   mergeDynamicModels,
   oauthAccounts,
   oauthLogout,
   recordDynamicFetchResult,
+  resolveOauthToken,
   runDeviceLogin,
   typedRpc,
   updateProvider,
@@ -36,7 +38,7 @@ import { applyFetchedModels } from './model-sync';
 import { type ProbeUiState, ProviderDetail, type ProviderField } from './ProviderDetail';
 import { ProviderList } from './ProviderList';
 import { addProvider, removeProvider } from './provider-data';
-import { formatLatency } from './status';
+import { formatLatency, providerConnectionFingerprint } from './status';
 
 interface ProviderPageProps {
   settings: AppSettings;
@@ -58,6 +60,10 @@ interface ProviderPageProps {
   /** 添加提供方即时生效（2026-09-06）：一步落盘 + 写 Key + settings-saved 热广播，
    *  使新提供方模型立刻全会话可选（不再走暂存-保存条）。next 已含新 provider。 */
   onAddAndPersist: (next: AppSettings, addedName: ProviderId) => Promise<void>;
+  /** 保存管道在途：保存按钮必须锁定，避免并发写同一份文件。 */
+  saving?: boolean;
+  /** 外部文件冲突时：放弃当前 Provider 暂存并接受磁盘版本。 */
+  onDiscardProviderChanges?: () => void;
   /** 配置文件面（2026-09-24 配方改文件批）：路径 / 逐节错误 / 外部改动代数。
    *  version 变化 = 文件被（人/agent）改过 → 面板重读生效行表。
    *  缺省 = 测试与降级环境（没有配置文件面时的空态，不崩）。 */
@@ -109,6 +115,8 @@ export function ProviderPage({
   providerDirty,
   onSaveProviders,
   onAddAndPersist,
+  saving = false,
+  onDiscardProviderChanges = () => {},
   providersDoc = EMPTY_PROVIDERS_DOC,
 }: ProviderPageProps) {
   const [selected, setSelected] = useState<ProviderId>(() => getActiveProvider(settings).name);
@@ -116,6 +124,7 @@ export function ProviderPage({
   const [keyVisibleMap, setKeyVisibleMap] = useState<Map<ProviderId, boolean>>(new Map());
   const [tests, setTests] = useState<Map<ProviderId, ProbeUiState>>(new Map());
   const [addOpen, setAddOpen] = useState(false);
+  const [addError, setAddError] = useState('');
   const [delTarget, setDelTarget] = useState<ProviderId | null>(null);
   const [clearTarget, setClearTarget] = useState<ProviderId | null>(null);
   const [focusNonce, setFocusNonce] = useState(0);
@@ -128,6 +137,7 @@ export function ProviderPage({
   const [oauthLoggedInMap, setOauthLoggedInMap] = useState<Record<string, boolean>>({});
   // device-flow 进行中的取消标志（登录发起时置 false；取消置 true → 轮询停）
   const oauthCancelRef = useRef(false);
+  const oauthAccountsRequestRef = useRef(0);
 
   const activeProvider = getActiveProvider(settings);
   const selectedProvider = settings.providers.find((p) => p.name === selected) ?? activeProvider;
@@ -186,7 +196,19 @@ export function ProviderPage({
   // biome-ignore lint/correctness/useExhaustiveDependencies: saveVersion 是刻意的「保存代数」触发器——正是要响应它的变化清 dirty
   useEffect(() => {
     setKeyDirtyMap(new Map());
+    setTests(new Map());
   }, [saveVersion]);
+
+  // 连接身份一变化，旧的测试结果立刻失效（含本地瞬时测试面与持久 lastTest）。
+  const selectedFingerprint = providerConnectionFingerprint(selectedProvider);
+  useEffect(() => {
+    setTests((current) => {
+      if (!current.has(selectedProvider.name)) return current;
+      const next = new Map(current);
+      next.delete(selectedProvider.name);
+      return next;
+    });
+  }, [selectedProvider.name, selectedFingerprint, selectedProvider.apiKey]);
 
   // 连接测试在途守卫（2026-09-01 审计）：面板关闭后回包不再 setState/落盘
   // 探针结果——AbortController 只管 15s 超时，不管卸载。
@@ -208,7 +230,9 @@ export function ProviderPage({
         }
         setKeyDirtyMap((m) => new Map(m).set(name, true));
       }
-      onCommitProvider(updateProvider(settings, name, { [field]: value } as Partial<ProviderSettings>));
+      onCommitProvider(
+        updateProvider(settings, name, { [field]: value, lastTest: undefined } as Partial<ProviderSettings>),
+      );
     },
     [settings, onCommitProvider, onStageClear, onUnstageClear],
   );
@@ -231,27 +255,18 @@ export function ProviderPage({
    *  投影放行）；off = 清覆盖回落目录声明。GLM-4V/Qwen-VL 等目录外 vision
    *  模型的补声明面。 */
   const handleModelVisionToggle = useCallback(
-    (name: string, modelId: string, on: boolean) => {
+    (name: string, modelId: string, value: 'inherit' | 'text' | 'image') => {
       const p = settings.providers.find((x) => x.name === name);
       const cur = p?.modelOverrides?.[modelId] ?? {};
+      const input =
+        value === 'inherit'
+          ? undefined
+          : value === 'image'
+            ? (['text', 'image'] as ('text' | 'image')[])
+            : (['text'] as ('text' | 'image')[]);
       const nextOverrides = {
         ...(p?.modelOverrides ?? {}),
-        [modelId]: { ...cur, input: on ? (['text', 'image'] as ('text' | 'image')[]) : undefined },
-      };
-      onCommitProvider(updateProvider(settings, name, { modelOverrides: nextOverrides }));
-    },
-    [settings, onCommitProvider],
-  );
-
-  /** per-model 思考档位（2026-09-23 思考下沉）：undefined = 清覆盖回本家默认档位
-   *  （写 undefined 经 JSON 落盘即键消失，与「未设置」同语义）。 */
-  const handleModelThinking = useCallback(
-    (name: string, modelId: string, value: StoredThinking | undefined) => {
-      const p = settings.providers.find((x) => x.name === name);
-      const cur = p?.modelOverrides?.[modelId] ?? {};
-      const nextOverrides = {
-        ...(p?.modelOverrides ?? {}),
-        [modelId]: { ...cur, thinking: value },
+        [modelId]: { ...cur, input },
       };
       onCommitProvider(updateProvider(settings, name, { modelOverrides: nextOverrides }));
     },
@@ -259,26 +274,15 @@ export function ProviderPage({
   );
 
   /** per-model 推理等级声明（2026-10-22 对齐 DSH）：写 modelOverrides.reasoningEfforts。
-   *  新声明不再包含当前选中的档位时清掉 thinking 覆盖（回落本家默认），避免保存后
-   *  下一轮请求撞上 `assertEffortDeclared` 的「声明外档位」硬错。 */
+   *  ⚡ 2026-11-21：思考档位不再有 per-model 默认值（设置页手动项已拆）——这里只写
+   *  声明，不再联动回滚档位；用哪一档只在创作坞按会话选。 */
   const handleModelReasoning = useCallback(
     (name: string, modelId: string, value: false | ThinkingLevelMap | undefined) => {
       const p = settings.providers.find((x) => x.name === name);
       const cur = p?.modelOverrides?.[modelId] ?? {};
-      let thinking = cur.thinking;
-      if (value !== undefined && value !== false) {
-        const declared = Object.keys(value).filter((level) => level !== 'off');
-        const inherited = thinking === undefined;
-        const effective = inherited ? p?.thinking : thinking;
-        const named = effective !== undefined && effective !== '' && effective !== 'off' && !/^\d+$/.test(effective);
-        const invalid = effective === 'off' ? !Object.hasOwn(value, 'off') : named && !declared.includes(effective);
-        // 显式选择失效 → 回「随本家默认」（undefined）；继承值失效 → 钉成显式自动（''），
-        // 否则下一轮请求会带着本家默认撞上声明外档位的硬错。
-        if (invalid) thinking = inherited ? '' : undefined;
-      }
       const nextOverrides = {
         ...(p?.modelOverrides ?? {}),
-        [modelId]: { ...cur, thinking, reasoningEfforts: value },
+        [modelId]: { ...cur, reasoningEfforts: value },
       };
       onCommitProvider(updateProvider(settings, name, { modelOverrides: nextOverrides }));
     },
@@ -288,26 +292,34 @@ export function ProviderPage({
    *  由 ProviderAdvanced 保持本行值；此处按既有 onChange 即时落盘惯例提交。 */
   const handleAdvancedChange = useCallback(
     (name: string, next: ProviderSettings) => {
-      onCommitProvider(updateProvider(settings, name, next));
+      onCommitProvider(updateProvider(settings, name, { ...next, lastTest: undefined }));
     },
     [settings, onCommitProvider],
+  );
+
+  /** Build from the live draft row, not from the last persisted settings file. */
+  const buildDraftProvider = useCallback(
+    async (p: ProviderSettings, opts?: { disableThinking?: boolean }): Promise<Provider> => {
+      if (p.authMode === 'oauth') {
+        if (!p.oauthProvider) throw new Error('oauth provider is missing');
+        const oauth = await resolveOauthToken(p);
+        if (!oauth) throw new Error('OAuth account is not logged in - please log in again');
+        return createProvider(p, { ...opts, oauthHeaders: buildOauthHeaders(oauth) });
+      }
+      return createProvider(p, opts);
+    },
+    [],
   );
 
   const handleRefreshModels = useCallback(async (): Promise<number> => {
     const p = selectedProvider;
     // oauth 订阅（Codex）：无 API Key——必须已登录（live provider 注入 grant）才能拉。
     // 未登录时 live provider 抛 OAUTH_NOT_LOGGED_IN（见 live.ts buildInner）——可读提示。
-    let prov: Provider;
-    if (p.authMode === 'oauth') {
-      if (!p.oauthProvider) throw new Error('该订阅缺 oauth 登录配置——请重新添加');
-      prov = createLiveProvider(p.name, {});
-    } else {
-      // ⚡ 2026-09-28 无 Key 放行批：空 Key 不再拦在拉取前——本地端点
-      //   （Ollama / LM Studio 等）本就不需要 Key；端点真要鉴权时，
-      //   拉取失败的真实原因（含「本行没有 API Key」）会经 recordDynamicFetchResult
-      //   就地显示（错误不静默）。
-      prov = createProvider(p);
-    }
+    // ⚡ 2026-09-28 无 Key 放行批：空 Key 不再拦在拉取前——本地端点
+    //   （Ollama / LM Studio 等）本就不需要 Key；端点真要鉴权时，
+    //   拉取失败的真实原因（含「本行没有 API Key」）会经 recordDynamicFetchResult
+    //   就地显示（错误不静默）。
+    const prov = await buildDraftProvider(p);
     // C5（2026-08-27）：手动刷新记目录失败面（compact 选择器分组头同步可见）；
     // 失败上抛给调用方显示真实原因（fetchModels 不再把网络失败伪装成「无模型」）。
     // ⚡ 2026-09-23 三层重构：拉取结果 = **目录快照**（ProviderSettings.catalog），
@@ -331,7 +343,7 @@ export function ProviderPage({
       recordDynamicFetchResult(p.name, false, e instanceof Error ? e.message : String(e));
       throw e;
     }
-  }, [selectedProvider, settings, onCommitProvider]);
+  }, [selectedProvider, settings, onCommitProvider, buildDraftProvider]);
 
   const handleAddModel = useCallback(
     (name: string, modelId: string) => {
@@ -345,6 +357,7 @@ export function ProviderPage({
       const patch: Partial<ProviderSettings> = { models: next };
       // 还没有「新会话默认」（= 最近使用，自动跟从创作坞）：第一个可用模型即默认
       if (!p?.model?.trim() && next.length > 0) patch.model = next[0];
+      if (patch.model !== undefined) patch.lastTest = undefined;
       onCommitProvider(updateProvider(settings, name, patch));
     },
     [settings, onCommitProvider],
@@ -358,6 +371,7 @@ export function ProviderPage({
       const patch: Partial<ProviderSettings> = { models: next };
       // 删的是当前「新会话默认」→ 自动顶上第一个（无剩余则清空）
       if (p?.model === modelId) patch.model = next[0] ?? '';
+      if (patch.model !== undefined) patch.lastTest = undefined;
       onCommitProvider(updateProvider(settings, name, patch));
     },
     [settings, onCommitProvider],
@@ -375,6 +389,7 @@ export function ProviderPage({
       const def = p?.model?.trim() ?? '';
       if (!def && next.length > 0) patch.model = next[0];
       else if (def && !next.includes(def)) patch.model = next[0] ?? '';
+      if (patch.model !== undefined) patch.lastTest = undefined;
       onCommitProvider(updateProvider(settings, name, patch));
     },
     [settings, onCommitProvider],
@@ -398,12 +413,11 @@ export function ProviderPage({
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
     const started = performance.now();
+    const fingerprint = providerConnectionFingerprint(selectedProvider);
     try {
       // oauth 订阅行走 live provider（按名现解析 oauth grant 注入请求头）——
       // 直接 createProvider(settings) 不带 oauth headers，空 Bearer 必挂（2026-09 走查）。
-      const prov = isOAuth
-        ? createLiveProvider(name, { disableThinking: true })
-        : createProvider(selectedProvider, { disableThinking: true });
+      const prov = await buildDraftProvider(selectedProvider, { disableThinking: true });
       const gen = prov.stream(ctrl.signal, {
         messages: [{ role: 'user', content: 'ping' }],
         tools: [],
@@ -421,22 +435,32 @@ export function ProviderPage({
       if (!testAliveRef.current) return; // 卸载后回包：不落盘不 setState
       const latencyMs = Math.round(performance.now() - started);
       const msg = received ? formatLatency(latencyMs) : '连接成功（无文本返回，请检查模型行为）';
-      const result: ConnectionProbe = { status: 'ok', latencyMs, at: Date.now(), message: msg };
-      // B4：探针走最小落盘面（onPersistProbe 读盘-改 lastTest-写回），
-      // 不再 onPersistSettings(updateProvider(settingsRef.current,...)) 全量提交暂存改动
-      onPersistProbe(name, result);
-      setTests((t) => new Map(t).set(name, { phase: 'ok', msg }));
+      const result: ConnectionProbe = { status: 'ok', latencyMs, at: Date.now(), message: msg, fingerprint };
+      // 草稿测试只证明「这一份未保存配置」能连；结果不落盘，避免给旧的已保存行
+      // 贴上一个它从未满足过的「正常」。保存后再测，才写成持久健康状态。
+      if (!providerDirty) onPersistProbe(name, result);
+      setTests((t) =>
+        new Map(t).set(name, {
+          phase: 'ok',
+          msg: providerDirty ? msg + ' · 草稿测试，保存后请重测' : msg,
+        }),
+      );
     } catch (e) {
       if (!testAliveRef.current) return;
       const latencyMs = Math.round(performance.now() - started);
       const msg = e instanceof Error ? e.message || String(e) : String(e);
-      const result: ConnectionProbe = { status: 'fail', latencyMs, at: Date.now(), message: msg };
-      onPersistProbe(name, result);
-      setTests((t) => new Map(t).set(name, { phase: 'fail', msg }));
+      const result: ConnectionProbe = { status: 'fail', latencyMs, at: Date.now(), message: msg, fingerprint };
+      if (!providerDirty) onPersistProbe(name, result);
+      setTests((t) =>
+        new Map(t).set(name, {
+          phase: 'fail',
+          msg: providerDirty ? msg + ' · 草稿测试，未写入持久状态' : msg,
+        }),
+      );
     } finally {
       clearTimeout(timer);
     }
-  }, [selectedProvider, onPersistProbe]);
+  }, [selectedProvider, onPersistProbe, buildDraftProvider, providerDirty]);
 
   /** Phase 3D：oauth 登录态全量刷新（ProviderList 逐行状态推导）。
    *  只在 mount / 登录成功 / 登出后调用——每次账号变更都是显式落点。 */
@@ -463,17 +487,19 @@ export function ProviderPage({
 
   /** 选中 provider 的账号清单刷新（Detail 登录面板展示）。 */
   const refreshSelectedOauthAccounts = useCallback(async () => {
+    const requestId = ++oauthAccountsRequestRef.current;
     const p = selectedProvider;
     if (p.authMode === 'oauth' && p.oauthProvider) {
       try {
         const accts = await oauthAccounts(p.oauthProvider);
+        if (requestId !== oauthAccountsRequestRef.current) return;
         setOauthAccountsState(accts.map((a) => ({ accountId: a.account_id })));
         return;
       } catch {
-        /* fallthrough — 空清单 */
+        /* fallthrough - empty list */
       }
     }
-    setOauthAccountsState([]);
+    if (requestId === oauthAccountsRequestRef.current) setOauthAccountsState([]);
   }, [selectedProvider]);
 
   /** 两步式添加收口（2026-09-06）：加进 settings → 即时落盘 + 写 Key +
@@ -501,10 +527,12 @@ export function ProviderPage({
           // Phase 3D：登录方式（codex 等 oauth 订阅行）
           if (entry.authMode) added.authMode = entry.authMode;
           if (entry.oauthProvider) added.oauthProvider = entry.oauthProvider;
+          if (entry.oauthAccountId) added.oauthAccountId = entry.oauthAccountId;
         }
         setKeyDirtyMap((m) => (entry.apiKey?.trim() ? new Map(m).set(entry.name, true) : m));
         await onAddAndPersist(next, entry.name);
         setSelected(entry.name);
+        setAddError('');
         setAddOpen(false);
         // oauth 行：弹层内可能已登录（grant 与行解耦）——添加后刷新列表登录态
         if (entry.authMode === 'oauth' && entry.oauthProvider) {
@@ -513,6 +541,7 @@ export function ProviderPage({
         }
       } catch (e) {
         // 落盘/写 Key 失败——保留弹层让用户重试，错误可见（错误不静默）
+        setAddError(e instanceof Error ? e.message : String(e));
         console.warn('[provider] 添加持久化失败:', e);
       }
     },
@@ -524,6 +553,10 @@ export function ProviderPage({
   useEffect(() => {
     void refreshOauthLoginMap();
   }, [refreshOauthLoginMap]);
+  // 状态消息属于当前选中行：切行即清，避免 A 的 OAuth 回执挂在 B 上。
+  useEffect(() => {
+    setOauthStatus(null);
+  }, [selectedProvider.name]);
   // 选中 provider 变化时刷新 Detail 账号清单
   useEffect(() => {
     void refreshSelectedOauthAccounts();
@@ -551,6 +584,8 @@ export function ProviderPage({
           onGranted: async () => {
             await refreshOauthLoginMap();
             await refreshSelectedOauthAccounts();
+            if (p.oauthProvider) invalidateOauthCache(p.oauthProvider);
+            if (p.oauthProvider) invalidateOauthCache(p.oauthProvider);
             invalidateCredentialCache(p.name);
             setOauthStatus({ tone: 'ok', msg: '登录成功——该 Codex 账号已可用于对话' });
           },
@@ -564,7 +599,7 @@ export function ProviderPage({
     } finally {
       setOauthBusy(false);
     }
-  }, [selectedProvider, refreshOauthLoginMap, refreshSelectedOauthAccounts]);
+  }, [selectedProvider, refreshOauthLoginMap, refreshSelectedOauthAccounts, onCommitProvider, settings]);
 
   /** 登出某账号。 */
   const handleOauthLogout = useCallback(
@@ -573,7 +608,11 @@ export function ProviderPage({
       if (p.authMode !== 'oauth' || !p.oauthProvider) return;
       try {
         await oauthLogout(p.oauthProvider, accountId);
+        if (p.oauthProvider) invalidateOauthCache(p.oauthProvider);
         invalidateCredentialCache(p.name);
+        if (p.oauthAccountId === accountId) {
+          onCommitProvider(updateProvider(settings, p.name, { oauthAccountId: undefined, lastTest: undefined }));
+        }
         setOauthStatus({ tone: 'ok', msg: `已登出账号 ${accountId}` });
         await refreshOauthLoginMap();
         await refreshSelectedOauthAccounts();
@@ -581,7 +620,7 @@ export function ProviderPage({
         setOauthStatus({ tone: 'fail', msg: `登出失败：${e instanceof Error ? e.message : String(e)}` });
       }
     },
-    [selectedProvider, refreshOauthLoginMap, refreshSelectedOauthAccounts],
+    [selectedProvider, refreshOauthLoginMap, refreshSelectedOauthAccounts, onCommitProvider, settings],
   );
 
   /** 取消进行中的 device-flow。 */
@@ -648,10 +687,15 @@ export function ProviderPage({
           selected={selected}
           current={settings.activeProvider}
           onSelect={setSelected}
-          onAdd={() => setAddOpen(true)}
+          onAdd={() => {
+            setAddError('');
+            setAddOpen(true);
+          }}
           oauthLoggedInMap={oauthLoggedInMap}
+          disabled={oauthBusy}
         />
         <ProviderDetail
+          key={selectedProvider.name}
           provider={selectedProvider}
           canDelete={settings.providers.length > 1}
           test={tests.get(selectedProvider.name) ?? { phase: 'idle', msg: '' }}
@@ -669,8 +713,7 @@ export function ProviderPage({
             onSetEnabledModels: (ids) => handleSetEnabledModels(selectedProvider.name, ids),
             onModelOverride: (modelId, field, value) =>
               handleModelOverride(selectedProvider.name, modelId, field, value),
-            onModelVisionToggle: (modelId, on) => handleModelVisionToggle(selectedProvider.name, modelId, on),
-            onModelThinking: (modelId, value) => handleModelThinking(selectedProvider.name, modelId, value),
+            onModelVisionToggle: (modelId, value) => handleModelVisionToggle(selectedProvider.name, modelId, value),
             onModelReasoning: (modelId, value) => handleModelReasoning(selectedProvider.name, modelId, value),
             onAdvancedChange: (next) => handleAdvancedChange(selectedProvider.name, next),
             doc: {
@@ -684,12 +727,13 @@ export function ProviderPage({
             docMsg,
             onTest: handleTest,
             onClearKey: () => setClearTarget(selectedProvider.name),
-            onResetBaseUrl: () =>
+            onResetBaseUrl: () => {
+              const nextBaseUrl = defaultBaseUrl(selectedProvider.name, selectedProvider.kind);
+              if (!nextBaseUrl) return;
               onCommitProvider(
-                updateProvider(settings, selectedProvider.name, {
-                  baseUrl: defaultBaseUrl(selectedProvider.name, selectedProvider.kind),
-                }),
-              ),
+                updateProvider(settings, selectedProvider.name, { baseUrl: nextBaseUrl, lastTest: undefined }),
+              );
+            },
             onToggleKeyVisible: () =>
               setKeyVisibleMap((m) => new Map(m).set(selectedProvider.name, !m.get(selectedProvider.name))),
             onDelete: () => setDelTarget(selectedProvider.name),
@@ -698,6 +742,15 @@ export function ProviderPage({
             accounts: oauthAccountsState,
             busy: oauthBusy,
             status: oauthStatus,
+            activeAccountId: selectedProvider.oauthAccountId,
+            onSelectAccount: (accountId) => {
+              onCommitProvider(
+                updateProvider(settings, selectedProvider.name, {
+                  oauthAccountId: accountId || undefined,
+                  lastTest: undefined,
+                }),
+              );
+            },
             onLogin: handleOauthLogin,
             onLogout: handleOauthLogout,
             onCancel: handleOauthCancel,
@@ -706,19 +759,35 @@ export function ProviderPage({
       </div>
 
       {providerDirty && (
-        <div className="pp-save-bar">
+        <div className="pp-save-bar" aria-busy={saving}>
           <span className="pp-save-bar-dot" />
-          <span className="pp-save-bar-text">有未保存的提供方更改</span>
-          <button type="button" className="pp-save-btn" onClick={onSaveProviders}>
-            保存 Provider
-          </button>
+          <span className="pp-save-bar-text">
+            {saving
+              ? '正在保存 Provider 配置...'
+              : providersDoc.staleHint
+                ? '配置文件已被外部修改：为避免覆盖，当前已阻止保存。'
+                : '有未保存的提供方更改'}
+          </span>
+          {providersDoc.staleHint ? (
+            <button type="button" className="pp-save-btn" onClick={onDiscardProviderChanges}>
+              放弃暂存并重读
+            </button>
+          ) : (
+            <button type="button" className="pp-save-btn" disabled={saving} onClick={onSaveProviders}>
+              {saving ? '保存中...' : '保存 Provider'}
+            </button>
+          )}
         </div>
       )}
 
       <AddProviderSheet
         open={addOpen}
         existingNames={settings.providers.map((p) => p.name)}
-        onClose={() => setAddOpen(false)}
+        onClose={() => {
+          setAddOpen(false);
+          setAddError('');
+        }}
+        submitError={addError}
         onAdd={handleAdd}
       />
 

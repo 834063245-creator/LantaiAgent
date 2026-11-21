@@ -29,14 +29,7 @@ import { Document, isMap, parseDocument, type YAMLMap, type Node as YamlNode } f
 import type { ProviderId, ProviderSettings } from '../settings';
 import { type HeaderEntry, headerEntryError, MAX_CUSTOM_HEADERS } from './custom-headers';
 import type { ModelMeta } from './model-meta';
-import {
-  isThinkingMode,
-  type StoredThinking,
-  THINKING_EFFORTS,
-  THINKING_MODES,
-  type ThinkingEffort,
-  type ThinkingLevelMap,
-} from './thinking';
+import { THINKING_EFFORTS, type ThinkingEffort, type ThinkingLevelMap } from './thinking';
 import { CORE_PROTOCOLS } from './types';
 
 /** 配置文件里一节 provider 的全部字段（= 用户意图；身份在键名里）。
@@ -47,7 +40,10 @@ import { CORE_PROTOCOLS } from './types';
  *  一个每天自动生成的大块数据去承担手写错误的爆炸半径：真机事故（2026-11-16）
  *  就是一行 `input: [audio]` 打死了 359 行、84 条元数据的整节。运行态读数与
  *  `lastTest` / `catalog` 同类，回 localStorage。 */
-export type ProviderIntent = Omit<ProviderSettings, 'name' | 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta'>;
+export type ProviderIntent = Omit<
+  ProviderSettings,
+  'name' | 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta' | 'lastThinking'
+>;
 
 /** 解析成功的一节：身份（键名）+ 意图。 */
 export interface ProviderSection {
@@ -92,6 +88,7 @@ const RUNTIME_ONLY_KEYS: readonly { key: string; why: string }[] = [
   { key: 'lastTest', why: '连接探针结果是本机读数、不进配置（本文件是用户意图）' },
   { key: 'catalog', why: '模型目录快照是本机读数、不进配置（设置页「刷新目录」拉取）' },
   { key: 'modelMeta', why: '模型元数据是「刷新目录」拉取回来的本机读数、不进配置（2026-11-16 起只在本机存储）' },
+  { key: 'lastThinking', why: '「该模型上次用过的思考档位」是本机阅读记忆（创作坞拨档位自动记）、不进配置' },
 ];
 
 /** provider 身份围栏（键名即身份：凭据键 + 目录合并键三合一）——同 AddProviderSheet。 */
@@ -114,7 +111,6 @@ export const PROVIDERS_DOC_HEADER = [
   '#   baseUrl: https://gateway.example.com/v1',
   '#   model: deepseek-v4.1-flash                    # 新会话默认模型',
   '#   models: [deepseek-v4.1-flash, claude-opus-4-6] # 可用模型（缺省 = 只有 model 一个）',
-  '#   thinking: high                                # 本家默认思考档位（缺省 = 自动）',
   '#   headers:                                      # 网关怪癖（可选）',
   '#     x-opencode-session: sess-1',
   '#   modelOverrides:                               # 单模型纠正（可选；模型的窗口/视觉声明属这里，',
@@ -134,7 +130,15 @@ export function isProvidersDocPath(path: string): boolean {
 
 /** 由完整行取意图（剥掉非文件字段）——UI 写盘与文件解析共用同一把尺子。 */
 export function intentOf(p: ProviderSettings): ProviderIntent {
-  const { name: _name, apiKey: _apiKey, lastTest: _lastTest, catalog: _catalog, modelMeta: _modelMeta, ...intent } = p;
+  const {
+    name: _name,
+    apiKey: _apiKey,
+    lastTest: _lastTest,
+    catalog: _catalog,
+    modelMeta: _modelMeta,
+    lastThinking: _lastThinking,
+    ...intent
+  } = p;
   return intent;
 }
 
@@ -142,7 +146,7 @@ export function intentOf(p: ProviderSettings): ProviderIntent {
 export function mergeIntent(
   name: ProviderId,
   intent: ProviderIntent,
-  runtime: Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta'>,
+  runtime: Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta' | 'lastThinking'>,
 ): ProviderSettings {
   return { ...intent, name, ...runtime };
 }
@@ -263,15 +267,9 @@ function readModelOverrides(raw: unknown, errors: string[]): ProviderSettings['m
         }
       }
     }
-    // per-model 思考档位：只认 canonical 档位 + 空串（自动）；遗留数字预算不进本文件。
+    // per-model 思考档位随「默认档位」一并退役（2026-11-21）：只在创作坞按会话选。
     if (ov.thinking !== undefined) {
-      if (typeof ov.thinking === 'string' && (ov.thinking === '' || isThinkingMode(ov.thinking))) {
-        next.thinking = ov.thinking;
-      } else {
-        errors.push(
-          `modelOverrides「${id}」.thinking 必须是合法档位（${THINKING_MODES.map((m) => m.value || '自动').join(' / ')}）`,
-        );
-      }
+      errors.push(`modelOverrides「${id}」.thinking 已废弃（思考档位只在创作坞按会话选择）——请删除该字段`);
     }
     // per-model 自定义推理等级（2026-10-22 对齐 DSH）：档位 → 请求里发送的 API 参数值。
     if (ov.reasoningEfforts !== undefined) {
@@ -340,6 +338,14 @@ function readModelMeta(raw: unknown, errors: string[]): Record<string, ModelMeta
         else meta.thinkingEfforts = efforts as ThinkingEffort[];
       }
     }
+    if (src.thinkingLevelMap !== undefined) {
+      const levelMap = readReasoningEfforts(src.thinkingLevelMap, `modelMeta「${id}」.thinkingLevelMap`, errors);
+      if (levelMap === false) {
+        errors.push(`modelMeta「${id}」.thinkingLevelMap 必须是「档位 → API 参数值」对象`);
+      } else if (levelMap !== undefined) {
+        meta.thinkingLevelMap = levelMap;
+      }
+    }
     out[id] = meta;
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -362,9 +368,9 @@ const INTENT_FIELDS = [
   'baseUrl',
   'model',
   'models',
-  'thinking',
   'authMode',
   'oauthProvider',
+  'oauthAccountId',
   'headers',
   'modelOverrides',
 ] as const satisfies readonly (keyof ProviderIntent)[];
@@ -459,13 +465,10 @@ export function parseSection(
   const headers = readHeaders(fields.headers, warnings);
   const modelOverrides = readModelOverrides(fields.modelOverrides, warnings);
 
-  const thinking = fields.thinking;
-  if (thinking !== undefined && typeof thinking !== 'string') {
-    warnings.push('thinking 必须是字符串（档位名或空串 = 自动）——已忽略该字段');
-  } else if (typeof thinking === 'string' && thinking !== '' && !isThinkingMode(thinking)) {
-    warnings.push(
-      `thinking「${thinking}」不是合法档位（${THINKING_MODES.map((m) => m.value || '自动').join(' / ')}）——已忽略该字段（回落自动）`,
-    );
+  // ⚡ 2026-11-21：提供方级「默认思考档位」退役——思考档位只在创作坞按会话选。
+  // 老文件里的该字段读都不读，点名提示一次（下次保存即从文件消失）。
+  if (fields.thinking !== undefined) {
+    warnings.push('thinking 已废弃（思考档位只在创作坞按会话选择）——本字段已忽略，下次保存时移除');
   }
   const authMode = fields.authMode;
   if (authMode !== undefined && authMode !== 'api-key' && authMode !== 'oauth') {
@@ -474,6 +477,10 @@ export function parseSection(
   const oauthProvider = fields.oauthProvider;
   if (oauthProvider !== undefined && typeof oauthProvider !== 'string') {
     warnings.push('oauthProvider 必须是字符串（如 codex）——已忽略该字段');
+  }
+  const oauthAccountId = fields.oauthAccountId;
+  if (oauthAccountId !== undefined && typeof oauthAccountId !== 'string') {
+    warnings.push('oauthAccountId 必须是字符串——已忽略该字段');
   }
 
   const authOk = authMode === 'api-key' || authMode === 'oauth';
@@ -486,11 +493,9 @@ export function parseSection(
     ...(models !== undefined ? { models } : {}),
     ...(headers !== undefined ? { headers } : {}),
     ...(modelOverrides !== undefined ? { modelOverrides } : {}),
-    ...(typeof thinking === 'string' && (thinking === '' || isThinkingMode(thinking))
-      ? { thinking: thinking as StoredThinking }
-      : {}),
     ...(authOk ? { authMode } : {}),
     ...(typeof oauthProvider === 'string' ? { oauthProvider } : {}),
+    ...(typeof oauthAccountId === 'string' && oauthAccountId.trim() ? { oauthAccountId: oauthAccountId.trim() } : {}),
   };
   return { intent, warnings, ...(legacyModelMeta !== undefined ? { legacyModelMeta } : {}) };
 }

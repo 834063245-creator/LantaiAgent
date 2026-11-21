@@ -33,7 +33,7 @@ vi.mock('../src/i18n', () => ({ setLang: vi.fn() }));
 
 import { __resetProvidersDocForTests, bootstrapProvidersDoc } from '../src/provider/providers-store';
 import { installProvidersProjection, loadSettings } from '../src/settings';
-import { getComposeStore, resolveNewSessionDefault } from '../src/state/compose-store';
+import { getComposeStore, resetComposeStoresForTests, resolveNewSessionDefault } from '../src/state/compose-store';
 
 const STORAGE_KEY = 'hologram_settings';
 const DOC_PATH = 'C:/Users/u/.lantai/providers.yml';
@@ -91,25 +91,31 @@ describe('题签「记住选择」· 文件权威下落盘（2026-11-29）', () 
     await bootstrapProvidersDoc();
   });
 
-  it('思考档位：落进 providers.yml 的 per-model 覆盖，重启后还在', async () => {
+  // ⚡ 2026-11-21 思考档位收口：设置页的「默认档位」手动项已拆——无主态拨的档位
+  // 记成「该模型上次用的档位」（本机读数，跟 catalog/modelMeta 同层），
+  // **不写 providers.yml**；重开应用仍在（不像草稿那样丢）。
+  it('思考档位：记本机读数（lastThinking）、不写 providers.yml，重开后沿用', async () => {
     getComposeStore(PANEL).getState().setGlobalThinking('high');
 
     /* ① 当拍可读：下一张纸的出厂值不能等 IPC 回来 */
     expect(resolveNewSessionDefault().model).toBe('deepseek-flash');
-    expect(loadSettings().providers.find((p) => p.name === 'deepseek')?.modelOverrides?.['deepseek-flash']).toEqual({
-      thinking: 'high',
-    });
+    expect(resolveNewSessionDefault().thinking).toBe('high');
 
-    /* ② 盘上真有 */
+    /* ② 配置文件里没有档位（不是配置）；本机存档里有记忆 */
     await settle();
-    expect(disk.get(DOC_PATH)).toContain('thinking: high');
+    expect(disk.get(DOC_PATH)).not.toContain('thinking');
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+      providers?: Array<{ name?: string; lastThinking?: Record<string, string> }>;
+    };
+    expect(stored.providers?.[0]?.lastThinking?.['deepseek-flash']).toBe('high');
 
-    /* ③ 模拟一次重启（重新装载文件 + 重新投影）：值还在 */
+    /* ③ 「重启」= 重新装载（本机读数恢复）→ 仍在 */
+    resetComposeStoresForTests();
     __resetProvidersDocForTests();
+    installProvidersProjection(null);
+    wireRpc();
     await bootstrapProvidersDoc();
-    expect(loadSettings().providers.find((p) => p.name === 'deepseek')?.modelOverrides?.['deepseek-flash']).toEqual({
-      thinking: 'high',
-    });
+    expect(resolveNewSessionDefault().thinking).toBe('high');
   });
 
   it('模型：改的是 providers.yml 的 model（新卷出生默认），不是本地存档的残影', async () => {
@@ -134,7 +140,7 @@ describe('题签「记住选择」· 文件权威下落盘（2026-11-29）', () 
     expect(resolveNewSessionDefault().model).toBe('deepseek-v4-pro');
   });
 
-  it('降级域（文件通道不可用）：仍按旧语义落本地存档——测试与 mock 宿主不炸', async () => {
+  it('降级域（文件通道不可用）：模型仍落本地存档；档位只记内存（不炸）', async () => {
     // 通道坏掉 → 文件权威不成立
     installProvidersProjection(null);
     __resetProvidersDocForTests();
@@ -143,14 +149,15 @@ describe('题签「记住选择」· 文件权威下落盘（2026-11-29）', () 
     });
     await bootstrapProvidersDoc();
 
-    /* 先拨模型再拨档位（档位落在「当前出生默认模型」的 per-model 覆盖上——顺序即语义） */
     getComposeStore(PANEL).getState().setGlobalModel('deepseek', 'deepseek-v4-pro');
-    getComposeStore(PANEL).getState().setGlobalThinking?.('low');
+    getComposeStore(PANEL).getState().setGlobalThinking('low');
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
       providers?: Array<{ name: string; model?: string; modelOverrides?: Record<string, { thinking?: string }> }>;
     };
     expect(stored.providers?.[0]?.model).toBe('deepseek-v4-pro');
-    expect(stored.providers?.[0]?.modelOverrides?.['deepseek-v4-pro']?.thinking).toBe('low');
+    // 档位没有「默认值」可落盘——内存里带上，重启即回自动
+    expect(stored.providers?.[0]?.modelOverrides?.['deepseek-v4-pro']?.thinking).toBeUndefined();
+    expect(resolveNewSessionDefault().thinking).toBe('low');
   });
 });

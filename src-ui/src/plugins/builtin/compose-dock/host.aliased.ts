@@ -92,7 +92,6 @@ export const loadSettings = impl.loadSettings;
 export const modelContextWindow = impl.modelContextWindow;
 export const modelDescriptor = impl.modelDescriptor;
 export const modelInput = impl.modelInput;
-export const modelThinking = impl.modelThinking;
 export const onSettingsSaved = impl.onSettingsSaved;
 export const getComposeStore = impl.getComposeStore;
 export const resolveNewSessionDefault = impl.resolveNewSessionDefault;

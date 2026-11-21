@@ -15,7 +15,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   getComposeStore,
-  loadSettings,
   onSettingsSaved,
   type RunConfig,
   type RunTarget,
@@ -38,11 +37,9 @@ export function useRunConfig(target: RunTarget): RunConfig {
   /* 卷级覆盖（compose-store）在 host 无卷时不必订阅；订阅键 = 面板 + 卷号。 */
   const [composeTick, setComposeTick] = useState(0);
   const panelId = target.panelId;
-  const volumeSid = target.kind === 'volume' ? target.sessionId : null;
-  useEffect(() => {
-    if (volumeSid === null) return;
-    return getComposeStore(panelId).subscribe(() => setComposeTick((n) => n + 1));
-  }, [panelId, volumeSid]);
+  /* 无卷/纸态也要订阅：拨档位在无卷时走 setGlobalThinking（只写本机记忆 + 触发一次
+   * store 更新），不订阅的话 pill 要等下一次渲染才跟手。 */
+  useEffect(() => getComposeStore(panelId).subscribe(() => setComposeTick((n) => n + 1)), [panelId]);
 
   return useMemo(() => {
     void papers;
@@ -52,14 +49,6 @@ export function useRunConfig(target: RunTarget): RunConfig {
     void sessionModes;
     void settingsTick;
     void composeTick;
-    return resolveRunConfig(target, { settings: safeSettings() });
+    return resolveRunConfig(target);
   }, [target, papers, presetSelected, permissionMode, sheetPermission, sessionModes, settingsTick, composeTick]);
-}
-
-function safeSettings() {
-  try {
-    return loadSettings();
-  } catch {
-    return undefined;
-  }
 }

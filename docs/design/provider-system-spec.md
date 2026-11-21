@@ -118,9 +118,12 @@ interface ProviderSettings {
   一个内网网关）在实际使用里不存在；且它**没有热重载**（watcher 只监听用户级），
   而 prompt 段却告诉 agent「改完约 1 秒生效」——agent 写了项目级文件，应用侧零反应。
 - **一行 provider = 一个顶层键，键名即身份**（= 系统凭据键）。可写字段：
-  `kind` / `baseUrl` / `model` / `models` / `thinking` / `headers` / `modelOverrides`
-  / `authMode` / `oauthProvider`。**未知字段一律忽略并点名**（前向兼容：旧版本
+  `kind` / `baseUrl` / `model` / `models` / `headers` / `modelOverrides`
+  / `authMode` / `oauthProvider` / `oauthAccountId`。**未知字段一律忽略并点名**（前向兼容：旧版本
   打开新文件不该炸，也不该连累这一行）。
+  **（2026-11-21 思考档位收口）** 提供方级 `thinking` 与 `modelOverrides[*].thinking`
+  一并退役：思考档位只在创作坞按**会话**选，没有「提供方/模型默认档位」这一层；
+  老文件里的这两个字段读都不读、点名提示，下次保存即从文件消失。
 - **权威三分（互不重叠，各自只有一处）**：意图 → 本文件；密钥 → 系统凭据库
   （`apiKey` 写进文件 = 点名告警并忽略——明文落盘会被误分享）；**运行态读数**
   （`lastTest` 连接探针、`catalog` 目录快照、**`modelMeta` 模型元数据**）→
@@ -768,24 +771,25 @@ interface ProviderSettings {
   apiKey: string;            // 会话内明文，持久化权威 = 加密凭据
   baseUrl: string;
   model: string;             // 新会话默认 = 最近使用（自动跟从创作坞，非手动设置）
-  thinking?: StoredThinking; // 本家默认档位（未单独设置过档位的模型用它）
   lastTest?: ConnectionProbe;
   models?: string[];         // **启用集**（创作坞下拉可选面；缺省 = [model]，零迁移）
   catalog?: string[];        // **目录快照**：最近一次拉取的全量 id（2026-09-23 三层）
   modelOverrides?: Record<string, ModelOverrides>; // per-model 覆盖（用户手改）
   modelMeta?: Record<string, ModelMeta>;           // per-model API 拉取元数据（2026-09-11）
+  lastThinking?: Record<string, StoredThinking>;   // 「该模型上次用过的档位」（本机读数，2026-11-21）
 }
 interface ModelOverrides {
   contextWindow?: number;
   maxTokens?: number;
   input?: ('text' | 'image')[]; // 输入模态声明（multimodal-image B5 · D-8①）
-  thinking?: StoredThinking;    // per-model 思考档位（2026-09-23 思考下沉）
-  reasoningEfforts?: false | Partial<Record<ReasoningLevel, string | null>>; // 自定义推理等级（2026-10-22，DSH 对齐）
+  // ⚡ 2026-11-21：thinking 退役——用哪一档只在创作坞按会话选（见 §思考档位收口）
+  reasoningEfforts?: false | Partial<Record<ReasoningLevel, string | null>>; // 档位声明（2026-10-22，DSH 对齐）
 }
 interface ModelMeta {        // provider/model-meta.ts —— 端点真披露的字段（不编造）
   name?: string; contextWindow?: number; maxTokens?: number;
   input?: ('text' | 'image')[]; reasoning?: boolean;
   thinkingEfforts?: ThinkingEffort[]; thinkingOff?: boolean;
+  thinkingLevelMap?: ThinkingLevelMap; // 端点显式给出的「档位 → API 参数值」
   fetchedAt: number;
 }
 ```
@@ -807,7 +811,8 @@ interface ModelMeta {        // provider/model-meta.ts —— 端点真披露的
   解析出来，由 `plugins/builtin/settings-domain/model-sync.applyFetchedModels`（批 9f-1 起随包；此前 `provider/model-sync.ts`）单一入口落进暂存 → 保存持久化。
   此前只落 id 列表，元数据随进程消失，聚合网关的模型重启后一律吃 200K 假默认。
   **四层解析链（单一权威源 `settings.ts`）**：`modelOverrides` ?? `modelMeta` ??
-  目录 seed ?? 默认。消费面全部走链：`modelContextWindow` / `modelMaxTokens` /
+  目录 seed ?? 默认。目录 seed 按 provider 作用域采用：仅 vendor 名相同或 baseUrl 完全相同时命中；
+  不同 provider 复用同名 model id 时不得互相串窗口/视觉/档位元数据。消费面全部走链：`modelContextWindow` / `modelMaxTokens` /
   `modelInput` / `modelReasoning` / `modelThinkingEfforts`，以及方言请求期的
   `modelDescriptor(p, id)`（经 `ProviderRuntimeArgs.describeModel` 注入，使 provider
   级元数据真正抵达 wire——档位协商 `thinkingCapability` 与输出钳制 `clampTokens`）。
@@ -830,8 +835,18 @@ interface ModelMeta {        // provider/model-meta.ts —— 端点真披露的
   回落 next[0]。
 - **思考档位常驻**：per-model 档位来自生效描述符声明（API 拉取或目录，P14）；无声明
   的模型给「自动/关闭」协议安全兜底（assertEffortDeclared 对 ''/off 不拦），不再整控件
-  消失。现实：当前主流端点均不披露档位清单——`thinkingEfforts` 在拉取面只认端点显式
-  给出的数组（过 canonical 词表），未披露即不显示档位选择器（不编造）。
+  消失。`thinkingEfforts` 在拉取面接受两种端点证据：档位数组，或「档位 → API 参数值」
+  对象；非 canonical 档位丢弃，未披露即不编造。Provider 页只把它们显示为**只读能力声明**
+  （API 拉取 / 内置目录 / 手动覆盖三种来源），并提供「手动覆盖」纠正声明；**本次用哪一档
+  只在创作坞「思考」里按会话选择**，Provider 页不保存默认档位。
+
+### 追裁：OAuth 多账号选择（2026-11-21）
+
+- `ProviderSettings.oauthAccountId?: string` 是 `providers.yml` 的用户意图字段；缺省 =
+  最近登录账号（`resolveOauthToken(provider, accountId?)`）。
+- Provider 页 OAuth 面板显式展示「请求使用账号」选择器；登录新账号默认选中新账号，
+  登出当前账号时清回自动。OAuth 登录/登出必须调用 `invalidateOauthCache(oauthProvider)`，
+  不能只失效 API Key 缓存。
 
 ### 追裁：自定义推理等级（2026-10-22，对齐 DSH `reasoningEfforts`）
 
@@ -1075,6 +1090,15 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
    显示不同的档位表（拉取失败/重启后尤其明显）。
 
 ### 修复（三层 + 下沉）
+
+> ⚡ **2026-11-21 思考档位收口（推翻本节第 4 条）**：`ProviderSettings.thinking` 与
+> `ModelOverrides.thinking` 两层「默认档位」整体退役——没有任何手动入口；档位属于
+> **一次会话**（创作坞「思考」），无主态拨的值记成「该模型上次用过的档位」
+> （`ProviderSettings.lastThinking`，本机读数、不进 providers.yml，重开仍在）。设置页那两个手动项已拆；
+> live provider 只把**会话显式覆盖**传进 `createProvider(options.thinking)`。
+> 理由：一个「提供方默认值」再叠一个「模型默认值」，既无清晰语义（供应商不是一个
+> 会思考的东西），又在界面上逼用户理解「没单独设置过的模型用它」这种话。下方第 4、
+> 5、7 条与「配方白名单」中的 thinking 部分按此失效，保留为历史记录。
 
 1. **目录（新 `ProviderSettings.catalog`）**：`applyFetchedModels` 只写目录快照
    （**整份替换**——远端下架的模型离开目录）与 `modelMeta`，**`models` 一行不碰**；

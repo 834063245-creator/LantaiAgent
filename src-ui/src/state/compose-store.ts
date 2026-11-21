@@ -23,7 +23,14 @@
 import { create } from 'zustand';
 import { patchProviderIntent } from '../provider/providers-store';
 import type { StoredThinking } from '../provider/thinking';
-import { getActiveProvider, loadSettings, type ModelOverrides, type ProviderId, saveSettings } from '../settings';
+import {
+  getActiveProvider,
+  loadSettings,
+  type ProviderId,
+  rememberedThinking,
+  rememberModelThinking,
+  saveSettings,
+} from '../settings';
 import { notifyAgentConfigChanged } from './agent-config-store';
 import { createScopedStore } from './scoped-store';
 
@@ -35,6 +42,8 @@ export interface ComposeSessionPrefs {
 }
 
 export interface ComposeStore {
+  /** 无主态档位（还没开卷时拨的值；纯内存，开卷出生时带进去）。 */
+  bareThinking: StoredThinking | undefined;
   /** 会话覆盖表（key = sessionId string，按面板隔离）。只含显式改动过的卷。 */
   sessions: Record<string, ComposeSessionPrefs>;
 
@@ -50,7 +59,7 @@ export interface ComposeStore {
    *  （activeProvider + 行 model），不建会话覆盖、不发会话信号——
    *  无句柄可热切，下一卷出生时经工厂吃到新默认。 */
   setGlobalModel: (providerName: string, model: string) => void;
-  /** 无主态思考档位切换：写 activeProvider 行的 thinking（新卷出生默认）。 */
+  /** 无主态思考档位切换：只记本进程内存（开下一卷时随出生默认带进去，不落盘）。 */
   setGlobalThinking: (thinking: StoredThinking | undefined) => void;
   /** 恢复期回填（从卷快照读盘时）：整条覆盖写入，不发包信号。 */
   hydratePrefs: (sessionId: string, prefs: ComposeSessionPrefs) => void;
@@ -63,7 +72,9 @@ export interface ComposeStore {
 function snapshotFromGlobal(): ComposeSessionPrefs {
   try {
     const act = getActiveProvider(loadSettings());
-    return { providerName: act.name, model: act.model, thinking: act.thinking };
+    // 思考档位：还没有会话可写时，沿用**该模型上次用过的档位**（本机记忆，
+    // 创作坞拨档位时自动记；重开应用仍在）。设置页没有这个手动项。
+    return { providerName: act.name, model: act.model, thinking: rememberedThinking(act, act.model) };
   } catch {
     return { providerName: '', model: '', thinking: undefined };
   }
@@ -95,6 +106,9 @@ function writeNewSessionDefault(providerName: string, model: string): void {
 
 function createComposeStoreImpl() {
   return create<ComposeStore>((set, get) => ({
+    // 仅作订阅触发器（真源 = settings.lastThinking 本机记忆，见 snapshotFromGlobal）；
+    // 坞在无卷态靠它重渲染，保证拨完档位 pill 立刻跟手。
+    bareThinking: undefined,
     sessions: {},
 
     getPrefs: (sessionId) => get().sessions[sessionId],
@@ -118,13 +132,11 @@ function createComposeStoreImpl() {
     },
 
     setThinking: (sessionId, thinking) => {
-      set((s) => {
-        const prev = s.sessions[sessionId];
-        // 无覆盖的卷先落一条（以当前生效配置为底）再改 thinking——
-        // 「改过思考」也算显式改动，之后模型不再跟随全局
-        const base: ComposeSessionPrefs = prev ?? snapshotFromGlobal();
-        return { sessions: { ...s.sessions, [sessionId]: { ...base, thinking } } };
-      });
+      const base: ComposeSessionPrefs = get().sessions[sessionId] ?? snapshotFromGlobal();
+      set((s) => ({ sessions: { ...s.sessions, [sessionId]: { ...base, thinking } } }));
+      // 记忆（本机读数）：这一卷用过的档位 = 这个模型「上次用的档位」。
+      // 只影响**还没有显式选择的新卷**；本卷的显式覆盖在 compose prefs 里。
+      if (thinking !== undefined) rememberModelThinking(base.providerName, base.model, thinking);
       notifyAgentConfigChanged('thinking-changed', Number(sessionId));
     },
 
@@ -134,36 +146,15 @@ function createComposeStoreImpl() {
     },
 
     setGlobalThinking: (thinking) => {
-      // 无主态（开口即开卷）：坞里 / 题签上拨的是**当前出生默认模型**的档位——2026-09-23
-      // 思考下沉后落到该模型的 per-model 覆盖（与本家默认档位各管一层：设置页行级
-      // 那个是「没单独设过的模型用它」）。行无模型时无从定位，回落写行值。
-      //
-      // ⚡ 2026-11-29（题签「记住选择」批）：改走 `patchProviderIntent`——**意图权威 =
-      // `~/.lantai/providers.yml`**。旧实现 `saveSettings(updateProvider(...))` 写的是本地
-      // 存档里的 provider 行，而文件权威就位后 `saveSettings` 会把意图整段剥掉（见
-      // writeNewSessionDefault 的病灶注）：档位从来就没落过盘，下一次开纸就回旧值。
-      // 发 thinking-changed 信号无意义——无会话句柄可热切，工厂出生时现读。
+      // 无主态（还没开卷）：把这次选择记成「当前模型上次用的档位」（本机记忆，重开还在），
+      // 开下一卷时随出生默认带进去。设置页没有这个手动项。
       try {
-        const s = loadSettings();
-        const act = getActiveProvider(s);
-        const model = act.model?.trim();
-        if (!model) {
-          patchProviderIntent(act.name, { thinking });
-          return;
-        }
-        const overrides: Record<string, ModelOverrides> = { ...(act.modelOverrides ?? {}) };
-        const entry: ModelOverrides = { ...(overrides[model] ?? {}) };
-        if (thinking === undefined) delete entry.thinking;
-        else entry.thinking = thinking;
-        // 空条目不留壳：模型没有别的覆盖时，文件里不该多出一条空映射
-        if (Object.keys(entry).length === 0) delete overrides[model];
-        else overrides[model] = entry;
-        patchProviderIntent(act.name, {
-          modelOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
-        });
+        const act = getActiveProvider(loadSettings());
+        if (act.model?.trim()) rememberModelThinking(act.name, act.model, thinking);
       } catch (e) {
-        console.warn('[compose-store] 思考档位落盘失败（下次开纸回旧值）:', e);
+        console.warn('[compose-store] 思考档位记忆写入失败（不影响本次会话）:', e);
       }
+      set({ bareThinking: thinking });
     },
 
     hydratePrefs: (sessionId, prefs) => set((s) => ({ sessions: { ...s.sessions, [sessionId]: prefs } })),
@@ -209,7 +200,7 @@ export function resetComposeStoresForTests(): void {
   const stores = w[key] as Map<string, { setState: (s: Partial<ComposeStore>) => void }> | undefined;
   if (stores) {
     for (const store of stores.values()) {
-      store.setState({ sessions: {} });
+      store.setState({ sessions: {}, bareThinking: undefined });
     }
   }
 }

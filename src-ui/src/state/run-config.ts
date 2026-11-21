@@ -30,7 +30,7 @@
 
 import { selectPreset } from '../composition/preset-assembly';
 import type { StoredThinking } from '../provider/thinking';
-import { type AppSettings, loadSettings, modelThinking } from '../settings';
+import { loadSettings, rememberedThinking } from '../settings';
 import { getComposeStore, resolveNewSessionDefault } from './compose-store';
 import { type DraftPicks, useDraftSheetStore } from './draft-sheet-store';
 import { type PermissionMode, useModeStore } from './mode-store';
@@ -62,9 +62,9 @@ export function bareTarget(panelId: string): RunTarget {
 export interface RunSources {
   preset: 'explicit' | 'default';
   model: 'explicit' | 'default';
-  /** 思考：`explicit` = 这个目标上显式拨过；`model` = 按该模型的声明/覆盖解析出来；
-   *  `default` = 连模型都没声明（出厂兜底）。 */
-  thinking: 'explicit' | 'model' | 'default';
+  /** 思考：`explicit` = 这个目标上显式拨过；`default` = 没有显式选择（自动）。
+   *  ⚡ 2026-11-21：`model` 来源随「提供方/模型默认档位」一并退役。 */
+  thinking: 'explicit' | 'default';
   permission: 'explicit' | 'default';
 }
 
@@ -80,10 +80,8 @@ export interface RunConfig {
 }
 
 /** 解析依赖（宿主可注入的既有读数——只加速，不改变规则）：
- *  - `settings`：设置快照（宿主每保存一代重读一次，热路径不做 JSON.parse）；
  *  - `presetHint`：**卷级**组合读数（`core.sessionComposition` 是异步的，读面归宿主）。 */
 export interface RunDeps {
-  settings?: AppSettings;
   presetHint?: { presetId: string; source: 'session' | 'global' };
 }
 
@@ -93,21 +91,16 @@ export interface RunDeps {
  *    paper  ：题签（这张纸的记录）→ 新卷出生默认 → 出厂
  *    volume ：卷级覆盖 → 全局默认（模型/思考走 compose-store 的 resolveEffective）
  *    bare   ：新卷出生默认 → 出厂
- *  思考档三层的末层是「该模型自己的档位」（`modelThinking`：per-model 覆盖 ?? 行值）。 */
+ *  思考档只有两层（2026-11-21 收口）：本目标上显式拨的值 / 没有（= 自动）。 */
 export function resolveRunConfig(target: RunTarget, deps: RunDeps = {}): RunConfig {
-  const settings = deps.settings ?? safeSettings();
   const fallback = resolveNewSessionDefault();
   const presetSelected = usePresetStore.getState().selected;
   const workspaceMode = useModeStore.getState().permissionMode;
-  const modelThinkingOf = (providerName: string, model: string): StoredThinking | undefined => {
-    const provider = settings?.providers.find((p) => p.name === providerName);
-    return provider ? modelThinking(provider, model) : undefined;
-  };
 
   if (target.kind === 'paper') {
     const paper = useDraftSheetStore.getState().papers.find((p) => p.id === target.paperId);
     /* 纸不在了（迟到渲染 / 已弃）：**按无主读出**，绝不回落到焦点那张（本批根因）。 */
-    if (!paper) return bareConfig(fallback, presetSelected, workspaceMode, modelThinkingOf);
+    if (!paper) return bareConfig(fallback, presetSelected, workspaceMode);
     const picks = paper.picks;
     /* 模型/思考的「显式」判据 = **与出生默认逐值不等**（与开卷那一刻 `applyDraftPicks`
      * 的「全默认 = 零覆盖」同一把尺子——纸的题签生来就填好三笔，按「有没有 picks」
@@ -119,8 +112,7 @@ export function resolveRunConfig(target: RunTarget, deps: RunDeps = {}): RunConf
     const presetExplicit = picks?.presetId != null && picks.presetId !== presetSelected;
     const providerName = picks?.providerName ?? fallback.providerName;
     const model = picks?.model ?? fallback.model;
-    const byModel = modelThinkingOf(providerName, model);
-    const thinking = picks?.thinking ?? byModel;
+    const thinking = picks?.thinking ?? rememberedThinkingFor(providerName, model);
     return {
       presetId: picks?.presetId ?? presetSelected,
       providerName,
@@ -130,7 +122,7 @@ export function resolveRunConfig(target: RunTarget, deps: RunDeps = {}): RunConf
       sources: {
         preset: presetExplicit ? 'explicit' : 'default',
         model: modelExplicit ? 'explicit' : 'default',
-        thinking: picks?.thinking !== undefined ? 'explicit' : byModel !== undefined ? 'model' : 'default',
+        thinking: picks?.thinking !== undefined ? 'explicit' : 'default',
         permission: picks?.permission != null ? 'explicit' : 'default',
       },
     };
@@ -142,8 +134,7 @@ export function resolveRunConfig(target: RunTarget, deps: RunDeps = {}): RunConf
     const explicit = compose.getPrefs(target.sessionId);
     const mode = useModeStore.getState();
     const sessionPermission = mode.sessionModes[target.sessionId];
-    const byModel = modelThinkingOf(effective.providerName, effective.model);
-    const thinking = explicit?.thinking ?? byModel;
+    const thinking = explicit?.thinking ?? rememberedThinkingFor(effective.providerName, effective.model);
     return {
       presetId: deps.presetHint?.presetId ?? presetSelected,
       providerName: effective.providerName,
@@ -153,13 +144,23 @@ export function resolveRunConfig(target: RunTarget, deps: RunDeps = {}): RunConf
       sources: {
         preset: deps.presetHint?.source === 'session' ? 'explicit' : 'default',
         model: explicit ? 'explicit' : 'default',
-        thinking: explicit?.thinking !== undefined ? 'explicit' : byModel !== undefined ? 'model' : 'default',
+        thinking: explicit?.thinking !== undefined ? 'explicit' : 'default',
         permission: sessionPermission !== undefined ? 'explicit' : 'default',
       },
     };
   }
 
-  return bareConfig(fallback, presetSelected, workspaceMode, modelThinkingOf);
+  return bareConfig(fallback, presetSelected, workspaceMode);
+}
+
+/** 该模型「上次用过的档位」（本机记忆；设置页没有手动入口）。无 = undefined（自动）。 */
+function rememberedThinkingFor(providerName: string, model: string): StoredThinking | undefined {
+  try {
+    const p = loadSettings().providers.find((x) => x.name === providerName);
+    return p ? rememberedThinking(p, model) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** 无主态（坞的空态 / 裸挂单件）：四笔全是出厂默认。 */
@@ -167,30 +168,15 @@ function bareConfig(
   fallback: { providerName: string; model: string; thinking: StoredThinking | undefined },
   presetSelected: string,
   workspaceMode: PermissionMode,
-  modelThinkingOf: (providerName: string, model: string) => StoredThinking | undefined,
 ): RunConfig {
-  const byModel = modelThinkingOf(fallback.providerName, fallback.model);
   return {
     presetId: presetSelected,
     providerName: fallback.providerName,
     model: fallback.model,
-    thinking: byModel ?? fallback.thinking,
+    thinking: rememberedThinkingFor(fallback.providerName, fallback.model),
     permission: workspaceMode,
-    sources: {
-      preset: 'default',
-      model: 'default',
-      thinking: byModel !== undefined ? 'model' : 'default',
-      permission: 'default',
-    },
+    sources: { preset: 'default', model: 'default', thinking: 'default', permission: 'default' },
   };
-}
-
-function safeSettings(): AppSettings | undefined {
-  try {
-    return loadSettings();
-  } catch {
-    return undefined;
-  }
 }
 
 /** 写补丁：**只给变的那几笔**。`thinking` 的 `''` = 显式「自动」（关闭思考）。 */

@@ -33,7 +33,10 @@ export function thinkingZhLabel(value: string | undefined): string {
 /** DSH thinkingDesc 语义（中文）——思考档位下拉选项的说明行。 */
 export const THINKING_DESC: Record<string, string> = {
   '': '模型自定推理强度',
-  off: '不推理，直接作答',
+  // 准确口径（2026-11-21）：'off' 是「请求里不表达推理」，能不能真关掉取决于协议/模型声明
+  // （Anthropic 不发 thinking 块 = 真关；OpenAI 兼容要模型声明可关闭才会发关闭参数，
+  // 未声明就只是不发参数，模型可能仍会思考）。
+  off: '不推理（模型不支持关闭时不发参数）',
   minimal: '最浅推理，响应最快',
   low: '轻度推理',
   medium: '均衡推理',

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createProvider } from '../src/provider';
-import { modelInput, type ProviderSettings } from '../src/settings';
+import { modelInput, providerId, type ProviderSettings } from '../src/settings';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 await ensureProductionChannelsBooted();
@@ -113,9 +113,15 @@ describe('modelInput 合并链（B5 · D-8①：覆盖 ?? 目录 ?? ["text"]）'
   it('目录外自定义款：覆盖补声明生效（GLM-4V/Qwen-VL 面）', () => {
     expect(modelInput(p, 'glm-4v-custom')).toEqual(['text', 'image']);
   });
-  it('无覆盖 = 目录声明（deepseek 主线 text / vision-exp image）', () => {
-    expect(modelInput(p, 'deepseek-v4-pro')).toEqual(['text']);
-    expect(modelInput(p, 'deepseek-v4-flash-vision-exp')).toEqual(['text', 'image']);
+  it('同 vendor / 同端点时无覆盖 = 目录声明；别家同名 id 不串 seed', () => {
+    const seeded = {
+      ...p,
+      name: providerId('deepseek'),
+      baseUrl: 'https://api.deepseek.com/v1',
+    };
+    expect(modelInput(seeded, 'deepseek-v4-pro')).toEqual(['text']);
+    expect(modelInput(seeded, 'deepseek-v4-flash-vision-exp')).toEqual(['text', 'image']);
+    expect(modelInput(p, 'deepseek-v4-flash-vision-exp')).toEqual(['text']);
   });
   it('provider 缺省只查目录；双缺省恒 ["text"]（不编造能力）', () => {
     expect(modelInput(undefined, 'claude-sonnet-4-6')).toEqual(['text', 'image']);

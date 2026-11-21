@@ -39,7 +39,7 @@ import {
   providersDocStatus,
   retryProvidersPath,
 } from '../src/provider/providers-store';
-import { installProvidersProjection, loadSettings, loadSettingsWithSecrets } from '../src/settings';
+import { installProvidersProjection, loadSettings, loadSettingsWithSecrets, providerId } from '../src/settings';
 
 const STORAGE_KEY = 'hologram_settings';
 const tick = () => new Promise((r) => setTimeout(r, 50));
@@ -532,5 +532,181 @@ describe('provider 配置文件通道（写盘一半）', () => {
 
     root?.unmount();
     root = null;
+  });
+
+  // ⚡ 2026-11-21 真机排查（用户问「供应商拉的模型目录是不是只落盘了第一次」）：
+  //   文件权威下运行态读数（catalog / modelMeta / lastTest）走 saveSettings 写
+  //   localStorage，而 provider 行由 runtimeMap 投影——旧实现从不同步 ⇒ 保存后的值在
+  //   providers:changed 广播里被换回**装载时**的旧值。真机存档就是这个形态：opencode
+  //   的 catalog 停在 2026-09-23 那次拉取的 33 条，后加的行干脆没有 catalog 字段。
+  //   本用例钉住「刷新目录 → 保存 → watcher 广播 → 重启」全程。
+  it('刷新目录 → 保存 → providers:changed 广播：目录快照与元数据不被换回旧值', async () => {
+    disk.set(DOC_PATH, 'gw:\n  kind: openai\n  baseUrl: https://gw.test/v1\n  model: a\n');
+    seedStored([{ kind: 'openai', name: 'gw', baseUrl: 'https://gw.test/v1', model: 'a', catalog: ['old-1'] }]);
+    await bootstrapProvidersDoc();
+    expect(loadSettings().providers[0].catalog).toEqual(['old-1']);
+
+    const { saveSettings } = await import('../src/settings');
+    // 设置页「刷新目录」→ 点保存：runSavePipeline 最后一步 = saveSettings(面板 state)
+    saveSettings({
+      ...loadSettings(),
+      providers: loadSettings().providers.map((p) => ({
+        ...p,
+        catalog: ['new-1', 'new-2'],
+        modelMeta: { 'new-1': { fetchedAt: 2, contextWindow: 1000000 } },
+      })),
+    });
+    // ① 同进程读数当场跟上（修前这里仍是装载时的 ['old-1']）
+    expect(loadSettings().providers[0].catalog).toEqual(['new-1', 'new-2']);
+
+    // ② watcher 广播（armProvidersWatcher 的两步）——保存写盘后 1s 内必然来一次
+    await loadProvidersDoc({ reloadRuntime: true });
+    saveSettings(loadSettings());
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+      providers?: Array<{
+        name?: string;
+        catalog?: string[];
+        modelMeta?: Record<string, { contextWindow?: number }>;
+      }>;
+    };
+    expect(stored.providers?.[0]?.catalog).toEqual(['new-1', 'new-2']);
+    expect(stored.providers?.[0]?.modelMeta?.['new-1']?.contextWindow).toBe(1000000);
+
+    // ③ 「重启」：模块态清空后重新装载，看到的仍是这一次拉取的目录
+    __resetProvidersDocForTests();
+    installProvidersProjection(null);
+    wireRpc();
+    await bootstrapProvidersDoc();
+    expect(loadSettings().providers[0].catalog).toEqual(['new-1', 'new-2']);
+  });
+
+  it('本次会话新增的 provider：目录快照与元数据同样过 watcher 广播而不丢', async () => {
+    disk.set(DOC_PATH, 'gw:\n  kind: openai\n  baseUrl: https://gw.test/v1\n  model: a\n');
+    seedStored([{ kind: 'openai', name: 'gw', baseUrl: 'https://gw.test/v1', model: 'a' }]);
+    await bootstrapProvidersDoc();
+
+    // 「添加提供方」两步式的落盘序：先写文件（intent），再 saveSettings（含运行态）
+    const { saveProvidersDoc } = await import('../src/provider/providers-store');
+    const { intentOf } = await import('../src/provider/providers-doc');
+    const fresh = {
+      kind: 'openai' as const,
+      name: providerId('fresh'),
+      apiKey: '',
+      baseUrl: 'https://fresh.test/v1',
+      model: 'f1',
+      catalog: ['f1', 'f2'],
+      modelMeta: { f1: { fetchedAt: 3, contextWindow: 500000 } },
+    };
+    const base = loadSettings();
+    const patch = Object.fromEntries([...base.providers, fresh].map((p) => [p.name, intentOf(p)]));
+    expect((await saveProvidersDoc(patch)).ok).toBe(true);
+
+    const { saveSettings } = await import('../src/settings');
+    saveSettings({ ...loadSettings(), providers: [...loadSettings().providers, fresh] });
+    // watcher 广播：旧实现的投影里这行没有 runtimeMap 条目 ⇒ 目录/元数据被清掉
+    await loadProvidersDoc({ reloadRuntime: true });
+    saveSettings(loadSettings());
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+      providers?: Array<{ name?: string; catalog?: string[]; modelMeta?: Record<string, unknown> }>;
+    };
+    const row = stored.providers?.find((p) => p.name === 'fresh');
+    expect(row?.catalog).toEqual(['f1', 'f2']);
+    expect(row?.modelMeta?.f1).toBeTruthy();
+    expect(loadSettings().providers.find((p) => p.name === 'fresh')?.catalog).toEqual(['f1', 'f2']);
+  });
+
+  it('重读（reloadRuntime）不清内存里已回填的 Key（2026-09-26 同族守护）', async () => {
+    disk.set(DOC_PATH, 'gw:\n  kind: openai\n  baseUrl: https://gw.test/v1\n  model: m1\n');
+    mockRpc.mockImplementation(async (method, params) => {
+      if (method === 'providers_dir') return 'C:/Users/u/.lantai';
+      if (method === 'credential_get') return 'sk-real-key';
+      if (method === 'fs_cap') {
+        const action = params.action as string;
+        const path = (params.file_path ?? params.path) as string;
+        if (action === 'read') {
+          const text = disk.get(path);
+          if (text === undefined) throw new Error('no such file: ' + path);
+          return { path, content: text };
+        }
+        if (action === 'write') {
+          disk.set(path, params.content as string);
+          return { path };
+        }
+        if (action === 'create_dir') return { path };
+      }
+      return 'null';
+    });
+    await bootstrapProvidersDoc();
+    await loadSettingsWithSecrets(); // 装配面回填（Key 只活在本进程内存）
+
+    await loadProvidersDoc({ reloadRuntime: true });
+    expect(loadSettings().providers[0].apiKey).toBe('sk-real-key');
+  });
+});
+
+describe('provider config safety regressions', () => {
+  beforeEach(() => {
+    mockRpc.mockReset();
+    mockConfigChanged.mockReset();
+    disk.clear();
+    localStorage.clear();
+    installProvidersProjection(null);
+    __resetProvidersDocForTests();
+    wireRpc();
+  });
+
+  it('app write rejects an invalid ProviderIntent before touching the file', async () => {
+    const good = 'a:\n  kind: openai\n  baseUrl: https://good.example/v1\n  model: m1\n';
+    disk.set(DOC_PATH, good);
+    seedStored([{ kind: 'openai', name: 'a', baseUrl: 'https://good.example/v1', model: 'm1' }]);
+    await bootstrapProvidersDoc();
+    const { saveProvidersDoc } = await import('../src/provider/providers-store');
+    const res = await saveProvidersDoc({ a: { kind: 'openai', baseUrl: 'not-a-url', model: 'm1' } });
+    expect(res.ok).toBe(false);
+    expect(disk.get(DOC_PATH)).toBe(good);
+  });
+
+  it('fatal external YAML keeps the last-good provider projection', async () => {
+    const good = 'a:\n  kind: openai\n  baseUrl: https://good.example/v1\n  model: m1\n';
+    disk.set(DOC_PATH, good);
+    seedStored([{ kind: 'openai', name: 'a', baseUrl: 'https://good.example/v1', model: 'm1' }]);
+    await bootstrapProvidersDoc();
+    const { saveSettings } = await import('../src/settings');
+    saveSettings(loadSettings());
+    disk.set(DOC_PATH, 'a: [unclosed\n');
+    await loadProvidersDoc();
+    const rows = loadSettings().providers;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.name).toBe('a');
+    expect(rows[0]?.kind).toBe('openai');
+    expect(rows[0]?.baseUrl).toBe('https://good.example/v1');
+    expect(rows[0]?.model).toBe('m1');
+  });
+
+  it('deleting and re-adding the same name does not resurrect old runtime lastTest', async () => {
+    const good = 'a:\n  kind: openai\n  baseUrl: https://good.example/v1\n  model: m1\n';
+    disk.set(DOC_PATH, good);
+    seedStored([{ kind: 'openai', name: 'a', baseUrl: 'https://good.example/v1', model: 'm1' }]);
+    await bootstrapProvidersDoc();
+    const { saveProvidersDoc } = await import('../src/provider/providers-store');
+    const { intentOf } = await import('../src/provider/providers-doc');
+    const { saveSettings } = await import('../src/settings');
+    const probe = { status: 'ok' as const, latencyMs: 1, at: 123, message: 'ok' };
+    const before = loadSettings();
+    saveSettings({ ...before, providers: before.providers.map((row) => ({ ...row, lastTest: probe })) });
+    await saveProvidersDoc({});
+    saveSettings({ ...loadSettings(), providers: [] });
+    const readded = {
+      kind: 'openai' as const,
+      name: providerId('a'),
+      apiKey: '',
+      baseUrl: 'https://good.example/v1',
+      model: 'm1',
+    };
+    await saveProvidersDoc({ a: intentOf(readded) });
+    saveSettings({ ...loadSettings(), providers: [readded] });
+    expect(loadSettings().providers[0]?.lastTest).toBeUndefined();
   });
 });

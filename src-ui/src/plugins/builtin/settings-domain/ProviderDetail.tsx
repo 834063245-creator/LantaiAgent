@@ -6,13 +6,9 @@
 
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ThinkingLevelMap } from '../../../provider/thinking';
 import {
-  type StoredThinking,
-  type ThinkingLevelMap,
-  thinkingModeLabel,
-  thinkingOptionsOrDefault,
-} from '../../../provider/thinking';
-import {
+  defaultBaseUrl,
   effectiveModels,
   getDynamicFetchFailure,
   getModel,
@@ -28,17 +24,12 @@ import { ModelReasoningLevels } from './ModelReasoningLevels';
 import { ProviderAdvanced } from './ProviderAdvanced';
 import { ProviderDocCard } from './ProviderDocCard';
 import { protocolLabel } from './protocol';
-import { isFactoryBaseUrl } from './provider-data';
-import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
+import { formatLatency, formatTestAt, probeMatchesProvider, providerStatus, STATUS_LABEL } from './status';
 
-export type ProviderField = 'apiKey' | 'baseUrl' | 'model' | 'thinking';
+export type ProviderField = 'apiKey' | 'baseUrl' | 'model';
 
 /** per-model 参数的来源标注字段（provider-model-meta 四层链的展示面）。 */
 type MetaField = 'contextWindow' | 'maxTokens' | 'input';
-
-/** per-model 思考档位 select 的「未覆盖」哨兵值（'' 有实义 = 显式「自动」，
- *  不能拿来当「随默认」——两者语义不同，混用会把用户的显式选择吃掉）。 */
-const INHERIT_THINKING = '__inherit__';
 
 /** 该字段当前生效值的来源（给用户看清「这个数是哪儿来的」）：
  *  手动设置 > API 拉取（带日期）> 目录 seed > 未提供。
@@ -55,11 +46,6 @@ function metaSource(provider: ProviderSettings, id: string, field: MetaField): s
   }
   if (has(getModel(id)?.[field])) return '目录';
   return '未提供';
-}
-
-/** per-model 思考档位表（与请求期同一把尺子）：该模型声明表无声明时给协议安全兜底。 */
-function modelThinkingOptions(provider: ProviderSettings, id: string): readonly { value: string; label: string }[] {
-  return thinkingOptionsOrDefault(modelDescriptor(provider, id));
 }
 
 /** 连接探针的 UI 阶段（瞬时态，不持久化）；结果本体见 ConnectionProbe。 */
@@ -106,13 +92,11 @@ export interface ProviderDetailActions {
   onSetEnabledModels: (ids: readonly string[]) => void;
   /** per-model 覆盖（P14）：上下文窗口 / 最大输出，0 = 清回目录值。 */
   onModelOverride: (modelId: string, field: 'contextWindow' | 'maxTokens', value: number) => void;
-  /** per-model 思考档位覆盖（2026-09-23 思考下沉）：undefined = 清覆盖回本家默认。 */
-  onModelThinking: (modelId: string, value: StoredThinking | undefined) => void;
   /** per-model 推理等级声明（2026-10-22 对齐 DSH）：undefined = 删除声明回落到目录/
    *  API 拉取；false = 显式声明不推理（YAML 手写面保留语义）。 */
   onModelReasoning: (modelId: string, value: false | ThinkingLevelMap | undefined) => void;
-  /** 视觉声明覆盖（B5 · D-8①）：on = ['text','image'] 强制开；off = 清覆盖回落目录。 */
-  onModelVisionToggle: (modelId: string, on: boolean) => void;
+  /** 视觉声明覆盖（B5 · D-8①）：跟随声明 / 强制支持图片 / 强制仅文本。 */
+  onModelVisionToggle: (modelId: string, value: 'inherit' | 'text' | 'image') => void;
   /** 高级连接配置（2026-09-17）：请求头编辑的整行回填（名字与密钥保持本行）。 */
   onAdvancedChange: (next: ProviderSettings) => void;
   /** 配置文件面（2026-09-24 配方改文件批）：provider 意图的唯一权威是
@@ -156,6 +140,9 @@ export interface OAuthData {
   accounts: Array<{ accountId: string }>;
   busy: boolean;
   status: { tone: 'info' | 'ok' | 'fail'; msg: string } | null;
+  /** 当前显式选中的账号；缺省 = 最近登录账号。 */
+  activeAccountId?: string;
+  onSelectAccount: (accountId: string) => void;
   onLogin: () => void;
   onLogout: (accountId: string) => void;
   onCancel: () => void;
@@ -171,7 +158,6 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     onRemoveModel,
     onSetEnabledModels,
     onModelOverride,
-    onModelThinking,
     onModelReasoning,
     onModelVisionToggle,
     onAdvancedChange,
@@ -261,14 +247,9 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
   const st = providerStatus(provider, isOAuth ? (oauthData?.accounts.length ?? 0) > 0 : false);
   const statusCls = test.phase === 'testing' ? 'testing' : st;
   const statusLabel = test.phase === 'testing' ? '测试中…' : STATUS_LABEL[st];
-  // P14 能力协商 + 2026-09-23 思考下沉：档位表来自**该模型**的生效描述符
-  // （provider 作用域合并链 = 用户覆盖 + API 拉取元数据 + 目录 seed）。
-  // 本控件 = 「本家默认档位」——只作用于**没单独设置过档位**的模型；单个模型在
-  // 上方「可用模型」的「参数」面板里覆盖（modelOverrides[id].thinking）。
-  const modelDesc = modelDescriptor(provider, provider.model);
-  const thinkingModes = thinkingOptionsOrDefault(modelDesc);
-  const thinkingHint = `作用于本家未单独设置档位的模型（当前档位表来自「${modelDesc?.name ?? (provider.model || '—')}」）；单个模型在「参数」里覆盖。声明外的档位不可选（不会静默替换为其他档位）。`;
-  const isFactoryUrl = isFactoryBaseUrl(provider.baseUrl);
+  const factoryBaseUrl = defaultBaseUrl(provider.name, provider.kind);
+  const isFactoryUrl = !!factoryBaseUrl && provider.baseUrl === factoryBaseUrl;
+  const lastProbeValid = probeMatchesProvider(provider, provider.lastTest);
 
   const keyChip = provider.apiKey?.trim()
     ? keySaved
@@ -320,24 +301,43 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               <span className="pp-chip">OAuth 订阅</span>
             </div>
             {oauthData && oauthData.accounts.length > 0 ? (
-              <div className="pp-oauth-accounts">
-                {oauthData.accounts.map((acct) => (
-                  <div key={acct.accountId} className="pp-model-item">
-                    <span className="pp-model-chip" data-tip={acct.accountId}>
-                      <span className="pp-model-chip-name">{acct.accountId}</span>
-                      <button
-                        type="button"
-                        className="pp-model-chip-x"
-                        data-tip={`登出 ${acct.accountId}`}
-                        aria-label={`登出 ${acct.accountId}`}
-                        onClick={() => oauthData?.onLogout(acct.accountId)}
-                      >
-                        登出
-                      </button>
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <>
+                <label className="pp-model-param">
+                  <span>请求使用账号</span>
+                  <select
+                    className="sp-select"
+                    value={oauthData.activeAccountId ?? ''}
+                    aria-label="OAuth 请求使用账号"
+                    onChange={(e) => oauthData.onSelectAccount(e.target.value)}
+                  >
+                    <option value="">自动（最近登录）</option>
+                    {oauthData.accounts.map((acct) => (
+                      <option key={acct.accountId} value={acct.accountId}>
+                        {acct.accountId}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="pp-model-param-src">{oauthData.activeAccountId ? '手动选择' : '最近登录'}</span>
+                </label>
+                <div className="pp-oauth-accounts">
+                  {oauthData.accounts.map((acct) => (
+                    <div key={acct.accountId} className="pp-model-item">
+                      <span className="pp-model-chip" data-tip={acct.accountId}>
+                        <span className="pp-model-chip-name">{acct.accountId}</span>
+                        <button
+                          type="button"
+                          className="pp-model-chip-x"
+                          data-tip={`登出 ${acct.accountId}`}
+                          aria-label={`登出 ${acct.accountId}`}
+                          onClick={() => oauthData?.onLogout(acct.accountId)}
+                        >
+                          登出
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="pp-f-hint">尚未登录任何账号。点击下方按钮，用浏览器完成 ChatGPT Codex 授权登录。</div>
             )}
@@ -388,9 +388,10 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                 value={provider.apiKey || ''}
                 onChange={(e) => onFieldChange('apiKey', e.target.value)}
                 onBlur={(e) => {
-                  // 剥离非 ASCII（Key 只允许 ASCII）
+                  // 剥离非 ASCII（Key 只允许 ASCII），并同步写回 React 状态。
                   // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
-                  e.target.value = e.target.value.replace(/[^\x00-\x7F]/g, '');
+                  const cleaned = e.target.value.replace(/[^\x00-\x7F]/g, '');
+                  if (cleaned !== e.target.value) onFieldChange('apiKey', cleaned);
                 }}
                 placeholder="sk-… 粘贴后保存写入系统凭据"
                 autoComplete="off"
@@ -443,11 +444,31 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
           {models.length > 0 && (
             <div className="pp-models-list">
               {models.map((id) => {
-                // 视觉声明覆盖态（B5）：覆盖里显式声明 image = 开（目录/API 声明不在此
-                // 钮态里——那是回落值，钮只展示/操控覆盖本身）
-                const visionOn = provider.modelOverrides?.[id]?.input?.includes('image') === true;
                 // 生效输入模态（覆盖 ?? API 拉取 ?? 目录）——「视」徽标与创作坞门禁同链
                 const visionEffective = modelInput(provider, id).includes('image');
+                const visionOverride = provider.modelOverrides?.[id]?.input;
+                const visionMode =
+                  visionOverride === undefined ? 'inherit' : visionOverride.includes('image') ? 'image' : 'text';
+                // 生效参数（四层链：覆盖 ?? API 拉取 ?? 目录 ?? 缺省）：输入框直接显示
+                // **生效值**——选完模型就该是「已填好」的样子，不用再手抄一遍；用户改一个字
+                // 才写 modelOverrides（覆盖层），来源标注同步变成「手动设置」。
+                const winOverride = provider.modelOverrides?.[id]?.contextWindow;
+                const winEffective = modelContextWindow(provider, id, 0);
+                const outOverride = provider.modelOverrides?.[id]?.maxTokens;
+                const outEffective = modelMaxTokens(provider, id);
+                // 该模型的档位声明（API 拉取/目录/自定义）——推理等级面板的底稿。
+                const sourceMeta = provider.modelMeta?.[id];
+                const catalogDesc = getModel(id);
+                const declaredSourceEfforts = sourceMeta?.thinkingEfforts ?? catalogDesc?.thinkingEfforts;
+                const declaredSourceMap = sourceMeta?.thinkingLevelMap ?? catalogDesc?.thinkingLevelMap;
+                const reasoningSource =
+                  provider.modelOverrides?.[id]?.reasoningEfforts !== undefined
+                    ? '手动覆盖'
+                    : sourceMeta?.thinkingEfforts !== undefined || sourceMeta?.thinkingLevelMap !== undefined
+                      ? 'API 拉取'
+                      : catalogDesc?.thinkingEfforts !== undefined || catalogDesc?.thinkingLevelMap !== undefined
+                        ? '内置目录'
+                        : '未声明';
                 return (
                   <div key={id} className="pp-model-item">
                     <span className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} data-tip={id}>
@@ -490,8 +511,10 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                           <input
                             type="number"
                             min={0}
-                            value={provider.modelOverrides?.[id]?.contextWindow ?? ''}
-                            placeholder={String(modelContextWindow(provider, id, 0) || '未知')}
+                            className={winOverride === undefined && winEffective > 0 ? 'is-derived' : undefined}
+                            value={winOverride ?? (winEffective > 0 ? winEffective : '')}
+                            placeholder="未知"
+                            data-tip="来自 API 拉取/目录时显示为灰字；改动这里 = 写入本模型的覆盖值（0/清空 = 回落自动值）"
                             onChange={(e) =>
                               onModelOverride(id, 'contextWindow', Number.parseInt(e.target.value, 10) || 0)
                             }
@@ -505,8 +528,10 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                           <input
                             type="number"
                             min={0}
-                            value={provider.modelOverrides?.[id]?.maxTokens ?? ''}
-                            placeholder={String(modelMaxTokens(provider, id) || '不钳制')}
+                            className={outOverride === undefined && outEffective > 0 ? 'is-derived' : undefined}
+                            value={outOverride ?? (outEffective > 0 ? outEffective : '')}
+                            placeholder="不钳制"
+                            data-tip="来自 API 拉取/目录时显示为灰字；改动这里 = 写入本模型的覆盖值（0/清空 = 回落自动值）"
                             onChange={(e) => onModelOverride(id, 'maxTokens', Number.parseInt(e.target.value, 10) || 0)}
                           />
                           <span className="pp-model-param-src" data-tip="该值的来源（用户手改 > API 拉取 > 目录）">
@@ -515,61 +540,34 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                         </label>
                         {/* 视觉声明开关（B5 · D-8①）：覆盖开 = ['text','image']（附图
                          *  入口 + 请求期图投影放行）；关 = 清覆盖回落 API 拉取/目录声明。 */}
-                        <span className="pp-model-param">
-                          <span>视觉模型（图片输入）</span>
-                          <button
-                            type="button"
-                            className={`sp-btn-sm${visionOn ? ' is-on' : ''}`}
-                            data-tip={
-                              visionEffective && !visionOn
-                                ? 'API 拉取/目录已声明视觉——覆盖开/关可强制改写（关 = 回落声明值）'
-                                : '未声明视觉——自定义 vision 模型在此补声明（生效面：附图入口 + 请求期图投影 + 选择器「视」徽标）'
-                            }
-                            onClick={() => onModelVisionToggle(id, !visionOn)}
-                          >
-                            {visionOn ? '已声明' : visionEffective ? '随声明' : '未声明'}
-                          </button>
-                          <span className="pp-model-param-src">{metaSource(provider, id, 'input')}</span>
-                        </span>
-                        {/* 思考档位（2026-09-23 思考下沉）：per-model 覆盖——缺省 = 用
-                         *  本家默认档位（下方「默认思考档位」控件）。档位表仍由该模型的
-                         *  声明裁决（API 拉取 / 目录；无声明则只给协议安全的自动/关闭）。 */}
                         <label className="pp-model-param">
-                          <span>思考档位</span>
+                          <span>视觉模型（图片输入）</span>
                           <select
                             className="sp-select"
-                            value={provider.modelOverrides?.[id]?.thinking ?? INHERIT_THINKING}
-                            onChange={(e) =>
-                              onModelThinking(
-                                id,
-                                e.target.value === INHERIT_THINKING ? undefined : (e.target.value as StoredThinking),
-                              )
-                            }
+                            value={visionMode}
+                            aria-label="视觉输入声明"
+                            onChange={(e) => onModelVisionToggle(id, e.target.value as 'inherit' | 'text' | 'image')}
                           >
-                            <option value={INHERIT_THINKING}>
-                              随本家默认（{thinkingModeLabel(provider.thinking)}）
-                            </option>
-                            {modelThinkingOptions(provider, id).map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
-                            ))}
+                            <option value="inherit">跟随声明（{visionEffective ? '支持图片' : '纯文本'}）</option>
+                            <option value="image">强制支持图片</option>
+                            <option value="text">强制仅文本</option>
                           </select>
-                          <span className="pp-model-param-src">
-                            {provider.modelOverrides?.[id]?.thinking !== undefined ? '手动设置' : '默认'}
-                          </span>
+                          <span className="pp-model-param-src">{metaSource(provider, id, 'input')}</span>
                         </label>
                         {/* 推理等级声明（2026-10-22 对齐 DSH）：本模型提供哪些档位、
-                         *  每档请求里发送什么参数值。关闭 = 回落 API 拉取/目录声明。 */}
+                         *  每档请求里发送什么参数值。关闭 = 回落 API 拉取/目录声明。
+                         *  ⚡ 2026-11-21：思考档位不再有「本模型默认」这一层（设置页手动项
+                         *  已拆）——用哪一档只在创作坞按会话选。 */}
                         <ModelReasoningLevels
-                          efforts={modelDescriptor(provider, id)?.thinkingEfforts}
+                          efforts={declaredSourceEfforts}
+                          sourceLevelMap={declaredSourceMap}
+                          sourceLabel={reasoningSource}
                           value={provider.modelOverrides?.[id]?.reasoningEfforts}
                           onChange={(next) => onModelReasoning(id, next)}
                         />
                         <span className="pp-model-params-hint">
                           留空 = 用 API 拉取/目录值（都没有则上下文按未知处理、输出不钳制）；视觉生效 = 覆盖 ?? API 拉取
-                          ?? 目录；思考档位缺省 = 本家默认档位
-                          {modelThinkingOptions(provider, id).length === 0 ? '（该模型未声明档位——只有自动/关闭）' : ''}
+                          ?? 目录；思考档位在创作坞的「思考」里按会话选。
                         </span>
                       </div>
                     )}
@@ -708,44 +706,18 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
             value={provider.baseUrl}
             onChange={(e) => onFieldChange('baseUrl', e.target.value)}
             onBlur={(e) => {
-              // 剥离非 ASCII（URL 只允许 ASCII）
+              // 剥离非 ASCII（URL 只允许 ASCII），并同步写回 React 状态。
               // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
-              e.target.value = e.target.value.replace(/[^\x00-\x7F]/g, '');
+              const cleaned = e.target.value.replace(/[^\x00-\x7F]/g, '');
+              if (cleaned !== e.target.value) onFieldChange('baseUrl', cleaned);
             }}
             placeholder="https://…/v1"
             autoComplete="off"
           />
         </div>
 
-        {/* 本家默认思考档位（2026-09-23 思考下沉）：作用于**没单独设置过档位**的
-            模型；单个模型的档位在「可用模型 → 参数」里覆盖。 */}
-        <div className="pp-field">
-          <div className="pp-f-label-row">
-            <label className="pp-f-label" htmlFor="pd-thinking">
-              默认思考档位
-            </label>
-            <span className="pp-chip">未单独设置的模型用它</span>
-          </div>
-          <select
-            id="pd-thinking"
-            className="sp-select"
-            value={provider.thinking || ''}
-            onChange={(e) => onFieldChange('thinking', e.target.value)}
-          >
-            {thinkingModes.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-            {/* D4（2026-08-27）：遗留数字 thinking（如 "4000"）不在档位表内——
-                原实现把它显示成「自动」，一旦 onChange 就静默写成 ''，历史预算
-                无声丢失。现在给存量值加显式 option，改不改由用户定。 */}
-            {provider.thinking && !thinkingModes.some((o) => o.value === (provider.thinking || '')) && (
-              <option value={provider.thinking}>自定义 ({provider.thinking})</option>
-            )}
-          </select>
-          <div className="pp-f-hint">{thinkingHint}</div>
-        </div>
+        {/* ⚡ 2026-11-21：「默认思考档位」手动项已拆——思考档位只在创作坞按会话选
+            （见 ProviderDetail 的单模型「推理等级」：那只是档位声明，不是默认值）。 */}
       </div>
 
       {/* 高级连接配置（2026-09-17）：请求头——网关怪癖的用户可编辑面
@@ -778,11 +750,17 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
         </div>
         {provider.lastTest && (
           <div className="pp-test-last">
-            上次测试：
-            {provider.lastTest.status === 'ok'
-              ? `成功 · ${formatLatency(provider.lastTest.latencyMs)}`
-              : `失败${provider.lastTest.message ? ` · ${provider.lastTest.message}` : ''}`}{' '}
-            · {formatTestAt(provider.lastTest.at)}
+            {lastProbeValid ? (
+              <>
+                上次测试：
+                {provider.lastTest.status === 'ok'
+                  ? `成功 · ${formatLatency(provider.lastTest.latencyMs)}`
+                  : `失败${provider.lastTest.message ? ` · ${provider.lastTest.message}` : ''}`}{' '}
+                · {formatTestAt(provider.lastTest.at)}
+              </>
+            ) : (
+              '上次测试结果已失效（连接配置或 Key 已变更），请重测。'
+            )}
           </div>
         )}
       </div>

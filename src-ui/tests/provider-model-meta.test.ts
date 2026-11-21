@@ -181,8 +181,15 @@ describe('settings 四层链：用户覆盖 ?? API 拉取元数据 ?? 目录 see
   });
 
   it('modelContextWindow：覆盖 > 拉取元数据 > seed > 200K 默认', () => {
-    // seed 命中（deepseek-v4-pro 目录值 1M）
-    expect(modelContextWindow(base({ model: 'deepseek-v4-pro' }), 'deepseek-v4-pro')).toBe(1000000);
+    // 同 vendor / 同端点：seed 命中（deepseek-v4-pro 目录值 1M）
+    expect(
+      modelContextWindow(
+        base({ name: providerId('deepseek'), baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-pro' }),
+        'deepseek-v4-pro',
+      ),
+    ).toBe(1000000);
+    // 自定义网关复用同名 id：不得继承别家 seed，未知就按默认处理
+    expect(modelContextWindow(base({ model: 'deepseek-v4-pro' }), 'deepseek-v4-pro')).toBe(200000);
     // 网关模型（seed 无）——此前恒 200K 假默认
     expect(modelContextWindow(base(), 'gw-model-x')).toBe(200000);
     // 拉取元数据补上真实窗口

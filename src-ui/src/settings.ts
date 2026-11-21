@@ -20,6 +20,8 @@ export type ProbeOutcome = 'ok' | 'fail';
 
 export interface ConnectionProbe {
   status: ProbeOutcome;
+  /** 这次探针测试的配置指纹（非敏感）；与当前 provider 行不一致时结果不可信。 */
+  fingerprint?: string;
   /** 端到端耗时（毫秒） */
   latencyMs: number;
   /** 测试完成时间（epoch ms） */
@@ -44,10 +46,10 @@ export interface ProviderSettings {
    *  （零迁移——旧存储无此字段走 API Key 输入）；'oauth' = 系统 OAuth 订阅
    *  登录（grant 存 Rust oauth 平面，请求注入 Bearer + account 头）。 */
   authMode?: 'api-key' | 'oauth';
-  /** authMode='oauth' 时的 src-tauri oauth provider 注册表 id（如 codex）。
-   *  请求注入面的 account 选择：多账号时取最近登录的 grant（见 oauth.ts）。 */
+  /** authMode='oauth' 时的 src-tauri oauth provider 注册表 id（如 codex）。 */
   oauthProvider?: string;
-  thinking?: StoredThinking; // 领域词 ThinkingPolicy；存储字段名保持 thinking（遗留名）
+  /** 多账号时显式选中的 account_id；缺省 = 最近登录的账号。 */
+  oauthAccountId?: string;
   lastTest?: ConnectionProbe; // 存储字段名保持 lastTest（遗留名）；领域词 ConnectionProbe
   /** 该提供方「可用模型」id 列表 = **用户启用的模型**——创作坞下拉的可选面
    *  （DSH routable 列表的前端配置形态）。与 model（默认模型）解耦：同一提供方
@@ -72,6 +74,12 @@ export interface ProviderSettings {
    *  留下 id 列表，元数据（上下文窗口/视觉/推理）随进程消失——99% 的模型只能
    *  吃「目录无值」的 200K 假默认。键 = 模型 id。 */
   modelMeta?: Record<string, ModelMeta>;
+  /** **本机读数**：「这个模型上次在创作坞用过的思考档位」（键 = 模型 id）。
+   *  ⚡ 2026-11-21 思考档位收口：设置页不再有「默认档位」手动项——它不是配置，
+   *  而是像 `model`（最近使用）一样的**记忆**：只在创作坞拨档位时由 app 写入，
+   *  **不进 providers.yml**（运行时读数，随 catalog/modelMeta 落本机存储）。
+   *  解析优先级：会话显式覆盖 ?? 本记忆 ?? 自动。 */
+  lastThinking?: Record<string, StoredThinking>;
   /** 自定义请求头（2026-09-17）：网关怪癖的用户可编辑面——如 OpenCode GO 强制
    *  的 `x-opencode-session`。三方言（openai/anthropic/responses）请求一律携带；
    *  合并序固定「自定义头在前、内核必需头与凭据头在后」，故自定义头不能覆写
@@ -90,11 +98,6 @@ export interface ModelOverrides {
    *  模型（附图入口开 + 请求期图投影放行）；缺省 = 用目录声明；目录亦无 =
    *  ['text']（不编造能力）。GLM-4V/Qwen-VL 等目录外 vision 模型在此补声明。 */
   input?: ('text' | 'image')[];
-  /** 思考档位覆盖（2026-09-23 思考下沉）：缺省 = 用提供方行值（`ProviderSettings
-   *  .thinking`，语义 = 本家默认档位）；显式写入 = 本模型自己的档位（'' 也是显式值
-   *  ——「自动」是真实选择，不是缺省）。消费面 = `modelThinking` 一把尺子
-   *  （live provider 请求期 / 设置页参数面板 / 创作坞 pill）。 */
-  thinking?: StoredThinking;
   /** 本模型的推理等级声明（2026-10-22 对齐 DSH `reasoningEfforts`）：
    *  键 = canonical 档位，值 = 请求里发送的 API 参数值（null 只允许 off）。
    *  缺省 = 沿用 API 拉取/目录的档位声明（原值恒等映射）；`false` = 显式声明
@@ -105,8 +108,9 @@ export interface ModelOverrides {
 /** 解析某提供方的「可用模型」id 列表：显式 models 优先，缺省回落 [model]
  *  （旧存档无 models 字段 = 只有一个默认模型，零迁移）。 */
 export function effectiveModels(p: ProviderSettings): string[] {
-  const list = Array.isArray(p.models) && p.models.length > 0 ? p.models.filter((m) => m?.trim()) : [];
-  if (list.length > 0) return list;
+  if (Array.isArray(p.models)) {
+    return [...new Set(p.models.map((m) => m?.trim()).filter((m): m is string => !!m))];
+  }
   return p.model?.trim() ? [p.model.trim()] : [];
 }
 
@@ -115,12 +119,20 @@ export function effectiveModels(p: ProviderSettings): string[] {
  *  中间层的意义：聚合网关/自定义端点在静态目录里没有条目，窗口此前一律吃
  *  200K 假默认（实测某网关 69 个模型真实窗口 200K～1.05M 全被压成 200K，
  *  自动压缩阈值因此全错）。 */
+function providerCatalogSeed(p: ProviderSettings | undefined, modelId: string): ModelDescriptor | undefined {
+  const seed = getModel(modelId);
+  if (!seed || !p) return seed;
+  if (seed.vendor === p.name) return seed;
+  if (seed.baseUrl && p.baseUrl.trim() === seed.baseUrl.trim()) return seed;
+  return undefined;
+}
+
 export function modelContextWindow(p: ProviderSettings, modelId: string, fallback = 200000): number {
   const ov = p.modelOverrides?.[modelId]?.contextWindow;
   if (ov && ov > 0) return ov;
   const meta = p.modelMeta?.[modelId]?.contextWindow;
   if (meta && meta > 0) return meta;
-  return getModel(modelId)?.contextWindow || fallback;
+  return providerCatalogSeed(p, modelId)?.contextWindow || fallback;
 }
 
 /** 某模型生效的最大输出 token（同四层链；末层 0 = 不钳制）。
@@ -130,7 +142,7 @@ export function modelMaxTokens(p: ProviderSettings, modelId: string): number {
   if (ov && ov > 0) return ov;
   const meta = p.modelMeta?.[modelId]?.maxTokens;
   if (meta && meta > 0) return meta;
-  return getModel(modelId)?.maxTokens || 0;
+  return providerCatalogSeed(p, modelId)?.maxTokens || 0;
 }
 
 /** 某模型生效的输入模态（四层链：覆盖 ?? 拉取元数据 ?? 目录声明 ?? ['text']）。
@@ -142,7 +154,7 @@ export function modelInput(p: ProviderSettings | undefined, modelId: string): ('
   if (ov && ov.length > 0) return [...ov];
   const meta = p?.modelMeta?.[modelId]?.input;
   if (meta && meta.length > 0) return [...meta];
-  return getModel(modelId)?.input ?? ['text'];
+  return providerCatalogSeed(p, modelId)?.input ?? ['text'];
 }
 
 /** 某模型是否支持推理/思考（拉取元数据 ?? 目录声明；皆无 = undefined 未知）。
@@ -152,7 +164,9 @@ export function modelReasoning(p: ProviderSettings | undefined, modelId: string)
   const declared = p?.modelOverrides?.[modelId]?.reasoningEfforts;
   if (declared === false) return false;
   if (declared !== undefined) return true;
-  return p?.modelMeta?.[modelId]?.reasoning ?? getModel(modelId)?.reasoning;
+  const meta = p?.modelMeta?.[modelId];
+  if (meta?.thinkingEfforts !== undefined || meta?.thinkingLevelMap !== undefined) return true;
+  return meta?.reasoning ?? providerCatalogSeed(p, modelId)?.reasoning;
 }
 
 /** 某模型声明的思考档位（用户自定义声明 ?? 拉取元数据 ?? 目录声明；皆无 = undefined）。
@@ -164,13 +178,20 @@ export function modelThinkingEfforts(
   const declared = p?.modelOverrides?.[modelId]?.reasoningEfforts;
   if (declared === false) return undefined;
   if (declared !== undefined) return THINKING_EFFORTS.filter((effort) => declared[effort] !== undefined);
-  return p?.modelMeta?.[modelId]?.thinkingEfforts ?? getModel(modelId)?.thinkingEfforts;
+  const meta = p?.modelMeta?.[modelId];
+  if (meta?.thinkingEfforts !== undefined) return meta.thinkingEfforts;
+  if (meta?.thinkingLevelMap !== undefined) {
+    return THINKING_EFFORTS.filter((effort) => meta.thinkingLevelMap?.[effort] !== undefined);
+  }
+  return providerCatalogSeed(p, modelId)?.thinkingEfforts;
 }
 
 /** 某模型声明的「档位 → API 参数值」表（仅用户显式声明；false/缺省 = undefined）。 */
 export function modelThinkingLevelMap(p: ProviderSettings | undefined, modelId: string): ThinkingLevelMap | undefined {
   const declared = p?.modelOverrides?.[modelId]?.reasoningEfforts;
-  return declared === undefined || declared === false ? undefined : declared;
+  if (declared === false) return undefined;
+  if (declared !== undefined) return declared;
+  return p?.modelMeta?.[modelId]?.thinkingLevelMap ?? providerCatalogSeed(p, modelId)?.thinkingLevelMap;
 }
 
 /** 某模型的「关闭」档是否可表达（自定义声明含 off 键 / 拉取元数据 / 目录声明）。 */
@@ -178,19 +199,43 @@ export function modelThinkingOff(p: ProviderSettings | undefined, modelId: strin
   const declared = p?.modelOverrides?.[modelId]?.reasoningEfforts;
   if (declared === false) return false;
   if (declared !== undefined) return Object.hasOwn(declared, 'off');
-  return p?.modelMeta?.[modelId]?.thinkingOff ?? getModel(modelId)?.thinkingOff;
+  const meta = p?.modelMeta?.[modelId];
+  if (meta?.thinkingOff !== undefined) return meta.thinkingOff;
+  if (meta?.thinkingLevelMap !== undefined) return Object.hasOwn(meta.thinkingLevelMap, 'off');
+  return providerCatalogSeed(p, modelId)?.thinkingOff;
 }
 
-/** 某模型生效的思考档位**值**（与 modelThinkingEfforts 的**能力**面对偶，
- *  2026-09-23 思考下沉）：per-model 覆盖 ?? 提供方行值（行值 = 本家默认档位，
- *  没单独设置过的模型用它）。会话级覆盖（compose-store 的创作坞 pill）优先级
- *  更高，在消费点另行解析——本函数是「设置面 / 请求面 / 显示面」共用的同一把尺子
- *  （live provider 请求期、设置页参数面板、创作坞 pill）。
- *  '' 是显式值（「自动」= 不发 effort 参数），与「无覆盖」区分。 */
-export function modelThinking(p: ProviderSettings | undefined, modelId: string): StoredThinking | undefined {
-  const ov = p?.modelOverrides?.[modelId]?.thinking;
-  if (ov !== undefined) return ov;
-  return p?.thinking;
+/** 该模型**上次在创作坞用过的**思考档位（本机读数）；无 = undefined（自动）。
+ *
+ *  ⚡ 2026-11-21 思考档位收口：这不是「设置页里的默认值」——没有任何手动入口，
+ *  只在用户在创作坞拨档位时由 {@link rememberModelThinking} 记下来。
+ *  优先级：会话显式覆盖（live 的覆盖槽）?? 本记忆 ?? 自动。 */
+export function rememberedThinking(p: ProviderSettings | undefined, modelId: string): StoredThinking | undefined {
+  return p?.lastThinking?.[modelId];
+}
+
+/** 记住某模型在创作坞拨过的档位（写本机存储；undefined = 清掉该模型的记忆）。
+ *  走 saveSettings 的运行态白名单 + provider-store 的写出回执——与 catalog/modelMeta
+ *  同一条路（不进 providers.yml）。 */
+export function rememberModelThinking(
+  providerName: string,
+  modelId: string,
+  thinking: StoredThinking | undefined,
+): void {
+  if (!providerName || !modelId) return;
+  const s = loadSettings();
+  const row = s.providers.find((p) => p.name === providerName);
+  if (!row) return;
+  const prev = row.lastThinking ?? {};
+  const next = { ...prev };
+  if (thinking === undefined) delete next[modelId];
+  else next[modelId] = thinking;
+  saveSettings({
+    ...s,
+    providers: s.providers.map((p) =>
+      p.name === providerName ? { ...p, lastThinking: Object.keys(next).length > 0 ? next : undefined } : p,
+    ),
+  });
 }
 
 /** 拉取元数据与静态目录 seed + 用户覆盖合并成完整 ModelDescriptor——
@@ -201,7 +246,7 @@ export function modelThinking(p: ProviderSettings | undefined, modelId: string):
  *  kind/vendor/baseUrl 由连接配置补齐（provider 名即 vendor，见 ModelSelector
  *  「写错家 400」同族纪律）。 */
 export function modelDescriptor(p: ProviderSettings, modelId: string): ModelDescriptor | undefined {
-  const seed = getModel(modelId);
+  const seed = providerCatalogSeed(p, modelId);
   const meta = p.modelMeta?.[modelId];
   const override = p.modelOverrides?.[modelId];
   if (!seed && !meta && !override) return undefined;
@@ -371,7 +416,6 @@ const DEFAULTS: AppSettings = {
       apiKey: '',
       baseUrl: PROVIDER_PROTOCOL_DEFAULTS.anthropic,
       model: 'claude-sonnet-4-6',
-      thinking: '',
     },
   ],
   projectPath: '.',
@@ -466,7 +510,7 @@ export function loadSettings(): AppSettings {
 /** localStorage 只承载 provider 的**运行态读数**（意图在文件里）。
  *  ⚡ 2026-11-16：`modelMeta`（刷新目录拉回来的模型元数据）加入本层——它每天被
  *  自动重写、真机占配置文件 87%，属于「本机读数」而不是用户意图。 */
-export type ProviderRuntime = Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta'>;
+export type ProviderRuntime = Pick<ProviderSettings, 'apiKey' | 'lastTest' | 'catalog' | 'modelMeta' | 'lastThinking'>;
 
 /** provider 文档投影口（由 provider-store 在 boot 期注入；缺省 = 未启用文件权威）。 */
 interface ProvidersProjection {
@@ -476,10 +520,34 @@ interface ProvidersProjection {
 
 let providersProjection: ProvidersProjection | null = null;
 
+/** 运行态读数的**写出回执**口（provider-store 在 boot 期注入；缺省 = 无投影）。
+ *
+ *  为什么需要它（2026-11-21 真机排查）：文件权威下 localStorage 只留运行态读数，而
+ *  `loadSettings()` 的 provider 行由 provider-store 的 runtimeMap 投影。运行态写入走
+ *  本文件的 `saveSettings`——它只写 localStorage，**不经过那份内存账**。于是：
+ *    ① 本进程刚写的 catalog / modelMeta / lastTest 在投影里仍是**装载时**的旧值；
+ *    ② 任何一次 `saveSettings(loadSettings())`（providers:changed 广播、切权限模式、
+ *       切 preset……）都会把旧值**写回** localStorage。
+ *  真机形态：设置页「刷新目录」当场看着更新，约 1–2 秒后被 watcher 广播回滚——目录
+ *  快照与元数据永远停在文件权威接管那天（实测 2026-11-21 的存档：opencode 的 catalog
+ *  仍只有 2026-09-23 那次拉取的 33 条，其余行干脆没有 catalog 字段）。
+ *
+ *  契约：只在文件权威确认、`saveSettings` 剥掉意图之后调用；入参 = 本次写出的**完整行**
+ *  （含内存里的 apiKey——那个字段不进 localStorage）。回执方只许改自己的内存账，
+ *  **禁在这里回调 saveSettings**（否则成环）。 */
+let providerRuntimeSink: ((rows: readonly ProviderSettings[]) => void) | null = null;
+
+export function installProviderRuntimeSink(fn: ((rows: readonly ProviderSettings[]) => void) | null): void {
+  providerRuntimeSink = fn;
+}
+
 /** 装配投影口（provider-store 调用一次；boot 期先于一切 provider 消费）。 */
 export function installProvidersProjection(p: ProvidersProjection | null): void {
   providersProjection = p;
-  if (p === null) providersFileReadyCheck = null;
+  if (p === null) {
+    providersFileReadyCheck = null;
+    providerRuntimeSink = null;
+  }
 }
 
 /** 是否已启用文件权威（未装配时按旧语义走 localStorage——测试与降级路径）。 */
@@ -550,6 +618,16 @@ export function saveSettings(s: AppSettings): void {
     //    （早期调用 / 前端热更跑在旧壳上 / 宿主不支持 providers_dir）就剥，
     //    等于把用户唯一的配置来源抹掉——盘上没有文件、内存里也没有行。
     const stripIntent = providersFileReadyNow();
+    if (stripIntent) {
+      // 运行态回执（2026-11-21）：投影的那份内存账必须当场跟上本次写入——否则下一次
+      // 读投影（以及随后任何一次 saveSettings(loadSettings())）会把新值回滚成装载时的
+      // 旧值。真机症状：刷新目录后约 1 秒被 providers:changed 广播换回旧目录。
+      try {
+        providerRuntimeSink?.(s.providers);
+      } catch (e) {
+        console.warn('[settings] provider 运行态回执失败（投影可能落后于本次写入）:', e);
+      }
+    }
     const sanitized: AppSettings = {
       ...s,
       providers: s.providers.map((p) => {
@@ -564,6 +642,7 @@ export function saveSettings(s: AppSettings): void {
           ...(p.lastTest !== undefined ? { lastTest: p.lastTest } : {}),
           ...(p.catalog !== undefined ? { catalog: p.catalog } : {}),
           ...(p.modelMeta !== undefined ? { modelMeta: p.modelMeta } : {}),
+          ...(p.lastThinking !== undefined ? { lastThinking: p.lastThinking } : {}),
         } as ProviderSettings;
       }),
     };

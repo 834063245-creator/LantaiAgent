@@ -17,7 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as bridge from '../src/bridge';
 // 批 9f-1：凭据写面（persistSecrets / removeSecret）随 settings-domain 包
-import { persistSecrets } from '../src/plugins/builtin/settings-domain/provider-data';
+import { persistSecrets, removeSecret } from '../src/plugins/builtin/settings-domain/provider-data';
 import { loadSettings, parseRpcString, restoreSecrets } from '../src/settings';
 
 // 批 9f-1：`persistSecrets` 随 settings-domain 包 ⇒ 该包 `./host`（开发域 = 内核真身）
@@ -181,5 +181,14 @@ describe('loadSettings', () => {
     const s = loadSettings();
     expect(s.providers[0].apiKey).toBe('');
     localStorage.removeItem('hologram_settings');
+  });
+});
+
+describe('removeSecret failure propagation', () => {
+  it('returns ok=false instead of swallowing credential_delete failures', async () => {
+    (bridge.rpc as any).mockRejectedValueOnce(new Error('dpapi locked'));
+    const res = await removeSecret('deepseek' as any);
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('dpapi locked');
   });
 });

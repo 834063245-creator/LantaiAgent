@@ -38,7 +38,6 @@ import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { DraftPaperContext, PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
 import { DraftFolioSurface } from '../src/plugins/builtin/compose-dock/DraftFolioSurface';
-import { loadSettings } from '../src/settings';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { resetComposeStoresForTests, resolveNewSessionDefault } from '../src/state/compose-store';
 import { useDraftSheetStore } from '../src/state/draft-sheet-store';
@@ -147,10 +146,8 @@ describe('题签 · 模型 / 思考被记住为新卷出生默认', () => {
     );
     await act(async () => auto?.click());
     expect(picks()?.thinking, '这一卷：自动 = 零覆盖').toBeUndefined();
-    /* 默认侧必须是显式 ''（自动），否则会回落该模型声明的档位——用户选了「自动」，
-     * 下次开纸又变回去。 */
-    const row2 = loadSettings().providers.find((p) => p.name === 'deepseek');
-    const model = picks()?.model ?? '';
-    expect(row2?.modelOverrides?.[model]?.thinking, '默认侧记显式自动').toBe('');
+    /* ⚡ 2026-11-21 思考档位收口：没有「默认档位」可落盘了——无主态/下一张纸的档位
+     * 只记在本进程内存里（显式 '' = 自动）。 */
+    expect(resolveNewSessionDefault().thinking, '默认侧记显式自动（内存）').toBe('');
   });
 });

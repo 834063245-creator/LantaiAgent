@@ -27,7 +27,7 @@ vi.mock('../src/bridge', () => ({
 }));
 
 import { loadSettings } from '../src/settings';
-import { getComposeStore, resetComposeStoresForTests } from '../src/state/compose-store';
+import { getComposeStore, resetComposeStoresForTests, resolveNewSessionDefault } from '../src/state/compose-store';
 import { useDraftSheetStore } from '../src/state/draft-sheet-store';
 import { useModeStore } from '../src/state/mode-store';
 import { usePresetStore } from '../src/state/preset-store';
@@ -48,7 +48,6 @@ function seedSettings(): void {
           apiKey: '',
           baseUrl: 'https://api.deepseek.com/v1',
           model: 'deepseek-flash',
-          thinking: 'low',
         },
         {
           kind: 'anthropic',
@@ -88,10 +87,11 @@ describe('run-config · 四笔的单一解析层', () => {
       presetId: 'standard',
       providerName: 'deepseek',
       model: 'deepseek-flash',
-      thinking: 'low',
+      // 2026-11-21：没有「默认档位」层——没拨过 = 自动（undefined）
+      thinking: undefined,
       permission: 'ask',
     });
-    expect(c.sources).toEqual({ preset: 'default', model: 'default', thinking: 'model', permission: 'default' });
+    expect(c.sources).toEqual({ preset: 'default', model: 'default', thinking: 'default', permission: 'default' });
   });
 
   it('纸：读的是**这张纸**的题签（不是焦点那张），来源按「与出生默认逐值不等」判', () => {
@@ -126,10 +126,9 @@ describe('run-config · 四笔的单一解析层', () => {
     expect(cb.sources.permission).toBe('explicit');
   });
 
-  it('新纸预填：模型档位来自 providers.yml 的 per-model 覆盖（用户上次拨过的档位）', () => {
-    /* 用户真机形态：provider 行本身没有 thinking，只有 `modelOverrides[模型].thinking`。
-     * 新纸的题签不写 thinking（= 没题），读数落到该模型的档位 ⇒ 显示上次拨过的「极限」。
-     * 这条是「每次新建都要重设一遍」的去证：拨过一次之后，新纸自动预填。 */
+  it('新纸预填：没有显式选择 = 自动（退役的 modelOverrides.thinking 不再被读取）', () => {
+    /* ⚡ 2026-11-21：设置页的「模型默认档位」已拆——老存档/老 YAML 里残留的
+     * `modelOverrides[模型].thinking` 读都不读。新纸没拨过档位 ⇒ 自动。 */
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -154,8 +153,8 @@ describe('run-config · 四笔的单一解析层', () => {
         id,
       );
     const c = resolveRunConfig(paperTarget(id, PANEL));
-    expect(c.thinking, '档位来自模型覆盖，不是「自动」').toBe('max');
-    expect(c.sources.thinking, '来源 = 该模型的档位（不是本卷显式）').toBe('model');
+    expect(c.thinking, '退役字段不再生效——没拨过就是自动').toBeUndefined();
+    expect(c.sources.thinking, '来源 = 默认，不是模型档位').toBe('default');
   });
 
   it('纸不在了：按无主读出（**绝不**回落焦点那张）', () => {
@@ -250,8 +249,8 @@ describe('run-config · 四笔的单一写入层', () => {
 
     patchRunConfig(paperTarget(id, PANEL), { thinking: '' });
     expect(picksOf(id)?.thinking, '这一卷：自动 = 零覆盖').toBeUndefined();
-    const overrides = loadSettings().providers.find((p) => p.name === 'deepseek')?.modelOverrides;
-    expect(overrides?.['deepseek-flash']?.thinking, '出厂侧记显式自动').toBe('');
+    // 出厂侧（无主态）记显式自动——只在本进程内存里，不再落 providers.yml
+    expect(resolveNewSessionDefault().thinking, '出厂侧记显式自动').toBe('');
   });
 
   it('纸 · 拨权限：写题签 + 待题纸出厂值；工作区默认不许被顺手改', () => {
@@ -320,7 +319,9 @@ describe('run-config · 四笔的单一写入层', () => {
 
     const row = loadSettings().providers.find((p) => p.name === 'anthropic');
     expect(row?.model).toBe('claude-sonnet-4-6');
-    expect(row?.modelOverrides?.['claude-sonnet-4-6']?.thinking).toBe('high');
+    // 思考档位只记内存（开下一卷时随出生默认带进去），不落 providers.yml
+    expect(row?.modelOverrides?.['claude-sonnet-4-6']?.thinking).toBeUndefined();
+    expect(resolveNewSessionDefault().thinking).toBe('high');
     expect(useModeStore.getState().permissionMode).toBe('auto');
   });
 });

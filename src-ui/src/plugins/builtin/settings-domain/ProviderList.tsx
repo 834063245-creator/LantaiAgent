@@ -17,9 +17,19 @@ interface ProviderListProps {
   onAdd: () => void;
   /** oauth provider 登录态（provider id → 已登录）——状态点推导用。 */
   oauthLoggedInMap?: Record<string, boolean>;
+  /** OAuth 登录进行中时锁定切行，避免异步回调把 A 的登录态写进 B 的面板。 */
+  disabled?: boolean;
 }
 
-export function ProviderList({ providers, selected, current, onSelect, onAdd, oauthLoggedInMap }: ProviderListProps) {
+export function ProviderList({
+  providers,
+  selected,
+  current,
+  onSelect,
+  onAdd,
+  oauthLoggedInMap,
+  disabled = false,
+}: ProviderListProps) {
   return (
     <aside className="pp-rail">
       <div className="pp-rail-hd">
@@ -40,6 +50,7 @@ export function ProviderList({ providers, selected, current, onSelect, onAdd, oa
                 type="button"
                 key={p.name}
                 className={`pp-src pp-src-${st}${active ? ' active' : ''}`}
+                disabled={disabled}
                 onClick={() => onSelect(p.name)}
               >
                 <span className={`pp-src-dot pp-dot-${st}`} />
@@ -59,7 +70,7 @@ export function ProviderList({ providers, selected, current, onSelect, onAdd, oa
           })
         )}
       </div>
-      <button type="button" className="pp-rail-add" onClick={onAdd}>
+      <button type="button" className="pp-rail-add" onClick={onAdd} disabled={disabled}>
         ＋ 添加提供方
       </button>
       <div className="pp-legend">

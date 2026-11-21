@@ -772,6 +772,23 @@
   font-size: var(--fs-micro);
   color: var(--ink-3);
 }
+/* 生效值（来自 API 拉取/目录）在输入框里显示为灰字：选完模型就是「已经填好」的样子，
+ * 同时一眼能分辨它不是用户自己写的覆盖值（改一个字才变成覆盖，来源标注同步变）。 */
+.pp-model-param input.is-derived {
+  color: var(--ink-3);
+  font-style: italic;
+}
+/* 本家默认档位落到该模型上不成立时的就地告警（请求期会按「自动」发）。 */
+.pp-model-param-warn {
+  font-size: var(--fs-micro);
+  color: var(--warn);
+  white-space: nowrap;
+}
+/* 未自定义时展示的「生效档位表」（API 拉取/目录）——与「思考档位」选择器分工可见。 */
+.pp-model-levels-current {
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
 /* per-model 自定义推理等级（2026-10-22 对齐 DSH）：开关 + 档位/API 参数值行。 */
 .pp-model-reasoning {
   flex-basis: 100%;

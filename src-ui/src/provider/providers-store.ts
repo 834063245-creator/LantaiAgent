@@ -40,11 +40,14 @@ import {
   PROVIDER_NAME_RE,
   type ProviderIntent,
   parseProvidersDoc,
+  parseSection,
   type SectionError,
 } from '../provider/providers-doc';
+import { clearDynamicProviderState } from './catalog';
 import { CORE_PROTOCOLS } from '../provider/types';
 import { kernelReadFile, kernelWriteFile, typedListen, typedRpc } from '../rpc-contract';
 import {
+  installProviderRuntimeSink,
   installProvidersFileReadyCheck,
   installProvidersProjection,
   loadSettings,
@@ -111,7 +114,7 @@ function looksLikePath(p: string): boolean {
  *  置位」这条**巧合**——而 `retryProvidersPath()` 与 watcher 重读都会把 fatal
  *  清成 undefined（`state.fatal = doc.fatal`），巧合一破就丢配置。 */
 export function providersFileReady(): boolean {
-  return state.available && state.loaded && !state.fatal && !state.empty;
+  return state.available && state.loaded && !state.fatal && fileAuthorityConfirmed;
 }
 /** 运行态读数（provider 名 → 探针结果/目录快照/元数据/密钥），localStorage 的作者。
  *  ⚡ 2026-11-16 本机读数迁出批：`modelMeta`（刷新目录拉回来的模型元数据）从配置
@@ -134,6 +137,8 @@ let fileKeyOrder: string[] = [];
 let cachedRows: ProviderSettings[] | null = null;
 let cachedSignature = '';
 const listeners = new Set<Listener>();
+/** 文件权威是否曾经确认成功（非空且整份可解析）。fatal 后仍用它决定投影走 last-good。 */
+let fileAuthorityConfirmed = false;
 
 /** 订阅文档状态变更（设置页用；返回退订）。 */
 export function onProvidersDocChange(cb: Listener): () => void {
@@ -210,6 +215,7 @@ function runtimeOf(p: ProviderSettings): ProviderRuntime {
     ...(p.lastTest !== undefined ? { lastTest: p.lastTest } : {}),
     ...(p.catalog !== undefined ? { catalog: p.catalog } : {}),
     ...(p.modelMeta !== undefined ? { modelMeta: p.modelMeta } : {}),
+    ...(p.lastThinking !== undefined ? { lastThinking: p.lastThinking } : {}),
   };
 }
 
@@ -218,7 +224,7 @@ function refreshRows(): void {
   const runtimeSig = [...runtimeMap.entries()]
     .map(
       ([k, v]) =>
-        `${k}|${v.apiKey.length}|${v.lastTest?.at ?? 0}|${v.catalog?.length ?? 0}|${v.modelMeta ? Object.keys(v.modelMeta).length : 0}`,
+        `${k}|${v.apiKey.length}|${v.lastTest?.at ?? 0}|${v.catalog?.length ?? 0}|${v.modelMeta ? Object.keys(v.modelMeta).length : 0}|${v.lastThinking ? JSON.stringify(v.lastThinking) : ''}`,
     )
     .join(',');
   const signature = `${lastFileText.length}:${state.fatal ?? ''}:${lastGoodSections.size}:${brokenSectionNames.size}:${fileKeyOrder.length}:${runtimeSig}`;
@@ -226,6 +232,64 @@ function refreshRows(): void {
   cachedSignature = signature;
   const rt = (name: string): ProviderRuntime => runtimeMap.get(name) ?? { apiKey: '' };
   cachedRows = effectiveSections().map(({ name, intent }) => mergeIntent(name, intent, rt(name)));
+}
+
+/** 运行态读数的写出回执（`settings.installProviderRuntimeSink` 的装配面）。
+ *
+ *  为什么必须有（2026-11-21 真机排查）：runtimeMap 此前只在 boot / `reloadRuntime`
+ *  重建，而 `reloadRuntime` 又从**投影**（= runtimeMap 自己）读——循环。于是
+ *  「刷新目录 → 保存」写进 localStorage 的 catalog / modelMeta 在下一次
+ *  providers:changed 广播（`saveSettings(loadSettings())`）里被换回**装载时**的旧值：
+ *  目录快照与元数据永远停在文件权威接管那天（实测存档：opencode 的 catalog 停在
+ *  2026-09-23 的 33 条，其余行走进「无 catalog」）。
+ *
+ *  合并口径：apiKey 以本次写出的值为准（设置页清 Key 要当场生效，权威仍在系统凭据库）；
+ *  其余字段本次缺省（undefined）时保留上一次——只写部分字段的调用（`persistProbe` 一类）
+ *  不该把已有读数清掉。 */
+function syncRuntimeFromSaved(rows: readonly ProviderSettings[]): void {
+  const next = new Map(runtimeMap);
+  const present = new Set(rows.map((row) => row.name));
+  for (const name of [...next.keys()]) if (!present.has(name)) next.delete(name);
+  for (const row of rows) {
+    const rt = runtimeOf(row);
+    next.set(row.name, mergeRuntime(next.get(row.name), rt, rt.apiKey ?? ''));
+  }
+  runtimeMap = next;
+  cachedRows = null; // 投影下次读时按新运行态重算
+}
+
+/** 运行态合并（`syncRuntimeFromSaved` / `reloadRuntimeFromStorage` 共用）：
+ *  `prev` 里已有的字段在新值缺省（undefined）时保留——只写部分字段的调用不该把
+ *  已有读数清掉；apiKey 的取舍由调用方决定（它不在本机存储里，且有「清 Key」语义）。 */
+function mergeRuntime(
+  prev: ProviderRuntime | undefined,
+  next: ProviderRuntime | undefined,
+  apiKey: string,
+): ProviderRuntime {
+  const base = prev ?? { apiKey: '' };
+  return {
+    apiKey,
+    ...(next?.lastTest !== undefined
+      ? { lastTest: next.lastTest }
+      : base.lastTest !== undefined
+        ? { lastTest: base.lastTest }
+        : {}),
+    ...(next?.catalog !== undefined
+      ? { catalog: next.catalog }
+      : base.catalog !== undefined
+        ? { catalog: base.catalog }
+        : {}),
+    ...(next?.modelMeta !== undefined
+      ? { modelMeta: next.modelMeta }
+      : base.modelMeta !== undefined
+        ? { modelMeta: base.modelMeta }
+        : {}),
+    ...(next?.lastThinking !== undefined
+      ? { lastThinking: next.lastThinking }
+      : base.lastThinking !== undefined
+        ? { lastThinking: base.lastThinking }
+        : {}),
+  };
 }
 
 /** 装配投影口：把「文件意图 + 运行态读数」合成完整行，供 loadSettings 读取边界使用。
@@ -237,12 +301,13 @@ export function installProvidersDocProjection(): void {
       //    （2026-09-23 真机事故：此前这里回空数组，与 saveSettings 剥意图叠加
       //      = 用户配好的 provider 凭空消失）。只有在文件确认接管之后，
       //      「文件里的键」才成为行表真源。
-      if (!providersFileReady()) return fallback;
+      if (!state.available || !state.loaded || !fileAuthorityConfirmed) return fallback;
       refreshRows();
       return cachedRows ?? [];
     },
   });
   installProvidersFileReadyCheck(providersFileReady);
+  installProviderRuntimeSink(syncRuntimeFromSaved);
 }
 
 /** 装载读数快照（`obs.configLoad` 的载荷）。
@@ -273,6 +338,35 @@ function docSnapshotForObs(): Obs.ObsDocSnapshot {
       total: rows.length,
     },
   };
+}
+
+/** 从本机存储（localStorage）重取运行态读数。
+ *
+ *  ⚡ 2026-11-21 修一个循环：旧实现读 `loadSettings()`——而 loadSettings 的 provider 行
+ *  正是**本函数要重建的那份 runtimeMap** 的投影 ⇒ 「重取」读回自己，永远拿不到本机
+ *  存储里的新值；再配合「providers:changed 广播 = saveSettings(loadSettings())」，
+ *  刷新目录写下的 catalog / modelMeta 每次都被换回装载时的旧值（真机：目录快照停在
+ *  文件权威接管那天）。现在读**未经投影的**本机行（storedProviderRows）。
+ *
+ *  密钥不在 localStorage（权威在系统凭据库）：内存里已回填的 apiKey 必须保住
+ *  （2026-09-26 真机报障「设置页丢 key」同族），故 apiKey 一律取内存现值。
+ *  其余字段：本机存储里这次有值的覆盖，没有的保留内存现值（部分写入不清读数）。 */
+function reloadRuntimeFromStorage(): void {
+  const stored = new Map(storedProviderRows().map((p) => [p.name, runtimeOf(p)]));
+  // 内存里已回填的密钥（面板/装配面 loadSettingsWithSecrets 注入过的那批）——本机存储
+  // 永远不含 apiKey（那是本层的纪律），只能从「内存账 + 当前投影」两处取。
+  const injected = new Map(loadSettings().providers.map((p) => [p.name, p.apiKey ?? '']));
+  const next = new Map<string, ProviderRuntime>();
+  // 行表可能整套来自文件（本机存储里一条运行态都没有）——名字集合取两边的并集。
+  const names = new Set<string>([...runtimeMap.keys(), ...injected.keys(), ...stored.keys()]);
+  for (const name of names) {
+    const prev = runtimeMap.get(name);
+    next.set(name, mergeRuntime(prev, stored.get(name), prev?.apiKey || injected.get(name) || ''));
+  }
+  // 本机存储里有、内存里还没有的行（另一窗口新增 / 装载前写入）：补进来
+  for (const [name, rt] of stored) if (!next.has(name)) next.set(name, rt);
+  runtimeMap = next;
+  cachedRows = null;
 }
 
 /** 装载一次用户级文档（boot / watcher / 保存后重读三处共用）。
@@ -312,9 +406,7 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
       return false;
     }
   }
-  if (opts.reloadRuntime) {
-    runtimeMap = new Map(loadSettings().providers.map((p) => [p.name, runtimeOf(p)]));
-  }
+  if (opts.reloadRuntime) reloadRuntimeFromStorage();
   let text = '';
   try {
     text = await kernelReadFile(state.path);
@@ -330,6 +422,7 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
   state.warnings = doc.warnings;
   state.fatal = doc.fatal;
   state.lastError = doc.fatal ?? '';
+  if (!doc.fatal && text.trim().length > 0) fileAuthorityConfirmed = true;
   lastSections = doc.sections.map((s) => ({ name: s.name, intent: s.intent }));
   // ── 「上一次可用」账（2026-11-16 事故根治）────────────────────────
   // 成功解析的节逐名刷新；坏节按名**保留旧值**（行表靠 effectiveSections 顶上）。
@@ -342,7 +435,10 @@ export async function loadProvidersDoc(opts: { reloadRuntime?: boolean } = {}): 
   if (!doc.fatal) {
     const alive = new Set(doc.order);
     for (const name of [...lastGoodSections.keys()]) {
-      if (!alive.has(name)) lastGoodSections.delete(name);
+      if (alive.has(name)) continue;
+      lastGoodSections.delete(name);
+      runtimeMap.delete(name);
+      clearDynamicProviderState(name);
     }
   }
   // 遗留的 modelMeta（旧文件里那片自动生成的读数）：收进运行态，下次写盘即从文件消失。
@@ -384,6 +480,8 @@ export async function saveProvidersDoc(
     if (!PROVIDER_NAME_RE.test(name)) {
       return { ok: false, error: `provider 名「${name}」不合法（只允许字母、数字、下划线、连字符）` };
     }
+    const sectionCheck = parseSection(name, patch[name], knownProtocols());
+    if ('errors' in sectionCheck) return { ok: false, error: sectionCheck.errors.join('\n') };
   }
   if (!state.path && !state.loaded) await loadProvidersDoc();
   if (!state.available || !state.path) {
@@ -432,10 +530,11 @@ export async function saveProvidersDoc(
 
 /** 单节意图补丁（**题签「记住选择」批 2026-11-29**）：只改一节里的几个字段，其余节原样。
  *
- *  为什么需要它：`model` / `modelOverrides[*].thinking` 这类「新卷出生默认」是**用户意图**，
- *  权威在这份文件里（localStorage 里的 provider 行只留运行态读数，`saveSettings` 会把意图剥掉）。
- *  旧实现（compose-store 的 setGlobalModel / setGlobalThinking）走 `saveSettings` 写本地存档
- *  ——文件权威一旦就位，那一笔在写盘那一刻就被剥掉：**当场就没落盘，重启更不会有**。
+ *  为什么需要它：`model`（新卷出生默认）这类「用户意图」的权威在这份文件里
+ *  （localStorage 里的 provider 行只留运行态读数，`saveSettings` 会把意图剥掉）。
+ *  旧实现（compose-store 的 setGlobalModel）走 `saveSettings` 写本地存档——文件权威
+ *  一旦就位，那一笔在写盘那一刻就被剥掉：**当场就没落盘，重启更不会有**。
+ *  （思考档位 2026-11-21 起不在这里：它只按会话/内存，见 compose-store。）
  *
  *  两段式（照 `selectPreset` 的「内存态先行、持久化失败可见」口径）：
  *    ① 内存投影立刻改（`loadSettings()` 同拍读到）——「下一张纸的出厂值」不能等 IPC 回来；
@@ -616,20 +715,6 @@ export function armProvidersWatcher(): void {
   });
 }
 
-/** 运行态读数写回（探针结果 / 目录快照——设置页保存与后台拉取共用）。
- *  合并语义：只覆盖给到的字段，其余保持磁盘现状。 */ export function persistProviderRuntime(
-  name: string,
-  patch: Partial<ProviderRuntime>,
-): void {
-  const s = loadSettings();
-  runtimeMap.set(name, { ...(runtimeMap.get(name) ?? { apiKey: '' }), ...patch });
-  cachedRows = null;
-  saveSettings({
-    ...s,
-    providers: s.providers.map((p) => (p.name === name ? { ...p, ...patch } : p)),
-  });
-}
-
 /** 确保配置目录存在（首启用户第一次打开设置页就能看到路径）。
  *  `providers_dir` RPC 自身按需 create_dir_all，这里只负责先把路径取回来。 */
 export async function ensureProvidersDir(): Promise<void> {
@@ -647,6 +732,7 @@ export function __resetProvidersDocForTests(): void {
   state.loaded = false;
   state.available = false;
   state.lastError = '';
+  fileAuthorityConfirmed = false;
   runtimeMap = new Map();
   lastFileText = '';
   lastSections = [];
