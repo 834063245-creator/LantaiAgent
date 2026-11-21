@@ -1,0 +1,177 @@
+/* provider-console · IA 分片（2026-11-21）
+ * 从 provider-console.css 拆出：上帝文件预算（1400 行档）不容再涨——信息架构批的规则
+ * 独立成片。入口仍由 ProviderPage.tsx 依序 import（基座先、本片后）：层叠序 = import 序，
+ * 禁重排；改版式落对应片。
+ *
+ * ════════════════════════════════════════════════════════════════════
+ * 2026-11-21 信息架构批（handoff §7.2 欠账 ①②④）：
+ *   单列纵向堆叠 → 按任务分区 + 锚点导航；模型区拆「可用模型 / 参数」双列；
+ *   窄窗（容器宽度，不是窗口宽度）降级单列。
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* 字阶自包含：产物 CSS 自带 --fs-*（旧 exe + 新产物不塌成继承；见 app/type-scale.css 头注） */
+@import "../../../app/type-scale.css";
+
+/* 版式容器 = 容器查询的落点（ProviderPage 里包住 .pp-split）
+ * 命名纪律：面产品 CSS 跨产品不得重名（`plugin-css-channel.test` 钉死）——
+ * 不叫 .pp-body（paper-shell 的正文块已占用）。 */
+.pp-console-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+}
+
+/* ── 分区导航：粘在详情滚动区顶部 ── */
+.pp-sec-nav {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px 2px 6px;
+  background: color-mix(in oklch, var(--paper) 90%, transparent);
+  backdrop-filter: blur(2px);
+}
+.pp-sec-jump {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--f-song);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  padding: 0 7px;
+  cursor: pointer;
+  border-radius: 0;
+  transition:
+    color var(--snap),
+    border-color var(--snap),
+    background var(--snap);
+}
+.pp-sec-jump:hover {
+  color: var(--ink-1);
+  border-color: var(--rule-soft-ink);
+}
+.pp-sec-jump.is-on {
+  color: var(--seal-deep);
+  border-color: color-mix(in oklch, var(--seal) 40%, var(--paper));
+  background: color-mix(in oklch, var(--seal) 5%, transparent);
+}
+.pp-sec-jump:focus-visible {
+  outline: 1px solid var(--seal);
+  outline-offset: 1px;
+}
+
+/* 跳转落点留出粘顶导航的高度，否则标题被压住 */
+.pp-sec {
+  scroll-margin-top: 34px;
+}
+
+/* ── 模型区：左「可用模型」/ 右「参数面板」 ── */
+.pp-model-work {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.pp-model-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.pp-col-hd {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--rule-soft-ink);
+}
+/* 参数面板是「一次一个模型」的竖排编辑器：不再沿用行内横排换行 */
+.pp-model-col .pp-model-params {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 9px 10px;
+}
+.pp-params-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--rule-soft-ink);
+}
+.pp-params-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--rule-soft-ink);
+  color: var(--ink-3);
+  font-size: var(--fs-micro);
+  line-height: 1.6;
+}
+.pp-params-empty-icon {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+/* 选中的模型：行上「参数」按钮保持按下态（面板在右侧，眼睛不用来回找） */
+.pp-model-chip-param.is-on {
+  color: var(--seal-deep);
+  border-color: color-mix(in oklch, var(--seal) 45%, var(--paper));
+  background: color-mix(in oklch, var(--seal) 6%, transparent);
+}
+
+/* ── 窄窗：先并模型双列，再并「列表 + 详情」双栏 ──
+ * 断点看容器宽度（设置页只占面板的一部分，窗口宽度不是有效信号）。 */
+@container (max-width: 880px) {
+  .pp-model-work {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container (max-width: 720px) {
+  .pp-split {
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 8px 12px;
+    overflow-y: auto;
+  }
+  .pp-rail {
+    width: auto;
+    flex: 0 0 auto;
+    max-height: 190px;
+  }
+  .pp-console {
+    overflow-y: visible;
+    padding-right: 0;
+  }
+  .pp-sec-nav {
+    position: static;
+  }
+}
+
+/* 手改档位编辑器的预设行（2026-11-21 §7.2 欠账 ③）——fieldset 去默认框线，只留语义 */
+.pp-model-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 2px;
+  border: 0;
+}
+.pp-model-presets legend {
+  padding: 0;
+  margin-right: 1px;
+  float: left;
+}
+/* 「按声明重新同步」靠右：它是恢复动作，不与四个组合预设抢同一视觉组 */
+.pp-model-presets .pp-preset-resync {
+  margin-left: auto;
+}

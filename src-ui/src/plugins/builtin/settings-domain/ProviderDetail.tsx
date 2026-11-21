@@ -1,11 +1,16 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Provider 页右侧「调谐控制台」：编辑选中提供方的连接配置 / 诊断 / 危险区。
+// Provider 页右侧「调谐控制台」：编辑选中提供方的连接配置 / 模型 / 诊断 / 危险区。
 // 状态展示与测试结果均按 provider 独立，切换提供方不会串台。
+//
+// 2026-11-21 信息架构批（§7.2 欠账 ①②）：单列纵向堆叠改为**按任务分区 + 锚点导航**——
+//   连接（凭据 / Base URL）· 模型（可用模型 / 参数 / 目录）· 诊断 · 高级 · 文件 · 危险区。
+// 模型区再切成两列：左 = 可用模型（创作坞可选面），右 = 单个模型的参数面板；
+// 模型目录（远端快照）独立成块，只做「添加 / 移除」，不再和参数编辑抢同一个滚动面。
 
 import type React from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ThinkingLevelMap } from '../../../provider/thinking';
 import {
   defaultBaseUrl,
@@ -27,6 +32,22 @@ import { protocolLabel } from './protocol';
 import { formatLatency, formatTestAt, probeMatchesProvider, providerStatus, STATUS_LABEL } from './status';
 
 export type ProviderField = 'apiKey' | 'baseUrl';
+
+/** 详情页分区（锚点导航的唯一真源）：数组顺序 = 页面顺序，id = DOM 锚点。 */
+const SECTIONS: ReadonlyArray<{ id: string; label: string }> = [
+  { id: 'pp-sec-conn', label: '连接' },
+  { id: 'pp-sec-models', label: '模型' },
+  { id: 'pp-sec-diag', label: '诊断' },
+  { id: 'pp-sec-adv', label: '高级' },
+  { id: 'pp-sec-file', label: '文件' },
+];
+
+const DANGER_SECTION = { id: 'pp-sec-danger', label: '危险区' };
+
+/** 参数面板的 DOM id：模型 id 可能带 `/` `.`，转义成合法 id 供 aria-controls 使用。 */
+function paramsPanelId(modelId: string): string {
+  return `pp-params-${modelId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
 
 /** per-model 参数的来源标注字段（provider-model-meta 四层链的展示面）。 */
 type MetaField = 'contextWindow' | 'maxTokens' | 'input';
@@ -221,8 +242,19 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     sync();
     return onDynamicFetchChange(sync);
   }, [provider.name]);
-  // per-model 参数展开（参数编辑器作用到哪个模型）
+  // 参数面板：选中的模型（null = 没选；面板显示引导语）
   const [paramModel, setParamModel] = useState<string | null>(null);
+  // 选中的模型可能被移除：这时面板按「未选」处理（不渲染已消失模型的编辑器）。
+  const activeParam = paramModel && models.includes(paramModel) ? paramModel : null;
+  // 分区导航（点击跳转；不猜滚动位置，也不假装滚动跟随——避免 aria-current 说谎）
+  const consoleRef = useRef<HTMLElement | null>(null);
+  const [activeSection, setActiveSection] = useState<string>(SECTIONS[0]?.id ?? '');
+  const sections = useMemo(() => (canDelete ? [...SECTIONS, DANGER_SECTION] : [...SECTIONS]), [canDelete]);
+  const jumpToSection = useCallback((id: string) => {
+    setActiveSection(id);
+    const target = consoleRef.current?.querySelector<HTMLElement>(`#${id}`);
+    target?.scrollIntoView?.({ block: 'start' });
+  }, []);
   const handleFetch = useCallback(async () => {
     if (fetching) return;
     setFetching(true);
@@ -277,8 +309,120 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
       </div>
     ) : null;
 
+  /** 单个模型的参数面板（2026-11-21 IA 批：从行内展开改为右侧固定面板——
+   *  参数是「一次看一个模型」的任务，不该把可用模型列表撑成一条长滚动带）。 */
+  const renderModelParams = (id: string) => {
+    // 生效输入模态（覆盖 ?? API 拉取 ?? 目录）——「视」徽标与创作坞门禁同链
+    const visionEffective = modelInput(provider, id).includes('image');
+    const visionOverride = provider.modelOverrides?.[id]?.input;
+    const visionMode = visionOverride === undefined ? 'inherit' : visionOverride.includes('image') ? 'image' : 'text';
+    // 生效参数（四层链：覆盖 ?? API 拉取 ?? 目录 ?? 缺省）：输入框直接显示
+    // **生效值**——选完模型就该是「已填好」的样子，不用再手抄一遍；用户改一个字
+    // 才写 modelOverrides（覆盖层），来源标注同步变成「手动设置」。
+    const winOverride = provider.modelOverrides?.[id]?.contextWindow;
+    const winEffective = modelContextWindow(provider, id, 0);
+    const outOverride = provider.modelOverrides?.[id]?.maxTokens;
+    const outEffective = modelMaxTokens(provider, id);
+    // 该模型的档位声明（API 拉取/目录/自定义）——推理等级面板的底稿。
+    const sourceMeta = provider.modelMeta?.[id];
+    const catalogDesc = getModel(id);
+    const declaredSourceEfforts = sourceMeta?.thinkingEfforts ?? catalogDesc?.thinkingEfforts;
+    const declaredSourceMap = sourceMeta?.thinkingLevelMap ?? catalogDesc?.thinkingLevelMap;
+    const reasoningSource =
+      provider.modelOverrides?.[id]?.reasoningEfforts !== undefined
+        ? '手动覆盖'
+        : sourceMeta?.thinkingEfforts !== undefined || sourceMeta?.thinkingLevelMap !== undefined
+          ? 'API 拉取'
+          : catalogDesc?.thinkingEfforts !== undefined || catalogDesc?.thinkingLevelMap !== undefined
+            ? '内置目录'
+            : '未声明';
+    return (
+      <section className="pp-model-params" id={paramsPanelId(id)} aria-label={`${id} 的模型参数`}>
+        <div className="pp-params-title">
+          <span className="pp-model-chip-name" data-tip={id}>
+            {modelDescriptor(provider, id)?.name ?? id}
+          </span>
+          {visionEffective && (
+            <span className="pp-model-chip-vision" data-tip="视觉模型（覆盖 / API 拉取 / 目录声明）">
+              视
+            </span>
+          )}
+          {id === provider.model && (
+            <span
+              className="pp-model-chip-default"
+              data-tip="「最近使用」= 最近在创作坞选用的模型——新卷自动跟从；不是 Provider 默认配置"
+            >
+              最近使用
+            </span>
+          )}
+        </div>
+        <label className="pp-model-param">
+          <span>上下文窗口</span>
+          <input
+            type="number"
+            min={0}
+            className={winOverride === undefined && winEffective > 0 ? 'is-derived' : undefined}
+            value={winOverride ?? (winEffective > 0 ? winEffective : '')}
+            placeholder="未知"
+            data-tip="来自 API 拉取/目录时显示为灰字；改动这里 = 写入本模型的覆盖值（0/清空 = 回落自动值）"
+            onChange={(e) => onModelOverride(id, 'contextWindow', Number.parseInt(e.target.value, 10) || 0)}
+          />
+          <span className="pp-model-param-src" data-tip="该值的来源（用户手改 > API 拉取 > 目录）">
+            {metaSource(provider, id, 'contextWindow')}
+          </span>
+        </label>
+        <label className="pp-model-param">
+          <span>最大输出</span>
+          <input
+            type="number"
+            min={0}
+            className={outOverride === undefined && outEffective > 0 ? 'is-derived' : undefined}
+            value={outOverride ?? (outEffective > 0 ? outEffective : '')}
+            placeholder="不钳制"
+            data-tip="来自 API 拉取/目录时显示为灰字；改动这里 = 写入本模型的覆盖值（0/清空 = 回落自动值）"
+            onChange={(e) => onModelOverride(id, 'maxTokens', Number.parseInt(e.target.value, 10) || 0)}
+          />
+          <span className="pp-model-param-src" data-tip="该值的来源（用户手改 > API 拉取 > 目录）">
+            {metaSource(provider, id, 'maxTokens')}
+          </span>
+        </label>
+        {/* 视觉声明开关（B5 · D-8①）：覆盖开 = ['text','image']（附图
+         *  入口 + 请求期图投影放行）；关 = 清覆盖回落 API 拉取/目录声明。 */}
+        <label className="pp-model-param">
+          <span>视觉模型（图片输入）</span>
+          <select
+            className="sp-select"
+            value={visionMode}
+            aria-label="视觉输入声明"
+            onChange={(e) => onModelVisionToggle(id, e.target.value as 'inherit' | 'text' | 'image')}
+          >
+            <option value="inherit">跟随声明（{visionEffective ? '支持图片' : '纯文本'}）</option>
+            <option value="image">强制支持图片</option>
+            <option value="text">强制仅文本</option>
+          </select>
+          <span className="pp-model-param-src">{metaSource(provider, id, 'input')}</span>
+        </label>
+        {/* 推理等级声明（2026-10-22 对齐 DSH）：本模型提供哪些档位、
+         *  每档请求里发送什么参数值。关闭 = 回落 API 拉取/目录声明。
+         *  ⚡ 2026-11-21：思考档位不再有「本模型默认」这一层（设置页手动项
+         *  已拆）——用哪一档只在创作坞按会话选。 */}
+        <ModelReasoningLevels
+          efforts={declaredSourceEfforts}
+          sourceLevelMap={declaredSourceMap}
+          sourceLabel={reasoningSource}
+          value={provider.modelOverrides?.[id]?.reasoningEfforts}
+          onChange={(next) => onModelReasoning(id, next)}
+        />
+        <span className="pp-model-params-hint">
+          留空 = 用 API 拉取/目录值（都没有则上下文按未知处理、输出不钳制）；视觉生效 = 覆盖 ?? API 拉取 ??
+          目录；思考档位在创作坞的「思考」里按会话选。
+        </span>
+      </section>
+    );
+  };
+
   return (
-    <section className="pp-console">
+    <section className="pp-console" ref={consoleRef}>
       <div className="pp-console-head">
         <span className="pp-name">{provider.name}</span>
         <span className={`pp-badge pp-badge-${provider.kind}`}>{protocolLabel(provider.kind)}</span>
@@ -289,153 +433,198 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
         <span className="pp-spacer" />
       </div>
 
-      <div className="pp-card">
-        <div className="pp-card-hd">
-          <span className="pp-card-title">连接配置</span>
-          <span className="pp-rule" />
-        </div>
+      {/* ── 分区导航（2026-11-21 IA 批）：详情页是四五个任务的纵向堆叠，
+          没有导航就只能靠滚——这里给出可点、可聚焦、读屏可命名的跳转面。 ── */}
+      <nav className="pp-sec-nav" aria-label="提供方分区导航">
+        {sections.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            className={`pp-sec-jump${activeSection === section.id ? ' is-on' : ''}`}
+            aria-current={activeSection === section.id ? 'location' : undefined}
+            onClick={() => jumpToSection(section.id)}
+          >
+            {section.label}
+          </button>
+        ))}
+      </nav>
 
-        {isOAuth ? (
-          /* ── Phase 3D：OAuth 订阅登录面板（替代 API Key 输入）── */
-          <div className="pp-field">
-            <div className="pp-f-label-row">
-              <span className="pp-f-label">登录方式</span>
-              <span className="pp-chip">OAuth 订阅</span>
-            </div>
-            {oauthData && oauthData.accounts.length > 0 ? (
-              <>
-                <label className="pp-model-param">
-                  <span>请求使用账号</span>
-                  <select
-                    className="sp-select"
-                    value={oauthData.activeAccountId ?? ''}
-                    aria-label="OAuth 请求使用账号"
-                    onChange={(e) => oauthData.onSelectAccount(e.target.value)}
-                  >
-                    <option value="">自动（最近登录）</option>
-                    {oauthData.accounts.map((acct) => (
-                      <option key={acct.accountId} value={acct.accountId}>
-                        {acct.accountId}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="pp-model-param-src">{oauthData.activeAccountId ? '手动选择' : '最近登录'}</span>
-                </label>
-                <div className="pp-oauth-accounts">
-                  {oauthData.accounts.map((acct) => (
-                    <div key={acct.accountId} className="pp-model-item">
-                      <span className="pp-model-chip" data-tip={acct.accountId}>
-                        <span className="pp-model-chip-name">{acct.accountId}</span>
-                        <button
-                          type="button"
-                          className="pp-model-chip-x"
-                          data-tip={`登出 ${acct.accountId}`}
-                          aria-label={`登出 ${acct.accountId}`}
-                          onClick={() => oauthData?.onLogout(acct.accountId)}
-                        >
-                          登出
-                        </button>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="pp-f-hint">尚未登录任何账号。点击下方按钮，用浏览器完成 ChatGPT Codex 授权登录。</div>
-            )}
-            {oauthData?.status && !oauthData.busy && (
-              <div className={`pp-oauth-status ${oauthData.status.tone}`}>{oauthData.status.msg}</div>
-            )}
-            <div className="pp-oauth-actions">
-              <button
-                type="button"
-                className="sp-btn-sm"
-                disabled={oauthData?.busy}
-                onClick={() => oauthData?.onLogin()}
-              >
-                {oauthData?.busy
-                  ? '等待浏览器授权…'
-                  : oauthData && oauthData.accounts.length > 0
-                    ? '再登录一个账号'
-                    : '登录 Codex'}
-              </button>
-              {oauthData?.busy && (
-                <button type="button" className="sp-btn-sm pp-btn-danger" onClick={() => oauthData?.onCancel()}>
-                  取消登录
-                </button>
-              )}
-            </div>
-            {oauthData?.busy && oauthData.status && (
-              <div className="pp-f-hint">
-                {oauthData.status.msg}
-                <br />
-                （轮询中——授权完成后自动生效；可在浏览器取消）
-              </div>
-            )}
+      {/* ═══ 连接与凭据 ═══ */}
+      <section className="pp-sec" id="pp-sec-conn" aria-label="连接与凭据">
+        <div className="pp-card">
+          <div className="pp-card-hd">
+            <span className="pp-card-title">连接与凭据</span>
+            <span className="pp-rule" />
           </div>
-        ) : (
-          <div className="pp-field">
-            <div className="pp-f-label-row">
-              <label className="pp-f-label" htmlFor="pd-api-key">
-                API Key
-              </label>
-              <span className={`pp-chip${keyChipCls}`}>{keyChip}</span>
-            </div>
-            <div className="pp-key-row">
-              <input
-                id="pd-api-key"
-                ref={keyInputRef}
-                type={keyVisible ? 'text' : 'password'}
-                className="sp-input"
-                value={provider.apiKey || ''}
-                onChange={(e) => onFieldChange('apiKey', e.target.value)}
-                onBlur={(e) => {
-                  // 剥离非 ASCII（Key 只允许 ASCII），并同步写回 React 状态。
-                  // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
-                  const cleaned = e.target.value.replace(/[^\x00-\x7F]/g, '');
-                  if (cleaned !== e.target.value) onFieldChange('apiKey', cleaned);
-                }}
-                placeholder="sk-… 粘贴后保存写入系统凭据"
-                autoComplete="off"
-              />
-              <button
-                type="button"
-                className="sp-btn-sm"
-                data-tip={keyVisible ? '隐藏' : '显示'}
-                onClick={onToggleKeyVisible}
-              >
-                {keyVisible ? '隐藏' : '显示'}
-              </button>
-              {provider.apiKey?.trim() && keySaved && (
+
+          {isOAuth ? (
+            /* ── Phase 3D：OAuth 订阅登录面板（替代 API Key 输入）── */
+            <div className="pp-field">
+              <div className="pp-f-label-row">
+                <span className="pp-f-label">登录方式</span>
+                <span className="pp-chip">OAuth 订阅</span>
+              </div>
+              {oauthData && oauthData.accounts.length > 0 ? (
+                <>
+                  <label className="pp-model-param">
+                    <span>请求使用账号</span>
+                    <select
+                      className="sp-select"
+                      value={oauthData.activeAccountId ?? ''}
+                      aria-label="OAuth 请求使用账号"
+                      onChange={(e) => oauthData.onSelectAccount(e.target.value)}
+                    >
+                      <option value="">自动（最近登录）</option>
+                      {oauthData.accounts.map((acct) => (
+                        <option key={acct.accountId} value={acct.accountId}>
+                          {acct.accountId}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="pp-model-param-src">{oauthData.activeAccountId ? '手动选择' : '最近登录'}</span>
+                  </label>
+                  <div className="pp-oauth-accounts">
+                    {oauthData.accounts.map((acct) => (
+                      <div key={acct.accountId} className="pp-model-item">
+                        <span className="pp-model-chip" data-tip={acct.accountId}>
+                          <span className="pp-model-chip-name">{acct.accountId}</span>
+                          <button
+                            type="button"
+                            className="pp-model-chip-x"
+                            data-tip={`登出 ${acct.accountId}`}
+                            aria-label={`登出 ${acct.accountId}`}
+                            onClick={() => oauthData?.onLogout(acct.accountId)}
+                          >
+                            登出
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="pp-f-hint">尚未登录任何账号。点击下方按钮，用浏览器完成 ChatGPT Codex 授权登录。</div>
+              )}
+              {oauthData?.status && !oauthData.busy && (
+                <div className={`pp-oauth-status ${oauthData.status.tone}`}>{oauthData.status.msg}</div>
+              )}
+              <div className="pp-oauth-actions">
                 <button
                   type="button"
-                  className="sp-btn-sm pp-btn-danger"
-                  data-tip="从系统凭据中删除该 Key"
-                  onClick={onClearKey}
+                  className="sp-btn-sm"
+                  disabled={oauthData?.busy}
+                  onClick={() => oauthData?.onLogin()}
                 >
-                  清除
+                  {oauthData?.busy
+                    ? '等待浏览器授权…'
+                    : oauthData && oauthData.accounts.length > 0
+                      ? '再登录一个账号'
+                      : '登录 Codex'}
                 </button>
+                {oauthData?.busy && (
+                  <button type="button" className="sp-btn-sm pp-btn-danger" onClick={() => oauthData?.onCancel()}>
+                    取消登录
+                  </button>
+                )}
+              </div>
+              {oauthData?.busy && oauthData.status && (
+                <div className="pp-f-hint">
+                  {oauthData.status.msg}
+                  <br />
+                  （轮询中——授权完成后自动生效；可在浏览器取消）
+                </div>
               )}
             </div>
-            <div className="pp-f-hint">Key 只保存在本机系统加密凭据中，不会写入 localStorage。</div>
-          </div>
-        )}
+          ) : (
+            <div className="pp-field">
+              <div className="pp-f-label-row">
+                <label className="pp-f-label" htmlFor="pd-api-key">
+                  API Key
+                </label>
+                <span className={`pp-chip${keyChipCls}`}>{keyChip}</span>
+              </div>
+              <div className="pp-key-row">
+                <input
+                  id="pd-api-key"
+                  ref={keyInputRef}
+                  type={keyVisible ? 'text' : 'password'}
+                  className="sp-input"
+                  value={provider.apiKey || ''}
+                  onChange={(e) => onFieldChange('apiKey', e.target.value)}
+                  onBlur={(e) => {
+                    // 剥离非 ASCII（Key 只允许 ASCII），并同步写回 React 状态。
+                    // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
+                    const cleaned = e.target.value.replace(/[^\x00-\x7F]/g, '');
+                    if (cleaned !== e.target.value) onFieldChange('apiKey', cleaned);
+                  }}
+                  placeholder="sk-… 粘贴后保存写入系统凭据"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  className="sp-btn-sm"
+                  data-tip={keyVisible ? '隐藏' : '显示'}
+                  onClick={onToggleKeyVisible}
+                >
+                  {keyVisible ? '隐藏' : '显示'}
+                </button>
+                {provider.apiKey?.trim() && keySaved && (
+                  <button
+                    type="button"
+                    className="sp-btn-sm pp-btn-danger"
+                    data-tip="从系统凭据中删除该 Key"
+                    onClick={onClearKey}
+                  >
+                    清除
+                  </button>
+                )}
+              </div>
+              <div className="pp-f-hint">Key 只保存在本机系统加密凭据中，不会写入 localStorage。</div>
+            </div>
+          )}
 
-        {/* 模型区（2026-09-23 三层重构；2026-11-30 R5 收口）：
-            可用模型 = 用户从目录里**添加**进来的（创作坞下拉可选面）；
-            高亮项 = 最近使用运行态，不可在此编辑；「刷新目录」只更新目录快照与元数据。 */}
-        <div className="pp-field">
-          <div className="pp-f-label-row">
-            <label className="pp-f-label" htmlFor="pd-models-input">
-              可用模型
-            </label>
-            <span className="pp-chip">{models.length} 个</span>
-            {/* oauth 订阅（Codex）：登录后也可从账号 API 拉取真实模型——非「账号自动提供」 */}
-            <button type="button" className="sp-btn-sm" disabled={fetching} onClick={handleFetch}>
-              {fetching ? '拉取中…' : '刷新目录'}
-            </button>
+          <div className="pp-field">
+            <div className="pp-f-label-row">
+              <label className="pp-f-label" htmlFor="pd-baseurl">
+                Base URL
+              </label>
+              <button
+                type="button"
+                className="sp-btn-sm"
+                data-tip={isFactoryUrl ? '当前已是默认地址' : '恢复出厂默认地址'}
+                disabled={isFactoryUrl}
+                onClick={onResetBaseUrl}
+              >
+                ↺ 默认
+              </button>
+            </div>
+            <input
+              id="pd-baseurl"
+              className="sp-input"
+              value={provider.baseUrl}
+              onChange={(e) => onFieldChange('baseUrl', e.target.value)}
+              onBlur={(e) => {
+                // 剥离非 ASCII（URL 只允许 ASCII），并同步写回 React 状态。
+                // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
+                const cleaned = e.target.value.replace(/[^\x00-\x7F]/g, '');
+                if (cleaned !== e.target.value) onFieldChange('baseUrl', cleaned);
+              }}
+              placeholder="https://…/v1"
+              autoComplete="off"
+            />
           </div>
-          {/* 后台目录拉取的失败原因（2026-09-23）：原因就地显示 + 重试就在上一行
+        </div>
+      </section>
+
+      {/* ═══ 模型：可用模型 / 参数 / 目录（2026-09-23 三层 + 2026-11-30 R5 + 2026-11-21 IA）═══ */}
+      <section className="pp-sec" id="pp-sec-models" aria-label="模型">
+        <div className="pp-card">
+          <div className="pp-card-hd">
+            <span className="pp-card-title">模型</span>
+            <span className="pp-rule" />
+          </div>
+
+          {/* 后台目录拉取的失败原因（2026-09-23）：原因就地显示 + 重试就在可用模型表头
               （此前只在创作坞徽标 hover 里，那儿做不了任何补救） */}
           {catalogFail && (
             <div className="pp-catalog-fail" data-tip={catalogFail}>
@@ -443,161 +632,102 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               <span className="pp-catalog-fail-hint">已启用的模型不受影响；点上方「刷新目录」重试。</span>
             </div>
           )}
-          {models.length > 0 && (
-            <div className="pp-models-list">
-              {models.map((id) => {
-                // 生效输入模态（覆盖 ?? API 拉取 ?? 目录）——「视」徽标与创作坞门禁同链
-                const visionEffective = modelInput(provider, id).includes('image');
-                const visionOverride = provider.modelOverrides?.[id]?.input;
-                const visionMode =
-                  visionOverride === undefined ? 'inherit' : visionOverride.includes('image') ? 'image' : 'text';
-                // 生效参数（四层链：覆盖 ?? API 拉取 ?? 目录 ?? 缺省）：输入框直接显示
-                // **生效值**——选完模型就该是「已填好」的样子，不用再手抄一遍；用户改一个字
-                // 才写 modelOverrides（覆盖层），来源标注同步变成「手动设置」。
-                const winOverride = provider.modelOverrides?.[id]?.contextWindow;
-                const winEffective = modelContextWindow(provider, id, 0);
-                const outOverride = provider.modelOverrides?.[id]?.maxTokens;
-                const outEffective = modelMaxTokens(provider, id);
-                // 该模型的档位声明（API 拉取/目录/自定义）——推理等级面板的底稿。
-                const sourceMeta = provider.modelMeta?.[id];
-                const catalogDesc = getModel(id);
-                const declaredSourceEfforts = sourceMeta?.thinkingEfforts ?? catalogDesc?.thinkingEfforts;
-                const declaredSourceMap = sourceMeta?.thinkingLevelMap ?? catalogDesc?.thinkingLevelMap;
-                const reasoningSource =
-                  provider.modelOverrides?.[id]?.reasoningEfforts !== undefined
-                    ? '手动覆盖'
-                    : sourceMeta?.thinkingEfforts !== undefined || sourceMeta?.thinkingLevelMap !== undefined
-                      ? 'API 拉取'
-                      : catalogDesc?.thinkingEfforts !== undefined || catalogDesc?.thinkingLevelMap !== undefined
-                        ? '内置目录'
-                        : '未声明';
-                return (
-                  <div key={id} className="pp-model-item">
-                    <span className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} data-tip={id}>
-                      <span className="pp-model-chip-name">{modelDescriptor(provider, id)?.name ?? id}</span>
-                      {visionEffective && (
-                        <span className="pp-model-chip-vision" data-tip="视觉模型（覆盖 / API 拉取 / 目录声明）">
-                          视
-                        </span>
-                      )}
-                      {id === provider.model && (
-                        <span
-                          className="pp-model-chip-default"
-                          data-tip="「最近使用」= 最近在创作坞选用的模型——新卷自动跟从；不是 Provider 默认配置"
-                        >
-                          最近使用
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        className="pp-model-chip-param"
-                        data-tip="上下文窗口 / 最大输出"
-                        onClick={() => setParamModel(paramModel === id ? null : id)}
-                      >
-                        {paramModel === id ? '收起' : '参数'}
-                      </button>
-                      <button
-                        type="button"
-                        className="pp-model-chip-x"
-                        data-tip={`移除 ${id}`}
-                        aria-label={`移除 ${id}`}
-                        onClick={() => onRemoveModel(id)}
-                      >
-                        ✕
-                      </button>
-                    </span>
-                    {paramModel === id && (
-                      <div className="pp-model-params">
-                        <label className="pp-model-param">
-                          <span>上下文窗口</span>
-                          <input
-                            type="number"
-                            min={0}
-                            className={winOverride === undefined && winEffective > 0 ? 'is-derived' : undefined}
-                            value={winOverride ?? (winEffective > 0 ? winEffective : '')}
-                            placeholder="未知"
-                            data-tip="来自 API 拉取/目录时显示为灰字；改动这里 = 写入本模型的覆盖值（0/清空 = 回落自动值）"
-                            onChange={(e) =>
-                              onModelOverride(id, 'contextWindow', Number.parseInt(e.target.value, 10) || 0)
-                            }
-                          />
-                          <span className="pp-model-param-src" data-tip="该值的来源（用户手改 > API 拉取 > 目录）">
-                            {metaSource(provider, id, 'contextWindow')}
-                          </span>
-                        </label>
-                        <label className="pp-model-param">
-                          <span>最大输出</span>
-                          <input
-                            type="number"
-                            min={0}
-                            className={outOverride === undefined && outEffective > 0 ? 'is-derived' : undefined}
-                            value={outOverride ?? (outEffective > 0 ? outEffective : '')}
-                            placeholder="不钳制"
-                            data-tip="来自 API 拉取/目录时显示为灰字；改动这里 = 写入本模型的覆盖值（0/清空 = 回落自动值）"
-                            onChange={(e) => onModelOverride(id, 'maxTokens', Number.parseInt(e.target.value, 10) || 0)}
-                          />
-                          <span className="pp-model-param-src" data-tip="该值的来源（用户手改 > API 拉取 > 目录）">
-                            {metaSource(provider, id, 'maxTokens')}
-                          </span>
-                        </label>
-                        {/* 视觉声明开关（B5 · D-8①）：覆盖开 = ['text','image']（附图
-                         *  入口 + 请求期图投影放行）；关 = 清覆盖回落 API 拉取/目录声明。 */}
-                        <label className="pp-model-param">
-                          <span>视觉模型（图片输入）</span>
-                          <select
-                            className="sp-select"
-                            value={visionMode}
-                            aria-label="视觉输入声明"
-                            onChange={(e) => onModelVisionToggle(id, e.target.value as 'inherit' | 'text' | 'image')}
+
+          <div className="pp-model-work">
+            {/* ── 左：可用模型（创作坞下拉的唯一可选面）── */}
+            <div className="pp-model-col">
+              <div className="pp-f-label-row">
+                <label className="pp-f-label" htmlFor="pd-models-input">
+                  可用模型
+                </label>
+                <span className="pp-chip">{models.length} 个</span>
+                {/* oauth 订阅（Codex）：登录后也可从账号 API 拉取真实模型——非「账号自动提供」 */}
+                <button type="button" className="sp-btn-sm" disabled={fetching} onClick={handleFetch}>
+                  {fetching ? '拉取中…' : '刷新目录'}
+                </button>
+              </div>
+              {models.length > 0 && (
+                <div className="pp-models-list">
+                  {models.map((id) => (
+                    <div key={id} className="pp-model-item">
+                      <span className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} data-tip={id}>
+                        <span className="pp-model-chip-name">{modelDescriptor(provider, id)?.name ?? id}</span>
+                        {id === provider.model && (
+                          <span
+                            className="pp-model-chip-default"
+                            data-tip="「最近使用」= 最近在创作坞选用的模型——新卷自动跟从；不是 Provider 默认配置"
                           >
-                            <option value="inherit">跟随声明（{visionEffective ? '支持图片' : '纯文本'}）</option>
-                            <option value="image">强制支持图片</option>
-                            <option value="text">强制仅文本</option>
-                          </select>
-                          <span className="pp-model-param-src">{metaSource(provider, id, 'input')}</span>
-                        </label>
-                        {/* 推理等级声明（2026-10-22 对齐 DSH）：本模型提供哪些档位、
-                         *  每档请求里发送什么参数值。关闭 = 回落 API 拉取/目录声明。
-                         *  ⚡ 2026-11-21：思考档位不再有「本模型默认」这一层（设置页手动项
-                         *  已拆）——用哪一档只在创作坞按会话选。 */}
-                        <ModelReasoningLevels
-                          efforts={declaredSourceEfforts}
-                          sourceLevelMap={declaredSourceMap}
-                          sourceLabel={reasoningSource}
-                          value={provider.modelOverrides?.[id]?.reasoningEfforts}
-                          onChange={(next) => onModelReasoning(id, next)}
-                        />
-                        <span className="pp-model-params-hint">
-                          留空 = 用 API 拉取/目录值（都没有则上下文按未知处理、输出不钳制）；视觉生效 = 覆盖 ?? API 拉取
-                          ?? 目录；思考档位在创作坞的「思考」里按会话选。
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                            最近使用
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          className={`pp-model-chip-param${activeParam === id ? ' is-on' : ''}`}
+                          data-tip="在右侧面板编辑这个模型的参数（上下文窗口 / 最大输出 / 视觉 / 推理档位）"
+                          aria-expanded={activeParam === id}
+                          aria-controls={paramsPanelId(id)}
+                          onClick={() => setParamModel(activeParam === id ? null : id)}
+                        >
+                          {activeParam === id ? '收起' : '参数'}
+                        </button>
+                        <button
+                          type="button"
+                          className="pp-model-chip-x"
+                          data-tip={`移除 ${id}`}
+                          aria-label={`移除 ${id}`}
+                          onClick={() => onRemoveModel(id)}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="pp-models-add">
+                <input
+                  id="pd-models-input"
+                  className="sp-input"
+                  value={newModel}
+                  placeholder="输入模型 id 添加，如 deepseek-reasoner"
+                  autoComplete="off"
+                  onChange={(e) => setNewModel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      submitAdd();
+                    }
+                  }}
+                />
+                <button type="button" className="sp-btn-sm" onClick={submitAdd}>
+                  添加
+                </button>
+              </div>
+              {fetchMsg && <div className="pp-f-hint">{fetchMsg}</div>}
+              <div className="pp-f-hint">
+                创作坞模型下拉只列这里的模型。高亮项 = 最近在创作坞选用的模型，新卷自动跟从（不可在此改）；
+                移除高亮模型时自动回落到剩余列表第一个。
+              </div>
             </div>
-          )}
-          <div className="pp-models-add">
-            <input
-              id="pd-models-input"
-              className="sp-input"
-              value={newModel}
-              placeholder="输入模型 id 添加，如 deepseek-reasoner"
-              autoComplete="off"
-              onChange={(e) => setNewModel(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  submitAdd();
-                }
-              }}
-            />
-            <button type="button" className="sp-btn-sm" onClick={submitAdd}>
-              添加
-            </button>
+
+            {/* ── 右：参数面板（一次一个模型；没选就只给一句引导）── */}
+            <div className="pp-model-col">
+              <div className="pp-col-hd">
+                <span className="pp-f-label">模型参数</span>
+                {activeParam && <span className="pp-chip">{activeParam}</span>}
+              </div>
+              {activeParam ? (
+                renderModelParams(activeParam)
+              ) : (
+                <div className="pp-params-empty" data-tip="参数是「一次看一个模型」的任务面">
+                  <span className="pp-params-empty-icon" aria-hidden="true">
+                    ◫
+                  </span>
+                  <span>点左侧模型行上的「参数」，在这里改它的上下文窗口 / 最大输出 / 视觉 / 推理档位。</span>
+                </div>
+              )}
+            </div>
           </div>
-          {fetchMsg && <div className="pp-f-hint">{fetchMsg}</div>}
 
           {/* ── 模型目录（折叠）：远端事实 = 最近一次拉取的全量快照；勾选写「可用模型」 ── */}
           <div className="pp-catalog">
@@ -605,6 +735,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               type="button"
               className="pp-catalog-head"
               aria-expanded={catalogOpen}
+              aria-controls="pp-catalog-body"
               onClick={() => setCatalogOpen((v) => !v)}
             >
               <span className="pp-catalog-caret" aria-hidden="true">
@@ -616,7 +747,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               {catalogIds.length > 0 && <span className="pp-chip">{catalogIds.length} 个</span>}
             </button>
             {catalogOpen && (
-              <div className="pp-catalog-body">
+              <div className="pp-catalog-body" id="pp-catalog-body">
                 {catalogIds.length === 0 ? (
                   <div className="pp-f-hint">
                     还没有目录快照——点上方「刷新目录」从该提供方 /models
@@ -680,105 +811,81 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               </div>
             )}
           </div>
-
           <div className="pp-f-hint">
-            创作坞模型下拉只列「可用模型」；高亮项 = 最近在创作坞选用的模型，新卷自动跟从（不可在此改）。
-            移除高亮模型时自动回落到剩余列表第一个。 目录 =
-            该提供方 /models 的最近一次快照（只读）——点行上的「添加」才进可用模型，手动添加的不受目录变动影响。
+            目录 = 该提供方 /models 的最近一次快照（只读）——点行上的「添加」才进可用模型，手动添加的不受目录变动影响。
           </div>
         </div>
+      </section>
 
-        <div className="pp-field">
-          <div className="pp-f-label-row">
-            <label className="pp-f-label" htmlFor="pd-baseurl">
-              Base URL
-            </label>
-            <button
-              type="button"
-              className="sp-btn-sm"
-              data-tip={isFactoryUrl ? '当前已是默认地址' : '恢复出厂默认地址'}
-              disabled={isFactoryUrl}
-              onClick={onResetBaseUrl}
-            >
-              ↺ 默认
-            </button>
-          </div>
-          <input
-            id="pd-baseurl"
-            className="sp-input"
-            value={provider.baseUrl}
-            onChange={(e) => onFieldChange('baseUrl', e.target.value)}
-            onBlur={(e) => {
-              // 剥离非 ASCII（URL 只允许 ASCII），并同步写回 React 状态。
-              // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
-              const cleaned = e.target.value.replace(/[^\x00-\x7F]/g, '');
-              if (cleaned !== e.target.value) onFieldChange('baseUrl', cleaned);
-            }}
-            placeholder="https://…/v1"
-            autoComplete="off"
-          />
-        </div>
-
-        {/* ⚡ 2026-11-21：「默认思考档位」手动项已拆——思考档位只在创作坞按会话选
-            （见 ProviderDetail 的单模型「推理等级」：那只是档位声明，不是默认值）。 */}
-      </div>
-
-      {/* 高级连接配置（2026-09-17）：请求头——网关怪癖的用户可编辑面
-           （key 化 provider 名以在切行时重置编辑态） */}
-      <ProviderAdvanced key={provider.name} provider={provider} onChange={onAdvancedChange} />
-
-      {/* 配置文件（2026-09-24 配方改文件批）：provider 连接配置的**唯一权威**
-           是一份 YAML——人和 agent 都能直接改它，改完约 1 秒热生效。
-           这里只给路径、错误与两个入口（打开目录 / 重读），不再有导入导出动作。 */}
-      <ProviderDocCard doc={doc} myName={provider.name} onOpenDir={onOpenDocDir} onReload={onReloadDoc} msg={docMsg} />
-
-      <div className="pp-card">
-        <div className="pp-card-hd">
-          <span className="pp-card-title">诊断</span>
-          <span className="pp-rule" />
-        </div>
-        <div className="pp-test-row">
-          <button
-            type="button"
-            className={`pp-btn-test${test.phase === 'testing' ? ' testing' : ''}`}
-            disabled={test.phase === 'testing'}
-            onClick={onTest}
-          >
-            {test.phase === 'testing' ? <span className="pp-spin" /> : '⟳ '}测试连接
-          </button>
-          {testBlock}
-        </div>
-        <div className="pp-f-hint">
-          发送一次最小请求（1 token），验证 Key / Base URL / 模型三者可用。结果按提供方保存。
-        </div>
-        {provider.lastTest && (
-          <div className="pp-test-last">
-            {lastProbeValid ? (
-              <>
-                上次测试：
-                {provider.lastTest.status === 'ok'
-                  ? `成功 · ${formatLatency(provider.lastTest.latencyMs)}`
-                  : `失败${provider.lastTest.message ? ` · ${provider.lastTest.message}` : ''}`}{' '}
-                · {formatTestAt(provider.lastTest.at)}
-              </>
-            ) : (
-              '上次测试结果已失效（连接配置或 Key 已变更），请重测。'
-            )}
-          </div>
-        )}
-      </div>
-
-      {canDelete && (
-        <div className="pp-card pp-danger-card">
+      {/* ═══ 诊断 ═══ */}
+      <section className="pp-sec" id="pp-sec-diag" aria-label="诊断">
+        <div className="pp-card">
           <div className="pp-card-hd">
-            <span className="pp-card-title">危险区</span>
+            <span className="pp-card-title">诊断</span>
             <span className="pp-rule" />
           </div>
-          <button type="button" className="sp-btn-sm pp-btn-danger" onClick={onDelete}>
-            删除提供方 {provider.name}…
-          </button>
-          <div className="pp-f-hint">删除后系统凭据一并移除（保存后生效），不可恢复。</div>
+          <div className="pp-test-row">
+            <button
+              type="button"
+              className={`pp-btn-test${test.phase === 'testing' ? ' testing' : ''}`}
+              disabled={test.phase === 'testing'}
+              onClick={onTest}
+            >
+              {test.phase === 'testing' ? <span className="pp-spin" /> : '⟳ '}测试连接
+            </button>
+            {testBlock}
+          </div>
+          <div className="pp-f-hint">
+            发送一次最小请求（1 token），验证 Key / Base URL / 模型三者可用。结果按提供方保存。
+          </div>
+          {provider.lastTest && (
+            <div className="pp-test-last">
+              {lastProbeValid ? (
+                <>
+                  上次测试：
+                  {provider.lastTest.status === 'ok'
+                    ? `成功 · ${formatLatency(provider.lastTest.latencyMs)}`
+                    : `失败${provider.lastTest.message ? ` · ${provider.lastTest.message}` : ''}`}{' '}
+                  · {formatTestAt(provider.lastTest.at)}
+                </>
+              ) : (
+                '上次测试结果已失效（连接配置或 Key 已变更），请重测。'
+              )}
+            </div>
+          )}
         </div>
+      </section>
+
+      {/* ═══ 高级（连接怪癖）═══ */}
+      <section className="pp-sec" id="pp-sec-adv" aria-label="高级连接配置">
+        {/* 请求头（key 化 provider 名以在切行时重置编辑态） */}
+        <ProviderAdvanced key={provider.name} provider={provider} onChange={onAdvancedChange} />
+      </section>
+
+      {/* ═══ 配置文件（provider 连接配置的唯一权威是一份 YAML）═══ */}
+      <section className="pp-sec" id="pp-sec-file" aria-label="配置文件">
+        <ProviderDocCard
+          doc={doc}
+          myName={provider.name}
+          onOpenDir={onOpenDocDir}
+          onReload={onReloadDoc}
+          msg={docMsg}
+        />
+      </section>
+
+      {canDelete && (
+        <section className="pp-sec" id="pp-sec-danger" aria-label="危险区">
+          <div className="pp-card pp-danger-card">
+            <div className="pp-card-hd">
+              <span className="pp-card-title">危险区</span>
+              <span className="pp-rule" />
+            </div>
+            <button type="button" className="sp-btn-sm pp-btn-danger" onClick={onDelete}>
+              删除提供方 {provider.name}…
+            </button>
+            <div className="pp-f-hint">删除后系统凭据一并移除（保存后生效），不可恢复。</div>
+          </div>
+        </section>
       )}
     </section>
   );

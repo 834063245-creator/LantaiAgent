@@ -60,6 +60,27 @@ function replaceAt(entries: readonly Entry[], index: number, entry: Entry): Entr
   return entries.map((existing, at) => (at === index ? entry : existing));
 }
 
+/** 手改编辑器的常用档位组合（2026-11-21 §7.2 欠账 ③：逐行表格补预设）。
+ *  预设只换「有哪几档」，每档的 wire 值仍按当前声明（供应商映射）播种——
+ *  网关要 `high → "deep"` 时，套预设不会把它冲回档位名。 */
+const PRESETS: ReadonlyArray<{ id: string; label: string; levels: readonly ReasoningLevel[] }> = [
+  { id: 'basic', label: '关 / 低中高', levels: ['low', 'medium', 'high'] },
+  { id: 'middle', label: '关 / 中高', levels: ['medium', 'high'] },
+  { id: 'single', label: '关 / 高', levels: ['high'] },
+  { id: 'all', label: '全部档位', levels: THINKING_EFFORTS },
+];
+
+/** 预设 → 声明行（off 恒保留；每档沿用声明的 wire 值，没有则用档位名）。 */
+function presetEntries(levels: readonly ReasoningLevel[], sourceLevelMap: ThinkingLevelMap | undefined): Entry[] {
+  return [
+    ['off', sourceLevelMap?.off ?? null],
+    ...levels.map((level): Entry => {
+      const wire = sourceLevelMap?.[level];
+      return [level, typeof wire === 'string' && wire.trim() ? wire.trim() : level];
+    }),
+  ];
+}
+
 /** 某一行可选的档位：本行当前值 + 其它行未占用的档位（保持 canonical 序）。 */
 function choicesFor(level: ReasoningLevel, used: readonly ReasoningLevel[]): readonly ReasoningLevel[] {
   return ALL_LEVELS.filter((choice) => choice === level || !used.includes(choice));
@@ -177,6 +198,34 @@ export function ModelReasoningLevels({
         </span>
       ) : (
         <>
+          {/* 预设 + 重新同步（2026-11-21 §7.2 欠账 ③）：覆盖是「一次声明」，
+              用户不该为了常见组合逐行敲；网关改了声明也应有一步回到「按声明」。 */}
+          <fieldset className="pp-model-presets">
+            <legend className="pp-model-param-src">预设</legend>
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className="sp-btn-sm"
+                data-tip={`换成「${preset.label}」档位组合（每档参数值按当前声明保留）`}
+                onClick={() => {
+                  write(presetEntries(preset.levels, sourceLevelMap));
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="sp-btn-sm pp-preset-resync"
+              data-tip="把下面的覆盖重置为供应商 / 目录当前的声明（会丢弃手改的档位与参数值）"
+              onClick={() => {
+                write(seedEntries(efforts, sourceLevelMap));
+              }}
+            >
+              ↻ 按声明重新同步
+            </button>
+          </fieldset>
           {entries.length > 0 ? (
             <div className="pp-model-reasoning-row pp-model-reasoning-cols" aria-hidden="true">
               <span className="pp-model-param-src">档位</span>

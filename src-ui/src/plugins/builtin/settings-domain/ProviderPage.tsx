@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 // 控制台样式（2026-11-17 技术债批 B：整份从壳层 provider-settings.css 迁入本产物）
 import './provider-console.css';
+// 信息架构分片（2026-11-21：上帝文件预算下独立成片；必须排在基座之后）
+import './provider-console-ia.css';
 import type { ThinkingLevelMap } from '../../../provider/thinking';
 import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
@@ -16,8 +18,8 @@ import { type AddProviderEntry, AddProviderSheet } from './AddProviderSheet';
 // 曾经从这里直引内核路径，产物域会把整份模块连状态一起内联成副本；改走本包宿主桥。
 import type { AppSettings, ConnectionProbe, ProviderId, ProviderSettings } from './host';
 import {
-  ConfirmDialog,
   buildOauthHeaders,
+  ConfirmDialog,
   createProvider,
   defaultBaseUrl,
   getActiveProvider,
@@ -209,6 +211,7 @@ export function ProviderPage({
 
   // 连接身份一变化，旧的测试结果立刻失效（含本地瞬时测试面与持久 lastTest）。
   const selectedFingerprint = providerConnectionFingerprint(selectedProvider);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedFingerprint / apiKey 是刻意的失效触发器（effect 体内不读它们）——连接身份或 Key 一变就让旧探针退场，规则判为多余依赖正是这层「触发」语义
   useEffect(() => {
     setTests((current) => {
       if (!current.has(selectedProvider.name)) return current;
@@ -562,6 +565,7 @@ export function ProviderPage({
     void refreshOauthLoginMap();
   }, [refreshOauthLoginMap]);
   // 状态消息属于当前选中行：切行即清，避免 A 的 OAuth 回执挂在 B 上。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedProvider.name 是刻意的切行触发器（effect 体内只清状态，规则判为多余依赖）
   useEffect(() => {
     setOauthStatus(null);
   }, [selectedProvider.name]);
@@ -607,7 +611,7 @@ export function ProviderPage({
     } finally {
       setOauthBusy(false);
     }
-  }, [selectedProvider, refreshOauthLoginMap, refreshSelectedOauthAccounts, onCommitProvider, settings]);
+  }, [selectedProvider, refreshOauthLoginMap, refreshSelectedOauthAccounts]);
 
   /** 登出某账号。 */
   const handleOauthLogout = useCallback(
@@ -689,81 +693,85 @@ export function ProviderPage({
         </div>
       )}
 
-      <div className="pp-split">
-        <ProviderList
-          providers={settings.providers}
-          selected={selected}
-          current={settings.activeProvider}
-          onSelect={setSelected}
-          onAdd={() => {
-            setAddError('');
-            setAddOpen(true);
-          }}
-          oauthLoggedInMap={oauthLoggedInMap}
-          disabled={oauthBusy}
-        />
-        <ProviderDetail
-          key={selectedProvider.name}
-          provider={selectedProvider}
-          canDelete={settings.providers.length > 1}
-          test={tests.get(selectedProvider.name) ?? { phase: 'idle', msg: '' }}
-          keyState={{
-            saved: !keyDirtyMap.get(selectedProvider.name) && !!selectedProvider.apiKey?.trim(),
-            pendingClear: pendingClears.includes(selectedProvider.name),
-            visible: !!keyVisibleMap.get(selectedProvider.name),
-            inputRef: keyInputRef,
-          }}
-          actions={{
-            onFieldChange: (field, value) => handleFieldChange(selectedProvider.name, field, value),
-            onFetchModels: handleRefreshModels,
-            onAddModel: (modelId) => handleAddModel(selectedProvider.name, modelId),
-            onRemoveModel: (modelId) => handleRemoveModel(selectedProvider.name, modelId),
-            onSetEnabledModels: (ids) => handleSetEnabledModels(selectedProvider.name, ids),
-            onModelOverride: (modelId, field, value) =>
-              handleModelOverride(selectedProvider.name, modelId, field, value),
-            onModelVisionToggle: (modelId, value) => handleModelVisionToggle(selectedProvider.name, modelId, value),
-            onModelReasoning: (modelId, value) => handleModelReasoning(selectedProvider.name, modelId, value),
-            onAdvancedChange: (next) => handleAdvancedChange(selectedProvider.name, next),
-            doc: {
-              path: providersDoc.path,
-              status: providersDoc.status,
-              staleHint: providersDoc.staleHint === true,
-              onRetryPath: providersDoc.onRetryPath,
-            },
-            onOpenDocDir: handleOpenDocDir,
-            onReloadDoc: handleReloadDoc,
-            docMsg,
-            onTest: handleTest,
-            onClearKey: () => setClearTarget(selectedProvider.name),
-            onResetBaseUrl: () => {
-              const nextBaseUrl = defaultBaseUrl(selectedProvider.name, selectedProvider.kind);
-              if (!nextBaseUrl) return;
-              onCommitProvider(
-                updateProvider(settings, selectedProvider.name, { baseUrl: nextBaseUrl, lastTest: undefined }),
-              );
-            },
-            onToggleKeyVisible: () =>
-              setKeyVisibleMap((m) => new Map(m).set(selectedProvider.name, !m.get(selectedProvider.name))),
-            onDelete: () => setDelTarget(selectedProvider.name),
-          }}
-          oauthData={{
-            accounts: oauthAccountsState,
-            busy: oauthBusy,
-            status: oauthStatus,
-            activeAccountId: selectedProvider.oauthAccountId,
-            onSelectAccount: (accountId) => {
-              onCommitProvider(
-                updateProvider(settings, selectedProvider.name, {
-                  oauthAccountId: accountId || undefined,
-                  lastTest: undefined,
-                }),
-              );
-            },
-            onLogin: handleOauthLogin,
-            onLogout: handleOauthLogout,
-            onCancel: handleOauthCancel,
-          }}
-        />
+      {/* 版式容器（2026-11-21 IA 批）：container-type 的落点——窄窗时双栏降级成单栏
+          靠 @container 查询，而不是靠窗口宽度（设置页只占面板的一部分）。 */}
+      <div className="pp-console-body">
+        <div className="pp-split">
+          <ProviderList
+            providers={settings.providers}
+            selected={selected}
+            current={settings.activeProvider}
+            onSelect={setSelected}
+            onAdd={() => {
+              setAddError('');
+              setAddOpen(true);
+            }}
+            oauthLoggedInMap={oauthLoggedInMap}
+            disabled={oauthBusy}
+          />
+          <ProviderDetail
+            key={selectedProvider.name}
+            provider={selectedProvider}
+            canDelete={settings.providers.length > 1}
+            test={tests.get(selectedProvider.name) ?? { phase: 'idle', msg: '' }}
+            keyState={{
+              saved: !keyDirtyMap.get(selectedProvider.name) && !!selectedProvider.apiKey?.trim(),
+              pendingClear: pendingClears.includes(selectedProvider.name),
+              visible: !!keyVisibleMap.get(selectedProvider.name),
+              inputRef: keyInputRef,
+            }}
+            actions={{
+              onFieldChange: (field, value) => handleFieldChange(selectedProvider.name, field, value),
+              onFetchModels: handleRefreshModels,
+              onAddModel: (modelId) => handleAddModel(selectedProvider.name, modelId),
+              onRemoveModel: (modelId) => handleRemoveModel(selectedProvider.name, modelId),
+              onSetEnabledModels: (ids) => handleSetEnabledModels(selectedProvider.name, ids),
+              onModelOverride: (modelId, field, value) =>
+                handleModelOverride(selectedProvider.name, modelId, field, value),
+              onModelVisionToggle: (modelId, value) => handleModelVisionToggle(selectedProvider.name, modelId, value),
+              onModelReasoning: (modelId, value) => handleModelReasoning(selectedProvider.name, modelId, value),
+              onAdvancedChange: (next) => handleAdvancedChange(selectedProvider.name, next),
+              doc: {
+                path: providersDoc.path,
+                status: providersDoc.status,
+                staleHint: providersDoc.staleHint === true,
+                onRetryPath: providersDoc.onRetryPath,
+              },
+              onOpenDocDir: handleOpenDocDir,
+              onReloadDoc: handleReloadDoc,
+              docMsg,
+              onTest: handleTest,
+              onClearKey: () => setClearTarget(selectedProvider.name),
+              onResetBaseUrl: () => {
+                const nextBaseUrl = defaultBaseUrl(selectedProvider.name, selectedProvider.kind);
+                if (!nextBaseUrl) return;
+                onCommitProvider(
+                  updateProvider(settings, selectedProvider.name, { baseUrl: nextBaseUrl, lastTest: undefined }),
+                );
+              },
+              onToggleKeyVisible: () =>
+                setKeyVisibleMap((m) => new Map(m).set(selectedProvider.name, !m.get(selectedProvider.name))),
+              onDelete: () => setDelTarget(selectedProvider.name),
+            }}
+            oauthData={{
+              accounts: oauthAccountsState,
+              busy: oauthBusy,
+              status: oauthStatus,
+              activeAccountId: selectedProvider.oauthAccountId,
+              onSelectAccount: (accountId) => {
+                onCommitProvider(
+                  updateProvider(settings, selectedProvider.name, {
+                    oauthAccountId: accountId || undefined,
+                    lastTest: undefined,
+                  }),
+                );
+              },
+              onLogin: handleOauthLogin,
+              onLogout: handleOauthLogout,
+              onCancel: handleOauthCancel,
+            }}
+          />
+        </div>
       </div>
 
       {(providerDirty || credentialDirty) && (
