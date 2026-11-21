@@ -248,6 +248,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
       st.sessions.map((s) => ({
         id: s.id,
         label: s.label,
+        // 与卷目录同口径：UI 消息数（catalogMsgCount 的 UI 快照分支）——开/合不得两把尺。
         msgCount: msgStoreFor(pid, s.id).getState().messages.length,
       })),
     );

@@ -8,6 +8,7 @@
 import { log } from '../../../agent/logger';
 import { sessionExecute } from '../../../composition/session-persistence-service';
 import { bumpSessionVolumes } from '../../../state/session-volumes-store';
+import { countUiMessagesFromProvider } from './session-message-count';
 import { resetIssueLedgersForTests } from './session-paths';
 import { readVolumeData } from './session-read';
 import { resetVolumeGuardForTests } from './session-volume-guard';
@@ -86,8 +87,11 @@ export interface SavedSessionRow {
 const CATALOG_ID = '_index';
 /** 目录文件版本（结构变更即 +1；版本不认 = 视为无目录重建）。
  *  v2（2026-09-18）：行加 `parentId`（会话树「枝」的血缘）——v1 行没有这一栏，
- *  不认版本即整份重建（补建读头行，血缘一次到位），不做就地补读。 */
-const CATALOG_VERSION = 2;
+ *  不认版本即整份重建（补建读头行，血缘一次到位），不做就地补读。
+ *  v3（2026-11-21）：`msgCount` 改用与摊开态同一把尺（UI 快照消息数；无快照回退
+ *  到非 system 日志消息数）。v2 按事件日志数出的块数会在合卷/摊开时跳变，
+ *  故不认旧版本、整份重建，避免旧口径残留。 */
+const CATALOG_VERSION = 3;
 /** 首次补建的**阻塞**预算（ms）：预算内补齐多少算多少，其余转后台（不吊死首屏）。 */
 const CATALOG_BLOCK_BUDGET_MS = 2500;
 /** 补建并发（每卷 = 日志 + 投影缓存两跳读；并发过高只是把 IPC 挤满）。 */
@@ -212,16 +216,34 @@ export function loadCatalog(cat: VolumeCatalog, root: string): Promise<void> {
   return cat.loading;
 }
 
+/** 清单行块数（唯一口径）：**优先 UI 快照消息数**，与摊开态 `msgStore.messages.length`
+ *  同尺；无 UI 快照（旧卷 / 空快照 / 陈旧缓存）才按开卷重建规则从事件日志推导
+ *  （`countUiMessagesFromProvider`——system/tool 不入 UI，内部来文按重建语义处理）。
+ *
+ *  旧实现直接数事件日志里的非 system 消息：那里一条助手回复常拆成多步
+ *  assistant/tool 消息，摊开态数的却是 UI 消息（一次来文 + 一次回复）。同一卷合卷
+ *  前后因此从 4 块跳成 67 块（真机卷 68 实测），是两把尺而非数据变化。 */
+function catalogMsgCount(data: {
+  messages?: ReadonlyArray<{ role?: string; content?: string }>;
+  uiMessages?: ReadonlyArray<unknown>;
+}): number | null {
+  if (Array.isArray(data.uiMessages) && data.uiMessages.length > 0) return data.uiMessages.length;
+  if (!Array.isArray(data.messages)) return null;
+  return countUiMessagesFromProvider(data.messages);
+}
+
 /** 单卷补建：读该卷日志 + 投影缓存（老实现的全量读，**每卷一生一次**）。 */
 async function hydrateVolumeRow(projectPath: string, id: number): Promise<SavedSessionRow | null> {
   const data = await readVolumeData(projectPath, id);
   if (!data) return null;
+  const msgCount = catalogMsgCount(data);
+  if (msgCount == null) return null;
   return {
     id: data.id || id,
     // 原样带出（空 = 未命名）——显示兜底是**呈现层**的事（state/volume-name），
     // 不在这里把「案卷 N」写进数据（那正是旧实现把显示值洗成真值的路径）。
     label: data.label ?? '',
-    msgCount: (data.messages ?? []).filter((m) => m.role !== 'system').length,
+    msgCount,
     savedAt: data.savedAt || '',
     // 血缘 = 卷日志头行（`readVolumeData` 已从头行取；缺 = 根卷）
     ...(data.parentId != null ? { parentId: data.parentId } : {}),
@@ -327,20 +349,22 @@ export function dropCatalogRow(root: string, id: number): void {
   flushCatalog(cat, root);
 }
 
-/** 卷清单行由快照派生（写面就地更行的唯一形状来源——与补建同口径：
- *  块数 = 非 system 消息数）。快照无 messages（只改元数据的写）= 无行可更
- *  （调用方退回摘行——下次清点补建，不猜块数）。 */
+/** 卷清单行由快照派生（写面就地更行的唯一形状来源）：块数走 `catalogMsgCount`
+ *  同一口径（UI 快照优先；无快照才按开卷重建规则推导）。快照无 messages 且无
+ *  uiMessages（只改元数据的写）= 无行可更（调用方退回摘行——下次清点补建，不猜块数）。 */
 export function rowFromSnapshot(data: {
   id: number;
   label: string;
   savedAt: string;
-  messages?: ReadonlyArray<{ role?: string }>;
+  messages?: ReadonlyArray<{ role?: string; content?: string }>;
+  uiMessages?: ReadonlyArray<unknown>;
 }): SavedSessionRow | null {
-  if (!Array.isArray(data.messages)) return null;
+  const msgCount = catalogMsgCount(data);
+  if (msgCount == null) return null;
   return {
     id: data.id,
     label: data.label, // 原样（空 = 未命名；显示兜底在呈现层）
-    msgCount: data.messages.filter((m) => m.role !== 'system').length,
+    msgCount,
     savedAt: data.savedAt,
   };
 }

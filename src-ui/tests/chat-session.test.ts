@@ -372,8 +372,41 @@ describe('ChatPanel session persistence', () => {
       });
       // 目录已落盘（下次清点直接用它）
       const cat = catalogOfDisk(files);
-      expect(cat.ver).toBe(2);
+      expect(cat.ver).toBe(3);
       expect(Object.keys(cat.rows).sort()).toEqual(['1', '2']);
+    });
+
+    it('块数口径与摊开态一致：优先 UI 快照消息数，不数事件日志的 assistant/tool 步', async () => {
+      panel = createChatPanel();
+      useShellStore.setState({ projectPath: P });
+      const files: Record<string, string> = {};
+      // 同一条助手回复在事件日志里拆成 assistant + tool 两步；UI 只有一来一答。
+      const splitReply = [
+        { role: 'user', content: '问' },
+        { role: 'assistant', content: '答' },
+        { role: 'tool', content: '工具回执' },
+      ];
+      seedVolume(files, 4, { label: '双尺卷', msgs: splitReply });
+      // 无 UI 快照的旧卷：回退也必须按开卷重建口径（user + assistant = 2；tool 不算）。
+      seedVolume(files, 5, { label: '无快照卷', msgs: splitReply });
+      files[`${ROOT}/4.json`] = cacheText(4, {
+        label: '双尺卷',
+        uiMessages: [
+          { role: 'user', _id: 'm1', text: '问' },
+          { role: 'assistant', _id: 'm2', parts: [], status: 'done', respondingTo: 'm1' },
+        ],
+      });
+      mockSessionDisk(files);
+
+      const result = await panel.listSavedSessions(P);
+      expect(result.find((r) => r.id === 4)?.msgCount).toBe(2); // 与摊开态 msgStore.messages.length 同一把尺（日志数会是 3）
+      expect(result.find((r) => r.id === 5)?.msgCount).toBe(2); // 无 UI 快照：按开卷重建口径回退，不数 tool
+      expect((catalogOfDisk(files).rows as Record<string, { msgCount: number }>)['4']?.msgCount).toBe(2);
+
+      // 写面就地更行也必须沿用 UI 快照口径（改名不把 2 改回日志口径 3）
+      await panel.renameSavedSession(4, '双尺卷改');
+      const afterRename = await panel.listSavedSessions(P);
+      expect(afterRename.find((r) => r.id === 4)?.msgCount).toBe(2);
     });
 
     it('稳态清点零卷体读（几百卷也只是一份小 JSON）；跨「重启」仍不读卷体', async () => {
@@ -431,7 +464,7 @@ describe('ChatPanel session persistence', () => {
       const result = await panel.listSavedSessions(P);
       expect(result.map((r) => r.id)).toEqual([3]);
       expect(result[0].label).toBe('丙'); // 真值来自卷体，不采信不认版本的目录
-      expect(catalogOfDisk(files).ver).toBe(2);
+      expect(catalogOfDisk(files).ver).toBe(3);
     });
 
     it('v1 目录（无血缘栏）不认版本 → 整份重建：血缘从卷日志头行一次到位', async () => {
@@ -450,7 +483,7 @@ describe('ChatPanel session persistence', () => {
       expect(result.find((r) => r.id === 1)?.parentId).toBeUndefined(); // 根卷无父
       expect(result.find((r) => r.id === 2)?.parentId).toBe(1); // 枝卷的边
       expect(disk.volumeReads().length).toBeGreaterThan(0); // 重建 = 真读头行
-      expect(catalogOfDisk(files).ver).toBe(2);
+      expect(catalogOfDisk(files).ver).toBe(3);
       expect((catalogOfDisk(files).rows as Record<string, { parentId?: number }>)['2']?.parentId).toBe(1);
     });
 
