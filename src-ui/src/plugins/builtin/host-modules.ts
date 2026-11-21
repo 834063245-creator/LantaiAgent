@@ -296,8 +296,11 @@ import {
   searchModels,
 } from '../../provider/catalog';
 import {
+  credentialRevision,
   invalidateCredentialCache,
   invalidateOauthCache,
+  noteCredentialDeleted,
+  noteCredentialStored,
   resolveApiKey,
   resolveOauthToken,
 } from '../../provider/credentials';
@@ -942,10 +945,13 @@ const faceDeps = {
   buildOauthHeaders,
   createLiveProvider,
   createProvider,
+  credentialRevision,
   defaultBaseUrl,
   invalidateCredentialCache,
   invalidateOauthCache,
   loadProvidersDoc,
+  noteCredentialDeleted,
+  noteCredentialStored,
   markDynamicFetchStart,
   mergeDynamicModels,
   mountDialogFocus,

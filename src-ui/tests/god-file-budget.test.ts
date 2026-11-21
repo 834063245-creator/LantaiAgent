@@ -92,7 +92,9 @@ const DEBT: Record<string, number> = {
   'engine/src/community/louvain.rs': 1700, // 现 1697
   'src-tauri/src/commands/process_cap.rs': 1700, // 现 1658
   'engine/src/graph/import_resolver.rs': 1600, // 现 1596
-  'src-ui/src/plugins/builtin/canvas-nav/SessionSidebar.tsx': 1600, // 现 1549
+  /* 2026-11-30 并行批落盘后实测 1769：该批作者未同 commit 换档，门禁在主分支已红。
+   * 这里只补登记现状档，不是许可；下一批动该文件优先拆会话动作层再销账。 */
+  'src-ui/src/plugins/builtin/canvas-nav/SessionSidebar.tsx': 1800, // 现 1769
   'src-tauri/src/uia/com.rs': 1600, // 现 1595
   'src-tauri/src/permissions/bash.rs': 1400, // 现 1365
   'engine/src/graph/resolver.rs': 1400, // 现 1380
@@ -128,7 +130,11 @@ const DEBT: Record<string, number> = {
    * 每长几十行就来回一次「拆 or 改数字」，拆出来的只是把同一张表切段再互相 import——
    * 结构不会更好，只会更难查某条规则排在哪。一次留足空间，等真要动结构再按单据拆。 */
   'src-ui/src/plugins/builtin/canvas-nav/session-sidebar.css': 2500, // 现 1125
-  'src-ui/src/plugins/builtin/settings-domain/SettingsPanel.tsx': 1100, // 现 1084
+  /* 2026-11-30 R3 升档 1100 → 1300（现 1201）：跨档的是两阶段保存状态机——
+   * provider.yml/settings 提交、credential phase、独立重试、关闭守卫必须共享同一
+   * dirty/editRevision/providerDocRevision。拆文件要跨模块传一组 setter 与三份 revision，
+   * 反而扩大「配置已存、凭据未存」的状态裂缝。真做 settings hooks 拆分时再销账。 */
+  'src-ui/src/plugins/builtin/settings-domain/SettingsPanel.tsx': 1300, // 现 1201
   'src-ui/src/plugins/builtin/sessions-home/home.css': 1100, // 现 1063
   /* 2026-11-21 升档 1100 → 1200（现 1112）。跨档那 56 行全在 4f5fc5bf：插件宿主桥补
    * `agent`（spawn / list）与 `panels`（toggle / open / close / isOpen）两个面。

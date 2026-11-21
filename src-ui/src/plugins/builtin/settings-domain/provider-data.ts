@@ -33,6 +33,8 @@ import {
   getCatalogVendors,
   getDefaultModel,
   invalidateCredentialCache,
+  noteCredentialDeleted,
+  noteCredentialStored,
   PROVIDER_PROTOCOL_DEFAULTS,
   typedRpc,
   VENDOR_TEMPLATES,
@@ -75,6 +77,8 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
       // 「null」字面量护栏：毒化残留的 apiKey:"null" 绝非真 key，绝不写入凭据库
       try {
         await typedRpc('credential_store', { provider: p.name, key });
+        // R4：值真变化才 bump 凭据 revision——探针指纹据此失效（同长度换 Key 也中）。
+        noteCredentialStored(p.name, key);
         // 日志可观测性批 2：**逐 provider** 记 ok/err——「保存了但没写进凭据库」
         // 与「写进去了」在日志上必须长得不一样（只记长度，绝不落明文）
         credStore({ provider: p.name, ok: true });
@@ -110,6 +114,8 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
 export async function removeSecret(providerName: ProviderId): Promise<{ ok: boolean; error?: string }> {
   try {
     await typedRpc('credential_delete', { provider: providerName });
+    // R4：删除也推进凭据 revision（旧探针不能继续被当成当前配置）。
+    noteCredentialDeleted(providerName);
     // Phase C：写穿失效凭据缓存（同 persistSecrets——含 2026-09-28 的产物副本
     // 修正：必须走宿主桥出口，否则失效的是产物私有副本的缓存）
     invalidateCredentialCache(providerName);

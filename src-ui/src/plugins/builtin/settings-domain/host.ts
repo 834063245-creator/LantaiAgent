@@ -71,7 +71,14 @@ export {
   onDynamicFetchChange,
   recordDynamicFetchResult,
 } from '../../../provider/catalog';
-export { invalidateCredentialCache, invalidateOauthCache, resolveOauthToken } from '../../../provider/credentials';
+export {
+  credentialRevision,
+  invalidateCredentialCache,
+  invalidateOauthCache,
+  noteCredentialDeleted,
+  noteCredentialStored,
+  resolveOauthToken,
+} from '../../../provider/credentials';
 export { createLiveProvider } from '../../../provider/live';
 export { buildOauthHeaders, oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
 export { intentOf } from '../../../provider/providers-doc';

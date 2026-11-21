@@ -28,6 +28,87 @@ const OAUTH_RPC_TIMEOUT_MS = 30_000;
 const _keyCache = new Map<ProviderId, string>();
 const _inflight = new Map<ProviderId, Promise<string>>();
 
+// ── R4：凭据 revision（供探针指纹使用）────────────────────────────────
+//
+// 探针此前只把 Key 长度写进指纹：同长度换 Key 不会让旧探针失效。revision 在
+// 每次**实际值发生变化**的 credential_store/delete 后 +1，并持久化到独立本机键；
+// 判断「是否变化」用不可逆摘要（只存摘要，不存 Key）。探针指纹只含 revision，
+// 不把摘要写进 lastTest，避免额外暴露。
+const CREDENTIAL_REVISIONS_KEY = 'hologram_credential_revisions_v1';
+interface CredentialRevisionEntry {
+  revision: number;
+  /** 不可逆 FNV-1a 摘要；null = 已删除/当前无 Key。 */
+  digest: string | null;
+}
+let _credentialRevisions: Map<string, CredentialRevisionEntry> | null = null;
+
+function keyDigest(key: string): string {
+  // FNV-1a 32-bit：非加密、但足以做「同长度不同 Key」的变化检测；不可逆。
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function revisionStore(): Map<string, CredentialRevisionEntry> {
+  if (_credentialRevisions) return _credentialRevisions;
+  const next = new Map<string, CredentialRevisionEntry>();
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(CREDENTIAL_REVISIONS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        for (const [name, value] of Object.entries(parsed)) {
+          if (!value || typeof value !== 'object') continue;
+          const entry = value as { revision?: unknown; digest?: unknown };
+          if (typeof entry.revision !== 'number' || !Number.isFinite(entry.revision)) continue;
+          if (entry.digest !== null && typeof entry.digest !== 'string') continue;
+          next.set(name, { revision: Math.max(0, Math.floor(entry.revision)), digest: entry.digest });
+        }
+      }
+    }
+  } catch {
+    // 腐坏 revision 表 = 从 0 开始；探针最多被判 stale，不阻断凭据解析。
+  }
+  _credentialRevisions = next;
+  return next;
+}
+
+function persistRevisionStore(): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(CREDENTIAL_REVISIONS_KEY, JSON.stringify(Object.fromEntries(revisionStore())));
+  } catch {
+    // 写不进 localStorage 时本进程仍按内存 revision 工作；重启后退化为旧指纹。
+  }
+}
+
+/** 当前凭据 revision（0 = 从未经本应用写入/删除过）。 */
+export function credentialRevision(name: string): number {
+  return revisionStore().get(name)?.revision ?? 0;
+}
+
+/** credential_store 成功后记录：Value 真变化才 bump（同 Key 重写不误伤探针）。 */
+export function noteCredentialStored(name: string, key: string): void {
+  const store = revisionStore();
+  const digest = keyDigest(key);
+  const prev = store.get(name);
+  if (prev?.digest === digest) return;
+  store.set(name, { revision: (prev?.revision ?? 0) + 1, digest });
+  persistRevisionStore();
+}
+
+/** credential_delete 成功后记录：原本有 Key 才 bump；重复删同一空位是 no-op。 */
+export function noteCredentialDeleted(name: string): void {
+  const store = revisionStore();
+  const prev = store.get(name);
+  if (prev?.digest === null) return;
+  store.set(name, { revision: (prev?.revision ?? 0) + 1, digest: null });
+  persistRevisionStore();
+}
+
 /** 解析某提供方的 API Key（内存缓存 + 在途去重；空串 = 已解析为空）。
  *  ⚠ 只有**真解析过**的结果才进缓存（含「确实没有 Key」的空串负缓存）；
  *  解析失败（IPC 抛错/超时）不缓存（2026-09-13 修）——否则一次瞬态 IPC 故障
@@ -174,4 +255,14 @@ export function invalidateCredentialCache(name?: ProviderId): void {
 export function _resetCredentialCacheForTests(): void {
   _keyCache.clear();
   _inflight.clear();
+}
+
+/** 测试复位（生产不调用）：清内存并删持久 revision 表。 */
+export function _resetCredentialRevisionsForTests(): void {
+  _credentialRevisions = new Map();
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(CREDENTIAL_REVISIONS_KEY);
+  } catch {
+    // ignore
+  }
 }

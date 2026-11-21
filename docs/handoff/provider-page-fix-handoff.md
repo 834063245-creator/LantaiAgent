@@ -18,8 +18,9 @@ Provider 页问题来自多写入面、多真相源、缺少保存事务与配�
 **R5 本轮已完成（产品拍板 A + 自动回落第一个）**：`model` 从 providers.yml 意图迁出，
 成为本机「最近使用」运行态；Provider 页只管理 `models`，目录/可用集移除当前模型时自动回落第一个。
 
-**R3/R4/R6/R7 本轮已完成**：R3 两阶段保存；R4 凭据 revision 让同长度换 Key 也失效旧探针；
+**R1-R7 已完成，R9 本轮未复现**：R3 两阶段保存；R4 凭据 revision 让同长度换 Key 也失效旧探针；
 R6 ModelSelector 显示元数据统一走 provider 作用域描述符；R7 添加弹层可选新行 OAuth 账号。
+代码风险项已清空，只剩 R8 真实设备人工验收。
 
 ## 1. 思考档位最终语义
 
@@ -100,31 +101,34 @@ OAuth 登录/多账号/登出；oauthAccountId 重启生效；watcher 冲突阻�
 自动化已覆盖：多账号选择与落盘、两阶段凭据失败重试、conflict/fatal 重启、迁移与回落。
 **仍需人工**：真实浏览器 device-flow 授权、多账号实际 token 请求、真机凭据库锁定/恢复。
 
-### R9（已知测试环境问题）
-全量并行时 tests/composer-sheet.test.tsx 的 pp-goal-strip 有跨用例污染；单独跑通过，和 Provider 改动无关。
-本轮复跑 `composer-sheet.test.tsx` 5/5 通过；全量套件单次命令超过 5 分钟窗口，未取得最终汇总。
+### R9（已知测试环境问题；本轮未复现）
+全量并行时 tests/composer-sheet.test.tsx 的 pp-goal-strip 曾有跨用例污染；单独跑通过，和 Provider 改动无关。
+2026-11-30 本轮全量并行复跑：`composer-sheet.test.tsx` 5/5 通过，整套 537 文件 / 5453 用例全绿。
+暂按未复现收口；若后续再现，优先查全局 store/localStorage 的测试复位。
 
 ## 3. 已验证
 
-- tsc --noEmit：通过（R4/R7 完成后复跑）。
+- tsc --noEmit：通过（全部改动完成后复跑）。
+- **全量 Vitest：537 个测试文件、5453 用例全通过。**
 - Provider + 设置 + ModelSelector 过滤套件 43 个测试文件、537 用例：全通过。
 - 相邻组合/选择器/提示词套件 9 文件、78 用例：全通过。
 - R1/R2 回归：fatal 跨重启备份恢复、坏节跨重启回落、保存时磁盘外部改写冲突、
   watcher 已重读的过期 revision 冲突、未点名有效节保留 / pendingDeletes 显式删除。
 - R5 回归：旧 `model` 迁移并从 YAML 删除、最近使用落本机并跨重启、
   外部 `models` 移除当前项自动回落、Provider 页移除当前模型顶位。
-- R3 回归：配置提交成功后凭据删除失败 → 显示第二阶段待重试 → 只重试凭据成功。
+- R3 回归：配置提交成功后凭据删除失败 -> 显示第二阶段待重试 -> 只重试凭据成功。
 - R6 回归：同名模型 id 按 Provider 显示各自名字/视觉能力，不串全局目录。
 - R4 回归：同长度换 Key 推进 revision、旧探针失效；同 Key 重写不 bump。
 - R7 回归：两 OAuth 账号选择 `user-2` 后，新行 `oauthAccountId` 正确落盘。
-- `composer-sheet.test.tsx` 单跑 5/5 通过。
-- build-builtin-plugins：41 个内置插件产物自包含校验通过。
+- `composer-sheet.test.tsx` 单跑与全量并行均 5/5 通过。
+- build-builtin-plugins：41 个内置插件产物自包含校验通过；face.json 指纹与
+  `host-surface.baseline.json`（`aabd497d`）一致。
 - 测试命令入口：cd src-ui 后跑 node .\node_modules\vitest\vitest.mjs run（文件列表见 git diff / 新增测试）。
 
 ## 4. 部署警告
 
 设置域 faceDeps 本次新增 `credentialRevision` / `noteCredentialDeleted` / `noteCredentialStored`
-（94 键），产物指纹已变。只替换 dist-plugins 不够，旧 exe 会拒载新产物；
+（94 键，宿主面基线指纹 `aabd497d`），产物指纹已变。只替换 dist-plugins 不够，旧 exe 会拒载新产物；
 必须重建 exe：cd src-tauri && cargo tauri build（或 --no-bundle）。
 
 ## 5. 关键文件
@@ -137,33 +141,6 @@ Provider 页：ProviderPage/ProviderDetail/ModelReasoningLevels/SettingsPanel/se
 
 1. 先读本文和 docs/design/provider-system-spec.md 的思考档位/OAuth 章节。
 2. 不重做第 0 节的已修项。
-3. R1/R2/R3/R4/R5/R6/R7 已完成；代码风险项清空。
-4. 只剩 R8 人工真机验收：OAuth 多账号、文件冲突、fatal 重启、最近模型迁移、凭据重试。
-5. UI/UX：本轮只修交互正确性；信息架构、视觉回归、无障碍仍未做，见第 7.2 节。
-
-## 7. UI/UX 交接
-
-### 7.1 已完成的 UI/UX 改动
-
-- 思考档位区改名为「推理档位声明」，加来源 chip：API 拉取 / 内置目录 / 手动覆盖 / 未声明。
-- 未手动覆盖时直接展示生效档位与 wire 映射；按钮为「手动覆盖 / 恢复声明」，不再像默认档位选择器。
-- 视觉输入由二态开关改为三态 select：跟随声明 / 强制支持图片 / 强制仅文本。
-- OAuth 新增「请求使用账号」选择器；缺省「自动（最近登录）」，显式选择后显示手动账号。
-- 测试连接显示「结果已失效」提示；草稿测试只留在面板内，不写已保存健康状态。
-- 保存条有 saving 状态、外部冲突态、「放弃暂存并重读」出口。
-- 新增 Provider 弹层内联显示保存失败错误。
-- 改 Key/name/kind/baseUrl 时清空旧拉取态与启用集。
-- API Key / Base URL onBlur 清理会写回 React state。
-- 恢复默认 URL 仅对该 Provider 默认值判定。
-- ProviderDetail 按 provider key 重挂，切行不串本地状态。
-- headers textarea 跟随外部 reload 同步。
-- 删除后同名重建不继承旧 lastTest/catalog/modelMeta 的视觉残留。
-
-### 7.2 仍未做的 UI/UX 结构性问题
-
-- 信息架构未整体重做：仍是「列表 + 详情 + 高级 + 参数」纵向堆叠，缺少按任务分组/折叠/锚点导航。
-- 「模型目录」勾选区与「参数」区职责仍重，长列表滚动与定位成本高。
-- 手动覆盖编辑器仍是逐行表格，无档位预设、无一键「从 API 重新同步」。
-- 窄窗/低分辨率下 Provider 详情双栏未做真机验证。
-- 无视觉回归截图基线：本轮只有 DOM/行为测试。
-- 三态 select、账号选择器的键盘/读屏路径未做真机无障碍验证。
+3. R1-R7 已完成；代码风险项清空。
+4. 只剩 R8 人工真机验收：OAuth 多账号、文件冲突、fatal 重启、最近模型迁移、凭据重试、
+   部署新 exe 后多账号重启仍生效。

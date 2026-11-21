@@ -13,6 +13,7 @@
 // = 正常；已登录未测 = 已配置；未登录 = 未配置。
 
 import type { ConnectionProbe, ProviderSettings } from '../../../settings';
+import { credentialRevision } from './host';
 
 export type ProviderStatus = 'unconfigured' | 'configured' | 'ok' | 'fail';
 
@@ -25,7 +26,7 @@ export const STATUS_LABEL: Record<ProviderStatus, string> = {
 
 type ProbeConfig = Pick<
   ProviderSettings,
-  'kind' | 'baseUrl' | 'model' | 'authMode' | 'oauthProvider' | 'headers' | 'apiKey'
+  'name' | 'kind' | 'baseUrl' | 'model' | 'authMode' | 'oauthProvider' | 'headers' | 'apiKey'
 >;
 
 /** Non-secret connection identity used to decide whether a probe still applies. */
@@ -41,6 +42,9 @@ export function providerConnectionFingerprint(p: ProbeConfig): string {
     p.authMode ?? 'api-key',
     p.oauthProvider ?? '',
     p.apiKey.trim().length,
+    // R4：Key 同长度替换也必须让旧探针失效。revision 只在本应用真实写入/删除
+    // 凭据时推进；摘要不进入指纹，避免在 lastTest 里多暴露一份 Key 派生值。
+    credentialRevision(p.name),
     headers,
   ]);
 }

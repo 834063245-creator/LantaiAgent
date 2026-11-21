@@ -1,5 +1,5 @@
 {
-  "fingerprint": "0d502120",
+  "fingerprint": "aabd497d",
   "keys": [
     "ANCHOR",
     "ASSEMBLY_READY_WAIT_MS",
@@ -124,6 +124,7 @@
     "createTauriProcIO",
     "credRemove",
     "credStore",
+    "credentialRevision",
     "deactivateExternalPlugin",
     "defaultBaseUrl",
     "defaultFolded",
@@ -241,6 +242,8 @@
     "nearestFreeRegion",
     "nextFoldBoundary",
     "nextZoomStep",
+    "noteCredentialDeleted",
+    "noteCredentialStored",
     "notifyAgentConfigChanged",
     "oauthAccounts",
     "oauthLogout",

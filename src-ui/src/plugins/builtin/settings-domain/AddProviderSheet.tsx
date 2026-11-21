@@ -216,6 +216,7 @@ export function AddProviderSheet({ open, existingNames, onClose, submitError, on
     setAuthMode(tpl.authMode ?? 'api-key');
     setOauthProvider(tpl.oauthProvider);
     setOauthAccountId(undefined);
+    setOauthAccountsState([]); // 换厂商先清旧账号面，异步刷新到达前不展示上一家的账号
     if (tpl.authMode === 'oauth' && tpl.oauthProvider) {
       // 打开即拉一次该 provider 已登录账号（grant 与行解耦——可能已有账号）
       void refreshOauthAccounts(tpl.oauthProvider);
@@ -226,9 +227,13 @@ export function AddProviderSheet({ open, existingNames, onClose, submitError, on
   const refreshOauthAccounts = async (pid: string) => {
     try {
       const accts = await oauthAccounts(pid);
-      setOauthAccountsState(accts.map((a) => ({ accountId: a.account_id })));
+      const ids = accts.map((a) => a.account_id);
+      setOauthAccountsState(ids.map((accountId) => ({ accountId })));
+      // 选中账号被登出/远端消失时回落到「自动（最近登录）」，不留悬空 id。
+      setOauthAccountId((current) => (current && !ids.includes(current) ? undefined : current));
     } catch {
       setOauthAccountsState([]);
+      setOauthAccountId(undefined);
     }
   };
 
@@ -297,6 +302,7 @@ export function AddProviderSheet({ open, existingNames, onClose, submitError, on
     try {
       await oauthLogout(pid, accountId);
       invalidateOauthCache(pid);
+      if (oauthAccountId === accountId) setOauthAccountId(undefined);
       await refreshOauthAccounts(pid);
       setOauthStatus({ tone: 'ok', msg: `已登出账号 ${accountId}` });
     } catch (e) {
@@ -439,23 +445,47 @@ export function AddProviderSheet({ open, existingNames, onClose, submitError, on
   /** oauth 订阅已登录账号（弹层内登录面板 + 详情页共用展示形状）。 */
   const oauthAccountsEl =
     oauthAccountsState.length > 0 ? (
-      <div className="pp-oauth-accounts">
-        {oauthAccountsState.map((acct) => (
-          <div key={acct.accountId} className="pp-model-item">
-            <span className="pp-model-chip" data-tip={acct.accountId}>
-              <span className="pp-model-chip-name">{acct.accountId}</span>
-              <button
-                type="button"
-                className="pp-model-chip-x"
-                data-tip={`登出 ${acct.accountId}`}
-                aria-label={`登出 ${acct.accountId}`}
-                onClick={() => handleOauthLogout(acct.accountId)}
+      <div>
+        {/* R7：新行也显式选账号。缺省「自动」= Rust 侧最近登录；多账号时不再只能
+            吃最后一次 grant。添加成功后该 id 随 oauthAccountId 落 providers.yml。 */}
+        <label className="pp-model-param">
+          <span>新行使用账号</span>
+          <select
+            className="sp-select"
+            value={oauthAccountId ?? ''}
+            aria-label="OAuth 新行使用账号"
+            onChange={(e) => setOauthAccountId(e.target.value || undefined)}
+          >
+            <option value="">自动（最近登录）</option>
+            {oauthAccountsState.map((acct) => (
+              <option key={acct.accountId} value={acct.accountId}>
+                {acct.accountId}
+              </option>
+            ))}
+          </select>
+          <span className="pp-model-param-src">{oauthAccountId ? '手动选择' : '最近登录'}</span>
+        </label>
+        <div className="pp-oauth-accounts">
+          {oauthAccountsState.map((acct) => (
+            <div key={acct.accountId} className="pp-model-item">
+              <span
+                className={`pp-model-chip${oauthAccountId === acct.accountId ? ' is-on' : ''}`}
+                data-tip={acct.accountId}
               >
-                登出
-              </button>
-            </span>
-          </div>
-        ))}
+                <span className="pp-model-chip-name">{acct.accountId}</span>
+                <button
+                  type="button"
+                  className="pp-model-chip-x"
+                  data-tip={`登出 ${acct.accountId}`}
+                  aria-label={`登出 ${acct.accountId}`}
+                  onClick={() => handleOauthLogout(acct.accountId)}
+                >
+                  登出
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     ) : (
       <div className="pp-f-hint">尚未登录任何账号。点击下方按钮，用浏览器完成 {name || '订阅'} 授权登录。</div>

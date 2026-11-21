@@ -158,6 +158,14 @@ interface ProviderSettings {
 - **ModelSelector 显示元数据（2026-11-30 R6）**：创作坞/字段选择器的描述符统一走
   `modelDescriptor(provider, id)`（provider 作用域的 seed/meta/override 链），不再用
  全局 `getModel(id)` 拼显示名/窗口/视觉/档位——不同 Provider 同名 id 不串元数据。
+- **连接探针凭据 revision（2026-11-30 R4）**：`credential_store/delete` 成功后按
+  不可逆 Key 摘要判断值是否真变化，变化才推进本机 revision（独立键
+  `hologram_credential_revisions_v1`）。`providerConnectionFingerprint` 纳入 revision，
+  所以同长度换 Key 也会让旧探针立即 stale；摘要本身不进入 `lastTest`。
+- **添加弹层 OAuth 账号选择（2026-11-30 R7）**：AddProviderSheet 在已登录账号列表中
+  提供「新行使用账号」选择器，缺省「自动（最近登录）」；选中的 `oauthAccountId`
+  随新行一起落 `providers.yml`，并用于添加前的模型拉取。登出选中账号或账号消失时
+  自动回落 `auto`，不留悬空 id。
 - **校验纪律**（照 DSH「boot fails loud, reload keeps last good」落到本仓库语义）：
   **字段级降级**（2026-11-16 字段级校验批）——一个字段写错只丢那个字段并点名，
   整节照常生效；只有「这一行是谁 / 连到哪」判不出来（名字非法 / 不是映射 /

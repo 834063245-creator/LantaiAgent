@@ -457,6 +457,61 @@ describe('ProviderPage — 暂存流程', () => {
     expect(valueInput('high').value).toBe('high');
   });
 
+  it('R7：OAuth 已登录多账号 → 新行账号选择器决定 oauthAccountId（不再只吃最后一个 grant）', async () => {
+    await render(makeSettings({ providers: [makeSettings().providers[1]] }));
+    await click(document.querySelector('.pp-rail-add'));
+
+    // codex chip 预填后立即刷新账号清单：直接给两个已登录账号。
+    mockInvoke.mockImplementationOnce(async (_kind: string, args: { method: string }) => {
+      if (args.method === 'oauth_accounts') {
+        return JSON.stringify([
+          { provider: 'codex', account_id: 'user-1', expires_at: 0, scope: null },
+          { provider: 'codex', account_id: 'user-2', expires_at: 0, scope: null },
+        ]);
+      }
+      throw new Error(`unexpected ${args.method}`);
+    });
+    const codexChip = [...document.querySelectorAll<HTMLButtonElement>('.pp-cat-chip')].find((b) =>
+      b.textContent?.includes('codex'),
+    )!;
+    await click(codexChip);
+    await act(async () => {});
+
+    const accountSelect = document.querySelector<HTMLSelectElement>('select[aria-label="OAuth 新行使用账号"]');
+    expect(accountSelect).not.toBeNull();
+    expect([...accountSelect!.options].map((o) => o.value)).toEqual(['', 'user-1', 'user-2']);
+    expect(accountSelect!.value).toBe(''); // 缺省自动（最近登录）
+
+    // 显式选第二个账号。
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
+      setter.call(accountSelect, 'user-2');
+      accountSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    // 手动补一个模型即可确认添加（模型与账号解耦）。
+    const manual = document.querySelector<HTMLInputElement>('input[aria-label="手动补模型 id"]')!;
+    await setInputValue(manual, 'gpt-6-sol');
+    const sheet = document.querySelector('.pp-add-sheet')!;
+    await click(
+      [...sheet.querySelectorAll<HTMLButtonElement>('.pp-models-add button')].find((b) =>
+        b.textContent?.includes('添加'),
+      )!,
+    );
+    await click(
+      [...document.querySelectorAll<HTMLButtonElement>('.cd-actions button')].find((b) =>
+        b.textContent?.includes('确认添加'),
+      )!,
+    );
+
+    expect(mockAddPersist).toHaveBeenCalledTimes(1);
+    const [next] = mockAddPersist.mock.calls[0] as [AppSettings, ProviderId];
+    const added = next.providers.find((p) => p.name === 'codex')!;
+    expect(added.authMode).toBe('oauth');
+    expect(added.oauthProvider).toBe('codex');
+    expect(added.oauthAccountId).toBe('user-2');
+  });
+
   it('oauth 订阅（codex chip）：未登录不能确认添加——先弹层内登录（device-flow）→ seed 模型 → 确认添加', async () => {
     await render(makeSettings({ providers: [makeSettings().providers[1]] }));
     await click(document.querySelector('.pp-rail-add'));
