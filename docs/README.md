@@ -17,6 +17,7 @@
 | 写插件 | [`PLUGINS.md`](../PLUGINS.md) → [`plugins/README.md`](plugins/README.md) → [`cookbook/`](cookbook/README.md) |
 | 查某个能力怎么实现的 | [`ARCHITECTURE.md`](../ARCHITECTURE.md)（§1 能力总览给了每行的实现位置） |
 | 知道「现在做到哪了 / 还剩什么」 | [`plans/README.md`](plans/README.md) + [`plans/HISTORY.md`](plans/HISTORY.md) |
+| 听不懂用户说的界面词（拟文/创作坞/书脊…叫什么、在哪个文件） | [`CONTEXT.md`](../CONTEXT.md)「界面构件」簇（含退役词） |
 | 改代码前看雷区 | [`INVARIANTS.md`](../INVARIANTS.md) + [`landmine-map.md`](landmine-map.md) |
 | 找某个数字的真源（工具数/插件数/契约版本） | [`facts.generated.md`](facts.generated.md) |
 | 查模型可见工具面 / RPC 面 | [`agents/model-tool-contract.md`](agents/model-tool-contract.md) · [`agents/frontend-rpc-contract.md`](agents/frontend-rpc-contract.md)（生成物） |
@@ -48,7 +49,7 @@
 | 文档 | 状态 | 内容 |
 |---|---|---|
 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | 当前（**L2 现状层**，2026-09-16 文档面 P2 校准——数字一律指向 `docs/facts.generated.md` 或标注代码真源） | 架构分层与数据流 / Harness 工程模式 / Agent 系统 / 随包引擎 / MCP 服务 / 生命周期 / 技术栈 / 项目结构 / 关键决策 / 门禁指针 |
-| [`CONTEXT.md`](../CONTEXT.md) | 当前 | 应用级统一词汇（`kind`/`status` 带簇前缀） |
+| [`CONTEXT.md`](../CONTEXT.md) | 当前 | 应用级统一词汇（`kind`/`status` 带簇前缀）+ **界面构件簇**（用户雅称 → 代码落点，含退役词；落点由 `doc-check` 第八查校验存在性） |
 | [`docs/composition/README.md`](composition/README.md) | 当前（2026-08-20 S4 校准） | 组合层用户指南：patch 语法/preset/热重载/涟漪表 |
 | [docs/plugins/README.md](plugins/README.md) | 当前（2026-08-28 平台化 P6 平台契约校准） | 插件契约 = 平台契约总览（§0）：贡献通道/seam provider/动态插件/MCP 面/契约版本/信任模型二分 |
 | [`docs/agents/engine-plugin-contract.md`](agents/engine-plugin-contract.md) | 当前（契约 v4，2026-08-29） | 引擎开放面契约：模型工具面 / 11 壳专属方法（hidden tools）/ 免编译扩展面（`HOLOGRAM_PLUGIN_DIR` manifest，三类扩展；示例 `examples/engine-plugins/`） |

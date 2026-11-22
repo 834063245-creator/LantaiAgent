@@ -16,6 +16,8 @@
 //   5. orphans —— docs/ 下每份 md 必须被别的文档引用（治「有正文没入口」）
 //   6. archive —— plans/ 下挂着竣工/归档横幅的文档应移入 archive/（CONVENTIONS §4）
 //   7. budget  —— L0 注入层字节预算（手册必须真的进得去上下文）
+//   8. surface-anchors —— 界面词汇表 CONTEXT.md 的 `落点:` 必须指向真实存在的代码
+//      （用户嘴里的词 → 代码落点：表若指向已删实现，比没有表更坏）
 //
 // 作用域分层（与目标形态一致）：L4 过程层（archive/research/plans 正文）是历史，
 // **默认豁免事实对拍**；只看现在时口吻的层（根规则文档 / docs 顶层 / adr / agents /
@@ -395,6 +397,37 @@ function checkAuthorityFileRefs(files) {
   return { violations, skipped: [] };
 }
 
+/**
+ * 第八查 surface-anchors —— 界面词汇表（CONTEXT.md「界面构件」簇）的 `落点:` 路径必须存在。
+ *
+ * 来由（2026-12-05 用户「专有名词太多、和 agent 沟通有隔阂」）：那张表的价值全在
+ * 「用户嘴里的词 → 代码落点」这一跳。落点写错、或文件搬家后表不跟改，agent 就会被
+ * 指向不存在的实现——比没有表更坏（它会让 agent 自信地瞎猜）。
+ * 校验面刻意只做存在性（到文件/目录级、不做符号级）：一次 existsSync，成本近零，
+ * 换来的是「表永不悄悄过时」。词若退役 → 移入「退役词」表、不出落点，本条自然不查它。
+ */
+function checkSurfaceAnchors() {
+  const rel = 'CONTEXT.md';
+  const uiRoot = path.join(ROOT, 'src-ui', 'src');
+  const violations = [];
+  readText(rel)
+    .split('\n')
+    .forEach((line, idx) => {
+      const m = /^\s*落点:\s*`([^`]+)`/.exec(line);
+      if (!m) return;
+      const ref = m[1].trim();
+      if (fs.existsSync(path.join(uiRoot, ref))) return;
+      violations.push({
+        check: 'surface-anchors',
+        file: rel,
+        line: idx + 1,
+        text: ref,
+        message: `词汇表落点不存在（src-ui/src/${ref}）——文件搬了或删了：改本行落点；确属退役则该词进「退役词」表、不出落点`,
+      });
+    });
+  return { violations, skipped: [] };
+}
+
 function checkSize(files) {
   const violations = [];
   for (const rel of files) {
@@ -600,6 +633,7 @@ function main() {
     checkFacts(files, facts),
     checkLinks(files),
     checkAuthorityFileRefs(files),
+    checkSurfaceAnchors(),
     checkSize(files),
     checkOrphans(files),
     checkArchive(files),
