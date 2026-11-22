@@ -73,6 +73,12 @@
           "description": {
             "description": "Clear, concise description of what this program does in active voice, 5-10 words (shown in the UI). Examples: \"Count TODO markers across packages\"; \"Read failing test and its fixture\".",
             "type": "string"
+          },
+          "timeoutMs": {
+            "description": "Elapsed budget for the whole program in milliseconds, including nested tool waits. Default 120000 (2 min), max 600000 (10 min). Raise it only when the program must wait for a long command in one go; for minutes-long work, prefer starting it in the background and collecting the job id instead.",
+            "exclusiveMinimum": 0,
+            "maximum": 600000,
+            "type": "integer"
           }
         },
         "required": [

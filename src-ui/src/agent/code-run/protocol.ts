@@ -19,8 +19,9 @@
 // 调用经 postMessage 桥回宿主侧 executor 语义（门禁/hooks/审计全在宿主）。
 
 /** 失败分类码（P3）——**程序内 API 的一部分**：`catch (e) { if (e.code === …) }`。
- *  发布即契约：新增值可以，改名/删值等于破坏程序（同 `done.error.kind` 的待遇）。 */
-export type CodeReplyCode = 'unknown-binding' | 'invalid-args' | 'blocked' | 'tool-error';
+ *  发布即契约：新增值可以，改名/删值等于破坏程序（同 `done.error.kind` 的待遇）。
+ *  `subcall-limit`（P2-3，2026-11）：同时在途的嵌套调用超过配额——程序应分批 await。 */
+export type CodeReplyCode = 'unknown-binding' | 'invalid-args' | 'blocked' | 'tool-error' | 'subcall-limit';
 
 /** 宿主 → worker：应答一次嵌套工具调用。
  *  `code`/`hint` 只在 ok:false 时有意义；两者都缺省时 worker 侧只拿到人读 message。 */

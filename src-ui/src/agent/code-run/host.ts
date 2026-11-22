@@ -100,7 +100,9 @@ export interface CodeBindingSpec {
 
 /** code run 宿主配置。 */
 export interface CodeRunHostOptions {
-  /** 输出预算（字节，logs+完成值共享）。缺省 64KB。 */
+  /** 输出预算（字节，logs+完成值共享）。缺省 256KB。
+   *  为什么是 256KB 而不是 DSH 的 64MB：兰台的预算直接进上下文（没有 spill 面），
+   *  256KB ≈ 65k tokens 已是「真的倒了一大片输出」的量级；再大只会压爆窗口。 */
   maxOutputBytes?: number;
   /** 单次 run 墙钟上限（ms）。缺省 120s（对齐 shell 兜底）。 */
   timeoutMs?: number;
@@ -121,6 +123,10 @@ export interface CodeRunHostOptions {
    *  不理会取消的写调用（MCP / office）不该把「完成」拖成「超时」——到点照样
    *  结算为完成，迟到的结果走待领信箱（onLateResult）。 */
   settleGraceMs?: number;
+  /** 同时在途的嵌套调用上限。缺省 128（对齐 DSH maxPendingCalls）。
+   *  读类不进任何链——没有这个上限，`Promise.all` 一千个读会同时打宿主
+   *  （每个都是一次 IPC + 一次工具执行），表现为整机卡顿而不是一条可读错误。 */
+  maxPendingCalls?: number;
   /** Worker 工厂（注入面 — 测试用 fake；缺省真实 Web Worker）。 */
   createWorker?: (source: string) => CodeWorkerLike;
 }
@@ -278,6 +284,8 @@ function createWriteGate(): WriteGate {
  *  刚起就 promote 成后台。 */
 const PROMOTE_MARGIN_MS = 8_000;
 const MIN_FOREGROUND_MS = 15_000;
+/** 程序墙钟硬上限（P2-1）：模型可传 timeoutMs，但不得超过它（对齐 shell 的 10 分钟）。 */
+const MAX_TIMEOUT_MS = 600_000;
 
 /** 在途调用台账的一条（INV-3）：run 结束时要能说清「谁还在跑、跑了多久」。 */
 interface InflightCall {
@@ -337,9 +345,10 @@ function applyBudget(
 /** 运行一次 code run。resolve 恒为 CodeRunResult（失败也在 error 字段里，
  *  不 reject——外层工具把 error 归一为结构化失败文本）。 */
 export async function runCode(program: string, opts: CodeRunHostOptions): Promise<CodeRunResult> {
-  const maxOutputBytes = opts.maxOutputBytes ?? 64 * 1024;
-  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const maxOutputBytes = opts.maxOutputBytes ?? 256 * 1024;
+  const timeoutMs = Math.min(opts.timeoutMs ?? 120_000, MAX_TIMEOUT_MS);
   const settleGraceMs = opts.settleGraceMs ?? 3_000;
+  const maxPendingCalls = opts.maxPendingCalls ?? 128;
   const bindingMap = new Map(opts.bindings.map((b) => [b.name, b]));
   const createWorker = opts.createWorker ?? createRealWorker;
   const signal = opts.signal ?? null;
@@ -505,6 +514,10 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
 
   const answeredIds = new Set<number>();
 
+  // 在途调用计数（P2-3 并发配额）：handleCall 通过校验即 +1，run 收尾 -1
+  // （包括被闸拦下/被 abort 提前退出的路径——用 finally 保证不漏减）。
+  let activeCalls = 0;
+
   async function handleCall(msg: Extract<WorkerToHost, { t: 'call' }>): Promise<void> {
     const { id, name } = msg;
     // 敌意校验三连：一次性 id / 绑定集 / 无损参数
@@ -541,73 +554,91 @@ export async function runCode(program: string, opts: CodeRunHostOptions): Promis
     // 不回包：worker 已 terminate，回包在真实链路里无处可去（fake worker 里则会
     // 变成无人 await 的 rejection）。静默丢掉才是这一处的正确语义。
     if (runSignal.aborted) return;
+    // 并发配额（P2-3）：超限的调用直接回可读拒绝，由程序自己分批——
+    // 不排队（排队等于把「整机卡顿」换成「静默变慢」，模型看不出因果）。
+    if (activeCalls >= maxPendingCalls) {
+      worker.postMessage({
+        t: 'reply',
+        id,
+        ok: false,
+        message: `too many concurrent nested calls (limit ${maxPendingCalls}); await in batches`,
+        code: 'subcall-limit',
+        hint: `at most ${maxPendingCalls} nested calls may be in flight at once — split the work into batches and await them`,
+      } as const);
+      return;
+    }
+    activeCalls++;
     // INV-2 预算穿透（只对声明 promote 的工具生效；见 applyBudget）
     const callArgs = applyBudget(binding, args, remainingMs());
     const startedAt = Date.now();
     inflight.set(id, { name, startedAt });
 
     const run = async (): Promise<void> => {
-      // 排队期间 run 可能已经结束（写类要过排他闸，等闸的过程里 done/超时都可能到）：
-      // 这时不能再启动——起一个进程再立刻 abort 它，等于白起一次，还会把 drain 拖住。
-      if (runSignal.aborted) {
-        inflight.delete(id);
-        return;
-      }
-      let outcome: CodeBindingOutcome;
       try {
-        outcome = await binding.invoke(callArgs, { remainingMs: remainingMs(), signal: runSignal });
-      } catch (e) {
-        outcome = {
-          output: (e as { message?: string })?.message ?? String(e),
-          isError: true,
-          code: 'tool-error',
-        };
-      }
-      inflight.delete(id);
-      if (settled) {
-        // 程序已结束才落定：存进台账（结果里报个数）并投递给待领信箱（P1-2）——
-        // 旧行为在这里静默 return，连「丢了一条结果」都无从得知（INV-3）。
-        const late: LateNestedResult = {
-          name,
-          elapsedMs: Date.now() - startedAt,
-          output: outcome.output,
-          isError: outcome.isError,
-        };
-        lateSettled.push(late);
-        try {
-          opts.onLateResult?.(late);
-        } catch {
-          /* 投递面故障不阻断收尾（与 onDispatch 同款降级） */
+        // 排队期间 run 可能已经结束（写类要过排他闸，等闸的过程里 done/超时都可能到）：
+        // 这时不能再启动——起一个进程再立刻 abort 它，等于白起一次，还会把 drain 拖住。
+        if (runSignal.aborted) {
+          inflight.delete(id);
+          return;
         }
-        return;
+        let outcome: CodeBindingOutcome;
+        try {
+          outcome = await binding.invoke(callArgs, { remainingMs: remainingMs(), signal: runSignal });
+        } catch (e) {
+          outcome = {
+            output: (e as { message?: string })?.message ?? String(e),
+            isError: true,
+            code: 'tool-error',
+          };
+        }
+        inflight.delete(id);
+        if (settled) {
+          // 程序已结束才落定：存进台账（结果里报个数）并投递给待领信箱（P1-2）——
+          // 旧行为在这里静默 return，连「丢了一条结果」都无从得知（INV-3）。
+          const late: LateNestedResult = {
+            name,
+            elapsedMs: Date.now() - startedAt,
+            output: outcome.output,
+            isError: outcome.isError,
+          };
+          lateSettled.push(late);
+          try {
+            opts.onLateResult?.(late);
+          } catch {
+            /* 投递面故障不阻断收尾（与 onDispatch 同款降级） */
+          }
+          return;
+        }
+        // 展示面旁路（2026-11-21）：落定时刻才知道胜负与输出，这里正好齐了。
+        try {
+          opts.onDispatch?.({
+            seq: ++dispatchSeq,
+            name,
+            action:
+              typeof (args as { action?: unknown }).action === 'string'
+                ? String((args as { action: unknown }).action)
+                : undefined,
+            ok: !outcome.isError,
+            summary: firstLine(outcome.output),
+          });
+        } catch {
+          /* 展示面故障不阻断程序（与 hooks 的降级同款） */
+        }
+        worker.postMessage(
+          outcome.isError
+            ? ({
+                t: 'reply',
+                id,
+                ok: false,
+                message: outcome.output,
+                code: outcome.code ?? 'tool-error',
+                ...(outcome.hint ? { hint: outcome.hint } : {}),
+              } as const)
+            : ({ t: 'reply', id, ok: true, value: outcome.output } as const),
+        );
+      } finally {
+        activeCalls--;
       }
-      // 展示面旁路（2026-11-21）：落定时刻才知道胜负与输出，这里正好齐了。
-      try {
-        opts.onDispatch?.({
-          seq: ++dispatchSeq,
-          name,
-          action:
-            typeof (args as { action?: unknown }).action === 'string'
-              ? String((args as { action: unknown }).action)
-              : undefined,
-          ok: !outcome.isError,
-          summary: firstLine(outcome.output),
-        });
-      } catch {
-        /* 展示面故障不阻断程序（与 hooks 的降级同款） */
-      }
-      worker.postMessage(
-        outcome.isError
-          ? ({
-              t: 'reply',
-              id,
-              ok: false,
-              message: outcome.output,
-              code: outcome.code ?? 'tool-error',
-              ...(outcome.hint ? { hint: outcome.hint } : {}),
-            } as const)
-          : ({ t: 'reply', id, ok: true, value: outcome.output } as const),
-      );
     };
     const isReadOnly = binding.readOnlyFor ? binding.readOnlyFor(args) : binding.readOnly;
     if (isReadOnly) {

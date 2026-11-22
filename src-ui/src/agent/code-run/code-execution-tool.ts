@@ -51,6 +51,8 @@ export interface CodeExecutionDeps {
   maxOutputBytes?: number;
   /** 墙钟上限（ms）。缺省 120s。 */
   timeoutMs?: number;
+  /** 同时在途的嵌套调用上限（P2-3）。缺省 128（对齐 DSH maxPendingCalls）。 */
+  maxPendingCalls?: number;
   /** 程序结束后才落定的调用（P1-2 待领信箱）：透传给 runtime → 宿主。
    *  装配层（segments）把它接到 Agent 的待领队列，下一步注入。 */
   onLateResult?: (entry: LateNestedResult) => void;
@@ -183,15 +185,29 @@ export function createCodeExecutionTool(deps: CodeExecutionDeps): Tool {
           'Clear, concise description of what this program does in active voice, 5-10 words (shown in the UI). ' +
             'Examples: "Count TODO markers across packages"; "Read failing test and its fixture".',
         ),
+      timeoutMs: z
+        .number()
+        .int()
+        .positive()
+        .max(600_000)
+        .optional()
+        .describe(
+          'Elapsed budget for the whole program in milliseconds, including nested tool waits. ' +
+            'Default 120000 (2 min), max 600000 (10 min). ' +
+            'Raise it only when the program must wait for a long command in one go; for minutes-long work, ' +
+            'prefer starting it in the background and collecting the job id instead.',
+        ),
     }),
     readOnly: false,
     execute: async (args, onProgress, signal) => {
-      const { code } = args;
+      const { code, timeoutMs } = args;
       const result = await runViaRuntime({
         program: code,
         bindings: deps.bindings,
         maxOutputBytes: deps.maxOutputBytes,
-        timeoutMs: deps.timeoutMs,
+        // 模型给的预算优先（P2-1）；缺省回落装配层缺省（都没有 = host 的 120s）。
+        timeoutMs: timeoutMs ?? deps.timeoutMs,
+        maxPendingCalls: deps.maxPendingCalls,
         createWorker: deps.createWorker,
         signal,
         onLateResult: deps.onLateResult,

@@ -1,3 +1,63 @@
+# Baseline 变更申请 — phase-1/tool-schemas.effective.json（code_execution 增 timeoutMs）
+
+> 申请日期：2026-11-22 · 申请人：编码助手
+> 状态：**已批准** —— 用户在本轮施工计划审批中选择「全量 P0+P1+P2」，计划 §6.1 明文标注 P2-1 为「唯一需要审批的一项」并写明变更对象与理由（用户批准该计划 = 本变更的开工授权）。
+> 模型可见表面：**有变更**（`code_execution` 新增**可选**参数 `timeoutMs`）——这正是本申请的对象；工具数不变，既有参数逐字节不变。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-1/tool-schemas.effective.json`
+- `src-ui/tests/convergence/baseline/preset-minimal/phase-1/tool-schemas.effective.json`
+- 变更内容：两份快照的 `code_execution.parameters.properties` 各**新增一条** `timeoutMs`
+  （`type: integer`、`exclusiveMinimum: 0`、`maximum: 600000`，无 default 落 schema），
+  其余条目逐字节不变（实测 record 后 `git diff` = `+6` 行 × 2 文件）。
+- **`phase-0/tool-schemas.*.json` 不变**：`code_execution` 是会话级原语（不进 `DOMAIN_SPECS`），
+  phase-0 的域工具面快照不含它；变化只出现在 phase-1 的 effective 解析产物里。
+
+## 2. 为什么必须变
+
+- 长任务的控制权此前**完全写死在宿主**（120s），模型无从表达「这一轮我愿意等更久」。
+  P0/P1 解决的是「超时之后不丢工作」，P2-1 解决的是「根本不必超时」——两条路都要能走
+  （本批计划 INV-4）。
+- 对齐 DSH：`run_code` 的 `timeoutMs` 是模型可见参数（默认 120000 / cap 600000，
+  见 `packages/ptc-runtime/ptc-runtime-node/src/config.ts`）。兰台缺这一格，长命令只能绕后台。
+- 描述末句明确写「prefer starting it in the background」，把「一轮等完」定位成例外而非常规，
+  避免模型拿它当万能药。
+
+## 3. 证据
+
+- `tests/code-execution.test.ts` 新增 6 条（P0 四条 + P2 两条）：预算穿透压参 / 零漂移透传 /
+  超时 abort / 超时清账 / 并发配额 subcall-limit / 默认预算 256KB。
+- host 侧 clamp 单点：`Math.min(opts.timeoutMs ?? 120_000, MAX_TIMEOUT_MS)`；
+  schema 侧 `.max(600_000)` 双保险（模型乱填大值不会变成 10 分钟以上的墙）。
+- record 后 `git diff` **只含上述两份快照**（实测 2 文件 / +12 行）——生成物
+  `docs/agents/model-tool-contract.md` 不含本工具（`code_execution` 是会话级原语，
+  只进 phase-1 的 effective 快照，不进域工具契约文档），故该文档零变化。
+
+## 4. 拟议变更
+
+采纳 record 快照：两份 effective 快照仅 `code_execution` 条目新增一个参数属性；
+工具计数不变、既有参数零改动、顺序不变（新键追加在 `description` 之后 = 前缀稳定）。
+
+## 5. 落地步骤
+
+1. ✅ `code-execution-tool.ts` schema 增 `timeoutMs`（zod，optional，描述含 120000/600000）；
+2. ✅ `host.ts` clamp（`MAX_TIMEOUT_MS = 600_000`）；
+3. ✅ `gen:tool-contract` 重生成（确认不含本工具 ⇒ 该文档零变化，仅作对拍）；
+4. ✅ `record:convergence`（standard + minimal 双轨）；
+5. ✅ 本文件登记 + 授权依据（用户批准的计划 §6.1）；
+6. ⬜ 门禁（vitest / tsc / biome ci / verify:convergence 双轨 / doc-sync）。
+
+### 同批的模型可见文本变更（不进双轨快照，一并登记）
+
+- `code` 组合的引导段（`composition/presets.ts` 的 `code-mode/guide`）：新增第 4 条纪律
+  「分钟级的活别在程序里等」（起后台 → 拿 job id → 收工），并把第 2 条里的输出预算数字
+  从 64KB 改为 256KB。
+- 为什么不进本申请的对象：`code` 组合**不在 convergence 双轨里**（双轨 = standard / minimal），
+  实测 record 前后这两轨的 prompt 快照零变化。判据由 `tests/code-mode-preset.test.ts` 覆盖。
+
+---
+
 # Baseline 变更申请 — phase-0/tool-schemas.full.json + phase-0/tool-schemas.plan.json（wait 取消 durationMs 干等参数）
 
 > 申请日期：2026-11-20 · 申请人：编码助手

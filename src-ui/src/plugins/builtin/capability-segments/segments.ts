@@ -254,7 +254,14 @@ export function firstPartyCapabilities(): AgentCapability[] {
                 : {}),
               invoke: async (args, ctx) => {
                 const seq = ++dispatchCounter;
-                sessionLog.append('tool/code-dispatch-start', { seq, name: t.name(), args });
+                // 审计用独立快照（P2-4）：分发与日志共用同一个 args 引用时，工具在
+                // execute 里 mutate 参数会把已落账的 dispatch-start 一起改掉——
+                // session-log.append 只浅冻结事件对象，`data.args` 仍是同一引用。
+                sessionLog.append('tool/code-dispatch-start', {
+                  seq,
+                  name: t.name(),
+                  args: structuredClone(args),
+                });
                 // P0：把 run 作用域信号传下去——超时/中止时工具本体收到取消，
                 // shell 据此 kill 子进程（不做这件事就是刷孤儿 vitest）。
                 const outcome = await agent.dispatchNestedTool(t.name(), args, ctx?.signal);

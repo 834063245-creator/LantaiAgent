@@ -383,6 +383,41 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
     expect(late[0]).toEqual({ name: 'slow', output: 'late-payload', isError: false });
   });
 
+  it('P2-3 并发配额：超过 maxPendingCalls 的调用被拒（subcall-limit，程序可分批）', async () => {
+    let started = 0;
+    const result = await runCode(
+      `const rs = await Promise.allSettled(Array.from({length: 6}, () => tools.slow({})));
+       return rs.filter((r) => r.status === 'rejected' && r.reason.code === 'subcall-limit').length + '/' + rs.length;`,
+      {
+        createWorker: makeFakeWorker,
+        timeoutMs: 3000,
+        maxPendingCalls: 3,
+        bindings: [
+          binding('slow', true, async () => {
+            started++;
+            await new Promise((r) => setTimeout(r, 20));
+            return { output: 'ok', isError: false };
+          }),
+        ],
+      },
+    );
+    expect(result.error).toBeUndefined();
+    // 6 个并发里 3 个被配额拒绝、3 个真的启动（被拒的不起工）
+    expect(result.result).toContain('3/6');
+    expect(started).toBe(3);
+  });
+
+  it('P2-2 默认输出预算 = 256KB（200KB 输出不再被 64KB 截断）', async () => {
+    const result = await runCode(`console.log('x'.repeat(200000)); return 'done';`, {
+      createWorker: makeFakeWorker,
+      timeoutMs: 5000,
+      bindings: [],
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.truncated).toBeUndefined();
+    expect(result.logs.join('').length).toBeGreaterThan(150_000);
+  });
+
   it('敌意校验：未声明绑定名 → 调用即抛 unknown-binding（程序侧拦截，宿主层双保险）', async () => {
     let hostCalls = 0;
     const result = await runCode(

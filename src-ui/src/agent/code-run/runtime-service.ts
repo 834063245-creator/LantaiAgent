@@ -41,6 +41,8 @@ export interface CodeRunRequest {
   timeoutMs?: number;
   /** 中止信号。 */
   signal?: AbortSignal | null;
+  /** 同时在途的嵌套调用上限（P2-3）。缺省 128（对齐 DSH maxPendingCalls）。 */
+  maxPendingCalls?: number;
   /** Worker 工厂注入面（测试）。 */
   createWorker?: (source: string) => CodeWorkerLike;
   /** 程序内调用落定旁路（2026-11-21 纸面显形批）——展示面用，不改变程序
@@ -87,6 +89,7 @@ export class CodeRuntimeService extends Service {
       createWorker: request.createWorker,
       onDispatch: request.onDispatch,
       onLateResult: request.onLateResult,
+      maxPendingCalls: request.maxPendingCalls,
     };
     return runCode(request.program, opts);
   }
@@ -120,6 +123,7 @@ export function runViaRuntime(request: CodeRunRequest): Promise<CodeRunResult> {
         createWorker: req.createWorker,
         onDispatch: req.onDispatch,
         onLateResult: req.onLateResult,
+        maxPendingCalls: req.maxPendingCalls,
       };
       return runCode(req.program, opts);
     },
