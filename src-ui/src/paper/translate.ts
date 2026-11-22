@@ -430,6 +430,9 @@ function codeBlockPayload(part: ToolCallPart, descriptionPrefix = ''): BlockPayl
     toolId: part.toolId,
     description: `${descriptionPrefix}${description}`,
     code,
+    // 程序体流式预览（2026-11-22 卷 165 后续）：args 还没到齐时 code 为空，折叠行
+    // 靠这一段显示「正在生成什么」。args 到齐后 part.preview 已被清空（见 part-mutator）。
+    ...(part.preview ? { preview: part.preview } : {}),
     status: part.status,
     output: part.output,
     err: part.err,

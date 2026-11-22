@@ -82,6 +82,9 @@ export interface BlockPayloads {
     description: string;
     /** 程序体（async function body）。 */
     code: string;
+    /** 程序体流式预览（2026-11-22 卷 165 后续）：参数还在流时的已生成部分——
+     *  折叠行据此显示最新一行；args 到齐后由 code 接手（本字段不落终态）。 */
+    preview?: string;
     status: 'pending' | 'running' | 'done' | 'error';
     /** 合并输出（logs + 完成值 / 错误）——终态一次性写入（code run 无流式进度）。 */
     output?: string;

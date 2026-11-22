@@ -82,6 +82,8 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
           if (ev.tool.args && ev.tool.args.length > existing.args.length) {
             existing.args = ev.tool.args;
           }
+          // 参数到齐 = 程序体进了 args（真源）；预览使命结束，清掉（别在卷里存两份）。
+          if (!ev.tool.partial) existing.preview = undefined;
           if (ev.tool.name) existing.name = ev.tool.name;
         } else {
           parts.push({
@@ -116,6 +118,12 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
               return true;
             }
             return false;
+          }
+          if (ev.tool.name === 'code_execution' && ev.tool.output) {
+            // 程序体流式预览（2026-11-22 卷 165 后续）：不进 output——output 是执行
+            // 结果，折叠行读数（「输出 N 字」）按它算；预览是覆盖语义（已生成部分）。
+            tp.preview = ev.tool.output;
+            return true;
           }
           if (ev.tool.output) {
             // ponytail: 写入/编辑工具替换（预览内容随模型流式增长），

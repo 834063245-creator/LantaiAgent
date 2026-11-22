@@ -22,9 +22,14 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 68;
+export const OPEN_SURFACE_CONTRACT_VERSION = 69;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v69（2026-11-22）**`ToolArgPreview` 的发出面扩档**（`provider/types.ts` 注释即契约面，
+ *  粗粒度指纹按原文算）：v7 起它只描述 write/edit 的 content 预览；现扩到
+ *  `code_execution` 的**程序体流式预览**（参数生成几十秒，折叠的程文卡只有折叠行可见）。
+ *  形状零变更（仍是 `{ tool_id, tool_name, content }`）；第三方 adapter 不发 = 行为不变，
+ *  消费方按工具名分流（`part.preview` 只给 code_execution）。
  *  v68（2026-11-22）**新增 `ChunkType.Heartbeat` 流活性心跳**（`provider/types.ts`，
  *  纯增量成员 = 9）：工具参数增量在三个方言里都只累加、不产语义 chunk，而空闲守卫
  *  只在收到 chunk 时复位计时 ⇒ 参数生成 >30 秒的工具调用被误判成「服务商零字节」，

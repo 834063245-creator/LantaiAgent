@@ -41,25 +41,61 @@ export function extractWritePreview(toolName: string, args: string): string | nu
   }
   if (!isWrite && !isEdit) return null;
 
-  const key = isEdit ? 'newString' : 'content';
-  // 正则从部分 JSON 中提取 "key": "..."。
-  // 处理字符串值中的转义字符（\"、\\、\n 等）。
-  const re = new RegExp(`"${key}"\\s*:\\s*"(.*)`, 's');
-  const m = args.match(re);
-  if (!m) return null;
-
-  // 反转义 JSON 转义字符，使预览可读
-  return (
-    m[1]
-      .replace(
-        /\\(["\\/bfnrt])/g,
-        (_, c: string) => ({ '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' })[c] || c,
-      )
-      .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-      // 去除尾部垃圾（部分 JSON 可能以 " 或 "} 结尾，也可能没有尾部内容）
-      .replace(/"\s*\}?\s*$/, '')
-  );
+  // 读部分 JSON 里的字符串字段（流式中途也能读，见 readPartialJsonString）。
+  return readPartialJsonString(args, isEdit ? 'newString' : 'content');
 }
+
+/** 从部分 JSON 参数里读一个字符串字段并反转义（**流式中途**也能读：字符串没闭合就
+ *  读到末尾）。扫描按 JSON 转义规则跳过 `\"`、`\\`——代码/内容里的引号不会被误判
+ *  成字段结束，字段后面还有别的键时也不会把它们读进来（旧的正则 `(.*)` 两者都做不到：
+ *  会在反转义后把值自己的收尾引号也吃掉）。找不到该键 / 值不是字符串 → null。 */
+export function readPartialJsonString(args: string, key: string): string | null {
+  const keyAt = args.indexOf(`"${key}"`);
+  if (keyAt < 0) return null;
+  const colonAt = args.indexOf(':', keyAt + key.length + 2);
+  if (colonAt < 0) return null;
+  let i = colonAt + 1;
+  while (i < args.length && /\s/.test(args[i])) i++;
+  if (args[i] !== '"') return null;
+  const from = i + 1;
+  for (i = from; i < args.length; i++) {
+    if (args[i] === '\\') {
+      i++;
+      continue;
+    }
+    if (args[i] === '"') return unescapePartialJsonString(args.slice(from, i));
+  }
+  return unescapePartialJsonString(args.slice(from));
+}
+
+/** JSON 字符串转义 → 可读文本（`\n` / `\"` / `\\` / `\uXXXX`…）。
+ *  write/edit 的 content 预览与 code_execution 的程序体预览共用这一把尺子。 */
+export function unescapePartialJsonString(raw: string): string {
+  return raw
+    .replace(
+      /\\(["\\/bfnrt])/g,
+      (_, c: string) => ({ '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' })[c] || c,
+    )
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+/** code_execution 程序体预览（2026-11-22 卷 165 后续，流式渲染用）。
+ *
+ *  为什么需要：程序的参数可能上万字符、生成 30 秒以上；折叠态卡片在此期间只有
+ *  折叠行可见，用户读作「卡住」。本函数把已生成的部分程序体逐帧交给展示面
+ *  （折叠行显示最新一行），与 write/edit 的 content 预览同款——只是键是 `code`。
+ *
+ *  与 {@link extractWritePreview} 互斥（那个只认 write/edit），调用方先试后一个。
+ *  节流由调用方做（`ARG_PREVIEW_BEAT_MS`）：本函数是 O(args) 的正则 + 反转义，
+ *  参数越长越贵。 */
+export function extractCodePreview(toolName: string, args: string): string | null {
+  if (toolName !== 'code_execution') return null;
+  return readPartialJsonString(args, 'code');
+}
+
+/** 程序体预览的节流间隔（毫秒）——预览是 O(args) 的正则 + 反转义，且每帧都要重渲染
+ *  折叠行；~8Hz 足够「像在流」而不烧机器（20KB 程序参数按 120ms 结算 ≈ 每秒 8 帧）。 */
+export const ARG_PREVIEW_BEAT_MS = 120;
 
 /** 工具参数增量的「流活性心跳」节流间隔（毫秒；契约 v68）。
  *

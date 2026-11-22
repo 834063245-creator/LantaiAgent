@@ -105,6 +105,11 @@ export interface ToolCallPart {
    *  原样落盘，重开卷时照旧还原；快照缺席的旧卷 = 没有这一段（不凭审计补造：
    *  dispatch 事件不带外层 callId，硬拼就是「猜哪几笔属于哪条程序」）。 */
   calls?: CodeDispatchRecord[];
+  /** 程序体流式预览（2026-11-22 卷 165 后续，仅 code_execution）：参数还在流时由
+   *  ToolArgPreview 逐帧写入**已生成的部分代码**（覆盖语义，不是追加）。它只服务于
+   *  展示面（折叠行显示最新一行）——args 到齐后即清空（`args` 才是真源，程序体不
+   *  在卷里存两份；落盘快照里最多残留一次「流式中途」的片段）。 */
+  preview?: string;
   /** 工具运行期间累积的输出。 */
   output?: string;
   /** 工具失败时的错误信息。 */

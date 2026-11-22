@@ -46,6 +46,8 @@ import {
 } from './host';
 import { sendWithRetry } from './retry';
 import {
+  ARG_PREVIEW_BEAT_MS,
+  extractCodePreview,
   extractWritePreview,
   fetchJsonWithTimeout,
   makeArgActivityBeat,
@@ -458,6 +460,8 @@ async function* readSSE(
   /** 参数流心跳（v68）：function_call_arguments.delta 只累加、不产语义 chunk——
    *  长参数的生成会被空闲守卫误判成「服务商零字节」（卷 165）。按节流发 Heartbeat。 */
   const argBeat = makeArgActivityBeat();
+  /** 程序体预览节流（v68 后续）：预览是 O(args) 的正则 + 反转义，且每帧重渲染折叠行。 */
+  const codePreviewBeat = makeArgActivityBeat(ARG_PREVIEW_BEAT_MS);
   let usage: Chunk['usage'];
 
   /** 收尾取本轮 items：优先 `response.completed.response.output`（权威全量，
@@ -515,6 +519,16 @@ async function* readSSE(
               type: ChunkType.ToolArgPreview,
               tool_arg_preview: { tool_id: tc.id, tool_name: tc.name, content: preview },
             };
+          } else if (tc.name === 'code_execution' && codePreviewBeat()) {
+            // 程序体流式预览（2026-11-22 卷 165 后续）：折叠的程文卡在这几十秒里
+            // 只剩折叠行——把已生成部分送去展示（折叠行显示最后一行）。
+            const code = extractCodePreview(tc.name, tc.arguments);
+            if (code !== null) {
+              yield {
+                type: ChunkType.ToolArgPreview,
+                tool_arg_preview: { tool_id: tc.id, tool_name: tc.name, content: code },
+              };
+            }
           }
         }
         break;

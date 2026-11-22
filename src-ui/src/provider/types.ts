@@ -116,7 +116,9 @@ export enum ChunkType {
   Usage = 4,
   Done = 5,
   Error = 6,
-  /** 部分工具参数预览 — 在 input_json_delta 期间为 write/edit 工具发出 */
+  /** 部分工具参数预览 — 参数增量期间发出（契约 v69 起两端）：write/edit 给 content /
+   *  newString 的流式内容；code_execution 给**已生成的程序体**（折叠的程文卡靠它显示
+   *  「正在写什么」——大程序一生成就是几十秒，否则用户只看见一张静止的待执行卡）。 */
   ToolArgPreview = 7,
   /** Responses 方言：本轮 output items 原样带回（见 Message.responses_items） */
   ResponsesItems = 8,

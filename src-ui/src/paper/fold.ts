@@ -249,6 +249,8 @@ function foldLabelRaw(kind: BlockKind, payload: unknown, folded: boolean, block?
     text?: string;
     args?: string;
     code?: string;
+    /** 程序体流式预览（code 块的 args 到齐前的那一段，见 paper/translate）。 */
+    preview?: string;
     output?: string;
     err?: string;
     description?: string;
@@ -285,7 +287,14 @@ function foldLabelRaw(kind: BlockKind, payload: unknown, folded: boolean, block?
   if (kind === 'code') {
     const who = p.description || '程序';
     if (!folded) return `▾ 收起 ${who}`;
-    if (!p.code && !p.output && !p.err) return `▸ ${who} · 待执行`;
+    if (!p.code && !p.output && !p.err) {
+      // 程序体还在流（2026-11-22 卷 165 后续）：这张卡折叠着、只有折叠行可见——
+      // 报**已生成程序体的最新一行**（与夹注 foldPreviewLine 同款读法），用户看见的
+      // 是「它正在写什么」，而不是一个静止的「待执行」。行高恒一行（FOLD_ROW_H），
+      // 测高镜像零变化——这也是不另开预览行的原因（那要动测高，风险不成比例）。
+      const tail = p.preview ? foldPreviewLine(p.preview) : '';
+      return tail ? `▸ ${who} · 生成中 ${tail}` : `▸ ${who} · 待执行`;
+    }
     // 结构化完成值（P5）：读数换成「表格 12×4」/「差分 +3 −2」——折叠行是用户
     // 95% 时间看到的那一行，行列/增删比字数有用（与脚注 summary 同一纪律）。
     // 程序内调用（2026-11-21 显形批）：折叠行先报「内调 N」——用户 95% 时间只
