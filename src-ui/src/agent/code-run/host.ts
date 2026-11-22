@@ -94,6 +94,11 @@ export interface CodeBindingSpec {
    *  要从**活 schema** 的 default 读，域门面是构建期快照，别闭包捕获死实例）。
    *  缺省/undefined = 缺省参数不参与压制（只有模型显式给了 timeoutMs 才压）。 */
   defaultTimeoutMs?: () => number | undefined;
+  /** 'promote' 策略下：本次调用是否**已经交给后台**（= 不需要前台窗口，不该压 timeout）。
+   *  shell 的 `runInBackground:true` 即此类——Rust 的 `timeout_ms` 只作用于前台分支，
+   *  压它没有任何行为效果，却会让审计日志里出现一个模型没传过的值（实测卷 155：
+   *  模型只传了 `runInBackground:true`，落账的 args 却带着 `timeoutMs: 111983`）。 */
+  backgrounded?: (args: Record<string, unknown>) => boolean;
   /** 执行体：返回结果文本 + 是否失败（+ 可选分类码/提示——P3；+ P0 的运行时上下文）。 */
   invoke: (args: Record<string, unknown>, ctx?: CodeBindingContext) => Promise<CodeBindingOutcome>;
 }
@@ -334,6 +339,8 @@ function applyBudget(
   remaining: number,
 ): Record<string, unknown> {
   if (binding.deadline !== 'promote') return args;
+  // 已经交给后台的调用不需要前台窗口（见 CodeBindingSpec.backgrounded 的取证）。
+  if (binding.backgrounded?.(args)) return args;
   const requested = typeof args.timeoutMs === 'number' ? args.timeoutMs : binding.defaultTimeoutMs?.();
   if (typeof requested !== 'number') return args;
   const budget = remaining - PROMOTE_MARGIN_MS;

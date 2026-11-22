@@ -301,6 +301,32 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
     expect('timeoutMs' in seen[1]).toBe(false);
   });
 
+  it('P0 预算穿透：runInBackground 的调用不压 timeoutMs（后台不用前台窗口，审计不污染）', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const result = await runCode(
+      `return await tools.shell({action:'run', command:'npx vitest run', runInBackground:true});`,
+      {
+        createWorker: makeFakeWorker,
+        timeoutMs: 30_000,
+        bindings: [
+          {
+            ...binding('shell', false, async (args) => {
+              seen.push(args);
+              return { output: 'job started', isError: false };
+            }),
+            deadline: 'promote',
+            defaultTimeoutMs: () => 300_000,
+            backgrounded: (a) => a.runInBackground === true,
+          },
+        ],
+      },
+    );
+    expect(result.error).toBeUndefined();
+    // 卷 155 实测病灶：模型只传了 runInBackground，落账的 args 却带着 timeoutMs: 111983
+    expect(seen[0].runInBackground).toBe(true);
+    expect('timeoutMs' in seen[0]).toBe(false);
+  });
+
   it('P0 永不孤儿：程序结束时未完成的调用收到 abort（shell 据此 kill 子进程）', async () => {
     let abortedAt = 0;
     // 程序必须让 slow 真正**启动**（等一拍）再 return：否则"启动前再查"那道闸

@@ -250,6 +250,9 @@ export function firstPartyCapabilities(): AgentCapability[] {
                 ? {
                     deadline: 'promote' as const,
                     defaultTimeoutMs: () => shellRunDefaultTimeoutMs(scope.tools.get('shell')),
+                    // 后台命令不需要前台窗口：Rust 的 timeout_ms 只作用于前台分支，
+                    // 压它无行为效果，却会把模型没传过的值写进审计（卷 155 实证）。
+                    backgrounded: (a: Record<string, unknown>) => a.runInBackground === true,
                   }
                 : {}),
               invoke: async (args, ctx) => {
