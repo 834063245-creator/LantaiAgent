@@ -7,7 +7,7 @@
 // plugin_assets cargo test 覆盖。
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearActivationsForTest } from '../src/composition/activation';
+import { activationDeclared, clearActivationsForTest } from '../src/composition/activation';
 import { rendererServicePlugin, resolveRenderer } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
@@ -1236,5 +1236,10 @@ describe('S6 P3a：activation 声明-接线对齐（登记 ≠ 激活）', () =>
     });
     const rec = usePluginStore.getState().plugins.find((p) => p.name === 'acme/res');
     expect(rec?.status).toBe('active'); // 不因「未登记回调」被拒
+    expect(activationDeclared('acme/res')).toBe(true);
+    // 声明生命周期 = 插件 fiber：停用 ⇒ 撤销声明。否则重装后 has() 命中旧声明，
+    // 其 start 闭包指向已 dispose 的治理器 → 装配期「已随插件卸载——不可再拉起」。
+    expect(await deactivateExternalPlugin('acme/res')).toBe(true);
+    expect(activationDeclared('acme/res'), '声明必须随插件 fiber 一起撤销').toBe(false);
   });
 });

@@ -156,11 +156,18 @@ export async function registerBundledEngineTools(
         // 没声明 inject，属性访问与 resolve 都会被 cordis 拒（见 mcp-bridge 头注）。
         const activation = c.get('activation');
         if (activation && !activation.has(OWNER)) {
-          activation.declare(OWNER, {
+          const disposeDeclaration = activation.declare(OWNER, {
             resources: ['stdio'],
             start: () => registered.startLazy(),
             stop: () => registered.stopLazy(),
           });
+          // 声明生命周期 = 本子 fiber（工作区 fiber 的子）：fiber dispose ⇒ 撤销声明。
+          // 不挂这里的实机后果（2026-11-22）：declarations 是**模块级**表（键 = 插件名），
+          // 声明会活过工作区——而它闭包里的治理器已随旧 fiber dispose（终态）。第二次
+          // 激活工作区时 `has(OWNER)` 仍为真 ⇒ 跳过重新声明，激活账仍指向旧治理器 ⇒
+          // 新卷装配期 retain 抛「已随插件卸载——不可再拉起」→ 装配中止、卷无句柄
+          //（此后每个新补建的卷都复现，直到重启应用）。
+          c.effect(() => disposeDeclaration, 'hologram-engine-activation');
         }
       },
     });

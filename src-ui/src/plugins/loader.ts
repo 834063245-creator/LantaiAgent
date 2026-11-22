@@ -998,12 +998,18 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
               const activation = ctx.get('activation');
               if (activation && !activation.has(manifest.name)) {
                 const face = mcpFace;
-                activation.declare(manifest.name, {
+                const disposeDeclaration = activation.declare(manifest.name, {
                   resources: manifest.activation.resources,
                   exclusive: manifest.activation.exclusive,
                   start: () => face.startLazy(),
                   stop: () => face.stopLazy(),
                 });
+                // 声明生命周期 = 插件 fiber（卸载 ⇒ 撤销声明）。不挂的后果：declarations
+                //（模块级表，键 = 插件名）残留旧 face 的 start 闭包，而治理器已随 fiber
+                // dispose（终态）；同名插件重装时 `!has()` 为假 ⇒ 跳过重新声明，装配期
+                // 调旧 start →「已随插件卸载——不可再拉起」→ 装配中止（2026-11-22 随包
+                // 引擎同族实机报错）。撤销时账上若仍有持有者，declare 的 disposer 会先 stop。
+                ctx.effect(() => disposeDeclaration, `activation:${manifest.name}`);
               }
             }
             // S6 P3a/P3d：「声明了开关却没接线」= 手误，装载期 fail loud（不静默
