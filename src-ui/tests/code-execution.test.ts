@@ -246,6 +246,115 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
     expect(result.error?.kind).toBe('aborted');
   });
 
+  // ── P0 长任务批（2026-11）：预算穿透 / 永不孤儿 / 超时清账 ──────────────
+  // 病灶回顾：外层墙 120s < 内层 shell 300s，外层先死；死时不 abort 内层也
+  // 不交付句柄 → 孤儿 vitest 越滚越多。四条用例各钉一条不变量。
+
+  it('P0 预算穿透：剩余预算不足时把 timeoutMs 压到预算内（promote 无损）', async () => {
+    const seen: number[] = [];
+    const result = await runCode(`return await tools.shell({action:'run', command:'npx vitest run'});`, {
+      createWorker: makeFakeWorker,
+      timeoutMs: 30_000,
+      bindings: [
+        {
+          ...binding('shell', false, async (args) => {
+            seen.push(args.timeoutMs as number);
+            return { output: 'ok', isError: false };
+          }),
+          deadline: 'promote',
+          defaultTimeoutMs: () => 300_000,
+        },
+      ],
+    });
+    expect(result.error).toBeUndefined();
+    // 300s 请求 > 30s 墙 ⇒ 压到 30_000 - 8_000 = 22_000（减去启动耗时后的极小误差）
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeLessThanOrEqual(22_000);
+    expect(seen[0]).toBeGreaterThan(21_000);
+  });
+
+  it('P0 预算穿透：预算充足时原样透传；模型没给 timeoutMs 时不注入（零漂移）', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const opts = {
+      createWorker: makeFakeWorker,
+      timeoutMs: 600_000,
+      bindings: [
+        {
+          ...binding('shell', false, async (args) => {
+            seen.push(args);
+            return { output: 'ok', isError: false };
+          }),
+          deadline: 'promote' as const,
+          defaultTimeoutMs: () => 300_000,
+        },
+      ],
+    };
+    const explicit = await runCode(
+      `return await tools.shell({action:'run', command:'echo hi', timeoutMs: 5000});`,
+      opts,
+    );
+    expect(explicit.error).toBeUndefined();
+    expect(seen[0].timeoutMs).toBe(5000);
+    // 缺省请求（300s）在 600s 墙里绰绰有余 ⇒ 不压、也不擅自把 schema default 写进参数
+    const implicit = await runCode(`return await tools.shell({action:'run', command:'echo hi'});`, opts);
+    expect(implicit.error).toBeUndefined();
+    expect('timeoutMs' in seen[1]).toBe(false);
+  });
+
+  it('P0 永不孤儿：程序结束时未完成的调用收到 abort（shell 据此 kill 子进程）', async () => {
+    let abortedAt = 0;
+    // 程序必须让 slow 真正**启动**（等一拍）再 return：否则"启动前再查"那道闸
+    // 会把它拦在门外——那是另一个正确语义（排队中不该起进程），不是本条要测的。
+    const result = await runCode(
+      `await tools.quick({}); tools.slow({}); await new Promise((r) => setTimeout(r, 60)); return 'done';`,
+      {
+        createWorker: makeFakeWorker,
+        timeoutMs: 3000,
+        bindings: [
+          binding('quick', true, async () => ({ output: 'q', isError: false })),
+          binding('slow', false, async (_args, ctx) => {
+            await new Promise<void>((resolve) => {
+              if (ctx?.signal.aborted) {
+                abortedAt = Date.now();
+                resolve();
+                return;
+              }
+              ctx?.signal.addEventListener(
+                'abort',
+                () => {
+                  abortedAt = Date.now();
+                  resolve();
+                },
+                { once: true },
+              );
+            });
+            return { output: 'never', isError: false };
+          }),
+        ],
+      },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.result).toContain('done');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(abortedAt).toBeGreaterThan(0);
+  });
+
+  it('P0 超时清账：结果列出在途调用（不再只有一句 exceeded Nms）', async () => {
+    const result = await runCode(`await tools.slow({});`, {
+      createWorker: makeFakeWorker,
+      timeoutMs: 200,
+      bindings: [
+        binding('slow', false, async (_args, ctx) => {
+          await new Promise<void>((resolve) => ctx?.signal.addEventListener('abort', () => resolve(), { once: true }));
+          return { output: 'late', isError: false };
+        }),
+      ],
+    });
+    expect(result.error?.kind).toBe('timeout');
+    expect(result.error?.message).toContain('在途调用已中止');
+    expect(result.error?.message).toContain('slow');
+  });
+
   it('敌意校验：未声明绑定名 → 调用即抛 unknown-binding（程序侧拦截，宿主层双保险）', async () => {
     let hostCalls = 0;
     const result = await runCode(

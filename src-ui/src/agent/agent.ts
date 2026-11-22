@@ -358,26 +358,6 @@ export class Agent {
    *  能更新正确的会话存储（而非仅活跃的）。子 Agent 派生域经宿主接口读取。 */
   _uiSessionId: number = 0;
 
-  // code_execution 嵌套分发面（P2 执行原语）：blueprint capability 装配时
-  // 写入（工具创建需要）；getter 供 capability 读取 agent 的门禁/hook/审计上下文。
-  // 形状对齐 code-run/host.ts 的 ToolDispatchFn（输出 {output, isError}）。
-  _codeDispatch:
-    | ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>)
-    | null = null;
-
-  /** code_execution 的嵌套分发面 — 工具装配（blueprint）注入。null = 未接线
-   * （工具注册面照常，运行时报「未接线」错误，不留静默死路）。 */
-  setCodeDispatch(
-    fn: ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>) | null,
-  ): void {
-    this._codeDispatch = fn;
-  }
-  getCodeDispatch():
-    | ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>)
-    | null {
-    return this._codeDispatch;
-  }
-
   /** 会话事件日志只读访问（P2：code_execution 子分发审计追加面）。 */
   get sessionLog(): SessionLog {
     return this._sessionLog;
@@ -394,6 +374,7 @@ export class Agent {
   dispatchNestedTool(
     name: string,
     args: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<{ output: string; isError: boolean; code?: CodeReplyCode }> {
     const tool = this.tools.get(name);
     if (!tool) {
@@ -453,41 +434,46 @@ export class Agent {
         }
       : undefined;
 
-    return tool
-      .execute(enriched, onProgress, this._currentRunSignal ?? undefined)
-      .then(async (raw) => {
-        let output = raw;
-        if (assetChannel) {
-          const assetEvent = parseAssetEventOutput(output);
-          if (assetEvent) {
-            this._sink({ kind: EventKind.Asset, asset: assetEvent });
-          } else if (output?.trim()) {
-            // 终值非资产 JSON = 工具异常路径，留痕不静默（与 executor 同降级）
-            log.warn('agent', '[dispatchNestedTool] assetChannel tool returned non-asset output', { tool: name });
+    return (
+      tool
+        // P0（2026-11 长任务批）：run 作用域信号优先——code_execution 超时/中止时
+        // 立即传导到工具本体（shell 据此 kill 子进程），而不是等 agent run 结束。
+        // 缺省回落 agent run 信号（直调路径与旧行为逐字等价）。
+        .execute(enriched, onProgress, signal ?? this._currentRunSignal ?? undefined)
+        .then(async (raw) => {
+          let output = raw;
+          if (assetChannel) {
+            const assetEvent = parseAssetEventOutput(output);
+            if (assetEvent) {
+              this._sink({ kind: EventKind.Asset, asset: assetEvent });
+            } else if (output?.trim()) {
+              // 终值非资产 JSON = 工具异常路径，留痕不静默（与 executor 同降级）
+              log.warn('agent', '[dispatchNestedTool] assetChannel tool returned non-asset output', { tool: name });
+            }
           }
-        }
-        // 工具后钩子富化（与 executor 同降级语义）
-        if (this.hooks) {
-          try {
-            output = await this.hooks.apply(guardName, enriched, output);
-          } catch {
-            /* 富化失败不破坏结果 */
+          // 工具后钩子富化（与 executor 同降级语义）
+          if (this.hooks) {
+            try {
+              output = await this.hooks.apply(guardName, enriched, output);
+            } catch {
+              /* 富化失败不破坏结果 */
+            }
           }
-        }
-        if (preflightWarning) {
-          output = `${preflightWarning}\n\n${'─'.repeat(40)}\n\n${output}`;
-        }
-        const trunc = truncateToolOutput(guardName, output);
-        return { output: trunc.content, isError: false };
-      })
-      .catch((e: unknown) => {
-        const eMsg = (e as { message?: string })?.message;
-        const errMsg = eMsg ? eMsg.split('\n')[0] : String(e);
-        // 全链唯一「靠文本认」的点：zod 校验错误在 defineTool 内抛出（tools/define-tool.ts:97），
-        // 没有类型面把码带出来。前缀是那边的契约——改它同改这里。
-        const code: CodeReplyCode = errMsg.includes('参数校验失败') ? 'invalid-args' : 'tool-error';
-        return { output: `error: ${errMsg}`, isError: true, code };
-      });
+          if (preflightWarning) {
+            output = `${preflightWarning}\n\n${'─'.repeat(40)}\n\n${output}`;
+          }
+          const trunc = truncateToolOutput(guardName, output);
+          return { output: trunc.content, isError: false };
+        })
+        .catch((e: unknown) => {
+          const eMsg = (e as { message?: string })?.message;
+          const errMsg = eMsg ? eMsg.split('\n')[0] : String(e);
+          // 全链唯一「靠文本认」的点：zod 校验错误在 defineTool 内抛出（tools/define-tool.ts:97），
+          // 没有类型面把码带出来。前缀是那边的契约——改它同改这里。
+          const code: CodeReplyCode = errMsg.includes('参数校验失败') ? 'invalid-args' : 'tool-error';
+          return { output: `error: ${errMsg}`, isError: true, code };
+        })
+    );
   }
 
   // 最近一次用量（用于状态显示）

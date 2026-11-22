@@ -29,6 +29,17 @@ import {
 
 // ── 表内 helper（原样随迁：仅本表使用）──
 
+/** shell `run` 的缺省超时兜底（P0 预算穿透用）。取数走**活 schema** 的 default
+ *  （单一真源在 shell-domain 的 zod，改那边这里跟着变）；只有读不到 schema 时才
+ *  用它。惰性求值：域门面是构建期快照，闭包捕获会读到过期实例（同 readOnlyFor 的取证）。 */
+const SHELL_RUN_DEFAULT_TIMEOUT_MS = 300_000;
+
+function shellRunDefaultTimeoutMs(parameters: unknown): number {
+  const props = (parameters as { properties?: Record<string, { default?: unknown }> } | undefined)?.properties;
+  const d = props?.timeoutMs?.default;
+  return typeof d === 'number' ? d : SHELL_RUN_DEFAULT_TIMEOUT_MS;
+}
+
 /** 取 'agent' 阶段的 Agent 实例 — context 阶段误用即抛错。 */
 function requireAgent(scope: BlueprintScope): Agent {
   if (!scope.agent) {
@@ -231,10 +242,22 @@ export function firstPartyCapabilities(): AgentCapability[] {
                 const p = args.filePath;
                 return typeof p === 'string' && p.length > 0 ? `file:${codeWriteKey(scope.ctx.projectPath, p)}` : '*';
               },
-              invoke: async (args) => {
+              // 长任务策略（P0，2026-11）：shell 的 run 超时语义是**转后台**（Rust
+              // promote），压它的 timeoutMs 是无损的——命令不会失败，只是更早拿到
+              // job id。这是「vitest 永远跑不完」的正解：内层 300s 预算 > 外层 120s
+              // 墙时，宿主按剩余预算把它压到 promote 点之前。
+              ...(t.name() === 'shell'
+                ? {
+                    deadline: 'promote' as const,
+                    defaultTimeoutMs: () => shellRunDefaultTimeoutMs(scope.tools.get('shell')),
+                  }
+                : {}),
+              invoke: async (args, ctx) => {
                 const seq = ++dispatchCounter;
                 sessionLog.append('tool/code-dispatch-start', { seq, name: t.name(), args });
-                const outcome = await agent.dispatchNestedTool(t.name(), args);
+                // P0：把 run 作用域信号传下去——超时/中止时工具本体收到取消，
+                // shell 据此 kill 子进程（不做这件事就是刷孤儿 vitest）。
+                const outcome = await agent.dispatchNestedTool(t.name(), args, ctx?.signal);
                 sessionLog.append('tool/code-dispatch', {
                   seq,
                   name: t.name(),
@@ -254,7 +277,6 @@ export function firstPartyCapabilities(): AgentCapability[] {
             catalog: () => scope.tools.visibleTools(),
           }),
         );
-        agent.setCodeDispatch((name, args) => agent.dispatchNestedTool(name, args));
       },
     },
     {
