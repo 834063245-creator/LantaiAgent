@@ -112,10 +112,10 @@ export type BrowserCapAction =
   | 'browser_eval'
   | 'browser_status';
 
-/** uia_cap 能力口 action（R4 browser 域收口）——退役前 builtin.uia 17 工具名
- *  一一位（D4-1：action 化，git_cap 同构）。各 action 参数形状的真源 =
- *  agent/tools/browser.ts 的 UIA_CAP_SCHEMA（zod 转录；desktop 面键本就
- *  snake_case，无映射）。 */
+/** uia_cap 能力口 action（R4 browser 域收口 + 批 3 batch）——退役前 builtin.uia 17 工具名
+ *  + `desktop_uia_batch`（computer use 批 3）。各 action 参数形状的真源 =
+ *  plugins/builtin/browser-desktop-domain/browser.ts 的 UIA_CAP_SCHEMA（zod 转录；
+ *  desktop 面键本就 snake_case，无映射）。 */
 export type UiaCapAction =
   | 'desktop_probe'
   | 'desktop_screenshot'
@@ -132,6 +132,7 @@ export type UiaCapAction =
   | 'desktop_uia_keys'
   | 'desktop_uia_activate'
   | 'desktop_uia_window_shot'
+  | 'desktop_uia_batch'
   | 'desktop_audit'
   | 'desktop_status';
 

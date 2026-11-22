@@ -21,6 +21,7 @@ pub mod protocol_bridge;
 pub mod providers;
 pub mod pty_cap;
 pub mod search_cap;
+pub mod uia_batch;
 pub mod uia_cap;
 pub mod web_cap;
 pub mod workspace;

@@ -6,6 +6,15 @@
 // 刻意不迁 Rust：无 PNG 编码依赖，且截图是纯读取动作，PS 开销可接受。
 // 输出与 desktop_screenshot 同目录（hologram-browser-shots）。
 
+/// 截图落盘目录（`%TEMP%/hologram-browser-shots`）——窗口截图与全屏截图共用，
+/// 也是 cdp 截图的会话目录（同一处收口，便于按保留天数清理）。
+///
+/// 附图转存（uia_cap::attach_shot_ref）据此校验「只认本套件自己产的图」：
+/// 源文件 parent 必须等于本目录，任何外部路径一律不转附件（防路径注入）。
+pub(crate) fn shot_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("hologram-browser-shots")
+}
+
 pub(super) fn capture(
     x: i32,
     y: i32,
@@ -55,7 +64,7 @@ pub(super) fn capture(
         .map(|l| l.trim().to_string())
         .ok_or("[UIA_INTERNAL] 窗口截图失败: 未找到输出路径")?;
     let bytes = std::fs::read(&src).map_err(|e| format!("[UIA_INTERNAL] 读截图失败: {e}"))?;
-    let dir = std::env::temp_dir().join("hologram-browser-shots");
+    let dir = shot_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("[UIA_INTERNAL] 创建截图目录失败: {e}"))?;
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -118,6 +118,24 @@ pub(crate) enum UiaRequest {
         allow_wheel: bool,
         reply: Reply,
     },
+    /// 坐标点击（批 2，P0-2）：不经控件 resolve，直接对**屏幕虚拟坐标**注入物理点击。
+    /// 坐标必须落在目标窗口矩形内（com 侧校验，防误点其它应用）；权限闸与输入租约在能力口。
+    ClickAt {
+        loc: Locator,
+        x: i32,
+        y: i32,
+        right: bool,
+        reply: Reply,
+    },
+    /// 坐标滚轮（批 2）：在给定屏幕虚拟坐标上滚轮（自绘列表/画布的唯一滚动路径）。
+    ScrollAt {
+        loc: Locator,
+        x: i32,
+        y: i32,
+        direction: String,
+        amount: f64,
+        reply: Reply,
+    },
     Select {
         loc: Locator,
         target: Target,

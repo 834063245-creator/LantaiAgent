@@ -197,6 +197,8 @@ fn send_err(req: UiaRequest, e: String) -> Result<(), String> {
         UiaRequest::Read { reply, .. } => take!(reply),
         UiaRequest::Wait { reply, .. } => take!(reply),
         UiaRequest::Click { reply, .. } => take!(reply),
+        UiaRequest::ClickAt { reply, .. } => take!(reply),
+        UiaRequest::ScrollAt { reply, .. } => take!(reply),
         UiaRequest::Type { reply, .. } => take!(reply),
         UiaRequest::Scroll { reply, .. } => take!(reply),
         UiaRequest::Select { reply, .. } => take!(reply),
@@ -275,6 +277,21 @@ fn dispatch(core: &mut UiaCore, req: UiaRequest) -> (super::worker::Reply, R) {
             reply,
             req_scroll(core, loc, target, &direction, amount, allow_wheel),
         ),
+        UiaRequest::ClickAt {
+            loc,
+            x,
+            y,
+            right,
+            reply,
+        } => (reply, req_click_at(core, loc, x, y, right)),
+        UiaRequest::ScrollAt {
+            loc,
+            x,
+            y,
+            direction,
+            amount,
+            reply,
+        } => (reply, req_scroll_at(core, loc, x, y, &direction, amount)),
         UiaRequest::Select { loc, target, reply } => {
             (reply, req_simple_pattern(core, loc, target, "select"))
         }
@@ -1286,6 +1303,100 @@ fn req_click(
         located.pid,
         &located.title,
         &el,
+        &before,
+        &after,
+    ))
+}
+
+// ═══════════════════════════════════════════════════════════
+// 坐标动作（批 2，P0-2）：自绘界面 / 无 pattern 控件的唯一交互路径
+// ═══════════════════════════════════════════════════════════
+
+/// 窗口矩形（屏幕虚拟坐标）：left, top, width, height。
+fn window_rect_of(el: &IUIAutomationElement) -> Result<(i32, i32, i32, i32), String> {
+    let r = unsafe { el.CurrentBoundingRectangle() }.map_err(|e| hre("BoundingRectangle", e))?;
+    let w = r.right - r.left;
+    let h = r.bottom - r.top;
+    if w <= 0 || h <= 0 {
+        return Err(errors::err(
+            errors::codes::WINDOW_NOT_FOUND,
+            "目标窗口没有可用矩形（可能已最小化/隐藏）",
+        ));
+    }
+    Ok((r.left, r.top, w, h))
+}
+
+/// 坐标必须落在目标窗口矩形内 —— 坐标动作的安全边界（防误点其它应用）。
+fn ensure_point_in_window(el: &IUIAutomationElement, x: i32, y: i32) -> Result<(), String> {
+    let (left, top, w, h) = window_rect_of(el)?;
+    if x < left || y < top || x >= left + w || y >= top + h {
+        return Err(errors::err(
+            errors::codes::ARG_INVALID,
+            format!(
+                "坐标 ({x}, {y}) 不在目标窗口矩形内（窗口 rect: left={left} top={top} w={w} h={h}）；\
+                 请先 desktop_uia_window_shot 或 desktop_probe 确认窗口位置，坐标口径 = 屏幕虚拟坐标"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// 坐标点击：窗口元素作 world-diff 基底（标题/焦点变化仍可观测）。
+/// 调用前置：权限闸已过 + 输入租约已取（rpc 层）——本函数只做执行与反馈。
+fn req_click_at(core: &mut UiaCore, loc: Locator, x: i32, y: i32, right: bool) -> R {
+    let located = locate_window(core, &loc)?;
+    ensure_point_in_window(&located.element, x, y)?;
+    let before = snap_target(core, located.hwnd, &located.element);
+    phys::click(x, y, right);
+    std::thread::sleep(Duration::from_millis(120));
+    let after = snap_target(core, located.hwnd, &located.element);
+    Ok(action_result(
+        "coords",
+        located.hwnd,
+        located.pid,
+        &located.title,
+        &located.element,
+        &before,
+        &after,
+    ))
+}
+
+/// 坐标滚轮：delta 口径与控件兜底一致（1 tick = 120，amount clamp 1..20）。
+fn req_scroll_at(
+    core: &mut UiaCore,
+    loc: Locator,
+    x: i32,
+    y: i32,
+    direction: &str,
+    amount: f64,
+) -> R {
+    let located = locate_window(core, &loc)?;
+    ensure_point_in_window(&located.element, x, y)?;
+    let dir = direction.to_ascii_lowercase();
+    if !["up", "down", "left", "right"].contains(&dir.as_str()) {
+        return Err(errors::err(
+            errors::codes::ARG_INVALID,
+            format!("direction 必须是 up/down/left/right，收到: {direction}"),
+        ));
+    }
+    let amount = if amount <= 0.0 { 1.0 } else { amount };
+    let ticks = (amount.round() as i32).clamp(1, 20);
+    let delta = match dir.as_str() {
+        "up" => 120 * ticks,
+        "down" => -120 * ticks,
+        "right" => 120 * ticks,
+        _ => -120 * ticks, // left
+    };
+    let before = snap_target(core, located.hwnd, &located.element);
+    phys::wheel(x, y, delta, dir == "left" || dir == "right");
+    std::thread::sleep(Duration::from_millis(120));
+    let after = snap_target(core, located.hwnd, &located.element);
+    Ok(action_result(
+        "wheel",
+        located.hwnd,
+        located.pid,
+        &located.title,
+        &located.element,
         &before,
         &after,
     ))

@@ -1094,7 +1094,7 @@
       }
     },
     {
-      "description": "Windows desktop control (in-process UIA COM, millisecond-latency): probe process tree + windows with channel routing advice (cdp/uia/vision per window), read a window control tree (interactive-only by default, paginated), find/read controls, and operate them by ref or selector (click/type/select/expand/scroll/keys/activate). Write actions return world-change feedback (title/focus/value/toggle before→after). Permission model: first takeover of a window asks once (then pattern actions flow); sensitive targets and physical input (coordinate clicks/SendKeys/wheel) always ask separately; a global input lease serializes physical injection across agents. desktop(audit) reviews what was done. desktop(screenshot) is high-privacy and asks every time. Self-drawn apps (WeChat/QQ/DingTalk) expose empty trees — use desktop(uia_window_shot) + vision instead. Locator params (hwnd/pid/title) may be omitted on uia_* actions — omitted = the focused window (set by your last explicit locator or uia_activate).",
+      "description": "Windows desktop control (in-process UIA COM, millisecond-latency): probe process tree + windows with channel routing advice (cdp/uia/vision per window), read a window control tree (interactive-only by default, paginated), find/read controls, and operate them by ref, selector, or SCREEN-VIRTUAL COORDINATES (click/right_click/scroll accept x+y — the only way into self-drawn UIs whose control tree is empty). Write actions return world-change feedback (title/focus/value/toggle before→after). Permission model: first takeover of a window asks once, then that window's clicks/typing/selection/scrolling — including coordinate mode and pattern-less physical paths — flow without asking; sensitive targets (submit/pay/delete/password/overwrite) always ask, and so do SendKeys hotkeys and bringing a window to the foreground; a global input lease serializes physical injection. desktop(audit) reviews what was done. desktop(screenshot) is high-privacy and asks every time. Self-drawn apps (WeChat/QQ/DingTalk): desktop(uia_window_shot) attaches the window image so a vision model can see it, then click by x/y coordinates. Locator params (hwnd/pid/title) may be omitted on uia_* actions — omitted = the focused window (set by your last explicit locator or uia_activate).",
       "name": "desktop",
       "parameters": {
         "properties": {
@@ -1117,6 +1117,7 @@
               "uia_activate",
               "uia_fill",
               "uia_window_shot",
+              "uia_batch",
               "audit",
               "status"
             ],
@@ -1129,6 +1130,10 @@
           "amount": {
             "description": "Scroll amount (>=1 large step, <1 small step; wheel ticks); default 1",
             "type": "number"
+          },
+          "attach_image": {
+            "description": "Attach the captured full-screen PNG to the conversation (default false). Full-screen pixels = high privacy AND high token cost, so this is opt-in: pass true only when you genuinely need to see the whole desktop.",
+            "type": "boolean"
           },
           "automation_id": {
             "description": "Exact automation id (action: uia_find); Exact automation id (action: uia_read); Exact automation id (action: uia_wait); Exact automation id (e.g. \"equalButton\", \"num7Button\") (action: uia_click); Exact automation id (action: uia_right_click); Exact automation id (action: uia_type); Exact automation id (action: uia_select); Exact automation id (action: uia_expand); Exact automation id (action: uia_scroll)",
@@ -1195,7 +1200,7 @@
             "type": "array"
           },
           "hwnd": {
-            "description": "Window handle from desktop_probe (hwnd field) (action: uia_tree); Window handle from desktop_probe (action: uia_find); Window handle (action: uia_read); Window handle (action: uia_wait); Window handle (re-locate if tree changed) (action: uia_click); Window handle (action: uia_right_click); Window handle (action: uia_type); Window handle (action: uia_select); Window handle (action: uia_expand); Window handle (action: uia_scroll); Window handle (action: uia_keys); Window handle from desktop_probe (action: uia_activate); Window handle (action: uia_fill); Window handle from desktop_probe (action: uia_window_shot)",
+            "description": "Window handle from desktop_probe (hwnd field) (action: uia_tree); Window handle from desktop_probe (action: uia_find); Window handle (action: uia_read); Window handle (action: uia_wait); Window handle (re-locate if tree changed) (action: uia_click); Window handle (action: uia_right_click); Window handle (action: uia_type); Window handle (action: uia_select); Window handle (action: uia_expand); Window handle (action: uia_scroll); Window handle (action: uia_keys); Window handle from desktop_probe (action: uia_activate); Window handle (action: uia_fill); Window handle from desktop_probe (action: uia_window_shot); Target window handle — a batch runs inside ONE window (action: uia_batch)",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -1212,6 +1217,12 @@
           },
           "max_results": {
             "description": "Max controls per page (default 80)",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "max_steps": {
+            "description": "Step cap (default and hard maximum 20; can only be lowered)",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -1239,8 +1250,16 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "on_error": {
+            "description": "On a failed step: stop (default) or continue with the rest",
+            "enum": [
+              "stop",
+              "continue"
+            ],
+            "type": "string"
+          },
           "pid": {
-            "description": "Process id - resolves to its main window (action: uia_tree); Process id (action: uia_find); Process id (action: uia_read); Process id (action: uia_wait); Process id (action: uia_click); Process id (action: uia_right_click); Process id (action: uia_type); Process id (action: uia_select); Process id (action: uia_expand); Process id (action: uia_scroll); Process id (action: uia_keys); Process id (action: uia_activate); Process id (action: uia_fill); Process id (action: uia_window_shot)",
+            "description": "Process id - resolves to its main window (action: uia_tree); Process id (action: uia_find); Process id (action: uia_read); Process id (action: uia_wait); Process id (action: uia_click); Process id (action: uia_right_click); Process id (action: uia_type); Process id (action: uia_select); Process id (action: uia_expand); Process id (action: uia_scroll); Process id (action: uia_keys); Process id (action: uia_activate); Process id (action: uia_fill); Process id (action: uia_window_shot); Process id of the target window (action: uia_batch)",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -1255,6 +1274,17 @@
             "description": "Attach per-window channel routing advice (default true); false = bare snapshot, faster",
             "type": "boolean"
           },
+          "steps": {
+            "description": "Ordered steps executed serially after ONE approval. Each step is an object {action, ...that action's own params} — e.g. {action:\"click\", ref:3} or {action:\"click\", x:820, y:410}. Allowed actions: click/right_click/type/scroll/select/expand/read/wait/tree/find/window_shot. Banned (call separately): keys/activate/grant/screenshot/probe/audit/status/nested batch. A sensitive target anywhere in the batch rejects the WHOLE batch — do those one at a time.",
+            "items": {
+              "additionalProperties": {},
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
           "text": {
             "description": "Text to type",
             "type": "string"
@@ -1266,7 +1296,7 @@
             "type": "integer"
           },
           "title": {
-            "description": "Window title substring (fuzzy, first match) (action: uia_tree); Window title substring (action: uia_find); Window title substring (action: uia_read); Window title substring (action: uia_wait); Window title substring (action: uia_click); Window title substring (action: uia_right_click); Window title substring (action: uia_type); Window title substring (action: uia_select); Window title substring (action: uia_expand); Window title substring (action: uia_scroll); Window title substring (action: uia_keys); Window title substring (action: uia_activate); Window title substring (action: uia_fill); Window title substring (action: uia_window_shot)",
+            "description": "Window title substring (fuzzy, first match) (action: uia_tree); Window title substring (action: uia_find); Window title substring (action: uia_read); Window title substring (action: uia_wait); Window title substring (action: uia_click); Window title substring (action: uia_right_click); Window title substring (action: uia_type); Window title substring (action: uia_select); Window title substring (action: uia_expand); Window title substring (action: uia_scroll); Window title substring (action: uia_keys); Window title substring (action: uia_activate); Window title substring (action: uia_fill); Window title substring (action: uia_window_shot); Target window title substring (action: uia_batch)",
             "type": "string"
           },
           "until": {
@@ -1281,6 +1311,18 @@
           "value": {
             "description": "Expected value (required when until=value)",
             "type": "string"
+          },
+          "x": {
+            "description": "Screen-virtual X — coordinate mode (give together with y; ref/selector are then ignored). Use for self-drawn UIs whose control tree is empty. Verify the position with desktop_uia_window_shot first; the point must fall inside the target window. (action: uia_click); Screen-virtual X — coordinate mode (with y; ref/selector ignored). Use inside self-drawn UIs. (action: uia_right_click); Screen-virtual X — coordinate mode (with y; ref/selector ignored): the wheel is aimed at this point, direction/amount still apply. (action: uia_scroll)",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "y": {
+            "description": "Screen-virtual Y — coordinate mode (give together with x; ref/selector are then ignored) (action: uia_click); Screen-virtual Y — coordinate mode (with x) (action: uia_right_click); Screen-virtual Y — coordinate mode (with x) (action: uia_scroll)",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
         },
         "required": [

@@ -422,12 +422,15 @@ export const DOMAIN_SPECS: DomainSpec[] = [
     description:
       'Windows desktop control (in-process UIA COM, millisecond-latency): probe process tree + windows with channel routing advice ' +
       '(cdp/uia/vision per window), read a window control tree (interactive-only by default, paginated), find/read controls, ' +
-      'and operate them by ref or selector (click/type/select/expand/scroll/keys/activate). ' +
+      'and operate them by ref, selector, or SCREEN-VIRTUAL COORDINATES (click/right_click/scroll accept x+y — the only way into ' +
+      'self-drawn UIs whose control tree is empty). ' +
       'Write actions return world-change feedback (title/focus/value/toggle before→after). ' +
-      'Permission model: first takeover of a window asks once (then pattern actions flow); sensitive targets and physical input ' +
-      '(coordinate clicks/SendKeys/wheel) always ask separately; a global input lease serializes physical injection across agents. ' +
+      "Permission model: first takeover of a window asks once, then that window's clicks/typing/selection/scrolling — including " +
+      'coordinate mode and pattern-less physical paths — flow without asking; sensitive targets (submit/pay/delete/password/overwrite) ' +
+      'always ask, and so do SendKeys hotkeys and bringing a window to the foreground; a global input lease serializes physical injection. ' +
       'desktop(audit) reviews what was done. desktop(screenshot) is high-privacy and asks every time. ' +
-      'Self-drawn apps (WeChat/QQ/DingTalk) expose empty trees — use desktop(uia_window_shot) + vision instead. ' +
+      'Self-drawn apps (WeChat/QQ/DingTalk): desktop(uia_window_shot) attaches the window image so a vision model can see it, ' +
+      'then click by x/y coordinates. ' +
       'Locator params (hwnd/pid/title) may be omitted on uia_* actions — omitted = the focused window (set by your last explicit locator or uia_activate).',
     actions: {
       probe: 'desktop_probe',
@@ -446,6 +449,7 @@ export const DOMAIN_SPECS: DomainSpec[] = [
       uia_activate: 'desktop_uia_activate',
       uia_fill: 'desktop_uia_fill',
       uia_window_shot: 'desktop_uia_window_shot',
+      uia_batch: 'desktop_uia_batch',
       audit: 'desktop_audit',
       status: 'desktop_status',
     },

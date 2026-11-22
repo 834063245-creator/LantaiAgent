@@ -552,7 +552,14 @@ const UIA_CAP_SCHEMA = {
       .optional()
       .describe('Attach per-window channel routing advice (default true); false = bare snapshot, faster'),
   }),
-  desktop_screenshot: z.object({}),
+  desktop_screenshot: z.object({
+    attach_image: z
+      .boolean()
+      .optional()
+      .describe(
+        'Attach the captured full-screen PNG to the conversation (default false). Full-screen pixels = high privacy AND high token cost, so this is opt-in: pass true only when you genuinely need to see the whole desktop.',
+      ),
+  }),
   desktop_uia_tree: z.object({
     hwnd: z.number().int().optional().describe('Window handle from desktop_probe (hwnd field)'),
     pid: z.number().int().optional().describe('Process id - resolves to its main window'),
@@ -605,6 +612,18 @@ const UIA_CAP_SCHEMA = {
     hwnd: z.number().int().optional().describe('Window handle (re-locate if tree changed)'),
     pid: z.number().int().optional().describe('Process id'),
     title: z.string().optional().describe('Window title substring'),
+    x: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'Screen-virtual X — coordinate mode (give together with y; ref/selector are then ignored). Use for self-drawn UIs whose control tree is empty. Verify the position with desktop_uia_window_shot first; the point must fall inside the target window.',
+      ),
+    y: z
+      .number()
+      .int()
+      .optional()
+      .describe('Screen-virtual Y — coordinate mode (give together with x; ref/selector are then ignored)'),
   }),
   desktop_uia_right_click: z.object({
     ref: z.number().int().optional().describe('Control ref from desktop_uia_tree/find'),
@@ -614,6 +633,12 @@ const UIA_CAP_SCHEMA = {
     hwnd: z.number().int().optional().describe('Window handle'),
     pid: z.number().int().optional().describe('Process id'),
     title: z.string().optional().describe('Window title substring'),
+    x: z
+      .number()
+      .int()
+      .optional()
+      .describe('Screen-virtual X — coordinate mode (with y; ref/selector ignored). Use inside self-drawn UIs.'),
+    y: z.number().int().optional().describe('Screen-virtual Y — coordinate mode (with x)'),
   }),
   desktop_uia_type: z.object({
     ref: z.number().int().optional().describe('Control ref (usually an Edit/ComboBox)'),
@@ -635,6 +660,14 @@ const UIA_CAP_SCHEMA = {
     hwnd: z.number().int().optional().describe('Window handle'),
     pid: z.number().int().optional().describe('Process id'),
     title: z.string().optional().describe('Window title substring'),
+    x: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'Screen-virtual X — coordinate mode (with y; ref/selector ignored): the wheel is aimed at this point, direction/amount still apply.',
+      ),
+    y: z.number().int().optional().describe('Screen-virtual Y — coordinate mode (with x)'),
   }),
   desktop_uia_select: z.object({
     ref: z.number().int().optional().describe('Control ref (the ListItem/TreeItem/TabItem to select)'),
@@ -674,6 +707,21 @@ const UIA_CAP_SCHEMA = {
     pid: z.number().int().optional().describe('Process id'),
     title: z.string().optional().describe('Window title substring'),
   }),
+  desktop_uia_batch: z.object({
+    steps: z
+      .array(z.record(z.string(), z.unknown()))
+      .describe(
+        'Ordered steps executed serially after ONE approval. Each step is an object {action, ...that action\'s own params} — e.g. {action:"click", ref:3} or {action:"click", x:820, y:410}. Allowed actions: click/right_click/type/scroll/select/expand/read/wait/tree/find/window_shot. Banned (call separately): keys/activate/grant/screenshot/probe/audit/status/nested batch. A sensitive target anywhere in the batch rejects the WHOLE batch — do those one at a time.',
+      ),
+    on_error: z
+      .enum(['stop', 'continue'])
+      .optional()
+      .describe('On a failed step: stop (default) or continue with the rest'),
+    max_steps: z.number().int().optional().describe('Step cap (default and hard maximum 20; can only be lowered)'),
+    hwnd: z.number().int().optional().describe('Target window handle — a batch runs inside ONE window'),
+    pid: z.number().int().optional().describe('Process id of the target window'),
+    title: z.string().optional().describe('Target window title substring'),
+  }),
   desktop_audit: z.object({
     limit: z.number().int().optional().describe('Max entries (default 50)'),
   }),
@@ -685,7 +733,7 @@ const UIA_CAP_DESCRIPTION: Record<UiaCapAction, string> = {
   desktop_probe:
     'Snapshot current machine process tree + top-level windows + visible console windows, WITH per-window channel routing advice (route.channel: "cdp" for Chromium windows → browser tools; "uia" for standard-control windows → desktop_uia_*; "vision" for self-drawn apps → uia_window_shot + multimodal). Returns {processes:[{pid,ppid,name,is_chromium}], windows:[{pid,name,title,visible,hwnd,route}], visible_console_windows}. route:false param skips UIA probing for a faster bare snapshot. Use to find which window to operate and HOW to operate it. Read-only; no persistent monitoring. Privacy: only process names (not full command lines); no cross-session/RDP probing.',
   desktop_screenshot:
-    'Capture a full-screen screenshot of the current desktop (requires an interactive desktop session). Saved to a temp file; returns {path, bytes, note}. High-privacy: may contain arbitrary on-screen content, so this asks for approval EVERY time. With a text-only model the image is not visible; hand the path to the user for confirmation.',
+    'Capture a full-screen screenshot of the current desktop (requires an interactive desktop session). Saved to a temp file; returns {path, bytes, note}. High-privacy: may contain arbitrary on-screen content, so this asks for approval EVERY time. The image is NOT attached to the conversation by default — pass attach_image:true to attach it (the result then also carries {image, attachment} and a vision model can see the screen; with a text-only model the image stays invisible).',
   desktop_uia_tree:
     'Read the Windows UI Automation control tree of a desktop window — interactive controls only by default (buttons, inputs, lists, menus...), paginated. Returns {window:{pid,title,hwnd}, refs, generation, total, offset, count, truncated, tree:"[ref] Type \\"Name\\"", controls:[{ref,name,type,automation_id,enabled,rect,depth}]}. Locate the window by ONE of: hwnd (exact, from desktop_probe), pid, title (fuzzy), or omit all for the foreground window. all:true includes non-interactive layout elements; depth:N limits tree levels; offset/max_results paginate (default 80/page). refs index the FULL tree and stay reusable across actions and pages; if the window changed and a ref went stale, the action auto-refreshes once — only re-read the tree when that fails. Reading never touches focus or cursor. Self-drawn controls (WeChat/QQ/DingTalk etc.) expose an empty tree — use desktop_uia_window_shot + a vision model instead.',
   desktop_uia_find:
@@ -695,13 +743,13 @@ const UIA_CAP_DESCRIPTION: Record<UiaCapAction, string> = {
   desktop_uia_wait:
     'Wait until a control satisfies a condition: until "exists" (appears), "enabled", or "value" (equals the given value). Polls every 150ms up to timeout_ms (default 10000, max 30000). Returns {found, until, waited_ms} — found:false on timeout is NOT an error. Use after clicking async-triggering buttons (e.g. dialogs that take a moment).',
   desktop_uia_click:
-    'Click a control in a desktop window. Locate by EITHER ref (from desktop_uia_tree/find) OR selector: name/automation_id/control_type - any combination. Triggers via InvokePattern/TogglePattern/SelectionItemPattern when available (no focus stealing), else real coordinate click (physical input). Returns world-change feedback: {done, method, target, changed:{window_title/focused/value/toggle before→after}, hint}. Permissions: first write into a window asks once (window takeover); sensitive targets (submit/pay/delete/confirm text) and coordinate clicks ask separately every time. Check "changed" to verify the click did what you expected; use desktop_uia_read/wait to double-check.',
+    'Click in a desktop window. TWO modes: (a) control mode — locate by ref (desktop_uia_tree/find) or selector name/automation_id/control_type; a UIA pattern (Invoke/Toggle/SelectionItem) is used when available (no focus stealing), else a real coordinate click at the control center. (b) COORDINATE mode — pass x/y (screen-virtual, same origin as the rect reported by desktop_uia_tree/read); ref/selector are then ignored; this is the ONLY way to operate self-drawn UIs whose control tree is empty (WeChat/QQ/DingTalk, canvas apps). The point must fall inside the target window, so locate it with hwnd/pid/title first; verify visually with desktop_uia_window_shot. Returns world-change feedback: {done, method, target, changed:{window_title/focused/value/toggle before→after}, hint}. Permissions: first write into a window asks once (window takeover); after takeover, clicks in that window — control AND coordinate mode — flow without asking; sensitive targets (submit/pay/delete/confirm text) always ask. Check "changed" to verify; use desktop_uia_read/wait to double-check.',
   desktop_uia_right_click:
-    'Right-click a control — opens the context menu at the control center. Pure physical input (no UIA pattern for right-click), always asks. Locate by ref or selector (see desktop_uia_click). After the menu opens, read it with desktop_uia_tree and click items by ref.',
+    'Right-click in a desktop window — opens the context menu. Pure physical input (no UIA pattern exists for right-click). Control mode (ref/selector → control center) or coordinate mode (x/y screen-virtual, for self-drawn UIs). First right-click into a window asks once (window takeover); afterwards it flows without asking. After the menu opens, read it with desktop_uia_tree and click items by ref.',
   desktop_uia_type:
     'Type text into a control. ValuePattern.SetValue when supported (instant, no focus), else focus + clipboard paste (physical input, asks separately). Returns world-change feedback incl. value before→after (password fields masked). Typing into a pre-filled input or a password field is classified sensitive and asks separately.',
   desktop_uia_scroll:
-    'Scroll a scrollable control (ScrollPattern when available, else mouse wheel — wheel is physical input and asks separately). Returns world-change feedback incl. scroll percents before→after. Scroll itself is non-destructive; with window takeover granted it flows without asking.',
+    'Scroll in a desktop window. Control mode (ref/selector → ScrollPattern when available, else mouse wheel over the control) or coordinate mode (x/y screen-virtual → wheel aimed at that point, direction/amount still apply; the only way to scroll self-drawn lists/canvases). Returns world-change feedback incl. scroll percents before→after. Scroll itself is non-destructive; with window takeover granted it flows without asking.',
   desktop_uia_select:
     'Explicitly select a list item / tree item / tab (SelectionItemPattern.Select). Cleaner than clicking list entries — use for ListItems, TreeItems, TabItems, radio-like items. Returns world-change feedback.',
   desktop_uia_expand:
@@ -711,7 +759,9 @@ const UIA_CAP_DESCRIPTION: Record<UiaCapAction, string> = {
   desktop_uia_activate:
     'Bring a window to the foreground (restore if minimized + SetForegroundWindow). Physical input — asks every time. Needed before coordinate clicks / clipboard paste into apps that require focus; pattern actions (Invoke/SetValue/Select) work without activation.',
   desktop_uia_window_shot:
-    'Capture a screenshot of a single window rect (not the full screen) - smaller privacy surface than desktop_screenshot, read-only. Locate window as in desktop_uia_tree (hwnd/pid/title/foreground). Returns {path, bytes, rect, window}. With a text-only model hand the path to the user; with a vision model read the image to see self-drawn controls that UIA cannot see.',
+    'Capture a screenshot of a single window rect (not the full screen) - smaller privacy surface than desktop_screenshot, read-only. Locate window as in desktop_uia_tree (hwnd/pid/title/foreground). Returns {path, bytes, rect, window} PLUS {image, attachment, imageNote}: the window image is attached to the conversation by default, so a vision model can SEE the window — this is the entry point for self-drawn controls that UIA cannot see (WeChat/QQ/DingTalk), chart/render checks, and layout verification. Text-only models only get an explanatory placeholder. Typical flow for self-drawn apps: desktop_probe (route.channel="vision") → desktop_uia_window_shot → act, then shot again to verify the result.',
+  desktop_uia_batch:
+    'Run several desktop actions in ONE tool call, executed serially under a SINGLE approval — the way to cut round-trips on multi-step jobs (fill a form: click field → type → click next → type) and the reason long tasks stop costing one approval per click. Contract: (a) all steps run inside ONE window (pass hwnd/pid/title once at top level); (b) allowed step actions only — click/right_click/type/scroll/select/expand/read/wait/tree/find/window_shot (keys/activate/grant/screenshot/probe/audit/status/nested batch must be called separately); (c) a sensitive target anywhere (submit/pay/delete/password/overwrite) rejects the whole batch — call that action alone; (d) on_error defaults to "stop" (the failed step halts the batch), set "continue" to keep going; (e) max 20 steps; (f) physical steps share ONE global input lease. Returns {steps:[{i,action,ok,result|error}], total, executed, failed, stopped_at, elapsed_ms, window}. The approval prompt lists the first 5 steps: the user approves the batch, not each click — keep batches short and coherent, and never pack a destructive sequence into one batch.',
   desktop_audit:
     'Read the desktop operation audit log — which agent did what (click/type/keys/activate), when, against which control/window, and the outcome. Mirrors browser_audit. Use to review what the Agent has done on the desktop.',
   desktop_status:
@@ -735,6 +785,7 @@ const UIA_CAP_READONLY: Record<UiaCapAction, boolean> = {
   desktop_uia_keys: false,
   desktop_uia_activate: false,
   desktop_uia_window_shot: true,
+  desktop_uia_batch: false,
   desktop_audit: true,
   desktop_status: true,
 };
@@ -757,6 +808,7 @@ const DESKTOP_ACTION_TOOL: Record<string, string> = {
   uia_keys: 'desktop_uia_keys',
   uia_activate: 'desktop_uia_activate',
   uia_window_shot: 'desktop_uia_window_shot',
+  uia_batch: 'desktop_uia_batch',
   audit: 'desktop_audit',
   status: 'desktop_status',
 };
@@ -779,6 +831,10 @@ function uiaCapTool(action: UiaCapAction, run?: (args: Record<string, unknown>) 
     description: () => UIA_CAP_DESCRIPTION[action],
     parameters: () => parameters,
     readOnly: () => UIA_CAP_READONLY[action] ?? false,
+    // 窗口截图接附图通道（批 1，P0-1）：Rust 侧把 PNG 转存成工作区内容寻址附件并在
+    // 输出里带 image 引用，executor 据此把图挂进模型上下文（视觉模型可直接看窗口）。
+    // 全屏 desktop_screenshot 走 attach_image 参数（缺省不接），故不在此列。
+    ...(action === 'desktop_uia_window_shot' ? { imageChannel: true } : {}),
     execute: (args, _onProgress, _signal) => (run ? run(args) : runDesktopAction(short, args)),
   };
 }
@@ -818,14 +874,16 @@ export function createDesktopTools(): Tool[] {
       return run('uia_wait', a);
     }),
     uiaCapTool('desktop_uia_click', async (a) => {
-      if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
-        return '[desktop_uia_click] 至少要给一个定位条件: ref / name / automation_id / control_type';
+      const coordMode = a.x !== undefined && a.y !== undefined;
+      if (!coordMode && a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
+        return '[desktop_uia_click] 至少要给一个定位条件: ref / name / automation_id / control_type，或坐标模式 x+y';
       }
       return run('uia_click', a);
     }),
     uiaCapTool('desktop_uia_right_click', async (a) => {
-      if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
-        return '[desktop_uia_right_click] 至少要给一个定位条件: ref / name / automation_id / control_type';
+      const coordMode = a.x !== undefined && a.y !== undefined;
+      if (!coordMode && a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
+        return '[desktop_uia_right_click] 至少要给一个定位条件: ref / name / automation_id / control_type，或坐标模式 x+y';
       }
       return run('uia_right_click', a);
     }),
@@ -848,12 +906,14 @@ export function createDesktopTools(): Tool[] {
       return run('uia_expand', a);
     }),
     uiaCapTool('desktop_uia_scroll', async (a) => {
-      if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
-        return '[desktop_uia_scroll] 至少要给一个定位条件: ref / name / automation_id / control_type';
+      const coordMode = a.x !== undefined && a.y !== undefined;
+      if (!coordMode && a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
+        return '[desktop_uia_scroll] 至少要给一个定位条件: ref / name / automation_id / control_type，或坐标模式 x+y';
       }
       return run('uia_scroll', a);
     }),
     uiaCapTool('desktop_uia_keys'),
+    uiaCapTool('desktop_uia_batch'),
     uiaCapTool('desktop_uia_activate'),
     defineTool({
       name: 'desktop_uia_fill',

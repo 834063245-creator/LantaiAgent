@@ -38,6 +38,7 @@ use serde_json::Value;
 pub(crate) use audit::audit_log as desktop_audit_log;
 pub(crate) use audit::audit_query as desktop_audit_query;
 pub(crate) use grants::{acquire_input_lease, grant, has_grant, lease_holder, list_grants};
+pub(crate) use shot::shot_dir;
 
 use worker::{Locator, Target};
 
@@ -384,6 +385,62 @@ pub(crate) async fn uia_window_shot(
         "note": "窗口矩形截图已落盘(文本模型看不到内容,可交给用户确认; vision 模型可读路径)。",
     })
     .to_string())
+}
+
+/// 窗口信息（坐标动作的定位前置）：hwnd/title/pid/rect —— 授权键控与 rect 校验口径。
+pub(crate) async fn window_info(
+    title: Option<&str>,
+    pid: Option<u32>,
+    hwnd: Option<u64>,
+) -> Result<Value, String> {
+    worker::request(|reply| worker::UiaRequest::WindowRect {
+        loc: locator(title, pid, hwnd),
+        reply,
+    })
+    .await
+}
+
+/// desktop_uia_click 坐标模式（批 2，P0-2）：屏幕虚拟坐标物理点击。
+/// 自绘控件（UIA 树为空）与画布类界面的唯一交互路径；rect 校验在 worker 内。
+pub(crate) async fn uia_click_at(
+    title: Option<&str>,
+    pid: Option<u32>,
+    hwnd: Option<u64>,
+    x: i32,
+    y: i32,
+    right: bool,
+) -> Result<String, String> {
+    worker::request(|reply| worker::UiaRequest::ClickAt {
+        loc: locator(title, pid, hwnd),
+        x,
+        y,
+        right,
+        reply,
+    })
+    .await
+    .map(|v| v.to_string())
+}
+
+/// desktop_uia_scroll 坐标模式（批 2）：屏幕虚拟坐标滚轮。
+pub(crate) async fn uia_scroll_at(
+    title: Option<&str>,
+    pid: Option<u32>,
+    hwnd: Option<u64>,
+    x: i32,
+    y: i32,
+    direction: &str,
+    amount: f64,
+) -> Result<String, String> {
+    worker::request(|reply| worker::UiaRequest::ScrollAt {
+        loc: locator(title, pid, hwnd),
+        x,
+        y,
+        direction: direction.to_string(),
+        amount,
+        reply,
+    })
+    .await
+    .map(|v| v.to_string())
 }
 
 /// desktop_probe 路由探测 — 每窗口 interactive 数（预算 50ms）。

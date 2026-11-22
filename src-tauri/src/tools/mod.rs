@@ -372,11 +372,20 @@ impl Tool for BrowserTool {
 //   1. 工具级 Deny（最高优先）
 //   2. 工具级 Allow
 //   3. 只读动作（probe/tree/find/read/wait/window_shot/audit）→ Passthrough
-//   4. uia_pattern（已有窗口级授权 DesktopGrant 的 pattern 动作）→ Passthrough
+//   4. uia_pattern / uia_physical_granted（已有窗口级授权 DesktopGrant 的动作，
+//      含无 pattern 可用的物理兜底路径）→ Passthrough
 //   5. uia_grant（首次接管某窗口）→ Ask 一次，批准后 rpc 层记录 grant
 //   6. uia_click_sensitive / uia_type_sensitive（敏感目标）→ 每次单独 Ask
-//   7. uia_physical（物理输入路径：坐标点击/SendKeys/滚轮）→ 每次单独 Ask + 输入租约
+//   7. uia_physical（**未授权窗口**的物理输入路径：坐标点击/键盘注入/滚轮）→
+//      每次单独 Ask + 输入租约
 //   8. screenshot（高隐私面）→ 每次单独 Ask（已从 read-only 移除）
+//
+// 2026-11 批 2（P0-2，computer use 四批计划）：第 4 层从「仅 pattern」扩到
+// 「pattern + 物理兜底」——用户批准接管某窗口 = 批准该窗口内的结果面操作；
+// 自绘界面（无 UIA pattern）若每点一次弹一次卡，多步任务根本跑不动。收紧面不变：
+// 敏感目标（提交/支付/删除/密码/覆盖已填值）仍每次 Ask；热键 uia_keys 与抢前台
+// uia_activate 影响面超出目标窗口，**永远**每次 Ask。kill switch：
+// `HOLOGRAM_UIA_PHYSICAL_ON_GRANT=0` 恢复旧语义（物理路径每次 Ask）。
 // 分类所需信息（name/patterns/hwnd）由 rpc 层先做只读 resolve 再构造本 Tool。
 // 物理输入的串行化（DesktopInputLease）在 rpc 层执行时获取。
 
@@ -441,9 +450,11 @@ impl Tool for DesktopTool {
         if self.is_read_only() {
             return PermissionResult::Passthrough;
         }
-        // 4. 已授权窗口上的 pattern 动作放行（DesktopGrant 在 rpc 层记录/校验，
-        //    check_permissions 保持纯函数 — 沿 BrowserTool「attach 后页内动作放行」语义）
-        if self.action == "uia_pattern" {
+        // 4. 已授权窗口上的动作放行：pattern（标准控件）+ physical_granted（物理兜底，
+        //    批 2：自绘界面没有 pattern 可用，接管后按结果面放行）。
+        //    DesktopGrant 在 rpc 层记录/校验，check_permissions 保持纯函数 —
+        //    沿 BrowserTool「attach 后页内动作放行」语义。
+        if matches!(self.action.as_str(), "uia_pattern" | "uia_physical_granted") {
             return PermissionResult::Passthrough;
         }
         // 5-8. Ask 类：接管授权 / 敏感目标 / 物理输入 / 截图
@@ -454,9 +465,9 @@ impl Tool for DesktopTool {
             .unwrap_or_default();
         let reason = match self.action.as_str() {
             "uia_grant" => format!(
-                "Agent 请求接管桌面窗口「{title}」{hwnd_note}。批准后该窗口上的标准控件操作（点击/输入/\
-                 选择/展开/滚动）不再逐次确认（敏感目标与坐标级物理输入仍会单独询问）——\
-                 建议只对无敏感内容的窗口批准。"
+                "Agent 请求接管桌面窗口「{title}」{hwnd_note}。批准后该窗口上的操作（点击/输入/\
+                 选择/展开/滚动，含无标准 pattern 时走的物理输入）不再逐次确认——\
+                 敏感目标（提交/支付/删除）仍会单独询问；建议只对无敏感内容的窗口批准。"
             ),
             "uia_click_sensitive" => format!(
                 "Agent 请求点击窗口「{title}」中一个敏感控件（提交/支付/删除/确认/退订类文本）。\
@@ -468,7 +479,9 @@ impl Tool for DesktopTool {
             "uia_physical" => format!(
                 "Agent 请求对窗口「{title}」执行物理输入（坐标鼠标/键盘注入/滚轮）{hwnd_note}。\
                  真实输入会落进当前屏幕焦点，可能触发保存、发送、删除等副作用；\
-                 若目标控件不支持标准 pattern，这是唯一可用路径。"
+                 若目标控件不支持标准 pattern（自绘界面），这是唯一可用路径。\
+                 批准接管该窗口后，该窗口内的物理输入不再逐次询问（敏感目标仍每次单独确认，\
+                 热键与抢前台仍每次询问）。"
             ),
             "screenshot" => "Agent 请求截取全屏。截图可能包含任意屏幕内容（高隐私面），请确认。".into(),
             "uia_keys" => "Agent 请求向目标窗口注入键盘热键（SendInput）。真实按键会落进焦点窗口，请确认目标与键位安全。".into(),
@@ -498,6 +511,9 @@ pub(crate) struct UiaTargetCaps {
 
 /// 分类：敏感目标 > 物理路径 > 已授权 pattern > 首次接管（优先级即安全收紧序）。
 /// 输出是 DesktopTool 的 action 名（check_permissions 的分层输入）。
+///
+/// 物理路径的落地等级取决于「是否已接管该窗口」与 kill switch（批 2）：
+/// 已接管 → `uia_physical_granted`（第 4 层放行）；未接管 / 开关关闭 → `uia_physical`（Ask）。
 pub(crate) fn classify_uia_action(
     kind: &str,
     target_name: &str,
@@ -505,6 +521,48 @@ pub(crate) fn classify_uia_action(
     cur_value: &str,
     caps: &UiaTargetCaps,
     granted: bool,
+) -> &'static str {
+    classify_uia_action_with(
+        kind,
+        target_name,
+        password,
+        cur_value,
+        caps,
+        granted,
+        physical_on_grant(),
+    )
+}
+
+/// 物理输入是否在窗口接管授权内放行（批 2，P0-2）。
+///
+/// 语义：用户批准「接管某窗口」= 批准该窗口内的**结果面**操作——包括无 pattern 可用的
+/// 物理兜底路径（坐标点击 / 滚轮 / 剪贴板粘贴）。自绘界面（微信/QQ/钉钉、画布类应用）
+/// 没有 pattern，若每点一次弹一次卡，多步任务根本跑不动。
+///
+/// 收紧面不变（永不纳入本档）：敏感目标（提交/支付/删除/密码/覆盖已填值）每次单独 Ask；
+/// `uia_keys`（SendInput 全局热键）与 `uia_activate`（抢前台）影响面超出目标窗口，永远 Ask。
+///
+/// kill switch：`HOLOGRAM_UIA_PHYSICAL_ON_GRANT=0`（或 `false`）恢复旧语义——物理路径
+/// 每次单独 Ask。
+pub(crate) fn physical_on_grant() -> bool {
+    match std::env::var("HOLOGRAM_UIA_PHYSICAL_ON_GRANT") {
+        Ok(v) => {
+            let v = v.trim();
+            !(v == "0" || v.eq_ignore_ascii_case("false") || v.eq_ignore_ascii_case("off"))
+        }
+        Err(_) => true,
+    }
+}
+
+/// 分类矩阵本体（纯函数，`physical_on_grant` 由调用方显式传入——两态可测）。
+pub(crate) fn classify_uia_action_with(
+    kind: &str,
+    target_name: &str,
+    password: bool,
+    cur_value: &str,
+    caps: &UiaTargetCaps,
+    granted: bool,
+    physical_on_grant: bool,
 ) -> &'static str {
     let sensitive = match kind {
         "click" | "right_click" => crate::sensitive::is_sensitive_click_text(target_name),
@@ -518,7 +576,11 @@ pub(crate) fn classify_uia_action(
             "uia_click_sensitive"
         }
     } else if uia_action_needs_physical(kind, caps) {
-        "uia_physical"
+        if granted && physical_on_grant {
+            "uia_physical_granted"
+        } else {
+            "uia_physical"
+        }
     } else if granted {
         "uia_pattern"
     } else {
@@ -534,6 +596,8 @@ pub(crate) fn uia_action_needs_physical(kind: &str, caps: &UiaTargetCaps) -> boo
         "right_click" => true,
         "type" => !caps.has_value,
         "scroll" => !caps.has_scroll,
+        // 批 2 坐标模式：天生等价不了任何标准 pattern 动作，一律物理路径
+        "click_at" | "right_click_at" | "scroll_at" => true,
         _ => false,
     }
 }
@@ -697,6 +761,11 @@ mod desktop_permission_tests {
             kind(&desktop("uia_pattern").check_permissions(&ctx)),
             "passthrough"
         );
+        // 批 2：已接管窗口内的物理兜底路径同样放行（敏感目标另有分层，仍 Ask）
+        assert_eq!(
+            kind(&desktop("uia_physical_granted").check_permissions(&ctx)),
+            "passthrough"
+        );
         // 首次接管 → Ask（文案含窗口标题）
         match desktop("uia_grant").check_permissions(&ctx) {
             PermissionResult::Ask { reason, .. } => {
@@ -792,21 +861,32 @@ mod desktop_permission_tests {
             classify_uia_action("type", "搜索", false, "", &full, true),
             "uia_pattern"
         );
-        // 无 pattern 可用 → 物理（已授权也拦不住，执行前要租约）
+        // 无 pattern 可用（自绘界面）→ 批 2：已接管窗口内按结果面放行（physical_granted），
+        // 未接管仍 Ask；执行前一律要租约（并发安全不变）。
         assert_eq!(
             classify_uia_action("click", "OK", false, "", &bare, true),
-            "uia_physical"
+            "uia_physical_granted"
         );
         assert_eq!(
             classify_uia_action("right_click", "图标", false, "", &full, true),
-            "uia_physical"
+            "uia_physical_granted"
         );
         assert_eq!(
             classify_uia_action("type", "画布输入", false, "", &bare, true),
-            "uia_physical"
+            "uia_physical_granted"
         );
         assert_eq!(
             classify_uia_action("scroll", "列表", false, "", &bare, true),
+            "uia_physical_granted"
+        );
+        // 未接管 + 无 pattern → 首次 Ask 走物理输入档（批准后 rpc 层一并记 grant，
+        // 下次即进 physical_granted——自绘界面整窗无 pattern 时这条是唯一接管入口）。
+        assert_eq!(
+            classify_uia_action("click", "OK", false, "", &bare, false),
+            "uia_physical"
+        );
+        assert_eq!(
+            classify_uia_action("scroll", "列表", false, "", &bare, false),
             "uia_physical"
         );
         // select/expand：pattern-only，永不物理
@@ -820,6 +900,52 @@ mod desktop_permission_tests {
         );
         assert!(!uia_action_needs_physical("select", &bare));
         assert!(!uia_action_needs_physical("expand", &bare));
+
+        // kill switch：放行关闭时物理路径回到逐次 Ask（批 2 的回滚口）
+        assert_eq!(
+            classify_uia_action_with("click", "OK", false, "", &bare, true, false),
+            "uia_physical"
+        );
+        assert_eq!(
+            classify_uia_action_with("scroll", "列表", false, "", &bare, true, false),
+            "uia_physical"
+        );
+        // 开关开着但未接管 → 仍是 Ask 档（无 pattern 控件的首次 Ask 即接管入口）
+        assert_eq!(
+            classify_uia_action_with("click", "OK", false, "", &bare, false, true),
+            "uia_physical"
+        );
+        // 敏感目标在放行档下依然每次 Ask（优先级最高，物理性被敏感性覆盖）
+        assert_eq!(
+            classify_uia_action_with("click", "确认支付", false, "", &bare, true, true),
+            "uia_click_sensitive"
+        );
+        assert_eq!(
+            classify_uia_action_with("type", "密码框", true, "", &bare, true, true),
+            "uia_type_sensitive"
+        );
+        // 批 2 坐标模式：天然物理路径，已接管 → 放行，未接管 / 开关关 → Ask
+        for at_kind in ["click_at", "right_click_at", "scroll_at"] {
+            assert!(
+                uia_action_needs_physical(at_kind, &full),
+                "{at_kind} 必须走物理路径（坐标模式不等价任何 pattern）"
+            );
+            assert_eq!(
+                classify_uia_action(at_kind, "", false, "", &bare, true),
+                "uia_physical_granted",
+                "{at_kind} 已接管应放行"
+            );
+            assert_eq!(
+                classify_uia_action(at_kind, "", false, "", &bare, false),
+                "uia_physical",
+                "{at_kind} 未接管应 Ask"
+            );
+            assert_eq!(
+                classify_uia_action_with(at_kind, "", false, "", &bare, true, false),
+                "uia_physical",
+                "{at_kind} kill switch 关闭放行后应回到 Ask"
+            );
+        }
     }
 }
 

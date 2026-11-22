@@ -64,6 +64,38 @@ describe('desktop 领域工具注册', () => {
     const result = await t.execute({ action: 'fly_to_desktop' });
     expect(result).toContain('unsupported action');
   });
+
+  // 批 1（P0-1）：窗口截图接附图通道——模型从此能看见窗口内容（自绘应用可用的前提）。
+  it('窗口截图声明 imageChannel（附图通道），全屏截图不声明', () => {
+    const registry = buildRegistry();
+    expect(registry.get('desktop_uia_window_shot')!.imageChannel).toBe(true);
+    expect(registry.get('desktop_screenshot')!.imageChannel).toBeFalsy();
+  });
+
+  it('全屏截图默认不接图：只有 attach_image 参数能显式开启', () => {
+    const registry = buildRegistry();
+    const schema = registry.get('desktop_screenshot')!.parameters() as {
+      properties?: Record<string, unknown>;
+    };
+    expect(schema.properties).toHaveProperty('attach_image');
+  });
+
+  // 批 3（P1-1）：批处理——一次审批、多步串行。
+  it('批处理工具在册、非只读、带 steps/on_error 契约', () => {
+    const registry = buildRegistry();
+    const t = registry.get('desktop_uia_batch');
+    expect(t).toBeDefined();
+    expect(t!.readOnly()).toBe(false);
+    const schema = t!.parameters() as { properties?: Record<string, unknown> };
+    expect(schema.properties).toHaveProperty('steps');
+    expect(schema.properties).toHaveProperty('on_error');
+  });
+
+  it('desktop 域 action 表含 uia_batch（门面可寻址）', () => {
+    const registry = buildRegistry();
+    const actions = registry.get('desktop')!.actions?.() ?? [];
+    expect(actions).toContain('uia_batch');
+  });
 });
 
 describe('desktop 动作路由（走 uia_cap 直呼）', () => {
