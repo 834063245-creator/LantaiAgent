@@ -30,7 +30,7 @@
  * 三条纪律：
  *   ① 只走 translate / scale（合成层，不重绘）——纸纹 background-position 是
  *      `.pp-region` 的红线，但这是**独立覆盖层**，不碰纸本体，纸律不破；
- *   ② z-index 2 = 盖在卷（1）之上、浮件（30）之下——光要照在纸上，不是只照空白；
+ *   ② z-index 3000 = 盖在纸带（100–999）与纸片件（1000+）之上、纸面覆盖层（3050）与架件（3100）之下——
  *   ③ 峰值 4.5% 墨、周期 140s：**读字时感知不到，离开一两分钟再回来才觉得
  *      "变过"**。这是"世界在运转"，不是"界面在动"——一旦能盯着看出它在飘，就太重了。
  *      首版定 4.5% 而非 3.4%：前几批的教训是"极轻 = 用户看不见 = 等于没做"，
@@ -42,7 +42,7 @@
   content: "";
   position: fixed;
   inset: -25%;
-  z-index: 2;
+  z-index: 3000; /* 环境带（paper/elevation.ts environment） */
   pointer-events: none;
   background: radial-gradient(46% 36% at 50% 46%, rgba(38, 34, 28, 0.045), transparent 72%);
   animation: pp-env-drift 140s ease-in-out infinite alternate;
@@ -132,7 +132,7 @@
   border: var(--rule-soft);
   /* 海拔（2026-11-22）：顶浮件是架件（12px）；fallback 保留旧压印影 */
   box-shadow: var(--elev-shadow, var(--elev-raise));
-  z-index: 30; /* 原书眉同档：纸内覆盖件之上、全局面板之下 */
+  z-index: 3101; /* 架件（paper/elevation.ts furniture）：TOC 3100 / 顶浮件 3101 / 小地图 3102 */
 }
 
 /* 浮件首件 = 「画布」二字（**抓手**：按住拖窗口 / 双击最大化）。浮件上只有它是
@@ -364,7 +364,7 @@
     inset -2px -3px 6px var(--sheet-shade),
     inset 0 0 0 7px var(--sheet-band),
     var(--elev-shadow);
-  z-index: 1;
+  /* z 由 PaperPanel 内联按拿起次序给（2026-11-22 P3b），CSS 不再写死。 */
   /* 影随手动（2026-09-10 拿纸动效）：落影三档（平放/在手/lift）间缓退——
    * 换主时旧卷影不是瞬间消失，拖拽带显形起落也走同一缓动（物理世界纸影
    * 不瞬移）。只声明 box-shadow 一项，别拖其他属性。 */

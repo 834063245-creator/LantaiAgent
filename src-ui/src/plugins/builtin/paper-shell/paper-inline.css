@@ -908,7 +908,7 @@
     inset 3px 4px 5px var(--sheet-lit),
     inset -2px -3px 6px var(--sheet-shade),
     inset 0 0 0 1px var(--ink-2);
-  z-index: 30;
+  z-index: 1000; /* 纸片件带（ELEVATION.piece）：永远在纸带（100–999）之上（2026-11-22 Q1-A） */
 }
 
 /* 纸内报头（便条批）：文类签从纸外页边注（left: -128px）收进纸内成单行——
@@ -962,7 +962,7 @@
   translate: 0 -2px;
   background-color: var(--paper-deep);
   box-shadow: var(--elev-raise);
-  z-index: 50;
+  z-index: 1002; /* 拖起的纸片件：纸片件带顶 */
 }
 /* 回流预览（松手定夺 2026-09-05）：拖动中块影悬回来源带内——松手即取消
  * 回槽。降不透明度 + 「松手回流」批注（楷体朱砂深——「松手入卷」同族，

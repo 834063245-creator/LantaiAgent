@@ -115,7 +115,7 @@
    pointer-events 全关（它只是「手上有东西」的可见回执，不是可点件）。 */
 .pp-quote-ghost {
   position: absolute;
-  z-index: 8;
+  z-index: 4000; /* 瞬时件（长按跟手浮签）：不参与上下判读 */
   padding: 3px 7px;
   border: 1px solid var(--seal);
   background: var(--paper);

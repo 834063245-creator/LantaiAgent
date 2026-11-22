@@ -71,6 +71,7 @@ import { sheetCharacter } from './sheet';
 import { ToastHost } from './ToastHost';
 import { blockReturnsToFlow } from './use-paper-drag';
 import { GHOST_H } from './use-paper-regions';
+import { useRegionStack } from './use-region-stack';
 import './PaperPanel.css';
 import { usePaperPanelAssembly } from './use-paper-panel';
 
@@ -224,6 +225,8 @@ export function PaperPanel() {
     branchGrips,
     onBranchGripPointerDown,
   } = usePaperPanelAssembly();
+
+  const { raise: raiseSheet, zFor: sheetZ } = useRegionStack(sessions, activeSessionKey); // 拿起次序（P3b）
 
   /* 帖签「召回」的写面（2026-11-20 帖批）：停本卷**全部**在办子代理。
    *
@@ -422,14 +425,13 @@ export function PaperPanel() {
                         '--sheet-ox': `${sheet.ox}px`,
                         '--sheet-oy': `${sheet.oy}px`,
                         '--sheet-j': `${sheet.j}`,
-                        /* 海拔（2026-11-22）：纸的高度——静置 3 / 活跃 10 / 拖带 14。
-                         * 影由 paper-elev.css 的一条配方按 --h 算；数值真源 = paper/elevation.ts。 */
                         '--h':
                           !leaving && bandSessionId === r.sessionId
                             ? ELEVATION.sheet.lifted
                             : isActive
                               ? ELEVATION.sheet.active
                               : ELEVATION.sheet.height,
+                        zIndex: sheetZ(r.sessionId),
                       } as CSSProperties
                     }
                     data-session-id={r.sessionId}
@@ -440,7 +442,10 @@ export function PaperPanel() {
                         ? undefined
                         : (e) => {
                             if (e.button !== 0) return;
-                            if (e.target === e.currentTarget) activateRegion(r.sessionId);
+                            if (e.target === e.currentTarget) {
+                              raiseSheet(r.sessionId);
+                              activateRegion(r.sessionId);
+                            }
                           }
                     }
                   >
@@ -502,12 +507,18 @@ export function PaperPanel() {
                         <div
                           className="pp-region-edge pp-region-edge--l"
                           data-tip="拖动边缘——移动整个流区"
-                          onPointerDown={(e) => onRegionEdgePointerDown(e, r.sessionId)}
+                          onPointerDown={(e) => {
+                            raiseSheet(r.sessionId);
+                            onRegionEdgePointerDown(e, r.sessionId);
+                          }}
                         />
                         <div
                           className="pp-region-edge pp-region-edge--r"
                           data-tip="拖动边缘——移动整个流区"
-                          onPointerDown={(e) => onRegionEdgePointerDown(e, r.sessionId)}
+                          onPointerDown={(e) => {
+                            raiseSheet(r.sessionId);
+                            onRegionEdgePointerDown(e, r.sessionId);
+                          }}
                         />
                         {/* P6 四角横向缩放柄（角落只开放横向——Y 由内容生长） */}
                         {(['nw', 'ne', 'sw', 'se'] as const).map((c) => (
@@ -515,7 +526,10 @@ export function PaperPanel() {
                             key={c}
                             className={`pp-region-corner pp-region-corner--${c}`}
                             data-tip="拖动角柄——调整流区宽度"
-                            onPointerDown={(e) => onRegionCornerPointerDown(e, r.sessionId, c)}
+                            onPointerDown={(e) => {
+                              raiseSheet(r.sessionId);
+                              onRegionCornerPointerDown(e, r.sessionId, c);
+                            }}
                           />
                         ))}
                       </>

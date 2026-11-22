@@ -474,7 +474,7 @@
   position: absolute;
   left: 28px;
   top: 20px;
-  z-index: 65;
+  z-index: 4000; /* 瞬时件（一次性眉批）：不参与上下判读 */
 }
 @keyframes pp-hint-fade {
   0% {

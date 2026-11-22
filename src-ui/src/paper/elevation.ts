@@ -80,3 +80,23 @@ export function heightOf(band: ElevationBandId, lifted = false): number {
   const spec = ELEVATION[band];
   return lifted ? Math.max(spec.height, spec.lifted) : spec.height;
 }
+
+/* ── 拿起次序（P3b）——纯函数，纸与纸条共用 ───────────────────────────────
+ * 带内 z = zOf(band, 次序下标)；次序 = 一个 id 数组，raise = 移到队尾。
+ * 引用稳定是渲染纪律：无变化必须返回原数组（避免无谓 setState / 重渲染）。 */
+
+/** 把 id 移到队尾；已在队尾返回原引用。 */
+export function bumpOrder(order: readonly string[], id: string): readonly string[] {
+  if (order[order.length - 1] === id) return order;
+  const next = order.filter((x) => x !== id);
+  next.push(id);
+  return next;
+}
+
+/** 同步序：保留既有顺序、去掉退场的、按 ids 序追加新张；无变化返回原引用。 */
+export function syncOrder(order: readonly string[], ids: readonly string[]): readonly string[] {
+  const kept = order.filter((id) => ids.includes(id));
+  const added = ids.filter((id) => !kept.includes(id));
+  if (kept.length === order.length && added.length === 0) return order;
+  return [...kept, ...added];
+}

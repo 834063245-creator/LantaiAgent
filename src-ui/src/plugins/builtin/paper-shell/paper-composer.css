@@ -302,7 +302,7 @@
   width: min(880px, calc(100vw - 48px));
   display: flex;
   flex-direction: column;
-  z-index: 6;
+  z-index: 3200; /* 坞带（ELEVATION.dock）——形态仍是墨，只挪数字（2026-11-22 用户批 2B） */
 }
 
 /* ── 化卷那一拍：坞从屏幕下缘**升上来**（2026-11-16，用户在四种交接里拍板 edge）──

@@ -33,7 +33,7 @@
 
 import type React from 'react';
 import { type CSSProperties, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { ELEVATION } from '../../../paper/elevation';
+import { ELEVATION, zOf } from '../../../paper/elevation';
 import { DraftFolioLine } from './DraftFolioLine';
 import { type DraftSheetCore, draftBoxInSight, draftFocusPoint, draftPlacement, draftScale } from './draft-sheet';
 import {
@@ -348,6 +348,7 @@ function PaperView({
               '--sheet-j': `${sheet.j}`,
               /* 海拔：待题纸就是一张纸（静置 3）。它的"新"由 z 顶说，不由高度说。 */
               '--h': ELEVATION.sheet.height,
+              zIndex: zOf('sheet', 899),
             } as CSSProperties)
           : { visibility: 'hidden' }
       }
@@ -468,6 +469,9 @@ function MorphView({
           '--sheet-ox': `${sheet.ox}px`,
           '--sheet-oy': `${sheet.oy}px`,
           '--sheet-j': `${sheet.j}`,
+          /* 纸带顶：交接期旧字必须盖住卷侧新字（同 paper/elevation.ts 的 sheet 带） */
+          '--h': ELEVATION.sheet.height,
+          zIndex: zOf('sheet', 899),
         } as CSSProperties
       }
     >

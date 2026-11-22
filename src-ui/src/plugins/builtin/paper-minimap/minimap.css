@@ -15,7 +15,7 @@
   box-shadow: var(--elev-shadow, 0 0 0 transparent);
   border-radius: 0;
   padding: 6px;
-  z-index: 60;
+  z-index: 3102; /* 架件带：目次 3100 / 顶浮件 3101 / 小地图 3102 */
   /* V3b 欠账接回（2026-08-30）：点击跳转——不再是只读装饰 */
   pointer-events: auto;
   cursor: grab;

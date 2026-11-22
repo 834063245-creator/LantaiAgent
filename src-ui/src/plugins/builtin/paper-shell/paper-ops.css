@@ -293,7 +293,7 @@
 /* 浮钮：块内选区旁浮现——发现性入口（不依赖手势知识） */
 .pp-strip-fab {
   position: fixed;
-  z-index: 70; /* 2026-09-01 海拔批：300 散写归浮层带（§11 45-90） */
+  z-index: 4000; /* 瞬时件（拖纸条浮钮）：不参与上下判读 */
   font-family: var(--f-song);
   font-size: var(--fs-caption);
   letter-spacing: 0.14em;
@@ -323,7 +323,7 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 62;
+  z-index: 3051; /* 纸面覆盖层：纸之上、架件 3100 之下 */
 }
 .pp-sel-ink path {
   fill: none;
@@ -339,7 +339,7 @@
 /* 幽灵预览：拖拽过程反馈——带内灰（不成条）/ 带外朱砂（松手成条） */
 .pp-strip-ghost {
   position: absolute;
-  z-index: 55;
+  z-index: 4000; /* 瞬时件（拖拽幽灵） */
   pointer-events: none;
   border: 1px dashed var(--ink-4);
   background: color-mix(in oklch, var(--paper) 88%, transparent);
@@ -370,7 +370,7 @@
  * 的 rule-dashed 界栏语言与 .pp-strip-ghost 的纸色面），成条后淡出。 */
 .pp-lift-mask {
   position: absolute;
-  z-index: 45;
+  z-index: 3052; /* 纸面覆盖层（lift 遮罩） */
   pointer-events: none;
   background: color-mix(in oklch, var(--paper-deep) 94%, transparent);
   border: 1px dashed var(--seal);
@@ -400,7 +400,7 @@
 .pp-ink-layer {
   position: absolute;
   inset: 0;
-  z-index: 10;
+  z-index: 998; /* 纸面之上的墨迹层：盖住所有纸（100–999），在纸片件（1000）之下 */
   pointer-events: none;
 }
 
@@ -546,7 +546,7 @@
   font-size: var(--pp-ch-strip-size);
   line-height: var(--pp-ch-strip-lh);
   cursor: grab;
-  z-index: 40;
+  z-index: 1001; /* 纸片件带：钉块 1000 / 纸条 1001 / 拖起 1002 */
   /* 2026-09-23 质感批：纸条跟钉块**同一套语言**（「钉住块与纸条」换装纪律从 09-19
    * 延续；只改钉块会让两者读起来是两代东西）。同纹同包边同落影，框取单线
    * （纸条更窄，双线框在 480px 宽上会过重）。 */
@@ -563,7 +563,7 @@
   cursor: grabbing;
   translate: 0 -2px;
   box-shadow: var(--elev-raise);
-  z-index: 50;
+  z-index: 1002; /* 拖起的纸条：纸片件带顶 */
 }
 /* 落定 settle（放下）：轻落归位（手感批——纸条成条/移位的「放下」一拍）。
  * 与 pp-settle-pin 同判：影列形状跨族不插值，只声明 translate。 */

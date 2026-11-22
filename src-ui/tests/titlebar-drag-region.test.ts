@@ -87,7 +87,7 @@ describe('标题栏触发范围：页面不声明 app-region，命中范围由�
     expect(declarations(css)).not.toContain('pp-topbar');
     // 浮件是覆盖件（.pp-canvas 的兄弟）——悬停判据据「画布本体」量，故不滚：
     // 结构上必须仍是 .pp-root 的直接子元素，而不是塞进 .pp-canvas 里
-    const chromeAt = panel.indexOf('className="pp-chrome"');
+    const chromeAt = panel.indexOf('className="pp-chrome');
     expect(chromeAt).toBeGreaterThan(-1);
     const canvasAt = panel.indexOf('className={`pp-canvas');
     expect(canvasAt).toBeGreaterThan(-1);

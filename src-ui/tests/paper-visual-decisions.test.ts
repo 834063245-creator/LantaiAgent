@@ -172,11 +172,11 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     // .pp-region 内 ::selection 透明化；UI 面（composer/菜单）照旧 seal-soft
     const sel = ruleBody(PANEL_CSS, '.pp-region ::selection');
     expect(sel).toContain('background: transparent');
-    // 朱线层：固定视口层 z 62（纸内件带上沿之上、浮钮 70 之下）
+    // 朱线层：固定视口层 3051（纸面覆盖层：纸之上、架件 3100 之下）
     const ink = ruleBody(PANEL_CSS, '.pp-sel-ink {');
     expect(ink).toContain('position: fixed');
     expect(ink).toContain('pointer-events: none');
-    expect(ink).toContain('z-index: 62');
+    expect(ink).toContain('z-index: 3051');
     // 纯函数真源在册（行合并 + 手写路径）
     expect(existsSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'sel-ink.ts'))).toBe(true);
     expect(PANEL_TSX).toContain('mergeSelectionLines');

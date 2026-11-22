@@ -348,9 +348,9 @@ describe('接线与样式钉值（防回漂）', () => {
     const layer = ruleBody(PANEL_CSS, '.pp-tether-layer {');
     expect(layer).toContain('position: absolute');
     expect(layer).toContain('pointer-events: none');
-    // 屏幕坐标层（墨宽不随缩放变）+ z4：纸与块之上、坞（5）与浮件之下
+    // 屏幕坐标层（墨宽不随缩放变）+ 纸面覆盖层 3050：纸与纸片件之上、架件（3100）与坞（3200）之下
     expect(layer).toContain('inset: 0');
-    expect(layer).toContain('z-index: 4');
+    expect(layer).toContain('z-index: 3050');
     const line = ruleBody(PANEL_CSS, '.pp-tether {');
     expect(line).toContain('fill: none'); // 描边不是填充——手感来自微伏不来自粗细变化
     expect(line).toContain('stroke: var(--seal)');

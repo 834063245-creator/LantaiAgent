@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BAND_ORDER, ELEVATION, heightOf, zOf } from '../src/paper/elevation';
+import { BAND_ORDER, bumpOrder, ELEVATION, heightOf, syncOrder, zOf } from '../src/paper/elevation';
 
 const ROOT = join(__dirname, '..');
 const read = (p: string): string => readFileSync(join(ROOT, p), 'utf8');
@@ -23,6 +23,19 @@ const MINIMAP_TSX = read('src/plugins/builtin/paper-minimap/MinimapView.tsx');
 const BASE_CSS = read('src/plugins/builtin/paper-shell/paper-base.css');
 const PANEL_TSX = read('src/plugins/builtin/paper-shell/PaperPanel.tsx');
 const DRAFT_TSX = read('src/plugins/builtin/paper-shell/DraftSheet.tsx');
+const COMPOSER_CSS = read('src/plugins/builtin/paper-shell/paper-composer.css');
+const PIN_CSS = read('src/plugins/builtin/paper-shell/paper-inline.css');
+const OPS_CSS = read('src/plugins/builtin/paper-shell/paper-ops.css');
+const MOTION_CSS = read('src/plugins/builtin/paper-shell/paper-motion.css');
+
+/** 取某个选择器的声明块（首个匹配；够用：本文件里这些选择器各只出现一次成块）。 */
+function ruleBody(css: string, sel: string): string {
+  const i = css.indexOf(sel);
+  if (i < 0) return '';
+  const s = css.indexOf('{', i);
+  const e = css.indexOf('}', s);
+  return s < 0 || e < 0 ? '' : css.slice(s + 1, e);
+}
 
 describe('海拔表（paper/elevation.ts）', () => {
   it('带序严格递增，且带内 900 个位置不顶穿下一带', () => {
@@ -76,11 +89,33 @@ describe('影配方（paper-elev.css）', () => {
     expect(ELEV_CSS).toMatch(/--light-soft: 1/);
   });
 
-  it('P3a：活跃纸浮到纸带顶——只取 0/1 两档，不动其它层', () => {
-    expect(ELEV_CSS).toMatch(/\.pp-region \{\s*z-index: 0;/);
-    expect(ELEV_CSS).toMatch(/\.pp-region-active \{\s*z-index: 1;/);
-    // 本文件只有这两条 z（窗光/钉块/家具/坞/小地图的 z 是 P3b 全带重排的事）
-    expect((ELEV_CSS.match(/z-index:/g) ?? []).length).toBe(2);
+  it('全带 z 一次归位（P3b，Q2-B）：环境 / 纸片件 / 覆盖层 / 架件 / 坞', () => {
+    expect(ruleBody(BASE_CSS, '.pp-root::after {')).toContain('z-index: 3000');
+    expect(ruleBody(PIN_CSS, '.pp-block.pp-pinned {')).toContain('z-index: 1000');
+    expect(ruleBody(OPS_CSS, '.pp-strip {')).toContain('z-index: 1001');
+    expect(ruleBody(OPS_CSS, '.pp-ink-layer {')).toContain('z-index: 998');
+    expect(ruleBody(MOTION_CSS, '.pp-tether-layer {')).toContain('z-index: 3050');
+    expect(ruleBody(OPS_CSS, '.pp-sel-ink {')).toContain('z-index: 3051');
+    expect(ruleBody(OPS_CSS, '.pp-lift-mask {')).toContain('z-index: 3052');
+    expect(ruleBody(TOC_CSS, '.pp-toc {')).toContain('z-index: 3100');
+    expect(ruleBody(BASE_CSS, '.pp-chrome {')).toContain('z-index: 3101');
+    expect(ruleBody(MINIMAP_CSS, '.pp-minimap {')).toContain('z-index: 3102');
+    expect(ruleBody(COMPOSER_CSS, '.pp-composer-slot {')).toContain('z-index: 3200');
+  });
+
+  it('纸与待题纸的 z 不再写死在 CSS：内联 sheetZ / 纸带顶', () => {
+    expect(ruleBody(BASE_CSS, '.pp-region {')).not.toContain('z-index');
+    expect(ELEV_CSS).not.toContain('z-index');
+    expect(PANEL_TSX).toContain('zIndex: sheetZ(r.sessionId)');
+    expect(DRAFT_TSX).toContain("zIndex: zOf('sheet', 899)");
+  });
+
+  it('拿起次序：raise 移到队尾、同步保留既有序并追加新张（引用稳定）', () => {
+    const base = ['1', '2'];
+    expect(bumpOrder(base, '1')).toEqual(['2', '1']);
+    expect(bumpOrder(base, '2')).toBe(base);
+    expect(syncOrder(['1', '2'], ['2', '3'])).toEqual(['2', '3']);
+    expect(syncOrder(base, ['1', '2'])).toBe(base);
   });
 });
 

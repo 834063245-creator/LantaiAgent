@@ -66,7 +66,7 @@
      * 影落在纸上——本带贴右缘，影主要从下缘与右缘露出（物理上诚实）。
      * fallback 用一层透明影：paper-elev.css 未载时不让上面三条 inset 一起失效。 */
     var(--elev-shadow, 0 0 0 transparent);
-  z-index: 5; /* 居画布之上、坞槽(z-6)之下；顶部浮件(z-30)居其上并已按带宽让位 */
+  z-index: 3100; /* 架件带（paper/elevation.ts furniture）；顶浮件 3101 / 小地图 3102 */
   touch-action: none;
   cursor: default; /* 带体默认光标 = 跑道口径（惰性）；可交互光标在 .pp-toc-col */
 }
