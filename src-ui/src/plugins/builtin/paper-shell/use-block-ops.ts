@@ -93,8 +93,8 @@ function blockCopyText(block: SourcedBlock): string {
   switch (block.kind) {
     case 'tool': // 脚注：工具输出为主；未跑完（无输出）退错误、再退入参
       return pick(p.output, pick(p.err, p.args));
-    case 'code': // 程文：程序体 + 运行结果
-      return [str(p.code), str(p.output)].filter((s) => s.trim()).join('\n\n');
+    case 'code': // 程文：程序体 + 运行结果（流式中途抄已生成的部分，2026-11-22）
+      return [str(p.code) || str(p.preview), str(p.output)].filter((s) => s.trim()).join('\n\n');
     case 'plan': // 拟策：题 + 正文
       return [str(p.title), str(p.content)].filter((s) => s.trim()).join('\n\n');
     case 'toolgroup': {

@@ -668,6 +668,16 @@ export function codeSections(raw: string | undefined): CodeSection[] {
   return out;
 }
 
+/** 程文**程序体文本**的唯一选择（渲染 CodeBody / 测高 measureBlockHeight / 墨迹
+ *  inkSourcesFor 三面共用）：终态读 `code`；args 还没到齐时读 `preview`
+ *  （参数流里的已生成部分，2026-11-22 卷 165 后续）。三处各判一份必然漂——
+ *  一处认 preview 另一处不认 = 展开的流式卡按 0 高排、压到下一块。
+ *  旧实现各自回落 `args`（原始 JSON），与渲染端（不画）本就不一致；统一收口后
+ *  三面同源（非法 JSON 的 args 不再被当成程序体量高）。 */
+export function codeSrcText(payload: { code?: string; preview?: string }): string {
+  return payload.code || payload.preview || '';
+}
+
 /** 程文段 + 展示投影（渲染 CodeBody / 测量 measure 两处消费同一产物）。 */
 export function codeDisplay(raw: string | undefined): CodeDisplaySection[] {
   return codeSections(raw).map((s) => ({ ...s, display: toolDisplay(s.raw) }));

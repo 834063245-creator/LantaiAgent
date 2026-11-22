@@ -37,7 +37,7 @@ import {
 } from '../../../paper/markdown';
 import { parseCircledSegments } from '../../../paper/marks';
 import { presentTool } from '../../../paper/tool-present';
-import { codeDisplay, hasPayloadToShow, toolDisplay } from '../../../paper/tool-text';
+import { codeDisplay, codeSrcText, hasPayloadToShow, toolDisplay } from '../../../paper/tool-text';
 import { VIEWER_BOX_CLASSES, viewerClassOf } from '../../../paper/viewer-exts';
 
 /* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
@@ -1474,7 +1474,7 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
       if (folded) return [];
       const out: InkSource[] = [];
       let y = TOOL_PAD_TOP + FOLD_ROW_H;
-      const src = (b.payload as { code?: string }).code ?? p.args ?? '';
+      const src = codeSrcText(b.payload as { code?: string; preview?: string });
       const secs = codeOutSections(p);
       if (src) {
         out.push({
@@ -1966,9 +1966,11 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       // 2026-09-14：段头 + 展示变换同 tool 族（codeOutTextMax 内距归段头后 = 200）。
       // 2026-09-19：输出段数由信封决定（日志/完成值/错误）——段序与 gap 判据走
       // codeOutSections 单一入口，与渲染端 CodeBody 逐段对齐。
-      const showSrc = !folded && !!(b.payload as { code?: string }).code;
+      // 程序体文本的唯一选择（三面同源）：流式中途读 preview（2026-11-22 卷 165 后续）。
+      const src = codeSrcText(b.payload as { code?: string; preview?: string });
+      const showSrc = !folded && !!src;
       const secs = codeOutSections(p);
-      const codeH = showSrc ? codeSrcH((b.payload as { code?: string }).code ?? p.args ?? '', b.w) : 0;
+      const codeH = showSrc ? codeSrcH(src, b.w) : 0;
       // 程序内调用段（2026-11-21 显形批）：与渲染端 CodeBody 同序——程序体之后、
       // 输出段之前；行文本来自同一份 codeCallLines（paper/code-calls，单一投影）。
       const callsH = codeCallsBodyH(p.calls, b.w, showSrc);
@@ -2089,7 +2091,9 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
     case 'tool':
       return `tool|${f}|${p.args ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
     case 'code':
-      return `code|${f}|${p.code ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
+      // preview 入签（2026-11-22 卷 165 后续）：流式期间程序体每 120ms 长一截，
+      // 展开态的高随它变——不入签就会吃到上一帧的缓存高（压字，同帖那起事故的形状）。
+      return `code|${f}|${p.code ?? ''}|${p.preview ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
     case 'plan': {
       // 标题入签（2026-08-30 起标题实测计高——换行变高度）；终态位入签
       // （2026-10-29 拟策终态批）：决议后操作行换终态行 = 两个高，不入签就吃旧缓存。

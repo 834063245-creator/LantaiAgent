@@ -21,15 +21,6 @@
 // 内核 `paper/*` 判据层（markdown / marks / tool-text / fold / translate）按 `shared` 登记随包内联
 // （同 `viewer-exts` / `block-model` 先例：纯函数无实例身份，两侧各自 import）。
 
-import hljs from 'highlight.js/lib/common';
-import hljsClojure from 'highlight.js/lib/languages/clojure';
-import hljsDockerfile from 'highlight.js/lib/languages/dockerfile';
-import hljsHaskell from 'highlight.js/lib/languages/haskell';
-import hljsJulia from 'highlight.js/lib/languages/julia';
-import hljsLatex from 'highlight.js/lib/languages/latex';
-import hljsMatlab from 'highlight.js/lib/languages/matlab';
-import hljsScala from 'highlight.js/lib/languages/scala';
-import hljsScheme from 'highlight.js/lib/languages/scheme';
 import katex from 'katex';
 import type { ComponentType, ReactNode } from 'react';
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
@@ -52,6 +43,7 @@ import { parseCircledSegments } from '../../../paper/marks';
 import { presentTool } from '../../../paper/tool-present';
 import {
   codeDisplay,
+  codeSrcText,
   hasPayloadToShow,
   type ToolDisplay,
   type ToolSpan,
@@ -63,6 +55,7 @@ import {
 import { fileExtOf, VIEWER_IMAGE_MIMES } from '../../../paper/viewer-exts';
 import type { ChatImageRef } from '../../../provider/types';
 import type { PlanPart } from '../../../ui/message-model';
+import { CodeSrc, highlightCode } from './code-src';
 // 差分语言判据（分块与块体渲染的单一真源——转译层把围栏一律拆成抄录块，
 // 块体在这里按语言分流：真差分 → 差分着色；其余 → hljs 代码体）。
 // A4 销账 W1（2026-09-28）：判据本体住内核 `paper/translate.ts`（带状态——块 id 发号器
@@ -245,42 +238,6 @@ function MathInline({ source }: { source: string }) {
     // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX 输出为可信本地渲染（非模型 HTML）
     <span className="pp-md-math-inline" dangerouslySetInnerHTML={{ __html: html }} />
   );
-}
-
-/* ── 代码高亮（科研渲染 #5，2026-09）：markdown 围栏码补 hljs token 层 ──
- * lang 解析已捕获（paper/markdown.ts）——只在此消费。lib/common 36 语言
- * 主流集（js/ts/py/rust/go/cpp/bash…）；科研语言 common 缺的显式补注册
- * （matlab/julia/scala/haskell/clojure/latex/scheme/dockerfile——科研会话
- * 高频，模块极小）。
- * 语义：
- *   - 高亮只包 span（不改字体/行数/换行）→ measure 高度镜像零改动（源码
- *     逐字字符与折行不变）；
- *   - 无 lang / lang 不识别 → 原文（纯 mono，不炸不误着色）；
- *   - 流式半成型围栏 tolerate（ignoreIllegals:true）。
- * 纸面墨色协调：hljs 类名在 .pp-md-code 作用域映射到纸面 token（CSS 侧）。 */
-
-/** 补注册（模块装载期一次；hljs 已注册语言重复 register 会覆盖——幂等放行）。 */
-function registerResearchLanguages(): void {
-  hljs.registerLanguage('matlab', hljsMatlab);
-  hljs.registerLanguage('julia', hljsJulia);
-  hljs.registerLanguage('scala', hljsScala);
-  hljs.registerLanguage('haskell', hljsHaskell);
-  hljs.registerLanguage('clojure', hljsClojure);
-  hljs.registerLanguage('latex', hljsLatex);
-  hljs.registerLanguage('scheme', hljsScheme);
-  hljs.registerLanguage('dockerfile', hljsDockerfile);
-}
-registerResearchLanguages();
-
-/** 代码段 → 高亮 HTML（lang 不识别/空 → null = 原文纯 mono）。 */
-function highlightCode(text: string, lang: string | undefined): string | null {
-  if (!lang || !hljs.getLanguage(lang)) return null;
-  try {
-    // 半成型代码 tolerate：流式围栏未闭合也不崩
-    return hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
-  } catch {
-    return null;
-  }
 }
 
 /** 行内片段 → 节点（标志位解析期已打平，无嵌套结构）。 */
@@ -1246,29 +1203,6 @@ function CodeViewTable({ view }: { view: CodeTableView }) {
   );
 }
 
-/** 程文程序体（P2-A 的「体」；2026-11-06 补高亮）——模型写给 code_execution 的
- *  JavaScript 程序。此前裸文本直出：同纸的围栏码 / 抄录块 / 代码查看器三处机器文本
- *  都有 hljs token 层，程文是唯一例外（用户报「模型输入的代码内容需要一个代码高亮
- *  渲染」）。纪律与 markdown 围栏码同款：
- *    · 语言由执行面钉死——`code-run/runtime-service.ts` 的
- *      `readonly language = 'javascript'`，不猜、不嗅探（猜错比不涂更糟）；
- *      hljs 抛错回落原文（不静默空块）；
- *    · **只包 span**（字符/折行/行数一字不改）⇒ measure.ts 的程序体镜像零改动；
- *    · 折叠态不渲染（`showSrc` 由调用方判），高亮不参与折叠规则。 */
-function CodeSrc({ code }: { code: string }) {
-  const highlighted = useMemo(() => highlightCode(code, 'javascript'), [code]);
-  return (
-    <pre className="pp-code-src">
-      {highlighted !== null ? (
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: hljs 输出为可信本地渲染（非模型 HTML；转义由 hljs 内建）
-        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
-      ) : (
-        <code>{code}</code>
-      )}
-    </pre>
-  );
-}
-
 /** 程序执行卡（P2-A）：三段式——程序体（等宽）→ 日志/完成值（终态写入）。
  *  与 ToolBody 的分离点：code 是程序语义（体/出）而非调用语义（参/果）。
  *  折叠态收程序体、留输出/错误（执行结果一眼可见——测量端同款镜像）。
@@ -1278,10 +1212,14 @@ function CodeSrc({ code }: { code: string }) {
  *  真表格 DOM、差分走三档墨色文本；JSON 原文仍在卷里（段文本只是不画出来），
  *  模型面一字未动（视图是展示投影，见 paper/code-view 头注）。 */
 function CodeBody({ block, folded }: BlockRendererProps) {
+  // preview 由 codeSrcText 读（结构类型可缺省，不必进这里的 cast）
   const p = block.payload as { code: string; output?: string; err?: string; view?: CodeView; calls?: CodeCallPart[] };
   // 程序内调用段（2026-11-21 显形批）：与测高/墨迹读同一份投影（paper/code-calls）。
   const callSec = useMemo(() => codeCallLines(p.calls), [p.calls]);
-  const showSrc = !folded && !!p.code;
+  // 程序体文本的唯一选择（三面同源，见 paper/tool-text 的 codeSrcText）：流式中途
+  // 读 preview——展开态也能看见「正在写什么」（2026-11-22 卷 165 后续）。
+  const src = codeSrcText(p);
+  const showSrc = !folded && !!src;
   const view = p.view ?? null;
   // 视图取代完成值段（同一条信封文本的两种读法——不并列，否则同一份结果画两遍）
   const secs = useMemo(() => {
@@ -1293,7 +1231,7 @@ function CodeBody({ block, folded }: BlockRendererProps) {
   const hasBody = showSrc || secs.length > 0 || hasCalls;
   return (
     <>
-      {showSrc && <CodeSrc code={p.code} />}
+      {showSrc && <CodeSrc code={src} plain={!p.code} />}
       {hasCalls && (
         <PayloadSection
           label={CODE_CALLS_LABEL}
