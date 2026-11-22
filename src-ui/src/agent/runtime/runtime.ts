@@ -55,7 +55,7 @@ import { requireSubagentRuntime } from '../subagent-runtime-impl';
 import type { TaskBoardFace, TaskBoardProxyFace, TaskManagerFace } from '../task-contract';
 import { createTaskBoard, createTaskBoardProxy } from '../task-impl';
 import type { TokenLedgerSnapshot } from '../token-meter';
-import { agentInvoke, ToolRegistry } from '../tool';
+import { agentInvoke } from '../tool';
 import { buildSystemPrompt } from './agent-builder';
 
 import {
@@ -751,8 +751,9 @@ export class AgentRuntime implements RuntimePort {
     // 2. 克隆工具注册表（每个 Agent 获得自己的副本）— 克隆件写回 ctx.tools，
     //    Agent 构造（ctx 路径）与后续注册都落在这份有效注册表上；
     //    输入注册表保持干净，调用方可继续复用（与 Phase 3 前语义一致）。
-    const r = new ToolRegistry();
-    for (const t of ctx.resolve('tools').all()) r.register(t);
+    // 必须克隆**策略面**（hidden / programOnly），不能只复制 Tool 对象：
+    // programOnly 是注册表策略，丢了它 code 模式会在真实装配后静默失效。
+    const r = ctx.resolve('tools').clone();
     ctx.set('tools', r);
 
     // 2b. isolationExec — agent_isolation_* 的 invoke 包装，被 merge/kill 工具与

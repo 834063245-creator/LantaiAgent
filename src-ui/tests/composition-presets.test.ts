@@ -176,10 +176,15 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
         expect(r.programOnly).toContain('fs');
         expect(r.programOnly).toContain('shell');
         expect(r.programOnly).toContain('agent');
+        expect(r.programOnly).toContain('memory');
         // ② 工具行**一条都没剪**（剪了 = 程序内也调不到，code 模式会被做成残废）
         expect(ids(r.tools)).toEqual(ids(resolvePresetComposition('standard').tools));
-        // ③ 执行原语仍在（capability 面零改动——code 模式恰恰靠它）
+        // ③ 执行原语仍在；规划模式两项 capability 被本组合裁掉——plan 激活时
+        //    planGate 会拦非只读的 code_execution，而 code 模式又不给直调 fs，
+        //    两者叠加必死锁，所以 code 卷不提供 plan 模式。
         expect(r.capabilities.map((c) => c.id)).toContain('code-execution-tool');
+        expect(r.capabilities.map((c) => c.id)).not.toContain('plan-tools');
+        expect(r.capabilities.map((c) => c.id)).not.toContain('plan-injector');
         // ④ 卷首指南段
         expect(r.prompt.map((s) => s.id)).toContain('code-mode/guide');
       }),

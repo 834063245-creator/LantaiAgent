@@ -165,6 +165,14 @@ const BUILTIN_PRESETS: Array<{
     // 不是行 id——裁的是直调面（schemas()），而直调面按名字判定。未在册的名字
     // 静默忽略（与 disable 域同一宽容度：裁一个不存在的名字不是错误）。
     patch: {
+      // plan 模式与 code 模式互斥：plan 激活后 planGate 会按 readOnly 拦截
+      // code_execution（执行原语本身非只读），而日常工具又只允许经程序调用——
+      // 两条规则叠在一起会把会话锁死。code 模式不提供规划模式，探索/设计直接
+      // 在 code_execution 的程序里完成；要正式规划请另开 standard 卷。
+      capabilities: [
+        { id: 'plan-tools', disabled: true },
+        { id: 'plan-injector', disabled: true },
+      ],
       programOnly: [
         // 域工具：全部进程序（名单取「标准组合里有行」的那批；未在册的名字静默忽略）
         { id: 'fs', programOnly: true },
@@ -178,6 +186,7 @@ const BUILTIN_PRESETS: Array<{
         { id: 'cordis', programOnly: true },
         { id: 'agent', programOnly: true },
         { id: 'task', programOnly: true },
+        { id: 'memory', programOnly: true },
         { id: 'goal', programOnly: true },
         // 资产/知识类：读得到就调得到，但同样走程序（一次调用里批量取）
         { id: 'show_asset', programOnly: true },

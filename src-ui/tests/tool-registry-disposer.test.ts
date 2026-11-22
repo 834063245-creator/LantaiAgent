@@ -91,6 +91,34 @@ describe('ToolRegistry.register → Disposer', () => {
     expect(reg.directTools().map((t) => t.name())).toEqual([]);
   });
 
+  it('clone：工具引用与 hidden / programOnly 策略全量保真（runtime 装配回归）', () => {
+    const reg = new ToolRegistry();
+    const fs = toyTool('fs');
+    reg.register(fs);
+    reg.register(toyTool('legacy'));
+    reg.register(toyTool('ask_user'));
+    reg.hide('legacy');
+    reg.setProgramOnly('fs', true);
+
+    const copy = reg.clone();
+    expect(copy.get('fs')).toBe(fs); // 工具实例不复制实现，只复制表
+    expect(copy.isHidden('legacy')).toBe(true);
+    expect(copy.isProgramOnly('fs')).toBe(true);
+    expect(copy.schemas().map((s) => s.name)).toEqual(['ask_user']);
+    expect(
+      copy
+        .visibleTools()
+        .map((t) => t.name())
+        .sort(),
+    ).toEqual(['ask_user', 'fs']);
+
+    // 克隆是独立策略账：后续变更不串回源表
+    copy.setProgramOnly('fs', false);
+    copy.unhide('legacy');
+    expect(reg.isProgramOnly('fs')).toBe(true);
+    expect(reg.isHidden('legacy')).toBe(true);
+  });
+
   it('陈旧 disposer 不误删同名的新工具', () => {
     const reg = new ToolRegistry();
     const t1 = toyTool('shared');

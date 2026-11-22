@@ -142,6 +142,21 @@ export class ToolRegistry {
     return this.visibleTools().filter((t) => !this.programOnlyNames.has(t.name()));
   }
 
+  /** 克隆注册表（工具引用 + hidden / programOnly 两项策略全量复制）。
+   *
+   *  ⚠ 不能只复制 `all()` 里的 Tool 对象：programOnly 是**注册表策略**，不是
+   *  Tool 实例属性。runtime 装配时为每个 Agent 克隆注册表；若这里漏掉策略，
+   *  code 模式在装配后会静默退回「直调面 ≡ 可见面」——组合声明还在，但模型
+   *  仍能直调本来只应经 code_execution 提供的工具。hidden 同理由本方法保真，
+   *  后续 converge-tools 再跑一遍也只是幂等。 */
+  clone(): ToolRegistry {
+    const out = new ToolRegistry();
+    for (const [name, tool] of this.tools) out.tools.set(name, tool);
+    out.hiddenNames = new Set(this.hiddenNames);
+    out.programOnlyNames = new Set(this.programOnlyNames);
+    return out;
+  }
+
   /** 标记/取消「仅程序内可见」（幂等；unregister 时同 hide 一起清）。 */
   setProgramOnly(name: string, on = true): void {
     // 按名字记账，不要求在册（组合可能在装配早期就声明一个尚未注册的名字——
