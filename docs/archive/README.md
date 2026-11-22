@@ -59,6 +59,11 @@
 - **2026-10-31 归档（卷名自动命名 A/C/B）**：`volume-naming-plan.md` —— 卷名派生清洗（换行 / 排版壳 /
   代理对劈半）· 名字来源标记（`derived`/`refined`/`user`，内存态）· 一次旁路模型概括（复用 `callSummaryLLM`，
   usage 不入卷账）。真源仍是 `src-ui/src/state/volume-name.ts` 一个字段；两个命名时点、改名钉死语义、显示兜底未动。
+- **2026-11-22 归档（code 模式长任务止血）**：`code-execution-long-task-plan.md` —— 三批当日全落
+  （P0 预算穿透 / run 作用域取消 / 超时清账 · P1 完成宽限 / 待领信箱 / 通知文案 · P2 `timeoutMs` 参数 /
+  输出 256KB / 并发 128 / 审计快照）。起因 = `code` 组合下跑 `npx vitest run` 永远跑不完（外层 120s 墙
+  短于 shell 300s 预算且超时不 abort 内层）。模型可见面只多一个可选参数（baseline 变更已登记）；
+  行为契约沉淀在 `INVARIANTS.md` §18；未对齐项（持久执行 / typed returns / Python）在文内注明不做。
 
 ## 使用规则
 

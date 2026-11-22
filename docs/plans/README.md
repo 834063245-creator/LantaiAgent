@@ -78,6 +78,12 @@
 
 ## 已完成并归档（点名即可，详情勿读）
 
+**2026-11-22 竣工**：**code 模式长任务止血**（[`code-execution-long-task-plan.md`](../archive/code-execution-long-task-plan.md)）
+——三批当日全落：P0 预算穿透 / run 作用域取消 / 超时清账 · P1 完成宽限 / 待领信箱 / 通知文案 ·
+P2 `timeoutMs` 参数 / 输出 256KB / 并发 128 / 审计快照。起因 = `code` 组合跑 `npx vitest run`
+永远跑不完（外层 120s 墙短于 shell 300s 预算，且超时不 abort 内层 → 孤儿叠加）。模型可见面只多一个
+可选参数（baseline 变更已登记）；行为契约进 `INVARIANTS.md` §18。实机验收按默认通过口径。
+
 **2026-11-17 竣工**：**交互原语收口**（[`interaction-primitive-plan.md`](interaction-primitive-plan.md)）
 ——五批当日全落地：外点关闭 5 处收进 `useOutsideClose`（与 Escape 同门）· 动效三窗改听
 `transitionend`/`animationend`（全库从 0 处到 3 窗）· 9 份拖拽手势收进 `useDragGesture`

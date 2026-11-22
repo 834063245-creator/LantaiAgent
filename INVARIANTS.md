@@ -444,6 +444,40 @@ imageChannel 门控 / 角色口径 / 预算与 user 共用）、`tests/provider-
 
 ---
 
+## 18. code_execution 的嵌套调用：预算穿透 / 永不孤儿 / 超时清账
+
+**文件**: `src-ui/src/agent/code-run/host.ts`（`runCode` / `applyBudget` / `finish`）·
+`src-ui/src/agent/agent.ts`（`dispatchNestedTool` 第三参 / `noteLateNestedResult`）·
+`src-ui/src/plugins/builtin/capability-segments/segments.ts`（`deadline` 声明与 signal 透传）
+
+```
+⚠️ INVARIANT：执行原语的墙钟是**唯一**知道「还剩多少真实时间」的地方，三条缺一不可。
+   1. **预算穿透**：内层工具声明的超时不得超过外层剩余预算。能把超时**转成后台作业**的
+      工具（当前 = shell）声明 `deadline:'promote'`，宿主按剩余预算压它的 `timeoutMs`，
+      让 promote 发生在外层死之前；**没有这套语义的工具不许压**——压超时 = 提前杀它。
+   2. **永不孤儿**：程序以任何方式结束（完成/超时/中止/崩溃）时 `runController.abort()`
+      必须在 `worker.terminate()` **之前**触发（内层据此 kill 子进程）；run 结束后才到的
+      调用不启动（含「写类在排他闸排队期间 run 已结束」的场合）。
+   3. **完成不被拖成超时**：程序 `return` 后等写链排空要有宽限（`settleGraceMs` 3s）——
+      不理会取消的长写调用否则会把「完成」拖成「超时」，模型看到的是假失败。
+   4. **超时清账**：失败结果必须报出在途清单（谁、跑了多久）；程序结束后才落定的
+      结果经 `onLateResult` 进待领信箱，由下一步注入**一次**（不静默丢弃）。
+
+✅ 正确：新增内层工具先问「它超时了会怎样」——能转后台就声明 promote，不能就老实响应 signal
+❌ 错误：只把外层超时调大（vitest 跑 8 分钟照样撞）；给不认识 promote 的工具压 `timeoutMs`；
+   在 `finish` 里先 terminate 后 abort（abort 就传不到内层了）
+```
+
+**炸过**: 2026-11 用户报「code 组合下跑 vitest 永远跑不完」——外层 120s 墙短于 shell 的 300s 预算，
+外层先死且不 abort 内层，孤儿进程叠加导致越跑越慢（每次重试都在给下一次加负重）。
+
+**守护**: `tests/code-execution.test.ts`（预算穿透压参 / 零漂移透传 / 结束即 abort /
+超时清单 / 并发配额 / 默认预算）· `tests/code-late-results.test.ts`（待领信箱注入一次 /
+容量与截断）· `tests/shell-done-watchdog.test.ts`（promote 文案可照做）·
+`tests/shell-poll-guard.test.ts`（忙等喝止文案）。
+
+---
+
 ## 使用方式
 
 每个 Agent prompt 模板里加一行：
