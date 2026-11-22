@@ -56,7 +56,8 @@
 // 经 paper/overlay-context 取活跃流区派生数据与折叠态（与主渲染同真源）。
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { ELEVATION } from '../../../paper/elevation';
 import type { SourcedBlock } from './host';
 import {
   agentSessionState,
@@ -646,7 +647,8 @@ export const TocStrip = memo(function TocStrip() {
 
   return (
     <nav
-      className="pp-toc"
+      className="pp-toc pp-elev"
+      style={{ '--h': ELEVATION.furniture.height } as CSSProperties}
       aria-label="目次带（卷内导航）"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

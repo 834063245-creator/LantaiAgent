@@ -139,6 +139,7 @@
       "app/interaction/use-drag-gesture.ts",
       "app/search/file-match.ts",
       "paper/asset-rack.ts",
+      "paper/elevation.ts",
       "paper/plate-sign.ts",
       "plugins/builtin/paper-shell/quote-drop.ts",
       "state/card-quote.ts",
@@ -154,6 +155,7 @@
     "hostModule": "host",
     "inject": ["overlays"],
     "shared": [
+      "paper/elevation.ts",
       "plugins/builtin/paper-shell/motion-end.ts",
       "app/interaction/lost-focus.ts",
       "app/interaction/pointer-claims.ts",

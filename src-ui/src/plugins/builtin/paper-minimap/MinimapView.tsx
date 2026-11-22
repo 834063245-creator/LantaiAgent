@@ -13,8 +13,9 @@
 //     纪律：以 blocks/layout/extent 内层引用为依赖 → 平移帧零重画。
 //   R3.5 浮动化：可拖动 + 滚轮缩放 + localStorage 记忆。
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDragGesture } from '../../../app/interaction/use-drag-gesture';
+import { ELEVATION } from '../../../paper/elevation';
 import {
   clampViewportFrame,
   inkBarsFor,
@@ -257,8 +258,16 @@ export const MinimapView = memo(function MinimapView() {
   return (
     <div
       ref={mmBoxRef}
-      className="pp-minimap"
-      style={{ right: pref.right, bottom: pref.bottom, width: W, height: H }}
+      className="pp-minimap pp-elev"
+      style={
+        {
+          right: pref.right,
+          bottom: pref.bottom,
+          width: W,
+          height: H,
+          '--h': ELEVATION.furniture.height,
+        } as CSSProperties
+      }
       data-tip="小地图 · 点击跳转 · Home 键回原点 · Alt+↑↓ 走块 · Alt+←→ 走卷 · 拖动移动 · 滚轮缩放"
       onPointerDown={onContainerPointerDown}
     >

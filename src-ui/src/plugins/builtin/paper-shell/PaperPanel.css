@@ -24,6 +24,7 @@
  *   cards      graph/board/timeline/citation/chem + 回首页弹层
  * 判定面：tests/helpers/panel-css.ts 把入口与分片按序拼回一份文本（断言口径不变）。 */
 @import "./paper-base.css";
+@import "./paper-elev.css";
 @import "./paper-folio.css";
 /* 待题纸（2026-11-14 立卷 UX）：新卷出生面 */
 @import "./draft-sheet.css";

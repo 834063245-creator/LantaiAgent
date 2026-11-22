@@ -10,6 +10,9 @@
    * localStorage 记忆）；height 固定由 JSX 设置——此块只留定位与外观。 */
   background: color-mix(in oklch, var(--paper) 92%, transparent);
   border: var(--rule-soft);
+  /* 海拔（2026-11-22）：小地图是架件（furniture = 12px），影落在纸上。
+   * fallback 透明影：样式未载时不画影，别让整条声明失效。 */
+  box-shadow: var(--elev-shadow, 0 0 0 transparent);
   border-radius: 0;
   padding: 6px;
   z-index: 60;
