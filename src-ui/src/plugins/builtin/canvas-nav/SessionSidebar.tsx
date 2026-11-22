@@ -61,6 +61,7 @@ import {
   type ClosedBucket,
   familyForest,
   filterRows,
+  latestSavedAt,
   markOrphans,
   mergeSessionRows,
   relativeTime,
@@ -1711,9 +1712,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
                 forest.families.map((fam) => {
                   const foldKey = famFoldKey(fam.root.id);
                   const isFolded = folded(foldKey);
-                  /* 字符串比较（时刻串按字典序即时间序）——**不要**改成 Math.max：biome 的
-                   * useMathMinMax 会把它"优化"成数值函数，而 savedAt 是 ISO 串。 */
-                  const latest = fam.rows.reduce((acc, x) => ((x.savedAt || '') > acc ? x.savedAt || '' : acc), '');
+                  const latest = latestSavedAt(fam.rows);
                   return (
                     <div className="ss-fam" key={fam.root.id}>
                       {renderRow(fam.rows[0], 'tree')}

@@ -39,21 +39,19 @@ export function ToastHost() {
     },
   ].filter((b) => b.items.length > 0);
   return createPortal(
-    <>
-      {buckets.map((bucket) => (
-        <div key={bucket.anchor} className={bucket.cls} role="status" aria-live="polite">
-          {bucket.items.map((t) => (
-            <div
-              key={t.id}
-              className={`pp-toast pp-toast-${t.level}`}
-              style={{ '--pp-toast-hold': `${t.holdMs}ms` } as CSSProperties}
-            >
-              {t.text}
-            </div>
-          ))}
-        </div>
-      ))}
-    </>,
+    buckets.map((bucket) => (
+      <div key={bucket.anchor} className={bucket.cls} role="status" aria-live="polite">
+        {bucket.items.map((t) => (
+          <div
+            key={t.id}
+            className={`pp-toast pp-toast-${t.level}`}
+            style={{ '--pp-toast-hold': `${t.holdMs}ms` } as CSSProperties}
+          >
+            {t.text}
+          </div>
+        ))}
+      </div>
+    )),
     document.body,
   );
 }

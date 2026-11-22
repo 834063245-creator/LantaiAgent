@@ -79,9 +79,7 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
     createdAt: logRead.header.createdAt,
     // 血缘取**头行**（write-once 真源），不取快照——快照里没有这一栏。
     // atSeq 必须一起带出：继承区内立枝的边靠它归一到真正覆盖切点的祖先。
-    ...(logRead.header.parent
-      ? { parentId: logRead.header.parent.id, parentAtSeq: logRead.header.parent.atSeq }
-      : {}),
+    ...(logRead.header.parent ? { parentId: logRead.header.parent.id, parentAtSeq: logRead.header.parent.atSeq } : {}),
     messages: logRead.messages,
     uiMessages: fresh ? cache?.uiMessages : undefined,
     tokensUsed: cache?.tokensUsed,

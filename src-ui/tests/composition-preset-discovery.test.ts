@@ -135,7 +135,13 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
         origin: ORIGIN,
         fetchImpl: router({ [ORIGIN + '/']: { status: body === undefined ? 404 : 200, body } }),
       });
-      expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator', 'code', 'readonly']);
+      expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual([
+        'standard',
+        'minimal',
+        'creator',
+        'code',
+        'readonly',
+      ]);
     }
   });
 
@@ -144,11 +150,23 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
       throw new Error('network down');
     };
     await expect(discoverPresets({ origin: ORIGIN, fetchImpl: boom })).resolves.toBeUndefined();
-    expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator', 'code', 'readonly']);
+    expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual([
+      'standard',
+      'minimal',
+      'creator',
+      'code',
+      'readonly',
+    ]);
   });
 
   it('无通道（origin 空）→ 直接返回，内置表即终态', async () => {
     await expect(discoverPresets({ origin: '' })).resolves.toBeUndefined();
-    expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'creator', 'code', 'readonly']);
+    expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual([
+      'standard',
+      'minimal',
+      'creator',
+      'code',
+      'readonly',
+    ]);
   });
 });

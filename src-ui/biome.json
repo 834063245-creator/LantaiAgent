@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.6.6/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -95,7 +95,12 @@
         "src/app/foundation.css",
         "src/app/graph-chrome.css",
         "src/app/chat/chat.css",
-        "src/app/panels/dock-panels.css"
+        "src/app/panels/dock-panels.css",
+        "src/plugins/builtin/canvas-nav/session-sidebar.css",
+        "src/plugins/builtin/paper-shell/draft-sheet.css",
+        "src/plugins/builtin/paper-shell/paper-assets.css",
+        "src/plugins/builtin/paper-shell/paper-cards.css",
+        "src/plugins/builtin/settings-domain/settings-panel.css"
       ],
       "linter": {
         "rules": {

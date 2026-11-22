@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseModelEntry } from '../src/provider/model-meta';
 import { getModel } from '../src/provider/catalog';
+import { parseModelEntry } from '../src/provider/model-meta';
 import { thinkingOptionsFor } from '../src/provider/thinking';
 import { effectiveModels, modelDescriptor, type ProviderSettings, providerId } from '../src/settings';
 

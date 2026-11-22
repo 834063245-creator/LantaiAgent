@@ -2,15 +2,15 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  credentialRevision,
-  noteCredentialStored,
-  _resetCredentialRevisionsForTests,
-} from '../src/provider/credentials';
-import {
   probeMatchesProvider,
   providerConnectionFingerprint,
   providerStatus,
 } from '../src/plugins/builtin/settings-domain/status';
+import {
+  _resetCredentialRevisionsForTests,
+  credentialRevision,
+  noteCredentialStored,
+} from '../src/provider/credentials';
 import { type ProviderSettings, providerId } from '../src/settings';
 
 function row(over: Partial<ProviderSettings> = {}): ProviderSettings {

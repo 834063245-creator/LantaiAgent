@@ -43,7 +43,6 @@ import {
   parseSection,
   type SectionError,
 } from '../provider/providers-doc';
-import { clearDynamicProviderState } from './catalog';
 import { CORE_PROTOCOLS } from '../provider/types';
 import { kernelReadFile, kernelWriteFile, typedListen, typedRpc } from '../rpc-contract';
 import {
@@ -56,6 +55,7 @@ import {
   saveSettings,
   storedProviderRows,
 } from '../settings';
+import { clearDynamicProviderState } from './catalog';
 
 /** 当前文档状态（设置页显示：路径 / 逐节错误 / 整份是否可用）。 */
 export interface ProvidersDocStatus {
@@ -254,7 +254,10 @@ function persistProvidersIntentBackup(): void {
       path: state.path,
       capturedAt: Date.now(),
       order,
-      sections: order.map((name) => ({ name, intent: byName.get(name)!.intent })),
+      sections: order.flatMap((name) => {
+        const section = byName.get(name);
+        return section ? [{ name, intent: section.intent }] : [];
+      }),
     };
     localStorage.setItem(PROVIDERS_INTENT_BACKUP_KEY, JSON.stringify(payload));
   } catch (e) {
@@ -409,11 +412,7 @@ function mergeRuntime(
   const base = prev ?? { apiKey: '', model: '' };
   return {
     apiKey,
-    ...(next?.model !== undefined
-      ? { model: next.model }
-      : base.model !== undefined
-        ? { model: base.model }
-        : {}),
+    ...(next?.model !== undefined ? { model: next.model } : base.model !== undefined ? { model: base.model } : {}),
     ...(next?.lastTest !== undefined
       ? { lastTest: next.lastTest }
       : base.lastTest !== undefined

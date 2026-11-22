@@ -279,8 +279,8 @@ export function useBlockOps(params: {
         const block: BranchBlockRef = {
           parts: msg.parts,
           // findIndex 而非 indexOf：`source.part` 的类型是 `object | null`（块来源是
-          // 活引用，part 可能已被重建），indexOf 收窄不了 null —— 保住类型安全优先于
-          // 一条 lint 提示（useIndexOf 在本行是**既有**警告，不归本批）。
+          // 活引用，part 可能已被重建），indexOf 的参数类型收窄不了 null。
+          // biome-ignore lint/complexity/useIndexOf: 比较对象是 object | null，indexOf 的形参不接受该类型
           index: msg.parts.findIndex((p) => p === b.source.part),
         };
         blockRefs.set(b.id, block);

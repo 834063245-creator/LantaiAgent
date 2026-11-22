@@ -55,8 +55,8 @@ import {
   userPresetsOf,
 } from './preset-authoring';
 import { persistSecrets, removeSecret } from './provider-data';
-import { errTextOf, logPanelReload, withCarriedKeys } from './settings-panel-helpers';
 import { SkillsPage } from './SkillsPage';
+import { errTextOf, logPanelReload, withCarriedKeys } from './settings-panel-helpers';
 import { SETTINGS_TABS, type SettingsTabId } from './settings-tabs';
 import { UpdateSection } from './UpdateSection';
 
@@ -621,8 +621,7 @@ const SettingsPanelApp: React.FC<{
   if (dirty) closeParts.push('未保存的设置');
   if (providerDirty) closeParts.push('未保存的提供方更改');
   if (credentialDirty) closeParts.push('尚未完成的凭据同步');
-  const closeMsg =
-    closeParts.length > 0 ? `有${closeParts.join('、')}，关闭后将丢失或失去重试入口。确定关闭？` : '';
+  const closeMsg = closeParts.length > 0 ? `有${closeParts.join('、')}，关闭后将丢失或失去重试入口。确定关闭？` : '';
 
   /* 边缘滚动读面（2026-09-17 立为原生功能）：**行为真源在 paper-shell 插件域**
    *（`plugins/builtin/paper-shell/edge-scroll.ts`——基准带宽/限速、灵敏度映射、

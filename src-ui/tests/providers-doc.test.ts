@@ -226,9 +226,7 @@ describe('parseProvidersDoc', () => {
   });
 
   it('请求头非法条目点名到字段（写入边界严格，沿 custom-headers 同一把尺子）', () => {
-    const doc = parseProvidersDoc(
-      'a:\n  kind: openai\n  baseUrl: https://x/v1\n  headers:\n    "bad name": v\n',
-    );
+    const doc = parseProvidersDoc('a:\n  kind: openai\n  baseUrl: https://x/v1\n  headers:\n    "bad name": v\n');
     // 坏头只丢那个头；这一节照常可用
     expect(doc.errors).toEqual([]);
     expect(doc.warnings[0].message).toContain('bad name');
@@ -239,9 +237,7 @@ describe('parseProvidersDoc', () => {
   // ——文件是人手写的，写错必须点名（原 settings-provider-headers.test.ts 的
   // 毒化用例在此以**文件形态**重建：坏条目仍被点名，不再静默丢弃）。
   it('请求头：非字符串值 / 整体不是对象都点名；合法条目照常进意图', () => {
-    const numeric = parseProvidersDoc(
-      'a:\n  kind: openai\n  baseUrl: https://x/v1\n  headers:\n    x-num: 42\n',
-    );
+    const numeric = parseProvidersDoc('a:\n  kind: openai\n  baseUrl: https://x/v1\n  headers:\n    x-num: 42\n');
     expect(numeric.warnings[0].message).toContain('x-num');
     expect(numeric.sections).toHaveLength(1);
     const notObject = parseProvidersDoc('a:\n  kind: openai\n  baseUrl: https://x/v1\n  headers: oops\n');

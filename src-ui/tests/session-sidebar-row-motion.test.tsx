@@ -17,7 +17,10 @@ import { SessionSidebar } from '../src/plugins/builtin/canvas-nav/SessionSidebar
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { getChatStore } from '../src/ui/chat-store';
 
-const SIDEBAR_CSS = readFileSync(join(__dirname, '..', 'src', 'plugins', 'builtin', 'canvas-nav', 'session-sidebar.css'), 'utf8');
+const SIDEBAR_CSS = readFileSync(
+  join(__dirname, '..', 'src', 'plugins', 'builtin', 'canvas-nav', 'session-sidebar.css'),
+  'utf8',
+);
 const offsetTopDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
 let rowTops = new Map<string, number>();
 let rafQueue: FrameRequestCallback[] = [];

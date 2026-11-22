@@ -452,10 +452,7 @@ describe('provider 配置文件通道（写盘一半）', () => {
   });
 
   it('外部修改可用模型列表移除最近使用项：投影自动回落第一个', async () => {
-    disk.set(
-      DOC_PATH,
-      'gw:\n  kind: openai\n  baseUrl: https://gw.example/v1\n  models: [alpha, beta]\n',
-    );
+    disk.set(DOC_PATH, 'gw:\n  kind: openai\n  baseUrl: https://gw.example/v1\n  models: [alpha, beta]\n');
     seedStored([
       {
         kind: 'openai',
@@ -749,8 +746,7 @@ describe('provider config safety regressions', () => {
   });
 
   it('fatal 跨重启：localStorage 只剩运行态壳时，从独立 intent 备份恢复完整配置', async () => {
-    const good =
-      'a:\n  kind: openai\n  baseUrl: https://good.example/v1\n  model: m1\n  headers:\n    x-gw: keep-me\n';
+    const good = 'a:\n  kind: openai\n  baseUrl: https://good.example/v1\n  model: m1\n  headers:\n    x-gw: keep-me\n';
     disk.set(DOC_PATH, good);
     seedStored([{ kind: 'openai', name: 'a', baseUrl: 'https://good.example/v1', model: 'm1' }]);
     await bootstrapProvidersDoc();

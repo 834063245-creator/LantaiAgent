@@ -137,9 +137,7 @@ describe('SettingsPanel — 保存拆域', () => {
     expect(bar?.textContent).toContain('系统凭据同步未完成');
     expect(bar?.querySelector('.pp-save-btn')?.textContent).toContain('重试凭据同步');
     expect(
-      [...document.querySelectorAll('.pp-error-banner')].some((el) =>
-        el.textContent?.includes('Provider 配置已保存'),
-      ),
+      [...document.querySelectorAll('.pp-error-banner')].some((el) => el.textContent?.includes('Provider 配置已保存')),
     ).toBe(true);
 
     // 第二阶段重试成功：只重跑凭据库动作，bar 消失。

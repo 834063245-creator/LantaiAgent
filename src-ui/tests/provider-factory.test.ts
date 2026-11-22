@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createProvider } from '../src/provider';
-import { modelInput, providerId, type ProviderSettings } from '../src/settings';
+import { modelInput, type ProviderSettings, providerId } from '../src/settings';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 await ensureProductionChannelsBooted();

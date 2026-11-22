@@ -136,6 +136,16 @@ export function treeRows(rows: SidebarRow[], present: ReadonlySet<number>): Side
   return out;
 }
 
+/** 族内最新落盘时刻（ISO 串按字典序即时间序；不能用 Math.max——那会把字符串转成数值）。 */
+export function latestSavedAt(rows: SidebarRow[]): string {
+  let latest = '';
+  for (const row of rows) {
+    const savedAt = row.savedAt || '';
+    if (savedAt > latest) latest = savedAt;
+  }
+  return latest;
+}
+
 /**
  * **族**（会话树「枝」的呈现单位）：一个根卷 + 它的整棵子树 = 一族。
  *
@@ -185,7 +195,7 @@ export function familyForest(rows: SidebarRow[]): {
       solo.push(tree[0] ?? root);
       return;
     }
-    const latestAt = tree.reduce((acc, r) => ((r.savedAt || '') > acc ? r.savedAt || '' : acc), '');
+    const latestAt = latestSavedAt(tree);
     families.push({ root, rows: tree, latestAt });
   };
   for (const root of roots) buildFamily(root);
