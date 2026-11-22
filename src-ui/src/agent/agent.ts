@@ -2097,6 +2097,10 @@ export class Agent {
     let reasoning = '';
     let signature = '';
     const calls: ToolCall[] = [];
+    /** 已发 ToolCallStart、尚未收到完整 ToolCall 的调用（id → name）——只活在**本次尝试**。
+     *  本次失败时它们从未成为一次真调用（参数没到齐，executor 里也没有），要主动把
+     *  UI 上那张空卡撤掉（见下方 err 分支）。 */
+    const partialCalls = new Map<string, string>();
     /** Responses 方言：本轮 output items 原样留档（reasoning 项回放必需）。 */
     let responsesItems: ResponsesOutputItem[] | undefined;
     let usage: Usage | undefined;
@@ -2131,6 +2135,7 @@ export class Agent {
 
           case ChunkType.ToolCallStart:
             if (chunk.tool_call) {
+              partialCalls.set(chunk.tool_call.id, chunk.tool_call.name);
               this._sink({
                 kind: EventKind.ToolDispatch,
                 tool: {
@@ -2160,10 +2165,16 @@ export class Agent {
 
           case ChunkType.ToolCall:
             if (chunk.tool_call) {
+              partialCalls.delete(chunk.tool_call.id);
               calls.push(chunk.tool_call);
               // 流式执行: 立即启动工具，不等流结束
               executor?.addTool(chunk.tool_call);
             }
+            break;
+
+          case ChunkType.Heartbeat:
+            // 方言的参数流心跳（契约 v68）：只负责给空闲守卫复位计时，无投影。
+            // 没有它，参数生成 >30s 的工具调用会被误判成「服务商零字节」并整轮重试。
             break;
 
           case ChunkType.ResponsesItems:
@@ -2232,6 +2243,15 @@ export class Agent {
     this._tokenMeter.recordRequest(token);
 
     if (err) {
+      // 作废尝试的半成卡要撤（2026-11-22 卷 165「code_execution 无由来重复调用」）：
+      // 只发过 ToolCallStart 的调用参数没到齐，executor 里没有它、会话里也没有它——
+      // 那张卡是**预告**而不是事实。重试会把同一意图重新生成一张同名卡，不撤就是
+      // 每重试一次多一张空卡（165 卷：三次断流 + 一次手停 = 四张空卡，还随卷落盘）。
+      // 已到齐参数、进过执行器的调用不走这里——它们由 executor.discard() 落「作废」终态。
+      for (const [id, name] of partialCalls) {
+        this._sink({ kind: EventKind.ToolCallDropped, tool: { id, name, read_only: this.toolReadOnly(name) } });
+      }
+      partialCalls.clear();
       // 2026-08-31 贴黄拆迁 + 墓碑语义：单次尝试失败不落墓碑（回合可能自动重试
       // 成功——墓碑残留会把完成的回合标成 error）。降为 warn 瞬时播报；
       // 最终结局由 stream() 收口：重试耗尽 sink error（→ 回合墓碑）或不可重试

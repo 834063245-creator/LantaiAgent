@@ -120,6 +120,13 @@ export enum ChunkType {
   ToolArgPreview = 7,
   /** Responses 方言：本轮 output items 原样带回（见 Message.responses_items） */
   ResponsesItems = 8,
+  /** 流活性心跳（契约 v68）——工具参数增量在三个方言里都只累加、**不产语义 chunk**，
+   *  而空闲守卫（`provider/idle-stream.ts`）只在收到 chunk 时复位计时 ⇒ 参数生成
+   *  超过 30 秒的工具调用会被判成「服务商零字节」并被掐断重试（2026-11-22 卷 165
+   *  实锤：同一断点连掐三次，卷面堆出四张空 code_execution 卡）。
+   *  方言在参数增量处按 `ARG_ACTIVITY_BEAT_MS` 节流发本 chunk；消费方一律忽略
+   *  （不投影 UI、不进会话），只用于守卫复位。 */
+  Heartbeat = 9,
 }
 
 export interface Usage {

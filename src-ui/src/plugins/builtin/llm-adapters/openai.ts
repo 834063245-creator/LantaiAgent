@@ -32,6 +32,7 @@ import { sendWithRetry } from './retry';
 import {
   extractWritePreview,
   fetchJsonWithTimeout,
+  makeArgActivityBeat,
   mergeHeaders,
   modelsFetchFailure,
   prewarmEndpoint,
@@ -451,6 +452,9 @@ async function* readSSE(
   }
   /** 在途累加器：按**出现序**排（= 调用序，也是 ToolCall 的发射序）。 */
   const pending: ToolAcc[] = [];
+  /** 参数流心跳（v68）：参数增量不产语义 chunk，长参数的生成会被空闲守卫误判成
+   *  「服务商零字节」（卷 165）。按节流发 Heartbeat 复位守卫计时。 */
+  const argBeat = makeArgActivityBeat();
   /** 单条调用的终值事件（收尾统一发射）。 */
   const flushOne = (acc: ToolAcc): Chunk => ({
     type: ChunkType.ToolCall,
@@ -563,6 +567,9 @@ async function* readSSE(
           }
           if (tcDelta.function?.arguments) {
             tc.arguments += tcDelta.function.arguments;
+            // 参数流心跳：让空闲守卫看见「数据还在来」（与预览无关——code_execution
+            // 这类非 write/edit 工具永远走不到下面的预览分支）。
+            if (argBeat()) yield { type: ChunkType.Heartbeat };
             // 流式写入预览：从部分 JSON 参数中提取内容
             const preview = extractWritePreview(tc.name, tc.arguments);
             if (preview) {

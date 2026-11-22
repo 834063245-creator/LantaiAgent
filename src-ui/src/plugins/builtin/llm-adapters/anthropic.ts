@@ -32,6 +32,7 @@ import { sendWithRetry } from './retry';
 import {
   extractWritePreview,
   fetchJsonWithTimeout,
+  makeArgActivityBeat,
   mergeHeaders,
   modelsFetchFailure,
   prewarmEndpoint,
@@ -470,6 +471,9 @@ async function* readSSE(
   obsMeta?: SseLogMeta,
 ): AsyncGenerator<Chunk> {
   const toolsByIndex = new Map<number, { id: string; name: string; arguments: string }>();
+  /** 参数流心跳（v68）：input_json_delta 只累加、不产语义 chunk——长参数的生成会被
+   *  空闲守卫误判成「服务商零字节」（卷 165）。按节流发 Heartbeat 复位守卫计时。 */
+  const argBeat = makeArgActivityBeat();
   let inTok = 0;
   let outTok = 0;
   let _cacheCreate = 0;
@@ -519,6 +523,8 @@ async function* readSSE(
             const tc = toolsByIndex.get(ev.index);
             if (tc) {
               tc.arguments += ev.delta.partial_json;
+              // 参数流心跳：让空闲守卫看见「数据还在来」（与预览无关）。
+              if (argBeat()) yield { type: ChunkType.Heartbeat };
               // 流式写入预览：从部分 JSON 参数中提取内容
               const preview = extractWritePreview(tc.name, tc.arguments);
               if (preview) {

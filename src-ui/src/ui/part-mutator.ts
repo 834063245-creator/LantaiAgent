@@ -30,7 +30,7 @@ export function appendNoticePart(parts: AssistantPart[], text: string, level: No
  * 数组有变化时返回 true。
  *
  * 处理：Reasoning、Text、Message、ToolDispatch、ToolProgress、ToolResult、
- *       Asset（资产终值）、AssetDelta（资产增量）。
+ *       ToolCallDropped（撤掉作废尝试的半成卡）、Asset（资产终值）、AssetDelta（资产增量）。
  * 不处理：TurnStarted、Usage、Notice、SessionChanged — 这些有显示特定的
  * 副作用，由调用方单独管理（Notice 的可见性政策在 chat-stream，
  * 其**流内落位**走本文件的 appendNoticePart）。
@@ -164,6 +164,19 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
             status: 'error',
             err: ev.tool.err,
           });
+          return true;
+        }
+      }
+      return false;
+
+    case EventKind.ToolCallDropped:
+      // 作废尝试的半成卡（只发过 ToolCallStart、参数没到齐）——它从未成为一次真调用，
+      // 删卡而不是标 error：重试会重新生成一张同名卡，留着就是「无由来的重复调用」。
+      if (ev.tool) {
+        const toolId = ev.tool.id;
+        const at = parts.findIndex((p) => p.type === 'tool' && p.toolId === toolId);
+        if (at >= 0) {
+          parts.splice(at, 1);
           return true;
         }
       }

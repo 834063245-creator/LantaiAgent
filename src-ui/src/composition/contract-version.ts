@@ -22,9 +22,16 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 67;
+export const OPEN_SURFACE_CONTRACT_VERSION = 68;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v68（2026-11-22）**新增 `ChunkType.Heartbeat` 流活性心跳**（`provider/types.ts`，
+ *  纯增量成员 = 9）：工具参数增量在三个方言里都只累加、不产语义 chunk，而空闲守卫
+ *  只在收到 chunk 时复位计时 ⇒ 参数生成 >30 秒的工具调用被误判成「服务商零字节」，
+ *  整轮被掐断重试（2026-11-22 卷 165 实锤：同一断点连掐三次，卷面堆四张空
+ *  code_execution 卡）。方言在参数增量处按 `ARG_ACTIVITY_BEAT_MS`（1s）节流发心跳，
+ *  消费方一律忽略（不投影 UI、不进会话）。**对外可感知**：第三方 adapter 不产心跳 =
+ *  既有行为不变；消费方按 chunk 类型 switch，未知类型本就被忽略 ⇒ 源码零迁移。
  *  v67（2026-11-22）**用户组合新增 `directOnly` 直调 allowlist（fail-closed code 模式）**：
  *  `CompositionPatchSchema` 增可选顶层键 `directOnly: string[]`；非 null 即启用：
  *  仅列出的**模型工具名**进入 `schemas()` 直调面，其余仍留 `visibleTools()` 供

@@ -14,6 +14,10 @@ export enum EventKind {
   ToolDispatch = 'tool_dispatch',
   ToolResult = 'tool_result',
   ToolProgress = 'tool_progress',
+  /** 一次尝试作废：只发过 ToolCallStart、从未收到完整 ToolCall 的调用从展示面**撤掉**
+   *  （参数没到齐 = 它从未成为一次真调用）。重试会重新生成同名卡；不撤就堆成
+   *  「同一个工具无由来地重复调用」——2026-11-22 卷 165 四张空 code_execution 卡。 */
+  ToolCallDropped = 'tool_call_dropped',
   Usage = 'usage',
   Notice = 'notice',
   SessionChanged = 'session_changed',

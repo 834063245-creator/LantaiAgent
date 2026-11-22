@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：67
+当前版本：68
 
-<!-- contract-fingerprint: 427b48014c0b18b1b103a7cc9583ea692e33b9e9ec74c5fe765b0de6fd39d44f -->
+<!-- contract-fingerprint: 141a054559fc1419f8297106edd27bce84c5c940cb2794903b3db0f325ca0ec0 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -18,7 +18,7 @@
 |---|---|
 | `src/composition/contribution-channel.ts` | **贡献通道内核**（M1 收口：九通道 + 五 seam 的唯一注册表实现——`ContributionChannel` / `ContributionTiming` / `ContributionChannelOptions`。类名经宿主桥 `faceDeps` 与 `host.aliased.ts` 暴露给产物插件，形状即对外契约） |
 | `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`；**v37 起 `activeLlmAdapters(view?)` 的可选 view**——缺省 = 全局当前选择）+ panels/commands/tools 通道 def 形状（M1 起注册表内核移出本文件；**v60 起 `CommandContribution` 增可选 `takesArg`**——带参命令点选 = 填入待编辑；**v63 起增可选 `volumeCommand`**——这条 `local` 命令作用于某一卷，题签态不执行、也不陈列；**v64 起 `PanelContribution` 增可选 `frame`（`'shell'` 缺省 = 壳给盒子 / `'self'` = 面板自持定位）与 `width`**——第三方面板从此有落点） |
-| `src/provider/types.ts` | `ctx.llm` seam 的**实现面形状真源**（`Provider` / `Chunk` / `Request`——v25 补登记：`LlmAdapterContribution.create` 返回的 Provider 形状即契约面，此前未入册。**v41 起 `ProviderRuntimeArgs` 增加可选 `headers`**——自定义请求头，三方言请求携带且凭据/协议头恒胜） |
+| `src/provider/types.ts` | `ctx.llm` seam 的**实现面形状真源**（`Provider` / `Chunk` / `Request`——v25 补登记：`LlmAdapterContribution.create` 返回的 Provider 形状即契约面，此前未入册。**v41 起 `ProviderRuntimeArgs` 增加可选 `headers`**——自定义请求头，三方言请求携带且凭据/协议头恒胜。**v68 起 `ChunkType` 增 `Heartbeat`**——工具参数流的活性心跳，只复位空闲守卫，消费方忽略） |
 | `src/composition/fs-service.ts` | `ctx.fs`（`FsProvider` / `FsAction` 动作 / `FsCallOptions` dispatch 腰） |
 | `src/composition/shell-service.ts` | `ctx.shell`（`ShellProvider` / `ShellAction` 四动作；subprocess 并入） |
 | `src/composition/session-persistence-service.ts` | `ctx.sessionPersistence`（`SessionPersistenceProvider` 四动词 read_volume/list_volumes/save_volume/delete_volume + `sessionExecute` 消费单点 + Service.execute） |
@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
+| 68 | 2026-11-22 | **新增 `ChunkType.Heartbeat` 流活性心跳（纯增量成员 = 9）**：工具参数增量（openai `function.arguments` 片段 / anthropic `input_json_delta` / responses `function_call_arguments.delta`）在三个方言里都只累加、不产语义 chunk，而空闲守卫（`provider/idle-stream.ts`，30s）只在收到 chunk 时复位计时 ⇒ 参数生成超过 30 秒的工具调用被误判成「服务商零字节」，掐断后重试再从零生成同一份大参数、再撞同一面墙。方言现按 `ARG_ACTIVITY_BEAT_MS`（1s）节流发心跳；消费方忽略（不投影 UI、不进会话），只用于守卫复位。**对外可感知**：第三方 adapter 不产心跳 = 既有行为逐字节不变；消费方按 chunk 类型 switch，未知类型本就落到忽略分支 ⇒ 源码零迁移。 | 2026-11-22 用户报「165 卷 code_execution 无由来的重复调用」（实为断流重试 + 半成卡堆积）；守护 `tests/provider-tool-arg-heartbeat.test.ts` |
 | 67 | 2026-11-22 | **用户组合新增 `directOnly` 直调 allowlist（fail-closed code 模式）**：`composition/roster.ts` 的 `CompositionPatchSchema` 增可选顶层键 `directOnly: string[]`，非 null 即启用——仅列出的模型工具名进入 `schemas()` 直调面，其余仍留 `visibleTools()` 供 `code_execution` 程序内调用；`ResolvedComposition.directOnly` 同步为 `string[] \| null`（缺省 null = 零漂移，后层整体替换）。内置 `code` 组合从逐工具黑名单改为 allowlist，新工具/新插件默认不泄漏到直调面。 | `docs/plans/code-mode-preset-plan.md`；守护 `tests/composition-presets.test.ts` + `tests/code-mode-preset.test.ts` + `tests/tool-registry-disposer.test.ts` |
 | 66 | 2026-11-21 | **面板贡献面增可选 `frame` 与 `width`（面板宿主壳）**：`composition/services.ts` 的 `PanelContribution` 与 `app/panels/panel-def.ts` 的 `PanelDef` 各增可选 `frame?: 'shell' \| 'self'` 与 `width?: number`（「贡献面／消费面」一对形状，`panelDefs()` 合流时原样透传，故同批加）。**语义**：`side` 非 null 的面板缺省（`'shell'`）由壳包一层 `DockSlot`——定位／书眉（标题 + 关闭钮）／层级全由壳出；`'self'` = 面板自持定位与 chrome（书脊列／案卷侧栏这类家具，套通用壳会出双书眉）。**对外可感知**：第三方面板此前**永远不可见**——`ctx.panels` 的出口 `DockRail` 随 V5 拆除后组件裸挂文档流，被纸壳根（z 280）与首页底版（z 30）整片盖住，任何应用状态下都不可见；本版起不写一行 CSS 也能看见。旧插件不声明 = 从「不可见」变成「可见」，源码零迁移（纯可选字段）。同批架阁升格为应用级浮层（`ctx.rootViews` 的 `'overlay'` 槽），并成为 `ctx.panels` 的唯一入口。 | `docs/issues/lantai-plugin-panels-no-home`（第三方插件面板注册成功却永远看不见）；施工单 `docs/plans/panel-host-shell-plan.md`；守护 `tests/dock-slot.test.tsx` + `tests/shelf-panels.test.tsx` |
 | 65 | 2026-11-21 | **用户组合新增 `programOnly` 域（工具面收进程序）**：`composition/roster.ts` 的 `CompositionPatchSchema` 增可选顶层键 `programOnly: [{ id, programOnly: boolean }]`；语义 = 把**已装配的工具**从模型直调面（`schemas()`）扣掉、保留在 `visibleTools()`（code_execution 的程序内绑定集照旧包含它）。**为什么必须新开一个域而不是用 `tools[].disabled`**：禁用行 = 工具从注册表消失 ⇒ 程序内也调不到，而「code 模式」的全部意义正是「工具还在，只是只能经程序调」。解析产物 `ResolvedComposition` 同步增 `programOnly: string[]`（纯收集、后层覆盖前层）；出厂组合 = 空数组 ⇒ 现有组合逐字节零漂移。**对外可感知**：用户 preset 多一个可写域；内置 `code` 组合用它把日常工具收进 `code_execution`，直调只剩执行原语与问人。旧 preset 不写该键 = 行为逐字不变（纯可选，零迁移）。 | `docs/plans/code-mode-preset-plan.md`；守护 `tests/composition-presets.test.ts` + `tests/code-mode-preset.test.ts` + `tests/tool-registry-disposer.test.ts` |

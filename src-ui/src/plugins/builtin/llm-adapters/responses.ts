@@ -48,6 +48,7 @@ import { sendWithRetry } from './retry';
 import {
   extractWritePreview,
   fetchJsonWithTimeout,
+  makeArgActivityBeat,
   mergeHeaders,
   modelsFetchFailure,
   prewarmEndpoint,
@@ -454,6 +455,9 @@ async function* readSSE(
   // 的完整 item——added 里的 encrypted_content 可能不完整（官方 SDK 类型注），
   // 且 added 的 function_call 还没有 arguments（回放带空参数 = 篡改历史）。
   const itemsByIndex = new Map<number, ResponsesOutputItem>();
+  /** 参数流心跳（v68）：function_call_arguments.delta 只累加、不产语义 chunk——
+   *  长参数的生成会被空闲守卫误判成「服务商零字节」（卷 165）。按节流发 Heartbeat。 */
+  const argBeat = makeArgActivityBeat();
   let usage: Chunk['usage'];
 
   /** 收尾取本轮 items：优先 `response.completed.response.output`（权威全量，
@@ -503,6 +507,8 @@ async function* readSSE(
         const tc = toolsByIndex.get(ev.output_index ?? -1);
         if (tc && ev.partial_json) {
           tc.arguments += ev.partial_json;
+          // 参数流心跳：让空闲守卫看见「数据还在来」（与预览无关）。
+          if (argBeat()) yield { type: ChunkType.Heartbeat };
           const preview = extractWritePreview(tc.name, tc.arguments);
           if (preview) {
             yield {

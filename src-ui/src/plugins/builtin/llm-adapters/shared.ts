@@ -61,6 +61,30 @@ export function extractWritePreview(toolName: string, args: string): string | nu
   );
 }
 
+/** 工具参数增量的「流活性心跳」节流间隔（毫秒；契约 v68）。
+ *
+ *  Why（2026-11-22 卷 165 实锤）：openai / anthropic / responses 三个方言里，工具参数
+ *  增量（`input_json_delta` / `function.arguments` 片段）都只累加、**不产语义 chunk**；
+ *  而 `provider/idle-stream.ts` 的空闲守卫只在**收到 chunk** 时复位计时。于是「参数要
+ *  生成 30 秒以上」的工具调用（code_execution 写整篇文档、大 shell 命令）会被判成
+ *  「服务商零字节」：掐断 → 重试 → 从零重新生成同一个大参数 → 再撞同一面墙。
+ *  用户侧症状 = 「同一个工具无由来地反复调用」+ 卷面堆空卡（写者与守卫各错一半）。
+ *
+ *  三方言在参数增量处按本间隔发 `ChunkType.Heartbeat`（消费方忽略），守卫据此复位。 */
+export const ARG_ACTIVITY_BEAT_MS = 1000;
+
+/** 参数流心跳发令器：每流一个实例；首次必发，其后按 `intervalMs` 节流（缺省
+ *  `ARG_ACTIVITY_BEAT_MS`）。返回值 = 本次是否该发心跳。 */
+export function makeArgActivityBeat(intervalMs: number = ARG_ACTIVITY_BEAT_MS): () => boolean {
+  let last = 0;
+  return () => {
+    const now = Date.now();
+    if (now - last < intervalMs) return false;
+    last = now;
+    return true;
+  };
+}
+
 /** 通过短生命周期的请求预热 HTTP 连接池。尽力而为 — 失败静默处理。 */
 export function prewarmEndpoint(url: string, headers: Record<string, string>): void {
   const ctrl = new AbortController();

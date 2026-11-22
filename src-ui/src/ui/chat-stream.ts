@@ -463,6 +463,14 @@ export function renderEvent(ctx: StreamContext, ev: AgentEvent): void {
       }
       break;
 
+    case EventKind.ToolCallDropped:
+      // 作废尝试的半成卡撤除（2026-11-22 卷 165：重试堆出四张空 code_execution 卡）。
+      // 只在已有流式助手时动手——别为了删一张不存在的卡新造一条空消息。
+      if (ev.tool && ctx.getStreamingAssistantId()) {
+        if (applyEventToParts(_streamingAssistant(ctx).parts, ev)) _streamingBump(ctx);
+      }
+      break;
+
     case EventKind.Usage:
       // token 计量先入账（2026-09-13）：Agent 侧账本已记（streamOnce），
       // 这里把同一记录投影到 UI 面（卷文件 tokensUsed + 计量面板读数）。
